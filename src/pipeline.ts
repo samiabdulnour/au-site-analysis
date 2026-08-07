@@ -4,11 +4,16 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { geocode, type GeocodeResult } from './fetch/geocode.js';
 import { fetchSiteLots, fetchRailCorridors, fetchZoning, fetchHeightOfBuilding, fetchHeritage } from './fetch/nsw.js';
+import { fetchRoads, fetchRailLines, fetchTrainStations, fetchParkPoints, fetchComplexPoints, fetchPropertiesAt, type TopoRoad, type NamedPoint } from './fetch/nswTopo.js';
 import { fetchAerial, type AerialResult } from './fetch/imagery.js';
-import { fetchOsm, type OsmData } from './fetch/osm.js';
+import { fetchBusData, type BusData } from './fetch/osm.js';
 import { fetchIsochrones, type Isochrone } from './fetch/isochrones.js';
 import { sheetExtent, mercatorToLonLat, type Extent } from './lib/geo.js';
 import type { GeoJSONFC } from './lib/arcgis.js';
+import { keywordCategory } from './render/model.js';
+
+export interface CategorizedPoint extends NamedPoint { cat: string | null }
+export interface InstitutionPoly { cat: string; rings: number[][][] }
 
 export interface Bundle {
   address: string;
@@ -22,7 +27,13 @@ export interface Bundle {
   zoning: GeoJSONFC;
   hob: GeoJSONFC;
   heritage: GeoJSONFC;
-  osm: OsmData;
+  roads: TopoRoad[];
+  railLines: [number, number][][];
+  stations: NamedPoint[];
+  parkPoints: NamedPoint[];
+  complexPoints: CategorizedPoint[];
+  institutionPolys: InstitutionPoly[];
+  bus: BusData;
   isochrones: Isochrone[];
   aerial: AerialResult;
   generatedAt: string;
@@ -49,23 +60,46 @@ export async function runPipeline(address: string, opts: PipelineOpts): Promise<
   const extent = sheetExtent(geo.center, opts.mapWidthMm, opts.mapHeightMm, opts.scale);
   const centerLL = mercatorToLonLat(geo.center);
 
-  log('fetching site lots, planning layers, imagery, OSM, isochrones…');
+  log('fetching site lots, planning layers, topo, imagery, bus data, isochrones…');
   const emptyFC: GeoJSONFC = { type: 'FeatureCollection', features: [] };
   const soft = <T>(p: Promise<T>, fallback: T, name: string): Promise<T> =>
     p.catch((e) => { log(`  WARN ${name} failed: ${e.message ?? e}`); return fallback; });
-  const [siteLots, railCorridors, zoning, hob, heritage, osm, isochrones, aerial] = await Promise.all([
-    fetchSiteLots(geo.points),
-    soft(fetchRailCorridors(extent), emptyFC, 'rail corridors'),
-    fetchZoning(extent),
-    soft(fetchHeightOfBuilding(extent), emptyFC, 'height of building'),
-    soft(fetchHeritage(extent), emptyFC, 'heritage'),
-    fetchOsm(extent),
-    soft(fetchIsochrones(centerLL), [], 'isochrones'),
-    fetchAerial(extent, opts.aerialPxWidth ?? 4000, dataDir),
-  ]);
-  log(`  lots:${siteLots.features.length} zoning:${zoning.features.length} hob:${hob.features.length} ` +
-      `heritage:${heritage.features.length} roads:${osm.roads.length} pois:${osm.pois.length} ` +
-      `busStops:${osm.busStops.length} isochrones:${isochrones.length} aerialTiles:${aerial.tiles.length}`);
+
+  const [siteLots, railCorridors, zoning, hob, heritage, roads, railLines, stations, parkPoints, rawComplex, bus, isochrones, aerial] =
+    await Promise.all([
+      fetchSiteLots(geo.points),
+      soft(fetchRailCorridors(extent), emptyFC, 'rail corridors'),
+      fetchZoning(extent),
+      soft(fetchHeightOfBuilding(extent), emptyFC, 'height of building'),
+      soft(fetchHeritage(extent), emptyFC, 'heritage'),
+      fetchRoads(extent),
+      soft(fetchRailLines(extent), [], 'rail lines'),
+      soft(fetchTrainStations(extent), [], 'train stations'),
+      soft(fetchParkPoints(extent), [], 'park points'),
+      soft(fetchComplexPoints(extent), [], 'complex points'),
+      soft(fetchBusData(extent), { busStops: [], busRouteSegments: [] }, 'bus data (OSM)'),
+      soft(fetchIsochrones(centerLL), [], 'isochrones'),
+      fetchAerial(extent, opts.aerialPxWidth ?? 3200, dataDir),
+    ]);
+
+  const complexPoints: CategorizedPoint[] = rawComplex.map((p) => ({ ...p, cat: keywordCategory(p.name) }));
+
+  // Color the property parcels of categorized institutions (schools blue, etc.)
+  const fillable = complexPoints.filter((p) => p.cat && p.cat !== 'community');
+  const props = await soft(fetchPropertiesAt(fillable), emptyFC, 'institution properties');
+  // A multipoint query loses which point matched which polygon — recover by
+  // point-in-polygon so each parcel takes its institution's category.
+  const institutionPolys: InstitutionPoly[] = [];
+  for (const f of props.features) {
+    if (!f.geometry) continue;
+    const rings = f.geometry.type === 'Polygon' ? f.geometry.coordinates : f.geometry.coordinates.flat();
+    const hit = fillable.find((p) => rings.some((r: number[][]) => pointInRing(p.lon, p.lat, r)));
+    if (hit?.cat) institutionPolys.push({ cat: hit.cat, rings });
+  }
+
+  log(`  lots:${siteLots.features.length} zoning:${zoning.features.length} roads:${roads.length} ` +
+      `stations:${stations.length} parks:${parkPoints.length} complexes:${complexPoints.length} ` +
+      `instPolys:${institutionPolys.length} busStops:${bus.busStops.length} isochrones:${isochrones.length}`);
 
   const bundle: Bundle = {
     address,
@@ -79,11 +113,27 @@ export async function runPipeline(address: string, opts: PipelineOpts): Promise<
     zoning,
     hob,
     heritage,
-    osm,
+    roads,
+    railLines,
+    stations,
+    parkPoints,
+    complexPoints,
+    institutionPolys,
+    bus,
     isochrones,
     aerial,
     generatedAt: new Date().toISOString(),
   };
   await writeFile(join(dataDir, 'bundle.json'), JSON.stringify(bundle));
   return bundle;
+}
+
+function pointInRing(x: number, y: number, ring: number[][]): boolean {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i];
+    const [xj, yj] = ring[j];
+    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
 }

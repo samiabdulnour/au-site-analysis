@@ -44,6 +44,7 @@ export async function fetchAerial(
         imageSR: '3857',
         size: `${w},${h}`,
         format: 'jpg',
+        compressionQuality: '70',
         f: 'image',
       });
       const res = await fetch(`${EXPORT}?${params}`, { signal: AbortSignal.timeout(120_000) });

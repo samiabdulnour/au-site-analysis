@@ -3,7 +3,7 @@
 
 import type { Bundle } from '../pipeline.js';
 import { lonLatToMercator, ringCentroid, type Extent } from '../lib/geo.js';
-import { CATEGORIES, catById, zoneToCategory, poiToCategory } from './model.js';
+import { CATEGORIES, catById, zoneToCategory } from './model.js';
 
 export const SHEET_W = 841;
 export const SHEET_H = 594;
@@ -106,13 +106,15 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   // ---- aerial base -------------------------------------------------------
   const imgs = bundle.aerial.tiles
     .map(
+      // No CSS filter here: filtered images force Chromium to re-rasterize
+      // losslessly and the PDF balloons; the white wash desaturates enough.
       (t) => `<image href="data/${t.file}" x="${(t.left * MAP_W).toFixed(2)}" y="${(t.top * SHEET_H).toFixed(2)}"
         width="${(t.width * MAP_W).toFixed(2)}" height="${(t.height * SHEET_H).toFixed(2)}"
-        preserveAspectRatio="none" style="filter:saturate(0.72)"/>`,
+        preserveAspectRatio="none"/>`,
     )
     .join('\n');
   layers.push(imgs);
-  layers.push(`<rect x="0" y="0" width="${MAP_W}" height="${SHEET_H}" fill="#ffffff" opacity="0.42"/>`);
+  layers.push(`<rect x="0" y="0" width="${MAP_W}" height="${SHEET_H}" fill="#ffffff" opacity="0.36"/>`);
 
   // ---- zoning base -------------------------------------------------------
   const zoningByCat: Record<string, string[]> = {};
@@ -133,33 +135,21 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   // ---- railway corridor --------------------------------------------------
   if (bundle.railCorridors.features.length) {
     usedCats.add('railway');
-    const c = catById.railway;
     const d = bundle.railCorridors.features.map((f) => pathFromRings(geomRings(f.geometry), proj)).join('');
-    layers.push(`<path d="${d}" fill="${c.fill}" opacity="${c.opacity}"/>`);
+    layers.push(`<path d="${d}" fill="#f0912d" opacity="0.9" fill-rule="evenodd"/>`);
   }
 
-  // ---- POI overrides (function beats zone) -------------------------------
-  interface PoiLabel { x: number; y: number; lines: string[]; areaM2: number }
-  const poiLabels: PoiLabel[] = [];
+  // ---- institution property fills (function beats zone) ------------------
   const poiPathsByCat: Record<string, string[]> = {};
-  for (const poi of bundle.osm.pois) {
-    const cat = poiToCategory(poi.kind);
-    if (!cat) continue;
-    const rings = poi.rings.filter((r) => r.length >= 3);
+  for (const inst of bundle.institutionPolys) {
+    const rings = inst.rings.filter((r) => r.length >= 3);
     if (!rings.length) continue;
-    (poiPathsByCat[cat] ??= []).push(pathFromRings(rings as any, proj));
-    const area = ringAreaM2(rings[0] as any);
-    if (poi.name && area > 1800) {
-      const [clon, clat] = ringCentroid(rings[0] as any);
-      const [x, y] = proj(clon, clat);
-      if (x > 5 && x < MAP_W - 5 && y > 5 && y < SHEET_H - 5)
-        poiLabels.push({ x, y, lines: wrapLabel(poi.name), areaM2: area });
-    }
+    (poiPathsByCat[inst.cat] ??= []).push(pathFromRings(rings, proj));
   }
   for (const [cat, paths] of Object.entries(poiPathsByCat)) {
     const c = catById[cat];
     usedCats.add(cat);
-    layers.push(`<g fill="${c.fill}" opacity="${c.opacity}">` +
+    layers.push(`<g fill="${c.fill}" opacity="${c.opacity}" fill-rule="evenodd">` +
       paths.map((d) => `<path d="${d}"/>`).join('') + '</g>');
   }
 
@@ -170,13 +160,13 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     layers.push(`<path d="${d}" fill="url(#hatch)" stroke="#a97b3f" stroke-width="0.25" opacity="0.8"/>`);
   }
 
-  // ---- OSM rail lines + bus routes --------------------------------------
-  if (bundle.osm.railLines.length) {
-    const d = bundle.osm.railLines.map((l) => pathFromRings([l as any], proj, false)).join('');
+  // ---- rail lines + bus routes ------------------------------------------
+  if (bundle.railLines.length) {
+    const d = bundle.railLines.map((l) => pathFromRings([l as any], proj, false)).join('');
     layers.push(`<path d="${d}" fill="none" stroke="#b35c00" stroke-width="0.5" stroke-dasharray="3,1.2" opacity="0.9"/>`);
   }
-  if (bundle.osm.busRouteSegments.length) {
-    const d = bundle.osm.busRouteSegments.map((l) => pathFromRings([l as any], proj, false)).join('');
+  if (bundle.bus.busRouteSegments.length) {
+    const d = bundle.bus.busRouteSegments.map((l) => pathFromRings([l as any], proj, false)).join('');
     layers.push(`<path d="${d}" fill="none" stroke="#2f7fd6" stroke-width="0.5" stroke-dasharray="2.2,1.4" opacity="0.9" stroke-linecap="round"/>`);
   }
 
@@ -188,14 +178,27 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   for (const iso of bundle.isochrones) {
     const st = isoStyle[iso.minutes] ?? { color: '#e6007e', label: `${iso.minutes} MIN WALK` };
     const d = iso.rings.map((r) => pathFromRings([r as any], proj)).join('');
-    layers.push(`<path d="${d}" fill="none" stroke="${st.color}" stroke-width="0.7" stroke-dasharray="2.6,1.6" stroke-linejoin="round"/>`);
-    // label at the ring's topmost vertex
-    let best: Pt | null = null;
-    for (const r of iso.rings) for (const [lon, lat] of r) {
-      const p = proj(lon, lat);
-      if (p[0] > 30 && p[0] < MAP_W - 40 && (!best || p[1] < best[1])) best = p;
+    layers.push(`<path d="${d}" fill="none" stroke="${st.color}" stroke-width="0.9" stroke-dasharray="2.8,1.7" stroke-linejoin="round"/>`);
+  }
+  // Label each ring at a distinct bearing from the site so labels never collide.
+  {
+    const cx = MAP_W / 2, cy = SHEET_H / 2;
+    const bearings: Record<number, number> = { 5: 225, 10: 315 }; // deg, screen: 0=E, 90=S
+    for (const iso of bundle.isochrones) {
+      const st = isoStyle[iso.minutes] ?? { color: '#e6007e', label: `${iso.minutes} MIN WALK` };
+      const target = ((bearings[iso.minutes] ?? 270) * Math.PI) / 180;
+      let best: Pt | null = null;
+      let bestScore = Infinity;
+      for (const r of iso.rings) for (const [lon, lat] of r) {
+        const [x, y] = proj(lon, lat);
+        if (x < 25 || x > MAP_W - 45 || y < 10 || y > SHEET_H - 10) continue;
+        const ang = Math.atan2(y - cy, x - cx);
+        let diff = Math.abs(ang - (target - Math.PI)); // note: y axis inverted on screen
+        diff = Math.min(diff, 2 * Math.PI - diff);
+        if (diff < bestScore) { bestScore = diff; best = [x, y]; }
+      }
+      if (best) layers.push(haloText(best[0], best[1], [st.label], 3.2, st.color));
     }
-    if (best) layers.push(haloText(best[0], best[1] + 4, [st.label], 3.2, st.color));
   }
 
   // ---- site --------------------------------------------------------------
@@ -206,15 +209,15 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   }
 
   // ---- street labels -----------------------------------------------------
-  const roadByName = new Map<string, { coords: Pt[]; len: number; cls: string }>();
-  for (const road of bundle.osm.roads) {
+  const roadByName = new Map<string, { coords: Pt[]; len: number; hierarchy: number }>();
+  for (const road of bundle.roads) {
     const pts = road.coords.map(([lon, lat]) => proj(lon, lat))
       .filter(([x, y]) => x > -50 && x < MAP_W + 50 && y > -50 && y < SHEET_H + 50);
     if (pts.length < 2) continue;
     let len = 0;
     for (let i = 1; i < pts.length; i++) len += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
     const cur = roadByName.get(road.name);
-    if (!cur || len > cur.len) roadByName.set(road.name, { coords: pts, len, cls: road.cls });
+    if (!cur || len > cur.len) roadByName.set(road.name, { coords: pts, len, hierarchy: road.hierarchy });
   }
   let rid = 0;
   const roadDefs: string[] = [];
@@ -225,7 +228,7 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     if (pts[0][0] > pts[pts.length - 1][0]) pts = [...pts].reverse();
     const id = `rd${rid++}`;
     const d = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p[0].toFixed(2)},${p[1].toFixed(2)}`).join('');
-    const major = /^(motorway|trunk|primary|secondary)$/.test(r.cls);
+    const major = r.hierarchy <= 4;
     const size = major ? 2.5 : 2.0;
     roadDefs.push(`<path id="${id}" d="${d}" fill="none"/>`);
     roadTexts.push(`<text font-size="${size}" font-weight="${major ? 700 : 500}" fill="#3a3a3a" letter-spacing="0.45"
@@ -236,19 +239,32 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   layers.push(roadTexts.join('\n'));
 
   // ---- POI labels (drawn above street labels) ----------------------------
-  poiLabels.sort((a, b) => b.areaM2 - a.areaM2);
+  // Priority: categorized complexes (schools, hospitals…) then parks.
+  interface PoiLabel { x: number; y: number; lines: string[]; priority: number }
+  const poiLabels: PoiLabel[] = [];
+  for (const p of bundle.complexPoints) {
+    if (!p.cat) continue;
+    const [x, y] = proj(p.lon, p.lat);
+    if (x > 8 && x < MAP_W - 8 && y > 6 && y < SHEET_H - 6)
+      poiLabels.push({ x, y, lines: wrapLabel(p.name), priority: 1 });
+  }
+  for (const p of bundle.parkPoints) {
+    const [x, y] = proj(p.lon, p.lat);
+    if (x > 8 && x < MAP_W - 8 && y > 6 && y < SHEET_H - 6)
+      poiLabels.push({ x, y, lines: wrapLabel(p.name), priority: 2 });
+  }
+  poiLabels.sort((a, b) => a.priority - b.priority);
   const placed: Pt[] = [];
   const poiTexts: string[] = [];
   for (const pl of poiLabels) {
-    if (placed.some(([px, py]) => Math.hypot(px - pl.x, py - pl.y) < 16)) continue;
+    if (placed.some(([px, py]) => Math.hypot(px - pl.x, py - pl.y) < 14)) continue;
     placed.push([pl.x, pl.y]);
-    const size = pl.areaM2 > 40_000 ? 3.0 : 2.4;
-    poiTexts.push(haloText(pl.x, pl.y, pl.lines, size, '#222222'));
+    poiTexts.push(haloText(pl.x, pl.y, pl.lines, 2.4, '#222222'));
   }
   layers.push(poiTexts.join('\n'));
 
   // ---- transport symbols -------------------------------------------------
-  const busStopSvgs = bundle.osm.busStops
+  const busStopSvgs = bundle.bus.busStops
     .map(({ lon, lat }) => proj(lon, lat))
     .filter(([x, y]) => x > 2 && x < MAP_W - 2 && y > 2 && y < SHEET_H - 2)
     .map(([x, y]) => `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})">
@@ -256,11 +272,11 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
       <text text-anchor="middle" dy="0.62" font-size="2.1" font-weight="700" fill="#ffffff">B</text></g>`);
   layers.push(busStopSvgs.join('\n'));
 
-  const stationSvgs = bundle.osm.stations
-    .map((s) => ({ p: proj(s.lon, s.lat), name: s.name }))
+  const stationSvgs = bundle.stations
+    .map((s) => ({ p: proj(s.lon, s.lat), name: s.name.replace(/RAILWAY STATION$/i, 'TRAIN STATION') }))
     .filter(({ p: [x, y] }) => x > 2 && x < MAP_W - 2 && y > 2 && y < SHEET_H - 2)
     .map(({ p: [x, y], name }) => {
-      const label = name ? haloText(x, y - 6, wrapLabel(`${name} STATION`), 2.8, '#111111') : '';
+      const label = haloText(x, y - 6, wrapLabel(name), 2.8, '#111111');
       return `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})">
         <circle r="2.4" fill="#ffffff" stroke="#e8402a" stroke-width="0.55"/>
         <text text-anchor="middle" dy="0.85" font-size="3" font-weight="700" fill="#e8402a">T</text></g>${label}`;

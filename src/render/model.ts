@@ -50,12 +50,15 @@ export function zoneToCategory(code: string): string | null {
   return null;
 }
 
-/** OSM poi kind -> category id override drawn above zoning. */
-export function poiToCategory(kind: string): string | null {
-  if (/^(school|college|university|kindergarten)$/.test(kind)) return 'education';
-  if (/^(hospital|clinic)$/.test(kind)) return 'medical';
-  if (/^(community_centre|place_of_worship|library|townhall|police|fire_station)$/.test(kind)) return 'community';
-  if (/^(park|garden|pitch|playground|sports_centre|recreation_ground|golf_course|cemetery)$/.test(kind)) return 'openSpace';
-  if (/^(supermarket|mall)$/.test(kind)) return 'retail';
+/**
+ * Categorize a named NSW building complex by its name (the FOI type codes are
+ * unreliable; names are consistently descriptive). Null = not worth showing.
+ */
+export function keywordCategory(name: string): string | null {
+  const n = name.toUpperCase();
+  if (/SCHOOL|COLLEGE|TAFE|UNIVERSITY|KINDERGARTEN|PRE-?SCHOOL|GRAMMAR|CHILD CARE|CHILDCARE|EARLY LEARNING/.test(n)) return 'education';
+  if (/HOSPITAL|AGED CARE|NURSING|MEDICAL|SURGERY|HEALTH|AMBULANCE|HOSPICE/.test(n)) return 'medical';
+  if (/SHOPPING|PLAZA|\bMALL\b|MARKETPLACE|\bMETRO\b|CENTRE POINT/.test(n)) return 'retail';
+  if (/CHURCH|CATHEDRAL|MOSQUE|MASJID|TEMPLE|SYNAGOGUE|LIBRARY|COMMUNITY|COUNCIL|CIVIC|TOWN HALL|POLICE|FIRE STATION|\bSES\b|COURT HOUSE|MUSEUM|AQUATIC|LEISURE CENTRE|\bRSL\b|BOWLING|SENIOR CITIZENS/.test(n)) return 'community';
   return null;
 }

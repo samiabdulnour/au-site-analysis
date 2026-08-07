@@ -92,6 +92,24 @@ export async function queryByPoint(
   return esriToGeoJson(data);
 }
 
+export async function queryByGeometry(
+  layerUrl: string,
+  geometry: object,
+  geometryType: string,
+  outFields = '*',
+): Promise<GeoJSONFC> {
+  const data = await getJson(`${layerUrl}/query`, {
+    ...BASE_PARAMS,
+    where: '1=1',
+    geometry: JSON.stringify(geometry),
+    geometryType,
+    inSR: '4326',
+    spatialRel: 'esriSpatialRelIntersects',
+    outFields,
+  });
+  return esriToGeoJson(data);
+}
+
 export async function queryWhere(
   layerUrl: string,
   where: string,
