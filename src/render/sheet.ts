@@ -76,7 +76,9 @@ function pointInRing(x: number, y: number, ring: number[][]): boolean {
   return inside;
 }
 
-function wrapLabel(name: string, maxChars = 16): string[] {
+// The A1 sheet is routinely printed at A3 (50%): every size below is chosen
+// so its printed half remains legible (≈1.5mm minimum cap height at A3).
+function wrapLabel(name: string, maxChars = 14): string[] {
   const words = name.toUpperCase().split(' ');
   const lines: string[] = [];
   let cur = '';
@@ -163,11 +165,11 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   // ---- rail lines + bus routes ------------------------------------------
   if (bundle.railLines.length) {
     const d = bundle.railLines.map((l) => pathFromRings([l as any], proj, false)).join('');
-    layers.push(`<path d="${d}" fill="none" stroke="#b35c00" stroke-width="0.5" stroke-dasharray="3,1.2" opacity="0.9"/>`);
+    layers.push(`<path d="${d}" fill="none" stroke="#b35c00" stroke-width="0.8" stroke-dasharray="4,1.6" opacity="0.9"/>`);
   }
   if (bundle.bus.busRouteSegments.length) {
     const d = bundle.bus.busRouteSegments.map((l) => pathFromRings([l as any], proj, false)).join('');
-    layers.push(`<path d="${d}" fill="none" stroke="#2f7fd6" stroke-width="0.5" stroke-dasharray="2.2,1.4" opacity="0.9" stroke-linecap="round"/>`);
+    layers.push(`<path d="${d}" fill="none" stroke="#2f7fd6" stroke-width="0.8" stroke-dasharray="3,1.9" opacity="0.9" stroke-linecap="round"/>`);
   }
 
   // ---- isochrones --------------------------------------------------------
@@ -178,7 +180,7 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   for (const iso of bundle.isochrones) {
     const st = isoStyle[iso.minutes] ?? { color: '#e6007e', label: `${iso.minutes} MIN WALK` };
     const d = iso.rings.map((r) => pathFromRings([r as any], proj)).join('');
-    layers.push(`<path d="${d}" fill="none" stroke="${st.color}" stroke-width="0.9" stroke-dasharray="2.8,1.7" stroke-linejoin="round"/>`);
+    layers.push(`<path d="${d}" fill="none" stroke="${st.color}" stroke-width="1.3" stroke-dasharray="3.6,2.2" stroke-linejoin="round"/>`);
   }
   // Label each ring at a distinct bearing from the site so labels never collide.
   {
@@ -197,7 +199,7 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
         diff = Math.min(diff, 2 * Math.PI - diff);
         if (diff < bestScore) { bestScore = diff; best = [x, y]; }
       }
-      if (best) layers.push(haloText(best[0], best[1], [st.label], 3.2, st.color));
+      if (best) layers.push(haloText(best[0], best[1], [st.label], 4.6, st.color));
     }
   }
 
@@ -205,7 +207,7 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   {
     usedCats.add('site');
     const d = bundle.siteLots.features.map((f) => pathFromRings(geomRings(f.geometry), proj)).join('');
-    layers.push(`<path d="${d}" fill="#e8402a" fill-opacity="0.55" stroke="#cc0000" stroke-width="0.9" stroke-dasharray="2.4,1.2"/>`);
+    layers.push(`<path d="${d}" fill="#e8402a" fill-opacity="0.55" stroke="#cc0000" stroke-width="1.4" stroke-dasharray="3.2,1.6"/>`);
   }
 
   // ---- street labels -----------------------------------------------------
@@ -223,13 +225,13 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   const roadDefs: string[] = [];
   const roadTexts: string[] = [];
   for (const [name, r] of roadByName) {
-    if (r.len < 22) continue; // too short to label legibly
+    if (r.len < 34) continue; // too short to label legibly
     let pts = r.coords;
     if (pts[0][0] > pts[pts.length - 1][0]) pts = [...pts].reverse();
     const id = `rd${rid++}`;
     const d = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p[0].toFixed(2)},${p[1].toFixed(2)}`).join('');
     const major = r.hierarchy <= 4;
-    const size = major ? 2.5 : 2.0;
+    const size = major ? 4.0 : 3.2;
     roadDefs.push(`<path id="${id}" d="${d}" fill="none"/>`);
     roadTexts.push(`<text font-size="${size}" font-weight="${major ? 700 : 500}" fill="#3a3a3a" letter-spacing="0.45"
       stroke="#ffffff" stroke-width="${(size * 0.3).toFixed(2)}" paint-order="stroke" dy="-0.7">
@@ -257,9 +259,9 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   const placed: Pt[] = [];
   const poiTexts: string[] = [];
   for (const pl of poiLabels) {
-    if (placed.some(([px, py]) => Math.hypot(px - pl.x, py - pl.y) < 14)) continue;
+    if (placed.some(([px, py]) => Math.hypot(px - pl.x, py - pl.y) < 20)) continue;
     placed.push([pl.x, pl.y]);
-    poiTexts.push(haloText(pl.x, pl.y, pl.lines, 2.4, '#222222'));
+    poiTexts.push(haloText(pl.x, pl.y, pl.lines, 3.6, '#222222'));
   }
   layers.push(poiTexts.join('\n'));
 
@@ -268,18 +270,18 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     .map(({ lon, lat }) => proj(lon, lat))
     .filter(([x, y]) => x > 2 && x < MAP_W - 2 && y > 2 && y < SHEET_H - 2)
     .map(([x, y]) => `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})">
-      <circle r="1.7" fill="#2f7fd6" stroke="#ffffff" stroke-width="0.35"/>
-      <text text-anchor="middle" dy="0.62" font-size="2.1" font-weight="700" fill="#ffffff">B</text></g>`);
+      <circle r="2.3" fill="#2f7fd6" stroke="#ffffff" stroke-width="0.45"/>
+      <text text-anchor="middle" dy="0.85" font-size="2.9" font-weight="700" fill="#ffffff">B</text></g>`);
   layers.push(busStopSvgs.join('\n'));
 
   const stationSvgs = bundle.stations
     .map((s) => ({ p: proj(s.lon, s.lat), name: s.name.replace(/RAILWAY STATION$/i, 'TRAIN STATION') }))
     .filter(({ p: [x, y] }) => x > 2 && x < MAP_W - 2 && y > 2 && y < SHEET_H - 2)
     .map(({ p: [x, y], name }) => {
-      const label = haloText(x, y - 6, wrapLabel(name), 2.8, '#111111');
+      const label = haloText(x, y - 8, wrapLabel(name), 4.2, '#111111');
       return `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})">
-        <circle r="2.4" fill="#ffffff" stroke="#e8402a" stroke-width="0.55"/>
-        <text text-anchor="middle" dy="0.85" font-size="3" font-weight="700" fill="#e8402a">T</text></g>${label}`;
+        <circle r="3.2" fill="#ffffff" stroke="#e8402a" stroke-width="0.75"/>
+        <text text-anchor="middle" dy="1.15" font-size="4" font-weight="700" fill="#e8402a">T</text></g>${label}`;
     });
   layers.push(stationSvgs.join('\n'));
 
@@ -311,7 +313,7 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
       ${[0, 0.2, 0.5, 1].map((f, i, arr) => i < arr.length - 1
         ? `<rect x="${(4 + f * mm100m).toFixed(1)}" y="2.4" width="${((arr[i + 1] - f) * mm100m).toFixed(1)}" height="1.6" fill="${i % 2 ? '#ffffff' : '#333333'}" stroke="#333" stroke-width="0.2"/>` : '')
         .join('')}
-      ${[0, 20, 50, 100].map((m) => `<text x="${(4 + (m / 100) * mm100m).toFixed(1)}" y="7.4" text-anchor="middle" font-size="2.1" fill="#333">${m}${m === 100 ? 'm' : ''}</text>`).join('')}
+      ${[0, 20, 50, 100].map((m) => `<text x="${(4 + (m / 100) * mm100m).toFixed(1)}" y="7.6" text-anchor="middle" font-size="2.6" fill="#333">${m}${m === 100 ? 'm' : ''}</text>`).join('')}
     </svg>`;
 
   const northArrow = `
@@ -345,27 +347,29 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   html, body { width: ${SHEET_W}mm; height: ${SHEET_H}mm; font-family: 'Liberation Sans', Arial, Helvetica, sans-serif; background: #fff; }
   .sheet { position: relative; width: ${SHEET_W}mm; height: ${SHEET_H}mm; overflow: hidden; }
   svg.map { position: absolute; left: 0; top: 0; }
+  /* Sized for A3@50% printing: nothing below 2mm on the A1 (=1mm at A3)
+     except the boilerplate notes, which are fine print by convention. */
   .titlecol { position: absolute; right: 0; top: 0; width: ${TITLE_W}mm; height: ${SHEET_H}mm;
-    border-left: 0.4mm solid #222; background: #fff; padding: 3mm 3.5mm; display: flex; flex-direction: column; font-size: 2.2mm; color: #222; }
-  .block { border-bottom: 0.15mm solid #999; padding: 1.6mm 0; }
-  .block h4 { font-size: 1.9mm; font-weight: 700; letter-spacing: 0.2mm; margin-bottom: 0.8mm; }
-  .tiny { font-size: 1.55mm; line-height: 1.35; color: #444; }
-  .notes li { margin-left: 2.5mm; margin-bottom: 0.5mm; }
-  .lgrow { display: flex; align-items: center; gap: 1.6mm; margin-bottom: 1.1mm; font-size: 1.8mm; }
+    border-left: 0.5mm solid #222; background: #fff; padding: 3mm 3.5mm; display: flex; flex-direction: column; font-size: 2.8mm; color: #222; }
+  .block { border-bottom: 0.2mm solid #999; padding: 1.8mm 0; }
+  .block h4 { font-size: 2.5mm; font-weight: 700; letter-spacing: 0.25mm; margin-bottom: 1mm; }
+  .tiny { font-size: 2.0mm; line-height: 1.35; color: #444; }
+  .notes li { margin-left: 3mm; margin-bottom: 0.5mm; }
+  .lgrow { display: flex; align-items: center; gap: 1.8mm; margin-bottom: 1.3mm; font-size: 2.4mm; }
   .lgrow svg { flex: 0 0 auto; }
-  .lgrow .sub { color: #555; font-size: 1.6mm; }
-  .wordmark { font-size: 5.4mm; font-weight: 700; letter-spacing: 0.35mm; padding: 2mm 0 1mm; }
+  .lgrow .sub { color: #555; font-size: 2.1mm; }
+  .wordmark { font-size: 6.4mm; font-weight: 700; letter-spacing: 0.4mm; padding: 2mm 0 1mm; }
   .wordmark span { position: relative; }
   .wordmark .rule { text-decoration: line-through; }
-  .prelim { border: 0.5mm solid #e30000; color: #e30000; text-align: center; font-weight: 700;
-    letter-spacing: 1.2mm; font-size: 3.6mm; padding: 1.6mm 0; margin: 1.6mm 0; }
-  .kv { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4mm 2mm; }
-  .kv .k { font-size: 1.6mm; color: #555; }
-  .kv .v { font-weight: 700; font-size: 2.4mm; }
-  .field { padding: 1.2mm 0; border-bottom: 0.15mm solid #999; }
-  .field .k { font-size: 1.6mm; color: #555; }
-  .field .v { font-weight: 700; font-size: 2.6mm; }
-  .field .v.big { font-size: 3.2mm; }
+  .prelim { border: 0.7mm solid #e30000; color: #e30000; text-align: center; font-weight: 700;
+    letter-spacing: 1.4mm; font-size: 4.6mm; padding: 2mm 0; margin: 2mm 0; }
+  .kv { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5mm 2mm; }
+  .kv .k { font-size: 2.1mm; color: #555; }
+  .kv .v { font-weight: 700; font-size: 3.1mm; }
+  .field { padding: 1.5mm 0; border-bottom: 0.2mm solid #999; }
+  .field .k { font-size: 2.1mm; color: #555; }
+  .field .v { font-weight: 700; font-size: 3.3mm; }
+  .field .v.big { font-size: 4.2mm; }
   .grow { flex: 1 1 auto; }
 </style></head>
 <body><div class="sheet">
