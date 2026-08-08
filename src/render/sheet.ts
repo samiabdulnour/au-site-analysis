@@ -245,10 +245,35 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   }
 
   // ---- heritage ----------------------------------------------------------
+  // Hatch drawn as real vector lines clipped to each polygon — SVG patterns
+  // rasterize blurrily when Chromium prints to PDF.
   if (bundle.heritage.features.length) {
     usedCats.add('heritage');
-    const d = bundle.heritage.features.map((f) => pathFromRings(geomRings(f.geometry), proj)).join('');
-    layers.push(`<path d="${d}" fill="url(#hatch)" stroke="#a97b3f" stroke-width="0.25" opacity="0.8"/>`);
+    const parts: string[] = [];
+    let hi = 0;
+    for (const f of bundle.heritage.features) {
+      const rings = geomRings(f.geometry).filter((r) => r.length >= 3);
+      if (!rings.length) continue;
+      const projRings = rings.map((r) => r.map(([lon, lat]) => proj(lon, lat)));
+      const d = projRings
+        .map((pr) => 'M' + pr.map((p) => `${p[0].toFixed(2)},${p[1].toFixed(2)}`).join('L') + 'Z')
+        .join('');
+      let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+      for (const [x, y] of projRings.flat()) {
+        x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y);
+      }
+      if (x1 < -5 || x0 > MAP_W + 5 || y1 < -5 || y0 > MAP_H + 5) continue;
+      const id = `hh${hi++}`;
+      const h = y1 - y0;
+      const step = Math.max(1.7, (x1 - x0 + h) / 600); // cap line count on huge areas
+      let lines = '';
+      for (let o = x0 - h; o <= x1; o += step)
+        lines += `<line x1="${o.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${(o + h).toFixed(1)}" y2="${y0.toFixed(1)}"/>`;
+      parts.push(`<clipPath id="${id}"><path d="${d}"/></clipPath>
+        <g clip-path="url(#${id})" stroke="#a97b3f" stroke-width="0.28" opacity="0.85">${lines}</g>
+        <path d="${d}" fill="none" stroke="#a97b3f" stroke-width="0.3" opacity="0.85"/>`);
+    }
+    layers.push(parts.join('\n'));
   }
 
   // ---- transit route lines (train / tram / bus) --------------------------
@@ -345,6 +370,33 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     const d = bundle.siteLots.features.map((f) => pathFromRings(geomRings(f.geometry), proj)).join('');
     layers.push(`<path d="${d}" fill="#e8402a" fill-opacity="0.55" stroke="#cc0000" stroke-width="1.4" stroke-dasharray="3.2,1.6"/>`);
   }
+
+  // ---- transport symbols: one roundel style for all modes -----------------
+  // (white circle, colored ring and letter — same size for train/bus/tram)
+  const RR = 4.0;
+  const roundel = (x: number, y: number, letter: string, color: string) =>
+    `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})">
+      <circle r="${RR}" fill="#ffffff" stroke="${color}" stroke-width="0.9"/>
+      <text text-anchor="middle" dy="${(T.mapSymbol * 0.36).toFixed(1)}" font-size="${T.mapSymbol}" font-weight="700" fill="${color}">${letter}</text></g>`;
+
+  layers.push(bundle.bus.busStops
+    .map(({ lon, lat }) => proj(lon, lat))
+    .filter(([x, y]) => x > 3 && x < MAP_W - 3 && y > 3 && y < MAP_H - 3)
+    .map(([x, y]) => roundel(x, y, 'B', '#2f7fd6'))
+    .join('\n'));
+
+  layers.push(bundle.bus.tramStops
+    .map(({ lon, lat }) => proj(lon, lat))
+    .filter(([x, y]) => x > 3 && x < MAP_W - 3 && y > 3 && y < MAP_H - 3)
+    .map(([x, y]) => roundel(x, y, 'L', '#d5006d'))
+    .join('\n'));
+
+  layers.push(bundle.stations
+    .map((s) => ({ p: proj(s.lon, s.lat), name: s.name.replace(/RAILWAY STATION$/i, 'TRAIN STATION') }))
+    .filter(({ p: [x, y] }) => x > 3 && x < MAP_W - 3 && y > 3 && y < MAP_H - 3)
+    .map(({ p: [x, y], name }) =>
+      roundel(x, y, 'T', '#e8402a') + plainText(x, y - RR - 6, wrapLabel(name), T.poi, '#111111'))
+    .join('\n'));
 
   // ---- street labels: repeat along long roads like the original ----------
   interface Seg { pts: Pt[]; len: number; mid: Pt }
@@ -495,33 +547,6 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   }
   layers.push(poiTexts.join('\n'));
 
-  // ---- transport symbols: one roundel style for all modes -----------------
-  // (white circle, colored ring and letter — same size for train/bus/tram)
-  const RR = 4.0;
-  const roundel = (x: number, y: number, letter: string, color: string) =>
-    `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})">
-      <circle r="${RR}" fill="#ffffff" stroke="${color}" stroke-width="0.9"/>
-      <text text-anchor="middle" dy="${(T.mapSymbol * 0.36).toFixed(1)}" font-size="${T.mapSymbol}" font-weight="700" fill="${color}">${letter}</text></g>`;
-
-  layers.push(bundle.bus.busStops
-    .map(({ lon, lat }) => proj(lon, lat))
-    .filter(([x, y]) => x > 3 && x < MAP_W - 3 && y > 3 && y < MAP_H - 3)
-    .map(([x, y]) => roundel(x, y, 'B', '#2f7fd6'))
-    .join('\n'));
-
-  layers.push(bundle.bus.tramStops
-    .map(({ lon, lat }) => proj(lon, lat))
-    .filter(([x, y]) => x > 3 && x < MAP_W - 3 && y > 3 && y < MAP_H - 3)
-    .map(([x, y]) => roundel(x, y, 'L', '#d5006d'))
-    .join('\n'));
-
-  layers.push(bundle.stations
-    .map((s) => ({ p: proj(s.lon, s.lat), name: s.name.replace(/RAILWAY STATION$/i, 'TRAIN STATION') }))
-    .filter(({ p: [x, y] }) => x > 3 && x < MAP_W - 3 && y > 3 && y < MAP_H - 3)
-    .map(({ p: [x, y], name }) =>
-      roundel(x, y, 'T', '#e8402a') + plainText(x, y - RR - 6, wrapLabel(name), T.poi, '#111111'))
-    .join('\n'));
-
   // ---- legend (title column, measured geometry) ---------------------------
   const hobByCat = computeHobByCat(bundle);
   const CL = 743.7 - TITLE_X;         // content left within column (4.8)
@@ -547,7 +572,11 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     if (c.id === 'site') {
       legendRow(`<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="#e8402a" fill-opacity="0.55" stroke="#cc0000" stroke-width="0.9" stroke-dasharray="2.2,1.1"/>`, ['SITE']);
     } else if (c.id === 'heritage') {
-      legendRow(`<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="url(#lhatch)" stroke="#a97b3f" stroke-width="0.4"/>`, wrapLabel(c.label, 26));
+      let hlines = '';
+      for (let o = SWATCH_X - 6.5; o <= SWATCH_X + SWATCH_W; o += 2)
+        hlines += `<line x1="${o.toFixed(1)}" y1="6.5" x2="${(o + 6.5).toFixed(1)}" y2="0"/>`;
+      legendRow(`<g clip-path="url(#lhclip)" stroke="#a97b3f" stroke-width="0.28">${hlines}</g>
+        <rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="none" stroke="#a97b3f" stroke-width="0.4"/>`, wrapLabel(c.label, 26));
     } else {
       legendRow(box(c), wrapLabel(c.label, 26), hob ? `HOB: ${hob}` : undefined);
     }
@@ -652,9 +681,6 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
 <svg class="map" width="${MAP_W}mm" height="${MAP_H}mm" viewBox="0 0 ${MAP_W} ${MAP_H}" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <clipPath id="mapclip"><rect x="0" y="0" width="${MAP_W}" height="${MAP_H}"/></clipPath>
-    <pattern id="hatch" width="1.6" height="1.6" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
-      <line x1="0" y1="0" x2="0" y2="1.6" stroke="#a97b3f" stroke-width="0.45"/>
-    </pattern>
   </defs>
   <g clip-path="url(#mapclip)">
 ${layers.join('\n')}
@@ -671,8 +697,7 @@ ${layers.join('\n')}
   ${rule(58)}
   <div class="abs" style="top:59.4mm;left:4.8mm;right:0;font-size:${T.legend}mm;font-weight:700">CONTEXT ANALYSIS</div>
   <svg class="abs" style="top:62mm;left:0" width="${TW}mm" height="300mm" viewBox="0 0 ${TW} 300" xmlns="http://www.w3.org/2000/svg">
-    <defs><pattern id="lhatch" width="1.6" height="1.6" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
-      <line x1="0" y1="0" x2="0" y2="1.6" stroke="#a97b3f" stroke-width="0.45"/></pattern></defs>
+    <defs><clipPath id="lhclip"><rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5"/></clipPath></defs>
     ${legendSvg}
   </svg>
   ${rule(363.8)}
