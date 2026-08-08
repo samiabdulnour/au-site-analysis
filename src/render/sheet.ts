@@ -1,5 +1,6 @@
 // Composes the A1 CONTEXT ANALYSIS sheet as an HTML page (SVG map + title
-// block column) matching docs/SHEET_SPEC.md.
+// block column). Geometry and typography are measured from the office's
+// reference sheet (2539 Campsie) with PyMuPDF — see docs/SHEET_SPEC.md.
 
 import type { Bundle } from '../pipeline.js';
 import { lonLatToMercator, ringCentroid, type Extent } from '../lib/geo.js';
@@ -7,22 +8,40 @@ import { CATEGORIES, catById, zoneToCategory } from './model.js';
 
 export const SHEET_W = 841;
 export const SHEET_H = 594;
-export const TITLE_W = 148;
-export const MAP_W = SHEET_W - TITLE_W;
+
+// Frame measured from the original: 28mm binding margin left, 10mm top,
+// title column x 738.9→831 (10mm right margin), map bottom rule at 576.6.
+export const FRAME_L = 28;
+export const FRAME_T = 10;
+export const TITLE_X = 738.9;
+export const TITLE_R = 831;
+export const MAP_BOTTOM = 576.6;
+export const MAP_W = TITLE_X - FRAME_L;   // 710.9
+export const MAP_H = MAP_BOTTOM - FRAME_T; // 566.6
+
+// Type scale measured from the original (mm)
+const T = {
+  fine: 2.1,       // notes, field labels, office block
+  legend: 2.7,     // legend labels, revision table
+  scalebar: 2.3,
+  addr: 3.4,       // site address value
+  value: 4.1,      // job no / date / scale / status / title / sheet values
+  street: 4.9,     // street names on map
+  poi: 4.9,        // POI names on map (bold)
+  mapSymbol: 6.2,  // B/T glyph on map
+};
 
 export interface SheetMeta {
   jobNo: string;
   client: string;
-  status: string;      // e.g. DEVELOPMENT APPLICATION
-  sheetNo: string;     // e.g. DA 003
+  clientLines?: string[];
+  status: string;
+  sheetNo: string;
   revision: string;
   checked: string;
   drawn: string;
   preliminary: boolean;
-  office: {
-    name: string;
-    lines: string[];
-  };
+  office: { name: string; lines: string[] };
 }
 
 const esc = (s: string) =>
@@ -32,7 +51,7 @@ type Pt = [number, number];
 
 function makeProjector(extent: Extent) {
   const sx = MAP_W / (extent.xmax - extent.xmin);
-  const sy = SHEET_H / (extent.ymax - extent.ymin);
+  const sy = MAP_H / (extent.ymax - extent.ymin);
   return (lon: number, lat: number): Pt => {
     const m = lonLatToMercator({ lon, lat });
     return [(m.x - extent.xmin) * sx, (extent.ymax - m.y) * sy];
@@ -58,14 +77,6 @@ function geomRings(geometry: any): number[][][] {
   return [];
 }
 
-/** Rough polygon area in m² (mercator, corrected is unnecessary for thresholds). */
-function ringAreaM2(ring: number[][]): number {
-  let a = 0;
-  const pts = ring.map(([lon, lat]) => lonLatToMercator({ lon, lat }));
-  for (let i = 0; i < pts.length - 1; i++) a += pts[i].x * pts[i + 1].y - pts[i + 1].x * pts[i].y;
-  return Math.abs(a / 2);
-}
-
 function pointInRing(x: number, y: number, ring: number[][]): boolean {
   let inside = false;
   for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
@@ -76,8 +87,6 @@ function pointInRing(x: number, y: number, ring: number[][]): boolean {
   return inside;
 }
 
-// The A1 sheet is routinely printed at A3 (50%): every size below is chosen
-// so its printed half remains legible (≈1.5mm minimum cap height at A3).
 function wrapLabel(name: string, maxChars = 14): string[] {
   const words = name.toUpperCase().split(' ');
   const lines: string[] = [];
@@ -91,13 +100,22 @@ function wrapLabel(name: string, maxChars = 14): string[] {
 }
 
 function haloText(x: number, y: number, lines: string[], size: number, fill: string, weight = 700): string {
-  const lh = size * 1.15;
+  const lh = size * 1.12;
   const y0 = y - ((lines.length - 1) * lh) / 2;
   const tspans = lines
     .map((l, i) => `<tspan x="${x.toFixed(1)}" y="${(y0 + i * lh).toFixed(1)}">${esc(l)}</tspan>`)
     .join('');
   return `<text text-anchor="middle" font-size="${size}" font-weight="${weight}" fill="${fill}"
-    stroke="#ffffff" stroke-width="${(size * 0.28).toFixed(2)}" paint-order="stroke" stroke-linejoin="round">${tspans}</text>`;
+    stroke="#ffffff" stroke-width="${(size * 0.26).toFixed(2)}" paint-order="stroke" stroke-linejoin="round">${tspans}</text>`;
+}
+
+/** Abbreviate street types the way the office labels them (CAMPSIE ST, WILFRED AVE). */
+function shortStreetName(name: string): string {
+  return name.toUpperCase()
+    .replace(/\bSTREET\b/, 'ST').replace(/\bROAD\b/, 'RD').replace(/\bAVENUE\b/, 'AVE')
+    .replace(/\bPARADE\b/, 'PDE').replace(/\bHIGHWAY\b/, 'HWY').replace(/\bDRIVE\b/, 'DR')
+    .replace(/\bLANE\b/, 'LN').replace(/\bPLACE\b/, 'PL').replace(/\bCRESCENT\b/, 'CRES')
+    .replace(/\bBOULEVARD\b/, 'BVD').replace(/\bTERRACE\b/, 'TCE').replace(/\bCOURT\b/, 'CT');
 }
 
 export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
@@ -105,18 +123,12 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   const usedCats = new Set<string>();
   const layers: string[] = [];
 
-  // ---- aerial base -------------------------------------------------------
-  const imgs = bundle.aerial.tiles
-    .map(
-      // No CSS filter here: filtered images force Chromium to re-rasterize
-      // losslessly and the PDF balloons; the white wash desaturates enough.
-      (t) => `<image href="data/${t.file}" x="${(t.left * MAP_W).toFixed(2)}" y="${(t.top * SHEET_H).toFixed(2)}"
-        width="${(t.width * MAP_W).toFixed(2)}" height="${(t.height * SHEET_H).toFixed(2)}"
-        preserveAspectRatio="none"/>`,
-    )
-    .join('\n');
-  layers.push(imgs);
-  layers.push(`<rect x="0" y="0" width="${MAP_W}" height="${SHEET_H}" fill="#ffffff" opacity="0.36"/>`);
+  // ---- aerial base (no CSS filter: keeps JPEGs as JPEGs in the PDF) ------
+  layers.push(bundle.aerial.tiles
+    .map((t) => `<image href="data/${t.file}" x="${(t.left * MAP_W).toFixed(2)}" y="${(t.top * MAP_H).toFixed(2)}"
+        width="${(t.width * MAP_W).toFixed(2)}" height="${(t.height * MAP_H).toFixed(2)}" preserveAspectRatio="none"/>`)
+    .join('\n'));
+  layers.push(`<rect x="0" y="0" width="${MAP_W}" height="${MAP_H}" fill="#ffffff" opacity="0.36"/>`);
 
   // ---- zoning base -------------------------------------------------------
   const zoningByCat: Record<string, string[]> = {};
@@ -182,10 +194,9 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     const d = iso.rings.map((r) => pathFromRings([r as any], proj)).join('');
     layers.push(`<path d="${d}" fill="none" stroke="${st.color}" stroke-width="1.3" stroke-dasharray="3.6,2.2" stroke-linejoin="round"/>`);
   }
-  // Label each ring at a distinct bearing from the site so labels never collide.
   {
-    const cx = MAP_W / 2, cy = SHEET_H / 2;
-    const bearings: Record<number, number> = { 5: 225, 10: 315 }; // deg, screen: 0=E, 90=S
+    const cx = MAP_W / 2, cy = MAP_H / 2;
+    const bearings: Record<number, number> = { 5: 225, 10: 315 };
     for (const iso of bundle.isochrones) {
       const st = isoStyle[iso.minutes] ?? { color: '#e6007e', label: `${iso.minutes} MIN WALK` };
       const target = ((bearings[iso.minutes] ?? 270) * Math.PI) / 180;
@@ -193,13 +204,13 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
       let bestScore = Infinity;
       for (const r of iso.rings) for (const [lon, lat] of r) {
         const [x, y] = proj(lon, lat);
-        if (x < 25 || x > MAP_W - 45 || y < 10 || y > SHEET_H - 10) continue;
+        if (x < 30 || x > MAP_W - 50 || y < 12 || y > MAP_H - 12) continue;
         const ang = Math.atan2(y - cy, x - cx);
-        let diff = Math.abs(ang - (target - Math.PI)); // note: y axis inverted on screen
+        let diff = Math.abs(ang - (target - Math.PI));
         diff = Math.min(diff, 2 * Math.PI - diff);
         if (diff < bestScore) { bestScore = diff; best = [x, y]; }
       }
-      if (best) layers.push(haloText(best[0], best[1], [st.label], 4.6, st.color));
+      if (best) layers.push(haloText(best[0], best[1], [st.label], T.street, st.color));
     }
   }
 
@@ -210,172 +221,196 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     layers.push(`<path d="${d}" fill="#e8402a" fill-opacity="0.55" stroke="#cc0000" stroke-width="1.4" stroke-dasharray="3.2,1.6"/>`);
   }
 
-  // ---- street labels -----------------------------------------------------
-  const roadByName = new Map<string, { coords: Pt[]; len: number; hierarchy: number }>();
+  // ---- street labels: repeat along long roads like the original ----------
+  interface Seg { pts: Pt[]; len: number; mid: Pt }
+  const roadByName = new Map<string, { segs: Seg[]; hierarchy: number }>();
   for (const road of bundle.roads) {
     const pts = road.coords.map(([lon, lat]) => proj(lon, lat))
-      .filter(([x, y]) => x > -50 && x < MAP_W + 50 && y > -50 && y < SHEET_H + 50);
+      .filter(([x, y]) => x > -60 && x < MAP_W + 60 && y > -60 && y < MAP_H + 60);
     if (pts.length < 2) continue;
     let len = 0;
     for (let i = 1; i < pts.length; i++) len += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
-    const cur = roadByName.get(road.name);
-    if (!cur || len > cur.len) roadByName.set(road.name, { coords: pts, len, hierarchy: road.hierarchy });
+    const mid = pts[Math.floor(pts.length / 2)];
+    const entry = roadByName.get(road.name) ?? { segs: [], hierarchy: road.hierarchy };
+    entry.segs.push({ pts, len, mid });
+    entry.hierarchy = Math.min(entry.hierarchy, road.hierarchy);
+    roadByName.set(road.name, entry);
   }
   let rid = 0;
   const roadDefs: string[] = [];
   const roadTexts: string[] = [];
   for (const [name, r] of roadByName) {
-    if (r.len < 34) continue; // too short to label legibly
-    let pts = r.coords;
-    if (pts[0][0] > pts[pts.length - 1][0]) pts = [...pts].reverse();
-    const id = `rd${rid++}`;
-    const d = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p[0].toFixed(2)},${p[1].toFixed(2)}`).join('');
-    const major = r.hierarchy <= 4;
-    const size = major ? 4.0 : 3.2;
-    roadDefs.push(`<path id="${id}" d="${d}" fill="none"/>`);
-    roadTexts.push(`<text font-size="${size}" font-weight="${major ? 700 : 500}" fill="#3a3a3a" letter-spacing="0.45"
-      stroke="#ffffff" stroke-width="${(size * 0.3).toFixed(2)}" paint-order="stroke" dy="-0.7">
-      <textPath href="#${id}" startOffset="50%" text-anchor="middle">${esc(name.toUpperCase())}</textPath></text>`);
+    const label = shortStreetName(name);
+    const minLen = label.length * T.street * 0.72 + 8; // must fit the text
+    const candidates = r.segs.filter((s) => s.len >= minLen).sort((a, b) => b.len - a.len);
+    const chosen: Seg[] = [];
+    for (const s of candidates) {
+      if (chosen.length >= 3) break;
+      if (chosen.some((c) => Math.hypot(c.mid[0] - s.mid[0], c.mid[1] - s.mid[1]) < 170)) continue;
+      chosen.push(s);
+    }
+    for (const s of chosen) {
+      let pts = s.pts;
+      if (pts[0][0] > pts[pts.length - 1][0]) pts = [...pts].reverse();
+      const id = `rd${rid++}`;
+      const d = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p[0].toFixed(2)},${p[1].toFixed(2)}`).join('');
+      roadDefs.push(`<path id="${id}" d="${d}" fill="none"/>`);
+      roadTexts.push(`<text font-size="${T.street}" font-weight="400" fill="#2e2e2e" letter-spacing="0.6"
+        stroke="#ffffff" stroke-width="${(T.street * 0.26).toFixed(2)}" paint-order="stroke" dy="-1.1">
+        <textPath href="#${id}" startOffset="50%" text-anchor="middle">${esc(label)}</textPath></text>`);
+    }
   }
   layers.push(`<defs>${roadDefs.join('')}</defs>`);
   layers.push(roadTexts.join('\n'));
 
-  // ---- POI labels (drawn above street labels) ----------------------------
-  // Priority: categorized complexes (schools, hospitals…) then parks.
+  // ---- POI labels ---------------------------------------------------------
   interface PoiLabel { x: number; y: number; lines: string[]; priority: number }
   const poiLabels: PoiLabel[] = [];
   for (const p of bundle.complexPoints) {
     if (!p.cat) continue;
     const [x, y] = proj(p.lon, p.lat);
-    if (x > 8 && x < MAP_W - 8 && y > 6 && y < SHEET_H - 6)
+    if (x > 10 && x < MAP_W - 10 && y > 8 && y < MAP_H - 8)
       poiLabels.push({ x, y, lines: wrapLabel(p.name), priority: 1 });
   }
   for (const p of bundle.parkPoints) {
     const [x, y] = proj(p.lon, p.lat);
-    if (x > 8 && x < MAP_W - 8 && y > 6 && y < SHEET_H - 6)
+    if (x > 10 && x < MAP_W - 10 && y > 8 && y < MAP_H - 8)
       poiLabels.push({ x, y, lines: wrapLabel(p.name), priority: 2 });
   }
   poiLabels.sort((a, b) => a.priority - b.priority);
   const placed: Pt[] = [];
   const poiTexts: string[] = [];
   for (const pl of poiLabels) {
-    if (placed.some(([px, py]) => Math.hypot(px - pl.x, py - pl.y) < 20)) continue;
+    if (placed.some(([px, py]) => Math.hypot(px - pl.x, py - pl.y) < 26)) continue;
     placed.push([pl.x, pl.y]);
-    poiTexts.push(haloText(pl.x, pl.y, pl.lines, 3.6, '#222222'));
+    poiTexts.push(haloText(pl.x, pl.y, pl.lines, T.poi, '#1c1c1c'));
   }
   layers.push(poiTexts.join('\n'));
 
-  // ---- transport symbols -------------------------------------------------
-  const busStopSvgs = bundle.bus.busStops
+  // ---- transport symbols (sizes measured: 6.2mm glyphs) -------------------
+  const bR = T.mapSymbol * 0.58;
+  layers.push(bundle.bus.busStops
     .map(({ lon, lat }) => proj(lon, lat))
-    .filter(([x, y]) => x > 2 && x < MAP_W - 2 && y > 2 && y < SHEET_H - 2)
+    .filter(([x, y]) => x > 3 && x < MAP_W - 3 && y > 3 && y < MAP_H - 3)
     .map(([x, y]) => `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})">
-      <circle r="2.3" fill="#2f7fd6" stroke="#ffffff" stroke-width="0.45"/>
-      <text text-anchor="middle" dy="0.85" font-size="2.9" font-weight="700" fill="#ffffff">B</text></g>`);
-  layers.push(busStopSvgs.join('\n'));
+      <circle r="${bR.toFixed(1)}" fill="#2f7fd6" stroke="#ffffff" stroke-width="0.5"/>
+      <text text-anchor="middle" dy="${(T.mapSymbol * 0.36).toFixed(1)}" font-size="${T.mapSymbol}" font-weight="700" fill="#ffffff">B</text></g>`)
+    .join('\n'));
 
-  const stationSvgs = bundle.stations
+  layers.push(bundle.stations
     .map((s) => ({ p: proj(s.lon, s.lat), name: s.name.replace(/RAILWAY STATION$/i, 'TRAIN STATION') }))
-    .filter(({ p: [x, y] }) => x > 2 && x < MAP_W - 2 && y > 2 && y < SHEET_H - 2)
+    .filter(({ p: [x, y] }) => x > 3 && x < MAP_W - 3 && y > 3 && y < MAP_H - 3)
     .map(({ p: [x, y], name }) => {
-      const label = haloText(x, y - 8, wrapLabel(name), 4.2, '#111111');
+      const label = haloText(x, y - bR - 6, wrapLabel(name), T.poi, '#111111');
       return `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})">
-        <circle r="3.2" fill="#ffffff" stroke="#e8402a" stroke-width="0.75"/>
-        <text text-anchor="middle" dy="1.15" font-size="4" font-weight="700" fill="#e8402a">T</text></g>${label}`;
-    });
-  layers.push(stationSvgs.join('\n'));
+        <circle r="${(bR + 0.6).toFixed(1)}" fill="#ffffff" stroke="#e8402a" stroke-width="0.9"/>
+        <text text-anchor="middle" dy="${(T.mapSymbol * 0.36).toFixed(1)}" font-size="${T.mapSymbol}" font-weight="700" fill="#e8402a">T</text></g>${label}`;
+    })
+    .join('\n'));
 
-  // ---- legend ------------------------------------------------------------
+  // ---- legend (title column, measured geometry) ---------------------------
   const hobByCat = computeHobByCat(bundle);
-  const legendRows: string[] = [];
+  const CL = 743.7 - TITLE_X;         // content left within column (4.8)
+  const SWATCH_X = CL + 1.5, SWATCH_W = 23, LABEL_X = 773 - TITLE_X;
+  let legendSvg = '';
+  let ly = 7; // below "CONTEXT ANALYSIS" heading (relative to legend svg top)
+  const legendRow = (swatch: string, labelLines: string[], sub?: string) => {
+    let row = `<g transform="translate(0,${ly})">${swatch}`;
+    labelLines.forEach((l, i) => {
+      row += `<text x="${LABEL_X}" y="${3.5 + i * 3.2}" font-size="${T.legend}" fill="#222">${esc(l)}</text>`;
+    });
+    if (sub) row += `<text x="${LABEL_X}" y="${3.5 + labelLines.length * 3.2}" font-size="${T.legend * 0.85}" fill="#555">${esc(sub)}</text>`;
+    legendSvg += row + '</g>';
+    ly += 10;
+  };
+  const box = (fill: string, opacity: number, extra = '') =>
+    `<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="${fill}" fill-opacity="${Math.min(1, opacity + 0.15)}" stroke="#555" stroke-width="0.25" ${extra}/>`;
   for (const c of CATEGORIES) {
     if (!usedCats.has(c.id)) continue;
     const hob = hobByCat[c.id];
-    const label = esc(c.label) + (hob ? `<br><span class="sub">HOB: ${esc(hob)}</span>` : '');
-    const swatch = c.id === 'site'
-      ? `<svg width="26" height="13"><rect x="1.5" y="1.5" width="23" height="10" fill="#e8402a" fill-opacity="0.55" stroke="#cc0000" stroke-width="1.6" stroke-dasharray="4,2"/></svg>`
-      : c.id === 'heritage'
-        ? `<svg width="26" height="13"><defs><pattern id="lh" width="4" height="4" patternTransform="rotate(45)" patternUnits="userSpaceOnUse"><line x1="0" y1="0" x2="0" y2="4" stroke="#a97b3f" stroke-width="1.2"/></pattern></defs><rect x="1.5" y="1.5" width="23" height="10" fill="url(#lh)" stroke="#a97b3f" stroke-width="0.7"/></svg>`
-        : `<svg width="26" height="13"><rect x="1.5" y="1.5" width="23" height="10" fill="${c.fill}" fill-opacity="${c.opacity + 0.15}" stroke="#666" stroke-width="0.35"/></svg>`;
-    legendRows.push(`<div class="lgrow">${swatch}<div>${label}</div></div>`);
+    if (c.id === 'site') {
+      legendRow(`<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="#e8402a" fill-opacity="0.55" stroke="#cc0000" stroke-width="0.9" stroke-dasharray="2.2,1.1"/>`, ['SITE']);
+    } else if (c.id === 'heritage') {
+      legendRow(`<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="url(#lhatch)" stroke="#a97b3f" stroke-width="0.4"/>`, wrapLabel(c.label, 26));
+    } else {
+      legendRow(box(c.fill, c.opacity), wrapLabel(c.label, 26), hob ? `HOB: ${hob}` : undefined);
+    }
   }
-  const symbolRows = `
-    <div class="lgrow"><svg width="26" height="13"><circle cx="13" cy="6.5" r="5.5" fill="#ffffff" stroke="#e8402a" stroke-width="1.3"/><text x="13" y="9" text-anchor="middle" font-size="7" font-weight="700" fill="#e8402a">T</text></svg><div>TRAIN STATION</div></div>
-    <div class="lgrow"><svg width="26" height="13"><circle cx="13" cy="6.5" r="5" fill="#2f7fd6" stroke="#fff" stroke-width="1"/><text x="13" y="9" text-anchor="middle" font-size="6.5" font-weight="700" fill="#fff">B</text></svg><div>BUS STOPS</div></div>
-    <div class="lgrow"><svg width="26" height="13"><line x1="1" y1="6.5" x2="25" y2="6.5" stroke="#2f7fd6" stroke-width="1.6" stroke-dasharray="5,3"/></svg><div>BUS ROUTE</div></div>
-    <div class="lgrow"><svg width="26" height="13"><line x1="1" y1="6.5" x2="25" y2="6.5" stroke="#e6007e" stroke-width="1.8" stroke-dasharray="6,3.5"/></svg><div>ISOCHRONE — 400m / 5 MIN WALK</div></div>
-    <div class="lgrow"><svg width="26" height="13"><line x1="1" y1="6.5" x2="25" y2="6.5" stroke="#b5379b" stroke-width="1.8" stroke-dasharray="6,3.5"/></svg><div>ISOCHRONE — 800m / 10 MIN WALK</div></div>`;
+  // transport / analysis symbols
+  const symC = SWATCH_X + SWATCH_W / 2;
+  legendRow(`<g transform="translate(${symC},3.2)"><circle r="3.4" fill="#fff" stroke="#e8402a" stroke-width="0.8"/><text text-anchor="middle" dy="1.9" font-size="5.7" font-weight="700" fill="#e8402a">T</text></g>`, ['TRAIN STATION']);
+  legendRow(`<g transform="translate(${symC},3.2)"><circle r="3.2" fill="#2f7fd6" stroke="#fff" stroke-width="0.6"/><text text-anchor="middle" dy="1.8" font-size="5.7" font-weight="700" fill="#fff">B</text></g>`, ['BUS STOPS']);
+  legendRow(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="#2f7fd6" stroke-width="0.8" stroke-dasharray="3,1.9"/>`, ['BUS ROUTE']);
+  legendRow(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="#e6007e" stroke-width="1.1" stroke-dasharray="3.6,2.2"/>`, ['ISOCHRONE -'], '400m/5 min walk');
+  legendRow(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="#b5379b" stroke-width="1.1" stroke-dasharray="3.6,2.2"/>`, ['ISOCHRONE -'], '800m/10 min walk');
 
-  // ---- scale bar ---------------------------------------------------------
-  const mm100m = 100_000 / bundle.scale; // mm on sheet for 100 m ground
-  const scaleBar = `
-    <svg width="${(mm100m + 14).toFixed(1)}mm" height="8mm" viewBox="0 0 ${(mm100m + 14).toFixed(1)} 8">
-      ${[0, 0.2, 0.5, 1].map((f, i, arr) => i < arr.length - 1
-        ? `<rect x="${(4 + f * mm100m).toFixed(1)}" y="2.4" width="${((arr[i + 1] - f) * mm100m).toFixed(1)}" height="1.6" fill="${i % 2 ? '#ffffff' : '#333333'}" stroke="#333" stroke-width="0.2"/>` : '')
-        .join('')}
-      ${[0, 20, 50, 100].map((m) => `<text x="${(4 + (m / 100) * mm100m).toFixed(1)}" y="7.6" text-anchor="middle" font-size="2.6" fill="#333">${m}${m === 100 ? 'm' : ''}</text>`).join('')}
-    </svg>`;
+  // ---- scale bar (true length: 100m at sheet scale) -----------------------
+  const mm100 = 100_000 / bundle.scale;
+  const sbX = 742.3 - TITLE_X;
+  const scaleBarSvg = `
+    ${[[0, 20], [20, 50], [50, 100]].map(([a, b], i) =>
+      `<rect x="${(sbX + (a / 100) * mm100).toFixed(1)}" y="1.8" width="${(((b - a) / 100) * mm100).toFixed(1)}" height="1.8" fill="${i % 2 ? '#fff' : '#333'}" stroke="#333" stroke-width="0.2"/>`).join('')}
+    ${[0, 20, 50, 100].map((m) => `<text x="${(sbX + (m / 100) * mm100).toFixed(1)}" y="6.6" text-anchor="middle" font-size="${T.scalebar}" font-weight="700" fill="#333">${m}${m === 100 ? 'm' : ''}</text>`).join('')}`;
 
-  const northArrow = `
-    <svg width="12mm" height="12mm" viewBox="0 0 12 12">
-      <circle cx="6" cy="6" r="5.2" fill="none" stroke="#333" stroke-width="0.35"/>
-      <path d="M6,1.6 L7.3,6.6 L6,5.8 L4.7,6.6 Z" fill="#333"/>
-      <text x="6" y="10.6" text-anchor="middle" font-size="3" font-weight="700" fill="#333">N</text>
-    </svg>`;
+  const northSvg = `
+    <circle cx="9" cy="9" r="7" fill="none" stroke="#333" stroke-width="0.35"/>
+    <path d="M9,2.8 L10.8,9.9 L9,8.8 L7.2,9.9 Z" fill="#333"/>
+    <text x="9" y="6.4" text-anchor="middle" font-size="2.7" font-weight="700" fill="#333" stroke="#fff" stroke-width="0.5" paint-order="stroke">N</text>`;
 
-  // ---- notes -------------------------------------------------------------
   const notes = [
     'NO REPRODUCTION WITHOUT PERMISSION, UNLESS NOTED OTHERWISE.',
     'THIS DRAWING IS NOT FOR CONSTRUCTION.',
     'NO STRUCTURAL OR SERVICE ENGINEERING INPUT OR COORDINATION HAS BEEN PROVIDED IN THE PREPARATION OF THE DRAWINGS. DRAWINGS CANNOT BE RELIED UPON FOR THE BASIS OF MARKETING SALES OR CONSTRUCTION QUOTATION.',
     'ALL DIMENSIONS AND LEVELS ARE TO BE CHECKED ON SITE PRIOR TO THE COMMENCEMENT OF WORK.',
-    `INFORM ${meta.office.name.toUpperCase()} OF ANY DISCREPANCIES FOR CLARIFICATION BEFORE PROCEEDING WITH WORK.`,
+    `INFORM ${meta.office.name.toUpperCase().replace('ARCHITECTS', 'ARCHITECTURE')} OF ANY DISCREPANCIES FOR CLARIFICATION BEFORE PROCEEDING WITH WORK.`,
     'DRAWINGS ARE NOT TO BE SCALED.',
     'USE ONLY FIGURED DIMENSIONS.',
     'REFER TO CONSULTANT DOCUMENTATION FOR FURTHER INFORMATION.',
   ];
 
   const siteAddress = bundle.geocode.matchedAddresses[0] ?? bundle.address;
-  const today = new Date();
-  const dateStr = today.toLocaleDateString('en-AU', { month: 'short', year: 'numeric' }).toUpperCase();
+  const dateStr = new Date().toLocaleDateString('en-AU', { month: 'short', year: 'numeric' }).toUpperCase();
+  const [wm1, ...wmRest] = meta.office.name.split(' ');
+  const TW = TITLE_R - TITLE_X; // column content width 92.1
+
+  // Field block helper: label (2.1mm grey) + value, absolutely positioned.
+  const field = (top: number, label: string, valueHtml: string) => `
+    <div class="abs" style="top:${top}mm;left:4.8mm;right:0">
+      <div class="k">${esc(label)}</div>${valueHtml}
+    </div>`;
+  const rule = (y: number) => `<div class="abs rule" style="top:${y}mm"></div>`;
 
   return `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>${esc(siteAddress)} — CONTEXT ANALYSIS</title>
 <style>
   @page { size: ${SHEET_W}mm ${SHEET_H}mm; margin: 0; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body { width: ${SHEET_W}mm; height: ${SHEET_H}mm; font-family: 'Liberation Sans', Arial, Helvetica, sans-serif; background: #fff; }
+  html, body { width: ${SHEET_W}mm; height: ${SHEET_H}mm; font-family: Arial, 'Liberation Sans', Helvetica, sans-serif; background: #fff; }
   .sheet { position: relative; width: ${SHEET_W}mm; height: ${SHEET_H}mm; overflow: hidden; }
-  svg.map { position: absolute; left: 0; top: 0; }
-  /* Sized for A3@50% printing: nothing below 2mm on the A1 (=1mm at A3)
-     except the boilerplate notes, which are fine print by convention. */
-  .titlecol { position: absolute; right: 0; top: 0; width: ${TITLE_W}mm; height: ${SHEET_H}mm;
-    border-left: 0.5mm solid #222; background: #fff; padding: 3mm 3.5mm; display: flex; flex-direction: column; font-size: 2.8mm; color: #222; }
-  .block { border-bottom: 0.2mm solid #999; padding: 1.8mm 0; }
-  .block h4 { font-size: 2.5mm; font-weight: 700; letter-spacing: 0.25mm; margin-bottom: 1mm; }
-  .tiny { font-size: 2.0mm; line-height: 1.35; color: #444; }
-  .notes li { margin-left: 3mm; margin-bottom: 0.5mm; }
-  .lgrow { display: flex; align-items: center; gap: 1.8mm; margin-bottom: 1.3mm; font-size: 2.4mm; }
-  .lgrow svg { flex: 0 0 auto; }
-  .lgrow .sub { color: #555; font-size: 2.1mm; }
-  .wordmark { font-size: 6.4mm; font-weight: 700; letter-spacing: 0.4mm; padding: 2mm 0 1mm; }
-  .wordmark span { position: relative; }
-  .wordmark .rule { text-decoration: line-through; }
-  .prelim { border: 0.7mm solid #e30000; color: #e30000; text-align: center; font-weight: 700;
-    letter-spacing: 1.4mm; font-size: 4.6mm; padding: 2mm 0; margin: 2mm 0; }
-  .kv { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5mm 2mm; }
-  .kv .k { font-size: 2.1mm; color: #555; }
-  .kv .v { font-weight: 700; font-size: 3.1mm; }
-  .field { padding: 1.5mm 0; border-bottom: 0.2mm solid #999; }
-  .field .k { font-size: 2.1mm; color: #555; }
-  .field .v { font-weight: 700; font-size: 3.3mm; }
-  .field .v.big { font-size: 4.2mm; }
-  .grow { flex: 1 1 auto; }
+  svg.map { position: absolute; left: ${FRAME_L}mm; top: ${FRAME_T}mm; }
+  .mapframe { position: absolute; left: ${FRAME_L}mm; top: ${FRAME_T}mm; width: ${MAP_W}mm; height: ${MAP_H}mm;
+    border: 0.35mm solid #222; }
+  .titlecol { position: absolute; left: ${TITLE_X}mm; top: 0; width: ${TW}mm; height: ${SHEET_H}mm;
+    border-left: 0.35mm solid #222; background: #fff; font-size: ${T.fine}mm; color: #222; }
+  .abs { position: absolute; }
+  .rule { left: 2.6mm; right: 0; border-top: 0.15mm solid #666; }
+  .k { font-size: ${T.fine}mm; color: #444; }
+  .fine { font-size: ${T.fine}mm; line-height: 1.22; color: #333; }
+  .fine li { margin-left: 2.8mm; margin-bottom: 0.35mm; }
+  .v-addr { font-size: ${T.addr}mm; font-weight: 400; line-height: 1.15; }
+  .v { font-size: ${T.value}mm; font-weight: 400; line-height: 1.16; }
+  .wordmark { font-size: 6.2mm; font-weight: 700; letter-spacing: 0.5mm; white-space: nowrap; }
+  .wordmark .rule2 { text-decoration: line-through; font-weight: 400; }
+  .prelim { border: 0.6mm solid #e30000; color: #e30000; text-align: center; font-weight: 700;
+    letter-spacing: 1.6mm; font-size: 4.2mm; padding: 1.4mm 0; }
+  .revtable { width: 100%; border-collapse: collapse; font-size: ${T.legend}mm; }
+  .revtable th { text-align: left; font-weight: 700; padding: 0.4mm 0; }
+  .revtable td { padding: 0.4mm 0; }
 </style></head>
 <body><div class="sheet">
-<svg class="map" width="${MAP_W}mm" height="${SHEET_H}mm" viewBox="0 0 ${MAP_W} ${SHEET_H}" xmlns="http://www.w3.org/2000/svg">
+<svg class="map" width="${MAP_W}mm" height="${MAP_H}mm" viewBox="0 0 ${MAP_W} ${MAP_H}" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <clipPath id="mapclip"><rect x="0" y="0" width="${MAP_W}" height="${SHEET_H}"/></clipPath>
+    <clipPath id="mapclip"><rect x="0" y="0" width="${MAP_W}" height="${MAP_H}"/></clipPath>
     <pattern id="hatch" width="1.6" height="1.6" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
       <line x1="0" y1="0" x2="0" y2="1.6" stroke="#a97b3f" stroke-width="0.45"/>
     </pattern>
@@ -384,31 +419,64 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
 ${layers.join('\n')}
   </g>
 </svg>
+<div class="mapframe"></div>
 <div class="titlecol">
-  <div class="tiny">${esc(bundle.address)} — generated ${esc(bundle.generatedAt.slice(0, 10))}</div>
-  <div class="block"><h4>NOTE:</h4><ul class="notes tiny">${notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul></div>
-  <div class="block"><h4>CONTEXT ANALYSIS</h4>${legendRows.join('')}${symbolRows}</div>
-  <div class="grow"></div>
-  <div class="block"><h4>ARCHITECT</h4>
-    <div class="wordmark">${esc(meta.office.name.split(' ')[0])}<span class="rule">—</span>${esc(meta.office.name.split(' ').slice(1).join(' '))}</div>
-    <div class="tiny">${meta.office.lines.map(esc).join('<br>')}</div>
+  <div class="abs fine" style="top:10mm;left:4.8mm;right:0">
+    ${esc(bundle.address)}<br>Generated: ${esc(bundle.generatedAt.slice(0, 10))}<br>© ${esc(meta.office.name)}
   </div>
-  <div class="block"><h4>CLIENT</h4><div class="v" style="font-weight:700">${esc(meta.client)}</div></div>
-  ${meta.preliminary ? '<div class="prelim">P R E L I M I N A R Y</div>' : ''}
-  <div class="block" style="display:flex;align-items:center;gap:4mm">${northArrow}${scaleBar}</div>
-  <div class="field"><div class="k">SITE ADDRESS</div><div class="v">${esc(siteAddress)}</div></div>
-  <div class="field kv" style="display:grid">
-    <div><div class="k">JOB NO</div><div class="v">${esc(meta.jobNo)}</div></div>
-    <div><div class="k">DATE</div><div class="v">${esc(dateStr)}</div></div>
-    <div><div class="k">CHECKED</div><div class="v">${esc(meta.checked)}</div></div>
-    <div><div class="k">DRAWN</div><div class="v">${esc(meta.drawn)}</div></div>
+  <div class="abs" style="top:19mm;left:4.8mm;right:0">
+    <div class="fine" style="font-weight:700">NOTE:</div>
+    <ul class="fine">${notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>
   </div>
-  <div class="field"><div class="k">SCALE</div><div class="v">1:${bundle.scale} @ A1&nbsp;&nbsp;&nbsp;A3@50%</div></div>
-  <div class="field"><div class="k">PROJECT STATUS</div><div class="v">${esc(meta.status)}</div></div>
-  <div class="field"><div class="k">DRAWING TITLE</div><div class="v big">CONTEXT ANALYSIS</div></div>
-  <div class="field kv" style="display:grid;border-bottom:none">
-    <div><div class="k">SHEET NO</div><div class="v big">${esc(meta.sheetNo)}</div></div>
-    <div><div class="k">REVISION</div><div class="v big">${esc(meta.revision)}</div></div>
+  ${rule(58)}
+  <div class="abs" style="top:59.4mm;left:4.8mm;right:0;font-size:${T.legend}mm;font-weight:700">CONTEXT ANALYSIS</div>
+  <svg class="abs" style="top:62mm;left:0" width="${TW}mm" height="300mm" viewBox="0 0 ${TW} 300" xmlns="http://www.w3.org/2000/svg">
+    <defs><pattern id="lhatch" width="1.6" height="1.6" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
+      <line x1="0" y1="0" x2="0" y2="1.6" stroke="#a97b3f" stroke-width="0.45"/></pattern></defs>
+    ${legendSvg}
+  </svg>
+  ${rule(363.8)}
+  <div class="abs" style="top:364.6mm;left:2.6mm;right:0">
+    <table class="revtable">
+      <tr><th style="width:20%">REVISION ID</th><th style="width:55%">AMENDMENT</th><th>DATE</th></tr>
+      <tr><td>${esc(meta.revision)}</td><td>${esc(meta.status.toUpperCase().includes('PRELIM') ? 'ISSUE FOR COORDINATION' : 'FOR SUBMISSION')}</td><td>${esc(new Date().toLocaleDateString('en-AU'))}</td></tr>
+    </table>
+  </div>
+  ${rule(395.5)}
+  ${rule(400.7)}
+  <div class="abs k" style="top:401.4mm;left:4.8mm">ARCHITECT</div>
+  <div class="abs wordmark" style="top:406.5mm;left:4.8mm">${esc(wm1)}<span class="rule2">—</span>${esc(wmRest.join(' '))}</div>
+  <div class="abs fine" style="top:419.9mm;left:4.8mm;right:0">${meta.office.lines.map(esc).join('<br>')}</div>
+  ${rule(438.4)}
+  <div class="abs k" style="top:439.1mm;left:4.8mm">CLIENT</div>
+  <div class="abs" style="top:443mm;left:4.8mm;right:0;font-size:${T.value}mm;font-weight:700">${esc(meta.client)}</div>
+  <div class="abs fine" style="top:455.4mm;left:4.8mm;right:0">${(meta.clientLines ?? []).map(esc).join('<br>')}</div>
+  ${meta.preliminary ? `<div class="abs prelim" style="top:463mm;left:2.6mm;right:2.6mm">P R E L I M I N A R Y</div>` : ''}
+  <svg class="abs" style="top:470mm;left:3.5mm" width="18mm" height="18mm" viewBox="0 0 18 18">${northSvg}</svg>
+  <svg class="abs" style="top:487mm;left:0" width="${TW}mm" height="8mm" viewBox="0 0 ${TW} 8">${scaleBarSvg}</svg>
+  ${rule(495.8)}
+  ${field(496.6, 'SITE ADDRESS', `<div class="v-addr">${esc(siteAddress)}</div>`)}
+  ${rule(511.4)}
+  ${field(512.2, 'JOB NO', `<div class="v">${esc(meta.jobNo)}</div>`)}
+  ${rule(522.5)}
+  <div class="abs" style="top:523.3mm;left:4.8mm;right:0">
+    <div style="display:grid;grid-template-columns:1fr 1fr">
+      <div><div class="k">CHECKED</div><div class="v">${esc(meta.checked)}</div></div>
+      <div><div class="k">DRAWN</div><div class="v">${esc(meta.drawn)}</div></div>
+      <div style="margin-top:1.6mm"><div class="k">DATE</div><div class="v">${esc(dateStr)}</div></div>
+      <div style="margin-top:1.6mm"><div class="k">SCALE</div><div class="v">1:${bundle.scale} @ A1&nbsp;&nbsp;A3@50%</div></div>
+    </div>
+  </div>
+  ${rule(543.2)}
+  ${field(544, 'PROJECT STATUS', `<div class="v">${esc(meta.status)}</div>`)}
+  ${rule(557)}
+  ${field(557.8, 'DRAWING TITLE', `<div class="v">CONTEXT ANALYSIS</div>`)}
+  ${rule(574)}
+  <div class="abs" style="top:574.8mm;left:4.8mm;right:0">
+    <div style="display:grid;grid-template-columns:1fr 1fr">
+      <div><div class="k">SHEET NO.</div><div class="v">${esc(meta.sheetNo)}</div></div>
+      <div><div class="k">REVISION.</div><div class="v">${esc(meta.revision)}</div></div>
+    </div>
   </div>
 </div>
 </div></body></html>`;

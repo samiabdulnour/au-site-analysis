@@ -12,7 +12,7 @@ if (existsSync('.env')) {
   }
 }
 import { runPipeline } from './pipeline.js';
-import { renderSheet, MAP_W, SHEET_H, type SheetMeta } from './render/sheet.js';
+import { renderSheet, MAP_W, MAP_H, type SheetMeta } from './render/sheet.js';
 import { htmlToPdf } from './render/pdf.js';
 
 function arg(name: string, def?: string): string | undefined {
@@ -46,7 +46,7 @@ const meta: SheetMeta = {
 const bundle = await runPipeline(address, {
   scale: Number(arg('scale', '3000')),
   mapWidthMm: MAP_W,
-  mapHeightMm: SHEET_H,
+  mapHeightMm: MAP_H,
   outDir,
   log: (m) => console.log(m),
 });
