@@ -247,11 +247,15 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   // ---- heritage ----------------------------------------------------------
   // Hatch drawn as real vector lines clipped to each polygon — SVG patterns
   // rasterize blurrily when Chromium prints to PDF.
-  if (bundle.heritage.features.length) {
+  // Only heritage ITEMS are hatched (conservation areas would flood whole
+  // suburbs — the reference sheets never show them on this sheet).
+  const heritageItems = bundle.heritage.features.filter((f) =>
+    /^Item/i.test(f.properties.LAY_CLASS ?? 'Item'));
+  if (heritageItems.length) {
     usedCats.add('heritage');
     const parts: string[] = [];
     let hi = 0;
-    for (const f of bundle.heritage.features) {
+    for (const f of heritageItems) {
       const rings = geomRings(f.geometry).filter((r) => r.length >= 3);
       if (!rings.length) continue;
       const projRings = rings.map((r) => r.map(([lon, lat]) => proj(lon, lat)));
@@ -392,10 +396,10 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     .join('\n'));
 
   layers.push(bundle.stations
-    .map((s) => ({ p: proj(s.lon, s.lat), name: s.name.replace(/RAILWAY STATION$/i, 'TRAIN STATION') }))
+    .map((s) => ({ p: proj(s.lon, s.lat), name: s.name.replace(/RAILWAY STATION$/i, 'TRAIN STATION'), tram: /LIGHT RAIL|TRAM/i.test(s.name) }))
     .filter(({ p: [x, y] }) => x > 3 && x < MAP_W - 3 && y > 3 && y < MAP_H - 3)
-    .map(({ p: [x, y], name }) =>
-      roundel(x, y, 'T', '#e8402a') + plainText(x, y - RR - 6, wrapLabel(name), T.poi, '#111111'))
+    .map(({ p: [x, y], name, tram }) =>
+      roundel(x, y, tram ? 'L' : 'T', tram ? '#d5006d' : '#e8402a') + plainText(x, y - RR - 6, wrapLabel(name), T.poi, '#111111'))
     .join('\n'));
 
   // ---- street labels: repeat along long roads like the original ----------
@@ -585,9 +589,11 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   const symC = SWATCH_X + SWATCH_W / 2;
   const legendRoundel = (letter: string, color: string) =>
     `<g transform="translate(${symC},3.2)"><circle r="3.4" fill="#fff" stroke="${color}" stroke-width="0.8"/><text text-anchor="middle" dy="1.9" font-size="5.7" font-weight="700" fill="${color}">${letter}</text></g>`;
-  legendRow(legendRoundel('T', '#e8402a'), ['TRAIN STATION']);
+  const hasTrainStations = bundle.stations.some((s) => !/LIGHT RAIL|TRAM/i.test(s.name));
+  const hasTramStops = bundle.bus.tramStops.length > 0 || bundle.stations.some((s) => /LIGHT RAIL|TRAM/i.test(s.name));
+  if (hasTrainStations) legendRow(legendRoundel('T', '#e8402a'), ['TRAIN STATION']);
   legendRow(legendRoundel('B', '#2f7fd6'), ['BUS STOPS']);
-  if (bundle.bus.tramStops.length) legendRow(legendRoundel('L', '#d5006d'), ['TRAM STATION']);
+  if (hasTramStops) legendRow(legendRoundel('L', '#d5006d'), ['LIGHT RAIL STOP']);
   if (bundle.railLines.train.length)
     legendRow(`<g><line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="#3b3b3b" stroke-width="1.1"/><line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="#fff" stroke-width="0.55" stroke-dasharray="2.4,2.4"/></g>`, ['TRAIN LINE']);
   if (bundle.railLines.tram.length || bundle.bus.tramRouteSegments.length)
