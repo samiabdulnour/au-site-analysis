@@ -1,9 +1,33 @@
 # Context Analysis sheet — specification
 
-Learned from the five reference sheets in `examples/` (Fuse Architects DA/SSDA
+Learned from the reference sheets in `examples/` (Fuse Architects DA/SSDA
 packages: Campsie 2539, Randwick 2612, Regents Park 2521, Maroubra 2524,
-Kogarah 2614). The format is highly consistent; this document is the target
-the generator reproduces.
+Kogarah 2614, plus the full packages in `examples/packages/`). This document
+is the target the generator reproduces.
+
+## Layout variants observed
+
+The office uses one shared sheet language (title block, legend structure,
+T/B symbols, walking isochrones or distance circles, curated POI fills) with
+several context-analysis *bases*:
+
+- **A. Zoning wash over aerial** — semi-transparent LEP-zoning colors over a
+  washed orthophoto (2539 Campsie, 2612 Randwick, 2521 Regents Park,
+  2524 Maroubra, 2614 Kogarah). **← the variant this generator produces.**
+- **B. Greyscale aerial + selective highlights** — desaturated photo, only
+  POI/land-use highlights colored, orange dashed 400/800 m circles,
+  neighbourhood name labels, precinct outlines (2430/DA2522 Arncliffe).
+- **C. Mobility/heritage focus** — bike routes (on/off-road), pedestrian
+  paths, primary/secondary street highlights, heritage conservation hatching,
+  200/400/800 m circles, amenity icon set (2504 Parramatta).
+- **D. Flat figure-ground pastel** — no aerial; flat land-use colors with
+  water bodies, white double-headed arrow street labels, LMR housing area
+  dashed boundaries, isochrones with pedestrian icons (2546 Oatley).
+
+Signature elements worth adopting into the generator regardless of variant:
+white double-headed street arrows with the name set along them (A, D),
+water bodies (D), heritage conservation hatch (C), child care / aged care
+outline category (D).
 
 ## Sheet format
 
