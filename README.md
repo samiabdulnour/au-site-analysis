@@ -21,6 +21,20 @@ npm install
 npm run generate -- "26-30 Campsie St, Campsie NSW 2194"
 ```
 
+### Web interface
+
+```bash
+npm run serve        # http://localhost:3000  (PORT=… to change)
+```
+
+One page: type a NSW address, pick a scale, GENERATE. Progress streams while
+the pipeline fetches and composes; the finished A1 PDF opens in the browser.
+Jobs queue one at a time so simultaneous users don't hammer the public data
+services. Put `TFNSW_API_KEY=…` in `.env` for authoritative bus stops.
+
+There is no authentication — host it inside the office network or behind a
+reverse proxy with auth if exposed further.
+
 Output lands in `out/<address-slug>/`:
 
 - `data/` — everything fetched (GeoJSON bundle + aerial tiles), kept for
