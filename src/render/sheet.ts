@@ -112,16 +112,28 @@ function haloText(x: number, y: number, lines: string[], size: number, fill: str
     <text ${attrs} fill="${fill}">${tspans}</text></g>`;
 }
 
+/** Plain thin label, no white contour (POI names in the reference sheets). */
+function plainText(x: number, y: number, lines: string[], size: number, fill = '#1c1c1c'): string {
+  const lh = size * 1.12;
+  const y0 = y - ((lines.length - 1) * lh) / 2;
+  const tspans = lines
+    .map((l, i) => `<tspan x="${x.toFixed(1)}" y="${(y0 + i * lh).toFixed(1)}">${esc(l)}</tspan>`)
+    .join('');
+  return `<text text-anchor="middle" font-size="${size}" font-weight="400" fill="${fill}">${tspans}</text>`;
+}
+
 /**
  * White double-headed arrow along the (straight-enough) middle of a polyline.
  * Returns '' when the geometry bends too much for a straight arrow.
  */
-function arrowAlong(pts: Pt[], lengthMm: number): string {
+interface BandArrow { svg: string; cx: number; cy: number; angDeg: number }
+
+function arrowAlong(pts: Pt[], lengthMm: number): BandArrow | null {
   const cum = [0];
   for (let i = 1; i < pts.length; i++)
     cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
   const total = cum[cum.length - 1];
-  if (total < lengthMm) return '';
+  if (total < lengthMm) return null;
   const at = (s: number): Pt => {
     let i = cum.findIndex((c) => c >= s);
     if (i <= 0) i = 1;
@@ -136,15 +148,18 @@ function arrowAlong(pts: Pt[], lengthMm: number): string {
   for (let i = 0; i < pts.length; i++) {
     if (cum[i] < s0 || cum[i] > s1) continue;
     const dev = Math.abs((pts[i][0] - a[0]) * dy - (pts[i][1] - a[1]) * dx) / chord;
-    if (dev > 2.5) return '';
+    if (dev > 2.5) return null;
   }
   const ang = (Math.atan2(dy, dx) * 180) / Math.PI;
-  const hl = 4.2, hw = 2.6, sh = 0.9; // head length/half-width, shaft half-thickness
+  // Band arrow: the shaft is tall enough to carry the street name (it is the
+  // label's background), heads roughly twice the band height.
+  const hl = 8.0, hw = 6.0, sh = 3.1;
   const L = chord;
-  return `<g transform="translate(${a[0].toFixed(1)},${a[1].toFixed(1)}) rotate(${ang.toFixed(1)})" fill="#ffffff">
+  const svg = `<g transform="translate(${a[0].toFixed(1)},${a[1].toFixed(1)}) rotate(${ang.toFixed(1)})" fill="#ffffff">
     <path d="M0,0 L${hl},${-hw} L${hl},${-sh} L${(L - hl).toFixed(1)},${-sh} L${(L - hl).toFixed(1)},${-hw} L${L.toFixed(1)},0
              L${(L - hl).toFixed(1)},${hw} L${(L - hl).toFixed(1)},${sh} L${hl},${sh} L${hl},${hw} Z"/>
   </g>`;
+  return { svg, cx: (a[0] + b[0]) / 2, cy: (a[1] + b[1]) / 2, angDeg: ang };
 }
 
 /** Abbreviate street types the way the office labels them (CAMPSIE ST, WILFRED AVE). */
@@ -294,14 +309,29 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
       const id = `rd${rid++}`;
       const d = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p[0].toFixed(2)},${p[1].toFixed(2)}`).join('');
       roadDefs.push(`<path id="${id}" d="${d}" fill="none"/>`);
-      // White double-headed movement arrow beneath the name — major roads
-      // always, local streets only when long and straight (as the original).
-      const wantArrow = r.hierarchy <= 5 || s.len > 90;
-      const arrow = wantArrow ? arrowAlong(pts, Math.min(s.len * 0.72, label.length * T.street * 0.75 + 26)) : '';
-      if (arrow) roadArrows.push(arrow);
-      const tp = (extra: string) => `<text font-size="${T.street}" font-weight="400" letter-spacing="0.6" dy="-1.4" ${extra}>
-        <textPath href="#${id}" startOffset="50%" text-anchor="middle">${esc(label)}</textPath></text>`;
-      roadTexts.push(`<g>${tp(`fill="none" stroke="#ffffff" stroke-width="${(T.street * 0.3).toFixed(2)}" stroke-linejoin="round"`)}${tp('fill="#2e2e2e"')}</g>`);
+      // The white double-headed arrow IS the label background: bold,
+      // wide-tracked name centered on the band. Streets whose geometry bends
+      // too much for a band keep a plain thin label along the curve.
+      const spacing = 1.5; // wide tracking on arrowed names, mm
+      const arrowedTextLen = label.length * (T.street * 0.62 + spacing);
+      const arrow = s.len * 0.85 >= arrowedTextLen + 12
+        ? arrowAlong(pts, Math.min(s.len * 0.85, arrowedTextLen + 20))
+        : null;
+      if (arrow) {
+        roadArrows.push(arrow.svg);
+        // Rotated text centered on the band. textLength+lengthAdjust gives an
+        // exact tracked width — Chromium mis-centers letter-spaced text
+        // (anchor uses the unspaced width), so avoid letter-spacing here.
+        let ta = arrow.angDeg;
+        if (ta > 90) ta -= 180;
+        if (ta < -90) ta += 180;
+        roadTexts.push(`<text transform="translate(${arrow.cx.toFixed(1)},${arrow.cy.toFixed(1)}) rotate(${ta.toFixed(1)})"
+          x="${(-arrowedTextLen / 2).toFixed(1)}" y="1.65" textLength="${arrowedTextLen.toFixed(1)}" lengthAdjust="spacing"
+          font-size="${T.street}" font-weight="700" fill="#111111">${esc(label)}</text>`);
+      } else {
+        roadTexts.push(`<text font-size="${T.street}" font-weight="400" letter-spacing="0.6" dy="-1.4" fill="#2e2e2e">
+          <textPath href="#${id}" startOffset="50%" text-anchor="middle">${esc(label)}</textPath></text>`);
+      }
     }
   }
   layers.push(`<defs>${roadDefs.join('')}</defs>`);
@@ -328,7 +358,7 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   for (const pl of poiLabels) {
     if (placed.some(([px, py]) => Math.hypot(px - pl.x, py - pl.y) < 26)) continue;
     placed.push([pl.x, pl.y]);
-    poiTexts.push(haloText(pl.x, pl.y, pl.lines, T.poi, '#1c1c1c'));
+    poiTexts.push(plainText(pl.x, pl.y, pl.lines, T.poi));
   }
   layers.push(poiTexts.join('\n'));
 
@@ -346,7 +376,7 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     .map((s) => ({ p: proj(s.lon, s.lat), name: s.name.replace(/RAILWAY STATION$/i, 'TRAIN STATION') }))
     .filter(({ p: [x, y] }) => x > 3 && x < MAP_W - 3 && y > 3 && y < MAP_H - 3)
     .map(({ p: [x, y], name }) => {
-      const label = haloText(x, y - bR - 6, wrapLabel(name), T.poi, '#111111');
+      const label = plainText(x, y - bR - 6, wrapLabel(name), T.poi, '#111111');
       return `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})">
         <circle r="${(bR + 0.6).toFixed(1)}" fill="#ffffff" stroke="#e8402a" stroke-width="0.9"/>
         <text text-anchor="middle" dy="${(T.mapSymbol * 0.36).toFixed(1)}" font-size="${T.mapSymbol}" font-weight="700" fill="#e8402a">T</text></g>${label}`;
