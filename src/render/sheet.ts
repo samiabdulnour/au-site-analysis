@@ -267,20 +267,33 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   let busSegments = bundle.bus.busRouteSegments as [number, number][][];
   if (!busSegments.length && bundle.bus.busStops.length) {
     const stopsM = bundle.bus.busStops.map((s) => lonLatToMercator({ lon: s.lon, lat: s.lat }));
-    const near = (road: { coords: [number, number][] }): boolean => {
+    const nearStops = (road: { coords: [number, number][] }): number => {
       const pts = road.coords.map(([lon, lat]) => lonLatToMercator({ lon, lat }));
+      let n = 0;
       for (const st of stopsM) {
         for (let i = 1; i < pts.length; i++) {
           const ax = pts[i - 1].x, ay = pts[i - 1].y, bx = pts[i].x, by = pts[i].y;
           const dx = bx - ax, dy = by - ay;
           const L2 = dx * dx + dy * dy;
           const t = L2 ? Math.max(0, Math.min(1, ((st.x - ax) * dx + (st.y - ay) * dy) / L2)) : 0;
-          if (Math.hypot(st.x - (ax + t * dx), st.y - (ay + t * dy)) < 30) return true;
+          if (Math.hypot(st.x - (ax + t * dx), st.y - (ay + t * dy)) < 30) { n++; break; }
         }
       }
-      return false;
+      return n;
     };
-    busSegments = bundle.roads.filter(near).map((r) => r.coords);
+    // A route follows the whole street, not just the blocks with stops: when
+    // a road name carries 2+ stops anywhere, include all its segments so the
+    // dashed line runs continuously; single-stop roads keep only their
+    // touched segments.
+    const stopsByName = new Map<string, number>();
+    const nearByRoad = bundle.roads.map((r) => {
+      const n = nearStops(r);
+      stopsByName.set(r.name, (stopsByName.get(r.name) ?? 0) + n);
+      return n;
+    });
+    busSegments = bundle.roads
+      .filter((r, i) => (stopsByName.get(r.name) ?? 0) >= 2 || nearByRoad[i] > 0)
+      .map((r) => r.coords);
   }
   if (busSegments.length) {
     const d = busSegments.map((l) => pathFromRings([l as any], proj, false)).join('');
@@ -436,13 +449,45 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     if (inBounds(x, y)) poiLabels.push({ x, y, lines: wrapLabel(p.name), priority: 2 });
   }
 
+  // Recenter every label into the colored field it sits on: find the
+  // smallest institution/open-space polygon containing the label point and
+  // move the label to that ring's centroid.
+  interface Field { ring: Pt[]; area: number; cx: number; cy: number }
+  const fields: Field[] = [];
+  const addField = (ringLL: number[][]) => {
+    const ring = ringLL.map(([lon, lat]) => proj(lon, lat));
+    let a = 0, cx = 0, cy = 0;
+    for (let i = 0; i < ring.length - 1; i++) {
+      const f = ring[i][0] * ring[i + 1][1] - ring[i + 1][0] * ring[i][1];
+      a += f; cx += (ring[i][0] + ring[i + 1][0]) * f; cy += (ring[i][1] + ring[i + 1][1]) * f;
+    }
+    if (Math.abs(a) < 1) return;
+    fields.push({ ring, area: Math.abs(a / 2), cx: cx / (3 * a), cy: cy / (3 * a) });
+  };
+  for (const inst of bundle.institutionPolys) for (const r of inst.rings) addField(r);
+  for (const f of bundle.zoning.features) {
+    if (zoneToCategory(f.properties.SYM_CODE) !== 'openSpace') continue;
+    for (const r of geomRings(f.geometry)) addField(r);
+  }
+  const recenter = (x: number, y: number): Pt => {
+    let best: Field | null = null;
+    for (const f of fields) {
+      if (f.area > 25_000) continue; // whole-suburb polygons are not label fields
+      if (!pointInRing(x, y, f.ring as any)) continue;
+      if (!best || f.area < best.area) best = f;
+    }
+    if (best && pointInRing(best.cx, best.cy, best.ring as any)) return [best.cx, best.cy];
+    return [x, y];
+  };
+
   poiLabels.sort((a, b) => a.priority - b.priority);
   const placed: Pt[] = [];
   const poiTexts: string[] = [];
   for (const pl of poiLabels) {
-    if (placed.some(([px, py]) => Math.hypot(px - pl.x, py - pl.y) < 15)) continue;
-    placed.push([pl.x, pl.y]);
-    poiTexts.push(plainText(pl.x, pl.y, pl.lines, T.poi));
+    const [x, y] = recenter(pl.x, pl.y);
+    if (placed.some(([px, py]) => Math.hypot(px - x, py - y) < 15)) continue;
+    placed.push([x, y]);
+    poiTexts.push(plainText(x, y, pl.lines, T.poi));
   }
   layers.push(poiTexts.join('\n'));
 
@@ -520,29 +565,23 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   legendRow(legendIso('#b5379b'), ['ISOCHRONE -'], '800m/10 min walk');
 
   // ---- scale bar (true length: 100m at sheet scale) -----------------------
-  // Stepped architectural scale bar: filled 0-20, hollow 20-50, rule to 100m.
+  // Simple scale bar: baseline with ticks, one filled 0-20 block, labels.
   const mm100 = 100_000 / bundle.scale;
   const sbX = 742.3 - TITLE_X;
-  const sbY = 2.2, sbH = 1.5;
+  const sbY = 2.2, sbH = 1.3;
   const sx = (m: number) => sbX + (m / 100) * mm100;
   const scaleBarSvg = `
-    <line x1="${sx(0).toFixed(1)}" y1="${sbY + sbH}" x2="${sx(100).toFixed(1)}" y2="${sbY + sbH}" stroke="#222" stroke-width="0.3"/>
+    <line x1="${sx(0).toFixed(1)}" y1="${sbY + sbH}" x2="${sx(100).toFixed(1)}" y2="${sbY + sbH}" stroke="#222" stroke-width="0.35"/>
     <rect x="${sx(0).toFixed(1)}" y="${sbY}" width="${(sx(20) - sx(0)).toFixed(1)}" height="${sbH}" fill="#222"/>
-    <rect x="${sx(20).toFixed(1)}" y="${sbY}" width="${(sx(50) - sx(20)).toFixed(1)}" height="${sbH}" fill="none" stroke="#222" stroke-width="0.3"/>
-    ${[0, 20, 50, 100].map((m) => `<line x1="${sx(m).toFixed(1)}" y1="${sbY}" x2="${sx(m).toFixed(1)}" y2="${sbY + sbH + 0.7}" stroke="#222" stroke-width="0.3"/>`).join('')}
+    ${[0, 50, 100].map((m) => `<line x1="${sx(m).toFixed(1)}" y1="${sbY}" x2="${sx(m).toFixed(1)}" y2="${sbY + sbH + 0.6}" stroke="#222" stroke-width="0.35"/>`).join('')}
     ${[0, 20, 50, 100].map((m) => `<text x="${sx(m).toFixed(1)}" y="${sbY + sbH + 3.2}" text-anchor="middle" font-size="${T.scalebar}" font-weight="700" fill="#222">${m}${m === 100 ? 'm' : ''}</text>`).join('')}`;
 
-  // Surveyor-style compass, replicated from the reference sheet's vectors:
-  // double circle rim, thin crosshair, two hairline diagonals, slim needle.
+  // Simple north point: circle, filled needle, N above.
   const northSvg = `
     <text x="9" y="2.8" text-anchor="middle" font-size="2.9" font-weight="700" fill="#111">N</text>
-    <g transform="translate(9,10.6)" stroke="#111" stroke-width="0.15" fill="none">
-      <circle r="4.95"/><circle r="4.6"/>
-      <line x1="0" y1="-4.95" x2="0" y2="4.95"/>
-      <line x1="-4.95" y1="0" x2="4.95" y2="0"/>
-      <line x1="-4.6" y1="-2.1" x2="4.6" y2="2.1"/>
-      <line x1="2.1" y1="-4.6" x2="-2.1" y2="4.6"/>
-      <path d="M0,-4.95 L0.42,0 L0,0 Z" fill="#111" stroke="none"/>
+    <g transform="translate(9,10.6)">
+      <circle r="4.9" fill="none" stroke="#111" stroke-width="0.3"/>
+      <path d="M0,-4.9 L1.5,3.4 L0,2.3 L-1.5,3.4 Z" fill="#111"/>
     </g>`;
 
   const notes = [
@@ -634,7 +673,7 @@ ${layers.join('\n')}
   <div class="abs fine" style="top:419.9mm;left:4.8mm;right:0">${meta.office.lines.map(esc).join('<br>')}</div>
   ${rule(438.4)}
   <div class="abs k" style="top:439.1mm;left:4.8mm">CLIENT</div>
-  <div class="abs" style="top:443mm;left:4.8mm;right:0;font-size:${T.value}mm;font-weight:700">${esc(meta.client)}</div>
+  ${meta.client ? `<div class="abs" style="top:443mm;left:4.8mm;right:0;font-size:${T.value}mm;font-weight:700">${esc(meta.client)}</div>` : ''}
   <div class="abs fine" style="top:455.4mm;left:4.8mm;right:0">${(meta.clientLines ?? []).map(esc).join('<br>')}</div>
   ${meta.preliminary ? `<div class="abs prelim" style="top:463mm;left:2.6mm;right:2.6mm">P R E L I M I N A R Y</div>` : ''}
   <svg class="abs" style="top:470mm;left:3.5mm" width="18mm" height="18mm" viewBox="0 0 18 18">${northSvg}</svg>

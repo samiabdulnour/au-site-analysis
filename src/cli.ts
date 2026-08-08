@@ -33,7 +33,7 @@ const office = JSON.parse(await readFile('config/office.json', 'utf8'));
 
 const meta: SheetMeta = {
   jobNo: arg('job', 'XXXX')!,
-  client: arg('client', 'CLIENT')!,
+  client: arg('client', '')!,
   status: arg('status', 'PRELIMINARY')!,
   sheetNo: arg('sheet', 'DA 003')!,
   revision: arg('revision', 'P1')!,
