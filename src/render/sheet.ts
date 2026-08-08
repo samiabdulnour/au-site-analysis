@@ -206,18 +206,22 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     if (!rings.length) continue;
     (zoningByCat[cat] ??= []).push(pathFromRings(rings, proj));
   }
+  const catStyle = (c: { fill: string; opacity: number; stroke?: string }) =>
+    `fill="${c.fill}" opacity="${c.opacity}" fill-rule="evenodd"` +
+    (c.stroke ? ` stroke="${c.stroke}" stroke-width="0.7" stroke-linejoin="round"` : '');
+
   for (const [cat, paths] of Object.entries(zoningByCat)) {
     const c = catById[cat];
     usedCats.add(cat);
-    layers.push(`<g fill="${c.fill}" opacity="${c.opacity}" fill-rule="evenodd">` +
-      paths.map((d) => `<path d="${d}"/>`).join('') + '</g>');
+    layers.push(`<g ${catStyle(c)}>` + paths.map((d) => `<path d="${d}"/>`).join('') + '</g>');
   }
 
   // ---- railway corridor --------------------------------------------------
   if (bundle.railCorridors.features.length) {
     usedCats.add('railway');
+    const c = catById.railway;
     const d = bundle.railCorridors.features.map((f) => pathFromRings(geomRings(f.geometry), proj)).join('');
-    layers.push(`<path d="${d}" fill="#f0912d" opacity="0.9" fill-rule="evenodd"/>`);
+    layers.push(`<path d="${d}" ${catStyle(c)}/>`);
   }
 
   // ---- institution property fills (function beats zone) ------------------
@@ -230,8 +234,7 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   for (const [cat, paths] of Object.entries(poiPathsByCat)) {
     const c = catById[cat];
     usedCats.add(cat);
-    layers.push(`<g fill="${c.fill}" opacity="${c.opacity}" fill-rule="evenodd">` +
-      paths.map((d) => `<path d="${d}"/>`).join('') + '</g>');
+    layers.push(`<g ${catStyle(c)}>` + paths.map((d) => `<path d="${d}"/>`).join('') + '</g>');
   }
 
   // ---- thin cadastral lot-boundary overlay --------------------------------
@@ -533,8 +536,9 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     legendSvg += row + '</g>';
     ly += 10;
   };
-  const box = (fill: string, opacity: number, extra = '') =>
-    `<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="${fill}" fill-opacity="${Math.min(1, opacity + 0.15)}" stroke="#555" stroke-width="0.25" ${extra}/>`;
+  const box = (c: { fill: string; opacity: number; stroke?: string }) =>
+    `<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="${c.fill}" fill-opacity="${Math.min(1, c.opacity + 0.15)}"
+      stroke="${c.stroke ?? '#999'}" stroke-width="${c.stroke ? 0.9 : 0.2}"/>`;
   for (const c of CATEGORIES) {
     if (!usedCats.has(c.id)) continue;
     const hob = hobByCat[c.id];
@@ -543,7 +547,7 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     } else if (c.id === 'heritage') {
       legendRow(`<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="url(#lhatch)" stroke="#a97b3f" stroke-width="0.4"/>`, wrapLabel(c.label, 26));
     } else {
-      legendRow(box(c.fill, c.opacity), wrapLabel(c.label, 26), hob ? `HOB: ${hob}` : undefined);
+      legendRow(box(c), wrapLabel(c.label, 26), hob ? `HOB: ${hob}` : undefined);
     }
   }
   // transport / analysis symbols
@@ -565,23 +569,31 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   legendRow(legendIso('#b5379b'), ['ISOCHRONE -'], '800m/10 min walk');
 
   // ---- scale bar (true length: 100m at sheet scale) -----------------------
-  // Simple scale bar: baseline with ticks, one filled 0-20 block, labels.
+  // Stepped outline scale bar, replicated from the reference: thin line that
+  // steps up 0-10, down 10-20, up 20-50, baseline 50-100, end tick at 100.
   const mm100 = 100_000 / bundle.scale;
   const sbX = 742.3 - TITLE_X;
-  const sbY = 2.2, sbH = 1.3;
+  const sbY = 3.4, step = 1.5;
   const sx = (m: number) => sbX + (m / 100) * mm100;
   const scaleBarSvg = `
-    <line x1="${sx(0).toFixed(1)}" y1="${sbY + sbH}" x2="${sx(100).toFixed(1)}" y2="${sbY + sbH}" stroke="#222" stroke-width="0.35"/>
-    <rect x="${sx(0).toFixed(1)}" y="${sbY}" width="${(sx(20) - sx(0)).toFixed(1)}" height="${sbH}" fill="#222"/>
-    ${[0, 50, 100].map((m) => `<line x1="${sx(m).toFixed(1)}" y1="${sbY}" x2="${sx(m).toFixed(1)}" y2="${sbY + sbH + 0.6}" stroke="#222" stroke-width="0.35"/>`).join('')}
-    ${[0, 20, 50, 100].map((m) => `<text x="${sx(m).toFixed(1)}" y="${sbY + sbH + 3.2}" text-anchor="middle" font-size="${T.scalebar}" font-weight="700" fill="#222">${m}${m === 100 ? 'm' : ''}</text>`).join('')}`;
+    <path d="M${sx(0).toFixed(1)},${sbY} L${sx(0).toFixed(1)},${sbY - step} L${sx(10).toFixed(1)},${sbY - step}
+             L${sx(10).toFixed(1)},${sbY} L${sx(20).toFixed(1)},${sbY} L${sx(20).toFixed(1)},${sbY - step}
+             L${sx(50).toFixed(1)},${sbY - step} L${sx(50).toFixed(1)},${sbY} L${sx(100).toFixed(1)},${sbY}
+             L${sx(100).toFixed(1)},${sbY - step}"
+      fill="none" stroke="#111" stroke-width="0.25"/>
+    ${[0, 20, 50, 100].map((m) => `<text x="${sx(m).toFixed(1)}" y="${sbY + 3.0}" text-anchor="middle" font-size="${T.scalebar}" font-weight="700" fill="#111">${m}${m === 100 ? 'm' : ''}</text>`).join('')}`;
 
-  // Simple north point: circle, filled needle, N above.
+  // North point, replicated from the reference sheet's vector geometry:
+  // thin circle with hairline cross lines and a slim half-open needle to N.
   const northSvg = `
-    <text x="9" y="2.8" text-anchor="middle" font-size="2.9" font-weight="700" fill="#111">N</text>
-    <g transform="translate(9,10.6)">
-      <circle r="4.9" fill="none" stroke="#111" stroke-width="0.3"/>
-      <path d="M0,-4.9 L1.5,3.4 L0,2.3 L-1.5,3.4 Z" fill="#111"/>
+    <text x="9" y="3.0" text-anchor="middle" font-size="3.4" font-weight="700" fill="#111">N</text>
+    <g transform="translate(9,10.8)" stroke="#111" stroke-width="0.18" fill="none">
+      <circle r="4.9"/>
+      <line x1="-0.35" y1="-4.8" x2="-0.35" y2="4.75"/>
+      <line x1="-5.4" y1="0" x2="4.1" y2="0"/>
+      <line x1="-4.1" y1="-2.0" x2="5.0" y2="2.3"/>
+      <line x1="2.6" y1="-4.3" x2="-1.7" y2="4.7"/>
+      <path d="M-0.35,-4.8 L0.1,0 L-0.35,0 Z" fill="#111" stroke="none"/>
     </g>`;
 
   const notes = [

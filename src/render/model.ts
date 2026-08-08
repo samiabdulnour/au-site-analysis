@@ -7,25 +7,29 @@ export interface Category {
   label: string;
   fill: string;
   opacity: number;
+  /** Contour color — the Oatley legend outlines institutional categories. */
+  stroke?: string;
 }
 
+// Palette per the office's Oatley (2546) legend.
 export const CATEGORIES: Category[] = [
-  { id: 'site',           label: 'SITE',                                    fill: '#e8402a', opacity: 0.75 },
-  { id: 'medical',        label: 'MEDICAL',                                 fill: '#e64c7e', opacity: 0.65 },
-  { id: 'education',      label: 'EDUCATION',                               fill: '#4f8fd9', opacity: 0.65 },
+  { id: 'site',           label: 'SITE',                                    fill: '#e8402a', opacity: 0.55 },
+  { id: 'medical',        label: 'MEDICAL',                                 fill: '#f27ba9', opacity: 0.8, stroke: '#e5237e' },
+  { id: 'education',      label: 'EDUCATION',                               fill: '#93b7f2', opacity: 0.8, stroke: '#2e6be6' },
+  { id: 'childCare',      label: 'CHILD CARE / AGED CARE',                  fill: '#f4f8ff', opacity: 0.85, stroke: '#2e6be6' },
   { id: 'mixedUse',       label: 'MIXED USE CLUSTER RESIDENTIAL/COMMERCIAL', fill: '#e957c9', opacity: 0.6 },
-  { id: 'retail',         label: 'ACTIVE RETAIL',                           fill: '#d9b3e6', opacity: 0.65 },
-  { id: 'openSpace',      label: 'OPEN SPACE',                              fill: '#8fd158', opacity: 0.6 },
-  { id: 'community',      label: 'COMMUNITY HUB',                           fill: '#bfe9e0', opacity: 0.7 },
-  { id: 'r2',             label: 'R2 LOW DENSITY RESIDENTIAL',              fill: '#c4a6a0', opacity: 0.55 },
-  { id: 'r3',             label: 'R3 MEDIUM DENSITY RESIDENTIAL',           fill: '#e6d3a3', opacity: 0.55 },
-  { id: 'r4',             label: 'R4 HIGH DENSITY RESIDENTIAL',             fill: '#e85a50', opacity: 0.55 },
-  { id: 'localCentre',    label: 'LOCAL CENTRE',                            fill: '#f0b3c8', opacity: 0.6 },
-  { id: 'commercial',     label: 'COMMERCIAL CENTRE',                       fill: '#d9c2ee', opacity: 0.6 },
-  { id: 'industrial',     label: 'GENERAL INDUSTRIAL',                      fill: '#a06ee0', opacity: 0.55 },
-  { id: 'infrastructure', label: 'SP2 INFRASTRUCTURE',                      fill: '#f0e060', opacity: 0.55 },
-  { id: 'water',          label: 'WATERWAY',                                fill: '#9fd8ef', opacity: 0.6 },
-  { id: 'railway',        label: 'RAILWAY TRACKS',                          fill: '#f0912d', opacity: 0.85 },
+  { id: 'retail',         label: 'ACTIVE RETAIL',                           fill: '#e4d3f0', opacity: 0.8 },
+  { id: 'openSpace',      label: 'OPEN SPACE',                              fill: '#e6f0d8', opacity: 0.78 },
+  { id: 'community',      label: 'COMMUNITY HUB',                           fill: '#e0f2eb', opacity: 0.85, stroke: '#a5c3d8' },
+  { id: 'r2',             label: 'R2 LOW DENSITY RESIDENTIAL',              fill: '#fce9e8', opacity: 0.75 },
+  { id: 'r3',             label: 'R3 MEDIUM DENSITY RESIDENTIAL',           fill: '#f7c1bd', opacity: 0.75 },
+  { id: 'r4',             label: 'R4 HIGH DENSITY RESIDENTIAL',             fill: '#f29e97', opacity: 0.75 },
+  { id: 'localCentre',    label: 'LOCAL CENTRE',                            fill: '#f0b3c8', opacity: 0.65 },
+  { id: 'commercial',     label: 'COMMERCIAL CENTRE',                       fill: '#d9c2ee', opacity: 0.65 },
+  { id: 'industrial',     label: 'GENERAL INDUSTRIAL',                      fill: '#c9a8ec', opacity: 0.65 },
+  { id: 'infrastructure', label: 'INFRASTRUCTURE FACILITY',                 fill: '#f0e2e6', opacity: 0.75, stroke: '#ef8b1d' },
+  { id: 'water',          label: 'WATERWAY',                                fill: '#bcdcf0', opacity: 0.75 },
+  { id: 'railway',        label: 'RAILWAY TRACKS',                          fill: '#f3c488', opacity: 0.9, stroke: '#ef8b1d' },
   { id: 'heritage',       label: 'GENERAL HERITAGE SITE',                   fill: '#c8a165', opacity: 0.55 },
 ];
 
@@ -56,8 +60,9 @@ export function zoneToCategory(code: string): string | null {
  */
 export function keywordCategory(name: string): string | null {
   const n = name.toUpperCase();
-  if (/SCHOOL|COLLEGE|TAFE|UNIVERSITY|KINDERGARTEN|PRE-?SCHOOL|GRAMMAR|CHILD CARE|CHILDCARE|EARLY LEARNING/.test(n)) return 'education';
-  if (/HOSPITAL|AGED CARE|NURSING|MEDICAL|SURGERY|HEALTH|AMBULANCE|HOSPICE/.test(n)) return 'medical';
+  if (/KINDERGARTEN|PRE-?SCHOOL|CHILD CARE|CHILDCARE|EARLY LEARNING|EARLY CHILDHOOD|AGED CARE|NURSING HOME|RETIREMENT|CONVALESCENT/.test(n)) return 'childCare';
+  if (/SCHOOL|COLLEGE|TAFE|UNIVERSITY|GRAMMAR/.test(n)) return 'education';
+  if (/HOSPITAL|NURSING|MEDICAL|SURGERY|HEALTH|AMBULANCE|HOSPICE/.test(n)) return 'medical';
   if (/SHOPPING|PLAZA|\bMALL\b|MARKETPLACE|\bMETRO\b|CENTRE POINT/.test(n)) return 'retail';
   if (/CHURCH|CATHEDRAL|MOSQUE|MASJID|TEMPLE|SYNAGOGUE|LIBRARY|COMMUNITY|COUNCIL|CIVIC|TOWN HALL|POLICE|FIRE STATION|\bSES\b|COURT HOUSE|MUSEUM|AQUATIC|LEISURE CENTRE|\bRSL\b|BOWLING|SENIOR CITIZENS/.test(n)) return 'community';
   return null;
