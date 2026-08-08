@@ -4,7 +4,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { geocode, type GeocodeResult } from './fetch/geocode.js';
 import { fetchSiteLots, fetchRailCorridors, fetchZoning, fetchHeightOfBuilding, fetchHeritage } from './fetch/nsw.js';
-import { fetchRoads, fetchRailLines, fetchTrainStations, fetchParkPoints, fetchComplexPoints, fetchPropertiesAt, type TopoRoad, type NamedPoint } from './fetch/nswTopo.js';
+import { fetchRoads, fetchRailLines, fetchTrainStations, fetchParkPoints, fetchComplexPoints, fetchNamedAreas, fetchAllLots, fetchPropertiesAt, type TopoRoad, type NamedPoint, type RailLines, type NamedArea } from './fetch/nswTopo.js';
 import { fetchAerial, type AerialResult } from './fetch/imagery.js';
 import { fetchBusData, type BusData } from './fetch/osm.js';
 import { fetchBusStopsTfnsw } from './fetch/tfnsw.js';
@@ -14,7 +14,7 @@ import type { GeoJSONFC } from './lib/arcgis.js';
 import { keywordCategory } from './render/model.js';
 
 export interface CategorizedPoint extends NamedPoint { cat: string | null }
-export interface InstitutionPoly { cat: string; rings: number[][][] }
+export interface InstitutionPoly { cat: string; name: string; rings: number[][][] }
 
 export interface Bundle {
   address: string;
@@ -24,14 +24,16 @@ export interface Bundle {
   mapWidthMm: number;
   mapHeightMm: number;
   siteLots: GeoJSONFC;
+  allLots: GeoJSONFC;
   railCorridors: GeoJSONFC;
   zoning: GeoJSONFC;
   hob: GeoJSONFC;
   heritage: GeoJSONFC;
   roads: TopoRoad[];
-  railLines: [number, number][][];
+  railLines: RailLines;
   stations: NamedPoint[];
   parkPoints: NamedPoint[];
+  parkAreas: NamedArea[];
   complexPoints: CategorizedPoint[];
   institutionPolys: InstitutionPoly[];
   bus: BusData;
@@ -66,19 +68,22 @@ export async function runPipeline(address: string, opts: PipelineOpts): Promise<
   const soft = <T>(p: Promise<T>, fallback: T, name: string): Promise<T> =>
     p.catch((e) => { log(`  WARN ${name} failed: ${e.message ?? e}`); return fallback; });
 
-  const [siteLots, railCorridors, zoning, hob, heritage, roads, railLines, stations, parkPoints, rawComplex, bus, isochrones, aerial] =
+  const emptyBus: BusData = { busStops: [], busRouteSegments: [], tramStops: [], tramRouteSegments: [] };
+  const [siteLots, railCorridors, allLots, zoning, hob, heritage, roads, railLines, stations, parkPoints, parkAreas, rawComplex, bus, isochrones, aerial] =
     await Promise.all([
       fetchSiteLots(geo.points),
       soft(fetchRailCorridors(extent), emptyFC, 'rail corridors'),
+      soft(fetchAllLots(extent), emptyFC, 'cadastral lots'),
       fetchZoning(extent),
       soft(fetchHeightOfBuilding(extent), emptyFC, 'height of building'),
       soft(fetchHeritage(extent), emptyFC, 'heritage'),
       fetchRoads(extent),
-      soft(fetchRailLines(extent), [], 'rail lines'),
+      soft(fetchRailLines(extent), { train: [], tram: [] }, 'rail lines'),
       soft(fetchTrainStations(extent), [], 'train stations'),
       soft(fetchParkPoints(extent), [], 'park points'),
+      soft(fetchNamedAreas(extent), [], 'named areas'),
       soft(fetchComplexPoints(extent), [], 'complex points'),
-      soft(fetchBusData(extent), { busStops: [], busRouteSegments: [] }, 'bus route lines (OSM)'),
+      soft(fetchBusData(extent), emptyBus, 'bus/tram data (OSM)'),
       soft(fetchIsochrones(centerLL), [], 'isochrones'),
       fetchAerial(extent, opts.aerialPxWidth ?? 3200, dataDir),
     ]);
@@ -104,7 +109,7 @@ export async function runPipeline(address: string, opts: PipelineOpts): Promise<
     if (!f.geometry) continue;
     const rings = f.geometry.type === 'Polygon' ? f.geometry.coordinates : f.geometry.coordinates.flat();
     const hit = fillable.find((p) => rings.some((r: number[][]) => pointInRing(p.lon, p.lat, r)));
-    if (hit?.cat) institutionPolys.push({ cat: hit.cat, rings });
+    if (hit?.cat) institutionPolys.push({ cat: hit.cat, name: hit.name, rings });
   }
 
   log(`  lots:${siteLots.features.length} zoning:${zoning.features.length} roads:${roads.length} ` +
@@ -119,6 +124,7 @@ export async function runPipeline(address: string, opts: PipelineOpts): Promise<
     mapWidthMm: opts.mapWidthMm,
     mapHeightMm: opts.mapHeightMm,
     siteLots,
+    allLots,
     railCorridors,
     zoning,
     hob,
@@ -127,6 +133,7 @@ export async function runPipeline(address: string, opts: PipelineOpts): Promise<
     railLines,
     stations,
     parkPoints,
+    parkAreas,
     complexPoints,
     institutionPolys,
     bus,

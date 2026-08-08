@@ -162,6 +162,20 @@ function arrowAlong(pts: Pt[], lengthMm: number): BandArrow | null {
   return { svg, cx: (a[0] + b[0]) / 2, cy: (a[1] + b[1]) / 2, angDeg: ang };
 }
 
+/** Pedestrian glyph paths, centered on (0,0), ~5mm tall at scale 1. */
+const WALKER_PATHS = `
+  <circle cx="0.25" cy="-1.85" r="0.62" fill="#1c1c1c"/>
+  <path d="M0.15,-1.1 L-0.3,0.15 M-0.3,0.15 L0.55,1.75 M-0.3,0.15 L-0.85,1.65 M0.05,-0.75 L1.0,-0.05 M0.05,-0.75 L-0.8,-0.25"
+    fill="none" stroke="#1c1c1c" stroke-width="0.42" stroke-linecap="round"/>`;
+
+/** Walker-in-circle marker sitting on an isochrone ring. */
+function walkerMedallion(x: number, y: number, color: string): string {
+  return `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})">
+    <circle r="4.1" fill="#ffffff" stroke="${color}" stroke-width="1.1"/>
+    <g transform="scale(1.35)">${WALKER_PATHS}</g>
+  </g>`;
+}
+
 /** Abbreviate street types the way the office labels them (CAMPSIE ST, WILFRED AVE). */
 function shortStreetName(name: string): string {
   return name.toUpperCase()
@@ -220,6 +234,12 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
       paths.map((d) => `<path d="${d}"/>`).join('') + '</g>');
   }
 
+  // ---- thin cadastral lot-boundary overlay --------------------------------
+  if (bundle.allLots.features.length) {
+    const d = bundle.allLots.features.map((f) => pathFromRings(geomRings(f.geometry), proj)).join('');
+    layers.push(`<path d="${d}" fill="none" stroke="#6f6f6f" stroke-width="0.12" opacity="0.5"/>`);
+  }
+
   // ---- heritage ----------------------------------------------------------
   if (bundle.heritage.features.length) {
     usedCats.add('heritage');
@@ -227,14 +247,24 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     layers.push(`<path d="${d}" fill="url(#hatch)" stroke="#a97b3f" stroke-width="0.25" opacity="0.8"/>`);
   }
 
-  // ---- rail lines + bus routes ------------------------------------------
-  if (bundle.railLines.length) {
-    const d = bundle.railLines.map((l) => pathFromRings([l as any], proj, false)).join('');
-    layers.push(`<path d="${d}" fill="none" stroke="#b35c00" stroke-width="0.8" stroke-dasharray="4,1.6" opacity="0.9"/>`);
+  // ---- transit route lines (train / tram / bus) --------------------------
+  if (bundle.railLines.train.length) {
+    const d = bundle.railLines.train.map((l) => pathFromRings([l as any], proj, false)).join('');
+    // classic railway line: dark stroke with white sleeper dashes on top
+    layers.push(`<path d="${d}" fill="none" stroke="#3b3b3b" stroke-width="1.1"/>`);
+    layers.push(`<path d="${d}" fill="none" stroke="#ffffff" stroke-width="0.55" stroke-dasharray="2.4,2.4"/>`);
+  }
+  if (bundle.railLines.tram.length) {
+    const d = bundle.railLines.tram.map((l) => pathFromRings([l as any], proj, false)).join('');
+    layers.push(`<path d="${d}" fill="none" stroke="#d5006d" stroke-width="0.9" stroke-dasharray="3.4,1.8"/>`);
+  }
+  if (bundle.bus.tramRouteSegments.length && !bundle.railLines.tram.length) {
+    const d = bundle.bus.tramRouteSegments.map((l) => pathFromRings([l as any], proj, false)).join('');
+    layers.push(`<path d="${d}" fill="none" stroke="#d5006d" stroke-width="0.9" stroke-dasharray="3.4,1.8"/>`);
   }
   if (bundle.bus.busRouteSegments.length) {
     const d = bundle.bus.busRouteSegments.map((l) => pathFromRings([l as any], proj, false)).join('');
-    layers.push(`<path d="${d}" fill="none" stroke="#2f7fd6" stroke-width="0.8" stroke-dasharray="3,1.9" opacity="0.9" stroke-linecap="round"/>`);
+    layers.push(`<path d="${d}" fill="none" stroke="#2f7fd6" stroke-width="0.9" stroke-dasharray="3,1.9" opacity="0.9" stroke-linecap="round"/>`);
   }
 
   // ---- isochrones --------------------------------------------------------
@@ -247,23 +277,28 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     const d = iso.rings.map((r) => pathFromRings([r as any], proj)).join('');
     layers.push(`<path d="${d}" fill="none" stroke="${st.color}" stroke-width="1.3" stroke-dasharray="3.6,2.2" stroke-linejoin="round"/>`);
   }
+  // Walker medallions ON the ring (the office style): white disc, ring in
+  // the isochrone color, pedestrian icon. Several per ring, staggered
+  // bearings per contour so the two rings' markers don't align radially.
   {
     const cx = MAP_W / 2, cy = MAP_H / 2;
-    const bearings: Record<number, number> = { 5: 225, 10: 315 };
+    const bearingSets: Record<number, number[]> = { 5: [50, 170, 290], 10: [110, 230, 350] };
     for (const iso of bundle.isochrones) {
       const st = isoStyle[iso.minutes] ?? { color: '#e6007e', label: `${iso.minutes} MIN WALK` };
-      const target = ((bearings[iso.minutes] ?? 270) * Math.PI) / 180;
-      let best: Pt | null = null;
-      let bestScore = Infinity;
-      for (const r of iso.rings) for (const [lon, lat] of r) {
-        const [x, y] = proj(lon, lat);
-        if (x < 30 || x > MAP_W - 50 || y < 12 || y > MAP_H - 12) continue;
-        const ang = Math.atan2(y - cy, x - cx);
-        let diff = Math.abs(ang - (target - Math.PI));
-        diff = Math.min(diff, 2 * Math.PI - diff);
-        if (diff < bestScore) { bestScore = diff; best = [x, y]; }
+      for (const bearing of bearingSets[iso.minutes] ?? [90, 210, 330]) {
+        const target = (bearing * Math.PI) / 180;
+        let best: Pt | null = null;
+        let bestScore = Infinity;
+        for (const r of iso.rings) for (const [lon, lat] of r) {
+          const [x, y] = proj(lon, lat);
+          if (x < 12 || x > MAP_W - 12 || y < 12 || y > MAP_H - 12) continue;
+          const ang = Math.atan2(y - cy, x - cx);
+          let diff = Math.abs(ang - target);
+          diff = Math.min(diff, 2 * Math.PI - diff);
+          if (diff < bestScore) { bestScore = diff; best = [x, y]; }
+        }
+        if (best && bestScore < 0.6) layers.push(walkerMedallion(best[0], best[1], st.color));
       }
-      if (best) layers.push(haloText(best[0], best[1], [st.label], T.street, st.color));
     }
   }
 
@@ -329,8 +364,11 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
           x="${(-arrowedTextLen / 2).toFixed(1)}" y="1.65" textLength="${arrowedTextLen.toFixed(1)}" lengthAdjust="spacing"
           font-size="${T.street}" font-weight="700" fill="#111111">${esc(label)}</text>`);
       } else {
-        roadTexts.push(`<text font-size="${T.street}" font-weight="400" letter-spacing="0.6" dy="-1.4" fill="#2e2e2e">
-          <textPath href="#${id}" startOffset="50%" text-anchor="middle">${esc(label)}</textPath></text>`);
+        // Curved-street label: keep a white contour for legibility over
+        // saturated zoning fills (double-draw; paint-order is unreliable).
+        const tp = (extra: string) => `<text font-size="${T.street}" font-weight="400" letter-spacing="0.6" dy="-1.4" ${extra}>
+          <textPath href="#${id}" startOffset="50%" text-anchor="middle">${esc(label)}</textPath></text>`;
+        roadTexts.push(`<g>${tp(`fill="none" stroke="#ffffff" stroke-width="${(T.street * 0.3).toFixed(2)}" stroke-linejoin="round"`)}${tp('fill="#2e2e2e"')}</g>`);
       }
     }
   }
@@ -339,48 +377,82 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   layers.push(roadTexts.join('\n'));
 
   // ---- POI labels ---------------------------------------------------------
+  // Institutions with a colored parcel are labeled at the parcel centroid so
+  // the name sits centered on its color field; open spaces are labeled from
+  // the named-area centroids (parks must always carry their name).
   interface PoiLabel { x: number; y: number; lines: string[]; priority: number }
   const poiLabels: PoiLabel[] = [];
+  const inBounds = (x: number, y: number) => x > 10 && x < MAP_W - 10 && y > 8 && y < MAP_H - 8;
+  const labeledNames = new Set<string>();
+
+  for (const inst of bundle.institutionPolys) {
+    let best = inst.rings[0], bestA = 0;
+    for (const r of inst.rings) {
+      let a = 0;
+      for (let i = 0; i < r.length - 1; i++) a += r[i][0] * r[i + 1][1] - r[i + 1][0] * r[i][1];
+      if (Math.abs(a) > bestA) { bestA = Math.abs(a); best = r; }
+    }
+    const [clon, clat] = ringCentroid(best);
+    const [x, y] = proj(clon, clat);
+    if (!inBounds(x, y)) continue;
+    labeledNames.add(inst.name.toUpperCase());
+    poiLabels.push({ x, y, lines: wrapLabel(inst.name), priority: 1 });
+  }
   for (const p of bundle.complexPoints) {
-    if (!p.cat) continue;
+    if (!p.cat || labeledNames.has(p.name.toUpperCase())) continue;
     const [x, y] = proj(p.lon, p.lat);
-    if (x > 10 && x < MAP_W - 10 && y > 8 && y < MAP_H - 8)
-      poiLabels.push({ x, y, lines: wrapLabel(p.name), priority: 1 });
+    if (inBounds(x, y)) poiLabels.push({ x, y, lines: wrapLabel(p.name), priority: 2 });
+  }
+  // Open spaces: named areas (centered) first, loose park points as fallback.
+  const parkSeen = new Set<string>();
+  for (const p of bundle.parkAreas) {
+    if (p.areaM2 < 2000) continue;
+    const [x, y] = proj(p.lon, p.lat);
+    if (!inBounds(x, y)) continue;
+    parkSeen.add(p.name.toUpperCase());
+    poiLabels.push({ x, y, lines: wrapLabel(p.name), priority: 1 });
   }
   for (const p of bundle.parkPoints) {
+    if (parkSeen.has(p.name.toUpperCase())) continue;
     const [x, y] = proj(p.lon, p.lat);
-    if (x > 10 && x < MAP_W - 10 && y > 8 && y < MAP_H - 8)
-      poiLabels.push({ x, y, lines: wrapLabel(p.name), priority: 2 });
+    if (inBounds(x, y)) poiLabels.push({ x, y, lines: wrapLabel(p.name), priority: 2 });
   }
+
   poiLabels.sort((a, b) => a.priority - b.priority);
   const placed: Pt[] = [];
   const poiTexts: string[] = [];
   for (const pl of poiLabels) {
-    if (placed.some(([px, py]) => Math.hypot(px - pl.x, py - pl.y) < 26)) continue;
+    if (placed.some(([px, py]) => Math.hypot(px - pl.x, py - pl.y) < 15)) continue;
     placed.push([pl.x, pl.y]);
     poiTexts.push(plainText(pl.x, pl.y, pl.lines, T.poi));
   }
   layers.push(poiTexts.join('\n'));
 
-  // ---- transport symbols (sizes measured: 6.2mm glyphs) -------------------
-  const bR = T.mapSymbol * 0.58;
+  // ---- transport symbols: one roundel style for all modes -----------------
+  // (white circle, colored ring and letter — same size for train/bus/tram)
+  const RR = 4.0;
+  const roundel = (x: number, y: number, letter: string, color: string) =>
+    `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})">
+      <circle r="${RR}" fill="#ffffff" stroke="${color}" stroke-width="0.9"/>
+      <text text-anchor="middle" dy="${(T.mapSymbol * 0.36).toFixed(1)}" font-size="${T.mapSymbol}" font-weight="700" fill="${color}">${letter}</text></g>`;
+
   layers.push(bundle.bus.busStops
     .map(({ lon, lat }) => proj(lon, lat))
     .filter(([x, y]) => x > 3 && x < MAP_W - 3 && y > 3 && y < MAP_H - 3)
-    .map(([x, y]) => `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})">
-      <circle r="${bR.toFixed(1)}" fill="#2f7fd6" stroke="#ffffff" stroke-width="0.5"/>
-      <text text-anchor="middle" dy="${(T.mapSymbol * 0.36).toFixed(1)}" font-size="${T.mapSymbol}" font-weight="700" fill="#ffffff">B</text></g>`)
+    .map(([x, y]) => roundel(x, y, 'B', '#2f7fd6'))
+    .join('\n'));
+
+  layers.push(bundle.bus.tramStops
+    .map(({ lon, lat }) => proj(lon, lat))
+    .filter(([x, y]) => x > 3 && x < MAP_W - 3 && y > 3 && y < MAP_H - 3)
+    .map(([x, y]) => roundel(x, y, 'L', '#d5006d'))
     .join('\n'));
 
   layers.push(bundle.stations
     .map((s) => ({ p: proj(s.lon, s.lat), name: s.name.replace(/RAILWAY STATION$/i, 'TRAIN STATION') }))
     .filter(({ p: [x, y] }) => x > 3 && x < MAP_W - 3 && y > 3 && y < MAP_H - 3)
-    .map(({ p: [x, y], name }) => {
-      const label = plainText(x, y - bR - 6, wrapLabel(name), T.poi, '#111111');
-      return `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})">
-        <circle r="${(bR + 0.6).toFixed(1)}" fill="#ffffff" stroke="#e8402a" stroke-width="0.9"/>
-        <text text-anchor="middle" dy="${(T.mapSymbol * 0.36).toFixed(1)}" font-size="${T.mapSymbol}" font-weight="700" fill="#e8402a">T</text></g>${label}`;
-    })
+    .map(({ p: [x, y], name }) =>
+      roundel(x, y, 'T', '#e8402a') + plainText(x, y - RR - 6, wrapLabel(name), T.poi, '#111111'))
     .join('\n'));
 
   // ---- legend (title column, measured geometry) ---------------------------
@@ -413,24 +485,57 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   }
   // transport / analysis symbols
   const symC = SWATCH_X + SWATCH_W / 2;
-  legendRow(`<g transform="translate(${symC},3.2)"><circle r="3.4" fill="#fff" stroke="#e8402a" stroke-width="0.8"/><text text-anchor="middle" dy="1.9" font-size="5.7" font-weight="700" fill="#e8402a">T</text></g>`, ['TRAIN STATION']);
-  legendRow(`<g transform="translate(${symC},3.2)"><circle r="3.2" fill="#2f7fd6" stroke="#fff" stroke-width="0.6"/><text text-anchor="middle" dy="1.8" font-size="5.7" font-weight="700" fill="#fff">B</text></g>`, ['BUS STOPS']);
-  legendRow(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="#2f7fd6" stroke-width="0.8" stroke-dasharray="3,1.9"/>`, ['BUS ROUTE']);
-  legendRow(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="#e6007e" stroke-width="1.1" stroke-dasharray="3.6,2.2"/>`, ['ISOCHRONE -'], '400m/5 min walk');
-  legendRow(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="#b5379b" stroke-width="1.1" stroke-dasharray="3.6,2.2"/>`, ['ISOCHRONE -'], '800m/10 min walk');
+  const legendRoundel = (letter: string, color: string) =>
+    `<g transform="translate(${symC},3.2)"><circle r="3.4" fill="#fff" stroke="${color}" stroke-width="0.8"/><text text-anchor="middle" dy="1.9" font-size="5.7" font-weight="700" fill="${color}">${letter}</text></g>`;
+  legendRow(legendRoundel('T', '#e8402a'), ['TRAIN STATION']);
+  legendRow(legendRoundel('B', '#2f7fd6'), ['BUS STOPS']);
+  if (bundle.bus.tramStops.length) legendRow(legendRoundel('L', '#d5006d'), ['TRAM STATION']);
+  if (bundle.railLines.train.length)
+    legendRow(`<g><line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="#3b3b3b" stroke-width="1.1"/><line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="#fff" stroke-width="0.55" stroke-dasharray="2.4,2.4"/></g>`, ['TRAIN LINE']);
+  if (bundle.railLines.tram.length || bundle.bus.tramRouteSegments.length)
+    legendRow(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="#d5006d" stroke-width="0.9" stroke-dasharray="3.4,1.8"/>`, ['TRAM ROUTE']);
+  legendRow(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="#2f7fd6" stroke-width="0.9" stroke-dasharray="3,1.9"/>`, ['BUS ROUTE']);
+  const legendIso = (color: string) =>
+    `<g><line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${color}" stroke-width="1.1" stroke-dasharray="3.6,2.2"/>
+     <g transform="translate(${symC},3.2)"><circle r="3.3" fill="#fff" stroke="${color}" stroke-width="0.9"/><g transform="scale(1.05)">${WALKER_PATHS}</g></g></g>`;
+  legendRow(legendIso('#e6007e'), ['ISOCHRONE -'], '400m/5 min walk');
+  legendRow(legendIso('#b5379b'), ['ISOCHRONE -'], '800m/10 min walk');
 
   // ---- scale bar (true length: 100m at sheet scale) -----------------------
+  // Stepped architectural scale bar: filled 0-20, hollow 20-50, rule to 100m.
   const mm100 = 100_000 / bundle.scale;
   const sbX = 742.3 - TITLE_X;
+  const sbY = 2.2, sbH = 1.5;
+  const sx = (m: number) => sbX + (m / 100) * mm100;
   const scaleBarSvg = `
-    ${[[0, 20], [20, 50], [50, 100]].map(([a, b], i) =>
-      `<rect x="${(sbX + (a / 100) * mm100).toFixed(1)}" y="1.8" width="${(((b - a) / 100) * mm100).toFixed(1)}" height="1.8" fill="${i % 2 ? '#fff' : '#333'}" stroke="#333" stroke-width="0.2"/>`).join('')}
-    ${[0, 20, 50, 100].map((m) => `<text x="${(sbX + (m / 100) * mm100).toFixed(1)}" y="6.6" text-anchor="middle" font-size="${T.scalebar}" font-weight="700" fill="#333">${m}${m === 100 ? 'm' : ''}</text>`).join('')}`;
+    <line x1="${sx(0).toFixed(1)}" y1="${sbY + sbH}" x2="${sx(100).toFixed(1)}" y2="${sbY + sbH}" stroke="#222" stroke-width="0.3"/>
+    <rect x="${sx(0).toFixed(1)}" y="${sbY}" width="${(sx(20) - sx(0)).toFixed(1)}" height="${sbH}" fill="#222"/>
+    <rect x="${sx(20).toFixed(1)}" y="${sbY}" width="${(sx(50) - sx(20)).toFixed(1)}" height="${sbH}" fill="none" stroke="#222" stroke-width="0.3"/>
+    ${[0, 20, 50, 100].map((m) => `<line x1="${sx(m).toFixed(1)}" y1="${sbY}" x2="${sx(m).toFixed(1)}" y2="${sbY + sbH + 0.7}" stroke="#222" stroke-width="0.3"/>`).join('')}
+    ${[0, 20, 50, 100].map((m) => `<text x="${sx(m).toFixed(1)}" y="${sbY + sbH + 3.2}" text-anchor="middle" font-size="${T.scalebar}" font-weight="700" fill="#222">${m}${m === 100 ? 'm' : ''}</text>`).join('')}`;
 
+  // Compass rose: 4-point star, alternating dark/light quadrant halves.
+  const rose = (() => {
+    const tip = 6.2, sh = 1.5;
+    const pts = {
+      N: [0, -tip], E: [tip, 0], S: [0, tip], W: [-tip, 0],
+      NE: [sh, -sh], SE: [sh, sh], SW: [-sh, sh], NW: [-sh, -sh],
+    } as Record<string, number[]>;
+    const tri = (a: number[], b: number[], dark: boolean) =>
+      `<path d="M${a[0]},${a[1]} L${b[0]},${b[1]} L0,0 Z" fill="${dark ? '#222' : '#fff'}" stroke="#222" stroke-width="0.18"/>`;
+    return [
+      tri(pts.N, pts.NE, true), tri(pts.N, pts.NW, false),
+      tri(pts.E, pts.SE, true), tri(pts.E, pts.NE, false),
+      tri(pts.S, pts.SW, true), tri(pts.S, pts.SE, false),
+      tri(pts.W, pts.NW, true), tri(pts.W, pts.SW, false),
+    ].join('');
+  })();
   const northSvg = `
-    <circle cx="9" cy="9" r="7" fill="none" stroke="#333" stroke-width="0.35"/>
-    <path d="M9,2.8 L10.8,9.9 L9,8.8 L7.2,9.9 Z" fill="#333"/>
-    <text x="9" y="6.4" text-anchor="middle" font-size="2.7" font-weight="700" fill="#333">N</text>`;
+    <text x="9" y="2.6" text-anchor="middle" font-size="2.9" font-weight="700" fill="#222">N</text>
+    <g transform="translate(9,10.4)">
+      <circle r="6.9" fill="none" stroke="#222" stroke-width="0.35"/>
+      ${rose}
+    </g>`;
 
   const notes = [
     'NO REPRODUCTION WITHOUT PERMISSION, UNLESS NOTED OTHERWISE.',

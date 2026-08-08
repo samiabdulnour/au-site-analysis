@@ -36,9 +36,55 @@ export async function fetchRoads(extent: Extent): Promise<TopoRoad[]> {
   }));
 }
 
-export async function fetchRailLines(extent: Extent): Promise<[number, number][][]> {
-  const fc = await queryByExtent(`${TRANSPORT}/7`, extent, 'railwayname');
-  return lineCoords(fc).paths;
+export interface RailLines { train: [number, number][][]; tram: [number, number][][] }
+
+/** Railway centrelines split into heavy rail vs light rail/tram (classsubtype 2). */
+export async function fetchRailLines(extent: Extent): Promise<RailLines> {
+  const fc = await queryByExtent(`${TRANSPORT}/7`, extent, 'railwayname,classsubtype');
+  const { paths, props } = lineCoords(fc);
+  const out: RailLines = { train: [], tram: [] };
+  paths.forEach((p, i) => (props[i].classsubtype === 2 ? out.tram : out.train).push(p));
+  return out;
+}
+
+export interface NamedArea { name: string; lon: number; lat: number; areaM2: number }
+
+/** Named cultural areas (parks, reserves, ovals…) with centroids for labeling. */
+export async function fetchNamedAreas(extent: Extent): Promise<NamedArea[]> {
+  const fc = await queryByExtent(`${FOI}/9`, extent, 'generalname,generalculturaltype',
+    'generalname IS NOT NULL');
+  const out: NamedArea[] = [];
+  for (const f of fc.features) {
+    if (!f.geometry || !f.properties.generalname) continue;
+    const rings = f.geometry.type === 'Polygon' ? f.geometry.coordinates : f.geometry.coordinates.flat();
+    if (!rings.length || rings[0].length < 3) continue;
+    let best = rings[0], bestA = 0;
+    for (const r of rings) {
+      const a = Math.abs(ringAreaDeg(r));
+      if (a > bestA) { bestA = a; best = r; }
+    }
+    const [lon, lat] = ringCentroidLocal(best);
+    // deg² -> m² rough conversion at Sydney latitudes
+    out.push({ name: f.properties.generalname, lon, lat, areaM2: bestA * 111_320 * 92_400 });
+  }
+  return out;
+}
+
+function ringAreaDeg(ring: number[][]): number {
+  let a = 0;
+  for (let i = 0; i < ring.length - 1; i++)
+    a += ring[i][0] * ring[i + 1][1] - ring[i + 1][0] * ring[i][1];
+  return a / 2;
+}
+
+function ringCentroidLocal(ring: number[][]): [number, number] {
+  let a = 0, cx = 0, cy = 0;
+  for (let i = 0; i < ring.length - 1; i++) {
+    const f = ring[i][0] * ring[i + 1][1] - ring[i + 1][0] * ring[i][1];
+    a += f; cx += (ring[i][0] + ring[i + 1][0]) * f; cy += (ring[i][1] + ring[i + 1][1]) * f;
+  }
+  if (Math.abs(a) < 1e-12) return [ring[0][0], ring[0][1]];
+  return [cx / (3 * a), cy / (3 * a)];
 }
 
 function namedPoints(fc: GeoJSONFC): NamedPoint[] {
@@ -68,6 +114,11 @@ export async function fetchComplexPoints(extent: Extent): Promise<NamedPoint[]> 
   const fc = await queryByExtent(`${FOI}/3`, extent, 'generalname,buildingcomplextype',
     'generalname IS NOT NULL');
   return namedPoints(fc);
+}
+
+/** All lot boundaries in the extent — drawn as a thin cadastral overlay. */
+export async function fetchAllLots(extent: Extent): Promise<GeoJSONFC> {
+  return queryByExtent(`${CADASTRE}/8`, extent, 'objectid');
 }
 
 /** Property polygons containing the given points (one multipoint query). */
