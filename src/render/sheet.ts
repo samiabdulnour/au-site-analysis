@@ -112,14 +112,14 @@ function haloText(x: number, y: number, lines: string[], size: number, fill: str
     <text ${attrs} fill="${fill}">${tspans}</text></g>`;
 }
 
-/** Plain thin label, no white contour (POI names in the reference sheets). */
-function plainText(x: number, y: number, lines: string[], size: number, fill = '#1c1c1c'): string {
-  const lh = size * 1.12;
+/** Map label: bold black narrow text, no contour (the office map-text style). */
+function plainText(x: number, y: number, lines: string[], size: number, fill = '#000000'): string {
+  const lh = size * 1.08;
   const y0 = y - ((lines.length - 1) * lh) / 2;
   const tspans = lines
     .map((l, i) => `<tspan x="${x.toFixed(1)}" y="${(y0 + i * lh).toFixed(1)}">${esc(l)}</tspan>`)
     .join('');
-  return `<text text-anchor="middle" font-size="${size}" font-weight="400" fill="${fill}">${tspans}</text>`;
+  return `<text text-anchor="middle" font-size="${size}" font-weight="700" font-family="'PT Sans Narrow', Arial, sans-serif" fill="${fill}">${tspans}</text>`;
 }
 
 /**
@@ -162,17 +162,17 @@ function arrowAlong(pts: Pt[], lengthMm: number): BandArrow | null {
   return { svg, cx: (a[0] + b[0]) / 2, cy: (a[1] + b[1]) / 2, angDeg: ang };
 }
 
-/** Pedestrian glyph paths, centered on (0,0), ~5mm tall at scale 1. */
-const WALKER_PATHS = `
-  <circle cx="0.25" cy="-1.85" r="0.62" fill="#1c1c1c"/>
-  <path d="M0.15,-1.1 L-0.3,0.15 M-0.3,0.15 L0.55,1.75 M-0.3,0.15 L-0.85,1.65 M0.05,-0.75 L1.0,-0.05 M0.05,-0.75 L-0.8,-0.25"
-    fill="none" stroke="#1c1c1c" stroke-width="0.42" stroke-linecap="round"/>`;
+/** Walking-person pictogram (Material Symbols directions_walk, Apache-2.0),
+ *  24x24 units, recentered; fill takes the given color. */
+function walkerGlyph(color: string, scale: number): string {
+  return `<g transform="scale(${scale}) translate(-12.6,-13.5)"><path fill="${color}" d="M13.5 5.5c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zM9.8 8.9L7 23h2.1l1.8-8 2.1 2v6h2v-7.5l-2.1-2 .6-3C14.8 12 16.8 13 19 13v-2c-1.9 0-3.5-1-4.3-2.4l-1-1.6c-.4-.6-1-1-1.7-1-.3 0-.5.1-.8.1L6 8.3V13h2V9.6l1.8-.7"/></g>`;
+}
 
-/** Walker-in-circle marker sitting on an isochrone ring. */
+/** Walker-in-circle marker sitting on an isochrone ring, all in ring color. */
 function walkerMedallion(x: number, y: number, color: string): string {
   return `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})">
     <circle r="4.1" fill="#ffffff" stroke="${color}" stroke-width="1.1"/>
-    <g transform="scale(1.35)">${WALKER_PATHS}</g>
+    ${walkerGlyph(color, 0.30)}
   </g>`;
 }
 
@@ -262,8 +262,28 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     const d = bundle.bus.tramRouteSegments.map((l) => pathFromRings([l as any], proj, false)).join('');
     layers.push(`<path d="${d}" fill="none" stroke="#d5006d" stroke-width="0.9" stroke-dasharray="3.4,1.8"/>`);
   }
-  if (bundle.bus.busRouteSegments.length) {
-    const d = bundle.bus.busRouteSegments.map((l) => pathFromRings([l as any], proj, false)).join('');
+  // Bus routes from OSM when available; otherwise derive corridors from the
+  // road network — any street with a bus stop within 30m carries a route.
+  let busSegments = bundle.bus.busRouteSegments as [number, number][][];
+  if (!busSegments.length && bundle.bus.busStops.length) {
+    const stopsM = bundle.bus.busStops.map((s) => lonLatToMercator({ lon: s.lon, lat: s.lat }));
+    const near = (road: { coords: [number, number][] }): boolean => {
+      const pts = road.coords.map(([lon, lat]) => lonLatToMercator({ lon, lat }));
+      for (const st of stopsM) {
+        for (let i = 1; i < pts.length; i++) {
+          const ax = pts[i - 1].x, ay = pts[i - 1].y, bx = pts[i].x, by = pts[i].y;
+          const dx = bx - ax, dy = by - ay;
+          const L2 = dx * dx + dy * dy;
+          const t = L2 ? Math.max(0, Math.min(1, ((st.x - ax) * dx + (st.y - ay) * dy) / L2)) : 0;
+          if (Math.hypot(st.x - (ax + t * dx), st.y - (ay + t * dy)) < 30) return true;
+        }
+      }
+      return false;
+    };
+    busSegments = bundle.roads.filter(near).map((r) => r.coords);
+  }
+  if (busSegments.length) {
+    const d = busSegments.map((l) => pathFromRings([l as any], proj, false)).join('');
     layers.push(`<path d="${d}" fill="none" stroke="#2f7fd6" stroke-width="0.9" stroke-dasharray="3,1.9" opacity="0.9" stroke-linecap="round"/>`);
   }
 
@@ -364,11 +384,9 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
           x="${(-arrowedTextLen / 2).toFixed(1)}" y="1.65" textLength="${arrowedTextLen.toFixed(1)}" lengthAdjust="spacing"
           font-size="${T.street}" font-weight="700" fill="#111111">${esc(label)}</text>`);
       } else {
-        // Curved-street label: keep a white contour for legibility over
-        // saturated zoning fills (double-draw; paint-order is unreliable).
-        const tp = (extra: string) => `<text font-size="${T.street}" font-weight="400" letter-spacing="0.6" dy="-1.4" ${extra}>
-          <textPath href="#${id}" startOffset="50%" text-anchor="middle">${esc(label)}</textPath></text>`;
-        roadTexts.push(`<g>${tp(`fill="none" stroke="#ffffff" stroke-width="${(T.street * 0.3).toFixed(2)}" stroke-linejoin="round"`)}${tp('fill="#2e2e2e"')}</g>`);
+        // Curved-street label: bold black narrow, no contour (office style).
+        roadTexts.push(`<text font-size="${T.street}" font-weight="700" font-family="'PT Sans Narrow', Arial, sans-serif" letter-spacing="0.4" dy="-1.4" fill="#000000">
+          <textPath href="#${id}" startOffset="50%" text-anchor="middle">${esc(label)}</textPath></text>`);
       }
     }
   }
@@ -497,7 +515,7 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   legendRow(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="#2f7fd6" stroke-width="0.9" stroke-dasharray="3,1.9"/>`, ['BUS ROUTE']);
   const legendIso = (color: string) =>
     `<g><line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${color}" stroke-width="1.1" stroke-dasharray="3.6,2.2"/>
-     <g transform="translate(${symC},3.2)"><circle r="3.3" fill="#fff" stroke="${color}" stroke-width="0.9"/><g transform="scale(1.05)">${WALKER_PATHS}</g></g></g>`;
+     <g transform="translate(${symC},3.2)"><circle r="3.3" fill="#fff" stroke="${color}" stroke-width="0.9"/>${walkerGlyph(color, 0.24)}</g></g>`;
   legendRow(legendIso('#e6007e'), ['ISOCHRONE -'], '400m/5 min walk');
   legendRow(legendIso('#b5379b'), ['ISOCHRONE -'], '800m/10 min walk');
 
@@ -514,27 +532,17 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     ${[0, 20, 50, 100].map((m) => `<line x1="${sx(m).toFixed(1)}" y1="${sbY}" x2="${sx(m).toFixed(1)}" y2="${sbY + sbH + 0.7}" stroke="#222" stroke-width="0.3"/>`).join('')}
     ${[0, 20, 50, 100].map((m) => `<text x="${sx(m).toFixed(1)}" y="${sbY + sbH + 3.2}" text-anchor="middle" font-size="${T.scalebar}" font-weight="700" fill="#222">${m}${m === 100 ? 'm' : ''}</text>`).join('')}`;
 
-  // Compass rose: 4-point star, alternating dark/light quadrant halves.
-  const rose = (() => {
-    const tip = 6.2, sh = 1.5;
-    const pts = {
-      N: [0, -tip], E: [tip, 0], S: [0, tip], W: [-tip, 0],
-      NE: [sh, -sh], SE: [sh, sh], SW: [-sh, sh], NW: [-sh, -sh],
-    } as Record<string, number[]>;
-    const tri = (a: number[], b: number[], dark: boolean) =>
-      `<path d="M${a[0]},${a[1]} L${b[0]},${b[1]} L0,0 Z" fill="${dark ? '#222' : '#fff'}" stroke="#222" stroke-width="0.18"/>`;
-    return [
-      tri(pts.N, pts.NE, true), tri(pts.N, pts.NW, false),
-      tri(pts.E, pts.SE, true), tri(pts.E, pts.NE, false),
-      tri(pts.S, pts.SW, true), tri(pts.S, pts.SE, false),
-      tri(pts.W, pts.NW, true), tri(pts.W, pts.SW, false),
-    ].join('');
-  })();
+  // Surveyor-style compass, replicated from the reference sheet's vectors:
+  // double circle rim, thin crosshair, two hairline diagonals, slim needle.
   const northSvg = `
-    <text x="9" y="2.6" text-anchor="middle" font-size="2.9" font-weight="700" fill="#222">N</text>
-    <g transform="translate(9,10.4)">
-      <circle r="6.9" fill="none" stroke="#222" stroke-width="0.35"/>
-      ${rose}
+    <text x="9" y="2.8" text-anchor="middle" font-size="2.9" font-weight="700" fill="#111">N</text>
+    <g transform="translate(9,10.6)" stroke="#111" stroke-width="0.15" fill="none">
+      <circle r="4.95"/><circle r="4.6"/>
+      <line x1="0" y1="-4.95" x2="0" y2="4.95"/>
+      <line x1="-4.95" y1="0" x2="4.95" y2="0"/>
+      <line x1="-4.6" y1="-2.1" x2="4.6" y2="2.1"/>
+      <line x1="2.1" y1="-4.6" x2="-2.1" y2="4.6"/>
+      <path d="M0,-4.95 L0.42,0 L0,0 Z" fill="#111" stroke="none"/>
     </g>`;
 
   const notes = [
