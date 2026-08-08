@@ -10,7 +10,9 @@ viewer, Nearmap) are replaced with programmatic equivalents:
 | Rail corridor | — | same service, layer 7 (RailwayCorridor) |
 | Zoning / HOB / FSR / Heritage | NSW Planning Portal spatial viewer | `mapprod3.environment.nsw.gov.au/arcgis/rest/services/Planning/EPI_Primary_Planning_Layers/MapServer` — 0 Heritage, 1 FSR, 2 Land Zoning, 5 Height of Building |
 | Aerial imagery | Nearmap / Google | NSW SIX `maps.six.nsw.gov.au/arcgis/rest/services/public/NSW_Imagery/MapServer/export` (bbox export, EPSG:3857) |
-| POIs, streets, bus stops/routes, stations | Google Maps | OSM Overpass API (`overpass-api.de`) |
+| Streets, POIs, stations, parks | Google Maps | NSW Spatial Transport Theme + Features of Interest (see below) |
+| Bus stops | Google Maps | TfNSW Trip Planner API `v1/tp/coord` (`TFNSW_API_KEY` in `.env`, free from opendata.transport.nsw.gov.au); fallback OSM Overpass |
+| Bus route lines | Google Maps | OSM Overpass API (soft-fail) |
 | Walking isochrones | smappen | Valhalla public server (`valhalla1.openstreetmap.de/isochrone`), pedestrian costing, 5/10 min |
 
 Notes:

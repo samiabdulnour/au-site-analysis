@@ -1,7 +1,16 @@
 // CLI: npm run generate -- "26-30 Campsie St, Campsie NSW 2194" [--scale 3000] …
 
 import { writeFile, readFile } from 'node:fs/promises';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+
+// Load .env (TFNSW_API_KEY etc.) without a dependency.
+if (existsSync('.env')) {
+  for (const line of readFileSync('.env', 'utf8').split('\n')) {
+    const m = line.match(/^([A-Z0-9_]+)=(.*)$/);
+    if (m && !process.env[m[1]]) process.env[m[1]] = m[2].trim();
+  }
+}
 import { runPipeline } from './pipeline.js';
 import { renderSheet, MAP_W, SHEET_H, type SheetMeta } from './render/sheet.js';
 import { htmlToPdf } from './render/pdf.js';

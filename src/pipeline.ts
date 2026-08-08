@@ -7,6 +7,7 @@ import { fetchSiteLots, fetchRailCorridors, fetchZoning, fetchHeightOfBuilding, 
 import { fetchRoads, fetchRailLines, fetchTrainStations, fetchParkPoints, fetchComplexPoints, fetchPropertiesAt, type TopoRoad, type NamedPoint } from './fetch/nswTopo.js';
 import { fetchAerial, type AerialResult } from './fetch/imagery.js';
 import { fetchBusData, type BusData } from './fetch/osm.js';
+import { fetchBusStopsTfnsw } from './fetch/tfnsw.js';
 import { fetchIsochrones, type Isochrone } from './fetch/isochrones.js';
 import { sheetExtent, mercatorToLonLat, type Extent } from './lib/geo.js';
 import type { GeoJSONFC } from './lib/arcgis.js';
@@ -77,10 +78,19 @@ export async function runPipeline(address: string, opts: PipelineOpts): Promise<
       soft(fetchTrainStations(extent), [], 'train stations'),
       soft(fetchParkPoints(extent), [], 'park points'),
       soft(fetchComplexPoints(extent), [], 'complex points'),
-      soft(fetchBusData(extent), { busStops: [], busRouteSegments: [] }, 'bus data (OSM)'),
+      soft(fetchBusData(extent), { busStops: [], busRouteSegments: [] }, 'bus route lines (OSM)'),
       soft(fetchIsochrones(centerLL), [], 'isochrones'),
       fetchAerial(extent, opts.aerialPxWidth ?? 3200, dataDir),
     ]);
+
+  // Bus stops: TfNSW when a key is configured (authoritative), else the OSM
+  // stops that came with the route query.
+  const tfnswKey = process.env.TFNSW_API_KEY;
+  if (tfnswKey) {
+    const stops = await soft(fetchBusStopsTfnsw(extent, tfnswKey), null, 'bus stops (TfNSW)');
+    if (stops) bus.busStops = stops;
+    log(`  bus stops from TfNSW: ${bus.busStops.length}`);
+  }
 
   const complexPoints: CategorizedPoint[] = rawComplex.map((p) => ({ ...p, cat: keywordCategory(p.name) }));
 
