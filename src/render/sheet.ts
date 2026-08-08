@@ -99,14 +99,52 @@ function wrapLabel(name: string, maxChars = 14): string[] {
   return lines;
 }
 
+// White back-contour via double drawing (a stroked copy underneath, a filled
+// copy on top) — paint-order is not reliable across text layouts in Chromium.
 function haloText(x: number, y: number, lines: string[], size: number, fill: string, weight = 700): string {
   const lh = size * 1.12;
   const y0 = y - ((lines.length - 1) * lh) / 2;
   const tspans = lines
     .map((l, i) => `<tspan x="${x.toFixed(1)}" y="${(y0 + i * lh).toFixed(1)}">${esc(l)}</tspan>`)
     .join('');
-  return `<text text-anchor="middle" font-size="${size}" font-weight="${weight}" fill="${fill}"
-    stroke="#ffffff" stroke-width="${(size * 0.26).toFixed(2)}" paint-order="stroke" stroke-linejoin="round">${tspans}</text>`;
+  const attrs = `text-anchor="middle" font-size="${size}" font-weight="${weight}"`;
+  return `<g><text ${attrs} fill="none" stroke="#ffffff" stroke-width="${(size * 0.3).toFixed(2)}" stroke-linejoin="round">${tspans}</text>
+    <text ${attrs} fill="${fill}">${tspans}</text></g>`;
+}
+
+/**
+ * White double-headed arrow along the (straight-enough) middle of a polyline.
+ * Returns '' when the geometry bends too much for a straight arrow.
+ */
+function arrowAlong(pts: Pt[], lengthMm: number): string {
+  const cum = [0];
+  for (let i = 1; i < pts.length; i++)
+    cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+  const total = cum[cum.length - 1];
+  if (total < lengthMm) return '';
+  const at = (s: number): Pt => {
+    let i = cum.findIndex((c) => c >= s);
+    if (i <= 0) i = 1;
+    const t = (s - cum[i - 1]) / (cum[i] - cum[i - 1] || 1);
+    return [pts[i - 1][0] + (pts[i][0] - pts[i - 1][0]) * t, pts[i - 1][1] + (pts[i][1] - pts[i - 1][1]) * t];
+  };
+  const s0 = total / 2 - lengthMm / 2, s1 = total / 2 + lengthMm / 2;
+  const a = at(s0), b = at(s1);
+  // straightness: intermediate points close to the chord
+  const [dx, dy] = [b[0] - a[0], b[1] - a[1]];
+  const chord = Math.hypot(dx, dy);
+  for (let i = 0; i < pts.length; i++) {
+    if (cum[i] < s0 || cum[i] > s1) continue;
+    const dev = Math.abs((pts[i][0] - a[0]) * dy - (pts[i][1] - a[1]) * dx) / chord;
+    if (dev > 2.5) return '';
+  }
+  const ang = (Math.atan2(dy, dx) * 180) / Math.PI;
+  const hl = 4.2, hw = 2.6, sh = 0.9; // head length/half-width, shaft half-thickness
+  const L = chord;
+  return `<g transform="translate(${a[0].toFixed(1)},${a[1].toFixed(1)}) rotate(${ang.toFixed(1)})" fill="#ffffff">
+    <path d="M0,0 L${hl},${-hw} L${hl},${-sh} L${(L - hl).toFixed(1)},${-sh} L${(L - hl).toFixed(1)},${-hw} L${L.toFixed(1)},0
+             L${(L - hl).toFixed(1)},${hw} L${(L - hl).toFixed(1)},${sh} L${hl},${sh} L${hl},${hw} Z"/>
+  </g>`;
 }
 
 /** Abbreviate street types the way the office labels them (CAMPSIE ST, WILFRED AVE). */
@@ -238,6 +276,7 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   }
   let rid = 0;
   const roadDefs: string[] = [];
+  const roadArrows: string[] = [];
   const roadTexts: string[] = [];
   for (const [name, r] of roadByName) {
     const label = shortStreetName(name);
@@ -255,12 +294,18 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
       const id = `rd${rid++}`;
       const d = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p[0].toFixed(2)},${p[1].toFixed(2)}`).join('');
       roadDefs.push(`<path id="${id}" d="${d}" fill="none"/>`);
-      roadTexts.push(`<text font-size="${T.street}" font-weight="400" fill="#2e2e2e" letter-spacing="0.6"
-        stroke="#ffffff" stroke-width="${(T.street * 0.26).toFixed(2)}" paint-order="stroke" dy="-1.1">
-        <textPath href="#${id}" startOffset="50%" text-anchor="middle">${esc(label)}</textPath></text>`);
+      // White double-headed movement arrow beneath the name — major roads
+      // always, local streets only when long and straight (as the original).
+      const wantArrow = r.hierarchy <= 5 || s.len > 90;
+      const arrow = wantArrow ? arrowAlong(pts, Math.min(s.len * 0.72, label.length * T.street * 0.75 + 26)) : '';
+      if (arrow) roadArrows.push(arrow);
+      const tp = (extra: string) => `<text font-size="${T.street}" font-weight="400" letter-spacing="0.6" dy="-1.4" ${extra}>
+        <textPath href="#${id}" startOffset="50%" text-anchor="middle">${esc(label)}</textPath></text>`;
+      roadTexts.push(`<g>${tp(`fill="none" stroke="#ffffff" stroke-width="${(T.street * 0.3).toFixed(2)}" stroke-linejoin="round"`)}${tp('fill="#2e2e2e"')}</g>`);
     }
   }
   layers.push(`<defs>${roadDefs.join('')}</defs>`);
+  layers.push(roadArrows.join('\n'));
   layers.push(roadTexts.join('\n'));
 
   // ---- POI labels ---------------------------------------------------------
@@ -355,7 +400,7 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   const northSvg = `
     <circle cx="9" cy="9" r="7" fill="none" stroke="#333" stroke-width="0.35"/>
     <path d="M9,2.8 L10.8,9.9 L9,8.8 L7.2,9.9 Z" fill="#333"/>
-    <text x="9" y="6.4" text-anchor="middle" font-size="2.7" font-weight="700" fill="#333" stroke="#fff" stroke-width="0.5" paint-order="stroke">N</text>`;
+    <text x="9" y="6.4" text-anchor="middle" font-size="2.7" font-weight="700" fill="#333">N</text>`;
 
   const notes = [
     'NO REPRODUCTION WITHOUT PERMISSION, UNLESS NOTED OTHERWISE.',
@@ -388,10 +433,8 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   html, body { width: ${SHEET_W}mm; height: ${SHEET_H}mm; font-family: Arial, 'Liberation Sans', Helvetica, sans-serif; background: #fff; }
   .sheet { position: relative; width: ${SHEET_W}mm; height: ${SHEET_H}mm; overflow: hidden; }
   svg.map { position: absolute; left: ${FRAME_L}mm; top: ${FRAME_T}mm; }
-  .mapframe { position: absolute; left: ${FRAME_L}mm; top: ${FRAME_T}mm; width: ${MAP_W}mm; height: ${MAP_H}mm;
-    border: 0.35mm solid #222; }
   .titlecol { position: absolute; left: ${TITLE_X}mm; top: 0; width: ${TW}mm; height: ${SHEET_H}mm;
-    border-left: 0.35mm solid #222; background: #fff; font-size: ${T.fine}mm; color: #222; }
+    background: #fff; font-size: ${T.fine}mm; color: #222; }
   .abs { position: absolute; }
   .rule { left: 2.6mm; right: 0; border-top: 0.15mm solid #666; }
   .k { font-size: ${T.fine}mm; color: #444; }
@@ -419,7 +462,6 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
 ${layers.join('\n')}
   </g>
 </svg>
-<div class="mapframe"></div>
 <div class="titlecol">
   <div class="abs fine" style="top:10mm;left:4.8mm;right:0">
     ${esc(bundle.address)}<br>Generated: ${esc(bundle.generatedAt.slice(0, 10))}<br>© ${esc(meta.office.name)}
