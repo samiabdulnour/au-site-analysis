@@ -616,7 +616,7 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
 
   // North point: thin circle with hairline lines through the center, every
   // line ending exactly on the rim; slim needle to N.
-  const northLines = [90, 0, 25, 115].map((deg) => {
+  const northLines = [90, 0].map((deg) => {
     const a = (deg * Math.PI) / 180;
     const x = 4.9 * Math.cos(a), y = 4.9 * Math.sin(a);
     return `<line x1="${x.toFixed(2)}" y1="${(-y).toFixed(2)}" x2="${(-x).toFixed(2)}" y2="${y.toFixed(2)}"/>`;
