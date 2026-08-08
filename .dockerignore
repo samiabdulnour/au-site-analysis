@@ -1,0 +1,8 @@
+# Never ship the private reference sheets or secrets in a public image.
+examples/
+.env
+out/
+node_modules/
+.git/
+docs/
+*.log

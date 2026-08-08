@@ -32,8 +32,23 @@ the pipeline fetches and composes; the finished A1 PDF opens in the browser.
 Jobs queue one at a time so simultaneous users don't hammer the public data
 services. Put `TFNSW_API_KEY=…` in `.env` for authoritative bus stops.
 
-There is no authentication — host it inside the office network or behind a
-reverse proxy with auth if exposed further.
+Authentication: set `ACCESS_CODE=<shared code>` (env or `.env`) — visitors
+must enter it once and get a 30-day session cookie. Login attempts and job
+submissions are rate-limited per IP, and job outputs are deleted after 24h.
+`ALLOW_NO_AUTH=1` disables the gate for local use only.
+
+### Public deployment (Docker)
+
+```bash
+docker build -t site-analyst .
+docker run -p 3000:3000 -e ACCESS_CODE=… -e TFNSW_API_KEY=… site-analyst
+```
+
+The image bundles Chromium and fonts; `examples/` and `.env` are excluded
+from the build context (`.dockerignore`) so the private reference sheets
+never leave the repo. Works as-is on Fly.io, Railway, Render or any VPS —
+put it behind HTTPS (the session cookie is marked Secure when the
+`x-forwarded-proto: https` header is present).
 
 Output lands in `out/<address-slug>/`:
 

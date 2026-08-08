@@ -40,7 +40,12 @@
   <p class="sub">Enter a NSW street address. The context analysis sheet (A1 PDF, readable at A3)
   is assembled from NSW planning, cadastre, transport and imagery open data. Takes 1–3 minutes.</p>
 
-  <form id="f">
+  <form id="login" style="display:none">
+    <input id="code" type="password" placeholder="Access code" autocomplete="current-password">
+    <button type="submit">ENTER</button>
+  </form>
+
+  <form id="f" style="display:none">
     <input id="address" type="text" placeholder="e.g. 26-30 Campsie St, Campsie NSW 2194"
            autocomplete="street-address" autofocus>
     <select id="scale" title="Sheet scale">
@@ -65,6 +70,30 @@
 </main>
 <script>
 const f = document.getElementById('f');
+const loginForm = document.getElementById('login');
+
+// Show login or generator depending on session state.
+fetch('/api/me').then(r => {
+  (r.ok ? f : loginForm).style.display = 'flex';
+  if (r.ok) document.getElementById('address').focus();
+});
+
+loginForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const r = await fetch('/api/login', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code: document.getElementById('code').value }),
+  });
+  if (r.ok) {
+    loginForm.style.display = 'none';
+    f.style.display = 'flex';
+    document.getElementById('address').focus();
+  } else {
+    const j = await r.json().catch(() => ({}));
+    error_.textContent = j.error || 'Wrong access code.';
+    error_.style.display = 'block';
+  }
+});
 const go = document.getElementById('go');
 const status_ = document.getElementById('status');
 const log = document.getElementById('log');

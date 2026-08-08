@@ -1,28 +1,44 @@
-// Minimal web interface: enter a NSW address, get the CONTEXT ANALYSIS PDF.
+// Web interface: enter a NSW address, get the CONTEXT ANALYSIS PDF.
 // Plain node:http, no extra dependencies. Jobs run one at a time (the NSW
 // endpoints and the public isochrone server should not be hit in parallel).
 //
-//   npm run serve          # http://localhost:3000  (PORT env to change)
+//   ACCESS_CODE=… npm run serve     # http://localhost:3000  (PORT to change)
+//
+// Auth: single shared access code (ACCESS_CODE env). Successful login sets an
+// HttpOnly session cookie derived from the code, so restarts keep sessions.
+// Set ALLOW_NO_AUTH=1 only for local use.
 
-import { createServer } from 'node:http';
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { readFile, readFileSync, existsSync } from 'node:fs';
+import { rm, readdir, stat, writeFile } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHmac, timingSafeEqual } from 'node:crypto';
 import { runPipeline } from './pipeline.js';
 import { renderSheet, MAP_W, MAP_H, type SheetMeta } from './render/sheet.js';
 import { htmlToPdf } from './render/pdf.js';
-import { writeFile } from 'node:fs/promises';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-// Load .env (TFNSW_API_KEY) like the CLI does.
+// Load .env (TFNSW_API_KEY, ACCESS_CODE) like the CLI does.
 if (existsSync(join(ROOT, '.env'))) {
   for (const line of readFileSync(join(ROOT, '.env'), 'utf8').split('\n')) {
     const m = line.match(/^([A-Z0-9_]+)=(.*)$/);
     if (m && !process.env[m[1]]) process.env[m[1]] = m[2].trim();
   }
 }
+
+const ACCESS_CODE = process.env.ACCESS_CODE ?? '';
+if (!ACCESS_CODE && process.env.ALLOW_NO_AUTH !== '1') {
+  console.error('Set ACCESS_CODE=<shared code> (or ALLOW_NO_AUTH=1 for local use).');
+  process.exit(1);
+}
+const SESSION_TOKEN = ACCESS_CODE
+  ? createHmac('sha256', ACCESS_CODE).update('site-analyst-session-v1').digest('hex')
+  : '';
+
+const JOB_RETENTION_MS = 24 * 3600 * 1000;
+const WEB_OUT = join(ROOT, 'out', 'web');
 
 interface Job {
   id: string;
@@ -45,7 +61,7 @@ function enqueue(job: Job) {
 
 async function runJob(job: Job) {
   job.status = 'running';
-  const outDir = join(ROOT, 'out', 'web', job.id);
+  const outDir = join(WEB_OUT, job.id);
   try {
     const office = JSON.parse(readFileSync(join(ROOT, 'config', 'office.json'), 'utf8'));
     const meta: SheetMeta = {
@@ -74,15 +90,65 @@ async function runJob(job: Job) {
     job.error = e?.message ?? String(e);
     job.log.push(`ERROR: ${job.error}`);
   }
+  void cleanupOldJobs();
 }
 
-function json(res: any, code: number, body: unknown) {
+async function cleanupOldJobs() {
+  for (const [id, job] of jobs) {
+    if (Date.now() - job.createdAt > JOB_RETENTION_MS && job.status !== 'running') jobs.delete(id);
+  }
+  try {
+    for (const name of await readdir(WEB_OUT)) {
+      const dir = join(WEB_OUT, name);
+      const s = await stat(dir).catch(() => null);
+      if (s && Date.now() - s.mtimeMs > JOB_RETENTION_MS)
+        await rm(dir, { recursive: true, force: true });
+    }
+  } catch { /* out/web may not exist yet */ }
+}
+
+// ---- tiny per-IP rate limiting ------------------------------------------
+const buckets = new Map<string, { count: number; resetAt: number }>();
+function limited(key: string, max: number, windowMs: number): boolean {
+  const now = Date.now();
+  const b = buckets.get(key);
+  if (!b || now > b.resetAt) { buckets.set(key, { count: 1, resetAt: now + windowMs }); return false; }
+  b.count += 1;
+  return b.count > max;
+}
+function clientIp(req: IncomingMessage): string {
+  const fwd = req.headers['x-forwarded-for'];
+  if (typeof fwd === 'string' && fwd) return fwd.split(',')[0].trim();
+  return req.socket.remoteAddress ?? 'unknown';
+}
+
+// ---- auth ----------------------------------------------------------------
+function authed(req: IncomingMessage): boolean {
+  if (!ACCESS_CODE) return true;
+  const cookies = req.headers.cookie ?? '';
+  const m = cookies.match(/(?:^|;\s*)sa_session=([0-9a-f]{64})/);
+  if (!m) return false;
+  const got = Buffer.from(m[1]);
+  const want = Buffer.from(SESSION_TOKEN);
+  return got.length === want.length && timingSafeEqual(got, want);
+}
+
+function json(res: ServerResponse, code: number, body: unknown) {
   res.writeHead(code, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify(body));
 }
 
-const server = createServer((req, res) => {
+function readBody(req: IncomingMessage): Promise<string> {
+  return new Promise((resolve) => {
+    let body = '';
+    req.on('data', (c) => { body += c; if (body.length > 10_000) req.destroy(); });
+    req.on('end', () => resolve(body));
+  });
+}
+
+const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', 'http://localhost');
+  const ip = clientIp(req);
 
   if (req.method === 'GET' && url.pathname === '/') {
     readFile(join(ROOT, 'web', 'index.html'), (err, data) => {
@@ -93,25 +159,47 @@ const server = createServer((req, res) => {
     return;
   }
 
-  if (req.method === 'POST' && url.pathname === '/api/jobs') {
-    let body = '';
-    req.on('data', (c) => { body += c; if (body.length > 10_000) req.destroy(); });
-    req.on('end', () => {
-      try {
-        const { address, scale } = JSON.parse(body || '{}');
-        const addr = String(address ?? '').trim();
-        if (addr.length < 8 || addr.length > 120) return json(res, 400, { error: 'Enter a full NSW street address.' });
-        const sc = Math.min(6000, Math.max(1000, Number(scale) || 3000));
-        const job: Job = {
-          id: randomUUID(), address: addr, scale: sc,
-          status: 'queued', log: [], createdAt: Date.now(),
-        };
-        enqueue(job);
-        json(res, 202, { id: job.id, queued: [...jobs.values()].filter((j) => j.status === 'queued').length });
-      } catch {
-        json(res, 400, { error: 'Bad request.' });
-      }
+  if (req.method === 'GET' && url.pathname === '/api/me') {
+    return json(res, authed(req) ? 200 : 401, { authed: authed(req) });
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/login') {
+    if (limited(`login:${ip}`, 10, 15 * 60_000)) return json(res, 429, { error: 'Too many attempts. Try later.' });
+    const body = await readBody(req);
+    let code = '';
+    try { code = String(JSON.parse(body || '{}').code ?? ''); } catch { /* fall through */ }
+    const got = Buffer.from(code.padEnd(256).slice(0, 256));
+    const want = Buffer.from(ACCESS_CODE.padEnd(256).slice(0, 256));
+    if (!ACCESS_CODE || !timingSafeEqual(got, want)) return json(res, 401, { error: 'Wrong access code.' });
+    const secure = req.headers['x-forwarded-proto'] === 'https' ? '; Secure' : '';
+    res.writeHead(200, {
+      'Content-Type': 'application/json',
+      'Set-Cookie': `sa_session=${SESSION_TOKEN}; HttpOnly; SameSite=Lax; Max-Age=2592000; Path=/${secure}`,
     });
+    res.end(JSON.stringify({ ok: true }));
+    return;
+  }
+
+  // Everything below requires auth.
+  if (!authed(req)) return json(res, 401, { error: 'Not authorised.' });
+
+  if (req.method === 'POST' && url.pathname === '/api/jobs') {
+    if (limited(`jobs:${ip}`, 12, 3600_000)) return json(res, 429, { error: 'Rate limit: try again later.' });
+    const body = await readBody(req);
+    try {
+      const { address, scale } = JSON.parse(body || '{}');
+      const addr = String(address ?? '').trim();
+      if (addr.length < 8 || addr.length > 120) return json(res, 400, { error: 'Enter a full NSW street address.' });
+      const sc = Math.min(6000, Math.max(1000, Number(scale) || 3000));
+      const job: Job = {
+        id: randomUUID(), address: addr, scale: sc,
+        status: 'queued', log: [], createdAt: Date.now(),
+      };
+      enqueue(job);
+      json(res, 202, { id: job.id, queued: [...jobs.values()].filter((j) => j.status === 'queued').length });
+    } catch {
+      json(res, 400, { error: 'Bad request.' });
+    }
     return;
   }
 
@@ -145,4 +233,4 @@ const server = createServer((req, res) => {
 });
 
 const PORT = Number(process.env.PORT ?? 3000);
-server.listen(PORT, () => console.log(`site analyst web UI on http://localhost:${PORT}`));
+server.listen(PORT, () => console.log(`site analyst web UI on http://localhost:${PORT}${ACCESS_CODE ? ' (auth on)' : ' (NO AUTH)'}`));
