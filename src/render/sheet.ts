@@ -40,6 +40,7 @@ export interface SheetMeta {
   revision: string;
   checked: string;
   drawn: string;
+  date: string;
   preliminary: boolean;
   office: { name: string; lines: string[] };
 }
@@ -119,7 +120,7 @@ function plainText(x: number, y: number, lines: string[], size: number, fill = '
   const tspans = lines
     .map((l, i) => `<tspan x="${x.toFixed(1)}" y="${(y0 + i * lh).toFixed(1)}">${esc(l)}</tspan>`)
     .join('');
-  return `<text text-anchor="middle" font-size="${size}" font-weight="700" font-family="'PT Sans Narrow', Arial, sans-serif" fill="${fill}">${tspans}</text>`;
+  return `<text text-anchor="middle" font-size="${size}" font-weight="700" fill="${fill}">${tspans}</text>`;
 }
 
 /**
@@ -400,8 +401,8 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
           x="${(-arrowedTextLen / 2).toFixed(1)}" y="1.65" textLength="${arrowedTextLen.toFixed(1)}" lengthAdjust="spacing"
           font-size="${T.street}" font-weight="700" fill="#111111">${esc(label)}</text>`);
       } else {
-        // Curved-street label: bold black narrow, no contour (office style).
-        roadTexts.push(`<text font-size="${T.street}" font-weight="700" font-family="'PT Sans Narrow', Arial, sans-serif" letter-spacing="0.4" dy="-1.4" fill="#000000">
+        // Curved-street label: bold black, no contour (office style).
+        roadTexts.push(`<text font-size="${T.street}" font-weight="700" letter-spacing="0.4" dy="-1.4" fill="#000000">
           <textPath href="#${id}" startOffset="50%" text-anchor="middle">${esc(label)}</textPath></text>`);
       }
     }
@@ -541,6 +542,7 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
       stroke="${c.stroke ?? '#999'}" stroke-width="${c.stroke ? 0.9 : 0.2}"/>`;
   for (const c of CATEGORIES) {
     if (!usedCats.has(c.id)) continue;
+    if (c.id === 'railway') continue; // on the map, not in the legend
     const hob = hobByCat[c.id];
     if (c.id === 'site') {
       legendRow(`<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="#e8402a" fill-opacity="0.55" stroke="#cc0000" stroke-width="0.9" stroke-dasharray="2.2,1.1"/>`, ['SITE']);
@@ -583,17 +585,19 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
       fill="none" stroke="#111" stroke-width="0.25"/>
     ${[0, 20, 50, 100].map((m) => `<text x="${sx(m).toFixed(1)}" y="${sbY + 3.0}" text-anchor="middle" font-size="${T.scalebar}" font-weight="700" fill="#111">${m}${m === 100 ? 'm' : ''}</text>`).join('')}`;
 
-  // North point, replicated from the reference sheet's vector geometry:
-  // thin circle with hairline cross lines and a slim half-open needle to N.
+  // North point: thin circle with hairline lines through the center, every
+  // line ending exactly on the rim; slim needle to N.
+  const northLines = [90, 0, 25, 115].map((deg) => {
+    const a = (deg * Math.PI) / 180;
+    const x = 4.9 * Math.cos(a), y = 4.9 * Math.sin(a);
+    return `<line x1="${x.toFixed(2)}" y1="${(-y).toFixed(2)}" x2="${(-x).toFixed(2)}" y2="${y.toFixed(2)}"/>`;
+  }).join('');
   const northSvg = `
     <text x="9" y="3.0" text-anchor="middle" font-size="3.4" font-weight="700" fill="#111">N</text>
     <g transform="translate(9,10.8)" stroke="#111" stroke-width="0.18" fill="none">
       <circle r="4.9"/>
-      <line x1="-0.35" y1="-4.8" x2="-0.35" y2="4.75"/>
-      <line x1="-5.4" y1="0" x2="4.1" y2="0"/>
-      <line x1="-4.1" y1="-2.0" x2="5.0" y2="2.3"/>
-      <line x1="2.6" y1="-4.3" x2="-1.7" y2="4.7"/>
-      <path d="M-0.35,-4.8 L0.1,0 L-0.35,0 Z" fill="#111" stroke="none"/>
+      ${northLines}
+      <path d="M0,-4.9 L0.45,0 L0,0 Z" fill="#111" stroke="none"/>
     </g>`;
 
   const notes = [
@@ -601,14 +605,14 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     'THIS DRAWING IS NOT FOR CONSTRUCTION.',
     'NO STRUCTURAL OR SERVICE ENGINEERING INPUT OR COORDINATION HAS BEEN PROVIDED IN THE PREPARATION OF THE DRAWINGS. DRAWINGS CANNOT BE RELIED UPON FOR THE BASIS OF MARKETING SALES OR CONSTRUCTION QUOTATION.',
     'ALL DIMENSIONS AND LEVELS ARE TO BE CHECKED ON SITE PRIOR TO THE COMMENCEMENT OF WORK.',
-    `INFORM ${meta.office.name.toUpperCase().replace('ARCHITECTS', 'ARCHITECTURE')} OF ANY DISCREPANCIES FOR CLARIFICATION BEFORE PROCEEDING WITH WORK.`,
+    `INFORM ${meta.office.name ? meta.office.name.toUpperCase().replace('ARCHITECTS', 'ARCHITECTURE') : 'THE ARCHITECT'} OF ANY DISCREPANCIES FOR CLARIFICATION BEFORE PROCEEDING WITH WORK.`,
     'DRAWINGS ARE NOT TO BE SCALED.',
     'USE ONLY FIGURED DIMENSIONS.',
     'REFER TO CONSULTANT DOCUMENTATION FOR FURTHER INFORMATION.',
   ];
 
   const siteAddress = bundle.geocode.matchedAddresses[0] ?? bundle.address;
-  const dateStr = new Date().toLocaleDateString('en-AU', { month: 'short', year: 'numeric' }).toUpperCase();
+  const dateStr = meta.date;
   const [wm1, ...wmRest] = meta.office.name.split(' ');
   const TW = TITLE_R - TITLE_X; // column content width 92.1
 
@@ -658,7 +662,7 @@ ${layers.join('\n')}
 </svg>
 <div class="titlecol">
   <div class="abs fine" style="top:10mm;left:4.8mm;right:0">
-    ${esc(bundle.address)}<br>Generated: ${esc(bundle.generatedAt.slice(0, 10))}<br>© ${esc(meta.office.name)}
+    ${esc(bundle.address)}<br>Generated: ${esc(bundle.generatedAt.slice(0, 10))}${meta.office.name ? `<br>© ${esc(meta.office.name)}` : ''}
   </div>
   <div class="abs" style="top:19mm;left:4.8mm;right:0">
     <div class="fine" style="font-weight:700">NOTE:</div>
@@ -675,13 +679,13 @@ ${layers.join('\n')}
   <div class="abs" style="top:364.6mm;left:2.6mm;right:0">
     <table class="revtable">
       <tr><th style="width:20%">REVISION ID</th><th style="width:55%">AMENDMENT</th><th>DATE</th></tr>
-      <tr><td>${esc(meta.revision)}</td><td>${esc(meta.status.toUpperCase().includes('PRELIM') ? 'ISSUE FOR COORDINATION' : 'FOR SUBMISSION')}</td><td>${esc(new Date().toLocaleDateString('en-AU'))}</td></tr>
+      ${meta.revision ? `<tr><td>${esc(meta.revision)}</td><td>${esc(meta.status.toUpperCase().includes('PRELIM') ? 'ISSUE FOR COORDINATION' : 'FOR SUBMISSION')}</td><td>${esc(meta.date)}</td></tr>` : ''}
     </table>
   </div>
   ${rule(395.5)}
   ${rule(400.7)}
   <div class="abs k" style="top:401.4mm;left:4.8mm">ARCHITECT</div>
-  <div class="abs wordmark" style="top:406.5mm;left:4.8mm">${esc(wm1)}<span class="rule2">—</span>${esc(wmRest.join(' '))}</div>
+  ${meta.office.name ? `<div class="abs wordmark" style="top:406.5mm;left:4.8mm">${esc(wm1)}<span class="rule2">—</span>${esc(wmRest.join(' '))}</div>` : ''}
   <div class="abs fine" style="top:419.9mm;left:4.8mm;right:0">${meta.office.lines.map(esc).join('<br>')}</div>
   ${rule(438.4)}
   <div class="abs k" style="top:439.1mm;left:4.8mm">CLIENT</div>

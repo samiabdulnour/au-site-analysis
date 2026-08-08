@@ -31,15 +31,18 @@ const outDir = join('out', slug);
 
 const office = JSON.parse(await readFile('config/office.json', 'utf8'));
 
+// All identifying fields default to blank — the sheet is a template the
+// office completes per project (pass --job/--client/--status/… to fill).
 const meta: SheetMeta = {
-  jobNo: arg('job', 'XXXX')!,
+  jobNo: arg('job', '')!,
   client: arg('client', '')!,
-  status: arg('status', 'PRELIMINARY')!,
-  sheetNo: arg('sheet', 'DA 003')!,
-  revision: arg('revision', 'P1')!,
-  checked: arg('checked', '—')!,
-  drawn: arg('drawn', 'AI')!,
-  preliminary: (arg('status', 'PRELIMINARY') ?? '').toUpperCase().includes('PRELIM'),
+  status: arg('status', '')!,
+  sheetNo: arg('sheet', '')!,
+  revision: arg('revision', '')!,
+  checked: arg('checked', '')!,
+  drawn: arg('drawn', '')!,
+  date: arg('date', '')!,
+  preliminary: (arg('status', '') ?? '').toUpperCase().includes('PRELIM'),
   office,
 };
 
