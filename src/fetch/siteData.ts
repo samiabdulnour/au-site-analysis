@@ -4,6 +4,7 @@
 import { queryByExtent, type GeoJSONFC } from '../lib/arcgis.js';
 import type { Extent } from '../lib/geo.js';
 import { extentToLonLatBbox } from '../lib/geo.js';
+import { overpassQuery } from '../lib/http.js';
 
 const PORTAL = 'https://portal.spatial.nsw.gov.au/server/rest/services';
 
@@ -51,11 +52,6 @@ export interface SiteFurniture {
   parkingLanes: { coords: [number, number][]; side: 'left' | 'right' | 'both' }[];
 }
 
-const OVERPASS_MIRRORS = [
-  'https://overpass-api.de/api/interpreter',
-  'https://overpass.kumi.systems/api/interpreter',
-  'https://lz4.overpass-api.de/api/interpreter',
-];
 
 export async function fetchSiteFurniture(extent: Extent): Promise<SiteFurniture> {
   const b = extentToLonLatBbox(extent);
@@ -79,23 +75,7 @@ export async function fetchSiteFurniture(extent: Extent): Promise<SiteFurniture>
   way["highway"]["parking:right"](${bbox});
 );
 out geom;`;
-  let data: any;
-  let lastErr: unknown;
-  outer: for (let attempt = 0; attempt < 3; attempt++) {
-    if (attempt) await new Promise((r) => setTimeout(r, 15_000 * attempt));
-    for (const mirror of OVERPASS_MIRRORS) {
-      try {
-        const res = await fetch(mirror, {
-          method: 'POST', body: new URLSearchParams({ data: q }),
-          signal: AbortSignal.timeout(90_000),
-        });
-        if (!res.ok) { lastErr = new Error(`Overpass HTTP ${res.status}`); continue; }
-        data = await res.json();
-        break outer;
-      } catch (e) { lastErr = e; }
-    }
-  }
-  if (!data) throw lastErr;
+  const data = await overpassQuery(q);
 
   const out: SiteFurniture = {
     trees: [], hydrants: [], powerPoles: [], streetLamps: [],

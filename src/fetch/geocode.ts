@@ -129,9 +129,22 @@ export async function geocode(input: string): Promise<GeocodeResult> {
   }
 
   if (!found.size) {
-    throw new Error(
-      `Address not found: "${input}". Try the format "212 Bondi Rd, Bondi NSW" — ` +
-      `street number, street name, suburb.`);
+    // Offer real alternatives on the same street rather than a bare failure.
+    let hint = '';
+    try {
+      const fc = await queryWhere(ADDRESS_POINT,
+        `address LIKE '%${sql(street)}%' AND housenumber NOT LIKE '%/%'`, 'address', 400);
+      const near = [...new Set(fc.features.map((f) => f.properties.address as string))]
+        .filter(Boolean)
+        .filter((a) => !locality || a.includes(locality))
+        .sort((a, b) => {
+          const na = parseInt(a), nb = parseInt(b), want = parseInt(numbers[0]);
+          return Math.abs(na - want) - Math.abs(nb - want);
+        })
+        .slice(0, 4);
+      if (near.length) hint = ` Nearby on this street: ${near.join('; ')}.`;
+    } catch { /* hint is best-effort */ }
+    throw new Error(`Address not found: "${input}".${hint}`);
   }
 
   const points = [...found.values()].map((c) => lonLatToMercator({ lon: c.lon, lat: c.lat }));

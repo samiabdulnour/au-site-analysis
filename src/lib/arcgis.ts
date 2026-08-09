@@ -3,6 +3,7 @@
 // All queries request outSR=4326 so coordinates are lon/lat.
 
 import type { Extent, XY } from './geo.js';
+import { retryFetch } from './http.js';
 
 export interface GeoJSONFeature {
   type: 'Feature';
@@ -13,21 +14,13 @@ export interface GeoJSONFC { type: 'FeatureCollection'; features: GeoJSONFeature
 
 async function getJson(url: string, params: Record<string, string>): Promise<any> {
   const qs = new URLSearchParams(params).toString();
-  let lastErr: unknown;
-  for (let attempt = 0; attempt < 4; attempt++) {
-    if (attempt) await new Promise((r) => setTimeout(r, 2000 * 2 ** (attempt - 1)));
-    try {
-      const res = await fetch(`${url}?${qs}`, { signal: AbortSignal.timeout(60_000) });
-      if (res.status >= 500) { lastErr = new Error(`${url} -> HTTP ${res.status}`); continue; }
-      if (!res.ok) throw new Error(`${url} -> HTTP ${res.status}`);
-      const data = await res.json();
-      if (data.error) throw new Error(`${url} -> ${JSON.stringify(data.error)}`);
-      return data;
-    } catch (e) {
-      lastErr = e;
-    }
-  }
-  throw lastErr;
+  const res = await retryFetch(`${url}?${qs}`, {}, {
+    attempts: 5, timeoutMs: 60_000, label: url,
+  });
+  if (!res.ok) throw new Error(`${url} -> HTTP ${res.status}`);
+  const data = await res.json();
+  if (data.error) throw new Error(`${url} -> ${JSON.stringify(data.error)}`);
+  return data;
 }
 
 function esriToGeoJson(data: any): GeoJSONFC {

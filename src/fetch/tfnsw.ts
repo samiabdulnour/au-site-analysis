@@ -4,6 +4,7 @@
 
 import type { Extent } from '../lib/geo.js';
 import { mercatorToLonLat } from '../lib/geo.js';
+import { retryFetch } from '../lib/http.js';
 
 const COORD_API = 'https://api.transport.nsw.gov.au/v1/tp/coord';
 
@@ -19,10 +20,9 @@ async function coordRequest(lon: number, lat: number, radiusM: number, apiKey: s
     radius_1: String(radiusM),
     version: '10.2.1.42',
   });
-  const res = await fetch(`${COORD_API}?${params}`, {
+  const res = await retryFetch(`${COORD_API}?${params}`, {
     headers: { Authorization: `apikey ${apiKey}` },
-    signal: AbortSignal.timeout(45_000),
-  });
+  }, { attempts: 4, timeoutMs: 45_000, label: 'TfNSW coord' });
   if (!res.ok) throw new Error(`TfNSW coord API HTTP ${res.status}`);
   const data = await res.json();
   return data.locations ?? [];

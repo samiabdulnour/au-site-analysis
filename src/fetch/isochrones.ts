@@ -1,6 +1,7 @@
 // Walking isochrones (5 & 10 min ≈ 400 m & 800 m) from the Valhalla public server.
 
 import type { LonLat } from '../lib/geo.js';
+import { retryFetch } from '../lib/http.js';
 
 const VALHALLA = 'https://valhalla1.openstreetmap.de/isochrone';
 
@@ -13,8 +14,8 @@ export async function fetchIsochrones(center: LonLat): Promise<Isochrone[]> {
     contours: [{ time: 5 }, { time: 10 }],
     polygons: true,
   };
-  const res = await fetch(`${VALHALLA}?json=${encodeURIComponent(JSON.stringify(req))}`, {
-    signal: AbortSignal.timeout(60_000),
+  const res = await retryFetch(`${VALHALLA}?json=${encodeURIComponent(JSON.stringify(req))}`, {}, {
+    attempts: 4, timeoutMs: 60_000, label: 'isochrones',
   });
   if (!res.ok) throw new Error(`Valhalla HTTP ${res.status}`);
   const data = await res.json();

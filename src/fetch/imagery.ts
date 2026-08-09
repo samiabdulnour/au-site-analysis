@@ -5,6 +5,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Extent } from '../lib/geo.js';
+import { retryFetch } from '../lib/http.js';
 
 const EXPORT = 'https://maps.six.nsw.gov.au/arcgis/rest/services/public/NSW_Imagery/MapServer/export';
 const MAX_PX = 4000; // stay under the service's export cap
@@ -41,19 +42,34 @@ export async function fetchAerial(
       const y0 = extent.ymax - ((extent.ymax - extent.ymin) * (r + 1)) / rows;
       const w = Math.round(pxW / cols);
       const h = Math.round(pxH / rows);
-      const params = new URLSearchParams({
-        bbox: `${x0},${y0},${x1},${y1}`,
-        bboxSR: '3857',
-        imageSR: '3857',
-        size: `${w},${h}`,
-        format: 'jpg',
-        compressionQuality: '70',
-        f: 'image',
-      });
-      const res = await fetch(`${EXPORT}?${params}`, { signal: AbortSignal.timeout(120_000) });
-      if (!res.ok) throw new Error(`aerial export HTTP ${res.status}`);
-      const buf = Buffer.from(await res.arrayBuffer());
-      if (buf.length < 1000) throw new Error(`aerial export returned ${buf.length} bytes`);
+      // The export service rejects requests above a per-area pixel ceiling
+      // (it 500s rather than clamping), and the ceiling varies by suburb —
+      // so step the request down until it is accepted.
+      let buf: Buffer | null = null;
+      let rw = w, rh = h;
+      for (let step = 0; step < 5 && !buf; step++) {
+        const params = new URLSearchParams({
+          bbox: `${x0},${y0},${x1},${y1}`,
+          bboxSR: '3857',
+          imageSR: '3857',
+          size: `${Math.round(rw)},${Math.round(rh)}`,
+          format: 'jpg',
+          compressionQuality: '70',
+          f: 'image',
+        });
+        try {
+          const res = await retryFetch(`${EXPORT}?${params}`, {}, {
+            attempts: step === 0 ? 3 : 2, timeoutMs: 120_000, label: 'aerial export',
+          });
+          if (res.ok) {
+            const b = Buffer.from(await res.arrayBuffer());
+            if (b.length >= 1000) buf = b;
+          }
+        } catch { /* fall through to a smaller request */ }
+        if (!buf) { rw = Math.round(rw / 1.6); rh = Math.round(rh / 1.6); }
+        if (rw < 500) break;
+      }
+      if (!buf) throw new Error('aerial imagery unavailable for this extent');
       const file = `aerial_${r}_${c}.jpg`;
       await writeFile(join(outDir, file), buf);
       tiles.push({ file, left: c / cols, top: r / rows, width: 1 / cols, height: 1 / rows });
