@@ -51,6 +51,7 @@ const bundle = await runPipeline(address, {
   mapWidthMm: MAP_W,
   mapHeightMm: MAP_H,
   outDir,
+  rotate: arg('rotate', 'north') === 'auto' ? 'auto' : 'north',
   log: (m) => console.log(m),
 });
 

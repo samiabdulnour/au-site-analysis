@@ -44,6 +44,7 @@ interface Job {
   id: string;
   address: string;
   scale: number;
+  rotate: 'north' | 'auto';
   status: 'queued' | 'running' | 'done' | 'error';
   log: string[];
   pdfPath?: string;
@@ -74,6 +75,7 @@ async function runJob(job: Job) {
       mapWidthMm: MAP_W,
       mapHeightMm: MAP_H,
       outDir,
+      rotate: job.rotate,
       log: (m) => job.log.push(m),
     });
     job.log.push('composing sheet…');
@@ -196,12 +198,13 @@ const server = createServer(async (req, res) => {
     if (limited(`jobs:${ip}`, 12, 3600_000)) return json(res, 429, { error: 'Rate limit: try again later.' });
     const body = await readBody(req);
     try {
-      const { address, scale } = JSON.parse(body || '{}');
+      const { address, scale, rotate } = JSON.parse(body || '{}');
       const addr = String(address ?? '').trim();
       if (addr.length < 8 || addr.length > 120) return json(res, 400, { error: 'Enter a full NSW street address.' });
       const sc = Math.min(6000, Math.max(1000, Number(scale) || 3000));
       const job: Job = {
         id: randomUUID(), address: addr, scale: sc,
+        rotate: rotate === 'auto' ? 'auto' : 'north',
         status: 'queued', log: [], createdAt: Date.now(),
       };
       enqueue(job);

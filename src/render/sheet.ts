@@ -3,7 +3,7 @@
 // reference sheet (2539 Campsie) with PyMuPDF — see docs/SHEET_SPEC.md.
 
 import type { Bundle } from '../pipeline.js';
-import { lonLatToMercator, ringCentroid, type Extent } from '../lib/geo.js';
+import { lonLatToMercator, ringCentroid, type Extent, type MapView } from '../lib/geo.js';
 import { CATEGORIES, catById, zoneToCategory } from './model.js';
 
 export const SHEET_W = 841;
@@ -50,12 +50,17 @@ const esc = (s: string) =>
 
 type Pt = [number, number];
 
-function makeProjector(extent: Extent) {
-  const sx = MAP_W / (extent.xmax - extent.xmin);
-  const sy = MAP_H / (extent.ymax - extent.ymin);
+// Projector rotates about the map center when the view is rotated: the
+// site's long boundary runs horizontally, north tilts (compass follows).
+function makeProjector(view: MapView) {
+  const s = MAP_W / (2 * view.halfW);
+  const r = (view.rotationDeg * Math.PI) / 180;
+  const cos = Math.cos(r), sin = Math.sin(r);
   return (lon: number, lat: number): Pt => {
     const m = lonLatToMercator({ lon, lat });
-    return [(m.x - extent.xmin) * sx, (extent.ymax - m.y) * sy];
+    const u = (m.x - view.cx) * s;
+    const v = (view.cy - m.y) * s;
+    return [u * cos - v * sin + MAP_W / 2, u * sin + v * cos + MAP_H / 2];
   };
 }
 
@@ -187,15 +192,32 @@ function shortStreetName(name: string): string {
 }
 
 export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
-  const proj = makeProjector(bundle.extent);
+  const view = bundle.view ?? {
+    cx: (bundle.extent.xmin + bundle.extent.xmax) / 2,
+    cy: (bundle.extent.ymin + bundle.extent.ymax) / 2,
+    halfW: (bundle.extent.xmax - bundle.extent.xmin) / 2,
+    halfH: (bundle.extent.ymax - bundle.extent.ymin) / 2,
+    rotationDeg: 0,
+  };
+  const proj = makeProjector(view);
   const usedCats = new Set<string>();
   const layers: string[] = [];
 
   // ---- aerial base (no CSS filter: keeps JPEGs as JPEGs in the PDF) ------
-  layers.push(bundle.aerial.tiles
-    .map((t) => `<image href="data/${t.file}" x="${(t.left * MAP_W).toFixed(2)}" y="${(t.top * MAP_H).toFixed(2)}"
-        width="${(t.width * MAP_W).toFixed(2)}" height="${(t.height * MAP_H).toFixed(2)}" preserveAspectRatio="none"/>`)
-    .join('\n'));
+  // Tiles cover the axis-aligned fetch extent; place them in that rectangle
+  // (centered on the map) and rotate the whole group with the view.
+  {
+    const s = MAP_W / (2 * view.halfW);
+    const extW = (bundle.extent.xmax - bundle.extent.xmin) * s;
+    const extH = (bundle.extent.ymax - bundle.extent.ymin) * s;
+    const ox = MAP_W / 2 - extW / 2;
+    const oy = MAP_H / 2 - extH / 2;
+    const tiles = bundle.aerial.tiles
+      .map((t) => `<image href="data/${t.file}" x="${(ox + t.left * extW).toFixed(2)}" y="${(oy + t.top * extH).toFixed(2)}"
+          width="${(t.width * extW).toFixed(2)}" height="${(t.height * extH).toFixed(2)}" preserveAspectRatio="none"/>`)
+      .join('\n');
+    layers.push(`<g transform="rotate(${view.rotationDeg.toFixed(2)}, ${MAP_W / 2}, ${MAP_H / 2})">${tiles}</g>`);
+  }
   layers.push(`<rect x="0" y="0" width="${MAP_W}" height="${MAP_H}" fill="#ffffff" opacity="0.36"/>`);
 
   // ---- zoning base -------------------------------------------------------
@@ -627,12 +649,16 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     const x = 4.9 * Math.cos(a), y = 4.9 * Math.sin(a);
     return `<line x1="${x.toFixed(2)}" y1="${(-y).toFixed(2)}" x2="${(-x).toFixed(2)}" y2="${y.toFixed(2)}"/>`;
   }).join('');
+  // When the map is rotated, the crosshair + needle rotate with it so the
+  // needle keeps pointing at true north (as on the office's rotated sheets).
   const northSvg = `
     <text x="9" y="3.0" text-anchor="middle" font-size="3.4" font-weight="700" fill="#111">N</text>
     <g transform="translate(9,10.8)" stroke="#111" stroke-width="0.18" fill="none">
       <circle r="4.9"/>
-      ${northLines}
-      <path d="M0,-4.9 L0.45,0 L0,0 Z" fill="#111" stroke="none"/>
+      <g transform="rotate(${view.rotationDeg.toFixed(2)})">
+        ${northLines}
+        <path d="M0,-4.9 L0.45,0 L0,0 Z" fill="#111" stroke="none"/>
+      </g>
     </g>`;
 
   const notes = [

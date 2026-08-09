@@ -43,6 +43,23 @@ export function sheetExtent(center: XY, widthMm: number, heightMm: number, scale
   };
 }
 
+/** View window: a possibly-rotated map rectangle in EPSG:3857. */
+export interface MapView {
+  cx: number;
+  cy: number;
+  halfW: number;       // mercator meters, along the rotated x axis
+  halfH: number;
+  rotationDeg: number; // 0 = north up
+}
+
+/** Axis-aligned extent covering the rotated view rectangle (for data fetches). */
+export function viewBounds(v: MapView): Extent {
+  const r = (v.rotationDeg * Math.PI) / 180;
+  const hw = Math.abs(v.halfW * Math.cos(r)) + Math.abs(v.halfH * Math.sin(r));
+  const hh = Math.abs(v.halfW * Math.sin(r)) + Math.abs(v.halfH * Math.cos(r));
+  return { xmin: v.cx - hw, ymin: v.cy - hh, xmax: v.cx + hw, ymax: v.cy + hh };
+}
+
 export function extentToLonLatBbox(e: Extent): { south: number; west: number; north: number; east: number } {
   const sw = mercatorToLonLat({ x: e.xmin, y: e.ymin });
   const ne = mercatorToLonLat({ x: e.xmax, y: e.ymax });
