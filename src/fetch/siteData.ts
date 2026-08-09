@@ -41,6 +41,10 @@ export interface SiteFurniture {
   powerPoles: { lon: number; lat: number }[];
   streetLamps: { lon: number; lat: number }[];
   onewayRoads: { name?: string; coords: [number, number][] }[];
+  /** Building footprints; levels only where OSM records them. */
+  buildings: { levels?: number; lon: number; lat: number }[];
+  /** Utility lines where mapped (power/water/sewer are sparse in OSM). */
+  utilities: { kind: 'power' | 'water' | 'sewer' | 'gas'; coords: [number, number][] }[];
 }
 
 const OVERPASS_MIRRORS = [
@@ -52,13 +56,17 @@ const OVERPASS_MIRRORS = [
 export async function fetchSiteFurniture(extent: Extent): Promise<SiteFurniture> {
   const b = extentToLonLatBbox(extent);
   const bbox = `${b.south},${b.west},${b.north},${b.east}`;
-  const q = `[out:json][timeout:45];
+  const q = `[out:json][timeout:60];
 (
   node["natural"="tree"](${bbox});
   node["emergency"="fire_hydrant"](${bbox});
   node["power"="pole"](${bbox});
   node["highway"="street_lamp"](${bbox});
   way["highway"]["oneway"="yes"](${bbox});
+  way["building"](${bbox});
+  way["power"="line"](${bbox});
+  way["power"="minor_line"](${bbox});
+  way["man_made"="pipeline"](${bbox});
 );
 out geom;`;
   let data: any;
@@ -79,7 +87,10 @@ out geom;`;
   }
   if (!data) throw lastErr;
 
-  const out: SiteFurniture = { trees: [], hydrants: [], powerPoles: [], streetLamps: [], onewayRoads: [] };
+  const out: SiteFurniture = {
+    trees: [], hydrants: [], powerPoles: [], streetLamps: [],
+    onewayRoads: [], buildings: [], utilities: [],
+  };
   for (const el of data.elements ?? []) {
     const t = el.tags ?? {};
     if (el.type === 'node') {
@@ -88,8 +99,22 @@ out geom;`;
       else if (t.emergency === 'fire_hydrant') out.hydrants.push(p);
       else if (t.power === 'pole') out.powerPoles.push(p);
       else if (t.highway === 'street_lamp') out.streetLamps.push(p);
-    } else if (el.type === 'way' && el.geometry) {
-      out.onewayRoads.push({ name: t.name, coords: el.geometry.map((g: any) => [g.lon, g.lat]) });
+      continue;
+    }
+    if (el.type !== 'way' || !el.geometry) continue;
+    const coords: [number, number][] = el.geometry.map((g: any) => [g.lon, g.lat]);
+    if (t.building) {
+      const lv = parseInt(t['building:levels'] ?? '', 10);
+      const cx = coords.reduce((s, c) => s + c[0], 0) / coords.length;
+      const cy = coords.reduce((s, c) => s + c[1], 0) / coords.length;
+      out.buildings.push({ levels: Number.isFinite(lv) ? lv : undefined, lon: cx, lat: cy });
+    } else if (t.power === 'line' || t.power === 'minor_line') {
+      out.utilities.push({ kind: 'power', coords });
+    } else if (t.man_made === 'pipeline') {
+      const sub = (t.substance ?? '').toLowerCase();
+      out.utilities.push({ kind: sub === 'gas' ? 'gas' : sub === 'sewage' ? 'sewer' : 'water', coords });
+    } else if (t.highway && t.oneway === 'yes') {
+      out.onewayRoads.push({ name: t.name, coords });
     }
   }
   return out;

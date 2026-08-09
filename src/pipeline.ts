@@ -218,6 +218,7 @@ export interface SiteBundle {
   allLots: GeoJSONFC;
   roads: TopoRoad[];
   railLines: RailLines;
+  zoning: GeoJSONFC;
   contours: ContourLine[];
   neighbours: NeighbourAddress[];
   furniture: SiteFurniture;
@@ -300,16 +301,17 @@ export async function runSitePipeline(address: string, opts: SitePipelineOpts): 
   };
   const extent = viewBounds(view);
 
-  const emptyFurniture: SiteFurniture = { trees: [], hydrants: [], powerPoles: [], streetLamps: [], onewayRoads: [] };
+  const emptyFurniture: SiteFurniture = { trees: [], hydrants: [], powerPoles: [], streetLamps: [], onewayRoads: [], buildings: [], utilities: [] };
   const soft = <T,>(p: Promise<T>, fallback: T, name: string): Promise<T> =>
     p.catch((e) => { log(`  WARN ${name} failed: ${e.message ?? e}`); return fallback; });
 
   log('fetching contours, lots, roads, neighbours, furniture, imagery…');
-  const [contours, allLots, roads, railLines, neighbours, furniture, aerial] = await Promise.all([
+  const [contours, allLots, roads, railLines, zoning, neighbours, furniture, aerial] = await Promise.all([
     soft(fetchContours(extent), [], 'contours'),
     soft(fetchAllLots(extent), { type: 'FeatureCollection', features: [] } as GeoJSONFC, 'lots'),
     soft(fetchRoads(extent), [], 'roads'),
     soft(fetchRailLines(extent), { train: [], tram: [] }, 'rail lines'),
+    soft(fetchZoning(extent), { type: 'FeatureCollection', features: [] } as GeoJSONFC, 'zoning'),
     soft(fetchNeighbourAddresses(extent), [], 'neighbour addresses'),
     soft(fetchSiteFurniture(extent), emptyFurniture, 'street furniture (OSM)'),
     fetchAerial(extent, 3600, dataDir),
@@ -325,7 +327,7 @@ export async function runSitePipeline(address: string, opts: SitePipelineOpts): 
 
   const bundle: SiteBundle = {
     address, geocode: geo, extent, view, scale,
-    siteLots, siteRing: ring, allLots, roads, railLines, contours, neighbours, furniture,
+    siteLots, siteRing: ring, allLots, roads, railLines, zoning, contours, neighbours, furniture,
     busStops, aerial, generatedAt: new Date().toISOString(),
   };
   await writeFile(join(dataDir, 'site_bundle.json'), JSON.stringify(bundle));
