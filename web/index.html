@@ -60,7 +60,10 @@
     <div class="bar"><div></div></div>
     <div id="log"></div>
   </div>
-  <div id="result"><a id="dl" target="_blank">OPEN CONTEXT ANALYSIS PDF</a></div>
+  <div id="result">
+    <a id="dl" target="_blank">OPEN CONTEXT ANALYSIS PDF</a>
+    <a id="dlcad" style="display:none;margin-left:.6rem;background:#111">DOWNLOAD CAD (DXF/DWG)</a>
+  </div>
   <div id="error"></div>
 
   <footer>Sources: NSW Spatial Services (cadastre, addressing, topo, aerial imagery),
@@ -126,6 +129,8 @@ async function poll(id) {
     if (j.status === 'done') {
       status_.classList.remove('active');
       document.getElementById('dl').href = '/api/jobs/' + id + '/pdf';
+      const cad = document.getElementById('dlcad');
+      if (j.hasCad) { cad.href = '/api/jobs/' + id + '/cad'; cad.style.display = 'inline-block'; }
       result.style.display = 'block';
       go.disabled = false;
       return;

@@ -47,6 +47,7 @@ interface Job {
   status: 'queued' | 'running' | 'done' | 'error';
   log: string[];
   pdfPath?: string;
+  cadPath?: string;
   error?: string;
   createdAt: number;
 }
@@ -83,6 +84,14 @@ async function runJob(job: Job) {
     const pdfPath = join(outDir, 'CONTEXT_ANALYSIS.pdf');
     await htmlToPdf(htmlPath, pdfPath);
     job.pdfPath = pdfPath;
+    job.log.push('exporting CAD (DXF/DWG)…');
+    const { spawnSync } = await import('node:child_process');
+    const cad = spawnSync('python3', [join(ROOT, 'src', 'export', 'dxf_export.py'), outDir], { encoding: 'utf8' });
+    if (cad.status === 0 && existsSync(join(outDir, 'CONTEXT_ANALYSIS_CAD.zip'))) {
+      job.cadPath = join(outDir, 'CONTEXT_ANALYSIS_CAD.zip');
+    } else {
+      job.log.push('CAD export unavailable for this run');
+    }
     job.status = 'done';
     job.log.push('done');
   } catch (e: any) {
@@ -209,7 +218,7 @@ const server = createServer(async (req, res) => {
     if (!job) return json(res, 404, { error: 'Unknown job.' });
     return json(res, 200, {
       id: job.id, address: job.address, status: job.status,
-      log: job.log.slice(-12), error: job.error,
+      log: job.log.slice(-12), error: job.error, hasCad: Boolean(job.cadPath),
     });
   }
 
@@ -223,6 +232,22 @@ const server = createServer(async (req, res) => {
       res.writeHead(200, {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `inline; filename="CONTEXT_ANALYSIS_${slug}.pdf"`,
+      });
+      res.end(data);
+    });
+    return;
+  }
+
+  const cadMatch = url.pathname.match(/^\/api\/jobs\/([0-9a-f-]{36})\/cad$/);
+  if (req.method === 'GET' && cadMatch) {
+    const job = jobs.get(cadMatch[1]);
+    if (!job?.cadPath) return json(res, 404, { error: 'Not ready.' });
+    readFile(job.cadPath, (err, data) => {
+      if (err) return json(res, 500, { error: 'CAD package unreadable.' });
+      const slug = job.address.replace(/[^a-z0-9]+/gi, '_').toUpperCase();
+      res.writeHead(200, {
+        'Content-Type': 'application/zip',
+        'Content-Disposition': `attachment; filename="CONTEXT_ANALYSIS_CAD_${slug}.zip"`,
       });
       res.end(data);
     });

@@ -4,7 +4,8 @@
 FROM node:22-slim
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends chromium fonts-liberation \
+ && apt-get install -y --no-install-recommends chromium fonts-liberation python3 python3-pip \
+ && pip3 install --break-system-packages --no-cache-dir ezdxf pyproj \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

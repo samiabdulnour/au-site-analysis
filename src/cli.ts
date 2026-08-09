@@ -62,4 +62,11 @@ await writeFile(htmlPath, html);
 console.log('printing PDF…');
 const pdfPath = join(outDir, 'CONTEXT_ANALYSIS.pdf');
 await htmlToPdf(htmlPath, pdfPath);
-console.log(`done:\n  ${htmlPath}\n  ${pdfPath}`);
+
+console.log('exporting CAD (DXF/DWG)…');
+const { spawnSync } = await import('node:child_process');
+const cad = spawnSync('python3', ['src/export/dxf_export.py', outDir], { encoding: 'utf8' });
+if (cad.status === 0) console.log(cad.stdout.trim());
+else console.warn(`CAD export failed: ${cad.stderr?.slice(-400)}`);
+
+console.log(`done:\n  ${htmlPath}\n  ${pdfPath}\n  ${join(outDir, 'CONTEXT_ANALYSIS_CAD.zip')}`);

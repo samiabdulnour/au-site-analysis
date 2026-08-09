@@ -56,6 +56,15 @@ Output lands in `out/<address-slug>/`:
   reproducibility and debugging
 - `sheet.html` — the composed sheet (open in a browser to inspect)
 - `CONTEXT_ANALYSIS.pdf` — A1 landscape sheet
+- `CONTEXT_ANALYSIS_CAD.zip` — CAD package for ArchiCAD: `CONTEXT_ANALYSIS.dxf`
+  in real-world meters on the MGA2020 grid, one layer per data class
+  (SITE, CADASTRE, ZONE-*, INST-*, HERITAGE, ROADS, ROAD-NAMES, RAIL-*,
+  BUS-*, ISOCHRONE-*, LABELS-POI, AERIAL), plus georeferenced aerial JPEGs
+  with `.jgw` world files and an import README. A true `.dwg` is added
+  automatically when the free ODA File Converter is installed on the host
+  (download from opendesign.com, then it is found on PATH or via
+  `ODA_CONVERTER=/path/to/ODAFileConverter`); ArchiCAD imports the DXF
+  natively either way.
 
 Options (after `--`): `--scale 3000` (default 3000), `--job 2539`,
 `--client "Name"`, `--status "DEVELOPMENT APPLICATION"`, `--sheet "DA 003"`.
