@@ -19,7 +19,8 @@ const NEIGHBOUR_TEXT = 4.4;
 const RED = '#e30613';
 const BLUE = '#2456c4';
 const WINDBLUE = '#2f9fd6';
-const SUN = '#e8b830';
+const SUN = '#feefab';   // disc + rays, sampled from the reference sheet
+const SUN_TEXT = 8.8;    // label size (mm) on the reference
 
 
 /**
@@ -106,7 +107,7 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     };
     for (const [az, R] of [[azOf(dec), Ri], [-azOf(dec), Ri], [azOf(-dec), Ro], [-azOf(-dec), Ro], [0, Ro]] as [number, number][]) {
       const [x, y] = at(az, R);
-      placer.reserve(x, y, 30, 30);
+      placer.reserve(x, y, 38, 38);
     }
     placer.reserve(MAP_W - 95, 55, 110, 20);
     placer.reserve(MAP_W - 85, MAP_H - 75, 120, 20);
@@ -361,7 +362,7 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     const TYPES = new Set(['STREET','ROAD','AVENUE','PARADE','HIGHWAY','DRIVE','LANE','PLACE','CRESCENT','COURT','BOULEVARD','TERRACE','CIRCUIT','CLOSE','WAY','GROVE','ESPLANADE']);
     let cut = full.length;
     for (let i = 0; i < full.length; i++) if (TYPES.has(full[i])) { cut = i + 1; break; }
-    const street = shortStreetName(full.slice(0, cut).join(' '));
+    void shortStreetName(full.slice(0, cut).join(' ')); // street name intentionally unused in labels
     const boxes: string[] = [];
     const nearLimit = (70 * k) * (MAP_W / (2 * view.halfW)); // 70 m in mm
     const distToSite = (x: number, y: number): number => {
@@ -383,7 +384,7 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
       if (!inMap([x, y]) || inSite(x, y)) continue;
       const zone = zoneAt(n.lon, n.lat);
       const st = storeysAt(n.lon, n.lat);
-      const l1 = `${n.housenumber} ${street}`.trim().toUpperCase();
+      const l1 = n.housenumber.toUpperCase();   // number only — no street name
       const l2 = st ? `${st} STOREY` : '';
       const lines = [l1, l2].filter(Boolean);
       const zoneLines = zone ? wrapLabel(zone, 22) : [];
@@ -401,8 +402,7 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
       zoneLines.forEach((t, i) => {
         inner += `<text x="${px.toFixed(1)}" y="${(by + 1.2 + lh * (lines.length + i + 0.8)).toFixed(1)}" text-anchor="middle" font-size="${fs}" font-weight="700" fill="${BLUE}">${esc(t)}</text>`;
       });
-      boxes.push(`<g><rect x="${bx.toFixed(1)}" y="${by.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}"
-        fill="#ffffff" fill-opacity="0.92"/>${inner}</g>`);
+      boxes.push(`<g>${inner}</g>`);   // no white background panel
     }
     layers.push(boxes.join(''));
   }
@@ -600,14 +600,15 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     layers.push(`<path d="${arc(winterAz, Ri)}" fill="none" stroke="${SUN}" stroke-width="0.9" opacity="0.85" stroke-dasharray="5,2.4"/>`);
     const sun = (az: number, R: number, l1: string, l2: string) => {
       const [x, y] = pt(az, R);
+      const SUN_R = 10.7;                   // 21.4mm disc on the reference
       const rays = [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330].map((a) => {
         const ar = (a * Math.PI) / 180;
-        return `<line x1="${(10.5 * Math.cos(ar)).toFixed(1)}" y1="${(10.5 * Math.sin(ar)).toFixed(1)}" x2="${(14 * Math.cos(ar)).toFixed(1)}" y2="${(14 * Math.sin(ar)).toFixed(1)}" stroke="${SUN}" stroke-width="0.9"/>`;
+        return `<line x1="${(SUN_R * Math.cos(ar)).toFixed(1)}" y1="${(SUN_R * Math.sin(ar)).toFixed(1)}" x2="${((SUN_R + 7) * Math.cos(ar)).toFixed(1)}" y2="${((SUN_R + 7) * Math.sin(ar)).toFixed(1)}" stroke="${SUN}" stroke-width="1.5" stroke-linecap="round"/>`;
       }).join('');
       return `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})">
-        <circle r="10" fill="#f7e69a" stroke="${SUN}" stroke-width="0.9"/>${rays}
-        <text text-anchor="middle" dy="-0.8" font-size="${MAP_TEXT}" font-weight="700" fill="#8a6d00">${l1}</text>
-        <text text-anchor="middle" dy="4.6" font-size="${MAP_TEXT}" font-weight="700" fill="#8a6d00">${l2}</text></g>`;
+        ${rays}<circle r="${SUN_R}" fill="${SUN}"/>
+        <text text-anchor="middle" dy="-0.6" font-size="${SUN_TEXT}" font-weight="700" fill="#000">${l1}</text>
+        <text text-anchor="middle" dy="${SUN_TEXT}" font-size="${SUN_TEXT}" font-weight="700" fill="#000">${l2}</text></g>`;
     };
     layers.push(sun(winterAz, Ri, 'W', 'AM'));
     layers.push(sun(-winterAz, Ri, 'W', 'PM'));
@@ -615,8 +616,8 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     layers.push(sun(-summerAz, Ro, 'S', 'PM'));
     const [nx, ny] = pt(0, Ro);
     layers.push(`<g transform="translate(${nx.toFixed(1)},${ny.toFixed(1)})">
-      <circle r="8" fill="#ffffff" stroke="${SUN}" stroke-width="0.9"/>
-      <text text-anchor="middle" dy="2.6" font-size="7" font-weight="700" fill="#111">N</text></g>`);
+      <circle r="10.7" fill="${SUN}"/>
+      <text text-anchor="middle" dy="3.1" font-size="${SUN_TEXT}" font-weight="700" fill="#000">N</text></g>`);
   }
 
   // ---- prevailing wind banners ----------------------------------------------
@@ -672,8 +673,8 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
   if (sb.furniture.onewayRoads.length) row(`<path d="M${SWATCH_X},3.2 L${SWATCH_X + SWATCH_W - 4},3.2 M${SWATCH_X + SWATCH_W - 7},1.4 L${SWATCH_X + SWATCH_W - 4},3.2 L${SWATCH_X + SWATCH_W - 7},5" fill="none" stroke="#8a8a8a" stroke-width="1.0"/>`, 'TRAFFIC DIRECTION');
   row(`<path d="M${SWATCH_X},4.5 ${Array.from({ length: 6 }, (_, i) => `L${(SWATCH_X + 2 + i * 4).toFixed(1)},${i % 2 ? 4.5 : 1.9}`).join(' ')}" fill="none" stroke="#3b4fd8" stroke-width="0.5"/>`, 'NOISE SOURCE');
   row(`<g transform="translate(${mid},3.2)"><path d="M-9,-3 L5,-3 L9,0 L5,3 L-9,3 Z" fill="#fff" stroke="${WINDBLUE}" stroke-width="0.8"/></g>`, 'PREVAILING BREEZES');
-  row(`<g transform="translate(${mid},3.2)"><circle r="3.2" fill="#f7e69a" stroke="${SUN}" stroke-width="0.5"/><text text-anchor="middle" dy="1.2" font-size="2.6" font-weight="700" fill="#8a6d00">W</text></g>`, 'WINTER SUN (AM/PM)');
-  row(`<g transform="translate(${mid},3.2)"><circle r="3.2" fill="#f7e69a" stroke="${SUN}" stroke-width="0.5"/><text text-anchor="middle" dy="1.2" font-size="2.6" font-weight="700" fill="#8a6d00">S</text></g>`, 'SUMMER SUN (AM/PM)');
+  row(`<g transform="translate(${mid},3.2)"><circle r="3.2" fill="${SUN}"/><text text-anchor="middle" dy="1.2" font-size="3.2" font-weight="700" fill="#000">W</text></g>`, 'WINTER SUN (AM/PM)');
+  row(`<g transform="translate(${mid},3.2)"><circle r="3.2" fill="${SUN}"/><text text-anchor="middle" dy="1.2" font-size="3.2" font-weight="700" fill="#000">S</text></g>`, 'SUMMER SUN (AM/PM)');
 
   const utilKinds = new Set(sb.furniture.utilities.map((u) => u.kind));
   if (utilKinds.has('power')) row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="#f2c200" stroke-width="0.9" stroke-dasharray="4,2.2"/>`, 'POWER LINES');
