@@ -45,6 +45,10 @@ export interface SiteFurniture {
   buildings: { levels?: number; lon: number; lat: number }[];
   /** Utility lines where mapped (power/water/sewer are sparse in OSM). */
   utilities: { kind: 'power' | 'water' | 'sewer' | 'gas'; coords: [number, number][] }[];
+  /** Driveways — the road end becomes a vehicular-access triangle. */
+  driveways: { coords: [number, number][] }[];
+  /** Road segments tagged with kerbside parking. */
+  parkingLanes: { coords: [number, number][]; side: 'left' | 'right' | 'both' }[];
 }
 
 const OVERPASS_MIRRORS = [
@@ -67,6 +71,12 @@ export async function fetchSiteFurniture(extent: Extent): Promise<SiteFurniture>
   way["power"="line"](${bbox});
   way["power"="minor_line"](${bbox});
   way["man_made"="pipeline"](${bbox});
+  way["service"="driveway"](${bbox});
+  way["highway"]["parking:lane:left"](${bbox});
+  way["highway"]["parking:lane:right"](${bbox});
+  way["highway"]["parking:both"](${bbox});
+  way["highway"]["parking:left"](${bbox});
+  way["highway"]["parking:right"](${bbox});
 );
 out geom;`;
   let data: any;
@@ -89,7 +99,7 @@ out geom;`;
 
   const out: SiteFurniture = {
     trees: [], hydrants: [], powerPoles: [], streetLamps: [],
-    onewayRoads: [], buildings: [], utilities: [],
+    onewayRoads: [], buildings: [], utilities: [], driveways: [], parkingLanes: [],
   };
   for (const el of data.elements ?? []) {
     const t = el.tags ?? {};
@@ -103,6 +113,21 @@ out geom;`;
     }
     if (el.type !== 'way' || !el.geometry) continue;
     const coords: [number, number][] = el.geometry.map((g: any) => [g.lon, g.lat]);
+    if (t.service === 'driveway') {
+      out.driveways.push({ coords });
+      continue;
+    }
+    const pl = t['parking:lane:left'] ?? t['parking:left'];
+    const pr = t['parking:lane:right'] ?? t['parking:right'];
+    const pb = t['parking:both'];
+    const parked = (v?: string) => v && v !== 'no' && v !== 'none';
+    if (t.highway && (parked(pl) || parked(pr) || parked(pb))) {
+      out.parkingLanes.push({
+        coords,
+        side: parked(pb) ? 'both' : parked(pl) ? 'left' : 'right',
+      });
+      continue;
+    }
     if (t.building) {
       const lv = parseInt(t['building:levels'] ?? '', 10);
       const cx = coords.reduce((s, c) => s + c[0], 0) / coords.length;

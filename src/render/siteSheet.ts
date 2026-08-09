@@ -15,10 +15,48 @@ const BLUE = '#2456c4';
 const WINDBLUE = '#2f9fd6';
 const SUN = '#e8b830';
 
+
+/**
+ * Label placement: keeps a list of occupied rectangles and, when a label
+ * collides, nudges it outward through a ring of candidate offsets instead of
+ * dropping it. Returns null only if every candidate still overlaps.
+ */
+class Placer {
+  private boxes: { x: number; y: number; w: number; h: number }[] = [];
+  reserve(x: number, y: number, w: number, h: number) {
+    this.boxes.push({ x: x - w / 2, y: y - h / 2, w, h });
+  }
+  private free(x: number, y: number, w: number, h: number): boolean {
+    const a = { x: x - w / 2, y: y - h / 2, w, h };
+    return !this.boxes.some((b) =>
+      a.x < b.x + b.w + 1 && a.x + a.w + 1 > b.x && a.y < b.y + b.h + 1 && a.y + a.h + 1 > b.y);
+  }
+  /**
+   * Try (x,y) then rings of candidates around it; reserves and returns the
+   * spot. `rotDeg` makes the reserved footprint the rotated envelope, so
+   * vertical labels claim the space they actually occupy.
+   */
+  place(x: number, y: number, w: number, h: number, maxRadius = 26, rotDeg = 0): Pt | null {
+    const ar0 = (rotDeg * Math.PI) / 180;
+    const W = Math.abs(w * Math.cos(ar0)) + Math.abs(h * Math.sin(ar0));
+    const H = Math.abs(w * Math.sin(ar0)) + Math.abs(h * Math.cos(ar0));
+    if (this.free(x, y, W, H)) { this.reserve(x, y, W, H); return [x, y]; }
+    for (let r = 4; r <= maxRadius; r += 4) {
+      for (let a = 0; a < 360; a += 30) {
+        const ar = (a * Math.PI) / 180;
+        const nx = x + r * Math.cos(ar), ny = y + r * Math.sin(ar);
+        if (this.free(nx, ny, W, H)) { this.reserve(nx, ny, W, H); return [nx, ny]; }
+      }
+    }
+    return null;
+  }
+}
+
 export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
   const view = sb.view;
   const proj = makeProjector(view);
   const layers: string[] = [];
+  const placer = new Placer();
   const lat = mercatorToLonLat({ x: view.cx, y: view.cy }).lat;
   const k = mercatorScaleFactor(lat);
   const MM = view.halfW * 2 / MAP_W; // mercator meters per mm
@@ -46,6 +84,28 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
   }
 
   const inMapWide = ([x, y]: Pt) => x > -10 && x < MAP_W + 10 && y > -10 && y < MAP_H + 10;
+  const inMap = ([x, y]: Pt) => x > 2 && x < MAP_W - 2 && y > 2 && y < MAP_H - 2;
+
+  // Reserve the fixed graphic furniture up-front (sun discs, wind banners,
+  // site info box) so every later label is nudged clear of them.
+  {
+    const latR = (Math.abs(lat) * Math.PI) / 180;
+    const dec = (23.44 * Math.PI) / 180;
+    const azOf = (d: number) => (Math.acos(Math.sin(d) / Math.cos(latR)) * 180) / Math.PI;
+    const Ro = Math.min(MAP_W, MAP_H) * 0.42, Ri = Ro * 0.72;
+    const cx = MAP_W / 2, cy = MAP_H / 2;
+    const at = (az: number, R: number): Pt => {
+      const azr = ((az + view.rotationDeg) * Math.PI) / 180;
+      return [cx + R * Math.sin(azr), cy - R * Math.cos(azr)];
+    };
+    for (const [az, R] of [[azOf(dec), Ri], [-azOf(dec), Ri], [azOf(-dec), Ro], [-azOf(-dec), Ro], [0, Ro]] as [number, number][]) {
+      const [x, y] = at(az, R);
+      placer.reserve(x, y, 30, 30);
+    }
+    placer.reserve(MAP_W - 95, 55, 110, 20);
+    placer.reserve(MAP_W - 85, MAP_H - 75, 120, 20);
+    placer.reserve(90, MAP_H - 60, 110, 20);
+  }
 
   // ---- cadastre + contours -------------------------------------------------
   if (sb.allLots.features.length) {
@@ -145,8 +205,68 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     }
   }
 
+
+  // ---- street parking zones (hatched band along the kerb) -------------------
+  for (const pz of sb.furniture.parkingLanes) {
+    const pts = pz.coords.map(([lon, lat2]) => proj(lon, lat2));
+    if (pts.length < 2) continue;
+    const sides = pz.side === 'both' ? [1, -1] : pz.side === 'left' ? [-1] : [1];
+    for (const sgn of sides) {
+      const band: string[] = [];
+      for (let i = 1; i < pts.length; i++) {
+        const [ax, ay] = pts[i - 1], [bx, by] = pts[i];
+        const len = Math.hypot(bx - ax, by - ay) || 1;
+        const nx = (-(by - ay) / len) * sgn, ny = ((bx - ax) / len) * sgn;
+        const off = 2.2, w = 2.4;
+        band.push(`M${(ax + nx * off).toFixed(1)},${(ay + ny * off).toFixed(1)}
+          L${(bx + nx * off).toFixed(1)},${(by + ny * off).toFixed(1)}
+          L${(bx + nx * (off + w)).toFixed(1)},${(by + ny * (off + w)).toFixed(1)}
+          L${(ax + nx * (off + w)).toFixed(1)},${(ay + ny * (off + w)).toFixed(1)} Z`);
+      }
+      layers.push(`<path d="${band.join(' ')}" fill="#9b5b6e" fill-opacity="0.5" stroke="#7a3c50" stroke-width="0.25"/>`);
+    }
+  }
+
+  // ---- vehicular access (yellow triangle at the street end of a driveway) ---
+  for (const dw of sb.furniture.driveways) {
+    const pts = dw.coords.map(([lon, lat2]) => proj(lon, lat2));
+    if (pts.length < 2) continue;
+    // the end further from the site centre is the street end
+    const dStart = Math.hypot(pts[0][0] - MAP_W / 2, pts[0][1] - MAP_H / 2);
+    const dEnd = Math.hypot(pts[pts.length - 1][0] - MAP_W / 2, pts[pts.length - 1][1] - MAP_H / 2);
+    const [tx, ty] = dStart > dEnd ? pts[0] : pts[pts.length - 1];
+    const [nx, ny] = dStart > dEnd ? pts[1] : pts[pts.length - 2];
+    if (!inMap([tx, ty])) continue;
+    const ang = (Math.atan2(ny - ty, nx - tx) * 180) / Math.PI + 90;
+    layers.push(`<g transform="translate(${tx.toFixed(1)},${ty.toFixed(1)}) rotate(${ang.toFixed(1)})">
+      <path d="M-3.4,-3 L3.4,-3 L0,3 Z" fill="#f5e400" stroke="#c9bb00" stroke-width="0.3"/></g>`);
+  }
+
+  // ---- traffic direction and lanes -----------------------------------------
+  {
+    const shown = new Set<string>();
+    for (const r of sb.roads) {
+      if (!r.lanes || r.lanes < 1 || r.hierarchy > 5 || shown.has(r.name)) continue;
+      const pts = r.coords.map(([lon, lat2]) => proj(lon, lat2)).filter(inMap);
+      if (pts.length < 2) continue;
+      const i = Math.floor(pts.length / 2);
+      const [ax, ay] = pts[Math.max(0, i - 1)], [bx, by] = pts[i];
+      const ang = (Math.atan2(by - ay, bx - ax) * 180) / Math.PI;
+      const spot = placer.place((ax + bx) / 2, (ay + by) / 2, 10, 12, 12);
+      if (!spot) continue;
+      shown.add(r.name);
+      const lanes = Math.min(4, r.lanes);
+      const arrows = Array.from({ length: lanes }, (_, n) => {
+        const off = (n - (lanes - 1) / 2) * 2.6;
+        const up = n % 2 === 0 ? 1 : -1;
+        return `<path d="M${off},${5 * up} L${off},${-4 * up} M${off - 1.3},${-2.2 * up} L${off},${-4.4 * up} L${off + 1.3},${-2.2 * up}"
+          fill="none" stroke="#ffffff" stroke-width="0.8" stroke-linecap="round" stroke-linejoin="round"/>`;
+      }).join('');
+      layers.push(`<g transform="translate(${spot[0].toFixed(1)},${spot[1].toFixed(1)}) rotate(${(ang + 90).toFixed(1)})">${arrows}</g>`);
+    }
+  }
+
   // ---- street furniture ------------------------------------------------------
-  const inMap = ([x, y]: Pt) => x > 2 && x < MAP_W - 2 && y > 2 && y < MAP_H - 2;
   layers.push(sb.furniture.trees.map((p) => proj(p.lon, p.lat)).filter(inMap)
     .map(([x, y]) => `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="#7dbb57" fill-opacity="0.45" stroke="#4e8c33" stroke-width="0.3"/>`)
     .join(''));
@@ -176,6 +296,13 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     }
     return inside;
   };
+
+  // The FALL/AREA box sits on the site centre — reserve it before labels.
+  {
+    const cx0 = sitePx.reduce((s2, p) => s2 + p[0], 0) / sitePx.length;
+    const cy0 = sitePx.reduce((s2, p) => s2 + p[1], 0) / sitePx.length;
+    placer.reserve(cx0, cy0, 46, 20);
+  }
 
   // ---- (4) neighbour info boxes: address, storeys (where known), zone ------
   {
@@ -229,7 +356,6 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     let cut = full.length;
     for (let i = 0; i < full.length; i++) if (TYPES.has(full[i])) { cut = i + 1; break; }
     const street = shortStreetName(full.slice(0, cut).join(' '));
-    const placed: { x: number; y: number; w: number; h: number }[] = [];
     const boxes: string[] = [];
     const nearLimit = (70 * k) * (MAP_W / (2 * view.halfW)); // 70 m in mm
     const distToSite = (x: number, y: number): number => {
@@ -258,15 +384,16 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
       const fs = 3.6, lh = fs * 1.16;
       const w = Math.max(...[...lines, ...zoneLines].map((t) => t.length)) * fs * 0.52 + 4;
       const h = (lines.length + zoneLines.length) * lh + 2.4;
-      const bx = x - w / 2, by = y - h / 2;
-      if (placed.some((p) => bx < p.x + p.w + 2 && bx + w + 2 > p.x && by < p.y + p.h + 2 && by + h + 2 > p.y)) continue;
-      placed.push({ x: bx, y: by, w, h });
+      const spot = placer.place(x, y, w, h, 30);
+      if (!spot) continue;
+      const [px, py] = spot;
+      const bx = px - w / 2, by = py - h / 2;
       let inner = '';
       lines.forEach((t, i) => {
-        inner += `<text x="${x.toFixed(1)}" y="${(by + 1.2 + lh * (i + 0.8)).toFixed(1)}" text-anchor="middle" font-size="${fs}" font-weight="700" fill="#111">${esc(t)}</text>`;
+        inner += `<text x="${px.toFixed(1)}" y="${(by + 1.2 + lh * (i + 0.8)).toFixed(1)}" text-anchor="middle" font-size="${fs}" font-weight="700" fill="#111">${esc(t)}</text>`;
       });
       zoneLines.forEach((t, i) => {
-        inner += `<text x="${x.toFixed(1)}" y="${(by + 1.2 + lh * (lines.length + i + 0.8)).toFixed(1)}" text-anchor="middle" font-size="${fs}" font-weight="700" fill="${BLUE}">${esc(t)}</text>`;
+        inner += `<text x="${px.toFixed(1)}" y="${(by + 1.2 + lh * (lines.length + i + 0.8)).toFixed(1)}" text-anchor="middle" font-size="${fs}" font-weight="700" fill="${BLUE}">${esc(t)}</text>`;
       });
       boxes.push(`<g><rect x="${bx.toFixed(1)}" y="${by.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}"
         fill="#ffffff" fill-opacity="0.92"/>${inner}</g>`);
@@ -357,11 +484,12 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     const ox = mx - centroidPx[0], oy = my - centroidPx[1];
     const on = Math.hypot(ox, oy) || 1;
     const lx = mx + (ox / on) * 5.0, lyy = my + (oy / on) * 5.0;
-    if (sbPlaced.some(([px, py]) => Math.hypot(px - lx, py - lyy) < 16)) continue;
-    sbPlaced.push([lx, lyy]);
-    layers.push(`<text transform="translate(${lx.toFixed(1)},${lyy.toFixed(1)}) rotate(${ang.toFixed(1)})"
+    const txt = `SB ${len.toFixed(2)}`;
+    const spot = placer.place(lx, lyy, txt.length * 2.5, 5.4, 16, ang);
+    if (!spot) continue;
+    layers.push(`<text transform="translate(${spot[0].toFixed(1)},${spot[1].toFixed(1)}) rotate(${ang.toFixed(1)})"
       text-anchor="middle" font-size="4.6" font-weight="700" fill="${RED}"
-      stroke="#ffffff" stroke-width="1.1" paint-order="stroke">SB ${len.toFixed(2)}</text>`);
+      stroke="#ffffff" stroke-width="1.1" paint-order="stroke">${txt}</text>`);
   }
 
   // corner levels from contours (IDW of the two nearest distinct elevations)
@@ -390,17 +518,14 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     const rl = rlOf(sb.siteRing[i][0], sb.siteRing[i][1]);
     if (rl != null) cornerRls.push({ i, rl });
   }
-  {
-    const placedRl: Pt[] = [];
-    for (const { i, rl } of cornerRls) {
-      const [x, y] = ringPx[i];
-      const ox = x - centroidPx[0], oy = y - centroidPx[1];
-      const on = Math.hypot(ox, oy) || 1;
-      const lx = x + (ox / on) * 9, lyy = y + (oy / on) * 9 - 3.5;
-      if (placedRl.some(([px, py]) => Math.hypot(px - lx, py - lyy) < 13)) continue;
-      placedRl.push([lx, lyy]);
-      layers.push(haloText(lx, lyy, [`RL ${rl.toFixed(2)}`], 4.6, RED));
-    }
+  for (const { i, rl } of cornerRls) {
+    const [x, y] = ringPx[i];
+    const ox = x - centroidPx[0], oy = y - centroidPx[1];
+    const on = Math.hypot(ox, oy) || 1;
+    const txt = `RL ${rl.toFixed(2)}`;
+    const spot = placer.place(x + (ox / on) * 9, y + (oy / on) * 9 - 3.5, txt.length * 2.6, 5.4, 16);
+    if (!spot) continue;
+    layers.push(haloText(spot[0], spot[1], [txt], 4.6, RED));
   }
 
   // fall arrow: highest -> lowest corner
@@ -530,6 +655,9 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
   row(`<text x="${SWATCH_X}" y="5.4" font-size="3.2" font-weight="700" fill="${RED}">RL 24.5</text>`, 'SURFACE LEVEL (AHD)');
   if (sb.contours.length) row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="#a07c3f" stroke-width="0.6"/><text x="${SWATCH_X + 1}" y="2.2" font-size="2.2" font-weight="700" fill="#8a6a2f">RL 20</text>`, 'CONTOURS (m AHD)');
   row(`<g><rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="#fff" stroke="#bbb" stroke-width="0.2"/><text x="${SWATCH_X + SWATCH_W / 2}" y="2.8" text-anchor="middle" font-size="2" font-weight="700" fill="#111">8 LEVUKA ST</text><text x="${SWATCH_X + SWATCH_W / 2}" y="5.2" text-anchor="middle" font-size="2" font-weight="700" fill="${BLUE}">R3 MEDIUM</text></g>`, 'NEIGHBOUR: ADDRESS, STOREYS, ZONE');
+  if (sb.furniture.parkingLanes.length) row(`<g><rect x="${SWATCH_X}" y="0.5" width="${SWATCH_W}" height="5.5" fill="#9b5b6e" fill-opacity="0.55" stroke="#7a3c50" stroke-width="0.3"/>${Array.from({ length: 7 }, (_, i) => `<line x1="${SWATCH_X + i * 3.4}" y1="6" x2="${SWATCH_X + i * 3.4 + 3}" y2="0.5" stroke="#5f2c3c" stroke-width="0.4"/>`).join('')}</g>`, 'STREET PARKING ZONE');
+  if (sb.furniture.driveways.length) row(`<path d="M${mid - 3.6},1.4 L${mid + 3.6},1.4 L${mid},6 Z" fill="#f5e400" stroke="#c9bb00" stroke-width="0.3"/>`, 'VEHICULAR ACCESS');
+  if (sb.roads.some((r) => r.lanes)) row(`<g transform="translate(${mid},3.2)"><path d="M-1.6,3 L-1.6,-2.6 M-2.6,-1 L-1.6,-3 L-0.6,-1" fill="none" stroke="#555" stroke-width="0.5"/><path d="M1.6,-3 L1.6,2.6 M0.6,1 L1.6,3 L2.6,1" fill="none" stroke="#555" stroke-width="0.5"/></g>`, 'TRAFFIC DIRECTION AND LANES');
   if (sb.furniture.trees.length) row(`<circle cx="${mid}" cy="3.2" r="2.8" fill="#7dbb57" fill-opacity="0.5" stroke="#4e8c33" stroke-width="0.4"/>`, 'EXISTING TREES');
   if (sb.furniture.powerPoles.length) row(`<g transform="translate(${mid},3.2)"><line x1="-2.4" y1="0" x2="2.4" y2="0" stroke="#333" stroke-width="0.4"/><circle r="1.2" fill="none" stroke="#333" stroke-width="0.45"/></g>`, 'POWER POLE');
   if (sb.furniture.streetLamps.length) row(`<circle cx="${mid}" cy="3.2" r="1.4" fill="#f0c020" stroke="#a8860b" stroke-width="0.3"/>`, 'LIGHT POLE');

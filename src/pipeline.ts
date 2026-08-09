@@ -301,7 +301,7 @@ export async function runSitePipeline(address: string, opts: SitePipelineOpts): 
   };
   const extent = viewBounds(view);
 
-  const emptyFurniture: SiteFurniture = { trees: [], hydrants: [], powerPoles: [], streetLamps: [], onewayRoads: [], buildings: [], utilities: [] };
+  const emptyFurniture: SiteFurniture = { trees: [], hydrants: [], powerPoles: [], streetLamps: [], onewayRoads: [], buildings: [], utilities: [], driveways: [], parkingLanes: [] };
   const soft = <T,>(p: Promise<T>, fallback: T, name: string): Promise<T> =>
     p.catch((e) => { log(`  WARN ${name} failed: ${e.message ?? e}`); return fallback; });
 

@@ -11,7 +11,7 @@ const FOI = `${PORTAL}/NSW_Features_of_Interest_Category/FeatureServer`;
 const FOI_TRANSPORT = `${PORTAL}/NSW_FOI_Transport_Facilities/FeatureServer`;
 const CADASTRE = `${PORTAL}/NSW_Land_Parcel_Property_Theme/FeatureServer`;
 
-export interface TopoRoad { name: string; hierarchy: number; coords: [number, number][] }
+export interface TopoRoad { name: string; hierarchy: number; lanes?: number; coords: [number, number][] }
 export interface NamedPoint { name: string; lon: number; lat: number }
 
 function lineCoords(fc: GeoJSONFC): { paths: [number, number][][]; props: Record<string, any>[] } {
@@ -27,11 +27,12 @@ function lineCoords(fc: GeoJSONFC): { paths: [number, number][][]; props: Record
 
 export async function fetchRoads(extent: Extent): Promise<TopoRoad[]> {
   const fc = await queryByExtent(`${TRANSPORT}/5`, extent,
-    'roadnamebase,roadnametype,functionhierarchy', 'roadnamebase IS NOT NULL');
+    'roadnamebase,roadnametype,functionhierarchy,lanecount', 'roadnamebase IS NOT NULL');
   const { paths, props } = lineCoords(fc);
   return paths.map((coords, i) => ({
     name: [props[i].roadnamebase, props[i].roadnametype].filter(Boolean).join(' '),
     hierarchy: props[i].functionhierarchy ?? 6,
+    lanes: props[i].lanecount ?? undefined,
     coords,
   }));
 }
