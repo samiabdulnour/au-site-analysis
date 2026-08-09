@@ -14,8 +14,9 @@ import { rm, readdir, stat, writeFile } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID, createHmac, timingSafeEqual } from 'node:crypto';
-import { runPipeline } from './pipeline.js';
+import { runPipeline, runSitePipeline } from './pipeline.js';
 import { renderSheet, MAP_W, MAP_H, type SheetMeta } from './render/sheet.js';
+import { renderSiteSheet } from './render/siteSheet.js';
 import { htmlToPdf } from './render/pdf.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -43,7 +44,8 @@ const WEB_OUT = join(ROOT, 'out', 'web');
 interface Job {
   id: string;
   address: string;
-  scale: number;
+  sheet: 'context' | 'site';
+  scale: number;            // 0 = auto (site sheets)
   rotate: 'north' | 'auto';
   status: 'queued' | 'running' | 'done' | 'error';
   log: string[];
@@ -70,29 +72,46 @@ async function runJob(job: Job) {
       jobNo: '', client: '', status: '', sheetNo: '', revision: '',
       checked: '', drawn: '', date: '', preliminary: false, office,
     };
-    const bundle = await runPipeline(job.address, {
-      scale: job.scale,
-      mapWidthMm: MAP_W,
-      mapHeightMm: MAP_H,
-      outDir,
-      rotate: job.rotate,
-      log: (m) => job.log.push(m),
-    });
-    job.log.push('composing sheet…');
-    const html = renderSheet(bundle, meta);
-    const htmlPath = join(outDir, 'sheet.html');
-    await writeFile(htmlPath, html);
-    job.log.push('printing PDF…');
-    const pdfPath = join(outDir, 'CONTEXT_ANALYSIS.pdf');
-    await htmlToPdf(htmlPath, pdfPath);
-    job.pdfPath = pdfPath;
-    job.log.push('exporting CAD (DXF/DWG)…');
-    const { spawnSync } = await import('node:child_process');
-    const cad = spawnSync('python3', [join(ROOT, 'src', 'export', 'dxf_export.py'), outDir], { encoding: 'utf8' });
-    if (cad.status === 0 && existsSync(join(outDir, 'CONTEXT_ANALYSIS_CAD.zip'))) {
-      job.cadPath = join(outDir, 'CONTEXT_ANALYSIS_CAD.zip');
+    if (job.sheet === 'site') {
+      const sb = await runSitePipeline(job.address, {
+        mapWidthMm: MAP_W,
+        mapHeightMm: MAP_H,
+        outDir,
+        scale: job.scale || undefined,   // 0 => auto-fit
+        rotate: job.rotate,
+        log: (m) => job.log.push(m),
+      });
+      job.log.push('composing site analysis…');
+      const htmlPath = join(outDir, 'site_sheet.html');
+      await writeFile(htmlPath, renderSiteSheet(sb, meta));
+      job.log.push('printing PDF…');
+      const pdfPath = join(outDir, 'SITE_ANALYSIS.pdf');
+      await htmlToPdf(htmlPath, pdfPath);
+      job.pdfPath = pdfPath;
     } else {
-      job.log.push('CAD export unavailable for this run');
+      const bundle = await runPipeline(job.address, {
+        scale: job.scale,
+        mapWidthMm: MAP_W,
+        mapHeightMm: MAP_H,
+        outDir,
+        rotate: job.rotate,
+        log: (m) => job.log.push(m),
+      });
+      job.log.push('composing context analysis…');
+      const htmlPath = join(outDir, 'sheet.html');
+      await writeFile(htmlPath, renderSheet(bundle, meta));
+      job.log.push('printing PDF…');
+      const pdfPath = join(outDir, 'CONTEXT_ANALYSIS.pdf');
+      await htmlToPdf(htmlPath, pdfPath);
+      job.pdfPath = pdfPath;
+      job.log.push('exporting CAD (DXF/DWG)…');
+      const { spawnSync } = await import('node:child_process');
+      const cad = spawnSync('python3', [join(ROOT, 'src', 'export', 'dxf_export.py'), outDir], { encoding: 'utf8' });
+      if (cad.status === 0 && existsSync(join(outDir, 'CONTEXT_ANALYSIS_CAD.zip'))) {
+        job.cadPath = join(outDir, 'CONTEXT_ANALYSIS_CAD.zip');
+      } else {
+        job.log.push('CAD export unavailable for this run');
+      }
     }
     job.status = 'done';
     job.log.push('done');
@@ -202,12 +221,16 @@ const server = createServer(async (req, res) => {
     if (limited(`jobs:${ip}`, 12, 3600_000)) return json(res, 429, { error: 'Rate limit: try again later.' });
     const body = await readBody(req);
     try {
-      const { address, scale, rotate } = JSON.parse(body || '{}');
+      const { address, scale, rotate, sheet } = JSON.parse(body || '{}');
       const addr = String(address ?? '').trim();
       if (addr.length < 8 || addr.length > 120) return json(res, 400, { error: 'Enter a full NSW street address.' });
-      const sc = Math.min(6000, Math.max(1000, Number(scale) || 3000));
+      const kind: 'context' | 'site' = sheet === 'site' ? 'site' : 'context';
+      const raw = Number(scale) || 0;
+      const sc = kind === 'site'
+        ? (raw ? Math.min(1000, Math.max(100, raw)) : 0)          // 0 = auto-fit
+        : Math.min(6000, Math.max(1000, raw || 3000));
       const job: Job = {
-        id: randomUUID(), address: addr, scale: sc,
+        id: randomUUID(), address: addr, sheet: kind, scale: sc,
         rotate: rotate === 'auto' ? 'auto' : 'north',
         status: 'queued', log: [], createdAt: Date.now(),
       };
@@ -225,7 +248,7 @@ const server = createServer(async (req, res) => {
     if (!job) return json(res, 404, { error: 'Unknown job.' });
     return json(res, 200, {
       id: job.id, address: job.address, status: job.status,
-      log: job.log.slice(-12), error: job.error, hasCad: Boolean(job.cadPath),
+      log: job.log.slice(-12), error: job.error, hasCad: Boolean(job.cadPath), sheet: job.sheet,
     });
   }
 
@@ -236,9 +259,10 @@ const server = createServer(async (req, res) => {
     readFile(job.pdfPath, (err, data) => {
       if (err) return json(res, 500, { error: 'PDF unreadable.' });
       const slug = job.address.replace(/[^a-z0-9]+/gi, '_').toUpperCase();
+      const kind = job.sheet === 'site' ? 'SITE' : 'CONTEXT';
       res.writeHead(200, {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `inline; filename="CONTEXT_ANALYSIS_${slug}.pdf"`,
+        'Content-Disposition': `inline; filename="${kind}_ANALYSIS_${slug}.pdf"`,
       });
       res.end(data);
     });
