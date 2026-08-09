@@ -15,6 +15,14 @@
   input[type=text] { flex: 1; font-size: 1.05rem; padding: .85rem 1rem; border: 2px solid #111; border-radius: 0; }
   input[type=text]:focus { outline: 2px solid #e8402a; border-color: #e8402a; }
   select { font-size: .95rem; border: 2px solid #111; padding: 0 .5rem; background: #fff; }
+  .addrwrap { position: relative; flex: 1; }
+  .addrwrap input { width: 100%; }
+  #suggest { position: absolute; left: 0; right: 0; top: 100%; z-index: 5; list-style: none;
+             background: #fff; border: 2px solid #111; border-top: 0; max-height: 15rem;
+             overflow-y: auto; display: none; }
+  #suggest.open { display: block; }
+  #suggest li { padding: .5rem .8rem; font-size: .92rem; cursor: pointer; }
+  #suggest li:hover, #suggest li.active { background: #ffe9e6; }
   button { font-size: 1rem; font-weight: 700; letter-spacing: .06em; padding: .85rem 1.4rem;
            background: #111; color: #fff; border: 0; cursor: pointer; }
   button:hover { background: #e8402a; }
@@ -47,8 +55,11 @@
   </form>
 
   <form id="f" style="display:none">
-    <input id="address" type="text" placeholder="e.g. 26-30 Campsie St, Campsie NSW 2194"
-           autocomplete="street-address" autofocus>
+    <div class="addrwrap">
+      <input id="address" type="text" placeholder="Start typing a NSW address…"
+             autocomplete="off" autocapitalize="off" spellcheck="false" autofocus>
+      <ul id="suggest"></ul>
+    </div>
     <select id="sheet" title="Drawing">
       <option value="context" selected>Context analysis</option>
       <option value="site">Site analysis</option>
@@ -97,6 +108,58 @@ function fillScales() {
 }
 sheetSel.addEventListener('change', fillScales);
 fillScales();
+
+// ---- address type-ahead against the NSW address register -----------------
+const addrInput = document.getElementById('address');
+const suggestBox = document.getElementById('suggest');
+let suggestTimer = null, activeIdx = -1, lastQuery = '';
+
+function closeSuggest() { suggestBox.classList.remove('open'); activeIdx = -1; }
+
+function renderSuggest(items) {
+  if (!items.length) return closeSuggest();
+  suggestBox.innerHTML = items.map((a) => `<li>${a}</li>`).join('');
+  [...suggestBox.children].forEach((li, i) => {
+    li.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      addrInput.value = li.textContent;
+      closeSuggest();
+    });
+    li.addEventListener('mouseenter', () => { activeIdx = i; highlight(); });
+  });
+  suggestBox.classList.add('open');
+}
+function highlight() {
+  [...suggestBox.children].forEach((li, i) => li.classList.toggle('active', i === activeIdx));
+}
+
+addrInput.addEventListener('input', () => {
+  const q = addrInput.value.trim();
+  clearTimeout(suggestTimer);
+  if (q.length < 4) return closeSuggest();
+  suggestTimer = setTimeout(async () => {
+    if (q === lastQuery) return;
+    lastQuery = q;
+    try {
+      const r = await fetch('/api/address?q=' + encodeURIComponent(q));
+      const j = await r.json();
+      if (addrInput.value.trim() === q) renderSuggest(j.suggestions || []);
+    } catch { closeSuggest(); }
+  }, 250);
+});
+
+addrInput.addEventListener('keydown', (e) => {
+  if (!suggestBox.classList.contains('open')) return;
+  const n = suggestBox.children.length;
+  if (e.key === 'ArrowDown') { e.preventDefault(); activeIdx = (activeIdx + 1) % n; highlight(); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); activeIdx = (activeIdx - 1 + n) % n; highlight(); }
+  else if (e.key === 'Enter' && activeIdx >= 0) {
+    e.preventDefault();
+    addrInput.value = suggestBox.children[activeIdx].textContent;
+    closeSuggest();
+  } else if (e.key === 'Escape') closeSuggest();
+});
+addrInput.addEventListener('blur', () => setTimeout(closeSuggest, 120));
 
 // Show login or generator depending on session state.
 fetch('/api/me').then(r => {

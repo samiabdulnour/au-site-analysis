@@ -15,6 +15,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID, createHmac, timingSafeEqual } from 'node:crypto';
 import { runPipeline, runSitePipeline } from './pipeline.js';
+import { suggestAddresses } from './fetch/geocode.js';
 import { renderSheet, MAP_W, MAP_H, type SheetMeta } from './render/sheet.js';
 import { renderSiteSheet } from './render/siteSheet.js';
 import { htmlToPdf } from './render/pdf.js';
@@ -216,6 +217,16 @@ const server = createServer(async (req, res) => {
 
   // Everything below requires auth.
   if (!authed(req)) return json(res, 401, { error: 'Not authorised.' });
+
+  if (req.method === 'GET' && url.pathname === '/api/address') {
+    const q = url.searchParams.get('q') ?? '';
+    if (limited(`sugg:${ip}`, 120, 60_000)) return json(res, 429, { suggestions: [] });
+    try {
+      return json(res, 200, { suggestions: await suggestAddresses(q) });
+    } catch {
+      return json(res, 200, { suggestions: [] });
+    }
+  }
 
   if (req.method === 'POST' && url.pathname === '/api/jobs') {
     if (limited(`jobs:${ip}`, 12, 3600_000)) return json(res, 429, { error: 'Rate limit: try again later.' });

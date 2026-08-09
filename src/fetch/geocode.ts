@@ -146,3 +146,58 @@ export async function geocode(input: string): Promise<GeocodeResult> {
     query: input,
   };
 }
+
+/**
+ * Type-ahead suggestions from the NSW address register. Accepts partial input
+ * ("26 campsie st") and returns official address strings for a picker.
+ */
+export async function suggestAddresses(q: string, limit = 8): Promise<string[]> {
+  const raw = q.toUpperCase().replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
+  if (raw.length < 4) return [];
+  const cleaned = raw.replace(/\b(NSW|AUSTRALIA)\b/g, '').replace(/\b\d{4}\b/g, '')
+    .replace(/^(UNIT|SHOP|SUITE|LEVEL|APT)\s+\w+[,/]?\s+/, '').replace(/^\w+\//, '')
+    .replace(/\s+/g, ' ').trim();
+  const m = cleaned.match(/^(\d+[A-Z]?)(?:\s*-\s*\d+[A-Z]?)?\s+(.*)$/);
+  if (!m) return [];
+  const [, num, rest] = m;
+
+  // Expand abbreviated street types wherever they appear, then split the
+  // street from any typed locality at the last street-type word.
+  const words = rest.split(' ').map((w) => STREET_TYPES[w.toLowerCase()] ?? w);
+  let typeIdx = -1;
+  for (let i = 0; i < words.length; i++) if (TYPE_WORDS.has(words[i])) typeIdx = i;
+  const street = (typeIdx >= 0 ? words.slice(0, typeIdx + 1) : words).join(' ');
+  const locality = typeIdx >= 0 ? words.slice(typeIdx + 1).join(' ') : '';
+
+  const out = new Map<string, string>();
+  const add = (a: string) => { if (a && !out.has(a)) out.set(a, a); };
+
+  // Pass 1: prefix match on "<number> <street>" (fast, covers most typing).
+  try {
+    const fc = await queryWhere(ADDRESS_POINT,
+      `address LIKE '${sql(`${num} ${street}`)}%' AND housenumber NOT LIKE '%/%'`,
+      'address', 60);
+    for (const f of fc.features) add(f.properties.address as string);
+  } catch { /* best effort */ }
+
+  // Pass 2: street-wide search filtered by number coverage — finds ranged
+  // parents ("212" inside "212-218") and localities the user did not type.
+  if (out.size < 3) {
+    try {
+      const fc = await queryWhere(ADDRESS_POINT,
+        `address LIKE '%${sql(street)}%' AND housenumber NOT LIKE '%/%'`,
+        'address,housenumber', 600);
+      for (const f of fc.features) {
+        const hn = String(f.properties.housenumber ?? '');
+        if (covers(hn, num)) add(f.properties.address as string);
+      }
+    } catch { /* best effort */ }
+  }
+
+  // Rank: typed locality first, then shortest/alphabetical.
+  const all = [...out.keys()];
+  const pref = locality ? all.filter((a) => a.includes(locality)) : [];
+  const rest2 = all.filter((a) => !pref.includes(a));
+  const rank = (arr: string[]) => arr.sort((a, b) => a.length - b.length || a.localeCompare(b));
+  return [...rank(pref), ...rank(rest2)].slice(0, limit);
+}

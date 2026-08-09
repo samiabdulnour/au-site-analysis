@@ -10,6 +10,12 @@ import {
 } from './sheet.js';
 import { sheetHtml, esc, T, SWATCH_X, SWATCH_W, LABEL_X, MAP_W, MAP_H } from './chrome.js';
 
+// One uniform bold size for all map text on this sheet. Exceptions: street
+// names on the white arrows (wide-spaced, set separately) and the neighbour
+// identification boxes (a step smaller).
+const MAP_TEXT = 5.2;
+const NEIGHBOUR_TEXT = 4.4;
+
 const RED = '#e30613';
 const BLUE = '#2456c4';
 const WINDBLUE = '#2f9fd6';
@@ -129,8 +135,8 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
       if (ang > 90) ang -= 180;
       if (ang < -90) ang += 180;
       layers.push(`<text transform="translate(${x.toFixed(1)},${y.toFixed(1)}) rotate(${ang.toFixed(1)})"
-        text-anchor="middle" dy="-1.4" font-size="4.2" font-weight="700" fill="#8a6a2f"
-        stroke="#ffffff" stroke-width="1.0" paint-order="stroke">RL ${c.elevation.toFixed(0)}</text>`);
+        text-anchor="middle" dy="-1.4" font-size="${MAP_TEXT}" font-weight="700"
+        fill="#8a6a2f">RL ${c.elevation.toFixed(0)}</text>`);
     }
   }
 
@@ -381,7 +387,7 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
       const l2 = st ? `${st} STOREY` : '';
       const lines = [l1, l2].filter(Boolean);
       const zoneLines = zone ? wrapLabel(zone, 22) : [];
-      const fs = 4.4, lh = fs * 1.16;
+      const fs = NEIGHBOUR_TEXT, lh = fs * 1.16;
       const w = Math.max(...[...lines, ...zoneLines].map((t) => t.length)) * fs * 0.54 + 4.5;
       const h = (lines.length + zoneLines.length) * lh + 2.4;
       const spot = placer.place(x, y, w, h, 30);
@@ -489,8 +495,7 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     const spot = placer.place(lx, lyy, txt.length * 3.0, 6.4, 16, ang);
     if (!spot) continue;
     layers.push(`<text transform="translate(${spot[0].toFixed(1)},${spot[1].toFixed(1)}) rotate(${ang.toFixed(1)})"
-      text-anchor="middle" font-size="5.6" font-weight="700" fill="${RED}"
-      stroke="#ffffff" stroke-width="1.3" paint-order="stroke">${txt}</text>`);
+      text-anchor="middle" font-size="${MAP_TEXT}" font-weight="700" fill="${RED}">${txt}</text>`);
   }
 
   // corner levels from contours (IDW of the two nearest distinct elevations)
@@ -526,7 +531,7 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     const txt = `RL ${rl.toFixed(2)}`;
     const spot = placer.place(x + (ox / on) * 10, y + (oy / on) * 10 - 3.5, txt.length * 3.1, 6.4, 18);
     if (!spot) continue;
-    layers.push(haloText(spot[0], spot[1], [txt], 5.6, RED));
+    layers.push(plainText(spot[0], spot[1], [txt], MAP_TEXT, RED));
   }
 
   // fall arrow: highest -> lowest corner
@@ -560,7 +565,7 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     const fallTxt = fallInfo ? `FALL ${fallInfo.drop.toFixed(2)}m` : null;
     const lines = fallTxt ? [fallTxt, areaTxt] : [areaTxt];
     const ang = fallInfo ? fallInfo.angDeg : 0;
-    const fs = 6.0, lh = fs * 1.12;
+    const fs = MAP_TEXT, lh = fs * 1.12;
     const w = Math.max(...lines.map((t) => t.length)) * fs * 0.55 + 4;
     const h = lines.length * lh + 2;
     layers.push(`<g transform="translate(${centroidPx[0].toFixed(1)},${centroidPx[1].toFixed(1)}) rotate(${ang.toFixed(1)})">
@@ -601,8 +606,8 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
       }).join('');
       return `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})">
         <circle r="10" fill="#f7e69a" stroke="${SUN}" stroke-width="0.9"/>${rays}
-        <text text-anchor="middle" dy="-0.8" font-size="5.2" font-weight="700" fill="#8a6d00">${l1}</text>
-        <text text-anchor="middle" dy="4.6" font-size="5.2" font-weight="700" fill="#8a6d00">${l2}</text></g>`;
+        <text text-anchor="middle" dy="-0.8" font-size="${MAP_TEXT}" font-weight="700" fill="#8a6d00">${l1}</text>
+        <text text-anchor="middle" dy="4.6" font-size="${MAP_TEXT}" font-weight="700" fill="#8a6d00">${l2}</text></g>`;
     };
     layers.push(sun(winterAz, Ri, 'W', 'AM'));
     layers.push(sun(-winterAz, Ri, 'W', 'PM'));
@@ -611,7 +616,7 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     const [nx, ny] = pt(0, Ro);
     layers.push(`<g transform="translate(${nx.toFixed(1)},${ny.toFixed(1)})">
       <circle r="8" fill="#ffffff" stroke="${SUN}" stroke-width="0.9"/>
-      <text text-anchor="middle" dy="2.8" font-size="7.5" font-weight="700" fill="#111">N</text></g>`);
+      <text text-anchor="middle" dy="2.6" font-size="7" font-weight="700" fill="#111">N</text></g>`);
   }
 
   // ---- prevailing wind banners ----------------------------------------------
@@ -623,13 +628,13 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
       let tipRight = true;
       if (ang > 90 || ang < -90) { ang += 180; tipRight = false; }
       if (ang > 180) ang -= 360;
-      const W = text.length * 3.1 + 22, H = 13;
+      const W = text.length * 3.3 + 22, H = 14;
       const tip = tipRight
         ? `M${(-W / 2).toFixed(1)},${-H / 2} L${(W / 2 - 6).toFixed(1)},${-H / 2} L${(W / 2).toFixed(1)},0 L${(W / 2 - 6).toFixed(1)},${H / 2} L${(-W / 2).toFixed(1)},${H / 2} Z`
         : `M${(W / 2).toFixed(1)},${-H / 2} L${(-W / 2 + 6).toFixed(1)},${-H / 2} L${(-W / 2).toFixed(1)},0 L${(-W / 2 + 6).toFixed(1)},${H / 2} L${(W / 2).toFixed(1)},${H / 2} Z`;
       return `<g transform="translate(${x},${y}) rotate(${ang.toFixed(1)})">
         <path d="${tip}" fill="#ffffff" fill-opacity="0.92" stroke="${WINDBLUE}" stroke-width="1.4"/>
-        <text text-anchor="middle" dy="1.7" font-size="4.6" font-weight="700" fill="${WINDBLUE}">${esc(text)}</text>
+        <text text-anchor="middle" dy="1.8" font-size="${MAP_TEXT}" font-weight="700" fill="${WINDBLUE}">${esc(text)}</text>
       </g>`;
     };
     layers.push(banner(MAP_W - 95, 55, 'NE SUMMER SEA BREEZE'));

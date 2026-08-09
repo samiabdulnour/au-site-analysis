@@ -138,6 +138,7 @@ ${o.layers.join('\n')}
 <div class="titlecol">
   <div class="abs fine" style="top:10mm;left:4.8mm;right:0">
     ${esc(o.address)}<br>Generated: ${esc(o.generatedAt.slice(0, 10))}${meta.office.name ? `<br>© ${esc(meta.office.name)}` : ''}
+    <br>GENERATED WITH SITE ANALYST — © SAMI ABDULNOUR, LICENSED USE.
   </div>
   <div class="abs" style="top:19mm;left:4.8mm;right:0">
     <div class="fine" style="font-weight:700">NOTE:</div>
