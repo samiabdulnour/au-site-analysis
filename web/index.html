@@ -10,7 +10,6 @@
          display: flex; min-height: 100vh; justify-content: center; }
   main { width: min(680px, 92vw); padding: 9vh 0 4rem; }
   h1 { font-size: 1.6rem; letter-spacing: .08em; font-weight: 700; }
-  h1 span { text-decoration: line-through; font-weight: 400; }
   p.sub { color: #555; margin: .6rem 0 2.4rem; font-size: .95rem; }
   form { display: flex; gap: .6rem; }
   input[type=text] { flex: 1; font-size: 1.05rem; padding: .85rem 1rem; border: 2px solid #111; border-radius: 0; }
@@ -36,8 +35,8 @@
 </head>
 <body>
 <main>
-  <h1>SITE<span>—</span>ANALYST</h1>
-  <p class="sub">Enter a NSW street address. The context analysis sheet (A1 PDF, readable at A3)
+  <h1>SITE ANALYST</h1>
+  <p class="sub">Enter a NSW street address. The context analysis sheet
   is assembled from NSW planning, cadastre, transport and imagery open data. Takes 1–3 minutes.</p>
 
   <form id="login" style="display:none">
@@ -70,7 +69,8 @@
   </div>
   <div id="error"></div>
 
-  <footer>Sources: NSW Spatial Services (cadastre, addressing, topo, aerial imagery),
+  <footer>Programmed by <strong>Sami Abdulnour</strong> © 2026. All rights reserved.<br>
+  Sources: NSW Spatial Services (cadastre, addressing, topo, aerial imagery),
   NSW ePlanning (zoning, HOB, heritage), Transport for NSW (bus stops), OpenStreetMap
   (bus/tram routes), Valhalla (walking isochrones). Sheets are generated drafts —
   verify before issue.</footer>

@@ -346,8 +346,73 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
       stopsByName.set(r.name, (stopsByName.get(r.name) ?? 0) + n);
       return n;
     });
+    const qualifies = bundle.roads.map((r, i) =>
+      (stopsByName.get(r.name) ?? 0) >= 2 || nearByRoad[i] > 0);
+
+    // Stitch the network together: routes turn through short connector
+    // streets that carry no stop themselves. Build a road graph, find the
+    // disconnected clusters of qualifying segments, and join them with the
+    // fewest connector segments (BFS through the full network).
+    const nodeKey = (p: [number, number]) => {
+      const m = lonLatToMercator({ lon: p[0], lat: p[1] });
+      return `${Math.round(m.x / 20)}:${Math.round(m.y / 20)}`;
+    };
+    const segNodes = bundle.roads.map((r) => [nodeKey(r.coords[0]), nodeKey(r.coords[r.coords.length - 1])]);
+    const byNode = new Map<string, number[]>();
+    segNodes.forEach(([a, b], i) => {
+      (byNode.get(a) ?? byNode.set(a, []).get(a)!).push(i);
+      (byNode.get(b) ?? byNode.set(b, []).get(b)!).push(i);
+    });
+    // components of qualifying segments
+    const comp = new Array(bundle.roads.length).fill(-1);
+    let nComp = 0;
+    for (let i = 0; i < bundle.roads.length; i++) {
+      if (!qualifies[i] || comp[i] >= 0) continue;
+      const stack = [i];
+      comp[i] = nComp;
+      while (stack.length) {
+        const s = stack.pop()!;
+        for (const nk of segNodes[s]) {
+          for (const j of byNode.get(nk) ?? []) {
+            if (qualifies[j] && comp[j] < 0) { comp[j] = nComp; stack.push(j); }
+          }
+        }
+      }
+      nComp++;
+    }
+    const extra = new Set<number>();
+    if (nComp > 1) {
+      // BFS over nodes from the largest component; absorb other components
+      // via the connector segments discovered on the way (bounded hops).
+      const sizes = new Array(nComp).fill(0);
+      comp.forEach((c) => { if (c >= 0) sizes[c]++; });
+      const mainComp = sizes.indexOf(Math.max(...sizes));
+      const nodeOf = new Map<string, { dist: number; via: number[] }>();
+      const queue: string[] = [];
+      bundle.roads.forEach((_, i) => {
+        if (comp[i] === mainComp) for (const nk of segNodes[i]) {
+          if (!nodeOf.has(nk)) { nodeOf.set(nk, { dist: 0, via: [] }); queue.push(nk); }
+        }
+      });
+      while (queue.length) {
+        const nk = queue.shift()!;
+        const cur = nodeOf.get(nk)!;
+        if (cur.dist >= 4) continue; // max 4 connector segments
+        for (const j of byNode.get(nk) ?? []) {
+          const other = segNodes[j][0] === nk ? segNodes[j][1] : segNodes[j][0];
+          if (qualifies[j] && comp[j] !== mainComp) {
+            cur.via.forEach((s) => extra.add(s)); // reached another cluster
+            continue;
+          }
+          if (!nodeOf.has(other)) {
+            nodeOf.set(other, { dist: cur.dist + 1, via: [...cur.via, j] });
+            queue.push(other);
+          }
+        }
+      }
+    }
     busSegments = bundle.roads
-      .filter((r, i) => (stopsByName.get(r.name) ?? 0) >= 2 || nearByRoad[i] > 0)
+      .filter((r, i) => qualifies[i] || extra.has(i))
       .map((r) => r.coords);
   }
   if (busSegments.length) {
