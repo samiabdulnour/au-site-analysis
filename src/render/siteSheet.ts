@@ -129,7 +129,7 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
       if (ang > 90) ang -= 180;
       if (ang < -90) ang += 180;
       layers.push(`<text transform="translate(${x.toFixed(1)},${y.toFixed(1)}) rotate(${ang.toFixed(1)})"
-        text-anchor="middle" dy="-1.2" font-size="3.4" font-weight="700" fill="#8a6a2f"
+        text-anchor="middle" dy="-1.4" font-size="4.2" font-weight="700" fill="#8a6a2f"
         stroke="#ffffff" stroke-width="1.0" paint-order="stroke">RL ${c.elevation.toFixed(0)}</text>`);
     }
   }
@@ -301,7 +301,7 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
   {
     const cx0 = sitePx.reduce((s2, p) => s2 + p[0], 0) / sitePx.length;
     const cy0 = sitePx.reduce((s2, p) => s2 + p[1], 0) / sitePx.length;
-    placer.reserve(cx0, cy0, 46, 20);
+    placer.reserve(cx0, cy0, 56, 24);
   }
 
   // ---- (4) neighbour info boxes: address, storeys (where known), zone ------
@@ -381,8 +381,8 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
       const l2 = st ? `${st} STOREY` : '';
       const lines = [l1, l2].filter(Boolean);
       const zoneLines = zone ? wrapLabel(zone, 22) : [];
-      const fs = 3.6, lh = fs * 1.16;
-      const w = Math.max(...[...lines, ...zoneLines].map((t) => t.length)) * fs * 0.52 + 4;
+      const fs = 4.4, lh = fs * 1.16;
+      const w = Math.max(...[...lines, ...zoneLines].map((t) => t.length)) * fs * 0.54 + 4.5;
       const h = (lines.length + zoneLines.length) * lh + 2.4;
       const spot = placer.place(x, y, w, h, 30);
       if (!spot) continue;
@@ -414,8 +414,9 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
   }
   for (const [name, r] of best) {
     const label = shortStreetName(name);
-    const spacing = 1.5;
-    const textLen = label.length * (T.street * 0.62 + spacing);
+    const spacing = 1.7;
+    const SITE_STREET = T.street * 1.15;
+    const textLen = label.length * (SITE_STREET * 0.62 + spacing);
     if (r.len * 0.85 < textLen + 12) continue;
     let pts = r.pts;
     if (pts[0][0] > pts[pts.length - 1][0]) pts = [...pts].reverse();
@@ -427,7 +428,7 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     layers.push(arrow.svg);
     layers.push(`<text transform="translate(${arrow.cx.toFixed(1)},${arrow.cy.toFixed(1)}) rotate(${ta.toFixed(1)})"
       x="${(-textLen / 2).toFixed(1)}" y="1.65" textLength="${textLen.toFixed(1)}" lengthAdjust="spacing"
-      font-size="${T.street}" font-weight="700" fill="#111111">${esc(label)}</text>`);
+      font-size="${SITE_STREET.toFixed(2)}" font-weight="700" fill="#111111">${esc(label)}</text>`);
   }
 
   // ---- SITE: boundary, dimensions, levels, fall, area ---------------------------
@@ -485,11 +486,11 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     const on = Math.hypot(ox, oy) || 1;
     const lx = mx + (ox / on) * 5.0, lyy = my + (oy / on) * 5.0;
     const txt = `SB ${len.toFixed(2)}`;
-    const spot = placer.place(lx, lyy, txt.length * 2.5, 5.4, 16, ang);
+    const spot = placer.place(lx, lyy, txt.length * 3.0, 6.4, 16, ang);
     if (!spot) continue;
     layers.push(`<text transform="translate(${spot[0].toFixed(1)},${spot[1].toFixed(1)}) rotate(${ang.toFixed(1)})"
-      text-anchor="middle" font-size="4.6" font-weight="700" fill="${RED}"
-      stroke="#ffffff" stroke-width="1.1" paint-order="stroke">${txt}</text>`);
+      text-anchor="middle" font-size="5.6" font-weight="700" fill="${RED}"
+      stroke="#ffffff" stroke-width="1.3" paint-order="stroke">${txt}</text>`);
   }
 
   // corner levels from contours (IDW of the two nearest distinct elevations)
@@ -523,9 +524,9 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     const ox = x - centroidPx[0], oy = y - centroidPx[1];
     const on = Math.hypot(ox, oy) || 1;
     const txt = `RL ${rl.toFixed(2)}`;
-    const spot = placer.place(x + (ox / on) * 9, y + (oy / on) * 9 - 3.5, txt.length * 2.6, 5.4, 16);
+    const spot = placer.place(x + (ox / on) * 10, y + (oy / on) * 10 - 3.5, txt.length * 3.1, 6.4, 18);
     if (!spot) continue;
-    layers.push(haloText(spot[0], spot[1], [txt], 4.6, RED));
+    layers.push(haloText(spot[0], spot[1], [txt], 5.6, RED));
   }
 
   // fall arrow: highest -> lowest corner
@@ -559,7 +560,7 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     const fallTxt = fallInfo ? `FALL ${fallInfo.drop.toFixed(2)}m` : null;
     const lines = fallTxt ? [fallTxt, areaTxt] : [areaTxt];
     const ang = fallInfo ? fallInfo.angDeg : 0;
-    const fs = 5.0, lh = fs * 1.12;
+    const fs = 6.0, lh = fs * 1.12;
     const w = Math.max(...lines.map((t) => t.length)) * fs * 0.55 + 4;
     const h = lines.length * lh + 2;
     layers.push(`<g transform="translate(${centroidPx[0].toFixed(1)},${centroidPx[1].toFixed(1)}) rotate(${ang.toFixed(1)})">
