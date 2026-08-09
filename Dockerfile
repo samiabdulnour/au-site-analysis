@@ -17,9 +17,11 @@ COPY web ./web
 COPY config ./config
 COPY assets ./assets
 
+ARG GIT_SHA=dev
 ENV CHROMIUM_PATH=/usr/bin/chromium \
     CHROMIUM_NO_SANDBOX=1 \
-    PORT=3000
+    PORT=3000 \
+    GIT_SHA=$GIT_SHA
 
 EXPOSE 3000
 CMD ["npx", "tsx", "src/server.ts"]

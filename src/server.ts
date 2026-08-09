@@ -170,6 +170,10 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === 'GET' && url.pathname === '/api/version') {
+    return json(res, 200, { sha: process.env.GIT_SHA ?? 'dev' });
+  }
+
   if (req.method === 'GET' && url.pathname === '/api/me') {
     return json(res, authed(req) ? 200 : 401, { authed: authed(req) });
   }
