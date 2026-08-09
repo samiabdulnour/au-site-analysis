@@ -1,0 +1,197 @@
+// Shared sheet chrome: the measured A1 frame, title column, north point,
+// scale bar and legend primitives — used by every sheet type (context
+// analysis, site analysis, …) so the package stays visually consistent.
+
+import type { SheetMeta } from './sheet.js';
+
+export const SHEET_W = 841;
+export const SHEET_H = 594;
+export const FRAME_L = 28;
+export const FRAME_T = 10;
+export const TITLE_X = 738.9;
+export const TITLE_R = 831;
+export const MAP_BOTTOM = 576.6;
+export const MAP_W = TITLE_X - FRAME_L;    // 710.9
+export const MAP_H = MAP_BOTTOM - FRAME_T; // 566.6
+
+// Type scale measured from the original (mm)
+export const T = {
+  fine: 2.1,
+  legend: 2.7,
+  scalebar: 2.3,
+  addr: 3.4,
+  value: 4.1,
+  street: 4.9,
+  poi: 4.9,
+  mapSymbol: 6.2,
+};
+
+// Legend geometry within the title column
+export const SWATCH_X = (743.7 - TITLE_X) + 1.5;
+export const SWATCH_W = 23;
+export const LABEL_X = 773 - TITLE_X;
+
+export const esc = (s: string) =>
+  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+export interface SheetHtmlOpts {
+  meta: SheetMeta;
+  address: string;
+  generatedAt: string;
+  siteAddress: string;
+  scale: number;
+  rotationDeg: number;
+  drawingTitle: string;   // e.g. CONTEXT ANALYSIS / SITE ANALYSIS
+  legendHeading: string;  // heading above the legend (usually 'LEGEND' or title)
+  legendSvg: string;
+  layers: string[];       // svg content of the map field
+}
+
+export function sheetHtml(o: SheetHtmlOpts): string {
+  const { meta } = o;
+  const TW = TITLE_R - TITLE_X;
+
+  // Bar length adapts to the sheet scale (site sheets need a 10/20m bar,
+  // context sheets a 100m bar); same stepped-outline style either way.
+  const bar = o.scale <= 300 ? [0, 2, 5, 10] : o.scale <= 900 ? [0, 5, 10, 20] : [0, 20, 50, 100];
+  const [m1, m2, m3] = [bar[1], bar[2], bar[3]];
+  const full = m3;
+  const mmFull = (full * 1000) / o.scale;
+  const sbX = 742.3 - TITLE_X;
+  const sbY = 3.4, step = 1.5;
+  const sx = (m: number) => sbX + (m / full) * mmFull;
+  const scaleBarSvg = `
+    <path d="M${sx(0).toFixed(1)},${sbY} L${sx(0).toFixed(1)},${sbY - step} L${sx(m1 / 2).toFixed(1)},${sbY - step}
+             L${sx(m1 / 2).toFixed(1)},${sbY} L${sx(m1).toFixed(1)},${sbY} L${sx(m1).toFixed(1)},${sbY - step}
+             L${sx(m2).toFixed(1)},${sbY - step} L${sx(m2).toFixed(1)},${sbY} L${sx(m3).toFixed(1)},${sbY}
+             L${sx(m3).toFixed(1)},${sbY - step}"
+      fill="none" stroke="#111" stroke-width="0.25"/>
+    ${bar.map((m) => `<text x="${sx(m).toFixed(1)}" y="${sbY + 3.0}" text-anchor="middle" font-size="${T.scalebar}" font-weight="700" fill="#111">${m}${m === m3 ? 'm' : ''}</text>`).join('')}`;
+
+  const northLines = [90, 0].map((deg) => {
+    const a = (deg * Math.PI) / 180;
+    const x = 4.9 * Math.cos(a), y = 4.9 * Math.sin(a);
+    return `<line x1="${x.toFixed(2)}" y1="${(-y).toFixed(2)}" x2="${(-x).toFixed(2)}" y2="${y.toFixed(2)}"/>`;
+  }).join('');
+  const northSvg = `
+    <text x="9" y="3.0" text-anchor="middle" font-size="3.4" font-weight="700" fill="#111">N</text>
+    <g transform="translate(9,10.8)" stroke="#111" stroke-width="0.18" fill="none">
+      <circle r="4.9"/>
+      <g transform="rotate(${o.rotationDeg.toFixed(2)})">
+        ${northLines}
+        <path d="M0,-4.9 L0.45,0 L0,0 Z" fill="#111" stroke="none"/>
+      </g>
+    </g>`;
+
+  const notes = [
+    'NO REPRODUCTION WITHOUT PERMISSION, UNLESS NOTED OTHERWISE.',
+    'THIS DRAWING IS NOT FOR CONSTRUCTION.',
+    'NO STRUCTURAL OR SERVICE ENGINEERING INPUT OR COORDINATION HAS BEEN PROVIDED IN THE PREPARATION OF THE DRAWINGS. DRAWINGS CANNOT BE RELIED UPON FOR THE BASIS OF MARKETING SALES OR CONSTRUCTION QUOTATION.',
+    'ALL DIMENSIONS AND LEVELS ARE TO BE CHECKED ON SITE PRIOR TO THE COMMENCEMENT OF WORK.',
+    `INFORM ${meta.office.name ? meta.office.name.toUpperCase().replace('ARCHITECTS', 'ARCHITECTURE') : 'THE ARCHITECT'} OF ANY DISCREPANCIES FOR CLARIFICATION BEFORE PROCEEDING WITH WORK.`,
+    'DRAWINGS ARE NOT TO BE SCALED.',
+    'USE ONLY FIGURED DIMENSIONS.',
+    'REFER TO CONSULTANT DOCUMENTATION FOR FURTHER INFORMATION.',
+  ];
+
+  const [wm1, ...wmRest] = meta.office.name.split(' ');
+  const field = (top: number, label: string, valueHtml: string) => `
+    <div class="abs" style="top:${top}mm;left:4.8mm;right:0">
+      <div class="k">${esc(label)}</div>${valueHtml}
+    </div>`;
+  const rule = (y: number) => `<div class="abs rule" style="top:${y}mm"></div>`;
+
+  return `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>${esc(o.siteAddress)} — ${esc(o.drawingTitle)}</title>
+<style>
+  @page { size: ${SHEET_W}mm ${SHEET_H}mm; margin: 0; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: ${SHEET_W}mm; height: ${SHEET_H}mm; font-family: Arial, 'Liberation Sans', Helvetica, sans-serif; background: #fff; }
+  .sheet { position: relative; width: ${SHEET_W}mm; height: ${SHEET_H}mm; overflow: hidden; }
+  svg.map { position: absolute; left: ${FRAME_L}mm; top: ${FRAME_T}mm; }
+  .titlecol { position: absolute; left: ${TITLE_X}mm; top: 0; width: ${TW}mm; height: ${SHEET_H}mm;
+    background: #fff; font-size: ${T.fine}mm; color: #222; }
+  .abs { position: absolute; }
+  .rule { left: 2.6mm; right: 0; border-top: 0.15mm solid #666; }
+  .k { font-size: ${T.fine}mm; color: #444; }
+  .fine { font-size: ${T.fine}mm; line-height: 1.22; color: #333; }
+  .fine li { margin-left: 2.8mm; margin-bottom: 0.35mm; }
+  .v-addr { font-size: ${T.addr}mm; font-weight: 400; line-height: 1.15; }
+  .v { font-size: ${T.value}mm; font-weight: 400; line-height: 1.16; }
+  .wordmark { font-size: 6.2mm; font-weight: 700; letter-spacing: 0.5mm; white-space: nowrap; }
+  .wordmark .rule2 { text-decoration: line-through; font-weight: 400; }
+  .prelim { border: 0.6mm solid #e30000; color: #e30000; text-align: center; font-weight: 700;
+    letter-spacing: 1.6mm; font-size: 4.2mm; padding: 1.4mm 0; }
+  .revtable { width: 100%; border-collapse: collapse; font-size: ${T.legend}mm; }
+  .revtable th { text-align: left; font-weight: 700; padding: 0.4mm 0; }
+  .revtable td { padding: 0.4mm 0; }
+</style></head>
+<body><div class="sheet">
+<svg class="map" width="${MAP_W}mm" height="${MAP_H}mm" viewBox="0 0 ${MAP_W} ${MAP_H}" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <clipPath id="mapclip"><rect x="0" y="0" width="${MAP_W}" height="${MAP_H}"/></clipPath>
+  </defs>
+  <g clip-path="url(#mapclip)">
+${o.layers.join('\n')}
+  </g>
+</svg>
+<div class="titlecol">
+  <div class="abs fine" style="top:10mm;left:4.8mm;right:0">
+    ${esc(o.address)}<br>Generated: ${esc(o.generatedAt.slice(0, 10))}${meta.office.name ? `<br>© ${esc(meta.office.name)}` : ''}
+  </div>
+  <div class="abs" style="top:19mm;left:4.8mm;right:0">
+    <div class="fine" style="font-weight:700">NOTE:</div>
+    <ul class="fine">${notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>
+  </div>
+  ${rule(58)}
+  <div class="abs" style="top:59.4mm;left:4.8mm;right:0;font-size:${T.legend}mm;font-weight:700">${esc(o.legendHeading)}</div>
+  <svg class="abs" style="top:62mm;left:0" width="${TW}mm" height="300mm" viewBox="0 0 ${TW} 300" xmlns="http://www.w3.org/2000/svg">
+    <defs><clipPath id="lhclip"><rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5"/></clipPath></defs>
+    ${o.legendSvg}
+  </svg>
+  ${rule(363.8)}
+  <div class="abs" style="top:364.6mm;left:2.6mm;right:0">
+    <table class="revtable">
+      <tr><th style="width:20%">REVISION ID</th><th style="width:55%">AMENDMENT</th><th>DATE</th></tr>
+      ${meta.revision ? `<tr><td>${esc(meta.revision)}</td><td>${esc(meta.status.toUpperCase().includes('PRELIM') ? 'ISSUE FOR COORDINATION' : 'FOR SUBMISSION')}</td><td>${esc(meta.date)}</td></tr>` : ''}
+    </table>
+  </div>
+  ${rule(395.5)}
+  ${rule(400.7)}
+  <div class="abs k" style="top:401.4mm;left:4.8mm">ARCHITECT</div>
+  ${meta.office.name ? `<div class="abs wordmark" style="top:406.5mm;left:4.8mm">${esc(wm1)}<span class="rule2">—</span>${esc(wmRest.join(' '))}</div>` : ''}
+  <div class="abs fine" style="top:419.9mm;left:4.8mm;right:0">${meta.office.lines.map(esc).join('<br>')}</div>
+  ${rule(438.4)}
+  <div class="abs k" style="top:439.1mm;left:4.8mm">CLIENT</div>
+  ${meta.client ? `<div class="abs" style="top:443mm;left:4.8mm;right:0;font-size:${T.value}mm;font-weight:700">${esc(meta.client)}</div>` : ''}
+  <div class="abs fine" style="top:455.4mm;left:4.8mm;right:0">${(meta.clientLines ?? []).map(esc).join('<br>')}</div>
+  ${meta.preliminary ? `<div class="abs prelim" style="top:463mm;left:2.6mm;right:2.6mm">P R E L I M I N A R Y</div>` : ''}
+  <svg class="abs" style="top:470mm;left:3.5mm" width="18mm" height="18mm" viewBox="0 0 18 18">${northSvg}</svg>
+  <svg class="abs" style="top:487mm;left:0" width="${TW}mm" height="8mm" viewBox="0 0 ${TW} 8">${scaleBarSvg}</svg>
+  ${rule(495.8)}
+  ${field(496.6, 'SITE ADDRESS', `<div class="v-addr">${esc(o.siteAddress)}</div>`)}
+  ${rule(511.4)}
+  ${field(512.2, 'JOB NO', `<div class="v">${esc(meta.jobNo)}</div>`)}
+  ${rule(522.5)}
+  <div class="abs" style="top:523.3mm;left:4.8mm;right:0">
+    <div style="display:grid;grid-template-columns:1fr 1fr">
+      <div><div class="k">CHECKED</div><div class="v">${esc(meta.checked)}</div></div>
+      <div><div class="k">DRAWN</div><div class="v">${esc(meta.drawn)}</div></div>
+      <div style="margin-top:1.6mm"><div class="k">DATE</div><div class="v">${esc(meta.date)}</div></div>
+      <div style="margin-top:1.6mm"><div class="k">SCALE</div><div class="v">1:${o.scale} @ A1&nbsp;&nbsp;A3@50%</div></div>
+    </div>
+  </div>
+  ${rule(543.2)}
+  ${field(544, 'PROJECT STATUS', `<div class="v">${esc(meta.status)}</div>`)}
+  ${rule(557)}
+  ${field(557.8, 'DRAWING TITLE', `<div class="v">${esc(o.drawingTitle)}</div>`)}
+  ${rule(574)}
+  <div class="abs" style="top:574.8mm;left:4.8mm;right:0">
+    <div style="display:grid;grid-template-columns:1fr 1fr">
+      <div><div class="k">SHEET NO.</div><div class="v">${esc(meta.sheetNo)}</div></div>
+      <div><div class="k">REVISION.</div><div class="v">${esc(meta.revision)}</div></div>
+    </div>
+  </div>
+</div>
+</div></body></html>`;
+}

@@ -5,31 +5,12 @@
 import type { Bundle } from '../pipeline.js';
 import { lonLatToMercator, ringCentroid, type Extent, type MapView } from '../lib/geo.js';
 import { CATEGORIES, catById, zoneToCategory } from './model.js';
+import { sheetHtml, esc, T, SWATCH_X, SWATCH_W, LABEL_X,
+         SHEET_W, SHEET_H, FRAME_L, FRAME_T, TITLE_X, TITLE_R, MAP_BOTTOM, MAP_W, MAP_H } from './chrome.js';
 
-export const SHEET_W = 841;
-export const SHEET_H = 594;
-
-// Frame measured from the original: 28mm binding margin left, 10mm top,
-// title column x 738.9→831 (10mm right margin), map bottom rule at 576.6.
-export const FRAME_L = 28;
-export const FRAME_T = 10;
-export const TITLE_X = 738.9;
-export const TITLE_R = 831;
-export const MAP_BOTTOM = 576.6;
-export const MAP_W = TITLE_X - FRAME_L;   // 710.9
-export const MAP_H = MAP_BOTTOM - FRAME_T; // 566.6
-
-// Type scale measured from the original (mm)
-const T = {
-  fine: 2.1,       // notes, field labels, office block
-  legend: 2.7,     // legend labels, revision table
-  scalebar: 2.3,
-  addr: 3.4,       // site address value
-  value: 4.1,      // job no / date / scale / status / title / sheet values
-  street: 4.9,     // street names on map
-  poi: 4.9,        // POI names on map (bold)
-  mapSymbol: 6.2,  // B/T glyph on map
-};
+// Geometry/typography constants live in chrome.ts (shared by all sheet
+// types); re-exported here for existing importers (cli, server, pdf).
+export { SHEET_W, SHEET_H, FRAME_L, FRAME_T, TITLE_X, TITLE_R, MAP_BOTTOM, MAP_W, MAP_H };
 
 export interface SheetMeta {
   jobNo: string;
@@ -45,14 +26,11 @@ export interface SheetMeta {
   office: { name: string; lines: string[] };
 }
 
-const esc = (s: string) =>
-  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-
-type Pt = [number, number];
+export type Pt = [number, number];
 
 // Projector rotates about the map center when the view is rotated: the
 // site's long boundary runs horizontally, north tilts (compass follows).
-function makeProjector(view: MapView) {
+export function makeProjector(view: MapView) {
   const s = MAP_W / (2 * view.halfW);
   const r = (view.rotationDeg * Math.PI) / 180;
   const cos = Math.cos(r), sin = Math.sin(r);
@@ -64,7 +42,7 @@ function makeProjector(view: MapView) {
   };
 }
 
-function pathFromRings(rings: number[][][], proj: (lon: number, lat: number) => Pt, close = true): string {
+export function pathFromRings(rings: number[][][], proj: (lon: number, lat: number) => Pt, close = true): string {
   let d = '';
   for (const ring of rings) {
     ring.forEach(([lon, lat], i) => {
@@ -76,14 +54,14 @@ function pathFromRings(rings: number[][][], proj: (lon: number, lat: number) => 
   return d;
 }
 
-function geomRings(geometry: any): number[][][] {
+export function geomRings(geometry: any): number[][][] {
   if (!geometry) return [];
   if (geometry.type === 'Polygon') return geometry.coordinates;
   if (geometry.type === 'MultiPolygon') return geometry.coordinates.flat();
   return [];
 }
 
-function pointInRing(x: number, y: number, ring: number[][]): boolean {
+export function pointInRing(x: number, y: number, ring: number[][]): boolean {
   let inside = false;
   for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
     const [xi, yi] = ring[i];
@@ -93,7 +71,7 @@ function pointInRing(x: number, y: number, ring: number[][]): boolean {
   return inside;
 }
 
-function wrapLabel(name: string, maxChars = 14): string[] {
+export function wrapLabel(name: string, maxChars = 14): string[] {
   const words = name.toUpperCase().split(' ');
   const lines: string[] = [];
   let cur = '';
@@ -107,7 +85,7 @@ function wrapLabel(name: string, maxChars = 14): string[] {
 
 // White back-contour via double drawing (a stroked copy underneath, a filled
 // copy on top) — paint-order is not reliable across text layouts in Chromium.
-function haloText(x: number, y: number, lines: string[], size: number, fill: string, weight = 700): string {
+export function haloText(x: number, y: number, lines: string[], size: number, fill: string, weight = 700): string {
   const lh = size * 1.12;
   const y0 = y - ((lines.length - 1) * lh) / 2;
   const tspans = lines
@@ -119,7 +97,7 @@ function haloText(x: number, y: number, lines: string[], size: number, fill: str
 }
 
 /** Map label: bold black narrow text, no contour (the office map-text style). */
-function plainText(x: number, y: number, lines: string[], size: number, fill = '#000000'): string {
+export function plainText(x: number, y: number, lines: string[], size: number, fill = '#000000'): string {
   const lh = size * 1.08;
   const y0 = y - ((lines.length - 1) * lh) / 2;
   const tspans = lines
@@ -132,9 +110,9 @@ function plainText(x: number, y: number, lines: string[], size: number, fill = '
  * White double-headed arrow along the (straight-enough) middle of a polyline.
  * Returns '' when the geometry bends too much for a straight arrow.
  */
-interface BandArrow { svg: string; cx: number; cy: number; angDeg: number }
+export interface BandArrow { svg: string; cx: number; cy: number; angDeg: number }
 
-function arrowAlong(pts: Pt[], lengthMm: number): BandArrow | null {
+export function arrowAlong(pts: Pt[], lengthMm: number): BandArrow | null {
   const cum = [0];
   for (let i = 1; i < pts.length; i++)
     cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
@@ -170,12 +148,12 @@ function arrowAlong(pts: Pt[], lengthMm: number): BandArrow | null {
 
 /** Walking-person pictogram (Material Symbols directions_walk, Apache-2.0),
  *  24x24 units, recentered; fill takes the given color. */
-function walkerGlyph(color: string, scale: number): string {
+export function walkerGlyph(color: string, scale: number): string {
   return `<g transform="scale(${scale}) translate(-12.6,-13.5)"><path fill="${color}" d="M13.5 5.5c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zM9.8 8.9L7 23h2.1l1.8-8 2.1 2v6h2v-7.5l-2.1-2 .6-3C14.8 12 16.8 13 19 13v-2c-1.9 0-3.5-1-4.3-2.4l-1-1.6c-.4-.6-1-1-1.7-1-.3 0-.5.1-.8.1L6 8.3V13h2V9.6l1.8-.7"/></g>`;
 }
 
 /** Walker-in-circle marker sitting on an isochrone ring, all in ring color. */
-function walkerMedallion(x: number, y: number, color: string): string {
+export function walkerMedallion(x: number, y: number, color: string): string {
   return `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})">
     <circle r="4.1" fill="#ffffff" stroke="${color}" stroke-width="1.1"/>
     ${walkerGlyph(color, 0.30)}
@@ -183,7 +161,7 @@ function walkerMedallion(x: number, y: number, color: string): string {
 }
 
 /** Abbreviate street types the way the office labels them (CAMPSIE ST, WILFRED AVE). */
-function shortStreetName(name: string): string {
+export function shortStreetName(name: string): string {
   return name.toUpperCase()
     .replace(/\bSTREET\b/, 'ST').replace(/\bROAD\b/, 'RD').replace(/\bAVENUE\b/, 'AVE')
     .replace(/\bPARADE\b/, 'PDE').replace(/\bHIGHWAY\b/, 'HWY').replace(/\bDRIVE\b/, 'DR')
@@ -640,8 +618,6 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
 
   // ---- legend (title column, measured geometry) ---------------------------
   const hobByCat = computeHobByCat(bundle);
-  const CL = 743.7 - TITLE_X;         // content left within column (4.8)
-  const SWATCH_X = CL + 1.5, SWATCH_W = 23, LABEL_X = 773 - TITLE_X;
   let legendSvg = '';
   let ly = 7; // below "CONTEXT ANALYSIS" heading (relative to legend svg top)
   const legendRow = (swatch: string, labelLines: string[], sub?: string) => {
@@ -692,159 +668,20 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   legendRow(legendIso('#e6007e'), ['ISOCHRONE -'], '400m/5 min walk');
   legendRow(legendIso('#b5379b'), ['ISOCHRONE -'], '800m/10 min walk');
 
-  // ---- scale bar (true length: 100m at sheet scale) -----------------------
-  // Stepped outline scale bar, replicated from the reference: thin line that
-  // steps up 0-10, down 10-20, up 20-50, baseline 50-100, end tick at 100.
-  const mm100 = 100_000 / bundle.scale;
-  const sbX = 742.3 - TITLE_X;
-  const sbY = 3.4, step = 1.5;
-  const sx = (m: number) => sbX + (m / 100) * mm100;
-  const scaleBarSvg = `
-    <path d="M${sx(0).toFixed(1)},${sbY} L${sx(0).toFixed(1)},${sbY - step} L${sx(10).toFixed(1)},${sbY - step}
-             L${sx(10).toFixed(1)},${sbY} L${sx(20).toFixed(1)},${sbY} L${sx(20).toFixed(1)},${sbY - step}
-             L${sx(50).toFixed(1)},${sbY - step} L${sx(50).toFixed(1)},${sbY} L${sx(100).toFixed(1)},${sbY}
-             L${sx(100).toFixed(1)},${sbY - step}"
-      fill="none" stroke="#111" stroke-width="0.25"/>
-    ${[0, 20, 50, 100].map((m) => `<text x="${sx(m).toFixed(1)}" y="${sbY + 3.0}" text-anchor="middle" font-size="${T.scalebar}" font-weight="700" fill="#111">${m}${m === 100 ? 'm' : ''}</text>`).join('')}`;
-
-  // North point: thin circle with hairline lines through the center, every
-  // line ending exactly on the rim; slim needle to N.
-  const northLines = [90, 0].map((deg) => {
-    const a = (deg * Math.PI) / 180;
-    const x = 4.9 * Math.cos(a), y = 4.9 * Math.sin(a);
-    return `<line x1="${x.toFixed(2)}" y1="${(-y).toFixed(2)}" x2="${(-x).toFixed(2)}" y2="${y.toFixed(2)}"/>`;
-  }).join('');
-  // When the map is rotated, the crosshair + needle rotate with it so the
-  // needle keeps pointing at true north (as on the office's rotated sheets).
-  const northSvg = `
-    <text x="9" y="3.0" text-anchor="middle" font-size="3.4" font-weight="700" fill="#111">N</text>
-    <g transform="translate(9,10.8)" stroke="#111" stroke-width="0.18" fill="none">
-      <circle r="4.9"/>
-      <g transform="rotate(${view.rotationDeg.toFixed(2)})">
-        ${northLines}
-        <path d="M0,-4.9 L0.45,0 L0,0 Z" fill="#111" stroke="none"/>
-      </g>
-    </g>`;
-
-  const notes = [
-    'NO REPRODUCTION WITHOUT PERMISSION, UNLESS NOTED OTHERWISE.',
-    'THIS DRAWING IS NOT FOR CONSTRUCTION.',
-    'NO STRUCTURAL OR SERVICE ENGINEERING INPUT OR COORDINATION HAS BEEN PROVIDED IN THE PREPARATION OF THE DRAWINGS. DRAWINGS CANNOT BE RELIED UPON FOR THE BASIS OF MARKETING SALES OR CONSTRUCTION QUOTATION.',
-    'ALL DIMENSIONS AND LEVELS ARE TO BE CHECKED ON SITE PRIOR TO THE COMMENCEMENT OF WORK.',
-    `INFORM ${meta.office.name ? meta.office.name.toUpperCase().replace('ARCHITECTS', 'ARCHITECTURE') : 'THE ARCHITECT'} OF ANY DISCREPANCIES FOR CLARIFICATION BEFORE PROCEEDING WITH WORK.`,
-    'DRAWINGS ARE NOT TO BE SCALED.',
-    'USE ONLY FIGURED DIMENSIONS.',
-    'REFER TO CONSULTANT DOCUMENTATION FOR FURTHER INFORMATION.',
-  ];
-
-  const siteAddress = bundle.geocode.matchedAddresses[0] ?? bundle.address;
-  const dateStr = meta.date;
-  const [wm1, ...wmRest] = meta.office.name.split(' ');
-  const TW = TITLE_R - TITLE_X; // column content width 92.1
-
-  // Field block helper: label (2.1mm grey) + value, absolutely positioned.
-  const field = (top: number, label: string, valueHtml: string) => `
-    <div class="abs" style="top:${top}mm;left:4.8mm;right:0">
-      <div class="k">${esc(label)}</div>${valueHtml}
-    </div>`;
-  const rule = (y: number) => `<div class="abs rule" style="top:${y}mm"></div>`;
-
-  return `<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>${esc(siteAddress)} — CONTEXT ANALYSIS</title>
-<style>
-  @page { size: ${SHEET_W}mm ${SHEET_H}mm; margin: 0; }
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body { width: ${SHEET_W}mm; height: ${SHEET_H}mm; font-family: Arial, 'Liberation Sans', Helvetica, sans-serif; background: #fff; }
-  .sheet { position: relative; width: ${SHEET_W}mm; height: ${SHEET_H}mm; overflow: hidden; }
-  svg.map { position: absolute; left: ${FRAME_L}mm; top: ${FRAME_T}mm; }
-  .titlecol { position: absolute; left: ${TITLE_X}mm; top: 0; width: ${TW}mm; height: ${SHEET_H}mm;
-    background: #fff; font-size: ${T.fine}mm; color: #222; }
-  .abs { position: absolute; }
-  .rule { left: 2.6mm; right: 0; border-top: 0.15mm solid #666; }
-  .k { font-size: ${T.fine}mm; color: #444; }
-  .fine { font-size: ${T.fine}mm; line-height: 1.22; color: #333; }
-  .fine li { margin-left: 2.8mm; margin-bottom: 0.35mm; }
-  .v-addr { font-size: ${T.addr}mm; font-weight: 400; line-height: 1.15; }
-  .v { font-size: ${T.value}mm; font-weight: 400; line-height: 1.16; }
-  .wordmark { font-size: 6.2mm; font-weight: 700; letter-spacing: 0.5mm; white-space: nowrap; }
-  .wordmark .rule2 { text-decoration: line-through; font-weight: 400; }
-  .prelim { border: 0.6mm solid #e30000; color: #e30000; text-align: center; font-weight: 700;
-    letter-spacing: 1.6mm; font-size: 4.2mm; padding: 1.4mm 0; }
-  .revtable { width: 100%; border-collapse: collapse; font-size: ${T.legend}mm; }
-  .revtable th { text-align: left; font-weight: 700; padding: 0.4mm 0; }
-  .revtable td { padding: 0.4mm 0; }
-</style></head>
-<body><div class="sheet">
-<svg class="map" width="${MAP_W}mm" height="${MAP_H}mm" viewBox="0 0 ${MAP_W} ${MAP_H}" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <clipPath id="mapclip"><rect x="0" y="0" width="${MAP_W}" height="${MAP_H}"/></clipPath>
-  </defs>
-  <g clip-path="url(#mapclip)">
-${layers.join('\n')}
-  </g>
-</svg>
-<div class="titlecol">
-  <div class="abs fine" style="top:10mm;left:4.8mm;right:0">
-    ${esc(bundle.address)}<br>Generated: ${esc(bundle.generatedAt.slice(0, 10))}${meta.office.name ? `<br>© ${esc(meta.office.name)}` : ''}
-  </div>
-  <div class="abs" style="top:19mm;left:4.8mm;right:0">
-    <div class="fine" style="font-weight:700">NOTE:</div>
-    <ul class="fine">${notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>
-  </div>
-  ${rule(58)}
-  <div class="abs" style="top:59.4mm;left:4.8mm;right:0;font-size:${T.legend}mm;font-weight:700">CONTEXT ANALYSIS</div>
-  <svg class="abs" style="top:62mm;left:0" width="${TW}mm" height="300mm" viewBox="0 0 ${TW} 300" xmlns="http://www.w3.org/2000/svg">
-    <defs><clipPath id="lhclip"><rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5"/></clipPath></defs>
-    ${legendSvg}
-  </svg>
-  ${rule(363.8)}
-  <div class="abs" style="top:364.6mm;left:2.6mm;right:0">
-    <table class="revtable">
-      <tr><th style="width:20%">REVISION ID</th><th style="width:55%">AMENDMENT</th><th>DATE</th></tr>
-      ${meta.revision ? `<tr><td>${esc(meta.revision)}</td><td>${esc(meta.status.toUpperCase().includes('PRELIM') ? 'ISSUE FOR COORDINATION' : 'FOR SUBMISSION')}</td><td>${esc(meta.date)}</td></tr>` : ''}
-    </table>
-  </div>
-  ${rule(395.5)}
-  ${rule(400.7)}
-  <div class="abs k" style="top:401.4mm;left:4.8mm">ARCHITECT</div>
-  ${meta.office.name ? `<div class="abs wordmark" style="top:406.5mm;left:4.8mm">${esc(wm1)}<span class="rule2">—</span>${esc(wmRest.join(' '))}</div>` : ''}
-  <div class="abs fine" style="top:419.9mm;left:4.8mm;right:0">${meta.office.lines.map(esc).join('<br>')}</div>
-  ${rule(438.4)}
-  <div class="abs k" style="top:439.1mm;left:4.8mm">CLIENT</div>
-  ${meta.client ? `<div class="abs" style="top:443mm;left:4.8mm;right:0;font-size:${T.value}mm;font-weight:700">${esc(meta.client)}</div>` : ''}
-  <div class="abs fine" style="top:455.4mm;left:4.8mm;right:0">${(meta.clientLines ?? []).map(esc).join('<br>')}</div>
-  ${meta.preliminary ? `<div class="abs prelim" style="top:463mm;left:2.6mm;right:2.6mm">P R E L I M I N A R Y</div>` : ''}
-  <svg class="abs" style="top:470mm;left:3.5mm" width="18mm" height="18mm" viewBox="0 0 18 18">${northSvg}</svg>
-  <svg class="abs" style="top:487mm;left:0" width="${TW}mm" height="8mm" viewBox="0 0 ${TW} 8">${scaleBarSvg}</svg>
-  ${rule(495.8)}
-  ${field(496.6, 'SITE ADDRESS', `<div class="v-addr">${esc(siteAddress)}</div>`)}
-  ${rule(511.4)}
-  ${field(512.2, 'JOB NO', `<div class="v">${esc(meta.jobNo)}</div>`)}
-  ${rule(522.5)}
-  <div class="abs" style="top:523.3mm;left:4.8mm;right:0">
-    <div style="display:grid;grid-template-columns:1fr 1fr">
-      <div><div class="k">CHECKED</div><div class="v">${esc(meta.checked)}</div></div>
-      <div><div class="k">DRAWN</div><div class="v">${esc(meta.drawn)}</div></div>
-      <div style="margin-top:1.6mm"><div class="k">DATE</div><div class="v">${esc(dateStr)}</div></div>
-      <div style="margin-top:1.6mm"><div class="k">SCALE</div><div class="v">1:${bundle.scale} @ A1&nbsp;&nbsp;A3@50%</div></div>
-    </div>
-  </div>
-  ${rule(543.2)}
-  ${field(544, 'PROJECT STATUS', `<div class="v">${esc(meta.status)}</div>`)}
-  ${rule(557)}
-  ${field(557.8, 'DRAWING TITLE', `<div class="v">CONTEXT ANALYSIS</div>`)}
-  ${rule(574)}
-  <div class="abs" style="top:574.8mm;left:4.8mm;right:0">
-    <div style="display:grid;grid-template-columns:1fr 1fr">
-      <div><div class="k">SHEET NO.</div><div class="v">${esc(meta.sheetNo)}</div></div>
-      <div><div class="k">REVISION.</div><div class="v">${esc(meta.revision)}</div></div>
-    </div>
-  </div>
-</div>
-</div></body></html>`;
+  return sheetHtml({
+    meta,
+    address: bundle.address,
+    generatedAt: bundle.generatedAt,
+    siteAddress: bundle.geocode.matchedAddresses[0] ?? bundle.address,
+    scale: bundle.scale,
+    rotationDeg: view.rotationDeg,
+    drawingTitle: 'CONTEXT ANALYSIS',
+    legendHeading: 'CONTEXT ANALYSIS',
+    legendSvg,
+    layers,
+  });
 }
 
-/** Dominant height-of-building label per category (join by zoning centroid in HOB polygon). */
 function computeHobByCat(bundle: Bundle): Record<string, string> {
   const hobPolys = bundle.hob.features
     .map((f) => ({ rings: geomRings(f.geometry), h: f.properties.MAX_B_H }))

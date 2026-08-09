@@ -197,3 +197,150 @@ function pointInRing(x: number, y: number, ring: number[][]): boolean {
   }
   return inside;
 }
+
+// ---------------------------------------------------------------------------
+// SITE ANALYSIS pipeline: a site-scale bundle (~1:200-1:500) with the site
+// outline (lots unioned), contours for levels, neighbours and street
+// furniture. Shares the geocode/lots/rotation logic with the context sheet.
+
+import { fetchContours, fetchNeighbourAddresses, fetchSiteFurniture, type ContourLine, type NeighbourAddress, type SiteFurniture } from './fetch/siteData.js';
+import turfUnion from '@turf/union';
+import { featureCollection } from '@turf/helpers';
+
+export interface SiteBundle {
+  address: string;
+  geocode: GeocodeResult;
+  extent: Extent;
+  view: MapView;
+  scale: number;
+  siteLots: GeoJSONFC;
+  siteRing: [number, number][];   // outer boundary of the unioned site, lonlat
+  allLots: GeoJSONFC;
+  roads: TopoRoad[];
+  railLines: RailLines;
+  contours: ContourLine[];
+  neighbours: NeighbourAddress[];
+  furniture: SiteFurniture;
+  busStops: { name?: string; lon: number; lat: number }[];
+  aerial: AerialResult;
+  generatedAt: string;
+}
+
+export interface SitePipelineOpts {
+  mapWidthMm: number;
+  mapHeightMm: number;
+  outDir: string;
+  scale?: number;                 // omit for auto (fit site + margin)
+  rotate?: 'north' | 'auto';
+  log?: (msg: string) => void;
+}
+
+const SITE_SCALES = [200, 250, 300, 400, 500, 600, 750];
+
+export async function runSitePipeline(address: string, opts: SitePipelineOpts): Promise<SiteBundle> {
+  const log = opts.log ?? (() => {});
+  const dataDir = join(opts.outDir, 'data');
+  await mkdir(dataDir, { recursive: true });
+
+  log(`geocoding "${address}"…`);
+  const geo = await geocode(address);
+  log(`  matched: ${geo.matchedAddresses.join('; ')}`);
+  const siteLots = await fetchSiteLots(geo.points);
+  if (!siteLots.features.length) throw new Error('No cadastral lots found for the site.');
+
+  // union of lots -> single outer boundary
+  const polys = siteLots.features.filter((f) => f.geometry);
+  let ring: [number, number][];
+  if (polys.length === 1) {
+    ring = geomOuter(polys[0].geometry);
+  } else {
+    const merged = turfUnion(featureCollection(polys as any)) as any;
+    ring = geomOuter(merged?.geometry ?? polys[0].geometry);
+  }
+
+  // rotation from the union's longest edge
+  let rotationDeg = 0;
+  if (opts.rotate === 'auto') {
+    rotationDeg = siteLongEdgeDeg({ type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'Polygon', coordinates: [ring] }, properties: {} }] });
+    if (Math.abs(rotationDeg) < 3) rotationDeg = 0;
+  }
+
+  // center on the site's bbox center; auto-scale to fit with margin
+  const ringM = ring.map(([lon, lat]) => lonLatToMercator({ lon, lat }));
+  const r = (-rotationDeg * Math.PI) / 180;
+  const cosr = Math.cos(r), sinr = Math.sin(r);
+  const cx0 = ringM.reduce((s, p) => s + p.x, 0) / ringM.length;
+  const cy0 = ringM.reduce((s, p) => s + p.y, 0) / ringM.length;
+  let ux0 = 1e15, ux1 = -1e15, uy0 = 1e15, uy1 = -1e15;
+  for (const p of ringM) {
+    const u = (p.x - cx0) * cosr - (p.y - cy0) * sinr;
+    const v = (p.x - cx0) * sinr + (p.y - cy0) * cosr;
+    ux0 = Math.min(ux0, u); ux1 = Math.max(ux1, u);
+    uy0 = Math.min(uy0, v); uy1 = Math.max(uy1, v);
+  }
+  const lat = mercatorToLonLat({ x: cx0, y: cy0 }).lat;
+  const k = mercatorScaleFactor(lat);
+  const marginM = 55 * k; // ground margin around the site, in mercator meters
+  let scale = opts.scale ?? 0;
+  if (!scale) {
+    for (const s of SITE_SCALES) {
+      const halfW = ((opts.mapWidthMm / 1000) * s * k) / 2;
+      const halfH = ((opts.mapHeightMm / 1000) * s * k) / 2;
+      if ((ux1 - ux0) / 2 + marginM <= halfW && (uy1 - uy0) / 2 + marginM <= halfH) { scale = s; break; }
+    }
+    if (!scale) scale = SITE_SCALES[SITE_SCALES.length - 1];
+  }
+  log(`  site sheet scale 1:${scale}${rotationDeg ? `, rotation ${rotationDeg.toFixed(1)}°` : ''}`);
+
+  const view: MapView = {
+    cx: cx0, cy: cy0,
+    halfW: ((opts.mapWidthMm / 1000) * scale * k) / 2,
+    halfH: ((opts.mapHeightMm / 1000) * scale * k) / 2,
+    rotationDeg,
+  };
+  const extent = viewBounds(view);
+
+  const emptyFurniture: SiteFurniture = { trees: [], hydrants: [], powerPoles: [], streetLamps: [], onewayRoads: [] };
+  const soft = <T,>(p: Promise<T>, fallback: T, name: string): Promise<T> =>
+    p.catch((e) => { log(`  WARN ${name} failed: ${e.message ?? e}`); return fallback; });
+
+  log('fetching contours, lots, roads, neighbours, furniture, imagery…');
+  const [contours, allLots, roads, railLines, neighbours, furniture, aerial] = await Promise.all([
+    soft(fetchContours(extent), [], 'contours'),
+    soft(fetchAllLots(extent), { type: 'FeatureCollection', features: [] } as GeoJSONFC, 'lots'),
+    soft(fetchRoads(extent), [], 'roads'),
+    soft(fetchRailLines(extent), { train: [], tram: [] }, 'rail lines'),
+    soft(fetchNeighbourAddresses(extent), [], 'neighbour addresses'),
+    soft(fetchSiteFurniture(extent), emptyFurniture, 'street furniture (OSM)'),
+    fetchAerial(extent, 3600, dataDir),
+  ]);
+
+  let busStops: { name?: string; lon: number; lat: number }[] = [];
+  if (process.env.TFNSW_API_KEY) {
+    busStops = await soft(fetchBusStopsTfnsw(extent, process.env.TFNSW_API_KEY), [], 'bus stops (TfNSW)');
+  }
+
+  log(`  contours:${contours.length} lots:${allLots.features.length} roads:${roads.length} ` +
+      `neighbours:${neighbours.length} trees:${furniture.trees.length} busStops:${busStops.length}`);
+
+  const bundle: SiteBundle = {
+    address, geocode: geo, extent, view, scale,
+    siteLots, siteRing: ring, allLots, roads, railLines, contours, neighbours, furniture,
+    busStops, aerial, generatedAt: new Date().toISOString(),
+  };
+  await writeFile(join(dataDir, 'site_bundle.json'), JSON.stringify(bundle));
+  return bundle;
+}
+
+function geomOuter(geometry: any): [number, number][] {
+  if (geometry.type === 'Polygon') return geometry.coordinates[0];
+  if (geometry.type === 'MultiPolygon') {
+    let best: [number, number][] = geometry.coordinates[0][0];
+    let bestN = 0;
+    for (const poly of geometry.coordinates) {
+      if (poly[0].length > bestN) { bestN = poly[0].length; best = poly[0]; }
+    }
+    return best;
+  }
+  throw new Error(`unexpected site geometry: ${geometry.type}`);
+}

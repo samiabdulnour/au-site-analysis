@@ -11,8 +11,9 @@ if (existsSync('.env')) {
     if (m && !process.env[m[1]]) process.env[m[1]] = m[2].trim();
   }
 }
-import { runPipeline } from './pipeline.js';
+import { runPipeline, runSitePipeline } from './pipeline.js';
 import { renderSheet, MAP_W, MAP_H, type SheetMeta } from './render/sheet.js';
+import { renderSiteSheet } from './render/siteSheet.js';
 import { htmlToPdf } from './render/pdf.js';
 
 function arg(name: string, def?: string): string | undefined {
@@ -46,28 +47,49 @@ const meta: SheetMeta = {
   office,
 };
 
-const bundle = await runPipeline(address, {
-  scale: Number(arg('scale', '3000')),
-  mapWidthMm: MAP_W,
-  mapHeightMm: MAP_H,
-  outDir,
-  rotate: arg('rotate', 'north') === 'auto' ? 'auto' : 'north',
-  log: (m) => console.log(m),
-});
+const sheetType = arg('type', 'context')!; // context | site | both
+const rotate = arg('rotate', 'north') === 'auto' ? 'auto' as const : 'north' as const;
+const outputs: string[] = [];
 
-console.log('composing sheet…');
-const html = renderSheet(bundle, meta);
-const htmlPath = join(outDir, 'sheet.html');
-await writeFile(htmlPath, html);
+if (sheetType === 'context' || sheetType === 'both') {
+  const bundle = await runPipeline(address, {
+    scale: Number(arg('scale', '3000')),
+    mapWidthMm: MAP_W,
+    mapHeightMm: MAP_H,
+    outDir,
+    rotate,
+    log: (m) => console.log(m),
+  });
+  console.log('composing context analysis…');
+  const htmlPath = join(outDir, 'sheet.html');
+  await writeFile(htmlPath, renderSheet(bundle, meta));
+  const pdfPath = join(outDir, 'CONTEXT_ANALYSIS.pdf');
+  await htmlToPdf(htmlPath, pdfPath);
+  outputs.push(pdfPath);
 
-console.log('printing PDF…');
-const pdfPath = join(outDir, 'CONTEXT_ANALYSIS.pdf');
-await htmlToPdf(htmlPath, pdfPath);
+  console.log('exporting CAD (DXF/DWG)…');
+  const { spawnSync } = await import('node:child_process');
+  const cad = spawnSync('python3', ['src/export/dxf_export.py', outDir], { encoding: 'utf8' });
+  if (cad.status === 0) { console.log(cad.stdout.trim()); outputs.push(join(outDir, 'CONTEXT_ANALYSIS_CAD.zip')); }
+  else console.warn(`CAD export failed: ${cad.stderr?.slice(-400)}`);
+}
 
-console.log('exporting CAD (DXF/DWG)…');
-const { spawnSync } = await import('node:child_process');
-const cad = spawnSync('python3', ['src/export/dxf_export.py', outDir], { encoding: 'utf8' });
-if (cad.status === 0) console.log(cad.stdout.trim());
-else console.warn(`CAD export failed: ${cad.stderr?.slice(-400)}`);
+if (sheetType === 'site' || sheetType === 'both') {
+  const siteScale = arg('site-scale', '');
+  const sb = await runSitePipeline(address, {
+    mapWidthMm: MAP_W,
+    mapHeightMm: MAP_H,
+    outDir,
+    scale: siteScale ? Number(siteScale) : undefined,
+    rotate,
+    log: (m) => console.log(m),
+  });
+  console.log('composing site analysis…');
+  const siteHtmlPath = join(outDir, 'site_sheet.html');
+  await writeFile(siteHtmlPath, renderSiteSheet(sb, { ...meta, sheetNo: meta.sheetNo || '' }));
+  const sitePdfPath = join(outDir, 'SITE_ANALYSIS.pdf');
+  await htmlToPdf(siteHtmlPath, sitePdfPath);
+  outputs.push(sitePdfPath);
+}
 
-console.log(`done:\n  ${htmlPath}\n  ${pdfPath}\n  ${join(outDir, 'CONTEXT_ANALYSIS_CAD.zip')}`);
+console.log(`done:\n  ${outputs.join('\n  ')}`);

@@ -24,7 +24,10 @@ export async function fetchAerial(
 ): Promise<AerialResult> {
   await mkdir(outDir, { recursive: true });
   const aspect = (extent.ymax - extent.ymin) / (extent.xmax - extent.xmin);
-  const pxW = targetPxWidth;
+  // Never request beyond the imagery's native resolution (~7.5cm in metro
+  // NSW) — the export endpoint 500s on sub-resolution requests.
+  const maxPx = Math.floor((extent.xmax - extent.xmin) / 0.09);
+  const pxW = Math.min(targetPxWidth, maxPx);
   const pxH = Math.round(pxW * aspect);
   const cols = Math.ceil(pxW / MAX_PX);
   const rows = Math.ceil(pxH / MAX_PX);
