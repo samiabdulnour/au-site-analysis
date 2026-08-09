@@ -37,6 +37,23 @@ must enter it once and get a 30-day session cookie. Login attempts and job
 submissions are rate-limited per IP, and job outputs are deleted after 24h.
 `ALLOW_NO_AUTH=1` disables the gate for local use only.
 
+### Local OpenStreetMap (recommended for production)
+
+The public Overpass network is frequently unavailable, which costs the site
+sheet its trees, driveways, parking zones and street furniture. Run a local
+Overpass seeded with the NSW extract instead:
+
+```bash
+bash deploy/setup-overpass.sh          # ~266MB download, then builds the DB
+# when ready, add to /etc/site-analyst.env:
+#   OVERPASS_LOCAL=http://172.17.0.1:12345/api/interpreter
+deploy/update.sh --force
+```
+
+`OVERPASS_LOCAL` is tried first for every OSM query; the public mirrors and
+the 30-day disk cache remain as fallbacks, so nothing breaks while the local
+database is still building.
+
 ### Public deployment (Docker)
 
 ```bash

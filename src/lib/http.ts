@@ -56,13 +56,23 @@ export async function retryFetch(
  * Overpass with mirror rotation. Public instances rate-limit per IP and shed
  * load constantly; trying every mirror per round beats hammering one.
  */
-const OVERPASS_MIRRORS = [
+const PUBLIC_MIRRORS = [
   'https://overpass-api.de/api/interpreter',
   'https://overpass.kumi.systems/api/interpreter',
   'https://lz4.overpass-api.de/api/interpreter',
   'https://z.overpass-api.de/api/interpreter',
   'https://overpass.osm.jp/api/interpreter',
 ];
+
+/**
+ * A local Overpass (OVERPASS_LOCAL, e.g. http://127.0.0.1:12345/api/interpreter)
+ * is always tried first: it is fast, unmetered and unaffected by the public
+ * network's outages. Public mirrors remain as a fallback.
+ */
+function overpassEndpoints(): string[] {
+  const local = process.env.OVERPASS_LOCAL?.trim();
+  return local ? [local, ...PUBLIC_MIRRORS] : PUBLIC_MIRRORS;
+}
 
 export async function overpassQuery(
   query: string,
@@ -80,7 +90,7 @@ export async function overpassQuery(
   } catch { /* no cache yet */ }
 
   const rounds = opts.rounds ?? 2;
-  const timeoutMs = opts.timeoutMs ?? 40_000;
+  const timeoutMs = opts.timeoutMs ?? (process.env.OVERPASS_LOCAL ? 90_000 : 40_000);
   let lastErr: unknown;
 
   for (let round = 0; round < rounds; round++) {
@@ -89,7 +99,7 @@ export async function overpassQuery(
       opts.log?.(`  OSM busy, waiting ${Math.round(wait / 1000)}s before retry ${round + 1}/${rounds}`);
       await new Promise((r) => setTimeout(r, wait));
     }
-    for (const mirror of OVERPASS_MIRRORS) {
+    for (const mirror of overpassEndpoints()) {
       try {
         const res = await fetch(mirror, {
           method: 'POST',
