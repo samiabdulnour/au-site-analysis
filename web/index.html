@@ -142,7 +142,7 @@ addrInput.addEventListener('input', () => {
     lastQuery = q;
     try {
       const r = await fetch('/api/address?q=' + encodeURIComponent(q));
-      const j = await r.json();
+      const j = await readJson(r);
       if (addrInput.value.trim() === q) renderSuggest(j.suggestions || []);
     } catch { closeSuggest(); }
   }, 250);
@@ -160,6 +160,23 @@ addrInput.addEventListener('keydown', (e) => {
   } else if (e.key === 'Escape') closeSuggest();
 });
 addrInput.addEventListener('blur', () => setTimeout(closeSuggest, 120));
+
+// A restart, a proxy hiccup or a rate limit can answer with an empty or
+// non-JSON body; r.json() throws "Unexpected end of JSON input" there and the
+// raw parser message ends up in front of the user. Always read defensively.
+async function readJson(r) {
+  const text = await r.text().catch(() => '');
+  if (!text) return {};
+  try { return JSON.parse(text); } catch { return {}; }
+}
+
+function httpMessage(r, j) {
+  if (j && j.error) return j.error;
+  if (r.status === 401) return 'Session expired — reload the page and sign in again.';
+  if (r.status === 429) return 'Too many requests — wait a minute and try again.';
+  if (r.status >= 500) return 'The service is restarting — try again in a moment.';
+  return 'Request failed (HTTP ' + r.status + ').';
+}
 
 // Show login or generator depending on session state.
 fetch('/api/me').then(r => {
@@ -202,17 +219,28 @@ f.addEventListener('submit', async (e) => {
                              rotate: document.getElementById('rotate').value,
                              sheet: document.getElementById('sheet').value }),
     });
-    const j = await r.json();
-    if (!r.ok) throw new Error(j.error || 'Request failed');
+    const j = await readJson(r);
+    if (!r.ok) throw new Error(httpMessage(r, j));
+    if (!j.id) throw new Error('The service is restarting — try again in a moment.');
     poll(j.id);
   } catch (err) { fail(err.message); }
 });
 
-async function poll(id) {
+// misses: consecutive transient failures. A generation takes minutes, so a
+// deploy or a dropped connection mid-run must not throw the sheet away —
+// keep polling for a while before giving up.
+async function poll(id, misses) {
+  misses = misses || 0;
   try {
     const r = await fetch('/api/jobs/' + id);
-    const j = await r.json();
-    if (!r.ok) throw new Error(j.error || 'Job lost');
+    if (r.status >= 500) {
+      if (misses < 20) { log.textContent = 'service restarting, reconnecting…';
+                         return setTimeout(() => poll(id, misses + 1), 3000); }
+      throw new Error('The service is restarting — try again in a moment.');
+    }
+    const j = await readJson(r);
+    if (r.status === 404) throw new Error('The service restarted and this job was lost — please generate again.');
+    if (!r.ok) throw new Error(httpMessage(r, j));
     log.textContent = j.log.join('\n') || (j.status === 'queued' ? 'waiting in queue…' : '…');
     if (j.status === 'done') {
       status_.classList.remove('active');
@@ -226,8 +254,15 @@ async function poll(id) {
       return;
     }
     if (j.status === 'error') throw new Error(j.error || 'Generation failed');
-    setTimeout(() => poll(id), 2500);
-  } catch (err) { fail(err.message); }
+    setTimeout(() => poll(id, 0), 2500);
+  } catch (err) {
+    // fetch() rejects outright when the connection drops — same transient case.
+    if (err instanceof TypeError && misses < 20) {
+      log.textContent = 'connection lost, reconnecting…';
+      return setTimeout(() => poll(id, misses + 1), 3000);
+    }
+    fail(err.message);
+  }
 }
 
 function fail(msg) {
