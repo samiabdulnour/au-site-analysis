@@ -42,25 +42,51 @@ export function parseAddress(input: string): ParsedAddress {
   s = s.replace(/\b(NSW|AUSTRALIA)\b/g, '').replace(/\b\d{4}\b/g, '').replace(/\s+/g, ' ').trim();
   s = s.replace(/^(UNIT|SHOP|SUITE|LEVEL|APT|APARTMENT)\s+\w+[,/]?\s+/, '');
   s = s.replace(/^\w+\//, ''); // "5/212 …" -> "212 …"
-  const m = s.match(/^(\d+[A-Z]?)(?:\s*-\s*(\d+[A-Z]?))?\s+(.*)$/);
-  if (!m) throw new Error(`Cannot parse address: "${input}" — use e.g. "212 Bondi Rd, Bondi NSW"`);
-  const [, from, to, rest] = m;
+  const { nums, rest } = splitNumbers(s);
+  if (!nums.length || !rest) {
+    throw new Error(`Cannot parse address: "${input}" — use e.g. "212 Bondi Rd, Bondi NSW"`);
+  }
   const words = rest.split(' ').map((w) => STREET_TYPES[w.toLowerCase()] ?? w);
   // split street / locality at the LAST street-type word
   let typeIdx = -1;
   for (let i = 0; i < words.length; i++) if (TYPE_WORDS.has(words[i])) typeIdx = i;
   const street = (typeIdx >= 0 ? words.slice(0, typeIdx + 1) : words).join(' ');
   const locality = typeIdx >= 0 ? words.slice(typeIdx + 1).join(' ') : '';
-  const numbers: string[] = [];
-  if (to) {
-    const a = parseInt(from), b = parseInt(to);
-    const step = (b - a) % 2 === 0 ? 2 : 1;
-    for (let n = a; n <= b; n += step) numbers.push(String(n));
-    numbers.push(`${from}-${to}`);
-  } else {
-    numbers.push(from);
+  return { numbers: expandNumbers(nums), street, locality };
+}
+
+/**
+ * Consume the leading house-number tokens. NSW registers a multi-lot parent as
+ * a list — "134, 136, 136A, 138 SHOWGROUND ROAD" — so there may be several,
+ * mixed with ranges. Commas are already spaces by the time this runs.
+ */
+function splitNumbers(s: string): { nums: string[]; rest: string } {
+  const parts = s.split(' ').filter(Boolean);
+  const nums: string[] = [];
+  let i = 0;
+  for (; i < parts.length; i++) {
+    if (!/^\d+[A-Z]?(?:-\d+[A-Z]?)?$/.test(parts[i])) break;
+    nums.push(parts[i]);
   }
-  return { numbers, street, locality };
+  // Never swallow the whole string: a street name can begin with a number
+  // ("7 Hills Road"), so always leave at least one token for the street.
+  if (i >= parts.length) return { nums: nums.slice(0, 1), rest: parts.slice(1).join(' ') };
+  return { nums, rest: parts.slice(i).join(' ') };
+}
+
+/** "212-218" -> 212, 214, 216, 218, plus the range itself. */
+function expandNumbers(nums: string[]): string[] {
+  const out: string[] = [];
+  for (const tok of nums) {
+    const r = tok.match(/^(\d+)[A-Z]?-(\d+)[A-Z]?$/);
+    if (r) {
+      const a = parseInt(r[1]), b = parseInt(r[2]);
+      const step = (b - a) % 2 === 0 ? 2 : 1;
+      for (let n = Math.min(a, b); n <= Math.max(a, b); n += step) out.push(String(n));
+    }
+    out.push(tok);
+  }
+  return [...new Set(out)];
 }
 
 const sql = (s: string) => s.replace(/'/g, "''");
@@ -79,9 +105,17 @@ async function fetchCandidates(where: string, cap = 200): Promise<Candidate[]> {
     }));
 }
 
-/** Does this candidate's house number cover the requested street number? */
+/**
+ * Does this candidate's house number cover the requested street number?
+ * The field itself may be a list — "134, 136, 136A, 138" — so any one part
+ * covering the wanted number is a match.
+ */
 function covers(hn: string, want: string): boolean {
   if (hn.includes('/')) return false;             // unit at another number
+  return hn.split(/[,\s]+/).filter(Boolean).some((part) => coversPart(part, want));
+}
+
+function coversPart(hn: string, want: string): boolean {
   if (hn === want) return true;
   if (hn.replace(/[A-Z]$/, '') === want) return true;  // 212A covers 212
   const range = hn.match(/^(\d+)[A-Z]?-(\d+)[A-Z]?$/);
@@ -106,11 +140,19 @@ export async function geocode(input: string): Promise<GeocodeResult> {
       found.set(c.address, c);
   }
 
+  // Which requested numbers does stage A actually account for? A multi-lot
+  // site is only drawn correctly if every lot is found: "134, 136, 136A, 138"
+  // matches 136/136A/138 exactly while 134 is registered as "134-134A", so
+  // stopping at the first hit would silently drop a lot from the boundary.
+  const wanted = numbers.filter((x) => !x.includes('-'));
+  const outstanding = () =>
+    wanted.filter((n) => ![...found.values()].some((c) => covers(c.housenumber, n)));
+
   // Stage B: ranged parents and suffixed numbers on the same street+locality
-  if (!found.size) {
+  if (outstanding().length) {
     const pool = await fetchCandidates(
       `address LIKE '%${sql(tail)}' AND housenumber NOT LIKE '%/%'`, 800);
-    for (const n of numbers.filter((x) => !x.includes('-'))) {
+    for (const n of outstanding()) {
       for (const c of pool) if (covers(c.housenumber, n)) found.set(c.address, c);
     }
   }
@@ -170,9 +212,9 @@ export async function suggestAddresses(q: string, limit = 8): Promise<string[]> 
   const cleaned = raw.replace(/\b(NSW|AUSTRALIA)\b/g, '').replace(/\b\d{4}\b/g, '')
     .replace(/^(UNIT|SHOP|SUITE|LEVEL|APT)\s+\w+[,/]?\s+/, '').replace(/^\w+\//, '')
     .replace(/\s+/g, ' ').trim();
-  const m = cleaned.match(/^(\d+[A-Z]?)(?:\s*-\s*\d+[A-Z]?)?\s+(.*)$/);
-  if (!m) return [];
-  const [, num, rest] = m;
+  const { nums, rest } = splitNumbers(cleaned);
+  if (!nums.length || !rest) return [];
+  const num = nums[0];
 
   // Expand abbreviated street types wherever they appear, then split the
   // street from any typed locality at the last street-type word.
@@ -186,9 +228,13 @@ export async function suggestAddresses(q: string, limit = 8): Promise<string[]> 
   const add = (a: string) => { if (a && !out.has(a)) out.set(a, a); };
 
   // Pass 1: prefix match on "<number> <street>" (fast, covers most typing).
+  // The second LIKE catches multi-lot parents, which the register stores with
+  // the number first in a comma list: "134, 136, 136A, 138 SHOWGROUND ROAD".
   try {
     const fc = await queryWhere(ADDRESS_POINT,
-      `address LIKE '${sql(`${num} ${street}`)}%' AND housenumber NOT LIKE '%/%'`,
+      `(address LIKE '${sql(`${num} ${street}`)}%'` +
+      ` OR address LIKE '${sql(num)},%${sql(street)}%')` +
+      ` AND housenumber NOT LIKE '%/%'`,
       'address', 60);
     for (const f of fc.features) add(f.properties.address as string);
   } catch { /* best effort */ }
