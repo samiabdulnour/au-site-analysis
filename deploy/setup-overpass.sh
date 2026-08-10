@@ -14,6 +14,7 @@ REGION_URL="${REGION_URL:-https://download.geofabrik.de/australia-oceania/austra
 PORT="${OVERPASS_PORT:-12345}"
 VOLUME="${OVERPASS_VOLUME:-/var/lib/overpass-nsw}"
 NAME=overpass-nsw
+NET="${SITE_NET:-site-net}"
 
 echo "==> disk space check"
 avail=$(df --output=avail -BG / | tail -1 | tr -dc '0-9')
@@ -26,10 +27,12 @@ echo "==> pulling Overpass image"
 docker pull wiktorn/overpass-api:latest
 
 mkdir -p "$VOLUME"
+docker network inspect "$NET" >/dev/null 2>&1 || docker network create "$NET" >/dev/null
 
 echo "==> starting $NAME (first run clones the NSW extract; this takes a while)"
 docker rm -f "$NAME" >/dev/null 2>&1 || true
 docker run -d --name "$NAME" --restart unless-stopped \
+  --network "$NET" \
   -e OVERPASS_MODE=init \
   -e OVERPASS_PLANET_URL="$REGION_URL" \
   -e OVERPASS_DIFF_URL=https://download.geofabrik.de/australia-oceania/australia/new-south-wales-updates/ \
@@ -49,11 +52,11 @@ cat <<EOF
       curl -s "http://127.0.0.1:${PORT}/api/interpreter" \\
         --data 'data=[out:json];node(-33.912,151.100,-33.910,151.104)["highway"="bus_stop"];out 2;'
 
-    Once ready, point the app at it (one line, then it redeploys itself):
-      grep -q OVERPASS_LOCAL /etc/site-analyst.env || \\
-        echo 'OVERPASS_LOCAL=http://172.17.0.1:${PORT}/api/interpreter' >> /etc/site-analyst.env
-      /opt/site-analyst/deploy/update.sh --force
+    Nothing else to do: deploy/ensure-overpass.sh runs on every auto-deploy
+    pass, notices the database is answering, writes
 
-    (172.17.0.1 is the docker bridge gateway: how the app container reaches
-     a service published on the host.)
+      OVERPASS_LOCAL=http://$NAME/api/interpreter
+
+    into /etc/site-analyst.env and redeploys the app. Both containers share
+    the "$NET" docker network, so the app resolves Overpass by container name.
 EOF

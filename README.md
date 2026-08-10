@@ -43,16 +43,28 @@ The public Overpass network is frequently unavailable, which costs the site
 sheet its trees, driveways, parking zones and street furniture. Run a local
 Overpass seeded with the NSW extract instead:
 
+On a server running the auto-deployer this installs itself: every pass runs
+`deploy/ensure-overpass.sh`, which launches the Overpass container if it is
+missing (~266MB download, then 30–90 min building the database inside the
+container), keeps it running, and — once it actually answers queries — writes
+`OVERPASS_LOCAL` into `/etc/site-analyst.env` and redeploys the app. Progress
+is in `/var/log/site-analyst-overpass.log`; `GET /api/version` reports
+`"osm": "local"` when the switch has happened.
+
+Anywhere else, run it by hand:
+
 ```bash
-bash deploy/setup-overpass.sh          # ~266MB download, then builds the DB
-# when ready, add to /etc/site-analyst.env:
-#   OVERPASS_LOCAL=http://172.17.0.1:12345/api/interpreter
-deploy/update.sh --force
+bash deploy/setup-overpass.sh
 ```
 
+Both containers share the `site-net` docker network, so the app resolves
+Overpass by container name (`http://overpass-nsw/api/interpreter`); a port
+published on the host loopback would not be reachable from the app container.
 `OVERPASS_LOCAL` is tried first for every OSM query; the public mirrors and
 the 30-day disk cache remain as fallbacks, so nothing breaks while the local
-database is still building.
+database is still building — or if it is never installed at all.
+
+Needs ~12GB free disk; the setup script refuses to start below that.
 
 ### Public deployment (Docker)
 

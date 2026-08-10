@@ -191,7 +191,10 @@ const server = createServer(async (req, res) => {
   }
 
   if (req.method === 'GET' && url.pathname === '/api/version') {
-    return json(res, 200, { sha: process.env.GIT_SHA ?? 'dev' });
+    return json(res, 200, {
+      sha: process.env.GIT_SHA ?? 'dev',
+      osm: process.env.OVERPASS_LOCAL ? 'local' : 'public',
+    });
   }
 
   if (req.method === 'GET' && url.pathname === '/api/me') {
