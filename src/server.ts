@@ -58,7 +58,13 @@ async function probeLocalOverpass(): Promise<string> {
     });
     const text = await res.text();
     state = text.trimStart().startsWith('{') ? 'serving' : 'building';
-  } catch { /* container missing or not listening yet */ }
+  } catch (e: any) {
+    // Tell "still building" apart from "never installed": while the database
+    // builds the container exists but Apache is not up yet (ECONNREFUSED),
+    // whereas a missing container fails to resolve at all (ENOTFOUND).
+    const code = e?.cause?.code ?? e?.code ?? '';
+    state = code === 'ENOTFOUND' || code === 'EAI_AGAIN' ? 'absent' : `building (${code || 'no answer'})`;
+  }
   osmProbe = { at: Date.now(), state };
   return state;
 }
