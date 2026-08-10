@@ -42,6 +42,27 @@ const SESSION_TOKEN = ACCESS_CODE
 const JOB_RETENTION_MS = 24 * 3600 * 1000;
 const WEB_OUT = join(ROOT, 'out', 'web');
 
+// Is the local Overpass container up and serving yet? Reported by /api/version
+// so the switchover can be checked without shell access to the host. Cached,
+// because /api/version is public and this reaches a neighbouring container.
+let osmProbe: { at: number; state: string } = { at: 0, state: 'unknown' };
+async function probeLocalOverpass(): Promise<string> {
+  if (Date.now() - osmProbe.at < 60_000) return osmProbe.state;
+  const url = process.env.OVERPASS_LOCAL ?? 'http://overpass-nsw/api/interpreter';
+  let state = 'absent';
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      body: new URLSearchParams({ data: '[out:json][timeout:5];node(-33.9125,151.1000,-33.9105,151.1040)["highway"="bus_stop"];out 2;' }),
+      signal: AbortSignal.timeout(8_000),
+    });
+    const text = await res.text();
+    state = text.trimStart().startsWith('{') ? 'serving' : 'building';
+  } catch { /* container missing or not listening yet */ }
+  osmProbe = { at: Date.now(), state };
+  return state;
+}
+
 interface Job {
   id: string;
   address: string;
@@ -194,6 +215,7 @@ const server = createServer(async (req, res) => {
     return json(res, 200, {
       sha: process.env.GIT_SHA ?? 'dev',
       osm: process.env.OVERPASS_LOCAL ? 'local' : 'public',
+      osmLocal: await probeLocalOverpass(),
     });
   }
 
