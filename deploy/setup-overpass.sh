@@ -10,6 +10,10 @@
 # switches over automatically once OVERPASS_LOCAL is set.
 set -euo pipefail
 
+# Geofabrik dropped .osm.bz2 for sub-regions, and this image only ingests
+# bz2-compressed OSM XML — so take the pbf and convert it on arrival with
+# osmium (OVERPASS_PLANET_PREPROCESS below). Area generation is deliberately
+# not enabled: every query in src/fetch is bbox-based, none use area[…].
 REGION_URL="${REGION_URL:-https://download.geofabrik.de/australia-oceania/australia/new-south-wales-latest.osm.pbf}"
 PORT="${OVERPASS_PORT:-12345}"
 VOLUME="${OVERPASS_VOLUME:-/var/lib/overpass-nsw}"
@@ -41,8 +45,8 @@ docker run -d --name "$NAME" --restart on-failure:3 \
   --network "$NET" \
   -e OVERPASS_MODE=init \
   -e OVERPASS_PLANET_URL="$REGION_URL" \
+  -e OVERPASS_PLANET_PREPROCESS='mv /db/planet.osm.bz2 /db/planet.osm.pbf && osmium cat -o /db/planet.osm.bz2 /db/planet.osm.pbf' \
   -e OVERPASS_DIFF_URL=https://download.geofabrik.de/australia-oceania/australia/new-south-wales-updates/ \
-  -e OVERPASS_RULES_LOAD=10 \
   -e OVERPASS_META=no \
   -e OVERPASS_UPDATE_SLEEP=86400 \
   -v "$VOLUME:/db" \

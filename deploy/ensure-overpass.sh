@@ -96,12 +96,15 @@ read -r cstate code oom < <(docker inspect \
 if [ "$cstate" = "restarting" ] || { [ "$cstate" = "exited" ] && [ "$code" != "0" ]; }; then
   save_tail
   set_status "ctr=$cstate exit=$code oom=$oom"
-  if [ -f "$RECOVERED" ]; then
-    say "still failing after a clean re-init (exit $code) — not retrying"
+  # Retry once per setup configuration: a changed setup script is a genuinely
+  # new attempt, while an unchanged one would just fail the same way.
+  sig=$(sha1sum /opt/site-analyst/deploy/setup-overpass.sh 2>/dev/null | cut -c1-12)
+  if [ "$(cat "$RECOVERED" 2>/dev/null)" = "$sig" ]; then
+    say "still failing after a clean re-init (exit $code) — not retrying until setup changes"
     exit 0
   fi
   say "crash loop (exit $code) — wiping the half-built database, re-initialising once"
-  touch "$RECOVERED"
+  printf '%s' "$sig" > "$RECOVERED"
   docker rm -f "$NAME" >/dev/null 2>&1 || true
   find "${VOLUME:?}" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true
   setsid bash -c "bash /opt/site-analyst/deploy/setup-overpass.sh >>'$LOG' 2>&1" >/dev/null 2>&1 &
