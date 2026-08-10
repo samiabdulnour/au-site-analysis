@@ -48,6 +48,12 @@ const WEB_OUT = join(ROOT, 'out', 'web');
 // deploy/ensure-overpass.sh writes a one-line status here on the host; the
 // directory is mounted read-only into this container. Sanitised and length-
 // capped before publishing, since /api/version is unauthenticated.
+function hostFile(path: string, cap: number): string {
+  try {
+    return readFileSync(path, 'utf8').replace(/[^\w.:/= ()-]/g, '').trim().slice(0, cap) || 'empty';
+  } catch { return 'none'; }
+}
+
 function hostStatus(): string {
   try {
     return readFileSync('/hostinfo/overpass.status', 'utf8')
@@ -239,6 +245,7 @@ const server = createServer(async (req, res) => {
       osm: process.env.OVERPASS_LOCAL ? 'local' : 'public',
       osmLocal: await probeLocalOverpass(),
       osmSetup: hostStatus(),
+      osmLog: hostFile('/hostinfo/overpass.tail', 240),
     });
   }
 

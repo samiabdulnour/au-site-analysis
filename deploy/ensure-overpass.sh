@@ -23,6 +23,7 @@ NET="${SITE_NET:-site-net}"
 ENV_FILE=/etc/site-analyst.env
 STATE_DIR=/var/lib/site-analyst
 STATUS="$STATE_DIR/overpass.status"
+TAIL="$STATE_DIR/overpass.tail"
 ATTEMPT="$STATE_DIR/overpass.attempt"
 LOG=/var/log/site-analyst-overpass.log
 # The app reaches Overpass by container name on the shared docker network —
@@ -35,6 +36,14 @@ say() { echo "[$(date -Is)] overpass: $*" | tee -a "$LOG"; }
 # Short, non-sensitive status string — this is served publicly.
 free_gb() { df --output=avail -BG / | tail -1 | tr -dc '0-9'; }
 set_status() { printf 'disk=%sG %s\n' "$(free_gb)" "$1" > "$STATUS"; }
+
+# Why the container is unhappy. Its log is the only place that says so, and
+# the host log file is unreachable from anywhere else, so keep a short
+# sanitised tail for /api/version. Overpass logs no credentials.
+save_tail() {
+  docker logs --tail 6 "$NAME" 2>&1 | tr '\n' ' ' \
+    | tr -cd '[:alnum:]:/._ ()-' | tail -c 240 > "$TAIL" 2>/dev/null || true
+}
 
 # Leave a breadcrumb immediately: if the status never advances past this, the
 # script is running but dying early, which is not the same as never running.
@@ -91,7 +100,7 @@ probe=$(curl -s --max-time 20 "http://127.0.0.1:${PORT}/api/interpreter" \
   --data 'data=[out:json][timeout:15];node(-33.9125,151.1000,-33.9105,151.1040)["highway"="bus_stop"];out 2;' 2>/dev/null)
 case "$probe" in
   \{*) ;;                                   # JSON — the database is serving
-  *) set_status "building ctr=$cstate oom=$oom"; exit 0 ;;
+  *) set_status "ctr=$cstate exit=$code oom=$oom"; save_tail; exit 0 ;;
 esac
 
 set_status "serving"
