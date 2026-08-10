@@ -1,20 +1,32 @@
 #!/usr/bin/env bash
-# One-time: run a LOCAL Overpass API seeded with the NSW OpenStreetMap
+# One-time: run a LOCAL Overpass API seeded with a Greater Sydney OpenStreetMap
 # extract, so trees, driveways, parking zones, bus routes and street furniture
 # no longer depend on the public Overpass network (which is regularly down).
 #
 #   bash deploy/setup-overpass.sh
 #
-# Downloads ~266MB, then builds the database (30-90 min on a 2-vCPU box,
+# Downloads ~54MB, then builds the database (10-20 min on a 2-vCPU box,
 # unattended). The app keeps working from public mirrors meanwhile and
 # switches over automatically once OVERPASS_LOCAL is set.
 set -euo pipefail
 
-# Geofabrik dropped .osm.bz2 for sub-regions, and this image only ingests
-# bz2-compressed OSM XML — so take the pbf and convert it on arrival with
-# osmium (OVERPASS_PLANET_PREPROCESS below). Area generation is deliberately
-# not enabled: every query in src/fetch is bbox-based, none use area[…].
-REGION_URL="${REGION_URL:-https://download.geofabrik.de/australia-oceania/australia/new-south-wales-latest.osm.pbf}"
+# Greater Sydney (54MB), not all of NSW (253MB): the whole-state build gets
+# OOM-killed on a 4GB box, and the office works in the Sydney basin. Addresses
+# outside the extent still work — src/lib/http.ts falls back to the public
+# mirrors — they are just slower.
+#
+# For NSW-wide coverage set both (needs ~8GB RAM to build):
+#   REGION_URL=https://download.geofabrik.de/australia-oceania/australia/new-south-wales-latest.osm.pbf
+#   DIFF_URL=https://download.geofabrik.de/australia-oceania/australia/new-south-wales-updates/
+#
+# Geofabrik dropped .osm.bz2 for sub-regions and this image only ingests
+# bz2-compressed OSM XML, so the pbf is converted on arrival with osmium
+# (OVERPASS_PLANET_PREPROCESS below). Area generation is deliberately not
+# enabled: every query in src/fetch is bbox-based, none use area[…].
+REGION_URL="${REGION_URL:-https://download.bbbike.org/osm/bbbike/Sydney/Sydney.osm.pbf}"
+# BBBike publishes no diff stream; without it the extract is refreshed by
+# re-running this script rather than updated daily in place.
+DIFF_URL="${DIFF_URL:-}"
 PORT="${OVERPASS_PORT:-12345}"
 VOLUME="${OVERPASS_VOLUME:-/var/lib/overpass-nsw}"
 NAME=overpass-nsw
@@ -41,17 +53,19 @@ echo "==> starting $NAME (first run clones the NSW extract; this takes a while)"
 docker rm -f "$NAME" >/dev/null 2>&1 || true
 # on-failure, not unless-stopped: a broken init must not churn indefinitely.
 # ensure-overpass.sh promotes it to unless-stopped once it is serving.
+diff_args=()
+[ -n "$DIFF_URL" ] && diff_args=(-e OVERPASS_DIFF_URL="$DIFF_URL" -e OVERPASS_UPDATE_SLEEP=86400)
+
 docker run -d --name "$NAME" --restart on-failure:3 \
   --network "$NET" \
   -e OVERPASS_MODE=init \
   -e OVERPASS_PLANET_URL="$REGION_URL" \
   -e OVERPASS_PLANET_PREPROCESS='mv /db/planet.osm.bz2 /db/planet.osm.pbf && osmium cat -o /db/planet.osm.bz2 /db/planet.osm.pbf' \
-  -e OVERPASS_DIFF_URL=https://download.geofabrik.de/australia-oceania/australia/new-south-wales-updates/ \
   -e OVERPASS_META=no \
-  -e OVERPASS_UPDATE_SLEEP=86400 \
+  "${diff_args[@]}" \
   -v "$VOLUME:/db" \
   -p "127.0.0.1:${PORT}:80" \
-  --memory 2g \
+  --memory 3g \
   wiktorn/overpass-api:latest
 
 cat <<EOF
