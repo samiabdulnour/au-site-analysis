@@ -45,6 +45,16 @@ const WEB_OUT = join(ROOT, 'out', 'web');
 // Is the local Overpass container up and serving yet? Reported by /api/version
 // so the switchover can be checked without shell access to the host. Cached,
 // because /api/version is public and this reaches a neighbouring container.
+// deploy/ensure-overpass.sh writes a one-line status here on the host; the
+// directory is mounted read-only into this container. Sanitised and length-
+// capped before publishing, since /api/version is unauthenticated.
+function hostStatus(): string {
+  try {
+    return readFileSync('/hostinfo/overpass.status', 'utf8')
+      .replace(/[^\w.:= -]/g, '').trim().slice(0, 80) || 'unknown';
+  } catch { return 'unknown'; }
+}
+
 let osmProbe: { at: number; state: string } = { at: 0, state: 'unknown' };
 async function probeLocalOverpass(): Promise<string> {
   if (Date.now() - osmProbe.at < 60_000) return osmProbe.state;
@@ -224,6 +234,7 @@ const server = createServer(async (req, res) => {
       sha: process.env.GIT_SHA ?? 'dev',
       osm: process.env.OVERPASS_LOCAL ? 'local' : 'public',
       osmLocal: await probeLocalOverpass(),
+      osmSetup: hostStatus(),
     });
   }
 

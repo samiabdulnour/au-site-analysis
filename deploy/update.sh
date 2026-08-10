@@ -37,6 +37,10 @@ docker run -d --name site-analyst --restart unless-stopped \
   -e ACCESS_CODE="$ACCESS_CODE" \
   -e TFNSW_API_KEY="$TFNSW_API_KEY" \
   -e OVERPASS_LOCAL="${OVERPASS_LOCAL:-}" \
+  -v /var/lib/site-analyst:/hostinfo:ro \
   site-analyst >/dev/null
 docker image prune -f >/dev/null
+# The layer cache grows with every deploy and `image prune` does not touch it;
+# on a 40GB disk it is what eventually starves the Overpass database.
+docker builder prune -f --filter until=168h >/dev/null 2>&1 || true
 echo "[$(date -Is)] deployed ${REMOTE:0:9}"
