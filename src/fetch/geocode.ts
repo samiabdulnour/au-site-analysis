@@ -148,26 +148,56 @@ export async function geocode(input: string): Promise<GeocodeResult> {
   const outstanding = () =>
     wanted.filter((n) => ![...found.values()].some((c) => covers(c.housenumber, n)));
 
-  // Stage B: ranged parents and suffixed numbers on the same street+locality
-  if (outstanding().length) {
-    const pool = await fetchCandidates(
-      `address LIKE '%${sql(tail)}' AND housenumber NOT LIKE '%/%'`, 800);
-    for (const n of outstanding()) {
+  // Stage B: ranged parents and suffixed numbers whose address starts with the
+  // wanted number ("134-134A", "212A"). Anchored on the number so the address
+  // index applies — the unanchored form below costs ~31s against this layer.
+  // One query per outstanding number rather than a single OR: an OR of two
+  // prefixes makes the optimizer abandon the index (0.7s -> 49s measured).
+  for (const n of outstanding().slice(0, 8)) {
+    // Same selectivity rule as the type-ahead: a short bare prefix is not one.
+    for (const anchor of n.length >= 3 ? [`${n}%`] : [`${n} %`, `${n}-%`]) {
+      const pool = await fetchCandidates(
+        `address LIKE '${sql(anchor)}' AND address LIKE '%${sql(tail)}'` +
+        ` AND housenumber NOT LIKE '%/%'`, 60);
       for (const c of pool) if (covers(c.housenumber, n)) found.set(c.address, c);
     }
   }
 
-  // Stage C: drop the locality (official suburb may differ) — prefer
-  // candidates whose address still mentions the user's locality.
-  if (!found.size && locality) {
+  // Stage B2 (slow, unindexed): a number *inside* a range starts with a
+  // different number — 214 lives in "212-218" — so the prefix above cannot
+  // find it. Only worth a full scan when nothing at all was found.
+  if (!found.size) {
     const pool = await fetchCandidates(
-      `address LIKE '%${sql(street)}%' AND housenumber NOT LIKE '%/%'`, 800);
+      `address LIKE '%${sql(tail)}' AND housenumber NOT LIKE '%/%'`, 800);
+    for (const n of wanted) {
+      for (const c of pool) if (covers(c.housenumber, n)) found.set(c.address, c);
+    }
+  }
+
+  // Stage C: drop the locality (the official suburb may differ from the one
+  // the user typed) — but only accept candidates that still mention it.
+  if (!found.size && locality) {
     const matching: Candidate[] = [];
-    for (const n of numbers.filter((x) => !x.includes('-'))) {
-      for (const c of pool) if (covers(c.housenumber, n)) matching.push(c);
+    for (const n of wanted.slice(0, 8)) {
+      for (const anchor of n.length >= 3 ? [`${n}%`] : [`${n} %`, `${n}-%`]) {
+        const pool = await fetchCandidates(
+          `address LIKE '${sql(anchor)}' AND address LIKE '%${sql(street)}%'` +
+          ` AND housenumber NOT LIKE '%/%'`, 60);
+        for (const c of pool) if (covers(c.housenumber, n)) matching.push(c);
+      }
     }
     const preferred = matching.filter((c) => c.address.includes(locality));
-    for (const c of (preferred.length ? preferred : matching)) found.set(c.address, c);
+    for (const c of preferred) found.set(c.address, c);
+
+    // Never silently substitute a different suburb. "1 George St, Sydney" has
+    // matches in Glendale, Goulburn and Canley Heights; drawing one of those
+    // as the site would be a wrong sheet rather than a visible failure.
+    if (!found.size && matching.length) {
+      const near = [...new Set(matching.map((c) => c.address))].slice(0, 5);
+      throw new Error(
+        `Address not found in ${locality}: "${input}". ` +
+        `Same street number elsewhere in NSW: ${near.join('; ')}.`);
+    }
   }
 
   if (!found.size) {
@@ -227,28 +257,31 @@ export async function suggestAddresses(q: string, limit = 8): Promise<string[]> 
   const out = new Map<string, string>();
   const add = (a: string) => { if (a && !out.has(a)) out.set(a, a); };
 
-  // Pass 1: prefix match on "<number> <street>" (fast, covers most typing).
-  // The second LIKE catches multi-lot parents, which the register stores with
-  // the number first in a comma list: "134, 136, 136A, 138 SHOWGROUND ROAD".
-  try {
-    const fc = await queryWhere(ADDRESS_POINT,
-      `(address LIKE '${sql(`${num} ${street}`)}%'` +
-      ` OR address LIKE '${sql(num)},%${sql(street)}%')` +
-      ` AND housenumber NOT LIKE '%/%'`,
-      'address', 60);
-    for (const f of fc.features) add(f.properties.address as string);
-  } catch { /* best effort */ }
-
-  // Pass 2: street-wide search filtered by number coverage — finds ranged
-  // parents ("212" inside "212-218") and localities the user did not type.
-  if (out.size < 3) {
+  // One query, and its shape matters. Anchoring on the number puts this on the
+  // layer's address index and narrows to a handful of rows before the street
+  // wildcard is applied: ~0.7s. Two forms that look equivalent are not —
+  // measured against this layer:
+  //   address LIKE '134%' AND address LIKE '%SHOWGROUND%'   0.7s   <- this
+  //   (address LIKE 'A%' OR address LIKE 'B%') AND …         49s   OR kills it
+  //   address LIKE '%SHOWGROUND ROAD%'                       31s   unindexed
+  // The number prefix also catches "134-134A" and "134A", so the ranged and
+  // suffixed parents come back without a second pass.
+  // A bare "<num>%" is only selective for longer numbers: '1%' matches 1, 10,
+  // 100, 1000… — a third of the register, and it measured 84s. Anchor short
+  // numbers with the delimiter that must follow them instead.
+  const anchors = num.length >= 3
+    ? [`${num}%`]                       // 134% also catches 134A and 134-134A
+    : [`${num} %`, `${num}-%`];         // 1 GEORGE…, 1-3 GEORGE…
+  for (const anchor of anchors) {
     try {
       const fc = await queryWhere(ADDRESS_POINT,
-        `address LIKE '%${sql(street)}%' AND housenumber NOT LIKE '%/%'`,
-        'address,housenumber', 600);
+        `address LIKE '${sql(anchor)}' AND address LIKE '%${sql(street)}%'` +
+        ` AND housenumber NOT LIKE '%/%'`,
+        'address,housenumber', 60);
       for (const f of fc.features) {
-        const hn = String(f.properties.housenumber ?? '');
-        if (covers(hn, num)) add(f.properties.address as string);
+        if (covers(String(f.properties.housenumber ?? ''), num)) {
+          add(f.properties.address as string);
+        }
       }
     } catch { /* best effort */ }
   }
