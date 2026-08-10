@@ -48,7 +48,9 @@ const WEB_OUT = join(ROOT, 'out', 'web');
 let osmProbe: { at: number; state: string } = { at: 0, state: 'unknown' };
 async function probeLocalOverpass(): Promise<string> {
   if (Date.now() - osmProbe.at < 60_000) return osmProbe.state;
-  const url = process.env.OVERPASS_LOCAL ?? 'http://overpass-nsw/api/interpreter';
+  // `||`, not `??`: the deployer passes OVERPASS_LOCAL="" when it is unset,
+  // so the variable exists but is empty and `??` would not fall back.
+  const url = process.env.OVERPASS_LOCAL?.trim() || 'http://overpass-nsw/api/interpreter';
   let state = 'absent';
   try {
     const res = await fetch(url, {
