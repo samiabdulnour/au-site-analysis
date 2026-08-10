@@ -57,6 +57,15 @@ Anywhere else, run it by hand:
 bash deploy/setup-overpass.sh
 ```
 
+**Keeping it accurate.** The extract carries no diff stream, so
+`ensure-overpass.sh` rebuilds the database from a fresh download every
+`OVERPASS_REFRESH_DAYS` (default 7, matching how often BBBike regenerates it)
+at `OVERPASS_REFRESH_HOUR_UTC` (default 16:00 UTC ≈ 02:00–03:00 Sydney). The
+rebuild takes the local database offline for 10–20 minutes; queries fall back
+to the public mirrors meanwhile, so sheets keep generating. The OSM disk cache
+also drops from 30 days to 6 hours whenever `OVERPASS_LOCAL` is set, so a
+cached answer cannot outlive the database it came from.
+
 Both containers share the `site-net` docker network, so the app resolves
 Overpass by container name (`http://overpass-nsw/api/interpreter`); a port
 published on the host loopback would not be reachable from the app container.

@@ -82,9 +82,15 @@ export async function overpassQuery(
   // previous successful answer for the same query is far better than nothing.
   const key = createHash('sha1').update(query).digest('hex').slice(0, 16);
   const cacheFile = join(CACHE_DIR, `${key}.json`);
+  // Against a local Overpass the cache is nearly pointless and actively harmful
+  // to accuracy: queries are fast and free, and the database is rebuilt weekly,
+  // so a month-old answer would silently outlive the data it came from. Keep a
+  // short window to absorb bursts, and keep writing the file either way — the
+  // stale-cache fallback below still covers a local outage.
+  const maxAgeMs = process.env.OVERPASS_LOCAL ? 6 * 3600 * 1000 : 30 * 24 * 3600 * 1000;
   try {
     const st = statSync(cacheFile);
-    if (Date.now() - st.mtimeMs < 30 * 24 * 3600 * 1000) {
+    if (Date.now() - st.mtimeMs < maxAgeMs) {
       return JSON.parse(readFileSync(cacheFile, 'utf8'));
     }
   } catch { /* no cache yet */ }

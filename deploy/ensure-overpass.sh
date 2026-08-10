@@ -26,6 +26,11 @@ STATUS="$STATE_DIR/overpass.status"
 TAIL="$STATE_DIR/overpass.tail"
 ATTEMPT="$STATE_DIR/overpass.attempt"
 RECOVERED="$STATE_DIR/overpass.recovered"
+BUILT="$STATE_DIR/overpass.built"
+# BBBike regenerates its extracts weekly, so weekly is as fresh as the source
+# gets. 16:00 UTC is ~02:00-03:00 in Sydney, either side of daylight saving.
+REFRESH_DAYS="${OVERPASS_REFRESH_DAYS:-7}"
+REFRESH_HOUR_UTC="${OVERPASS_REFRESH_HOUR_UTC:-16}"
 VOLUME="${OVERPASS_VOLUME:-/var/lib/overpass-nsw}"
 LOG=/var/log/site-analyst-overpass.log
 # The app reaches Overpass by container name on the shared docker network —
@@ -42,6 +47,12 @@ set_status() { printf 'disk=%sG %s\n' "$(free_gb)" "$1" > "$STATUS"; }
 # Why the container is unhappy. Its log is the only place that says so, and
 # the host log file is unreachable from anywhere else, so keep a short
 # sanitised tail for /api/version. Overpass logs no credentials.
+# Age of the built database, in whole days.
+db_age_days() {
+  if [ ! -f "$BUILT" ]; then echo 0; return; fi
+  echo $(( ( $(date +%s) - $(stat -c %Y "$BUILT") ) / 86400 ))
+}
+
 save_tail() {
   docker logs --tail 6 "$NAME" 2>&1 | tr '\n' ' ' \
     | tr -cd '[:alnum:]:/._ ()-' | tail -c 240 > "$TAIL" 2>/dev/null || true
@@ -125,9 +136,24 @@ case "$probe" in
   *) set_status "ctr=$cstate exit=$code oom=$oom"; save_tail; exit 0 ;;
 esac
 
-set_status "serving"
+set_status "serving age=$(db_age_days)d"
 # Healthy now, so make it survive reboots (setup deliberately used on-failure).
 docker update --restart unless-stopped "$NAME" >/dev/null 2>&1 || true
+[ -f "$BUILT" ] || touch "$BUILT"
+
+# Scheduled refresh. This extract carries no diff stream, so the only way the
+# data stays accurate is to rebuild it periodically. Rebuild in the small
+# hours Sydney time, and only when the app is idle — the rebuild takes the
+# local database offline for 10-20 minutes (queries fall back to the public
+# mirrors meanwhile, so sheets keep generating, just slower).
+if [ "$(db_age_days)" -ge "$REFRESH_DAYS" ] && [ "$(date -u +%H)" = "$REFRESH_HOUR_UTC" ]; then
+  say "extract is $(db_age_days)d old — rebuilding from a fresh download"
+  set_status "refreshing"
+  rm -f "$BUILT" "$RECOVERED"       # a refresh re-arms crash recovery too
+  setsid bash -c "bash /opt/site-analyst/deploy/setup-overpass.sh >>'$LOG' 2>&1" >/dev/null 2>&1 &
+  exit 0
+fi
+
 if grep -q '^OVERPASS_LOCAL=' "$ENV_FILE" 2>/dev/null; then
   exit 0                                    # already wired up — nothing to do
 fi
