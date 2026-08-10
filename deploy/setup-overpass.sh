@@ -29,9 +29,15 @@ docker pull wiktorn/overpass-api:latest
 mkdir -p "$VOLUME"
 docker network inspect "$NET" >/dev/null 2>&1 || docker network create "$NET" >/dev/null
 
+# init mode requires an empty database directory — leftovers from an
+# interrupted run make every subsequent start fail the same way.
+find "${VOLUME:?}" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true
+
 echo "==> starting $NAME (first run clones the NSW extract; this takes a while)"
 docker rm -f "$NAME" >/dev/null 2>&1 || true
-docker run -d --name "$NAME" --restart unless-stopped \
+# on-failure, not unless-stopped: a broken init must not churn indefinitely.
+# ensure-overpass.sh promotes it to unless-stopped once it is serving.
+docker run -d --name "$NAME" --restart on-failure:3 \
   --network "$NET" \
   -e OVERPASS_MODE=init \
   -e OVERPASS_PLANET_URL="$REGION_URL" \

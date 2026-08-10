@@ -25,6 +25,8 @@ STATE_DIR=/var/lib/site-analyst
 STATUS="$STATE_DIR/overpass.status"
 TAIL="$STATE_DIR/overpass.tail"
 ATTEMPT="$STATE_DIR/overpass.attempt"
+RECOVERED="$STATE_DIR/overpass.recovered"
+VOLUME="${OVERPASS_VOLUME:-/var/lib/overpass-nsw}"
 LOG=/var/log/site-analyst-overpass.log
 # The app reaches Overpass by container name on the shared docker network —
 # publishing to the host loopback is not reachable from another container.
@@ -86,12 +88,29 @@ rm -f "$ATTEMPT"
 # that no amount of retrying fixes.
 read -r cstate code oom < <(docker inspect \
   -f '{{.State.Status}} {{.State.ExitCode}} {{.State.OOMKilled}}' "$NAME" 2>/dev/null || echo '? ? ?')
-if [ "$cstate" != "running" ]; then
-  say "container is $cstate (exit $code, oomkilled $oom) — starting it"
+
+# Crash loop. The usual cause is an interrupted first init leaving a half-built
+# database in the volume: init mode then fails identically on every restart.
+# Recover once, unattended — wipe the volume and re-initialise. If that does
+# not take, stop and leave the evidence rather than churning forever.
+if [ "$cstate" = "restarting" ] || { [ "$cstate" = "exited" ] && [ "$code" != "0" ]; }; then
+  save_tail
   set_status "ctr=$cstate exit=$code oom=$oom"
-  if ! docker start "$NAME" >/dev/null 2>&1; then
-    exit 1
+  if [ -f "$RECOVERED" ]; then
+    say "still failing after a clean re-init (exit $code) — not retrying"
+    exit 0
   fi
+  say "crash loop (exit $code) — wiping the half-built database, re-initialising once"
+  touch "$RECOVERED"
+  docker rm -f "$NAME" >/dev/null 2>&1 || true
+  find "${VOLUME:?}" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true
+  setsid bash -c "bash /opt/site-analyst/deploy/setup-overpass.sh >>'$LOG' 2>&1" >/dev/null 2>&1 &
+  exit 0
+fi
+
+if [ "$cstate" != "running" ]; then
+  say "container is $cstate — starting it"
+  docker start "$NAME" >/dev/null 2>&1 || true
 fi
 docker network connect "$NET" "$NAME" >/dev/null 2>&1 || true
 
@@ -104,6 +123,8 @@ case "$probe" in
 esac
 
 set_status "serving"
+# Healthy now, so make it survive reboots (setup deliberately used on-failure).
+docker update --restart unless-stopped "$NAME" >/dev/null 2>&1 || true
 if grep -q '^OVERPASS_LOCAL=' "$ENV_FILE" 2>/dev/null; then
   exit 0                                    # already wired up — nothing to do
 fi
