@@ -36,6 +36,10 @@ say() { echo "[$(date -Is)] overpass: $*" | tee -a "$LOG"; }
 free_gb() { df --output=avail -BG / | tail -1 | tr -dc '0-9'; }
 set_status() { printf 'disk=%sG %s\n' "$(free_gb)" "$1" > "$STATUS"; }
 
+# Leave a breadcrumb immediately: if the status never advances past this, the
+# script is running but dying early, which is not the same as never running.
+set_status "pass-start"
+
 docker network inspect "$NET" >/dev/null 2>&1 || docker network create "$NET" >/dev/null
 
 exists=$(docker ps -a --filter "name=^/${NAME}$" --format '{{.Names}}')
@@ -68,12 +72,15 @@ fi
 rm -f "$ATTEMPT"
 
 # --- state 2: installed — keep it up and on the network --------------------
-running=$(docker inspect -f '{{.State.Running}}' "$NAME" 2>/dev/null || echo false)
-if [ "$running" != "true" ]; then
-  code=$(docker inspect -f '{{.State.ExitCode}}' "$NAME" 2>/dev/null || echo '?')
-  say "container not running (exit $code) — starting it"
+# Report what docker actually thinks of the container. exit=137 with oom=true
+# is the kernel killing the database build for memory — the one failure mode
+# that no amount of retrying fixes.
+read -r cstate code oom < <(docker inspect \
+  -f '{{.State.Status}} {{.State.ExitCode}} {{.State.OOMKilled}}' "$NAME" 2>/dev/null || echo '? ? ?')
+if [ "$cstate" != "running" ]; then
+  say "container is $cstate (exit $code, oomkilled $oom) — starting it"
+  set_status "ctr=$cstate exit=$code oom=$oom"
   if ! docker start "$NAME" >/dev/null 2>&1; then
-    set_status "container-wont-start:exit-$code"
     exit 1
   fi
 fi
@@ -84,7 +91,7 @@ probe=$(curl -s --max-time 20 "http://127.0.0.1:${PORT}/api/interpreter" \
   --data 'data=[out:json][timeout:15];node(-33.9125,151.1000,-33.9105,151.1040)["highway"="bus_stop"];out 2;' 2>/dev/null)
 case "$probe" in
   \{*) ;;                                   # JSON — the database is serving
-  *) set_status "building"; exit 0 ;;
+  *) set_status "building ctr=$cstate oom=$oom"; exit 0 ;;
 esac
 
 set_status "serving"

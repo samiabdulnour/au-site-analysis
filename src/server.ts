@@ -51,8 +51,12 @@ const WEB_OUT = join(ROOT, 'out', 'web');
 function hostStatus(): string {
   try {
     return readFileSync('/hostinfo/overpass.status', 'utf8')
-      .replace(/[^\w.:= -]/g, '').trim().slice(0, 80) || 'unknown';
-  } catch { return 'unknown'; }
+      .replace(/[^\w.:= -]/g, '').trim().slice(0, 80) || 'empty';
+  } catch {
+    // Tell the two failures apart: no mount means this container predates the
+    // change, no file means ensure-overpass.sh is not running on the host.
+    return existsSync('/hostinfo') ? 'no-status-file' : 'no-mount';
+  }
 }
 
 let osmProbe: { at: number; state: string } = { at: 0, state: 'unknown' };
