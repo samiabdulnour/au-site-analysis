@@ -246,6 +246,9 @@ const server = createServer(async (req, res) => {
       osmLocal: await probeLocalOverpass(),
       osmSetup: hostStatus(),
       osmLog: hostFile('/hostinfo/overpass.tail', 240),
+      // Replacing the container mid-job throws away a sheet that may be
+      // minutes in; the deployer reads this and waits for a quiet moment.
+      busy: [...jobs.values()].some((j) => j.status === 'running' || j.status === 'queued'),
     });
   }
 
