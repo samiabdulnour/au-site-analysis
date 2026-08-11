@@ -1,0 +1,208 @@
+#!/usr/bin/env python3
+"""CAD export for the SITE ANALYSIS sheet.
+
+Reads the pipeline's data/site_bundle.json and writes SITE_ANALYSIS.dxf in
+real-world meters on the MGA2020 grid (the NSW survey datum), one layer per
+data class, ready to import into ArchiCAD / AutoCAD and trace over.
+
+Everything is drawn at true ground scale — not sheet scale — so the drawing
+can be underlaid directly beneath a survey.
+
+If an ODA File Converter binary is available (ODAFileConverter on PATH or
+ODA_CONVERTER env), a true .dwg is produced next to the .dxf.
+
+Usage: site_dxf_export.py <outDir>   (expects <outDir>/data/site_bundle.json)
+"""
+import json
+import math
+import os
+import shutil
+import subprocess
+import sys
+import zipfile
+from pathlib import Path
+
+import ezdxf
+from ezdxf.enums import TextEntityAlignment
+from pyproj import Transformer
+
+OUT = Path(sys.argv[1])
+bundle = json.loads((OUT / "data" / "site_bundle.json").read_text())
+
+# ---- projection: lon/lat -> MGA2020 zone of the site ----------------------
+site_lon = bundle["siteRing"][0][0] if bundle.get("siteRing") else 151.0
+zone = int(site_lon // 6) + 31                # 151E -> zone 56
+EPSG = 7800 + zone                            # MGA2020: zone 56 -> EPSG:7856
+tf = Transformer.from_crs("EPSG:4326", f"EPSG:{EPSG}", always_xy=True)
+
+def P(lon, lat):
+    return tf.transform(lon, lat)
+
+doc = ezdxf.new("R2010", setup=True)
+doc.header["$INSUNITS"] = 6                   # meters
+msp = doc.modelspace()
+
+def layer(name, rgb, linetype="Continuous"):
+    if name not in doc.layers:
+        doc.layers.add(name, dxfattribs={"true_color": rgb, "linetype": linetype})
+    return name
+
+# One layer per class so the architect can switch off what they don't want.
+layer("SITE-BOUNDARY", 0xE30613)
+layer("SITE-LOTS", 0xE30613)
+layer("CADASTRE", 0x9A9A9A)
+layer("CONTOURS", 0xB07A3C)
+layer("CONTOUR-LEVELS", 0xB07A3C)
+layer("ROADS", 0x6E6E6E)
+layer("ROAD-NAMES", 0x333333)
+layer("RAIL", 0xEF8B1D)
+layer("BUILDINGS", 0x8A8A8A)
+layer("NEIGHBOUR-LABELS", 0x333333)
+layer("TREES", 0x3E8B49)
+layer("DRIVEWAYS", 0x2456C4)
+layer("PARKING-LANES", 0x2456C4)
+layer("UTILITIES", 0x9B59B6)
+layer("STREET-LAMPS", 0xC8A165)
+layer("POWER-POLES", 0xC8A165)
+layer("HYDRANTS", 0x2F9FD6)
+layer("BUS-STOPS", 0xE30613)
+layer("ZONING", 0xBBBBBB)
+layer("NORTH", 0x000000)
+
+def rings_of(geom):
+    if not geom:
+        return []
+    if geom["type"] == "Polygon":
+        return geom["coordinates"]
+    if geom["type"] == "MultiPolygon":
+        return [r for poly in geom["coordinates"] for r in poly]
+    return []
+
+def add_poly(layer_name, ring, closed=True):
+    pts = [P(c[0], c[1]) for c in ring if c and len(c) >= 2]
+    if len(pts) < 2:
+        return None
+    return msp.add_lwpolyline(pts, close=closed, dxfattribs={"layer": layer_name})
+
+def add_text(layer_name, text, x, y, height, rotation=0.0):
+    t = msp.add_text(text, dxfattribs={
+        "layer": layer_name, "height": height, "rotation": rotation})
+    t.set_placement((x, y), align=TextEntityAlignment.MIDDLE_CENTER)
+    return t
+
+# ---- site boundary and lots ----------------------------------------------
+add_poly("SITE-BOUNDARY", bundle["siteRing"])
+for f in bundle.get("siteLots", {}).get("features", []):
+    for ring in rings_of(f.get("geometry")):
+        add_poly("SITE-LOTS", ring)
+
+# ---- surrounding cadastre ------------------------------------------------
+for f in bundle.get("allLots", {}).get("features", []):
+    for ring in rings_of(f.get("geometry")):
+        add_poly("CADASTRE", ring)
+
+# ---- terrain: contours, each labelled with its RL ------------------------
+for c in bundle.get("contours", []):
+    coords = c.get("coords") or []
+    pl = add_poly("CONTOURS", coords, closed=False)
+    if pl is not None and len(coords) > 2:
+        mx, my = P(*coords[len(coords) // 2])
+        add_text("CONTOUR-LEVELS", f"RL {c['elevation']:.1f}", mx, my, 0.6)
+
+# ---- roads and names -----------------------------------------------------
+for r in bundle.get("roads", []):
+    line = r.get("coords") or []
+    add_poly("ROADS", line, closed=False)
+    name = r.get("name")
+    if name and len(line) > 1:
+        a, b = line[len(line) // 2 - 1], line[len(line) // 2]
+        (ax, ay), (bx, by) = P(*a), P(*b)
+        rot = math.degrees(math.atan2(by - ay, bx - ax))
+        if rot > 90 or rot < -90:
+            rot += 180
+        add_text("ROAD-NAMES", name.upper(), (ax + bx) / 2, (ay + by) / 2, 1.2, rot)
+
+rail = bundle.get("railLines") or {}
+for key in ("train", "tram"):
+    for line in rail.get(key, []) or []:
+        add_poly("RAIL", line, closed=False)
+
+# ---- neighbours: house number where the pipeline found one --------------
+for n in bundle.get("neighbours", []):
+    x, y = P(n["lon"], n["lat"])
+    add_text("NEIGHBOUR-LABELS", str(n.get("housenumber", "")).strip(), x, y, 1.0)
+
+# ---- street furniture ----------------------------------------------------
+fur = bundle.get("furniture") or {}
+
+def dots(layer_name, items, radius):
+    for it in items or []:
+        x, y = P(it["lon"], it["lat"])
+        msp.add_circle((x, y), radius, dxfattribs={"layer": layer_name})
+
+dots("TREES", fur.get("trees"), 1.5)
+dots("STREET-LAMPS", fur.get("streetLamps"), 0.4)
+dots("POWER-POLES", fur.get("powerPoles"), 0.4)
+dots("HYDRANTS", fur.get("hydrants"), 0.4)
+dots("BUILDINGS", fur.get("buildings"), 0.5)
+for b in fur.get("buildings") or []:
+    if b.get("levels"):
+        x, y = P(b["lon"], b["lat"])
+        add_text("BUILDINGS", f"{b['levels']} storey", x, y + 1.2, 0.8)
+
+for d in fur.get("driveways") or []:
+    add_poly("DRIVEWAYS", d.get("coords") or [], closed=False)
+for pl in fur.get("parkingLanes") or []:
+    add_poly("PARKING-LANES", pl.get("coords") or [], closed=False)
+for u in fur.get("utilities") or []:
+    p = add_poly("UTILITIES", u.get("coords") or [], closed=False)
+    if p is not None:
+        p.dxf.layer = layer(f"UTILITIES-{u.get('kind', 'OTHER').upper()}", 0x9B59B6)
+
+for s in bundle.get("busStops", []) or []:
+    x, y = P(s["lon"], s["lat"])
+    msp.add_circle((x, y), 1.0, dxfattribs={"layer": "BUS-STOPS"})
+
+# ---- zoning polygons (boundaries only; the wash is a sheet device) -------
+for f in bundle.get("zoning", {}).get("features", []):
+    for ring in rings_of(f.get("geometry")):
+        add_poly("ZONING", ring)
+
+# ---- true north arrow at the site, so orientation survives the import ---
+cx, cy = P(*bundle["siteRing"][0])
+msp.add_lwpolyline([(cx, cy), (cx, cy + 10)], dxfattribs={"layer": "NORTH"})
+add_text("NORTH", "N", cx, cy + 11.5, 1.5)
+
+dxf_path = OUT / "SITE_ANALYSIS.dxf"
+doc.saveas(dxf_path)
+print(f"dxf: {dxf_path}")
+
+# ---- optional DWG via ODA File Converter --------------------------------
+oda = os.environ.get("ODA_CONVERTER") or shutil.which("ODAFileConverter")
+dwg_path = OUT / "SITE_ANALYSIS.dwg"
+if oda:
+    try:
+        subprocess.run([oda, str(OUT), str(OUT), "ACAD2018", "DWG", "0", "1",
+                        dxf_path.name], check=True, timeout=180,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if dwg_path.exists():
+            print(f"dwg: {dwg_path}")
+    except Exception as e:                      # noqa: BLE001 - DXF is enough
+        print(f"dwg: conversion failed ({e}) — DXF only")
+else:
+    print("dwg: ODA File Converter not found — DXF only (ArchiCAD imports DXF natively)")
+
+zip_path = OUT / "SITE_ANALYSIS_CAD.zip"
+with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
+    z.write(dxf_path, dxf_path.name)
+    if dwg_path.exists():
+        z.write(dwg_path, dwg_path.name)
+    z.writestr("README.txt",
+               "SITE ANALYSIS — CAD export\n"
+               f"Coordinate system: MGA2020 zone {zone} (EPSG:{EPSG}), meters.\n"
+               "Drawn at true ground scale, not sheet scale.\n"
+               "One layer per data class; switch off what you do not need.\n\n"
+               "Levels are from the NSW 1m elevation model, not a survey.\n"
+               "Cadastral boundaries are GIS approximations — confirm all\n"
+               "boundaries and levels against a registered survey before use.\n")
+print(f"zip: {zip_path}")

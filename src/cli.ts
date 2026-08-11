@@ -15,6 +15,7 @@ import { runPipeline, runSitePipeline, runSummaryPipeline } from './pipeline.js'
 import { renderSheet, MAP_W, MAP_H, type SheetMeta } from './render/sheet.js';
 import { renderSiteSheet } from './render/siteSheet.js';
 import { renderSummarySheet } from './render/summarySheet.js';
+import { summaryCsv, summaryJson } from './export/summaryExport.js';
 import { htmlToPdf } from './render/pdf.js';
 
 function arg(name: string, def?: string): string | undefined {
@@ -91,6 +92,12 @@ if (sheetType === 'site' || sheetType === 'both') {
   const sitePdfPath = join(outDir, 'SITE_ANALYSIS.pdf');
   await htmlToPdf(siteHtmlPath, sitePdfPath);
   outputs.push(sitePdfPath);
+
+  console.log('exporting site CAD (DXF/DWG)…');
+  const { spawnSync } = await import('node:child_process');
+  const cad = spawnSync('python3', ['src/export/site_dxf_export.py', outDir], { encoding: 'utf8' });
+  if (cad.status === 0) { console.log(cad.stdout.trim()); outputs.push(join(outDir, 'SITE_ANALYSIS_CAD.zip')); }
+  else console.warn(`site CAD export failed: ${cad.stderr?.slice(-400)}`);
 }
 
 if (sheetType === 'summary' || sheetType === 'both') {
@@ -101,6 +108,12 @@ if (sheetType === 'summary' || sheetType === 'both') {
   const sumPdfPath = join(outDir, 'DEVELOPMENT_SUMMARY.pdf');
   await htmlToPdf(sumHtmlPath, sumPdfPath);
   outputs.push(sumPdfPath);
+
+  const csvPath = join(outDir, 'DEVELOPMENT_SUMMARY.csv');
+  const jsonPath = join(outDir, 'DEVELOPMENT_SUMMARY.json');
+  await writeFile(csvPath, summaryCsv(sub));
+  await writeFile(jsonPath, summaryJson(sub));
+  outputs.push(csvPath, jsonPath);
 }
 
 console.log(`done:\n  ${outputs.join('\n  ')}`);

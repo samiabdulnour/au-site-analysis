@@ -81,6 +81,7 @@
   <div id="result">
     <a id="dl" target="_blank">OPEN CONTEXT ANALYSIS PDF</a>
     <a id="dlcad" style="display:none;margin-left:.6rem;background:#111">DOWNLOAD CAD (DXF/DWG)</a>
+    <a id="dldata" style="display:none;margin-left:.6rem;background:#111">DOWNLOAD TABLE (CSV)</a>
   </div>
   <div id="error"></div>
 
@@ -260,6 +261,8 @@ async function poll(id, misses) {
         : j.sheet === 'summary' ? 'OPEN DEVELOPMENT SUMMARY PDF' : 'OPEN CONTEXT ANALYSIS PDF';
       const cad = document.getElementById('dlcad');
       if (j.hasCad) { cad.href = '/api/jobs/' + id + '/cad'; cad.style.display = 'inline-block'; }
+      const dat = document.getElementById('dldata');
+      if (j.hasData) { dat.href = '/api/jobs/' + id + '/data'; dat.style.display = 'inline-block'; }
       result.style.display = 'block';
       go.disabled = false;
       return;

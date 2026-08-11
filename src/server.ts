@@ -19,6 +19,7 @@ import { suggestAddresses } from './fetch/geocode.js';
 import { renderSheet, MAP_W, MAP_H, type SheetMeta } from './render/sheet.js';
 import { renderSiteSheet } from './render/siteSheet.js';
 import { renderSummarySheet } from './render/summarySheet.js';
+import { summaryCsv, summaryJson } from './export/summaryExport.js';
 import { htmlToPdf } from './render/pdf.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -102,6 +103,7 @@ interface Job {
   log: string[];
   pdfPath?: string;
   cadPath?: string;
+  dataPath?: string;   // CSV for table sheets
   error?: string;
   createdAt: number;
 }
@@ -135,6 +137,12 @@ async function runJob(job: Job) {
       const pdfPath = join(outDir, 'DEVELOPMENT_SUMMARY.pdf');
       await htmlToPdf(htmlPath, pdfPath);
       job.pdfPath = pdfPath;
+      // A table's open format is data, not CAD: CSV opens in Excel, JSON is
+      // there for anything reading the controls programmatically.
+      const csvPath = join(outDir, 'DEVELOPMENT_SUMMARY.csv');
+      await writeFile(csvPath, summaryCsv(sub));
+      await writeFile(join(outDir, 'DEVELOPMENT_SUMMARY.json'), summaryJson(sub));
+      job.dataPath = csvPath;
     } else if (job.sheet === 'site') {
       const sb = await runSitePipeline(job.address, {
         mapWidthMm: MAP_W,
@@ -151,6 +159,14 @@ async function runJob(job: Job) {
       const pdfPath = join(outDir, 'SITE_ANALYSIS.pdf');
       await htmlToPdf(htmlPath, pdfPath);
       job.pdfPath = pdfPath;
+      job.log.push('exporting CAD (DXF/DWG)…');
+      const { spawnSync } = await import('node:child_process');
+      const cad = spawnSync('python3', [join(ROOT, 'src', 'export', 'site_dxf_export.py'), outDir], { encoding: 'utf8' });
+      if (cad.status === 0 && existsSync(join(outDir, 'SITE_ANALYSIS_CAD.zip'))) {
+        job.cadPath = join(outDir, 'SITE_ANALYSIS_CAD.zip');
+      } else {
+        job.log.push('CAD export unavailable for this run');
+      }
     } else {
       const bundle = await runPipeline(job.address, {
         scale: job.scale,
@@ -331,7 +347,7 @@ const server = createServer(async (req, res) => {
     if (!job) return json(res, 404, { error: 'Unknown job.' });
     return json(res, 200, {
       id: job.id, address: job.address, status: job.status,
-      log: job.log.slice(-12), error: job.error, hasCad: Boolean(job.cadPath), sheet: job.sheet,
+      log: job.log.slice(-12), error: job.error, hasCad: Boolean(job.cadPath), hasData: Boolean(job.dataPath), sheet: job.sheet,
     });
   }
 
@@ -362,7 +378,24 @@ const server = createServer(async (req, res) => {
       const slug = job.address.replace(/[^a-z0-9]+/gi, '_').toUpperCase();
       res.writeHead(200, {
         'Content-Type': 'application/zip',
-        'Content-Disposition': `attachment; filename="CONTEXT_ANALYSIS_CAD_${slug}.zip"`,
+        'Content-Disposition': `attachment; filename="${job.sheet === 'site' ? 'SITE' : 'CONTEXT'}_ANALYSIS_CAD_${slug}.zip"`,
+      });
+      res.end(data);
+    });
+    return;
+  }
+
+  // Table sheets download as data rather than CAD.
+  const dataMatch = url.pathname.match(/^\/api\/jobs\/([0-9a-f-]{36})\/data$/);
+  if (req.method === 'GET' && dataMatch) {
+    const job = jobs.get(dataMatch[1]);
+    if (!job?.dataPath) return json(res, 404, { error: 'Not ready.' });
+    readFile(job.dataPath, (err, data) => {
+      if (err) return json(res, 500, { error: 'Data file unreadable.' });
+      const slug = job.address.replace(/[^a-z0-9]+/gi, '_').toUpperCase();
+      res.writeHead(200, {
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Disposition': `attachment; filename="DEVELOPMENT_SUMMARY_${slug}.csv"`,
       });
       res.end(data);
     });

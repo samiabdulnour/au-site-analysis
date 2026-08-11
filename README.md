@@ -104,6 +104,17 @@ Output lands in `out/<address-slug>/`:
   `ODA_CONVERTER=/path/to/ODAFileConverter`); ArchiCAD imports the DXF
   natively either way.
 
+Every drawing also exports in an open, editable format:
+
+- **Context analysis** and **site analysis** — `*_CAD.zip` containing a DXF in
+  real-world meters on the MGA2020 grid, one layer per data class, plus a true
+  `.dwg` when the ODA File Converter is installed. Site geometry is written at
+  true ground scale, so it drops straight under a survey.
+- **Development summary** — `.csv` (opens in Excel, pastes into a Word or
+  InDesign table) and `.json` for anything reading the controls
+  programmatically. A table is data, not geometry, so DXF would only produce
+  loose text entities.
+
 Options (after `--`): `--type context|site|summary|both`, `--scale 3000` (default 3000), `--job 2539`,
 `--client "Name"`, `--status "DEVELOPMENT APPLICATION"`, `--sheet "DA 003"`.
 
