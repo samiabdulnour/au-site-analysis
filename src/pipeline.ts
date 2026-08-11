@@ -3,7 +3,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { geocode, type GeocodeResult } from './fetch/geocode.js';
-import { fetchSiteLots, fetchRailCorridors, fetchZoning, fetchHeightOfBuilding, fetchHeritage } from './fetch/nsw.js';
+import { fetchSiteLots, fetchRailCorridors, fetchZoning, fetchHeightOfBuilding, fetchHeritage, fetchSiteControls } from './fetch/nsw.js';
 import { fetchRoads, fetchRailLines, fetchTrainStations, fetchParkPoints, fetchComplexPoints, fetchNamedAreas, fetchAllLots, fetchPropertiesAt, type TopoRoad, type NamedPoint, type RailLines, type NamedArea } from './fetch/nswTopo.js';
 import { fetchAerial, type AerialResult } from './fetch/imagery.js';
 import { fetchBusData, type BusData } from './fetch/osm.js';
@@ -12,6 +12,7 @@ import { fetchIsochrones, type Isochrone } from './fetch/isochrones.js';
 import { mercatorScaleFactor, mercatorToLonLat, lonLatToMercator, viewBounds, type Extent, type MapView } from './lib/geo.js';
 import type { GeoJSONFC } from './lib/arcgis.js';
 import { keywordCategory } from './render/model.js';
+import type { SummaryBundle } from './render/summarySheet.js';
 
 export interface CategorizedPoint extends NamedPoint { cat: string | null }
 export interface InstitutionPoly { cat: string; name: string; rings: number[][][] }
@@ -345,4 +346,84 @@ function geomOuter(geometry: any): [number, number][] {
     return best;
   }
   throw new Error(`unexpected site geometry: ${geometry.type}`);
+}
+
+// ---------------------------------------------------------------------------
+// DEVELOPMENT SUMMARY — no map, so no extent, imagery or OSM: just the lots
+// and the planning controls that apply at the site.
+
+export async function runSummaryPipeline(
+  address: string,
+  opts: { outDir: string; log?: (m: string) => void },
+): Promise<SummaryBundle> {
+  const log = opts.log ?? (() => {});
+  await mkdir(join(opts.outDir, 'data'), { recursive: true });
+
+  log(`geocoding "${address}"…`);
+  const geo = await geocode(address);
+  log(`  matched: ${geo.matchedAddresses.join('; ')}`);
+
+  const siteLots = await fetchSiteLots(geo.points);
+  if (!siteLots.features.length) throw new Error('No cadastral lots found for the site.');
+
+  log('reading planning controls at the site…');
+  const controls = await fetchSiteControls(geo.center);
+  log(`  ${[controls.epiName, controls.zoneCode].filter(Boolean).join(' · ') || 'no LEP mapped'}`);
+
+  const bundle: SummaryBundle = {
+    address,
+    siteAddress: geo.matchedAddresses[0] ?? address,
+    generatedAt: new Date().toISOString(),
+    lotDescription: describeLots(siteLots),
+    siteAreaSqm: lotsAreaSqm(siteLots, geo.center),
+    areaIsCadastral: true,
+    controls,
+  };
+  await writeFile(join(opts.outDir, 'data', 'summary.json'), JSON.stringify(bundle, null, 2));
+  return bundle;
+}
+
+/** "1//DP212120" + "2//DP212120" -> "LOT 1&2 - DP 212120" */
+function describeLots(fc: GeoJSONFC): string {
+  const byPlan = new Map<string, string[]>();
+  for (const f of fc.features) {
+    const id = String(f.properties?.lotidstring ?? '');
+    const m = id.match(/^([^/]+)\/([^/]*)\/(.+)$/);
+    if (!m) continue;
+    const plan = m[3].replace(/^([A-Z]+)/, '$1 ');
+    if (!byPlan.has(plan)) byPlan.set(plan, []);
+    byPlan.get(plan)!.push(m[1] + (m[2] ? `/${m[2]}` : ''));
+  }
+  if (!byPlan.size) return '—';
+  return [...byPlan.entries()]
+    .map(([plan, lots]) => `LOT ${lots.join('&')} - ${plan}`)
+    .join('; ');
+}
+
+/**
+ * Ground area of the lots. Web Mercator exaggerates area by the square of the
+ * scale factor at this latitude, so divide it back out. This is the cadastral
+ * boundary, which is a GIS approximation — the survey figure is authoritative
+ * and is usually a little different.
+ */
+function lotsAreaSqm(fc: GeoJSONFC, center: { x: number; y: number }): number | undefined {
+  const k = mercatorScaleFactor(mercatorToLonLat(center).lat);
+  let total = 0;
+  for (const f of fc.features) {
+    const g: any = f.geometry;
+    if (!g) continue;
+    const polys = g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : [];
+    for (const poly of polys) {
+      // outer ring minus holes
+      poly.forEach((ring: number[][], i: number) => {
+        const pts = ring.map((c) => lonLatToMercator({ lon: c[0], lat: c[1] }));
+        let s = 0;
+        for (let a = 0, b = pts.length - 1; a < pts.length; b = a++) {
+          s += (pts[b].x + pts[a].x) * (pts[b].y - pts[a].y);
+        }
+        total += (i === 0 ? 1 : -1) * Math.abs(s / 2) / (k * k);
+      });
+    }
+  }
+  return total > 0 ? total : undefined;
 }

@@ -11,9 +11,10 @@ if (existsSync('.env')) {
     if (m && !process.env[m[1]]) process.env[m[1]] = m[2].trim();
   }
 }
-import { runPipeline, runSitePipeline } from './pipeline.js';
+import { runPipeline, runSitePipeline, runSummaryPipeline } from './pipeline.js';
 import { renderSheet, MAP_W, MAP_H, type SheetMeta } from './render/sheet.js';
 import { renderSiteSheet } from './render/siteSheet.js';
+import { renderSummarySheet } from './render/summarySheet.js';
 import { htmlToPdf } from './render/pdf.js';
 
 function arg(name: string, def?: string): string | undefined {
@@ -90,6 +91,16 @@ if (sheetType === 'site' || sheetType === 'both') {
   const sitePdfPath = join(outDir, 'SITE_ANALYSIS.pdf');
   await htmlToPdf(siteHtmlPath, sitePdfPath);
   outputs.push(sitePdfPath);
+}
+
+if (sheetType === 'summary' || sheetType === 'both') {
+  const sub = await runSummaryPipeline(address, { outDir, log: (m) => console.log(m) });
+  console.log('composing development summary…');
+  const sumHtmlPath = join(outDir, 'summary_sheet.html');
+  await writeFile(sumHtmlPath, renderSummarySheet(sub, { ...meta, sheetNo: meta.sheetNo || '' }));
+  const sumPdfPath = join(outDir, 'DEVELOPMENT_SUMMARY.pdf');
+  await htmlToPdf(sumHtmlPath, sumPdfPath);
+  outputs.push(sumPdfPath);
 }
 
 console.log(`done:\n  ${outputs.join('\n  ')}`);

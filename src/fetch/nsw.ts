@@ -33,3 +33,64 @@ export const fetchHeightOfBuilding = (extent: Extent) =>
 
 export const fetchHeritage = (extent: Extent) =>
   queryByExtent(`${EPI}/0`, extent, 'LAY_CLASS,H_NAME,SIG');
+
+/**
+ * The planning controls that apply AT the site, for the development summary
+ * table. Queried by point, not by extent: a sheet extent spans several zones,
+ * but the summary must state the one that governs this lot.
+ */
+export interface SiteControls {
+  epiName?: string;      // "Georges River Local Environmental Plan 2021"
+  lgaName?: string;      // "GEORGES RIVER"
+  zoneCode?: string;     // "R2"
+  zonePurpose?: string;  // "Low Density Residential"
+  maxHeightM?: number;   // MAX_B_H, metres
+  fsr?: number;          // 0.55 -> printed as "0.55:1"
+  minLotSizeSqm?: number;
+  heritage: { name: string; significance?: string }[];
+}
+
+export async function fetchSiteControls(point: XY): Promise<SiteControls> {
+  // One missing control must not cost the whole sheet, so each is independent.
+  const at = async (layer: number, fields: string) => {
+    try {
+      const fc = await queryByPoint(`${EPI}/${layer}`, point, fields);
+      return fc.features[0]?.properties ?? null;
+    } catch { return null; }
+  };
+
+  const [zone, hob, fsr, lot, her] = await Promise.all([
+    at(2, 'SYM_CODE,LAY_CLASS,PURPOSE,EPI_NAME,LGA_NAME'),
+    at(5, 'MAX_B_H,UNITS'),
+    at(1, 'FSR,EPI_NAME'),
+    at(4, 'LOT_SIZE,UNITS'),
+    (async () => {
+      try {
+        const fc = await queryByPoint(`${EPI}/0`, point, 'LAY_CLASS,H_NAME,SIG');
+        return fc.features
+          .map((f) => ({
+            name: String(f.properties.H_NAME ?? f.properties.LAY_CLASS ?? '').trim(),
+            significance: f.properties.SIG ? String(f.properties.SIG) : undefined,
+          }))
+          .filter((h) => h.name);
+      } catch { return []; }
+    })(),
+  ]);
+
+  const num = (v: unknown) => {
+    const n = Number(v);
+    return Number.isFinite(n) && n > 0 ? n : undefined;
+  };
+  return {
+    epiName: zone?.EPI_NAME ? String(zone.EPI_NAME) : undefined,
+    lgaName: zone?.LGA_NAME ? String(zone.LGA_NAME) : undefined,
+    zoneCode: zone?.SYM_CODE ? String(zone.SYM_CODE) : undefined,
+    // PURPOSE is null throughout this layer; the readable zone name is
+    // LAY_CLASS ("Low Density Residential").
+    zonePurpose: String(zone?.LAY_CLASS ?? zone?.PURPOSE ?? '').trim() || undefined,
+    maxHeightM: num(hob?.MAX_B_H),
+    fsr: num(fsr?.FSR),
+    minLotSizeSqm: num(lot?.LOT_SIZE),
+    heritage: her as { name: string; significance?: string }[],
+  };
+}

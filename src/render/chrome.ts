@@ -45,6 +45,8 @@ export interface SheetHtmlOpts {
   legendHeading: string;  // heading above the legend (usually 'LEGEND' or title)
   legendSvg: string;
   layers: string[];       // svg content of the map field
+  /** Table sheets carry no map: no north point, no scale bar, no scale. */
+  noMap?: boolean;
 }
 
 export function sheetHtml(o: SheetHtmlOpts): string {
@@ -167,8 +169,8 @@ ${o.layers.join('\n')}
   ${meta.client ? `<div class="abs" style="top:443mm;left:4.8mm;right:0;font-size:${T.value}mm;font-weight:700">${esc(meta.client)}</div>` : ''}
   <div class="abs fine" style="top:455.4mm;left:4.8mm;right:0">${(meta.clientLines ?? []).map(esc).join('<br>')}</div>
   ${meta.preliminary ? `<div class="abs prelim" style="top:463mm;left:2.6mm;right:2.6mm">P R E L I M I N A R Y</div>` : ''}
-  <svg class="abs" style="top:470mm;left:3.5mm" width="18mm" height="18mm" viewBox="0 0 18 18">${northSvg}</svg>
-  <svg class="abs" style="top:487mm;left:0" width="${TW}mm" height="8mm" viewBox="0 0 ${TW} 8">${scaleBarSvg}</svg>
+  ${o.noMap ? '' : `<svg class="abs" style="top:470mm;left:3.5mm" width="18mm" height="18mm" viewBox="0 0 18 18">${northSvg}</svg>`}
+  ${o.noMap ? '' : `<svg class="abs" style="top:487mm;left:0" width="${TW}mm" height="8mm" viewBox="0 0 ${TW} 8">${scaleBarSvg}</svg>`}
   ${rule(495.8)}
   ${field(496.6, 'SITE ADDRESS', `<div class="v-addr">${esc(o.siteAddress)}</div>`)}
   ${rule(511.4)}
@@ -179,7 +181,7 @@ ${o.layers.join('\n')}
       <div><div class="k">CHECKED</div><div class="v">${esc(meta.checked)}</div></div>
       <div><div class="k">DRAWN</div><div class="v">${esc(meta.drawn)}</div></div>
       <div style="margin-top:1.6mm"><div class="k">DATE</div><div class="v">${esc(meta.date)}</div></div>
-      <div style="margin-top:1.6mm"><div class="k">SCALE</div><div class="v">1:${o.scale} @ A1&nbsp;&nbsp;A3@50%</div></div>
+      <div style="margin-top:1.6mm"><div class="k">SCALE</div><div class="v">${o.noMap ? 'NTS' : `1:${o.scale} @ A1&nbsp;&nbsp;A3@50%`}</div></div>
     </div>
   </div>
   ${rule(543.2)}

@@ -14,10 +14,11 @@ import { rm, readdir, stat, writeFile } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID, createHmac, timingSafeEqual } from 'node:crypto';
-import { runPipeline, runSitePipeline } from './pipeline.js';
+import { runPipeline, runSitePipeline, runSummaryPipeline } from './pipeline.js';
 import { suggestAddresses } from './fetch/geocode.js';
 import { renderSheet, MAP_W, MAP_H, type SheetMeta } from './render/sheet.js';
 import { renderSiteSheet } from './render/siteSheet.js';
+import { renderSummarySheet } from './render/summarySheet.js';
 import { htmlToPdf } from './render/pdf.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -94,7 +95,7 @@ async function probeLocalOverpass(): Promise<string> {
 interface Job {
   id: string;
   address: string;
-  sheet: 'context' | 'site';
+  sheet: 'context' | 'site' | 'summary';
   scale: number;            // 0 = auto (site sheets)
   rotate: 'north' | 'auto';
   status: 'queued' | 'running' | 'done' | 'error';
@@ -122,7 +123,19 @@ async function runJob(job: Job) {
       jobNo: '', client: '', status: '', sheetNo: '', revision: '',
       checked: '', drawn: '', date: '', preliminary: false, office,
     };
-    if (job.sheet === 'site') {
+    if (job.sheet === 'summary') {
+      const sub = await runSummaryPipeline(job.address, {
+        outDir,
+        log: (m) => job.log.push(m),
+      });
+      job.log.push('composing development summary…');
+      const htmlPath = join(outDir, 'summary_sheet.html');
+      await writeFile(htmlPath, renderSummarySheet(sub, meta));
+      job.log.push('printing PDF…');
+      const pdfPath = join(outDir, 'DEVELOPMENT_SUMMARY.pdf');
+      await htmlToPdf(htmlPath, pdfPath);
+      job.pdfPath = pdfPath;
+    } else if (job.sheet === 'site') {
       const sb = await runSitePipeline(job.address, {
         mapWidthMm: MAP_W,
         mapHeightMm: MAP_H,
@@ -293,7 +306,8 @@ const server = createServer(async (req, res) => {
       const { address, scale, rotate, sheet } = JSON.parse(body || '{}');
       const addr = String(address ?? '').trim();
       if (addr.length < 8 || addr.length > 120) return json(res, 400, { error: 'Enter a full NSW street address.' });
-      const kind: 'context' | 'site' = sheet === 'site' ? 'site' : 'context';
+      const kind: 'context' | 'site' | 'summary' =
+        sheet === 'site' ? 'site' : sheet === 'summary' ? 'summary' : 'context';
       const raw = Number(scale) || 0;
       const sc = kind === 'site'
         ? (raw ? Math.min(1000, Math.max(100, raw)) : 0)          // 0 = auto-fit
@@ -328,10 +342,11 @@ const server = createServer(async (req, res) => {
     readFile(job.pdfPath, (err, data) => {
       if (err) return json(res, 500, { error: 'PDF unreadable.' });
       const slug = job.address.replace(/[^a-z0-9]+/gi, '_').toUpperCase();
-      const kind = job.sheet === 'site' ? 'SITE' : 'CONTEXT';
+      const kind = job.sheet === 'site' ? 'SITE_ANALYSIS'
+        : job.sheet === 'summary' ? 'DEVELOPMENT_SUMMARY' : 'CONTEXT_ANALYSIS';
       res.writeHead(200, {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `inline; filename="${kind}_ANALYSIS_${slug}.pdf"`,
+        'Content-Disposition': `inline; filename="${kind}_${slug}.pdf"`,
       });
       res.end(data);
     });

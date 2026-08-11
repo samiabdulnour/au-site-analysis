@@ -46,8 +46,9 @@
   <h1>SITE ANALYST</h1>
   <p class="sub">Enter a NSW street address and choose a drawing. Context analysis maps the
   neighbourhood — zoning, transport, amenities, walkability. Site analysis maps the lot itself —
-  boundary dimensions, levels, fall, sun path, winds, neighbours. Both are assembled from NSW
-  planning, cadastre, transport and imagery open data. Takes 1–3 minutes.</p>
+  boundary dimensions, levels, fall, sun path, winds, neighbours. Development summary tabulates
+  the planning controls that apply to the lot. All are assembled from NSW planning, cadastre,
+  transport and imagery open data. Takes 1–3 minutes.</p>
 
   <form id="login" style="display:none">
     <input id="code" type="password" placeholder="Access code" autocomplete="current-password">
@@ -63,6 +64,7 @@
     <select id="sheet" title="Drawing">
       <option value="context" selected>Context analysis</option>
       <option value="site">Site analysis</option>
+      <option value="summary">Development summary</option>
     </select>
     <select id="scale" title="Sheet scale"></select>
     <select id="rotate" title="Map orientation">
@@ -100,8 +102,16 @@ const SCALES = {
   context: [['2100', '1:2100'], ['3000', '1:3000 (default)'], ['4000', '1:4000']],
   site: [['0', 'Auto scale'], ['200', '1:200'], ['250', '1:250'], ['300', '1:300'],
          ['400', '1:400'], ['500', '1:500']],
+  summary: [],   // a table, not a map
 };
+const rotateSel = document.getElementById('rotate');
 function fillScales() {
+  // The development summary has no map, so scale and orientation mean nothing
+  // for it — hide them rather than offer settings that do not apply.
+  const table = sheetSel.value === 'summary';
+  scaleSel.style.display = table ? 'none' : '';
+  rotateSel.style.display = table ? 'none' : '';
+  if (table) { scaleSel.innerHTML = '<option value="0"></option>'; return; }
   const opts = SCALES[sheetSel.value];
   scaleSel.innerHTML = opts.map(([v, l], i) =>
     `<option value="${v}"${i === (sheetSel.value === 'context' ? 1 : 0) ? ' selected' : ''}>${l}</option>`).join('');
@@ -246,7 +256,8 @@ async function poll(id, misses) {
       status_.classList.remove('active');
       const dl = document.getElementById('dl');
       dl.href = '/api/jobs/' + id + '/pdf';
-      dl.textContent = j.sheet === 'site' ? 'OPEN SITE ANALYSIS PDF' : 'OPEN CONTEXT ANALYSIS PDF';
+      dl.textContent = j.sheet === 'site' ? 'OPEN SITE ANALYSIS PDF'
+        : j.sheet === 'summary' ? 'OPEN DEVELOPMENT SUMMARY PDF' : 'OPEN CONTEXT ANALYSIS PDF';
       const cad = document.getElementById('dlcad');
       if (j.hasCad) { cad.href = '/api/jobs/' + id + '/cad'; cad.style.display = 'inline-block'; }
       result.style.display = 'block';

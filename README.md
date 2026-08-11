@@ -104,7 +104,7 @@ Output lands in `out/<address-slug>/`:
   `ODA_CONVERTER=/path/to/ODAFileConverter`); ArchiCAD imports the DXF
   natively either way.
 
-Options (after `--`): `--scale 3000` (default 3000), `--job 2539`,
+Options (after `--`): `--type context|site|summary|both`, `--scale 3000` (default 3000), `--job 2539`,
 `--client "Name"`, `--status "DEVELOPMENT APPLICATION"`, `--sheet "DA 003"`.
 
 ## How it works
