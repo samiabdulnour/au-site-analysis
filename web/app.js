@@ -1,30 +1,117 @@
-const f = document.getElementById('f');
-const loginForm = document.getElementById('login');
-const sheetSel = document.getElementById('sheet');
-const scaleSel = document.getElementById('scale');
-const rotateSel = document.getElementById('rotate');
+/* Site Analyst UI.
+   State lives in one object; the options are plain buttons that write into it,
+   which avoids native <select> chrome in a page that is otherwise all text. */
 
-// Context sheets work at neighbourhood scales; site sheets at lot scales
-// (auto picks the tightest standard scale that fits the lot plus a margin).
+const state = { sheet: 'context', scale: '3000', rotate: 'north' };
+
+const SHEETS = [
+  ['context', 'context', '/samples/context.jpg', 'context analysis · A1 · 1:3000'],
+  ['site',    'site',    '/samples/site.jpg',    'site analysis · A1 · auto scale'],
+  ['summary', 'summary', '/samples/summary.jpg', 'development summary · A1 · table'],
+];
 const SCALES = {
-  context: [['2100', '1:2100'], ['3000', '1:3000 (default)'], ['4000', '1:4000']],
-  site: [['0', 'Auto scale'], ['200', '1:200'], ['250', '1:250'], ['300', '1:300'],
-         ['400', '1:400'], ['500', '1:500']],
-  summary: [],   // a table, not a map
+  context: [['2100', '2100'], ['3000', '3000'], ['4000', '4000']],
+  site: [['0', 'auto'], ['200', '200'], ['250', '250'], ['300', '300'],
+         ['400', '400'], ['500', '500']],
+  summary: [],
 };
-function fillScales() {
-  // The development summary has no map, so scale and orientation mean nothing
-  // for it — hide them rather than offer settings that do not apply.
-  const table = sheetSel.value === 'summary';
-  scaleSel.style.display = table ? 'none' : '';
-  rotateSel.style.display = table ? 'none' : '';
-  if (table) { scaleSel.innerHTML = '<option value="0"></option>'; return; }
-  const opts = SCALES[sheetSel.value];
-  scaleSel.innerHTML = opts.map(([v, l], i) =>
-    `<option value="${v}"${i === (sheetSel.value === 'context' ? 1 : 0) ? ' selected' : ''}>${l}</option>`).join('');
+const NORTH = [['north', 'up'], ['auto', 'align']];
+
+const $ = (id) => document.getElementById(id);
+const f = $('f'), loginForm = $('login');
+const out = $('out'), logEl = $('log'), queueEl = $('queue');
+const linksEl = $('links'), errEl = $('error'), go = $('go');
+const preview = $('preview');
+
+// ---- token rendering -----------------------------------------------------
+
+function sep(text) {
+  const s = document.createElement('span');
+  s.textContent = text;
+  return s;
 }
-sheetSel.addEventListener('change', fillScales);
-fillScales();
+
+function tokens(host, items, current, onPick, previewable) {
+  host.innerHTML = '';
+  items.forEach(([value, label, img, cap], i) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'opt';
+    b.textContent = label;
+    b.setAttribute('aria-pressed', String(value === current));
+    b.addEventListener('click', () => onPick(value));
+    if (previewable && img) {
+      b.addEventListener('mouseenter', (e) => showPreview(img, cap, e));
+      b.addEventListener('mousemove', movePreview);
+      b.addEventListener('mouseleave', hidePreview);
+      // Touch has no hover: a tap also pins the preview open.
+      b.addEventListener('click', () => {
+        if (matchMedia('(hover: none)').matches) togglePreview(img, cap, b);
+      });
+    }
+    host.append(b);
+  });
+}
+
+function renderAll() {
+  tokens($('sheetOpts'), SHEETS, state.sheet,
+    (v) => { state.sheet = v; syncScale(); renderAll(); }, true);
+
+  const scales = SCALES[state.sheet];
+  $('scaleRow').hidden = scales.length === 0;
+  $('northRow').hidden = state.sheet === 'summary';
+  if (scales.length) {
+    tokens($('scaleOpts'), scales, state.scale, (v) => { state.scale = v; renderAll(); });
+  }
+  tokens($('northOpts'), NORTH, state.rotate, (v) => { state.rotate = v; renderAll(); });
+}
+
+/** Keep the scale valid when the drawing changes — 1:3000 means nothing for a lot. */
+function syncScale() {
+  const valid = SCALES[state.sheet].map((s) => s[0]);
+  if (!valid.length) { state.scale = '0'; return; }
+  if (!valid.includes(state.scale)) {
+    state.scale = state.sheet === 'context' ? '3000' : valid[0];
+  }
+}
+
+// ---- hover preview -------------------------------------------------------
+
+let pinned = false;
+
+function showPreview(src, cap, e) {
+  if (pinned) return;
+  preview.querySelector('img').src = src;
+  preview.querySelector('.cap').textContent = cap;
+  preview.classList.add('on');
+  movePreview(e);
+}
+function movePreview(e) {
+  if (!preview.classList.contains('on') || pinned) return;
+  const w = preview.offsetWidth, h = preview.offsetHeight, pad = 16;
+  let x = e.clientX + pad, y = e.clientY + pad;
+  if (x + w > innerWidth - pad) x = Math.max(pad, e.clientX - w - pad);
+  if (y + h > innerHeight - pad) y = Math.max(pad, innerHeight - h - pad);
+  preview.style.left = x + 'px';
+  preview.style.top = y + 'px';
+}
+function hidePreview() { if (!pinned) preview.classList.remove('on'); }
+
+function togglePreview(src, cap, anchor) {
+  pinned = !pinned;
+  if (!pinned) { preview.classList.remove('on'); return; }
+  preview.querySelector('img').src = src;
+  preview.querySelector('.cap').textContent = cap;
+  preview.classList.add('on');
+  const r = anchor.getBoundingClientRect();
+  preview.style.left = Math.max(8, Math.min(r.left, innerWidth - preview.offsetWidth - 8)) + 'px';
+  preview.style.top = (r.bottom + 8) + 'px';
+}
+document.addEventListener('click', (e) => {
+  if (pinned && !e.target.closest('.opt')) { pinned = false; preview.classList.remove('on'); }
+});
+
+// ---- http helpers --------------------------------------------------------
 
 // A restart, a proxy hiccup or a rate limit can answer with an empty or
 // non-JSON body; r.json() throws "Unexpected end of JSON input" there and the
@@ -37,29 +124,29 @@ async function readJson(r) {
 
 function httpMessage(r, j) {
   if (j && j.error) return j.error;
-  if (r.status === 401) return 'Session expired — reload the page and sign in again.';
-  if (r.status === 429) return 'Too many requests — wait a minute and try again.';
-  if (r.status >= 500) return 'The service is restarting — try again in a moment.';
-  return 'Request failed (HTTP ' + r.status + ').';
+  if (r.status === 401) return 'session expired — reload and unlock again';
+  if (r.status === 429) return 'rate limited — wait a minute';
+  if (r.status >= 500) return 'service restarting — try again shortly';
+  return 'request failed (HTTP ' + r.status + ')';
 }
 
-// ---- address type-ahead against the NSW address register -----------------
-const addrInput = document.getElementById('address');
-const suggestBox = document.getElementById('suggest');
+// ---- address type-ahead --------------------------------------------------
+
+const addrInput = $('address');
+const suggestBox = $('suggest');
 let suggestTimer = null, activeIdx = -1, lastQuery = '';
 
 function closeSuggest() { suggestBox.classList.remove('open'); activeIdx = -1; }
 
 function renderSuggest(items) {
   if (!items.length) return closeSuggest();
-  suggestBox.innerHTML = items.map((a) => `<li>${a}</li>`).join('');
-  [...suggestBox.children].forEach((li, i) => {
-    li.addEventListener('mousedown', (e) => {
-      e.preventDefault();
-      addrInput.value = li.textContent;
-      closeSuggest();
-    });
+  suggestBox.innerHTML = '';
+  items.forEach((a, i) => {
+    const li = document.createElement('li');
+    li.textContent = a;
+    li.addEventListener('mousedown', (e) => { e.preventDefault(); addrInput.value = a; closeSuggest(); });
     li.addEventListener('mouseenter', () => { activeIdx = i; highlight(); });
+    suggestBox.append(li);
   });
   suggestBox.classList.add('open');
 }
@@ -95,58 +182,50 @@ addrInput.addEventListener('keydown', (e) => {
 });
 addrInput.addEventListener('blur', () => setTimeout(closeSuggest, 120));
 
-// Show the generator or the code prompt depending on session state. The rest
-// of the page is public either way — a visitor without a code should still
-// understand exactly what the tool produces.
-fetch('/api/me').then(r => {
-  (r.ok ? f : loginForm).style.display = 'flex';
-  document.getElementById('gatehint').style.display = r.ok ? 'none' : 'block';
-  document.getElementById('waithint').style.display = r.ok ? 'block' : 'none';
-  if (r.ok) document.getElementById('address').focus();
-}).catch(() => { loginForm.style.display = 'flex'; });
+// ---- session -------------------------------------------------------------
+
+fetch('/api/me').then((r) => {
+  f.hidden = !r.ok;
+  loginForm.hidden = r.ok;
+  $('hoverhint').hidden = matchMedia('(hover: none)').matches;
+  if (r.ok) addrInput.focus();
+}).catch(() => { loginForm.hidden = false; });
 
 loginForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   const r = await fetch('/api/login', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ code: document.getElementById('code').value }),
+    body: JSON.stringify({ code: $('code').value }),
   });
   if (r.ok) {
-    loginForm.style.display = 'none';
-    f.style.display = 'flex';
-    document.getElementById('gatehint').style.display = 'none';
-    document.getElementById('waithint').style.display = 'block';
-    document.getElementById('address').focus();
+    loginForm.hidden = true;
+    f.hidden = false;
+    addrInput.focus();
   } else {
     const j = await readJson(r);
-    error_.textContent = j.error || 'Wrong access code.';
-    error_.style.display = 'block';
+    out.hidden = false;
+    errEl.textContent = j.error || 'wrong access code';
   }
 });
 
-const go = document.getElementById('go');
-const status_ = document.getElementById('status');
-const log = document.getElementById('log');
-const queueEl = document.getElementById('queue');
-const result = document.getElementById('result');
-const error_ = document.getElementById('error');
+// ---- run -----------------------------------------------------------------
 
 f.addEventListener('submit', async (e) => {
   e.preventDefault();
-  error_.style.display = 'none'; result.style.display = 'none';
-  const address = document.getElementById('address').value.trim();
+  const address = addrInput.value.trim();
   if (!address) return;
-  go.disabled = true; status_.classList.add('active');
-  queueEl.textContent = ''; log.textContent = 'submitting…';
+  out.hidden = false;
+  errEl.textContent = ''; linksEl.innerHTML = ''; queueEl.textContent = '';
+  go.disabled = true;
+  logEl.textContent = 'submitting';
   try {
     const r = await fetch('/api/jobs', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ address, scale: scaleSel.value,
-                             rotate: rotateSel.value, sheet: sheetSel.value }),
+      body: JSON.stringify({ address, scale: state.scale, rotate: state.rotate, sheet: state.sheet }),
     });
     const j = await readJson(r);
     if (!r.ok) throw new Error(httpMessage(r, j));
-    if (!j.id) throw new Error('The service is restarting — try again in a moment.');
+    if (!j.id) throw new Error('service restarting — try again shortly');
     poll(j.id);
   } catch (err) { fail(err.message); }
 });
@@ -159,60 +238,60 @@ async function poll(id, misses) {
   try {
     const r = await fetch('/api/jobs/' + id);
     if (r.status >= 500) {
-      if (misses < 20) { log.textContent = 'service restarting, reconnecting…';
-                         return setTimeout(() => poll(id, misses + 1), 3000); }
-      throw new Error('The service is restarting — try again in a moment.');
+      if (misses < 20) {
+        logEl.textContent = 'service restarting, reconnecting';
+        return setTimeout(() => poll(id, misses + 1), 3000);
+      }
+      throw new Error('service restarting — try again shortly');
     }
     const j = await readJson(r);
-    if (r.status === 404) throw new Error('The service restarted and this job was lost — please generate again.');
+    if (r.status === 404) throw new Error('service restarted, job lost — run again');
     if (!r.ok) throw new Error(httpMessage(r, j));
 
-    // Waiting behind other people is the normal case on one server; say where
-    // you are in the line rather than showing an anonymous spinner.
     if (j.status === 'queued' && j.queuePosition > 0) {
       queueEl.textContent = j.queuePosition === 1
-        ? 'Next in the queue — starting shortly.'
-        : `${ordinal(j.queuePosition)} in the queue — about ${j.etaMinutes} minutes.`;
+        ? 'queued, next in line'
+        : 'queued, position ' + j.queuePosition + ' — about ' + j.etaMinutes + ' minutes';
     } else if (j.status === 'running') {
-      queueEl.textContent = 'Generating your drawing…';
+      queueEl.textContent = 'generating';
     }
-    log.textContent = j.log.join('\n') || 'waiting…';
+    logEl.textContent = (j.log || []).map((l) => l.trim()).join('\n');
+    logEl.scrollTop = logEl.scrollHeight;
 
     if (j.status === 'done') {
-      status_.classList.remove('active');
-      const dl = document.getElementById('dl');
-      dl.href = '/api/jobs/' + id + '/pdf';
-      dl.textContent = j.sheet === 'site' ? 'OPEN SITE ANALYSIS PDF'
-        : j.sheet === 'summary' ? 'OPEN DEVELOPMENT SUMMARY PDF' : 'OPEN CONTEXT ANALYSIS PDF';
-      const cad = document.getElementById('dlcad');
-      if (j.hasCad) { cad.href = '/api/jobs/' + id + '/cad'; cad.style.display = 'inline-block'; }
-      const dat = document.getElementById('dldata');
-      if (j.hasData) { dat.href = '/api/jobs/' + id + '/data'; dat.style.display = 'inline-block'; }
-      result.style.display = 'block';
+      queueEl.innerHTML = '<span class="okline">done</span>';
+      linksEl.innerHTML = '';
+      addLink('open pdf', '/api/jobs/' + id + '/pdf', true);
+      if (j.hasCad) addLink('download cad', '/api/jobs/' + id + '/cad');
+      if (j.hasData) addLink('download csv', '/api/jobs/' + id + '/data');
       go.disabled = false;
       return;
     }
-    if (j.status === 'error') throw new Error(j.error || 'Generation failed');
+    if (j.status === 'error') throw new Error(j.error || 'generation failed');
     setTimeout(() => poll(id, 0), 2500);
   } catch (err) {
     // fetch() rejects outright when the connection drops — same transient case.
     if (err instanceof TypeError && misses < 20) {
-      log.textContent = 'connection lost, reconnecting…';
+      logEl.textContent = 'connection lost, reconnecting';
       return setTimeout(() => poll(id, misses + 1), 3000);
     }
     fail(err.message);
   }
 }
 
-function ordinal(n) {
-  const s = ['th', 'st', 'nd', 'rd'], v = n % 100;
-  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+function addLink(label, href, newTab) {
+  if (linksEl.childNodes.length) linksEl.append(sep('    '));
+  const a = document.createElement('a');
+  a.href = href;
+  a.textContent = label;
+  if (newTab) a.target = '_blank';
+  linksEl.append(a);
 }
 
 function fail(msg) {
-  status_.classList.remove('active');
   queueEl.textContent = '';
-  error_.textContent = msg;
-  error_.style.display = 'block';
+  errEl.textContent = msg;
   go.disabled = false;
 }
+
+renderAll();

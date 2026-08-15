@@ -3,142 +3,108 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Site Analyst — DA site analysis for any NSW address</title>
-<meta name="description" content="Enter a NSW street address and get the site-analysis drawings an architectural office prepares for a Development Application: context analysis, site analysis and a planning-controls summary, from open government data.">
+<title>Site Analyst</title>
+<meta name="description" content="Generate NSW development-application site analysis drawings from a street address, using government open data.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 fill=%27%23111%27/%3E%3Crect x=%277%27 y=%277%27 width=%2718%27 height=%2718%27 fill=%27none%27 stroke=%27%23fff%27 stroke-width=%272%27/%3E%3Crect x=%2713%27 y=%2713%27 width=%276%27 height=%276%27 fill=%27%23e8402a%27/%3E%3C/svg%3E">
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
+<div class="page">
 
-<header>
-  <div class="wrap mast">
-    <div class="logo">SITE ANALYST</div>
-    <nav>
-      <a href="/about">How it works</a>
-    </nav>
-  </div>
-</header>
-
-<main class="wrap">
-
-  <!-- ---- generator ------------------------------------------------- -->
-  <div class="panel" id="generate">
-    <form id="login" style="display:none">
-      <div class="addrwrap"><input id="code" type="password" placeholder="Access code"
-             autocomplete="current-password"></div>
-      <button type="submit">ENTER</button>
-    </form>
-
-    <form id="f" style="display:none">
-      <div class="addrwrap">
-        <input id="address" type="text" placeholder="Start typing a NSW address…"
-               autocomplete="off" autocapitalize="off" spellcheck="false">
-        <ul id="suggest"></ul>
-      </div>
-      <select id="sheet" title="Drawing">
-        <option value="context" selected>Context analysis</option>
-        <option value="site">Site analysis</option>
-        <option value="summary">Development summary</option>
-      </select>
-      <select id="scale" title="Sheet scale"></select>
-      <select id="rotate" title="Map orientation">
-        <option value="north" selected>North up</option>
-        <option value="auto">Align site</option>
-      </select>
-      <button id="go" type="submit">GENERATE</button>
-    </form>
-
-    <p class="hint" id="gatehint" style="display:none">Generation needs an access code.</p>
-    <p class="hint" id="waithint">Each drawing takes 1–3 minutes, one at a time.</p>
-
-    <div id="status">
-      <div class="bar"><div></div></div>
-      <div id="queue"></div>
-      <div id="log"></div>
-    </div>
-    <div id="result">
-      <a id="dl" target="_blank">OPEN PDF</a>
-      <a id="dlcad" class="alt" style="display:none">DOWNLOAD CAD (DXF/DWG)</a>
-      <a id="dldata" class="alt" style="display:none">DOWNLOAD TABLE (CSV)</a>
-    </div>
-    <div id="error"></div>
+  <div class="top">
+    <div class="name">SITE ANALYST</div>
+    <div><a href="/about">how it works</a></div>
   </div>
 
-  <!-- ---- the three drawings ---------------------------------------- -->
-  <section id="drawings">
-    <h2 class="title">Three drawings</h2>
-    <p class="intro">Each is an A1 sheet, drawn to scale and readable printed at A3.
-    Examples generated for 1 Bay Street, Botany.</p>
+  <div class="note">Site analysis drawings for any NSW address, from government open data.</div>
 
-    <div class="sheets">
-      <div class="sheet">
-        <figure>
-          <img src="/samples/context.jpg" alt="Context analysis sheet" loading="lazy">
-          <figcaption class="cap">
-            <h3>CONTEXT ANALYSIS</h3>
-            <p>The neighbourhood at 1:3000 — how the site sits in its suburb.</p>
-            <ul>
-              <li>Land use and zoning, by category</li>
-              <li>Schools, hospitals, civic and open space, named</li>
-              <li>Train, light rail and bus routes with stops</li>
-              <li>5 and 10 minute walking catchments</li>
-              <li>Aerial imagery under the whole sheet</li>
-            </ul>
-            <div class="fmt">PDF · DXF/DWG</div>
-          </figcaption>
-        </figure>
-      </div>
+  <div class="gap"></div>
 
-      <div class="sheet">
-        <figure>
-          <img src="/samples/site.jpg" alt="Site analysis sheet" loading="lazy">
-          <figcaption class="cap">
-            <h3>SITE ANALYSIS</h3>
-            <p>The lot itself, auto-scaled to fit — what the design has to respond to.</p>
-            <ul>
-              <li>Boundary dimensions and site area</li>
-              <li>Ground levels, contours and the direction of fall</li>
-              <li>Sun path at summer and winter solstice</li>
-              <li>Prevailing winds, noise sources</li>
-              <li>Neighbouring buildings, storeys and zoning</li>
-              <li>Driveways, parking, trees, street furniture</li>
-            </ul>
-            <div class="fmt">PDF · DXF/DWG</div>
-          </figcaption>
-        </figure>
-      </div>
+  <!-- ---- access ------------------------------------------------------ -->
+  <form id="login" hidden>
+    <div class="row">
+      <div class="lab">access</div>
+      <div class="val"><input id="code" type="password" placeholder="code"
+           autocomplete="current-password" style="max-width:22ch"></div>
+    </div>
+    <div class="row">
+      <div class="lab"></div>
+      <div class="val"><button class="action" type="submit">UNLOCK</button></div>
+    </div>
+  </form>
 
-      <div class="sheet">
-        <figure>
-          <img src="/samples/summary.jpg" alt="Development summary sheet" loading="lazy">
-          <figcaption class="cap">
-            <h3>DEVELOPMENT SUMMARY</h3>
-            <p>The planning controls that apply to the lot, as a table.</p>
-            <ul>
-              <li>Lot and deposited plan, site area</li>
-              <li>Land use zone and its description</li>
-              <li>Maximum building height and floor space ratio</li>
-              <li>Permitted gross floor area, minimum lot size</li>
-              <li>Heritage listing, if any</li>
-              <li>Apartment Design Guide areas, computed</li>
-            </ul>
-            <div class="fmt">PDF · CSV · JSON</div>
-          </figcaption>
-        </figure>
+  <!-- ---- the tool ---------------------------------------------------- -->
+  <form id="f" hidden>
+    <div class="row">
+      <div class="lab">address</div>
+      <div class="val"><div class="addrwrap"><input id="address" type="text"
+           placeholder="start typing a NSW address" autocomplete="off"
+           autocapitalize="off" spellcheck="false"><ul id="suggest"></ul></div></div>
+    </div>
+
+    <div class="row">
+      <div class="lab">drawing</div>
+      <div class="val"><span id="sheetOpts"></span><span class="note" id="hoverhint">hover for an example</span></div>
+    </div>
+
+    <div class="row" id="scaleRow">
+      <div class="lab">scale</div>
+      <div class="val" id="scaleOpts"></div>
+    </div>
+
+    <div class="row" id="northRow">
+      <div class="lab">north</div>
+      <div class="val" id="northOpts"></div>
+    </div>
+
+    <div class="gap"></div>
+
+    <div class="row">
+      <div class="lab"></div>
+      <div class="val"><button class="action" id="go" type="submit">GENERATE</button></div>
+    </div>
+  </form>
+
+  <!-- ---- output ------------------------------------------------------ -->
+  <div id="out" hidden>
+    <div class="gap"></div>
+    <div class="row">
+      <div class="lab">status</div>
+      <div class="val">
+        <div id="queue"></div>
+        <div id="log"></div>
+        <div id="links"></div>
+        <div class="errline" id="error"></div>
       </div>
     </div>
-  </section>
-
-</main>
-
-<footer>
-  <div class="wrap">
-    Programmed by <strong>Sami Abdulnour</strong> © 2026. All rights reserved.
-    Generated drawings are licensed for use by the recipient.
-    <div class="disclaim">Every sheet is a generated draft, not a survey or a planning
-    certificate — <a href="/about#limits">what it does not do</a>.</div>
   </div>
-</footer>
+
+  <hr>
+
+  <div class="row">
+    <div class="lab">context</div>
+    <div class="val">neighbourhood at 1:3000 — zoning, transport, amenities, walking catchments
+      <span class="note">· PDF, DXF/DWG</span></div>
+  </div>
+  <div class="row">
+    <div class="lab">site</div>
+    <div class="val">the lot — boundary dimensions, levels, fall, sun path, winds, neighbours
+      <span class="note">· PDF, DXF/DWG</span></div>
+  </div>
+  <div class="row">
+    <div class="lab">summary</div>
+    <div class="val">planning controls — zone, height, floor space ratio, gross floor area, heritage
+      <span class="note">· PDF, CSV, JSON</span></div>
+  </div>
+
+  <div class="gap"></div>
+  <div class="note">Generated drafts, not a survey or a planning certificate.
+    <a href="/about">What that means</a>.</div>
+  <div class="note">© 2026 Sami Abdulnour. All rights reserved.</div>
+
+</div>
+
+<div id="preview"><img alt=""><div class="cap"></div></div>
 
 <script src="/app.js"></script>
 </body>
