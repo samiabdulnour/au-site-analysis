@@ -13,7 +13,7 @@ const SHEETS = [
 ];
 const SCALES = {
   context: [
-    ['2100', '2100', '/samples/context-2100.jpg', 'context · 1:2100 — tighter, more detail'],
+    ['2000', '2000', '/samples/context-2000.jpg', 'context · 1:2000 — tighter, more detail'],
     ['3000', '3000', '/samples/context.jpg',      'context · 1:3000 — the default'],
     ['4000', '4000', '/samples/context-4000.jpg', 'context · 1:4000 — wider catchment'],
   ],

@@ -118,9 +118,11 @@ Output lands in `out/<address-slug>/`:
 - `sheet.html` — the composed sheet (open in a browser to inspect)
 - `CONTEXT_ANALYSIS.pdf` — A1 landscape sheet
 - `CONTEXT_ANALYSIS_CAD.zip` — CAD package for ArchiCAD: `CONTEXT_ANALYSIS.dxf`
-  in real-world meters on the MGA2020 grid, one layer per data class
-  (SITE, CADASTRE, ZONE-*, INST-*, HERITAGE, ROADS, ROAD-NAMES, RAIL-*,
-  BUS-*, ISOCHRONE-*, LABELS-POI, AERIAL), plus georeferenced aerial JPEGs
+  in real-world meters on the MGA2020 grid, one layer per data class, every
+  name prefixed `SA_` so the tool's layers are obvious in a merged project
+  file (SA_SITE, SA_CADASTRE, SA_ZONE-*, SA_INST-*, SA_HERITAGE, SA_ROADS,
+  SA_ROAD-NAMES, SA_RAIL-*, SA_BUS-*, SA_ISOCHRONE-*, SA_LABELS-POI,
+  SA_AERIAL), plus georeferenced aerial JPEGs
   with `.jgw` world files and an import README. A true `.dwg` is added
   automatically when the free ODA File Converter is installed on the host
   (download from opendesign.com, then it is found on PATH or via
@@ -130,8 +132,8 @@ Output lands in `out/<address-slug>/`:
 Every drawing also exports in an open, editable format:
 
 - **Context analysis** and **site analysis** — `*_CAD.zip` containing a DXF in
-  real-world meters on the MGA2020 grid, one layer per data class, plus a true
-  `.dwg` when the ODA File Converter is installed. Site geometry is written at
+  real-world meters on the MGA2020 grid, one `SA_`-prefixed layer per data
+  class, plus a true `.dwg` when the ODA File Converter is installed. Site geometry is written at
   true ground scale, so it drops straight under a survey.
 - **Development summary** — `.csv` (opens in Excel, pastes into a Word or
   InDesign table) and `.json` for anything reading the controls

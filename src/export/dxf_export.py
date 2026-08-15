@@ -25,7 +25,7 @@ from pyproj import Transformer
 OUT = Path(sys.argv[1])
 bundle = json.loads((OUT / "data" / "bundle.json").read_text())
 
-SCALE = bundle["scale"]                      # e.g. 2100 -> sheet 1:2100
+SCALE = bundle["scale"]                      # e.g. 2000 -> sheet 1:2000
 MM = SCALE / 1000.0                          # 1 mm on the sheet = MM meters
 
 # ---- projection: lon/lat -> MGA2020 zone of the site ----------------------
@@ -86,6 +86,26 @@ def zone_to_cat(code):
 # ---- document --------------------------------------------------------------
 doc = ezdxf.new("R2013", setup=True)          # setup=True loads DASHED etc.
 msp = doc.modelspace()
+
+# ---- namespace the layers -------------------------------------------------
+# Everything this tool writes is prefixed, so when the DXF is merged into a
+# project file it is obvious which layers came from Site Analyst — and they can
+# be switched off or purged as a group.
+LAYER_PREFIX = "SA_"
+
+# ezdxf refuses to rename its special layers ("0", "Defpoints"), and a raised
+# error here would abort the export before it saved anything.
+SPECIAL_LAYERS = {"0", "defpoints"}
+
+def prefix_layers(doc):
+    for lay in list(doc.layers):
+        name = lay.dxf.name
+        if name.lower() in SPECIAL_LAYERS or name.startswith(LAYER_PREFIX):
+            continue
+        try:
+            lay.rename(LAYER_PREFIX + name)
+        except ValueError:
+            pass
 doc.header["$INSUNITS"] = 6                   # meters
 doc.header["$MEASUREMENT"] = 1
 
@@ -340,6 +360,7 @@ manual georeferenced placement if the IMAGE underlay is not imported.
 """)
 
 dxf_path = OUT / "CONTEXT_ANALYSIS.dxf"
+prefix_layers(doc)
 doc.saveas(dxf_path)
 print(f"dxf: {dxf_path}")
 

@@ -92,6 +92,81 @@ export function sheetHtml(o: SheetHtmlOpts): string {
     </div>`;
   const rule = (y: number) => `<div class="abs rule" style="top:${y}mm"></div>`;
 
+  // The identity fields appear only when they carry something. A sheet
+  // generated from an address has no job number, client, reviewer or revision,
+  // and a column of empty ruled boxes is noise on the drawing. They still
+  // render when the CLI is given --job/--client/--status/… so the office can
+  // issue a completed sheet.
+  interface Block { h: number; html: (top: number) => string }
+  const blocks: Block[] = [];
+  const officeShown = Boolean(meta.office.name || meta.office.lines.length);
+  if (officeShown) {
+    blocks.push({ h: 37.7, html: (t) => `
+      ${rule(t)}
+      <div class="abs k" style="top:${t + 0.7}mm;left:4.8mm">ARCHITECT</div>
+      ${meta.office.name ? `<div class="abs wordmark" style="top:${t + 5.8}mm;left:4.8mm">${esc(wm1)}<span class="rule2">—</span>${esc(wmRest.join(' '))}</div>` : ''}
+      <div class="abs fine" style="top:${t + 19.2}mm;left:4.8mm;right:0">${meta.office.lines.map(esc).join('<br>')}</div>` });
+  }
+  if (meta.client || (meta.clientLines ?? []).length) {
+    blocks.push({ h: 24.6, html: (t) => `
+      ${rule(t)}
+      <div class="abs k" style="top:${t + 0.7}mm;left:4.8mm">CLIENT</div>
+      ${meta.client ? `<div class="abs" style="top:${t + 4.6}mm;left:4.8mm;right:0;font-size:${T.value}mm;font-weight:700">${esc(meta.client)}</div>` : ''}
+      <div class="abs fine" style="top:${t + 17}mm;left:4.8mm;right:0">${(meta.clientLines ?? []).map(esc).join('<br>')}</div>` });
+  }
+  if (meta.preliminary) {
+    blocks.push({ h: 7, html: (t) => `<div class="abs prelim" style="top:${t}mm;left:2.6mm;right:2.6mm">P R E L I M I N A R Y</div>` });
+  }
+  if (!o.noMap) {
+    blocks.push({ h: 25.8, html: (t) => `
+      <svg class="abs" style="top:${t}mm;left:3.5mm" width="18mm" height="18mm" viewBox="0 0 18 18">${northSvg}</svg>
+      <svg class="abs" style="top:${t + 17}mm;left:0" width="${TW}mm" height="8mm" viewBox="0 0 ${TW} 8">${scaleBarSvg}</svg>` });
+  }
+  blocks.push({ h: 15.6, html: (t) => `${rule(t)}${field(t + 0.8, 'SITE ADDRESS', `<div class="v-addr">${esc(o.siteAddress)}</div>`)}` });
+  if (meta.jobNo) {
+    blocks.push({ h: 11.1, html: (t) => `${rule(t)}${field(t + 0.8, 'JOB NO', `<div class="v">${esc(meta.jobNo)}</div>`)}` });
+  }
+  if (meta.checked || meta.drawn) {
+    blocks.push({ h: 10.4, html: (t) => `
+      ${rule(t)}
+      <div class="abs" style="top:${t + 0.8}mm;left:4.8mm;right:0">
+        <div style="display:grid;grid-template-columns:1fr 1fr">
+          <div><div class="k">CHECKED</div><div class="v">${esc(meta.checked)}</div></div>
+          <div><div class="k">DRAWN</div><div class="v">${esc(meta.drawn)}</div></div>
+        </div>
+      </div>` });
+  }
+  blocks.push({ h: 10.4, html: (t) => `
+    ${meta.checked || meta.drawn ? '' : rule(t)}
+    <div class="abs" style="top:${t + 0.8}mm;left:4.8mm;right:0">
+      <div style="display:grid;grid-template-columns:1fr 1fr">
+        <div>${meta.date ? `<div class="k">DATE</div><div class="v">${esc(meta.date)}</div>` : ''}</div>
+        <div><div class="k">SCALE</div><div class="v">${o.noMap ? 'NTS' : `1:${o.scale} @ A1&nbsp;&nbsp;A3@50%`}</div></div>
+      </div>
+    </div>` });
+  if (meta.status) {
+    blocks.push({ h: 13.8, html: (t) => `${rule(t)}${field(t + 0.8, 'PROJECT STATUS', `<div class="v">${esc(meta.status)}</div>`)}` });
+  }
+  blocks.push({ h: 17, html: (t) => `${rule(t)}${field(t + 0.8, 'DRAWING TITLE', `<div class="v">${esc(o.drawingTitle)}</div>`)}` });
+  if (meta.sheetNo || meta.revision) {
+    blocks.push({ h: 11, html: (t) => `
+      ${rule(t)}
+      <div class="abs" style="top:${t + 0.8}mm;left:4.8mm;right:0">
+        <div style="display:grid;grid-template-columns:1fr 1fr">
+          <div><div class="k">SHEET NO.</div><div class="v">${esc(meta.sheetNo)}</div></div>
+          <div><div class="k">REVISION</div><div class="v">${esc(meta.revision)}</div></div>
+        </div>
+      </div>` });
+  }
+
+  // Stack them so the last one finishes just above the sheet edge; the legend
+  // takes whatever height is left above.
+  const stackH = blocks.reduce((sum, b) => sum + b.h, 0);
+  let cursor = SHEET_H - 8 - stackH;
+  const identityTop = cursor;
+  const identityHtml = blocks.map((b) => { const h = b.html(cursor); cursor += b.h; return h; }).join('');
+  const legendH = Math.max(40, identityTop - 27);
+
   return `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>${esc(o.siteAddress)} — ${esc(o.drawingTitle)}</title>
 <style>
@@ -130,45 +205,11 @@ ${o.layers.join('\n')}
   </div>
   ${rule(20)}
   <div class="abs" style="top:21.4mm;left:4.8mm;right:0;font-size:${T.legend}mm;font-weight:700">${esc(o.legendHeading)}</div>
-  <svg class="abs" style="top:24mm;left:0" width="${TW}mm" height="374mm" viewBox="0 0 ${TW} 374" xmlns="http://www.w3.org/2000/svg">
+  <svg class="abs" style="top:24mm;left:0" width="${TW}mm" height="${legendH}mm" viewBox="0 0 ${TW} ${legendH}" xmlns="http://www.w3.org/2000/svg">
     <defs><clipPath id="lhclip"><rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5"/></clipPath></defs>
     ${o.legendSvg}
   </svg>
-  ${rule(400.7)}
-  <div class="abs k" style="top:401.4mm;left:4.8mm">ARCHITECT</div>
-  ${meta.office.name ? `<div class="abs wordmark" style="top:406.5mm;left:4.8mm">${esc(wm1)}<span class="rule2">—</span>${esc(wmRest.join(' '))}</div>` : ''}
-  <div class="abs fine" style="top:419.9mm;left:4.8mm;right:0">${meta.office.lines.map(esc).join('<br>')}</div>
-  ${rule(438.4)}
-  <div class="abs k" style="top:439.1mm;left:4.8mm">CLIENT</div>
-  ${meta.client ? `<div class="abs" style="top:443mm;left:4.8mm;right:0;font-size:${T.value}mm;font-weight:700">${esc(meta.client)}</div>` : ''}
-  <div class="abs fine" style="top:455.4mm;left:4.8mm;right:0">${(meta.clientLines ?? []).map(esc).join('<br>')}</div>
-  ${meta.preliminary ? `<div class="abs prelim" style="top:463mm;left:2.6mm;right:2.6mm">P R E L I M I N A R Y</div>` : ''}
-  ${o.noMap ? '' : `<svg class="abs" style="top:470mm;left:3.5mm" width="18mm" height="18mm" viewBox="0 0 18 18">${northSvg}</svg>`}
-  ${o.noMap ? '' : `<svg class="abs" style="top:487mm;left:0" width="${TW}mm" height="8mm" viewBox="0 0 ${TW} 8">${scaleBarSvg}</svg>`}
-  ${rule(495.8)}
-  ${field(496.6, 'SITE ADDRESS', `<div class="v-addr">${esc(o.siteAddress)}</div>`)}
-  ${rule(511.4)}
-  ${field(512.2, 'JOB NO', `<div class="v">${esc(meta.jobNo)}</div>`)}
-  ${rule(522.5)}
-  <div class="abs" style="top:523.3mm;left:4.8mm;right:0">
-    <div style="display:grid;grid-template-columns:1fr 1fr">
-      <div><div class="k">CHECKED</div><div class="v">${esc(meta.checked)}</div></div>
-      <div><div class="k">DRAWN</div><div class="v">${esc(meta.drawn)}</div></div>
-      <div style="margin-top:1.6mm"><div class="k">DATE</div><div class="v">${esc(meta.date)}</div></div>
-      <div style="margin-top:1.6mm"><div class="k">SCALE</div><div class="v">${o.noMap ? 'NTS' : `1:${o.scale} @ A1&nbsp;&nbsp;A3@50%`}</div></div>
-    </div>
-  </div>
-  ${rule(543.2)}
-  ${field(544, 'PROJECT STATUS', `<div class="v">${esc(meta.status)}</div>`)}
-  ${rule(557)}
-  ${field(557.8, 'DRAWING TITLE', `<div class="v">${esc(o.drawingTitle)}</div>`)}
-  ${rule(574)}
-  <div class="abs" style="top:574.8mm;left:4.8mm;right:0">
-    <div style="display:grid;grid-template-columns:1fr 1fr">
-      <div><div class="k">SHEET NO.</div><div class="v">${esc(meta.sheetNo)}</div></div>
-      <div><div class="k">REVISION.</div><div class="v">${esc(meta.revision)}</div></div>
-    </div>
-  </div>
+  ${identityHtml}
 </div>
 </div></body></html>`;
 }

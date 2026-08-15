@@ -42,6 +42,26 @@ doc = ezdxf.new("R2010", setup=True)
 doc.header["$INSUNITS"] = 6                   # meters
 msp = doc.modelspace()
 
+# ---- namespace the layers -------------------------------------------------
+# Everything this tool writes is prefixed, so when the DXF is merged into a
+# project file it is obvious which layers came from Site Analyst — and they can
+# be switched off or purged as a group.
+LAYER_PREFIX = "SA_"
+
+# ezdxf refuses to rename its special layers ("0", "Defpoints"), and a raised
+# error here would abort the export before it saved anything.
+SPECIAL_LAYERS = {"0", "defpoints"}
+
+def prefix_layers(doc):
+    for lay in list(doc.layers):
+        name = lay.dxf.name
+        if name.lower() in SPECIAL_LAYERS or name.startswith(LAYER_PREFIX):
+            continue
+        try:
+            lay.rename(LAYER_PREFIX + name)
+        except ValueError:
+            pass
+
 def layer(name, rgb, linetype="Continuous"):
     if name not in doc.layers:
         doc.layers.add(name, dxfattribs={"true_color": rgb, "linetype": linetype})
@@ -174,6 +194,7 @@ msp.add_lwpolyline([(cx, cy), (cx, cy + 10)], dxfattribs={"layer": "NORTH"})
 add_text("NORTH", "N", cx, cy + 11.5, 1.5)
 
 dxf_path = OUT / "SITE_ANALYSIS.dxf"
+prefix_layers(doc)
 doc.saveas(dxf_path)
 print(f"dxf: {dxf_path}")
 
