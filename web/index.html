@@ -5,121 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Site Analyst — DA site analysis for any NSW address</title>
 <meta name="description" content="Enter a NSW street address and get the site-analysis drawings an architectural office prepares for a Development Application: context analysis, site analysis and a planning-controls summary, from open government data.">
-<style>
-  :root {
-    --ink: #111; --mid: #555; --faint: #888; --rule: #e2e2e2;
-    --accent: #e8402a; --paper: #fff; --wash: #f7f6f4;
-  }
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  html { scroll-behavior: smooth; }
-  body { font-family: Arial, Helvetica, sans-serif; background: var(--paper); color: var(--ink);
-         line-height: 1.55; -webkit-font-smoothing: antialiased; }
-  .wrap { width: min(1080px, 90vw); margin: 0 auto; }
-
-  /* ---- masthead ---------------------------------------------------- */
-  header { border-bottom: 1px solid var(--ink); }
-  .mast { display: flex; align-items: baseline; justify-content: space-between;
-          gap: 1rem; padding: 1.1rem 0; flex-wrap: wrap; }
-  .logo { font-size: 1.15rem; font-weight: 700; letter-spacing: .16em; }
-  .mast nav { display: flex; gap: 1.4rem; font-size: .82rem; letter-spacing: .06em; }
-  .mast nav a { color: var(--mid); text-decoration: none; }
-  .mast nav a:hover { color: var(--accent); }
-
-  /* ---- hero -------------------------------------------------------- */
-  .hero { padding: 4.5rem 0 2.4rem; }
-  h1 { font-size: clamp(2rem, 5vw, 3.4rem); line-height: 1.08; font-weight: 700;
-       letter-spacing: -.015em; max-width: 20ch; }
-  .lede { margin-top: 1.4rem; font-size: clamp(1rem, 1.6vw, 1.15rem); color: var(--mid);
-          max-width: 62ch; }
-  .lede strong { color: var(--ink); font-weight: 700; }
-
-  /* ---- generator --------------------------------------------------- */
-  .panel { margin: 2.6rem 0 1rem; padding: 1.6rem; background: var(--wash);
-           border: 1px solid var(--rule); }
-  .panel h2 { font-size: .78rem; letter-spacing: .14em; color: var(--faint);
-              font-weight: 700; margin-bottom: 1rem; }
-  form { display: flex; gap: .6rem; flex-wrap: wrap; }
-  .addrwrap { position: relative; flex: 1 1 20rem; }
-  input[type=text], input[type=password] {
-    width: 100%; font-size: 1.05rem; padding: .85rem 1rem; border: 2px solid var(--ink);
-    border-radius: 0; background: #fff; font-family: inherit; }
-  input:focus { outline: 2px solid var(--accent); outline-offset: -2px; border-color: var(--accent); }
-  select { font-size: .95rem; border: 2px solid var(--ink); padding: 0 .6rem; background: #fff;
-           font-family: inherit; min-height: 3.05rem; }
-  button { font-size: 1rem; font-weight: 700; letter-spacing: .06em; padding: .85rem 1.5rem;
-           background: var(--ink); color: #fff; border: 0; cursor: pointer; font-family: inherit; }
-  button:hover { background: var(--accent); }
-  button:disabled { background: #9a9a9a; cursor: wait; }
-  #suggest { position: absolute; left: 0; right: 0; top: 100%; z-index: 5; list-style: none;
-             background: #fff; border: 2px solid var(--ink); border-top: 0; max-height: 15rem;
-             overflow-y: auto; display: none; }
-  #suggest.open { display: block; }
-  #suggest li { padding: .5rem .8rem; font-size: .92rem; cursor: pointer; }
-  #suggest li:hover, #suggest li.active { background: #ffe9e6; }
-  .hint { margin-top: .8rem; font-size: .82rem; color: var(--faint); }
-
-  #status { margin-top: 1.6rem; display: none; }
-  #status.active { display: block; }
-  .bar { height: 4px; background: #e6e4e1; overflow: hidden; margin-bottom: .9rem; }
-  .bar div { height: 100%; width: 30%; background: var(--accent);
-             animation: slide 1.4s infinite linear; }
-  @keyframes slide { from { transform: translateX(-100%);} to { transform: translateX(430%);} }
-  #queue { font-size: .95rem; font-weight: 700; margin-bottom: .5rem; }
-  #log { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .78rem; color: #444;
-         white-space: pre-wrap; border-left: 3px solid var(--rule); padding-left: .9rem;
-         min-height: 3.2rem; max-height: 11rem; overflow-y: auto; }
-  #result { margin-top: 1.4rem; display: none; }
-  #result a { display: inline-block; font-weight: 700; color: #fff; background: var(--accent);
-              padding: .8rem 1.3rem; text-decoration: none; letter-spacing: .05em;
-              margin: 0 .5rem .5rem 0; font-size: .9rem; }
-  #result a.alt { background: var(--ink); }
-  #error { color: #c00; font-weight: 700; margin-top: 1rem; display: none; }
-
-  /* ---- sections ---------------------------------------------------- */
-  section { padding: 3.6rem 0; border-top: 1px solid var(--rule); }
-  section h2.title { font-size: clamp(1.3rem, 2.4vw, 1.8rem); font-weight: 700;
-                     letter-spacing: -.01em; margin-bottom: .6rem; }
-  section p.intro { color: var(--mid); max-width: 62ch; margin-bottom: 2rem; }
-
-  .sheets { display: grid; gap: 2rem; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
-  .sheet figure { border: 1px solid var(--rule); background: #fff; }
-  .sheet img { display: block; width: 100%; height: auto; border-bottom: 1px solid var(--rule); }
-  .sheet .cap { padding: 1rem 1.1rem 1.2rem; }
-  .sheet h3 { font-size: .95rem; letter-spacing: .1em; font-weight: 700; margin-bottom: .5rem; }
-  .sheet p { font-size: .88rem; color: var(--mid); }
-  .sheet ul { margin: .7rem 0 0 1rem; font-size: .84rem; color: var(--mid); }
-  .sheet .fmt { margin-top: .8rem; font-size: .76rem; letter-spacing: .08em; color: var(--faint); }
-
-  .steps { display: grid; gap: 1.8rem; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
-  .step .n { font-size: .78rem; letter-spacing: .14em; color: var(--accent); font-weight: 700; }
-  .step h3 { font-size: 1rem; margin: .4rem 0 .4rem; }
-  .step p { font-size: .88rem; color: var(--mid); }
-
-  .cols { display: grid; gap: 2.2rem; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
-  .cols h3 { font-size: .95rem; letter-spacing: .06em; margin-bottom: .6rem; }
-  .cols ul { margin-left: 1.1rem; font-size: .89rem; color: var(--mid); }
-  .cols li { margin-bottom: .4rem; }
-  .limits { background: var(--wash); border: 1px solid var(--rule); padding: 1.6rem; }
-
-  table.src { width: 100%; border-collapse: collapse; font-size: .86rem; }
-  table.src th, table.src td { text-align: left; padding: .55rem .6rem .55rem 0;
-                               border-bottom: 1px solid var(--rule); vertical-align: top; }
-  table.src th { color: var(--faint); font-weight: 700; letter-spacing: .06em;
-                 font-size: .74rem; text-transform: uppercase; }
-  table.src td.who { white-space: nowrap; color: var(--ink); font-weight: 700; }
-
-  footer { border-top: 1px solid var(--ink); padding: 2.4rem 0 3.4rem; color: var(--faint);
-           font-size: .8rem; line-height: 1.6; }
-  footer strong { color: var(--ink); }
-  .disclaim { margin-top: 1rem; max-width: 70ch; }
-
-  @media (max-width: 640px) {
-    .hero { padding: 2.6rem 0 1.6rem; }
-    .panel { padding: 1.1rem; }
-    form { flex-direction: column; }
-    select, button { width: 100%; }
-  }
-</style>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 fill=%27%23111%27/%3E%3Crect x=%277%27 y=%277%27 width=%2718%27 height=%2718%27 fill=%27none%27 stroke=%27%23fff%27 stroke-width=%272%27/%3E%3Crect x=%2713%27 y=%2713%27 width=%276%27 height=%276%27 fill=%27%23e8402a%27/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/style.css">
 </head>
 <body>
 
@@ -127,11 +14,7 @@
   <div class="wrap mast">
     <div class="logo">SITE ANALYST</div>
     <nav>
-      <a href="#generate">Generate</a>
-      <a href="#drawings">Drawings</a>
-      <a href="#how">How it works</a>
-      <a href="#data">Data</a>
-      <a href="#limits">Limits</a>
+      <a href="/about">How it works</a>
     </nav>
   </div>
 </header>
@@ -140,17 +23,12 @@
 
   <div class="hero">
     <h1>Site analysis for any NSW address.</h1>
-    <p class="lede">Type a street address. Get the drawings an architectural office prepares
-    when a project enters the <strong>Development Application</strong> stage — the neighbourhood
-    context, the lot itself, and the planning controls that govern what can be built.
-    Assembled entirely from <strong>NSW government open data</strong>: no site visit,
-    no screenshots, no manual tracing.</p>
+    <p class="lede">Type a street address, choose a drawing. Assembled from
+    <strong>NSW government open data</strong> — no site visit, no screenshots.</p>
   </div>
 
   <!-- ---- generator ------------------------------------------------- -->
   <div class="panel" id="generate">
-    <h2>GENERATE A DRAWING</h2>
-
     <form id="login" style="display:none">
       <div class="addrwrap"><input id="code" type="password" placeholder="Access code"
              autocomplete="current-password"></div>
@@ -176,10 +54,8 @@
       <button id="go" type="submit">GENERATE</button>
     </form>
 
-    <p class="hint" id="gatehint" style="display:none">Generation is limited to
-      holders of an access code. Everything below explains what the drawings contain.</p>
-    <p class="hint" id="waithint">Each drawing takes 1–3 minutes. Drawings are produced
-      one at a time, so you may wait behind others.</p>
+    <p class="hint" id="gatehint" style="display:none">Generation needs an access code.</p>
+    <p class="hint" id="waithint">Each drawing takes 1–3 minutes, one at a time.</p>
 
     <div id="status">
       <div class="bar"><div></div></div>
@@ -197,8 +73,8 @@
   <!-- ---- the three drawings ---------------------------------------- -->
   <section id="drawings">
     <h2 class="title">Three drawings</h2>
-    <p class="intro">Each is an A1 sheet, drawn to scale and readable when printed at A3.
-    The examples below were generated for 1 Bay Street, Botany — nothing was drawn by hand.</p>
+    <p class="intro">Each is an A1 sheet, drawn to scale and readable printed at A3.
+    Examples generated for 1 Bay Street, Botany.</p>
 
     <div class="sheets">
       <div class="sheet">
@@ -259,332 +135,17 @@
     </div>
   </section>
 
-  <!-- ---- how it works ---------------------------------------------- -->
-  <section id="how">
-    <h2 class="title">How it works</h2>
-    <p class="intro">There is no AI in the drawing. Every line is placed by code from a
-    government dataset, so the same address always produces the same sheet.</p>
-    <div class="steps">
-      <div class="step">
-        <div class="n">01</div>
-        <h3>Find the lot</h3>
-        <p>The address is matched against the NSW address register, then the cadastre gives
-        the lot boundary — including multi-lot sites, where several parcels are combined.</p>
-      </div>
-      <div class="step">
-        <div class="n">02</div>
-        <h3>Gather the context</h3>
-        <p>Zoning, height and floor-space controls, heritage, terrain, roads, transport,
-        aerial imagery and street detail are fetched for the area around the site.</p>
-      </div>
-      <div class="step">
-        <div class="n">03</div>
-        <h3>Compose the sheet</h3>
-        <p>Everything is projected, scaled and drawn in the office's graphic standard, with
-        labels placed to avoid collisions, then printed to a print-ready A1 PDF.</p>
-      </div>
-      <div class="step">
-        <div class="n">04</div>
-        <h3>Export for CAD</h3>
-        <p>The same geometry is written to DXF in real-world metres on the MGA2020 grid,
-        one layer per data class, ready to underlay a survey in ArchiCAD or AutoCAD.</p>
-      </div>
-    </div>
-  </section>
-
-  <!-- ---- data sources ---------------------------------------------- -->
-  <section id="data">
-    <h2 class="title">Where the data comes from</h2>
-    <p class="intro">All of it is public. Nothing is scraped from a screenshot, and no
-    third party is asked what you searched for.</p>
-    <table class="src">
-      <tr><th>Source</th><th>What it provides</th></tr>
-      <tr><td class="who">NSW Spatial Services</td>
-          <td>Address register, cadastral lot boundaries, roads and rail, elevation and
-              contours, aerial imagery</td></tr>
-      <tr><td class="who">NSW ePlanning</td>
-          <td>Land zoning, maximum building height, floor space ratio, minimum lot size,
-              heritage items</td></tr>
-      <tr><td class="who">Transport for NSW</td>
-          <td>Bus stop locations and route information</td></tr>
-      <tr><td class="who">OpenStreetMap</td>
-          <td>Bus and light-rail routes, trees, driveways, kerbside parking, street furniture</td></tr>
-      <tr><td class="who">Valhalla</td>
-          <td>Walking catchments — how far you actually get on foot in 5 and 10 minutes</td></tr>
-    </table>
-  </section>
-
-  <!-- ---- limits ---------------------------------------------------- -->
-  <section id="limits">
-    <h2 class="title">What it does not do</h2>
-    <div class="cols">
-      <div class="limits">
-        <h3>Read this before you rely on it</h3>
-        <ul>
-          <li><strong>Not a survey.</strong> Boundaries come from the cadastre, which is a
-              mapping approximation. Site areas typically differ from the surveyed figure by
-              a few per cent. Levels come from a 1&nbsp;m elevation model, not a site survey.</li>
-          <li><strong>Not a planning certificate.</strong> The controls shown are the mapped
-              LEP layers. A s10.7 certificate from council is the authoritative document.</li>
-          <li><strong>Council DCP controls are not included.</strong> Setbacks, landscaped
-              area and parking rates live in council PDFs that are not published as data,
-              so those rows are left blank for you to complete.</li>
-          <li><strong>Street detail is volunteered.</strong> Trees, driveways and parking come
-              from OpenStreetMap and vary in completeness between suburbs.</li>
-        </ul>
-      </div>
-      <div>
-        <h3>Who it is for</h3>
-        <ul>
-          <li><strong>Architects and building designers</strong> — the DA base drawings, in
-              minutes rather than a day, with CAD geometry to design over.</li>
-          <li><strong>Owners and buyers</strong> — an honest picture of what the planning
-              controls allow on a property before committing to it.</li>
-          <li><strong>Anyone curious about a site</strong> — zoning, transport, walkability
-              and terrain on one readable sheet.</li>
-        </ul>
-        <h3 style="margin-top:1.6rem">Coverage</h3>
-        <ul>
-          <li>New South Wales, Australia. Addresses in the Sydney basin resolve fastest;
-              the rest of the state works but leans on slower public services.</li>
-        </ul>
-      </div>
-    </div>
-  </section>
-
 </main>
 
 <footer>
   <div class="wrap">
     Programmed by <strong>Sami Abdulnour</strong> © 2026. All rights reserved.
-    Generated drawings are licensed for use by the recipient.<br>
-    Sources: NSW Spatial Services, NSW ePlanning, Transport for NSW, OpenStreetMap
-    contributors, Valhalla.
-    <div class="disclaim">Every sheet is a generated draft. Confirm boundaries and levels
-    against a registered survey, and planning controls against a s10.7 planning certificate,
-    before issuing anything for approval or relying on it in a transaction.</div>
+    Generated drawings are licensed for use by the recipient.
+    <div class="disclaim">Every sheet is a generated draft, not a survey or a planning
+    certificate — <a href="/about#limits">what it does not do</a>.</div>
   </div>
 </footer>
 
-<script>
-const f = document.getElementById('f');
-const loginForm = document.getElementById('login');
-const sheetSel = document.getElementById('sheet');
-const scaleSel = document.getElementById('scale');
-const rotateSel = document.getElementById('rotate');
-
-// Context sheets work at neighbourhood scales; site sheets at lot scales
-// (auto picks the tightest standard scale that fits the lot plus a margin).
-const SCALES = {
-  context: [['2100', '1:2100'], ['3000', '1:3000 (default)'], ['4000', '1:4000']],
-  site: [['0', 'Auto scale'], ['200', '1:200'], ['250', '1:250'], ['300', '1:300'],
-         ['400', '1:400'], ['500', '1:500']],
-  summary: [],   // a table, not a map
-};
-function fillScales() {
-  // The development summary has no map, so scale and orientation mean nothing
-  // for it — hide them rather than offer settings that do not apply.
-  const table = sheetSel.value === 'summary';
-  scaleSel.style.display = table ? 'none' : '';
-  rotateSel.style.display = table ? 'none' : '';
-  if (table) { scaleSel.innerHTML = '<option value="0"></option>'; return; }
-  const opts = SCALES[sheetSel.value];
-  scaleSel.innerHTML = opts.map(([v, l], i) =>
-    `<option value="${v}"${i === (sheetSel.value === 'context' ? 1 : 0) ? ' selected' : ''}>${l}</option>`).join('');
-}
-sheetSel.addEventListener('change', fillScales);
-fillScales();
-
-// A restart, a proxy hiccup or a rate limit can answer with an empty or
-// non-JSON body; r.json() throws "Unexpected end of JSON input" there and the
-// raw parser message ends up in front of the user. Always read defensively.
-async function readJson(r) {
-  const text = await r.text().catch(() => '');
-  if (!text) return {};
-  try { return JSON.parse(text); } catch { return {}; }
-}
-
-function httpMessage(r, j) {
-  if (j && j.error) return j.error;
-  if (r.status === 401) return 'Session expired — reload the page and sign in again.';
-  if (r.status === 429) return 'Too many requests — wait a minute and try again.';
-  if (r.status >= 500) return 'The service is restarting — try again in a moment.';
-  return 'Request failed (HTTP ' + r.status + ').';
-}
-
-// ---- address type-ahead against the NSW address register -----------------
-const addrInput = document.getElementById('address');
-const suggestBox = document.getElementById('suggest');
-let suggestTimer = null, activeIdx = -1, lastQuery = '';
-
-function closeSuggest() { suggestBox.classList.remove('open'); activeIdx = -1; }
-
-function renderSuggest(items) {
-  if (!items.length) return closeSuggest();
-  suggestBox.innerHTML = items.map((a) => `<li>${a}</li>`).join('');
-  [...suggestBox.children].forEach((li, i) => {
-    li.addEventListener('mousedown', (e) => {
-      e.preventDefault();
-      addrInput.value = li.textContent;
-      closeSuggest();
-    });
-    li.addEventListener('mouseenter', () => { activeIdx = i; highlight(); });
-  });
-  suggestBox.classList.add('open');
-}
-function highlight() {
-  [...suggestBox.children].forEach((li, i) => li.classList.toggle('active', i === activeIdx));
-}
-
-addrInput.addEventListener('input', () => {
-  const q = addrInput.value.trim();
-  clearTimeout(suggestTimer);
-  if (q.length < 4) return closeSuggest();
-  suggestTimer = setTimeout(async () => {
-    if (q === lastQuery) return;
-    lastQuery = q;
-    try {
-      const r = await fetch('/api/address?q=' + encodeURIComponent(q));
-      const j = await readJson(r);
-      if (addrInput.value.trim() === q) renderSuggest(j.suggestions || []);
-    } catch { closeSuggest(); }
-  }, 250);
-});
-
-addrInput.addEventListener('keydown', (e) => {
-  if (!suggestBox.classList.contains('open')) return;
-  const n = suggestBox.children.length;
-  if (e.key === 'ArrowDown') { e.preventDefault(); activeIdx = (activeIdx + 1) % n; highlight(); }
-  else if (e.key === 'ArrowUp') { e.preventDefault(); activeIdx = (activeIdx - 1 + n) % n; highlight(); }
-  else if (e.key === 'Enter' && activeIdx >= 0) {
-    e.preventDefault();
-    addrInput.value = suggestBox.children[activeIdx].textContent;
-    closeSuggest();
-  } else if (e.key === 'Escape') closeSuggest();
-});
-addrInput.addEventListener('blur', () => setTimeout(closeSuggest, 120));
-
-// Show the generator or the code prompt depending on session state. The rest
-// of the page is public either way — a visitor without a code should still
-// understand exactly what the tool produces.
-fetch('/api/me').then(r => {
-  (r.ok ? f : loginForm).style.display = 'flex';
-  document.getElementById('gatehint').style.display = r.ok ? 'none' : 'block';
-  document.getElementById('waithint').style.display = r.ok ? 'block' : 'none';
-  if (r.ok) document.getElementById('address').focus();
-}).catch(() => { loginForm.style.display = 'flex'; });
-
-loginForm.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const r = await fetch('/api/login', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ code: document.getElementById('code').value }),
-  });
-  if (r.ok) {
-    loginForm.style.display = 'none';
-    f.style.display = 'flex';
-    document.getElementById('gatehint').style.display = 'none';
-    document.getElementById('waithint').style.display = 'block';
-    document.getElementById('address').focus();
-  } else {
-    const j = await readJson(r);
-    error_.textContent = j.error || 'Wrong access code.';
-    error_.style.display = 'block';
-  }
-});
-
-const go = document.getElementById('go');
-const status_ = document.getElementById('status');
-const log = document.getElementById('log');
-const queueEl = document.getElementById('queue');
-const result = document.getElementById('result');
-const error_ = document.getElementById('error');
-
-f.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  error_.style.display = 'none'; result.style.display = 'none';
-  const address = document.getElementById('address').value.trim();
-  if (!address) return;
-  go.disabled = true; status_.classList.add('active');
-  queueEl.textContent = ''; log.textContent = 'submitting…';
-  try {
-    const r = await fetch('/api/jobs', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ address, scale: scaleSel.value,
-                             rotate: rotateSel.value, sheet: sheetSel.value }),
-    });
-    const j = await readJson(r);
-    if (!r.ok) throw new Error(httpMessage(r, j));
-    if (!j.id) throw new Error('The service is restarting — try again in a moment.');
-    poll(j.id);
-  } catch (err) { fail(err.message); }
-});
-
-// misses: consecutive transient failures. A generation takes minutes, so a
-// deploy or a dropped connection mid-run must not throw the sheet away —
-// keep polling for a while before giving up.
-async function poll(id, misses) {
-  misses = misses || 0;
-  try {
-    const r = await fetch('/api/jobs/' + id);
-    if (r.status >= 500) {
-      if (misses < 20) { log.textContent = 'service restarting, reconnecting…';
-                         return setTimeout(() => poll(id, misses + 1), 3000); }
-      throw new Error('The service is restarting — try again in a moment.');
-    }
-    const j = await readJson(r);
-    if (r.status === 404) throw new Error('The service restarted and this job was lost — please generate again.');
-    if (!r.ok) throw new Error(httpMessage(r, j));
-
-    // Waiting behind other people is the normal case on one server; say where
-    // you are in the line rather than showing an anonymous spinner.
-    if (j.status === 'queued' && j.queuePosition > 0) {
-      queueEl.textContent = j.queuePosition === 1
-        ? 'Next in the queue — starting shortly.'
-        : `${ordinal(j.queuePosition)} in the queue — about ${j.etaMinutes} minutes.`;
-    } else if (j.status === 'running') {
-      queueEl.textContent = 'Generating your drawing…';
-    }
-    log.textContent = j.log.join('\n') || 'waiting…';
-
-    if (j.status === 'done') {
-      status_.classList.remove('active');
-      const dl = document.getElementById('dl');
-      dl.href = '/api/jobs/' + id + '/pdf';
-      dl.textContent = j.sheet === 'site' ? 'OPEN SITE ANALYSIS PDF'
-        : j.sheet === 'summary' ? 'OPEN DEVELOPMENT SUMMARY PDF' : 'OPEN CONTEXT ANALYSIS PDF';
-      const cad = document.getElementById('dlcad');
-      if (j.hasCad) { cad.href = '/api/jobs/' + id + '/cad'; cad.style.display = 'inline-block'; }
-      const dat = document.getElementById('dldata');
-      if (j.hasData) { dat.href = '/api/jobs/' + id + '/data'; dat.style.display = 'inline-block'; }
-      result.style.display = 'block';
-      go.disabled = false;
-      return;
-    }
-    if (j.status === 'error') throw new Error(j.error || 'Generation failed');
-    setTimeout(() => poll(id, 0), 2500);
-  } catch (err) {
-    // fetch() rejects outright when the connection drops — same transient case.
-    if (err instanceof TypeError && misses < 20) {
-      log.textContent = 'connection lost, reconnecting…';
-      return setTimeout(() => poll(id, misses + 1), 3000);
-    }
-    fail(err.message);
-  }
-}
-
-function ordinal(n) {
-  const s = ['th', 'st', 'nd', 'rd'], v = n % 100;
-  return n + (s[(v - 20) % 10] || s[v] || s[0]);
-}
-
-function fail(msg) {
-  status_.classList.remove('active');
-  queueEl.textContent = '';
-  error_.textContent = msg;
-  error_.style.display = 'block';
-  go.disabled = false;
-}
-</script>
+<script src="/app.js"></script>
 </body>
 </html>

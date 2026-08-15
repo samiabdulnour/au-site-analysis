@@ -279,10 +279,19 @@ const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', 'http://localhost');
   const ip = clientIp(req);
 
-  if (req.method === 'GET' && url.pathname === '/') {
-    readFile(join(ROOT, 'web', 'index.html'), (err, data) => {
-      if (err) { res.writeHead(500); res.end('missing web/index.html'); return; }
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+  // Two pages and their shared assets. Fixed table, so no path can be built
+  // from user input.
+  const PAGES: Record<string, [string, string]> = {
+    '/': ['index.html', 'text/html; charset=utf-8'],
+    '/about': ['about.html', 'text/html; charset=utf-8'],
+    '/style.css': ['style.css', 'text/css; charset=utf-8'],
+    '/app.js': ['app.js', 'text/javascript; charset=utf-8'],
+  };
+  const page = PAGES[url.pathname];
+  if (req.method === 'GET' && page) {
+    readFile(join(ROOT, 'web', page[0]), (err, data) => {
+      if (err) { res.writeHead(500); res.end(`missing web/${page[0]}`); return; }
+      res.writeHead(200, { 'Content-Type': page[1] });
       res.end(data);
     });
     return;

@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How it works — Site Analyst</title>
+<meta name="description" content="How Site Analyst builds DA site-analysis drawings from NSW open data, which datasets it uses, and what the drawings must not be relied on for.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 fill=%27%23111%27/%3E%3Crect x=%277%27 y=%277%27 width=%2718%27 height=%2718%27 fill=%27none%27 stroke=%27%23fff%27 stroke-width=%272%27/%3E%3Crect x=%2713%27 y=%2713%27 width=%276%27 height=%276%27 fill=%27%23e8402a%27/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<header>
+  <div class="wrap mast">
+    <div class="logo"><a href="/" style="color:inherit;text-decoration:none">SITE ANALYST</a></div>
+    <nav>
+      <a href="/">Generate a drawing</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <div class="hero">
+    <h1>How it works.</h1>
+    <p class="lede">There is no AI in the drawing. Every line is placed by code from a
+    government dataset, so the same address always produces the same sheet.</p>
+  </div>
+
+  <section id="how" style="border-top:0;padding-top:1rem">
+    <div class="steps">
+      <div class="step">
+        <div class="n">01</div>
+        <h3>Find the lot</h3>
+        <p>The address is matched against the NSW address register, then the cadastre gives
+        the lot boundary — including multi-lot sites, where several parcels are combined.</p>
+      </div>
+      <div class="step">
+        <div class="n">02</div>
+        <h3>Gather the context</h3>
+        <p>Zoning, height and floor-space controls, heritage, terrain, roads, transport,
+        aerial imagery and street detail are fetched for the area around the site.</p>
+      </div>
+      <div class="step">
+        <div class="n">03</div>
+        <h3>Compose the sheet</h3>
+        <p>Everything is projected, scaled and drawn in the office's graphic standard, with
+        labels placed to avoid collisions, then printed to a print-ready A1 PDF.</p>
+      </div>
+      <div class="step">
+        <div class="n">04</div>
+        <h3>Export for CAD</h3>
+        <p>The same geometry is written to DXF in real-world metres on the MGA2020 grid,
+        one layer per data class, ready to underlay a survey in ArchiCAD or AutoCAD.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="data">
+    <h2 class="title">Where the data comes from</h2>
+    <p class="intro">All of it is public. Nothing is scraped from a screenshot, and no
+    third party is asked what you searched for.</p>
+    <table class="src">
+      <tr><th>Source</th><th>What it provides</th></tr>
+      <tr><td class="who">NSW Spatial Services</td>
+          <td>Address register, cadastral lot boundaries, roads and rail, elevation and
+              contours, aerial imagery</td></tr>
+      <tr><td class="who">NSW ePlanning</td>
+          <td>Land zoning, maximum building height, floor space ratio, minimum lot size,
+              heritage items</td></tr>
+      <tr><td class="who">Transport for NSW</td>
+          <td>Bus stop locations and route information</td></tr>
+      <tr><td class="who">OpenStreetMap</td>
+          <td>Bus and light-rail routes, trees, driveways, kerbside parking, street furniture</td></tr>
+      <tr><td class="who">Valhalla</td>
+          <td>Walking catchments — how far you actually get on foot in 5 and 10 minutes</td></tr>
+    </table>
+  </section>
+
+  <section id="limits">
+    <h2 class="title">What it does not do</h2>
+    <div class="cols">
+      <div class="limits">
+        <h3>Read this before you rely on it</h3>
+        <ul>
+          <li><strong>Not a survey.</strong> Boundaries come from the cadastre, which is a
+              mapping approximation. Site areas typically differ from the surveyed figure by
+              a few per cent. Levels come from a 1&nbsp;m elevation model, not a site survey.</li>
+          <li><strong>Not a planning certificate.</strong> The controls shown are the mapped
+              LEP layers. A s10.7 certificate from council is the authoritative document.</li>
+          <li><strong>Council DCP controls are not included.</strong> Setbacks, landscaped
+              area and parking rates live in council PDFs that are not published as data,
+              so those rows are left blank for you to complete.</li>
+          <li><strong>Street detail is volunteered.</strong> Trees, driveways and parking come
+              from OpenStreetMap and vary in completeness between suburbs.</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Who it is for</h3>
+        <ul>
+          <li><strong>Architects and building designers</strong> — the DA base drawings, in
+              minutes rather than a day, with CAD geometry to design over.</li>
+          <li><strong>Owners and buyers</strong> — an honest picture of what the planning
+              controls allow on a property before committing to it.</li>
+          <li><strong>Anyone curious about a site</strong> — zoning, transport, walkability
+              and terrain on one readable sheet.</li>
+        </ul>
+        <h3 style="margin-top:1.6rem">Coverage</h3>
+        <ul>
+          <li>New South Wales, Australia. Addresses in the Sydney basin resolve fastest;
+              the rest of the state works but leans on slower public services.</li>
+        </ul>
+        <p style="margin-top:1.6rem"><a href="/" style="font-weight:700;color:var(--accent)">
+        Generate a drawing →</a></p>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    Programmed by <strong>Sami Abdulnour</strong> © 2026. All rights reserved.
+    Generated drawings are licensed for use by the recipient.<br>
+    Sources: NSW Spatial Services, NSW ePlanning, Transport for NSW, OpenStreetMap
+    contributors, Valhalla.
+    <div class="disclaim">Every sheet is a generated draft. Confirm boundaries and levels
+    against a registered survey, and planning controls against a s10.7 planning certificate,
+    before issuing anything for approval or relying on it in a transaction.</div>
+  </div>
+</footer>
+
+</body>
+</html>
