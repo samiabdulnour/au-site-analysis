@@ -111,6 +111,26 @@ interface Job {
 const jobs = new Map<string, Job>();
 let queue: Promise<void> = Promise.resolve();
 
+/**
+ * Position in the queue, 1 = next to run (0 = already running). Jobs run one
+ * at a time, so a visitor who is fourth in line waits for three sheets before
+ * theirs starts — better to say so than to show a spinner for ten minutes.
+ */
+function queuePosition(job: Job): number {
+  if (job.status !== 'queued') return 0;
+  const waiting = [...jobs.values()]
+    .filter((j) => j.status === 'queued')
+    .sort((a, b) => a.createdAt - b.createdAt);
+  return waiting.findIndex((j) => j.id === job.id) + 1;
+}
+
+/** Rough minutes until this job finishes, for the waiting message. */
+const MINUTES_PER_SHEET = 2;
+function etaMinutes(job: Job): number {
+  const running = [...jobs.values()].some((j) => j.status === 'running') ? 1 : 0;
+  return (queuePosition(job) + running) * MINUTES_PER_SHEET;
+}
+
 function enqueue(job: Job) {
   jobs.set(job.id, job);
   queue = queue.then(() => runJob(job)).catch(() => {});
@@ -268,6 +288,21 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  // Sample thumbnails for the landing page. Whitelisted names only — never
+  // join user input onto a filesystem path.
+  const sampleMatch = url.pathname.match(/^\/samples\/([a-z0-9_-]+\.(?:jpg|png|svg))$/);
+  if (req.method === 'GET' && sampleMatch) {
+    const file = join(ROOT, 'web', 'samples', sampleMatch[1]);
+    readFile(file, (err, data) => {
+      if (err) { res.writeHead(404); res.end('not found'); return; }
+      const ext = sampleMatch[1].split('.').pop()!;
+      const type = ext === 'svg' ? 'image/svg+xml' : ext === 'png' ? 'image/png' : 'image/jpeg';
+      res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'public, max-age=86400' });
+      res.end(data);
+    });
+    return;
+  }
+
   if (req.method === 'GET' && url.pathname === '/api/version') {
     return json(res, 200, {
       sha: process.env.GIT_SHA ?? 'dev',
@@ -347,7 +382,9 @@ const server = createServer(async (req, res) => {
     if (!job) return json(res, 404, { error: 'Unknown job.' });
     return json(res, 200, {
       id: job.id, address: job.address, status: job.status,
-      log: job.log.slice(-12), error: job.error, hasCad: Boolean(job.cadPath), hasData: Boolean(job.dataPath), sheet: job.sheet,
+      log: job.log.slice(-12), error: job.error, hasCad: Boolean(job.cadPath),
+      hasData: Boolean(job.dataPath), sheet: job.sheet,
+      queuePosition: queuePosition(job), etaMinutes: etaMinutes(job),
     });
   }
 

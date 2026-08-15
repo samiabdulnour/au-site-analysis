@@ -27,10 +27,33 @@ npm run generate -- "26-30 Campsie St, Campsie NSW 2194"
 npm run serve        # http://localhost:3000  (PORT=… to change)
 ```
 
-One page: type a NSW address, pick a scale, GENERATE. Progress streams while
-the pipeline fetches and composes; the finished A1 PDF opens in the browser.
-Jobs queue one at a time so simultaneous users don't hammer the public data
-services. Put `TFNSW_API_KEY=…` in `.env` for authoritative bus stops.
+A public landing page that explains the tool to anyone who lands on it —
+what the three drawings contain, where the data comes from, and what the
+output must not be relied on for — with the generator itself behind the
+access code. Sample thumbnails live in `web/samples/` and are served from
+`/samples/<name>.jpg` (whitelisted names only).
+
+Progress streams while the pipeline fetches and composes; the finished A1 PDF
+opens in the browser. Jobs run one at a time so simultaneous users don't
+hammer the public data services, and the page reports queue position and a
+rough ETA rather than an anonymous spinner. Put `TFNSW_API_KEY=…` in `.env`
+for authoritative bus stops.
+
+To refresh the samples, generate the three sheets for the demo address and
+re-render them:
+
+```bash
+npm run generate -- "1 Bay Street, Botany NSW 2019" --type both
+npm run generate -- "1 Bay Street, Botany NSW 2019" --type summary
+python3 - <<'EOF'
+import pymupdf
+src = 'out/1-bay-street-botany-nsw-2019/'
+for name, f in [('context','CONTEXT_ANALYSIS.pdf'), ('site','SITE_ANALYSIS.pdf'),
+                ('summary','DEVELOPMENT_SUMMARY.pdf')]:
+    pymupdf.open(src+f)[0].get_pixmap(dpi=54).pil_save(
+        f'web/samples/{name}.jpg', format='JPEG', quality=76, optimize=True)
+EOF
+```
 
 Authentication: set `ACCESS_CODE=<shared code>` (env or `.env`) — visitors
 must enter it once and get a 30-day session cookie. Login attempts and job
