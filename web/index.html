@@ -24,9 +24,7 @@
         <input id="code" type="password" placeholder="Access code"
                autocomplete="current-password">
       </div>
-      <div class="tools">
-        <button class="send" type="submit">Unlock</button>
-      </div>
+      <button class="send" type="submit">Unlock</button>
     </div>
   </form>
 
@@ -39,18 +37,17 @@
                autocomplete="off" autocapitalize="off" spellcheck="false">
         <ul id="suggest"></ul>
       </div>
-      <div class="tools">
-        <div class="group" id="sheetGroup"><span class="group-label">drawing</span>
-          <span id="sheetOpts"></span></div>
-        <div class="group" id="scaleRow"><span class="group-label">scale</span>
-          <span id="scaleOpts"></span></div>
-        <div class="group" id="northRow"><span class="group-label">north</span>
-          <span id="northOpts"></span></div>
-        <button class="send" id="go" type="submit">Generate</button>
-      </div>
+      <button class="send" id="go" type="submit">Generate</button>
     </div>
-    <div class="note faint" id="hoverhint" style="margin-top:.5rem">
-      Hover a drawing to see an example. Each takes 1–3 minutes.</div>
+
+    <div class="tools">
+      <div class="group" id="sheetGroup"><span class="group-label">drawing</span>
+        <span id="sheetOpts"></span></div>
+      <div class="group" id="scaleRow"><span class="group-label">scale</span>
+        <span id="scaleOpts"></span></div>
+      <div class="group" id="northRow"><span class="group-label">north</span>
+        <span id="northOpts"></span></div>
+    </div>
   </form>
 
   <!-- ---- output ------------------------------------------------------ -->
@@ -59,19 +56,6 @@
     <div id="log"></div>
     <div id="links"></div>
     <div class="errline" id="error"></div>
-  </div>
-
-  <!-- ---- what you get ------------------------------------------------ -->
-  <div class="rows">
-    <div class="r"><div class="k">context</div>
-      <div class="v">Neighbourhood at 1:3000 — zoning, transport, amenities, walking
-        catchments. PDF, DXF/DWG.</div></div>
-    <div class="r"><div class="k">site</div>
-      <div class="v">The lot — boundary dimensions, levels, fall, sun path, winds,
-        neighbours. PDF, DXF/DWG.</div></div>
-    <div class="r"><div class="k">summary</div>
-      <div class="v">Planning controls — zone, height, floor space ratio, gross floor
-        area, heritage. PDF, CSV, JSON.</div></div>
   </div>
 
   <footer>

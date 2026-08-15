@@ -4,18 +4,33 @@
 
 const state = { sheet: 'context', scale: '3000', rotate: 'north' };
 
+// [value, label, previewImage?, previewCaption?] — an option without an image
+// simply has no preview, which is honest for the scales nobody sampled.
 const SHEETS = [
   ['context', 'context', '/samples/context.jpg', 'context analysis · A1 · 1:3000'],
   ['site',    'site',    '/samples/site.jpg',    'site analysis · A1 · auto scale'],
   ['summary', 'summary', '/samples/summary.jpg', 'development summary · A1 · table'],
 ];
 const SCALES = {
-  context: [['2100', '2100'], ['3000', '3000'], ['4000', '4000']],
-  site: [['0', 'auto'], ['200', '200'], ['250', '250'], ['300', '300'],
-         ['400', '400'], ['500', '500']],
+  context: [
+    ['2100', '2100', '/samples/context-2100.jpg', 'context · 1:2100 — tighter, more detail'],
+    ['3000', '3000', '/samples/context.jpg',      'context · 1:3000 — the default'],
+    ['4000', '4000', '/samples/context-4000.jpg', 'context · 1:4000 — wider catchment'],
+  ],
+  site: [
+    ['0',   'auto', '/samples/site.jpg',     'site · auto — tightest scale that fits the lot'],
+    ['200', '200',  '/samples/site-200.jpg', 'site · 1:200 — a small lot fills the sheet'],
+    ['250', '250'],
+    ['300', '300'],
+    ['400', '400'],
+    ['500', '500',  '/samples/site-500.jpg', 'site · 1:500 — more of the surrounds'],
+  ],
   summary: [],
 };
-const NORTH = [['north', 'up'], ['auto', 'align']];
+const NORTH = [
+  ['north', 'up',    '/samples/site.jpg',       'north up — the sheet is oriented to north'],
+  ['auto',  'align', '/samples/north-align.jpg', 'aligned — the lot is squared to the sheet'],
+];
 
 const $ = (id) => document.getElementById(id);
 const f = $('f'), loginForm = $('login');
@@ -31,7 +46,7 @@ function sep(text) {
   return s;
 }
 
-function tokens(host, items, current, onPick, previewable) {
+function tokens(host, items, current, onPick) {
   host.innerHTML = '';
   items.forEach(([value, label, img, cap], i) => {
     const b = document.createElement('button');
@@ -40,7 +55,7 @@ function tokens(host, items, current, onPick, previewable) {
     b.textContent = label;
     b.setAttribute('aria-pressed', String(value === current));
     b.addEventListener('click', () => onPick(value));
-    if (previewable && img) {
+    if (img) {
       b.addEventListener('mouseenter', (e) => showPreview(img, cap, e));
       b.addEventListener('mousemove', movePreview);
       b.addEventListener('mouseleave', hidePreview);
@@ -55,7 +70,7 @@ function tokens(host, items, current, onPick, previewable) {
 
 function renderAll() {
   tokens($('sheetOpts'), SHEETS, state.sheet,
-    (v) => { state.sheet = v; syncScale(); renderAll(); }, true);
+    (v) => { state.sheet = v; syncScale(); renderAll(); });
 
   const scales = SCALES[state.sheet];
   $('scaleRow').hidden = scales.length === 0;
@@ -187,7 +202,6 @@ addrInput.addEventListener('blur', () => setTimeout(closeSuggest, 120));
 fetch('/api/me').then((r) => {
   f.hidden = !r.ok;
   loginForm.hidden = r.ok;
-  $('hoverhint').hidden = matchMedia('(hover: none)').matches;
   if (r.ok) addrInput.focus();
 }).catch(() => { loginForm.hidden = false; });
 
