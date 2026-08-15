@@ -28,6 +28,9 @@
   /* ---- generator --------------------------------------------------- */
   .panel { margin: 2.6rem 0 1rem; padding: 1.6rem; background: var(--wash);
            border: 1px solid var(--rule); }
+  /* With no hero above it, the generator is the first thing on the page and
+     needs room to breathe under the masthead. */
+  main > .panel:first-child { margin-top: 3.4rem; }
   .panel h2 { font-size: .78rem; letter-spacing: .14em; color: var(--faint);
               font-weight: 700; margin-bottom: 1rem; }
   form { display: flex; gap: .6rem; flex-wrap: wrap; }
