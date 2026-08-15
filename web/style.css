@@ -1,27 +1,29 @@
-/* One font, one size. Colour and spacing do the structuring — no headings,
-   no weights, no decoration. Monospace for the alignment, not for a costume. */
+/* One font (Arial), one size. Structure comes from boxes, spacing and colour.
+   The address field is the subject of the page — everything else is a control
+   that sits under it, the way a composer's options sit under its text area. */
 
 :root {
-  --bg:     #fff;
-  --ink:    #1f1f1f;   /* body text */
-  --label:  #a31515;   /* row labels */
-  --value:  #1f1f1f;   /* values, options */
-  --note:   #7a7a7a;   /* secondary text */
-  --link:   #1c00cf;   /* actions and links */
-  --accent: #e8402a;   /* the current choice */
-  --sel-bg: #fdece9;
-  --rule:   #e6e6e6;
-  --ok:     #1a7f37;
-  --err:    #c00;
-  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
-          "Liberation Mono", monospace;
+  --bg:      #faf9f7;
+  --panel:   #fff;
+  --ink:     #1f1e1d;
+  --muted:   #6d6b66;
+  --faint:   #96938c;
+  --border:  #e3e0d9;
+  --border-2:#cfcbc2;
+  --accent:  #e8402a;
+  --accent-w:#fdece9;
+  --link:    #1f5fd0;
+  --ok:      #1a7f37;
+  --err:     #c0392b;
+  --radius:  16px;
+  --font: Arial, Helvetica, "Helvetica Neue", sans-serif;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #1c1c1c; --ink: #ddd; --label: #e2937f; --value: #ddd;
-    --note: #8c8c8c; --link: #8ab4f8; --sel-bg: #35251f; --rule: #333;
-    --ok: #6bbf7b; --err: #f48771;
+    --bg: #1c1b19; --panel: #262523; --ink: #ececea; --muted: #a8a49c;
+    --faint: #8a867e; --border: #383632; --border-2: #4a4842;
+    --accent-w: #3a231d; --link: #8ab4f8; --ok: #6bbf7b; --err: #f08b7d;
   }
 }
 
@@ -30,97 +32,128 @@
 body {
   background: var(--bg);
   color: var(--ink);
-  font-family: var(--mono);
-  font-size: 13px;
-  line-height: 1.9;
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.6;
   -webkit-font-smoothing: antialiased;
-  padding: 2.6rem 2rem 4rem;
+  padding: 1.6rem 1.2rem 4rem;
 }
 
-.page { max-width: 88ch; margin: 0 auto; }
+.page { max-width: 760px; margin: 0 auto; }
 
 /* ---- top line ---------------------------------------------------------- */
-.top { display: flex; justify-content: space-between; gap: 2ch;
-       padding-bottom: 1.6rem; }
-.name { color: var(--ink); letter-spacing: .18em; }
-.name a { color: inherit; border: 0; }
+.top { display: flex; justify-content: space-between; align-items: center;
+       gap: 1rem; margin-bottom: 3.2rem; }
+.name { letter-spacing: .14em; }
+.name a { color: inherit; text-decoration: none; }
 
-/* ---- label / content rows ---------------------------------------------- */
-.row { display: grid; grid-template-columns: 11ch 1fr; gap: 0 2ch; }
-.row > .lab { color: var(--label); }
-.row > .val { color: var(--value); }
+a { color: var(--link); text-decoration: none; }
+a:hover { text-decoration: underline; }
 
-.note { color: var(--note); }
-.gap { height: 1.4rem; }
+.sub { color: var(--muted); margin-bottom: 1rem; }
+.note { color: var(--muted); }
+.faint { color: var(--faint); }
 
-a { color: var(--link); text-decoration: none; border-bottom: 1px solid currentColor; }
-a:hover { color: var(--accent); }
+/* ---- the composer ------------------------------------------------------- */
+.composer {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.05rem 1.1rem .8rem;
+  box-shadow: 0 1px 2px rgba(0,0,0,.04);
+  transition: border-color .12s, box-shadow .12s;
+}
+.composer:focus-within {
+  border-color: var(--border-2);
+  box-shadow: 0 2px 10px rgba(0,0,0,.07);
+}
 
-/* ---- input -------------------------------------------------------------- */
+.entry { position: relative; }
 input {
-  font: inherit; color: var(--value); background: transparent; border: 0;
-  border-bottom: 1px solid var(--rule); padding: 0 .3ch; width: 100%;
-  max-width: 46ch; border-radius: 0;
+  font: inherit; color: var(--ink); background: transparent; border: 0;
+  width: 100%; padding: .3rem 0 .75rem; border-radius: 0;
 }
-input::placeholder { color: var(--note); }
-input:focus { outline: 0; border-bottom-color: var(--accent); }
+input:focus { outline: 0; }
+input::placeholder { color: var(--faint); }
 
-/* ---- options ------------------------------------------------------------ */
-.opt {
-  font: inherit; color: var(--note); background: transparent; border: 0;
-  padding: 0 .6ch; margin-right: 1ch; cursor: pointer;
-  border-bottom: 1px solid transparent;
-}
-.opt:hover { color: var(--accent); }
-.opt[aria-pressed="true"] {
-  color: var(--accent); background: var(--sel-bg); border-bottom-color: var(--accent);
-}
-.opt:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
-/* keep the hint clear of the options, so it does not read as one of them */
-#hoverhint { margin-left: 2ch; }
+/* ---- controls under the entry ------------------------------------------ */
+.tools { display: flex; flex-wrap: wrap; align-items: center; gap: .45rem;
+         margin-top: .55rem; }
+.group { display: flex; align-items: center; gap: .3rem; }
+.group + .group { margin-left: .9rem; }
+.group-label { color: var(--faint); margin-right: .15rem; }
 
-/* ---- action ------------------------------------------------------------- */
-.action {
-  font: inherit; color: var(--link); background: transparent; border: 0;
-  padding: 0; cursor: pointer; letter-spacing: .12em;
-  border-bottom: 1px solid currentColor;
+.chip {
+  font: inherit; color: var(--muted); background: transparent;
+  border: 1px solid var(--border); border-radius: 999px;
+  padding: .12rem .7rem; cursor: pointer; white-space: nowrap;
+  transition: background .12s, border-color .12s, color .12s;
 }
-.action:hover { color: var(--accent); }
-.action:disabled { color: var(--note); border-bottom-color: transparent; cursor: wait; }
+.chip:hover { border-color: var(--border-2); color: var(--ink); }
+.chip[aria-pressed="true"] {
+  color: var(--accent); border-color: var(--accent); background: var(--accent-w);
+}
+.chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
-/* ---- hover preview ------------------------------------------------------ */
-#preview {
-  position: fixed; z-index: 20; pointer-events: none; display: none;
-  border: 1px solid var(--rule); background: var(--bg); padding: 6px;
-  box-shadow: 0 8px 30px rgba(0,0,0,.16); width: min(44vw, 540px);
+.send {
+  margin-left: auto; font: inherit; color: #fff; background: var(--accent);
+  border: 0; border-radius: 999px; padding: .3rem 1.1rem; cursor: pointer;
 }
-#preview.on { display: block; }
-#preview img { display: block; width: 100%; height: auto; }
-#preview .cap { color: var(--note); padding-top: 4px; }
+.send:hover { filter: brightness(.93); }
+.send:disabled { background: var(--border-2); cursor: wait; }
+
+/* ---- suggestions -------------------------------------------------------- */
+#suggest {
+  position: absolute; left: -.4rem; right: -.4rem; top: calc(100% + .5rem);
+  z-index: 10; list-style: none; background: var(--panel);
+  border: 1px solid var(--border); border-radius: 12px; padding: .3rem;
+  max-height: 17rem; overflow-y: auto; display: none;
+  box-shadow: 0 8px 26px rgba(0,0,0,.10);
+}
+#suggest.open { display: block; }
+#suggest li { padding: .25rem .6rem; border-radius: 8px; cursor: pointer;
+              white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#suggest li:hover, #suggest li.active { background: var(--accent-w); color: var(--accent); }
 
 /* ---- output ------------------------------------------------------------- */
-#log { color: var(--note); white-space: pre-wrap; max-height: 14em; overflow-y: auto; }
+#out { margin-top: 1.4rem; background: var(--panel); border: 1px solid var(--border);
+       border-radius: var(--radius); padding: .9rem 1rem; }
+#queue { margin-bottom: .2rem; }
+#log { color: var(--muted); white-space: pre-wrap; max-height: 12rem;
+       overflow-y: auto; }
+#links { margin-top: .6rem; display: flex; flex-wrap: wrap; gap: .5rem; }
+#links a {
+  border: 1px solid var(--border); border-radius: 999px; padding: .12rem .8rem;
+  color: var(--ink); text-decoration: none;
+}
+#links a:hover { border-color: var(--accent); color: var(--accent); }
 .okline { color: var(--ok); }
 .errline { color: var(--err); }
 
-hr { border: 0; border-top: 1px solid var(--rule); margin: 1.6rem 0; }
+/* ---- what you get ------------------------------------------------------- */
+.rows { margin-top: 2.6rem; }
+.r { display: grid; grid-template-columns: 7.5rem 1fr; gap: .6rem;
+     padding: .45rem 0; border-top: 1px solid var(--border); }
+.r .k { color: var(--accent); }
+.r .v { color: var(--muted); }
 
-/* ---- type-ahead --------------------------------------------------------- */
-.addrwrap { position: relative; max-width: 46ch; }
-#suggest {
-  position: absolute; left: 0; right: 0; top: 100%; z-index: 10; list-style: none;
-  background: var(--bg); border: 1px solid var(--rule); max-height: 16em;
-  overflow-y: auto; display: none;
+footer { margin-top: 2.6rem; color: var(--faint); }
+
+/* ---- hover preview ------------------------------------------------------ */
+#preview {
+  position: fixed; z-index: 30; pointer-events: none; display: none;
+  border: 1px solid var(--border); border-radius: 12px; background: var(--panel);
+  padding: 6px; box-shadow: 0 10px 34px rgba(0,0,0,.16); width: min(44vw, 520px);
 }
-#suggest.open { display: block; }
-#suggest li { padding: 0 .6ch; color: var(--value); cursor: pointer;
-              white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#suggest li:hover, #suggest li.active { background: var(--sel-bg); color: var(--accent); }
+#preview.on { display: block; }
+#preview img { display: block; width: 100%; height: auto; border-radius: 7px; }
+#preview .cap { color: var(--muted); padding: .3rem .2rem 0; }
 
 @media (max-width: 640px) {
-  body { padding: 1.4rem 1rem 3rem; }
-  .row { grid-template-columns: 1fr; gap: 0; }
-  .row > .lab { color: var(--label); margin-top: .6rem; }
+  .top { margin-bottom: 1.8rem; }
+  .group + .group { margin-left: 0; }
+  .tools { gap: .35rem; }
+  .send { margin-left: 0; width: 100%; margin-top: .4rem; }
+  .r { grid-template-columns: 1fr; gap: 0; }
   #preview { width: 92vw; }
-  .addrwrap, input { max-width: none; }
 }

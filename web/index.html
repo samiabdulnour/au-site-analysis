@@ -16,91 +16,69 @@
     <div><a href="/about">how it works</a></div>
   </div>
 
-  <div class="note">Site analysis drawings for any NSW address, from government open data.</div>
-
-  <div class="gap"></div>
-
   <!-- ---- access ------------------------------------------------------ -->
   <form id="login" hidden>
-    <div class="row">
-      <div class="lab">access</div>
-      <div class="val"><input id="code" type="password" placeholder="code"
-           autocomplete="current-password" style="max-width:22ch"></div>
-    </div>
-    <div class="row">
-      <div class="lab"></div>
-      <div class="val"><button class="action" type="submit">UNLOCK</button></div>
+    <div class="sub">Enter your access code to generate drawings.</div>
+    <div class="composer">
+      <div class="entry">
+        <input id="code" type="password" placeholder="Access code"
+               autocomplete="current-password">
+      </div>
+      <div class="tools">
+        <button class="send" type="submit">Unlock</button>
+      </div>
     </div>
   </form>
 
   <!-- ---- the tool ---------------------------------------------------- -->
   <form id="f" hidden>
-    <div class="row">
-      <div class="lab">address</div>
-      <div class="val"><div class="addrwrap"><input id="address" type="text"
-           placeholder="start typing a NSW address" autocomplete="off"
-           autocapitalize="off" spellcheck="false"><ul id="suggest"></ul></div></div>
+    <div class="sub">Search a NSW address to generate its site analysis.</div>
+    <div class="composer">
+      <div class="entry">
+        <input id="address" type="text" placeholder="Search a NSW address…"
+               autocomplete="off" autocapitalize="off" spellcheck="false">
+        <ul id="suggest"></ul>
+      </div>
+      <div class="tools">
+        <div class="group" id="sheetGroup"><span class="group-label">drawing</span>
+          <span id="sheetOpts"></span></div>
+        <div class="group" id="scaleRow"><span class="group-label">scale</span>
+          <span id="scaleOpts"></span></div>
+        <div class="group" id="northRow"><span class="group-label">north</span>
+          <span id="northOpts"></span></div>
+        <button class="send" id="go" type="submit">Generate</button>
+      </div>
     </div>
-
-    <div class="row">
-      <div class="lab">drawing</div>
-      <div class="val"><span id="sheetOpts"></span><span class="note" id="hoverhint">hover for an example</span></div>
-    </div>
-
-    <div class="row" id="scaleRow">
-      <div class="lab">scale</div>
-      <div class="val" id="scaleOpts"></div>
-    </div>
-
-    <div class="row" id="northRow">
-      <div class="lab">north</div>
-      <div class="val" id="northOpts"></div>
-    </div>
-
-    <div class="gap"></div>
-
-    <div class="row">
-      <div class="lab"></div>
-      <div class="val"><button class="action" id="go" type="submit">GENERATE</button></div>
-    </div>
+    <div class="note faint" id="hoverhint" style="margin-top:.5rem">
+      Hover a drawing to see an example. Each takes 1–3 minutes.</div>
   </form>
 
   <!-- ---- output ------------------------------------------------------ -->
   <div id="out" hidden>
-    <div class="gap"></div>
-    <div class="row">
-      <div class="lab">status</div>
-      <div class="val">
-        <div id="queue"></div>
-        <div id="log"></div>
-        <div id="links"></div>
-        <div class="errline" id="error"></div>
-      </div>
-    </div>
+    <div id="queue"></div>
+    <div id="log"></div>
+    <div id="links"></div>
+    <div class="errline" id="error"></div>
   </div>
 
-  <hr>
-
-  <div class="row">
-    <div class="lab">context</div>
-    <div class="val">neighbourhood at 1:3000 — zoning, transport, amenities, walking catchments
-      <span class="note">· PDF, DXF/DWG</span></div>
-  </div>
-  <div class="row">
-    <div class="lab">site</div>
-    <div class="val">the lot — boundary dimensions, levels, fall, sun path, winds, neighbours
-      <span class="note">· PDF, DXF/DWG</span></div>
-  </div>
-  <div class="row">
-    <div class="lab">summary</div>
-    <div class="val">planning controls — zone, height, floor space ratio, gross floor area, heritage
-      <span class="note">· PDF, CSV, JSON</span></div>
+  <!-- ---- what you get ------------------------------------------------ -->
+  <div class="rows">
+    <div class="r"><div class="k">context</div>
+      <div class="v">Neighbourhood at 1:3000 — zoning, transport, amenities, walking
+        catchments. PDF, DXF/DWG.</div></div>
+    <div class="r"><div class="k">site</div>
+      <div class="v">The lot — boundary dimensions, levels, fall, sun path, winds,
+        neighbours. PDF, DXF/DWG.</div></div>
+    <div class="r"><div class="k">summary</div>
+      <div class="v">Planning controls — zone, height, floor space ratio, gross floor
+        area, heritage. PDF, CSV, JSON.</div></div>
   </div>
 
-  <div class="gap"></div>
-  <div class="note">Generated drafts, not a survey or a planning certificate.
-    <a href="/about">What that means</a>.</div>
-  <div class="note">© 2026 Sami Abdulnour. All rights reserved.</div>
+  <footer>
+    Generated drafts, not a survey or a planning certificate.
+    <a href="/about">What that means</a>.<br>
+    © 2026 Sami Abdulnour. All rights reserved.
+  </footer>
 
 </div>
 

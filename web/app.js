@@ -36,7 +36,7 @@ function tokens(host, items, current, onPick, previewable) {
   items.forEach(([value, label, img, cap], i) => {
     const b = document.createElement('button');
     b.type = 'button';
-    b.className = 'opt';
+    b.className = 'chip';
     b.textContent = label;
     b.setAttribute('aria-pressed', String(value === current));
     b.addEventListener('click', () => onPick(value));
@@ -108,7 +108,7 @@ function togglePreview(src, cap, anchor) {
   preview.style.top = (r.bottom + 8) + 'px';
 }
 document.addEventListener('click', (e) => {
-  if (pinned && !e.target.closest('.opt')) { pinned = false; preview.classList.remove('on'); }
+  if (pinned && !e.target.closest('.chip')) { pinned = false; preview.classList.remove('on'); }
 });
 
 // ---- http helpers --------------------------------------------------------

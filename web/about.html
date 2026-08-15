@@ -16,69 +16,65 @@
     <div><a href="/">generate a drawing</a></div>
   </div>
 
-  <div class="note">No model is involved in the drawing. Every line is placed by code
-  from a government dataset, so the same address always produces the same sheet.</div>
+  <div class="sub">No model is involved in the drawing. Every line is placed by code from a
+  government dataset, so the same address always produces the same sheet.</div>
 
-  <div class="gap"></div>
+  <div class="rows">
+    <div class="r"><div class="k">1 · geocode</div>
+      <div class="v">The address is matched against the NSW address register, then the
+      cadastre gives the lot boundary. Multi-lot sites are combined into one.</div></div>
+    <div class="r"><div class="k">2 · gather</div>
+      <div class="v">Zoning, height and floor-space controls, heritage, terrain, roads,
+      transport, aerial imagery and street detail, for the area around the site.</div></div>
+    <div class="r"><div class="k">3 · compose</div>
+      <div class="v">Projected, scaled and drawn to the office standard, with labels placed
+      to avoid collisions, then printed to a print-ready A1 PDF.</div></div>
+    <div class="r"><div class="k">4 · export</div>
+      <div class="v">The same geometry in DXF, real-world metres on the MGA2020 grid, one
+      layer per data class, ready to underlay a survey.</div></div>
+  </div>
 
-  <div class="row"><div class="lab">1 · geocode</div>
-    <div class="val">The address is matched against the NSW address register, then the
-    cadastre gives the lot boundary. Multi-lot sites are combined into one.</div></div>
-  <div class="row"><div class="lab">2 · gather</div>
-    <div class="val">Zoning, height and floor-space controls, heritage, terrain, roads,
-    transport, aerial imagery and street detail, for the area around the site.</div></div>
-  <div class="row"><div class="lab">3 · compose</div>
-    <div class="val">Projected, scaled and drawn to the office standard, with labels
-    placed to avoid collisions, then printed to a print-ready A1 PDF.</div></div>
-  <div class="row"><div class="lab">4 · export</div>
-    <div class="val">The same geometry in DXF, real-world metres on the MGA2020 grid,
-    one layer per data class, ready to underlay a survey.</div></div>
+  <div class="sub" style="margin-top:2.6rem">Data sources</div>
+  <div class="rows" style="margin-top:0">
+    <div class="r"><div class="k">NSW Spatial</div>
+      <div class="v">Addressing, cadastral boundaries, roads and rail, elevation and
+      contours, aerial imagery</div></div>
+    <div class="r"><div class="k">ePlanning</div>
+      <div class="v">Zoning, height of building, floor space ratio, minimum lot size,
+      heritage items</div></div>
+    <div class="r"><div class="k">TfNSW</div>
+      <div class="v">Bus stops and route information</div></div>
+    <div class="r"><div class="k">OpenStreetMap</div>
+      <div class="v">Bus and light-rail routes, trees, driveways, kerbside parking, street
+      furniture</div></div>
+    <div class="r"><div class="k">Valhalla</div>
+      <div class="v">5 and 10 minute walking catchments</div></div>
+  </div>
 
-  <div class="gap"></div>
-  <div class="note">Data sources</div>
-  <div class="gap"></div>
+  <div class="sub" style="margin-top:2.6rem">What it does not do</div>
+  <div class="rows" style="margin-top:0">
+    <div class="r"><div class="k">not a survey</div>
+      <div class="v">Boundaries come from the cadastre, a mapping approximation. Site areas
+      typically differ from the surveyed figure by a few per cent. Levels come from a 1 m
+      elevation model.</div></div>
+    <div class="r"><div class="k">not a s10.7</div>
+      <div class="v">The controls shown are the mapped LEP layers. A planning certificate
+      from council is the authoritative document.</div></div>
+    <div class="r"><div class="k">no DCP</div>
+      <div class="v">Council setbacks, landscaped area and parking rates are not published
+      as open data, so those rows are left blank to complete by hand.</div></div>
+    <div class="r"><div class="k">OSM varies</div>
+      <div class="v">Trees, driveways and parking are volunteered data and vary in
+      completeness between suburbs.</div></div>
+    <div class="r"><div class="k">coverage</div>
+      <div class="v">New South Wales, Australia. Sydney basin addresses resolve fastest.</div></div>
+  </div>
 
-  <div class="row"><div class="lab">NSW Spatial</div>
-    <div class="val">Addressing, cadastral boundaries, roads and rail, elevation and
-    contours, aerial imagery</div></div>
-  <div class="row"><div class="lab">ePlanning</div>
-    <div class="val">Zoning, height of building, floor space ratio, minimum lot size,
-    heritage items</div></div>
-  <div class="row"><div class="lab">TfNSW</div>
-    <div class="val">Bus stops and route information</div></div>
-  <div class="row"><div class="lab">OpenStreetMap</div>
-    <div class="val">Bus and light-rail routes, trees, driveways, kerbside parking,
-    street furniture</div></div>
-  <div class="row"><div class="lab">Valhalla</div>
-    <div class="val">5 and 10 minute walking catchments</div></div>
-
-  <div class="gap"></div>
-  <div class="note">What it does not do</div>
-  <div class="gap"></div>
-
-  <div class="row"><div class="lab">not a survey</div>
-    <div class="val">Boundaries come from the cadastre, a mapping approximation. Site
-    areas typically differ from the surveyed figure by a few per cent. Levels come from
-    a 1 m elevation model.</div></div>
-  <div class="row"><div class="lab">not a s10.7</div>
-    <div class="val">The controls shown are the mapped LEP layers. A planning certificate
-    from council is the authoritative document.</div></div>
-  <div class="row"><div class="lab">no DCP</div>
-    <div class="val">Council setbacks, landscaped area and parking rates are not published
-    as open data, so those rows are left blank to complete by hand.</div></div>
-  <div class="row"><div class="lab">OSM varies</div>
-    <div class="val">Trees, driveways and parking are volunteered data and vary in
-    completeness between suburbs.</div></div>
-
-  <div class="gap"></div>
-  <div class="row"><div class="lab">coverage</div>
-    <div class="val">New South Wales, Australia. Sydney basin addresses resolve
-    fastest.</div></div>
-
-  <div class="gap"></div>
-  <div class="note">Confirm boundaries and levels against a registered survey, and planning
-  controls against a s10.7 certificate, before issuing anything for approval.</div>
-  <div class="note">© 2026 Sami Abdulnour. All rights reserved.</div>
+  <footer>
+    Confirm boundaries and levels against a registered survey, and planning controls
+    against a s10.7 certificate, before issuing anything for approval.<br>
+    © 2026 Sami Abdulnour. All rights reserved.
+  </footer>
 
 </div>
 </body>
