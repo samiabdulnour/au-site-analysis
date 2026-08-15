@@ -85,17 +85,6 @@ export function sheetHtml(o: SheetHtmlOpts): string {
       </g>
     </g>`;
 
-  const notes = [
-    'NO REPRODUCTION WITHOUT PERMISSION, UNLESS NOTED OTHERWISE.',
-    'THIS DRAWING IS NOT FOR CONSTRUCTION.',
-    'NO STRUCTURAL OR SERVICE ENGINEERING INPUT OR COORDINATION HAS BEEN PROVIDED IN THE PREPARATION OF THE DRAWINGS. DRAWINGS CANNOT BE RELIED UPON FOR THE BASIS OF MARKETING SALES OR CONSTRUCTION QUOTATION.',
-    'ALL DIMENSIONS AND LEVELS ARE TO BE CHECKED ON SITE PRIOR TO THE COMMENCEMENT OF WORK.',
-    `INFORM ${meta.office.name ? meta.office.name.toUpperCase().replace('ARCHITECTS', 'ARCHITECTURE') : 'THE ARCHITECT'} OF ANY DISCREPANCIES FOR CLARIFICATION BEFORE PROCEEDING WITH WORK.`,
-    'DRAWINGS ARE NOT TO BE SCALED.',
-    'USE ONLY FIGURED DIMENSIONS.',
-    'REFER TO CONSULTANT DOCUMENTATION FOR FURTHER INFORMATION.',
-  ];
-
   const [wm1, ...wmRest] = meta.office.name.split(' ');
   const field = (top: number, label: string, valueHtml: string) => `
     <div class="abs" style="top:${top}mm;left:4.8mm;right:0">
@@ -124,9 +113,6 @@ export function sheetHtml(o: SheetHtmlOpts): string {
   .wordmark .rule2 { text-decoration: line-through; font-weight: 400; }
   .prelim { border: 0.6mm solid #e30000; color: #e30000; text-align: center; font-weight: 700;
     letter-spacing: 1.6mm; font-size: 4.2mm; padding: 1.4mm 0; }
-  .revtable { width: 100%; border-collapse: collapse; font-size: ${T.legend}mm; }
-  .revtable th { text-align: left; font-weight: 700; padding: 0.4mm 0; }
-  .revtable td { padding: 0.4mm 0; }
 </style></head>
 <body><div class="sheet">
 <svg class="map" width="${MAP_W}mm" height="${MAP_H}mm" viewBox="0 0 ${MAP_W} ${MAP_H}" xmlns="http://www.w3.org/2000/svg">
@@ -142,24 +128,12 @@ ${o.layers.join('\n')}
     ${esc(o.address)}<br>Generated: ${esc(o.generatedAt.slice(0, 10))}${meta.office.name ? `<br>© ${esc(meta.office.name)}` : ''}
     <br>GENERATED WITH SITE ANALYST — © SAMI ABDULNOUR, LICENSED USE.
   </div>
-  <div class="abs" style="top:19mm;left:4.8mm;right:0">
-    <div class="fine" style="font-weight:700">NOTE:</div>
-    <ul class="fine">${notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>
-  </div>
-  ${rule(58)}
-  <div class="abs" style="top:59.4mm;left:4.8mm;right:0;font-size:${T.legend}mm;font-weight:700">${esc(o.legendHeading)}</div>
-  <svg class="abs" style="top:62mm;left:0" width="${TW}mm" height="300mm" viewBox="0 0 ${TW} 300" xmlns="http://www.w3.org/2000/svg">
+  ${rule(20)}
+  <div class="abs" style="top:21.4mm;left:4.8mm;right:0;font-size:${T.legend}mm;font-weight:700">${esc(o.legendHeading)}</div>
+  <svg class="abs" style="top:24mm;left:0" width="${TW}mm" height="374mm" viewBox="0 0 ${TW} 374" xmlns="http://www.w3.org/2000/svg">
     <defs><clipPath id="lhclip"><rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5"/></clipPath></defs>
     ${o.legendSvg}
   </svg>
-  ${rule(363.8)}
-  <div class="abs" style="top:364.6mm;left:2.6mm;right:0">
-    <table class="revtable">
-      <tr><th style="width:20%">REVISION ID</th><th style="width:55%">AMENDMENT</th><th>DATE</th></tr>
-      ${meta.revision ? `<tr><td>${esc(meta.revision)}</td><td>${esc(meta.status.toUpperCase().includes('PRELIM') ? 'ISSUE FOR COORDINATION' : 'FOR SUBMISSION')}</td><td>${esc(meta.date)}</td></tr>` : ''}
-    </table>
-  </div>
-  ${rule(395.5)}
   ${rule(400.7)}
   <div class="abs k" style="top:401.4mm;left:4.8mm">ARCHITECT</div>
   ${meta.office.name ? `<div class="abs wordmark" style="top:406.5mm;left:4.8mm">${esc(wm1)}<span class="rule2">—</span>${esc(wmRest.join(' '))}</div>` : ''}

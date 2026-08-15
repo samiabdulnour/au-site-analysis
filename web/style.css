@@ -78,11 +78,18 @@ input:focus { outline: 0; }
 input::placeholder { color: var(--faint); }
 
 /* ---- controls under the entry ------------------------------------------ */
-.tools { display: flex; flex-wrap: wrap; align-items: center; gap: .45rem;
-         margin-top: .85rem; padding: 0 .3rem; }
-.group { display: flex; align-items: center; gap: .3rem; }
-.group + .group { margin-left: .9rem; }
-.group-label { color: var(--faint); margin-right: .15rem; }
+/* Three rows on a shared two-column grid, so the labels and the first chip of
+   each row line up. `display: contents` lets each group's label and chips
+   become grid items of .tools rather than a nested box. */
+.tools { display: grid; grid-template-columns: max-content 1fr;
+         gap: .45rem .8rem; align-items: center;
+         margin-top: .9rem; padding: 0 .3rem; }
+.group { display: contents; }
+/* [hidden] sets display:none, but any explicit display wins over it — so the
+   hidden state has to be spelled out for a grid/contents element. */
+.group[hidden] { display: none; }
+.group-label { color: var(--faint); }
+.chips { display: flex; flex-wrap: wrap; gap: .35rem; }
 
 .chip {
   font: inherit; color: var(--muted); background: transparent;

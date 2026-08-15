@@ -3,8 +3,7 @@
 // This sheet is a table, not geometry, so DXF would be the wrong container —
 // it would arrive as loose text entities nobody can edit as data. CSV opens
 // in Excel/Numbers and pastes into a Word or InDesign table; JSON is there for
-// anything that wants to read the controls programmatically. Both keep the
-// empty PROPOSED / COMPLIANCE columns so the file is a working template.
+// anything that wants to read the controls programmatically.
 
 import { summaryRows, type SummaryData } from '../render/summarySheet.js';
 
@@ -15,7 +14,7 @@ function csvCell(s: string): string {
 
 export function summaryCsv(d: SummaryData): string {
   const lines: string[] = [];
-  lines.push(['SECTION', 'ITEM', 'CONTROLS', 'PROPOSED', 'COMPLIANCE'].join(','));
+  lines.push(['SECTION', 'ITEM', 'CONTROLS'].join(','));
 
   let section = '';
   for (const r of summaryRows(d)) {
@@ -25,8 +24,6 @@ export function summaryCsv(d: SummaryData): string {
       section,
       r.label ?? '',
       (r.controls ?? []).filter(Boolean).join(' '),
-      (r.proposed ?? []).filter(Boolean).join(' '),
-      '',
     ].map(csvCell).join(','));
   }
   // Excel opens UTF-8 CSV correctly only with a BOM.
@@ -43,8 +40,6 @@ export function summaryJson(d: SummaryData): string {
       section,
       item: r.label ?? '',
       controls: (r.controls ?? []).filter(Boolean),
-      proposed: (r.proposed ?? []).filter(Boolean),
-      compliance: null,
     });
   }
   return JSON.stringify({

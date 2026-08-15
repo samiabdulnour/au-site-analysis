@@ -7,10 +7,8 @@
 // The CONTROLS column is filled from open data wherever a control is actually
 // published (LEP zone, height, FSR, minimum lot size, heritage, and the
 // state-wide Apartment Design Guide figures, which are percentages of site
-// area). PROPOSED and COMPLIANCE are deliberately left empty — they describe a
-// design that does not exist yet. Council DCP controls are not published in
-// machine-readable form, so those rows are ruled up and left for manual entry
-// rather than guessed at.
+// area). Council DCP controls are not published in machine-readable form, so
+// those rows are ruled up and left for manual entry rather than guessed at.
 
 import { FRAME_L, FRAME_T, esc, sheetHtml, T } from './chrome.js';
 import type { SheetMeta } from './sheet.js';
@@ -18,7 +16,7 @@ import type { SiteControls } from '../fetch/nsw.js';
 
 // ---- geometry measured from the reference sheet (absolute mm) -------------
 const TAB_L = 45.6, TAB_R = 417.2;
-const COL_LABEL = 46.3, COL_CONTROLS = 106.0, COL_PROPOSED = 247.2, COL_COMPL = 389.5;
+const COL_LABEL = 46.3, COL_CONTROLS = 106.0;
 const TITLE_Y = 20.5;          // baseline of "DEVELOPMENT SUMMARY"
 const TABLE_TOP = 26.8;        // first rule
 const TITLE_SIZE = 8.23;
@@ -32,11 +30,10 @@ const RULE_W = 0.12;
 export interface SummaryRow {
   label?: string;
   controls?: string[];
-  proposed?: string[];
   /** section heading row: label spans the full width, no columns */
   section?: boolean;
-  /** column-title row (CONTROLS / PROPOSED / COMPLIANCE) */
-  head?: 'two' | 'three';
+  /** column-title row */
+  head?: boolean;
 }
 
 export interface SummaryData {
@@ -77,7 +74,7 @@ export function summaryRows(d: SummaryData): SummaryRow[] {
     .toUpperCase()
     .replace('LOCAL ENVIRONMENTAL PLAN', 'LEP');
   rows.push({ label: lep, section: true });
-  rows.push({ head: 'two' });
+  rows.push({ head: true });
   rows.push({
     label: 'LAND USE',
     controls: [[c.zoneCode, c.zonePurpose].filter(Boolean).join(' - ') || '—'],
@@ -110,7 +107,7 @@ export function summaryRows(d: SummaryData): SummaryRow[] {
   // ---- DCP: council documents, not open data ------------------------------
   const lga = (c.lgaName ?? '').trim();
   rows.push({ label: `${lga ? `${lga} ` : ''}DEVELOPMENT CONTROL PLAN`, section: true });
-  rows.push({ head: 'three' });
+  rows.push({ head: true });
   for (const label of ['DWELLING MIX', 'SETBACK', 'MIN. LANDSCAPE AREA',
     'CAR PARKING', 'BICYCLE PARKING', 'MOTORCYCLE PARKING']) {
     rows.push({ label, controls: [''] });
@@ -118,7 +115,7 @@ export function summaryRows(d: SummaryData): SummaryRow[] {
 
   // ---- ADG: state-wide, and the numeric parts are % of site area ----------
   rows.push({ label: 'APARTMENT DESIGN GUIDE', section: true });
-  rows.push({ head: 'three' });
+  rows.push({ head: true });
   rows.push({
     label: '3D. COMMUNAL OPEN SPACE',
     controls: [
@@ -195,12 +192,7 @@ export function renderSummaryTable(d: SummaryData): string {
   out.push(rule(y));
   for (const r of rows) {
     const lab = !r.section && !r.head && r.label ? labelLines(r.label) : [];
-    const lines = Math.max(
-      r.controls?.length ?? 1,
-      r.proposed?.length ?? 1,
-      lab.length,
-      1,
-    );
+    const lines = Math.max(r.controls?.length ?? 1, lab.length, 1);
     const h = r.section ? ROW_SECTION : Math.max(ROW_MIN, PAD_TOP + (lines - 1) * LEAD + 2.4);
     const base = y + PAD_TOP;
 
@@ -208,15 +200,10 @@ export function renderSummaryTable(d: SummaryData): string {
       out.push(txt(COL_LABEL, base, r.label ?? '', true));
     } else if (r.head) {
       out.push(txt(COL_CONTROLS, base, 'CONTROLS', true));
-      out.push(txt(COL_PROPOSED, base, 'PROPOSED', true));
-      if (r.head === 'three') out.push(txt(COL_COMPL, base, 'COMPLIANCE', true));
     } else {
       lab.forEach((line, i) => out.push(txt(COL_LABEL, base + i * LEAD, line, true)));
       (r.controls ?? []).forEach((line, i) => {
         if (line) out.push(txt(COL_CONTROLS, base + i * LEAD, line));
-      });
-      (r.proposed ?? []).forEach((line, i) => {
-        if (line) out.push(txt(COL_PROPOSED, base + i * LEAD, line));
       });
     }
     y += h;
@@ -241,9 +228,6 @@ export function renderSummarySheet(sb: SummaryBundle, meta: SheetMeta): string {
     'register at the site: zone, height of',
     'building, floor space ratio, minimum lot',
     'size and heritage.',
-    '',
-    'PROPOSED and COMPLIANCE are left blank —',
-    'they describe a design, not the site.',
     '',
     'Council DCP controls are not published as',
     'open data; those rows are ruled up for',

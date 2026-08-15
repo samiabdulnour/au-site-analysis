@@ -4,8 +4,8 @@
 
 const state = { sheet: 'context', scale: '3000', rotate: 'north' };
 
-// [value, label, previewImage?, previewCaption?] — an option without an image
-// simply has no preview, which is honest for the scales nobody sampled.
+// [value, label, previewImage, previewCaption] — every option previews a real
+// sheet generated for the same demo address, so the comparison is like for like.
 const SHEETS = [
   ['context', 'context', '/samples/context.jpg', 'context analysis · A1 · 1:3000'],
   ['site',    'site',    '/samples/site.jpg',    'site analysis · A1 · auto scale'],
@@ -20,9 +20,9 @@ const SCALES = {
   site: [
     ['0',   'auto', '/samples/site.jpg',     'site · auto — tightest scale that fits the lot'],
     ['200', '200',  '/samples/site-200.jpg', 'site · 1:200 — a small lot fills the sheet'],
-    ['250', '250'],
-    ['300', '300'],
-    ['400', '400'],
+    ['250', '250',  '/samples/site-250.jpg', 'site · 1:250'],
+    ['300', '300',  '/samples/site-300.jpg', 'site · 1:300'],
+    ['400', '400',  '/samples/site-400.jpg', 'site · 1:400'],
     ['500', '500',  '/samples/site-500.jpg', 'site · 1:500 — more of the surrounds'],
   ],
   summary: [],
@@ -72,9 +72,11 @@ function renderAll() {
   tokens($('sheetOpts'), SHEETS, state.sheet,
     (v) => { state.sheet = v; syncScale(); renderAll(); });
 
+  // A table has neither a scale nor an orientation.
   const scales = SCALES[state.sheet];
-  $('scaleRow').hidden = scales.length === 0;
-  $('northRow').hidden = state.sheet === 'summary';
+  const isTable = state.sheet === 'summary';
+  $('scaleRow').hidden = isTable || scales.length === 0;
+  $('northRow').hidden = isTable;
   if (scales.length) {
     tokens($('scaleOpts'), scales, state.scale, (v) => { state.scale = v; renderAll(); });
   }
