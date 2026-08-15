@@ -20,6 +20,7 @@ import { renderSheet, MAP_W, MAP_H, type SheetMeta } from './render/sheet.js';
 import { renderSiteSheet } from './render/siteSheet.js';
 import { renderSummarySheet } from './render/summarySheet.js';
 import { summaryCsv, summaryJson } from './export/summaryExport.js';
+import { setTemplate, isTemplateId, DEFAULT_TEMPLATE } from './render/template.js';
 import { htmlToPdf } from './render/pdf.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -99,6 +100,7 @@ interface Job {
   sheet: 'context' | 'site' | 'summary';
   scale: number;            // 0 = auto (site sheets)
   rotate: 'north' | 'auto';
+  template: string;
   status: 'queued' | 'running' | 'done' | 'error';
   log: string[];
   pdfPath?: string;
@@ -138,6 +140,8 @@ function enqueue(job: Job) {
 
 async function runJob(job: Job) {
   job.status = 'running';
+  // Jobs run one at a time, so setting the active template per job is safe.
+  setTemplate(job.template);
   const outDir = join(WEB_OUT, job.id);
   try {
     const office = JSON.parse(readFileSync(join(ROOT, 'config', 'office.json'), 'utf8'));
@@ -363,7 +367,7 @@ const server = createServer(async (req, res) => {
     if (limited(`jobs:${ip}`, 12, 3600_000)) return json(res, 429, { error: 'Rate limit: try again later.' });
     const body = await readBody(req);
     try {
-      const { address, scale, rotate, sheet } = JSON.parse(body || '{}');
+      const { address, scale, rotate, sheet, template } = JSON.parse(body || '{}');
       const addr = String(address ?? '').trim();
       if (addr.length < 8 || addr.length > 120) return json(res, 400, { error: 'Enter a full NSW street address.' });
       const kind: 'context' | 'site' | 'summary' =
@@ -375,6 +379,7 @@ const server = createServer(async (req, res) => {
       const job: Job = {
         id: randomUUID(), address: addr, sheet: kind, scale: sc,
         rotate: rotate === 'auto' ? 'auto' : 'north',
+        template: isTemplateId(String(template ?? '')) ? String(template) : DEFAULT_TEMPLATE,
         status: 'queued', log: [], createdAt: Date.now(),
       };
       enqueue(job);

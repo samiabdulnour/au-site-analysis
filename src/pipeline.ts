@@ -12,6 +12,7 @@ import { fetchIsochrones, type Isochrone } from './fetch/isochrones.js';
 import { mercatorScaleFactor, mercatorToLonLat, lonLatToMercator, viewBounds, type Extent, type MapView } from './lib/geo.js';
 import type { GeoJSONFC } from './lib/arcgis.js';
 import { keywordCategory } from './render/model.js';
+import { setTemplate } from './render/template.js';
 import type { SummaryBundle } from './render/summarySheet.js';
 
 export interface CategorizedPoint extends NamedPoint { cat: string | null }

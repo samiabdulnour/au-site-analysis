@@ -11,6 +11,7 @@
 // those rows are ruled up and left for manual entry rather than guessed at.
 
 import { FRAME_L, FRAME_T, esc, sheetHtml, T } from './chrome.js';
+import { tpl } from './template.js';
 import type { SheetMeta } from './sheet.js';
 import type { SiteControls } from '../fetch/nsw.js';
 
@@ -184,7 +185,7 @@ export function renderSummaryTable(d: SummaryData): string {
   const out: string[] = [];
   const rule = (y: number) =>
     `<line x1="${TAB_L}" y1="${y.toFixed(2)}" x2="${TAB_R}" y2="${y.toFixed(2)}"` +
-    ` stroke="#000" stroke-width="${RULE_W}"/>`;
+    ` stroke="${tpl().ink}" stroke-width="${RULE_W}"/>`;
 
   out.push(txt(COL_LABEL, TITLE_Y, 'DEVELOPMENT SUMMARY', true, TITLE_SIZE));
 
@@ -212,7 +213,7 @@ export function renderSummaryTable(d: SummaryData): string {
 
   // The table is drawn in absolute sheet coordinates; the field is offset.
   return `<g transform="translate(${-FRAME_L},${-FRAME_T})"` +
-    ` font-family="Arial, Helvetica, sans-serif" fill="#000">${out.join('')}</g>`;
+    ` font-family="${tpl().font}" fill="${tpl().ink}">${out.join('')}</g>`;
 }
 
 export interface SummaryBundle extends SummaryData {
@@ -234,7 +235,7 @@ export function renderSummarySheet(sb: SummaryBundle, meta: SheetMeta): string {
     'manual entry.',
   ];
   const legendSvg =
-    `<g font-family="Arial, Helvetica, sans-serif" font-size="${T.fine}mm" fill="#222">` +
+    `<g font-family="${tpl().font}" font-size="${T.fine}mm" fill="${tpl().ink}">` +
     noteLines.map((l, i) => `<text x="0" y="${(i * 3.1 + 3).toFixed(1)}" font-size="2.1">${esc(l)}</text>`).join('') +
     `</g>`;
 

@@ -3,6 +3,7 @@
 // analysis, site analysis, …) so the package stays visually consistent.
 
 import type { SheetMeta } from './sheet.js';
+import { tpl } from './template.js';
 
 export const SHEET_W = 841;
 export const SHEET_H = 594;
@@ -14,8 +15,10 @@ export const MAP_BOTTOM = 576.6;
 export const MAP_W = TITLE_X - FRAME_L;    // 710.9
 export const MAP_H = MAP_BOTTOM - FRAME_T; // 566.6
 
-// Type scale measured from the original (mm)
-export const T = {
+// Type scale measured from the original (mm). A template may run the whole
+// scale up or down; the ratios between sizes stay fixed so the sheet keeps
+// its hierarchy.
+const BASE_T = {
   fine: 2.1,
   legend: 2.7,
   scalebar: 2.3,
@@ -25,6 +28,17 @@ export const T = {
   poi: 4.9,
   mapSymbol: 6.2,
 };
+export type TypeScale = typeof BASE_T;
+export const typeScale = (): TypeScale => {
+  const k = tpl().textScale;
+  return Object.fromEntries(
+    Object.entries(BASE_T).map(([key, v]) => [key, +(v * k).toFixed(2)]),
+  ) as TypeScale;
+};
+/** Back-compat accessor used across the renderers. */
+export const T = new Proxy({} as TypeScale, {
+  get: (_t, key: string) => typeScale()[key as keyof TypeScale],
+});
 
 // Legend geometry within the title column
 export const SWATCH_X = (743.7 - TITLE_X) + 1.5;
@@ -67,21 +81,28 @@ export function sheetHtml(o: SheetHtmlOpts): string {
              L${sx(m1 / 2).toFixed(1)},${sbY} L${sx(m1).toFixed(1)},${sbY} L${sx(m1).toFixed(1)},${sbY - step}
              L${sx(m2).toFixed(1)},${sbY - step} L${sx(m2).toFixed(1)},${sbY} L${sx(m3).toFixed(1)},${sbY}
              L${sx(m3).toFixed(1)},${sbY - step}"
-      fill="none" stroke="#111" stroke-width="0.25"/>
-    ${bar.map((m) => `<text x="${sx(m).toFixed(1)}" y="${sbY + 3.0}" text-anchor="middle" font-size="${T.scalebar}" font-weight="700" fill="#111">${m}${m === m3 ? 'm' : ''}</text>`).join('')}`;
+      fill="none" stroke="${tpl().ink}" stroke-width="0.25"/>
+    ${bar.map((m) => `<text x="${sx(m).toFixed(1)}" y="${sbY + 3.0}" text-anchor="middle" font-size="${T.scalebar}" font-weight="700" fill="${tpl().ink}">${m}${m === m3 ? 'm' : ''}</text>`).join('')}`;
 
   const northLines = [90, 0].map((deg) => {
     const a = (deg * Math.PI) / 180;
     const x = 4.9 * Math.cos(a), y = 4.9 * Math.sin(a);
     return `<line x1="${x.toFixed(2)}" y1="${(-y).toFixed(2)}" x2="${(-x).toFixed(2)}" y2="${y.toFixed(2)}"/>`;
   }).join('');
-  const northSvg = `
-    <text x="9" y="3.0" text-anchor="middle" font-size="3.4" font-weight="700" fill="#111">N</text>
-    <g transform="translate(9,10.8)" stroke="#111" stroke-width="0.18" fill="none">
+  const ink = tpl().ink;
+  const northSvg = tpl().symbols === 'plain'
+    ? `
+    <text x="9" y="3.0" text-anchor="middle" font-size="3.4" font-weight="700" fill="${ink}">N</text>
+    <g transform="translate(9,10.8) rotate(${o.rotationDeg.toFixed(2)})" fill="${ink}">
+      <path d="M0,-5.4 L1.9,4.6 L0,2.6 L-1.9,4.6 Z"/>
+    </g>`
+    : `
+    <text x="9" y="3.0" text-anchor="middle" font-size="3.4" font-weight="700" fill="${ink}">N</text>
+    <g transform="translate(9,10.8)" stroke="${ink}" stroke-width="0.18" fill="none">
       <circle r="4.9"/>
       <g transform="rotate(${o.rotationDeg.toFixed(2)})">
         ${northLines}
-        <path d="M0,-4.9 L0.45,0 L0,0 Z" fill="#111" stroke="none"/>
+        <path d="M0,-4.9 L0.45,0 L0,0 Z" fill="${ink}" stroke="none"/>
       </g>
     </g>`;
 
@@ -172,13 +193,13 @@ export function sheetHtml(o: SheetHtmlOpts): string {
 <style>
   @page { size: ${SHEET_W}mm ${SHEET_H}mm; margin: 0; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body { width: ${SHEET_W}mm; height: ${SHEET_H}mm; font-family: Arial, 'Liberation Sans', Helvetica, sans-serif; background: #fff; }
+  html, body { width: ${SHEET_W}mm; height: ${SHEET_H}mm; font-family: ${tpl().font}; background: #fff; }
   .sheet { position: relative; width: ${SHEET_W}mm; height: ${SHEET_H}mm; overflow: hidden; }
   svg.map { position: absolute; left: ${FRAME_L}mm; top: ${FRAME_T}mm; }
   .titlecol { position: absolute; left: ${TITLE_X}mm; top: 0; width: ${TW}mm; height: ${SHEET_H}mm;
     background: #fff; font-size: ${T.fine}mm; color: #222; }
   .abs { position: absolute; }
-  .rule { left: 2.6mm; right: 0; border-top: 0.15mm solid #666; }
+  .rule { left: 2.6mm; right: 0; border-top: 0.15mm solid ${tpl().rule}; }
   .k { font-size: ${T.fine}mm; color: #444; }
   .fine { font-size: ${T.fine}mm; line-height: 1.22; color: #333; }
   .fine li { margin-left: 2.8mm; margin-bottom: 0.35mm; }

@@ -2,7 +2,7 @@
    State lives in one object; the options are plain buttons that write into it,
    which avoids native <select> chrome in a page that is otherwise all text. */
 
-const state = { sheet: 'context', scale: '3000', rotate: 'north' };
+const state = { sheet: 'context', scale: '3000', rotate: 'north', template: 'fuse' };
 
 // [value, label, previewImage, previewCaption] — every option previews a real
 // sheet generated for the same demo address, so the comparison is like for like.
@@ -27,6 +27,12 @@ const SCALES = {
   ],
   summary: [],
 };
+// Graphic template: colours, typeface and symbol family. Content is identical
+// between templates — only the drawing's appearance changes.
+const TEMPLATES = [
+  ['fuse',    'fuse',    '/samples/context.jpg',        'fuse — the office style'],
+  ['neutral', 'neutral', '/samples/tpl-neutral.jpg',    'neutral — restrained palette, mono-safe'],
+];
 const NORTH = [
   ['north', 'up',    '/samples/site.jpg',       'north up — the sheet is oriented to north'],
   ['auto',  'align', '/samples/north-align.jpg', 'aligned — the lot is squared to the sheet'],
@@ -81,6 +87,7 @@ function renderAll() {
     tokens($('scaleOpts'), scales, state.scale, (v) => { state.scale = v; renderAll(); });
   }
   tokens($('northOpts'), NORTH, state.rotate, (v) => { state.rotate = v; renderAll(); });
+  tokens($('templateOpts'), TEMPLATES, state.template, (v) => { state.template = v; renderAll(); });
 }
 
 /** Keep the scale valid when the drawing changes — 1:3000 means nothing for a lot. */
@@ -237,7 +244,8 @@ f.addEventListener('submit', async (e) => {
   try {
     const r = await fetch('/api/jobs', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ address, scale: state.scale, rotate: state.rotate, sheet: state.sheet }),
+      body: JSON.stringify({ address, scale: state.scale, rotate: state.rotate,
+                             sheet: state.sheet, template: state.template }),
     });
     const j = await readJson(r);
     if (!r.ok) throw new Error(httpMessage(r, j));

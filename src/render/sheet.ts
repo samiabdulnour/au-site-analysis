@@ -4,7 +4,8 @@
 
 import type { Bundle } from '../pipeline.js';
 import { lonLatToMercator, ringCentroid, type Extent, type MapView } from '../lib/geo.js';
-import { CATEGORIES, catById, zoneToCategory } from './model.js';
+import { categories, catById, zoneToCategory } from './model.js';
+import { tpl } from './template.js';
 import { sheetHtml, esc, T, SWATCH_X, SWATCH_W, LABEL_X,
          SHEET_W, SHEET_H, FRAME_L, FRAME_T, TITLE_X, TITLE_R, MAP_BOTTOM, MAP_W, MAP_H } from './chrome.js';
 
@@ -212,7 +213,7 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     (c.stroke ? ` stroke="${c.stroke}" stroke-width="0.7" stroke-linejoin="round"` : '');
 
   for (const [cat, paths] of Object.entries(zoningByCat)) {
-    const c = catById[cat];
+    const c = catById()[cat];
     usedCats.add(cat);
     layers.push(`<g ${catStyle(c)}>` + paths.map((d) => `<path d="${d}"/>`).join('') + '</g>');
   }
@@ -220,7 +221,7 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   // ---- railway corridor --------------------------------------------------
   if (bundle.railCorridors.features.length) {
     usedCats.add('railway');
-    const c = catById.railway;
+    const c = catById().railway;
     const d = bundle.railCorridors.features.map((f) => pathFromRings(geomRings(f.geometry), proj)).join('');
     layers.push(`<path d="${d}" ${catStyle(c)}/>`);
   }
@@ -233,7 +234,7 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     (poiPathsByCat[inst.cat] ??= []).push(pathFromRings(rings, proj));
   }
   for (const [cat, paths] of Object.entries(poiPathsByCat)) {
-    const c = catById[cat];
+    const c = catById()[cat];
     usedCats.add(cat);
     layers.push(`<g ${catStyle(c)}>` + paths.map((d) => `<path d="${d}"/>`).join('') + '</g>');
   }
@@ -241,7 +242,7 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   // ---- thin cadastral lot-boundary overlay --------------------------------
   if (bundle.allLots.features.length) {
     const d = bundle.allLots.features.map((f) => pathFromRings(geomRings(f.geometry), proj)).join('');
-    layers.push(`<path d="${d}" fill="none" stroke="#6f6f6f" stroke-width="0.12" opacity="0.5"/>`);
+    layers.push(`<path d="${d}" fill="none" stroke="${tpl().road}" stroke-width="0.12" opacity="0.5"/>`);
   }
 
   // ---- heritage ----------------------------------------------------------
@@ -274,8 +275,8 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
       for (let o = x0 - h; o <= x1; o += step)
         lines += `<line x1="${o.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${(o + h).toFixed(1)}" y2="${y0.toFixed(1)}"/>`;
       parts.push(`<clipPath id="${id}"><path d="${d}"/></clipPath>
-        <g clip-path="url(#${id})" stroke="#a97b3f" stroke-width="0.28" opacity="0.85">${lines}</g>
-        <path d="${d}" fill="none" stroke="#a97b3f" stroke-width="0.3" opacity="0.85"/>`);
+        <g clip-path="url(#${id})" stroke="${tpl().heritage}" stroke-width="0.28" opacity="0.85">${lines}</g>
+        <path d="${d}" fill="none" stroke="${tpl().heritage}" stroke-width="0.3" opacity="0.85"/>`);
     }
     layers.push(parts.join('\n'));
   }
@@ -284,16 +285,16 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   if (bundle.railLines.train.length) {
     const d = bundle.railLines.train.map((l) => pathFromRings([l as any], proj, false)).join('');
     // classic railway line: dark stroke with white sleeper dashes on top
-    layers.push(`<path d="${d}" fill="none" stroke="#3b3b3b" stroke-width="1.1"/>`);
+    layers.push(`<path d="${d}" fill="none" stroke="${tpl().rail}" stroke-width="1.1"/>`);
     layers.push(`<path d="${d}" fill="none" stroke="#ffffff" stroke-width="0.55" stroke-dasharray="2.4,2.4"/>`);
   }
   if (bundle.railLines.tram.length) {
     const d = bundle.railLines.tram.map((l) => pathFromRings([l as any], proj, false)).join('');
-    layers.push(`<path d="${d}" fill="none" stroke="#d5006d" stroke-width="0.9" stroke-dasharray="3.4,1.8"/>`);
+    layers.push(`<path d="${d}" fill="none" stroke="${tpl().busRoute}" stroke-width="0.9" stroke-dasharray="3.4,1.8"/>`);
   }
   if (bundle.bus.tramRouteSegments.length && !bundle.railLines.tram.length) {
     const d = bundle.bus.tramRouteSegments.map((l) => pathFromRings([l as any], proj, false)).join('');
-    layers.push(`<path d="${d}" fill="none" stroke="#d5006d" stroke-width="0.9" stroke-dasharray="3.4,1.8"/>`);
+    layers.push(`<path d="${d}" fill="none" stroke="${tpl().busRoute}" stroke-width="0.9" stroke-dasharray="3.4,1.8"/>`);
   }
   // Bus routes from OSM when available; otherwise derive corridors from the
   // road network — any street with a bus stop within 30m carries a route.
@@ -395,16 +396,16 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   }
   if (busSegments.length) {
     const d = busSegments.map((l) => pathFromRings([l as any], proj, false)).join('');
-    layers.push(`<path d="${d}" fill="none" stroke="#2f7fd6" stroke-width="0.9" stroke-dasharray="3,1.9" opacity="0.9" stroke-linecap="round"/>`);
+    layers.push(`<path d="${d}" fill="none" stroke="${tpl().transit}" stroke-width="0.9" stroke-dasharray="3,1.9" opacity="0.9" stroke-linecap="round"/>`);
   }
 
   // ---- isochrones --------------------------------------------------------
   const isoStyle: Record<number, { color: string; label: string }> = {
-    5: { color: '#e6007e', label: '400m (5-MIN WALK)' },
-    10: { color: '#b5379b', label: '800m (10-MIN WALK)' },
+    5: { color: tpl().walk5, label: '400m (5-MIN WALK)' },
+    10: { color: tpl().walk10, label: '800m (10-MIN WALK)' },
   };
   for (const iso of bundle.isochrones) {
-    const st = isoStyle[iso.minutes] ?? { color: '#e6007e', label: `${iso.minutes} MIN WALK` };
+    const st = isoStyle[iso.minutes] ?? { color: tpl().walk5, label: `${iso.minutes} MIN WALK` };
     const d = iso.rings.map((r) => pathFromRings([r as any], proj)).join('');
     layers.push(`<path d="${d}" fill="none" stroke="${st.color}" stroke-width="1.3" stroke-dasharray="3.6,2.2" stroke-linejoin="round"/>`);
   }
@@ -415,7 +416,7 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     const cx = MAP_W / 2, cy = MAP_H / 2;
     const bearingSets: Record<number, number[]> = { 5: [50, 170, 290], 10: [110, 230, 350] };
     for (const iso of bundle.isochrones) {
-      const st = isoStyle[iso.minutes] ?? { color: '#e6007e', label: `${iso.minutes} MIN WALK` };
+      const st = isoStyle[iso.minutes] ?? { color: tpl().walk5, label: `${iso.minutes} MIN WALK` };
       for (const bearing of bearingSets[iso.minutes] ?? [90, 210, 330]) {
         const target = (bearing * Math.PI) / 180;
         let best: Pt | null = null;
@@ -437,7 +438,7 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   {
     usedCats.add('site');
     const d = bundle.siteLots.features.map((f) => pathFromRings(geomRings(f.geometry), proj)).join('');
-    layers.push(`<path d="${d}" fill="#e8402a" fill-opacity="0.55" stroke="#cc0000" stroke-width="1.4" stroke-dasharray="3.2,1.6"/>`);
+    layers.push(`<path d="${d}" fill="${tpl().site}" fill-opacity="0.55" stroke="${tpl().site}" stroke-width="1.4" stroke-dasharray="3.2,1.6"/>`);
   }
 
   // ---- transport symbols: one roundel style for all modes -----------------
@@ -451,20 +452,20 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   layers.push(bundle.bus.busStops
     .map(({ lon, lat }) => proj(lon, lat))
     .filter(([x, y]) => x > 3 && x < MAP_W - 3 && y > 3 && y < MAP_H - 3)
-    .map(([x, y]) => roundel(x, y, 'B', '#2f7fd6'))
+    .map(([x, y]) => roundel(x, y, 'B', tpl().transit))
     .join('\n'));
 
   layers.push(bundle.bus.tramStops
     .map(({ lon, lat }) => proj(lon, lat))
     .filter(([x, y]) => x > 3 && x < MAP_W - 3 && y > 3 && y < MAP_H - 3)
-    .map(([x, y]) => roundel(x, y, 'L', '#d5006d'))
+    .map(([x, y]) => roundel(x, y, 'L', tpl().busRoute))
     .join('\n'));
 
   layers.push(bundle.stations
     .map((s) => ({ p: proj(s.lon, s.lat), name: s.name.replace(/RAILWAY STATION$/i, 'TRAIN STATION'), tram: /LIGHT RAIL|TRAM/i.test(s.name) }))
     .filter(({ p: [x, y] }) => x > 3 && x < MAP_W - 3 && y > 3 && y < MAP_H - 3)
     .map(({ p: [x, y], name, tram }) =>
-      roundel(x, y, tram ? 'L' : 'T', tram ? '#d5006d' : '#e8402a') + plainText(x, y - RR - 6, wrapLabel(name), T.poi, '#111111'))
+      roundel(x, y, tram ? 'L' : 'T', tram ? tpl().busRoute : tpl().site) + plainText(x, y - RR - 6, wrapLabel(name), T.poi, '#111111'))
     .join('\n'));
 
   // ---- street labels: repeat along long roads like the original ----------
@@ -632,18 +633,18 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   const box = (c: { fill: string; opacity: number; stroke?: string }) =>
     `<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="${c.fill}" fill-opacity="${Math.min(1, c.opacity + 0.15)}"
       stroke="${c.stroke ?? '#999'}" stroke-width="${c.stroke ? 0.9 : 0.2}"/>`;
-  for (const c of CATEGORIES) {
+  for (const c of categories()) {
     if (!usedCats.has(c.id)) continue;
     if (c.id === 'railway') continue; // on the map, not in the legend
     const hob = hobByCat[c.id];
     if (c.id === 'site') {
-      legendRow(`<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="#e8402a" fill-opacity="0.55" stroke="#cc0000" stroke-width="0.9" stroke-dasharray="2.2,1.1"/>`, ['SITE']);
+      legendRow(`<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="${tpl().site}" fill-opacity="0.55" stroke="${tpl().site}" stroke-width="0.9" stroke-dasharray="2.2,1.1"/>`, ['SITE']);
     } else if (c.id === 'heritage') {
       let hlines = '';
       for (let o = SWATCH_X - 6.5; o <= SWATCH_X + SWATCH_W; o += 2)
         hlines += `<line x1="${o.toFixed(1)}" y1="6.5" x2="${(o + 6.5).toFixed(1)}" y2="0"/>`;
-      legendRow(`<g clip-path="url(#lhclip)" stroke="#a97b3f" stroke-width="0.28">${hlines}</g>
-        <rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="none" stroke="#a97b3f" stroke-width="0.4"/>`, wrapLabel(c.label, 26));
+      legendRow(`<g clip-path="url(#lhclip)" stroke="${tpl().heritage}" stroke-width="0.28">${hlines}</g>
+        <rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="none" stroke="${tpl().heritage}" stroke-width="0.4"/>`, wrapLabel(c.label, 26));
     } else {
       legendRow(box(c), wrapLabel(c.label, 26), hob ? `HOB: ${hob}` : undefined);
     }
@@ -654,19 +655,19 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     `<g transform="translate(${symC},3.2)"><circle r="3.4" fill="#fff" stroke="${color}" stroke-width="0.8"/><text text-anchor="middle" dy="1.9" font-size="5.7" font-weight="700" fill="${color}">${letter}</text></g>`;
   const hasTrainStations = bundle.stations.some((s) => !/LIGHT RAIL|TRAM/i.test(s.name));
   const hasTramStops = bundle.bus.tramStops.length > 0 || bundle.stations.some((s) => /LIGHT RAIL|TRAM/i.test(s.name));
-  if (hasTrainStations) legendRow(legendRoundel('T', '#e8402a'), ['TRAIN STATION']);
-  legendRow(legendRoundel('B', '#2f7fd6'), ['BUS STOPS']);
-  if (hasTramStops) legendRow(legendRoundel('L', '#d5006d'), ['LIGHT RAIL STOP']);
+  if (hasTrainStations) legendRow(legendRoundel('T', tpl().site), ['TRAIN STATION']);
+  legendRow(legendRoundel('B', tpl().transit), ['BUS STOPS']);
+  if (hasTramStops) legendRow(legendRoundel('L', tpl().busRoute), ['LIGHT RAIL STOP']);
   if (bundle.railLines.train.length)
-    legendRow(`<g><line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="#3b3b3b" stroke-width="1.1"/><line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="#fff" stroke-width="0.55" stroke-dasharray="2.4,2.4"/></g>`, ['TRAIN LINE']);
+    legendRow(`<g><line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${tpl().rail}" stroke-width="1.1"/><line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="#fff" stroke-width="0.55" stroke-dasharray="2.4,2.4"/></g>`, ['TRAIN LINE']);
   if (bundle.railLines.tram.length || bundle.bus.tramRouteSegments.length)
-    legendRow(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="#d5006d" stroke-width="0.9" stroke-dasharray="3.4,1.8"/>`, ['TRAM ROUTE']);
-  legendRow(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="#2f7fd6" stroke-width="0.9" stroke-dasharray="3,1.9"/>`, ['BUS ROUTE']);
+    legendRow(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${tpl().busRoute}" stroke-width="0.9" stroke-dasharray="3.4,1.8"/>`, ['TRAM ROUTE']);
+  legendRow(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${tpl().transit}" stroke-width="0.9" stroke-dasharray="3,1.9"/>`, ['BUS ROUTE']);
   const legendIso = (color: string) =>
     `<g><line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${color}" stroke-width="1.1" stroke-dasharray="3.6,2.2"/>
      <g transform="translate(${symC},3.2)"><circle r="3.3" fill="#fff" stroke="${color}" stroke-width="0.9"/>${walkerGlyph(color, 0.24)}</g></g>`;
-  legendRow(legendIso('#e6007e'), ['ISOCHRONE -'], '400m/5 min walk');
-  legendRow(legendIso('#b5379b'), ['ISOCHRONE -'], '800m/10 min walk');
+  legendRow(legendIso(tpl().walk5), ['ISOCHRONE -'], '400m/5 min walk');
+  legendRow(legendIso(tpl().walk10), ['ISOCHRONE -'], '800m/10 min walk');
 
   return sheetHtml({
     meta,

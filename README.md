@@ -140,7 +140,21 @@ Every drawing also exports in an open, editable format:
   programmatically. A table is data, not geometry, so DXF would only produce
   loose text entities.
 
-Options (after `--`): `--type context|site|summary|both`, `--scale 3000` (default 3000), `--job 2539`,
+### Graphic templates
+
+A template is the sheet's appearance — typeface, text scale, line and fill
+colours, the land-use palette and the symbol family. Content is identical
+between templates; only the look changes. They live in
+`src/render/template.ts`, so a new house style is a data change.
+
+- `fuse` — the office style the sheets were reverse-engineered from (default)
+- `neutral` — restrained palette, one accent, survives a mono print
+
+Fonts are limited to what the runtime image installs (Liberation, DejaVu).
+Naming an absent font does not fail; it silently falls back and the sheet
+comes out in the wrong face, so add the package to the `Dockerfile` first.
+
+Options (after `--`): `--type context|site|summary|both`, `--template fuse|neutral`, `--scale 3000` (default 3000), `--job 2539`,
 `--client "Name"`, `--status "DEVELOPMENT APPLICATION"`, `--sheet "DA 003"`.
 
 ## How it works
