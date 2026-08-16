@@ -170,6 +170,40 @@ export function shortStreetName(name: string): string {
     .replace(/\bBOULEVARD\b/, 'BVD').replace(/\bTERRACE\b/, 'TCE').replace(/\bCOURT\b/, 'CT');
 }
 
+/**
+ * `count` positions spaced evenly along a closed ring by arc length, skipping
+ * anything off the sheet and never stacking two markers on top of each other.
+ * `phase` (0..1) rotates the whole set so two rings can be staggered.
+ */
+function ringMarkers(pts: Pt[], count: number, phase: number): Pt[] {
+  const inView = ([x, y]: Pt) => x > 14 && x < MAP_W - 14 && y > 14 && y < MAP_H - 14;
+  const cum: number[] = [0];
+  for (let i = 1; i < pts.length; i++) {
+    cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+  }
+  const total = cum[cum.length - 1];
+  if (!(total > 0)) return [];
+
+  const visible = pts.map((p, i) => ({ p, s: cum[i] })).filter((o) => inView(o.p));
+  if (!visible.length) return [];
+
+  const out: Pt[] = [];
+  for (let k = 0; k < count; k++) {
+    const want = total * (((k + phase) / count) % 1);
+    let best: Pt | null = null;
+    let bestDist = Infinity;
+    for (const v of visible) {
+      let d = Math.abs(v.s - want);
+      d = Math.min(d, total - d);                     // the ring is closed
+      if (d >= bestDist) continue;
+      if (out.some((o) => Math.hypot(o[0] - v.p[0], o[1] - v.p[1]) < 26)) continue;
+      bestDist = d; best = v.p;
+    }
+    if (best) out.push(best);
+  }
+  return out;
+}
+
 export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   const view = bundle.view ?? {
     cx: (bundle.extent.xmin + bundle.extent.xmax) / 2,
@@ -409,27 +443,22 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     const d = iso.rings.map((r) => pathFromRings([r as any], proj)).join('');
     layers.push(`<path d="${d}" fill="none" stroke="${st.color}" stroke-width="1.3" stroke-dasharray="3.6,2.2" stroke-linejoin="round"/>`);
   }
-  // Walker medallions ON the ring (the office style): white disc, ring in
-  // the isochrone color, pedestrian icon. Several per ring, staggered
-  // bearings per contour so the two rings' markers don't align radially.
+  // Walker medallions ON the ring (the office style): white disc, ring in the
+  // isochrone colour, pedestrian icon. Spaced evenly along the ring's own
+  // length rather than at fixed compass bearings — a bearing with no ring
+  // point near it simply produced no marker, which is why most of them were
+  // missing on irregular or clipped catchments.
   {
-    const cx = MAP_W / 2, cy = MAP_H / 2;
-    const bearingSets: Record<number, number[]> = { 5: [50, 170, 290], 10: [110, 230, 350] };
     for (const iso of bundle.isochrones) {
       const st = isoStyle[iso.minutes] ?? { color: tpl().walk5, label: `${iso.minutes} MIN WALK` };
-      for (const bearing of bearingSets[iso.minutes] ?? [90, 210, 330]) {
-        const target = (bearing * Math.PI) / 180;
-        let best: Pt | null = null;
-        let bestScore = Infinity;
-        for (const r of iso.rings) for (const [lon, lat] of r) {
-          const [x, y] = proj(lon, lat);
-          if (x < 12 || x > MAP_W - 12 || y < 12 || y > MAP_H - 12) continue;
-          const ang = Math.atan2(y - cy, x - cx);
-          let diff = Math.abs(ang - target);
-          diff = Math.min(diff, 2 * Math.PI - diff);
-          if (diff < bestScore) { bestScore = diff; best = [x, y]; }
-        }
-        if (best && bestScore < 0.6) layers.push(walkerMedallion(best[0], best[1], st.color));
+      // The longest ring is the catchment proper; the rest are slivers.
+      const ring = [...iso.rings].sort((a, b) => b.length - a.length)[0];
+      if (!ring) continue;
+      const pts: Pt[] = ring.map(([lon, lat]) => proj(lon, lat));
+      // Stagger the two contours so their markers do not line up radially.
+      const phase = iso.minutes === 5 ? 0.15 : 0.6;
+      for (const [x, y] of ringMarkers(pts, 4, phase)) {
+        layers.push(walkerMedallion(x, y, st.color));
       }
     }
   }
