@@ -175,6 +175,24 @@ address
   → print to PDF (headless Chromium)
 ```
 
+### Street names
+
+A through street carries its name in the white double-headed arrow band; a
+laneway gets a plain black label along the line. Neither of the two fields NSW
+publishes decides this on its own — Dickson Lane is classified `LocalRoad`
+exactly like Hall Street, and plenty of real streets have no lane count
+recorded — so the rule combines them: function hierarchy 7+ (service lane,
+track, path, access way), a name ending in LANE/WALK/PATH/TRACK, or a recorded
+single lane means laneway, otherwise street.
+
+The road network arrives split at every intersection, so the pieces of each
+street are chained back into continuous runs before labelling; without that, a
+band could never span a junction and an arterial would come out looking like a
+laneway. A long street repeats its name up to three times. Every label — street
+and place name alike — reserves the ground it covers, and place names go first
+because they belong to a parcel and cannot move, so a street name slides along
+its road to find clear space or is dropped rather than overprinted.
+
 ## Repository is private
 
 `examples/` contains real project sheets used as the style/content reference

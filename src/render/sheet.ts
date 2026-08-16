@@ -204,6 +204,99 @@ function ringMarkers(pts: Pt[], count: number, phase: number): Pt[] {
   return out;
 }
 
+/**
+ * Does this road carry the white arrow band, or is it a lane that only gets a
+ * plain label? NSW classifies both function and lane count, and neither alone
+ * is enough: Dickson Lane is a "LocalRoad" (6) exactly like Hall Street, but
+ * it is one lane wide — while an arterial with unrecorded lanes is still a
+ * street. Hierarchy 7+ is service lane / track / path / access way.
+ */
+export function isMajorStreet(hierarchy: number, lanes: number | undefined, name: string): boolean {
+  if (hierarchy >= 7) return false;
+  if (/\b(LANE|LN|WALK|PATH|TRACK|STEPS|ARCADE|CLOSE)\b/i.test(name)) return false;
+  if (lanes === 1) return false;
+  return true;
+}
+
+/**
+ * Join road pieces that meet end to end into continuous runs.
+ *
+ * The road network arrives split at every intersection — Bondi Road is 32
+ * separate features, none longer than 163m — so a label placed on a single
+ * piece can never carry an arrow band across a junction, and a through road
+ * ends up looking like a laneway. Chaining the pieces back together first
+ * gives each street its real length to label along.
+ */
+function mergeRuns(segs: Pt[][]): Pt[][] {
+  const EPS = 0.4; // mm; endpoints of touching pieces are not bit-identical
+  const key = (p: Pt) => `${Math.round(p[0] / EPS)},${Math.round(p[1] / EPS)}`;
+  const at = new Map<string, number[]>();
+  segs.forEach((s, i) => {
+    for (const k of [key(s[0]), key(s[s.length - 1])]) {
+      const a = at.get(k);
+      if (a) a.push(i); else at.set(k, [i]);
+    }
+  });
+  const used = new Array(segs.length).fill(false);
+  const runs: Pt[][] = [];
+  for (let i = 0; i < segs.length; i++) {
+    if (used[i]) continue;
+    used[i] = true;
+    let run = [...segs[i]];
+    // Grow off the tail, flip, grow off the other tail. A same-named branch at
+    // a T-junction is taken arbitrarily; the leftover arm becomes its own run.
+    for (let side = 0; side < 2; side++) {
+      for (;;) {
+        const tail = run[run.length - 1];
+        const next = (at.get(key(tail)) ?? []).find((j) => !used[j]);
+        if (next === undefined) break;
+        used[next] = true;
+        const s = segs[next];
+        run = run.concat(key(s[0]) === key(tail) ? s.slice(1) : [...s].reverse().slice(1));
+      }
+      run.reverse();
+    }
+    runs.push(run);
+  }
+  return runs;
+}
+
+/**
+ * Does this polyline stay close enough to its own chord to carry a straight
+ * label? A name set along a run that turns a corner comes out broken across
+ * the bend ("COULTO N ST"), so the slot has to be rejected and the label slid
+ * further along the road.
+ */
+function straightEnough(pts: Pt[], tolMm: number): boolean {
+  const a = pts[0], b = pts[pts.length - 1];
+  const [dx, dy] = [b[0] - a[0], b[1] - a[1]];
+  const chord = Math.hypot(dx, dy);
+  if (chord < 1) return false;
+  for (const p of pts)
+    if (Math.abs((p[0] - a[0]) * dy - (p[1] - a[1]) * dx) / chord > tolMm) return false;
+  return true;
+}
+
+/** Arc-length table for a polyline, and the sub-polyline between two arc positions. */
+function arcTable(pts: Pt[]): number[] {
+  const cum = [0];
+  for (let i = 1; i < pts.length; i++)
+    cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+  return cum;
+}
+function sliceAt(pts: Pt[], cum: number[], s0: number, s1: number): Pt[] {
+  const point = (s: number): Pt => {
+    let i = cum.findIndex((c) => c >= s);
+    if (i <= 0) i = 1;
+    const t = (s - cum[i - 1]) / (cum[i] - cum[i - 1] || 1);
+    return [pts[i - 1][0] + (pts[i][0] - pts[i - 1][0]) * t, pts[i - 1][1] + (pts[i][1] - pts[i - 1][1]) * t];
+  };
+  const out: Pt[] = [point(s0)];
+  for (let i = 0; i < pts.length; i++) if (cum[i] > s0 && cum[i] < s1) out.push(pts[i]);
+  out.push(point(s1));
+  return out;
+}
+
 export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   const view = bundle.view ?? {
     cx: (bundle.extent.xmin + bundle.extent.xmax) / 2,
@@ -497,70 +590,34 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
       roundel(x, y, tram ? 'L' : 'T', tram ? tpl().busRoute : tpl().site) + plainText(x, y - RR - 6, wrapLabel(name), T.poi, '#111111'))
     .join('\n'));
 
-  // ---- street labels: repeat along long roads like the original ----------
-  interface Seg { pts: Pt[]; len: number; mid: Pt }
-  const roadByName = new Map<string, { segs: Seg[]; hierarchy: number }>();
-  for (const road of bundle.roads) {
-    const pts = road.coords.map(([lon, lat]) => proj(lon, lat))
-      .filter(([x, y]) => x > -60 && x < MAP_W + 60 && y > -60 && y < MAP_H + 60);
-    if (pts.length < 2) continue;
-    let len = 0;
-    for (let i = 1; i < pts.length; i++) len += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
-    const mid = pts[Math.floor(pts.length / 2)];
-    const entry = roadByName.get(road.name) ?? { segs: [], hierarchy: road.hierarchy };
-    entry.segs.push({ pts, len, mid });
-    entry.hierarchy = Math.min(entry.hierarchy, road.hierarchy);
-    roadByName.set(road.name, entry);
-  }
-  let rid = 0;
-  const roadDefs: string[] = [];
-  const roadArrows: string[] = [];
-  const roadTexts: string[] = [];
-  for (const [name, r] of roadByName) {
-    const label = shortStreetName(name);
-    const minLen = label.length * T.street * 0.72 + 8; // must fit the text
-    const candidates = r.segs.filter((s) => s.len >= minLen).sort((a, b) => b.len - a.len);
-    const chosen: Seg[] = [];
-    for (const s of candidates) {
-      if (chosen.length >= 3) break;
-      if (chosen.some((c) => Math.hypot(c.mid[0] - s.mid[0], c.mid[1] - s.mid[1]) < 170)) continue;
-      chosen.push(s);
-    }
-    for (const s of chosen) {
-      let pts = s.pts;
-      if (pts[0][0] > pts[pts.length - 1][0]) pts = [...pts].reverse();
-      const id = `rd${rid++}`;
-      const d = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p[0].toFixed(2)},${p[1].toFixed(2)}`).join('');
-      roadDefs.push(`<path id="${id}" d="${d}" fill="none"/>`);
-      // The white double-headed arrow IS the label background: bold,
-      // wide-tracked name centered on the band. Streets whose geometry bends
-      // too much for a band keep a plain thin label along the curve.
-      const spacing = 1.5; // wide tracking on arrowed names, mm
-      const arrowedTextLen = label.length * (T.street * 0.62 + spacing);
-      const arrow = s.len * 0.85 >= arrowedTextLen + 12
-        ? arrowAlong(pts, Math.min(s.len * 0.85, arrowedTextLen + 20))
-        : null;
-      if (arrow) {
-        roadArrows.push(arrow.svg);
-        // Rotated text centered on the band. textLength+lengthAdjust gives an
-        // exact tracked width — Chromium mis-centers letter-spaced text
-        // (anchor uses the unspaced width), so avoid letter-spacing here.
-        let ta = arrow.angDeg;
-        if (ta > 90) ta -= 180;
-        if (ta < -90) ta += 180;
-        roadTexts.push(`<text transform="translate(${arrow.cx.toFixed(1)},${arrow.cy.toFixed(1)}) rotate(${ta.toFixed(1)})"
-          x="${(-arrowedTextLen / 2).toFixed(1)}" y="1.65" textLength="${arrowedTextLen.toFixed(1)}" lengthAdjust="spacing"
-          font-size="${T.street}" font-weight="700" fill="#111111">${esc(label)}</text>`);
-      } else {
-        // Curved-street label: bold black, no contour (office style).
-        roadTexts.push(`<text font-size="${T.street}" font-weight="700" letter-spacing="0.4" dy="-1.4" fill="#000000">
-          <textPath href="#${id}" startOffset="50%" text-anchor="middle">${esc(label)}</textPath></text>`);
+  // ---- label occupancy ----------------------------------------------------
+  // One shared reservation list for every piece of map text, so a street name
+  // is not laid over a school name or over another street name. Each label
+  // reserves a capsule around its baseline: a radius around a point label, a
+  // swept segment for a street name lying along its road.
+  //
+  // Place-name labels go first because they cannot move — they belong to the
+  // parcel they name — while a street name is free to slide along its road,
+  // so it is the one that should give way.
+  interface Claim { a: Pt; b: Pt; r: number }
+  const claims: Claim[] = [];
+  const segGap = (p: Pt, q: Pt, a: Pt, b: Pt): number => {
+    // distance between segments pq and ab, by sampling — exact enough at the
+    // 1mm scale these tolerances work at, and far shorter than the closed form
+    let best = Infinity;
+    for (let i = 0; i <= 6; i++) {
+      const t = i / 6;
+      const c: Pt = [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t];
+      for (let j = 0; j <= 6; j++) {
+        const u = j / 6;
+        const d: Pt = [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u];
+        best = Math.min(best, Math.hypot(c[0] - d[0], c[1] - d[1]));
       }
     }
-  }
-  layers.push(`<defs>${roadDefs.join('')}</defs>`);
-  layers.push(roadArrows.join('\n'));
-  layers.push(roadTexts.join('\n'));
+    return best;
+  };
+  const isFree = (a: Pt, b: Pt, r: number) => !claims.some((c) => segGap(a, b, c.a, c.b) < r + c.r);
+  const reserve = (a: Pt, b: Pt, r: number) => { claims.push({ a, b, r }); };
 
   // ---- POI labels ---------------------------------------------------------
   // Institutions with a colored parcel are labeled at the parcel centroid so
@@ -643,7 +700,131 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     if (placed.some(([px, py]) => Math.hypot(px - x, py - y) < 15)) continue;
     placed.push([x, y]);
     poiTexts.push(plainText(x, y, pl.lines, T.poi));
+    // The block a wrapped name occupies: half its widest line either side of
+    // the centre, and half its stack of lines as the capsule radius.
+    const w = Math.max(...pl.lines.map((l) => l.length)) * T.poi * 0.62;
+    const h = pl.lines.length * T.poi * 1.08;
+    reserve([x - w / 2, y], [x + w / 2, y], h / 2);
   }
+
+  // ---- street labels: repeat along long roads like the original ----------
+  const roadByName = new Map<string, { segs: Pt[][]; hierarchy: number; lanes?: number }>();
+  for (const road of bundle.roads) {
+    const pts = road.coords.map(([lon, lat]) => proj(lon, lat))
+      .filter(([x, y]) => x > -60 && x < MAP_W + 60 && y > -60 && y < MAP_H + 60);
+    if (pts.length < 2) continue;
+    const entry = roadByName.get(road.name) ?? { segs: [], hierarchy: road.hierarchy, lanes: road.lanes };
+    entry.segs.push(pts);
+    // Most important classification and widest recorded section win: a road
+    // is only a lane if every segment of it says so.
+    entry.hierarchy = Math.min(entry.hierarchy, road.hierarchy);
+    if (road.lanes !== undefined) entry.lanes = Math.max(entry.lanes ?? 0, road.lanes);
+    roadByName.set(road.name, entry);
+  }
+  let rid = 0;
+  const roadDefs: string[] = [];
+  const roadArrows: string[] = [];
+  const roadTexts: string[] = [];
+  interface Run { pts: Pt[]; cum: number[]; len: number }
+  // Important roads label first, so when two names compete for the same
+  // corner the arterial keeps its band and the side street moves along.
+  const roadOrder = [...roadByName].sort((a, b) => a[1].hierarchy - b[1].hierarchy);
+  for (const [name, r] of roadOrder) {
+    const label = shortStreetName(name);
+    const major = isMajorStreet(r.hierarchy, r.lanes, name);
+    const spacing = 1.5;  // wide tracking on banded names, mm
+    const arrowedTextLen = label.length * (T.street * 0.62 + spacing);
+    // Must be an over-estimate: a name wider than the path it is set on has
+    // its overflowing glyphs clamped onto the ends and they pile up.
+    const plainTextLen = label.length * (T.street * 0.72 + 0.4) + 3;
+    const slack = 6;   // spare road either side of a plain name
+    // The name plus the two arrow heads. The heads are 8mm each but taper, so
+    // 7mm of clearance either side keeps the text off the points while
+    // letting streets of about 45m still carry a band.
+    const bandLen = arrowedTextLen + 14;
+
+    const runs: Run[] = mergeRuns(r.segs)
+      .map((pts) => { const cum = arcTable(pts); return { pts, cum, len: cum[cum.length - 1] }; })
+      .sort((a, b) => b.len - a.len);
+    if (!runs.length) continue;
+
+    // A street is labelled the same way everywhere it appears: the white band
+    // means "through street", so a major road must not show up banded on one
+    // run and as plain text on another just because that run is short. If no
+    // run of a major street is long enough for a band, it still needs a name.
+    const banded = major && runs[0].len >= bandLen;
+    const slotLen = banded ? bandLen : plainTextLen + slack;
+
+    // Half the height of what this name will occupy — the arrow band is much
+    // deeper than the bare text it replaces.
+    const halfW = banded ? 6.6 : T.street * 0.62;
+
+    // Repeat the name along a long street rather than labelling it once.
+    let placed = 0;
+    for (const run of runs) {
+      if (placed >= 3 || run.len < slotLen) break;
+      const n = Math.min(3 - placed, Math.max(1, Math.floor(run.len / 210)));
+      for (let i = 0; i < n; i++) {
+        const s = ((i + 0.5) / n) * run.len;
+        // Slide the name along its road until it sits inside the map, on
+        // straight-enough geometry, and on ground no earlier label has taken.
+        // A street name that cannot find clear road is dropped rather than
+        // overprinted — searching outward from the ideal spot keeps it as
+        // close to its share of the road as the sheet allows.
+        let slot: Pt[] | null = null;
+        for (let k = 0; k <= 16 && !slot; k++) {
+          const d = (k % 2 ? -1 : 1) * Math.ceil(k / 2) * 0.3;
+          const c = s + d * slotLen;
+          if (c - slotLen / 2 < 0 || c + slotLen / 2 > run.len) continue;
+          const win = sliceAt(run.pts, run.cum, c - slotLen / 2, c + slotLen / 2);
+          const m = halfW + 2;
+          if (win.some(([x, y]) => x < m || x > MAP_W - m || y < m || y > MAP_H - m)) continue;
+          if (!straightEnough(win, 2.2)) continue;
+          if (banded && !arrowAlong(win, slotLen)) continue;
+          // A plain name is set on the slot's chord, not on the road's own
+          // vertices: a 2mm dog-leg where two road sections join turns the
+          // path tangent through 90 degrees and shuffles the glyphs over each
+          // other, and the deviation test above already keeps the chord
+          // within 2mm of the real road.
+          if (!banded && Math.hypot(win[win.length - 1][0] - win[0][0],
+                                    win[win.length - 1][1] - win[0][1]) < plainTextLen) continue;
+          if (!isFree(win[0], win[win.length - 1], halfW)) continue;
+          slot = win;
+        }
+        if (!slot) continue;
+        reserve(slot[0], slot[slot.length - 1], halfW);
+        placed++;
+
+        let pts = banded ? slot : [slot[0], slot[slot.length - 1]];
+        if (pts[0][0] > pts[pts.length - 1][0]) pts = [...pts].reverse();
+        const id = `rd${rid++}`;
+        const d2 = pts.map((p, i2) => `${i2 === 0 ? 'M' : 'L'}${p[0].toFixed(2)},${p[1].toFixed(2)}`).join('');
+        roadDefs.push(`<path id="${id}" d="${d2}" fill="none"/>`);
+        const arrow = banded ? arrowAlong(pts, slotLen) : null;
+        if (arrow) {
+          roadArrows.push(arrow.svg);
+          // Rotated text centered on the band. textLength+lengthAdjust gives an
+          // exact tracked width — Chromium mis-centers letter-spaced text
+          // (anchor uses the unspaced width), so avoid letter-spacing here.
+          let ta = arrow.angDeg;
+          if (ta > 90) ta -= 180;
+          if (ta < -90) ta += 180;
+          roadTexts.push(`<text transform="translate(${arrow.cx.toFixed(1)},${arrow.cy.toFixed(1)}) rotate(${ta.toFixed(1)})"
+            x="${(-arrowedTextLen / 2).toFixed(1)}" y="1.65" textLength="${arrowedTextLen.toFixed(1)}" lengthAdjust="spacing"
+            font-size="${T.street}" font-weight="700" fill="${tpl().ink}">${esc(label)}</text>`);
+        } else {
+          // Lane, path, or a street too short to band: plain bold label along
+          // the line, same size as the rest of the map text, no halo.
+          roadTexts.push(`<text font-size="${T.street}" font-weight="700" letter-spacing="0.4" dy="-1.4" fill="${tpl().ink}">
+            <textPath href="#${id}" startOffset="50%" text-anchor="middle">${esc(label)}</textPath></text>`);
+        }
+      }
+    }
+  }
+  layers.push(`<defs>${roadDefs.join('')}</defs>`);
+  layers.push(roadArrows.join('\n'));
+  layers.push(roadTexts.join('\n'));
+
   layers.push(poiTexts.join('\n'));
 
   // ---- legend (title column, measured geometry) ---------------------------

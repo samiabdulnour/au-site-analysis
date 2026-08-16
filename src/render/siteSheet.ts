@@ -6,7 +6,7 @@ import type { SiteBundle } from '../pipeline.js';
 import { lonLatToMercator, mercatorToLonLat, mercatorScaleFactor } from '../lib/geo.js';
 import {
   makeProjector, plainText, haloText, wrapLabel, arrowAlong, shortStreetName,
-  pathFromRings, geomRings, type Pt, type SheetMeta,
+  isMajorStreet, pathFromRings, geomRings, type Pt, type SheetMeta,
 } from './sheet.js';
 import { sheetHtml, esc, T, SWATCH_X, SWATCH_W, LABEL_X, MAP_W, MAP_H } from './chrome.js';
 import { tpl } from './template.js';
@@ -411,8 +411,11 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     layers.push(boxes.join(''));
   }
 
-  // ---- street name band arrows ------------------------------------------------
-  const best = new Map<string, { pts: Pt[]; len: number }>();
+  // ---- street names: arrow band for a street, plain text for a lane -----------
+  // The same distinction the context sheet makes, and it matters just as much
+  // here: at 1:300 the rear laneway is often the widest thing on the sheet
+  // after the street itself, and banding both makes them read as equals.
+  const best = new Map<string, { pts: Pt[]; len: number; hierarchy: number; lanes?: number }>();
   for (const road of sb.roads) {
     const pts = road.coords.map(([lon, lat2]) => proj(lon, lat2))
       .filter(([x, y]) => x > -40 && x < MAP_W + 40 && y > -40 && y < MAP_H + 40);
@@ -420,26 +423,45 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     let len = 0;
     for (let i = 1; i < pts.length; i++) len += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
     const cur = best.get(road.name);
-    if (!cur || len > cur.len) best.set(road.name, { pts, len });
+    const hierarchy = Math.min(cur?.hierarchy ?? 9, road.hierarchy);
+    const lanes = road.lanes === undefined ? cur?.lanes : Math.max(cur?.lanes ?? 0, road.lanes);
+    best.set(road.name, !cur || len > cur.len
+      ? { pts, len, hierarchy, lanes }
+      : { ...cur, hierarchy, lanes });
   }
+  const siteRoadDefs: string[] = [];
+  let srid = 0;
   for (const [name, r] of best) {
     const label = shortStreetName(name);
     const spacing = 1.7;
     const SITE_STREET = T.street * 1.15;
     const textLen = label.length * (SITE_STREET * 0.62 + spacing);
-    if (r.len * 0.85 < textLen + 12) continue;
     let pts = r.pts;
     if (pts[0][0] > pts[pts.length - 1][0]) pts = [...pts].reverse();
-    const arrow = arrowAlong(pts, Math.min(r.len * 0.85, textLen + 20));
-    if (!arrow) continue;
-    let ta = arrow.angDeg;
-    if (ta > 90) ta -= 180;
-    if (ta < -90) ta += 180;
-    layers.push(arrow.svg);
-    layers.push(`<text transform="translate(${arrow.cx.toFixed(1)},${arrow.cy.toFixed(1)}) rotate(${ta.toFixed(1)})"
-      x="${(-textLen / 2).toFixed(1)}" y="1.65" textLength="${textLen.toFixed(1)}" lengthAdjust="spacing"
-      font-size="${SITE_STREET.toFixed(2)}" font-weight="700" fill="#111111">${esc(label)}</text>`);
+    const arrow = isMajorStreet(r.hierarchy, r.lanes, name) && r.len * 0.85 >= textLen + 12
+      ? arrowAlong(pts, Math.min(r.len * 0.85, textLen + 20))
+      : null;
+    if (arrow) {
+      let ta = arrow.angDeg;
+      if (ta > 90) ta -= 180;
+      if (ta < -90) ta += 180;
+      layers.push(arrow.svg);
+      layers.push(`<text transform="translate(${arrow.cx.toFixed(1)},${arrow.cy.toFixed(1)}) rotate(${ta.toFixed(1)})"
+        x="${(-textLen / 2).toFixed(1)}" y="1.65" textLength="${textLen.toFixed(1)}" lengthAdjust="spacing"
+        font-size="${SITE_STREET.toFixed(2)}" font-weight="700" fill="#111111">${esc(label)}</text>`);
+      continue;
+    }
+    // Plain label, set on the straight chord of the run: a laneway's own
+    // vertices jog too much to carry text along directly.
+    const plainLen = label.length * (SITE_STREET * 0.72 + 0.4) + 3;
+    const a = pts[0], b = pts[pts.length - 1];
+    if (Math.hypot(b[0] - a[0], b[1] - a[1]) < plainLen) continue;
+    const id = `srd${srid++}`;
+    siteRoadDefs.push(`<path id="${id}" d="M${a[0].toFixed(2)},${a[1].toFixed(2)}L${b[0].toFixed(2)},${b[1].toFixed(2)}" fill="none"/>`);
+    layers.push(`<text font-size="${SITE_STREET.toFixed(2)}" font-weight="700" letter-spacing="0.4" dy="-1.4" fill="#111111">
+      <textPath href="#${id}" startOffset="50%" text-anchor="middle">${esc(label)}</textPath></text>`);
   }
+  if (siteRoadDefs.length) layers.push(`<defs>${siteRoadDefs.join('')}</defs>`);
 
   // ---- SITE: boundary, dimensions, levels, fall, area ---------------------------
   // significant corners: keep vertices whose turn deviates >12° from straight
