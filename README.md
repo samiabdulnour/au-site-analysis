@@ -101,6 +101,23 @@ database is still building — or if it is never installed at all.
 
 Needs ~12GB free disk; the setup script refuses to start below that.
 
+### Domain
+
+`site-analyst.com` is served by Caddy on the host, which terminates TLS and
+proxies to the app on `127.0.0.1:3100`. Two DNS records at the registrar point
+the name here — an `A` record for `@` and one for `www`, both the server's IPv4
+address — and `deploy/ensure-domain.sh` adds the Caddy site block on the next
+deploy pass. Caddy asks Let's Encrypt for the certificate on the first request
+for the name, so DNS has to resolve here and port 80 has to be reachable
+before that can succeed. `www` redirects to the bare domain.
+
+The script only ever appends, so whatever served the host before keeps
+working, and it is a no-op once the Caddyfile names the domain. There is no
+shell access to the host from where it is written, so it validates the edited
+config before reloading and restores the backup if either step fails; the
+outcome shows up as `"domain"` in `GET /api/version`. Set `SITE_DOMAIN` in
+`/etc/site-analyst.env` to use a different name.
+
 ### Public deployment (Docker)
 
 ```bash

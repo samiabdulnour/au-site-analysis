@@ -9,6 +9,13 @@ FORCE=""
 
 git fetch origin main --quiet
 
+# The real domain in front of the app. Idempotent, and a no-op on any host
+# where Caddy is not what is answering.
+if [ -f deploy/ensure-domain.sh ]; then
+  chmod +x deploy/ensure-domain.sh
+  deploy/ensure-domain.sh || true
+fi
+
 # Local Overpass: install it, keep it up, and switch the app over once its
 # database is serving. Exit 10 = it just changed the env, so redeploy now.
 if [ -f deploy/ensure-overpass.sh ]; then
