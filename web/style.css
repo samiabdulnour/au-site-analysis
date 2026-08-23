@@ -1,4 +1,6 @@
-/* One font (Arial), one size, square boxes, hairline rules — the page reads
+/* One font (Arial) at one size everywhere — no breakpoint changes it, and
+   the SITE ANALYST header is the only thing set larger. Square boxes and
+   hairline rules — the page reads
    like a drawing sheet's title block rather than a website. Colour does the
    work of hierarchy: yellow marks what is chosen or what to press, the tinted
    first column names each row of options. */
@@ -30,7 +32,7 @@ body {
   background: var(--bg);
   color: var(--ink);
   font-family: var(--font);
-  font-size: 18px;
+  font-size: 17px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   padding: 2.6rem 1.5rem 3rem;
@@ -155,8 +157,8 @@ footer a { color: inherit; }
 #preview .cap { padding: .35rem .2rem 0; }
 
 @media (max-width: 700px) {
-  body { padding: 1.6rem 1rem 2.5rem; font-size: 15px; }
-  .name { font-size: 1.7rem; margin-bottom: 2.2rem; }
+  body { padding: 1.6rem 1rem 2.5rem; }
+  .name { margin-bottom: 2.2rem; }
   .bar { margin-bottom: 2rem; }
   .rowhead { flex: 0 0 30%; }
   .rowhead, .cell, .cell-empty { padding: .5rem .6rem; }
@@ -228,9 +230,13 @@ h2 { font-size: 1em; font-weight: 700; text-transform: uppercase;
    page is narrow, and the longest paragraph takes a fourth line — so the
    four-line band reaches higher than that breakpoint does. It has to sit
    after the rule it overrides: both are one class deep, so source order
-   decides. */
-@media (max-width: 800px) {
+   decides. Measured at this type size: three lines from about 760px up,
+   four down to 600, five below that until the table stacks. */
+@media (max-width: 760px) {
   .deftable { --rows: 4; }
+}
+@media (max-width: 600px) {
+  .deftable { --rows: 5; }
 }
 
 @media (max-width: 700px) {
@@ -255,8 +261,16 @@ h2 { font-size: 1em; font-weight: 700; text-transform: uppercase;
 /* Narrowest phones: six scale options cannot share 288px without clipping
    "auto", so the row wraps onto a second line of cells instead. */
 @media (max-width: 380px) {
+  /* At one type size for every screen, SUMMARY no longer fits a third of a
+     320px phone. Take the room out of the margins rather than the type. */
+  body { padding-left: .6rem; padding-right: .6rem; }
   .cells { flex-wrap: wrap; }
-  .cell, .cell-empty { flex: 1 0 30%; }
+  .cell, .cell-empty { flex: 1 0 30%; padding: .5rem .3rem; }
+}
+
+/* Narrower than any phone but the folded ones: two options to a line. */
+@media (max-width: 315px) {
+  .cell, .cell-empty { flex: 1 0 45%; }
 }
 
 /* A note in the suggestion list — searching, no match, or what to type.
