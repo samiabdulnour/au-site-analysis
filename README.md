@@ -63,6 +63,18 @@ must enter it once and get a 30-day session cookie. Login attempts and job
 submissions are rate-limited per IP, and job outputs are deleted after 24h.
 `ALLOW_NO_AUTH=1` disables the gate for local use only.
 
+The code lives in `/etc/site-analyst.env` on the server and never in the repo,
+so rotating it is a change on the host rather than a deploy:
+
+```bash
+sed -i 's/^ACCESS_CODE=.*/ACCESS_CODE=<new code>/' /etc/site-analyst.env
+/opt/site-analyst/deploy/update.sh --force     # --force: the commit has not changed
+```
+
+Every existing session dies with the old code — the cookie is an HMAC of it —
+so everyone signs in again. If the deploy prints `deferring`, a sheet is
+generating; run it again once `"busy"` is false.
+
 ### Local OpenStreetMap (recommended for production)
 
 The public Overpass network is frequently unavailable, which costs the site
