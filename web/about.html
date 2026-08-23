@@ -19,13 +19,8 @@
   <p class="lead">No model is involved in the drawing. Every line is placed by code from a
   government dataset, so the same address always produces the same sheet.</p>
 
-  <!-- One table for the whole page: every rectangle is a row of the same
-       grid, so they all take the height of the tallest. Section titles are
-       full-width rows of that grid rather than headings between tables,
-       which is what keeps them the same size as everything else. -->
+  <h2>How it works</h2>
   <div class="deftable">
-
-    <h2 class="head">How it works</h2>
     <div class="row"><div class="k">geocode</div>
       <div class="v">The address is matched against the NSW address register, then the
       cadastre gives the lot boundary. Multi-lot sites are combined into one.</div></div>
@@ -38,8 +33,10 @@
     <div class="row"><div class="k">export</div>
       <div class="v">The same geometry in DXF, real-world metres on the MGA2020 grid, one
       layer per data class, ready to underlay a survey.</div></div>
+  </div>
 
-    <h2 class="head">Data sources</h2>
+  <h2>Data sources</h2>
+  <div class="deftable">
     <div class="row"><div class="k">NSW Spatial</div>
       <div class="v">Addressing, cadastral boundaries, roads and rail, elevation and
       contours, aerial imagery</div></div>
@@ -53,8 +50,10 @@
       furniture</div></div>
     <div class="row"><div class="k">Valhalla</div>
       <div class="v">5 and 10 minute walking catchments</div></div>
+  </div>
 
-    <h2 class="head">What it does not do</h2>
+  <h2>What it does not do</h2>
+  <div class="deftable">
     <div class="row"><div class="k">not a survey</div>
       <div class="v">Boundaries come from the cadastre, a mapping approximation. Site areas
       typically differ from the surveyed figure by a few per cent. Levels come from a 1 m
