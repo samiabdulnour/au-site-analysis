@@ -46,18 +46,17 @@ const preview = $('preview');
 
 // ---- token rendering -----------------------------------------------------
 
-function sep(text) {
-  const s = document.createElement('span');
-  s.textContent = text;
-  return s;
-}
+// Every row of the options table is the same width, so a row with fewer
+// choices than the widest one is padded with blank cells — otherwise the
+// table's right edge steps in and out from row to row.
+const ROW_CELLS = 3;
 
 function tokens(host, items, current, onPick) {
   host.innerHTML = '';
-  items.forEach(([value, label, img, cap], i) => {
+  items.forEach(([value, label, img, cap]) => {
     const b = document.createElement('button');
     b.type = 'button';
-    b.className = 'chip';
+    b.className = 'cell';
     b.textContent = label;
     b.setAttribute('aria-pressed', String(value === current));
     b.addEventListener('click', () => onPick(value));
@@ -72,6 +71,12 @@ function tokens(host, items, current, onPick) {
     }
     host.append(b);
   });
+  for (let i = items.length; i < ROW_CELLS; i++) {
+    const fill = document.createElement('span');
+    fill.className = 'cell-empty';
+    fill.innerHTML = '&nbsp;';
+    host.append(fill);
+  }
 }
 
 function renderAll() {
@@ -132,7 +137,7 @@ function togglePreview(src, cap, anchor) {
   preview.style.top = (r.bottom + 8) + 'px';
 }
 document.addEventListener('click', (e) => {
-  if (pinned && !e.target.closest('.chip')) { pinned = false; preview.classList.remove('on'); }
+  if (pinned && !e.target.closest('.cell')) { pinned = false; preview.classList.remove('on'); }
 });
 
 // ---- http helpers --------------------------------------------------------
@@ -188,7 +193,11 @@ addrInput.addEventListener('input', () => {
     try {
       const r = await fetch('/api/address?q=' + encodeURIComponent(q));
       const j = await readJson(r);
-      if (addrInput.value.trim() === q) renderSuggest(j.suggestions || []);
+      // The reply can land after the field has been left or the job started;
+      // rendering then would pop the list back open over the page.
+      if (addrInput.value.trim() === q && document.activeElement === addrInput) {
+        renderSuggest(j.suggestions || []);
+      }
     } catch { closeSuggest(); }
   }, 250);
 });
@@ -237,6 +246,8 @@ f.addEventListener('submit', async (e) => {
   e.preventDefault();
   const address = addrInput.value.trim();
   if (!address) return;
+  clearTimeout(suggestTimer);
+  closeSuggest();
   out.hidden = false;
   errEl.textContent = ''; linksEl.innerHTML = ''; queueEl.textContent = '';
   go.disabled = true;
@@ -283,7 +294,7 @@ async function poll(id, misses) {
     logEl.scrollTop = logEl.scrollHeight;
 
     if (j.status === 'done') {
-      queueEl.innerHTML = '<span class="okline">done</span>';
+      queueEl.textContent = 'done';
       linksEl.innerHTML = '';
       addLink('open pdf', '/api/jobs/' + id + '/pdf', true);
       if (j.hasCad) addLink('download cad', '/api/jobs/' + id + '/cad');
@@ -304,10 +315,11 @@ async function poll(id, misses) {
 }
 
 function addLink(label, href, newTab) {
-  if (linksEl.childNodes.length) linksEl.append(sep('    '));
   const a = document.createElement('a');
   a.href = href;
   a.textContent = label;
+  // The first result is the one to press; the rest sit beside it sharing a rule.
+  a.className = linksEl.childNodes.length ? 'btn' : 'btn primary';
   if (newTab) a.target = '_blank';
   linksEl.append(a);
 }

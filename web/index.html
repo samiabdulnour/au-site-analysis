@@ -5,50 +5,44 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Site Analyst</title>
 <meta name="description" content="Generate NSW development-application site analysis drawings from a street address, using government open data.">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 fill=%27%23111%27/%3E%3Crect x=%277%27 y=%277%27 width=%2718%27 height=%2718%27 fill=%27none%27 stroke=%27%23fff%27 stroke-width=%272%27/%3E%3Crect x=%2713%27 y=%2713%27 width=%276%27 height=%276%27 fill=%27%23e8402a%27/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 fill=%27%23fff%27/%3E%3Crect x=%274%27 y=%274%27 width=%2724%27 height=%2724%27 fill=%27none%27 stroke=%27%23000%27 stroke-width=%272%27/%3E%3Crect x=%2712%27 y=%2712%27 width=%2712%27 height=%2712%27 fill=%27%23ffff70%27/%3E%3C/svg%3E">
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
 <div class="page">
 
-  <div class="top">
-    <div class="name">SITE ANALYST</div>
-    <div><a href="/about">how it works</a></div>
-  </div>
+  <h1 class="name">SITE ANALYST</h1>
 
   <!-- ---- access ------------------------------------------------------ -->
   <form id="login" hidden>
-    <div class="sub">Enter your access code to generate drawings.</div>
-    <div class="composer">
-      <div class="entry">
-        <input id="code" type="password" placeholder="Access code"
-               autocomplete="current-password">
-      </div>
-      <button class="send" type="submit">Unlock</button>
+    <p class="lead">Enter your access code to generate drawings.</p>
+    <div class="bar">
+      <input id="code" type="password" placeholder="" autocomplete="current-password">
+      <button class="go" type="submit">UNLOCK</button>
     </div>
   </form>
 
   <!-- ---- the tool ---------------------------------------------------- -->
   <form id="f" hidden>
-    <div class="sub">Search a NSW address to generate its site analysis.</div>
-    <div class="composer">
-      <div class="entry">
-        <input id="address" type="text" placeholder="Search a NSW address…"
+    <p class="lead">Search a NSW address to generate its site analysis.</p>
+    <div class="bar">
+      <span class="entry">
+        <input id="address" type="text" placeholder=""
                autocomplete="off" autocapitalize="off" spellcheck="false">
         <ul id="suggest"></ul>
-      </div>
-      <button class="send" id="go" type="submit">Generate</button>
+      </span>
+      <button class="go" id="go" type="submit">GENERATE</button>
     </div>
 
-    <div class="tools">
-      <div class="group" id="sheetGroup"><span class="group-label">drawing</span>
-        <span class="chips" id="sheetOpts"></span></div>
-      <div class="group" id="scaleRow"><span class="group-label">scale</span>
-        <span class="chips" id="scaleOpts"></span></div>
-      <div class="group" id="northRow"><span class="group-label">north</span>
-        <span class="chips" id="northOpts"></span></div>
-      <div class="group" id="templateRow"><span class="group-label">template</span>
-        <span class="chips" id="templateOpts"></span></div>
+    <div class="opts">
+      <div class="row" id="sheetGroup"><span class="rowhead">DRAWING</span>
+        <span class="cells" id="sheetOpts"></span></div>
+      <div class="row" id="scaleRow"><span class="rowhead">SCALE</span>
+        <span class="cells" id="scaleOpts"></span></div>
+      <div class="row" id="northRow"><span class="rowhead">NORTH</span>
+        <span class="cells" id="northOpts"></span></div>
+      <div class="row" id="templateRow"><span class="rowhead">TEMPLATE</span>
+        <span class="cells" id="templateOpts"></span></div>
     </div>
   </form>
 
@@ -56,8 +50,12 @@
   <div id="out" hidden>
     <div id="queue"></div>
     <div id="log"></div>
-    <div id="links"></div>
     <div class="errline" id="error"></div>
+  </div>
+
+  <div class="actions">
+    <div id="links"></div>
+    <a class="btn" href="/about">HOW IT WORKS</a>
   </div>
 
   <footer>

@@ -1,29 +1,26 @@
-/* One font (Arial), one size. Structure comes from boxes, spacing and colour.
-   The address field is the subject of the page — everything else is a control
-   that sits under it, the way a composer's options sit under its text area. */
+/* One font (Arial), one size, square boxes, hairline rules — the page reads
+   like a drawing sheet's title block rather than a website. Colour does the
+   work of hierarchy: yellow marks what is chosen or what to press, the tinted
+   first column names each row of options. */
 
 :root {
-  --bg:      #faf9f7;
-  --panel:   #fff;
-  --ink:     #1f1e1d;
-  --muted:   #6d6b66;
-  --faint:   #96938c;
-  --border:  #e3e0d9;
-  --border-2:#cfcbc2;
-  --accent:  #e8402a;
-  --accent-w:#fdece9;
-  --link:    #1f5fd0;
-  --ok:      #1a7f37;
-  --err:     #c0392b;
-  --radius:  16px;
+  --bg:    #ffffff;
+  --ink:   #000000;
+  --line:  #000000;
+  --hi:    #ffff70;   /* selected option, primary button */
+  --on-hi: #000000;   /* the highlight stays light in both themes, so what
+                         sits on it stays dark — never --ink */
+  --head:  #c6e7cf;   /* the options table's label column */
+  --muted: #5a5a5a;
+  --err:   #c0392b;
   --font: Arial, Helvetica, "Helvetica Neue", sans-serif;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #1c1b19; --panel: #262523; --ink: #ececea; --muted: #a8a49c;
-    --faint: #8a867e; --border: #383632; --border-2: #4a4842;
-    --accent-w: #3a231d; --link: #8ab4f8; --ok: #6bbf7b; --err: #f08b7d;
+    --bg: #111111; --ink: #f2f2f2; --line: #f2f2f2;
+    --hi: #d8d84a; --head: #3f6b4c; --muted: #a9a9a9; --err: #f08b7d;
+    /* --on-hi is deliberately not redefined: the highlight is light here too. */
   }
 }
 
@@ -33,135 +30,174 @@ body {
   background: var(--bg);
   color: var(--ink);
   font-family: var(--font);
-  font-size: 15px;
-  line-height: 1.6;
+  font-size: 17px;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
-  padding: 1.6rem 1.2rem 4rem;
+  padding: 2.6rem 1.5rem 3rem;
 }
 
-.page { max-width: 760px; margin: 0 auto; }
+.page { max-width: 860px; margin: 0 auto; }
 
-/* ---- top line ---------------------------------------------------------- */
-.top { display: flex; justify-content: space-between; align-items: center;
-       gap: 1rem; margin-bottom: 3.2rem; }
-.name { letter-spacing: .14em; }
-.name a { color: inherit; text-decoration: none; }
+a { color: inherit; }
 
-a { color: var(--link); text-decoration: none; }
-a:hover { text-decoration: underline; }
-
-.sub { color: var(--muted); margin-bottom: 1rem; }
-.note { color: var(--muted); }
-.faint { color: var(--faint); }
-
-/* ---- the composer ------------------------------------------------------- */
-.composer {
-  display: flex; align-items: center; gap: .7rem;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: .55rem .6rem .55rem 1.1rem;
-  box-shadow: 0 1px 2px rgba(0,0,0,.04);
-  transition: border-color .12s, box-shadow .12s;
+/* ---- masthead ----------------------------------------------------------- */
+.name {
+  font-size: 3.2rem; font-weight: 400; line-height: 1.05;
+  letter-spacing: -.01em; margin-bottom: 3.4rem;
 }
-.composer:focus-within {
-  border-color: var(--border-2);
-  box-shadow: 0 2px 10px rgba(0,0,0,.07);
-}
+.lead { margin-bottom: 1.1rem; }
 
-.entry { position: relative; flex: 1; min-width: 0; }
-input {
-  font: inherit; color: var(--ink); background: transparent; border: 0;
-  width: 100%; padding: .5rem 0; border-radius: 0;
-}
-input:focus { outline: 0; }
-input::placeholder { color: var(--faint); }
+/* ---- address bar -------------------------------------------------------- */
+/* Input and button are one rectangle split in two: the button carries the
+   left rule so the pair never shows a doubled line between them. */
+.bar { display: flex; border: 1px solid var(--line); margin-bottom: 3rem; }
+.entry { position: relative; flex: 1; min-width: 0; display: flex; }
 
-/* ---- controls under the entry ------------------------------------------ */
-/* Three rows on a shared two-column grid, so the labels and the first chip of
-   each row line up. `display: contents` lets each group's label and chips
-   become grid items of .tools rather than a nested box. */
-.tools { display: grid; grid-template-columns: max-content 1fr;
-         gap: .45rem .8rem; align-items: center;
-         margin-top: .9rem; padding: 0 .3rem; }
-.group { display: contents; }
-/* [hidden] sets display:none, but any explicit display wins over it — so the
-   hidden state has to be spelled out for a grid/contents element. */
-.group[hidden] { display: none; }
-.group-label { color: var(--faint); }
-.chips { display: flex; flex-wrap: wrap; gap: .35rem; }
+.bar input {
+  font: inherit; color: var(--ink); background: transparent;
+  border: 0; width: 100%; padding: .75rem 1rem;
+}
+.bar input:focus { outline: 0; }
+.bar input::placeholder { color: var(--muted); }
+.bar:focus-within { box-shadow: 0 0 0 1px var(--line); }
 
-.chip {
-  font: inherit; color: var(--muted); background: transparent;
-  border: 1px solid var(--border); border-radius: 999px;
-  padding: .12rem .7rem; cursor: pointer; white-space: nowrap;
-  transition: background .12s, border-color .12s, color .12s;
+.go {
+  flex: none; font: inherit; font-weight: 700; letter-spacing: .02em;
+  color: var(--on-hi); background: var(--hi);
+  border: 0; border-left: 1px solid var(--line);
+  padding: .75rem 1.6rem; cursor: pointer;
 }
-.chip:hover { border-color: var(--border-2); color: var(--ink); }
-.chip[aria-pressed="true"] {
-  color: var(--accent); border-color: var(--accent); background: var(--accent-w);
-}
-.chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.go:hover { filter: brightness(.95); }
+.go:disabled { background: transparent; color: var(--muted); cursor: wait; }
 
-.send {
-  flex: none; font: inherit; color: #fff; background: var(--accent);
-  border: 0; border-radius: 999px; padding: .3rem 1.1rem; cursor: pointer;
+/* ---- options table ------------------------------------------------------ */
+/* Cells carry their own right and bottom rule and the table carries the top
+   and left, so no line is ever drawn twice. */
+.opts { border-top: 1px solid var(--line); border-left: 1px solid var(--line); }
+.row { display: flex; }
+/* [hidden] sets display:none, but an explicit display wins over it — so the
+   hidden state has to be spelled out for a flex row. */
+.row[hidden] { display: none; }
+
+.rowhead, .cell, .cell-empty {
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  padding: .6rem 1rem;
+  font-weight: 700; letter-spacing: .02em; text-transform: uppercase;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.send:hover { filter: brightness(.93); }
-.send:disabled { background: var(--border-2); cursor: wait; }
+.rowhead { flex: 0 0 25%; background: var(--head); }
+.cells { flex: 1; display: flex; min-width: 0; }
+.cell, .cell-empty { flex: 1 1 0; min-width: 0; }
+
+.cell {
+  font-family: inherit; font-size: inherit; text-align: left;
+  color: var(--ink); background: transparent; cursor: pointer;
+}
+.cell:hover { background: rgba(0,0,0,.05); }
+.cell[aria-pressed="true"] { background: var(--hi); color: var(--on-hi); }
+.cell[aria-pressed="true"]:hover { background: var(--hi); filter: brightness(.95); }
+.cell:focus-visible { outline: 2px solid var(--line); outline-offset: -3px; }
 
 /* ---- suggestions -------------------------------------------------------- */
 #suggest {
-  position: absolute; left: -.4rem; right: -.4rem; top: calc(100% + .5rem);
-  z-index: 10; list-style: none; background: var(--panel);
-  border: 1px solid var(--border); border-radius: 12px; padding: .3rem;
-  max-height: 17rem; overflow-y: auto; display: none;
-  box-shadow: 0 8px 26px rgba(0,0,0,.10);
+  position: absolute; left: -1px; right: -1px; top: calc(100% + 1px);
+  z-index: 10; list-style: none; background: var(--bg);
+  border: 1px solid var(--line); max-height: 17rem; overflow-y: auto;
+  display: none;
 }
 #suggest.open { display: block; }
-#suggest li { padding: .25rem .6rem; border-radius: 8px; cursor: pointer;
+#suggest li { padding: .4rem 1rem; cursor: pointer;
               white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#suggest li:hover, #suggest li.active { background: var(--accent-w); color: var(--accent); }
+#suggest li:hover, #suggest li.active { background: var(--hi); color: var(--on-hi); }
 
 /* ---- output ------------------------------------------------------------- */
-#out { margin-top: 1.4rem; background: var(--panel); border: 1px solid var(--border);
-       border-radius: var(--radius); padding: .9rem 1rem; }
-#queue { margin-bottom: .2rem; }
-#log { color: var(--muted); white-space: pre-wrap; max-height: 12rem;
-       overflow-y: auto; }
-#links { margin-top: .6rem; display: flex; flex-wrap: wrap; gap: .5rem; }
-#links a {
-  border: 1px solid var(--border); border-radius: 999px; padding: .12rem .8rem;
-  color: var(--ink); text-decoration: none;
-}
-#links a:hover { border-color: var(--accent); color: var(--accent); }
-.okline { color: var(--ok); }
+#out { margin-top: 1.6rem; border: 1px solid var(--line); padding: 1rem 1.2rem;
+       min-height: 11rem; }
+#queue { text-transform: uppercase; font-weight: 700; }
+#log { white-space: pre-wrap; max-height: 16rem; overflow-y: auto; }
 .errline { color: var(--err); }
 
-/* ---- what you get ------------------------------------------------------- */
-.rows { margin-top: 2.6rem; }
-.r { display: grid; grid-template-columns: 7.5rem 1fr; gap: .6rem;
-     padding: .45rem 0; border-top: 1px solid var(--border); }
-.r .k { color: var(--accent); }
-.r .v { color: var(--muted); }
+/* ---- bottom actions ----------------------------------------------------- */
+.actions { display: flex; justify-content: space-between; align-items: flex-start;
+           gap: 1rem; margin-top: 1.6rem; }
+#links { display: flex; }
+.btn {
+  display: inline-block; border: 1px solid var(--line); padding: .6rem 1.4rem;
+  font-weight: 700; letter-spacing: .02em; text-transform: uppercase;
+  text-decoration: none; color: var(--ink); background: transparent;
+  white-space: nowrap;
+}
+#links .btn + .btn { border-left: 0; }
+.btn:hover { background: rgba(0,0,0,.05); }
+.btn.primary { background: var(--hi); color: var(--on-hi); }
+.btn.primary:hover { background: var(--hi); filter: brightness(.95); }
 
-footer { margin-top: 2.6rem; color: var(--faint); }
+footer { margin-top: 3rem; color: var(--muted); font-size: .85em; }
+footer a { color: inherit; }
 
 /* ---- hover preview ------------------------------------------------------ */
 #preview {
   position: fixed; z-index: 30; pointer-events: none; display: none;
-  border: 1px solid var(--border); border-radius: 12px; background: var(--panel);
-  padding: 6px; box-shadow: 0 10px 34px rgba(0,0,0,.16); width: min(44vw, 520px);
+  border: 1px solid var(--line); background: var(--bg);
+  padding: 5px; width: min(46vw, 560px);
 }
 #preview.on { display: block; }
-#preview img { display: block; width: 100%; height: auto; border-radius: 7px; }
-#preview .cap { color: var(--muted); padding: .3rem .2rem 0; }
+#preview img { display: block; width: 100%; height: auto; }
+#preview .cap { padding: .35rem .2rem 0; font-size: .85em; }
 
-@media (max-width: 640px) {
-  .top { margin-bottom: 1.8rem; }
-  .group + .group { margin-left: 0; }
-  .tools { gap: .35rem; }
-  .send { padding: .3rem .9rem; }
-  .r { grid-template-columns: 1fr; gap: 0; }
+@media (max-width: 700px) {
+  body { padding: 1.6rem 1rem 2.5rem; font-size: 15px; }
+  .name { font-size: 2.2rem; margin-bottom: 2rem; }
+  .bar { margin-bottom: 2rem; }
+  .rowhead { flex: 0 0 30%; }
+  .rowhead, .cell, .cell-empty { padding: .5rem .6rem; }
+  .go { padding: .75rem 1rem; }
+  .actions { flex-direction: column; align-items: stretch; }
+  .actions .btn { text-align: center; }
   #preview { width: 92vw; }
+}
+
+/* On a phone the label column would leave the options too narrow to hold
+   their words — SUMMARY and NEUTRAL both clip — so the label becomes a strip
+   above its own row of options and each option gets the full width. */
+@media (max-width: 560px) {
+  .row { flex-direction: column; }
+  .rowhead { flex: none; }
+  /* the site sheet offers six scales; they have to share one phone width */
+  .cell, .cell-empty { padding: .5rem .35rem; letter-spacing: 0; }
+}
+
+/* ---- about page --------------------------------------------------------- */
+/* The same hairline table as the options, but the second column carries
+   sentences, so it wraps and the row grows to fit. */
+.masthead { display: flex; justify-content: space-between; align-items: flex-start;
+            gap: 1rem; margin-bottom: 2.6rem; }
+.masthead .name { margin-bottom: 0; }
+.name a { text-decoration: none; }
+
+h2 { font-size: 1em; font-weight: 700; text-transform: uppercase;
+     letter-spacing: .02em; margin: 2.6rem 0 .8rem; }
+
+.deftable { border-top: 1px solid var(--line); border-left: 1px solid var(--line); }
+.deftable .row { align-items: stretch; }
+.deftable .k, .deftable .v {
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  padding: .6rem 1rem;
+}
+.deftable .k { flex: 0 0 25%; background: var(--head);
+               font-weight: 700; text-transform: uppercase; letter-spacing: .02em; }
+.deftable .v { flex: 1; min-width: 0; }
+
+@media (max-width: 700px) {
+  .deftable .k { flex: 0 0 34%; }
+  .deftable .k, .deftable .v { padding: .5rem .6rem; }
+}
+
+/* Narrowest phones: six scale options cannot share 288px without clipping
+   "auto", so the row wraps onto a second line of cells instead. */
+@media (max-width: 380px) {
+  .cells { flex-wrap: wrap; }
+  .cell, .cell-empty { flex: 1 0 30%; }
 }

@@ -27,11 +27,14 @@ npm run generate -- "26-30 Campsie St, Campsie NSW 2194"
 npm run serve        # http://localhost:3000  (PORT=… to change)
 ```
 
-A public landing page that explains the tool to anyone who lands on it —
-what the three drawings contain, where the data comes from, and what the
-output must not be relied on for — with the generator itself behind the
-access code. Sample thumbnails live in `web/samples/` and are served from
-`/samples/<name>.jpg` (whitelisted names only).
+One address field with the drawing options as a table of cells under it —
+one font, one size, hairline rules, yellow for what is chosen or what to
+press. Hovering an option shows a real sheet generated for the same demo
+address, so the comparison is like for like. `/about` explains the tool to
+anyone who lands on it: what the three drawings contain, where the data
+comes from, and what the output must not be relied on for. The generator
+itself sits behind the access code. Sample thumbnails live in `web/samples/`
+and are served from `/samples/<name>.jpg` (whitelisted names only).
 
 Progress streams while the pipeline fetches and composes; the finished A1 PDF
 opens in the browser. Jobs run one at a time so simultaneous users don't
