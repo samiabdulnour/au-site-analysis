@@ -80,8 +80,12 @@ a { color: inherit; }
 .row[hidden] { display: none; }
 
 .rowhead, .cell, .cell-empty {
-  border-right: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
+  /* All four sides, not just the two that draw: a <button> keeps the
+     browser's 2px outset border on any side left unspecified, which drew
+     every cell's top and left rule at double width in grey. */
+  border: 0 solid var(--line);
+  border-right-width: 1px;
+  border-bottom-width: 1px;
   padding: .6rem 1rem;
   font-weight: 700; letter-spacing: .02em; text-transform: uppercase;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -201,3 +205,8 @@ h2 { font-size: 1em; font-weight: 700; text-transform: uppercase;
   .cells { flex-wrap: wrap; }
   .cell, .cell-empty { flex: 1 0 30%; }
 }
+
+/* A note in the suggestion list — searching, no match, or what to type.
+   Reads as guidance, not as something to pick. */
+#suggest li.hint { color: var(--muted); cursor: default; }
+#suggest li.hint:hover { background: transparent; color: var(--muted); }

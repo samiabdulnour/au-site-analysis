@@ -167,8 +167,19 @@ let suggestTimer = null, activeIdx = -1, lastQuery = '';
 
 function closeSuggest() { suggestBox.classList.remove('open'); activeIdx = -1; }
 
+/** A line of guidance in place of results — never selectable. */
+function showNote(text) {
+  suggestBox.innerHTML = '';
+  const li = document.createElement('li');
+  li.className = 'hint';
+  li.textContent = text;
+  suggestBox.append(li);
+  suggestBox.classList.add('open');
+  activeIdx = -1;
+}
+
 function renderSuggest(items) {
-  if (!items.length) return closeSuggest();
+  if (!items.length) return showNote('no match — check the street and the suburb');
   suggestBox.innerHTML = '';
   items.forEach((a, i) => {
     const li = document.createElement('li');
@@ -187,23 +198,36 @@ addrInput.addEventListener('input', () => {
   const q = addrInput.value.trim();
   clearTimeout(suggestTimer);
   if (q.length < 4) return closeSuggest();
+  // The address register is indexed on the address string, which begins with
+  // the house number, so a street-first query cannot be answered at all —
+  // matching mid-string takes the service half a minute. Say what to type
+  // instead of leaving the field looking broken.
+  if (!/^\d/.test(q)) return showNote('start with the house number — e.g. 212 Bondi Road, Bondi');
   suggestTimer = setTimeout(async () => {
     if (q === lastQuery) return;
     lastQuery = q;
+    // The lookup runs from about half a second to four, depending on the
+    // upstream service, which is long enough for a silent field to read as
+    // broken.
+    showNote('searching…');
     try {
       const r = await fetch('/api/address?q=' + encodeURIComponent(q));
       const j = await readJson(r);
-      // The reply can land after the field has been left or the job started;
-      // rendering then would pop the list back open over the page.
-      if (addrInput.value.trim() === q && document.activeElement === addrInput) {
-        renderSuggest(j.suggestions || []);
-      }
+      if (addrInput.value.trim() !== q) return;        // superseded by newer typing
+      // The reply can also land after the field has been left or the job
+      // started; rendering then would pop the list back open over the page.
+      if (document.activeElement !== addrInput) return closeSuggest();
+      renderSuggest(j.suggestions || []);
     } catch { closeSuggest(); }
   }, 250);
 });
 
 addrInput.addEventListener('keydown', (e) => {
   if (!suggestBox.classList.contains('open')) return;
+  if (suggestBox.querySelector('.hint')) {           // a note, nothing to walk
+    if (e.key === 'Escape') closeSuggest();
+    return;
+  }
   const n = suggestBox.children.length;
   if (e.key === 'ArrowDown') { e.preventDefault(); activeIdx = (activeIdx + 1) % n; highlight(); }
   else if (e.key === 'ArrowUp') { e.preventDefault(); activeIdx = (activeIdx - 1 + n) % n; highlight(); }

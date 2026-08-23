@@ -245,6 +245,12 @@ export async function suggestAddresses(q: string, limit = 8): Promise<string[]> 
   const { nums, rest } = splitNumbers(cleaned);
   if (!nums.length || !rest) return [];
   const num = nums[0];
+  // A typed range is only sometimes how the register stores the site. "212
+  // Bondi" finds "212-218 BONDI ROAD BONDI" because that range is one record,
+  // but 26-30 Campsie Street is filed as 26, 28 and 30 separately, so a
+  // "26-30%" prefix matches nothing. Search the leading number too, and judge
+  // coverage against it — that is the number the caller actually asked about.
+  const first = num.match(/^(\d+)/)?.[1] ?? num;
 
   // Expand abbreviated street types wherever they appear, then split the
   // street from any typed locality at the last street-type word.
@@ -269,27 +275,38 @@ export async function suggestAddresses(q: string, limit = 8): Promise<string[]> 
   // A bare "<num>%" is only selective for longer numbers: '1%' matches 1, 10,
   // 100, 1000… — a third of the register, and it measured 84s. Anchor short
   // numbers with the delimiter that must follow them instead.
-  const anchors = num.length >= 3
-    ? [`${num}%`]                       // 134% also catches 134A and 134-134A
-    : [`${num} %`, `${num}-%`];         // 1 GEORGE…, 1-3 GEORGE…
-  for (const anchor of anchors) {
+  const prefixes = (n: string) => n.length >= 3
+    ? [`${n}%`]                         // 134% also catches 134A and 134-134A
+    : [`${n} %`, `${n}-%`];             // 1 GEORGE…, 1-3 GEORGE…
+  const anchors = [...new Set(num === first ? prefixes(num) : [`${num}%`, ...prefixes(first)])];
+
+  // In parallel: these are separate round trips to a service that takes about
+  // a second each, and run in sequence a two-anchor lookup was costing seven.
+  await Promise.all(anchors.map(async (anchor) => {
     try {
       const fc = await queryWhere(ADDRESS_POINT,
         `address LIKE '${sql(anchor)}' AND address LIKE '%${sql(street)}%'` +
         ` AND housenumber NOT LIKE '%/%'`,
         'address,housenumber', 60);
       for (const f of fc.features) {
-        if (covers(String(f.properties.housenumber ?? ''), num)) {
+        if (covers(String(f.properties.housenumber ?? ''), first)) {
           add(f.properties.address as string);
         }
       }
     } catch { /* best effort */ }
-  }
+  }));
 
-  // Rank: typed locality first, then shortest/alphabetical.
-  const all = [...out.keys()];
-  const pref = locality ? all.filter((a) => a.includes(locality)) : [];
-  const rest2 = all.filter((a) => !pref.includes(a));
-  const rank = (arr: string[]) => arr.sort((a, b) => a.length - b.length || a.localeCompare(b));
-  return [...rank(pref), ...rank(rest2)].slice(0, limit);
+  // Rank. The street wildcard is unanchored, so it also matches the suburb —
+  // "212 bondi" returns 212 Birrell Street BONDI JUNCTION alongside 212 Bondi
+  // Road. Both are worth offering, but the one whose street is what was typed
+  // goes first: drop the leading number and see if the rest starts with it.
+  const streetOf = (a: string) => a.replace(/^\S+\s+/, '');
+  // The locality has to match at the end, where the suburb is: "26 Campsie
+  // Street Wilton" contains "CAMPSIE" in its street name and would otherwise
+  // outrank the Campsie address the typing was heading for.
+  const score = (a: string) =>
+    (streetOf(a).startsWith(street) ? 0 : 2) + (locality && a.endsWith(locality) ? 0 : 1);
+  return [...out.keys()]
+    .sort((a, b) => score(a) - score(b) || a.length - b.length || a.localeCompare(b))
+    .slice(0, limit);
 }
