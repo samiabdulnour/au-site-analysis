@@ -63,9 +63,11 @@ EOF
 
 `/` is the public entrance and `/fuse` the office one. They serve the same
 page and the same generator; what separates them is the graphic template.
-`fuse` is the office's own house style, so only the office door can draw with
-it — the public entrance is neutral-only and does not list the template row at
-all.
+`fuse` is the office's own house style, so only the office door draws with it
+and the public one draws `neutral`. Each door has exactly one template, so
+neither shows the template row — a list of one is not a choice. It is a list
+rather than a flag so that adding the office's second style later brings the
+row back without any other change.
 
 The code decides which you get, not the URL: entering the office code at `/`
 is still the office code, so neither entrance is a way around the other. Set
@@ -83,10 +85,9 @@ use buttons. Each door derives its own session cookie, so changing one code
 signs out that door and leaves the other alone.
 
 Sample thumbnails are rendered in `neutral`, since that is what the public
-side produces; the template row on the office door carries `tpl-fuse.jpg` and
-`tpl-neutral.jpg` to show the difference. The other previews illustrate
-drawing type, scale and orientation rather than template, so one set serves
-both doors.
+side produces, and illustrate drawing type, scale and orientation rather than
+template, so one set serves both doors. `tpl-fuse.jpg` and `tpl-neutral.jpg`
+are kept for the template row to use whenever a door offers a choice again.
 
 Authentication: set `ACCESS_CODE=<shared code>` (env or `.env`) — visitors
 must enter it once and get a 30-day session cookie. Login attempts and job

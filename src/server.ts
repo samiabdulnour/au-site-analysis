@@ -41,10 +41,15 @@ if (existsSync(join(ROOT, '.env'))) {
 // house style and is not the public's to draw with. That is enforced on the
 // job rather than in the page (TIER_TEMPLATES, applied in /api/jobs), because
 // hiding a button only stops the people who use buttons.
+//
+// One template each, so neither door shows a template row at all — a list of
+// one is not a choice. The list is what makes that true rather than a flag,
+// so adding the office's second style later is a word here and the row comes
+// back on its own.
 type Tier = 'public' | 'fuse';
 const TIER_TEMPLATES: Record<Tier, string[]> = {
   public: ['neutral'],
-  fuse: ['fuse', 'neutral'],
+  fuse: ['fuse'],
 };
 const tierDefault = (t: Tier) => TIER_TEMPLATES[t][0];
 
