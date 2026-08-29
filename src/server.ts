@@ -20,7 +20,7 @@ import { renderSheet, MAP_W, MAP_H, type SheetMeta } from './render/sheet.js';
 import { renderSiteSheet } from './render/siteSheet.js';
 import { renderSummarySheet } from './render/summarySheet.js';
 import { summaryCsv, summaryJson } from './export/summaryExport.js';
-import { setTemplate, isTemplateId, DEFAULT_TEMPLATE } from './render/template.js';
+import { setTemplate } from './render/template.js';
 import { htmlToPdf } from './render/pdf.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -33,14 +33,33 @@ if (existsSync(join(ROOT, '.env'))) {
   }
 }
 
+// Two doors. The public one at /, the office one at /fuse, each with its own
+// code — the code is what decides which you get, not the URL, so the office
+// entrance cannot be reached by guessing a path.
+//
+// What separates them is the graphic template: `fuse` is the office's own
+// house style and is not the public's to draw with. That is enforced on the
+// job rather than in the page (TIER_TEMPLATES, applied in /api/jobs), because
+// hiding a button only stops the people who use buttons.
+type Tier = 'public' | 'fuse';
+const TIER_TEMPLATES: Record<Tier, string[]> = {
+  public: ['neutral'],
+  fuse: ['fuse', 'neutral'],
+};
+const tierDefault = (t: Tier) => TIER_TEMPLATES[t][0];
+
 const ACCESS_CODE = process.env.ACCESS_CODE ?? '';
+const FUSE_ACCESS_CODE = process.env.FUSE_ACCESS_CODE ?? '';
 if (!ACCESS_CODE && process.env.ALLOW_NO_AUTH !== '1') {
   console.error('Set ACCESS_CODE=<shared code> (or ALLOW_NO_AUTH=1 for local use).');
   process.exit(1);
 }
-const SESSION_TOKEN = ACCESS_CODE
-  ? createHmac('sha256', ACCESS_CODE).update('site-analyst-session-v1').digest('hex')
-  : '';
+// An empty code must never derive a usable token, or an unset FUSE_ACCESS_CODE
+// would hand the office tier to anyone presenting the HMAC of the empty key.
+const tokenFor = (code: string) =>
+  code ? createHmac('sha256', code).update('site-analyst-session-v1').digest('hex') : '';
+const SESSION_TOKEN = tokenFor(ACCESS_CODE);
+const FUSE_SESSION_TOKEN = tokenFor(FUSE_ACCESS_CODE);
 
 const JOB_RETENTION_MS = 24 * 3600 * 1000;
 const WEB_OUT = join(ROOT, 'out', 'web');
@@ -256,14 +275,29 @@ function clientIp(req: IncomingMessage): string {
 }
 
 // ---- auth ----------------------------------------------------------------
-function authed(req: IncomingMessage): boolean {
-  if (!ACCESS_CODE) return true;
-  const cookies = req.headers.cookie ?? '';
-  const m = cookies.match(/(?:^|;\s*)sa_session=([0-9a-f]{64})/);
-  if (!m) return false;
-  const got = Buffer.from(m[1]);
-  const want = Buffer.from(SESSION_TOKEN);
-  return got.length === want.length && timingSafeEqual(got, want);
+function sameToken(got: string, want: string): boolean {
+  if (!want) return false;
+  const a = Buffer.from(got), b = Buffer.from(want);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+/** Which door this request came through, or null if it has not been through one. */
+function authed(req: IncomingMessage): Tier | null {
+  if (!ACCESS_CODE) return 'fuse';       // ALLOW_NO_AUTH: local use sees everything
+  const m = (req.headers.cookie ?? '').match(/(?:^|;\s*)sa_session=([0-9a-f]{64})/);
+  if (!m) return null;
+  if (sameToken(m[1], FUSE_SESSION_TOKEN)) return 'fuse';
+  if (sameToken(m[1], SESSION_TOKEN)) return 'public';
+  return null;
+}
+
+/** The codes are checked with a constant-time compare over a fixed width. */
+function codeMatches(given: string, want: string): boolean {
+  if (!want) return false;
+  return timingSafeEqual(
+    Buffer.from(given.padEnd(256).slice(0, 256)),
+    Buffer.from(want.padEnd(256).slice(0, 256)),
+  );
 }
 
 function json(res: ServerResponse, code: number, body: unknown) {
@@ -287,6 +321,7 @@ const server = createServer(async (req, res) => {
   // from user input.
   const PAGES: Record<string, [string, string]> = {
     '/': ['index.html', 'text/html; charset=utf-8'],
+    '/fuse': ['index.html', 'text/html; charset=utf-8'],
     '/about': ['about.html', 'text/html; charset=utf-8'],
     '/style.css': ['style.css', 'text/css; charset=utf-8'],
     '/app.js': ['app.js', 'text/javascript; charset=utf-8'],
@@ -331,7 +366,12 @@ const server = createServer(async (req, res) => {
   }
 
   if (req.method === 'GET' && url.pathname === '/api/me') {
-    return json(res, authed(req) ? 200 : 401, { authed: authed(req) });
+    const tier = authed(req);
+    if (!tier) return json(res, 401, { authed: false });
+    return json(res, 200, {
+      authed: true, tier,
+      templates: TIER_TEMPLATES[tier], template: tierDefault(tier),
+    });
   }
 
   if (req.method === 'POST' && url.pathname === '/api/login') {
@@ -339,15 +379,24 @@ const server = createServer(async (req, res) => {
     const body = await readBody(req);
     let code = '';
     try { code = String(JSON.parse(body || '{}').code ?? ''); } catch { /* fall through */ }
-    const got = Buffer.from(code.padEnd(256).slice(0, 256));
-    const want = Buffer.from(ACCESS_CODE.padEnd(256).slice(0, 256));
-    if (!ACCESS_CODE || !timingSafeEqual(got, want)) return json(res, 401, { error: 'Wrong access code.' });
+    // The code decides the tier. Entering the office code at the public door
+    // is still the office code, and the reverse is equally true, so neither
+    // entrance is a way around the other.
+    const tier: Tier | null =
+      codeMatches(code, FUSE_ACCESS_CODE) ? 'fuse'
+      : codeMatches(code, ACCESS_CODE) ? 'public'
+      : null;
+    if (!tier) return json(res, 401, { error: 'Wrong access code.' });
+    const token = tier === 'fuse' ? FUSE_SESSION_TOKEN : SESSION_TOKEN;
     const secure = req.headers['x-forwarded-proto'] === 'https' ? '; Secure' : '';
     res.writeHead(200, {
       'Content-Type': 'application/json',
-      'Set-Cookie': `sa_session=${SESSION_TOKEN}; HttpOnly; SameSite=Lax; Max-Age=2592000; Path=/${secure}`,
+      'Set-Cookie': `sa_session=${token}; HttpOnly; SameSite=Lax; Max-Age=2592000; Path=/${secure}`,
     });
-    res.end(JSON.stringify({ ok: true }));
+    res.end(JSON.stringify({
+      ok: true, tier,
+      templates: TIER_TEMPLATES[tier], template: tierDefault(tier),
+    }));
     return;
   }
 
@@ -369,6 +418,11 @@ const server = createServer(async (req, res) => {
     const body = await readBody(req);
     try {
       const { address, scale, rotate, sheet, template } = JSON.parse(body || '{}');
+      // Enforced here rather than by hiding the option: a public session that
+      // asks for the office template gets that tier's own template instead.
+      const allowed = TIER_TEMPLATES[authed(req) ?? 'public'];
+      const asked = String(template ?? '');
+      const jobTemplate = allowed.includes(asked) ? asked : allowed[0];
       const addr = String(address ?? '').trim();
       if (addr.length < 8 || addr.length > 120) return json(res, 400, { error: 'Enter a full NSW street address.' });
       const kind: 'context' | 'site' | 'summary' =
@@ -380,7 +434,7 @@ const server = createServer(async (req, res) => {
       const job: Job = {
         id: randomUUID(), address: addr, sheet: kind, scale: sc,
         rotate: rotate === 'auto' ? 'auto' : 'north',
-        template: isTemplateId(String(template ?? '')) ? String(template) : DEFAULT_TEMPLATE,
+        template: jobTemplate,
         status: 'queued', log: [], createdAt: Date.now(),
       };
       enqueue(job);

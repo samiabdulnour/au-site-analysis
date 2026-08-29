@@ -2,7 +2,10 @@
    State lives in one object; the options are plain buttons that write into it,
    which avoids native <select> chrome in a page that is otherwise all text. */
 
-const state = { sheet: 'context', scale: '3000', rotate: 'north', template: 'fuse' };
+// `template` and which templates exist at all come from the session: the
+// office style belongs to the office door, so the public page never lists it.
+const state = { sheet: 'context', scale: '3000', rotate: 'north', template: 'neutral' };
+let allowedTemplates = ['neutral'];
 
 // [value, label, previewImage, previewCaption] — every option previews a real
 // sheet generated for the same demo address, so the comparison is like for like.
@@ -30,8 +33,8 @@ const SCALES = {
 // Graphic template: colours, typeface and symbol family. Content is identical
 // between templates — only the drawing's appearance changes.
 const TEMPLATES = [
-  ['fuse',    'fuse',    '/samples/context.jpg',        'fuse — the office style'],
-  ['neutral', 'neutral', '/samples/tpl-neutral.jpg',    'neutral — restrained palette, mono-safe'],
+  ['fuse',    'fuse',    '/samples/tpl-fuse.jpg',    'fuse — the office style'],
+  ['neutral', 'neutral', '/samples/tpl-neutral.jpg', 'neutral — restrained palette, mono-safe'],
 ];
 const NORTH = [
   ['north', 'up',    '/samples/site.jpg',       'north up — the sheet is oriented to north'],
@@ -92,7 +95,23 @@ function renderAll() {
     tokens($('scaleOpts'), scales, state.scale, (v) => { state.scale = v; renderAll(); });
   }
   tokens($('northOpts'), NORTH, state.rotate, (v) => { state.rotate = v; renderAll(); });
-  tokens($('templateOpts'), TEMPLATES, state.template, (v) => { state.template = v; renderAll(); });
+
+  // One template is not a choice — the row only earns its space when the
+  // session can actually pick between them.
+  const tpls = TEMPLATES.filter(([v]) => allowedTemplates.includes(v));
+  $('templateRow').hidden = tpls.length < 2;
+  tokens($('templateOpts'), tpls, state.template, (v) => { state.template = v; renderAll(); });
+}
+
+/** Take what the door told us about this session. */
+function applySession(j) {
+  allowedTemplates = Array.isArray(j.templates) && j.templates.length ? j.templates : ['neutral'];
+  state.template = allowedTemplates.includes(j.template) ? j.template : allowedTemplates[0];
+  if (j.tier === 'fuse') {
+    const lead = document.querySelector('#f .lead');
+    if (lead) lead.textContent = 'FUSE edition. Search a NSW address to generate its site analysis.';
+  }
+  renderAll();
 }
 
 /** Keep the scale valid when the drawing changes — 1:3000 means nothing for a lot. */
@@ -241,10 +260,10 @@ addrInput.addEventListener('blur', () => setTimeout(closeSuggest, 120));
 
 // ---- session -------------------------------------------------------------
 
-fetch('/api/me').then((r) => {
+fetch('/api/me').then(async (r) => {
   f.hidden = !r.ok;
   loginForm.hidden = r.ok;
-  if (r.ok) addrInput.focus();
+  if (r.ok) { applySession(await readJson(r)); addrInput.focus(); }
 }).catch(() => { loginForm.hidden = false; });
 
 loginForm.addEventListener('submit', async (e) => {
@@ -256,6 +275,7 @@ loginForm.addEventListener('submit', async (e) => {
   if (r.ok) {
     loginForm.hidden = true;
     f.hidden = false;
+    applySession(await readJson(r));
     addrInput.focus();
   } else {
     const j = await readJson(r);

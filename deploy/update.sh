@@ -57,6 +57,7 @@ docker run -d --name site-analyst --restart unless-stopped \
   --network "$NET" \
   -p 127.0.0.1:3100:3000 \
   -e ACCESS_CODE="$ACCESS_CODE" \
+  -e FUSE_ACCESS_CODE="${FUSE_ACCESS_CODE:-}" \
   -e TFNSW_API_KEY="$TFNSW_API_KEY" \
   -e OVERPASS_LOCAL="${OVERPASS_LOCAL:-}" \
   -v /var/lib/site-analyst:/hostinfo:ro \

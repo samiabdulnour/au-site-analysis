@@ -46,8 +46,9 @@ To refresh the samples, generate the three sheets for the demo address and
 re-render them:
 
 ```bash
-npm run generate -- "1 Bay Street, Botany NSW 2019" --type both
-npm run generate -- "1 Bay Street, Botany NSW 2019" --type summary
+# neutral: the previews have to match what the public side draws
+npm run generate -- "1 Bay Street, Botany NSW 2019" --type both --template neutral
+npm run generate -- "1 Bay Street, Botany NSW 2019" --type summary --template neutral
 python3 - <<'EOF'
 import pymupdf
 src = 'out/1-bay-street-botany-nsw-2019/'
@@ -57,6 +58,35 @@ for name, f in [('context','CONTEXT_ANALYSIS.pdf'), ('site','SITE_ANALYSIS.pdf')
         f'web/samples/{name}.jpg', format='JPEG', quality=76, optimize=True)
 EOF
 ```
+
+### Two doors
+
+`/` is the public entrance and `/fuse` the office one. They serve the same
+page and the same generator; what separates them is the graphic template.
+`fuse` is the office's own house style, so only the office door can draw with
+it — the public entrance is neutral-only and does not list the template row at
+all.
+
+The code decides which you get, not the URL: entering the office code at `/`
+is still the office code, so neither entrance is a way around the other. Set
+both in `/etc/site-analyst.env`:
+
+```
+ACCESS_CODE=…            # public
+FUSE_ACCESS_CODE=…       # office; omit and /fuse simply has no code that opens it
+```
+
+The allow-list is applied to the job, not to the page (`TIER_TEMPLATES` in
+`src/server.ts`). A public session that posts `template: "fuse"` straight to
+`/api/jobs` gets a neutral sheet — hiding a button only stops the people who
+use buttons. Each door derives its own session cookie, so changing one code
+signs out that door and leaves the other alone.
+
+Sample thumbnails are rendered in `neutral`, since that is what the public
+side produces; the template row on the office door carries `tpl-fuse.jpg` and
+`tpl-neutral.jpg` to show the difference. The other previews illustrate
+drawing type, scale and orientation rather than template, so one set serves
+both doors.
 
 Authentication: set `ACCESS_CODE=<shared code>` (env or `.env`) — visitors
 must enter it once and get a 30-day session cookie. Login attempts and job
