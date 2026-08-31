@@ -384,14 +384,19 @@ const server = createServer(async (req, res) => {
     const body = await readBody(req);
     let code = '';
     try { code = String(JSON.parse(body || '{}').code ?? ''); } catch { /* fall through */ }
-    // The code decides the tier. Entering the office code at the public door
-    // is still the office code, and the reverse is equally true, so neither
-    // entrance is a way around the other.
-    const tier: Tier | null =
-      codeMatches(code, FUSE_ACCESS_CODE) ? 'fuse'
-      : codeMatches(code, ACCESS_CODE) ? 'public'
-      : null;
-    if (!tier) return json(res, 401, { error: 'Wrong access code.' });
+    // Each door takes its own code and no other. A door that opens to the
+    // other entrance's key is not a separate door, however little it grants.
+    //
+    // The page says which door it is. A client is free to lie about that, but
+    // lying only ever narrows what it can present a code for — claiming the
+    // office door still requires the office code — so the secret remains the
+    // only thing that grants anything.
+    let door: Tier = 'public';
+    try { door = JSON.parse(body || '{}').door === 'fuse' ? 'fuse' : 'public'; } catch { /* public */ }
+    const tier: Tier = door;
+    if (!codeMatches(code, door === 'fuse' ? FUSE_ACCESS_CODE : ACCESS_CODE)) {
+      return json(res, 401, { error: 'Wrong access code.' });
+    }
     const token = tier === 'fuse' ? FUSE_SESSION_TOKEN : SESSION_TOKEN;
     const secure = req.headers['x-forwarded-proto'] === 'https' ? '; Secure' : '';
     res.writeHead(200, {

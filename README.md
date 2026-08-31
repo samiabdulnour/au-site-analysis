@@ -69,9 +69,16 @@ neither shows the template row — a list of one is not a choice. It is a list
 rather than a flag so that adding the office's second style later brings the
 row back without any other change.
 
-The code decides which you get, not the URL: entering the office code at `/`
-is still the office code, so neither entrance is a way around the other. Set
-both in `/etc/site-analyst.env`:
+Each door takes its own code and no other: the public code is refused at
+`/fuse` and the office code is refused at `/`. A door that opens to the other
+entrance's key is not a separate door, however little it grants. A session
+from one entrance is not a session at the other either — arriving at `/fuse`
+with a public cookie asks for the office code.
+
+The page tells the server which door it is. A client can lie about that, but
+lying only narrows what it may present a code for — claiming the office door
+still requires the office code — so the secret stays the only thing that
+grants anything. Set both in `/etc/site-analyst.env`:
 
 ```
 ACCESS_CODE=…            # public

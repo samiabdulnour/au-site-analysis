@@ -41,6 +41,10 @@ const NORTH = [
   ['auto',  'align', '/samples/north-align.jpg', 'aligned — the lot is squared to the sheet'],
 ];
 
+// Which entrance this page is. Sent with the login so the door is checked as
+// well as the code — /fuse does not open to the public code.
+const DOOR = location.pathname.replace(/\/+$/, '') === '/fuse' ? 'fuse' : 'public';
+
 const $ = (id) => document.getElementById(id);
 const f = $('f'), loginForm = $('login');
 const out = $('out'), logEl = $('log'), queueEl = $('queue');
@@ -260,17 +264,29 @@ addrInput.addEventListener('blur', () => setTimeout(closeSuggest, 120));
 
 // ---- session -------------------------------------------------------------
 
+function showLogin() {
+  f.hidden = true;
+  loginForm.hidden = false;
+  const lead = loginForm.querySelector('.lead');
+  if (lead && DOOR === 'fuse') lead.textContent = 'FUSE. Enter the office access code.';
+}
+
 fetch('/api/me').then(async (r) => {
-  f.hidden = !r.ok;
-  loginForm.hidden = r.ok;
-  if (r.ok) { applySession(await readJson(r)); addrInput.focus(); }
-}).catch(() => { loginForm.hidden = false; });
+  if (!r.ok) return showLogin();
+  const j = await readJson(r);
+  // A session from the other entrance is not a session here.
+  if (j.tier !== DOOR) return showLogin();
+  f.hidden = false;
+  loginForm.hidden = true;
+  applySession(j);
+  addrInput.focus();
+}).catch(showLogin);
 
 loginForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   const r = await fetch('/api/login', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ code: $('code').value }),
+    body: JSON.stringify({ code: $('code').value, door: DOOR }),
   });
   if (r.ok) {
     loginForm.hidden = true;
