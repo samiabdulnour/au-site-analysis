@@ -52,6 +52,12 @@ jobs:
             bash -n "$f"
           done
 
+      # Two renders with different templates must not see each other's. This
+      # was a module-level global, and its failure mode was not a crash but a
+      # sheet in the wrong house style — the kind of bug that ships.
+      - name: templates do not leak between concurrent renders
+        run: npx tsx test/template-isolation.mts
+
       # The deployer's one job here is to leave a record even when it dies on
       # its first command — which is exactly what happened once, for six days,
       # unnoticed. Reproduce that: a repo whose origin cannot be reached, and a

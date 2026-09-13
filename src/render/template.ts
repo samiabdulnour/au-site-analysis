@@ -12,6 +12,8 @@
 // DejaVu). Naming a font that is not installed does not fail — it silently
 // falls back and the sheet comes out in the wrong face, which is worse.
 
+import { AsyncLocalStorage } from 'node:async_hooks';
+
 export interface Category {
   id: string;
   label: string;
@@ -154,17 +156,41 @@ const byId = Object.fromEntries(TEMPLATES.map((t) => [t.id, t]));
 export const DEFAULT_TEMPLATE = 'fuse';
 
 // The renderers read the active template rather than threading it through
-// every drawing helper. Safe because a run renders one sheet at a time — the
-// server's job queue is serial. If jobs are ever run concurrently in one
-// process, this has to become a parameter.
+// every drawing helper — forty-five call sites across five files, most of them
+// deep inside drawing code that has no other reason to know about it.
+//
+// That was safe only because the server renders one sheet at a time. Two
+// concurrent renders would not have failed; the second's setTemplate would
+// have changed the palette out from under the first, and out would have come a
+// sheet in the wrong house style, silently, and only when a public job and an
+// office job happened to overlap.
+//
+// Threading a parameter through all forty-five was one answer. This is the
+// other: the active template becomes per-async-context rather than per-process,
+// which is the problem AsyncLocalStorage exists for. The drawing code is
+// untouched, and a render started inside withTemplate() keeps its own template
+// across every await it makes, however deep.
+const als = new AsyncLocalStorage<Template>();
+
+/** The process-wide fallback, for the CLI, which renders one sheet and exits. */
 let active: Template = byId[DEFAULT_TEMPLATE];
 
 export function setTemplate(id: string | undefined): Template {
   active = byId[id ?? ''] ?? byId[DEFAULT_TEMPLATE];
   return active;
 }
+
+/**
+ * Run `fn` with `id` as the active template for it and everything it awaits,
+ * without disturbing what any other concurrent run sees.
+ */
+export function withTemplate<T>(id: string | undefined, fn: () => T): T {
+  return als.run(byId[id ?? ''] ?? byId[DEFAULT_TEMPLATE], fn);
+}
+
 export function tpl(): Template {
-  return active;
+  // The context when there is one; otherwise whatever setTemplate last chose.
+  return als.getStore() ?? active;
 }
 export function isTemplateId(id: string): boolean {
   return Object.hasOwn(byId, id);
