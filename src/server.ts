@@ -20,7 +20,7 @@ import { renderSheet, MAP_W, MAP_H, type SheetMeta } from './render/sheet.js';
 import { renderSiteSheet } from './render/siteSheet.js';
 import { renderSummarySheet } from './render/summarySheet.js';
 import { summaryCsv, summaryJson } from './export/summaryExport.js';
-import { setTemplate } from './render/template.js';
+import { withTemplate } from './render/template.js';
 import { htmlToPdf } from './render/pdf.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -385,12 +385,40 @@ function enqueue(job: Job) {
   queue = queue.then(() => runJob(job)).catch(() => {});
 }
 
+/**
+ * The DXF export is a python script. It ran through spawnSync, which blocks the
+ * event loop for its whole duration — so for the seconds it took, this server
+ * answered nothing at all: no progress for the visitor waiting on that sheet,
+ * and no response to anyone else on the site. Nothing about it was ever
+ * required to be synchronous.
+ *
+ * Returns whether the script exited cleanly; the caller still checks that the
+ * zip it was supposed to write is actually there.
+ */
+async function runCadExport(script: string, outDir: string): Promise<boolean> {
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  try {
+    await promisify(execFile)('python3', [join(ROOT, 'src', 'export', script), outDir]);
+    return true;
+  } catch {
+    return false;     // missing ezdxf/pyproj, or a site the exporter cannot draw
+  }
+}
+
+/**
+ * The template is bound to this job's async context rather than set globally,
+ * so the render reads its own and nothing else's — the one thing that had to
+ * be true before jobs could ever overlap.
+ */
 async function runJob(job: Job) {
+  return withTemplate(job.template, () => runJobBody(job));
+}
+
+async function runJobBody(job: Job) {
   job.status = 'running';
   job.startedAt = Date.now();
   saveIndex();
-  // Jobs run one at a time, so setting the active template per job is safe.
-  setTemplate(job.template);
   const outDir = join(WEB_OUT, job.id);
   try {
     const office = JSON.parse(readFileSync(join(ROOT, 'config', 'office.json'), 'utf8'));
@@ -433,10 +461,9 @@ async function runJob(job: Job) {
       await htmlToPdf(htmlPath, pdfPath);
       job.pdfPath = pdfPath;
       job.log.push('exporting CAD (DXF/DWG)…');
-      const { spawnSync } = await import('node:child_process');
-      const cad = spawnSync('python3', [join(ROOT, 'src', 'export', 'site_dxf_export.py'), outDir], { encoding: 'utf8' });
-      if (cad.status === 0 && existsSync(join(outDir, 'SITE_ANALYSIS_CAD.zip'))) {
-        job.cadPath = join(outDir, 'SITE_ANALYSIS_CAD.zip');
+      const zip = join(outDir, 'SITE_ANALYSIS_CAD.zip');
+      if (await runCadExport('site_dxf_export.py', outDir) && existsSync(zip)) {
+        job.cadPath = zip;
       } else {
         job.log.push('CAD export unavailable for this run');
       }
@@ -457,10 +484,9 @@ async function runJob(job: Job) {
       await htmlToPdf(htmlPath, pdfPath);
       job.pdfPath = pdfPath;
       job.log.push('exporting CAD (DXF/DWG)…');
-      const { spawnSync } = await import('node:child_process');
-      const cad = spawnSync('python3', [join(ROOT, 'src', 'export', 'dxf_export.py'), outDir], { encoding: 'utf8' });
-      if (cad.status === 0 && existsSync(join(outDir, 'CONTEXT_ANALYSIS_CAD.zip'))) {
-        job.cadPath = join(outDir, 'CONTEXT_ANALYSIS_CAD.zip');
+      const zip = join(outDir, 'CONTEXT_ANALYSIS_CAD.zip');
+      if (await runCadExport('dxf_export.py', outDir) && existsSync(zip)) {
+        job.cadPath = zip;
       } else {
         job.log.push('CAD export unavailable for this run');
       }

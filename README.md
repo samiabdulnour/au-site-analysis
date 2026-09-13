@@ -203,10 +203,28 @@ of one address inside a batch share a single job, and the hour's budget is
 charged for the sheets it will actually draw rather than the rows submitted.
 
 It is deliberately not concurrency. Jobs still run one at a time, which keeps
-the promise this tool makes to the four free services it is a guest of — and
-avoids a sharper problem: the active graphic template is a module-level global
-(`src/render/template.ts`), so two simultaneous renders would silently produce
-a sheet in the wrong house style rather than fail.
+the promise this tool makes to the four free services it is a guest of.
+
+What stopped being a reason is the graphic template. It was a module-level
+global in `src/render/template.ts`, read from forty-five places across the
+renderers, and two simultaneous renders would not have failed — the second's
+`setTemplate` would have changed the palette out from under the first, and out
+would have come a sheet in the wrong house style, silently, and only when a
+public job and an office job happened to overlap.
+
+Threading it through forty-five call sites was one answer. `withTemplate()` is
+the other: the active template is per-async-context rather than per-process, so
+a render keeps its own across every await it makes, however deep, and the
+drawing code is untouched. `test/template-isolation.mts` holds both mechanisms
+to the same interleaving and requires the old one to leak and the new one not
+to — a test that only proves something while it can still see the bug it was
+written for.
+
+The DXF export no longer runs through `spawnSync`, which blocked the event loop
+for its whole duration: for the seconds it took, the server answered nothing at
+all — no progress for the visitor waiting on that sheet, and no response to
+anyone else. (`src/cli.ts` still uses it, and should: a one-shot process has
+nothing else to serve.)
 
 `POST /api/batches` takes `{ addresses: [...], sheet, scale, rotate, template }`
 and at most twelve, one hour's worth of the per-IP job budget. All or nothing:
