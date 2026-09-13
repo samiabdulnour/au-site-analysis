@@ -809,8 +809,10 @@ Sitemap: ${siteBase()}/sitemap.xml
   }
 
   if (req.method === 'GET' && url.pathname === '/api/me') {
-    if (!authed(req)) return json(res, 401, { authed: false });
-    return json(res, 200, { authed: true, operator: isOperator(req) });
+    if (!authed(req)) return json(res, 401, { authed: false, required: true });
+    // `required` is not a secret: the login field is shown to anyone. It tells
+    // the page whether signing out means anything here.
+    return json(res, 200, { authed: true, operator: isOperator(req), required: Boolean(ACCESS_CODE) });
   }
 
   if (req.method === 'POST' && url.pathname === '/api/login') {
@@ -830,7 +832,27 @@ Sitemap: ${siteBase()}/sitemap.xml
       'Content-Type': 'application/json',
       'Set-Cookie': `sa_session=${token}; HttpOnly; SameSite=Lax; Max-Age=2592000; Path=/${secure}`,
     });
-    res.end(JSON.stringify({ ok: true, operator }));
+    // Described exactly as /api/me describes it, from the same expression: the
+    // page takes whichever reaches it first, and a session that looked
+    // different depending on which answer arrived would show the controls for
+    // one of them. The new cookie is not on this request, hence not isOperator.
+    res.end(JSON.stringify({ ok: true, operator, required: Boolean(ACCESS_CODE) }));
+    return;
+  }
+
+  // A session lasts thirty days, so signing in as someone else needs a way to
+  // put the current one down. Without this a browser that had entered the
+  // shared code could not reach the operator view for a month: the page hides
+  // the code field once a session exists, and the cookie is HttpOnly, so the
+  // page cannot clear it either. Deliberately open — ending a session you hold
+  // is not a privilege, and there is nothing here to refuse.
+  if (req.method === 'POST' && url.pathname === '/api/logout') {
+    const secure = req.headers['x-forwarded-proto'] === 'https' ? '; Secure' : '';
+    res.writeHead(200, {
+      'Content-Type': 'application/json',
+      'Set-Cookie': `sa_session=; HttpOnly; SameSite=Lax; Max-Age=0; Path=/${secure}`,
+    });
+    res.end(JSON.stringify({ ok: true }));
     return;
   }
 
