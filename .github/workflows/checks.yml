@@ -1,0 +1,117 @@
+# What a contributor would run before pushing, run for them.
+#
+# Nothing here touches NSW ePlanning, Overpass, SIX or Valhalla: they are free
+# services this tool is a guest of, and a CI run is not a reason to spend their
+# capacity. So the sheets themselves are not generated — what is checked is
+# that the code compiles, the pages are all there, the scripts parse, and the
+# image the server builds still builds.
+
+name: checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A newer push supersedes the one before it: there is nothing to learn from
+# finishing a run for a commit nobody will look at again.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  static:
+    name: types, scripts and routes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'        # what the runtime image ships
+          cache: npm
+      - run: npm ci
+
+      - name: typecheck
+        run: npm run typecheck
+
+      # tsc never looks at web/. Those files go to the browser as written, so
+      # a syntax error there is otherwise found by whoever loads the page.
+      - name: browser scripts parse
+        run: |
+          for f in web/*.js; do
+            echo "  $f"
+            node --check "$f"
+          done
+
+      # These run unattended on a host there is no shell access to, so a syntax
+      # error surfaces as a deploy that quietly stopped happening.
+      - name: deploy scripts parse
+        run: |
+          for f in deploy/*.sh; do
+            echo "  $f"
+            bash -n "$f"
+          done
+
+      # A typecheck does not notice a page missing from web/, a route that
+      # stopped matching, or an auth gate that moved. Boot the server and ask
+      # it for every path that should be public — and for one that should not
+      # exist, since unknown paths answering 401 instead of 404 is a bug this
+      # repo has already had once.
+      - name: routes answer
+        run: |
+          ALLOW_NO_AUTH=1 PORT=3123 npx tsx src/server.ts &
+          for _ in $(seq 1 40); do
+            curl -sf -o /dev/null --max-time 2 http://127.0.0.1:3123/api/version && break
+            sleep 1
+          done
+
+          fail=0
+          check() {
+            got=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "http://127.0.0.1:3123$1")
+            if [ "$got" = "$2" ]; then
+              echo "  $1 -> $got"
+            else
+              echo "  $1 -> $got, expected $2"; fail=1
+            fi
+          }
+          check /             200
+          check /fuse         200
+          check /about        200
+          check /status       200
+          check /style.css    200
+          check /app.js       200
+          check /status.js    200
+          check /robots.txt   200
+          check /sitemap.xml  200
+          check /samples/og.jpg 200
+          check /api/version  200
+          check /nonsense     404
+
+          # og:url and og:image are absolute and filled in per request. The
+          # placeholder reaching a browser means every shared link previews
+          # against a URL that does not resolve.
+          for path in / /about; do
+            if curl -s --max-time 10 "http://127.0.0.1:3123$path" | grep -q '%ORIGIN%'; then
+              echo "  %ORIGIN% left unsubstituted in $path"; fail=1
+            fi
+          done
+
+          # The card is a source file, not a page, and the samples route serves
+          # images only. It should be reachable at neither.
+          check /og-card.html          404
+          check /samples/og-card.html  404
+
+          exit $fail
+
+  image:
+    name: docker build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # What deploy/update.sh runs on the server every time main moves. A build
+      # that fails there is not an outage — `docker rm -f` comes after it, so
+      # the old container keeps serving — but the deploy stops happening, and
+      # the only sign of it is /api/version reporting a sha that never changes.
+      - name: build the image the deployer builds
+        run: docker build --build-arg GIT_SHA="$GITHUB_SHA" -t site-analyst .
