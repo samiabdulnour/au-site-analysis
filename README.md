@@ -59,6 +59,29 @@ for name, f in [('context','CONTEXT_ANALYSIS.pdf'), ('site','SITE_ANALYSIS.pdf')
 EOF
 ```
 
+`web/samples/og.jpg` is the image a shared link previews with, drawn from
+`web/og-card.html` — a crop of `context.jpg` over a strip naming the tool. Redraw
+it whenever that sample changes:
+
+```bash
+node - <<'EOF'
+import { chromium } from 'playwright-core';
+import { globSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
+const browser = await chromium.launch({
+  executablePath: globSync('/opt/pw-browsers/chromium-*/chrome-linux/chrome')[0]
+    ?? process.env.CHROMIUM_PATH,
+  args: ['--no-sandbox'] });
+const page = await browser.newPage({ viewport: { width: 1200, height: 630 } });
+await page.goto(pathToFileURL(process.cwd() + '/web/og-card.html').href);
+await page.$eval('.art img', (el) => { el.src = 'samples/context.jpg'; });
+await page.waitForFunction(() => {
+  const i = document.querySelector('.art img'); return i.complete && i.naturalWidth > 0; });
+await page.screenshot({ path: 'web/samples/og.jpg', type: 'jpeg', quality: 86 });
+await browser.close();
+EOF
+```
+
 ### Two doors
 
 `/` is the public entrance and `/fuse` the office one. They serve the same
@@ -181,6 +204,27 @@ the reason sits under the address in red rather than behind a click; the
 running job is the yellow row; and `volume free` is the number to look at first
 when sheets start failing for no reason the log explains, because the Overpass
 database shares that disk.
+
+### The public door
+
+A visitor arriving from a search result used to be shown a password field and
+nothing else. The landing now says what the tool is before it asks for a code —
+what it draws, from what, and what comes out — with `/about` a click away. The
+office door does not get that paragraph; it knows.
+
+`robots.txt` and `sitemap.xml` are generated per request rather than kept as
+files, so they follow the domain the app is actually served on instead of
+naming one that `SITE_DOMAIN` could disagree with. `/api/`, `/fuse` and
+`/status` are disallowed: not secrets — `app.js` names the office door and the
+code is what grants anything — but nothing that belongs in a search result.
+
+A shared link previews with `og.jpg`, a 1200×630 card drawn from
+`web/og-card.html`. A whole A1 sheet scaled to that width is a grey field of
+unreadable lines, so the card crops one to about the size it is read at and
+puts the name under it. `og:url`, `og:image` and the canonical link have to be
+absolute, and a scraper resolves them without ever seeing the request, so the
+pages write `%ORIGIN%` and the server fills it in from the host it was asked
+for.
 
 ### Local OpenStreetMap (recommended for production)
 

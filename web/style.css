@@ -50,6 +50,10 @@ a { color: inherit; }
   letter-spacing: -.01em; margin-bottom: 4.7rem;
 }
 .lead { margin-bottom: 1.9rem; }
+/* Two paragraphs that are one block: the prompt sits close to the field it is
+   about rather than a full paragraph's distance from it. Two classes, so it
+   wins over .lead wherever either happens to be written. */
+.lead.intro { margin-bottom: 1.1rem; }
 
 /* ---- address bar -------------------------------------------------------- */
 /* Input and button are one rectangle split in two: the button carries the

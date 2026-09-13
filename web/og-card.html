@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Site Analyst — link preview card</title>
+<!--
+  The source of web/samples/og.jpg, the image a shared link previews with.
+  Drawn rather than photographed, like everything else here. 1200x630 is what
+  the platforms crop to, and a whole A1 sheet scaled into it is a grey field of
+  unreadable lines — so the card shows a crop of one at about the size it is
+  read at, over a strip that says what the thing is. Regenerate with the recipe
+  in the README.
+
+  Geometry is in pixels rather than percentages: the card is one fixed size,
+  and a percentage for `top` resolves against the box's height while `width`
+  resolves against its width, which makes centring a crop by percentage a sum
+  nobody should have to redo.
+
+  Not reachable over HTTP — the page table in src/server.ts is a fixed list and
+  this is not in it, and the samples route serves images only.
+-->
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  /* Generated, never served, so this is the one page that states a light
+     palette outright instead of following the reader's theme. */
+  body { width: 1200px; height: 630px; overflow: hidden;
+         font-family: Arial, Helvetica, sans-serif; background: #fff; color: #000; }
+
+  .card { width: 1200px; height: 630px; border: 3px solid #000;
+          display: flex; flex-direction: column; }
+
+  /* 1194 x 425 inside the border. A crop, not a fit: at this width a whole
+     sheet is under a pixel per line and reads as grey. */
+  .art { height: 425px; overflow: hidden; position: relative;
+         border-bottom: 3px solid #000; }
+  /* The sample is 1789x1264. Shown at 1791px wide and offset to the middle of
+     the sheet, which is where the site and its labels are. */
+  .art img { position: absolute; width: 1791px; left: -300px; top: -430px; }
+
+  .strip { flex: 1; display: flex; align-items: center;
+           justify-content: space-between; padding: 0 40px; gap: 48px; }
+  .name { font-size: 56px; line-height: 1; letter-spacing: -.01em; white-space: nowrap; }
+  /* The same yellow that marks a chosen option on the site itself. */
+  .mark { display: block; margin-top: 14px; height: 20px; width: 176px; background: #ffff70; }
+  .said { text-align: right; }
+  .sub { font-size: 25px; line-height: 1.34; max-width: 520px; }
+  .host { font-size: 25px; font-weight: 700; letter-spacing: .02em; margin-top: 10px; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="art"><img src="/samples/context.jpg" alt=""></div>
+    <div class="strip">
+      <div>
+        <div class="name">SITE ANALYST</div>
+        <span class="mark"></span>
+      </div>
+      <div class="said">
+        <div class="sub">NSW development-application site analysis,
+        drawn from government open data, from a street address.</div>
+        <div class="host">site-analyst.com</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

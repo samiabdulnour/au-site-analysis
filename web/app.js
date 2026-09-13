@@ -278,8 +278,14 @@ addrInput.addEventListener('blur', () => setTimeout(closeSuggest, 120));
 function showLogin() {
   f.hidden = true;
   loginForm.hidden = false;
-  const lead = loginForm.querySelector('.lead');
-  if (lead && DOOR === 'fuse') lead.textContent = 'FUSE. Enter the office access code.';
+  if (DOOR === 'fuse') {
+    // The office knows what the tool is; the introduction is for the public
+    // door, where it is the only thing a visitor gets before the code field.
+    const intro = $('intro');
+    if (intro) intro.hidden = true;
+    const prompt = loginForm.querySelector('.lead:not(.intro)');
+    if (prompt) prompt.textContent = 'FUSE. Enter the office access code.';
+  }
 }
 
 fetch('/api/me').then(async (r) => {
