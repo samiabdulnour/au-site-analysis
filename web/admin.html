@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Operator — Site Analyst</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 fill=%27%23fff%27/%3E%3Crect x=%274%27 y=%274%27 width=%2724%27 height=%2724%27 fill=%27none%27 stroke=%27%23000%27 stroke-width=%272%27/%3E%3Crect x=%2712%27 y=%2712%27 width=%2712%27 height=%2712%27 fill=%27%23ffff70%27/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="page">
+
+  <div class="masthead">
+    <h1 class="name"><a href="/">SITE ANALYST</a></h1>
+    <a class="btn" href="/">GENERATE A DRAWING</a>
+  </div>
+
+  <!-- The operator's own door, separate from the one on the drawing page. It
+       asks every time, whatever session the browser is holding: that page hides
+       its code field once any session exists, which made it the one page an
+       operator holding the shared code could not get past. -->
+  <!-- method=post matters even though admin.js always calls preventDefault: if
+       the script fails to load, a native submit on the default GET would put the
+       operator code in the query string, and from there into the browser's
+       history, the proxy's access log and any Referer. A POST that 404s is a
+       broken page; a GET that succeeds is a leaked code. -->
+  <form id="gate" method="post" action="/admin">
+    <p class="lead">The operator view lists every address searched for and the
+    reason any sheet failed. Enter the operator code to open it.</p>
+    <p class="lead muted" id="already" hidden>This browser already holds the
+    operator code. <a href="/status">Go to the status view</a>.</p>
+    <div class="bar">
+      <input id="code" type="password" placeholder="" autocomplete="current-password">
+      <button class="go" type="submit">UNLOCK</button>
+    </div>
+    <div class="errline" id="error"></div>
+  </form>
+
+  <footer>
+    This is not the shared access code. That one is entered on
+    <a href="/">the drawing page</a>, and does not open this view.
+  </footer>
+
+</div>
+<script src="/admin.js"></script>
+</body>
+</html>

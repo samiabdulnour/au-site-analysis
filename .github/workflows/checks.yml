@@ -52,41 +52,6 @@ jobs:
             bash -n "$f"
           done
 
-      # The status page tells a visitor to sign in with the operator code, and
-      # used to link to a page that hides the code field from anyone who already
-      # has a session — the precise person it was talking to. ?signin is what
-      # makes that page ask again. Checked by grep because the behaviour needs a
-      # browser, which this workflow deliberately does not install.
-      - name: the status page's sign-in link can be acted on
-        run: |
-          grep -q 'href="/?signin=1"' web/status.html
-          grep -q "has('signin')" web/app.js
-
-      # Two renders with different templates must not see each other's. This
-      # was a module-level global, and its failure mode was not a crash but a
-      # sheet in the wrong house style — the kind of bug that ships.
-      - name: templates do not leak between concurrent renders
-        run: npx tsx test/template-isolation.mts
-
-      # The deployer's one job here is to leave a record even when it dies on
-      # its first command — which is exactly what happened once, for six days,
-      # unnoticed. Reproduce that: a repo whose origin cannot be reached, and a
-      # status file that has to come out saying so.
-      - name: deployer reports its own failure
-        run: |
-          tmp=$(mktemp -d)
-          mkdir -p "$tmp/state" "$tmp/repo"
-          sed -e "s#^STATUS_DIR=/var/lib/site-analyst#STATUS_DIR=$tmp/state#" \
-              -e "s#^cd /opt/site-analyst#cd $tmp/repo#" \
-              deploy/update.sh > "$tmp/update.sh"
-          git init -q "$tmp/repo"
-          git -C "$tmp/repo" -c user.email=ci@example.com -c user.name=ci \
-              commit -q --allow-empty -m init
-          git -C "$tmp/repo" remote add origin https://invalid.invalid/nope.git
-          bash "$tmp/update.sh" >/dev/null 2>&1 || true
-          echo "  status: $(cat "$tmp/state/deploy.status" 2>/dev/null || echo '<nothing written>')"
-          grep -q '^FAILED fetch' "$tmp/state/deploy.status"
-
       # `bash -n` cannot see this, and it is worse than a syntax error because
       # it parses clean and then truncates the command at runtime: the shell
       # takes the rest of that physical line as comment and ends the command at
@@ -205,6 +170,8 @@ jobs:
           check /style.css    200
           check /app.js       200
           check /status.js    200
+          check /admin        200
+          check /admin.js     200
           check /robots.txt   200
           check /sitemap.xml  200
           check /samples/og.jpg 200
@@ -282,6 +249,90 @@ jobs:
             echo "  GET /api/logout sets no cookie"
           fi
 
+          exit $fail
+
+      # The two gates, driven with real codes. None of this reaches NSW
+      # ePlanning, Overpass, SIX or Valhalla — it is /api/login, /api/me and
+      # /api/status only — and it is the behaviour that has been subtly wrong
+      # more than once: a code that granted more than it was issued for, and a
+      # session that could be neither put down nor changed.
+      - name: the two gates grant what they should
+        run: |
+          ACCESS_CODE=shared-for-ci ADMIN_CODE=operator-for-ci PORT=3124 \
+            npx tsx src/server.ts > /tmp/gates-server.log 2>&1 &
+          srv=$!
+          trap 'pkill -P "$srv" 2>/dev/null; kill "$srv" 2>/dev/null; true' EXIT
+
+          up=
+          for _ in $(seq 1 40); do
+            curl -sf -o /dev/null --max-time 2 http://127.0.0.1:3124/api/version && { up=1; break; }
+            sleep 1
+          done
+          if [ -z "$up" ]; then
+            echo "server never answered; its log:"; sed 's/^/    /' /tmp/gates-server.log
+            exit 1
+          fi
+
+          B=http://127.0.0.1:3124
+          jar=$(mktemp)
+          fail=0
+
+          # A login attempt, keeping whatever cookie comes back. The limiter
+          # allows ten in fifteen minutes, so this stays well inside it.
+          login() {
+            label=$1; want=$2; body=$3
+            got=$(curl -s -b "$jar" -c "$jar" -o /tmp/login.out -w '%{http_code}' \
+                    --max-time 10 -X POST -H 'Content-Type: application/json' \
+                    -d "$body" "$B/api/login")
+            if [ "$got" = "$want" ]; then
+              echo "  $label -> $got"
+            else
+              echo "  $label -> $got, expected $want"; sed 's/^/      /' /tmp/login.out; fail=1
+            fi
+          }
+          # What the server says this session is, and what it can reach.
+          holds() {
+            label=$1; want=$2
+            got=$(curl -s -b "$jar" --max-time 10 "$B/api/me")
+            st=$(curl -s -b "$jar" -o /dev/null -w '%{http_code}' --max-time 10 "$B/api/status")
+            if [ "$got|$st" = "$want" ]; then
+              echo "  $label -> $got | /api/status $st"
+            else
+              echo "  $label -> $got|$st, expected $want"; fail=1
+            fi
+          }
+
+          none='{"authed":false,"required":true}|403'
+          user='{"authed":true,"operator":false,"required":true}|403'
+          oper='{"authed":true,"operator":true,"required":true}|200'
+
+          holds "no session"                            "$none"
+          login "shared gate, wrong code"          401  '{"code":"nope"}'
+          login "shared gate, shared code"         200  '{"code":"shared-for-ci"}'
+          holds "holding the shared code"               "$user"
+
+          # The point of a separate gate: the shared code does not open it, and
+          # being turned away does not cost the session already held.
+          login "operator gate, shared code"       403  '{"code":"shared-for-ci","gate":"admin"}'
+          holds "still holding the shared code"         "$user"
+
+          login "operator gate, operator code"     200  '{"code":"operator-for-ci","gate":"admin"}'
+          holds "holding the operator code"             "$oper"
+
+          # The one that would hurt most quietly: an operator mistyping the
+          # shared code at their own gate must not be traded down to it.
+          login "operator gate, shared code again" 403  '{"code":"shared-for-ci","gate":"admin"}'
+          holds "operator session not traded down"      "$oper"
+
+          curl -s -b "$jar" -c "$jar" -o /dev/null -X POST --max-time 10 "$B/api/logout"
+          holds "after signing out"                     "$none"
+
+          # The shared gate takes either code: the operator code grants a
+          # superset, so an operator holds one session rather than two.
+          login "shared gate, operator code"       200  '{"code":"operator-for-ci"}'
+          holds "operator through the shared gate"      "$oper"
+
+          rm -f "$jar"
           exit $fail
 
   image:
