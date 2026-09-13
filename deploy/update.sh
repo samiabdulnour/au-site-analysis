@@ -51,6 +51,14 @@ set -a; . /etc/site-analyst.env; set +a
 NET="${SITE_NET:-site-net}"
 docker network inspect "$NET" >/dev/null 2>&1 || docker network create "$NET" >/dev/null
 
+# Generated sheets and the OSM disk cache live on the host, not inside the
+# container. Without this every pass through here threw away both: the PDF a
+# visitor was seconds from downloading, and the cached Overpass answers that
+# are what keep sheets generating while Overpass is down. A deploy is not
+# supposed to cost anybody their drawing.
+OUT="${SITE_OUT:-/var/lib/site-analyst/out}"
+mkdir -p "$OUT"
+
 docker build -q --build-arg GIT_SHA="$REMOTE" -t site-analyst .
 docker rm -f site-analyst >/dev/null 2>&1 || true
 docker run -d --name site-analyst --restart unless-stopped \
@@ -60,7 +68,9 @@ docker run -d --name site-analyst --restart unless-stopped \
   -e FUSE_ACCESS_CODE="${FUSE_ACCESS_CODE:-}" \
   -e TFNSW_API_KEY="$TFNSW_API_KEY" \
   -e OVERPASS_LOCAL="${OVERPASS_LOCAL:-}" \
+  -e WEB_OUT_BUDGET_MB="${WEB_OUT_BUDGET_MB:-4096}" \
   -v /var/lib/site-analyst:/hostinfo:ro \
+  -v "$OUT":/app/out \
   site-analyst >/dev/null
 # Health gate: report what actually came up, rather than assuming it did.
 for _ in $(seq 1 30); do

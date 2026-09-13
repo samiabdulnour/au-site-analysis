@@ -9,9 +9,9 @@
 // Set ALLOW_NO_AUTH=1 only for local use.
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { readFile, readFileSync, existsSync } from 'node:fs';
+import { readFile, readFileSync, existsSync, mkdirSync, writeFileSync, renameSync } from 'node:fs';
 import { rm, readdir, stat, writeFile } from 'node:fs/promises';
-import { join, dirname } from 'node:path';
+import { join, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID, createHmac, timingSafeEqual } from 'node:crypto';
 import { runPipeline, runSitePipeline, runSummaryPipeline } from './pipeline.js';
@@ -137,6 +137,93 @@ interface Job {
 const jobs = new Map<string, Job>();
 let queue: Promise<void> = Promise.resolve();
 
+// ---- the job index -------------------------------------------------------
+//
+// A finished sheet is reachable only through its job record: the PDF sits in
+// out/web/<id>/ under a name nobody is told, so losing the record loses the
+// drawing even though the file is still there. Keeping the records in memory
+// alone meant every deploy took them, and the auto-deployer lands one whenever
+// main moves — a visitor who generated a sheet five minutes before a
+// commit landed got "service restarted, job lost" on a PDF that existed.
+//
+// So the map is mirrored to disk on every state change and read back at boot.
+// out/ is a host volume (deploy/update.sh), so the directory outlives the
+// container that wrote it.
+const JOB_INDEX = join(WEB_OUT, 'jobs.json');
+
+interface StoredJob {
+  id: string; address: string; sheet: Job['sheet']; scale: number;
+  rotate: Job['rotate']; template: string; status: Job['status'];
+  log: string[]; error?: string; createdAt: number;
+  // Basenames, not paths: what the record has to survive is a new container,
+  // and an absolute path is a fact about the old one.
+  pdf?: string; cad?: string; data?: string;
+}
+
+function saveIndex() {
+  const rows: StoredJob[] = [...jobs.values()].map((j) => ({
+    id: j.id, address: j.address, sheet: j.sheet, scale: j.scale,
+    rotate: j.rotate, template: j.template, status: j.status,
+    // Only the tail is ever served, so only the tail is worth keeping.
+    log: j.log.slice(-12), error: j.error, createdAt: j.createdAt,
+    pdf: j.pdfPath && basename(j.pdfPath),
+    cad: j.cadPath && basename(j.cadPath),
+    data: j.dataPath && basename(j.dataPath),
+  }));
+  try {
+    mkdirSync(WEB_OUT, { recursive: true });
+    // Written whole and moved into place. A deploy landing mid-write would
+    // otherwise leave a half-written file, and that loses every job rather
+    // than the one being saved.
+    const tmp = `${JOB_INDEX}.${process.pid}.tmp`;
+    writeFileSync(tmp, JSON.stringify(rows));
+    renameSync(tmp, JOB_INDEX);
+  } catch { /* the index is a convenience; never fail a job over it */ }
+}
+
+function loadIndex() {
+  let rows: unknown;
+  try { rows = JSON.parse(readFileSync(JOB_INDEX, 'utf8')); } catch { return; }
+  if (!Array.isArray(rows)) return;
+  let restored = 0, interrupted = 0;
+  for (const r of rows as StoredJob[]) {
+    if (!r || typeof r.id !== 'string' || !/^[0-9a-f-]{36}$/.test(r.id)) continue;
+    const dir = join(WEB_OUT, r.id);
+    // A job that was queued or running when the container went away cannot be
+    // picked up — the pipeline's work was in the process that died. Say that,
+    // rather than leaving it queued behind a queue that no longer exists.
+    const lost = r.status === 'queued' || r.status === 'running';
+    const job: Job = {
+      id: r.id,
+      address: String(r.address ?? ''),
+      sheet: r.sheet === 'site' ? 'site' : r.sheet === 'summary' ? 'summary' : 'context',
+      scale: Number(r.scale) || 0,
+      rotate: r.rotate === 'auto' ? 'auto' : 'north',
+      template: String(r.template ?? ''),
+      status: lost ? 'error' : r.status === 'done' ? 'done' : 'error',
+      log: Array.isArray(r.log) ? r.log.map(String) : [],
+      error: lost ? 'interrupted by a server restart — run again' : r.error,
+      createdAt: Number(r.createdAt) || Date.now(),
+    };
+    if (job.status === 'done') {
+      // Only the files still on disk: a sheet outlives the container but not
+      // the 24h sweep, and a link to a deleted file is worse than no link.
+      const kept = (name?: string) =>
+        name && existsSync(join(dir, name)) ? join(dir, name) : undefined;
+      job.pdfPath = kept(r.pdf);
+      job.cadPath = kept(r.cad);
+      job.dataPath = kept(r.data);
+      if (!job.pdfPath) continue;      // nothing left to offer
+      restored += 1;
+    } else if (lost) {
+      interrupted += 1;
+    }
+    jobs.set(job.id, job);
+  }
+  if (restored || interrupted)
+    console.log(`job index: ${restored} sheet(s) still downloadable, ${interrupted} interrupted by the restart`);
+}
+
 /**
  * Position in the queue, 1 = next to run (0 = already running). Jobs run one
  * at a time, so a visitor who is fourth in line waits for three sheets before
@@ -159,11 +246,13 @@ function etaMinutes(job: Job): number {
 
 function enqueue(job: Job) {
   jobs.set(job.id, job);
+  saveIndex();
   queue = queue.then(() => runJob(job)).catch(() => {});
 }
 
 async function runJob(job: Job) {
   job.status = 'running';
+  saveIndex();
   // Jobs run one at a time, so setting the active template per job is safe.
   setTemplate(job.template);
   const outDir = join(WEB_OUT, job.id);
@@ -247,21 +336,92 @@ async function runJob(job: Job) {
     job.error = e?.message ?? String(e);
     job.log.push(`ERROR: ${job.error}`);
   }
+  saveIndex();
   void cleanupOldJobs();
 }
 
+// Outputs now live on a host volume, so they accumulate for real instead of
+// dying with the container. Two ceilings hold that down: age, as before, and
+// total size — a sheet carries its whole GeoJSON bundle and aerial tiles, and
+// the disk is shared with a 27GB Overpass database, so unbounded retention
+// would eventually starve the thing the sheets are drawn from.
+//
+// The budget is floored, so that a mistyped one cannot sweep the directory
+// bare, and the flooring is said out loud — a silently ignored setting is
+// worse than a rejected one.
+const OUT_BUDGET_MIN_MB = 256;
+const OUT_BUDGET_MB = (() => {
+  const asked = Number(process.env.WEB_OUT_BUDGET_MB) || 4096;
+  if (asked < OUT_BUDGET_MIN_MB)
+    console.log(`WEB_OUT_BUDGET_MB=${asked} is below the ${OUT_BUDGET_MIN_MB}MB floor — using ${OUT_BUDGET_MIN_MB}`);
+  return Math.max(OUT_BUDGET_MIN_MB, asked);
+})();
+const OUT_BUDGET_BYTES = OUT_BUDGET_MB * 1024 * 1024;
+
+async function dirBytes(dir: string): Promise<number> {
+  let total = 0;
+  const walk = async (d: string) => {
+    for (const e of await readdir(d, { withFileTypes: true }).catch(() => [])) {
+      const full = join(d, e.name);
+      if (e.isDirectory()) await walk(full);
+      else total += (await stat(full).catch(() => null))?.size ?? 0;
+    }
+  };
+  await walk(dir);
+  return total;
+}
+
+/**
+ * Drop what is too old, then what does not fit, then any record left pointing
+ * at a file the sweep took. Runs hourly as well as after each job: it used to
+ * run only at the end of a job, so an idle server never reclaimed anything and
+ * yesterday's sheets sat there until somebody happened to generate a new one.
+ */
 async function cleanupOldJobs() {
   for (const [id, job] of jobs) {
     if (Date.now() - job.createdAt > JOB_RETENTION_MS && job.status !== 'running') jobs.delete(id);
   }
+  // Per-IP counters. Without this the map keeps a row for every address that
+  // ever asked for anything, which on a public site is a leak with no ceiling.
+  for (const [key, b] of buckets) if (Date.now() > b.resetAt) buckets.delete(key);
+
+  // A job still in the queue owns its directory even if it is momentarily the
+  // oldest thing here, so it is never a candidate.
+  const busy = new Set([...jobs.values()]
+    .filter((j) => j.status === 'running' || j.status === 'queued')
+    .map((j) => j.id));
   try {
+    const dirs: { dir: string; mtime: number; bytes: number }[] = [];
     for (const name of await readdir(WEB_OUT)) {
+      if (!/^[0-9a-f-]{36}$/.test(name)) continue;   // jobs.json, tmp files, anything else
+      if (busy.has(name)) continue;
       const dir = join(WEB_OUT, name);
-      const s = await stat(dir).catch(() => null);
-      if (s && Date.now() - s.mtimeMs > JOB_RETENTION_MS)
+      const st = await stat(dir).catch(() => null);
+      if (!st?.isDirectory()) continue;
+      if (Date.now() - st.mtimeMs > JOB_RETENTION_MS) {
         await rm(dir, { recursive: true, force: true });
+        continue;
+      }
+      dirs.push({ dir, mtime: st.mtimeMs, bytes: await dirBytes(dir) });
+    }
+    // Over budget: oldest first, which is also least likely to be wanted again.
+    let total = dirs.reduce((n, d) => n + d.bytes, 0);
+    if (total > OUT_BUDGET_BYTES) {
+      dirs.sort((a, b) => a.mtime - b.mtime);
+      for (const d of dirs) {
+        if (total <= OUT_BUDGET_BYTES) break;
+        await rm(d.dir, { recursive: true, force: true });
+        total -= d.bytes;
+        console.log(`out/web over budget — removed ${basename(d.dir)} (${Math.round(d.bytes / 1e6)}MB)`);
+      }
     }
   } catch { /* out/web may not exist yet */ }
+
+  // Whatever the sweep took, the records that named it are dead links now.
+  for (const [id, job] of jobs) {
+    if (job.status === 'done' && job.pdfPath && !existsSync(job.pdfPath)) jobs.delete(id);
+  }
+  saveIndex();
 }
 
 // ---- tiny per-IP rate limiting ------------------------------------------
@@ -410,8 +570,12 @@ const server = createServer(async (req, res) => {
     return;
   }
 
-  // Everything below requires auth.
-  if (!authed(req)) return json(res, 401, { error: 'Not authorised.' });
+  // Everything below requires auth. Scoped to the API rather than to every
+  // remaining path: an unknown URL is not a place to ask for an access code,
+  // and answering /robots.txt with 401 told every crawler the site was broken
+  // rather than that the file was absent.
+  if (url.pathname.startsWith('/api/') && !authed(req))
+    return json(res, 401, { error: 'Not authorised.' });
 
   if (req.method === 'GET' && url.pathname === '/api/address') {
     const q = url.searchParams.get('q') ?? '';
@@ -520,6 +684,13 @@ const server = createServer(async (req, res) => {
 
   res.writeHead(404); res.end('Not found');
 });
+
+// Pick the previous container's finished sheets back up, then keep the
+// directory swept whether or not anyone is generating.
+loadIndex();
+const CLEANUP_INTERVAL_MS = 3600_000;
+setInterval(() => void cleanupOldJobs(), CLEANUP_INTERVAL_MS);
+void cleanupOldJobs();
 
 const PORT = Number(process.env.PORT ?? 3000);
 server.listen(PORT, () => console.log(`site analyst web UI on http://localhost:${PORT}${ACCESS_CODE ? ' (auth on)' : ' (NO AUTH)'}`));
