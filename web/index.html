@@ -57,8 +57,16 @@
                autocomplete="off" autocapitalize="off" spellcheck="false">
         <ul id="suggest"></ul>
       </span>
+      <!-- Adds the typed address to a list instead of running it. A dozen
+           sites is an ordinary afternoon, and the type-ahead is what keeps
+           each one exact, so they are collected one at a time rather than
+           pasted in as free text nobody has checked. -->
+      <button class="add" id="add" type="button">ADD</button>
       <button class="go" id="go" type="submit">GENERATE</button>
     </div>
+
+    <!-- Staged addresses before the run, then their rows during it. -->
+    <div id="list" hidden></div>
 
     <div class="opts">
       <div class="row" id="sheetGroup"><span class="rowhead">DRAWING</span>

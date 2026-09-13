@@ -143,6 +143,28 @@ jobs:
           check /og-card.html          404
           check /samples/og-card.html  404
 
+          # An unknown batch is not a server error.
+          check /api/batches/00000000-0000-4000-8000-000000000000  404
+
+          # Batch validation refuses before a single job is created, so none of
+          # this asks anything of NSW ePlanning, Overpass, SIX or Valhalla —
+          # which is the one thing this workflow must never do.
+          batch() {
+            got=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 \
+              -X POST -H 'Content-Type: application/json' -d "$2" \
+              http://127.0.0.1:3123/api/batches)
+            if [ "$got" = "$3" ]; then
+              echo "  POST /api/batches ($1) -> $got"
+            else
+              echo "  POST /api/batches ($1) -> $got, expected $3"; fail=1
+            fi
+          }
+          many=$(python3 -c "import json;print(json.dumps({'addresses':['%d Test Street, Sydney NSW 2000'%n for n in range(20)]}))")
+          batch "no addresses"   '{"addresses":[]}'              400
+          batch "not a list"     '{"addresses":"1 Test Street"}' 400
+          batch "over the cap"   "$many"                         400
+          batch "short entry"    '{"addresses":["abc"]}'         400
+
           exit $fail
 
   image:

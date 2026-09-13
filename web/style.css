@@ -80,6 +80,49 @@ a { color: inherit; }
 .go:hover { filter: brightness(.95); }
 .go:disabled { background: transparent; color: var(--muted); cursor: wait; }
 
+/* Secondary to GENERATE, so it carries the rule and not the highlight: yellow
+   means what is chosen or what to press, and this is neither until there is a
+   list to press it for. */
+.add {
+  flex: 0 0 18%; font: inherit; font-weight: 700; letter-spacing: .02em;
+  color: var(--ink); background: transparent;
+  border: 0; border-left: 1px solid var(--line);
+  padding: .75rem .6rem; cursor: pointer;
+}
+.add:hover { background: rgba(0,0,0,.05); }
+.add:disabled { color: var(--muted); cursor: default; }
+
+/* ---- the staged list / batch rows --------------------------------------- */
+/* Addresses are sentences, not labels, so these are full-width rows rather
+   than cells in the options table, which clips what it cannot fit. */
+#list { border-top: 1px solid var(--line); border-left: 1px solid var(--line);
+        margin-bottom: 1.2rem; }
+.listrow {
+  display: grid; grid-template-columns: 2.6rem 1fr auto;
+  border-right: 1px solid var(--line); border-bottom: 1px solid var(--line);
+}
+.listrow > * { padding: .5rem 1rem; min-width: 0; overflow-wrap: anywhere; }
+.listrow .n { color: var(--muted); padding-right: 0; }
+.listrow .st { text-align: right; font-weight: 700; text-transform: uppercase;
+               letter-spacing: .02em; white-space: nowrap; }
+.listrow.done .st { color: var(--ink); }
+.listrow.error .st, .listrow.gone .st { color: var(--err); }
+.listrow.running { background: var(--hi); color: var(--on-hi); }
+.listrow.running .n { color: inherit; opacity: .7; }
+.listrow .why { grid-column: 2 / -1; padding-top: 0; color: var(--err); }
+/* The remove control is a glyph, not a button-shaped thing: the row is the
+   object, and this is the one edge of it you can act on. */
+.listrow .rm {
+  font: inherit; color: var(--muted); background: transparent; border: 0;
+  cursor: pointer; line-height: 1;
+}
+.listrow .rm:hover { color: var(--err); }
+
+@media (max-width: 560px) {
+  .add { flex: 0 0 22%; padding: .75rem .4rem; }
+  .listrow > * { padding: .5rem .6rem; }
+}
+
 /* ---- options table ------------------------------------------------------ */
 /* Cells carry their own right and bottom rule and the table carries the top
    and left, so no line is ever drawn twice. */
