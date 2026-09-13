@@ -125,6 +125,65 @@ jobs:
           echo "  status: $(cat "$tmp/state/deploy.status" 2>/dev/null || echo '<nothing written>')"
           grep -q '^FAILED fetch' "$tmp/state/deploy.status"
 
+      # One failed `docker run` must not be permanent. The pass after it finds
+      # HEAD already at origin/main and, without this, reports "up-to-date" and
+      # exits with nothing serving — turning a five-minute outage into an
+      # indefinite one. Driven with docker and the app stubbed out, so it asks
+      # nothing of any network and takes no time.
+      - name: a missing container is a reason to deploy
+        run: |
+          tmp=$(mktemp -d)
+          mkdir -p "$tmp/state" "$tmp/bin"
+          git init -q --bare "$tmp/origin.git"
+          git init -q -b main "$tmp/repo"
+          git -C "$tmp/repo" -c user.email=ci@example.com -c user.name=ci \
+              commit -q --allow-empty -m init
+          git -C "$tmp/repo" remote add origin "$tmp/origin.git"
+          git -C "$tmp/repo" push -q origin main 2>/dev/null
+          sha=$(git -C "$tmp/repo" rev-parse HEAD)
+          printf 'ACCESS_CODE=shared\nADMIN_CODE=ops\nTFNSW_API_KEY=key\n' > "$tmp/env"
+
+          # Stands in for the app: answers with the sha being deployed, and not
+          # busy, so the health gate and the defer check both resolve at once.
+          { echo '#!/usr/bin/env bash'
+            echo "echo '{\"sha\":\"$sha\",\"busy\":false}'"; } > "$tmp/bin/curl"
+          chmod +x "$tmp/bin/curl"
+
+          # `docker inspect` is how the script asks whether anything is running;
+          # $1 is "network" for the network check, so only a bare inspect answers.
+          stub_docker() {
+            { echo '#!/usr/bin/env bash'
+              echo 'case "$1" in'
+              echo "  inspect) $1 ;;"
+              echo '  *) exit 0 ;;'
+              echo 'esac'; } > "$tmp/bin/docker"
+            chmod +x "$tmp/bin/docker"
+          }
+
+          sed -e "s#^STATUS_DIR=/var/lib/site-analyst#STATUS_DIR=$tmp/state#" \
+              -e "s#^cd /opt/site-analyst#cd $tmp/repo#" \
+              -e "s#\. /etc/site-analyst.env#. $tmp/env#" \
+              deploy/update.sh > "$tmp/update.sh"
+
+          run() {
+            SITE_OUT="$tmp/out" PATH="$tmp/bin:$PATH" bash "$tmp/update.sh" \
+              > "$tmp/log" 2>&1 || true
+            cat "$tmp/state/deploy.status"
+          }
+
+          fail=0
+          stub_docker 'exit 1'                 # nothing running
+          got=$(run)
+          echo "  container absent  -> $got"
+          case "$got" in deployed*) ;; *) echo "  expected a deploy"; fail=1 ;; esac
+
+          stub_docker 'echo true; exit 0'      # already running, repo unchanged
+          got=$(run)
+          echo "  container running -> $got"
+          case "$got" in up-to-date*) ;; *) echo "  expected up-to-date"; fail=1 ;; esac
+
+          exit $fail
+
       # A typecheck does not notice a page missing from web/, a route that
       # stopped matching, or an auth gate that moved. Boot the server and ask
       # it for every path that should be public — and for one that should not
@@ -135,6 +194,14 @@ jobs:
           # Its output goes to a file, not to this step's stdout: a background
           # process holding that pipe open hangs anything reading it, long
           # after the checks themselves have finished.
+          # Refuse to test against a process this step did not start. A
+          # leftover server on this port has made a negative check here pass for
+          # the wrong reason before, and a stale one carries spent rate-limit
+          # budget, which reads as a broken gate.
+          if curl -sf -o /dev/null --max-time 2 http://127.0.0.1:3123/api/version; then
+            echo "something is already answering on 3123; refusing to test against it"
+            exit 1
+          fi
           ALLOW_NO_AUTH=1 PORT=3123 npx tsx src/server.ts > /tmp/routes-server.log 2>&1 &
           srv=$!
           # Best-effort reap. npx nests another node under itself, so this does
@@ -258,6 +325,14 @@ jobs:
       # session that could be neither put down nor changed.
       - name: the two gates grant what they should
         run: |
+          # Refuse to test against a process this step did not start. A
+          # leftover server on this port has made a negative check here pass for
+          # the wrong reason before, and a stale one carries spent rate-limit
+          # budget, which reads as a broken gate.
+          if curl -sf -o /dev/null --max-time 2 http://127.0.0.1:3124/api/version; then
+            echo "something is already answering on 3124; refusing to test against it"
+            exit 1
+          fi
           ACCESS_CODE=shared-for-ci ADMIN_CODE=operator-for-ci PORT=3124 \
             npx tsx src/server.ts > /tmp/gates-server.log 2>&1 &
           srv=$!
