@@ -297,6 +297,68 @@ function loadIndex() {
     console.log(`job index: ${restored} sheet(s) still downloadable, ${interrupted} interrupted by the restart`);
 }
 
+// ---- batches -------------------------------------------------------------
+//
+// A dozen sites is an ordinary afternoon's work, and submitting them one at a
+// time means coming back every two minutes to start the next. A batch is
+// nothing more than a named list of ordinary jobs: they queue on the same
+// serial queue, in the same order, and each one goes through the same reuse
+// check — so a batch of twelve where five are already drawn runs seven.
+//
+// Deliberately not concurrency. Jobs stay one at a time, which keeps the
+// promise this tool makes to the four free services it is a guest of, and
+// avoids the fact that the active graphic template is a module-level global
+// that two simultaneous renders would trample.
+//
+// Kept in their own file rather than folded into jobs.json, which is an array
+// an older container would still read: a rollback that met an object there
+// would find no jobs at all.
+const BATCH_INDEX = join(WEB_OUT, 'batches.json');
+const MAX_BATCH = 12;          // one hour's worth of the per-IP job budget
+const JOBS_PER_HOUR = 12;
+
+interface BatchEntry {
+  /** As submitted. Kept here so a row still reads after its job is swept. */
+  address: string;
+  jobId: string;
+}
+interface Batch {
+  id: string;
+  tier: Tier;
+  createdAt: number;
+  sheet: Job['sheet'];
+  entries: BatchEntry[];
+}
+
+const batches = new Map<string, Batch>();
+
+function saveBatches() {
+  try {
+    mkdirSync(WEB_OUT, { recursive: true });
+    const tmp = `${BATCH_INDEX}.${process.pid}.tmp`;
+    writeFileSync(tmp, JSON.stringify([...batches.values()]));
+    renameSync(tmp, BATCH_INDEX);
+  } catch { /* as with the job index, never fail a submission over this */ }
+}
+
+function loadBatches() {
+  let rows: unknown;
+  try { rows = JSON.parse(readFileSync(BATCH_INDEX, 'utf8')); } catch { return; }
+  if (!Array.isArray(rows)) return;
+  for (const r of rows as Batch[]) {
+    if (!r || typeof r.id !== 'string' || !Array.isArray(r.entries)) continue;
+    batches.set(r.id, {
+      id: r.id,
+      tier: r.tier === 'fuse' ? 'fuse' : 'public',
+      createdAt: Number(r.createdAt) || Date.now(),
+      sheet: r.sheet === 'site' ? 'site' : r.sheet === 'summary' ? 'summary' : 'context',
+      entries: r.entries
+        .filter((e) => e && typeof e.address === 'string' && typeof e.jobId === 'string')
+        .map((e) => ({ address: String(e.address), jobId: String(e.jobId) })),
+    });
+  }
+}
+
 /**
  * Position in the queue, 1 = next to run (0 = already running). Jobs run one
  * at a time, so a visitor who is fourth in line waits for three sheets before
@@ -515,6 +577,21 @@ function limited(key: string, max: number, windowMs: number): boolean {
   if (!b || now > b.resetAt) { buckets.set(key, { count: 1, resetAt: now + windowMs }); return false; }
   b.count += 1;
   return b.count > max;
+}
+
+// A batch spends several at once, and has to know what it can afford before it
+// starts creating jobs — half a batch accepted is worse than none, because the
+// visitor cannot tell which half.
+function remaining(key: string, max: number, windowMs: number): number {
+  const b = buckets.get(key);
+  if (!b || Date.now() > b.resetAt) return max;
+  return Math.max(0, max - b.count);
+}
+function spend(key: string, windowMs: number, n: number) {
+  const now = Date.now();
+  const b = buckets.get(key);
+  if (!b || now > b.resetAt) buckets.set(key, { count: n, resetAt: now + windowMs });
+  else b.count += n;
 }
 function clientIp(req: IncomingMessage): string {
   const fwd = req.headers['x-forwarded-for'];
@@ -809,7 +886,9 @@ Sitemap: ${siteBase()}/sitemap.xml
         }
       }
 
-      if (limited(`jobs:${ip}`, 12, 3600_000)) return json(res, 429, { error: 'Rate limit: try again later.' });
+      if (remaining(`jobs:${ip}`, JOBS_PER_HOUR, 3600_000) < 1)
+        return json(res, 429, { error: 'Rate limit: try again later.' });
+      spend(`jobs:${ip}`, 3600_000, 1);
       const job: Job = {
         id: randomUUID(), ...want, key, tier,
         status: 'queued', log: [], createdAt: Date.now(),
@@ -818,6 +897,160 @@ Sitemap: ${siteBase()}/sitemap.xml
       json(res, 202, { id: job.id, queued: [...jobs.values()].filter((j) => j.status === 'queued').length });
     } catch {
       json(res, 400, { error: 'Bad request.' });
+    }
+    return;
+  }
+
+  // ---- batches -----------------------------------------------------------
+
+  if (req.method === 'POST' && url.pathname === '/api/batches') {
+    const body = await readBody(req);
+    try {
+      const b = JSON.parse(body || '{}');
+      const tier = authed(req) ?? 'public';
+      const allowed = TIER_TEMPLATES[tier];
+      const asked = String(b.template ?? '');
+      const jobTemplate = allowed.includes(asked) ? asked : allowed[0];
+
+      const raw: unknown[] = Array.isArray(b.addresses) ? b.addresses : [];
+      const addresses = raw.map((a) => String(a ?? '').trim()).filter(Boolean);
+      if (!addresses.length) return json(res, 400, { error: 'No addresses.' });
+      if (addresses.length > MAX_BATCH)
+        return json(res, 400, { error: `At most ${MAX_BATCH} addresses at a time.` });
+      if (addresses.some((a) => a.length < 8 || a.length > 120))
+        return json(res, 400, { error: 'Every entry must be a full NSW street address.' });
+
+      const kind: Job['sheet'] =
+        b.sheet === 'site' ? 'site' : b.sheet === 'summary' ? 'summary' : 'context';
+      const n = Number(b.scale) || 0;
+      const sc = kind === 'site'
+        ? (n ? Math.min(1000, Math.max(100, n)) : 0)
+        : Math.min(6000, Math.max(1000, n || 3000));
+      const rotate: Job['rotate'] = b.rotate === 'auto' ? 'auto' : 'north';
+
+      // Resolve reuse before counting cost. A batch of a dozen where most were
+      // drawn this morning should not be refused for a budget it will not
+      // spend — the limit is there for the upstream services, and a sheet that
+      // already exists does not touch them.
+      const plan = addresses.map((address) => {
+        const want = { address, sheet: kind, scale: sc, rotate, template: jobTemplate };
+        return { want, key: jobKey(want), hit: b.fresh === true ? undefined : reusable(jobKey(want)) };
+      });
+      // Distinct keys, not rows. Two spellings of one address share a job — the
+      // loop below finds the first already queued when it reaches the second —
+      // so counting rows would charge the hour's budget twice for one sheet.
+      const toRun = new Set(plan.filter((p) => !p.hit).map((p) => p.key)).size;
+      const left = remaining(`jobs:${ip}`, JOBS_PER_HOUR, 3600_000);
+      if (toRun > left) {
+        // All or nothing: half a batch accepted is worse than none, because
+        // there is no way to tell from the outside which half.
+        return json(res, 429, {
+          error: left === 0
+            ? 'Rate limit reached. Try again within the hour.'
+            : `Rate limit: ${toRun} new sheets requested, ${left} left this hour.`,
+        });
+      }
+      spend(`jobs:${ip}`, 3600_000, toRun);
+
+      const batch: Batch = {
+        id: randomUUID(), tier, createdAt: Date.now(), sheet: kind, entries: [],
+      };
+      for (const p of plan) {
+        // Re-checked rather than trusting the plan: two identical addresses in
+        // one batch mean the second finds the first already queued, so they
+        // share a job instead of drawing the same sheet twice.
+        const hit = b.fresh === true ? undefined : reusable(p.key);
+        if (hit) {
+          batch.entries.push({ address: p.want.address, jobId: hit.id });
+          continue;
+        }
+        const job: Job = {
+          id: randomUUID(), ...p.want, key: p.key, tier,
+          status: 'queued', log: [], createdAt: Date.now(),
+        };
+        enqueue(job);
+        batch.entries.push({ address: p.want.address, jobId: job.id });
+      }
+      batches.set(batch.id, batch);
+      saveBatches();
+      return json(res, 202, { id: batch.id, total: batch.entries.length, queued: toRun });
+    } catch {
+      return json(res, 400, { error: 'Bad request.' });
+    }
+  }
+
+  const batchMatch = url.pathname.match(/^\/api\/batches\/([0-9a-f-]{36})$/);
+  if (req.method === 'GET' && batchMatch) {
+    const batch = batches.get(batchMatch[1]);
+    if (!batch) return json(res, 404, { error: 'Unknown batch.' });
+    const rows = batch.entries.map((e) => {
+      const job = jobs.get(e.jobId);
+      if (!job) {
+        // Swept, or lost with a container that died before it was written.
+        return { address: e.address, jobId: e.jobId, status: 'gone' as const };
+      }
+      return {
+        address: e.address, jobId: e.jobId, status: job.status, error: job.error,
+        hasCad: Boolean(job.cadPath), hasData: Boolean(job.dataPath),
+        queuePosition: queuePosition(job), etaMinutes: etaMinutes(job),
+        note: job.log.length ? job.log[job.log.length - 1].trim() : '',
+      };
+    });
+    return json(res, 200, {
+      id: batch.id, sheet: batch.sheet, createdAt: batch.createdAt,
+      total: rows.length,
+      done: rows.filter((r) => r.status === 'done').length,
+      failed: rows.filter((r) => r.status === 'error' || r.status === 'gone').length,
+      entries: rows,
+    });
+  }
+
+  const batchZip = url.pathname.match(/^\/api\/batches\/([0-9a-f-]{36})\/zip$/);
+  if (req.method === 'GET' && batchZip) {
+    const batch = batches.get(batchZip[1]);
+    if (!batch) return json(res, 404, { error: 'Unknown batch.' });
+    const files: { path: string; name: string }[] = [];
+    const used = new Set<string>();
+    for (const e of batch.entries) {
+      const job = jobs.get(e.jobId);
+      if (!job?.pdfPath || !existsSync(job.pdfPath)) continue;
+      const kind = job.sheet === 'site' ? 'SITE_ANALYSIS'
+        : job.sheet === 'summary' ? 'DEVELOPMENT_SUMMARY' : 'CONTEXT_ANALYSIS';
+      // The same address twice in one batch shares a job, so it would other-
+      // wise be added to the zip twice under one name.
+      let name = `${kind}_${e.address.replace(/[^a-z0-9]+/gi, '_').toUpperCase()}.pdf`;
+      if (used.has(name)) continue;
+      used.add(name);
+      files.push({ path: job.pdfPath, name });
+    }
+    if (!files.length) return json(res, 404, { error: 'Nothing finished yet.' });
+    try {
+      const zipPath = join(WEB_OUT, `${batch.id}.zip`);
+      // python3 is already a dependency (the DXF export needs it) and this is
+      // the same zipfile the CAD package is built with. execFile, not
+      // spawnSync: the latter blocks the event loop, which on a server that
+      // streams job progress means every other visitor stops hearing anything.
+      const { execFile } = await import('node:child_process');
+      const { promisify } = await import('node:util');
+      await promisify(execFile)('python3', [
+        '-c',
+        'import sys,zipfile\n' +
+        'out=sys.argv[1]\n' +
+        'with zipfile.ZipFile(out,"w",zipfile.ZIP_DEFLATED) as z:\n' +
+        '    for i in range(2,len(sys.argv),2): z.write(sys.argv[i],sys.argv[i+1])\n',
+        zipPath,
+        ...files.flatMap((f) => [f.path, f.name]),
+      ]);
+      readFile(zipPath, (err, data) => {
+        if (err) return json(res, 500, { error: 'Zip unreadable.' });
+        res.writeHead(200, {
+          'Content-Type': 'application/zip',
+          'Content-Disposition': `attachment; filename="SITE_ANALYST_${files.length}_SHEETS.zip"`,
+        });
+        res.end(data);
+      });
+    } catch {
+      return json(res, 500, { error: 'Could not build the zip.' });
     }
     return;
   }
@@ -891,6 +1124,7 @@ Sitemap: ${siteBase()}/sitemap.xml
 // Pick the previous container's finished sheets back up, then keep the
 // directory swept whether or not anyone is generating.
 loadIndex();
+loadBatches();
 const CLEANUP_INTERVAL_MS = 3600_000;
 setInterval(() => void cleanupOldJobs(), CLEANUP_INTERVAL_MS);
 void cleanupOldJobs();

@@ -187,6 +187,39 @@ is already drawn does not touch them; a forced fresh run does spend it.
 Nothing is cached beyond the retention window above, so a reused sheet is at
 most 24h old.
 
+### Several at once
+
+A dozen sites is an ordinary afternoon, and submitting them one at a time means
+coming back every two minutes to start the next. `ADD` puts the address in the
+field onto a list instead of running it; `GENERATE 5` runs the list. Collected
+one at a time rather than pasted in as free text, because the type-ahead is
+what keeps each address exact and a mistyped one is a sheet that fails two
+minutes later.
+
+A batch is nothing but a named list of ordinary jobs. They queue on the same
+serial queue, in the same order, and each goes through the same reuse check, so
+a batch of twelve where five were drawn this morning runs seven. Two spellings
+of one address inside a batch share a single job, and the hour's budget is
+charged for the sheets it will actually draw rather than the rows submitted.
+
+It is deliberately not concurrency. Jobs still run one at a time, which keeps
+the promise this tool makes to the four free services it is a guest of — and
+avoids a sharper problem: the active graphic template is a module-level global
+(`src/render/template.ts`), so two simultaneous renders would silently produce
+a sheet in the wrong house style rather than fail.
+
+`POST /api/batches` takes `{ addresses: [...], sheet, scale, rotate, template }`
+and at most twelve, one hour's worth of the per-IP job budget. All or nothing:
+half a batch accepted is worse than none, since there is no way to tell from
+the outside which half. `GET /api/batches/<id>` reports a row per address, and
+`GET /api/batches/<id>/zip` returns the finished sheets named by address. The
+rows stay on screen once the run ends — which of the twelve worked is the
+reason for running a batch in the first place.
+
+Batches live in `out/web/batches.json`, beside the job index rather than inside
+it: that file is an array an older container still reads, and a rollback that
+met an object there would find no jobs at all.
+
 ### Status view
 
 `/status` is the office's window onto what the server has been doing: version
