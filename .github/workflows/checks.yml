@@ -87,6 +87,79 @@ jobs:
           echo "  status: $(cat "$tmp/state/deploy.status" 2>/dev/null || echo '<nothing written>')"
           grep -q '^FAILED fetch' "$tmp/state/deploy.status"
 
+      # `bash -n` cannot see this, and it is worse than a syntax error because
+      # it parses clean and then truncates the command at runtime: the shell
+      # takes the rest of that physical line as comment and ends the command at
+      # its unescaped newline. It happened in the deployer's own `docker run`.
+      - name: no comment sits inside a line continuation
+        run: |
+          awk 'prev ~ /\\$/ && $0 ~ /^[[:space:]]*#/ {
+                 printf "  %s:%d: comment inside a line continuation\n", FILENAME, NR
+                 bad = 1
+               }
+               { prev = $0 }
+               END { exit bad }' deploy/*.sh
+          echo "  none"
+
+      # And the command itself, run for real with docker stubbed out. What the
+      # truncation cost was the operator code, the API key, both volumes and the
+      # image name — and `docker rm -f` runs on the line above it, so the next
+      # deploy would have taken the container away with nothing to put back.
+      # Stated as the assertion it broke: both codes reach the container, and
+      # the last argument is the image.
+      - name: the deployer's docker run carries every secret and its image
+        run: |
+          block=$(sed -n '/^docker run -d --name site-analyst/,/^  site-analyst/p' \
+                    deploy/update.sh | sed 's# >/dev/null##')
+          { echo 'docker() { printf "%s\n" "$@"; }'; printf '%s\n' "$block"; } > /tmp/dr.sh
+          argv=$(ACCESS_CODE=pub ADMIN_CODE=ops TFNSW_API_KEY=tf \
+                 NET=net OUT=/tmp/out bash /tmp/dr.sh)
+          printf '%s\n' "$argv" | sed 's/^/    /'
+          fail=0
+          for want in ACCESS_CODE=pub ADMIN_CODE=ops; do
+            printf '%s\n' "$argv" | grep -qx -- "$want" || { echo "  missing $want"; fail=1; }
+          done
+          if [ "$(printf '%s\n' "$argv" | tail -1)" != "site-analyst" ]; then
+            echo "  the last argument is not the image"; fail=1
+          fi
+          exit $fail
+
+      # The status page tells a visitor to sign in with the operator code, and
+      # used to link to a page that hides the code field from anyone who already
+      # has a session — the precise person it was talking to. ?signin is what
+      # makes that page ask again. Checked by grep because the behaviour needs a
+      # browser, which this workflow deliberately does not install.
+      - name: the status page's sign-in link can be acted on
+        run: |
+          grep -q 'href="/admin"' web/status.html
+          grep -q "gate: 'admin'" web/admin.js
+          echo "  the status page points at a gate that asks"
+
+      # Two renders with different templates must not see each other's. This
+      # was a module-level global, and its failure mode was not a crash but a
+      # sheet in the wrong house style — the kind of bug that ships.
+      - name: templates do not leak between concurrent renders
+        run: npx tsx test/template-isolation.mts
+
+      # The deployer's one job here is to leave a record even when it dies on
+      # its first command — which is exactly what happened once, for six days,
+      # unnoticed. Reproduce that: a repo whose origin cannot be reached, and a
+      # status file that has to come out saying so.
+      - name: deployer reports its own failure
+        run: |
+          tmp=$(mktemp -d)
+          mkdir -p "$tmp/state" "$tmp/repo"
+          sed -e "s#^STATUS_DIR=/var/lib/site-analyst#STATUS_DIR=$tmp/state#" \
+              -e "s#^cd /opt/site-analyst#cd $tmp/repo#" \
+              deploy/update.sh > "$tmp/update.sh"
+          git init -q "$tmp/repo"
+          git -C "$tmp/repo" -c user.email=ci@example.com -c user.name=ci \
+              commit -q --allow-empty -m init
+          git -C "$tmp/repo" remote add origin https://invalid.invalid/nope.git
+          bash "$tmp/update.sh" >/dev/null 2>&1 || true
+          echo "  status: $(cat "$tmp/state/deploy.status" 2>/dev/null || echo '<nothing written>')"
+          grep -q '^FAILED fetch' "$tmp/state/deploy.status"
+
       # A typecheck does not notice a page missing from web/, a route that
       # stopped matching, or an auth gate that moved. Boot the server and ask
       # it for every path that should be public — and for one that should not

@@ -101,12 +101,20 @@ STAGE="build ${REMOTE:0:9}"
 docker build -q --build-arg GIT_SHA="$REMOTE" -t site-analyst .
 STAGE="run ${REMOTE:0:9}"
 docker rm -f site-analyst >/dev/null 2>&1 || true
+# Every comment about this command stays above it. A comment inside a
+# backslash continuation parses clean under `bash -n` and then truncates the
+# command at runtime: the shell takes the rest of that physical line as comment
+# and ends the command at its unescaped newline. It did exactly that here, and
+# what fell off the end was the operator code, the API key, both volumes and the
+# image name — with `docker rm -f` already run on the line above, the next
+# deploy would have taken the container away and had nothing to put back.
+#
+# ADMIN_CODE opens /status, and nothing else does. Unset, the ops view has no
+# code that opens it.
 docker run -d --name site-analyst --restart unless-stopped \
   --network "$NET" \
   -p 127.0.0.1:3100:3000 \
   -e ACCESS_CODE="$ACCESS_CODE" \
-  # ADMIN_CODE opens /status, and nothing else does. Unset, the ops view has
-  # no code that opens it.
   -e ADMIN_CODE="${ADMIN_CODE:-}" \
   -e TFNSW_API_KEY="$TFNSW_API_KEY" \
   -e OVERPASS_LOCAL="${OVERPASS_LOCAL:-}" \
