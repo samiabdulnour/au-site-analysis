@@ -102,11 +102,16 @@ one session rather than two, and the link to `/status` appears on the page only
 once that code has been given. `/api/status` refuses everyone else regardless,
 since hiding a link only stops the people who use links.
 
-`FUSE_ACCESS_CODE` is still read as a transitional alias for `ADMIN_CODE`, so
-renaming it in `/etc/site-analyst.env` does not have to happen in the same
-breath as the deploy that removed the door — otherwise the first pass after this
-locks the operator out of the status view. Drop it from the env file and from
-`src/server.ts` once the host is renamed.
+`ADMIN_CODE` is its own secret and is deliberately not inherited from the office
+code that used to gate the house style. Those grant different things: one drew a
+template, this one shows every address anyone searched for and why their sheets
+failed. Promoting the old code to this one would have quietly widened what that
+secret was worth, so `FUSE_ACCESS_CODE` is simply gone — delete it from
+`/etc/site-analyst.env` and choose a fresh `ADMIN_CODE`.
+
+Until one is set, nothing opens `/status`. That is the right way for it to fail:
+an ops view that is closed until someone deliberately opens it, rather than one
+that stays open on a credential nobody meant to repurpose.
 
 Authentication: visitors enter `ACCESS_CODE` once and get a 30-day session
 cookie. Login attempts and job submissions are rate-limited per IP, and job

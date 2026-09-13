@@ -44,11 +44,11 @@ if (existsSync(join(ROOT, '.env'))) {
 // this server had. It gets its own credential rather than inheriting one from
 // a graphic style that no longer exists.
 const ACCESS_CODE = process.env.ACCESS_CODE ?? '';
-// FUSE_ACCESS_CODE is read as a transitional alias so that renaming the
-// variable in /etc/site-analyst.env is not something the deploy has to happen
-// at the same instant as — otherwise the first pass after this lands locks the
-// operator out of the status view. Drop it once the host is renamed.
-const ADMIN_CODE = process.env.ADMIN_CODE || process.env.FUSE_ACCESS_CODE || '';
+// Its own secret, deliberately not inherited from the office code that used to
+// gate the house style. Those grant different things: one drew a template, this
+// one shows every address anyone searched for and why their sheets failed.
+// Unset, nothing opens /status — which is the right way for it to fail.
+const ADMIN_CODE = process.env.ADMIN_CODE ?? '';
 if (!ACCESS_CODE && process.env.ALLOW_NO_AUTH !== '1') {
   console.error('Set ACCESS_CODE=<shared code> (or ALLOW_NO_AUTH=1 for local use).');
   process.exit(1);
