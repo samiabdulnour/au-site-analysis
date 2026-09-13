@@ -14,7 +14,6 @@ RUN npm ci
 COPY tsconfig.json ./
 COPY src ./src
 COPY web ./web
-COPY config ./config
 COPY assets ./assets
 
 ARG GIT_SHA=dev

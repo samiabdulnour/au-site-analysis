@@ -84,29 +84,13 @@ export function sheetHtml(o: SheetHtmlOpts): string {
       fill="none" stroke="${tpl().ink}" stroke-width="0.25"/>
     ${bar.map((m) => `<text x="${sx(m).toFixed(1)}" y="${sbY + 3.0}" text-anchor="middle" font-size="${T.scalebar}" font-weight="700" fill="${tpl().ink}">${m}${m === m3 ? 'm' : ''}</text>`).join('')}`;
 
-  const northLines = [90, 0].map((deg) => {
-    const a = (deg * Math.PI) / 180;
-    const x = 4.9 * Math.cos(a), y = 4.9 * Math.sin(a);
-    return `<line x1="${x.toFixed(2)}" y1="${(-y).toFixed(2)}" x2="${(-x).toFixed(2)}" y2="${y.toFixed(2)}"/>`;
-  }).join('');
   const ink = tpl().ink;
-  const northSvg = tpl().symbols === 'plain'
-    ? `
+  const northSvg = `
     <text x="9" y="3.0" text-anchor="middle" font-size="3.4" font-weight="700" fill="${ink}">N</text>
     <g transform="translate(9,10.8) rotate(${o.rotationDeg.toFixed(2)})" fill="${ink}">
       <path d="M0,-5.4 L1.9,4.6 L0,2.6 L-1.9,4.6 Z"/>
-    </g>`
-    : `
-    <text x="9" y="3.0" text-anchor="middle" font-size="3.4" font-weight="700" fill="${ink}">N</text>
-    <g transform="translate(9,10.8)" stroke="${ink}" stroke-width="0.18" fill="none">
-      <circle r="4.9"/>
-      <g transform="rotate(${o.rotationDeg.toFixed(2)})">
-        ${northLines}
-        <path d="M0,-4.9 L0.45,0 L0,0 Z" fill="${ink}" stroke="none"/>
-      </g>
     </g>`;
 
-  const [wm1, ...wmRest] = meta.office.name.split(' ');
   const field = (top: number, label: string, valueHtml: string) => `
     <div class="abs" style="top:${top}mm;left:4.8mm;right:0">
       <div class="k">${esc(label)}</div>${valueHtml}
@@ -120,14 +104,6 @@ export function sheetHtml(o: SheetHtmlOpts): string {
   // issue a completed sheet.
   interface Block { h: number; html: (top: number) => string }
   const blocks: Block[] = [];
-  const officeShown = Boolean(meta.office.name || meta.office.lines.length);
-  if (officeShown) {
-    blocks.push({ h: 37.7, html: (t) => `
-      ${rule(t)}
-      <div class="abs k" style="top:${t + 0.7}mm;left:4.8mm">ARCHITECT</div>
-      ${meta.office.name ? `<div class="abs wordmark" style="top:${t + 5.8}mm;left:4.8mm">${esc(wm1)}<span class="rule2">—</span>${esc(wmRest.join(' '))}</div>` : ''}
-      <div class="abs fine" style="top:${t + 19.2}mm;left:4.8mm;right:0">${meta.office.lines.map(esc).join('<br>')}</div>` });
-  }
   if (meta.client || (meta.clientLines ?? []).length) {
     blocks.push({ h: 24.6, html: (t) => `
       ${rule(t)}
@@ -205,8 +181,6 @@ export function sheetHtml(o: SheetHtmlOpts): string {
   .fine li { margin-left: 2.8mm; margin-bottom: 0.35mm; }
   .v-addr { font-size: ${T.addr}mm; font-weight: 400; line-height: 1.15; }
   .v { font-size: ${T.value}mm; font-weight: 400; line-height: 1.16; }
-  .wordmark { font-size: 6.2mm; font-weight: 700; letter-spacing: 0.5mm; white-space: nowrap; }
-  .wordmark .rule2 { text-decoration: line-through; font-weight: 400; }
   .prelim { border: 0.6mm solid #e30000; color: #e30000; text-align: center; font-weight: 700;
     letter-spacing: 1.6mm; font-size: 4.2mm; padding: 1.4mm 0; }
 </style></head>
@@ -221,7 +195,7 @@ ${o.layers.join('\n')}
 </svg>
 <div class="titlecol">
   <div class="abs fine" style="top:10mm;left:4.8mm;right:0">
-    ${esc(o.address)}<br>Generated: ${esc(o.generatedAt.slice(0, 10))}${meta.office.name ? `<br>© ${esc(meta.office.name)}` : ''}
+    ${esc(o.address)}<br>Generated: ${esc(o.generatedAt.slice(0, 10))}
     <br>GENERATED WITH SITE ANALYST — © SAMI ABDULNOUR, LICENSED USE.
   </div>
   ${rule(20)}

@@ -105,6 +105,10 @@ docker run -d --name site-analyst --restart unless-stopped \
   --network "$NET" \
   -p 127.0.0.1:3100:3000 \
   -e ACCESS_CODE="$ACCESS_CODE" \
+  # ADMIN_CODE opens /status. FUSE_ACCESS_CODE is still passed as the
+  # transitional alias the app reads, so renaming it in the env file does
+  # not have to happen in the same breath as this deploy.
+  -e ADMIN_CODE="${ADMIN_CODE:-}" \
   -e FUSE_ACCESS_CODE="${FUSE_ACCESS_CODE:-}" \
   -e TFNSW_API_KEY="$TFNSW_API_KEY" \
   -e OVERPASS_LOCAL="${OVERPASS_LOCAL:-}" \

@@ -1,8 +1,8 @@
-/* The office view of what this server has been doing.
+/* The operator's view of what this server has been doing.
 
    /api/version is the public window and says only whether the thing is up.
    This one names the addresses people searched for and the reasons their
-   sheets failed, so it is the office door's and 403s for anyone else. */
+   sheets failed, so it takes the operator code and 403s for anyone else. */
 
 const $ = (id) => document.getElementById(id);
 const REFRESH_MS = 10_000;
@@ -132,8 +132,6 @@ function renderJobs(list) {
       j.sheet,
       j.sheet === 'summary' ? null : j.scale ? '1:' + j.scale : 'auto scale',
       j.sheet === 'summary' ? null : j.rotate === 'auto' ? 'aligned' : 'north up',
-      j.template,
-      j.tier === 'fuse' ? 'office' : 'public',
     ].filter(Boolean).join(' · ');
     what.append(addr, spec);
     // A failure is only useful with its reason, and the reason is the whole

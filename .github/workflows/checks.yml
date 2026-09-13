@@ -116,7 +116,7 @@ jobs:
             fi
           }
           check /             200
-          check /fuse         200
+          check /fuse         404   # the office door was removed
           check /about        200
           check /status       200
           check /style.css    200

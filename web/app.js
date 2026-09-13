@@ -2,10 +2,9 @@
    State lives in one object; the options are plain buttons that write into it,
    which avoids native <select> chrome in a page that is otherwise all text. */
 
-// `template` and which templates exist at all come from the session: the
-// office style belongs to the office door, so the public page never lists it.
-const state = { sheet: 'context', scale: '3000', rotate: 'north', template: 'neutral' };
-let allowedTemplates = ['neutral'];
+// There is one graphic template, so it is not in here: the server draws every
+// sheet in it and the page has nothing to choose.
+const state = { sheet: 'context', scale: '3000', rotate: 'north' };
 
 // [value, label, previewImage, previewCaption] — every option previews a real
 // sheet generated for the same demo address, so the comparison is like for like.
@@ -30,20 +29,10 @@ const SCALES = {
   ],
   summary: [],
 };
-// Graphic template: colours, typeface and symbol family. Content is identical
-// between templates — only the drawing's appearance changes.
-const TEMPLATES = [
-  ['fuse',    'fuse',    '/samples/tpl-fuse.jpg',    'fuse — the office style'],
-  ['neutral', 'neutral', '/samples/tpl-neutral.jpg', 'neutral — restrained palette, mono-safe'],
-];
 const NORTH = [
   ['north', 'up',    '/samples/site.jpg',       'north up — the sheet is oriented to north'],
   ['auto',  'align', '/samples/north-align.jpg', 'aligned — the lot is squared to the sheet'],
 ];
-
-// Which entrance this page is. Sent with the login so the door is checked as
-// well as the code — /fuse does not open to the public code.
-const DOOR = location.pathname.replace(/\/+$/, '') === '/fuse' ? 'fuse' : 'public';
 
 const $ = (id) => document.getElementById(id);
 const f = $('f'), loginForm = $('login');
@@ -101,22 +90,13 @@ function renderAll() {
   }
   tokens($('northOpts'), NORTH, state.rotate, (v) => { state.rotate = v; renderAll(); });
 
-  // One template is not a choice — the row only earns its space when the
-  // session can actually pick between them.
-  const tpls = TEMPLATES.filter(([v]) => allowedTemplates.includes(v));
-  $('templateRow').hidden = tpls.length < 2;
-  tokens($('templateOpts'), tpls, state.template, (v) => { state.template = v; renderAll(); });
 }
 
-/** Take what the door told us about this session. */
+/** Take what the server told us about this session. */
 function applySession(j) {
-  allowedTemplates = Array.isArray(j.templates) && j.templates.length ? j.templates : ['neutral'];
-  state.template = allowedTemplates.includes(j.template) ? j.template : allowedTemplates[0];
-  if (j.tier === 'fuse') {
-    const lead = document.querySelector('#f .lead');
-    if (lead) lead.textContent = 'FUSE edition. Search a NSW address to generate its site analysis.';
-    // The status view is the office's, so the way to it only exists once the
-    // office code has been given. /api/status refuses anyone else regardless.
+  if (j.operator) {
+    // The status view is the operator's, so the way to it only exists once the
+    // operator code has been given. /api/status refuses anyone else regardless.
     const actions = document.querySelector('.actions');
     if (actions && !document.getElementById('statusLink')) {
       const a = document.createElement('a');
@@ -279,21 +259,11 @@ addrInput.addEventListener('blur', () => setTimeout(closeSuggest, 120));
 function showLogin() {
   f.hidden = true;
   loginForm.hidden = false;
-  if (DOOR === 'fuse') {
-    // The office knows what the tool is; the introduction is for the public
-    // door, where it is the only thing a visitor gets before the code field.
-    const intro = $('intro');
-    if (intro) intro.hidden = true;
-    const prompt = loginForm.querySelector('.lead:not(.intro)');
-    if (prompt) prompt.textContent = 'FUSE. Enter the office access code.';
-  }
 }
 
 fetch('/api/me').then(async (r) => {
   if (!r.ok) return showLogin();
   const j = await readJson(r);
-  // A session from the other entrance is not a session here.
-  if (j.tier !== DOOR) return showLogin();
   f.hidden = false;
   loginForm.hidden = true;
   applySession(j);
@@ -304,7 +274,7 @@ loginForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   const r = await fetch('/api/login', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ code: $('code').value, door: DOOR }),
+    body: JSON.stringify({ code: $('code').value }),
   });
   if (r.ok) {
     loginForm.hidden = true;
@@ -433,8 +403,7 @@ async function submit(fresh) {
     const r = await fetch('/api/jobs', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ address, scale: state.scale, rotate: state.rotate,
-                             sheet: state.sheet, template: state.template,
-                             fresh: fresh === true }),
+                             sheet: state.sheet, fresh: fresh === true }),
     });
     const j = await readJson(r);
     if (!r.ok) throw new Error(httpMessage(r, j));
@@ -458,8 +427,7 @@ async function submitBatch(addresses, fresh) {
     const r = await fetch('/api/batches', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ addresses, scale: state.scale, rotate: state.rotate,
-                             sheet: state.sheet, template: state.template,
-                             fresh: fresh === true }),
+                             sheet: state.sheet, fresh: fresh === true }),
     });
     const j = await readJson(r);
     if (!r.ok) throw new Error(httpMessage(r, j));

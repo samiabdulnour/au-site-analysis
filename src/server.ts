@@ -20,7 +20,7 @@ import { renderSheet, MAP_W, MAP_H, type SheetMeta } from './render/sheet.js';
 import { renderSiteSheet } from './render/siteSheet.js';
 import { renderSummarySheet } from './render/summarySheet.js';
 import { summaryCsv, summaryJson } from './export/summaryExport.js';
-import { withTemplate } from './render/template.js';
+import { withTemplate, DEFAULT_TEMPLATE } from './render/template.js';
 import { htmlToPdf } from './render/pdf.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -33,38 +33,32 @@ if (existsSync(join(ROOT, '.env'))) {
   }
 }
 
-// Two doors. The public one at /, the office one at /fuse, each with its own
-// code — the code is what decides which you get, not the URL, so the office
-// entrance cannot be reached by guessing a path.
+// One door. There used to be two — a public entrance and an office one — but
+// the only thing they separated was the office graphic template, and that sheet
+// is drawn in ArchiCAD now. A door that grants nothing the other does not is
+// just a second lock on the same room.
 //
-// What separates them is the graphic template: `fuse` is the office's own
-// house style and is not the public's to draw with. That is enforced on the
-// job rather than in the page (TIER_TEMPLATES, applied in /api/jobs), because
-// hiding a button only stops the people who use buttons.
-//
-// One template each, so neither door shows a template row at all — a list of
-// one is not a choice. The list is what makes that true rather than a flag,
-// so adding the office's second style later is a word here and the row comes
-// back on its own.
-type Tier = 'public' | 'fuse';
-const TIER_TEMPLATES: Record<Tier, string[]> = {
-  public: ['neutral'],
-  fuse: ['fuse'],
-};
-const tierDefault = (t: Tier) => TIER_TEMPLATES[t][0];
-
+// What did not go with it is the operator permission. /status names the
+// addresses people searched for and why their sheets failed, and it had been
+// riding on the office tier because that was the only notion of "privileged"
+// this server had. It gets its own credential rather than inheriting one from
+// a graphic style that no longer exists.
 const ACCESS_CODE = process.env.ACCESS_CODE ?? '';
-const FUSE_ACCESS_CODE = process.env.FUSE_ACCESS_CODE ?? '';
+// FUSE_ACCESS_CODE is read as a transitional alias so that renaming the
+// variable in /etc/site-analyst.env is not something the deploy has to happen
+// at the same instant as — otherwise the first pass after this lands locks the
+// operator out of the status view. Drop it once the host is renamed.
+const ADMIN_CODE = process.env.ADMIN_CODE || process.env.FUSE_ACCESS_CODE || '';
 if (!ACCESS_CODE && process.env.ALLOW_NO_AUTH !== '1') {
   console.error('Set ACCESS_CODE=<shared code> (or ALLOW_NO_AUTH=1 for local use).');
   process.exit(1);
 }
-// An empty code must never derive a usable token, or an unset FUSE_ACCESS_CODE
-// would hand the office tier to anyone presenting the HMAC of the empty key.
+// An empty code must never derive a usable token, or an unset ADMIN_CODE would
+// hand the status view to anyone presenting the HMAC of the empty key.
 const tokenFor = (code: string) =>
   code ? createHmac('sha256', code).update('site-analyst-session-v1').digest('hex') : '';
 const SESSION_TOKEN = tokenFor(ACCESS_CODE);
-const FUSE_SESSION_TOKEN = tokenFor(FUSE_ACCESS_CODE);
+const ADMIN_SESSION_TOKEN = tokenFor(ADMIN_CODE);
 
 const JOB_RETENTION_MS = 24 * 3600 * 1000;
 const WEB_OUT = join(ROOT, 'out', 'web');
@@ -146,7 +140,6 @@ interface Job {
   rotate: 'north' | 'auto';
   template: string;
   key: string;              // what makes two requests the same request
-  tier: Tier;               // which door asked for it
   status: 'queued' | 'running' | 'done' | 'error';
   log: string[];
   pdfPath?: string;
@@ -214,7 +207,7 @@ interface StoredJob {
   id: string; address: string; sheet: Job['sheet']; scale: number;
   rotate: Job['rotate']; template: string; status: Job['status'];
   log: string[]; error?: string; createdAt: number;
-  tier?: Tier; startedAt?: number; finishedAt?: number; bytes?: number;
+  startedAt?: number; finishedAt?: number; bytes?: number;
   // Basenames, not paths: what the record has to survive is a new container,
   // and an absolute path is a fact about the old one.
   pdf?: string; cad?: string; data?: string;
@@ -226,7 +219,7 @@ function saveIndex() {
     rotate: j.rotate, template: j.template, status: j.status,
     // Only the tail is ever served, so only the tail is worth keeping.
     log: j.log.slice(-12), error: j.error, createdAt: j.createdAt,
-    tier: j.tier, startedAt: j.startedAt, finishedAt: j.finishedAt, bytes: j.bytes,
+    startedAt: j.startedAt, finishedAt: j.finishedAt, bytes: j.bytes,
     pdf: j.pdfPath && basename(j.pdfPath),
     cad: j.cadPath && basename(j.cadPath),
     data: j.dataPath && basename(j.dataPath),
@@ -265,10 +258,8 @@ function loadIndex() {
       log: Array.isArray(r.log) ? r.log.map(String) : [],
       error: lost ? 'interrupted by a server restart — run again' : r.error,
       createdAt: Number(r.createdAt) || Date.now(),
-      // Records written before the door was kept: each door has exactly one
-      // template, so the template says which door drew it.
-      tier: r.tier === 'fuse' || r.tier === 'public' ? r.tier
-        : TIER_TEMPLATES.fuse.includes(String(r.template ?? '')) ? 'fuse' : 'public',
+      // Records from when jobs carried a door still have `tier`; it is simply
+      // not read, so they load as they are rather than needing a migration.
       startedAt: Number(r.startedAt) || undefined,
       finishedAt: Number(r.finishedAt) || undefined,
       bytes: Number(r.bytes) || undefined,
@@ -324,7 +315,6 @@ interface BatchEntry {
 }
 interface Batch {
   id: string;
-  tier: Tier;
   createdAt: number;
   sheet: Job['sheet'];
   entries: BatchEntry[];
@@ -349,7 +339,6 @@ function loadBatches() {
     if (!r || typeof r.id !== 'string' || !Array.isArray(r.entries)) continue;
     batches.set(r.id, {
       id: r.id,
-      tier: r.tier === 'fuse' ? 'fuse' : 'public',
       createdAt: Number(r.createdAt) || Date.now(),
       sheet: r.sheet === 'site' ? 'site' : r.sheet === 'summary' ? 'summary' : 'context',
       entries: r.entries
@@ -421,10 +410,9 @@ async function runJobBody(job: Job) {
   saveIndex();
   const outDir = join(WEB_OUT, job.id);
   try {
-    const office = JSON.parse(readFileSync(join(ROOT, 'config', 'office.json'), 'utf8'));
     const meta: SheetMeta = {
       jobNo: '', client: '', status: '', sheetNo: '', revision: '',
-      checked: '', drawn: '', date: '', preliminary: false, office,
+      checked: '', drawn: '', date: '', preliminary: false,
     };
     if (job.sheet === 'summary') {
       const sub = await runSummaryPipeline(job.address, {
@@ -632,14 +620,24 @@ function sameToken(got: string, want: string): boolean {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-/** Which door this request came through, or null if it has not been through one. */
-function authed(req: IncomingMessage): Tier | null {
-  if (!ACCESS_CODE) return 'fuse';       // ALLOW_NO_AUTH: local use sees everything
+function sessionToken(req: IncomingMessage): string | null {
   const m = (req.headers.cookie ?? '').match(/(?:^|;\s*)sa_session=([0-9a-f]{64})/);
-  if (!m) return null;
-  if (sameToken(m[1], FUSE_SESSION_TOKEN)) return 'fuse';
-  if (sameToken(m[1], SESSION_TOKEN)) return 'public';
-  return null;
+  return m ? m[1] : null;
+}
+
+/** May this request generate? The operator code counts, so an operator need
+ *  not hold two sessions to do both things. */
+function authed(req: IncomingMessage): boolean {
+  if (!ACCESS_CODE) return true;         // ALLOW_NO_AUTH: local use
+  const t = sessionToken(req);
+  return Boolean(t) && (sameToken(t!, SESSION_TOKEN) || sameToken(t!, ADMIN_SESSION_TOKEN));
+}
+
+/** May this request see what the server has been doing? */
+function isOperator(req: IncomingMessage): boolean {
+  if (!ACCESS_CODE) return true;         // ALLOW_NO_AUTH: local use sees everything
+  const t = sessionToken(req);
+  return Boolean(t) && sameToken(t!, ADMIN_SESSION_TOKEN);
 }
 
 /** The codes are checked with a constant-time compare over a fixed width. */
@@ -688,7 +686,6 @@ const server = createServer(async (req, res) => {
   // from user input.
   const PAGES: Record<string, [string, string]> = {
     '/': ['index.html', 'text/html; charset=utf-8'],
-    '/fuse': ['index.html', 'text/html; charset=utf-8'],
     '/about': ['about.html', 'text/html; charset=utf-8'],
     '/status': ['status.html', 'text/html; charset=utf-8'],
     '/status.js': ['status.js', 'text/javascript; charset=utf-8'],
@@ -712,13 +709,11 @@ const server = createServer(async (req, res) => {
 
   // ---- crawlers ----------------------------------------------------------
   if (req.method === 'GET' && url.pathname === '/robots.txt') {
-    // The office door and the status view are not secrets — app.js names /fuse
-    // and the code is what grants anything — but neither belongs in a search
-    // result. /api/ is nothing a crawler can use.
+    // The status view is not a secret — the code is what grants anything — but
+    // it does not belong in a search result. /api/ is nothing a crawler can use.
     res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=86400' });
     res.end(`User-agent: *
 Disallow: /api/
-Disallow: /fuse
 Disallow: /status
 
 Sitemap: ${siteBase()}/sitemap.xml
@@ -775,7 +770,7 @@ Sitemap: ${siteBase()}/sitemap.xml
   // whether the thing is up, whereas this names addresses people searched for
   // and the reasons their sheets failed.
   if (req.method === 'GET' && url.pathname === '/api/status') {
-    if (authed(req) !== 'fuse') return json(res, 403, { error: 'Office access only.' });
+    if (!isOperator(req)) return json(res, 403, { error: 'Operator access only.' });
     const all = [...jobs.values()].sort((a, b) => b.createdAt - a.createdAt);
     const fs = await statfs(WEB_OUT).catch(() => null);
     return json(res, 200, {
@@ -804,7 +799,7 @@ Sitemap: ${siteBase()}/sitemap.xml
       // 24h of retention is already the ceiling on how many there can be.
       jobs: all.slice(0, 100).map((j) => ({
         id: j.id, address: j.address, sheet: j.sheet, scale: j.scale,
-        rotate: j.rotate, template: j.template, tier: j.tier, status: j.status,
+        rotate: j.rotate, template: j.template, status: j.status,
         error: j.error, createdAt: j.createdAt, bytes: j.bytes ?? null,
         // Still running: measured against now, so the number keeps climbing
         // rather than reading as zero for the two minutes it matters most.
@@ -814,12 +809,8 @@ Sitemap: ${siteBase()}/sitemap.xml
   }
 
   if (req.method === 'GET' && url.pathname === '/api/me') {
-    const tier = authed(req);
-    if (!tier) return json(res, 401, { authed: false });
-    return json(res, 200, {
-      authed: true, tier,
-      templates: TIER_TEMPLATES[tier], template: tierDefault(tier),
-    });
+    if (!authed(req)) return json(res, 401, { authed: false });
+    return json(res, 200, { authed: true, operator: isOperator(req) });
   }
 
   if (req.method === 'POST' && url.pathname === '/api/login') {
@@ -827,29 +818,19 @@ Sitemap: ${siteBase()}/sitemap.xml
     const body = await readBody(req);
     let code = '';
     try { code = String(JSON.parse(body || '{}').code ?? ''); } catch { /* fall through */ }
-    // Each door takes its own code and no other. A door that opens to the
-    // other entrance's key is not a separate door, however little it grants.
-    //
-    // The page says which door it is. A client is free to lie about that, but
-    // lying only ever narrows what it can present a code for — claiming the
-    // office door still requires the office code — so the secret remains the
-    // only thing that grants anything.
-    let door: Tier = 'public';
-    try { door = JSON.parse(body || '{}').door === 'fuse' ? 'fuse' : 'public'; } catch { /* public */ }
-    const tier: Tier = door;
-    if (!codeMatches(code, door === 'fuse' ? FUSE_ACCESS_CODE : ACCESS_CODE)) {
+    // The operator code is checked first and grants both: it is a superset of
+    // what the shared code grants, so an operator holds one session, not two.
+    const operator = codeMatches(code, ADMIN_CODE);
+    if (!operator && !codeMatches(code, ACCESS_CODE)) {
       return json(res, 401, { error: 'Wrong access code.' });
     }
-    const token = tier === 'fuse' ? FUSE_SESSION_TOKEN : SESSION_TOKEN;
+    const token = operator ? ADMIN_SESSION_TOKEN : SESSION_TOKEN;
     const secure = req.headers['x-forwarded-proto'] === 'https' ? '; Secure' : '';
     res.writeHead(200, {
       'Content-Type': 'application/json',
       'Set-Cookie': `sa_session=${token}; HttpOnly; SameSite=Lax; Max-Age=2592000; Path=/${secure}`,
     });
-    res.end(JSON.stringify({
-      ok: true, tier,
-      templates: TIER_TEMPLATES[tier], template: tierDefault(tier),
-    }));
+    res.end(JSON.stringify({ ok: true, operator }));
     return;
   }
 
@@ -873,13 +854,9 @@ Sitemap: ${siteBase()}/sitemap.xml
   if (req.method === 'POST' && url.pathname === '/api/jobs') {
     const body = await readBody(req);
     try {
-      const { address, scale, rotate, sheet, template, fresh } = JSON.parse(body || '{}');
-      // Enforced here rather than by hiding the option: a public session that
-      // asks for the office template gets that tier's own template instead.
-      const tier = authed(req) ?? 'public';
-      const allowed = TIER_TEMPLATES[tier];
-      const asked = String(template ?? '');
-      const jobTemplate = allowed.includes(asked) ? asked : allowed[0];
+      const { address, scale, rotate, sheet, fresh } = JSON.parse(body || '{}');
+      // There is one template, so it is not the caller's to pick.
+      const jobTemplate = DEFAULT_TEMPLATE;
       const addr = String(address ?? '').trim();
       if (addr.length < 8 || addr.length > 120) return json(res, 400, { error: 'Enter a full NSW street address.' });
       const kind: 'context' | 'site' | 'summary' =
@@ -916,7 +893,7 @@ Sitemap: ${siteBase()}/sitemap.xml
         return json(res, 429, { error: 'Rate limit: try again later.' });
       spend(`jobs:${ip}`, 3600_000, 1);
       const job: Job = {
-        id: randomUUID(), ...want, key, tier,
+        id: randomUUID(), ...want, key,
         status: 'queued', log: [], createdAt: Date.now(),
       };
       enqueue(job);
@@ -933,10 +910,7 @@ Sitemap: ${siteBase()}/sitemap.xml
     const body = await readBody(req);
     try {
       const b = JSON.parse(body || '{}');
-      const tier = authed(req) ?? 'public';
-      const allowed = TIER_TEMPLATES[tier];
-      const asked = String(b.template ?? '');
-      const jobTemplate = allowed.includes(asked) ? asked : allowed[0];
+      const jobTemplate = DEFAULT_TEMPLATE;
 
       const raw: unknown[] = Array.isArray(b.addresses) ? b.addresses : [];
       const addresses = raw.map((a) => String(a ?? '').trim()).filter(Boolean);
@@ -979,7 +953,7 @@ Sitemap: ${siteBase()}/sitemap.xml
       spend(`jobs:${ip}`, 3600_000, toRun);
 
       const batch: Batch = {
-        id: randomUUID(), tier, createdAt: Date.now(), sheet: kind, entries: [],
+        id: randomUUID(), createdAt: Date.now(), sheet: kind, entries: [],
       };
       for (const p of plan) {
         // Re-checked rather than trusting the plan: two identical addresses in
@@ -991,7 +965,7 @@ Sitemap: ${siteBase()}/sitemap.xml
           continue;
         }
         const job: Job = {
-          id: randomUUID(), ...p.want, key: p.key, tier,
+          id: randomUUID(), ...p.want, key: p.key,
           status: 'queued', log: [], createdAt: Date.now(),
         };
         enqueue(job);

@@ -6,7 +6,9 @@
 // renderers. What a sheet SAYS (which data, which labels, the A1 geometry)
 // is deliberately not part of a template.
 //
-// `fuse` reproduces the office style the sheets were reverse-engineered from.
+// There is one template. The office style that used to sit beside it is drawn
+// in ArchiCAD now, so it left; this one is what every sheet comes out in until
+// its replacement is designed.
 //
 // Fonts are limited to what the runtime image actually ships (Liberation and
 // DejaVu). Naming a font that is not installed does not fail — it silently
@@ -49,36 +51,11 @@ export interface Template {
   busRoute: string;   // bus route dashes
   heritage: string;   // heritage hatch
 
-  /** Symbol family: how stops, north point and sun are drawn. */
-  symbols: 'fuse' | 'plain';
   /** Land-use fills for the context sheet legend. */
   categories: Category[];
 }
 
-// The office palette, per the Oatley (2546) legend.
-const FUSE_CATEGORIES: Category[] = [
-  { id: 'site',           label: 'SITE',                                     fill: '#e8402a', opacity: 0.55 },
-  { id: 'medical',        label: 'MEDICAL',                                  fill: '#f27ba9', opacity: 0.6, stroke: '#e5237e' },
-  { id: 'education',      label: 'EDUCATION',                                fill: '#93b7f2', opacity: 0.6, stroke: '#2e6be6' },
-  { id: 'childCare',      label: 'CHILD CARE / AGED CARE',                   fill: '#f4f8ff', opacity: 0.65, stroke: '#2e6be6' },
-  { id: 'mixedUse',       label: 'MIXED USE CLUSTER RESIDENTIAL/COMMERCIAL', fill: '#e957c9', opacity: 0.5 },
-  { id: 'retail',         label: 'ACTIVE RETAIL',                            fill: '#e4d3f0', opacity: 0.55 },
-  { id: 'openSpace',      label: 'OPEN SPACE',                               fill: '#e6f0d8', opacity: 0.55 },
-  { id: 'community',      label: 'COMMUNITY HUB',                            fill: '#e0f2eb', opacity: 0.6, stroke: '#a5c3d8' },
-  { id: 'r2',             label: 'R2 LOW DENSITY RESIDENTIAL',               fill: '#fce9e8', opacity: 0.45 },
-  { id: 'r3',             label: 'R3 MEDIUM DENSITY RESIDENTIAL',            fill: '#f7c1bd', opacity: 0.5 },
-  { id: 'r4',             label: 'R4 HIGH DENSITY RESIDENTIAL',              fill: '#f29e97', opacity: 0.5 },
-  { id: 'localCentre',    label: 'LOCAL CENTRE',                             fill: '#f0b3c8', opacity: 0.5 },
-  { id: 'commercial',     label: 'COMMERCIAL CENTRE',                        fill: '#d9c2ee', opacity: 0.5 },
-  { id: 'industrial',     label: 'GENERAL INDUSTRIAL',                       fill: '#c9a8ec', opacity: 0.5 },
-  { id: 'infrastructure', label: 'INFRASTRUCTURE FACILITY',                  fill: '#f0e2e6', opacity: 0.55, stroke: '#ef8b1d' },
-  { id: 'water',          label: 'WATERWAY',                                 fill: '#bcdcf0', opacity: 0.6 },
-  { id: 'railway',        label: 'RAILWAY TRACKS',                           fill: '#f3c488', opacity: 0.75, stroke: '#ef8b1d' },
-  { id: 'heritage',       label: 'GENERAL HERITAGE SITE',                    fill: '#c8a165', opacity: 0.55 },
-];
-
-// A restrained alternative: one accent against neutral ground, so the aerial
-// reads through and the sheet stays legible photocopied or printed in mono.
+// The land-use palette for the context sheet legend.
 const NEUTRAL_CATEGORIES: Category[] = [
   { id: 'site',           label: 'SITE',                                     fill: '#d1362a', opacity: 0.5 },
   { id: 'medical',        label: 'MEDICAL',                                  fill: '#cfd8dc', opacity: 0.55, stroke: '#5b6b73' },
@@ -105,29 +82,6 @@ const GROTESK = "'DejaVu Sans', Verdana, 'Liberation Sans', sans-serif";
 
 export const TEMPLATES: Template[] = [
   {
-    id: 'fuse',
-    label: 'fuse',
-    note: 'the office style the sheets were drawn from',
-    font: SANS,
-    textScale: 1,
-    ink: '#111111',
-    rule: '#666666',
-    site: '#e30613',
-    dimension: '#2456c4',
-    wind: '#2f9fd6',
-    sun: '#feefab',
-    road: '#6e6e6e',
-    water: '#bcdcf0',
-    transit: '#2f7fd6',
-    rail: '#3b3b3b',
-    walk5: '#e6007e',
-    walk10: '#b5379b',
-    busRoute: '#d5006d',
-    heritage: '#a97b3f',
-    symbols: 'fuse',
-    categories: FUSE_CATEGORIES,
-  },
-  {
     id: 'neutral',
     label: 'neutral',
     note: 'restrained palette, one accent — survives a mono print',
@@ -147,13 +101,12 @@ export const TEMPLATES: Template[] = [
     walk10: '#9c8aa6',
     busRoute: '#6b7f93',
     heritage: '#94836a',
-    symbols: 'plain',
     categories: NEUTRAL_CATEGORIES,
   },
 ];
 
 const byId = Object.fromEntries(TEMPLATES.map((t) => [t.id, t]));
-export const DEFAULT_TEMPLATE = 'fuse';
+export const DEFAULT_TEMPLATE = 'neutral';
 
 // The renderers read the active template rather than threading it through
 // every drawing helper — forty-five call sites across five files, most of them
@@ -184,8 +137,11 @@ export function setTemplate(id: string | undefined): Template {
  * Run `fn` with `id` as the active template for it and everything it awaits,
  * without disturbing what any other concurrent run sees.
  */
-export function withTemplate<T>(id: string | undefined, fn: () => T): T {
-  return als.run(byId[id ?? ''] ?? byId[DEFAULT_TEMPLATE], fn);
+export function withTemplate<T>(t: string | Template | undefined, fn: () => T): T {
+  const resolved = typeof t === 'object' && t !== null
+    ? t
+    : byId[t ?? ''] ?? byId[DEFAULT_TEMPLATE];
+  return als.run(resolved, fn);
 }
 
 export function tpl(): Template {

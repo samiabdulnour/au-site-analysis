@@ -46,9 +46,8 @@ To refresh the samples, generate the three sheets for the demo address and
 re-render them:
 
 ```bash
-# neutral: the previews have to match what the public side draws
-npm run generate -- "1 Bay Street, Botany NSW 2019" --type both --template neutral
-npm run generate -- "1 Bay Street, Botany NSW 2019" --type summary --template neutral
+npm run generate -- "1 Bay Street, Botany NSW 2019" --type both
+npm run generate -- "1 Bay Street, Botany NSW 2019" --type summary
 python3 - <<'EOF'
 import pymupdf
 src = 'out/1-bay-street-botany-nsw-2019/'
@@ -82,47 +81,37 @@ await browser.close();
 EOF
 ```
 
-### Two doors
+### One door, and an operator code
 
-`/` is the public entrance and `/fuse` the office one. They serve the same
-page and the same generator; what separates them is the graphic template.
-`fuse` is the office's own house style, so only the office door draws with it
-and the public one draws `neutral`. Each door has exactly one template, so
-neither shows the template row — a list of one is not a choice. It is a list
-rather than a flag so that adding the office's second style later brings the
-row back without any other change.
+`/` is the only entrance. There used to be a second at `/fuse` for the office's
+own house style, but that sheet is drawn by an ArchiCAD plugin now, and a door
+whose only privilege was a graphic template had nothing left to grant.
 
-Each door takes its own code and no other: the public code is refused at
-`/fuse` and the office code is refused at `/`. A door that opens to the other
-entrance's key is not a separate door, however little it grants. A session
-from one entrance is not a session at the other either — arriving at `/fuse`
-with a public cookie asks for the office code.
-
-The page tells the server which door it is. A client can lie about that, but
-lying only narrows what it may present a code for — claiming the office door
-still requires the office code — so the secret stays the only thing that
-grants anything. Set both in `/etc/site-analyst.env`:
+What did not go with it is the operator permission. `/status` names the
+addresses people searched for and why their sheets failed, and it had been
+riding on the office tier because that was the only notion of "privileged" this
+server had. It takes its own credential now:
 
 ```
-ACCESS_CODE=…            # public
-FUSE_ACCESS_CODE=…       # office; omit and /fuse simply has no code that opens it
+ACCESS_CODE=…    # generates drawings
+ADMIN_CODE=…     # also opens /status; omit and nothing opens it
 ```
 
-The allow-list is applied to the job, not to the page (`TIER_TEMPLATES` in
-`src/server.ts`). A public session that posts `template: "fuse"` straight to
-`/api/jobs` gets a neutral sheet — hiding a button only stops the people who
-use buttons. Each door derives its own session cookie, so changing one code
-signs out that door and leaves the other alone.
+The operator code is a superset — it generates as well — so an operator holds
+one session rather than two, and the link to `/status` appears on the page only
+once that code has been given. `/api/status` refuses everyone else regardless,
+since hiding a link only stops the people who use links.
 
-Sample thumbnails are rendered in `neutral`, since that is what the public
-side produces, and illustrate drawing type, scale and orientation rather than
-template, so one set serves both doors. `tpl-fuse.jpg` and `tpl-neutral.jpg`
-are kept for the template row to use whenever a door offers a choice again.
+`FUSE_ACCESS_CODE` is still read as a transitional alias for `ADMIN_CODE`, so
+renaming it in `/etc/site-analyst.env` does not have to happen in the same
+breath as the deploy that removed the door — otherwise the first pass after this
+locks the operator out of the status view. Drop it from the env file and from
+`src/server.ts` once the host is renamed.
 
-Authentication: set `ACCESS_CODE=<shared code>` (env or `.env`) — visitors
-must enter it once and get a 30-day session cookie. Login attempts and job
-submissions are rate-limited per IP, and job outputs are deleted after 24h.
-`ALLOW_NO_AUTH=1` disables the gate for local use only.
+Authentication: visitors enter `ACCESS_CODE` once and get a 30-day session
+cookie. Login attempts and job submissions are rate-limited per IP, and job
+outputs are deleted after 24h. `ALLOW_NO_AUTH=1` disables the gate for local use
+only.
 
 The code lives in `/etc/site-analyst.env` on the server and never in the repo,
 so rotating it is a change on the host rather than a deploy:
@@ -209,8 +198,8 @@ What stopped being a reason is the graphic template. It was a module-level
 global in `src/render/template.ts`, read from forty-five places across the
 renderers, and two simultaneous renders would not have failed — the second's
 `setTemplate` would have changed the palette out from under the first, and out
-would have come a sheet in the wrong house style, silently, and only when a
-public job and an office job happened to overlap.
+would have come a sheet in the wrong house style, silently, and only when two
+jobs happened to overlap.
 
 Threading it through forty-five call sites was one answer. `withTemplate()` is
 the other: the active template is per-async-context rather than per-process, so
@@ -240,7 +229,7 @@ met an object there would find no jobs at all.
 
 ### Status view
 
-`/status` is the office's window onto what the server has been doing: version
+`/status` is the operator's window onto what the server has been doing: version
 and uptime, whether the local Overpass is actually serving, queue depth, how
 much of the output budget the sheets are using and how much room is left on the
 volume underneath — and the last 24 hours of jobs with their address, options,
@@ -248,10 +237,10 @@ door, duration, size, and, for the ones that failed, the reason.
 
 `/api/version` stays the public window and says only whether the thing is up.
 This one names addresses people searched for and why their sheets failed, so it
-answers the office tier and nothing else: no session and a public session both
-get `403 Office access only`, and the link to it appears on the page only once
-the office code has been given. The page itself is served to anyone — it holds
-nothing — and says to sign in at the office door.
+answers the operator code and nothing else: no session and an ordinary session
+both get `403 Operator access only`, and the link to it appears on the page only
+once that code has been given. The page itself is served to anyone — it holds
+nothing — and says to sign in with the operator code.
 
 It refreshes every ten seconds. A failing job is the thing it exists for, so
 the reason sits under the address in red rather than behind a click; the
@@ -299,13 +288,13 @@ not run yet.
 A visitor arriving from a search result used to be shown a password field and
 nothing else. The landing now says what the tool is before it asks for a code —
 what it draws, from what, and what comes out — with `/about` a click away. The
-office door does not get that paragraph; it knows.
+operator sees the same page; there is only one now.
 
 `robots.txt` and `sitemap.xml` are generated per request rather than kept as
 files, so they follow the domain the app is actually served on instead of
-naming one that `SITE_DOMAIN` could disagree with. `/api/`, `/fuse` and
-`/status` are disallowed: not secrets — `app.js` names the office door and the
-code is what grants anything — but nothing that belongs in a search result.
+naming one that `SITE_DOMAIN` could disagree with. `/api/` and `/status`
+are disallowed: not secrets — the code is what grants anything — but nothing
+that belongs in a search result.
 
 A shared link previews with `og.jpg`, a 1200×630 card drawn from
 `web/og-card.html`. A whole A1 sheet scaled to that width is a grey field of
@@ -415,18 +404,25 @@ Every drawing also exports in an open, editable format:
 ### Graphic templates
 
 A template is the sheet's appearance — typeface, text scale, line and fill
-colours, the land-use palette and the symbol family. Content is identical
-between templates; only the look changes. They live in
-`src/render/template.ts`, so a new house style is a data change.
+colours and the land-use palette. Content is identical between templates; only
+the look changes. They live in `src/render/template.ts`, so a new house style is
+a data change.
 
-- `fuse` — the office style the sheets were reverse-engineered from (default)
-- `neutral` — restrained palette, one accent, survives a mono print
+There is one: `neutral`, a restrained palette with a single accent that survives
+a mono print. The office style that sat beside it left with the office door, and
+took the elaborate compass rose with it — that was the only thing the `symbols`
+field ever selected between, so it went too. `neutral`'s replacement is the next
+piece of work.
+
+The renderers read the active template from an async context rather than a
+parameter, so `withTemplate()` also takes a `Template` outright — which is what
+lets `test/template-isolation.mts` hold two apart while only one is registered.
 
 Fonts are limited to what the runtime image installs (Liberation, DejaVu).
 Naming an absent font does not fail; it silently falls back and the sheet
 comes out in the wrong face, so add the package to the `Dockerfile` first.
 
-Options (after `--`): `--type context|site|summary|both`, `--template fuse|neutral`, `--scale 3000` (default 3000), `--job 2539`,
+Options (after `--`): `--type context|site|summary|both`, `--scale 3000` (default 3000), `--job 2539`,
 `--client "Name"`, `--status "DEVELOPMENT APPLICATION"`, `--sheet "DA 003"`.
 
 ## How it works
@@ -443,7 +439,7 @@ address
       5/10-min walking isochrones              (Valhalla)
   → curate land-use categories (zoning as base; schools/hospitals/civic
     overridden by function, labeled by name)
-  → compose A1 sheet (SVG/HTML in the office graphic style)
+  → compose A1 sheet (SVG/HTML in the active graphic template)
   → print to PDF (headless Chromium)
 ```
 
