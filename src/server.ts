@@ -688,9 +688,11 @@ const server = createServer(async (req, res) => {
     '/': ['index.html', 'text/html; charset=utf-8'],
     '/about': ['about.html', 'text/html; charset=utf-8'],
     '/status': ['status.html', 'text/html; charset=utf-8'],
+    '/admin': ['admin.html', 'text/html; charset=utf-8'],
     '/status.js': ['status.js', 'text/javascript; charset=utf-8'],
     '/style.css': ['style.css', 'text/css; charset=utf-8'],
     '/app.js': ['app.js', 'text/javascript; charset=utf-8'],
+    '/admin.js': ['admin.js', 'text/javascript; charset=utf-8'],
   };
   const page = PAGES[url.pathname];
   if (req.method === 'GET' && page) {
@@ -709,12 +711,14 @@ const server = createServer(async (req, res) => {
 
   // ---- crawlers ----------------------------------------------------------
   if (req.method === 'GET' && url.pathname === '/robots.txt') {
-    // The status view is not a secret — the code is what grants anything — but
-    // it does not belong in a search result. /api/ is nothing a crawler can use.
+    // Neither the status view nor the operator gate is a secret — the code is
+    // what grants anything — but neither belongs in a search result. /api/ is
+    // nothing a crawler can use.
     res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=86400' });
     res.end(`User-agent: *
 Disallow: /api/
 Disallow: /status
+Disallow: /admin
 
 Sitemap: ${siteBase()}/sitemap.xml
 `);
@@ -818,12 +822,33 @@ Sitemap: ${siteBase()}/sitemap.xml
   if (req.method === 'POST' && url.pathname === '/api/login') {
     if (limited(`login:${ip}`, 10, 15 * 60_000)) return json(res, 429, { error: 'Too many attempts. Try later.' });
     const body = await readBody(req);
-    let code = '';
-    try { code = String(JSON.parse(body || '{}').code ?? ''); } catch { /* fall through */ }
-    // The operator code is checked first and grants both: it is a superset of
-    // what the shared code grants, so an operator holds one session, not two.
+    let code = '', gate = '';
+    try {
+      const parsed = JSON.parse(body || '{}');
+      code = String(parsed.code ?? '');
+      gate = String(parsed.gate ?? '');
+    } catch { /* fall through to the refusal below */ }
+
+    // Two doors, one endpoint. The shared gate takes either code — the operator
+    // code is a superset of what the shared one grants, so an operator holds one
+    // session rather than two. The operator gate takes only the operator code,
+    // which is what makes it a separate door rather than a second link to the
+    // same one.
     const operator = codeMatches(code, ADMIN_CODE);
-    if (!operator && !codeMatches(code, ACCESS_CODE)) {
+    if (gate === 'admin') {
+      if (!operator) {
+        // Worth distinguishing: someone at the wrong door, holding a code that
+        // works at the other one, should be told so rather than left to wonder
+        // whether they mistyped. It tells them nothing they did not just type.
+        // Nothing is set, so a session already held is not traded down for this.
+        if (codeMatches(code, ACCESS_CODE)) {
+          return json(res, 403, {
+            error: 'That is the shared access code. This gate takes the operator code.',
+          });
+        }
+        return json(res, 401, { error: 'Wrong operator code.' });
+      }
+    } else if (!operator && !codeMatches(code, ACCESS_CODE)) {
       return json(res, 401, { error: 'Wrong access code.' });
     }
     const token = operator ? ADMIN_SESSION_TOKEN : SESSION_TOKEN;
