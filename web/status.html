@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Status — Site Analyst</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 fill=%27%23fff%27/%3E%3Crect x=%274%27 y=%274%27 width=%2724%27 height=%2724%27 fill=%27none%27 stroke=%27%23000%27 stroke-width=%272%27/%3E%3Crect x=%2712%27 y=%2712%27 width=%2712%27 height=%2712%27 fill=%27%23ffff70%27/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="page">
+
+  <div class="masthead">
+    <h1 class="name"><a href="/fuse">SITE ANALYST</a></h1>
+    <a class="btn" href="/fuse">GENERATE A DRAWING</a>
+  </div>
+
+  <!-- Shown when the session is not the office one. The page is served to
+       anyone; what it can say is decided by /api/status. -->
+  <p class="lead" id="denied" hidden>
+    This is the office view. <a href="/fuse">Sign in at the office door</a> to see it.
+  </p>
+
+  <div id="view" hidden>
+    <h2>Server</h2>
+    <div class="deftable auto" id="server"></div>
+
+    <h2>Disk</h2>
+    <div class="deftable auto" id="disk"></div>
+
+    <h2>Jobs <span class="muted" id="jobcount"></span></h2>
+    <div class="jobs" id="jobs"></div>
+    <p class="muted" id="empty" hidden>Nothing generated in the last 24 hours.</p>
+  </div>
+
+  <footer>
+    Refreshes every 10 seconds. Jobs and their output are kept 24 hours.
+  </footer>
+
+</div>
+<script src="/status.js"></script>
+</body>
+</html>

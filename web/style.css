@@ -289,3 +289,51 @@ h2 { font-size: 1em; font-weight: 700; text-transform: uppercase;
    Reads as guidance, not as something to pick. */
 #suggest li.hint { color: var(--muted); cursor: default; }
 #suggest li.hint:hover { background: transparent; color: var(--muted); }
+
+/* ---- status page -------------------------------------------------------- */
+/* The office view. Same hairline tables as everywhere else; the only thing it
+   adds is a colour that means "look at this" — red is already the failure
+   colour, so a threshold crossed borrows it rather than inventing one. */
+.muted { color: var(--muted); }
+.warn { color: var(--err); font-weight: 700; }
+
+/* The about page equalises its row heights so the boxes read as a set. Here
+   the rows are one line of fact each, so they fit their content instead. */
+.deftable.auto { grid-auto-rows: auto; }
+
+/* A job is three columns — when, what, how it went — and the middle one is the
+   only one that wraps, so the time and the outcome stay on their own lines. */
+.jobs { border-top: 1px solid var(--line); border-left: 1px solid var(--line); }
+.job {
+  display: grid;
+  grid-template-columns: 7.5rem 1fr 9rem;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.job > * { padding: .6rem 1rem; min-width: 0; overflow-wrap: anywhere; }
+.job .when { border-right: 1px solid var(--line); white-space: nowrap; }
+.job .meta { border-left: 1px solid var(--line); text-align: right; }
+.job .st { font-weight: 700; text-transform: uppercase; letter-spacing: .02em; }
+.job.error .st { color: var(--err); }
+/* The one still being drawn is the one being waited on. */
+.job.running { background: var(--hi); color: var(--on-hi); }
+.job.running .muted { color: inherit; opacity: .7; }
+.job .why { color: var(--err); }
+
+@media (max-width: 700px) {
+  .job > * { padding: .5rem .6rem; }
+  .job { grid-template-columns: 6rem 1fr 7rem; }
+}
+/* Three columns cannot hold an address on a phone: the time and the outcome
+   become one strip above it, the way the options table's label does. Placed
+   explicitly, because the address sits between them in the markup and would
+   otherwise push the outcome onto a third line of its own. */
+@media (max-width: 560px) {
+  .job { grid-template-columns: 1fr auto; }
+  .job .when { grid-area: 1 / 1; border-right: 0; padding-bottom: 0; }
+  .job .meta { grid-area: 1 / 2; border-left: 0; padding-bottom: 0; }
+  .job .what { grid-area: 2 / 1 / auto / -1; }
+  .job .st { display: inline; }
+  .job .num { display: inline; }
+  .job .num::before { content: ' · '; }
+}

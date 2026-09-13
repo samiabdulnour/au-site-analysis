@@ -161,6 +161,27 @@ is already drawn does not touch them; a forced fresh run does spend it.
 Nothing is cached beyond the retention window above, so a reused sheet is at
 most 24h old.
 
+### Status view
+
+`/status` is the office's window onto what the server has been doing: version
+and uptime, whether the local Overpass is actually serving, queue depth, how
+much of the output budget the sheets are using and how much room is left on the
+volume underneath — and the last 24 hours of jobs with their address, options,
+door, duration, size, and, for the ones that failed, the reason.
+
+`/api/version` stays the public window and says only whether the thing is up.
+This one names addresses people searched for and why their sheets failed, so it
+answers the office tier and nothing else: no session and a public session both
+get `403 Office access only`, and the link to it appears on the page only once
+the office code has been given. The page itself is served to anyone — it holds
+nothing — and says to sign in at the office door.
+
+It refreshes every ten seconds. A failing job is the thing it exists for, so
+the reason sits under the address in red rather than behind a click; the
+running job is the yellow row; and `volume free` is the number to look at first
+when sheets start failing for no reason the log explains, because the Overpass
+database shares that disk.
+
 ### Local OpenStreetMap (recommended for production)
 
 The public Overpass network is frequently unavailable, which costs the site
