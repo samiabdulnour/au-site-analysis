@@ -136,6 +136,31 @@ Overpass database): 24h of age, and `WEB_OUT_BUDGET_MB` of total size (default
 sweep took is dropped with them, so a stale link 404s instead of failing at the
 download.
 
+### Asking twice
+
+An identical request is answered with the sheet already drawn for it rather
+than by drawing it again — instantly, instead of one to three minutes of
+somebody else's public data services. Identical means the address and every
+option that changes the drawing; the typed address is normalised for case,
+punctuation and spacing, so `1 Bay Street, Botany` and `1 BAY STREET BOTANY,`
+are one request. Two genuinely different spellings of the same address are
+still two, because the geocode that would settle it happens inside the pipeline
+this is avoiding — and the type-ahead hands back one canonical string, which is
+what most repeats are.
+
+A request that matches one still running follows it instead of queueing behind
+it, so two people asking at once do not draw the sheet twice.
+
+The page says which it got — `this sheet was drawn 20 minutes ago — reusing
+it` — because an instant PDF is otherwise indistinguishable from a stale one,
+and offers `generate a fresh one` beside the claim, which posts `fresh: true`
+and runs the pipeline regardless. Reuse is checked before the rate limit, since
+the 12-an-hour budget exists to protect the upstream services and a sheet that
+is already drawn does not touch them; a forced fresh run does spend it.
+
+Nothing is cached beyond the retention window above, so a reused sheet is at
+most 24h old.
+
 ### Local OpenStreetMap (recommended for production)
 
 The public Overpass network is frequently unavailable, which costs the site
