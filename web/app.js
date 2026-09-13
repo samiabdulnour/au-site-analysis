@@ -94,6 +94,27 @@ function renderAll() {
 
 /** Take what the server told us about this session. */
 function applySession(j) {
+  // A session is a thirty-day cookie and the code field is hidden while one is
+  // valid, so without a way to put it down a browser that entered the shared
+  // code could not be handed the operator's — for a month. The cookie is
+  // HttpOnly; only the server can clear it.
+  if (j.required) {
+    const actions = document.querySelector('.actions');
+    if (actions && !document.getElementById('signOut')) {
+      const b = document.createElement('button');
+      b.id = 'signOut';
+      b.type = 'button';
+      b.className = 'btn';
+      b.textContent = 'SIGN OUT';
+      b.addEventListener('click', async () => {
+        b.disabled = true;
+        try { await fetch('/api/logout', { method: 'POST' }); } catch { /* offline: ask anyway */ }
+        // ?signin so the form appears even if that request never landed.
+        location.replace('/?signin=1');
+      });
+      actions.append(b);
+    }
+  }
   if (j.operator) {
     // The status view is the operator's, so the way to it only exists once the
     // operator code has been given. /api/status refuses anyone else regardless.
@@ -256,19 +277,38 @@ addrInput.addEventListener('blur', () => setTimeout(closeSuggest, 120));
 
 // ---- session -------------------------------------------------------------
 
-function showLogin() {
+/* /?signin asks for the code field even when a session is already valid.
+   The status page's "sign in with the operator code" links here, and used to
+   link to a page that hid the field from precisely the person it was telling
+   to use it. /api/login replaces whichever cookie is held, so this is how one
+   browser changes which code it holds. */
+const SWITCHING = new URLSearchParams(location.search).has('signin');
+
+/** @param held the session already in hand, if any — it changes what to say. */
+function showLogin(held) {
   f.hidden = true;
   loginForm.hidden = false;
+  if (held) {
+    // They know what the site is; what they need is the difference between the
+    // code they hold and the one they are reaching for.
+    $('intro').hidden = true;
+    $('ask').textContent = held.operator
+      ? 'You are signed in as the operator. Enter another code to swap this browser to it.'
+      : 'You are signed in with the shared code. Enter the operator code to see the status view.';
+    $('keep').hidden = false;
+  }
+  $('code').focus();
 }
 
 fetch('/api/me').then(async (r) => {
-  if (!r.ok) return showLogin();
+  if (!r.ok) return showLogin(null);
   const j = await readJson(r);
+  if (SWITCHING) return showLogin(j);
   f.hidden = false;
   loginForm.hidden = true;
   applySession(j);
   addrInput.focus();
-}).catch(showLogin);
+}).catch(() => showLogin(null));
 
 loginForm.addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -277,9 +317,13 @@ loginForm.addEventListener('submit', async (e) => {
     body: JSON.stringify({ code: $('code').value }),
   });
   if (r.ok) {
+    const j = await readJson(r);
+    // Came from the status page's link, and now holds the code that opens it.
+    if (SWITCHING && j.operator) return location.replace('/status');
+    if (SWITCHING) return location.replace('/');
     loginForm.hidden = true;
     f.hidden = false;
-    applySession(await readJson(r));
+    applySession(j);
     addrInput.focus();
   } else {
     const j = await readJson(r);

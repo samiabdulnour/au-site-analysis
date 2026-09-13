@@ -193,6 +193,10 @@ a { color: inherit; }
 #links { display: flex; }
 .btn {
   display: inline-block; border: 1px solid var(--line); padding: .45rem 1.4rem;
+  /* font first: the shorthand would otherwise undo the weight below. Set at
+     all because this class now lands on a <button> as well as an <a>, and a
+     button left to the browser's own font does not match the page. */
+  font: inherit; cursor: pointer;
   font-weight: 700; letter-spacing: .02em; text-transform: uppercase;
   text-decoration: none; color: var(--ink); background: transparent;
   white-space: nowrap;

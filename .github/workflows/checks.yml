@@ -52,6 +52,16 @@ jobs:
             bash -n "$f"
           done
 
+      # The status page tells a visitor to sign in with the operator code, and
+      # used to link to a page that hides the code field from anyone who already
+      # has a session — the precise person it was talking to. ?signin is what
+      # makes that page ask again. Checked by grep because the behaviour needs a
+      # browser, which this workflow deliberately does not install.
+      - name: the status page's sign-in link can be acted on
+        run: |
+          grep -q 'href="/?signin=1"' web/status.html
+          grep -q "has('signin')" web/app.js
+
       # Two renders with different templates must not see each other's. This
       # was a module-level global, and its failure mode was not a crash but a
       # sheet in the wrong house style — the kind of bug that ships.
@@ -170,6 +180,34 @@ jobs:
           batch "not a list"     '{"addresses":"1 Test Street"}' 400
           batch "over the cap"   "$many"                         400
           batch "short entry"    '{"addresses":["abc"]}'         400
+
+          # A session is a thirty-day HttpOnly cookie, so this is the only way
+          # to put one down — and without it a browser holding the shared code
+          # could not be handed the operator's for a month. It answers before
+          # the auth wall on purpose: ending a session you hold is not a
+          # privilege, and there is nothing there to refuse.
+          hdrs=$(curl -s -D - -o /dev/null --max-time 10 -X POST \
+                   http://127.0.0.1:3123/api/logout)
+          code=$(printf '%s' "$hdrs" | sed -n '1s#.* \([0-9][0-9][0-9]\).*#\1#p')
+          if [ "$code" = "200" ]; then
+            echo "  POST /api/logout -> $code"
+          else
+            echo "  POST /api/logout -> $code, expected 200"; fail=1
+          fi
+          if printf '%s' "$hdrs" | grep -qi 'set-cookie: *sa_session=;.*Max-Age=0'; then
+            echo "  POST /api/logout clears sa_session"
+          else
+            echo "  POST /api/logout did not clear sa_session:"
+            printf '%s' "$hdrs" | grep -i set-cookie | sed 's/^/      /'; fail=1
+          fi
+          # Signing out must take a POST. A link a crawler or a prefetch can
+          # follow would end sessions for people who never clicked anything.
+          if curl -s -D - -o /dev/null --max-time 10 \
+               http://127.0.0.1:3123/api/logout | grep -qi 'set-cookie'; then
+            echo "  GET /api/logout sets a cookie; it must not"; fail=1
+          else
+            echo "  GET /api/logout sets no cookie"
+          fi
 
           exit $fail
 
