@@ -57,6 +57,16 @@ if [ -f deploy/ensure-overpass.sh ]; then
   rc=0; deploy/ensure-overpass.sh || rc=$?
   if [ "$rc" = 10 ]; then FORCE=1; fi
 fi
+# A container that is not there is as good a reason to deploy as a commit that
+# is. Without this, one failed `docker run` leaves nothing serving and the pass
+# after it makes that permanent: HEAD already matches origin/main, so it reports
+# "up-to-date" and exits, and the site stays down until somebody goes looking.
+STAGE=container
+if ! docker inspect -f '{{.State.Running}}' site-analyst 2>/dev/null | grep -qx true; then
+  echo "[$(date -Is)] container is not running — deploying regardless of origin"
+  FORCE=1
+fi
+
 LOCAL=$(git rev-parse HEAD)
 REMOTE=$(git rev-parse origin/main)
 if [ -z "$FORCE" ] && [ "$LOCAL" = "$REMOTE" ]; then
