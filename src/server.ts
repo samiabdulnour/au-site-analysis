@@ -542,6 +542,22 @@ const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', 'http://localhost');
   const ip = clientIp(req);
 
+  // Where this app is being reached, for the absolute URLs that cannot be
+  // relative: robots.txt's sitemap line, sitemap.xml's entries, and the
+  // og:url and og:image a link scraper resolves without ever seeing this
+  // request. Taken from the request rather than named in the pages, which
+  // would be one more thing to keep in step with SITE_DOMAIN. The host is
+  // scrubbed to a hostname's own characters — a forged Host header only ever
+  // poisons the answer to the request that forged it, but there is no reason
+  // to reflect one back whole.
+  const siteBase = () => {
+    const host = String(req.headers.host ?? '').replace(/[^a-zA-Z0-9.:-]/g, '').slice(0, 100)
+      || process.env.SITE_DOMAIN || 'site-analyst.com';
+    const proto = req.headers['x-forwarded-proto'] === 'https' || !/^(localhost|127\.)/.test(host)
+      ? 'https' : 'http';
+    return `${proto}://${host}`;
+  };
+
   // Two pages and their shared assets. Fixed table, so no path can be built
   // from user input.
   const PAGES: Record<string, [string, string]> = {
@@ -557,9 +573,42 @@ const server = createServer(async (req, res) => {
   if (req.method === 'GET' && page) {
     readFile(join(ROOT, 'web', page[0]), (err, data) => {
       if (err) { res.writeHead(500); res.end(`missing web/${page[0]}`); return; }
+      // The link-preview tags need absolute URLs, so the pages write %ORIGIN%
+      // and it is filled in with whatever host they were asked for.
+      const body = page[1].startsWith('text/html')
+        ? data.toString('utf8').replaceAll('%ORIGIN%', siteBase())
+        : data;
       res.writeHead(200, { 'Content-Type': page[1] });
-      res.end(data);
+      res.end(body);
     });
+    return;
+  }
+
+  // ---- crawlers ----------------------------------------------------------
+  if (req.method === 'GET' && url.pathname === '/robots.txt') {
+    // The office door and the status view are not secrets — app.js names /fuse
+    // and the code is what grants anything — but neither belongs in a search
+    // result. /api/ is nothing a crawler can use.
+    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=86400' });
+    res.end(`User-agent: *
+Disallow: /api/
+Disallow: /fuse
+Disallow: /status
+
+Sitemap: ${siteBase()}/sitemap.xml
+`);
+    return;
+  }
+
+  if (req.method === 'GET' && url.pathname === '/sitemap.xml') {
+    const base = siteBase();
+    res.writeHead(200, { 'Content-Type': 'application/xml; charset=utf-8', 'Cache-Control': 'public, max-age=86400' });
+    res.end(`<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>${base}/</loc><changefreq>monthly</changefreq><priority>1.0</priority></url>
+  <url><loc>${base}/about</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+</urlset>
+`);
     return;
   }
 
