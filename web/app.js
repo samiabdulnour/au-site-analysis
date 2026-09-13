@@ -48,7 +48,7 @@ const DOOR = location.pathname.replace(/\/+$/, '') === '/fuse' ? 'fuse' : 'publi
 const $ = (id) => document.getElementById(id);
 const f = $('f'), loginForm = $('login');
 const out = $('out'), logEl = $('log'), queueEl = $('queue');
-const linksEl = $('links'), errEl = $('error'), go = $('go');
+const linksEl = $('links'), errEl = $('error'), go = $('go'), noteEl = $('note');
 const preview = $('preview');
 
 // ---- token rendering -----------------------------------------------------
@@ -302,28 +302,55 @@ loginForm.addEventListener('submit', async (e) => {
 
 // ---- run -----------------------------------------------------------------
 
-f.addEventListener('submit', async (e) => {
-  e.preventDefault();
+/** How long ago the sheet being handed back was drawn, in words. */
+function ago(mins) {
+  if (!(mins > 0)) return 'a moment ago';
+  if (mins < 60) return mins === 1 ? 'a minute ago' : mins + ' minutes ago';
+  const h = Math.round(mins / 60);
+  return h === 1 ? 'an hour ago' : h + ' hours ago';
+}
+
+/* The server answers an identical request with the sheet it already drew, so
+   say so — an instant PDF is otherwise indistinguishable from a stale one — and
+   put the way to insist on a new one right next to the claim. */
+function noteReused(mins) {
+  noteEl.textContent = 'this sheet was drawn ' + ago(mins) + ' — reusing it · ';
+  const again = document.createElement('button');
+  again.type = 'button';
+  again.textContent = 'generate a fresh one';
+  again.addEventListener('click', () => submit(true));
+  noteEl.append(again);
+}
+
+async function submit(fresh) {
   const address = addrInput.value.trim();
   if (!address) return;
   clearTimeout(suggestTimer);
   closeSuggest();
   out.hidden = false;
   errEl.textContent = ''; linksEl.innerHTML = ''; queueEl.textContent = '';
+  noteEl.textContent = '';
   go.disabled = true;
   logEl.textContent = 'submitting';
   try {
     const r = await fetch('/api/jobs', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ address, scale: state.scale, rotate: state.rotate,
-                             sheet: state.sheet, template: state.template }),
+                             sheet: state.sheet, template: state.template,
+                             fresh: fresh === true }),
     });
     const j = await readJson(r);
     if (!r.ok) throw new Error(httpMessage(r, j));
     if (!j.id) throw new Error('service restarting — try again shortly');
+    if (j.reused) noteReused(j.ageMinutes);
+    // Someone else asked for this drawing first and it is still running;
+    // following their job is why this one does not join the queue behind it.
+    else if (j.joined) noteEl.textContent = 'already being drawn for this address — following that run';
     poll(j.id);
   } catch (err) { fail(err.message); }
-});
+}
+
+f.addEventListener('submit', (e) => { e.preventDefault(); submit(false); });
 
 // misses: consecutive transient failures. A generation takes minutes, so a
 // deploy or a dropped connection mid-run must not throw the sheet away —

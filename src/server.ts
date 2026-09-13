@@ -13,7 +13,7 @@ import { readFile, readFileSync, existsSync, mkdirSync, writeFileSync, renameSyn
 import { rm, readdir, stat, writeFile } from 'node:fs/promises';
 import { join, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { randomUUID, createHmac, timingSafeEqual } from 'node:crypto';
+import { randomUUID, createHmac, createHash, timingSafeEqual } from 'node:crypto';
 import { runPipeline, runSitePipeline, runSummaryPipeline } from './pipeline.js';
 import { suggestAddresses } from './fetch/geocode.js';
 import { renderSheet, MAP_W, MAP_H, type SheetMeta } from './render/sheet.js';
@@ -125,6 +125,8 @@ interface Job {
   scale: number;            // 0 = auto (site sheets)
   rotate: 'north' | 'auto';
   template: string;
+  key: string;              // what makes two requests the same request
+
   status: 'queued' | 'running' | 'done' | 'error';
   log: string[];
   pdfPath?: string;
@@ -150,6 +152,39 @@ let queue: Promise<void> = Promise.resolve();
 // out/ is a host volume (deploy/update.sh), so the directory outlives the
 // container that wrote it.
 const JOB_INDEX = join(WEB_OUT, 'jobs.json');
+
+/**
+ * What makes two requests the same request: the address and every option that
+ * changes the drawing. The typed address is normalised for case, punctuation
+ * and spacing, so "1 Bay Street, Botany" and "1 BAY STREET BOTANY," are one
+ * request. Two genuinely different spellings of the same address are still two,
+ * because the geocode that would settle it happens inside the pipeline this is
+ * trying to avoid running — and the type-ahead hands back one canonical string,
+ * which is what most repeats are.
+ */
+function jobKey(r: Pick<Job, 'address' | 'sheet' | 'scale' | 'rotate' | 'template'>): string {
+  const addr = r.address.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  return createHash('sha256')
+    .update([addr, r.sheet, r.scale, r.rotate, r.template].join('|'))
+    .digest('hex').slice(0, 32);
+}
+
+/**
+ * The same request already answered, or being answered right now. A sheet takes
+ * one to three minutes of somebody else's public data services, and the
+ * controls it draws move in months, so asking twice inside the retention window
+ * should not fetch and compose twice.
+ */
+function reusable(key: string): Job | undefined {
+  const same = [...jobs.values()].filter((j) => j.key === key);
+  // In flight wins over finished: it is the fresher of the two, and following
+  // it is what stops two people asking at once from queueing the sheet twice.
+  const live = same.find((j) => j.status === 'running' || j.status === 'queued');
+  if (live) return live;
+  return same
+    .filter((j) => j.status === 'done' && j.pdfPath && existsSync(j.pdfPath))
+    .sort((a, b) => b.createdAt - a.createdAt)[0];
+}
 
 interface StoredJob {
   id: string; address: string; sheet: Job['sheet']; scale: number;
@@ -204,7 +239,12 @@ function loadIndex() {
       log: Array.isArray(r.log) ? r.log.map(String) : [],
       error: lost ? 'interrupted by a server restart — run again' : r.error,
       createdAt: Number(r.createdAt) || Date.now(),
+      key: '',
     };
+    // Recomputed, not read back: the key is derived from fields that are all
+    // here, so a change to how requests are matched takes effect for the sheets
+    // already on disk instead of only for the next ones.
+    job.key = jobKey(job);
     if (job.status === 'done') {
       // Only the files still on disk: a sheet outlives the container but not
       // the 24h sweep, and a link to a deleted file is worse than no link.
@@ -588,10 +628,9 @@ const server = createServer(async (req, res) => {
   }
 
   if (req.method === 'POST' && url.pathname === '/api/jobs') {
-    if (limited(`jobs:${ip}`, 12, 3600_000)) return json(res, 429, { error: 'Rate limit: try again later.' });
     const body = await readBody(req);
     try {
-      const { address, scale, rotate, sheet, template } = JSON.parse(body || '{}');
+      const { address, scale, rotate, sheet, template, fresh } = JSON.parse(body || '{}');
       // Enforced here rather than by hiding the option: a public session that
       // asks for the office template gets that tier's own template instead.
       const allowed = TIER_TEMPLATES[authed(req) ?? 'public'];
@@ -605,10 +644,33 @@ const server = createServer(async (req, res) => {
       const sc = kind === 'site'
         ? (raw ? Math.min(1000, Math.max(100, raw)) : 0)          // 0 = auto-fit
         : Math.min(6000, Math.max(1000, raw || 3000));
-      const job: Job = {
-        id: randomUUID(), address: addr, sheet: kind, scale: sc,
-        rotate: rotate === 'auto' ? 'auto' : 'north',
+      const want = {
+        address: addr, sheet: kind, scale: sc,
+        rotate: (rotate === 'auto' ? 'auto' : 'north') as Job['rotate'],
         template: jobTemplate,
+      };
+      const key = jobKey(want);
+
+      // Before the rate limit, because reuse costs nothing this limit is
+      // protecting: the 12-an-hour budget is there for the public data
+      // services, and a sheet that is already drawn does not touch them.
+      // `fresh` is the way past it, for when the controls are known to have
+      // moved, and that does spend the budget.
+      if (fresh !== true) {
+        const hit = reusable(key);
+        if (hit) {
+          return json(res, 200, {
+            id: hit.id,
+            reused: hit.status === 'done',
+            joined: hit.status !== 'done',
+            ageMinutes: Math.round((Date.now() - hit.createdAt) / 60_000),
+          });
+        }
+      }
+
+      if (limited(`jobs:${ip}`, 12, 3600_000)) return json(res, 429, { error: 'Rate limit: try again later.' });
+      const job: Job = {
+        id: randomUUID(), ...want, key,
         status: 'queued', log: [], createdAt: Date.now(),
       };
       enqueue(job);
