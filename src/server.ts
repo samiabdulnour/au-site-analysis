@@ -10,7 +10,7 @@
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { readFile, readFileSync, existsSync, mkdirSync, writeFileSync, renameSync } from 'node:fs';
-import { rm, readdir, stat, writeFile } from 'node:fs/promises';
+import { rm, readdir, stat, statfs, writeFile } from 'node:fs/promises';
 import { join, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID, createHmac, createHash, timingSafeEqual } from 'node:crypto';
@@ -126,7 +126,7 @@ interface Job {
   rotate: 'north' | 'auto';
   template: string;
   key: string;              // what makes two requests the same request
-
+  tier: Tier;               // which door asked for it
   status: 'queued' | 'running' | 'done' | 'error';
   log: string[];
   pdfPath?: string;
@@ -134,6 +134,10 @@ interface Job {
   dataPath?: string;   // CSV for table sheets
   error?: string;
   createdAt: number;
+  // For the status view: how long it took, and what it is costing the disk.
+  startedAt?: number;
+  finishedAt?: number;
+  bytes?: number;
 }
 
 const jobs = new Map<string, Job>();
@@ -190,6 +194,7 @@ interface StoredJob {
   id: string; address: string; sheet: Job['sheet']; scale: number;
   rotate: Job['rotate']; template: string; status: Job['status'];
   log: string[]; error?: string; createdAt: number;
+  tier?: Tier; startedAt?: number; finishedAt?: number; bytes?: number;
   // Basenames, not paths: what the record has to survive is a new container,
   // and an absolute path is a fact about the old one.
   pdf?: string; cad?: string; data?: string;
@@ -201,6 +206,7 @@ function saveIndex() {
     rotate: j.rotate, template: j.template, status: j.status,
     // Only the tail is ever served, so only the tail is worth keeping.
     log: j.log.slice(-12), error: j.error, createdAt: j.createdAt,
+    tier: j.tier, startedAt: j.startedAt, finishedAt: j.finishedAt, bytes: j.bytes,
     pdf: j.pdfPath && basename(j.pdfPath),
     cad: j.cadPath && basename(j.cadPath),
     data: j.dataPath && basename(j.dataPath),
@@ -239,6 +245,13 @@ function loadIndex() {
       log: Array.isArray(r.log) ? r.log.map(String) : [],
       error: lost ? 'interrupted by a server restart — run again' : r.error,
       createdAt: Number(r.createdAt) || Date.now(),
+      // Records written before the door was kept: each door has exactly one
+      // template, so the template says which door drew it.
+      tier: r.tier === 'fuse' || r.tier === 'public' ? r.tier
+        : TIER_TEMPLATES.fuse.includes(String(r.template ?? '')) ? 'fuse' : 'public',
+      startedAt: Number(r.startedAt) || undefined,
+      finishedAt: Number(r.finishedAt) || undefined,
+      bytes: Number(r.bytes) || undefined,
       key: '',
     };
     // Recomputed, not read back: the key is derived from fields that are all
@@ -292,6 +305,7 @@ function enqueue(job: Job) {
 
 async function runJob(job: Job) {
   job.status = 'running';
+  job.startedAt = Date.now();
   saveIndex();
   // Jobs run one at a time, so setting the active template per job is safe.
   setTemplate(job.template);
@@ -376,6 +390,8 @@ async function runJob(job: Job) {
     job.error = e?.message ?? String(e);
     job.log.push(`ERROR: ${job.error}`);
   }
+  job.finishedAt = Date.now();
+  job.bytes = await dirBytes(outDir).catch(() => undefined);
   saveIndex();
   void cleanupOldJobs();
 }
@@ -442,7 +458,11 @@ async function cleanupOldJobs() {
         await rm(dir, { recursive: true, force: true });
         continue;
       }
-      dirs.push({ dir, mtime: st.mtimeMs, bytes: await dirBytes(dir) });
+      const bytes = await dirBytes(dir);
+      // The sweep is already walking, so the status view gets its sizes free.
+      const owner = jobs.get(name);
+      if (owner) owner.bytes = bytes;
+      dirs.push({ dir, mtime: st.mtimeMs, bytes });
     }
     // Over budget: oldest first, which is also least likely to be wanted again.
     let total = dirs.reduce((n, d) => n + d.bytes, 0);
@@ -528,6 +548,8 @@ const server = createServer(async (req, res) => {
     '/': ['index.html', 'text/html; charset=utf-8'],
     '/fuse': ['index.html', 'text/html; charset=utf-8'],
     '/about': ['about.html', 'text/html; charset=utf-8'],
+    '/status': ['status.html', 'text/html; charset=utf-8'],
+    '/status.js': ['status.js', 'text/javascript; charset=utf-8'],
     '/style.css': ['style.css', 'text/css; charset=utf-8'],
     '/app.js': ['app.js', 'text/javascript; charset=utf-8'],
   };
@@ -567,6 +589,48 @@ const server = createServer(async (req, res) => {
       // Replacing the container mid-job throws away a sheet that may be
       // minutes in; the deployer reads this and waits for a quiet moment.
       busy: [...jobs.values()].some((j) => j.status === 'running' || j.status === 'queued'),
+    });
+  }
+
+  // What this server has actually been doing. The office door's, not any
+  // authenticated session's: /api/version is the public window and says only
+  // whether the thing is up, whereas this names addresses people searched for
+  // and the reasons their sheets failed.
+  if (req.method === 'GET' && url.pathname === '/api/status') {
+    if (authed(req) !== 'fuse') return json(res, 403, { error: 'Office access only.' });
+    const all = [...jobs.values()].sort((a, b) => b.createdAt - a.createdAt);
+    const fs = await statfs(WEB_OUT).catch(() => null);
+    return json(res, 200, {
+      sha: process.env.GIT_SHA ?? 'dev',
+      uptimeSeconds: Math.round(process.uptime()),
+      osm: {
+        mode: process.env.OVERPASS_LOCAL ? 'local' : 'public',
+        state: await probeLocalOverpass(),
+        setup: hostStatus(),
+      },
+      domain: hostFile('/hostinfo/domain.status', 60),
+      queue: {
+        running: all.filter((j) => j.status === 'running').length,
+        queued: all.filter((j) => j.status === 'queued').length,
+      },
+      disk: {
+        // What the sheets are using, what they are allowed, and what is left on
+        // the volume underneath — the last is the one that ends the service,
+        // since the Overpass database shares it.
+        usedBytes: all.reduce((n, j) => n + (j.bytes ?? 0), 0),
+        budgetBytes: OUT_BUDGET_BYTES,
+        freeBytes: fs ? fs.bavail * fs.bsize : null,
+        totalBytes: fs ? fs.blocks * fs.bsize : null,
+      },
+      // 24h of retention is already the ceiling on how many there can be.
+      jobs: all.slice(0, 100).map((j) => ({
+        id: j.id, address: j.address, sheet: j.sheet, scale: j.scale,
+        rotate: j.rotate, template: j.template, tier: j.tier, status: j.status,
+        error: j.error, createdAt: j.createdAt, bytes: j.bytes ?? null,
+        // Still running: measured against now, so the number keeps climbing
+        // rather than reading as zero for the two minutes it matters most.
+        durationMs: j.startedAt ? (j.finishedAt ?? Date.now()) - j.startedAt : null,
+      })),
     });
   }
 
@@ -633,7 +697,8 @@ const server = createServer(async (req, res) => {
       const { address, scale, rotate, sheet, template, fresh } = JSON.parse(body || '{}');
       // Enforced here rather than by hiding the option: a public session that
       // asks for the office template gets that tier's own template instead.
-      const allowed = TIER_TEMPLATES[authed(req) ?? 'public'];
+      const tier = authed(req) ?? 'public';
+      const allowed = TIER_TEMPLATES[tier];
       const asked = String(template ?? '');
       const jobTemplate = allowed.includes(asked) ? asked : allowed[0];
       const addr = String(address ?? '').trim();
@@ -670,7 +735,7 @@ const server = createServer(async (req, res) => {
 
       if (limited(`jobs:${ip}`, 12, 3600_000)) return json(res, 429, { error: 'Rate limit: try again later.' });
       const job: Job = {
-        id: randomUUID(), ...want, key,
+        id: randomUUID(), ...want, key, tier,
         status: 'queued', log: [], createdAt: Date.now(),
       };
       enqueue(job);

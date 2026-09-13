@@ -114,6 +114,17 @@ function applySession(j) {
   if (j.tier === 'fuse') {
     const lead = document.querySelector('#f .lead');
     if (lead) lead.textContent = 'FUSE edition. Search a NSW address to generate its site analysis.';
+    // The status view is the office's, so the way to it only exists once the
+    // office code has been given. /api/status refuses anyone else regardless.
+    const actions = document.querySelector('.actions');
+    if (actions && !document.getElementById('statusLink')) {
+      const a = document.createElement('a');
+      a.id = 'statusLink';
+      a.className = 'btn';
+      a.href = '/status';
+      a.textContent = 'STATUS';
+      actions.append(a);
+    }
   }
   renderAll();
 }
