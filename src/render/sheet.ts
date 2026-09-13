@@ -24,7 +24,6 @@ export interface SheetMeta {
   drawn: string;
   date: string;
   preliminary: boolean;
-  office: { name: string; lines: string[] };
 }
 
 export type Pt = [number, number];

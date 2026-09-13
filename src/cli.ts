@@ -15,7 +15,6 @@ import { runPipeline, runSitePipeline, runSummaryPipeline } from './pipeline.js'
 import { renderSheet, MAP_W, MAP_H, type SheetMeta } from './render/sheet.js';
 import { renderSiteSheet } from './render/siteSheet.js';
 import { renderSummarySheet } from './render/summarySheet.js';
-import { setTemplate } from './render/template.js';
 import { summaryCsv, summaryJson } from './export/summaryExport.js';
 import { htmlToPdf } from './render/pdf.js';
 
@@ -26,14 +25,13 @@ function arg(name: string, def?: string): string | undefined {
 
 const address = process.argv.slice(2).find((a) => !a.startsWith('--') && process.argv[process.argv.indexOf(a) - 1]?.startsWith('--') !== true);
 if (!address) {
-  console.error('usage: npm run generate -- "<address>" [--type context|site|summary|both] [--template fuse|neutral] [--scale 3000] [--job N] [--client X] [--status S] [--sheet "DA 003"]');
+  console.error('usage: npm run generate -- "<address>" [--type context|site|summary|both] [--scale 3000] [--job N] [--client X] [--status S] [--sheet "DA 003"]');
   process.exit(1);
 }
 
 const slug = address.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 const outDir = join('out', slug);
 
-const office = JSON.parse(await readFile('config/office.json', 'utf8'));
 
 // All identifying fields default to blank — the sheet is a template the
 // office completes per project (pass --job/--client/--status/… to fill).
@@ -47,10 +45,8 @@ const meta: SheetMeta = {
   drawn: arg('drawn', '')!,
   date: arg('date', '')!,
   preliminary: (arg('status', '') ?? '').toUpperCase().includes('PRELIM'),
-  office,
 };
 
-setTemplate(arg('template', 'fuse'));
 const sheetType = arg('type', 'context')!; // context | site | both
 const rotate = arg('rotate', 'north') === 'auto' ? 'auto' as const : 'north' as const;
 const outputs: string[] = [];
