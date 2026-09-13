@@ -58,6 +58,23 @@ function deftable(host, rows) {
   }
 }
 
+/* Cron runs the deployer every five minutes, so three missed passes is the
+   point at which it has stopped rather than merely not run yet. */
+const DEPLOY_STALE_SECONDS = 15 * 60;
+
+/** The deployer's last pass, and whether it looks like there was one. */
+function deployRow(dep) {
+  if (!dep || !dep.text || dep.text === 'none')
+    return ['deployer', 'no status — deployer has not reported', 'warn'];
+  const failed = /^FAILED/.test(dep.text);
+  const stale = dep.ageSeconds === null || dep.ageSeconds > DEPLOY_STALE_SECONDS;
+  const age = dep.ageSeconds === null ? 'age unknown' : uptime(dep.ageSeconds) + ' ago';
+  // Stale is worth the same red as failed: a deployer that has stopped saying
+  // anything is the case that went unnoticed for six days, and it says
+  // something reassuring like "up-to-date" right up until someone checks when.
+  return ['deployer', dep.text + ' · ' + age, failed || stale ? 'warn' : ''];
+}
+
 function renderServer(j) {
   const osm = j.osm.mode === 'local'
     ? 'local · ' + j.osm.state + (j.osm.setup && j.osm.setup !== 'none' ? ' · ' + j.osm.setup : '')
@@ -65,6 +82,7 @@ function renderServer(j) {
   deftable($('server'), [
     ['version', j.sha.slice(0, 9)],
     ['uptime', uptime(j.uptimeSeconds)],
+    deployRow(j.deploy),
     ['domain', j.domain],
     // The local database is what the site sheet's trees and driveways come
     // from, so "building" or "absent" is the difference between a full sheet

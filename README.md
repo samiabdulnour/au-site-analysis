@@ -152,10 +152,13 @@ volume carries the OSM disk cache (`out/.cache/osm`), which is what keeps
 sheets generating while Overpass is down — it used to be discarded on every
 deploy, so the outage protection was reset just as often as the code changed.
 
-Retention has two ceilings, swept hourly rather than only after a job (an idle
-server reclaimed nothing before, which matters on a disk shared with a 27GB
-Overpass database): 24h of age, and `WEB_OUT_BUDGET_MB` of total size (default
-4096, floor 256) with the oldest sheets going first. A record whose files the
+Retention has two ceilings, swept hourly rather than only after a job, since an
+idle server reclaimed nothing before: 24h of age, and `WEB_OUT_BUDGET_MB` of
+total size (default 4096, floor 256) with the oldest sheets going first. What
+the sheets are really competing for is the free space the Overpass database
+needs to rebuild — that rebuild is a fresh download rather than a diff and
+refuses to start below 12GB free, so unbounded retention would not fill the
+volume so much as quietly stop the data under the sheets being refreshed. A record whose files the
 sweep took is dropped with them, so a stale link 404s instead of failing at the
 download.
 
@@ -204,6 +207,41 @@ the reason sits under the address in red rather than behind a click; the
 running job is the yellow row; and `volume free` is the number to look at first
 when sheets start failing for no reason the log explains, because the Overpass
 database shares that disk.
+
+### Whether the deployer is alive
+
+It once was not, for six days, and nothing said so. An expired credential made
+`git fetch` fail on the deployer's first command; `set -euo pipefail` ended the
+pass there, so `ensure-domain.sh` and `ensure-overpass.sh` never ran either, and
+`/api/version` went on serving the `domain` and `osmSetup` lines that earlier
+passes had left behind. From outside the host it looked like a healthy server
+that simply had no new commits. The only record was a log on a machine nobody
+had logged into for a fortnight.
+
+So `deploy/update.sh` now reports itself, from a trap rather than a line at the
+end — `set -e` exits from wherever the failure is, and where it got to is the
+thing worth knowing:
+
+```
+deployed a34daa6c1 2026-09-13T02:50:03Z     # the good case
+up-to-date a34daa6c1 2026-09-13T02:55:01Z   # nothing new
+deferred 3/6 2026-09-13T03:00:01Z           # a sheet is generating
+unhealthy a34daa6c1 2026-09-13T02:52:10Z    # built and ran, never answered
+FAILED fetch rc=128 2026-09-13T02:50:01Z    # the six-day case
+```
+
+It lands in `/var/lib/site-analyst/deploy.status` and is published at
+`GET /api/version` as `deploy`, alongside the age in seconds. Public, like the
+rest of that endpoint and deliberately so: being unable to see this from off
+the host was the whole failure, and it carries nothing but a sha that endpoint
+already publishes and a stage name.
+
+The age is half of it. `up-to-date` from a deployer that stopped running last
+week reads exactly like `up-to-date` from one that ran a minute ago, so
+`/status` shows the age beside the text and marks the row red when it is a
+`FAILED`, or when nothing has been written for fifteen minutes — three missed
+passes of a five-minute cron, by which point it has stopped rather than merely
+not run yet.
 
 ### The public door
 
