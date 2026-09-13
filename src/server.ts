@@ -92,6 +92,26 @@ function hostStatus(): string {
   }
 }
 
+/**
+ * The deployer's own account of its last pass — what it did and when, written
+ * by a trap in deploy/update.sh so that a pass which died still leaves one.
+ *
+ * The age is the half that makes it worth anything. `up-to-date` from a
+ * deployer that stopped running last week reads exactly like `up-to-date` from
+ * one that ran a minute ago, and the difference between those was six days of
+ * this server quietly not deploying anything while every other line here went
+ * on looking healthy.
+ */
+function deployStatus(): { text: string; ageSeconds: number | null } {
+  const text = hostFile('/hostinfo/deploy.status', 100);
+  const m = text.match(/(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})Z/);
+  const at = m ? Date.parse(`${m[1]}Z`) : NaN;
+  return {
+    text,
+    ageSeconds: Number.isNaN(at) ? null : Math.max(0, Math.round((Date.now() - at) / 1000)),
+  };
+}
+
 let osmProbe: { at: number; state: string } = { at: 0, state: 'unknown' };
 async function probeLocalOverpass(): Promise<string> {
   if (Date.now() - osmProbe.at < 60_000) return osmProbe.state;
@@ -399,8 +419,11 @@ async function runJob(job: Job) {
 // Outputs now live on a host volume, so they accumulate for real instead of
 // dying with the container. Two ceilings hold that down: age, as before, and
 // total size — a sheet carries its whole GeoJSON bundle and aerial tiles, and
-// the disk is shared with a 27GB Overpass database, so unbounded retention
-// would eventually starve the thing the sheets are drawn from.
+// what it is really competing for is the free space the Overpass database
+// needs to rebuild itself. That rebuild is a fresh download rather than a
+// diff, and both deploy/setup-overpass.sh and ensure-overpass.sh refuse to
+// start below 12GB free, so sheets left to accumulate would not fill the
+// volume so much as quietly stop the data under them being refreshed.
 //
 // The budget is floored, so that a mistyped one cannot sweep the directory
 // bare, and the flooring is said out loud — a silently ignored setting is
@@ -635,8 +658,11 @@ Sitemap: ${siteBase()}/sitemap.xml
       osmSetup: hostStatus(),
       osmLog: hostFile('/hostinfo/overpass.tail', 240),
       domain: hostFile('/hostinfo/domain.status', 60),
-      // Replacing the container mid-job throws away a sheet that may be
-      // minutes in; the deployer reads this and waits for a quiet moment.
+      // Public, like the rest of this endpoint, and deliberately so: the whole
+      // failure was that nothing outside the host could see the deployer had
+      // stopped. It reports a sha that is already published here and a stage
+      // name, so there is nothing in it to withhold.
+      deploy: deployStatus(),
       busy: [...jobs.values()].some((j) => j.status === 'running' || j.status === 'queued'),
     });
   }
@@ -658,6 +684,7 @@ Sitemap: ${siteBase()}/sitemap.xml
         setup: hostStatus(),
       },
       domain: hostFile('/hostinfo/domain.status', 60),
+      deploy: deployStatus(),
       queue: {
         running: all.filter((j) => j.status === 'running').length,
         queued: all.filter((j) => j.status === 'queued').length,

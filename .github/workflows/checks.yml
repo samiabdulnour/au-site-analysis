@@ -52,6 +52,25 @@ jobs:
             bash -n "$f"
           done
 
+      # The deployer's one job here is to leave a record even when it dies on
+      # its first command — which is exactly what happened once, for six days,
+      # unnoticed. Reproduce that: a repo whose origin cannot be reached, and a
+      # status file that has to come out saying so.
+      - name: deployer reports its own failure
+        run: |
+          tmp=$(mktemp -d)
+          mkdir -p "$tmp/state" "$tmp/repo"
+          sed -e "s#^STATUS_DIR=/var/lib/site-analyst#STATUS_DIR=$tmp/state#" \
+              -e "s#^cd /opt/site-analyst#cd $tmp/repo#" \
+              deploy/update.sh > "$tmp/update.sh"
+          git init -q "$tmp/repo"
+          git -C "$tmp/repo" -c user.email=ci@example.com -c user.name=ci \
+              commit -q --allow-empty -m init
+          git -C "$tmp/repo" remote add origin https://invalid.invalid/nope.git
+          bash "$tmp/update.sh" >/dev/null 2>&1 || true
+          echo "  status: $(cat "$tmp/state/deploy.status" 2>/dev/null || echo '<nothing written>')"
+          grep -q '^FAILED fetch' "$tmp/state/deploy.status"
+
       # A typecheck does not notice a page missing from web/, a route that
       # stopped matching, or an auth gate that moved. Boot the server and ask
       # it for every path that should be public — and for one that should not
@@ -59,11 +78,27 @@ jobs:
       # repo has already had once.
       - name: routes answer
         run: |
-          ALLOW_NO_AUTH=1 PORT=3123 npx tsx src/server.ts &
+          # Its output goes to a file, not to this step's stdout: a background
+          # process holding that pipe open hangs anything reading it, long
+          # after the checks themselves have finished.
+          ALLOW_NO_AUTH=1 PORT=3123 npx tsx src/server.ts > /tmp/routes-server.log 2>&1 &
+          srv=$!
+          # Best-effort reap. npx nests another node under itself, so this does
+          # not always get the process holding the port — which is fine here,
+          # since the runner is torn down with the job. The redirect above is
+          # the part that matters; a stray child is untidy, a stray child on
+          # this step's stdout is a hung job.
+          trap 'pkill -P "$srv" 2>/dev/null; kill "$srv" 2>/dev/null; true' EXIT
+
+          up=
           for _ in $(seq 1 40); do
-            curl -sf -o /dev/null --max-time 2 http://127.0.0.1:3123/api/version && break
+            curl -sf -o /dev/null --max-time 2 http://127.0.0.1:3123/api/version && { up=1; break; }
             sleep 1
           done
+          if [ -z "$up" ]; then
+            echo "server never answered; its log:"; sed 's/^/    /' /tmp/routes-server.log
+            exit 1
+          fi
 
           fail=0
           check() {
@@ -86,6 +121,13 @@ jobs:
           check /samples/og.jpg 200
           check /api/version  200
           check /nonsense     404
+
+          # The deployer's account of itself has to reach /api/version: that is
+          # the only window onto it from outside the host, and its absence is
+          # what made a six-day outage invisible.
+          if ! curl -s --max-time 10 http://127.0.0.1:3123/api/version | grep -q '"deploy"'; then
+            echo "  /api/version carries no deploy field"; fail=1
+          fi
 
           # og:url and og:image are absolute and filled in per request. The
           # placeholder reaching a browser means every shared link previews
