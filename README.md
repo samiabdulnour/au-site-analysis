@@ -113,6 +113,29 @@ Every existing session dies with the old code — the cookie is an HMAC of it �
 so everyone signs in again. If the deploy prints `deferring`, a sheet is
 generating; run it again once `"busy"` is false.
 
+### What a deploy is allowed to cost
+
+Nothing that anyone is waiting on. The auto-deployer replaces the container
+whenever `main` moves, so anything the app keeps only in memory or only in the
+container's own filesystem is gone every few minutes of active development.
+
+`out/` is therefore a host volume (`SITE_OUT`, default
+`/var/lib/site-analyst/out`), and the job list is mirrored to
+`out/web/jobs.json` on every state change and read back at boot. A visitor who
+generated a sheet before the deploy still has their download link afterwards;
+what was mid-flight comes back as `interrupted by a server restart — run
+again`, because the pipeline's work was in the process that died. The same
+volume carries the OSM disk cache (`out/.cache/osm`), which is what keeps
+sheets generating while Overpass is down — it used to be discarded on every
+deploy, so the outage protection was reset just as often as the code changed.
+
+Retention has two ceilings, swept hourly rather than only after a job (an idle
+server reclaimed nothing before, which matters on a disk shared with a 27GB
+Overpass database): 24h of age, and `WEB_OUT_BUDGET_MB` of total size (default
+4096, floor 256) with the oldest sheets going first. A record whose files the
+sweep took is dropped with them, so a stale link 404s instead of failing at the
+download.
+
 ### Local OpenStreetMap (recommended for production)
 
 The public Overpass network is frequently unavailable, which costs the site
