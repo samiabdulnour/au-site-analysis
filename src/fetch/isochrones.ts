@@ -7,11 +7,11 @@ const VALHALLA = 'https://valhalla1.openstreetmap.de/isochrone';
 
 export interface Isochrone { minutes: number; rings: [number, number][][] }
 
-export async function fetchIsochrones(center: LonLat): Promise<Isochrone[]> {
+export async function fetchIsochrones(center: LonLat, minutes: number[] = [5, 10]): Promise<Isochrone[]> {
   const req = {
     locations: [{ lat: center.lat, lon: center.lon }],
     costing: 'pedestrian',
-    contours: [{ time: 5 }, { time: 10 }],
+    contours: minutes.map((time) => ({ time })),
     polygons: true,
   };
   const res = await retryFetch(`${VALHALLA}?json=${encodeURIComponent(JSON.stringify(req))}`, {}, {

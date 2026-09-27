@@ -10,7 +10,7 @@ import { fetchBusData, type BusData } from './fetch/osm.js';
 import { fetchBusStopsTfnsw } from './fetch/tfnsw.js';
 import { fetchIsochrones, type Isochrone } from './fetch/isochrones.js';
 import { mercatorScaleFactor, mercatorToLonLat, lonLatToMercator, viewBounds, type Extent, type MapView } from './lib/geo.js';
-import { queryByPoint, type GeoJSONFC } from './lib/arcgis.js';
+import { queryByPoint, queryByExtent, type GeoJSONFC } from './lib/arcgis.js';
 import { keywordCategory } from './render/model.js';
 import { setTemplate } from './render/template.js';
 import type { SummaryBundle } from './render/summarySheet.js';
@@ -26,6 +26,7 @@ import { fetchPlanningProposals, type PlanningProposal } from './fetch/planning.
 import { fetchPeopleData, type PeopleData } from './fetch/people.js';
 import { fetchDemGrid, type DemGrid } from './fetch/terrain.js';
 import { fetchBuildings, type BuildingsData } from './fetch/buildings.js';
+import { fetchMovement, type MovementData } from './fetch/movement.js';
 import type { SiteControls } from './fetch/nsw.js';
 
 export interface CategorizedPoint extends NamedPoint { cat: string | null }
@@ -482,6 +483,10 @@ export interface SlidesBundle {
   terrain: { dem: DemGrid | null; contours: ContourLine[] };
   /** Building footprints with heights over the tall panel (Overture, or OpenStreetMap). */
   buildings: BuildingsData;
+  /** Isochrones, bus, cycleways, footways, one-way streets and active frontages over the tall panel. */
+  movement: MovementData;
+  /** The wide walking-reach strip: its panel, a lighter base (major roads, rail, stations, water) and the suburbs to label. */
+  wide: { panel: Panel; base: BaseData; suburbs: GeoJSONFC };
   warnings: string[];
 }
 
@@ -493,6 +498,10 @@ export interface SlidesPipelineOpts {
   panelHmm: number;
   /** Height of the development-activity map panel. */
   daPanelHmm: number;
+  /** The walking-reach strip: width and height in mm and its scale (defaults 296 × 100 at 1:16000). */
+  wideWmm?: number;
+  wideHmm?: number;
+  wideScale?: number;
   /** How far back the development-activity feed reaches (default five years, never before July 2021). */
   daYears?: number;
   log?: (msg: string) => void;
@@ -514,6 +523,8 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
   const extent = panelExtent(panel);
   const daPanel: Panel = { ...panel, hMm: opts.daPanelHmm };
   const daExtent = panelExtent(daPanel);
+  const widePanel: Panel = { center: geo.center, scale: opts.wideScale ?? 16000, wMm: opts.wideWmm ?? 296, hMm: opts.wideHmm ?? 100 };
+  const wideExtent = panelExtent(widePanel);
   // Every fetch window is the larger of the two, so nothing is missing from either map.
   const fetchExtent: Extent = {
     xmin: Math.min(extent.xmin, daExtent.xmin), ymin: Math.min(extent.ymin, daExtent.ymin),
@@ -535,7 +546,7 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
   const fromDate = new Date(); fromDate.setFullYear(fromDate.getFullYear() - (opts.daYears ?? 5));
   const from = [fromDate.toISOString().slice(0, 10), PORTAL_MANDATED].sort()[1];
 
-  const [zoning, hob, heritage, shr, policy, water, lots, roads, railLines, stations, context, property, controls, proposals, feed, people, dem, contours, buildings] = await Promise.all([
+  const [zoning, hob, heritage, shr, policy, water, lots, roads, railLines, stations, context, property, controls, proposals, feed, people, dem, contours, buildings, movement, wideRoads, wideRail, wideStations, wideWater, wideSuburbs] = await Promise.all([
     soft(fetchZoningDetailed(extent), emptyFC, 'zoning'),
     soft(fetchHobDetailed(extent), emptyFC, 'height of building'),
     soft(fetchHeritageDetailed(extent), emptyFC, 'heritage'),
@@ -555,6 +566,12 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
     soft(fetchDemGrid(daExtent), null, 'elevation model'),
     soft(fetchContours(fetchExtent), [], 'contours'),
     soft(fetchBuildings(daExtent, log), { source: 'none' as const, buildings: [], fetchedAt: new Date().toISOString() }, 'buildings'),
+    fetchMovement(daExtent, geo.center, log),
+    soft(fetchRoads(wideExtent, 'roadnamebase IS NOT NULL AND functionhierarchy <= 5'), [], 'wide roads'),
+    soft(fetchRailLines(wideExtent), { train: [], tram: [] }, 'wide rail lines'),
+    soft(fetchTrainStations(wideExtent), [], 'wide stations'),
+    soft(fetchWaterAreas(wideExtent), emptyFC, 'wide water areas'),
+    soft(queryByExtent('https://portal.spatial.nsw.gov.au/server/rest/services/NSW_Administrative_Boundaries_Theme/FeatureServer/2', wideExtent, 'suburbname'), emptyFC, 'suburbs'),
   ]);
   const [housingTarget, cos] = await Promise.all([
     context.lga?.name ? fetchHousingTarget(context.lga.name) : Promise.resolve(null),
@@ -582,7 +599,9 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
     base: { water, lots, roads, rail: railLines, stations, siteLots },
     controls, property, context, housingTarget, cos,
     daPanel, applications, daMeta, proposals, people,
-    terrain: { dem, contours }, buildings, warnings,
+    terrain: { dem, contours }, buildings, movement,
+    wide: { panel: widePanel, base: { water: wideWater, lots: emptyFC, roads: wideRoads, rail: wideRail, stations: wideStations, siteLots }, suburbs: wideSuburbs },
+    warnings,
   };
   await writeFile(join(dataDir, 'slides_bundle.json'), JSON.stringify(bundle));
   return bundle;

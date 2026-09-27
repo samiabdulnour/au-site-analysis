@@ -444,7 +444,7 @@ development window), `--job 2539`, `--client "Name"`,
 
 `--type slides` draws the OVERALL ANALYSIS deck: A3 landscape pages for the
 content part of a feasibility study or design report, specified in
-`docs/SLIDES_SPEC.md`. Six slides exist so far. The planning pair: a
+`docs/SLIDES_SPEC.md`. Seven slides exist so far. The planning pair: a
 *planning overview* of four maps at 1:8000 around the site (land zoning in the
 statutory colours, height of building, heritage with the State Heritage
 Register, and the housing-policy maps — TOD areas, town centres, State
@@ -464,7 +464,13 @@ band (Overture Maps, read from its public bucket by DuckDB through
 or Overture is not there), the storeys of the buildings within 250 m as a
 histogram with the LEP height plane marked on it, and section A–A′ again
 with the buildings it meets drawn at their heights and the height plane
-dashed over the site. Then *development activity*: every
+dashed over the site. Then *movement*: roads by function, rail and
+stations, the walking isochrones from the site (Valhalla, 5, 10 and 15
+minutes), bus stops (Transport for NSW with the key, else OpenStreetMap),
+bus routes, cycleways, footways and one-way streets (OpenStreetMap through
+Overpass) and the LEP's active street frontages, with a table of the
+nearest stations and a wide walking-reach strip at 1:16000 naming the
+suburbs and stations around. Then *development activity*: every
 application lodged in the council area over the last five years, from the
 Planning Portal's Online DA feed, clipped to the window around the site. The
 ones of a scale that shapes the context — four storeys, ten dwellings or

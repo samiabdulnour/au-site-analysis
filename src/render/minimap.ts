@@ -80,6 +80,12 @@ export function baseLayers(b: BaseData, proj: Proj, p: Panel, opts: { lots?: boo
   return parts.join('\n');
 }
 
+/** Sydney Metro's own stations, which the State's station layer names as railway stations. */
+const METRO_ONLY = /\b(TALLAWONG|ROUSE HILL|KELLYVILLE|BELLA VISTA|NORWEST|HILLS SHOWGROUND|CASTLE HILL|CHERRYBROOK|MACQUARIE UNIVERSITY|MACQUARIE PARK|NORTH RYDE|CROWS NEST|VICTORIA CROSS|BARANGAROO|GADIGAL|WATERLOO)\b/i;
+export type StationMode = 'train' | 'metro' | 'light rail';
+export const stationMode = (name: string): StationMode =>
+  /LIGHT RAIL|TRAM/i.test(name) ? 'light rail' : /METRO/i.test(name) || METRO_ONLY.test(name) ? 'metro' : 'train';
+
 /** Roads, rail, stations and the site — drawn over the theme so it stays legible. */
 export function overLayers(b: BaseData, proj: Proj, p: Panel, site: SiteLayer = 'both'): string {
   const t = tpl();
@@ -107,10 +113,9 @@ export function overLayers(b: BaseData, proj: Proj, p: Panel, site: SiteLayer = 
   for (const s of b.stations) {
     const [x, y] = proj(s.lon, s.lat);
     if (x < 2 || y < 2 || x > p.wMm - 2 || y > p.hMm - 2) continue;
-    const tram = /LIGHT RAIL|TRAM/i.test(s.name);
-    const metro = /METRO|VICTORIA CROSS|CROWS NEST|BARANGAROO|MARTIN PLACE|GADIGAL|WATERLOO|SYDENHAM|CENTRAL|CHATSWOOD/i.test(s.name) && /METRO/i.test(s.name);
+    const mode = stationMode(s.name);
     parts.push(`<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})"><circle r="2" fill="#ffffff" stroke="${t.site}" stroke-width="0.45"/>` +
-      `<text text-anchor="middle" dy="1.05" font-size="3" font-weight="700" fill="${t.site}">${tram ? 'L' : metro ? 'M' : 'T'}</text></g>`);
+      `<text text-anchor="middle" dy="1.05" font-size="3" font-weight="700" fill="${t.site}">${mode === 'light rail' ? 'L' : mode === 'metro' ? 'M' : 'T'}</text></g>`);
   }
   if (site !== 'none') parts.push(siteMark(b, proj, site));
   return parts.join('\n');

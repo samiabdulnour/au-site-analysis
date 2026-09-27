@@ -25,9 +25,9 @@ function lineCoords(fc: GeoJSONFC): { paths: [number, number][][]; props: Record
   return { paths, props };
 }
 
-export async function fetchRoads(extent: Extent): Promise<TopoRoad[]> {
+export async function fetchRoads(extent: Extent, where = 'roadnamebase IS NOT NULL'): Promise<TopoRoad[]> {
   const fc = await queryByExtent(`${TRANSPORT}/5`, extent,
-    'roadnamebase,roadnametype,functionhierarchy,lanecount', 'roadnamebase IS NOT NULL');
+    'roadnamebase,roadnametype,functionhierarchy,lanecount', where);
   const { paths, props } = lineCoords(fc);
   return paths.map((coords, i) => ({
     name: [props[i].roadnamebase, props[i].roadnametype].filter(Boolean).join(' '),

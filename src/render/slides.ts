@@ -12,7 +12,7 @@ import type { GeoJSONFeature } from '../lib/arcgis.js';
 import { tpl } from './template.js';
 import { esc } from './chrome.js';
 import {
-  panelProjector, panelExtent, baseLayers, overLayers, panelFurniture, furnitureBox, siteMark, siteLabelPoint, ringsPath, fcPath, ringStats, clippedStats, hatchPath, bboxOf,
+  panelProjector, panelExtent, baseLayers, overLayers, panelFurniture, furnitureBox, siteMark, siteLabelPoint, stationMode, ringsPath, fcPath, ringStats, clippedStats, hatchPath, bboxOf,
   legendSvg, swatchFill, swatchHatch, swatchLine, LabelSpacer, type Proj, type LegendEntry, type FurnitureCorner,
 } from './minimap.js';
 import { zoneFill, heritageStyle, hobRamp, POLICY_STYLE } from './lepPalette.js';
@@ -25,6 +25,7 @@ import type { Sale } from '../fetch/valuation.js';
 import { lineWithProjection, pairedBars, columns, sectionSvg } from './charts.js';
 import { hillshadeDataUri, planSections, sampleSection, siteLevels, gridExtremes, nearestWater, bearingName } from './terrainMap.js';
 import { METRES_PER_STOREY, type Building } from '../fetch/buildings.js';
+import type { CyclewayKind } from '../fetch/movement.js';
 
 export const SLIDE_W = 420;
 export const SLIDE_H = 297;
@@ -1634,11 +1635,224 @@ export function builtFormSlide(b: SlidesBundle, planning: PlanningFacts): Slide 
   return { id: '08_built_form', title: 'Built form and height planes', subtitle: sub, textHtml, figureHtml };
 }
 
+// ---- slide 09: movement ------------------------------------------------------
+
+const ISO_MINUTES = [5, 10, 15];
+const ISO_FILL: Record<number, string> = { 5: '#2a78d6', 10: '#5598e7', 15: '#9ec5f4' };
+const CYCLE_COLOUR = '#008300';
+const FRONTAGE_COLOUR = '#eb6834';
+const FOOTWAY_COLOUR = '#7a7a7a';
+
+const roadWord = (h: number) => (h <= 2 ? 'motorway or highway' : h === 3 ? 'arterial road' : h === 4 ? 'sub-arterial road' : h === 5 ? 'collector road' : 'local street');
+const stationKind = stationMode;
+const tidyStation = (name: string) => titleCase(name.replace(/\s+(RAILWAY|TRAIN)?\s*STATION$/i, '').replace(/\s+METRO$/i, ' Metro'));
+
+/** Length of a lon/lat line in ground metres. */
+function lineLengthM(coords: number[][]): number {
+  let m = 0;
+  for (let i = 1; i < coords.length; i++) {
+    const a = lonLatToMercator({ lon: coords[i - 1][0], lat: coords[i - 1][1] }), b = lonLatToMercator({ lon: coords[i][0], lat: coords[i][1] });
+    m += Math.hypot(b.x - a.x, b.y - a.y) * Math.cos((coords[i][1] * Math.PI) / 180);
+  }
+  return m;
+}
+
+export function movementFacts(b: SlidesBundle) {
+  const mv = b.movement;
+  const centre = b.daPanel.center;
+  const k = mercatorScaleFactor(mercatorToLonLat(centre).lat);
+  const toM = (lon: number, lat: number) => lonLatToMercator({ lon, lat });
+  const distM = (lon: number, lat: number) => { const m = toM(lon, lat); return Math.hypot(m.x - centre.x, m.y - centre.y) / k; };
+  const bearing = (lon: number, lat: number) => { const m = toM(lon, lat); return ((Math.atan2(m.x - centre.x, m.y - centre.y) * 180) / Math.PI + 360) % 360; };
+  const walkBand = (lon: number, lat: number) => { for (const min of ISO_MINUTES) { const iso = mv.isochrones.find((i) => i.minutes === min); if (iso && iso.rings.some((r) => pointInRing(lon, lat, r))) return min; } return null; };
+  const siteRings = b.base.siteLots.features.flatMap((f) => geomRings(f.geometry));
+  const siteMerc = siteRings.flat().map(([lon, lat]) => toM(lon, lat));
+  // Stations from the wide base, so the nearest one counts even beyond the tall panel.
+  const seenStations = new Set<string>();
+  const stations = [...b.wide.base.stations, ...b.base.stations]
+    .filter((s) => { const key = s.name.toUpperCase(); if (seenStations.has(key)) return false; seenStations.add(key); return true; })
+    .map((s) => ({ name: tidyStation(s.name), kind: stationKind(s.name), distanceM: Math.round(distM(s.lon, s.lat)), bearing: bearing(s.lon, s.lat), walkBand: walkBand(s.lon, s.lat) }))
+    .sort((p, q) => p.distanceM - q.distanceM).slice(0, 8);
+  const stops = mv.busStops.map((s) => ({ ...s, distanceM: distM(s.lon, s.lat) }));
+  const cycleLength = (kind?: CyclewayKind) => Math.round(mv.cycleways.filter((c) => !kind || c.kind === kind).reduce((n, c) => n + lineLengthM(c.coords), 0));
+  const nearestCycle = mv.cycleways.reduce<{ distanceM: number; name?: string; kind: CyclewayKind } | null>((best, c) => {
+    for (const [lon, lat] of c.coords) { const d = distM(lon, lat); if (!best || d < best.distanceM) best = { distanceM: d, name: c.name, kind: c.kind }; }
+    return best;
+  }, null);
+  // The roads the site fronts: a segment with a vertex within 25 m of the site's boundary.
+  const near = (coords: number[][], maxM: number) => coords.some(([lon, lat]) => { const m = toM(lon, lat); return siteMerc.some((s) => Math.hypot(s.x - m.x, s.y - m.y) / k <= maxM); });
+  const frontage = new Map<string, number>();
+  for (const r of b.base.roads) if (r.name && near(r.coords, 25)) frontage.set(titleCase(r.name), Math.min(frontage.get(titleCase(r.name)) ?? 99, r.hierarchy));
+  const onewayNear = [...new Set(mv.onewayRoads.filter((r) => r.name && near(r.coords, 200)).map((r) => titleCase(r.name!)))].slice(0, 5);
+  const afRings = mv.activeFrontages.features.flatMap((f) => geomRings(f.geometry));
+  const centreLL = mercatorToLonLat(centre);
+  const activeAtSite = afRings.some((r) => pointInRing(centreLL.lon, centreLL.lat, r)) || afRings.some((r) => siteRings.some((sr) => sr.some(([lon, lat]) => pointInRing(lon, lat, r))));
+  const isoAreas = mv.isochrones.map((iso) => ({ minutes: iso.minutes, areaHa: Math.round(iso.rings.reduce((a, r) => { let s = 0; const pts = r.map(([lon, lat]) => toM(lon, lat)); for (let i = 0; i < pts.length - 1; i++) s += pts[i].x * pts[i + 1].y - pts[i + 1].x * pts[i].y; return a + Math.abs(s / 2); }, 0) / (k * k) / 1e4) }));
+  return {
+    stations,
+    bus: { source: mv.busStopSource, within400: stops.filter((s) => s.distanceM <= 400).length, within800: stops.filter((s) => s.distanceM <= 800).length, total: stops.length, routes: mv.busRouteCount, nearest: stops.sort((p, q) => p.distanceM - q.distanceM)[0] ? { name: stops[0].name, distanceM: Math.round(stops[0].distanceM) } : null },
+    cycle: { osm: mv.osm, separatedM: cycleLength('separated'), laneM: cycleLength('lane'), sharedM: cycleLength('shared'), nearest: nearestCycle ? { ...nearestCycle, distanceM: Math.round(nearestCycle.distanceM) } : null },
+    foot: { osm: mv.osm, links: mv.footways.length, lengthM: Math.round(mv.footways.reduce((n, c) => n + lineLengthM(c), 0)) },
+    frontage: [...frontage.entries()].map(([name, h]) => ({ name, hierarchy: h, word: roadWord(h) })).sort((p, q) => p.hierarchy - q.hierarchy),
+    oneway: { osm: mv.osm, near: onewayNear },
+    activeFrontage: { atSite: activeAtSite, count: mv.activeFrontages.features.length, epi: mv.activeFrontages.features[0]?.properties?.EPI_NAME as string | undefined },
+    isochrones: isoAreas,
+  };
+}
+
+export function movementSentences(b: SlidesBundle, f: ReturnType<typeof movementFacts>): string[] {
+  const out: string[] = [];
+  const band = (m: number | null) => (m === 5 ? 'within a five-minute walk' : m === 10 ? 'five to ten minutes on foot' : m === 15 ? 'ten to fifteen minutes on foot' : 'beyond a fifteen-minute walk');
+  if (f.stations.length) {
+    const s = f.stations.slice(0, 3).map((st, i) => `${st.name} (${st.kind}) ${i ? '' : 'is '}${fmtNum(st.distanceM)} m to the ${bearingName(st.bearing)}, ${band(st.walkBand)}`);
+    out.push(`${s.join('; ')}.`);
+  } else out.push('No railway, metro or light rail station lies within the wide window.');
+  if (f.bus.total) out.push(`${f.bus.within400} bus stop${f.bus.within400 === 1 ? '' : 's'} within 400 m and ${f.bus.within800} within 800 m${f.bus.routes ? `, on ${f.bus.routes} route${f.bus.routes === 1 ? '' : 's'} through the window` : ''} (${f.bus.source === 'tfnsw' ? 'Transport for NSW' : 'OpenStreetMap'}).`);
+  else out.push(`Bus stops could not be read: they come from Transport for NSW with a key, else from OpenStreetMap, and neither answered.`);
+  if (f.cycle.osm) {
+    const bits = [f.cycle.separatedM ? `${fmtNum(f.cycle.separatedM)} m of separated cycleway` : '', f.cycle.laneM ? `${fmtNum(f.cycle.laneM)} m of on-road lanes` : '', f.cycle.sharedM ? `${fmtNum(f.cycle.sharedM)} m of shared paths` : ''].filter(Boolean);
+    let s = bits.length ? `The window has ${bits.join(', ')}` : 'The window has no mapped cycleway';
+    if (f.cycle.nearest) s += `; the nearest${f.cycle.nearest.name ? `, ${f.cycle.nearest.name},` : ''} is ${fmtNum(f.cycle.nearest.distanceM)} m from the site`;
+    s += `. ${f.foot.links ? `${fmtNum(f.foot.links)} pedestrian links (footways, paths and steps, ${fmtNum(f.foot.lengthM)} m) thread the blocks` : 'No pedestrian link is mapped off the streets'}.`;
+    out.push(s);
+  } else out.push('Cycleways, pedestrian links and one-way streets come from OpenStreetMap, which did not answer when the deck was generated.');
+  if (f.frontage.length) {
+    // Group the frontages by kind: "Miller Street and Blues Point Road, collector roads, and Blue Street, a local street".
+    const groups = new Map<string, string[]>();
+    for (const r of f.frontage) (groups.get(r.word) ?? groups.set(r.word, []).get(r.word)!).push(r.name);
+    const phrase = [...groups.entries()].map(([word, names]) => `${names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0]}, ${names.length > 1 ? `${word}s` : `a ${word}`}`);
+    let s = `The site fronts ${phrase.length > 1 ? `${phrase.slice(0, -1).join(', ')}, and ${phrase[phrase.length - 1]}` : phrase[0]}.`;
+    if (f.oneway.near.length) s += ` One-way nearby: ${f.oneway.near.join(', ')}.`;
+    out.push(s);
+  }
+  if (f.activeFrontage.count) out.push(f.activeFrontage.atSite ? `The site is within the LEP's active street frontage area${f.activeFrontage.epi ? ` (${f.activeFrontage.epi})` : ''}: ground-floor uses that address the street are required there.` : `The LEP maps active street frontages nearby${f.activeFrontage.epi ? ` (${f.activeFrontage.epi})` : ''}, but not at the site.`);
+  else out.push('No active street frontage is mapped in this window (the ePlanning layer covers the LEPs that map one).');
+  if (f.isochrones.length) out.push(`On foot from the site: ${f.isochrones.map((i) => `${i.minutes} minutes reach ${fmtNum(i.areaHa)} ha`).join(', ')}, on the mapped street and path network.`);
+  return out;
+}
+
+export function movementSlide(b: SlidesBundle): Slide {
+  const f = movementFacts(b);
+  const t = tpl();
+  const mv = b.movement;
+  const sentences = movementSentences(b, f);
+  const textHtml = sentences.map(para).join('') +
+    placeholder('Narrative — for the author: how people will arrive and leave (rail, bus, bike, on foot, by car), which frontage is the address and which is the service side, where the active edge belongs, and what the walking catchments say about the mix.') +
+    `<div class="fine">Sources: NSW Spatial Services roads (function hierarchy), rail and stations; walking isochrones from Valhalla on OpenStreetMap; bus stops from ${f.bus.source === 'tfnsw' ? 'Transport for NSW' : f.bus.source === 'osm' ? 'OpenStreetMap' : 'Transport for NSW or OpenStreetMap (neither answered)'}; bus routes, cycleways, footways and one-way streets from OpenStreetMap contributors (ODbL); active street frontages from the ePlanning development-control layers. Retrieved ${b.generatedAt.slice(0, 10)}.</div>`;
+  const sub = [b.siteAddress, f.stations[0] ? `${f.stations[0].name} ${fmtNum(f.stations[0].distanceM)} m` : '', f.frontage.length ? `fronts ${f.frontage.map((r) => r.name).join(' and ')}` : ''].filter(Boolean).join(' · ');
+
+  // The movement map over the tall panel.
+  const p = b.daPanel;
+  const proj = panelProjector(p);
+  const parts: string[] = [baseLayers(b.base, proj, p)];
+  for (const iso of [...mv.isochrones].sort((x, y) => y.minutes - x.minutes)) {
+    parts.push(`<path d="${ringsPath(iso.rings, proj)}" fill="${ISO_FILL[iso.minutes] ?? '#9ec5f4'}" fill-opacity="0.10" stroke="${ISO_FILL[iso.minutes] ?? '#9ec5f4'}" stroke-width="0.45" stroke-dasharray="1.6,1" fill-rule="evenodd"/>`);
+  }
+  if (mv.activeFrontages.features.length) parts.push(`<path d="${fcPath(mv.activeFrontages, proj)}" fill="${FRONTAGE_COLOUR}" fill-opacity="0.55" stroke="${FRONTAGE_COLOUR}" stroke-width="0.25" fill-rule="evenodd"/>`);
+  parts.push(overLayers(b.base, proj, p, 'wash'));
+  if (mv.busRoutes.length) parts.push(`<path d="${mv.busRoutes.map((l) => ringsPath([l], proj, false)).join('')}" fill="none" stroke="${t.busRoute}" stroke-width="0.5" stroke-dasharray="1.2,0.9" stroke-linecap="round"/>`);
+  if (mv.footways.length) parts.push(`<path d="${mv.footways.map((l) => ringsPath([l], proj, false)).join('')}" fill="none" stroke="${FOOTWAY_COLOUR}" stroke-width="0.25" stroke-dasharray="0.5,0.5"/>`);
+  for (const kind of ['shared', 'lane', 'separated'] as CyclewayKind[]) {
+    const ls = mv.cycleways.filter((c) => c.kind === kind);
+    if (ls.length) parts.push(`<path d="${ls.map((l) => ringsPath([l.coords], proj, false)).join('')}" fill="none" stroke="${CYCLE_COLOUR}" stroke-width="${kind === 'separated' ? 0.6 : 0.4}"${kind === 'separated' ? '' : ' stroke-dasharray="1.4,0.8"'} stroke-linecap="round"/>`);
+  }
+  if (mv.busStops.length) parts.push(`<g>${mv.busStops.map((s) => { const [x, y] = proj(s.lon, s.lat); return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="0.9" fill="${t.busRoute}" stroke="#ffffff" stroke-width="0.3"/>`; }).join('')}</g>`);
+  // isochrone labels where each ring crosses the panel's centre line
+  const isoSpacer = new LabelSpacer(p.wMm, p.hMm, 20);
+  for (const iso of mv.isochrones) {
+    const pts = iso.rings[0]?.map(([lon, lat]) => proj(lon, lat)) ?? [];
+    const top = pts.filter((q) => q[0] > 3 && q[0] < p.wMm - 3 && q[1] > 3 && q[1] < p.hMm - 3).sort((q, r) => q[1] - r[1])[0];
+    if (top && isoSpacer.take(top[0], top[1] - 1.5, 9, 2.6)) parts.push(label(top[0], top[1] - 1.5, `${iso.minutes} min`, 2, ISO_FILL[iso.minutes] ?? '#5598e7'));
+  }
+  parts.push(siteMark(b.base, proj, 'outline'), panelFurniture(p, 'right'));
+  const mapSvg = `<svg width="${p.wMm}mm" height="${p.hMm}mm" viewBox="0 0 ${p.wMm} ${p.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
+    <defs><clipPath id="clip-move"><rect x="0" y="0" width="${p.wMm}" height="${p.hMm}"/></clipPath></defs>
+    <g clip-path="url(#clip-move)" font-family="${t.font}">${parts.join('\n')}</g>
+    <rect x="0.1" y="0.1" width="${p.wMm - 0.2}" height="${p.hMm - 0.2}" fill="none" stroke="${t.rule}" stroke-width="0.2"/>
+  </svg>`;
+
+  // Right: figures, legend, stations table.
+  const rightX = FIELD_X + PANEL_W + GUTTER, rightW = FIELD_W - PANEL_W - GUTTER;
+  const st0 = f.stations[0];
+  const tiles = [
+    { v: st0 ? `${fmtNum(st0.distanceM)} m` : '—', l: st0 ? `to ${st0.name} (${st0.kind})${st0.walkBand ? `, within ${st0.walkBand} min on foot` : ''}` : 'no station in the wide window' },
+    { v: f.bus.total ? String(f.bus.within400) : '—', l: f.bus.total ? `bus stops within 400 m · ${f.bus.within800} within 800 m` : 'bus stops: no source answered' },
+    { v: f.cycle.osm ? (f.cycle.nearest ? `${fmtNum(f.cycle.nearest.distanceM)} m` : 'none') : '—', l: f.cycle.osm ? (f.cycle.nearest ? `to the nearest cycleway (${f.cycle.nearest.kind})` : 'no cycleway mapped in the window') : 'cycleways: OpenStreetMap did not answer' },
+    { v: f.frontage.length ? String(f.frontage.length) : '—', l: f.frontage.length ? `street frontage${f.frontage.length === 1 ? '' : 's'}: ${f.frontage.map((r) => r.word).join(', ')}` : 'no named road within 25 m of the site' },
+  ].map((tl) => `<div class="tile"><div class="tv${tl.v.length > 9 ? ' long' : ''}">${esc(tl.v)}</div><div class="tl">${esc(tl.l)}</div></div>`).join('');
+  const sw = (inner: string) => `<svg width="5mm" height="3.6mm" viewBox="0 0 5 3.6">${inner}</svg>`;
+  const legendRows: [string, string][] = [
+    [sw(`<line x1="0" y1="1.8" x2="5" y2="1.8" stroke="#6f6f6f" stroke-width="0.9"/><line x1="0" y1="1.8" x2="5" y2="1.8" stroke="#ffffff" stroke-width="0.6"/>`), 'Roads by function: motorways and arterials heaviest, local streets finest'],
+    [sw(`<line x1="0" y1="1.8" x2="5" y2="1.8" stroke="${t.rail}" stroke-width="0.7"/><line x1="0" y1="1.8" x2="5" y2="1.8" stroke="#ffffff" stroke-width="0.32" stroke-dasharray="1.6,1.6"/>`), 'Rail; stations as T, M (metro) or L (light rail)'],
+    [sw(`<path d="M0,1.8 H5" stroke="${ISO_FILL[5]}" stroke-width="0.45" stroke-dasharray="1.6,1"/>`), 'Walking isochrones from the site: 5, 10 and 15 minutes'],
+  ];
+  if (mv.busStops.length || mv.busRoutes.length) legendRows.push([sw(`<line x1="0" y1="1.8" x2="5" y2="1.8" stroke="${t.busRoute}" stroke-width="0.5" stroke-dasharray="1.2,0.9"/><circle cx="2.5" cy="1.8" r="0.9" fill="${t.busRoute}" stroke="#ffffff" stroke-width="0.3"/>`), `Bus ${mv.busRoutes.length ? 'routes and ' : ''}stops (${f.bus.source === 'tfnsw' ? 'Transport for NSW' : 'OpenStreetMap'})`]);
+  if (mv.cycleways.length) legendRows.push([sw(`<line x1="0" y1="1.2" x2="5" y2="1.2" stroke="${CYCLE_COLOUR}" stroke-width="0.6"/><line x1="0" y1="2.6" x2="5" y2="2.6" stroke="${CYCLE_COLOUR}" stroke-width="0.4" stroke-dasharray="1.4,0.8"/>`), 'Cycleways: separated solid, on-road lanes and shared paths dashed']);
+  if (mv.footways.length) legendRows.push([sw(`<line x1="0" y1="1.8" x2="5" y2="1.8" stroke="${FOOTWAY_COLOUR}" stroke-width="0.25" stroke-dasharray="0.5,0.5"/>`), 'Footways, paths and steps off the streets']);
+  if (mv.activeFrontages.features.length) legendRows.push([sw(`<rect x="0" y="0.6" width="5" height="2.4" fill="${FRONTAGE_COLOUR}" fill-opacity="0.55"/>`), 'LEP active street frontage']);
+  const legend = legendRows.map(([s, txt]) => `<div class="lg">${s}<span>${esc(txt)}</span></div>`).join('');
+  const stationRows = f.stations.slice(0, 6).map((s) => `<tr><td>${esc(s.name)}</td><td>${esc(s.kind)}</td><td class="r">${fmtNum(s.distanceM)} m</td><td>${esc(bearingName(s.bearing))}</td><td>${s.walkBand ? `within ${s.walkBand} min` : 'over 15 min'}</td></tr>`).join('');
+  const stationTable = f.stations.length
+    ? `<table class="da"><thead><tr><th>Station</th><th style="width:16mm">Mode</th><th class="r" style="width:16mm">Distance</th><th style="width:20mm">Direction</th><th style="width:22mm">On foot</th></tr></thead><tbody>${stationRows}</tbody></table>`
+    : emptyBox(rightW, 30, 'no station within the wide window');
+
+  // Bottom: the walking-reach strip.
+  const wp = b.wide.panel;
+  const wproj = panelProjector(wp);
+  const wparts: string[] = [`<rect x="0" y="0" width="${wp.wMm}" height="${wp.hMm}" fill="#ffffff"/>`];
+  if (b.wide.base.water.features.length) wparts.push(`<path d="${fcPath(b.wide.base.water, wproj)}" fill="${t.water}" fill-rule="evenodd"/>`);
+  for (const iso of [...mv.isochrones].sort((x, y) => y.minutes - x.minutes))
+    wparts.push(`<path d="${ringsPath(iso.rings, wproj)}" fill="${ISO_FILL[iso.minutes] ?? '#9ec5f4'}" fill-opacity="0.28" stroke="${ISO_FILL[iso.minutes] ?? '#9ec5f4'}" stroke-width="0.3" fill-rule="evenodd"/>`);
+  wparts.push(overLayers(b.wide.base, wproj, wp, 'none'));
+  const wspacer = new LabelSpacer(wp.wMm, wp.hMm, 60);
+  // suburbs, at the centroid of what falls inside the strip
+  for (const ft of b.wide.suburbs.features) {
+    const name = String(ft.properties?.suburbname ?? '');
+    if (!name) continue;
+    let best = { area: 0, cx: 0, cy: 0 };
+    for (const r of geomRings(ft.geometry)) { const s = clippedStats(r, wproj, wp); if (s.area > best.area) best = s; }
+    if (best.area < 150) continue;
+    const text = titleCase(name);
+    if (wspacer.take(best.cx, best.cy, labelW(text, 2.2) + 1, 3)) wparts.push(`<text x="${best.cx.toFixed(1)}" y="${(best.cy + 0.8).toFixed(1)}" text-anchor="middle" font-size="2.2" letter-spacing="0.08em" fill="#8a8a8a">${esc(text.toUpperCase())}</text>`);
+  }
+  for (const s of b.wide.base.stations) {
+    const [x, y] = wproj(s.lon, s.lat);
+    if (x < 2 || y < 2 || x > wp.wMm - 2 || y > wp.hMm - 2) continue;
+    const text = tidyStation(s.name);
+    if (wspacer.take(x + 3 + labelW(text, 2) / 2, y, labelW(text, 2), 2.6)) wparts.push(label(x + 3 + labelW(text, 2) / 2, y, text, 2, '#222'));
+  }
+  const [sx, sy] = wproj(mercatorToLonLat(p.center).lon, mercatorToLonLat(p.center).lat);
+  wparts.push(`<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="2.2" fill="#ffffff" stroke="${t.site}" stroke-width="0.6"/><circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="0.9" fill="${t.site}"/>`);
+  // the tall panel's window, so the two maps tie together
+  const [wx0, wy0] = wproj(mercatorToLonLat({ x: panelExtent(p).xmin, y: panelExtent(p).ymax }).lon, mercatorToLonLat({ x: panelExtent(p).xmin, y: panelExtent(p).ymax }).lat);
+  const [wx1, wy1] = wproj(mercatorToLonLat({ x: panelExtent(p).xmax, y: panelExtent(p).ymin }).lon, mercatorToLonLat({ x: panelExtent(p).xmax, y: panelExtent(p).ymin }).lat);
+  wparts.push(`<rect x="${wx0.toFixed(1)}" y="${wy0.toFixed(1)}" width="${(wx1 - wx0).toFixed(1)}" height="${(wy1 - wy0).toFixed(1)}" fill="none" stroke="${t.dimension}" stroke-width="0.3" stroke-dasharray="1.2,0.8"/>`);
+  wparts.push(panelFurniture(wp, 'right'));
+  const wideSvg = `<svg width="${wp.wMm}mm" height="${wp.hMm}mm" viewBox="0 0 ${wp.wMm} ${wp.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
+    <defs><clipPath id="clip-wide"><rect x="0" y="0" width="${wp.wMm}" height="${wp.hMm}"/></clipPath></defs>
+    <g clip-path="url(#clip-wide)" font-family="${t.font}">${wparts.join('\n')}</g>
+    <rect x="0.1" y="0.1" width="${wp.wMm - 0.2}" height="${wp.hMm - 0.2}" fill="none" stroke="${t.rule}" stroke-width="0.2"/>
+  </svg>`;
+
+  const yTable = FIELD_Y + PANEL_TITLE_H + 24 + 3 + 6 * 4.3 + 4;
+  const yWide = FIELD_Y + PANEL_TITLE_H + DA_PANEL_H + GUTTER;
+  const figureHtml = `
+    <div class="abs ptitle" style="left:${FIELD_X}mm;top:${FIELD_Y}mm;width:${PANEL_W}mm">Movement<span class="pnote">1:${fmtNum(p.scale)}</span></div>
+    <div class="abs" style="left:${FIELD_X}mm;top:${FIELD_Y + PANEL_TITLE_H}mm">${mapSvg}</div>
+    <div class="abs tiles" style="left:${rightX}mm;top:${FIELD_Y + PANEL_TITLE_H}mm;width:${rightW}mm">${tiles}</div>
+    <div class="abs legend" style="left:${rightX}mm;top:${FIELD_Y + PANEL_TITLE_H + 24}mm;width:${rightW}mm">${legend}</div>
+    <div class="abs ptitle" style="left:${rightX}mm;top:${yTable}mm;width:${rightW}mm">Stations<span class="pnote">nearest first, from the wide window</span></div>
+    <div class="abs" style="left:${rightX}mm;top:${yTable + PANEL_TITLE_H}mm;width:${rightW}mm">${stationTable}</div>
+    <div class="abs ptitle" style="left:${FIELD_X}mm;top:${yWide}mm;width:${FIELD_W}mm">Walking reach<span class="pnote">1:${fmtNum(wp.scale)} · 5, 10 and 15 minutes on foot from the site · the dashed box is the map above</span></div>
+    <div class="abs" style="left:${FIELD_X}mm;top:${yWide + PANEL_TITLE_H}mm">${wideSvg}</div>`;
+  return { id: '09_movement', title: 'Movement', subtitle: sub, textHtml, figureHtml };
+}
+
 // ---- the deck -----------------------------------------------------------------
 
 export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; slides: Slide[] } {
   const facts = planningFacts(b);
-  const slides = [planningOverviewSlide(b, facts), planningControlsSlide(b, facts), terrainSlide(b), developmentSlide(b, facts), builtFormSlide(b, facts), peopleSlide(b)];
+  const slides = [planningOverviewSlide(b, facts), planningControlsSlide(b, facts), terrainSlide(b), developmentSlide(b, facts), builtFormSlide(b, facts), movementSlide(b), peopleSlide(b)];
   const t = tpl();
   const footerLeft = ['SITE ANALYST — OVERALL ANALYSIS', b.siteAddress, meta.client ? `for ${meta.client}` : '', meta.jobNo ? `job ${meta.jobNo}` : ''].filter(Boolean).join(' · ');
   const pages = slides.map((s, i) => `
@@ -1718,6 +1932,7 @@ export function slidesFacts(b: SlidesBundle) {
     councilDcp: b.cos,
     development: (() => { const d = developmentFacts(b); return { ...d, sentences: developmentSentences(b, d, facts) }; })(),
     people: peopleFacts(b),
+    movement: (() => { const f = movementFacts(b); return { ...f, sentences: movementSentences(b, f) }; })(),
     builtForm: (() => { const f = builtFormFacts(b, facts); return { ...f, sentences: builtFormSentences(b, f) }; })(),
     terrain: (() => { const f = terrainFacts(b); return f ? { ...f, sections: f.sections.map((s) => ({ ...s, samples: s.samples.filter((_, i) => i % 4 === 0) })), sentences: terrainSentences(b, f) } : { available: false, sentences: terrainSentences(b, f) }; })(),
     propertyApi: b.property,

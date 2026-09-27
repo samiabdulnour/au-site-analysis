@@ -444,12 +444,12 @@ Open-Meteo archive (ERA5): `https://archive-api.open-meteo.com/v1/archive?latitu
 ## 7. Status
 
 Implemented: slides 03 (planning overview), 04 (planning controls), 06
-(topography), 07 (development activity), 08 (built form) and 16 (people and
-market) —
+(topography), 07 (development activity), 08 (built form), 09 (movement) and
+16 (people and market) —
 `src/render/slides.ts`, `src/render/minimap.ts`, `src/render/charts.ts`,
 `src/render/terrainMap.ts`, `src/fetch/planning.ts`, `src/fetch/terrain.ts`,
 `src/fetch/buildings.ts` with `src/py/overture_buildings.py`,
-`src/fetch/da.ts`, `src/fetch/abs.ts`, `src/fetch/tzp24.ts`,
+`src/fetch/movement.ts`, `src/fetch/da.ts`, `src/fetch/abs.ts`, `src/fetch/tzp24.ts`,
 `src/fetch/valuation.ts`, `src/fetch/schools.ts` (gathered by
 `src/fetch/people.ts`), `runSlidesPipeline` in `src/pipeline.ts`; `--type
 slides` on the CLI and the `slides` drawing on the web. The maps use the
@@ -487,6 +487,26 @@ plane; section A–A′ carries the buildings the line meets as blocks on the
 ground (dashed when the height is unknown) and the height plane over the
 site, converted from RL with the elevation model where the LEP limits in
 RL. The 3D model views remain the author's.
+
+Slide 09 gathers, each part soft: walking isochrones from the site at 5,
+10 and 15 minutes (the public Valhalla server, under a second); bus stops
+from Transport for NSW where `TFNSW_API_KEY` is set, else OpenStreetMap;
+bus and tram routes, cycleways (`highway=cycleway` and the `cycleway*`
+tags, classed separated, lane or shared), footways, paths, steps and
+pedestrian streets, and one-way streets, in one Overpass query; and the
+LEP's active street frontages from ePlanning layer 224 (Sydney LEP 2012
+maps eight polygons in the Waterloo window; 32 LGAs map one at all, North
+Sydney and the Inner West do not). The State's transport theme holds no
+stops or cycleways: its facility points are stations, interchanges and
+wharves, its crossings bridges and tunnels. The stations table reads the
+wide strip's stations, so the nearest counts even beyond the tall panel;
+Sydney Metro's own stations are recognised by name, since the State layer
+calls them railway stations. Where OpenStreetMap does not answer (the
+public mirrors were down throughout development; the deployer's local
+Overpass is the answer) the slide says which layers are unknown rather
+than drawing them empty. The wide strip fetches major roads (function
+hierarchy 5 and above), rail, stations, water and suburb polygons for a
+4.7 × 1.6 km window.
 
 Slide 16 looks the site up in the ASGS (SA2, LGA, suburb, capital-city
 region), reads the five census tables for the SA2, the LGA and the capital
