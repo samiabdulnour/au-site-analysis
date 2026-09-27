@@ -1088,7 +1088,7 @@ export function peopleSentences(b: SlidesBundle): string[] {
       out.push(h);
     }
     const tr = travelShares(prof.travel);
-    if (tr) out.push(`On census day, in the 2021 lockdown, ${fmtPct(tr.workedAtHome)} of workers worked from home, ${fmtPct(tr.car)} drove or rode, ${fmtPct(tr.publicTransport)} took public transport and ${fmtPct(tr.active)} walked or cycled.`);
+    if (tr) out.push(`On census day, 10 August 2021, under the COVID-19 restrictions, ${fmtPct(tr.workedAtHome)} of workers worked from home, ${fmtPct(tr.car)} drove or rode, ${fmtPct(tr.publicTransport)} took public transport and ${fmtPct(tr.active)} walked or cycled.`);
   }
   const mk: string[] = [];
   const lv = p.landValues;
@@ -1132,7 +1132,7 @@ export function peopleFacts(b: SlidesBundle) {
     schools: { radiusM: p.schoolsRadiusM, list: p.schools },
     sentences: peopleSentences(b),
     caveats: [
-      "Census night, 10 August 2021, fell in Sydney's lockdown: worked-at-home is inflated and the travel modes deflated.",
+      'Census night, 10 August 2021, fell in the COVID-19 lockdowns (Greater Sydney and, that week, some regions): worked-at-home is inflated and the travel modes deflated.',
       'Land values are the Valuer General\'s as at 1 July each year; sales as recorded on the register, single-property dealings only in the medians.',
     ],
   };
@@ -1145,7 +1145,7 @@ export function peopleSlide(b: SlidesBundle): Slide {
   const benchName = p?.benchmark ? shortName(p.benchmark.name) : 'the capital city';
   const textHtml = sentences.map(para).join('') +
     placeholder("Narrative — for the author: who the market is here (households, incomes, tenure), what the pipeline and the projections mean for demand, and how the site's land value and the sales around it frame the feasibility.") +
-    `<div class="fine">Sources: ABS Census 2021 (tables G01, G02, G36, G37, G62) for the SA2, the LGA and ${esc(benchName)}; ABS estimated resident population at 30 June; TfNSW Travel Zone Projections 2024; ABS SEIFA 2021; NSW Valuer General land values and sales register via SIX Maps; NSW Department of Education master dataset (government schools only). Census night fell in Sydney's 2021 lockdown, so worked-at-home is inflated and the travel modes deflated. Retrieved ${b.generatedAt.slice(0, 10)}.</div>`;
+    `<div class="fine">Sources: ABS Census 2021 (tables G01, G02, G36, G37, G62) for the SA2, the LGA and ${esc(benchName)}; ABS estimated resident population at 30 June; TfNSW Travel Zone Projections 2024; ABS SEIFA 2021; NSW Valuer General land values and sales register via SIX Maps; NSW Department of Education master dataset (government schools only). Census night, 10 August 2021, fell in the COVID-19 lockdowns (Greater Sydney's and, that week, some regions'), so worked-at-home is inflated and the travel modes deflated. Retrieved ${b.generatedAt.slice(0, 10)}.</div>`;
   const sub = [b.siteAddress, p ? `${p.regions.sa2.name} (SA2)` : '', p?.regions.lga ? `${shortName(p.regions.lga.name)} LGA` : '', p ? `against ${benchName}` : ''].filter(Boolean).join(' · ');
   if (!p) {
     return { id: '16_people_and_market', title: 'People and market', subtitle: sub, textHtml,

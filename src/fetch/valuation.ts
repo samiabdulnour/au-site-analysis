@@ -43,6 +43,14 @@ async function getJson(url: string, label: string): Promise<any> {
 }
 
 const money = (s: unknown) => { const n = Number(String(s ?? '').replace(/[^0-9.]/g, '')); return Number.isFinite(n) && n > 0 ? n : undefined; };
+/** "1.088 hectares" or "652.3 square metres" → square metres; blank (a stratum) → undefined. */
+export function areaSqm(s: unknown): number | undefined {
+  const m = String(s ?? '').trim().match(/^([\d,.]+)\s*(hectares?|ha|square metres?|sq\.? ?m|m2|m²)?/i);
+  if (!m) return undefined;
+  const n = Number(m[1].replace(/,/g, ''));
+  if (!Number.isFinite(n) || n <= 0) return undefined;
+  return /^h/i.test(m[2] ?? '') ? Math.round(n * 10_000) : n;
+}
 
 const MONTHS: Record<string, number> = { january: 1, february: 2, march: 3, april: 4, may: 5, june: 6, july: 7, august: 8, september: 9, october: 10, november: 11, december: 12 };
 /** "16 July 2026" → "2026-07-16"; anything else comes back unchanged. */
@@ -97,7 +105,7 @@ export async function fetchLandValues(p: LonLat, siteAddress?: string): Promise<
   const basis = String(r.basis_desc ?? '').trim();
   return {
     propid: Number(r.propid), address: String(r.address ?? '').replace(/\s+/g, ' ').trim(),
-    zone: r.zone_desc ? String(r.zone_desc) : undefined, areaSqm: money(r.prop_area),
+    zone: r.zone_desc ? String(r.zone_desc) : undefined, areaSqm: areaSqm(r.prop_area),
     basis: basis ? basis.split(' - ')[0] : undefined, stratum: /^7B|stratum/i.test(basis),
     values, source: 'NSW Valuer General land values via SIX Maps',
   };
