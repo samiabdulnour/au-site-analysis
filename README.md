@@ -58,6 +58,32 @@ for name, f in [('context','CONTEXT_ANALYSIS.pdf'), ('site','SITE_ANALYSIS.pdf')
 EOF
 ```
 
+`context.jpg` is the default palette. The other two palette previews are the
+same fetched data drawn again, which asks nothing more of the public services:
+
+```bash
+node --import tsx --input-type=module - <<'EOF'
+import { readFileSync, writeFileSync } from 'node:fs';
+import { renderSheet } from './src/render/sheet.ts';
+import { withTemplate } from './src/render/template.ts';
+import { htmlToPdf } from './src/render/pdf.ts';
+const dir = 'out/1-bay-street-botany-nsw-2019';
+const bundle = JSON.parse(readFileSync(`${dir}/data/bundle.json`, 'utf8'));
+const meta = { jobNo: '', client: '', status: '', sheetNo: '', revision: '',
+               checked: '', drawn: '', date: '', preliminary: false };
+for (const t of ['nsw', 'neutral']) {
+  writeFileSync(`${dir}/sheet-${t}.html`, withTemplate(t, () => renderSheet(bundle, meta)));
+  await htmlToPdf(`${dir}/sheet-${t}.html`, `${dir}/CONTEXT_${t}.pdf`);
+}
+EOF
+python3 - <<'EOF'
+import pymupdf
+for t in ['nsw', 'neutral']:
+    pymupdf.open(f'out/1-bay-street-botany-nsw-2019/CONTEXT_{t}.pdf')[0].get_pixmap(dpi=54).pil_save(
+        f'web/samples/tpl-{t}.jpg', format='JPEG', quality=76, optimize=True)
+EOF
+```
+
 `web/samples/og.jpg` is the image a shared link previews with, drawn from
 `web/og-card.html` — a crop of `context.jpg` over a strip naming the tool. Redraw
 it whenever that sample changes:
@@ -444,21 +470,57 @@ colours and the land-use palette. Content is identical between templates; only
 the look changes. They live in `src/render/template.ts`, so a new house style is
 a data change.
 
-There is one: `neutral`, a restrained palette with a single accent that survives
-a mono print. The office style that sat beside it left with the office door, and
-took the elaborate compass rose with it — that was the only thing the `symbols`
-field ever selected between, so it went too. `neutral`'s replacement is the next
-piece of work.
+There are three, and they differ only in the context sheet's colours:
+
+- `classic` — the default: the NSW planning colours, softened into one pastel
+  family, over a greyscale aerial.
+- `nsw` — the Planning Portal's zoning colours exactly, solid and on white with
+  no aerial: the base to restyle a palette from.
+- `neutral` — the restrained palette with a single accent that these replaced
+  as the default. It still survives a mono print.
+
+The site and summary sheets come out the same in all three, so the page offers
+the choice (the PALETTE row) for the context drawing alone, and the server draws
+the other two in the default whatever it is sent — an option the page does not
+show would otherwise split one request into three and draw the same sheet once
+per palette. `--template` on the command line follows the same rule.
+
+The hues are the ones NSW zoning is already read in: the Standard Instrument
+LEP zoning map's, as the ePlanning zoning layer itself draws them — pink
+deepening to red with residential density, blues for centres, violets for mixed
+use and industry, yellow for special purposes, green for recreation, aqua for
+waterways — so a planner sees R3 or E1 before reaching the legend. What that map
+does not colour follows the office sheets (education blue, medical magenta,
+child care outlined), and transport takes TfNSW's mode colours: orange trains,
+blue buses, red light rail.
+
+The LEP map prints those flat and at full strength on white, and `nsw` does
+the same: fills opaque, as the Planning Portal draws its zoning layer, because
+at part opacity every zone blends with the ground under it and no pixel on the
+sheet is the NSW value any more. Solid, each zone is exactly its colour and can
+be selected straight off the sheet. Its site is a black outline rather than the
+house red, which is R4's red. Over a photograph at part opacity the same colours
+turn to mud, so `classic` keeps the hues and evens out lightness and chroma
+across them (in OKLCH, where equal numbers look equal), and draws the aerial in
+greyscale so terracotta roofs stop tinting every fill laid over them. The
+greyscale is a luminosity blend onto white rather than a filter, which keeps the
+tiles as JPEGs in the PDF; a viewer that ignores blend modes simply shows the
+photo in colour. A palette with no aerial leaves the tiles out of the PDF
+altogether. Check a palette change on a real sheet, not on the legend: an
+airport is one very large SP2 zone, and a yellow that looks right as a swatch
+goes olive over forty hectares of grey tarmac.
 
 The renderers read the active template from an async context rather than a
 parameter, so `withTemplate()` also takes a `Template` outright — which is what
-lets `test/template-isolation.mts` hold two apart while only one is registered.
+lets `test/template-isolation.mts` hold two fixtures apart without registering
+either.
 
 Fonts are limited to what the runtime image installs (Liberation, DejaVu).
 Naming an absent font does not fail; it silently falls back and the sheet
 comes out in the wrong face, so add the package to the `Dockerfile` first.
 
-Options (after `--`): `--type context|site|summary|both`, `--scale 3000` (default 3000), `--job 2539`,
+Options (after `--`): `--type context|site|summary|both`, `--template classic|nsw|neutral`
+(default classic), `--scale 3000` (default 3000), `--job 2539`,
 `--client "Name"`, `--status "DEVELOPMENT APPLICATION"`, `--sheet "DA 003"`.
 
 ## How it works

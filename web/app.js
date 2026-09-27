@@ -2,9 +2,10 @@
    State lives in one object; the options are plain buttons that write into it,
    which avoids native <select> chrome in a page that is otherwise all text. */
 
-// There is one graphic template, so it is not in here: the server draws every
-// sheet in it and the page has nothing to choose.
-const state = { sheet: 'context', scale: '3000', rotate: 'north' };
+// `template` is the palette. It recolours the context sheet and nothing else,
+// so its row is shown for that drawing alone, and the server draws the others
+// in the default whatever is sent.
+const state = { sheet: 'context', scale: '3000', rotate: 'north', template: 'classic' };
 
 // [value, label, previewImage, previewCaption] — every option previews a real
 // sheet generated for the same demo address, so the comparison is like for like.
@@ -32,6 +33,12 @@ const SCALES = {
 const NORTH = [
   ['north', 'up',    '/samples/site.jpg',       'north up — the sheet is oriented to north'],
   ['auto',  'align', '/samples/north-align.jpg', 'aligned — the lot is squared to the sheet'],
+];
+// The context sheet's colours, each previewed on the same demo sheet.
+const TEMPLATES = [
+  ['classic', 'classic', '/samples/context.jpg',     'classic — NSW planning colours, softened into one family'],
+  ['nsw',     'nsw',     '/samples/tpl-nsw.jpg',     'nsw — the Planning Portal\'s zoning colours, exactly, on white'],
+  ['neutral', 'neutral', '/samples/tpl-neutral.jpg', 'neutral — restrained, survives a mono print'],
 ];
 
 const $ = (id) => document.getElementById(id);
@@ -90,6 +97,8 @@ function renderAll() {
   }
   tokens($('northOpts'), NORTH, state.rotate, (v) => { state.rotate = v; renderAll(); });
 
+  $('templateRow').hidden = state.sheet !== 'context';
+  tokens($('templateOpts'), TEMPLATES, state.template, (v) => { state.template = v; renderAll(); });
 }
 
 /** Take what the server told us about this session. */
@@ -429,7 +438,8 @@ async function submit(fresh) {
     const r = await fetch('/api/jobs', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ address, scale: state.scale, rotate: state.rotate,
-                             sheet: state.sheet, fresh: fresh === true }),
+                             sheet: state.sheet, template: state.template,
+                             fresh: fresh === true }),
     });
     const j = await readJson(r);
     if (!r.ok) throw new Error(httpMessage(r, j));
@@ -453,7 +463,8 @@ async function submitBatch(addresses, fresh) {
     const r = await fetch('/api/batches', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ addresses, scale: state.scale, rotate: state.rotate,
-                             sheet: state.sheet, fresh: fresh === true }),
+                             sheet: state.sheet, template: state.template,
+                             fresh: fresh === true }),
     });
     const j = await readJson(r);
     if (!r.ok) throw new Error(httpMessage(r, j));

@@ -310,8 +310,11 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
 
   // ---- aerial base (no CSS filter: keeps JPEGs as JPEGs in the PDF) ------
   // Tiles cover the axis-aligned fetch extent; place them in that rectangle
-  // (centered on the map) and rotate the whole group with the view.
-  {
+  // (centered on the map) and rotate the whole group with the view. A palette
+  // without one leaves the tiles out of the PDF altogether rather than hiding
+  // them under a veil, so nothing is there to find when the sheet is opened
+  // in an editor.
+  if (tpl().aerial !== 'none') {
     const s = MAP_W / (2 * view.halfW);
     const extW = (bundle.extent.xmax - bundle.extent.xmin) * s;
     const extH = (bundle.extent.ymax - bundle.extent.ymin) * s;
@@ -321,9 +324,19 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
       .map((t) => `<image href="data/${t.file}" x="${(ox + t.left * extW).toFixed(2)}" y="${(oy + t.top * extH).toFixed(2)}"
           width="${(t.width * extW).toFixed(2)}" height="${(t.height * extH).toFixed(2)}" preserveAspectRatio="none"/>`)
       .join('\n');
-    layers.push(`<g transform="rotate(${view.rotationDeg.toFixed(2)}, ${MAP_W / 2}, ${MAP_H / 2})">${tiles}</g>`);
+    const rotate = `transform="rotate(${view.rotationDeg.toFixed(2)}, ${MAP_W / 2}, ${MAP_H / 2})"`;
+    if (tpl().aerial === 'grey') {
+      // Greyscale by taking only the photo's luminosity onto white, for the
+      // same reason as above: a filter would rasterise the tiles, a blend
+      // mode leaves them as JPEGs. A viewer that ignores blend modes simply
+      // shows the photo in colour.
+      layers.push(`<rect x="0" y="0" width="${MAP_W}" height="${MAP_H}" fill="#ffffff"/>`);
+      layers.push(`<g style="mix-blend-mode:luminosity" ${rotate}>${tiles}</g>`);
+    } else {
+      layers.push(`<g ${rotate}>${tiles}</g>`);
+    }
+    layers.push(`<rect x="0" y="0" width="${MAP_W}" height="${MAP_H}" fill="#ffffff" opacity="${tpl().aerialVeil}"/>`);
   }
-  layers.push(`<rect x="0" y="0" width="${MAP_W}" height="${MAP_H}" fill="#ffffff" opacity="0.36"/>`);
 
   // ---- zoning base -------------------------------------------------------
   const zoningByCat: Record<string, string[]> = {};
@@ -559,7 +572,7 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   {
     usedCats.add('site');
     const d = bundle.siteLots.features.map((f) => pathFromRings(geomRings(f.geometry), proj)).join('');
-    layers.push(`<path d="${d}" fill="${tpl().site}" fill-opacity="0.55" stroke="${tpl().site}" stroke-width="1.4" stroke-dasharray="3.2,1.6"/>`);
+    layers.push(`<path d="${d}" fill="${tpl().site}" fill-opacity="${catById().site.opacity}" stroke="${tpl().site}" stroke-width="1.4" stroke-dasharray="3.2,1.6"/>`);
   }
 
   // ---- transport symbols: one roundel style for all modes -----------------
@@ -586,7 +599,7 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     .map((s) => ({ p: proj(s.lon, s.lat), name: s.name.replace(/RAILWAY STATION$/i, 'TRAIN STATION'), tram: /LIGHT RAIL|TRAM/i.test(s.name) }))
     .filter(({ p: [x, y] }) => x > 3 && x < MAP_W - 3 && y > 3 && y < MAP_H - 3)
     .map(({ p: [x, y], name, tram }) =>
-      roundel(x, y, tram ? 'L' : 'T', tram ? tpl().busRoute : tpl().site) + plainText(x, y - RR - 6, wrapLabel(name), T.poi, '#111111'))
+      roundel(x, y, tram ? 'L' : 'T', tram ? tpl().busRoute : tpl().station) + plainText(x, y - RR - 6, wrapLabel(name), T.poi, '#111111'))
     .join('\n'));
 
   // ---- label occupancy ----------------------------------------------------
@@ -847,7 +860,7 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     if (c.id === 'railway') continue; // on the map, not in the legend
     const hob = hobByCat[c.id];
     if (c.id === 'site') {
-      legendRow(`<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="${tpl().site}" fill-opacity="0.55" stroke="${tpl().site}" stroke-width="0.9" stroke-dasharray="2.2,1.1"/>`, ['SITE']);
+      legendRow(`<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="${tpl().site}" fill-opacity="${c.opacity}" stroke="${tpl().site}" stroke-width="0.9" stroke-dasharray="2.2,1.1"/>`, ['SITE']);
     } else if (c.id === 'heritage') {
       let hlines = '';
       for (let o = SWATCH_X - 6.5; o <= SWATCH_X + SWATCH_W; o += 2)
@@ -864,7 +877,7 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     `<g transform="translate(${symC},3.2)"><circle r="3.4" fill="#fff" stroke="${color}" stroke-width="0.8"/><text text-anchor="middle" dy="1.9" font-size="5.7" font-weight="700" fill="${color}">${letter}</text></g>`;
   const hasTrainStations = bundle.stations.some((s) => !/LIGHT RAIL|TRAM/i.test(s.name));
   const hasTramStops = bundle.bus.tramStops.length > 0 || bundle.stations.some((s) => /LIGHT RAIL|TRAM/i.test(s.name));
-  if (hasTrainStations) legendRow(legendRoundel('T', tpl().site), ['TRAIN STATION']);
+  if (hasTrainStations) legendRow(legendRoundel('T', tpl().station), ['TRAIN STATION']);
   legendRow(legendRoundel('B', tpl().transit), ['BUS STOPS']);
   if (hasTramStops) legendRow(legendRoundel('L', tpl().busRoute), ['LIGHT RAIL STOP']);
   if (bundle.railLines.train.length)

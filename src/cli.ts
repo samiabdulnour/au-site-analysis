@@ -16,6 +16,7 @@ import { renderSheet, MAP_W, MAP_H, type SheetMeta } from './render/sheet.js';
 import { renderSiteSheet } from './render/siteSheet.js';
 import { renderSummarySheet } from './render/summarySheet.js';
 import { summaryCsv, summaryJson } from './export/summaryExport.js';
+import { withTemplate, isTemplateId, DEFAULT_TEMPLATE, TEMPLATES } from './render/template.js';
 import { htmlToPdf } from './render/pdf.js';
 
 function arg(name: string, def?: string): string | undefined {
@@ -25,7 +26,7 @@ function arg(name: string, def?: string): string | undefined {
 
 const address = process.argv.slice(2).find((a) => !a.startsWith('--') && process.argv[process.argv.indexOf(a) - 1]?.startsWith('--') !== true);
 if (!address) {
-  console.error('usage: npm run generate -- "<address>" [--type context|site|summary|both] [--scale 3000] [--job N] [--client X] [--status S] [--sheet "DA 003"]');
+  console.error('usage: npm run generate -- "<address>" [--type context|site|summary|both] [--template classic|nsw|neutral] [--scale 3000] [--job N] [--client X] [--status S] [--sheet "DA 003"]');
   process.exit(1);
 }
 
@@ -47,6 +48,15 @@ const meta: SheetMeta = {
   preliminary: (arg('status', '') ?? '').toUpperCase().includes('PRELIM'),
 };
 
+// The palette recolours the context sheet only, the same rule the server
+// keeps, so --type both draws the site sheet as it always has. A misspelt name
+// is refused rather than quietly drawn in the default.
+const template = arg('template', DEFAULT_TEMPLATE)!;
+if (!isTemplateId(template)) {
+  console.error(`unknown --template "${template}": ${TEMPLATES.map((t) => t.id).join(', ')}`);
+  process.exit(1);
+}
+
 const sheetType = arg('type', 'context')!; // context | site | both
 const rotate = arg('rotate', 'north') === 'auto' ? 'auto' as const : 'north' as const;
 const outputs: string[] = [];
@@ -62,7 +72,7 @@ if (sheetType === 'context' || sheetType === 'both') {
   });
   console.log('composing context analysis…');
   const htmlPath = join(outDir, 'sheet.html');
-  await writeFile(htmlPath, renderSheet(bundle, meta));
+  await writeFile(htmlPath, withTemplate(template, () => renderSheet(bundle, meta)));
   const pdfPath = join(outDir, 'CONTEXT_ANALYSIS.pdf');
   await htmlToPdf(htmlPath, pdfPath);
   outputs.push(pdfPath);

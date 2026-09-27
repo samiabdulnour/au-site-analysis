@@ -20,7 +20,7 @@ import { renderSheet, MAP_W, MAP_H, type SheetMeta } from './render/sheet.js';
 import { renderSiteSheet } from './render/siteSheet.js';
 import { renderSummarySheet } from './render/summarySheet.js';
 import { summaryCsv, summaryJson } from './export/summaryExport.js';
-import { withTemplate, DEFAULT_TEMPLATE } from './render/template.js';
+import { withTemplate, DEFAULT_TEMPLATE, isTemplateId } from './render/template.js';
 import { htmlToPdf } from './render/pdf.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -184,6 +184,17 @@ function jobKey(r: Pick<Job, 'address' | 'sheet' | 'scale' | 'rotate' | 'templat
   return createHash('sha256')
     .update([addr, r.sheet, r.scale, r.rotate, r.template].join('|'))
     .digest('hex').slice(0, 32);
+}
+
+/**
+ * The palette a request is drawn in. A palette recolours the context sheet and
+ * nothing else, so the site and summary sheets always take the default —
+ * otherwise an option the page does not even show for them would split one
+ * request into several, and the same sheet would be drawn once per palette.
+ */
+function templateFor(sheet: Job['sheet'], asked: unknown): string {
+  return sheet === 'context' && typeof asked === 'string' && isTemplateId(asked)
+    ? asked : DEFAULT_TEMPLATE;
 }
 
 /**
@@ -901,13 +912,12 @@ Sitemap: ${siteBase()}/sitemap.xml
   if (req.method === 'POST' && url.pathname === '/api/jobs') {
     const body = await readBody(req);
     try {
-      const { address, scale, rotate, sheet, fresh } = JSON.parse(body || '{}');
-      // There is one template, so it is not the caller's to pick.
-      const jobTemplate = DEFAULT_TEMPLATE;
+      const { address, scale, rotate, sheet, template, fresh } = JSON.parse(body || '{}');
       const addr = String(address ?? '').trim();
       if (addr.length < 8 || addr.length > 120) return json(res, 400, { error: 'Enter a full NSW street address.' });
       const kind: 'context' | 'site' | 'summary' =
         sheet === 'site' ? 'site' : sheet === 'summary' ? 'summary' : 'context';
+      const jobTemplate = templateFor(kind, template);
       const raw = Number(scale) || 0;
       const sc = kind === 'site'
         ? (raw ? Math.min(1000, Math.max(100, raw)) : 0)          // 0 = auto-fit
@@ -957,7 +967,6 @@ Sitemap: ${siteBase()}/sitemap.xml
     const body = await readBody(req);
     try {
       const b = JSON.parse(body || '{}');
-      const jobTemplate = DEFAULT_TEMPLATE;
 
       const raw: unknown[] = Array.isArray(b.addresses) ? b.addresses : [];
       const addresses = raw.map((a) => String(a ?? '').trim()).filter(Boolean);
@@ -969,6 +978,7 @@ Sitemap: ${siteBase()}/sitemap.xml
 
       const kind: Job['sheet'] =
         b.sheet === 'site' ? 'site' : b.sheet === 'summary' ? 'summary' : 'context';
+      const jobTemplate = templateFor(kind, b.template);
       const n = Number(b.scale) || 0;
       const sc = kind === 'site'
         ? (n ? Math.min(1000, Math.max(100, n)) : 0)

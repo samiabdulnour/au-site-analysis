@@ -129,3 +129,28 @@ Layered bottom → top:
 | bus route       | `#3d7edb` (dashed) |
 | isochrone 400   | `#e6007e` (dashed) |
 | isochrone 800   | `#cc4da6` (dashed) |
+
+The generator's own palettes (`src/render/template.ts`) take their colours
+from the NSW Standard Instrument LEP zoning map instead, as the ePlanning Land
+Zoning layer (`EPI_Primary_Planning_Layers/MapServer/2`) draws it. `nsw` uses
+them exactly, opaque as the layer draws them (its transparency is 0); `classic`
+keeps the hues and evens out lightness and chroma so they survive being laid
+over a photo:
+
+| LEP zone                         | LEP colour            | category         |
+|----------------------------------|-----------------------|------------------|
+| R2 Low Density (also R5, RU)     | `#ffa6a3`             | r2               |
+| R3 Medium Density (also R1)      | `#ff776e`             | r3               |
+| R4 High Density                  | `#ff483b`             | r4               |
+| E1 Local Centre (also B1, B2)    | `#99ccff`             | localCentre      |
+| E2 Commercial Centre, E3         | `#b4c6e7`, `#8ea9db`  | commercial       |
+| MU1 Mixed Use (also B4)          | `#959dc2`             | mixedUse         |
+| E4, E5 (also IN1–IN4)            | `#9999ff`, `#9966ff`  | industrial       |
+| SP2 Infrastructure (also SP1)    | `#ffff70`             | infrastructure   |
+| RE1 Public Recreation            | `#55ff00`             | openSpace        |
+| W1, W2 Waterways                 | `#d9fff2`, `#99ffdd`  | water            |
+| heritage item (Heritage map)     | `#dbbb7b`             | heritage hatch   |
+
+C1–C4 are ochre on the LEP map (`#e69900` … `#ffda96`) but the category model
+draws them as open space, so they take its green. Transport symbols use TfNSW's
+mode colours: trains `#f6891f`, buses `#00b5ef`, light rail `#ee343f`.
