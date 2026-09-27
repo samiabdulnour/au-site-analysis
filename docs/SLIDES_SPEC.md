@@ -1,0 +1,431 @@
+# Overall analysis slides (mode 4: `slides`) — specification and data study
+
+The fourth mode is not a drawing sheet. It is the *content* part of a
+feasibility study or architectural design report: the "Context" and "Site
+Analysis" chapters that sit before the design, as A3 landscape pages that mix
+a text column with small maps, diagrams, photo panels and tables.
+
+The target was learned from an SSDA architectural design report (fjcstudio,
+5 Blue Street North Sydney, Appendix F part 1, pages 15–32: *2. Context*,
+*Site Analysis*, *Opportunities and Constraints*, plus the *Connecting With
+Country* booklet appended to it).
+The structure is the same one every office uses for this chapter, so the
+slide set below is generic; only the graphic template is the office's.
+
+This document does two things: it fixes the slide set the generator should
+produce, and it records — endpoint by endpoint, verified on 2026-09-27 from
+this repository's environment — which of that content can be fetched from the
+web, which can be computed from what is fetched, and which has to stay
+manual. `docs/DATA_SOURCES.md` lists what the three existing modes already
+use; everything there carries over.
+
+## 1. The reference deck, page by page
+
+What each page of the sample carries, and how much of it a generator can do.
+"Auto" means drawn or written from data without a person; "assist" means the
+data is fetched and laid out but the person is expected to edit; "manual"
+means a placeholder.
+
+| p. | Page | What is on it | Verdict |
+|---|---|---|---|
+| 15 | CBD Level Analysis — Wider Site Context | ~15 km location map: suburbs, LGA wash, harbour, rail line, motorway, major centres as dots, 2/5 km circles round the site; 4 paragraphs of narrative | map auto; narrative assist |
+| 16 | North Sydney Character | narrative; three photo strips: Place / Heritage / Landscape | photos assist (open-licence photos near the site); narrative assist |
+| 17 | Planning Overview | 4 small maps: Land Zoning, Building Heights, Heritage, LMR context + SSDA projects; legends | auto |
+| 18 | The CBD (aerial photo) | oblique aerial | manual (no free obliques); vertical aerial auto |
+| 19 | Site Surroundings | precinct map: city core / Lavender Bay character areas, primary connections, station, numbered landmarks; narrative | map assist (character areas are drawn by hand); landmarks auto |
+| 20 | North Sydney Local Planning Statement | council Public Domain Strategy extracts; narrative | manual (council PDFs), links auto |
+| 21 | Topography and City Grid | street-grid diagram on aerial; long section across the precinct to the harbour with the skyline; narrative | grid auto; section auto from the 5 m DEM; skyline auto from building heights |
+| 22 | Future Context — proposed development | four render thumbnails of approved towers; skyline model with approved envelopes | list of applications auto; renders manual; schematic envelopes auto |
+| 23 | Future Context — section and 3D | section through the CBD core; 3D massing model | schematic auto; model manual |
+| 24 | Height Plane Study | section, 3D of LEP height envelopes (RL 65 / RL 130 / 8.5 m / 12 m) | LEP envelopes auto (HOB in m and in RL); model view manual |
+| 25 | Ground Plane Relationship | axonometric of station / plaza / retail levels; pedestrian links map; street photo | links map assist; axon manual |
+| 26 | LEP Height Analysis | photos of a physical model | manual |
+| 29 | Existing Site Condition | six site photos with a keyed plan | photos assist (street-level imagery), site visit manual |
+| 30 | Site Analysis I | three diagrams: Urban Context (links, city core), Active links (active edges, green links, cycle), Green Connections (parks, walkability circles) | auto/assist |
+| 31 | Site Analysis II | Urban Grid, Solar Amenity (sun path), Views (view sectors with named destinations) | auto |
+| 32 | Opportunities and Constraints | two diagrams and two narratives | assist: the layers are automatic, the judgement is not |
+| — | Connecting With Country (the booklet appended after p. 32) | acknowledgement, Country mapping (foreshore, ridgeline, walking track, engravings, national parks), traditional custodians, materials and pattern references | mapping partly auto (see §3.10); the cultural content is the office's with Knowledge Holders, never generated |
+
+## 2. Format
+
+- **A3 landscape, 420 × 297 mm** (the sample is 1191 × 842 pt), full bleed,
+  one HTML page per slide, printed with the same headless Chromium as the
+  sheets. Text column on the left (~30 %), figure field on the right; a
+  fixed footer with the tool's name, the address and the page number.
+- Composed in the active graphic template (`neutral`), so the deck matches
+  the three sheets. Slide chrome is a new module beside `chrome.ts`; the map
+  drawing code is the existing renderers at small scale, not new code.
+- Outputs in `out/<slug>/`: `OVERALL_ANALYSIS.pdf`; `slides/NN_<name>.png`
+  (one image per slide, for InDesign or PowerPoint); `overall.json` (every
+  number and every fetched record, with source URL and retrieval time);
+  `overall.md` (the narrative placeholders with the data sentences already
+  written, for pasting into Word).
+- Narrative: every slide in the reference carries 100–200 words of prose.
+  The generator writes only what follows from data ("The site is 120 m from
+  North Sydney Station and inside the 400 m TOD area…") and leaves the
+  interpretive paragraph as a marked placeholder. It does not invent
+  character.
+- Options: `--type slides`, plus the existing `--scale`/`--rotate` where a
+  slide reuses a sheet. Web: a fourth cell in the DRAWING row with a sample.
+
+## 3. The slide set
+
+Eighteen slides in two parts, in the order the reference uses. For each:
+what is drawn, where it comes from (§4 has the endpoints), what stays manual.
+
+### Part A — Context
+
+**01 Location.** ~15 km window on the DPE light basemap (or self-drawn from
+the Water, Transport and Administrative Boundaries themes: harbour, rail,
+motorways, suburb names, LGA outline, planning district), the site, 2 and
+5 km rings, stations and the metropolitan/strategic centres nearest the site.
+Text: suburb, LGA, planning district, distances to the CBD and the nearest
+centres (computed). *Manual:* the centres list is a static table from the
+Region Plan (no open layer exists; see §5).
+
+**02 Character.** Wikipedia summary paragraph for the suburb as the seed text;
+a strip of open-licence photographs within ~800 m from Wikimedia Commons,
+KartaView and (with a free token) Mapillary, each with its licence line; the
+aerial with its capture date. *Manual:* the office replaces the photos with
+its own.
+
+**03 Planning overview.** Four maps at ~1:8000 from the ePlanning layers:
+Zoning; Height of Building (in m *and* in m RL — North Sydney's map is RL
+based, see §6); Heritage (LEP items, conservation areas, State Heritage
+Register curtilages); and Housing policy: TOD sites, accelerated TOD
+precincts, Town Centres (low- and mid-rise policy), SSD sites, planning
+precincts and planning proposals on exhibition. Legends from the data.
+
+**04 Planning controls at the site.** The development-summary controls plus
+what the sheets do not carry: local provisions (design excellence, key sites,
+active street frontages, sun access protection, centre maps), SEPP overlays
+(Housing SEPP chapters that apply, BASIX climate zone, rail and metro corridor
+protection zones, coastal and harbour catchment maps), contributions (SIC and
+Housing and Productivity Contribution), the DCP with its PDF link, the
+regional plan, the district, and the council's 5-year housing target. Every
+row carries its legislation link. *Manual:* the land-use table (permitted and
+prohibited uses) — legislation.nsw.gov.au cannot be read by a machine (§5).
+
+**05 Strategic context.** Regional plan, district plan, LSPS, any public
+domain or centre strategy: names and links, one line each. *Manual:* the
+extracts. Council strategies are PDFs with no index; a curated LGA → LSPS
+table is the practical route.
+
+**06 Topography and grid.** Hillshade and contours from the 5 m DEM with the
+road hierarchy over it; a section line chosen through the site along the
+main fall (site to water where there is water) sampled from the DEM, drawn
+as a profile with the site and RLs marked; the building skyline along the
+same line from building heights (§4.9). Text: site RL range, fall, aspect.
+
+**07 Development activity.** All applications within ~1 km lodged in the last
+five years from the Online DA API, filtered to what shapes context (storeys ≥
+4 or cost ≥ $5 M or dwellings ≥ 10): a map of dots coloured by status and a
+table (address, type, storeys, dwellings, cost, status, lodged, determined).
+Planning proposals on exhibition, TOD and accelerated precincts on the same
+map. A schematic future skyline is optional: storeys × 3.1 m at each DA.
+*Manual:* renders; State Significant applications (no open feed, §5).
+
+**08 Built form and height planes.** Figure-ground with buildings classed by
+height (Overture / OSM), the LEP height envelope at the site extruded from
+the parcel (RL maps converted with the DEM), neighbours' heights, and the
+section from slide 06 with the envelopes on it. *Manual:* 3D model views.
+
+**09 Movement.** The context-sheet content at slide scale: stations incl.
+Metro, bus stops (TfNSW key) and routes, walking isochrones, cycleways
+(TfNSW dataset or OSM), pedestrian links, active frontages (LEP layer),
+one-way streets and road hierarchy. Three small diagrams: Urban context,
+Active links, Green connections (this is the reference's page 30).
+
+**10 Green and public domain.** Tree canopy raster (2022) with the site's
+canopy %, Green Grid assets, open space and parks with names, public
+facilities, NPWS estate, water bodies. Walkability rings to parks.
+
+### Part B — Site
+
+**11 The site.** Site plan on the aerial; lot/DP, cadastral area, frontage
+lengths, zone, HOB, FSR, heritage, easements (geometry only), land value
+history (five annual values), recent sales within ~300 m, the existing
+building's footprint, height and levels where recorded, imagery date, State
+government and Crown parcels nearby.
+
+**12 Existing site condition.** Street-level photographs facing the site
+from KartaView / Mapillary keyed to a plan by bearing; the 1943 aerial beside
+today's for a then-and-now pair. *Manual:* the site visit replaces these.
+
+**13 Grid, sun and views.** Urban grid orientation (dominant street bearings
+from the road network); sun path diagram computed for the site (21 June and
+21 December, hourly azimuth and altitude) with neighbouring building heights
+as an overshadowing hint; view sectors by direction to named destinations
+(water bodies, headlands, the CBD skyline, parks, landmarks from the place
+and heritage layers) with the DEM deciding whether the ground rises or falls
+that way.
+
+**14 Environmental constraints.** Bushfire prone land, flood planning (where
+an LEP maps it), acid sulfate soils, airport noise (where an LEP maps it),
+coastal and riparian maps, scenic protection, mine subsidence, obstacle
+limitation surface, soil landscape; rail corridor protection zone and road
+hierarchy as noise sources. Each with "mapped / not mapped at this site" so
+an absence is stated, not implied.
+
+**15 Country.** The layers that exist: Local Aboriginal Land Council, native
+title status (NNTT), gazetted Aboriginal Places nearby, pre-1750 plant
+community at the site, soil landscape, watercourses and the foreshore,
+ridgelines from the DEM, national parks and headlands, and a note that an
+AHIMS search is required (the ASDST likelihood model is public; AHIMS is
+not). *Manual, always:* the cultural narrative, language and place-name
+content, which the office develops with Knowledge Holders.
+
+**16 People and market.** ABS Census 2021 for the site's SA2 (and LGA):
+median age, household and personal income, rent and mortgage, household
+size, dwelling structure mix, tenure, method of travel to work; population
+2001–2025 and the TZP24 projection to 2066; the council housing target;
+land value trend and sales from slide 11; school catchments and enrolments.
+
+**17 Opportunities and constraints.** Two diagrams assembled from the layers
+already fetched (station and TOD proximity, active edges, open space, views,
+solar orientation, heritage adjacency, corridor protection zones, hazards)
+with a templated list of statements the person edits.
+
+**18 Sources.** Every dataset used with its currency date, the imagery
+capture date, the LEP map amendment dates, retrieval timestamps. Generated
+from `overall.json`.
+
+## 4. What can be fetched — verified endpoints
+
+All reached from this repository's environment on 2026-09-27 with plain
+HTTPS. "Key" says whether a credential is needed. The existing helpers
+(`queryByExtent`, `queryByPoint`, `retryFetch`) fit everything marked ArcGIS.
+
+### 4.1 NSW Planning Portal property API (no key)
+
+The calls the Planning Portal Spatial Viewer itself makes. One request returns
+every planning layer that touches a property, with legislation links.
+
+```
+GET https://api.apps1.nsw.gov.au/planning/viewersf/V1/ePlanningApi/address?a=5%20BLUE%20STREET%20NORTH%20SYDNEY
+  -> [{ address, propId, GURASID }, …]            (substring match; pick the exact address)
+GET …/ePlanningApi/layerintersect?type=property&id=<propId>&layers=epi
+  -> zoning, height (value + units, e.g. 185 m(RL)), FSR, lot size, heritage item
+     (number, name, significance), local provisions, land application, SHR
+     curtilage, LALC, regional plan, tree canopy % 2019/2022, each with legislationUrl
+GET …/ePlanningApi/layerintersect?type=property&id=<propId>&layers=sepp
+  -> every SEPP and SEPP map that applies
+GET …/ePlanningApi/boundary?id=<propId>&Type=property   -> property polygon (3857)
+```
+
+### 4.2 ePlanning ArcGIS services (no key) — `mapprod3.environment.nsw.gov.au/arcgis/rest/services`
+
+Already used: `Planning/EPI_Primary_Planning_Layers` (0 Heritage, 1 FSR, 2
+Zoning, 3 Land Reservation Acquisition, 4 Lot Size, 5 HOB, 6 Land
+Application). New, all verified with a point or envelope query:
+
+| Service | Layers of interest | Notes |
+|---|---|---|
+| `ePlanning/Planning_Portal_Principal_Planning` | 221 State Heritage Register curtilage, 16 EPI heritage, 14 HOB, 19 zoning, 22 min lot size, 25 min dwelling density, 26 foreshore building line | the viewer's own copies, same fields |
+| `ePlanning/Planning_Portal_Development_Control` | 220 DCP by LGA (PLAN_NAME + FILE_NAME = PDF URL), 219 contributions plan by LGA, 218 SIC, 223 local provisions, 224 active street frontages, 769 active frontages map, 225 additional permitted uses, 226 key sites, 227 urban release area | DCP link verified for North Sydney |
+| `ePlanning/Planning_Portal_Local_Provisions` | 200 LEP local-provision map types: design excellence, sun access protection, built character, special character areas, incentive height/FSR, affordable housing, centre maps, airport buffer… | `identify` at a point returns whichever apply |
+| `ePlanning/Planning_Portal_Hazard` | 229 bushfire prone land, 230 flood planning map, 232 landslide risk | flood planning holds only 12 EPIs' maps (622 polygons statewide); most Sydney councils keep flood maps outside the LEP |
+| `ePlanning/Planning_Portal_Protection` | 234 acid sulfate soils, 235 airport noise, 236 drinking water catchment, 237 groundwater vulnerability, 239 obstacle limitation surface, 240/1024 riparian, 241 salinity, 242 scenic protection, 243 terrestrial biodiversity, 244 wetlands, 245 environmentally sensitive land, 365 NPWS estate | airport noise holds 5 EPIs; Sydney Airport's ANEF is not among them |
+| `ePlanning/Planning_Portal_SEPP` | 348 layers: TOD Sites Map, Accelerated TOD Precincts, Town Centres Map, Low and Mid Rise Housing Exclusion Map, Sydney Metro Corridor Protection Zone, Sydney Trains Corridor Protection Zone, Foreshores and Waterways Area, Strategic Foreshore Sites, SEPP 19 bushland, BASIX climate zones, coastal maps, growth centres, precinct SEPP maps | `identify?layers=all` at the site returned 17 hits |
+| `Planning/SEPP_Housing_2021` | 3 TOD Sites Map (PRECINCT, lot LABEL), 4 Accelerated TOD Precincts, 5 Deferred TOD, 6 Town Centres Map, 2 STRA | TOD verified at Turrella |
+| `Planning/SEPP_Planning_Systems_2021` | 3 State Significant Development Sites, 2 State and Regional Development subject land | Luna Park, Opera House, Darling Harbour in the test window |
+| `Planning/SEPP_Transport_and_Infrastructure_2021` | 3 interim rail corridor, 4 Sydney Metro West tunnel, 5–7 CBD Metro zones and station extents, 8–10 HOB/zoning/special provisions | |
+| `Planning/SEPP_Resilience_and_Hazards_2021` | coastal wetlands, littoral rainforest, coastal environment and use areas | |
+| `Planning/SEPP_Precincts_Eastern_Harbour_City_2021` (and Central River, Western Parkland, Regional) | precinct FSR, zoning, HOB, GFA, additional permitted uses | |
+| `Planning/DPIE_PlanningPrecincts` | 0 planning precinct points with Status, 4 precinct polygons, 5 district boundary, 6 LALC, 1–3 railway/motorway/primary road | |
+| `Planning/Administrative_Boundary` | 1 planning district (NORTH at the sample), 2 regional growth boundary, 0 SIC | |
+| `ePlanning/Planning_Portal_Tree_Canopy` | 1 canopy 2022, 0 canopy 2019 | `identify` gives canopy %; `export…&layers=show:1&transparent=true` gives the raster as PNG |
+| `ePlanning/Planning_Portal_Public_Spaces` | 252 Green Grid existing green assets (name, class, District/Regional significance), 260 open space, 262 public facilities | |
+| `ePlanning/Planning_Portal_Contributions` | 148/416/180 Housing and Productivity Contribution zones, 218 SIC, 219 contribution plans | |
+| `ePlanning/Planning_Portal_GPI` | 302 State government land parcels (lot refs, area) | |
+| `ePlanning/Planning_Portal_Crown_Land` | 258 Crown land, 312 reserves, 313 leases, 314 licences | |
+| `ePlanning/Planning_Portal_Subsidence_Advisory` | 248 mine subsidence district | |
+| `ePlanning/Planning_Proposal_Public`, `Planning_Proposal_Deferred` | planning proposals on exhibition, by LEP map type | none near the sample site at the time |
+| `ePlanning/SydneyTrain_ISEPP` | 1 corridor protection zone, 2 infrastructure protection zone, 0 level crossings | |
+| `HMS/Heritage` | 6 State Heritage Register polygons (ITEMNAME, ADDRESS, LISTINGNO, LISTING_DATE, PLANNO, TYPE), 9 LEP items (H_ID, H_NAME, SIG), 14 s170 registers, 16 SEPP heritage, 8 Aboriginal Places, 3/7 interim heritage orders, 12 NPWS estate, 19 world heritage, 0 a statewide POI layer (schools, parks, churches, shopping centres, post offices, courts) | the SHI item pages (`hms.heritage.nsw.gov.au`) sit behind a WAF: use the register attributes, link only |
+| `Cultural/Aboriginal_Sites_Decision_Support_Tool_ASDST` | likelihood, accumulated impact and survey-priority rasters | public model; not AHIMS |
+| `Soil_Landscape/Sydney` | soil landscape name, process (GYMEA, erosional at the sample) | `identify` |
+| `Soil/AcidSulfateSoilRisk_*` | ASS risk | |
+| `VIS/SVTM_NSW_1750_PCT` (and `_Extant_PCT`) | pre-1750 plant community type, class and formation (PCT 3594 Sydney Coastal Sandstone Foreshores Forest at the sample) | `identify`; "Not classified" where the model has no answer |
+| `Fire/BFPL` | bushfire prone land, category | `identify` and `export` verified |
+| `Tenure/NPWS_AllManagedLand`, `Tenure/Land_Tenure_NSW` | reserves, tenure | |
+| `Basemap/DPEBasemap` | light grey/blue basemap | `export…&f=image` verified: the right base for slide 01 |
+| `Planning/DA_Tracking`, `Planning/Planning_Portal_Application_Tracking` | 321 k DA/CDC records with storeys, dwellings, cost, X/Y | **stale: nothing after 2023-04-29**; use §4.3 |
+
+Query shapes (all ArcGIS REST):
+
+```
+…/MapServer/<layer>/query?where=1%3D1&geometry={"x":151.2073,"y":-33.8412,"spatialReference":{"wkid":4326}}
+   &geometryType=esriGeometryPoint&inSR=4326&outFields=*&outSR=4326&returnGeometry=false&f=json
+…/MapServer/identify?geometry={"x":…,"y":…}&geometryType=esriGeometryPoint&sr=4326&layers=all
+   &tolerance=2&mapExtent=<w,s,e,n>&imageDisplay=400,400,96&returnGeometry=false&f=json
+…/MapServer/export?bbox=<3857>&bboxSR=3857&imageSR=3857&size=800,800&format=png32&transparent=true&f=image
+```
+
+### 4.3 Online DA API (no key) — the current development activity
+
+```
+GET https://api.apps1.nsw.gov.au/eplanning/data/v0/OnlineDA      (and …/OnlineCDC)
+headers: PageSize: 100   PageNumber: 1
+         filters: {"filters":{"CouncilName":["North Sydney Council"],"LodgementDateFrom":"2024-01-01","LodgementDateTo":"2026-09-27"}}
+```
+
+Parameters travel in **headers**, not the query string (a query string gets
+`Required parameters for OnlineDA endpoint is not met`). Filters per the data
+dictionary (`online-da-api-v2.0.pdf` on the Planning Portal open data site):
+`CouncilName[]`, `ApplicationType`, `DevelopmentCategory[]` (Residential,
+Commercial, Industrial, Recreational, Other), `ApplicationStatus[]`,
+`CostOfDevelopmentFrom/To`, `LodgementDateFrom/To`. Records carry
+`PlanningPortalApplicationNumber`, status, type, dates, `CostOfDevelopment`,
+`NumberOfNewDwellings`, `NumberOfStoreys`, `DevelopmentType[]`,
+`DeterminationAuthority`, `Location[]` with `X`/`Y`, address and `Lot`/`PlanLabel`.
+Updated daily; covers everything lodged on the portal since 2019 (all
+councils since July 2021). 132 applications came back for North Sydney
+Council for June–September 2025. There is no spatial filter, so filter by
+council and date and clip to the window locally.
+
+### 4.4 NSW Spatial Services (no key) — `portal.spatial.nsw.gov.au/server/rest/services`
+
+Already used: addressing, cadastre lots, rail corridors, transport theme
+roads and rail, FOI points and areas, elevation contours. New:
+
+| Layer | Use |
+|---|---|
+| `NSW_Administrative_Boundaries_Theme/FeatureServer` 1 LocalAboriginalLandCouncil, 2 Suburb, 8 LGA, 5 Parish, 7 MinesSubsidenceDistrict, 12–15 ABS SA4–SA1 | slide 01, 15, 16 |
+| `NSW_Land_Parcel_Property_Theme/FeatureServer` 9 Easement (geometry, no purpose text), 12 Property, 1 RoadCentreline | slide 11 |
+| `NSW_FOI_Transport_Facilities/FeatureServer/1` | stations, Metro included (Victoria Cross came back) |
+| `NSW_Water_Theme/FeatureServer` 6 HydroArea, 2 NamedWatercourse, 5 HydroLine | water for slides 01, 10, 15 |
+| `NSW_FOI_Education_Facilities`, `_Health_Facilities`, `_Emergency_Service_Facilities` | amenity by function |
+| `Hosted/TfNSW_Offstreet_Parking_Public`, `Hosted/NSW_BushFire_Prone_Land` | listed, not tested |
+| `https://portal.spatial.nsw.gov.au/tileservices/Hosted/HistoricalImagery1943/MapServer/tile/{z}/{y}/{x}` | the 1943 Sydney aerial as Web Mercator PNG tiles to level 23 (`export` is not offered) |
+
+### 4.5 SIX Maps (no key) — `maps.six.nsw.gov.au/arcgis/rest/services/public`
+
+| Service | Use |
+|---|---|
+| `NSW_5M_Elevation/ImageServer/getSamples?geometry={"paths":[[[lon,lat],…]],"spatialReference":{"wkid":4326}}&geometryType=esriGeometryPolyline&sampleCount=200&returnFirstValueOnly=true&f=json` | elevation profile along any line: sections, fall, RL of the site, conversion of RL height limits to metres above ground |
+| `NSW_Imagery_Dates/MapServer/identify` | capture date and resolution of the aerial at the site (16/02/2022, 7 cm at the sample) — the caption every aerial should carry |
+| `Valuation/MapServer` 9 Urban Property Boundary (`identify` → `propid`), 5 Urban Property Valuations (`where=propid=…` → five annual land values `val1_lv…val5_lv` with base dates, zone, valuation basis), 1 Urban Property Sales (by envelope: price, `sale_date`, area, strata flag, address) | slides 11 and 16; the Valuer General's own site blocks automation, this does not |
+| `NSW_Base_Map`, `NSW_Topo_Map` `/export` | topographic-style alternatives to the DPE basemap |
+| `NSW_POI/MapServer/0` | points of interest |
+
+### 4.6 Statistics — ABS (no key)
+
+- Boundaries and lookups: `https://geo.abs.gov.au/arcgis/rest/services/ASGS2021/{SA1,SA2,SA3,LGA,SAL,POA}/MapServer/0/query` by point → codes and names (SA2 121041417 "North Sydney - Lavender Bay" at the sample).
+- Data: the SDMX API at **`data.api.abs.gov.au`** (the other hostname,
+  `api.data.abs.gov.au`, is refused by this environment's proxy). Send
+  `Accept: application/vnd.sdmx.data+json`.
+
+```
+…/rest/data/ABS,C21_G02_SA2,1.0.0/.121041417..?dimensionAtObservation=AllDimensions
+   -> medians: age 38, personal income $1,683/wk, household income $2,709/wk,
+      rent $600/wk, mortgage $2,850/mo, household size 1.9 (sample SA2)
+…/rest/data/ABS,C21_G36_SA2,1.0.0/..121041417..     dwelling structure
+…/rest/data/ABS,C21_G37_SA2,1.0.0/..121041417..     tenure and landlord type
+…/rest/data/ABS,C21_G62_SA2,1.0.0/..121041417..     method of travel to work
+…/rest/data/ABS,C21_G01_SA2,1.0.0/..121041417..     selected person characteristics
+…/rest/data/ABS,ABS_ANNUAL_ERP_ASGS2021/ERP.SA2.121041417.A   population 2001 onwards
+```
+
+The key is positional: G02 has four dimensions (`MEDAVG.REGION.REGION_TYPE.STATE`),
+the other census tables five, so the SA2 code sits in the second or third slot.
+Every table also exists as `_LGA`, `_SAL` (suburb) and `_POA`. SEIFA 2016 is
+there (`ABS_SEIFA2016_SA2`); check the catalogue for the 2021 edition.
+
+### 4.7 Projections, targets, schools, transport files
+
+| Source | What | How |
+|---|---|---|
+| TfNSW Open Data, TZP24 | population and dwellings 2021–2066 by travel zone and by LGA | CSV downloads (LGA file 36 KB; TZ population file 3.3 MB); no key |
+| planning.nsw.gov.au | the council's 5-year housing target and the ABS headline numbers | `…/the-planning-system/housing/housing-targets/<lga-slug>-councils-snapshot` (North Sydney: 5,900 homes by 2029); 43 councils only; an HTML page, so keep a static table as the fallback |
+| data.nsw.gov.au | school intake zones (8.4 MB shapefile); master dataset of school locations and enrolments (CSV/JSON) | downloads, cache monthly |
+| TfNSW Open Data | cycleway network shapefile, statewide, updated monthly (12.6 MB) | download, cache monthly; or OSM `highway=cycleway` / `cycleway=*` |
+| TfNSW Trip Planner and traffic-volume APIs | stop departures and service frequency; traffic counts | the existing `TFNSW_API_KEY` |
+
+### 4.8 Photographs and text (no key unless stated)
+
+| Source | What | Notes |
+|---|---|---|
+| Wikimedia Commons `w/api.php?action=query&list=geosearch&gscoord=<lat>|<lon>&gsradius=800&gsnamespace=6` then `prop=imageinfo&iiprop=url|extmetadata` | open-licence photos near the site with author and licence | send a descriptive `User-Agent`; without one the API answers 429. Attribution is a condition of the licence: print it under the photo |
+| Wikipedia `api/rest_v1/page/summary/<Title>` and `list=geosearch` | the suburb summary paragraph and its lead image; articles within 1.5 km as landmark candidates (MLC Building, North Sydney Post Office, Brett Whiteley House…) | same User-Agent rule |
+| KartaView `https://api.openstreetcam.org/2.0/photo/?lat=&lng=&radius=150` | street-level photos with bearing | no key; coverage is patchy and old in places (2019 at the sample) |
+| Mapillary `https://graph.mapillary.com/images?bbox=…&fields=id,thumb_1024_url,captured_at,compass_angle,geometry` | dense recent street-level imagery | free client token from the Mapillary developer page; reachable, refuses without a token |
+| Google Street View Static API | best coverage | paid; not proposed |
+
+### 4.9 Building heights
+
+| Source | Result at the sample (1.5 × 1.7 km window) | Notes |
+|---|---|---|
+| Overture Maps buildings, GeoParquet on S3 (`s3://overturemaps-us-west-2/release/<release>/theme=buildings/type=building/`) via DuckDB `read_parquet` with a bbox predicate | 2,615 footprints, 690 with `height`, 1,177 with `num_floors`, tallest 158 m | 103 s cold through this environment's proxy; in production either cache the Sydney extract on the volume or run the query once a month. The `overturemaps` CLI returned nothing through the proxy; DuckDB worked |
+| OSM `way["building"]` with `height` / `building:levels` | the site sheet already fetches this | public Overpass mirrors were all down at test time; the local Overpass the deployer installs is the answer |
+
+Where neither has a height, storeys from the DA record (slide 07) or a
+default by zone are the fallbacks, and the slide says so.
+
+### 4.10 Country
+
+| Source | What |
+|---|---|
+| Administrative Boundaries 1 / DPIE_PlanningPrecincts 6 | Local Aboriginal Land Council (METROPOLITAN at the sample) |
+| NNTT `https://services2.arcgis.com/rzk7fNEt0xoEp3cX/ArcGIS/rest/services/NNTT_Custodial_AGOL/FeatureServer` 6 determinations, 7 registered claims, 4 ILUAs, 0 prescribed bodies corporate | native title status by point (none at the sample, as expected in Sydney) |
+| HMS/Heritage 8 | gazetted Aboriginal Places |
+| VIS/SVTM_NSW_1750_PCT, Soil_Landscape/Sydney, Water theme, DEM ridgelines, NPWS estate | the pre-colonial landscape layers the reference maps by hand |
+| ASDST | a public likelihood model; the slide states that an AHIMS search is required and that AHIMS itself is not open |
+
+### 4.11 Climate
+
+Open-Meteo archive (ERA5): `https://archive-api.open-meteo.com/v1/archive?latitude=&longitude=&start_date=2023-01-01&end_date=2023-12-31&hourly=wind_speed_10m,wind_direction_10m&timezone=Australia%2FSydney` → 8,760 hourly rows for a wind rose, no key. The climate-normals endpoint is rate-limited per IP (it refused from this shared address); the Bureau of Meteorology blocks scripted access outright. The sun path needs no fetch: it is a computation from latitude, longitude and date (SunCalc-style).
+
+## 5. What cannot be fetched, and what to do instead
+
+| Content | Why not | Instead |
+|---|---|---|
+| Land-use table (permitted / prohibited uses), zone objectives, clause text | `legislation.nsw.gov.au` sits behind a Cloudflare bot check that also stops headless Chromium; AustLII likewise | print the legislation link the API gives for every control; the person pastes the table |
+| State Significant Development applications (the Major Projects register) | a Pega application with no open feed; the Drupal listing offers HTML only | SSD *sites* from the SEPP layer; DAs from the Online DA API; SSD applications by hand |
+| Site visit photographs, oblique aerials, renders, physical-model photos, 3D views | not data | placeholders sized for them; street-level and 1943 imagery as stand-ins |
+| Council strategies (LSPS, public domain strategies, character statements), DCP text | PDFs, unindexed; only the DCP has a mapped link | a curated LGA → document table in the repo; links on slide 05 |
+| Metropolitan and strategic centres as a layer | the Region Plan publishes them as a map, not data | a static list of the ~40 centres with coordinates in `src/` |
+| Sydney Airport ANEF, most councils' flood maps | not in the ePlanning layers (5 and 12 EPIs respectively) | state "not mapped in the LEP" and point to the council flood study; ANEF by hand |
+| Geology | Geoscience Australia refused this proxy (403), GSNSW's GeoServer exposes no geology in its default workspace, SEED's API answered empty | soil landscape stands in; geology by hand |
+| AHIMS Aboriginal sites | registered users only, by law | the note on slide 15 |
+| Nation / language boundaries | the AIATSIS map is not open data | LALC and NNTT are the open proxies; the name of Country comes from the council's acknowledgement, kept in the curated LGA table |
+| Easement purposes, title, ownership, strata | NSW LRS, paid | easement geometry only, flagged "purpose unknown" |
+| Utilities (water, sewer, power) | not open beyond OSM fragments | BYDA remains manual |
+| Heritage inventory pages (statement of significance, photos) | `hms.heritage.nsw.gov.au` answers 403 from a server | register attributes from the ArcGIS layer; link the page |
+
+## 6. Things learned on the way
+
+- **Height of Building in RL.** North Sydney's HOB map is in `m(RL)` (75 and
+  185 m RL at the sample), not metres above ground. The API reports the
+  units; the DEM profile turns an RL limit into a height above the site.
+  The development summary should print the unit too.
+- **`DA_Tracking` is a 2023 snapshot.** Its maximum lodgement date is
+  2023-04-29. The Online DA API is the live source.
+- **Two ABS hostnames.** `data.api.abs.gov.au` works, `api.data.abs.gov.au`
+  does not through the proxy used here.
+- **Wikimedia wants a User-Agent.** Anonymous requests from a shared address
+  are throttled at once.
+- **`prop_area` can be blank** in the Valuation layer for stratum lots.
+- **`layers=all`** on the property API returns nothing; ask for `epi` and
+  `sepp` separately.
+- **Overpass** public mirrors were unreachable throughout the test; the local
+  Overpass is not optional for this mode either.
+- **Request budget.** A full deck is roughly 60–80 requests: ~35 ArcGIS
+  queries and 6 raster exports, 1–3 DA API pages, 6 ABS calls, 3 Wikimedia
+  calls, one Open-Meteo call, one DEM profile, and the buildings query. It
+  is the same serial queue and the same courtesy toward the same free
+  services as the sheets; the buildings and cycleway extracts should be
+  cached on the volume, not fetched per deck.
+
+## 7. Suggested order of work
+
+1. Slide chrome (A3, text column, figure grid, footer) and the PDF/PNG/JSON
+   outputs, with slides 03 and 04 first: they are the existing sheets' data
+   at a new size plus the property API.
+2. Slides 07 (Online DA API) and 16 (ABS, TZP24, housing target): tables and
+   dots, the highest value per hour of work.
+3. Slides 06, 08 and 13: the DEM profile, building heights and the sun path —
+   the three computations, shared by all of them.
+4. Slides 01, 09, 10, 11, 14, 15: layer work over what already exists.
+5. Slides 02 and 12: photo panels and the licence lines.
+6. Slides 05, 17, 18 and the narrative placeholders.

@@ -10,6 +10,13 @@ sun analysis, heritage context, transport and access, walkability, public
 space, amenities, planning controls, SWOT, design opportunities, design
 response / massing ideas.
 
+The fourth mode, `slides`, is the content part of a feasibility study or
+design report: an A3 overall-analysis deck (context, planning, development
+activity, topography, built form, movement, site, sun and views, constraints,
+Country, people and market, opportunities). `docs/SLIDES_SPEC.md` fixes its
+slide set and records which of that content can be fetched from the web,
+endpoint by endpoint, and which stays manual.
+
 **Current stage: sheet 1 — CONTEXT ANALYSIS** (see `docs/SHEET_SPEC.md` for
 the target format learned from `examples/`, and `docs/DATA_SOURCES.md` for
 the open-data endpoints used).
