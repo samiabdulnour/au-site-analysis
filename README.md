@@ -10,6 +10,13 @@ sun analysis, heritage context, transport and access, walkability, public
 space, amenities, planning controls, SWOT, design opportunities, design
 response / massing ideas.
 
+The fourth mode, `slides`, is the content part of a feasibility study or
+design report: an A3 overall-analysis deck (context, planning, development
+activity, topography, built form, movement, site, sun and views, constraints,
+Country, people and market, opportunities). `docs/SLIDES_SPEC.md` fixes its
+slide set and records which of that content can be fetched from the web,
+endpoint by endpoint, and which stays manual.
+
 **Current stage: sheet 1 — CONTEXT ANALYSIS** (see `docs/SHEET_SPEC.md` for
 the target format learned from `examples/`, and `docs/DATA_SOURCES.md` for
 the open-data endpoints used).
@@ -48,6 +55,7 @@ re-render them:
 ```bash
 npm run generate -- "1 Bay Street, Botany NSW 2019" --type both
 npm run generate -- "1 Bay Street, Botany NSW 2019" --type summary
+npm run generate -- "1 Bay Street, Botany NSW 2019" --type slides   # slides.jpg comes from slides/03_planning_overview.png
 python3 - <<'EOF'
 import pymupdf
 src = 'out/1-bay-street-botany-nsw-2019/'
@@ -458,8 +466,75 @@ Fonts are limited to what the runtime image installs (Liberation, DejaVu).
 Naming an absent font does not fail; it silently falls back and the sheet
 comes out in the wrong face, so add the package to the `Dockerfile` first.
 
-Options (after `--`): `--type context|site|summary|both`, `--scale 3000` (default 3000), `--job 2539`,
-`--client "Name"`, `--status "DEVELOPMENT APPLICATION"`, `--sheet "DA 003"`.
+Options (after `--`): `--type context|site|summary|slides|both`, `--scale 3000` (default 3000),
+`--slides-scale 8000` (the deck's map panels), `--da-years 5` (the deck's
+development window), `--job 2539`, `--client "Name"`,
+`--status "DEVELOPMENT APPLICATION"`, `--sheet "DA 003"`.
+
+### The deck
+
+`--type slides` draws the OVERALL ANALYSIS deck: A3 landscape pages for the
+content part of a feasibility study or design report, specified in
+`docs/SLIDES_SPEC.md`. Seven slides exist so far. The planning pair: a
+*planning overview* of four maps at 1:8000 around the site (land zoning in the
+statutory colours, height of building, heritage with the State Heritage
+Register, and the housing-policy maps — TOD areas, town centres, State
+significant development sites, precincts) and *planning controls at the site*,
+a table of every mapped control with its source and currency: zone, height
+(with its units, since some LEPs limit in RL), FSR, lot size, heritage,
+local provisions, SEPP maps, the DCP with its link, contributions, tree
+canopy and the council's housing target. Then *topography*: the landform
+at 1:8000 as a hillshade from the State's 5 m elevation model with the 2 m
+contours, roads and rail over it and two section lines through the site,
+A–A′ down the steepest fall and B–B′ across it, each drawn as a section
+with the site and its levels marked; the text gives the site's RL range,
+fall, grade and aspect and where the high ground and the water are. Then
+*built form*: every building footprint in the window coloured by height
+band (Overture Maps, read from its public bucket by DuckDB through
+`src/py/overture_buildings.py`; OpenStreetMap through Overpass when DuckDB
+or Overture is not there), the storeys of the buildings within 250 m as a
+histogram with the LEP height plane marked on it, and section A–A′ again
+with the buildings it meets drawn at their heights and the height plane
+dashed over the site. Then *movement*: roads by function, rail and
+stations, the walking isochrones from the site (Valhalla, 5, 10 and 15
+minutes), bus stops (Transport for NSW with the key, else OpenStreetMap),
+bus routes, cycleways, footways and one-way streets (OpenStreetMap through
+Overpass) and the LEP's active street frontages, with a table of the
+nearest stations and a wide walking-reach strip at 1:16000 naming the
+suburbs and stations around. Then *green and public domain*: the parks and
+reserves around the site (the recreation and conservation zones, and the
+Greater Sydney Green Grid's named assets where the Grid reaches), the
+National Parks estate, the public facilities — schools, childcare, libraries,
+pools, health and community centres — the council's street trees drawn at
+crown size where an inventory is open (City of Sydney), the walking
+isochrones again, four figures (the canopy on the site's block, the share of
+the window that is public open space, the nearest park, the facilities), a
+table of the nearest open spaces with area, distance and walk band, and a
+wide strip of the 2022 tree canopy by mesh block, against the Region Plan's
+40 % target. Then *development activity*: every
+application lodged in the council area over the last five years, from the
+Planning Portal's Online DA feed, clipped to the window around the site. The
+ones of a scale that shapes the context — four storeys, ten dwellings or
+$5 M and up, house-scale work discounted — are numbered on the map, coloured
+by status and sized by cost, over the TOD and precinct washes and any planning
+proposal on exhibition; beside it four figures (applications, sites of scale,
+dwellings proposed, value), lodgements per year and a table of the largest
+sites as lodged, with storeys, dwellings, cost, status and dates. The feed is
+council-wide and slow, so it is cached on the volume for a day
+(`out/.cache/da/`); `--da-years 5` sets the window. Then *people and market*:
+the site's SA2 and LGA against Greater Sydney (or the rest of the state) from
+the 2021 Census — medians, age profile, dwelling structure, tenure, travel to
+work — with the ABS population series since 2001 and the TZP24 projection to
+2066, SEIFA 2021, the Valuer General's land values of the site and the sales
+register within 400 m, and the nearest government schools with their
+enrolments. Census tables, projections and the school dataset are cached on
+the volume for a month. Each slide carries the sentences that follow from the
+data and a marked placeholder for the author's narrative. Outputs: `OVERALL_ANALYSIS.pdf`, `slides/<id>.png` per slide and
+`overall.json` with everything the deck says.
+
+Where a council publishes its own DCP mapping as open data — the City of
+Sydney does — the deck reads it too, for the sites in that LGA: building
+height in storeys, street frontage heights, active frontages, setbacks.
 
 ## How it works
 

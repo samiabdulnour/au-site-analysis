@@ -11,12 +11,13 @@ if (existsSync('.env')) {
     if (m && !process.env[m[1]]) process.env[m[1]] = m[2].trim();
   }
 }
-import { runPipeline, runSitePipeline, runSummaryPipeline } from './pipeline.js';
+import { runPipeline, runSitePipeline, runSummaryPipeline, runSlidesPipeline } from './pipeline.js';
 import { renderSheet, MAP_W, MAP_H, type SheetMeta } from './render/sheet.js';
 import { renderSiteSheet } from './render/siteSheet.js';
 import { renderSummarySheet } from './render/summarySheet.js';
 import { summaryCsv, summaryJson } from './export/summaryExport.js';
-import { htmlToPdf } from './render/pdf.js';
+import { renderSlides, slidesFacts, PANEL_W, PANEL_H, DA_PANEL_H, SLIDE_W, SLIDE_H } from './render/slides.js';
+import { htmlToPdf, printSlides } from './render/pdf.js';
 
 function arg(name: string, def?: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
@@ -25,7 +26,7 @@ function arg(name: string, def?: string): string | undefined {
 
 const address = process.argv.slice(2).find((a) => !a.startsWith('--') && process.argv[process.argv.indexOf(a) - 1]?.startsWith('--') !== true);
 if (!address) {
-  console.error('usage: npm run generate -- "<address>" [--type context|site|summary|both] [--scale 3000] [--job N] [--client X] [--status S] [--sheet "DA 003"]');
+  console.error('usage: npm run generate -- "<address>" [--type context|site|summary|slides|both] [--scale 3000] [--slides-scale 8000] [--job N] [--client X] [--status S] [--sheet "DA 003"]');
   process.exit(1);
 }
 
@@ -47,7 +48,7 @@ const meta: SheetMeta = {
   preliminary: (arg('status', '') ?? '').toUpperCase().includes('PRELIM'),
 };
 
-const sheetType = arg('type', 'context')!; // context | site | both
+const sheetType = arg('type', 'context')!; // context | site | summary | slides | both (the three sheets)
 const rotate = arg('rotate', 'north') === 'auto' ? 'auto' as const : 'north' as const;
 const outputs: string[] = [];
 
@@ -112,6 +113,27 @@ if (sheetType === 'summary' || sheetType === 'both') {
   await writeFile(csvPath, summaryCsv(sub));
   await writeFile(jsonPath, summaryJson(sub));
   outputs.push(csvPath, jsonPath);
+}
+
+if (sheetType === 'slides') {
+  const sb = await runSlidesPipeline(address, {
+    outDir,
+    scale: Number(arg('slides-scale', '8000')),
+    panelWmm: PANEL_W,
+    panelHmm: PANEL_H,
+    daPanelHmm: DA_PANEL_H,
+    daYears: Number(arg('da-years', '5')),
+    log: (m) => console.log(m),
+  });
+  console.log('composing overall analysis slides…');
+  const { html } = renderSlides(sb, meta);
+  const slidesHtmlPath = join(outDir, 'slides.html');
+  await writeFile(slidesHtmlPath, html);
+  const deckPath = join(outDir, 'OVERALL_ANALYSIS.pdf');
+  const pngs = await printSlides(slidesHtmlPath, deckPath, join(outDir, 'slides'), { widthMm: SLIDE_W, heightMm: SLIDE_H });
+  const factsPath = join(outDir, 'overall.json');
+  await writeFile(factsPath, JSON.stringify(slidesFacts(sb), null, 2));
+  outputs.push(deckPath, ...pngs, factsPath);
 }
 
 console.log(`done:\n  ${outputs.join('\n  ')}`);

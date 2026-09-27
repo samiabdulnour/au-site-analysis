@@ -14,14 +14,15 @@ import { rm, readdir, stat, statfs, writeFile } from 'node:fs/promises';
 import { join, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID, createHmac, createHash, timingSafeEqual } from 'node:crypto';
-import { runPipeline, runSitePipeline, runSummaryPipeline } from './pipeline.js';
+import { runPipeline, runSitePipeline, runSummaryPipeline, runSlidesPipeline } from './pipeline.js';
 import { suggestAddresses } from './fetch/geocode.js';
 import { renderSheet, MAP_W, MAP_H, type SheetMeta } from './render/sheet.js';
 import { renderSiteSheet } from './render/siteSheet.js';
 import { renderSummarySheet } from './render/summarySheet.js';
 import { summaryCsv, summaryJson } from './export/summaryExport.js';
+import { renderSlides, slidesFacts, PANEL_W, PANEL_H, DA_PANEL_H, SLIDE_W, SLIDE_H } from './render/slides.js';
 import { withTemplate, DEFAULT_TEMPLATE } from './render/template.js';
-import { htmlToPdf } from './render/pdf.js';
+import { htmlToPdf, printSlides } from './render/pdf.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -135,8 +136,8 @@ async function probeLocalOverpass(): Promise<string> {
 interface Job {
   id: string;
   address: string;
-  sheet: 'context' | 'site' | 'summary';
-  scale: number;            // 0 = auto (site sheets)
+  sheet: 'context' | 'site' | 'summary' | 'slides';
+  scale: number;            // 0 = auto (site sheets, slides)
   rotate: 'north' | 'auto';
   template: string;
   key: string;              // what makes two requests the same request
@@ -144,7 +145,7 @@ interface Job {
   log: string[];
   pdfPath?: string;
   cadPath?: string;
-  dataPath?: string;   // CSV for table sheets
+  dataPath?: string;   // CSV for table sheets, JSON for the deck
   error?: string;
   createdAt: number;
   // For the status view: how long it took, and what it is costing the disk.
@@ -250,7 +251,7 @@ function loadIndex() {
     const job: Job = {
       id: r.id,
       address: String(r.address ?? ''),
-      sheet: r.sheet === 'site' ? 'site' : r.sheet === 'summary' ? 'summary' : 'context',
+      sheet: r.sheet === 'site' ? 'site' : r.sheet === 'summary' ? 'summary' : r.sheet === 'slides' ? 'slides' : 'context',
       scale: Number(r.scale) || 0,
       rotate: r.rotate === 'auto' ? 'auto' : 'north',
       template: String(r.template ?? ''),
@@ -340,7 +341,7 @@ function loadBatches() {
     batches.set(r.id, {
       id: r.id,
       createdAt: Number(r.createdAt) || Date.now(),
-      sheet: r.sheet === 'site' ? 'site' : r.sheet === 'summary' ? 'summary' : 'context',
+      sheet: r.sheet === 'site' ? 'site' : r.sheet === 'summary' ? 'summary' : r.sheet === 'slides' ? 'slides' : 'context',
       entries: r.entries
         .filter((e) => e && typeof e.address === 'string' && typeof e.jobId === 'string')
         .map((e) => ({ address: String(e.address), jobId: String(e.jobId) })),
@@ -455,6 +456,26 @@ async function runJobBody(job: Job) {
       } else {
         job.log.push('CAD export unavailable for this run');
       }
+    } else if (job.sheet === 'slides') {
+      const sb = await runSlidesPipeline(job.address, {
+        outDir,
+        scale: job.scale || undefined,
+        panelWmm: PANEL_W,
+        panelHmm: PANEL_H,
+        daPanelHmm: DA_PANEL_H,
+        log: (m) => job.log.push(m),
+      });
+      job.log.push('composing overall analysis slides…');
+      const htmlPath = join(outDir, 'slides.html');
+      await writeFile(htmlPath, renderSlides(sb, meta).html);
+      job.log.push('printing PDF and slide images…');
+      const pdfPath = join(outDir, 'OVERALL_ANALYSIS.pdf');
+      await printSlides(htmlPath, pdfPath, join(outDir, 'slides'), { widthMm: SLIDE_W, heightMm: SLIDE_H });
+      job.pdfPath = pdfPath;
+      // The deck's open format is its facts: everything it says, as JSON.
+      const factsPath = join(outDir, 'overall.json');
+      await writeFile(factsPath, JSON.stringify(slidesFacts(sb), null, 2));
+      job.dataPath = factsPath;
     } else {
       const bundle = await runPipeline(job.address, {
         scale: job.scale,
@@ -906,12 +927,14 @@ Sitemap: ${siteBase()}/sitemap.xml
       const jobTemplate = DEFAULT_TEMPLATE;
       const addr = String(address ?? '').trim();
       if (addr.length < 8 || addr.length > 120) return json(res, 400, { error: 'Enter a full NSW street address.' });
-      const kind: 'context' | 'site' | 'summary' =
-        sheet === 'site' ? 'site' : sheet === 'summary' ? 'summary' : 'context';
+      const kind: Job['sheet'] =
+        sheet === 'site' ? 'site' : sheet === 'summary' ? 'summary' : sheet === 'slides' ? 'slides' : 'context';
       const raw = Number(scale) || 0;
       const sc = kind === 'site'
         ? (raw ? Math.min(1000, Math.max(100, raw)) : 0)          // 0 = auto-fit
-        : Math.min(6000, Math.max(1000, raw || 3000));
+        : kind === 'slides'
+          ? Math.min(12000, Math.max(4000, raw || 8000))           // the panels' scale
+          : Math.min(6000, Math.max(1000, raw || 3000));
       const want = {
         address: addr, sheet: kind, scale: sc,
         rotate: (rotate === 'auto' ? 'auto' : 'north') as Job['rotate'],
@@ -968,11 +991,13 @@ Sitemap: ${siteBase()}/sitemap.xml
         return json(res, 400, { error: 'Every entry must be a full NSW street address.' });
 
       const kind: Job['sheet'] =
-        b.sheet === 'site' ? 'site' : b.sheet === 'summary' ? 'summary' : 'context';
+        b.sheet === 'site' ? 'site' : b.sheet === 'summary' ? 'summary' : b.sheet === 'slides' ? 'slides' : 'context';
       const n = Number(b.scale) || 0;
       const sc = kind === 'site'
         ? (n ? Math.min(1000, Math.max(100, n)) : 0)
-        : Math.min(6000, Math.max(1000, n || 3000));
+        : kind === 'slides'
+          ? Math.min(12000, Math.max(4000, n || 8000))
+          : Math.min(6000, Math.max(1000, n || 3000));
       const rotate: Job['rotate'] = b.rotate === 'auto' ? 'auto' : 'north';
 
       // Resolve reuse before counting cost. A batch of a dozen where most were
@@ -1062,7 +1087,8 @@ Sitemap: ${siteBase()}/sitemap.xml
       const job = jobs.get(e.jobId);
       if (!job?.pdfPath || !existsSync(job.pdfPath)) continue;
       const kind = job.sheet === 'site' ? 'SITE_ANALYSIS'
-        : job.sheet === 'summary' ? 'DEVELOPMENT_SUMMARY' : 'CONTEXT_ANALYSIS';
+        : job.sheet === 'summary' ? 'DEVELOPMENT_SUMMARY'
+        : job.sheet === 'slides' ? 'OVERALL_ANALYSIS' : 'CONTEXT_ANALYSIS';
       // The same address twice in one batch shares a job, so it would other-
       // wise be added to the zip twice under one name.
       let name = `${kind}_${e.address.replace(/[^a-z0-9]+/gi, '_').toUpperCase()}.pdf`;
@@ -1122,7 +1148,8 @@ Sitemap: ${siteBase()}/sitemap.xml
       if (err) return json(res, 500, { error: 'PDF unreadable.' });
       const slug = job.address.replace(/[^a-z0-9]+/gi, '_').toUpperCase();
       const kind = job.sheet === 'site' ? 'SITE_ANALYSIS'
-        : job.sheet === 'summary' ? 'DEVELOPMENT_SUMMARY' : 'CONTEXT_ANALYSIS';
+        : job.sheet === 'summary' ? 'DEVELOPMENT_SUMMARY'
+        : job.sheet === 'slides' ? 'OVERALL_ANALYSIS' : 'CONTEXT_ANALYSIS';
       res.writeHead(200, {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `inline; filename="${kind}_${slug}.pdf"`,
@@ -1156,9 +1183,10 @@ Sitemap: ${siteBase()}/sitemap.xml
     readFile(job.dataPath, (err, data) => {
       if (err) return json(res, 500, { error: 'Data file unreadable.' });
       const slug = job.address.replace(/[^a-z0-9]+/gi, '_').toUpperCase();
+      const isJson = job.dataPath!.endsWith('.json');
       res.writeHead(200, {
-        'Content-Type': 'text/csv; charset=utf-8',
-        'Content-Disposition': `attachment; filename="DEVELOPMENT_SUMMARY_${slug}.csv"`,
+        'Content-Type': isJson ? 'application/json; charset=utf-8' : 'text/csv; charset=utf-8',
+        'Content-Disposition': `attachment; filename="${isJson ? `OVERALL_ANALYSIS_${slug}.json` : `DEVELOPMENT_SUMMARY_${slug}.csv`}"`,
       });
       res.end(data);
     });

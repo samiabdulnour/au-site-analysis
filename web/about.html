@@ -51,6 +51,20 @@
     <div class="row"><div class="k">export</div>
       <div class="v">The same geometry in DXF, real-world metres on the MGA2020 grid, one
       layer per data class, ready to underlay a survey.</div></div>
+    <div class="row"><div class="k">deck</div>
+      <div class="v">The overall-analysis slides: A3 pages of small maps and tables for the
+      content part of a feasibility study or design report. So far the planning pair —
+      zoning, heights, heritage and housing-policy maps around the site, and every mapped
+      control at it with its source — topography, a hillshade with contours and two
+      sections through the site — built form, the footprints around the site by height
+      with the LEP height plane on the section — movement, the streets, rail, bus,
+      cycleways and walking reach around the site — green and public domain, the parks, Green Grid
+      assets, facilities and street trees around the site with the 2022 tree canopy by mesh
+      block — development activity, the applications of scale lodged
+      around the site in the last five years, on a map and in a table — and people and
+      market: the census profile of the site's area against the city, population and
+      projections, land values and sales, the nearest schools. The author's narrative is
+      left as placeholders.</div></div>
   </div>
 
   <h2>Data sources</h2>
@@ -58,18 +72,48 @@
     <div class="row"><div class="k">NSW Spatial</div>
       <div class="v">Addressing, cadastral boundaries, roads and rail, elevation and
       contours, aerial imagery, water bodies and coastline, and the 5 m elevation
-      surface the sight lines are tested against</div></div>
+      surface the sight lines are tested against; for the deck the same model as a
+      grid, for the hillshade and the sections</div></div>
     <div class="row"><div class="k">City of Sydney</div>
       <div class="v">Inside its area: the council's tree inventory (height, canopy
       spread, species) and 1 m contours from a 2020 aerial survey, both CC BY 4.0</div></div>
     <div class="row"><div class="k">ePlanning</div>
       <div class="v">Zoning, height of building, floor space ratio, minimum lot size,
-      heritage items</div></div>
+      heritage items; for the deck also the Planning Portal's property report, the
+      Housing and Planning Systems SEPP maps, DCP and contributions layers, the State
+      Heritage Register, planning proposals on exhibition and the Online DA feed of
+      applications lodged with the council</div></div>
+    <div class="row"><div class="k">councils</div>
+      <div class="v">Where a council publishes its DCP mapping as open data (the City of
+      Sydney), the deck reads building heights in storeys, frontage heights, active
+      frontages and setbacks from it</div></div>
     <div class="row"><div class="k">TfNSW</div>
-      <div class="v">Bus stops and route information</div></div>
+      <div class="v">Bus stops and route information; for the deck the Travel Zone
+      Projections 2024 of population to 2066</div></div>
+    <div class="row"><div class="k">ABS</div>
+      <div class="v">For the deck: the statistical regions at the site, Census 2021 tables,
+      the population series since 2001 and SEIFA 2021, from the ABS SDMX API</div></div>
+    <div class="row"><div class="k">Valuer General</div>
+      <div class="v">For the deck: the land values of the site and the sales register around
+      it, through the SIX Maps valuation service</div></div>
+    <div class="row"><div class="k">NSW Education</div>
+      <div class="v">For the deck: government school locations and enrolments</div></div>
+    <div class="row"><div class="k">Overture Maps</div>
+      <div class="v">For the deck: building footprints with heights and storeys, read from
+      the foundation's public bucket; OpenStreetMap stands in where they cannot be
+      read</div></div>
     <div class="row"><div class="k">OpenStreetMap</div>
       <div class="v">Bus and light-rail routes, trees, driveways, kerbside parking and
       car parks, street furniture</div></div>
+    <div class="row"><div class="k">ePlanning (movement)</div>
+      <div class="v">For the deck: the LEP's active street frontages</div></div>
+    <div class="row"><div class="k">ePlanning (green)</div>
+      <div class="v">For the deck: the Greater Sydney tree canopy of 2022 by modified mesh block
+      (canopy and vegetation-height shares), the Green Grid's existing assets with their class and
+      significance, and the open-space and public-facility points</div></div>
+    <div class="row"><div class="k">NPWS estate</div>
+      <div class="v">For the deck: the National Parks and Wildlife Service estate, from the
+      department's managed-land layer</div></div>
     <div class="row"><div class="k">Valhalla</div>
       <div class="v">5 and 10 minute walking catchments</div></div>
   </div>

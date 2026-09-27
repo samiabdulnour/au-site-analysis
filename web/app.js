@@ -12,6 +12,7 @@ const SHEETS = [
   ['context', 'context', '/samples/context.jpg', 'context analysis · A1 · 1:3000'],
   ['site',    'site',    '/samples/site.jpg',    'site analysis · A1 · auto scale'],
   ['summary', 'summary', '/samples/summary.jpg', 'development summary · A1 · table'],
+  ['slides',  'slides',  '/samples/slides.jpg',  'overall analysis · A3 deck · planning slides'],
 ];
 const SCALES = {
   context: [
@@ -28,6 +29,7 @@ const SCALES = {
     ['500', '500',  '/samples/site-500.jpg', 'site · 1:500 — more of the surrounds'],
   ],
   summary: [],
+  slides: [],
 };
 const NORTH = [
   ['north', 'up',    '/samples/site.jpg',       'north up — the sheet is oriented to north'],
@@ -46,7 +48,7 @@ const preview = $('preview');
 // Every row of the options table is the same width, so a row with fewer
 // choices than the widest one is padded with blank cells — otherwise the
 // table's right edge steps in and out from row to row.
-const ROW_CELLS = 3;
+const ROW_CELLS = 4;
 
 function tokens(host, items, current, onPick) {
   host.innerHTML = '';
@@ -80,9 +82,10 @@ function renderAll() {
   tokens($('sheetOpts'), SHEETS, state.sheet,
     (v) => { state.sheet = v; syncScale(); renderAll(); });
 
-  // A table has neither a scale nor an orientation.
+  // A table has neither a scale nor an orientation; the deck's maps are drawn
+  // at a fixed scale, north up.
   const scales = SCALES[state.sheet];
-  const isTable = state.sheet === 'summary';
+  const isTable = state.sheet === 'summary' || state.sheet === 'slides';
   $('scaleRow').hidden = isTable || scales.length === 0;
   $('northRow').hidden = isTable;
   if (scales.length) {
@@ -559,7 +562,7 @@ async function poll(id, misses) {
       linksEl.innerHTML = '';
       addLink('open pdf', '/api/jobs/' + id + '/pdf', true);
       if (j.hasCad) addLink('download cad', '/api/jobs/' + id + '/cad');
-      if (j.hasData) addLink('download csv', '/api/jobs/' + id + '/data');
+      if (j.hasData) addLink(j.sheet === 'slides' ? 'download json' : 'download csv', '/api/jobs/' + id + '/data');
       go.disabled = false;
       return;
     }
