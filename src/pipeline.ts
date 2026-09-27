@@ -10,7 +10,7 @@ import { fetchBusData, type BusData } from './fetch/osm.js';
 import { fetchBusStopsTfnsw } from './fetch/tfnsw.js';
 import { fetchIsochrones, type Isochrone } from './fetch/isochrones.js';
 import { mercatorScaleFactor, mercatorToLonLat, lonLatToMercator, viewBounds, type Extent, type MapView } from './lib/geo.js';
-import type { GeoJSONFC } from './lib/arcgis.js';
+import { queryByPoint, type GeoJSONFC } from './lib/arcgis.js';
 import { keywordCategory } from './render/model.js';
 import { setTemplate } from './render/template.js';
 import type { SummaryBundle } from './render/summarySheet.js';
@@ -21,6 +21,8 @@ import {
 } from './fetch/planning.js';
 import { panelExtent, type Panel, type BaseData } from './render/minimap.js';
 import { fetchCityOfSydneyDcp, type CityOfSydneyDcp } from './fetch/cityOfSydney.js';
+import { fetchCouncilApplications, apiCouncilName, clipToExtent, PORTAL_MANDATED, type DaRecord } from './fetch/da.js';
+import { fetchPlanningProposals, type PlanningProposal } from './fetch/planning.js';
 import type { SiteControls } from './fetch/nsw.js';
 
 export interface CategorizedPoint extends NamedPoint { cat: string | null }
@@ -465,6 +467,12 @@ export interface SlidesBundle {
   housingTarget: HousingTarget | null;
   /** Council's own DCP mapping, where a council publishes it (City of Sydney). */
   cos: CityOfSydneyDcp | null;
+  /** The development-activity map is taller than a planning panel; same centre and scale. */
+  daPanel: Panel;
+  /** Applications lodged in the window, from the council-wide feed. */
+  applications: DaRecord[];
+  daMeta: { council: string; from: string; to: string; total: number; complete: boolean; fetchedAt: string } | null;
+  proposals: PlanningProposal[];
   warnings: string[];
 }
 
@@ -474,6 +482,10 @@ export interface SlidesPipelineOpts {
   scale?: number;
   panelWmm: number;
   panelHmm: number;
+  /** Height of the development-activity map panel. */
+  daPanelHmm: number;
+  /** How far back the development-activity feed reaches (default five years, never before July 2021). */
+  daYears?: number;
   log?: (msg: string) => void;
 }
 
@@ -491,34 +503,57 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
 
   const panel: Panel = { center: geo.center, scale: opts.scale ?? 8000, wMm: opts.panelWmm, hMm: opts.panelHmm };
   const extent = panelExtent(panel);
+  const daPanel: Panel = { ...panel, hMm: opts.daPanelHmm };
+  const daExtent = panelExtent(daPanel);
+  // Every fetch window is the larger of the two, so nothing is missing from either map.
+  const fetchExtent: Extent = {
+    xmin: Math.min(extent.xmin, daExtent.xmin), ymin: Math.min(extent.ymin, daExtent.ymin),
+    xmax: Math.max(extent.xmax, daExtent.xmax), ymax: Math.max(extent.ymax, daExtent.ymax),
+  };
   const emptyFC: GeoJSONFC = { type: 'FeatureCollection', features: [] };
   const soft = <T,>(p: Promise<T>, fallback: T, name: string): Promise<T> =>
     p.catch((e) => { log(`  WARN ${name} failed: ${e.message ?? e}`); return fallback; });
 
   log('fetching planning maps, heritage, policy areas, base layers and the property report…');
-  const [zoning, hob, heritage, shr, policy, water, lots, roads, railLines, stations, context, property, controls] = await Promise.all([
-    fetchZoningDetailed(extent),
+  // The council first, on its own: the development-activity feed is per
+  // council and is the slowest fetch of the deck, so it should start with the
+  // others rather than after them. One point query against the LGA layer.
+  const lgaCouncil = await soft(queryByPoint('https://portal.spatial.nsw.gov.au/server/rest/services/NSW_Administrative_Boundaries_Theme/FeatureServer/8', geo.center, 'lganame,councilname')
+    .then((fc) => fc.features[0]?.properties as { lganame?: string; councilname?: string } | undefined), undefined, 'local government area');
+  const council = apiCouncilName(lgaCouncil?.councilname, lgaCouncil?.lganame);
+  if (!council) log(`  WARN no Online DA API council name for "${lgaCouncil?.councilname ?? '?'}"`);
+  const today = new Date().toISOString().slice(0, 10);
+  const fromDate = new Date(); fromDate.setFullYear(fromDate.getFullYear() - (opts.daYears ?? 5));
+  const from = [fromDate.toISOString().slice(0, 10), PORTAL_MANDATED].sort()[1];
+
+  const [zoning, hob, heritage, shr, policy, water, lots, roads, railLines, stations, context, property, controls, proposals, feed] = await Promise.all([
+    soft(fetchZoningDetailed(extent), emptyFC, 'zoning'),
     soft(fetchHobDetailed(extent), emptyFC, 'height of building'),
     soft(fetchHeritageDetailed(extent), emptyFC, 'heritage'),
     soft(fetchShrCurtilages(extent), emptyFC, 'State Heritage Register'),
-    fetchPolicyAreas(extent, log),
-    soft(fetchWaterAreas(extent), emptyFC, 'water areas'),
-    soft(fetchAllLots(extent), emptyFC, 'cadastral lots'),
-    soft(fetchRoads(extent), [], 'roads'),
-    soft(fetchRailLines(extent), { train: [], tram: [] }, 'rail lines'),
-    soft(fetchTrainStations(extent), [], 'stations'),
+    fetchPolicyAreas(fetchExtent, log),
+    soft(fetchWaterAreas(fetchExtent), emptyFC, 'water areas'),
+    soft(fetchAllLots(fetchExtent), emptyFC, 'cadastral lots'),
+    soft(fetchRoads(fetchExtent), [], 'roads'),
+    soft(fetchRailLines(fetchExtent), { train: [], tram: [] }, 'rail lines'),
+    soft(fetchTrainStations(fetchExtent), [], 'stations'),
     fetchPlanningContext(geo.center, log),
     fetchPropertyReport(geo.matchedAddresses[0] ?? address, geo.center, log),
     fetchSiteControls(geo.center),
+    fetchPlanningProposals(daExtent, log),
+    council ? soft(fetchCouncilApplications(council, from, today, log), null, 'Online DA API') : Promise.resolve(null),
   ]);
   const [housingTarget, cos] = await Promise.all([
     context.lga?.name ? fetchHousingTarget(context.lga.name) : Promise.resolve(null),
     // The one council with its DCP as open data so far; the hook is per LGA.
     context.lga?.name === 'SYDNEY' ? fetchCityOfSydneyDcp(extent, mercatorToLonLat(geo.center), log) : Promise.resolve(null),
   ]);
+  const applications = feed ? clipToExtent(feed.records, daExtent) : [];
+  const daMeta = feed ? { council: feed.council, from: feed.from, to: feed.to, total: feed.total, complete: feed.complete, fetchedAt: feed.fetchedAt } : null;
 
   log(`  zoning:${zoning.features.length} hob:${hob.features.length} heritage:${heritage.features.length} shr:${shr.features.length} ` +
-      `policy:${policy.length} roads:${roads.length} property:${property ? 'yes' : 'no'} dcp:${context.dcp ? 'yes' : 'no'} target:${housingTarget ? housingTarget.homes : '—'}${cos ? ' council-dcp:yes' : ''}`);
+      `policy:${policy.length} roads:${roads.length} property:${property ? 'yes' : 'no'} dcp:${context.dcp ? 'yes' : 'no'} target:${housingTarget ? housingTarget.homes : '—'}${cos ? ' council-dcp:yes' : ''} ` +
+      `applications:${applications.length}${feed ? `/${feed.records.length}` : ''} proposals:${proposals.length}`);
 
   const bundle: SlidesBundle = {
     address,
@@ -532,7 +567,8 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
     siteAreaSqm: lotsAreaSqm(siteLots, geo.center),
     zoning, hob, heritage, shr, policy,
     base: { water, lots, roads, rail: railLines, stations, siteLots },
-    controls, property, context, housingTarget, cos, warnings,
+    controls, property, context, housingTarget, cos,
+    daPanel, applications, daMeta, proposals, warnings,
   };
   await writeFile(join(dataDir, 'slides_bundle.json'), JSON.stringify(bundle));
   return bundle;

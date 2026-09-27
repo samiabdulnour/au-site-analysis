@@ -282,7 +282,12 @@ Commercial, Industrial, Recreational, Other), `ApplicationStatus[]`,
 Updated daily; covers everything lodged on the portal since 2019 (all
 councils since July 2021). 132 applications came back for North Sydney
 Council for June–September 2025. There is no spatial filter, so filter by
-council and date and clip to the window locally.
+council and date and clip to the window locally. `PageSize` 2000 is accepted
+and the body carries `TotalCount`: 9,794 records for the Council of the City
+of Sydney over five years, five pages at about 7 s each; North Sydney 2,210,
+Inner West 8,026, Bayside 2,945. `CouncilName` must be the dictionary's
+spelling ("Council of the City of Sydney", "Inner West Council"); an unknown
+name returns an empty page, not an error.
 
 ### 4.4 NSW Spatial Services (no key) — `portal.spatial.nsw.gov.au/server/rest/services`
 
@@ -411,7 +416,8 @@ Open-Meteo archive (ERA5): `https://archive-api.open-meteo.com/v1/archive?latitu
 - **Overpass** public mirrors were unreachable throughout the test; the local
   Overpass is not optional for this mode either.
 - **Request budget.** A full deck is roughly 60–80 requests: ~35 ArcGIS
-  queries and 6 raster exports, 1–3 DA API pages, 6 ABS calls, 3 Wikimedia
+  queries and 6 raster exports, 2–5 DA API pages (cached a day per
+  council), 6 ABS calls, 3 Wikimedia
   calls, one Open-Meteo call, one DEM profile, and the buildings query. It
   is the same serial queue and the same courtesy toward the same free
   services as the sheets; the buildings and cycleway extracts should be
@@ -419,11 +425,35 @@ Open-Meteo archive (ERA5): `https://archive-api.open-meteo.com/v1/archive?latitu
 
 ## 7. Status
 
-Implemented: slides 03 (planning overview) and 04 (planning controls) —
-`src/render/slides.ts`, `src/render/minimap.ts`, `src/fetch/planning.ts`,
-`runSlidesPipeline` in `src/pipeline.ts`; `--type slides` on the CLI and the
-`slides` drawing on the web. The maps use the statutory LEP colours read from
-the ePlanning renderers (`src/render/lepPalette.ts`).
+Implemented: slides 03 (planning overview), 04 (planning controls) and 07
+(development activity) — `src/render/slides.ts`, `src/render/minimap.ts`,
+`src/fetch/planning.ts`, `src/fetch/da.ts`, `runSlidesPipeline` in
+`src/pipeline.ts`; `--type slides` on the CLI and the `slides` drawing on the
+web. The maps use the statutory LEP colours read from the ePlanning renderers
+(`src/render/lepPalette.ts`).
+
+Slide 07 reads the Online DA feed for the site's council over the last five
+years (`--da-years`), never earlier than July 2021 when lodgement through the
+portal became mandatory, and clips to the map window locally since the feed
+has no spatial filter. A council's five years is 2,000–10,000 records, paged
+2,000 at a time with three pages in flight, so the feed is cached under
+`out/.cache/da/` for a day and a second deck in the same council costs
+nothing. The council name sent must be the API's own spelling (`COUNCILS` in
+`src/fetch/da.ts` lists the 130 names; the LGA layer's `councilname` is
+matched exactly, then by stem). "Of scale" means storeys ≥ 4, dwellings ≥ 10
+or cost ≥ $5 M, unless every development type is house-scale (alterations,
+dual occupancies, pools, tree work, strata subdivision…), which then needs
+ten dwellings and $2 M — applicants type "4 storeys" into a deck application
+and the existing unit count into a strata subdivision. Records are grouped by
+lot and street so a DA and its modifications make one numbered site. The
+feed's statuses are Determined (it never says approved or refused), Under
+Assessment, Additional Information Requested, On Exhibition, Pending Court
+Appeal, Deferred Commencement, Operational consent requested/issued,
+Withdrawn, Rejected (not accepted at lodgement) and Cancelled; the slide
+groups them as determined, active, before the court and withdrawn. Planning
+proposals come from the identify operation on
+`ePlanning/Planning_Proposal_Public`; State significant applications are
+still missing (no open feed, §5) and are the slide's manual item.
 
 Council open data is a per-LGA hook: the City of Sydney's data hub
 (`data.cityofsydney.nsw.gov.au`, ArcGIS feature services under

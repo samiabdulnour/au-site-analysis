@@ -12,18 +12,21 @@ import type { GeoJSONFeature } from '../lib/arcgis.js';
 import { tpl } from './template.js';
 import { esc } from './chrome.js';
 import {
-  panelProjector, baseLayers, overLayers, panelFurniture, ringsPath, ringStats, clippedStats, hatchPath, bboxOf,
-  legendSvg, swatchFill, swatchHatch, swatchLine, LabelSpacer, type Proj, type LegendEntry,
+  panelProjector, baseLayers, overLayers, panelFurniture, furnitureBox, siteMark, siteLabelPoint, ringsPath, ringStats, clippedStats, hatchPath, bboxOf,
+  legendSvg, swatchFill, swatchHatch, swatchLine, LabelSpacer, type Proj, type LegendEntry, type FurnitureCorner,
 } from './minimap.js';
 import { zoneFill, heritageStyle, hobRamp, POLICY_STYLE } from './lepPalette.js';
 import { geomRings, pointInRing, titleCase, type PolicyArea, type PolicyKind } from '../fetch/planning.js';
 import { lonLatToMercator, mercatorToLonLat } from '../lib/geo.js';
+import { isSignificant, siteKey, parseSiteAddress, sameLot, money, type DaRecord, type DaStatusClass, type SiteAddress } from '../fetch/da.js';
 
 export const SLIDE_W = 420;
 export const SLIDE_H = 297;
 // The figure field is a 2 × 2 grid of map panels; these are one panel's map area.
 export const PANEL_W = 145;
 export const PANEL_H = 95;
+// The development-activity map: one column wide, the height of a panel with its legend.
+export const DA_PANEL_H = 119;
 
 const MARGIN_L = 14, MARGIN_R = 12;
 const TEXT_W = 88;                       // the text column
@@ -613,11 +616,365 @@ export function planningControlsSlide(b: SlidesBundle, facts: PlanningFacts): Sl
   return { id: '04_planning_controls', title: 'Planning controls at the site', subtitle: sub, textHtml, figureHtml: `<div class="abs" style="left:${FIELD_X}mm;top:${FIELD_Y}mm;width:${FIELD_W}mm">${table}</div>` };
 }
 
+// ---- slide 07: development activity ---------------------------------------------
+
+// Identity colours for the dots: the first three slots of the validated
+// categorical palette (all pairs clear the colour-vision floors). Withdrawn
+// applications are hollow rings, so their state is a shape, not a fourth hue.
+const STATUS_STYLE: Record<DaStatusClass, { fill: string; stroke: string; hollow?: boolean; label: string }> = {
+  determined: { fill: '#2a78d6', stroke: '#2a78d6', label: 'Determined (the feed does not say approved or refused)' },
+  active:     { fill: '#eb6834', stroke: '#eb6834', label: 'Under assessment, on exhibition or awaiting information' },
+  appeal:     { fill: '#1baf7a', stroke: '#1baf7a', label: 'Before the Land and Environment Court' },
+  withdrawn:  { fill: '#ffffff', stroke: '#7a7a7a', hollow: true, label: 'Withdrawn, rejected or cancelled' },
+};
+const STATUS_ORDER: DaStatusClass[] = ['determined', 'active', 'appeal', 'withdrawn'];
+
+export interface DaSite {
+  n: number;
+  key: string;
+  address: string;
+  primary: DaRecord;
+  records: DaRecord[];
+  modifications: number;
+  cost?: number;
+  dwellings?: number;
+  storeys?: number;
+  /** How far over the thresholds the site is: $5 M, ten dwellings or four storeys each count as 1. */
+  score: number;
+  statusClass: DaStatusClass;
+  statusText: string;
+  lon: number;
+  lat: number;
+}
+
+const scaleScore = (cost?: number, dwellings?: number, storeys?: number) =>
+  Math.max((cost ?? 0) / 5e6, (dwellings ?? 0) / 10, (storeys ?? 0) / 4);
+
+/**
+ * A DA and its modifications are one site, and so are two spellings of one
+ * lot; the latest DA speaks for it. Sites come back largest first and are
+ * numbered in that order, so the table's top rows are the precedents.
+ */
+export function groupSites(records: DaRecord[]): DaSite[] {
+  const groups: { key: string; parsed: SiteAddress | null; rs: DaRecord[] }[] = [];
+  const byKey = new Map<string, number>();
+  for (const r of records) {
+    if (!isSignificant(r) || r.lon === undefined || r.lat === undefined) continue;
+    const k = siteKey(r.address) || r.pan;
+    let i = byKey.get(k);
+    if (i === undefined) { i = groups.length; byKey.set(k, i); groups.push({ key: k, parsed: parseSiteAddress(r.address), rs: [] }); }
+    groups[i].rs.push(r);
+  }
+  // Unite the groups that name one lot: overlapping street numbers on the
+  // same street, or one geocode shared by spellings that agree on the street.
+  const parent = groups.map((_, i) => i);
+  const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+  const union = (a: number, b: number) => { parent[find(a)] = find(b); };
+  const kin = (a: SiteAddress | null, b: SiteAddress | null) => !a || !b || a.street.startsWith(b.street) || b.street.startsWith(a.street);
+  const byCoord = new Map<string, number>();
+  groups.forEach((g, i) => {
+    for (const r of g.rs) {
+      const c = `${r.lon!.toFixed(5)},${r.lat!.toFixed(5)}`;
+      const j = byCoord.get(c);
+      if (j === undefined) byCoord.set(c, i);
+      else if (kin(g.parsed, groups[j].parsed)) union(i, j);
+    }
+  });
+  for (let i = 0; i < groups.length; i++)
+    for (let j = i + 1; j < groups.length; j++) {
+      const a = groups[i].parsed, b2 = groups[j].parsed;
+      if (a && b2 && sameLot(a, b2)) union(i, j);
+    }
+  const merged = new Map<number, DaRecord[]>();
+  groups.forEach((g, i) => { const root = find(i); (merged.get(root) ?? merged.set(root, []).get(root)!).push(...g.rs); });
+
+  const sites: DaSite[] = [];
+  for (const [root, rs] of merged) {
+    const byDate = [...rs].sort((a, b2) => (b2.lodged ?? '').localeCompare(a.lodged ?? ''));
+    const das = byDate.filter((r) => /^Development Application/i.test(r.type));
+    const primary = (das.length ? das : byDate)[0];
+    const max = (f: (r: DaRecord) => number | undefined) => rs.reduce<number | undefined>((m, r) => { const v = f(r); return v && (!m || v > m) ? v : m; }, undefined);
+    const mods = rs.filter((r) => /Modification/i.test(r.type)).length;
+    const liveMod = byDate.find((r) => /Modification/i.test(r.type) && r.statusClass === 'active');
+    const cost = primary.cost && primary.cost <= 2e9 ? primary.cost : max((r) => (r.cost && r.cost <= 2e9 ? r.cost : undefined));
+    const dwellings = primary.dwellings ?? max((r) => r.dwellings);
+    const storeys = primary.storeys ?? max((r) => r.storeys);
+    sites.push({
+      n: 0, key: groups[root].key, address: tidyAddress(primary.address, parseSiteAddress(primary.address)), primary, records: rs, modifications: mods,
+      cost, dwellings, storeys, score: scaleScore(cost, dwellings, storeys),
+      statusClass: primary.statusClass,
+      statusText: primary.status + (liveMod ? ' · modification under assessment' : mods ? ` · ${mods} modification${mods > 1 ? 's' : ''}` : ''),
+      lon: primary.lon!, lat: primary.lat!,
+    });
+  }
+  sites.sort((a, b2) => b2.score - a.score || (b2.primary.lodged ?? '').localeCompare(a.primary.lodged ?? ''));
+  sites.forEach((st, i) => { st.n = i + 1; });
+  return sites;
+}
+
+/** The address as a table reads it: from the street number on, no state or postcode, title case. */
+function tidyAddress(a: string, parsed: SiteAddress | null = null): string {
+  const t = (parsed ? parsed.display : a.replace(/,?\s*(NSW|New South Wales)\b.*$/i, '').replace(/\s+\d{4}\s*$/, '')).replace(/\s+/g, ' ').trim();
+  return t === t.toUpperCase() ? titleCase(t) : t;
+}
+
+const dotRadius = (cost?: number) => (cost ? Math.min(6.5, 1.5 + 1.9 * Math.sqrt(cost / 1e7)) : 1.5);
+
+const fmtMonthYear = (iso?: string) => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString('en-AU', { month: 'short', year: 'numeric', timeZone: 'Australia/Sydney' });
+};
+const fmtShortDate = (iso?: string) => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: '2-digit', timeZone: 'Australia/Sydney' });
+};
+
+export interface DevelopmentFacts {
+  available: boolean;
+  council?: string;
+  from?: string;
+  to?: string;
+  applications: number;
+  significant: number;
+  sites: DaSite[];
+  byStatus: Record<DaStatusClass, number>;
+  dwellings: number;
+  cost: number;
+  perYear: { year: number; count: number; partial: boolean }[];
+  largest?: DaSite;
+  proposals: SlidesBundle['proposals'];
+}
+
+export function developmentFacts(b: SlidesBundle): DevelopmentFacts {
+  const recs = b.applications;
+  const sites = groupSites(recs);
+  const byStatus: Record<DaStatusClass, number> = { determined: 0, active: 0, appeal: 0, withdrawn: 0 };
+  for (const st of sites) byStatus[st.statusClass]++;
+  const fromYear = Number((b.daMeta?.from ?? '').slice(0, 4)) || new Date().getFullYear() - 5;
+  const thisYear = new Date().getFullYear();
+  // The first year is partial too unless the window opens in its first week.
+  const from = b.daMeta?.from ?? '';
+  const firstPartial = (Number(from.slice(5, 7)) || 1) > 1 || (Number(from.slice(8, 10)) || 1) > 7;
+  const perYear: DevelopmentFacts['perYear'] = [];
+  for (let y = fromYear; y <= thisYear; y++)
+    perYear.push({ year: y, count: recs.filter((r) => Number((r.lodged ?? '').slice(0, 4)) === y).length, partial: y === thisYear || (y === fromYear && firstPartial) });
+  const largest = sites[0];
+  return {
+    available: Boolean(b.daMeta), council: b.daMeta?.council, from: b.daMeta?.from, to: b.daMeta?.to,
+    applications: recs.length, significant: recs.filter(isSignificant).length, sites, byStatus,
+    dwellings: sites.reduce((n, st) => n + (st.dwellings ?? 0), 0),
+    cost: sites.reduce((n, st) => n + (st.cost ?? 0), 0),
+    perYear, largest, proposals: b.proposals,
+  };
+}
+
+export function developmentSentences(b: SlidesBundle, d: DevelopmentFacts, f: PlanningFacts): string[] {
+  const out: string[] = [];
+  const w = Math.round((b.daPanel.wMm / 1000) * b.daPanel.scale), h = Math.round((b.daPanel.hMm / 1000) * b.daPanel.scale);
+  if (!d.available) {
+    out.push(`The NSW Planning Portal's Online DA feed could not be read for this council when the deck was generated, so the map shows the policy areas only.`);
+  } else {
+    const years = Math.max(1, (new Date(d.to!).getTime() - new Date(d.from!).getTime()) / (365.25 * 86400e3));
+    out.push(`Since ${fmtMonthYear(d.from)}, ${fmtNum(d.applications)} development applications, modifications and reviews were lodged with ${d.council} inside the ${fmtNum(w)} × ${fmtNum(h)} m window, about ${fmtNum(Math.round(d.applications / years))} a year.`);
+    if (d.sites.length) {
+      const st = d.byStatus;
+      const bits = [
+        st.determined ? `${st.determined} determined` : '',
+        st.active ? `${st.active} under assessment or on exhibition` : '',
+        st.appeal ? `${st.appeal} before the Court` : '',
+        st.withdrawn ? `${st.withdrawn} withdrawn or rejected` : '',
+      ].filter(Boolean);
+      out.push(`${d.significant} of them, on ${d.sites.length} site${d.sites.length === 1 ? '' : 's'}, are of a scale that shapes context (four storeys, ten dwellings or $5 M and more): ${bits.join(', ')}. Together they propose ${fmtNum(d.dwellings)} dwellings at a stated cost of ${money(d.cost)}.`);
+      if (d.largest) {
+        const l = d.largest;
+        const desc = [...new Set(l.primary.developmentTypes)].slice(0, 3).join(', ');
+        out.push(`The largest is ${l.address}: ${desc ? `${desc.toLowerCase()}, ` : ''}${l.storeys ? `${l.storeys} storeys, ` : ''}${l.dwellings ? `${l.dwellings} dwellings, ` : ''}${l.cost ? `${money(l.cost)}, ` : ''}${l.primary.status.toLowerCase()} (lodged ${fmtMonthYear(l.primary.lodged)}).`);
+      }
+    } else {
+      out.push(`None of them is of a scale that shapes context (four storeys, ten dwellings or $5 M and more): the activity here is house-scale.`);
+    }
+  }
+  if (d.proposals.length) {
+    out.push(`${d.proposals.length} planning proposal map${d.proposals.length === 1 ? ' is' : 's are'} on public exhibition in the window: ${[...new Set(d.proposals.map((p) => p.name))].slice(0, 3).join('; ')}.`);
+  } else {
+    out.push('No planning proposal is on public exhibition in the window.');
+  }
+  if (f.policyAtSite.length) out.push(`The site is inside ${f.policyAtSite.map((p) => `the ${p.name} ${POLICY_WORD[p.kind]}`).join(' and ')}, drawn as a wash on the map.`);
+  return out;
+}
+
+function developmentMap(b: SlidesBundle, d: DevelopmentFacts, numbered: number): string {
+  const p = b.daPanel;
+  const proj = panelProjector(p);
+  const parts: string[] = [baseLayers(b.base, proj, p)];
+  // Policy areas as a wash, so the dots read against them.
+  for (const kind of ['townCentre', 'tod', 'todAccelerated', 'todDeferred', 'ssdSite', 'precinct'] as PolicyKind[]) {
+    const areas = b.policy.filter((a) => a.kind === kind);
+    if (!areas.length) continue;
+    const st = POLICY_STYLE[kind];
+    parts.push(`<path d="${areas.map((a) => ringsPath(a.rings, proj)).join('')}" fill="${st.fill}" fill-opacity="0.16" stroke="${st.stroke}" stroke-opacity="0.6" stroke-width="${st.fill === 'none' ? 0.45 : 0.15}"${st.dash ? ` stroke-dasharray="${st.dash}"` : ''} fill-rule="evenodd"/>`);
+  }
+  // The site's outline and label go on last, over any dot on or beside it.
+  parts.push(overLayers(b.base, proj, p, 'wash'));
+  // Every other application: a small grey dot, the texture of activity.
+  const seen = new Set<string>();
+  const minor: string[] = [];
+  for (const r of b.applications) {
+    if (isSignificant(r) || r.lon === undefined || r.lat === undefined) continue;
+    const key = `${r.lon.toFixed(5)},${r.lat.toFixed(5)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const [x, y] = proj(r.lon, r.lat);
+    minor.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="0.55"/>`);
+  }
+  parts.push(`<g fill="#b3b3b3">${minor.join('')}</g>`);
+  // Sites of scale whose centre is on the map, big first so the small stay
+  // visible, ringed in white. Numbers go on after every circle, so none is
+  // covered; a number that has no room inside its circle sits beside it.
+  const placed = d.sites
+    .map((st) => { const [x, y] = proj(st.lon, st.lat); return { st, x, y, r: dotRadius(st.cost) }; })
+    .filter((q) => q.x >= 0 && q.y >= 0 && q.x <= p.wMm && q.y <= p.hMm)
+    .sort((a, b2) => b2.r - a.r);
+  // The scale bar takes the corner with the least site under it, bottom-left first.
+  const under = (corner: FurnitureCorner) => {
+    const bx = furnitureBox(p, corner);
+    return placed.reduce((sum, q) => {
+      const dx = q.x - Math.max(bx.x0, Math.min(q.x, bx.x1)), dy = q.y - Math.max(bx.y0, Math.min(q.y, bx.y1));
+      return sum + (dx * dx + dy * dy < q.r * q.r ? q.r : 0);
+    }, 0);
+  };
+  let corner: FurnitureCorner = 'left', least = Infinity;
+  for (const c of ['left', 'right', 'topLeft', 'topRight'] as FurnitureCorner[]) { const u = under(c); if (u < least) { least = u; corner = c; } }
+  const fb = furnitureBox(p, corner);
+  const spacer = new LabelSpacer(p.wMm, p.hMm, 80);
+  spacer.take((fb.x0 + fb.x1) / 2, (fb.y0 + fb.y1) / 2, fb.x1 - fb.x0 - 2, fb.y1 - fb.y0 - 2);
+  const siteLabel = siteLabelPoint(b.base, proj);
+  if (siteLabel) spacer.take(siteLabel.cx, siteLabel.cy - 0.8, labelW('SITE', 2.4), 2.6);
+  const dots: string[] = [];
+  const labels: string[] = [];
+  for (const { st, x, y, r } of placed) {
+    const sty = STATUS_STYLE[st.statusClass];
+    dots.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${(r + 0.35).toFixed(2)}" fill="#ffffff"/>` +
+      `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r.toFixed(2)}" fill="${sty.fill}" fill-opacity="${sty.hollow ? 1 : 0.92}" stroke="${sty.stroke}" stroke-width="${sty.hollow ? 0.5 : 0.25}"/>`);
+  }
+  for (const { st, x, y, r } of placed) {
+    if (st.n > numbered) continue;
+    const text = String(st.n);
+    const w = labelW(text, 2), h = 2.4;
+    if (r >= 2.3 && spacer.take(x, y, w + 0.6, h)) {
+      labels.push(`<text x="${x.toFixed(1)}" y="${(y + 0.8).toFixed(1)}" text-anchor="middle" font-size="2.2" font-weight="700" fill="${STATUS_STYLE[st.statusClass].hollow ? '#333' : '#ffffff'}">${text}</text>`);
+      continue;
+    }
+    const spots: [number, number][] = [[x + r + 1.2 + w / 2, y], [x - r - 1.2 - w / 2, y], [x, y - r - 1.6], [x, y + r + 1.6]];
+    for (const [lx, ly] of spots) if (spacer.take(lx, ly, w, h)) { labels.push(label(lx, ly, text, 2, '#222')); break; }
+  }
+  parts.push(dots.join(''), labels.join(''), siteMark(b.base, proj, 'outline'), panelFurniture(p, corner));
+  return `<svg width="${p.wMm}mm" height="${p.hMm}mm" viewBox="0 0 ${p.wMm} ${p.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
+    <defs><clipPath id="clip-da"><rect x="0" y="0" width="${p.wMm}" height="${p.hMm}"/></clipPath></defs>
+    <g clip-path="url(#clip-da)" font-family="${tpl().font}">${parts.join('\n')}</g>
+    <rect x="0.1" y="0.1" width="${p.wMm - 0.2}" height="${p.hMm - 0.2}" fill="none" stroke="${tpl().rule}" stroke-width="0.2"/>
+  </svg>`;
+}
+
+/** Applications lodged per year: one series, thin columns, values on the caps. */
+function yearChart(d: DevelopmentFacts, wMm: number, hMm: number): string {
+  const t = tpl();
+  const years = d.perYear;
+  if (!years.length) return '';
+  const max = Math.max(1, ...years.map((y) => y.count));
+  const left = 2, right = 2, top = 7, bottom = 5.5;
+  const plotH = hMm - top - bottom;
+  const slot = (wMm - left - right) / years.length;
+  const barW = Math.min(5.5, slot * 0.55);
+  const parts: string[] = [];
+  const monthOf = (iso?: string) => (iso ? new Date(iso).toLocaleDateString('en-AU', { month: 'short', timeZone: 'Australia/Sydney' }) : '');
+  const notes: string[] = [];
+  if (years.length > 1 && years[0].partial) notes.push(`${years[0].year} from ${monthOf(d.from)}`);
+  if (years[years.length - 1].partial) notes.push(`${years[years.length - 1].year} to ${monthOf(d.to)}`);
+  parts.push(`<text x="0" y="3" font-size="2.3" font-weight="700" fill="${t.ink}">Applications lodged per year in the window` +
+    (notes.length ? `<tspan font-weight="400" fill="#666"> · ${esc(notes.join(' · '))}</tspan>` : '') + `</text>`);
+  const base = top + plotH;
+  parts.push(`<line x1="${left}" y1="${base.toFixed(1)}" x2="${(wMm - right).toFixed(1)}" y2="${base.toFixed(1)}" stroke="#c9c9c9" stroke-width="0.15"/>`);
+  years.forEach((y, i) => {
+    const h = (y.count / max) * plotH;
+    const x = left + i * slot + (slot - barW) / 2;
+    const yTop = base - h;
+    const rr = Math.min(0.8, h / 2);
+    const fill = y.partial ? '#8a97a3' : t.dimension;
+    if (h > 0)
+      parts.push(`<path d="M${x.toFixed(2)},${base.toFixed(2)} V${(yTop + rr).toFixed(2)} Q${x.toFixed(2)},${yTop.toFixed(2)} ${(x + rr).toFixed(2)},${yTop.toFixed(2)} H${(x + barW - rr).toFixed(2)} Q${(x + barW).toFixed(2)},${yTop.toFixed(2)} ${(x + barW).toFixed(2)},${(yTop + rr).toFixed(2)} V${base.toFixed(2)} Z" fill="${fill}"/>`);
+    parts.push(`<text x="${(x + barW / 2).toFixed(2)}" y="${(yTop - 1).toFixed(2)}" text-anchor="middle" font-size="2.1" fill="${t.ink}">${y.count}</text>`);
+    parts.push(`<text x="${(x + barW / 2).toFixed(2)}" y="${(base + 3.2).toFixed(2)}" text-anchor="middle" font-size="2.1" fill="#555">${y.year}</text>`);
+  });
+  return `<svg width="${wMm}mm" height="${hMm}mm" viewBox="0 0 ${wMm} ${hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block" font-family="${t.font}">${parts.join('')}</svg>`;
+}
+
+export function developmentSlide(b: SlidesBundle, facts: PlanningFacts): Slide {
+  const d = developmentFacts(b);
+  const x0 = FIELD_X, y0 = FIELD_Y;
+  const rightX = FIELD_X + PANEL_W + GUTTER;
+  const rightW = FIELD_W - PANEL_W - GUTTER;
+  const mapTitle = d.available
+    ? `Applications lodged since ${fmtMonthYear(d.from)} · ${d.council}`
+    : 'Development applications · feed unavailable';
+  const tiles = [
+    { v: fmtNum(d.applications), l: 'applications in the window' },
+    { v: fmtNum(d.sites.length), l: 'sites of scale' },
+    { v: fmtNum(d.dwellings), l: 'dwellings proposed on them' },
+    { v: d.cost ? money(d.cost) : '—', l: 'stated cost of development' },
+  ].map((tl) => `<div class="tile"><div class="tv">${esc(tl.v)}</div><div class="tl">${esc(tl.l)}</div></div>`).join('');
+  const legend = STATUS_ORDER.map((k) => {
+    const sty = STATUS_STYLE[k];
+    return `<div class="lg"><svg width="5mm" height="3.6mm" viewBox="0 0 5 3.6"><circle cx="2.5" cy="1.8" r="1.5" fill="${sty.fill}" stroke="${sty.stroke}" stroke-width="${sty.hollow ? 0.45 : 0.2}"/></svg><span>${esc(sty.label)}</span></div>`;
+  }).join('') +
+    `<div class="lg"><svg width="5mm" height="3.6mm" viewBox="0 0 5 3.6"><circle cx="1" cy="1.8" r="0.9" fill="#888"/><circle cx="3.4" cy="1.8" r="1.6" fill="#888"/></svg><span>Circle area follows the stated cost; numbers match the table</span></div>` +
+    `<div class="lg"><svg width="5mm" height="3.6mm" viewBox="0 0 5 3.6"><circle cx="2.5" cy="1.8" r="0.55" fill="#b3b3b3"/></svg><span>Every other application lodged in the period</span></div>`;
+  const chartH = 40;
+  const right = `<div class="abs ptitle" style="left:${rightX}mm;top:${y0}mm;width:${rightW}mm">Scale of activity</div>
+    <div class="abs tiles" style="left:${rightX}mm;top:${y0 + PANEL_TITLE_H + 1}mm;width:${rightW}mm">${tiles}</div>
+    <div class="abs legend" style="left:${rightX}mm;top:${y0 + PANEL_TITLE_H + 22}mm;width:${rightW}mm">${legend}</div>
+    <div class="abs" style="left:${rightX}mm;top:${y0 + PANEL_TITLE_H + 52}mm;width:${rightW}mm">${yearChart(d, rightW, chartH)}</div>`;
+
+  // Rows until the table would run into the footer: about 5 mm a line, and
+  // the address and status columns wrap past roughly 50 and 34 characters.
+  const LINE_MM = 2.95, ROW_PAD_MM = 2.05, TABLE_BUDGET_MM = 112, MORE_MM = 5;
+  const rowMm = (st: DaSite) => Math.max(1, Math.ceil(st.statusText.length / 34), Math.ceil(st.address.length / 50)) * LINE_MM + ROW_PAD_MM;
+  const shown: DaSite[] = [];
+  let used = 0;
+  for (const st of d.sites) { const h = rowMm(st); if (used + h > TABLE_BUDGET_MM) break; shown.push(st); used += h; }
+  while (shown.length < d.sites.length && shown.length && used + MORE_MM > TABLE_BUDGET_MM) used -= rowMm(shown.pop()!);
+  const rows = shown.map((st) => {
+    const types = [...new Set(st.primary.developmentTypes)].join(', ');
+    const dev = types.length > 72 ? `${types.slice(0, 70)}…` : types || st.primary.type;
+    return `<tr><td class="n">${st.n}</td><td>${esc(st.address)}</td><td>${esc(dev)}</td>` +
+      `<td class="r">${st.storeys ?? ''}</td><td class="r">${st.dwellings ?? ''}</td><td class="r">${st.cost ? esc(money(st.cost)) : ''}</td>` +
+      `<td><span class="dot" style="background:${STATUS_STYLE[st.statusClass].fill};border-color:${STATUS_STYLE[st.statusClass].stroke}"></span>${esc(st.statusText)}</td>` +
+      `<td>${esc(fmtShortDate(st.primary.lodged))}</td><td>${esc(fmtShortDate(st.primary.determined))}</td></tr>`;
+  }).join('');
+  const rest = d.sites.length - shown.length;
+  const more = rest > 0 ? `<tr><td></td><td colspan="8" class="more">+ ${rest} smaller site${rest > 1 ? 's' : ''} of scale, unnumbered on the map, all in overall.json</td></tr>` : '';
+  const empty = !d.sites.length ? `<tr><td></td><td colspan="8" class="more">${d.available ? 'No application of scale in the window for this period' : 'The feed was not available'}</td></tr>` : '';
+  const table = `<table class="da"><thead><tr><th class="n">#</th><th style="width:58mm">Site</th><th>Development as lodged</th><th class="r" style="width:11mm">Storeys</th><th class="r" style="width:13mm">Dwellings</th><th class="r" style="width:15mm">Cost</th><th style="width:44mm">Status</th><th style="width:15mm">Lodged</th><th style="width:15mm">Determined</th></tr></thead><tbody>${rows}${more}${empty}</tbody></table>`;
+
+  const sentences = developmentSentences(b, d, facts);
+  const textHtml = sentences.map(para).join('') +
+    placeholder('Narrative — for the author: what the pipeline says about the pace and direction of change here, which approvals set the built-form precedent for this site, and which are worth a site visit or a read of the approved plans.') +
+    `<div class="fine">Source: NSW Planning Portal Online DA API, updated daily, every application lodged on the portal since councils were required onto it in July 2021. Council-wide feed clipped to the window; storeys, dwellings and costs as lodged by the applicant; "determined" does not say approved or refused. Complying development certificates and State significant applications are not in this feed. Retrieved ${b.generatedAt.slice(0, 10)}.</div>`;
+  const sub = [b.siteAddress, d.council ?? '', d.available ? `${fmtNum(d.applications)} applications since ${fmtMonthYear(d.from)}` : ''].filter(Boolean).join(' · ');
+  const figureHtml = `<div class="abs ptitle" style="left:${x0}mm;top:${y0}mm;width:${PANEL_W}mm">${esc(mapTitle)}</div>
+    <div class="abs" style="left:${x0}mm;top:${y0 + PANEL_TITLE_H}mm">${developmentMap(b, d, shown.length)}</div>
+    ${right}
+    <div class="abs" style="left:${x0}mm;top:${y0 + PANEL_TITLE_H + DA_PANEL_H + 4}mm;width:${FIELD_W}mm">${table}</div>`;
+  return { id: '07_development_activity', title: 'Development activity', subtitle: sub, textHtml, figureHtml };
+}
+
 // ---- the deck -----------------------------------------------------------------
 
 export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; slides: Slide[] } {
   const facts = planningFacts(b);
-  const slides = [planningOverviewSlide(b, facts), planningControlsSlide(b, facts)];
+  const slides = [planningOverviewSlide(b, facts), planningControlsSlide(b, facts), developmentSlide(b, facts)];
   const t = tpl();
   const footerLeft = ['SITE ANALYST — OVERALL ANALYSIS', b.siteAddress, meta.client ? `for ${meta.client}` : '', meta.jobNo ? `job ${meta.jobNo}` : ''].filter(Boolean).join(' · ');
   const pages = slides.map((s, i) => `
@@ -653,6 +1010,20 @@ export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; 
   table.controls td.src { color: #555; font-size: 2.25mm; }
   table.controls .lnk a { color: #555; text-decoration: none; word-break: break-all; }
   .foot { display: flex; justify-content: space-between; font-size: 2.1mm; color: #555; border-top: 0.15mm solid ${t.rule}; padding-top: 1.1mm; }
+  .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3mm; }
+  .tile { border-top: 0.3mm solid ${t.ink}; padding-top: 1.4mm; }
+  .tv { font-size: 5.4mm; font-weight: 600; line-height: 1.05; letter-spacing: -0.01em; }
+  .tl { font-size: 2.1mm; color: #555; margin-top: 0.8mm; line-height: 1.25; }
+  .legend { font-size: 2.15mm; color: #333; line-height: 1.3; }
+  .lg { display: flex; align-items: flex-start; gap: 1.6mm; margin-bottom: 0.7mm; }
+  .lg svg { flex: none; margin-top: 0.1mm; }
+  table.da { width: 100%; border-collapse: collapse; font-size: 2.3mm; line-height: 1.28; }
+  table.da th, table.da td { text-align: left; vertical-align: top; padding: 0.95mm 1.6mm 0.95mm 0; border-top: 0.15mm solid ${t.rule}; }
+  table.da thead th { font-size: 2.05mm; letter-spacing: 0.04em; text-transform: uppercase; color: #555; border-top: 0; padding-bottom: 0.7mm; }
+  table.da .n { width: 5mm; font-weight: 700; }
+  table.da .r { text-align: right; padding-right: 3mm; font-variant-numeric: tabular-nums; }
+  table.da .more { color: #555; font-style: italic; }
+  table.da .dot { display: inline-block; width: 2.2mm; height: 2.2mm; border-radius: 50%; border: 0.25mm solid; margin-right: 1.2mm; vertical-align: -0.3mm; }
 </style></head>
 <body>${pages}</body></html>`;
   return { html, slides };
@@ -672,6 +1043,7 @@ export function slidesFacts(b: SlidesBundle) {
     planning: facts,
     housingTarget: b.housingTarget,
     councilDcp: b.cos,
+    development: (() => { const d = developmentFacts(b); return { ...d, sentences: developmentSentences(b, d, facts) }; })(),
     propertyApi: b.property,
     sentences: planningSentences(b, facts),
     sentenceList: sentenceList(planningSentences(b, facts)),

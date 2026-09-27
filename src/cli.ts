@@ -16,7 +16,7 @@ import { renderSheet, MAP_W, MAP_H, type SheetMeta } from './render/sheet.js';
 import { renderSiteSheet } from './render/siteSheet.js';
 import { renderSummarySheet } from './render/summarySheet.js';
 import { summaryCsv, summaryJson } from './export/summaryExport.js';
-import { renderSlides, slidesFacts, PANEL_W, PANEL_H, SLIDE_W, SLIDE_H } from './render/slides.js';
+import { renderSlides, slidesFacts, PANEL_W, PANEL_H, DA_PANEL_H, SLIDE_W, SLIDE_H } from './render/slides.js';
 import { htmlToPdf, printSlides } from './render/pdf.js';
 
 function arg(name: string, def?: string): string | undefined {
@@ -121,6 +121,8 @@ if (sheetType === 'slides') {
     scale: Number(arg('slides-scale', '8000')),
     panelWmm: PANEL_W,
     panelHmm: PANEL_H,
+    daPanelHmm: DA_PANEL_H,
+    daYears: Number(arg('da-years', '5')),
     log: (m) => console.log(m),
   });
   console.log('composing overall analysis slides…');

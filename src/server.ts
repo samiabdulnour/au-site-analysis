@@ -20,7 +20,7 @@ import { renderSheet, MAP_W, MAP_H, type SheetMeta } from './render/sheet.js';
 import { renderSiteSheet } from './render/siteSheet.js';
 import { renderSummarySheet } from './render/summarySheet.js';
 import { summaryCsv, summaryJson } from './export/summaryExport.js';
-import { renderSlides, slidesFacts, PANEL_W, PANEL_H, SLIDE_W, SLIDE_H } from './render/slides.js';
+import { renderSlides, slidesFacts, PANEL_W, PANEL_H, DA_PANEL_H, SLIDE_W, SLIDE_H } from './render/slides.js';
 import { withTemplate, DEFAULT_TEMPLATE } from './render/template.js';
 import { htmlToPdf, printSlides } from './render/pdf.js';
 
@@ -462,6 +462,7 @@ async function runJobBody(job: Job) {
         scale: job.scale || undefined,
         panelWmm: PANEL_W,
         panelHmm: PANEL_H,
+        daPanelHmm: DA_PANEL_H,
         log: (m) => job.log.push(m),
       });
       job.log.push('composing overall analysis slides…');

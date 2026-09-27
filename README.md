@@ -436,14 +436,15 @@ Naming an absent font does not fail; it silently falls back and the sheet
 comes out in the wrong face, so add the package to the `Dockerfile` first.
 
 Options (after `--`): `--type context|site|summary|slides|both`, `--scale 3000` (default 3000),
-`--slides-scale 8000` (the deck's map panels), `--job 2539`, `--client "Name"`,
+`--slides-scale 8000` (the deck's map panels), `--da-years 5` (the deck's
+development window), `--job 2539`, `--client "Name"`,
 `--status "DEVELOPMENT APPLICATION"`, `--sheet "DA 003"`.
 
 ### The deck
 
 `--type slides` draws the OVERALL ANALYSIS deck: A3 landscape pages for the
 content part of a feasibility study or design report, specified in
-`docs/SLIDES_SPEC.md`. Two slides exist so far, the planning ones: a
+`docs/SLIDES_SPEC.md`. Three slides exist so far. The planning pair: a
 *planning overview* of four maps at 1:8000 around the site (land zoning in the
 statutory colours, height of building, heritage with the State Heritage
 Register, and the housing-policy maps — TOD areas, town centres, State
@@ -451,8 +452,18 @@ significant development sites, precincts) and *planning controls at the site*,
 a table of every mapped control with its source and currency: zone, height
 (with its units, since some LEPs limit in RL), FSR, lot size, heritage,
 local provisions, SEPP maps, the DCP with its link, contributions, tree
-canopy and the council's housing target. Each slide carries the sentences
-that follow from the data and a marked placeholder for the author's
+canopy and the council's housing target. Then *development activity*: every
+application lodged in the council area over the last five years, from the
+Planning Portal's Online DA feed, clipped to the window around the site. The
+ones of a scale that shapes the context — four storeys, ten dwellings or
+$5 M and up, house-scale work discounted — are numbered on the map, coloured
+by status and sized by cost, over the TOD and precinct washes and any planning
+proposal on exhibition; beside it four figures (applications, sites of scale,
+dwellings proposed, value), lodgements per year and a table of the largest
+sites as lodged, with storeys, dwellings, cost, status and dates. The feed is
+council-wide and slow, so it is cached on the volume for a day
+(`out/.cache/da/`); `--da-years 5` sets the window. Each slide carries the
+sentences that follow from the data and a marked placeholder for the author's
 narrative. Outputs: `OVERALL_ANALYSIS.pdf`, `slides/<id>.png` per slide and
 `overall.json` with everything the deck says.
 

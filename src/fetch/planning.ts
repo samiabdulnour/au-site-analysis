@@ -7,7 +7,7 @@
 
 import { queryByExtent, queryByPoint, type GeoJSONFC, type GeoJSONFeature } from '../lib/arcgis.js';
 import { retryFetch } from '../lib/http.js';
-import type { Extent, XY } from '../lib/geo.js';
+import { extentToLonLatBbox, type Extent, type XY } from '../lib/geo.js';
 
 const M3 = 'https://mapprod3.environment.nsw.gov.au/arcgis/rest/services';
 const EPI = `${M3}/Planning/EPI_Primary_Planning_Layers/MapServer`;
@@ -79,6 +79,37 @@ export async function fetchPolicyAreas(extent: Extent, log: (m: string) => void 
 /** Water bodies for the map base (harbour, rivers, lakes). */
 export const fetchWaterAreas = (extent: Extent) =>
   queryByExtent(`${PORTAL}/NSW_Water_Theme/FeatureServer/6`, extent, 'hydroname,hydrotype');
+
+/** Planning proposals on public exhibition that touch the window: rezonings in the pipeline. */
+export interface PlanningProposal { layer: string; name: string; detail?: string }
+export async function fetchPlanningProposals(extent: Extent, log: (m: string) => void = () => {}): Promise<PlanningProposal[]> {
+  const b = extentToLonLatBbox(extent);
+  const geom = JSON.stringify({ xmin: b.west, ymin: b.south, xmax: b.east, ymax: b.north, spatialReference: { wkid: 4326 } });
+  const url = `${M3}/ePlanning/Planning_Proposal_Public/MapServer/identify?` + new URLSearchParams({
+    geometry: geom, geometryType: 'esriGeometryEnvelope', sr: '4326', layers: 'all', tolerance: '0',
+    mapExtent: `${b.west},${b.south},${b.east},${b.north}`, imageDisplay: '400,400,96', returnGeometry: 'false', f: 'json',
+  });
+  try {
+    const res = await retryFetch(url, {}, { attempts: 3, timeoutMs: 60_000, label: 'planning proposals' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const out: PlanningProposal[] = [];
+    const seen = new Set<string>();
+    for (const r of data.results ?? []) {
+      const a = r.attributes ?? {};
+      const name = String(a.EPI_NAME ?? a.MAP_NAME ?? r.layerName ?? '').trim();
+      const detail = [a.LAY_CLASS, a.LABEL, a.MAP_NAME && a.MAP_NAME !== name ? a.MAP_NAME : ''].filter((x) => x && x !== '<Null>').join(' · ');
+      const key = `${r.layerName}|${name}|${detail}`;
+      if (!name || seen.has(key)) continue;
+      seen.add(key);
+      out.push({ layer: String(r.layerName ?? ''), name, detail: detail || undefined });
+    }
+    return out;
+  } catch (e: any) {
+    log(`  WARN planning proposals failed: ${e?.message ?? e}`);
+    return [];
+  }
+}
 
 // ---- what applies AT the site ---------------------------------------------
 

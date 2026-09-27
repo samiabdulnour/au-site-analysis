@@ -81,7 +81,7 @@ export function baseLayers(b: BaseData, proj: Proj, p: Panel, opts: { lots?: boo
 }
 
 /** Roads, rail, stations and the site — drawn over the theme so it stays legible. */
-export function overLayers(b: BaseData, proj: Proj, p: Panel): string {
+export function overLayers(b: BaseData, proj: Proj, p: Panel, site: SiteLayer = 'both'): string {
   const t = tpl();
   const parts: string[] = [];
   const width = (h: number) => (h <= 2 ? 0.75 : h <= 4 ? 0.5 : h <= 6 ? 0.3 : 0.16);
@@ -112,27 +112,59 @@ export function overLayers(b: BaseData, proj: Proj, p: Panel): string {
     parts.push(`<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})"><circle r="2" fill="#ffffff" stroke="${t.site}" stroke-width="0.45"/>` +
       `<text text-anchor="middle" dy="1.05" font-size="3" font-weight="700" fill="${t.site}">${tram ? 'L' : metro ? 'M' : 'T'}</text></g>`);
   }
-  // The site: accent outline over a light wash, and a short label.
-  if (b.siteLots.features.length) {
-    const d = fcPath(b.siteLots, proj);
-    parts.push(`<path d="${d}" fill="${t.site}" fill-opacity="0.18" stroke="${t.site}" stroke-width="0.6"/>`);
-    let best = { area: -1, cx: 0, cy: 0 };
-    for (const f of b.siteLots.features) for (const r of geomRings(f.geometry)) {
-      const s = ringStats(r, proj); if (s.area > best.area) best = s;
-    }
-    if (best.area >= 0)
-      parts.push(`<text x="${best.cx.toFixed(1)}" y="${(best.cy - 2.6).toFixed(1)}" text-anchor="middle" font-size="2.4" font-weight="700" fill="${t.site}" stroke="#ffffff" stroke-width="0.5" paint-order="stroke">SITE</text>`);
+  if (site !== 'none') parts.push(siteMark(b, proj, site));
+  return parts.join('\n');
+}
+
+/** How much of the site mark a map wants in one pass: all of it, the wash to go under its own marks, or the outline and label to go over them. */
+export type SiteLayer = 'wash' | 'outline' | 'both' | 'none';
+
+/** Where the site's label sits, above the centroid of its largest ring, in panel mm; null without a site polygon. */
+export function siteLabelPoint(b: BaseData, proj: Proj): { cx: number; cy: number } | null {
+  let best = { area: -1, cx: 0, cy: 0 };
+  for (const f of b.siteLots.features) for (const r of geomRings(f.geometry)) {
+    const s = ringStats(r, proj); if (s.area > best.area) best = s;
+  }
+  return best.area >= 0 ? { cx: best.cx, cy: best.cy - 2.6 } : null;
+}
+
+/** The site: a light wash, an accent outline and a short label. */
+export function siteMark(b: BaseData, proj: Proj, layer: SiteLayer = 'both'): string {
+  if (!b.siteLots.features.length || layer === 'none') return '';
+  const t = tpl();
+  const d = fcPath(b.siteLots, proj);
+  const parts: string[] = [];
+  if (layer !== 'outline') parts.push(`<path d="${d}" fill="${t.site}" fill-opacity="0.18" stroke="none"/>`);
+  if (layer !== 'wash') {
+    parts.push(`<path d="${d}" fill="none" stroke="${t.site}" stroke-width="0.6"/>`);
+    const lp = siteLabelPoint(b, proj);
+    if (lp) parts.push(`<text x="${lp.cx.toFixed(1)}" y="${lp.cy.toFixed(1)}" text-anchor="middle" font-size="2.4" font-weight="700" fill="${t.site}" stroke="#ffffff" stroke-width="0.5" paint-order="stroke">SITE</text>`);
   }
   return parts.join('\n');
 }
 
 /** North point and a stepped scale bar in the panel's bottom-left corner. */
-export function panelFurniture(p: Panel): string {
-  const t = tpl();
+/** Where the scale bar sits: a bottom corner by default, a top one when the map's marks need the bottom. */
+export type FurnitureCorner = 'left' | 'right' | 'topLeft' | 'topRight';
+
+function furnitureGeom(p: Panel, corner: FurnitureCorner) {
   const mmPerM = 1000 / p.scale;
   const barM = p.scale <= 4000 ? 100 : p.scale <= 10000 ? 200 : 500;
   const barMm = barM * mmPerM;
-  const x0 = 3, y0 = p.hMm - 3.2;
+  const x0 = corner === 'left' || corner === 'topLeft' ? 3 : p.wMm - barMm - 9.6;
+  const y0 = corner === 'topLeft' || corner === 'topRight' ? 11.8 : p.hMm - 3.2;
+  return { barM, barMm, x0, y0, box: { x0: x0 - 1.2, y0: y0 - 8.6, x1: x0 - 1.2 + barMm + 9, y1: y0 + 1.8 } };
+}
+
+/** The panel-space box the scale bar and north arrow occupy in a corner, so a map can keep its marks out of it. */
+export function furnitureBox(p: Panel, corner: FurnitureCorner = 'left'): { x0: number; y0: number; x1: number; y1: number } {
+  return furnitureGeom(p, corner).box;
+}
+
+/** Scale bar and north arrow, bottom-left unless the map asks for another corner. */
+export function panelFurniture(p: Panel, corner: FurnitureCorner = 'left'): string {
+  const t = tpl();
+  const { barM, barMm, x0, y0 } = furnitureGeom(p, corner);
   return `<g font-family="${t.font}" font-size="2" fill="${t.ink}">
     <rect x="${x0 - 1.2}" y="${y0 - 8.6}" width="${(barMm + 9).toFixed(1)}" height="10.4" fill="#ffffff" fill-opacity="0.85"/>
     <rect x="${x0}" y="${y0 - 1.2}" width="${(barMm / 2).toFixed(2)}" height="1.2" fill="${t.ink}"/>
