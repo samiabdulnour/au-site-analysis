@@ -45,6 +45,8 @@ export async function queryByExtent(
   extent: Extent,
   outFields = '*',
   where = '1=1',
+  /** Further query parameters, e.g. maxAllowableOffset to generalise geometry. */
+  extra: Record<string, string> = {},
 ): Promise<GeoJSONFC> {
   const features: GeoJSONFeature[] = [];
   let offset = 0;
@@ -58,6 +60,7 @@ export async function queryByExtent(
       spatialRel: 'esriSpatialRelIntersects',
       outFields,
       resultOffset: String(offset),
+      ...extra,
     });
     const fc = esriToGeoJson(data);
     features.push(...fc.features);

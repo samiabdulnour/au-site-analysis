@@ -219,7 +219,10 @@ function pointInRing(x: number, y: number, ring: number[][]): boolean {
 // outline (lots unioned), contours for levels, neighbours and street
 // furniture. Shares the geocode/lots/rotation logic with the context sheet.
 
-import { fetchContours, fetchNeighbourAddresses, fetchSiteFurniture, type ContourLine, type NeighbourAddress, type SiteFurniture } from './fetch/siteData.js';
+import { fetchContours, fetchNeighbourAddresses, fetchSiteFurniture, emptyFurniture, type ContourLine, type ContourSet, type NeighbourAddress, type SiteFurniture } from './fetch/siteData.js';
+import { fetchCouncilTrees, mergeTrees, TREE_SOURCES } from './fetch/trees.js';
+import { assessViews, eyeAboveGround, type ViewTarget } from './fetch/views.js';
+import { buildParkingBands, type ParkingBand } from './lib/parking.js';
 import turfUnion from '@turf/union';
 import { featureCollection } from '@turf/helpers';
 
@@ -236,8 +239,19 @@ export interface SiteBundle {
   railLines: RailLines;
   zoning: GeoJSONFC;
   contours: ContourLine[];
+  /** Interval and origin of the contours drawn (older bundles: 2 m, NSW). */
+  contourIntervalM?: number;
+  contourSource?: string;
   neighbours: NeighbourAddress[];
   furniture: SiteFurniture;
+  /** Kerbside bays set out from the tagged runs and the cadastre. */
+  parkingBands?: ParkingBand[];
+  /** Potential views, each with its sight line checked where one could be. */
+  views?: ViewTarget[];
+  /** Height above the site's ground the sight lines were taken from. */
+  eyeAboveM?: number;
+  /** Attribution lines the data licences ask for, printed on the sheet. */
+  attributions?: string[];
   busStops: { name?: string; lon: number; lat: number }[];
   aerial: AerialResult;
   generatedAt: string;
@@ -317,20 +331,23 @@ export async function runSitePipeline(address: string, opts: SitePipelineOpts): 
   };
   const extent = viewBounds(view);
 
-  const emptyFurniture: SiteFurniture = { trees: [], hydrants: [], powerPoles: [], streetLamps: [], onewayRoads: [], buildings: [], utilities: [], driveways: [], parkingLanes: [] };
   const soft = <T,>(p: Promise<T>, fallback: T, name: string): Promise<T> =>
     p.catch((e) => { log(`  WARN ${name} failed: ${e.message ?? e}`); return fallback; });
 
-  log('fetching contours, lots, roads, neighbours, furniture, imagery…');
-  const [contours, allLots, roads, railLines, zoning, neighbours, furniture, aerial] = await Promise.all([
-    soft(fetchContours(extent), [], 'contours'),
+  log('fetching contours, lots, roads, neighbours, furniture, trees, imagery…');
+  const nswContours: ContourSet = { lines: [], intervalM: 2, source: 'NSW Spatial Services' };
+  const [contourSet, allLots, roads, railLines, zoning, neighbours, furniture, aerial, councilTrees, parkPoints, controls] = await Promise.all([
+    soft(fetchContours(extent, log), nswContours, 'contours'),
     soft(fetchAllLots(extent), { type: 'FeatureCollection', features: [] } as GeoJSONFC, 'lots'),
     soft(fetchRoads(extent), [], 'roads'),
     soft(fetchRailLines(extent), { train: [], tram: [] }, 'rail lines'),
     soft(fetchZoning(extent), { type: 'FeatureCollection', features: [] } as GeoJSONFC, 'zoning'),
     soft(fetchNeighbourAddresses(extent), [], 'neighbour addresses'),
-    soft(fetchSiteFurniture(extent), emptyFurniture, 'street furniture (OSM)'),
+    soft(fetchSiteFurniture(extent), emptyFurniture(), 'street furniture (OSM)'),
     fetchAerial(extent, 3600, dataDir),
+    soft(fetchCouncilTrees(extent, log), [], 'council trees'),
+    soft(fetchParkPoints(extent), [], 'park points'),
+    soft(fetchSiteControls(geo.center), null, 'site controls'),
   ]);
 
   let busStops: { name?: string; lon: number; lat: number }[] = [];
@@ -338,16 +355,50 @@ export async function runSitePipeline(address: string, opts: SitePipelineOpts): 
     busStops = await soft(fetchBusStopsTfnsw(extent, process.env.TFNSW_API_KEY), [], 'bus stops (TfNSW)');
   }
 
-  log(`  contours:${contours.length} lots:${allLots.features.length} roads:${roads.length} ` +
-      `neighbours:${neighbours.length} trees:${furniture.trees.length} busStops:${busStops.length}`);
+  // Trees: the council's inventory where there is one, OSM around it.
+  const osmTrees = furniture.trees.length;
+  furniture.trees = mergeTrees(councilTrees, furniture.trees);
+
+  // Kerbside bays, set out at the kerb the cadastre implies.
+  const lotRings = allLots.features.flatMap((f) => ringsOf(f.geometry));
+  const parkingBands = buildParkingBands(furniture.parkingLanes, lotRings,
+    furniture.driveways.map((d) => d.coords), roads.map((r) => r.coords));
+  const bays = parkingBands.reduce((n, b) => n + b.bays.length, 0);
+
+  log(`  contours:${contourSet.lines.length} (${contourSet.intervalM} m) lots:${allLots.features.length} roads:${roads.length} ` +
+      `neighbours:${neighbours.length} trees:${furniture.trees.length} (council ${councilTrees.length}, osm ${osmTrees}) ` +
+      `parking bays:${bays} car parks:${furniture.carParks.length} busStops:${busStops.length}`);
+
+  // Sight lines to the skyline, the water and the park next door.
+  log('checking sight lines over the terrain…');
+  const siteLL = mercatorToLonLat({ x: cx0, y: cy0 });
+  const { views, eyeAboveM } = await soft(
+    assessViews({ site: siteLL, siteRing: ring, hobM: controls?.maxHeightM, zoning, parkPoints, log }),
+    { views: [], eyeAboveM: eyeAboveGround(controls?.maxHeightM) },
+    'views',
+  );
+
+  const attributions = [
+    ...TREE_SOURCES.filter((s) => councilTrees.some((t) => t.source === s.id)).map((s) => s.attribution),
+    ...(contourSet.attribution ? [contourSet.attribution] : []),
+  ];
 
   const bundle: SiteBundle = {
     address, geocode: geo, extent, view, scale,
-    siteLots, siteRing: ring, allLots, roads, railLines, zoning, contours, neighbours, furniture,
+    siteLots, siteRing: ring, allLots, roads, railLines, zoning,
+    contours: contourSet.lines, contourIntervalM: contourSet.intervalM, contourSource: contourSet.source,
+    neighbours, furniture, parkingBands, views, eyeAboveM, attributions,
     busStops, aerial, generatedAt: new Date().toISOString(),
   };
   await writeFile(join(dataDir, 'site_bundle.json'), JSON.stringify(bundle));
   return bundle;
+}
+
+function ringsOf(geometry: any): number[][][] {
+  if (!geometry) return [];
+  if (geometry.type === 'Polygon') return geometry.coordinates;
+  if (geometry.type === 'MultiPolygon') return geometry.coordinates.flat();
+  return [];
 }
 
 function geomOuter(geometry: any): [number, number][] {

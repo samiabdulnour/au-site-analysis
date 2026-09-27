@@ -317,6 +317,37 @@ absolute, and a scraper resolves them without ever seeing the request, so the
 pages write `%ORIGIN%` and the server fills it in from the host it was asked
 for.
 
+### Trees, parking bays and views on the site sheet
+
+Three things the site sheet draws that the data has to be coaxed into:
+
+- **Trees at canopy size.** Every tree is drawn as its canopy at ground scale
+  rather than a fixed dot. The size is the recorded one where a council
+  publishes its inventory under an open licence (City of Sydney: 49,640 trees
+  with height and spread, CC BY 4.0), estimated from height or trunk where OSM
+  tags one, and a nominal 6 m otherwise — drawn dashed, so the sheet never
+  claims a measurement it does not have. Adding a council is one entry in
+  `TREE_SOURCES` in `src/fetch/trees.ts`; an inventory with no licence
+  statement does not qualify, however good it is.
+- **Kerbside bays.** OSM tags parking on the road way; the cadastre says where
+  the kerb is (the road reserve is the gap between the lot boundaries either
+  side, less a verge). Bays are set out along that kerb at AS/NZS 2890.5
+  sizes — 6.0 m parallel, 2.6 m at 90°, 3.7 m along the kerb at 45° — one
+  quad per bay, none where a driveway crosses, with the count in the legend.
+  Off-street car parks and individually mapped bays are drawn as OSM has
+  them. The count is kerb length divided by bay length, not a survey.
+- **Potential views.** The nearest skyline, the water within reach and the
+  park next door are the candidates; each sight line is tested against NSW's
+  5 m elevation surface from just under the site's LEP height limit, and a
+  cone is drawn at the site edge, as the office draws them, only where the
+  ground leaves the line clear. Buildings and trees in between are not open
+  data, so the legend says: ground only.
+
+Where a council publishes finer contours under an open licence (City of
+Sydney: 1 m, from a 2020 aerial survey), they replace the state's 2 m contours
+when they cover the whole sheet, and the legend names the source. Same
+registry pattern: `CONTOUR_SOURCES` in `src/fetch/siteData.ts`.
+
 ### Local OpenStreetMap (recommended for production)
 
 The public Overpass network is frequently unavailable, which costs the site

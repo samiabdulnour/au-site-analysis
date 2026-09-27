@@ -10,6 +10,15 @@ import {
 } from './sheet.js';
 import { sheetHtml, esc, T, SWATCH_X, SWATCH_W, LABEL_X, MAP_W, MAP_H } from './chrome.js';
 import { tpl } from './template.js';
+import { exitPoint } from '../fetch/views.js';
+import { NOMINAL_CANOPY_M } from '../fetch/trees.js';
+import { buildParkingBands, type Orientation } from '../lib/parking.js';
+import { levelAt, type ContourM } from '../lib/levels.js';
+
+// Parking, in the office's plum.
+const PARK = '#9b5b6e';
+const PARK_INK = '#7a3c50';
+const BAY_LABEL: Record<Orientation, string> = { parallel: '6.0 m parallel', diagonal: '45° angle', perpendicular: '90°' };
 
 // One uniform bold size for all map text on this sheet. Exceptions: street
 // names on the white arrows (wide-spaced, set separately) and the neighbour
@@ -118,6 +127,41 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     placer.reserve(90, MAP_H - 60, 110, 20);
   }
 
+  // ---- potential views ------------------------------------------------------
+  // A translucent cone at the site edge, as the office draws them, for each
+  // sight line the ground does not block. The cone goes under the linework;
+  // its label is pushed last so nothing draws over it.
+  const viewText: string[] = [];
+  {
+    const centreLL = mercatorToLonLat({ x: view.cx, y: view.cy });
+    const L = 52;                              // cone length on paper, mm
+    const half = (14 * Math.PI) / 180;         // half the opening angle
+    for (const v of sb.views ?? []) {
+      if (!v.cone) continue;
+      const apex = exitPoint(sb.siteRing, centreLL, v.bearingDeg);
+      const [ax, ay] = proj(apex.lon, apex.lat);
+      const ang = ((v.bearingDeg + view.rotationDeg) * Math.PI) / 180;
+      const arc: string[] = [];
+      for (let i = 0; i <= 10; i++) {
+        const a = ang - half + (2 * half * i) / 10;
+        arc.push(`${(ax + L * Math.sin(a)).toFixed(1)},${(ay - L * Math.cos(a)).toFixed(1)}`);
+      }
+      layers.push(`<path d="M${ax.toFixed(1)},${ay.toFixed(1)} L${arc.join(' L')} Z" fill="#ffffff" fill-opacity="0.58" stroke="#ffffff" stroke-width="0.5" stroke-linejoin="round"/>`);
+      const lx = ax + L * 0.6 * Math.sin(ang), ly = ay - L * 0.6 * Math.cos(ang);
+      const lines = wrapLabel(v.kind === 'park' ? `${v.label} OUTLOOK` : `${v.label} VIEW`, 14);
+      const dist = v.distanceM >= 950 ? `${(v.distanceM / 1000).toFixed(1)} KM` : `${Math.round(v.distanceM / 10) * 10} M`;
+      const sub = v.kind === 'park' ? 'ADJOINING' : `${dist} · TERRAIN CLEAR`;
+      const lh = MAP_TEXT * 1.08;
+      const w = Math.max(...lines.map((l) => l.length), sub.length * 0.75) * MAP_TEXT * 0.6 + 4;
+      // Several cones can leave one corner of a small site; the label is
+      // nudged clear of the others rather than drawn over them.
+      const spot = placer.place(lx, ly, w, lines.length * lh + 6, 24) ?? [lx, ly];
+      const [tx, ty] = spot;
+      viewText.push(plainText(tx, ty - lh * 0.35, lines, MAP_TEXT, '#111111'));
+      viewText.push(`<text x="${tx.toFixed(1)}" y="${(ty + (lines.length / 2) * lh + 1.6).toFixed(1)}" text-anchor="middle" font-size="${(MAP_TEXT * 0.7).toFixed(2)}" font-weight="700" letter-spacing="0.3" fill="#333333">${esc(sub)}</text>`);
+    }
+  }
+
   // ---- cadastre + contours -------------------------------------------------
   if (sb.allLots.features.length) {
     const d = sb.allLots.features.map((f) => pathFromRings(geomRings(f.geometry), proj)).join('');
@@ -217,25 +261,40 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
   }
 
 
-  // ---- street parking zones (hatched band along the kerb) -------------------
-  for (const pz of sb.furniture.parkingLanes) {
-    const pts = pz.coords.map(([lon, lat2]) => proj(lon, lat2));
-    if (pts.length < 2) continue;
-    const sides = pz.side === 'both' ? [1, -1] : pz.side === 'left' ? [-1] : [1];
-    for (const sgn of sides) {
-      const band: string[] = [];
-      for (let i = 1; i < pts.length; i++) {
-        const [ax, ay] = pts[i - 1], [bx, by] = pts[i];
-        const len = Math.hypot(bx - ax, by - ay) || 1;
-        const nx = (-(by - ay) / len) * sgn, ny = ((bx - ax) / len) * sgn;
-        const off = 2.2, w = 2.4;
-        band.push(`M${(ax + nx * off).toFixed(1)},${(ay + ny * off).toFixed(1)}
-          L${(bx + nx * off).toFixed(1)},${(by + ny * off).toFixed(1)}
-          L${(bx + nx * (off + w)).toFixed(1)},${(by + ny * (off + w)).toFixed(1)}
-          L${(ax + nx * (off + w)).toFixed(1)},${(ay + ny * (off + w)).toFixed(1)} Z`);
-      }
-      layers.push(`<path d="${band.join(' ')}" fill="#9b5b6e" fill-opacity="0.5" stroke="#7a3c50" stroke-width="0.25"/>`);
-    }
+  // ---- kerbside parking: one quad per bay, at the kerb the cadastre implies --
+  // A bundle from before the bays were set out carries only the tagged runs;
+  // set them out here from the same lots so it draws the same way.
+  const bands = sb.parkingBands
+    ?? buildParkingBands(sb.furniture.parkingLanes, sb.allLots.features.flatMap((f) => geomRings(f.geometry)),
+      sb.furniture.driveways.map((d) => d.coords), sb.roads.map((r) => r.coords));
+  const bayCount = bands.reduce((n, b) => n + b.bays.length, 0);
+  const orientations = new Set(bands.map((b) => b.orientation));
+  for (const band of bands) {
+    layers.push(`<path d="${band.bays.map((ring) => pathFromRings([ring], proj)).join('')}" fill="${PARK}" fill-opacity="0.35" stroke="${PARK_INK}" stroke-width="0.3" stroke-linejoin="round"/>`);
+  }
+
+  // ---- off-street car parks, and bays someone mapped one by one -------------
+  const carParks = sb.furniture.carParks ?? [];
+  for (const cp of carParks) {
+    const pts = cp.ring.map(([lon, lat2]) => proj(lon, lat2));
+    if (!pts.some(inMapWide)) continue;
+    const open = cp.kind === 'surface' || cp.kind === 'street_side';
+    layers.push(`<path d="${pathFromRings([cp.ring], proj)}" fill="${PARK}" fill-opacity="${open ? 0.18 : 0.08}" stroke="${PARK_INK}" stroke-width="0.5"${open ? '' : ' stroke-dasharray="2.4,1.2"'}/>`);
+    const cx = pts.reduce((s, p) => s + p[0], 0) / pts.length, cy = pts.reduce((s, p) => s + p[1], 0) / pts.length;
+    if (!inMap([cx, cy])) continue;
+    const kindLabel: Record<string, string> = {
+      surface: 'CAR PARK', 'multi-storey': 'MULTI-STOREY CAR PARK', underground: 'BASEMENT CAR PARK',
+      rooftop: 'ROOFTOP CAR PARK', street_side: 'PARKING BAYS', other: 'CAR PARK',
+    };
+    const lines = [...wrapLabel(kindLabel[cp.kind] ?? 'CAR PARK', 14), ...(cp.capacity ? [`${cp.capacity} BAYS`] : [])];
+    const w = Math.max(...lines.map((t) => t.length)) * NEIGHBOUR_TEXT * 0.56 + 3;
+    const h = lines.length * NEIGHBOUR_TEXT * 1.16 + 2;
+    const spot = placer.place(cx, cy, w, h, 12);
+    if (spot) layers.push(plainText(spot[0], spot[1], lines, NEIGHBOUR_TEXT, '#5f2c3c'));
+  }
+  const mappedBays = sb.furniture.parkingBays ?? [];
+  if (mappedBays.length) {
+    layers.push(`<path d="${mappedBays.map((b) => pathFromRings([b.ring], proj)).join('')}" fill="${PARK}" fill-opacity="0.25" stroke="${PARK_INK}" stroke-width="0.25"/>`);
   }
 
   // ---- vehicular access (yellow triangle at the street end of a driveway) ---
@@ -277,10 +336,27 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     }
   }
 
+  // ---- trees, canopy at ground scale ---------------------------------------
+  // A recorded canopy (council inventory, OSM) draws solid; the nominal size
+  // for a tree nobody has measured draws dashed, so the sheet does not claim
+  // more than it knows. Never smaller than a dot a reader can find.
+  const mmPerM = 1000 / sb.scale;
+  const treeStats = { measured: 0, estimated: 0, nominal: 0 };
+  {
+    const svg: string[] = [];
+    for (const t of sb.furniture.trees) {
+      const [x, y] = proj(t.lon, t.lat);
+      if (!inMapWide([x, y])) continue;
+      const src = t.canopySource ?? 'nominal';
+      treeStats[src]++;
+      const r = Math.min(45, Math.max(1.6, ((t.canopyM ?? NOMINAL_CANOPY_M) / 2) * mmPerM));
+      svg.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r.toFixed(1)}" fill="#7dbb57" fill-opacity="0.38" stroke="#4e8c33" stroke-width="0.35"${src === 'nominal' ? ' stroke-dasharray="1.5,0.9"' : ''}/>` +
+        `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="0.55" fill="#2f5e20"/>`);
+    }
+    layers.push(svg.join(''));
+  }
+
   // ---- street furniture ------------------------------------------------------
-  layers.push(sb.furniture.trees.map((p) => proj(p.lon, p.lat)).filter(inMap)
-    .map(([x, y]) => `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="#7dbb57" fill-opacity="0.45" stroke="#4e8c33" stroke-width="0.3"/>`)
-    .join(''));
   layers.push(sb.furniture.hydrants.map((p) => proj(p.lon, p.lat)).filter(inMap)
     .map(([x, y]) => `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="1.4" fill="#1f78d1"/>`)
     .join(''));
@@ -524,27 +600,17 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
       text-anchor="middle" font-size="${MAP_TEXT}" font-weight="700" fill="${RED()}">${txt}</text>`);
   }
 
-  // corner levels from contours (IDW of the two nearest distinct elevations)
-  const rlOf = (lon: number, lat2: number): number | null => {
-    const P = lonLatToMercator({ lon, lat: lat2 });
-    const found: { e: number; d: number }[] = [];
-    for (const c of sb.contours) {
-      let dMin = Infinity;
-      for (let i = 0; i < c.coords.length; i += 2) {
-        const Q = lonLatToMercator({ lon: c.coords[i][0], lat: c.coords[i][1] });
-        const d = Math.hypot(Q.x - P.x, Q.y - P.y);
-        if (d < dMin) dMin = d;
-      }
-      const prev = found.find((f) => f.e === c.elevation);
-      if (prev) { if (dMin < prev.d) prev.d = dMin; }
-      else found.push({ e: c.elevation, d: dMin });
-    }
-    found.sort((a, b) => a.d - b.d);
-    if (!found.length) return null;
-    if (found.length === 1 || found[0].d < 1) return found[0].e;
-    const [f1, f2] = found;
-    return (f1.e / f1.d + f2.e / f2.d) / (1 / f1.d + 1 / f2.d);
+  // Corner levels: interpolated across the slope between the contours that
+  // bracket each corner (see lib/levels.ts), in ground metres.
+  const groundM = (lon: number, lat2: number) => {
+    const m = lonLatToMercator({ lon, lat: lat2 });
+    return { x: m.x / k, y: m.y / k };
   };
+  const contoursM: ContourM[] = sb.contours.map((c) => ({
+    z: c.elevation, pts: c.coords.map(([lon, lat2]) => groundM(lon, lat2)),
+  }));
+  const rlOf = (lon: number, lat2: number): number | null =>
+    levelAt(groundM(lon, lat2), contoursM, sb.contourIntervalM ?? 2);
   const cornerRls: { i: number; rl: number }[] = [];
   for (const i of corners) {
     const rl = rlOf(sb.siteRing[i][0], sb.siteRing[i][1]);
@@ -669,6 +735,9 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     layers.push(banner(90, MAP_H - 60, 'W & SW WINTER WINDS'));
   }
 
+  // View labels last, over everything.
+  layers.push(viewText.join(''));
+
   // ---- legend ------------------------------------------------------------------
   let legendSvg = '';
   let ly = 7;
@@ -686,12 +755,25 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
   row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${BLUE()}" stroke-width="0.8" stroke-dasharray="4,1.6"/><path d="M${SWATCH_X + SWATCH_W - 4},1.2 L${SWATCH_X + SWATCH_W},3.2 L${SWATCH_X + SWATCH_W - 4},5.2" fill="none" stroke="${BLUE()}" stroke-width="0.8"/>`, 'FALL OF TERRAIN');
   row(`<text x="${SWATCH_X}" y="5.4" font-size="3.2" font-weight="700" fill="${RED()}">SB 30.48</text>`, 'BOUNDARY DIMENSION (m)');
   row(`<text x="${SWATCH_X}" y="5.4" font-size="3.2" font-weight="700" fill="${RED()}">RL 24.5</text>`, 'SURFACE LEVEL (AHD)');
-  if (sb.contours.length) row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="#a07c3f" stroke-width="0.6"/><text x="${SWATCH_X + 1}" y="2.2" font-size="2.2" font-weight="700" fill="#8a6a2f">RL 20</text>`, 'CONTOURS (m AHD)');
+  if (sb.contours.length) row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="#a07c3f" stroke-width="0.6"/><text x="${SWATCH_X + 1}" y="2.2" font-size="2.2" font-weight="700" fill="#8a6a2f">RL 20</text>`, `CONTOURS AT ${sb.contourIntervalM ?? 2} m AHD`, sb.contourSource);
   row(`<g><rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="#fff" stroke="#bbb" stroke-width="0.2"/><text x="${SWATCH_X + SWATCH_W / 2}" y="2.8" text-anchor="middle" font-size="2" font-weight="700" fill="#111">8 LEVUKA ST</text><text x="${SWATCH_X + SWATCH_W / 2}" y="5.2" text-anchor="middle" font-size="2" font-weight="700" fill="${BLUE()}">R3 MEDIUM</text></g>`, 'NEIGHBOUR: ADDRESS, STOREYS, ZONE');
-  if (sb.furniture.parkingLanes.length) row(`<g><rect x="${SWATCH_X}" y="0.5" width="${SWATCH_W}" height="5.5" fill="#9b5b6e" fill-opacity="0.55" stroke="#7a3c50" stroke-width="0.3"/>${Array.from({ length: 7 }, (_, i) => `<line x1="${SWATCH_X + i * 3.4}" y1="6" x2="${SWATCH_X + i * 3.4 + 3}" y2="0.5" stroke="#5f2c3c" stroke-width="0.4"/>`).join('')}</g>`, 'STREET PARKING ZONE');
+  if (bayCount) {
+    const quads = Array.from({ length: 4 }, (_, i) => `<rect x="${(SWATCH_X + i * 5.6).toFixed(1)}" y="1.2" width="5.6" height="4.4" fill="${PARK}" fill-opacity="0.35" stroke="${PARK_INK}" stroke-width="0.3"/>`).join('');
+    const kinds = [...orientations].map((o) => BAY_LABEL[o]).join(', ');
+    row(`<g>${quads}</g>`, 'STREET PARKING BAYS', `${bayCount} bays, ${kinds}, from OSM tags`);
+  }
+  if (carParks.length || mappedBays.length) row(`<rect x="${SWATCH_X}" y="0.5" width="${SWATCH_W}" height="5.5" fill="${PARK}" fill-opacity="0.18" stroke="${PARK_INK}" stroke-width="0.5"/>`, 'CAR PARK', 'dashed: multi-storey or basement');
   if (sb.furniture.driveways.length) row(`<path d="M${mid - 3.6},1.4 L${mid + 3.6},1.4 L${mid},6 Z" fill="#f5e400" stroke="#c9bb00" stroke-width="0.3"/>`, 'VEHICULAR ACCESS');
   if (sb.roads.some((r) => r.lanes)) row(`<g transform="translate(${mid},3.2)"><path d="M-1.6,3 L-1.6,-2.6 M-2.6,-1 L-1.6,-3 L-0.6,-1" fill="none" stroke="#555" stroke-width="0.5"/><path d="M1.6,-3 L1.6,2.6 M0.6,1 L1.6,3 L2.6,1" fill="none" stroke="#555" stroke-width="0.5"/></g>`, 'TRAFFIC DIRECTION AND LANES');
-  if (sb.furniture.trees.length) row(`<circle cx="${mid}" cy="3.2" r="2.8" fill="#7dbb57" fill-opacity="0.5" stroke="#4e8c33" stroke-width="0.4"/>`, 'EXISTING TREES');
+  if (treeStats.measured + treeStats.estimated + treeStats.nominal) {
+    const sub = treeStats.nominal && (treeStats.measured || treeStats.estimated)
+      ? `solid: recorded size · dashed: nominal ${NOMINAL_CANOPY_M} m`
+      : treeStats.nominal ? `nominal ${NOMINAL_CANOPY_M} m canopy, not measured` : 'recorded canopy';
+    row(`<circle cx="${mid}" cy="3.2" r="2.8" fill="#7dbb57" fill-opacity="0.45" stroke="#4e8c33" stroke-width="0.4"/><circle cx="${mid}" cy="3.2" r="0.5" fill="#2f5e20"/>`, 'TREES, CANOPY TO SCALE', sub);
+  }
+  if ((sb.views ?? []).some((v) => v.cone)) {
+    row(`<path d="M${SWATCH_X},3.2 L${SWATCH_X + SWATCH_W},0.4 L${SWATCH_X + SWATCH_W},6 Z" fill="#ffffff" stroke="#8a8a8a" stroke-width="0.3"/>`, 'POTENTIAL VIEW', `terrain only, from ${Math.round(sb.eyeAboveM ?? 8)} m up; no buildings`);
+  }
   if (sb.furniture.powerPoles.length) row(`<g transform="translate(${mid},3.2)"><line x1="-2.4" y1="0" x2="2.4" y2="0" stroke="#333" stroke-width="0.4"/><circle r="1.2" fill="none" stroke="#333" stroke-width="0.45"/></g>`, 'POWER POLE');
   if (sb.furniture.streetLamps.length) row(`<circle cx="${mid}" cy="3.2" r="1.4" fill="#f0c020" stroke="#a8860b" stroke-width="0.3"/>`, 'LIGHT POLE');
   if (sb.furniture.hydrants.length) row(`<circle cx="${mid}" cy="3.2" r="1.8" fill="#1f78d1"/>`, 'HYDRANT');
@@ -699,8 +781,8 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
   if (sb.furniture.onewayRoads.length) row(`<path d="M${SWATCH_X},3.2 L${SWATCH_X + SWATCH_W - 4},3.2 M${SWATCH_X + SWATCH_W - 7},1.4 L${SWATCH_X + SWATCH_W - 4},3.2 L${SWATCH_X + SWATCH_W - 7},5" fill="none" stroke="#8a8a8a" stroke-width="1.0"/>`, 'TRAFFIC DIRECTION');
   row(`<path d="M${SWATCH_X},4.5 ${Array.from({ length: 6 }, (_, i) => `L${(SWATCH_X + 2 + i * 4).toFixed(1)},${i % 2 ? 4.5 : 1.9}`).join(' ')}" fill="none" stroke="#3b4fd8" stroke-width="0.5"/>`, 'NOISE SOURCE');
   row(`<g transform="translate(${mid},3.2)"><path d="M-9,-3 L5,-3 L9,0 L5,3 L-9,3 Z" fill="#fff" stroke="${WINDBLUE()}" stroke-width="0.8"/></g>`, 'PREVAILING BREEZES');
-  row(`<g transform="translate(${mid},3.2)"><circle r="3.2" fill="${SUN()}"/><text text-anchor="middle" dy="1.2" font-size="3.2" font-weight="700" fill="#000">W</text></g>`, 'WINTER SUN() (AM/PM)');
-  row(`<g transform="translate(${mid},3.2)"><circle r="3.2" fill="${SUN()}"/><text text-anchor="middle" dy="1.2" font-size="3.2" font-weight="700" fill="#000">S</text></g>`, 'SUMMER SUN() (AM/PM)');
+  row(`<g transform="translate(${mid},3.2)"><circle r="3.2" fill="${SUN()}"/><text text-anchor="middle" dy="1.2" font-size="3.2" font-weight="700" fill="#000">W</text></g>`, 'WINTER SUN (AM/PM)');
+  row(`<g transform="translate(${mid},3.2)"><circle r="3.2" fill="${SUN()}"/><text text-anchor="middle" dy="1.2" font-size="3.2" font-weight="700" fill="#000">S</text></g>`, 'SUMMER SUN (AM/PM)');
 
   const utilKinds = new Set(sb.furniture.utilities.map((u) => u.kind));
   if (utilKinds.has('power')) row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="#f2c200" stroke-width="0.9" stroke-dasharray="4,2.2"/>`, 'POWER LINES');
@@ -719,5 +801,6 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     legendHeading: 'LEGEND',
     legendSvg,
     layers,
+    dataNote: sb.attributions?.length ? sb.attributions.join(' · ') : undefined,
   });
 }
