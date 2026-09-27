@@ -61,6 +61,8 @@ export interface SheetHtmlOpts {
   layers: string[];       // svg content of the map field
   /** Table sheets carry no map: no north point, no scale bar, no scale. */
   noMap?: boolean;
+  /** Attribution the data licences ask for, in the fine print under the date. */
+  dataNote?: string;
 }
 
 export function sheetHtml(o: SheetHtmlOpts): string {
@@ -196,7 +198,7 @@ ${o.layers.join('\n')}
 <div class="titlecol">
   <div class="abs fine" style="top:10mm;left:4.8mm;right:0">
     ${esc(o.address)}<br>Generated: ${esc(o.generatedAt.slice(0, 10))}
-    <br>GENERATED WITH SITE ANALYST — © SAMI ABDULNOUR, LICENSED USE.
+    <br>GENERATED WITH SITE ANALYST — © SAMI ABDULNOUR, LICENSED USE.${o.dataNote ? `<br>${esc(o.dataNote)}` : ''}
   </div>
   ${rule(20)}
   <div class="abs" style="top:21.4mm;left:4.8mm;right:0;font-size:${T.legend}mm;font-weight:700">${esc(o.legendHeading)}</div>
