@@ -530,8 +530,8 @@ export interface SlidesBundle {
   proposals: PlanningProposal[];
   /** Census, population, projections, SEIFA, land values, sales and schools for the site's regions; null when the ABS lookup failed. */
   people: PeopleData | null;
-  /** The elevation grid over the tall panel and the 2 m contours over the fetch window. */
-  terrain: { dem: DemGrid | null; contours: ContourLine[] };
+  /** The elevation grid over the tall panel and the contours over the fetch window, with their interval and origin. */
+  terrain: { dem: DemGrid | null; contours: ContourLine[]; contourIntervalM?: number; contourSource?: string; contourAttribution?: string };
   /** Building footprints with heights over the tall panel (Overture, or OpenStreetMap). */
   buildings: BuildingsData;
   /** Isochrones, bus, cycleways, footways, one-way streets and active frontages over the tall panel. */
@@ -597,7 +597,7 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
   const fromDate = new Date(); fromDate.setFullYear(fromDate.getFullYear() - (opts.daYears ?? 5));
   const from = [fromDate.toISOString().slice(0, 10), PORTAL_MANDATED].sort()[1];
 
-  const [zoning, hob, heritage, shr, policy, water, lots, roads, railLines, stations, context, property, controls, proposals, feed, people, dem, contours, buildings, movement, wideRoads, wideRail, wideStations, wideWater, wideSuburbs] = await Promise.all([
+  const [zoning, hob, heritage, shr, policy, water, lots, roads, railLines, stations, context, property, controls, proposals, feed, people, dem, contourSet, buildings, movement, wideRoads, wideRail, wideStations, wideWater, wideSuburbs] = await Promise.all([
     soft(fetchZoningDetailed(extent), emptyFC, 'zoning'),
     soft(fetchHobDetailed(extent), emptyFC, 'height of building'),
     soft(fetchHeritageDetailed(extent), emptyFC, 'heritage'),
@@ -615,7 +615,7 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
     council ? soft(fetchCouncilApplications(council, from, today, log), null, 'Online DA API') : Promise.resolve(null),
     soft(fetchPeopleData(mercatorToLonLat(geo.center), geo.matchedAddresses[0], log), null, 'people and market'),
     soft(fetchDemGrid(daExtent), null, 'elevation model'),
-    soft(fetchContours(fetchExtent), [], 'contours'),
+    soft(fetchContours(fetchExtent, log), { lines: [], intervalM: 2, source: 'NSW Spatial Services' }, 'contours'),
     soft(fetchBuildings(daExtent, log), { source: 'none' as const, buildings: [], fetchedAt: new Date().toISOString() }, 'buildings'),
     fetchMovement(daExtent, geo.center, log),
     soft(fetchRoads(wideExtent, 'roadnamebase IS NOT NULL AND functionhierarchy <= 5'), [], 'wide roads'),
@@ -634,7 +634,7 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
 
   log(`  zoning:${zoning.features.length} hob:${hob.features.length} heritage:${heritage.features.length} shr:${shr.features.length} ` +
       `policy:${policy.length} roads:${roads.length} property:${property ? 'yes' : 'no'} dcp:${context.dcp ? 'yes' : 'no'} target:${housingTarget ? housingTarget.homes : '—'}${cos ? ' council-dcp:yes' : ''} ` +
-      `applications:${applications.length}${feed ? `/${feed.records.length}` : ''} proposals:${proposals.length} dem:${dem ? `${dem.cols}×${dem.rows}` : 'no'} contours:${contours.length} buildings:${buildings.buildings.length}/${buildings.source}`);
+      `applications:${applications.length}${feed ? `/${feed.records.length}` : ''} proposals:${proposals.length} dem:${dem ? `${dem.cols}×${dem.rows}` : 'no'} contours:${contourSet.lines.length} (${contourSet.intervalM} m) buildings:${buildings.buildings.length}/${buildings.source}`);
 
   const bundle: SlidesBundle = {
     address,
@@ -650,7 +650,7 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
     base: { water, lots, roads, rail: railLines, stations, siteLots },
     controls, property, context, housingTarget, cos,
     daPanel, applications, daMeta, proposals, people,
-    terrain: { dem, contours }, buildings, movement,
+    terrain: { dem, contours: contourSet.lines, contourIntervalM: contourSet.intervalM, contourSource: contourSet.source, contourAttribution: contourSet.attribution }, buildings, movement,
     wide: { panel: widePanel, base: { water: wideWater, lots: emptyFC, roads: wideRoads, rail: wideRail, stations: wideStations, siteLots }, suburbs: wideSuburbs },
     warnings,
   };

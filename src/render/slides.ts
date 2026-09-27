@@ -1306,7 +1306,7 @@ export function terrainFacts(b: SlidesBundle) {
   const WATER_WORD = /\b(RIVER|CREEK|BAY|HARBOUR|HARBOR|LAKE|LAGOON|COVE|DAM|CANAL|POND|RESERVOIR|CHANNEL|INLET|ESTUARY|SEA|OCEAN|BASIN|WETLAND|SWAMP)\b/i;
   const waterRaw = String(b.base.water.features[0]?.properties?.hydroname ?? '');
   const elevations = [...new Set(b.terrain.contours.map((c) => c.elevation))].sort((x, y) => x - y);
-  const interval = elevations.length > 1 ? Math.min(...elevations.slice(1).map((e, i) => e - elevations[i]).filter((d) => d > 0)) : undefined;
+  const interval = b.terrain.contourIntervalM ?? (elevations.length > 1 ? Math.min(...elevations.slice(1).map((e, i) => e - elevations[i]).filter((d) => d > 0)) : undefined);
   return {
     source: g.source,
     cellM: Math.round(g.cellX * g.groundPerUnit * 100) / 100,
@@ -1316,7 +1316,7 @@ export function terrainFacts(b: SlidesBundle) {
     sections,
     water: nearestWater(waterRings, centre, g.groundPerUnit),
     waterName: WATER_WORD.test(waterRaw) ? titleCase(waterRaw) : undefined,
-    contours: { count: b.terrain.contours.length, intervalM: interval, source: 'NSW Spatial Services elevation theme' },
+    contours: { count: b.terrain.contours.length, intervalM: interval, source: b.terrain.contourSource ?? 'NSW Spatial Services elevation theme', attribution: b.terrain.contourAttribution },
   };
 }
 
@@ -1345,7 +1345,7 @@ export function terrainSentences(b: SlidesBundle, f: ReturnType<typeof terrainFa
     const dir = (s: typeof a) => `${bearingName((s.bearing + 180) % 360)} to ${bearingName(s.bearing)}`;
     out.push(`Section A–A′ runs ${fmtNum(Math.round(a.lengthM))} m ${dir(a)} down the fall through the site, from ${rl(a.rlFrom ?? 0)} at A to ${a.crossesWater ? 'the water' : rl(a.rlTo ?? 0)} at A′; B–B′ crosses it, ${fmtNum(Math.round(bb.lengthM))} m ${dir(bb)}, between ${rl(bb.rlMin)} and ${rl(bb.rlMax)}.`);
   }
-  out.push(`${f.contours.count ? `Contours at ${f.contours.intervalM ?? 2} m are the State's mapped contours; ` : 'No mapped contour falls in this window; '}the hillshade, the sections and the levels come from the 5 m elevation model at ${f.cellM} m cells, a photogrammetric surface and not a survey: read its levels as indicative to about a metre.`);
+  out.push(`${f.contours.count ? `${/NSW|State/i.test(f.contours.source) ? `Contours at ${f.contours.intervalM ?? 2} m are the State's mapped contours` : `The contours are the ${f.contours.source}`}; ` : 'No mapped contour falls in this window; '}the hillshade, the sections and the levels come from the 5 m elevation model at ${f.cellM} m cells, a photogrammetric surface and not a survey: read its levels as indicative to about a metre.`);
   return out;
 }
 
@@ -1355,7 +1355,7 @@ export function terrainSlide(b: SlidesBundle): Slide {
   const sentences = terrainSentences(b, f);
   const textHtml = sentences.map(para).join('') +
     placeholder('Narrative — for the author: what the fall means for levels, access and views, where the building meets the ground, how the section reads against the neighbours and the ridge or the water, and whether cut, fill or a split level is the answer.') +
-    `<div class="fine">Sources: NSW 5 m elevation model (stereo imagery, DFSI 2019) via SIX Maps; NSW Spatial Services elevation theme contours; roads, rail and cadastre from NSW Spatial Services. Levels in metres AHD. Retrieved ${b.generatedAt.slice(0, 10)}.</div>`;
+    `<div class="fine">Sources: NSW 5 m elevation model (stereo imagery, DFSI 2019) via SIX Maps; contours from ${esc(f?.contours.source ?? 'NSW Spatial Services')}${f?.contours.attribution ? ` (${esc(f.contours.attribution)})` : ''}; roads, rail and cadastre from NSW Spatial Services. Levels in metres AHD. Retrieved ${b.generatedAt.slice(0, 10)}.</div>`;
   const sub = [b.siteAddress, f?.site ? `RL ${f.site.min.toFixed(1)}–${f.site.max.toFixed(1)}` : '', f?.slope?.faces && f.site && f.site.max - f.site.min >= 0.5 ? `falls to the ${f.slope.faces}` : ''].filter(Boolean).join(' · ');
   if (!f || !b.terrain.dem) {
     return { id: '06_topography', title: 'Topography', subtitle: sub, textHtml,
