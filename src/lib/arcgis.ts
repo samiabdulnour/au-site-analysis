@@ -32,6 +32,7 @@ function esriToGeoJson(data: any): GeoJSONFC {
       if (g.rings) geometry = { type: 'Polygon', coordinates: g.rings };
       else if (g.paths) geometry = { type: 'MultiLineString', coordinates: g.paths };
       else if (g.x !== undefined) geometry = { type: 'Point', coordinates: [g.x, g.y] };
+      else if (g.points) geometry = { type: 'MultiPoint', coordinates: g.points };
     }
     features.push({ type: 'Feature', geometry, properties: f.attributes ?? {} });
   }

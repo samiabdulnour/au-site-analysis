@@ -27,6 +27,7 @@ import { fetchPeopleData, type PeopleData } from './fetch/people.js';
 import { fetchDemGrid, type DemGrid } from './fetch/terrain.js';
 import { fetchBuildings, type BuildingsData } from './fetch/buildings.js';
 import { fetchMovement, type MovementData } from './fetch/movement.js';
+import { fetchGreenSpace, type GreenData } from './fetch/greenSpace.js';
 import type { SiteControls } from './fetch/nsw.js';
 
 export interface CategorizedPoint extends NamedPoint { cat: string | null }
@@ -536,6 +537,8 @@ export interface SlidesBundle {
   buildings: BuildingsData;
   /** Isochrones, bus, cycleways, footways, one-way streets and active frontages over the tall panel. */
   movement: MovementData;
+  /** Tree canopy by mesh block over the wide strip; open space, Green Grid assets, facilities, NPWS estate and street trees over the tall panel. */
+  green: GreenData;
   /** The wide walking-reach strip: its panel, a lighter base (major roads, rail, stations, water) and the suburbs to label. */
   wide: { panel: Panel; base: BaseData; suburbs: GeoJSONFC };
   warnings: string[];
@@ -597,7 +600,8 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
   const fromDate = new Date(); fromDate.setFullYear(fromDate.getFullYear() - (opts.daYears ?? 5));
   const from = [fromDate.toISOString().slice(0, 10), PORTAL_MANDATED].sort()[1];
 
-  const [zoning, hob, heritage, shr, policy, water, lots, roads, railLines, stations, context, property, controls, proposals, feed, people, dem, contourSet, buildings, movement, wideRoads, wideRail, wideStations, wideWater, wideSuburbs] = await Promise.all([
+  const emptyGreen: GreenData = { canopy: { blocks: [], covered: false, year: 2022, source: 'Greater Sydney Tree Canopy Cover 2022 (NSW ePlanning)' }, openSpace: [], openSpaceWide: [], greenGrid: [], parkPoints: [], facilities: [], npws: [], trees: { points: [] }, fetchedAt: new Date().toISOString() };
+  const [zoning, hob, heritage, shr, policy, water, lots, roads, railLines, stations, context, property, controls, proposals, feed, people, dem, contourSet, buildings, movement, green, wideRoads, wideRail, wideStations, wideWater, wideSuburbs] = await Promise.all([
     soft(fetchZoningDetailed(extent), emptyFC, 'zoning'),
     soft(fetchHobDetailed(extent), emptyFC, 'height of building'),
     soft(fetchHeritageDetailed(extent), emptyFC, 'heritage'),
@@ -618,6 +622,7 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
     soft(fetchContours(fetchExtent, log), { lines: [], intervalM: 2, source: 'NSW Spatial Services' }, 'contours'),
     soft(fetchBuildings(daExtent, log), { source: 'none' as const, buildings: [], fetchedAt: new Date().toISOString() }, 'buildings'),
     fetchMovement(daExtent, geo.center, log),
+    soft(fetchGreenSpace(daExtent, wideExtent, log), emptyGreen, 'green and public domain'),
     soft(fetchRoads(wideExtent, 'roadnamebase IS NOT NULL AND functionhierarchy <= 5'), [], 'wide roads'),
     soft(fetchRailLines(wideExtent), { train: [], tram: [] }, 'wide rail lines'),
     soft(fetchTrainStations(wideExtent), [], 'wide stations'),
@@ -650,7 +655,7 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
     base: { water, lots, roads, rail: railLines, stations, siteLots },
     controls, property, context, housingTarget, cos,
     daPanel, applications, daMeta, proposals, people,
-    terrain: { dem, contours: contourSet.lines, contourIntervalM: contourSet.intervalM, contourSource: contourSet.source, contourAttribution: contourSet.attribution }, buildings, movement,
+    terrain: { dem, contours: contourSet.lines, contourIntervalM: contourSet.intervalM, contourSource: contourSet.source, contourAttribution: contourSet.attribution }, buildings, movement, green,
     wide: { panel: widePanel, base: { water: wideWater, lots: emptyFC, roads: wideRoads, rail: wideRail, stations: wideStations, siteLots }, suburbs: wideSuburbs },
     warnings,
   };

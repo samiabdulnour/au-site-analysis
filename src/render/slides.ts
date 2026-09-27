@@ -13,7 +13,7 @@ import { tpl } from './template.js';
 import { esc } from './chrome.js';
 import {
   panelProjector, panelExtent, baseLayers, overLayers, panelFurniture, furnitureBox, siteMark, siteLabelPoint, stationMode, ringsPath, fcPath, ringStats, clippedStats, hatchPath, bboxOf,
-  legendSvg, swatchFill, swatchHatch, swatchLine, LabelSpacer, type Proj, type LegendEntry, type FurnitureCorner,
+  legendSvg, swatchFill, swatchHatch, swatchLine, LabelSpacer, type Proj, type Panel, type LegendEntry, type FurnitureCorner,
 } from './minimap.js';
 import { zoneFill, heritageStyle, hobRamp, POLICY_STYLE } from './lepPalette.js';
 import { geomRings, pointInRing, titleCase, type PolicyArea, type PolicyKind } from '../fetch/planning.js';
@@ -26,6 +26,7 @@ import { lineWithProjection, pairedBars, columns, sectionSvg } from './charts.js
 import { hillshadeDataUri, planSections, sampleSection, siteLevels, gridExtremes, nearestWater, bearingName } from './terrainMap.js';
 import { METRES_PER_STOREY, type Building } from '../fetch/buildings.js';
 import type { CyclewayKind } from '../fetch/movement.js';
+import type { FacilityKind } from '../fetch/greenSpace.js';
 
 export const SLIDE_W = 420;
 export const SLIDE_H = 297;
@@ -1657,6 +1658,39 @@ function lineLengthM(coords: number[][]): number {
   return m;
 }
 
+/** The wide strip's lettering, shared by the slides that carry one: suburbs, stations, the site, the tall panel's window and the scale bar. */
+function wideStripLabels(b: SlidesBundle, wproj: Proj, wp: Panel): string {
+  const t = tpl();
+  const p = b.daPanel;
+  const out: string[] = [];
+  const wspacer = new LabelSpacer(wp.wMm, wp.hMm, 60);
+  const [sx, sy] = wproj(mercatorToLonLat(p.center).lon, mercatorToLonLat(p.center).lat);
+  wspacer.take(sx, sy, 6, 6);
+  // suburbs, at the centroid of what falls inside the strip
+  for (const ft of b.wide.suburbs.features) {
+    const name = String(ft.properties?.suburbname ?? '');
+    if (!name) continue;
+    let best = { area: 0, cx: 0, cy: 0 };
+    for (const r of geomRings(ft.geometry)) { const s = clippedStats(r, wproj, wp); if (s.area > best.area) best = s; }
+    if (best.area < 150) continue;
+    const text = titleCase(name);
+    if (wspacer.take(best.cx, best.cy, labelW(text, 2.2) + 1, 3)) out.push(`<text x="${best.cx.toFixed(1)}" y="${(best.cy + 0.8).toFixed(1)}" text-anchor="middle" font-size="2.2" letter-spacing="0.08em" fill="#7a7a7a" stroke="#ffffff" stroke-width="0.5" paint-order="stroke">${esc(text.toUpperCase())}</text>`);
+  }
+  for (const s of b.wide.base.stations) {
+    const [x, y] = wproj(s.lon, s.lat);
+    if (x < 2 || y < 2 || x > wp.wMm - 2 || y > wp.hMm - 2) continue;
+    const text = tidyStation(s.name);
+    if (wspacer.take(x + 3 + labelW(text, 2) / 2, y, labelW(text, 2), 2.6)) out.push(label(x + 3 + labelW(text, 2) / 2, y, text, 2, '#222'));
+  }
+  out.push(`<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="2.2" fill="#ffffff" stroke="${t.site}" stroke-width="0.6"/><circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="0.9" fill="${t.site}"/>`);
+  // the tall panel's window, so the two maps tie together
+  const [wx0, wy0] = wproj(mercatorToLonLat({ x: panelExtent(p).xmin, y: panelExtent(p).ymax }).lon, mercatorToLonLat({ x: panelExtent(p).xmin, y: panelExtent(p).ymax }).lat);
+  const [wx1, wy1] = wproj(mercatorToLonLat({ x: panelExtent(p).xmax, y: panelExtent(p).ymin }).lon, mercatorToLonLat({ x: panelExtent(p).xmax, y: panelExtent(p).ymin }).lat);
+  out.push(`<rect x="${wx0.toFixed(1)}" y="${wy0.toFixed(1)}" width="${(wx1 - wx0).toFixed(1)}" height="${(wy1 - wy0).toFixed(1)}" fill="none" stroke="${t.dimension}" stroke-width="0.3" stroke-dasharray="1.2,0.8"/>`);
+  out.push(panelFurniture(wp, 'right'));
+  return out.join('\n');
+}
+
 export function movementFacts(b: SlidesBundle) {
   const mv = b.movement;
   const centre = b.daPanel.center;
@@ -1804,30 +1838,7 @@ export function movementSlide(b: SlidesBundle): Slide {
   for (const iso of [...mv.isochrones].sort((x, y) => y.minutes - x.minutes))
     wparts.push(`<path d="${ringsPath(iso.rings, wproj)}" fill="${ISO_FILL[iso.minutes] ?? '#9ec5f4'}" fill-opacity="0.28" stroke="${ISO_FILL[iso.minutes] ?? '#9ec5f4'}" stroke-width="0.3" fill-rule="evenodd"/>`);
   wparts.push(overLayers(b.wide.base, wproj, wp, 'none'));
-  const wspacer = new LabelSpacer(wp.wMm, wp.hMm, 60);
-  // suburbs, at the centroid of what falls inside the strip
-  for (const ft of b.wide.suburbs.features) {
-    const name = String(ft.properties?.suburbname ?? '');
-    if (!name) continue;
-    let best = { area: 0, cx: 0, cy: 0 };
-    for (const r of geomRings(ft.geometry)) { const s = clippedStats(r, wproj, wp); if (s.area > best.area) best = s; }
-    if (best.area < 150) continue;
-    const text = titleCase(name);
-    if (wspacer.take(best.cx, best.cy, labelW(text, 2.2) + 1, 3)) wparts.push(`<text x="${best.cx.toFixed(1)}" y="${(best.cy + 0.8).toFixed(1)}" text-anchor="middle" font-size="2.2" letter-spacing="0.08em" fill="#8a8a8a">${esc(text.toUpperCase())}</text>`);
-  }
-  for (const s of b.wide.base.stations) {
-    const [x, y] = wproj(s.lon, s.lat);
-    if (x < 2 || y < 2 || x > wp.wMm - 2 || y > wp.hMm - 2) continue;
-    const text = tidyStation(s.name);
-    if (wspacer.take(x + 3 + labelW(text, 2) / 2, y, labelW(text, 2), 2.6)) wparts.push(label(x + 3 + labelW(text, 2) / 2, y, text, 2, '#222'));
-  }
-  const [sx, sy] = wproj(mercatorToLonLat(p.center).lon, mercatorToLonLat(p.center).lat);
-  wparts.push(`<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="2.2" fill="#ffffff" stroke="${t.site}" stroke-width="0.6"/><circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="0.9" fill="${t.site}"/>`);
-  // the tall panel's window, so the two maps tie together
-  const [wx0, wy0] = wproj(mercatorToLonLat({ x: panelExtent(p).xmin, y: panelExtent(p).ymax }).lon, mercatorToLonLat({ x: panelExtent(p).xmin, y: panelExtent(p).ymax }).lat);
-  const [wx1, wy1] = wproj(mercatorToLonLat({ x: panelExtent(p).xmax, y: panelExtent(p).ymin }).lon, mercatorToLonLat({ x: panelExtent(p).xmax, y: panelExtent(p).ymin }).lat);
-  wparts.push(`<rect x="${wx0.toFixed(1)}" y="${wy0.toFixed(1)}" width="${(wx1 - wx0).toFixed(1)}" height="${(wy1 - wy0).toFixed(1)}" fill="none" stroke="${t.dimension}" stroke-width="0.3" stroke-dasharray="1.2,0.8"/>`);
-  wparts.push(panelFurniture(wp, 'right'));
+  wparts.push(wideStripLabels(b, wproj, wp));
   const wideSvg = `<svg width="${wp.wMm}mm" height="${wp.hMm}mm" viewBox="0 0 ${wp.wMm} ${wp.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
     <defs><clipPath id="clip-wide"><rect x="0" y="0" width="${wp.wMm}" height="${wp.hMm}"/></clipPath></defs>
     <g clip-path="url(#clip-wide)" font-family="${t.font}">${wparts.join('\n')}</g>
@@ -1848,11 +1859,383 @@ export function movementSlide(b: SlidesBundle): Slide {
   return { id: '09_movement', title: 'Movement', subtitle: sub, textHtml, figureHtml };
 }
 
+// ---- slide 10: green and public domain -------------------------------------
+
+/** Canopy classes for the strip: one hue, light to dark, on the dataset's own breaks. */
+const CANOPY_CLASSES = [
+  { max: 10, fill: '#eef4e6', label: 'under 10 %' },
+  { max: 20, fill: '#cfe3bd', label: '10–20 %' },
+  { max: 30, fill: '#a3cc8e', label: '20–30 %' },
+  { max: 40, fill: '#6fae5f', label: '30–40 %' },
+  { max: Infinity, fill: '#3d8a3a', label: 'over 40 %' },
+];
+const canopyFill = (pct: number) => (CANOPY_CLASSES.find((c) => pct < c.max) ?? CANOPY_CLASSES[CANOPY_CLASSES.length - 1]).fill;
+const OPEN_SPACE_STYLE: Record<string, { fill: string; stroke: string; word: string }> = {
+  RE1: { fill: '#c9e2b4', stroke: '#8fbf7a', word: 'public recreation reserve' },
+  RE2: { fill: '#e7efdc', stroke: '#b3cba3', word: 'private recreation land' },
+  C1: { fill: '#b5d4a3', stroke: '#6f9f5c', word: 'national park or nature reserve' },
+  C2: { fill: '#b5d4a3', stroke: '#6f9f5c', word: 'conservation land' },
+  C3: { fill: '#c3dbb2', stroke: '#6f9f5c', word: 'environmental management land' },
+};
+const PARK_GREEN = '#2f6b2f', GREEN_GRID_COLOUR = '#2f7a3a', NPWS_COLOUR = '#1f6b2f', TREE_DOT = '#3a7d3a';
+/** Green Grid classes that are open space people use, as against cemeteries, golf courses and operational land. */
+const PARK_CLASSES = new Set(['Parks and Gardens', 'Sports', 'Bushland', 'Waterfront', 'Civic', 'OSL', 'Community Purpose', 'Heritage and Cultural']);
+const GREEN_GRID_WORD: Record<string, string> = {
+  'Parks and Gardens': 'park', Sports: 'sportsground', Bushland: 'bushland', Waterfront: 'foreshore', Civic: 'civic space', OSL: 'open space', 'Community Purpose': 'community land',
+  'Heritage and Cultural': 'heritage or cultural land', Cemetery: 'cemetery', 'Golf Course': 'golf course', Operational: 'operational land', Special: 'special use', 'Undeveloped or Unspecified': 'undeveloped land', None: 'open space',
+};
+const SIG_RANK: Record<string, number> = { Regional: 3, District: 2, Local: 1 };
+const FACILITY_LETTER: Record<FacilityKind, string> = { school: 'S', childcare: 'K', library: 'L', community: 'C', pool: 'P', health: 'H', culture: 'A' };
+const FACILITY_WORD: Record<FacilityKind, [string, string]> = {
+  school: ['school', 'schools'], childcare: ['childcare centre or preschool', 'childcare centres and preschools'], library: ['library', 'libraries'], community: ['community facility', 'community facilities'],
+  pool: ['pool or leisure centre', 'pools and leisure centres'], health: ['hospital or health centre', 'hospitals and health centres'], culture: ['museum, gallery or theatre', 'museums, galleries and theatres'],
+};
+const FACILITY_SHORT: Record<FacilityKind, [string, string]> = { school: ['school', 'schools'], childcare: ['childcare', 'childcare'], library: ['library', 'libraries'], community: ['community', 'community'], pool: ['pool', 'pools'], health: ['health', 'health'], culture: ['museum', 'museums'] };
+const CANOPY_CAT_WORD: Record<string, string> = { 'Hospital/Medical': 'hospital', Road: 'road-reserve', Other: 'other' };
+const canopyCatWord = (c: string) => CANOPY_CAT_WORD[c] ?? c.toLowerCase();
+const NAME_ACRONYMS = new Set(['PCYC', 'RSL', 'TAFE', 'UTS', 'UNSW', 'ACU', 'YMCA', 'YWCA', 'CBD', 'ANZAC', 'NSW']);
+const tidyName = (s: string) => s.trim().replace(/[,.;:\s]+$/, '').replace(/([/'’-]\s?)([a-z])/g, (_m, p, c) => p + c.toUpperCase()).replace(/\bMc([a-z])/g, (_m, c) => `Mc${c.toUpperCase()}`)
+  .replace(/\b(And|Of|The)\b(?!$)/g, (m, _w, off) => (off === 0 ? m : m.toLowerCase())).replace(/\b[A-Za-z]{2,5}\b/g, (w) => (NAME_ACRONYMS.has(w.toUpperCase()) ? w.toUpperCase() : w)).replace(/\s+/g, ' ');
+/** Closer than this to the site's boundary, an open space adjoins it. */
+const ADJOINS_M = 12;
+const walkPhrase = (m: number | null) => (m === 5 ? 'within a five-minute walk' : m === 10 ? 'five to ten minutes on foot' : m === 15 ? 'ten to fifteen minutes on foot' : 'beyond a fifteen-minute walk');
+const listWords = (xs: string[]) => (xs.length > 1 ? `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}` : xs[0] ?? '');
+
+interface OpenSpaceEntity {
+  name?: string; kind: string; cls?: string; significance?: string; source: 'greengrid' | 'zoning'; rings: number[][][];
+  areaHa: number; distanceM: number; bearing: number; walkBand: number | null; park: boolean; windowMm2: number;
+}
+
+export function greenFacts(b: SlidesBundle) {
+  const g = b.green;
+  const p = b.daPanel;
+  const proj = panelProjector(p);
+  const centre = p.center;
+  const centreLL = mercatorToLonLat(centre);
+  const k = mercatorScaleFactor(centreLL.lat);
+  const toM = (lon: number, lat: number) => lonLatToMercator({ lon, lat });
+  const siteRings = b.base.siteLots.features.flatMap((f) => geomRings(f.geometry));
+  const siteMerc = siteRings.flat().map(([lon, lat]) => toM(lon, lat));
+  const distFromSite = (lon: number, lat: number) => { const m = toM(lon, lat); let d = Infinity; for (const s of siteMerc) d = Math.min(d, Math.hypot(s.x - m.x, s.y - m.y)); return d / k; };
+  const bearingFrom = (lon: number, lat: number) => { const m = toM(lon, lat); return ((Math.atan2(m.x - centre.x, m.y - centre.y) * 180) / Math.PI + 360) % 360; };
+  const ringAreaM2 = (ring: number[][]) => { let s = 0; const pts = ring.map(([lon, lat]) => toM(lon, lat)); for (let i = 0; i < pts.length; i++) { const a = pts[i], c = pts[(i + 1) % pts.length]; s += a.x * c.y - c.x * a.y; } return Math.abs(s / 2) / (k * k); };
+  const isos = b.movement?.isochrones ?? [];
+  const walkBand = (rings: number[][][]): number | null => {
+    for (const min of ISO_MINUTES) {
+      const iso = isos.find((i) => i.minutes === min);
+      if (!iso) continue;
+      for (const r of rings) { const step = Math.max(1, Math.floor(r.length / 80)); for (let i = 0; i < r.length; i += step) if (iso.rings.some((ir) => pointInRing(r[i][0], r[i][1], ir))) return min; }
+    }
+    return null;
+  };
+  const nearestVertex = (rings: number[][][]) => { let best = { d: Infinity, lon: centreLL.lon, lat: centreLL.lat }; for (const r of rings) for (const [lon, lat] of r) { const d = distFromSite(lon, lat); if (d < best.d) best = { d, lon, lat }; } return best; };
+  const windowArea = (rings: number[][][]) => rings.reduce((a, r) => a + clippedStats(r, proj, p).area, 0);
+  const make = (o: Omit<OpenSpaceEntity, 'areaHa' | 'distanceM' | 'bearing' | 'walkBand' | 'windowMm2'>): OpenSpaceEntity => {
+    const nv = nearestVertex(o.rings);
+    return { ...o, areaHa: Math.round(o.rings.reduce((a, r) => a + ringAreaM2(r), 0) / 100) / 100, distanceM: Math.round(nv.d), bearing: bearingFrom(nv.lon, nv.lat), walkBand: walkBand(o.rings), windowMm2: windowArea(o.rings) };
+  };
+
+  // The open spaces: Green Grid assets merged by name where the Grid reaches, and every recreation or conservation zone polygon the Grid does not already cover, named by the open-space point inside it.
+  const merged = new Map<string, { name: string; cls: string; significance: string; rings: number[][][] }>();
+  for (const a of g.greenGrid) {
+    const name = tidyName(a.name) || 'Unnamed open space';
+    const key = name.toUpperCase();
+    const cur = merged.get(key);
+    if (cur) { cur.rings.push(...a.rings); if ((SIG_RANK[a.significance] ?? 0) > (SIG_RANK[cur.significance] ?? 0)) cur.significance = a.significance; }
+    else merged.set(key, { name, cls: a.cls, significance: a.significance, rings: [...a.rings] });
+  }
+  const spaces: OpenSpaceEntity[] = [];
+  for (const a of merged.values()) spaces.push(make({ name: a.name, kind: GREEN_GRID_WORD[a.cls] ?? a.cls.toLowerCase(), cls: a.cls, significance: a.significance, source: 'greengrid', rings: a.rings, park: PARK_CLASSES.has(a.cls) }));
+  // A zone polygon a Green Grid asset already stands for (either's centroid inside the other, or the same name) is not counted twice; the rest merge by the name of the point inside them, and unnamed slivers under 500 m² are left to the drawing.
+  const ggRings = g.greenGrid.flatMap((a) => a.rings);
+  const ggCentroids = g.greenGrid.map((a) => centroidLL(a.rings.slice().sort((r1, r2) => ringAreaM2(r2) - ringAreaM2(r1))[0]));
+  const bbox = (rings: number[][][]) => { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (const r of rings) for (const [x, y] of r) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); } return { x0, y0, x1, y1 }; };
+  const ggBoxes = g.greenGrid.map((a) => bbox(a.rings));
+  // how much of a zone polygon's bounding box a Green Grid asset's covers
+  const boxOverlap = (zb: ReturnType<typeof bbox>) => Math.max(0, ...ggBoxes.map((gb) => { const w = Math.min(zb.x1, gb.x1) - Math.max(zb.x0, gb.x0), h = Math.min(zb.y1, gb.y1) - Math.max(zb.y0, gb.y0); const za = (zb.x1 - zb.x0) * (zb.y1 - zb.y0); return w > 0 && h > 0 && za > 0 ? (w * h) / za : 0; }));
+  const zoneByName = new Map<string, { name?: string; code: string; rings: number[][][] }>();
+  for (const z of g.openSpace) {
+    const big = z.rings.slice().sort((r1, r2) => ringAreaM2(r2) - ringAreaM2(r1))[0];
+    const c = centroidLL(big);
+    if (ggRings.some((r) => pointInRing(c[0], c[1], r)) || ggCentroids.some((gc) => z.rings.some((r) => pointInRing(gc[0], gc[1], r))) || (g.greenGrid.length && boxOverlap(bbox(z.rings)) >= 0.6)) continue;
+    const inside = g.parkPoints.filter((pt) => z.rings.some((r) => pointInRing(pt.lon, pt.lat, r)));
+    const named = inside.find((pt) => pt.kind === 'Park') ?? inside[0];
+    const name = named ? tidyName(named.name) : undefined;
+    if (name && merged.has(name.toUpperCase())) continue;
+    const key = name ? `${z.code}:${name.toUpperCase()}` : `${z.code}:#${zoneByName.size}`;
+    const cur = zoneByName.get(key);
+    if (cur) cur.rings.push(...z.rings); else zoneByName.set(key, { name, code: z.code, rings: [...z.rings] });
+  }
+  for (const z of zoneByName.values()) {
+    const st = OPEN_SPACE_STYLE[z.code];
+    const e = make({ name: z.name, kind: st?.word ?? z.code, source: 'zoning', rings: z.rings, park: z.code === 'RE1' });
+    if (e.name || e.areaHa >= 0.05) spaces.push(e);
+  }
+  spaces.sort((x, y) => x.distanceM - y.distanceM);
+  const parks = spaces.filter((s) => s.park);
+
+  // Public open space as a share of the window's land (the RE1 zone, clipped to the window; water taken out of the land).
+  const mm2ToHa = (p.scale / 1000) ** 2 / 1e4;
+  const windowMm2 = p.wMm * p.hMm;
+  const waterMm2 = Math.min(windowMm2, b.base.water.features.flatMap((f) => geomRings(f.geometry)).reduce((a, r) => a + clippedStats(r, proj, p).area, 0));
+  const re1Mm2 = g.openSpace.filter((z) => z.code === 'RE1').reduce((a, z) => a + windowArea(z.rings), 0);
+  const landMm2 = Math.max(1, windowMm2 - waterMm2);
+
+  // Canopy: the site's mesh block, and area-weighted shares over the window and the strip (water blocks left out of the land).
+  const blocks = g.canopy.blocks;
+  const siteBlock = blocks.find((bl) => bl.rings.some((r) => pointInRing(centreLL.lon, centreLL.lat, r))) ?? null;
+  const weighted = (pr: Proj, panel: Panel) => {
+    let a = 0, ap = 0, a10 = 0, av = 0;
+    const cats = new Map<string, { a: number; ap: number }>();
+    for (const bl of blocks) {
+      if (bl.cat === 'Water') continue;
+      let area = 0;
+      for (const r of bl.rings) area += clippedStats(r, pr, panel).area;
+      if (area <= 0) continue;
+      a += area; ap += area * bl.pct; a10 += area * bl.over10Pct; av += area * bl.vegPct;
+      const c = cats.get(bl.cat) ?? { a: 0, ap: 0 }; c.a += area; c.ap += area * bl.pct; cats.set(bl.cat, c);
+    }
+    if (!a) return null;
+    return { pct: ap / a, over10Pct: a10 / a, vegPct: av / a, byCategory: [...cats.entries()].map(([cat, c]) => ({ cat, pct: c.ap / c.a, shareOfLandPct: (c.a / a) * 100 })).sort((x, y) => y.shareOfLandPct - x.shareOfLandPct) };
+  };
+
+  const facilities = g.facilities.map((f) => ({ ...f, name: tidyName(f.name), distanceM: Math.round(distFromSite(f.lon, f.lat)), bearing: bearingFrom(f.lon, f.lat) })).sort((x, y) => x.distanceM - y.distanceM);
+  const facilityCounts = (Object.keys(FACILITY_WORD) as FacilityKind[]).map((kind) => ({ kind, n: facilities.filter((f) => f.kind === kind).length })).filter((c) => c.n);
+  const crowns = g.trees.points.map((t) => t.canopyM).sort((x, y) => x - y);
+  const npws = g.npws.map((n) => { const nv = nearestVertex(n.rings); return { name: n.name, type: n.type, distanceM: Math.round(nv.d), bearing: bearingFrom(nv.lon, nv.lat) }; }).sort((x, y) => x.distanceM - y.distanceM);
+
+  return {
+    windowM: { w: Math.round((p.wMm / 1000) * p.scale), h: Math.round((p.hMm / 1000) * p.scale) },
+    wideKm: { w: Math.round(((b.wide.panel.wMm / 1000) * b.wide.panel.scale) / 100) / 10, h: Math.round(((b.wide.panel.hMm / 1000) * b.wide.panel.scale) / 100) / 10 },
+    canopy: {
+      covered: g.canopy.covered, year: g.canopy.year, source: g.canopy.source, targetPct: 40,
+      siteBlock: siteBlock ? { pct: siteBlock.pct, over10Pct: siteBlock.over10Pct, vegPct: siteBlock.vegPct, areaHa: siteBlock.areaHa, cat: siteBlock.cat, type: siteBlock.type } : null,
+      window: weighted(proj, p), wide: weighted(panelProjector(b.wide.panel), b.wide.panel),
+    },
+    openSpace: {
+      publicHa: Math.round(re1Mm2 * mm2ToHa * 10) / 10, publicShareOfLandPct: (re1Mm2 / landMm2) * 100, zonesPresent: [...new Set(g.openSpace.map((z) => z.code))],
+      spaces, parks: parks.length, nearest: parks[0] ?? null, largest: parks.slice().sort((x, y) => y.areaHa - x.areaHa)[0] ?? null,
+      within: isos.length ? ISO_MINUTES.map((m) => ({ minutes: m, parks: parks.filter((s) => s.walkBand !== null && s.walkBand <= m).length })) : [],
+      greenGrid: { assets: merged.size, districtOrRegional: [...merged.values()].filter((a) => (SIG_RANK[a.significance] ?? 0) >= 2).map((a) => ({ name: a.name, significance: a.significance })) },
+    },
+    facilities, facilityCounts,
+    trees: { count: g.trees.points.length, nearSite: g.trees.points.filter((t) => distFromSite(t.lon, t.lat) <= 30).length, medianCrownM: crowns.length ? crowns[Math.floor(crowns.length / 2)] : null, source: g.trees.source ?? null },
+    npws,
+  };
+}
+
+export function greenSentences(b: SlidesBundle, f: ReturnType<typeof greenFacts>): string[] {
+  const out: string[] = [];
+  const c = f.canopy;
+  if (c.covered && c.siteBlock) {
+    const sb = c.siteBlock;
+    let s = `Tree canopy covered ${fmtPct(sb.pct)} of the site's mesh block in ${c.year} (${sb.areaHa >= 0.1 ? `${fmtNum(sb.areaHa, 1)} ha of ${canopyCatWord(sb.cat)} land` : `a ${canopyCatWord(sb.cat)} block of ${fmtNum(Math.round(sb.areaHa * 1e4))} m²`})`;
+    if (c.window) s += `, ${fmtPct(c.window.pct)} of the land in the ${fmtNum(f.windowM.w)} × ${fmtNum(f.windowM.h)} m window`;
+    if (c.wide) s += ` and ${fmtPct(c.wide.pct)} across the ${f.wideKm.w} × ${f.wideKm.h} km strip`;
+    s += `, against the Region Plan's ${c.targetPct} % target for Greater Sydney.`;
+    if (sb.over10Pct > 0) s += ` Vegetation over 10 m tall covers ${fmtPct(sb.over10Pct)} of the block.`;
+    out.push(s);
+    const cat = (name: string) => c.window?.byCategory.find((x) => x.cat === name);
+    const road = cat('Road'), res = cat('Residential'), rec = cat('Recreational');
+    if (road && res) out.push(`Within the window the canopy is ${fmtPct(road.pct)} over the road reserves${rec ? `, ${fmtPct(res.pct)} over residential blocks and ${fmtPct(rec.pct)} over recreation land` : ` and ${fmtPct(res.pct)} over residential blocks`}.`);
+  } else if (c.covered) out.push(`The site's block is not among the mapped canopy mesh blocks; across the window's land the ${c.year} canopy is ${c.window ? fmtPct(c.window.pct) : 'unknown'}, against the Region Plan's ${c.targetPct} % target.`);
+  else out.push(`The Greater Sydney tree canopy dataset (${c.year}) does not reach this window, so canopy cover is not mapped here.`);
+
+  const o = f.openSpace;
+  if (o.parks && o.nearest && o.largest) {
+    const name = (s: OpenSpaceEntity) => s.name ?? `an unnamed ${s.kind}`;
+    const one = o.parks === 1;
+    const count = one ? 'one park or reserve' : `${o.parks} parks and reserves`;
+    let s = o.publicHa > 0
+      ? `Public open space (RE1) covers ${fmtNum(o.publicHa, 1)} ha of the window, ${fmtPct(o.publicShareOfLandPct)} of its land, in ${count}`
+      : `${one ? 'One park or reserve falls' : `${count} fall`} in the window, none of it zoned RE1`;
+    s += o.nearest.distanceM < ADJOINS_M
+      ? `. ${one ? `${name(o.nearest).replace(/^an /, 'An ')} (${fmtNum(o.nearest.areaHa, 1)} ha)` : `The nearest, ${name(o.nearest)},`} adjoins the site on its ${bearingName(o.nearest.bearing)} side`
+      : `. ${one ? `${name(o.nearest)} (${fmtNum(o.nearest.areaHa, 1)} ha)` : `The nearest, ${name(o.nearest)},`} is ${fmtNum(o.nearest.distanceM)} m to the ${bearingName(o.nearest.bearing)}${o.nearest.walkBand ? `, ${walkPhrase(o.nearest.walkBand)}` : ''}`;
+    s += one ? '.' : o.largest !== o.nearest ? `; the largest is ${name(o.largest)}, ${fmtNum(o.largest.areaHa, 1)} ha.` : `, and at ${fmtNum(o.largest.areaHa, 1)} ha the largest.`;
+    out.push(s);
+    if (o.greenGrid.assets) {
+      const dr = o.greenGrid.districtOrRegional;
+      const bySig = ['Regional', 'District'].map((sig) => ({ sig, names: dr.filter((a) => a.significance === sig).map((a) => a.name) })).filter((x) => x.names.length);
+      const sig = bySig.length ? `; ${bySig.map((x) => `${listWords(x.names)} ${x.names.length === 1 ? 'is' : 'are'} of ${x.sig.toLowerCase()} significance`).join(' and ')}` : '';
+      if (one && o.greenGrid.assets === 1) out.push(`It is a Green Grid asset${bySig.length ? `, of ${bySig[0].sig.toLowerCase()} significance` : ', of local significance'}.`);
+      else out.push(`${o.greenGrid.assets === 1 ? 'One' : o.greenGrid.assets} of the window's open spaces ${o.greenGrid.assets === 1 ? 'is a Green Grid asset' : 'are Green Grid assets'}${sig || (o.greenGrid.assets === 1 ? ', of local significance' : ', all of local significance')}.`);
+    }
+    if (o.within.length && !one) {
+      const w = (m: number) => o.within.find((x) => x.minutes === m)?.parks ?? 0;
+      out.push(`On foot from the site, ${w(5)} of them ${w(5) === 1 ? 'lies' : 'lie'} within five minutes and ${w(10)} within ten.`);
+    }
+  } else out.push('No park or reserve falls within the window: no land zoned for public recreation and no Green Grid asset.');
+
+  if (f.facilities.length) {
+    const groups = f.facilityCounts.map(({ kind, n }) => `${n === 1 ? (/^[aeiou]/.test(FACILITY_WORD[kind][0]) ? 'an' : 'a') + ' ' + FACILITY_WORD[kind][0] : FACILITY_WORD[kind][1]}: ${f.facilities.filter((x) => x.kind === kind).slice(0, 4).map((x) => x.name).join(', ')}${n > 4 ? ` and ${n - 4} more` : ''}`);
+    out.push(`Public facilities in the window: ${groups.join('; ')}.`);
+  } else out.push('No school, childcare centre, library, pool, health or community facility is mapped in the window.');
+  if (f.trees.count) out.push(`${f.trees.source?.name ?? 'The council inventory'} records ${fmtNum(f.trees.count)} trees in the window${f.trees.nearSite ? `, ${f.trees.nearSite} of them within 30 m of the site` : ''}${f.trees.medianCrownM ? `; the typical crown is ${fmtNum(f.trees.medianCrownM)} m across` : ''}.`);
+  if (f.npws.length) out.push(`${f.npws[0].name} (${f.npws[0].type.toLowerCase()}) lies ${fmtNum(f.npws[0].distanceM)} m to the ${bearingName(f.npws[0].bearing)}.`);
+  return out;
+}
+
+export function greenSlide(b: SlidesBundle): Slide {
+  const f = greenFacts(b);
+  const g = b.green;
+  const t = tpl();
+  const sentences = greenSentences(b, f);
+  const textHtml = sentences.map(para).join('') +
+    placeholder('Narrative — for the author: what the green network offers the site and what the site can give back (a through-link, a frontage to the park, canopy on the street), where the deep soil and the big trees should go, and which public facilities the new residents will use.') +
+    `<div class="fine">Sources: tree canopy from NSW ePlanning's Greater Sydney Tree Canopy Cover 2022 (2 m Geoscape surface features by modified mesh block); recreation and conservation zones from EPI_Primary_Planning_Layers; Green Grid existing assets, open-space and facility points from the ePlanning public-spaces layers; NPWS estate from DCCEEW; schools and facilities also from NSW Spatial Services features of interest${f.trees.source ? `; ${f.trees.source.attribution}` : ''}; walking isochrones from Valhalla on OpenStreetMap; roads, rail, water and cadastre from NSW Spatial Services. Retrieved ${b.generatedAt.slice(0, 10)}.</div>`;
+  const sub = [b.siteAddress, f.canopy.siteBlock ? `canopy ${fmtPct(f.canopy.siteBlock.pct)} on the block` : '', f.openSpace.nearest ? `${f.openSpace.nearest.name ?? 'open space'} ${f.openSpace.nearest.distanceM < ADJOINS_M ? 'adjoins' : `${fmtNum(f.openSpace.nearest.distanceM)} m`}` : ''].filter(Boolean).join(' · ');
+
+  // The tall panel: open space, the Green Grid, the NPWS estate, walking reach, street trees, facilities.
+  const p = b.daPanel;
+  const proj = panelProjector(p);
+  const parts: string[] = [baseLayers(b.base, proj, p)];
+  for (const code of ['RE2', 'C3', 'C2', 'C1', 'RE1']) {
+    const zs = g.openSpace.filter((z) => z.code === code);
+    if (!zs.length) continue;
+    const st = OPEN_SPACE_STYLE[code];
+    parts.push(`<path d="${zs.map((z) => ringsPath(z.rings, proj)).join('')}" fill="${st.fill}" stroke="${st.stroke}" stroke-width="0.2" fill-rule="evenodd"/>`);
+  }
+  let hatchId = 0;
+  for (const n of g.npws) parts.push(hatchPath(ringsPath(n.rings, proj), `npws${hatchId++}`, NPWS_COLOUR, bboxOf(n.rings, proj), 1.4));
+  if (g.greenGrid.length) parts.push(`<path d="${g.greenGrid.map((a) => ringsPath(a.rings, proj)).join('')}" fill="none" stroke="${GREEN_GRID_COLOUR}" stroke-width="0.35" stroke-dasharray="1.2,0.7" fill-rule="evenodd"/>`);
+  const isos = b.movement?.isochrones ?? [];
+  for (const iso of [...isos].sort((x, y) => y.minutes - x.minutes))
+    parts.push(`<path d="${ringsPath(iso.rings, proj)}" fill="none" stroke="${ISO_FILL[iso.minutes] ?? '#9ec5f4'}" stroke-width="0.45" stroke-dasharray="1.6,1" fill-rule="evenodd"/>`);
+  parts.push(overLayers(b.base, proj, p, 'wash'));
+  if (g.trees.points.length) {
+    const mmPerM = 1000 / p.scale;
+    parts.push(`<g fill="${TREE_DOT}" fill-opacity="0.55" stroke="${TREE_DOT}" stroke-width="0.1">${g.trees.points.map((tr) => { const [x, y] = proj(tr.lon, tr.lat); const r = Math.min(1.6, Math.max(0.28, (tr.canopyM / 2) * mmPerM)); return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r.toFixed(2)}"/>`; }).join('')}</g>`);
+  }
+  const spacer = new LabelSpacer(p.wMm, p.hMm, 40);
+  const isoSpacer = spacer;
+  // the site's outline and its name keep their room
+  const siteRings = b.base.siteLots.features.flatMap((ft) => geomRings(ft.geometry));
+  if (siteRings.length) { const sb = bboxOf(siteRings, proj); spacer.take((sb.x0 + sb.x1) / 2, (sb.y0 + sb.y1) / 2 - 1.5, sb.x1 - sb.x0 + 2, sb.y1 - sb.y0 + 5); }
+  for (const iso of isos) {
+    const pts = iso.rings[0]?.map(([lon, lat]) => proj(lon, lat)) ?? [];
+    const top = pts.filter((q) => q[0] > 3 && q[0] < p.wMm - 3 && q[1] > 3 && q[1] < p.hMm - 3).sort((q, r) => q[1] - r[1])[0];
+    if (top && isoSpacer.take(top[0], top[1] - 1.5, 9, 2.6)) parts.push(label(top[0], top[1] - 1.5, `${iso.minutes} min`, 2, ISO_FILL[iso.minutes] ?? '#5598e7'));
+  }
+  // Park names at the centroid of what falls inside the window, largest first.
+  const labels: string[] = [];
+  for (const s of [...f.openSpace.spaces].sort((x, y) => y.windowMm2 - x.windowMm2)) {
+    if (!s.name || s.windowMm2 < 10) continue;
+    let best = { area: 0, cx: 0, cy: 0 };
+    for (const r of s.rings) { const st = clippedStats(r, proj, p); if (st.area > best.area) best = st; }
+    const size = s.windowMm2 > 60 ? 2.1 : 1.85;
+    if (spacer.take(best.cx, best.cy, labelW(s.name, size), size * 1.3)) labels.push(`<text x="${best.cx.toFixed(1)}" y="${(best.cy + size * 0.35).toFixed(1)}" text-anchor="middle" font-size="${size}" font-style="italic" font-weight="700" fill="${PARK_GREEN}" stroke="#ffffff" stroke-width="${(size * 0.22).toFixed(2)}" paint-order="stroke">${esc(s.name)}</text>`);
+  }
+  for (const n of g.npws) {
+    let best = { area: 0, cx: 0, cy: 0 };
+    for (const r of n.rings) { const st = clippedStats(r, proj, p); if (st.area > best.area) best = st; }
+    if (best.area > 10 && spacer.take(best.cx, best.cy, labelW(n.name, 2.1), 2.8)) labels.push(label(best.cx, best.cy, n.name, 2.1, NPWS_COLOUR));
+  }
+  // Facilities: a lettered square and the name beside it.
+  const facilityMarks: string[] = [];
+  for (const fa of f.facilities) {
+    const [x, y] = proj(fa.lon, fa.lat);
+    if (x < 1 || y < 1 || x > p.wMm - 1 || y > p.hMm - 1) continue;
+    facilityMarks.push(`<rect x="${(x - 1.25).toFixed(1)}" y="${(y - 1.25).toFixed(1)}" width="2.5" height="2.5" fill="${t.ink}" stroke="#ffffff" stroke-width="0.3"/><text x="${x.toFixed(1)}" y="${(y + 0.6).toFixed(1)}" text-anchor="middle" font-size="1.7" font-weight="700" fill="#ffffff">${FACILITY_LETTER[fa.kind]}</text>`);
+    const w = labelW(fa.name, 1.85);
+    for (const [lx, ly] of [[x + 1.9 + w / 2, y], [x - 1.9 - w / 2, y], [x, y + 2.9], [x, y - 2.9], [x, y + 5.4], [x, y - 5.4]] as [number, number][])
+      if (spacer.take(lx, ly, w, 2.5)) { labels.push(label(lx, ly, fa.name, 1.85, '#222')); break; }
+  }
+  parts.push(...facilityMarks, ...labels, siteMark(b.base, proj, 'outline'), panelFurniture(p, 'right'));
+  const mapSvg = `<svg width="${p.wMm}mm" height="${p.hMm}mm" viewBox="0 0 ${p.wMm} ${p.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
+    <defs><clipPath id="clip-green"><rect x="0" y="0" width="${p.wMm}" height="${p.hMm}"/></clipPath></defs>
+    <g clip-path="url(#clip-green)" font-family="${t.font}">${parts.join('\n')}</g>
+    <rect x="0.1" y="0.1" width="${p.wMm - 0.2}" height="${p.hMm - 0.2}" fill="none" stroke="${t.rule}" stroke-width="0.2"/>
+  </svg>`;
+
+  // Right: figures, legend, the open-space table.
+  const rightX = FIELD_X + PANEL_W + GUTTER, rightW = FIELD_W - PANEL_W - GUTTER;
+  const near = f.openSpace.nearest;
+  const c = f.canopy;
+  const tiles = [
+    { v: c.siteBlock ? fmtPct(c.siteBlock.pct) : '—', l: c.siteBlock ? `tree canopy ${c.year} on the site's mesh block${c.window ? ` · ${fmtPct(c.window.pct)} across the window` : ''}` : c.covered ? 'canopy: the site\'s block is not in the dataset' : 'canopy: the Greater Sydney dataset does not reach here' },
+    { v: f.openSpace.zonesPresent.includes('RE1') ? fmtPct(f.openSpace.publicShareOfLandPct) : '—', l: f.openSpace.zonesPresent.includes('RE1') ? `of the window's land is public open space (RE1) · ${fmtNum(f.openSpace.publicHa, 1)} ha` : 'no land zoned for public recreation in the window' },
+    { v: near ? (near.distanceM < ADJOINS_M ? 'adjoins' : `${fmtNum(near.distanceM)} m`) : '—', l: near ? (near.distanceM < ADJOINS_M ? `${near.name ?? `a ${near.kind}`} on the site's ${bearingName(near.bearing)} boundary` : `to ${near.name ?? `the nearest ${near.kind}`}${near.walkBand ? `, within ${near.walkBand} min on foot` : ''}`) : 'no park or reserve in the window' },
+    { v: f.facilities.length ? String(f.facilities.length) : '—', l: f.facilities.length ? `public facilit${f.facilities.length === 1 ? 'y' : 'ies'}: ${f.facilityCounts.map(({ kind, n }) => `${n} ${FACILITY_SHORT[kind][n === 1 ? 0 : 1]}`).join(', ')}` : 'no school, library, pool or community facility mapped' },
+  ].map((tl) => `<div class="tile"><div class="tv${tl.v.length > 9 ? ' long' : ''}">${esc(tl.v)}</div><div class="tl">${esc(tl.l)}</div></div>`).join('');
+  const sw = (inner: string) => `<svg width="5mm" height="3.6mm" viewBox="0 0 5 3.6">${inner}</svg>`;
+  const legendRows: [string, string][] = [];
+  const zonesPresent = f.openSpace.zonesPresent;
+  if (zonesPresent.includes('RE1')) legendRows.push([sw(`<rect x="0" y="0.4" width="5" height="2.8" fill="${OPEN_SPACE_STYLE.RE1.fill}" stroke="${OPEN_SPACE_STYLE.RE1.stroke}" stroke-width="0.25"/>`), 'Public open space (RE1 public recreation zone)']);
+  if (zonesPresent.includes('RE2')) legendRows.push([sw(`<rect x="0" y="0.4" width="5" height="2.8" fill="${OPEN_SPACE_STYLE.RE2.fill}" stroke="${OPEN_SPACE_STYLE.RE2.stroke}" stroke-width="0.25"/>`), 'Private recreation (RE2)']);
+  if (zonesPresent.some((z) => z.startsWith('C'))) legendRows.push([sw(`<rect x="0" y="0.4" width="5" height="2.8" fill="${OPEN_SPACE_STYLE.C2.fill}" stroke="${OPEN_SPACE_STYLE.C2.stroke}" stroke-width="0.25"/>`), `Conservation zones (${zonesPresent.filter((z) => z.startsWith('C')).join(', ')})`]);
+  if (g.greenGrid.length) legendRows.push([sw(`<rect x="0.3" y="0.4" width="4.4" height="2.8" fill="none" stroke="${GREEN_GRID_COLOUR}" stroke-width="0.35" stroke-dasharray="1.2,0.7"/>`), 'Green Grid existing asset (Greater Sydney Green Grid), named']);
+  if (g.npws.length) legendRows.push([sw(`<rect x="0" y="0.4" width="5" height="2.8" fill="none" stroke="${NPWS_COLOUR}" stroke-width="0.3"/><line x1="0" y1="3.2" x2="2.8" y2="0.4" stroke="${NPWS_COLOUR}" stroke-width="0.22"/><line x1="2.2" y1="3.2" x2="5" y2="0.4" stroke="${NPWS_COLOUR}" stroke-width="0.22"/>`), 'National Parks and Wildlife Service estate']);
+  if (g.trees.points.length) legendRows.push([sw(`<circle cx="1.2" cy="1.8" r="0.5" fill="${TREE_DOT}" fill-opacity="0.6"/><circle cx="2.6" cy="1.8" r="0.8" fill="${TREE_DOT}" fill-opacity="0.6"/><circle cx="4.2" cy="1.8" r="0.6" fill="${TREE_DOT}" fill-opacity="0.6"/>`), `Trees at crown size (${f.trees.source?.name ?? 'council inventory'})`]);
+  if (f.facilities.length) legendRows.push([sw(`<rect x="1.25" y="0.55" width="2.5" height="2.5" fill="${t.ink}"/><text x="2.5" y="2.4" text-anchor="middle" font-size="1.7" font-weight="700" fill="#ffffff">${FACILITY_LETTER[f.facilityCounts[0].kind]}</text>`), `Public facilities: ${f.facilityCounts.map(({ kind }) => `${FACILITY_LETTER[kind]} ${FACILITY_WORD[kind][0]}`).join(', ')}`]);
+  if (isos.length) legendRows.push([sw(`<path d="M0,1.8 H5" stroke="${ISO_FILL[5]}" stroke-width="0.45" stroke-dasharray="1.6,1"/>`), `Walking isochrones from the site: ${isos.map((i) => i.minutes).sort((x, y) => x - y).join(', ')} minutes`]);
+  if (c.covered) legendRows.push([sw(CANOPY_CLASSES.map((cl, i) => `<rect x="${i}" y="0.4" width="1" height="2.8" fill="${cl.fill}"/>`).join('') + `<rect x="0" y="0.4" width="5" height="2.8" fill="none" stroke="#999" stroke-width="0.15"/>`), `Tree canopy ${c.year} by mesh block, in the strip below: ${CANOPY_CLASSES[0].label} to ${CANOPY_CLASSES[CANOPY_CLASSES.length - 1].label}`]);
+  const legend = legendRows.map(([s, txt]) => `<div class="lg">${s}<span>${esc(txt)}</span></div>`).join('');
+  const yTable = FIELD_Y + PANEL_TITLE_H + 24 + legendRows.length * 3.7 + 4;
+  const tableRoom = FIELD_Y + PANEL_TITLE_H + DA_PANEL_H - (yTable + PANEL_TITLE_H);
+  const maxRows = Math.max(2, Math.min(7, Math.floor((tableRoom - 6) / 4.7)));
+  const kindWord = (s: OpenSpaceEntity) => `${s.kind}${s.significance && (SIG_RANK[s.significance] ?? 0) >= 2 ? ` · ${s.significance.toLowerCase()}` : ''}`;
+  const rows = f.openSpace.spaces.filter((s) => s.park).slice(0, maxRows).map((s) => `<tr><td>${esc(s.name ?? `Unnamed ${s.kind}`)}</td><td>${esc(kindWord(s))}</td><td class="r">${s.areaHa >= 0.1 ? `${fmtNum(s.areaHa, 1)} ha` : `${fmtNum(Math.round(s.areaHa * 1e4))} m²`}</td><td class="r">${s.distanceM < ADJOINS_M ? 'adjoins' : `${fmtNum(s.distanceM)} m`}</td><td>${esc(bearingName(s.bearing))}</td><td>${isos.length ? (s.walkBand ? `within ${s.walkBand} min` : 'over 15 min') : '—'}</td></tr>`).join('');
+  const table = rows
+    ? `<table class="da"><thead><tr><th>Open space</th><th style="width:30mm">Kind</th><th class="r" style="width:14mm">Area</th><th class="r" style="width:14mm">Distance</th><th style="width:17mm">Direction</th><th style="width:20mm">On foot</th></tr></thead><tbody>${rows}</tbody></table>`
+    : emptyBox(rightW, 24, 'no park or reserve within the window');
+
+  // Bottom: the canopy strip.
+  const wp = b.wide.panel;
+  const wproj = panelProjector(wp);
+  const wparts: string[] = [`<rect x="0" y="0" width="${wp.wMm}" height="${wp.hMm}" fill="#ffffff"/>`];
+  const wideZones = g.openSpaceWide ?? [];
+  if (c.covered) {
+    const byClass = new Map<string, string[]>();
+    for (const bl of g.canopy.blocks) { if (bl.cat === 'Water') continue; const fill = canopyFill(bl.pct); (byClass.get(fill) ?? byClass.set(fill, []).get(fill)!).push(ringsPath(bl.rings, wproj)); }
+    for (const [fill, ds] of byClass) wparts.push(`<path d="${ds.join('')}" fill="${fill}" stroke="#ffffff" stroke-width="0.08" fill-rule="evenodd"/>`);
+  } else {
+    for (const code of ['RE2', 'C3', 'C2', 'C1', 'RE1']) {
+      const zs = wideZones.filter((z) => z.code === code);
+      if (!zs.length) continue;
+      const st = OPEN_SPACE_STYLE[code];
+      wparts.push(`<path d="${zs.map((z) => ringsPath(z.rings, wproj)).join('')}" fill="${st.fill}" stroke="${st.stroke}" stroke-width="0.15" fill-rule="evenodd"/>`);
+    }
+  }
+  if (b.wide.base.water.features.length) wparts.push(`<path d="${fcPath(b.wide.base.water, wproj)}" fill="${t.water}" fill-rule="evenodd"/>`);
+  wparts.push(overLayers(b.wide.base, wproj, wp, 'none'));
+  wparts.push(wideStripLabels(b, wproj, wp));
+  if (c.covered) {
+    // the class key, inside the strip
+    let x = 3;
+    const keyParts: string[] = [];
+    keyParts.push(`<text x="${x}" y="3.1" font-size="2" font-weight="700" fill="#333">Canopy ${c.year}</text>`);
+    x += labelW(`Canopy ${c.year}`, 2) + 1.5;
+    for (const cl of CANOPY_CLASSES) {
+      keyParts.push(`<rect x="${x.toFixed(1)}" y="0.9" width="2.8" height="2.8" fill="${cl.fill}" stroke="#999" stroke-width="0.15"/><text x="${(x + 3.6).toFixed(1)}" y="3.1" font-size="2" fill="#333">${esc(cl.label)}</text>`);
+      x += 3.6 + labelW(cl.label, 2) + 1.2;
+    }
+    wparts.push(`<g transform="translate(2.5,2.5)"><rect x="-1" y="-0.6" width="${(x - 1).toFixed(1)}" height="5" fill="#ffffff" fill-opacity="0.92" stroke="#bbb" stroke-width="0.2"/>${keyParts.join('')}</g>`);
+  } else wparts.push(emptyNote([`The Greater Sydney tree canopy dataset does not reach this window${wideZones.length ? ': the recreation and conservation zones instead' : ''}.`]));
+  const wideSvg = `<svg width="${wp.wMm}mm" height="${wp.hMm}mm" viewBox="0 0 ${wp.wMm} ${wp.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
+    <defs><clipPath id="clip-canopy"><rect x="0" y="0" width="${wp.wMm}" height="${wp.hMm}"/></clipPath></defs>
+    <g clip-path="url(#clip-canopy)" font-family="${t.font}">${wparts.join('\n')}</g>
+    <rect x="0.1" y="0.1" width="${wp.wMm - 0.2}" height="${wp.hMm - 0.2}" fill="none" stroke="${t.rule}" stroke-width="0.2"/>
+  </svg>`;
+
+  const yWide = FIELD_Y + PANEL_TITLE_H + DA_PANEL_H + GUTTER;
+  const figureHtml = `
+    <div class="abs ptitle" style="left:${FIELD_X}mm;top:${FIELD_Y}mm;width:${PANEL_W}mm">Green and public domain<span class="pnote">1:${fmtNum(p.scale)}</span></div>
+    <div class="abs" style="left:${FIELD_X}mm;top:${FIELD_Y + PANEL_TITLE_H}mm">${mapSvg}</div>
+    <div class="abs tiles" style="left:${rightX}mm;top:${FIELD_Y + PANEL_TITLE_H}mm;width:${rightW}mm">${tiles}</div>
+    <div class="abs legend" style="left:${rightX}mm;top:${FIELD_Y + PANEL_TITLE_H + 24}mm;width:${rightW}mm">${legend}</div>
+    <div class="abs ptitle" style="left:${rightX}mm;top:${yTable}mm;width:${rightW}mm">Open space<span class="pnote">nearest first · distance from the site boundary</span></div>
+    <div class="abs" style="left:${rightX}mm;top:${yTable + PANEL_TITLE_H}mm;width:${rightW}mm">${table}</div>
+    <div class="abs ptitle" style="left:${FIELD_X}mm;top:${yWide}mm;width:${FIELD_W}mm">${c.covered ? `Tree canopy ${c.year}` : 'Open space around the site'}<span class="pnote">1:${fmtNum(wp.scale)} · ${c.covered ? `canopy share of each mesh block${c.wide ? ` · ${fmtPct(c.wide.pct)} of the strip's land` : ''}` : 'recreation and conservation zones · canopy is not mapped here'} · the dashed box is the map above</span></div>
+    <div class="abs" style="left:${FIELD_X}mm;top:${yWide + PANEL_TITLE_H}mm">${wideSvg}</div>`;
+  return { id: '10_green_public_domain', title: 'Green and public domain', subtitle: sub, textHtml, figureHtml };
+}
+
 // ---- the deck -----------------------------------------------------------------
 
 export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; slides: Slide[] } {
   const facts = planningFacts(b);
-  const slides = [planningOverviewSlide(b, facts), planningControlsSlide(b, facts), terrainSlide(b), developmentSlide(b, facts), builtFormSlide(b, facts), movementSlide(b), peopleSlide(b)];
+  const slides = [planningOverviewSlide(b, facts), planningControlsSlide(b, facts), terrainSlide(b), developmentSlide(b, facts), builtFormSlide(b, facts), movementSlide(b), greenSlide(b), peopleSlide(b)];
   const t = tpl();
   const footerLeft = ['SITE ANALYST — OVERALL ANALYSIS', b.siteAddress, meta.client ? `for ${meta.client}` : '', meta.jobNo ? `job ${meta.jobNo}` : ''].filter(Boolean).join(' · ');
   const pages = slides.map((s, i) => `
@@ -1933,6 +2316,7 @@ export function slidesFacts(b: SlidesBundle) {
     development: (() => { const d = developmentFacts(b); return { ...d, sentences: developmentSentences(b, d, facts) }; })(),
     people: peopleFacts(b),
     movement: (() => { const f = movementFacts(b); return { ...f, sentences: movementSentences(b, f) }; })(),
+    green: (() => { const f = greenFacts(b); return { ...f, openSpace: { ...f.openSpace, spaces: f.openSpace.spaces.map(({ rings: _r, ...s }) => s), nearest: f.openSpace.nearest && (({ rings: _r, ...s }) => s)(f.openSpace.nearest), largest: f.openSpace.largest && (({ rings: _r, ...s }) => s)(f.openSpace.largest) }, sentences: greenSentences(b, f) }; })(),
     builtForm: (() => { const f = builtFormFacts(b, facts); return { ...f, sentences: builtFormSentences(b, f) }; })(),
     terrain: (() => { const f = terrainFacts(b); return f ? { ...f, sections: f.sections.map((s) => ({ ...s, samples: s.samples.filter((_, i) => i % 4 === 0) })), sentences: terrainSentences(b, f) } : { available: false, sentences: terrainSentences(b, f) }; })(),
     propertyApi: b.property,

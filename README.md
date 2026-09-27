@@ -501,7 +501,17 @@ minutes), bus stops (Transport for NSW with the key, else OpenStreetMap),
 bus routes, cycleways, footways and one-way streets (OpenStreetMap through
 Overpass) and the LEP's active street frontages, with a table of the
 nearest stations and a wide walking-reach strip at 1:16000 naming the
-suburbs and stations around. Then *development activity*: every
+suburbs and stations around. Then *green and public domain*: the parks and
+reserves around the site (the recreation and conservation zones, and the
+Greater Sydney Green Grid's named assets where the Grid reaches), the
+National Parks estate, the public facilities — schools, childcare, libraries,
+pools, health and community centres — the council's street trees drawn at
+crown size where an inventory is open (City of Sydney), the walking
+isochrones again, four figures (the canopy on the site's block, the share of
+the window that is public open space, the nearest park, the facilities), a
+table of the nearest open spaces with area, distance and walk band, and a
+wide strip of the 2022 tree canopy by mesh block, against the Region Plan's
+40 % target. Then *development activity*: every
 application lodged in the council area over the last five years, from the
 Planning Portal's Online DA feed, clipped to the window around the site. The
 ones of a scale that shapes the context — four storeys, ten dwellings or

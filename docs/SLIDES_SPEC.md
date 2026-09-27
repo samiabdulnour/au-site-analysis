@@ -444,12 +444,12 @@ Open-Meteo archive (ERA5): `https://archive-api.open-meteo.com/v1/archive?latitu
 ## 7. Status
 
 Implemented: slides 03 (planning overview), 04 (planning controls), 06
-(topography), 07 (development activity), 08 (built form), 09 (movement) and
-16 (people and market) —
+(topography), 07 (development activity), 08 (built form), 09 (movement), 10
+(green and public domain) and 16 (people and market) —
 `src/render/slides.ts`, `src/render/minimap.ts`, `src/render/charts.ts`,
 `src/render/terrainMap.ts`, `src/fetch/planning.ts`, `src/fetch/terrain.ts`,
 `src/fetch/buildings.ts` with `src/py/overture_buildings.py`,
-`src/fetch/movement.ts`, `src/fetch/da.ts`, `src/fetch/abs.ts`, `src/fetch/tzp24.ts`,
+`src/fetch/movement.ts`, `src/fetch/greenSpace.ts`, `src/fetch/da.ts`, `src/fetch/abs.ts`, `src/fetch/tzp24.ts`,
 `src/fetch/valuation.ts`, `src/fetch/schools.ts` (gathered by
 `src/fetch/people.ts`), `runSlidesPipeline` in `src/pipeline.ts`; `--type
 slides` on the CLI and the `slides` drawing on the web. The maps use the
@@ -507,6 +507,41 @@ Overpass is the answer) the slide says which layers are unknown rather
 than drawing them empty. The wide strip fetches major roads (function
 hierarchy 5 and above), rail, stations, water and suburb polygons for a
 4.7 × 1.6 km window.
+
+Slide 10 reads the tree canopy from `Planning_Portal_Tree_Canopy` layer 1,
+which is not a raster but the Greater Sydney canopy of 2022 by modified
+mesh block: each block carries its canopy share, its vegetation shares by
+height band (0–3, 3–10, 10–15, over 15 m) and its land-use category
+(Residential, Road, Recreational, Commercial, Water…). The wide strip's
+2,000–2,400 blocks come generalised to about 3 m (`maxAllowableOffset`, in
+degrees since the output is 4326) in two pages and under a megabyte, and
+are cached a month; the slide draws them as a choropleth on the layer's own
+breaks and weights them by the area that falls inside each window, water
+blocks left out of the land, so the figures are "the site's block", "the
+window" and "the strip" rather than a point sample. The dataset stops at
+Greater Sydney's edge: outside it the slide says so and the strip shows the
+recreation and conservation zones of the wider area instead, with a note.
+Open space is the RE1, RE2 and C1–C3 zone polygons over the tall panel
+(fetched for that panel, since the planning panel's zoning is shorter), and
+where the Greater Sydney Green Grid reaches, its existing assets
+(`Planning_Portal_Public_Spaces` layer 252: ASSET_NAME, LAY_CLASS among
+Parks and Gardens, Sports, Bushland, Civic, Waterfront, OSL, Cemetery, Golf
+Course, Operational…, SIGNIFICANCE Local, District or Regional) stand for
+the parks, merged by name since a park comes as several parcels; a zone
+polygon the Grid already covers (centroid inside, or bounding boxes
+overlapping by 60 %) is not counted twice, and unnamed slivers under 500 m²
+stay in the drawing but out of the count. Park names otherwise come from
+the open-space points (layer 260, the POI types Park, Sports Field, Picnic
+Area…). Public facilities are layer 262 (libraries, museums, galleries,
+community facilities: sparse, two museums in the North Sydney window) plus
+the State's building-complex points classed by name (school, childcare,
+library, pool, health, community, culture), since the layer's type codes
+have no published domain. The NPWS estate comes from
+`Tenure/NPWS_AllManagedLand` (named, unlike the Protection theme's copy).
+Street trees come from the same council registry as the site sheet
+(`src/fetch/trees.ts`), drawn at crown size: 2,442 in the Waterloo window.
+Distances are from the site's boundary, so a park across the lane reads as
+adjoining rather than 0 m.
 
 Slide 16 looks the site up in the ASGS (SA2, LGA, suburb, capital-city
 region), reads the five census tables for the SA2, the LGA and the capital
