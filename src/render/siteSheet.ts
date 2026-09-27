@@ -13,6 +13,7 @@ import { tpl } from './template.js';
 import { exitPoint } from '../fetch/views.js';
 import { NOMINAL_CANOPY_M } from '../fetch/trees.js';
 import { buildParkingBands, type Orientation } from '../lib/parking.js';
+import { levelAt, type ContourM } from '../lib/levels.js';
 
 // Parking, in the office's plum.
 const PARK = '#9b5b6e';
@@ -599,27 +600,17 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
       text-anchor="middle" font-size="${MAP_TEXT}" font-weight="700" fill="${RED()}">${txt}</text>`);
   }
 
-  // corner levels from contours (IDW of the two nearest distinct elevations)
-  const rlOf = (lon: number, lat2: number): number | null => {
-    const P = lonLatToMercator({ lon, lat: lat2 });
-    const found: { e: number; d: number }[] = [];
-    for (const c of sb.contours) {
-      let dMin = Infinity;
-      for (let i = 0; i < c.coords.length; i += 2) {
-        const Q = lonLatToMercator({ lon: c.coords[i][0], lat: c.coords[i][1] });
-        const d = Math.hypot(Q.x - P.x, Q.y - P.y);
-        if (d < dMin) dMin = d;
-      }
-      const prev = found.find((f) => f.e === c.elevation);
-      if (prev) { if (dMin < prev.d) prev.d = dMin; }
-      else found.push({ e: c.elevation, d: dMin });
-    }
-    found.sort((a, b) => a.d - b.d);
-    if (!found.length) return null;
-    if (found.length === 1 || found[0].d < 1) return found[0].e;
-    const [f1, f2] = found;
-    return (f1.e / f1.d + f2.e / f2.d) / (1 / f1.d + 1 / f2.d);
+  // Corner levels: interpolated across the slope between the contours that
+  // bracket each corner (see lib/levels.ts), in ground metres.
+  const groundM = (lon: number, lat2: number) => {
+    const m = lonLatToMercator({ lon, lat: lat2 });
+    return { x: m.x / k, y: m.y / k };
   };
+  const contoursM: ContourM[] = sb.contours.map((c) => ({
+    z: c.elevation, pts: c.coords.map(([lon, lat2]) => groundM(lon, lat2)),
+  }));
+  const rlOf = (lon: number, lat2: number): number | null =>
+    levelAt(groundM(lon, lat2), contoursM, sb.contourIntervalM ?? 2);
   const cornerRls: { i: number; rl: number }[] = [];
   for (const i of corners) {
     const rl = rlOf(sb.siteRing[i][0], sb.siteRing[i][1]);

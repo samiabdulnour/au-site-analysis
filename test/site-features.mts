@@ -12,6 +12,7 @@ import { resolveCanopy, parseMetres, treeFromOsm, mergeTrees, type SiteTree } fr
 import { parkingSide } from '../src/fetch/siteData.js';
 import { buildParkingBands, vergeM } from '../src/lib/parking.js';
 import { firstObstruction, bearingAndDistance, exitPoint, eyeAboveGround } from '../src/fetch/views.js';
+import { levelAt, type ContourM } from '../src/lib/levels.js';
 import { lonLatToMercator, mercatorToLonLat, mercatorScaleFactor } from '../src/lib/geo.js';
 
 const failures: string[] = [];
@@ -149,6 +150,50 @@ const local = ([lon, lat]: [number, number]) => {
     firstObstruction(atShore, 7_000, 14, 0.5, { checkToM: 4_000 }) === null);
   check('a river across the same plateau is not', firstObstruction(atShore, 4_030, 14, 0.5, { checkToM: 4_000 }) !== null);
   check('the eye sits just under the height limit', eyeAboveGround(9.5) === 8.5 && eyeAboveGround(undefined) === 8 && eyeAboveGround(2) === 3);
+}
+
+// ---- the level at a point, between the contours that bracket it ----------
+{
+  // A uniform slope rising north: 1 m contours 10 m apart, running east-west.
+  const line = (z: number, y: number): ContourM => ({ z, pts: [{ x: -100, y }, { x: 100, y }] });
+  const slope = [line(40, 0), line(41, 10), line(42, 20), line(43, 30)];
+  const lv = (x: number, y: number) => levelAt({ x, y }, slope, 1)!;
+  check('a point 3 m up a 10 m rise is 0.3 m up', near(lv(0, 13), 41.3, 0.01), `got ${lv(0, 13)}`);
+  check('on the line is the line', lv(5, 20) === 42);
+  check('past the last contour the slope carries on', near(lv(0, 35), 43.5, 0.01), `got ${lv(0, 35)}`);
+  check('but never more than one interval', near(lv(0, 60), 44, 0.01), `got ${lv(0, 60)}`);
+  check('below the first contour likewise', near(lv(0, -4), 39.6, 0.01), `got ${lv(0, -4)}`);
+
+  // The case that put a corner half a metre low: the 43 line is closer than
+  // the 45 line, but it is on the far side of the 44 line. The point is
+  // between 44 and 45, and the nearest-two average said 43.7.
+  const nose = [line(43, -7), line(44, 0), line(45, 13)];
+  check('the contour on the far side of the nearest one is ignored', near(levelAt({ x: 0, y: 3.6 }, nose, 1)!, 44.28, 0.01),
+    `got ${levelAt({ x: 0, y: 3.6 }, nose, 1)}`);
+
+  // A bend: the 41 line wraps the point on three sides and the 42 line lies
+  // beyond its bottom, so the bend is a gully coming down from the open side.
+  // The ground inside is below 41, by the slope the 41 and 42 lines set.
+  const bend: ContourM[] = [
+    { z: 41, pts: [{ x: -30, y: 20 }, { x: -6, y: 20 }, { x: -6, y: 0 }, { x: 6, y: 0 }, { x: 6, y: 20 }, { x: 30, y: 20 }] },
+    { z: 42, pts: [{ x: -30, y: -10 }, { x: 30, y: -10 }] },
+  ];
+  check('inside a bend the level follows the slope through it', near(levelAt({ x: 0, y: 5 }, bend, 1)!, 40.5, 0.01),
+    `got ${levelAt({ x: 0, y: 5 }, bend, 1)}`);
+  // The same bend with the 40 line through its opening: the gully is
+  // bracketed, 5 m from the 41 line and 10 m from the 40 line.
+  const gully = [...bend, line(40, 15)];
+  check('a line through the opening brackets the gully', near(levelAt({ x: 0, y: 5 }, gully, 1)!, 41 - 5 / 15, 0.01),
+    `got ${levelAt({ x: 0, y: 5 }, gully, 1)}`);
+  // A closed loop with nothing inside is a knoll: above its level, not on it.
+  const knoll: ContourM[] = [
+    { z: 45, pts: [{ x: -8, y: -8 }, { x: 8, y: -8 }, { x: 8, y: 8 }, { x: -8, y: 8 }, { x: -8, y: -8 }] },
+    { z: 44, pts: [{ x: -20, y: -20 }, { x: 20, y: -20 }, { x: 20, y: 20 }, { x: -20, y: 20 }, { x: -20, y: -20 }] },
+  ];
+  const top = levelAt({ x: 0, y: 0 }, knoll, 1)!;
+  check('inside a closed loop is above it', top > 45 && top <= 46, `got ${top}`);
+
+  check('no contours gives nothing', levelAt({ x: 0, y: 0 }, [], 1) === null);
 }
 
 // ---- bearings, and where a ray leaves the site --------------------------
