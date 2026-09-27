@@ -160,6 +160,8 @@ export function pairedBars(o: PairedBarsOpts): string {
 export interface ColumnsOpts {
   w: number; h: number; font: string;
   values: { label: string; value: number; text: string; muted?: boolean }[];
+  /** A vertical reference through the column at `index` (fractional for between columns), with its label. */
+  marker?: { index: number; label: string; colour: string };
 }
 
 /** Thin columns from a baseline, values on the caps, labels beneath. */
@@ -180,6 +182,12 @@ export function columns(o: ColumnsOpts): string {
     parts.push(`<text x="${(x + barW / 2).toFixed(2)}" y="${(base - bh - 1.1).toFixed(2)}" text-anchor="middle" font-size="2.05" fill="${CHART.ink}">${esc(v.text)}</text>`);
     parts.push(`<text x="${(x + barW / 2).toFixed(2)}" y="${(base + 3.3).toFixed(2)}" text-anchor="middle" font-size="1.95" fill="${CHART.muted}">${esc(v.label)}</text>`);
   });
+  if (o.marker) {
+    const x = left + (o.marker.index + 0.5) * slot;
+    parts.push(`<line x1="${x.toFixed(2)}" y1="${(top - 1).toFixed(2)}" x2="${x.toFixed(2)}" y2="${base.toFixed(2)}" stroke="${o.marker.colour}" stroke-width="0.4" stroke-dasharray="1.4,0.8"/>`);
+    const anchor = x > w * 0.6 ? 'end' : 'start';
+    parts.push(`<text x="${(x + (anchor === 'end' ? -1.2 : 1.2)).toFixed(2)}" y="${(top + ph * 0.45).toFixed(2)}" text-anchor="${anchor}" font-size="1.9" font-weight="700" fill="${o.marker.colour}" stroke="#ffffff" stroke-width="0.4" paint-order="stroke">${esc(o.marker.label)}</text>`);
+  }
   return `${svgOpen(w, h, o.font)}${parts.join('')}</svg>`;
 }
 
@@ -192,6 +200,10 @@ export interface SectionOpts {
   ve?: number;
   siteColour: string;
   waterColour: string;
+  /** Buildings the line meets: their run along it and the RL of their top. */
+  blocks?: { d0: number; d1: number; top: number; site?: boolean; unknown?: boolean; label?: string }[];
+  /** A height plane over a run of the line, e.g. the LEP limit over the site. */
+  envelope?: { d0: number; d1: number; top: number; label: string };
 }
 
 /** A ground section: RL against distance, the site and any water marked, ends labelled. */
@@ -202,7 +214,15 @@ export function sectionSvg(o: SectionOpts): { svg: string; ve: number } {
   const pw = w - left - right, ph = h - top - bottom;
   const L = samples[samples.length - 1].d;
   const rls = samples.map((s) => s.rl);
-  const lo = Math.min(...rls), hi = Math.max(...rls);
+  const lo = Math.min(...rls), groundHi = Math.max(...rls);
+  // Buildings stretch the scale only so far: a tower is cut at the top of the
+  // plot and labelled, so the ground and the site stay legible.
+  const envTop = o.envelope ? o.envelope.top : -Infinity;
+  const tops = (o.blocks ?? []).map((b) => b.top).sort((a, b) => a - b);
+  const tallest = tops.length ? tops[tops.length - 1] : -Infinity;
+  const p90 = tops.length ? tops[Math.floor(0.9 * (tops.length - 1))] : -Infinity;
+  const cap = Math.max(Math.min(Math.max(p90, groundHi + 25), groundHi + 60), envTop + 5);
+  const hi = Math.max(groundHi, Math.min(tallest, cap), envTop);
   const sx = pw / L;                                    // mm per ground metre, horizontally
   const range = Math.max(1, hi - lo);
   let ve = o.ve ?? 0;
@@ -242,11 +262,39 @@ export function sectionSvg(o: SectionOpts): { svg: string; ve: number } {
   };
   bands('water', o.waterColour, 0.9);
   const siteRuns = bands('site', o.siteColour, 0.28);
+  // buildings: a block on the ground between d0 and d1, up to its top
+  const groundAt = (d: number) => { let best = samples[0]; for (const s of samples) if (Math.abs(s.d - d) < Math.abs(best.d - d)) best = s; return best.rl; };
+  const clipId = `sec-${Math.random().toString(36).slice(2, 8)}`;
+  parts.push(`<clipPath id="${clipId}"><rect x="0" y="${(top - 0.2).toFixed(2)}" width="${w}" height="${(base - top + 0.4).toFixed(2)}"/></clipPath>`);
+  parts.push(`<g clip-path="url(#${clipId})">`);
+  for (const bk of o.blocks ?? []) {
+    if (bk.d1 - bk.d0 < 0.5) continue;
+    const under = samples.filter((s) => s.d >= bk.d0 && s.d <= bk.d1);
+    const floor = under.length ? under : [{ d: bk.d0, rl: groundAt(bk.d0) }, { d: bk.d1, rl: groundAt(bk.d1) }];
+    const d = `M${X(bk.d0).toFixed(2)},${Y(bk.top).toFixed(2)}L${X(bk.d1).toFixed(2)},${Y(bk.top).toFixed(2)}` +
+      `L${X(bk.d1).toFixed(2)},${Y(groundAt(bk.d1)).toFixed(2)}` + [...floor].reverse().map((s) => `L${X(s.d).toFixed(2)},${Y(s.rl).toFixed(2)}`).join('') + `L${X(bk.d0).toFixed(2)},${Y(groundAt(bk.d0)).toFixed(2)}Z`;
+    parts.push(`<path d="${d}" fill="${bk.site ? o.siteColour : '#cfcdc6'}" fill-opacity="${bk.site ? 0.45 : bk.unknown ? 0.35 : 0.9}" stroke="${bk.site ? o.siteColour : '#8f8d86'}" stroke-width="0.2"${bk.unknown ? ' stroke-dasharray="0.8,0.6"' : ''}/>`);
+  }
+  parts.push('</g>');
+  for (const bk of o.blocks ?? []) {
+    if (!bk.label || X(bk.d1) - X(bk.d0) <= 6) continue;
+    const cut = bk.top > yTop + 1e-9;
+    parts.push(`<text x="${((X(bk.d0) + X(bk.d1)) / 2).toFixed(2)}" y="${(cut ? top + 2.2 : Y(bk.top) - 1).toFixed(2)}" text-anchor="middle" font-size="1.8" fill="${CHART.secondary}">${cut ? '↑ ' : ''}${esc(bk.label)}</text>`);
+  }
+  if (o.envelope) {
+    const e = o.envelope;
+    const d = `M${X(e.d0).toFixed(2)},${Y(groundAt(e.d0)).toFixed(2)}L${X(e.d0).toFixed(2)},${Y(e.top).toFixed(2)}L${X(e.d1).toFixed(2)},${Y(e.top).toFixed(2)}L${X(e.d1).toFixed(2)},${Y(groundAt(e.d1)).toFixed(2)}`;
+    parts.push(`<path d="${d}" fill="none" stroke="${o.siteColour}" stroke-width="0.45" stroke-dasharray="1.6,0.9"/>`);
+    parts.push(`<text x="${X(e.d0).toFixed(2)}" y="${(Y(e.top) - 1).toFixed(2)}" font-size="1.9" font-weight="700" fill="${o.siteColour}" stroke="#ffffff" stroke-width="0.4" paint-order="stroke">${esc(e.label)}</text>`);
+  }
   parts.push(`<path d="${line}" fill="none" stroke="${CHART.ink}" stroke-width="0.4" stroke-linejoin="round"/>`);
   // the site: a bar above the ground with its RLs at both ends
   for (const [i0, i1] of siteRuns) {
     const a = samples[i0], b = samples[i1];
-    const yb = Math.min(Y(a.rl), Y(b.rl), ...samples.slice(i0, i1 + 1).map((s) => Y(s.rl))) - 3.2;
+    // The site's bar sits above everything drawn over its run: its ground, its buildings, the height plane.
+    const over = (o.blocks ?? []).filter((bk) => bk.d1 > a.d && bk.d0 < b.d).map((bk) => Y(Math.min(bk.top, yTop)));
+    if (o.envelope && o.envelope.d1 > a.d && o.envelope.d0 < b.d) over.push(Y(Math.min(o.envelope.top, yTop)));
+    const yb = Math.min(Y(a.rl), Y(b.rl), ...samples.slice(i0, i1 + 1).map((s) => Y(s.rl)), ...over) - 3.2;
     parts.push(`<line x1="${X(a.d).toFixed(2)}" y1="${yb.toFixed(2)}" x2="${X(b.d).toFixed(2)}" y2="${yb.toFixed(2)}" stroke="${o.siteColour}" stroke-width="0.6"/>`);
     parts.push(`<line x1="${X(a.d).toFixed(2)}" y1="${yb.toFixed(2)}" x2="${X(a.d).toFixed(2)}" y2="${Y(a.rl).toFixed(2)}" stroke="${o.siteColour}" stroke-width="0.25"/>`);
     parts.push(`<line x1="${X(b.d).toFixed(2)}" y1="${yb.toFixed(2)}" x2="${X(b.d).toFixed(2)}" y2="${Y(b.rl).toFixed(2)}" stroke="${o.siteColour}" stroke-width="0.25"/>`);
@@ -254,8 +302,8 @@ export function sectionSvg(o: SectionOpts): { svg: string; ve: number } {
     parts.push(`<text x="${(X(a.d) - 0.8).toFixed(2)}" y="${(yb + 2.4).toFixed(2)}" text-anchor="end" font-size="1.9" fill="${CHART.ink}" stroke="#ffffff" stroke-width="0.4" paint-order="stroke">RL ${a.rl.toFixed(1)}</text>`);
     parts.push(`<text x="${(X(b.d) + 0.8).toFixed(2)}" y="${(yb + 2.4).toFixed(2)}" font-size="1.9" fill="${CHART.ink}" stroke="#ffffff" stroke-width="0.4" paint-order="stroke">RL ${b.rl.toFixed(1)}</text>`);
   }
-  // the highest and lowest points, unless they are the site's own labels
-  const iHi = rls.indexOf(hi), iLo = rls.indexOf(lo);
+  // the highest and lowest points of the ground, unless they are the site's own labels
+  const iHi = rls.indexOf(Math.max(...rls)), iLo = rls.indexOf(lo);
   for (const [i, anchor] of [[iHi, 'hi'], [iLo, 'lo']] as const) {
     const s = samples[i];
     if (s.site) continue;

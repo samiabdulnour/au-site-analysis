@@ -381,7 +381,9 @@ lockdown snapshot and the slide says so.
 | OSM `way["building"]` with `height` / `building:levels` | the site sheet already fetches this | public Overpass mirrors were all down at test time; the local Overpass the deployer installs is the answer |
 
 Where neither has a height, storeys from the DA record (slide 07) or a
-default by zone are the fallbacks, and the slide says so.
+default by zone are the fallbacks, and the slide says so. In use: the
+section on slide 08 draws such footprints as a dashed one-storey block and
+the map leaves them grey; a DA-storey fallback is still to come.
 
 ### 4.10 Country
 
@@ -442,9 +444,11 @@ Open-Meteo archive (ERA5): `https://archive-api.open-meteo.com/v1/archive?latitu
 ## 7. Status
 
 Implemented: slides 03 (planning overview), 04 (planning controls), 06
-(topography), 07 (development activity) and 16 (people and market) —
+(topography), 07 (development activity), 08 (built form) and 16 (people and
+market) —
 `src/render/slides.ts`, `src/render/minimap.ts`, `src/render/charts.ts`,
 `src/render/terrainMap.ts`, `src/fetch/planning.ts`, `src/fetch/terrain.ts`,
+`src/fetch/buildings.ts` with `src/py/overture_buildings.py`,
 `src/fetch/da.ts`, `src/fetch/abs.ts`, `src/fetch/tzp24.ts`,
 `src/fetch/valuation.ts`, `src/fetch/schools.ts` (gathered by
 `src/fetch/people.ts`), `runSlidesPipeline` in `src/pipeline.ts`; `--type
@@ -464,8 +468,25 @@ across it, both spanning the window; the sections are sampled from the
 grid every 2.5 m with the site and any water flagged, and drawn with a
 vertical exaggeration chosen to fit. The site's levels are the 2nd and 98th
 percentiles of the cells inside it, its grade that fall over its length
-along the fall. The building skyline along the section waits for the
-building heights of slide 08.
+along the fall.
+
+Slide 08 reads building footprints for the tall panel from Overture Maps:
+a Python script runs DuckDB against the buildings theme of a release in
+Overture's public bucket with a bounding-box predicate (1,608 footprints
+for the North Sydney window in 103 s cold through this environment's
+proxy; 416 with a measured height, 710 with storeys, the tallest 158 m).
+The duckdb wheel is in the image; where it or the bucket is missing the
+fetch falls back to OpenStreetMap through Overpass (`way["building"]` and
+multipolygon relations, `height` and `building:levels`), and the answer is
+cached on the volume for a month either way, since both sources move
+monthly. `OVERTURE_RELEASE` names the release (default the one tested).
+Heights come measured or as storeys × 3.1 m; footprints with neither are
+grey. The map is a figure-ground by height band on the sequential blue
+ramp; the histogram counts storeys within 250 m and marks the LEP height
+plane; section A–A′ carries the buildings the line meets as blocks on the
+ground (dashed when the height is unknown) and the height plane over the
+site, converted from RL with the elevation model where the LEP limits in
+RL. The 3D model views remain the author's.
 
 Slide 16 looks the site up in the ASGS (SA2, LGA, suburb, capital-city
 region), reads the five census tables for the SA2, the LGA and the capital

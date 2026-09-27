@@ -444,7 +444,7 @@ development window), `--job 2539`, `--client "Name"`,
 
 `--type slides` draws the OVERALL ANALYSIS deck: A3 landscape pages for the
 content part of a feasibility study or design report, specified in
-`docs/SLIDES_SPEC.md`. Five slides exist so far. The planning pair: a
+`docs/SLIDES_SPEC.md`. Six slides exist so far. The planning pair: a
 *planning overview* of four maps at 1:8000 around the site (land zoning in the
 statutory colours, height of building, heritage with the State Heritage
 Register, and the housing-policy maps — TOD areas, town centres, State
@@ -458,7 +458,13 @@ contours, roads and rail over it and two section lines through the site,
 A–A′ down the steepest fall and B–B′ across it, each drawn as a section
 with the site and its levels marked; the text gives the site's RL range,
 fall, grade and aspect and where the high ground and the water are. Then
-*development activity*: every
+*built form*: every building footprint in the window coloured by height
+band (Overture Maps, read from its public bucket by DuckDB through
+`src/py/overture_buildings.py`; OpenStreetMap through Overpass when DuckDB
+or Overture is not there), the storeys of the buildings within 250 m as a
+histogram with the LEP height plane marked on it, and section A–A′ again
+with the buildings it meets drawn at their heights and the height plane
+dashed over the site. Then *development activity*: every
 application lodged in the council area over the last five years, from the
 Planning Portal's Online DA feed, clipped to the window around the site. The
 ones of a scale that shapes the context — four storeys, ten dwellings or

@@ -17,13 +17,14 @@ import {
 } from './minimap.js';
 import { zoneFill, heritageStyle, hobRamp, POLICY_STYLE } from './lepPalette.js';
 import { geomRings, pointInRing, titleCase, type PolicyArea, type PolicyKind } from '../fetch/planning.js';
-import { lonLatToMercator, mercatorToLonLat } from '../lib/geo.js';
+import { lonLatToMercator, mercatorToLonLat, mercatorScaleFactor } from '../lib/geo.js';
 import { isSignificant, siteKey, parseSiteAddress, sameLot, money, type DaRecord, type DaStatusClass, type SiteAddress } from '../fetch/da.js';
 import type { PeopleData } from '../fetch/people.js';
 import type { CensusProfile, DwellingMix, TenureMix, TravelMix, PersonsProfile, YearValue } from '../fetch/abs.js';
 import type { Sale } from '../fetch/valuation.js';
 import { lineWithProjection, pairedBars, columns, sectionSvg } from './charts.js';
 import { hillshadeDataUri, planSections, sampleSection, siteLevels, gridExtremes, nearestWater, bearingName } from './terrainMap.js';
+import { METRES_PER_STOREY, type Building } from '../fetch/buildings.js';
 
 export const SLIDE_W = 420;
 export const SLIDE_H = 297;
@@ -1433,11 +1434,207 @@ export function terrainSlide(b: SlidesBundle): Slide {
   return { id: '06_topography', title: 'Topography', subtitle: sub, textHtml, figureHtml };
 }
 
+// ---- slide 08: built form ----------------------------------------------------
+
+/** Height bands by storeys, on the sequential blue ramp; no height is a neutral grey. */
+const HEIGHT_BANDS: { label: string; maxM: number; fill: string }[] = [
+  { label: '1–2 storeys', maxM: 7.5, fill: '#b7d3f6' },
+  { label: '3–4', maxM: 14, fill: '#86b6ef' },
+  { label: '5–8', maxM: 27, fill: '#3987e5' },
+  { label: '9–15', maxM: 50, fill: '#1c5cab' },
+  { label: '16 and more', maxM: Infinity, fill: '#0d366b' },
+];
+const NO_HEIGHT_FILL = '#cbc9c2';
+const bandOf = (h?: number) => (h ? HEIGHT_BANDS.find((b) => h <= b.maxM)! : null);
+const storeysOf = (h: number) => Math.max(1, Math.round(h / METRES_PER_STOREY));
+
+export function builtFormFacts(b: SlidesBundle, planning: PlanningFacts) {
+  const data = b.buildings;
+  const all = data.buildings;
+  const centre = b.daPanel.center;
+  const k = mercatorScaleFactor(mercatorToLonLat(centre).lat);
+  const toM = (lon: number, lat: number) => lonLatToMercator({ lon, lat });
+  const siteRings = b.base.siteLots.features.flatMap((f) => geomRings(f.geometry));
+  const dist = (bd: Building) => { const m = toM(bd.centroid[0], bd.centroid[1]); return Math.hypot(m.x - centre.x, m.y - centre.y) / k; };
+  const bearing = (bd: Building) => { const m = toM(bd.centroid[0], bd.centroid[1]); return ((Math.atan2(m.x - centre.x, m.y - centre.y) * 180) / Math.PI + 360) % 360; };
+  const withHeight = all.filter((x) => x.estimatedHeightM);
+  const onSite = all.filter((x) => siteRings.some((r) => pointInRing(x.centroid[0], x.centroid[1], r)));
+  const near = all.filter((x) => dist(x) <= 250 && !onSite.includes(x));
+  const nearHeights = near.map((x) => x.estimatedHeightM!).filter(Boolean).sort((p, q) => p - q);
+  const medianNearM = nearHeights.length ? nearHeights[Math.floor(nearHeights.length / 2)] : undefined;
+  const storeyCounts = new Map<number, number>();
+  for (const h of nearHeights) { const st = Math.min(20, storeysOf(h)); storeyCounts.set(st, (storeyCounts.get(st) ?? 0) + 1); }
+  const tallest = [...withHeight].sort((p, q) => q.estimatedHeightM! - p.estimatedHeightM!).slice(0, 5)
+    .map((x) => ({ name: x.name, heightM: x.estimatedHeightM!, storeys: x.floors ?? storeysOf(x.estimatedHeightM!), measured: x.heightFrom === 'measured', distanceM: Math.round(dist(x)), bearing: bearing(x) }));
+  const neighbours = all.filter((x) => !onSite.includes(x) && dist(x) <= 45).sort((p, q) => dist(p) - dist(q)).slice(0, 4)
+    .map((x) => ({ name: x.name, heightM: x.estimatedHeightM, storeys: x.estimatedHeightM ? (x.floors ?? storeysOf(x.estimatedHeightM)) : undefined, distanceM: Math.round(dist(x)), bearing: bearing(x), kind: x.kind }));
+  // The LEP height plane over the site's ground.
+  const site = b.terrain.dem ? siteLevels(b.terrain.dem, siteRings, null) : null;
+  const hob = planning.hobAtSite;
+  let envelope: { label: string; topRl?: number; aboveGroundM?: number; storeys?: number } | null = null;
+  if (hob) {
+    if (hob.rl) {
+      const above = site ? hob.value - site.mean : undefined;
+      envelope = { label: hob.label, topRl: hob.value, aboveGroundM: above, storeys: above && above > 0 ? Math.max(1, Math.floor(above / METRES_PER_STOREY)) : undefined };
+    } else envelope = { label: hob.label, topRl: site ? site.mean + hob.value : undefined, aboveGroundM: hob.value, storeys: Math.max(1, Math.floor(hob.value / METRES_PER_STOREY)) };
+  }
+  return {
+    source: data.source, release: data.release, note: data.note,
+    count: all.length,
+    measured: all.filter((x) => x.heightFrom === 'measured').length,
+    fromStoreys: all.filter((x) => x.heightFrom === 'floors').length,
+    bands: HEIGHT_BANDS.map((bd) => ({ label: bd.label, count: withHeight.filter((x) => bandOf(x.estimatedHeightM) === bd).length })).concat([{ label: 'no height', count: all.length - withHeight.length }]),
+    near: { radiusM: 250, count: near.length, withHeight: nearHeights.length, medianM: medianNearM, medianStoreys: medianNearM ? storeysOf(medianNearM) : undefined,
+      above8: nearHeights.filter((h) => storeysOf(h) > 8).length, storeys: [...storeyCounts.entries()].sort((p, q) => p[0] - q[0]).map(([st, n]) => ({ storeys: st, count: n })) },
+    tallest, neighbours,
+    onSite: onSite.map((x) => ({ name: x.name, heightM: x.estimatedHeightM, storeys: x.estimatedHeightM ? (x.floors ?? storeysOf(x.estimatedHeightM)) : undefined, kind: x.kind })),
+    siteGroundRl: site?.mean, envelope,
+  };
+}
+
+export function builtFormSentences(b: SlidesBundle, f: ReturnType<typeof builtFormFacts>): string[] {
+  const out: string[] = [];
+  const src = f.source === 'overture' ? `Overture Maps${f.release ? ` (release ${f.release})` : ''}` : f.source === 'osm' ? 'OpenStreetMap' : '';
+  if (!f.count) return [`No building footprints could be read for this window when the deck was generated${f.note ? ` (${f.note})` : ''}.`];
+  const known = f.measured + f.fromStoreys;
+  out.push(`The window holds ${fmtNum(f.count)} buildings from ${src}; ${fmtPct(pct(known, f.count))} carry a height, ${fmtNum(f.measured)} measured and ${fmtNum(f.fromStoreys)} from a storey count at ${METRES_PER_STOREY} m a storey. The rest are drawn grey.`);
+  if (f.near.withHeight) {
+    let s = `Within ${f.near.radiusM} m of the site the typical building is ${f.near.medianStoreys} storey${f.near.medianStoreys === 1 ? '' : 's'} (median of ${fmtNum(f.near.withHeight)} with a height)`;
+    if (f.near.above8) s += `; ${fmtPct(pct(f.near.above8, f.near.withHeight))} rise above eight storeys`;
+    s += '.';
+    if (f.tallest[0]) { const t0 = f.tallest[0]; s += ` The tallest in the window is ${t0.name ?? 'a building'} ${fmtNum(Math.round(t0.distanceM))} m to the ${bearingName(t0.bearing)}, ${Math.round(t0.heightM)} m (${t0.storeys} storeys${t0.measured ? '' : ', from its storey count'}).`; }
+    out.push(s);
+  }
+  if (f.onSite.length) {
+    const withH = f.onSite.filter((x) => x.heightM);
+    out.push(withH.length
+      ? `The site carries ${f.onSite.length === 1 ? 'a building' : `${f.onSite.length} buildings`} of ${withH.map((x) => `${x.storeys} storey${x.storeys === 1 ? '' : 's'} (${Math.round(x.heightM!)} m)`).join(' and ')}.`
+      : `The site carries ${f.onSite.length === 1 ? 'a building' : `${f.onSite.length} buildings`} with no recorded height.`);
+  }
+  if (f.envelope) {
+    const e = f.envelope;
+    if (e.aboveGroundM !== undefined && f.siteGroundRl !== undefined)
+      out.push(e.topRl !== undefined && /RL/i.test(e.label)
+        ? `The LEP height of building at the site is ${e.label}: ${e.aboveGroundM > 0 ? `${e.aboveGroundM.toFixed(1)} m above the site's mean ground level of RL ${f.siteGroundRl.toFixed(1)}, about ${e.storeys} storey${e.storeys === 1 ? '' : 's'}` : 'at or below the site\'s ground level of RL ' + f.siteGroundRl.toFixed(1)}.`
+        : `The LEP height of building at the site is ${e.label} above ground, about ${e.storeys} storey${e.storeys === 1 ? '' : 's'}${e.topRl !== undefined ? `, a top of about RL ${e.topRl.toFixed(1)} on the site's mean ground of RL ${f.siteGroundRl.toFixed(1)}` : ''}.`);
+    else out.push(`The LEP height of building at the site is ${e.label}.`);
+  } else out.push('No height of building control is mapped at the site.');
+  if (f.neighbours.length) {
+    const parts = f.neighbours.map((n) => `${n.name ? n.name : 'a building'} ${n.distanceM} m to the ${bearingName(n.bearing)}${n.heightM ? `, ${n.storeys} storey${n.storeys === 1 ? '' : 's'} (${Math.round(n.heightM)} m)` : ', height unknown'}`);
+    out.push(`Nearest neighbours: ${parts.join('; ')}.`);
+  }
+  return out;
+}
+
+export function builtFormSlide(b: SlidesBundle, planning: PlanningFacts): Slide {
+  const f = builtFormFacts(b, planning);
+  const t = tpl();
+  const sentences = builtFormSentences(b, f);
+  const textHtml = sentences.map(para).join('') +
+    placeholder('Narrative — for the author: what the surrounding scale is and where it is changing, how the height plane at the site compares with the neighbours and the approvals of slide 07, which frontages and setbacks the fabric suggests, and where the 3D model views should look from.') +
+    `<div class="fine">Sources: ${f.source === 'overture' ? 'Overture Maps Foundation buildings (footprints and heights from OpenStreetMap, Microsoft, Esri Community Maps and Google Open Buildings; ODbL and CDLA Permissive 2.0)' : f.source === 'osm' ? 'OpenStreetMap contributors (ODbL)' : 'no building source answered'}; heights measured or ${METRES_PER_STOREY} m a storey; the LEP height of building from the ePlanning layer, converted with the 5 m elevation model where it is a reduced level. Retrieved ${b.generatedAt.slice(0, 10)}.</div>`;
+  const sub = [b.siteAddress, f.envelope ? `HOB ${f.envelope.label}` : 'no HOB mapped', f.near.medianStoreys ? `neighbourhood median ${f.near.medianStoreys} storeys` : ''].filter(Boolean).join(' · ');
+  const p = b.daPanel;
+  const proj = panelProjector(p);
+  const parts: string[] = [];
+  parts.push(`<rect x="0" y="0" width="${p.wMm}" height="${p.hMm}" fill="#ffffff"/>`);
+  if (b.base.water.features.length) parts.push(`<path d="${fcPath(b.base.water, proj)}" fill="${t.water}" fill-rule="evenodd"/>`);
+  // Footprints, palest first so the tall ones sit on top where they overlap.
+  const drawn = [...b.buildings.buildings].sort((x, y) => (x.estimatedHeightM ?? 0) - (y.estimatedHeightM ?? 0));
+  for (const bd of drawn) {
+    const band = bandOf(bd.estimatedHeightM);
+    parts.push(`<path d="${ringsPath(bd.rings, proj)}" fill="${band ? band.fill : NO_HEIGHT_FILL}" fill-rule="evenodd" stroke="#ffffff" stroke-width="0.08"/>`);
+  }
+  parts.push(overLayers(b.base, proj, p, 'outline'));
+  // The A–A′ section line, as on the topography slide.
+  const terrain = terrainFacts(b);
+  const secA = terrain?.sections[0];
+  if (secA) {
+    const ll = (xy: { x: number; y: number }) => { const l = mercatorToLonLat(xy); return proj(l.lon, l.lat); };
+    const [x1, y1] = ll(secA.from), [x2, y2] = ll(secA.to);
+    parts.push(`<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="#ffffff" stroke-width="1.1" stroke-opacity="0.85"/>` +
+      `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${t.dimension}" stroke-width="0.4" stroke-dasharray="2.2,1.1"/>`);
+    for (const [x, y, text] of [[x1, y1, 'A'], [x2, y2, 'A′']] as [number, number, string][])
+      parts.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.4" fill="#ffffff" stroke="${t.dimension}" stroke-width="0.35"/><text x="${x.toFixed(1)}" y="${(y + 0.9).toFixed(1)}" text-anchor="middle" font-size="2.4" font-weight="700" fill="${t.dimension}">${esc(text)}</text>`);
+  }
+  parts.push(panelFurniture(p, 'right'));
+  const mapSvg = `<svg width="${p.wMm}mm" height="${p.hMm}mm" viewBox="0 0 ${p.wMm} ${p.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
+    <defs><clipPath id="clip-built"><rect x="0" y="0" width="${p.wMm}" height="${p.hMm}"/></clipPath></defs>
+    <g clip-path="url(#clip-built)" font-family="${t.font}">${parts.join('\n')}</g>
+    <rect x="0.1" y="0.1" width="${p.wMm - 0.2}" height="${p.hMm - 0.2}" fill="none" stroke="${t.rule}" stroke-width="0.2"/>
+  </svg>`;
+
+  // Right: figures, legend, the storeys of the neighbourhood against the height plane.
+  const rightX = FIELD_X + PANEL_W + GUTTER, rightW = FIELD_W - PANEL_W - GUTTER;
+  const known = f.measured + f.fromStoreys;
+  const tiles = [
+    { v: fmtNum(f.count), l: 'buildings in the window' },
+    { v: f.count ? fmtPct(pct(known, f.count)) : '—', l: 'with a height, measured or from storeys' },
+    { v: f.near.medianStoreys ? `${f.near.medianStoreys}` : '—', l: `storeys, median within ${f.near.radiusM} m of the site` },
+    { v: f.envelope ? (f.envelope.storeys ? `${f.envelope.storeys}` : '—') : '—', l: f.envelope ? `storeys within the LEP height plane (${f.envelope.label})` : 'no height of building control mapped' },
+  ].map((tl) => `<div class="tile"><div class="tv${tl.v.length > 9 ? ' long' : ''}">${esc(tl.v)}</div><div class="tl">${esc(tl.l)}</div></div>`).join('');
+  const legend = HEIGHT_BANDS.map((bd, i) => `<div class="lg"><svg width="5mm" height="3.6mm" viewBox="0 0 5 3.6"><rect x="0" y="0.3" width="5" height="3" fill="${bd.fill}"/></svg><span>${esc(bd.label)} · ${fmtNum(f.bands[i].count)}</span></div>`).join('') +
+    `<div class="lg"><svg width="5mm" height="3.6mm" viewBox="0 0 5 3.6"><rect x="0" y="0.3" width="5" height="3" fill="${NO_HEIGHT_FILL}"/></svg><span>no height known · ${fmtNum(f.bands[5].count)}</span></div>`;
+  const maxSt = Math.max(1, ...f.near.storeys.map((s) => s.storeys), f.envelope?.storeys ?? 0);
+  const hist = Array.from({ length: Math.min(20, maxSt) }, (_, i) => { const st = i + 1; const n = f.near.storeys.find((s) => s.storeys === st)?.count ?? 0; return { label: st === 20 ? '20+' : String(st), value: n, text: n ? String(n) : '' }; });
+  const histSvg = f.near.withHeight ? columns({ w: rightW, h: 46, font: t.font, values: hist,
+    marker: f.envelope?.storeys ? { index: Math.min(19, f.envelope.storeys - 1), label: `LEP ${f.envelope.label}`, colour: t.site } : undefined }) : emptyBox(rightW, 46, 'no building heights within 250 m');
+
+  // Bottom: section A–A′ with the buildings it meets and the height plane over the site.
+  let sectionHtml = '';
+  if (secA && b.terrain.dem) {
+    const samples = secA.samples;
+    const L = secA.lengthM;
+    const at = (d: number) => { const fr = d / L; const x = secA.from.x + (secA.to.x - secA.from.x) * fr, y = secA.from.y + (secA.to.y - secA.from.y) * fr; return mercatorToLonLat({ x, y }); };
+    const siteRings = b.base.siteLots.features.flatMap((ft) => geomRings(ft.geometry));
+    // Which building each sample sits in, by centroid proximity first, then the ring test.
+    const blocks: NonNullable<Parameters<typeof sectionSvg>[0]['blocks']> = [];
+    let current: { bd: Building; d0: number; rls: number[] } | null = null;
+    const flush = (dEnd: number) => {
+      if (!current) return;
+      const h = current.bd.estimatedHeightM;
+      const ground = Math.min(...current.rls);
+      const onSite = siteRings.some((r) => pointInRing(current!.bd.centroid[0], current!.bd.centroid[1], r));
+      blocks.push({ d0: current.d0, d1: dEnd, top: ground + (h ?? METRES_PER_STOREY), site: onSite, unknown: !h, label: h && dEnd - current.d0 > 25 ? `${current.bd.floors ?? storeysOf(h)} st` : undefined });
+      current = null;
+    };
+    for (const s of samples) {
+      const ll = at(s.d);
+      let hit: Building | undefined;
+      for (const bd of b.buildings.buildings) {
+        if (Math.abs(bd.centroid[0] - ll.lon) > 0.003 || Math.abs(bd.centroid[1] - ll.lat) > 0.003) continue;
+        if (pointInRing(ll.lon, ll.lat, bd.rings[0])) { hit = bd; break; }
+      }
+      if (hit && current && current.bd === hit) { current.rls.push(s.rl); continue; }
+      if (current) flush(s.d);
+      if (hit) current = { bd: hit, d0: s.d, rls: [s.rl] };
+    }
+    if (current) flush(samples[samples.length - 1].d);
+    const siteRun = samples.filter((s) => s.site);
+    const envelope = f.envelope && f.envelope.topRl !== undefined && siteRun.length
+      ? { d0: siteRun[0].d, d1: siteRun[siteRun.length - 1].d, top: f.envelope.topRl, label: `HOB ${f.envelope.label}` } : undefined;
+    const sec = sectionSvg({ w: FIELD_W, h: 96, font: t.font, samples, from: 'A', to: 'A′', siteColour: t.site, waterColour: t.water, blocks, envelope });
+    const yA = FIELD_Y + PANEL_TITLE_H + DA_PANEL_H + GUTTER;
+    sectionHtml = `<div class="abs ptitle" style="left:${FIELD_X}mm;top:${yA}mm;width:${FIELD_W}mm">Section A–A′ with the buildings it meets<span class="pnote">${bearingName((secA.bearing + 180) % 360)} to ${bearingName(secA.bearing)} · ${fmtNum(Math.round(L))} m · heights measured or ${METRES_PER_STOREY} m a storey, dashed where unknown · vertical exaggeration ${sec.ve % 1 ? sec.ve.toFixed(1) : sec.ve}×</span></div>
+      <div class="abs" style="left:${FIELD_X}mm;top:${yA + PANEL_TITLE_H}mm">${sec.svg}</div>`;
+  }
+  const yHist = FIELD_Y + PANEL_TITLE_H + 24 + 3 + 30;
+  const figureHtml = `
+    <div class="abs ptitle" style="left:${FIELD_X}mm;top:${FIELD_Y}mm;width:${PANEL_W}mm">Built form<span class="pnote">1:${fmtNum(p.scale)} · footprints by height</span></div>
+    <div class="abs" style="left:${FIELD_X}mm;top:${FIELD_Y + PANEL_TITLE_H}mm">${mapSvg}</div>
+    <div class="abs tiles" style="left:${rightX}mm;top:${FIELD_Y + PANEL_TITLE_H}mm;width:${rightW}mm">${tiles}</div>
+    <div class="abs legend" style="left:${rightX}mm;top:${FIELD_Y + PANEL_TITLE_H + 24}mm;width:${rightW}mm">${legend}</div>
+    <div class="abs ptitle" style="left:${rightX}mm;top:${yHist}mm;width:${rightW}mm">Storeys within ${f.near.radiusM} m<span class="pnote">${fmtNum(f.near.withHeight)} buildings with a height</span></div>
+    <div class="abs" style="left:${rightX}mm;top:${yHist + PANEL_TITLE_H}mm">${histSvg}</div>
+    ${sectionHtml}`;
+  return { id: '08_built_form', title: 'Built form and height planes', subtitle: sub, textHtml, figureHtml };
+}
+
 // ---- the deck -----------------------------------------------------------------
 
 export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; slides: Slide[] } {
   const facts = planningFacts(b);
-  const slides = [planningOverviewSlide(b, facts), planningControlsSlide(b, facts), terrainSlide(b), developmentSlide(b, facts), peopleSlide(b)];
+  const slides = [planningOverviewSlide(b, facts), planningControlsSlide(b, facts), terrainSlide(b), developmentSlide(b, facts), builtFormSlide(b, facts), peopleSlide(b)];
   const t = tpl();
   const footerLeft = ['SITE ANALYST — OVERALL ANALYSIS', b.siteAddress, meta.client ? `for ${meta.client}` : '', meta.jobNo ? `job ${meta.jobNo}` : ''].filter(Boolean).join(' · ');
   const pages = slides.map((s, i) => `
@@ -1517,6 +1714,7 @@ export function slidesFacts(b: SlidesBundle) {
     councilDcp: b.cos,
     development: (() => { const d = developmentFacts(b); return { ...d, sentences: developmentSentences(b, d, facts) }; })(),
     people: peopleFacts(b),
+    builtForm: (() => { const f = builtFormFacts(b, facts); return { ...f, sentences: builtFormSentences(b, f) }; })(),
     terrain: (() => { const f = terrainFacts(b); return f ? { ...f, sections: f.sections.map((s) => ({ ...s, samples: s.samples.filter((_, i) => i % 4 === 0) })), sentences: terrainSentences(b, f) } : { available: false, sentences: terrainSentences(b, f) }; })(),
     propertyApi: b.property,
     sentences: planningSentences(b, facts),
