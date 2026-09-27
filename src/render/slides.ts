@@ -1720,7 +1720,7 @@ export function movementSentences(b: SlidesBundle, f: ReturnType<typeof movement
     // Group the frontages by kind: "Miller Street and Blues Point Road, collector roads, and Blue Street, a local street".
     const groups = new Map<string, string[]>();
     for (const r of f.frontage) (groups.get(r.word) ?? groups.set(r.word, []).get(r.word)!).push(r.name);
-    const phrase = [...groups.entries()].map(([word, names]) => `${names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0]}, ${names.length > 1 ? `${word}s` : `a ${word}`}`);
+    const phrase = [...groups.entries()].map(([word, names]) => `${names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0]}, ${names.length > 1 ? `${word}s` : `${/^[aeiou]/i.test(word) ? 'an' : 'a'} ${word}`}`);
     let s = `The site fronts ${phrase.length > 1 ? `${phrase.slice(0, -1).join(', ')}, and ${phrase[phrase.length - 1]}` : phrase[0]}.`;
     if (f.oneway.near.length) s += ` One-way nearby: ${f.oneway.near.join(', ')}.`;
     out.push(s);
@@ -1739,7 +1739,7 @@ export function movementSlide(b: SlidesBundle): Slide {
   const textHtml = sentences.map(para).join('') +
     placeholder('Narrative — for the author: how people will arrive and leave (rail, bus, bike, on foot, by car), which frontage is the address and which is the service side, where the active edge belongs, and what the walking catchments say about the mix.') +
     `<div class="fine">Sources: NSW Spatial Services roads (function hierarchy), rail and stations; walking isochrones from Valhalla on OpenStreetMap; bus stops from ${f.bus.source === 'tfnsw' ? 'Transport for NSW' : f.bus.source === 'osm' ? 'OpenStreetMap' : 'Transport for NSW or OpenStreetMap (neither answered)'}; bus routes, cycleways, footways and one-way streets from OpenStreetMap contributors (ODbL); active street frontages from the ePlanning development-control layers. Retrieved ${b.generatedAt.slice(0, 10)}.</div>`;
-  const sub = [b.siteAddress, f.stations[0] ? `${f.stations[0].name} ${fmtNum(f.stations[0].distanceM)} m` : '', f.frontage.length ? `fronts ${f.frontage.map((r) => r.name).join(' and ')}` : ''].filter(Boolean).join(' · ');
+  const sub = [b.siteAddress, f.stations[0] ? `${f.stations[0].name} ${fmtNum(f.stations[0].distanceM)} m` : '', f.frontage.length ? `fronts ${f.frontage.slice(0, 2).map((r) => r.name).join(' and ')}${f.frontage.length > 2 ? ` and ${f.frontage.length - 2} more` : ''}` : ''].filter(Boolean).join(' · ');
 
   // The movement map over the tall panel.
   const p = b.daPanel;
@@ -1778,7 +1778,7 @@ export function movementSlide(b: SlidesBundle): Slide {
     { v: st0 ? `${fmtNum(st0.distanceM)} m` : '—', l: st0 ? `to ${st0.name} (${st0.kind})${st0.walkBand ? `, within ${st0.walkBand} min on foot` : ''}` : 'no station in the wide window' },
     { v: f.bus.total ? String(f.bus.within400) : '—', l: f.bus.total ? `bus stops within 400 m · ${f.bus.within800} within 800 m` : 'bus stops: no source answered' },
     { v: f.cycle.osm ? (f.cycle.nearest ? `${fmtNum(f.cycle.nearest.distanceM)} m` : 'none') : '—', l: f.cycle.osm ? (f.cycle.nearest ? `to the nearest cycleway (${f.cycle.nearest.kind})` : 'no cycleway mapped in the window') : 'cycleways: OpenStreetMap did not answer' },
-    { v: f.frontage.length ? String(f.frontage.length) : '—', l: f.frontage.length ? `street frontage${f.frontage.length === 1 ? '' : 's'}: ${f.frontage.map((r) => r.word).join(', ')}` : 'no named road within 25 m of the site' },
+    { v: f.frontage.length ? String(f.frontage.length) : '—', l: f.frontage.length ? `street frontage${f.frontage.length === 1 ? '' : 's'}: ${[...new Set(f.frontage.map((r) => (f.frontage.filter((q) => q.word === r.word).length > 1 ? `${r.word}s` : r.word)))].join(', ')}` : 'no named road within 25 m of the site' },
   ].map((tl) => `<div class="tile"><div class="tv${tl.v.length > 9 ? ' long' : ''}">${esc(tl.v)}</div><div class="tl">${esc(tl.l)}</div></div>`).join('');
   const sw = (inner: string) => `<svg width="5mm" height="3.6mm" viewBox="0 0 5 3.6">${inner}</svg>`;
   const legendRows: [string, string][] = [
