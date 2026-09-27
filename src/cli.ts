@@ -26,7 +26,7 @@ function arg(name: string, def?: string): string | undefined {
 
 const address = process.argv.slice(2).find((a) => !a.startsWith('--') && process.argv[process.argv.indexOf(a) - 1]?.startsWith('--') !== true);
 if (!address) {
-  console.error('usage: npm run generate -- "<address>" [--type context|site|summary|both] [--template classic|vivid|neutral] [--scale 3000] [--job N] [--client X] [--status S] [--sheet "DA 003"]');
+  console.error('usage: npm run generate -- "<address>" [--type context|site|summary|both] [--template classic|nsw|neutral] [--scale 3000] [--job N] [--client X] [--status S] [--sheet "DA 003"]');
   process.exit(1);
 }
 

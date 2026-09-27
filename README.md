@@ -71,14 +71,14 @@ const dir = 'out/1-bay-street-botany-nsw-2019';
 const bundle = JSON.parse(readFileSync(`${dir}/data/bundle.json`, 'utf8'));
 const meta = { jobNo: '', client: '', status: '', sheetNo: '', revision: '',
                checked: '', drawn: '', date: '', preliminary: false };
-for (const t of ['vivid', 'neutral']) {
+for (const t of ['nsw', 'neutral']) {
   writeFileSync(`${dir}/sheet-${t}.html`, withTemplate(t, () => renderSheet(bundle, meta)));
   await htmlToPdf(`${dir}/sheet-${t}.html`, `${dir}/CONTEXT_${t}.pdf`);
 }
 EOF
 python3 - <<'EOF'
 import pymupdf
-for t in ['vivid', 'neutral']:
+for t in ['nsw', 'neutral']:
     pymupdf.open(f'out/1-bay-street-botany-nsw-2019/CONTEXT_{t}.pdf')[0].get_pixmap(dpi=54).pil_save(
         f'web/samples/tpl-{t}.jpg', format='JPEG', quality=76, optimize=True)
 EOF
@@ -442,8 +442,9 @@ a data change.
 There are three, and they differ only in the context sheet's colours:
 
 - `classic` — the default: the NSW planning colours, softened into one pastel
-  family.
-- `vivid` — the same hues at full saturation.
+  family, over a greyscale aerial.
+- `nsw` — the Planning Portal's zoning colours exactly, solid and on white with
+  no aerial: the base to restyle a palette from.
 - `neutral` — the restrained palette with a single accent that these replaced
   as the default. It still survives a mono print.
 
@@ -462,15 +463,21 @@ does not colour follows the office sheets (education blue, medical magenta,
 child care outlined), and transport takes TfNSW's mode colours: orange trains,
 blue buses, red light rail.
 
-The LEP map prints those flat and at full strength on white. Over a photograph
-at part opacity they turn to mud, so each palette keeps the hues and evens out
-lightness and chroma across them (in OKLCH, where equal numbers look equal), and
-draws the aerial in greyscale so terracotta roofs stop tinting every fill laid
-over them. The greyscale is a luminosity blend onto white rather than a filter,
-which keeps the tiles as JPEGs in the PDF; a viewer that ignores blend modes
-simply shows the photo in colour. Check a palette change on a real sheet, not
-on the legend: an airport is one very large SP2 zone, and a yellow that looks
-right as a swatch goes olive over forty hectares of grey tarmac.
+The LEP map prints those flat and at full strength on white, and `nsw` does
+the same: fills opaque, as the Planning Portal draws its zoning layer, because
+at part opacity every zone blends with the ground under it and no pixel on the
+sheet is the NSW value any more. Solid, each zone is exactly its colour and can
+be selected straight off the sheet. Its site is a black outline rather than the
+house red, which is R4's red. Over a photograph at part opacity the same colours
+turn to mud, so `classic` keeps the hues and evens out lightness and chroma
+across them (in OKLCH, where equal numbers look equal), and draws the aerial in
+greyscale so terracotta roofs stop tinting every fill laid over them. The
+greyscale is a luminosity blend onto white rather than a filter, which keeps the
+tiles as JPEGs in the PDF; a viewer that ignores blend modes simply shows the
+photo in colour. A palette with no aerial leaves the tiles out of the PDF
+altogether. Check a palette change on a real sheet, not on the legend: an
+airport is one very large SP2 zone, and a yellow that looks right as a swatch
+goes olive over forty hectares of grey tarmac.
 
 The renderers read the active template from an async context rather than a
 parameter, so `withTemplate()` also takes a `Template` outright — which is what
@@ -481,7 +488,7 @@ Fonts are limited to what the runtime image installs (Liberation, DejaVu).
 Naming an absent font does not fail; it silently falls back and the sheet
 comes out in the wrong face, so add the package to the `Dockerfile` first.
 
-Options (after `--`): `--type context|site|summary|both`, `--template classic|vivid|neutral`
+Options (after `--`): `--type context|site|summary|both`, `--template classic|nsw|neutral`
 (default classic), `--scale 3000` (default 3000), `--job 2539`,
 `--client "Name"`, `--status "DEVELOPMENT APPLICATION"`, `--sheet "DA 003"`.
 

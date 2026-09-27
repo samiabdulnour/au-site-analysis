@@ -130,10 +130,12 @@ Layered bottom → top:
 | isochrone 400   | `#e6007e` (dashed) |
 | isochrone 800   | `#cc4da6` (dashed) |
 
-The generator's own palettes (`classic` and `vivid` in `src/render/template.ts`)
-take their hues from the NSW Standard Instrument LEP zoning map instead, as the
-ePlanning Land Zoning layer (`EPI_Primary_Planning_Layers/MapServer/2`) draws
-it, then even out lightness and chroma so they survive being laid over a photo:
+The generator's own palettes (`src/render/template.ts`) take their colours
+from the NSW Standard Instrument LEP zoning map instead, as the ePlanning Land
+Zoning layer (`EPI_Primary_Planning_Layers/MapServer/2`) draws it. `nsw` uses
+them exactly, opaque as the layer draws them (its transparency is 0); `classic`
+keeps the hues and evens out lightness and chroma so they survive being laid
+over a photo:
 
 | LEP zone                         | LEP colour            | category         |
 |----------------------------------|-----------------------|------------------|

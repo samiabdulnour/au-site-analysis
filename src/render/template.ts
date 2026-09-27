@@ -7,9 +7,10 @@
 // is deliberately not part of a template.
 //
 // There are three, and they differ only in the context sheet's colours:
-// `classic` (the default) and `vivid` are two readings of the NSW planning
-// colours, described below; `neutral` is the restrained palette they replaced,
-// kept for a sheet that has to survive a mono print.
+// `classic` (the default) softens the NSW planning colours into one palette,
+// `nsw` is those colours exactly as the Planning Portal draws them — a base to
+// restyle from — and `neutral` is the restrained palette they replaced, kept
+// for a sheet that has to survive a mono print.
 //
 // Fonts are limited to what the runtime image actually ships (Liberation and
 // DejaVu). Naming a font that is not installed does not fail — it silently
@@ -53,12 +54,14 @@ export interface Template {
   busRoute: string;   // bus route dashes
   heritage: string;   // heritage hatch
 
+  /** How the aerial is drawn under the fills. In colour, terracotta roofs tint
+   *  every fill laid over them and a pale pink becomes a muddy salmon; grey
+   *  lets the fills read true; none leaves flat colour on white, like the LEP
+   *  map itself. */
+  aerial: 'colour' | 'grey' | 'none';
   /** White veil over the aerial, 0–1: how far the photo steps back behind
    *  the land-use fills. A palette is only as legible as the ground under it. */
   aerialVeil: number;
-  /** Draw the aerial in greyscale. Terracotta roofs otherwise tint every fill
-   *  laid over them, and a pale pink becomes a muddy salmon. */
-  aerialMono: boolean;
   /** Land-use fills for the context sheet legend. */
   categories: Category[];
 }
@@ -119,8 +122,8 @@ const NEUTRAL_CATEGORIES = palette({
   heritage:       { fill: '#c2b39a', opacity: 0.5 },
 });
 
-// The two colour palettes read the way NSW zoning is already read. Their hues
-// are the Standard Instrument LEP zoning map's, as the ePlanning zoning layer
+// Both colour palettes read the way NSW zoning is already read. Their hues are
+// the Standard Instrument LEP zoning map's, as the ePlanning zoning layer
 // itself draws them: pink deepening to red with residential density (R2
 // #ffa6a3, R3 #ff776e, R4 #ff483b), blues for centres (E1 #99ccff, E2
 // #b4c6e7), violets for mixed use and industry (MU1 #959dc2, E4 #9999ff),
@@ -132,12 +135,11 @@ const NEUTRAL_CATEGORIES = palette({
 // buses, red light rail.
 //
 // The LEP map prints those flat and at full strength on white. Laid over a
-// photograph at part opacity they turn to mud, so each palette keeps the hues
-// and sets lightness and chroma evenly across them (in OKLCH, where equal
-// numbers look equal): `classic` is the pastel sheet an office would draw,
-// `vivid` the same hues pushed as far as the screen goes. Yellow sits paler
-// and more opaque than the rest in both, because at part opacity over a grey
-// photo it goes olive — and an airport is one very large SP2 zone.
+// photograph at part opacity they turn to mud, so `classic` keeps the hues and
+// sets lightness and chroma evenly across them (in OKLCH, where equal numbers
+// look equal), into the pastel sheet an office would draw. Its yellow sits
+// paler and more opaque than the rest, because at part opacity over a grey
+// photo yellow goes olive — and an airport is one very large SP2 zone.
 const CLASSIC_CATEGORIES = palette({
   site:           { fill: '#d1362a', opacity: 0.7 },
   medical:        { fill: '#f6a0c1', opacity: 0.74, stroke: '#b5236e' },
@@ -159,25 +161,39 @@ const CLASSIC_CATEGORIES = palette({
   heritage:       { fill: '#dcb87a', opacity: 0.55 },
 });
 
-const VIVID_CATEGORIES = palette({
-  site:           { fill: '#d1362a', opacity: 0.82 },
-  medical:        { fill: '#e72b8b', opacity: 0.78, stroke: '#9b0058' },
-  education:      { fill: '#388cf0', opacity: 0.78, stroke: '#0e49bc' },
-  childCare:      { fill: '#ecf7ff', opacity: 0.82, stroke: '#0486d3' },
-  mixedUse:       { fill: '#d476e3', opacity: 0.7 },
-  retail:         { fill: '#ff8b26', opacity: 0.75 },
-  openSpace:      { fill: '#69dd4d', opacity: 0.7 },
-  community:      { fill: '#7ae3d6', opacity: 0.75, stroke: '#018d87' },
-  r2:             { fill: '#ffc6cf', opacity: 0.7 },
-  r3:             { fill: '#ffa2b3', opacity: 0.7 },
-  r4:             { fill: '#fe7b94', opacity: 0.7 },
-  localCentre:    { fill: '#60cbff', opacity: 0.7 },
-  commercial:     { fill: '#7c9df9', opacity: 0.7 },
-  industrial:     { fill: '#9167ea', opacity: 0.66 },
-  infrastructure: { fill: '#ffe97d', opacity: 0.76 },
-  water:          { fill: '#46d3e6', opacity: 0.75 },
-  railway:        { fill: '#fabb41', opacity: 0.85, stroke: '#c67600' },
-  heritage:       { fill: '#d8953d', opacity: 0.6 },
+// `nsw` is the Planning Portal's zoning map unaltered: the exact colours its
+// Land Zoning layer is drawn in, and opaque as it draws them (the layer's
+// transparency is 0). Part opacity would blend every zone with the photo, and
+// then no pixel on the sheet would be the NSW value; drawn solid, each zone is
+// exactly its colour, so it can be picked or selected straight off the sheet
+// and restyled from there. Where one category stands for several zones it
+// takes the colour of the zone its legend names — E2 for COMMERCIAL CENTRE,
+// E4 for GENERAL INDUSTRIAL, W2 for WATERWAY — and a rail corridor is SP2,
+// which is how the LEP zones one. Heritage items take the Heritage map's
+// colour. The LEP map has none for the institutions, so those keep classic's.
+// Nor for the site, and there the house red will not do: it is R4's red, and a
+// site on R4 land vanished into it. So the site is a black outline with no
+// fill, which reads on every zone colour and leaves the site's own zone
+// showing through.
+const NSW_CATEGORIES = palette({
+  site:           { fill: '#000000', opacity: 0 },
+  medical:        { fill: '#f6a0c1', opacity: 1, stroke: '#b5236e' },
+  education:      { fill: '#82b5ef', opacity: 1, stroke: '#2460b7' },
+  childCare:      { fill: '#eef6ff', opacity: 1, stroke: '#558ac0' },
+  mixedUse:       { fill: '#959dc2', opacity: 1 },   // MU1
+  retail:         { fill: '#f9c191', opacity: 1 },
+  openSpace:      { fill: '#55ff00', opacity: 1 },   // RE1
+  community:      { fill: '#b9e9e5', opacity: 1, stroke: '#559a99' },
+  r2:             { fill: '#ffa6a3', opacity: 1 },   // R2
+  r3:             { fill: '#ff776e', opacity: 1 },   // R3
+  r4:             { fill: '#ff483b', opacity: 1 },   // R4
+  localCentre:    { fill: '#99ccff', opacity: 1 },   // E1
+  commercial:     { fill: '#b4c6e7', opacity: 1 },   // E2
+  industrial:     { fill: '#9999ff', opacity: 1 },   // E4
+  infrastructure: { fill: '#ffff70', opacity: 1 },   // SP2
+  water:          { fill: '#99ffdd', opacity: 1 },   // W2
+  railway:        { fill: '#ffff70', opacity: 1 },   // SP2
+  heritage:       { fill: '#dbbb7b', opacity: 1 },   // Heritage map, Item - General
 });
 
 const SANS = "Arial, 'Liberation Sans', Helvetica, sans-serif";
@@ -212,25 +228,26 @@ export const TEMPLATES: Template[] = [
     walk10: '#7466b5',
     busRoute: '#de3b40',
     heritage: '#9f6f3d',
+    aerial: 'grey',
     aerialVeil: 0.55,
-    aerialMono: true,
     categories: CLASSIC_CATEGORIES,
   },
   {
-    id: 'vivid',
-    label: 'vivid',
-    note: 'NSW planning hues at full saturation',
+    id: 'nsw',
+    label: 'nsw',
+    note: "the Planning Portal's zoning colours, exactly",
     ...HOUSE,
-    water: '#46d3e6',
-    transit: '#0097d4',
+    site: '#000000',   // see NSW_CATEGORIES; the site and summary sheets never use this palette
+    water: '#99ffdd',
+    transit: '#00b5ef',
     station: '#f6891f',
-    walk5: '#4806ba',
-    walk10: '#b00074',
+    walk5: '#413c9b',
+    walk10: '#7466b5',
     busRoute: '#ee343f',
-    heritage: '#9f5100',
-    aerialVeil: 0.42,
-    aerialMono: true,
-    categories: VIVID_CATEGORIES,
+    heritage: '#dbbb7b',
+    aerial: 'none',
+    aerialVeil: 0,
+    categories: NSW_CATEGORIES,
   },
   {
     id: 'neutral',
@@ -244,8 +261,8 @@ export const TEMPLATES: Template[] = [
     walk10: '#9c8aa6',
     busRoute: '#6b7f93',
     heritage: '#94836a',
+    aerial: 'colour',
     aerialVeil: 0.36,
-    aerialMono: false,
     categories: NEUTRAL_CATEGORIES,
   },
 ];

@@ -310,8 +310,11 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
 
   // ---- aerial base (no CSS filter: keeps JPEGs as JPEGs in the PDF) ------
   // Tiles cover the axis-aligned fetch extent; place them in that rectangle
-  // (centered on the map) and rotate the whole group with the view.
-  {
+  // (centered on the map) and rotate the whole group with the view. A palette
+  // without one leaves the tiles out of the PDF altogether rather than hiding
+  // them under a veil, so nothing is there to find when the sheet is opened
+  // in an editor.
+  if (tpl().aerial !== 'none') {
     const s = MAP_W / (2 * view.halfW);
     const extW = (bundle.extent.xmax - bundle.extent.xmin) * s;
     const extH = (bundle.extent.ymax - bundle.extent.ymin) * s;
@@ -322,7 +325,7 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
           width="${(t.width * extW).toFixed(2)}" height="${(t.height * extH).toFixed(2)}" preserveAspectRatio="none"/>`)
       .join('\n');
     const rotate = `transform="rotate(${view.rotationDeg.toFixed(2)}, ${MAP_W / 2}, ${MAP_H / 2})"`;
-    if (tpl().aerialMono) {
+    if (tpl().aerial === 'grey') {
       // Greyscale by taking only the photo's luminosity onto white, for the
       // same reason as above: a filter would rasterise the tiles, a blend
       // mode leaves them as JPEGs. A viewer that ignores blend modes simply
@@ -332,8 +335,8 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     } else {
       layers.push(`<g ${rotate}>${tiles}</g>`);
     }
+    layers.push(`<rect x="0" y="0" width="${MAP_W}" height="${MAP_H}" fill="#ffffff" opacity="${tpl().aerialVeil}"/>`);
   }
-  layers.push(`<rect x="0" y="0" width="${MAP_W}" height="${MAP_H}" fill="#ffffff" opacity="${tpl().aerialVeil}"/>`);
 
   // ---- zoning base -------------------------------------------------------
   const zoningByCat: Record<string, string[]> = {};

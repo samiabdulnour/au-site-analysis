@@ -411,7 +411,7 @@ jobs:
           exit $fail
 
       # The palette is the one option that applies to a single drawing. A request
-      # for vivid has to come back in vivid rather than quietly in the default,
+      # for nsw has to come back in nsw rather than quietly in the default,
       # while the site and summary sheets, which no palette changes, must not be
       # split into a job per palette. Asked through the reuse path, against
       # finished sheets seeded into the job index, so a passing run draws nothing
@@ -427,7 +427,7 @@ jobs:
           import json, os, time
           rows = []
           for jid, sheet, tpl in [('11111111-1111-4111-8111-111111111111', 'context', 'classic'),
-                                  ('22222222-2222-4222-8222-222222222222', 'context', 'vivid'),
+                                  ('22222222-2222-4222-8222-222222222222', 'context', 'nsw'),
                                   ('33333333-3333-4333-8333-333333333333', 'site', 'classic')]:
               os.makedirs(f'out/web/{jid}', exist_ok=True)
               open(f'out/web/{jid}/SHEET.pdf', 'wb').write(b'%PDF-1.4 seeded')
@@ -464,10 +464,10 @@ jobs:
               echo "  $1 -> $id, expected ${3:0:8}"; fail=1
             fi
           }
-          ask "context in vivid"          '"sheet":"context","template":"vivid"'  22222222-2222-4222-8222-222222222222
+          ask "context in nsw"            '"sheet":"context","template":"nsw"'    22222222-2222-4222-8222-222222222222
           ask "context, no palette"       '"sheet":"context"'                     11111111-1111-4111-8111-111111111111
           ask "context, unknown palette"  '"sheet":"context","template":"fuse"'   11111111-1111-4111-8111-111111111111
-          ask "site sheet asking vivid"   '"sheet":"site","template":"vivid"'     33333333-3333-4333-8333-333333333333
+          ask "site sheet asking nsw"     '"sheet":"site","template":"nsw"'       33333333-3333-4333-8333-333333333333
           exit $fail
 
   image:

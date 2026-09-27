@@ -37,7 +37,7 @@ const NORTH = [
 // The context sheet's colours, each previewed on the same demo sheet.
 const TEMPLATES = [
   ['classic', 'classic', '/samples/context.jpg',     'classic — NSW planning colours, softened into one family'],
-  ['vivid',   'vivid',   '/samples/tpl-vivid.jpg',   'vivid — NSW planning hues at full saturation'],
+  ['nsw',     'nsw',     '/samples/tpl-nsw.jpg',     'nsw — the Planning Portal\'s zoning colours, exactly, on white'],
   ['neutral', 'neutral', '/samples/tpl-neutral.jpg', 'neutral — restrained, survives a mono print'],
 ];
 
