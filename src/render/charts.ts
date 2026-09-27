@@ -313,13 +313,16 @@ export function sectionSvg(o: SectionOpts): { svg: string; ve: number } {
   if (o.envelope && !envelopeLabel)
     envelopeLabel = `<text x="${(X(o.envelope.d0) + 0.6).toFixed(2)}" y="${(Y(o.envelope.top) - 1).toFixed(2)}" font-size="1.9" font-weight="700" fill="${o.siteColour}" stroke="#ffffff" stroke-width="0.4" paint-order="stroke">${esc(o.envelope.label)}</text>`;
   if (envelopeLabel) parts.push(envelopeLabel);
-  // the highest and lowest points of the ground, unless they are the site's own labels
+  // The highest and lowest points of the ground, unless they are the site's own labels.
+  // A crest just outside the site would print over the site's edge label, so there its label goes below the line.
   const iHi = rls.indexOf(Math.max(...rls)), iLo = rls.indexOf(lo);
+  const siteEdgesX = siteRuns.flatMap(([i0, i1]) => [X(samples[i0].d), X(samples[i1].d)]);
   for (const [i, anchor] of [[iHi, 'hi'], [iLo, 'lo']] as const) {
     const s = samples[i];
     if (s.site) continue;
-    parts.push(`<circle cx="${X(s.d).toFixed(2)}" cy="${Y(s.rl).toFixed(2)}" r="0.7" fill="${CHART.ink}"/>`);
-    parts.push(`<text x="${X(s.d).toFixed(2)}" y="${(Y(s.rl) + (anchor === 'hi' ? -1.6 : 3.4)).toFixed(2)}" text-anchor="middle" font-size="1.9" fill="${CHART.secondary}" stroke="#ffffff" stroke-width="0.4" paint-order="stroke">RL ${s.rl.toFixed(1)}</text>`);
+    const nearSite = siteEdgesX.some((x) => Math.abs(x - X(s.d)) < 9);
+    if (!nearSite) parts.push(`<circle cx="${X(s.d).toFixed(2)}" cy="${Y(s.rl).toFixed(2)}" r="0.7" fill="${CHART.ink}"/>`);
+    parts.push(`<text x="${X(s.d).toFixed(2)}" y="${(Y(s.rl) + (anchor === 'lo' || nearSite ? 3.4 : -1.6)).toFixed(2)}" text-anchor="middle" font-size="1.9" fill="${CHART.secondary}" stroke="#ffffff" stroke-width="0.4" paint-order="stroke">RL ${s.rl.toFixed(1)}</text>`);
   }
   // ends
   const endMark = (x: number, text: string) =>
