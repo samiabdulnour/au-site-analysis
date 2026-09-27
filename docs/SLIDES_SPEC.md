@@ -308,7 +308,7 @@ roads and rail, FOI points and areas, elevation contours. New:
 
 | Service | Use |
 |---|---|
-| `NSW_5M_Elevation/ImageServer/getSamples?geometry={"paths":[[[lon,lat],…]],"spatialReference":{"wkid":4326}}&geometryType=esriGeometryPolyline&sampleCount=200&returnFirstValueOnly=true&f=json` | elevation profile along any line: sections, fall, RL of the site, conversion of RL height limits to metres above ground |
+| `NSW_5M_Elevation/ImageServer/getSamples?geometry={"paths":[[[lon,lat],…]],"spatialReference":{"wkid":4326}}&geometryType=esriGeometryPolyline&sampleCount=200&returnFirstValueOnly=true&f=json` | elevation profile along any line: sections, fall, RL of the site, conversion of RL height limits to metres above ground. For a whole window ask `exportImage` for `format=tiff&pixelType=F32` instead: one uncompressed tiled float GeoTIFF (1.3 MB, five seconds for 559 × 459 cells), where `getSamples` on a thousand-point multipoint takes twenty seconds. The service also renders a `Hillshade` rendering rule server-side; the model is photogrammetric (DFSI 2019), so railway cuttings and big roofs leave marks in it |
 | `NSW_Imagery_Dates/MapServer/identify` | capture date and resolution of the aerial at the site (16/02/2022, 7 cm at the sample) — the caption every aerial should carry |
 | `Valuation/MapServer` 9 Urban Property Boundary (`identify` → `propid`), 5 Urban Property Valuations (`where=propid=…` → five annual land values `val1_lv…val5_lv` with base dates, zone, valuation basis), 1 Urban Property Sales (by envelope: price, `sale_date`, area, strata flag, address) | slides 11 and 16; the Valuer General's own site blocks automation, this does not. Several property polygons can overlap at one point (strata schemes, stratum lots), so pick by the site's address and prefer a non-stratum basis; values come as text (" $381,000"), `prop_area` is blank for a stratum, `sale_date` reads "16 July 2026", `strata` holds the scheme's propid (0 when not strata) and `deal_props` > 1 marks a multi-property dealing whose price is the whole dealing's |
 | `NSW_Base_Map`, `NSW_Topo_Map` `/export` | topographic-style alternatives to the DPE basemap |
@@ -441,15 +441,31 @@ Open-Meteo archive (ERA5): `https://archive-api.open-meteo.com/v1/archive?latitu
 
 ## 7. Status
 
-Implemented: slides 03 (planning overview), 04 (planning controls), 07
-(development activity) and 16 (people and market) — `src/render/slides.ts`,
-`src/render/minimap.ts`, `src/render/charts.ts`, `src/fetch/planning.ts`,
+Implemented: slides 03 (planning overview), 04 (planning controls), 06
+(topography), 07 (development activity) and 16 (people and market) —
+`src/render/slides.ts`, `src/render/minimap.ts`, `src/render/charts.ts`,
+`src/render/terrainMap.ts`, `src/fetch/planning.ts`, `src/fetch/terrain.ts`,
 `src/fetch/da.ts`, `src/fetch/abs.ts`, `src/fetch/tzp24.ts`,
 `src/fetch/valuation.ts`, `src/fetch/schools.ts` (gathered by
 `src/fetch/people.ts`), `runSlidesPipeline` in `src/pipeline.ts`; `--type
 slides` on the CLI and the `slides` drawing on the web. The maps use the
 statutory LEP colours read from the ePlanning renderers
 (`src/render/lepPalette.ts`).
+
+Slide 06 takes the 5 m elevation model over the tall panel as one float
+GeoTIFF from the SIX image service (`exportImage`, `format=tiff`,
+`pixelType=F32`, uncompressed and tiled; 464 × 381 cells at 2.5 m in five
+seconds), parses it in `src/fetch/terrain.ts`, and draws its own hillshade
+(Horn's method, north-west light, flat ground left white) as a PNG under
+the State's 2 m contours, the roads and the site. The section lines are
+planned from a plane fitted to the model within 30 m of the site: A–A′
+down the fall (towards the nearest water where the site is flat), B–B′
+across it, both spanning the window; the sections are sampled from the
+grid every 2.5 m with the site and any water flagged, and drawn with a
+vertical exaggeration chosen to fit. The site's levels are the 2nd and 98th
+percentiles of the cells inside it, its grade that fall over its length
+along the fall. The building skyline along the section waits for the
+building heights of slide 08.
 
 Slide 16 looks the site up in the ASGS (SA2, LGA, suburb, capital-city
 region), reads the five census tables for the SA2, the LGA and the capital

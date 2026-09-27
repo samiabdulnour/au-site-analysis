@@ -24,6 +24,7 @@ import { fetchCityOfSydneyDcp, type CityOfSydneyDcp } from './fetch/cityOfSydney
 import { fetchCouncilApplications, apiCouncilName, clipToExtent, PORTAL_MANDATED, type DaRecord } from './fetch/da.js';
 import { fetchPlanningProposals, type PlanningProposal } from './fetch/planning.js';
 import { fetchPeopleData, type PeopleData } from './fetch/people.js';
+import { fetchDemGrid, type DemGrid } from './fetch/terrain.js';
 import type { SiteControls } from './fetch/nsw.js';
 
 export interface CategorizedPoint extends NamedPoint { cat: string | null }
@@ -476,6 +477,8 @@ export interface SlidesBundle {
   proposals: PlanningProposal[];
   /** Census, population, projections, SEIFA, land values, sales and schools for the site's regions; null when the ABS lookup failed. */
   people: PeopleData | null;
+  /** The elevation grid over the tall panel and the 2 m contours over the fetch window. */
+  terrain: { dem: DemGrid | null; contours: ContourLine[] };
   warnings: string[];
 }
 
@@ -529,7 +532,7 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
   const fromDate = new Date(); fromDate.setFullYear(fromDate.getFullYear() - (opts.daYears ?? 5));
   const from = [fromDate.toISOString().slice(0, 10), PORTAL_MANDATED].sort()[1];
 
-  const [zoning, hob, heritage, shr, policy, water, lots, roads, railLines, stations, context, property, controls, proposals, feed, people] = await Promise.all([
+  const [zoning, hob, heritage, shr, policy, water, lots, roads, railLines, stations, context, property, controls, proposals, feed, people, dem, contours] = await Promise.all([
     soft(fetchZoningDetailed(extent), emptyFC, 'zoning'),
     soft(fetchHobDetailed(extent), emptyFC, 'height of building'),
     soft(fetchHeritageDetailed(extent), emptyFC, 'heritage'),
@@ -546,6 +549,8 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
     fetchPlanningProposals(daExtent, log),
     council ? soft(fetchCouncilApplications(council, from, today, log), null, 'Online DA API') : Promise.resolve(null),
     soft(fetchPeopleData(mercatorToLonLat(geo.center), geo.matchedAddresses[0], log), null, 'people and market'),
+    soft(fetchDemGrid(daExtent), null, 'elevation model'),
+    soft(fetchContours(fetchExtent), [], 'contours'),
   ]);
   const [housingTarget, cos] = await Promise.all([
     context.lga?.name ? fetchHousingTarget(context.lga.name) : Promise.resolve(null),
@@ -557,7 +562,7 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
 
   log(`  zoning:${zoning.features.length} hob:${hob.features.length} heritage:${heritage.features.length} shr:${shr.features.length} ` +
       `policy:${policy.length} roads:${roads.length} property:${property ? 'yes' : 'no'} dcp:${context.dcp ? 'yes' : 'no'} target:${housingTarget ? housingTarget.homes : '—'}${cos ? ' council-dcp:yes' : ''} ` +
-      `applications:${applications.length}${feed ? `/${feed.records.length}` : ''} proposals:${proposals.length}`);
+      `applications:${applications.length}${feed ? `/${feed.records.length}` : ''} proposals:${proposals.length} dem:${dem ? `${dem.cols}×${dem.rows}` : 'no'} contours:${contours.length}`);
 
   const bundle: SlidesBundle = {
     address,
@@ -572,7 +577,8 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
     zoning, hob, heritage, shr, policy,
     base: { water, lots, roads, rail: railLines, stations, siteLots },
     controls, property, context, housingTarget, cos,
-    daPanel, applications, daMeta, proposals, people, warnings,
+    daPanel, applications, daMeta, proposals, people,
+    terrain: { dem, contours }, warnings,
   };
   await writeFile(join(dataDir, 'slides_bundle.json'), JSON.stringify(bundle));
   return bundle;

@@ -182,3 +182,89 @@ export function columns(o: ColumnsOpts): string {
   });
   return `${svgOpen(w, h, o.font)}${parts.join('')}</svg>`;
 }
+
+export interface SectionOpts {
+  w: number; h: number; font: string;
+  samples: { d: number; rl: number; site: boolean; water: boolean }[];
+  /** The end labels, e.g. "A" and "A′". */
+  from: string; to: string;
+  /** Vertical exaggeration; chosen to fit when omitted. */
+  ve?: number;
+  siteColour: string;
+  waterColour: string;
+}
+
+/** A ground section: RL against distance, the site and any water marked, ends labelled. */
+export function sectionSvg(o: SectionOpts): { svg: string; ve: number } {
+  const { w, h, samples } = o;
+  if (samples.length < 2) return { svg: '', ve: 1 };
+  const left = 12, right = 4, top = 7, bottom = 6.5;
+  const pw = w - left - right, ph = h - top - bottom;
+  const L = samples[samples.length - 1].d;
+  const rls = samples.map((s) => s.rl);
+  const lo = Math.min(...rls), hi = Math.max(...rls);
+  const sx = pw / L;                                    // mm per ground metre, horizontally
+  const range = Math.max(1, hi - lo);
+  let ve = o.ve ?? 0;
+  if (!ve) { for (const cand of [20, 10, 5, 3, 2, 1]) { ve = cand; if (range * sx * cand <= ph * 0.82) break; } if (range * sx * ve > ph * 0.82) ve = (ph * 0.82) / (range * sx); }
+  const sy = sx * ve;
+  const tickStep = niceScale(range, 4).step;
+  const y0 = Math.floor(lo / tickStep) * tickStep;
+  const yTop = Math.max(y0 + tickStep, Math.ceil(hi / tickStep) * tickStep);
+  const usedH = (yTop - y0) * sy;
+  const base = top + Math.min(ph, usedH) + (ph - Math.min(ph, usedH)) / 2;
+  const Y = (rl: number) => base - (rl - y0) * sy;
+  const X = (d: number) => left + d * sx;
+  const parts: string[] = [];
+  // grid
+  for (let v = y0; v <= yTop + 1e-9; v += tickStep) {
+    if (Y(v) < top - 0.5) break;
+    parts.push(`<line x1="${left}" y1="${Y(v).toFixed(2)}" x2="${(w - right).toFixed(2)}" y2="${Y(v).toFixed(2)}" stroke="${v === y0 ? CHART.axis : CHART.grid}" stroke-width="0.15"/>`);
+    parts.push(`<text x="${left - 1.5}" y="${(Y(v) + 0.7).toFixed(2)}" text-anchor="end" font-size="1.95" fill="${CHART.muted}">RL ${v}</text>`);
+  }
+  const xStep = niceScale(L, 6).step;
+  for (let d = 0; d <= L + 1e-9; d += xStep)
+    parts.push(`<text x="${X(d).toFixed(2)}" y="${(base + 3.4).toFixed(2)}" text-anchor="middle" font-size="1.95" fill="${CHART.muted}">${Math.round(d)}${d === 0 ? ' m' : ''}</text>`);
+  // ground: fill to the base, then water and site as bands under the line
+  const line = samples.map((s, i) => `${i ? 'L' : 'M'}${X(s.d).toFixed(2)},${Y(s.rl).toFixed(2)}`).join('');
+  parts.push(`<path d="${line}L${X(L).toFixed(2)},${base.toFixed(2)}L${left},${base.toFixed(2)}Z" fill="#e9e7e0"/>`);
+  const bands = (flag: 'site' | 'water', fill: string, opacity: number) => {
+    let start = -1;
+    const runs: [number, number][] = [];
+    samples.forEach((s, i) => { if (s[flag] && start < 0) start = i; if ((!s[flag] || i === samples.length - 1) && start >= 0) { runs.push([start, s[flag] ? i : i - 1]); start = -1; } });
+    for (const [i0, i1] of runs) {
+      const seg = samples.slice(i0, i1 + 1);
+      if (seg.length < 2) continue;
+      const d = seg.map((s, i) => `${i ? 'L' : 'M'}${X(s.d).toFixed(2)},${Y(s.rl).toFixed(2)}`).join('');
+      parts.push(`<path d="${d}L${X(seg[seg.length - 1].d).toFixed(2)},${base.toFixed(2)}L${X(seg[0].d).toFixed(2)},${base.toFixed(2)}Z" fill="${fill}" fill-opacity="${opacity}"/>`);
+    }
+    return runs;
+  };
+  bands('water', o.waterColour, 0.9);
+  const siteRuns = bands('site', o.siteColour, 0.28);
+  parts.push(`<path d="${line}" fill="none" stroke="${CHART.ink}" stroke-width="0.4" stroke-linejoin="round"/>`);
+  // the site: a bar above the ground with its RLs at both ends
+  for (const [i0, i1] of siteRuns) {
+    const a = samples[i0], b = samples[i1];
+    const yb = Math.min(Y(a.rl), Y(b.rl), ...samples.slice(i0, i1 + 1).map((s) => Y(s.rl))) - 3.2;
+    parts.push(`<line x1="${X(a.d).toFixed(2)}" y1="${yb.toFixed(2)}" x2="${X(b.d).toFixed(2)}" y2="${yb.toFixed(2)}" stroke="${o.siteColour}" stroke-width="0.6"/>`);
+    parts.push(`<line x1="${X(a.d).toFixed(2)}" y1="${yb.toFixed(2)}" x2="${X(a.d).toFixed(2)}" y2="${Y(a.rl).toFixed(2)}" stroke="${o.siteColour}" stroke-width="0.25"/>`);
+    parts.push(`<line x1="${X(b.d).toFixed(2)}" y1="${yb.toFixed(2)}" x2="${X(b.d).toFixed(2)}" y2="${Y(b.rl).toFixed(2)}" stroke="${o.siteColour}" stroke-width="0.25"/>`);
+    parts.push(`<text x="${((X(a.d) + X(b.d)) / 2).toFixed(2)}" y="${(yb - 1.2).toFixed(2)}" text-anchor="middle" font-size="2.1" font-weight="700" fill="${o.siteColour}">SITE</text>`);
+    parts.push(`<text x="${(X(a.d) - 0.8).toFixed(2)}" y="${(yb + 2.4).toFixed(2)}" text-anchor="end" font-size="1.9" fill="${CHART.ink}" stroke="#ffffff" stroke-width="0.4" paint-order="stroke">RL ${a.rl.toFixed(1)}</text>`);
+    parts.push(`<text x="${(X(b.d) + 0.8).toFixed(2)}" y="${(yb + 2.4).toFixed(2)}" font-size="1.9" fill="${CHART.ink}" stroke="#ffffff" stroke-width="0.4" paint-order="stroke">RL ${b.rl.toFixed(1)}</text>`);
+  }
+  // the highest and lowest points, unless they are the site's own labels
+  const iHi = rls.indexOf(hi), iLo = rls.indexOf(lo);
+  for (const [i, anchor] of [[iHi, 'hi'], [iLo, 'lo']] as const) {
+    const s = samples[i];
+    if (s.site) continue;
+    parts.push(`<circle cx="${X(s.d).toFixed(2)}" cy="${Y(s.rl).toFixed(2)}" r="0.7" fill="${CHART.ink}"/>`);
+    parts.push(`<text x="${X(s.d).toFixed(2)}" y="${(Y(s.rl) + (anchor === 'hi' ? -1.6 : 3.4)).toFixed(2)}" text-anchor="middle" font-size="1.9" fill="${CHART.secondary}" stroke="#ffffff" stroke-width="0.4" paint-order="stroke">RL ${s.rl.toFixed(1)}</text>`);
+  }
+  // ends
+  const endMark = (x: number, text: string) =>
+    `<circle cx="${x.toFixed(2)}" cy="3.2" r="2.4" fill="#ffffff" stroke="${CHART.ink}" stroke-width="0.3"/><text x="${x.toFixed(2)}" y="4.1" text-anchor="middle" font-size="2.4" font-weight="700" fill="${CHART.ink}">${esc(text)}</text>`;
+  parts.push(endMark(left + 2.4, o.from), endMark(w - right - 2.4, o.to));
+  return { svg: `${svgOpen(w, h, o.font)}${parts.join('')}</svg>`, ve };
+}

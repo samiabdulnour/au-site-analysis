@@ -12,7 +12,7 @@ import type { GeoJSONFeature } from '../lib/arcgis.js';
 import { tpl } from './template.js';
 import { esc } from './chrome.js';
 import {
-  panelProjector, baseLayers, overLayers, panelFurniture, furnitureBox, siteMark, siteLabelPoint, ringsPath, ringStats, clippedStats, hatchPath, bboxOf,
+  panelProjector, panelExtent, baseLayers, overLayers, panelFurniture, furnitureBox, siteMark, siteLabelPoint, ringsPath, fcPath, ringStats, clippedStats, hatchPath, bboxOf,
   legendSvg, swatchFill, swatchHatch, swatchLine, LabelSpacer, type Proj, type LegendEntry, type FurnitureCorner,
 } from './minimap.js';
 import { zoneFill, heritageStyle, hobRamp, POLICY_STYLE } from './lepPalette.js';
@@ -22,7 +22,8 @@ import { isSignificant, siteKey, parseSiteAddress, sameLot, money, type DaRecord
 import type { PeopleData } from '../fetch/people.js';
 import type { CensusProfile, DwellingMix, TenureMix, TravelMix, PersonsProfile, YearValue } from '../fetch/abs.js';
 import type { Sale } from '../fetch/valuation.js';
-import { lineWithProjection, pairedBars, columns } from './charts.js';
+import { lineWithProjection, pairedBars, columns, sectionSvg } from './charts.js';
+import { hillshadeDataUri, planSections, sampleSection, siteLevels, gridExtremes, nearestWater, bearingName } from './terrainMap.js';
 
 export const SLIDE_W = 420;
 export const SLIDE_H = 297;
@@ -1274,11 +1275,169 @@ function emptyBox(w: number, h: number, note: string): string {
   return `<div style="width:${w}mm;height:${h}mm;border:0.15mm solid ${tpl().rule};display:flex;align-items:center;justify-content:center;font-size:2.2mm;color:#777;text-align:center;padding:0 4mm">${esc(note)}</div>`;
 }
 
+// ---- slide 06: topography ---------------------------------------------------
+
+const CONTOUR = '#a07c3f';
+
+/** What the terrain says about the site: levels, fall, aspect, the sections and the window's relief. */
+export function terrainFacts(b: SlidesBundle) {
+  const g = b.terrain.dem;
+  if (!g) return null;
+  const p = b.daPanel;
+  const extent = panelExtent(p);
+  const centre = p.center;
+  const siteRings = b.base.siteLots.features.flatMap((f) => geomRings(f.geometry));
+  const waterRings = b.base.water.features.flatMap((f) => geomRings(f.geometry));
+  const plan = planSections(g, centre, extent, waterRings);
+  const fallDir = plan.slope && Math.hypot(plan.slope.east, plan.slope.north) > 1e-6
+    ? { x: -plan.slope.east / Math.hypot(plan.slope.east, plan.slope.north), y: -plan.slope.north / Math.hypot(plan.slope.east, plan.slope.north) }
+    : null;
+  const site = siteLevels(g, siteRings, fallDir);
+  const sections = [plan.a, plan.b].map((s) => {
+    const samples = sampleSection(g, s, siteRings, waterRings);
+    const rls = samples.map((x) => x.rl);
+    return { ...s, samples, from: { ...s.from }, to: { ...s.to }, rlFrom: samples[0]?.rl, rlTo: samples[samples.length - 1]?.rl, rlMin: Math.min(...rls), rlMax: Math.max(...rls), crossesWater: samples.some((x) => x.water) };
+  });
+  // The grade at the site: its own fall over its own length when it is big enough to measure, else the fitted plane's.
+  const planePct = plan.slope ? Math.hypot(plan.slope.east, plan.slope.north) * 100 : 0;
+  const slopePct = site && site.extentAlongFallM >= 10 && site.max - site.min >= 0.3 ? ((site.max - site.min) / site.extentAlongFallM) * 100 : planePct;
+  const WATER_WORD = /\b(RIVER|CREEK|BAY|HARBOUR|HARBOR|LAKE|LAGOON|COVE|DAM|CANAL|POND|RESERVOIR|CHANNEL|INLET|ESTUARY|SEA|OCEAN|BASIN|WETLAND|SWAMP)\b/i;
+  const waterRaw = String(b.base.water.features[0]?.properties?.hydroname ?? '');
+  const elevations = [...new Set(b.terrain.contours.map((c) => c.elevation))].sort((x, y) => x - y);
+  const interval = elevations.length > 1 ? Math.min(...elevations.slice(1).map((e, i) => e - elevations[i]).filter((d) => d > 0)) : undefined;
+  return {
+    source: g.source,
+    cellM: Math.round(g.cellX * g.groundPerUnit * 100) / 100,
+    window: { minRl: g.min, maxRl: g.max, high: gridExtremes(g, centre).max, low: gridExtremes(g, centre).min },
+    site,
+    slope: plan.slope ? { pct: slopePct, fallBearing: fallDir ? plan.a.bearing : undefined, faces: fallDir ? bearingName(plan.a.bearing) : undefined, oneIn: slopePct > 0.05 ? Math.round(100 / slopePct) : undefined } : null,
+    sections,
+    water: nearestWater(waterRings, centre, g.groundPerUnit),
+    waterName: WATER_WORD.test(waterRaw) ? titleCase(waterRaw) : undefined,
+    contours: { count: b.terrain.contours.length, intervalM: interval, source: 'NSW Spatial Services elevation theme' },
+  };
+}
+
+export function terrainSentences(b: SlidesBundle, f: ReturnType<typeof terrainFacts>): string[] {
+  if (!f) return ['The elevation model could not be read for this window when the deck was generated.'];
+  const out: string[] = [];
+  const rl = (v: number) => `RL ${(v > -0.5 && v < 0 ? 0 : v).toFixed(1)}`;
+  if (f.site) {
+    const fall = f.site.max - f.site.min;
+    let s = `The site lies between ${rl(f.site.min)} and ${rl(f.site.max)} m AHD`;
+    if (fall >= 0.5 && f.slope?.faces) {
+      s += `, falling ${fall.toFixed(1)} m to the ${f.slope.faces}`;
+      if (f.site.extentAlongFallM >= 10) s += ` across ${fmtNum(Math.round(f.site.extentAlongFallM))} m`;
+      if (f.slope.oneIn) s += `, a grade of about ${f.slope.pct.toFixed(f.slope.pct < 3 ? 1 : 0)} % (1 in ${f.slope.oneIn})`;
+      s += '.';
+    } else s += `: near level${f.slope && f.slope.pct >= 0.3 && f.slope.faces ? `, with the ground tending to the ${f.slope.faces}` : ''}.`;
+    out.push(s);
+  }
+  const w = f.window;
+  let win = `Within the ${fmtNum(Math.round((b.daPanel.wMm / 1000) * b.daPanel.scale))} × ${fmtNum(Math.round((b.daPanel.hMm / 1000) * b.daPanel.scale))} m window the ground runs from ${rl(w.minRl)} to ${rl(w.maxRl)}: the high point is ${fmtNum(Math.round(w.high.distanceM))} m to the ${bearingName(w.high.bearing)}`;
+  if (f.water) win += `, and ${f.waterName ?? 'the water'} lies ${fmtNum(Math.round(f.water.distanceM))} m to the ${bearingName(f.water.bearing)}`;
+  else win += `, the low point ${fmtNum(Math.round(w.low.distanceM))} m to the ${bearingName(w.low.bearing)}`;
+  out.push(`${win}.`);
+  const [a, bb] = f.sections;
+  if (a && bb) {
+    const dir = (s: typeof a) => `${bearingName((s.bearing + 180) % 360)} to ${bearingName(s.bearing)}`;
+    out.push(`Section A–A′ runs ${fmtNum(Math.round(a.lengthM))} m ${dir(a)} down the fall through the site, from ${rl(a.rlFrom ?? 0)} at A to ${a.crossesWater ? 'the water' : rl(a.rlTo ?? 0)} at A′; B–B′ crosses it, ${fmtNum(Math.round(bb.lengthM))} m ${dir(bb)}, between ${rl(bb.rlMin)} and ${rl(bb.rlMax)}.`);
+  }
+  out.push(`${f.contours.count ? `Contours at ${f.contours.intervalM ?? 2} m are the State's mapped contours; ` : 'No mapped contour falls in this window; '}the hillshade, the sections and the levels come from the 5 m elevation model at ${f.cellM} m cells, a photogrammetric surface and not a survey: read its levels as indicative to about a metre.`);
+  return out;
+}
+
+export function terrainSlide(b: SlidesBundle): Slide {
+  const f = terrainFacts(b);
+  const t = tpl();
+  const sentences = terrainSentences(b, f);
+  const textHtml = sentences.map(para).join('') +
+    placeholder('Narrative — for the author: what the fall means for levels, access and views, where the building meets the ground, how the section reads against the neighbours and the ridge or the water, and whether cut, fill or a split level is the answer.') +
+    `<div class="fine">Sources: NSW 5 m elevation model (stereo imagery, DFSI 2019) via SIX Maps; NSW Spatial Services elevation theme contours; roads, rail and cadastre from NSW Spatial Services. Levels in metres AHD. Retrieved ${b.generatedAt.slice(0, 10)}.</div>`;
+  const sub = [b.siteAddress, f?.site ? `RL ${f.site.min.toFixed(1)}–${f.site.max.toFixed(1)}` : '', f?.slope?.faces && f.site && f.site.max - f.site.min >= 0.5 ? `falls to the ${f.slope.faces}` : ''].filter(Boolean).join(' · ');
+  if (!f || !b.terrain.dem) {
+    return { id: '06_topography', title: 'Topography', subtitle: sub, textHtml,
+      figureHtml: `<div class="abs ptitle" style="left:${FIELD_X}mm;top:${FIELD_Y}mm;width:${FIELD_W}mm">Elevation unavailable<span class="pnote">the 5 m elevation model did not answer for this window</span></div>` };
+  }
+  const g = b.terrain.dem;
+  const p = b.daPanel;
+  const proj = panelProjector(p);
+  const mproj = (x: number, y: number) => proj(mercatorToLonLat({ x, y }).lon, mercatorToLonLat({ x, y }).lat);
+
+  // The map: hillshade, water, contours, roads and the site, the section lines.
+  const parts: string[] = [];
+  parts.push(`<image x="0" y="0" width="${p.wMm}" height="${p.hMm}" preserveAspectRatio="none" opacity="0.72" href="${hillshadeDataUri(g)}"/>`);
+  if (b.base.water.features.length) parts.push(`<path d="${fcPath(b.base.water, proj)}" fill="${t.water}" fill-rule="evenodd"/>`);
+  const elevations = [...new Set(b.terrain.contours.map((c) => c.elevation))].sort((x, y) => x - y);
+  const interval = f.contours.intervalM ?? 2;
+  const indexEvery = interval >= 10 ? 5 * interval : interval * 5;
+  const labels: string[] = [];
+  const spacer = new LabelSpacer(p.wMm, p.hMm, 60);
+  for (const c of b.terrain.contours) {
+    const index = Math.abs(c.elevation / indexEvery - Math.round(c.elevation / indexEvery)) < 1e-6;
+    parts.push(`<path d="${ringsPath([c.coords as number[][]], proj, false)}" fill="none" stroke="${CONTOUR}" stroke-width="${index ? 0.32 : 0.16}" stroke-opacity="${index ? 0.95 : 0.7}" stroke-linejoin="round"/>`);
+    if (index && c.coords.length > 6) {
+      // label the index contour once, near its middle, where there is room
+      const mid = c.coords[Math.floor(c.coords.length / 2)];
+      const [x, y] = proj(mid[0], mid[1]);
+      const text = `${c.elevation}`;
+      if (x > 4 && y > 4 && x < p.wMm - 4 && y < p.hMm - 4 && spacer.take(x, y, labelW(text, 1.9) + 1, 2.4))
+        labels.push(`<text x="${x.toFixed(1)}" y="${(y + 0.65).toFixed(1)}" text-anchor="middle" font-size="1.9" font-weight="700" fill="${CONTOUR}" stroke="#ffffff" stroke-width="0.45" paint-order="stroke">${text}</text>`);
+    }
+  }
+  parts.push(labels.join(''));
+  parts.push(overLayers(b.base, proj, p));
+  // section lines with their end marks
+  for (const s of f.sections) {
+    const [x1, y1] = mproj(s.from.x, s.from.y), [x2, y2] = mproj(s.to.x, s.to.y);
+    parts.push(`<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="#ffffff" stroke-width="1.1" stroke-opacity="0.85"/>` +
+      `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${t.dimension}" stroke-width="0.4" stroke-dasharray="2.2,1.1"/>`);
+    for (const [x, y, text] of [[x1, y1, s.id], [x2, y2, `${s.id}′`]] as [number, number, string][])
+      parts.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.4" fill="#ffffff" stroke="${t.dimension}" stroke-width="0.35"/><text x="${x.toFixed(1)}" y="${(y + 0.9).toFixed(1)}" text-anchor="middle" font-size="2.4" font-weight="700" fill="${t.dimension}">${esc(text)}</text>`);
+  }
+  parts.push(panelFurniture(p, 'right'));
+  const mapSvg = `<svg width="${p.wMm}mm" height="${p.hMm}mm" viewBox="0 0 ${p.wMm} ${p.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
+    <defs><clipPath id="clip-topo"><rect x="0" y="0" width="${p.wMm}" height="${p.hMm}"/></clipPath></defs>
+    <g clip-path="url(#clip-topo)" font-family="${t.font}">${parts.join('\n')}</g>
+    <rect x="0.1" y="0.1" width="${p.wMm - 0.2}" height="${p.hMm - 0.2}" fill="none" stroke="${t.rule}" stroke-width="0.2"/>
+  </svg>`;
+
+  // Right of the map: the figures, the legend, section B–B′.
+  const rightX = FIELD_X + PANEL_W + GUTTER, rightW = FIELD_W - PANEL_W - GUTTER;
+  const tiles = [
+    { v: f.site ? `${f.site.min.toFixed(1)}–${f.site.max.toFixed(1)}` : '—', l: 'RL range of the site, m AHD' },
+    { v: f.site ? `${(f.site.max - f.site.min).toFixed(1)} m` : '—', l: f.slope?.faces && f.site && f.site.max - f.site.min >= 0.5 ? `fall across the site, to the ${f.slope.faces}` : 'fall across the site' },
+    { v: f.slope ? `${f.slope.pct.toFixed(f.slope.pct < 3 ? 1 : 0)} %` : '—', l: f.slope?.oneIn ? `grade at the site (1 in ${f.slope.oneIn})` : 'grade at the site' },
+    { v: `${Math.max(0, Math.round(f.window.minRl))}–${Math.round(f.window.maxRl)}`, l: 'RL range of the window' },
+  ].map((tl) => `<div class="tile"><div class="tv${tl.v.length > 9 ? ' long' : ''}">${esc(tl.v)}</div><div class="tl">${esc(tl.l)}</div></div>`).join('');
+  const legend = [
+    [`<svg width="5mm" height="3.6mm" viewBox="0 0 5 3.6"><rect x="0" y="0.3" width="5" height="3" fill="#cfcfcf"/><rect x="0" y="0.3" width="2.5" height="3" fill="#ececec"/></svg>`, 'Hillshade from the 5 m elevation model, lit from the north-west'],
+    [`<svg width="5mm" height="3.6mm" viewBox="0 0 5 3.6"><line x1="0" y1="2.6" x2="5" y2="2.6" stroke="${CONTOUR}" stroke-width="0.2"/><line x1="0" y1="1.2" x2="5" y2="1.2" stroke="${CONTOUR}" stroke-width="0.4"/></svg>`, `Contours at ${interval} m, every ${indexEvery} m heavier and labelled`],
+    [`<svg width="5mm" height="3.6mm" viewBox="0 0 5 3.6"><line x1="0" y1="1.8" x2="5" y2="1.8" stroke="${t.dimension}" stroke-width="0.4" stroke-dasharray="1.4,0.7"/></svg>`, 'Section lines A–A′ (down the fall) and B–B′ (across it)'],
+    [`<svg width="5mm" height="3.6mm" viewBox="0 0 5 3.6"><rect x="0" y="0.3" width="5" height="3" fill="${t.water}"/></svg>`, 'Water'],
+  ].map(([sw, txt]) => `<div class="lg">${sw}<span>${esc(txt)}</span></div>`).join('');
+  const secB = f.sections[1] ? sectionSvg({ w: rightW, h: 60, font: t.font, samples: f.sections[1].samples, from: 'B', to: 'B′', siteColour: t.site, waterColour: t.water }) : { svg: '', ve: 1 };
+  const secA = f.sections[0] ? sectionSvg({ w: FIELD_W, h: 96, font: t.font, samples: f.sections[0].samples, from: 'A', to: 'A′', siteColour: t.site, waterColour: t.water }) : { svg: '', ve: 1 };
+  const secTitle = (s: (typeof f.sections)[number], ve: number) => `Section ${s.id}–${s.id}′<span class="pnote">${bearingName((s.bearing + 180) % 360)} to ${bearingName(s.bearing)} · ${fmtNum(Math.round(s.lengthM))} m · RL ${s.rlMin.toFixed(0)} to ${s.rlMax.toFixed(0)} · vertical exaggeration ${ve % 1 ? ve.toFixed(1) : ve}×</span>`;
+  const yB = FIELD_Y + PANEL_TITLE_H + 24 + 3 + 24;
+  const yA = FIELD_Y + PANEL_TITLE_H + DA_PANEL_H + GUTTER;
+  const figureHtml = `
+    <div class="abs ptitle" style="left:${FIELD_X}mm;top:${FIELD_Y}mm;width:${PANEL_W}mm">Landform<span class="pnote">1:${fmtNum(p.scale)} · hillshade, contours, sections</span></div>
+    <div class="abs" style="left:${FIELD_X}mm;top:${FIELD_Y + PANEL_TITLE_H}mm">${mapSvg}</div>
+    <div class="abs tiles" style="left:${rightX}mm;top:${FIELD_Y + PANEL_TITLE_H}mm;width:${rightW}mm">${tiles}</div>
+    <div class="abs legend" style="left:${rightX}mm;top:${FIELD_Y + PANEL_TITLE_H + 24}mm;width:${rightW}mm">${legend}</div>
+    ${f.sections[1] ? `<div class="abs ptitle" style="left:${rightX}mm;top:${yB}mm;width:${rightW}mm">${secTitle(f.sections[1], secB.ve)}</div>
+    <div class="abs" style="left:${rightX}mm;top:${yB + PANEL_TITLE_H}mm">${secB.svg}</div>` : ''}
+    ${f.sections[0] ? `<div class="abs ptitle" style="left:${FIELD_X}mm;top:${yA}mm;width:${FIELD_W}mm">${secTitle(f.sections[0], secA.ve)}</div>
+    <div class="abs" style="left:${FIELD_X}mm;top:${yA + PANEL_TITLE_H}mm">${secA.svg}</div>` : ''}`;
+  return { id: '06_topography', title: 'Topography', subtitle: sub, textHtml, figureHtml };
+}
+
 // ---- the deck -----------------------------------------------------------------
 
 export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; slides: Slide[] } {
   const facts = planningFacts(b);
-  const slides = [planningOverviewSlide(b, facts), planningControlsSlide(b, facts), developmentSlide(b, facts), peopleSlide(b)];
+  const slides = [planningOverviewSlide(b, facts), planningControlsSlide(b, facts), terrainSlide(b), developmentSlide(b, facts), peopleSlide(b)];
   const t = tpl();
   const footerLeft = ['SITE ANALYST — OVERALL ANALYSIS', b.siteAddress, meta.client ? `for ${meta.client}` : '', meta.jobNo ? `job ${meta.jobNo}` : ''].filter(Boolean).join(' · ');
   const pages = slides.map((s, i) => `
@@ -1320,6 +1479,7 @@ export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; 
   .tl { font-size: 2.1mm; color: #555; margin-top: 0.8mm; line-height: 1.25; }
   .tiles.seven { grid-template-columns: repeat(7, 1fr); gap: 2.4mm; }
   .tiles.seven .tv { font-size: 4.9mm; }
+  .tv.long { font-size: 4.1mm; }
   table.cmp { width: 100%; border-collapse: collapse; font-size: 2.3mm; line-height: 1.25; }
   table.cmp th, table.cmp td { text-align: right; vertical-align: top; padding: 0.85mm 0 0.85mm 1.5mm; border-top: 0.15mm solid ${t.rule}; font-variant-numeric: tabular-nums; }
   table.cmp th:first-child, table.cmp td:first-child { text-align: left; padding-left: 0; }
@@ -1357,6 +1517,7 @@ export function slidesFacts(b: SlidesBundle) {
     councilDcp: b.cos,
     development: (() => { const d = developmentFacts(b); return { ...d, sentences: developmentSentences(b, d, facts) }; })(),
     people: peopleFacts(b),
+    terrain: (() => { const f = terrainFacts(b); return f ? { ...f, sections: f.sections.map((s) => ({ ...s, samples: s.samples.filter((_, i) => i % 4 === 0) })), sentences: terrainSentences(b, f) } : { available: false, sentences: terrainSentences(b, f) }; })(),
     propertyApi: b.property,
     sentences: planningSentences(b, facts),
     sentenceList: sentenceList(planningSentences(b, facts)),

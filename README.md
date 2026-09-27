@@ -444,7 +444,7 @@ development window), `--job 2539`, `--client "Name"`,
 
 `--type slides` draws the OVERALL ANALYSIS deck: A3 landscape pages for the
 content part of a feasibility study or design report, specified in
-`docs/SLIDES_SPEC.md`. Four slides exist so far. The planning pair: a
+`docs/SLIDES_SPEC.md`. Five slides exist so far. The planning pair: a
 *planning overview* of four maps at 1:8000 around the site (land zoning in the
 statutory colours, height of building, heritage with the State Heritage
 Register, and the housing-policy maps — TOD areas, town centres, State
@@ -452,7 +452,13 @@ significant development sites, precincts) and *planning controls at the site*,
 a table of every mapped control with its source and currency: zone, height
 (with its units, since some LEPs limit in RL), FSR, lot size, heritage,
 local provisions, SEPP maps, the DCP with its link, contributions, tree
-canopy and the council's housing target. Then *development activity*: every
+canopy and the council's housing target. Then *topography*: the landform
+at 1:8000 as a hillshade from the State's 5 m elevation model with the 2 m
+contours, roads and rail over it and two section lines through the site,
+A–A′ down the steepest fall and B–B′ across it, each drawn as a section
+with the site and its levels marked; the text gives the site's RL range,
+fall, grade and aspect and where the high ground and the water are. Then
+*development activity*: every
 application lodged in the council area over the last five years, from the
 Planning Portal's Online DA feed, clipped to the window around the site. The
 ones of a scale that shapes the context — four storeys, ten dwellings or
