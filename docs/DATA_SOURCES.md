@@ -14,6 +14,11 @@ viewer, Nearmap) are replaced with programmatic equivalents:
 | Bus stops | Google Maps | TfNSW Trip Planner API `v1/tp/coord` (`TFNSW_API_KEY` in `.env`, free from opendata.transport.nsw.gov.au); fallback OSM Overpass |
 | Bus route lines | Google Maps | OSM Overpass API (soft-fail) |
 | Walking isochrones | smappen | Valhalla public server (`valhalla1.openstreetmap.de/isochrone`), pedestrian costing, 5/10 min |
+| Contours (site sheet) | survey | NSW Spatial `NSW_Elevation_and_Depth_Theme/FeatureServer/2` (2 m); inside the City of Sydney, its `Terrain_Contours/FeatureServer/0` (1 m, 2020 aerial survey, CC BY 4.0) |
+| Trees with a size (site sheet) | site visit / arborist | City of Sydney `Trees/FeatureServer/0` on `services1.arcgis.com/cNVyNtjGVZybOQWZ` (height, canopy spread, species; CC BY 4.0) inside the LGA; OSM `natural=tree` with `diameter_crown` / `height` / `circumference` where tagged; nominal 6 m otherwise |
+| Kerbside parking, car parks | site visit | OSM `parking:*` road tags (both schemes), `amenity=parking`, `amenity=parking_space`; kerb position from the cadastral lots |
+| Ground for sight lines | — | NSW SIX `public/NSW_5M_Elevation/ImageServer` (`getSamples` along the line, DFSI 2019) |
+| Water bodies and coast (view targets) | — | NSW Spatial `NSW_Water_Theme/FeatureServer` — 6 HydroArea (named bays, rivers, lakes), 4 Coastline |
 
 Notes:
 

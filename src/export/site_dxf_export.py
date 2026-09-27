@@ -81,6 +81,10 @@ layer("NEIGHBOUR-LABELS", 0x333333)
 layer("TREES", 0x3E8B49)
 layer("DRIVEWAYS", 0x2456C4)
 layer("PARKING-LANES", 0x2456C4)
+layer("PARKING-BAYS", 0x2456C4)
+layer("CAR-PARKS", 0x2456C4)
+layer("TREE-LABELS", 0x3E8B49)
+layer("VIEWS", 0x8A8A8A)
 layer("UTILITIES", 0x9B59B6)
 layer("STREET-LAMPS", 0xC8A165)
 layer("POWER-POLES", 0xC8A165)
@@ -160,7 +164,17 @@ def dots(layer_name, items, radius):
         x, y = P(it["lon"], it["lat"])
         msp.add_circle((x, y), radius, dxfattribs={"layer": layer_name})
 
-dots("TREES", fur.get("trees"), 1.5)
+# ---- trees: the canopy at its recorded or nominal size, trunk at centre ----
+for t in fur.get("trees") or []:
+    x, y = P(t["lon"], t["lat"])
+    canopy = t.get("canopyM") or 6
+    msp.add_circle((x, y), canopy / 2, dxfattribs={"layer": "TREES"})
+    msp.add_circle((x, y), 0.25, dxfattribs={"layer": "TREES"})
+    if t.get("canopySource") == "measured" or t.get("species"):
+        name = t.get("common") or t.get("species") or ""
+        size = f"C{canopy:g}m" + (f" H{t['heightM']:g}m" if t.get("heightM") else "")
+        add_text("TREE-LABELS", f"{name} {size}".strip(), x, y - canopy / 2 - 0.6, 0.4)
+
 dots("STREET-LAMPS", fur.get("streetLamps"), 0.4)
 dots("POWER-POLES", fur.get("powerPoles"), 0.4)
 dots("HYDRANTS", fur.get("hydrants"), 0.4)
@@ -174,6 +188,29 @@ for d in fur.get("driveways") or []:
     add_poly("DRIVEWAYS", d.get("coords") or [], closed=False)
 for pl in fur.get("parkingLanes") or []:
     add_poly("PARKING-LANES", pl.get("coords") or [], closed=False)
+
+# ---- kerbside bays as set out on the sheet, car parks as OSM has them -----
+for band in bundle.get("parkingBands") or []:
+    for ring in band.get("bays") or []:
+        add_poly("PARKING-BAYS", ring)
+for b in fur.get("parkingBays") or []:
+    add_poly("PARKING-BAYS", b.get("ring") or [])
+CAR_PARK_KIND = {
+    "surface": "CAR PARK", "multi-storey": "MULTI-STOREY CAR PARK",
+    "underground": "BASEMENT CAR PARK", "rooftop": "ROOFTOP CAR PARK",
+    "street_side": "PARKING BAYS",
+}
+for cp in fur.get("carParks") or []:
+    ring = cp.get("ring") or []
+    if add_poly("CAR-PARKS", ring) is None:
+        continue
+    pts = [P(c[0], c[1]) for c in ring]
+    cx = sum(p[0] for p in pts) / len(pts)
+    cy = sum(p[1] for p in pts) / len(pts)
+    label = CAR_PARK_KIND.get(cp.get("kind"), "CAR PARK")
+    if cp.get("capacity"):
+        label += f" ({cp['capacity']} BAYS)"
+    add_text("CAR-PARKS", label, cx, cy, 0.8)
 for u in fur.get("utilities") or []:
     p = add_poly("UTILITIES", u.get("coords") or [], closed=False)
     if p is not None:
@@ -187,6 +224,39 @@ for s in bundle.get("busStops", []) or []:
 for f in bundle.get("zoning", {}).get("features", []):
     for ring in rings_of(f.get("geometry")):
         add_poly("ZONING", ring)
+
+# ---- potential views: a 40 m cone from the site edge, where the ground
+# leaves the sight line clear. Ground only — the sheet's legend says so. ----
+site_pts = [P(c[0], c[1]) for c in bundle["siteRing"]]
+site_cx = sum(p[0] for p in site_pts) / len(site_pts)
+site_cy = sum(p[1] for p in site_pts) / len(site_pts)
+
+def exit_point(bearing_deg):
+    """Where a ray from the site centre at this bearing leaves the boundary."""
+    dx, dy = math.sin(math.radians(bearing_deg)), math.cos(math.radians(bearing_deg))
+    best = 0.0
+    for (ax, ay), (bx, by) in zip(site_pts, site_pts[1:]):
+        ex, ey = bx - ax, by - ay
+        den = dx * ey - dy * ex
+        if abs(den) < 1e-12:
+            continue
+        t = ((ax - site_cx) * ey - (ay - site_cy) * ex) / den
+        u = ((ax - site_cx) * dy - (ay - site_cy) * dx) / den
+        if t > best and 0 <= u <= 1:
+            best = t
+    return site_cx + dx * best, site_cy + dy * best
+
+for v in bundle.get("views") or []:
+    if not v.get("cone"):
+        continue
+    ax, ay = exit_point(v["bearingDeg"])
+    b = math.radians(v["bearingDeg"])
+    L, half = 40.0, math.radians(14)
+    arc = [(ax + L * math.sin(b - half + 2 * half * i / 10),
+            ay + L * math.cos(b - half + 2 * half * i / 10)) for i in range(11)]
+    msp.add_lwpolyline([(ax, ay)] + arc, close=True, dxfattribs={"layer": "VIEWS"})
+    word = "OUTLOOK" if v.get("kind") == "park" else "VIEW"
+    add_text("VIEWS", f"{v['label']} {word}", ax + 0.6 * L * math.sin(b), ay + 0.6 * L * math.cos(b), 1.2)
 
 # ---- true north arrow at the site, so orientation survives the import ---
 cx, cy = P(*bundle["siteRing"][0])
@@ -225,5 +295,9 @@ with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
                "One layer per data class; switch off what you do not need.\n\n"
                "Levels are from the NSW 1m elevation model, not a survey.\n"
                "Cadastral boundaries are GIS approximations — confirm all\n"
-               "boundaries and levels against a registered survey before use.\n")
+               "boundaries and levels against a registered survey before use.\n"
+               "Tree canopies are at the recorded size where a council inventory\n"
+               "or OSM records one, otherwise a nominal 6 m. Kerbside bays are set\n"
+               "out at AS/NZS 2890.5 sizes from OSM kerbside tags, not surveyed.\n"
+               "View cones are ground sight lines only; buildings not assessed.\n")
 print(f"zip: {zip_path}")
