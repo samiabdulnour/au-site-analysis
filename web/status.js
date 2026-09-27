@@ -132,6 +132,7 @@ function renderJobs(list) {
       j.sheet,
       j.sheet === 'summary' ? null : j.scale ? '1:' + j.scale : 'auto scale',
       j.sheet === 'summary' ? null : j.rotate === 'auto' ? 'aligned' : 'north up',
+      j.sheet === 'context' ? j.template : null,
     ].filter(Boolean).join(' · ');
     what.append(addr, spec);
     // A failure is only useful with its reason, and the reason is the whole

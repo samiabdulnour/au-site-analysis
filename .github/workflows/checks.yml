@@ -410,6 +410,66 @@ jobs:
           rm -f "$jar"
           exit $fail
 
+      # The palette is the one option that applies to a single drawing. A request
+      # for vivid has to come back in vivid rather than quietly in the default,
+      # while the site and summary sheets, which no palette changes, must not be
+      # split into a job per palette. Asked through the reuse path, against
+      # finished sheets seeded into the job index, so a passing run draws nothing
+      # and asks nothing of the public data services.
+      - name: a palette recolours the context sheet and nothing else
+        run: |
+          if curl -sf -o /dev/null --max-time 2 http://127.0.0.1:3125/api/version; then
+            echo "something is already answering on 3125; refusing to test against it"
+            exit 1
+          fi
+          mkdir -p out/web
+          python3 - <<'EOF'
+          import json, os, time
+          rows = []
+          for jid, sheet, tpl in [('11111111-1111-4111-8111-111111111111', 'context', 'classic'),
+                                  ('22222222-2222-4222-8222-222222222222', 'context', 'vivid'),
+                                  ('33333333-3333-4333-8333-333333333333', 'site', 'classic')]:
+              os.makedirs(f'out/web/{jid}', exist_ok=True)
+              open(f'out/web/{jid}/SHEET.pdf', 'wb').write(b'%PDF-1.4 seeded')
+              rows.append(dict(id=jid, address='1 Test Street, Sydney NSW 2000', sheet=sheet,
+                               scale=3000 if sheet == 'context' else 0, rotate='north',
+                               template=tpl, status='done', log=[],
+                               createdAt=int(time.time() * 1000), pdf='SHEET.pdf'))
+          json.dump(rows, open('out/web/jobs.json', 'w'))
+          EOF
+          ALLOW_NO_AUTH=1 PORT=3125 npx tsx src/server.ts > /tmp/palette-server.log 2>&1 &
+          srv=$!
+          trap 'pkill -P "$srv" 2>/dev/null; kill "$srv" 2>/dev/null; rm -rf out/web; true' EXIT
+
+          up=
+          for _ in $(seq 1 40); do
+            curl -sf -o /dev/null --max-time 2 http://127.0.0.1:3125/api/version && { up=1; break; }
+            sleep 1
+          done
+          if [ -z "$up" ]; then
+            echo "server never answered; its log:"; sed 's/^/    /' /tmp/palette-server.log
+            exit 1
+          fi
+
+          fail=0
+          ask() {
+            got=$(curl -s --max-time 10 -X POST -H 'Content-Type: application/json' \
+                    -d "{\"address\":\"1 Test Street, Sydney NSW 2000\",$2}" \
+                    http://127.0.0.1:3125/api/jobs)
+            id=$(printf '%s' "$got" | python3 -c \
+                   'import sys, json; d = json.load(sys.stdin); print(d["id"] if d.get("reused") else "a new job")')
+            if [ "$id" = "$3" ]; then
+              echo "  $1 -> ${id:0:8}"
+            else
+              echo "  $1 -> $id, expected ${3:0:8}"; fail=1
+            fi
+          }
+          ask "context in vivid"          '"sheet":"context","template":"vivid"'  22222222-2222-4222-8222-222222222222
+          ask "context, no palette"       '"sheet":"context"'                     11111111-1111-4111-8111-111111111111
+          ask "context, unknown palette"  '"sheet":"context","template":"fuse"'   11111111-1111-4111-8111-111111111111
+          ask "site sheet asking vivid"   '"sheet":"site","template":"vivid"'     33333333-3333-4333-8333-333333333333
+          exit $fail
+
   image:
     name: docker build
     runs-on: ubuntu-latest
