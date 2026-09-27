@@ -310,7 +310,7 @@ roads and rail, FOI points and areas, elevation contours. New:
 |---|---|
 | `NSW_5M_Elevation/ImageServer/getSamples?geometry={"paths":[[[lon,lat],…]],"spatialReference":{"wkid":4326}}&geometryType=esriGeometryPolyline&sampleCount=200&returnFirstValueOnly=true&f=json` | elevation profile along any line: sections, fall, RL of the site, conversion of RL height limits to metres above ground |
 | `NSW_Imagery_Dates/MapServer/identify` | capture date and resolution of the aerial at the site (16/02/2022, 7 cm at the sample) — the caption every aerial should carry |
-| `Valuation/MapServer` 9 Urban Property Boundary (`identify` → `propid`), 5 Urban Property Valuations (`where=propid=…` → five annual land values `val1_lv…val5_lv` with base dates, zone, valuation basis), 1 Urban Property Sales (by envelope: price, `sale_date`, area, strata flag, address) | slides 11 and 16; the Valuer General's own site blocks automation, this does not |
+| `Valuation/MapServer` 9 Urban Property Boundary (`identify` → `propid`), 5 Urban Property Valuations (`where=propid=…` → five annual land values `val1_lv…val5_lv` with base dates, zone, valuation basis), 1 Urban Property Sales (by envelope: price, `sale_date`, area, strata flag, address) | slides 11 and 16; the Valuer General's own site blocks automation, this does not. Several property polygons can overlap at one point (strata schemes, stratum lots), so pick by the site's address and prefer a non-stratum basis; values come as text (" $381,000"), `prop_area` is blank for a stratum, `sale_date` reads "16 July 2026", `strata` holds the scheme's propid (0 when not strata) and `deal_props` > 1 marks a multi-property dealing whose price is the whole dealing's |
 | `NSW_Base_Map`, `NSW_Topo_Map` `/export` | topographic-style alternatives to the DPE basemap |
 | `NSW_POI/MapServer/0` | points of interest |
 
@@ -333,17 +333,33 @@ roads and rail, FOI points and areas, elevation contours. New:
 ```
 
 The key is positional: G02 has four dimensions (`MEDAVG.REGION.REGION_TYPE.STATE`),
-the other census tables five, so the SA2 code sits in the second or third slot.
-Every table also exists as `_LGA`, `_SAL` (suburb) and `_POA`. SEIFA 2016 is
-there (`ABS_SEIFA2016_SA2`); check the catalogue for the 2021 edition.
+the other census tables five, so the SA2 code sits in the second or third slot:
+G36 `.D.<code>..` (dwellings, not persons), G37 `._T.<code>..` (all dwelling
+structures), G62 `.3.<code>..` (persons), G01 `3..<code>..`. The SA2+ flows
+answer the capital-city codes too (`1GSYD` Greater Sydney, `1RNSW` the rest
+of the state), so the benchmark is one more key in the same flow; LGAs have
+their own flows (`C21_G02_LGA` and so on, keyed by the 2021 LGA code).
+Every table also exists as `_SAL` (suburb) and `_POA`.
+
+Learned in use: leave the version segment empty (`ABS,<flow>,/<key>`) to get
+the latest — `ABS_ANNUAL_ERP_ASGS2021` is at 1.2.0 and `1.0.0` returns a 404;
+in SDMX-JSON 2.0 the structure sits at `data.structures[0]`, not `structure`.
+The LGA population series is re-issued each year as its own flow
+(`ERP_LGA2025`, key `ERP..<lga>.A`). SEIFA 2021 is published:
+`ABS_SEIFA2021_SA2` (and `_LGA`, `_SAL`, `_POA`, `_SA1`) with key
+`<code>.IRSAD+IRSD+IER+IEO.SCORE+RWAD+RWSD` — score, decile within Australia,
+decile within the state. Census night (10 August 2021) fell in Sydney's
+lockdown: two thirds of North Sydney's workers "worked at home" and public
+transport is a fraction of its normal share, so the travel table is a
+lockdown snapshot and the slide says so.
 
 ### 4.7 Projections, targets, schools, transport files
 
 | Source | What | How |
 |---|---|---|
-| TfNSW Open Data, TZP24 | population and dwellings 2021–2066 by travel zone and by LGA | CSV downloads (LGA file 36 KB; TZ population file 3.3 MB); no key |
+| TfNSW Open Data, TZP24 | population and dwellings 2021–2066 by travel zone and by LGA | CSV downloads (LGA file 36 KB; TZ population file 3.3 MB); no key. The travel-zone file carries `SA2_CODE21` and `LGA_NAME21`, so an SA2 projection is the sum of its zones (20 zones for North Sydney - Lavender Bay); the LGA file names LGAs the ABS way ("Bayside (NSW)") |
 | planning.nsw.gov.au | the council's 5-year housing target and the ABS headline numbers | `…/the-planning-system/housing/housing-targets/<lga-slug>-councils-snapshot` (North Sydney: 5,900 homes by 2029); 43 councils only; an HTML page, so keep a static table as the fallback |
-| data.nsw.gov.au | school intake zones (8.4 MB shapefile); master dataset of school locations and enrolments (CSV/JSON) | downloads, cache monthly |
+| data.nsw.gov.au | school intake zones (8.4 MB shapefile); master dataset of school locations and enrolments (CSV/JSON) | downloads, cache monthly. The master dataset (1.3 MB CSV, 2,210 government schools) has latitude and longitude, `latest_year_enrolment_FTE`, `Level_of_schooling`, `Selective_school`, `ICSEA_value` — used by slide 16; non-government schools are not in it |
 | TfNSW Open Data | cycleway network shapefile, statewide, updated monthly (12.6 MB) | download, cache monthly; or OSM `highway=cycleway` / `cycleway=*` |
 | TfNSW Trip Planner and traffic-volume APIs | stop departures and service frequency; traffic counts | the existing `TFNSW_API_KEY` |
 
@@ -425,12 +441,30 @@ Open-Meteo archive (ERA5): `https://archive-api.open-meteo.com/v1/archive?latitu
 
 ## 7. Status
 
-Implemented: slides 03 (planning overview), 04 (planning controls) and 07
-(development activity) — `src/render/slides.ts`, `src/render/minimap.ts`,
-`src/fetch/planning.ts`, `src/fetch/da.ts`, `runSlidesPipeline` in
-`src/pipeline.ts`; `--type slides` on the CLI and the `slides` drawing on the
-web. The maps use the statutory LEP colours read from the ePlanning renderers
+Implemented: slides 03 (planning overview), 04 (planning controls), 07
+(development activity) and 16 (people and market) — `src/render/slides.ts`,
+`src/render/minimap.ts`, `src/render/charts.ts`, `src/fetch/planning.ts`,
+`src/fetch/da.ts`, `src/fetch/abs.ts`, `src/fetch/tzp24.ts`,
+`src/fetch/valuation.ts`, `src/fetch/schools.ts` (gathered by
+`src/fetch/people.ts`), `runSlidesPipeline` in `src/pipeline.ts`; `--type
+slides` on the CLI and the `slides` drawing on the web. The maps use the
+statutory LEP colours read from the ePlanning renderers
 (`src/render/lepPalette.ts`).
+
+Slide 16 looks the site up in the ASGS (SA2, LGA, suburb, capital-city
+region), reads the five census tables for the SA2, the LGA and the capital
+city (Greater Sydney, or the rest of the state elsewhere), the ABS population
+series for the SA2 and the LGA, SEIFA 2021, the TZP24 projection (the SA2's
+summed from its travel zones, the LGA's from the LGA file), the Valuer
+General's five land values of the property at the point, the sales register
+within 400 m and the government schools within 2 km. The figure field is a
+row of seven figures, the population line with its projection, a
+three-column comparison table, four paired-bar profiles (age, dwelling
+structure, tenure, travel to work) against the benchmark, the land value
+columns and the most recent sales. School catchment polygons (an 8 MB
+shapefile) are left for the amenity slide. Census tables, the projection
+files and the school dataset are cached on the volume for a month
+(`src/lib/cache.ts`), the population series for a week.
 
 Slide 07 reads the Online DA feed for the site's council over the last five
 years (`--da-years`), never earlier than July 2021 when lodgement through the

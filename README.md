@@ -444,7 +444,7 @@ development window), `--job 2539`, `--client "Name"`,
 
 `--type slides` draws the OVERALL ANALYSIS deck: A3 landscape pages for the
 content part of a feasibility study or design report, specified in
-`docs/SLIDES_SPEC.md`. Three slides exist so far. The planning pair: a
+`docs/SLIDES_SPEC.md`. Four slides exist so far. The planning pair: a
 *planning overview* of four maps at 1:8000 around the site (land zoning in the
 statutory colours, height of building, heritage with the State Heritage
 Register, and the housing-policy maps — TOD areas, town centres, State
@@ -462,9 +462,15 @@ proposal on exhibition; beside it four figures (applications, sites of scale,
 dwellings proposed, value), lodgements per year and a table of the largest
 sites as lodged, with storeys, dwellings, cost, status and dates. The feed is
 council-wide and slow, so it is cached on the volume for a day
-(`out/.cache/da/`); `--da-years 5` sets the window. Each slide carries the
-sentences that follow from the data and a marked placeholder for the author's
-narrative. Outputs: `OVERALL_ANALYSIS.pdf`, `slides/<id>.png` per slide and
+(`out/.cache/da/`); `--da-years 5` sets the window. Then *people and market*:
+the site's SA2 and LGA against Greater Sydney (or the rest of the state) from
+the 2021 Census — medians, age profile, dwelling structure, tenure, travel to
+work — with the ABS population series since 2001 and the TZP24 projection to
+2066, SEIFA 2021, the Valuer General's land values of the site and the sales
+register within 400 m, and the nearest government schools with their
+enrolments. Census tables, projections and the school dataset are cached on
+the volume for a month. Each slide carries the sentences that follow from the
+data and a marked placeholder for the author's narrative. Outputs: `OVERALL_ANALYSIS.pdf`, `slides/<id>.png` per slide and
 `overall.json` with everything the deck says.
 
 Where a council publishes its own DCP mapping as open data — the City of

@@ -23,6 +23,7 @@ import { panelExtent, type Panel, type BaseData } from './render/minimap.js';
 import { fetchCityOfSydneyDcp, type CityOfSydneyDcp } from './fetch/cityOfSydney.js';
 import { fetchCouncilApplications, apiCouncilName, clipToExtent, PORTAL_MANDATED, type DaRecord } from './fetch/da.js';
 import { fetchPlanningProposals, type PlanningProposal } from './fetch/planning.js';
+import { fetchPeopleData, type PeopleData } from './fetch/people.js';
 import type { SiteControls } from './fetch/nsw.js';
 
 export interface CategorizedPoint extends NamedPoint { cat: string | null }
@@ -473,6 +474,8 @@ export interface SlidesBundle {
   applications: DaRecord[];
   daMeta: { council: string; from: string; to: string; total: number; complete: boolean; fetchedAt: string } | null;
   proposals: PlanningProposal[];
+  /** Census, population, projections, SEIFA, land values, sales and schools for the site's regions; null when the ABS lookup failed. */
+  people: PeopleData | null;
   warnings: string[];
 }
 
@@ -526,7 +529,7 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
   const fromDate = new Date(); fromDate.setFullYear(fromDate.getFullYear() - (opts.daYears ?? 5));
   const from = [fromDate.toISOString().slice(0, 10), PORTAL_MANDATED].sort()[1];
 
-  const [zoning, hob, heritage, shr, policy, water, lots, roads, railLines, stations, context, property, controls, proposals, feed] = await Promise.all([
+  const [zoning, hob, heritage, shr, policy, water, lots, roads, railLines, stations, context, property, controls, proposals, feed, people] = await Promise.all([
     soft(fetchZoningDetailed(extent), emptyFC, 'zoning'),
     soft(fetchHobDetailed(extent), emptyFC, 'height of building'),
     soft(fetchHeritageDetailed(extent), emptyFC, 'heritage'),
@@ -542,6 +545,7 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
     fetchSiteControls(geo.center),
     fetchPlanningProposals(daExtent, log),
     council ? soft(fetchCouncilApplications(council, from, today, log), null, 'Online DA API') : Promise.resolve(null),
+    soft(fetchPeopleData(mercatorToLonLat(geo.center), geo.matchedAddresses[0], log), null, 'people and market'),
   ]);
   const [housingTarget, cos] = await Promise.all([
     context.lga?.name ? fetchHousingTarget(context.lga.name) : Promise.resolve(null),
@@ -568,7 +572,7 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
     zoning, hob, heritage, shr, policy,
     base: { water, lots, roads, rail: railLines, stations, siteLots },
     controls, property, context, housingTarget, cos,
-    daPanel, applications, daMeta, proposals, warnings,
+    daPanel, applications, daMeta, proposals, people, warnings,
   };
   await writeFile(join(dataDir, 'slides_bundle.json'), JSON.stringify(bundle));
   return bundle;

@@ -19,6 +19,10 @@ import { zoneFill, heritageStyle, hobRamp, POLICY_STYLE } from './lepPalette.js'
 import { geomRings, pointInRing, titleCase, type PolicyArea, type PolicyKind } from '../fetch/planning.js';
 import { lonLatToMercator, mercatorToLonLat } from '../lib/geo.js';
 import { isSignificant, siteKey, parseSiteAddress, sameLot, money, type DaRecord, type DaStatusClass, type SiteAddress } from '../fetch/da.js';
+import type { PeopleData } from '../fetch/people.js';
+import type { CensusProfile, DwellingMix, TenureMix, TravelMix, PersonsProfile, YearValue } from '../fetch/abs.js';
+import type { Sale } from '../fetch/valuation.js';
+import { lineWithProjection, pairedBars, columns } from './charts.js';
 
 export const SLIDE_W = 420;
 export const SLIDE_H = 297;
@@ -970,11 +974,311 @@ export function developmentSlide(b: SlidesBundle, facts: PlanningFacts): Slide {
   return { id: '07_development_activity', title: 'Development activity', subtitle: sub, textHtml, figureHtml };
 }
 
+// ---- slide 16: people and market ---------------------------------------------
+
+const pct = (n: number, d: number) => (d > 0 ? (100 * n) / d : NaN);
+const fmtPct = (v: number, dp = 0) => (Number.isFinite(v) ? `${v.toFixed(dp)} %` : '—');
+const dollars = (n?: number) => (n ? `$${fmtNum(n)}` : '—');
+const shortName = (s: string) => s.replace(/\s*\(.*\)$/, '');
+/** "WATERLOO TOWN HALL, 770 ELIZABETH ST, WATERLOO NSW 2017" → "770 ELIZABETH ST": the street address without a building name, suburb or state. */
+const streetOnly = (a: string) => { const m = a.match(/\d[^,]*[A-Za-z][^,]*/); return (m ? m[0] : a.split(',')[0]).replace(/\s+NSW\b.*$/i, '').trim(); };
+
+function dwellingShares(d?: DwellingMix) {
+  if (!d || !d.occupied) return null;
+  const base = Math.max(1, d.occupied - d.notStated);
+  const flats = d.flatsLow + d.flatsMid + d.flatsHigh + d.flatsOther;
+  return {
+    occupied: d.occupied, separateHouse: pct(d.separateHouse, base), semiDetached: pct(d.semiDetached, base),
+    flatsLow: pct(d.flatsLow, base), flatsMid: pct(d.flatsMid, base), flatsHigh: pct(d.flatsHigh, base),
+    other: pct(d.other + d.flatsOther, base), flats: pct(flats, base), unoccupied: pct(d.unoccupied, d.occupied + d.unoccupied),
+  };
+}
+function tenureShares(t?: TenureMix) {
+  if (!t || !t.total) return null;
+  const base = Math.max(1, t.total - t.notStated);
+  return {
+    ownedOutright: pct(t.ownedOutright, base), mortgage: pct(t.mortgage, base), rentedPrivate: pct(t.rentedPrivate, base),
+    rentedSocial: pct(t.rentedSocial, base), other: pct(t.otherTenure, base), renting: pct(t.rentedPrivate + t.rentedSocial, base),
+  };
+}
+/** Shares of the employed people who worked on census day, at home or away. */
+function travelShares(t?: TravelMix) {
+  if (!t || !t.total) return null;
+  const base = Math.max(1, t.total - t.didNotGoToWork - t.notStated);
+  return { workers: base, car: pct(t.car, base), publicTransport: pct(t.publicTransport, base), active: pct(t.active, base), workedAtHome: pct(t.workedAtHome, base), other: pct(t.other, base) };
+}
+function ageShares(p?: PersonsProfile) {
+  if (!p) return null;
+  const total = p.ages.reduce((s, a) => s + a.persons, 0);
+  return total ? p.ages.map((a) => ({ label: a.label, share: pct(a.persons, total) })) : null;
+}
+function personShares(p?: PersonsProfile) {
+  if (!p || !p.persons) return null;
+  return { persons: p.persons, bornOverseas: pct(p.bornElsewhere, p.bornInAustralia + p.bornElsewhere), otherLanguage: pct(p.otherLanguage, p.englishOnly + p.otherLanguage) };
+}
+
+const median = (xs: number[]) => {
+  if (!xs.length) return undefined;
+  const s = [...xs].sort((a, b) => a - b), m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+};
+
+/** The register around the site: single-property dealings of the last `months` months, strata and land apart. */
+function salesSummary(sales: Sale[], months = 24) {
+  const cutoff = new Date(); cutoff.setMonth(cutoff.getMonth() - months);
+  const iso = cutoff.toISOString().slice(0, 10);
+  const recent = sales.filter((s) => s.date >= iso && s.properties === 1);
+  const strata = recent.filter((s) => s.strata), land = recent.filter((s) => !s.strata);
+  const perSqm = land.filter((s) => s.areaSqm && s.areaSqm > 0).map((s) => s.price / s.areaSqm!);
+  return {
+    register: sales.length, months, count: recent.length,
+    strata: { count: strata.length, median: median(strata.map((s) => s.price)) },
+    land: { count: land.length, median: median(land.map((s) => s.price)), medianPerSqm: median(perSqm) },
+    latest: sales.slice(0, 7),
+  };
+}
+
+function populationFacts(p: PeopleData) {
+  const at = (s: YearValue[], y: number) => s.find((v) => v.year === y)?.value;
+  const latest = p.erpSa2[p.erpSa2.length - 1];
+  const base2016 = at(p.erpSa2, 2016);
+  const proj = p.tzp24?.sa2 ?? [], lgaProj = p.tzp24?.lga ?? [];
+  const lgaLatest = p.erpLga[p.erpLga.length - 1];
+  return {
+    latest, since2016Pct: latest && base2016 ? pct(latest.value - base2016, base2016) : NaN,
+    proj2041: at(proj, 2041), proj2066: at(proj, 2066), projFrom: proj[0],
+    lgaLatest, lgaProj2041: at(lgaProj, 2041), lgaProj2066: at(lgaProj, 2066),
+  };
+}
+
+const km = (m: number) => (m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${m} m`);
+
+export function peopleSentences(b: SlidesBundle): string[] {
+  const p = b.people;
+  if (!p) return ['The ABS region lookup failed when the deck was generated, so this slide has no statistics.'];
+  const out: string[] = [];
+  const sa2 = p.regions.sa2, bench = p.benchmark, prof = p.sa2;
+  const benchName = bench ? shortName(bench.name) : '';
+  const pop = populationFacts(p);
+  if (pop.latest) {
+    let s = `${sa2.name} (SA2${sa2.areaSqkm ? `, ${fmtNum(sa2.areaSqkm, 1)} km²` : ''}) had ${fmtNum(pop.latest.value)} residents at June ${pop.latest.year}`;
+    if (Number.isFinite(pop.since2016Pct)) s += `, ${pop.since2016Pct >= 0 ? 'up' : 'down'} ${fmtPct(Math.abs(pop.since2016Pct))} on 2016`;
+    if (pop.proj2041 && pop.proj2066) s += `; TZP24 projects ${fmtNum(pop.proj2041)} by 2041 and ${fmtNum(pop.proj2066)} by 2066`;
+    s += '.';
+    if (pop.lgaLatest && p.regions.lga) s += ` ${shortName(p.regions.lga.name)} LGA: ${fmtNum(pop.lgaLatest.value)} in ${pop.lgaLatest.year}${pop.lgaProj2041 ? `, ${fmtNum(pop.lgaProj2041)} projected by 2041` : ''}.`;
+    out.push(s);
+  }
+  if (prof) {
+    const m = prof.medians, bm = bench?.medians, ps = personShares(prof.persons);
+    const vs = (v?: number, b2?: number, f: (n: number) => string = (n) => fmtNum(n)) => (v ? `${f(v)}${b2 ? ` (${benchName} ${f(b2)})` : ''}` : '');
+    const bits: string[] = [];
+    if (m.medianAge) bits.push(`Median age ${vs(m.medianAge, bm?.medianAge)}`);
+    if (ps) bits.push(`${fmtPct(ps.bornOverseas)} born overseas`, `${fmtPct(ps.otherLanguage)} speak a language other than English at home`);
+    if (m.householdIncomeWk) bits.push(`median household income ${vs(m.householdIncomeWk, bm?.householdIncomeWk, (n) => `$${fmtNum(n)}`)} a week`);
+    let s = bits.length ? `${bits.join('; ')}.` : '';
+    const dec = p.seifaSa2?.irsad.decileState;
+    if (dec) s += ` SEIFA advantage-and-disadvantage decile ${dec} of 10 within NSW${dec >= 9 ? ', among the most advantaged areas' : dec <= 2 ? ', among the most disadvantaged areas' : ''}.`;
+    if (s) out.push(s.trim());
+    const ds = dwellingShares(prof.dwellings), ts = tenureShares(prof.tenure), bds = dwellingShares(bench?.dwellings), bts = tenureShares(bench?.tenure);
+    if (ds && ts) {
+      let h = `${fmtPct(ds.flats)} of the ${fmtNum(ds.occupied)} occupied dwellings are flats${bds ? ` (${benchName} ${fmtPct(bds.flats)})` : ''}`;
+      if (ds.flatsHigh >= 10) h += `, ${fmtPct(ds.flatsHigh)} in blocks of nine storeys or more`;
+      h += `; ${fmtPct(ts.renting)} of households rent${bts ? ` (${fmtPct(bts.renting)})` : ''}; ${fmtPct(ds.unoccupied)} of dwellings were unoccupied on census night${bds ? ` (${fmtPct(bds.unoccupied)})` : ''}.`;
+      if (m.rentWk || m.mortgageMo) h += ` Median rent ${dollars(m.rentWk)} a week${bm?.rentWk ? ` (${dollars(bm.rentWk)})` : ''}, median mortgage ${dollars(m.mortgageMo)} a month.`;
+      out.push(h);
+    }
+    const tr = travelShares(prof.travel);
+    if (tr) out.push(`On census day, in the 2021 lockdown, ${fmtPct(tr.workedAtHome)} of workers worked from home, ${fmtPct(tr.car)} drove or rode, ${fmtPct(tr.publicTransport)} took public transport and ${fmtPct(tr.active)} walked or cycled.`);
+  }
+  const mk: string[] = [];
+  const lv = p.landValues;
+  if (lv && lv.values.length) {
+    const last = lv.values[lv.values.length - 1], first = lv.values[0];
+    const peak = lv.values.reduce((a, v) => (v.value > a.value ? v : a), lv.values[0]);
+    mk.push(`The land value of ${titleCase(streetOnly(lv.address))}${lv.stratum ? ' (a stratum)' : ''} is ${money(last.value)} at ${last.baseDate}, ${last.value >= first.value ? 'up' : 'down'} from ${money(first.value)} in ${first.year}${peak.year !== last.year && peak.year !== first.year ? ` after a peak of ${money(peak.value)} in ${peak.year}` : ''}.`);
+  }
+  if (p.sales.length) {
+    const ss = salesSummary(p.sales);
+    let s = `${fmtNum(ss.register)} sales are on the register within ${p.salesRadiusM} m`;
+    if (ss.count) {
+      const parts: string[] = [];
+      if (ss.strata.count) parts.push(`${ss.strata.count} strata at a median ${money(ss.strata.median!)}`);
+      if (ss.land.count) parts.push(`${ss.land.count} whole propert${ss.land.count === 1 ? 'y' : 'ies'} (houses, land or buildings) at a median ${money(ss.land.median!)}${ss.land.medianPerSqm ? ` ($${fmtNum(ss.land.medianPerSqm)} per m² of land)` : ''}`);
+      s += `; ${ss.count} changed hands in the last ${ss.months} months: ${parts.join(', ')}`;
+    }
+    mk.push(`${s}.`);
+  }
+  if (mk.length) out.push(mk.join(' '));
+  if (p.schools.length) {
+    const sc = p.schools.slice(0, 4).map((s) => `${s.name} (${km(s.distanceM)}${s.enrolment ? `, ${fmtNum(s.enrolment)} students` : ''}${/fully|partially/i.test(s.selective ?? '') ? ', selective' : ''})`);
+    out.push(`Nearest government schools: ${sc.join('; ')}.`);
+  }
+  return out;
+}
+
+export function peopleFacts(b: SlidesBundle) {
+  const p = b.people;
+  if (!p) return { available: false as const, sentences: peopleSentences(b) };
+  const prof = (c: CensusProfile | null) => c && {
+    level: c.level, code: c.code, name: c.name, medians: c.medians, persons: personShares(c.persons), ages: ageShares(c.persons),
+    dwellings: dwellingShares(c.dwellings), tenure: tenureShares(c.tenure), travel: travelShares(c.travel),
+    counts: { dwellings: c.dwellings, tenure: c.tenure, travel: c.travel, persons: c.persons },
+  };
+  return {
+    available: true as const, regions: p.regions, sa2: prof(p.sa2), lga: prof(p.lga), benchmark: prof(p.benchmark),
+    population: { sa2: p.erpSa2, lga: p.erpLga, benchmark: p.erpBenchmark, summary: populationFacts(p) },
+    projections: p.tzp24, seifa: { sa2: p.seifaSa2, lga: p.seifaLga },
+    landValues: p.landValues, sales: { ...salesSummary(p.sales), radiusM: p.salesRadiusM, all: p.sales },
+    schools: { radiusM: p.schoolsRadiusM, list: p.schools },
+    sentences: peopleSentences(b),
+    caveats: [
+      "Census night, 10 August 2021, fell in Sydney's lockdown: worked-at-home is inflated and the travel modes deflated.",
+      'Land values are the Valuer General\'s as at 1 July each year; sales as recorded on the register, single-property dealings only in the medians.',
+    ],
+  };
+}
+
+export function peopleSlide(b: SlidesBundle): Slide {
+  const p = b.people;
+  const t = tpl();
+  const sentences = peopleSentences(b);
+  const benchName = p?.benchmark ? shortName(p.benchmark.name) : 'the capital city';
+  const textHtml = sentences.map(para).join('') +
+    placeholder("Narrative — for the author: who the market is here (households, incomes, tenure), what the pipeline and the projections mean for demand, and how the site's land value and the sales around it frame the feasibility.") +
+    `<div class="fine">Sources: ABS Census 2021 (tables G01, G02, G36, G37, G62) for the SA2, the LGA and ${esc(benchName)}; ABS estimated resident population at 30 June; TfNSW Travel Zone Projections 2024; ABS SEIFA 2021; NSW Valuer General land values and sales register via SIX Maps; NSW Department of Education master dataset (government schools only). Census night fell in Sydney's 2021 lockdown, so worked-at-home is inflated and the travel modes deflated. Retrieved ${b.generatedAt.slice(0, 10)}.</div>`;
+  const sub = [b.siteAddress, p ? `${p.regions.sa2.name} (SA2)` : '', p?.regions.lga ? `${shortName(p.regions.lga.name)} LGA` : '', p ? `against ${benchName}` : ''].filter(Boolean).join(' · ');
+  if (!p) {
+    return { id: '16_people_and_market', title: 'People and market', subtitle: sub, textHtml,
+      figureHtml: `<div class="abs ptitle" style="left:${FIELD_X}mm;top:${FIELD_Y}mm;width:${FIELD_W}mm">Statistics unavailable<span class="pnote">the ABS region lookup failed for this point</span></div>` };
+  }
+
+  const prof = p.sa2 ?? p.lga, bench = p.benchmark;
+  const pop = populationFacts(p);
+  const ds = dwellingShares(prof?.dwellings), bds = dwellingShares(bench?.dwellings);
+  const ts = tenureShares(prof?.tenure), bts = tenureShares(bench?.tenure);
+  const tr = travelShares(prof?.travel), btr = travelShares(bench?.travel);
+  const ag = ageShares(prof?.persons), bag = ageShares(bench?.persons);
+  const m = prof?.medians, bm = bench?.medians;
+  const subjectLabel = prof?.level === 'LGA' ? 'LGA' : 'SA2';
+
+  // Row A: the headline figures.
+  const cmp = (v: string | undefined) => (v && bench ? ` (${benchName} ${v})` : '');
+  const tiles = [
+    { v: pop.latest ? fmtNum(pop.latest.value) : '—', l: pop.latest ? `residents of ${shortName(p.regions.sa2.name)} (SA2), June ${pop.latest.year}` : 'no population series for this SA2' },
+    { v: Number.isFinite(pop.since2016Pct) ? `${pop.since2016Pct >= 0 ? '+' : '−'}${fmtPct(Math.abs(pop.since2016Pct))}` : '—', l: `since 2016${pop.proj2041 ? ` · TZP24: ${fmtNum(pop.proj2041)} by 2041` : ''}` },
+    { v: m?.medianAge ? String(m.medianAge) : '—', l: `median age${cmp(bm?.medianAge ? String(bm.medianAge) : undefined)}` },
+    { v: m?.householdIncomeWk ? dollars(m.householdIncomeWk) : '—', l: `median household income a week${cmp(bm?.householdIncomeWk ? dollars(bm.householdIncomeWk) : undefined)}` },
+    { v: m?.rentWk ? dollars(m.rentWk) : '—', l: `median rent a week${cmp(bm?.rentWk ? dollars(bm.rentWk) : undefined)}` },
+    { v: ds ? fmtPct(ds.flats) : '—', l: `of dwellings are flats${cmp(bds ? fmtPct(bds.flats) : undefined)}` },
+    { v: ts ? fmtPct(ts.renting) : '—', l: `of households rent${cmp(bts ? fmtPct(bts.renting) : undefined)}` },
+  ].map((tl) => `<div class="tile"><div class="tv">${esc(tl.v)}</div><div class="tl">${esc(tl.l)}</div></div>`).join('');
+
+  // Row B: the population line and the comparison table.
+  const halfW = (FIELD_W - GUTTER) / 2;
+  const rowB = FIELD_Y + 26, chartH = 71;
+  const hist = p.erpSa2, proj = p.tzp24?.sa2 ?? [];
+  const popChart = lineWithProjection({
+    w: halfW, h: chartH, font: t.font, history: hist, projection: proj,
+    historyLabel: `ABS estimated resident population ${hist[0]?.year ?? ''}–${hist[hist.length - 1]?.year ?? ''}`,
+    projectionLabel: proj.length ? `TZP24 projection ${proj[0].year}–${proj[proj.length - 1].year}` : '',
+  });
+  const cols: { head: string; c: CensusProfile | null; seifa: number | undefined }[] = [
+    { head: `${shortName(p.regions.sa2.name)} (SA2)`, c: p.sa2, seifa: p.seifaSa2?.irsad.decileState },
+    { head: p.regions.lga ? `${shortName(p.regions.lga.name)} (LGA)` : 'LGA', c: p.lga, seifa: p.seifaLga?.irsad.decileState },
+    { head: benchName, c: bench, seifa: undefined },
+  ];
+  type Cell = (c: CensusProfile) => string;
+  const rows: [string, Cell][] = [
+    ['People counted', (c) => (c.persons?.persons ? fmtNum(c.persons.persons) : '—')],
+    ['Median age', (c) => (c.medians.medianAge ? String(c.medians.medianAge) : '—')],
+    ['Median personal income, a week', (c) => dollars(c.medians.personalIncomeWk)],
+    ['Median household income, a week', (c) => dollars(c.medians.householdIncomeWk)],
+    ['Median rent, a week', (c) => dollars(c.medians.rentWk)],
+    ['Median mortgage, a month', (c) => dollars(c.medians.mortgageMo)],
+    ['Average household size', (c) => (c.medians.householdSize ? c.medians.householdSize.toFixed(1) : '—')],
+    ['Flats, share of dwellings', (c) => fmtPct(dwellingShares(c.dwellings)?.flats ?? NaN)],
+    ['Renting, share of households', (c) => fmtPct(tenureShares(c.tenure)?.renting ?? NaN)],
+    ['Unoccupied on census night', (c) => fmtPct(dwellingShares(c.dwellings)?.unoccupied ?? NaN)],
+    ['Born overseas', (c) => fmtPct(personShares(c.persons)?.bornOverseas ?? NaN)],
+    ['Language other than English at home', (c) => fmtPct(personShares(c.persons)?.otherLanguage ?? NaN)],
+  ];
+  const table = `<table class="cmp"><thead><tr><th>Census 2021</th>${cols.map((c) => `<th>${esc(c.head)}</th>`).join('')}</tr></thead><tbody>` +
+    rows.map(([label, cell]) => `<tr><td>${esc(label)}</td>${cols.map((c, i) => `<td${i === 0 ? ' class="hi"' : ''}>${c.c ? esc(cell(c.c)) : '—'}</td>`).join('')}</tr>`).join('') +
+    `<tr><td>SEIFA advantage decile, NSW (10 = most)</td>${cols.map((c, i) => `<td${i === 0 ? ' class="hi"' : ''}>${c.seifa ? c.seifa : '—'}</td>`).join('')}</tr>` +
+    `</tbody></table>`;
+
+  // Row C: four profiles against the benchmark.
+  const rowC = rowB + chartH + PANEL_TITLE_H + GUTTER, smallH = 66;
+  const qW = (FIELD_W - 3 * GUTTER) / 4;
+  const pair = (rowsIn: { label: string; a: number; b?: number }[], labelW?: number) =>
+    pairedBars({ w: qW, h: smallH, font: t.font, rows: rowsIn, aLabel: subjectLabel, bLabel: bench ? benchName : undefined, unit: ' %', labelW });
+  const charts: { title: string; svg: string }[] = [
+    { title: 'Age', svg: ag ? pair(ag.map((a, i) => ({ label: a.label, a: a.share, b: bag?.[i]?.share })), 12) : '' },
+    { title: 'Dwelling structure', svg: ds ? pair([
+      { label: 'Separate house', a: ds.separateHouse, b: bds?.separateHouse }, { label: 'Semi or terrace', a: ds.semiDetached, b: bds?.semiDetached },
+      { label: 'Flats, 1–3 storeys', a: ds.flatsLow, b: bds?.flatsLow }, { label: 'Flats, 4–8', a: ds.flatsMid, b: bds?.flatsMid },
+      { label: 'Flats, 9 or more', a: ds.flatsHigh, b: bds?.flatsHigh }, { label: 'Other', a: ds.other, b: bds?.other }], 24) : '' },
+    { title: 'Tenure', svg: ts ? pair([
+      { label: 'Owned outright', a: ts.ownedOutright, b: bts?.ownedOutright }, { label: 'Mortgage', a: ts.mortgage, b: bts?.mortgage },
+      { label: 'Rented privately', a: ts.rentedPrivate, b: bts?.rentedPrivate }, { label: 'Social housing', a: ts.rentedSocial, b: bts?.rentedSocial },
+      { label: 'Other', a: ts.other, b: bts?.other }], 24) : '' },
+    { title: 'Travel to work, census day', svg: tr ? pair([
+      { label: 'Car or motorbike', a: tr.car, b: btr?.car }, { label: 'Public transport', a: tr.publicTransport, b: btr?.publicTransport },
+      { label: 'Walked or cycled', a: tr.active, b: btr?.active }, { label: 'Worked at home', a: tr.workedAtHome, b: btr?.workedAtHome },
+      { label: 'Other', a: tr.other, b: btr?.other }], 24) : '' },
+  ];
+  const chartCells = charts.map((c, i) => {
+    const x = FIELD_X + i * (qW + GUTTER);
+    return `<div class="abs ptitle" style="left:${x}mm;top:${rowC}mm;width:${qW}mm">${esc(c.title)}</div>
+      <div class="abs" style="left:${x}mm;top:${rowC + PANEL_TITLE_H}mm">${c.svg || emptyBox(qW, smallH, 'not in the census tables for this region')}</div>`;
+  }).join('');
+
+  // Row D: the site's land value and the sales around it.
+  const rowD = rowC + PANEL_TITLE_H + smallH + GUTTER, marketH = 50;
+  const lvW = 95, salesX = FIELD_X + lvW + GUTTER, salesW = FIELD_W - lvW - GUTTER;
+  const lv = p.landValues;
+  const lvTitle = lv ? `Land value · ${titleCase(streetOnly(lv.address))}` : 'Land value';
+  const lvNote = lv ? [lv.zone ? lv.zone.split(' - ')[0] : '', lv.stratum ? 'stratum' : '', lv.areaSqm ? `${fmtNum(lv.areaSqm)} m²` : ''].filter(Boolean).join(' · ') : 'no property at the point';
+  const lvChart = lv && lv.values.length
+    ? columns({ w: lvW, h: marketH, font: t.font, values: lv.values.map((v) => ({ label: String(v.year), value: v.value, text: money(v.value) })) })
+    : emptyBox(lvW, marketH, 'the Valuation service has no land value for this property');
+  const ss = salesSummary(p.sales);
+  const statBits: string[] = [];
+  if (ss.count) {
+    statBits.push(`Last ${ss.months} months: ${ss.count} single-property sales`);
+    if (ss.strata.count) statBits.push(`strata ${ss.strata.count}, median ${money(ss.strata.median!)}`);
+    if (ss.land.count) statBits.push(`whole properties ${ss.land.count}, median ${money(ss.land.median!)}${ss.land.medianPerSqm ? ` · $${fmtNum(ss.land.medianPerSqm)}/m² of land` : ''}`);
+  } else if (p.sales.length) statBits.push(`No sale in the last ${ss.months} months`);
+  const saleRows = ss.latest.map((s) => `<tr><td>${esc(fmtShortDate(s.date))}</td><td>${esc(titleCase(s.address.replace(/,?\s*NSW.*$/i, '')))}</td><td class="r">${esc(money(s.price))}</td>` +
+    `<td>${s.properties > 1 ? `${s.properties} properties` : s.strata ? 'Strata' : 'Whole property'}</td><td class="r">${s.areaSqm ? fmtNum(s.areaSqm) : ''}</td>` +
+    `<td class="r">${!s.strata && s.areaSqm && s.properties === 1 ? `$${fmtNum(s.price / s.areaSqm)}` : ''}</td><td class="r">${s.distanceM} m</td></tr>`).join('');
+  const salesTable = p.sales.length
+    ? `<div class="stat">${esc(statBits.join(' · '))}${ss.latest.some((s) => s.properties > 1) ? ' · a dealing of several properties shows the whole dealing\'s price' : ''}</div><table class="da"><thead><tr><th style="width:16mm">Sold</th><th>Address</th><th class="r" style="width:16mm">Price</th><th style="width:20mm">Type</th><th class="r" style="width:14mm">Land m²</th><th class="r" style="width:16mm">$/m²</th><th class="r" style="width:12mm">Away</th></tr></thead><tbody>${saleRows}</tbody></table>`
+    : emptyBox(salesW, marketH, `no sale on the register within ${p.salesRadiusM} m`);
+
+  const figureHtml = `
+    <div class="abs tiles seven" style="left:${FIELD_X}mm;top:${FIELD_Y}mm;width:${FIELD_W}mm">${tiles}</div>
+    <div class="abs ptitle" style="left:${FIELD_X}mm;top:${rowB}mm;width:${halfW}mm">Population · ${esc(p.regions.sa2.name)}<span class="pnote">SA2, June each year</span></div>
+    <div class="abs" style="left:${FIELD_X}mm;top:${rowB + PANEL_TITLE_H}mm">${popChart || emptyBox(halfW, chartH, 'no population series for this SA2')}</div>
+    <div class="abs ptitle" style="left:${FIELD_X + halfW + GUTTER}mm;top:${rowB}mm;width:${halfW}mm">Census 2021 against ${esc(benchName)}</div>
+    <div class="abs" style="left:${FIELD_X + halfW + GUTTER}mm;top:${rowB + PANEL_TITLE_H}mm;width:${halfW}mm">${table}</div>
+    ${chartCells}
+    <div class="abs ptitle" style="left:${FIELD_X}mm;top:${rowD}mm;width:${lvW}mm">${esc(lvTitle)}<span class="pnote">${esc(lvNote)}</span></div>
+    <div class="abs" style="left:${FIELD_X}mm;top:${rowD + PANEL_TITLE_H}mm">${lvChart}</div>
+    <div class="abs ptitle" style="left:${salesX}mm;top:${rowD}mm;width:${salesW}mm">Sales within ${p.salesRadiusM} m<span class="pnote">${fmtNum(p.sales.length)} on the register, most recent first</span></div>
+    <div class="abs" style="left:${salesX}mm;top:${rowD + PANEL_TITLE_H}mm;width:${salesW}mm">${salesTable}</div>`;
+  return { id: '16_people_and_market', title: 'People and market', subtitle: sub, textHtml, figureHtml };
+}
+
+function emptyBox(w: number, h: number, note: string): string {
+  return `<div style="width:${w}mm;height:${h}mm;border:0.15mm solid ${tpl().rule};display:flex;align-items:center;justify-content:center;font-size:2.2mm;color:#777;text-align:center;padding:0 4mm">${esc(note)}</div>`;
+}
+
 // ---- the deck -----------------------------------------------------------------
 
 export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; slides: Slide[] } {
   const facts = planningFacts(b);
-  const slides = [planningOverviewSlide(b, facts), planningControlsSlide(b, facts), developmentSlide(b, facts)];
+  const slides = [planningOverviewSlide(b, facts), planningControlsSlide(b, facts), developmentSlide(b, facts), peopleSlide(b)];
   const t = tpl();
   const footerLeft = ['SITE ANALYST — OVERALL ANALYSIS', b.siteAddress, meta.client ? `for ${meta.client}` : '', meta.jobNo ? `job ${meta.jobNo}` : ''].filter(Boolean).join(' · ');
   const pages = slides.map((s, i) => `
@@ -1014,6 +1318,14 @@ export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; 
   .tile { border-top: 0.3mm solid ${t.ink}; padding-top: 1.4mm; }
   .tv { font-size: 5.4mm; font-weight: 600; line-height: 1.05; letter-spacing: -0.01em; }
   .tl { font-size: 2.1mm; color: #555; margin-top: 0.8mm; line-height: 1.25; }
+  .tiles.seven { grid-template-columns: repeat(7, 1fr); gap: 2.4mm; }
+  .tiles.seven .tv { font-size: 4.9mm; }
+  table.cmp { width: 100%; border-collapse: collapse; font-size: 2.3mm; line-height: 1.25; }
+  table.cmp th, table.cmp td { text-align: right; vertical-align: top; padding: 0.85mm 0 0.85mm 1.5mm; border-top: 0.15mm solid ${t.rule}; font-variant-numeric: tabular-nums; }
+  table.cmp th:first-child, table.cmp td:first-child { text-align: left; padding-left: 0; }
+  table.cmp thead th { font-size: 2.0mm; letter-spacing: 0.04em; text-transform: uppercase; color: #555; border-top: 0; padding-bottom: 0.7mm; font-weight: 700; }
+  table.cmp td.hi { font-weight: 700; }
+  .stat { font-size: 2.2mm; color: #333; line-height: 1.3; margin-bottom: 1mm; }
   .legend { font-size: 2.15mm; color: #333; line-height: 1.3; }
   .lg { display: flex; align-items: flex-start; gap: 1.6mm; margin-bottom: 0.7mm; }
   .lg svg { flex: none; margin-top: 0.1mm; }
@@ -1044,6 +1356,7 @@ export function slidesFacts(b: SlidesBundle) {
     housingTarget: b.housingTarget,
     councilDcp: b.cos,
     development: (() => { const d = developmentFacts(b); return { ...d, sentences: developmentSentences(b, d, facts) }; })(),
+    people: peopleFacts(b),
     propertyApi: b.property,
     sentences: planningSentences(b, facts),
     sentenceList: sentenceList(planningSentences(b, facts)),
