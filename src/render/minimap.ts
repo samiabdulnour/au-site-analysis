@@ -1,0 +1,258 @@
+// Small maps for the slides: a projector for a panel of any size at any scale
+// (north up — planning maps are never rotated), and the light base every
+// panel shares: water, cadastre hairlines, roads by hierarchy, rail, stations
+// and the site. The thematic layer goes on top, per panel.
+
+import type { GeoJSONFC } from '../lib/arcgis.js';
+import { lonLatToMercator, mercatorScaleFactor, mercatorToLonLat, type Extent, type XY } from '../lib/geo.js';
+import type { TopoRoad, RailLines, NamedPoint } from '../fetch/nswTopo.js';
+import { geomRings } from '../fetch/planning.js';
+import { tpl } from './template.js';
+import { esc } from './chrome.js';
+
+export type Pt = [number, number];
+export type Proj = (lon: number, lat: number) => Pt;
+
+export interface Panel { center: XY; scale: number; wMm: number; hMm: number }
+
+/** Ground extent (EPSG:3857) a panel covers — the fetch window. */
+export function panelExtent(p: Panel): Extent {
+  const k = mercatorScaleFactor(mercatorToLonLat(p.center).lat);
+  const hw = ((p.wMm / 1000) * p.scale * k) / 2;
+  const hh = ((p.hMm / 1000) * p.scale * k) / 2;
+  return { xmin: p.center.x - hw, ymin: p.center.y - hh, xmax: p.center.x + hw, ymax: p.center.y + hh };
+}
+
+export function panelProjector(p: Panel): Proj {
+  const e = panelExtent(p);
+  const sx = p.wMm / (e.xmax - e.xmin);
+  const sy = p.hMm / (e.ymax - e.ymin);
+  return (lon, lat) => {
+    const m = lonLatToMercator({ lon, lat });
+    return [(m.x - e.xmin) * sx, (e.ymax - m.y) * sy];
+  };
+}
+
+export function ringsPath(rings: number[][][], proj: Proj, close = true): string {
+  let d = '';
+  for (const ring of rings) {
+    ring.forEach(([lon, lat], i) => {
+      const [x, y] = proj(lon, lat);
+      d += `${i === 0 ? 'M' : 'L'}${x.toFixed(2)},${y.toFixed(2)}`;
+    });
+    if (close) d += 'Z';
+  }
+  return d;
+}
+
+export const fcPath = (fc: GeoJSONFC, proj: Proj) =>
+  fc.features.map((f) => ringsPath(geomRings(f.geometry), proj)).join('');
+
+/** Projected area (mm²) and centroid of a ring — for deciding what gets a label. */
+export function ringStats(ring: number[][], proj: Proj): { area: number; cx: number; cy: number } {
+  const pts = ring.map(([lon, lat]) => proj(lon, lat));
+  let a = 0, cx = 0, cy = 0;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const f = pts[i][0] * pts[i + 1][1] - pts[i + 1][0] * pts[i][1];
+    a += f; cx += (pts[i][0] + pts[i + 1][0]) * f; cy += (pts[i][1] + pts[i + 1][1]) * f;
+  }
+  if (Math.abs(a) < 1e-6) return { area: 0, cx: pts[0]?.[0] ?? 0, cy: pts[0]?.[1] ?? 0 };
+  return { area: Math.abs(a / 2), cx: cx / (3 * a), cy: cy / (3 * a) };
+}
+
+export interface BaseData {
+  water: GeoJSONFC;
+  lots: GeoJSONFC;
+  roads: TopoRoad[];
+  rail: RailLines;
+  stations: NamedPoint[];
+  siteLots: GeoJSONFC;
+}
+
+/** The shared base under every thematic layer. */
+export function baseLayers(b: BaseData, proj: Proj, p: Panel, opts: { lots?: boolean } = {}): string {
+  const t = tpl();
+  const parts: string[] = [];
+  parts.push(`<rect x="0" y="0" width="${p.wMm}" height="${p.hMm}" fill="#ffffff"/>`);
+  if (b.water.features.length) parts.push(`<path d="${fcPath(b.water, proj)}" fill="${t.water}" fill-rule="evenodd"/>`);
+  if (opts.lots !== false && b.lots.features.length)
+    parts.push(`<path d="${fcPath(b.lots, proj)}" fill="none" stroke="#9a9a9a" stroke-width="0.08" opacity="0.7"/>`);
+  return parts.join('\n');
+}
+
+/** Roads, rail, stations and the site — drawn over the theme so it stays legible. */
+export function overLayers(b: BaseData, proj: Proj, p: Panel): string {
+  const t = tpl();
+  const parts: string[] = [];
+  const width = (h: number) => (h <= 2 ? 0.75 : h <= 4 ? 0.5 : h <= 6 ? 0.3 : 0.16);
+  const byWidth = new Map<number, string[]>();
+  for (const r of b.roads) {
+    const w = width(r.hierarchy);
+    (byWidth.get(w) ?? byWidth.set(w, []).get(w)!).push(ringsPath([r.coords], proj, false));
+  }
+  // Casing then fill, so junctions read as one network rather than a pile of ends.
+  for (const [w, ds] of [...byWidth.entries()].sort((a, b2) => b2[0] - a[0]))
+    parts.push(`<path d="${ds.join('')}" fill="none" stroke="#6f6f6f" stroke-width="${(w + 0.22).toFixed(2)}" stroke-linecap="round" stroke-linejoin="round"/>`);
+  for (const [w, ds] of [...byWidth.entries()].sort((a, b2) => b2[0] - a[0]))
+    parts.push(`<path d="${ds.join('')}" fill="none" stroke="#ffffff" stroke-width="${w.toFixed(2)}" stroke-linecap="round" stroke-linejoin="round"/>`);
+  if (b.rail.train.length) {
+    const d = b.rail.train.map((l) => ringsPath([l], proj, false)).join('');
+    parts.push(`<path d="${d}" fill="none" stroke="${t.rail}" stroke-width="0.7"/>`);
+    parts.push(`<path d="${d}" fill="none" stroke="#ffffff" stroke-width="0.32" stroke-dasharray="1.6,1.6"/>`);
+  }
+  if (b.rail.tram.length) {
+    const d = b.rail.tram.map((l) => ringsPath([l], proj, false)).join('');
+    parts.push(`<path d="${d}" fill="none" stroke="${t.busRoute}" stroke-width="0.55" stroke-dasharray="2,1.2"/>`);
+  }
+  for (const s of b.stations) {
+    const [x, y] = proj(s.lon, s.lat);
+    if (x < 2 || y < 2 || x > p.wMm - 2 || y > p.hMm - 2) continue;
+    const tram = /LIGHT RAIL|TRAM/i.test(s.name);
+    const metro = /METRO|VICTORIA CROSS|CROWS NEST|BARANGAROO|MARTIN PLACE|GADIGAL|WATERLOO|SYDENHAM|CENTRAL|CHATSWOOD/i.test(s.name) && /METRO/i.test(s.name);
+    parts.push(`<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})"><circle r="2" fill="#ffffff" stroke="${t.site}" stroke-width="0.45"/>` +
+      `<text text-anchor="middle" dy="1.05" font-size="3" font-weight="700" fill="${t.site}">${tram ? 'L' : metro ? 'M' : 'T'}</text></g>`);
+  }
+  // The site: accent outline over a light wash, and a short label.
+  if (b.siteLots.features.length) {
+    const d = fcPath(b.siteLots, proj);
+    parts.push(`<path d="${d}" fill="${t.site}" fill-opacity="0.18" stroke="${t.site}" stroke-width="0.6"/>`);
+    let best = { area: -1, cx: 0, cy: 0 };
+    for (const f of b.siteLots.features) for (const r of geomRings(f.geometry)) {
+      const s = ringStats(r, proj); if (s.area > best.area) best = s;
+    }
+    if (best.area >= 0)
+      parts.push(`<text x="${best.cx.toFixed(1)}" y="${(best.cy - 2.6).toFixed(1)}" text-anchor="middle" font-size="2.4" font-weight="700" fill="${t.site}" stroke="#ffffff" stroke-width="0.5" paint-order="stroke">SITE</text>`);
+  }
+  return parts.join('\n');
+}
+
+/** North point and a stepped scale bar in the panel's bottom-left corner. */
+export function panelFurniture(p: Panel): string {
+  const t = tpl();
+  const mmPerM = 1000 / p.scale;
+  const barM = p.scale <= 4000 ? 100 : p.scale <= 10000 ? 200 : 500;
+  const barMm = barM * mmPerM;
+  const x0 = 3, y0 = p.hMm - 3.2;
+  return `<g font-family="${t.font}" font-size="2" fill="${t.ink}">
+    <rect x="${x0 - 1.2}" y="${y0 - 8.6}" width="${(barMm + 9).toFixed(1)}" height="10.4" fill="#ffffff" fill-opacity="0.85"/>
+    <rect x="${x0}" y="${y0 - 1.2}" width="${(barMm / 2).toFixed(2)}" height="1.2" fill="${t.ink}"/>
+    <rect x="${(x0 + barMm / 2).toFixed(2)}" y="${y0 - 1.2}" width="${(barMm / 2).toFixed(2)}" height="1.2" fill="none" stroke="${t.ink}" stroke-width="0.2"/>
+    <text x="${x0}" y="${y0 - 2}" >0</text>
+    <text x="${(x0 + barMm).toFixed(2)}" y="${y0 - 2}" text-anchor="end">${barM} m</text>
+    <g transform="translate(${(x0 + barMm + 5).toFixed(1)},${y0 - 4.2})">
+      <path d="M0,-3.2 L1.3,2.2 L0,1.2 L-1.3,2.2 Z" fill="${t.ink}"/>
+      <text y="-3.8" text-anchor="middle" font-size="1.8" font-weight="700">N</text>
+    </g>
+  </g>`;
+}
+
+/** Hatch drawn as clipped lines: SVG patterns rasterise blurrily in the PDF. */
+export function hatchPath(d: string, id: string, colour: string, bbox: { x0: number; y0: number; x1: number; y1: number }, step = 1.2): string {
+  const h = bbox.y1 - bbox.y0;
+  let lines = '';
+  for (let o = bbox.x0 - h; o <= bbox.x1; o += step)
+    lines += `<line x1="${o.toFixed(1)}" y1="${bbox.y1.toFixed(1)}" x2="${(o + h).toFixed(1)}" y2="${bbox.y0.toFixed(1)}"/>`;
+  return `<clipPath id="${id}"><path d="${d}"/></clipPath>` +
+    `<g clip-path="url(#${id})" stroke="${colour}" stroke-width="0.22" opacity="0.9">${lines}</g>` +
+    `<path d="${d}" fill="none" stroke="${colour}" stroke-width="0.35"/>`;
+}
+
+export function bboxOf(rings: number[][][], proj: Proj) {
+  let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+  for (const r of rings) for (const [lon, lat] of r) {
+    const [x, y] = proj(lon, lat);
+    x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y);
+  }
+  return { x0, y0, x1, y1 };
+}
+
+/**
+ * Sutherland–Hodgman clip of a projected ring to the panel rectangle. Area
+ * shares and label positions have to come from what is inside the window:
+ * an infrastructure polygon that runs the length of a railway is mostly
+ * elsewhere, and its centroid can be off the map altogether.
+ */
+export function clipToPanel(pts: Pt[], w: number, h: number): Pt[] {
+  const edges: ((p: Pt) => boolean)[] = [(p) => p[0] >= 0, (p) => p[0] <= w, (p) => p[1] >= 0, (p) => p[1] <= h];
+  const cross = (a: Pt, b: Pt, i: number): Pt => {
+    const [x, y] = i < 2 ? [i === 0 ? 0 : w, NaN] : [NaN, i === 2 ? 0 : h];
+    if (i < 2) { const t = (x - a[0]) / (b[0] - a[0] || 1e-9); return [x, a[1] + (b[1] - a[1]) * t]; }
+    const t = (y - a[1]) / (b[1] - a[1] || 1e-9); return [a[0] + (b[0] - a[0]) * t, y];
+  };
+  let out = pts;
+  for (let i = 0; i < 4 && out.length; i++) {
+    const inside = edges[i];
+    const input = out; out = [];
+    for (let j = 0; j < input.length; j++) {
+      const cur = input[j], prev = input[(j + input.length - 1) % input.length];
+      if (inside(cur)) { if (!inside(prev)) out.push(cross(prev, cur, i)); out.push(cur); }
+      else if (inside(prev)) out.push(cross(prev, cur, i));
+    }
+  }
+  return out;
+}
+
+/** Area (mm²) and centroid of a lon/lat ring after clipping to the panel. */
+export function clippedStats(ring: number[][], proj: Proj, p: Panel): { area: number; cx: number; cy: number } {
+  const pts = clipToPanel(ring.map(([lon, lat]) => proj(lon, lat)), p.wMm, p.hMm);
+  if (pts.length < 3) return { area: 0, cx: 0, cy: 0 };
+  let a = 0, cx = 0, cy = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const [x1, y1] = pts[i], [x2, y2] = pts[(i + 1) % pts.length];
+    const f = x1 * y2 - x2 * y1;
+    a += f; cx += (x1 + x2) * f; cy += (y1 + y2) * f;
+  }
+  if (Math.abs(a) < 1e-6) return { area: 0, cx: pts[0][0], cy: pts[0][1] };
+  return { area: Math.abs(a / 2), cx: cx / (3 * a), cy: cy / (3 * a) };
+}
+
+/**
+ * Keeps map labels apart: candidates come sorted by importance (area), and a
+ * label is dropped rather than drawn over one already placed. `wMm` is the
+ * label's own width, so long names claim the room they take.
+ */
+export class LabelSpacer {
+  private placed: { x: number; y: number; w: number; h: number }[] = [];
+  constructor(private wMm: number, private hMm: number, private max = 60) {}
+  take(x: number, y: number, w: number, h = 2.6): boolean {
+    if (this.placed.length >= this.max) return false;
+    if (x - w / 2 < 1 || x + w / 2 > this.wMm - 1 || y - h / 2 < 1 || y + h / 2 > this.hMm - 1) return false;
+    for (const q of this.placed)
+      if (Math.abs(q.x - x) < (q.w + w) / 2 + 0.8 && Math.abs(q.y - y) < (q.h + h) / 2 + 0.6) return false;
+    this.placed.push({ x, y, w, h });
+    return true;
+  }
+}
+
+export interface LegendEntry { swatch: string; label: string }
+/**
+ * A legend as an SVG group, two columns, `rows` rows per column at most. The
+ * swatch is an SVG fragment drawn in a 5 × 3 mm box at the origin.
+ */
+export function legendSvg(entries: LegendEntry[], widthMm: number, rows = 5, fontSize = 2.1): { svg: string; heightMm: number } {
+  const lh = fontSize * 1.72;
+  const cols = 2;
+  const fits = entries.length <= rows * cols;
+  const perCol = fits ? rows : rows - 1;
+  const shown = entries.slice(0, perCol * cols);
+  const colW = widthMm / cols;
+  const parts: string[] = [];
+  shown.forEach((e, i) => {
+    const c = Math.floor(i / perCol), r = i % perCol;
+    parts.push(`<g transform="translate(${(c * colW).toFixed(1)},${(r * lh).toFixed(1)})">${e.swatch}` +
+      `<text x="6.5" y="${(fontSize * 1.05).toFixed(2)}" font-size="${fontSize}">${esc(e.label)}</text></g>`);
+  });
+  if (!fits) {
+    parts.push(`<text x="0" y="${(perCol * lh + fontSize * 1.05).toFixed(2)}" font-size="${fontSize}" fill="#555">+ ${entries.length - shown.length} more (see the deck's JSON)</text>`);
+  }
+  const used = (fits ? Math.min(entries.length, perCol) : perCol + 1) * lh;
+  return { svg: `<g font-family="${tpl().font}" fill="${tpl().ink}">${parts.join('')}</g>`, heightMm: used };
+}
+
+export const swatchFill = (fill: string, stroke = '#777', dash?: string) =>
+  `<rect x="0" y="0.2" width="5" height="3" fill="${fill}" stroke="${stroke}" stroke-width="0.25"${dash ? ` stroke-dasharray="${dash}"` : ''}/>`;
+export const swatchHatch = (colour: string) =>
+  `<rect x="0" y="0.2" width="5" height="3" fill="none" stroke="${colour}" stroke-width="0.3"/>` +
+  `<line x1="0" y1="3.2" x2="3" y2="0.2" stroke="${colour}" stroke-width="0.25"/><line x1="2" y1="3.2" x2="5" y2="0.2" stroke="${colour}" stroke-width="0.25"/>`;
+export const swatchLine = (colour: string, width = 0.7, dash?: string) =>
+  `<line x1="0" y1="1.7" x2="5" y2="1.7" stroke="${colour}" stroke-width="${width}"${dash ? ` stroke-dasharray="${dash}"` : ''}/>`;

@@ -55,6 +55,7 @@ re-render them:
 ```bash
 npm run generate -- "1 Bay Street, Botany NSW 2019" --type both
 npm run generate -- "1 Bay Street, Botany NSW 2019" --type summary
+npm run generate -- "1 Bay Street, Botany NSW 2019" --type slides   # slides.jpg comes from slides/03_planning_overview.png
 python3 - <<'EOF'
 import pymupdf
 src = 'out/1-bay-street-botany-nsw-2019/'
@@ -434,8 +435,30 @@ Fonts are limited to what the runtime image installs (Liberation, DejaVu).
 Naming an absent font does not fail; it silently falls back and the sheet
 comes out in the wrong face, so add the package to the `Dockerfile` first.
 
-Options (after `--`): `--type context|site|summary|both`, `--scale 3000` (default 3000), `--job 2539`,
-`--client "Name"`, `--status "DEVELOPMENT APPLICATION"`, `--sheet "DA 003"`.
+Options (after `--`): `--type context|site|summary|slides|both`, `--scale 3000` (default 3000),
+`--slides-scale 8000` (the deck's map panels), `--job 2539`, `--client "Name"`,
+`--status "DEVELOPMENT APPLICATION"`, `--sheet "DA 003"`.
+
+### The deck
+
+`--type slides` draws the OVERALL ANALYSIS deck: A3 landscape pages for the
+content part of a feasibility study or design report, specified in
+`docs/SLIDES_SPEC.md`. Two slides exist so far, the planning ones: a
+*planning overview* of four maps at 1:8000 around the site (land zoning in the
+statutory colours, height of building, heritage with the State Heritage
+Register, and the housing-policy maps — TOD areas, town centres, State
+significant development sites, precincts) and *planning controls at the site*,
+a table of every mapped control with its source and currency: zone, height
+(with its units, since some LEPs limit in RL), FSR, lot size, heritage,
+local provisions, SEPP maps, the DCP with its link, contributions, tree
+canopy and the council's housing target. Each slide carries the sentences
+that follow from the data and a marked placeholder for the author's
+narrative. Outputs: `OVERALL_ANALYSIS.pdf`, `slides/<id>.png` per slide and
+`overall.json` with everything the deck says.
+
+Where a council publishes its own DCP mapping as open data — the City of
+Sydney does — the deck reads it too, for the sites in that LGA: building
+height in storeys, street frontage heights, active frontages, setbacks.
 
 ## How it works
 

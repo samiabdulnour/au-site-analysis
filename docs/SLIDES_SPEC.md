@@ -417,7 +417,26 @@ Open-Meteo archive (ERA5): `https://archive-api.open-meteo.com/v1/archive?latitu
   services as the sheets; the buildings and cycleway extracts should be
   cached on the volume, not fetched per deck.
 
-## 7. Suggested order of work
+## 7. Status
+
+Implemented: slides 03 (planning overview) and 04 (planning controls) —
+`src/render/slides.ts`, `src/render/minimap.ts`, `src/fetch/planning.ts`,
+`runSlidesPipeline` in `src/pipeline.ts`; `--type slides` on the CLI and the
+`slides` drawing on the web. The maps use the statutory LEP colours read from
+the ePlanning renderers (`src/render/lepPalette.ts`).
+
+Council open data is a per-LGA hook: the City of Sydney's data hub
+(`data.cityofsydney.nsw.gov.au`, ArcGIS feature services under
+`services1.arcgis.com/cNVyNtjGVZybOQWZ`) is read for sites in that LGA —
+Sydney DCP 2012 building height in storeys, street frontage heights, active
+frontages and setbacks (`src/fetch/cityOfSydney.ts`). The same hub holds the
+Floor Space and Employment Survey (jobs, businesses and internal floor area
+per block, 2007–2022), the Barani Aboriginal history places, street trees,
+contours, parks and the separated cycleway network, which slides 15, 16, 09
+and 10 should take from it when the site is in the City. It covers that LGA
+only; everywhere else the statewide layers stand.
+
+## 8. Suggested order of work
 
 1. Slide chrome (A3, text column, figure grid, footer) and the PDF/PNG/JSON
    outputs, with slides 03 and 04 first: they are the existing sheets' data

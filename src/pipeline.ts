@@ -14,6 +14,14 @@ import type { GeoJSONFC } from './lib/arcgis.js';
 import { keywordCategory } from './render/model.js';
 import { setTemplate } from './render/template.js';
 import type { SummaryBundle } from './render/summarySheet.js';
+import {
+  fetchZoningDetailed, fetchHobDetailed, fetchHeritageDetailed, fetchShrCurtilages, fetchPolicyAreas,
+  fetchWaterAreas, fetchPlanningContext, fetchPropertyReport, fetchHousingTarget,
+  type PolicyArea, type PlanningContext, type PropertyReport, type HousingTarget,
+} from './fetch/planning.js';
+import { panelExtent, type Panel, type BaseData } from './render/minimap.js';
+import { fetchCityOfSydneyDcp, type CityOfSydneyDcp } from './fetch/cityOfSydney.js';
+import type { SiteControls } from './fetch/nsw.js';
 
 export interface CategorizedPoint extends NamedPoint { cat: string | null }
 export interface InstitutionPoly { cat: string; name: string; rings: number[][][] }
@@ -427,4 +435,105 @@ function lotsAreaSqm(fc: GeoJSONFC, center: { x: number; y: number }): number | 
     }
   }
   return total > 0 ? total : undefined;
+}
+
+
+// ---------------------------------------------------------------------------
+// OVERALL ANALYSIS slides (docs/SLIDES_SPEC.md). The first two slides are the
+// planning ones: four small maps at ~1:8000 around the site and the controls
+// that apply at it. One window, north up, shared by every panel.
+
+export interface SlidesBundle {
+  address: string;
+  siteAddress: string;
+  generatedAt: string;
+  geocode: GeocodeResult;
+  panel: Panel;
+  extent: Extent;
+  siteLots: GeoJSONFC;
+  lotDescription: string;
+  siteAreaSqm?: number;
+  zoning: GeoJSONFC;
+  hob: GeoJSONFC;
+  heritage: GeoJSONFC;
+  shr: GeoJSONFC;
+  policy: PolicyArea[];
+  base: BaseData;
+  controls: SiteControls;
+  property: PropertyReport | null;
+  context: PlanningContext;
+  housingTarget: HousingTarget | null;
+  /** Council's own DCP mapping, where a council publishes it (City of Sydney). */
+  cos: CityOfSydneyDcp | null;
+  warnings: string[];
+}
+
+export interface SlidesPipelineOpts {
+  outDir: string;
+  /** Map scale of the panels; 1:8000 shows about 1.1 × 0.75 km per panel. */
+  scale?: number;
+  panelWmm: number;
+  panelHmm: number;
+  log?: (msg: string) => void;
+}
+
+export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpts): Promise<SlidesBundle> {
+  const warnings: string[] = [];
+  const log = (m: string) => { opts.log?.(m); if (/WARN/.test(m)) warnings.push(m.trim()); };
+  const dataDir = join(opts.outDir, 'data');
+  await mkdir(dataDir, { recursive: true });
+
+  log(`geocoding "${address}"…`);
+  const geo = await geocode(address);
+  log(`  matched: ${geo.matchedAddresses.join('; ')}`);
+  const siteLots = await fetchSiteLots(geo.points);
+  if (!siteLots.features.length) throw new Error('No cadastral lots found for the site.');
+
+  const panel: Panel = { center: geo.center, scale: opts.scale ?? 8000, wMm: opts.panelWmm, hMm: opts.panelHmm };
+  const extent = panelExtent(panel);
+  const emptyFC: GeoJSONFC = { type: 'FeatureCollection', features: [] };
+  const soft = <T,>(p: Promise<T>, fallback: T, name: string): Promise<T> =>
+    p.catch((e) => { log(`  WARN ${name} failed: ${e.message ?? e}`); return fallback; });
+
+  log('fetching planning maps, heritage, policy areas, base layers and the property report…');
+  const [zoning, hob, heritage, shr, policy, water, lots, roads, railLines, stations, context, property, controls] = await Promise.all([
+    fetchZoningDetailed(extent),
+    soft(fetchHobDetailed(extent), emptyFC, 'height of building'),
+    soft(fetchHeritageDetailed(extent), emptyFC, 'heritage'),
+    soft(fetchShrCurtilages(extent), emptyFC, 'State Heritage Register'),
+    fetchPolicyAreas(extent, log),
+    soft(fetchWaterAreas(extent), emptyFC, 'water areas'),
+    soft(fetchAllLots(extent), emptyFC, 'cadastral lots'),
+    soft(fetchRoads(extent), [], 'roads'),
+    soft(fetchRailLines(extent), { train: [], tram: [] }, 'rail lines'),
+    soft(fetchTrainStations(extent), [], 'stations'),
+    fetchPlanningContext(geo.center, log),
+    fetchPropertyReport(geo.matchedAddresses[0] ?? address, geo.center, log),
+    fetchSiteControls(geo.center),
+  ]);
+  const [housingTarget, cos] = await Promise.all([
+    context.lga?.name ? fetchHousingTarget(context.lga.name) : Promise.resolve(null),
+    // The one council with its DCP as open data so far; the hook is per LGA.
+    context.lga?.name === 'SYDNEY' ? fetchCityOfSydneyDcp(extent, mercatorToLonLat(geo.center), log) : Promise.resolve(null),
+  ]);
+
+  log(`  zoning:${zoning.features.length} hob:${hob.features.length} heritage:${heritage.features.length} shr:${shr.features.length} ` +
+      `policy:${policy.length} roads:${roads.length} property:${property ? 'yes' : 'no'} dcp:${context.dcp ? 'yes' : 'no'} target:${housingTarget ? housingTarget.homes : '—'}${cos ? ' council-dcp:yes' : ''}`);
+
+  const bundle: SlidesBundle = {
+    address,
+    siteAddress: geo.matchedAddresses[0] ?? address,
+    generatedAt: new Date().toISOString(),
+    geocode: geo,
+    panel,
+    extent,
+    siteLots,
+    lotDescription: describeLots(siteLots),
+    siteAreaSqm: lotsAreaSqm(siteLots, geo.center),
+    zoning, hob, heritage, shr, policy,
+    base: { water, lots, roads, rail: railLines, stations, siteLots },
+    controls, property, context, housingTarget, cos, warnings,
+  };
+  await writeFile(join(dataDir, 'slides_bundle.json'), JSON.stringify(bundle));
+  return bundle;
 }
