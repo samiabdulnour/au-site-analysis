@@ -1507,9 +1507,13 @@ export function builtFormSentences(b: SlidesBundle, f: ReturnType<typeof builtFo
   }
   if (f.onSite.length) {
     const withH = f.onSite.filter((x) => x.heightM);
-    out.push(withH.length
-      ? `The site carries ${f.onSite.length === 1 ? 'a building' : `${f.onSite.length} buildings`} of ${withH.map((x) => `${x.storeys} storey${x.storeys === 1 ? '' : 's'} (${Math.round(x.heightM!)} m)`).join(' and ')}.`
-      : `The site carries ${f.onSite.length === 1 ? 'a building' : `${f.onSite.length} buildings`} with no recorded height.`);
+    const n = f.onSite.length;
+    const list = withH.map((x) => `${x.storeys} storey${x.storeys === 1 ? '' : 's'} (${Math.round(x.heightM!)} m)`).join(', ');
+    out.push(!withH.length
+      ? `The site carries ${n === 1 ? 'a building' : `${n} buildings`} with no recorded height.`
+      : n === 1 ? `The site carries a building of ${list}.`
+      : withH.length === n ? `The site carries ${n} buildings of ${list}.`
+      : `The site carries ${n} buildings, ${withH.length === 1 ? 'one' : withH.length} with a recorded height: ${list}.`);
   }
   if (f.envelope) {
     const e = f.envelope;

@@ -285,8 +285,8 @@ export function sectionSvg(o: SectionOpts): { svg: string; ve: number } {
     const e = o.envelope;
     const d = `M${X(e.d0).toFixed(2)},${Y(groundAt(e.d0)).toFixed(2)}L${X(e.d0).toFixed(2)},${Y(e.top).toFixed(2)}L${X(e.d1).toFixed(2)},${Y(e.top).toFixed(2)}L${X(e.d1).toFixed(2)},${Y(groundAt(e.d1)).toFixed(2)}`;
     parts.push(`<path d="${d}" fill="none" stroke="${o.siteColour}" stroke-width="0.45" stroke-dasharray="1.6,0.9"/>`);
-    parts.push(`<text x="${X(e.d0).toFixed(2)}" y="${(Y(e.top) - 1).toFixed(2)}" font-size="1.9" font-weight="700" fill="${o.siteColour}" stroke="#ffffff" stroke-width="0.4" paint-order="stroke">${esc(e.label)}</text>`);
   }
+  let envelopeLabel: string | null = null;
   parts.push(`<path d="${line}" fill="none" stroke="${CHART.ink}" stroke-width="0.4" stroke-linejoin="round"/>`);
   // the site: a bar above the ground with its RLs at both ends
   for (const [i0, i1] of siteRuns) {
@@ -301,7 +301,18 @@ export function sectionSvg(o: SectionOpts): { svg: string; ve: number } {
     parts.push(`<text x="${((X(a.d) + X(b.d)) / 2).toFixed(2)}" y="${(yb - 1.2).toFixed(2)}" text-anchor="middle" font-size="2.1" font-weight="700" fill="${o.siteColour}">SITE</text>`);
     parts.push(`<text x="${(X(a.d) - 0.8).toFixed(2)}" y="${(yb + 2.4).toFixed(2)}" text-anchor="end" font-size="1.9" fill="${CHART.ink}" stroke="#ffffff" stroke-width="0.4" paint-order="stroke">RL ${a.rl.toFixed(1)}</text>`);
     parts.push(`<text x="${(X(b.d) + 0.8).toFixed(2)}" y="${(yb + 2.4).toFixed(2)}" font-size="1.9" fill="${CHART.ink}" stroke="#ffffff" stroke-width="0.4" paint-order="stroke">RL ${b.rl.toFixed(1)}</text>`);
+    // The height plane's label: beside its line when the site is wide enough, else stacked over the site's name.
+    const e = o.envelope;
+    if (e && e.d1 > a.d && e.d0 < b.d && !envelopeLabel) {
+      const wide = X(e.d1) - X(e.d0) >= 14 && Y(e.top) - yb > 5;
+      envelopeLabel = wide
+        ? `<text x="${(X(e.d0) + 0.6).toFixed(2)}" y="${(Y(e.top) - 1).toFixed(2)}" font-size="1.9" font-weight="700" fill="${o.siteColour}" stroke="#ffffff" stroke-width="0.4" paint-order="stroke">${esc(e.label)}</text>`
+        : `<text x="${((X(a.d) + X(b.d)) / 2).toFixed(2)}" y="${(yb - 4.2).toFixed(2)}" text-anchor="middle" font-size="1.9" font-weight="700" fill="${o.siteColour}" stroke="#ffffff" stroke-width="0.4" paint-order="stroke">${esc(e.label)}</text>`;
+    }
   }
+  if (o.envelope && !envelopeLabel)
+    envelopeLabel = `<text x="${(X(o.envelope.d0) + 0.6).toFixed(2)}" y="${(Y(o.envelope.top) - 1).toFixed(2)}" font-size="1.9" font-weight="700" fill="${o.siteColour}" stroke="#ffffff" stroke-width="0.4" paint-order="stroke">${esc(o.envelope.label)}</text>`;
+  if (envelopeLabel) parts.push(envelopeLabel);
   // the highest and lowest points of the ground, unless they are the site's own labels
   const iHi = rls.indexOf(Math.max(...rls)), iLo = rls.indexOf(lo);
   for (const [i, anchor] of [[iHi, 'hi'], [iLo, 'lo']] as const) {
