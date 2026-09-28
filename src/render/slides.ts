@@ -3432,7 +3432,7 @@ const NUM_WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 
 const numWord = (n: number) => NUM_WORDS[n] ?? fmtNum(n);
 const capFirst = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const monthYear = (iso?: string) => (iso ? new Date(iso).toLocaleDateString('en-AU', { month: 'long', year: 'numeric', timeZone: 'UTC' }) : '');
-const SOURCE_WORD: Record<StreetPhoto['source'], string> = { kartaview: 'KartaView', mapillary: 'Mapillary' };
+const SOURCE_WORD: Record<StreetPhoto['source'], string> = { kartaview: 'KartaView', mapillary: 'Mapillary', google: 'Google Street View' };
 
 /** The frames with where each was taken from, the plan that keys them, the sides no frame covers and the pair's coverage. */
 export function photosFacts(b: SlidesBundle) {
@@ -3582,7 +3582,8 @@ export function photosSlide(b: SlidesBundle): Slide {
   const coneR = 9;
   f.photos.forEach((c, i) => {
     const [x, y] = camXY[i];
-    const a0 = ((c.heading - 22) * Math.PI) / 180, a1 = ((c.heading + 22) * Math.PI) / 180;
+    const half = c.fov ? c.fov / 2 : 22;
+    const a0 = ((c.heading - half) * Math.PI) / 180, a1 = ((c.heading + half) * Math.PI) / 180;
     const x0 = x + coneR * Math.sin(a0), y0 = y - coneR * Math.cos(a0), x1 = x + coneR * Math.sin(a1), y1 = y - coneR * Math.cos(a1);
     parts.push(`<path d="M${x.toFixed(2)},${y.toFixed(2)} L${x0.toFixed(2)},${y0.toFixed(2)} A${coneR},${coneR} 0 0 1 ${x1.toFixed(2)},${y1.toFixed(2)} Z" fill="${CAMERA_COLOUR}" fill-opacity="${c.facing === 'site' ? 0.22 : 0.12}" stroke="${CAMERA_COLOUR}" stroke-width="0.2" stroke-opacity="0.6"/>`);
   });
@@ -3623,7 +3624,7 @@ export function photosSlide(b: SlidesBundle): Slide {
   const cells: string[] = [];
   for (let i = 0; i < MAX_PHOTOS; i++) {
     const c = f.photos[i];
-    if (c) cells.push(`<div class="frame"><div class="img"><img src="data/${esc(c.file)}" alt=""><span class="key">${c.n}</span></div><div class="cap">${esc(c.caption)}</div></div>`);
+    if (c) cells.push(`<div class="frame"><div class="img"><img src="data/${esc(c.file)}" alt=""${c.source === 'google' ? ' class="whole"' : ''}><span class="key">${c.n}</span></div><div class="cap">${esc(c.caption)}</div></div>`);
     else {
       const side = f.placeholders[i - f.photos.length];
       cells.push(`<div class="frame ph"><div class="img">${esc(side ? `Site visit photograph: the site from the ${side}` : 'Site visit photograph')}</div><div class="cap">${esc(`${i + 1} · site visit — for the author: ${side ? `the site from the ${side}` : 'a frame from the visit'}, keyed on the plan`)}</div></div>`);
@@ -4162,7 +4163,8 @@ export function ocFacts(b: SlidesBundle, planning: PlanningFacts) {
   // Country: the search that is required, and what the open proxies say
   const co = b.country;
   const nearPlace = co.places[0];
-  con.push({ theme: 'Country', text: `Aboriginal cultural heritage: an AHIMS search is required before works (the register is not open)${nearPlace && nearPlace.distanceM <= 2000 ? `; ${nearPlace.name}, a gazetted Aboriginal Place, ${mDist(nearPlace.distanceM)} to the ${dir(nearPlace.bearing)}` : ''}${co.nativeTitle.atSite.length ? `; ${listWords(co.nativeTitle.atSite.map((r) => r.name))} over the site (NNTT)` : ''}${co.asdst.ok && co.asdst.likelihood !== null && co.asdst.likelihood >= 500 ? `; the ASDST model rates the site's likelihood ${co.asdst.likelihood} of ${co.asdst.scaleMax}` : ''}.`, mark: nearPlace && nearPlace.distanceM <= 2000 ? markAt(nearPlace.lon, nearPlace.lat) : null });
+  const lepNear = countryFacts(b).lepAboriginal.items.find((i) => i.distanceM <= 500);
+  con.push({ theme: 'Country', text: `Aboriginal cultural heritage: an AHIMS search is required before works (the register is not open)${lepNear ? `; ${lepNear.onSite ? 'the site is' : `${lepNear.name}${lepNear.id ? ` (${lepNear.id})` : ''}, ${mDist(lepNear.distanceM)} to the ${dir(lepNear.bearing)}, is`} an Aboriginal heritage item in the ${lepNear.epi} schedule${lepNear.onSite ? ` (${lepNear.name})` : ''}` : ''}${nearPlace && nearPlace.distanceM <= 2000 ? `; ${nearPlace.name}, a gazetted Aboriginal Place, ${mDist(nearPlace.distanceM)} to the ${dir(nearPlace.bearing)}` : ''}${co.nativeTitle.atSite.length ? `; ${listWords(co.nativeTitle.atSite.map((r) => r.name))} over the site (NNTT)` : ''}${co.asdst.ok && co.asdst.likelihood !== null && co.asdst.likelihood >= 500 ? `; the ASDST model rates the site's likelihood ${co.asdst.likelihood} of ${co.asdst.scaleMax}` : ''}.`, mark: nearPlace && nearPlace.distanceM <= 2000 ? markAt(nearPlace.lon, nearPlace.lat) : null });
   if (planning.lotSizeAtSite && b.siteAreaSqm && b.siteAreaSqm < planning.lotSizeAtSite) con.push({ theme: 'Controls', text: `The site (${fmtNum(b.siteAreaSqm)} m²) is under the minimum lot size of ${fmtNum(planning.lotSizeAtSite)} m²: no subdivision without a variation.`, mark: null });
 
   // Heritage: on the site, adjoining or near, and the State register.
@@ -4656,6 +4658,8 @@ export function sourcesFacts(b: SlidesBundle, planning: PlanningFacts) {
   C.push({ dataset: 'Department of Education: government schools master dataset (locations and enrolments)', used: '16', currency: b.people ? `${n(b.people.schools.length, 'government school')} within ${b.people.schoolsRadiusM / 1000} km; latest enrolment year in the dataset` : 'not read', retrieved: retrieved(b.people?.fetchedAt), attribution: ATTR.education });
   C.push({ dataset: 'National Parks and Wildlife Service estate (managed land)', used: '10 · 17', currency: b.green.npws.length ? `${n(b.green.npws.length, 'reserve')} in the window` : 'no reserve in the window', retrieved: retrieved(b.green.fetchedAt), attribution: ATTR.dcceew });
   const co = b.country;
+  const lepAb = co.lepAboriginal;
+  C.push({ dataset: 'LEP heritage maps: Aboriginal objects, places, items and conservation areas (EPI Primary Planning Layers)', used: '15 · 17', currency: !lepAb ? 'not read for this deck' : lepAb.ok ? (lepAb.items.length ? `${n(lepAb.items.length, 'item')} scheduled in the strip (${[...new Set(lepAb.items.map((i) => shortEpi(i.epi)))].join(', ')})` : 'none scheduled in the strip') : 'did not answer for this run', retrieved: retrieved(co.fetchedAt), attribution: ATTR.dphi });
   C.push({ dataset: 'Heritage NSW: gazetted Aboriginal Places (via the State heritage service)', used: '15 · 17', currency: co.placesOk ? `${n(co.places.length, 'place')} within ${co.placesRadiusM / 1000} km; the register as published, locations generalised where restricted` : 'did not answer for this run', retrieved: retrieved(co.fetchedAt), attribution: ATTR.heritage });
   C.push({ dataset: 'State Vegetation Type Map: pre-1750 plant community types (5 m)', used: '15', currency: co.vegetation.ok ? `${co.vegetation.atSite ? `${co.vegetation.atSite.pct} at the site; ` : ''}${n(co.vegetation.classes.length, 'community', 'communities')} read across the strip` : 'did not answer for this run', retrieved: retrieved(co.fetchedAt), attribution: ATTR.dcceew });
   C.push({ dataset: 'Aboriginal Sites Decision Support Tool (ASDST v7.5, 2020): likelihood and survey-priority models', used: '15 · 17', currency: co.asdst.ok ? `model of 2020, read at the site (${co.asdst.likelihood ?? '—'} of ${co.asdst.scaleMax}); AHIMS itself is not open and not read` : 'did not answer for this run', retrieved: retrieved(co.fetchedAt), attribution: ATTR.dcceew });
@@ -4745,6 +4749,8 @@ export function sourcesSlide(b: SlidesBundle, planning: PlanningFacts): Slide {
 
 const RIDGE_COLOUR = '#5a3e1b';
 const PLACE_COLOUR = '#b8561e';
+/** The ePlanning heritage map's own colour for Aboriginal heritage, with a darker edge. */
+const LEP_ABORIGINAL_FILL = '#ffc700', LEP_ABORIGINAL_EDGE = '#8a6a00';
 const CREEK_COLOUR = '#1d6fa8';
 const NT_KIND_WORD: Record<string, string> = { determination: 'native title determination', claim: 'registered native title claim', ilua: 'Indigenous land use agreement' };
 
@@ -4795,6 +4801,14 @@ export function countryFacts(b: SlidesBundle) {
   const siteLalc = b.context.lalc ? { local: b.context.lalc.local, regional: b.context.lalc.regional } : lalcsInStrip.length === 1 ? { local: lalcsInStrip[0], regional: titleCase(c.lalcs[0].regional) } : null;
   const npws = [...new Set(c.npws.map((n) => tidyName(titleCase(n.name))))];
   const veg = c.vegetation;
+  // the LEPs' Aboriginal heritage items: distance to the nearest edge, on the site when either holds the other
+  const siteRings = b.siteLots.features.flatMap((ft) => geomRings(ft.geometry));
+  const lepItems = (c.lepAboriginal?.items ?? []).map((it) => {
+    const onSite = it.rings.some((r) => pointInRing(centreLL.lon, centreLL.lat, r)) || siteRings.some((r) => pointInRing(it.lon, it.lat, r));
+    let near = Infinity, nm: XY = toM(it.lon, it.lat);
+    for (const r of it.rings) for (const [lon, lat] of r) { const m = toM(lon, lat); const d = dist(m); if (d < near) { near = d; nm = m; } }
+    return { id: it.id, name: it.name, cls: it.cls, significance: it.significance, epi: shortEpi(it.epi), lon: it.lon, lat: it.lat, onSite, distanceM: onSite ? 0 : Math.round(near), bearing: Math.round(bear(nm)), inStrip: inStrip(toM(it.lon, it.lat)) };
+  }).sort((x, y) => x.distanceM - y.distanceM);
   return {
     stripKm: { w: Math.round(((wp.wMm / 1000) * wp.scale) / 100) / 10, h: Math.round(((wp.hMm / 1000) * wp.scale) / 100) / 10 },
     lalc: siteLalc, lalcsInStrip,
@@ -4807,6 +4821,7 @@ export function countryFacts(b: SlidesBundle) {
     npws,
     places: places.slice(0, 6), placeCount: c.places.length, placesRadiusM: c.placesRadiusM, placesOk: c.placesOk,
     asdst: c.asdst,
+    lepAboriginal: { read: c.lepAboriginal !== undefined, ok: Boolean(c.lepAboriginal?.ok), items: lepItems, epis: [...new Set(lepItems.map((i) => i.epi))] },
     fetchedAt: c.fetchedAt,
   };
 }
@@ -4843,6 +4858,13 @@ export function countrySentences(_b: SlidesBundle, f: ReturnType<typeof countryF
       ? `${f.placeCount === 1 ? 'One gazetted Aboriginal Place lies' : `${f.placeCount} gazetted Aboriginal Places lie`} within ${f.placesRadiusM / 1000} km: ${listWords(f.places.slice(0, 3).map((p) => `${p.name} ${km(p.distanceM)} to the ${dir(p.bearing)}${p.gazetted ? ` (gazetted ${p.gazetted.slice(0, 4)})` : ''}`))}${f.places.some((p) => p.restricted) ? '; where a place\'s location is restricted the register shows it generalised' : ''}.${f.npws.length ? ` ${listWords(f.npws)} of the National Parks estate ${f.npws.length === 1 ? 'lies' : 'lie'} in the strip.` : ''}`
       : `No gazetted Aboriginal Place lies within ${f.placesRadiusM / 1000} km of the site.${f.npws.length ? ` ${listWords(f.npws)} of the National Parks estate ${f.npws.length === 1 ? 'lies' : 'lie'} in the strip.` : ''}`);
   } else out.push('The register of gazetted Aboriginal Places did not answer for this run.');
+  const lep = f.lepAboriginal;
+  if (!lep.read) { /* a deck cached before the LEP items were read */ } else if (lep.ok) {
+    const items = lep.items, on = items.find((i) => i.onSite);
+    out.push(items.length
+      ? `${items.length === 1 ? 'One Aboriginal heritage item is' : `${items.length} Aboriginal heritage items are`} scheduled in the strip by ${listWords(lep.epis)}${on ? `, the site itself among them (${on.name}${on.id ? `, ${on.id}` : ''})` : ''}: ${listWords(items.filter((i) => !i.onSite).slice(0, 3).map((i) => `${i.name} (${i.cls}${i.id ? ` ${i.id}` : ''}${i.significance ? `, ${i.significance.toLowerCase()} significance` : ''}) ${km(i.distanceM)} to the ${dir(i.bearing)}`))}${items.length - (on ? 1 : 0) > 3 ? `, and ${numWord(items.length - (on ? 1 : 0) - 3)} more` : ''}.`
+      : 'No local environmental plan schedules an Aboriginal heritage item in the strip; few plans in NSW schedule any.');
+  } else out.push('The LEP heritage maps did not answer for this run, so their Aboriginal items are not shown.');
   out.push(`Registered Aboriginal sites are held in AHIMS, which is not open data: an AHIMS search precedes any works.${f.asdst.ok && f.asdst.likelihood !== null ? ` The public ASDST model puts the site's combined-features likelihood at ${f.asdst.likelihood} of ${f.asdst.scaleMax}${f.asdst.surveyPriority !== null ? ` and its survey priority at ${f.asdst.surveyPriority}` : ''}: a relative model of where sites are likely, not a record of them.` : ''}`);
   out.push('The name of Country, the language, the place names and the cultural narrative are not generated here: the office develops them with Knowledge Holders and the Land Council.');
   return out;
@@ -4931,6 +4953,22 @@ export function countrySlide(b: SlidesBundle): Slide {
     if (spacer.take(lx, ly, labelW(text, 2), 2.6)) parts.push(label(lx, ly, text, 2, PLACE_COLOUR));
   }
   if (c.places.length) legend.push({ swatch: `<circle cx="2.5" cy="1.8" r="1.5" fill="${PLACE_COLOUR}" stroke="#ffffff" stroke-width="0.3"/>`, label: `Gazetted Aboriginal Place${beyond.length ? '; an edge arrow points to one beyond the strip' : ''}` });
+  // the LEPs' Aboriginal heritage items: the scheduled land washed, a small square at each so a single lot still shows, the item's name where there is room
+  const lepIn = (c.lepAboriginal?.items ?? []).filter((it) => { const [x, y] = wproj(it.lon, it.lat); return x >= -2 && y >= -2 && x <= wp.wMm + 2 && y <= wp.hMm + 2; });
+  if (lepIn.length) {
+    parts.push(`<path d="${lepIn.map((it) => ringsPath(it.rings, wproj)).join('')}" fill="${LEP_ABORIGINAL_FILL}" fill-opacity="0.45" stroke="${LEP_ABORIGINAL_EDGE}" stroke-width="0.35" fill-rule="evenodd"/>`);
+    for (const it of lepIn) {
+      const [x, y] = wproj(it.lon, it.lat);
+      parts.push(`<rect x="${(x - 1.1).toFixed(1)}" y="${(y - 1.1).toFixed(1)}" width="2.2" height="2.2" fill="${LEP_ABORIGINAL_FILL}" stroke="${LEP_ABORIGINAL_EDGE}" stroke-width="0.35"/>`);
+    }
+    for (const it of [...lepIn].sort((p, q) => p.name.length - q.name.length)) {
+      const [x, y] = wproj(it.lon, it.lat);
+      const text = it.name.length > 34 ? `${it.name.slice(0, 33).trimEnd()}…` : it.name;
+      for (const [lx, ly] of [[x, y + 3.4], [x, y - 2.6], [x + labelW(text, 1.9) / 2 + 2, y + 0.6], [x - labelW(text, 1.9) / 2 - 2, y + 0.6]] as [number, number][])
+        if (spacer.take(lx, ly - 0.7, labelW(text, 1.9), 2.4)) { parts.push(label(lx, ly, text, 1.9, LEP_ABORIGINAL_EDGE)); break; }
+    }
+    legend.push({ swatch: `<rect x="0.6" y="0.5" width="3.8" height="2.6" fill="${LEP_ABORIGINAL_FILL}" fill-opacity="0.6" stroke="${LEP_ABORIGINAL_EDGE}" stroke-width="0.3"/>`, label: 'Aboriginal heritage item in the LEP heritage schedule' });
+  }
   // the suburbs, lightly, for orientation
   for (const ft of b.wide.suburbs.features) {
     const name = String(ft.properties?.suburbname ?? '');
@@ -4966,6 +5004,7 @@ export function countrySlide(b: SlidesBundle): Slide {
     ['Landform', f.landform.hasDem ? `site RL ${f.landform.siteRl ?? '—'}${f.landform.nearestRidge ? ` · nearest crest above it ${km(f.landform.nearestRidge.distanceM)} ${dir(f.landform.nearestRidge.bearing)} at RL ${f.landform.nearestRidge.rl}` : f.landform.ridgeLines ? ' · no crest above the site in the strip' : ' · no crest stands out at the model\'s resolution'}${f.landform.highestRidge ? ` · highest crest RL ${f.landform.highestRidge.rl}, ${km(f.landform.highestRidge.distanceM)} ${dir(f.landform.highestRidge.bearing)}` : ''} · the strip RL ${f.landform.min}–${f.landform.max}` : 'the elevation model did not answer'],
     ['National parks', f.npws.length ? f.npws.join(' · ') : 'none in the strip'],
     ['Aboriginal Places', f.placesOk ? (f.placeCount ? `${f.placeCount} gazetted within ${f.placesRadiusM / 1000} km: ${f.places.slice(0, 4).map((p) => `${p.name} ${km(p.distanceM)} ${dir(p.bearing)}${p.gazetted ? ` (${p.gazetted.slice(0, 4)})` : ''}${p.restricted ? ', location generalised' : ''}`).join(' · ')}` : `none gazetted within ${f.placesRadiusM / 1000} km`) : 'the register did not answer'],
+    ['LEP Aboriginal items', !f.lepAboriginal.read ? 'not read for this deck' : f.lepAboriginal.ok ? (f.lepAboriginal.items.length ? `${f.lepAboriginal.items.length} scheduled in the strip (${f.lepAboriginal.epis.join(', ')}): ${f.lepAboriginal.items.slice(0, 4).map((i) => `${i.name}${i.id ? ` ${i.id}` : ''} ${i.onSite ? 'on the site' : `${km(i.distanceM)} ${dir(i.bearing)}`}`).join(' · ')}${f.lepAboriginal.items.length > 4 ? ` · ${f.lepAboriginal.items.length - 4} more` : ''}` : 'none scheduled in the strip') : 'the heritage maps did not answer'],
     ['ASDST', f.asdst.ok && f.asdst.likelihood !== null ? `combined-features likelihood ${f.asdst.likelihood} of ${f.asdst.scaleMax} at the site${f.asdst.surveyPriority !== null ? ` · survey priority ${f.asdst.surveyPriority}` : ''} · a relative model, not a register` : 'the model did not answer'],
     ['AHIMS', 'not open data · a search is required before any works'],
   ];
@@ -4987,7 +5026,7 @@ export function countrySlide(b: SlidesBundle): Slide {
   const sentences = countrySentences(b, f);
   const text = sentences.map((s) => `<p>${esc(s)}</p>`).join('') +
     placeholder('Acknowledgement of Country and the cultural narrative — with Knowledge Holders: whose Country, its name and language, and which features of it (the crest, the creek line, the foreshore, the pre-1750 forest) the design answers to.') +
-    `<div class="fine">Sources: NSW Spatial Services administrative boundaries (Local Aboriginal Land Councils); the National Native Title Tribunal's registers of determinations, claims and Indigenous land use agreements; Heritage NSW's gazetted Aboriginal Places (via the State's heritage service); the NSW State Vegetation Type Map, pre-1750 plant community types, and the Aboriginal Sites Decision Support Tool model (DCCEEW); the soil landscape sheet; NSW Spatial Services water theme; the NPWS estate; the 5 m elevation model at 8 m over the strip, its crests read as the cells that stand above their neighbours. AHIMS is not read. Retrieved ${b.generatedAt.slice(0, 10)}.</div>`;
+    `<div class="fine">Sources: NSW Spatial Services administrative boundaries (Local Aboriginal Land Councils); the National Native Title Tribunal's registers of determinations, claims and Indigenous land use agreements; the Aboriginal items of the LEPs' heritage maps (ePlanning); Heritage NSW's gazetted Aboriginal Places (via the State's heritage service); the NSW State Vegetation Type Map, pre-1750 plant community types, and the Aboriginal Sites Decision Support Tool model (DCCEEW); the soil landscape sheet; NSW Spatial Services water theme; the NPWS estate; the 5 m elevation model at 8 m over the strip, its crests read as the cells that stand above their neighbours. AHIMS is not read. Retrieved ${b.generatedAt.slice(0, 10)}.</div>`;
   const legendTop = FIELD_Y + PANEL_TITLE_H + wp.hMm + 1.5;
   const belowY = legendTop + leg.heightMm + 3;
   const belowH = SLIDE_H - 12 - belowY;
@@ -5088,6 +5127,7 @@ export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; 
   .photos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3mm ${GUTTER}mm; }
   .frame .img { position: relative; height: 55mm; background: #ecebe7; overflow: hidden; }
   .frame img { display: block; width: 100%; height: 100%; object-fit: cover; }
+  .frame img.whole { object-fit: contain; }
   .frame .key { position: absolute; left: 2mm; top: 2mm; width: 6mm; height: 6mm; border-radius: 50%; background: ${CAMERA_COLOUR}; border: 0.35mm solid #fff; color: #fff; font-weight: 700; font-size: 2.9mm; line-height: 5.3mm; text-align: center; }
   .frame .cap { font-size: 2.05mm; line-height: 1.3; color: #333; margin-top: 1mm; }
   .frame.ph .img { display: flex; align-items: center; justify-content: center; text-align: center; padding: 0 8mm; border: 0.3mm dashed #c4c4c4; background: #fafaf8; color: #8a8a8a; font-size: 2.4mm; font-style: italic; }

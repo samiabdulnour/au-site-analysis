@@ -384,7 +384,7 @@ lockdown snapshot and the slide says so.
 | Wikipedia `api/rest_v1/page/summary/<Title>` and `w/api.php?action=query&list=geosearch` then `prop=description` for the titles | the suburb summary paragraph and its lead image; articles within 1.5 km as the named places (a place vocabulary keeps companies, electorates and people out) | same User-Agent rule and the same 429s. In use on slide 02 |
 | KartaView `POST https://api.openstreetcam.org/1.0/list/nearby-photos/` (`lat`, `lng`, `radius`, `ipp`); the v2 `photo/?lat=&lng=&radius=` search refuses radii over 150 m | street-level frames with camera position, heading, date, contributor and thumbnail paths | no key; coverage is patchy and old in places (2019 at the samples, one contributor); about half the frames carry no heading, so the direction of travel between a frame's neighbours in its sequence stands in. In use on slide 12 |
 | Mapillary `https://graph.mapillary.com/images?bbox=…&fields=id,thumb_1024_url,captured_at,compass_angle,computed_compass_angle,geometry,computed_geometry,creator,sequence,is_pano` | dense recent street-level imagery | free client token from the Mapillary developer page, sent as `access_token`; reachable, refuses without a token (HTTP 500, "Invalid OAuth 2.0 Access Token"). Graph API v4: `bbox` is left,bottom,right,top and must be under 0.01 square degrees (a 250 m radius is a four-hundredth of that), 2,000 images a call at most, 10,000 searches a minute per app; the structure-from-motion position and heading are preferred to the camera's own and 360° frames skipped. Read on slide 12 when `MAPILLARY_TOKEN` is set; checked against the documentation, not exercised here (no token) |
-| Google Street View Static API | best coverage | paid; not proposed |
+| Google Street View Static API (`streetview/metadata`, free, and `streetview` images) | best coverage | a Google Cloud key with billing (10,000 images a month free, then US$7 a thousand); Google's terms bar print and storing images outside its services. `src/fetch/streetView.ts` probes 12 m out from each side of the site, lets the metadata service say which sides face a street, and frames each frontage; read on slide 12 only when `GOOGLE_MAPS_API_KEY` is set, and not yet exercised here (no key) |
 
 ### 4.9 Building heights
 
@@ -859,6 +859,19 @@ search and where advised a due-diligence assessment precede works, and that
 the name of Country, the language, the place names and the narrative are
 developed with Knowledge Holders, not generated. Slide 17 carries a Country
 constraint and slide 18 the new sources.
+
+The local environmental plans' own Aboriginal heritage items are read too:
+the ePlanning heritage map (`EPI_Primary_Planning_Layers/0`) over the strip,
+its four Aboriginal classes (Aboriginal Object, Aboriginal Place of Heritage
+Significance, Item - Aboriginal, Conservation Area - Aboriginal). Few plans
+schedule any: 71 items in 16 plans across NSW in September 2026, among them
+Waverley's rock engravings, shelters and an open campsite with burials
+around Bondi, Eurobodalla's conservation areas and Balranald's items. They
+are washed in the heritage map's gold with a square at each and named where
+there is room, tabled with their number and distance, and named in the text
+("none scheduled in the strip" elsewhere); an item within 500 m joins slide
+17's Country constraint. At 154 Campbell Parade Bondi Beach four are in the
+strip, the nearest an open campsite and burials 143 m east.
 
 Slide 16 looks the site up in the ASGS (SA2, LGA, suburb, capital-city
 region), reads the five census tables for the SA2, the LGA and the capital

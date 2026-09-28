@@ -13,7 +13,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { retryFetch } from '../lib/http.js';
 import { queryByExtent } from '../lib/arcgis.js';
-import { lonLatToMercator, mercatorToLonLat, mercatorScaleFactor, type Extent, type LonLat, type XY } from '../lib/geo.js';
+import { lonLatToMercator, mercatorToLonLat, mercatorScaleFactor, ringCentroid, type Extent, type LonLat, type XY } from '../lib/geo.js';
 import { fetchDemGrid, type DemGrid } from './terrain.js';
 import { ridgeLines } from '../lib/ridges.js';
 import { fetchNpws, type NpwsReserve } from './greenSpace.js';
@@ -38,6 +38,23 @@ export interface VegClass { pctId: string; pct: string; cls: string; formation: 
 export interface Watercourse { name?: string; perenniality: 'perennial' | 'non-perennial' | 'mainly dry' | 'unknown'; hierarchy: 'major' | 'secondary' | 'minor' | 'undefined'; coords: [number, number][] }
 export interface LalcArea { local: string; regional: string; rings: number[][][] }
 
+/** An Aboriginal heritage item in a local environmental plan's heritage schedule, as the plan's heritage map draws it. */
+export interface LepAboriginalItem {
+  id?: string;
+  name: string;
+  /** Aboriginal Object, Aboriginal Place of Heritage Significance, Item - Aboriginal or Conservation Area - Aboriginal. */
+  cls: string;
+  significance?: string;
+  epi: string;
+  rings: number[][][];
+  /** The centroid of its largest ring. */
+  lon: number;
+  lat: number;
+}
+
+/** The heritage map's classes that are Aboriginal heritage (EPI_Primary_Planning_Layers/0, LAY_CLASS). */
+export const LEP_ABORIGINAL_CLASSES = ['Aboriginal Object', 'Aboriginal Place of Heritage Significance', 'Item - Aboriginal', 'Conservation Area - Aboriginal'];
+
 export interface CountryData {
   nativeTitle: { ok: boolean; atSite: NativeTitleRecord[]; inWindow: { determinations: number; claims: number; iluas: number }; currency?: string };
   places: AboriginalPlace[];
@@ -59,6 +76,8 @@ export interface CountryData {
   /** Ridge polylines in Mercator coordinates, longest first. */
   ridges: { x: number; y: number; z: number }[][];
   asdst: { ok: boolean; likelihood: number | null; surveyPriority: number | null; scaleMax: number };
+  /** The Aboriginal heritage items the LEPs schedule over the strip; optional, since decks cached before it have none. */
+  lepAboriginal?: { ok: boolean; items: LepAboriginalItem[] };
   fetchedAt: string;
 }
 
@@ -251,6 +270,39 @@ async function fetchAsdst(centre: LonLat): Promise<CountryData['asdst']> {
   return { ok: true, likelihood: value(6), surveyPriority: value(4), scaleMax: 999 };
 }
 
+// ---- the LEPs' Aboriginal heritage items ------------------------------------------
+
+const LEP_HERITAGE = `${M3}/Planning/EPI_Primary_Planning_Layers/MapServer/0`;
+
+/**
+ * The Aboriginal heritage items the local environmental plans schedule over
+ * the strip. Few plans schedule any (71 items in 16 plans across NSW in
+ * September 2026: Waverley's rock engravings and shelters around Bondi,
+ * Eurobodalla's conservation areas, Balranald's items), so the answer is
+ * mostly none; AHIMS, which holds the registered sites, is not open.
+ */
+async function fetchLepAboriginal(extent: Extent): Promise<LepAboriginalItem[]> {
+  const where = `LAY_CLASS IN (${LEP_ABORIGINAL_CLASSES.map((c) => `'${c}'`).join(',')})`;
+  const fc = await queryByExtent(LEP_HERITAGE, extent, 'H_ID,H_NAME,LAY_CLASS,SIG,EPI_NAME', where, { maxAllowableOffset: '0.00001' });
+  const byKey = new Map<string, LepAboriginalItem>();
+  for (const f of fc.features) {
+    const rs = rings(f.geometry).filter((r) => r.length >= 4);
+    if (!rs.length) continue;
+    const p = f.properties ?? {};
+    const epi = String(p.EPI_NAME ?? '').trim();
+    const key = `${epi}|${p.H_ID ?? p.H_NAME}`;
+    const had = byKey.get(key);
+    if (had) { had.rings.push(...rs); continue; }
+    byKey.set(key, { id: p.H_ID ? String(p.H_ID) : undefined, name: String(p.H_NAME ?? p.LAY_CLASS ?? '').trim(), cls: String(p.LAY_CLASS ?? ''), significance: p.SIG ? String(p.SIG) : undefined, epi, rings: rs, lon: 0, lat: 0 });
+  }
+  const area = (r: number[][]) => { let a = 0; for (let i = 0; i < r.length - 1; i++) a += r[i][0] * r[i + 1][1] - r[i + 1][0] * r[i][1]; return Math.abs(a); };
+  return [...byKey.values()].map((it) => {
+    const biggest = [...it.rings].sort((x, y) => area(y) - area(x))[0];
+    const [lon, lat] = ringCentroid(biggest);
+    return { ...it, lon, lat };
+  });
+}
+
 // ---- all of it ---------------------------------------------------------------
 
 export const EMPTY_COUNTRY: CountryData = {
@@ -260,6 +312,7 @@ export const EMPTY_COUNTRY: CountryData = {
   water: { ok: false, courses: [], coastline: [] },
   lalcs: [], npws: [], dem: null, ridges: [],
   asdst: { ok: false, likelihood: null, surveyPriority: null, scaleMax: 999 },
+  lepAboriginal: { ok: false, items: [] },
   fetchedAt: new Date(0).toISOString(),
 };
 
@@ -275,7 +328,7 @@ export async function fetchCountry(extent: Extent, pxWidth: number, pxHeight: nu
     const t0 = Date.now();
     try { return await p; } catch (e: any) { log(`  WARN Country: ${what} failed: ${e?.message ?? e}`); return fallback; } finally { took.push(`${what} ${Math.round((Date.now() - t0) / 1000)} s`); }
   };
-  const [nativeTitle, places, vegetation, water, lalcs, npws, dem, asdst] = await Promise.all([
+  const [nativeTitle, places, vegetation, water, lalcs, npws, dem, asdst, lepItems] = await Promise.all([
     soft(fetchNativeTitle(centreLL, extent), EMPTY_COUNTRY.nativeTitle, 'native title registers'),
     soft(fetchPlaces(centre, EMPTY_COUNTRY.placesRadiusM), null as AboriginalPlace[] | null, 'Aboriginal Places'),
     soft(fetchVegetation(extent, pxWidth, pxHeight, centreLL, outDir, log), EMPTY_COUNTRY.vegetation, 'pre-1750 vegetation'),
@@ -284,9 +337,10 @@ export async function fetchCountry(extent: Extent, pxWidth: number, pxHeight: nu
     soft(fetchNpws(extent), [] as NpwsReserve[], 'NPWS estate'),
     soft(fetchDemGrid(extent, 8), null as DemGrid | null, 'wide elevation grid'),
     soft(fetchAsdst(centreLL), EMPTY_COUNTRY.asdst, 'ASDST model'),
+    soft(fetchLepAboriginal(extent), null as LepAboriginalItem[] | null, 'LEP Aboriginal heritage items'),
   ]);
   const ridges = dem ? ridgeLines(dem, { riseM: 1.0, reliefM: 4 }) : [];
   log(`  country timings: ${took.join(', ')}`);
-  log(`  country: native-title at site:${nativeTitle.atSite.length} window:${nativeTitle.inWindow.determinations}/${nativeTitle.inWindow.claims}/${nativeTitle.inWindow.iluas} places:${places?.length ?? 'x'} veg:${vegetation.atSite?.pct ?? '—'} classes:${vegetation.classes.length} water:${water.courses.length} lalcs:${lalcs.length} npws:${npws.length} ridges:${ridges.length} asdst:${asdst.likelihood ?? '—'}`);
-  return { nativeTitle, places: places ?? [], placesRadiusM: EMPTY_COUNTRY.placesRadiusM, placesOk: places !== null, vegetation, water, lalcs, npws, dem, ridges, asdst, fetchedAt: new Date().toISOString() };
+  log(`  country: native-title at site:${nativeTitle.atSite.length} window:${nativeTitle.inWindow.determinations}/${nativeTitle.inWindow.claims}/${nativeTitle.inWindow.iluas} places:${places?.length ?? 'x'} veg:${vegetation.atSite?.pct ?? '—'} classes:${vegetation.classes.length} water:${water.courses.length} lalcs:${lalcs.length} npws:${npws.length} ridges:${ridges.length} asdst:${asdst.likelihood ?? '—'} lep-aboriginal:${lepItems?.length ?? 'x'}`);
+  return { nativeTitle, places: places ?? [], placesRadiusM: EMPTY_COUNTRY.placesRadiusM, placesOk: places !== null, vegetation, water, lalcs, npws, dem, ridges, asdst, lepAboriginal: { ok: lepItems !== null, items: lepItems ?? [] }, fetchedAt: new Date().toISOString() };
 }

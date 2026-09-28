@@ -12,6 +12,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { retryFetch } from '../lib/http.js';
+import { planStreetViews, metadataService, imageUrl, mapsUrl, type SvView } from './streetView.js';
 import { cachedJson, DAY_MS } from '../lib/cache.js';
 import { type LonLat, type XY, type Extent } from '../lib/geo.js';
 import { panelExtent, type Panel } from '../render/minimap.js';
@@ -40,7 +41,7 @@ const MIN_SPACING_M = 20;
 export const MAX_PHOTOS = 6;
 const LICENCE = 'CC BY-SA 4.0';
 
-export type PhotoSource = 'kartaview' | 'mapillary';
+export type PhotoSource = 'kartaview' | 'mapillary' | 'google';
 
 export interface StreetPhoto {
   /** Key number on the plan, clockwise from north. */
@@ -71,6 +72,8 @@ export interface StreetPhoto {
   facing: 'site' | 'street';
   pageUrl: string;
   licence: string;
+  /** The horizontal field of view where the frame was asked for one (Google's), degrees. */
+  fov?: number;
 }
 
 interface Candidate extends Omit<StreetPhoto, 'n' | 'file'> { thumbUrl: string; score: number; xy: XY }
@@ -81,6 +84,8 @@ export interface PhotosData {
   radiusM: number;
   kartaview: { ok: boolean; frames: number; withHeading: number; note?: string };
   mapillary: { ok: boolean; frames: number; note?: string };
+  /** Google Street View: the site's sides, the street frontages the free metadata service found in front of them, the probes it took and the frames kept. Optional: decks cached before it have none. */
+  google?: { ok: boolean; frames: number; frontages: number; sides: number; probes: number; note?: string };
   photos: StreetPhoto[];
   /** The then-and-now pair: one panel, the 1943 tiles that cover it and today's export. */
   pair: {
@@ -95,6 +100,7 @@ export const emptyPhotos = (pairPanel: Panel): PhotosData => ({
   radiusM: PHOTO_RADIUS_M,
   kartaview: { ok: false, frames: 0, withHeading: 0, note: 'not read' },
   mapillary: { ok: false, frames: 0, note: 'not read' },
+  google: { ok: false, frames: 0, frontages: 0, sides: 0, probes: 0, note: 'not read' },
   photos: [],
   pair: { panel: pairPanel, then: { ok: false, zoom: ZOOM_1943, tiles: [], missing: 0, source: SOURCE_1943 }, now: null },
   fetchedAt: new Date().toISOString(),
@@ -279,6 +285,19 @@ function toCandidate(f: RawFrame, headingSource: 'recorded' | 'track', xy: XY, r
 }
 
 /** One frame per side of the site first, then the sides with fewest frames, each new camera standing apart from the ones chosen; a frame along the street when few face the site. */
+/** A Street View frame as a candidate: it faces the site by construction; the URL with the key is used once, to download, and dropped. */
+function svCandidate(v: SvView, toXY: (p: LonLat) => XY, rings: XY[][], key: string, secret?: string): Candidate {
+  const xy = toXY(v);
+  const bearingToSite = bearing(xy, { x: 0, y: 0 });
+  const own = v.copyright?.replace(/^©\s*/, '').trim();
+  return {
+    source: 'google', id: v.panoId, author: own && !/^google$/i.test(own) ? own : undefined, date: v.date, lon: v.lon, lat: v.lat,
+    heading: v.heading, headingSource: 'recorded', distanceM: Math.round(distToSite(xy, rings)), bearingToSite: Math.round(bearingToSite),
+    bearingFromSite: Math.round(norm(bearingToSite + 180)), offAxisDeg: Math.round(angDiff(v.heading, bearingToSite)), facing: 'site',
+    pageUrl: mapsUrl(v), licence: v.copyright?.trim() || '© Google', fov: v.fov, thumbUrl: imageUrl(v, key, secret), score: 0, xy,
+  };
+}
+
 function choose(cands: Candidate[]): Candidate[] {
   const chosen: Candidate[] = [];
   const sideOf = (c: Candidate) => Math.round(c.bearingFromSite / 45) % 8;
@@ -357,16 +376,21 @@ export async function fetchPhotos(opts: { centre: LonLat; siteRings: number[][][
   const rings = opts.siteRings.map((r) => r.map(([lon, lat]) => toXY({ lon, lat }))).filter((r) => r.length >= 4);
   const soft = <T,>(p: Promise<T>, fallback: T, name: string): Promise<T> => p.catch((e) => { log(`  WARN ${name} failed: ${e?.message ?? e}`); return fallback; });
   const token = process.env.MAPILLARY_TOKEN?.trim();
+  const gkey = process.env.GOOGLE_MAPS_API_KEY?.trim(), gsecret = process.env.GOOGLE_MAPS_SIGNING_SECRET?.trim() || undefined;
   const pairExtent = panelExtent(pairPanel);
+  const noGoogle = { views: [] as SvView[], probes: 0, frontages: 0, sides: 0 };
 
   const t0 = Date.now();
-  const [kv, mly, then, now] = await Promise.all([
+  const [kv, mly, then, now, gv] = await Promise.all([
     kartaviewNearby(centre, PHOTO_RADIUS_M).then((frames) => ({ ok: true, frames, note: undefined as string | undefined }), (e: Error) => ({ ok: false, frames: [] as RawFrame[], note: e.message })),
     token
       ? mapillaryNearby(centre, PHOTO_RADIUS_M, token).then((frames) => ({ ok: true, frames, note: undefined as string | undefined }), (e: Error) => ({ ok: false, frames: [] as RawFrame[], note: e.message }))
       : Promise.resolve({ ok: false, frames: [] as RawFrame[], note: 'not read: no client token (MAPILLARY_TOKEN)' }),
     soft(fetchThen(pairExtent, outDir), { ok: false, zoom: ZOOM_1943, tiles: [], missing: 0, source: SOURCE_1943 }, '1943 aerial'),
     soft(fetchAerial(pairExtent, 900, outDir, 'now'), null, "today's aerial for the pair"),
+    gkey
+      ? planStreetViews(opts.siteRings, centre, metadataService(gkey, gsecret)).then((r) => ({ ok: true, ...r, note: undefined as string | undefined }), (e: Error) => ({ ok: false, ...noGoogle, note: e.message }))
+      : Promise.resolve({ ok: false, ...noGoogle, note: 'not read: no API key (GOOGLE_MAPS_API_KEY)' }),
   ]);
 
   // the frames within the radius, with a heading for each
@@ -374,7 +398,10 @@ export async function fetchPhotos(opts: { centre: LonLat; siteRings: number[][][
   const kvIn = kv.frames.filter(within), mlyIn = mly.frames.filter(within);
   const today = Date.now();
   const cands = fillHeadings([...kvIn, ...mlyIn], toXY).map(({ frame, headingSource }) => toCandidate(frame, headingSource, toXY(frame), rings, today)).filter((c): c is Candidate => c !== null);
-  const chosen = choose(cands);
+  // Google's frames of the frontages first; the open frames fill the cells Google leaves, away from its cameras
+  const googleCands = gkey ? gv.views.map((v) => svCandidate(v, toXY, rings, gkey, gsecret)) : [];
+  const chosen = [...googleCands, ...choose(cands).filter((c) => googleCands.every((g) => dist(g.xy, c.xy) >= MIN_SPACING_M || angDiff(g.heading, c.heading) >= 60))]
+    .slice(0, MAX_PHOTOS).sort((a, b) => a.bearingFromSite - b.bearingFromSite);
 
   // save the frames; a frame that will not download drops out and the rest close up, still clockwise
   const photos: StreetPhoto[] = [];
@@ -387,11 +414,13 @@ export async function fetchPhotos(opts: { centre: LonLat; siteRings: number[][][
   }
 
   const secs = Math.round((Date.now() - t0) / 1000);
-  log(`  photos: kartaview ${kv.ok ? `${kvIn.length} frames (${kvIn.filter((f) => Number.isFinite(f.heading)).length} with a heading)` : `failed (${kv.note})`}; mapillary ${mly.ok ? `${mlyIn.length} frames` : mly.note}; ${cands.filter((c) => c.facing === 'site').length} face the site, ${photos.length} kept; 1943 tiles ${then.tiles.length}${then.missing ? ` (${then.missing} missing)` : ''}; today's aerial ${now ? 'yes' : 'no'}; ${secs} s`);
+  const googleKept = photos.filter((p) => p.source === 'google').length;
+  log(`  photos: google ${gv.ok ? `${gv.frontages} of ${gv.sides} sides front a street, ${googleKept} frames from ${gv.probes} probes` : gv.note}; kartaview ${kv.ok ? `${kvIn.length} frames (${kvIn.filter((f) => Number.isFinite(f.heading)).length} with a heading)` : `failed (${kv.note})`}; mapillary ${mly.ok ? `${mlyIn.length} frames` : mly.note}; ${cands.filter((c) => c.facing === 'site').length} face the site, ${photos.length} kept; 1943 tiles ${then.tiles.length}${then.missing ? ` (${then.missing} missing)` : ''}; today's aerial ${now ? 'yes' : 'no'}; ${secs} s`);
   return {
     radiusM: PHOTO_RADIUS_M,
     kartaview: { ok: kv.ok, frames: kvIn.length, withHeading: kvIn.filter((f) => Number.isFinite(f.heading)).length, note: kv.note },
     mapillary: { ok: mly.ok, frames: mlyIn.length, note: mly.note },
+    google: { ok: gv.ok, frames: googleKept, frontages: gv.frontages, sides: gv.sides, probes: gv.probes, note: gv.note },
     photos,
     pair: { panel: pairPanel, then, now },
     fetchedAt: new Date().toISOString(),
