@@ -29,6 +29,7 @@ import { fetchBuildings, type BuildingsData } from './fetch/buildings.js';
 import { fetchMovement, type MovementData } from './fetch/movement.js';
 import { fetchGreenSpace, type GreenData } from './fetch/greenSpace.js';
 import { fetchConstraints, checkLepCoverage, type ConstraintsData } from './fetch/constraints.js';
+import { fetchSiteData, type SiteData } from './fetch/site.js';
 import type { SiteControls } from './fetch/nsw.js';
 
 export interface CategorizedPoint extends NamedPoint { cat: string | null }
@@ -542,6 +543,8 @@ export interface SlidesBundle {
   green: GreenData;
   /** Hazard, protection, coastal and corridor layers over the planning panel, with the plan-wide coverage check, and the soil landscape at the site. */
   constraints: ConstraintsData;
+  /** The site plan's aerial, the lots, easements, neighbours and the public land around, with the two panels they are drawn in. */
+  site: SiteData;
   /** The wide walking-reach strip: its panel, a lighter base (major roads, rail, stations, water) and the suburbs to label. */
   wide: { panel: Panel; base: BaseData; suburbs: GeoJSONFC };
   warnings: string[];
@@ -563,6 +566,22 @@ export interface SlidesPipelineOpts {
   daYears?: number;
   log?: (msg: string) => void;
 }
+
+/** The round scales the deck's site plan is drawn at. */
+const DECK_SITE_SCALES = [200, 250, 300, 400, 500, 600, 750, 1000, 1250, 1500, 2000, 2500, 3000, 4000, 5000];
+
+/** A panel centred on the site's lots at the smallest round scale that keeps them within 55 % of the panel each way. */
+function fitSitePanel(siteLots: GeoJSONFC, wMm: number, hMm: number): Panel {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const f of siteLots.features) for (const r of geomRingsOf(f.geometry)) for (const [lon, lat] of r) { const m = lonLatToMercator({ lon, lat }); x0 = Math.min(x0, m.x); y0 = Math.min(y0, m.y); x1 = Math.max(x1, m.x); y1 = Math.max(y1, m.y); }
+  const center = { x: (x0 + x1) / 2, y: (y0 + y1) / 2 };
+  const k = mercatorScaleFactor(mercatorToLonLat(center).lat);
+  const wM = (x1 - x0) / k, hM = (y1 - y0) / k;
+  const need = Math.max(wM / ((wMm / 1000) * 0.55), hM / ((hMm / 1000) * 0.55));
+  const scale = DECK_SITE_SCALES.find((s) => s >= need) ?? DECK_SITE_SCALES[DECK_SITE_SCALES.length - 1];
+  return { center, scale, wMm, hMm };
+}
+const geomRingsOf = (g: any): number[][][] => (!g ? [] : g.type === 'Polygon' ? g.coordinates : g.type === 'MultiPolygon' ? g.coordinates.flat() : []);
 
 /** The local environmental plans in the window, most common first: the zoning layer's plan names, then the property report's. */
 function principalLeps(zoning: GeoJSONFC, property: PropertyReport | null): string[] {
@@ -590,6 +609,9 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
   const daExtent = panelExtent(daPanel);
   const widePanel: Panel = { center: geo.center, scale: opts.wideScale ?? 16000, wMm: opts.wideWmm ?? 296, hMm: opts.wideHmm ?? 100 };
   const wideExtent = panelExtent(widePanel);
+  // The site plan's panel: the lots fitted into a little over half of a tall panel at a round scale, centred on them.
+  const sitePanel = fitSitePanel(siteLots, opts.panelWmm, opts.daPanelHmm);
+  const blockPanel: Panel = { center: geo.center, scale: 4000, wMm: opts.panelWmm, hMm: opts.wideHmm ?? 100 };
   // Every fetch window is the larger of the two, so nothing is missing from either map.
   const fetchExtent: Extent = {
     xmin: Math.min(extent.xmin, daExtent.xmin), ymin: Math.min(extent.ymin, daExtent.ymin),
@@ -613,7 +635,8 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
 
   const emptyGreen: GreenData = { canopy: { blocks: [], covered: false, year: 2022, source: 'Greater Sydney Tree Canopy Cover 2022 (NSW ePlanning)' }, openSpace: [], openSpaceWide: [], greenGrid: [], parkPoints: [], facilities: [], npws: [], trees: { points: [] }, fetchedAt: new Date().toISOString() };
   const emptyConstraints: ConstraintsData = { layers: [], soil: null, fetchedAt: new Date().toISOString() };
-  const [zoning, hob, heritage, shr, policy, water, lots, roads, railLines, stations, context, property, controls, proposals, feed, people, dem, contourSet, buildings, movement, green, constraints, wideRoads, wideRail, wideStations, wideWater, wideSuburbs] = await Promise.all([
+  const emptySite: SiteData = { sitePanel, blockPanel, aerial: null, imagery: null, lots: [], easements: [], neighbours: [], publicLand: [], fetchedAt: new Date().toISOString() };
+  const [zoning, hob, heritage, shr, policy, water, lots, roads, railLines, stations, context, property, controls, proposals, feed, people, dem, contourSet, buildings, movement, green, constraints, site, wideRoads, wideRail, wideStations, wideWater, wideSuburbs] = await Promise.all([
     soft(fetchZoningDetailed(extent), emptyFC, 'zoning'),
     soft(fetchHobDetailed(extent), emptyFC, 'height of building'),
     soft(fetchHeritageDetailed(extent), emptyFC, 'heritage'),
@@ -636,6 +659,7 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
     fetchMovement(daExtent, geo.center, log),
     soft(fetchGreenSpace(daExtent, wideExtent, log), emptyGreen, 'green and public domain'),
     soft(fetchConstraints(extent, mercatorToLonLat(geo.center), log), emptyConstraints, 'environmental constraints'),
+    soft(fetchSiteData(sitePanel, blockPanel, siteLots, mercatorToLonLat(geo.center), dataDir, log), emptySite, 'site data'),
     soft(fetchRoads(wideExtent, 'roadnamebase IS NOT NULL AND functionhierarchy <= 5'), [], 'wide roads'),
     soft(fetchRailLines(wideExtent), { train: [], tram: [] }, 'wide rail lines'),
     soft(fetchTrainStations(wideExtent), [], 'wide stations'),
@@ -670,7 +694,7 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
     base: { water, lots, roads, rail: railLines, stations, siteLots },
     controls, property, context, housingTarget, cos,
     daPanel, applications, daMeta, proposals, people,
-    terrain: { dem, contours: contourSet.lines, contourIntervalM: contourSet.intervalM, contourSource: contourSet.source, contourAttribution: contourSet.attribution }, buildings, movement, green, constraints,
+    terrain: { dem, contours: contourSet.lines, contourIntervalM: contourSet.intervalM, contourSource: contourSet.source, contourAttribution: contourSet.attribution }, buildings, movement, green, constraints, site,
     wide: { panel: widePanel, base: { water: wideWater, lots: emptyFC, roads: wideRoads, rail: wideRail, stations: wideStations, siteLots }, suburbs: wideSuburbs },
     warnings,
   };

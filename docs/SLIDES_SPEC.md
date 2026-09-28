@@ -445,12 +445,12 @@ Open-Meteo archive (ERA5): `https://archive-api.open-meteo.com/v1/archive?latitu
 
 Implemented: slides 03 (planning overview), 04 (planning controls), 06
 (topography), 07 (development activity), 08 (built form), 09 (movement), 10
-(green and public domain), 14 (environmental constraints) and 16 (people and
-market) —
+(green and public domain), 11 (the site), 14 (environmental constraints) and 16
+(people and market) —
 `src/render/slides.ts`, `src/render/minimap.ts`, `src/render/charts.ts`,
 `src/render/terrainMap.ts`, `src/fetch/planning.ts`, `src/fetch/terrain.ts`,
 `src/fetch/buildings.ts` with `src/py/overture_buildings.py`,
-`src/fetch/movement.ts`, `src/fetch/greenSpace.ts`, `src/fetch/constraints.ts`, `src/fetch/da.ts`, `src/fetch/abs.ts`, `src/fetch/tzp24.ts`,
+`src/fetch/movement.ts`, `src/fetch/greenSpace.ts`, `src/fetch/constraints.ts`, `src/fetch/site.ts`, `src/fetch/da.ts`, `src/fetch/abs.ts`, `src/fetch/tzp24.ts`,
 `src/fetch/valuation.ts`, `src/fetch/schools.ts` (gathered by
 `src/fetch/people.ts`), `runSlidesPipeline` in `src/pipeline.ts`; `--type
 slides` on the CLI and the `slides` drawing on the web. The maps use the
@@ -573,6 +573,29 @@ hatch. The soil landscape comes from the Sydney 1:100,000 sheet
 slide says so. Noise sources are the arterial roads within 60 m of the
 boundary and railways within 120 m, from the base layers already fetched.
 Geology, contamination and the airports' ANEF contours remain by hand.
+
+Slide 11 fits the lots into a tall panel at the smallest round scale (200
+to 5,000) that keeps them within 55 % of it each way, and lays the SIX
+aerial under the plan (`fetchAerial` with its own file prefix, so a run of
+both sheets keeps both sets of tiles); the capture date and resolution come
+from SIX Maps' `NSW_Imagery_Dates` layer (the Sydney block, 7 cm, from
+January 2021; Orange, 10 cm, 2012). The boundary lengths are computed from
+the digital cadastre and printed along each outer edge (an edge two of the
+site's lots share is left out); the corner levels are the elevation
+model's, so the plan says "indicative to about a metre"; frontages are the
+edges within 18 m of a named road's centreline, summed per road. The
+existing building is the footprint whose centroid lies on the lot (or most
+of whose vertices do), with its storeys and height where Overture has them,
+and the neighbours' footprints touching the boundary are named by height and
+direction. The plan areas come from the Lot layer's `planlotarea` (often
+null, so the cadastre's computed area leads); the easement layer (cadastre
+layer 9) carries geometry and width but no purpose, and is empty around most
+urban lots; the neighbours' numbers are the geocoded addressing points.
+The block panel at 1:4000 draws the single-property sales of the last two
+years within 300 m sized by price (strata hollow), the State government
+land parcels (`Planning_Portal_GPI` 302), Crown land (258) and Crown
+reserves (312), and a 300 m ring. The land value and the sales are the
+Valuer General's, already fetched for slide 16.
 
 Slide 16 looks the site up in the ASGS (SA2, LGA, suburb, capital-city
 region), reads the five census tables for the SA2, the LGA and the capital

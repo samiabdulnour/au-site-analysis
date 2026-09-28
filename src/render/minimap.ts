@@ -154,7 +154,8 @@ export type FurnitureCorner = 'left' | 'right' | 'topLeft' | 'topRight';
 
 function furnitureGeom(p: Panel, corner: FurnitureCorner) {
   const mmPerM = 1000 / p.scale;
-  const barM = p.scale <= 4000 ? 100 : p.scale <= 10000 ? 200 : 500;
+  // the longest round length that keeps the bar under 40 mm: 10 m at 1:400, 200 m at 1:8000, 500 m at 1:16000
+  const barM = [1000, 500, 250, 200, 100, 50, 25, 20, 10, 5, 2].find((m) => m * mmPerM <= 40) ?? 1;
   const barMm = barM * mmPerM;
   const x0 = corner === 'left' || corner === 'topLeft' ? 3 : p.wMm - barMm - 9.6;
   const y0 = corner === 'topLeft' || corner === 'topRight' ? 11.8 : p.hMm - 3.2;

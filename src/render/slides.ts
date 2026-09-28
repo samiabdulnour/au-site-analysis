@@ -28,6 +28,10 @@ import { METRES_PER_STOREY, type Building } from '../fetch/buildings.js';
 import type { CyclewayKind } from '../fetch/movement.js';
 import type { FacilityKind } from '../fetch/greenSpace.js';
 import { CONSTRAINT_DEFS, type ConstraintGroup } from '../fetch/constraints.js';
+import type { PublicParcel } from '../fetch/site.js';
+import { demAt } from '../fetch/terrain.js';
+import { CHART } from './charts.js';
+import type { XY } from '../lib/geo.js';
 
 export const SLIDE_W = 420;
 export const SLIDE_H = 297;
@@ -2465,11 +2469,398 @@ export function constraintsSlide(b: SlidesBundle): Slide {
   return { id: '14_environmental_constraints', title: 'Environmental constraints', subtitle: sub, textHtml, figureHtml };
 }
 
+// ---- slide 11: the site -------------------------------------------------------
+
+const PUBLIC_LAND_COLOUR: Record<PublicParcel['kind'], string> = { state: '#2a78d6', crown: '#1f6b2f', reserve: '#8fbf7a' };
+const PUBLIC_LAND_WORD: Record<PublicParcel['kind'], string> = { state: 'State government land', crown: 'Crown land', reserve: 'Crown reserve' };
+const SALES_RADIUS_M = 300;
+const SALES_MONTHS = 24;
+
+interface SiteEdge { a: XY; b: XY; lengthM: number; bearing: number; mid: XY; normal: { x: number; y: number }; shared: boolean }
+
+export function siteFacts(b: SlidesBundle) {
+  const s = b.site;
+  const p = s.sitePanel;
+  const centreLL = mercatorToLonLat(b.panel.center);
+  const k = mercatorScaleFactor(centreLL.lat);
+  const toM = (lon: number, lat: number) => lonLatToMercator({ lon, lat });
+  const siteRings = b.base.siteLots.features.flatMap((f) => geomRings(f.geometry));
+  const ringsMerc = siteRings.map((r) => r.map(([lon, lat]) => toM(lon, lat)));
+  const siteMerc = ringsMerc.flat();
+  const distFromSite = (m: XY) => { let d = Infinity; for (const q of siteMerc) d = Math.min(d, Math.hypot(q.x - m.x, q.y - m.y)); return d / k; };
+  const bearingOf = (dx: number, dy: number) => ((Math.atan2(dx, dy) * 180) / Math.PI + 360) % 360;
+  const bearingFrom = (m: XY) => bearingOf(m.x - p.center.x, m.y - p.center.y);
+  const segDist = (q: XY, a: XY, c: XY) => { const dx = c.x - a.x, dy = c.y - a.y; const l2 = dx * dx + dy * dy; const t = l2 ? Math.max(0, Math.min(1, ((q.x - a.x) * dx + (q.y - a.y) * dy) / l2)) : 0; return Math.hypot(q.x - (a.x + t * dx), q.y - (a.y + t * dy)); };
+  const ringAreaM2 = (pts: XY[]) => { let a = 0; for (let i = 0; i < pts.length; i++) { const u = pts[i], v = pts[(i + 1) % pts.length]; a += u.x * v.y - v.x * u.y; } return a / 2 / (k * k); };
+
+  // Boundary edges, with an outward normal for the dimension text; an edge another of the site's lots shares is internal.
+  const edges: SiteEdge[] = [];
+  ringsMerc.forEach((ring, ri) => {
+    const pts = ring.length > 1 && ring[0].x === ring[ring.length - 1].x && ring[0].y === ring[ring.length - 1].y ? ring.slice(0, -1) : ring;
+    const ccw = ringAreaM2(pts) > 0;
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[i], c = pts[(i + 1) % pts.length];
+      const lengthM = Math.hypot(c.x - a.x, c.y - a.y) / k;
+      if (lengthM < 0.3) continue;
+      const mid = { x: (a.x + c.x) / 2, y: (a.y + c.y) / 2 };
+      const dx = (c.x - a.x), dy = (c.y - a.y), l = Math.hypot(dx, dy);
+      const normal = ccw ? { x: dy / l, y: -dx / l } : { x: -dy / l, y: dx / l };
+      const shared = ringsMerc.some((other, oi) => oi !== ri && other.some((q, j) => j < other.length - 1 && segDist(mid, q, other[j + 1]) * (1 / k) < 0.5));
+      edges.push({ a, b: c, lengthM, bearing: bearingOf(dx, dy), mid, normal, shared });
+    }
+  });
+  const outer = edges.filter((e) => !e.shared);
+  // Frontages: the edges whose midpoint lies within 18 m of a named road's centreline.
+  const frontage = new Map<string, { lengthM: number; hierarchy: number }>();
+  for (const e of outer) {
+    let best: { name: string; hierarchy: number; d: number } | null = null;
+    for (const r of b.base.roads) {
+      if (!r.name) continue;
+      const pts = r.coords.map(([lon, lat]) => toM(lon, lat));
+      for (let i = 0; i < pts.length - 1; i++) { const d = segDist(e.mid, pts[i], pts[i + 1]) / k; if (!best || d < best.d) best = { name: titleCase(r.name), hierarchy: r.hierarchy, d }; }
+    }
+    if (best && best.d <= 18) { const cur = frontage.get(best.name) ?? { lengthM: 0, hierarchy: best.hierarchy }; cur.lengthM += e.lengthM; frontage.set(best.name, cur); }
+  }
+  const frontages = [...frontage.entries()].map(([name, v]) => ({ name, lengthM: Math.round(v.lengthM * 10) / 10, hierarchy: v.hierarchy, word: roadWord(v.hierarchy) })).sort((x, y) => y.lengthM - x.lengthM);
+
+  // Corners: the vertices where the boundary turns, with the elevation model's level at each.
+  const g = b.terrain.dem;
+  const corners: { x: number; y: number; rl?: number; turn: number; bearing: number }[] = [];
+  for (const ring of ringsMerc) {
+    const pts = ring.length > 1 && ring[0].x === ring[ring.length - 1].x && ring[0].y === ring[ring.length - 1].y ? ring.slice(0, -1) : ring;
+    for (let i = 0; i < pts.length; i++) {
+      const prev = pts[(i + pts.length - 1) % pts.length], cur = pts[i], next = pts[(i + 1) % pts.length];
+      const b1 = bearingOf(cur.x - prev.x, cur.y - prev.y), b2 = bearingOf(next.x - cur.x, next.y - cur.y);
+      let turn = Math.abs(b2 - b1); if (turn > 180) turn = 360 - turn;
+      if (turn < 25) continue;
+      corners.push({ x: cur.x, y: cur.y, rl: g ? demAt(g, cur.x, cur.y) : undefined, turn, bearing: bearingFrom(cur) });
+    }
+  }
+  const cornerRls = corners.map((c) => c.rl).filter((v): v is number => v !== undefined);
+  const levels = cornerRls.length ? { min: Math.min(...cornerRls), max: Math.max(...cornerRls), fallM: Math.max(...cornerRls) - Math.min(...cornerRls),
+    high: corners.filter((c) => c.rl !== undefined).sort((x, y) => y.rl! - x.rl!)[0], low: corners.filter((c) => c.rl !== undefined).sort((x, y) => x.rl! - y.rl!)[0] } : null;
+
+  // The existing buildings: the lot's area is sampled on a grid, and a footprint that covers any of it is on the site
+  // (Overture often draws a terrace row as one footprint, so its centroid says little); the neighbours' footprints touch the boundary.
+  const inside = (lon: number, lat: number) => siteRings.some((r) => pointInRing(lon, lat, r));
+  const siteAreaSqm = b.siteAreaSqm ?? Math.abs(ringsMerc.reduce((a, r) => a + ringAreaM2(r), 0));
+  let sx0 = Infinity, sy0 = Infinity, sx1 = -Infinity, sy1 = -Infinity;
+  for (const q of siteMerc) { sx0 = Math.min(sx0, q.x); sy0 = Math.min(sy0, q.y); sx1 = Math.max(sx1, q.x); sy1 = Math.max(sy1, q.y); }
+  const stepM = Math.max(0.5, Math.sqrt(Math.max(1, siteAreaSqm) / 1600));
+  const samples: [number, number][] = [];
+  for (let x = sx0; x <= sx1; x += stepM * k) for (let y = sy0; y <= sy1; y += stepM * k) { const ll = mercatorToLonLat({ x, y }); if (inside(ll.lon, ll.lat)) samples.push([ll.lon, ll.lat]); }
+  const onSite: { heightM?: number; floors?: number; estimatedHeightM?: number; heightFrom: string; areaSqm: number; coveredSqm: number; name?: string; beyondLot: boolean }[] = [];
+  const adjoining: { heightM?: number; floors?: number; estimatedHeightM?: number; bearing: number; distanceM: number }[] = [];
+  const covered = new Set<number>();
+  for (const bd of b.buildings.buildings) {
+    const ring = bd.rings[0] ?? [];
+    if (ring.length < 4) continue;
+    const pts = ring.map(([lon, lat]) => toM(lon, lat));
+    const hits = samples.map((q, i) => (bd.rings.some((r) => pointInRing(q[0], q[1], r)) ? i : -1)).filter((i) => i >= 0);
+    if (hits.length && samples.length && hits.length / samples.length >= 0.03) {
+      for (const i of hits) covered.add(i);
+      const areaSqm = Math.abs(ringAreaM2(pts));
+      const coveredSqm = (hits.length / samples.length) * siteAreaSqm;
+      onSite.push({ heightM: bd.heightM, floors: bd.floors, estimatedHeightM: bd.estimatedHeightM, heightFrom: bd.heightFrom, areaSqm, coveredSqm, name: bd.name, beyondLot: areaSqm > coveredSqm * 1.5 });
+    } else {
+      let d = Infinity; for (const q of pts) d = Math.min(d, distFromSite(q));
+      if (d <= 2.5) adjoining.push({ heightM: bd.heightM, floors: bd.floors, estimatedHeightM: bd.estimatedHeightM, bearing: bearingOf(toM(bd.centroid[0], bd.centroid[1]).x - p.center.x, toM(bd.centroid[0], bd.centroid[1]).y - p.center.y), distanceM: Math.round(d) });
+    }
+  }
+  const footprintSqm = samples.length ? (covered.size / samples.length) * siteAreaSqm : 0;
+
+  // Land values and the sales around.
+  const lv = b.people?.landValues ?? null;
+  const values = lv ? [...lv.values].sort((x, y) => x.year - y.year) : [];
+  const latest = values[values.length - 1], first = values[0];
+  const cutoff = new Date(); cutoff.setMonth(cutoff.getMonth() - SALES_MONTHS);
+  const sales = (b.people?.sales ?? []).filter((x) => x.distanceM <= SALES_RADIUS_M && x.properties === 1 && x.date >= cutoff.toISOString().slice(0, 10)).sort((x, y) => (x.date < y.date ? 1 : -1));
+  const median = (xs: number[]) => { if (!xs.length) return null; const s2 = [...xs].sort((x, y) => x - y); return s2[Math.floor(s2.length / 2)]; };
+
+  // Public land in the block panel, nearest first.
+  const publicLand = s.publicLand.map((pl) => { let d = Infinity, at = p.center; for (const r of pl.rings) for (const [lon, lat] of r) { const m = toM(lon, lat); const dd = distFromSite(m); if (dd < d) { d = dd; at = m; } } return { kind: pl.kind, label: pl.label, detail: pl.detail, areaHa: pl.areaHa, distanceM: Math.round(d), bearing: bearingFrom(at) }; }).sort((x, y) => x.distanceM - y.distanceM);
+
+  return {
+    panelScale: p.scale, blockScale: s.blockPanel.scale,
+    lots: { description: b.lotDescription, count: b.base.siteLots.features.length, cadastreAreaSqm: Math.round(siteAreaSqm), planAreaSqm: s.lots.reduce((a, l) => a + (l.planAreaSqm ?? 0), 0) || null, stratum: s.lots.some((l) => l.stratum) },
+    edges: outer.map((e) => ({ lengthM: Math.round(e.lengthM * 100) / 100, bearing: Math.round(e.bearing) })),
+    perimeterM: Math.round(outer.reduce((a, e) => a + e.lengthM, 0) * 10) / 10,
+    frontages,
+    corners: corners.map((c) => ({ rl: c.rl === undefined ? undefined : Math.round(c.rl * 10) / 10, bearing: Math.round(c.bearing) })),
+    levels: levels ? { min: Math.round(levels.min * 10) / 10, max: Math.round(levels.max * 10) / 10, fallM: Math.round(levels.fallM * 10) / 10, highBearing: levels.high?.bearing, lowBearing: levels.low?.bearing } : null,
+    controls: b.controls,
+    buildings: { source: b.buildings.source, onSite, footprintSqm: Math.round(footprintSqm), coveragePct: siteAreaSqm ? Math.min(100, (footprintSqm / siteAreaSqm) * 100) : 0, adjoining },
+    easements: s.easements.map((e) => ({ type: e.type, widthM: e.widthM })),
+    landValue: lv && latest ? { latest: latest.value, latestDate: latest.baseDate, first: first.value, firstYear: first.year, latestYear: latest.year, changePct: first.value ? ((latest.value - first.value) / first.value) * 100 : null, areaSqm: lv.areaSqm, stratum: lv.stratum, values } : null,
+    sales: { radiusM: SALES_RADIUS_M, months: SALES_MONTHS, count: sales.length, median: median(sales.map((x) => x.price)), strata: sales.filter((x) => x.strata).length, recent: sales.slice(0, 8) },
+    publicLand,
+    imagery: s.imagery, aerial: Boolean(s.aerial),
+    neighbours: s.neighbours.length,
+  };
+}
+
+export function siteSentences(b: SlidesBundle, f: ReturnType<typeof siteFacts>): string[] {
+  const out: string[] = [];
+  const c = f.controls;
+  // the lot and its frontage
+  let s = `The site is ${f.lots.description}${f.lots.count > 1 ? ` (${f.lots.count} lots)` : ''}, ${fmtNum(f.lots.cadastreAreaSqm)} m² by the cadastre${f.lots.planAreaSqm ? ` (${fmtNum(Math.round(f.lots.planAreaSqm))} m² by the plan)` : ''}`;
+  if (f.frontages.length) s += `, fronting ${listWords(f.frontages.map((fr) => `${fr.name} for ${fmtNum(fr.lengthM, 1)} m (${/^[aeiou]/i.test(fr.word) ? 'an' : 'a'} ${fr.word})`))}`;
+  else s += ', with no named road within 18 m of its boundary';
+  s += `; its boundary runs ${fmtNum(f.perimeterM, 1)} m${f.edges.length <= 6 ? ` in ${f.edges.length} sides of ${f.edges.map((e) => fmtNum(e.lengthM, 1)).join(', ')} m` : ` in ${f.edges.length} sides`}.`;
+  out.push(s);
+  // controls
+  if (c.zoneCode || c.maxHeightM || c.fsr) {
+    const bits = [c.zoneCode ? `zoned ${c.zoneCode}${c.zonePurpose ? ` ${c.zonePurpose}` : ''}` : '', c.maxHeightM ? `height of buildings ${fmtNum(c.maxHeightM, 1)} m` : '', c.fsr ? `floor space ratio ${c.fsr}:1` : '', c.minLotSizeSqm ? `minimum lot ${fmtNum(c.minLotSizeSqm)} m²` : ''].filter(Boolean);
+    out.push(`Under ${c.epiName ? shortEpi(c.epiName) : 'the plan'} it is ${listWords(bits)}${c.heritage?.length ? `; heritage: ${listWords(c.heritage.map((h: any) => (typeof h === 'string' ? h : h.name ?? h.id ?? 'listed item')))}` : '; no heritage listing on the lot'}. The controls slide carries the rest.`);
+  }
+  // the existing building
+  if (f.buildings.onSite.length) {
+    const tallest = [...f.buildings.onSite].sort((x, y) => (y.estimatedHeightM ?? 0) - (x.estimatedHeightM ?? 0))[0];
+    const h = tallest.floors ? `${tallest.floors} storey${tallest.floors === 1 ? '' : 's'}${tallest.heightM ? `, ${fmtNum(tallest.heightM, 1)} m` : ''}` : tallest.heightM ? `${fmtNum(tallest.heightM, 1)} m high` : 'no recorded height';
+    out.push(`${f.buildings.source === 'overture' ? 'Overture Maps' : 'OpenStreetMap'} has ${f.buildings.onSite.length === 1 ? 'one building' : `${f.buildings.onSite.length} buildings`} on the lot, ${h}, covering ${fmtNum(f.buildings.footprintSqm)} m², ${fmtPct(f.buildings.coveragePct)} of the site${f.buildings.onSite.some((x) => x.beyondLot) ? ' (a footprint extends beyond the lot)' : ''}${f.buildings.adjoining.length ? `; ${f.buildings.adjoining.length === 1 ? 'the neighbour on the boundary is' : `${f.buildings.adjoining.length === 2 ? 'two' : f.buildings.adjoining.length} neighbours stand on the boundary:`} ${listWords(f.buildings.adjoining.slice(0, 3).map((n) => `${n.floors ? `${n.floors} storey${n.floors === 1 ? '' : 's'}` : n.estimatedHeightM ? `about ${fmtNum(n.estimatedHeightM)} m high` : 'of unknown height'} to the ${bearingName(n.bearing)}`))}` : ''}.`);
+  } else out.push(`${f.buildings.source === 'none' ? 'No footprint source answered' : 'The footprint data has no building on the lot'}; the existing building, if any, is for the site visit.`);
+  // levels
+  if (f.levels) out.push(f.levels.fallM >= 0.3
+    ? `The elevation model puts the corners between RL ${f.levels.min.toFixed(1)} (${bearingName(f.levels.lowBearing ?? 0)}) and RL ${f.levels.max.toFixed(1)} (${bearingName(f.levels.highBearing ?? 0)}), a fall of ${f.levels.fallM.toFixed(1)} m across the lot, indicative to about a metre.`
+    : `The elevation model has the lot level to within ${f.levels.fallM.toFixed(1)} m, around RL ${f.levels.min.toFixed(1)}.`);
+  // easements
+  out.push(f.easements.length
+    ? `The cadastre shows ${f.easements.length === 1 ? 'one easement' : `${f.easements.length} easements`} in the site plan's window${f.easements.some((e) => e.widthM) ? ` (${listWords([...new Set(f.easements.filter((e) => e.widthM).map((e) => `${fmtNum(e.widthM!, 1)} m wide`))])})` : ''}; its purpose is not open data, so the title search decides what it carries.`
+    : "The cadastre's easement layer shows none in the site plan's window; the title search is still the reference.");
+  // land value and sales
+  if (f.landValue) {
+    const lv = f.landValue;
+    let t = `The Valuer General's land value is ${money(lv.latest)} at ${fmtIso(lv.latestDate)}`;
+    if (lv.changePct !== null && lv.latestYear !== lv.firstYear) t += `, ${lv.changePct >= 0 ? 'up' : 'down'} ${fmtPct(Math.abs(lv.changePct))} on ${lv.firstYear}`;
+    if (lv.stratum) t += ' (a stratum value)';
+    t += '.';
+    if (f.sales.count) t += ` Within ${f.sales.radiusM} m, ${f.sales.count} single-property sale${f.sales.count === 1 ? '' : 's'} in the last ${f.sales.months} months${f.sales.strata ? ` (${f.sales.strata} strata)` : ''}, median ${money(f.sales.median!)}; the latest, ${streetOnly(f.sales.recent[0].address)} at ${money(f.sales.recent[0].price)} in ${fmtMonthYear(f.sales.recent[0].date)}.`;
+    else t += ` No single-property sale within ${f.sales.radiusM} m in the last ${f.sales.months} months.`;
+    out.push(t);
+  } else if (f.sales.count) out.push(`Within ${f.sales.radiusM} m, ${f.sales.count} single-property sales in the last ${f.sales.months} months, median ${money(f.sales.median!)}.`);
+  // public land
+  if (f.publicLand.length) {
+    const byKind = (['state', 'crown', 'reserve'] as const).map((kd) => ({ kd, items: f.publicLand.filter((x) => x.kind === kd) })).filter((x) => x.items.length);
+    out.push(`Public land in the block: ${listWords(byKind.map((x) => `${x.items.length} ${x.kd === 'state' ? 'State government parcel' : x.kd === 'crown' ? 'Crown land parcel' : 'Crown reserve'}${x.items.length === 1 ? '' : 's'}`))}; the nearest, ${f.publicLand[0].label}${f.publicLand[0].detail && f.publicLand[0].kind === 'reserve' ? ` (${f.publicLand[0].detail})` : ''}, ${f.publicLand[0].distanceM < ADJOINS_M ? 'adjoins the site' : `is ${fmtNum(f.publicLand[0].distanceM)} m to the ${bearingName(f.publicLand[0].bearing)}`}.`);
+  } else out.push(`No State government or Crown parcel is mapped in the ${fmtNum(Math.round((PANEL_W / 1000) * f.blockScale))} × ${fmtNum(Math.round((100 / 1000) * f.blockScale))} m block panel.`);
+  return out;
+}
+
+export function siteSlide(b: SlidesBundle): Slide {
+  const f = siteFacts(b);
+  const s = b.site;
+  const t = tpl();
+  const sentences = siteSentences(b, f);
+  const img = f.imagery;
+  const textHtml = sentences.map(para).join('') +
+    placeholder('Narrative — for the author: what the site visit found (the building, its condition and use, the trees, the levels and retaining walls, the services in the street), what the title says (easements, covenants, ownership) and what the survey must confirm before the envelope is drawn.') +
+    `<div class="fine">Sources: NSW cadastre (lots, plan areas, easement geometry); NSW Imagery via SIX Maps${img ? ` (${titleCase(img.block)} block${img.date ? `, captured ${fmtIso(img.date)}` : ''}${img.resolutionCm ? `, ${img.resolutionCm} cm` : ''})` : ''}; controls from ePlanning; building footprints from ${b.buildings.source === 'overture' ? 'Overture Maps' : 'OpenStreetMap contributors (ODbL)'}; levels from the NSW 5 m elevation model; land values and sales from the Valuer General; State government and Crown land from the ePlanning GPI and Crown land layers; addresses from the NSW geocoded addressing theme. Cadastral dimensions and areas are computed from the digital cadastre, not the survey plan. Retrieved ${b.generatedAt.slice(0, 10)}.</div>`;
+  const sub = [b.siteAddress, f.lots.description, `${fmtNum(f.lots.cadastreAreaSqm)} m²`, f.frontages[0] ? `fronts ${f.frontages[0].name}` : ''].filter(Boolean).join(' · ');
+
+  // The site plan on the aerial.
+  const p = s.sitePanel;
+  const proj = panelProjector(p);
+  const parts: string[] = [`<rect x="0" y="0" width="${p.wMm}" height="${p.hMm}" fill="#f4f2ee"/>`];
+  if (s.aerial) for (const tile of s.aerial.tiles) parts.push(`<image href="data/${tile.file}" x="${(tile.left * p.wMm).toFixed(2)}" y="${(tile.top * p.hMm).toFixed(2)}" width="${(tile.width * p.wMm).toFixed(2)}" height="${(tile.height * p.hMm).toFixed(2)}" preserveAspectRatio="none"/>`);
+  else parts.push(emptyNote(['The aerial imagery did not answer for this window.']));
+  // cadastre, in white over the aerial
+  if (b.base.lots.features.length) parts.push(`<path d="${b.base.lots.features.map((ft) => ringsPath(geomRings(ft.geometry), proj)).join('')}" fill="none" stroke="#ffffff" stroke-width="0.25" opacity="0.85"/>`);
+  let hatchId = 0;
+  for (const e of s.easements) parts.push(hatchPath(ringsPath(e.rings, proj), `ease${hatchId++}`, '#ffd200', bboxOf(e.rings, proj), 1.1));
+  // the buildings on the lot, and the neighbours' footprints, as white outlines
+  const siteRings = b.base.siteLots.features.flatMap((ft) => geomRings(ft.geometry));
+  const insideSite = (lon: number, lat: number) => siteRings.some((r) => pointInRing(lon, lat, r));
+  const lotCentreLL = mercatorToLonLat(p.center);
+  const onSiteFootprints = b.buildings.buildings.filter((bd) => insideSite(bd.centroid[0], bd.centroid[1]) || bd.rings.some((r) => pointInRing(lotCentreLL.lon, lotCentreLL.lat, r)) || (bd.rings[0] ?? []).some(([lon, lat]) => insideSite(lon, lat)));
+  if (onSiteFootprints.length) parts.push(`<path d="${onSiteFootprints.map((bd) => ringsPath(bd.rings, proj)).join('')}" fill="none" stroke="#ffffff" stroke-width="0.45" stroke-dasharray="1.4,0.8" fill-rule="evenodd"/>`);
+  // the site outline
+  parts.push(`<path d="${ringsPath(siteRings, proj)}" fill="${t.site}" fill-opacity="0.08" stroke="${t.site}" stroke-width="0.7" fill-rule="evenodd"/>`);
+  // dimensions along the outer edges, the text upright
+  const spacer = new LabelSpacer(p.wMm, p.hMm, 60);
+  const mmPerM = 1000 / p.scale;
+  const ringsMerc = siteRings.map((r) => r.map(([lon, lat]) => lonLatToMercator({ lon, lat })));
+  const projM = (m: XY) => { const ll = mercatorToLonLat(m); return proj(ll.lon, ll.lat); };
+  const labels: string[] = [];
+  const edgeLabels = (() => {
+    const out: string[] = [];
+    const k = mercatorScaleFactor(mercatorToLonLat(p.center).lat);
+    const segDist = (q: XY, a: XY, c: XY) => { const dx = c.x - a.x, dy = c.y - a.y; const l2 = dx * dx + dy * dy; const tt = l2 ? Math.max(0, Math.min(1, ((q.x - a.x) * dx + (q.y - a.y) * dy) / l2)) : 0; return Math.hypot(q.x - (a.x + tt * dx), q.y - (a.y + tt * dy)); };
+    ringsMerc.forEach((ring, ri) => {
+      const pts = ring.length > 1 && ring[0].x === ring[ring.length - 1].x && ring[0].y === ring[ring.length - 1].y ? ring.slice(0, -1) : ring;
+      let area = 0; for (let i = 0; i < pts.length; i++) { const u = pts[i], v = pts[(i + 1) % pts.length]; area += u.x * v.y - v.x * u.y; }
+      const ccw = area > 0;
+      for (let i = 0; i < pts.length; i++) {
+        const a = pts[i], c = pts[(i + 1) % pts.length];
+        const lengthM = Math.hypot(c.x - a.x, c.y - a.y) / k;
+        if (lengthM * mmPerM < 5) continue;
+        const mid = { x: (a.x + c.x) / 2, y: (a.y + c.y) / 2 };
+        if (ringsMerc.some((other, oi) => oi !== ri && other.some((q, j) => j < other.length - 1 && segDist(mid, q, other[j + 1]) / k < 0.5))) continue;
+        const dx = c.x - a.x, dy = c.y - a.y, l = Math.hypot(dx, dy);
+        const n = ccw ? { x: dy / l, y: -dx / l } : { x: -dy / l, y: dx / l };
+        const [mx, my] = projM(mid);
+        const [nx, ny] = projM({ x: mid.x + n.x * l * 0.01, y: mid.y + n.y * l * 0.01 });
+        const nl = Math.hypot(nx - mx, ny - my) || 1;
+        const off = 2.2;
+        const lx = mx + ((nx - mx) / nl) * off, ly = my + ((ny - my) / nl) * off;
+        const [ax, ay] = projM(a), [cx, cy] = projM(c);
+        let rot = (Math.atan2(cy - ay, cx - ax) * 180) / Math.PI;
+        if (rot > 90 || rot < -90) rot += 180;
+        const text = `${lengthM.toFixed(2)}`;
+        if (spacer.take(lx, ly, labelW(text, 2.1), 2.6)) out.push(`<text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" transform="rotate(${rot.toFixed(1)} ${lx.toFixed(1)} ${ly.toFixed(1)})" text-anchor="middle" dominant-baseline="middle" font-size="2.1" font-weight="700" fill="#ffffff" stroke="#000000" stroke-width="0.35" paint-order="stroke">${text}</text>`);
+      }
+    });
+    return out;
+  })();
+  labels.push(...edgeLabels);
+  // corner levels
+  const g = b.terrain.dem;
+  if (g) {
+    const cs = ringsMerc.flatMap((ring) => {
+      const pts = ring.length > 1 && ring[0].x === ring[ring.length - 1].x && ring[0].y === ring[ring.length - 1].y ? ring.slice(0, -1) : ring;
+      return pts.map((cur, i) => {
+        const prev = pts[(i + pts.length - 1) % pts.length], next = pts[(i + 1) % pts.length];
+        const b1 = Math.atan2(cur.x - prev.x, cur.y - prev.y), b2 = Math.atan2(next.x - cur.x, next.y - cur.y);
+        let turn = Math.abs(((b2 - b1) * 180) / Math.PI) % 360; if (turn > 180) turn = 360 - turn;
+        return { cur, turn };
+      }).filter((c) => c.turn >= 25);
+    });
+    for (const c of cs) {
+      const rl = demAt(g, c.cur.x, c.cur.y);
+      if (rl === undefined) continue;
+      const [x, y] = projM(c.cur);
+      const dxc = x - p.wMm / 2, dyc = y - p.hMm / 2, dl = Math.hypot(dxc, dyc) || 1;
+      const lx = x + (dxc / dl) * 4.5, ly = y + (dyc / dl) * 4.5;
+      const text = `RL ${rl.toFixed(1)}`;
+      if (spacer.take(lx, ly, labelW(text, 1.9), 2.5)) labels.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="0.55" fill="#ffffff" stroke="${t.site}" stroke-width="0.3"/>` + `<text x="${lx.toFixed(1)}" y="${(ly + 0.65).toFixed(1)}" text-anchor="middle" font-size="1.9" fill="#ffffff" stroke="#000000" stroke-width="0.32" paint-order="stroke">${text}</text>`);
+    }
+  }
+  // the building's height on the lot
+  for (const bd of onSiteFootprints) {
+    const [x, y] = proj(bd.centroid[0], bd.centroid[1]);
+    const text = bd.floors ? `${bd.floors} st${bd.heightM ? ` · ${fmtNum(bd.heightM)} m` : ''}` : bd.heightM ? `${fmtNum(bd.heightM)} m` : 'existing';
+    if (spacer.take(x, y, labelW(text, 2), 2.6)) labels.push(`<text x="${x.toFixed(1)}" y="${(y + 0.7).toFixed(1)}" text-anchor="middle" font-size="2" font-weight="700" fill="#ffffff" stroke="#000000" stroke-width="0.35" paint-order="stroke">${esc(text)}</text>`);
+  }
+  // road names along their centrelines, and the neighbours' numbers
+  for (const r of b.base.roads) {
+    if (!r.name) continue;
+    // the centreline densified, so a road that only crosses the panel still offers a point inside it
+    const raw = r.coords.map(([lon, lat]) => proj(lon, lat));
+    const dense: [number, number][] = [];
+    for (let i = 0; i < raw.length - 1; i++) { const [x1, y1] = raw[i], [x2, y2] = raw[i + 1]; const n = Math.max(1, Math.ceil(Math.hypot(x2 - x1, y2 - y1) / 3)); for (let j = 0; j < n; j++) dense.push([x1 + ((x2 - x1) * j) / n, y1 + ((y2 - y1) * j) / n]); }
+    if (raw.length) dense.push(raw[raw.length - 1]);
+    const pts = dense.filter(([x, y]) => x > 4 && x < p.wMm - 4 && y > 4 && y < p.hMm - 4);
+    if (pts.length < 2) continue;
+    const i = Math.floor(pts.length / 2);
+    const [x1, y1] = pts[Math.max(0, i - 1)], [x2, y2] = pts[Math.min(pts.length - 1, i + 1)];
+    let rot = (Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI; if (rot > 90 || rot < -90) rot += 180;
+    const text = titleCase(r.name);
+    const [x, y] = pts[i];
+    if (spacer.take(x, y, labelW(text, 2.3), 3)) labels.push(`<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" transform="rotate(${rot.toFixed(1)} ${x.toFixed(1)} ${y.toFixed(1)})" text-anchor="middle" dominant-baseline="middle" font-size="2.3" letter-spacing="0.06em" fill="#ffffff" stroke="#000000" stroke-width="0.4" paint-order="stroke">${esc(text.toUpperCase())}</text>`);
+  }
+  for (const n of s.neighbours) {
+    const [x, y] = proj(n.lon, n.lat);
+    if (x < 2 || y < 2 || x > p.wMm - 2 || y > p.hMm - 2) continue;
+    if (spacer.take(x, y, labelW(n.housenumber, 1.9), 2.4)) labels.push(`<text x="${x.toFixed(1)}" y="${(y + 0.65).toFixed(1)}" text-anchor="middle" font-size="1.9" fill="#ffffff" stroke="#000000" stroke-width="0.3" paint-order="stroke">${esc(n.housenumber)}</text>`);
+  }
+  parts.push(...labels, panelFurniture(p, 'right'));
+  const mapSvg = `<svg width="${p.wMm}mm" height="${p.hMm}mm" viewBox="0 0 ${p.wMm} ${p.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
+    <defs><clipPath id="clip-site"><rect x="0" y="0" width="${p.wMm}" height="${p.hMm}"/></clipPath></defs>
+    <g clip-path="url(#clip-site)" font-family="${t.font}">${parts.join('\n')}</g>
+    <rect x="0.1" y="0.1" width="${p.wMm - 0.2}" height="${p.hMm - 0.2}" fill="none" stroke="${t.rule}" stroke-width="0.2"/>
+  </svg>`;
+
+  // Right: figures and the facts table.
+  const rightX = FIELD_X + PANEL_W + GUTTER, rightW = FIELD_W - PANEL_W - GUTTER;
+  const c = f.controls;
+  const lv = f.landValue;
+  const tiles = [
+    { v: `${fmtNum(f.lots.cadastreAreaSqm)} m²`, l: `site area by the cadastre${f.lots.count > 1 ? ` · ${f.lots.count} lots` : ''}${f.lots.planAreaSqm ? ` · plan ${fmtNum(Math.round(f.lots.planAreaSqm))} m²` : ''}` },
+    { v: f.frontages[0] ? `${fmtNum(f.frontages[0].lengthM, 1)} m` : '—', l: f.frontages[0] ? `frontage to ${f.frontages[0].name}${f.frontages.length > 1 ? ` · ${f.frontages.slice(1).map((fr) => `${fmtNum(fr.lengthM, 1)} m to ${fr.name}`).join(', ')}` : ''}` : 'no named road within 18 m of the boundary' },
+    { v: [c.zoneCode, c.maxHeightM ? `${fmtNum(c.maxHeightM, c.maxHeightM % 1 ? 1 : 0)} m` : '', c.fsr ? `${c.fsr}:1` : ''].filter(Boolean).join(' · ') || '—', l: `zone · height of buildings · FSR${c.epiName ? ` (${shortEpi(c.epiName)})` : ''}` },
+    { v: lv ? money(lv.latest) : '—', l: lv ? `land value at ${fmtIso(lv.latestDate)}${lv.changePct !== null && lv.latestYear !== lv.firstYear ? ` · ${lv.changePct >= 0 ? '+' : '−'}${fmtPct(Math.abs(lv.changePct))} since ${lv.firstYear}` : ''}` : 'no land value at the point' },
+  ].map((tl) => `<div class="tile"><div class="tv${tl.v.length > 9 ? ' long' : ''}">${esc(tl.v)}</div><div class="tl">${esc(tl.l)}</div></div>`).join('');
+  const rows: [string, string][] = [
+    ['Lot and plan', `${f.lots.description}${f.lots.stratum ? ' · stratum lot' : ''}`],
+    ['Area', `${fmtNum(f.lots.cadastreAreaSqm)} m² (cadastre)${f.lots.planAreaSqm ? ` · ${fmtNum(Math.round(f.lots.planAreaSqm))} m² (plan)` : ' · no plan area recorded'}`],
+    ['Boundary', `${fmtNum(f.perimeterM, 1)} m in ${f.edges.length} sides${f.edges.length <= 6 ? `: ${f.edges.map((e) => fmtNum(e.lengthM, 1)).join(' · ')} m` : ''}`],
+    ['Frontage', f.frontages.length ? f.frontages.map((fr) => `${fr.name} ${fmtNum(fr.lengthM, 1)} m (${fr.word})`).join(' · ') : 'none to a named road'],
+    ['Zone', c.zoneCode ? `${c.zoneCode}${c.zonePurpose ? ` ${c.zonePurpose}` : ''}` : 'not read'],
+    ['Height of buildings', c.maxHeightM ? `${fmtNum(c.maxHeightM, 1)} m` : 'not mapped'],
+    ['Floor space ratio', c.fsr ? `${c.fsr}:1` : 'not mapped'],
+    ['Minimum lot size', c.minLotSizeSqm ? `${fmtNum(c.minLotSizeSqm)} m²` : 'not mapped'],
+    ['Heritage', c.heritage?.length ? c.heritage.map((h: any) => (typeof h === 'string' ? h : h.name ?? h.id ?? 'listed item')).join(' · ') : 'none on the lot'],
+    ['Existing building', f.buildings.onSite.length ? `${f.buildings.onSite.length === 1 ? 'one footprint' : `${f.buildings.onSite.length} footprints`}, ${fmtNum(f.buildings.footprintSqm)} m² (${fmtPct(f.buildings.coveragePct)} of the site)${f.buildings.onSite[0].floors ? `, ${f.buildings.onSite[0].floors} st` : ''}${f.buildings.onSite[0].heightM ? `, ${fmtNum(f.buildings.onSite[0].heightM, 1)} m` : ''}` : f.buildings.source === 'none' ? 'no footprint source answered' : 'no footprint on the lot'],
+    ['Levels', f.levels ? `RL ${f.levels.min.toFixed(1)}–${f.levels.max.toFixed(1)} at the corners · fall ${f.levels.fallM.toFixed(1)} m (5 m elevation model)` : 'elevation model not read'],
+    ['Easements', f.easements.length ? `${f.easements.length} in the window (cadastre geometry; purpose not open data)` : 'none in the cadastre layer'],
+    ['Land value', lv ? `${money(lv.latest)} at ${fmtIso(lv.latestDate)}${lv.values.length > 1 ? ` · ${lv.values.map((v) => `${v.year} ${money(v.value)}`).join(', ')}` : ''}` : 'no property at the point'],
+    ['Sales within 300 m', f.sales.count ? `${f.sales.count} in ${f.sales.months} months${f.sales.strata ? ` (${f.sales.strata} strata)` : ''} · median ${money(f.sales.median!)}` : 'none in the last 24 months'],
+    ['Public land in the block', f.publicLand.length ? `${f.publicLand.length} parcel${f.publicLand.length === 1 ? '' : 's'} · nearest ${f.publicLand[0].label}, ${f.publicLand[0].distanceM < ADJOINS_M ? 'adjoining' : `${fmtNum(f.publicLand[0].distanceM)} m ${bearingName(f.publicLand[0].bearing)}`}` : 'none mapped'],
+    ['Aerial imagery', img ? `${titleCase(img.block)} block${img.date ? `, captured ${fmtIso(img.date)}` : ''}${img.resolutionCm ? `, ${img.resolutionCm} cm` : ''}` : 'capture date not read'],
+  ];
+  const factsTable = `<table class="da cons facts"><tbody>${rows.map(([lab, val]) => `<tr><th>${esc(lab)}</th><td>${esc(val)}</td></tr>`).join('')}</tbody></table>`;
+
+  // Bottom left: the block, the sales and the public land.
+  const bp = s.blockPanel;
+  const bproj = panelProjector(bp);
+  const bparts: string[] = [baseLayers(b.base, bproj, bp)];
+  for (const kind of ['state', 'crown', 'reserve'] as const) {
+    const items = s.publicLand.filter((x) => x.kind === kind);
+    if (!items.length) continue;
+    const d = items.map((x) => ringsPath(x.rings, bproj)).join('');
+    if (kind === 'reserve') bparts.push(`<path d="${d}" fill="${PUBLIC_LAND_COLOUR[kind]}" fill-opacity="0.45" stroke="${PUBLIC_LAND_COLOUR[kind]}" stroke-width="0.25" fill-rule="evenodd"/>`);
+    else bparts.push(hatchPath(d, `pl${kind}`, PUBLIC_LAND_COLOUR[kind], bboxOf(items.flatMap((x) => x.rings), bproj), 1.2));
+  }
+  bparts.push(overLayers(b.base, bproj, bp, 'wash'));
+  // the 300 m ring
+  const [scx, scy] = bproj(mercatorToLonLat(bp.center).lon, mercatorToLonLat(bp.center).lat);
+  bparts.push(`<circle cx="${scx.toFixed(1)}" cy="${scy.toFixed(1)}" r="${((SALES_RADIUS_M * 1000) / bp.scale).toFixed(1)}" fill="none" stroke="${t.dimension}" stroke-width="0.3" stroke-dasharray="1.4,0.9"/>`);
+  const maxPrice = Math.max(1, ...f.sales.recent.map((x) => x.price), ...(b.people?.sales ?? []).filter((x) => x.distanceM <= SALES_RADIUS_M).map((x) => x.price));
+  const allSales = (b.people?.sales ?? []).filter((x) => x.distanceM <= SALES_RADIUS_M && x.properties === 1 && x.date >= (() => { const d = new Date(); d.setMonth(d.getMonth() - SALES_MONTHS); return d.toISOString().slice(0, 10); })());
+  for (const sale of allSales) {
+    const [x, y] = bproj(sale.lon, sale.lat);
+    const r = 0.6 + 1.8 * Math.sqrt(sale.price / maxPrice);
+    bparts.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r.toFixed(2)}" fill="${sale.strata ? '#ffffff' : CHART.accent}" fill-opacity="${sale.strata ? 0.9 : 0.7}" stroke="${CHART.accent}" stroke-width="0.3"/>`);
+  }
+  bparts.push(siteMark(b.base, bproj, 'outline'), panelFurniture(bp, 'right'));
+  const blockSvg = `<svg width="${bp.wMm}mm" height="${bp.hMm}mm" viewBox="0 0 ${bp.wMm} ${bp.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
+    <defs><clipPath id="clip-block"><rect x="0" y="0" width="${bp.wMm}" height="${bp.hMm}"/></clipPath></defs>
+    <g clip-path="url(#clip-block)" font-family="${t.font}">${bparts.join('\n')}</g>
+    <rect x="0.1" y="0.1" width="${bp.wMm - 0.2}" height="${bp.hMm - 0.2}" fill="none" stroke="${t.rule}" stroke-width="0.2"/>
+  </svg>`;
+  // Bottom right: the legend and the sales table.
+  const sw = (inner: string) => `<svg width="5mm" height="3.6mm" viewBox="0 0 5 3.6">${inner}</svg>`;
+  const legendRows: [string, string][] = [
+    [sw(`<circle cx="1.4" cy="1.8" r="0.9" fill="${CHART.accent}" fill-opacity="0.7" stroke="${CHART.accent}" stroke-width="0.3"/><circle cx="3.6" cy="1.8" r="1.2" fill="#ffffff" stroke="${CHART.accent}" stroke-width="0.3"/>`), `Single-property sales in the last ${SALES_MONTHS} months, sized by price; strata hollow`],
+    [sw(`<circle cx="2.5" cy="1.8" r="1.5" fill="none" stroke="${t.dimension}" stroke-width="0.3" stroke-dasharray="1.4,0.9"/>`), `${SALES_RADIUS_M} m from the site`],
+  ];
+  for (const kind of ['state', 'crown', 'reserve'] as const) if (s.publicLand.some((x) => x.kind === kind)) legendRows.push([sw(kind === 'reserve' ? `<rect x="0" y="0.4" width="5" height="2.8" fill="${PUBLIC_LAND_COLOUR[kind]}" fill-opacity="0.45" stroke="${PUBLIC_LAND_COLOUR[kind]}" stroke-width="0.25"/>` : `<rect x="0" y="0.4" width="5" height="2.8" fill="none" stroke="${PUBLIC_LAND_COLOUR[kind]}" stroke-width="0.3"/><line x1="0" y1="3.2" x2="2.8" y2="0.4" stroke="${PUBLIC_LAND_COLOUR[kind]}" stroke-width="0.22"/><line x1="2.2" y1="3.2" x2="5" y2="0.4" stroke="${PUBLIC_LAND_COLOUR[kind]}" stroke-width="0.22"/>`), PUBLIC_LAND_WORD[kind]]);
+  const legend = legendRows.map(([sv, txt]) => `<div class="lg">${sv}<span>${esc(txt)}</span></div>`).join('');
+  const saleRows = f.sales.recent.map((x) => `<tr><td>${esc(streetOnly(x.address))}</td><td class="r">${money(x.price)}</td><td>${esc(fmtMonthYear(x.date))}</td><td>${x.strata ? 'strata' : x.areaSqm ? `${fmtNum(x.areaSqm)} m²` : 'land'}</td><td class="r">${fmtNum(x.distanceM)} m</td></tr>`).join('');
+  const salesTable = f.sales.recent.length
+    ? `<table class="da cons"><thead><tr><th>Sale</th><th class="r" style="width:20mm">Price</th><th style="width:16mm">When</th><th style="width:16mm">Land</th><th class="r" style="width:14mm">From site</th></tr></thead><tbody>${saleRows}</tbody></table>`
+    : emptyBox(rightW, 24, `no single-property sale within ${SALES_RADIUS_M} m in the last ${SALES_MONTHS} months`);
+
+  const yBlock = FIELD_Y + PANEL_TITLE_H + DA_PANEL_H + GUTTER;
+  const ySales = yBlock + PANEL_TITLE_H + legendRows.length * 3.7 + 3;
+  const figureHtml = `
+    <div class="abs ptitle" style="left:${FIELD_X}mm;top:${FIELD_Y}mm;width:${PANEL_W}mm">The site<span class="pnote">1:${fmtNum(p.scale)} · boundary lengths in metres from the digital cadastre · corner levels from the 5 m elevation model</span></div>
+    <div class="abs" style="left:${FIELD_X}mm;top:${FIELD_Y + PANEL_TITLE_H}mm">${mapSvg}</div>
+    <div class="abs tiles" style="left:${rightX}mm;top:${FIELD_Y + PANEL_TITLE_H}mm;width:${rightW}mm">${tiles}</div>
+    <div class="abs ptitle" style="left:${rightX}mm;top:${FIELD_Y + PANEL_TITLE_H + 25}mm;width:${rightW}mm">Site facts<span class="pnote">what the open data says before the survey and the title search</span></div>
+    <div class="abs" style="left:${rightX}mm;top:${FIELD_Y + PANEL_TITLE_H + 25 + PANEL_TITLE_H}mm;width:${rightW}mm">${factsTable}</div>
+    <div class="abs ptitle" style="left:${FIELD_X}mm;top:${yBlock}mm;width:${PANEL_W}mm">The block<span class="pnote">1:${fmtNum(bp.scale)} · sales within ${SALES_RADIUS_M} m and the public land around</span></div>
+    <div class="abs" style="left:${FIELD_X}mm;top:${yBlock + PANEL_TITLE_H}mm">${blockSvg}</div>
+    <div class="abs legend" style="left:${rightX}mm;top:${yBlock + PANEL_TITLE_H}mm;width:${rightW}mm">${legend}</div>
+    <div class="abs ptitle" style="left:${rightX}mm;top:${ySales}mm;width:${rightW}mm">Recent sales<span class="pnote">latest first · single-property sales within ${SALES_RADIUS_M} m · Valuer General</span></div>
+    <div class="abs" style="left:${rightX}mm;top:${ySales + PANEL_TITLE_H}mm;width:${rightW}mm">${salesTable}</div>`;
+  return { id: '11_the_site', title: 'The site', subtitle: sub, textHtml, figureHtml };
+}
+
 // ---- the deck -----------------------------------------------------------------
 
 export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; slides: Slide[] } {
   const facts = planningFacts(b);
-  const slides = [planningOverviewSlide(b, facts), planningControlsSlide(b, facts), terrainSlide(b), developmentSlide(b, facts), builtFormSlide(b, facts), movementSlide(b), greenSlide(b), constraintsSlide(b), peopleSlide(b)];
+  const slides = [planningOverviewSlide(b, facts), planningControlsSlide(b, facts), terrainSlide(b), developmentSlide(b, facts), builtFormSlide(b, facts), movementSlide(b), greenSlide(b), siteSlide(b), constraintsSlide(b), peopleSlide(b)];
   const t = tpl();
   const footerLeft = ['SITE ANALYST — OVERALL ANALYSIS', b.siteAddress, meta.client ? `for ${meta.client}` : '', meta.jobNo ? `job ${meta.jobNo}` : ''].filter(Boolean).join(' · ');
   const pages = slides.map((s, i) => `
@@ -2532,6 +2923,7 @@ export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; 
   table.da.cons th, table.da.cons td { padding: 0.7mm 1.4mm 0.7mm 0; }
   table.da.cons tr.hit td { font-weight: 600; }
   table.da.cons tr.hit td:first-child { border-left: 0.6mm solid ${t.site}; padding-left: 1.2mm; }
+  table.da.facts th { width: 33mm; font-weight: 600; font-size: 2.2mm; text-transform: none; letter-spacing: 0; color: #333; text-align: left; vertical-align: top; }
 </style></head>
 <body>${pages}</body></html>`;
   return { html, slides };
@@ -2554,6 +2946,7 @@ export function slidesFacts(b: SlidesBundle) {
     development: (() => { const d = developmentFacts(b); return { ...d, sentences: developmentSentences(b, d, facts) }; })(),
     people: peopleFacts(b),
     movement: (() => { const f = movementFacts(b); return { ...f, sentences: movementSentences(b, f) }; })(),
+    theSite: (() => { const f = siteFacts(b); return { ...f, sentences: siteSentences(b, f) }; })(),
     constraints: (() => { const f = constraintsFacts(b); return { ...f, sentences: constraintsSentences(b, f) }; })(),
     green: (() => { const f = greenFacts(b); return { ...f, openSpace: { ...f.openSpace, spaces: f.openSpace.spaces.map(({ rings: _r, ...s }) => s), nearest: f.openSpace.nearest && (({ rings: _r, ...s }) => s)(f.openSpace.nearest), largest: f.openSpace.largest && (({ rings: _r, ...s }) => s)(f.openSpace.largest) }, sentences: greenSentences(b, f) }; })(),
     builtForm: (() => { const f = builtFormFacts(b, facts); return { ...f, sentences: builtFormSentences(b, f) }; })(),

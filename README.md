@@ -522,7 +522,17 @@ definite answer — at the site with its class, nearest in the window, none in
 the window, or not mapped by this LEP at all, checked plan-wide so an
 absence is stated rather than implied — with the arterial roads and
 railways beside the site as noise sources and the soil landscape at the
-site. Then *development activity*: every
+site. Then *the site*: the site plan on the aerial at a round scale that
+fits the lot, with the boundary lengths from the digital cadastre, the
+corner levels from the elevation model, the existing footprint and its
+height, the neighbours' numbers and the street names, the easement
+geometry where the cadastre has any; a table of what the open data says
+before the survey and the title search (lot and plan, areas, frontages,
+zone, height, FSR, lot size, heritage, the existing building, levels,
+easements, land value, sales, public land, the imagery's capture date);
+and the block at 1:4000 with the last two years of single-property sales
+within 300 m sized by price, the State government and Crown parcels, and a
+table of the latest sales. Then *development activity*: every
 application lodged in the council area over the last five years, from the
 Planning Portal's Online DA feed, clipped to the window around the site. The
 ones of a scale that shapes the context — four storeys, ten dwellings or
