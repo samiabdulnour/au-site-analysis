@@ -3383,6 +3383,10 @@ export function ocFacts(b: SlidesBundle, planning: PlanningFacts) {
     planning.lotSizeAtSite ? `minimum lot ${fmtNum(planning.lotSizeAtSite)} m²` : '',
   ].filter(Boolean);
   con.unshift({ theme: 'Controls', text: `${bits.join(' · ')}${planning.zoneAtSite?.epi ? ` (${shortEpi(planning.zoneAtSite.epi)})` : ''}.`, mark: null });
+  // Country: the search that is required, and what the open proxies say
+  const co = b.country;
+  const nearPlace = co.places[0];
+  con.push({ theme: 'Country', text: `Aboriginal cultural heritage: an AHIMS search is required before works (the register is not open)${nearPlace && nearPlace.distanceM <= 2000 ? `; ${nearPlace.name}, a gazetted Aboriginal Place, ${mDist(nearPlace.distanceM)} to the ${dir(nearPlace.bearing)}` : ''}${co.nativeTitle.atSite.length ? `; ${listWords(co.nativeTitle.atSite.map((r) => r.name))} over the site (NNTT)` : ''}${co.asdst.ok && co.asdst.likelihood !== null && co.asdst.likelihood >= 500 ? `; the ASDST model rates the site's likelihood ${co.asdst.likelihood} of ${co.asdst.scaleMax}` : ''}.`, mark: nearPlace && nearPlace.distanceM <= 2000 ? markAt(nearPlace.lon, nearPlace.lat) : null });
   if (planning.lotSizeAtSite && b.siteAreaSqm && b.siteAreaSqm < planning.lotSizeAtSite) con.push({ theme: 'Controls', text: `The site (${fmtNum(b.siteAreaSqm)} m²) is under the minimum lot size of ${fmtNum(planning.lotSizeAtSite)} m²: no subdivision without a variation.`, mark: null });
 
   // Heritage: on the site, adjoining or near, and the State register.
@@ -3449,7 +3453,7 @@ export function ocFacts(b: SlidesBundle, planning: PlanningFacts) {
   }
 
   const OPP_ORDER = ['Transport', 'Policy', 'Orientation', 'Sun', 'Open space', 'Views', 'Active edge', 'Amenity', 'Change', 'Scale'];
-  const CON_ORDER = ['Controls', 'Heritage', 'Overshadowing', 'Hazard', 'Soils', 'Water', 'Coast', 'Ecology', 'Aviation', 'Corridor', 'Noise', 'Orientation', 'Levels', 'Existing', 'Neighbours', 'Title', 'Trees', 'Scale', 'Nearby'];
+  const CON_ORDER = ['Controls', 'Country', 'Heritage', 'Overshadowing', 'Hazard', 'Soils', 'Water', 'Coast', 'Ecology', 'Aviation', 'Corridor', 'Noise', 'Orientation', 'Levels', 'Existing', 'Neighbours', 'Title', 'Trees', 'Scale', 'Nearby'];
   const rank = (order: string[]) => (x: Omit<OcStatement, 'n'>) => { const i = order.indexOf(x.theme); return i < 0 ? order.length : i; };
   // the lists below the diagrams hold about 94 mm each; a statement takes its lines at roughly 116 characters a line
   const fit = (xs: Omit<OcStatement, 'n'>[], order: string[]): { kept: OcStatement[]; dropped: number } => {
@@ -3844,12 +3848,12 @@ export function sourcesFacts(b: SlidesBundle, planning: PlanningFacts) {
   B.push({ dataset: 'Geocoded addressing theme (the site point)', used: 'all', currency: `matched ${b.geocode.matchedAddresses.slice(0, 2).map((a) => titleCase(a)).join('; ')}${b.geocode.points.length > 1 ? ` (${b.geocode.points.length} address points)` : ''}`, retrieved: deckDay, attribution: ATTR.spatial });
   B.push({ dataset: 'Land parcel and property theme: lots, plan lot areas, easement geometry', used: 'all maps · 11', currency: `${b.lotDescription}; ${n(b.base.lots.features.length, 'lot')} in the window; ${n(b.site.easements.length, 'easement')} in the site plan\'s window; current at retrieval`, retrieved: deckDay, attribution: ATTR.spatial });
   B.push({ dataset: 'Transport theme: roads by function, railways, stations', used: 'all maps · 09 · 13 · 17', currency: `${n(b.base.roads.length, 'road segment')}, ${n(b.base.rail.train.length + b.base.rail.tram.length, 'rail line')}, ${n(b.base.stations.length, 'station')} in the window; current at retrieval`, retrieved: deckDay, attribution: ATTR.spatial });
-  B.push({ dataset: 'Water theme: water bodies, coastline, hydro names', used: 'all maps · 13', currency: `${n(b.base.water.features.length, 'water feature')} in the window; current at retrieval`, retrieved: deckDay, attribution: ATTR.spatial });
-  B.push({ dataset: 'Administrative boundaries: LGA, suburb, Local Aboriginal Land Council, district', used: '04 · 09 · 16', currency: [b.context.lga?.name ? titleCase(b.context.lga.name) : '', b.context.suburb?.name ? titleCase(b.context.suburb.name) : '', b.context.lalc?.local ? `${titleCase(b.context.lalc.local)} LALC` : '', b.context.district ? `${b.context.district} district` : ''].filter(Boolean).join(', ') || 'not resolved', retrieved: deckDay, attribution: ATTR.spatial });
+  B.push({ dataset: 'Water theme: water bodies, coastline, watercourses, hydro names', used: 'all maps · 13 · 15', currency: `${n(b.base.water.features.length, 'water feature')} in the window; ${n(b.country.water.courses.length, 'watercourse line')} over the strip; current at retrieval`, retrieved: deckDay, attribution: ATTR.spatial });
+  B.push({ dataset: 'Administrative boundaries: LGA, suburb, Local Aboriginal Land Council areas, district', used: '04 · 09 · 15 · 16', currency: [b.context.lga?.name ? titleCase(b.context.lga.name) : '', b.context.suburb?.name ? titleCase(b.context.suburb.name) : '', b.context.lalc?.local ? `${titleCase(b.context.lalc.local)} LALC` : '', b.context.district ? `${b.context.district} district` : ''].filter(Boolean).join(', ') || 'not resolved', retrieved: deckDay, attribution: ATTR.spatial });
   const foi = b.green.facilities.filter((f) => f.source === 'foi').length;
   B.push({ dataset: 'Features of interest: complexes and parks', used: '10', currency: `${n(foi, 'facility', 'facilities')} from the complexes layer; park names`, retrieved: retrieved(b.green.fetchedAt), attribution: ATTR.spatial });
   const dem = b.terrain.dem;
-  B.push({ dataset: 'NSW 5 m elevation model (image service)', used: '06 · 08 · 11 · 13 · 17', currency: dem ? `${dem.source}; ${fmtNum(dem.cols)} × ${fmtNum(dem.rows)} cells over the tall panel` : 'not read for this run', retrieved: deckDay, attribution: ATTR.spatial });
+  B.push({ dataset: 'NSW 5 m elevation model (image service)', used: '06 · 08 · 11 · 13 · 15 · 17', currency: dem ? `${dem.source}; ${fmtNum(dem.cols)} × ${fmtNum(dem.rows)} cells over the tall panel${b.country.dem ? `, a second grid at 8 m over the strip for the crests` : ''}` : 'not read for this run', retrieved: deckDay, attribution: ATTR.spatial });
   if (!/City of Sydney/i.test(b.terrain.contourSource ?? '')) B.push({ dataset: 'Contours', used: '06', currency: b.terrain.contours.length ? `${b.terrain.contourSource ?? 'NSW contours'}${b.terrain.contourIntervalM ? `, ${b.terrain.contourIntervalM} m interval` : ''}; ${n(b.terrain.contours.length, 'line')} in the window` : 'none in the window', retrieved: deckDay, attribution: ATTR.spatial });
   const img = b.site.imagery;
   B.push({ dataset: 'NSW Imagery (aerial) and the imagery-dates layer (SIX Maps)', used: '11', currency: img ? `${titleCase(img.block)} block${img.date ? `, captured ${fmtIso(img.date)}` : ''}${img.resolutionCm ? `, ${img.resolutionCm} cm` : ''}` : b.site.aerial ? 'capture date not published for this block' : 'no aerial for this run', retrieved: retrieved(b.site.fetchedAt), attribution: ATTR.spatial });
@@ -3863,6 +3867,10 @@ export function sourcesFacts(b: SlidesBundle, planning: PlanningFacts) {
   C.push({ dataset: 'Transport for NSW: bus stops (Trip Planner API) and Travel Zone Projections 2024', used: '09 · 16', currency: [b.movement.busStopSource === 'tfnsw' ? `${n(b.movement.busStops.length, 'bus stop')} in the window` : b.movement.busStopSource === 'osm' ? 'the Transport for NSW key was not set, so the stops came from OpenStreetMap' : 'bus stops: neither Transport for NSW nor OpenStreetMap answered', b.people?.tzp24 ? `${b.people.tzp24.source}, to 2066` : 'projections not read'].join('; '), retrieved: retrieved(b.movement.fetchedAt), attribution: ATTR.tfnsw });
   C.push({ dataset: 'Department of Education: government schools master dataset (locations and enrolments)', used: '16', currency: b.people ? `${n(b.people.schools.length, 'government school')} within ${b.people.schoolsRadiusM / 1000} km; latest enrolment year in the dataset` : 'not read', retrieved: retrieved(b.people?.fetchedAt), attribution: ATTR.education });
   C.push({ dataset: 'National Parks and Wildlife Service estate (managed land)', used: '10 · 17', currency: b.green.npws.length ? `${n(b.green.npws.length, 'reserve')} in the window` : 'no reserve in the window', retrieved: retrieved(b.green.fetchedAt), attribution: ATTR.dcceew });
+  const co = b.country;
+  C.push({ dataset: 'Heritage NSW: gazetted Aboriginal Places (via the State heritage service)', used: '15 · 17', currency: co.placesOk ? `${n(co.places.length, 'place')} within ${co.placesRadiusM / 1000} km; the register as published, locations generalised where restricted` : 'did not answer for this run', retrieved: retrieved(co.fetchedAt), attribution: ATTR.heritage });
+  C.push({ dataset: 'State Vegetation Type Map: pre-1750 plant community types (5 m)', used: '15', currency: co.vegetation.ok ? `${co.vegetation.atSite ? `${co.vegetation.atSite.pct} at the site; ` : ''}${n(co.vegetation.classes.length, 'community', 'communities')} read across the strip` : 'did not answer for this run', retrieved: retrieved(co.fetchedAt), attribution: ATTR.dcceew });
+  C.push({ dataset: 'Aboriginal Sites Decision Support Tool (ASDST v7.5, 2020): likelihood and survey-priority models', used: '15 · 17', currency: co.asdst.ok ? `model of 2020, read at the site (${co.asdst.likelihood ?? '—'} of ${co.asdst.scaleMax}); AHIMS itself is not open and not read` : 'did not answer for this run', retrieved: retrieved(co.fetchedAt), attribution: ATTR.dcceew });
   C.push({ dataset: 'Soil landscapes (eSPADE), Sydney 1:100,000 sheet', used: '14', currency: b.constraints.soil ? `${titleCase(b.constraints.soil.name)} landscape at the site (${b.constraints.soil.sheet} sheet)` : (b.constraints.soilNote ?? 'the site lies outside the published sheet'), retrieved: retrieved(b.constraints.fetchedAt), attribution: ATTR.dcceew });
   groups.push({ publisher: 'Other NSW agencies', rows: C });
 
@@ -3872,7 +3880,8 @@ export function sourcesFacts(b: SlidesBundle, planning: PlanningFacts) {
   D.push({ dataset: 'ABS Census of Population and Housing 2021 (tables G01, G02, G36, G37, G62)', used: '16', currency: p ? `${[p.sa2 ? `SA2 ${p.sa2.name}` : '', p.lga ? `LGA ${p.lga.name}` : '', p.benchmark ? p.benchmark.name : ''].filter(Boolean).join(', ')}; census night 10 August 2021` : 'not read', retrieved: retrieved(p?.fetchedAt), attribution: ATTR.abs });
   const erpYears = p?.erpSa2.length ? `${p.erpSa2[0].year}–${p.erpSa2[p.erpSa2.length - 1].year}` : '';
   D.push({ dataset: 'ABS estimated resident population (annual), SEIFA 2021 and ASGS 2021 boundaries', used: '16', currency: p ? `${erpYears ? `population ${erpYears}` : 'no population series'}; SEIFA 2021 ${p.seifaSa2 ? 'read' : 'not read'}; regions ${[p.regions.sa2?.name, p.regions.lga?.name, p.regions.gccsa?.name].filter(Boolean).join(', ')}` : 'not read', retrieved: retrieved(p?.fetchedAt), attribution: ATTR.abs });
-  groups.push({ publisher: 'Australian Bureau of Statistics', rows: D });
+  D.push({ dataset: 'National Native Title Tribunal registers: determinations, registered claims, Indigenous land use agreements', used: '15 · 17', currency: co.nativeTitle.ok ? `${n(co.nativeTitle.atSite.length, 'record')} over the site; in the strip ${co.nativeTitle.inWindow.determinations} determination, ${co.nativeTitle.inWindow.claims} claim, ${co.nativeTitle.inWindow.iluas} ILUA${co.nativeTitle.currency ? `; registers current ${fmtIso(co.nativeTitle.currency)}` : ''}` : 'did not answer for this run', retrieved: retrieved(co.fetchedAt), attribution: '© Commonwealth of Australia (National Native Title Tribunal) · CC BY 4.0' });
+  groups.push({ publisher: 'Commonwealth — Australian Bureau of Statistics and the National Native Title Tribunal', rows: D });
 
   // Councils.
   const E: SourceRow[] = [];
@@ -3936,9 +3945,274 @@ export function sourcesSlide(b: SlidesBundle, planning: PlanningFacts): Slide {
   return { id: '18_sources', title: 'Sources', subtitle: sub, textHtml: text, figureHtml: figure };
 }
 
+// ---- slide 15: Country -------------------------------------------------------
+
+const RIDGE_COLOUR = '#5a3e1b';
+const PLACE_COLOUR = '#b8561e';
+const CREEK_COLOUR = '#1d6fa8';
+const NT_KIND_WORD: Record<string, string> = { determination: 'native title determination', claim: 'registered native title claim', ilua: 'Indigenous land use agreement' };
+
+export function countryFacts(b: SlidesBundle) {
+  const c = b.country;
+  const wp = b.wide.panel;
+  const centre = b.panel.center;
+  const centreLL = mercatorToLonLat(centre);
+  const k = mercatorScaleFactor(centreLL.lat);
+  const toM = (lon: number, lat: number) => lonLatToMercator({ lon, lat });
+  const dist = (m: XY) => Math.hypot(m.x - centre.x, m.y - centre.y) / k;
+  const bear = (m: XY) => ((Math.atan2(m.x - centre.x, m.y - centre.y) * 180) / Math.PI + 360) % 360;
+  const ext = panelExtent(wp);
+  const inStrip = (m: XY) => m.x >= ext.xmin && m.x <= ext.xmax && m.y >= ext.ymin && m.y <= ext.ymax;
+
+  // the named watercourses, nearest first
+  const named = new Map<string, { name: string; distanceM: number; bearing: number; perenniality: string }>();
+  for (const w of c.water.courses) {
+    if (!w.name) continue;
+    let best = Infinity, bm: XY | null = null;
+    for (const [lon, lat] of w.coords) { const m = toM(lon, lat); const d = dist(m); if (d < best) { best = d; bm = m; } }
+    if (!bm) continue;
+    const cur = named.get(w.name);
+    if (!cur || best < cur.distanceM) named.set(w.name, { name: titleCase(w.name), distanceM: Math.round(best), bearing: Math.round(bear(bm)), perenniality: w.perenniality });
+  }
+  const courses = [...named.values()].sort((x, y) => x.distanceM - y.distanceM);
+
+  // the foreshore: the coastline, else the edge of the nearest water body in the strip
+  let shore: { distanceM: number; bearing: number; kind: 'coast' | 'water' } | null = null;
+  const consider = (lon: number, lat: number, kind: 'coast' | 'water') => { const m = toM(lon, lat); const d = dist(m); if (!shore || d < shore.distanceM) shore = { distanceM: Math.round(d), bearing: Math.round(bear(m)), kind }; };
+  for (const path of c.water.coastline) for (const [lon, lat] of path) consider(lon, lat, 'coast');
+  if (!shore) for (const ft of b.wide.base.water.features) for (const r of geomRings(ft.geometry)) { const step = Math.max(1, Math.floor(r.length / 400)); for (let i = 0; i < r.length; i += step) consider(r[i][0], r[i][1], 'water'); }
+
+  // the land's shape from the wide grid: the site's level, the nearest and the highest crest
+  const dem = c.dem;
+  const siteRl = dem ? demAt(dem, centre.x, centre.y) : undefined;
+  // the nearest crest that stands above the site, and the highest in the strip
+  let nearestRidge: { distanceM: number; bearing: number; rl: number } | null = null, highestRidge: { distanceM: number; bearing: number; rl: number } | null = null;
+  for (const line of c.ridges) for (const p of line) {
+    const d = dist(p);
+    if (p.z >= (siteRl ?? -Infinity) + 2 && (!nearestRidge || d < nearestRidge.distanceM)) nearestRidge = { distanceM: Math.round(d), bearing: Math.round(bear(p)), rl: Math.round(p.z * 10) / 10 };
+    if (!highestRidge || p.z > highestRidge.rl) highestRidge = { distanceM: Math.round(d), bearing: Math.round(bear(p)), rl: Math.round(p.z * 10) / 10 };
+  }
+  const landMin = dem ? Math.max(0, Math.round(dem.min)) : undefined, landMax = dem ? Math.round(dem.max) : undefined;
+
+  const places = c.places.map((p) => ({ name: p.name, gazetted: p.gazetted, hectares: p.hectares, restricted: p.restricted, lalc: p.lalc ? titleCase(p.lalc) : undefined, distanceM: p.distanceM, bearing: p.bearing, inStrip: inStrip(toM(p.lon, p.lat)) }));
+  const lalcsInStrip = [...new Set(c.lalcs.map((l) => titleCase(l.local)))];
+  const siteLalc = b.context.lalc ? { local: b.context.lalc.local, regional: b.context.lalc.regional } : lalcsInStrip.length === 1 ? { local: lalcsInStrip[0], regional: titleCase(c.lalcs[0].regional) } : null;
+  const npws = [...new Set(c.npws.map((n) => tidyName(titleCase(n.name))))];
+  const veg = c.vegetation;
+  return {
+    stripKm: { w: Math.round(((wp.wMm / 1000) * wp.scale) / 100) / 10, h: Math.round(((wp.hMm / 1000) * wp.scale) / 100) / 10 },
+    lalc: siteLalc, lalcsInStrip,
+    nativeTitle: c.nativeTitle,
+    vegetation: { ok: veg.ok, atSite: veg.atSite, classes: veg.classes.slice(0, 6), hasImage: Boolean(veg.image), source: veg.source },
+    soil: b.constraints.soil, soilNote: b.constraints.soilNote,
+    courses: courses.slice(0, 5), courseLines: c.water.courses.length, waterOk: c.water.ok,
+    shore: shore as { distanceM: number; bearing: number; kind: 'coast' | 'water' } | null,
+    landform: { siteRl: siteRl === undefined ? null : Math.round(siteRl * 10) / 10, nearestRidge, highestRidge, min: landMin ?? null, max: landMax ?? null, ridgeLines: c.ridges.length, hasDem: Boolean(dem) },
+    npws,
+    places: places.slice(0, 6), placeCount: c.places.length, placesRadiusM: c.placesRadiusM, placesOk: c.placesOk,
+    asdst: c.asdst,
+    fetchedAt: c.fetchedAt,
+  };
+}
+
+export function countrySentences(_b: SlidesBundle, f: ReturnType<typeof countryFacts>): string[] {
+  const out: string[] = [];
+  const dir = compassWord;
+  const km = (m: number) => (m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${fmtNum(m)} m`);
+  const nt = f.nativeTitle;
+  const others = f.lalcsInStrip.filter((l) => !f.lalc || l.toLowerCase() !== f.lalc.local.toLowerCase());
+  let s1 = f.lalc ? `The site is in the ${f.lalc.local} Local Aboriginal Land Council area${f.lalc.regional ? ` (${f.lalc.regional} region)` : ''}${others.length ? `; the strip also takes in the ${listWords(others)} Land Council area${others.length === 1 ? '' : 's'}` : ''}.` : 'The Local Aboriginal Land Council at the site could not be read for this run.';
+  if (nt.ok) {
+    const inWin = [nt.inWindow.determinations ? `${nt.inWindow.determinations === 1 ? 'a determination area' : `${nt.inWindow.determinations} determination areas`}` : '', nt.inWindow.claims ? `${nt.inWindow.claims === 1 ? 'a registered claim' : `${nt.inWindow.claims} registered claims`}` : '', nt.inWindow.iluas ? `${nt.inWindow.iluas === 1 ? 'an Indigenous land use agreement' : `${nt.inWindow.iluas} Indigenous land use agreements`}` : ''].filter(Boolean);
+    s1 += nt.atSite.length
+      ? ` The National Native Title Tribunal's registers show ${listWords(nt.atSite.map((r) => `${r.name} (${NT_KIND_WORD[r.kind]}${r.detail ? `: ${r.detail.toLowerCase()}` : ''}${r.date ? `, ${fmtIso(r.date)}` : ''})`))} over the site.`
+      : ` The National Native Title Tribunal's registers show no determination, registered claim or Indigenous land use agreement over the site${inWin.length ? `, though ${listWords(inWin)} reach${inWin.length === 1 && !/s\b/.test(inWin[0]) ? 'es' : ''} the strip` : ''}${nt.currency ? ` (registers current ${fmtIso(nt.currency)})` : ''}.`;
+  } else s1 += " The National Native Title Tribunal's registers did not answer for this run.";
+  out.push(s1);
+  const v = f.vegetation;
+  if (v.atSite && v.atSite.pct !== 'Not classified') {
+    const rest = v.classes.filter((x) => x.pctId !== v.atSite!.pctId).slice(0, 2);
+    const own = v.classes.find((x) => x.pctId === v.atSite!.pctId);
+    out.push(`Before 1750 the site stood in ${v.atSite.pct} (plant community type ${v.atSite.pctId}${v.atSite.cls ? `, of the ${v.atSite.cls}` : ''}) on the State's reconstruction${f.soil ? `, over the ${titleCase(f.soil.name)} soil landscape${f.soil.process ? `, ${f.soil.process.toLowerCase()} in origin` : ''}` : ''}${own || rest.length ? `; across the strip it was ${listWords([own ? `${fmtPct(own.sharePct)} that community` : '', ...rest.map((x) => `${fmtPct(x.sharePct)} ${x.pct}`)].filter(Boolean))}` : ''}.`);
+  } else if (v.ok) out.push(`The State's pre-1750 vegetation model does not classify the site itself${v.classes.length ? `; the strip was ${listWords(v.classes.slice(0, 3).map((x) => `${fmtPct(x.sharePct)} ${x.pct}`))}` : ''}${f.soil ? `. The soil landscape is ${titleCase(f.soil.name)}` : ''}.`);
+  else out.push(`The pre-1750 vegetation model did not answer for this run${f.soil ? `; the soil landscape at the site is ${titleCase(f.soil.name)}` : ''}.`);
+  const lf = f.landform;
+  let s3 = f.courses[0] ? `The nearest mapped watercourse is ${f.courses[0].name}, ${km(f.courses[0].distanceM)} to the ${dir(f.courses[0].bearing)}${f.courses[0].perenniality !== 'unknown' ? ` (${f.courses[0].perenniality})` : ''}${f.courses.length > 1 ? `, then ${listWords(f.courses.slice(1, 3).map((w) => `${w.name} ${km(w.distanceM)} ${dir(w.bearing)}`))}` : ''}` : f.waterOk ? "No named watercourse is mapped in the strip; the older creek lines of a built-up area run in pipes and the State's lines are what is left above ground" : 'The watercourse layer did not answer for this run';
+  if (f.shore) s3 += `; the ${f.shore.kind === 'coast' ? 'foreshore' : "nearest water body's edge"} is ${km(f.shore.distanceM)} to the ${dir(f.shore.bearing)}`;
+  s3 += '.';
+  if (lf.hasDem) s3 += ` The site sits at RL ${lf.siteRl ?? '—'}${lf.nearestRidge ? `, ${km(lf.nearestRidge.distanceM)} ${dir(lf.nearestRidge.bearing)} of the nearest crest above it (RL ${lf.nearestRidge.rl})` : lf.ridgeLines ? ', with no crest above it in the strip' : ''}; the strip runs from RL ${lf.min} to ${lf.max}${lf.highestRidge && (!lf.nearestRidge || lf.highestRidge.rl !== lf.nearestRidge.rl) ? `, its highest crest ${km(lf.highestRidge.distanceM)} to the ${dir(lf.highestRidge.bearing)} at RL ${lf.highestRidge.rl}` : ''}${lf.ridgeLines ? '' : '; no crest stands out of it at the model\'s resolution'}.`;
+  out.push(s3);
+  if (f.placesOk) {
+    out.push(f.placeCount
+      ? `${f.placeCount === 1 ? 'One gazetted Aboriginal Place lies' : `${f.placeCount} gazetted Aboriginal Places lie`} within ${f.placesRadiusM / 1000} km: ${listWords(f.places.slice(0, 3).map((p) => `${p.name} ${km(p.distanceM)} to the ${dir(p.bearing)}${p.gazetted ? ` (gazetted ${p.gazetted.slice(0, 4)})` : ''}`))}${f.places.some((p) => p.restricted) ? '; where a place\'s location is restricted the register shows it generalised' : ''}.${f.npws.length ? ` ${listWords(f.npws)} of the National Parks estate ${f.npws.length === 1 ? 'lies' : 'lie'} in the strip.` : ''}`
+      : `No gazetted Aboriginal Place lies within ${f.placesRadiusM / 1000} km of the site.${f.npws.length ? ` ${listWords(f.npws)} of the National Parks estate ${f.npws.length === 1 ? 'lies' : 'lie'} in the strip.` : ''}`);
+  } else out.push('The register of gazetted Aboriginal Places did not answer for this run.');
+  out.push(`Registered Aboriginal sites are held in AHIMS, which is not open data: an AHIMS search precedes any works.${f.asdst.ok && f.asdst.likelihood !== null ? ` The public ASDST model puts the site's combined-features likelihood at ${f.asdst.likelihood} of ${f.asdst.scaleMax}${f.asdst.surveyPriority !== null ? ` and its survey priority at ${f.asdst.surveyPriority}` : ''}: a relative model of where sites are likely, not a record of them.` : ''}`);
+  out.push('The name of Country, the language, the place names and the cultural narrative are not generated here: the office develops them with Knowledge Holders and the Land Council.');
+  return out;
+}
+
+export function countrySlide(b: SlidesBundle): Slide {
+  const t = tpl();
+  const c = b.country;
+  const f = countryFacts(b);
+  const wp = b.wide.panel;
+  const wproj = panelProjector(wp);
+  const centreLL = mercatorToLonLat(b.panel.center);
+  const [sx, sy] = wproj(centreLL.lon, centreLL.lat);
+  const parts: string[] = [`<rect x="0" y="0" width="${wp.wMm}" height="${wp.hMm}" fill="#f4efe6"/>`];
+  const legend: LegendEntry[] = [];
+  // the land's shape, then the pre-1750 communities over it
+  if (c.dem) parts.push(`<image x="0" y="0" width="${wp.wMm}" height="${wp.hMm}" preserveAspectRatio="none" opacity="0.8" href="${hillshadeDataUri(c.dem)}"/>`);
+  if (c.vegetation.image) {
+    parts.push(`<image x="0" y="0" width="${wp.wMm}" height="${wp.hMm}" preserveAspectRatio="none" opacity="0.55" href="data/${c.vegetation.image.file}"/>`);
+    legend.push({ swatch: `<rect x="0" y="0.4" width="2.5" height="2.8" fill="${f.vegetation.classes[0]?.colour ?? '#d561ad'}" fill-opacity="0.6"/><rect x="2.5" y="0.4" width="2.5" height="2.8" fill="${f.vegetation.classes[1]?.colour ?? '#58c924'}" fill-opacity="0.6"/>`, label: 'Pre-1750 plant community types, listed at right' });
+  }
+  if (c.dem) legend.push({ swatch: `<rect x="0" y="0.4" width="5" height="2.8" fill="#b9b0a0"/>`, label: 'The land\'s shape (5 m elevation model, hillshade)' });
+  // water: bodies, coast, courses
+  if (b.wide.base.water.features.length) parts.push(`<path d="${fcPath(b.wide.base.water, wproj)}" fill="${t.water}" fill-rule="evenodd"/>`);
+  if (c.water.coastline.length) parts.push(`<path d="${c.water.coastline.map((p) => ringsPath([p], wproj, false)).join('')}" fill="none" stroke="${CREEK_COLOUR}" stroke-width="0.4"/>`);
+  if (b.wide.base.water.features.length || c.water.coastline.length) legend.push({ swatch: swatchFill(t.water, CREEK_COLOUR), label: 'Water bodies and the coastline' });
+  const spacer = new LabelSpacer(wp.wMm, wp.hMm, 60);
+  spacer.take(sx, sy, 7, 7);
+  if (c.water.courses.length) {
+    const byStyle = new Map<string, string[]>();
+    for (const w of c.water.courses) { const key = `${w.hierarchy}|${w.perenniality}`; (byStyle.get(key) ?? byStyle.set(key, []).get(key)!).push(ringsPath([w.coords], wproj, false)); }
+    for (const [key, ds] of byStyle) {
+      const [hier, per] = key.split('|');
+      const width = hier === 'major' ? 0.75 : hier === 'secondary' ? 0.55 : 0.4;
+      parts.push(`<path d="${ds.join('')}" fill="none" stroke="${CREEK_COLOUR}" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round"${per === 'perennial' ? '' : ' stroke-dasharray="1.6,1"'}/>`);
+    }
+    legend.push({ swatch: swatchLine(CREEK_COLOUR, 0.6), label: 'Watercourses, dashed where not perennial' });
+    // names along the courses, once each
+    const done = new Set<string>();
+    for (const w of [...c.water.courses].filter((x) => x.name).sort((x, y) => y.coords.length - x.coords.length)) {
+      if (done.has(w.name!)) continue;
+      const pts = w.coords.map(([lon, lat]) => wproj(lon, lat)).filter(([x, y]) => x > 6 && y > 4 && x < wp.wMm - 6 && y < wp.hMm - 4);
+      if (pts.length < 2) continue;
+      const mid = pts[Math.floor(pts.length / 2)];
+      const text = titleCase(w.name!);
+      if (spacer.take(mid[0], mid[1] - 2.2, labelW(text, 2.1), 2.6)) { parts.push(`<text x="${mid[0].toFixed(1)}" y="${(mid[1] - 1.5).toFixed(1)}" text-anchor="middle" font-size="2.1" font-style="italic" font-weight="700" fill="${CREEK_COLOUR}" stroke="#ffffff" stroke-width="0.45" paint-order="stroke">${esc(text)}</text>`); done.add(w.name!); }
+    }
+  }
+  // the crests
+  if (c.ridges.length) {
+    parts.push(`<path d="${c.ridges.map((line) => `M${line.map((p, i) => { const ll = mercatorToLonLat(p); const [x, y] = wproj(ll.lon, ll.lat); return `${i ? 'L' : ''}${x.toFixed(1)},${y.toFixed(1)}`; }).join('')}`).join('')}" fill="none" stroke="${RIDGE_COLOUR}" stroke-width="0.5" stroke-opacity="0.8" stroke-dasharray="1.8,0.9" stroke-linecap="round"/>`);
+    legend.push({ swatch: swatchLine(RIDGE_COLOUR, 0.5, '1.8,0.9'), label: 'Ridgelines read from the elevation model' });
+  }
+  // the National Parks estate
+  if (c.npws.length) {
+    parts.push(`<path d="${c.npws.map((n) => ringsPath(n.rings, wproj)).join('')}" fill="${NPWS_COLOUR}" fill-opacity="0.22" stroke="${NPWS_COLOUR}" stroke-width="0.35" fill-rule="evenodd"/>`);
+    for (const n of c.npws) { let best = { area: 0, cx: 0, cy: 0 }; for (const r of n.rings) { const s = clippedStats(r, wproj, wp); if (s.area > best.area) best = s; } const text = tidyName(titleCase(n.name)); if (best.area > 40 && spacer.take(best.cx, best.cy, labelW(text, 2.1), 2.6)) parts.push(label(best.cx, best.cy, text, 2.1, NPWS_COLOUR)); }
+    legend.push({ swatch: swatchFill(NPWS_COLOUR, NPWS_COLOUR), label: 'National Parks and Wildlife Service estate' });
+  }
+  // land council areas, where more than one reaches the strip
+  if (f.lalcsInStrip.length > 1) {
+    parts.push(`<path d="${c.lalcs.map((l) => ringsPath(l.rings, wproj)).join('')}" fill="none" stroke="#3b2a10" stroke-width="0.6" stroke-dasharray="3,1.4"/>`);
+    for (const l of c.lalcs) { let best = { area: 0, cx: 0, cy: 0 }; for (const r of l.rings) { const s = clippedStats(r, wproj, wp); if (s.area > best.area) best = s; } const text = `${titleCase(l.local)} LALC`; if (best.area > 100 && spacer.take(best.cx, best.cy, labelW(text, 2.3), 3)) parts.push(label(best.cx, best.cy, text, 2.3, '#3b2a10')); }
+    legend.push({ swatch: swatchLine('#3b2a10', 0.6, '3,1.4'), label: 'Local Aboriginal Land Council boundary' });
+  }
+  // gazetted Aboriginal Places: in the strip drawn, beyond it pointed to
+  const placesIn = c.places.filter((p) => { const [x, y] = wproj(p.lon, p.lat); return x >= 0 && y >= 0 && x <= wp.wMm && y <= wp.hMm; });
+  for (const p of placesIn) {
+    const [x, y] = wproj(p.lon, p.lat);
+    if (p.rings.length) parts.push(`<path d="${ringsPath(p.rings, wproj)}" fill="${PLACE_COLOUR}" fill-opacity="0.3" stroke="${PLACE_COLOUR}" stroke-width="0.5" fill-rule="evenodd"/>`);
+    parts.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="1.6" fill="${PLACE_COLOUR}" stroke="#ffffff" stroke-width="0.35"/>`);
+    const text = p.name;
+    if (spacer.take(x, y - 3.2, labelW(text, 2.1), 2.6)) parts.push(label(x, y - 3.2, text, 2.1, PLACE_COLOUR));
+  }
+  const beyond = c.places.filter((p) => !placesIn.includes(p)).slice(0, 3);
+  for (const p of beyond) {
+    const a = (p.bearing * Math.PI) / 180, ux = Math.sin(a), uy = -Math.cos(a);
+    const inset = 5;
+    const tX = ux > 1e-9 ? (wp.wMm - inset - sx) / ux : ux < -1e-9 ? (inset - sx) / ux : Infinity;
+    const tY = uy > 1e-9 ? (wp.hMm - inset - sy) / uy : uy < -1e-9 ? (inset - sy) / uy : Infinity;
+    const tt = Math.min(tX, tY);
+    const x = sx + ux * tt, y = sy + uy * tt;
+    parts.push(`<path d="M${(x - uy * 1.4 - ux * 2.6).toFixed(1)},${(y + ux * 1.4 - uy * 2.6).toFixed(1)} L${x.toFixed(1)},${y.toFixed(1)} L${(x + uy * 1.4 - ux * 2.6).toFixed(1)},${(y - ux * 1.4 - uy * 2.6).toFixed(1)} Z" fill="${PLACE_COLOUR}"/>`);
+    const text = `${p.name} ${p.distanceM >= 1000 ? `${(p.distanceM / 1000).toFixed(1)} km` : `${fmtNum(p.distanceM)} m`}`;
+    const lx = x - ux * (4 + labelW(text, 2) / 2), ly = y - uy * 4 + (Math.abs(uy) < 0.5 ? 3.4 : 0);
+    if (spacer.take(lx, ly, labelW(text, 2), 2.6)) parts.push(label(lx, ly, text, 2, PLACE_COLOUR));
+  }
+  if (c.places.length) legend.push({ swatch: `<circle cx="2.5" cy="1.8" r="1.5" fill="${PLACE_COLOUR}" stroke="#ffffff" stroke-width="0.3"/>`, label: `Gazetted Aboriginal Place${beyond.length ? '; an edge arrow points to one beyond the strip' : ''}` });
+  // the suburbs, lightly, for orientation
+  for (const ft of b.wide.suburbs.features) {
+    const name = String(ft.properties?.suburbname ?? '');
+    if (!name) continue;
+    let best = { area: 0, cx: 0, cy: 0 };
+    for (const r of geomRings(ft.geometry)) { const s = clippedStats(r, wproj, wp); if (s.area > best.area) best = s; }
+    if (best.area < 150) continue;
+    const text = titleCase(name);
+    if (spacer.take(best.cx, best.cy, labelW(text, 2.1) + 1, 3)) parts.push(`<text x="${best.cx.toFixed(1)}" y="${(best.cy + 0.8).toFixed(1)}" text-anchor="middle" font-size="2.1" letter-spacing="0.08em" fill="#6f665a" stroke="#ffffff" stroke-width="0.4" paint-order="stroke">${esc(text.toUpperCase())}</text>`);
+  }
+  parts.push(`<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="2.2" fill="#ffffff" stroke="${t.site}" stroke-width="0.6"/><circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="0.9" fill="${t.site}"/>`);
+  legend.push({ swatch: `<circle cx="2.5" cy="1.8" r="1.6" fill="#ffffff" stroke="${t.site}" stroke-width="0.5"/><circle cx="2.5" cy="1.8" r="0.7" fill="${t.site}"/>`, label: 'The site' });
+  parts.push(panelFurniture(wp, 'right'));
+  if (!c.dem && !c.vegetation.image && !c.water.courses.length) parts.push(emptyNote(['The Country layers did not answer for this run.']));
+  const mapSvg = `<svg width="${wp.wMm}mm" height="${wp.hMm}mm" viewBox="0 0 ${wp.wMm} ${wp.hMm}" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="display:block">
+    <defs><clipPath id="clip-country"><rect x="0" y="0" width="${wp.wMm}" height="${wp.hMm}"/></clipPath></defs>
+    <g clip-path="url(#clip-country)" font-family="${t.font}">${parts.join('\n')}</g>
+    <rect x="0.1" y="0.1" width="${wp.wMm - 0.2}" height="${wp.hMm - 0.2}" fill="none" stroke="${t.rule}" stroke-width="0.2"/>
+  </svg>`;
+  const leg = legendSvg(legend, FIELD_W, 4, 2.05);
+
+  // ---- the table, the communities and the note
+  const dir = compassWord;
+  const km = (m: number) => (m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${fmtNum(m)} m`);
+  const nt = f.nativeTitle;
+  const rows: [string, string][] = [
+    ['Land Council', f.lalc ? `${f.lalc.local} Local Aboriginal Land Council${f.lalc.regional ? ` · ${f.lalc.regional} regional council` : ''}${f.lalcsInStrip.length > 1 ? ` · the strip also takes in ${listWords(f.lalcsInStrip.filter((l) => l.toLowerCase() !== f.lalc!.local.toLowerCase()))}` : ''}` : 'not read'],
+    ['Native title', nt.ok ? (nt.atSite.length ? nt.atSite.map((r) => `${r.name} — ${NT_KIND_WORD[r.kind]}${r.detail ? `, ${r.detail.toLowerCase()}` : ''}${r.date ? ` (${fmtIso(r.date)})` : ''}`).join(' · ') : `none over the site (no determination, registered claim or ILUA)${nt.inWindow.determinations + nt.inWindow.claims + nt.inWindow.iluas ? ` · in the strip: ${[nt.inWindow.determinations ? `${nt.inWindow.determinations} determination` : '', nt.inWindow.claims ? `${nt.inWindow.claims} claim` : '', nt.inWindow.iluas ? `${nt.inWindow.iluas} ILUA` : ''].filter(Boolean).join(', ')}` : ''}${nt.currency ? ` · registers current ${fmtIso(nt.currency)}` : ''}`) : 'the NNTT registers did not answer'],
+    ['Pre-1750 vegetation', f.vegetation.atSite ? `${f.vegetation.atSite.pct}${f.vegetation.atSite.pctId && f.vegetation.atSite.pctId !== '0' ? ` (PCT ${f.vegetation.atSite.pctId})` : ''}${f.vegetation.atSite.cls ? ` · ${f.vegetation.atSite.cls}` : ''}${f.vegetation.atSite.formation ? ` · ${f.vegetation.atSite.formation}` : ''}` : f.vegetation.ok ? 'not classified at the site' : 'the vegetation model did not answer'],
+    ['Soil landscape', f.soil ? `${titleCase(f.soil.name)}${f.soil.process ? ` (${f.soil.process.toLowerCase()})` : ''} · ${f.soil.sheet} sheet` : (f.soilNote ?? 'outside the published sheet')],
+    ['Watercourses', f.courses.length ? `${f.courses.slice(0, 3).map((w) => `${w.name} ${km(w.distanceM)} ${dir(w.bearing)}${w.perenniality !== 'unknown' ? `, ${w.perenniality}` : ''}`).join(' · ')}${f.courseLines > f.courses.length ? ` · ${f.courseLines - f.courses.length} unnamed line${f.courseLines - f.courses.length === 1 ? '' : 's'} in the strip` : ''}` : f.waterOk ? `no named watercourse in the strip${f.courseLines ? ` · ${f.courseLines} unnamed line${f.courseLines === 1 ? '' : 's'}` : ''}` : 'not read'],
+    ['Foreshore', f.shore ? `${f.shore.kind === 'coast' ? 'coastline' : 'water body'} ${km(f.shore.distanceM)} to the ${dir(f.shore.bearing)}` : 'no coast or water body in the strip'],
+    ['Landform', f.landform.hasDem ? `site RL ${f.landform.siteRl ?? '—'}${f.landform.nearestRidge ? ` · nearest crest above it ${km(f.landform.nearestRidge.distanceM)} ${dir(f.landform.nearestRidge.bearing)} at RL ${f.landform.nearestRidge.rl}` : f.landform.ridgeLines ? ' · no crest above the site in the strip' : ' · no crest stands out at the model\'s resolution'}${f.landform.highestRidge ? ` · highest crest RL ${f.landform.highestRidge.rl}, ${km(f.landform.highestRidge.distanceM)} ${dir(f.landform.highestRidge.bearing)}` : ''} · the strip RL ${f.landform.min}–${f.landform.max}` : 'the elevation model did not answer'],
+    ['National parks', f.npws.length ? f.npws.join(' · ') : 'none in the strip'],
+    ['Aboriginal Places', f.placesOk ? (f.placeCount ? `${f.placeCount} gazetted within ${f.placesRadiusM / 1000} km: ${f.places.slice(0, 4).map((p) => `${p.name} ${km(p.distanceM)} ${dir(p.bearing)}${p.gazetted ? ` (${p.gazetted.slice(0, 4)})` : ''}${p.restricted ? ', location generalised' : ''}`).join(' · ')}` : `none gazetted within ${f.placesRadiusM / 1000} km`) : 'the register did not answer'],
+    ['ASDST', f.asdst.ok && f.asdst.likelihood !== null ? `combined-features likelihood ${f.asdst.likelihood} of ${f.asdst.scaleMax} at the site${f.asdst.surveyPriority !== null ? ` · survey priority ${f.asdst.surveyPriority}` : ''} · a relative model, not a register` : 'the model did not answer'],
+    ['AHIMS', 'not open data · a search is required before any works'],
+  ];
+  const table = `<table class="da facts"><tbody>${rows.map(([kk, vv]) => `<tr><th>${esc(kk)}</th><td>${esc(vv)}</td></tr>`).join('')}</tbody></table>`;
+  // the communities in the strip, in the map's colours
+  const classes = f.vegetation.classes;
+  const barW = 28, barX = PANEL_W - barW - 11, rowH = 7.2, vegH = classes.length ? classes.length * rowH + 6 : 0;
+  const clip = (str: string, max: number) => (str.length > max ? `${str.slice(0, max - 1).trimEnd()}…` : str);
+  const vegSvg = classes.length ? `<svg width="${PANEL_W}mm" height="${vegH}mm" viewBox="0 0 ${PANEL_W} ${vegH}" xmlns="http://www.w3.org/2000/svg" font-family="${t.font}">
+    <text x="0" y="3" font-size="2.3" font-weight="700" fill="${t.ink}">Pre-1750 plant communities across the strip<tspan font-weight="400" fill="#666"> · share of its area (State Vegetation Type Map)</tspan></text>
+    ${classes.map((k, i) => { const y = 6 + i * rowH; const w = Math.max(0.6, (k.sharePct / Math.max(1, classes[0].sharePct)) * barW); return `<rect x="0" y="${(y + 0.6).toFixed(1)}" width="4" height="4" fill="${k.colour}" stroke="#777" stroke-width="0.15"/>` +
+      `<text x="6" y="${(y + 2.4).toFixed(1)}" font-size="2.25" font-weight="700" fill="${t.ink}">${esc(clip(k.pct, 60))}${k.pctId && k.pctId !== '0' ? `<tspan font-weight="400" fill="#666"> · PCT ${esc(k.pctId)}</tspan>` : ''}</text>` +
+      `<text x="6" y="${(y + 5.3).toFixed(1)}" font-size="1.9" fill="#666">${esc(clip([k.cls, k.formation].filter(Boolean).join(' · '), 88))}</text>` +
+      `<rect x="${barX.toFixed(1)}" y="${(y + 0.9).toFixed(1)}" width="${w.toFixed(1)}" height="3.4" fill="${k.colour}" fill-opacity="0.85"/>` +
+      `<text x="${(barX + w + 1.4).toFixed(1)}" y="${(y + 3.5).toFixed(1)}" font-size="2.2" font-weight="700" fill="${t.ink}">${fmtPct(k.sharePct)}</text>`; }).join('')}
+  </svg>` : '';
+  const note = `<div class="cnote"><p><b>AHIMS.</b> Registered Aboriginal sites and places are held in the Aboriginal Heritage Information Management System, which is not open data and is not read here. An AHIMS search — and, where it, the landform, the ASDST model or the community advise it, a due-diligence assessment and consultation under the National Parks and Wildlife Act — comes before any ground disturbance.</p><p><b>Country.</b> The name of Country, the language, the place names and the cultural narrative are not generated from these layers: the office develops them with Knowledge Holders and the ${f.lalc ? `${esc(f.lalc.local)} ` : ''}Local Aboriginal Land Council. The layers here are the open proxies — land council, native title, the pre-1750 forest, the creeks and the crests.</p></div>`;
+
+  const sentences = countrySentences(b, f);
+  const text = sentences.map((s) => `<p>${esc(s)}</p>`).join('') +
+    placeholder('Acknowledgement of Country and the cultural narrative — with Knowledge Holders: whose Country, its name and language, and which features of it (the crest, the creek line, the foreshore, the pre-1750 forest) the design answers to.') +
+    `<div class="fine">Sources: NSW Spatial Services administrative boundaries (Local Aboriginal Land Councils); the National Native Title Tribunal's registers of determinations, claims and Indigenous land use agreements; Heritage NSW's gazetted Aboriginal Places (via the State's heritage service); the NSW State Vegetation Type Map, pre-1750 plant community types, and the Aboriginal Sites Decision Support Tool model (DCCEEW); the soil landscape sheet; NSW Spatial Services water theme; the NPWS estate; the 5 m elevation model at 8 m over the strip, its crests read as the cells that stand above their neighbours. AHIMS is not read. Retrieved ${b.generatedAt.slice(0, 10)}.</div>`;
+  const legendTop = FIELD_Y + PANEL_TITLE_H + wp.hMm + 1.5;
+  const belowY = legendTop + leg.heightMm + 3;
+  const belowH = SLIDE_H - 12 - belowY;
+  const figure = `<div class="abs ptitle" style="left:${FIELD_X}mm;top:${FIELD_Y}mm;width:${FIELD_W}mm">Country<span class="pnote">1:${fmtNum(wp.scale)} · ${f.stripKm.w} × ${f.stripKm.h} km · the pre-1750 plant communities over the land's shape, with the watercourses, the crests and the gazetted places</span></div>
+    <div class="abs" style="left:${FIELD_X}mm;top:${FIELD_Y + PANEL_TITLE_H}mm">${mapSvg}</div>
+    <svg class="abs" style="left:${FIELD_X}mm;top:${legendTop}mm" width="${FIELD_W}mm" height="${leg.heightMm}mm" viewBox="0 0 ${FIELD_W} ${leg.heightMm}" xmlns="http://www.w3.org/2000/svg">${leg.svg}</svg>
+    <div class="abs" style="left:${FIELD_X}mm;top:${belowY}mm;width:${PANEL_W}mm;height:${belowH}mm;overflow:hidden">
+      <div class="ptitle">Country at the site<span class="pnote">the open layers, read at the geocoded point and over the strip</span></div>
+      ${table}
+    </div>
+    <div class="abs" style="left:${FIELD_X + PANEL_W + GUTTER}mm;top:${belowY}mm;width:${PANEL_W}mm;height:${belowH}mm;overflow:hidden">
+      ${vegSvg}
+      <div style="margin-top:${classes.length ? 2 : 0}mm">${note}</div>
+    </div>`;
+  const sub = [b.siteAddress, f.lalc ? `${f.lalc.local} LALC` : '', f.vegetation.atSite?.pct ?? '', 'AHIMS search required'].filter(Boolean).join(' · ');
+  return { id: '15_country', title: 'Country', subtitle: sub, textHtml: text, figureHtml: figure };
+}
+
 export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; slides: Slide[] } {
   const facts = planningFacts(b);
-  const slides = [planningOverviewSlide(b, facts), planningControlsSlide(b, facts), terrainSlide(b), developmentSlide(b, facts), builtFormSlide(b, facts), movementSlide(b), greenSlide(b), siteSlide(b), sunViewSlide(b), constraintsSlide(b), peopleSlide(b), ocSlide(b, facts), sourcesSlide(b, facts)];
+  const slides = [planningOverviewSlide(b, facts), planningControlsSlide(b, facts), terrainSlide(b), developmentSlide(b, facts), builtFormSlide(b, facts), movementSlide(b), greenSlide(b), siteSlide(b), sunViewSlide(b), constraintsSlide(b), countrySlide(b), peopleSlide(b), ocSlide(b, facts), sourcesSlide(b, facts)];
   const t = tpl();
   const footerLeft = ['SITE ANALYST — OVERALL ANALYSIS', b.siteAddress, meta.client ? `for ${meta.client}` : '', meta.jobNo ? `job ${meta.jobNo}` : ''].filter(Boolean).join(' · ');
   const pages = slides.map((s, i) => `
@@ -4002,6 +4276,9 @@ export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; 
   table.da.cons tr.hit td { font-weight: 600; }
   table.da.cons tr.hit td:first-child { border-left: 0.6mm solid ${t.site}; padding-left: 1.2mm; }
   table.da.facts th { width: 33mm; font-weight: 600; font-size: 2.2mm; text-transform: none; letter-spacing: 0; color: #333; text-align: left; vertical-align: top; }
+  .cnote { border-left: 0.6mm solid #b8561e; background: #faf5ee; padding: 2mm 3mm; font-size: 2.35mm; line-height: 1.34; }
+  .cnote p + p { margin-top: 1.2mm; }
+  .cnote b { font-weight: 700; }
   table.da.src { font-size: 2.0mm; line-height: 1.22; }
   table.da.src th, table.da.src td { padding: 0.55mm 1.6mm 0.55mm 0; }
   table.da.src thead th { font-size: 1.9mm; }
@@ -4036,6 +4313,7 @@ export function slidesFacts(b: SlidesBundle) {
     theSite: (() => { const f = siteFacts(b); return { ...f, sentences: siteSentences(b, f) }; })(),
     sunViews: (() => { const f = sunViewFacts(b); const { shadowHulls: _h, ...rest } = f; return { ...rest, sentences: sunViewSentences(b, f) }; })(),
     constraints: (() => { const f = constraintsFacts(b); return { ...f, sentences: constraintsSentences(b, f) }; })(),
+    country: (() => { const f = countryFacts(b); return { ...f, sentences: countrySentences(b, f) }; })(),
     opportunitiesConstraints: (() => { const f = ocFacts(b, facts); const { draw: _d, panel: _p, sunArc: _a, ...rest } = f; return { ...rest, sentences: ocSentences(b, f) }; })(),
     sources: (() => { const f = sourcesFacts(b, facts); return { ...f, sentences: sourcesSentences(b, f) }; })(),
     green: (() => { const f = greenFacts(b); return { ...f, openSpace: { ...f.openSpace, spaces: f.openSpace.spaces.map(({ rings: _r, ...s }) => s), nearest: f.openSpace.nearest && (({ rings: _r, ...s }) => s)(f.openSpace.nearest), largest: f.openSpace.largest && (({ rings: _r, ...s }) => s)(f.openSpace.largest) }, sentences: greenSentences(b, f) }; })(),

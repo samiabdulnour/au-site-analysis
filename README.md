@@ -475,7 +475,7 @@ development window), `--job 2539`, `--client "Name"`,
 
 `--type slides` draws the OVERALL ANALYSIS deck: A3 landscape pages for the
 content part of a feasibility study or design report, specified in
-`docs/SLIDES_SPEC.md`. Thirteen slides exist so far. The planning pair: a
+`docs/SLIDES_SPEC.md`. Fourteen slides exist so far. The planning pair: a
 *planning overview* of four maps at 1:8000 around the site (land zoning in the
 statutory colours, height of building, heritage with the State Heritage
 Register, and the housing-policy maps — TOD areas, town centres, State
@@ -522,7 +522,18 @@ definite answer — at the site with its class, nearest in the window, none in
 the window, or not mapped by this LEP at all, checked plan-wide so an
 absence is stated rather than implied — with the arterial roads and
 railways beside the site as noise sources and the soil landscape at the
-site. Then *the site*: the site plan on the aerial at a round scale that
+site. Then *Country*: the open layers of Country over the wide strip — the
+pre-1750 plant communities of the State Vegetation Type Map over the land's
+shape, with the watercourses, the coast, the crests read from the elevation
+model, the National Parks estate and the gazetted Aboriginal Places — with
+the Local Aboriginal Land Council, the National Native Title Tribunal's
+registers at the site and over the strip, the plant community and the soil
+landscape at the site, the nearest watercourse and foreshore, the site's
+level against the nearest crest, the gazetted places within 10 km and the
+public ASDST likelihood model; the slide states that AHIMS is not open and
+that a search precedes any works, and that the name of Country, the language
+and the cultural narrative are the office's to develop with Knowledge
+Holders, not generated. Then *the site*: the site plan on the aerial at a round scale that
 fits the lot, with the boundary lengths from the digital cadastre, the
 corner levels from the elevation model, the existing footprint and its
 height, the neighbours' numbers and the street names, the easement

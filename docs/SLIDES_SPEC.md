@@ -446,13 +446,14 @@ Open-Meteo archive (ERA5): `https://archive-api.open-meteo.com/v1/archive?latitu
 Implemented: slides 03 (planning overview), 04 (planning controls), 06
 (topography), 07 (development activity), 08 (built form), 09 (movement), 10
 (green and public domain), 11 (the site), 13 (grid, sun and views), 14
-(environmental constraints), 16 (people and market), 17 (opportunities and
-constraints) and 18 (sources) —
+(environmental constraints), 15 (Country), 16 (people and market), 17
+(opportunities and constraints) and 18 (sources) —
 `src/render/slides.ts`, `src/render/minimap.ts`, `src/render/charts.ts`,
 `src/render/terrainMap.ts`, `src/fetch/planning.ts`, `src/fetch/terrain.ts`,
 `src/fetch/buildings.ts` with `src/py/overture_buildings.py`,
 `src/fetch/movement.ts`, `src/fetch/greenSpace.ts`, `src/fetch/constraints.ts`, `src/fetch/site.ts`,
 `src/lib/solar.ts` and `src/lib/shadows.ts` with the plan sheet's `src/fetch/views.ts`,
+`src/fetch/country.ts` with `src/lib/ridges.ts`,
 `src/fetch/da.ts`, `src/fetch/abs.ts`, `src/fetch/tzp24.ts`,
 `src/fetch/valuation.ts`, `src/fetch/schools.ts` (gathered by
 `src/fetch/people.ts`), `runSlidesPipeline` in `src/pipeline.ts`; `--type
@@ -683,6 +684,40 @@ flood study, the ANEF contours, the State significant applications, the
 site visit), repeat the run's warnings (an Overpass mirror that did not
 answer, a feed that came back incomplete) and state the licence position
 as the publishers give it.
+
+Slide 15 reads the layers of Country that are open (`src/fetch/country.ts`,
+each part soft): the National Native Title Tribunal's determinations,
+registered claims and Indigenous land use agreements at the geocoded point
+and counted over the strip (the hosted service wants a JSON point and
+`outFields=*`); the gazetted Aboriginal Places within 10 km from the
+State's heritage service, with their gazettal date and the register's
+restricted flag, whose geometry it publishes generalised; the pre-1750
+plant community at the site by `identify` on the State Vegetation Type Map
+and the map itself exported over the strip as the State draws it — the
+layer draws only between 1:100,000 and 1:25,001 and the service reckons
+scale from pixels and dpi, so the picture is asked for at two metres a
+pixel with a dpi that puts it at 1:30,000 — with a small BMP export read
+for the colours, each colour covering a hundredth of the strip identified
+once for its name, so the legend lists the communities by share in the
+map's own colours; the watercourses and the coastline of the water theme;
+the Local Aboriginal Land Council areas; the NPWS estate; the ASDST
+combined-features likelihood and survey priority at the site, read as the
+model's relative values of 999 and named as such; and a second elevation
+grid at 8 m over the strip, for a hillshade and for the ridgelines
+(`src/lib/ridges.ts`: after a light smoothing, a cell is a crest when,
+along two or more of the four axes, it stands above the ground on both
+sides at one of three reaches — a metre over two cells, two metres over
+five, four metres over ten, so the broad ridges count as well as the sharp
+ones — in a window with three metres of relief; the crest cells are chained
+into polylines). The map is the wide strip at 1:16000: hillshade, the
+pre-1750 communities, water, courses named, crests, parks, the gazetted
+places (an edge arrow for one beyond the strip), the land council boundary
+where two meet, the suburbs lightly. The table gives each layer's answer at
+the site; the note states that AHIMS is not open and is not read, that a
+search and where advised a due-diligence assessment precede works, and that
+the name of Country, the language, the place names and the narrative are
+developed with Knowledge Holders, not generated. Slide 17 carries a Country
+constraint and slide 18 the new sources.
 
 Slide 16 looks the site up in the ASGS (SA2, LGA, suburb, capital-city
 region), reads the five census tables for the SA2, the LGA and the capital
