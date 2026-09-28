@@ -12,7 +12,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { overpassQuery } from '../lib/http.js';
 import { cachedJson, DAY_MS } from '../lib/cache.js';
-import { extentToLonLatBbox, type Extent } from '../lib/geo.js';
+import { extentToLonLatBbox, ringCentroid, type Extent } from '../lib/geo.js';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'py', 'overture_buildings.py');
 /** Storeys to metres when only the storey count is known. */
@@ -47,16 +47,6 @@ const run = (cmd: string, args: string[], timeoutMs: number): Promise<{ stdout: 
       resolve({ stdout: String(stdout ?? ''), code: err ? ((err as any).code ?? 1) : 0 });
     });
   });
-
-function ringCentroid(ring: number[][]): [number, number] {
-  let a = 0, cx = 0, cy = 0;
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const f = ring[j][0] * ring[i][1] - ring[i][0] * ring[j][1];
-    a += f; cx += (ring[j][0] + ring[i][0]) * f; cy += (ring[j][1] + ring[i][1]) * f;
-  }
-  if (Math.abs(a) < 1e-14) return [ring[0][0], ring[0][1]];
-  return [cx / (3 * a), cy / (3 * a)];
-}
 
 function finish(b: Omit<Building, 'estimatedHeightM' | 'heightFrom' | 'centroid'>): Building | null {
   if (!b.rings.length || b.rings[0].length < 4) return null;
@@ -129,7 +119,7 @@ async function fromOsm(extent: Extent, log: (m: string) => void): Promise<Buildi
 /** Every building footprint touching the extent, with what is known of its height. */
 export async function fetchBuildings(extent: Extent, log: (m: string) => void = () => {}): Promise<BuildingsData> {
   const key = ['xmin', 'ymin', 'xmax', 'ymax'].map((k) => Math.round(extent[k as keyof Extent])).join('_');
-  return cachedJson('buildings', key, 30 * DAY_MS, async () => {
+  const data = await cachedJson('buildings', key, 30 * DAY_MS, async (): Promise<BuildingsData> => {
     try {
       const o = await fromOverture(extent, log);
       if (o && o.buildings.length) return o;
@@ -143,4 +133,6 @@ export async function fetchBuildings(extent: Extent, log: (m: string) => void = 
       return { source: 'none', buildings: [], fetchedAt: new Date().toISOString(), note: String(e?.message ?? e) };
     }
   });
+  // the centroid is recomputed on the way out, so a cache written before the centroid arithmetic was fixed still reads right
+  return { ...data, buildings: data.buildings.map((b) => ({ ...b, centroid: ringCentroid(b.rings[0]) })) };
 }

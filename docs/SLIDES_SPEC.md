@@ -585,7 +585,9 @@ January 2021; Orange, 10 cm, 2012). The boundary lengths are computed from
 the digital cadastre and printed along each outer edge (an edge two of the
 site's lots share is left out); the corner levels are the elevation
 model's, so the plan says "indicative to about a metre"; frontages are the
-edges within 18 m of a named road's centreline, summed per road. The
+edges a named road runs along — its centreline within 18 m of the edge and
+within 35° of its bearing, so a lane that ends at the boundary or the
+street round the corner does not count — summed per road. The
 existing building is the footprint whose centroid lies on the lot (or most
 of whose vertices do), with its storeys and height where Overture has them,
 and the neighbours' footprints touching the boundary are named by height and
@@ -615,8 +617,13 @@ moved H / tan(altitude) away from the sun, in the map's metres; the site is
 sampled on a grid of up to 1,600 points and the shaded share is the points
 inside any hull, the largest caster named. A terrace row that Overture holds
 as one footprint would shade its own lot, so the footprint the site stands
-in is left out and the slide says so. The shadow panel is the site panel at
-1:1000 or coarser, footprints drawn over the shadows so both read. The
+in is left out and the slide says so. Overture's heights are patchy in the
+older suburbs (none of the terraces around 770 Elizabeth Street Waterloo
+carries one), so where no footprint within shadow reach has a height the
+slide says that instead of claiming the site keeps its sun, and where some
+do the text gives how many of the buildings within 60 m have one. The
+shadow panel is the site panel at 1:1000 or coarser, footprints drawn over
+the shadows so both read. The
 views are the plan sheet's `assessViews`: the skylines within their range,
 the named water bodies and the coast from the NSW Water theme, the parks
 touching the site, each sight line from an eye just under the height limit

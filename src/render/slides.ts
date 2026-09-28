@@ -2481,6 +2481,30 @@ const SALES_MONTHS = 24;
 
 interface SiteEdge { a: XY; b: XY; lengthM: number; bearing: number; mid: XY; normal: { x: number; y: number }; shared: boolean }
 
+const FRONTAGE_DIST_M = 18;
+const FRONTAGE_ANGLE_DEG = 35;
+const segDistM = (q: XY, a: XY, c: XY) => { const dx = c.x - a.x, dy = c.y - a.y; const l2 = dx * dx + dy * dy; const t = l2 ? Math.max(0, Math.min(1, ((q.x - a.x) * dx + (q.y - a.y) * dy) / l2)) : 0; return Math.hypot(q.x - (a.x + t * dx), q.y - (a.y + t * dy)); };
+/**
+ * The named road that runs along a boundary edge: its centreline within 18 m
+ * of the edge's midpoint and within 35° of the edge's bearing, so a lane that
+ * ends at the boundary or the street round the corner is not a frontage.
+ */
+function roadAlongEdge(mid: XY, bearing: number, roads: SlidesBundle['base']['roads'], k: number, toM: (lon: number, lat: number) => XY): { name: string; hierarchy: number; d: number } | null {
+  let best: { name: string; hierarchy: number; d: number } | null = null;
+  for (const r of roads) {
+    if (!r.name) continue;
+    const pts = r.coords.map(([lon, lat]) => toM(lon, lat));
+    for (let i = 0; i < pts.length - 1; i++) {
+      const rb = ((Math.atan2(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y) * 180) / Math.PI + 360) % 360;
+      let da = Math.abs(rb - bearing) % 180; if (da > 90) da = 180 - da;
+      if (da > FRONTAGE_ANGLE_DEG) continue;
+      const d = segDistM(mid, pts[i], pts[i + 1]) / k;
+      if (d <= FRONTAGE_DIST_M && (!best || d < best.d)) best = { name: titleCase(r.name), hierarchy: r.hierarchy, d };
+    }
+  }
+  return best;
+}
+
 export function siteFacts(b: SlidesBundle) {
   const s = b.site;
   const p = s.sitePanel;
@@ -2513,16 +2537,11 @@ export function siteFacts(b: SlidesBundle) {
     }
   });
   const outer = edges.filter((e) => !e.shared);
-  // Frontages: the edges whose midpoint lies within 18 m of a named road's centreline.
+  // Frontages: the edges a named road runs along (its centreline within 18 m of the edge and within 35° of its bearing).
   const frontage = new Map<string, { lengthM: number; hierarchy: number }>();
   for (const e of outer) {
-    let best: { name: string; hierarchy: number; d: number } | null = null;
-    for (const r of b.base.roads) {
-      if (!r.name) continue;
-      const pts = r.coords.map(([lon, lat]) => toM(lon, lat));
-      for (let i = 0; i < pts.length - 1; i++) { const d = segDist(e.mid, pts[i], pts[i + 1]) / k; if (!best || d < best.d) best = { name: titleCase(r.name), hierarchy: r.hierarchy, d }; }
-    }
-    if (best && best.d <= 18) { const cur = frontage.get(best.name) ?? { lengthM: 0, hierarchy: best.hierarchy }; cur.lengthM += e.lengthM; frontage.set(best.name, cur); }
+    const best = roadAlongEdge(e.mid, e.bearing, b.base.roads, k, toM);
+    if (best) { const cur = frontage.get(best.name) ?? { lengthM: 0, hierarchy: best.hierarchy }; cur.lengthM += e.lengthM; frontage.set(best.name, cur); }
   }
   const frontages = [...frontage.entries()].map(([name, v]) => ({ name, lengthM: Math.round(v.lengthM * 10) / 10, hierarchy: v.hierarchy, word: roadWord(v.hierarchy) })).sort((x, y) => y.lengthM - x.lengthM);
 
@@ -2907,7 +2926,6 @@ export function sunViewFacts(b: SlidesBundle) {
   // The site's long axis and its frontages' facing.
   let longest = { lengthM: 0, bearing: 0 };
   const frontFaces: { name: string; facing: number; lengthM: number }[] = [];
-  const segDist = (q: XY, a: XY, c: XY) => { const dx = c.x - a.x, dy = c.y - a.y; const l2 = dx * dx + dy * dy; const t = l2 ? Math.max(0, Math.min(1, ((q.x - a.x) * dx + (q.y - a.y) * dy) / l2)) : 0; return Math.hypot(q.x - (a.x + t * dx), q.y - (a.y + t * dy)); };
   for (const ring of ringsMerc) {
     const pts = ring.length > 1 && ring[0].x === ring[ring.length - 1].x && ring[0].y === ring[ring.length - 1].y ? ring.slice(0, -1) : ring;
     let area = 0; for (let i = 0; i < pts.length; i++) { const u = pts[i], v = pts[(i + 1) % pts.length]; area += u.x * v.y - v.x * u.y; }
@@ -2919,9 +2937,8 @@ export function sunViewFacts(b: SlidesBundle) {
       if (len > longest.lengthM) longest = { lengthM: len, bearing: bearing % 180 };
       const mid = { x: (a.x + c.x) / 2, y: (a.y + c.y) / 2 };
       const outward = ((bearing + (ccw ? 90 : -90)) + 360) % 360;
-      let best: { name: string; d: number } | null = null;
-      for (const r of b.base.roads) { if (!r.name) continue; const rp = r.coords.map(([lon, lat]) => toM(lon, lat)); for (let j = 0; j < rp.length - 1; j++) { const d = segDist(mid, rp[j], rp[j + 1]) / k; if (!best || d < best.d) best = { name: titleCase(r.name), d }; } }
-      if (best && best.d <= 18) { const cur = frontFaces.find((f) => f.name === best!.name); if (cur) { cur.lengthM += len; } else frontFaces.push({ name: best.name, facing: outward, lengthM: len }); }
+      const best = roadAlongEdge(mid, bearing, b.base.roads, k, toM);
+      if (best) { const cur = frontFaces.find((f) => f.name === best.name); if (cur) { cur.lengthM += len; } else frontFaces.push({ name: best.name, facing: outward, lengthM: len }); }
     }
   }
   // how far the site's long axis sits from the nearer grid axis
@@ -2946,17 +2963,30 @@ export function sunViewFacts(b: SlidesBundle) {
   const samples: XY[] = [];
   for (let x = sx0; x <= sx1; x += stepM * k) for (let y = sy0; y <= sy1; y += stepM * k) { const ll = mercatorToLonLat({ x, y }); if (inside(ll.lon, ll.lat)) samples.push({ x, y }); }
   const lotCentre = mercatorToLonLat(b.site.sitePanel.center);
-  const casters = b.buildings.buildings.filter((bd) => bd.estimatedHeightM && bd.rings[0]?.length >= 4 && !inside(bd.centroid[0], bd.centroid[1]) && !bd.rings.some((r) => pointInRing(lotCentre.lon, lotCentre.lat, r)));
+  type Bldg = (typeof b.buildings.buildings)[number];
+  const notSite = (bd: Bldg) => bd.rings[0]?.length >= 4 && !inside(bd.centroid[0], bd.centroid[1]) && !bd.rings.some((r) => pointInRing(lotCentre.lon, lotCentre.lat, r));
+  const casters = b.buildings.buildings.filter((bd) => bd.estimatedHeightM && notSite(bd));
+  // a footprint is within reach when its shadow length plus its own span could touch the lot
+  const siteSpanM = Math.max(sx1 - sx0, sy1 - sy0) / k;
+  const inReach = (bd: Bldg, altitudeDeg: number) => {
+    const c = toM(bd.centroid[0], bd.centroid[1]);
+    const reachM = bd.estimatedHeightM! / Math.tan((Math.max(3, altitudeDeg) * Math.PI) / 180) + 60;
+    return Math.hypot(c.x - b.site.sitePanel.center.x, c.y - b.site.sitePanel.center.y) / k <= reachM + siteSpanM;
+  };
+  const lowestAlt = Math.min(...sun.winter.hours.map((h) => h.altitudeDeg));
+  const castersInReach = casters.filter((bd) => inReach(bd, lowestAlt)).length;
+  // how far the recorded heights cover the block: the footprints within 60 m of the boundary
+  const distFromSiteM = (bd: Bldg) => { const c = toM(bd.centroid[0], bd.centroid[1]); let d = Infinity; for (const r of ringsMerc) for (const q of r) d = Math.min(d, Math.hypot(q.x - c.x, q.y - c.y)); return d / k; };
+  const nearBuildings = b.buildings.buildings.filter((bd) => notSite(bd) && distFromSiteM(bd) <= 60);
+  const near = { total: nearBuildings.length, withHeight: nearBuildings.filter((bd) => bd.estimatedHeightM).length };
   const shadows = SHADOW_HOURS.map((sh) => {
     const pos = sun.winter.hours.find((h) => h.hour === sh.hour)!;
     const hulls: { hull: XY[]; heightM: number; floors?: number; bearing: number; hits: number }[] = [];
     const shaded = new Set<number>();
     for (const bd of casters) {
+      if (!inReach(bd, pos.altitudeDeg)) continue;
       const ring = bd.rings[0].map(([lon, lat]) => toM(lon, lat));
-      // only footprints within reach: the shadow length plus the footprint's own span
-      const reachM = bd.estimatedHeightM! / Math.tan((Math.max(3, pos.altitudeDeg) * Math.PI) / 180) + 60;
       const c = toM(bd.centroid[0], bd.centroid[1]);
-      if (Math.hypot(c.x - b.site.sitePanel.center.x, c.y - b.site.sitePanel.center.y) / k > reachM + Math.max(sx1 - sx0, sy1 - sy0) / k) continue;
       const hull = shadowHull(ring, bd.estimatedHeightM!, pos.altitudeDeg, pos.azimuthDeg, k);
       if (!hull) continue;
       let hits = 0;
@@ -2973,7 +3003,7 @@ export function sunViewFacts(b: SlidesBundle) {
     sun,
     shadows: shadows.map((s) => ({ hour: s.hour, label: s.label, altitudeDeg: Math.round(s.altitudeDeg * 10) / 10, azimuthDeg: Math.round(s.azimuthDeg), shadedPct: s.shadedPct, casters: s.hulls.filter((h) => h.hits).length, mainCaster: s.mainCaster })),
     shadowHulls: shadows.map((s) => ({ hour: s.hour, hulls: s.hulls.map((h) => h.hull) })),
-    castersWithHeight: casters.length, buildingsSource: b.buildings.source, sharedRow,
+    castersWithHeight: casters.length, castersInReach, near, buildingsSource: b.buildings.source, sharedRow,
     views: views.map((v) => ({ label: titleCase(v.label), kind: v.kind, bearingDeg: Math.round(v.bearingDeg), distanceM: Math.round(v.distanceM), clear: v.clear, blockedAtM: v.blockedAtM === undefined ? undefined : Math.round(v.blockedAtM), cone: Boolean(v.cone), eyeRL: v.eyeRL, targetRL: v.targetRL })),
     eyeAboveM: b.views?.eyeAboveM ?? null,
   };
@@ -2990,16 +3020,18 @@ export function sunViewSentences(b: SlidesBundle, f: ReturnType<typeof sunViewFa
   }
   const w = f.sun.winter, su = f.sun.summer;
   out.push(`On 21 June the sun rises at ${fmtClock(w.rise)} and sets at ${fmtClock(w.set)} (AEST), reaching ${w.noonAltitudeDeg.toFixed(0)}° at solar noon (${fmtClock(w.noon)}); between 9 am and 3 pm it stands ${Math.min(...w.hours.map((h) => h.altitudeDeg)).toFixed(0)}° to ${Math.max(...w.hours.map((h) => h.altitudeDeg)).toFixed(0)}° above the horizon, from the ${compassWord(w.hours[0].azimuthDeg)} round to the ${compassWord(w.hours[2].azimuthDeg)}. On 21 December it is up from ${fmtClock(su.rise)} to ${fmtClock(su.set)} (AEDT) and ${su.noonAltitudeDeg.toFixed(0)}° high at ${fmtClock(su.noon)}, so the north face is in sun all winter and the west face takes the summer afternoon.`);
-  if (f.castersWithHeight) {
+  if (f.castersInReach) {
     const sh = f.shadows;
     const worst = [...sh].sort((x, y) => y.shadedPct - x.shadedPct)[0];
     const bits = sh.map((s, i) => `${fmtPct(s.shadedPct)}${i === 0 ? ' of the site' : ''} at ${s.label}`);
     let s = `On 21 June the neighbours' shadows (${f.buildingsSource === 'overture' ? 'Overture' : 'OpenStreetMap'} footprints and heights) cover ${listWords(bits)}`;
     if (f.sharedRow) s += ' (the row the site stands in is one footprint, so its own neighbours are left out)';
     if (worst.mainCaster && worst.shadedPct >= 1) s += `; the ${worst.label} shadow is mostly the ${worst.mainCaster.floors ? `${worst.mainCaster.floors}-storey` : `${fmtNum(worst.mainCaster.heightM)} m`} building to the ${compassWord(worst.mainCaster.bearing)}`;
-    s += sh.every((x) => x.shadedPct < 1) ? ': the site keeps its winter sun.' : '. A model of the block is the next step; this is footprints and recorded heights only.';
+    const partial = f.near.total > 0 && f.near.withHeight < f.near.total;
+    const coverage = !partial ? '' : f.near.withHeight === 0 ? ` (none of the ${f.near.total} buildings within 60 m has a recorded height)` : ` (${f.near.withHeight} of the ${f.near.total} buildings within 60 m ${f.near.withHeight === 1 ? 'has' : 'have'} a recorded height)`;
+    s += sh.every((x) => x.shadedPct < 1) ? `: the site keeps its winter sun${partial ? ' as far as the recorded heights go' : ''}${coverage}.` : `${coverage}. A model of the block is the next step; this is footprints and recorded heights only.`;
     out.push(s);
-  } else out.push('No neighbouring building has a recorded height, so no winter shadow is drawn; the block model is the next step.');
+  } else out.push(`No building within shadow reach of the site has a recorded height${f.near.total && !f.near.withHeight ? ` (none of the ${f.near.total} ${f.buildingsSource === 'overture' ? 'Overture' : 'OpenStreetMap'} footprints within 60 m carries one)` : ''}, so no winter shadow can be drawn; the block model is the next step.`);
   if (f.views.length) {
     const clear = f.views.filter((v) => v.clear === true), blocked = f.views.filter((v) => v.clear === false), unchecked = f.views.filter((v) => v.clear === undefined);
     const km = (m: number) => (m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${fmtNum(m)} m`);
@@ -3110,7 +3142,8 @@ export function sunViewSlide(b: SlidesBundle): Slide {
     parts.push(label(x, y + 4.2, `${s.label} · ${s.altitudeDeg.toFixed(0)}°`, 1.9, '#7a5600'));
   }
   parts.push(panelFurniture(sp, 'right'));
-  if (!f.castersWithHeight) parts.push(emptyNote(['No neighbouring building has a recorded height, so no shadow is drawn.']));
+  if (!f.castersInReach) parts.push(emptyNote(['No building within shadow reach of the site has a recorded height, so no shadow is drawn.']));
+  else if (f.near.total && !f.near.withHeight) parts.push(emptyNote([`None of the ${f.near.total} buildings within 60 m has a recorded height; the shadows drawn are the further buildings' only.`]));
   const shadowSvg = `<svg width="${sp.wMm}mm" height="${sp.hMm}mm" viewBox="0 0 ${sp.wMm} ${sp.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
     <defs><clipPath id="clip-shadow"><rect x="0" y="0" width="${sp.wMm}" height="${sp.hMm}"/></clipPath></defs>
     <g clip-path="url(#clip-shadow)" font-family="${t.font}">${parts.join('\n')}</g>
@@ -3123,7 +3156,7 @@ export function sunViewSlide(b: SlidesBundle): Slide {
     { v: `${f.grid.primaryDeg}°${f.grid.secondaryDeg !== null ? ` · ${f.grid.secondaryDeg}°` : ''}`, l: `street grid bearings from north · site axis ${f.grid.siteAxisDeg}°, ${f.grid.offGridDeg <= 5 ? 'on the grid' : `${f.grid.offGridDeg}° off`}` },
     { v: f.grid.frontages[0] ? f.grid.frontages[0].facingWord : '—', l: f.grid.frontages[0] ? `${f.grid.frontages[0].name} frontage faces${f.grid.frontages.length > 1 ? ` · ${f.grid.frontages.slice(1).map((fr) => `${fr.name} ${fr.facingWord}`).join(', ')}` : ''}` : 'no frontage to a named road' },
     { v: `${f.sun.winter.noonAltitudeDeg.toFixed(0)}°`, l: `winter noon sun (21 June, ${fmtClock(f.sun.winter.noon)} AEST) · ${f.sun.summer.noonAltitudeDeg.toFixed(0)}° on 21 December` },
-    { v: f.castersWithHeight ? fmtPct(worstShadow.shadedPct) : '—', l: f.castersWithHeight ? `of the site in neighbours' shadow at ${worstShadow.label} on 21 June · ${f.shadows.filter((s) => s !== worstShadow).map((s) => `${s.label} ${fmtPct(s.shadedPct)}`).join(' · ')}` : 'no neighbour height recorded for a shadow study' },
+    { v: f.castersInReach ? fmtPct(worstShadow.shadedPct) : '—', l: f.castersInReach ? `of the site in neighbours' shadow at ${worstShadow.label} on 21 June · ${f.shadows.filter((s) => s !== worstShadow).map((s) => `${s.label} ${fmtPct(s.shadedPct)}`).join(' · ')}${f.near.total && f.near.withHeight < f.near.total ? ` · heights known for ${f.near.withHeight} of ${f.near.total} buildings within 60 m` : ''}` : 'no recorded height within shadow reach of the site' },
   ].map((tl) => `<div class="tile"><div class="tv${tl.v.length > 9 ? ' long' : ''}">${esc(tl.v)}</div><div class="tl">${esc(tl.l)}</div></div>`).join('');
   const diagW = Math.min(62, (rightW - GUTTER) / 2);
   const sw = (inner: string) => `<svg width="5mm" height="3.6mm" viewBox="0 0 5 3.6">${inner}</svg>`;
