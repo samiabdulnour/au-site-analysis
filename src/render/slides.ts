@@ -27,6 +27,7 @@ import { hillshadeDataUri, planSections, sampleSection, siteLevels, gridExtremes
 import { METRES_PER_STOREY, type Building } from '../fetch/buildings.js';
 import type { CyclewayKind } from '../fetch/movement.js';
 import type { FacilityKind } from '../fetch/greenSpace.js';
+import { CONSTRAINT_DEFS, type ConstraintGroup } from '../fetch/constraints.js';
 
 export const SLIDE_W = 420;
 export const SLIDE_H = 297;
@@ -2231,11 +2232,244 @@ export function greenSlide(b: SlidesBundle): Slide {
   return { id: '10_green_public_domain', title: 'Green and public domain', subtitle: sub, textHtml, figureHtml };
 }
 
+// ---- slide 14: environmental constraints -----------------------------------
+
+/** The statutory colours of the constraint maps, read from the ePlanning renderers; one colour, or one per class. */
+const CONSTRAINT_FILL: Record<string, string | Record<string, string>> = {
+  bushfire: { 'Vegetation Category 1': '#ff0000', 'Vegetation Category 2': '#ffd200', 'Vegetation Category 3': '#ff8000', 'Vegetation Buffer': '#ffff73' },
+  flood: '#73b2ff', landslide: '#e69800', subsidence: '#e6e600',
+  ass: { 'Class 1': '#00c5ff', 'Class 2': '#ff00c5', 'Class 2a': '#ff00c5', 'Class 2b': '#ff0078', 'Class 3': '#ffbee8', 'Class 4': '#df73ff', 'Class 5': '#ffffbe' },
+  salinity: '#ff0000', mineral: '#cc6666', groundwater: '#99fffd', drinkingWater: '#8cf1fc',
+  riparian: { 'Riparian Land': '#b3e096', Watercourse: '#00c5ea', Wetland: '#00c5ea', 'Environmentally Sensitive Land': '#00c5ea' },
+  wetlands: '#c9fff9',
+  coastalWetlands: { 'Coastal Wetlands': '#006fff', 'Coastal Wetlands Proximity Area': '#0070ff', 'Littoral Rainforest': '#38a800', 'Littoral Rainforest Proximity Area': '#38a800' },
+  coastalEnvironment: '#bed2ff', coastalUse: '#ffa77f',
+  biodiversity: { 'Terrestrial biodiversity': '#00a884', Biodiversity: '#95c26f', 'Areas of biodiversity significance': '#d3ffbe', 'Areas of high biodiversity significance': '#38a800', 'Key Fish Habitat': '#005ce6', 'Remnant Native Vegetation': '#95c26f' },
+  sensitiveLand: { 'Environmental Protection Land': '#55ff00', 'Environmentally Sensitive Land': '#55ff00', 'Environmentally Significant Land': '#d1ff73', 'Natural resource sensitivity': '#b3e096' },
+  scenic: '#ffa699',
+  airportNoise: { 'ANEF 20–25': '#ffffbe', 'ANEF 25–30': '#ffd500', 'ANEF 30–35': '#ffa0a0', 'ANEF 35–40': '#f56464', 'ANEF 40+': '#e60000', Runway: '#686868' },
+  ols: 'none',
+  railCorridor: { 'Corridor protection zone': '#ffaa00', 'Infrastructure protection zone': '#c500ff', 'Sydney Metro corridor protection zone': '#168388' },
+  futureCorridor: '#ffff73',
+};
+const CONSTRAINT_FALLBACK_FILL = '#bdbbb3';
+/** Classes drawn as a hatch rather than a fill: buffers and zones around a thing rather than the thing. */
+const HATCHED_CLASS = /Proximity|Infrastructure protection|Environmentally Sensitive Land|Vegetation Buffer/;
+const constraintFill = (id: string, cls: string): string => {
+  const f = CONSTRAINT_FILL[id];
+  if (!f) return CONSTRAINT_FALLBACK_FILL;
+  if (typeof f === 'string') return f;
+  return f[cls] ?? Object.values(f)[0] ?? CONSTRAINT_FALLBACK_FILL;
+};
+const GROUP_ORDER: ConstraintGroup[] = ['hazard', 'soil', 'water', 'coast', 'ecology', 'aviation', 'corridor'];
+/** Drawing order on the maps: the broad washes first, the narrow features last, so a coastal area never hides a creek. */
+const DRAW_RANK: Record<string, number> = {
+  ass: 1, drinkingWater: 1, coastalEnvironment: 1, groundwater: 2, salinity: 2, subsidence: 2, coastalUse: 2, mineral: 3, scenic: 3, biodiversity: 4, sensitiveLand: 4,
+  flood: 5, airportNoise: 5, wetlands: 5, landslide: 6, riparian: 6, bushfire: 7, coastalWetlands: 7, ols: 8, railCorridor: 8, futureCorridor: 8,
+};
+const classCompare = (a: string, b: string) => a.localeCompare(b, 'en', { numeric: true });
+const GROUP_WORD: Record<ConstraintGroup, string> = { hazard: 'hazards', soil: 'soils', water: 'water', coast: 'coast', ecology: 'ecology', aviation: 'aviation', corridor: 'corridors' };
+/** A plan's name as the slide says it. */
+const shortEpi = (s: string) => s.replace(/Local Environmental Plan/i, 'LEP').replace(/State Environmental Planning Policy/i, 'SEPP');
+/** "Wetland" and "Wetlands" are the same word for the purpose of not saying it twice. */
+const sameWord = (a: string, b: string) => a.toLowerCase().replace(/s$/, '') === b.toLowerCase().replace(/s$/, '');
+const fmtIso = (iso?: string) => (iso ? new Date(iso).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : '');
+
+type ConstraintStatus = 'at-site' | 'nearby' | 'none-in-window' | 'not-mapped-by-lep' | 'unavailable';
+interface ConstraintFact {
+  id: string; title: string; group: ConstraintGroup; panel: 'A' | 'B'; epiBased: boolean; instrument?: string; absentNote?: string;
+  status: ConstraintStatus;
+  atSite: string[];
+  nearest: { cls: string; distanceM: number; bearing: number } | null;
+  classesInWindow: string[];
+  epi?: string; currency?: string;
+  /** For a plan's own map with nothing in the window: whether the plan maps it anywhere. */
+  lepMapsAny: boolean | null;
+  partial: boolean;
+}
+
+export function constraintsFacts(b: SlidesBundle) {
+  const c = b.constraints;
+  const p = b.panel;
+  const centre = p.center;
+  const centreLL = mercatorToLonLat(centre);
+  const k = mercatorScaleFactor(centreLL.lat);
+  const toM = (lon: number, lat: number) => lonLatToMercator({ lon, lat });
+  const siteRings = b.base.siteLots.features.flatMap((f) => geomRings(f.geometry));
+  const siteMerc = siteRings.flat().map(([lon, lat]) => toM(lon, lat));
+  const distFromSite = (lon: number, lat: number) => { const m = toM(lon, lat); let d = Infinity; for (const s of siteMerc) d = Math.min(d, Math.hypot(s.x - m.x, s.y - m.y)); return d / k; };
+  const bearingFrom = (lon: number, lat: number) => { const m = toM(lon, lat); return ((Math.atan2(m.x - centre.x, m.y - centre.y) * 180) / Math.PI + 360) % 360; };
+  const touchesSite = (rings: number[][][]) => {
+    if (rings.some((r) => pointInRing(centreLL.lon, centreLL.lat, r))) return true;
+    if (siteRings.some((sr) => sr.some(([lon, lat]) => rings.some((r) => pointInRing(lon, lat, r))))) return true;
+    for (const r of rings) { const step = Math.max(1, Math.floor(r.length / 200)); for (let i = 0; i < r.length; i += step) if (siteRings.some((sr) => pointInRing(r[i][0], r[i][1], sr))) return true; }
+    return false;
+  };
+  const facts: ConstraintFact[] = CONSTRAINT_DEFS.map((def) => {
+    const layer = c.layers.find((l) => l.id === def.id) ?? { id: def.id, features: [], errors: def.sources.map((s) => s.url), lepMapsAny: null };
+    const atSite = [...new Set(layer.features.filter((f) => touchesSite(f.rings)).map((f) => f.cls))];
+    let nearest: ConstraintFact['nearest'] = null;
+    if (!atSite.length) for (const f of layer.features) for (const r of f.rings) { const step = Math.max(1, Math.floor(r.length / 300)); for (let i = 0; i < r.length; i += step) { const d = distFromSite(r[i][0], r[i][1]); if (!nearest || d < nearest.distanceM) nearest = { cls: f.cls, distanceM: d, bearing: bearingFrom(r[i][0], r[i][1]) }; } }
+    if (nearest) nearest = { ...nearest, distanceM: Math.round(nearest.distanceM) };
+    const allFailed = layer.errors.length >= def.sources.length && !layer.features.length;
+    const status: ConstraintStatus = atSite.length ? 'at-site' : layer.features.length ? 'nearby' : allFailed ? 'unavailable' : def.epiBased && layer.lepMapsAny === false ? 'not-mapped-by-lep' : 'none-in-window';
+    const first = layer.features.find((f) => atSite.includes(f.cls)) ?? layer.features[0];
+    return {
+      id: def.id, title: def.title, group: def.group, panel: def.panel, epiBased: def.epiBased, instrument: def.instrument, absentNote: def.absentNote,
+      status, atSite, nearest, classesInWindow: [...new Set(layer.features.map((f) => f.cls))], epi: first?.epi, currency: first?.currency, lepMapsAny: layer.lepMapsAny,
+      partial: layer.errors.length > 0 && !allFailed,
+    };
+  });
+  // Noise sources: arterial and higher roads within 60 m of the boundary, railways within 120 m.
+  const near = (coords: number[][], maxM: number) => coords.some(([lon, lat]) => distFromSite(lon, lat) <= maxM);
+  const roads = new Map<string, number>();
+  for (const r of b.base.roads) if (r.name && r.hierarchy <= 3 && near(r.coords, 60)) roads.set(titleCase(r.name), Math.min(roads.get(titleCase(r.name)) ?? 99, r.hierarchy));
+  const railNear = b.base.rail.train.some((l) => near(l, 120));
+  const tramNear = b.base.rail.tram.some((l) => near(l, 60));
+  const lep = c.epiChecked ?? b.controls.epiName;
+  return {
+    windowM: { w: Math.round((p.wMm / 1000) * p.scale), h: Math.round((p.hMm / 1000) * p.scale) },
+    lep, lepShort: lep ? shortEpi(lep) : undefined,
+    constraints: facts,
+    atSite: facts.filter((f) => f.status === 'at-site'),
+    nearby: facts.filter((f) => f.status === 'nearby').sort((x, y) => (x.nearest?.distanceM ?? 0) - (y.nearest?.distanceM ?? 0)),
+    notMappedByLep: facts.filter((f) => f.status === 'not-mapped-by-lep'),
+    mappedElsewhere: facts.filter((f) => f.status === 'none-in-window' && f.epiBased && f.lepMapsAny === true),
+    noneInWindow: facts.filter((f) => f.status === 'none-in-window' && (!f.epiBased || f.lepMapsAny !== true)),
+    unavailable: facts.filter((f) => f.status === 'unavailable'),
+    noise: { roads: [...roads.entries()].map(([name, h]) => ({ name, hierarchy: h, word: roadWord(h) })).sort((x, y) => x.hierarchy - y.hierarchy), rail: railNear, tram: tramNear },
+    soil: c.soil, soilNote: c.soilNote,
+  };
+}
+
+export function constraintsSentences(b: SlidesBundle, f: ReturnType<typeof constraintsFacts>): string[] {
+  const out: string[] = [];
+  const clsList = (xs: string[]) => listWords(xs);
+  const instrumentOf = (x: ConstraintFact) => (x.epiBased ? (x.epi ? shortEpi(x.epi) : f.lepShort ?? 'the LEP') : x.instrument ?? 'the State layer');
+  const named = (x: ConstraintFact, classes: string[]) => `${x.title.toLowerCase()}${classes.length && !classes.every((cl) => sameWord(cl, x.title)) ? ` (${clsList(classes)})` : ''}`;
+  if (f.atSite.length) {
+    // grouped by the instrument and its currency, so a plan is named once
+    const groups = new Map<string, string[]>();
+    for (const x of f.atSite) { const key = `${instrumentOf(x)}'s map${x.currency ? ` (current to ${fmtIso(x.currency)})` : ''}`; (groups.get(key) ?? groups.set(key, []).get(key)!).push(named(x, x.atSite)); }
+    out.push(`Mapped at the site: ${[...groups.entries()].map(([inst, items]) => `${listWords(items)} on ${inst}`).join('; ')}.`);
+  } else out.push('No mapped hazard, soil, water, coastal, ecological or corridor constraint touches the site.');
+  if (f.nearby.length) {
+    const items = f.nearby.slice(0, 6).map((x) => `${named(x, x.nearest ? [x.nearest.cls] : [])} ${fmtNum(x.nearest!.distanceM)} m to the ${bearingName(x.nearest!.bearing)}`);
+    out.push(`Within the ${fmtNum(f.windowM.w)} × ${fmtNum(f.windowM.h)} m window but not on the site: ${items.join('; ')}${f.nearby.length > 6 ? `; and ${f.nearby.length - 6} more` : ''}.`);
+  }
+  if (f.notMappedByLep.length && f.lepShort) {
+    const notes = [...new Set(f.notMappedByLep.map((x) => x.absentNote).filter(Boolean))] as string[];
+    out.push(`${f.lepShort} has no map for ${clsList(f.notMappedByLep.map((x) => x.title.toLowerCase()))}${notes.length ? `; ${listWords(notes)}` : ''}.`);
+  }
+  if (f.mappedElsewhere.length && f.lepShort) out.push(`${f.lepShort} maps ${clsList(f.mappedElsewhere.map((x) => x.title.toLowerCase()))} elsewhere in the local government area, none within the window.`);
+  const stateNone = f.noneInWindow.filter((x) => !x.epiBased);
+  if (stateNone.length) out.push(`The State's maps put no ${clsList(stateNone.map((x) => x.title.toLowerCase()))} in the window.`);
+  const unknownLep = f.noneInWindow.filter((x) => x.epiBased);
+  if (unknownLep.length && !f.lep) out.push(`Whether the plan maps ${clsList(unknownLep.map((x) => x.title.toLowerCase()))} at all could not be checked: the plan's name was not read.`);
+  if (f.noise.roads.length || f.noise.rail || f.noise.tram) {
+    const groups = new Map<string, string[]>();
+    for (const r of f.noise.roads) (groups.get(r.word) ?? groups.set(r.word, []).get(r.word)!).push(r.name);
+    const roadPhrase = [...groups.entries()].map(([word, names]) => `${listWords(names)}, ${names.length > 1 ? `${word}s` : `${/^[aeiou]/i.test(word) ? 'an' : 'a'} ${word}`}`);
+    const bits = [...roadPhrase, f.noise.rail ? 'a railway within 120 m' : '', f.noise.tram ? 'a light rail line within 60 m' : ''].filter(Boolean);
+    out.push(`Noise sources: ${listWords(bits)}, to design the envelope and the glazing for.`);
+  } else out.push('No arterial road runs within 60 m of the site and no railway within 120 m: no major noise source is mapped beside it.');
+  if (f.soil) out.push(sameWord(f.soil.name, f.soil.process)
+    ? `The ${f.soil.sheet} soil landscape sheet maps the site as ${f.soil.name.toLowerCase()}; geology is not open data and stays a desk-study item.`
+    : `The soil landscape is ${titleCase(f.soil.name)} (${f.soil.process.toLowerCase()}), from the ${f.soil.sheet} soil landscape sheet; geology is not open data and stays a desk-study item.`);
+  else out.push(`Soil landscape: ${f.soilNote ?? 'not read'}; soils and geology stay desk-study items.`);
+  if (f.unavailable.length) out.push(`Could not be read when the deck was generated: ${clsList(f.unavailable.map((x) => x.title.toLowerCase()))}.`);
+  return out;
+}
+
+function constraintPanel(b: SlidesBundle, proj: Proj, f: ReturnType<typeof constraintsFacts>, which: 'A' | 'B', title: string): PanelOut {
+  const c = b.constraints;
+  const parts: string[] = [baseLayers(b.base, proj, b.panel, { lots: false })];
+  const legend: LegendEntry[] = [];
+  let hatchId = 0;
+  const defs = CONSTRAINT_DEFS.filter((d) => d.panel === which).sort((x, y) => (DRAW_RANK[x.id] ?? 5) - (DRAW_RANK[y.id] ?? 5));
+  for (const def of defs) {
+    const layer = c.layers.find((l) => l.id === def.id);
+    if (!layer?.features.length) continue;
+    const byClass = new Map<string, number[][][]>();
+    for (const ft of layer.features) (byClass.get(ft.cls) ?? byClass.set(ft.cls, []).get(ft.cls)!).push(...ft.rings);
+    for (const [cls, rings] of [...byClass.entries()].sort((x, y) => classCompare(x[0], y[0]))) {
+      const fill = constraintFill(def.id, cls);
+      const d = ringsPath(rings, proj);
+      // the legend names the class alone when the class already says what it is
+      const label = sameWord(cls, def.title) || (def.sources.length === 1 && def.sources[0].fixedClass) ? def.title
+        : cls.toLowerCase().includes(def.title.split(' ')[0].toLowerCase()) ? cls : `${def.title}: ${cls}`;
+      if (fill === 'none') {
+        parts.push(`<path d="${d}" fill="none" stroke="#a80000" stroke-width="0.5" fill-rule="evenodd"/>`);
+        legend.push({ swatch: swatchFill('none', '#a80000'), label });
+      } else if (HATCHED_CLASS.test(cls)) {
+        parts.push(hatchPath(d, `cp${which}${hatchId++}`, fill === '#ffff73' ? '#b3a000' : fill, bboxOf(rings, proj), 1.3));
+        legend.push({ swatch: swatchHatch(fill === '#ffff73' ? '#b3a000' : fill), label });
+      } else {
+        parts.push(`<path d="${d}" fill="${fill}" fill-opacity="${(DRAW_RANK[def.id] ?? 5) <= 2 ? 0.45 : 0.6}" stroke="${fill === '#ffffbe' || fill === '#ffff73' ? '#8a8a00' : '#555'}" stroke-width="0.15" fill-rule="evenodd"/>`);
+        legend.push({ swatch: swatchFill(fill), label });
+      }
+    }
+  }
+  if (which === 'B') {
+    // arterial roads emphasised, as noise sources
+    const arterials = b.base.roads.filter((r) => r.hierarchy <= 3);
+    if (arterials.length) {
+      parts.push(`<path d="${arterials.map((r) => ringsPath([r.coords], proj, false)).join('')}" fill="none" stroke="#4a4a4a" stroke-width="1.1" stroke-linecap="round" stroke-opacity="0.75"/>`);
+      legend.push({ swatch: swatchLine('#4a4a4a', 1.1), label: 'Arterial roads and above (traffic noise)' });
+    }
+  }
+  parts.push(baseLotsHairline(b, proj), overLayers(b.base, proj, b.panel), panelFurniture(b.panel));
+  const present = defs.filter((d) => c.layers.find((l) => l.id === d.id)?.features.length);
+  if (!present.length) parts.push(emptyNote([`No ${which === 'A' ? 'hazard or soil' : 'water, coastal, ecological, aviation or corridor'} map has anything in this window.`]));
+  const note = present.length ? `${present.length} of ${defs.length} layers present · 1:${fmtNum(b.panel.scale)}` : `none of ${defs.length} layers present · 1:${fmtNum(b.panel.scale)}`;
+  return { title, note, svg: parts.join('\n'), legend };
+}
+
+export function constraintsSlide(b: SlidesBundle): Slide {
+  const f = constraintsFacts(b);
+  const proj = panelProjector(b.panel);
+  const panels = [constraintPanel(b, proj, f, 'A', 'Hazards and soils'), constraintPanel(b, proj, f, 'B', 'Water, coast, ecology and corridors')];
+  const sentences = constraintsSentences(b, f);
+  const textHtml = sentences.map(para).join('') +
+    placeholder('Narrative — for the author: which constraints shape the envelope and the ground floor (flood levels, acid sulfate soils, the rail corridor, the coastal maps), which are only due diligence, and which studies to commission (geotechnical, contamination, flood, acoustic, bushfire).') +
+    `<div class="fine">Mapped constraints from the State's layers, not a site investigation: contamination, geotechnical, flood and acoustic studies are separate. Sources: NSW ePlanning hazard and protection layers (the plans' own maps, with a plan-wide check where the window is empty); NSW RFS bushfire prone land; SEPP (Resilience and Hazards) 2021 coastal maps; SEPP (Transport and Infrastructure) 2021 corridor and infrastructure protection zones; Subsidence Advisory NSW; NSW soil landscapes (Sydney sheet); roads, rail, water and cadastre from NSW Spatial Services. Retrieved ${b.generatedAt.slice(0, 10)}.</div>`;
+  const sub = [b.siteAddress, `${f.atSite.length} mapped at the site`, f.lepShort ?? ''].filter(Boolean).join(' · ');
+
+  const statusText = (x: ConstraintFact): string => {
+    if (x.status === 'at-site') return `Yes${x.atSite.every((cl) => sameWord(cl, x.title)) ? '' : ` — ${x.atSite.join(', ')}`}`;
+    if (x.status === 'nearby') return 'No';
+    if (x.status === 'not-mapped-by-lep') return `Not mapped by ${f.lepShort ?? 'this LEP'}`;
+    if (x.status === 'unavailable') return 'Could not be read';
+    return 'No';
+  };
+  const windowText = (x: ConstraintFact): string => {
+    if (x.status === 'at-site') return x.classesInWindow.length > 1 ? `also ${x.classesInWindow.filter((cl) => !x.atSite.includes(cl)).join(', ') || 'the same class'} nearby` : 'at the site';
+    if (x.status === 'nearby' && x.nearest) return `${sameWord(x.nearest.cls, x.title) ? '' : `${x.nearest.cls}, `}${fmtNum(x.nearest.distanceM)} m ${bearingName(x.nearest.bearing)}`;
+    if (x.status === 'not-mapped-by-lep') return 'no such map in the plan';
+    if (x.status === 'unavailable') return 'layer did not answer';
+    if (x.epiBased && x.lepMapsAny === true) return 'none in the window (mapped elsewhere in the LGA)';
+    if (x.epiBased && x.lepMapsAny === null) return 'none in the window';
+    return 'none in the window';
+  };
+  const sourceText = (x: ConstraintFact): string => {
+    const inst = x.epiBased ? (x.epi ? shortEpi(x.epi) : f.lepShort ?? 'LEP map') : x.instrument ?? '';
+    return `${inst}${x.currency ? ` · ${fmtIso(x.currency)}` : ''}${x.partial ? ' · part of the layer did not answer' : ''}`;
+  };
+  const rows = GROUP_ORDER.flatMap((g) => f.constraints.filter((x) => x.group === g)).map((x) =>
+    `<tr${x.status === 'at-site' ? ' class="hit"' : ''}><td>${esc(x.title)}</td><td>${esc(GROUP_WORD[x.group])}</td><td>${esc(statusText(x))}</td><td>${esc(windowText(x))}</td><td>${esc(sourceText(x))}</td></tr>`).join('');
+  const table = `<table class="da cons"><thead><tr><th style="width:52mm">Constraint</th><th style="width:18mm">Group</th><th style="width:60mm">At the site</th><th style="width:78mm">In the window</th><th>Instrument · map currency</th></tr></thead><tbody>${rows}</tbody></table>`;
+  const yTable = FIELD_Y + PANEL_TITLE_H + PANEL_H + LEGEND_H + GUTTER + 1;
+  const figureHtml = panels.map((p, i) => panelBlock(p, i, 0, `c${i}`)).join('\n') + `
+    <div class="abs ptitle" style="left:${FIELD_X}mm;top:${yTable}mm;width:${FIELD_W}mm">Constraints at the site<span class="pnote">every layer, with its answer · "not mapped by the LEP" means the plan has no such map, checked plan-wide</span></div>
+    <div class="abs" style="left:${FIELD_X}mm;top:${yTable + PANEL_TITLE_H}mm;width:${FIELD_W}mm">${table}</div>`;
+  return { id: '14_environmental_constraints', title: 'Environmental constraints', subtitle: sub, textHtml, figureHtml };
+}
+
 // ---- the deck -----------------------------------------------------------------
 
 export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; slides: Slide[] } {
   const facts = planningFacts(b);
-  const slides = [planningOverviewSlide(b, facts), planningControlsSlide(b, facts), terrainSlide(b), developmentSlide(b, facts), builtFormSlide(b, facts), movementSlide(b), greenSlide(b), peopleSlide(b)];
+  const slides = [planningOverviewSlide(b, facts), planningControlsSlide(b, facts), terrainSlide(b), developmentSlide(b, facts), builtFormSlide(b, facts), movementSlide(b), greenSlide(b), constraintsSlide(b), peopleSlide(b)];
   const t = tpl();
   const footerLeft = ['SITE ANALYST — OVERALL ANALYSIS', b.siteAddress, meta.client ? `for ${meta.client}` : '', meta.jobNo ? `job ${meta.jobNo}` : ''].filter(Boolean).join(' · ');
   const pages = slides.map((s, i) => `
@@ -2294,6 +2528,10 @@ export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; 
   table.da .r { text-align: right; padding-right: 3mm; font-variant-numeric: tabular-nums; }
   table.da .more { color: #555; font-style: italic; }
   table.da .dot { display: inline-block; width: 2.2mm; height: 2.2mm; border-radius: 50%; border: 0.25mm solid; margin-right: 1.2mm; vertical-align: -0.3mm; }
+  table.da.cons { font-size: 2.2mm; line-height: 1.22; }
+  table.da.cons th, table.da.cons td { padding: 0.7mm 1.4mm 0.7mm 0; }
+  table.da.cons tr.hit td { font-weight: 600; }
+  table.da.cons tr.hit td:first-child { border-left: 0.6mm solid ${t.site}; padding-left: 1.2mm; }
 </style></head>
 <body>${pages}</body></html>`;
   return { html, slides };
@@ -2316,6 +2554,7 @@ export function slidesFacts(b: SlidesBundle) {
     development: (() => { const d = developmentFacts(b); return { ...d, sentences: developmentSentences(b, d, facts) }; })(),
     people: peopleFacts(b),
     movement: (() => { const f = movementFacts(b); return { ...f, sentences: movementSentences(b, f) }; })(),
+    constraints: (() => { const f = constraintsFacts(b); return { ...f, sentences: constraintsSentences(b, f) }; })(),
     green: (() => { const f = greenFacts(b); return { ...f, openSpace: { ...f.openSpace, spaces: f.openSpace.spaces.map(({ rings: _r, ...s }) => s), nearest: f.openSpace.nearest && (({ rings: _r, ...s }) => s)(f.openSpace.nearest), largest: f.openSpace.largest && (({ rings: _r, ...s }) => s)(f.openSpace.largest) }, sentences: greenSentences(b, f) }; })(),
     builtForm: (() => { const f = builtFormFacts(b, facts); return { ...f, sentences: builtFormSentences(b, f) }; })(),
     terrain: (() => { const f = terrainFacts(b); return f ? { ...f, sections: f.sections.map((s) => ({ ...s, samples: s.samples.filter((_, i) => i % 4 === 0) })), sentences: terrainSentences(b, f) } : { available: false, sentences: terrainSentences(b, f) }; })(),

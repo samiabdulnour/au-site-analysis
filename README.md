@@ -511,7 +511,18 @@ isochrones again, four figures (the canopy on the site's block, the share of
 the window that is public open space, the nearest park, the facilities), a
 table of the nearest open spaces with area, distance and walk band, and a
 wide strip of the 2022 tree canopy by mesh block, against the Region Plan's
-40 % target. Then *development activity*: every
+40 % target. Then *environmental constraints*: two maps of what the
+State's hazard, protection, coastal and corridor layers put around the site
+(bushfire prone land, flood planning, landslide, acid sulfate soils,
+salinity, mine subsidence, groundwater and drinking-water catchments,
+riparian land and wetlands, the coastal maps, biodiversity and scenic
+protection, airport noise and obstacle limitation surfaces, rail corridor
+and future infrastructure corridors) and a table that gives every layer a
+definite answer — at the site with its class, nearest in the window, none in
+the window, or not mapped by this LEP at all, checked plan-wide so an
+absence is stated rather than implied — with the arterial roads and
+railways beside the site as noise sources and the soil landscape at the
+site. Then *development activity*: every
 application lodged in the council area over the last five years, from the
 Planning Portal's Online DA feed, clipped to the window around the site. The
 ones of a scale that shapes the context — four storeys, ten dwellings or

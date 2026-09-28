@@ -107,6 +107,12 @@ export async function queryByGeometry(
   return esriToGeoJson(data);
 }
 
+/** How many features of a layer match a where clause, without fetching them. */
+export async function countWhere(layerUrl: string, where: string): Promise<number> {
+  const data = await getJson(`${layerUrl}/query`, { f: 'json', where, returnCountOnly: 'true' });
+  return Number(data.count ?? 0);
+}
+
 export async function queryWhere(
   layerUrl: string,
   where: string,

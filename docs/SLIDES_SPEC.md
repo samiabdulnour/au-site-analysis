@@ -445,11 +445,12 @@ Open-Meteo archive (ERA5): `https://archive-api.open-meteo.com/v1/archive?latitu
 
 Implemented: slides 03 (planning overview), 04 (planning controls), 06
 (topography), 07 (development activity), 08 (built form), 09 (movement), 10
-(green and public domain) and 16 (people and market) —
+(green and public domain), 14 (environmental constraints) and 16 (people and
+market) —
 `src/render/slides.ts`, `src/render/minimap.ts`, `src/render/charts.ts`,
 `src/render/terrainMap.ts`, `src/fetch/planning.ts`, `src/fetch/terrain.ts`,
 `src/fetch/buildings.ts` with `src/py/overture_buildings.py`,
-`src/fetch/movement.ts`, `src/fetch/greenSpace.ts`, `src/fetch/da.ts`, `src/fetch/abs.ts`, `src/fetch/tzp24.ts`,
+`src/fetch/movement.ts`, `src/fetch/greenSpace.ts`, `src/fetch/constraints.ts`, `src/fetch/da.ts`, `src/fetch/abs.ts`, `src/fetch/tzp24.ts`,
 `src/fetch/valuation.ts`, `src/fetch/schools.ts` (gathered by
 `src/fetch/people.ts`), `runSlidesPipeline` in `src/pipeline.ts`; `--type
 slides` on the CLI and the `slides` drawing on the web. The maps use the
@@ -542,6 +543,36 @@ Street trees come from the same council registry as the site sheet
 (`src/fetch/trees.ts`), drawn at crown size: 2,442 in the Waterloo window.
 Distances are from the site's boundary, so a park across the lane reads as
 adjoining rather than 0 m.
+
+Slide 14 reads twenty-one constraint layers over the planning panel from a
+registry in `src/fetch/constraints.ts`: the plans' own maps on ePlanning
+(`Planning_Portal_Hazard` 230 flood planning and 232 landslide;
+`Planning_Portal_Protection` 234 acid sulfate soils, 241 salinity, 238
+mineral land, 237 groundwater vulnerability, 236 drinking water catchment,
+the six riparian and watercourse layers 240/1024/784/751/740/590 that
+different plans use, 244 wetlands, 243/768/591 biodiversity, 245/604/737
+environmentally sensitive land, 242 scenic protection, 235 airport noise,
+239 obstacle limitation surface), and the State layers (229 the RFS bushfire
+prone land map, Subsidence Advisory 248, the Resilience and Hazards SEPP's
+coastal wetlands, littoral rainforest, coastal environment and coastal use
+areas, the Sydney Trains corridor and infrastructure protection zones and
+the Sydney Metro corridor protection zone, the Transport and Infrastructure
+SEPP's future infrastructure corridors). The State layers reject a query
+that names the plan fields, so each source says whether it carries them.
+A plan's map that is empty in the window is followed by one
+`returnCountOnly` query for the plan's name, so the table can say "not
+mapped by this LEP" (twelve plans map flood planning, five map ANEF
+contours, eleven map an obstacle limitation surface) rather than leave a
+blank; the check runs against the local plan found in the window plus the
+plan at the site, since the zone at the site may come from a SEPP (Three
+Ports land at Botany). The two maps draw the statutory colours read from
+the ePlanning renderers, broad washes first and narrow features last;
+proximity areas, infrastructure protection zones and vegetation buffers
+hatch. The soil landscape comes from the Sydney 1:100,000 sheet
+(`Soil_Landscape/Sydney`), the one published as a service; outside it the
+slide says so. Noise sources are the arterial roads within 60 m of the
+boundary and railways within 120 m, from the base layers already fetched.
+Geology, contamination and the airports' ANEF contours remain by hand.
 
 Slide 16 looks the site up in the ASGS (SA2, LGA, suburb, capital-city
 region), reads the five census tables for the SA2, the LGA and the capital

@@ -28,6 +28,7 @@ import { fetchDemGrid, type DemGrid } from './fetch/terrain.js';
 import { fetchBuildings, type BuildingsData } from './fetch/buildings.js';
 import { fetchMovement, type MovementData } from './fetch/movement.js';
 import { fetchGreenSpace, type GreenData } from './fetch/greenSpace.js';
+import { fetchConstraints, checkLepCoverage, type ConstraintsData } from './fetch/constraints.js';
 import type { SiteControls } from './fetch/nsw.js';
 
 export interface CategorizedPoint extends NamedPoint { cat: string | null }
@@ -539,6 +540,8 @@ export interface SlidesBundle {
   movement: MovementData;
   /** Tree canopy by mesh block over the wide strip; open space, Green Grid assets, facilities, NPWS estate and street trees over the tall panel. */
   green: GreenData;
+  /** Hazard, protection, coastal and corridor layers over the planning panel, with the plan-wide coverage check, and the soil landscape at the site. */
+  constraints: ConstraintsData;
   /** The wide walking-reach strip: its panel, a lighter base (major roads, rail, stations, water) and the suburbs to label. */
   wide: { panel: Panel; base: BaseData; suburbs: GeoJSONFC };
   warnings: string[];
@@ -559,6 +562,14 @@ export interface SlidesPipelineOpts {
   /** How far back the development-activity feed reaches (default five years, never before July 2021). */
   daYears?: number;
   log?: (msg: string) => void;
+}
+
+/** The local environmental plans in the window, most common first: the zoning layer's plan names, then the property report's. */
+function principalLeps(zoning: GeoJSONFC, property: PropertyReport | null): string[] {
+  const counts = new Map<string, number>();
+  for (const f of zoning.features) { const n = String(f.properties?.EPI_NAME ?? ''); if (/Local Environmental Plan/i.test(n)) counts.set(n, (counts.get(n) ?? 0) + 1); }
+  for (const g of property?.epi ?? []) for (const r of g.results ?? []) { const n = String((r as any)['EPI Name'] ?? ''); if (/Local Environmental Plan/i.test(n) && !counts.has(n)) counts.set(n, 0); }
+  return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([n]) => n);
 }
 
 export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpts): Promise<SlidesBundle> {
@@ -601,7 +612,8 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
   const from = [fromDate.toISOString().slice(0, 10), PORTAL_MANDATED].sort()[1];
 
   const emptyGreen: GreenData = { canopy: { blocks: [], covered: false, year: 2022, source: 'Greater Sydney Tree Canopy Cover 2022 (NSW ePlanning)' }, openSpace: [], openSpaceWide: [], greenGrid: [], parkPoints: [], facilities: [], npws: [], trees: { points: [] }, fetchedAt: new Date().toISOString() };
-  const [zoning, hob, heritage, shr, policy, water, lots, roads, railLines, stations, context, property, controls, proposals, feed, people, dem, contourSet, buildings, movement, green, wideRoads, wideRail, wideStations, wideWater, wideSuburbs] = await Promise.all([
+  const emptyConstraints: ConstraintsData = { layers: [], soil: null, fetchedAt: new Date().toISOString() };
+  const [zoning, hob, heritage, shr, policy, water, lots, roads, railLines, stations, context, property, controls, proposals, feed, people, dem, contourSet, buildings, movement, green, constraints, wideRoads, wideRail, wideStations, wideWater, wideSuburbs] = await Promise.all([
     soft(fetchZoningDetailed(extent), emptyFC, 'zoning'),
     soft(fetchHobDetailed(extent), emptyFC, 'height of building'),
     soft(fetchHeritageDetailed(extent), emptyFC, 'heritage'),
@@ -623,6 +635,7 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
     soft(fetchBuildings(daExtent, log), { source: 'none' as const, buildings: [], fetchedAt: new Date().toISOString() }, 'buildings'),
     fetchMovement(daExtent, geo.center, log),
     soft(fetchGreenSpace(daExtent, wideExtent, log), emptyGreen, 'green and public domain'),
+    soft(fetchConstraints(extent, mercatorToLonLat(geo.center), log), emptyConstraints, 'environmental constraints'),
     soft(fetchRoads(wideExtent, 'roadnamebase IS NOT NULL AND functionhierarchy <= 5'), [], 'wide roads'),
     soft(fetchRailLines(wideExtent), { train: [], tram: [] }, 'wide rail lines'),
     soft(fetchTrainStations(wideExtent), [], 'wide stations'),
@@ -633,6 +646,8 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
     context.lga?.name ? fetchHousingTarget(context.lga.name) : Promise.resolve(null),
     // The one council with its DCP as open data so far; the hook is per LGA.
     context.lga?.name === 'SYDNEY' ? fetchCityOfSydneyDcp(extent, mercatorToLonLat(geo.center), log) : Promise.resolve(null),
+    // Which of the plan's hazard and protection maps exist at all, for the constraints slide: checked against the local plan in the window (the zone at the site may come from a SEPP) and the plan at the site.
+    constraints.layers.length ? soft(checkLepCoverage(constraints, [...principalLeps(zoning, property), ...(controls.epiName ? [controls.epiName] : [])], log), undefined, 'constraint coverage check') : Promise.resolve(undefined),
   ]);
   const applications = feed ? clipToExtent(feed.records, daExtent) : [];
   const daMeta = feed ? { council: feed.council, from: feed.from, to: feed.to, total: feed.total, complete: feed.complete, fetchedAt: feed.fetchedAt } : null;
@@ -655,7 +670,7 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
     base: { water, lots, roads, rail: railLines, stations, siteLots },
     controls, property, context, housingTarget, cos,
     daPanel, applications, daMeta, proposals, people,
-    terrain: { dem, contours: contourSet.lines, contourIntervalM: contourSet.intervalM, contourSource: contourSet.source, contourAttribution: contourSet.attribution }, buildings, movement, green,
+    terrain: { dem, contours: contourSet.lines, contourIntervalM: contourSet.intervalM, contourSource: contourSet.source, contourAttribution: contourSet.attribution }, buildings, movement, green, constraints,
     wide: { panel: widePanel, base: { water: wideWater, lots: emptyFC, roads: wideRoads, rail: wideRail, stations: wideStations, siteLots }, suburbs: wideSuburbs },
     warnings,
   };
