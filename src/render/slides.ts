@@ -3756,9 +3756,189 @@ export function ocSlide(b: SlidesBundle, planning: PlanningFacts): Slide {
   return { id: '17_opportunities_constraints', title: 'Opportunities and constraints', subtitle: sub, textHtml: text, figureHtml: figure };
 }
 
+// ---- slide 18: sources -------------------------------------------------------
+
+interface SourceRow { dataset: string; used: string; currency: string; retrieved: string; attribution: string }
+interface SourceGroup { publisher: string; rows: SourceRow[] }
+
+const ATTR = {
+  dphi: '© State of NSW (Planning, Housing and Infrastructure) · CC BY 4.0',
+  portal: '© State of NSW (Planning, Housing and Infrastructure) · Planning Portal terms of use',
+  spatial: '© Spatial Services, NSW Department of Customer Service · CC BY 4.0',
+  vg: '© State of NSW (Valuer General) · CC BY 4.0',
+  tfnsw: '© Transport for NSW · CC BY 4.0',
+  education: '© State of NSW (Department of Education) · CC BY 4.0',
+  dcceew: '© State of NSW (Climate Change, Energy, the Environment and Water) · CC BY 4.0',
+  heritage: '© State of NSW (Heritage NSW) · CC BY 4.0',
+  abs: '© Commonwealth of Australia (Australian Bureau of Statistics) · CC BY 4.0',
+  overture: '© Overture Maps Foundation · ODbL and CDLA Permissive 2.0',
+  osm: '© OpenStreetMap contributors · ODbL',
+  valhalla: 'FOSSGIS Valhalla instance on OpenStreetMap data · ODbL',
+  none: '—',
+};
+
+/** A date as the slide prints it, from an ISO string, epoch milliseconds or the property API's d-m-yyyy. */
+function fmtAnyDate(v: unknown): string | undefined {
+  if (v === undefined || v === null || v === '') return undefined;
+  if (typeof v === 'number' && Number.isFinite(v) && v > 1e11) return fmtIso(new Date(v).toISOString().slice(0, 10));
+  const s = String(v).trim();
+  const dmy = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+  if (dmy) return fmtIso(`${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`);
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return fmtIso(s.slice(0, 10));
+  return s;
+}
+
+export function sourcesFacts(b: SlidesBundle, planning: PlanningFacts) {
+  const day = (iso?: string) => (iso ? iso.slice(0, 10) : '');
+  const deckDay = day(b.generatedAt);
+  const retrieved = (iso?: string) => { const d = day(iso); return d && d !== deckDay ? `${d} (cache)` : deckDay; };
+  const centreLL = mercatorToLonLat(b.panel.center);
+  const contains = (f: GeoJSONFeature) => geomRings(f.geometry).some((r) => pointInRing(centreLL.lon, centreLL.lat, r));
+  type LepStamp = { epi?: string; currency?: string; amendment?: string; where: 'at the site' | 'in the window' };
+  const stampOf = (f: GeoJSONFeature, where: LepStamp['where']): LepStamp => ({ epi: f.properties?.EPI_NAME ? String(f.properties.EPI_NAME) : undefined, currency: fmtAnyDate(f.properties?.CURRENCY_DATE), amendment: f.properties?.AMENDMENT ? String(f.properties.AMENDMENT) : undefined, where });
+  const layerStamp = (fc: SlidesBundle['zoning']): LepStamp | null => {
+    const at = fc.features.find(contains);
+    if (at) return stampOf(at, 'at the site');
+    let best: GeoJSONFeature | undefined;
+    for (const f of fc.features) if (!best || Number(f.properties?.CURRENCY_DATE ?? 0) > Number(best.properties?.CURRENCY_DATE ?? 0)) best = f;
+    return best ? stampOf(best, 'in the window') : null;
+  };
+  const propStamp = (re: RegExp): LepStamp | null => {
+    for (const h of b.property?.epi ?? []) if (re.test(h.layerName)) { const r = h.results?.[0] as Record<string, string> | undefined; if (r) return { epi: r['EPI Name'], currency: fmtAnyDate(r['Currency Date']), amendment: r['Amendment'], where: 'at the site' }; }
+    return null;
+  };
+  const lepLine = (x: LepStamp | null, fallback: string) => (x ? `${x.epi ? shortEpi(x.epi) : 'LEP'}${x.currency ? `, map current ${x.currency}` : ''}${x.amendment ? ` (${x.amendment})` : ''}${x.where === 'in the window' ? ' — latest in the window' : ''}` : fallback);
+  const n = (k: number, one: string, many = `${one}s`) => (k === 0 ? `no ${many}` : `${fmtNum(k)} ${k === 1 ? one : many}`);
+
+  const groups: SourceGroup[] = [];
+
+  // NSW Planning.
+  const A: SourceRow[] = [];
+  const zone = planning.zoneAtSite ? { epi: planning.zoneAtSite.epi, currency: fmtAnyDate(planning.zoneAtSite.currency), amendment: planning.zoneAtSite.amendment, where: 'at the site' as const } : layerStamp(b.zoning);
+  A.push({ dataset: 'Land zoning map (EPI Primary Planning Layers)', used: '03 · 04 · 10 · 17', currency: lepLine(zone, 'no zone mapped at the site'), retrieved: deckDay, attribution: ATTR.dphi });
+  A.push({ dataset: 'Height of buildings map', used: '03 · 04 · 08 · 17', currency: lepLine(layerStamp(b.hob) ?? propStamp(/Height of Building/i), 'no height of buildings map at the site'), retrieved: deckDay, attribution: ATTR.dphi });
+  const fsr = propStamp(/Floor Space Ratio/i), lot = propStamp(/Lot Size/i);
+  A.push({ dataset: 'Floor space ratio and minimum lot size maps', used: '04 · 11 · 17', currency: [fsr ? `FSR: ${lepLine(fsr, '')}` : 'no FSR map at the site', lot ? `lot size: ${lepLine(lot, '')}` : 'no lot size map at the site'].join('; '), retrieved: deckDay, attribution: ATTR.dphi });
+  A.push({ dataset: 'Heritage map (items and conservation areas)', used: '03 · 04 · 17', currency: `${lepLine(layerStamp(b.heritage), 'no heritage map in the window')}; ${n(b.heritage.features.length, 'feature')} in the window`, retrieved: deckDay, attribution: ATTR.dphi });
+  if (b.shr.features.length) A.push({ dataset: 'State Heritage Register curtilages (Heritage NSW)', used: '03 · 17', currency: `${n(b.shr.features.length, 'listing')} in the window; the register as published`, retrieved: deckDay, attribution: ATTR.heritage });
+  const policySources = [...new Set(b.policy.map((a) => a.source))];
+  A.push({ dataset: 'Housing-policy and precinct maps (TOD sites, accelerated precincts, town centres, SSD sites, planning precincts)', used: '03 · 07 · 17', currency: policySources.length ? `in the window: ${policySources.map((s) => s.replace(/^SEPP \(Housing\) 2021 — /, 'Housing SEPP: ').replace(/^SEPP \(Planning Systems\) 2021 — /, 'Planning Systems SEPP: ')).join('; ')}` : 'none of these maps reaches the window', retrieved: deckDay, attribution: ATTR.dphi });
+  const afEpi = b.movement.activeFrontages.features[0]?.properties?.EPI_NAME as string | undefined;
+  A.push({ dataset: 'Development control layers: DCP boundaries, contributions plans, active street frontages', used: '04 · 09 · 17', currency: [b.context.dcp ? b.context.dcp.name : 'no DCP mapped at the site', b.context.contributions.length ? n(b.context.contributions.length, 'contributions entry', 'contributions entries') : 'no contributions plan mapped', afEpi ? `active frontages of ${shortEpi(afEpi)}` : 'no active frontage in the window'].join('; '), retrieved: deckDay, attribution: ATTR.dphi });
+  const withFeatures = b.constraints.layers.filter((l) => l.features.length);
+  const lepStamps = [...new Set(withFeatures.flatMap((l) => l.features.filter((f) => f.epi && f.currency).map((f) => `${shortEpi(f.epi!)} (${fmtAnyDate(f.currency)})`)))];
+  const stateLayers = withFeatures.map((l) => CONSTRAINT_DEFS.find((d) => d.id === l.id)).filter((d): d is (typeof CONSTRAINT_DEFS)[number] => Boolean(d && !d.epiBased)).map((d) => d.instrument ?? d.title);
+  A.push({ dataset: 'Hazard, protection, coastal and corridor maps (21 layers: the plans\' own maps, RFS bushfire prone land, mine subsidence districts, the coastal and transport SEPPs)', used: '14 · 17', currency: `${n(b.constraints.layers.length, 'layer')} read, ${withFeatures.length} with features in the window${lepStamps.length ? `; LEP maps current ${[...new Set(lepStamps)].join(', ')}` : ''}${stateLayers.length ? `; State layers: ${[...new Set(stateLayers)].join(', ')}` : ''}${b.constraints.epiChecked ? `; absence checked plan-wide against ${shortEpi(b.constraints.epiChecked)}` : ''}`, retrieved: retrieved(b.constraints.fetchedAt), attribution: ATTR.dphi });
+  A.push({ dataset: 'Greater Sydney tree canopy by modified mesh block', used: '10', currency: b.green.canopy.covered ? `${b.green.canopy.year} edition (${b.green.canopy.source.replace(/ \(NSW ePlanning\)/, '')})` : 'the Greater Sydney canopy dataset does not reach this site', retrieved: retrieved(b.green.fetchedAt), attribution: ATTR.dphi });
+  A.push({ dataset: 'Public spaces: Green Grid assets, open-space and public-facility points', used: '10 · 17', currency: `${n(b.green.greenGrid.length, 'Green Grid asset')}, ${n(b.green.parkPoints.length, 'open-space point')}, ${n(b.green.facilities.filter((f) => f.source === 'eplanning').length, 'facility point')} in the window; as published`, retrieved: retrieved(b.green.fetchedAt), attribution: ATTR.dphi });
+  const pl = b.site.publicLand;
+  A.push({ dataset: 'Government land: State land (GPI), Crown land and Crown reserves', used: '11', currency: pl.length ? `${n(pl.filter((x) => x.kind === 'state').length, 'State parcel')}, ${n(pl.filter((x) => x.kind === 'crown').length, 'Crown land parcel')}, ${n(pl.filter((x) => x.kind === 'reserve').length, 'Crown reserve')} in the block; as published` : 'none in the block', retrieved: retrieved(b.site.fetchedAt), attribution: ATTR.dphi });
+  A.push({ dataset: 'Planning proposals (public exhibition layer)', used: '07', currency: b.proposals.length ? `${n(b.proposals.length, 'proposal')} on exhibition in the window` : 'none on exhibition in the window', retrieved: deckDay, attribution: ATTR.dphi });
+  A.push({ dataset: 'Planning Portal property report API (the layers at the geocoded point)', used: '04 · 14', currency: b.property ? `${n(b.property.epi.length + b.property.sepp.length, 'layer hit')} at the point; the maps\' own currency dates` : 'did not answer for this run', retrieved: deckDay, attribution: ATTR.portal });
+  A.push({ dataset: 'Online DA API (development applications lodged through the portal)', used: '07 · 17', currency: b.daMeta ? `${b.daMeta.council}: ${n(b.daMeta.total, 'application')} lodged ${fmtIso(b.daMeta.from)} to ${fmtIso(b.daMeta.to)}${b.daMeta.complete ? '' : ' (feed incomplete)'}` : 'not read for this run', retrieved: retrieved(b.daMeta?.fetchedAt), attribution: ATTR.portal });
+  A.push({ dataset: 'Council housing target (department snapshot page)', used: '04', currency: b.housingTarget ? `${fmtNum(b.housingTarget.homes)} new homes by ${b.housingTarget.by}` : 'no snapshot page found for this council', retrieved: deckDay, attribution: ATTR.dphi });
+  groups.push({ publisher: 'NSW Department of Planning, Housing and Infrastructure — ePlanning spatial services and the Planning Portal', rows: A });
+
+  // NSW Spatial Services.
+  const B: SourceRow[] = [];
+  B.push({ dataset: 'Geocoded addressing theme (the site point)', used: 'all', currency: `matched ${b.geocode.matchedAddresses.slice(0, 2).map((a) => titleCase(a)).join('; ')}${b.geocode.points.length > 1 ? ` (${b.geocode.points.length} address points)` : ''}`, retrieved: deckDay, attribution: ATTR.spatial });
+  B.push({ dataset: 'Land parcel and property theme: lots, plan lot areas, easement geometry', used: 'all maps · 11', currency: `${b.lotDescription}; ${n(b.base.lots.features.length, 'lot')} in the window; ${n(b.site.easements.length, 'easement')} in the site plan\'s window; current at retrieval`, retrieved: deckDay, attribution: ATTR.spatial });
+  B.push({ dataset: 'Transport theme: roads by function, railways, stations', used: 'all maps · 09 · 13 · 17', currency: `${n(b.base.roads.length, 'road segment')}, ${n(b.base.rail.train.length + b.base.rail.tram.length, 'rail line')}, ${n(b.base.stations.length, 'station')} in the window; current at retrieval`, retrieved: deckDay, attribution: ATTR.spatial });
+  B.push({ dataset: 'Water theme: water bodies, coastline, hydro names', used: 'all maps · 13', currency: `${n(b.base.water.features.length, 'water feature')} in the window; current at retrieval`, retrieved: deckDay, attribution: ATTR.spatial });
+  B.push({ dataset: 'Administrative boundaries: LGA, suburb, Local Aboriginal Land Council, district', used: '04 · 09 · 16', currency: [b.context.lga?.name ? titleCase(b.context.lga.name) : '', b.context.suburb?.name ? titleCase(b.context.suburb.name) : '', b.context.lalc?.local ? `${titleCase(b.context.lalc.local)} LALC` : '', b.context.district ? `${b.context.district} district` : ''].filter(Boolean).join(', ') || 'not resolved', retrieved: deckDay, attribution: ATTR.spatial });
+  const foi = b.green.facilities.filter((f) => f.source === 'foi').length;
+  B.push({ dataset: 'Features of interest: complexes and parks', used: '10', currency: `${n(foi, 'facility', 'facilities')} from the complexes layer; park names`, retrieved: retrieved(b.green.fetchedAt), attribution: ATTR.spatial });
+  const dem = b.terrain.dem;
+  B.push({ dataset: 'NSW 5 m elevation model (image service)', used: '06 · 08 · 11 · 13 · 17', currency: dem ? `${dem.source}; ${fmtNum(dem.cols)} × ${fmtNum(dem.rows)} cells over the tall panel` : 'not read for this run', retrieved: deckDay, attribution: ATTR.spatial });
+  if (!/City of Sydney/i.test(b.terrain.contourSource ?? '')) B.push({ dataset: 'Contours', used: '06', currency: b.terrain.contours.length ? `${b.terrain.contourSource ?? 'NSW contours'}${b.terrain.contourIntervalM ? `, ${b.terrain.contourIntervalM} m interval` : ''}; ${n(b.terrain.contours.length, 'line')} in the window` : 'none in the window', retrieved: deckDay, attribution: ATTR.spatial });
+  const img = b.site.imagery;
+  B.push({ dataset: 'NSW Imagery (aerial) and the imagery-dates layer (SIX Maps)', used: '11', currency: img ? `${titleCase(img.block)} block${img.date ? `, captured ${fmtIso(img.date)}` : ''}${img.resolutionCm ? `, ${img.resolutionCm} cm` : ''}` : b.site.aerial ? 'capture date not published for this block' : 'no aerial for this run', retrieved: retrieved(b.site.fetchedAt), attribution: ATTR.spatial });
+  groups.push({ publisher: 'NSW Spatial Services (Department of Customer Service) — Spatial Collaboration Portal and SIX Maps', rows: B });
+
+  // Other State agencies.
+  const C: SourceRow[] = [];
+  const lv = b.people?.landValues;
+  const vals = lv ? [...lv.values].sort((x, y) => x.year - y.year) : [];
+  C.push({ dataset: 'Valuer General: land values of the property and the property sales register', used: '11 · 16 · 17', currency: [lv && vals.length ? `${n(vals.length, 'land value')}, base dates ${vals[0].baseDate} to ${vals[vals.length - 1].baseDate}` : 'no land value at the point', b.people ? `${n(b.people.sales.length, 'sale')} within ${b.people.salesRadiusM} m` : 'sales not read'].join('; '), retrieved: retrieved(b.people?.fetchedAt), attribution: ATTR.vg });
+  C.push({ dataset: 'Transport for NSW: bus stops (Trip Planner API) and Travel Zone Projections 2024', used: '09 · 16', currency: [b.movement.busStopSource === 'tfnsw' ? `${n(b.movement.busStops.length, 'bus stop')} in the window` : b.movement.busStopSource === 'osm' ? 'the Transport for NSW key was not set, so the stops came from OpenStreetMap' : 'bus stops: neither Transport for NSW nor OpenStreetMap answered', b.people?.tzp24 ? `${b.people.tzp24.source}, to 2066` : 'projections not read'].join('; '), retrieved: retrieved(b.movement.fetchedAt), attribution: ATTR.tfnsw });
+  C.push({ dataset: 'Department of Education: government schools master dataset (locations and enrolments)', used: '16', currency: b.people ? `${n(b.people.schools.length, 'government school')} within ${b.people.schoolsRadiusM / 1000} km; latest enrolment year in the dataset` : 'not read', retrieved: retrieved(b.people?.fetchedAt), attribution: ATTR.education });
+  C.push({ dataset: 'National Parks and Wildlife Service estate (managed land)', used: '10 · 17', currency: b.green.npws.length ? `${n(b.green.npws.length, 'reserve')} in the window` : 'no reserve in the window', retrieved: retrieved(b.green.fetchedAt), attribution: ATTR.dcceew });
+  C.push({ dataset: 'Soil landscapes (eSPADE), Sydney 1:100,000 sheet', used: '14', currency: b.constraints.soil ? `${titleCase(b.constraints.soil.name)} landscape at the site (${b.constraints.soil.sheet} sheet)` : (b.constraints.soilNote ?? 'the site lies outside the published sheet'), retrieved: retrieved(b.constraints.fetchedAt), attribution: ATTR.dcceew });
+  groups.push({ publisher: 'Other NSW agencies', rows: C });
+
+  // Commonwealth.
+  const D: SourceRow[] = [];
+  const p = b.people;
+  D.push({ dataset: 'ABS Census of Population and Housing 2021 (tables G01, G02, G36, G37, G62)', used: '16', currency: p ? `${[p.sa2 ? `SA2 ${p.sa2.name}` : '', p.lga ? `LGA ${p.lga.name}` : '', p.benchmark ? p.benchmark.name : ''].filter(Boolean).join(', ')}; census night 10 August 2021` : 'not read', retrieved: retrieved(p?.fetchedAt), attribution: ATTR.abs });
+  const erpYears = p?.erpSa2.length ? `${p.erpSa2[0].year}–${p.erpSa2[p.erpSa2.length - 1].year}` : '';
+  D.push({ dataset: 'ABS estimated resident population (annual), SEIFA 2021 and ASGS 2021 boundaries', used: '16', currency: p ? `${erpYears ? `population ${erpYears}` : 'no population series'}; SEIFA 2021 ${p.seifaSa2 ? 'read' : 'not read'}; regions ${[p.regions.sa2?.name, p.regions.lga?.name, p.regions.gccsa?.name].filter(Boolean).join(', ')}` : 'not read', retrieved: retrieved(p?.fetchedAt), attribution: ATTR.abs });
+  groups.push({ publisher: 'Australian Bureau of Statistics', rows: D });
+
+  // Councils.
+  const E: SourceRow[] = [];
+  if (b.cos) E.push({ dataset: 'City of Sydney open data: Sydney DCP 2012 layers (storeys, frontage heights, active frontages, setbacks)', used: '04', currency: `${b.cos.dcpNames.length ? b.cos.dcpNames.slice(0, 3).join(', ') + (b.cos.dcpNames.length > 3 ? ` and ${b.cos.dcpNames.length - 3} more` : '') : b.cos.source}; as published`, retrieved: deckDay, attribution: '© City of Sydney · CC BY 4.0' });
+  if (/City of Sydney/i.test(b.terrain.contourSource ?? '')) E.push({ dataset: 'City of Sydney contours', used: '06', currency: `${b.terrain.contourSource}${b.terrain.contourIntervalM ? `, ${b.terrain.contourIntervalM} m interval` : ''}; ${n(b.terrain.contours.length, 'line')} in the window`, retrieved: deckDay, attribution: (b.terrain.contourAttribution ?? '© City of Sydney · CC BY 4.0').replace(/^Contours /, '').replace(/,\s*CC BY/, ' · CC BY') });
+  if (b.green.trees.source) E.push({ dataset: b.green.trees.source.name, used: '10 · 17', currency: `${n(b.green.trees.points.length, 'tree')} in the window, with canopy widths`, retrieved: retrieved(b.green.fetchedAt), attribution: /CC BY/i.test(b.green.trees.source.attribution) ? b.green.trees.source.attribution.replace(/^Trees /, '').replace(/,\s*CC BY/, ' · CC BY') : `${b.green.trees.source.attribution.replace(/^Trees /, '')} · CC BY 4.0` });
+  if (E.length) groups.push({ publisher: 'Councils', rows: E });
+
+  // Open and community data.
+  const F: SourceRow[] = [];
+  F.push({ dataset: b.buildings.source === 'overture' ? 'Overture Maps Foundation buildings (footprints, heights and storeys)' : b.buildings.source === 'osm' ? 'OpenStreetMap buildings via Overpass (Overture was not available)' : 'Building footprints', used: '08 · 11 · 13 · 17', currency: b.buildings.source === 'overture' ? `release ${b.buildings.release ?? 'unknown'}; ${n(b.buildings.buildings.length, 'footprint')} in the window, ${n(b.buildings.buildings.filter((x) => x.estimatedHeightM).length, 'height')}` : b.buildings.source === 'osm' ? `${n(b.buildings.buildings.length, 'footprint')} in the window` : (b.buildings.note ?? 'none read'), retrieved: retrieved(b.buildings.fetchedAt), attribution: b.buildings.source === 'overture' ? ATTR.overture : b.buildings.source === 'osm' ? ATTR.osm : ATTR.none });
+  F.push({ dataset: 'OpenStreetMap via Overpass: bus routes, cycleways, footways, one-way streets', used: '09 · 10', currency: b.movement.osm ? `read; ${n(b.movement.cycleways.length, 'cycleway')}, ${n(b.movement.footways.length, 'footway')}, ${n(b.movement.busRoutes.length, 'bus route')} in the window` : 'not available at retrieval (the Overpass mirror did not answer), so slide 09 shows the State layers only', retrieved: retrieved(b.movement.fetchedAt), attribution: ATTR.osm });
+  F.push({ dataset: 'Valhalla walking isochrones on the OpenStreetMap network', used: '09 · 10 · 17', currency: b.movement.isochrones.length ? `${b.movement.isochrones.map((i) => i.minutes).sort((x, y) => x - y).join(', ')} minutes from the site; the network as the instance holds it` : 'not answered for this run', retrieved: retrieved(b.movement.fetchedAt), attribution: ATTR.valhalla });
+  groups.push({ publisher: 'Open and community data', rows: F });
+
+  // Computed.
+  groups.push({ publisher: 'Computed by the tool, not sourced', rows: [
+    { dataset: 'Solar geometry (NOAA), the neighbours\' shadows, sight lines over the elevation model, street bearings, boundary lengths, corner levels, walking bands and the statements of slide 17', used: '06 · 11 · 13 · 17', currency: 'derived from the layers above at generation; methods in each slide\'s notes', retrieved: deckDay, attribution: ATTR.none },
+  ] });
+
+  const total = groups.reduce((a, g) => a + g.rows.length, 0);
+  const cached = [
+    b.buildings.fetchedAt && day(b.buildings.fetchedAt) !== deckDay ? `the building footprints (${fmtIso(day(b.buildings.fetchedAt))})` : '',
+    b.daMeta?.fetchedAt && day(b.daMeta.fetchedAt) !== deckDay ? `the development feed (${fmtIso(day(b.daMeta.fetchedAt))})` : '',
+    b.people?.fetchedAt && day(b.people.fetchedAt) !== deckDay ? `the census and population tables (${fmtIso(day(b.people.fetchedAt))})` : '',
+  ].filter(Boolean);
+  const dates = [
+    img?.date ? `the aerial was flown ${fmtIso(img.date)}` : '',
+    'the census is 2021',
+    b.green.canopy.covered ? `the canopy ${b.green.canopy.year}` : '',
+    zone?.currency ? `the ${zone.epi ? shortEpi(zone.epi) : 'LEP'} zoning map is current at ${zone.currency}` : '',
+    vals.length ? `the land value at ${vals[vals.length - 1].baseDate}` : '',
+    b.daMeta ? `the development feed runs to ${fmtIso(b.daMeta.to)}` : '',
+    b.buildings.release ? `the footprints are Overture's ${b.buildings.release} release` : '',
+  ].filter(Boolean);
+  return { total, publishers: groups.length, deckDay, groups, cached, dates, warnings: b.warnings.map((w) => w.replace(/^WARN\s*/, '').replace(/ -> /g, ' returned ')) };
+}
+
+export function sourcesSentences(b: SlidesBundle, f: ReturnType<typeof sourcesFacts>): string[] {
+  const out: string[] = [];
+  out.push(`${f.total} datasets from ${f.publishers} publishers went into this deck, read on ${fmtIso(f.deckDay)}${f.cached.length ? `; ${listWords(f.cached)} came from the volume's cache` : ''}.`);
+  if (f.dates.length) out.push(`Each layer carries its own date: ${f.dates.join('; ')}.`);
+  out.push('Computed in the tool rather than sourced: the solar geometry and the neighbours\' shadows, the sight lines over the elevation model, the street bearings, the boundary lengths and corner levels from the cadastre and the model, and the walking bands from Valhalla; each is described where it appears.');
+  out.push('Still to obtain outside the open data: the survey, the title search (and the easements\' purposes), geotechnical and contamination reports, an acoustic assessment, the council\'s flood study, the airports\' ANEF contours, the State significant applications and the site visit.');
+  if (f.warnings.length) out.push(`This run logged ${f.warnings.length === 1 ? 'one warning' : `${f.warnings.length} warnings`}: ${f.warnings.join('; ')}.`);
+  out.push('Attribution is as each publisher asks and the licences are as stated at retrieval, mostly Creative Commons Attribution 4.0 for State and Commonwealth data and the Open Database Licence for OpenStreetMap and the footprints derived from it; confirm before republishing.');
+  void b;
+  return out;
+}
+
+export function sourcesSlide(b: SlidesBundle, planning: PlanningFacts): Slide {
+  const f = sourcesFacts(b, planning);
+  const sentences = sourcesSentences(b, f);
+  const text = sentences.map((s) => `<p>${esc(s)}</p>`).join('') +
+    placeholder('Narrative — for the author: what was obtained outside the open data (the survey, the title, the reports) and its dates, and any dataset replaced by a better one.') +
+    `<div class="fine">Generated from the deck's JSON (overall.json), which carries every value with its retrieval time. Currency is the publisher's map or edition date where the layer states one; retrieved is when this deck read the service, or when its cache was filled. Slide numbers are those of the specification.</div>`;
+  const rows = f.groups.map((g) => `<tr class="grp"><td colspan="5">${esc(g.publisher)}</td></tr>` + g.rows.map((r) => `<tr><td>${esc(r.dataset)}</td><td class="used">${esc(r.used)}</td><td>${esc(r.currency)}</td><td class="ret">${esc(r.retrieved)}</td><td class="attr">${esc(r.attribution)}</td></tr>`).join('')).join('');
+  const table = `<table class="da src"><thead><tr><th style="width:68mm">Dataset</th><th style="width:26mm">Used on slides</th><th style="width:86mm">Currency or edition</th><th style="width:22mm">Retrieved</th><th>Attribution and licence</th></tr></thead><tbody>${rows}</tbody></table>`;
+  const figure = `<div class="abs" style="left:${FIELD_X}mm;top:${FIELD_Y}mm;width:${FIELD_W}mm;height:${SLIDE_H - FIELD_Y - 12}mm;overflow:hidden">${table}</div>`;
+  const sub = [b.siteAddress, `${f.total} datasets`, `${f.publishers} publishers`, `retrieved ${f.deckDay}`].join(' · ');
+  return { id: '18_sources', title: 'Sources', subtitle: sub, textHtml: text, figureHtml: figure };
+}
+
 export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; slides: Slide[] } {
   const facts = planningFacts(b);
-  const slides = [planningOverviewSlide(b, facts), planningControlsSlide(b, facts), terrainSlide(b), developmentSlide(b, facts), builtFormSlide(b, facts), movementSlide(b), greenSlide(b), siteSlide(b), sunViewSlide(b), constraintsSlide(b), peopleSlide(b), ocSlide(b, facts)];
+  const slides = [planningOverviewSlide(b, facts), planningControlsSlide(b, facts), terrainSlide(b), developmentSlide(b, facts), builtFormSlide(b, facts), movementSlide(b), greenSlide(b), siteSlide(b), sunViewSlide(b), constraintsSlide(b), peopleSlide(b), ocSlide(b, facts), sourcesSlide(b, facts)];
   const t = tpl();
   const footerLeft = ['SITE ANALYST — OVERALL ANALYSIS', b.siteAddress, meta.client ? `for ${meta.client}` : '', meta.jobNo ? `job ${meta.jobNo}` : ''].filter(Boolean).join(' · ');
   const pages = slides.map((s, i) => `
@@ -3822,6 +4002,12 @@ export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; 
   table.da.cons tr.hit td { font-weight: 600; }
   table.da.cons tr.hit td:first-child { border-left: 0.6mm solid ${t.site}; padding-left: 1.2mm; }
   table.da.facts th { width: 33mm; font-weight: 600; font-size: 2.2mm; text-transform: none; letter-spacing: 0; color: #333; text-align: left; vertical-align: top; }
+  table.da.src { font-size: 2.0mm; line-height: 1.22; }
+  table.da.src th, table.da.src td { padding: 0.55mm 1.6mm 0.55mm 0; }
+  table.da.src thead th { font-size: 1.9mm; }
+  table.da.src tr.grp td { font-weight: 700; padding-top: 1.7mm; border-top: 0.3mm solid #999; color: #222; }
+  table.da.src td.used, table.da.src td.ret { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  table.da.src td.attr { color: #444; }
   .oc { display: flex; align-items: flex-start; gap: 1.8mm; font-size: 2.35mm; line-height: 1.32; margin-top: 1.4mm; padding-right: 2mm; }
   .oc .n { flex: 0 0 4.2mm; height: 4.2mm; border-radius: 2.1mm; color: #fff; font-weight: 700; font-size: 2.2mm; text-align: center; line-height: 4.2mm; margin-top: 0.1mm; }
   .oc .t b { font-weight: 700; }
@@ -3851,6 +4037,7 @@ export function slidesFacts(b: SlidesBundle) {
     sunViews: (() => { const f = sunViewFacts(b); const { shadowHulls: _h, ...rest } = f; return { ...rest, sentences: sunViewSentences(b, f) }; })(),
     constraints: (() => { const f = constraintsFacts(b); return { ...f, sentences: constraintsSentences(b, f) }; })(),
     opportunitiesConstraints: (() => { const f = ocFacts(b, facts); const { draw: _d, panel: _p, sunArc: _a, ...rest } = f; return { ...rest, sentences: ocSentences(b, f) }; })(),
+    sources: (() => { const f = sourcesFacts(b, facts); return { ...f, sentences: sourcesSentences(b, f) }; })(),
     green: (() => { const f = greenFacts(b); return { ...f, openSpace: { ...f.openSpace, spaces: f.openSpace.spaces.map(({ rings: _r, ...s }) => s), nearest: f.openSpace.nearest && (({ rings: _r, ...s }) => s)(f.openSpace.nearest), largest: f.openSpace.largest && (({ rings: _r, ...s }) => s)(f.openSpace.largest) }, sentences: greenSentences(b, f) }; })(),
     builtForm: (() => { const f = builtFormFacts(b, facts); return { ...f, sentences: builtFormSentences(b, f) }; })(),
     terrain: (() => { const f = terrainFacts(b); return f ? { ...f, sections: f.sections.map((s) => ({ ...s, samples: s.samples.filter((_, i) => i % 4 === 0) })), sentences: terrainSentences(b, f) } : { available: false, sentences: terrainSentences(b, f) }; })(),

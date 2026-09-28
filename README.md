@@ -475,7 +475,7 @@ development window), `--job 2539`, `--client "Name"`,
 
 `--type slides` draws the OVERALL ANALYSIS deck: A3 landscape pages for the
 content part of a feasibility study or design report, specified in
-`docs/SLIDES_SPEC.md`. Twelve slides exist so far. The planning pair: a
+`docs/SLIDES_SPEC.md`. Thirteen slides exist so far. The planning pair: a
 *planning overview* of four maps at 1:8000 around the site (land zoning in the
 statutory colours, height of building, heritage with the State Heritage
 Register, and the housing-policy maps — TOD areas, town centres, State
@@ -570,9 +570,16 @@ and street trees on the other — with numbered markers keyed to two lists of
 templated statements (up to nine each) that the data supports and the author
 edits: the nearest station and its walk, the TOD or town-centre map, which
 frontage faces north, what shades the site, the controls, the heritage item
-next door, the arterial road on one edge, the fall across the lot. Each slide
-carries the sentences that follow from the data and a marked placeholder for
-the author's narrative. Outputs: `OVERALL_ANALYSIS.pdf`, `slides/<id>.png` per slide and
+next door, the arterial road on one edge, the fall across the lot. And
+*sources*: every dataset the deck read, grouped by publisher, with the slides
+it served, its currency or edition (the LEP maps' currency dates and
+amendments, the aerial's capture date, the census and canopy years, the land
+values' base dates, the development feed's range, the Overture release), when
+it was retrieved or when its cache was filled, and the attribution and
+licence; with the layers' own dates, what is computed rather than sourced,
+what remains to be obtained outside the open data, and the run's warnings.
+Each slide carries the sentences that follow from the data and a marked
+placeholder for the author's narrative. Outputs: `OVERALL_ANALYSIS.pdf`, `slides/<id>.png` per slide and
 `overall.json` with everything the deck says.
 
 Where a council publishes its own DCP mapping as open data — the City of

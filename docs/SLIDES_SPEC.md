@@ -446,8 +446,8 @@ Open-Meteo archive (ERA5): `https://archive-api.open-meteo.com/v1/archive?latitu
 Implemented: slides 03 (planning overview), 04 (planning controls), 06
 (topography), 07 (development activity), 08 (built form), 09 (movement), 10
 (green and public domain), 11 (the site), 13 (grid, sun and views), 14
-(environmental constraints), 16 (people and market) and 17 (opportunities
-and constraints) —
+(environmental constraints), 16 (people and market), 17 (opportunities and
+constraints) and 18 (sources) —
 `src/render/slides.ts`, `src/render/minimap.ts`, `src/render/charts.ts`,
 `src/render/terrainMap.ts`, `src/fetch/planning.ts`, `src/fetch/terrain.ts`,
 `src/fetch/buildings.ts` with `src/py/overture_buildings.py`,
@@ -659,6 +659,30 @@ already in the bundle, and the numbers on them key to the two lists; a
 statement with no place of its own sits in a row of numbers under the site.
 The text says what the statements are — templates from the data, not a
 judgement of merit — and leaves the design response to the author.
+
+Slide 18 is generated from the bundle the deck's JSON is made of, so it
+states only what the run actually read. `sourcesFacts` lists every dataset
+under its publisher — the department's ePlanning services and the Planning
+Portal APIs, Spatial Services, the other State agencies, the ABS, the
+council where its open data was used, the open and community sources, and
+a last row for what the tool computes — each with the slides it served, its
+currency or edition, its retrieval time and its attribution and licence.
+Currency comes from the layers themselves: the zoning, height and heritage
+maps' `CURRENCY_DATE` and `AMENDMENT` at the site (or the latest in the
+window), the FSR and lot-size maps' dates from the property report, the
+constraint layers' currency per plan, the imagery block's capture date and
+resolution, the census and canopy years, the land values' base dates, the
+development feed's range and count, Overture's release. Retrieval is the
+deck's own timestamp, or the cache's fill date where a block came from the
+volume (footprints for thirty days, the development feed for a day, the
+census tables for a month) and the slide says so. The sentences give the
+layers' own dates in one line, name what is computed rather than sourced,
+list what must still be obtained outside the open data (the survey, the
+title search, the geotechnical, contamination and acoustic reports, the
+flood study, the ANEF contours, the State significant applications, the
+site visit), repeat the run's warnings (an Overpass mirror that did not
+answer, a feed that came back incomplete) and state the licence position
+as the publishers give it.
 
 Slide 16 looks the site up in the ASGS (SA2, LGA, suburb, capital-city
 region), reads the five census tables for the SA2, the LGA and the capital
