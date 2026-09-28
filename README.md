@@ -512,7 +512,9 @@ fall, grade and aspect and where the high ground and the water are. Then
 *built form*: every building footprint in the window coloured by height
 band (Overture Maps, read from its public bucket by DuckDB through
 `src/py/overture_buildings.py`; OpenStreetMap through Overpass when DuckDB
-or Overture is not there), the storeys of the buildings within 250 m as a
+or Overture is not there; where neither gives a height, the storeys of a
+determined development application on the lot, hatched and said so), the
+storeys of the buildings within 250 m as a
 histogram with the LEP height plane marked on it, and section A–A′ again
 with the buildings it meets drawn at their heights and the height plane
 dashed over the site. Then *movement*: roads by function, rail and

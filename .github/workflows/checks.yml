@@ -111,6 +111,11 @@ jobs:
       - name: canopies, kerbside bays and sight lines behave
         run: npx tsx test/site-features.mts
 
+      # The storeys-from-the-DA fallback for footprints without a height is
+      # record selection and point-in-polygon on made-up lots: no network.
+      - name: the DA-storey height fallback picks the right applications
+        run: npx tsx test/heights.mts
+
       # The deployer's one job here is to leave a record even when it dies on
       # its first command — which is exactly what happened once, for six days,
       # unnoticed. Reproduce that: a repo whose origin cannot be reached, and a

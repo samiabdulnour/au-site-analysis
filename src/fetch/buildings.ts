@@ -12,7 +12,10 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { overpassQuery } from '../lib/http.js';
 import { cachedJson, DAY_MS } from '../lib/cache.js';
-import { extentToLonLatBbox, ringCentroid, type Extent } from '../lib/geo.js';
+import { extentToLonLatBbox, lonLatToMercator, mercatorScaleFactor, ringCentroid, type Extent } from '../lib/geo.js';
+import { pointInRing } from './planning.js';
+import type { GeoJSONFC } from '../lib/arcgis.js';
+import type { DaRecord } from './da.js';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'py', 'overture_buildings.py');
 /** Storeys to metres when only the storey count is known. */
@@ -24,10 +27,13 @@ export interface Building {
   /** Outer rings (and holes) in lon/lat. */
   rings: number[][][];
   heightM?: number;
+  /** Storeys: the source's count, or a determined application's where the source has neither height nor storeys (`da`). */
   floors?: number;
   /** The height the deck draws: measured, or storeys × 3.1 m, or nothing. */
   estimatedHeightM?: number;
-  heightFrom: 'measured' | 'floors' | 'none';
+  heightFrom: 'measured' | 'floors' | 'da' | 'none';
+  /** The application on the footprint's lot whose storeys stand in for a height, when one does (slide 07's feed). */
+  da?: { pan: string; storeys: number; status: string; determined?: string; lodged?: string; address: string; types: string[] };
   name?: string;
   kind?: string;
   centroid: [number, number];
@@ -114,6 +120,79 @@ async function fromOsm(extent: Extent, log: (m: string) => void): Promise<Buildi
   }
   log(`  buildings: ${buildings.length} from OpenStreetMap`);
   return { source: 'osm', buildings, fetchedAt: new Date().toISOString() };
+}
+
+// ---- storeys from the development applications ------------------------------------
+//
+// Where a footprint has neither a height nor a storey count, the storeys of a
+// determined application on its cadastral lot (the Online DA feed that slide
+// 07 reads) stand in: what the council consented to, typed in by the
+// applicant for the building as altered or as new, so a description of what
+// stands or was approved to stand, not a survey. Against the North Sydney
+// window's 31 footprints that carry both, the application's storeys are
+// within one of the source's 84 % of the time. Only determined, unrefused
+// applications count (a proposal under assessment belongs to slide 07, not
+// to the built form), the latest determination on the lot speaks for it, and
+// a footprint too small to be a building of the kind takes no more than three
+// storeys from it, so a tower's consent does not stand on the shed beside it.
+
+/** A footprint under this size (a garage, a kiosk) takes at most DA_SMALL_MAX_STOREYS from an application. */
+export const DA_SMALL_FOOTPRINT_SQM = 60;
+export const DA_SMALL_MAX_STOREYS = 3;
+
+const bboxOf = (r: number[][]): [number, number, number, number] => {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const [x, y] of r) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+  return [x0, y0, x1, y1];
+};
+
+/** Ground area of a lon/lat ring in square metres. */
+export function ringAreaSqm(ring: number[][]): number {
+  if (ring.length < 4) return 0;
+  const pts = ring.map(([lon, lat]) => lonLatToMercator({ lon, lat }));
+  let a = 0;
+  for (let i = 0; i < pts.length - 1; i++) a += pts[i].x * pts[i + 1].y - pts[i + 1].x * pts[i].y;
+  const k = mercatorScaleFactor(ringCentroid(ring)[1]);
+  return Math.abs(a) / 2 / (k * k);
+}
+
+/** Whether an application's storeys may stand in for a height: determined and not refused, with a storey count and a location. */
+export const daGivesStoreys = (r: DaRecord): boolean =>
+  r.statusClass === 'determined' && !/refus/i.test(r.status) && (r.storeys ?? 0) >= 1 && r.lon !== undefined && r.lat !== undefined;
+
+/**
+ * The buildings with the storeys of a determined application on their lot
+ * where the source gave neither a height nor a storey count; the rest as
+ * they were. Pure: the cache holds the source's answer, this is applied on
+ * the way out, once the applications are known.
+ */
+export function withDaStoreys(data: BuildingsData, lots: GeoJSONFC, applications: DaRecord[]): BuildingsData {
+  const candidates = applications.filter(daGivesStoreys);
+  if (!candidates.length || !data.buildings.some((b) => !b.estimatedHeightM)) return data;
+  const lotRings = lots.features.flatMap((f) => geomRings(f.geometry)).filter((r) => r.length >= 4).map((r) => ({ r, bb: bboxOf(r) }));
+  const lotOf = (x: number, y: number) => lotRings.findIndex(({ r, bb }) => x >= bb[0] && x <= bb[2] && y >= bb[1] && y <= bb[3] && pointInRing(x, y, r));
+  const byLot = new Map<number, DaRecord[]>();
+  for (const r of candidates) {
+    const i = lotOf(r.lon!, r.lat!);
+    if (i >= 0) (byLot.get(i) ?? byLot.set(i, []).get(i)!).push(r);
+  }
+  if (!byLot.size) return data;
+  // the latest determination on the lot speaks for it
+  const when = (r: DaRecord) => r.determined ?? r.lodged ?? '';
+  const buildings = data.buildings.map((b): Building => {
+    if (b.estimatedHeightM) return b;
+    const i = lotOf(b.centroid[0], b.centroid[1]);
+    const rs = i >= 0 ? byLot.get(i) : undefined;
+    if (!rs) return b;
+    const r = [...rs].sort((p, q) => when(q).localeCompare(when(p)))[0];
+    const storeys = Math.round(r.storeys!);
+    if (storeys > DA_SMALL_MAX_STOREYS && ringAreaSqm(b.rings[0]) < DA_SMALL_FOOTPRINT_SQM) return b;
+    return {
+      ...b, floors: storeys, estimatedHeightM: storeys * METRES_PER_STOREY, heightFrom: 'da',
+      da: { pan: r.pan, storeys, status: r.status, determined: r.determined, lodged: r.lodged, address: r.address, types: r.developmentTypes },
+    };
+  });
+  return { ...data, buildings };
 }
 
 /** Every building footprint touching the extent, with what is known of its height. */

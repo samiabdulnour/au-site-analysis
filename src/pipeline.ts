@@ -25,7 +25,7 @@ import { fetchCouncilApplications, apiCouncilName, clipToExtent, PORTAL_MANDATED
 import { fetchPlanningProposals, type PlanningProposal } from './fetch/planning.js';
 import { fetchPeopleData, type PeopleData } from './fetch/people.js';
 import { fetchDemGrid, type DemGrid } from './fetch/terrain.js';
-import { fetchBuildings, type BuildingsData } from './fetch/buildings.js';
+import { fetchBuildings, withDaStoreys, type BuildingsData } from './fetch/buildings.js';
 import { fetchMovement, type MovementData } from './fetch/movement.js';
 import { fetchGreenSpace, type GreenData } from './fetch/greenSpace.js';
 import { fetchConstraints, checkLepCoverage, type ConstraintsData } from './fetch/constraints.js';
@@ -667,7 +667,7 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
   const emptyGreen: GreenData = { canopy: { blocks: [], covered: false, year: 2022, source: 'Greater Sydney Tree Canopy Cover 2022 (NSW ePlanning)' }, openSpace: [], openSpaceWide: [], greenGrid: [], parkPoints: [], facilities: [], npws: [], trees: { points: [] }, fetchedAt: new Date().toISOString() };
   const emptyConstraints: ConstraintsData = { layers: [], soil: null, fetchedAt: new Date().toISOString() };
   const emptySite: SiteData = { sitePanel, blockPanel, aerial: null, imagery: null, lots: [], easements: [], neighbours: [], publicLand: [], fetchedAt: new Date().toISOString() };
-  const [zoning, hob, heritage, shr, policy, water, lots, roads, railLines, stations, context, property, controls, proposals, feed, people, dem, contourSet, buildings, movement, green, constraints, site, wideRoads, wideRail, wideStations, wideWater, wideSuburbs, country, photos, location] = await Promise.all([
+  const [zoning, hob, heritage, shr, policy, water, lots, roads, railLines, stations, context, property, controls, proposals, feed, people, dem, contourSet, buildingsRead, movement, green, constraints, site, wideRoads, wideRail, wideStations, wideWater, wideSuburbs, country, photos, location] = await Promise.all([
     soft(fetchZoningDetailed(extent), emptyFC, 'zoning'),
     soft(fetchHobDetailed(extent), emptyFC, 'height of building'),
     soft(fetchHeritageDetailed(extent), emptyFC, 'heritage'),
@@ -714,10 +714,12 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
   ]);
   const applications = feed ? clipToExtent(feed.records, daExtent) : [];
   const daMeta = feed ? { council: feed.council, from: feed.from, to: feed.to, total: feed.total, complete: feed.complete, fetchedAt: feed.fetchedAt } : null;
+  // A footprint with neither a height nor a storey count takes the storeys of a determined application on its lot, and the slides say so.
+  const buildings = withDaStoreys(buildingsRead, lots, applications);
 
   log(`  zoning:${zoning.features.length} hob:${hob.features.length} heritage:${heritage.features.length} shr:${shr.features.length} ` +
       `policy:${policy.length} roads:${roads.length} property:${property ? 'yes' : 'no'} dcp:${context.dcp ? 'yes' : 'no'} target:${housingTarget ? housingTarget.homes : '—'}${cos ? ' council-dcp:yes' : ''} ` +
-      `applications:${applications.length}${feed ? `/${feed.records.length}` : ''} proposals:${proposals.length} dem:${dem ? `${dem.cols}×${dem.rows}` : 'no'} contours:${contourSet.lines.length} (${contourSet.intervalM} m) buildings:${buildings.buildings.length}/${buildings.source}`);
+      `applications:${applications.length}${feed ? `/${feed.records.length}` : ''} proposals:${proposals.length} dem:${dem ? `${dem.cols}×${dem.rows}` : 'no'} contours:${contourSet.lines.length} (${contourSet.intervalM} m) buildings:${buildings.buildings.length}/${buildings.source} da-storeys:${buildings.buildings.filter((x) => x.heightFrom === 'da').length}`);
 
   const bundle: SlidesBundle = {
     address,

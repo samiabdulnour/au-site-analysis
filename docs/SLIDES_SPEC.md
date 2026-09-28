@@ -136,7 +136,8 @@ map. A schematic future skyline is optional: storeys × 3.1 m at each DA.
 *Manual:* renders; State Significant applications (no open feed, §5).
 
 **08 Built form and height planes.** Figure-ground with buildings classed by
-height (Overture / OSM), the LEP height envelope at the site extruded from
+height (Overture / OSM; the storeys of a determined DA on the lot where
+neither has a height, hatched), the LEP height envelope at the site extruded from
 the parcel (RL maps converted with the DEM), neighbours' heights, and the
 section from slide 06 with the envelopes on it. *Manual:* 3D model views.
 
@@ -380,7 +381,7 @@ lockdown snapshot and the slide says so.
 | Wikimedia Commons `w/api.php?action=query&list=geosearch&gscoord=<lat>|<lon>&gsradius=800&gsnamespace=6` then `prop=imageinfo|coordinates&iiprop=url|extmetadata|size|mime&iiurlwidth=1024` | open-licence photos near the site with author and licence | send a descriptive `User-Agent`; the shared address is rate-limited (429) even so, so the calls are paced and retried. Attribution is a condition of the licence: printed under each photo. In use on slide 02 |
 | Wikipedia `api/rest_v1/page/summary/<Title>` and `w/api.php?action=query&list=geosearch` then `prop=description` for the titles | the suburb summary paragraph and its lead image; articles within 1.5 km as the named places (a place vocabulary keeps companies, electorates and people out) | same User-Agent rule and the same 429s. In use on slide 02 |
 | KartaView `POST https://api.openstreetcam.org/1.0/list/nearby-photos/` (`lat`, `lng`, `radius`, `ipp`); the v2 `photo/?lat=&lng=&radius=` search refuses radii over 150 m | street-level frames with camera position, heading, date, contributor and thumbnail paths | no key; coverage is patchy and old in places (2019 at the samples, one contributor); about half the frames carry no heading, so the direction of travel between a frame's neighbours in its sequence stands in. In use on slide 12 |
-| Mapillary `https://graph.mapillary.com/images?bbox=…&fields=id,thumb_1024_url,captured_at,compass_angle,geometry` | dense recent street-level imagery | free client token from the Mapillary developer page; reachable, refuses without a token (HTTP 500, "Invalid OAuth 2.0 Access Token"). Read on slide 12 when `MAPILLARY_TOKEN` is set |
+| Mapillary `https://graph.mapillary.com/images?bbox=…&fields=id,thumb_1024_url,captured_at,compass_angle,computed_compass_angle,geometry,computed_geometry,creator,sequence,is_pano` | dense recent street-level imagery | free client token from the Mapillary developer page, sent as `access_token`; reachable, refuses without a token (HTTP 500, "Invalid OAuth 2.0 Access Token"). Graph API v4: `bbox` is left,bottom,right,top and must be under 0.01 square degrees (a 250 m radius is a four-hundredth of that), 2,000 images a call at most, 10,000 searches a minute per app; the structure-from-motion position and heading are preferred to the camera's own and 360° frames skipped. Read on slide 12 when `MAPILLARY_TOKEN` is set; checked against the documentation, not exercised here (no token) |
 | Google Street View Static API | best coverage | paid; not proposed |
 
 ### 4.9 Building heights
@@ -390,10 +391,25 @@ lockdown snapshot and the slide says so.
 | Overture Maps buildings, GeoParquet on S3 (`s3://overturemaps-us-west-2/release/<release>/theme=buildings/type=building/`) via DuckDB `read_parquet` with a bbox predicate | 2,615 footprints, 690 with `height`, 1,177 with `num_floors`, tallest 158 m | 103 s cold through this environment's proxy; in production either cache the Sydney extract on the volume or run the query once a month. The `overturemaps` CLI returned nothing through the proxy; DuckDB worked |
 | OSM `way["building"]` with `height` / `building:levels` | the site sheet already fetches this | public Overpass mirrors were all down at test time; the local Overpass the deployer installs is the answer |
 
-Where neither has a height, storeys from the DA record (slide 07) or a
-default by zone are the fallbacks, and the slide says so. In use: the
-section on slide 08 draws such footprints as a dashed one-storey block and
-the map leaves them grey; a DA-storey fallback is still to come.
+Where neither has a height, the storeys of a determined application on
+the footprint's cadastral lot (slide 07's feed) stand in, and the slide
+says so: the map hatches those footprints over their band, the legend
+counts them, the section dashes them and labels them "(DA)", and slides
+11, 13, 17 and 18 carry the provenance where they quote or count a height.
+Only determined, unrefused applications count (a proposal under assessment
+belongs to slide 07), the latest determination on the lot speaks for it,
+and a footprint under 60 m² takes no more than three storeys from it, so a
+tower's consent does not stand on the shed beside it. Against the North
+Sydney window's 31 footprints that carry both, the application's storeys
+are within one of the source's 84 % of the time. The fallback is modest:
+13 of Waterloo's 424 footprints without a height, 7 of Marrickville's 366,
+39 of North Sydney's 657, 5 of Botany's 197 and 10 of Orange's 398 (2 to
+6 %). A default by zone is not drawn: the footprints still without a height
+stay grey, and the text gives the height limits over them and the zones
+they stand in instead (510 of North Sydney's 618 stand under an 8.5 m
+limit, two storeys at most; 190 of Orange's 388 under 12 m), which bounds
+them without inventing a height. `test/heights.mts` checks the selection
+on made-up lots.
 
 ### 4.10 Country
 
@@ -416,6 +432,7 @@ Open-Meteo archive (ERA5): `https://archive-api.open-meteo.com/v1/archive?latitu
 | Land-use table (permitted / prohibited uses), zone objectives, clause text | `legislation.nsw.gov.au` sits behind a Cloudflare bot check that also stops headless Chromium; AustLII likewise | print the legislation link the API gives for every control; the person pastes the table |
 | State Significant Development applications (the Major Projects register) | a Pega application with no open feed; the Drupal listing offers HTML only | SSD *sites* from the SEPP layer; DAs from the Online DA API; SSD applications by hand |
 | Site visit photographs, oblique aerials, renders, physical-model photos, 3D views | not data | placeholders sized for them; street-level and 1943 imagery as stand-ins |
+| The reference's character areas (its site-surroundings page: "city core", "Lavender Bay", the precinct edges) | a designer's judgement about how places read, not a dataset; no one publishes it | the evidence is on the slides — the zones and heritage conservation areas (03), the height bands (08), the 1943 and today pair (12), the named places (02) — and the boundaries are drawn by hand over them; that page's landmarks, connections and station are slides 02 and 09 |
 | Council strategies (LSPS, housing strategies, public domain strategies, character statements), DCP text | the Planning Portal indexes every council's LSPS as an HTML page of links (128 in September 2026), which slide 05 parses; the other strategies are PDFs on council sites with no index; only the DCP has a mapped link | the LSPS by parsing; the rest by hand, with rows left for them on slide 05 |
 | Metropolitan, major and activity centres as a layer | The Sydney Plan (2026) publishes its network of centres as a map and types them LGA by LGA in Appendix D, not as data | a static list of the 30 centres (three CBDs, thirteen major, fourteen activity) and four emerging activity centres, with a point each, in `src/data/centres.ts` |
 | Sydney Airport ANEF, most councils' flood maps | not in the ePlanning layers (5 and 12 EPIs respectively) | state "not mapped in the LEP" and point to the council flood study; ANEF by hand |
@@ -561,13 +578,23 @@ fetch falls back to OpenStreetMap through Overpass (`way["building"]` and
 multipolygon relations, `height` and `building:levels`), and the answer is
 cached on the volume for a month either way, since both sources move
 monthly. `OVERTURE_RELEASE` names the release (default the one tested).
-Heights come measured or as storeys × 3.1 m; footprints with neither are
-grey. The map is a figure-ground by height band on the sequential blue
-ramp; the histogram counts storeys within 250 m and marks the LEP height
-plane; section A–A′ carries the buildings the line meets as blocks on the
-ground (dashed when the height is unknown) and the height plane over the
-site, converted from RL with the elevation model where the LEP limits in
-RL. The 3D model views remain the author's.
+Heights come measured or as storeys × 3.1 m; where a footprint has
+neither, the storeys of a determined application on its cadastral lot
+stand in (`withDaStoreys` in `src/fetch/buildings.ts`, applied by the
+pipeline once slide 07's feed is clipped: the latest determination on the
+lot, never a refused, withdrawn or still-open one, and a footprint under
+60 m² takes at most three storeys, so a tower's consent does not stand on
+the shed beside it), hatched on the map and counted in the legend;
+footprints with none of these are grey, and the text gives the height
+limits over them and the zones they stand in rather than a default. The
+map is a figure-ground by height band on the sequential blue ramp; the
+histogram counts storeys within 250 m and marks the LEP height plane;
+section A–A′ carries the buildings the line meets as blocks on the ground
+(dashed where the storeys are a DA's, faint and one storey where the
+height is unknown) and the height plane over the site, converted from RL
+with the elevation model where the LEP limits in RL. Slides 11, 13 and 17
+read the same heights and say where a DA supplied one. The 3D model views
+remain the author's.
 
 Slide 09 gathers, each part soft: walking isochrones from the site at 5,
 10 and 15 minutes (the public Valhalla server, under a second); bus stops
@@ -696,7 +723,10 @@ each captioned with the street the camera stood in (the nearest named
 centreline within 25 m), its distance and direction from the site, the
 direction of view, the contributor and the month, and the licence
 (CC BY-SA 4.0), which asks for exactly that attribution. Mapillary is read
-the same way when `MAPILLARY_TOKEN` is set (the free client token);
+the same way when `MAPILLARY_TOKEN` is set (the free client token; its
+structure-from-motion position and heading are preferred to the camera's
+own and 360° frames are skipped; the call matches the Graph API v4
+documentation but has not been exercised here, where no token is set);
 Wikimedia Commons is not used here, its photographs being landmarks rather
 than the street. The plan keys the frames at the smallest round scale from
 1:1000 that holds every camera and the site, with each camera's view cone;

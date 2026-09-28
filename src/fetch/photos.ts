@@ -193,24 +193,39 @@ async function kartaviewNearby(centre: LonLat, radiusM: number): Promise<RawFram
   return out;
 }
 
-interface MlyItem { id?: string; thumb_1024_url?: string; captured_at?: number; compass_angle?: number; geometry?: { coordinates?: number[] }; creator?: { username?: string }; sequence?: string }
+interface MlyItem {
+  id?: string; thumb_1024_url?: string; captured_at?: number; sequence?: string; is_pano?: boolean;
+  compass_angle?: number; computed_compass_angle?: number;
+  geometry?: { coordinates?: number[] }; computed_geometry?: { coordinates?: number[] };
+  creator?: { username?: string };
+}
 
-/** Mapillary's frames in the radius's bounding box; the token is the free client token from its developer page. */
+/**
+ * Mapillary's frames in the radius's bounding box (Graph API v4 `images`,
+ * `bbox` as left,bottom,right,top, at most 2,000 a call and a box under
+ * 0.01 square degrees: a 250 m radius is a four-hundredth of that). The
+ * token is the free client token from its developer page, sent as
+ * `access_token`. The structure-from-motion position and heading are taken
+ * over the camera's own where Mapillary has computed them, and 360° frames
+ * are left out: a panorama has no view cone to test.
+ */
 async function mapillaryNearby(centre: LonLat, radiusM: number, token: string): Promise<RawFrame[]> {
   const dLat = radiusM / 110_574, dLon = radiusM / (111_320 * Math.cos(toRad(centre.lat)));
   const bbox = [centre.lon - dLon, centre.lat - dLat, centre.lon + dLon, centre.lat + dLat].map((v) => v.toFixed(6)).join(',');
-  const params = new URLSearchParams({ access_token: token, fields: 'id,thumb_1024_url,captured_at,compass_angle,geometry,creator,sequence', bbox, limit: '500' });
+  const params = new URLSearchParams({ access_token: token, fields: 'id,thumb_1024_url,captured_at,compass_angle,computed_compass_angle,geometry,computed_geometry,creator,sequence,is_pano', bbox, limit: '500' });
   const res = await retryFetch(`${MAPILLARY_IMAGES}?${params}`, { headers: { Accept: 'application/json' } }, { attempts: 3, timeoutMs: 40_000, label: 'Mapillary images' });
   if (!res.ok) throw new Error(`Mapillary images returned HTTP ${res.status}`);
   const j = (await res.json()) as { data?: MlyItem[] };
   const out: RawFrame[] = [];
   for (const it of j.data ?? []) {
-    const [lon, lat] = it.geometry?.coordinates ?? [];
+    if (it.is_pano) continue;
+    const [lon, lat] = it.computed_geometry?.coordinates ?? it.geometry?.coordinates ?? [];
     if (!it.id || !it.thumb_1024_url || !Number.isFinite(lon) || !Number.isFinite(lat)) continue;
+    const computedHeading = num(it.computed_compass_angle);
     out.push({
       source: 'mapillary', id: String(it.id), sequenceId: it.sequence, author: it.creator?.username,
       date: it.captured_at ? new Date(it.captured_at).toISOString().slice(0, 10) : undefined,
-      lon: lon!, lat: lat!, heading: num(it.compass_angle), thumbUrl: it.thumb_1024_url,
+      lon: lon!, lat: lat!, heading: Number.isFinite(computedHeading) ? computedHeading : num(it.compass_angle), thumbUrl: it.thumb_1024_url,
       pageUrl: `https://www.mapillary.com/app/?pKey=${it.id}&focus=photo`,
     });
   }

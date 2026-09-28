@@ -1893,9 +1893,28 @@ export function builtFormFacts(b: SlidesBundle, planning: PlanningFacts) {
   const storeyCounts = new Map<number, number>();
   for (const h of nearHeights) { const st = Math.min(20, storeysOf(h)); storeyCounts.set(st, (storeyCounts.get(st) ?? 0) + 1); }
   const tallest = [...withHeight].sort((p, q) => q.estimatedHeightM! - p.estimatedHeightM!).slice(0, 5)
-    .map((x) => ({ name: x.name, heightM: x.estimatedHeightM!, storeys: x.floors ?? storeysOf(x.estimatedHeightM!), measured: x.heightFrom === 'measured', distanceM: Math.round(dist(x)), bearing: bearing(x) }));
+    .map((x) => ({ name: x.name, heightM: x.estimatedHeightM!, storeys: x.floors ?? storeysOf(x.estimatedHeightM!), from: x.heightFrom, distanceM: Math.round(dist(x)), bearing: bearing(x) }));
   const neighbours = all.filter((x) => !onSite.includes(x) && dist(x) <= 45).sort((p, q) => dist(p) - dist(q)).slice(0, 4)
-    .map((x) => ({ name: x.name, heightM: x.estimatedHeightM, storeys: x.estimatedHeightM ? (x.floors ?? storeysOf(x.estimatedHeightM)) : undefined, distanceM: Math.round(dist(x)), bearing: bearing(x), kind: x.kind }));
+    .map((x) => ({ name: x.name, heightM: x.estimatedHeightM, storeys: x.estimatedHeightM ? (x.floors ?? storeysOf(x.estimatedHeightM)) : undefined, from: x.heightFrom, distanceM: Math.round(dist(x)), bearing: bearing(x), kind: x.kind }));
+  // The footprints still without a height: the zones they stand in and the height limits over them (as far as the planning window reaches) bound them without inventing a height.
+  const unknown = all.filter((x) => !x.estimatedHeightM);
+  const zonePolys = b.zoning.features.map((f) => ({ code: String(f.properties.SYM_CODE ?? '?'), name: String(f.properties.LAY_CLASS ?? ''), rings: geomRings(f.geometry) }));
+  const hobPolys = b.hob.features.filter((f) => Number(f.properties.MAX_B_H) > 0 && !/RL/i.test(String(f.properties.UNITS ?? ''))).map((f) => ({ m: Number(f.properties.MAX_B_H), rings: geomRings(f.geometry) }));
+  const zoneCounts = new Map<string, { code: string; name: string; count: number }>();
+  const ceilingCounts = new Map<number, number>();
+  for (const x of unknown) {
+    const [lon, lat] = x.centroid;
+    const z = zonePolys.find((zp) => zp.rings.some((r) => pointInRing(lon, lat, r)));
+    if (z) { const e = zoneCounts.get(z.code) ?? { code: z.code, name: z.name, count: 0 }; e.count++; zoneCounts.set(z.code, e); }
+    const hc = hobPolys.find((hp) => hp.rings.some((r) => pointInRing(lon, lat, r)));
+    if (hc) ceilingCounts.set(hc.m, (ceilingCounts.get(hc.m) ?? 0) + 1);
+  }
+  const unknownZones = [...zoneCounts.values()].sort((p, q) => q.count - p.count).slice(0, 3);
+  const unknowns = {
+    count: unknown.length,
+    zones: unknownZones, zonesShare: unknown.length ? unknownZones.reduce((s, z) => s + z.count, 0) / unknown.length : 0,
+    ceilings: [...ceilingCounts.entries()].sort((p, q) => q[1] - p[1]).slice(0, 2).map(([m, count]) => ({ m, storeys: Math.max(1, Math.floor(m / METRES_PER_STOREY)), count })),
+  };
   // The LEP height plane over the site's ground.
   const site = b.terrain.dem ? siteLevels(b.terrain.dem, siteRings, null) : null;
   const hob = planning.hobAtSite;
@@ -1911,11 +1930,13 @@ export function builtFormFacts(b: SlidesBundle, planning: PlanningFacts) {
     count: all.length,
     measured: all.filter((x) => x.heightFrom === 'measured').length,
     fromStoreys: all.filter((x) => x.heightFrom === 'floors').length,
+    fromDa: all.filter((x) => x.heightFrom === 'da').length,
     bands: HEIGHT_BANDS.map((bd) => ({ label: bd.label, count: withHeight.filter((x) => bandOf(x.estimatedHeightM) === bd).length })).concat([{ label: 'no height', count: all.length - withHeight.length }]),
+    unknowns,
     near: { radiusM: 250, count: near.length, withHeight: nearHeights.length, medianM: medianNearM, medianStoreys: medianNearM ? storeysOf(medianNearM) : undefined,
       above8: nearHeights.filter((h) => storeysOf(h) > 8).length, storeys: [...storeyCounts.entries()].sort((p, q) => p[0] - q[0]).map(([st, n]) => ({ storeys: st, count: n })) },
     tallest, neighbours,
-    onSite: onSite.map((x) => ({ name: x.name, heightM: x.estimatedHeightM, storeys: x.estimatedHeightM ? (x.floors ?? storeysOf(x.estimatedHeightM)) : undefined, kind: x.kind })),
+    onSite: onSite.map((x) => ({ name: x.name, heightM: x.estimatedHeightM, storeys: x.estimatedHeightM ? (x.floors ?? storeysOf(x.estimatedHeightM)) : undefined, from: x.heightFrom, kind: x.kind })),
     siteGroundRl: site?.mean, envelope,
   };
 }
@@ -1924,19 +1945,31 @@ export function builtFormSentences(b: SlidesBundle, f: ReturnType<typeof builtFo
   const out: string[] = [];
   const src = f.source === 'overture' ? `Overture Maps${f.release ? ` (release ${f.release})` : ''}` : f.source === 'osm' ? 'OpenStreetMap' : '';
   if (!f.count) return [`No building footprints could be read for this window when the deck was generated${f.note ? ` (${f.note})` : ''}.`];
-  const known = f.measured + f.fromStoreys;
-  out.push(`The window holds ${fmtNum(f.count)} buildings from ${src}; ${fmtPct(pct(known, f.count))} carry a height, ${fmtNum(f.measured)} measured and ${fmtNum(f.fromStoreys)} from a storey count at ${METRES_PER_STOREY} m a storey. The rest are drawn grey.`);
+  const known = f.measured + f.fromStoreys + f.fromDa;
+  const from = [
+    f.measured ? `${fmtNum(f.measured)} measured` : '',
+    f.fromStoreys ? `${fmtNum(f.fromStoreys)} from a storey count at ${METRES_PER_STOREY} m a storey` : '',
+    f.fromDa ? `${fmtNum(f.fromDa)} from the storeys of a determined development application on the lot (slide 07), hatched on the map` : '',
+  ].filter(Boolean);
+  out.push(`The window holds ${fmtNum(f.count)} buildings from ${src}; ${known ? `${fmtPct(pct(known, f.count))} carry a height: ${listWords(from)}` : 'none carries a height'}.`);
+  if (f.unknowns.count) {
+    const u = f.unknowns;
+    const cap = (c: { m: number; storeys: number; count: number }, first: boolean) => `${fmtNum(c.count)} under ${first ? 'a height limit of ' : ''}${fmtNum(c.m, c.m % 1 ? 1 : 0)} m (${numWord(c.storeys)} storey${c.storeys === 1 ? '' : 's'} at most)`;
+    const bounds = u.ceilings.length ? `; ${u.ceilings.map((c, i) => cap(c, i === 0)).join(' and ')}` : '';
+    const zones = u.zones.length ? `${bounds ? ',' : ';'} ${u.zonesShare >= 0.5 ? 'mostly' : 'among them'} in ${listWords(u.zones.map((z) => `${z.code}${z.name ? ` ${z.name}` : ''} (${fmtNum(z.count)})`))}` : '';
+    out.push(`The ${fmtNum(u.count)} without a height are drawn grey${bounds}${zones}.`);
+  }
   if (f.near.withHeight) {
     let s = `Within ${f.near.radiusM} m of the site the typical building is ${f.near.medianStoreys} storey${f.near.medianStoreys === 1 ? '' : 's'} (median of ${fmtNum(f.near.withHeight)} with a height)`;
     if (f.near.above8) s += `; ${fmtPct(pct(f.near.above8, f.near.withHeight))} rise above eight storeys`;
     s += '.';
-    if (f.tallest[0]) { const t0 = f.tallest[0]; s += ` The tallest in the window is ${t0.name ?? 'a building'} ${fmtNum(Math.round(t0.distanceM))} m to the ${bearingName(t0.bearing)}, ${Math.round(t0.heightM)} m (${t0.storeys} storeys${t0.measured ? '' : ', from its storey count'}).`; }
+    if (f.tallest[0]) { const t0 = f.tallest[0]; s += ` The tallest in the window is ${t0.name ?? 'a building'} ${fmtNum(Math.round(t0.distanceM))} m to the ${bearingName(t0.bearing)}, ${Math.round(t0.heightM)} m (${t0.storeys} storeys${t0.from === 'measured' ? '' : t0.from === 'da' ? ', the storeys of a DA on the lot' : ', from its storey count'}).`; }
     out.push(s);
   }
   if (f.onSite.length) {
     const withH = f.onSite.filter((x) => x.heightM);
     const n = f.onSite.length;
-    const list = withH.map((x) => `${x.storeys} storey${x.storeys === 1 ? '' : 's'} (${Math.round(x.heightM!)} m)`).join(', ');
+    const list = withH.map((x) => `${x.storeys} storey${x.storeys === 1 ? '' : 's'} (${Math.round(x.heightM!)} m${x.from === 'da' ? ', the storeys of a determined DA on the lot' : ''})`).join(', ');
     out.push(!withH.length
       ? `The site carries ${n === 1 ? 'a building' : `${n} buildings`} with no recorded height.`
       : n === 1 ? `The site carries a building of ${list}.`
@@ -1952,7 +1985,7 @@ export function builtFormSentences(b: SlidesBundle, f: ReturnType<typeof builtFo
     else out.push(`The LEP height of building at the site is ${e.label}.`);
   } else out.push('No height of building control is mapped at the site.');
   if (f.neighbours.length) {
-    const parts = f.neighbours.map((n) => `${n.name ? n.name : 'a building'} ${n.distanceM} m to the ${bearingName(n.bearing)}${n.heightM ? `, ${n.storeys} storey${n.storeys === 1 ? '' : 's'} (${Math.round(n.heightM)} m)` : ', height unknown'}`);
+    const parts = f.neighbours.map((n) => `${n.name ? n.name : 'a building'} ${n.distanceM} m to the ${bearingName(n.bearing)}${n.heightM ? `, ${n.storeys} storey${n.storeys === 1 ? '' : 's'} (${Math.round(n.heightM)} m${n.from === 'da' ? ', DA' : ''})` : ', height unknown'}`);
     out.push(`Nearest neighbours: ${parts.join('; ')}.`);
   }
   return out;
@@ -1964,7 +1997,7 @@ export function builtFormSlide(b: SlidesBundle, planning: PlanningFacts): Slide 
   const sentences = builtFormSentences(b, f);
   const textHtml = sentences.map(para).join('') +
     placeholder('Narrative — for the author: what the surrounding scale is and where it is changing, how the height plane at the site compares with the neighbours and the approvals of slide 07, which frontages and setbacks the fabric suggests, and where the 3D model views should look from.') +
-    `<div class="fine">Sources: ${f.source === 'overture' ? 'Overture Maps Foundation buildings (footprints and heights from OpenStreetMap, Microsoft, Esri Community Maps and Google Open Buildings; ODbL and CDLA Permissive 2.0)' : f.source === 'osm' ? 'OpenStreetMap contributors (ODbL)' : 'no building source answered'}; heights measured or ${METRES_PER_STOREY} m a storey; the LEP height of building from the ePlanning layer, converted with the 5 m elevation model where it is a reduced level. Retrieved ${b.generatedAt.slice(0, 10)}.</div>`;
+    `<div class="fine">Sources: ${f.source === 'overture' ? 'Overture Maps Foundation buildings (footprints and heights from OpenStreetMap, Microsoft, Esri Community Maps and Google Open Buildings; ODbL and CDLA Permissive 2.0)' : f.source === 'osm' ? 'OpenStreetMap contributors (ODbL)' : 'no building source answered'}; heights measured or ${METRES_PER_STOREY} m a storey, else the storeys of a determined application on the lot from the NSW Planning Portal's Online DA API; the LEP height of building from the ePlanning layer, converted with the 5 m elevation model where it is a reduced level. Retrieved ${b.generatedAt.slice(0, 10)}.</div>`;
   const sub = [b.siteAddress, f.envelope ? `HOB ${f.envelope.label}` : 'no HOB mapped', f.near.medianStoreys ? `neighbourhood median ${f.near.medianStoreys} storeys` : ''].filter(Boolean).join(' · ');
   const p = b.daPanel;
   const proj = panelProjector(p);
@@ -1977,6 +2010,9 @@ export function builtFormSlide(b: SlidesBundle, planning: PlanningFacts): Slide 
     const band = bandOf(bd.estimatedHeightM);
     parts.push(`<path d="${ringsPath(bd.rings, proj)}" fill="${band ? band.fill : NO_HEIGHT_FILL}" fill-rule="evenodd" stroke="#ffffff" stroke-width="0.08"/>`);
   }
+  // The footprints whose storeys come from an application on the lot wear a white hatch over their band.
+  const fromDa = drawn.filter((bd) => bd.heightFrom === 'da');
+  if (fromDa.length) parts.push(`<path d="${fromDa.map((bd) => ringsPath(bd.rings, proj)).join('')}" fill="url(#da-hatch)" fill-rule="evenodd"/>`);
   parts.push(overLayers(b.base, proj, p, 'outline'));
   // The A–A′ section line, as on the topography slide.
   const terrain = terrainFacts(b);
@@ -1991,21 +2027,22 @@ export function builtFormSlide(b: SlidesBundle, planning: PlanningFacts): Slide 
   }
   parts.push(panelFurniture(p, 'right'));
   const mapSvg = `<svg width="${p.wMm}mm" height="${p.hMm}mm" viewBox="0 0 ${p.wMm} ${p.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
-    <defs><clipPath id="clip-built"><rect x="0" y="0" width="${p.wMm}" height="${p.hMm}"/></clipPath></defs>
+    <defs><clipPath id="clip-built"><rect x="0" y="0" width="${p.wMm}" height="${p.hMm}"/></clipPath><pattern id="da-hatch" patternUnits="userSpaceOnUse" width="1" height="1" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="1" stroke="#ffffff" stroke-width="0.3"/></pattern></defs>
     <g clip-path="url(#clip-built)" font-family="${t.font}">${parts.join('\n')}</g>
     <rect x="0.1" y="0.1" width="${p.wMm - 0.2}" height="${p.hMm - 0.2}" fill="none" stroke="${t.rule}" stroke-width="0.2"/>
   </svg>`;
 
   // Right: figures, legend, the storeys of the neighbourhood against the height plane.
   const rightX = FIELD_X + PANEL_W + GUTTER, rightW = FIELD_W - PANEL_W - GUTTER;
-  const known = f.measured + f.fromStoreys;
+  const known = f.measured + f.fromStoreys + f.fromDa;
   const tiles = [
     { v: fmtNum(f.count), l: 'buildings in the window' },
-    { v: f.count ? fmtPct(pct(known, f.count)) : '—', l: 'with a height, measured or from storeys' },
+    { v: f.count ? fmtPct(pct(known, f.count)) : '—', l: f.fromDa ? 'with a height: measured, from storeys or from a DA' : 'with a height, measured or from storeys' },
     { v: f.near.medianStoreys ? `${f.near.medianStoreys}` : '—', l: `storeys, median within ${f.near.radiusM} m of the site` },
     { v: f.envelope ? (f.envelope.storeys ? `${f.envelope.storeys}` : '—') : '—', l: f.envelope ? `storeys within the LEP height plane (${f.envelope.label})` : 'no height of building control mapped' },
   ].map((tl) => `<div class="tile"><div class="tv${tl.v.length > 9 ? ' long' : ''}">${esc(tl.v)}</div><div class="tl">${esc(tl.l)}</div></div>`).join('');
   const legend = HEIGHT_BANDS.map((bd, i) => `<div class="lg"><svg width="5mm" height="3.6mm" viewBox="0 0 5 3.6"><rect x="0" y="0.3" width="5" height="3" fill="${bd.fill}"/></svg><span>${esc(bd.label)} · ${fmtNum(f.bands[i].count)}</span></div>`).join('') +
+    (f.fromDa ? `<div class="lg"><svg width="5mm" height="3.6mm" viewBox="0 0 5 3.6"><defs><pattern id="da-hatch-lg" patternUnits="userSpaceOnUse" width="1" height="1" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="1" stroke="#ffffff" stroke-width="0.3"/></pattern></defs><rect x="0" y="0.3" width="5" height="3" fill="${HEIGHT_BANDS[1].fill}"/><rect x="0" y="0.3" width="5" height="3" fill="url(#da-hatch-lg)"/></svg><span>hatched: storeys from a determined DA on the lot · ${fmtNum(f.fromDa)}</span></div>` : '') +
     `<div class="lg"><svg width="5mm" height="3.6mm" viewBox="0 0 5 3.6"><rect x="0" y="0.3" width="5" height="3" fill="${NO_HEIGHT_FILL}"/></svg><span>no height known · ${fmtNum(f.bands[5].count)}</span></div>`;
   const maxSt = Math.max(1, ...f.near.storeys.map((s) => s.storeys), f.envelope?.storeys ?? 0);
   const hist = Array.from({ length: Math.min(20, maxSt) }, (_, i) => { const st = i + 1; const n = f.near.storeys.find((s) => s.storeys === st)?.count ?? 0; return { label: st === 20 ? '20+' : String(st), value: n, text: n ? String(n) : '' }; });
@@ -2027,7 +2064,7 @@ export function builtFormSlide(b: SlidesBundle, planning: PlanningFacts): Slide 
       const h = current.bd.estimatedHeightM;
       const ground = Math.min(...current.rls);
       const onSite = siteRings.some((r) => pointInRing(current!.bd.centroid[0], current!.bd.centroid[1], r));
-      blocks.push({ d0: current.d0, d1: dEnd, top: ground + (h ?? METRES_PER_STOREY), site: onSite, unknown: !h, label: h && dEnd - current.d0 > 25 ? `${current.bd.floors ?? storeysOf(h)} st` : undefined });
+      blocks.push({ d0: current.d0, d1: dEnd, top: ground + (h ?? METRES_PER_STOREY), site: onSite, unknown: !h, approx: current.bd.heightFrom === 'da', label: h && dEnd - current.d0 > 25 ? `${current.bd.floors ?? storeysOf(h)} st${current.bd.heightFrom === 'da' ? ' (DA)' : ''}` : undefined });
       current = null;
     };
     for (const s of samples) {
@@ -2047,7 +2084,7 @@ export function builtFormSlide(b: SlidesBundle, planning: PlanningFacts): Slide 
       ? { d0: siteRun[0].d, d1: siteRun[siteRun.length - 1].d, top: f.envelope.topRl, label: `HOB ${f.envelope.label}` } : undefined;
     const sec = sectionSvg({ w: FIELD_W, h: 96, font: t.font, samples, from: 'A', to: 'A′', siteColour: t.site, waterColour: t.water, blocks, envelope });
     const yA = FIELD_Y + PANEL_TITLE_H + DA_PANEL_H + GUTTER;
-    sectionHtml = `<div class="abs ptitle" style="left:${FIELD_X}mm;top:${yA}mm;width:${FIELD_W}mm">Section A–A′ with the buildings it meets<span class="pnote">${bearingName((secA.bearing + 180) % 360)} to ${bearingName(secA.bearing)} · ${fmtNum(Math.round(L))} m · heights measured or ${METRES_PER_STOREY} m a storey, dashed where unknown · vertical exaggeration ${sec.ve % 1 ? sec.ve.toFixed(1) : sec.ve}×</span></div>
+    sectionHtml = `<div class="abs ptitle" style="left:${FIELD_X}mm;top:${yA}mm;width:${FIELD_W}mm">Section A–A′ with the buildings it meets<span class="pnote">${bearingName((secA.bearing + 180) % 360)} to ${bearingName(secA.bearing)} · ${fmtNum(Math.round(L))} m · heights measured or ${METRES_PER_STOREY} m a storey, dashed where the storeys are a DA's, faint and one storey where unknown · vertical exaggeration ${sec.ve % 1 ? sec.ve.toFixed(1) : sec.ve}×</span></div>
       <div class="abs" style="left:${FIELD_X}mm;top:${yA + PANEL_TITLE_H}mm">${sec.svg}</div>`;
   }
   const yHist = FIELD_Y + PANEL_TITLE_H + 24 + 3 + 30;
@@ -3056,7 +3093,8 @@ export function siteSentences(b: SlidesBundle, f: ReturnType<typeof siteFacts>):
   // the existing building
   if (f.buildings.onSite.length) {
     const tallest = [...f.buildings.onSite].sort((x, y) => (y.estimatedHeightM ?? 0) - (x.estimatedHeightM ?? 0))[0];
-    const h = tallest.floors ? `${tallest.floors} storey${tallest.floors === 1 ? '' : 's'}${tallest.heightM ? `, ${fmtNum(tallest.heightM, 1)} m` : ''}` : tallest.heightM ? `${fmtNum(tallest.heightM, 1)} m high` : 'no recorded height';
+    const h = (tallest.floors ? `${tallest.floors} storey${tallest.floors === 1 ? '' : 's'}${tallest.heightM ? `, ${fmtNum(tallest.heightM, 1)} m` : ''}` : tallest.heightM ? `${fmtNum(tallest.heightM, 1)} m high` : 'no recorded height') +
+      (tallest.heightFrom === 'da' ? ' (the storeys of a determined DA on the lot, slide 08)' : '');
     out.push(`${f.buildings.source === 'overture' ? 'Overture Maps' : 'OpenStreetMap'} has ${f.buildings.onSite.length === 1 ? 'one building' : `${f.buildings.onSite.length} buildings`} on the lot, ${h}, covering ${fmtNum(f.buildings.footprintSqm)} m², ${fmtPct(f.buildings.coveragePct)} of the site${f.buildings.onSite.some((x) => x.beyondLot) ? ' (a footprint extends beyond the lot)' : ''}${f.buildings.adjoining.length ? `; ${f.buildings.adjoining.length === 1 ? 'the neighbour on the boundary is' : `${f.buildings.adjoining.length === 2 ? 'two' : f.buildings.adjoining.length} neighbours stand on the boundary:`} ${listWords(f.buildings.adjoining.slice(0, 3).map((n) => `${n.floors ? `${n.floors} storey${n.floors === 1 ? '' : 's'}` : n.estimatedHeightM ? `about ${fmtNum(n.estimatedHeightM)} m high` : 'of unknown height'} to the ${bearingName(n.bearing)}`))}` : ''}.`);
   } else out.push(`${f.buildings.source === 'none' ? 'No footprint source answered' : 'The footprint data has no building on the lot'}; the existing building, if any, is for the site visit.`);
   // levels
@@ -3616,10 +3654,10 @@ export function sunViewFacts(b: SlidesBundle) {
   };
   const lowestAlt = Math.min(...sun.winter.hours.map((h) => h.altitudeDeg));
   const castersInReach = casters.filter((bd) => inReach(bd, lowestAlt)).length;
-  // how far the recorded heights cover the block: the footprints within 60 m of the boundary
+  // how far the known heights cover the block: the footprints within 60 m of the boundary
   const distFromSiteM = (bd: Bldg) => { const c = toM(bd.centroid[0], bd.centroid[1]); let d = Infinity; for (const r of ringsMerc) for (const q of r) d = Math.min(d, Math.hypot(q.x - c.x, q.y - c.y)); return d / k; };
   const nearBuildings = b.buildings.buildings.filter((bd) => notSite(bd) && distFromSiteM(bd) <= 60);
-  const near = { total: nearBuildings.length, withHeight: nearBuildings.filter((bd) => bd.estimatedHeightM).length };
+  const near = { total: nearBuildings.length, withHeight: nearBuildings.filter((bd) => bd.estimatedHeightM).length, fromDa: nearBuildings.filter((bd) => bd.heightFrom === 'da').length };
   const shadows = SHADOW_HOURS.map((sh) => {
     const pos = sun.winter.hours.find((h) => h.hour === sh.hour)!;
     const hulls: { hull: XY[]; heightM: number; floors?: number; bearing: number; hits: number; lon: number; lat: number }[] = [];
@@ -3669,10 +3707,13 @@ export function sunViewSentences(b: SlidesBundle, f: ReturnType<typeof sunViewFa
     if (f.sharedRow) s += ' (the row the site stands in is one footprint, so its own neighbours are left out)';
     if (worst.mainCaster && worst.shadedPct >= 1) s += `; the ${worst.label} shadow is mostly the ${worst.mainCaster.floors ? `${worst.mainCaster.floors}-storey` : `${fmtNum(worst.mainCaster.heightM)} m`} building to the ${compassWord(worst.mainCaster.bearing)}`;
     const partial = f.near.total > 0 && f.near.withHeight < f.near.total;
-    const coverage = !partial ? '' : f.near.withHeight === 0 ? ` (none of the ${f.near.total} buildings within 60 m has a recorded height)` : ` (${f.near.withHeight} of the ${f.near.total} buildings within 60 m ${f.near.withHeight === 1 ? 'has' : 'have'} a recorded height)`;
-    s += sh.every((x) => x.shadedPct < 1) ? `: the site keeps its winter sun${partial ? ' as far as the recorded heights go' : ''}${coverage}.` : `${coverage}. A model of the block is the next step; this is footprints and recorded heights only.`;
+    const daNote = f.near.fromDa ? `; ${f.near.fromDa === f.near.withHeight ? (f.near.withHeight === 1 ? 'that one' : f.near.withHeight === 2 ? 'both' : 'all of them') : f.near.fromDa === 1 ? 'one of them' : `${f.near.fromDa} of them`} the storeys of a determined DA on the lot` : '';
+    const coverage = partial
+      ? (f.near.withHeight === 0 ? ` (none of the ${f.near.total} buildings within 60 m has a known height)` : ` (${f.near.withHeight} of the ${f.near.total} buildings within 60 m ${f.near.withHeight === 1 ? 'has' : 'have'} a known height${daNote})`)
+      : f.near.fromDa ? ` (${f.near.total === 1 ? 'the one building' : `all ${f.near.total} buildings`} within 60 m ${f.near.total === 1 ? 'has' : 'have'} a height${daNote})` : '';
+    s += sh.every((x) => x.shadedPct < 1) ? `: the site keeps its winter sun${partial ? ' as far as the known heights go' : ''}${coverage}.` : `${coverage}. A model of the block is the next step; this is footprints and known heights only.`;
     out.push(s);
-  } else out.push(`No building within shadow reach of the site has a recorded height${f.near.total && !f.near.withHeight ? ` (none of the ${f.near.total} ${f.buildingsSource === 'overture' ? 'Overture' : 'OpenStreetMap'} footprints within 60 m carries one)` : ''}, so no winter shadow can be drawn; the block model is the next step.`);
+  } else out.push(`No building within shadow reach of the site has a known height${f.near.total && !f.near.withHeight ? ` (none of the ${f.near.total} ${f.buildingsSource === 'overture' ? 'Overture' : 'OpenStreetMap'} footprints within 60 m carries one)` : ''}, so no winter shadow can be drawn; the block model is the next step.`);
   if (f.views.length) {
     const clear = f.views.filter((v) => v.clear === true), blocked = f.views.filter((v) => v.clear === false), unchecked = f.views.filter((v) => v.clear === undefined);
     const km = (m: number) => (m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${fmtNum(m)} m`);
@@ -3742,7 +3783,7 @@ export function sunViewSlide(b: SlidesBundle): Slide {
   const sentences = sunViewSentences(b, f);
   const textHtml = sentences.map(para).join('') +
     placeholder('Narrative — for the author: where the living rooms and the private open space should face, which frontage gets the morning and which the afternoon, what the neighbours\' winter shadows leave for the ground floor and the courtyard, and which views are worth a window, a terrace or a roof.') +
-    `<div class="fine">Sun positions computed for the site (NOAA solar geometry) for 21 June in AEST and 21 December and the equinox in AEDT; shadows from ${b.buildings.source === 'overture' ? 'Overture Maps' : 'OpenStreetMap'} footprints and recorded heights, the site's own buildings left out; street bearings from NSW Spatial Services roads in the window; sight lines from the eye just under the height limit over the NSW 5 m elevation surface to the skylines, the named water and coast and the park next door. Buildings are not tested against the sight lines. Retrieved ${b.generatedAt.slice(0, 10)}.</div>`;
+    `<div class="fine">Sun positions computed for the site (NOAA solar geometry) for 21 June in AEST and 21 December and the equinox in AEDT; shadows from ${b.buildings.source === 'overture' ? 'Overture Maps' : 'OpenStreetMap'} footprints and their heights (measured, from storeys, or the storeys of a determined DA on the lot, as slide 08 marks them), the site's own buildings left out; street bearings from NSW Spatial Services roads in the window; sight lines from the eye just under the height limit over the NSW 5 m elevation surface to the skylines, the named water and coast and the park next door. Buildings are not tested against the sight lines. Retrieved ${b.generatedAt.slice(0, 10)}.</div>`;
   const worstShadow = [...f.shadows].sort((x, y) => y.shadedPct - x.shadedPct)[0];
   const clearViews = f.views.filter((v) => v.clear === true);
   const sub = [b.siteAddress, `grid ${f.grid.primaryDeg}°`, f.grid.frontages[0] ? `frontage faces ${f.grid.frontages[0].facingWord}` : '', clearViews.length ? `${clearViews.length} clear view${clearViews.length === 1 ? '' : 's'}` : ''].filter(Boolean).join(' · ');
@@ -3783,8 +3824,8 @@ export function sunViewSlide(b: SlidesBundle): Slide {
     parts.push(label(x, y + 4.2, `${s.label} · ${s.altitudeDeg.toFixed(0)}°`, 1.9, '#7a5600'));
   }
   parts.push(panelFurniture(sp, 'right'));
-  if (!f.castersInReach) parts.push(emptyNote(['No building within shadow reach of the site has a recorded height, so no shadow is drawn.']));
-  else if (f.near.total && !f.near.withHeight) parts.push(emptyNote([`None of the ${f.near.total} buildings within 60 m has a recorded height; the shadows drawn are the further buildings' only.`]));
+  if (!f.castersInReach) parts.push(emptyNote(['No building within shadow reach of the site has a known height, so no shadow is drawn.']));
+  else if (f.near.total && !f.near.withHeight) parts.push(emptyNote([`None of the ${f.near.total} buildings within 60 m has a known height; the shadows drawn are the further buildings' only.`]));
   const shadowSvg = `<svg width="${sp.wMm}mm" height="${sp.hMm}mm" viewBox="0 0 ${sp.wMm} ${sp.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
     <defs><clipPath id="clip-shadow"><rect x="0" y="0" width="${sp.wMm}" height="${sp.hMm}"/></clipPath></defs>
     <g clip-path="url(#clip-shadow)" font-family="${t.font}">${parts.join('\n')}</g>
@@ -3797,7 +3838,7 @@ export function sunViewSlide(b: SlidesBundle): Slide {
     { v: `${f.grid.primaryDeg}°${f.grid.secondaryDeg !== null ? ` · ${f.grid.secondaryDeg}°` : ''}`, l: `street grid bearings from north · site axis ${f.grid.siteAxisDeg}°, ${f.grid.offGridDeg <= 5 ? 'on the grid' : `${f.grid.offGridDeg}° off`}` },
     { v: f.grid.frontages[0] ? f.grid.frontages[0].facingWord : '—', l: f.grid.frontages[0] ? `${f.grid.frontages[0].name} frontage faces${f.grid.frontages.length > 1 ? ` · ${f.grid.frontages.slice(1).map((fr) => `${fr.name} ${fr.facingWord}`).join(', ')}` : ''}` : 'no frontage to a named road' },
     { v: `${f.sun.winter.noonAltitudeDeg.toFixed(0)}°`, l: `winter noon sun (21 June, ${fmtClock(f.sun.winter.noon)} AEST) · ${f.sun.summer.noonAltitudeDeg.toFixed(0)}° on 21 December` },
-    { v: f.castersInReach ? fmtPct(worstShadow.shadedPct) : '—', l: f.castersInReach ? `of the site in neighbours' shadow at ${worstShadow.label} on 21 June · ${f.shadows.filter((s) => s !== worstShadow).map((s) => `${s.label} ${fmtPct(s.shadedPct)}`).join(' · ')}${f.near.total && f.near.withHeight < f.near.total ? ` · heights known for ${f.near.withHeight} of ${f.near.total} buildings within 60 m` : ''}` : 'no recorded height within shadow reach of the site' },
+    { v: f.castersInReach ? fmtPct(worstShadow.shadedPct) : '—', l: f.castersInReach ? `of the site in neighbours' shadow at ${worstShadow.label} on 21 June · ${f.shadows.filter((s) => s !== worstShadow).map((s) => `${s.label} ${fmtPct(s.shadedPct)}`).join(' · ')}${f.near.total && f.near.withHeight < f.near.total ? ` · heights known for ${f.near.withHeight} of ${f.near.total} buildings within 60 m` : ''}` : 'no known height within shadow reach of the site' },
   ].map((tl) => `<div class="tile"><div class="tv${tl.v.length > 9 ? ' long' : ''}">${esc(tl.v)}</div><div class="tl">${esc(tl.l)}</div></div>`).join('');
   const diagW = Math.min(62, (rightW - GUTTER) / 2);
   const sw = (inner: string) => `<svg width="5mm" height="3.6mm" viewBox="0 0 5 3.6">${inner}</svg>`;
@@ -3980,8 +4021,8 @@ export function ocFacts(b: SlidesBundle, planning: PlanningFacts) {
   else con.push({ theme: 'Orientation', text: `The long axis runs ${sv.grid.siteAxisDeg <= 30 || sv.grid.siteAxisDeg >= 150 ? 'north–south' : `at ${sv.grid.siteAxisDeg}°`}${sv.grid.frontages.length ? ` with the frontage facing ${listWords([...new Set(sv.grid.frontages.map((fr) => fr.facingWord))])}` : ''}: winter sun comes over a side boundary, so the northern setback and the neighbour's height there decide the sun access.`, mark: topOfSite });
   const w = sv.sun.winter;
   const worst = [...sv.shadows].sort((x, y) => y.shadedPct - x.shadedPct)[0];
-  const shadeClause = sv.near.total && !sv.near.withHeight ? '; no neighbour within 60 m has a recorded height, so the shadow study is still open'
-    : sv.castersInReach && worst ? (worst.shadedPct < 1 ? '; the neighbours with recorded heights leave it in sun' : worst.shadedPct < 10 ? `; the neighbours with recorded heights shade at most ${fmtPct(worst.shadedPct)} of the site` : '') : '';
+  const shadeClause = sv.near.total && !sv.near.withHeight ? '; no neighbour within 60 m has a known height, so the shadow study is still open'
+    : sv.castersInReach && worst ? (worst.shadedPct < 1 ? '; the neighbours with known heights leave it in sun' : worst.shadedPct < 10 ? `; the neighbours with known heights shade at most ${fmtPct(worst.shadedPct)} of the site` : '') : '';
   const siteDiagM = Number.isFinite(sx1) ? Math.hypot(sx1 - sx0, sy1 - sy0) / k : 10;
   const arcRadiusM = Math.max(siteDiagM / 2 + (5 * scale) / 1000, (11 * scale) / 1000);
   opp.push({ theme: 'Sun', text: `Winter sun (21 June) from the ${dir(w.hours[0].azimuthDeg)} at 9 am to the ${dir(w.hours[2].azimuthDeg)} at 3 pm, ${w.noonAltitudeDeg.toFixed(0)}° high at noon${shadeClause}.`, mark: atBearing(w.hours[1].azimuthDeg, arcRadiusM) });
@@ -4543,7 +4584,7 @@ export function sourcesFacts(b: SlidesBundle, planning: PlanningFacts) {
 
   // Open and community data.
   const F: SourceRow[] = [];
-  F.push({ dataset: b.buildings.source === 'overture' ? 'Overture Maps Foundation buildings (footprints, heights and storeys)' : b.buildings.source === 'osm' ? 'OpenStreetMap buildings via Overpass (Overture was not available)' : 'Building footprints', used: '08 · 11 · 12 · 13 · 17', currency: b.buildings.source === 'overture' ? `release ${b.buildings.release ?? 'unknown'}; ${n(b.buildings.buildings.length, 'footprint')} in the window, ${n(b.buildings.buildings.filter((x) => x.estimatedHeightM).length, 'height')}` : b.buildings.source === 'osm' ? `${n(b.buildings.buildings.length, 'footprint')} in the window` : (b.buildings.note ?? 'none read'), retrieved: retrieved(b.buildings.fetchedAt), attribution: b.buildings.source === 'overture' ? ATTR.overture : b.buildings.source === 'osm' ? ATTR.osm : ATTR.none });
+  F.push({ dataset: b.buildings.source === 'overture' ? 'Overture Maps Foundation buildings (footprints, heights and storeys)' : b.buildings.source === 'osm' ? 'OpenStreetMap buildings via Overpass (Overture was not available)' : 'Building footprints', used: '08 · 11 · 12 · 13 · 17', currency: b.buildings.source === 'none' ? (b.buildings.note ?? 'none read') : `${b.buildings.source === 'overture' ? `release ${b.buildings.release ?? 'unknown'}; ` : ''}${n(b.buildings.buildings.length, 'footprint')} in the window, ${n(b.buildings.buildings.filter((x) => x.estimatedHeightM).length, 'height')}${b.buildings.buildings.some((x) => x.heightFrom === 'da') ? `, ${b.buildings.buildings.filter((x) => x.heightFrom === 'da').length} of them the storeys of a determined DA on the lot (Online DA API)` : ''}`, retrieved: retrieved(b.buildings.fetchedAt), attribution: b.buildings.source === 'overture' ? ATTR.overture : b.buildings.source === 'osm' ? ATTR.osm : ATTR.none });
   F.push({ dataset: 'OpenStreetMap via Overpass: bus routes, cycleways, footways, one-way streets', used: '09 · 10', currency: b.movement.osm ? `read; ${n(b.movement.cycleways.length, 'cycleway')}, ${n(b.movement.footways.length, 'footway')}, ${n(b.movement.busRoutes.length, 'bus route')} in the window` : 'not available at retrieval (the Overpass mirror did not answer), so slide 09 shows the State layers only', retrieved: retrieved(b.movement.fetchedAt), attribution: ATTR.osm });
   F.push({ dataset: 'Valhalla walking isochrones on the OpenStreetMap network', used: '09 · 10 · 17', currency: b.movement.isochrones.length ? `${b.movement.isochrones.map((i) => i.minutes).sort((x, y) => x - y).join(', ')} minutes from the site; the network as the instance holds it` : 'not answered for this run', retrieved: retrieved(b.movement.fetchedAt), attribution: ATTR.valhalla });
   const ch = b.character;
