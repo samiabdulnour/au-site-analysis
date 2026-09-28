@@ -35,6 +35,7 @@ import type { XY } from '../lib/geo.js';
 import { sunPosition, sunTimes, sunPath, civilToUtc, fmtClock } from '../lib/solar.js';
 import { shadowHull, inHull } from '../lib/shadows.js';
 import type { ViewKind } from '../fetch/views.js';
+import { MAX_PHOTOS, type StreetPhoto } from '../fetch/photos.js';
 
 export const SLIDE_W = 420;
 export const SLIDE_H = 297;
@@ -2878,6 +2879,229 @@ export function siteSlide(b: SlidesBundle): Slide {
   return { id: '11_the_site', title: 'The site', subtitle: sub, textHtml, figureHtml };
 }
 
+// ---- slide 12: existing site condition ------------------------------------------
+
+const CAMERA_COLOUR = '#0b6e99';
+/** Between the two panels of the then-and-now pair. */
+const PAIR_GAP = 4;
+/** Round scales the camera plan may take; the smallest that holds every camera and the site wins. */
+const PLAN_SCALES = [1000, 1250, 1500, 2000, 2500, 3000];
+const NUM_WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight'];
+const numWord = (n: number) => NUM_WORDS[n] ?? fmtNum(n);
+const capFirst = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+const monthYear = (iso?: string) => (iso ? new Date(iso).toLocaleDateString('en-AU', { month: 'long', year: 'numeric', timeZone: 'UTC' }) : '');
+const SOURCE_WORD: Record<StreetPhoto['source'], string> = { kartaview: 'KartaView', mapillary: 'Mapillary' };
+
+/** The frames with where each was taken from, the plan that keys them, the sides no frame covers and the pair's coverage. */
+export function photosFacts(b: SlidesBundle) {
+  const ph = b.photos;
+  const centreLL = mercatorToLonLat(b.panel.center);
+  const k = mercatorScaleFactor(centreLL.lat);
+  // the street a camera stands in: the nearest named road centreline within 25 m
+  const streetOf = (lon: number, lat: number): string | undefined => {
+    const q = lonLatToMercator({ lon, lat });
+    let best: { name: string; d: number } | null = null;
+    for (const r of b.base.roads) {
+      if (!r.name) continue;
+      for (let i = 0; i < r.coords.length - 1; i++) {
+        const a = lonLatToMercator({ lon: r.coords[i][0], lat: r.coords[i][1] }), c = lonLatToMercator({ lon: r.coords[i + 1][0], lat: r.coords[i + 1][1] });
+        const d = segDistM(q, a, c) / k;
+        if (d <= 25 && (!best || d < best.d)) best = { name: titleCase(r.name), d };
+      }
+    }
+    return best?.name;
+  };
+  const photos = ph.photos.map((p) => {
+    const street = streetOf(p.lon, p.lat);
+    const side = compassWord(p.bearingFromSite), look = compassWord(p.heading), when = monthYear(p.date);
+    const where = p.distanceM < 3 ? 'at the boundary' : `${fmtNum(p.distanceM)} m ${side} of the site`;
+    const caption = `${p.n} · from ${street ?? 'the street'}, ${where}, looking ${look}${p.facing === 'street' ? ' along the street' : ''} · ${SOURCE_WORD[p.source]}${p.author ? ` (${p.author})` : ''}${when ? `, ${when}` : ''} · ${p.licence}`;
+    return { ...p, street, side, look, when, caption };
+  });
+  const facingCount = photos.filter((p) => p.facing === 'site').length;
+  // the plan: the smallest round scale that keeps every camera and the site clear of the edges
+  const siteRings = b.base.siteLots.features.flatMap((f) => geomRings(f.geometry));
+  const pts: [number, number][] = [...photos.map((p) => [p.lon, p.lat] as [number, number]), ...siteRings.flatMap((r) => r.map(([lon, lat]) => [lon, lat] as [number, number]))];
+  const fits = (scale: number) => { const proj = panelProjector({ center: b.panel.center, scale, wMm: PANEL_W, hMm: PANEL_H }); return pts.every(([lon, lat]) => { const [x, y] = proj(lon, lat); return x > 6 && x < PANEL_W - 6 && y > 6 && y < PANEL_H - 6; }); };
+  const scale = photos.length ? (PLAN_SCALES.find(fits) ?? PLAN_SCALES[PLAN_SCALES.length - 1]) : Math.max(1500, PLAN_SCALES.find(fits) ?? 1500);
+  const planPanel: Panel = { center: b.panel.center, scale, wMm: PANEL_W, hMm: PANEL_H };
+  // the sides of the site no open frame looks at, for the placeholders
+  const covered = new Set(photos.filter((p) => p.facing === 'site').map((p) => Math.round(p.bearingFromSite / 45) % 8));
+  const uncoveredSides = [0, 1, 2, 3, 4, 5, 6, 7].filter((i) => !covered.has(i)).map((i) => bearingName(i * 45));
+  const placeholders = Array.from({ length: Math.max(0, MAX_PHOTOS - photos.length) }, (_, i) => uncoveredSides[i] as string | undefined);
+  const dates = photos.map((p) => p.date).filter((d): d is string => Boolean(d)).sort();
+  const streets = [...new Set(photos.map((p) => p.street).filter((s): s is string => Boolean(s)))];
+  const authors = [...new Set(photos.map((p) => p.author).filter((s): s is string => Boolean(s)))];
+  const sources = [...new Set(photos.map((p) => SOURCE_WORD[p.source]))];
+  const pp = ph.pair.panel;
+  const then = ph.pair.then;
+  const thenCoverage: 'full' | 'partial' | 'none' = then.tiles.length ? (then.missing ? 'partial' : 'full') : 'none';
+  return {
+    radiusM: ph.radiusM,
+    kartaview: ph.kartaview,
+    mapillary: ph.mapillary,
+    photos, facingCount, streets, authors, sources,
+    dateRange: dates.length ? { first: dates[0], last: dates[dates.length - 1] } : null,
+    planPanel, uncoveredSides, placeholders,
+    pair: {
+      panel: pp, widthM: Math.round((pp.wMm / 1000) * pp.scale), heightM: Math.round((pp.hMm / 1000) * pp.scale),
+      then: thenCoverage, thenTiles: then.tiles.length, thenMissing: then.missing, thenSource: then.source,
+      now: ph.pair.now ? { tiles: ph.pair.now.tiles.length, imagery: b.site.imagery } : null,
+    },
+  };
+}
+
+export function photosSentences(b: SlidesBundle, f: ReturnType<typeof photosFacts>): string[] {
+  const out: string[] = [];
+  const n = f.photos.length, facing = f.facingCount;
+  const kv = f.kartaview, mly = f.mapillary;
+  const mlyNote = mly.ok ? '' : ' (Mapillary is not read without a client token)';
+  if (n) {
+    const sourcesWord = f.sources.join(' and ');
+    const when = f.dateRange ? (monthYear(f.dateRange.first) === monthYear(f.dateRange.last) ? `taken in ${monthYear(f.dateRange.first)}` : `taken between ${monthYear(f.dateRange.first)} and ${monthYear(f.dateRange.last)}`) : 'undated';
+    const by = f.authors.length === 1 ? `by ${sourcesWord} contributor ${f.authors[0]}` : `by ${sourcesWord} contributors`;
+    const along = n - facing;
+    out.push(`${capFirst(numWord(n))} open street-level ${n === 1 ? 'frame looks' : 'frames look'} at the site${along ? ` (${along === 1 ? 'one of them' : `${numWord(along)} of them`} along the street rather than at it)` : ''}${f.streets.length ? ` from ${listWords(f.streets)}` : ''}, ${when} ${by}.`);
+    const lastMs = f.dateRange ? Date.parse(f.dateRange.last) : NaN;
+    const ageYears = Number.isFinite(lastMs) ? (Date.parse(b.generatedAt) - lastMs) / (365.25 * 24 * 3600e3) : NaN;
+    const age = Number.isFinite(ageYears) && ageYears >= 1 ? `The newest is ${ageYears >= 2 ? `${Math.round(ageYears)} years` : 'over a year'} old, so the frontage and the street may have changed since; the` : 'The';
+    out.push(`${age} frames stand in until the site visit${f.uncoveredSides.length ? (f.uncoveredSides.length >= 5 ? `, which also covers the sides no open frame reaches: the open frames look at the site from ${numWord(8 - f.uncoveredSides.length)} of its eight sides only` : `, which also covers the ${listWords(f.uncoveredSides)}, where no open frame looks at the site`) : ''}${f.placeholders.length ? '; the placeholders are sized for its photographs' : ''}.`);
+  } else if (kv.ok && kv.frames) {
+    out.push(`KartaView holds ${fmtNum(kv.frames)} frames within ${f.radiusM} m of the site, but none of them looks at it${mlyNote}, so the site visit supplies the photographs; the placeholders are sized for them, and the plan and the aerial pair carry the slide until then.`);
+  } else if (kv.ok) {
+    out.push(`No open street-level frame lies within ${f.radiusM} m of the site${mlyNote}, so the site visit supplies the photographs; the placeholders are sized for them, and the plan and the aerial pair carry the slide until then.`);
+  } else {
+    out.push(`KartaView did not answer for this run${mlyNote}, so no open street-level frame is shown; the site visit supplies the photographs and the placeholders are sized for them.`);
+  }
+  const pr = f.pair;
+  const nowDate = pr.now?.imagery?.date ? ` of ${fmtIso(pr.now.imagery.date)}` : '';
+  if (pr.then !== 'none') out.push(`The 1943 aerial survey of Sydney sits beside today's capture${nowDate}: the same ${pr.widthM} × ${pr.heightM} m of ground at 1:${fmtNum(pr.panel.scale)}, north up, for the block's grain, its buildings and its trees then and now${pr.then === 'partial' ? '; the survey stops part-way across the panel' : ''}.`);
+  else if (pr.now) out.push(`The State's 1943 aerial survey covers the Sydney region only and has no tile here, so the pair shows today's capture${nowDate} alone.`);
+  else out.push('Neither the 1943 aerial survey nor today\'s imagery answered for the pair on this run.');
+  return out;
+}
+
+export function photosSlide(b: SlidesBundle): Slide {
+  const t = tpl();
+  const ph = b.photos;
+  const f = photosFacts(b);
+  const img = b.site.imagery;
+  const sentences = photosSentences(b, f);
+  const imgWords = img ? ` (${titleCase(img.block)} block${img.date ? `, captured ${fmtIso(img.date)}` : ''}${img.resolutionCm ? `, ${img.resolutionCm} cm` : ''})` : '';
+  const textHtml = sentences.map(para).join('') +
+    placeholder('Site visit — for the author: the visit\'s photographs replace these frames, keyed to the plan: each face of the site from the street, the street both ways, the neighbours\' interfaces, the trees, the levels and retaining walls, the services in the footpath, the building\'s fabric and condition.') +
+    `<div class="fine">Sources: ${f.photos.length ? `street-level frames from ${listWords(f.sources)} (the contributors named under each frame, ${f.photos[0].licence}): the frames within ${f.radiusM} m of the site whose view cone takes it in, one per side where there is one, cropped to the grid; headings without a record are read from the camera's track` : `KartaView's nearby-photos listing within ${f.radiusM} m of the site`}; ${f.mapillary.ok ? 'Mapillary read with a client token' : 'Mapillary not read (no client token)'}; the 1943 aerial survey from NSW Spatial Services' Historical Imagery 1943 tile service (level 18, about half a metre a pixel); today's aerial NSW Imagery via SIX Maps${imgWords}; cadastre, roads and footprints as on slide 11. Retrieved ${b.generatedAt.slice(0, 10)}.</div>`;
+
+  // ---- the camera plan
+  const p = f.planPanel;
+  const proj = panelProjector(p);
+  const parts: string[] = [baseLayers(b.base, proj, p)];
+  if (b.buildings.buildings.length) parts.push(`<path d="${b.buildings.buildings.map((bd) => ringsPath(bd.rings, proj)).join('')}" fill="#e8e5df" stroke="#cdc8bf" stroke-width="0.12" fill-rule="evenodd"/>`);
+  parts.push(overLayers(b.base, proj, p, 'both'));
+  const spacer = new LabelSpacer(p.wMm, p.hMm, 60);
+  const camXY = f.photos.map((c) => proj(c.lon, c.lat));
+  for (const [x, y] of camXY) spacer.take(x, y, 7, 7);
+  const fb = furnitureBox(p, 'left');
+  spacer.take((fb.x0 + fb.x1) / 2, (fb.y0 + fb.y1) / 2, fb.x1 - fb.x0, fb.y1 - fb.y0);
+  // road names along their centrelines, once each, the longest run of a name first
+  const named = new Set<string>();
+  for (const r of [...b.base.roads].sort((u, v) => v.coords.length - u.coords.length)) {
+    if (!r.name || named.has(r.name)) continue;
+    const raw = r.coords.map(([lon, lat]) => proj(lon, lat));
+    const dense: [number, number][] = [];
+    for (let i = 0; i < raw.length - 1; i++) { const [x1, y1] = raw[i], [x2, y2] = raw[i + 1]; const nn = Math.max(1, Math.ceil(Math.hypot(x2 - x1, y2 - y1) / 3)); for (let j = 0; j < nn; j++) dense.push([x1 + ((x2 - x1) * j) / nn, y1 + ((y2 - y1) * j) / nn]); }
+    if (raw.length) dense.push(raw[raw.length - 1]);
+    const pts = dense.filter(([x, y]) => x > 4 && x < p.wMm - 4 && y > 4 && y < p.hMm - 4);
+    if (pts.length < 2) continue;
+    const text = titleCase(r.name).toUpperCase();
+    const w = labelW(text, 2.1) + 1.2, h = 2.8;
+    // the middle of the run first, then either side of it, on the line or beside it, until a spot is free of the cameras, the other names, the scale bar and the edges
+    let placed = false;
+    for (const frac of [0.5, 0.35, 0.65, 0.2, 0.8, 0.1, 0.9]) {
+      if (placed) break;
+      const i = Math.min(pts.length - 1, Math.max(0, Math.round((pts.length - 1) * frac)));
+      const [x1, y1] = pts[Math.max(0, i - 1)], [x2, y2] = pts[Math.min(pts.length - 1, i + 1)];
+      let rot = (Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI; if (rot > 90 || rot < -90) rot += 180;
+      const rad = (rot * Math.PI) / 180;
+      // the label's footprint once rotated
+      const bw = Math.abs(Math.cos(rad)) * w + Math.abs(Math.sin(rad)) * h, bh = Math.abs(Math.sin(rad)) * w + Math.abs(Math.cos(rad)) * h;
+      const nx = -Math.sin(rad), ny = Math.cos(rad);
+      for (const off of [0, 6, -6]) {
+        const x = pts[i][0] + nx * off, y = pts[i][1] + ny * off;
+        if (!spacer.take(x, y, bw, bh)) continue;
+        named.add(r.name); placed = true;
+        // a white slip under the name masks the centreline, which would otherwise show through the word gaps
+        parts.push(`<g transform="rotate(${rot.toFixed(1)} ${x.toFixed(1)} ${y.toFixed(1)})"><rect x="${(x - w / 2).toFixed(1)}" y="${(y - h / 2).toFixed(1)}" width="${w.toFixed(1)}" height="${h}" fill="#ffffff" fill-opacity="0.92"/><text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="middle" dominant-baseline="middle" font-size="2.1" letter-spacing="0.06em" fill="#444">${esc(text)}</text></g>`);
+        break;
+      }
+    }
+  }
+  // the view cones, then the numbered cameras over them
+  const coneR = 9;
+  f.photos.forEach((c, i) => {
+    const [x, y] = camXY[i];
+    const a0 = ((c.heading - 22) * Math.PI) / 180, a1 = ((c.heading + 22) * Math.PI) / 180;
+    const x0 = x + coneR * Math.sin(a0), y0 = y - coneR * Math.cos(a0), x1 = x + coneR * Math.sin(a1), y1 = y - coneR * Math.cos(a1);
+    parts.push(`<path d="M${x.toFixed(2)},${y.toFixed(2)} L${x0.toFixed(2)},${y0.toFixed(2)} A${coneR},${coneR} 0 0 1 ${x1.toFixed(2)},${y1.toFixed(2)} Z" fill="${CAMERA_COLOUR}" fill-opacity="${c.facing === 'site' ? 0.22 : 0.12}" stroke="${CAMERA_COLOUR}" stroke-width="0.2" stroke-opacity="0.6"/>`);
+  });
+  f.photos.forEach((c, i) => {
+    const [x, y] = camXY[i];
+    parts.push(`<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="2.5" fill="${CAMERA_COLOUR}" stroke="#ffffff" stroke-width="0.4"/><text x="${x.toFixed(2)}" y="${(y + 0.95).toFixed(2)}" text-anchor="middle" font-size="2.6" font-weight="700" fill="#ffffff">${c.n}</text>`);
+  });
+  if (!f.photos.length) parts.push(emptyNote([ph.kartaview.ok ? (ph.kartaview.frames ? `None of the ${fmtNum(ph.kartaview.frames)} open frames within ${ph.radiusM} m looks at the site.` : `No open street-level frame within ${ph.radiusM} m.`) : 'KartaView did not answer for this run.']));
+  parts.push(panelFurniture(p, 'left'));
+  const planSvg = `<svg width="${p.wMm}mm" height="${p.hMm}mm" viewBox="0 0 ${p.wMm} ${p.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
+    <defs><clipPath id="clip-cams"><rect x="0" y="0" width="${p.wMm}" height="${p.hMm}"/></clipPath></defs>
+    <g clip-path="url(#clip-cams)" font-family="${t.font}">${parts.join('\n')}</g>
+    <rect x="0.1" y="0.1" width="${p.wMm - 0.2}" height="${p.hMm - 0.2}" fill="none" stroke="${t.rule}" stroke-width="0.2"/>
+  </svg>`;
+
+  // ---- then and now: the same ground twice
+  const pp = ph.pair.panel;
+  const pe = panelExtent(pp);
+  const pproj = panelProjector(pp);
+  const sx = pp.wMm / (pe.xmax - pe.xmin), sy = pp.hMm / (pe.ymax - pe.ymin);
+  const tag = (text: string) => `<g><rect x="1.5" y="1.5" width="${(labelW(text, 2.6) + 1.6).toFixed(1)}" height="4.6" fill="#ffffff" fill-opacity="0.9"/><text x="2.3" y="4.9" font-size="2.6" font-weight="700" fill="${t.ink}">${esc(text)}</text></g>`;
+  const pairSvg = (id: string, inner: string[]) => `<svg width="${pp.wMm}mm" height="${pp.hMm}mm" viewBox="0 0 ${pp.wMm} ${pp.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
+    <defs><clipPath id="${id}"><rect x="0" y="0" width="${pp.wMm}" height="${pp.hMm}"/></clipPath></defs>
+    <g clip-path="url(#${id})" font-family="${t.font}">${inner.join('\n')}</g>
+    <rect x="0.1" y="0.1" width="${pp.wMm - 0.2}" height="${pp.hMm - 0.2}" fill="none" stroke="${t.rule}" stroke-width="0.2"/>
+  </svg>`;
+  const thenParts: string[] = [`<rect x="0" y="0" width="${pp.wMm}" height="${pp.hMm}" fill="#e9e6df"/>`];
+  // each tile at its Mercator place, a hair over size so the seams do not show
+  for (const tl of ph.pair.then.tiles) thenParts.push(`<image href="data/${tl.file}" x="${((tl.xmin - pe.xmin) * sx - 0.03).toFixed(2)}" y="${((pe.ymax - tl.ymax) * sy - 0.03).toFixed(2)}" width="${((tl.xmax - tl.xmin) * sx + 0.06).toFixed(2)}" height="${((tl.ymax - tl.ymin) * sy + 0.06).toFixed(2)}" preserveAspectRatio="none"/>`);
+  if (!ph.pair.then.tiles.length) thenParts.push(emptyNote(['The 1943 survey covers the', 'Sydney region only: no tile here.']));
+  thenParts.push(siteMark(b.base, pproj, 'outline'), tag('1943'));
+  const nowParts: string[] = [`<rect x="0" y="0" width="${pp.wMm}" height="${pp.hMm}" fill="#f4f2ee"/>`];
+  if (ph.pair.now) for (const tile of ph.pair.now.tiles) nowParts.push(`<image href="data/${tile.file}" x="${(tile.left * pp.wMm).toFixed(2)}" y="${(tile.top * pp.hMm).toFixed(2)}" width="${(tile.width * pp.wMm).toFixed(2)}" height="${(tile.height * pp.hMm).toFixed(2)}" preserveAspectRatio="none"/>`);
+  else nowParts.push(emptyNote(['The aerial imagery did not', 'answer for this window.']));
+  nowParts.push(siteMark(b.base, pproj, 'outline'), tag(img?.date ? img.date.slice(0, 4) : 'Today'), panelFurniture(pp, 'right'));
+
+  // ---- the frames, keyed to the plan; placeholders sized for the site visit's own
+  const cells: string[] = [];
+  for (let i = 0; i < MAX_PHOTOS; i++) {
+    const c = f.photos[i];
+    if (c) cells.push(`<div class="frame"><div class="img"><img src="data/${esc(c.file)}" alt=""><span class="key">${c.n}</span></div><div class="cap">${esc(c.caption)}</div></div>`);
+    else {
+      const side = f.placeholders[i - f.photos.length];
+      cells.push(`<div class="frame ph"><div class="img">${esc(side ? `Site visit photograph: the site from the ${side}` : 'Site visit photograph')}</div><div class="cap">${esc(`${i + 1} · site visit — for the author: ${side ? `the site from the ${side}` : 'a frame from the visit'}, keyed on the plan`)}</div></div>`);
+    }
+  }
+
+  const X2 = FIELD_X + PANEL_W + GUTTER;
+  const rowY = FIELD_Y + PANEL_TITLE_H + PANEL_H + 3;
+  const figure = `<div class="abs ptitle" style="left:${FIELD_X}mm;top:${FIELD_Y}mm;width:${PANEL_W}mm">Camera positions<span class="pnote">1:${fmtNum(p.scale)} · ${f.photos.length ? 'each wedge the direction of view of the frame below' : 'no open frame to key'}</span></div>
+    <div class="abs" style="left:${FIELD_X}mm;top:${FIELD_Y + PANEL_TITLE_H}mm">${planSvg}</div>
+    <div class="abs ptitle" style="left:${X2}mm;top:${FIELD_Y}mm;width:${PANEL_W}mm">Then and now<span class="pnote">1:${fmtNum(pp.scale)} · the 1943 aerial survey beside today's imagery${img?.date ? ` (${fmtIso(img.date)})` : ''}, the same ground</span></div>
+    <div class="abs" style="left:${X2}mm;top:${FIELD_Y + PANEL_TITLE_H}mm">${pairSvg('clip-then', thenParts)}</div>
+    <div class="abs" style="left:${(X2 + PANEL_W - pp.wMm).toFixed(1)}mm;top:${FIELD_Y + PANEL_TITLE_H}mm">${pairSvg('clip-now', nowParts)}</div>
+    <div class="abs ptitle" style="left:${FIELD_X}mm;top:${rowY}mm;width:${FIELD_W}mm">Street level<span class="pnote">${f.photos.length ? 'open frames that look at the site, keyed to the plan · the site visit replaces them' : 'placeholders sized for the site visit\'s photographs'}</span></div>
+    <div class="abs photos" style="left:${FIELD_X}mm;top:${rowY + PANEL_TITLE_H}mm;width:${FIELD_W}mm">${cells.join('')}</div>`;
+  const n = f.photos.length;
+  const sub = [b.siteAddress, n ? `${n} open street-level frame${n === 1 ? '' : 's'}` : 'no open street-level frame', f.pair.then !== 'none' ? '1943 and today' : 'today\'s aerial only'].filter(Boolean).join(' · ');
+  return { id: '12_existing_site_condition', title: 'Existing site condition', subtitle: sub, textHtml, figureHtml: figure };
+}
+
 // ---- slide 13: grid, sun and views --------------------------------------------
 
 const SUN_COLOUR = '#e0a300';
@@ -3778,6 +4002,8 @@ const ATTR = {
   overture: '© Overture Maps Foundation · ODbL and CDLA Permissive 2.0',
   osm: '© OpenStreetMap contributors · ODbL',
   valhalla: 'FOSSGIS Valhalla instance on OpenStreetMap data · ODbL',
+  kartaview: '© KartaView contributors · CC BY-SA 4.0',
+  mapillary: '© Mapillary contributors · CC BY-SA 4.0',
   none: '—',
 };
 
@@ -3856,7 +4082,9 @@ export function sourcesFacts(b: SlidesBundle, planning: PlanningFacts) {
   B.push({ dataset: 'NSW 5 m elevation model (image service)', used: '06 · 08 · 11 · 13 · 15 · 17', currency: dem ? `${dem.source}; ${fmtNum(dem.cols)} × ${fmtNum(dem.rows)} cells over the tall panel${b.country.dem ? `, a second grid at 8 m over the strip for the crests` : ''}` : 'not read for this run', retrieved: deckDay, attribution: ATTR.spatial });
   if (!/City of Sydney/i.test(b.terrain.contourSource ?? '')) B.push({ dataset: 'Contours', used: '06', currency: b.terrain.contours.length ? `${b.terrain.contourSource ?? 'NSW contours'}${b.terrain.contourIntervalM ? `, ${b.terrain.contourIntervalM} m interval` : ''}; ${n(b.terrain.contours.length, 'line')} in the window` : 'none in the window', retrieved: deckDay, attribution: ATTR.spatial });
   const img = b.site.imagery;
-  B.push({ dataset: 'NSW Imagery (aerial) and the imagery-dates layer (SIX Maps)', used: '11', currency: img ? `${titleCase(img.block)} block${img.date ? `, captured ${fmtIso(img.date)}` : ''}${img.resolutionCm ? `, ${img.resolutionCm} cm` : ''}` : b.site.aerial ? 'capture date not published for this block' : 'no aerial for this run', retrieved: retrieved(b.site.fetchedAt), attribution: ATTR.spatial });
+  B.push({ dataset: 'NSW Imagery (aerial) and the imagery-dates layer (SIX Maps)', used: '11 · 12', currency: img ? `${titleCase(img.block)} block${img.date ? `, captured ${fmtIso(img.date)}` : ''}${img.resolutionCm ? `, ${img.resolutionCm} cm` : ''}` : b.site.aerial ? 'capture date not published for this block' : 'no aerial for this run', retrieved: retrieved(b.site.fetchedAt), attribution: ATTR.spatial });
+  const then = b.photos.pair.then;
+  B.push({ dataset: 'Historical Imagery 1943: the Sydney aerial survey as a tile service', used: '12', currency: then.tiles.length ? `1943 survey; ${n(then.tiles.length, 'tile')} at level ${then.zoom} over the pair's panel${then.missing ? `, ${n(then.missing, 'tile')} missing` : ''}` : 'no tile at this site (the survey covers the Sydney region)', retrieved: retrieved(b.photos.fetchedAt), attribution: ATTR.spatial });
   groups.push({ publisher: 'NSW Spatial Services (Department of Customer Service) — Spatial Collaboration Portal and SIX Maps', rows: B });
 
   // Other State agencies.
@@ -3892,9 +4120,14 @@ export function sourcesFacts(b: SlidesBundle, planning: PlanningFacts) {
 
   // Open and community data.
   const F: SourceRow[] = [];
-  F.push({ dataset: b.buildings.source === 'overture' ? 'Overture Maps Foundation buildings (footprints, heights and storeys)' : b.buildings.source === 'osm' ? 'OpenStreetMap buildings via Overpass (Overture was not available)' : 'Building footprints', used: '08 · 11 · 13 · 17', currency: b.buildings.source === 'overture' ? `release ${b.buildings.release ?? 'unknown'}; ${n(b.buildings.buildings.length, 'footprint')} in the window, ${n(b.buildings.buildings.filter((x) => x.estimatedHeightM).length, 'height')}` : b.buildings.source === 'osm' ? `${n(b.buildings.buildings.length, 'footprint')} in the window` : (b.buildings.note ?? 'none read'), retrieved: retrieved(b.buildings.fetchedAt), attribution: b.buildings.source === 'overture' ? ATTR.overture : b.buildings.source === 'osm' ? ATTR.osm : ATTR.none });
+  F.push({ dataset: b.buildings.source === 'overture' ? 'Overture Maps Foundation buildings (footprints, heights and storeys)' : b.buildings.source === 'osm' ? 'OpenStreetMap buildings via Overpass (Overture was not available)' : 'Building footprints', used: '08 · 11 · 12 · 13 · 17', currency: b.buildings.source === 'overture' ? `release ${b.buildings.release ?? 'unknown'}; ${n(b.buildings.buildings.length, 'footprint')} in the window, ${n(b.buildings.buildings.filter((x) => x.estimatedHeightM).length, 'height')}` : b.buildings.source === 'osm' ? `${n(b.buildings.buildings.length, 'footprint')} in the window` : (b.buildings.note ?? 'none read'), retrieved: retrieved(b.buildings.fetchedAt), attribution: b.buildings.source === 'overture' ? ATTR.overture : b.buildings.source === 'osm' ? ATTR.osm : ATTR.none });
   F.push({ dataset: 'OpenStreetMap via Overpass: bus routes, cycleways, footways, one-way streets', used: '09 · 10', currency: b.movement.osm ? `read; ${n(b.movement.cycleways.length, 'cycleway')}, ${n(b.movement.footways.length, 'footway')}, ${n(b.movement.busRoutes.length, 'bus route')} in the window` : 'not available at retrieval (the Overpass mirror did not answer), so slide 09 shows the State layers only', retrieved: retrieved(b.movement.fetchedAt), attribution: ATTR.osm });
   F.push({ dataset: 'Valhalla walking isochrones on the OpenStreetMap network', used: '09 · 10 · 17', currency: b.movement.isochrones.length ? `${b.movement.isochrones.map((i) => i.minutes).sort((x, y) => x - y).join(', ')} minutes from the site; the network as the instance holds it` : 'not answered for this run', retrieved: retrieved(b.movement.fetchedAt), attribution: ATTR.valhalla });
+  const kv = b.photos.kartaview, mly = b.photos.mapillary;
+  const kvPhotos = b.photos.photos.filter((p) => p.source === 'kartaview'), mlyPhotos = b.photos.photos.filter((p) => p.source === 'mapillary');
+  const frameDates = (ps: typeof kvPhotos) => { const ds = ps.map((p) => p.date).filter((d): d is string => Boolean(d)).sort(); return ds.length ? (ds[0].slice(0, 7) === ds[ds.length - 1].slice(0, 7) ? `taken ${fmtIso(ds[0]).slice(-8)}` : `taken ${fmtIso(ds[0])} to ${fmtIso(ds[ds.length - 1])}`) : 'undated'; };
+  F.push({ dataset: 'KartaView street-level frames (nearby-photos listing and thumbnails)', used: '12', currency: kv.ok ? `${n(kv.frames, 'frame')} within ${b.photos.radiusM} m, ${n(kv.withHeading, 'frame')} with a recorded heading; ${kvPhotos.length ? `${n(kvPhotos.length, 'frame')} shown, ${frameDates(kvPhotos)}` : 'none faces the site'}` : `did not answer for this run${kv.note ? ` (${kv.note})` : ''}`, retrieved: retrieved(b.photos.fetchedAt), attribution: ATTR.kartaview });
+  if (mly.ok) F.push({ dataset: 'Mapillary street-level frames (Graph API images)', used: '12', currency: `${n(mly.frames, 'frame')} within ${b.photos.radiusM} m; ${mlyPhotos.length ? `${n(mlyPhotos.length, 'frame')} shown, ${frameDates(mlyPhotos)}` : 'none faces the site'}`, retrieved: retrieved(b.photos.fetchedAt), attribution: ATTR.mapillary });
   groups.push({ publisher: 'Open and community data', rows: F });
 
   // Computed.
@@ -4212,7 +4445,7 @@ export function countrySlide(b: SlidesBundle): Slide {
 
 export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; slides: Slide[] } {
   const facts = planningFacts(b);
-  const slides = [planningOverviewSlide(b, facts), planningControlsSlide(b, facts), terrainSlide(b), developmentSlide(b, facts), builtFormSlide(b, facts), movementSlide(b), greenSlide(b), siteSlide(b), sunViewSlide(b), constraintsSlide(b), countrySlide(b), peopleSlide(b), ocSlide(b, facts), sourcesSlide(b, facts)];
+  const slides = [planningOverviewSlide(b, facts), planningControlsSlide(b, facts), terrainSlide(b), developmentSlide(b, facts), builtFormSlide(b, facts), movementSlide(b), greenSlide(b), siteSlide(b), photosSlide(b), sunViewSlide(b), constraintsSlide(b), countrySlide(b), peopleSlide(b), ocSlide(b, facts), sourcesSlide(b, facts)];
   const t = tpl();
   const footerLeft = ['SITE ANALYST — OVERALL ANALYSIS', b.siteAddress, meta.client ? `for ${meta.client}` : '', meta.jobNo ? `job ${meta.jobNo}` : ''].filter(Boolean).join(' · ');
   const pages = slides.map((s, i) => `
@@ -4288,6 +4521,13 @@ export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; 
   .oc { display: flex; align-items: flex-start; gap: 1.8mm; font-size: 2.35mm; line-height: 1.32; margin-top: 1.4mm; padding-right: 2mm; }
   .oc .n { flex: 0 0 4.2mm; height: 4.2mm; border-radius: 2.1mm; color: #fff; font-weight: 700; font-size: 2.2mm; text-align: center; line-height: 4.2mm; margin-top: 0.1mm; }
   .oc .t b { font-weight: 700; }
+  .photos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3mm ${GUTTER}mm; }
+  .frame .img { position: relative; height: 55mm; background: #ecebe7; overflow: hidden; }
+  .frame img { display: block; width: 100%; height: 100%; object-fit: cover; }
+  .frame .key { position: absolute; left: 2mm; top: 2mm; width: 6mm; height: 6mm; border-radius: 50%; background: ${CAMERA_COLOUR}; border: 0.35mm solid #fff; color: #fff; font-weight: 700; font-size: 2.9mm; line-height: 5.3mm; text-align: center; }
+  .frame .cap { font-size: 2.05mm; line-height: 1.3; color: #333; margin-top: 1mm; }
+  .frame.ph .img { display: flex; align-items: center; justify-content: center; text-align: center; padding: 0 8mm; border: 0.3mm dashed #c4c4c4; background: #fafaf8; color: #8a8a8a; font-size: 2.4mm; font-style: italic; }
+  .frame.ph .cap { color: #7a7a7a; font-style: italic; }
 </style></head>
 <body>${pages}</body></html>`;
   return { html, slides };
@@ -4311,6 +4551,7 @@ export function slidesFacts(b: SlidesBundle) {
     people: peopleFacts(b),
     movement: (() => { const f = movementFacts(b); return { ...f, sentences: movementSentences(b, f) }; })(),
     theSite: (() => { const f = siteFacts(b); return { ...f, sentences: siteSentences(b, f) }; })(),
+    existingCondition: (() => { const f = photosFacts(b); return { ...f, sentences: photosSentences(b, f) }; })(),
     sunViews: (() => { const f = sunViewFacts(b); const { shadowHulls: _h, ...rest } = f; return { ...rest, sentences: sunViewSentences(b, f) }; })(),
     constraints: (() => { const f = constraintsFacts(b); return { ...f, sentences: constraintsSentences(b, f) }; })(),
     country: (() => { const f = countryFacts(b); return { ...f, sentences: countrySentences(b, f) }; })(),

@@ -302,7 +302,7 @@ roads and rail, FOI points and areas, elevation contours. New:
 | `NSW_Water_Theme/FeatureServer` 6 HydroArea, 2 NamedWatercourse, 5 HydroLine | water for slides 01, 10, 15 |
 | `NSW_FOI_Education_Facilities`, `_Health_Facilities`, `_Emergency_Service_Facilities` | amenity by function |
 | `Hosted/TfNSW_Offstreet_Parking_Public`, `Hosted/NSW_BushFire_Prone_Land` | listed, not tested |
-| `https://portal.spatial.nsw.gov.au/tileservices/Hosted/HistoricalImagery1943/MapServer/tile/{z}/{y}/{x}` | the 1943 Sydney aerial as Web Mercator PNG tiles to level 23 (`export` is not offered) |
+| `https://portal.spatial.nsw.gov.au/tileservices/Hosted/HistoricalImagery1943/MapServer/tile/{z}/{y}/{x}` | the 1943 Sydney aerial as Web Mercator PNG tiles; level 18 (about half a metre a pixel) is the finest that answers — 19 is a 404 — and there is no tile outside the Sydney region (`export` is not offered). In use on slide 12 |
 
 ### 4.5 SIX Maps (no key) — `maps.six.nsw.gov.au/arcgis/rest/services/public`
 
@@ -369,8 +369,8 @@ lockdown snapshot and the slide says so.
 |---|---|---|
 | Wikimedia Commons `w/api.php?action=query&list=geosearch&gscoord=<lat>|<lon>&gsradius=800&gsnamespace=6` then `prop=imageinfo&iiprop=url|extmetadata` | open-licence photos near the site with author and licence | send a descriptive `User-Agent`; without one the API answers 429. Attribution is a condition of the licence: print it under the photo |
 | Wikipedia `api/rest_v1/page/summary/<Title>` and `list=geosearch` | the suburb summary paragraph and its lead image; articles within 1.5 km as landmark candidates (MLC Building, North Sydney Post Office, Brett Whiteley House…) | same User-Agent rule |
-| KartaView `https://api.openstreetcam.org/2.0/photo/?lat=&lng=&radius=150` | street-level photos with bearing | no key; coverage is patchy and old in places (2019 at the sample) |
-| Mapillary `https://graph.mapillary.com/images?bbox=…&fields=id,thumb_1024_url,captured_at,compass_angle,geometry` | dense recent street-level imagery | free client token from the Mapillary developer page; reachable, refuses without a token |
+| KartaView `POST https://api.openstreetcam.org/1.0/list/nearby-photos/` (`lat`, `lng`, `radius`, `ipp`); the v2 `photo/?lat=&lng=&radius=` search refuses radii over 150 m | street-level frames with camera position, heading, date, contributor and thumbnail paths | no key; coverage is patchy and old in places (2019 at the samples, one contributor); about half the frames carry no heading, so the direction of travel between a frame's neighbours in its sequence stands in. In use on slide 12 |
+| Mapillary `https://graph.mapillary.com/images?bbox=…&fields=id,thumb_1024_url,captured_at,compass_angle,geometry` | dense recent street-level imagery | free client token from the Mapillary developer page; reachable, refuses without a token (HTTP 500, "Invalid OAuth 2.0 Access Token"). Read on slide 12 when `MAPILLARY_TOKEN` is set |
 | Google Street View Static API | best coverage | paid; not proposed |
 
 ### 4.9 Building heights
@@ -445,13 +445,13 @@ Open-Meteo archive (ERA5): `https://archive-api.open-meteo.com/v1/archive?latitu
 
 Implemented: slides 03 (planning overview), 04 (planning controls), 06
 (topography), 07 (development activity), 08 (built form), 09 (movement), 10
-(green and public domain), 11 (the site), 13 (grid, sun and views), 14
+(green and public domain), 11 (the site), 12 (existing site condition), 13 (grid, sun and views), 14
 (environmental constraints), 15 (Country), 16 (people and market), 17
 (opportunities and constraints) and 18 (sources) —
 `src/render/slides.ts`, `src/render/minimap.ts`, `src/render/charts.ts`,
 `src/render/terrainMap.ts`, `src/fetch/planning.ts`, `src/fetch/terrain.ts`,
 `src/fetch/buildings.ts` with `src/py/overture_buildings.py`,
-`src/fetch/movement.ts`, `src/fetch/greenSpace.ts`, `src/fetch/constraints.ts`, `src/fetch/site.ts`,
+`src/fetch/movement.ts`, `src/fetch/greenSpace.ts`, `src/fetch/constraints.ts`, `src/fetch/site.ts`, `src/fetch/photos.ts`,
 `src/lib/solar.ts` and `src/lib/shadows.ts` with the plan sheet's `src/fetch/views.ts`,
 `src/fetch/country.ts` with `src/lib/ridges.ts`,
 `src/fetch/da.ts`, `src/fetch/abs.ts`, `src/fetch/tzp24.ts`,
@@ -602,6 +602,40 @@ years within 300 m sized by price (strata hollow), the State government
 land parcels (`Planning_Portal_GPI` 302), Crown land (258) and Crown
 reserves (312), and a 300 m ring. The land value and the sales are the
 Valuer General's, already fetched for slide 16.
+
+Slide 12 reads KartaView's nearby-photos listing within 250 m of the site
+(`src/fetch/photos.ts`, cached a week) and keeps the frames whose view cone
+takes the site in: the site's centre or a corner within 40° of the camera's
+heading and the camera within 120 m of the boundary, a frame on the lot
+itself left out. About half the frames carry no heading, so those take the
+direction of travel between their neighbours in the sequence, and the
+slide's fine print says so. The frames are chosen one per side of the site
+first (eight sides, by the camera's bearing from the centre), then the sides
+with fewest, each new camera at least 20 m from the ones chosen and never a
+second frame of the same drive within 60 m looking the same way; when fewer
+than three face the site, a frame within 60 m that looks along the street is
+added and captioned as such; six at most, numbered clockwise from north.
+The large thumbnails (1280 px) are saved beside the deck as `photo_<n>.jpg`,
+each captioned with the street the camera stood in (the nearest named
+centreline within 25 m), its distance and direction from the site, the
+direction of view, the contributor and the month, and the licence
+(CC BY-SA 4.0), which asks for exactly that attribution. Mapillary is read
+the same way when `MAPILLARY_TOKEN` is set (the free client token);
+Wikimedia Commons is not used here, its photographs being landmarks rather
+than the street. The plan keys the frames at the smallest round scale from
+1:1000 that holds every camera and the site, with each camera's view cone;
+the empty cells of the six are placeholders naming a side no open frame
+looks at, sized for the site visit's photographs. The then-and-now pair is
+one panel at 1:2500 drawn twice, 70.5 × 95 mm each, 176 × 238 m of ground:
+the 1943 aerial survey of Sydney as the level-18 tiles of Spatial Services'
+tile service placed at their Mercator extents (about half a metre a pixel,
+the finest level served; no tile outside the Sydney region, so at Orange the
+slide says so), and today's SIX imagery exported over the same extent, both
+with the site outlined and today's dated from the imagery-dates layer. At
+the samples KartaView held 28 to 274 frames within the radius, all by one
+contributor in 2019; at Waterloo and Botany six face the site, at
+Marrickville one and at North Sydney none, the frames there running along
+other streets, so those slides carry placeholders.
 
 Slide 13 fetches nothing new but the views. The street grid is the bearing
 of every road segment in the window, length-weighted and folded to 0–180° in

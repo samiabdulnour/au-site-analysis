@@ -226,6 +226,7 @@ import { fetchContours, fetchNeighbourAddresses, fetchSiteFurniture, emptyFurnit
 import { fetchCouncilTrees, mergeTrees, TREE_SOURCES } from './fetch/trees.js';
 import { assessViews, eyeAboveGround, type ViewTarget } from './fetch/views.js';
 import { fetchCountry, EMPTY_COUNTRY, type CountryData } from './fetch/country.js';
+import { fetchPhotos, emptyPhotos, type PhotosData } from './fetch/photos.js';
 import { buildParkingBands, type ParkingBand } from './lib/parking.js';
 import turfUnion from '@turf/union';
 import { featureCollection } from '@turf/helpers';
@@ -552,6 +553,8 @@ export interface SlidesBundle {
   wide: { panel: Panel; base: BaseData; suburbs: GeoJSONFC };
   /** The open layers of Country over the wide strip: native title, gazetted Aboriginal Places, the pre-1750 vegetation, watercourses, land council areas, the NPWS estate, a wide elevation grid with its ridgelines, the ASDST model at the site. */
   country: CountryData;
+  /** The street-level frames that look at the site, with their cameras, and the then-and-now aerial pair over one block panel. */
+  photos: PhotosData;
   warnings: string[];
 }
 
@@ -627,6 +630,8 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
   // The site plan's panel: the lots fitted into a little over half of a tall panel at a round scale, centred on them.
   const sitePanel = fitSitePanel(siteLots, opts.panelWmm, opts.daPanelHmm);
   const blockPanel: Panel = { center: geo.center, scale: 4000, wMm: opts.panelWmm, hMm: opts.wideHmm ?? 100 };
+  // The then-and-now pair: two half-width panels side by side at 1:2500, the 1943 survey and today's imagery over the same ground.
+  const pairPanel: Panel = { center: geo.center, scale: 2500, wMm: (opts.panelWmm - 4) / 2, hMm: opts.panelHmm };
   // Every fetch window is the larger of the two, so nothing is missing from either map.
   const fetchExtent: Extent = {
     xmin: Math.min(extent.xmin, daExtent.xmin), ymin: Math.min(extent.ymin, daExtent.ymin),
@@ -651,7 +656,7 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
   const emptyGreen: GreenData = { canopy: { blocks: [], covered: false, year: 2022, source: 'Greater Sydney Tree Canopy Cover 2022 (NSW ePlanning)' }, openSpace: [], openSpaceWide: [], greenGrid: [], parkPoints: [], facilities: [], npws: [], trees: { points: [] }, fetchedAt: new Date().toISOString() };
   const emptyConstraints: ConstraintsData = { layers: [], soil: null, fetchedAt: new Date().toISOString() };
   const emptySite: SiteData = { sitePanel, blockPanel, aerial: null, imagery: null, lots: [], easements: [], neighbours: [], publicLand: [], fetchedAt: new Date().toISOString() };
-  const [zoning, hob, heritage, shr, policy, water, lots, roads, railLines, stations, context, property, controls, proposals, feed, people, dem, contourSet, buildings, movement, green, constraints, site, wideRoads, wideRail, wideStations, wideWater, wideSuburbs, country] = await Promise.all([
+  const [zoning, hob, heritage, shr, policy, water, lots, roads, railLines, stations, context, property, controls, proposals, feed, people, dem, contourSet, buildings, movement, green, constraints, site, wideRoads, wideRail, wideStations, wideWater, wideSuburbs, country, photos] = await Promise.all([
     soft(fetchZoningDetailed(extent), emptyFC, 'zoning'),
     soft(fetchHobDetailed(extent), emptyFC, 'height of building'),
     soft(fetchHeritageDetailed(extent), emptyFC, 'heritage'),
@@ -681,6 +686,7 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
     soft(fetchWaterAreas(wideExtent), emptyFC, 'wide water areas'),
     soft(queryByExtent('https://portal.spatial.nsw.gov.au/server/rest/services/NSW_Administrative_Boundaries_Theme/FeatureServer/2', wideExtent, 'suburbname'), emptyFC, 'suburbs'),
     soft(fetchCountry(wideExtent, Math.round(((widePanel.wMm / 1000) * widePanel.scale) / 2), Math.round(((widePanel.hMm / 1000) * widePanel.scale) / 2), geo.center, dataDir, log), EMPTY_COUNTRY, 'Country'),
+    soft(fetchPhotos({ centre: mercatorToLonLat(geo.center), siteRings: siteLots.features.flatMap((f) => geomRingsOf(f.geometry)), pairPanel, outDir: dataDir, log }), emptyPhotos(pairPanel), 'street-level frames and the 1943 aerial'),
   ]);
   const [housingTarget, cos, , views] = await Promise.all([
     context.lga?.name ? fetchHousingTarget(context.lga.name) : Promise.resolve(null),
@@ -715,6 +721,7 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
     terrain: { dem, contours: contourSet.lines, contourIntervalM: contourSet.intervalM, contourSource: contourSet.source, contourAttribution: contourSet.attribution }, buildings, movement, green, constraints, site, views,
     wide: { panel: widePanel, base: { water: wideWater, lots: emptyFC, roads: wideRoads, rail: wideRail, stations: wideStations, siteLots }, suburbs: wideSuburbs },
     country,
+    photos,
     warnings,
   };
   await writeFile(join(dataDir, 'slides_bundle.json'), JSON.stringify(bundle));

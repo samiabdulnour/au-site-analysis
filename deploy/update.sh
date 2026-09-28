@@ -127,6 +127,7 @@ docker run -d --name site-analyst --restart unless-stopped \
   -e ACCESS_CODE="$ACCESS_CODE" \
   -e ADMIN_CODE="${ADMIN_CODE:-}" \
   -e TFNSW_API_KEY="$TFNSW_API_KEY" \
+  -e MAPILLARY_TOKEN="${MAPILLARY_TOKEN:-}" \
   -e OVERPASS_LOCAL="${OVERPASS_LOCAL:-}" \
   -e WEB_OUT_BUDGET_MB="${WEB_OUT_BUDGET_MB:-4096}" \
   -v /var/lib/site-analyst:/hostinfo:ro \

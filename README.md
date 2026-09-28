@@ -47,7 +47,9 @@ Progress streams while the pipeline fetches and composes; the finished A1 PDF
 opens in the browser. Jobs run one at a time so simultaneous users don't
 hammer the public data services, and the page reports queue position and a
 rough ETA rather than an anonymous spinner. Put `TFNSW_API_KEY=…` in `.env`
-for authoritative bus stops.
+for authoritative bus stops, and `MAPILLARY_TOKEN=…` (a free client token)
+for Mapillary's street-level frames on the deck's existing-condition slide;
+without it that slide reads KartaView alone.
 
 To refresh the samples, generate the three sheets for the demo address and
 re-render them:
@@ -475,7 +477,7 @@ development window), `--job 2539`, `--client "Name"`,
 
 `--type slides` draws the OVERALL ANALYSIS deck: A3 landscape pages for the
 content part of a feasibility study or design report, specified in
-`docs/SLIDES_SPEC.md`. Fourteen slides exist so far. The planning pair: a
+`docs/SLIDES_SPEC.md`. Fifteen slides exist so far. The planning pair: a
 *planning overview* of four maps at 1:8000 around the site (land zoning in the
 statutory colours, height of building, heritage with the State Heritage
 Register, and the housing-policy maps — TOD areas, town centres, State
@@ -543,7 +545,15 @@ zone, height, FSR, lot size, heritage, the existing building, levels,
 easements, land value, sales, public land, the imagery's capture date);
 and the block at 1:4000 with the last two years of single-property sales
 within 300 m sized by price, the State government and Crown parcels, and a
-table of the latest sales. Then *grid, sun and views*: the bearings of the
+table of the latest sales. Then *existing site condition*: the open
+street-level frames that look at the site (KartaView, no key; Mapillary
+with a client token), one per side of the site where there is one, keyed by
+number to a plan of the camera positions with each view cone and captioned
+with the street, the distance and direction from the site, the direction of
+view, the contributor and the month; the 1943 aerial survey of Sydney beside
+today's imagery over the same ground at 1:2500; and, where no open frame
+covers a side, placeholders sized for the site visit's photographs, which
+replace all of these. Then *grid, sun and views*: the bearings of the
 street grid (the roads in the window, length-weighted, in 5° bins, drawn as
 a rose) and the site's long axis against them; the sun path computed for the
 site (21 June in standard time, 21 December and the equinox in daylight
