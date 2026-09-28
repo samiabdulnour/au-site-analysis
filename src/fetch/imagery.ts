@@ -22,6 +22,8 @@ export async function fetchAerial(
   extent: Extent,
   targetPxWidth: number,
   outDir: string,
+  /** File name prefix, so two sheets' tiles can share one data folder. */
+  prefix = 'aerial',
 ): Promise<AerialResult> {
   await mkdir(outDir, { recursive: true });
   const aspect = (extent.ymax - extent.ymin) / (extent.xmax - extent.xmin);
@@ -70,7 +72,7 @@ export async function fetchAerial(
         if (rw < 500) break;
       }
       if (!buf) throw new Error('aerial imagery unavailable for this extent');
-      const file = `aerial_${r}_${c}.jpg`;
+      const file = `${prefix}_${r}_${c}.jpg`;
       await writeFile(join(outDir, file), buf);
       tiles.push({ file, left: c / cols, top: r / rows, width: 1 / cols, height: 1 / rows });
     }

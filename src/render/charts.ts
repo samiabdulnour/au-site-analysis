@@ -200,8 +200,8 @@ export interface SectionOpts {
   ve?: number;
   siteColour: string;
   waterColour: string;
-  /** Buildings the line meets: their run along it and the RL of their top. */
-  blocks?: { d0: number; d1: number; top: number; site?: boolean; unknown?: boolean; label?: string }[];
+  /** Buildings the line meets: their run along it and the RL of their top; `unknown` is a stand-in height (faint, dashed), `approx` a height from a record rather than a survey (dashed). */
+  blocks?: { d0: number; d1: number; top: number; site?: boolean; unknown?: boolean; approx?: boolean; label?: string }[];
   /** A height plane over a run of the line, e.g. the LEP limit over the site. */
   envelope?: { d0: number; d1: number; top: number; label: string };
 }
@@ -273,7 +273,7 @@ export function sectionSvg(o: SectionOpts): { svg: string; ve: number } {
     const floor = under.length ? under : [{ d: bk.d0, rl: groundAt(bk.d0) }, { d: bk.d1, rl: groundAt(bk.d1) }];
     const d = `M${X(bk.d0).toFixed(2)},${Y(bk.top).toFixed(2)}L${X(bk.d1).toFixed(2)},${Y(bk.top).toFixed(2)}` +
       `L${X(bk.d1).toFixed(2)},${Y(groundAt(bk.d1)).toFixed(2)}` + [...floor].reverse().map((s) => `L${X(s.d).toFixed(2)},${Y(s.rl).toFixed(2)}`).join('') + `L${X(bk.d0).toFixed(2)},${Y(groundAt(bk.d0)).toFixed(2)}Z`;
-    parts.push(`<path d="${d}" fill="${bk.site ? o.siteColour : '#cfcdc6'}" fill-opacity="${bk.site ? 0.45 : bk.unknown ? 0.35 : 0.9}" stroke="${bk.site ? o.siteColour : '#8f8d86'}" stroke-width="0.2"${bk.unknown ? ' stroke-dasharray="0.8,0.6"' : ''}/>`);
+    parts.push(`<path d="${d}" fill="${bk.site ? o.siteColour : '#cfcdc6'}" fill-opacity="${bk.site ? 0.45 : bk.unknown ? 0.35 : 0.9}" stroke="${bk.site ? o.siteColour : '#8f8d86'}" stroke-width="0.2"${bk.unknown || bk.approx ? ' stroke-dasharray="0.8,0.6"' : ''}/>`);
   }
   parts.push('</g>');
   for (const bk of o.blocks ?? []) {

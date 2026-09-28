@@ -47,7 +47,9 @@ Progress streams while the pipeline fetches and composes; the finished A1 PDF
 opens in the browser. Jobs run one at a time so simultaneous users don't
 hammer the public data services, and the page reports queue position and a
 rough ETA rather than an anonymous spinner. Put `TFNSW_API_KEY=…` in `.env`
-for authoritative bus stops.
+for authoritative bus stops, and `MAPILLARY_TOKEN=…` (a free client token)
+for Mapillary's street-level frames on the deck's existing-condition slide;
+without it that slide reads KartaView alone.
 
 To refresh the samples, generate the three sheets for the demo address and
 re-render them:
@@ -475,7 +477,18 @@ development window), `--job 2539`, `--client "Name"`,
 
 `--type slides` draws the OVERALL ANALYSIS deck: A3 landscape pages for the
 content part of a feasibility study or design report, specified in
-`docs/SLIDES_SPEC.md`. Seven slides exist so far. The planning pair: a
+`docs/SLIDES_SPEC.md`. All eighteen slides of the spec exist. First *location*: the
+site in its region at 1:75,000 — the local government areas as the land
+(the harbour and the sea left blue), the water, the railways and arterial
+roads, the stations, the suburbs named, 2 and 5 km rings round the site, and
+the centres of The Sydney Plan (2026) by type — with the distance to the
+Sydney CBD, the nearest centres and stations, and the region, the former
+district and the council. Then *character*: Wikipedia's summary of the suburb
+as the seed text, the places within 1.5 km with articles of their own,
+numbered on an aerial of the planning window, and a strip of open-licence
+photographs within 800 m from Wikimedia Commons, each credited as its licence
+asks, all of which the office's own reading and photographs replace. Then
+the planning pair: a
 *planning overview* of four maps at 1:8000 around the site (land zoning in the
 statutory colours, height of building, heritage with the State Heritage
 Register, and the housing-policy maps — TOD areas, town centres, State
@@ -483,7 +496,14 @@ significant development sites, precincts) and *planning controls at the site*,
 a table of every mapped control with its source and currency: zone, height
 (with its units, since some LEPs limit in RL), FSR, lot size, heritage,
 local provisions, SEPP maps, the DCP with its link, contributions, tree
-canopy and the council's housing target. Then *topography*: the landform
+canopy and the council's housing target. Then *strategic context*: the
+documents over the site, top down and one line each with their links — the
+State Land Use Plan, the regional plan at the point (The Sydney Plan since
+13 August 2026, which replaced the 2018 Region Plan and the five district
+plans; the 2041 regional plans elsewhere), the council's local strategic
+planning statement from the Planning Portal's index, the plan, the DCP, the
+contributions and the housing target — with the extracts left to the author.
+Then *topography*: the landform
 at 1:8000 as a hillshade from the State's 5 m elevation model with the 2 m
 contours, roads and rail over it and two section lines through the site,
 A–A′ down the steepest fall and B–B′ across it, each drawn as a section
@@ -492,7 +512,9 @@ fall, grade and aspect and where the high ground and the water are. Then
 *built form*: every building footprint in the window coloured by height
 band (Overture Maps, read from its public bucket by DuckDB through
 `src/py/overture_buildings.py`; OpenStreetMap through Overpass when DuckDB
-or Overture is not there), the storeys of the buildings within 250 m as a
+or Overture is not there; where neither gives a height, the storeys of a
+determined development application on the lot, hatched and said so), the
+storeys of the buildings within 250 m as a
 histogram with the LEP height plane marked on it, and section A–A′ again
 with the buildings it meets drawn at their heights and the height plane
 dashed over the site. Then *movement*: roads by function, rail and
@@ -511,7 +533,59 @@ isochrones again, four figures (the canopy on the site's block, the share of
 the window that is public open space, the nearest park, the facilities), a
 table of the nearest open spaces with area, distance and walk band, and a
 wide strip of the 2022 tree canopy by mesh block, against the Region Plan's
-40 % target. Then *development activity*: every
+40 % target. Then *environmental constraints*: two maps of what the
+State's hazard, protection, coastal and corridor layers put around the site
+(bushfire prone land, flood planning, landslide, acid sulfate soils,
+salinity, mine subsidence, groundwater and drinking-water catchments,
+riparian land and wetlands, the coastal maps, biodiversity and scenic
+protection, airport noise and obstacle limitation surfaces, rail corridor
+and future infrastructure corridors) and a table that gives every layer a
+definite answer — at the site with its class, nearest in the window, none in
+the window, or not mapped by this LEP at all, checked plan-wide so an
+absence is stated rather than implied — with the arterial roads and
+railways beside the site as noise sources and the soil landscape at the
+site. Then *Country*: the open layers of Country over the wide strip — the
+pre-1750 plant communities of the State Vegetation Type Map over the land's
+shape, with the watercourses, the coast, the crests read from the elevation
+model, the National Parks estate and the gazetted Aboriginal Places — with
+the Local Aboriginal Land Council, the National Native Title Tribunal's
+registers at the site and over the strip, the plant community and the soil
+landscape at the site, the nearest watercourse and foreshore, the site's
+level against the nearest crest, the gazetted places within 10 km and the
+public ASDST likelihood model; the slide states that AHIMS is not open and
+that a search precedes any works, and that the name of Country, the language
+and the cultural narrative are the office's to develop with Knowledge
+Holders, not generated. Then *the site*: the site plan on the aerial at a round scale that
+fits the lot, with the boundary lengths from the digital cadastre, the
+corner levels from the elevation model, the existing footprint and its
+height, the neighbours' numbers and the street names, the easement
+geometry where the cadastre has any; a table of what the open data says
+before the survey and the title search (lot and plan, areas, frontages,
+zone, height, FSR, lot size, heritage, the existing building, levels,
+easements, land value, sales, public land, the imagery's capture date);
+and the block at 1:4000 with the last two years of single-property sales
+within 300 m sized by price, the State government and Crown parcels, and a
+table of the latest sales. Then *existing site condition*: the open
+street-level frames that look at the site (KartaView, no key; Mapillary
+with a client token), one per side of the site where there is one, keyed by
+number to a plan of the camera positions with each view cone and captioned
+with the street, the distance and direction from the site, the direction of
+view, the contributor and the month; the 1943 aerial survey of Sydney beside
+today's imagery over the same ground at 1:2500; and, where no open frame
+covers a side, placeholders sized for the site visit's photographs, which
+replace all of these. Then *grid, sun and views*: the bearings of the
+street grid (the roads in the window, length-weighted, in 5° bins, drawn as
+a rose) and the site's long axis against them; the sun path computed for the
+site (21 June in standard time, 21 December and the equinox in daylight
+time, the hours marked) with sunrise, the noon altitude and sunset; the
+neighbours' shadows over the site on 21 June at 9 am, noon and 3 pm, cast
+from the footprints and their recorded heights at the site plan's scale,
+with the share of the site each hour leaves in shadow; and the sight lines
+from an eye just under the height limit, over the 5 m elevation model, to
+the skylines within range, the named water and the coast and the park next
+door — a cone where the ground leaves the line clear, a dashed line to the
+point where it rises across it — with a table of them. Then *development
+activity*: every
 application lodged in the council area over the last five years, from the
 Planning Portal's Online DA feed, clipped to the window around the site. The
 ones of a scale that shapes the context — four storeys, ten dwellings or
@@ -528,8 +602,25 @@ work — with the ABS population series since 2001 and the TZP24 projection to
 2066, SEIFA 2021, the Valuer General's land values of the site and the sales
 register within 400 m, and the nearest government schools with their
 enrolments. Census tables, projections and the school dataset are cached on
-the volume for a month. Each slide carries the sentences that follow from the
-data and a marked placeholder for the author's narrative. Outputs: `OVERALL_ANALYSIS.pdf`, `slides/<id>.png` per slide and
+the volume for a month. Last, *opportunities and constraints*: two diagrams
+at 1:4000 around the site assembled from the layers the other slides fetched
+— reach, the housing-policy maps, active edges, open space, the clear sight
+lines and the winter sun's sweep on one; heritage, the hazard and corridor
+layers, the busy roads, the neighbours' winter shadows, the fall, easements
+and street trees on the other — with numbered markers keyed to two lists of
+templated statements (up to nine each) that the data supports and the author
+edits: the nearest station and its walk, the TOD or town-centre map, which
+frontage faces north, what shades the site, the controls, the heritage item
+next door, the arterial road on one edge, the fall across the lot. And
+*sources*: every dataset the deck read, grouped by publisher, with the slides
+it served, its currency or edition (the LEP maps' currency dates and
+amendments, the aerial's capture date, the census and canopy years, the land
+values' base dates, the development feed's range, the Overture release), when
+it was retrieved or when its cache was filled, and the attribution and
+licence; with the layers' own dates, what is computed rather than sourced,
+what remains to be obtained outside the open data, and the run's warnings.
+Each slide carries the sentences that follow from the data and a marked
+placeholder for the author's narrative. Outputs: `OVERALL_ANALYSIS.pdf`, `slides/<id>.png` per slide and
 `overall.json` with everything the deck says.
 
 Where a council publishes its own DCP mapping as open data — the City of

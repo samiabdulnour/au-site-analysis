@@ -66,16 +66,26 @@ export function extentToLonLatBbox(e: Extent): { south: number; west: number; no
   return { south: sw.lat, west: sw.lon, north: ne.lat, east: ne.lon };
 }
 
-/** Centroid of the first/outer ring of a (multi)polygon in GeoJSON coords. */
+/**
+ * Centroid of the first/outer ring of a (multi)polygon in GeoJSON coords.
+ * Computed about the ring's first vertex: in absolute degrees the shoelace
+ * terms of a building-sized ring at longitude 151 cancel to the last few
+ * digits of a double, and the centroid lands tens of metres off. A
+ * degenerate ring gives its vertex mean.
+ */
 export function ringCentroid(ring: number[][]): [number, number] {
+  const [x0, y0] = ring[0];
   let a = 0, cx = 0, cy = 0;
-  for (let i = 0; i < ring.length - 1; i++) {
-    const [x1, y1] = ring[i];
-    const [x2, y2] = ring[i + 1];
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const x1 = ring[j][0] - x0, y1 = ring[j][1] - y0;
+    const x2 = ring[i][0] - x0, y2 = ring[i][1] - y0;
     const f = x1 * y2 - x2 * y1;
     a += f; cx += (x1 + x2) * f; cy += (y1 + y2) * f;
   }
-  if (Math.abs(a) < 1e-9) return [ring[0][0], ring[0][1]];
-  a *= 0.5;
-  return [cx / (6 * a), cy / (6 * a)];
+  if (Math.abs(a) < 1e-18) {
+    let sx = 0, sy = 0;
+    for (const p of ring) { sx += p[0]; sy += p[1]; }
+    return [sx / ring.length, sy / ring.length];
+  }
+  return [x0 + cx / (3 * a), y0 + cy / (3 * a)];
 }

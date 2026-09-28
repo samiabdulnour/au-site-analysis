@@ -175,7 +175,7 @@ async function fetchOpenSpaceZones(extent: Extent): Promise<OpenSpaceZone[]> {
     .filter((z) => z.rings.length);
 }
 
-async function fetchNpws(extent: Extent): Promise<NpwsReserve[]> {
+export async function fetchNpws(extent: Extent): Promise<NpwsReserve[]> {
   const fc = await queryByExtent(NPWS, extent, 'NAME,TYPE');
   return fc.features.map((f) => ({ name: String(f.properties.NAME ?? '').trim(), type: String(f.properties.TYPE ?? ''), rings: allRings(f.geometry) })).filter((r) => r.rings.length);
 }

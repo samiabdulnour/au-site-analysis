@@ -25,9 +25,11 @@ import { fetchCouncilApplications, apiCouncilName, clipToExtent, PORTAL_MANDATED
 import { fetchPlanningProposals, type PlanningProposal } from './fetch/planning.js';
 import { fetchPeopleData, type PeopleData } from './fetch/people.js';
 import { fetchDemGrid, type DemGrid } from './fetch/terrain.js';
-import { fetchBuildings, type BuildingsData } from './fetch/buildings.js';
+import { fetchBuildings, withDaStoreys, type BuildingsData } from './fetch/buildings.js';
 import { fetchMovement, type MovementData } from './fetch/movement.js';
 import { fetchGreenSpace, type GreenData } from './fetch/greenSpace.js';
+import { fetchConstraints, checkLepCoverage, type ConstraintsData } from './fetch/constraints.js';
+import { fetchSiteData, type SiteData } from './fetch/site.js';
 import type { SiteControls } from './fetch/nsw.js';
 
 export interface CategorizedPoint extends NamedPoint { cat: string | null }
@@ -223,6 +225,11 @@ function pointInRing(x: number, y: number, ring: number[][]): boolean {
 import { fetchContours, fetchNeighbourAddresses, fetchSiteFurniture, emptyFurniture, type ContourLine, type ContourSet, type NeighbourAddress, type SiteFurniture } from './fetch/siteData.js';
 import { fetchCouncilTrees, mergeTrees, TREE_SOURCES } from './fetch/trees.js';
 import { assessViews, eyeAboveGround, type ViewTarget } from './fetch/views.js';
+import { fetchCountry, EMPTY_COUNTRY, type CountryData } from './fetch/country.js';
+import { fetchPhotos, emptyPhotos, type PhotosData } from './fetch/photos.js';
+import { fetchLocation, emptyLocation, type LocationData } from './fetch/location.js';
+import { fetchCharacter, emptyCharacter, type CharacterData } from './fetch/character.js';
+import { fetchStrategies, emptyStrategies, type StrategiesData } from './fetch/strategies.js';
 import { buildParkingBands, type ParkingBand } from './lib/parking.js';
 import turfUnion from '@turf/union';
 import { featureCollection } from '@turf/helpers';
@@ -539,8 +546,24 @@ export interface SlidesBundle {
   movement: MovementData;
   /** Tree canopy by mesh block over the wide strip; open space, Green Grid assets, facilities, NPWS estate and street trees over the tall panel. */
   green: GreenData;
+  /** Hazard, protection, coastal and corridor layers over the planning panel, with the plan-wide coverage check, and the soil landscape at the site. */
+  constraints: ConstraintsData;
+  /** The site plan's aerial, the lots, easements, neighbours and the public land around, with the two panels they are drawn in. */
+  site: SiteData;
+  /** The candidate views (skylines, water, the park next door) with their sight lines checked against the ground, and the eye height used. */
+  views: { views: ViewTarget[]; eyeAboveM: number };
   /** The wide walking-reach strip: its panel, a lighter base (major roads, rail, stations, water) and the suburbs to label. */
   wide: { panel: Panel; base: BaseData; suburbs: GeoJSONFC };
+  /** The open layers of Country over the wide strip: native title, gazetted Aboriginal Places, the pre-1750 vegetation, watercourses, land council areas, the NPWS estate, a wide elevation grid with its ridgelines, the ASDST model at the site. */
+  country: CountryData;
+  /** The street-level frames that look at the site, with their cameras, and the then-and-now aerial pair over one block panel. */
+  photos: PhotosData;
+  /** The location window at 1:75,000: the local government areas as land, the water, the railways, the arterial roads, the stations and the suburbs. */
+  location: LocationData;
+  /** Wikipedia's account of the suburb and its places, Commons' photographs near the site and the aerial over the planning window. */
+  character: CharacterData;
+  /** The regional plan at the point and the council's local strategic planning statement from the Portal's index. */
+  strategies: StrategiesData;
   warnings: string[];
 }
 
@@ -561,6 +584,40 @@ export interface SlidesPipelineOpts {
   log?: (msg: string) => void;
 }
 
+/** The round scales the deck's site plan is drawn at. */
+const DECK_SITE_SCALES = [200, 250, 300, 400, 500, 600, 750, 1000, 1250, 1500, 2000, 2500, 3000, 4000, 5000];
+
+/** A panel centred on the site's lots at the smallest round scale that keeps them within 55 % of the panel each way. */
+function fitSitePanel(siteLots: GeoJSONFC, wMm: number, hMm: number): Panel {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const f of siteLots.features) for (const r of geomRingsOf(f.geometry)) for (const [lon, lat] of r) { const m = lonLatToMercator({ lon, lat }); x0 = Math.min(x0, m.x); y0 = Math.min(y0, m.y); x1 = Math.max(x1, m.x); y1 = Math.max(y1, m.y); }
+  const center = { x: (x0 + x1) / 2, y: (y0 + y1) / 2 };
+  const k = mercatorScaleFactor(mercatorToLonLat(center).lat);
+  const wM = (x1 - x0) / k, hM = (y1 - y0) / k;
+  const need = Math.max(wM / ((wMm / 1000) * 0.55), hM / ((hMm / 1000) * 0.55));
+  const scale = DECK_SITE_SCALES.find((s) => s >= need) ?? DECK_SITE_SCALES[DECK_SITE_SCALES.length - 1];
+  return { center, scale, wMm, hMm };
+}
+const geomRingsOf = (g: any): number[][][] => (!g ? [] : g.type === 'Polygon' ? g.coordinates : g.type === 'MultiPolygon' ? g.coordinates.flat() : []);
+
+/** The site's biggest ring, for the tests that want one outline (a multi-lot site's union is the site sheet's business). */
+function largestRing(siteLots: GeoJSONFC): [number, number][] {
+  let best: number[][] = [], bestA = -1;
+  for (const f of siteLots.features) for (const r of geomRingsOf(f.geometry)) {
+    let a = 0; for (let i = 0; i < r.length - 1; i++) a += r[i][0] * r[i + 1][1] - r[i + 1][0] * r[i][1];
+    if (Math.abs(a) > bestA) { bestA = Math.abs(a); best = r; }
+  }
+  return best as [number, number][];
+}
+
+/** The local environmental plans in the window, most common first: the zoning layer's plan names, then the property report's. */
+function principalLeps(zoning: GeoJSONFC, property: PropertyReport | null): string[] {
+  const counts = new Map<string, number>();
+  for (const f of zoning.features) { const n = String(f.properties?.EPI_NAME ?? ''); if (/Local Environmental Plan/i.test(n)) counts.set(n, (counts.get(n) ?? 0) + 1); }
+  for (const g of property?.epi ?? []) for (const r of g.results ?? []) { const n = String((r as any)['EPI Name'] ?? ''); if (/Local Environmental Plan/i.test(n) && !counts.has(n)) counts.set(n, 0); }
+  return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([n]) => n);
+}
+
 export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpts): Promise<SlidesBundle> {
   const warnings: string[] = [];
   const log = (m: string) => { opts.log?.(m); if (/WARN/.test(m)) warnings.push(m.trim()); };
@@ -579,6 +636,13 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
   const daExtent = panelExtent(daPanel);
   const widePanel: Panel = { center: geo.center, scale: opts.wideScale ?? 16000, wMm: opts.wideWmm ?? 296, hMm: opts.wideHmm ?? 100 };
   const wideExtent = panelExtent(widePanel);
+  // The site plan's panel: the lots fitted into a little over half of a tall panel at a round scale, centred on them.
+  const sitePanel = fitSitePanel(siteLots, opts.panelWmm, opts.daPanelHmm);
+  const blockPanel: Panel = { center: geo.center, scale: 4000, wMm: opts.panelWmm, hMm: opts.wideHmm ?? 100 };
+  // The then-and-now pair: two half-width panels side by side at 1:2500, the 1943 survey and today's imagery over the same ground.
+  const pairPanel: Panel = { center: geo.center, scale: 2500, wMm: (opts.panelWmm - 4) / 2, hMm: opts.panelHmm };
+  // The location window: the whole figure field's width at 1:75,000, about 22 × 13 km, the 5 km ring well inside it.
+  const locationPanel: Panel = { center: geo.center, scale: 75000, wMm: opts.wideWmm ?? 296, hMm: 170 };
   // Every fetch window is the larger of the two, so nothing is missing from either map.
   const fetchExtent: Extent = {
     xmin: Math.min(extent.xmin, daExtent.xmin), ymin: Math.min(extent.ymin, daExtent.ymin),
@@ -601,7 +665,9 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
   const from = [fromDate.toISOString().slice(0, 10), PORTAL_MANDATED].sort()[1];
 
   const emptyGreen: GreenData = { canopy: { blocks: [], covered: false, year: 2022, source: 'Greater Sydney Tree Canopy Cover 2022 (NSW ePlanning)' }, openSpace: [], openSpaceWide: [], greenGrid: [], parkPoints: [], facilities: [], npws: [], trees: { points: [] }, fetchedAt: new Date().toISOString() };
-  const [zoning, hob, heritage, shr, policy, water, lots, roads, railLines, stations, context, property, controls, proposals, feed, people, dem, contourSet, buildings, movement, green, wideRoads, wideRail, wideStations, wideWater, wideSuburbs] = await Promise.all([
+  const emptyConstraints: ConstraintsData = { layers: [], soil: null, fetchedAt: new Date().toISOString() };
+  const emptySite: SiteData = { sitePanel, blockPanel, aerial: null, imagery: null, lots: [], easements: [], neighbours: [], publicLand: [], fetchedAt: new Date().toISOString() };
+  const [zoning, hob, heritage, shr, policy, water, lots, roads, railLines, stations, context, property, controls, proposals, feed, people, dem, contourSet, buildingsRead, movement, green, constraints, site, wideRoads, wideRail, wideStations, wideWater, wideSuburbs, country, photos, location] = await Promise.all([
     soft(fetchZoningDetailed(extent), emptyFC, 'zoning'),
     soft(fetchHobDetailed(extent), emptyFC, 'height of building'),
     soft(fetchHeritageDetailed(extent), emptyFC, 'heritage'),
@@ -623,23 +689,37 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
     soft(fetchBuildings(daExtent, log), { source: 'none' as const, buildings: [], fetchedAt: new Date().toISOString() }, 'buildings'),
     fetchMovement(daExtent, geo.center, log),
     soft(fetchGreenSpace(daExtent, wideExtent, log), emptyGreen, 'green and public domain'),
+    soft(fetchConstraints(extent, mercatorToLonLat(geo.center), log), emptyConstraints, 'environmental constraints'),
+    soft(fetchSiteData(sitePanel, blockPanel, siteLots, mercatorToLonLat(geo.center), dataDir, log), emptySite, 'site data'),
     soft(fetchRoads(wideExtent, 'roadnamebase IS NOT NULL AND functionhierarchy <= 5'), [], 'wide roads'),
     soft(fetchRailLines(wideExtent), { train: [], tram: [] }, 'wide rail lines'),
     soft(fetchTrainStations(wideExtent), [], 'wide stations'),
     soft(fetchWaterAreas(wideExtent), emptyFC, 'wide water areas'),
     soft(queryByExtent('https://portal.spatial.nsw.gov.au/server/rest/services/NSW_Administrative_Boundaries_Theme/FeatureServer/2', wideExtent, 'suburbname'), emptyFC, 'suburbs'),
+    soft(fetchCountry(wideExtent, Math.round(((widePanel.wMm / 1000) * widePanel.scale) / 2), Math.round(((widePanel.hMm / 1000) * widePanel.scale) / 2), geo.center, dataDir, log), EMPTY_COUNTRY, 'Country'),
+    soft(fetchPhotos({ centre: mercatorToLonLat(geo.center), siteRings: siteLots.features.flatMap((f) => geomRingsOf(f.geometry)), pairPanel, outDir: dataDir, log }), emptyPhotos(pairPanel), 'street-level frames and the 1943 aerial'),
+    soft(fetchLocation(locationPanel, log), emptyLocation(locationPanel), 'location window'),
   ]);
-  const [housingTarget, cos] = await Promise.all([
+  const [housingTarget, cos, , views, character, strategies] = await Promise.all([
     context.lga?.name ? fetchHousingTarget(context.lga.name) : Promise.resolve(null),
     // The one council with its DCP as open data so far; the hook is per LGA.
     context.lga?.name === 'SYDNEY' ? fetchCityOfSydneyDcp(extent, mercatorToLonLat(geo.center), log) : Promise.resolve(null),
+    // Which of the plan's hazard and protection maps exist at all, for the constraints slide: checked against the local plan in the window (the zone at the site may come from a SEPP) and the plan at the site.
+    constraints.layers.length ? soft(checkLepCoverage(constraints, [...principalLeps(zoning, property), ...(controls.epiName ? [controls.epiName] : [])], log), undefined, 'constraint coverage check') : Promise.resolve(undefined),
+    // Sight lines to the skyline, the water and the park next door, from the eye just under the height limit, over the 5 m elevation surface.
+    soft(assessViews({ site: mercatorToLonLat(geo.center), siteRing: largestRing(siteLots), hobM: controls.maxHeightM, zoning, parkPoints: green.parkPoints, log }), { views: [] as ViewTarget[], eyeAboveM: eyeAboveGround(controls.maxHeightM) }, 'views'),
+    // The suburb's name comes from the context, so Wikipedia and Commons wait for it; the aerial over the planning window comes with them.
+    soft(fetchCharacter({ centre: mercatorToLonLat(geo.center), suburb: context.suburb?.name ?? '', aerialExtent: extent, outDir: dataDir, log }), emptyCharacter(), 'character (Wikipedia, Commons)'),
+    soft(fetchStrategies(geo.center, context.lga?.name, context.lga?.council, log), emptyStrategies(), 'strategic documents'),
   ]);
   const applications = feed ? clipToExtent(feed.records, daExtent) : [];
   const daMeta = feed ? { council: feed.council, from: feed.from, to: feed.to, total: feed.total, complete: feed.complete, fetchedAt: feed.fetchedAt } : null;
+  // A footprint with neither a height nor a storey count takes the storeys of a determined application on its lot, and the slides say so.
+  const buildings = withDaStoreys(buildingsRead, lots, applications);
 
   log(`  zoning:${zoning.features.length} hob:${hob.features.length} heritage:${heritage.features.length} shr:${shr.features.length} ` +
       `policy:${policy.length} roads:${roads.length} property:${property ? 'yes' : 'no'} dcp:${context.dcp ? 'yes' : 'no'} target:${housingTarget ? housingTarget.homes : '—'}${cos ? ' council-dcp:yes' : ''} ` +
-      `applications:${applications.length}${feed ? `/${feed.records.length}` : ''} proposals:${proposals.length} dem:${dem ? `${dem.cols}×${dem.rows}` : 'no'} contours:${contourSet.lines.length} (${contourSet.intervalM} m) buildings:${buildings.buildings.length}/${buildings.source}`);
+      `applications:${applications.length}${feed ? `/${feed.records.length}` : ''} proposals:${proposals.length} dem:${dem ? `${dem.cols}×${dem.rows}` : 'no'} contours:${contourSet.lines.length} (${contourSet.intervalM} m) buildings:${buildings.buildings.length}/${buildings.source} da-storeys:${buildings.buildings.filter((x) => x.heightFrom === 'da').length}`);
 
   const bundle: SlidesBundle = {
     address,
@@ -655,8 +735,13 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
     base: { water, lots, roads, rail: railLines, stations, siteLots },
     controls, property, context, housingTarget, cos,
     daPanel, applications, daMeta, proposals, people,
-    terrain: { dem, contours: contourSet.lines, contourIntervalM: contourSet.intervalM, contourSource: contourSet.source, contourAttribution: contourSet.attribution }, buildings, movement, green,
+    terrain: { dem, contours: contourSet.lines, contourIntervalM: contourSet.intervalM, contourSource: contourSet.source, contourAttribution: contourSet.attribution }, buildings, movement, green, constraints, site, views,
     wide: { panel: widePanel, base: { water: wideWater, lots: emptyFC, roads: wideRoads, rail: wideRail, stations: wideStations, siteLots }, suburbs: wideSuburbs },
+    country,
+    photos,
+    location,
+    character,
+    strategies,
     warnings,
   };
   await writeFile(join(dataDir, 'slides_bundle.json'), JSON.stringify(bundle));
