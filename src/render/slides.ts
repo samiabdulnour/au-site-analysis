@@ -37,6 +37,7 @@ import { shadowHull, inHull } from '../lib/shadows.js';
 import type { ViewKind } from '../fetch/views.js';
 import { MAX_PHOTOS, type StreetPhoto } from '../fetch/photos.js';
 import { CENTRES, SYDNEY_CBD, CENTRE_KIND_WORD } from '../data/centres.js';
+import type { MajorProject } from '../fetch/majorProjects.js';
 
 export const SLIDE_W = 420;
 export const SLIDE_H = 297;
@@ -1179,7 +1180,27 @@ export interface DevelopmentFacts {
   perYear: { year: number; count: number; partial: boolean }[];
   largest?: DaSite;
   proposals: SlidesBundle['proposals'];
+  /** State significant applications from the Department's register with their point in the window, S-numbered: in process first, then the latest determined. */
+  stateSignificant: { ok: boolean; note?: string; lgas: string[]; listed: number; sites: SsdSite[]; nearestBeyond?: MajorProject; fetchedAt?: string;
+    /** In the window but not drawn: approvals older than SSD_RECENT_YEARS, and applications withdrawn or whose SEARs lapsed. */
+    older: number; withdrawn: number; olderThan: string };
 }
+
+/** Approvals older than this are counted, not drawn: the DA feed reaches five years back, a State significant project takes longer to build. */
+const SSD_RECENT_YEARS = 10;
+/** "City of Sydney" reads "the City of Sydney" in a sentence. */
+const theArea = (name: string) => (/^(City|Municipality|Council) of\b/i.test(name) ? `the ${name}` : name);
+
+export interface SsdSite extends MajorProject { n: string; onSite: boolean }
+
+/** The register's addresses end in "Nsw 2017" or "New South Wales Australia" as often as not. */
+const tidyRegisterAddress = (a?: string) => (a ?? '').replace(/,?\s*(New South Wales|NSW)\b.*$/i, '').replace(/,?\s+\d{4}\s*$/, '').replace(/\s+/g, ' ').trim();
+const shorten = (t: string, max: number) => (t.length <= max ? t : `${t.slice(0, t.lastIndexOf(' ', max - 1) > max * 0.6 ? t.lastIndexOf(' ', max - 1) : max - 1)}…`);
+/** A project's name for a sentence: its title, shortened. */
+const ssdName = (p: MajorProject) => shorten(p.title.replace(/\s+/g, ' ').trim(), 80);
+/** Where a project stands, as the register says it: the decision and its month, withdrawn, or the stage it is at. */
+const ssdStage = (p: MajorProject) => p.stageClass === 'determined' ? `${p.decision ?? 'Determined'}${p.determined ? ` ${fmtMonthYear(p.determined)}` : ''}` : p.stageClass === 'withdrawn' ? 'Withdrawn' : (p.status || p.stage || 'In process');
+const ssdStagePhrase = (p: MajorProject) => p.stageClass === 'determined' ? `${(p.decision ?? 'determined').toLowerCase()}${p.determined ? ` ${fmtMonthYear(p.determined)}` : ''}` : p.stageClass === 'withdrawn' ? 'withdrawn' : `at the ${p.status || p.stage || 'assessment'} stage`;
 
 export function developmentFacts(b: SlidesBundle): DevelopmentFacts {
   const recs = b.applications;
@@ -1195,12 +1216,27 @@ export function developmentFacts(b: SlidesBundle): DevelopmentFacts {
   for (let y = fromYear; y <= thisYear; y++)
     perYear.push({ year: y, count: recs.filter((r) => Number((r.lodged ?? '').slice(0, 4)) === y).length, partial: y === thisYear || (y === fromYear && firstPartial) });
   const largest = sites[0];
+  // The register's projects with their point in the window, the ones in process first, then the latest determined.
+  const mp = b.majorProjects;
+  const ext = panelExtent(b.daPanel);
+  const inWindow = (p: MajorProject) => { const q = lonLatToMercator({ lon: p.lon!, lat: p.lat! }); return q.x >= ext.xmin && q.x <= ext.xmax && q.y >= ext.ymin && q.y <= ext.ymax; };
+  const lotRings = b.siteLots.features.flatMap((f) => geomRings(f.geometry));
+  const order = (p: MajorProject) => (p.stageClass === 'active' ? 0 : p.stageClass === 'determined' ? 1 : 2);
+  const located = (mp?.projects ?? []).filter((p) => p.lon !== undefined && p.lat !== undefined);
+  const cutoff = new Date(Date.now() - SSD_RECENT_YEARS * 365.25 * 86400e3).toISOString().slice(0, 10);
+  const inWin = located.filter(inWindow);
+  const older = inWin.filter((p) => p.stageClass === 'determined' && p.determined && p.determined < cutoff).length;
+  const withdrawn = inWin.filter((p) => p.stageClass === 'withdrawn').length;
+  const ssd: SsdSite[] = inWin.filter((p) => p.stageClass === 'active' || (p.stageClass === 'determined' && !(p.determined && p.determined < cutoff)))
+    .sort((p, q) => order(p) - order(q) || (order(p) === 1 ? (q.determined ?? '').localeCompare(p.determined ?? '') : 0) || p.distanceM - q.distanceM)
+    .map((p, i) => ({ ...p, n: `S${i + 1}`, onSite: lotRings.some((r) => pointInRing(p.lon!, p.lat!, r)) }));
   return {
     available: Boolean(b.daMeta), council: b.daMeta?.council, from: b.daMeta?.from, to: b.daMeta?.to,
     applications: recs.length, significant: recs.filter(isSignificant).length, sites, byStatus,
     dwellings: sites.reduce((n, st) => n + (st.dwellings ?? 0), 0),
     cost: sites.reduce((n, st) => n + (st.cost ?? 0), 0),
     perYear, largest, proposals: b.proposals,
+    stateSignificant: { ok: Boolean(mp?.ok), note: mp?.note, lgas: (mp?.lgas ?? []).map((l) => l.name), listed: mp?.listed ?? 0, sites: ssd, nearestBeyond: located.find((p) => !inWindow(p) && p.stageClass !== 'withdrawn'), fetchedAt: mp?.fetchedAt, older, withdrawn, olderThan: cutoff.slice(0, 4) },
   };
 }
 
@@ -1230,6 +1266,24 @@ export function developmentSentences(b: SlidesBundle, d: DevelopmentFacts, f: Pl
       out.push(`None of them is of a scale that shapes context (four storeys, ten dwellings or $5 M and more): the activity here is house-scale.`);
     }
   }
+  const s = d.stateSignificant;
+  if (!s.ok) out.push(`The Department's Major Projects register could not be read for this run${s.note ? ` (${s.note})` : ''}, so no State significant application is shown.`);
+  else if (s.sites.length) {
+    const act = s.sites.filter((p) => p.stageClass === 'active').length, det = s.sites.length - act;
+    const mix = s.sites.length === 1 ? '' : ` (${listWords([act ? `${act} in preparation or assessment` : '', det ? `${det} determined since ${s.olderThan}` : ''].filter(Boolean))})`;
+    const asideN = s.older + s.withdrawn;
+    const aside = asideN ? `; ${asideN === 1 ? 'one more' : `${asideN} more`} (${listWords([s.older ? `${s.older === 1 ? 'an' : s.older} approval${s.older === 1 ? '' : 's'} before ${s.olderThan}` : '', s.withdrawn ? `${s.withdrawn === 1 && !s.older ? '' : `${s.withdrawn} `}withdrawn or lapsed` : ''].filter(Boolean))}) ${asideN === 1 ? 'is' : 'are'} counted, not drawn` : '';
+    let t = `The Department's Major Projects register lists ${fmtNum(s.listed)} State significant application${s.listed === 1 ? '' : 's'} for ${listWords(s.lgas.map(theArea))}; ${s.sites.length === 1 ? 'one in the window is drawn as a diamond' : `${s.sites.length} in the window are drawn as diamonds${mix}`}${aside}.`;
+    const on = s.sites.find((p) => p.onSite);
+    if (on) t += ` ${on.n} is on the site itself: ${ssdName(on)} (${on.number}, ${ssdStagePhrase(on)}).`;
+    const next = s.sites.find((p) => p.stageClass === 'active' && !p.onSite);
+    if (next) t += ` The nearest in process is ${next.n}, ${ssdName(next)}, ${fmtNum(next.distanceM)} m to the ${bearingName(next.bearing)} (${next.number}, ${ssdStagePhrase(next)}).`;
+    else { const latest = s.sites.find((p) => p.stageClass === 'determined' && !p.onSite); if (latest) t += ` The latest determined is ${latest.n}, ${ssdName(latest)} (${latest.number}, ${ssdStagePhrase(latest)}).`; }
+    out.push(t);
+  } else {
+    const nb = s.nearestBeyond;
+    out.push(`None of the ${fmtNum(s.listed)} State significant applications the Department's Major Projects register lists for ${listWords(s.lgas.map(theArea))} is in process or determined since ${s.olderThan} in the window${s.older || s.withdrawn ? ` (${listWords([s.older ? `${s.older} older approval${s.older === 1 ? '' : 's'}` : '', s.withdrawn ? `${s.withdrawn} withdrawn or lapsed` : ''].filter(Boolean))} there)` : ''}${nb ? `; the nearest is ${ssdName(nb)} (${nb.number}, ${ssdStagePhrase(nb)}), ${nb.distanceM >= 1000 ? `${(nb.distanceM / 1000).toFixed(1)} km` : `${fmtNum(nb.distanceM)} m`} to the ${bearingName(nb.bearing)}` : ''}.`);
+  }
   if (d.proposals.length) {
     out.push(`${d.proposals.length} planning proposal map${d.proposals.length === 1 ? ' is' : 's are'} on public exhibition in the window: ${[...new Set(d.proposals.map((p) => p.name))].slice(0, 3).join('; ')}.`);
   } else {
@@ -1239,7 +1293,7 @@ export function developmentSentences(b: SlidesBundle, d: DevelopmentFacts, f: Pl
   return out;
 }
 
-function developmentMap(b: SlidesBundle, d: DevelopmentFacts, numbered: number): string {
+function developmentMap(b: SlidesBundle, d: DevelopmentFacts, numbered: number, ssdNumbered: number): string {
   const p = b.daPanel;
   const proj = panelProjector(p);
   const parts: string[] = [baseLayers(b.base, proj, p)];
@@ -1286,6 +1340,11 @@ function developmentMap(b: SlidesBundle, d: DevelopmentFacts, numbered: number):
   spacer.take((fb.x0 + fb.x1) / 2, (fb.y0 + fb.y1) / 2, fb.x1 - fb.x0 - 2, fb.y1 - fb.y0 - 2);
   const siteLabel = siteLabelPoint(b.base, proj);
   if (siteLabel) spacer.take(siteLabel.cx, siteLabel.cy - 0.8, labelW('SITE', 2.4), 2.6);
+  // State significant applications: diamonds, their room taken before the numbers look for theirs.
+  const DR = 2.5;
+  const ssdPlaced = d.stateSignificant.sites.map((st) => { const [x, y] = proj(st.lon!, st.lat!); return { st, x, y }; })
+    .filter((q) => q.x >= 0 && q.y >= 0 && q.x <= p.wMm && q.y <= p.hMm);
+  for (const q of ssdPlaced) spacer.take(q.x, q.y, DR * 2, DR * 2);
   const dots: string[] = [];
   const labels: string[] = [];
   for (const { st, x, y, r } of placed) {
@@ -1304,7 +1363,20 @@ function developmentMap(b: SlidesBundle, d: DevelopmentFacts, numbered: number):
     const spots: [number, number][] = [[x + r + 1.2 + w / 2, y], [x - r - 1.2 - w / 2, y], [x, y - r - 1.6], [x, y + r + 1.6]];
     for (const [lx, ly] of spots) if (spacer.take(lx, ly, w, h)) { labels.push(label(lx, ly, text, 2, '#222')); break; }
   }
-  parts.push(dots.join(''), labels.join(''), siteMark(b.base, proj, 'outline'), panelFurniture(p, corner));
+  const diamonds: string[] = [];
+  const dia = (x: number, y: number, r: number) => `M${x.toFixed(2)},${(y - r).toFixed(2)}L${(x + r).toFixed(2)},${y.toFixed(2)}L${x.toFixed(2)},${(y + r).toFixed(2)}L${(x - r).toFixed(2)},${y.toFixed(2)}Z`;
+  for (const { st, x, y } of ssdPlaced) {
+    const sty = STATUS_STYLE[st.stageClass];
+    diamonds.push(`<path d="${dia(x, y, DR + 0.45)}" fill="#ffffff"/><path d="${dia(x, y, DR)}" fill="${sty.fill}" stroke="${sty.stroke}" stroke-width="${sty.hollow ? 0.5 : 0.25}"/>`);
+  }
+  for (const { st, x, y } of ssdPlaced) {
+    if (Number(st.n.slice(1)) > ssdNumbered) continue;
+    if (st.n.length <= 2) { labels.push(`<text x="${x.toFixed(1)}" y="${(y + 0.65).toFixed(1)}" text-anchor="middle" font-size="1.75" font-weight="700" fill="${STATUS_STYLE[st.stageClass].hollow ? '#333' : '#ffffff'}">${st.n}</text>`); continue; }
+    const w = labelW(st.n, 1.9);
+    for (const [lx, ly] of [[x + DR + 1 + w / 2, y], [x - DR - 1 - w / 2, y], [x, y - DR - 1.6], [x, y + DR + 1.6]] as [number, number][])
+      if (spacer.take(lx, ly, w, 2.3)) { labels.push(label(lx, ly, st.n, 1.9, '#222')); break; }
+  }
+  parts.push(dots.join(''), diamonds.join(''), labels.join(''), siteMark(b.base, proj, 'outline'), panelFurniture(p, corner));
   return `<svg width="${p.wMm}mm" height="${p.hMm}mm" viewBox="0 0 ${p.wMm} ${p.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
     <defs><clipPath id="clip-da"><rect x="0" y="0" width="${p.wMm}" height="${p.hMm}"/></clipPath></defs>
     <g clip-path="url(#clip-da)" font-family="${tpl().font}">${parts.join('\n')}</g>
@@ -1364,19 +1436,29 @@ export function developmentSlide(b: SlidesBundle, facts: PlanningFacts): Slide {
     return `<div class="lg"><svg width="5mm" height="3.6mm" viewBox="0 0 5 3.6"><circle cx="2.5" cy="1.8" r="1.5" fill="${sty.fill}" stroke="${sty.stroke}" stroke-width="${sty.hollow ? 0.45 : 0.2}"/></svg><span>${esc(sty.label)}</span></div>`;
   }).join('') +
     `<div class="lg"><svg width="5mm" height="3.6mm" viewBox="0 0 5 3.6"><circle cx="1" cy="1.8" r="0.9" fill="#888"/><circle cx="3.4" cy="1.8" r="1.6" fill="#888"/></svg><span>Circle area follows the stated cost; numbers match the table</span></div>` +
-    `<div class="lg"><svg width="5mm" height="3.6mm" viewBox="0 0 5 3.6"><circle cx="2.5" cy="1.8" r="0.55" fill="#b3b3b3"/></svg><span>Every other application lodged in the period</span></div>`;
+    `<div class="lg"><svg width="5mm" height="3.6mm" viewBox="0 0 5 3.6"><circle cx="2.5" cy="1.8" r="0.55" fill="#b3b3b3"/></svg><span>Every other application lodged in the period</span></div>` +
+    (d.stateSignificant.sites.length ? `<div class="lg"><svg width="5mm" height="3.6mm" viewBox="0 0 5 3.6"><path d="M2.5,0.15 L4.15,1.8 L2.5,3.45 L0.85,1.8 Z" fill="#888"/></svg><span>State significant application from the Department's register, S-numbered, coloured by stage</span></div>` : '');
   const chartH = 40;
   const right = `<div class="abs ptitle" style="left:${rightX}mm;top:${y0}mm;width:${rightW}mm">Scale of activity</div>
     <div class="abs tiles" style="left:${rightX}mm;top:${y0 + PANEL_TITLE_H + 1}mm;width:${rightW}mm">${tiles}</div>
     <div class="abs legend" style="left:${rightX}mm;top:${y0 + PANEL_TITLE_H + 22}mm;width:${rightW}mm">${legend}</div>
-    <div class="abs" style="left:${rightX}mm;top:${y0 + PANEL_TITLE_H + 52}mm;width:${rightW}mm">${yearChart(d, rightW, chartH)}</div>`;
+    <div class="abs" style="left:${rightX}mm;top:${y0 + PANEL_TITLE_H + 52 + (d.stateSignificant.sites.length ? 4 : 0)}mm;width:${rightW}mm">${yearChart(d, rightW, chartH)}</div>`;
 
   // Rows until the table would run into the footer: about 5 mm a line, and
   // the address and status columns wrap past roughly 50 and 34 characters.
   const LINE_MM = 2.95, ROW_PAD_MM = 2.05, TABLE_BUDGET_MM = 112, MORE_MM = 5;
   const rowMm = (st: DaSite) => Math.max(1, Math.ceil(st.statusText.length / 34), Math.ceil(st.address.length / 50)) * LINE_MM + ROW_PAD_MM;
-  const shown: DaSite[] = [];
+  // The State significant applications take the top rows, six at most, and leave the rest to the council's.
+  const ssdSite = (q: SsdSite) => shorten(tidyRegisterAddress(q.address) || q.title, 100);
+  const ssdDev = (q: SsdSite) => shorten(tidyRegisterAddress(q.address) && q.title.toLowerCase().startsWith(tidyRegisterAddress(q.address).toLowerCase()) && q.description ? q.description : q.title, 72);
+  const ssdStatus = (q: SsdSite) => `${q.number} · ${ssdStage(q)}${q.modifications.length ? ` · ${q.modifications.length} modification${q.modifications.length === 1 ? '' : 's'}` : ''}${q.onSite ? ' · on the site' : ''}`;
+  const ssdRowMm = (q: SsdSite) => Math.max(1, Math.ceil(ssdStatus(q).length / 34), Math.ceil(ssdSite(q).length / 50), Math.ceil(ssdDev(q).length / 44)) * LINE_MM + ROW_PAD_MM;
+  const ssdShown: SsdSite[] = [];
   let used = 0;
+  for (const q of d.stateSignificant.sites.slice(0, 6)) { const h = ssdRowMm(q); if (used + h > TABLE_BUDGET_MM * 0.55) break; ssdShown.push(q); used += h; }
+  const ssdRest = d.stateSignificant.sites.length - ssdShown.length;
+  if (ssdRest > 0) used += MORE_MM;
+  const shown: DaSite[] = [];
   for (const st of d.sites) { const h = rowMm(st); if (used + h > TABLE_BUDGET_MM) break; shown.push(st); used += h; }
   while (shown.length < d.sites.length && shown.length && used + MORE_MM > TABLE_BUDGET_MM) used -= rowMm(shown.pop()!);
   const rows = shown.map((st) => {
@@ -1387,18 +1469,23 @@ export function developmentSlide(b: SlidesBundle, facts: PlanningFacts): Slide {
       `<td><span class="dot" style="background:${STATUS_STYLE[st.statusClass].fill};border-color:${STATUS_STYLE[st.statusClass].stroke}"></span>${esc(st.statusText)}</td>` +
       `<td>${esc(fmtShortDate(st.primary.lodged))}</td><td>${esc(fmtShortDate(st.primary.determined))}</td></tr>`;
   }).join('');
+  const ssdRows = ssdShown.map((q) => {
+    const sty = STATUS_STYLE[q.stageClass];
+    return `<tr><td class="n">${q.n}</td><td>${esc(ssdSite(q))}</td><td>${esc(ssdDev(q))}</td><td class="r"></td><td class="r"></td><td class="r"></td>` +
+      `<td><span class="dot dia" style="background:${sty.fill};border-color:${sty.stroke}"></span>${esc(ssdStatus(q))}</td><td></td><td>${esc(fmtShortDate(q.determined))}</td></tr>`;
+  }).join('') + (ssdRest > 0 ? `<tr><td></td><td colspan="8" class="more">+ ${ssdRest} more State significant application${ssdRest > 1 ? 's' : ''} in the window, diamonds without a number, all in overall.json</td></tr>` : '');
   const rest = d.sites.length - shown.length;
   const more = rest > 0 ? `<tr><td></td><td colspan="8" class="more">+ ${rest} smaller site${rest > 1 ? 's' : ''} of scale, unnumbered on the map, all in overall.json</td></tr>` : '';
   const empty = !d.sites.length ? `<tr><td></td><td colspan="8" class="more">${d.available ? 'No application of scale in the window for this period' : 'The feed was not available'}</td></tr>` : '';
-  const table = `<table class="da"><thead><tr><th class="n">#</th><th style="width:58mm">Site</th><th>Development as lodged</th><th class="r" style="width:11mm">Storeys</th><th class="r" style="width:13mm">Dwellings</th><th class="r" style="width:15mm">Cost</th><th style="width:44mm">Status</th><th style="width:15mm">Lodged</th><th style="width:15mm">Determined</th></tr></thead><tbody>${rows}${more}${empty}</tbody></table>`;
+  const table = `<table class="da"><thead><tr><th class="n">#</th><th style="width:58mm">Site</th><th>Development as lodged</th><th class="r" style="width:11mm">Storeys</th><th class="r" style="width:13mm">Dwellings</th><th class="r" style="width:15mm">Cost</th><th style="width:44mm">Status</th><th style="width:15mm">Lodged</th><th style="width:15mm">Determined</th></tr></thead><tbody>${ssdRows}${rows}${more}${empty}</tbody></table>`;
 
   const sentences = developmentSentences(b, d, facts);
   const textHtml = sentences.map(para).join('') +
     placeholder('Narrative — for the author: what the pipeline says about the pace and direction of change here, which approvals set the built-form precedent for this site, and which are worth a site visit or a read of the approved plans.') +
-    `<div class="fine">Source: NSW Planning Portal Online DA API, updated daily, every application lodged on the portal since councils were required onto it in July 2021. Council-wide feed clipped to the window; storeys, dwellings and costs as lodged by the applicant; "determined" does not say approved or refused. Complying development certificates and State significant applications are not in this feed. Retrieved ${b.generatedAt.slice(0, 10)}.</div>`;
-  const sub = [b.siteAddress, d.council ?? '', d.available ? `${fmtNum(d.applications)} applications since ${fmtMonthYear(d.from)}` : ''].filter(Boolean).join(' · ');
+    `<div class="fine">Source: NSW Planning Portal Online DA API, updated daily, every application lodged on the portal since councils were required onto it in July 2021. Council-wide feed clipped to the window; storeys, dwellings and costs as lodged by the applicant; "determined" does not say approved or refused. Complying development certificates are not in this feed. State significant applications (S-numbered diamonds) come from the Department's Major Projects register: its listing for the council area and each project's page, placed at the register's point, with the decision and date the page gives; the register does not give lodgement dates. Retrieved ${b.generatedAt.slice(0, 10)}.</div>`;
+  const sub = [b.siteAddress, d.council ?? '', d.available ? `${fmtNum(d.applications)} applications since ${fmtMonthYear(d.from)}` : '', d.stateSignificant.sites.length ? `${d.stateSignificant.sites.length} State significant` : ''].filter(Boolean).join(' · ');
   const figureHtml = `<div class="abs ptitle" style="left:${x0}mm;top:${y0}mm;width:${PANEL_W}mm">${esc(mapTitle)}</div>
-    <div class="abs" style="left:${x0}mm;top:${y0 + PANEL_TITLE_H}mm">${developmentMap(b, d, shown.length)}</div>
+    <div class="abs" style="left:${x0}mm;top:${y0 + PANEL_TITLE_H}mm">${developmentMap(b, d, shown.length, ssdShown.length)}</div>
     ${right}
     <div class="abs" style="left:${x0}mm;top:${y0 + PANEL_TITLE_H + DA_PANEL_H + 4}mm;width:${FIELD_W}mm">${table}</div>`;
   return { id: '07_development_activity', title: 'Development activity', subtitle: sub, textHtml, figureHtml };
@@ -4047,7 +4134,14 @@ export function ocFacts(b: SlidesBundle, planning: PlanningFacts) {
 
   // Change around the site.
   const daNear = dv.sites.filter((s) => inPanel(s.lon, s.lat)).map((s) => ({ ...s, d: distC(s.lon, s.lat) })).sort((x, y) => x.d - y.d);
-  if (daNear.length) opp.push({ theme: 'Change', text: `${daNear.length === 1 ? 'One application' : `${daNear.length} applications`} of scale lodged within the diagram${dv.from ? ` since ${dv.from.slice(0, 4)}` : ''}${daNear[0].storeys ? `, the nearest ${daNear[0].storeys} storeys ${mDist(daNear[0].d)} to the ${dir(bearingTo(daNear[0].lon, daNear[0].lat))}` : ''}: the block is changing (slide 07).`, mark: markAt(daNear[0].lon, daNear[0].lat) });
+  const ssdNear = dv.stateSignificant.sites.filter((q) => q.stageClass !== 'withdrawn' && inPanel(q.lon!, q.lat!)).sort((x, y) => x.distanceM - y.distanceM);
+  const ssdOn = ssdNear.find((q) => q.onSite);
+  const daBit = daNear.length ? `${daNear.length === 1 ? 'one application' : `${daNear.length} applications`} of scale lodged with the council${dv.from ? ` since ${dv.from.slice(0, 4)}` : ''}${daNear[0].storeys ? `, the nearest ${daNear[0].storeys} storeys ${mDist(daNear[0].d)} to the ${dir(bearingTo(daNear[0].lon, daNear[0].lat))}` : ''}` : '';
+  if (ssdNear.length) {
+    const lead = ssdOn ?? ssdNear[0];
+    const ssdBit = `${ssdNear.length === 1 ? 'one State significant application' : `${ssdNear.length} State significant applications`}, ${ssdOn ? `${ssdOn.number} on the site itself` : `${ssdNear.length === 1 ? '' : 'the nearest '}${lead.number} ${mDist(lead.distanceM)} to the ${dir(lead.bearing)}`} (${ssdStagePhrase(lead)})`;
+    opp.push({ theme: 'Change', text: `Within the diagram: ${daBit ? `${daBit}, and ${ssdBit}` : ssdBit}. The block is changing (slide 07).`, mark: ssdOn ? null : markAt(lead.lon!, lead.lat!) });
+  } else if (daNear.length) opp.push({ theme: 'Change', text: `${capFirst(daBit.replace(' lodged with the council', ' lodged within the diagram'))}: the block is changing (slide 07).`, mark: markAt(daNear[0].lon, daNear[0].lat) });
 
   // Scale: the height plane against the neighbours.
   const env = bf.envelope, med = bf.near.medianStoreys;
@@ -4525,6 +4619,8 @@ export function sourcesFacts(b: SlidesBundle, planning: PlanningFacts) {
   A.push({ dataset: 'Government land: State land (GPI), Crown land and Crown reserves', used: '11', currency: pl.length ? `${n(pl.filter((x) => x.kind === 'state').length, 'State parcel')}, ${n(pl.filter((x) => x.kind === 'crown').length, 'Crown land parcel')}, ${n(pl.filter((x) => x.kind === 'reserve').length, 'Crown reserve')} in the block; as published` : 'none in the block', retrieved: retrieved(b.site.fetchedAt), attribution: ATTR.dphi });
   A.push({ dataset: 'Planning proposals (public exhibition layer)', used: '07', currency: b.proposals.length ? `${n(b.proposals.length, 'proposal')} on exhibition in the window` : 'none on exhibition in the window', retrieved: deckDay, attribution: ATTR.dphi });
   A.push({ dataset: 'Planning Portal property report API (the layers at the geocoded point)', used: '04 · 14', currency: b.property ? `${n(b.property.epi.length + b.property.sepp.length, 'layer hit')} at the point; the maps\' own currency dates` : 'did not answer for this run', retrieved: deckDay, attribution: ATTR.portal });
+  const mpr = b.majorProjects;
+  A.push({ dataset: 'Major Projects register: State significant development and infrastructure (listing and project pages)', used: '07 · 17', currency: mpr?.ok ? `${mpr.lgas.map((l) => `${l.name} ${fmtNum(l.listed)}`).join(', ')} listed; ${n(mpr.read, 'project page')} read, ${n(mpr.located, 'point')}; the register's stages as shown on the day` : (mpr?.note ?? 'not read for this run'), retrieved: retrieved(mpr?.fetchedAt), attribution: ATTR.portal });
   A.push({ dataset: 'Online DA API (development applications lodged through the portal)', used: '07 · 17', currency: b.daMeta ? `${b.daMeta.council}: ${n(b.daMeta.total, 'application')} lodged ${fmtIso(b.daMeta.from)} to ${fmtIso(b.daMeta.to)}${b.daMeta.complete ? '' : ' (feed incomplete)'}` : 'not read for this run', retrieved: retrieved(b.daMeta?.fetchedAt), attribution: ATTR.portal });
   A.push({ dataset: 'Council housing target (department snapshot page)', used: '04', currency: b.housingTarget ? `${fmtNum(b.housingTarget.homes)} new homes by ${b.housingTarget.by}` : 'no snapshot page found for this council', retrieved: deckDay, attribution: ATTR.dphi });
   const sg = b.strategies;
@@ -4625,7 +4721,7 @@ export function sourcesSentences(b: SlidesBundle, f: ReturnType<typeof sourcesFa
   out.push(`${f.total} datasets from ${f.publishers} publishers went into this deck, read on ${fmtIso(f.deckDay)}${f.cached.length ? `; ${listWords(f.cached)} came from the volume's cache` : ''}.`);
   if (f.dates.length) out.push(`Each layer carries its own date: ${f.dates.join('; ')}.`);
   out.push('Computed in the tool rather than sourced: the solar geometry and the neighbours\' shadows, the sight lines over the elevation model, the street bearings, the boundary lengths and corner levels from the cadastre and the model, and the walking bands from Valhalla; each is described where it appears.');
-  out.push('Still to obtain outside the open data: the survey, the title search (and the easements\' purposes), geotechnical and contamination reports, an acoustic assessment, the council\'s flood study, the airports\' ANEF contours, the State significant applications and the site visit.');
+  out.push('Still to obtain outside the open data: the survey, the title search (and the easements\' purposes), geotechnical and contamination reports, an acoustic assessment, the council\'s flood study, the airports\' ANEF contours and the site visit.');
   if (f.warnings.length) out.push(`This run logged ${f.warnings.length === 1 ? 'one warning' : `${f.warnings.length} warnings`}: ${f.warnings.join('; ')}.`);
   out.push('Attribution is as each publisher asks and the licences are as stated at retrieval, mostly Creative Commons Attribution 4.0 for State and Commonwealth data and the Open Database Licence for OpenStreetMap and the footprints derived from it; confirm before republishing.');
   void b;
@@ -4971,6 +5067,7 @@ export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; 
   table.da .r { text-align: right; padding-right: 3mm; font-variant-numeric: tabular-nums; }
   table.da .more { color: #555; font-style: italic; }
   table.da .dot { display: inline-block; width: 2.2mm; height: 2.2mm; border-radius: 50%; border: 0.25mm solid; margin-right: 1.2mm; vertical-align: -0.3mm; }
+  table.da .dot.dia { border-radius: 0.2mm; transform: rotate(45deg) scale(0.8); }
   table.da.cons { font-size: 2.2mm; line-height: 1.22; }
   table.da.cons th, table.da.cons td { padding: 0.7mm 1.4mm 0.7mm 0; }
   table.da.cons tr.hit td { font-weight: 600; }

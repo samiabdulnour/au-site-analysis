@@ -595,7 +595,12 @@ proposal on exhibition; beside it four figures (applications, sites of scale,
 dwellings proposed, value), lodgements per year and a table of the largest
 sites as lodged, with storeys, dwellings, cost, status and dates. The feed is
 council-wide and slow, so it is cached on the volume for a day
-(`out/.cache/da/`); `--da-years 5` sets the window. Then *people and market*:
+(`out/.cache/da/`); `--da-years 5` sets the window. The State significant
+applications come from the Department's Major Projects register, which has
+no feed: its listing for the council area and each project's page are read
+and cached (`out/.cache/majorprojects/`, a week), and the projects in the
+window are drawn as S-numbered diamonds and head the table with their
+stage, decision and date, one on the site flagged as such. Then *people and market*:
 the site's SA2 and LGA against Greater Sydney (or the rest of the state) from
 the 2021 Census — medians, age profile, dwelling structure, tenure, travel to
 work — with the ABS population series since 2001 and the TZP24 projection to

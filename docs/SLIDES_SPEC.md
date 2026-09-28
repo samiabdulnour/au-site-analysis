@@ -132,8 +132,10 @@ five years from the Online DA API, filtered to what shapes context (storeys ≥
 4 or cost ≥ $5 M or dwellings ≥ 10): a map of dots coloured by status and a
 table (address, type, storeys, dwellings, cost, status, lodged, determined).
 Planning proposals on exhibition, TOD and accelerated precincts on the same
-map. A schematic future skyline is optional: storeys × 3.1 m at each DA.
-*Manual:* renders; State Significant applications (no open feed, §5).
+map. State significant applications from the Department's Major Projects
+register join them as S-numbered diamonds (its listing and each project's
+page, §7). A schematic future skyline is optional: storeys × 3.1 m at each
+DA. *Manual:* renders.
 
 **08 Built form and height planes.** Figure-ground with buildings classed by
 height (Overture / OSM; the storeys of a determined DA on the lot where
@@ -430,7 +432,7 @@ Open-Meteo archive (ERA5): `https://archive-api.open-meteo.com/v1/archive?latitu
 | Content | Why not | Instead |
 |---|---|---|
 | Land-use table (permitted / prohibited uses), zone objectives, clause text | `legislation.nsw.gov.au` sits behind a Cloudflare bot check that also stops headless Chromium; AustLII likewise | print the legislation link the API gives for every control; the person pastes the table |
-| State Significant Development applications (the Major Projects register) | a Pega application with no open feed; the Drupal listing offers HTML only | SSD *sites* from the SEPP layer; DAs from the Online DA API; SSD applications by hand |
+| State Significant Development applications (the Major Projects register) as a feed | a Pega case system with no open feed; the tracker's JSON of every project (`/state-significant-projects-spatial-data`) answered 503 through September 2026 | the register's HTML listing and project pages, parsed and cached (slide 07, §7); SSD *sites* from the SEPP layer |
 | Site visit photographs, oblique aerials, renders, physical-model photos, 3D views | not data | placeholders sized for them; street-level and 1943 imagery as stand-ins |
 | The reference's character areas (its site-surroundings page: "city core", "Lavender Bay", the precinct edges) | a designer's judgement about how places read, not a dataset; no one publishes it | the evidence is on the slides — the zones and heritage conservation areas (03), the height bands (08), the 1943 and today pair (12), the named places (02) — and the boundaries are drawn by hand over them; that page's landmarks, connections and station are slides 02 and 09 |
 | Council strategies (LSPS, housing strategies, public domain strategies, character statements), DCP text | the Planning Portal indexes every council's LSPS as an HTML page of links (128 in September 2026), which slide 05 parses; the other strategies are PDFs on council sites with no index; only the DCP has a mapped link | the LSPS by parsing; the rest by hand, with rows left for them on slide 05 |
@@ -820,8 +822,7 @@ census tables for a month) and the slide says so. The sentences give the
 layers' own dates in one line, name what is computed rather than sourced,
 list what must still be obtained outside the open data (the survey, the
 title search, the geotechnical, contamination and acoustic reports, the
-flood study, the ANEF contours, the State significant applications, the
-site visit), repeat the run's warnings (an Overpass mirror that did not
+flood study, the ANEF contours, the site visit), repeat the run's warnings (an Overpass mirror that did not
 answer, a feed that came back incomplete) and state the licence position
 as the publishers give it.
 
@@ -894,8 +895,38 @@ Appeal, Deferred Commencement, Operational consent requested/issued,
 Withdrawn, Rejected (not accepted at lodgement) and Cancelled; the slide
 groups them as determined, active, before the court and withdrawn. Planning
 proposals come from the identify operation on
-`ePlanning/Planning_Proposal_Public`; State significant applications are
-still missing (no open feed, §5) and are the slide's manual item.
+`ePlanning/Planning_Proposal_Public`.
+
+State significant applications come from the Department's Major Projects
+register (`src/fetch/majorProjects.ts`), which has no API. Its listing
+(`/major-projects/projects`) is a server-rendered page of cards, nine to a
+page, filtered by council area (`lga`, the ids of its own select), case
+type and stage; each card gives the application number, the stage, the case
+type, the council area, the title and the address. Each project's page adds
+the development type, the decision, the determination date, the decider,
+the last modification, the modifications with their stages, the
+description and the Department's point for the project (a geofield in the
+page's settings). The deck reads the listing for every council area the
+window touches (the harbour's unincorporated area skipped), State
+significant development and infrastructure only (288 for the City of
+Sydney, 65 North Sydney, 47 Bayside, 44 Inner West, 5 Orange), cached a
+week, and every listed project's page, cached a week while it is in the
+process and two months once settled: 288 pages and 66 s the first time for
+the City of Sydney, from the cache after. The tracker's JSON of every
+project (`/state-significant-projects-spatial-data`) would be one call but
+answered 503 throughout. On the slide the projects whose point falls in the
+window and that are in the process or determined in the last ten years are
+S-numbered diamonds in the status colours (in the process first, then the
+latest determined), the top six rows of the table with number, stage,
+decision, modifications and determination date, and "on the site" when the
+point falls on the site's lots; older approvals and the withdrawn or lapsed
+(SEARs expired) are counted in the text, not drawn. The register gives no
+lodgement dates. At 5 Blue Street North Sydney the register's own
+application for the site is S1; at Marrickville a residential flat building
+99 m away is at the Prepare EIS stage; at Waterloo the Metro Quarter concept
+and five stages of the Waterloo Estate (South) sit in the window.
+`test/major-projects.mts` checks the parsers on trimmed copies of the
+markup.
 
 Council open data is a per-LGA hook: the City of Sydney's data hub
 (`data.cityofsydney.nsw.gov.au`, ArcGIS feature services under

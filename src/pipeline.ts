@@ -26,6 +26,7 @@ import { fetchPlanningProposals, type PlanningProposal } from './fetch/planning.
 import { fetchPeopleData, type PeopleData } from './fetch/people.js';
 import { fetchDemGrid, type DemGrid } from './fetch/terrain.js';
 import { fetchBuildings, withDaStoreys, type BuildingsData } from './fetch/buildings.js';
+import { fetchMajorProjects, emptyMajorProjects, type MajorProjectsData } from './fetch/majorProjects.js';
 import { fetchMovement, type MovementData } from './fetch/movement.js';
 import { fetchGreenSpace, type GreenData } from './fetch/greenSpace.js';
 import { fetchConstraints, checkLepCoverage, type ConstraintsData } from './fetch/constraints.js';
@@ -534,6 +535,8 @@ export interface SlidesBundle {
   daPanel: Panel;
   /** Applications lodged in the window, from the council-wide feed. */
   applications: DaRecord[];
+  /** The Department's register of State significant applications for the council areas the window touches, those within 3 km with their points. */
+  majorProjects: MajorProjectsData;
   daMeta: { council: string; from: string; to: string; total: number; complete: boolean; fetchedAt: string } | null;
   proposals: PlanningProposal[];
   /** Census, population, projections, SEIFA, land values, sales and schools for the site's regions; null when the ABS lookup failed. */
@@ -667,7 +670,7 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
   const emptyGreen: GreenData = { canopy: { blocks: [], covered: false, year: 2022, source: 'Greater Sydney Tree Canopy Cover 2022 (NSW ePlanning)' }, openSpace: [], openSpaceWide: [], greenGrid: [], parkPoints: [], facilities: [], npws: [], trees: { points: [] }, fetchedAt: new Date().toISOString() };
   const emptyConstraints: ConstraintsData = { layers: [], soil: null, fetchedAt: new Date().toISOString() };
   const emptySite: SiteData = { sitePanel, blockPanel, aerial: null, imagery: null, lots: [], easements: [], neighbours: [], publicLand: [], fetchedAt: new Date().toISOString() };
-  const [zoning, hob, heritage, shr, policy, water, lots, roads, railLines, stations, context, property, controls, proposals, feed, people, dem, contourSet, buildingsRead, movement, green, constraints, site, wideRoads, wideRail, wideStations, wideWater, wideSuburbs, country, photos, location] = await Promise.all([
+  const [zoning, hob, heritage, shr, policy, water, lots, roads, railLines, stations, context, property, controls, proposals, feed, people, dem, contourSet, buildingsRead, movement, green, constraints, site, wideRoads, wideRail, wideStations, wideWater, wideSuburbs, country, photos, location, majorProjects] = await Promise.all([
     soft(fetchZoningDetailed(extent), emptyFC, 'zoning'),
     soft(fetchHobDetailed(extent), emptyFC, 'height of building'),
     soft(fetchHeritageDetailed(extent), emptyFC, 'heritage'),
@@ -699,6 +702,8 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
     soft(fetchCountry(wideExtent, Math.round(((widePanel.wMm / 1000) * widePanel.scale) / 2), Math.round(((widePanel.hMm / 1000) * widePanel.scale) / 2), geo.center, dataDir, log), EMPTY_COUNTRY, 'Country'),
     soft(fetchPhotos({ centre: mercatorToLonLat(geo.center), siteRings: siteLots.features.flatMap((f) => geomRingsOf(f.geometry)), pairPanel, outDir: dataDir, log }), emptyPhotos(pairPanel), 'street-level frames and the 1943 aerial'),
     soft(fetchLocation(locationPanel, log), emptyLocation(locationPanel), 'location window'),
+    // The Department's register of State significant applications: its listing for the council areas the window touches and each project's page, cached.
+    soft(fetchMajorProjects(daExtent, geo.center, log), emptyMajorProjects('the register did not answer'), 'State significant applications'),
   ]);
   const [housingTarget, cos, , views, character, strategies] = await Promise.all([
     context.lga?.name ? fetchHousingTarget(context.lga.name) : Promise.resolve(null),
@@ -734,7 +739,7 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
     zoning, hob, heritage, shr, policy,
     base: { water, lots, roads, rail: railLines, stations, siteLots },
     controls, property, context, housingTarget, cos,
-    daPanel, applications, daMeta, proposals, people,
+    daPanel, applications, majorProjects, daMeta, proposals, people,
     terrain: { dem, contours: contourSet.lines, contourIntervalM: contourSet.intervalM, contourSource: contourSet.source, contourAttribution: contourSet.attribution }, buildings, movement, green, constraints, site, views,
     wide: { panel: widePanel, base: { water: wideWater, lots: emptyFC, roads: wideRoads, rail: wideRail, stations: wideStations, siteLots }, suburbs: wideSuburbs },
     country,
