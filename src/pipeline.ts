@@ -545,6 +545,8 @@ export interface SlidesBundle {
   constraints: ConstraintsData;
   /** The site plan's aerial, the lots, easements, neighbours and the public land around, with the two panels they are drawn in. */
   site: SiteData;
+  /** The candidate views (skylines, water, the park next door) with their sight lines checked against the ground, and the eye height used. */
+  views: { views: ViewTarget[]; eyeAboveM: number };
   /** The wide walking-reach strip: its panel, a lighter base (major roads, rail, stations, water) and the suburbs to label. */
   wide: { panel: Panel; base: BaseData; suburbs: GeoJSONFC };
   warnings: string[];
@@ -582,6 +584,16 @@ function fitSitePanel(siteLots: GeoJSONFC, wMm: number, hMm: number): Panel {
   return { center, scale, wMm, hMm };
 }
 const geomRingsOf = (g: any): number[][][] => (!g ? [] : g.type === 'Polygon' ? g.coordinates : g.type === 'MultiPolygon' ? g.coordinates.flat() : []);
+
+/** The site's biggest ring, for the tests that want one outline (a multi-lot site's union is the site sheet's business). */
+function largestRing(siteLots: GeoJSONFC): [number, number][] {
+  let best: number[][] = [], bestA = -1;
+  for (const f of siteLots.features) for (const r of geomRingsOf(f.geometry)) {
+    let a = 0; for (let i = 0; i < r.length - 1; i++) a += r[i][0] * r[i + 1][1] - r[i + 1][0] * r[i][1];
+    if (Math.abs(a) > bestA) { bestA = Math.abs(a); best = r; }
+  }
+  return best as [number, number][];
+}
 
 /** The local environmental plans in the window, most common first: the zoning layer's plan names, then the property report's. */
 function principalLeps(zoning: GeoJSONFC, property: PropertyReport | null): string[] {
@@ -666,12 +678,14 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
     soft(fetchWaterAreas(wideExtent), emptyFC, 'wide water areas'),
     soft(queryByExtent('https://portal.spatial.nsw.gov.au/server/rest/services/NSW_Administrative_Boundaries_Theme/FeatureServer/2', wideExtent, 'suburbname'), emptyFC, 'suburbs'),
   ]);
-  const [housingTarget, cos] = await Promise.all([
+  const [housingTarget, cos, , views] = await Promise.all([
     context.lga?.name ? fetchHousingTarget(context.lga.name) : Promise.resolve(null),
     // The one council with its DCP as open data so far; the hook is per LGA.
     context.lga?.name === 'SYDNEY' ? fetchCityOfSydneyDcp(extent, mercatorToLonLat(geo.center), log) : Promise.resolve(null),
     // Which of the plan's hazard and protection maps exist at all, for the constraints slide: checked against the local plan in the window (the zone at the site may come from a SEPP) and the plan at the site.
     constraints.layers.length ? soft(checkLepCoverage(constraints, [...principalLeps(zoning, property), ...(controls.epiName ? [controls.epiName] : [])], log), undefined, 'constraint coverage check') : Promise.resolve(undefined),
+    // Sight lines to the skyline, the water and the park next door, from the eye just under the height limit, over the 5 m elevation surface.
+    soft(assessViews({ site: mercatorToLonLat(geo.center), siteRing: largestRing(siteLots), hobM: controls.maxHeightM, zoning, parkPoints: green.parkPoints, log }), { views: [] as ViewTarget[], eyeAboveM: eyeAboveGround(controls.maxHeightM) }, 'views'),
   ]);
   const applications = feed ? clipToExtent(feed.records, daExtent) : [];
   const daMeta = feed ? { council: feed.council, from: feed.from, to: feed.to, total: feed.total, complete: feed.complete, fetchedAt: feed.fetchedAt } : null;
@@ -694,7 +708,7 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
     base: { water, lots, roads, rail: railLines, stations, siteLots },
     controls, property, context, housingTarget, cos,
     daPanel, applications, daMeta, proposals, people,
-    terrain: { dem, contours: contourSet.lines, contourIntervalM: contourSet.intervalM, contourSource: contourSet.source, contourAttribution: contourSet.attribution }, buildings, movement, green, constraints, site,
+    terrain: { dem, contours: contourSet.lines, contourIntervalM: contourSet.intervalM, contourSource: contourSet.source, contourAttribution: contourSet.attribution }, buildings, movement, green, constraints, site, views,
     wide: { panel: widePanel, base: { water: wideWater, lots: emptyFC, roads: wideRoads, rail: wideRail, stations: wideStations, siteLots }, suburbs: wideSuburbs },
     warnings,
   };

@@ -32,6 +32,9 @@ import type { PublicParcel } from '../fetch/site.js';
 import { demAt } from '../fetch/terrain.js';
 import { CHART } from './charts.js';
 import type { XY } from '../lib/geo.js';
+import { sunPosition, sunTimes, sunPath, civilToUtc, fmtClock } from '../lib/solar.js';
+import { shadowHull, inHull } from '../lib/shadows.js';
+import type { ViewKind } from '../fetch/views.js';
 
 export const SLIDE_W = 420;
 export const SLIDE_H = 297;
@@ -2856,11 +2859,351 @@ export function siteSlide(b: SlidesBundle): Slide {
   return { id: '11_the_site', title: 'The site', subtitle: sub, textHtml, figureHtml };
 }
 
+// ---- slide 13: grid, sun and views --------------------------------------------
+
+const SUN_COLOUR = '#e0a300';
+const SHADOW_HOURS: { hour: number; label: string; fill: string; opacity: number }[] = [
+  { hour: 9, label: '9 am', fill: '#3c4c5a', opacity: 0.14 },
+  { hour: 12, label: 'noon', fill: '#3c4c5a', opacity: 0.22 },
+  { hour: 15, label: '3 pm', fill: '#3c4c5a', opacity: 0.14 },
+];
+const VIEW_COLOUR: Record<ViewKind, string> = { city: '#2a78d6', water: '#1d8fb0', ocean: '#1d8fb0', park: '#3a7d3a' };
+const VIEW_WORD: Record<ViewKind, string> = { city: 'skyline', water: 'water', ocean: 'ocean', park: 'park' };
+/** Clock offsets the deck uses: standard time for the winter day, daylight time for the summer one. */
+const AEST = 10, AEDT = 11;
+const SOLAR_YEAR = 2026;
+const compass16 = (deg: number) => ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'][Math.round((((deg % 360) + 360) % 360) / 22.5) % 16];
+const compassWord = (deg: number) => bearingName(deg);
+
+export function sunViewFacts(b: SlidesBundle) {
+  const centreLL = mercatorToLonLat(b.panel.center);
+  const k = mercatorScaleFactor(centreLL.lat);
+  const toM = (lon: number, lat: number) => lonLatToMercator({ lon, lat });
+  const siteRings = b.base.siteLots.features.flatMap((f) => geomRings(f.geometry));
+  const ringsMerc = siteRings.map((r) => r.map(([lon, lat]) => toM(lon, lat)));
+
+  // The street grid: the roads' segment bearings, length-weighted, folded to 0–180 in 5° bins.
+  const bins = new Array(36).fill(0) as number[];
+  let totalLen = 0;
+  for (const r of b.base.roads) {
+    const pts = r.coords.map(([lon, lat]) => toM(lon, lat));
+    for (let i = 0; i < pts.length - 1; i++) {
+      const dx = pts[i + 1].x - pts[i].x, dy = pts[i + 1].y - pts[i].y;
+      const len = Math.hypot(dx, dy) / k;
+      if (len < 2) continue;
+      const bearing = ((Math.atan2(dx, dy) * 180) / Math.PI + 360) % 180;
+      bins[Math.floor(bearing / 5) % 36] += len; totalLen += len;
+    }
+  }
+  const smooth = bins.map((_, i) => bins[(i + 35) % 36] * 0.5 + bins[i] + bins[(i + 1) % 36] * 0.5);
+  const primaryBin = smooth.indexOf(Math.max(...smooth));
+  const primaryDeg = (primaryBin * 5 + 2.5) % 180;
+  const awayFrom = (i: number, j: number) => Math.min(Math.abs(i - j), 36 - Math.abs(i - j));
+  let secondaryBin = -1;
+  for (let i = 0; i < 36; i++) if (awayFrom(i, primaryBin) >= 6 && (secondaryBin < 0 || smooth[i] > smooth[secondaryBin])) secondaryBin = i;
+  const secondaryDeg = secondaryBin >= 0 ? (secondaryBin * 5 + 2.5) % 180 : null;
+  const share = (bin: number) => (totalLen ? ([bin - 1, bin, bin + 1].reduce((a, i) => a + bins[((i % 36) + 36) % 36], 0) / totalLen) * 100 : 0);
+
+  // The site's long axis and its frontages' facing.
+  let longest = { lengthM: 0, bearing: 0 };
+  const frontFaces: { name: string; facing: number; lengthM: number }[] = [];
+  const segDist = (q: XY, a: XY, c: XY) => { const dx = c.x - a.x, dy = c.y - a.y; const l2 = dx * dx + dy * dy; const t = l2 ? Math.max(0, Math.min(1, ((q.x - a.x) * dx + (q.y - a.y) * dy) / l2)) : 0; return Math.hypot(q.x - (a.x + t * dx), q.y - (a.y + t * dy)); };
+  for (const ring of ringsMerc) {
+    const pts = ring.length > 1 && ring[0].x === ring[ring.length - 1].x && ring[0].y === ring[ring.length - 1].y ? ring.slice(0, -1) : ring;
+    let area = 0; for (let i = 0; i < pts.length; i++) { const u = pts[i], v = pts[(i + 1) % pts.length]; area += u.x * v.y - v.x * u.y; }
+    const ccw = area > 0;
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[i], c = pts[(i + 1) % pts.length];
+      const dx = c.x - a.x, dy = c.y - a.y, len = Math.hypot(dx, dy) / k;
+      const bearing = ((Math.atan2(dx, dy) * 180) / Math.PI + 360) % 360;
+      if (len > longest.lengthM) longest = { lengthM: len, bearing: bearing % 180 };
+      const mid = { x: (a.x + c.x) / 2, y: (a.y + c.y) / 2 };
+      const outward = ((bearing + (ccw ? 90 : -90)) + 360) % 360;
+      let best: { name: string; d: number } | null = null;
+      for (const r of b.base.roads) { if (!r.name) continue; const rp = r.coords.map(([lon, lat]) => toM(lon, lat)); for (let j = 0; j < rp.length - 1; j++) { const d = segDist(mid, rp[j], rp[j + 1]) / k; if (!best || d < best.d) best = { name: titleCase(r.name), d }; } }
+      if (best && best.d <= 18) { const cur = frontFaces.find((f) => f.name === best!.name); if (cur) { cur.lengthM += len; } else frontFaces.push({ name: best.name, facing: outward, lengthM: len }); }
+    }
+  }
+  // how far the site's long axis sits from the nearer grid axis
+  const axisGap = (a: number, b2: number) => { let d = Math.abs(a - b2) % 180; if (d > 90) d = 180 - d; return d; };
+  const offGrid = Math.round(Math.min(axisGap(longest.bearing, primaryDeg), secondaryDeg === null ? 90 : axisGap(longest.bearing, secondaryDeg)));
+  // the row the site stands in, when one footprint covers the lot and runs on: its neighbours cannot be told apart from the site's own building
+  const sharedRow = b.buildings.buildings.some((bd) => bd.rings.some((r) => pointInRing(mercatorToLonLat(b.site.sitePanel.center).lon, mercatorToLonLat(b.site.sitePanel.center).lat, r)) && (bd.rings[0] ?? []).filter(([lon, lat]) => !siteRings.some((sr) => pointInRing(lon, lat, sr))).length > (bd.rings[0] ?? []).length * 0.5);
+
+  // The sun: the two solstices and the equinox, in the clock people keep on those days.
+  const sun = {
+    winter: { ...sunTimes(centreLL.lat, centreLL.lon, SOLAR_YEAR, 6, 21, AEST), offset: AEST, hours: [9, 12, 15].map((h) => ({ hour: h, ...sunPosition(centreLL.lat, centreLL.lon, civilToUtc(SOLAR_YEAR, 6, 21, h * 60, AEST)) })) },
+    summer: { ...sunTimes(centreLL.lat, centreLL.lon, SOLAR_YEAR, 12, 21, AEDT), offset: AEDT, hours: [9, 12, 15].map((h) => ({ hour: h, ...sunPosition(centreLL.lat, centreLL.lon, civilToUtc(SOLAR_YEAR, 12, 21, h * 60, AEDT)) })) },
+    equinox: { ...sunTimes(centreLL.lat, centreLL.lon, SOLAR_YEAR, 3, 21, AEDT), offset: AEDT },
+  };
+
+  // The neighbours' shadows on 21 June at 9, noon and 3: every footprint with a height that is not the site's own.
+  const inside = (lon: number, lat: number) => siteRings.some((r) => pointInRing(lon, lat, r));
+  const siteAreaSqm = b.siteAreaSqm ?? 0;
+  let sx0 = Infinity, sy0 = Infinity, sx1 = -Infinity, sy1 = -Infinity;
+  for (const r of ringsMerc) for (const q of r) { sx0 = Math.min(sx0, q.x); sy0 = Math.min(sy0, q.y); sx1 = Math.max(sx1, q.x); sy1 = Math.max(sy1, q.y); }
+  const stepM = Math.max(0.5, Math.sqrt(Math.max(1, siteAreaSqm) / 1600));
+  const samples: XY[] = [];
+  for (let x = sx0; x <= sx1; x += stepM * k) for (let y = sy0; y <= sy1; y += stepM * k) { const ll = mercatorToLonLat({ x, y }); if (inside(ll.lon, ll.lat)) samples.push({ x, y }); }
+  const lotCentre = mercatorToLonLat(b.site.sitePanel.center);
+  const casters = b.buildings.buildings.filter((bd) => bd.estimatedHeightM && bd.rings[0]?.length >= 4 && !inside(bd.centroid[0], bd.centroid[1]) && !bd.rings.some((r) => pointInRing(lotCentre.lon, lotCentre.lat, r)));
+  const shadows = SHADOW_HOURS.map((sh) => {
+    const pos = sun.winter.hours.find((h) => h.hour === sh.hour)!;
+    const hulls: { hull: XY[]; heightM: number; floors?: number; bearing: number; hits: number }[] = [];
+    const shaded = new Set<number>();
+    for (const bd of casters) {
+      const ring = bd.rings[0].map(([lon, lat]) => toM(lon, lat));
+      // only footprints within reach: the shadow length plus the footprint's own span
+      const reachM = bd.estimatedHeightM! / Math.tan((Math.max(3, pos.altitudeDeg) * Math.PI) / 180) + 60;
+      const c = toM(bd.centroid[0], bd.centroid[1]);
+      if (Math.hypot(c.x - b.site.sitePanel.center.x, c.y - b.site.sitePanel.center.y) / k > reachM + Math.max(sx1 - sx0, sy1 - sy0) / k) continue;
+      const hull = shadowHull(ring, bd.estimatedHeightM!, pos.altitudeDeg, pos.azimuthDeg, k);
+      if (!hull) continue;
+      let hits = 0;
+      samples.forEach((q, i) => { if (inHull(q, hull)) { hits++; shaded.add(i); } });
+      hulls.push({ hull, heightM: bd.estimatedHeightM!, floors: bd.floors, bearing: ((Math.atan2(c.x - b.site.sitePanel.center.x, c.y - b.site.sitePanel.center.y) * 180) / Math.PI + 360) % 360, hits });
+    }
+    const main = hulls.filter((h) => h.hits).sort((x, y) => y.hits - x.hits)[0];
+    return { ...sh, altitudeDeg: pos.altitudeDeg, azimuthDeg: pos.azimuthDeg, shadedPct: samples.length ? (shaded.size / samples.length) * 100 : 0, hulls, mainCaster: main ? { heightM: main.heightM, floors: main.floors, bearing: main.bearing, sharePct: (main.hits / Math.max(1, samples.length)) * 100 } : null };
+  });
+
+  const views = b.views?.views ?? [];
+  return {
+    grid: { primaryDeg: Math.round(primaryDeg), secondaryDeg: secondaryDeg === null ? null : Math.round(secondaryDeg), primarySharePct: share(primaryBin), secondarySharePct: secondaryBin >= 0 ? share(secondaryBin) : 0, bins, roadsLengthM: Math.round(totalLen), siteAxisDeg: Math.round(longest.bearing), offGridDeg: offGrid, frontages: frontFaces.map((f) => ({ ...f, facingWord: compass16(f.facing), lengthM: Math.round(f.lengthM * 10) / 10 })) },
+    sun,
+    shadows: shadows.map((s) => ({ hour: s.hour, label: s.label, altitudeDeg: Math.round(s.altitudeDeg * 10) / 10, azimuthDeg: Math.round(s.azimuthDeg), shadedPct: s.shadedPct, casters: s.hulls.filter((h) => h.hits).length, mainCaster: s.mainCaster })),
+    shadowHulls: shadows.map((s) => ({ hour: s.hour, hulls: s.hulls.map((h) => h.hull) })),
+    castersWithHeight: casters.length, buildingsSource: b.buildings.source, sharedRow,
+    views: views.map((v) => ({ label: titleCase(v.label), kind: v.kind, bearingDeg: Math.round(v.bearingDeg), distanceM: Math.round(v.distanceM), clear: v.clear, blockedAtM: v.blockedAtM === undefined ? undefined : Math.round(v.blockedAtM), cone: Boolean(v.cone), eyeRL: v.eyeRL, targetRL: v.targetRL })),
+    eyeAboveM: b.views?.eyeAboveM ?? null,
+  };
+}
+
+export function sunViewSentences(b: SlidesBundle, f: ReturnType<typeof sunViewFacts>): string[] {
+  const out: string[] = [];
+  const g = f.grid;
+  if (g.roadsLengthM) {
+    let s = `The streets around the site run at ${g.primaryDeg}°${g.secondaryDeg !== null ? ` and ${g.secondaryDeg}°` : ''} from north (the length-weighted bearings of the roads in the window, ${fmtPct(g.primarySharePct)}${g.secondaryDeg !== null ? ` and ${fmtPct(g.secondarySharePct)}` : ''} of their length)`;
+    s += `; the site's long boundary lies at ${g.siteAxisDeg}°, ${g.offGridDeg <= 5 ? 'on the grid' : `${g.offGridDeg}° off the grid`}`;
+    if (g.frontages.length) s += `, and its frontage to ${listWords(g.frontages.map((fr) => `${fr.name} faces ${fr.facingWord}`))}`;
+    out.push(s + '.');
+  }
+  const w = f.sun.winter, su = f.sun.summer;
+  out.push(`On 21 June the sun rises at ${fmtClock(w.rise)} and sets at ${fmtClock(w.set)} (AEST), reaching ${w.noonAltitudeDeg.toFixed(0)}° at solar noon (${fmtClock(w.noon)}); between 9 am and 3 pm it stands ${Math.min(...w.hours.map((h) => h.altitudeDeg)).toFixed(0)}° to ${Math.max(...w.hours.map((h) => h.altitudeDeg)).toFixed(0)}° above the horizon, from the ${compassWord(w.hours[0].azimuthDeg)} round to the ${compassWord(w.hours[2].azimuthDeg)}. On 21 December it is up from ${fmtClock(su.rise)} to ${fmtClock(su.set)} (AEDT) and ${su.noonAltitudeDeg.toFixed(0)}° high at ${fmtClock(su.noon)}, so the north face is in sun all winter and the west face takes the summer afternoon.`);
+  if (f.castersWithHeight) {
+    const sh = f.shadows;
+    const worst = [...sh].sort((x, y) => y.shadedPct - x.shadedPct)[0];
+    const bits = sh.map((s, i) => `${fmtPct(s.shadedPct)}${i === 0 ? ' of the site' : ''} at ${s.label}`);
+    let s = `On 21 June the neighbours' shadows (${f.buildingsSource === 'overture' ? 'Overture' : 'OpenStreetMap'} footprints and heights) cover ${listWords(bits)}`;
+    if (f.sharedRow) s += ' (the row the site stands in is one footprint, so its own neighbours are left out)';
+    if (worst.mainCaster && worst.shadedPct >= 1) s += `; the ${worst.label} shadow is mostly the ${worst.mainCaster.floors ? `${worst.mainCaster.floors}-storey` : `${fmtNum(worst.mainCaster.heightM)} m`} building to the ${compassWord(worst.mainCaster.bearing)}`;
+    s += sh.every((x) => x.shadedPct < 1) ? ': the site keeps its winter sun.' : '. A model of the block is the next step; this is footprints and recorded heights only.';
+    out.push(s);
+  } else out.push('No neighbouring building has a recorded height, so no winter shadow is drawn; the block model is the next step.');
+  if (f.views.length) {
+    const clear = f.views.filter((v) => v.clear === true), blocked = f.views.filter((v) => v.clear === false), unchecked = f.views.filter((v) => v.clear === undefined);
+    const km = (m: number) => (m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${fmtNum(m)} m`);
+    const vs = (v: typeof f.views[number]) => `${v.label} (${VIEW_WORD[v.kind]}, ${km(v.distanceM)} to the ${compassWord(v.bearingDeg)})`;
+    let s = '';
+    if (clear.length) s += `From an eye ${f.eyeAboveM !== null ? `${fmtNum(f.eyeAboveM)} m above the site, just under the height limit` : 'at the height limit'}, the ground leaves the line clear to ${listWords(clear.map(vs))}`;
+    if (blocked.length) s += `${s ? '; ' : 'From the eye at the height limit '}the ground rises across the line to ${listWords(blocked.map((v) => `${vs(v)}${v.blockedAtM ? `, at ${km(v.blockedAtM)}` : ''}`))}`;
+    if (unchecked.length) s += `${s ? '; ' : ''}${listWords(unchecked.map(vs))} could not be checked`;
+    out.push(`${s}. Buildings are not open data, so a clear line means the land does not rule the view out.`);
+  } else out.push('No skyline, water or park lies within view range of the site, or the view check did not run.');
+  return out;
+}
+
+function sunPathSvg(f: ReturnType<typeof sunViewFacts>, lat: number, lon: number, size: number, font: string): string {
+  const R = size / 2 - 7, cx = size / 2, cy = size / 2;
+  const pt = (alt: number, az: number): [number, number] => { const r = (R * (90 - alt)) / 90; const a = (az * Math.PI) / 180; return [cx + r * Math.sin(a), cy - r * Math.cos(a)]; };
+  const parts: string[] = [];
+  for (const alt of [0, 30, 60]) parts.push(`<circle cx="${cx}" cy="${cy}" r="${((R * (90 - alt)) / 90).toFixed(1)}" fill="${alt === 0 ? '#fbfaf7' : 'none'}" stroke="#c9c7c0" stroke-width="${alt === 0 ? 0.3 : 0.2}"/>`);
+  for (const alt of [30, 60]) parts.push(`<text x="${(cx + 0.6).toFixed(1)}" y="${(cy - (R * (90 - alt)) / 90 + 2).toFixed(1)}" font-size="1.6" fill="#8a8a8a">${alt}°</text>`);
+  for (let az = 0; az < 360; az += 30) { const [x1, y1] = pt(0, az), [x2, y2] = pt(-6, az); parts.push(`<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="#8a8a8a" stroke-width="0.25"/>`); }
+  for (const [az, txt] of [[0, 'N'], [90, 'E'], [180, 'S'], [270, 'W']] as const) { const [x, y] = pt(-12, az); parts.push(`<text x="${x.toFixed(1)}" y="${(y + 0.8).toFixed(1)}" text-anchor="middle" font-size="2.2" font-weight="700" fill="#333">${txt}</text>`); }
+  // the grid axes through the centre
+  for (const d of [f.grid.primaryDeg, f.grid.secondaryDeg].filter((x): x is number => x !== null)) { const [x1, y1] = pt(0, d), [x2, y2] = pt(0, d + 180); parts.push(`<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="#bdbbb3" stroke-width="0.3" stroke-dasharray="1,1"/>`); }
+  const arcs: [string, number, number, number, string, string][] = [['21 Dec', 12, 21, AEDT, SUN_COLOUR, ''], ['21 Mar / 21 Sep', 3, 21, AEDT, '#d8a24a', '1.2,0.8'], ['21 Jun', 6, 21, AEST, '#b0651a', '']];
+  for (const [label, m, d, off, colour, dash] of arcs) {
+    const path = sunPath(lat, lon, SOLAR_YEAR, m, d, off, 5).filter((s) => s.altitudeDeg >= 0);
+    if (!path.length) continue;
+    const dpath = path.map((s, i) => { const [x, y] = pt(s.altitudeDeg, s.azimuthDeg); return `${i ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`; }).join('');
+    parts.push(`<path d="${dpath}" fill="none" stroke="${colour}" stroke-width="0.7"${dash ? ` stroke-dasharray="${dash}"` : ''}/>`);
+    for (const s of path.filter((q) => q.clockMin % 60 === 0)) {
+      const [x, y] = pt(s.altitudeDeg, s.azimuthDeg);
+      parts.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="0.7" fill="${colour}"/>`);
+      if (label === '21 Jun' || label === '21 Dec') parts.push(`<text x="${x.toFixed(1)}" y="${(y - 1.3).toFixed(1)}" text-anchor="middle" font-size="1.5" fill="#555">${s.clockMin / 60}</text>`);
+    }
+    const mid = path[Math.floor(path.length / 2)];
+    const [lx, ly] = pt(mid.altitudeDeg + 7, mid.azimuthDeg);
+    parts.push(`<text x="${lx.toFixed(1)}" y="${(ly + 0.6).toFixed(1)}" text-anchor="middle" font-size="1.7" font-weight="700" fill="${colour}">${esc(label)}</text>`);
+  }
+  parts.push(`<circle cx="${cx}" cy="${cy}" r="0.9" fill="${tpl().site}"/>`);
+  return `<svg width="${size}mm" height="${size}mm" viewBox="0 0 ${size} ${size}" xmlns="http://www.w3.org/2000/svg" font-family="${font}" style="display:block">${parts.join('')}</svg>`;
+}
+
+function gridRoseSvg(f: ReturnType<typeof sunViewFacts>, size: number, font: string): string {
+  const R = size / 2 - 7, cx = size / 2, cy = size / 2;
+  const max = Math.max(1, ...f.grid.bins);
+  const parts: string[] = [`<circle cx="${cx}" cy="${cy}" r="${R}" fill="#fbfaf7" stroke="#c9c7c0" stroke-width="0.3"/>`];
+  for (const [az, txt] of [[0, 'N'], [90, 'E'], [180, 'S'], [270, 'W']] as const) { const a = (az * Math.PI) / 180; parts.push(`<text x="${(cx + (R + 4) * Math.sin(a)).toFixed(1)}" y="${(cy - (R + 4) * Math.cos(a) + 0.8).toFixed(1)}" text-anchor="middle" font-size="2.2" font-weight="700" fill="#333">${txt}</text>`); }
+  f.grid.bins.forEach((v, i) => {
+    if (!v) return;
+    const r = (R * v) / max;
+    for (const base of [i * 5, i * 5 + 180]) {
+      const a0 = ((base - 0.2) * Math.PI) / 180, a1 = ((base + 5.2) * Math.PI) / 180;
+      parts.push(`<path d="M${cx},${cy} L${(cx + r * Math.sin(a0)).toFixed(2)},${(cy - r * Math.cos(a0)).toFixed(2)} A${r.toFixed(2)},${r.toFixed(2)} 0 0 1 ${(cx + r * Math.sin(a1)).toFixed(2)},${(cy - r * Math.cos(a1)).toFixed(2)} Z" fill="${CHART.accent}" fill-opacity="0.75"/>`);
+    }
+  });
+  // the site's long axis
+  const a = (f.grid.siteAxisDeg * Math.PI) / 180;
+  parts.push(`<line x1="${(cx - R * Math.sin(a)).toFixed(1)}" y1="${(cy + R * Math.cos(a)).toFixed(1)}" x2="${(cx + R * Math.sin(a)).toFixed(1)}" y2="${(cy - R * Math.cos(a)).toFixed(1)}" stroke="${tpl().site}" stroke-width="0.6" stroke-dasharray="1.6,1"/>`);
+  parts.push(`<text x="${cx}" y="${(size - 1).toFixed(1)}" text-anchor="middle" font-size="1.7" fill="#555">street bearings by length · site axis ${f.grid.siteAxisDeg}°</text>`);
+  return `<svg width="${size}mm" height="${size}mm" viewBox="0 0 ${size} ${size}" xmlns="http://www.w3.org/2000/svg" font-family="${font}" style="display:block">${parts.join('')}</svg>`;
+}
+
+export function sunViewSlide(b: SlidesBundle): Slide {
+  const f = sunViewFacts(b);
+  const t = tpl();
+  const centreLL = mercatorToLonLat(b.panel.center);
+  const sentences = sunViewSentences(b, f);
+  const textHtml = sentences.map(para).join('') +
+    placeholder('Narrative — for the author: where the living rooms and the private open space should face, which frontage gets the morning and which the afternoon, what the neighbours\' winter shadows leave for the ground floor and the courtyard, and which views are worth a window, a terrace or a roof.') +
+    `<div class="fine">Sun positions computed for the site (NOAA solar geometry) for 21 June in AEST and 21 December and the equinox in AEDT; shadows from ${b.buildings.source === 'overture' ? 'Overture Maps' : 'OpenStreetMap'} footprints and recorded heights, the site's own buildings left out; street bearings from NSW Spatial Services roads in the window; sight lines from the eye just under the height limit over the NSW 5 m elevation surface to the skylines, the named water and coast and the park next door. Buildings are not tested against the sight lines. Retrieved ${b.generatedAt.slice(0, 10)}.</div>`;
+  const worstShadow = [...f.shadows].sort((x, y) => y.shadedPct - x.shadedPct)[0];
+  const clearViews = f.views.filter((v) => v.clear === true);
+  const sub = [b.siteAddress, `grid ${f.grid.primaryDeg}°`, f.grid.frontages[0] ? `frontage faces ${f.grid.frontages[0].facingWord}` : '', clearViews.length ? `${clearViews.length} clear view${clearViews.length === 1 ? '' : 's'}` : ''].filter(Boolean).join(' · ');
+
+  // The shadow plan: the block around the site at a scale that holds the winter shadows.
+  const sp: Panel = { center: b.site.sitePanel.center, scale: Math.max(1000, b.site.sitePanel.scale), wMm: PANEL_W, hMm: DA_PANEL_H };
+  const proj = panelProjector(sp);
+  const projM = (m: XY) => { const ll = mercatorToLonLat(m); return proj(ll.lon, ll.lat); };
+  const parts: string[] = [baseLayers(b.base, proj, sp)];
+  const siteRings = b.base.siteLots.features.flatMap((ft) => geomRings(ft.geometry));
+  const insideSite = (lon: number, lat: number) => siteRings.some((r) => pointInRing(lon, lat, r));
+  // the shadows on the ground, then the footprints over them so the buildings stay legible, then the site
+  const neighbours = b.buildings.buildings.filter((bd) => !insideSite(bd.centroid[0], bd.centroid[1]));
+  for (const sh of f.shadowHulls) {
+    const style = SHADOW_HOURS.find((x) => x.hour === sh.hour)!;
+    if (!sh.hulls.length) continue;
+    const d = sh.hulls.map((h) => `M${h.map((q, i) => { const [x, y] = projM(q); return `${i ? 'L' : ''}${x.toFixed(1)},${y.toFixed(1)}`; }).join('')}Z`).join('');
+    parts.push(`<path d="${d}" fill="${style.fill}" fill-opacity="${style.opacity}" stroke="${style.fill}" stroke-width="0.15" stroke-opacity="0.4" fill-rule="nonzero"/>`);
+  }
+  if (neighbours.length) parts.push(`<path d="${neighbours.map((bd) => ringsPath(bd.rings, proj)).join('')}" fill="#e6e3dc" stroke="#8a877f" stroke-width="0.2" fill-rule="evenodd"/>`);
+  parts.push(overLayers(b.base, proj, sp, 'both'));
+  // heights on the tallest neighbours near the site
+  const spacer = new LabelSpacer(sp.wMm, sp.hMm, 24);
+  for (const bd of [...neighbours].filter((x) => x.estimatedHeightM).sort((x, y) => (y.estimatedHeightM ?? 0) - (x.estimatedHeightM ?? 0)).slice(0, 14)) {
+    const [x, y] = proj(bd.centroid[0], bd.centroid[1]);
+    if (x < 3 || y < 3 || x > sp.wMm - 3 || y > sp.hMm - 3) continue;
+    const text = bd.floors ? `${bd.floors} st` : `${fmtNum(bd.estimatedHeightM!)} m`;
+    if (spacer.take(x, y, labelW(text, 1.8), 2.3)) parts.push(label(x, y, text, 1.8, '#333'));
+  }
+  // the sun's direction at each hour, drawn at the panel edge
+  for (const s of f.shadows) {
+    const a = (s.azimuthDeg * Math.PI) / 180;
+    const cx = sp.wMm / 2, cy = sp.hMm / 2;
+    const rEdge = Math.min(cx, cy) - 6;
+    const x = cx + rEdge * Math.sin(a), y = cy - rEdge * Math.cos(a);
+    const x2 = cx + (rEdge - 6) * Math.sin(a), y2 = cy - (rEdge - 6) * Math.cos(a);
+    parts.push(`<line x1="${x.toFixed(1)}" y1="${y.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${SUN_COLOUR}" stroke-width="0.7" stroke-linecap="round"/><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="1.8" fill="${SUN_COLOUR}"/>`);
+    parts.push(label(x, y + 4.2, `${s.label} · ${s.altitudeDeg.toFixed(0)}°`, 1.9, '#7a5600'));
+  }
+  parts.push(panelFurniture(sp, 'right'));
+  if (!f.castersWithHeight) parts.push(emptyNote(['No neighbouring building has a recorded height, so no shadow is drawn.']));
+  const shadowSvg = `<svg width="${sp.wMm}mm" height="${sp.hMm}mm" viewBox="0 0 ${sp.wMm} ${sp.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
+    <defs><clipPath id="clip-shadow"><rect x="0" y="0" width="${sp.wMm}" height="${sp.hMm}"/></clipPath></defs>
+    <g clip-path="url(#clip-shadow)" font-family="${t.font}">${parts.join('\n')}</g>
+    <rect x="0.1" y="0.1" width="${sp.wMm - 0.2}" height="${sp.hMm - 0.2}" fill="none" stroke="${t.rule}" stroke-width="0.2"/>
+  </svg>`;
+
+  // Right: figures, the sun path and the street rose, the legend.
+  const rightX = FIELD_X + PANEL_W + GUTTER, rightW = FIELD_W - PANEL_W - GUTTER;
+  const tiles = [
+    { v: `${f.grid.primaryDeg}°${f.grid.secondaryDeg !== null ? ` · ${f.grid.secondaryDeg}°` : ''}`, l: `street grid bearings from north · site axis ${f.grid.siteAxisDeg}°, ${f.grid.offGridDeg <= 5 ? 'on the grid' : `${f.grid.offGridDeg}° off`}` },
+    { v: f.grid.frontages[0] ? f.grid.frontages[0].facingWord : '—', l: f.grid.frontages[0] ? `${f.grid.frontages[0].name} frontage faces${f.grid.frontages.length > 1 ? ` · ${f.grid.frontages.slice(1).map((fr) => `${fr.name} ${fr.facingWord}`).join(', ')}` : ''}` : 'no frontage to a named road' },
+    { v: `${f.sun.winter.noonAltitudeDeg.toFixed(0)}°`, l: `winter noon sun (21 June, ${fmtClock(f.sun.winter.noon)} AEST) · ${f.sun.summer.noonAltitudeDeg.toFixed(0)}° on 21 December` },
+    { v: f.castersWithHeight ? fmtPct(worstShadow.shadedPct) : '—', l: f.castersWithHeight ? `of the site in neighbours' shadow at ${worstShadow.label} on 21 June · ${f.shadows.filter((s) => s !== worstShadow).map((s) => `${s.label} ${fmtPct(s.shadedPct)}`).join(' · ')}` : 'no neighbour height recorded for a shadow study' },
+  ].map((tl) => `<div class="tile"><div class="tv${tl.v.length > 9 ? ' long' : ''}">${esc(tl.v)}</div><div class="tl">${esc(tl.l)}</div></div>`).join('');
+  const diagW = Math.min(62, (rightW - GUTTER) / 2);
+  const sw = (inner: string) => `<svg width="5mm" height="3.6mm" viewBox="0 0 5 3.6">${inner}</svg>`;
+  const legendRows: [string, string][] = [
+    [sw(`<rect x="0" y="0.4" width="5" height="2.8" fill="#dcd9d2" stroke="#8a877f" stroke-width="0.2"/>`), `Neighbouring footprints (${b.buildings.source === 'overture' ? 'Overture' : 'OpenStreetMap'}), the tallest labelled in storeys`],
+    [sw(SHADOW_HOURS.map((s, i) => `<rect x="${i * 1.7}" y="0.4" width="1.6" height="2.8" fill="${s.fill}" fill-opacity="${s.opacity}"/>`).join('')), 'Their shadows on 21 June at 9 am, noon and 3 pm (darker where they overlap)'],
+    [sw(`<circle cx="2.5" cy="1.8" r="1.4" fill="${SUN_COLOUR}"/>`), 'The sun\'s direction and altitude at those hours'],
+    [sw(`<path d="M0.5,3 Q2.5,-0.5 4.5,3" fill="none" stroke="${SUN_COLOUR}" stroke-width="0.7"/>`), 'Sun path: 21 December (AEDT), the equinox dashed, 21 June (AEST); hours marked; the site at the centre'],
+    [sw(`<path d="M2.5,1.8 L4.5,0.4 A2.4,2.4 0 0 1 4.8,1.6 Z" fill="${CHART.accent}" fill-opacity="0.75"/>`), 'Street bearings by length, folded to both directions; the site\'s long axis dashed'],
+  ];
+  const legend = legendRows.map(([s, txt]) => `<div class="lg">${s}<span>${esc(txt)}</span></div>`).join('');
+
+  // Bottom: the views.
+  const vp: Panel = { center: b.panel.center, scale: b.wide.panel.scale, wMm: PANEL_W, hMm: b.wide.panel.hMm };
+  const vproj = panelProjector(vp);
+  const vparts: string[] = [`<rect x="0" y="0" width="${vp.wMm}" height="${vp.hMm}" fill="#ffffff"/>`];
+  if (b.wide.base.water.features.length) vparts.push(`<path d="${fcPath(b.wide.base.water, vproj)}" fill="${t.water}" fill-rule="evenodd"/>`);
+  vparts.push(overLayers(b.wide.base, vproj, vp, 'none'));
+  const [vx, vy] = vproj(centreLL.lon, centreLL.lat);
+  const reach = Math.hypot(vp.wMm, vp.hMm);
+  const vspacer = new LabelSpacer(vp.wMm, vp.hMm, 30);
+  for (const v of [...f.views].sort((x, y) => Number(Boolean(y.clear)) - Number(Boolean(x.clear)) || x.distanceM - y.distanceM)) {
+    const a = (v.bearingDeg * Math.PI) / 180;
+    const distMm = Math.min(reach, (v.distanceM * 1000) / vp.scale);
+    const ex = vx + distMm * Math.sin(a), ey = vy - distMm * Math.cos(a);
+    const colour = VIEW_COLOUR[v.kind];
+    if (v.clear) {
+      const half = (8 * Math.PI) / 180;
+      const p1 = [vx + distMm * Math.sin(a - half), vy - distMm * Math.cos(a - half)], p2 = [vx + distMm * Math.sin(a + half), vy - distMm * Math.cos(a + half)];
+      vparts.push(`<path d="M${vx.toFixed(1)},${vy.toFixed(1)} L${p1[0].toFixed(1)},${p1[1].toFixed(1)} L${p2[0].toFixed(1)},${p2[1].toFixed(1)} Z" fill="${colour}" fill-opacity="0.16" stroke="${colour}" stroke-width="0.3"/>`);
+    } else {
+      const blockMm = v.blockedAtM ? Math.min(distMm, (v.blockedAtM * 1000) / vp.scale) : distMm;
+      vparts.push(`<line x1="${vx.toFixed(1)}" y1="${vy.toFixed(1)}" x2="${(vx + blockMm * Math.sin(a)).toFixed(1)}" y2="${(vy - blockMm * Math.cos(a)).toFixed(1)}" stroke="${colour}" stroke-width="0.4" stroke-dasharray="1.2,0.9"/>`);
+      if (v.blockedAtM && blockMm < distMm) vparts.push(`<line x1="${(vx + blockMm * Math.sin(a) - 1.6 * Math.cos(a)).toFixed(1)}" y1="${(vy - blockMm * Math.cos(a) - 1.6 * Math.sin(a)).toFixed(1)}" x2="${(vx + blockMm * Math.sin(a) + 1.6 * Math.cos(a)).toFixed(1)}" y2="${(vy - blockMm * Math.cos(a) + 1.6 * Math.sin(a)).toFixed(1)}" stroke="${colour}" stroke-width="0.6"/>`);
+    }
+    // the label where the line meets the panel edge, or at the target when that is inside
+    const inset = 6;
+    const dirX = Math.sin(a), dirY = -Math.cos(a);
+    const tX = dirX > 1e-9 ? (vp.wMm - inset - vx) / dirX : dirX < -1e-9 ? (inset - vx) / dirX : Infinity;
+    const tY = dirY > 1e-9 ? (vp.hMm - inset - vy) / dirY : dirY < -1e-9 ? (inset - vy) / dirY : Infinity;
+    const blockMmLabel = v.clear === false && v.blockedAtM ? Math.min(distMm, (v.blockedAtM * 1000) / vp.scale) + 3 : Infinity;
+    const tEdge = Math.min(distMm, tX, tY, blockMmLabel);
+    const lx = vx + Math.max(8, tEdge - 2) * dirX, ly = vy + Math.max(8, tEdge - 2) * dirY;
+    const text = `${v.label} ${v.distanceM >= 1000 ? `${(v.distanceM / 1000).toFixed(1)} km` : `${fmtNum(v.distanceM)} m`}${v.clear ? '' : v.clear === false ? ' · blocked' : ' · unchecked'}`;
+    if (vspacer.take(lx, ly, labelW(text, 1.9), 2.5)) vparts.push(label(lx, ly, text, 1.9, colour));
+  }
+  vparts.push(`<circle cx="${vx.toFixed(1)}" cy="${vy.toFixed(1)}" r="2" fill="#ffffff" stroke="${t.site}" stroke-width="0.6"/><circle cx="${vx.toFixed(1)}" cy="${vy.toFixed(1)}" r="0.8" fill="${t.site}"/>`, panelFurniture(vp, 'right'));
+  if (!f.views.length) vparts.push(emptyNote(['No skyline, water or park within view range, or the check did not run.']));
+  const viewsSvg = `<svg width="${vp.wMm}mm" height="${vp.hMm}mm" viewBox="0 0 ${vp.wMm} ${vp.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
+    <defs><clipPath id="clip-views"><rect x="0" y="0" width="${vp.wMm}" height="${vp.hMm}"/></clipPath></defs>
+    <g clip-path="url(#clip-views)" font-family="${t.font}">${vparts.join('\n')}</g>
+    <rect x="0.1" y="0.1" width="${vp.wMm - 0.2}" height="${vp.hMm - 0.2}" fill="none" stroke="${t.rule}" stroke-width="0.2"/>
+  </svg>`;
+  const viewRows = f.views.map((v) => `<tr${v.clear ? ' class="hit"' : ''}><td>${esc(v.label)}</td><td>${esc(VIEW_WORD[v.kind])}</td><td class="r">${v.bearingDeg}° ${esc(compass16(v.bearingDeg))}</td><td class="r">${v.distanceM >= 1000 ? `${(v.distanceM / 1000).toFixed(1)} km` : `${fmtNum(v.distanceM)} m`}</td><td>${v.clear === true ? 'clear over the ground' : v.clear === false ? `ground rises${v.blockedAtM ? ` at ${v.blockedAtM >= 1000 ? `${(v.blockedAtM / 1000).toFixed(1)} km` : `${fmtNum(v.blockedAtM)} m`}` : ''}` : v.kind === 'park' ? 'adjoins the site' : 'not checked'}</td></tr>`).join('');
+  const viewTable = f.views.length
+    ? `<table class="da cons"><thead><tr><th>View to</th><th style="width:16mm">Kind</th><th class="r" style="width:20mm">Bearing</th><th class="r" style="width:16mm">Distance</th><th style="width:40mm">Sight line</th></tr></thead><tbody>${viewRows}</tbody></table>`
+    : emptyBox(rightW, 24, 'no candidate view within range');
+
+  const yViews = FIELD_Y + PANEL_TITLE_H + DA_PANEL_H + GUTTER;
+  const figureHtml = `
+    <div class="abs ptitle" style="left:${FIELD_X}mm;top:${FIELD_Y}mm;width:${PANEL_W}mm">Winter shadows<span class="pnote">1:${fmtNum(sp.scale)} · the neighbours' shadows on 21 June at 9 am, noon and 3 pm (AEST)</span></div>
+    <div class="abs" style="left:${FIELD_X}mm;top:${FIELD_Y + PANEL_TITLE_H}mm">${shadowSvg}</div>
+    <div class="abs tiles" style="left:${rightX}mm;top:${FIELD_Y + PANEL_TITLE_H}mm;width:${rightW}mm">${tiles}</div>
+    <div class="abs ptitle" style="left:${rightX}mm;top:${FIELD_Y + PANEL_TITLE_H + 26}mm;width:${diagW}mm">Sun path<span class="pnote">altitude and azimuth at the site</span></div>
+    <div class="abs" style="left:${rightX}mm;top:${FIELD_Y + PANEL_TITLE_H + 26 + PANEL_TITLE_H}mm">${sunPathSvg(f, centreLL.lat, centreLL.lon, diagW, t.font)}</div>
+    <div class="abs ptitle" style="left:${rightX + diagW + GUTTER}mm;top:${FIELD_Y + PANEL_TITLE_H + 26}mm;width:${diagW}mm">Street grid<span class="pnote">bearings of the roads in the window</span></div>
+    <div class="abs" style="left:${rightX + diagW + GUTTER}mm;top:${FIELD_Y + PANEL_TITLE_H + 26 + PANEL_TITLE_H}mm">${gridRoseSvg(f, diagW, t.font)}</div>
+    <div class="abs legend" style="left:${rightX}mm;top:${FIELD_Y + PANEL_TITLE_H + 26 + PANEL_TITLE_H + diagW + 2}mm;width:${rightW}mm">${legend}</div>
+    <div class="abs ptitle" style="left:${FIELD_X}mm;top:${yViews}mm;width:${PANEL_W}mm">Views<span class="pnote">1:${fmtNum(vp.scale)} · sight lines from the eye at the height limit; cones where the ground leaves them clear</span></div>
+    <div class="abs" style="left:${FIELD_X}mm;top:${yViews + PANEL_TITLE_H}mm">${viewsSvg}</div>
+    <div class="abs ptitle" style="left:${rightX}mm;top:${yViews}mm;width:${rightW}mm">Candidate views<span class="pnote">skylines, named water and coast, the park next door · the ground tested, not the buildings</span></div>
+    <div class="abs" style="left:${rightX}mm;top:${yViews + PANEL_TITLE_H}mm;width:${rightW}mm">${viewTable}</div>`;
+  return { id: '13_grid_sun_views', title: 'Grid, sun and views', subtitle: sub, textHtml, figureHtml };
+}
+
 // ---- the deck -----------------------------------------------------------------
 
 export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; slides: Slide[] } {
   const facts = planningFacts(b);
-  const slides = [planningOverviewSlide(b, facts), planningControlsSlide(b, facts), terrainSlide(b), developmentSlide(b, facts), builtFormSlide(b, facts), movementSlide(b), greenSlide(b), siteSlide(b), constraintsSlide(b), peopleSlide(b)];
+  const slides = [planningOverviewSlide(b, facts), planningControlsSlide(b, facts), terrainSlide(b), developmentSlide(b, facts), builtFormSlide(b, facts), movementSlide(b), greenSlide(b), siteSlide(b), sunViewSlide(b), constraintsSlide(b), peopleSlide(b)];
   const t = tpl();
   const footerLeft = ['SITE ANALYST — OVERALL ANALYSIS', b.siteAddress, meta.client ? `for ${meta.client}` : '', meta.jobNo ? `job ${meta.jobNo}` : ''].filter(Boolean).join(' · ');
   const pages = slides.map((s, i) => `
@@ -2947,6 +3290,7 @@ export function slidesFacts(b: SlidesBundle) {
     people: peopleFacts(b),
     movement: (() => { const f = movementFacts(b); return { ...f, sentences: movementSentences(b, f) }; })(),
     theSite: (() => { const f = siteFacts(b); return { ...f, sentences: siteSentences(b, f) }; })(),
+    sunViews: (() => { const f = sunViewFacts(b); const { shadowHulls: _h, ...rest } = f; return { ...rest, sentences: sunViewSentences(b, f) }; })(),
     constraints: (() => { const f = constraintsFacts(b); return { ...f, sentences: constraintsSentences(b, f) }; })(),
     green: (() => { const f = greenFacts(b); return { ...f, openSpace: { ...f.openSpace, spaces: f.openSpace.spaces.map(({ rings: _r, ...s }) => s), nearest: f.openSpace.nearest && (({ rings: _r, ...s }) => s)(f.openSpace.nearest), largest: f.openSpace.largest && (({ rings: _r, ...s }) => s)(f.openSpace.largest) }, sentences: greenSentences(b, f) }; })(),
     builtForm: (() => { const f = builtFormFacts(b, facts); return { ...f, sentences: builtFormSentences(b, f) }; })(),

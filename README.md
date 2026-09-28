@@ -475,7 +475,7 @@ development window), `--job 2539`, `--client "Name"`,
 
 `--type slides` draws the OVERALL ANALYSIS deck: A3 landscape pages for the
 content part of a feasibility study or design report, specified in
-`docs/SLIDES_SPEC.md`. Seven slides exist so far. The planning pair: a
+`docs/SLIDES_SPEC.md`. Eleven slides exist so far. The planning pair: a
 *planning overview* of four maps at 1:8000 around the site (land zoning in the
 statutory colours, height of building, heritage with the State Heritage
 Register, and the housing-policy maps — TOD areas, town centres, State
@@ -532,7 +532,19 @@ zone, height, FSR, lot size, heritage, the existing building, levels,
 easements, land value, sales, public land, the imagery's capture date);
 and the block at 1:4000 with the last two years of single-property sales
 within 300 m sized by price, the State government and Crown parcels, and a
-table of the latest sales. Then *development activity*: every
+table of the latest sales. Then *grid, sun and views*: the bearings of the
+street grid (the roads in the window, length-weighted, in 5° bins, drawn as
+a rose) and the site's long axis against them; the sun path computed for the
+site (21 June in standard time, 21 December and the equinox in daylight
+time, the hours marked) with sunrise, the noon altitude and sunset; the
+neighbours' shadows over the site on 21 June at 9 am, noon and 3 pm, cast
+from the footprints and their recorded heights at the site plan's scale,
+with the share of the site each hour leaves in shadow; and the sight lines
+from an eye just under the height limit, over the 5 m elevation model, to
+the skylines within range, the named water and the coast and the park next
+door — a cone where the ground leaves the line clear, a dashed line to the
+point where it rises across it — with a table of them. Then *development
+activity*: every
 application lodged in the council area over the last five years, from the
 Planning Portal's Online DA feed, clipped to the window around the site. The
 ones of a scale that shapes the context — four storeys, ten dwellings or

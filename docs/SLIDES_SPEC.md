@@ -445,12 +445,14 @@ Open-Meteo archive (ERA5): `https://archive-api.open-meteo.com/v1/archive?latitu
 
 Implemented: slides 03 (planning overview), 04 (planning controls), 06
 (topography), 07 (development activity), 08 (built form), 09 (movement), 10
-(green and public domain), 11 (the site), 14 (environmental constraints) and 16
-(people and market) —
+(green and public domain), 11 (the site), 13 (grid, sun and views), 14
+(environmental constraints) and 16 (people and market) —
 `src/render/slides.ts`, `src/render/minimap.ts`, `src/render/charts.ts`,
 `src/render/terrainMap.ts`, `src/fetch/planning.ts`, `src/fetch/terrain.ts`,
 `src/fetch/buildings.ts` with `src/py/overture_buildings.py`,
-`src/fetch/movement.ts`, `src/fetch/greenSpace.ts`, `src/fetch/constraints.ts`, `src/fetch/site.ts`, `src/fetch/da.ts`, `src/fetch/abs.ts`, `src/fetch/tzp24.ts`,
+`src/fetch/movement.ts`, `src/fetch/greenSpace.ts`, `src/fetch/constraints.ts`, `src/fetch/site.ts`,
+`src/lib/solar.ts` and `src/lib/shadows.ts` with the plan sheet's `src/fetch/views.ts`,
+`src/fetch/da.ts`, `src/fetch/abs.ts`, `src/fetch/tzp24.ts`,
 `src/fetch/valuation.ts`, `src/fetch/schools.ts` (gathered by
 `src/fetch/people.ts`), `runSlidesPipeline` in `src/pipeline.ts`; `--type
 slides` on the CLI and the `slides` drawing on the web. The maps use the
@@ -596,6 +598,34 @@ years within 300 m sized by price (strata hollow), the State government
 land parcels (`Planning_Portal_GPI` 302), Crown land (258) and Crown
 reserves (312), and a 300 m ring. The land value and the sales are the
 Valuer General's, already fetched for slide 16.
+
+Slide 13 fetches nothing new but the views. The street grid is the bearing
+of every road segment in the window, length-weighted and folded to 0–180° in
+5° bins, each smoothed with half its neighbours; the primary axis is the
+fullest bin, the secondary the fullest at least 30° from it, and the site's
+long boundary is set against the nearer of the two (within 5° is "on the
+grid"), its frontages named by the compass point they face. The sun's
+altitude and azimuth are computed in `src/lib/solar.ts` (the NOAA solar
+geometry, checked against Sydney's published rise, noon and set times) for
+21 June in standard time and for 21 December and the equinox in daylight
+time; the polar diagram samples the day every five minutes. The shadows are
+`src/lib/shadows.ts`: every footprint with a recorded height that is not
+the site's own is cast as the convex hull of the footprint and its copy
+moved H / tan(altitude) away from the sun, in the map's metres; the site is
+sampled on a grid of up to 1,600 points and the shaded share is the points
+inside any hull, the largest caster named. A terrace row that Overture holds
+as one footprint would shade its own lot, so the footprint the site stands
+in is left out and the slide says so. The shadow panel is the site panel at
+1:1000 or coarser, footprints drawn over the shadows so both read. The
+views are the plan sheet's `assessViews`: the skylines within their range,
+the named water bodies and the coast from the NSW Water theme, the parks
+touching the site, each sight line from an eye just under the height limit
+(`eyeAboveGround`) profiled over the 5 m elevation model. On a panel at the
+wide strip's scale a clear line gets a ±8° cone and a blocked one a dashed
+line to the point where the ground rises across it; the table lists them
+all. Buildings and trees are not tested, and the text says so. The views
+are computed in the pipeline's second stage, one elevation profile per
+target, and travel in the bundle.
 
 Slide 16 looks the site up in the ASGS (SA2, LGA, suburb, capital-city
 region), reads the five census tables for the SA2, the LGA and the capital
