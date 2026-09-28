@@ -36,6 +36,7 @@ import { sunPosition, sunTimes, sunPath, civilToUtc, fmtClock } from '../lib/sol
 import { shadowHull, inHull } from '../lib/shadows.js';
 import type { ViewKind } from '../fetch/views.js';
 import { MAX_PHOTOS, type StreetPhoto } from '../fetch/photos.js';
+import { CENTRES, SYDNEY_CBD, CENTRE_KIND_WORD } from '../data/centres.js';
 
 export const SLIDE_W = 420;
 export const SLIDE_H = 297;
@@ -394,6 +395,422 @@ export function planningSentences(b: SlidesBundle, f: PlanningFacts): PlanningSe
 
 export const sentenceList = (s: PlanningSentences): string[] =>
   [s.where, s.controls, s.zones, s.heights, s.heritage, s.policy, s.councilDcp].filter((x): x is string => Boolean(x));
+
+// ---- slide 01: location -----------------------------------------------------------
+
+const LAND_FILL = '#f2f0ea';
+const LGA_LINE = '#c9c3b6';
+const RING_KM = [2, 5];
+/** How many centres the table and the map name at most. */
+const CENTRES_LISTED = 8;
+
+const stationShort = (name: string) => tidyName(titleCase(name.replace(/\s+(RAILWAY|LIGHT RAIL|METRO|TRAIN)?\s*STATION$/i, '').replace(/\s+(SLR|LIGHT RAIL)?\s*STOP$/i, '').replace(/\s+STATION$/i, '')));
+
+/** Where the site sits in the region: the areas, the centres, the stations and the water around it, with distances. */
+export function locationFacts(b: SlidesBundle) {
+  const loc = b.location;
+  const p = loc.panel;
+  const proj = panelProjector(p);
+  const centreLL = mercatorToLonLat(b.panel.center);
+  const k = mercatorScaleFactor(centreLL.lat);
+  const toM = (lon: number, lat: number): XY => { const m = lonLatToMercator({ lon, lat }); return { x: (m.x - b.panel.center.x) / k, y: (m.y - b.panel.center.y) / k }; };
+  const distBearing = (lon: number, lat: number) => { const q = toM(lon, lat); return { distanceM: Math.hypot(q.x, q.y), bearing: ((Math.atan2(q.x, q.y) * 180) / Math.PI + 360) % 360 }; };
+  const onMap = (lon: number, lat: number) => { const [x, y] = proj(lon, lat); return x >= 0 && x <= p.wMm && y >= 0 && y <= p.hMm; };
+  // the centres of the plan, nearest first
+  const centres = CENTRES.map((c) => ({ ...c, ...distBearing(c.lon, c.lat), onMap: onMap(c.lon, c.lat), kindWord: CENTRE_KIND_WORD[c.kind] })).sort((a, b2) => a.distanceM - b2.distanceM);
+  const cbd = { ...SYDNEY_CBD, ...distBearing(SYDNEY_CBD.lon, SYDNEY_CBD.lat) };
+  const cbds = centres.filter((c) => c.kind === 'cbd');
+  // the stations, nearest first, with their mode
+  const stations = loc.stations.map((s) => ({ name: stationShort(s.name), raw: s.name, mode: stationMode(s.name), lon: s.lon, lat: s.lat, ...distBearing(s.lon, s.lat) })).sort((a, b2) => a.distanceM - b2.distanceM);
+  const seenStation = new Set<string>();
+  const uniqueStations = stations.filter((s) => { const key = `${s.name}|${s.mode}`; if (seenStation.has(key)) return false; seenStation.add(key); return true; });
+  // the named water in the window: the large bodies, by the nearest point of their generalised outline
+  const water = loc.water.filter((w) => w.name && /BAY|HARBOUR|RIVER|LAKE|LAGOON|OCEAN|SEA|ESTUARY/i.test(w.kind ?? '')).slice(0, 5).map((w) => {
+    let best = { d: Infinity, lon: 0, lat: 0 };
+    for (const r of w.rings) for (let i = 0; i < r.length; i += Math.max(1, Math.floor(r.length / 400))) { const q = toM(r[i][0], r[i][1]); const d = Math.hypot(q.x, q.y); if (d < best.d) best = { d, lon: r[i][0], lat: r[i][1] }; }
+    return { name: tidyName(titleCase(w.name)), kind: w.kind, distanceM: Math.round(best.d), bearing: best.d < Infinity ? distBearing(best.lon, best.lat).bearing : 0 };
+  }).sort((a, b2) => a.distanceM - b2.distanceM).filter((w, i, arr) => arr.findIndex((o) => o.name === w.name) === i);
+  const lgaName = b.context.lga?.name;
+  const lgaPolys = lgaName ? loc.lgas.filter((l) => l.name.toUpperCase() === lgaName.toUpperCase()) : [];
+  return {
+    panel: p, widthKm: Math.round(((p.wMm / 1000) * p.scale) / 100) / 10, heightKm: Math.round(((p.hMm / 1000) * p.scale) / 100) / 10,
+    suburb: b.context.suburb?.name ? titleCase(b.context.suburb.name) : undefined,
+    lga: b.context.lga ? { name: titleCase(b.context.lga.name), council: titleCase(b.context.lga.council) } : undefined,
+    district: b.context.district, region: b.strategies.region.name, regionPlan: b.strategies.region.plan?.name,
+    cbd, cbds: cbds.map(({ onMap: _o, ...c }) => c),
+    centres: centres.map(({ onMap: _o, ...c }) => c).slice(0, CENTRES_LISTED), centresOnMap: centres.filter((c) => c.onMap).length, centresAll: centres.length,
+    stations: uniqueStations.slice(0, 6), stationsWithin5km: uniqueStations.filter((s) => s.distanceM <= 5000 && s.mode !== 'light rail').length, stopsWithin5km: uniqueStations.filter((s) => s.distanceM <= 5000 && s.mode === 'light rail').length, stationsOk: loc.stations.length > 0,
+    water: water.slice(0, 3),
+    lgaOnMap: lgaPolys.length > 0, layers: { lgas: loc.lgas.length, roads: loc.roads.length, rail: loc.rail.train.length + loc.rail.tram.length, suburbs: loc.suburbs.length, water: loc.water.length },
+  };
+}
+
+export function locationSentences(b: SlidesBundle, f: ReturnType<typeof locationFacts>): string[] {
+  const out: string[] = [];
+  const km = (m: number) => (m >= 950 ? `${(m / 1000).toFixed(m >= 10_000 ? 0 : 1)} km` : `${fmtNum(Math.round(m / 10) * 10)} m`);
+  const dir = compassWord;
+  const where = [f.suburb ? `at ${f.suburb}` : '', f.lga ? `in the ${f.lga.name} local government area` : '', f.district ? `in what was the ${f.district} District` : '', f.region ? `of the ${f.region} region` : ''].filter(Boolean).join(', ');
+  out.push(`The site is ${where || 'at the geocoded point'}, ${km(f.cbd.distanceM)} ${dir(f.cbd.bearing)} of the Sydney CBD (Town Hall)${f.cbds.length > 1 ? `; ${listWords(f.cbds.filter((c) => c.name !== SYDNEY_CBD.name).map((c) => `${c.name} is ${km(c.distanceM)} ${dir(c.bearing)}`))}` : ''}.`);
+  const near = f.centres.filter((c) => c.kind !== 'cbd').slice(0, 3);
+  if (near.length && near[0].distanceM <= 15_000) out.push(`The Sydney Plan's centres nearest the site are ${listWords(near.map((c) => `${c.name} (${c.kindWord}) ${km(c.distanceM)} ${dir(c.bearing)}`))}; ${f.centresOnMap ? `${numWord(f.centresOnMap)} of its centres fall within the ${f.widthKm} × ${f.heightKm} km window` : 'none of its other centres falls within the window'}.`);
+  else if (near.length) out.push(`None of The Sydney Plan's centres lies within the window: the nearest is ${near[0].name} (${near[0].kindWord}), ${km(near[0].distanceM)} ${dir(near[0].bearing)}; the site is outside the plan's region.`);
+  if (f.stations.length) out.push(`The nearest station is ${f.stations[0].name} (${f.stations[0].mode}), ${km(f.stations[0].distanceM)} ${dir(f.stations[0].bearing)}${f.stations.length > 1 ? `, then ${listWords(f.stations.slice(1, 3).map((s) => `${s.name} ${km(s.distanceM)} ${dir(s.bearing)}`))}` : ''}; ${f.stationsWithin5km ? `${fmtNum(f.stationsWithin5km)} train and metro station${f.stationsWithin5km === 1 ? '' : 's'}` : 'no train or metro station'}${f.stopsWithin5km ? ` and ${fmtNum(f.stopsWithin5km)} light rail stop${f.stopsWithin5km === 1 ? '' : 's'}` : ''} within 5 km.`);
+  else if (f.stationsOk) out.push('No station lies within the window.');
+  else out.push('The station layer did not answer for this run.');
+  if (f.water.length) out.push(`${listWords(f.water.map((w) => `${w.name} ${w.distanceM < 300 ? 'at the site' : `${km(w.distanceM)} ${dir(w.bearing)}`}`))} ${f.water.length === 1 ? 'is' : 'are'} the water in the window.`);
+  return out;
+}
+
+export function locationSlide(b: SlidesBundle): Slide {
+  const t = tpl();
+  const loc = b.location;
+  const f = locationFacts(b);
+  const sentences = locationSentences(b, f);
+  const textHtml = sentences.map(para).join('') +
+    placeholder('Narrative — for the author: the wider context in four paragraphs — the region and its plan, the corridors and centres the site relates to, the transport that serves it, and the character of the surrounds the location map does not show.') +
+    `<div class="fine">Sources: NSW Spatial Services administrative boundaries (the local government areas as the land, their unincorporated water left blue; the suburbs for their names), water theme (bays, harbours, rivers), transport theme (railways; roads of function hierarchy 1 to 3) and the transport facilities layer (stations), all generalised for the scale; the centres from The Sydney Plan (2026) and the NSW Centres Framework, transcribed with a point for each; distances are straight lines from the site's geocoded point, the CBD at Sydney Town Hall. Retrieved ${b.generatedAt.slice(0, 10)}.</div>`;
+
+  // ---- the map
+  const p = loc.panel;
+  const proj = panelProjector(p);
+  const centreLL = mercatorToLonLat(b.panel.center);
+  const [sx, sy] = proj(centreLL.lon, centreLL.lat);
+  const mmPerM = 1000 / p.scale;
+  const parts: string[] = [`<rect x="0" y="0" width="${p.wMm}" height="${p.hMm}" fill="${t.water}"/>`];
+  const legend: LegendEntry[] = [];
+  const land = loc.lgas.filter((l) => !l.unincorporated);
+  if (land.length) {
+    parts.push(`<path d="${land.map((l) => ringsPath(l.rings, proj)).join('')}" fill="${LAND_FILL}" fill-rule="evenodd" stroke="none"/>`);
+    // farm dams and ponds under about half a hectare are specks at this scale, so they stay off
+    const drawn = loc.water.filter((w) => w.rings.reduce((a, r) => a + clippedStats(r, proj, p).area, 0) >= 0.8);
+    if (drawn.length) parts.push(`<path d="${drawn.map((w) => ringsPath(w.rings, proj)).join('')}" fill="${t.water}" fill-rule="evenodd" stroke="none"/>`);
+    parts.push(`<path d="${land.map((l) => ringsPath(l.rings, proj)).join('')}" fill="none" stroke="${LGA_LINE}" stroke-width="0.3" stroke-linejoin="round"/>`);
+    legend.push({ swatch: swatchFill(LAND_FILL, LGA_LINE), label: 'Local government areas; the harbour and the sea left blue' });
+  } else parts.push(emptyNote(['The boundary layers did not answer for this window.']));
+  const lgaName = b.context.lga?.name?.toUpperCase();
+  const mine = loc.lgas.filter((l) => lgaName && l.name.toUpperCase() === lgaName);
+  if (mine.length) {
+    parts.push(`<path d="${mine.map((l) => ringsPath(l.rings, proj)).join('')}" fill="${t.site}" fill-opacity="0.09" stroke="${t.site}" stroke-width="0.45" fill-rule="evenodd" stroke-linejoin="round"/>`);
+    legend.push({ swatch: `<rect x="0" y="0.2" width="5" height="3" fill="${t.site}" fill-opacity="0.12" stroke="${t.site}" stroke-width="0.3"/>`, label: `${titleCase(b.context.lga!.name)} local government area` });
+  }
+  // roads by hierarchy, then rail with its dashes
+  const byH = new Map<number, string[]>();
+  for (const r of loc.roads) (byH.get(r.hierarchy) ?? byH.set(r.hierarchy, []).get(r.hierarchy)!).push(ringsPath([r.coords], proj, false));
+  for (const [h, ds] of [...byH.entries()].sort((a, b2) => b2[0] - a[0])) parts.push(`<path d="${ds.join('')}" fill="none" stroke="${h <= 1 ? '#7a7a7a' : h <= 2 ? '#969696' : '#c2c2c2'}" stroke-width="${h <= 1 ? 0.55 : h <= 2 ? 0.38 : 0.2}" stroke-linecap="round" stroke-linejoin="round"/>`);
+  if (loc.roads.length) legend.push({ swatch: swatchLine('#7a7a7a', 0.55), label: 'Motorways, highways and arterial roads' });
+  if (loc.rail.train.length) {
+    const d = loc.rail.train.map((l) => ringsPath([l], proj, false)).join('');
+    parts.push(`<path d="${d}" fill="none" stroke="${t.rail}" stroke-width="0.55"/><path d="${d}" fill="none" stroke="#ffffff" stroke-width="0.25" stroke-dasharray="1.4,1.4"/>`);
+    legend.push({ swatch: swatchLine(t.rail, 0.55), label: 'Railways' });
+  }
+  if (loc.rail.tram.length) parts.push(`<path d="${loc.rail.tram.map((l) => ringsPath([l], proj, false)).join('')}" fill="none" stroke="${t.rail}" stroke-width="0.35" stroke-dasharray="0.8,0.8"/>`);
+  // the rings
+  for (const kmR of RING_KM) {
+    const r = kmR * 1000 * mmPerM;
+    parts.push(`<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="${r.toFixed(1)}" fill="none" stroke="${t.site}" stroke-width="0.35" stroke-dasharray="2.2,1.3"/>`);
+    parts.push(`<text x="${(sx + 1.2).toFixed(1)}" y="${(sy - r - 1).toFixed(1)}" font-size="2.3" font-weight="700" fill="${t.site}" stroke="#ffffff" stroke-width="0.5" paint-order="stroke">${kmR} km</text>`);
+  }
+  legend.push({ swatch: swatchLine(t.site, 0.35, '2.2,1.3'), label: '2 and 5 km from the site' });
+  const spacer = new LabelSpacer(p.wMm, p.hMm, 120);
+  spacer.take(sx, sy, 6, 6);
+  spacer.take(sx + 3.2 + labelW('SITE', 2.6) / 2, sy, labelW('SITE', 2.6), 3.2);
+  // the plan's centres first, by type, each named where a spot is free
+  const centreMarks: string[] = [];
+  const centreNamed = new Set<string>();
+  for (const c of CENTRES) {
+    const [x, y] = proj(c.lon, c.lat);
+    if (x < 2 || y < 2 || x > p.wMm - 2 || y > p.hMm - 2) continue;
+    const mark = c.kind === 'cbd' ? `<rect x="${(x - 1.7).toFixed(1)}" y="${(y - 1.7).toFixed(1)}" width="3.4" height="3.4" fill="${t.ink}" stroke="#ffffff" stroke-width="0.4"/>`
+      : c.kind === 'major' ? `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="1.6" fill="${t.ink}" stroke="#ffffff" stroke-width="0.4"/>`
+        : `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="1.3" fill="#ffffff" stroke="${t.ink}" stroke-width="0.5"/>`;
+    centreMarks.push(mark);
+    const size = c.kind === 'cbd' ? 2.6 : 2.3;
+    const w = labelW(c.name, size);
+    const spots: [number, number, string][] = [[x + 2.4 + w / 2, y, 'start'], [x - 2.4 - w / 2, y, 'end'], [x, y - 3, 'middle'], [x, y + 3.4, 'middle']];
+    for (const [lx, ly, anchor] of spots) {
+      if (!spacer.take(lx, ly, w, size + 0.6)) continue;
+      const tx = anchor === 'start' ? x + 2.4 : anchor === 'end' ? x - 2.4 : x;
+      centreMarks.push(`<text x="${tx.toFixed(1)}" y="${(ly + size * 0.35).toFixed(1)}" text-anchor="${anchor}" font-size="${size}" font-weight="700" fill="${t.ink}" stroke="#ffffff" stroke-width="0.5" paint-order="stroke">${esc(c.name)}</text>`);
+      centreNamed.add(c.name.toUpperCase().replace(/ CBD$/, ''));
+      break;
+    }
+    // the mark's own room is kept only once its name has had first pick of the spots beside it
+    spacer.take(x, y, 3, 3);
+  }
+  if (centreMarks.length) {
+    legend.push({ swatch: `<rect x="0.8" y="0.2" width="3.4" height="3.4" fill="${t.ink}"/>`, label: 'CBD (The Sydney Plan)' });
+    legend.push({ swatch: `<circle cx="2.5" cy="1.9" r="1.6" fill="${t.ink}"/>`, label: 'Major centre' });
+    legend.push({ swatch: `<circle cx="2.5" cy="1.9" r="1.3" fill="#ffffff" stroke="${t.ink}" stroke-width="0.5"/>`, label: 'Activity centre' });
+  }
+  // stations: the train and metro ones dotted, the nearest named
+  const stationDots: string[] = [];
+  const stationNames: string[] = [];
+  for (const s of loc.stations) { if (stationMode(s.name) === 'light rail') continue; const [x, y] = proj(s.lon, s.lat); stationDots.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="0.8" fill="#ffffff" stroke="${t.rail}" stroke-width="0.35"/>`); }
+  for (const s of f.stations.filter((st) => st.mode !== 'light rail')) {
+    const [x, y] = proj(s.lon, s.lat);
+    if (spacer.take(x + 1.6 + labelW(s.name, 2) / 2, y, labelW(s.name, 2), 2.6)) stationNames.push(`<text x="${(x + 1.6).toFixed(1)}" y="${(y + 0.7).toFixed(1)}" font-size="2" fill="${t.rail}" stroke="#ffffff" stroke-width="0.4" paint-order="stroke">${esc(s.name)}</text>`);
+  }
+  if (stationDots.length) legend.push({ swatch: `<circle cx="2.5" cy="1.9" r="0.9" fill="#ffffff" stroke="${t.rail}" stroke-width="0.35"/>`, label: 'Train and metro stations, the nearest named' });
+  // suburb names last, the largest in the window first, the site's own bolder, a centre's name not repeated
+  const suburbLabels: string[] = [];
+  const mySuburb = b.context.suburb?.name?.toUpperCase();
+  const subs = loc.suburbs.map((s) => { let best = { area: 0, cx: 0, cy: 0 }; for (const r of s.rings) { const st = clippedStats(r, proj, p); if (st.area > best.area) best = st; } return { name: s.name, ...best }; }).filter((s) => s.area > 25).sort((a, b2) => b2.area - a.area);
+  for (const s of subs) {
+    if (centreNamed.has(s.name.toUpperCase())) continue;
+    const own = s.name.toUpperCase() === mySuburb;
+    const text = tidyName(titleCase(s.name)).toUpperCase();
+    const size = own ? 2.3 : 2.0;
+    if (spacer.take(s.cx, s.cy, labelW(text, size) * 1.06, size + 0.8)) suburbLabels.push(`<text x="${s.cx.toFixed(1)}" y="${(s.cy + 0.7).toFixed(1)}" text-anchor="middle" font-size="${size}" letter-spacing="0.08em" font-weight="${own ? 700 : 400}" fill="${own ? '#333' : '#8a8478'}">${esc(text)}</text>`);
+  }
+  // the site last
+  parts.push(...suburbLabels, ...stationDots, ...stationNames, ...centreMarks);
+  parts.push(`<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="2.2" fill="${t.site}" stroke="#ffffff" stroke-width="0.6"/><text x="${(sx + 3.2).toFixed(1)}" y="${(sy + 0.9).toFixed(1)}" font-size="2.6" font-weight="700" fill="${t.site}" stroke="#ffffff" stroke-width="0.5" paint-order="stroke">SITE</text>`);
+  legend.unshift({ swatch: `<circle cx="2.5" cy="1.9" r="1.6" fill="${t.site}" stroke="#ffffff" stroke-width="0.4"/>`, label: 'The site' });
+  parts.push(panelFurniture(p, 'left'));
+  const mapSvg = `<svg width="${p.wMm}mm" height="${p.hMm}mm" viewBox="0 0 ${p.wMm} ${p.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
+    <defs><clipPath id="clip-location"><rect x="0" y="0" width="${p.wMm}" height="${p.hMm}"/></clipPath></defs>
+    <g clip-path="url(#clip-location)" font-family="${t.font}">${parts.join('\n')}</g>
+    <rect x="0.1" y="0.1" width="${p.wMm - 0.2}" height="${p.hMm - 0.2}" fill="none" stroke="${t.rule}" stroke-width="0.2"/>
+  </svg>`;
+  const leg = legendSvg(legend, FIELD_W, Math.ceil(legend.length / 2), 2.05);
+
+  // ---- the figures and the table
+  const km = (m: number) => (m >= 950 ? `${(m / 1000).toFixed(m >= 10_000 ? 0 : 1)} km` : `${fmtNum(Math.round(m / 10) * 10)} m`);
+  const near = f.centres.find((c) => c.kind !== 'cbd');
+  const tiles = [
+    { v: km(f.cbd.distanceM), l: `to the Sydney CBD (Town Hall), ${compassWord(f.cbd.bearing)}` },
+    { v: near ? near.name : '—', l: near ? `nearest ${near.kindWord} of The Sydney Plan · ${km(near.distanceM)} ${compassWord(near.bearing)}` : 'no centre of the plan in reach' },
+    { v: f.stations[0]?.name ?? '—', l: f.stations[0] ? `nearest station (${f.stations[0].mode}) · ${km(f.stations[0].distanceM)} ${compassWord(f.stations[0].bearing)}` : 'no station in the window' },
+    { v: f.lga?.name ?? '—', l: `local government area${f.district ? ` · ${f.district} (former district)` : ''}${f.region ? ` · ${f.region} region` : ''}` },
+  ].map((tl) => `<div class="tile"><div class="tv${tl.v.length > 9 ? ' long' : ''}">${esc(tl.v)}</div><div class="tl">${esc(tl.l)}</div></div>`).join('');
+  const rows = f.centres.map((c) => `<tr><td><b>${esc(c.name)}</b></td><td>${esc(c.kindWord)}</td><td class="r">${km(c.distanceM)}</td><td>${esc(compassWord(c.bearing))}</td></tr>`).join('');
+  const table = `<table class="da cons"><thead><tr><th>Centre of The Sydney Plan</th><th>Type</th><th class="r">Distance</th><th>Direction</th></tr></thead><tbody>${rows}</tbody></table>`;
+  const legendTop = FIELD_Y + PANEL_TITLE_H + p.hMm + 1.5;
+  const belowY = legendTop + leg.heightMm + 2.5;
+  const belowH = SLIDE_H - 12 - belowY;
+  const figure = `<div class="abs ptitle" style="left:${FIELD_X}mm;top:${FIELD_Y}mm;width:${FIELD_W}mm">Location<span class="pnote">1:${fmtNum(p.scale)} · ${f.widthKm} × ${f.heightKm} km · the site in its region, with the plan's centres and the stations</span></div>
+    <div class="abs" style="left:${FIELD_X}mm;top:${FIELD_Y + PANEL_TITLE_H}mm">${mapSvg}</div>
+    <svg class="abs" style="left:${FIELD_X}mm;top:${legendTop}mm" width="${FIELD_W}mm" height="${leg.heightMm}mm" viewBox="0 0 ${FIELD_W} ${leg.heightMm}" xmlns="http://www.w3.org/2000/svg">${leg.svg}</svg>
+    <div class="abs tiles" style="left:${FIELD_X}mm;top:${belowY}mm;width:${PANEL_W}mm">${tiles}</div>
+    <div class="abs" style="left:${FIELD_X + PANEL_W + GUTTER}mm;top:${belowY}mm;width:${PANEL_W}mm;height:${belowH}mm;overflow:hidden">${table}</div>`;
+  const sub = [b.siteAddress, f.lga ? f.lga.name : '', `${km(f.cbd.distanceM)} from the Sydney CBD`, near ? `${near.name} ${km(near.distanceM)}` : ''].filter(Boolean).join(' · ');
+  return { id: '01_location', title: 'Location', subtitle: sub, textHtml, figureHtml: figure };
+}
+
+// ---- slide 02: character ----------------------------------------------------------
+
+const WIKI_PLACE_COLOUR = '#6b21a8';
+const CHARACTER_PHOTOS = 8;
+/** The seed paragraph is cut at a sentence end near this length, so it sits in the column with the rest. */
+const EXTRACT_CHARS = 820;
+
+function clipSentences(text: string, max: number): string {
+  const t = text.replace(/\s+/g, ' ').trim();
+  if (t.length <= max) return t;
+  const head = t.slice(0, max);
+  const cut = Math.max(head.lastIndexOf('. '), head.lastIndexOf('.” '), head.lastIndexOf('! '), head.lastIndexOf('? '));
+  return cut > max * 0.5 ? head.slice(0, cut + 1) : `${head.trimEnd()}…`;
+}
+
+/** What the open sources say and show of the place: the article, the places with articles near the site, the photographs and the aerial. */
+export function characterFacts(b: SlidesBundle) {
+  const c = b.character;
+  const proj = panelProjector(b.panel);
+  const suburb = b.context.suburb?.name ? titleCase(b.context.suburb.name) : undefined;
+  const wp = c.wikipedia.summary;
+  const extract = wp ? clipSentences(wp.extract, EXTRACT_CHARS) : '';
+  const places = c.places.items.map((p, i) => {
+    const [x, y] = proj(p.lon, p.lat);
+    return { n: i + 1, ...p, side: compassWord(p.bearing), onMap: x >= 1 && x <= PANEL_W - 1 && y >= 1 && y <= PANEL_H - 1 };
+  });
+  const photos = c.photos.items.map((p) => ({
+    ...p,
+    caption: `${p.n} · ${p.title}${p.date ? `, ${p.date.slice(0, 4)}` : ''} · ${p.author ?? 'author not recorded'} · ${p.licence} · Wikimedia Commons${p.lead ? ' (the article\'s image)' : p.distanceM !== undefined ? ` · ${fmtNum(p.distanceM)} m ${compassWord(p.bearing ?? 0)} of the site` : ''}`,
+  }));
+  const authors = [...new Set(photos.map((p) => p.author).filter((a): a is string => Boolean(a)))];
+  const years = photos.map((p) => p.date?.slice(0, 4)).filter((y): y is string => Boolean(y)).sort();
+  const img = b.site.imagery;
+  return {
+    suburb,
+    wikipedia: wp ? { title: wp.title, shortTitle: wp.title.replace(/, (New South Wales|Sydney)$/, ''), description: wp.description, url: wp.url, extract, clipped: extract.length < wp.extract.replace(/\s+/g, ' ').trim().length } : null,
+    wikipediaNote: c.wikipedia.note,
+    places, placesOk: c.places.ok, placesNote: c.places.note, placesRadiusM: c.places.radiusM,
+    photos, photosOk: c.photos.ok, photosNote: c.photos.note, photoCandidates: c.photos.candidates, photosRadiusM: c.photos.radiusM, authors, yearRange: years.length ? { first: years[0], last: years[years.length - 1] } : null,
+    aerial: c.aerial ? { tiles: c.aerial.tiles.length, block: img?.block, date: img?.date, resolutionCm: img?.resolutionCm } : null,
+    placeholders: Math.max(0, CHARACTER_PHOTOS - photos.length),
+  };
+}
+
+export function characterSentences(b: SlidesBundle, f: ReturnType<typeof characterFacts>): string[] {
+  const out: string[] = [];
+  const who = f.suburb ?? 'the suburb';
+  if (f.wikipedia) out.push(`Wikipedia's article on ${f.wikipedia.shortTitle}${f.wikipedia.description ? ` (${f.wikipedia.description})` : ''} is the seed text below${f.wikipedia.clipped ? ', cut at a sentence' : ''}; it is the encyclopaedia's account, CC BY-SA 4.0, not the office's reading of the place.`);
+  else out.push(`Wikipedia ${f.wikipediaNote ? `did not answer for this run (${f.wikipediaNote})` : `has no article for ${who}`}, so the seed text is the author's.`);
+  if (f.places.length) {
+    const lead = f.places.slice(0, 4).map((p) => `${p.title}${p.description ? ` (${p.description})` : ''} ${fmtNum(p.distanceM)} m ${p.side}`);
+    out.push(`${capFirst(numWord(f.places.length))} place${f.places.length === 1 ? ' has an article' : 's have articles'} of ${f.places.length === 1 ? 'its' : 'their'} own within ${(f.placesRadiusM / 1000).toFixed(1)} km: ${listWords(lead)}${f.places.length > 4 ? ` and ${f.places.length - 4} more, listed at right` : ''}.`);
+  } else if (f.placesOk) out.push(`No place within ${(f.placesRadiusM / 1000).toFixed(1)} km has a Wikipedia article of its own.`);
+  else out.push(`Wikipedia's place search did not answer for this run${f.placesNote ? ` (${f.placesNote})` : ''}.`);
+  if (f.photos.length) {
+    const by = f.authors.length === 1 ? `by ${f.authors[0]}` : `by ${numWord(f.authors.length)} contributors`;
+    const when = f.yearRange ? (f.yearRange.first === f.yearRange.last ? `, ${f.yearRange.first}` : `, ${f.yearRange.first} to ${f.yearRange.last}`) : '';
+    out.push(`${capFirst(numWord(f.photos.length))} open-licence photograph${f.photos.length === 1 ? '' : 's'} within ${f.photosRadiusM} m ${f.photos.length === 1 ? 'is' : 'are'} on Wikimedia Commons ${by}${when}${f.photoCandidates > f.photos.length ? `, chosen from ${f.photoCandidates}` : ''}, each credited under its frame; the office's photographs replace them.`);
+  } else if (f.photosOk) out.push(`Wikimedia Commons holds no usable open-licence photograph within ${f.photosRadiusM} m of the site${f.photoCandidates ? '' : ''}; the placeholders are sized for the office's own.`);
+  else out.push(`Wikimedia Commons did not answer for this run${f.photosNote ? ` (${f.photosNote})` : ''}; the placeholders are sized for the office's photographs.`);
+  if (f.aerial) out.push(`The aerial shows the grain of the place at 1:${fmtNum(b.panel.scale)}${f.aerial.date ? `, as captured ${fmtIso(f.aerial.date)}` : ''}, with the places numbered on it.`);
+  return out;
+}
+
+export function characterSlide(b: SlidesBundle): Slide {
+  const t = tpl();
+  const f = characterFacts(b);
+  const c = b.character;
+  const sentences = characterSentences(b, f);
+  const quote = f.wikipedia ? `<div class="quote"><p>${esc(f.wikipedia.extract)}</p><div class="qsrc">— Wikipedia, "${esc(f.wikipedia.title)}", CC BY-SA 4.0 · ${esc(f.wikipedia.url)}</div></div>` : '';
+  const textHtml = sentences.map(para).join('') + quote +
+    placeholder('Narrative — for the author: the character of the place as the office reads it — the street pattern and its grain, the building stock and its periods, the uses and the life of the street, the landmarks and the gaps, what the photographs show and what they miss.') +
+    `<div class="fine">Sources: Wikipedia${f.wikipedia ? ` (the article "${esc(f.wikipedia.title)}", text CC BY-SA 4.0)` : ''} and its geosearch for the articles placed within ${(f.placesRadiusM / 1000).toFixed(1)} km; Wikimedia Commons for the photographs within ${f.photosRadiusM} m, each under the licence credited with it, cropped to the strip; NSW Imagery via SIX Maps${f.aerial?.block ? ` (${esc(titleCase(f.aerial.block))} block${f.aerial.date ? `, captured ${fmtIso(f.aerial.date)}` : ''}${f.aerial.resolutionCm ? `, ${f.aerial.resolutionCm} cm` : ''})` : ''}; cadastre from NSW Spatial Services. Retrieved ${b.generatedAt.slice(0, 10)}.</div>`;
+
+  // ---- the aerial over the planning window, the places numbered on it
+  const p = b.panel;
+  const proj = panelProjector(p);
+  const parts: string[] = [`<rect x="0" y="0" width="${p.wMm}" height="${p.hMm}" fill="#f4f2ee"/>`];
+  if (c.aerial) for (const tile of c.aerial.tiles) parts.push(`<image href="data/${tile.file}" x="${(tile.left * p.wMm).toFixed(2)}" y="${(tile.top * p.hMm).toFixed(2)}" width="${(tile.width * p.wMm).toFixed(2)}" height="${(tile.height * p.hMm).toFixed(2)}" preserveAspectRatio="none"/>`);
+  else parts.push(emptyNote(['The aerial imagery did not answer for this window.']));
+  parts.push(siteMark(b.base, proj, 'both'));
+  const spacer = new LabelSpacer(p.wMm, p.hMm, 40);
+  for (const pl of f.places) {
+    if (!pl.onMap) continue;
+    const [x, y] = proj(pl.lon, pl.lat);
+    parts.push(`<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="2.4" fill="${WIKI_PLACE_COLOUR}" stroke="#ffffff" stroke-width="0.4"/><text x="${x.toFixed(2)}" y="${(y + 0.9).toFixed(2)}" text-anchor="middle" font-size="2.5" font-weight="700" fill="#ffffff">${pl.n}</text>`);
+    spacer.take(x, y, 5, 5);
+  }
+  for (const pl of f.places) {
+    if (!pl.onMap) continue;
+    const [x, y] = proj(pl.lon, pl.lat);
+    const text = pl.title;
+    const w = labelW(text, 2.1);
+    if (spacer.take(x + 3.2 + w / 2, y, w, 2.8)) parts.push(`<text x="${(x + 3.2).toFixed(1)}" y="${(y + 0.75).toFixed(1)}" font-size="2.1" font-weight="700" fill="#ffffff" stroke="#000000" stroke-width="0.35" paint-order="stroke">${esc(text)}</text>`);
+  }
+  parts.push(panelFurniture(p, 'right'));
+  const mapSvg = `<svg width="${p.wMm}mm" height="${p.hMm}mm" viewBox="0 0 ${p.wMm} ${p.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
+    <defs><clipPath id="clip-character"><rect x="0" y="0" width="${p.wMm}" height="${p.hMm}"/></clipPath></defs>
+    <g clip-path="url(#clip-character)" font-family="${t.font}">${parts.join('\n')}</g>
+    <rect x="0.1" y="0.1" width="${p.wMm - 0.2}" height="${p.hMm - 0.2}" fill="none" stroke="${t.rule}" stroke-width="0.2"/>
+  </svg>`;
+
+  // ---- the places table
+  const rows = f.places.map((pl) => `<tr><td class="n">${pl.n}</td><td><b>${esc(pl.title)}</b>${pl.description ? `<span class="dim"> · ${esc(pl.description)}</span>` : ''}${pl.onMap ? '' : '<span class="dim"> · beyond the aerial</span>'}</td><td class="r">${fmtNum(pl.distanceM)} m ${esc(pl.side)}</td></tr>`).join('');
+  const table = f.places.length
+    ? `<table class="da cons"><thead><tr><th class="n">#</th><th>Place with an article of its own</th><th class="r">From the site</th></tr></thead><tbody>${rows}</tbody></table>`
+    : emptyBox(PANEL_W, 30, f.placesOk ? `No place within ${(f.placesRadiusM / 1000).toFixed(1)} km has a Wikipedia article of its own.` : 'Wikipedia\'s place search did not answer for this run.');
+
+  // ---- the photographs, four across, placeholders for the office's own
+  const cells: string[] = [];
+  for (let i = 0; i < CHARACTER_PHOTOS; i++) {
+    const ph = f.photos[i];
+    if (ph) cells.push(`<div class="frame"><div class="img"><img src="data/${esc(ph.file)}" alt=""><span class="key plc">${ph.n}</span></div><div class="cap">${esc(ph.caption)}</div></div>`);
+    else cells.push(`<div class="frame ph"><div class="img">Office photograph</div><div class="cap">${esc(`${i + 1} · for the author: the office's photograph of the place, credited`)}</div></div>`);
+  }
+  const X2 = FIELD_X + PANEL_W + GUTTER;
+  const rowY = FIELD_Y + PANEL_TITLE_H + PANEL_H + 3;
+  const figure = `<div class="abs ptitle" style="left:${FIELD_X}mm;top:${FIELD_Y}mm;width:${PANEL_W}mm">The place from above<span class="pnote">1:${fmtNum(p.scale)}${f.aerial?.date ? ` · captured ${fmtIso(f.aerial.date)}` : ''} · the places with articles numbered</span></div>
+    <div class="abs" style="left:${FIELD_X}mm;top:${FIELD_Y + PANEL_TITLE_H}mm">${mapSvg}</div>
+    <div class="abs" style="left:${X2}mm;top:${FIELD_Y}mm;width:${PANEL_W}mm;height:${PANEL_TITLE_H + PANEL_H}mm;overflow:hidden">
+      <div class="ptitle">Places nearby<span class="pnote">Wikipedia's articles placed within ${(f.placesRadiusM / 1000).toFixed(1)} km, nearest first</span></div>
+      ${table}
+    </div>
+    <div class="abs ptitle" style="left:${FIELD_X}mm;top:${rowY}mm;width:${FIELD_W}mm">Photographs<span class="pnote">${f.photos.length ? `open-licence frames within ${f.photosRadiusM} m from Wikimedia Commons, credited as their licences ask · the office's photographs replace them` : 'placeholders sized for the office\'s photographs'}</span></div>
+    <div class="abs photos four" style="left:${FIELD_X}mm;top:${rowY + PANEL_TITLE_H}mm;width:${FIELD_W}mm">${cells.join('')}</div>`;
+  const sub = [b.siteAddress, f.suburb ?? '', f.places.length ? `${f.places.length} place${f.places.length === 1 ? '' : 's'} with articles` : '', f.photos.length ? `${f.photos.length} open photograph${f.photos.length === 1 ? '' : 's'}` : 'no open photograph'].filter(Boolean).join(' · ');
+  return { id: '02_character', title: 'Character', subtitle: sub, textHtml, figureHtml: figure };
+}
+
+// ---- slide 05: strategic context ---------------------------------------------------
+
+const STATE_PLAN_URL = 'https://www.planning.nsw.gov.au/the-planning-system/the-state-plan';
+const SYDNEY_PLAN_COMMENCED = '2026-08-13';
+
+interface StrategyRow {
+  level: 'State' | 'Region' | 'District' | 'Local' | 'Statutory' | 'Contributions' | 'By hand';
+  document: string;
+  line: string;
+  status: string;
+  url?: string;
+  /** Whether the row is a placeholder the author fills. */
+  manual?: boolean;
+}
+
+/** The documents over the site, top down, each with the one line the deck can say about it and its link. */
+/** "COUNCIL OF THE CITY OF SYDNEY" -> "City of Sydney"; "INNER WEST COUNCIL" stays "Inner West Council". */
+const councilDisplay = (council?: string, lga?: string) => {
+  const c = council ? titleCase(council).replace(/^Council Of The /i, '').replace(/\bOf\b/g, 'of').replace(/\bThe\b/g, 'the').replace(/\bAnd\b/g, 'and') : lga ? `${titleCase(lga)} Council` : 'the council';
+  return c;
+};
+
+export function strategicFacts(b: SlidesBundle, planning: PlanningFacts) {
+  const st = b.strategies;
+  const ctx = b.context;
+  const rows: StrategyRow[] = [];
+  const council = councilDisplay(ctx.lga?.council, ctx.lga?.name);
+  const isSydney = st.region.plan?.region === 'Greater Sydney' || (!st.region.name && Boolean(ctx.district));
+  rows.push({ level: 'State', document: 'NSW State Land Use Plan and its technical appendices (the State Plan)', line: 'the State\'s land use policies and, in Appendix E, the NSW Centres Framework of four centre types the regional plans apply', status: 'in force · 2026', url: STATE_PLAN_URL });
+  if (st.region.plan) {
+    const pl = st.region.plan;
+    rows.push({ level: 'Region', document: pl.name, line: pl.region === 'Greater Sydney' ? 'one strategic framework for the 33 councils of the Sydney region: where housing and jobs grow, in well-located centres and corridors' : `the regional plan for ${pl.region}: the vision, the objectives and the strategies for the region's places to 2041`, status: pl.note ? pl.note : `in force${pl.year ? ` · ${pl.year}` : ''}`, url: pl.url });
+  } else rows.push({ level: 'Region', document: st.region.ok ? `regional plan for ${st.region.name ?? 'this region'}` : 'regional plan', line: st.region.ok ? 'the planning region was read but no plan in the deck\'s table matches it' : 'the planning-regions layer did not answer for this run', status: 'to confirm', manual: true });
+  if (isSydney) rows.push({ level: 'District', document: ctx.district ? `${ctx.district} District Plan (2018)` : 'the former district plan', line: 'the five district plans of the Greater Sydney Commission set the district\'s priorities and each council\'s housing target', status: `superseded by The Sydney Plan on ${fmtIso(SYDNEY_PLAN_COMMENCED)}` });
+  if (st.lsps.entry) rows.push({ level: 'Local', document: st.lsps.entry.title, line: 'the council\'s 20-year land use vision, planning priorities and structure plan under section 3.9 of the Act', status: `${st.lsps.entry.year ?? 'in force'}${isSydney ? ' · reviewed against The Sydney Plan from mid-2027' : ''}`, url: st.lsps.entry.url });
+  else rows.push({ level: 'Local', document: `${council}'s Local Strategic Planning Statement`, line: st.lsps.ok ? `not found in the Planning Portal's index of ${st.lsps.indexed} statements` : `the Portal's index did not answer for this run${st.lsps.note ? ` (${st.lsps.note})` : ''}`, status: 'to find', manual: true });
+  rows.push({ level: 'Local', document: `${council}'s local housing strategy`, line: 'where the council plans its housing target: the sites, the centres and the sequence', status: 'not indexed — on the council\'s site', manual: true });
+  const epi = b.controls.epiName ?? planning.zoneAtSite?.epi;
+  rows.push({ level: 'Statutory', document: epi ?? 'the local environmental plan', line: `the zone, the height, the floor space ratio and the local provisions at the site${planning.zoneAtSite ? ` (${planning.zoneAtSite.code}${planning.zoneAtSite.name ? ` ${planning.zoneAtSite.name}` : ''})` : ''}`, status: planning.zoneAtSite?.currency ? `map current ${fmtAnyDate(planning.zoneAtSite.currency) ?? planning.zoneAtSite.currency}` : 'in force', url: planning.legislationUrl });
+  if (ctx.dcp) rows.push({ level: 'Statutory', document: ctx.dcp.name, line: `the council's detailed controls: setbacks, design, parking, landscape${ctx.dcps.length > 1 ? `; ${ctx.dcps.length - 1} further plan${ctx.dcps.length > 2 ? 's' : ''} mapped at the site (${ctx.dcps.slice(1, 4).map((d) => d.name).join('; ')}${ctx.dcps.length > 4 ? ` and ${ctx.dcps.length - 4} more, listed on slide 04` : ''})` : ''}`, status: 'in force', url: ctx.dcp.url });
+  else rows.push({ level: 'Statutory', document: 'development control plan', line: 'no DCP is mapped at the site in the development-control layer', status: 'to confirm', manual: true });
+  const contrib = ctx.contributions;
+  if (contrib.length) {
+    const groups = new Map<string, { name: string; detail?: string }[]>();
+    for (const c of contrib) (groups.get(c.kind) ?? groups.set(c.kind, []).get(c.kind)!).push({ name: c.name, detail: c.detail });
+    for (const [kind, items] of groups) {
+      const link = items.map((i) => i.detail).find((d) => d && /^https?:\/\//i.test(d));
+      rows.push({ level: 'Contributions', document: kind, line: items.map((i) => `${i.name}${i.detail && !/^https?:\/\//i.test(i.detail) ? ` (${i.detail})` : ''}`).join('; '), status: 'applies at the site', url: link });
+    }
+  } else rows.push({ level: 'Contributions', document: 'contributions plans', line: 'no State or local contributions plan is mapped at the site in the ePlanning layers', status: 'none mapped' });
+  if (b.housingTarget) rows.push({ level: 'Local', document: `${council}'s housing target`, line: `${fmtNum(b.housingTarget.homes)} new homes by ${b.housingTarget.by}, set by the State`, status: 'current', url: b.housingTarget.url });
+  rows.push({ level: 'By hand', document: 'Centre, precinct or place strategy', line: 'the council\'s or the Department\'s strategy for the centre or precinct the site sits in, where one exists', status: 'for the author', manual: true });
+  rows.push({ level: 'By hand', document: 'Public domain plan and local character statements', line: 'streetscape, materials and the character the council describes for this place', status: 'for the author', manual: true });
+  const linked = rows.filter((r) => r.url).length;
+  return { rows, linked, region: st.region, lsps: st.lsps.entry, isSydney, district: ctx.district, council };
+}
+
+export function strategicSentences(b: SlidesBundle, f: ReturnType<typeof strategicFacts>): string[] {
+  const out: string[] = [];
+  const pl = f.region.plan;
+  if (pl && f.isSydney) out.push(`The site sits in the Sydney region under The Sydney Plan, which commenced on ${fmtIso(SYDNEY_PLAN_COMMENCED)} and replaced the Greater Sydney Region Plan of 2018${f.district ? ` and the ${f.district} District Plan` : ' and the five district plans'}; it applies the State Land Use Plan and its centres framework.`);
+  else if (pl) out.push(`The site sits in the ${pl.region} region under the ${pl.name}${pl.year ? ` (${pl.year})` : ''}, the Department's regional plan, which applies the State Land Use Plan.`);
+  else out.push('The planning region at the site could not be matched to a regional plan on this run; the row is left to confirm.');
+  if (f.lsps) out.push(`${f.council ?? 'The council'}'s local strategic planning statement, ${f.lsps.title}${f.lsps.year ? ` (${f.lsps.year})` : ''}, is the local vision the plan sits over${f.isSydney ? ', in force until the council reviews it against The Sydney Plan from mid-2027' : ''}; its priorities and structure plan are the author's to extract.`);
+  else out.push(`${f.council ?? 'The council'}'s local strategic planning statement was not found in the Planning Portal's index, so its row is left to find.`);
+  const statutory = f.rows.filter((r) => r.level === 'Statutory');
+  const contrib = f.rows.filter((r) => r.level === 'Contributions' && !/none mapped/.test(r.status));
+  out.push(`The statutory layer is ${listWords(statutory.map((r) => r.document))}${contrib.length ? `, with ${listWords(contrib.map((r) => r.document.replace(/ — .*$/, '').toLowerCase()))} applying` : ''}${b.housingTarget ? `; the council's target is ${fmtNum(b.housingTarget.homes)} homes by ${b.housingTarget.by}` : ''}. ${f.linked} of the ${f.rows.length} rows carry a link; the extracts stay the author's.`);
+  return out;
+}
+
+export function strategicSlide(b: SlidesBundle, planning: PlanningFacts): Slide {
+  const f = strategicFacts(b, planning);
+  const sentences = strategicSentences(b, f);
+  const textHtml = sentences.map(para).join('') +
+    placeholder('Extracts — for the author: the plan\'s directions for this place (the centre, the corridor, the precinct), the statement\'s planning priorities that touch the site and its structure plan, and the local strategies — housing, centres, public domain — with their maps.') +
+    `<div class="fine">Sources: the Department's planning-regions layer for the region at the site; the Planning Portal's index of local strategic planning statements (${b.strategies.lsps.indexed ? `${fmtNum(b.strategies.lsps.indexed)} statements listed` : 'not read'}); the Department's plans-by-region pages for the regional plans' names and links; the local plan, the DCP and the contributions layers from ePlanning and the Planning Portal's property report; the housing target from the Department's council snapshot. The documents themselves are not read: the lines are what each is, not what it says. Retrieved ${b.generatedAt.slice(0, 10)}.</div>`;
+  const short = (u: string) => u.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\?.*$/, '').replace(/\/$/, '');
+  const rows = f.rows.map((r) => `<tr${r.manual ? ' class="manual"' : ''}><th>${esc(r.level)}</th><td><b>${esc(r.document)}</b></td><td>${esc(r.line)}</td><td class="status">${esc(r.status)}</td><td class="lnk">${r.url ? `<a href="${esc(r.url)}">${esc(short(r.url).length > 70 ? `${short(r.url).slice(0, 68)}…` : short(r.url))}</a>` : (r.manual ? '<span class="dim">by hand</span>' : '—')}</td></tr>`).join('');
+  const table = `<table class="da strat"><thead><tr><th>Level</th><th>Document</th><th>What it is</th><th>Status</th><th>Link</th></tr></thead><tbody>${rows}</tbody></table>`;
+  const figure = `<div class="abs ptitle" style="left:${FIELD_X}mm;top:${FIELD_Y}mm;width:${FIELD_W}mm">The documents over the site<span class="pnote">top down · one line each · the extracts are the author's</span></div>
+    <div class="abs" style="left:${FIELD_X}mm;top:${FIELD_Y + PANEL_TITLE_H}mm;width:${FIELD_W}mm">${table}</div>`;
+  const sub = [b.siteAddress, f.region.plan?.name ?? '', f.lsps ? 'LSPS linked' : 'LSPS to find', `${f.linked} links`].filter(Boolean).join(' · ');
+  return { id: '05_strategic_context', title: 'Strategic context', subtitle: sub, textHtml, figureHtml: figure };
+}
 
 // ---- slide 03: planning overview ----------------------------------------------
 
@@ -4003,6 +4420,8 @@ const ATTR = {
   osm: '© OpenStreetMap contributors · ODbL',
   valhalla: 'FOSSGIS Valhalla instance on OpenStreetMap data · ODbL',
   kartaview: '© KartaView contributors · CC BY-SA 4.0',
+  wikipedia: 'Wikipedia contributors · text CC BY-SA 4.0',
+  commons: 'Wikimedia Commons contributors · each file under its own licence, credited on the slide',
   mapillary: '© Mapillary contributors · CC BY-SA 4.0',
   none: '—',
 };
@@ -4067,22 +4486,26 @@ export function sourcesFacts(b: SlidesBundle, planning: PlanningFacts) {
   A.push({ dataset: 'Planning Portal property report API (the layers at the geocoded point)', used: '04 · 14', currency: b.property ? `${n(b.property.epi.length + b.property.sepp.length, 'layer hit')} at the point; the maps\' own currency dates` : 'did not answer for this run', retrieved: deckDay, attribution: ATTR.portal });
   A.push({ dataset: 'Online DA API (development applications lodged through the portal)', used: '07 · 17', currency: b.daMeta ? `${b.daMeta.council}: ${n(b.daMeta.total, 'application')} lodged ${fmtIso(b.daMeta.from)} to ${fmtIso(b.daMeta.to)}${b.daMeta.complete ? '' : ' (feed incomplete)'}` : 'not read for this run', retrieved: retrieved(b.daMeta?.fetchedAt), attribution: ATTR.portal });
   A.push({ dataset: 'Council housing target (department snapshot page)', used: '04', currency: b.housingTarget ? `${fmtNum(b.housingTarget.homes)} new homes by ${b.housingTarget.by}` : 'no snapshot page found for this council', retrieved: deckDay, attribution: ATTR.dphi });
+  const sg = b.strategies;
+  A.push({ dataset: 'Planning regions layer (Administrative Boundary service) and the plans-by-region pages', used: '01 · 05', currency: sg.region.ok ? `${sg.region.name ?? 'no region'} at the site${sg.region.plan ? ` → ${sg.region.plan.name}` : ''}` : 'the regions layer did not answer', retrieved: retrieved(sg.fetchedAt), attribution: ATTR.dphi });
+  A.push({ dataset: 'The Sydney Plan (2026) and the NSW Centres Framework: the centres and their types, transcribed', used: '01', currency: `version 1.0, commenced 13 Aug 2026; ${n(CENTRES.length, 'centre')} of the plan's first three types with a point each`, retrieved: 'transcribed at build', attribution: ATTR.dphi });
+  A.push({ dataset: 'Planning Portal index of local strategic planning statements', used: '05', currency: sg.lsps.ok ? `${n(sg.lsps.indexed, 'statement')} listed; ${sg.lsps.entry ? `${sg.lsps.entry.title}` : 'none matched the council'}` : `did not answer${sg.lsps.note ? ` (${sg.lsps.note})` : ''}`, retrieved: retrieved(sg.fetchedAt), attribution: ATTR.portal });
   groups.push({ publisher: 'NSW Department of Planning, Housing and Infrastructure — ePlanning spatial services and the Planning Portal', rows: A });
 
   // NSW Spatial Services.
   const B: SourceRow[] = [];
   B.push({ dataset: 'Geocoded addressing theme (the site point)', used: 'all', currency: `matched ${b.geocode.matchedAddresses.slice(0, 2).map((a) => titleCase(a)).join('; ')}${b.geocode.points.length > 1 ? ` (${b.geocode.points.length} address points)` : ''}`, retrieved: deckDay, attribution: ATTR.spatial });
   B.push({ dataset: 'Land parcel and property theme: lots, plan lot areas, easement geometry', used: 'all maps · 11', currency: `${b.lotDescription}; ${n(b.base.lots.features.length, 'lot')} in the window; ${n(b.site.easements.length, 'easement')} in the site plan\'s window; current at retrieval`, retrieved: deckDay, attribution: ATTR.spatial });
-  B.push({ dataset: 'Transport theme: roads by function, railways, stations', used: 'all maps · 09 · 13 · 17', currency: `${n(b.base.roads.length, 'road segment')}, ${n(b.base.rail.train.length + b.base.rail.tram.length, 'rail line')}, ${n(b.base.stations.length, 'station')} in the window; current at retrieval`, retrieved: deckDay, attribution: ATTR.spatial });
-  B.push({ dataset: 'Water theme: water bodies, coastline, watercourses, hydro names', used: 'all maps · 13 · 15', currency: `${n(b.base.water.features.length, 'water feature')} in the window; ${n(b.country.water.courses.length, 'watercourse line')} over the strip; current at retrieval`, retrieved: deckDay, attribution: ATTR.spatial });
-  B.push({ dataset: 'Administrative boundaries: LGA, suburb, Local Aboriginal Land Council areas, district', used: '04 · 09 · 15 · 16', currency: [b.context.lga?.name ? titleCase(b.context.lga.name) : '', b.context.suburb?.name ? titleCase(b.context.suburb.name) : '', b.context.lalc?.local ? `${titleCase(b.context.lalc.local)} LALC` : '', b.context.district ? `${b.context.district} district` : ''].filter(Boolean).join(', ') || 'not resolved', retrieved: deckDay, attribution: ATTR.spatial });
+  B.push({ dataset: 'Transport theme: roads by function, railways, stations', used: 'all maps · 01 · 09 · 13 · 17', currency: `${n(b.base.roads.length, 'road segment')}, ${n(b.base.rail.train.length + b.base.rail.tram.length, 'rail line')}, ${n(b.base.stations.length, 'station')} in the window; current at retrieval`, retrieved: deckDay, attribution: ATTR.spatial });
+  B.push({ dataset: 'Water theme: water bodies, coastline, watercourses, hydro names', used: 'all maps · 01 · 13 · 15', currency: `${n(b.base.water.features.length, 'water feature')} in the window; ${n(b.country.water.courses.length, 'watercourse line')} over the strip; current at retrieval`, retrieved: deckDay, attribution: ATTR.spatial });
+  B.push({ dataset: 'Administrative boundaries: LGA, suburb, Local Aboriginal Land Council areas, district', used: '01 · 04 · 09 · 15 · 16', currency: [b.context.lga?.name ? titleCase(b.context.lga.name) : '', b.context.suburb?.name ? titleCase(b.context.suburb.name) : '', b.context.lalc?.local ? `${titleCase(b.context.lalc.local)} LALC` : '', b.context.district ? `${b.context.district} district` : ''].filter(Boolean).join(', ') || 'not resolved', retrieved: deckDay, attribution: ATTR.spatial });
   const foi = b.green.facilities.filter((f) => f.source === 'foi').length;
   B.push({ dataset: 'Features of interest: complexes and parks', used: '10', currency: `${n(foi, 'facility', 'facilities')} from the complexes layer; park names`, retrieved: retrieved(b.green.fetchedAt), attribution: ATTR.spatial });
   const dem = b.terrain.dem;
   B.push({ dataset: 'NSW 5 m elevation model (image service)', used: '06 · 08 · 11 · 13 · 15 · 17', currency: dem ? `${dem.source}; ${fmtNum(dem.cols)} × ${fmtNum(dem.rows)} cells over the tall panel${b.country.dem ? `, a second grid at 8 m over the strip for the crests` : ''}` : 'not read for this run', retrieved: deckDay, attribution: ATTR.spatial });
   if (!/City of Sydney/i.test(b.terrain.contourSource ?? '')) B.push({ dataset: 'Contours', used: '06', currency: b.terrain.contours.length ? `${b.terrain.contourSource ?? 'NSW contours'}${b.terrain.contourIntervalM ? `, ${b.terrain.contourIntervalM} m interval` : ''}; ${n(b.terrain.contours.length, 'line')} in the window` : 'none in the window', retrieved: deckDay, attribution: ATTR.spatial });
   const img = b.site.imagery;
-  B.push({ dataset: 'NSW Imagery (aerial) and the imagery-dates layer (SIX Maps)', used: '11 · 12', currency: img ? `${titleCase(img.block)} block${img.date ? `, captured ${fmtIso(img.date)}` : ''}${img.resolutionCm ? `, ${img.resolutionCm} cm` : ''}` : b.site.aerial ? 'capture date not published for this block' : 'no aerial for this run', retrieved: retrieved(b.site.fetchedAt), attribution: ATTR.spatial });
+  B.push({ dataset: 'NSW Imagery (aerial) and the imagery-dates layer (SIX Maps)', used: '02 · 11 · 12', currency: img ? `${titleCase(img.block)} block${img.date ? `, captured ${fmtIso(img.date)}` : ''}${img.resolutionCm ? `, ${img.resolutionCm} cm` : ''}` : b.site.aerial ? 'capture date not published for this block' : 'no aerial for this run', retrieved: retrieved(b.site.fetchedAt), attribution: ATTR.spatial });
   const then = b.photos.pair.then;
   B.push({ dataset: 'Historical Imagery 1943: the Sydney aerial survey as a tile service', used: '12', currency: then.tiles.length ? `1943 survey; ${n(then.tiles.length, 'tile')} at level ${then.zoom} over the pair's panel${then.missing ? `, ${n(then.missing, 'tile')} missing` : ''}` : 'no tile at this site (the survey covers the Sydney region)', retrieved: retrieved(b.photos.fetchedAt), attribution: ATTR.spatial });
   groups.push({ publisher: 'NSW Spatial Services (Department of Customer Service) — Spatial Collaboration Portal and SIX Maps', rows: B });
@@ -4123,6 +4546,9 @@ export function sourcesFacts(b: SlidesBundle, planning: PlanningFacts) {
   F.push({ dataset: b.buildings.source === 'overture' ? 'Overture Maps Foundation buildings (footprints, heights and storeys)' : b.buildings.source === 'osm' ? 'OpenStreetMap buildings via Overpass (Overture was not available)' : 'Building footprints', used: '08 · 11 · 12 · 13 · 17', currency: b.buildings.source === 'overture' ? `release ${b.buildings.release ?? 'unknown'}; ${n(b.buildings.buildings.length, 'footprint')} in the window, ${n(b.buildings.buildings.filter((x) => x.estimatedHeightM).length, 'height')}` : b.buildings.source === 'osm' ? `${n(b.buildings.buildings.length, 'footprint')} in the window` : (b.buildings.note ?? 'none read'), retrieved: retrieved(b.buildings.fetchedAt), attribution: b.buildings.source === 'overture' ? ATTR.overture : b.buildings.source === 'osm' ? ATTR.osm : ATTR.none });
   F.push({ dataset: 'OpenStreetMap via Overpass: bus routes, cycleways, footways, one-way streets', used: '09 · 10', currency: b.movement.osm ? `read; ${n(b.movement.cycleways.length, 'cycleway')}, ${n(b.movement.footways.length, 'footway')}, ${n(b.movement.busRoutes.length, 'bus route')} in the window` : 'not available at retrieval (the Overpass mirror did not answer), so slide 09 shows the State layers only', retrieved: retrieved(b.movement.fetchedAt), attribution: ATTR.osm });
   F.push({ dataset: 'Valhalla walking isochrones on the OpenStreetMap network', used: '09 · 10 · 17', currency: b.movement.isochrones.length ? `${b.movement.isochrones.map((i) => i.minutes).sort((x, y) => x - y).join(', ')} minutes from the site; the network as the instance holds it` : 'not answered for this run', retrieved: retrieved(b.movement.fetchedAt), attribution: ATTR.valhalla });
+  const ch = b.character;
+  F.push({ dataset: 'Wikipedia: the suburb\'s article and the articles placed within 1.5 km', used: '02', currency: ch.wikipedia.ok ? `"${ch.wikipedia.summary!.title}"; ${n(ch.places.items.length, 'place')} with articles within ${ch.places.radiusM / 1000} km` : `no article read${ch.wikipedia.note ? ` (${ch.wikipedia.note})` : ''}`, retrieved: retrieved(ch.fetchedAt), attribution: ATTR.wikipedia });
+  F.push({ dataset: 'Wikimedia Commons: geotagged photographs within 800 m, with author and licence', used: '02', currency: ch.photos.ok ? `${n(ch.photos.candidates, 'usable photograph')}, ${n(ch.photos.items.length, 'photograph')} shown` : `did not answer${ch.photos.note ? ` (${ch.photos.note})` : ''}`, retrieved: retrieved(ch.fetchedAt), attribution: ATTR.commons });
   const kv = b.photos.kartaview, mly = b.photos.mapillary;
   const kvPhotos = b.photos.photos.filter((p) => p.source === 'kartaview'), mlyPhotos = b.photos.photos.filter((p) => p.source === 'mapillary');
   const frameDates = (ps: typeof kvPhotos) => { const ds = ps.map((p) => p.date).filter((d): d is string => Boolean(d)).sort(); return ds.length ? (ds[0].slice(0, 7) === ds[ds.length - 1].slice(0, 7) ? `taken ${fmtIso(ds[0]).slice(-8)}` : `taken ${fmtIso(ds[0])} to ${fmtIso(ds[ds.length - 1])}`) : 'undated'; };
@@ -4445,7 +4871,7 @@ export function countrySlide(b: SlidesBundle): Slide {
 
 export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; slides: Slide[] } {
   const facts = planningFacts(b);
-  const slides = [planningOverviewSlide(b, facts), planningControlsSlide(b, facts), terrainSlide(b), developmentSlide(b, facts), builtFormSlide(b, facts), movementSlide(b), greenSlide(b), siteSlide(b), photosSlide(b), sunViewSlide(b), constraintsSlide(b), countrySlide(b), peopleSlide(b), ocSlide(b, facts), sourcesSlide(b, facts)];
+  const slides = [locationSlide(b), characterSlide(b), planningOverviewSlide(b, facts), planningControlsSlide(b, facts), strategicSlide(b, facts), terrainSlide(b), developmentSlide(b, facts), builtFormSlide(b, facts), movementSlide(b), greenSlide(b), siteSlide(b), photosSlide(b), sunViewSlide(b), constraintsSlide(b), countrySlide(b), peopleSlide(b), ocSlide(b, facts), sourcesSlide(b, facts)];
   const t = tpl();
   const footerLeft = ['SITE ANALYST — OVERALL ANALYSIS', b.siteAddress, meta.client ? `for ${meta.client}` : '', meta.jobNo ? `job ${meta.jobNo}` : ''].filter(Boolean).join(' · ');
   const pages = slides.map((s, i) => `
@@ -4528,6 +4954,22 @@ export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; 
   .frame .cap { font-size: 2.05mm; line-height: 1.3; color: #333; margin-top: 1mm; }
   .frame.ph .img { display: flex; align-items: center; justify-content: center; text-align: center; padding: 0 8mm; border: 0.3mm dashed #c4c4c4; background: #fafaf8; color: #8a8a8a; font-size: 2.4mm; font-style: italic; }
   .frame.ph .cap { color: #7a7a7a; font-style: italic; }
+  .photos.four { grid-template-columns: repeat(4, 1fr); gap: 3mm 4mm; }
+  .photos.four .frame .img { height: 50mm; }
+  .frame .key.plc { background: #6b21a8; }
+  .quote { border-left: 0.5mm solid #cfcfcf; padding: 0.4mm 0 0.4mm 2.6mm; margin: 0 0 2.6mm; }
+  .quote p { font-size: 2.75mm; line-height: 1.36; margin-bottom: 1.2mm; }
+  .qsrc { font-size: 2.05mm; color: #666; word-break: break-all; }
+  .dim { color: #666; font-weight: 400; }
+  table.da.strat { font-size: 2.25mm; line-height: 1.28; }
+  table.da.strat th { width: auto; }
+  table.da.strat tbody th { font-weight: 700; font-size: 2.05mm; letter-spacing: 0.04em; text-transform: uppercase; color: #555; width: 22mm; padding-top: 1.3mm; }
+  table.da.strat td { padding: 1.1mm 2mm 1.1mm 0; }
+  table.da.strat td.status { width: 46mm; color: #444; }
+  table.da.strat td.lnk { width: 64mm; }
+  table.da.strat td.lnk a { color: #555; text-decoration: none; word-break: break-all; font-size: 2.0mm; }
+  table.da.strat tr.manual td { color: #7a7a7a; font-style: italic; }
+  table.da.strat tr.manual td b { font-weight: 600; }
 </style></head>
 <body>${pages}</body></html>`;
   return { html, slides };
@@ -4551,6 +4993,9 @@ export function slidesFacts(b: SlidesBundle) {
     people: peopleFacts(b),
     movement: (() => { const f = movementFacts(b); return { ...f, sentences: movementSentences(b, f) }; })(),
     theSite: (() => { const f = siteFacts(b); return { ...f, sentences: siteSentences(b, f) }; })(),
+    location: (() => { const f = locationFacts(b); return { ...f, sentences: locationSentences(b, f) }; })(),
+    character: (() => { const f = characterFacts(b); return { ...f, sentences: characterSentences(b, f) }; })(),
+    strategic: (() => { const f = strategicFacts(b, facts); return { ...f, sentences: strategicSentences(b, f) }; })(),
     existingCondition: (() => { const f = photosFacts(b); return { ...f, sentences: photosSentences(b, f) }; })(),
     sunViews: (() => { const f = sunViewFacts(b); const { shadowHulls: _h, ...rest } = f; return { ...rest, sentences: sunViewSentences(b, f) }; })(),
     constraints: (() => { const f = constraintsFacts(b); return { ...f, sentences: constraintsSentences(b, f) }; })(),

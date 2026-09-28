@@ -477,7 +477,18 @@ development window), `--job 2539`, `--client "Name"`,
 
 `--type slides` draws the OVERALL ANALYSIS deck: A3 landscape pages for the
 content part of a feasibility study or design report, specified in
-`docs/SLIDES_SPEC.md`. Fifteen slides exist so far. The planning pair: a
+`docs/SLIDES_SPEC.md`. All eighteen slides of the spec exist. First *location*: the
+site in its region at 1:75,000 — the local government areas as the land
+(the harbour and the sea left blue), the water, the railways and arterial
+roads, the stations, the suburbs named, 2 and 5 km rings round the site, and
+the centres of The Sydney Plan (2026) by type — with the distance to the
+Sydney CBD, the nearest centres and stations, and the region, the former
+district and the council. Then *character*: Wikipedia's summary of the suburb
+as the seed text, the places within 1.5 km with articles of their own,
+numbered on an aerial of the planning window, and a strip of open-licence
+photographs within 800 m from Wikimedia Commons, each credited as its licence
+asks, all of which the office's own reading and photographs replace. Then
+the planning pair: a
 *planning overview* of four maps at 1:8000 around the site (land zoning in the
 statutory colours, height of building, heritage with the State Heritage
 Register, and the housing-policy maps — TOD areas, town centres, State
@@ -485,7 +496,14 @@ significant development sites, precincts) and *planning controls at the site*,
 a table of every mapped control with its source and currency: zone, height
 (with its units, since some LEPs limit in RL), FSR, lot size, heritage,
 local provisions, SEPP maps, the DCP with its link, contributions, tree
-canopy and the council's housing target. Then *topography*: the landform
+canopy and the council's housing target. Then *strategic context*: the
+documents over the site, top down and one line each with their links — the
+State Land Use Plan, the regional plan at the point (The Sydney Plan since
+13 August 2026, which replaced the 2018 Region Plan and the five district
+plans; the 2041 regional plans elsewhere), the council's local strategic
+planning statement from the Planning Portal's index, the plan, the DCP, the
+contributions and the housing target — with the extracts left to the author.
+Then *topography*: the landform
 at 1:8000 as a hillshade from the State's 5 m elevation model with the 2 m
 contours, roads and rail over it and two section lines through the site,
 A–A′ down the steepest fall and B–B′ across it, each drawn as a section

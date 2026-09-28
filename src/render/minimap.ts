@@ -84,7 +84,7 @@ export function baseLayers(b: BaseData, proj: Proj, p: Panel, opts: { lots?: boo
 const METRO_ONLY = /\b(TALLAWONG|ROUSE HILL|KELLYVILLE|BELLA VISTA|NORWEST|HILLS SHOWGROUND|CASTLE HILL|CHERRYBROOK|MACQUARIE UNIVERSITY|MACQUARIE PARK|NORTH RYDE|CROWS NEST|VICTORIA CROSS|BARANGAROO|GADIGAL|WATERLOO)\b/i;
 export type StationMode = 'train' | 'metro' | 'light rail';
 export const stationMode = (name: string): StationMode =>
-  /LIGHT RAIL|TRAM/i.test(name) ? 'light rail' : /METRO/i.test(name) || METRO_ONLY.test(name) ? 'metro' : 'train';
+  /LIGHT RAIL|TRAM|\bSLR\b|\bSTOP$/i.test(name) ? 'light rail' : /METRO/i.test(name) || METRO_ONLY.test(name) ? 'metro' : 'train';
 
 /** Roads, rail, stations and the site — drawn over the theme so it stays legible. */
 export function overLayers(b: BaseData, proj: Proj, p: Panel, site: SiteLayer = 'both'): string {
@@ -155,7 +155,7 @@ export type FurnitureCorner = 'left' | 'right' | 'topLeft' | 'topRight';
 function furnitureGeom(p: Panel, corner: FurnitureCorner) {
   const mmPerM = 1000 / p.scale;
   // the longest round length that keeps the bar under 40 mm: 10 m at 1:400, 200 m at 1:8000, 500 m at 1:16000
-  const barM = [1000, 500, 250, 200, 100, 50, 25, 20, 10, 5, 2].find((m) => m * mmPerM <= 40) ?? 1;
+  const barM = [5000, 2000, 1000, 500, 250, 200, 100, 50, 25, 20, 10, 5, 2].find((m) => m * mmPerM <= 40) ?? 1;
   const barMm = barM * mmPerM;
   const x0 = corner === 'left' || corner === 'topLeft' ? 3 : p.wMm - barMm - 9.6;
   const y0 = corner === 'topLeft' || corner === 'topRight' ? 11.8 : p.hMm - 3.2;
@@ -176,7 +176,7 @@ export function panelFurniture(p: Panel, corner: FurnitureCorner = 'left'): stri
     <rect x="${x0}" y="${y0 - 1.2}" width="${(barMm / 2).toFixed(2)}" height="1.2" fill="${t.ink}"/>
     <rect x="${(x0 + barMm / 2).toFixed(2)}" y="${y0 - 1.2}" width="${(barMm / 2).toFixed(2)}" height="1.2" fill="none" stroke="${t.ink}" stroke-width="0.2"/>
     <text x="${x0}" y="${y0 - 2}" >0</text>
-    <text x="${(x0 + barMm).toFixed(2)}" y="${y0 - 2}" text-anchor="end">${barM} m</text>
+    <text x="${(x0 + barMm).toFixed(2)}" y="${y0 - 2}" text-anchor="end">${barM >= 1000 ? `${barM / 1000} km` : `${barM} m`}</text>
     <g transform="translate(${(x0 + barMm + 5).toFixed(1)},${y0 - 4.2})">
       <path d="M0,-3.2 L1.3,2.2 L0,1.2 L-1.3,2.2 Z" fill="${t.ink}"/>
       <text y="-3.8" text-anchor="middle" font-size="1.8" font-weight="700">N</text>

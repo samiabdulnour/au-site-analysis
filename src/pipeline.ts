@@ -227,6 +227,9 @@ import { fetchCouncilTrees, mergeTrees, TREE_SOURCES } from './fetch/trees.js';
 import { assessViews, eyeAboveGround, type ViewTarget } from './fetch/views.js';
 import { fetchCountry, EMPTY_COUNTRY, type CountryData } from './fetch/country.js';
 import { fetchPhotos, emptyPhotos, type PhotosData } from './fetch/photos.js';
+import { fetchLocation, emptyLocation, type LocationData } from './fetch/location.js';
+import { fetchCharacter, emptyCharacter, type CharacterData } from './fetch/character.js';
+import { fetchStrategies, emptyStrategies, type StrategiesData } from './fetch/strategies.js';
 import { buildParkingBands, type ParkingBand } from './lib/parking.js';
 import turfUnion from '@turf/union';
 import { featureCollection } from '@turf/helpers';
@@ -555,6 +558,12 @@ export interface SlidesBundle {
   country: CountryData;
   /** The street-level frames that look at the site, with their cameras, and the then-and-now aerial pair over one block panel. */
   photos: PhotosData;
+  /** The location window at 1:75,000: the local government areas as land, the water, the railways, the arterial roads, the stations and the suburbs. */
+  location: LocationData;
+  /** Wikipedia's account of the suburb and its places, Commons' photographs near the site and the aerial over the planning window. */
+  character: CharacterData;
+  /** The regional plan at the point and the council's local strategic planning statement from the Portal's index. */
+  strategies: StrategiesData;
   warnings: string[];
 }
 
@@ -632,6 +641,8 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
   const blockPanel: Panel = { center: geo.center, scale: 4000, wMm: opts.panelWmm, hMm: opts.wideHmm ?? 100 };
   // The then-and-now pair: two half-width panels side by side at 1:2500, the 1943 survey and today's imagery over the same ground.
   const pairPanel: Panel = { center: geo.center, scale: 2500, wMm: (opts.panelWmm - 4) / 2, hMm: opts.panelHmm };
+  // The location window: the whole figure field's width at 1:75,000, about 22 × 13 km, the 5 km ring well inside it.
+  const locationPanel: Panel = { center: geo.center, scale: 75000, wMm: opts.wideWmm ?? 296, hMm: 170 };
   // Every fetch window is the larger of the two, so nothing is missing from either map.
   const fetchExtent: Extent = {
     xmin: Math.min(extent.xmin, daExtent.xmin), ymin: Math.min(extent.ymin, daExtent.ymin),
@@ -656,7 +667,7 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
   const emptyGreen: GreenData = { canopy: { blocks: [], covered: false, year: 2022, source: 'Greater Sydney Tree Canopy Cover 2022 (NSW ePlanning)' }, openSpace: [], openSpaceWide: [], greenGrid: [], parkPoints: [], facilities: [], npws: [], trees: { points: [] }, fetchedAt: new Date().toISOString() };
   const emptyConstraints: ConstraintsData = { layers: [], soil: null, fetchedAt: new Date().toISOString() };
   const emptySite: SiteData = { sitePanel, blockPanel, aerial: null, imagery: null, lots: [], easements: [], neighbours: [], publicLand: [], fetchedAt: new Date().toISOString() };
-  const [zoning, hob, heritage, shr, policy, water, lots, roads, railLines, stations, context, property, controls, proposals, feed, people, dem, contourSet, buildings, movement, green, constraints, site, wideRoads, wideRail, wideStations, wideWater, wideSuburbs, country, photos] = await Promise.all([
+  const [zoning, hob, heritage, shr, policy, water, lots, roads, railLines, stations, context, property, controls, proposals, feed, people, dem, contourSet, buildings, movement, green, constraints, site, wideRoads, wideRail, wideStations, wideWater, wideSuburbs, country, photos, location] = await Promise.all([
     soft(fetchZoningDetailed(extent), emptyFC, 'zoning'),
     soft(fetchHobDetailed(extent), emptyFC, 'height of building'),
     soft(fetchHeritageDetailed(extent), emptyFC, 'heritage'),
@@ -687,8 +698,9 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
     soft(queryByExtent('https://portal.spatial.nsw.gov.au/server/rest/services/NSW_Administrative_Boundaries_Theme/FeatureServer/2', wideExtent, 'suburbname'), emptyFC, 'suburbs'),
     soft(fetchCountry(wideExtent, Math.round(((widePanel.wMm / 1000) * widePanel.scale) / 2), Math.round(((widePanel.hMm / 1000) * widePanel.scale) / 2), geo.center, dataDir, log), EMPTY_COUNTRY, 'Country'),
     soft(fetchPhotos({ centre: mercatorToLonLat(geo.center), siteRings: siteLots.features.flatMap((f) => geomRingsOf(f.geometry)), pairPanel, outDir: dataDir, log }), emptyPhotos(pairPanel), 'street-level frames and the 1943 aerial'),
+    soft(fetchLocation(locationPanel, log), emptyLocation(locationPanel), 'location window'),
   ]);
-  const [housingTarget, cos, , views] = await Promise.all([
+  const [housingTarget, cos, , views, character, strategies] = await Promise.all([
     context.lga?.name ? fetchHousingTarget(context.lga.name) : Promise.resolve(null),
     // The one council with its DCP as open data so far; the hook is per LGA.
     context.lga?.name === 'SYDNEY' ? fetchCityOfSydneyDcp(extent, mercatorToLonLat(geo.center), log) : Promise.resolve(null),
@@ -696,6 +708,9 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
     constraints.layers.length ? soft(checkLepCoverage(constraints, [...principalLeps(zoning, property), ...(controls.epiName ? [controls.epiName] : [])], log), undefined, 'constraint coverage check') : Promise.resolve(undefined),
     // Sight lines to the skyline, the water and the park next door, from the eye just under the height limit, over the 5 m elevation surface.
     soft(assessViews({ site: mercatorToLonLat(geo.center), siteRing: largestRing(siteLots), hobM: controls.maxHeightM, zoning, parkPoints: green.parkPoints, log }), { views: [] as ViewTarget[], eyeAboveM: eyeAboveGround(controls.maxHeightM) }, 'views'),
+    // The suburb's name comes from the context, so Wikipedia and Commons wait for it; the aerial over the planning window comes with them.
+    soft(fetchCharacter({ centre: mercatorToLonLat(geo.center), suburb: context.suburb?.name ?? '', aerialExtent: extent, outDir: dataDir, log }), emptyCharacter(), 'character (Wikipedia, Commons)'),
+    soft(fetchStrategies(geo.center, context.lga?.name, context.lga?.council, log), emptyStrategies(), 'strategic documents'),
   ]);
   const applications = feed ? clipToExtent(feed.records, daExtent) : [];
   const daMeta = feed ? { council: feed.council, from: feed.from, to: feed.to, total: feed.total, complete: feed.complete, fetchedAt: feed.fetchedAt } : null;
@@ -722,6 +737,9 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
     wide: { panel: widePanel, base: { water: wideWater, lots: emptyFC, roads: wideRoads, rail: wideRail, stations: wideStations, siteLots }, suburbs: wideSuburbs },
     country,
     photos,
+    location,
+    character,
+    strategies,
     warnings,
   };
   await writeFile(join(dataDir, 'slides_bundle.json'), JSON.stringify(bundle));

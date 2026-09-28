@@ -75,19 +75,25 @@ what is drawn, where it comes from (§4 has the endpoints), what stays manual.
 
 ### Part A — Context
 
-**01 Location.** ~15 km window on the DPE light basemap (or self-drawn from
-the Water, Transport and Administrative Boundaries themes: harbour, rail,
-motorways, suburb names, LGA outline, planning district), the site, 2 and
-5 km rings, stations and the metropolitan/strategic centres nearest the site.
-Text: suburb, LGA, planning district, distances to the CBD and the nearest
-centres (computed). *Manual:* the centres list is a static table from the
-Region Plan (no open layer exists; see §5).
+**01 Location.** ~22 × 13 km window at 1:75,000, self-drawn from the
+Administrative Boundaries, Water and Transport themes (the local government
+areas as the land, the harbour and sea left blue, the bays and rivers, rail,
+motorways and arterials, suburb names, the site's LGA washed), the site, 2
+and 5 km rings, stations and the centres of The Sydney Plan nearest the site
+(CBDs, major and activity centres). Text: suburb, LGA, the former planning
+district and the region, distances to the CBD and the nearest centres and
+stations (computed). *Manual:* the centres are a static table transcribed
+from The Sydney Plan's Appendix D (no open layer exists; see §5). The DPE
+light basemap was tried first and dropped: a cached tile service, its labels
+come out too small at A3.
 
 **02 Character.** Wikipedia summary paragraph for the suburb as the seed text;
-a strip of open-licence photographs within ~800 m from Wikimedia Commons,
-KartaView and (with a free token) Mapillary, each with its licence line; the
-aerial with its capture date. *Manual:* the office replaces the photos with
-its own.
+the places within 1.5 km with articles of their own, numbered on the aerial
+of the planning window; a strip of open-licence photographs within ~800 m
+from Wikimedia Commons, each with its author and licence line (the
+street-level frames of KartaView and Mapillary are slide 12's). *Manual:*
+the office replaces the seed text with its reading and the photos with its
+own.
 
 **03 Planning overview.** Four maps at ~1:8000 from the ePlanning layers:
 Zoning; Height of Building (in m *and* in m RL — North Sydney's map is RL
@@ -106,10 +112,14 @@ regional plan, the district, and the council's 5-year housing target. Every
 row carries its legislation link. *Manual:* the land-use table (permitted and
 prohibited uses) — legislation.nsw.gov.au cannot be read by a machine (§5).
 
-**05 Strategic context.** Regional plan, district plan, LSPS, any public
-domain or centre strategy: names and links, one line each. *Manual:* the
-extracts. Council strategies are PDFs with no index; a curated LGA → LSPS
-table is the practical route.
+**05 Strategic context.** The State Land Use Plan, the regional plan at the
+point (The Sydney Plan since 13 August 2026, which replaced the Greater
+Sydney Region Plan of 2018 and the five district plans; the 2041 regional
+plans elsewhere), the council's LSPS from the Planning Portal's index of
+every statement, the plan, the DCP, the contributions and the housing
+target: names, one line each, status and links. *Manual:* the extracts, the
+local housing strategy (not indexed) and any centre, precinct or public
+domain strategy.
 
 **06 Topography and grid.** Hillshade and contours from the 5 m DEM with the
 road hierarchy over it; a section line chosen through the site along the
@@ -367,8 +377,8 @@ lockdown snapshot and the slide says so.
 
 | Source | What | Notes |
 |---|---|---|
-| Wikimedia Commons `w/api.php?action=query&list=geosearch&gscoord=<lat>|<lon>&gsradius=800&gsnamespace=6` then `prop=imageinfo&iiprop=url|extmetadata` | open-licence photos near the site with author and licence | send a descriptive `User-Agent`; without one the API answers 429. Attribution is a condition of the licence: print it under the photo |
-| Wikipedia `api/rest_v1/page/summary/<Title>` and `list=geosearch` | the suburb summary paragraph and its lead image; articles within 1.5 km as landmark candidates (MLC Building, North Sydney Post Office, Brett Whiteley House…) | same User-Agent rule |
+| Wikimedia Commons `w/api.php?action=query&list=geosearch&gscoord=<lat>|<lon>&gsradius=800&gsnamespace=6` then `prop=imageinfo|coordinates&iiprop=url|extmetadata|size|mime&iiurlwidth=1024` | open-licence photos near the site with author and licence | send a descriptive `User-Agent`; the shared address is rate-limited (429) even so, so the calls are paced and retried. Attribution is a condition of the licence: printed under each photo. In use on slide 02 |
+| Wikipedia `api/rest_v1/page/summary/<Title>` and `w/api.php?action=query&list=geosearch` then `prop=description` for the titles | the suburb summary paragraph and its lead image; articles within 1.5 km as the named places (a place vocabulary keeps companies, electorates and people out) | same User-Agent rule and the same 429s. In use on slide 02 |
 | KartaView `POST https://api.openstreetcam.org/1.0/list/nearby-photos/` (`lat`, `lng`, `radius`, `ipp`); the v2 `photo/?lat=&lng=&radius=` search refuses radii over 150 m | street-level frames with camera position, heading, date, contributor and thumbnail paths | no key; coverage is patchy and old in places (2019 at the samples, one contributor); about half the frames carry no heading, so the direction of travel between a frame's neighbours in its sequence stands in. In use on slide 12 |
 | Mapillary `https://graph.mapillary.com/images?bbox=…&fields=id,thumb_1024_url,captured_at,compass_angle,geometry` | dense recent street-level imagery | free client token from the Mapillary developer page; reachable, refuses without a token (HTTP 500, "Invalid OAuth 2.0 Access Token"). Read on slide 12 when `MAPILLARY_TOKEN` is set |
 | Google Street View Static API | best coverage | paid; not proposed |
@@ -406,8 +416,8 @@ Open-Meteo archive (ERA5): `https://archive-api.open-meteo.com/v1/archive?latitu
 | Land-use table (permitted / prohibited uses), zone objectives, clause text | `legislation.nsw.gov.au` sits behind a Cloudflare bot check that also stops headless Chromium; AustLII likewise | print the legislation link the API gives for every control; the person pastes the table |
 | State Significant Development applications (the Major Projects register) | a Pega application with no open feed; the Drupal listing offers HTML only | SSD *sites* from the SEPP layer; DAs from the Online DA API; SSD applications by hand |
 | Site visit photographs, oblique aerials, renders, physical-model photos, 3D views | not data | placeholders sized for them; street-level and 1943 imagery as stand-ins |
-| Council strategies (LSPS, public domain strategies, character statements), DCP text | PDFs, unindexed; only the DCP has a mapped link | a curated LGA → document table in the repo; links on slide 05 |
-| Metropolitan and strategic centres as a layer | the Region Plan publishes them as a map, not data | a static list of the ~40 centres with coordinates in `src/` |
+| Council strategies (LSPS, housing strategies, public domain strategies, character statements), DCP text | the Planning Portal indexes every council's LSPS as an HTML page of links (128 in September 2026), which slide 05 parses; the other strategies are PDFs on council sites with no index; only the DCP has a mapped link | the LSPS by parsing; the rest by hand, with rows left for them on slide 05 |
+| Metropolitan, major and activity centres as a layer | The Sydney Plan (2026) publishes its network of centres as a map and types them LGA by LGA in Appendix D, not as data | a static list of the 30 centres (three CBDs, thirteen major, fourteen activity) and four emerging activity centres, with a point each, in `src/data/centres.ts` |
 | Sydney Airport ANEF, most councils' flood maps | not in the ePlanning layers (5 and 12 EPIs respectively) | state "not mapped in the LEP" and point to the council flood study; ANEF by hand |
 | Geology | Geoscience Australia refused this proxy (403), GSNSW's GeoServer exposes no geology in its default workspace, SEED's API answered empty | soil landscape stands in; geology by hand |
 | AHIMS Aboriginal sites | registered users only, by law | the note on slide 15 |
@@ -443,7 +453,8 @@ Open-Meteo archive (ERA5): `https://archive-api.open-meteo.com/v1/archive?latitu
 
 ## 7. Status
 
-Implemented: slides 03 (planning overview), 04 (planning controls), 06
+Implemented: all eighteen slides — 01 (location), 02 (character), 03
+(planning overview), 04 (planning controls), 05 (strategic context), 06
 (topography), 07 (development activity), 08 (built form), 09 (movement), 10
 (green and public domain), 11 (the site), 12 (existing site condition), 13 (grid, sun and views), 14
 (environmental constraints), 15 (Country), 16 (people and market), 17
@@ -452,6 +463,7 @@ Implemented: slides 03 (planning overview), 04 (planning controls), 06
 `src/render/terrainMap.ts`, `src/fetch/planning.ts`, `src/fetch/terrain.ts`,
 `src/fetch/buildings.ts` with `src/py/overture_buildings.py`,
 `src/fetch/movement.ts`, `src/fetch/greenSpace.ts`, `src/fetch/constraints.ts`, `src/fetch/site.ts`, `src/fetch/photos.ts`,
+`src/fetch/location.ts` with `src/data/centres.ts`, `src/fetch/character.ts`, `src/fetch/strategies.ts`,
 `src/lib/solar.ts` and `src/lib/shadows.ts` with the plan sheet's `src/fetch/views.ts`,
 `src/fetch/country.ts` with `src/lib/ridges.ts`,
 `src/fetch/da.ts`, `src/fetch/abs.ts`, `src/fetch/tzp24.ts`,
@@ -460,6 +472,70 @@ Implemented: slides 03 (planning overview), 04 (planning controls), 06
 slides` on the CLI and the `slides` drawing on the web. The maps use the
 statutory LEP colours read from the ePlanning renderers
 (`src/render/lepPalette.ts`).
+
+Slide 01 draws its own location map rather than a basemap picture
+(`src/fetch/location.ts`): over a 296 × 170 mm panel at 1:75,000 (22.2 ×
+12.75 km) it reads the local government areas and lays them down as the land
+— the harbour and Botany Bay's waters are the layer's "unincorporated" areas
+and the open sea is the gap between the polygons, so both come out blue with
+no coastline fetch — then the water theme's bays, harbours and rivers, the
+railways, the roads of function hierarchy 1 to 3 (4,882 segments at Waterloo)
+and the suburbs for their names, everything asked for generalised
+(`maxAllowableOffset`) since a lot's corner means nothing at that scale;
+the whole window fetches in about four seconds and is cached a month. The
+site's LGA is washed, the 2 and 5 km rings drawn, the train and metro
+stations dotted and the nearest named, the suburbs lettered in grey where a
+polygon shows enough area, and the centres marked by type — a square for a
+CBD, a filled dot for a major centre, a hollow one for an activity centre —
+and named before the suburbs take the room. The centres are the static table
+in `src/data/centres.ts`: The Sydney Plan's thirty (three CBDs, thirteen
+major centres and fourteen activity centres, read with their types from the
+jobs blocks of its Appendix D) and the four emerging activity centres its
+corridor descriptions name, each with a point at the station or the core.
+Distances are straight lines from the geocoded point, the CBD at Sydney Town
+Hall; the text gives the region, the former district, the council, the
+nearest centres and stations and the water in the window. The scale bar
+gained kilometre lengths for this scale.
+
+Slide 02 reads Wikipedia and Wikimedia Commons (`src/fetch/character.ts`)
+through a paced, retrying fetch with a descriptive User-Agent, since the
+shared address draws 429s regardless: the suburb's article by its REST
+summary (the "<Suburb>, New South Wales" title first, then the bare name
+where the article carries no qualifier, a namesake elsewhere rejected), the
+articles placed within 1.5 km by geosearch with their one-line descriptions
+in one call, kept where the description names a kind of place and not a
+company, an electorate or a person; and the geotagged photographs within
+800 m, their author, licence, date and size read in one imageinfo call,
+kept where the licence is open and the title and description do not say car,
+event or portrait, scored for naming the suburb or one of its places and for
+nearness, spread across spots, series and authors, eight at most, the
+1024 px thumbnails saved as `commons_<n>.jpg`. The article's lead image
+joins them when it is on Commons. The aerial over the planning window is
+exported with its own prefix. The slide sets the summary as a quoted seed
+paragraph with its attribution, numbers the places on the aerial, tables
+them with distance and direction, and captions each photograph with its
+title, author, licence and distance; empty cells are placeholders for the
+office's photographs. At the samples the four suburbs had articles, 11 to 40
+places within 1.5 km and 33 to 50 usable photographs each.
+
+Slide 05 resolves the documents (`src/fetch/strategies.ts`): the planning
+region from the Department's Administrative Boundary service (layer 2,
+`REGION_NAME`: Greater Sydney at the Sydney samples, Central West and Orana
+at Orange) matched to a static table of the regional plans and their pages
+under plans-by-region; the council's LSPS from the Planning Portal's index
+page of every statement (128 links, parsed once a month and matched on the
+council's words after "City of", "Council" and "Shire" go, so "North Sydney"
+never answers for "Sydney"; the City of Sydney's link carries no ".pdf"
+ending, so the bucket path counts too); the plan, its legislation link, the
+DCPs, the contributions and the housing target from what the deck already
+holds. The Sydney Plan commenced on 13 August 2026 and replaced the Greater
+Sydney Region Plan and the five district plans, so the former district is
+shown as superseded and the LSPS as in force until the council reviews it
+against the plan from mid-2027; the State Land Use Plan and its Centres
+Framework head the table. Rows the data cannot fill — the local housing
+strategy, a centre or precinct strategy, the public domain plan — are left
+as placeholders. The documents themselves are not read: each line says what
+the document is, not what it says.
 
 Slide 06 takes the 5 m elevation model over the tall panel as one float
 GeoTIFF from the SIX image service (`exportImage`, `format=tiff`,
