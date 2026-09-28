@@ -1902,7 +1902,7 @@ const FACILITY_SHORT: Record<FacilityKind, [string, string]> = { school: ['schoo
 const CANOPY_CAT_WORD: Record<string, string> = { 'Hospital/Medical': 'hospital', Road: 'road-reserve', Other: 'other' };
 const canopyCatWord = (c: string) => CANOPY_CAT_WORD[c] ?? c.toLowerCase();
 const NAME_ACRONYMS = new Set(['PCYC', 'RSL', 'TAFE', 'UTS', 'UNSW', 'ACU', 'YMCA', 'YWCA', 'CBD', 'ANZAC', 'NSW']);
-const tidyName = (s: string) => s.trim().replace(/[,.;:\s]+$/, '').replace(/([/'’-]\s?)([a-z])/g, (_m, p, c) => p + c.toUpperCase()).replace(/\bMc([a-z])/g, (_m, c) => `Mc${c.toUpperCase()}`)
+const tidyName = (s: string) => s.trim().replace(/[,.;:\s]+$/, '').replace(/([/-]\s?|\b[A-Za-z]['’])([a-z])/g, (_m, p, c) => p + c.toUpperCase()).replace(/['’]S\b/g, "'s").replace(/\bMc([a-z])/g, (_m, c) => `Mc${c.toUpperCase()}`)
   .replace(/\b(And|Of|The)\b(?!$)/g, (m, _w, off) => (off === 0 ? m : m.toLowerCase())).replace(/\b[A-Za-z]{2,5}\b/g, (w) => (NAME_ACRONYMS.has(w.toUpperCase()) ? w.toUpperCase() : w)).replace(/\s+/g, ' ');
 /** Closer than this to the site's boundary, an open space adjoins it. */
 const ADJOINS_M = 12;
@@ -2981,7 +2981,7 @@ export function sunViewFacts(b: SlidesBundle) {
   const near = { total: nearBuildings.length, withHeight: nearBuildings.filter((bd) => bd.estimatedHeightM).length };
   const shadows = SHADOW_HOURS.map((sh) => {
     const pos = sun.winter.hours.find((h) => h.hour === sh.hour)!;
-    const hulls: { hull: XY[]; heightM: number; floors?: number; bearing: number; hits: number }[] = [];
+    const hulls: { hull: XY[]; heightM: number; floors?: number; bearing: number; hits: number; lon: number; lat: number }[] = [];
     const shaded = new Set<number>();
     for (const bd of casters) {
       if (!inReach(bd, pos.altitudeDeg)) continue;
@@ -2991,10 +2991,10 @@ export function sunViewFacts(b: SlidesBundle) {
       if (!hull) continue;
       let hits = 0;
       samples.forEach((q, i) => { if (inHull(q, hull)) { hits++; shaded.add(i); } });
-      hulls.push({ hull, heightM: bd.estimatedHeightM!, floors: bd.floors, bearing: ((Math.atan2(c.x - b.site.sitePanel.center.x, c.y - b.site.sitePanel.center.y) * 180) / Math.PI + 360) % 360, hits });
+      hulls.push({ hull, heightM: bd.estimatedHeightM!, floors: bd.floors, bearing: ((Math.atan2(c.x - b.site.sitePanel.center.x, c.y - b.site.sitePanel.center.y) * 180) / Math.PI + 360) % 360, hits, lon: bd.centroid[0], lat: bd.centroid[1] });
     }
     const main = hulls.filter((h) => h.hits).sort((x, y) => y.hits - x.hits)[0];
-    return { ...sh, altitudeDeg: pos.altitudeDeg, azimuthDeg: pos.azimuthDeg, shadedPct: samples.length ? (shaded.size / samples.length) * 100 : 0, hulls, mainCaster: main ? { heightM: main.heightM, floors: main.floors, bearing: main.bearing, sharePct: (main.hits / Math.max(1, samples.length)) * 100 } : null };
+    return { ...sh, altitudeDeg: pos.altitudeDeg, azimuthDeg: pos.azimuthDeg, shadedPct: samples.length ? (shaded.size / samples.length) * 100 : 0, hulls, mainCaster: main ? { heightM: main.heightM, floors: main.floors, bearing: main.bearing, sharePct: (main.hits / Math.max(1, samples.length)) * 100, lon: main.lon, lat: main.lat } : null };
   });
 
   const views = b.views?.views ?? [];
@@ -3234,9 +3234,531 @@ export function sunViewSlide(b: SlidesBundle): Slide {
 
 // ---- the deck -----------------------------------------------------------------
 
+// ---- slide 17: opportunities and constraints ------------------------------
+
+const OC_SCALE = 4000;
+const OPP_COLOUR = '#2a78d6';
+const CON_COLOUR = '#b3261e';
+const NOISE_COLOUR = '#e07b39';
+const SHADOW_FILL = '#3c4c5a';
+const NORTHISH = /^(N|NNE|NNW|NE|NW)$/;
+const POLICY_KIND_WORD: Record<string, string> = { tod: 'TOD area', todAccelerated: 'accelerated TOD precinct', todDeferred: 'deferred TOD area', townCentre: 'town centre', ssdSite: 'State significant development site', precinct: 'planning precinct' };
+/** "The Marrickville TOD area", "the Waterloo town centre (Danks Street)": the kind's word only when the name lacks it. */
+const policyPhrase = (name: string, kind: string) => { const word = POLICY_KIND_WORD[kind] ?? kind; return /town centre|tod\b|precinct|development site/i.test(name) ? name : `${name} ${word}`; };
+const POLICY_NOTE: Record<string, string> = {
+  tod: "the Housing SEPP's transport-oriented development provisions apply where the zone is eligible",
+  todAccelerated: 'an accelerated TOD precinct, rezoned under the Housing SEPP',
+  todDeferred: 'a deferred TOD area',
+  townCentre: "the Housing SEPP's low and mid-rise housing provisions apply where the zone is eligible",
+  ssdSite: 'a State significant development site',
+  precinct: 'a planning precinct with controls of its own',
+};
+const GROUP_THEME: Record<ConstraintGroup, string> = { hazard: 'Hazard', soil: 'Soils', water: 'Water', coast: 'Coast', ecology: 'Ecology', aviation: 'Aviation', corridor: 'Corridor' };
+
+type OcMark = { lon: number; lat: number; edge?: false } | { bearing: number; edge: true; label?: string };
+export interface OcStatement { n: number; theme: string; text: string; mark: OcMark | null }
+
+/** The winter sun's positions through the working day (21 June, AEST, every quarter hour), for the arc on the diagram. */
+function winterSunArc(lat: number, lon: number): { clockMin: number; azimuthDeg: number; altitudeDeg: number }[] {
+  return sunPath(lat, lon, SOLAR_YEAR, 6, 21, AEST, 15).filter((s) => s.clockMin >= 9 * 60 && s.clockMin <= 15 * 60);
+}
+
+/**
+ * The statements the deck's data supports, as a starting list for the author:
+ * what the site has going for it and what it must answer to, each keyed to
+ * a point on one of the two diagrams where it has one.
+ */
+export function ocFacts(b: SlidesBundle, planning: PlanningFacts) {
+  const centre = b.site.sitePanel.center;
+  const centreLL = mercatorToLonLat(centre);
+  const k = mercatorScaleFactor(centreLL.lat);
+  const toM = (lon: number, lat: number) => lonLatToMercator({ lon, lat });
+  const siteRings = b.base.siteLots.features.flatMap((f) => geomRings(f.geometry));
+  const ringsMerc = siteRings.map((r) => r.map(([lon, lat]) => toM(lon, lat)));
+  const siteEdges: [XY, XY][] = [];
+  let sx0 = Infinity, sy0 = Infinity, sx1 = -Infinity, sy1 = -Infinity;
+  for (const r of ringsMerc) {
+    for (let i = 0; i < r.length - 1; i++) siteEdges.push([r[i], r[i + 1]]);
+    for (const q of r) { sx0 = Math.min(sx0, q.x); sy0 = Math.min(sy0, q.y); sx1 = Math.max(sx1, q.x); sy1 = Math.max(sy1, q.y); }
+  }
+  const siteSpanM = Number.isFinite(sx1) ? Math.max(sx1 - sx0, sy1 - sy0) / k : 20;
+  const distToSiteM = (lon: number, lat: number) => { const q = toM(lon, lat); let d = Infinity; for (const [a, c] of siteEdges) d = Math.min(d, segDistM(q, a, c)); return d / k; };
+  const nearestVertex = (rings: number[][][]): { lon: number; lat: number; d: number } | null => {
+    let best: { lon: number; lat: number; d: number } | null = null;
+    for (const r of rings) { const step = Math.max(1, Math.floor(r.length / 400)); for (let i = 0; i < r.length; i += step) { const d = distToSiteM(r[i][0], r[i][1]); if (!best || d < best.d) best = { lon: r[i][0], lat: r[i][1], d }; } }
+    return best;
+  };
+  const containsSite = (rings: number[][][]) => rings.some((r) => pointInRing(centreLL.lon, centreLL.lat, r));
+  const bearingTo = (lon: number, lat: number) => { const q = toM(lon, lat); return ((Math.atan2(q.x - centre.x, q.y - centre.y) * 180) / Math.PI + 360) % 360; };
+  const distC = (lon: number, lat: number) => { const q = toM(lon, lat); return Math.hypot(q.x - centre.x, q.y - centre.y) / k; };
+  const scale = b.site.sitePanel.scale >= 2500 ? 2 * OC_SCALE : OC_SCALE;
+  const panel: Panel = { center: centre, scale, wMm: PANEL_W, hMm: DA_PANEL_H };
+  const halfWm = ((panel.wMm / 1000) * scale) / 2, halfHm = ((panel.hMm / 1000) * scale) / 2;
+  const reachM = Math.hypot(halfWm, halfHm);
+  const inPanel = (lon: number, lat: number) => { const q = toM(lon, lat); return Math.abs(q.x - centre.x) / k <= halfWm - 6 * (scale / 1000) && Math.abs(q.y - centre.y) / k <= halfHm - 6 * (scale / 1000); };
+  const markAt = (lon: number, lat: number): OcMark => (inPanel(lon, lat) ? { lon, lat } : { bearing: bearingTo(lon, lat), edge: true });
+  const atBearing = (bearing: number, dM: number): OcMark => { const a = (bearing * Math.PI) / 180; const ll = mercatorToLonLat({ x: centre.x + Math.sin(a) * dM * k, y: centre.y + Math.cos(a) * dM * k }); return markAt(ll.lon, ll.lat); };
+  const dir = (deg: number) => compassWord(deg);
+  const mDist = (d: number) => (d >= 1000 ? `${(d / 1000).toFixed(1)} km` : `${fmtNum(Math.round(d))} m`);
+  const mv = movementFacts(b), gr = greenFacts(b), cs = constraintsFacts(b), sv = sunViewFacts(b), bf = builtFormFacts(b, planning), tf = terrainFacts(b), sf = siteFacts(b), dv = developmentFacts(b);
+  const opp: Omit<OcStatement, 'n'>[] = [], con: Omit<OcStatement, 'n'>[] = [];
+  const topOfSite: OcMark | null = Number.isFinite(sy1) ? (() => { const ll = mercatorToLonLat({ x: (sx0 + sx1) / 2, y: sy1 + 6 * k }); return { lon: ll.lon, lat: ll.lat } as OcMark; })() : null;
+
+  // Transport: the nearest stations, and the bus stops within 400 m.
+  const stationPts = [...b.base.stations, ...b.wide.base.stations].map((s) => ({ ...s, d: distC(s.lon, s.lat) })).sort((x, y) => x.d - y.d);
+  const stations = mv.stations.filter((s) => s.distanceM <= 1500).slice(0, 2);
+  if (stations.length) {
+    const pt = stationPts[0];
+    const mark = pt ? markAt(pt.lon, pt.lat) : null;
+    opp.push({ theme: 'Transport', text: `${listWords(stations.map((s) => `${s.name} ${s.kind === 'light rail' ? 'light rail stop' : `${s.kind} station`} ${mDist(s.distanceM)} to the ${dir(s.bearing)}${s.walkBand ? ` (${s.walkBand} min on foot)` : ''}`))}.`, mark: mark?.edge ? { ...mark, label: `${stations[0].name} ${fmtNum(stations[0].distanceM)} m` } : mark });
+  }
+  if (mv.bus.within400) opp.push({ theme: 'Transport', text: `${mv.bus.within400} bus stop${mv.bus.within400 === 1 ? '' : 's'} within 400 m${mv.bus.routes ? ` on ${mv.bus.routes} route${mv.bus.routes === 1 ? '' : 's'}` : ''}${mv.bus.source === 'osm' ? ' (OpenStreetMap)' : ''}.`, mark: null });
+
+  // Policy: the housing-policy maps at or near the site.
+  if (planning.policyAtSite.length) {
+    const p0 = planning.policyAtSite[0];
+    opp.push({ theme: 'Policy', text: `Within the ${listWords(planning.policyAtSite.map((p) => policyPhrase(p.name, p.kind)))}: ${POLICY_NOTE[p0.kind] ?? 'its provisions apply'}.`, mark: null });
+  } else {
+    let best: { area: PolicyArea; v: { lon: number; lat: number; d: number } } | null = null;
+    for (const area of b.policy) { const v = nearestVertex(area.rings); if (v && (!best || v.d < best.v.d)) best = { area, v }; }
+    if (best && best.v.d <= 800) opp.push({ theme: 'Policy', text: `The ${policyPhrase(best.area.name, best.area.kind)} begins ${mDist(best.v.d)} to the ${dir(bearingTo(best.v.lon, best.v.lat))}: ${POLICY_NOTE[best.area.kind] ?? 'its provisions apply'} there.`, mark: markAt(best.v.lon, best.v.lat) });
+  }
+
+  // Active edges.
+  if (mv.activeFrontage.atSite) opp.push({ theme: 'Active edge', text: `The LEP maps an active street frontage on the site${mv.activeFrontage.epi ? ` (${shortEpi(mv.activeFrontage.epi)})` : ''}: ground-floor uses that address the street.`, mark: null });
+  else if (mv.activeFrontage.count) {
+    const v = nearestVertex(b.movement.activeFrontages.features.flatMap((f) => geomRings(f.geometry)));
+    if (v && v.d <= 400) opp.push({ theme: 'Active edge', text: `Active street frontages are mapped ${mDist(v.d)} to the ${dir(bearingTo(v.lon, v.lat))}: the centre's retail edge is within reach.`, mark: markAt(v.lon, v.lat) });
+  }
+
+  // Orientation and sun.
+  const northFront = sv.grid.frontages.filter((fr) => NORTHISH.test(fr.facingWord));
+  const axisEW = Math.abs(sv.grid.siteAxisDeg - 90) <= 30;
+  if (northFront.length) opp.push({ theme: 'Orientation', text: `The frontage to ${listWords(northFront.map((fr) => fr.name))} faces ${listWords([...new Set(northFront.map((fr) => fr.facingWord))])}: living rooms and open space can take the winter sun from the street side.`, mark: topOfSite });
+  else if (axisEW) opp.push({ theme: 'Orientation', text: `The long axis runs east–west (${sv.grid.siteAxisDeg}°), so a long boundary faces north: a north-facing rear or courtyard is available.`, mark: topOfSite });
+  else con.push({ theme: 'Orientation', text: `The long axis runs ${sv.grid.siteAxisDeg <= 30 || sv.grid.siteAxisDeg >= 150 ? 'north–south' : `at ${sv.grid.siteAxisDeg}°`}${sv.grid.frontages.length ? ` with the frontage facing ${listWords([...new Set(sv.grid.frontages.map((fr) => fr.facingWord))])}` : ''}: winter sun comes over a side boundary, so the northern setback and the neighbour's height there decide the sun access.`, mark: topOfSite });
+  const w = sv.sun.winter;
+  const worst = [...sv.shadows].sort((x, y) => y.shadedPct - x.shadedPct)[0];
+  const shadeClause = sv.near.total && !sv.near.withHeight ? '; no neighbour within 60 m has a recorded height, so the shadow study is still open'
+    : sv.castersInReach && worst ? (worst.shadedPct < 1 ? '; the neighbours with recorded heights leave it in sun' : worst.shadedPct < 10 ? `; the neighbours with recorded heights shade at most ${fmtPct(worst.shadedPct)} of the site` : '') : '';
+  const siteDiagM = Number.isFinite(sx1) ? Math.hypot(sx1 - sx0, sy1 - sy0) / k : 10;
+  const arcRadiusM = Math.max(siteDiagM / 2 + (5 * scale) / 1000, (11 * scale) / 1000);
+  opp.push({ theme: 'Sun', text: `Winter sun (21 June) from the ${dir(w.hours[0].azimuthDeg)} at 9 am to the ${dir(w.hours[2].azimuthDeg)} at 3 pm, ${w.noonAltitudeDeg.toFixed(0)}° high at noon${shadeClause}.`, mark: atBearing(w.hours[1].azimuthDeg, arcRadiusM) });
+  if (sv.castersInReach && worst && worst.shadedPct >= 10) {
+    const mc = worst.mainCaster;
+    con.push({ theme: 'Overshadowing', text: `${mc ? `The ${mc.floors ? `${mc.floors}-storey` : `${fmtNum(mc.heightM)} m`} building to the ${dir(mc.bearing)} shades` : 'The neighbours shade'} ${fmtPct(worst.shadedPct)} of the site at ${worst.label} on 21 June${sv.shadows.filter((s) => s !== worst).map((s) => `, ${fmtPct(s.shadedPct)} at ${s.label}`).join('')}: the sunlit part of the site is the north-west or north-east corner, depending on the hour.`, mark: mc ? markAt(mc.lon, mc.lat) : null });
+  }
+
+  // Open space and amenity.
+  const np = gr.openSpace.nearest;
+  if (np) {
+    const v = nearestVertex(np.rings);
+    const within5 = gr.openSpace.within.find((x) => x.minutes === 5)?.parks ?? 0;
+    opp.push({ theme: 'Open space', text: `${np.name}${np.areaHa >= 0.1 ? ` (${fmtNum(np.areaHa, 1)} ha)` : ''} ${np.distanceM <= 12 ? 'adjoins the site' : `${mDist(np.distanceM)} to the ${dir(np.bearing)}`}${within5 ? `; ${within5 === 1 ? 'one park' : `${within5} parks`} within 5 minutes' walk` : ''}.`, mark: v ? markAt(v.lon, v.lat) : null });
+  }
+  const fac = [...gr.facilities].sort((x, y) => x.distanceM - y.distanceM).find((x) => x.distanceM <= 600);
+  if (fac) opp.push({ theme: 'Amenity', text: `${fac.name} (${FACILITY_WORD[fac.kind][0]}) ${mDist(fac.distanceM)} to the ${dir(fac.bearing)}${gr.facilities.length > 1 ? `; ${gr.facilities.length} public facilities in the window` : ''}.`, mark: markAt(fac.lon, fac.lat) });
+
+  // Views.
+  const clearViews = sv.views.filter((v) => v.clear === true && v.kind !== 'park');
+  if (clearViews.length) opp.push({ theme: 'Views', text: `The ground leaves the line clear to ${listWords(clearViews.slice(0, 4).map((v) => `${v.label} (${VIEW_WORD[v.kind]}, ${mDist(v.distanceM)} to the ${dir(v.bearingDeg)})`))}${clearViews.length > 4 ? ` and ${clearViews.length - 4} more (slide 13)` : ''} from ${sv.eyeAboveM !== null ? `${fmtNum(sv.eyeAboveM)} m up` : 'the height limit'}; buildings in the way are not tested.`, mark: { bearing: clearViews[0].bearingDeg, edge: true } });
+
+  // Change around the site.
+  const daNear = dv.sites.filter((s) => inPanel(s.lon, s.lat)).map((s) => ({ ...s, d: distC(s.lon, s.lat) })).sort((x, y) => x.d - y.d);
+  if (daNear.length) opp.push({ theme: 'Change', text: `${daNear.length === 1 ? 'One application' : `${daNear.length} applications`} of scale lodged within the diagram${dv.from ? ` since ${dv.from.slice(0, 4)}` : ''}${daNear[0].storeys ? `, the nearest ${daNear[0].storeys} storeys ${mDist(daNear[0].d)} to the ${dir(bearingTo(daNear[0].lon, daNear[0].lat))}` : ''}: the block is changing (slide 07).`, mark: markAt(daNear[0].lon, daNear[0].lat) });
+
+  // Scale: the height plane against the neighbours.
+  const env = bf.envelope, med = bf.near.medianStoreys;
+  if (env?.storeys && med) {
+    if (env.storeys >= med + 2) opp.push({ theme: 'Scale', text: `The height plane allows about ${env.storeys} storeys (${env.label}) where the buildings within 250 m are typically ${med}: room to add scale.`, mark: null });
+    else con.push({ theme: 'Scale', text: `The height plane allows about ${env.storeys} storeys (${env.label}) against a neighbourhood median of ${med}${bf.near.above8 ? ` and ${bf.near.above8} building${bf.near.above8 === 1 ? '' : 's'} over 8 storeys within 250 m` : ''}.`, mark: null });
+  }
+
+  // Controls.
+  const c = b.controls;
+  const bits = [
+    planning.zoneAtSite ? `zone ${planning.zoneAtSite.code} ${planning.zoneAtSite.name}` : c.zoneCode ? `zone ${c.zoneCode} ${c.zonePurpose ?? ''}`.trim() : '',
+    planning.hobAtSite ? `height ${planning.hobAtSite.label}` : c.maxHeightM ? `height ${c.maxHeightM} m` : 'no height of buildings mapped',
+    planning.fsrAtSite ? `FSR ${planning.fsrAtSite}:1` : c.fsr ? `FSR ${c.fsr}:1` : 'no FSR mapped',
+    planning.lotSizeAtSite ? `minimum lot ${fmtNum(planning.lotSizeAtSite)} m²` : '',
+  ].filter(Boolean);
+  con.unshift({ theme: 'Controls', text: `${bits.join(' · ')}${planning.zoneAtSite?.epi ? ` (${shortEpi(planning.zoneAtSite.epi)})` : ''}.`, mark: null });
+  if (planning.lotSizeAtSite && b.siteAreaSqm && b.siteAreaSqm < planning.lotSizeAtSite) con.push({ theme: 'Controls', text: `The site (${fmtNum(b.siteAreaSqm)} m²) is under the minimum lot size of ${fmtNum(planning.lotSizeAtSite)} m²: no subdivision without a variation.`, mark: null });
+
+  // Heritage: on the site, adjoining or near, and the State register.
+  if (planning.heritageAtSite.length) con.push({ theme: 'Heritage', text: `${listWords(planning.heritageAtSite.map((h) => `${h.name}${h.kind === 'conservationArea' ? ' (conservation area)' : h.kind === 'shr' ? ' (State Heritage Register)' : h.significance ? ` (${h.significance.toLowerCase()} significance)` : ''}`))} on the site: the conservation controls and a heritage impact statement apply.`, mark: null });
+  const heritageNear = b.heritage.features
+    .filter((f) => !/conservation/i.test(String(f.properties?.LAY_CLASS ?? '')) && !containsSite(geomRings(f.geometry)))
+    .map((f) => ({ f, v: nearestVertex(geomRings(f.geometry)) }))
+    .filter((x): x is { f: GeoJSONFeature; v: { lon: number; lat: number; d: number } } => Boolean(x.v && x.v.d <= 120))
+    .sort((x, y) => x.v.d - y.v.d);
+  if (heritageNear.length) {
+    const h = heritageNear[0];
+    const name = titleCase(String(h.f.properties?.H_NAME ?? 'Heritage item'));
+    con.push({ theme: 'Heritage', text: `${name} ${h.v.d <= 3 ? 'adjoins the site' : `${mDist(h.v.d)} to the ${dir(bearingTo(h.v.lon, h.v.lat))}`}${heritageNear.length > 1 ? `; ${heritageNear.length} heritage items within 120 m` : ''}: the item's setting and the views to it.`, mark: markAt(h.v.lon, h.v.lat) });
+  }
+  const shr = planning.heritageNearby.nearestShr;
+  if (shr && shr.distanceM <= 300 && !planning.heritageAtSite.some((h) => h.kind === 'shr')) con.push({ theme: 'Heritage', text: `${shr.name} (State Heritage Register) ${mDist(shr.distanceM)} away.`, mark: null });
+
+  // Hazards, protections and corridors at the site and within the diagram.
+  for (const row of cs.atSite) con.push({ theme: GROUP_THEME[row.group], text: `${row.title}${row.atSite.length && !row.atSite.every((x) => sameWord(x, row.title)) ? `: ${row.atSite.join(', ')}` : ''} at the site${row.epi ? ` (${shortEpi(row.epi)}${row.currency ? `, map of ${fmtIso(row.currency)}` : ''})` : row.instrument ? ` (${row.instrument})` : ''}.`, mark: null });
+  for (const row of cs.nearby.filter((r) => r.nearest && r.nearest.distanceM <= reachM).slice(0, 3)) con.push({ theme: 'Nearby', text: `${row.title}${!sameWord(row.nearest!.cls, row.title) ? ` (${row.nearest!.cls})` : ''} ${mDist(row.nearest!.distanceM)} to the ${dir(row.nearest!.bearing)}.`, mark: atBearing(row.nearest!.bearing, row.nearest!.distanceM) });
+
+  // Noise.
+  if (cs.noise.roads.length) {
+    const r0 = cs.noise.roads[0];
+    const v = nearestVertex(b.base.roads.filter((r) => r.name && titleCase(r.name) === r0.name).map((r) => r.coords as number[][]));
+    con.push({ theme: 'Noise', text: `${listWords(cs.noise.roads.map((r) => `${r.name} (${r.word})`))} within 60 m of the boundary${v ? `, to the ${dir(bearingTo(v.lon, v.lat))}` : ''}: traffic noise on that edge.`, mark: v ? markAt(v.lon, v.lat) : null });
+  }
+  if (cs.noise.rail || cs.noise.tram) {
+    const v = nearestVertex([...(cs.noise.rail ? b.base.rail.train : []), ...(cs.noise.tram ? b.base.rail.tram : [])] as number[][][]);
+    con.push({ theme: 'Noise', text: `${cs.noise.rail ? 'Railway' : 'Light rail'} within 120 m${v ? `, to the ${dir(bearingTo(v.lon, v.lat))}` : ''}: noise and vibration${[...cs.atSite, ...cs.nearby].some((r) => r.id === 'railCorridor') ? ', and the corridor protection zone (SEPP)' : ''}.`, mark: v ? markAt(v.lon, v.lat) : null });
+  }
+
+  // Tall neighbours.
+  const tall = bf.tallest.filter((x) => x.distanceM <= reachM && x.storeys && (!env?.storeys || x.storeys >= env.storeys + 3)).slice(0, 2);
+  if (tall.length) con.push({ theme: 'Scale', text: `${listWords(tall.map((x) => `${x.storeys ? `${x.storeys}-storey` : `${fmtNum(x.heightM)} m`} ${x.name ? titleCase(x.name) : 'building'} ${mDist(x.distanceM)} to the ${dir(x.bearing)}`))}: overlooking and outlook to design for.`, mark: atBearing(tall[0].bearing, tall[0].distanceM) });
+
+  // Levels.
+  const lv = sf.levels;
+  if (lv && lv.fallM >= 1) con.push({ theme: 'Levels', text: `Falls ${fmtNum(lv.fallM, 1)} m across the site${lv.lowBearing !== undefined ? ` to the ${dir(lv.lowBearing)}` : ''} (RL ${fmtNum(lv.min, 1)}–${fmtNum(lv.max, 1)}${tf?.slope?.oneIn ? `, 1 in ${tf.slope.oneIn}` : ''}): levels, cut and fill, and the survey to confirm.`, mark: lv.lowBearing !== undefined ? atBearing(lv.lowBearing, siteSpanM / 2 + 3) : null });
+  else if (tf?.slope && tf.slope.pct >= 2 && tf.slope.fallBearing !== undefined) con.push({ theme: 'Levels', text: `The ground falls to the ${tf.slope.faces} at ${fmtNum(tf.slope.pct, 1)} %${tf.slope.oneIn ? ` (1 in ${tf.slope.oneIn})` : ''}.`, mark: atBearing(tf.slope.fallBearing, siteSpanM / 2 + 3) });
+
+  // Title: easements.
+  if (b.site.easements.length) {
+    const v = nearestVertex(b.site.easements.flatMap((e) => e.rings));
+    const widths = [...new Set(b.site.easements.filter((e) => e.widthM).map((e) => `${fmtNum(e.widthM!, 1)} m`))];
+    con.push({ theme: 'Title', text: `${b.site.easements.length === 1 ? 'An easement' : `${b.site.easements.length} easements`} in the cadastre's easement layer${widths.length ? ` (${listWords(widths)} wide)` : ''}; the title search gives the purpose.`, mark: v ? markAt(v.lon, v.lat) : null });
+  }
+
+  // What stands there now, and what stands on the boundary.
+  if (sf.buildings.onSite.length) {
+    const storeys = [...new Set(sf.buildings.onSite.filter((x) => x.floors).map((x) => `${x.floors} storeys`))];
+    con.push({ theme: 'Existing', text: `${sf.buildings.onSite.length === 1 ? 'One building' : `${sf.buildings.onSite.length} buildings`} on the lot covering ${fmtPct(sf.buildings.coveragePct)} of it${storeys.length ? ` (${listWords(storeys)})` : ''}: demolition, retention or adaptation to decide.`, mark: null });
+  }
+  if (sf.buildings.adjoining.length) {
+    const dirs = [...new Set(sf.buildings.adjoining.map((a) => dir(a.bearing)))];
+    const known = sf.buildings.adjoining.filter((a) => a.floors);
+    con.push({ theme: 'Neighbours', text: `Neighbours built to the boundary on the ${listWords(dirs)}${known.length ? ` (${listWords(known.map((a) => `${a.floors} storeys to the ${dir(a.bearing)}`))})` : ''}: party walls, windows and setbacks along those edges.`, mark: atBearing(sf.buildings.adjoining[0].bearing, siteSpanM / 2 + 3) });
+  }
+
+  // Trees along the frontages, where a council inventory is open.
+  if (gr.trees.nearSite) {
+    const nearTrees = b.green.trees.points.map((tr) => ({ ...tr, d: distToSiteM(tr.lon, tr.lat) })).filter((tr) => tr.d <= 30).sort((x, y) => x.d - y.d);
+    con.push({ theme: 'Trees', text: `${gr.trees.nearSite} street tree${gr.trees.nearSite === 1 ? '' : 's'} within 30 m of the boundary${gr.trees.medianCrownM ? `, median crown ${fmtNum(gr.trees.medianCrownM)} m` : ''} (${gr.trees.source?.name ?? 'council inventory'}): retain, protect or offset.`, mark: nearTrees[0] ? markAt(nearTrees[0].lon, nearTrees[0].lat) : null });
+  }
+
+  const OPP_ORDER = ['Transport', 'Policy', 'Orientation', 'Sun', 'Open space', 'Views', 'Active edge', 'Amenity', 'Change', 'Scale'];
+  const CON_ORDER = ['Controls', 'Heritage', 'Overshadowing', 'Hazard', 'Soils', 'Water', 'Coast', 'Ecology', 'Aviation', 'Corridor', 'Noise', 'Orientation', 'Levels', 'Existing', 'Neighbours', 'Title', 'Trees', 'Scale', 'Nearby'];
+  const rank = (order: string[]) => (x: Omit<OcStatement, 'n'>) => { const i = order.indexOf(x.theme); return i < 0 ? order.length : i; };
+  // the lists below the diagrams hold about 94 mm each; a statement takes its lines at roughly 116 characters a line
+  const fit = (xs: Omit<OcStatement, 'n'>[], order: string[]): { kept: OcStatement[]; dropped: number } => {
+    const sorted = [...xs].map((x, i) => ({ x, i })).sort((a, c) => rank(order)(a.x) - rank(order)(c.x) || a.i - c.i).map((q) => q.x);
+    const kept: OcStatement[] = [];
+    let used = 0;
+    for (const st of sorted) { const lines = Math.ceil((st.theme.length + st.text.length + 3) / 116); const h = lines * 3.1 + 1.4; if (used + h > 94 || kept.length >= 12) break; used += h; kept.push({ ...st, n: kept.length + 1 }); }
+    return { kept, dropped: sorted.length - kept.length };
+  };
+  const o = fit(opp, OPP_ORDER), c2 = fit(con, CON_ORDER);
+  return {
+    scale, panel,
+    opportunities: o.kept, constraints: c2.kept,
+    dropped: { opportunities: o.dropped, constraints: c2.dropped },
+    sunArc: winterSunArc(centreLL.lat, centreLL.lon),
+    stationsBeyond: stations.filter((s) => { const pt = stationPts.find((q) => Math.abs(q.d - s.distanceM) < 2); return !pt || !inPanel(pt.lon, pt.lat); }).map((s) => ({ ...s, marked: o.kept.some((st) => st.theme === 'Transport' && st.mark?.edge && Math.abs(((st.mark as { bearing: number }).bearing - s.bearing + 540) % 360 - 180) < 3) })),
+    /** The other slides' facts, for the drawing; stripped from the deck's JSON, where they already appear under their own slides. */
+    draw: { mv, gr, cs, sv, bf, sf, tf },
+  };
+}
+
+export function ocSentences(_b: SlidesBundle, f: ReturnType<typeof ocFacts>): string[] {
+  const out: string[] = [];
+  const o = f.opportunities, c = f.constraints;
+  out.push(`${o.length} opportunit${o.length === 1 ? 'y' : 'ies'} and ${c.length} constraint${c.length === 1 ? '' : 's'} follow from the deck's data, numbered on the two diagrams at 1:${fmtNum(f.scale)} around the site; each is a starting sentence for the author to keep, reword or strike${f.dropped.opportunities + f.dropped.constraints ? `, and ${f.dropped.opportunities + f.dropped.constraints} more sit in the deck's JSON` : ''}.`);
+  if (o.length) out.push(`For the site: ${o.slice(0, 3).map((s) => s.text).join(' ')}`);
+  if (c.length) out.push(`Against it: ${c.slice(0, 3).map((s) => s.text.charAt(0).toUpperCase() + s.text.slice(1)).join(' ')}`);
+  out.push('Nothing here is a judgement of merit: a constraint is a matter the design must answer, an opportunity a matter it can use, and the same fact (a tall neighbour, a busy road, a fall across the site) can be either.');
+  return out;
+}
+
+/** A numbered marker, nudged off anything already placed. */
+function ocMarker(x: number, y: number, n: number, colour: string, spacer: LabelSpacer, edgeBearing?: number, edgeLabel?: string): string {
+  const tries: [number, number][] = [[0, 0], [3.4, 0], [-3.4, 0], [0, 3.4], [0, -3.4], [3.4, 3.4], [-3.4, -3.4], [3.4, -3.4], [-3.4, 3.4], [6.8, 0], [-6.8, 0]];
+  let px = x, py = y;
+  for (const [dx, dy] of tries) { if (spacer.take(x + dx, y + dy, 5.2, 5.2)) { px = x + dx; py = y + dy; break; } }
+  const arrow = edgeBearing === undefined ? '' : (() => {
+    const a = (edgeBearing * Math.PI) / 180, ux = Math.sin(a), uy = -Math.cos(a);
+    const tipX = px + ux * 4.6, tipY = py + uy * 4.6, bx = px + ux * 2.4, by = py + uy * 2.4;
+    return `<path d="M${(bx - uy * 1.3).toFixed(1)},${(by + ux * 1.3).toFixed(1)} L${tipX.toFixed(1)},${tipY.toFixed(1)} L${(bx + uy * 1.3).toFixed(1)},${(by - ux * 1.3).toFixed(1)} Z" fill="${colour}"/>`;
+  })();
+  let text = '';
+  if (edgeLabel && edgeBearing !== undefined) {
+    const a = (edgeBearing * Math.PI) / 180, ux = Math.sin(a), uy = -Math.cos(a);
+    const w = labelW(edgeLabel, 1.9);
+    const lx = px - ux * (3.4 + w / 2) + (Math.abs(ux) < 0.5 ? 0 : 0), ly = py - uy * 4.2 + (Math.abs(uy) < 0.5 ? 3.6 : 0);
+    if (spacer.take(lx, ly, w, 2.5)) text = label(lx, ly, edgeLabel, 1.9, colour);
+  }
+  return `${arrow}<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="2.4" fill="${colour}" stroke="#ffffff" stroke-width="0.4"/><text x="${px.toFixed(1)}" y="${(py + 0.9).toFixed(1)}" text-anchor="middle" font-size="2.6" font-weight="700" fill="#ffffff">${n}</text>${text}`;
+}
+
+export function ocSlide(b: SlidesBundle, planning: PlanningFacts): Slide {
+  const t = tpl();
+  const f = ocFacts(b, planning);
+  const { mv, gr, cs, sv, bf } = f.draw;
+  const p = f.panel;
+  const proj = panelProjector(p);
+  const centreLL = mercatorToLonLat(p.center);
+  const [cx, cy] = proj(centreLL.lon, centreLL.lat);
+  const mmPerM = 1000 / p.scale;
+  const siteRings = b.base.siteLots.features.flatMap((ft) => geomRings(ft.geometry));
+  let bx0 = Infinity, by0 = Infinity, bx1 = -Infinity, by1 = -Infinity;
+  for (const r of siteRings) for (const [lon, lat] of r) { const [x, y] = proj(lon, lat); bx0 = Math.min(bx0, x); by0 = Math.min(by0, y); bx1 = Math.max(bx1, x); by1 = Math.max(by1, y); }
+  if (!Number.isFinite(bx0)) { bx0 = cx - 3; by0 = cy - 3; bx1 = cx + 3; by1 = cy + 3; }
+  const siteR = Math.hypot(bx1 - bx0, by1 - by0) / 2;
+  const insideSite = (lon: number, lat: number) => siteRings.some((r) => pointInRing(lon, lat, r));
+  const inset = 5;
+  const edgePoint = (bearing: number): [number, number] => {
+    const a = (bearing * Math.PI) / 180, ux = Math.sin(a), uy = -Math.cos(a);
+    const tX = ux > 1e-9 ? (p.wMm - inset - cx) / ux : ux < -1e-9 ? (inset - cx) / ux : Infinity;
+    const tY = uy > 1e-9 ? (p.hMm - inset - cy) / uy : uy < -1e-9 ? (inset - cy) / uy : Infinity;
+    const tt = Math.min(tX, tY);
+    return [cx + ux * tt, cy + uy * tt];
+  };
+  const markers = (items: OcStatement[], colour: string, spacer: LabelSpacer): string => {
+    const out: string[] = [];
+    // site-wide statements sit in a row under the site, placed first so the located markers move round them
+    const chips = items.filter((q) => !q.mark);
+    chips.forEach((s, i) => {
+      const perRow = Math.min(chips.length, 4);
+      const x = (bx0 + bx1) / 2 + ((i % 4) - (perRow - 1) / 2) * 5.6;
+      const y = by1 + 4.2 + Math.floor(i / 4) * 5.6;
+      out.push(ocMarker(x, y, s.n, colour, spacer));
+    });
+    for (const s of items) {
+      if (!s.mark) continue;
+      if (s.mark.edge) {
+        const [x, y] = edgePoint(s.mark.bearing);
+        out.push(ocMarker(x, y, s.n, colour, spacer, s.mark.bearing, s.mark.label));
+      } else {
+        const [x, y] = proj(s.mark.lon, s.mark.lat);
+        out.push(ocMarker(x, y, s.n, colour, spacer));
+      }
+    }
+    return out.join('');
+  };
+  const touches = (rings: number[][][]) => { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (const r of rings) for (const [lon, lat] of r) { const [x, y] = proj(lon, lat); x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); } return x1 >= 0 && y1 >= 0 && x0 <= p.wMm && y0 <= p.hMm; };
+  const frame = (inner: string[], id: string) => `<svg width="${p.wMm}mm" height="${p.hMm}mm" viewBox="0 0 ${p.wMm} ${p.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
+    <defs><clipPath id="clip-${id}"><rect x="0" y="0" width="${p.wMm}" height="${p.hMm}"/></clipPath></defs>
+    <g clip-path="url(#clip-${id})" font-family="${t.font}">${inner.join('\n')}</g>
+    <rect x="0.1" y="0.1" width="${p.wMm - 0.2}" height="${p.hMm - 0.2}" fill="none" stroke="${t.rule}" stroke-width="0.2"/>
+  </svg>`;
+
+  // ---- Opportunities: reach, policy, edges, open space, views, sun.
+  const oParts: string[] = [baseLayers(b.base, proj, p)];
+  const oLegend: LegendEntry[] = [];
+  const policyKinds = new Set<string>();
+  for (const area of b.policy) {
+    const st = POLICY_STYLE[area.kind];
+    if (!st || !touches(area.rings)) continue;
+    const d = ringsPath(area.rings, proj);
+    // the TOD and town-centre maps come lot by lot, so they are washed without outlines; the outline-only kinds keep their dashes
+    oParts.push(st.fill === 'none' ? `<path d="${d}" fill="none" stroke="${st.stroke}" stroke-width="0.4"${st.dash ? ` stroke-dasharray="${st.dash}"` : ''} fill-rule="evenodd"/>` : `<path d="${d}" fill="${st.fill}" fill-opacity="0.18" stroke="none" fill-rule="evenodd"/>`);
+    if (!policyKinds.has(area.kind)) { policyKinds.add(area.kind); oLegend.push({ swatch: swatchFill(st.fill === 'none' ? 'none' : st.fill, st.stroke, st.dash), label: st.label }); }
+  }
+  const spacesIn = gr.openSpace.spaces.filter((sp) => touches(sp.rings));
+  if (spacesIn.length) {
+    oParts.push(`<path d="${spacesIn.map((sp) => ringsPath(sp.rings, proj)).join('')}" fill="${PARK_GREEN}" fill-opacity="0.28" stroke="${PARK_GREEN}" stroke-width="0.2" fill-rule="evenodd"/>`);
+    oLegend.push({ swatch: swatchFill(PARK_GREEN, PARK_GREEN), label: 'Parks and reserves' });
+  }
+  if (b.movement.activeFrontages.features.some((ft) => touches(geomRings(ft.geometry)))) {
+    oParts.push(`<path d="${fcPath(b.movement.activeFrontages, proj)}" fill="${FRONTAGE_COLOUR}" fill-opacity="0.55" stroke="${FRONTAGE_COLOUR}" stroke-width="0.25" fill-rule="evenodd"/>`);
+    oLegend.push({ swatch: swatchFill(FRONTAGE_COLOUR, FRONTAGE_COLOUR), label: 'LEP active street frontage' });
+  }
+  const isos = b.movement.isochrones.filter((iso) => iso.minutes <= 10).sort((x, y) => y.minutes - x.minutes);
+  for (const iso of isos) oParts.push(`<path d="${ringsPath(iso.rings, proj)}" fill="none" stroke="${ISO_FILL[iso.minutes] ?? '#9ec5f4'}" stroke-width="0.5" stroke-dasharray="1.6,1" fill-rule="evenodd"/>`);
+  if (isos.length) oLegend.push({ swatch: swatchLine(ISO_FILL[5], 0.5, '1.6,1'), label: `Walking reach from the site: ${isos.map((i) => i.minutes).sort((x, y) => x - y).join(' and ')} minutes` });
+  oParts.push(overLayers(b.base, proj, p, 'wash'));
+  const oSpacer = new LabelSpacer(p.wMm, p.hMm, 40);
+  oSpacer.take((bx0 + bx1) / 2, (by0 + by1) / 2, bx1 - bx0 + 2, by1 - by0 + 2);
+  // isochrone labels at each ring's northmost point inside the panel
+  for (const iso of isos) {
+    const pts = iso.rings[0]?.map(([lon, lat]) => proj(lon, lat)).filter(([x, y]) => x > 8 && x < p.wMm - 8 && y > 6 && y < p.hMm - 6) ?? [];
+    const top = pts.sort((q, r) => q[1] - r[1])[0];
+    if (top && oSpacer.take(top[0], top[1] - 1.6, 9, 2.6)) oParts.push(label(top[0], top[1] - 1.6, `${iso.minutes} min`, 2, ISO_FILL[iso.minutes] ?? '#5598e7'));
+  }
+  // view cones where the ground leaves the line clear
+  const reachMm = Math.hypot(p.wMm, p.hMm);
+  const clearViews = sv.views.filter((v) => v.clear === true && v.kind !== 'park');
+  for (const v of clearViews) {
+    const a = (v.bearingDeg * Math.PI) / 180, half = (8 * Math.PI) / 180;
+    const dMm = Math.min(reachMm, v.distanceM * mmPerM);
+    const colour = VIEW_COLOUR[v.kind];
+    oParts.push(`<path d="M${cx.toFixed(1)},${cy.toFixed(1)} L${(cx + dMm * Math.sin(a - half)).toFixed(1)},${(cy - dMm * Math.cos(a - half)).toFixed(1)} L${(cx + dMm * Math.sin(a + half)).toFixed(1)},${(cy - dMm * Math.cos(a + half)).toFixed(1)} Z" fill="${colour}" fill-opacity="0.13" stroke="${colour}" stroke-width="0.3"/>`);
+    const [lx, ly] = edgePoint(v.bearingDeg);
+    const text = `${v.label} ${v.distanceM >= 1000 ? `${(v.distanceM / 1000).toFixed(1)} km` : `${fmtNum(v.distanceM)} m`}`;
+    const tx = lx - Math.sin(a) * 9, ty = ly + Math.cos(a) * 9;
+    if (oSpacer.take(tx, ty, labelW(text, 1.9), 2.5)) oParts.push(label(tx, ty, text, 1.9, colour));
+  }
+  if (clearViews.length) oLegend.push({ swatch: `<path d="M0,3.2 L5,0.4 L5,3.2 Z" fill="${VIEW_COLOUR.city}" fill-opacity="0.3" stroke="${VIEW_COLOUR.city}" stroke-width="0.3"/>`, label: 'Clear sight line (slide 13); the target lies beyond the edge' });
+  // the nearest park, linked
+  const np = gr.openSpace.nearest;
+  if (np && np.distanceM > 12) {
+    let best: [number, number] | null = null, bd = Infinity;
+    for (const r of np.rings) for (const [lon, lat] of r) { const [x, y] = proj(lon, lat); const d = Math.hypot(x - cx, y - cy); if (d < bd) { bd = d; best = [x, y]; } }
+    if (best) oParts.push(`<line x1="${cx.toFixed(1)}" y1="${cy.toFixed(1)}" x2="${best[0].toFixed(1)}" y2="${best[1].toFixed(1)}" stroke="${PARK_GREEN}" stroke-width="0.4" stroke-dasharray="1.4,1"/>`);
+  }
+  // the winter sun's sweep around the site
+  const arcR = Math.max(siteR + 5, 11);
+  const arc = f.sunArc.map((s) => { const a = (s.azimuthDeg * Math.PI) / 180; return [cx + arcR * Math.sin(a), cy - arcR * Math.cos(a)] as [number, number]; });
+  if (arc.length > 1) {
+    oParts.push(`<path d="M${arc.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' L')}" fill="none" stroke="${SUN_COLOUR}" stroke-width="0.8" stroke-linecap="round"/>`);
+    for (const h of sv.sun.winter.hours) {
+      const a = (h.azimuthDeg * Math.PI) / 180;
+      const x = cx + arcR * Math.sin(a), y = cy - arcR * Math.cos(a);
+      oParts.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${h.hour === 12 ? 1.6 : 1.1}" fill="${SUN_COLOUR}" stroke="#ffffff" stroke-width="0.3"/>`);
+      const lx = cx + (arcR + 3.6) * Math.sin(a), ly = cy - (arcR + 3.6) * Math.cos(a);
+      const text = h.hour === 12 ? `noon · ${h.altitudeDeg.toFixed(0)}°` : h.hour === 9 ? '9 am' : '3 pm';
+      if (oSpacer.take(lx, ly, labelW(text, 1.9), 2.5)) oParts.push(label(lx, ly, text, 1.9, '#7a5600'));
+    }
+    const mid = arc[Math.floor(arc.length / 2)];
+    if (mid && oSpacer.take(mid[0], mid[1] - 6.2, labelW('winter sun', 1.9), 2.5)) oParts.push(label(mid[0], mid[1] - 6.2, 'winter sun', 1.9, '#7a5600'));
+    oLegend.push({ swatch: `<path d="M0.4,3.2 Q2.5,-0.8 4.6,3.2" fill="none" stroke="${SUN_COLOUR}" stroke-width="0.8"/>`, label: 'Winter sun round the site, 9 am to 3 pm on 21 June' });
+  }
+  // stations beyond the diagram: an arrow at the edge with the distance
+  for (const s of f.stationsBeyond.filter((st) => !st.marked)) {
+    const [x, y] = edgePoint(s.bearing);
+    const a = (s.bearing * Math.PI) / 180, ux = Math.sin(a), uy = -Math.cos(a);
+    oParts.push(`<line x1="${(x - ux * 7).toFixed(1)}" y1="${(y - uy * 7).toFixed(1)}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="${t.site}" stroke-width="0.5"/><path d="M${(x - uy * 1.3 - ux * 2.2).toFixed(1)},${(y + ux * 1.3 - uy * 2.2).toFixed(1)} L${x.toFixed(1)},${y.toFixed(1)} L${(x + uy * 1.3 - ux * 2.2).toFixed(1)},${(y - ux * 1.3 - uy * 2.2).toFixed(1)} Z" fill="${t.site}"/>`);
+    const text = `${s.name} ${fmtNum(s.distanceM)} m`;
+    const tx = x - ux * 10 - uy * 0, ty = y - uy * 10 + 3.2 * (uy < 0 ? 1 : -1);
+    if (oSpacer.take(tx, ty, labelW(text, 1.9), 2.5)) oParts.push(label(tx, ty, text, 1.9, t.site));
+  }
+  if (b.base.stations.some((st) => { const [x, y] = proj(st.lon, st.lat); return x >= 0 && y >= 0 && x <= p.wMm && y <= p.hMm; }) || f.stationsBeyond.length) oLegend.push({ swatch: `<circle cx="2.5" cy="1.8" r="1.7" fill="#ffffff" stroke="${t.site}" stroke-width="0.4"/><text x="2.5" y="2.7" text-anchor="middle" font-size="2.4" font-weight="700" fill="${t.site}">T</text>`, label: 'Stations; an edge arrow points to one beyond the diagram' });
+  oParts.push(markers(f.opportunities, OPP_COLOUR, oSpacer));
+  oParts.push(siteMark(b.base, proj, 'outline'), panelFurniture(p, 'right'));
+
+  // ---- Constraints: heritage, hazards and corridors, noise, shadows, levels, title, trees.
+  const cParts: string[] = [baseLayers(b.base, proj, p)];
+  const cLegend: LegendEntry[] = [];
+  let hatchId = 0;
+  const defs = [...CONSTRAINT_DEFS].sort((x, y) => (DRAW_RANK[x.id] ?? 5) - (DRAW_RANK[y.id] ?? 5));
+  const drawnLayers: string[] = [];
+  for (const def of defs) {
+    const layer = b.constraints.layers.find((l) => l.id === def.id);
+    if (!layer?.features.length) continue;
+    const byClass = new Map<string, number[][][]>();
+    for (const ft of layer.features) if (touches(ft.rings)) (byClass.get(ft.cls) ?? byClass.set(ft.cls, []).get(ft.cls)!).push(...ft.rings);
+    let any = false;
+    for (const [cls, rings] of byClass) {
+      const fill = constraintFill(def.id, cls);
+      const d = ringsPath(rings, proj);
+      if (fill === 'none') cParts.push(`<path d="${d}" fill="none" stroke="#a80000" stroke-width="0.5" fill-rule="evenodd"/>`);
+      else if (HATCHED_CLASS.test(cls)) cParts.push(hatchPath(d, `oc${hatchId++}`, fill === '#ffff73' ? '#b3a000' : fill, bboxOf(rings, proj), 1.3));
+      else cParts.push(`<path d="${d}" fill="${fill}" fill-opacity="${(DRAW_RANK[def.id] ?? 5) <= 2 ? 0.4 : 0.55}" stroke="#555" stroke-width="0.15" fill-rule="evenodd"/>`);
+      if (!any) {
+        any = true;
+        cLegend.push({ swatch: fill === 'none' ? swatchFill('none', '#a80000') : HATCHED_CLASS.test(cls) ? swatchHatch(fill === '#ffff73' ? '#b3a000' : fill) : swatchFill(fill), label: def.title });
+        drawnLayers.push(def.id);
+      }
+    }
+  }
+  const heritageKinds = new Map<string, LegendEntry>();
+  let hh = 0;
+  for (const ft of b.heritage.features) {
+    const rings = geomRings(ft.geometry);
+    if (!rings.length || !touches(rings)) continue;
+    const st = heritageStyle(ft.properties?.LAY_CLASS);
+    const d = ringsPath(rings, proj);
+    if (st.hatch) { cParts.push(hatchPath(d, `oh${hh++}`, st.fill, bboxOf(rings, proj), 2.2)); heritageKinds.set(st.label, { swatch: swatchHatch(st.fill), label: st.label }); }
+    else { cParts.push(`<path d="${d}" fill="${st.fill}" fill-opacity="0.85" stroke="#6b4e1e" stroke-width="0.2" fill-rule="evenodd"/>`); heritageKinds.set(st.label, { swatch: swatchFill(st.fill, '#6b4e1e'), label: st.label }); }
+  }
+  const shrIn = b.shr.features.filter((ft) => touches(geomRings(ft.geometry)));
+  if (shrIn.length) { cParts.push(`<path d="${shrIn.map((ft) => ringsPath(geomRings(ft.geometry), proj)).join('')}" fill="none" stroke="#7a1b1b" stroke-width="0.5"/>`); heritageKinds.set('shr', { swatch: swatchLine('#7a1b1b', 0.5), label: 'State Heritage Register curtilage' }); }
+  cLegend.push(...heritageKinds.values());
+  cParts.push(overLayers(b.base, proj, p, 'wash'));
+  // busy roads as noise sources
+  const busy = b.base.roads.filter((r) => r.hierarchy <= 4);
+  if (busy.length) {
+    for (const h of [4, 3, 2, 1]) { const ds = busy.filter((r) => r.hierarchy === h).map((r) => ringsPath([r.coords], proj, false)).join(''); if (ds) cParts.push(`<path d="${ds}" fill="none" stroke="${NOISE_COLOUR}" stroke-width="${h <= 3 ? 1.5 : 0.9}" stroke-opacity="${h <= 3 ? 0.5 : 0.4}" stroke-linecap="round" stroke-linejoin="round"/>`); }
+    cLegend.push({ swatch: swatchLine(NOISE_COLOUR, 1.4), label: 'Arterial and sub-arterial roads: traffic noise' });
+  }
+  // the neighbours' winter shadows, morning and afternoon
+  if (sv.castersInReach) {
+    for (const sh of sv.shadowHulls.filter((x) => x.hour !== 12)) {
+      if (!sh.hulls.length) continue;
+      cParts.push(`<path d="${sh.hulls.map((hull) => `M${hull.map((q, i) => { const ll = mercatorToLonLat(q); const [x, y] = proj(ll.lon, ll.lat); return `${i ? 'L' : ''}${x.toFixed(1)},${y.toFixed(1)}`; }).join('')}Z`).join('')}" fill="${SHADOW_FILL}" fill-opacity="0.13" stroke="none" fill-rule="nonzero"/>`);
+    }
+    cLegend.push({ swatch: `<rect x="0" y="0.4" width="5" height="2.8" fill="${SHADOW_FILL}" fill-opacity="0.26"/>`, label: "Neighbours' shadows at 9 am and 3 pm on 21 June" });
+  }
+  const cSpacer = new LabelSpacer(p.wMm, p.hMm, 40);
+  cSpacer.take((bx0 + bx1) / 2, (by0 + by1) / 2, bx1 - bx0 + 2, by1 - by0 + 2);
+  // the tall neighbours, labelled in storeys
+  const envStoreys = bf.envelope?.storeys ?? 0;
+  for (const bd of b.buildings.buildings.filter((x) => x.floors && x.floors >= Math.max(5, envStoreys + 3) && !insideSite(x.centroid[0], x.centroid[1])).sort((x, y) => (y.floors ?? 0) - (x.floors ?? 0)).slice(0, 10)) {
+    const [x, y] = proj(bd.centroid[0], bd.centroid[1]);
+    if (x < 3 || y < 3 || x > p.wMm - 3 || y > p.hMm - 3) continue;
+    const text = `${bd.floors} st`;
+    if (cSpacer.take(x, y, labelW(text, 1.8), 2.3)) cParts.push(label(x, y, text, 1.8, '#333'));
+  }
+  // easements, trees and the fall
+  if (b.site.easements.length) {
+    const rings = b.site.easements.flatMap((e) => e.rings);
+    cParts.push(hatchPath(ringsPath(rings, proj), 'oc-ease', t.dimension, bboxOf(rings, proj), 1));
+    cLegend.push({ swatch: swatchHatch(t.dimension), label: 'Easement (cadastre)' });
+  }
+  const nearTrees = b.green.trees.points.filter((tr) => { const [x, y] = proj(tr.lon, tr.lat); return x >= 0 && y >= 0 && x <= p.wMm && y <= p.hMm && Math.hypot(x - cx, y - cy) <= siteR + 30 * mmPerM; });
+  if (nearTrees.length) {
+    cParts.push(nearTrees.map((tr) => { const [x, y] = proj(tr.lon, tr.lat); return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${Math.max(0.5, (tr.canopyM / 2) * mmPerM).toFixed(2)}" fill="${TREE_DOT}" fill-opacity="0.45" stroke="${TREE_DOT}" stroke-width="0.2"/>`; }).join(''));
+    cLegend.push({ swatch: `<circle cx="2.5" cy="1.8" r="1.5" fill="${TREE_DOT}" fill-opacity="0.45" stroke="${TREE_DOT}" stroke-width="0.2"/>`, label: 'Street trees near the site, at crown size' });
+  }
+  const fallDir = f.draw.sf.levels?.lowBearing ?? f.draw.tf?.slope?.fallBearing;
+  const fallM = f.draw.sf.levels?.fallM ?? 0;
+  if (fallDir !== undefined && (fallM >= 1 || (f.draw.tf?.slope?.pct ?? 0) >= 2)) {
+    const a = (fallDir * Math.PI) / 180, ux = Math.sin(a), uy = -Math.cos(a);
+    const len = Math.min(Math.max(siteR * 1.6, 8), 16);
+    const x0 = cx - ux * len / 2, y0 = cy - uy * len / 2, x1 = cx + ux * len / 2, y1 = cy + uy * len / 2;
+    cParts.push(`<line x1="${x0.toFixed(1)}" y1="${y0.toFixed(1)}" x2="${x1.toFixed(1)}" y2="${y1.toFixed(1)}" stroke="${t.dimension}" stroke-width="0.6"/><path d="M${(x1 - uy * 1.4 - ux * 2.4).toFixed(1)},${(y1 + ux * 1.4 - uy * 2.4).toFixed(1)} L${x1.toFixed(1)},${y1.toFixed(1)} L${(x1 + uy * 1.4 - ux * 2.4).toFixed(1)},${(y1 - ux * 1.4 - uy * 2.4).toFixed(1)} Z" fill="${t.dimension}"/>`);
+    const text = fallM >= 1 ? `falls ${fmtNum(fallM, 1)} m` : `falls ${fmtNum(f.draw.tf?.slope?.pct ?? 0, 1)} %`;
+    for (const [tx, ty] of [[x1 + ux * 3 + 5 * (ux >= 0 ? 1 : -1), y1 + uy * 3], [x1 - uy * 6, y1 + ux * 6], [x1 + uy * 6, y1 - ux * 6], [x0 - ux * 3 - 5 * (ux >= 0 ? 1 : -1), y0 - uy * 3]]) {
+      if (cSpacer.take(tx, ty, labelW(text, 1.9), 2.5)) { cParts.push(label(tx, ty, text, 1.9, t.dimension)); break; }
+    }
+    cLegend.push({ swatch: `<line x1="0" y1="1.8" x2="4" y2="1.8" stroke="${t.dimension}" stroke-width="0.6"/><path d="M3,0.6 L5,1.8 L3,3 Z" fill="${t.dimension}"/>`, label: 'The fall across the site (elevation model)' });
+  }
+  cParts.push(markers(f.constraints, CON_COLOUR, cSpacer));
+  cParts.push(siteMark(b.base, proj, 'outline'), panelFurniture(p, 'right'));
+
+  // ---- The page.
+  const sub = [b.siteAddress, `${f.opportunities.length} opportunities`, `${f.constraints.length} constraints`, `1:${fmtNum(p.scale)}`].join(' · ');
+  const sentences = ocSentences(b, f);
+  const text = sentences.map((s) => `<p>${esc(s)}</p>`).join('') +
+    placeholder('Narrative — for the author: which of these decide the scheme, which are answered by the controls already, and what the site visit and the survey add; then the design response to each.') +
+    `<div class="fine">Assembled from the layers the other slides fetched, at 1:${fmtNum(p.scale)} around the site: stations and walking reach (slide 09), the housing-policy maps (03), open space and facilities (10), sight lines and the winter sun (13), the LEP heritage layer (03), the constraint layers (14), footprints and heights (08), the cadastre (11), the elevation model (06) and the applications of scale (07). The statements are templates from that data, for the author to edit. Retrieved ${b.generatedAt.slice(0, 10)}.</div>`;
+  const legendTop = FIELD_Y + PANEL_TITLE_H + p.hMm + 1.5;
+  const listY = legendTop + LEGEND_H + 3;
+  const listH = SLIDE_H - 12 - listY;
+  const list = (title: string, items: OcStatement[], colour: string, x: number, dropped: number) => `<div class="abs" style="left:${x}mm;top:${listY}mm;width:${PANEL_W}mm;height:${listH}mm;overflow:hidden">
+    <div class="ptitle">${esc(title)}<span class="pnote">${items.length ? `${items.length} from the data${dropped ? ` · ${dropped} more in the JSON` : ''} · numbered on the diagram, site-wide ones in a row under the site` : 'nothing in the data'}</span></div>
+    ${items.length ? items.map((s) => `<div class="oc"><span class="n" style="background:${colour}">${s.n}</span><span class="t"><b>${esc(s.theme)}</b> · ${esc(s.text)}</span></div>`).join('') : emptyBox(PANEL_W, 20, 'no statement follows from the fetched layers')}
+  </div>`;
+  const panelHtml = (title: string, note: string, svg: string, legend: LegendEntry[], col: number) => {
+    const x = FIELD_X + col * (PANEL_W + GUTTER);
+    const leg = legendSvg(legend, PANEL_W, 6, 1.85);
+    return `<div class="abs ptitle" style="left:${x}mm;top:${FIELD_Y}mm;width:${PANEL_W}mm">${esc(title)}<span class="pnote">${esc(note)}</span></div>
+    <div class="abs" style="left:${x}mm;top:${FIELD_Y + PANEL_TITLE_H}mm">${svg}</div>
+    <svg class="abs" style="left:${x}mm;top:${legendTop}mm" width="${PANEL_W}mm" height="${LEGEND_H}mm" viewBox="0 0 ${PANEL_W} ${LEGEND_H}" xmlns="http://www.w3.org/2000/svg">${leg.svg}</svg>`;
+  };
+  const figure =
+    panelHtml('Opportunities', `1:${fmtNum(p.scale)} · reach, policy, edges, open space, views and sun`, frame(oParts, 'oc-opp'), oLegend, 0) +
+    panelHtml('Constraints', `1:${fmtNum(p.scale)} · heritage, hazards and corridors, noise, shadows, levels, title`, frame(cParts, 'oc-con'), cLegend, 1) +
+    list('Opportunities', f.opportunities, OPP_COLOUR, FIELD_X, f.dropped.opportunities) +
+    list('Constraints', f.constraints, CON_COLOUR, FIELD_X + PANEL_W + GUTTER, f.dropped.constraints);
+  void mv; void cs;
+  return { id: '17_opportunities_constraints', title: 'Opportunities and constraints', subtitle: sub, textHtml: text, figureHtml: figure };
+}
+
 export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; slides: Slide[] } {
   const facts = planningFacts(b);
-  const slides = [planningOverviewSlide(b, facts), planningControlsSlide(b, facts), terrainSlide(b), developmentSlide(b, facts), builtFormSlide(b, facts), movementSlide(b), greenSlide(b), siteSlide(b), sunViewSlide(b), constraintsSlide(b), peopleSlide(b)];
+  const slides = [planningOverviewSlide(b, facts), planningControlsSlide(b, facts), terrainSlide(b), developmentSlide(b, facts), builtFormSlide(b, facts), movementSlide(b), greenSlide(b), siteSlide(b), sunViewSlide(b), constraintsSlide(b), peopleSlide(b), ocSlide(b, facts)];
   const t = tpl();
   const footerLeft = ['SITE ANALYST — OVERALL ANALYSIS', b.siteAddress, meta.client ? `for ${meta.client}` : '', meta.jobNo ? `job ${meta.jobNo}` : ''].filter(Boolean).join(' · ');
   const pages = slides.map((s, i) => `
@@ -3300,6 +3822,9 @@ export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; 
   table.da.cons tr.hit td { font-weight: 600; }
   table.da.cons tr.hit td:first-child { border-left: 0.6mm solid ${t.site}; padding-left: 1.2mm; }
   table.da.facts th { width: 33mm; font-weight: 600; font-size: 2.2mm; text-transform: none; letter-spacing: 0; color: #333; text-align: left; vertical-align: top; }
+  .oc { display: flex; align-items: flex-start; gap: 1.8mm; font-size: 2.35mm; line-height: 1.32; margin-top: 1.4mm; padding-right: 2mm; }
+  .oc .n { flex: 0 0 4.2mm; height: 4.2mm; border-radius: 2.1mm; color: #fff; font-weight: 700; font-size: 2.2mm; text-align: center; line-height: 4.2mm; margin-top: 0.1mm; }
+  .oc .t b { font-weight: 700; }
 </style></head>
 <body>${pages}</body></html>`;
   return { html, slides };
@@ -3325,6 +3850,7 @@ export function slidesFacts(b: SlidesBundle) {
     theSite: (() => { const f = siteFacts(b); return { ...f, sentences: siteSentences(b, f) }; })(),
     sunViews: (() => { const f = sunViewFacts(b); const { shadowHulls: _h, ...rest } = f; return { ...rest, sentences: sunViewSentences(b, f) }; })(),
     constraints: (() => { const f = constraintsFacts(b); return { ...f, sentences: constraintsSentences(b, f) }; })(),
+    opportunitiesConstraints: (() => { const f = ocFacts(b, facts); const { draw: _d, panel: _p, sunArc: _a, ...rest } = f; return { ...rest, sentences: ocSentences(b, f) }; })(),
     green: (() => { const f = greenFacts(b); return { ...f, openSpace: { ...f.openSpace, spaces: f.openSpace.spaces.map(({ rings: _r, ...s }) => s), nearest: f.openSpace.nearest && (({ rings: _r, ...s }) => s)(f.openSpace.nearest), largest: f.openSpace.largest && (({ rings: _r, ...s }) => s)(f.openSpace.largest) }, sentences: greenSentences(b, f) }; })(),
     builtForm: (() => { const f = builtFormFacts(b, facts); return { ...f, sentences: builtFormSentences(b, f) }; })(),
     terrain: (() => { const f = terrainFacts(b); return f ? { ...f, sections: f.sections.map((s) => ({ ...s, samples: s.samples.filter((_, i) => i % 4 === 0) })), sentences: terrainSentences(b, f) } : { available: false, sentences: terrainSentences(b, f) }; })(),

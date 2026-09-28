@@ -446,7 +446,8 @@ Open-Meteo archive (ERA5): `https://archive-api.open-meteo.com/v1/archive?latitu
 Implemented: slides 03 (planning overview), 04 (planning controls), 06
 (topography), 07 (development activity), 08 (built form), 09 (movement), 10
 (green and public domain), 11 (the site), 13 (grid, sun and views), 14
-(environmental constraints) and 16 (people and market) —
+(environmental constraints), 16 (people and market) and 17 (opportunities
+and constraints) —
 `src/render/slides.ts`, `src/render/minimap.ts`, `src/render/charts.ts`,
 `src/render/terrainMap.ts`, `src/fetch/planning.ts`, `src/fetch/terrain.ts`,
 `src/fetch/buildings.ts` with `src/py/overture_buildings.py`,
@@ -633,6 +634,31 @@ line to the point where the ground rises across it; the table lists them
 all. Buildings and trees are not tested, and the text says so. The views
 are computed in the pipeline's second stage, one elevation profile per
 target, and travel in the bundle.
+
+Slide 17 fetches nothing: `ocFacts` calls the other slides' facts functions
+and turns what they found into statements, each an opportunity or a
+constraint with a theme, a sentence and, where it has one, a point on a
+diagram. The rules are plain: the nearest stations within 1.5 km and the
+bus stops within 400 m; the housing-policy map at the site, or the nearest
+within 800 m; the active street frontage at the site or within 400 m; a
+frontage that faces north, or an east–west long axis, as an opportunity and
+a north–south axis as a constraint; the winter sun's sweep always, with the
+neighbours' shading as a constraint from 10 % of the site; the nearest park
+and the parks within five minutes; the nearest public facility within
+600 m; the clear sight lines; the applications of scale within the diagram;
+the height plane against the neighbourhood's median storeys; the controls;
+heritage on the site, the nearest item within 120 m and the State register
+within 300 m; every constraint layer at the site and the nearest three
+within the diagram; the arterial roads within 60 m and rail within 120 m as
+noise; buildings three or more storeys over the height plane within the
+diagram; a fall of a metre or more; easements; the buildings on the lot and
+those on the boundary; the street trees within 30 m where an inventory is
+open. Nine of each are kept, the rest go to the deck's JSON. The two
+diagrams are drawn at 1:4000 (1:8000 for a very large site) from the layers
+already in the bundle, and the numbers on them key to the two lists; a
+statement with no place of its own sits in a row of numbers under the site.
+The text says what the statements are — templates from the data, not a
+judgement of merit — and leaves the design response to the author.
 
 Slide 16 looks the site up in the ASGS (SA2, LGA, suburb, capital-city
 region), reads the five census tables for the SA2, the LGA and the capital

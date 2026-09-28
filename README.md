@@ -475,7 +475,7 @@ development window), `--job 2539`, `--client "Name"`,
 
 `--type slides` draws the OVERALL ANALYSIS deck: A3 landscape pages for the
 content part of a feasibility study or design report, specified in
-`docs/SLIDES_SPEC.md`. Eleven slides exist so far. The planning pair: a
+`docs/SLIDES_SPEC.md`. Twelve slides exist so far. The planning pair: a
 *planning overview* of four maps at 1:8000 around the site (land zoning in the
 statutory colours, height of building, heritage with the State Heritage
 Register, and the housing-policy maps — TOD areas, town centres, State
@@ -561,8 +561,18 @@ work — with the ABS population series since 2001 and the TZP24 projection to
 2066, SEIFA 2021, the Valuer General's land values of the site and the sales
 register within 400 m, and the nearest government schools with their
 enrolments. Census tables, projections and the school dataset are cached on
-the volume for a month. Each slide carries the sentences that follow from the
-data and a marked placeholder for the author's narrative. Outputs: `OVERALL_ANALYSIS.pdf`, `slides/<id>.png` per slide and
+the volume for a month. Last, *opportunities and constraints*: two diagrams
+at 1:4000 around the site assembled from the layers the other slides fetched
+— reach, the housing-policy maps, active edges, open space, the clear sight
+lines and the winter sun's sweep on one; heritage, the hazard and corridor
+layers, the busy roads, the neighbours' winter shadows, the fall, easements
+and street trees on the other — with numbered markers keyed to two lists of
+templated statements (up to nine each) that the data supports and the author
+edits: the nearest station and its walk, the TOD or town-centre map, which
+frontage faces north, what shades the site, the controls, the heritage item
+next door, the arterial road on one edge, the fall across the lot. Each slide
+carries the sentences that follow from the data and a marked placeholder for
+the author's narrative. Outputs: `OVERALL_ANALYSIS.pdf`, `slides/<id>.png` per slide and
 `overall.json` with everything the deck says.
 
 Where a council publishes its own DCP mapping as open data — the City of
