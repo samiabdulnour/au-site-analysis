@@ -185,9 +185,12 @@ an absence is stated, not implied.
 **15 Country.** The layers that exist: Local Aboriginal Land Council, native
 title status (NNTT), gazetted Aboriginal Places nearby, pre-1750 plant
 community at the site, soil landscape, watercourses and the foreshore,
-ridgelines from the DEM, national parks and headlands, and a note that an
-AHIMS search is required (the ASDST likelihood model is public; AHIMS is
-not). *Manual, always:* the cultural narrative, language and place-name
+ridgelines from the DEM, national parks and headlands, the Aboriginal
+heritage the LEPs map (scheduled items, and the two plans' Aboriginal
+landscape maps), Aboriginal Heritage Impact Permit boundaries, the
+Indigenous places of the National and Commonwealth Heritage Lists and of the
+archived Register of the National Estate, and a note that an AHIMS search is
+required (the ASDST likelihood model is public; AHIMS is not). *Manual, always:* the cultural narrative, language and place-name
 content, which the office develops with Knowledge Holders.
 
 **16 People and market.** ABS Census 2021 for the site's SA2 (and LGA):
@@ -238,6 +241,8 @@ Application). New, all verified with a point or envelope query:
 |---|---|---|
 | `ePlanning/Planning_Portal_Principal_Planning` | 221 State Heritage Register curtilage, 16 EPI heritage, 14 HOB, 19 zoning, 22 min lot size, 25 min dwelling density, 26 foreshore building line | the viewer's own copies, same fields |
 | `ePlanning/Planning_Portal_Development_Control` | 220 DCP by LGA (PLAN_NAME + FILE_NAME = PDF URL), 219 contributions plan by LGA, 218 SIC, 223 local provisions, 224 active street frontages, 769 active frontages map, 225 additional permitted uses, 226 key sites, 227 urban release area | DCP link verified for North Sydney |
+| `EDP/AHIPS` | 0 Aboriginal Heritage Impact Permit boundaries (AHIP, Project_Na, Applicant, Location, Decision_D d/m/yyyy, Status ACTIVE/EXPIRED/VARIED/AREA VARIED, ExpireDate) | Heritage NSW, CC BY 3.0 AU; a variation, transfer or surrender is a record of its own under the permit's number; the free text carries a `?` where an en dash or a quote was lost; the layer leaves out permits whose boundaries were poor or missing (the public register lists them) |
+| `ePlanning/Planning_Portal_Local_Provisions` | 414 Aboriginal Cultural Significance Map (Moree Plains LEP 2011, 8 areas), 557 Sensitive Aboriginal Landscape Map (Lake Macquarie LEP 2014, 60 areas): the only two plans with an Aboriginal landscape map in September 2026 | EPI_NAME, MAP_NAME, LAY_CLASS, CURRENCY_DATE; LEGIS_REF_CLAUSE is empty, so the slide names the map, not a clause |
 | `ePlanning/Planning_Portal_Local_Provisions` | 200 LEP local-provision map types: design excellence, sun access protection, built character, special character areas, incentive height/FSR, affordable housing, centre maps, airport buffer… | `identify` at a point returns whichever apply |
 | `ePlanning/Planning_Portal_Hazard` | 229 bushfire prone land, 230 flood planning map, 232 landslide risk | flood planning holds only 12 EPIs' maps (622 polygons statewide); most Sydney councils keep flood maps outside the LEP |
 | `ePlanning/Planning_Portal_Protection` | 234 acid sulfate soils, 235 airport noise, 236 drinking water catchment, 237 groundwater vulnerability, 239 obstacle limitation surface, 240/1024 riparian, 241 salinity, 242 scenic protection, 243 terrestrial biodiversity, 244 wetlands, 245 environmentally sensitive land, 365 NPWS estate | airport noise holds 5 EPIs; Sydney Airport's ANEF is not among them |
@@ -424,6 +429,10 @@ on made-up lots.
 | HMS/Heritage 8 | gazetted Aboriginal Places |
 | VIS/SVTM_NSW_1750_PCT, Soil_Landscape/Sydney, Water theme, DEM ridgelines, NPWS estate | the pre-colonial landscape layers the reference maps by hand |
 | ASDST | a public likelihood model; the slide states that an AHIMS search is required and that AHIMS itself is not open |
+| EPI_Primary_Planning_Layers 0 (the four Aboriginal classes), Planning_Portal_Local_Provisions 414 and 557 | the LEPs' scheduled Aboriginal items, and the two plans' maps of Aboriginal cultural landscapes |
+| EDP/AHIPS 0 | Aboriginal Heritage Impact Permit boundaries: land where Heritage NSW permitted harm to Aboriginal objects, for a project |
+| DCCEEW `https://gis.environment.gov.au/gispubmap/rest/services/ogc_services/National_Heritage_List/FeatureServer/0` and `…/Commonwealth_Heritage_List/FeatureServer/0` (CLASS, STATUS: Listed place, Nominated place, Within listed place) | the lists' Indigenous places, CC BY 3.0 AU. In NSW in September 2026 the National Heritage List has four listed (the Moree Baths, the Australian Hall in Elizabeth Street, the Brewarrina fish traps, Myall Creek) and one nominated, the Sydney Cultural Crescent Rock Art, 5,076 km² round Sydney; the Commonwealth list has the Cubbitch Barta area at Holsworthy and two places within the Beecroft Peninsula. Confidential places are generalised to their 1:250,000 map sheet |
+| DCCEEW's Register of the National Estate `https://services1.arcgis.com/gtRkYQyUQLMTM1uS/arcgis/rest/services/heritage_rnesdb_public/FeatureServer/0` | the Register was closed in 2007 and is an archive, not a statutory list; its Indigenous places that were registered, identified, indicative or on the interim list (320 in NSW), rejected, removed and destroyed ones left out, CC BY 4.0 |
 
 ### 4.11 Climate
 
@@ -927,6 +936,46 @@ there is room, tabled with their number and distance, and named in the text
 ("none scheduled in the strip" elsewhere); an item within 500 m joins slide
 17's Country constraint. At 154 Campbell Parade Bondi Beach four are in the
 strip, the nearest an open campsite and burials 143 m east.
+
+Four more registers are read over the strip, each soft and each optional in
+the deck's data, so a deck cached before them says nothing rather than
+"none" (`src/fetch/country.ts`, the geometry in `src/lib/rings.ts`). Two
+plans map Aboriginal cultural landscapes on their local-provision maps:
+Lake Macquarie's Sensitive Aboriginal Landscape Map and Moree Plains'
+Aboriginal Cultural Significance Map, hatched on the map in a darker shade of
+ePlanning's own colour and said as "the Lake Macquarie LEP 2014 maps the site
+as a Sensitive Aboriginal Landscape Area, where a local provision of the plan
+applies". Heritage NSW's Aboriginal Heritage Impact Permit boundaries are
+merged by permit number (a variation, a transfer or a surrender is a record
+of its own), active while a record is active and its expiry has not passed,
+outlined in purple and dashed once expired (with a dot where a permit
+covers only a lot or two, a speck at 1:16,000), named by project with their
+number, state and distance; slide 17 draws them and the landscape maps on
+its constraints diagram. The Indigenous places of the National and
+Commonwealth Heritage Lists are outlined in red, washed when small and
+listed; a nomination is dashed with a band of tint inside its edge and is
+always said to be a nomination, not a listing. The Register of the National
+Estate's are dotted grey and always said to be an archive, closed in 2007,
+with no statutory force; only its registered, identified, indicative and
+interim places are kept. Outlines are clipped to the strip and a margin
+round it, so the rock-art nomination's 16,000 points round Sydney are not
+carried into every deck, and a place that takes in the whole strip keeps no
+outline and goes into the legend and the text ("the whole strip lies within
+the Sydney Cultural Crescent Rock Art, a nomination to the National Heritage
+List (not a listing) that takes in 5,076 km²"). A boundary is over the site
+when it takes in a twentieth of the lot or 100 m², since permit boundaries
+drawn along the kerb graze the lots beside them; one that only grazes is "at
+the site's edge". Slide 17's Country constraint names a permit within
+200 m, a mapped landscape within 200 m and a listed place within 500 m; a
+nomination and the archive bind nothing, so neither is a constraint. Slide
+18 lists the permits with Heritage NSW and the lists with DCCEEW.
+
+At the samples: every Sydney site lies inside the rock-art nomination, and
+at Waterloo, North Sydney and Botany so does the whole strip. Bondi Beach
+has three permits in the strip, the nearest the seating and landscaping
+works along the beach (AHIP 4968, active to August 2032) at the site's edge;
+North Sydney a test excavation 1.1 km east and the archive's Berry Island
+Reserve 1.6 km west; Waterloo two expired permits; Orange none of these.
 
 Slide 16 looks the site up in the ASGS (SA2, LGA, suburb, capital-city
 region), reads the five census tables for the SA2, the LGA and the capital

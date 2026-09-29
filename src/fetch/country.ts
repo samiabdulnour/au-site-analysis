@@ -5,15 +5,21 @@
 // Map), the named watercourses and the coastline, the Local Aboriginal
 // Land Council areas, the National Parks estate, the ASDST likelihood
 // model at the site, and a wide elevation grid for the hillshade and the
-// ridgelines. AHIMS itself is not open and is never read here; the slide
-// says so. Each part is soft: a service that does not answer leaves its
-// part empty and a warning in the log.
+// ridgelines. Over the strip too, the Aboriginal heritage the LEPs map (the
+// heritage schedules' Aboriginal items and the two plans' maps of Aboriginal
+// cultural landscapes), Heritage NSW's Aboriginal Heritage Impact Permit
+// boundaries, and the Indigenous places of the National and Commonwealth
+// Heritage Lists and of the archived Register of the National Estate.
+// AHIMS itself is not open and is never read here; the slide says so. Each
+// part is soft: a service that does not answer leaves its part empty and a
+// warning in the log.
 
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { retryFetch } from '../lib/http.js';
-import { queryByExtent } from '../lib/arcgis.js';
+import { queryByExtent, type GeoJSONFeature } from '../lib/arcgis.js';
 import { lonLatToMercator, mercatorToLonLat, mercatorScaleFactor, ringCentroid, type Extent, type LonLat, type XY } from '../lib/geo.js';
+import { clipRings, coversBox, ringArea, type Box } from '../lib/rings.js';
 import { fetchDemGrid, type DemGrid } from './terrain.js';
 import { ridgeLines } from '../lib/ridges.js';
 import { fetchNpws, type NpwsReserve } from './greenSpace.js';
@@ -55,6 +61,79 @@ export interface LepAboriginalItem {
 /** The heritage map's classes that are Aboriginal heritage (EPI_Primary_Planning_Layers/0, LAY_CLASS). */
 export const LEP_ABORIGINAL_CLASSES = ['Aboriginal Object', 'Aboriginal Place of Heritage Significance', 'Item - Aboriginal', 'Conservation Area - Aboriginal'];
 
+/**
+ * Land a local environmental plan maps as an Aboriginal cultural landscape,
+ * on one of its Local Provisions maps: a local provision of the plan
+ * applies there. The areas of one map in the strip are merged.
+ */
+export interface LepAboriginalArea {
+  epi: string;
+  /** The map, e.g. Sensitive Aboriginal Landscape Map, and its class, e.g. Sensitive Aboriginal Landscape Area. */
+  map: string;
+  cls: string;
+  /** The map's currency date, ISO. */
+  currency?: string;
+  /** Clipped to the strip and a margin round it; empty when the area takes in the whole strip. */
+  rings: number[][][];
+  coversStrip: boolean;
+}
+
+/**
+ * An Aboriginal Heritage Impact Permit's boundary, from Heritage NSW's layer
+ * of the permits issued, varied, surrendered or revoked under the National
+ * Parks and Wildlife Act 1974: land where harm to Aboriginal objects was
+ * permitted, for a project. A permit's records (its variations, transfers
+ * and surrender) are merged under its number.
+ */
+export interface AhipPermit {
+  /** The permit's number as the register gives it, e.g. 4968 or C0005740. */
+  id: string;
+  project: string;
+  applicant?: string;
+  location?: string;
+  /** The first decision and, where the permit was varied, the last, ISO. */
+  decided?: string;
+  lastDecided?: string;
+  /** The latest expiry of its records, ISO. */
+  expires?: string;
+  /** ACTIVE when any of its records is, else its last record's: EXPIRED, VARIED or AREA VARIED. */
+  status: string;
+  records: number;
+  /** Clipped to the strip and a margin round it. */
+  rings: number[][][];
+  /** The centroid of its largest ring in the strip. */
+  lon: number;
+  lat: number;
+}
+
+/**
+ * An Indigenous place of the National Heritage List, the Commonwealth
+ * Heritage List (places the Commonwealth owns or leases) or the Register of
+ * the National Estate, which was closed in 2007 and is kept as an archive,
+ * not a statutory list.
+ */
+export interface HeritageListPlace {
+  list: 'NHL' | 'CHL' | 'RNE';
+  id: string;
+  name: string;
+  /** As the list gives it: Listed place, Nominated place or Within listed place; for the RNE, Registered, Identified Place, Indicative Place or Interim List. */
+  status: string;
+  address?: string;
+  hectares?: number;
+  /** The date it was listed, ISO, where the list gives one. */
+  listed?: string;
+  url?: string;
+  /** Clipped to the strip and a margin round it; empty when the place takes in the whole strip. */
+  rings: number[][][];
+  coversStrip: boolean;
+  /** The centroid of its largest ring in the strip, or the strip's centre when it covers it. */
+  lon: number;
+  lat: number;
+}
+
+/** The Register of the National Estate's statuses kept: on the register, accepted on a State's assessment, entered but never assessed, and proposed. Rejected, removed and destroyed places are left out. */
+export const RNE_STATUSES = ['Registered', 'Identified Place', 'Indicative Place', 'Interim List'];
+
 export interface CountryData {
   nativeTitle: { ok: boolean; atSite: NativeTitleRecord[]; inWindow: { determinations: number; claims: number; iluas: number }; currency?: string };
   places: AboriginalPlace[];
@@ -78,6 +157,12 @@ export interface CountryData {
   asdst: { ok: boolean; likelihood: number | null; surveyPriority: number | null; scaleMax: number };
   /** The Aboriginal heritage items the LEPs schedule over the strip; optional, since decks cached before it have none. */
   lepAboriginal?: { ok: boolean; items: LepAboriginalItem[] };
+  /** The LEPs' maps of Aboriginal cultural landscapes over the strip; optional likewise, as are the two below. */
+  lepAboriginalAreas?: { ok: boolean; areas: LepAboriginalArea[] };
+  /** Heritage NSW's AHIP boundaries over the strip. */
+  ahips?: { ok: boolean; permits: AhipPermit[] };
+  /** The Indigenous places of the national lists over the strip, and which lists answered. */
+  heritageLists?: { read: { nhl: boolean; chl: boolean; rne: boolean }; places: HeritageListPlace[] };
   fetchedAt: string;
 }
 
@@ -303,6 +388,156 @@ async function fetchLepAboriginal(extent: Extent): Promise<LepAboriginalItem[]> 
   });
 }
 
+// ---- the strip as the heritage layers are clipped to it --------------------------
+
+/** The strip's extent in lon/lat, and with a margin round it: big outlines are clipped to the margin, so their cut edges fall outside the map. */
+export function stripBoxes(extent: Extent): { strip: Box; clip: Box } {
+  const box = (e: Extent): Box => { const sw = mercatorToLonLat({ x: e.xmin, y: e.ymin }), ne = mercatorToLonLat({ x: e.xmax, y: e.ymax }); return { xmin: sw.lon, ymin: sw.lat, xmax: ne.lon, ymax: ne.lat }; };
+  const m = Math.max(extent.xmax - extent.xmin, extent.ymax - extent.ymin) * 0.1;
+  return { strip: box(extent), clip: box({ xmin: extent.xmin - m, ymin: extent.ymin - m, xmax: extent.xmax + m, ymax: extent.ymax + m }) };
+}
+
+const sameRing = (a: number[][], b: number[][]) => a.length === b.length && a.every((p, i) => Math.abs(p[0] - b[i][0]) < 1e-9 && Math.abs(p[1] - b[i][1]) < 1e-9);
+const largestCentroid = (rs: number[][][]): [number, number] => ringCentroid([...rs].sort((x, y) => ringArea(y) - ringArea(x))[0]);
+
+// ---- the LEPs' maps of Aboriginal cultural landscapes ----------------------------------
+
+const LOCAL_PROVISIONS = `${M3}/ePlanning/Planning_Portal_Local_Provisions/MapServer`;
+/**
+ * The Local Provisions layers that map Aboriginal cultural landscapes: the
+ * Aboriginal Cultural Significance Map (414, Moree Plains LEP 2011) and the
+ * Sensitive Aboriginal Landscape Map (557, Lake Macquarie LEP 2014), the only
+ * plans with such a map in September 2026.
+ */
+export const LEP_ABORIGINAL_MAP_LAYERS = [414, 557];
+
+/** A map's areas over the strip, merged by plan, map and class. */
+export function mergeLepAreas(features: GeoJSONFeature[], boxes: { strip: Box; clip: Box }): LepAboriginalArea[] {
+  const byKey = new Map<string, { epi: string; map: string; cls: string; currency?: string; rings: number[][][] }>();
+  for (const f of features) {
+    const p = f.properties ?? {};
+    const rs = rings(f.geometry).filter((r) => r.length >= 4);
+    if (!rs.length) continue;
+    const epi = String(p.EPI_NAME ?? '').trim(), map = String(p.MAP_NAME ?? '').trim(), cls = String(p.LAY_CLASS ?? p.CLASS_DESCRIPTION ?? '').trim();
+    const key = `${epi}|${map}|${cls}`;
+    const e = byKey.get(key) ?? byKey.set(key, { epi, map, cls, currency: isoDate(p.CURRENCY_DATE), rings: [] }).get(key)!;
+    e.rings.push(...rs);
+  }
+  return [...byKey.values()].map((e) => {
+    const coversStrip = coversBox(e.rings, boxes.strip);
+    return { epi: e.epi, map: e.map, cls: e.cls, currency: e.currency, rings: coversStrip ? [] : clipRings(e.rings, boxes.clip), coversStrip };
+  }).filter((a) => a.coversStrip || a.rings.length);
+}
+
+export async function fetchLepAboriginalAreas(extent: Extent): Promise<LepAboriginalArea[]> {
+  const out = await Promise.all(LEP_ABORIGINAL_MAP_LAYERS.map((id) => queryByExtent(`${LOCAL_PROVISIONS}/${id}`, extent, 'EPI_NAME,MAP_NAME,LAY_CLASS,CLASS_DESCRIPTION,CURRENCY_DATE', '1=1', { maxAllowableOffset: '0.00001' })));
+  return mergeLepAreas(out.flatMap((fc) => fc.features), stripBoxes(extent));
+}
+
+// ---- Aboriginal Heritage Impact Permits -------------------------------------------
+
+const AHIPS = `${M3}/EDP/AHIPS/MapServer/0`;
+
+/** The register's d/m/yyyy as ISO. */
+const dmyIso = (v: unknown) => { const m = String(v ?? '').trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/); return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : undefined; };
+
+/**
+ * The registers' free text, tidied: line breaks run on, and a '?' left
+ * where an old encoding lost an en dash, a curly quote or an apostrophe is
+ * put back ("Zoo ? Stage 1" is "Zoo – Stage 1", "2?4" is "2–4", and a
+ * spaced hyphen is a dash too,
+ * "?Reflections?" is "‘Reflections’", "Queen?s" is "Queen’s").
+ */
+export function tidyRegisterText(v: unknown): string {
+  return String(v ?? '')
+    .replace(/\s*[\r\n]+\s*/g, ' ')
+    .replace(/(^|[\s(])\?([^?\s](?:[^?]*[^?\s])?)\?(?=[\s,.;:)]|$)/g, '$1‘$2’')
+    .replace(/(\d)\?(\d)/g, '$1–$2')
+    .replace(/([A-Za-z])\?([A-Za-z])/g, '$1’$2')
+    .replace(/\s[?-]\s/g, ' – ')
+    .replace(/(\w)\?\s/g, '$1 – ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** The permit records over the strip, merged by permit number: a variation, a transfer or a surrender is a record of its own. */
+export function mergeAhips(features: GeoJSONFeature[], clip?: Box): AhipPermit[] {
+  const byId = new Map<string, { id: string; recs: { decided?: string; expires?: string; status: string; project: string; applicant: string; location: string }[]; rings: number[][][] }>();
+  for (const f of features) {
+    const p = f.properties ?? {};
+    let rs = rings(f.geometry).filter((r) => r.length >= 4);
+    if (clip) rs = clipRings(rs, clip);
+    if (!rs.length) continue;
+    const id = String(p.AHIP ?? '').trim(), project = tidyRegisterText(p.Project_Na);
+    const key = id || project || 'unnumbered';
+    const e = byId.get(key) ?? byId.set(key, { id, recs: [], rings: [] }).get(key)!;
+    for (const r of rs) if (!e.rings.some((q) => sameRing(q, r))) e.rings.push(r);
+    e.recs.push({ decided: dmyIso(p.Decision_D), expires: isoDate(p.ExpireDate), status: String(p.Status ?? '').trim().toUpperCase(), project, applicant: tidyRegisterText(p.Applicant), location: tidyRegisterText(p.Location) });
+  }
+  return [...byId.values()].map((e) => {
+    const recs = [...e.recs].sort((x, y) => (x.decided ?? '').localeCompare(y.decided ?? ''));
+    const first = recs[0], last = recs[recs.length - 1];
+    const [lon, lat] = largestCentroid(e.rings);
+    return {
+      id: e.id, project: recs.find((r) => r.project)?.project ?? '', applicant: recs.find((r) => r.applicant)?.applicant, location: recs.find((r) => r.location)?.location,
+      decided: first.decided, lastDecided: last.decided !== first.decided ? last.decided : undefined,
+      expires: recs.map((r) => r.expires).filter((x): x is string => Boolean(x)).sort().pop(),
+      status: recs.some((r) => r.status === 'ACTIVE') ? 'ACTIVE' : last.status || 'UNKNOWN',
+      records: recs.length, rings: e.rings, lon, lat,
+    };
+  });
+}
+
+export async function fetchAhips(extent: Extent): Promise<AhipPermit[]> {
+  const fc = await queryByExtent(AHIPS, extent, 'AHIP,Project_Na,Applicant,Location,Decision_D,Status,ExpireDate', '1=1', { maxAllowableOffset: '0.00001' });
+  return mergeAhips(fc.features, stripBoxes(extent).clip);
+}
+
+// ---- the national lists' Indigenous places ------------------------------------------
+
+const DCCEEW_GIS = 'https://gis.environment.gov.au/gispubmap/rest/services/ogc_services';
+const LISTS: Record<HeritageListPlace['list'], { url: string; fields: string; where: string }> = {
+  NHL: { url: `${DCCEEW_GIS}/National_Heritage_List/FeatureServer/0`, fields: 'PLACE_ID,NAME,STATUS,ADDRESS,AREA_HA,REGISTER_DATE,URL', where: "CLASS='Indigenous'" },
+  CHL: { url: `${DCCEEW_GIS}/Commonwealth_Heritage_List/FeatureServer/0`, fields: 'PLACE_ID,NAME,STATUS,ADDRESS,AREA_HA,REGISTER', where: "CLASS='Indigenous'" },
+  RNE: { url: 'https://services1.arcgis.com/gtRkYQyUQLMTM1uS/arcgis/rest/services/heritage_rnesdb_public/FeatureServer/0', fields: 'PLACE_ID,NAME,STATUS,ADDRESS', where: `CLASS='Indigenous' AND STATUS IN (${RNE_STATUSES.map((x) => `'${x}'`).join(',')})` },
+};
+
+/** A list's places over the strip, one per place id, their outlines clipped to the strip's margin. */
+export function listPlaces(list: HeritageListPlace['list'], features: GeoJSONFeature[], boxes: { strip: Box; clip: Box }): HeritageListPlace[] {
+  const byId = new Map<string, { p: Record<string, any>; rings: number[][][] }>();
+  for (const f of features) {
+    const p = f.properties ?? {};
+    const rs = rings(f.geometry).filter((r) => r.length >= 4);
+    if (!rs.length) continue;
+    // the RNE's query filters by status; a list that answers without the filter must not bring a rejected place in
+    if (list === 'RNE' && !RNE_STATUSES.includes(String(p.STATUS ?? '').trim())) continue;
+    const id = String(p.PLACE_ID ?? p.NAME ?? '').trim();
+    const e = byId.get(id) ?? byId.set(id, { p, rings: [] }).get(id)!;
+    e.rings.push(...rs);
+  }
+  const mid = { lon: (boxes.strip.xmin + boxes.strip.xmax) / 2, lat: (boxes.strip.ymin + boxes.strip.ymax) / 2 };
+  const out: HeritageListPlace[] = [];
+  for (const [id, { p, rings: rs }] of byId) {
+    const coversStrip = coversBox(rs, boxes.strip);
+    const clipped = coversStrip ? [] : clipRings(rs, boxes.clip);
+    if (!coversStrip && !clipped.length) continue;
+    const [lon, lat] = coversStrip ? [mid.lon, mid.lat] : largestCentroid(clipped);
+    const ha = Number(p.AREA_HA);
+    out.push({
+      list, id, name: tidyRegisterText(p.NAME), status: String(p.STATUS ?? '').trim(), address: p.ADDRESS ? tidyRegisterText(p.ADDRESS) : undefined,
+      hectares: Number.isFinite(ha) && ha > 0 ? Math.round(ha * 100) / 100 : undefined, listed: isoDate(p.REGISTER_DATE ?? p.REGISTER), url: p.URL ? String(p.URL) : undefined,
+      rings: clipped, coversStrip, lon, lat,
+    });
+  }
+  return out;
+}
+
+export async function fetchListPlaces(list: HeritageListPlace['list'], extent: Extent): Promise<HeritageListPlace[]> {
+  const l = LISTS[list];
+  const fc = await queryByExtent(l.url, extent, l.fields, l.where, { maxAllowableOffset: '0.00002' });
+  return listPlaces(list, fc.features, stripBoxes(extent));
+}
+
 // ---- all of it ---------------------------------------------------------------
 
 export const EMPTY_COUNTRY: CountryData = {
@@ -313,6 +548,9 @@ export const EMPTY_COUNTRY: CountryData = {
   lalcs: [], npws: [], dem: null, ridges: [],
   asdst: { ok: false, likelihood: null, surveyPriority: null, scaleMax: 999 },
   lepAboriginal: { ok: false, items: [] },
+  lepAboriginalAreas: { ok: false, areas: [] },
+  ahips: { ok: false, permits: [] },
+  heritageLists: { read: { nhl: false, chl: false, rne: false }, places: [] },
   fetchedAt: new Date(0).toISOString(),
 };
 
@@ -328,7 +566,7 @@ export async function fetchCountry(extent: Extent, pxWidth: number, pxHeight: nu
     const t0 = Date.now();
     try { return await p; } catch (e: any) { log(`  WARN Country: ${what} failed: ${e?.message ?? e}`); return fallback; } finally { took.push(`${what} ${Math.round((Date.now() - t0) / 1000)} s`); }
   };
-  const [nativeTitle, places, vegetation, water, lalcs, npws, dem, asdst, lepItems] = await Promise.all([
+  const [nativeTitle, places, vegetation, water, lalcs, npws, dem, asdst, lepItems, lepAreas, permits, nhl, chl, rne] = await Promise.all([
     soft(fetchNativeTitle(centreLL, extent), EMPTY_COUNTRY.nativeTitle, 'native title registers'),
     soft(fetchPlaces(centre, EMPTY_COUNTRY.placesRadiusM), null as AboriginalPlace[] | null, 'Aboriginal Places'),
     soft(fetchVegetation(extent, pxWidth, pxHeight, centreLL, outDir, log), EMPTY_COUNTRY.vegetation, 'pre-1750 vegetation'),
@@ -338,9 +576,22 @@ export async function fetchCountry(extent: Extent, pxWidth: number, pxHeight: nu
     soft(fetchDemGrid(extent, 8), null as DemGrid | null, 'wide elevation grid'),
     soft(fetchAsdst(centreLL), EMPTY_COUNTRY.asdst, 'ASDST model'),
     soft(fetchLepAboriginal(extent), null as LepAboriginalItem[] | null, 'LEP Aboriginal heritage items'),
+    soft(fetchLepAboriginalAreas(extent), null as LepAboriginalArea[] | null, 'LEP Aboriginal landscape maps'),
+    soft(fetchAhips(extent), null as AhipPermit[] | null, 'AHIP boundaries'),
+    soft(fetchListPlaces('NHL', extent), null as HeritageListPlace[] | null, 'National Heritage List'),
+    soft(fetchListPlaces('CHL', extent), null as HeritageListPlace[] | null, 'Commonwealth Heritage List'),
+    soft(fetchListPlaces('RNE', extent), null as HeritageListPlace[] | null, 'Register of the National Estate'),
   ]);
   const ridges = dem ? ridgeLines(dem, { riseM: 1.0, reliefM: 4 }) : [];
+  const listed = [...(nhl ?? []), ...(chl ?? []), ...(rne ?? [])];
   log(`  country timings: ${took.join(', ')}`);
-  log(`  country: native-title at site:${nativeTitle.atSite.length} window:${nativeTitle.inWindow.determinations}/${nativeTitle.inWindow.claims}/${nativeTitle.inWindow.iluas} places:${places?.length ?? 'x'} veg:${vegetation.atSite?.pct ?? '—'} classes:${vegetation.classes.length} water:${water.courses.length} lalcs:${lalcs.length} npws:${npws.length} ridges:${ridges.length} asdst:${asdst.likelihood ?? '—'} lep-aboriginal:${lepItems?.length ?? 'x'}`);
-  return { nativeTitle, places: places ?? [], placesRadiusM: EMPTY_COUNTRY.placesRadiusM, placesOk: places !== null, vegetation, water, lalcs, npws, dem, ridges, asdst, lepAboriginal: { ok: lepItems !== null, items: lepItems ?? [] }, fetchedAt: new Date().toISOString() };
+  log(`  country: native-title at site:${nativeTitle.atSite.length} window:${nativeTitle.inWindow.determinations}/${nativeTitle.inWindow.claims}/${nativeTitle.inWindow.iluas} places:${places?.length ?? 'x'} veg:${vegetation.atSite?.pct ?? '—'} classes:${vegetation.classes.length} water:${water.courses.length} lalcs:${lalcs.length} npws:${npws.length} ridges:${ridges.length} asdst:${asdst.likelihood ?? '—'} lep-aboriginal:${lepItems?.length ?? 'x'}/${lepAreas?.length ?? 'x'} ahips:${permits?.length ?? 'x'} lists:${nhl?.length ?? 'x'}/${chl?.length ?? 'x'}/${rne?.length ?? 'x'}`);
+  return {
+    nativeTitle, places: places ?? [], placesRadiusM: EMPTY_COUNTRY.placesRadiusM, placesOk: places !== null, vegetation, water, lalcs, npws, dem, ridges, asdst,
+    lepAboriginal: { ok: lepItems !== null, items: lepItems ?? [] },
+    lepAboriginalAreas: { ok: lepAreas !== null, areas: lepAreas ?? [] },
+    ahips: { ok: permits !== null, permits: permits ?? [] },
+    heritageLists: { read: { nhl: nhl !== null, chl: chl !== null, rne: rne !== null }, places: listed },
+    fetchedAt: new Date().toISOString(),
+  };
 }

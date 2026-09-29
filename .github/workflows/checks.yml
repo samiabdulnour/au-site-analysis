@@ -135,6 +135,14 @@ jobs:
       - name: the wind roses count the hours right
         run: npx tsx test/wind.mts
 
+      # Slide 15's heritage layers on made-up features: outlines clipped to the
+      # strip, a permit over the lot told from one that grazes its kerb, AHIP
+      # records merged by permit, the RNE's rejected places left out, and what
+      # the slide says of a nomination and of the archive. CI never calls
+      # Heritage NSW, DCCEEW or ePlanning.
+      - name: the Country slide's permits, lists and landscape maps read right
+        run: npx tsx test/country-heritage.mts
+
       # The deployer's one job here is to leave a record even when it dies on
       # its first command — which is exactly what happened once, for six days,
       # unnoticed. Reproduce that: a repo whose origin cannot be reached, and a
