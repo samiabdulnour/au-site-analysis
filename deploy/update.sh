@@ -120,7 +120,9 @@ docker rm -f site-analyst >/dev/null 2>&1 || true
 # deploy would have taken the container away and had nothing to put back.
 #
 # ADMIN_CODE opens /status, and nothing else does. Unset, the ops view has no
-# code that opens it.
+# code that opens it. GOOGLE_MAPS_API_KEY (and its signing secret, if the
+# project has one) gives slide 12 its Street View frames; unset, the slide
+# reads the open frames alone.
 docker run -d --name site-analyst --restart unless-stopped \
   --network "$NET" \
   -p 127.0.0.1:3100:3000 \
@@ -128,6 +130,8 @@ docker run -d --name site-analyst --restart unless-stopped \
   -e ADMIN_CODE="${ADMIN_CODE:-}" \
   -e TFNSW_API_KEY="$TFNSW_API_KEY" \
   -e MAPILLARY_TOKEN="${MAPILLARY_TOKEN:-}" \
+  -e GOOGLE_MAPS_API_KEY="${GOOGLE_MAPS_API_KEY:-}" \
+  -e GOOGLE_MAPS_SIGNING_SECRET="${GOOGLE_MAPS_SIGNING_SECRET:-}" \
   -e OVERPASS_LOCAL="${OVERPASS_LOCAL:-}" \
   -e WEB_OUT_BUDGET_MB="${WEB_OUT_BUDGET_MB:-4096}" \
   -v /var/lib/site-analyst:/hostinfo:ro \

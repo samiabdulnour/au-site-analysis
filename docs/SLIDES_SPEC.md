@@ -132,8 +132,10 @@ five years from the Online DA API, filtered to what shapes context (storeys ≥
 4 or cost ≥ $5 M or dwellings ≥ 10): a map of dots coloured by status and a
 table (address, type, storeys, dwellings, cost, status, lodged, determined).
 Planning proposals on exhibition, TOD and accelerated precincts on the same
-map. A schematic future skyline is optional: storeys × 3.1 m at each DA.
-*Manual:* renders; State Significant applications (no open feed, §5).
+map. State significant applications from the Department's Major Projects
+register join them as S-numbered diamonds (its listing and each project's
+page, §7). A schematic future skyline is optional: storeys × 3.1 m at each
+DA. *Manual:* renders.
 
 **08 Built form and height planes.** Figure-ground with buildings classed by
 height (Overture / OSM; the storeys of a determined DA on the lot where
@@ -160,7 +162,8 @@ building's footprint, height and levels where recorded, imagery date, State
 government and Crown parcels nearby.
 
 **12 Existing site condition.** Street-level photographs facing the site
-from KartaView / Mapillary keyed to a plan by bearing; the 1943 aerial beside
+from Google Street View (with a key) and KartaView / Mapillary, keyed to a
+plan by bearing; the 1943 aerial beside
 today's for a then-and-now pair. *Manual:* the site visit replaces these.
 
 **13 Grid, sun and views.** Urban grid orientation (dominant street bearings
@@ -382,7 +385,7 @@ lockdown snapshot and the slide says so.
 | Wikipedia `api/rest_v1/page/summary/<Title>` and `w/api.php?action=query&list=geosearch` then `prop=description` for the titles | the suburb summary paragraph and its lead image; articles within 1.5 km as the named places (a place vocabulary keeps companies, electorates and people out) | same User-Agent rule and the same 429s. In use on slide 02 |
 | KartaView `POST https://api.openstreetcam.org/1.0/list/nearby-photos/` (`lat`, `lng`, `radius`, `ipp`); the v2 `photo/?lat=&lng=&radius=` search refuses radii over 150 m | street-level frames with camera position, heading, date, contributor and thumbnail paths | no key; coverage is patchy and old in places (2019 at the samples, one contributor); about half the frames carry no heading, so the direction of travel between a frame's neighbours in its sequence stands in. In use on slide 12 |
 | Mapillary `https://graph.mapillary.com/images?bbox=…&fields=id,thumb_1024_url,captured_at,compass_angle,computed_compass_angle,geometry,computed_geometry,creator,sequence,is_pano` | dense recent street-level imagery | free client token from the Mapillary developer page, sent as `access_token`; reachable, refuses without a token (HTTP 500, "Invalid OAuth 2.0 Access Token"). Graph API v4: `bbox` is left,bottom,right,top and must be under 0.01 square degrees (a 250 m radius is a four-hundredth of that), 2,000 images a call at most, 10,000 searches a minute per app; the structure-from-motion position and heading are preferred to the camera's own and 360° frames skipped. Read on slide 12 when `MAPILLARY_TOKEN` is set; checked against the documentation, not exercised here (no token) |
-| Google Street View Static API | best coverage | paid; not proposed |
+| Google Street View Static API (`streetview/metadata`, free, and `streetview` images) | best coverage | a Google Cloud key with billing (10,000 images a month free, then US$7 a thousand); Google's terms bar print and storing images outside its services. `src/fetch/streetView.ts` probes 12 m out from each side of the site, lets the metadata service say which sides face a street, and frames each frontage; the cadastre and the footprints set aside panoramas inside another lot or building (the service's "outdoor" takes in some shop interiors) and views through a neighbour. Read on slide 12 when `GOOGLE_MAPS_API_KEY` is set; exercised at the six samples in September 2026 |
 
 ### 4.9 Building heights
 
@@ -430,7 +433,7 @@ Open-Meteo archive (ERA5): `https://archive-api.open-meteo.com/v1/archive?latitu
 | Content | Why not | Instead |
 |---|---|---|
 | Land-use table (permitted / prohibited uses), zone objectives, clause text | `legislation.nsw.gov.au` sits behind a Cloudflare bot check that also stops headless Chromium; AustLII likewise | print the legislation link the API gives for every control; the person pastes the table |
-| State Significant Development applications (the Major Projects register) | a Pega application with no open feed; the Drupal listing offers HTML only | SSD *sites* from the SEPP layer; DAs from the Online DA API; SSD applications by hand |
+| State Significant Development applications (the Major Projects register) as a feed | a Pega case system with no open feed; the tracker's JSON of every project (`/state-significant-projects-spatial-data`) answered 503 through September 2026 | the register's HTML listing and project pages, parsed and cached (slide 07, §7); SSD *sites* from the SEPP layer |
 | Site visit photographs, oblique aerials, renders, physical-model photos, 3D views | not data | placeholders sized for them; street-level and 1943 imagery as stand-ins |
 | The reference's character areas (its site-surroundings page: "city core", "Lavender Bay", the precinct edges) | a designer's judgement about how places read, not a dataset; no one publishes it | the evidence is on the slides — the zones and heritage conservation areas (03), the height bands (08), the 1943 and today pair (12), the named places (02) — and the boundaries are drawn by hand over them; that page's landmarks, connections and station are slides 02 and 09 |
 | Council strategies (LSPS, housing strategies, public domain strategies, character statements), DCP text | the Planning Portal indexes every council's LSPS as an HTML page of links (128 in September 2026), which slide 05 parses; the other strategies are PDFs on council sites with no index; only the DCP has a mapped link | the LSPS by parsing; the rest by hand, with rows left for them on slide 05 |
@@ -743,6 +746,36 @@ contributor in 2019; at Waterloo and Botany six face the site, at
 Marrickville one and at North Sydney none, the frames there running along
 other streets, so those slides carry placeholders.
 
+With `GOOGLE_MAPS_API_KEY` set, Google Street View comes first
+(`src/fetch/streetView.ts`). The site's outline is simplified to its convex
+hull, nearly straight runs merged, and from the middle of each side a probe
+12 m out asks the free metadata service for the nearest outdoor panorama
+within 25 m. The side is a street frontage when that panorama stands on its
+outer side within 45 m, not far past its ends, sees its middle within 60° of
+square, and stands in the street with the site in view. "Outdoor" is
+Google's word and takes in some shop interiors, so the cadastre and the
+footprints decide: a camera more than 2 m inside a lot that is not the
+site's, or inside a footprint, is set aside, and so is one whose sight line
+passes more than 2 m through a neighbour's footprint or crosses more than
+8 m of other lots (a footpath strip or a setback is narrower). Each frontage
+gets a frame square to it, its field of view wide enough to take it in (55°
+to 100°); then a frame at each corner between two frontages; two oblique
+frames of each frontage longer than 30 m, from past its ends, within 72° of
+square; and the street both ways from each frontage's camera, as the site
+visit's brief asks; six at most, one per panorama and direction. The images
+are 640 × 372, the grid cell's shape, shown uncropped so Google's marks stay
+on them, captioned with the month of capture and the panorama's own credit
+(Google's, or the contributor's), and saved in the deck's folder only; the
+key goes into the download and nowhere else. The open frames fill the cells
+Street View leaves, away from its cameras. At the samples in September 2026:
+Bondi Beach two frontages (Campbell Parade and Roscoe Street) and six
+frames, with three panoramas set aside (a shoe shop's interior from 2010, a
+car-park entry and a neighbour's façade); North Sydney two and six; Waterloo
+four and six; Orange two and six, captured in 2026; Marrickville one,
+framed square and along Illawarra Road both ways; Botany none, its one
+panorama nearby being inside the neighbour's building, so the open frames
+carry that slide.
+
 Slide 13 fetches nothing new but the views. The street grid is the bearing
 of every road segment in the window, length-weighted and folded to 0–180° in
 5° bins, each smoothed with half its neighbours; the primary axis is the
@@ -820,10 +853,12 @@ census tables for a month) and the slide says so. The sentences give the
 layers' own dates in one line, name what is computed rather than sourced,
 list what must still be obtained outside the open data (the survey, the
 title search, the geotechnical, contamination and acoustic reports, the
-flood study, the ANEF contours, the State significant applications, the
-site visit), repeat the run's warnings (an Overpass mirror that did not
+flood study, the ANEF contours, the site visit), repeat the run's warnings (an Overpass mirror that did not
 answer, a feed that came back incomplete) and state the licence position
-as the publishers give it.
+as the publishers give it. The table has a fixed box and a busy council
+area fills it (fifty-odd rows at Bondi Beach), so the printer measures it
+in the page and steps its type down until the last row is inside, to three
+quarters of its size, rather than clipping the rows below the fold.
 
 Slide 15 reads the layers of Country that are open (`src/fetch/country.ts`,
 each part soft): the National Native Title Tribunal's determinations,
@@ -858,6 +893,19 @@ search and where advised a due-diligence assessment precede works, and that
 the name of Country, the language, the place names and the narrative are
 developed with Knowledge Holders, not generated. Slide 17 carries a Country
 constraint and slide 18 the new sources.
+
+The local environmental plans' own Aboriginal heritage items are read too:
+the ePlanning heritage map (`EPI_Primary_Planning_Layers/0`) over the strip,
+its four Aboriginal classes (Aboriginal Object, Aboriginal Place of Heritage
+Significance, Item - Aboriginal, Conservation Area - Aboriginal). Few plans
+schedule any: 71 items in 16 plans across NSW in September 2026, among them
+Waverley's rock engravings, shelters and an open campsite with burials
+around Bondi, Eurobodalla's conservation areas and Balranald's items. They
+are washed in the heritage map's gold with a square at each and named where
+there is room, tabled with their number and distance, and named in the text
+("none scheduled in the strip" elsewhere); an item within 500 m joins slide
+17's Country constraint. At 154 Campbell Parade Bondi Beach four are in the
+strip, the nearest an open campsite and burials 143 m east.
 
 Slide 16 looks the site up in the ASGS (SA2, LGA, suburb, capital-city
 region), reads the five census tables for the SA2, the LGA and the capital
@@ -894,8 +942,38 @@ Appeal, Deferred Commencement, Operational consent requested/issued,
 Withdrawn, Rejected (not accepted at lodgement) and Cancelled; the slide
 groups them as determined, active, before the court and withdrawn. Planning
 proposals come from the identify operation on
-`ePlanning/Planning_Proposal_Public`; State significant applications are
-still missing (no open feed, §5) and are the slide's manual item.
+`ePlanning/Planning_Proposal_Public`.
+
+State significant applications come from the Department's Major Projects
+register (`src/fetch/majorProjects.ts`), which has no API. Its listing
+(`/major-projects/projects`) is a server-rendered page of cards, nine to a
+page, filtered by council area (`lga`, the ids of its own select), case
+type and stage; each card gives the application number, the stage, the case
+type, the council area, the title and the address. Each project's page adds
+the development type, the decision, the determination date, the decider,
+the last modification, the modifications with their stages, the
+description and the Department's point for the project (a geofield in the
+page's settings). The deck reads the listing for every council area the
+window touches (the harbour's unincorporated area skipped), State
+significant development and infrastructure only (288 for the City of
+Sydney, 65 North Sydney, 47 Bayside, 44 Inner West, 5 Orange), cached a
+week, and every listed project's page, cached a week while it is in the
+process and two months once settled: 288 pages and 66 s the first time for
+the City of Sydney, from the cache after. The tracker's JSON of every
+project (`/state-significant-projects-spatial-data`) would be one call but
+answered 503 throughout. On the slide the projects whose point falls in the
+window and that are in the process or determined in the last ten years are
+S-numbered diamonds in the status colours (in the process first, then the
+latest determined), the top six rows of the table with number, stage,
+decision, modifications and determination date, and "on the site" when the
+point falls on the site's lots; older approvals and the withdrawn or lapsed
+(SEARs expired) are counted in the text, not drawn. The register gives no
+lodgement dates. At 5 Blue Street North Sydney the register's own
+application for the site is S1; at Marrickville a residential flat building
+99 m away is at the Prepare EIS stage; at Waterloo the Metro Quarter concept
+and five stages of the Waterloo Estate (South) sit in the window.
+`test/major-projects.mts` checks the parsers on trimmed copies of the
+markup.
 
 Council open data is a per-LGA hook: the City of Sydney's data hub
 (`data.cityofsydney.nsw.gov.au`, ArcGIS feature services under
