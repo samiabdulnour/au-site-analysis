@@ -10,9 +10,16 @@
 // street frontage, and its frame looks back at the edge's middle with a
 // field of view wide enough to take the edge in. A corner where two
 // frontages meet gets a frame at the corner, a long frontage two oblique
-// ones; six at most, frontages first. Images are 640 × 372, the shape of
-// the slide's grid cell, so nothing is cropped and Google's marks stay on
-// the frame.
+// ones, and each frontage's camera looks along the street both ways; six
+// at most, frontages first. Images are 640 × 372, the shape of the slide's
+// grid cell, so nothing is cropped and Google's marks stay on the frame.
+//
+// "Outdoor" is Google's word, and it files some shop interiors under it, so
+// the cadastre and the footprints decide: a panorama more than 2 m inside a
+// lot that is not the site's, or inside a building, is in a shop, an arcade
+// or a car park, and one whose sight line passes through a neighbour's
+// footprint, or across more than 8 m of other lots, sees the neighbour. The
+// road reserve is not a lot, so a camera in the street passes both.
 //
 // Google's terms forbid storing Street View content outside its services
 // (panorama IDs excepted), and its brand rules bar print. The frames go
@@ -29,7 +36,7 @@ const IMAGE = 'https://maps.googleapis.com/maps/api/streetview';
 /** The grid cell's shape on slide 12 (94.7 × 55 mm), in the API's pixels. */
 export const SV_SIZE = { w: 640, h: 372 };
 /** From an edge's middle out to where the street would be. */
-const PROBE_OUT_M = 12;
+export const PROBE_OUT_M = 12;
 /** How far the metadata service may look from a probe. */
 const PROBE_RADIUS_M = 25;
 /** A panorama further than this in front of the edge stands in another street. */
@@ -39,7 +46,22 @@ const MIN_EDGE_M = 5;
 const MERGE_DEG = 15;
 /** A frontage longer than this gets two oblique frames as well. */
 const OBLIQUE_EDGE_M = 30;
+/** How far off square a frontage frame may meet its side, and an oblique one. */
+const SQUARE_DEG = 60, OBLIQUE_DEG = 72;
 export const MAX_VIEWS = 6;
+/**
+ * A camera this far inside a lot other than the site's stands on private
+ * land: a shop, an arcade, a car park, a courtyard (Google files some shop
+ * interiors as outdoor). Nearer a boundary than this is the cadastre's and
+ * the GPS's error at a kerb.
+ */
+const INSIDE_LOT_M = 2;
+/** A sight line that passes further than this through a neighbour's footprint shows the neighbour, not the site. */
+const THROUGH_BUILDING_M = 2;
+/** Nor may it cross more than this of other lots, for where footprints are missing; a footpath strip or a setback is narrower. */
+const ACROSS_LAND_M = 8;
+/** Lots and footprints further than this from the site's outline cannot stand between it and a camera. */
+const NEAR_M = MAX_CAMERA_M + PROBE_RADIUS_M + 40;
 
 export interface SvMeta { panoId: string; lon: number; lat: number; date?: string; copyright?: string }
 
@@ -47,7 +69,8 @@ export interface SvView extends SvMeta {
   heading: number;
   pitch: number;
   fov: number;
-  kind: 'frontage' | 'corner' | 'oblique';
+  /** Square to a street frontage, at a corner between two, oblique to a long one, or along the street from a frontage's camera. */
+  kind: 'frontage' | 'corner' | 'oblique' | 'street';
   /** The camera's distance to what it looks at, metres. */
   distanceM: number;
 }
@@ -112,39 +135,104 @@ const inside = (p: P, poly: P[]) => {
   }
   return c;
 };
+const segDist = (q: P, a: P, b: P) => {
+  const dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy;
+  const t = l2 ? clamp(((q.x - a.x) * dx + (q.y - a.y) * dy) / l2, 0, 1) : 0;
+  return Math.hypot(q.x - (a.x + t * dx), q.y - (a.y + t * dy));
+};
+const areaCentroid = (r: P[]): P => {
+  let a = 0, cx = 0, cy = 0;
+  for (let i = 0, j = r.length - 1; i < r.length; j = i++) { const f = r[j].x * r[i].y - r[i].x * r[j].y; a += f; cx += (r[j].x + r[i].x) * f; cy += (r[j].y + r[i].y) * f; }
+  return a ? { x: cx / (3 * a), y: cy / (3 * a) } : r[0];
+};
+
+/** Whether a point falls in any of the polygons, each boxed so the far ones are skipped. */
+function polygonTest(polys: P[][]): (p: P) => boolean {
+  const boxed = polys.filter((r) => r.length >= 3).map((r) => ({ r, x0: Math.min(...r.map((p) => p.x)), x1: Math.max(...r.map((p) => p.x)), y0: Math.min(...r.map((p) => p.y)), y1: Math.max(...r.map((p) => p.y)) }));
+  return (p) => boxed.some((o) => p.x >= o.x0 && p.x <= o.x1 && p.y >= o.y0 && p.y <= o.y1 && inside(p, o.r));
+}
+
+/**
+ * How deep a point lies inside the lots that are not the site's: zero in the
+ * street, else the distance to the boundary of the lot it is in. A road
+ * reserve is not a lot in the NSW cadastre, so a camera in the street, and a
+ * sight line across it, stay at zero.
+ */
+export function landDepth(lots: P[][], siteRings: P[][]): (p: P) => number {
+  const others = lots.filter((r) => r.length >= 3 && !siteRings.some((s) => inside(areaCentroid(r), s))).map((r) => ({
+    r, x0: Math.min(...r.map((p) => p.x)), x1: Math.max(...r.map((p) => p.x)), y0: Math.min(...r.map((p) => p.y)), y1: Math.max(...r.map((p) => p.y)),
+  }));
+  return (p) => {
+    let d = 0;
+    for (const o of others) {
+      if (p.x < o.x0 || p.x > o.x1 || p.y < o.y0 || p.y > o.y1 || !inside(p, o.r)) continue;
+      let edge = Infinity;
+      for (let i = 0, j = o.r.length - 1; i < o.r.length; j = i++) edge = Math.min(edge, segDist(p, o.r[j], o.r[i]));
+      d = Math.max(d, edge);
+    }
+    return d;
+  };
+}
 
 /**
  * The frames to take: for each side, the panorama the metadata service finds
  * in front of it, looking back at the side; then the corners between two
- * frontages; then obliques along the long frontages. `meta` is the metadata
- * service (injected, so the geometry can be tested without Google).
+ * frontages; then obliques to the long frontages; then the street both ways
+ * from each frontage's camera. A panorama counts only where it stands in the
+ * street and sees its target: one inside another lot or a building (a shop,
+ * an arcade, a car park) is dropped, and so is one whose sight line passes
+ * through a neighbour's footprint or a long way across other lots. `meta` is
+ * the metadata service (injected, so the geometry can be tested without
+ * Google); `lots` and `buildings` are rings of longitude and latitude.
  */
 export async function planStreetViews(
   siteRings: number[][][], centre: LonLat,
   meta: (p: LonLat, radiusM: number) => Promise<SvMeta | null>,
-  max = MAX_VIEWS,
-): Promise<{ views: SvView[]; probes: number; frontages: number; sides: number }> {
+  opts: { max?: number; lots?: number[][][]; buildings?: number[][][] } = {},
+): Promise<{ views: SvView[]; probes: number; frontages: number; sides: number; offStreet: number }> {
+  const max = opts.max ?? MAX_VIEWS;
   const { toXY, toLL } = frame(centre);
   const rings = siteRings.map((r) => r.map(([lon, lat]) => toXY({ lon, lat }))).filter((r) => r.length >= 3);
   const edges = siteEdges(rings);
   const outline = hull(rings.flat());
-  let probes = 0;
+  const nearby = (rs: number[][][] | undefined) => (rs ?? []).map((r) => r.map(([lon, lat]) => toXY({ lon, lat }))).filter((r) => r.length >= 3 && r.some((p) => outline.some((q) => dist(p, q) < NEAR_M)));
+  const depth = landDepth(nearby(opts.lots), rings);
+  // the site's own buildings are what the frames are of, not what stands in their way
+  const inBuilding = polygonTest(nearby(opts.buildings).filter((r) => !rings.some((s) => inside(areaCentroid(r), s))));
+  const inStreet = (p: P) => !inside(p, outline) && depth(p) <= INSIDE_LOT_M && !inBuilding(p);
+  // metre by metre along the sight line, leaving out the camera's own spot and the target's edge
+  const clear = (from: P, to: P) => {
+    const len = dist(from, to), n = Math.max(1, Math.ceil(len)), step = len / n;
+    let built = 0, land = 0;
+    for (let i = 1; i < n; i++) {
+      if (i * step < 1 || len - i * step < 2) continue;
+      const p = { x: from.x + ((to.x - from.x) * i) / n, y: from.y + ((to.y - from.y) * i) / n };
+      if (inBuilding(p)) built += step;
+      if (depth(p) > INSIDE_LOT_M) land += step;
+    }
+    return built <= THROUGH_BUILDING_M && land <= ACROSS_LAND_M;
+  };
+  let probes = 0, offStreet = 0;
   const ask = async (p: P) => { probes++; const m = await meta(toLL(p), PROBE_RADIUS_M); return m ? { m, at: toXY(m) } : null; };
+  const usable = (at: P, target: P) => { const ok = inStreet(at) && clear(at, target); if (!ok) offStreet++; return ok; };
   const view = (m: SvMeta, at: P, target: P, halfWidthM: number, kind: SvView['kind'], fovCap = 100): SvView => {
     const d = Math.max(1, dist(at, target));
     return { ...m, heading: Math.round(bearing(at, target) * 10) / 10, pitch: pitchFor(d), fov: Math.round(clamp((2 * Math.atan(halfWidthM / d) * 180) / Math.PI, 55, fovCap)), kind, distanceM: Math.round(d) };
   };
-  // a panorama stands in front of an edge when it is outside the site, on the edge's outer side, within reach and not far past its ends
-  const fronts = (at: P, e: SiteEdge) => {
+  // a panorama stands in front of an edge when it is on the edge's outer side, within reach, not far past its ends,
+  // and sees its target near enough square: a camera in the cross street past a corner sees the side edge-on
+  const fronts = (at: P, e: SiteEdge, target: P, maxOffSquare: number) => {
     const rel = { x: at.x - e.mid.x, y: at.y - e.mid.y };
     const out = rel.x * e.normal.x + rel.y * e.normal.y, along = rel.x * e.dir.x + rel.y * e.dir.y;
-    return !inside(at, outline) && out > 1 && out <= MAX_CAMERA_M && Math.abs(along) <= e.length / 2 + 20;
+    const look = { x: target.x - at.x, y: target.y - at.y }, lookLen = Math.hypot(look.x, look.y) || 1;
+    const offSquare = (Math.acos(clamp(-(look.x * e.normal.x + look.y * e.normal.y) / lookLen, -1, 1)) * 180) / Math.PI;
+    return out > 1 && out <= MAX_CAMERA_M && Math.abs(along) <= e.length / 2 + 20 && offSquare <= maxOffSquare;
   };
 
   const frontage: { e: SiteEdge; i: number; v: SvView }[] = [];
   for (const [i, e] of edges.entries()) {
     const hit = await ask({ x: e.mid.x + e.normal.x * PROBE_OUT_M, y: e.mid.y + e.normal.y * PROBE_OUT_M });
-    if (hit && fronts(hit.at, e)) frontage.push({ e, i, v: view(hit.m, hit.at, e.mid, e.length / 2 + 3, 'frontage') });
+    if (hit && fronts(hit.at, e, e.mid, SQUARE_DEG) && usable(hit.at, e.mid)) frontage.push({ e, i, v: view(hit.m, hit.at, e.mid, e.length / 2 + 3, 'frontage') });
   }
   const corners: SvView[] = [];
   for (const f of frontage) {
@@ -155,7 +243,7 @@ export async function planStreetViews(
     const bis = { x: f.e.normal.x + g.e.normal.x, y: f.e.normal.y + g.e.normal.y };
     const len = Math.hypot(bis.x, bis.y) || 1;
     const hit = await ask({ x: v.x + (bis.x / len) * (PROBE_OUT_M + 4), y: v.y + (bis.y / len) * (PROBE_OUT_M + 4) });
-    if (hit && !inside(hit.at, outline)) corners.push(view(hit.m, hit.at, v, 14, 'corner', 90));
+    if (hit && usable(hit.at, v)) corners.push(view(hit.m, hit.at, v, 14, 'corner', 90));
   }
   const obliques: SvView[] = [];
   for (const f of frontage) {
@@ -164,18 +252,21 @@ export async function planStreetViews(
       const along = s * (f.e.length / 2 + 8);
       const hit = await ask({ x: f.e.mid.x + f.e.dir.x * along + f.e.normal.x * PROBE_OUT_M, y: f.e.mid.y + f.e.dir.y * along + f.e.normal.y * PROBE_OUT_M });
       const target = { x: f.e.mid.x + f.e.dir.x * s * (f.e.length / 4), y: f.e.mid.y + f.e.dir.y * s * (f.e.length / 4) };
-      if (hit && fronts(hit.at, f.e)) obliques.push(view(hit.m, hit.at, target, f.e.length / 4 + 4, 'oblique', 80));
+      if (hit && fronts(hit.at, f.e, target, OBLIQUE_DEG) && usable(hit.at, target)) obliques.push(view(hit.m, hit.at, target, f.e.length / 4 + 4, 'oblique', 80));
     }
   }
-  // frontages longest first, then corners, then obliques; one frame per panorama and direction
-  const ordered = [...frontage.sort((a, b) => b.e.length - a.e.length).map((f) => f.v), ...corners, ...obliques];
+  // the street both ways from each frontage's camera: the site visit's brief asks for it, and it fills what a narrow frontage leaves
+  const streets: SvView[] = frontage.flatMap((f) => [1, -1].map((s) => ({ ...f.v, heading: Math.round(bearing({ x: 0, y: 0 }, { x: f.e.dir.x * s, y: f.e.dir.y * s }) * 10) / 10, pitch: 3, fov: 80, kind: 'street' as const })));
+  // frontages longest first, then corners, obliques and the streets; one frame per panorama and direction
+  const byLength = [...frontage].sort((a, b) => b.e.length - a.e.length);
+  const ordered = [...byLength.map((f) => f.v), ...corners, ...obliques, ...streets];
   const views: SvView[] = [];
   for (const v of ordered) {
     if (views.some((w) => (w.panoId === v.panoId || Math.hypot((w.lon - v.lon) * 92_000, (w.lat - v.lat) * 110_574) < 8) && angDiff(w.heading, v.heading) < 30)) continue;
     views.push(v);
     if (views.length >= max) break;
   }
-  return { views, probes, frontages: frontage.length, sides: edges.length };
+  return { views, probes, frontages: frontage.length, sides: edges.length, offStreet };
 }
 
 // ---- the service -------------------------------------------------------------------

@@ -122,6 +122,13 @@ jobs:
       - name: the Major Projects register's pages parse
         run: npx tsx test/major-projects.mts
 
+      # Slide 12's Street View planner is geometry on made-up streets, lots and
+      # footprints, with the metadata service and fetch stood in for: which
+      # sides are frontages, which cameras stand in a shop or behind a
+      # neighbour, and how the URLs are signed. CI never calls Google.
+      - name: the Street View planner frames the frontages and nothing else
+        run: npx tsx test/street-view.mts
+
       # The deployer's one job here is to leave a record even when it dies on
       # its first command — which is exactly what happened once, for six days,
       # unnoticed. Reproduce that: a repo whose origin cannot be reached, and a

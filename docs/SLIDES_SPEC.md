@@ -162,7 +162,8 @@ building's footprint, height and levels where recorded, imagery date, State
 government and Crown parcels nearby.
 
 **12 Existing site condition.** Street-level photographs facing the site
-from KartaView / Mapillary keyed to a plan by bearing; the 1943 aerial beside
+from Google Street View (with a key) and KartaView / Mapillary, keyed to a
+plan by bearing; the 1943 aerial beside
 today's for a then-and-now pair. *Manual:* the site visit replaces these.
 
 **13 Grid, sun and views.** Urban grid orientation (dominant street bearings
@@ -384,7 +385,7 @@ lockdown snapshot and the slide says so.
 | Wikipedia `api/rest_v1/page/summary/<Title>` and `w/api.php?action=query&list=geosearch` then `prop=description` for the titles | the suburb summary paragraph and its lead image; articles within 1.5 km as the named places (a place vocabulary keeps companies, electorates and people out) | same User-Agent rule and the same 429s. In use on slide 02 |
 | KartaView `POST https://api.openstreetcam.org/1.0/list/nearby-photos/` (`lat`, `lng`, `radius`, `ipp`); the v2 `photo/?lat=&lng=&radius=` search refuses radii over 150 m | street-level frames with camera position, heading, date, contributor and thumbnail paths | no key; coverage is patchy and old in places (2019 at the samples, one contributor); about half the frames carry no heading, so the direction of travel between a frame's neighbours in its sequence stands in. In use on slide 12 |
 | Mapillary `https://graph.mapillary.com/images?bbox=…&fields=id,thumb_1024_url,captured_at,compass_angle,computed_compass_angle,geometry,computed_geometry,creator,sequence,is_pano` | dense recent street-level imagery | free client token from the Mapillary developer page, sent as `access_token`; reachable, refuses without a token (HTTP 500, "Invalid OAuth 2.0 Access Token"). Graph API v4: `bbox` is left,bottom,right,top and must be under 0.01 square degrees (a 250 m radius is a four-hundredth of that), 2,000 images a call at most, 10,000 searches a minute per app; the structure-from-motion position and heading are preferred to the camera's own and 360° frames skipped. Read on slide 12 when `MAPILLARY_TOKEN` is set; checked against the documentation, not exercised here (no token) |
-| Google Street View Static API (`streetview/metadata`, free, and `streetview` images) | best coverage | a Google Cloud key with billing (10,000 images a month free, then US$7 a thousand); Google's terms bar print and storing images outside its services. `src/fetch/streetView.ts` probes 12 m out from each side of the site, lets the metadata service say which sides face a street, and frames each frontage; read on slide 12 only when `GOOGLE_MAPS_API_KEY` is set, and not yet exercised here (no key) |
+| Google Street View Static API (`streetview/metadata`, free, and `streetview` images) | best coverage | a Google Cloud key with billing (10,000 images a month free, then US$7 a thousand); Google's terms bar print and storing images outside its services. `src/fetch/streetView.ts` probes 12 m out from each side of the site, lets the metadata service say which sides face a street, and frames each frontage; the cadastre and the footprints set aside panoramas inside another lot or building (the service's "outdoor" takes in some shop interiors) and views through a neighbour. Read on slide 12 when `GOOGLE_MAPS_API_KEY` is set; exercised at the six samples in September 2026 |
 
 ### 4.9 Building heights
 
@@ -745,6 +746,36 @@ contributor in 2019; at Waterloo and Botany six face the site, at
 Marrickville one and at North Sydney none, the frames there running along
 other streets, so those slides carry placeholders.
 
+With `GOOGLE_MAPS_API_KEY` set, Google Street View comes first
+(`src/fetch/streetView.ts`). The site's outline is simplified to its convex
+hull, nearly straight runs merged, and from the middle of each side a probe
+12 m out asks the free metadata service for the nearest outdoor panorama
+within 25 m. The side is a street frontage when that panorama stands on its
+outer side within 45 m, not far past its ends, sees its middle within 60° of
+square, and stands in the street with the site in view. "Outdoor" is
+Google's word and takes in some shop interiors, so the cadastre and the
+footprints decide: a camera more than 2 m inside a lot that is not the
+site's, or inside a footprint, is set aside, and so is one whose sight line
+passes more than 2 m through a neighbour's footprint or crosses more than
+8 m of other lots (a footpath strip or a setback is narrower). Each frontage
+gets a frame square to it, its field of view wide enough to take it in (55°
+to 100°); then a frame at each corner between two frontages; two oblique
+frames of each frontage longer than 30 m, from past its ends, within 72° of
+square; and the street both ways from each frontage's camera, as the site
+visit's brief asks; six at most, one per panorama and direction. The images
+are 640 × 372, the grid cell's shape, shown uncropped so Google's marks stay
+on them, captioned with the month of capture and the panorama's own credit
+(Google's, or the contributor's), and saved in the deck's folder only; the
+key goes into the download and nowhere else. The open frames fill the cells
+Street View leaves, away from its cameras. At the samples in September 2026:
+Bondi Beach two frontages (Campbell Parade and Roscoe Street) and six
+frames, with three panoramas set aside (a shoe shop's interior from 2010, a
+car-park entry and a neighbour's façade); North Sydney two and six; Waterloo
+four and six; Orange two and six, captured in 2026; Marrickville one,
+framed square and along Illawarra Road both ways; Botany none, its one
+panorama nearby being inside the neighbour's building, so the open frames
+carry that slide.
+
 Slide 13 fetches nothing new but the views. The street grid is the bearing
 of every road segment in the window, length-weighted and folded to 0–180° in
 5° bins, each smoothed with half its neighbours; the primary axis is the
@@ -824,7 +855,10 @@ list what must still be obtained outside the open data (the survey, the
 title search, the geotechnical, contamination and acoustic reports, the
 flood study, the ANEF contours, the site visit), repeat the run's warnings (an Overpass mirror that did not
 answer, a feed that came back incomplete) and state the licence position
-as the publishers give it.
+as the publishers give it. The table has a fixed box and a busy council
+area fills it (fifty-odd rows at Bondi Beach), so the printer measures it
+in the page and steps its type down until the last row is inside, to three
+quarters of its size, rather than clipping the rows below the fold.
 
 Slide 15 reads the layers of Country that are open (`src/fetch/country.ts`,
 each part soft): the National Native Title Tribunal's determinations,

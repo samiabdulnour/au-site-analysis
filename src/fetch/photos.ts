@@ -74,6 +74,8 @@ export interface StreetPhoto {
   licence: string;
   /** The horizontal field of view where the frame was asked for one (Google's), degrees. */
   fov?: number;
+  /** What a Google frame was planned to show: a street frontage square on, the corner between two, a long frontage obliquely, or the street from a frontage's camera. */
+  view?: SvView['kind'];
 }
 
 interface Candidate extends Omit<StreetPhoto, 'n' | 'file'> { thumbUrl: string; score: number; xy: XY }
@@ -85,7 +87,7 @@ export interface PhotosData {
   kartaview: { ok: boolean; frames: number; withHeading: number; note?: string };
   mapillary: { ok: boolean; frames: number; note?: string };
   /** Google Street View: the site's sides, the street frontages the free metadata service found in front of them, the probes it took and the frames kept. Optional: decks cached before it have none. */
-  google?: { ok: boolean; frames: number; frontages: number; sides: number; probes: number; note?: string };
+  google?: { ok: boolean; frames: number; frontages: number; sides: number; probes: number; /** Panoramas set aside as standing inside another lot or looking through one. */ offStreet?: number; note?: string };
   photos: StreetPhoto[];
   /** The then-and-now pair: one panel, the 1943 tiles that cover it and today's export. */
   pair: {
@@ -284,8 +286,7 @@ function toCandidate(f: RawFrame, headingSource: 'recorded' | 'track', xy: XY, r
   };
 }
 
-/** One frame per side of the site first, then the sides with fewest frames, each new camera standing apart from the ones chosen; a frame along the street when few face the site. */
-/** A Street View frame as a candidate: it faces the site by construction; the URL with the key is used once, to download, and dropped. */
+/** A Street View frame as a candidate: it faces the site by construction, or looks along the street beside it; the URL with the key is used once, to download, and dropped. */
 function svCandidate(v: SvView, toXY: (p: LonLat) => XY, rings: XY[][], key: string, secret?: string): Candidate {
   const xy = toXY(v);
   const bearingToSite = bearing(xy, { x: 0, y: 0 });
@@ -293,11 +294,12 @@ function svCandidate(v: SvView, toXY: (p: LonLat) => XY, rings: XY[][], key: str
   return {
     source: 'google', id: v.panoId, author: own && !/^google$/i.test(own) ? own : undefined, date: v.date, lon: v.lon, lat: v.lat,
     heading: v.heading, headingSource: 'recorded', distanceM: Math.round(distToSite(xy, rings)), bearingToSite: Math.round(bearingToSite),
-    bearingFromSite: Math.round(norm(bearingToSite + 180)), offAxisDeg: Math.round(angDiff(v.heading, bearingToSite)), facing: 'site',
-    pageUrl: mapsUrl(v), licence: v.copyright?.trim() || '© Google', fov: v.fov, thumbUrl: imageUrl(v, key, secret), score: 0, xy,
+    bearingFromSite: Math.round(norm(bearingToSite + 180)), offAxisDeg: Math.round(angDiff(v.heading, bearingToSite)), facing: v.kind === 'street' ? 'street' : 'site',
+    pageUrl: mapsUrl(v), licence: v.copyright?.trim() || '© Google', fov: v.fov, view: v.kind, thumbUrl: imageUrl(v, key, secret), score: 0, xy,
   };
 }
 
+/** One frame per side of the site first, then the sides with fewest frames, each new camera standing apart from the ones chosen; a frame along the street when few face the site. */
 function choose(cands: Candidate[]): Candidate[] {
   const chosen: Candidate[] = [];
   const sideOf = (c: Candidate) => Math.round(c.bearingFromSite / 45) % 8;
@@ -368,7 +370,10 @@ async function fetchThen(extent: Extent, outDir: string): Promise<PhotosData['pa
  * The frames that look at the site, saved as `photo_<n>.jpg`, and the pair's
  * 1943 tiles and today's export over `pairPanel`, all in `outDir`.
  */
-export async function fetchPhotos(opts: { centre: LonLat; siteRings: number[][][]; pairPanel: Panel; outDir: string; log?: (m: string) => void }): Promise<PhotosData> {
+export async function fetchPhotos(opts: { centre: LonLat; siteRings: number[][][]; pairPanel: Panel; outDir: string; log?: (m: string) => void;
+  /** The cadastre's lot rings and the building footprints around the site, which tell Street View's cameras in the street from those in a shop or behind a neighbour; awaited only for Google. */
+  lots?: Promise<number[][][]> | number[][][]; buildings?: Promise<number[][][]> | number[][][];
+}): Promise<PhotosData> {
   const { centre, pairPanel, outDir } = opts;
   const log = opts.log ?? (() => {});
   await mkdir(outDir, { recursive: true });
@@ -378,7 +383,7 @@ export async function fetchPhotos(opts: { centre: LonLat; siteRings: number[][][
   const token = process.env.MAPILLARY_TOKEN?.trim();
   const gkey = process.env.GOOGLE_MAPS_API_KEY?.trim(), gsecret = process.env.GOOGLE_MAPS_SIGNING_SECRET?.trim() || undefined;
   const pairExtent = panelExtent(pairPanel);
-  const noGoogle = { views: [] as SvView[], probes: 0, frontages: 0, sides: 0 };
+  const noGoogle = { views: [] as SvView[], probes: 0, frontages: 0, sides: 0, offStreet: 0 };
 
   const t0 = Date.now();
   const [kv, mly, then, now, gv] = await Promise.all([
@@ -389,7 +394,7 @@ export async function fetchPhotos(opts: { centre: LonLat; siteRings: number[][][
     soft(fetchThen(pairExtent, outDir), { ok: false, zoom: ZOOM_1943, tiles: [], missing: 0, source: SOURCE_1943 }, '1943 aerial'),
     soft(fetchAerial(pairExtent, 900, outDir, 'now'), null, "today's aerial for the pair"),
     gkey
-      ? planStreetViews(opts.siteRings, centre, metadataService(gkey, gsecret)).then((r) => ({ ok: true, ...r, note: undefined as string | undefined }), (e: Error) => ({ ok: false, ...noGoogle, note: e.message }))
+      ? Promise.all([opts.lots ?? [], opts.buildings ?? []]).then(([lots, buildings]) => planStreetViews(opts.siteRings, centre, metadataService(gkey, gsecret), { lots, buildings })).then((r) => ({ ok: true, ...r, note: undefined as string | undefined }), (e: Error) => ({ ok: false, ...noGoogle, note: e.message }))
       : Promise.resolve({ ok: false, ...noGoogle, note: 'not read: no API key (GOOGLE_MAPS_API_KEY)' }),
   ]);
 
@@ -415,12 +420,12 @@ export async function fetchPhotos(opts: { centre: LonLat; siteRings: number[][][
 
   const secs = Math.round((Date.now() - t0) / 1000);
   const googleKept = photos.filter((p) => p.source === 'google').length;
-  log(`  photos: google ${gv.ok ? `${gv.frontages} of ${gv.sides} sides front a street, ${googleKept} frames from ${gv.probes} probes` : gv.note}; kartaview ${kv.ok ? `${kvIn.length} frames (${kvIn.filter((f) => Number.isFinite(f.heading)).length} with a heading)` : `failed (${kv.note})`}; mapillary ${mly.ok ? `${mlyIn.length} frames` : mly.note}; ${cands.filter((c) => c.facing === 'site').length} face the site, ${photos.length} kept; 1943 tiles ${then.tiles.length}${then.missing ? ` (${then.missing} missing)` : ''}; today's aerial ${now ? 'yes' : 'no'}; ${secs} s`);
+  log(`  photos: google ${gv.ok ? `${gv.frontages} of ${gv.sides} sides front a street, ${googleKept} frames from ${gv.probes} probes (${gv.offStreet} panoramas off the street or looking through a neighbour)` : gv.note}; kartaview ${kv.ok ? `${kvIn.length} frames (${kvIn.filter((f) => Number.isFinite(f.heading)).length} with a heading)` : `failed (${kv.note})`}; mapillary ${mly.ok ? `${mlyIn.length} frames` : mly.note}; ${cands.filter((c) => c.facing === 'site').length} face the site, ${photos.length} kept; 1943 tiles ${then.tiles.length}${then.missing ? ` (${then.missing} missing)` : ''}; today's aerial ${now ? 'yes' : 'no'}; ${secs} s`);
   return {
     radiusM: PHOTO_RADIUS_M,
     kartaview: { ok: kv.ok, frames: kvIn.length, withHeading: kvIn.filter((f) => Number.isFinite(f.heading)).length, note: kv.note },
     mapillary: { ok: mly.ok, frames: mlyIn.length, note: mly.note },
-    google: { ok: gv.ok, frames: googleKept, frontages: gv.frontages, sides: gv.sides, probes: gv.probes, note: gv.note },
+    google: { ok: gv.ok, frames: googleKept, frontages: gv.frontages, sides: gv.sides, probes: gv.probes, offStreet: gv.offStreet, note: gv.note },
     photos,
     pair: { panel: pairPanel, then, now },
     fetchedAt: new Date().toISOString(),

@@ -47,6 +47,25 @@ export async function htmlToPdf(htmlPath: string, pdfPath: string): Promise<void
 }
 
 /**
+ * A box marked `data-fit` (the sources table) holds more than its fixed
+ * height can promise, and it clips: its first child's type steps down until
+ * nothing is hidden, to three quarters of its size, rather than losing the
+ * last rows unseen. Run in the page, where the text is actually measured; a
+ * string because the page's DOM is not this program's.
+ */
+const FIT_BOXES = `(() => {
+  for (const box of document.querySelectorAll('[data-fit]')) {
+    const inner = box.firstElementChild;
+    if (!inner) continue;
+    const base = parseFloat(getComputedStyle(inner).fontSize);
+    for (let k = 1; box.scrollHeight > box.clientHeight + 1 && k > 0.76; ) {
+      k -= 0.025;
+      inner.style.fontSize = (base * k).toFixed(3) + 'px';
+    }
+  }
+})()`;
+
+/**
  * A deck: every `.slide` section becomes one page of the PDF, and — in the
  * same browser session — one PNG, named after the section's id, for the
  * office's InDesign or PowerPoint. Returns the PNG paths written.
@@ -62,6 +81,7 @@ export async function printSlides(
   try {
     const page = await browser.newPage({ deviceScaleFactor: 2 });
     await page.goto(pathToFileURL(htmlPath).href, { waitUntil: 'networkidle', timeout: 120_000 });
+    await page.evaluate(FIT_BOXES);
     await page.pdf({
       path: pdfPath,
       width: `${size.widthMm}mm`,

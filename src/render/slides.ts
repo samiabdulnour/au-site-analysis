@@ -36,6 +36,7 @@ import { sunPosition, sunTimes, sunPath, civilToUtc, fmtClock } from '../lib/sol
 import { shadowHull, inHull } from '../lib/shadows.js';
 import type { ViewKind } from '../fetch/views.js';
 import { MAX_PHOTOS, type StreetPhoto } from '../fetch/photos.js';
+import { PROBE_OUT_M as SV_PROBE_OUT_M } from '../fetch/streetView.js';
 import { CENTRES, SYDNEY_CBD, CENTRE_KIND_WORD } from '../data/centres.js';
 import type { MajorProject } from '../fetch/majorProjects.js';
 
@@ -3457,7 +3458,8 @@ export function photosFacts(b: SlidesBundle) {
     const street = streetOf(p.lon, p.lat);
     const side = compassWord(p.bearingFromSite), look = compassWord(p.heading), when = monthYear(p.date);
     const where = p.distanceM < 3 ? 'at the boundary' : `${fmtNum(p.distanceM)} m ${side} of the site`;
-    const caption = `${p.n} · from ${street ?? 'the street'}, ${where}, looking ${look}${p.facing === 'street' ? ' along the street' : ''} · ${SOURCE_WORD[p.source]}${p.author ? ` (${p.author})` : ''}${when ? `, ${when}` : ''} · ${p.licence}`;
+    const aim = p.facing === 'street' ? ' along the street' : p.view === 'corner' ? ' at the corner' : p.view === 'oblique' ? ', oblique to the frontage' : '';
+    const caption = `${p.n} · from ${street ?? 'the street'}, ${where}, looking ${look}${aim} · ${SOURCE_WORD[p.source]}${p.author ? ` (${p.author})` : ''}${when ? `, ${when}` : ''} · ${p.licence}`;
     return { ...p, street, side, look, when, caption };
   });
   const facingCount = photos.filter((p) => p.facing === 'site').length;
@@ -3471,10 +3473,11 @@ export function photosFacts(b: SlidesBundle) {
   const covered = new Set(photos.filter((p) => p.facing === 'site').map((p) => Math.round(p.bearingFromSite / 45) % 8));
   const uncoveredSides = [0, 1, 2, 3, 4, 5, 6, 7].filter((i) => !covered.has(i)).map((i) => bearingName(i * 45));
   const placeholders = Array.from({ length: Math.max(0, MAX_PHOTOS - photos.length) }, (_, i) => uncoveredSides[i] as string | undefined);
-  const dates = photos.map((p) => p.date).filter((d): d is string => Boolean(d)).sort();
-  const streets = [...new Set(photos.map((p) => p.street).filter((s): s is string => Boolean(s)))];
-  const authors = [...new Set(photos.map((p) => p.author).filter((s): s is string => Boolean(s)))];
-  const sources = [...new Set(photos.map((p) => SOURCE_WORD[p.source]))];
+  const rangeOf = (ps: typeof photos) => { const ds = ps.map((p) => p.date).filter((d): d is string => Boolean(d)).sort(); return ds.length ? { first: ds[0], last: ds[ds.length - 1] } : null; };
+  const streetsOf = (ps: typeof photos) => [...new Set(ps.map((p) => p.street).filter((s): s is string => Boolean(s)))];
+  const sourcesOf = (ps: typeof photos) => [...new Set(ps.map((p) => SOURCE_WORD[p.source]))];
+  // Google's frames and the open ones are credited and dated apart: one is a licence, the other a contributor's gift
+  const byGoogle = photos.filter((p) => p.source === 'google'), open = photos.filter((p) => p.source !== 'google');
   const pp = ph.pair.panel;
   const then = ph.pair.then;
   const thenCoverage: 'full' | 'partial' | 'none' = then.tiles.length ? (then.missing ? 'partial' : 'full') : 'none';
@@ -3482,8 +3485,20 @@ export function photosFacts(b: SlidesBundle) {
     radiusM: ph.radiusM,
     kartaview: ph.kartaview,
     mapillary: ph.mapillary,
-    photos, facingCount, streets, authors, sources,
-    dateRange: dates.length ? { first: dates[0], last: dates[dates.length - 1] } : null,
+    /** Absent for decks cached before Street View was read. */
+    google: ph.google,
+    photos, facingCount, streets: streetsOf(photos), sources: sourcesOf(photos),
+    dateRange: rangeOf(photos),
+    googleFrames: {
+      count: byGoogle.length, streets: streetsOf(byGoogle), dateRange: rangeOf(byGoogle),
+      frontage: byGoogle.filter((p) => p.view === 'frontage').length, corner: byGoogle.filter((p) => p.view === 'corner').length, oblique: byGoogle.filter((p) => p.view === 'oblique').length, street: byGoogle.filter((p) => p.view === 'street').length,
+      licences: [...new Set(byGoogle.map((p) => p.licence))],
+    },
+    openFrames: {
+      count: open.length, streets: streetsOf(open), dateRange: rangeOf(open), sources: sourcesOf(open),
+      authors: [...new Set(open.map((p) => p.author).filter((s): s is string => Boolean(s)))],
+      licence: open[0]?.licence,
+    },
     planPanel, uncoveredSides, placeholders,
     pair: {
       panel: pp, widthM: Math.round((pp.wMm / 1000) * pp.scale), heightM: Math.round((pp.hMm / 1000) * pp.scale),
@@ -3496,18 +3511,33 @@ export function photosFacts(b: SlidesBundle) {
 export function photosSentences(b: SlidesBundle, f: ReturnType<typeof photosFacts>): string[] {
   const out: string[] = [];
   const n = f.photos.length, facing = f.facingCount;
-  const kv = f.kartaview, mly = f.mapillary;
-  const mlyNote = mly.ok ? '' : ' (Mapillary is not read without a client token)';
+  const kv = f.kartaview, mly = f.mapillary, g = f.google, G = f.googleFrames, O = f.openFrames;
+  const taken = (r: { first: string; last: string } | null) => (r ? (monthYear(r.first) === monthYear(r.last) ? `taken in ${monthYear(r.first)}` : `taken between ${monthYear(r.first)} and ${monthYear(r.last)}`) : 'undated');
+  const openBy = () => { const src = O.sources.join(' and '); return O.authors.length === 1 ? `by ${src} contributor ${O.authors[0]}` : `by ${src} contributors`; };
+  // Street View first where it was read: what stands in front of the site, or why nothing does; nothing is said where no key was set
+  if (G.count) {
+    const what = [
+      G.frontage ? (G.frontage === 1 ? `one square to ${g?.frontages === 1 ? 'its' : 'a'} street frontage` : `${numWord(G.frontage)} square to its street frontages`) : '',
+      G.corner ? (G.corner === 1 ? 'one at the corner' : `${numWord(G.corner)} at its corners`) : '',
+      G.oblique ? (G.oblique === 1 ? 'one oblique to a long frontage' : `${numWord(G.oblique)} oblique to its long frontages`) : '',
+      G.street ? (G.street === 1 ? 'one along the street' : G.street === 2 && (g?.frontages ?? 0) <= 1 ? 'two along the street each way' : `${numWord(G.street)} along the streets`) : '',
+    ].filter(Boolean);
+    const shows = G.street ? `${G.count === 1 ? 'shows' : 'show'} the site and its street${G.streets.length > 1 ? 's' : ''}` : `${G.count === 1 ? 'looks' : 'look'} at the site`;
+    out.push(`${capFirst(numWord(G.count))} Google Street View ${G.count === 1 ? 'frame' : 'frames'} ${shows}${G.streets.length ? ` from ${listWords(G.streets)}` : ''}, ${taken(G.dateRange)}${G.count > 1 && what.length ? `: ${listWords(what)}` : ''}.`);
+    if (O.count) out.push(`${capFirst(numWord(O.count))} open ${O.count === 1 ? 'frame' : 'frames'}${O.streets.length ? ` from ${listWords(O.streets)}` : ''} ${openBy()}, ${taken(O.dateRange)}, ${O.count === 1 ? 'fills the cell' : 'fill the cells'} Street View leaves.`);
+  } else if (g?.ok) out.push(g.frontages ? 'Google Street View\'s frames of the site did not download on this run.' : `Google Street View has no panorama in front of the site${g.sides ? `'s ${numWord(g.sides)} sides` : ''}.`);
+  else if (g?.note && !/^not read/.test(g.note)) out.push('Google Street View did not answer for this run.');
+  const mlyNote = mly.ok || G.count ? '' : ' (Mapillary is not read without a client token)';
   if (n) {
-    const sourcesWord = f.sources.join(' and ');
-    const when = f.dateRange ? (monthYear(f.dateRange.first) === monthYear(f.dateRange.last) ? `taken in ${monthYear(f.dateRange.first)}` : `taken between ${monthYear(f.dateRange.first)} and ${monthYear(f.dateRange.last)}`) : 'undated';
-    const by = f.authors.length === 1 ? `by ${sourcesWord} contributor ${f.authors[0]}` : `by ${sourcesWord} contributors`;
-    const along = n - facing;
-    out.push(`${capFirst(numWord(n))} open street-level ${n === 1 ? 'frame looks' : 'frames look'} at the site${along ? ` (${along === 1 ? 'one of them' : `${numWord(along)} of them`} along the street rather than at it)` : ''}${f.streets.length ? ` from ${listWords(f.streets)}` : ''}, ${when} ${by}.`);
+    if (!G.count) {
+      const along = n - facing;
+      out.push(`${capFirst(numWord(n))} open street-level ${n === 1 ? 'frame looks' : 'frames look'} at the site${along ? ` (${along === 1 ? 'one of them' : `${numWord(along)} of them`} along the street rather than at it)` : ''}${f.streets.length ? ` from ${listWords(f.streets)}` : ''}, ${taken(f.dateRange)} ${openBy()}.`);
+    }
     const lastMs = f.dateRange ? Date.parse(f.dateRange.last) : NaN;
     const ageYears = Number.isFinite(lastMs) ? (Date.parse(b.generatedAt) - lastMs) / (365.25 * 24 * 3600e3) : NaN;
     const age = Number.isFinite(ageYears) && ageYears >= 1 ? `The newest is ${ageYears >= 2 ? `${Math.round(ageYears)} years` : 'over a year'} old, so the frontage and the street may have changed since; the` : 'The';
-    out.push(`${age} frames stand in until the site visit${f.uncoveredSides.length ? (f.uncoveredSides.length >= 5 ? `, which also covers the sides no open frame reaches: the open frames look at the site from ${numWord(8 - f.uncoveredSides.length)} of its eight sides only` : `, which also covers the ${listWords(f.uncoveredSides)}, where no open frame looks at the site`) : ''}${f.placeholders.length ? '; the placeholders are sized for its photographs' : ''}.`);
+    const frame = G.count ? 'frame' : 'open frame';
+    out.push(`${age} frames stand in until the site visit${f.uncoveredSides.length ? (f.uncoveredSides.length >= 5 ? `, which also covers the sides no ${frame} reaches: the ${frame}s look at the site from ${numWord(8 - f.uncoveredSides.length)} of its eight sides only` : `, which also covers the ${listWords(f.uncoveredSides)}, where no ${frame} looks at the site`) : ''}${f.placeholders.length ? '; the placeholders are sized for its photographs' : ''}.`);
   } else if (kv.ok && kv.frames) {
     out.push(`KartaView holds ${fmtNum(kv.frames)} frames within ${f.radiusM} m of the site, but none of them looks at it${mlyNote}, so the site visit supplies the photographs; the placeholders are sized for them, and the plan and the aerial pair carry the slide until then.`);
   } else if (kv.ok) {
@@ -3530,9 +3560,15 @@ export function photosSlide(b: SlidesBundle): Slide {
   const img = b.site.imagery;
   const sentences = photosSentences(b, f);
   const imgWords = img ? ` (${titleCase(img.block)} block${img.date ? `, captured ${fmtIso(img.date)}` : ''}${img.resolutionCm ? `, ${img.resolutionCm} cm` : ''})` : '';
+  const g = f.google, G = f.googleFrames, O = f.openFrames;
+  // Google's part of the fine print: how its frames were found, or why there are none; decks read before it say nothing
+  const googleFine = !g ? '' : g.ok
+    ? `Google Street View Static API (${G.licences.length ? G.licences.join(', ') : '© Google'}): its free metadata service asked for the outdoor panorama nearest a point ${SV_PROBE_OUT_M} m out from the middle of each side of the site's outline, and found ${!g.sides ? 'no outline to probe' : g.frontages ? `one in front of ${numWord(g.frontages)} of its ${numWord(g.sides)} sides` : `none in front of its ${numWord(g.sides)} sides`}${g.offStreet ? `, setting aside ${numWord(g.offStreet)} that stood inside another lot or a building or looked through a neighbour's (the NSW cadastre and the footprints)` : ''}; each frame looks at a frontage square on, at a corner or obliquely${G.street ? ', or along the street from a frontage\'s camera' : ''}, with a field of view wide enough to take it in, uncropped and dated to the month of capture; `
+    : g.note && !/^not read/.test(g.note) ? 'Google Street View did not answer for this run; ' : 'Google Street View not read (no API key); ';
+  const openFine = O.count ? `open street-level frames from ${listWords(O.sources)} (the contributors named under each frame, ${O.licence}): the frames within ${f.radiusM} m of the site whose view cone takes it in, one per side where there is one${G.count ? ', away from Street View\'s cameras' : ''}, cropped to the grid; headings without a record are read from the camera's track` : `KartaView's nearby-photos listing within ${f.radiusM} m of the site`;
   const textHtml = sentences.map(para).join('') +
     placeholder('Site visit — for the author: the visit\'s photographs replace these frames, keyed to the plan: each face of the site from the street, the street both ways, the neighbours\' interfaces, the trees, the levels and retaining walls, the services in the footpath, the building\'s fabric and condition.') +
-    `<div class="fine">Sources: ${f.photos.length ? `street-level frames from ${listWords(f.sources)} (the contributors named under each frame, ${f.photos[0].licence}): the frames within ${f.radiusM} m of the site whose view cone takes it in, one per side where there is one, cropped to the grid; headings without a record are read from the camera's track` : `KartaView's nearby-photos listing within ${f.radiusM} m of the site`}; ${f.mapillary.ok ? 'Mapillary read with a client token' : 'Mapillary not read (no client token)'}; the 1943 aerial survey from NSW Spatial Services' Historical Imagery 1943 tile service (level 18, about half a metre a pixel); today's aerial NSW Imagery via SIX Maps${imgWords}; cadastre, roads and footprints as on slide 11. Retrieved ${b.generatedAt.slice(0, 10)}.</div>`;
+    `<div class="fine">Sources: ${googleFine}${openFine}; ${f.mapillary.ok ? 'Mapillary read with a client token' : 'Mapillary not read (no client token)'}; the 1943 aerial survey from NSW Spatial Services' Historical Imagery 1943 tile service (level 18, about half a metre a pixel); today's aerial NSW Imagery via SIX Maps${imgWords}; cadastre, roads and footprints as on slide 11. Retrieved ${b.generatedAt.slice(0, 10)}.</div>`;
 
   // ---- the camera plan
   const p = f.planPanel;
@@ -3591,7 +3627,7 @@ export function photosSlide(b: SlidesBundle): Slide {
     const [x, y] = camXY[i];
     parts.push(`<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="2.5" fill="${CAMERA_COLOUR}" stroke="#ffffff" stroke-width="0.4"/><text x="${x.toFixed(2)}" y="${(y + 0.95).toFixed(2)}" text-anchor="middle" font-size="2.6" font-weight="700" fill="#ffffff">${c.n}</text>`);
   });
-  if (!f.photos.length) parts.push(emptyNote([ph.kartaview.ok ? (ph.kartaview.frames ? `None of the ${fmtNum(ph.kartaview.frames)} open frames within ${ph.radiusM} m looks at the site.` : `No open street-level frame within ${ph.radiusM} m.`) : 'KartaView did not answer for this run.']));
+  if (!f.photos.length) parts.push(emptyNote([...(g?.ok && !g.frontages ? ['Street View has no panorama in front of the site.'] : []), ph.kartaview.ok ? (ph.kartaview.frames ? `None of the ${fmtNum(ph.kartaview.frames)} open frames within ${ph.radiusM} m looks at the site.` : `No open street-level frame within ${ph.radiusM} m.`) : 'KartaView did not answer for this run.']));
   parts.push(panelFurniture(p, 'left'));
   const planSvg = `<svg width="${p.wMm}mm" height="${p.hMm}mm" viewBox="0 0 ${p.wMm} ${p.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
     <defs><clipPath id="clip-cams"><rect x="0" y="0" width="${p.wMm}" height="${p.hMm}"/></clipPath></defs>
@@ -3638,10 +3674,12 @@ export function photosSlide(b: SlidesBundle): Slide {
     <div class="abs ptitle" style="left:${X2}mm;top:${FIELD_Y}mm;width:${PANEL_W}mm">Then and now<span class="pnote">1:${fmtNum(pp.scale)} · the 1943 aerial survey beside today's imagery${img?.date ? ` (${fmtIso(img.date)})` : ''}, the same ground</span></div>
     <div class="abs" style="left:${X2}mm;top:${FIELD_Y + PANEL_TITLE_H}mm">${pairSvg('clip-then', thenParts)}</div>
     <div class="abs" style="left:${(X2 + PANEL_W - pp.wMm).toFixed(1)}mm;top:${FIELD_Y + PANEL_TITLE_H}mm">${pairSvg('clip-now', nowParts)}</div>
-    <div class="abs ptitle" style="left:${FIELD_X}mm;top:${rowY}mm;width:${FIELD_W}mm">Street level<span class="pnote">${f.photos.length ? 'open frames that look at the site, keyed to the plan · the site visit replaces them' : 'placeholders sized for the site visit\'s photographs'}</span></div>
+    <div class="abs ptitle" style="left:${FIELD_X}mm;top:${rowY}mm;width:${FIELD_W}mm">Street level<span class="pnote">${f.photos.length ? `${G.count ? `Google Street View${O.count ? ' and open' : ''} frames ${G.street ? 'of the site and its street' : 'that look at the site'}` : 'open frames that look at the site'}, keyed to the plan · the site visit replaces them` : 'placeholders sized for the site visit\'s photographs'}</span></div>
     <div class="abs photos" style="left:${FIELD_X}mm;top:${rowY + PANEL_TITLE_H}mm;width:${FIELD_W}mm">${cells.join('')}</div>`;
   const n = f.photos.length;
-  const sub = [b.siteAddress, n ? `${n} open street-level frame${n === 1 ? '' : 's'}` : 'no open street-level frame', f.pair.then !== 'none' ? '1943 and today' : 'today\'s aerial only'].filter(Boolean).join(' · ');
+  const plural = (k: number, one: string) => `${k} ${one}${k === 1 ? '' : 's'}`;
+  const framesWord = G.count ? (O.count ? `${G.count} Street View and ${plural(O.count, 'open frame')}` : plural(G.count, 'Street View frame')) : n ? plural(n, 'open street-level frame') : g?.ok ? 'no street-level frame' : 'no open street-level frame';
+  const sub = [b.siteAddress, framesWord, f.pair.then !== 'none' ? '1943 and today' : 'today\'s aerial only'].filter(Boolean).join(' · ');
   return { id: '12_existing_site_condition', title: 'Existing site condition', subtitle: sub, textHtml, figureHtml: figure };
 }
 
@@ -4560,6 +4598,7 @@ const ATTR = {
   wikipedia: 'Wikipedia contributors · text CC BY-SA 4.0',
   commons: 'Wikimedia Commons contributors · each file under its own licence, credited on the slide',
   mapillary: '© Mapillary contributors · CC BY-SA 4.0',
+  google: '© Google · Google Maps Platform Terms of Service',
   none: '—',
 };
 
@@ -4692,10 +4731,19 @@ export function sourcesFacts(b: SlidesBundle, planning: PlanningFacts) {
   F.push({ dataset: 'Wikimedia Commons: geotagged photographs within 800 m, with author and licence', used: '02', currency: ch.photos.ok ? `${n(ch.photos.candidates, 'usable photograph')}, ${n(ch.photos.items.length, 'photograph')} shown` : `did not answer${ch.photos.note ? ` (${ch.photos.note})` : ''}`, retrieved: retrieved(ch.fetchedAt), attribution: ATTR.commons });
   const kv = b.photos.kartaview, mly = b.photos.mapillary;
   const kvPhotos = b.photos.photos.filter((p) => p.source === 'kartaview'), mlyPhotos = b.photos.photos.filter((p) => p.source === 'mapillary');
-  const frameDates = (ps: typeof kvPhotos) => { const ds = ps.map((p) => p.date).filter((d): d is string => Boolean(d)).sort(); return ds.length ? (ds[0].slice(0, 7) === ds[ds.length - 1].slice(0, 7) ? `taken ${fmtIso(ds[0]).slice(-8)}` : `taken ${fmtIso(ds[0])} to ${fmtIso(ds[ds.length - 1])}`) : 'undated'; };
+  // Street View dates its panoramas to the month, which prints as the month
+  const frameDay = (d: string) => (d.length === 7 ? fmtIso(d).replace(/^\d+ /, '') : fmtIso(d));
+  const frameDates = (ps: typeof kvPhotos) => { const ds = ps.map((p) => p.date).filter((d): d is string => Boolean(d)).sort(); return ds.length ? (ds[0].slice(0, 7) === ds[ds.length - 1].slice(0, 7) ? `taken ${fmtIso(ds[0]).replace(/^\d+ /, '')}` : `taken ${frameDay(ds[0])} to ${frameDay(ds[ds.length - 1])}`) : 'undated'; };
   F.push({ dataset: 'KartaView street-level frames (nearby-photos listing and thumbnails)', used: '12', currency: kv.ok ? `${n(kv.frames, 'frame')} within ${b.photos.radiusM} m, ${n(kv.withHeading, 'frame')} with a recorded heading; ${kvPhotos.length ? `${n(kvPhotos.length, 'frame')} shown, ${frameDates(kvPhotos)}` : 'none faces the site'}` : `did not answer for this run${kv.note ? ` (${kv.note})` : ''}`, retrieved: retrieved(b.photos.fetchedAt), attribution: ATTR.kartaview });
   if (mly.ok) F.push({ dataset: 'Mapillary street-level frames (Graph API images)', used: '12', currency: `${n(mly.frames, 'frame')} within ${b.photos.radiusM} m; ${mlyPhotos.length ? `${n(mlyPhotos.length, 'frame')} shown, ${frameDates(mlyPhotos)}` : 'none faces the site'}`, retrieved: retrieved(b.photos.fetchedAt), attribution: ATTR.mapillary });
   groups.push({ publisher: 'Open and community data', rows: F });
+
+  // Google Street View, where it was read or tried: a licence, not open data, so a group of its own.
+  const gsv = b.photos.google, gsvPhotos = b.photos.photos.filter((p) => p.source === 'google');
+  if (gsv && (gsv.ok || (gsv.note && !/^not read/.test(gsv.note)))) {
+    const why = (gsv.note ?? '').replace(/^Street View metadata answered /, '').split('. ')[0];
+    groups.push({ publisher: 'Google Maps Platform', rows: [{ dataset: 'Google Street View Static API: the panoramas in front of the site (metadata) and a frame of each', used: '12', currency: gsv.ok ? `${n(gsv.frontages, 'side')} of the site's ${fmtNum(gsv.sides)} with a panorama in front; ${gsvPhotos.length ? `${n(gsvPhotos.length, 'frame')} shown, ${frameDates(gsvPhotos)}` : 'no frame shown'}` : `did not answer for this run${why ? ` (${why})` : ''}`, retrieved: retrieved(b.photos.fetchedAt), attribution: ATTR.google }] });
+  }
 
   // Computed.
   groups.push({ publisher: 'Computed by the tool, not sourced', rows: [
@@ -4727,8 +4775,7 @@ export function sourcesSentences(b: SlidesBundle, f: ReturnType<typeof sourcesFa
   out.push('Computed in the tool rather than sourced: the solar geometry and the neighbours\' shadows, the sight lines over the elevation model, the street bearings, the boundary lengths and corner levels from the cadastre and the model, and the walking bands from Valhalla; each is described where it appears.');
   out.push('Still to obtain outside the open data: the survey, the title search (and the easements\' purposes), geotechnical and contamination reports, an acoustic assessment, the council\'s flood study, the airports\' ANEF contours and the site visit.');
   if (f.warnings.length) out.push(`This run logged ${f.warnings.length === 1 ? 'one warning' : `${f.warnings.length} warnings`}: ${f.warnings.join('; ')}.`);
-  out.push('Attribution is as each publisher asks and the licences are as stated at retrieval, mostly Creative Commons Attribution 4.0 for State and Commonwealth data and the Open Database Licence for OpenStreetMap and the footprints derived from it; confirm before republishing.');
-  void b;
+  out.push(`Attribution is as each publisher asks and the licences are as stated at retrieval, mostly Creative Commons Attribution 4.0 for State and Commonwealth data and the Open Database Licence for OpenStreetMap and the footprints derived from it${b.photos.photos.some((p) => p.source === 'google') ? '; the Street View frames are Google\'s, shown under the Google Maps Platform terms for this electronic deck only' : ''}; confirm before republishing.`);
   return out;
 }
 
@@ -4740,7 +4787,8 @@ export function sourcesSlide(b: SlidesBundle, planning: PlanningFacts): Slide {
     `<div class="fine">Generated from the deck's JSON (overall.json), which carries every value with its retrieval time. Currency is the publisher's map or edition date where the layer states one; retrieved is when this deck read the service, or when its cache was filled. Slide numbers are those of the specification.</div>`;
   const rows = f.groups.map((g) => `<tr class="grp"><td colspan="5">${esc(g.publisher)}</td></tr>` + g.rows.map((r) => `<tr><td>${esc(r.dataset)}</td><td class="used">${esc(r.used)}</td><td>${esc(r.currency)}</td><td class="ret">${esc(r.retrieved)}</td><td class="attr">${esc(r.attribution)}</td></tr>`).join('')).join('');
   const table = `<table class="da src"><thead><tr><th style="width:68mm">Dataset</th><th style="width:26mm">Used on slides</th><th style="width:86mm">Currency or edition</th><th style="width:22mm">Retrieved</th><th>Attribution and licence</th></tr></thead><tbody>${rows}</tbody></table>`;
-  const figure = `<div class="abs" style="left:${FIELD_X}mm;top:${FIELD_Y}mm;width:${FIELD_W}mm;height:${SLIDE_H - FIELD_Y - 12}mm;overflow:hidden">${table}</div>`;
+  // data-fit: the printer steps the table's type down until the last row is inside the box
+  const figure = `<div class="abs" data-fit style="left:${FIELD_X}mm;top:${FIELD_Y}mm;width:${FIELD_W}mm;height:${SLIDE_H - FIELD_Y - 12}mm;overflow:hidden">${table}</div>`;
   const sub = [b.siteAddress, `${f.total} datasets`, `${f.publishers} publishers`, `retrieved ${f.deckDay}`].join(' · ');
   return { id: '18_sources', title: 'Sources', subtitle: sub, textHtml: text, figureHtml: figure };
 }
@@ -5115,10 +5163,11 @@ export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; 
   .cnote { border-left: 0.6mm solid #b8561e; background: #faf5ee; padding: 2mm 3mm; font-size: 2.35mm; line-height: 1.34; }
   .cnote p + p { margin-top: 1.2mm; }
   .cnote b { font-weight: 700; }
+  /* spacing in em: the printer steps the type down to fit the box, and the rows close up with it */
   table.da.src { font-size: 2.0mm; line-height: 1.22; }
-  table.da.src th, table.da.src td { padding: 0.55mm 1.6mm 0.55mm 0; }
-  table.da.src thead th { font-size: 1.9mm; }
-  table.da.src tr.grp td { font-weight: 700; padding-top: 1.7mm; border-top: 0.3mm solid #999; color: #222; }
+  table.da.src th, table.da.src td { padding: 0.275em 0.8em 0.275em 0; }
+  table.da.src thead th { font-size: 0.95em; }
+  table.da.src tr.grp td { font-weight: 700; padding-top: 0.85em; border-top: 0.3mm solid #999; color: #222; }
   table.da.src td.used, table.da.src td.ret { font-variant-numeric: tabular-nums; white-space: nowrap; }
   table.da.src td.attr { color: #444; }
   .oc { display: flex; align-items: flex-start; gap: 1.8mm; font-size: 2.35mm; line-height: 1.32; margin-top: 1.4mm; padding-right: 2mm; }

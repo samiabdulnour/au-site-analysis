@@ -47,9 +47,13 @@ Progress streams while the pipeline fetches and composes; the finished A1 PDF
 opens in the browser. Jobs run one at a time so simultaneous users don't
 hammer the public data services, and the page reports queue position and a
 rough ETA rather than an anonymous spinner. Put `TFNSW_API_KEY=…` in `.env`
-for authoritative bus stops, and `MAPILLARY_TOKEN=…` (a free client token)
-for Mapillary's street-level frames on the deck's existing-condition slide;
-without it that slide reads KartaView alone.
+for authoritative bus stops. The deck's existing-condition slide takes Google
+Street View frames of each street frontage with `GOOGLE_MAPS_API_KEY=…` (a
+Google Cloud key whose project has the Street View Static API enabled; add
+`GOOGLE_MAPS_SIGNING_SECRET=…` if the project signs its URLs), and
+Mapillary's frames with `MAPILLARY_TOKEN=…` (a free client token); without
+either it reads KartaView alone. On the server they go in
+`/etc/site-analyst.env`, which the deployer passes to the container.
 
 To refresh the samples, generate the three sheets for the demo address and
 re-render them:
@@ -565,12 +569,15 @@ zone, height, FSR, lot size, heritage, the existing building, levels,
 easements, land value, sales, public land, the imagery's capture date);
 and the block at 1:4000 with the last two years of single-property sales
 within 300 m sized by price, the State government and Crown parcels, and a
-table of the latest sales. Then *existing site condition*: the open
-street-level frames that look at the site (KartaView, no key; Mapillary
-with a client token), one per side of the site where there is one, keyed by
-number to a plan of the camera positions with each view cone and captioned
-with the street, the distance and direction from the site, the direction of
-view, the contributor and the month; the 1943 aerial survey of Sydney beside
+table of the latest sales. Then *existing site condition*: with a Google
+key, Street View frames of each street frontage (square to it, at the
+corners, oblique to the long ones and along the street both ways), kept only
+where the camera stands in the street and sees the site past its neighbours;
+then the open street-level frames that look at the site (KartaView, no key;
+Mapillary with a client token), one per side of the site where there is one;
+all keyed by number to a plan of the camera positions with each view cone
+and captioned with the street, the distance and direction from the site, the
+direction of view, the source or contributor and the month; the 1943 aerial survey of Sydney beside
 today's imagery over the same ground at 1:2500; and, where no open frame
 covers a side, placeholders sized for the site visit's photographs, which
 replace all of these. Then *grid, sun and views*: the bearings of the
