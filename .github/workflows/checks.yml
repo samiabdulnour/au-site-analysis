@@ -129,6 +129,12 @@ jobs:
       - name: the Street View planner frames the frontages and nothing else
         run: npx tsx test/street-view.mts
 
+      # Slide 13's wind roses are counted from hours: the sectors, the speed
+      # classes and calms, the seasons, the prevailing runs and NASA POWER's
+      # JSON, on made-up hours. CI never calls NASA.
+      - name: the wind roses count the hours right
+        run: npx tsx test/wind.mts
+
       # The deployer's one job here is to leave a record even when it dies on
       # its first command — which is exactly what happened once, for six days,
       # unnoticed. Reproduce that: a repo whose origin cannot be reached, and a

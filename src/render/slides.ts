@@ -30,13 +30,14 @@ import type { FacilityKind } from '../fetch/greenSpace.js';
 import { CONSTRAINT_DEFS, type ConstraintGroup } from '../fetch/constraints.js';
 import type { PublicParcel } from '../fetch/site.js';
 import { demAt } from '../fetch/terrain.js';
-import { CHART } from './charts.js';
+import { CHART, niceScale } from './charts.js';
 import type { XY } from '../lib/geo.js';
 import { sunPosition, sunTimes, sunPath, civilToUtc, fmtClock } from '../lib/solar.js';
 import { shadowHull, inHull } from '../lib/shadows.js';
 import type { ViewKind } from '../fetch/views.js';
 import { MAX_PHOTOS, type StreetPhoto } from '../fetch/photos.js';
 import { PROBE_OUT_M as SV_PROBE_OUT_M } from '../fetch/streetView.js';
+import { windLobes, sectorTotals, WIND_CLASSES_KMH, type WindRose } from '../fetch/wind.js';
 import { CENTRES, SYDNEY_CBD, CENTRE_KIND_WORD } from '../data/centres.js';
 import type { MajorProject } from '../fetch/majorProjects.js';
 
@@ -3048,22 +3049,20 @@ function roadAlongEdge(mid: XY, bearing: number, roads: SlidesBundle['base']['ro
   return best;
 }
 
-export function siteFacts(b: SlidesBundle) {
-  const s = b.site;
-  const p = s.sitePanel;
-  const centreLL = mercatorToLonLat(b.panel.center);
-  const k = mercatorScaleFactor(centreLL.lat);
+/**
+ * The site's boundary edges, with an outward normal each (an edge another of
+ * the site's lots shares is internal and left out), and its street
+ * frontages: the named roads that run along the edges, with the length each
+ * runs for and the compass bearing its longest edge faces. Slides 11 and 12
+ * both ask.
+ */
+function siteBoundary(b: SlidesBundle) {
+  const k = mercatorScaleFactor(mercatorToLonLat(b.panel.center).lat);
   const toM = (lon: number, lat: number) => lonLatToMercator({ lon, lat });
-  const siteRings = b.base.siteLots.features.flatMap((f) => geomRings(f.geometry));
-  const ringsMerc = siteRings.map((r) => r.map(([lon, lat]) => toM(lon, lat)));
-  const siteMerc = ringsMerc.flat();
-  const distFromSite = (m: XY) => { let d = Infinity; for (const q of siteMerc) d = Math.min(d, Math.hypot(q.x - m.x, q.y - m.y)); return d / k; };
+  const ringsMerc = b.base.siteLots.features.flatMap((f) => geomRings(f.geometry)).map((r) => r.map(([lon, lat]) => toM(lon, lat)));
   const bearingOf = (dx: number, dy: number) => ((Math.atan2(dx, dy) * 180) / Math.PI + 360) % 360;
-  const bearingFrom = (m: XY) => bearingOf(m.x - p.center.x, m.y - p.center.y);
   const segDist = (q: XY, a: XY, c: XY) => { const dx = c.x - a.x, dy = c.y - a.y; const l2 = dx * dx + dy * dy; const t = l2 ? Math.max(0, Math.min(1, ((q.x - a.x) * dx + (q.y - a.y) * dy) / l2)) : 0; return Math.hypot(q.x - (a.x + t * dx), q.y - (a.y + t * dy)); };
   const ringAreaM2 = (pts: XY[]) => { let a = 0; for (let i = 0; i < pts.length; i++) { const u = pts[i], v = pts[(i + 1) % pts.length]; a += u.x * v.y - v.x * u.y; } return a / 2 / (k * k); };
-
-  // Boundary edges, with an outward normal for the dimension text; an edge another of the site's lots shares is internal.
   const edges: SiteEdge[] = [];
   ringsMerc.forEach((ring, ri) => {
     const pts = ring.length > 1 && ring[0].x === ring[ring.length - 1].x && ring[0].y === ring[ring.length - 1].y ? ring.slice(0, -1) : ring;
@@ -3081,12 +3080,29 @@ export function siteFacts(b: SlidesBundle) {
   });
   const outer = edges.filter((e) => !e.shared);
   // Frontages: the edges a named road runs along (its centreline within 18 m of the edge and within 35° of its bearing).
-  const frontage = new Map<string, { lengthM: number; hierarchy: number }>();
+  const frontage = new Map<string, { lengthM: number; hierarchy: number; longest: SiteEdge }>();
   for (const e of outer) {
     const best = roadAlongEdge(e.mid, e.bearing, b.base.roads, k, toM);
-    if (best) { const cur = frontage.get(best.name) ?? { lengthM: 0, hierarchy: best.hierarchy }; cur.lengthM += e.lengthM; frontage.set(best.name, cur); }
+    if (!best) continue;
+    const cur = frontage.get(best.name) ?? { lengthM: 0, hierarchy: best.hierarchy, longest: e };
+    cur.lengthM += e.lengthM;
+    if (e.lengthM > cur.longest.lengthM) cur.longest = e;
+    frontage.set(best.name, cur);
   }
-  const frontages = [...frontage.entries()].map(([name, v]) => ({ name, lengthM: Math.round(v.lengthM * 10) / 10, hierarchy: v.hierarchy, word: roadWord(v.hierarchy) })).sort((x, y) => y.lengthM - x.lengthM);
+  const frontages = [...frontage.entries()].map(([name, v]) => ({ name, lengthM: Math.round(v.lengthM * 10) / 10, hierarchy: v.hierarchy, word: roadWord(v.hierarchy), faces: Math.round(bearingOf(v.longest.normal.x, v.longest.normal.y)) })).sort((x, y) => y.lengthM - x.lengthM);
+  return { k, toM, ringsMerc, outer, frontages };
+}
+
+export function siteFacts(b: SlidesBundle) {
+  const s = b.site;
+  const p = s.sitePanel;
+  const { k, toM, ringsMerc, outer, frontages } = siteBoundary(b);
+  const siteRings = b.base.siteLots.features.flatMap((f) => geomRings(f.geometry));
+  const siteMerc = ringsMerc.flat();
+  const distFromSite = (m: XY) => { let d = Infinity; for (const q of siteMerc) d = Math.min(d, Math.hypot(q.x - m.x, q.y - m.y)); return d / k; };
+  const bearingOf = (dx: number, dy: number) => ((Math.atan2(dx, dy) * 180) / Math.PI + 360) % 360;
+  const bearingFrom = (m: XY) => bearingOf(m.x - p.center.x, m.y - p.center.y);
+  const ringAreaM2 = (pts: XY[]) => { let a = 0; for (let i = 0; i < pts.length; i++) { const u = pts[i], v = pts[(i + 1) % pts.length]; a += u.x * v.y - v.x * u.y; } return a / 2 / (k * k); };
 
   // Corners: the vertices where the boundary turns, with the elevation model's level at each.
   const g = b.terrain.dem;
@@ -3469,10 +3485,12 @@ export function photosFacts(b: SlidesBundle) {
   const fits = (scale: number) => { const proj = panelProjector({ center: b.panel.center, scale, wMm: PANEL_W, hMm: PANEL_H }); return pts.every(([lon, lat]) => { const [x, y] = proj(lon, lat); return x > 6 && x < PANEL_W - 6 && y > 6 && y < PANEL_H - 6; }); };
   const scale = photos.length ? (PLAN_SCALES.find(fits) ?? PLAN_SCALES[PLAN_SCALES.length - 1]) : Math.max(1500, PLAN_SCALES.find(fits) ?? 1500);
   const planPanel: Panel = { center: b.panel.center, scale, wMm: PANEL_W, hMm: PANEL_H };
-  // the sides of the site no open frame looks at, for the placeholders
-  const covered = new Set(photos.filter((p) => p.facing === 'site').map((p) => Math.round(p.bearingFromSite / 45) % 8));
-  const uncoveredSides = [0, 1, 2, 3, 4, 5, 6, 7].filter((i) => !covered.has(i)).map((i) => bearingName(i * 45));
-  const placeholders = Array.from({ length: Math.max(0, MAX_PHOTOS - photos.length) }, (_, i) => uncoveredSides[i] as string | undefined);
+  // the street frontages no frame looks at the site from, for the sentence and the placeholders: a neighbour's side is
+  // photographed from the street too, so the compass points round the site are not what the visit has to cover
+  const frontages = siteBoundary(b).frontages;
+  const coveredStreets = new Set(photos.filter((p) => p.facing === 'site' && p.street).map((p) => p.street!));
+  const uncoveredFrontages = frontages.filter((fr) => !coveredStreets.has(fr.name)).map((fr) => ({ name: fr.name, faces: compassWord(fr.faces) }));
+  const placeholders = Array.from({ length: Math.max(0, MAX_PHOTOS - photos.length) }, (_, i) => uncoveredFrontages[i]?.name);
   const rangeOf = (ps: typeof photos) => { const ds = ps.map((p) => p.date).filter((d): d is string => Boolean(d)).sort(); return ds.length ? { first: ds[0], last: ds[ds.length - 1] } : null; };
   const streetsOf = (ps: typeof photos) => [...new Set(ps.map((p) => p.street).filter((s): s is string => Boolean(s)))];
   const sourcesOf = (ps: typeof photos) => [...new Set(ps.map((p) => SOURCE_WORD[p.source]))];
@@ -3499,7 +3517,7 @@ export function photosFacts(b: SlidesBundle) {
       authors: [...new Set(open.map((p) => p.author).filter((s): s is string => Boolean(s)))],
       licence: open[0]?.licence,
     },
-    planPanel, uncoveredSides, placeholders,
+    planPanel, frontages: frontages.map((fr) => fr.name), uncoveredFrontages, placeholders,
     pair: {
       panel: pp, widthM: Math.round((pp.wMm / 1000) * pp.scale), heightM: Math.round((pp.hMm / 1000) * pp.scale),
       then: thenCoverage, thenTiles: then.tiles.length, thenMissing: then.missing, thenSource: then.source,
@@ -3537,7 +3555,8 @@ export function photosSentences(b: SlidesBundle, f: ReturnType<typeof photosFact
     const ageYears = Number.isFinite(lastMs) ? (Date.parse(b.generatedAt) - lastMs) / (365.25 * 24 * 3600e3) : NaN;
     const age = Number.isFinite(ageYears) && ageYears >= 1 ? `The newest is ${ageYears >= 2 ? `${Math.round(ageYears)} years` : 'over a year'} old, so the frontage and the street may have changed since; the` : 'The';
     const frame = G.count ? 'frame' : 'open frame';
-    out.push(`${age} frames stand in until the site visit${f.uncoveredSides.length ? (f.uncoveredSides.length >= 5 ? `, which also covers the sides no ${frame} reaches: the ${frame}s look at the site from ${numWord(8 - f.uncoveredSides.length)} of its eight sides only` : `, which also covers the ${listWords(f.uncoveredSides)}, where no ${frame} looks at the site`) : ''}${f.placeholders.length ? '; the placeholders are sized for its photographs' : ''}.`);
+    const unc = f.uncoveredFrontages;
+    out.push(`${age} frames stand in until the site visit${unc.length ? `, which also covers the ${listWords(unc.map((u) => u.name))} ${unc.length === 1 ? 'frontage' : 'frontages'}, where no ${frame} looks at the site` : ''}${f.placeholders.length ? '; the placeholders are sized for its photographs' : ''}.`);
   } else if (kv.ok && kv.frames) {
     out.push(`KartaView holds ${fmtNum(kv.frames)} frames within ${f.radiusM} m of the site, but none of them looks at it${mlyNote}, so the site visit supplies the photographs; the placeholders are sized for them, and the plan and the aerial pair carry the slide until then.`);
   } else if (kv.ok) {
@@ -3563,7 +3582,7 @@ export function photosSlide(b: SlidesBundle): Slide {
   const g = f.google, G = f.googleFrames, O = f.openFrames;
   // Google's part of the fine print: how its frames were found, or why there are none; decks read before it say nothing
   const googleFine = !g ? '' : g.ok
-    ? `Google Street View Static API (${G.licences.length ? G.licences.join(', ') : '© Google'}): its free metadata service asked for the outdoor panorama nearest a point ${SV_PROBE_OUT_M} m out from the middle of each side of the site's outline, and found ${!g.sides ? 'no outline to probe' : g.frontages ? `one in front of ${numWord(g.frontages)} of its ${numWord(g.sides)} sides` : `none in front of its ${numWord(g.sides)} sides`}${g.offStreet ? `, setting aside ${numWord(g.offStreet)} that stood inside another lot or a building or looked through a neighbour's (the NSW cadastre and the footprints)` : ''}; each frame looks at a frontage square on, at a corner or obliquely${G.street ? ', or along the street from a frontage\'s camera' : ''}, with a field of view wide enough to take it in, uncropped and dated to the month of capture; `
+    ? `Google Street View Static API (${G.licences.length ? G.licences.join(', ') : '© Google'}): its free metadata service asked for the outdoor panorama nearest a point ${SV_PROBE_OUT_M} m out from the middle of each side of the site's outline, and found ${!g.sides ? 'no outline to probe' : g.frontages ? `one in front of ${numWord(g.frontages)} of its ${numWord(g.sides)} sides` : `none in front of its ${numWord(g.sides)} sides`}${g.offStreet ? `, setting aside ${numWord(g.offStreet)} that stood inside another lot or a building or looked through a neighbour's (the NSW cadastre and the footprints)` : ''}${G.count ? `; each frame looks at a frontage square on, at a corner or obliquely${G.street ? ', or along the street from a frontage\'s camera' : ''}, with a field of view wide enough to take it in, uncropped and dated to the month of capture` : ''}; `
     : g.note && !/^not read/.test(g.note) ? 'Google Street View did not answer for this run; ' : 'Google Street View not read (no API key); ';
   const openFine = O.count ? `open street-level frames from ${listWords(O.sources)} (the contributors named under each frame, ${O.licence}): the frames within ${f.radiusM} m of the site whose view cone takes it in, one per side where there is one${G.count ? ', away from Street View\'s cameras' : ''}, cropped to the grid; headings without a record are read from the camera's track` : `KartaView's nearby-photos listing within ${f.radiusM} m of the site`;
   const textHtml = sentences.map(para).join('') +
@@ -3662,8 +3681,8 @@ export function photosSlide(b: SlidesBundle): Slide {
     const c = f.photos[i];
     if (c) cells.push(`<div class="frame"><div class="img"><img src="data/${esc(c.file)}" alt=""${c.source === 'google' ? ' class="whole"' : ''}><span class="key">${c.n}</span></div><div class="cap">${esc(c.caption)}</div></div>`);
     else {
-      const side = f.placeholders[i - f.photos.length];
-      cells.push(`<div class="frame ph"><div class="img">${esc(side ? `Site visit photograph: the site from the ${side}` : 'Site visit photograph')}</div><div class="cap">${esc(`${i + 1} · site visit — for the author: ${side ? `the site from the ${side}` : 'a frame from the visit'}, keyed on the plan`)}</div></div>`);
+      const street = f.placeholders[i - f.photos.length];
+      cells.push(`<div class="frame ph"><div class="img">${esc(street ? `Site visit photograph: the site from ${street}` : 'Site visit photograph')}</div><div class="cap">${esc(`${i + 1} · site visit — for the author: ${street ? `the site from ${street}` : 'a frame from the visit'}, keyed on the plan`)}</div></div>`);
     }
   }
 
@@ -3698,6 +3717,13 @@ const AEST = 10, AEDT = 11;
 const SOLAR_YEAR = 2026;
 const compass16 = (deg: number) => ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'][Math.round((((deg % 360) + 360) % 360) / 22.5) % 16];
 const compassWord = (deg: number) => bearingName(deg);
+/** The sixteen points in words, for the way a wind blows from: "north-north-east". */
+const WIND_POINTS = ['north', 'north-north-east', 'north-east', 'east-north-east', 'east', 'east-south-east', 'south-east', 'south-south-east', 'south', 'south-south-west', 'south-west', 'west-south-west', 'west', 'west-north-west', 'north-west', 'north-north-west'];
+const windFrom = (deg: number) => WIND_POINTS[Math.round((((deg % 360) + 360) % 360) / 22.5) % 16];
+/** "north-easterly", "westerly". */
+const windly = (deg: number) => `${windFrom(deg)}erly`;
+/** "north-easterlies", "southerlies". */
+const windlies = (deg: number) => `${windFrom(deg)}erlies`;
 
 export function sunViewFacts(b: SlidesBundle) {
   const centreLL = mercatorToLonLat(b.panel.center);
@@ -3802,8 +3828,16 @@ export function sunViewFacts(b: SlidesBundle) {
     return { ...sh, altitudeDeg: pos.altitudeDeg, azimuthDeg: pos.azimuthDeg, shadedPct: samples.length ? (shaded.size / samples.length) * 100 : 0, hulls, mainCaster: main ? { heightM: main.heightM, floors: main.floors, bearing: main.bearing, sharePct: (main.hits / Math.max(1, samples.length)) * 100, lon: main.lon, lat: main.lat } : null };
   });
 
+  // The wind: each season's prevailing runs of sectors, and the frontages that face one (its middle within 45° of the way the frontage faces).
+  const wd = b.wind;
+  const faceOn = (fr: { facing: number }, deg: number) => { const d = Math.abs((((fr.facing - deg) % 360) + 540) % 360 - 180); return d <= 45; };
+  const lobes = wd?.ok ? { summer: windLobes(wd.summer), winter: windLobes(wd.winter), summerAfternoon: windLobes(wd.summerAfternoon), winterMorning: windLobes(wd.winterMorning) } : null;
+  const exposure = lobes ? (['summer', 'winter'] as const).flatMap((season) => lobes[season].map((l, i) => ({ season, lobe: i, centre: l.centre, frontages: frontFaces.filter((fr) => faceOn(fr, l.centre)).map((fr) => ({ name: fr.name, facingWord: compassWord(fr.facing) })) })).filter((e) => e.frontages.length)) : [];
+  const wind = wd ? { ok: wd.ok, note: wd.note, years: wd.years, lat: wd.lat, lon: wd.lon, elevationM: wd.elevationM, fetchedAt: wd.fetchedAt, summer: wd.summer, winter: wd.winter, summerAfternoon: { meanKmh: wd.summerAfternoon.meanKmh, hours: wd.summerAfternoon.hours }, winterMorning: { meanKmh: wd.winterMorning.meanKmh, hours: wd.winterMorning.hours }, lobes, exposure } : null;
+
   const views = b.views?.views ?? [];
   return {
+    wind,
     grid: { primaryDeg: Math.round(primaryDeg), secondaryDeg: secondaryDeg === null ? null : Math.round(secondaryDeg), primarySharePct: share(primaryBin), secondarySharePct: secondaryBin >= 0 ? share(secondaryBin) : 0, bins, roadsLengthM: Math.round(totalLen), siteAxisDeg: Math.round(longest.bearing), offGridDeg: offGrid, frontages: frontFaces.map((f) => ({ ...f, facingWord: compass16(f.facing), lengthM: Math.round(f.lengthM * 10) / 10 })) },
     sun,
     shadows: shadows.map((s) => ({ hour: s.hour, label: s.label, altitudeDeg: Math.round(s.altitudeDeg * 10) / 10, azimuthDeg: Math.round(s.azimuthDeg), shadedPct: s.shadedPct, casters: s.hulls.filter((h) => h.hits).length, mainCaster: s.mainCaster })),
@@ -3825,6 +3859,22 @@ export function sunViewSentences(b: SlidesBundle, f: ReturnType<typeof sunViewFa
   }
   const w = f.sun.winter, su = f.sun.summer;
   out.push(`On 21 June the sun rises at ${fmtClock(w.rise)} and sets at ${fmtClock(w.set)} (AEST), reaching ${w.noonAltitudeDeg.toFixed(0)}° at solar noon (${fmtClock(w.noon)}); between 9 am and 3 pm it stands ${Math.min(...w.hours.map((h) => h.altitudeDeg)).toFixed(0)}° to ${Math.max(...w.hours.map((h) => h.altitudeDeg)).toFixed(0)}° above the horizon, from the ${compassWord(w.hours[0].azimuthDeg)} round to the ${compassWord(w.hours[2].azimuthDeg)}. On 21 December it is up from ${fmtClock(su.rise)} to ${fmtClock(su.set)} (AEDT) and ${su.noonAltitudeDeg.toFixed(0)}° high at ${fmtClock(su.noon)}, so the north face is in sun all winter and the west face takes the summer afternoon.`);
+  const wi = f.wind;
+  if (wi?.ok && wi.lobes && wi.lobes.summer.length && wi.lobes.winter.length) {
+    const L = wi.lobes;
+    const two = (ls: typeof L.summer) => `the ${windFrom(ls[0].centre)} (${fmtPct(ls[0].pct)}${ls === L.summer ? ` of the hours${L.summerAfternoon[0] ? `; ${windly(L.summerAfternoon[0].centre)} in the afternoons at ${Math.round(wi.summerAfternoon.meanKmh)} km/h` : ''}` : ''})${ls[1] ? ` and the ${windFrom(ls[1].centre)} (${fmtPct(ls[1].pct)})` : ''}`;
+    let s = `Over ${wi.years[0]}–${wi.years[1]} NASA's reanalysis has the summer wind from ${two(L.summer)}, the winter wind from ${two(L.winter)}.`;
+    // each frontage that faces a prevailing wind, once: "the Kellick Street frontage takes the summer north-easterlies and the winter north-north-westerlies"
+    // and a wind both seasons share is named once: "the summer and winter west-south-westerlies"
+    const byFront = new Map<string, Map<string, string[]>>();
+    for (const e of wi.exposure) for (const fr of e.frontages) {
+      const winds = byFront.get(fr.name) ?? byFront.set(fr.name, new Map()).get(fr.name)!;
+      (winds.get(windlies(e.centre)) ?? winds.set(windlies(e.centre), []).get(windlies(e.centre))!).push(e.season);
+    }
+    const faces = [...byFront.entries()].map(([name, winds], i) => `the ${name} frontage ${i ? '' : 'takes '}${listWords([...winds.entries()].map(([w, seasons]) => `the ${listWords(seasons)} ${w}`))}`);
+    if (faces.length) s += ` ${capFirst(faces.join(', '))}.`;
+    out.push(`${s} It is the region's wind, not the site's: buildings and landform channel and shelter it.`);
+  } else if (wi && !wi.ok) out.push('NASA\'s reanalysis did not answer for this run, so no wind rose is drawn.');
   if (f.castersInReach) {
     const sh = f.shadows;
     const worst = [...sh].sort((x, y) => y.shadedPct - x.shadedPct)[0];
@@ -3902,6 +3952,38 @@ function gridRoseSvg(f: ReturnType<typeof sunViewFacts>, size: number, font: str
   return `<svg width="${size}mm" height="${size}mm" viewBox="0 0 ${size} ${size}" xmlns="http://www.w3.org/2000/svg" font-family="${font}" style="display:block">${parts.join('')}</svg>`;
 }
 
+/** The wind's speed classes, light to dark in the deck's accent blue: one hue, so more wind reads darker. */
+const WIND_RAMP = ['#bfd6f4', '#86b6ef', '#2a78d6', '#164a8a'];
+
+/** A wind rose: sixteen petals of the hours the wind blows from each point, stacked by speed class, on rings every `step` % up to `top` %. */
+function windRoseSvg(rose: WindRose, size: number, font: string, top: number, step: number): string {
+  const R = size / 2 - 4.5, cx = size / 2, cy = size / 2;
+  const r = (pct: number) => (R * pct) / top;
+  const P = (rr: number, a: number) => `${(cx + rr * Math.sin(a)).toFixed(2)},${(cy - rr * Math.cos(a)).toFixed(2)}`;
+  const parts: string[] = [`<circle cx="${cx}" cy="${cy}" r="${R}" fill="#fbfaf7" stroke="#c9c7c0" stroke-width="0.3"/>`];
+  // the rings as whole multiples of the step, so 15 prints as 15 and not 15.000000000000002
+  const rings = Array.from({ length: Math.round(top / step) }, (_, i) => Math.round((i + 1) * step * 100) / 100);
+  for (const q of rings.slice(0, -1)) parts.push(`<circle cx="${cx}" cy="${cy}" r="${r(q).toFixed(2)}" fill="none" stroke="#d6d4cc" stroke-width="0.2" stroke-dasharray="0.8,0.6"/>`);
+  for (const [az, txt] of [[0, 'N'], [90, 'E'], [180, 'S'], [270, 'W']] as const) { const a = (az * Math.PI) / 180; parts.push(`<text x="${(cx + (R + 2.6) * Math.sin(a)).toFixed(1)}" y="${(cy - (R + 2.6) * Math.cos(a) + 0.7).toFixed(1)}" text-anchor="middle" font-size="2" font-weight="700" fill="#333">${txt}</text>`); }
+  const half = (8.4 * Math.PI) / 180;
+  rose.pct.forEach((row, sector) => {
+    const a = (sector * 22.5 * Math.PI) / 180;
+    let acc = 0;
+    row.forEach((v, c) => {
+      if (v <= 0) return;
+      const r0 = r(acc), r1 = r(acc + v);
+      acc += v;
+      const d = r0 < 0.05
+        ? `M${cx},${cy} L${P(r1, a - half)} A${r1.toFixed(2)},${r1.toFixed(2)} 0 0 1 ${P(r1, a + half)} Z`
+        : `M${P(r0, a - half)} L${P(r1, a - half)} A${r1.toFixed(2)},${r1.toFixed(2)} 0 0 1 ${P(r1, a + half)} L${P(r0, a + half)} A${r0.toFixed(2)},${r0.toFixed(2)} 0 0 0 ${P(r0, a - half)} Z`;
+      parts.push(`<path d="${d}" fill="${WIND_RAMP[c]}" stroke="#ffffff" stroke-width="0.12"/>`);
+    });
+  });
+  // the rings' values down the south-east diagonal, haloed where a petal passes
+  for (const q of rings) { const a = (135 * Math.PI) / 180; parts.push(`<text x="${(cx + r(q) * Math.sin(a) + 0.5).toFixed(1)}" y="${(cy - r(q) * Math.cos(a) + 0.6).toFixed(1)}" font-size="1.5" fill="#6b6a65" stroke="#fbfaf7" stroke-width="0.5" paint-order="stroke">${q} %</text>`); }
+  return `<svg width="${size}mm" height="${size}mm" viewBox="0 0 ${size} ${size}" xmlns="http://www.w3.org/2000/svg" font-family="${font}" style="display:block">${parts.join('')}</svg>`;
+}
+
 export function sunViewSlide(b: SlidesBundle): Slide {
   const f = sunViewFacts(b);
   const t = tpl();
@@ -3909,7 +3991,7 @@ export function sunViewSlide(b: SlidesBundle): Slide {
   const sentences = sunViewSentences(b, f);
   const textHtml = sentences.map(para).join('') +
     placeholder('Narrative — for the author: where the living rooms and the private open space should face, which frontage gets the morning and which the afternoon, what the neighbours\' winter shadows leave for the ground floor and the courtyard, and which views are worth a window, a terrace or a roof.') +
-    `<div class="fine">Sun positions computed for the site (NOAA solar geometry) for 21 June in AEST and 21 December and the equinox in AEDT; shadows from ${b.buildings.source === 'overture' ? 'Overture Maps' : 'OpenStreetMap'} footprints and their heights (measured, from storeys, or the storeys of a determined DA on the lot, as slide 08 marks them), the site's own buildings left out; street bearings from NSW Spatial Services roads in the window; sight lines from the eye just under the height limit over the NSW 5 m elevation surface to the skylines, the named water and coast and the park next door. Buildings are not tested against the sight lines. Retrieved ${b.generatedAt.slice(0, 10)}.</div>`;
+    `<div class="fine">Sun positions computed for the site (NOAA solar geometry) for 21 June in AEST and 21 December and the equinox in AEDT; shadows from ${b.buildings.source === 'overture' ? 'Overture Maps' : 'OpenStreetMap'} footprints and their heights (measured, from storeys, or the storeys of a determined DA on the lot, as slide 08 marks them), the site's own buildings left out; street bearings from NSW Spatial Services roads in the window; sight lines from the eye just under the height limit over the NSW 5 m elevation surface to the skylines, the named water and coast and the park next door. Buildings are not tested against the sight lines.${f.wind?.ok ? ` Wind: hourly at 10 m in the MERRA-2 reanalysis cell over the site, ${f.wind.years[0]}–${f.wind.years[1]}, from the NASA Langley Research Center POWER Project, funded through the NASA Earth Science/Applied Science Program.` : ''} Retrieved ${b.generatedAt.slice(0, 10)}.</div>`;
   const worstShadow = [...f.shadows].sort((x, y) => y.shadedPct - x.shadedPct)[0];
   const clearViews = f.views.filter((v) => v.clear === true);
   const sub = [b.siteAddress, `grid ${f.grid.primaryDeg}°`, f.grid.frontages[0] ? `frontage faces ${f.grid.frontages[0].facingWord}` : '', clearViews.length ? `${clearViews.length} clear view${clearViews.length === 1 ? '' : 's'}` : ''].filter(Boolean).join(' · ');
@@ -4018,10 +4100,33 @@ export function sunViewSlide(b: SlidesBundle): Slide {
     <g clip-path="url(#clip-views)" font-family="${t.font}">${vparts.join('\n')}</g>
     <rect x="0.1" y="0.1" width="${vp.wMm - 0.2}" height="${vp.hMm - 0.2}" fill="none" stroke="${t.rule}" stroke-width="0.2"/>
   </svg>`;
-  const viewRows = f.views.map((v) => `<tr${v.clear ? ' class="hit"' : ''}><td>${esc(v.label)}</td><td>${esc(VIEW_WORD[v.kind])}</td><td class="r">${v.bearingDeg}° ${esc(compass16(v.bearingDeg))}</td><td class="r">${v.distanceM >= 1000 ? `${(v.distanceM / 1000).toFixed(1)} km` : `${fmtNum(v.distanceM)} m`}</td><td>${v.clear === true ? 'clear over the ground' : v.clear === false ? `ground rises${v.blockedAtM ? ` at ${v.blockedAtM >= 1000 ? `${(v.blockedAtM / 1000).toFixed(1)} km` : `${fmtNum(v.blockedAtM)} m`}` : ''}` : v.kind === 'park' ? 'adjoins the site' : 'not checked'}</td></tr>`).join('');
+  // The wind, bottom-aligned with the views map; the views table keeps the rows that fit above it.
+  const WIND_ROSE_MM = 46;
+  const yViewsTop = FIELD_Y + PANEL_TITLE_H + DA_PANEL_H + GUTTER;
+  const windOn = Boolean(f.wind?.ok && f.wind.summer.hours && f.wind.winter.hours);
+  const windTop = yViewsTop + PANEL_TITLE_H + vp.hMm - (PANEL_TITLE_H + WIND_ROSE_MM + 5);
+  const maxViewRows = windOn ? Math.max(3, Math.floor((windTop - 3 - (yViewsTop + PANEL_TITLE_H) - 5.5) / 4.4)) : Infinity;
+  const shownViews = f.views.slice(0, maxViewRows);
+  const viewRows = shownViews.map((v) => `<tr${v.clear ? ' class="hit"' : ''}><td>${esc(v.label)}</td><td>${esc(VIEW_WORD[v.kind])}</td><td class="r">${v.bearingDeg}° ${esc(compass16(v.bearingDeg))}</td><td class="r">${v.distanceM >= 1000 ? `${(v.distanceM / 1000).toFixed(1)} km` : `${fmtNum(v.distanceM)} m`}</td><td>${v.clear === true ? 'clear over the ground' : v.clear === false ? `ground rises${v.blockedAtM ? ` at ${v.blockedAtM >= 1000 ? `${(v.blockedAtM / 1000).toFixed(1)} km` : `${fmtNum(v.blockedAtM)} m`}` : ''}` : v.kind === 'park' ? 'adjoins the site' : 'not checked'}</td></tr>`).join('');
+  const moreViews = f.views.length - shownViews.length;
   const viewTable = f.views.length
-    ? `<table class="da cons"><thead><tr><th>View to</th><th style="width:16mm">Kind</th><th class="r" style="width:20mm">Bearing</th><th class="r" style="width:16mm">Distance</th><th style="width:40mm">Sight line</th></tr></thead><tbody>${viewRows}</tbody></table>`
+    ? `<table class="da cons"><thead><tr><th>View to</th><th style="width:16mm">Kind</th><th class="r" style="width:20mm">Bearing</th><th class="r" style="width:16mm">Distance</th><th style="width:40mm">Sight line</th></tr></thead><tbody>${viewRows}${moreViews ? `<tr><td colspan="5">${moreViews} more in the deck's JSON (overall.json)</td></tr>` : ''}</tbody></table>`
     : emptyBox(rightW, 24, 'no candidate view within range');
+  let windHtml = '';
+  if (windOn && f.wind) {
+    const w = f.wind;
+    const { step, top } = niceScale(Math.max(...sectorTotals(w.summer), ...sectorTotals(w.winter)), 3);
+    const cap = (label: string, rose: WindRose) => `${label} · mean ${Math.round(rose.meanKmh)} km/h · calm ${rose.calmPct < 1 ? rose.calmPct.toFixed(1) : Math.round(rose.calmPct)} %`;
+    const legendX = rightX + 2 * WIND_ROSE_MM + 2 * GUTTER;
+    const classes = WIND_CLASSES_KMH.map((lo, i) => (i + 1 < WIND_CLASSES_KMH.length ? `${lo}–${WIND_CLASSES_KMH[i + 1]} km/h` : `${lo} km/h and over`));
+    const wlegend = classes.map((txt, i) => `<div class="lg"><svg width="5mm" height="3.6mm" viewBox="0 0 5 3.6"><rect x="0" y="0.4" width="5" height="2.8" fill="${WIND_RAMP[i]}"/></svg><span>${esc(txt)}</span></div>`).join('') +
+      `<div class="lg" style="margin-top:1.2mm"><span>Petals: the share of the hours the wind blows from each point; rings every ${Math.round(step * 100) / 100} %. Calm is under ${WIND_CLASSES_KMH[0]} km/h.</span></div>`;
+    windHtml = `
+    <div class="abs ptitle" style="left:${rightX}mm;top:${windTop}mm;width:${rightW}mm">Wind<span class="pnote">hourly at 10 m, ${w.years[0]}–${w.years[1]} · NASA POWER, the MERRA-2 reanalysis cell over the site · the region's wind, not the site's</span></div>
+    <div class="abs" style="left:${rightX}mm;top:${windTop + PANEL_TITLE_H}mm">${windRoseSvg(w.summer, WIND_ROSE_MM, t.font, top, step)}<div class="wcap">${esc(cap('Summer, Dec–Feb', w.summer))}</div></div>
+    <div class="abs" style="left:${rightX + WIND_ROSE_MM + GUTTER}mm;top:${windTop + PANEL_TITLE_H}mm">${windRoseSvg(w.winter, WIND_ROSE_MM, t.font, top, step)}<div class="wcap">${esc(cap('Winter, Jun–Aug', w.winter))}</div></div>
+    <div class="abs legend" style="left:${legendX}mm;top:${windTop + PANEL_TITLE_H + 4}mm;width:${rightX + rightW - legendX}mm">${wlegend}</div>`;
+  }
 
   const yViews = FIELD_Y + PANEL_TITLE_H + DA_PANEL_H + GUTTER;
   const figureHtml = `
@@ -4036,7 +4141,7 @@ export function sunViewSlide(b: SlidesBundle): Slide {
     <div class="abs ptitle" style="left:${FIELD_X}mm;top:${yViews}mm;width:${PANEL_W}mm">Views<span class="pnote">1:${fmtNum(vp.scale)} · sight lines from the eye at the height limit; cones where the ground leaves them clear</span></div>
     <div class="abs" style="left:${FIELD_X}mm;top:${yViews + PANEL_TITLE_H}mm">${viewsSvg}</div>
     <div class="abs ptitle" style="left:${rightX}mm;top:${yViews}mm;width:${rightW}mm">Candidate views<span class="pnote">skylines, named water and coast, the park next door · the ground tested, not the buildings</span></div>
-    <div class="abs" style="left:${rightX}mm;top:${yViews + PANEL_TITLE_H}mm;width:${rightW}mm">${viewTable}</div>`;
+    <div class="abs" style="left:${rightX}mm;top:${yViews + PANEL_TITLE_H}mm;width:${rightW}mm">${viewTable}</div>${windHtml}`;
   return { id: '13_grid_sun_views', title: 'Grid, sun and views', subtitle: sub, textHtml, figureHtml };
 }
 
@@ -4599,6 +4704,7 @@ const ATTR = {
   commons: 'Wikimedia Commons contributors · each file under its own licence, credited on the slide',
   mapillary: '© Mapillary contributors · CC BY-SA 4.0',
   google: '© Google · Google Maps Platform Terms of Service',
+  nasa: 'NASA Langley Research Center POWER Project · free to use, acknowledged as the project asks',
   none: '—',
 };
 
@@ -4736,6 +4842,8 @@ export function sourcesFacts(b: SlidesBundle, planning: PlanningFacts) {
   const frameDates = (ps: typeof kvPhotos) => { const ds = ps.map((p) => p.date).filter((d): d is string => Boolean(d)).sort(); return ds.length ? (ds[0].slice(0, 7) === ds[ds.length - 1].slice(0, 7) ? `taken ${fmtIso(ds[0]).replace(/^\d+ /, '')}` : `taken ${frameDay(ds[0])} to ${frameDay(ds[ds.length - 1])}`) : 'undated'; };
   F.push({ dataset: 'KartaView street-level frames (nearby-photos listing and thumbnails)', used: '12', currency: kv.ok ? `${n(kv.frames, 'frame')} within ${b.photos.radiusM} m, ${n(kv.withHeading, 'frame')} with a recorded heading; ${kvPhotos.length ? `${n(kvPhotos.length, 'frame')} shown, ${frameDates(kvPhotos)}` : 'none faces the site'}` : `did not answer for this run${kv.note ? ` (${kv.note})` : ''}`, retrieved: retrieved(b.photos.fetchedAt), attribution: ATTR.kartaview });
   if (mly.ok) F.push({ dataset: 'Mapillary street-level frames (Graph API images)', used: '12', currency: `${n(mly.frames, 'frame')} within ${b.photos.radiusM} m; ${mlyPhotos.length ? `${n(mlyPhotos.length, 'frame')} shown, ${frameDates(mlyPhotos)}` : 'none faces the site'}`, retrieved: retrieved(b.photos.fetchedAt), attribution: ATTR.mapillary });
+  const wnd = b.wind;
+  if (wnd) F.push({ dataset: 'NASA POWER hourly wind at 10 m (the MERRA-2 reanalysis)', used: '13', currency: wnd.ok ? `${wnd.years[0]}–${wnd.years[1]}, ${fmtNum(wnd.annual.hours)} hours for the cell over the site (0.5° × 0.625°)` : `did not answer for this run${wnd.note ? ` (${wnd.note})` : ''}`, retrieved: retrieved(wnd.fetchedAt), attribution: ATTR.nasa });
   groups.push({ publisher: 'Open and community data', rows: F });
 
   // Google Street View, where it was read or tried: a licence, not open data, so a group of its own.
@@ -4787,8 +4895,10 @@ export function sourcesSlide(b: SlidesBundle, planning: PlanningFacts): Slide {
     `<div class="fine">Generated from the deck's JSON (overall.json), which carries every value with its retrieval time. Currency is the publisher's map or edition date where the layer states one; retrieved is when this deck read the service, or when its cache was filled. Slide numbers are those of the specification.</div>`;
   const rows = f.groups.map((g) => `<tr class="grp"><td colspan="5">${esc(g.publisher)}</td></tr>` + g.rows.map((r) => `<tr><td>${esc(r.dataset)}</td><td class="used">${esc(r.used)}</td><td>${esc(r.currency)}</td><td class="ret">${esc(r.retrieved)}</td><td class="attr">${esc(r.attribution)}</td></tr>`).join('')).join('');
   const table = `<table class="da src"><thead><tr><th style="width:68mm">Dataset</th><th style="width:26mm">Used on slides</th><th style="width:86mm">Currency or edition</th><th style="width:22mm">Retrieved</th><th>Attribution and licence</th></tr></thead><tbody>${rows}</tbody></table>`;
-  // data-fit: the printer steps the table's type down until the last row is inside the box
-  const figure = `<div class="abs" data-fit style="left:${FIELD_X}mm;top:${FIELD_Y}mm;width:${FIELD_W}mm;height:${SLIDE_H - FIELD_Y - 12}mm;overflow:hidden">${table}</div>`;
+  // data-fit: the printer steps the table's type down until the last row is inside the box, and past its smallest
+  // shows the note under the rows that fit, counting the ones left out
+  const figure = `<div class="abs" data-fit data-fit-note="src-more" style="left:${FIELD_X}mm;top:${FIELD_Y}mm;width:${FIELD_W}mm;height:${SLIDE_H - FIELD_Y - 12}mm;overflow:hidden">${table}</div>
+    <div class="abs" id="src-more" hidden data-text="{n} more datasets did not fit on this slide; the deck's JSON (overall.json) lists every one, with its currency, retrieval and attribution." style="left:${FIELD_X}mm;width:${FIELD_W}mm;font-size:2.1mm;line-height:1.3;font-style:italic;color:#555"></div>`;
   const sub = [b.siteAddress, `${f.total} datasets`, `${f.publishers} publishers`, `retrieved ${f.deckDay}`].join(' · ');
   return { id: '18_sources', title: 'Sources', subtitle: sub, textHtml: text, figureHtml: figure };
 }
@@ -5170,6 +5280,7 @@ export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; 
   table.da.src tr.grp td { font-weight: 700; padding-top: 0.85em; border-top: 0.3mm solid #999; color: #222; }
   table.da.src td.used, table.da.src td.ret { font-variant-numeric: tabular-nums; white-space: nowrap; }
   table.da.src td.attr { color: #444; }
+  .wcap { width: 46mm; margin-top: 0.8mm; font-size: 1.9mm; line-height: 1.25; color: #555; text-align: center; }
   .oc { display: flex; align-items: flex-start; gap: 1.8mm; font-size: 2.35mm; line-height: 1.32; margin-top: 1.4mm; padding-right: 2mm; }
   .oc .n { flex: 0 0 4.2mm; height: 4.2mm; border-radius: 2.1mm; color: #fff; font-weight: 700; font-size: 2.2mm; text-align: center; line-height: 4.2mm; margin-top: 0.1mm; }
   .oc .t b { font-weight: 700; }

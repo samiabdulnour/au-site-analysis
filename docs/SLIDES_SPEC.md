@@ -172,7 +172,8 @@ from the road network); sun path diagram computed for the site (21 June and
 as an overshadowing hint; view sectors by direction to named destinations
 (water bodies, headlands, the CBD skyline, parks, landmarks from the place
 and heritage layers) with the DEM deciding whether the ground rises or falls
-that way.
+that way; summer and winter wind roses from NASA POWER's hourly reanalysis,
+with the frontages that face the prevailing winds named.
 
 **14 Environmental constraints.** Bushfire prone land, flood planning (where
 an LEP maps it), acid sulfate soils, airport noise (where an LEP maps it),
@@ -426,7 +427,7 @@ on made-up lots.
 
 ### 4.11 Climate
 
-Open-Meteo archive (ERA5): `https://archive-api.open-meteo.com/v1/archive?latitude=&longitude=&start_date=2023-01-01&end_date=2023-12-31&hourly=wind_speed_10m,wind_direction_10m&timezone=Australia%2FSydney` → 8,760 hourly rows for a wind rose, no key. The climate-normals endpoint is rate-limited per IP (it refused from this shared address); the Bureau of Meteorology blocks scripted access outright. The sun path needs no fetch: it is a computation from latitude, longitude and date (SunCalc-style).
+NASA POWER hourly point API: `https://power.larc.nasa.gov/api/temporal/hourly/point?parameters=WS10M,WD10M&community=RE&longitude=&latitude=&start=YYYY0101&end=YYYY1231&format=JSON&time-standard=LST` → the MERRA-2 reanalysis's hourly wind at 10 m for the cell over the point (0.5° × 0.625°), 43,824 hours for five years in about a second, no key, free for any use with an acknowledgement. In use on slide 13. The cell is coarse: every central-Sydney sample falls in one, so their roses are the same, and a reanalysis smooths the sea breeze and all but loses the calms; the slide says it is the region's wind. Open-Meteo's archive (ERA5, `archive-api.open-meteo.com/v1/archive`) answers too at a finer grid, but its free API is for non-commercial use only, which an office's site analysis is not; its climate-normals endpoint is rate-limited per IP. The Bureau of Meteorology blocks scripted access outright. The sun path needs no fetch: it is a computation from latitude, longitude and date (SunCalc-style).
 
 ## 5. What cannot be fetched, and what to do instead
 
@@ -733,8 +734,11 @@ documentation but has not been exercised here, where no token is set);
 Wikimedia Commons is not used here, its photographs being landmarks rather
 than the street. The plan keys the frames at the smallest round scale from
 1:1000 that holds every camera and the site, with each camera's view cone;
-the empty cells of the six are placeholders naming a side no open frame
-looks at, sized for the site visit's photographs. The then-and-now pair is
+the empty cells of the six are placeholders naming a street frontage no
+frame looks at the site from (the site's frontages as slide 11 finds them:
+a named road running along a boundary edge), sized for the site visit's
+photographs; the compass points round the site are not used, since a
+neighbour's side is photographed from the street too. The then-and-now pair is
 one panel at 1:2500 drawn twice, 70.5 × 95 mm each, 176 × 238 m of ground:
 the 1943 aerial survey of Sydney as the level-18 tiles of Spatial Services'
 tile service placed at their Mercator extents (about half a metre a pixel,
@@ -776,7 +780,20 @@ framed square and along Illawarra Road both ways; Botany none, its one
 panorama nearby being inside the neighbour's building, so the open frames
 carry that slide.
 
-Slide 13 fetches nothing new but the views. The street grid is the bearing
+Slide 13 fetches the views and the wind (`src/fetch/wind.ts`): NASA
+POWER's hourly wind at 10 m over the last five full years, counted into
+sixteen sectors by the Bureau's speed classes (2–10, 10–20, 20–30 and 30
+km/h and over, calm below 2) for summer (December to February) and winter
+(June to August), cached by cell for half a year. The two roses share a
+scale and sit under the views table, the table keeping the rows that fit
+above them; the text names each season's prevailing winds (the three
+neighbouring sectors with the most hours, and the next such run at least 90°
+from it), the summer afternoons at 3 pm, and the frontages that face a
+prevailing wind (its middle within 45° of the way the frontage faces). At
+the Sydney samples the summer wind is north-easterly (37 % of the hours,
+east-north-easterly in the afternoons) and south-south-easterly (33 %), the
+winter wind west-south-westerly (33 %) and north-north-westerly (21 %); at
+Orange it is easterly in summer and west-south-westerly in winter. The street grid is the bearing
 of every road segment in the window, length-weighted and folded to 0–180° in
 5° bins, each smoothed with half its neighbours; the primary axis is the
 fullest bin, the secondary the fullest at least 30° from it, and the site's
@@ -858,7 +875,11 @@ answer, a feed that came back incomplete) and state the licence position
 as the publishers give it. The table has a fixed box and a busy council
 area fills it (fifty-odd rows at Bondi Beach), so the printer measures it
 in the page and steps its type down until the last row is inside, to three
-quarters of its size, rather than clipping the rows below the fold.
+quarters of its size, rather than clipping the rows below the fold. Past
+that the rows that would be cut are hidden whole and a note under the last
+one counts them and points to overall.json, which lists every dataset. Every
+slide's text column has the same guard: paragraphs that would run into the
+fine print step down to seven eighths of their size.
 
 Slide 15 reads the layers of Country that are open (`src/fetch/country.ts`,
 each part soft): the National Native Title Tribunal's determinations,
