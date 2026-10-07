@@ -93,7 +93,7 @@ export const TEMPLATES: Template[] = [
     textScale: 0.96,
     ink: '#2a3534',
     inkSoft: '#6a7572',
-    paper: '#faf4ea',
+    paper: '#ffffff',
     rule: '#d8cfc0',
     site: '#c8472e',
     dimension: '#3d5a94',
@@ -119,7 +119,7 @@ export const TEMPLATES: Template[] = [
  * terracotta for constraint — so eighteen slides read as one book.
  */
 export const BOOK = {
-  paper: '#faf4ea',
+  paper: '#ffffff',
   panel: '#f5eee0',     // a step deeper than the paper, for backdrops and photo mounts
   ink: '#2a3534',
   inkSoft: '#6a7572',

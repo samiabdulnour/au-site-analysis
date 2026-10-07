@@ -139,7 +139,7 @@ function mainRing(f: GeoJSONFeature, proj: Proj) {
 }
 
 const label = (x: number, y: number, text: string, size = 2.2, fill = '#2a3534') =>
-  `<text x="${x.toFixed(1)}" y="${(y + size * 0.35).toFixed(1)}" text-anchor="middle" font-size="${size}" font-weight="700" fill="${fill}" stroke="#faf4ea" stroke-width="${(size * 0.22).toFixed(2)}" paint-order="stroke">${esc(text)}</text>`;
+  `<text x="${x.toFixed(1)}" y="${(y + size * 0.35).toFixed(1)}" text-anchor="middle" font-size="${size}" font-weight="700" fill="${fill}" stroke="#ffffff" stroke-width="${(size * 0.22).toFixed(2)}" paint-order="stroke">${esc(text)}</text>`;
 
 function panelSvg(inner: string, id: string): string {
   return `<svg width="${PANEL_W}mm" height="${PANEL_H}mm" viewBox="0 0 ${PANEL_W} ${PANEL_H}" xmlns="http://www.w3.org/2000/svg" style="display:block">
@@ -510,7 +510,7 @@ export function locationSlide(b: SlidesBundle): Slide {
   for (const kmR of RING_KM) {
     const r = kmR * 1000 * mmPerM;
     parts.push(`<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="${r.toFixed(1)}" fill="none" stroke="${t.site}" stroke-width="0.35" stroke-dasharray="2.2,1.3"/>`);
-    parts.push(`<text x="${(sx + 1.2).toFixed(1)}" y="${(sy - r - 1).toFixed(1)}" font-size="2.3" font-weight="700" fill="${t.site}" stroke="#faf4ea" stroke-width="0.5" paint-order="stroke">${kmR} km</text>`);
+    parts.push(`<text x="${(sx + 1.2).toFixed(1)}" y="${(sy - r - 1).toFixed(1)}" font-size="2.3" font-weight="700" fill="${t.site}" stroke="#ffffff" stroke-width="0.5" paint-order="stroke">${kmR} km</text>`);
   }
   legend.push({ swatch: swatchLine(t.site, 0.35, '2.2,1.3'), label: '2 and 5 km from the site' });
   const spacer = new LabelSpacer(p.wMm, p.hMm, 120);
@@ -532,7 +532,7 @@ export function locationSlide(b: SlidesBundle): Slide {
     for (const [lx, ly, anchor] of spots) {
       if (!spacer.take(lx, ly, w, size + 0.6)) continue;
       const tx = anchor === 'start' ? x + 2.4 : anchor === 'end' ? x - 2.4 : x;
-      centreMarks.push(`<text x="${tx.toFixed(1)}" y="${(ly + size * 0.35).toFixed(1)}" text-anchor="${anchor}" font-size="${size}" font-weight="700" fill="${t.ink}" stroke="#faf4ea" stroke-width="0.5" paint-order="stroke">${esc(c.name)}</text>`);
+      centreMarks.push(`<text x="${tx.toFixed(1)}" y="${(ly + size * 0.35).toFixed(1)}" text-anchor="${anchor}" font-size="${size}" font-weight="700" fill="${t.ink}" stroke="#ffffff" stroke-width="0.5" paint-order="stroke">${esc(c.name)}</text>`);
       centreNamed.add(c.name.toUpperCase().replace(/ CBD$/, ''));
       break;
     }
@@ -550,7 +550,7 @@ export function locationSlide(b: SlidesBundle): Slide {
   for (const s of loc.stations) { if (stationMode(s.name) === 'light rail') continue; const [x, y] = proj(s.lon, s.lat); stationDots.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="0.8" fill="#ffffff" stroke="${t.rail}" stroke-width="0.35"/>`); }
   for (const s of f.stations.filter((st) => st.mode !== 'light rail')) {
     const [x, y] = proj(s.lon, s.lat);
-    if (spacer.take(x + 1.6 + labelW(s.name, 2) / 2, y, labelW(s.name, 2), 2.6)) stationNames.push(`<text x="${(x + 1.6).toFixed(1)}" y="${(y + 0.7).toFixed(1)}" font-size="2" fill="${t.rail}" stroke="#faf4ea" stroke-width="0.4" paint-order="stroke">${esc(s.name)}</text>`);
+    if (spacer.take(x + 1.6 + labelW(s.name, 2) / 2, y, labelW(s.name, 2), 2.6)) stationNames.push(`<text x="${(x + 1.6).toFixed(1)}" y="${(y + 0.7).toFixed(1)}" font-size="2" fill="${t.rail}" stroke="#ffffff" stroke-width="0.4" paint-order="stroke">${esc(s.name)}</text>`);
   }
   if (stationDots.length) legend.push({ swatch: `<circle cx="2.5" cy="1.9" r="0.9" fill="#ffffff" stroke="${t.rail}" stroke-width="0.35"/>`, label: 'Train and metro stations, the nearest named' });
   // suburb names last, the largest in the window first, the site's own bolder, a centre's name not repeated
@@ -566,7 +566,7 @@ export function locationSlide(b: SlidesBundle): Slide {
   }
   // the site last
   parts.push(...suburbLabels, ...stationDots, ...stationNames, ...centreMarks);
-  parts.push(`<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="2.2" fill="${t.site}" stroke="#ffffff" stroke-width="0.6"/><text x="${(sx + 3.2).toFixed(1)}" y="${(sy + 0.9).toFixed(1)}" font-size="2.6" font-weight="700" fill="${t.site}" stroke="#faf4ea" stroke-width="0.5" paint-order="stroke">SITE</text>`);
+  parts.push(`<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="2.2" fill="${t.site}" stroke="#ffffff" stroke-width="0.6"/><text x="${(sx + 3.2).toFixed(1)}" y="${(sy + 0.9).toFixed(1)}" font-size="2.6" font-weight="700" fill="${t.site}" stroke="#ffffff" stroke-width="0.5" paint-order="stroke">SITE</text>`);
   legend.unshift({ swatch: `<circle cx="2.5" cy="1.9" r="1.6" fill="${t.site}" stroke="#ffffff" stroke-width="0.4"/>`, label: 'The site' });
   parts.push(panelFurniture(p, 'left'));
   const mapSvg = `<svg width="${p.wMm}mm" height="${p.hMm}mm" viewBox="0 0 ${p.wMm} ${p.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
@@ -887,7 +887,7 @@ function hobPanel(b: SlidesBundle, proj: Proj, facts: PlanningFacts): PanelOut {
 /** A note in the panel's top-left corner, boxed, where it covers nothing that matters. */
 function emptyNote(lines: string[]): string {
   const w = Math.max(...lines.map((l) => l.length)) * 2.4 * 0.55 + 6;
-  return `<g><rect x="3" y="3" width="${w.toFixed(1)}" height="${(lines.length * 3.6 + 2.4).toFixed(1)}" fill="#faf4ea" fill-opacity="0.92" stroke="#c9c0b0" stroke-width="0.2"/>` +
+  return `<g><rect x="3" y="3" width="${w.toFixed(1)}" height="${(lines.length * 3.6 + 2.4).toFixed(1)}" fill="#ffffff" fill-opacity="0.92" stroke="#c9c0b0" stroke-width="0.2"/>` +
     lines.map((l, i) => `<text x="6" y="${(6.6 + i * 3.6).toFixed(1)}" font-size="2.4" fill="#6a7572">${esc(l)}</text>`).join('') + '</g>';
 }
 
@@ -1899,7 +1899,7 @@ export function terrainSlide(b: SlidesBundle): Slide {
       const [x, y] = proj(mid[0], mid[1]);
       const text = `${c.elevation}`;
       if (x > 4 && y > 4 && x < p.wMm - 4 && y < p.hMm - 4 && spacer.take(x, y, labelW(text, 1.9) + 1, 2.4))
-        labels.push(`<text x="${x.toFixed(1)}" y="${(y + 0.65).toFixed(1)}" text-anchor="middle" font-size="1.9" font-weight="700" fill="${CONTOUR}" stroke="#faf4ea" stroke-width="0.45" paint-order="stroke">${text}</text>`);
+        labels.push(`<text x="${x.toFixed(1)}" y="${(y + 0.65).toFixed(1)}" text-anchor="middle" font-size="1.9" font-weight="700" fill="${CONTOUR}" stroke="#ffffff" stroke-width="0.45" paint-order="stroke">${text}</text>`);
     }
   }
   parts.push(labels.join(''));
@@ -2090,7 +2090,7 @@ export function builtFormSlide(b: SlidesBundle, planning: PlanningFacts): Slide 
   const p = b.daPanel;
   const proj = panelProjector(p);
   const parts: string[] = [];
-  parts.push(`<rect x="0" y="0" width="${p.wMm}" height="${p.hMm}" fill="#faf4ea"/>`);
+  parts.push(`<rect x="0" y="0" width="${p.wMm}" height="${p.hMm}" fill="#ffffff"/>`);
   if (b.base.water.features.length) parts.push(`<path d="${fcPath(b.base.water, proj)}" fill="${t.water}" fill-rule="evenodd"/>`);
   // Footprints, palest first so the tall ones sit on top where they overlap.
   const drawn = [...b.buildings.buildings].sort((x, y) => (x.estimatedHeightM ?? 0) - (y.estimatedHeightM ?? 0));
@@ -2225,7 +2225,7 @@ function wideStripLabels(b: SlidesBundle, wproj: Proj, wp: Panel): string {
     for (const r of geomRings(ft.geometry)) { const s = clippedStats(r, wproj, wp); if (s.area > best.area) best = s; }
     if (best.area < 150) continue;
     const text = titleCase(name);
-    if (wspacer.take(best.cx, best.cy, labelW(text, 2.2) + 1, 3)) out.push(`<text x="${best.cx.toFixed(1)}" y="${(best.cy + 0.8).toFixed(1)}" text-anchor="middle" font-size="2.2" letter-spacing="0.08em" fill="#8a918c" stroke="#faf4ea" stroke-width="0.5" paint-order="stroke">${esc(text.toUpperCase())}</text>`);
+    if (wspacer.take(best.cx, best.cy, labelW(text, 2.2) + 1, 3)) out.push(`<text x="${best.cx.toFixed(1)}" y="${(best.cy + 0.8).toFixed(1)}" text-anchor="middle" font-size="2.2" letter-spacing="0.08em" fill="#8a918c" stroke="#ffffff" stroke-width="0.5" paint-order="stroke">${esc(text.toUpperCase())}</text>`);
   }
   for (const s of b.wide.base.stations) {
     const [x, y] = wproj(s.lon, s.lat);
@@ -2384,7 +2384,7 @@ export function movementSlide(b: SlidesBundle): Slide {
   // Bottom: the walking-reach strip.
   const wp = b.wide.panel;
   const wproj = panelProjector(wp);
-  const wparts: string[] = [`<rect x="0" y="0" width="${wp.wMm}" height="${wp.hMm}" fill="#faf4ea"/>`];
+  const wparts: string[] = [`<rect x="0" y="0" width="${wp.wMm}" height="${wp.hMm}" fill="#ffffff"/>`];
   if (b.wide.base.water.features.length) wparts.push(`<path d="${fcPath(b.wide.base.water, wproj)}" fill="${t.water}" fill-rule="evenodd"/>`);
   const ISO_DOT_STEP: Record<number, number> = { 5: 1.15, 10: 1.75, 15: 2.5 };
   for (const iso of [...mv.isochrones].sort((x, y) => y.minutes - x.minutes)) {
@@ -2681,7 +2681,7 @@ export function greenSlide(b: SlidesBundle): Slide {
     let best = { area: 0, cx: 0, cy: 0 };
     for (const r of s.rings) { const st = clippedStats(r, proj, p); if (st.area > best.area) best = st; }
     const size = s.windowMm2 > 60 ? 2.1 : 1.85;
-    if (spacer.take(best.cx, best.cy, labelW(s.name, size), size * 1.3)) labels.push(`<text x="${best.cx.toFixed(1)}" y="${(best.cy + size * 0.35).toFixed(1)}" text-anchor="middle" font-size="${size}" font-style="italic" font-weight="700" fill="${PARK_GREEN}" stroke="#faf4ea" stroke-width="${(size * 0.22).toFixed(2)}" paint-order="stroke">${esc(s.name)}</text>`);
+    if (spacer.take(best.cx, best.cy, labelW(s.name, size), size * 1.3)) labels.push(`<text x="${best.cx.toFixed(1)}" y="${(best.cy + size * 0.35).toFixed(1)}" text-anchor="middle" font-size="${size}" font-style="italic" font-weight="700" fill="${PARK_GREEN}" stroke="#ffffff" stroke-width="${(size * 0.22).toFixed(2)}" paint-order="stroke">${esc(s.name)}</text>`);
   }
   for (const n of g.npws) {
     let best = { area: 0, cx: 0, cy: 0 };
@@ -2740,7 +2740,7 @@ export function greenSlide(b: SlidesBundle): Slide {
   // Bottom: the canopy strip.
   const wp = b.wide.panel;
   const wproj = panelProjector(wp);
-  const wparts: string[] = [`<rect x="0" y="0" width="${wp.wMm}" height="${wp.hMm}" fill="#faf4ea"/>`];
+  const wparts: string[] = [`<rect x="0" y="0" width="${wp.wMm}" height="${wp.hMm}" fill="#ffffff"/>`];
   const wideZones = g.openSpaceWide ?? [];
   if (c.covered) {
     const byClass = new Map<string, string[]>();
@@ -3646,7 +3646,7 @@ export function photosSlide(b: SlidesBundle): Slide {
   const pe = panelExtent(pp);
   const pproj = panelProjector(pp);
   const sx = pp.wMm / (pe.xmax - pe.xmin), sy = pp.hMm / (pe.ymax - pe.ymin);
-  const tag = (text: string) => `<g><rect x="1.5" y="1.5" width="${(labelW(text, 2.6) + 1.6).toFixed(1)}" height="4.6" fill="#faf4ea" fill-opacity="0.92"/><text x="2.3" y="4.9" font-size="2.6" font-weight="700" fill="${t.ink}">${esc(text)}</text></g>`;
+  const tag = (text: string) => `<g><rect x="1.5" y="1.5" width="${(labelW(text, 2.6) + 1.6).toFixed(1)}" height="4.6" fill="#ffffff" fill-opacity="0.92"/><text x="2.3" y="4.9" font-size="2.6" font-weight="700" fill="${t.ink}">${esc(text)}</text></g>`;
   const pairSvg = (id: string, inner: string[]) => `<svg width="${pp.wMm}mm" height="${pp.hMm}mm" viewBox="0 0 ${pp.wMm} ${pp.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
     <defs><clipPath id="${id}"><rect x="0" y="0" width="${pp.wMm}" height="${pp.hMm}"/></clipPath></defs>
     <g clip-path="url(#${id})" font-family="${t.font}">${inner.join('\n')}</g>
@@ -3863,7 +3863,7 @@ function sunPathSvg(f: ReturnType<typeof sunViewFacts>, lat: number, lon: number
   const R = size / 2 - 7, cx = size / 2, cy = size / 2;
   const pt = (alt: number, az: number): [number, number] => { const r = (R * (90 - alt)) / 90; const a = (az * Math.PI) / 180; return [cx + r * Math.sin(a), cy - r * Math.cos(a)]; };
   const parts: string[] = [];
-  for (const alt of [0, 30, 60]) parts.push(`<circle cx="${cx}" cy="${cy}" r="${((R * (90 - alt)) / 90).toFixed(1)}" fill="${alt === 0 ? '#faf4ea' : 'none'}" stroke="#c9c7c0" stroke-width="${alt === 0 ? 0.3 : 0.2}"/>`);
+  for (const alt of [0, 30, 60]) parts.push(`<circle cx="${cx}" cy="${cy}" r="${((R * (90 - alt)) / 90).toFixed(1)}" fill="${alt === 0 ? '#ffffff' : 'none'}" stroke="#c9c7c0" stroke-width="${alt === 0 ? 0.3 : 0.2}"/>`);
   for (const alt of [30, 60]) parts.push(`<text x="${(cx + 0.6).toFixed(1)}" y="${(cy - (R * (90 - alt)) / 90 + 2).toFixed(1)}" font-size="1.6" fill="#9aa19b">${alt}°</text>`);
   for (let az = 0; az < 360; az += 30) { const [x1, y1] = pt(0, az), [x2, y2] = pt(-6, az); parts.push(`<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="#9aa19b" stroke-width="0.25"/>`); }
   for (const [az, txt] of [[0, 'N'], [90, 'E'], [180, 'S'], [270, 'W']] as const) { const [x, y] = pt(-12, az); parts.push(`<text x="${x.toFixed(1)}" y="${(y + 0.8).toFixed(1)}" text-anchor="middle" font-size="2.2" font-weight="700" fill="#454f4b">${txt}</text>`); }
@@ -3891,7 +3891,7 @@ function sunPathSvg(f: ReturnType<typeof sunViewFacts>, lat: number, lon: number
 function gridRoseSvg(f: ReturnType<typeof sunViewFacts>, size: number, font: string): string {
   const R = size / 2 - 7, cx = size / 2, cy = size / 2;
   const max = Math.max(1, ...f.grid.bins);
-  const parts: string[] = [`<circle cx="${cx}" cy="${cy}" r="${R}" fill="#faf4ea" stroke="#c9c7c0" stroke-width="0.3"/>`];
+  const parts: string[] = [`<circle cx="${cx}" cy="${cy}" r="${R}" fill="#ffffff" stroke="#c9c7c0" stroke-width="0.3"/>`];
   for (const [az, txt] of [[0, 'N'], [90, 'E'], [180, 'S'], [270, 'W']] as const) { const a = (az * Math.PI) / 180; parts.push(`<text x="${(cx + (R + 4) * Math.sin(a)).toFixed(1)}" y="${(cy - (R + 4) * Math.cos(a) + 0.8).toFixed(1)}" text-anchor="middle" font-size="2.2" font-weight="700" fill="#454f4b">${txt}</text>`); }
   f.grid.bins.forEach((v, i) => {
     if (!v) return;
@@ -3986,7 +3986,7 @@ export function sunViewSlide(b: SlidesBundle): Slide {
   // Bottom: the views.
   const vp: Panel = { center: b.panel.center, scale: b.wide.panel.scale, wMm: PANEL_W, hMm: b.wide.panel.hMm };
   const vproj = panelProjector(vp);
-  const vparts: string[] = [`<rect x="0" y="0" width="${vp.wMm}" height="${vp.hMm}" fill="#faf4ea"/>`];
+  const vparts: string[] = [`<rect x="0" y="0" width="${vp.wMm}" height="${vp.hMm}" fill="#ffffff"/>`];
   if (b.wide.base.water.features.length) vparts.push(`<path d="${fcPath(b.wide.base.water, vproj)}" fill="${t.water}" fill-rule="evenodd"/>`);
   vparts.push(overLayers(b.wide.base, vproj, vp, 'none'));
   const [vx, vy] = vproj(centreLL.lon, centreLL.lat);
@@ -4964,7 +4964,7 @@ export function countrySlide(b: SlidesBundle): Slide {
       if (pts.length < 2) continue;
       const mid = pts[Math.floor(pts.length / 2)];
       const text = titleCase(w.name!);
-      if (spacer.take(mid[0], mid[1] - 2.2, labelW(text, 2.1), 2.6)) { parts.push(`<text x="${mid[0].toFixed(1)}" y="${(mid[1] - 1.5).toFixed(1)}" text-anchor="middle" font-size="2.1" font-style="italic" font-weight="700" fill="${CREEK_COLOUR}" stroke="#faf4ea" stroke-width="0.45" paint-order="stroke">${esc(text)}</text>`); done.add(w.name!); }
+      if (spacer.take(mid[0], mid[1] - 2.2, labelW(text, 2.1), 2.6)) { parts.push(`<text x="${mid[0].toFixed(1)}" y="${(mid[1] - 1.5).toFixed(1)}" text-anchor="middle" font-size="2.1" font-style="italic" font-weight="700" fill="${CREEK_COLOUR}" stroke="#ffffff" stroke-width="0.45" paint-order="stroke">${esc(text)}</text>`); done.add(w.name!); }
     }
   }
   // the crests
@@ -5033,7 +5033,7 @@ export function countrySlide(b: SlidesBundle): Slide {
     for (const r of geomRings(ft.geometry)) { const s = clippedStats(r, wproj, wp); if (s.area > best.area) best = s; }
     if (best.area < 150) continue;
     const text = titleCase(name);
-    if (spacer.take(best.cx, best.cy, labelW(text, 2.1) + 1, 3)) parts.push(`<text x="${best.cx.toFixed(1)}" y="${(best.cy + 0.8).toFixed(1)}" text-anchor="middle" font-size="2.1" letter-spacing="0.08em" fill="#6f665a" stroke="#faf4ea" stroke-width="0.4" paint-order="stroke">${esc(text.toUpperCase())}</text>`);
+    if (spacer.take(best.cx, best.cy, labelW(text, 2.1) + 1, 3)) parts.push(`<text x="${best.cx.toFixed(1)}" y="${(best.cy + 0.8).toFixed(1)}" text-anchor="middle" font-size="2.1" letter-spacing="0.08em" fill="#6f665a" stroke="#ffffff" stroke-width="0.4" paint-order="stroke">${esc(text.toUpperCase())}</text>`);
   }
   parts.push(`<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="2.2" fill="#ffffff" stroke="${t.site}" stroke-width="0.6"/><circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="0.9" fill="${t.site}"/>`);
   legend.push({ swatch: `<circle cx="2.5" cy="1.8" r="1.6" fill="#ffffff" stroke="${t.site}" stroke-width="0.5"/><circle cx="2.5" cy="1.8" r="0.7" fill="${t.site}"/>`, label: 'The site' });
