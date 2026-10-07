@@ -37,6 +37,8 @@ export interface Template {
   textScale: number;
 
   ink: string;        // primary text and line colour
+  inkSoft: string;    // secondary text — captions, notes, sources
+  paper: string;      // the page and every map's ground
   rule: string;       // title-block rules
   site: string;       // site boundary and emphasis
   dimension: string;  // dimension lines, levels, boundary figures
@@ -55,55 +57,83 @@ export interface Template {
   categories: Category[];
 }
 
-// The land-use palette for the context sheet legend.
+// The land-use palette for the context sheet legend: the book's pastels —
+// residential in blushes, centres in sands, institutions in cool blue-greys,
+// open space in the teal-greens — so the sheet sits with the deck.
 const NEUTRAL_CATEGORIES: Category[] = [
-  { id: 'site',           label: 'SITE',                                     fill: '#d1362a', opacity: 0.5 },
-  { id: 'medical',        label: 'MEDICAL',                                  fill: '#cfd8dc', opacity: 0.55, stroke: '#5b6b73' },
-  { id: 'education',      label: 'EDUCATION',                                fill: '#c3ced4', opacity: 0.55, stroke: '#4a5a63' },
-  { id: 'childCare',      label: 'CHILD CARE / AGED CARE',                   fill: '#e8edef', opacity: 0.6, stroke: '#7d8a91' },
-  { id: 'mixedUse',       label: 'MIXED USE CLUSTER RESIDENTIAL/COMMERCIAL', fill: '#b9a89c', opacity: 0.5 },
-  { id: 'retail',         label: 'ACTIVE RETAIL',                            fill: '#d8cec6', opacity: 0.5 },
-  { id: 'openSpace',      label: 'OPEN SPACE',                               fill: '#dfe6d6', opacity: 0.55 },
-  { id: 'community',      label: 'COMMUNITY HUB',                            fill: '#dce5e4', opacity: 0.55, stroke: '#8fa3a1' },
-  { id: 'r2',             label: 'R2 LOW DENSITY RESIDENTIAL',               fill: '#f2efeb', opacity: 0.45 },
-  { id: 'r3',             label: 'R3 MEDIUM DENSITY RESIDENTIAL',            fill: '#e4ded6', opacity: 0.5 },
-  { id: 'r4',             label: 'R4 HIGH DENSITY RESIDENTIAL',              fill: '#d3cabf', opacity: 0.5 },
-  { id: 'localCentre',    label: 'LOCAL CENTRE',                             fill: '#e0d3c8', opacity: 0.5 },
-  { id: 'commercial',     label: 'COMMERCIAL CENTRE',                        fill: '#d2cdd8', opacity: 0.5 },
-  { id: 'industrial',     label: 'GENERAL INDUSTRIAL',                       fill: '#c4c0cb', opacity: 0.5 },
-  { id: 'infrastructure', label: 'INFRASTRUCTURE FACILITY',                  fill: '#eae4e0', opacity: 0.55, stroke: '#8a8078' },
-  { id: 'water',          label: 'WATERWAY',                                 fill: '#cbdae2', opacity: 0.6 },
-  { id: 'railway',        label: 'RAILWAY TRACKS',                           fill: '#ddd6cc', opacity: 0.7, stroke: '#8a8078' },
-  { id: 'heritage',       label: 'GENERAL HERITAGE SITE',                    fill: '#c2b39a', opacity: 0.5 },
+  { id: 'site',           label: 'SITE',                                     fill: '#c8472e', opacity: 0.5 },
+  { id: 'medical',        label: 'MEDICAL',                                  fill: '#d3dee2', opacity: 0.6, stroke: '#5d7079' },
+  { id: 'education',      label: 'EDUCATION',                                fill: '#bfd3d9', opacity: 0.6, stroke: '#4a5f68' },
+  { id: 'childCare',      label: 'CHILD CARE / AGED CARE',                   fill: '#e3eceE', opacity: 0.6, stroke: '#7d8a91' },
+  { id: 'mixedUse',       label: 'MIXED USE CLUSTER RESIDENTIAL/COMMERCIAL', fill: '#e8c494', opacity: 0.55 },
+  { id: 'retail',         label: 'ACTIVE RETAIL',                            fill: '#f0d7b4', opacity: 0.55 },
+  { id: 'openSpace',      label: 'OPEN SPACE',                               fill: '#cfe4d0', opacity: 0.6 },
+  { id: 'community',      label: 'COMMUNITY HUB',                            fill: '#cbe0db', opacity: 0.6, stroke: '#7fa39c' },
+  { id: 'r2',             label: 'R2 LOW DENSITY RESIDENTIAL',               fill: '#f8e3d6', opacity: 0.5 },
+  { id: 'r3',             label: 'R3 MEDIUM DENSITY RESIDENTIAL',            fill: '#f3cdb8', opacity: 0.55 },
+  { id: 'r4',             label: 'R4 HIGH DENSITY RESIDENTIAL',              fill: '#edb69a', opacity: 0.55 },
+  { id: 'localCentre',    label: 'LOCAL CENTRE',                             fill: '#e4be8e', opacity: 0.55 },
+  { id: 'commercial',     label: 'COMMERCIAL CENTRE',                        fill: '#c9cbe3', opacity: 0.55 },
+  { id: 'industrial',     label: 'GENERAL INDUSTRIAL',                       fill: '#c4bfd6', opacity: 0.55 },
+  { id: 'infrastructure', label: 'INFRASTRUCTURE FACILITY',                  fill: '#efe7da', opacity: 0.6, stroke: '#8a8078' },
+  { id: 'water',          label: 'WATERWAY',                                 fill: '#afd2df', opacity: 0.65 },
+  { id: 'railway',        label: 'RAILWAY TRACKS',                           fill: '#e2d9c8', opacity: 0.7, stroke: '#8a8078' },
+  { id: 'heritage',       label: 'GENERAL HERITAGE SITE',                    fill: '#d9c49a', opacity: 0.55 },
 ];
 
 const SANS = "Arial, 'Liberation Sans', Helvetica, sans-serif";
-const GROTESK = "'DejaVu Sans', Verdana, 'Liberation Sans', sans-serif";
+const GROTESK = "'Inter', 'Inter Display', 'DejaVu Sans', Verdana, 'Liberation Sans', sans-serif";
 
 export const TEMPLATES: Template[] = [
   {
     id: 'neutral',
     label: 'neutral',
-    note: 'restrained palette, one accent — survives a mono print',
+    note: 'the book palette — cream paper, teal and blush, one vermilion accent',
     font: GROTESK,
     textScale: 0.96,
-    ink: '#1c1c1c',
-    rule: '#8a8a8a',
-    site: '#d1362a',
-    dimension: '#3c4c5a',
-    wind: '#6d8a99',
-    sun: '#f0e4c0',
-    road: '#7d7d7d',
-    water: '#cbdae2',
-    transit: '#41627a',
-    rail: '#2f2f2f',
-    walk5: '#7a5c86',
-    walk10: '#9c8aa6',
-    busRoute: '#6b7f93',
-    heritage: '#94836a',
+    ink: '#2a3534',
+    inkSoft: '#6a7572',
+    paper: '#faf4ea',
+    rule: '#d8cfc0',
+    site: '#c8472e',
+    dimension: '#3d5a94',
+    wind: '#7fa3ad',
+    sun: '#dca62e',
+    road: '#8a8378',
+    water: '#afd2df',
+    transit: '#2c4c9c',
+    rail: '#3a4446',
+    walk5: '#2f7d6d',
+    walk10: '#6ba998',
+    busRoute: '#7b90c9',
+    heritage: '#a98a5b',
     categories: NEUTRAL_CATEGORIES,
   },
 ];
+
+/**
+ * The book's working palette beyond the template fields: the pastel families
+ * the deck's thematic layers draw from, named by hue and weight. One family
+ * per meaning — teal for reach and opportunity, green for the living layers,
+ * blush and sand for activity and warmth, navy for transport and keyed marks,
+ * terracotta for constraint — so eighteen slides read as one book.
+ */
+export const BOOK = {
+  paper: '#faf4ea',
+  panel: '#f5eee0',     // a step deeper than the paper, for backdrops and photo mounts
+  ink: '#2a3534',
+  inkSoft: '#6a7572',
+  rule: '#d8cfc0',
+  site: '#c8472e',
+  teal: '#2f7d6d', tealMid: '#6ba998', tealLight: '#a8cdc2', tealFaint: '#dcebe2',
+  green: '#4c8a68', greenDeep: '#2f6b50', greenLight: '#a8cdb4', greenFaint: '#e6efe3',
+  blush: '#d9825b', blushMid: '#efa98f', blushLight: '#f6cdbb', blushFaint: '#fae4d8',
+  sand: '#e8c494', sandDeep: '#b5873b', sandLight: '#f3debc',
+  navy: '#2c4c9c', navyLight: '#8fa3d4',
+  terracotta: '#ba4530',
+  waterDeep: '#3e7e9c',
+  gold: '#dca62e',
+} as const;
 
 const byId = Object.fromEntries(TEMPLATES.map((t) => [t.id, t]));
 export const DEFAULT_TEMPLATE = 'neutral';

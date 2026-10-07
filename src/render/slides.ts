@@ -12,8 +12,8 @@ import type { GeoJSONFeature } from '../lib/arcgis.js';
 import { tpl } from './template.js';
 import { esc } from './chrome.js';
 import {
-  panelProjector, panelExtent, baseLayers, overLayers, panelFurniture, furnitureBox, siteMark, siteLabelPoint, stationMode, ringsPath, fcPath, ringStats, clippedStats, hatchPath, bboxOf,
-  legendSvg, swatchFill, swatchHatch, swatchLine, LabelSpacer, type Proj, type Panel, type LegendEntry, type FurnitureCorner,
+  panelProjector, panelExtent, baseLayers, overLayers, panelFurniture, furnitureBox, siteMark, siteLabelPoint, stationMode, ringsPath, fcPath, ringStats, clippedStats, hatchPath, dotsPath, bboxOf,
+  legendSvg, swatchFill, swatchHatch, swatchLine, swatchDots, LabelSpacer, type Proj, type Panel, type LegendEntry, type FurnitureCorner,
 } from './minimap.js';
 import { zoneFill, heritageStyle, hobRamp, POLICY_STYLE } from './lepPalette.js';
 import { geomRings, pointInRing, titleCase, type PolicyArea, type PolicyKind } from '../fetch/planning.js';
@@ -138,8 +138,8 @@ function mainRing(f: GeoJSONFeature, proj: Proj) {
   return best;
 }
 
-const label = (x: number, y: number, text: string, size = 2.2, fill = '#222') =>
-  `<text x="${x.toFixed(1)}" y="${(y + size * 0.35).toFixed(1)}" text-anchor="middle" font-size="${size}" font-weight="700" fill="${fill}" stroke="#ffffff" stroke-width="${(size * 0.22).toFixed(2)}" paint-order="stroke">${esc(text)}</text>`;
+const label = (x: number, y: number, text: string, size = 2.2, fill = '#2a3534') =>
+  `<text x="${x.toFixed(1)}" y="${(y + size * 0.35).toFixed(1)}" text-anchor="middle" font-size="${size}" font-weight="700" fill="${fill}" stroke="#faf4ea" stroke-width="${(size * 0.22).toFixed(2)}" paint-order="stroke">${esc(text)}</text>`;
 
 function panelSvg(inner: string, id: string): string {
   return `<svg width="${PANEL_W}mm" height="${PANEL_H}mm" viewBox="0 0 ${PANEL_W} ${PANEL_H}" xmlns="http://www.w3.org/2000/svg" style="display:block">
@@ -400,8 +400,8 @@ export const sentenceList = (s: PlanningSentences): string[] =>
 
 // ---- slide 01: location -----------------------------------------------------------
 
-const LAND_FILL = '#f2f0ea';
-const LGA_LINE = '#c9c3b6';
+const LAND_FILL = '#f3ece0';
+const LGA_LINE = '#cfc5b2';
 const RING_KM = [2, 5];
 /** How many centres the table and the map name at most. */
 const CENTRES_LISTED = 8;
@@ -498,8 +498,8 @@ export function locationSlide(b: SlidesBundle): Slide {
   // roads by hierarchy, then rail with its dashes
   const byH = new Map<number, string[]>();
   for (const r of loc.roads) (byH.get(r.hierarchy) ?? byH.set(r.hierarchy, []).get(r.hierarchy)!).push(ringsPath([r.coords], proj, false));
-  for (const [h, ds] of [...byH.entries()].sort((a, b2) => b2[0] - a[0])) parts.push(`<path d="${ds.join('')}" fill="none" stroke="${h <= 1 ? '#7a7a7a' : h <= 2 ? '#969696' : '#c2c2c2'}" stroke-width="${h <= 1 ? 0.55 : h <= 2 ? 0.38 : 0.2}" stroke-linecap="round" stroke-linejoin="round"/>`);
-  if (loc.roads.length) legend.push({ swatch: swatchLine('#7a7a7a', 0.55), label: 'Motorways, highways and arterial roads' });
+  for (const [h, ds] of [...byH.entries()].sort((a, b2) => b2[0] - a[0])) parts.push(`<path d="${ds.join('')}" fill="none" stroke="${h <= 1 ? '#8a918c' : h <= 2 ? '#969696' : '#c2c2c2'}" stroke-width="${h <= 1 ? 0.55 : h <= 2 ? 0.38 : 0.2}" stroke-linecap="round" stroke-linejoin="round"/>`);
+  if (loc.roads.length) legend.push({ swatch: swatchLine('#8a918c', 0.55), label: 'Motorways, highways and arterial roads' });
   if (loc.rail.train.length) {
     const d = loc.rail.train.map((l) => ringsPath([l], proj, false)).join('');
     parts.push(`<path d="${d}" fill="none" stroke="${t.rail}" stroke-width="0.55"/><path d="${d}" fill="none" stroke="#ffffff" stroke-width="0.25" stroke-dasharray="1.4,1.4"/>`);
@@ -510,7 +510,7 @@ export function locationSlide(b: SlidesBundle): Slide {
   for (const kmR of RING_KM) {
     const r = kmR * 1000 * mmPerM;
     parts.push(`<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="${r.toFixed(1)}" fill="none" stroke="${t.site}" stroke-width="0.35" stroke-dasharray="2.2,1.3"/>`);
-    parts.push(`<text x="${(sx + 1.2).toFixed(1)}" y="${(sy - r - 1).toFixed(1)}" font-size="2.3" font-weight="700" fill="${t.site}" stroke="#ffffff" stroke-width="0.5" paint-order="stroke">${kmR} km</text>`);
+    parts.push(`<text x="${(sx + 1.2).toFixed(1)}" y="${(sy - r - 1).toFixed(1)}" font-size="2.3" font-weight="700" fill="${t.site}" stroke="#faf4ea" stroke-width="0.5" paint-order="stroke">${kmR} km</text>`);
   }
   legend.push({ swatch: swatchLine(t.site, 0.35, '2.2,1.3'), label: '2 and 5 km from the site' });
   const spacer = new LabelSpacer(p.wMm, p.hMm, 120);
@@ -532,7 +532,7 @@ export function locationSlide(b: SlidesBundle): Slide {
     for (const [lx, ly, anchor] of spots) {
       if (!spacer.take(lx, ly, w, size + 0.6)) continue;
       const tx = anchor === 'start' ? x + 2.4 : anchor === 'end' ? x - 2.4 : x;
-      centreMarks.push(`<text x="${tx.toFixed(1)}" y="${(ly + size * 0.35).toFixed(1)}" text-anchor="${anchor}" font-size="${size}" font-weight="700" fill="${t.ink}" stroke="#ffffff" stroke-width="0.5" paint-order="stroke">${esc(c.name)}</text>`);
+      centreMarks.push(`<text x="${tx.toFixed(1)}" y="${(ly + size * 0.35).toFixed(1)}" text-anchor="${anchor}" font-size="${size}" font-weight="700" fill="${t.ink}" stroke="#faf4ea" stroke-width="0.5" paint-order="stroke">${esc(c.name)}</text>`);
       centreNamed.add(c.name.toUpperCase().replace(/ CBD$/, ''));
       break;
     }
@@ -550,7 +550,7 @@ export function locationSlide(b: SlidesBundle): Slide {
   for (const s of loc.stations) { if (stationMode(s.name) === 'light rail') continue; const [x, y] = proj(s.lon, s.lat); stationDots.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="0.8" fill="#ffffff" stroke="${t.rail}" stroke-width="0.35"/>`); }
   for (const s of f.stations.filter((st) => st.mode !== 'light rail')) {
     const [x, y] = proj(s.lon, s.lat);
-    if (spacer.take(x + 1.6 + labelW(s.name, 2) / 2, y, labelW(s.name, 2), 2.6)) stationNames.push(`<text x="${(x + 1.6).toFixed(1)}" y="${(y + 0.7).toFixed(1)}" font-size="2" fill="${t.rail}" stroke="#ffffff" stroke-width="0.4" paint-order="stroke">${esc(s.name)}</text>`);
+    if (spacer.take(x + 1.6 + labelW(s.name, 2) / 2, y, labelW(s.name, 2), 2.6)) stationNames.push(`<text x="${(x + 1.6).toFixed(1)}" y="${(y + 0.7).toFixed(1)}" font-size="2" fill="${t.rail}" stroke="#faf4ea" stroke-width="0.4" paint-order="stroke">${esc(s.name)}</text>`);
   }
   if (stationDots.length) legend.push({ swatch: `<circle cx="2.5" cy="1.9" r="0.9" fill="#ffffff" stroke="${t.rail}" stroke-width="0.35"/>`, label: 'Train and metro stations, the nearest named' });
   // suburb names last, the largest in the window first, the site's own bolder, a centre's name not repeated
@@ -562,11 +562,11 @@ export function locationSlide(b: SlidesBundle): Slide {
     const own = s.name.toUpperCase() === mySuburb;
     const text = tidyName(titleCase(s.name)).toUpperCase();
     const size = own ? 2.3 : 2.0;
-    if (spacer.take(s.cx, s.cy, labelW(text, size) * 1.06, size + 0.8)) suburbLabels.push(`<text x="${s.cx.toFixed(1)}" y="${(s.cy + 0.7).toFixed(1)}" text-anchor="middle" font-size="${size}" letter-spacing="0.08em" font-weight="${own ? 700 : 400}" fill="${own ? '#333' : '#8a8478'}">${esc(text)}</text>`);
+    if (spacer.take(s.cx, s.cy, labelW(text, size) * 1.06, size + 0.8)) suburbLabels.push(`<text x="${s.cx.toFixed(1)}" y="${(s.cy + 0.7).toFixed(1)}" text-anchor="middle" font-size="${size}" letter-spacing="0.08em" font-weight="${own ? 700 : 400}" fill="${own ? '#454f4b' : '#8a8478'}">${esc(text)}</text>`);
   }
   // the site last
   parts.push(...suburbLabels, ...stationDots, ...stationNames, ...centreMarks);
-  parts.push(`<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="2.2" fill="${t.site}" stroke="#ffffff" stroke-width="0.6"/><text x="${(sx + 3.2).toFixed(1)}" y="${(sy + 0.9).toFixed(1)}" font-size="2.6" font-weight="700" fill="${t.site}" stroke="#ffffff" stroke-width="0.5" paint-order="stroke">SITE</text>`);
+  parts.push(`<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="2.2" fill="${t.site}" stroke="#ffffff" stroke-width="0.6"/><text x="${(sx + 3.2).toFixed(1)}" y="${(sy + 0.9).toFixed(1)}" font-size="2.6" font-weight="700" fill="${t.site}" stroke="#faf4ea" stroke-width="0.5" paint-order="stroke">SITE</text>`);
   legend.unshift({ swatch: `<circle cx="2.5" cy="1.9" r="1.6" fill="${t.site}" stroke="#ffffff" stroke-width="0.4"/>`, label: 'The site' });
   parts.push(panelFurniture(p, 'left'));
   const mapSvg = `<svg width="${p.wMm}mm" height="${p.hMm}mm" viewBox="0 0 ${p.wMm} ${p.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
@@ -601,7 +601,7 @@ export function locationSlide(b: SlidesBundle): Slide {
 
 // ---- slide 02: character ----------------------------------------------------------
 
-const WIKI_PLACE_COLOUR = '#6b21a8';
+const WIKI_PLACE_COLOUR = '#2c4c9c';
 const CHARACTER_PHOTOS = 8;
 /** The seed paragraph is cut at a sentence end near this length, so it sits in the column with the rest. */
 const EXTRACT_CHARS = 820;
@@ -676,7 +676,7 @@ export function characterSlide(b: SlidesBundle): Slide {
   // ---- the aerial over the planning window, the places numbered on it
   const p = b.panel;
   const proj = panelProjector(p);
-  const parts: string[] = [`<rect x="0" y="0" width="${p.wMm}" height="${p.hMm}" fill="#f4f2ee"/>`];
+  const parts: string[] = [`<rect x="0" y="0" width="${p.wMm}" height="${p.hMm}" fill="#f5eee0"/>`];
   if (c.aerial) for (const tile of c.aerial.tiles) parts.push(`<image href="data/${tile.file}" x="${(tile.left * p.wMm).toFixed(2)}" y="${(tile.top * p.hMm).toFixed(2)}" width="${(tile.width * p.wMm).toFixed(2)}" height="${(tile.height * p.hMm).toFixed(2)}" preserveAspectRatio="none"/>`);
   else parts.push(emptyNote(['The aerial imagery did not answer for this window.']));
   parts.push(siteMark(b.base, proj, 'both'));
@@ -831,7 +831,7 @@ function zoningPanel(b: SlidesBundle, proj: Proj, facts: PlanningFacts): PanelOu
   }
   const labels = placeLabels(cands, 2.1);
   const fills = [...byCode.entries()].map(([code, ds]) =>
-    `<g fill="${zoneFill(code)}" fill-opacity="0.85" stroke="#555" stroke-width="0.08" fill-rule="evenodd">${ds.map((d) => `<path d="${d}"/>`).join('')}</g>`).join('');
+    `<g fill="${zoneFill(code)}" fill-opacity="0.85" stroke="#6a7572" stroke-width="0.08" fill-rule="evenodd">${ds.map((d) => `<path d="${d}"/>`).join('')}</g>`).join('');
   const svg = baseLayers(b.base, proj, b.panel, { lots: false }) + fills + baseLotsHairline(b, proj) + labels.join('') + overLayers(b.base, proj, b.panel) + panelFurniture(b.panel);
   const legend = facts.zonesInWindow.map((z) => ({ swatch: swatchFill(zoneFill(z.code)), label: `${z.code} ${z.name}`.trim() }));
   const epi = facts.zoneAtSite?.epi ? `${facts.zoneAtSite.epi}${facts.zoneAtSite.currency ? ` · currency ${facts.zoneAtSite.currency}` : ''}` : 'NSW ePlanning land zoning';
@@ -874,7 +874,7 @@ function hobPanel(b: SlidesBundle, proj: Proj, facts: PlanningFacts): PanelOut {
   const order = [...classes.values()].sort((a, b2) => a.order - b2.order).map((c) => c.label);
   const colour = new Map(order.map((l, i) => [l, hobRamp(i, order.length)]));
   const fills = order.map((l) =>
-    `<g fill="${colour.get(l)}" fill-opacity="0.9" stroke="#555" stroke-width="0.08" fill-rule="evenodd">${(byClass.get(l) ?? []).map((d) => `<path d="${d}"/>`).join('')}</g>`).join('');
+    `<g fill="${colour.get(l)}" fill-opacity="0.9" stroke="#6a7572" stroke-width="0.08" fill-rule="evenodd">${(byClass.get(l) ?? []).map((d) => `<path d="${d}"/>`).join('')}</g>`).join('');
   const labels = placeLabels(cands, 2);
   const svg = baseLayers(b.base, proj, b.panel, { lots: false }) + fills + baseLotsHairline(b, proj) + labels.join('') + overLayers(b.base, proj, b.panel) +
     (order.length ? '' : emptyNote(['No height of building map in this window'])) + panelFurniture(b.panel);
@@ -887,8 +887,8 @@ function hobPanel(b: SlidesBundle, proj: Proj, facts: PlanningFacts): PanelOut {
 /** A note in the panel's top-left corner, boxed, where it covers nothing that matters. */
 function emptyNote(lines: string[]): string {
   const w = Math.max(...lines.map((l) => l.length)) * 2.4 * 0.55 + 6;
-  return `<g><rect x="3" y="3" width="${w.toFixed(1)}" height="${(lines.length * 3.6 + 2.4).toFixed(1)}" fill="#ffffff" fill-opacity="0.9" stroke="#bbb" stroke-width="0.2"/>` +
-    lines.map((l, i) => `<text x="6" y="${(6.6 + i * 3.6).toFixed(1)}" font-size="2.4" fill="#555">${esc(l)}</text>`).join('') + '</g>';
+  return `<g><rect x="3" y="3" width="${w.toFixed(1)}" height="${(lines.length * 3.6 + 2.4).toFixed(1)}" fill="#faf4ea" fill-opacity="0.92" stroke="#c9c0b0" stroke-width="0.2"/>` +
+    lines.map((l, i) => `<text x="6" y="${(6.6 + i * 3.6).toFixed(1)}" font-size="2.4" fill="#6a7572">${esc(l)}</text>`).join('') + '</g>';
 }
 
 function heritagePanel(b: SlidesBundle, proj: Proj, facts: PlanningFacts): PanelOut {
@@ -907,20 +907,20 @@ function heritagePanel(b: SlidesBundle, proj: Proj, facts: PlanningFacts): Panel
       parts.push(hatchPath(d, `hh${hi++}`, st.fill, bboxOf(rings, proj), 1.4));
       legendMap.set(st.label, { swatch: swatchHatch(st.fill), label: st.label });
     } else {
-      parts.push(`<path d="${d}" fill="${st.fill}" fill-opacity="0.9" stroke="#6b4e1e" stroke-width="0.15" fill-rule="evenodd"/>`);
-      legendMap.set(st.label, { swatch: swatchFill(st.fill, '#6b4e1e'), label: st.label });
+      parts.push(`<path d="${d}" fill="${st.fill}" fill-opacity="0.9" stroke="#8a6a3c" stroke-width="0.15" fill-rule="evenodd"/>`);
+      legendMap.set(st.label, { swatch: swatchFill(st.fill, '#8a6a3c'), label: st.label });
       const m = mainRing(f, proj);
       if (m && f.properties.H_ID) {
         const [clon, clat] = centroidLL(m.ring);
         const d = distanceM(b.panel.center, clon, clat, k);
-        if (d < 320) cands.push({ area: 1000 - d, cx: m.cx, cy: m.cy, text: String(f.properties.H_ID), fill: '#3b2a10' });
+        if (d < 320) cands.push({ area: 1000 - d, cx: m.cx, cy: m.cy, text: String(f.properties.H_ID), fill: '#5a4426' });
       }
     }
   }
   if (b.shr.features.length) {
     const d = b.shr.features.map((f) => ringsPath(geomRings(f.geometry), proj)).join('');
-    parts.push(`<path d="${d}" fill="none" stroke="#7a1b1b" stroke-width="0.55"/>`);
-    legendMap.set('shr', { swatch: swatchLine('#7a1b1b', 0.7), label: 'State Heritage Register curtilage' });
+    parts.push(`<path d="${d}" fill="none" stroke="#7c2f22" stroke-width="0.55"/>`);
+    legendMap.set('shr', { swatch: swatchLine('#7c2f22', 0.7), label: 'State Heritage Register curtilage' });
   }
   const labels = placeLabels(cands, 1.8, 30);
   const empty = parts.length ? '' : emptyNote(['No heritage item or conservation area in this window']);
@@ -1058,10 +1058,10 @@ export function planningControlsSlide(b: SlidesBundle, facts: PlanningFacts): Sl
 // categorical palette (all pairs clear the colour-vision floors). Withdrawn
 // applications are hollow rings, so their state is a shape, not a fourth hue.
 const STATUS_STYLE: Record<DaStatusClass, { fill: string; stroke: string; hollow?: boolean; label: string }> = {
-  determined: { fill: '#2a78d6', stroke: '#2a78d6', label: 'Determined (the feed does not say approved or refused)' },
-  active:     { fill: '#eb6834', stroke: '#eb6834', label: 'Under assessment, on exhibition or awaiting information' },
-  appeal:     { fill: '#1baf7a', stroke: '#1baf7a', label: 'Before the Land and Environment Court' },
-  withdrawn:  { fill: '#ffffff', stroke: '#7a7a7a', hollow: true, label: 'Withdrawn, rejected or cancelled' },
+  determined: { fill: '#2f7d6d', stroke: '#2f7d6d', label: 'Determined (the feed does not say approved or refused)' },
+  active:     { fill: '#c96f3b', stroke: '#c96f3b', label: 'Under assessment, on exhibition or awaiting information' },
+  appeal:     { fill: '#2c4c9c', stroke: '#2c4c9c', label: 'Before the Land and Environment Court' },
+  withdrawn:  { fill: '#ffffff', stroke: '#8a918c', hollow: true, label: 'Withdrawn, rejected or cancelled' },
 };
 const STATUS_ORDER: DaStatusClass[] = ['determined', 'active', 'appeal', 'withdrawn'];
 
@@ -1358,11 +1358,11 @@ function developmentMap(b: SlidesBundle, d: DevelopmentFacts, numbered: number, 
     const text = String(st.n);
     const w = labelW(text, 2), h = 2.4;
     if (r >= 2.3 && spacer.take(x, y, w + 0.6, h)) {
-      labels.push(`<text x="${x.toFixed(1)}" y="${(y + 0.8).toFixed(1)}" text-anchor="middle" font-size="2.2" font-weight="700" fill="${STATUS_STYLE[st.statusClass].hollow ? '#333' : '#ffffff'}">${text}</text>`);
+      labels.push(`<text x="${x.toFixed(1)}" y="${(y + 0.8).toFixed(1)}" text-anchor="middle" font-size="2.2" font-weight="700" fill="${STATUS_STYLE[st.statusClass].hollow ? '#454f4b' : '#ffffff'}">${text}</text>`);
       continue;
     }
     const spots: [number, number][] = [[x + r + 1.2 + w / 2, y], [x - r - 1.2 - w / 2, y], [x, y - r - 1.6], [x, y + r + 1.6]];
-    for (const [lx, ly] of spots) if (spacer.take(lx, ly, w, h)) { labels.push(label(lx, ly, text, 2, '#222')); break; }
+    for (const [lx, ly] of spots) if (spacer.take(lx, ly, w, h)) { labels.push(label(lx, ly, text, 2, '#2a3534')); break; }
   }
   const diamonds: string[] = [];
   const dia = (x: number, y: number, r: number) => `M${x.toFixed(2)},${(y - r).toFixed(2)}L${(x + r).toFixed(2)},${y.toFixed(2)}L${x.toFixed(2)},${(y + r).toFixed(2)}L${(x - r).toFixed(2)},${y.toFixed(2)}Z`;
@@ -1372,10 +1372,10 @@ function developmentMap(b: SlidesBundle, d: DevelopmentFacts, numbered: number, 
   }
   for (const { st, x, y } of ssdPlaced) {
     if (Number(st.n.slice(1)) > ssdNumbered) continue;
-    if (st.n.length <= 2) { labels.push(`<text x="${x.toFixed(1)}" y="${(y + 0.65).toFixed(1)}" text-anchor="middle" font-size="1.75" font-weight="700" fill="${STATUS_STYLE[st.stageClass].hollow ? '#333' : '#ffffff'}">${st.n}</text>`); continue; }
+    if (st.n.length <= 2) { labels.push(`<text x="${x.toFixed(1)}" y="${(y + 0.65).toFixed(1)}" text-anchor="middle" font-size="1.75" font-weight="700" fill="${STATUS_STYLE[st.stageClass].hollow ? '#454f4b' : '#ffffff'}">${st.n}</text>`); continue; }
     const w = labelW(st.n, 1.9);
     for (const [lx, ly] of [[x + DR + 1 + w / 2, y], [x - DR - 1 - w / 2, y], [x, y - DR - 1.6], [x, y + DR + 1.6]] as [number, number][])
-      if (spacer.take(lx, ly, w, 2.3)) { labels.push(label(lx, ly, st.n, 1.9, '#222')); break; }
+      if (spacer.take(lx, ly, w, 2.3)) { labels.push(label(lx, ly, st.n, 1.9, '#2a3534')); break; }
   }
   parts.push(dots.join(''), diamonds.join(''), labels.join(''), siteMark(b.base, proj, 'outline'), panelFurniture(p, corner));
   return `<svg width="${p.wMm}mm" height="${p.hMm}mm" viewBox="0 0 ${p.wMm} ${p.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
@@ -1401,7 +1401,7 @@ function yearChart(d: DevelopmentFacts, wMm: number, hMm: number): string {
   if (years.length > 1 && years[0].partial) notes.push(`${years[0].year} from ${monthOf(d.from)}`);
   if (years[years.length - 1].partial) notes.push(`${years[years.length - 1].year} to ${monthOf(d.to)}`);
   parts.push(`<text x="0" y="3" font-size="2.3" font-weight="700" fill="${t.ink}">Applications lodged per year in the window` +
-    (notes.length ? `<tspan font-weight="400" fill="#666"> · ${esc(notes.join(' · '))}</tspan>` : '') + `</text>`);
+    (notes.length ? `<tspan font-weight="400" fill="#737c77"> · ${esc(notes.join(' · '))}</tspan>` : '') + `</text>`);
   const base = top + plotH;
   parts.push(`<line x1="${left}" y1="${base.toFixed(1)}" x2="${(wMm - right).toFixed(1)}" y2="${base.toFixed(1)}" stroke="#c9c9c9" stroke-width="0.15"/>`);
   years.forEach((y, i) => {
@@ -1409,11 +1409,11 @@ function yearChart(d: DevelopmentFacts, wMm: number, hMm: number): string {
     const x = left + i * slot + (slot - barW) / 2;
     const yTop = base - h;
     const rr = Math.min(0.8, h / 2);
-    const fill = y.partial ? '#8a97a3' : t.dimension;
+    const fill = y.partial ? '#9aa6a0' : t.dimension;
     if (h > 0)
       parts.push(`<path d="M${x.toFixed(2)},${base.toFixed(2)} V${(yTop + rr).toFixed(2)} Q${x.toFixed(2)},${yTop.toFixed(2)} ${(x + rr).toFixed(2)},${yTop.toFixed(2)} H${(x + barW - rr).toFixed(2)} Q${(x + barW).toFixed(2)},${yTop.toFixed(2)} ${(x + barW).toFixed(2)},${(yTop + rr).toFixed(2)} V${base.toFixed(2)} Z" fill="${fill}"/>`);
     parts.push(`<text x="${(x + barW / 2).toFixed(2)}" y="${(yTop - 1).toFixed(2)}" text-anchor="middle" font-size="2.1" fill="${t.ink}">${y.count}</text>`);
-    parts.push(`<text x="${(x + barW / 2).toFixed(2)}" y="${(base + 3.2).toFixed(2)}" text-anchor="middle" font-size="2.1" fill="#555">${y.year}</text>`);
+    parts.push(`<text x="${(x + barW / 2).toFixed(2)}" y="${(base + 3.2).toFixed(2)}" text-anchor="middle" font-size="2.1" fill="#6a7572">${y.year}</text>`);
   });
   return `<svg width="${wMm}mm" height="${hMm}mm" viewBox="0 0 ${wMm} ${hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block" font-family="${t.font}">${parts.join('')}</svg>`;
 }
@@ -1436,9 +1436,9 @@ export function developmentSlide(b: SlidesBundle, facts: PlanningFacts): Slide {
     const sty = STATUS_STYLE[k];
     return `<div class="lg"><svg width="5mm" height="3.6mm" viewBox="0 0 5 3.6"><circle cx="2.5" cy="1.8" r="1.5" fill="${sty.fill}" stroke="${sty.stroke}" stroke-width="${sty.hollow ? 0.45 : 0.2}"/></svg><span>${esc(sty.label)}</span></div>`;
   }).join('') +
-    `<div class="lg"><svg width="5mm" height="3.6mm" viewBox="0 0 5 3.6"><circle cx="1" cy="1.8" r="0.9" fill="#888"/><circle cx="3.4" cy="1.8" r="1.6" fill="#888"/></svg><span>Circle area follows the stated cost; numbers match the table</span></div>` +
+    `<div class="lg"><svg width="5mm" height="3.6mm" viewBox="0 0 5 3.6"><circle cx="1" cy="1.8" r="0.9" fill="#948f85"/><circle cx="3.4" cy="1.8" r="1.6" fill="#948f85"/></svg><span>Circle area follows the stated cost; numbers match the table</span></div>` +
     `<div class="lg"><svg width="5mm" height="3.6mm" viewBox="0 0 5 3.6"><circle cx="2.5" cy="1.8" r="0.55" fill="#b3b3b3"/></svg><span>Every other application lodged in the period</span></div>` +
-    (d.stateSignificant.sites.length ? `<div class="lg"><svg width="5mm" height="3.6mm" viewBox="0 0 5 3.6"><path d="M2.5,0.15 L4.15,1.8 L2.5,3.45 L0.85,1.8 Z" fill="#888"/></svg><span>State significant application from the Department's register, S-numbered, coloured by stage</span></div>` : '');
+    (d.stateSignificant.sites.length ? `<div class="lg"><svg width="5mm" height="3.6mm" viewBox="0 0 5 3.6"><path d="M2.5,0.15 L4.15,1.8 L2.5,3.45 L0.85,1.8 Z" fill="#948f85"/></svg><span>State significant application from the Department's register, S-numbered, coloured by stage</span></div>` : '');
   const chartH = 40;
   const right = `<div class="abs ptitle" style="left:${rightX}mm;top:${y0}mm;width:${rightW}mm">Scale of activity</div>
     <div class="abs tiles" style="left:${rightX}mm;top:${y0 + PANEL_TITLE_H + 1}mm;width:${rightW}mm">${tiles}</div>
@@ -1794,7 +1794,7 @@ function emptyBox(w: number, h: number, note: string): string {
 
 // ---- slide 06: topography ---------------------------------------------------
 
-const CONTOUR = '#a07c3f';
+const CONTOUR = '#ae8d55';
 
 /** What the terrain says about the site: levels, fall, aspect, the sections and the window's relief. */
 export function terrainFacts(b: SlidesBundle) {
@@ -1899,7 +1899,7 @@ export function terrainSlide(b: SlidesBundle): Slide {
       const [x, y] = proj(mid[0], mid[1]);
       const text = `${c.elevation}`;
       if (x > 4 && y > 4 && x < p.wMm - 4 && y < p.hMm - 4 && spacer.take(x, y, labelW(text, 1.9) + 1, 2.4))
-        labels.push(`<text x="${x.toFixed(1)}" y="${(y + 0.65).toFixed(1)}" text-anchor="middle" font-size="1.9" font-weight="700" fill="${CONTOUR}" stroke="#ffffff" stroke-width="0.45" paint-order="stroke">${text}</text>`);
+        labels.push(`<text x="${x.toFixed(1)}" y="${(y + 0.65).toFixed(1)}" text-anchor="middle" font-size="1.9" font-weight="700" fill="${CONTOUR}" stroke="#faf4ea" stroke-width="0.45" paint-order="stroke">${text}</text>`);
     }
   }
   parts.push(labels.join(''));
@@ -1928,7 +1928,7 @@ export function terrainSlide(b: SlidesBundle): Slide {
     { v: `${Math.max(0, Math.round(f.window.minRl))}–${Math.round(f.window.maxRl)}`, l: 'RL range of the window' },
   ].map((tl) => `<div class="tile"><div class="tv${tl.v.length > 9 ? ' long' : ''}">${esc(tl.v)}</div><div class="tl">${esc(tl.l)}</div></div>`).join('');
   const legend = [
-    [`<svg width="5mm" height="3.6mm" viewBox="0 0 5 3.6"><rect x="0" y="0.3" width="5" height="3" fill="#cfcfcf"/><rect x="0" y="0.3" width="2.5" height="3" fill="#ececec"/></svg>`, 'Hillshade from the 5 m elevation model, lit from the north-west'],
+    [`<svg width="5mm" height="3.6mm" viewBox="0 0 5 3.6"><rect x="0" y="0.3" width="5" height="3" fill="#d8cfc0"/><rect x="0" y="0.3" width="2.5" height="3" fill="#ececec"/></svg>`, 'Hillshade from the 5 m elevation model, lit from the north-west'],
     [`<svg width="5mm" height="3.6mm" viewBox="0 0 5 3.6"><line x1="0" y1="2.6" x2="5" y2="2.6" stroke="${CONTOUR}" stroke-width="0.2"/><line x1="0" y1="1.2" x2="5" y2="1.2" stroke="${CONTOUR}" stroke-width="0.4"/></svg>`, `Contours at ${interval} m, every ${indexEvery} m heavier and labelled`],
     [`<svg width="5mm" height="3.6mm" viewBox="0 0 5 3.6"><line x1="0" y1="1.8" x2="5" y2="1.8" stroke="${t.dimension}" stroke-width="0.4" stroke-dasharray="1.4,0.7"/></svg>`, 'Section lines A–A′ (down the fall) and B–B′ (across it)'],
     [`<svg width="5mm" height="3.6mm" viewBox="0 0 5 3.6"><rect x="0" y="0.3" width="5" height="3" fill="${t.water}"/></svg>`, 'Water'],
@@ -1954,13 +1954,13 @@ export function terrainSlide(b: SlidesBundle): Slide {
 
 /** Height bands by storeys, on the sequential blue ramp; no height is a neutral grey. */
 const HEIGHT_BANDS: { label: string; maxM: number; fill: string }[] = [
-  { label: '1–2 storeys', maxM: 7.5, fill: '#b7d3f6' },
-  { label: '3–4', maxM: 14, fill: '#86b6ef' },
-  { label: '5–8', maxM: 27, fill: '#3987e5' },
-  { label: '9–15', maxM: 50, fill: '#1c5cab' },
-  { label: '16 and more', maxM: Infinity, fill: '#0d366b' },
+  { label: '1–2 storeys', maxM: 7.5, fill: '#d6e7e0' },
+  { label: '3–4', maxM: 14, fill: '#a8cdc2' },
+  { label: '5–8', maxM: 27, fill: '#6ba998' },
+  { label: '9–15', maxM: 50, fill: '#35766a' },
+  { label: '16 and more', maxM: Infinity, fill: '#1f4a40' },
 ];
-const NO_HEIGHT_FILL = '#cbc9c2';
+const NO_HEIGHT_FILL = '#ddd5c6';
 const bandOf = (h?: number) => (h ? HEIGHT_BANDS.find((b) => h <= b.maxM)! : null);
 const storeysOf = (h: number) => Math.max(1, Math.round(h / METRES_PER_STOREY));
 
@@ -2090,7 +2090,7 @@ export function builtFormSlide(b: SlidesBundle, planning: PlanningFacts): Slide 
   const p = b.daPanel;
   const proj = panelProjector(p);
   const parts: string[] = [];
-  parts.push(`<rect x="0" y="0" width="${p.wMm}" height="${p.hMm}" fill="#ffffff"/>`);
+  parts.push(`<rect x="0" y="0" width="${p.wMm}" height="${p.hMm}" fill="#faf4ea"/>`);
   if (b.base.water.features.length) parts.push(`<path d="${fcPath(b.base.water, proj)}" fill="${t.water}" fill-rule="evenodd"/>`);
   // Footprints, palest first so the tall ones sit on top where they overlap.
   const drawn = [...b.buildings.buildings].sort((x, y) => (x.estimatedHeightM ?? 0) - (y.estimatedHeightM ?? 0));
@@ -2190,10 +2190,10 @@ export function builtFormSlide(b: SlidesBundle, planning: PlanningFacts): Slide 
 // ---- slide 09: movement ------------------------------------------------------
 
 const ISO_MINUTES = [5, 10, 15];
-const ISO_FILL: Record<number, string> = { 5: '#2a78d6', 10: '#5598e7', 15: '#9ec5f4' };
-const CYCLE_COLOUR = '#008300';
-const FRONTAGE_COLOUR = '#eb6834';
-const FOOTWAY_COLOUR = '#7a7a7a';
+const ISO_FILL: Record<number, string> = { 5: '#2f7d6d', 10: '#6ba998', 15: '#a8cdc2' };
+const CYCLE_COLOUR = '#2c4c9c';
+const FRONTAGE_COLOUR = '#d9825b';
+const FOOTWAY_COLOUR = '#8a918c';
 
 const roadWord = (h: number) => (h <= 2 ? 'motorway or highway' : h === 3 ? 'arterial road' : h === 4 ? 'sub-arterial road' : h === 5 ? 'collector road' : 'local street');
 const stationKind = stationMode;
@@ -2225,13 +2225,13 @@ function wideStripLabels(b: SlidesBundle, wproj: Proj, wp: Panel): string {
     for (const r of geomRings(ft.geometry)) { const s = clippedStats(r, wproj, wp); if (s.area > best.area) best = s; }
     if (best.area < 150) continue;
     const text = titleCase(name);
-    if (wspacer.take(best.cx, best.cy, labelW(text, 2.2) + 1, 3)) out.push(`<text x="${best.cx.toFixed(1)}" y="${(best.cy + 0.8).toFixed(1)}" text-anchor="middle" font-size="2.2" letter-spacing="0.08em" fill="#7a7a7a" stroke="#ffffff" stroke-width="0.5" paint-order="stroke">${esc(text.toUpperCase())}</text>`);
+    if (wspacer.take(best.cx, best.cy, labelW(text, 2.2) + 1, 3)) out.push(`<text x="${best.cx.toFixed(1)}" y="${(best.cy + 0.8).toFixed(1)}" text-anchor="middle" font-size="2.2" letter-spacing="0.08em" fill="#8a918c" stroke="#faf4ea" stroke-width="0.5" paint-order="stroke">${esc(text.toUpperCase())}</text>`);
   }
   for (const s of b.wide.base.stations) {
     const [x, y] = wproj(s.lon, s.lat);
     if (x < 2 || y < 2 || x > wp.wMm - 2 || y > wp.hMm - 2) continue;
     const text = tidyStation(s.name);
-    if (wspacer.take(x + 3 + labelW(text, 2) / 2, y, labelW(text, 2), 2.6)) out.push(label(x + 3 + labelW(text, 2) / 2, y, text, 2, '#222'));
+    if (wspacer.take(x + 3 + labelW(text, 2) / 2, y, labelW(text, 2), 2.6)) out.push(label(x + 3 + labelW(text, 2) / 2, y, text, 2, '#2a3534'));
   }
   out.push(`<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="2.2" fill="#ffffff" stroke="${t.site}" stroke-width="0.6"/><circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="0.9" fill="${t.site}"/>`);
   // the tall panel's window, so the two maps tie together
@@ -2331,7 +2331,7 @@ export function movementSlide(b: SlidesBundle): Slide {
   const proj = panelProjector(p);
   const parts: string[] = [baseLayers(b.base, proj, p)];
   for (const iso of [...mv.isochrones].sort((x, y) => y.minutes - x.minutes)) {
-    parts.push(`<path d="${ringsPath(iso.rings, proj)}" fill="${ISO_FILL[iso.minutes] ?? '#9ec5f4'}" fill-opacity="0.10" stroke="${ISO_FILL[iso.minutes] ?? '#9ec5f4'}" stroke-width="0.45" stroke-dasharray="1.6,1" fill-rule="evenodd"/>`);
+    parts.push(`<path d="${ringsPath(iso.rings, proj)}" fill="${ISO_FILL[iso.minutes] ?? '#a8cdc2'}" fill-opacity="0.10" stroke="${ISO_FILL[iso.minutes] ?? '#a8cdc2'}" stroke-width="0.45" stroke-dasharray="1.6,1" fill-rule="evenodd"/>`);
   }
   if (mv.activeFrontages.features.length) parts.push(`<path d="${fcPath(mv.activeFrontages, proj)}" fill="${FRONTAGE_COLOUR}" fill-opacity="0.55" stroke="${FRONTAGE_COLOUR}" stroke-width="0.25" fill-rule="evenodd"/>`);
   parts.push(overLayers(b.base, proj, p, 'wash'));
@@ -2347,7 +2347,7 @@ export function movementSlide(b: SlidesBundle): Slide {
   for (const iso of mv.isochrones) {
     const pts = iso.rings[0]?.map(([lon, lat]) => proj(lon, lat)) ?? [];
     const top = pts.filter((q) => q[0] > 3 && q[0] < p.wMm - 3 && q[1] > 3 && q[1] < p.hMm - 3).sort((q, r) => q[1] - r[1])[0];
-    if (top && isoSpacer.take(top[0], top[1] - 1.5, 9, 2.6)) parts.push(label(top[0], top[1] - 1.5, `${iso.minutes} min`, 2, ISO_FILL[iso.minutes] ?? '#5598e7'));
+    if (top && isoSpacer.take(top[0], top[1] - 1.5, 9, 2.6)) parts.push(label(top[0], top[1] - 1.5, `${iso.minutes} min`, 2, ISO_FILL[iso.minutes] ?? '#6ba998'));
   }
   parts.push(siteMark(b.base, proj, 'outline'), panelFurniture(p, 'right'));
   const mapSvg = `<svg width="${p.wMm}mm" height="${p.hMm}mm" viewBox="0 0 ${p.wMm} ${p.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
@@ -2384,10 +2384,14 @@ export function movementSlide(b: SlidesBundle): Slide {
   // Bottom: the walking-reach strip.
   const wp = b.wide.panel;
   const wproj = panelProjector(wp);
-  const wparts: string[] = [`<rect x="0" y="0" width="${wp.wMm}" height="${wp.hMm}" fill="#ffffff"/>`];
+  const wparts: string[] = [`<rect x="0" y="0" width="${wp.wMm}" height="${wp.hMm}" fill="#faf4ea"/>`];
   if (b.wide.base.water.features.length) wparts.push(`<path d="${fcPath(b.wide.base.water, wproj)}" fill="${t.water}" fill-rule="evenodd"/>`);
-  for (const iso of [...mv.isochrones].sort((x, y) => y.minutes - x.minutes))
-    wparts.push(`<path d="${ringsPath(iso.rings, wproj)}" fill="${ISO_FILL[iso.minutes] ?? '#9ec5f4'}" fill-opacity="0.28" stroke="${ISO_FILL[iso.minutes] ?? '#9ec5f4'}" stroke-width="0.3" fill-rule="evenodd"/>`);
+  const ISO_DOT_STEP: Record<number, number> = { 5: 1.15, 10: 1.75, 15: 2.5 };
+  for (const iso of [...mv.isochrones].sort((x, y) => y.minutes - x.minutes)) {
+    const d = ringsPath(iso.rings, wproj);
+    wparts.push(dotsPath(d, `isod${iso.minutes}`, ISO_FILL[iso.minutes] ?? '#a8cdc2', bboxOf(iso.rings, wproj), ISO_DOT_STEP[iso.minutes] ?? 2.5, 0.3, 0.8));
+    wparts.push(`<path d="${d}" fill="none" stroke="${ISO_FILL[iso.minutes] ?? '#a8cdc2'}" stroke-width="0.3" fill-rule="evenodd"/>`);
+  }
   wparts.push(overLayers(b.wide.base, wproj, wp, 'none'));
   wparts.push(wideStripLabels(b, wproj, wp));
   const wideSvg = `<svg width="${wp.wMm}mm" height="${wp.hMm}mm" viewBox="0 0 ${wp.wMm} ${wp.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
@@ -2414,21 +2418,21 @@ export function movementSlide(b: SlidesBundle): Slide {
 
 /** Canopy classes for the strip: one hue, light to dark, on the dataset's own breaks. */
 const CANOPY_CLASSES = [
-  { max: 10, fill: '#eef4e6', label: 'under 10 %' },
-  { max: 20, fill: '#cfe3bd', label: '10–20 %' },
-  { max: 30, fill: '#a3cc8e', label: '20–30 %' },
-  { max: 40, fill: '#6fae5f', label: '30–40 %' },
-  { max: Infinity, fill: '#3d8a3a', label: 'over 40 %' },
+  { max: 10, fill: '#eef2e4', label: 'under 10 %' },
+  { max: 20, fill: '#cfe4d0', label: '10–20 %' },
+  { max: 30, fill: '#a8cdb4', label: '20–30 %' },
+  { max: 40, fill: '#79ae8e', label: '30–40 %' },
+  { max: Infinity, fill: '#4c8a68', label: 'over 40 %' },
 ];
 const canopyFill = (pct: number) => (CANOPY_CLASSES.find((c) => pct < c.max) ?? CANOPY_CLASSES[CANOPY_CLASSES.length - 1]).fill;
 const OPEN_SPACE_STYLE: Record<string, { fill: string; stroke: string; word: string }> = {
-  RE1: { fill: '#c9e2b4', stroke: '#8fbf7a', word: 'public recreation reserve' },
-  RE2: { fill: '#e7efdc', stroke: '#b3cba3', word: 'private recreation land' },
-  C1: { fill: '#b5d4a3', stroke: '#6f9f5c', word: 'national park or nature reserve' },
-  C2: { fill: '#b5d4a3', stroke: '#6f9f5c', word: 'conservation land' },
-  C3: { fill: '#c3dbb2', stroke: '#6f9f5c', word: 'environmental management land' },
+  RE1: { fill: '#cfe4d0', stroke: '#7fae8c', word: 'public recreation reserve' },
+  RE2: { fill: '#e6efe3', stroke: '#aecbb2', word: 'private recreation land' },
+  C1: { fill: '#accdb0', stroke: '#6f9e7b', word: 'national park or nature reserve' },
+  C2: { fill: '#accdb0', stroke: '#6f9e7b', word: 'conservation land' },
+  C3: { fill: '#bcd7bc', stroke: '#6f9e7b', word: 'environmental management land' },
 };
-const PARK_GREEN = '#2f6b2f', GREEN_GRID_COLOUR = '#2f7a3a', NPWS_COLOUR = '#1f6b2f', TREE_DOT = '#3a7d3a';
+const PARK_GREEN = '#37715a', GREEN_GRID_COLOUR = '#37715a', NPWS_COLOUR = '#2f6b50', TREE_DOT = '#4c8a68';
 /** Green Grid classes that are open space people use, as against cemeteries, golf courses and operational land. */
 const PARK_CLASSES = new Set(['Parks and Gardens', 'Sports', 'Bushland', 'Waterfront', 'Civic', 'OSL', 'Community Purpose', 'Heritage and Cultural']);
 const GREEN_GRID_WORD: Record<string, string> = {
@@ -2645,14 +2649,16 @@ export function greenSlide(b: SlidesBundle): Slide {
     const zs = g.openSpace.filter((z) => z.code === code);
     if (!zs.length) continue;
     const st = OPEN_SPACE_STYLE[code];
-    parts.push(`<path d="${zs.map((z) => ringsPath(z.rings, proj)).join('')}" fill="${st.fill}" stroke="${st.stroke}" stroke-width="0.2" fill-rule="evenodd"/>`);
+    const d = zs.map((z) => ringsPath(z.rings, proj)).join('');
+    parts.push(`<path d="${d}" fill="${st.fill}" stroke="${st.stroke}" stroke-width="0.2" fill-rule="evenodd"/>`);
+    if (code === 'RE1') parts.push(dotsPath(d, 'osdots', st.stroke, bboxOf(zs.flatMap((z) => z.rings), proj), 2, 0.26, 0.7));
   }
   let hatchId = 0;
   for (const n of g.npws) parts.push(hatchPath(ringsPath(n.rings, proj), `npws${hatchId++}`, NPWS_COLOUR, bboxOf(n.rings, proj), 1.4));
   if (g.greenGrid.length) parts.push(`<path d="${g.greenGrid.map((a) => ringsPath(a.rings, proj)).join('')}" fill="none" stroke="${GREEN_GRID_COLOUR}" stroke-width="0.35" stroke-dasharray="1.2,0.7" fill-rule="evenodd"/>`);
   const isos = b.movement?.isochrones ?? [];
   for (const iso of [...isos].sort((x, y) => y.minutes - x.minutes))
-    parts.push(`<path d="${ringsPath(iso.rings, proj)}" fill="none" stroke="${ISO_FILL[iso.minutes] ?? '#9ec5f4'}" stroke-width="0.45" stroke-dasharray="1.6,1" fill-rule="evenodd"/>`);
+    parts.push(`<path d="${ringsPath(iso.rings, proj)}" fill="none" stroke="${ISO_FILL[iso.minutes] ?? '#a8cdc2'}" stroke-width="0.45" stroke-dasharray="1.6,1" fill-rule="evenodd"/>`);
   parts.push(overLayers(b.base, proj, p, 'wash'));
   if (g.trees.points.length) {
     const mmPerM = 1000 / p.scale;
@@ -2666,7 +2672,7 @@ export function greenSlide(b: SlidesBundle): Slide {
   for (const iso of isos) {
     const pts = iso.rings[0]?.map(([lon, lat]) => proj(lon, lat)) ?? [];
     const top = pts.filter((q) => q[0] > 3 && q[0] < p.wMm - 3 && q[1] > 3 && q[1] < p.hMm - 3).sort((q, r) => q[1] - r[1])[0];
-    if (top && isoSpacer.take(top[0], top[1] - 1.5, 9, 2.6)) parts.push(label(top[0], top[1] - 1.5, `${iso.minutes} min`, 2, ISO_FILL[iso.minutes] ?? '#5598e7'));
+    if (top && isoSpacer.take(top[0], top[1] - 1.5, 9, 2.6)) parts.push(label(top[0], top[1] - 1.5, `${iso.minutes} min`, 2, ISO_FILL[iso.minutes] ?? '#6ba998'));
   }
   // Park names at the centroid of what falls inside the window, largest first.
   const labels: string[] = [];
@@ -2675,7 +2681,7 @@ export function greenSlide(b: SlidesBundle): Slide {
     let best = { area: 0, cx: 0, cy: 0 };
     for (const r of s.rings) { const st = clippedStats(r, proj, p); if (st.area > best.area) best = st; }
     const size = s.windowMm2 > 60 ? 2.1 : 1.85;
-    if (spacer.take(best.cx, best.cy, labelW(s.name, size), size * 1.3)) labels.push(`<text x="${best.cx.toFixed(1)}" y="${(best.cy + size * 0.35).toFixed(1)}" text-anchor="middle" font-size="${size}" font-style="italic" font-weight="700" fill="${PARK_GREEN}" stroke="#ffffff" stroke-width="${(size * 0.22).toFixed(2)}" paint-order="stroke">${esc(s.name)}</text>`);
+    if (spacer.take(best.cx, best.cy, labelW(s.name, size), size * 1.3)) labels.push(`<text x="${best.cx.toFixed(1)}" y="${(best.cy + size * 0.35).toFixed(1)}" text-anchor="middle" font-size="${size}" font-style="italic" font-weight="700" fill="${PARK_GREEN}" stroke="#faf4ea" stroke-width="${(size * 0.22).toFixed(2)}" paint-order="stroke">${esc(s.name)}</text>`);
   }
   for (const n of g.npws) {
     let best = { area: 0, cx: 0, cy: 0 };
@@ -2690,7 +2696,7 @@ export function greenSlide(b: SlidesBundle): Slide {
     facilityMarks.push(`<rect x="${(x - 1.25).toFixed(1)}" y="${(y - 1.25).toFixed(1)}" width="2.5" height="2.5" fill="${t.ink}" stroke="#ffffff" stroke-width="0.3"/><text x="${x.toFixed(1)}" y="${(y + 0.6).toFixed(1)}" text-anchor="middle" font-size="1.7" font-weight="700" fill="#ffffff">${FACILITY_LETTER[fa.kind]}</text>`);
     const w = labelW(fa.name, 1.85);
     for (const [lx, ly] of [[x + 1.9 + w / 2, y], [x - 1.9 - w / 2, y], [x, y + 2.9], [x, y - 2.9], [x, y + 5.4], [x, y - 5.4]] as [number, number][])
-      if (spacer.take(lx, ly, w, 2.5)) { labels.push(label(lx, ly, fa.name, 1.85, '#222')); break; }
+      if (spacer.take(lx, ly, w, 2.5)) { labels.push(label(lx, ly, fa.name, 1.85, '#2a3534')); break; }
   }
   parts.push(...facilityMarks, ...labels, siteMark(b.base, proj, 'outline'), panelFurniture(p, 'right'));
   const mapSvg = `<svg width="${p.wMm}mm" height="${p.hMm}mm" viewBox="0 0 ${p.wMm} ${p.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
@@ -2720,7 +2726,7 @@ export function greenSlide(b: SlidesBundle): Slide {
   if (g.trees.points.length) legendRows.push([sw(`<circle cx="1.2" cy="1.8" r="0.5" fill="${TREE_DOT}" fill-opacity="0.6"/><circle cx="2.6" cy="1.8" r="0.8" fill="${TREE_DOT}" fill-opacity="0.6"/><circle cx="4.2" cy="1.8" r="0.6" fill="${TREE_DOT}" fill-opacity="0.6"/>`), `Trees at crown size (${f.trees.source?.name ?? 'council inventory'})`]);
   if (f.facilities.length) legendRows.push([sw(`<rect x="1.25" y="0.55" width="2.5" height="2.5" fill="${t.ink}"/><text x="2.5" y="2.4" text-anchor="middle" font-size="1.7" font-weight="700" fill="#ffffff">${FACILITY_LETTER[f.facilityCounts[0].kind]}</text>`), `Public facilities: ${f.facilityCounts.map(({ kind }) => `${FACILITY_LETTER[kind]} ${FACILITY_WORD[kind][0]}`).join(', ')}`]);
   if (isos.length) legendRows.push([sw(`<path d="M0,1.8 H5" stroke="${ISO_FILL[5]}" stroke-width="0.45" stroke-dasharray="1.6,1"/>`), `Walking isochrones from the site: ${isos.map((i) => i.minutes).sort((x, y) => x - y).join(', ')} minutes`]);
-  if (c.covered) legendRows.push([sw(CANOPY_CLASSES.map((cl, i) => `<rect x="${i}" y="0.4" width="1" height="2.8" fill="${cl.fill}"/>`).join('') + `<rect x="0" y="0.4" width="5" height="2.8" fill="none" stroke="#999" stroke-width="0.15"/>`), `Tree canopy ${c.year} by mesh block, in the strip below: ${CANOPY_CLASSES[0].label} to ${CANOPY_CLASSES[CANOPY_CLASSES.length - 1].label}`]);
+  if (c.covered) legendRows.push([sw(CANOPY_CLASSES.map((cl, i) => `<rect x="${i}" y="0.4" width="1" height="2.8" fill="${cl.fill}"/>`).join('') + `<rect x="0" y="0.4" width="5" height="2.8" fill="none" stroke="#a9a69b" stroke-width="0.15"/>`), `Tree canopy ${c.year} by mesh block, in the strip below: ${CANOPY_CLASSES[0].label} to ${CANOPY_CLASSES[CANOPY_CLASSES.length - 1].label}`]);
   const legend = legendRows.map(([s, txt]) => `<div class="lg">${s}<span>${esc(txt)}</span></div>`).join('');
   const yTable = FIELD_Y + PANEL_TITLE_H + 24 + legendRows.length * 3.7 + 4;
   const tableRoom = FIELD_Y + PANEL_TITLE_H + DA_PANEL_H - (yTable + PANEL_TITLE_H);
@@ -2734,7 +2740,7 @@ export function greenSlide(b: SlidesBundle): Slide {
   // Bottom: the canopy strip.
   const wp = b.wide.panel;
   const wproj = panelProjector(wp);
-  const wparts: string[] = [`<rect x="0" y="0" width="${wp.wMm}" height="${wp.hMm}" fill="#ffffff"/>`];
+  const wparts: string[] = [`<rect x="0" y="0" width="${wp.wMm}" height="${wp.hMm}" fill="#faf4ea"/>`];
   const wideZones = g.openSpaceWide ?? [];
   if (c.covered) {
     const byClass = new Map<string, string[]>();
@@ -2755,13 +2761,13 @@ export function greenSlide(b: SlidesBundle): Slide {
     // the class key, inside the strip
     let x = 3;
     const keyParts: string[] = [];
-    keyParts.push(`<text x="${x}" y="3.1" font-size="2" font-weight="700" fill="#333">Canopy ${c.year}</text>`);
+    keyParts.push(`<text x="${x}" y="3.1" font-size="2" font-weight="700" fill="#454f4b">Canopy ${c.year}</text>`);
     x += labelW(`Canopy ${c.year}`, 2) + 1.5;
     for (const cl of CANOPY_CLASSES) {
-      keyParts.push(`<rect x="${x.toFixed(1)}" y="0.9" width="2.8" height="2.8" fill="${cl.fill}" stroke="#999" stroke-width="0.15"/><text x="${(x + 3.6).toFixed(1)}" y="3.1" font-size="2" fill="#333">${esc(cl.label)}</text>`);
+      keyParts.push(`<rect x="${x.toFixed(1)}" y="0.9" width="2.8" height="2.8" fill="${cl.fill}" stroke="#a9a69b" stroke-width="0.15"/><text x="${(x + 3.6).toFixed(1)}" y="3.1" font-size="2" fill="#454f4b">${esc(cl.label)}</text>`);
       x += 3.6 + labelW(cl.label, 2) + 1.2;
     }
-    wparts.push(`<g transform="translate(2.5,2.5)"><rect x="-1" y="-0.6" width="${(x - 1).toFixed(1)}" height="5" fill="#ffffff" fill-opacity="0.92" stroke="#bbb" stroke-width="0.2"/>${keyParts.join('')}</g>`);
+    wparts.push(`<g transform="translate(2.5,2.5)"><rect x="-1" y="-0.6" width="${(x - 1).toFixed(1)}" height="5" fill="#ffffff" fill-opacity="0.92" stroke="#c9c0b0" stroke-width="0.2"/>${keyParts.join('')}</g>`);
   } else wparts.push(emptyNote([`The Greater Sydney tree canopy dataset does not reach this window${wideZones.length ? ': the recreation and conservation zones instead' : ''}.`]));
   const wideSvg = `<svg width="${wp.wMm}mm" height="${wp.hMm}mm" viewBox="0 0 ${wp.wMm} ${wp.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
     <defs><clipPath id="clip-canopy"><rect x="0" y="0" width="${wp.wMm}" height="${wp.hMm}"/></clipPath></defs>
@@ -2955,7 +2961,7 @@ function constraintPanel(b: SlidesBundle, proj: Proj, f: ReturnType<typeof const
         parts.push(hatchPath(d, `cp${which}${hatchId++}`, fill === '#ffff73' ? '#b3a000' : fill, bboxOf(rings, proj), 1.3));
         legend.push({ swatch: swatchHatch(fill === '#ffff73' ? '#b3a000' : fill), label });
       } else {
-        parts.push(`<path d="${d}" fill="${fill}" fill-opacity="${(DRAW_RANK[def.id] ?? 5) <= 2 ? 0.45 : 0.6}" stroke="${fill === '#ffffbe' || fill === '#ffff73' ? '#8a8a00' : '#555'}" stroke-width="0.15" fill-rule="evenodd"/>`);
+        parts.push(`<path d="${d}" fill="${fill}" fill-opacity="${(DRAW_RANK[def.id] ?? 5) <= 2 ? 0.45 : 0.6}" stroke="${fill === '#ffffbe' || fill === '#ffff73' ? '#8a8a00' : '#6a7572'}" stroke-width="0.15" fill-rule="evenodd"/>`);
         legend.push({ swatch: swatchFill(fill), label });
       }
     }
@@ -3017,7 +3023,7 @@ export function constraintsSlide(b: SlidesBundle): Slide {
 
 // ---- slide 11: the site -------------------------------------------------------
 
-const PUBLIC_LAND_COLOUR: Record<PublicParcel['kind'], string> = { state: '#2a78d6', crown: '#1f6b2f', reserve: '#8fbf7a' };
+const PUBLIC_LAND_COLOUR: Record<PublicParcel['kind'], string> = { state: '#2c4c9c', crown: '#2f6b50', reserve: '#79ae8e' };
 const PUBLIC_LAND_WORD: Record<PublicParcel['kind'], string> = { state: 'State government land', crown: 'Crown land', reserve: 'Crown reserve' };
 const SALES_RADIUS_M = 300;
 const SALES_MONTHS = 24;
@@ -3226,13 +3232,13 @@ export function siteSlide(b: SlidesBundle): Slide {
   // The site plan on the aerial.
   const p = s.sitePanel;
   const proj = panelProjector(p);
-  const parts: string[] = [`<rect x="0" y="0" width="${p.wMm}" height="${p.hMm}" fill="#f4f2ee"/>`];
+  const parts: string[] = [`<rect x="0" y="0" width="${p.wMm}" height="${p.hMm}" fill="#f5eee0"/>`];
   if (s.aerial) for (const tile of s.aerial.tiles) parts.push(`<image href="data/${tile.file}" x="${(tile.left * p.wMm).toFixed(2)}" y="${(tile.top * p.hMm).toFixed(2)}" width="${(tile.width * p.wMm).toFixed(2)}" height="${(tile.height * p.hMm).toFixed(2)}" preserveAspectRatio="none"/>`);
   else parts.push(emptyNote(['The aerial imagery did not answer for this window.']));
   // cadastre, in white over the aerial
   if (b.base.lots.features.length) parts.push(`<path d="${b.base.lots.features.map((ft) => ringsPath(geomRings(ft.geometry), proj)).join('')}" fill="none" stroke="#ffffff" stroke-width="0.25" opacity="0.85"/>`);
   let hatchId = 0;
-  for (const e of s.easements) parts.push(hatchPath(ringsPath(e.rings, proj), `ease${hatchId++}`, '#ffd200', bboxOf(e.rings, proj), 1.1));
+  for (const e of s.easements) parts.push(hatchPath(ringsPath(e.rings, proj), `ease${hatchId++}`, '#dca62e', bboxOf(e.rings, proj), 1.1));
   // the buildings on the lot, and the neighbours' footprints, as white outlines
   const siteRings = b.base.siteLots.features.flatMap((ft) => geomRings(ft.geometry));
   const insideSite = (lon: number, lat: number) => siteRings.some((r) => pointInRing(lon, lat, r));
@@ -3424,7 +3430,7 @@ export function siteSlide(b: SlidesBundle): Slide {
 
 // ---- slide 12: existing site condition ------------------------------------------
 
-const CAMERA_COLOUR = '#0b6e99';
+const CAMERA_COLOUR = '#2c4c9c';
 /** Between the two panels of the then-and-now pair. */
 const PAIR_GAP = 4;
 /** Round scales the camera plan may take; the smallest that holds every camera and the site wins. */
@@ -3609,7 +3615,7 @@ export function photosSlide(b: SlidesBundle): Slide {
         if (!spacer.take(x, y, bw, bh)) continue;
         named.add(r.name); placed = true;
         // a white slip under the name masks the centreline, which would otherwise show through the word gaps
-        parts.push(`<g transform="rotate(${rot.toFixed(1)} ${x.toFixed(1)} ${y.toFixed(1)})"><rect x="${(x - w / 2).toFixed(1)}" y="${(y - h / 2).toFixed(1)}" width="${w.toFixed(1)}" height="${h}" fill="#ffffff" fill-opacity="0.92"/><text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="middle" dominant-baseline="middle" font-size="2.1" letter-spacing="0.06em" fill="#444">${esc(text)}</text></g>`);
+        parts.push(`<g transform="rotate(${rot.toFixed(1)} ${x.toFixed(1)} ${y.toFixed(1)})"><rect x="${(x - w / 2).toFixed(1)}" y="${(y - h / 2).toFixed(1)}" width="${w.toFixed(1)}" height="${h}" fill="#ffffff" fill-opacity="0.92"/><text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="middle" dominant-baseline="middle" font-size="2.1" letter-spacing="0.06em" fill="#59625d">${esc(text)}</text></g>`);
         break;
       }
     }
@@ -3640,7 +3646,7 @@ export function photosSlide(b: SlidesBundle): Slide {
   const pe = panelExtent(pp);
   const pproj = panelProjector(pp);
   const sx = pp.wMm / (pe.xmax - pe.xmin), sy = pp.hMm / (pe.ymax - pe.ymin);
-  const tag = (text: string) => `<g><rect x="1.5" y="1.5" width="${(labelW(text, 2.6) + 1.6).toFixed(1)}" height="4.6" fill="#ffffff" fill-opacity="0.9"/><text x="2.3" y="4.9" font-size="2.6" font-weight="700" fill="${t.ink}">${esc(text)}</text></g>`;
+  const tag = (text: string) => `<g><rect x="1.5" y="1.5" width="${(labelW(text, 2.6) + 1.6).toFixed(1)}" height="4.6" fill="#faf4ea" fill-opacity="0.92"/><text x="2.3" y="4.9" font-size="2.6" font-weight="700" fill="${t.ink}">${esc(text)}</text></g>`;
   const pairSvg = (id: string, inner: string[]) => `<svg width="${pp.wMm}mm" height="${pp.hMm}mm" viewBox="0 0 ${pp.wMm} ${pp.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
     <defs><clipPath id="${id}"><rect x="0" y="0" width="${pp.wMm}" height="${pp.hMm}"/></clipPath></defs>
     <g clip-path="url(#${id})" font-family="${t.font}">${inner.join('\n')}</g>
@@ -3651,7 +3657,7 @@ export function photosSlide(b: SlidesBundle): Slide {
   for (const tl of ph.pair.then.tiles) thenParts.push(`<image href="data/${tl.file}" x="${((tl.xmin - pe.xmin) * sx - 0.03).toFixed(2)}" y="${((pe.ymax - tl.ymax) * sy - 0.03).toFixed(2)}" width="${((tl.xmax - tl.xmin) * sx + 0.06).toFixed(2)}" height="${((tl.ymax - tl.ymin) * sy + 0.06).toFixed(2)}" preserveAspectRatio="none"/>`);
   if (!ph.pair.then.tiles.length) thenParts.push(emptyNote(['The 1943 survey covers the', 'Sydney region only: no tile here.']));
   thenParts.push(siteMark(b.base, pproj, 'outline'), tag('1943'));
-  const nowParts: string[] = [`<rect x="0" y="0" width="${pp.wMm}" height="${pp.hMm}" fill="#f4f2ee"/>`];
+  const nowParts: string[] = [`<rect x="0" y="0" width="${pp.wMm}" height="${pp.hMm}" fill="#f5eee0"/>`];
   if (ph.pair.now) for (const tile of ph.pair.now.tiles) nowParts.push(`<image href="data/${tile.file}" x="${(tile.left * pp.wMm).toFixed(2)}" y="${(tile.top * pp.hMm).toFixed(2)}" width="${(tile.width * pp.wMm).toFixed(2)}" height="${(tile.height * pp.hMm).toFixed(2)}" preserveAspectRatio="none"/>`);
   else nowParts.push(emptyNote(['The aerial imagery did not', 'answer for this window.']));
   nowParts.push(siteMark(b.base, pproj, 'outline'), tag(img?.date ? img.date.slice(0, 4) : 'Today'), panelFurniture(pp, 'right'));
@@ -3685,13 +3691,13 @@ export function photosSlide(b: SlidesBundle): Slide {
 
 // ---- slide 13: grid, sun and views --------------------------------------------
 
-const SUN_COLOUR = '#e0a300';
+const SUN_COLOUR = '#dca62e';
 const SHADOW_HOURS: { hour: number; label: string; fill: string; opacity: number }[] = [
-  { hour: 9, label: '9 am', fill: '#3c4c5a', opacity: 0.14 },
-  { hour: 12, label: 'noon', fill: '#3c4c5a', opacity: 0.22 },
-  { hour: 15, label: '3 pm', fill: '#3c4c5a', opacity: 0.14 },
+  { hour: 9, label: '9 am', fill: '#4a5a62', opacity: 0.14 },
+  { hour: 12, label: 'noon', fill: '#4a5a62', opacity: 0.22 },
+  { hour: 15, label: '3 pm', fill: '#4a5a62', opacity: 0.14 },
 ];
-const VIEW_COLOUR: Record<ViewKind, string> = { city: '#2a78d6', water: '#1d8fb0', ocean: '#1d8fb0', park: '#3a7d3a' };
+const VIEW_COLOUR: Record<ViewKind, string> = { city: '#2c4c9c', water: '#3e7e9c', ocean: '#3e7e9c', park: '#4c8a68' };
 const VIEW_WORD: Record<ViewKind, string> = { city: 'skyline', water: 'water', ocean: 'ocean', park: 'park' };
 /** Clock offsets the deck uses: standard time for the winter day, daylight time for the summer one. */
 const AEST = 10, AEDT = 11;
@@ -3857,13 +3863,13 @@ function sunPathSvg(f: ReturnType<typeof sunViewFacts>, lat: number, lon: number
   const R = size / 2 - 7, cx = size / 2, cy = size / 2;
   const pt = (alt: number, az: number): [number, number] => { const r = (R * (90 - alt)) / 90; const a = (az * Math.PI) / 180; return [cx + r * Math.sin(a), cy - r * Math.cos(a)]; };
   const parts: string[] = [];
-  for (const alt of [0, 30, 60]) parts.push(`<circle cx="${cx}" cy="${cy}" r="${((R * (90 - alt)) / 90).toFixed(1)}" fill="${alt === 0 ? '#fbfaf7' : 'none'}" stroke="#c9c7c0" stroke-width="${alt === 0 ? 0.3 : 0.2}"/>`);
-  for (const alt of [30, 60]) parts.push(`<text x="${(cx + 0.6).toFixed(1)}" y="${(cy - (R * (90 - alt)) / 90 + 2).toFixed(1)}" font-size="1.6" fill="#8a8a8a">${alt}°</text>`);
-  for (let az = 0; az < 360; az += 30) { const [x1, y1] = pt(0, az), [x2, y2] = pt(-6, az); parts.push(`<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="#8a8a8a" stroke-width="0.25"/>`); }
-  for (const [az, txt] of [[0, 'N'], [90, 'E'], [180, 'S'], [270, 'W']] as const) { const [x, y] = pt(-12, az); parts.push(`<text x="${x.toFixed(1)}" y="${(y + 0.8).toFixed(1)}" text-anchor="middle" font-size="2.2" font-weight="700" fill="#333">${txt}</text>`); }
+  for (const alt of [0, 30, 60]) parts.push(`<circle cx="${cx}" cy="${cy}" r="${((R * (90 - alt)) / 90).toFixed(1)}" fill="${alt === 0 ? '#faf4ea' : 'none'}" stroke="#c9c7c0" stroke-width="${alt === 0 ? 0.3 : 0.2}"/>`);
+  for (const alt of [30, 60]) parts.push(`<text x="${(cx + 0.6).toFixed(1)}" y="${(cy - (R * (90 - alt)) / 90 + 2).toFixed(1)}" font-size="1.6" fill="#9aa19b">${alt}°</text>`);
+  for (let az = 0; az < 360; az += 30) { const [x1, y1] = pt(0, az), [x2, y2] = pt(-6, az); parts.push(`<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="#9aa19b" stroke-width="0.25"/>`); }
+  for (const [az, txt] of [[0, 'N'], [90, 'E'], [180, 'S'], [270, 'W']] as const) { const [x, y] = pt(-12, az); parts.push(`<text x="${x.toFixed(1)}" y="${(y + 0.8).toFixed(1)}" text-anchor="middle" font-size="2.2" font-weight="700" fill="#454f4b">${txt}</text>`); }
   // the grid axes through the centre
   for (const d of [f.grid.primaryDeg, f.grid.secondaryDeg].filter((x): x is number => x !== null)) { const [x1, y1] = pt(0, d), [x2, y2] = pt(0, d + 180); parts.push(`<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="#bdbbb3" stroke-width="0.3" stroke-dasharray="1,1"/>`); }
-  const arcs: [string, number, number, number, string, string][] = [['21 Dec', 12, 21, AEDT, SUN_COLOUR, ''], ['21 Mar / 21 Sep', 3, 21, AEDT, '#d8a24a', '1.2,0.8'], ['21 Jun', 6, 21, AEST, '#b0651a', '']];
+  const arcs: [string, number, number, number, string, string][] = [['21 Dec', 12, 21, AEDT, SUN_COLOUR, ''], ['21 Mar / 21 Sep', 3, 21, AEDT, '#c8963f', '1.2,0.8'], ['21 Jun', 6, 21, AEST, '#a4682b', '']];
   for (const [label, m, d, off, colour, dash] of arcs) {
     const path = sunPath(lat, lon, SOLAR_YEAR, m, d, off, 5).filter((s) => s.altitudeDeg >= 0);
     if (!path.length) continue;
@@ -3872,7 +3878,7 @@ function sunPathSvg(f: ReturnType<typeof sunViewFacts>, lat: number, lon: number
     for (const s of path.filter((q) => q.clockMin % 60 === 0)) {
       const [x, y] = pt(s.altitudeDeg, s.azimuthDeg);
       parts.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="0.7" fill="${colour}"/>`);
-      if (label === '21 Jun' || label === '21 Dec') parts.push(`<text x="${x.toFixed(1)}" y="${(y - 1.3).toFixed(1)}" text-anchor="middle" font-size="1.5" fill="#555">${s.clockMin / 60}</text>`);
+      if (label === '21 Jun' || label === '21 Dec') parts.push(`<text x="${x.toFixed(1)}" y="${(y - 1.3).toFixed(1)}" text-anchor="middle" font-size="1.5" fill="#6a7572">${s.clockMin / 60}</text>`);
     }
     const mid = path[Math.floor(path.length / 2)];
     const [lx, ly] = pt(mid.altitudeDeg + 7, mid.azimuthDeg);
@@ -3885,8 +3891,8 @@ function sunPathSvg(f: ReturnType<typeof sunViewFacts>, lat: number, lon: number
 function gridRoseSvg(f: ReturnType<typeof sunViewFacts>, size: number, font: string): string {
   const R = size / 2 - 7, cx = size / 2, cy = size / 2;
   const max = Math.max(1, ...f.grid.bins);
-  const parts: string[] = [`<circle cx="${cx}" cy="${cy}" r="${R}" fill="#fbfaf7" stroke="#c9c7c0" stroke-width="0.3"/>`];
-  for (const [az, txt] of [[0, 'N'], [90, 'E'], [180, 'S'], [270, 'W']] as const) { const a = (az * Math.PI) / 180; parts.push(`<text x="${(cx + (R + 4) * Math.sin(a)).toFixed(1)}" y="${(cy - (R + 4) * Math.cos(a) + 0.8).toFixed(1)}" text-anchor="middle" font-size="2.2" font-weight="700" fill="#333">${txt}</text>`); }
+  const parts: string[] = [`<circle cx="${cx}" cy="${cy}" r="${R}" fill="#faf4ea" stroke="#c9c7c0" stroke-width="0.3"/>`];
+  for (const [az, txt] of [[0, 'N'], [90, 'E'], [180, 'S'], [270, 'W']] as const) { const a = (az * Math.PI) / 180; parts.push(`<text x="${(cx + (R + 4) * Math.sin(a)).toFixed(1)}" y="${(cy - (R + 4) * Math.cos(a) + 0.8).toFixed(1)}" text-anchor="middle" font-size="2.2" font-weight="700" fill="#454f4b">${txt}</text>`); }
   f.grid.bins.forEach((v, i) => {
     if (!v) return;
     const r = (R * v) / max;
@@ -3898,7 +3904,7 @@ function gridRoseSvg(f: ReturnType<typeof sunViewFacts>, size: number, font: str
   // the site's long axis
   const a = (f.grid.siteAxisDeg * Math.PI) / 180;
   parts.push(`<line x1="${(cx - R * Math.sin(a)).toFixed(1)}" y1="${(cy + R * Math.cos(a)).toFixed(1)}" x2="${(cx + R * Math.sin(a)).toFixed(1)}" y2="${(cy - R * Math.cos(a)).toFixed(1)}" stroke="${tpl().site}" stroke-width="0.6" stroke-dasharray="1.6,1"/>`);
-  parts.push(`<text x="${cx}" y="${(size - 1).toFixed(1)}" text-anchor="middle" font-size="1.7" fill="#555">street bearings by length · site axis ${f.grid.siteAxisDeg}°</text>`);
+  parts.push(`<text x="${cx}" y="${(size - 1).toFixed(1)}" text-anchor="middle" font-size="1.7" fill="#6a7572">street bearings by length · site axis ${f.grid.siteAxisDeg}°</text>`);
   return `<svg width="${size}mm" height="${size}mm" viewBox="0 0 ${size} ${size}" xmlns="http://www.w3.org/2000/svg" font-family="${font}" style="display:block">${parts.join('')}</svg>`;
 }
 
@@ -3937,7 +3943,7 @@ export function sunViewSlide(b: SlidesBundle): Slide {
     const [x, y] = proj(bd.centroid[0], bd.centroid[1]);
     if (x < 3 || y < 3 || x > sp.wMm - 3 || y > sp.hMm - 3) continue;
     const text = bd.floors ? `${bd.floors} st` : `${fmtNum(bd.estimatedHeightM!)} m`;
-    if (spacer.take(x, y, labelW(text, 1.8), 2.3)) parts.push(label(x, y, text, 1.8, '#333'));
+    if (spacer.take(x, y, labelW(text, 1.8), 2.3)) parts.push(label(x, y, text, 1.8, '#454f4b'));
   }
   // the sun's direction at each hour, drawn at the panel edge
   for (const s of f.shadows) {
@@ -3947,7 +3953,7 @@ export function sunViewSlide(b: SlidesBundle): Slide {
     const x = cx + rEdge * Math.sin(a), y = cy - rEdge * Math.cos(a);
     const x2 = cx + (rEdge - 6) * Math.sin(a), y2 = cy - (rEdge - 6) * Math.cos(a);
     parts.push(`<line x1="${x.toFixed(1)}" y1="${y.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${SUN_COLOUR}" stroke-width="0.7" stroke-linecap="round"/><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="1.8" fill="${SUN_COLOUR}"/>`);
-    parts.push(label(x, y + 4.2, `${s.label} · ${s.altitudeDeg.toFixed(0)}°`, 1.9, '#7a5600'));
+    parts.push(label(x, y + 4.2, `${s.label} · ${s.altitudeDeg.toFixed(0)}°`, 1.9, '#9a7420'));
   }
   parts.push(panelFurniture(sp, 'right'));
   if (!f.castersInReach) parts.push(emptyNote(['No building within shadow reach of the site has a known height, so no shadow is drawn.']));
@@ -3980,7 +3986,7 @@ export function sunViewSlide(b: SlidesBundle): Slide {
   // Bottom: the views.
   const vp: Panel = { center: b.panel.center, scale: b.wide.panel.scale, wMm: PANEL_W, hMm: b.wide.panel.hMm };
   const vproj = panelProjector(vp);
-  const vparts: string[] = [`<rect x="0" y="0" width="${vp.wMm}" height="${vp.hMm}" fill="#ffffff"/>`];
+  const vparts: string[] = [`<rect x="0" y="0" width="${vp.wMm}" height="${vp.hMm}" fill="#faf4ea"/>`];
   if (b.wide.base.water.features.length) vparts.push(`<path d="${fcPath(b.wide.base.water, vproj)}" fill="${t.water}" fill-rule="evenodd"/>`);
   vparts.push(overLayers(b.wide.base, vproj, vp, 'none'));
   const [vx, vy] = vproj(centreLL.lon, centreLL.lat);
@@ -4045,10 +4051,10 @@ export function sunViewSlide(b: SlidesBundle): Slide {
 // ---- slide 17: opportunities and constraints ------------------------------
 
 const OC_SCALE = 4000;
-const OPP_COLOUR = '#2a78d6';
-const CON_COLOUR = '#b3261e';
-const NOISE_COLOUR = '#e07b39';
-const SHADOW_FILL = '#3c4c5a';
+const OPP_COLOUR = '#2f7d6d';
+const CON_COLOUR = '#ba4530';
+const NOISE_COLOUR = '#d9825b';
+const SHADOW_FILL = '#4a5a62';
 const NORTHISH = /^(N|NNE|NNW|NE|NW)$/;
 const POLICY_KIND_WORD: Record<string, string> = { tod: 'TOD area', todAccelerated: 'accelerated TOD precinct', todDeferred: 'deferred TOD area', townCentre: 'town centre', ssdSite: 'State significant development site', precinct: 'planning precinct' };
 /** "The Marrickville TOD area", "the Waterloo town centre (Danks Street)": the kind's word only when the name lacks it. */
@@ -4395,7 +4401,7 @@ export function ocSlide(b: SlidesBundle, planning: PlanningFacts): Slide {
     oLegend.push({ swatch: swatchFill(FRONTAGE_COLOUR, FRONTAGE_COLOUR), label: 'LEP active street frontage' });
   }
   const isos = b.movement.isochrones.filter((iso) => iso.minutes <= 10).sort((x, y) => y.minutes - x.minutes);
-  for (const iso of isos) oParts.push(`<path d="${ringsPath(iso.rings, proj)}" fill="none" stroke="${ISO_FILL[iso.minutes] ?? '#9ec5f4'}" stroke-width="0.5" stroke-dasharray="1.6,1" fill-rule="evenodd"/>`);
+  for (const iso of isos) oParts.push(`<path d="${ringsPath(iso.rings, proj)}" fill="none" stroke="${ISO_FILL[iso.minutes] ?? '#a8cdc2'}" stroke-width="0.5" stroke-dasharray="1.6,1" fill-rule="evenodd"/>`);
   if (isos.length) oLegend.push({ swatch: swatchLine(ISO_FILL[5], 0.5, '1.6,1'), label: `Walking reach from the site: ${isos.map((i) => i.minutes).sort((x, y) => x - y).join(' and ')} minutes` });
   oParts.push(overLayers(b.base, proj, p, 'wash'));
   const oSpacer = new LabelSpacer(p.wMm, p.hMm, 40);
@@ -4404,7 +4410,7 @@ export function ocSlide(b: SlidesBundle, planning: PlanningFacts): Slide {
   for (const iso of isos) {
     const pts = iso.rings[0]?.map(([lon, lat]) => proj(lon, lat)).filter(([x, y]) => x > 8 && x < p.wMm - 8 && y > 6 && y < p.hMm - 6) ?? [];
     const top = pts.sort((q, r) => q[1] - r[1])[0];
-    if (top && oSpacer.take(top[0], top[1] - 1.6, 9, 2.6)) oParts.push(label(top[0], top[1] - 1.6, `${iso.minutes} min`, 2, ISO_FILL[iso.minutes] ?? '#5598e7'));
+    if (top && oSpacer.take(top[0], top[1] - 1.6, 9, 2.6)) oParts.push(label(top[0], top[1] - 1.6, `${iso.minutes} min`, 2, ISO_FILL[iso.minutes] ?? '#6ba998'));
   }
   // view cones where the ground leaves the line clear
   const reachMm = Math.hypot(p.wMm, p.hMm);
@@ -4438,10 +4444,10 @@ export function ocSlide(b: SlidesBundle, planning: PlanningFacts): Slide {
       oParts.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${h.hour === 12 ? 1.6 : 1.1}" fill="${SUN_COLOUR}" stroke="#ffffff" stroke-width="0.3"/>`);
       const lx = cx + (arcR + 3.6) * Math.sin(a), ly = cy - (arcR + 3.6) * Math.cos(a);
       const text = h.hour === 12 ? `noon · ${h.altitudeDeg.toFixed(0)}°` : h.hour === 9 ? '9 am' : '3 pm';
-      if (oSpacer.take(lx, ly, labelW(text, 1.9), 2.5)) oParts.push(label(lx, ly, text, 1.9, '#7a5600'));
+      if (oSpacer.take(lx, ly, labelW(text, 1.9), 2.5)) oParts.push(label(lx, ly, text, 1.9, '#9a7420'));
     }
     const mid = arc[Math.floor(arc.length / 2)];
-    if (mid && oSpacer.take(mid[0], mid[1] - 6.2, labelW('winter sun', 1.9), 2.5)) oParts.push(label(mid[0], mid[1] - 6.2, 'winter sun', 1.9, '#7a5600'));
+    if (mid && oSpacer.take(mid[0], mid[1] - 6.2, labelW('winter sun', 1.9), 2.5)) oParts.push(label(mid[0], mid[1] - 6.2, 'winter sun', 1.9, '#9a7420'));
     oLegend.push({ swatch: `<path d="M0.4,3.2 Q2.5,-0.8 4.6,3.2" fill="none" stroke="${SUN_COLOUR}" stroke-width="0.8"/>`, label: 'Winter sun round the site, 9 am to 3 pm on 21 June' });
   }
   // stations beyond the diagram: an arrow at the edge with the distance
@@ -4474,7 +4480,7 @@ export function ocSlide(b: SlidesBundle, planning: PlanningFacts): Slide {
       const d = ringsPath(rings, proj);
       if (fill === 'none') cParts.push(`<path d="${d}" fill="none" stroke="#a80000" stroke-width="0.5" fill-rule="evenodd"/>`);
       else if (HATCHED_CLASS.test(cls)) cParts.push(hatchPath(d, `oc${hatchId++}`, fill === '#ffff73' ? '#b3a000' : fill, bboxOf(rings, proj), 1.3));
-      else cParts.push(`<path d="${d}" fill="${fill}" fill-opacity="${(DRAW_RANK[def.id] ?? 5) <= 2 ? 0.4 : 0.55}" stroke="#555" stroke-width="0.15" fill-rule="evenodd"/>`);
+      else cParts.push(`<path d="${d}" fill="${fill}" fill-opacity="${(DRAW_RANK[def.id] ?? 5) <= 2 ? 0.4 : 0.55}" stroke="#6a7572" stroke-width="0.15" fill-rule="evenodd"/>`);
       if (!any) {
         any = true;
         cLegend.push({ swatch: fill === 'none' ? swatchFill('none', '#a80000') : HATCHED_CLASS.test(cls) ? swatchHatch(fill === '#ffff73' ? '#b3a000' : fill) : swatchFill(fill), label: def.title });
@@ -4490,10 +4496,10 @@ export function ocSlide(b: SlidesBundle, planning: PlanningFacts): Slide {
     const st = heritageStyle(ft.properties?.LAY_CLASS);
     const d = ringsPath(rings, proj);
     if (st.hatch) { cParts.push(hatchPath(d, `oh${hh++}`, st.fill, bboxOf(rings, proj), 2.2)); heritageKinds.set(st.label, { swatch: swatchHatch(st.fill), label: st.label }); }
-    else { cParts.push(`<path d="${d}" fill="${st.fill}" fill-opacity="0.85" stroke="#6b4e1e" stroke-width="0.2" fill-rule="evenodd"/>`); heritageKinds.set(st.label, { swatch: swatchFill(st.fill, '#6b4e1e'), label: st.label }); }
+    else { cParts.push(`<path d="${d}" fill="${st.fill}" fill-opacity="0.85" stroke="#8a6a3c" stroke-width="0.2" fill-rule="evenodd"/>`); heritageKinds.set(st.label, { swatch: swatchFill(st.fill, '#8a6a3c'), label: st.label }); }
   }
   const shrIn = b.shr.features.filter((ft) => touches(geomRings(ft.geometry)));
-  if (shrIn.length) { cParts.push(`<path d="${shrIn.map((ft) => ringsPath(geomRings(ft.geometry), proj)).join('')}" fill="none" stroke="#7a1b1b" stroke-width="0.5"/>`); heritageKinds.set('shr', { swatch: swatchLine('#7a1b1b', 0.5), label: 'State Heritage Register curtilage' }); }
+  if (shrIn.length) { cParts.push(`<path d="${shrIn.map((ft) => ringsPath(geomRings(ft.geometry), proj)).join('')}" fill="none" stroke="#7c2f22" stroke-width="0.5"/>`); heritageKinds.set('shr', { swatch: swatchLine('#7c2f22', 0.5), label: 'State Heritage Register curtilage' }); }
   cLegend.push(...heritageKinds.values());
   cParts.push(overLayers(b.base, proj, p, 'wash'));
   // busy roads as noise sources
@@ -4518,7 +4524,7 @@ export function ocSlide(b: SlidesBundle, planning: PlanningFacts): Slide {
     const [x, y] = proj(bd.centroid[0], bd.centroid[1]);
     if (x < 3 || y < 3 || x > p.wMm - 3 || y > p.hMm - 3) continue;
     const text = `${bd.floors} st`;
-    if (cSpacer.take(x, y, labelW(text, 1.8), 2.3)) cParts.push(label(x, y, text, 1.8, '#333'));
+    if (cSpacer.take(x, y, labelW(text, 1.8), 2.3)) cParts.push(label(x, y, text, 1.8, '#454f4b'));
   }
   // easements, trees and the fall
   if (b.site.easements.length) {
@@ -4795,11 +4801,11 @@ export function sourcesSlide(b: SlidesBundle, planning: PlanningFacts): Slide {
 
 // ---- slide 15: Country -------------------------------------------------------
 
-const RIDGE_COLOUR = '#5a3e1b';
-const PLACE_COLOUR = '#b8561e';
+const RIDGE_COLOUR = '#8a6a3c';
+const PLACE_COLOUR = '#b5703a';
 /** The ePlanning heritage map's own colour for Aboriginal heritage, with a darker edge. */
-const LEP_ABORIGINAL_FILL = '#ffc700', LEP_ABORIGINAL_EDGE = '#8a6a00';
-const CREEK_COLOUR = '#1d6fa8';
+const LEP_ABORIGINAL_FILL = '#e3b53a', LEP_ABORIGINAL_EDGE = '#8a6a3c';
+const CREEK_COLOUR = '#3e7e9c';
 const NT_KIND_WORD: Record<string, string> = { determination: 'native title determination', claim: 'registered native title claim', ilua: 'Indigenous land use agreement' };
 
 export function countryFacts(b: SlidesBundle) {
@@ -4958,7 +4964,7 @@ export function countrySlide(b: SlidesBundle): Slide {
       if (pts.length < 2) continue;
       const mid = pts[Math.floor(pts.length / 2)];
       const text = titleCase(w.name!);
-      if (spacer.take(mid[0], mid[1] - 2.2, labelW(text, 2.1), 2.6)) { parts.push(`<text x="${mid[0].toFixed(1)}" y="${(mid[1] - 1.5).toFixed(1)}" text-anchor="middle" font-size="2.1" font-style="italic" font-weight="700" fill="${CREEK_COLOUR}" stroke="#ffffff" stroke-width="0.45" paint-order="stroke">${esc(text)}</text>`); done.add(w.name!); }
+      if (spacer.take(mid[0], mid[1] - 2.2, labelW(text, 2.1), 2.6)) { parts.push(`<text x="${mid[0].toFixed(1)}" y="${(mid[1] - 1.5).toFixed(1)}" text-anchor="middle" font-size="2.1" font-style="italic" font-weight="700" fill="${CREEK_COLOUR}" stroke="#faf4ea" stroke-width="0.45" paint-order="stroke">${esc(text)}</text>`); done.add(w.name!); }
     }
   }
   // the crests
@@ -4968,15 +4974,17 @@ export function countrySlide(b: SlidesBundle): Slide {
   }
   // the National Parks estate
   if (c.npws.length) {
-    parts.push(`<path d="${c.npws.map((n) => ringsPath(n.rings, wproj)).join('')}" fill="${NPWS_COLOUR}" fill-opacity="0.22" stroke="${NPWS_COLOUR}" stroke-width="0.35" fill-rule="evenodd"/>`);
+    const npwsD = c.npws.map((n) => ringsPath(n.rings, wproj)).join('');
+    parts.push(`<path d="${npwsD}" fill="${NPWS_COLOUR}" fill-opacity="0.14" stroke="${NPWS_COLOUR}" stroke-width="0.35" fill-rule="evenodd"/>`);
+    parts.push(dotsPath(npwsD, 'npwsdots', NPWS_COLOUR, bboxOf(c.npws.flatMap((n) => n.rings), wproj), 2.1, 0.26, 0.6));
     for (const n of c.npws) { let best = { area: 0, cx: 0, cy: 0 }; for (const r of n.rings) { const s = clippedStats(r, wproj, wp); if (s.area > best.area) best = s; } const text = tidyName(titleCase(n.name)); if (best.area > 40 && spacer.take(best.cx, best.cy, labelW(text, 2.1), 2.6)) parts.push(label(best.cx, best.cy, text, 2.1, NPWS_COLOUR)); }
     legend.push({ swatch: swatchFill(NPWS_COLOUR, NPWS_COLOUR), label: 'National Parks and Wildlife Service estate' });
   }
   // land council areas, where more than one reaches the strip
   if (f.lalcsInStrip.length > 1) {
-    parts.push(`<path d="${c.lalcs.map((l) => ringsPath(l.rings, wproj)).join('')}" fill="none" stroke="#3b2a10" stroke-width="0.6" stroke-dasharray="3,1.4"/>`);
-    for (const l of c.lalcs) { let best = { area: 0, cx: 0, cy: 0 }; for (const r of l.rings) { const s = clippedStats(r, wproj, wp); if (s.area > best.area) best = s; } const text = `${titleCase(l.local)} LALC`; if (best.area > 100 && spacer.take(best.cx, best.cy, labelW(text, 2.3), 3)) parts.push(label(best.cx, best.cy, text, 2.3, '#3b2a10')); }
-    legend.push({ swatch: swatchLine('#3b2a10', 0.6, '3,1.4'), label: 'Local Aboriginal Land Council boundary' });
+    parts.push(`<path d="${c.lalcs.map((l) => ringsPath(l.rings, wproj)).join('')}" fill="none" stroke="#5a4426" stroke-width="0.6" stroke-dasharray="3,1.4"/>`);
+    for (const l of c.lalcs) { let best = { area: 0, cx: 0, cy: 0 }; for (const r of l.rings) { const s = clippedStats(r, wproj, wp); if (s.area > best.area) best = s; } const text = `${titleCase(l.local)} LALC`; if (best.area > 100 && spacer.take(best.cx, best.cy, labelW(text, 2.3), 3)) parts.push(label(best.cx, best.cy, text, 2.3, '#5a4426')); }
+    legend.push({ swatch: swatchLine('#5a4426', 0.6, '3,1.4'), label: 'Local Aboriginal Land Council boundary' });
   }
   // gazetted Aboriginal Places: in the strip drawn, beyond it pointed to
   const placesIn = c.places.filter((p) => { const [x, y] = wproj(p.lon, p.lat); return x >= 0 && y >= 0 && x <= wp.wMm && y <= wp.hMm; });
@@ -5025,7 +5033,7 @@ export function countrySlide(b: SlidesBundle): Slide {
     for (const r of geomRings(ft.geometry)) { const s = clippedStats(r, wproj, wp); if (s.area > best.area) best = s; }
     if (best.area < 150) continue;
     const text = titleCase(name);
-    if (spacer.take(best.cx, best.cy, labelW(text, 2.1) + 1, 3)) parts.push(`<text x="${best.cx.toFixed(1)}" y="${(best.cy + 0.8).toFixed(1)}" text-anchor="middle" font-size="2.1" letter-spacing="0.08em" fill="#6f665a" stroke="#ffffff" stroke-width="0.4" paint-order="stroke">${esc(text.toUpperCase())}</text>`);
+    if (spacer.take(best.cx, best.cy, labelW(text, 2.1) + 1, 3)) parts.push(`<text x="${best.cx.toFixed(1)}" y="${(best.cy + 0.8).toFixed(1)}" text-anchor="middle" font-size="2.1" letter-spacing="0.08em" fill="#6f665a" stroke="#faf4ea" stroke-width="0.4" paint-order="stroke">${esc(text.toUpperCase())}</text>`);
   }
   parts.push(`<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="2.2" fill="#ffffff" stroke="${t.site}" stroke-width="0.6"/><circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="0.9" fill="${t.site}"/>`);
   legend.push({ swatch: `<circle cx="2.5" cy="1.8" r="1.6" fill="#ffffff" stroke="${t.site}" stroke-width="0.5"/><circle cx="2.5" cy="1.8" r="0.7" fill="${t.site}"/>`, label: 'The site' });
@@ -5062,10 +5070,10 @@ export function countrySlide(b: SlidesBundle): Slide {
   const barW = 28, barX = PANEL_W - barW - 11, rowH = 7.2, vegH = classes.length ? classes.length * rowH + 6 : 0;
   const clip = (str: string, max: number) => (str.length > max ? `${str.slice(0, max - 1).trimEnd()}…` : str);
   const vegSvg = classes.length ? `<svg width="${PANEL_W}mm" height="${vegH}mm" viewBox="0 0 ${PANEL_W} ${vegH}" xmlns="http://www.w3.org/2000/svg" font-family="${t.font}">
-    <text x="0" y="3" font-size="2.3" font-weight="700" fill="${t.ink}">Pre-1750 plant communities across the strip<tspan font-weight="400" fill="#666"> · share of its area (State Vegetation Type Map)</tspan></text>
+    <text x="0" y="3" font-size="2.3" font-weight="700" fill="${t.ink}">Pre-1750 plant communities across the strip<tspan font-weight="400" fill="#737c77"> · share of its area (State Vegetation Type Map)</tspan></text>
     ${classes.map((k, i) => { const y = 6 + i * rowH; const w = Math.max(0.6, (k.sharePct / Math.max(1, classes[0].sharePct)) * barW); return `<rect x="0" y="${(y + 0.6).toFixed(1)}" width="4" height="4" fill="${k.colour}" stroke="#777" stroke-width="0.15"/>` +
-      `<text x="6" y="${(y + 2.4).toFixed(1)}" font-size="2.25" font-weight="700" fill="${t.ink}">${esc(clip(k.pct, 60))}${k.pctId && k.pctId !== '0' ? `<tspan font-weight="400" fill="#666"> · PCT ${esc(k.pctId)}</tspan>` : ''}</text>` +
-      `<text x="6" y="${(y + 5.3).toFixed(1)}" font-size="1.9" fill="#666">${esc(clip([k.cls, k.formation].filter(Boolean).join(' · '), 88))}</text>` +
+      `<text x="6" y="${(y + 2.4).toFixed(1)}" font-size="2.25" font-weight="700" fill="${t.ink}">${esc(clip(k.pct, 60))}${k.pctId && k.pctId !== '0' ? `<tspan font-weight="400" fill="#737c77"> · PCT ${esc(k.pctId)}</tspan>` : ''}</text>` +
+      `<text x="6" y="${(y + 5.3).toFixed(1)}" font-size="1.9" fill="#737c77">${esc(clip([k.cls, k.formation].filter(Boolean).join(' · '), 88))}</text>` +
       `<rect x="${barX.toFixed(1)}" y="${(y + 0.9).toFixed(1)}" width="${w.toFixed(1)}" height="3.4" fill="${k.colour}" fill-opacity="0.85"/>` +
       `<text x="${(barX + w + 1.4).toFixed(1)}" y="${(y + 3.5).toFixed(1)}" font-size="2.2" font-weight="700" fill="${t.ink}">${fmtPct(k.sharePct)}</text>`; }).join('')}
   </svg>` : '';
@@ -5112,54 +5120,54 @@ export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; 
 <style>
   @page { size: ${SLIDE_W}mm ${SLIDE_H}mm; margin: 0; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body { font-family: ${t.font}; background: #fff; color: ${t.ink}; }
-  .slide { position: relative; width: ${SLIDE_W}mm; height: ${SLIDE_H}mm; overflow: hidden; background: #fff; page-break-after: always; break-after: page; }
+  html, body { font-family: ${t.font}; background: ${t.paper}; color: ${t.ink}; }
+  .slide { position: relative; width: ${SLIDE_W}mm; height: ${SLIDE_H}mm; overflow: hidden; background: ${t.paper}; page-break-after: always; break-after: page; }
   .slide:last-child { page-break-after: auto; break-after: auto; }
   .abs { position: absolute; }
-  .title { font-size: 6.4mm; font-weight: 400; letter-spacing: -0.01em; line-height: 1; }
-  .subtitle { font-size: 3mm; color: #555; }
+  .title { font-size: 6.6mm; font-weight: 450; letter-spacing: -0.015em; line-height: 1; }
+  .subtitle { font-size: 2.7mm; color: #6a7572; letter-spacing: 0.02em; margin-top: 0.4mm; }
   .text { font-size: 3.05mm; line-height: 1.38; overflow: hidden; }
   .text p { margin-bottom: 2.6mm; }
-  .text p.ph { color: #7a7a7a; font-style: italic; border-left: 0.4mm solid #cfcfcf; padding-left: 2.2mm; }
-  .text .fine { position: absolute; bottom: 0; left: 0; right: 0; font-size: 2.1mm; line-height: 1.3; color: #555; }
-  .ptitle { font-size: 3.1mm; font-weight: 700; line-height: ${PANEL_TITLE_H}mm; height: ${PANEL_TITLE_H}mm; white-space: nowrap; overflow: hidden; }
-  .pnote { font-weight: 400; color: #666; font-size: 2.2mm; margin-left: 2.4mm; }
+  .text p.ph { color: #8a918c; font-style: italic; border-left: 0.4mm solid #d8cfc0; padding-left: 2.2mm; }
+  .text .fine { position: absolute; bottom: 0; left: 0; right: 0; font-size: 2.1mm; line-height: 1.3; color: #6a7572; }
+  .ptitle { font-size: 2.65mm; font-weight: 650; letter-spacing: 0.1em; text-transform: uppercase; line-height: ${PANEL_TITLE_H}mm; height: ${PANEL_TITLE_H}mm; white-space: nowrap; overflow: hidden; }
+  .pnote { font-weight: 400; color: #737c77; font-size: 2.2mm; margin-left: 2.4mm; letter-spacing: 0; text-transform: none; }
   table.controls { width: 100%; border-collapse: collapse; font-size: 2.55mm; line-height: 1.32; }
   table.controls th, table.controls td { text-align: left; vertical-align: top; padding: 1.15mm 2mm 1.15mm 0; border-top: 0.15mm solid ${t.rule}; }
-  table.controls thead th { font-size: 2.2mm; letter-spacing: 0.04em; text-transform: uppercase; color: #555; font-weight: 700; border-top: 0; padding-bottom: 0.8mm; }
+  table.controls thead th { font-size: 2.2mm; letter-spacing: 0.04em; text-transform: uppercase; color: #6a7572; font-weight: 700; border-top: 0; padding-bottom: 0.8mm; }
   table.controls tbody th { font-weight: 700; }
-  table.controls td.src { color: #555; font-size: 2.25mm; }
-  table.controls .lnk a { color: #555; text-decoration: none; word-break: break-all; }
-  .foot { display: flex; justify-content: space-between; font-size: 2.1mm; color: #555; border-top: 0.15mm solid ${t.rule}; padding-top: 1.1mm; }
+  table.controls td.src { color: #6a7572; font-size: 2.25mm; }
+  table.controls .lnk a { color: #6a7572; text-decoration: none; word-break: break-all; }
+  .foot { display: flex; justify-content: space-between; font-size: 2.1mm; color: #6a7572; border-top: 0.15mm solid ${t.rule}; padding-top: 1.1mm; }
   .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3mm; }
-  .tile { border-top: 0.3mm solid ${t.ink}; padding-top: 1.4mm; }
-  .tv { font-size: 5.4mm; font-weight: 600; line-height: 1.05; letter-spacing: -0.01em; }
-  .tl { font-size: 2.1mm; color: #555; margin-top: 0.8mm; line-height: 1.25; }
+  .tile { border-top: 0.2mm solid ${t.ink}; padding-top: 1.6mm; }
+  .tv { font-size: 5.4mm; font-weight: 500; line-height: 1.05; letter-spacing: -0.015em; }
+  .tl { font-size: 2.1mm; color: #6a7572; margin-top: 0.8mm; line-height: 1.25; }
   .tiles.seven { grid-template-columns: repeat(7, 1fr); gap: 2.4mm; }
   .tiles.seven .tv { font-size: 4.9mm; }
   .tv.long { font-size: 4.1mm; }
   table.cmp { width: 100%; border-collapse: collapse; font-size: 2.3mm; line-height: 1.25; }
   table.cmp th, table.cmp td { text-align: right; vertical-align: top; padding: 0.85mm 0 0.85mm 1.5mm; border-top: 0.15mm solid ${t.rule}; font-variant-numeric: tabular-nums; }
   table.cmp th:first-child, table.cmp td:first-child { text-align: left; padding-left: 0; }
-  table.cmp thead th { font-size: 2.0mm; letter-spacing: 0.04em; text-transform: uppercase; color: #555; border-top: 0; padding-bottom: 0.7mm; font-weight: 700; }
+  table.cmp thead th { font-size: 2.0mm; letter-spacing: 0.04em; text-transform: uppercase; color: #6a7572; border-top: 0; padding-bottom: 0.7mm; font-weight: 700; }
   table.cmp td.hi { font-weight: 700; }
-  .stat { font-size: 2.2mm; color: #333; line-height: 1.3; margin-bottom: 1mm; }
-  .legend { font-size: 2.15mm; color: #333; line-height: 1.3; }
+  .stat { font-size: 2.2mm; color: #454f4b; line-height: 1.3; margin-bottom: 1mm; }
+  .legend { font-size: 2.15mm; color: #454f4b; line-height: 1.3; }
   .lg { display: flex; align-items: flex-start; gap: 1.6mm; margin-bottom: 0.7mm; }
   .lg svg { flex: none; margin-top: 0.1mm; }
   table.da { width: 100%; border-collapse: collapse; font-size: 2.3mm; line-height: 1.28; }
   table.da th, table.da td { text-align: left; vertical-align: top; padding: 0.95mm 1.6mm 0.95mm 0; border-top: 0.15mm solid ${t.rule}; }
-  table.da thead th { font-size: 2.05mm; letter-spacing: 0.04em; text-transform: uppercase; color: #555; border-top: 0; padding-bottom: 0.7mm; }
+  table.da thead th { font-size: 2.05mm; letter-spacing: 0.04em; text-transform: uppercase; color: #6a7572; border-top: 0; padding-bottom: 0.7mm; }
   table.da .n { width: 5mm; font-weight: 700; }
   table.da .r { text-align: right; padding-right: 3mm; font-variant-numeric: tabular-nums; }
-  table.da .more { color: #555; font-style: italic; }
+  table.da .more { color: #6a7572; font-style: italic; }
   table.da .dot { display: inline-block; width: 2.2mm; height: 2.2mm; border-radius: 50%; border: 0.25mm solid; margin-right: 1.2mm; vertical-align: -0.3mm; }
   table.da .dot.dia { border-radius: 0.2mm; transform: rotate(45deg) scale(0.8); }
   table.da.cons { font-size: 2.2mm; line-height: 1.22; }
   table.da.cons th, table.da.cons td { padding: 0.7mm 1.4mm 0.7mm 0; }
   table.da.cons tr.hit td { font-weight: 600; }
   table.da.cons tr.hit td:first-child { border-left: 0.6mm solid ${t.site}; padding-left: 1.2mm; }
-  table.da.facts th { width: 33mm; font-weight: 600; font-size: 2.2mm; text-transform: none; letter-spacing: 0; color: #333; text-align: left; vertical-align: top; }
+  table.da.facts th { width: 33mm; font-weight: 600; font-size: 2.2mm; text-transform: none; letter-spacing: 0; color: #454f4b; text-align: left; vertical-align: top; }
   .cnote { border-left: 0.6mm solid #b8561e; background: #faf5ee; padding: 2mm 3mm; font-size: 2.35mm; line-height: 1.34; }
   .cnote p + p { margin-top: 1.2mm; }
   .cnote b { font-weight: 700; }
@@ -5167,35 +5175,35 @@ export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; 
   table.da.src { font-size: 2.0mm; line-height: 1.22; }
   table.da.src th, table.da.src td { padding: 0.275em 0.8em 0.275em 0; }
   table.da.src thead th { font-size: 0.95em; }
-  table.da.src tr.grp td { font-weight: 700; padding-top: 0.85em; border-top: 0.3mm solid #999; color: #222; }
+  table.da.src tr.grp td { font-weight: 700; padding-top: 0.85em; border-top: 0.3mm solid #a9a69b; color: #2a3534; }
   table.da.src td.used, table.da.src td.ret { font-variant-numeric: tabular-nums; white-space: nowrap; }
-  table.da.src td.attr { color: #444; }
+  table.da.src td.attr { color: #59625d; }
   .oc { display: flex; align-items: flex-start; gap: 1.8mm; font-size: 2.35mm; line-height: 1.32; margin-top: 1.4mm; padding-right: 2mm; }
   .oc .n { flex: 0 0 4.2mm; height: 4.2mm; border-radius: 2.1mm; color: #fff; font-weight: 700; font-size: 2.2mm; text-align: center; line-height: 4.2mm; margin-top: 0.1mm; }
   .oc .t b { font-weight: 700; }
   .photos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3mm ${GUTTER}mm; }
-  .frame .img { position: relative; height: 55mm; background: #ecebe7; overflow: hidden; }
+  .frame .img { position: relative; height: 55mm; background: #f1e9dc; overflow: hidden; }
   .frame img { display: block; width: 100%; height: 100%; object-fit: cover; }
   .frame img.whole { object-fit: contain; }
   .frame .key { position: absolute; left: 2mm; top: 2mm; width: 6mm; height: 6mm; border-radius: 50%; background: ${CAMERA_COLOUR}; border: 0.35mm solid #fff; color: #fff; font-weight: 700; font-size: 2.9mm; line-height: 5.3mm; text-align: center; }
-  .frame .cap { font-size: 2.05mm; line-height: 1.3; color: #333; margin-top: 1mm; }
-  .frame.ph .img { display: flex; align-items: center; justify-content: center; text-align: center; padding: 0 8mm; border: 0.3mm dashed #c4c4c4; background: #fafaf8; color: #8a8a8a; font-size: 2.4mm; font-style: italic; }
-  .frame.ph .cap { color: #7a7a7a; font-style: italic; }
+  .frame .cap { font-size: 2.05mm; line-height: 1.3; color: #454f4b; margin-top: 1mm; }
+  .frame.ph .img { display: flex; align-items: center; justify-content: center; text-align: center; padding: 0 8mm; border: 0.3mm dashed #cdc4b4; background: #f7f1e6; color: #9aa19b; font-size: 2.4mm; font-style: italic; }
+  .frame.ph .cap { color: #8a918c; font-style: italic; }
   .photos.four { grid-template-columns: repeat(4, 1fr); gap: 3mm 4mm; }
   .photos.four .frame .img { height: 50mm; }
-  .frame .key.plc { background: #6b21a8; }
-  .quote { border-left: 0.5mm solid #cfcfcf; padding: 0.4mm 0 0.4mm 2.6mm; margin: 0 0 2.6mm; }
+  .frame .key.plc { background: #2c4c9c; }
+  .quote { border-left: 0.5mm solid #d8cfc0; padding: 0.4mm 0 0.4mm 2.6mm; margin: 0 0 2.6mm; }
   .quote p { font-size: 2.75mm; line-height: 1.36; margin-bottom: 1.2mm; }
-  .qsrc { font-size: 2.05mm; color: #666; word-break: break-all; }
-  .dim { color: #666; font-weight: 400; }
+  .qsrc { font-size: 2.05mm; color: #737c77; word-break: break-all; }
+  .dim { color: #737c77; font-weight: 400; }
   table.da.strat { font-size: 2.25mm; line-height: 1.28; }
   table.da.strat th { width: auto; }
-  table.da.strat tbody th { font-weight: 700; font-size: 2.05mm; letter-spacing: 0.04em; text-transform: uppercase; color: #555; width: 22mm; padding-top: 1.3mm; }
+  table.da.strat tbody th { font-weight: 700; font-size: 2.05mm; letter-spacing: 0.04em; text-transform: uppercase; color: #6a7572; width: 22mm; padding-top: 1.3mm; }
   table.da.strat td { padding: 1.1mm 2mm 1.1mm 0; }
-  table.da.strat td.status { width: 46mm; color: #444; }
+  table.da.strat td.status { width: 46mm; color: #59625d; }
   table.da.strat td.lnk { width: 64mm; }
-  table.da.strat td.lnk a { color: #555; text-decoration: none; word-break: break-all; font-size: 2.0mm; }
-  table.da.strat tr.manual td { color: #7a7a7a; font-style: italic; }
+  table.da.strat td.lnk a { color: #6a7572; text-decoration: none; word-break: break-all; font-size: 2.0mm; }
+  table.da.strat tr.manual td { color: #8a918c; font-style: italic; }
   table.da.strat tr.manual td b { font-weight: 600; }
 </style></head>
 <body>${pages}</body></html>`;

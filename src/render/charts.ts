@@ -8,14 +8,14 @@
 import { esc } from './chrome.js';
 
 export const CHART = {
-  accent: '#2a78d6',
-  projection: '#86b6ef',
-  benchmark: '#bdbbb3',
-  ink: '#1c1c1c',
-  secondary: '#52514e',
-  muted: '#898781',
-  grid: '#e1e0d9',
-  axis: '#c3c2b7',
+  accent: '#2f7d6d',
+  projection: '#9ec9bc',
+  benchmark: '#d3c8b4',
+  ink: '#2a3534',
+  secondary: '#5a635e',
+  muted: '#8a918c',
+  grid: '#ece4d4',
+  axis: '#d8cfc0',
 };
 
 export interface YearValue { year: number; value: number }
@@ -94,8 +94,8 @@ export function lineWithProjection(o: LineChartOpts): string {
   // end marks and labels
   const endDot = (v: YearValue, fill: string, text: string, anchor: 'middle' | 'end', dy: number) => {
     const x = X(v.year), y = Y(v.value);
-    parts.push(`<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="1.35" fill="#ffffff"/><circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="1.05" fill="${fill}"/>`);
-    parts.push(`<text x="${(anchor === 'end' ? x : x).toFixed(2)}" y="${(y + dy).toFixed(2)}" text-anchor="${anchor}" font-size="2.05" font-weight="700" fill="${CHART.ink}" stroke="#ffffff" stroke-width="0.45" paint-order="stroke">${esc(text)}</text>`);
+    parts.push(`<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="1.35" fill="#faf4ea"/><circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="1.05" fill="${fill}"/>`);
+    parts.push(`<text x="${(anchor === 'end' ? x : x).toFixed(2)}" y="${(y + dy).toFixed(2)}" text-anchor="${anchor}" font-size="2.05" font-weight="700" fill="${CHART.ink}" stroke="#faf4ea" stroke-width="0.45" paint-order="stroke">${esc(text)}</text>`);
   };
   if (projection.length) {
     const last = projection[projection.length - 1];
@@ -128,7 +128,7 @@ export function pairedBars(o: PairedBarsOpts): string {
   if (!rows.length) return '';
   const labelW = o.labelW ?? 21, valueW = 9, top = o.bLabel ? 6 : 2;
   const twin = rows.some((r) => Number.isFinite(r.b));
-  const barH = twin ? 1.6 : 2.2, gap = 0.5;
+  const barH = twin ? 1.4 : 1.9, gap = 0.6;
   const rowH = (h - top - 1) / rows.length;
   const pw = w - labelW - valueW - 1;
   const max = Math.max(1e-9, ...rows.flatMap((r) => [r.a, Number.isFinite(r.b) ? (r.b as number) : 0]));
@@ -171,7 +171,7 @@ export function columns(o: ColumnsOpts): string {
   const left = 2, right = 2, top = 5, bottom = 5.5;
   const ph = h - top - bottom;
   const slot = (w - left - right) / values.length;
-  const barW = Math.min(6, slot * 0.5);
+  const barW = Math.min(4.5, slot * 0.38);
   const max = Math.max(1e-9, ...values.map((v) => v.value));
   const base = top + ph;
   const parts: string[] = [`<line x1="${left}" y1="${base.toFixed(2)}" x2="${(w - right).toFixed(2)}" y2="${base.toFixed(2)}" stroke="${CHART.axis}" stroke-width="0.15"/>`];
@@ -186,7 +186,7 @@ export function columns(o: ColumnsOpts): string {
     const x = left + (o.marker.index + 0.5) * slot;
     parts.push(`<line x1="${x.toFixed(2)}" y1="${(top - 1).toFixed(2)}" x2="${x.toFixed(2)}" y2="${base.toFixed(2)}" stroke="${o.marker.colour}" stroke-width="0.4" stroke-dasharray="1.4,0.8"/>`);
     const anchor = x > w * 0.6 ? 'end' : 'start';
-    parts.push(`<text x="${(x + (anchor === 'end' ? -1.2 : 1.2)).toFixed(2)}" y="${(top + ph * 0.45).toFixed(2)}" text-anchor="${anchor}" font-size="1.9" font-weight="700" fill="${o.marker.colour}" stroke="#ffffff" stroke-width="0.4" paint-order="stroke">${esc(o.marker.label)}</text>`);
+    parts.push(`<text x="${(x + (anchor === 'end' ? -1.2 : 1.2)).toFixed(2)}" y="${(top + ph * 0.45).toFixed(2)}" text-anchor="${anchor}" font-size="1.9" font-weight="700" fill="${o.marker.colour}" stroke="#faf4ea" stroke-width="0.4" paint-order="stroke">${esc(o.marker.label)}</text>`);
   }
   return `${svgOpen(w, h, o.font)}${parts.join('')}</svg>`;
 }
@@ -247,7 +247,7 @@ export function sectionSvg(o: SectionOpts): { svg: string; ve: number } {
     parts.push(`<text x="${X(d).toFixed(2)}" y="${(base + 3.4).toFixed(2)}" text-anchor="middle" font-size="1.95" fill="${CHART.muted}">${Math.round(d)}${d === 0 ? ' m' : ''}</text>`);
   // ground: fill to the base, then water and site as bands under the line
   const line = samples.map((s, i) => `${i ? 'L' : 'M'}${X(s.d).toFixed(2)},${Y(s.rl).toFixed(2)}`).join('');
-  parts.push(`<path d="${line}L${X(L).toFixed(2)},${base.toFixed(2)}L${left},${base.toFixed(2)}Z" fill="#e9e7e0"/>`);
+  parts.push(`<path d="${line}L${X(L).toFixed(2)},${base.toFixed(2)}L${left},${base.toFixed(2)}Z" fill="#ece5d6"/>`);
   const bands = (flag: 'site' | 'water', fill: string, opacity: number) => {
     let start = -1;
     const runs: [number, number][] = [];
@@ -273,7 +273,7 @@ export function sectionSvg(o: SectionOpts): { svg: string; ve: number } {
     const floor = under.length ? under : [{ d: bk.d0, rl: groundAt(bk.d0) }, { d: bk.d1, rl: groundAt(bk.d1) }];
     const d = `M${X(bk.d0).toFixed(2)},${Y(bk.top).toFixed(2)}L${X(bk.d1).toFixed(2)},${Y(bk.top).toFixed(2)}` +
       `L${X(bk.d1).toFixed(2)},${Y(groundAt(bk.d1)).toFixed(2)}` + [...floor].reverse().map((s) => `L${X(s.d).toFixed(2)},${Y(s.rl).toFixed(2)}`).join('') + `L${X(bk.d0).toFixed(2)},${Y(groundAt(bk.d0)).toFixed(2)}Z`;
-    parts.push(`<path d="${d}" fill="${bk.site ? o.siteColour : '#cfcdc6'}" fill-opacity="${bk.site ? 0.45 : bk.unknown ? 0.35 : 0.9}" stroke="${bk.site ? o.siteColour : '#8f8d86'}" stroke-width="0.2"${bk.unknown || bk.approx ? ' stroke-dasharray="0.8,0.6"' : ''}/>`);
+    parts.push(`<path d="${d}" fill="${bk.site ? o.siteColour : '#d8d0c0'}" fill-opacity="${bk.site ? 0.45 : bk.unknown ? 0.35 : 0.9}" stroke="${bk.site ? o.siteColour : '#948c7c'}" stroke-width="0.2"${bk.unknown || bk.approx ? ' stroke-dasharray="0.8,0.6"' : ''}/>`);
   }
   parts.push('</g>');
   for (const bk of o.blocks ?? []) {
@@ -299,19 +299,19 @@ export function sectionSvg(o: SectionOpts): { svg: string; ve: number } {
     parts.push(`<line x1="${X(a.d).toFixed(2)}" y1="${yb.toFixed(2)}" x2="${X(a.d).toFixed(2)}" y2="${Y(a.rl).toFixed(2)}" stroke="${o.siteColour}" stroke-width="0.25"/>`);
     parts.push(`<line x1="${X(b.d).toFixed(2)}" y1="${yb.toFixed(2)}" x2="${X(b.d).toFixed(2)}" y2="${Y(b.rl).toFixed(2)}" stroke="${o.siteColour}" stroke-width="0.25"/>`);
     parts.push(`<text x="${((X(a.d) + X(b.d)) / 2).toFixed(2)}" y="${(yb - 1.2).toFixed(2)}" text-anchor="middle" font-size="2.1" font-weight="700" fill="${o.siteColour}">SITE</text>`);
-    parts.push(`<text x="${(X(a.d) - 0.8).toFixed(2)}" y="${(yb + 2.4).toFixed(2)}" text-anchor="end" font-size="1.9" fill="${CHART.ink}" stroke="#ffffff" stroke-width="0.4" paint-order="stroke">RL ${a.rl.toFixed(1)}</text>`);
-    parts.push(`<text x="${(X(b.d) + 0.8).toFixed(2)}" y="${(yb + 2.4).toFixed(2)}" font-size="1.9" fill="${CHART.ink}" stroke="#ffffff" stroke-width="0.4" paint-order="stroke">RL ${b.rl.toFixed(1)}</text>`);
+    parts.push(`<text x="${(X(a.d) - 0.8).toFixed(2)}" y="${(yb + 2.4).toFixed(2)}" text-anchor="end" font-size="1.9" fill="${CHART.ink}" stroke="#faf4ea" stroke-width="0.4" paint-order="stroke">RL ${a.rl.toFixed(1)}</text>`);
+    parts.push(`<text x="${(X(b.d) + 0.8).toFixed(2)}" y="${(yb + 2.4).toFixed(2)}" font-size="1.9" fill="${CHART.ink}" stroke="#faf4ea" stroke-width="0.4" paint-order="stroke">RL ${b.rl.toFixed(1)}</text>`);
     // The height plane's label: beside its line when the site is wide enough, else stacked over the site's name.
     const e = o.envelope;
     if (e && e.d1 > a.d && e.d0 < b.d && !envelopeLabel) {
       const wide = X(e.d1) - X(e.d0) >= 14 && Y(e.top) - yb > 5;
       envelopeLabel = wide
-        ? `<text x="${(X(e.d0) + 0.6).toFixed(2)}" y="${(Y(e.top) - 1).toFixed(2)}" font-size="1.9" font-weight="700" fill="${o.siteColour}" stroke="#ffffff" stroke-width="0.4" paint-order="stroke">${esc(e.label)}</text>`
-        : `<text x="${((X(a.d) + X(b.d)) / 2).toFixed(2)}" y="${(yb - 4.2).toFixed(2)}" text-anchor="middle" font-size="1.9" font-weight="700" fill="${o.siteColour}" stroke="#ffffff" stroke-width="0.4" paint-order="stroke">${esc(e.label)}</text>`;
+        ? `<text x="${(X(e.d0) + 0.6).toFixed(2)}" y="${(Y(e.top) - 1).toFixed(2)}" font-size="1.9" font-weight="700" fill="${o.siteColour}" stroke="#faf4ea" stroke-width="0.4" paint-order="stroke">${esc(e.label)}</text>`
+        : `<text x="${((X(a.d) + X(b.d)) / 2).toFixed(2)}" y="${(yb - 4.2).toFixed(2)}" text-anchor="middle" font-size="1.9" font-weight="700" fill="${o.siteColour}" stroke="#faf4ea" stroke-width="0.4" paint-order="stroke">${esc(e.label)}</text>`;
     }
   }
   if (o.envelope && !envelopeLabel)
-    envelopeLabel = `<text x="${(X(o.envelope.d0) + 0.6).toFixed(2)}" y="${(Y(o.envelope.top) - 1).toFixed(2)}" font-size="1.9" font-weight="700" fill="${o.siteColour}" stroke="#ffffff" stroke-width="0.4" paint-order="stroke">${esc(o.envelope.label)}</text>`;
+    envelopeLabel = `<text x="${(X(o.envelope.d0) + 0.6).toFixed(2)}" y="${(Y(o.envelope.top) - 1).toFixed(2)}" font-size="1.9" font-weight="700" fill="${o.siteColour}" stroke="#faf4ea" stroke-width="0.4" paint-order="stroke">${esc(o.envelope.label)}</text>`;
   if (envelopeLabel) parts.push(envelopeLabel);
   // The highest and lowest points of the ground, unless they are the site's own labels.
   // A crest just outside the site would print over the site's edge label, so there its label goes below the line.
@@ -322,11 +322,11 @@ export function sectionSvg(o: SectionOpts): { svg: string; ve: number } {
     if (s.site) continue;
     const nearSite = siteEdgesX.some((x) => Math.abs(x - X(s.d)) < 9);
     if (!nearSite) parts.push(`<circle cx="${X(s.d).toFixed(2)}" cy="${Y(s.rl).toFixed(2)}" r="0.7" fill="${CHART.ink}"/>`);
-    parts.push(`<text x="${X(s.d).toFixed(2)}" y="${(Y(s.rl) + (anchor === 'lo' || nearSite ? 3.4 : -1.6)).toFixed(2)}" text-anchor="middle" font-size="1.9" fill="${CHART.secondary}" stroke="#ffffff" stroke-width="0.4" paint-order="stroke">RL ${s.rl.toFixed(1)}</text>`);
+    parts.push(`<text x="${X(s.d).toFixed(2)}" y="${(Y(s.rl) + (anchor === 'lo' || nearSite ? 3.4 : -1.6)).toFixed(2)}" text-anchor="middle" font-size="1.9" fill="${CHART.secondary}" stroke="#faf4ea" stroke-width="0.4" paint-order="stroke">RL ${s.rl.toFixed(1)}</text>`);
   }
   // ends
   const endMark = (x: number, text: string) =>
-    `<circle cx="${x.toFixed(2)}" cy="3.2" r="2.4" fill="#ffffff" stroke="${CHART.ink}" stroke-width="0.3"/><text x="${x.toFixed(2)}" y="4.1" text-anchor="middle" font-size="2.4" font-weight="700" fill="${CHART.ink}">${esc(text)}</text>`;
+    `<circle cx="${x.toFixed(2)}" cy="3.2" r="2.4" fill="#faf4ea" stroke="${CHART.ink}" stroke-width="0.3"/><text x="${x.toFixed(2)}" y="4.1" text-anchor="middle" font-size="2.4" font-weight="700" fill="${CHART.ink}">${esc(text)}</text>`;
   parts.push(endMark(left + 2.4, o.from), endMark(w - right - 2.4, o.to));
   return { svg: `${svgOpen(w, h, o.font)}${parts.join('')}</svg>`, ve };
 }

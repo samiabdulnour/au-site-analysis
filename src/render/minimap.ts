@@ -73,10 +73,10 @@ export interface BaseData {
 export function baseLayers(b: BaseData, proj: Proj, p: Panel, opts: { lots?: boolean } = {}): string {
   const t = tpl();
   const parts: string[] = [];
-  parts.push(`<rect x="0" y="0" width="${p.wMm}" height="${p.hMm}" fill="#ffffff"/>`);
+  parts.push(`<rect x="0" y="0" width="${p.wMm}" height="${p.hMm}" fill="${t.paper}"/>`);
   if (b.water.features.length) parts.push(`<path d="${fcPath(b.water, proj)}" fill="${t.water}" fill-rule="evenodd"/>`);
   if (opts.lots !== false && b.lots.features.length)
-    parts.push(`<path d="${fcPath(b.lots, proj)}" fill="none" stroke="#9a9a9a" stroke-width="0.08" opacity="0.7"/>`);
+    parts.push(`<path d="${fcPath(b.lots, proj)}" fill="none" stroke="#b9ae99" stroke-width="0.08" opacity="0.6"/>`);
   return parts.join('\n');
 }
 
@@ -98,7 +98,7 @@ export function overLayers(b: BaseData, proj: Proj, p: Panel, site: SiteLayer = 
   }
   // Casing then fill, so junctions read as one network rather than a pile of ends.
   for (const [w, ds] of [...byWidth.entries()].sort((a, b2) => b2[0] - a[0]))
-    parts.push(`<path d="${ds.join('')}" fill="none" stroke="#6f6f6f" stroke-width="${(w + 0.22).toFixed(2)}" stroke-linecap="round" stroke-linejoin="round"/>`);
+    parts.push(`<path d="${ds.join('')}" fill="none" stroke="${t.road}" stroke-width="${(w + 0.22).toFixed(2)}" stroke-linecap="round" stroke-linejoin="round"/>`);
   for (const [w, ds] of [...byWidth.entries()].sort((a, b2) => b2[0] - a[0]))
     parts.push(`<path d="${ds.join('')}" fill="none" stroke="#ffffff" stroke-width="${w.toFixed(2)}" stroke-linecap="round" stroke-linejoin="round"/>`);
   if (b.rail.train.length) {
@@ -114,8 +114,8 @@ export function overLayers(b: BaseData, proj: Proj, p: Panel, site: SiteLayer = 
     const [x, y] = proj(s.lon, s.lat);
     if (x < 2 || y < 2 || x > p.wMm - 2 || y > p.hMm - 2) continue;
     const mode = stationMode(s.name);
-    parts.push(`<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})"><circle r="2" fill="#ffffff" stroke="${t.site}" stroke-width="0.45"/>` +
-      `<text text-anchor="middle" dy="1.05" font-size="3" font-weight="700" fill="${t.site}">${mode === 'light rail' ? 'L' : mode === 'metro' ? 'M' : 'T'}</text></g>`);
+    parts.push(`<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})"><circle r="2" fill="#ffffff" stroke="${t.transit}" stroke-width="0.45"/>` +
+      `<text text-anchor="middle" dy="1.05" font-size="3" font-weight="700" fill="${t.transit}">${mode === 'light rail' ? 'L' : mode === 'metro' ? 'M' : 'T'}</text></g>`);
   }
   if (site !== 'none') parts.push(siteMark(b, proj, site));
   return parts.join('\n');
@@ -172,7 +172,7 @@ export function panelFurniture(p: Panel, corner: FurnitureCorner = 'left'): stri
   const t = tpl();
   const { barM, barMm, x0, y0 } = furnitureGeom(p, corner);
   return `<g font-family="${t.font}" font-size="2" fill="${t.ink}">
-    <rect x="${x0 - 1.2}" y="${y0 - 8.6}" width="${(barMm + 9).toFixed(1)}" height="10.4" fill="#ffffff" fill-opacity="0.85"/>
+    <rect x="${x0 - 1.2}" y="${y0 - 8.6}" width="${(barMm + 9).toFixed(1)}" height="10.4" fill="${t.paper}" fill-opacity="0.85"/>
     <rect x="${x0}" y="${y0 - 1.2}" width="${(barMm / 2).toFixed(2)}" height="1.2" fill="${t.ink}"/>
     <rect x="${(x0 + barMm / 2).toFixed(2)}" y="${y0 - 1.2}" width="${(barMm / 2).toFixed(2)}" height="1.2" fill="none" stroke="${t.ink}" stroke-width="0.2"/>
     <text x="${x0}" y="${y0 - 2}" >0</text>
@@ -194,6 +194,30 @@ export function hatchPath(d: string, id: string, colour: string, bbox: { x0: num
     `<g clip-path="url(#${id})" stroke="${colour}" stroke-width="0.22" opacity="0.9">${lines}</g>` +
     `<path d="${d}" fill="none" stroke="${colour}" stroke-width="0.35"/>`;
 }
+
+/**
+ * A dot grid clipped to a shape — the book's texture for the living layers
+ * (parks, canopy, reach), drawn as circles for the same reason the hatch is
+ * drawn as lines. Offset rows, so the grid reads as a weave rather than
+ * graph paper. `step` sets the density; `r` the dot.
+ */
+export function dotsPath(d: string, id: string, colour: string, bbox: { x0: number; y0: number; x1: number; y1: number }, step = 1.6, r = 0.3, opacity = 0.9): string {
+  let dots = '';
+  let row = 0;
+  for (let y = bbox.y0; y <= bbox.y1; y += step * 0.866, row++) {
+    const off = row % 2 ? step / 2 : 0;
+    for (let x = bbox.x0 + off; x <= bbox.x1; x += step)
+      dots += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r}"/>`;
+  }
+  return `<clipPath id="${id}"><path d="${d}"/></clipPath>` +
+    `<g clip-path="url(#${id})" fill="${colour}" opacity="${opacity}">${dots}</g>`;
+}
+
+/** The dot-grid legend swatch that matches dotsPath. */
+export const swatchDots = (colour: string, stroke?: string) =>
+  `<rect x="0" y="0.2" width="5" height="3" fill="none" stroke="${stroke ?? colour}" stroke-width="0.25"/>` +
+  `<circle cx="1.2" cy="1.1" r="0.32" fill="${colour}"/><circle cx="2.8" cy="1.1" r="0.32" fill="${colour}"/><circle cx="4.4" cy="1.1" r="0.32" fill="${colour}"/>` +
+  `<circle cx="2" cy="2.3" r="0.32" fill="${colour}"/><circle cx="3.6" cy="2.3" r="0.32" fill="${colour}"/>`;
 
 export function bboxOf(rings: number[][][], proj: Proj) {
   let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
@@ -287,7 +311,7 @@ export function legendSvg(entries: LegendEntry[], widthMm: number, rows = 5, fon
   return { svg: `<g font-family="${tpl().font}" fill="${tpl().ink}">${parts.join('')}</g>`, heightMm: used };
 }
 
-export const swatchFill = (fill: string, stroke = '#777', dash?: string) =>
+export const swatchFill = (fill: string, stroke = '#8a8378', dash?: string) =>
   `<rect x="0" y="0.2" width="5" height="3" fill="${fill}" stroke="${stroke}" stroke-width="0.25"${dash ? ` stroke-dasharray="${dash}"` : ''}/>`;
 export const swatchHatch = (colour: string) =>
   `<rect x="0" y="0.2" width="5" height="3" fill="none" stroke="${colour}" stroke-width="0.3"/>` +

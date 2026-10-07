@@ -44,7 +44,7 @@ export function heritageStyle(layClass: string | undefined): HeritageStyle {
  * not binned, so a window with three heights uses three well-separated steps
  * and a CBD with twelve still reads in order.
  */
-const HOB_RAMP = ['#fff7dc', '#fde9b4', '#fbd68a', '#f5bd63', '#ec9f45', '#dd7f31', '#c96126', '#a9491e', '#83361a', '#5c2615'];
+const HOB_RAMP = ['#fbf1dc', '#f6e3be', '#efce9a', '#e4b278', '#d6935a', '#c47744', '#ac5b33', '#8f4527', '#6e331d', '#4e2415'];
 export function hobRamp(rank: number, count: number): string {
   if (count <= 1) return HOB_RAMP[3];
   const i = Math.round((rank / (count - 1)) * (HOB_RAMP.length - 1));
@@ -53,10 +53,10 @@ export function hobRamp(rank: number, count: number): string {
 
 /** Policy-map styles for the housing-policy panel. */
 export const POLICY_STYLE: Record<string, { fill: string; stroke: string; dash?: string; label: string }> = {
-  tod:            { fill: '#df73ff', stroke: '#a326c9', label: 'Transport Oriented Development area' },
-  todAccelerated: { fill: 'none',    stroke: '#a326c9', dash: '2.2,1.2', label: 'Accelerated TOD precinct' },
-  todDeferred:    { fill: 'none',    stroke: '#a326c9', dash: '0.8,1.2', label: 'Deferred TOD area' },
-  townCentre:     { fill: '#ffb366', stroke: '#c46a12', label: 'Town centre (low and mid-rise housing policy)' },
-  ssdSite:        { fill: 'none',    stroke: '#1f4e79', dash: '3,1.5', label: 'State significant development site' },
-  precinct:       { fill: 'none',    stroke: '#0f8f8f', dash: '1.6,1.6', label: 'Planning precinct' },
+  tod:            { fill: '#c9a7e0', stroke: '#7c4a9e', label: 'Transport Oriented Development area' },
+  todAccelerated: { fill: 'none',    stroke: '#7c4a9e', dash: '2.2,1.2', label: 'Accelerated TOD precinct' },
+  todDeferred:    { fill: 'none',    stroke: '#7c4a9e', dash: '0.8,1.2', label: 'Deferred TOD area' },
+  townCentre:     { fill: '#e8c494', stroke: '#b5873b', label: 'Town centre (low and mid-rise housing policy)' },
+  ssdSite:        { fill: 'none',    stroke: '#2c4c9c', dash: '3,1.5', label: 'State significant development site' },
+  precinct:       { fill: 'none',    stroke: '#2f7d6d', dash: '1.6,1.6', label: 'Planning precinct' },
 };
