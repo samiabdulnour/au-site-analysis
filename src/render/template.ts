@@ -27,6 +27,8 @@ export interface Category {
   texture?: Texture;
   /** Colour of that texture; defaults to the stroke, then the fill. */
   textureColor?: string;
+  /** The building footprints on this ground: the family's ink, so a block is a dark figure on its light tint. */
+  figure?: string;
 }
 
 export type Texture = 'dots' | 'lines' | 'cross';
@@ -67,7 +69,9 @@ export interface Template {
 // open space and the institutions, blue for water — and grey for what is
 // neither. Within a family the categories differ by tone and by texture
 // (dots, hatch, cross-hatch), not by another colour, so the sheet reads as
-// paper with a few tints on it. The site is the one accent.
+// paper with a few tints on it. The tints are kept light because the
+// building footprints go over them in the family's ink, and the figure has
+// to stand clear of its ground. The site is the one accent.
 const PEACH = '#f3b8a4', PEACH_INK = '#d48b75';
 const SAND = '#f1cf98', SAND_INK = '#c49a52';
 const TEAL = '#5a9c89', TEAL_INK = '#3f7f6d';
@@ -79,22 +83,22 @@ const CORAL = '#e8705a';
 
 const NEUTRAL_CATEGORIES: Category[] = [
   { id: 'site',           label: 'SITE',                                     fill: CORAL, opacity: 0.6 },
-  { id: 'medical',        label: 'MEDICAL',                                  fill: TEAL, opacity: 0.5, stroke: TEAL_INK, texture: 'cross', textureColor: PAPER },
-  { id: 'education',      label: 'EDUCATION',                                fill: TEAL, opacity: 0.7, stroke: TEAL_INK, texture: 'dots', textureColor: PAPER },
-  { id: 'childCare',      label: 'CHILD CARE / AGED CARE',                   fill: TEAL, opacity: 0.3, stroke: TEAL_INK },
-  { id: 'mixedUse',       label: 'MIXED USE CLUSTER RESIDENTIAL/COMMERCIAL', fill: SAND, opacity: 0.7, texture: 'dots', textureColor: SAND_INK },
-  { id: 'retail',         label: 'ACTIVE RETAIL',                            fill: SAND, opacity: 0.5, texture: 'cross', textureColor: SAND_INK },
-  { id: 'openSpace',      label: 'OPEN SPACE',                               fill: TEAL, opacity: 0.7 },
-  { id: 'community',      label: 'COMMUNITY HUB',                            fill: TEAL, opacity: 0.6, stroke: TEAL_INK, texture: 'lines', textureColor: PAPER },
-  { id: 'r2',             label: 'R2 LOW DENSITY RESIDENTIAL',               fill: PEACH, opacity: 0.4 },
-  { id: 'r3',             label: 'R3 MEDIUM DENSITY RESIDENTIAL',            fill: PEACH, opacity: 0.62 },
-  { id: 'r4',             label: 'R4 HIGH DENSITY RESIDENTIAL',              fill: PEACH, opacity: 0.68, texture: 'lines', textureColor: PEACH_INK },
-  { id: 'localCentre',    label: 'LOCAL CENTRE',                             fill: SAND, opacity: 0.7 },
-  { id: 'commercial',     label: 'COMMERCIAL CENTRE',                        fill: SAND, opacity: 0.7, texture: 'lines', textureColor: SAND_INK },
-  { id: 'industrial',     label: 'GENERAL INDUSTRIAL',                       fill: GREY, opacity: 0.5, texture: 'lines', textureColor: GREY_INK },
-  { id: 'infrastructure', label: 'INFRASTRUCTURE FACILITY',                  fill: GREY, opacity: 0.45, stroke: GREY_INK },
+  { id: 'medical',        label: 'MEDICAL',                                  fill: TEAL, opacity: 0.4, stroke: TEAL_INK, texture: 'cross', textureColor: PAPER, figure: TEAL_INK },
+  { id: 'education',      label: 'EDUCATION',                                fill: TEAL, opacity: 0.55, stroke: TEAL_INK, texture: 'dots', textureColor: PAPER, figure: TEAL_INK },
+  { id: 'childCare',      label: 'CHILD CARE / AGED CARE',                   fill: TEAL, opacity: 0.25, stroke: TEAL_INK, figure: TEAL_INK },
+  { id: 'mixedUse',       label: 'MIXED USE CLUSTER RESIDENTIAL/COMMERCIAL', fill: SAND, opacity: 0.55, texture: 'dots', textureColor: SAND_INK, figure: SAND_INK },
+  { id: 'retail',         label: 'ACTIVE RETAIL',                            fill: SAND, opacity: 0.4, texture: 'cross', textureColor: SAND_INK, figure: SAND_INK },
+  { id: 'openSpace',      label: 'OPEN SPACE',                               fill: TEAL, opacity: 0.55, figure: TEAL_INK },
+  { id: 'community',      label: 'COMMUNITY HUB',                            fill: TEAL, opacity: 0.5, stroke: TEAL_INK, texture: 'lines', textureColor: PAPER, figure: TEAL_INK },
+  { id: 'r2',             label: 'R2 LOW DENSITY RESIDENTIAL',               fill: PEACH, opacity: 0.3, figure: PEACH_INK },
+  { id: 'r3',             label: 'R3 MEDIUM DENSITY RESIDENTIAL',            fill: PEACH, opacity: 0.45, figure: PEACH_INK },
+  { id: 'r4',             label: 'R4 HIGH DENSITY RESIDENTIAL',              fill: PEACH, opacity: 0.5, texture: 'lines', textureColor: PEACH_INK, figure: PEACH_INK },
+  { id: 'localCentre',    label: 'LOCAL CENTRE',                             fill: SAND, opacity: 0.55, figure: SAND_INK },
+  { id: 'commercial',     label: 'COMMERCIAL CENTRE',                        fill: SAND, opacity: 0.55, texture: 'lines', textureColor: SAND_INK, figure: SAND_INK },
+  { id: 'industrial',     label: 'GENERAL INDUSTRIAL',                       fill: GREY, opacity: 0.45, texture: 'lines', textureColor: GREY_INK, figure: GREY_INK },
+  { id: 'infrastructure', label: 'INFRASTRUCTURE FACILITY',                  fill: GREY, opacity: 0.4, stroke: GREY_INK, figure: GREY_INK },
   { id: 'water',          label: 'WATERWAY',                                 fill: BLUE, opacity: 0.75 },
-  { id: 'railway',        label: 'RAILWAY TRACKS',                           fill: GREY, opacity: 0.6, stroke: GREY_INK },
+  { id: 'railway',        label: 'RAILWAY TRACKS',                           fill: GREY, opacity: 0.6, stroke: GREY_INK, figure: GREY_INK },
   { id: 'heritage',       label: 'GENERAL HERITAGE SITE',                    fill: SAND_INK, opacity: 0.55 },
 ];
 

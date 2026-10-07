@@ -350,11 +350,11 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   }
 
   // ---- building footprints: the grain inside the blocks -------------------
-  // Each footprint takes the tint of the ground it stands on, laid over it,
-  // so a block reads as a darker figure of its own hue on a lighter ground —
-  // never black, which would weigh the sheet down again. The ground is the
-  // institution parcel or zoning polygon under the footprint's centroid; a
-  // footprint on no tinted ground is a pale grey.
+  // Each footprint takes the ink of the ground it stands on — the darker
+  // member of the tint's family — so a block reads as a firm figure on a light
+  // ground, and never black, which would weigh the sheet down again. The
+  // ground is the institution parcel or zoning polygon under the footprint's
+  // centroid; a footprint on no tinted ground is a mid grey.
   if (bundle.buildings.buildings.length) {
     interface Ground { cat: string; ring: number[][]; bbox: [number, number, number, number] }
     const grounds: Ground[] = [];
@@ -385,8 +385,8 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     }
     for (const [cat, paths] of byCat) {
       const c = cat ? catById()[cat] : undefined;
-      const fill = c ? c.fill : tpl().road;
-      const opacity = c ? Math.min(0.6, c.opacity * 0.8 + 0.15) : 0.2;
+      const fill = c?.figure ?? c?.fill ?? tpl().road;
+      const opacity = c?.figure ? 0.62 : c ? Math.min(0.6, c.opacity * 0.8 + 0.15) : 0.35;
       layers.push(`<g fill="${fill}" fill-opacity="${opacity.toFixed(2)}" fill-rule="evenodd">` + paths.map((d) => `<path d="${d}"/>`).join('') + '</g>');
     }
   }
@@ -608,11 +608,13 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     .map(([x, y]) => roundel(x, y, 'L', tpl().busRoute))
     .join('\n'));
 
-  layers.push(bundle.stations
+  // The station's name is in the key, not on the map: the only words on the
+  // map are the street names.
+  const stationsOnMap = bundle.stations
     .map((s) => ({ p: proj(s.lon, s.lat), name: s.name.replace(/RAILWAY STATION$/i, 'TRAIN STATION'), tram: /LIGHT RAIL|TRAM/i.test(s.name) }))
-    .filter(({ p: [x, y] }) => x > 3 && x < MAP_W - 3 && y > 3 && y < MAP_H - 3)
-    .map(({ p: [x, y], name, tram }) =>
-      roundel(x, y, tram ? 'L' : 'T', tram ? tpl().busRoute : tpl().site) + plainText(x, y - RR - 6, wrapLabel(name), T.poi, '#111111'))
+    .filter(({ p: [x, y] }) => x > 3 && x < MAP_W - 3 && y > 3 && y < MAP_H - 3);
+  layers.push(stationsOnMap
+    .map(({ p: [x, y], tram }) => roundel(x, y, tram ? 'L' : 'T', tram ? tpl().busRoute : tpl().site))
     .join('\n'));
 
   // ---- label occupancy ----------------------------------------------------
@@ -644,89 +646,18 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   const isFree = (a: Pt, b: Pt, r: number) => !claims.some((c) => segGap(a, b, c.a, c.b) < r + c.r);
   const reserve = (a: Pt, b: Pt, r: number) => { claims.push({ a, b, r }); };
 
-  // ---- institutions: a number on the parcel, the name in the key ----------
-  // A school's name rarely fits its parcel, and a name pushed off its parcel
-  // reads as the neighbour's. So the map carries a number at the parcel's
-  // centroid (at the point itself where no parcel was coloured) and the
-  // legend carries the key, in the legend's category order.
+  // ---- places: a number on the map, the name in the key -------------------
+  // The only words on the map are the street names. Every institution and
+  // park carries a number instead — at the parcel's centroid, at the point
+  // itself where no parcel was coloured, and for a park at the centroid of
+  // the open-space field it sits in — and the legend carries the key, the
+  // institutions in the legend's category order, then the open spaces.
   const inBounds = (x: number, y: number) => x > 10 && x < MAP_W - 10 && y > 8 && y < MAP_H - 8;
-  interface Institution { n: number; name: string; cat: string; x: number; y: number }
-  const institutions: Institution[] = [];
-  {
-    const candidates: { name: string; cat: string; x: number; y: number }[] = [];
-    for (const inst of bundle.institutionPolys) {
-      let best = inst.rings[0], bestA = 0;
-      for (const r of inst.rings) {
-        let a = 0;
-        for (let i = 0; i < r.length - 1; i++) a += r[i][0] * r[i + 1][1] - r[i + 1][0] * r[i][1];
-        if (Math.abs(a) > bestA) { bestA = Math.abs(a); best = r; }
-      }
-      const [clon, clat] = ringCentroid(best);
-      const [x, y] = proj(clon, clat);
-      candidates.push({ name: inst.name, cat: inst.cat, x, y });
-    }
-    for (const p of bundle.complexPoints) {
-      if (!p.cat) continue;
-      const [x, y] = proj(p.lon, p.lat);
-      candidates.push({ name: p.name, cat: p.cat, x, y });
-    }
-    // Legend order, then name; a parcel's centroid beats its point for the
-    // same name because the parcels were listed first and the sort is stable.
-    const order = categories().map((c) => c.id);
-    candidates.sort((a, b) => order.indexOf(a.cat) - order.indexOf(b.cat) || a.name.localeCompare(b.name));
-    const seen = new Set<string>();
-    for (const c of candidates) {
-      const key = c.name.toUpperCase();
-      if (seen.has(key) || !inBounds(c.x, c.y)) continue;
-      seen.add(key);
-      institutions.push({ n: institutions.length + 1, ...c });
-    }
-  }
-  const NR = 2.9;
-  // Two institutions on one block (a centre and its clinic) put their discs
-  // on top of each other; nudge such pairs apart along the line between them
-  // until the discs just clear, a few passes for a cluster.
-  for (let pass = 0; pass < 4; pass++) {
-    for (let i = 0; i < institutions.length; i++) for (let j = i + 1; j < institutions.length; j++) {
-      const a = institutions[i], b = institutions[j];
-      const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 0.01;
-      const gap = 2 * NR + 0.6 - d;
-      if (gap <= 0) continue;
-      const ux = (dx / d) * (gap / 2), uy = (dy / d) * (gap / 2);
-      a.x -= ux; a.y -= uy; b.x += ux; b.y += uy;
-    }
-  }
-  const numberSize = T.legend * 1.3;
-  const numberMarker = (x: number, y: number, n: number) =>
-    `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})">
-      <circle r="${NR}" fill="#ffffff" stroke="${tpl().streetInk}" stroke-width="0.6"/>
-      <text text-anchor="middle" dy="${(numberSize * 0.36).toFixed(2)}" font-size="${numberSize.toFixed(2)}" font-weight="700" fill="${tpl().streetInk}">${n}</text></g>`;
-  for (const i of institutions) reserve([i.x, i.y], [i.x, i.y], NR + 1);
-  layers.push(institutions.map((i) => numberMarker(i.x, i.y, i.n)).join('\n'));
+  interface Place { n: number; name: string; cat: string; x: number; y: number }
+  const places: Place[] = [];
 
-  // ---- open-space names ---------------------------------------------------
-  // Parks have the room their names need, and are labelled from the
-  // named-area centroids (a park must always carry its name).
-  interface PoiLabel { x: number; y: number; lines: string[]; priority: number }
-  const poiLabels: PoiLabel[] = [];
-  // Open spaces: named areas (centered) first, loose park points as fallback.
-  const parkSeen = new Set<string>();
-  for (const p of bundle.parkAreas) {
-    if (p.areaM2 < 2000) continue;
-    const [x, y] = proj(p.lon, p.lat);
-    if (!inBounds(x, y)) continue;
-    parkSeen.add(p.name.toUpperCase());
-    poiLabels.push({ x, y, lines: wrapLabel(p.name), priority: 1 });
-  }
-  for (const p of bundle.parkPoints) {
-    if (parkSeen.has(p.name.toUpperCase())) continue;
-    const [x, y] = proj(p.lon, p.lat);
-    if (inBounds(x, y)) poiLabels.push({ x, y, lines: wrapLabel(p.name), priority: 2 });
-  }
-
-  // Recenter every label into the open-space field it sits on: find the
-  // smallest such polygon containing the label point and move the label to
-  // that ring's centroid.
+  // Open-space fields, so a park's number sits in the middle of its green
+  // rather than on the point the topo layer happens to carry.
   interface Field { ring: Pt[]; area: number; cx: number; cy: number }
   const fields: Field[] = [];
   const addField = (ringLL: number[][]) => {
@@ -746,7 +677,7 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   const recenter = (x: number, y: number): Pt => {
     let best: Field | null = null;
     for (const f of fields) {
-      if (f.area > 25_000) continue; // whole-suburb polygons are not label fields
+      if (f.area > 25_000) continue; // whole-suburb polygons are not fields
       if (!pointInRing(x, y, f.ring as any)) continue;
       if (!best || f.area < best.area) best = f;
     }
@@ -754,20 +685,67 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     return [x, y];
   };
 
-  poiLabels.sort((a, b) => a.priority - b.priority);
-  const placed: Pt[] = [];
-  const poiTexts: string[] = [];
-  for (const pl of poiLabels) {
-    const [x, y] = recenter(pl.x, pl.y);
-    if (placed.some(([px, py]) => Math.hypot(px - x, py - y) < 15)) continue;
-    placed.push([x, y]);
-    poiTexts.push(plainText(x, y, pl.lines, T.poi));
-    // The block a wrapped name occupies: half its widest line either side of
-    // the centre, and half its stack of lines as the capsule radius.
-    const w = Math.max(...pl.lines.map((l) => l.length)) * T.poi * 0.62;
-    const h = pl.lines.length * T.poi * 1.08;
-    reserve([x - w / 2, y], [x + w / 2, y], h / 2);
+  {
+    const candidates: { name: string; cat: string; x: number; y: number; rank: number }[] = [];
+    for (const inst of bundle.institutionPolys) {
+      let best = inst.rings[0], bestA = 0;
+      for (const r of inst.rings) {
+        let a = 0;
+        for (let i = 0; i < r.length - 1; i++) a += r[i][0] * r[i + 1][1] - r[i + 1][0] * r[i][1];
+        if (Math.abs(a) > bestA) { bestA = Math.abs(a); best = r; }
+      }
+      const [clon, clat] = ringCentroid(best);
+      const [x, y] = proj(clon, clat);
+      candidates.push({ name: inst.name, cat: inst.cat, x, y, rank: 0 });
+    }
+    for (const p of bundle.complexPoints) {
+      if (!p.cat) continue;
+      const [x, y] = proj(p.lon, p.lat);
+      candidates.push({ name: p.name, cat: p.cat, x, y, rank: 0 });
+    }
+    // Named areas first (centred), loose park points as the fallback.
+    for (const p of bundle.parkAreas) {
+      if (p.areaM2 < 2000) continue;
+      const [x, y] = recenter(...proj(p.lon, p.lat));
+      candidates.push({ name: p.name, cat: 'openSpace', x, y, rank: 1 });
+    }
+    for (const p of bundle.parkPoints) {
+      const [x, y] = recenter(...proj(p.lon, p.lat));
+      candidates.push({ name: p.name, cat: 'openSpace', x, y, rank: 1 });
+    }
+    // Institutions in legend order, then the open spaces; within a name the
+    // better position was listed first and the sort is stable.
+    const order = categories().map((c) => c.id);
+    candidates.sort((a, b) => a.rank - b.rank || order.indexOf(a.cat) - order.indexOf(b.cat) || a.name.localeCompare(b.name));
+    const seen = new Set<string>();
+    for (const c of candidates) {
+      const key = c.name.toUpperCase();
+      if (seen.has(key) || !inBounds(c.x, c.y)) continue;
+      seen.add(key);
+      places.push({ n: places.length + 1, name: c.name, cat: c.cat, x: c.x, y: c.y });
+    }
   }
+  const NR = 2.9;
+  // Two places on one block (a centre and its clinic) put their discs on top
+  // of each other; nudge such pairs apart along the line between them until
+  // the discs just clear, a few passes for a cluster.
+  for (let pass = 0; pass < 4; pass++) {
+    for (let i = 0; i < places.length; i++) for (let j = i + 1; j < places.length; j++) {
+      const a = places[i], b = places[j];
+      const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 0.01;
+      const gap = 2 * NR + 0.6 - d;
+      if (gap <= 0) continue;
+      const ux = (dx / d) * (gap / 2), uy = (dy / d) * (gap / 2);
+      a.x -= ux; a.y -= uy; b.x += ux; b.y += uy;
+    }
+  }
+  const numberSize = T.legend * 1.3;
+  const numberMarker = (x: number, y: number, n: number) =>
+    `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})">
+      <circle r="${NR}" fill="#ffffff" stroke="${tpl().streetInk}" stroke-width="0.6"/>
+      <text text-anchor="middle" dy="${(numberSize * 0.36).toFixed(2)}" font-size="${numberSize.toFixed(2)}" font-weight="700" fill="${tpl().streetInk}">${n}</text></g>`;
+  for (const pl of places) reserve([pl.x, pl.y], [pl.x, pl.y], NR + 1);
+  layers.push(places.map((pl) => numberMarker(pl.x, pl.y, pl.n)).join('\n'));
 
   // ---- street labels: repeat along long roads like the original ----------
   // Names sit plainly on the white street, no arrow band: the band was the
@@ -859,8 +837,6 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   layers.push(`<defs>${roadDefs.join('')}</defs>`);
   layers.push(roadTexts.join('\n'));
 
-  layers.push(poiTexts.join('\n'));
-
   // ---- legend (title column, measured geometry) ---------------------------
   const hobByCat = computeHobByCat(bundle);
   let legendSvg = '';
@@ -915,18 +891,24 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   legendRow(legendIso(tpl().walk5), ['ISOCHRONE -'], '400m/5 min walk');
   legendRow(legendIso(tpl().walk10), ['ISOCHRONE -'], '800m/10 min walk');
 
-  // ---- the institutions' key ---------------------------------------------
-  if (institutions.length) {
+  // ---- the key: every numbered place, then the stations ------------------
+  if (places.length || stationsOnMap.length) {
     ly += 2;
-    legendSvg += `<text x="${SWATCH_X}" y="${ly}" font-size="${T.legend}" font-weight="700" fill="#222">INSTITUTIONS</text>`;
+    legendSvg += `<text x="${SWATCH_X}" y="${ly}" font-size="${T.legend}" font-weight="700" fill="#222">KEY</text>`;
     ly += 4.5;
-    for (const i of institutions) {
-      const lines = wrapLabel(i.name, 34);
+    const keyRow = (marker: string, name: string) => {
+      const lines = wrapLabel(name, 34);
       const y0 = lines.length === 1 ? NR + 1.0 : NR - 0.6;
-      let row = `<g transform="translate(0,${ly.toFixed(1)})">${numberMarker(symC, NR, i.n)}`;
+      let row = `<g transform="translate(0,${ly.toFixed(1)})">${marker}`;
       lines.forEach((l, k) => { row += `<text x="${LABEL_X}" y="${(y0 + k * 3.2).toFixed(1)}" font-size="${T.legend}" fill="#222">${esc(l)}</text>`; });
       legendSvg += row + '</g>';
       ly += Math.max(6.6, 3.2 * lines.length + 3.6);
+    };
+    for (const pl of places) keyRow(numberMarker(symC, NR, pl.n), pl.name);
+    for (const st of stationsOnMap) {
+      const color = st.tram ? tpl().busRoute : tpl().site;
+      keyRow(`<g transform="translate(${symC},${NR})"><circle r="${NR}" fill="#ffffff" stroke="${color}" stroke-width="0.6"/>
+        <text text-anchor="middle" dy="${(numberSize * 0.36).toFixed(2)}" font-size="${numberSize.toFixed(2)}" font-weight="700" fill="${color}">${st.tram ? 'L' : 'T'}</text></g>`, st.name);
     }
   }
 
