@@ -23,7 +23,13 @@ export interface Category {
   opacity: number;
   /** Contour colour — the Oatley legend outlines institutional categories. */
   stroke?: string;
+  /** Vector texture laid over the fill, so one hue can carry several categories. */
+  texture?: Texture;
+  /** Colour of that texture; defaults to the stroke, then the fill. */
+  textureColor?: string;
 }
+
+export type Texture = 'dots' | 'lines' | 'cross';
 
 export interface Template {
   id: string;
@@ -55,26 +61,40 @@ export interface Template {
   categories: Category[];
 }
 
-// The land-use palette for the context sheet legend.
+// The land-use palette for the context sheet legend. Four hues, each a
+// family: peach for the residential zones, sand for the centres, teal for
+// open space and the institutions, blue for water — and grey for what is
+// neither. Within a family the categories differ by tone and by texture
+// (dots, hatch, cross-hatch), not by another colour, so the sheet reads as
+// paper with a few tints on it. The site is the one accent.
+const PEACH = '#f3b8a4', PEACH_INK = '#d48b75';
+const SAND = '#f1cf98', SAND_INK = '#c49a52';
+const TEAL = '#5a9c89', TEAL_INK = '#3f7f6d';
+const PAPER = '#ffffff';
+const BLUE = '#b4d0dc';
+const NAVY = '#3b4f8a';
+const GREY = '#d9d9d9', GREY_INK = '#8c8c8c';
+const CORAL = '#e8705a';
+
 const NEUTRAL_CATEGORIES: Category[] = [
-  { id: 'site',           label: 'SITE',                                     fill: '#d1362a', opacity: 0.5 },
-  { id: 'medical',        label: 'MEDICAL',                                  fill: '#cfd8dc', opacity: 0.55, stroke: '#5b6b73' },
-  { id: 'education',      label: 'EDUCATION',                                fill: '#c3ced4', opacity: 0.55, stroke: '#4a5a63' },
-  { id: 'childCare',      label: 'CHILD CARE / AGED CARE',                   fill: '#e8edef', opacity: 0.6, stroke: '#7d8a91' },
-  { id: 'mixedUse',       label: 'MIXED USE CLUSTER RESIDENTIAL/COMMERCIAL', fill: '#b9a89c', opacity: 0.5 },
-  { id: 'retail',         label: 'ACTIVE RETAIL',                            fill: '#d8cec6', opacity: 0.5 },
-  { id: 'openSpace',      label: 'OPEN SPACE',                               fill: '#dfe6d6', opacity: 0.55 },
-  { id: 'community',      label: 'COMMUNITY HUB',                            fill: '#dce5e4', opacity: 0.55, stroke: '#8fa3a1' },
-  { id: 'r2',             label: 'R2 LOW DENSITY RESIDENTIAL',               fill: '#f2efeb', opacity: 0.45 },
-  { id: 'r3',             label: 'R3 MEDIUM DENSITY RESIDENTIAL',            fill: '#e4ded6', opacity: 0.5 },
-  { id: 'r4',             label: 'R4 HIGH DENSITY RESIDENTIAL',              fill: '#d3cabf', opacity: 0.5 },
-  { id: 'localCentre',    label: 'LOCAL CENTRE',                             fill: '#e0d3c8', opacity: 0.5 },
-  { id: 'commercial',     label: 'COMMERCIAL CENTRE',                        fill: '#d2cdd8', opacity: 0.5 },
-  { id: 'industrial',     label: 'GENERAL INDUSTRIAL',                       fill: '#c4c0cb', opacity: 0.5 },
-  { id: 'infrastructure', label: 'INFRASTRUCTURE FACILITY',                  fill: '#eae4e0', opacity: 0.55, stroke: '#8a8078' },
-  { id: 'water',          label: 'WATERWAY',                                 fill: '#cbdae2', opacity: 0.6 },
-  { id: 'railway',        label: 'RAILWAY TRACKS',                           fill: '#ddd6cc', opacity: 0.7, stroke: '#8a8078' },
-  { id: 'heritage',       label: 'GENERAL HERITAGE SITE',                    fill: '#c2b39a', opacity: 0.5 },
+  { id: 'site',           label: 'SITE',                                     fill: CORAL, opacity: 0.6 },
+  { id: 'medical',        label: 'MEDICAL',                                  fill: TEAL, opacity: 0.5, stroke: TEAL_INK, texture: 'cross', textureColor: PAPER },
+  { id: 'education',      label: 'EDUCATION',                                fill: TEAL, opacity: 0.7, stroke: TEAL_INK, texture: 'dots', textureColor: PAPER },
+  { id: 'childCare',      label: 'CHILD CARE / AGED CARE',                   fill: TEAL, opacity: 0.3, stroke: TEAL_INK },
+  { id: 'mixedUse',       label: 'MIXED USE CLUSTER RESIDENTIAL/COMMERCIAL', fill: SAND, opacity: 0.7, texture: 'dots', textureColor: SAND_INK },
+  { id: 'retail',         label: 'ACTIVE RETAIL',                            fill: SAND, opacity: 0.5, texture: 'cross', textureColor: SAND_INK },
+  { id: 'openSpace',      label: 'OPEN SPACE',                               fill: TEAL, opacity: 0.7 },
+  { id: 'community',      label: 'COMMUNITY HUB',                            fill: TEAL, opacity: 0.6, stroke: TEAL_INK, texture: 'lines', textureColor: PAPER },
+  { id: 'r2',             label: 'R2 LOW DENSITY RESIDENTIAL',               fill: PEACH, opacity: 0.4 },
+  { id: 'r3',             label: 'R3 MEDIUM DENSITY RESIDENTIAL',            fill: PEACH, opacity: 0.62 },
+  { id: 'r4',             label: 'R4 HIGH DENSITY RESIDENTIAL',              fill: PEACH, opacity: 0.68, texture: 'lines', textureColor: PEACH_INK },
+  { id: 'localCentre',    label: 'LOCAL CENTRE',                             fill: SAND, opacity: 0.7 },
+  { id: 'commercial',     label: 'COMMERCIAL CENTRE',                        fill: SAND, opacity: 0.7, texture: 'lines', textureColor: SAND_INK },
+  { id: 'industrial',     label: 'GENERAL INDUSTRIAL',                       fill: GREY, opacity: 0.5, texture: 'lines', textureColor: GREY_INK },
+  { id: 'infrastructure', label: 'INFRASTRUCTURE FACILITY',                  fill: GREY, opacity: 0.45, stroke: GREY_INK },
+  { id: 'water',          label: 'WATERWAY',                                 fill: BLUE, opacity: 0.75 },
+  { id: 'railway',        label: 'RAILWAY TRACKS',                           fill: GREY, opacity: 0.6, stroke: GREY_INK },
+  { id: 'heritage',       label: 'GENERAL HERITAGE SITE',                    fill: SAND_INK, opacity: 0.55 },
 ];
 
 const SANS = "Arial, 'Liberation Sans', Helvetica, sans-serif";
@@ -84,23 +104,23 @@ export const TEMPLATES: Template[] = [
   {
     id: 'neutral',
     label: 'neutral',
-    note: 'restrained palette, one accent — survives a mono print',
+    note: 'four tints and textures, one accent — survives a mono print',
     font: GROTESK,
     textScale: 0.96,
     ink: '#1c1c1c',
     rule: '#8a8a8a',
-    site: '#d1362a',
-    dimension: '#3c4c5a',
-    wind: '#6d8a99',
-    sun: '#f0e4c0',
-    road: '#7d7d7d',
-    water: '#cbdae2',
-    transit: '#41627a',
-    rail: '#2f2f2f',
-    walk5: '#7a5c86',
-    walk10: '#9c8aa6',
-    busRoute: '#6b7f93',
-    heritage: '#94836a',
+    site: CORAL,
+    dimension: '#56616b',
+    wind: '#87959d',
+    sun: '#efe8d4',
+    road: GREY_INK,
+    water: BLUE,
+    transit: NAVY,
+    rail: '#3a3a3a',
+    walk5: NAVY,
+    walk10: '#8593bb',
+    busRoute: '#7a8bb0',
+    heritage: SAND_INK,
     categories: NEUTRAL_CATEGORIES,
   },
 ];

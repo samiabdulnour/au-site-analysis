@@ -458,11 +458,18 @@ colours and the land-use palette. Content is identical between templates; only
 the look changes. They live in `src/render/template.ts`, so a new house style is
 a data change.
 
-There is one: `neutral`, a restrained palette with a single accent that survives
-a mono print. The office style that sat beside it left with the office door, and
-took the elaborate compass rose with it — that was the only thing the `symbols`
-field ever selected between, so it went too. `neutral`'s replacement is the next
-piece of work.
+There is one: `neutral`. Four tints, each a family — peach for the residential
+zones, sand for the centres, teal for open space and the institutions, blue for
+water, grey for the rest — with the categories inside a family told apart by
+tone and by texture (dots, hatch, cross-hatch, drawn as real lines so they print
+crisply) rather than by another colour. The site is the one accent, coral. The
+streets are white strips over the tints, the road reserve scaled from the
+function hierarchy, so the blocks read as tinted islands on paper; the aerial
+sits under a heavier white veil than before and is a hint, not the picture. The
+walking catchments are broad, continuous, translucent navy bands. The office
+style that sat beside it left with the office door, and took the elaborate
+compass rose with it — that was the only thing the `symbols` field ever
+selected between, so it went too.
 
 The renderers read the active template from an async context rather than a
 parameter, so `withTemplate()` also takes a `Template` outright — which is what
@@ -659,17 +666,20 @@ address
 
 ### Street names
 
-A through street carries its name in the white double-headed arrow band; a
-laneway gets a plain black label along the line. Neither of the two fields NSW
-publishes decides this on its own — Dickson Lane is classified `LocalRoad`
-exactly like Hall Street, and plenty of real streets have no lane count
-recorded — so the rule combines them: function hierarchy 7+ (service lane,
-track, path, access way), a name ending in LANE/WALK/PATH/TRACK, or a recorded
-single lane means laneway, otherwise street.
+On the context sheet every street carries its name as plain bold text set
+along, and centred on, its white strip; the width of the strip already says
+whether it is an arterial or a lane. The white double-headed arrow band survives
+on the site sheet only, where a through street carries its name in the band and
+a laneway gets a plain label. Neither of the two fields NSW publishes decides
+that on its own — Dickson Lane is classified `LocalRoad` exactly like Hall
+Street, and plenty of real streets have no lane count recorded — so the rule
+combines them: function hierarchy 7+ (service lane, track, path, access way), a
+name ending in LANE/WALK/PATH/TRACK, or a recorded single lane means laneway,
+otherwise street.
 
 The road network arrives split at every intersection, so the pieces of each
 street are chained back into continuous runs before labelling; without that, a
-band could never span a junction and an arterial would come out looking like a
+name could never span a junction and an arterial would come out looking like a
 laneway. A long street repeats its name up to three times. Every label — street
 and place name alike — reserves the ground it covers, and place names go first
 because they belong to a parcel and cannot move, so a street name slides along

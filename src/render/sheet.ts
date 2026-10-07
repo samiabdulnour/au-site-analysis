@@ -5,7 +5,7 @@
 import type { Bundle } from '../pipeline.js';
 import { lonLatToMercator, ringCentroid, type Extent, type MapView } from '../lib/geo.js';
 import { categories, catById, zoneToCategory } from './model.js';
-import { tpl } from './template.js';
+import { tpl, type Texture } from './template.js';
 import { sheetHtml, esc, T, SWATCH_X, SWATCH_W, LABEL_X,
          SHEET_W, SHEET_H, FRAME_L, FRAME_T, TITLE_X, TITLE_R, MAP_BOTTOM, MAP_W, MAP_H } from './chrome.js';
 
@@ -108,7 +108,8 @@ export function plainText(x: number, y: number, lines: string[], size: number, f
 
 /**
  * White double-headed arrow along the (straight-enough) middle of a polyline.
- * Returns '' when the geometry bends too much for a straight arrow.
+ * Returns null when the geometry bends too much for a straight arrow. The
+ * context sheet no longer bands its street names; the site sheet still does.
  */
 export interface BandArrow { svg: string; cx: number; cy: number; angDeg: number }
 
@@ -160,6 +161,39 @@ export function walkerMedallion(x: number, y: number, color: string): string {
   </g>`;
 }
 
+/**
+ * A vector texture (dots, diagonal hatch, cross-hatch) clipped to a shape.
+ * Real lines rather than an SVG pattern: patterns rasterize blurrily when
+ * Chromium prints to PDF. Dots are a round-capped line with a hairline dash,
+ * so a textured suburb costs a few hundred elements, not a hundred thousand.
+ * `box` is the area the texture must cover (the map, or a legend swatch).
+ */
+export function textureSvg(clipId: string, clipPathD: string, kind: Texture, color: string,
+                           box: { x: number; y: number; w: number; h: number }, opacity = 0.8): string {
+  const { x, y, w, h } = box;
+  let lines = '';
+  if (kind === 'dots') {
+    const step = 1.7;
+    for (let i = 0, yy = y + step / 2; yy <= y + h; yy += step, i++) {
+      const off = i % 2 ? step / 2 : 0;
+      lines += `<line x1="${(x - off).toFixed(1)}" y1="${yy.toFixed(1)}" x2="${(x + w).toFixed(1)}" y2="${yy.toFixed(1)}"/>`;
+    }
+    return `<clipPath id="${clipId}"><path d="${clipPathD}" clip-rule="evenodd"/></clipPath>
+      <g clip-path="url(#${clipId})" stroke="${color}" stroke-width="0.6" stroke-linecap="round" stroke-dasharray="0.01,${1.7}" opacity="${opacity}">${lines}</g>`;
+  }
+  // The hatch falls to the right, the opposite way to the heritage hatch
+  // drawn elsewhere, so a heritage item inside a commercial centre still
+  // shows as two textures crossing rather than one thicker one.
+  const step = kind === 'cross' ? 2.0 : 1.6;
+  for (let o = x - h; o <= x + w; o += step)
+    lines += `<line x1="${o.toFixed(1)}" y1="${y.toFixed(1)}" x2="${(o + h).toFixed(1)}" y2="${(y + h).toFixed(1)}"/>`;
+  if (kind === 'cross')
+    for (let o = x - h; o <= x + w; o += step)
+      lines += `<line x1="${o.toFixed(1)}" y1="${(y + h).toFixed(1)}" x2="${(o + h).toFixed(1)}" y2="${y.toFixed(1)}"/>`;
+  return `<clipPath id="${clipId}"><path d="${clipPathD}" clip-rule="evenodd"/></clipPath>
+    <g clip-path="url(#${clipId})" stroke="${color}" stroke-width="0.22" opacity="${opacity}">${lines}</g>`;
+}
+
 /** Abbreviate street types the way the office labels them (CAMPSIE ST, WILFRED AVE). */
 export function shortStreetName(name: string): string {
   return name.toUpperCase()
@@ -204,8 +238,8 @@ function ringMarkers(pts: Pt[], count: number, phase: number): Pt[] {
 }
 
 /**
- * Does this road carry the white arrow band, or is it a lane that only gets a
- * plain label? NSW classifies both function and lane count, and neither alone
+ * Does this road carry the white arrow band (on the site sheet), or is it a
+ * lane that only gets a plain label? NSW classifies both function and lane count, and neither alone
  * is enough: Dickson Lane is a "LocalRoad" (6) exactly like Hall Street, but
  * it is one lane wide — while an arterial with unrecorded lanes is still a
  * street. Hierarchy 7+ is service lane / track / path / access way.
@@ -323,7 +357,9 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
       .join('\n');
     layers.push(`<g transform="rotate(${view.rotationDeg.toFixed(2)}, ${MAP_W / 2}, ${MAP_H / 2})">${tiles}</g>`);
   }
-  layers.push(`<rect x="0" y="0" width="${MAP_W}" height="${MAP_H}" fill="#ffffff" opacity="0.36"/>`);
+  // A heavier veil than before: the aerial is a hint under the tints, not
+  // the picture, so the sheet reads as paper.
+  layers.push(`<rect x="0" y="0" width="${MAP_W}" height="${MAP_H}" fill="#ffffff" opacity="0.55"/>`);
 
   // ---- zoning base -------------------------------------------------------
   const zoningByCat: Record<string, string[]> = {};
@@ -336,12 +372,20 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   }
   const catStyle = (c: { fill: string; opacity: number; stroke?: string }) =>
     `fill="${c.fill}" opacity="${c.opacity}" fill-rule="evenodd"` +
-    (c.stroke ? ` stroke="${c.stroke}" stroke-width="0.7" stroke-linejoin="round"` : '');
+    (c.stroke ? ` stroke="${c.stroke}" stroke-width="0.5" stroke-linejoin="round"` : '');
+  // A category's fill, then its texture clipped to the same shapes.
+  let tex = 0;
+  const mapBox = { x: 0, y: 0, w: MAP_W, h: MAP_H };
+  const catLayer = (c: { fill: string; opacity: number; stroke?: string; texture?: Texture; textureColor?: string }, paths: string[]) => {
+    let svg = `<g ${catStyle(c)}>` + paths.map((d) => `<path d="${d}"/>`).join('') + '</g>';
+    if (c.texture) svg += textureSvg(`tx${tex++}`, paths.join(''), c.texture, c.textureColor ?? c.stroke ?? c.fill, mapBox);
+    return svg;
+  };
 
   for (const [cat, paths] of Object.entries(zoningByCat)) {
     const c = catById()[cat];
     usedCats.add(cat);
-    layers.push(`<g ${catStyle(c)}>` + paths.map((d) => `<path d="${d}"/>`).join('') + '</g>');
+    layers.push(catLayer(c, paths));
   }
 
   // ---- railway corridor --------------------------------------------------
@@ -362,13 +406,30 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   for (const [cat, paths] of Object.entries(poiPathsByCat)) {
     const c = catById()[cat];
     usedCats.add(cat);
-    layers.push(`<g ${catStyle(c)}>` + paths.map((d) => `<path d="${d}"/>`).join('') + '</g>');
+    layers.push(catLayer(c, paths));
   }
 
   // ---- thin cadastral lot-boundary overlay --------------------------------
   if (bundle.allLots.features.length) {
     const d = bundle.allLots.features.map((f) => pathFromRings(geomRings(f.geometry), proj)).join('');
     layers.push(`<path d="${d}" fill="none" stroke="${tpl().road}" stroke-width="0.12" opacity="0.5"/>`);
+  }
+
+  // ---- streets: white strips over the tints -----------------------------
+  // The road reserve in white, as the office sheets and most figure-ground
+  // maps show it, so the blocks read as tinted islands on paper. Width by
+  // function hierarchy, in metres on the ground scaled to the sheet: an
+  // arterial reserve is about 30 m, a local street 20 m, a lane 8 m.
+  {
+    const mmPerM = 1000 / bundle.scale;
+    const reserveM = (h: number) => (h <= 2 ? 36 : h === 3 ? 30 : h === 4 ? 24 : h === 5 ? 20 : h === 6 ? 17 : 8);
+    const byWidth = new Map<number, string[]>();
+    for (const r of bundle.roads) {
+      const w = reserveM(r.hierarchy);
+      (byWidth.get(w) ?? byWidth.set(w, []).get(w)!).push(pathFromRings([r.coords as any], proj, false));
+    }
+    for (const [w, ds] of [...byWidth].sort((a, b) => b[0] - a[0]))
+      layers.push(`<path d="${ds.join('')}" fill="none" stroke="#ffffff" stroke-width="${(w * mmPerM).toFixed(2)}" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>`);
   }
 
   // ---- heritage ----------------------------------------------------------
@@ -526,6 +587,7 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   }
 
   // ---- isochrones --------------------------------------------------------
+  const ISO_W = 3.4, ISO_OPACITY = 0.3;
   const isoStyle: Record<number, { color: string; label: string }> = {
     5: { color: tpl().walk5, label: '400m (5-MIN WALK)' },
     10: { color: tpl().walk10, label: '800m (10-MIN WALK)' },
@@ -533,7 +595,9 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   for (const iso of bundle.isochrones) {
     const st = isoStyle[iso.minutes] ?? { color: tpl().walk5, label: `${iso.minutes} MIN WALK` };
     const d = iso.rings.map((r) => pathFromRings([r as any], proj)).join('');
-    layers.push(`<path d="${d}" fill="none" stroke="${st.color}" stroke-width="1.3" stroke-dasharray="3.6,2.2" stroke-linejoin="round"/>`);
+    // A broad, continuous, translucent band rather than a dashed hairline:
+    // the catchment reads as a soft edge the map shows through.
+    layers.push(`<path d="${d}" fill="none" stroke="${st.color}" stroke-width="${ISO_W}" opacity="${ISO_OPACITY}" stroke-linejoin="round" stroke-linecap="round"/>`);
   }
   // Walker medallions ON the ring (the office style): white disc, ring in the
   // isochrone colour, pedestrian icon. Spaced evenly along the ring's own
@@ -707,56 +771,46 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   }
 
   // ---- street labels: repeat along long roads like the original ----------
-  const roadByName = new Map<string, { segs: Pt[][]; hierarchy: number; lanes?: number }>();
+  // Names sit plainly on the white street, no arrow band: the band was the
+  // office's old device and it crowded the sheet. Through streets and lanes
+  // are set the same way; the width of the white strip already says which
+  // is which.
+  const roadByName = new Map<string, { segs: Pt[][]; hierarchy: number }>();
   for (const road of bundle.roads) {
     const pts = road.coords.map(([lon, lat]) => proj(lon, lat))
       .filter(([x, y]) => x > -60 && x < MAP_W + 60 && y > -60 && y < MAP_H + 60);
     if (pts.length < 2) continue;
-    const entry = roadByName.get(road.name) ?? { segs: [], hierarchy: road.hierarchy, lanes: road.lanes };
+    const entry = roadByName.get(road.name) ?? { segs: [], hierarchy: road.hierarchy };
     entry.segs.push(pts);
-    // Most important classification and widest recorded section win: a road
-    // is only a lane if every segment of it says so.
+    // Most important classification wins.
     entry.hierarchy = Math.min(entry.hierarchy, road.hierarchy);
-    if (road.lanes !== undefined) entry.lanes = Math.max(entry.lanes ?? 0, road.lanes);
     roadByName.set(road.name, entry);
   }
   let rid = 0;
   const roadDefs: string[] = [];
-  const roadArrows: string[] = [];
   const roadTexts: string[] = [];
   interface Run { pts: Pt[]; cum: number[]; len: number }
   // Important roads label first, so when two names compete for the same
-  // corner the arterial keeps its band and the side street moves along.
+  // corner the arterial keeps its place and the side street moves along.
   const roadOrder = [...roadByName].sort((a, b) => a[1].hierarchy - b[1].hierarchy);
+  // The name is centred on the street's own line: a cap height of about
+  // 0.72 em lifted by half of that puts the letters' middle on the path.
+  const streetDy = (T.street * 0.36).toFixed(2);
   for (const [name, r] of roadOrder) {
     const label = shortStreetName(name);
-    const major = isMajorStreet(r.hierarchy, r.lanes, name);
-    const spacing = 1.5;  // wide tracking on banded names, mm
-    const arrowedTextLen = label.length * (T.street * 0.62 + spacing);
     // Must be an over-estimate: a name wider than the path it is set on has
     // its overflowing glyphs clamped onto the ends and they pile up.
-    const plainTextLen = label.length * (T.street * 0.72 + 0.4) + 3;
-    const slack = 6;   // spare road either side of a plain name
-    // The name plus the two arrow heads. The heads are 8mm each but taper, so
-    // 7mm of clearance either side keeps the text off the points while
-    // letting streets of about 45m still carry a band.
-    const bandLen = arrowedTextLen + 14;
+    const textLen = label.length * (T.street * 0.72 + 0.4) + 3;
+    const slack = 6;   // spare road either side of the name
+    const slotLen = textLen + slack;
 
     const runs: Run[] = mergeRuns(r.segs)
       .map((pts) => { const cum = arcTable(pts); return { pts, cum, len: cum[cum.length - 1] }; })
       .sort((a, b) => b.len - a.len);
     if (!runs.length) continue;
 
-    // A street is labelled the same way everywhere it appears: the white band
-    // means "through street", so a major road must not show up banded on one
-    // run and as plain text on another just because that run is short. If no
-    // run of a major street is long enough for a band, it still needs a name.
-    const banded = major && runs[0].len >= bandLen;
-    const slotLen = banded ? bandLen : plainTextLen + slack;
-
-    // Half the height of what this name will occupy — the arrow band is much
-    // deeper than the bare text it replaces.
-    const halfW = banded ? 6.6 : T.street * 0.62;
+    // Half the height of what this name will occupy.
+    const halfW = T.street * 0.62;
 
     // Repeat the name along a long street rather than labelling it once.
     let placed = 0;
@@ -779,14 +833,13 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
           const m = halfW + 2;
           if (win.some(([x, y]) => x < m || x > MAP_W - m || y < m || y > MAP_H - m)) continue;
           if (!straightEnough(win, 2.2)) continue;
-          if (banded && !arrowAlong(win, slotLen)) continue;
-          // A plain name is set on the slot's chord, not on the road's own
+          // The name is set on the slot's chord, not on the road's own
           // vertices: a 2mm dog-leg where two road sections join turns the
           // path tangent through 90 degrees and shuffles the glyphs over each
           // other, and the deviation test above already keeps the chord
           // within 2mm of the real road.
-          if (!banded && Math.hypot(win[win.length - 1][0] - win[0][0],
-                                    win[win.length - 1][1] - win[0][1]) < plainTextLen) continue;
+          if (Math.hypot(win[win.length - 1][0] - win[0][0],
+                         win[win.length - 1][1] - win[0][1]) < textLen) continue;
           if (!isFree(win[0], win[win.length - 1], halfW)) continue;
           slot = win;
         }
@@ -794,34 +847,17 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
         reserve(slot[0], slot[slot.length - 1], halfW);
         placed++;
 
-        let pts = banded ? slot : [slot[0], slot[slot.length - 1]];
-        if (pts[0][0] > pts[pts.length - 1][0]) pts = [...pts].reverse();
+        let pts = [slot[0], slot[slot.length - 1]];
+        if (pts[0][0] > pts[1][0]) pts = [...pts].reverse();
         const id = `rd${rid++}`;
         const d2 = pts.map((p, i2) => `${i2 === 0 ? 'M' : 'L'}${p[0].toFixed(2)},${p[1].toFixed(2)}`).join('');
         roadDefs.push(`<path id="${id}" d="${d2}" fill="none"/>`);
-        const arrow = banded ? arrowAlong(pts, slotLen) : null;
-        if (arrow) {
-          roadArrows.push(arrow.svg);
-          // Rotated text centered on the band. textLength+lengthAdjust gives an
-          // exact tracked width — Chromium mis-centers letter-spaced text
-          // (anchor uses the unspaced width), so avoid letter-spacing here.
-          let ta = arrow.angDeg;
-          if (ta > 90) ta -= 180;
-          if (ta < -90) ta += 180;
-          roadTexts.push(`<text transform="translate(${arrow.cx.toFixed(1)},${arrow.cy.toFixed(1)}) rotate(${ta.toFixed(1)})"
-            x="${(-arrowedTextLen / 2).toFixed(1)}" y="1.65" textLength="${arrowedTextLen.toFixed(1)}" lengthAdjust="spacing"
-            font-size="${T.street}" font-weight="700" fill="${tpl().ink}">${esc(label)}</text>`);
-        } else {
-          // Lane, path, or a street too short to band: plain bold label along
-          // the line, same size as the rest of the map text, no halo.
-          roadTexts.push(`<text font-size="${T.street}" font-weight="700" letter-spacing="0.4" dy="-1.4" fill="${tpl().ink}">
-            <textPath href="#${id}" startOffset="50%" text-anchor="middle">${esc(label)}</textPath></text>`);
-        }
+        roadTexts.push(`<text font-size="${T.street}" font-weight="700" letter-spacing="0.4" dy="${streetDy}" fill="${tpl().ink}">
+          <textPath href="#${id}" startOffset="50%" text-anchor="middle">${esc(label)}</textPath></text>`);
       }
     }
   }
   layers.push(`<defs>${roadDefs.join('')}</defs>`);
-  layers.push(roadArrows.join('\n'));
   layers.push(roadTexts.join('\n'));
 
   layers.push(poiTexts.join('\n'));
@@ -839,9 +875,12 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     legendSvg += row + '</g>';
     ly += 10;
   };
-  const box = (c: { fill: string; opacity: number; stroke?: string }) =>
+  const swatchBox = { x: SWATCH_X, y: 0, w: SWATCH_W, h: 6.5 };
+  const swatchD = `M${SWATCH_X},0h${SWATCH_W}v6.5h${-SWATCH_W}Z`;
+  const box = (c: { fill: string; opacity: number; stroke?: string; texture?: Texture; textureColor?: string }) =>
     `<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="${c.fill}" fill-opacity="${Math.min(1, c.opacity + 0.15)}"
-      stroke="${c.stroke ?? '#999'}" stroke-width="${c.stroke ? 0.9 : 0.2}"/>`;
+      stroke="${c.stroke ?? '#999'}" stroke-width="${c.stroke ? 0.9 : 0.2}"/>` +
+    (c.texture ? textureSvg(`ltx${tex++}`, swatchD, c.texture, c.textureColor ?? c.stroke ?? c.fill, swatchBox) : '');
   for (const c of categories()) {
     if (!usedCats.has(c.id)) continue;
     if (c.id === 'railway') continue; // on the map, not in the legend
@@ -873,7 +912,7 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     legendRow(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${tpl().busRoute}" stroke-width="0.9" stroke-dasharray="3.4,1.8"/>`, ['TRAM ROUTE']);
   legendRow(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${tpl().transit}" stroke-width="0.9" stroke-dasharray="3,1.9"/>`, ['BUS ROUTE']);
   const legendIso = (color: string) =>
-    `<g><line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${color}" stroke-width="1.1" stroke-dasharray="3.6,2.2"/>
+    `<g><line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${color}" stroke-width="${ISO_W}" opacity="${ISO_OPACITY}"/>
      <g transform="translate(${symC},3.2)"><circle r="3.3" fill="#fff" stroke="${color}" stroke-width="0.9"/>${walkerGlyph(color, 0.24)}</g></g>`;
   legendRow(legendIso(tpl().walk5), ['ISOCHRONE -'], '400m/5 min walk');
   legendRow(legendIso(tpl().walk10), ['ISOCHRONE -'], '800m/10 min walk');
