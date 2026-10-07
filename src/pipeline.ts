@@ -27,6 +27,7 @@ import { fetchPeopleData, type PeopleData } from './fetch/people.js';
 import { fetchDemGrid, type DemGrid } from './fetch/terrain.js';
 import { fetchBuildings, withDaStoreys, type BuildingsData } from './fetch/buildings.js';
 import { fetchMajorProjects, emptyMajorProjects, type MajorProjectsData } from './fetch/majorProjects.js';
+import { fetchWind, emptyWind, type WindData } from './fetch/wind.js';
 import { fetchMovement, type MovementData } from './fetch/movement.js';
 import { fetchGreenSpace, type GreenData } from './fetch/greenSpace.js';
 import { fetchConstraints, checkLepCoverage, type ConstraintsData } from './fetch/constraints.js';
@@ -537,6 +538,8 @@ export interface SlidesBundle {
   applications: DaRecord[];
   /** The Department's register of State significant applications for the council areas the window touches, those within 3 km with their points. */
   majorProjects: MajorProjectsData;
+  /** Slide 13's wind roses; absent from decks built before it. */
+  wind?: WindData;
   daMeta: { council: string; from: string; to: string; total: number; complete: boolean; fetchedAt: string } | null;
   proposals: PlanningProposal[];
   /** Census, population, projections, SEIFA, land values, sales and schools for the site's regions; null when the ABS lookup failed. */
@@ -673,7 +676,7 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
   // The lots and the footprints are read once and wait for both the maps and Street View, which uses them to tell a camera in the street from one in a shop or behind a neighbour.
   const lotsRead = soft(fetchAllLots(fetchExtent), emptyFC, 'cadastral lots');
   const footprintsRead = soft(fetchBuildings(daExtent, log), { source: 'none' as const, buildings: [], fetchedAt: new Date().toISOString() }, 'buildings');
-  const [zoning, hob, heritage, shr, policy, water, lots, roads, railLines, stations, context, property, controls, proposals, feed, people, dem, contourSet, buildingsRead, movement, green, constraints, site, wideRoads, wideRail, wideStations, wideWater, wideSuburbs, country, photos, location, majorProjects] = await Promise.all([
+  const [zoning, hob, heritage, shr, policy, water, lots, roads, railLines, stations, context, property, controls, proposals, feed, people, dem, contourSet, buildingsRead, movement, green, constraints, site, wideRoads, wideRail, wideStations, wideWater, wideSuburbs, country, photos, location, majorProjects, wind] = await Promise.all([
     soft(fetchZoningDetailed(extent), emptyFC, 'zoning'),
     soft(fetchHobDetailed(extent), emptyFC, 'height of building'),
     soft(fetchHeritageDetailed(extent), emptyFC, 'heritage'),
@@ -707,6 +710,8 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
     soft(fetchLocation(locationPanel, log), emptyLocation(locationPanel), 'location window'),
     // The Department's register of State significant applications: its listing for the council areas the window touches and each project's page, cached.
     soft(fetchMajorProjects(daExtent, geo.center, log), emptyMajorProjects('the register did not answer'), 'State significant applications'),
+    // The hourly wind over the last five years from NASA's POWER project, as roses for slide 13; cached by the model's cell.
+    soft(fetchWind(mercatorToLonLat(geo.center), log), emptyWind('NASA POWER did not answer'), 'wind'),
   ]);
   const [housingTarget, cos, , views, character, strategies] = await Promise.all([
     context.lga?.name ? fetchHousingTarget(context.lga.name) : Promise.resolve(null),
@@ -742,7 +747,7 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
     zoning, hob, heritage, shr, policy,
     base: { water, lots, roads, rail: railLines, stations, siteLots },
     controls, property, context, housingTarget, cos,
-    daPanel, applications, majorProjects, daMeta, proposals, people,
+    daPanel, applications, majorProjects, wind, daMeta, proposals, people,
     terrain: { dem, contours: contourSet.lines, contourIntervalM: contourSet.intervalM, contourSource: contourSet.source, contourAttribution: contourSet.attribution }, buildings, movement, green, constraints, site, views,
     wide: { panel: widePanel, base: { water: wideWater, lots: emptyFC, roads: wideRoads, rail: wideRail, stations: wideStations, siteLots }, suburbs: wideSuburbs },
     country,
