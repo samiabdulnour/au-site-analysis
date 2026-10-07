@@ -464,8 +464,9 @@ water, grey for the rest — with the categories inside a family told apart by
 tone and by texture (dots, hatch, cross-hatch, drawn as real lines so they print
 crisply) rather than by another colour. The site is the one accent, coral. The
 streets are white strips over the tints, the road reserve scaled from the
-function hierarchy, so the blocks read as tinted islands on paper; the aerial
-sits under a heavier white veil than before and is a hint, not the picture. The
+function hierarchy, so the blocks read as tinted islands on paper. The aerial is
+not drawn under this sheet at all (it greyed every tint); the tiles are still
+fetched for the CAD export. Street names are set in the navy of the lines. The
 walking catchments are broad, continuous, translucent navy bands. The office
 style that sat beside it left with the office door, and took the elaborate
 compass rose with it — that was the only thing the `symbols` field ever

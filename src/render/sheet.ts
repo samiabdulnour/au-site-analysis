@@ -147,20 +147,6 @@ export function arrowAlong(pts: Pt[], lengthMm: number): BandArrow | null {
   return { svg, cx: (a[0] + b[0]) / 2, cy: (a[1] + b[1]) / 2, angDeg: ang };
 }
 
-/** Walking-person pictogram (Material Symbols directions_walk, Apache-2.0),
- *  24x24 units, recentered; fill takes the given color. */
-export function walkerGlyph(color: string, scale: number): string {
-  return `<g transform="scale(${scale}) translate(-12.6,-13.5)"><path fill="${color}" d="M13.5 5.5c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zM9.8 8.9L7 23h2.1l1.8-8 2.1 2v6h2v-7.5l-2.1-2 .6-3C14.8 12 16.8 13 19 13v-2c-1.9 0-3.5-1-4.3-2.4l-1-1.6c-.4-.6-1-1-1.7-1-.3 0-.5.1-.8.1L6 8.3V13h2V9.6l1.8-.7"/></g>`;
-}
-
-/** Walker-in-circle marker sitting on an isochrone ring, all in ring color. */
-export function walkerMedallion(x: number, y: number, color: string): string {
-  return `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})">
-    <circle r="4.1" fill="#ffffff" stroke="${color}" stroke-width="1.1"/>
-    ${walkerGlyph(color, 0.30)}
-  </g>`;
-}
-
 /**
  * A vector texture (dots, diagonal hatch, cross-hatch) clipped to a shape.
  * Real lines rather than an SVG pattern: patterns rasterize blurrily when
@@ -201,40 +187,6 @@ export function shortStreetName(name: string): string {
     .replace(/\bPARADE\b/, 'PDE').replace(/\bHIGHWAY\b/, 'HWY').replace(/\bDRIVE\b/, 'DR')
     .replace(/\bLANE\b/, 'LN').replace(/\bPLACE\b/, 'PL').replace(/\bCRESCENT\b/, 'CRES')
     .replace(/\bBOULEVARD\b/, 'BVD').replace(/\bTERRACE\b/, 'TCE').replace(/\bCOURT\b/, 'CT');
-}
-
-/**
- * `count` positions spaced evenly along a closed ring by arc length, skipping
- * anything off the sheet and never stacking two markers on top of each other.
- * `phase` (0..1) rotates the whole set so two rings can be staggered.
- */
-function ringMarkers(pts: Pt[], count: number, phase: number): Pt[] {
-  const inView = ([x, y]: Pt) => x > 14 && x < MAP_W - 14 && y > 14 && y < MAP_H - 14;
-  const cum: number[] = [0];
-  for (let i = 1; i < pts.length; i++) {
-    cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
-  }
-  const total = cum[cum.length - 1];
-  if (!(total > 0)) return [];
-
-  const visible = pts.map((p, i) => ({ p, s: cum[i] })).filter((o) => inView(o.p));
-  if (!visible.length) return [];
-
-  const out: Pt[] = [];
-  for (let k = 0; k < count; k++) {
-    const want = total * (((k + phase) / count) % 1);
-    let best: Pt | null = null;
-    let bestDist = Infinity;
-    for (const v of visible) {
-      let d = Math.abs(v.s - want);
-      d = Math.min(d, total - d);                     // the ring is closed
-      if (d >= bestDist) continue;
-      if (out.some((o) => Math.hypot(o[0] - v.p[0], o[1] - v.p[1]) < 26)) continue;
-      bestDist = d; best = v.p;
-    }
-    if (best) out.push(best);
-  }
-  return out;
 }
 
 /**
@@ -342,24 +294,12 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   const usedCats = new Set<string>();
   const layers: string[] = [];
 
-  // ---- aerial base (no CSS filter: keeps JPEGs as JPEGs in the PDF) ------
-  // Tiles cover the axis-aligned fetch extent; place them in that rectangle
-  // (centered on the map) and rotate the whole group with the view.
-  {
-    const s = MAP_W / (2 * view.halfW);
-    const extW = (bundle.extent.xmax - bundle.extent.xmin) * s;
-    const extH = (bundle.extent.ymax - bundle.extent.ymin) * s;
-    const ox = MAP_W / 2 - extW / 2;
-    const oy = MAP_H / 2 - extH / 2;
-    const tiles = bundle.aerial.tiles
-      .map((t) => `<image href="data/${t.file}" x="${(ox + t.left * extW).toFixed(2)}" y="${(oy + t.top * extH).toFixed(2)}"
-          width="${(t.width * extW).toFixed(2)}" height="${(t.height * extH).toFixed(2)}" preserveAspectRatio="none"/>`)
-      .join('\n');
-    layers.push(`<g transform="rotate(${view.rotationDeg.toFixed(2)}, ${MAP_W / 2}, ${MAP_H / 2})">${tiles}</g>`);
-  }
-  // A heavier veil than before: the aerial is a hint under the tints, not
-  // the picture, so the sheet reads as paper.
-  layers.push(`<rect x="0" y="0" width="${MAP_W}" height="${MAP_H}" fill="#ffffff" opacity="0.55"/>`);
+  // ---- paper ground --------------------------------------------------------
+  // The sheet sits on plain white, not on the aerial: the photograph under
+  // the tints greyed every colour and weighed the map down, and its grain is
+  // what the lot hairlines and the white streets already give. The tiles are
+  // still fetched for the CAD export, which carries them on its own layer.
+  layers.push(`<rect x="0" y="0" width="${MAP_W}" height="${MAP_H}" fill="#ffffff"/>`);
 
   // ---- zoning base -------------------------------------------------------
   const zoningByCat: Record<string, string[]> = {};
@@ -599,26 +539,6 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     // the catchment reads as a soft edge the map shows through.
     layers.push(`<path d="${d}" fill="none" stroke="${st.color}" stroke-width="${ISO_W}" opacity="${ISO_OPACITY}" stroke-linejoin="round" stroke-linecap="round"/>`);
   }
-  // Walker medallions ON the ring (the office style): white disc, ring in the
-  // isochrone colour, pedestrian icon. Spaced evenly along the ring's own
-  // length rather than at fixed compass bearings — a bearing with no ring
-  // point near it simply produced no marker, which is why most of them were
-  // missing on irregular or clipped catchments.
-  {
-    for (const iso of bundle.isochrones) {
-      const st = isoStyle[iso.minutes] ?? { color: tpl().walk5, label: `${iso.minutes} MIN WALK` };
-      // The longest ring is the catchment proper; the rest are slivers.
-      const ring = [...iso.rings].sort((a, b) => b.length - a.length)[0];
-      if (!ring) continue;
-      const pts: Pt[] = ring.map(([lon, lat]) => proj(lon, lat));
-      // Stagger the two contours so their markers do not line up radially.
-      const phase = iso.minutes === 5 ? 0.15 : 0.6;
-      for (const [x, y] of ringMarkers(pts, 4, phase)) {
-        layers.push(walkerMedallion(x, y, st.color));
-      }
-    }
-  }
-
   // ---- site --------------------------------------------------------------
   {
     usedCats.add('site');
@@ -852,7 +772,7 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
         const id = `rd${rid++}`;
         const d2 = pts.map((p, i2) => `${i2 === 0 ? 'M' : 'L'}${p[0].toFixed(2)},${p[1].toFixed(2)}`).join('');
         roadDefs.push(`<path id="${id}" d="${d2}" fill="none"/>`);
-        roadTexts.push(`<text font-size="${T.street}" font-weight="700" letter-spacing="0.4" dy="${streetDy}" fill="${tpl().ink}">
+        roadTexts.push(`<text font-size="${T.street}" font-weight="700" letter-spacing="0.4" dy="${streetDy}" fill="${tpl().streetInk}">
           <textPath href="#${id}" startOffset="50%" text-anchor="middle">${esc(label)}</textPath></text>`);
       }
     }
@@ -912,8 +832,7 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     legendRow(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${tpl().busRoute}" stroke-width="0.9" stroke-dasharray="3.4,1.8"/>`, ['TRAM ROUTE']);
   legendRow(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${tpl().transit}" stroke-width="0.9" stroke-dasharray="3,1.9"/>`, ['BUS ROUTE']);
   const legendIso = (color: string) =>
-    `<g><line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${color}" stroke-width="${ISO_W}" opacity="${ISO_OPACITY}"/>
-     <g transform="translate(${symC},3.2)"><circle r="3.3" fill="#fff" stroke="${color}" stroke-width="0.9"/>${walkerGlyph(color, 0.24)}</g></g>`;
+    `<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${color}" stroke-width="${ISO_W}" opacity="${ISO_OPACITY}" stroke-linecap="round"/>`;
   legendRow(legendIso(tpl().walk5), ['ISOCHRONE -'], '400m/5 min walk');
   legendRow(legendIso(tpl().walk10), ['ISOCHRONE -'], '800m/10 min walk');
 

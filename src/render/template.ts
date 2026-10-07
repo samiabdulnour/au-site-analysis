@@ -43,6 +43,7 @@ export interface Template {
   textScale: number;
 
   ink: string;        // primary text and line colour
+  streetInk: string;  // street names
   rule: string;       // title-block rules
   site: string;       // site boundary and emphasis
   dimension: string;  // dimension lines, levels, boundary figures
@@ -108,6 +109,7 @@ export const TEMPLATES: Template[] = [
     font: GROTESK,
     textScale: 0.96,
     ink: '#1c1c1c',
+    streetInk: NAVY,
     rule: '#8a8a8a',
     site: CORAL,
     dimension: '#56616b',
