@@ -466,8 +466,13 @@ crisply) rather than by another colour. The site is the one accent, coral. The
 streets are white strips over the tints, the road reserve scaled from the
 function hierarchy, so the blocks read as tinted islands on paper. The aerial is
 not drawn under this sheet at all (it greyed every tint); the tiles are still
-fetched for the CAD export. Street names are set in the navy of the lines. The
-walking catchments are broad, continuous, translucent navy bands. The office
+fetched for the CAD export. The grain inside the blocks is the building
+footprints (Overture, OpenStreetMap as the fallback), each laid over its ground
+in that ground's own tint, so a block is a darker figure of its hue and never
+black. Street names are set in the navy of the lines. Institutions carry a
+number on their parcel and the legend carries the numbered key, in the
+legend's category order; parks keep their names. The walking catchments are
+broad, continuous, translucent navy bands. The office
 style that sat beside it left with the office door, and took the elaborate
 compass rose with it — that was the only thing the `symbols` field ever
 selected between, so it went too.

@@ -349,6 +349,48 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     layers.push(catLayer(c, paths));
   }
 
+  // ---- building footprints: the grain inside the blocks -------------------
+  // Each footprint takes the tint of the ground it stands on, laid over it,
+  // so a block reads as a darker figure of its own hue on a lighter ground —
+  // never black, which would weigh the sheet down again. The ground is the
+  // institution parcel or zoning polygon under the footprint's centroid; a
+  // footprint on no tinted ground is a pale grey.
+  if (bundle.buildings.buildings.length) {
+    interface Ground { cat: string; ring: number[][]; bbox: [number, number, number, number] }
+    const grounds: Ground[] = [];
+    const addGround = (cat: string, ring: number[][]) => {
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (const [x, y] of ring) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+      grounds.push({ cat, ring, bbox: [x0, y0, x1, y1] });
+    };
+    // Parcels first, so a school's buildings take the school's tint over the zone's.
+    for (const inst of bundle.institutionPolys) for (const r of inst.rings) addGround(inst.cat, r);
+    for (const f of bundle.zoning.features) {
+      const cat = zoneToCategory(f.properties.SYM_CODE);
+      if (!cat) continue;
+      for (const r of geomRings(f.geometry)) addGround(cat, r);
+    }
+    const groundAt = (lon: number, lat: number): string | null => {
+      for (const g of grounds) {
+        const [x0, y0, x1, y1] = g.bbox;
+        if (lon < x0 || lon > x1 || lat < y0 || lat > y1) continue;
+        if (pointInRing(lon, lat, g.ring)) return g.cat;
+      }
+      return null;
+    };
+    const byCat = new Map<string, string[]>();
+    for (const b of bundle.buildings.buildings) {
+      const cat = groundAt(b.centroid[0], b.centroid[1]) ?? '';
+      (byCat.get(cat) ?? byCat.set(cat, []).get(cat)!).push(pathFromRings(b.rings, proj));
+    }
+    for (const [cat, paths] of byCat) {
+      const c = cat ? catById()[cat] : undefined;
+      const fill = c ? c.fill : tpl().road;
+      const opacity = c ? Math.min(0.6, c.opacity * 0.8 + 0.15) : 0.2;
+      layers.push(`<g fill="${fill}" fill-opacity="${opacity.toFixed(2)}" fill-rule="evenodd">` + paths.map((d) => `<path d="${d}"/>`).join('') + '</g>');
+    }
+  }
+
   // ---- thin cadastral lot-boundary overlay --------------------------------
   if (bundle.allLots.features.length) {
     const d = bundle.allLots.features.map((f) => pathFromRings(geomRings(f.geometry), proj)).join('');
@@ -602,33 +644,71 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   const isFree = (a: Pt, b: Pt, r: number) => !claims.some((c) => segGap(a, b, c.a, c.b) < r + c.r);
   const reserve = (a: Pt, b: Pt, r: number) => { claims.push({ a, b, r }); };
 
-  // ---- POI labels ---------------------------------------------------------
-  // Institutions with a colored parcel are labeled at the parcel centroid so
-  // the name sits centered on its color field; open spaces are labeled from
-  // the named-area centroids (parks must always carry their name).
+  // ---- institutions: a number on the parcel, the name in the key ----------
+  // A school's name rarely fits its parcel, and a name pushed off its parcel
+  // reads as the neighbour's. So the map carries a number at the parcel's
+  // centroid (at the point itself where no parcel was coloured) and the
+  // legend carries the key, in the legend's category order.
+  const inBounds = (x: number, y: number) => x > 10 && x < MAP_W - 10 && y > 8 && y < MAP_H - 8;
+  interface Institution { n: number; name: string; cat: string; x: number; y: number }
+  const institutions: Institution[] = [];
+  {
+    const candidates: { name: string; cat: string; x: number; y: number }[] = [];
+    for (const inst of bundle.institutionPolys) {
+      let best = inst.rings[0], bestA = 0;
+      for (const r of inst.rings) {
+        let a = 0;
+        for (let i = 0; i < r.length - 1; i++) a += r[i][0] * r[i + 1][1] - r[i + 1][0] * r[i][1];
+        if (Math.abs(a) > bestA) { bestA = Math.abs(a); best = r; }
+      }
+      const [clon, clat] = ringCentroid(best);
+      const [x, y] = proj(clon, clat);
+      candidates.push({ name: inst.name, cat: inst.cat, x, y });
+    }
+    for (const p of bundle.complexPoints) {
+      if (!p.cat) continue;
+      const [x, y] = proj(p.lon, p.lat);
+      candidates.push({ name: p.name, cat: p.cat, x, y });
+    }
+    // Legend order, then name; a parcel's centroid beats its point for the
+    // same name because the parcels were listed first and the sort is stable.
+    const order = categories().map((c) => c.id);
+    candidates.sort((a, b) => order.indexOf(a.cat) - order.indexOf(b.cat) || a.name.localeCompare(b.name));
+    const seen = new Set<string>();
+    for (const c of candidates) {
+      const key = c.name.toUpperCase();
+      if (seen.has(key) || !inBounds(c.x, c.y)) continue;
+      seen.add(key);
+      institutions.push({ n: institutions.length + 1, ...c });
+    }
+  }
+  const NR = 2.9;
+  // Two institutions on one block (a centre and its clinic) put their discs
+  // on top of each other; nudge such pairs apart along the line between them
+  // until the discs just clear, a few passes for a cluster.
+  for (let pass = 0; pass < 4; pass++) {
+    for (let i = 0; i < institutions.length; i++) for (let j = i + 1; j < institutions.length; j++) {
+      const a = institutions[i], b = institutions[j];
+      const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 0.01;
+      const gap = 2 * NR + 0.6 - d;
+      if (gap <= 0) continue;
+      const ux = (dx / d) * (gap / 2), uy = (dy / d) * (gap / 2);
+      a.x -= ux; a.y -= uy; b.x += ux; b.y += uy;
+    }
+  }
+  const numberSize = T.legend * 1.3;
+  const numberMarker = (x: number, y: number, n: number) =>
+    `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})">
+      <circle r="${NR}" fill="#ffffff" stroke="${tpl().streetInk}" stroke-width="0.6"/>
+      <text text-anchor="middle" dy="${(numberSize * 0.36).toFixed(2)}" font-size="${numberSize.toFixed(2)}" font-weight="700" fill="${tpl().streetInk}">${n}</text></g>`;
+  for (const i of institutions) reserve([i.x, i.y], [i.x, i.y], NR + 1);
+  layers.push(institutions.map((i) => numberMarker(i.x, i.y, i.n)).join('\n'));
+
+  // ---- open-space names ---------------------------------------------------
+  // Parks have the room their names need, and are labelled from the
+  // named-area centroids (a park must always carry its name).
   interface PoiLabel { x: number; y: number; lines: string[]; priority: number }
   const poiLabels: PoiLabel[] = [];
-  const inBounds = (x: number, y: number) => x > 10 && x < MAP_W - 10 && y > 8 && y < MAP_H - 8;
-  const labeledNames = new Set<string>();
-
-  for (const inst of bundle.institutionPolys) {
-    let best = inst.rings[0], bestA = 0;
-    for (const r of inst.rings) {
-      let a = 0;
-      for (let i = 0; i < r.length - 1; i++) a += r[i][0] * r[i + 1][1] - r[i + 1][0] * r[i][1];
-      if (Math.abs(a) > bestA) { bestA = Math.abs(a); best = r; }
-    }
-    const [clon, clat] = ringCentroid(best);
-    const [x, y] = proj(clon, clat);
-    if (!inBounds(x, y)) continue;
-    labeledNames.add(inst.name.toUpperCase());
-    poiLabels.push({ x, y, lines: wrapLabel(inst.name), priority: 1 });
-  }
-  for (const p of bundle.complexPoints) {
-    if (!p.cat || labeledNames.has(p.name.toUpperCase())) continue;
-    const [x, y] = proj(p.lon, p.lat);
-    if (inBounds(x, y)) poiLabels.push({ x, y, lines: wrapLabel(p.name), priority: 2 });
-  }
   // Open spaces: named areas (centered) first, loose park points as fallback.
   const parkSeen = new Set<string>();
   for (const p of bundle.parkAreas) {
@@ -644,9 +724,9 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     if (inBounds(x, y)) poiLabels.push({ x, y, lines: wrapLabel(p.name), priority: 2 });
   }
 
-  // Recenter every label into the colored field it sits on: find the
-  // smallest institution/open-space polygon containing the label point and
-  // move the label to that ring's centroid.
+  // Recenter every label into the open-space field it sits on: find the
+  // smallest such polygon containing the label point and move the label to
+  // that ring's centroid.
   interface Field { ring: Pt[]; area: number; cx: number; cy: number }
   const fields: Field[] = [];
   const addField = (ringLL: number[][]) => {
@@ -659,7 +739,6 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     if (Math.abs(a) < 1) return;
     fields.push({ ring, area: Math.abs(a / 2), cx: cx / (3 * a), cy: cy / (3 * a) });
   };
-  for (const inst of bundle.institutionPolys) for (const r of inst.rings) addField(r);
   for (const f of bundle.zoning.features) {
     if (zoneToCategory(f.properties.SYM_CODE) !== 'openSpace') continue;
     for (const r of geomRings(f.geometry)) addField(r);
@@ -835,6 +914,21 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     `<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${color}" stroke-width="${ISO_W}" opacity="${ISO_OPACITY}" stroke-linecap="round"/>`;
   legendRow(legendIso(tpl().walk5), ['ISOCHRONE -'], '400m/5 min walk');
   legendRow(legendIso(tpl().walk10), ['ISOCHRONE -'], '800m/10 min walk');
+
+  // ---- the institutions' key ---------------------------------------------
+  if (institutions.length) {
+    ly += 2;
+    legendSvg += `<text x="${SWATCH_X}" y="${ly}" font-size="${T.legend}" font-weight="700" fill="#222">INSTITUTIONS</text>`;
+    ly += 4.5;
+    for (const i of institutions) {
+      const lines = wrapLabel(i.name, 34);
+      const y0 = lines.length === 1 ? NR + 1.0 : NR - 0.6;
+      let row = `<g transform="translate(0,${ly.toFixed(1)})">${numberMarker(symC, NR, i.n)}`;
+      lines.forEach((l, k) => { row += `<text x="${LABEL_X}" y="${(y0 + k * 3.2).toFixed(1)}" font-size="${T.legend}" fill="#222">${esc(l)}</text>`; });
+      legendSvg += row + '</g>';
+      ly += Math.max(6.6, 3.2 * lines.length + 3.6);
+    }
+  }
 
   return sheetHtml({
     meta,

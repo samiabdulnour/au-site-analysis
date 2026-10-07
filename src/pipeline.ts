@@ -60,6 +60,8 @@ export interface Bundle {
   bus: BusData;
   isochrones: Isochrone[];
   aerial: AerialResult;
+  /** Building footprints across the window, drawn as the grain inside the blocks. */
+  buildings: BuildingsData;
   generatedAt: string;
 }
 
@@ -132,7 +134,8 @@ export async function runPipeline(address: string, opts: PipelineOpts): Promise<
     p.catch((e) => { log(`  WARN ${name} failed: ${e.message ?? e}`); return fallback; });
 
   const emptyBus: BusData = { busStops: [], busRouteSegments: [], tramStops: [], tramRouteSegments: [] };
-  const [railCorridors, allLots, zoning, hob, heritage, roads, railLines, stations, parkPoints, parkAreas, rawComplex, bus, isochrones, aerial] =
+  const noBuildings: BuildingsData = { source: 'none', buildings: [], fetchedAt: new Date().toISOString() };
+  const [railCorridors, allLots, zoning, hob, heritage, roads, railLines, stations, parkPoints, parkAreas, rawComplex, bus, isochrones, aerial, buildings] =
     await Promise.all([
       soft(fetchRailCorridors(extent), emptyFC, 'rail corridors'),
       soft(fetchAllLots(extent), emptyFC, 'cadastral lots'),
@@ -148,6 +151,7 @@ export async function runPipeline(address: string, opts: PipelineOpts): Promise<
       soft(fetchBusData(extent), emptyBus, 'bus/tram data (OSM)'),
       soft(fetchIsochrones(centerLL), [], 'isochrones'),
       fetchAerial(extent, opts.aerialPxWidth ?? 3200, dataDir),
+      soft(fetchBuildings(extent, log), noBuildings, 'buildings'),
     ]);
 
   // Bus stops: TfNSW when a key is configured (authoritative), else the OSM
@@ -176,7 +180,7 @@ export async function runPipeline(address: string, opts: PipelineOpts): Promise<
 
   log(`  lots:${siteLots.features.length} zoning:${zoning.features.length} roads:${roads.length} ` +
       `stations:${stations.length} parks:${parkPoints.length} complexes:${complexPoints.length} ` +
-      `instPolys:${institutionPolys.length} busStops:${bus.busStops.length} isochrones:${isochrones.length}`);
+      `instPolys:${institutionPolys.length} busStops:${bus.busStops.length} isochrones:${isochrones.length} buildings:${buildings.buildings.length}/${buildings.source}`);
 
   const bundle: Bundle = {
     address,
@@ -202,6 +206,7 @@ export async function runPipeline(address: string, opts: PipelineOpts): Promise<
     bus,
     isochrones,
     aerial,
+    buildings,
     generatedAt: new Date().toISOString(),
   };
   await writeFile(join(dataDir, 'bundle.json'), JSON.stringify(bundle));
