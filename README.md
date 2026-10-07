@@ -552,7 +552,16 @@ site. Then *Country*: the open layers of Country over the wide strip — the
 pre-1750 plant communities of the State Vegetation Type Map over the land's
 shape, with the watercourses, the coast, the crests read from the elevation
 model, the National Parks estate and the gazetted Aboriginal Places — with
-the Local Aboriginal Land Council, the National Native Title Tribunal's
+the Aboriginal heritage the open registers map over the strip: the LEPs'
+scheduled Aboriginal items and the two plans' maps of Aboriginal cultural
+landscapes (Lake Macquarie's sensitive Aboriginal landscapes, Moree Plains'
+places of Aboriginal cultural significance), Heritage NSW's Aboriginal
+Heritage Impact Permit boundaries, active or expired, and the Indigenous
+places of the National and Commonwealth Heritage Lists and of the Register
+of the National Estate, labelled an archive with no statutory force (a
+nomination is said to be one, not a listing: the Sydney Cultural Crescent
+Rock Art nomination takes in most of the Sydney samples' strips). With
+them the Local Aboriginal Land Council, the National Native Title Tribunal's
 registers at the site and over the strip, the plant community and the soil
 landscape at the site, the nearest watercourse and foreshore, the site's
 level against the nearest crest, the gazetted places within 10 km and the
@@ -591,7 +600,9 @@ with the share of the site each hour leaves in shadow; and the sight lines
 from an eye just under the height limit, over the 5 m elevation model, to
 the skylines within range, the named water and the coast and the park next
 door — a cone where the ground leaves the line clear, a dashed line to the
-point where it rises across it — with a table of them. Then *development
+point where it rises across it — with a table of them; and summer and winter
+wind roses from NASA POWER's hourly reanalysis over the last five years, with
+the frontages that face the prevailing winds named. Then *development
 activity*: every
 application lodged in the council area over the last five years, from the
 Planning Portal's Online DA feed, clipped to the window around the site. The

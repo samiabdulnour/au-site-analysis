@@ -47,11 +47,20 @@ export async function htmlToPdf(htmlPath: string, pdfPath: string): Promise<void
 }
 
 /**
+ * Run in the page before it is printed, where the text is actually measured
+ * (a string, because the page's DOM is not this program's).
+ *
  * A box marked `data-fit` (the sources table) holds more than its fixed
  * height can promise, and it clips: its first child's type steps down until
  * nothing is hidden, to three quarters of its size, rather than losing the
- * last rows unseen. Run in the page, where the text is actually measured; a
- * string because the page's DOM is not this program's.
+ * last rows unseen. Where even that is not enough, the rows that would be
+ * cut are hidden whole (a heading left without its rows with them) and the
+ * box's `data-fit-note` element is shown under the last one, its
+ * `data-text` with {n} for the rows left out.
+ *
+ * A text column whose paragraphs would run into its fine print steps its
+ * type down too, to seven eighths of its size: the fine print stays where
+ * it is and whole.
  */
 const FIT_BOXES = `(() => {
   for (const box of document.querySelectorAll('[data-fit]')) {
@@ -61,6 +70,34 @@ const FIT_BOXES = `(() => {
     for (let k = 1; box.scrollHeight > box.clientHeight + 1 && k > 0.76; ) {
       k -= 0.025;
       inner.style.fontSize = (base * k).toFixed(3) + 'px';
+    }
+    const note = box.dataset.fitNote ? document.getElementById(box.dataset.fitNote) : null;
+    if (!note || box.scrollHeight <= box.clientHeight + 1) continue;
+    note.hidden = false;
+    const limit = box.getBoundingClientRect().bottom - note.getBoundingClientRect().height - 2;
+    const rows = Array.from(box.querySelectorAll('tbody tr'));
+    const shown = [];
+    let left = 0;
+    for (const r of rows) {
+      if (r.getBoundingClientRect().bottom > limit) { r.style.visibility = 'hidden'; if (!r.classList.contains('grp')) left++; }
+      else shown.push(r);
+    }
+    while (shown.length && shown[shown.length - 1].classList.contains('grp')) shown.pop().style.visibility = 'hidden';
+    const last = shown[shown.length - 1];
+    const top = last ? last.getBoundingClientRect().bottom : box.getBoundingClientRect().top;
+    note.textContent = (note.dataset.text || '{n} more').replace('{n}', String(left));
+    note.style.top = (top - note.offsetParent.getBoundingClientRect().top + 2).toFixed(1) + 'px';
+  }
+  // a slide's text column whose paragraphs run into its fine print (a long list of views, a busy council) closes up a little
+  for (const col of document.querySelectorAll('.text')) {
+    const fine = Array.from(col.children).find((c) => c.classList.contains('fine'));
+    const flow = Array.from(col.children).filter((c) => c !== fine);
+    if (!fine || !flow.length) continue;
+    const over = () => Math.max(...flow.map((c) => c.getBoundingClientRect().bottom)) > fine.getBoundingClientRect().top - 4;
+    const base = parseFloat(getComputedStyle(col).fontSize);
+    for (let k = 1; over() && k > 0.88; ) {
+      k -= 0.025;
+      col.style.fontSize = (base * k).toFixed(3) + 'px';
     }
   }
 })()`;

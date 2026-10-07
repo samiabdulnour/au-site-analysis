@@ -172,7 +172,8 @@ from the road network); sun path diagram computed for the site (21 June and
 as an overshadowing hint; view sectors by direction to named destinations
 (water bodies, headlands, the CBD skyline, parks, landmarks from the place
 and heritage layers) with the DEM deciding whether the ground rises or falls
-that way.
+that way; summer and winter wind roses from NASA POWER's hourly reanalysis,
+with the frontages that face the prevailing winds named.
 
 **14 Environmental constraints.** Bushfire prone land, flood planning (where
 an LEP maps it), acid sulfate soils, airport noise (where an LEP maps it),
@@ -184,9 +185,12 @@ an absence is stated, not implied.
 **15 Country.** The layers that exist: Local Aboriginal Land Council, native
 title status (NNTT), gazetted Aboriginal Places nearby, pre-1750 plant
 community at the site, soil landscape, watercourses and the foreshore,
-ridgelines from the DEM, national parks and headlands, and a note that an
-AHIMS search is required (the ASDST likelihood model is public; AHIMS is
-not). *Manual, always:* the cultural narrative, language and place-name
+ridgelines from the DEM, national parks and headlands, the Aboriginal
+heritage the LEPs map (scheduled items, and the two plans' Aboriginal
+landscape maps), Aboriginal Heritage Impact Permit boundaries, the
+Indigenous places of the National and Commonwealth Heritage Lists and of the
+archived Register of the National Estate, and a note that an AHIMS search is
+required (the ASDST likelihood model is public; AHIMS is not). *Manual, always:* the cultural narrative, language and place-name
 content, which the office develops with Knowledge Holders.
 
 **16 People and market.** ABS Census 2021 for the site's SA2 (and LGA):
@@ -237,6 +241,8 @@ Application). New, all verified with a point or envelope query:
 |---|---|---|
 | `ePlanning/Planning_Portal_Principal_Planning` | 221 State Heritage Register curtilage, 16 EPI heritage, 14 HOB, 19 zoning, 22 min lot size, 25 min dwelling density, 26 foreshore building line | the viewer's own copies, same fields |
 | `ePlanning/Planning_Portal_Development_Control` | 220 DCP by LGA (PLAN_NAME + FILE_NAME = PDF URL), 219 contributions plan by LGA, 218 SIC, 223 local provisions, 224 active street frontages, 769 active frontages map, 225 additional permitted uses, 226 key sites, 227 urban release area | DCP link verified for North Sydney |
+| `EDP/AHIPS` | 0 Aboriginal Heritage Impact Permit boundaries (AHIP, Project_Na, Applicant, Location, Decision_D d/m/yyyy, Status ACTIVE/EXPIRED/VARIED/AREA VARIED, ExpireDate) | Heritage NSW, CC BY 3.0 AU; a variation, transfer or surrender is a record of its own under the permit's number; the free text carries a `?` where an en dash or a quote was lost; the layer leaves out permits whose boundaries were poor or missing (the public register lists them) |
+| `ePlanning/Planning_Portal_Local_Provisions` | 414 Aboriginal Cultural Significance Map (Moree Plains LEP 2011, 8 areas), 557 Sensitive Aboriginal Landscape Map (Lake Macquarie LEP 2014, 60 areas): the only two plans with an Aboriginal landscape map in September 2026 | EPI_NAME, MAP_NAME, LAY_CLASS, CURRENCY_DATE; LEGIS_REF_CLAUSE is empty, so the slide names the map, not a clause |
 | `ePlanning/Planning_Portal_Local_Provisions` | 200 LEP local-provision map types: design excellence, sun access protection, built character, special character areas, incentive height/FSR, affordable housing, centre maps, airport buffer… | `identify` at a point returns whichever apply |
 | `ePlanning/Planning_Portal_Hazard` | 229 bushfire prone land, 230 flood planning map, 232 landslide risk | flood planning holds only 12 EPIs' maps (622 polygons statewide); most Sydney councils keep flood maps outside the LEP |
 | `ePlanning/Planning_Portal_Protection` | 234 acid sulfate soils, 235 airport noise, 236 drinking water catchment, 237 groundwater vulnerability, 239 obstacle limitation surface, 240/1024 riparian, 241 salinity, 242 scenic protection, 243 terrestrial biodiversity, 244 wetlands, 245 environmentally sensitive land, 365 NPWS estate | airport noise holds 5 EPIs; Sydney Airport's ANEF is not among them |
@@ -423,10 +429,14 @@ on made-up lots.
 | HMS/Heritage 8 | gazetted Aboriginal Places |
 | VIS/SVTM_NSW_1750_PCT, Soil_Landscape/Sydney, Water theme, DEM ridgelines, NPWS estate | the pre-colonial landscape layers the reference maps by hand |
 | ASDST | a public likelihood model; the slide states that an AHIMS search is required and that AHIMS itself is not open |
+| EPI_Primary_Planning_Layers 0 (the four Aboriginal classes), Planning_Portal_Local_Provisions 414 and 557 | the LEPs' scheduled Aboriginal items, and the two plans' maps of Aboriginal cultural landscapes |
+| EDP/AHIPS 0 | Aboriginal Heritage Impact Permit boundaries: land where Heritage NSW permitted harm to Aboriginal objects, for a project |
+| DCCEEW `https://gis.environment.gov.au/gispubmap/rest/services/ogc_services/National_Heritage_List/FeatureServer/0` and `…/Commonwealth_Heritage_List/FeatureServer/0` (CLASS, STATUS: Listed place, Nominated place, Within listed place) | the lists' Indigenous places, CC BY 3.0 AU. In NSW in September 2026 the National Heritage List has four listed (the Moree Baths, the Australian Hall in Elizabeth Street, the Brewarrina fish traps, Myall Creek) and one nominated, the Sydney Cultural Crescent Rock Art, 5,076 km² round Sydney; the Commonwealth list has the Cubbitch Barta area at Holsworthy and two places within the Beecroft Peninsula. Confidential places are generalised to their 1:250,000 map sheet |
+| DCCEEW's Register of the National Estate `https://services1.arcgis.com/gtRkYQyUQLMTM1uS/arcgis/rest/services/heritage_rnesdb_public/FeatureServer/0` | the Register was closed in 2007 and is an archive, not a statutory list; its Indigenous places that were registered, identified, indicative or on the interim list (320 in NSW), rejected, removed and destroyed ones left out, CC BY 4.0 |
 
 ### 4.11 Climate
 
-Open-Meteo archive (ERA5): `https://archive-api.open-meteo.com/v1/archive?latitude=&longitude=&start_date=2023-01-01&end_date=2023-12-31&hourly=wind_speed_10m,wind_direction_10m&timezone=Australia%2FSydney` → 8,760 hourly rows for a wind rose, no key. The climate-normals endpoint is rate-limited per IP (it refused from this shared address); the Bureau of Meteorology blocks scripted access outright. The sun path needs no fetch: it is a computation from latitude, longitude and date (SunCalc-style).
+NASA POWER hourly point API: `https://power.larc.nasa.gov/api/temporal/hourly/point?parameters=WS10M,WD10M&community=RE&longitude=&latitude=&start=YYYY0101&end=YYYY1231&format=JSON&time-standard=LST` → the MERRA-2 reanalysis's hourly wind at 10 m for the cell over the point (0.5° × 0.625°), 43,824 hours for five years in about a second, no key, free for any use with an acknowledgement. In use on slide 13. The cell is coarse: every central-Sydney sample falls in one, so their roses are the same, and a reanalysis smooths the sea breeze and all but loses the calms; the slide says it is the region's wind. Open-Meteo's archive (ERA5, `archive-api.open-meteo.com/v1/archive`) answers too at a finer grid, but its free API is for non-commercial use only, which an office's site analysis is not; its climate-normals endpoint is rate-limited per IP. The Bureau of Meteorology blocks scripted access outright. The sun path needs no fetch: it is a computation from latitude, longitude and date (SunCalc-style).
 
 ## 5. What cannot be fetched, and what to do instead
 
@@ -733,8 +743,11 @@ documentation but has not been exercised here, where no token is set);
 Wikimedia Commons is not used here, its photographs being landmarks rather
 than the street. The plan keys the frames at the smallest round scale from
 1:1000 that holds every camera and the site, with each camera's view cone;
-the empty cells of the six are placeholders naming a side no open frame
-looks at, sized for the site visit's photographs. The then-and-now pair is
+the empty cells of the six are placeholders naming a street frontage no
+frame looks at the site from (the site's frontages as slide 11 finds them:
+a named road running along a boundary edge), sized for the site visit's
+photographs; the compass points round the site are not used, since a
+neighbour's side is photographed from the street too. The then-and-now pair is
 one panel at 1:2500 drawn twice, 70.5 × 95 mm each, 176 × 238 m of ground:
 the 1943 aerial survey of Sydney as the level-18 tiles of Spatial Services'
 tile service placed at their Mercator extents (about half a metre a pixel,
@@ -776,7 +789,20 @@ framed square and along Illawarra Road both ways; Botany none, its one
 panorama nearby being inside the neighbour's building, so the open frames
 carry that slide.
 
-Slide 13 fetches nothing new but the views. The street grid is the bearing
+Slide 13 fetches the views and the wind (`src/fetch/wind.ts`): NASA
+POWER's hourly wind at 10 m over the last five full years, counted into
+sixteen sectors by the Bureau's speed classes (2–10, 10–20, 20–30 and 30
+km/h and over, calm below 2) for summer (December to February) and winter
+(June to August), cached by cell for half a year. The two roses share a
+scale and sit under the views table, the table keeping the rows that fit
+above them; the text names each season's prevailing winds (the three
+neighbouring sectors with the most hours, and the next such run at least 90°
+from it), the summer afternoons at 3 pm, and the frontages that face a
+prevailing wind (its middle within 45° of the way the frontage faces). At
+the Sydney samples the summer wind is north-easterly (37 % of the hours,
+east-north-easterly in the afternoons) and south-south-easterly (33 %), the
+winter wind west-south-westerly (33 %) and north-north-westerly (21 %); at
+Orange it is easterly in summer and west-south-westerly in winter. The street grid is the bearing
 of every road segment in the window, length-weighted and folded to 0–180° in
 5° bins, each smoothed with half its neighbours; the primary axis is the
 fullest bin, the secondary the fullest at least 30° from it, and the site's
@@ -858,7 +884,11 @@ answer, a feed that came back incomplete) and state the licence position
 as the publishers give it. The table has a fixed box and a busy council
 area fills it (fifty-odd rows at Bondi Beach), so the printer measures it
 in the page and steps its type down until the last row is inside, to three
-quarters of its size, rather than clipping the rows below the fold.
+quarters of its size, rather than clipping the rows below the fold. Past
+that the rows that would be cut are hidden whole and a note under the last
+one counts them and points to overall.json, which lists every dataset. Every
+slide's text column has the same guard: paragraphs that would run into the
+fine print step down to seven eighths of their size.
 
 Slide 15 reads the layers of Country that are open (`src/fetch/country.ts`,
 each part soft): the National Native Title Tribunal's determinations,
@@ -906,6 +936,46 @@ there is room, tabled with their number and distance, and named in the text
 ("none scheduled in the strip" elsewhere); an item within 500 m joins slide
 17's Country constraint. At 154 Campbell Parade Bondi Beach four are in the
 strip, the nearest an open campsite and burials 143 m east.
+
+Four more registers are read over the strip, each soft and each optional in
+the deck's data, so a deck cached before them says nothing rather than
+"none" (`src/fetch/country.ts`, the geometry in `src/lib/rings.ts`). Two
+plans map Aboriginal cultural landscapes on their local-provision maps:
+Lake Macquarie's Sensitive Aboriginal Landscape Map and Moree Plains'
+Aboriginal Cultural Significance Map, hatched on the map in a darker shade of
+ePlanning's own colour and said as "the Lake Macquarie LEP 2014 maps the site
+as a Sensitive Aboriginal Landscape Area, where a local provision of the plan
+applies". Heritage NSW's Aboriginal Heritage Impact Permit boundaries are
+merged by permit number (a variation, a transfer or a surrender is a record
+of its own), active while a record is active and its expiry has not passed,
+outlined in purple and dashed once expired (with a dot where a permit
+covers only a lot or two, a speck at 1:16,000), named by project with their
+number, state and distance; slide 17 draws them and the landscape maps on
+its constraints diagram. The Indigenous places of the National and
+Commonwealth Heritage Lists are outlined in red, washed when small and
+listed; a nomination is dashed with a band of tint inside its edge and is
+always said to be a nomination, not a listing. The Register of the National
+Estate's are dotted grey and always said to be an archive, closed in 2007,
+with no statutory force; only its registered, identified, indicative and
+interim places are kept. Outlines are clipped to the strip and a margin
+round it, so the rock-art nomination's 16,000 points round Sydney are not
+carried into every deck, and a place that takes in the whole strip keeps no
+outline and goes into the legend and the text ("the whole strip lies within
+the Sydney Cultural Crescent Rock Art, a nomination to the National Heritage
+List (not a listing) that takes in 5,076 km²"). A boundary is over the site
+when it takes in a twentieth of the lot or 100 m², since permit boundaries
+drawn along the kerb graze the lots beside them; one that only grazes is "at
+the site's edge". Slide 17's Country constraint names a permit within
+200 m, a mapped landscape within 200 m and a listed place within 500 m; a
+nomination and the archive bind nothing, so neither is a constraint. Slide
+18 lists the permits with Heritage NSW and the lists with DCCEEW.
+
+At the samples: every Sydney site lies inside the rock-art nomination, and
+at Waterloo, North Sydney and Botany so does the whole strip. Bondi Beach
+has three permits in the strip, the nearest the seating and landscaping
+works along the beach (AHIP 4968, active to August 2032) at the site's edge;
+North Sydney a test excavation 1.1 km east and the archive's Berry Island
+Reserve 1.6 km west; Waterloo two expired permits; Orange none of these.
 
 Slide 16 looks the site up in the ASGS (SA2, LGA, suburb, capital-city
 region), reads the five census tables for the SA2, the LGA and the capital
