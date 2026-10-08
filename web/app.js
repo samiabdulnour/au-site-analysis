@@ -19,6 +19,7 @@ const SCALES = {
     ['2000', '2000', '/samples/context-2000.jpg', 'context · 1:2000 — tighter, more detail'],
     ['3000', '3000', '/samples/context.jpg',      'context · 1:3000 — the default'],
     ['4000', '4000', '/samples/context-4000.jpg', 'context · 1:4000 — wider catchment'],
+    ['5000', '5000', '/samples/context-5000.jpg', 'context · 1:5000 — the whole suburb'],
   ],
   site: [
     ['0',   'auto', '/samples/site.jpg',     'site · auto — tightest scale that fits the lot'],

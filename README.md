@@ -56,7 +56,9 @@ either it reads KartaView alone. On the server they go in
 `/etc/site-analyst.env`, which the deployer passes to the container.
 
 To refresh the samples, generate the three sheets for the demo address and
-re-render them:
+re-render them (the context scale thumbnails `context-2000.jpg`,
+`context-4000.jpg` and `context-5000.jpg` come from the same address at
+`--scale 2000`, `4000` and `5000`, rendered the same way):
 
 ```bash
 npm run generate -- "1 Bay Street, Botany NSW 2019" --type both
@@ -487,7 +489,8 @@ Fonts are limited to what the runtime image installs (Liberation, DejaVu).
 Naming an absent font does not fail; it silently falls back and the sheet
 comes out in the wrong face, so add the package to the `Dockerfile` first.
 
-Options (after `--`): `--type context|site|summary|slides|both`, `--scale 3000` (default 3000),
+Options (after `--`): `--type context|site|summary|slides|both`, `--scale 3000` (default 3000;
+the web picker offers 1:2000, 1:3000, 1:4000 and 1:5000, the server accepts 1000 to 6000),
 `--slides-scale 8000` (the deck's map panels), `--da-years 5` (the deck's
 development window), `--job 2539`, `--client "Name"`,
 `--status "DEVELOPMENT APPLICATION"`, `--sheet "DA 003"`.

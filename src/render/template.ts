@@ -45,7 +45,7 @@ export interface Template {
   textScale: number;
 
   ink: string;        // primary text and line colour
-  streetInk: string;  // street names
+  streetInk: string;  // street names and the numbered place markers
   rule: string;       // title-block rules
   site: string;       // site boundary and emphasis
   dimension: string;  // dimension lines, levels, boundary figures
@@ -83,13 +83,13 @@ const CORAL = '#e8705a';
 
 const NEUTRAL_CATEGORIES: Category[] = [
   { id: 'site',           label: 'SITE',                                     fill: CORAL, opacity: 0.6 },
-  { id: 'medical',        label: 'MEDICAL',                                  fill: TEAL, opacity: 0.4, stroke: TEAL_INK, texture: 'cross', textureColor: PAPER, figure: TEAL_INK },
-  { id: 'education',      label: 'EDUCATION',                                fill: TEAL, opacity: 0.55, stroke: TEAL_INK, texture: 'dots', textureColor: PAPER, figure: TEAL_INK },
+  { id: 'medical',        label: 'MEDICAL',                                  fill: TEAL, opacity: 0.65, stroke: TEAL_INK, figure: TEAL_INK },
+  { id: 'education',      label: 'EDUCATION',                                fill: TEAL, opacity: 0.55, stroke: TEAL_INK, texture: 'lines', textureColor: PAPER, figure: TEAL_INK },
   { id: 'childCare',      label: 'CHILD CARE / AGED CARE',                   fill: TEAL, opacity: 0.25, stroke: TEAL_INK, figure: TEAL_INK },
   { id: 'mixedUse',       label: 'MIXED USE CLUSTER RESIDENTIAL/COMMERCIAL', fill: SAND, opacity: 0.55, texture: 'dots', textureColor: SAND_INK, figure: SAND_INK },
   { id: 'retail',         label: 'ACTIVE RETAIL',                            fill: SAND, opacity: 0.4, texture: 'cross', textureColor: SAND_INK, figure: SAND_INK },
-  { id: 'openSpace',      label: 'OPEN SPACE',                               fill: TEAL, opacity: 0.55, figure: TEAL_INK },
-  { id: 'community',      label: 'COMMUNITY HUB',                            fill: TEAL, opacity: 0.5, stroke: TEAL_INK, texture: 'lines', textureColor: PAPER, figure: TEAL_INK },
+  { id: 'openSpace',      label: 'OPEN SPACE',                               fill: TEAL, opacity: 0.55, texture: 'dots', textureColor: PAPER, figure: TEAL_INK },
+  { id: 'community',      label: 'COMMUNITY HUB',                            fill: TEAL, opacity: 0.5, stroke: TEAL_INK, texture: 'cross', textureColor: PAPER, figure: TEAL_INK },
   { id: 'r2',             label: 'R2 LOW DENSITY RESIDENTIAL',               fill: PEACH, opacity: 0.3, figure: PEACH_INK },
   { id: 'r3',             label: 'R3 MEDIUM DENSITY RESIDENTIAL',            fill: PEACH, opacity: 0.45, figure: PEACH_INK },
   { id: 'r4',             label: 'R4 HIGH DENSITY RESIDENTIAL',              fill: PEACH, opacity: 0.5, texture: 'lines', textureColor: PEACH_INK, figure: PEACH_INK },
@@ -113,7 +113,7 @@ export const TEMPLATES: Template[] = [
     font: GROTESK,
     textScale: 0.96,
     ink: '#1c1c1c',
-    streetInk: NAVY,
+    streetInk: '#1c1c1c',
     rule: '#8a8a8a',
     site: CORAL,
     dimension: '#56616b',

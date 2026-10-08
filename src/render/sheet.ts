@@ -896,13 +896,18 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     ly += 2;
     legendSvg += `<text x="${SWATCH_X}" y="${ly}" font-size="${T.legend}" font-weight="700" fill="#222">KEY</text>`;
     ly += 4.5;
+    // A wide window (1:5000) keys forty places; the rows tighten so the key
+    // still ends above the title block.
+    const many = places.length + stationsOnMap.length > 24;
+    const keySize = many ? T.legend * 0.9 : T.legend;
+    const lineH = many ? 2.9 : 3.2;
     const keyRow = (marker: string, name: string) => {
-      const lines = wrapLabel(name, 34);
-      const y0 = lines.length === 1 ? NR + 1.0 : NR - 0.6;
+      const lines = wrapLabel(name, many ? 38 : 34);
+      const y0 = lines.length === 1 ? NR + 1.0 : NR - 0.4;
       let row = `<g transform="translate(0,${ly.toFixed(1)})">${marker}`;
-      lines.forEach((l, k) => { row += `<text x="${LABEL_X}" y="${(y0 + k * 3.2).toFixed(1)}" font-size="${T.legend}" fill="#222">${esc(l)}</text>`; });
+      lines.forEach((l, k) => { row += `<text x="${LABEL_X}" y="${(y0 + k * lineH).toFixed(1)}" font-size="${keySize.toFixed(2)}" fill="#222">${esc(l)}</text>`; });
       legendSvg += row + '</g>';
-      ly += Math.max(6.6, 3.2 * lines.length + 3.6);
+      ly += Math.max(many ? 5.4 : 6.6, lineH * lines.length + (many ? 2.6 : 3.6));
     };
     for (const pl of places) keyRow(numberMarker(symC, NR, pl.n), pl.name);
     for (const st of stationsOnMap) {
