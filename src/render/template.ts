@@ -41,11 +41,13 @@ export interface Template {
 
   /** CSS font stack for the sheet. */
   font: string;
+  /** The street names' face: a narrow one, so a name fits its street. */
+  streetFont: string;
   /** Multiplies every text size, so a template can run larger or tighter. */
   textScale: number;
 
   ink: string;        // primary text and line colour
-  streetInk: string;  // street names and the numbered place markers
+  streetInk: string;  // street names and the numbered place markers: quieter than the ink
   rule: string;       // title-block rules
   site: string;       // site boundary and emphasis
   dimension: string;  // dimension lines, levels, boundary figures
@@ -73,6 +75,7 @@ export interface Template {
 // building footprints go over them in the family's ink, and the figure has
 // to stand clear of its ground. The site is the one accent.
 const PEACH = '#f3b8a4', PEACH_INK = '#d48b75';
+const PEACH_DEEP = '#e8957c', PEACH_DEEP_INK = '#b5614a';   // the high-density tier, a step down the same hue
 const SAND = '#f1cf98', SAND_INK = '#c49a52';
 const TEAL = '#5a9c89', TEAL_INK = '#3f7f6d';
 const PAPER = '#ffffff';
@@ -90,9 +93,9 @@ const NEUTRAL_CATEGORIES: Category[] = [
   { id: 'retail',         label: 'ACTIVE RETAIL',                            fill: SAND, opacity: 0.4, texture: 'cross', textureColor: SAND_INK, figure: SAND_INK },
   { id: 'openSpace',      label: 'OPEN SPACE',                               fill: TEAL, opacity: 0.55, texture: 'dots', textureColor: PAPER, figure: TEAL_INK },
   { id: 'community',      label: 'COMMUNITY HUB',                            fill: TEAL, opacity: 0.5, stroke: TEAL_INK, texture: 'cross', textureColor: PAPER, figure: TEAL_INK },
-  { id: 'r2',             label: 'R2 LOW DENSITY RESIDENTIAL',               fill: PEACH, opacity: 0.3, figure: PEACH_INK },
-  { id: 'r3',             label: 'R3 MEDIUM DENSITY RESIDENTIAL',            fill: PEACH, opacity: 0.45, figure: PEACH_INK },
-  { id: 'r4',             label: 'R4 HIGH DENSITY RESIDENTIAL',              fill: PEACH, opacity: 0.5, texture: 'lines', textureColor: PEACH_INK, figure: PEACH_INK },
+  { id: 'r2',             label: 'R2 LOW DENSITY RESIDENTIAL',               fill: PEACH, opacity: 0.22, figure: PEACH_INK },
+  { id: 'r3',             label: 'R3 MEDIUM DENSITY RESIDENTIAL',            fill: PEACH, opacity: 0.5, figure: PEACH_INK },
+  { id: 'r4',             label: 'R4 HIGH DENSITY RESIDENTIAL',              fill: PEACH_DEEP, opacity: 0.65, texture: 'lines', textureColor: PEACH_DEEP_INK, figure: PEACH_DEEP_INK },
   { id: 'localCentre',    label: 'LOCAL CENTRE',                             fill: SAND, opacity: 0.55, figure: SAND_INK },
   { id: 'commercial',     label: 'COMMERCIAL CENTRE',                        fill: SAND, opacity: 0.55, texture: 'lines', textureColor: SAND_INK, figure: SAND_INK },
   { id: 'industrial',     label: 'GENERAL INDUSTRIAL',                       fill: GREY, opacity: 0.45, texture: 'lines', textureColor: GREY_INK, figure: GREY_INK },
@@ -103,6 +106,9 @@ const NEUTRAL_CATEGORIES: Category[] = [
 ];
 
 const SANS = "Arial, 'Liberation Sans', Helvetica, sans-serif";
+// Arial Narrow where it is installed; Liberation Sans Narrow is its
+// metric-compatible stand-in and is what the runtime image ships.
+const NARROW = "'Arial Narrow', 'Liberation Sans Narrow', 'DejaVu Sans Condensed', sans-serif";
 const GROTESK = "'DejaVu Sans', Verdana, 'Liberation Sans', sans-serif";
 
 export const TEMPLATES: Template[] = [
@@ -111,9 +117,10 @@ export const TEMPLATES: Template[] = [
     label: 'neutral',
     note: 'four tints and textures, one accent — survives a mono print',
     font: GROTESK,
+    streetFont: NARROW,
     textScale: 0.96,
     ink: '#1c1c1c',
-    streetInk: '#1c1c1c',
+    streetInk: '#2f5f52',   // a deep green: present, not shouting
     rule: '#8a8a8a',
     site: CORAL,
     dimension: '#56616b',

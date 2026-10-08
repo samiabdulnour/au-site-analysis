@@ -778,10 +778,12 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     }
   }
   const numberSize = T.legend * 1.3;
+  // A solid disc with the number knocked out of it: one small dark mark a
+  // reader can find, rather than a ring that competes with the roundels.
   const numberMarker = (x: number, y: number, n: number) =>
     `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})">
-      <circle r="${NR}" fill="#ffffff" stroke="${tpl().streetInk}" stroke-width="0.6"/>
-      <text text-anchor="middle" dy="${(numberSize * 0.36).toFixed(2)}" font-size="${numberSize.toFixed(2)}" font-weight="700" fill="${tpl().streetInk}">${n}</text></g>`;
+      <circle r="${NR}" fill="${tpl().streetInk}"/>
+      <text text-anchor="middle" dy="${(numberSize * 0.36).toFixed(2)}" font-size="${numberSize.toFixed(2)}" font-weight="700" fill="#ffffff">${n}</text></g>`;
   for (const pl of places) reserve([pl.x, pl.y], [pl.x, pl.y], NR + 1);
   layers.push(places.map((pl) => numberMarker(pl.x, pl.y, pl.n)).join('\n'));
 
@@ -814,8 +816,9 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   for (const [name, r] of roadOrder) {
     const label = shortStreetName(name);
     // Must be an over-estimate: a name wider than the path it is set on has
-    // its overflowing glyphs clamped onto the ends and they pile up.
-    const textLen = label.length * (T.street * 0.72 + 0.4) + 3;
+    // its overflowing glyphs clamped onto the ends and they pile up. The
+    // narrow face runs about four fifths the width of the grotesk.
+    const textLen = label.length * (T.street * 0.58 + 0.4) + 3;
     const slack = 6;   // spare road either side of the name
     const slotLen = textLen + slack;
 
@@ -867,7 +870,7 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
         const id = `rd${rid++}`;
         const d2 = pts.map((p, i2) => `${i2 === 0 ? 'M' : 'L'}${p[0].toFixed(2)},${p[1].toFixed(2)}`).join('');
         roadDefs.push(`<path id="${id}" d="${d2}" fill="none"/>`);
-        roadTexts.push(`<text font-size="${T.street}" font-weight="700" letter-spacing="0.4" dy="${streetDy}" fill="${tpl().streetInk}">
+        roadTexts.push(`<text font-family="${tpl().streetFont}" font-size="${T.street}" font-weight="700" letter-spacing="0.4" dy="${streetDy}" fill="${tpl().streetInk}">
           <textPath href="#${id}" startOffset="50%" text-anchor="middle">${esc(label)}</textPath></text>`);
       }
     }

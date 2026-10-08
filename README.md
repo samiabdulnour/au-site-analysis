@@ -472,8 +472,10 @@ fetched for the CAD export. The grain inside the blocks is the building
 footprints (Overture, OpenStreetMap as the fallback), each laid over its ground
 in that ground's family ink — the tints are kept light so the figure stands
 clear of its ground — and never black. The only words on the map are the
-street names, set in the navy of the lines. Every institution and park carries
-a number instead, and the legend carries the key: the institutions in the
+street names, set narrow (Arial Narrow where it is installed, Liberation Sans
+Narrow on the server) in a deep green that does not shout. Every institution
+and park carries a number instead, a solid disc of the same green with the
+number knocked out, and the legend carries the key: the institutions in the
 legend's category order, then the open spaces, then the stations under their
 roundel letter. The key has only the column the legend leaves it, so past
 twenty-four entries its rows tighten, and when a wide window would still
@@ -488,7 +490,8 @@ The renderers read the active template from an async context rather than a
 parameter, so `withTemplate()` also takes a `Template` outright — which is what
 lets `test/template-isolation.mts` hold two apart while only one is registered.
 
-Fonts are limited to what the runtime image installs (Liberation, DejaVu).
+Fonts are limited to what the runtime image installs (Liberation, Liberation
+Sans Narrow for the street names, DejaVu).
 Naming an absent font does not fail; it silently falls back and the sheet
 comes out in the wrong face, so add the package to the `Dockerfile` first.
 
