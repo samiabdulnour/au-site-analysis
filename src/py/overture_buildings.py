@@ -40,13 +40,24 @@ if proxy:
         con.execute(f"SET http_proxy_username='{u.username}'; SET http_proxy_password='{u.password}';")
 
 path = f"s3://overturemaps-us-west-2/release/{release}/theme=buildings/type=building/*"
-rows = con.execute(
-    f"""
+query = f"""
     SELECT id, height, num_floors, class, subtype, names.primary AS name, ST_AsGeoJSON(geometry) AS geojson
     FROM read_parquet('{path}', hive_partitioning=1)
     WHERE bbox.xmin <= {east} AND bbox.xmax >= {west} AND bbox.ymin <= {north} AND bbox.ymax >= {south}
     """
-).fetchall()
+# The scan touches the footer of every part file of the theme, a few hundred
+# small requests, and one of them answered with a stray 404 or a dropped
+# connection kills the whole query. DuckDB retries only 5xx, so the query is
+# retried here as a whole; a file that is really missing fails three times.
+rows = None
+for attempt in range(3):
+    try:
+        rows = con.execute(query).fetchall()
+        break
+    except duckdb.HTTPException as e:
+        if attempt == 2:
+            raise
+        print(f"overture scan failed ({str(e).splitlines()[0][:120]}); retrying", file=sys.stderr)
 
 buildings = []
 for id_, height, floors, cls, subtype, name, geojson in rows:
