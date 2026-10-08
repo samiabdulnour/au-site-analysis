@@ -107,7 +107,8 @@ const NEUTRAL_CATEGORIES: Category[] = [
 
 const SANS = "Arial, 'Liberation Sans', Helvetica, sans-serif";
 // Arial Narrow where it is installed; Liberation Sans Narrow is its
-// metric-compatible stand-in and is what the runtime image ships.
+// metric-compatible stand-in and comes with the runtime image's
+// fonts-liberation (Debian's 1.07 line; the 2.x line dropped the narrow face).
 const NARROW = "'Arial Narrow', 'Liberation Sans Narrow', 'DejaVu Sans Condensed', sans-serif";
 const GROTESK = "'DejaVu Sans', Verdana, 'Liberation Sans', sans-serif";
 

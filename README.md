@@ -490,8 +490,9 @@ The renderers read the active template from an async context rather than a
 parameter, so `withTemplate()` also takes a `Template` outright — which is what
 lets `test/template-isolation.mts` hold two apart while only one is registered.
 
-Fonts are limited to what the runtime image installs (Liberation, Liberation
-Sans Narrow for the street names, DejaVu).
+Fonts are limited to what the runtime image installs (Liberation — the 1.07
+line Debian bookworm ships, which includes Liberation Sans Narrow for the
+street names — and DejaVu).
 Naming an absent font does not fail; it silently falls back and the sheet
 comes out in the wrong face, so add the package to the `Dockerfile` first.
 
