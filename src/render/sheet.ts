@@ -6,7 +6,7 @@ import type { Bundle } from '../pipeline.js';
 import { lonLatToMercator, ringCentroid, type Extent, type MapView } from '../lib/geo.js';
 import { categories, catById, zoneToCategory } from './model.js';
 import { tpl, type Texture } from './template.js';
-import { sheetHtml, esc, T, SWATCH_X, SWATCH_W, LABEL_X,
+import { sheetHtml, legendHeightFor, esc, T, SWATCH_X, SWATCH_W, LABEL_X,
          SHEET_W, SHEET_H, FRAME_L, FRAME_T, TITLE_X, TITLE_R, MAP_BOTTOM, MAP_W, MAP_H } from './chrome.js';
 
 // Geometry/typography constants live in chrome.ts (shared by all sheet
@@ -726,6 +726,44 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     }
   }
   const NR = 2.9;
+  const hasTrainStations = bundle.stations.some((s) => !/LIGHT RAIL|TRAM/i.test(s.name));
+  const hasTramStops = bundle.bus.tramStops.length > 0 || bundle.stations.some((s) => /LIGHT RAIL|TRAM/i.test(s.name));
+  // The key has only the column the legend leaves it. A wide window
+  // (1:5000) keys forty places, so past twenty-four entries the rows
+  // tighten; and when even that would overrun the column, the places
+  // nearest the site are kept and the rest go, from the map as well as the
+  // key — a sheet about a site names what is around it, and the far corner
+  // of a wide window can go without its bowling club.
+  const keyMetrics = (count: number) => {
+    const many = count > 24;
+    return { size: many ? T.legend * 0.9 : T.legend, lineH: many ? 2.9 : 3.2, wrap: many ? 38 : 34, pitch: many ? 5.4 : 6.6, pad: many ? 2.6 : 3.6 };
+  };
+  const keyRowHeight = (name: string, m: ReturnType<typeof keyMetrics>) =>
+    Math.max(m.pitch, m.lineH * wrapLabel(name, m.wrap).length + m.pad);
+  const keyM = keyMetrics(places.length + stationsOnMap.length);
+  {
+    // The legend's own rows, counted the way the legend will draw them.
+    const legendRows = categories().filter((c) => usedCats.has(c.id) && c.id !== 'railway').length
+      + (hasTrainStations ? 1 : 0) + 1 + (hasTramStops ? 1 : 0)
+      + (bundle.railLines.train.length ? 1 : 0)
+      + (bundle.railLines.tram.length || bundle.bus.tramRouteSegments.length ? 1 : 0)
+      + 1 + 2;
+    const budget = legendHeightFor(meta) - (7 + legendRows * 10) - 6.5 - 4;
+    let used = stationsOnMap.reduce((h, st) => h + keyRowHeight(st.name, keyM), 0);
+    const dist = (pl: Place) => Math.hypot(pl.x - MAP_W / 2, pl.y - MAP_H / 2);
+    const keep = new Set<Place>();
+    for (const pl of [...places].sort((a, b) => dist(a) - dist(b))) {
+      const h = keyRowHeight(pl.name, keyM);
+      if (used + h > budget) break;
+      used += h;
+      keep.add(pl);
+    }
+    if (keep.size < places.length) {
+      const kept = places.filter((pl) => keep.has(pl));
+      places.length = 0;
+      kept.forEach((pl, i) => places.push({ ...pl, n: i + 1 }));
+    }
+  }
   // Two places on one block (a centre and its clinic) put their discs on top
   // of each other; nudge such pairs apart along the line between them until
   // the discs just clear, a few passes for a cluster.
@@ -876,8 +914,6 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   const symC = SWATCH_X + SWATCH_W / 2;
   const legendRoundel = (letter: string, color: string) =>
     `<g transform="translate(${symC},3.2)"><circle r="3.4" fill="#fff" stroke="${color}" stroke-width="0.8"/><text text-anchor="middle" dy="1.9" font-size="5.7" font-weight="700" fill="${color}">${letter}</text></g>`;
-  const hasTrainStations = bundle.stations.some((s) => !/LIGHT RAIL|TRAM/i.test(s.name));
-  const hasTramStops = bundle.bus.tramStops.length > 0 || bundle.stations.some((s) => /LIGHT RAIL|TRAM/i.test(s.name));
   if (hasTrainStations) legendRow(legendRoundel('T', tpl().site), ['TRAIN STATION']);
   legendRow(legendRoundel('B', tpl().transit), ['BUS STOPS']);
   if (hasTramStops) legendRow(legendRoundel('L', tpl().busRoute), ['LIGHT RAIL STOP']);
@@ -896,18 +932,14 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     ly += 2;
     legendSvg += `<text x="${SWATCH_X}" y="${ly}" font-size="${T.legend}" font-weight="700" fill="#222">KEY</text>`;
     ly += 4.5;
-    // A wide window (1:5000) keys forty places; the rows tighten so the key
-    // still ends above the title block.
-    const many = places.length + stationsOnMap.length > 24;
-    const keySize = many ? T.legend * 0.9 : T.legend;
-    const lineH = many ? 2.9 : 3.2;
+    // Rows at the metrics the budget above was measured with.
     const keyRow = (marker: string, name: string) => {
-      const lines = wrapLabel(name, many ? 38 : 34);
+      const lines = wrapLabel(name, keyM.wrap);
       const y0 = lines.length === 1 ? NR + 1.0 : NR - 0.4;
       let row = `<g transform="translate(0,${ly.toFixed(1)})">${marker}`;
-      lines.forEach((l, k) => { row += `<text x="${LABEL_X}" y="${(y0 + k * lineH).toFixed(1)}" font-size="${keySize.toFixed(2)}" fill="#222">${esc(l)}</text>`; });
+      lines.forEach((l, k) => { row += `<text x="${LABEL_X}" y="${(y0 + k * keyM.lineH).toFixed(1)}" font-size="${keyM.size.toFixed(2)}" fill="#222">${esc(l)}</text>`; });
       legendSvg += row + '</g>';
-      ly += Math.max(many ? 5.4 : 6.6, lineH * lines.length + (many ? 2.6 : 3.6));
+      ly += keyRowHeight(name, keyM);
     };
     for (const pl of places) keyRow(numberMarker(symC, NR, pl.n), pl.name);
     for (const st of stationsOnMap) {

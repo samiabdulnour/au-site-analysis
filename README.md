@@ -475,7 +475,10 @@ clear of its ground — and never black. The only words on the map are the
 street names, set in the navy of the lines. Every institution and park carries
 a number instead, and the legend carries the key: the institutions in the
 legend's category order, then the open spaces, then the stations under their
-roundel letter. The walking catchments are broad, continuous, translucent navy
+roundel letter. The key has only the column the legend leaves it, so past
+twenty-four entries its rows tighten, and when a wide window would still
+overrun it the places nearest the site are kept and the rest go, from the
+map as well as the key. The walking catchments are broad, continuous, translucent navy
 bands. The office
 style that sat beside it left with the office door, and took the elaborate
 compass rose with it — that was the only thing the `symbols` field ever
