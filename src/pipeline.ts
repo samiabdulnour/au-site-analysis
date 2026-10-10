@@ -659,8 +659,8 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
   const blockPanel: Panel = { center: geo.center, scale: 4000, wMm: opts.panelWmm, hMm: opts.wideHmm ?? 72 };
   // The then-and-now pair: two half-width panels side by side at 1:2500, the 1943 survey and today's imagery over the same ground.
   const pairPanel: Panel = { center: geo.center, scale: 2500, wMm: 90, hMm: 80 };
-  // The location window: a 27 km square at 1:100,000 round the site, drawn as a disc across the spread.
-  const locationPanel: Panel = { center: geo.center, scale: 100000, wMm: 270, hMm: 270 };
+  // The location window: one full A4 page at 1:100,000, 21 × 29.7 km round the site.
+  const locationPanel: Panel = { center: geo.center, scale: 100000, wMm: 210, hMm: 297 };
   // Every fetch window is the larger of the two, so nothing is missing from either map.
   // The full-bleed figure page: a map the size of one A4 page at the deck's scale,
   // for the slides that run their map to the sheet's edges.

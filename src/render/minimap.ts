@@ -75,12 +75,14 @@ export interface BaseData {
  * (heads, labels, folios, every word inside a map), T3 body (the rest).
  */
 export const TYPE = {
-  t1: { size: 6.6, weight: 500 },
-  t2: { size: 2.1, weight: 600, spacing: 0.26 },
-  t3: { size: 2.6, weight: 400 },
+  h: { size: 6.0, weight: 700, spacing: 0.9 },   // header: bold caps, widely tracked
+  s: { size: 2.7, weight: 400, spacing: 0.14 },  // small: caps for labels, sentence case for keys and sources
+  b: { size: 3.4, weight: 400 },                 // body
+  // the map and graph labels are the small style
+  t2: { size: 2.7, weight: 400, spacing: 0.14 },
 } as const;
 
-/** A T2 label inside a map: caps, haloed in white so it reads over any ground. `k` compensates a map drawn at a reduced size. */
+/** A small-style label inside a map: caps, haloed in white so it reads over any ground. `k` compensates a map drawn at a reduced size. */
 export function t2Text(x: number, y: number, text: string, anchor: 'start' | 'middle' | 'end' = 'start', k = 1): string {
   const t = tpl();
   const size = TYPE.t2.size / k;
@@ -88,7 +90,7 @@ export function t2Text(x: number, y: number, text: string, anchor: 'start' | 'mi
 }
 
 /** Width of a T2 label in map millimetres, for the label spacer. */
-export const t2Width = (text: string, k = 1) => (text.length * TYPE.t2.size * 0.72 + 0.8) / k;
+export const t2Width = (text: string, k = 1) => (text.length * TYPE.t2.size * 0.68 + 0.8) / k;
 
 /** Railway as a track: a fine rail line crossed by short sleepers, so a yard of parallel lines reads as hatching, not noise. */
 export function railSymbol(d: string, colour: string, k = 1): string {

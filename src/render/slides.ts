@@ -77,6 +77,8 @@ export interface Slide {
   bleed?: boolean;
   /** One map across the whole spread, the text set in its white ground. */
   full?: boolean;
+  /** An atlas page's sources, set small and grey above its footer. */
+  sources?: string;
   /** Where the narrative column starts, when a figure sits above it on the left page. */
   textY?: number;
 }
@@ -161,6 +163,10 @@ function mainRing(f: GeoJSONFeature, proj: Proj) {
 
 const label = (x: number, y: number, text: string, size = 2.2, fill = '#2a3534') =>
   `<text x="${x.toFixed(1)}" y="${(y + size * 0.35).toFixed(1)}" text-anchor="middle" font-size="${size}" font-weight="600" fill="${fill}" stroke="#ffffff" stroke-width="${(size * 0.22).toFixed(2)}" paint-order="stroke">${esc(text)}</text>`;
+
+/** A T3 word inside a graph: the body style, one size, one weight, ink. */
+const t3Text = (x: number, y: number, text: string, anchor: 'start' | 'middle' | 'end' = 'start') =>
+  `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="${anchor}" font-size="2.7" font-weight="400" fill="${tpl().ink}">${esc(text)}</text>`;
 
 function panelSvg(inner: string, id: string, w = PANEL_W, h = PANEL_H): string {
   return `<svg width="${w}mm" height="${h}mm" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg" style="display:block">
@@ -489,8 +495,7 @@ export function locationSlide(b: SlidesBundle): Slide {
   const loc = b.location;
   const f = locationFacts(b);
   const sentences = locationSentences(b, f);
-  void sentences;
-  const textHtml = `<div class="fine">Sources: NSW Spatial Services administrative boundaries, water, transport and transport-facility themes, generalised for the scale; the centres from The Sydney Plan (2026) and the NSW Centres Framework; distances are straight lines from the site's geocoded point, the CBD at Sydney Town Hall. The location narrative is in the deck's JSON. Retrieved ${b.generatedAt.slice(0, 10)}.</div>`;
+  const sources = `Sources: NSW Spatial Services administrative boundaries, water, transport and transport-facility themes, generalised for the scale; the centres from The Sydney Plan (2026) and the NSW Centres Framework; distances are straight lines from the site's geocoded point, the CBD at Sydney Town Hall. Retrieved ${b.generatedAt.slice(0, 10)}.`;
 
   // ---- the map
   const p = loc.panel;
@@ -535,7 +540,7 @@ export function locationSlide(b: SlidesBundle): Slide {
     parts.push(`<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="${r.toFixed(1)}" fill="none" stroke="${LOC.deep}" stroke-width="0.35" stroke-dasharray="2.2,1.3"/>`);
     parts.push(t2Text(sx + r * 0.7071 + 1.2, sy + r * 0.7071 + 1.2, `${kmR} km`));
   }
-  legend.push({ swatch: swatchLine(LOC.deep, 0.35, '2.2,1.3'), label: '2 and 5 km from the site; the map is cut 13 km round it' });
+  legend.push({ swatch: swatchLine(LOC.deep, 0.35, '2.2,1.3'), label: '2 and 5 km from the site' });
   const spacer = new LabelSpacer(p.wMm, p.hMm, 120);
   spacer.take(sx, sy, 6, 6);
   spacer.take(sx + 3.2 + labelW('SITE', 2.6) / 2, sy, labelW('SITE', 2.6), 3.2);
@@ -544,7 +549,7 @@ export function locationSlide(b: SlidesBundle): Slide {
   const centreNamed = new Set<string>();
   for (const c of CENTRES) {
     const [x, y] = proj(c.lon, c.lat);
-    if (Math.hypot(x - p.wMm / 2, y - p.hMm / 2) > DISC_R - 4) continue;
+    if (x < 3 || y < 3 || x > p.wMm - 3 || y > p.hMm - 3) continue;
     const mark = c.kind === 'cbd' ? `<rect x="${(x - 1.7).toFixed(1)}" y="${(y - 1.7).toFixed(1)}" width="3.4" height="3.4" fill="${LOC.deep}" stroke="#ffffff" stroke-width="0.4"/>`
       : c.kind === 'major' ? `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="1.6" fill="${LOC.deep}" stroke="#ffffff" stroke-width="0.4"/>`
         : `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="1.3" fill="#ffffff" stroke="${LOC.deep}" stroke-width="0.5"/>`;
@@ -587,7 +592,7 @@ export function locationSlide(b: SlidesBundle): Slide {
   parts.push(`<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="2.4" fill="${t.site}" stroke="#ffffff" stroke-width="0.6"/>`);
   legend.unshift({ swatch: `<circle cx="2.5" cy="1.9" r="1.6" fill="${t.site}"/>`, label: 'The site' });
   const mapSvg = `<svg width="${p.wMm}mm" height="${p.hMm}mm" viewBox="0 0 ${p.wMm} ${p.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
-    <defs><clipPath id="clip-location"><circle cx="${p.wMm / 2}" cy="${p.hMm / 2}" r="${DISC_R}"/></clipPath></defs>
+    <defs><clipPath id="clip-location"><rect x="0" y="0" width="${p.wMm}" height="${p.hMm}"/></clipPath></defs>
     <g clip-path="url(#clip-location)" font-family="${t.font}">${parts.join('\n')}</g>
     <g font-family="${t.font}">${panelFurniture(p, 'right')}</g>
   </svg>`;
@@ -604,17 +609,14 @@ export function locationSlide(b: SlidesBundle): Slide {
   ].map((tl) => `<div class="tile"><div class="tv${tl.v.length > 9 ? ' long' : ''}">${esc(tl.v)}</div><div class="tl">${esc(tl.l)}</div></div>`).join('');
   const rows = f.centres.map((c) => `<tr><td>${esc(c.name)}</td><td>${esc(c.kindWord)}</td><td class="r">${km(c.distanceM)}</td><td>${esc(compassWord(c.bearing))}</td></tr>`).join('');
   const table = `<table class="da"><thead><tr><th>Centre</th><th>Type</th><th class="r">Distance</th><th>Direction</th></tr></thead><tbody>${rows}</tbody></table>`;
-  const LEFT_W = 115;
-  const figure = `<div class="abs" style="left:${275 - p.wMm / 2}mm;top:${150 - p.hMm / 2}mm">${mapSvg}</div>
-    <div class="abs t2" style="right:15mm;top:10mm;text-align:right">The region · 1:${fmtNum(p.scale).replace(',', ' ')}</div>
-    <div class="abs" style="left:${L_X}mm;top:${FIELD_Y}mm;width:${LEFT_W}mm">
-      <div class="tiles col">${tiles}</div>
-      <div class="t2" style="margin:9mm 0 2mm">Centres of The Sydney Plan</div>
-      ${table}
-      <div class="legend" style="margin-top:9mm">${legendHtml}</div>
-    </div>`;
-  const sub = [b.siteAddress, f.lga ? f.lga.name : '', `${km(f.cbd.distanceM)} from the Sydney CBD`, near ? `${near.name} ${km(near.distanceM)}` : ''].filter(Boolean).join(' · ');
-  return { id: '01_location', title: 'Location', subtitle: sub, textHtml: '', figureHtml: figure, full: true };
+  const figure = `<div class="abs" style="left:${FOLD}mm;top:0">${mapSvg}</div>
+    <div class="abs maplabel" style="left:${FOLD + 8}mm;top:8mm">The region · 1:${fmtNum(p.scale).replace(',', ' ')}</div>`;
+  const textHtml = sentences.map(para).join('') +
+    `<div class="anote">Narrative — for the author: the wider context in four paragraphs — the region and its plan, the corridors and centres the site relates to, the transport that serves it, and the character of the surrounds the location map does not show.</div>` +
+    `<div class="legend" style="margin-top:12mm;column-count:2;column-gap:8mm">${legendHtml}</div>`;
+  void tiles; void table;
+  const sub = [[b.siteAddress, f.lga ? f.lga.name : ''].filter(Boolean).join(' '), `${km(f.cbd.distanceM)} from the Sydney CBD`, near ? `${near.name} ${km(near.distanceM)}` : ''].filter(Boolean).join(' · ');
+  return { id: '01_location', title: 'Location', subtitle: sub, textHtml, figureHtml: figure, bleed: true, sources, textY: 48 };
 }
 
 // ---- slide 02: character ----------------------------------------------------------
@@ -2401,77 +2403,94 @@ export function movementSlide(b: SlidesBundle): Slide {
     ? `<table class="da"><thead><tr><th>Station</th><th class="r" style="width:18mm">Distance</th></tr></thead><tbody>${stationRows}</tbody></table>`
     : '';
 
-  // The walking-reach map, cut to the shape of its own fifteen minutes: no frame, the catchment is the edge.
-  const rp = b.reachPanel;
-  const rproj = panelProjector(rp);
-  const outer = [...mv.isochrones].sort((x, y) => y.minutes - x.minutes)[0];
-  const ob = outer ? bboxOf(outer.rings, rproj) : { x0: 0, y0: 0, x1: rp.wMm, y1: rp.hMm };
-  const pad = 1.5;
-  const vb = { x: Math.max(0, ob.x0 - pad), y: Math.max(0, ob.y0 - pad), w: Math.min(rp.wMm, ob.x1 + pad) - Math.max(0, ob.x0 - pad), h: Math.min(rp.hMm, ob.y1 + pad) - Math.max(0, ob.y0 - pad) };
-  // drawn at full size where it fits the page above the text, otherwise reduced, its words kept at T2
-  const SHAPE_MAX_H = 118;
-  const kFit = Math.min(1, L_W / vb.w, SHAPE_MAX_H / vb.h);
-  const k = rp.scale / ([rp.scale, 20000, 25000, 30000, 40000, 50000].find((sc) => rp.scale / sc <= kFit + 1e-9) ?? 50000);
-  const rparts: string[] = [];
-  if (b.wide.base.water.features.length) rparts.push(`<path d="${fcPath(b.wide.base.water, rproj)}" fill="${MOVE.water}" fill-rule="evenodd"/>`);
-  const ISO_DOT_STEP: Record<number, number> = { 5: 1.15, 10: 1.75, 15: 2.5 };
-  for (const iso of [...mv.isochrones].sort((x, y) => y.minutes - x.minutes)) {
-    const d = ringsPath(iso.rings, rproj);
-    rparts.push(dotsPath(d, `isod${iso.minutes}`, MOVE.iso[iso.minutes] ?? '#b7c1e3', bboxOf(iso.rings, rproj), (ISO_DOT_STEP[iso.minutes] ?? 2.5) / k, 0.3 / k, 0.85));
-  }
-  rparts.push(withTemplate(mt, () => overLayers(b.wide.base, rproj, rp, 'none')));
-  for (const iso of mv.isochrones) rparts.push(`<path d="${ringsPath(iso.rings, rproj)}" fill="none" stroke="${MOVE.iso[iso.minutes] ?? '#b7c1e3'}" stroke-width="${(0.35 / k).toFixed(2)}" fill-rule="evenodd"/>`);
-  // suburb names in T2, only where they fall inside the catchment
-  const rspacer = new LabelSpacer(rp.wMm, rp.hMm, 12);
-  const rlabels: string[] = [];
-  const outerMm = (outer?.rings ?? []).map((r) => r.map(([lon, lat]) => rproj(lon, lat)));
-  const insideMm = (pts: [number, number][], x: number, y: number) => {
-    let inside = false;
-    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
-      const [xi, yi] = pts[i], [xj, yj] = pts[j];
-      if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
-    }
-    return inside;
-  };
-  const centreLLm = mercatorToLonLat(b.panel.center);
-  const [rsx, rsy] = rproj(centreLLm.lon, centreLLm.lat);
-  rspacer.take(rsx, rsy, 8 / k, 8 / k);
-  for (const ft of b.wide.suburbs.features) {
-    const name = String(ft.properties?.suburbname ?? '');
-    if (!name) continue;
-    let best = { area: 0, cx: 0, cy: 0 };
-    for (const r of geomRings(ft.geometry)) { const st = clippedStats(r, rproj, rp); if (st.area > best.area) best = st; }
-    if (best.area < 150 || !outerMm.some((pts) => insideMm(pts, best.cx, best.cy))) continue;
-    if (rspacer.take(best.cx, best.cy, t2Width(name, k), 3 / k)) rlabels.push(t2Text(best.cx, best.cy, name, 'middle', k));
-  }
-  rparts.push(`<circle cx="${rsx.toFixed(1)}" cy="${rsy.toFixed(1)}" r="${(1.6 / k).toFixed(2)}" fill="${t.site}"/>`);
-  const reachClip = outer ? ringsPath(outer.rings, rproj) : `M0,0H${rp.wMm}V${rp.hMm}H0Z`;
-  // a scale bar under the shape, its words in T2
-  const barM = [1000, 500, 250, 200, 100].find((m) => (m * 1000) / rp.scale <= 30 / k) ?? 100;
-  const barMm = (barM * 1000) / rp.scale;
-  const sbx = vb.x + vb.w - barMm - 1 / k, sby = vb.y + vb.h - 1.2 / k;
-  const scaleBar = `<rect x="${sbx.toFixed(2)}" y="${(sby - 0.9 / k).toFixed(2)}" width="${(barMm / 2).toFixed(2)}" height="${(0.9 / k).toFixed(2)}" fill="${t.ink}"/><rect x="${(sbx + barMm / 2).toFixed(2)}" y="${(sby - 0.9 / k).toFixed(2)}" width="${(barMm / 2).toFixed(2)}" height="${(0.9 / k).toFixed(2)}" fill="none" stroke="${t.ink}" stroke-width="${(0.2 / k).toFixed(2)}"/>` +
-    t2Text(sbx + barMm, sby - 3.2 / k, barM >= 1000 ? `${barM / 1000} km` : `${barM} m`, 'end', k);
-  const reachSvg = `<svg width="${(vb.w * k).toFixed(1)}mm" height="${(vb.h * k).toFixed(1)}mm" viewBox="${vb.x.toFixed(2)} ${vb.y.toFixed(2)} ${vb.w.toFixed(2)} ${vb.h.toFixed(2)}" xmlns="http://www.w3.org/2000/svg" style="display:block">
-    <defs><clipPath id="clip-reach"><path d="${reachClip}"/></clipPath></defs>
-    <g clip-path="url(#clip-reach)" font-family="${t.font}">${rparts.join('\n')}</g>
-    <g font-family="${t.font}">${rlabels.join('')}${scaleBar}</g>
-  </svg>`;
+  // The left page shows what the map cannot: reach as area, the stations as minutes, the network as length.
+  const svgOf = (w: number, h: number, inner: string) => `<svg width="${w}mm" height="${h}mm" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg" style="display:block;overflow:visible" font-family="${t.font}">${inner}</svg>`;
 
-  const shapeW = vb.w * k, shapeH = vb.h * k;
-  const yLower = FIELD_Y + shapeH + 10;
+  // Reach on foot: one circle per catchment, its area true to the hectares, side by side on a baseline.
+  const isoA = [...f.isochrones].sort((x, y) => x.minutes - y.minutes);
+  const maxHa = Math.max(1, ...isoA.map((i) => i.areaHa));
+  const RMAX = 20, CBASE = 42;
+  let cx = 0;
+  const circles = isoA.map((i) => {
+    const r = RMAX * Math.sqrt(i.areaHa / maxHa), x = cx + r;
+    cx += 2 * r + 8;
+    return `<circle cx="${x.toFixed(1)}" cy="${(CBASE - r).toFixed(1)}" r="${r.toFixed(1)}" fill="${MOVE.iso[i.minutes] ?? '#b7c1e3'}"/>` +
+      t2Text(x, CBASE + 3.6, `${i.minutes} min`, 'middle') + t3Text(x, CBASE + 9.2, `${fmtNum(i.areaHa)} ha`, 'middle');
+  }).join('');
+  const reachSvg = isoA.length ? svgOf(Math.max(1, cx - 8), CBASE + 11, circles) : '';
+
+  // Stations on foot: a minutes axis from the site, each station's roundel where its walk ends.
+  const SW = L_W;
+  const minsOf = (m: number) => m / 80;
+  const shown = f.stations.slice(0, 6);
+  const maxMin = Math.max(20, Math.ceil(Math.max(0, ...shown.map((st) => minsOf(st.distanceM))) / 5) * 5);
+  const X = (min: number) => 3 + (min / maxMin) * (SW - 30);
+  // each label takes the lowest row free at its station, so close stops stack instead of colliding
+  const rowEnds: number[] = [];
+  const rowOf = shown.map((st) => {
+    const x = X(minsOf(st.distanceM));
+    const w = t2Width(`${st.name.replace(/ Light Rail Stop$/, '')} · ${fmtNum(st.distanceM)} m`);
+    let r = rowEnds.findIndex((end) => end < x - 1.5);
+    if (r < 0) { r = rowEnds.length; rowEnds.push(0); }
+    rowEnds[r] = x + w;
+    return r;
+  });
+  const ROW = 5.4, AXIS = 6 + Math.max(1, rowEnds.length) * ROW;
+  const sParts: string[] = [];
+  for (const [m0, m1] of [[0, 5], [5, 10], [10, 15]] as const) sParts.push(`<rect x="${X(m0).toFixed(1)}" y="${AXIS - 1.4}" width="${(X(m1) - X(m0)).toFixed(1)}" height="2.8" fill="${MOVE.iso[m1]}"/>`);
+  sParts.push(`<line x1="${X(0)}" y1="${AXIS}" x2="${X(maxMin).toFixed(1)}" y2="${AXIS}" stroke="${MOVE.cycle}" stroke-width="0.25"/>`);
+  for (let m = 0; m <= maxMin; m += 5) sParts.push(`<line x1="${X(m).toFixed(1)}" y1="${AXIS + 1.4}" x2="${X(m).toFixed(1)}" y2="${AXIS + 2.6}" stroke="${MOVE.cycle}" stroke-width="0.25"/>` + t2Text(X(m), AXIS + 5.2, m === maxMin ? `${m} min` : String(m), 'middle'));
+  sParts.push(`<circle cx="${X(0)}" cy="${AXIS}" r="1.8" fill="${t.site}"/>`);
+  const sLabels: string[] = [];
+  shown.forEach((st, si) => {
+    const x = X(minsOf(st.distanceM));
+    const name = `${st.name.replace(/ Light Rail Stop$/, '')} · ${fmtNum(st.distanceM)} m`;
+    const ty = AXIS - 4.6 - rowOf[si] * ROW;
+    sParts.push(`<line x1="${x.toFixed(1)}" y1="${(AXIS - 2.4).toFixed(1)}" x2="${x.toFixed(1)}" y2="${(ty + 1.2).toFixed(1)}" stroke="${MOVE.cycle}" stroke-width="0.2"/>`);
+    sParts.push(`<circle cx="${x.toFixed(1)}" cy="${AXIS}" r="2.3" fill="#ffffff" stroke="${MOVE.cycle}" stroke-width="0.4"/>` + t2Text(x, AXIS, st.kind === 'light rail' ? 'L' : st.kind === 'metro' ? 'M' : 'T', 'middle'));
+    sLabels.push(t2Text(x - 0.4, ty, name));
+  });
+  const stationsSvg = shown.length ? svgOf(SW, AXIS + 8, sParts.join('') + sLabels.join('')) : '';
+
+  // The network in the window: each kind of path drawn in its map symbol, its length true to the kilometres.
+  const net: [string, number, string][] = [
+    ['Separated cycleways', f.cycle.separatedM, `stroke="${MOVE.cycle}" stroke-width="0.6"`],
+    ['On-road cycle lanes', f.cycle.laneM, `stroke="${MOVE.cycle}" stroke-width="0.4" stroke-dasharray="1.4,0.8"`],
+    ['Shared paths', f.cycle.sharedM, `stroke="${MOVE.cycle}" stroke-width="0.3" stroke-dasharray="0.8,0.8"`],
+    ['Footways, paths and steps', f.foot.lengthM, `stroke="${MOVE.foot}" stroke-width="0.35" stroke-dasharray="0.5,0.5"`],
+  ];
+  const maxNet = Math.max(1, ...net.map(([, m]) => m));
+  const NX = 52, NW = SW - NX - 22;
+  const netSvg = f.cycle.osm ? svgOf(SW, net.length * 7, net.map(([name, m, style], i) => {
+    const y = i * 7 + 3.5, len = (m / maxNet) * NW;
+    return t3Text(0, y + 0.9, name) + `<line x1="${NX}" y1="${y}" x2="${(NX + Math.max(0.6, len)).toFixed(1)}" y2="${y}" ${style}/>` + t3Text(NX + len + 2.5, y + 0.9, `${(m / 1000).toFixed(1)} km`);
+  }).join('')) : '';
+
+  const busTiles = [
+    { v: f.bus.total ? String(f.bus.within400) : '—', l: 'bus stops within 400 m' },
+    { v: f.bus.total ? String(f.bus.within800) : '—', l: 'bus stops within 800 m' },
+    { v: f.bus.routes ? String(f.bus.routes) : '—', l: 'bus routes through the window' },
+  ].map((tl) => `<div class="tile"><div class="tv">${esc(tl.v)}</div><div class="tl">${esc(tl.l)}</div></div>`).join('');
+
+  const y1 = 46, y2 = y1 + 64, y3 = y2 + AXIS + 18, y4 = y3 + 40;
+  const sources = `Sources: NSW Spatial Services roads, rail and stations; walking isochrones from Valhalla on OpenStreetMap; bus stops from ${f.bus.source === 'tfnsw' ? 'Transport for NSW' : 'OpenStreetMap'}; bus routes, cycleways and footways from OpenStreetMap contributors (ODbL); active street frontages from the ePlanning development-control layers; walking minutes are straight-line distance at 80 m a minute. Retrieved ${b.generatedAt.slice(0, 10)}.`;
   const figureHtml = `
     <div class="abs" style="left:${FOLD}mm;top:0">${mapSvg}</div>
     <div class="abs maplabel" style="left:${FOLD + 8}mm;top:8mm">Movement · 1:${fmtNum(p.scale).replace(',', ' ')}</div>
-    <div class="abs t2" style="left:${L_X}mm;top:${FIELD_Y - 4.5}mm">Walking reach · 5, 10 and 15 minutes · 1:${fmtNum(rp.scale / k).replace(',', ' ')}</div>
-    <div class="abs" style="left:${(L_X + (L_W - shapeW) / 2).toFixed(1)}mm;top:${FIELD_Y}mm">${reachSvg}</div>
-    <div class="abs" style="left:${AUX_X}mm;top:${yLower}mm;width:${AUX_W}mm">
-      <div class="tiles two">${tiles}</div>
-      <div class="legend" style="margin-top:6mm">${legend}</div>
-      <div class="t2" style="margin:6mm 0 1.5mm">Stations</div>
-      ${stationTable}
+    <div class="abs t2" style="left:${L_X}mm;top:${y1}mm">Reach on foot</div>
+    <div class="abs" style="left:${L_X}mm;top:${y1 + 6}mm">${reachSvg}</div>
+    <div class="abs t2" style="left:${AUX_X}mm;top:${y1}mm">Bus</div>
+    <div class="abs tiles col" style="left:${AUX_X}mm;top:${y1 + 6}mm;width:${AUX_W}mm">${busTiles}</div>
+    <div class="abs t2" style="left:${L_X}mm;top:${y2}mm">Stations on foot · minutes at 80 m a minute</div>
+    <div class="abs" style="left:${L_X}mm;top:${y2 + 4}mm">${stationsSvg}</div>
+    <div class="abs t2" style="left:${L_X}mm;top:${y3}mm">The network in the window</div>
+    <div class="abs" style="left:${L_X}mm;top:${y3 + 6}mm">${netSvg}</div>
+    <div class="abs" style="left:${L_X}mm;top:${y4}mm;width:${L_W}mm">
+      <div class="legend" style="column-count:2;column-gap:8mm">${legend}</div>
+      <div class="anote" style="margin-top:8mm">Narrative — for the author: how people will arrive and leave, which frontage is the address and which the service side, where the active edge belongs, and what the walking catchments say about the mix.</div>
     </div>`;
-  return { id: '09_movement', title: 'Movement', subtitle: sub, textHtml, figureHtml, bleed: true, textY: yLower };
+  void stationTable; void tiles; void textHtml;
+  return { id: '09_movement', title: 'Movement', subtitle: sub, textHtml: '', figureHtml, bleed: true, sources };
 }
 
 // ---- slide 10: green and public domain -------------------------------------
@@ -5464,7 +5483,17 @@ export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; 
   const slides = [locationSlide(b), characterSlide(b), planningOverviewSlide(b, facts), planningControlsSlide(b, facts), strategicSlide(b, facts), terrainSlide(b), developmentSlide(b, facts), builtFormSlide(b, facts), movementSlide(b), greenSlide(b), siteSlide(b), photosSlide(b), sunViewSlide(b), constraintsSlide(b), countrySlide(b), peopleSlide(b), ocSlide(b, facts), sourcesSlide(b, facts)];
   const t = tpl();
   const footerLeft = ['SITE ANALYST — OVERALL ANALYSIS', b.siteAddress, meta.client ? `for ${meta.client}` : '', meta.jobNo ? `job ${meta.jobNo}` : ''].filter(Boolean).join(' · ');
-  const pages = slides.map((s, i) => `
+  const atlasPage = (s: Slide, i: number) => `
+<section class="slide atlas" id="${esc(s.id)}">
+  <div class="abs ahead" style="left:${L_X}mm;top:13mm;width:${L_W}mm">${esc(s.title)}</div>
+  <div class="abs aband" style="left:${L_X}mm;top:22mm;width:${L_W}mm">${esc(s.subtitle).split(' · ').join(' <span class="bar">|</span> ')}</div>
+  ${s.textHtml ? `<div class="abs atext" style="left:${L_X}mm;top:${s.textY ?? 56}mm;width:${L_W}mm">${s.textHtml}</div>` : ''}
+  ${s.figureHtml}
+  ${s.sources ? `<div class="abs asrc" style="left:${L_X}mm;bottom:22mm;width:${L_W}mm">${esc(s.sources)}</div>` : ''}
+  <div class="abs afoot" style="left:${L_X}mm;top:${FOOT_Y - 3}mm;width:${L_W}mm">Generated ${esc(b.generatedAt.slice(0, 10))} <span class="bar">|</span> ${i + 1} / ${slides.length}</div>
+  <div class="abs afolio" style="right:${MARGIN_R}mm;top:${FOOT_Y}mm">${s.full ? '' : i * 2 + 2}</div>
+</section>`;
+  const pages = slides.map((s, i) => s.bleed || s.full ? atlasPage(s, i) : `
 <section class="slide${s.bleed || s.full ? ' atlas' : ''}" id="${esc(s.id)}">
   <div class="abs rh" style="left:${L_X}mm;top:10mm;width:${s.full ? 115 : L_W}mm"><span>Overall analysis</span>${s.full ? '' : `<span>${esc(b.siteAddress)}</span>`}</div>
   ${s.bleed || s.full ? '' : `<div class="abs rh" style="left:${FIELD_X}mm;top:10mm;width:${FIELD_W}mm"><span>${esc(s.title)}</span><span>${String(i + 1).padStart(2, '0')} / ${slides.length}</span></div>
@@ -5580,17 +5609,24 @@ export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; 
   table.da.strat td.lnk a { color: #6a7572; text-decoration: none; word-break: break-all; font-size: 2.0mm; }
   table.da.strat tr.manual td { color: #8a918c; }
   table.da.strat tr.manual td b { font-weight: 600; }
-  .slide.atlas .title, .slide.atlas .tv, .slide.atlas .t1 { font-size: 6.6mm; font-weight: 500; line-height: 1.05; letter-spacing: -0.015em; text-transform: none; color: ${t.ink}; }
-  .slide.atlas .rh, .slide.atlas .foot, .slide.atlas .ptitle, .slide.atlas .maplabel, .slide.atlas table th, .slide.atlas .t2 { font-size: 2.1mm; font-weight: 600; line-height: 1.3; letter-spacing: 0.12em; text-transform: uppercase; color: ${t.ink}; height: auto; white-space: normal; }
-  .slide.atlas .subtitle, .slide.atlas .text, .slide.atlas .text p, .slide.atlas table td, .slide.atlas .tl, .slide.atlas .legend, .slide.atlas .lg span, .slide.atlas .t3 { font-size: 2.6mm; font-weight: 400; line-height: 1.42; letter-spacing: 0; text-transform: none; color: ${t.ink}; }
-  .slide.atlas b, .slide.atlas strong, .slide.atlas td.hi, .slide.atlas tr.hit td { font-weight: 400; }
-  .slide.atlas .pnote, .slide.atlas .fine, .slide.atlas .ph { display: none; }
+  .slide.atlas { --yellow: #f9f19a; --hair: #b9b9b9; --ink: #161616; }
+  .slide.atlas, .slide.atlas * { color: var(--ink); }
+  .slide.atlas .ahead, .slide.atlas .tv, .slide.atlas .h { font-size: 6mm; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; line-height: 1.1; }
+  .slide.atlas .aband, .slide.atlas .afoot, .slide.atlas .afolio, .slide.atlas .t2, .slide.atlas .maplabel, .slide.atlas table th, .slide.atlas .s { font-size: 2.7mm; font-weight: 400; letter-spacing: 0.05em; text-transform: uppercase; line-height: 1.3; }
+  .slide.atlas .lg span, .slide.atlas .tl, .slide.atlas .asrc, .slide.atlas table td { font-size: 2.7mm; font-weight: 400; letter-spacing: 0; text-transform: none; line-height: 1.3; }
+  .slide.atlas .atext, .slide.atlas .atext p, .slide.atlas .anote, .slide.atlas .b { font-size: 3.4mm; font-weight: 400; letter-spacing: 0; text-transform: none; line-height: 1.32; }
+  .slide.atlas .aband { border-top: 0.2mm solid var(--hair); background: var(--yellow); padding: 3mm 7mm 3.4mm; }
+  .slide.atlas .bar { padding: 0 0.6mm; }
+  .slide.atlas .atext p { margin-bottom: 4.2mm; hyphens: auto; }
+  .slide.atlas .anote { border-top: 0.2mm solid var(--hair); background: var(--yellow); padding: 5mm 7mm 7mm; margin-top: 14mm; }
+  .slide.atlas .asrc { color: #8d8d8d; }
+  .slide.atlas .afoot { border-top: 0.2mm solid var(--hair); padding-top: 2.4mm; }
+  .slide.atlas .afolio { background: #ffffff; padding: 0.6mm 1.6mm; }
+  .slide.atlas .maplabel { background: #ffffff; }
   .slide.atlas .tile { border-top: none; padding-top: 0; }
-  .slide.atlas .tl { margin-top: 0.6mm; }
-  .slide.atlas table th, .slide.atlas table td { border-top: none; padding-top: 0.5mm; padding-bottom: 0.5mm; }
-  .slide.atlas table thead th { padding-bottom: 1mm; }
-  .slide.atlas .lg { margin-bottom: 0.9mm; }
-  .slide.atlas .text p { margin-bottom: 2.4mm; }
+  .slide.atlas .tl { margin-top: 1mm; }
+  .slide.atlas table th, .slide.atlas table td { border-top: none; padding: 0.5mm 2mm 0.5mm 0; }
+  .slide.atlas .lg { margin-bottom: 1mm; }
 </style></head>
 <body>${pages}</body></html>`;
   return { html, slides };
