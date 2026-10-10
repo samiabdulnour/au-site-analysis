@@ -11,9 +11,13 @@ space, amenities, planning controls, SWOT, design opportunities, design
 response / massing ideas.
 
 The fourth mode, `slides`, is the content part of a feasibility study or
-design report: an A3 overall-analysis deck (context, planning, development
+design report: an overall-analysis deck (context, planning, development
 activity, topography, built form, movement, site, sun and views, constraints,
-Country, people and market, opportunities). `docs/SLIDES_SPEC.md` fixes its
+Country, people and market, opportunities). Each A3 landscape sheet is laid
+out as a book spread that folds at its vertical centre into two A4 pages —
+the left page the title, narrative and side column, the right page the
+figures, with running heads, facing folios and fold ticks — so the printed
+deck binds into an A4 booklet. `docs/SLIDES_SPEC.md` fixes its
 slide set and records which of that content can be fetched from the web,
 endpoint by endpoint, and which stays manual.
 
@@ -479,7 +483,7 @@ development window), `--job 2539`, `--client "Name"`,
 
 ### The deck
 
-`--type slides` draws the OVERALL ANALYSIS deck: A3 landscape pages for the
+`--type slides` draws the OVERALL ANALYSIS deck: A3 landscape spreads (each folding into two A4 pages) for the
 content part of a feasibility study or design report, specified in
 `docs/SLIDES_SPEC.md`. All eighteen slides of the spec exist. First *location*: the
 site in its region at 1:75,000 — the local government areas as the land

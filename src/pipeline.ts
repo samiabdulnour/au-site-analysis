@@ -640,15 +640,15 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
   const extent = panelExtent(panel);
   const daPanel: Panel = { ...panel, hMm: opts.daPanelHmm };
   const daExtent = panelExtent(daPanel);
-  const widePanel: Panel = { center: geo.center, scale: opts.wideScale ?? 16000, wMm: opts.wideWmm ?? 296, hMm: opts.wideHmm ?? 100 };
+  const widePanel: Panel = { center: geo.center, scale: opts.wideScale ?? 16000, wMm: opts.wideWmm ?? 186, hMm: opts.wideHmm ?? 95 };
   const wideExtent = panelExtent(widePanel);
   // The site plan's panel: the lots fitted into a little over half of a tall panel at a round scale, centred on them.
   const sitePanel = fitSitePanel(siteLots, opts.panelWmm, opts.daPanelHmm);
-  const blockPanel: Panel = { center: geo.center, scale: 4000, wMm: opts.panelWmm, hMm: opts.wideHmm ?? 100 };
+  const blockPanel: Panel = { center: geo.center, scale: 4000, wMm: opts.panelWmm, hMm: opts.wideHmm ?? 72 };
   // The then-and-now pair: two half-width panels side by side at 1:2500, the 1943 survey and today's imagery over the same ground.
-  const pairPanel: Panel = { center: geo.center, scale: 2500, wMm: (opts.panelWmm - 4) / 2, hMm: opts.panelHmm };
-  // The location window: the whole figure field's width at 1:75,000, about 22 × 13 km, the 5 km ring well inside it.
-  const locationPanel: Panel = { center: geo.center, scale: 75000, wMm: opts.wideWmm ?? 296, hMm: 170 };
+  const pairPanel: Panel = { center: geo.center, scale: 2500, wMm: 90, hMm: 80 };
+  // The location window: the figure page's width at 1:100,000, about 19 × 15 km, the 5 km ring well inside it.
+  const locationPanel: Panel = { center: geo.center, scale: 100000, wMm: opts.wideWmm ?? 186, hMm: 150 };
   // Every fetch window is the larger of the two, so nothing is missing from either map.
   const fetchExtent: Extent = {
     xmin: Math.min(extent.xmin, daExtent.xmin), ymin: Math.min(extent.ymin, daExtent.ymin),

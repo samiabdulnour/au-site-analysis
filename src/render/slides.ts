@@ -44,21 +44,32 @@ import type { MajorProject } from '../fetch/majorProjects.js';
 
 export const SLIDE_W = 420;
 export const SLIDE_H = 297;
-// The figure field is a 2 × 2 grid of map panels; these are one panel's map area.
-export const PANEL_W = 145;
-export const PANEL_H = 95;
-// The development-activity map: one column wide, the height of a panel with its legend.
-export const DA_PANEL_H = 119;
-
-const MARGIN_L = 14, MARGIN_R = 12;
-const TEXT_W = 88;                       // the text column
-const FIELD_X = MARGIN_L + TEXT_W + 10;  // 112
-const FIELD_W = SLIDE_W - FIELD_X - MARGIN_R;  // 296
-const FIELD_Y = 36;
+// The A3 sheet folds at its vertical centre into a spread of two A4 pages:
+// the left page carries the title, the narrative and the side column, the
+// right page the figures. Nothing but a deliberate full-spread figure may
+// cross the fold.
+const FOLD = 210;
+const INNER = 9;                          // margin each side of the fold
+const MARGIN_L = 15, MARGIN_R = 15;       // the outer margins
+const L_X = MARGIN_L;                     // left page content
+const L_W = FOLD - INNER - L_X;           // 186
+const TEXT_W = 88;                        // the narrative column's measure
+const AUX_X = L_X + TEXT_W + 8;           // the left page's side column: tiles, keys, small tables
+const AUX_W = L_X + L_W - AUX_X;          // 90
+const FIELD_X = FOLD + INNER;             // 219 — the right page is the figure field
+const FIELD_W = SLIDE_W - MARGIN_R - FIELD_X;  // 186
+// A full-page map panel, and the half panel two of which share a row.
+export const PANEL_W = 186;
+export const PANEL_H = 122;
+export const DA_PANEL_H = 122;
+const HALF_W = 90, HALF_H = 59;
+const FIELD_Y = 40;
 const GUTTER = 6;
 const PANEL_TITLE_H = 5;
 const LEGEND_H = 19.5;
 const LEGEND_ROWS = 5;
+const HALF_LEGEND_H = 26, HALF_LEGEND_ROWS = 7;
+const FOOT_Y = SLIDE_H - 10;              // the per-page footer line
 
 export interface Slide { id: string; title: string; subtitle: string; textHtml: string; figureHtml: string }
 
@@ -143,23 +154,23 @@ function mainRing(f: GeoJSONFeature, proj: Proj) {
 const label = (x: number, y: number, text: string, size = 2.2, fill = '#2a3534') =>
   `<text x="${x.toFixed(1)}" y="${(y + size * 0.35).toFixed(1)}" text-anchor="middle" font-size="${size}" font-weight="700" fill="${fill}" stroke="#ffffff" stroke-width="${(size * 0.22).toFixed(2)}" paint-order="stroke">${esc(text)}</text>`;
 
-function panelSvg(inner: string, id: string): string {
-  return `<svg width="${PANEL_W}mm" height="${PANEL_H}mm" viewBox="0 0 ${PANEL_W} ${PANEL_H}" xmlns="http://www.w3.org/2000/svg" style="display:block">
-    <defs><clipPath id="clip-${id}"><rect x="0" y="0" width="${PANEL_W}" height="${PANEL_H}"/></clipPath></defs>
+function panelSvg(inner: string, id: string, w = PANEL_W, h = PANEL_H): string {
+  return `<svg width="${w}mm" height="${h}mm" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg" style="display:block">
+    <defs><clipPath id="clip-${id}"><rect x="0" y="0" width="${w}" height="${h}"/></clipPath></defs>
     <g clip-path="url(#clip-${id})" font-family="${tpl().font}">${inner}</g>
-    <rect x="0.1" y="0.1" width="${PANEL_W - 0.2}" height="${PANEL_H - 0.2}" fill="none" stroke="${tpl().rule}" stroke-width="0.2"/>
+    <rect x="0.1" y="0.1" width="${(w - 0.2).toFixed(1)}" height="${(h - 0.2).toFixed(1)}" fill="none" stroke="${tpl().rule}" stroke-width="0.2"/>
   </svg>`;
 }
 
 interface PanelOut { title: string; note: string; svg: string; legend: LegendEntry[] }
 
 function panelBlock(p: PanelOut, col: number, row: number, id: string): string {
-  const x = FIELD_X + col * (PANEL_W + GUTTER);
-  const y = FIELD_Y + row * (PANEL_TITLE_H + PANEL_H + LEGEND_H + GUTTER);
-  const leg = legendSvg(p.legend, PANEL_W, LEGEND_ROWS, 2.05);
-  return `<div class="abs ptitle" style="left:${x}mm;top:${y}mm;width:${PANEL_W}mm">${esc(p.title)}<span class="pnote">${esc(p.note)}</span></div>
-    <div class="abs" style="left:${x}mm;top:${y + PANEL_TITLE_H}mm">${panelSvg(p.svg, id)}</div>
-    <svg class="abs" style="left:${x}mm;top:${y + PANEL_TITLE_H + PANEL_H + 1.5}mm" width="${PANEL_W}mm" height="${LEGEND_H}mm" viewBox="0 0 ${PANEL_W} ${LEGEND_H}" xmlns="http://www.w3.org/2000/svg">${leg.svg}</svg>`;
+  const x = FIELD_X + col * (HALF_W + GUTTER);
+  const y = FIELD_Y + row * (PANEL_TITLE_H + HALF_H + HALF_LEGEND_H + GUTTER);
+  const leg = legendSvg(p.legend, HALF_W, HALF_LEGEND_ROWS, 1.9);
+  return `<div class="abs ptitle sm" style="left:${x}mm;top:${y}mm;width:${HALF_W}mm">${esc(p.title)}<span class="pnote">${esc(p.note)}</span></div>
+    <div class="abs" style="left:${x}mm;top:${y + PANEL_TITLE_H}mm">${panelSvg(p.svg, id, HALF_W, HALF_H)}</div>
+    <svg class="abs" style="left:${x}mm;top:${y + PANEL_TITLE_H + HALF_H + 1.5}mm" width="${HALF_W}mm" height="${HALF_LEGEND_H}mm" viewBox="0 0 ${HALF_W} ${HALF_LEGEND_H}" xmlns="http://www.w3.org/2000/svg">${leg.svg}</svg>`;
 }
 
 // ---- the facts the two slides share -----------------------------------------
@@ -590,13 +601,13 @@ export function locationSlide(b: SlidesBundle): Slide {
   const rows = f.centres.map((c) => `<tr><td><b>${esc(c.name)}</b></td><td>${esc(c.kindWord)}</td><td class="r">${km(c.distanceM)}</td><td>${esc(compassWord(c.bearing))}</td></tr>`).join('');
   const table = `<table class="da cons"><thead><tr><th>Centre of The Sydney Plan</th><th>Type</th><th class="r">Distance</th><th>Direction</th></tr></thead><tbody>${rows}</tbody></table>`;
   const legendTop = FIELD_Y + PANEL_TITLE_H + p.hMm + 1.5;
-  const belowY = legendTop + leg.heightMm + 2.5;
+  const belowY = legendTop + leg.heightMm + 3;
   const belowH = SLIDE_H - 12 - belowY;
   const figure = `<div class="abs ptitle" style="left:${FIELD_X}mm;top:${FIELD_Y}mm;width:${FIELD_W}mm">Location<span class="pnote">1:${fmtNum(p.scale)} · ${f.widthKm} × ${f.heightKm} km · the site in its region, with the plan's centres and the stations</span></div>
     <div class="abs" style="left:${FIELD_X}mm;top:${FIELD_Y + PANEL_TITLE_H}mm">${mapSvg}</div>
     <svg class="abs" style="left:${FIELD_X}mm;top:${legendTop}mm" width="${FIELD_W}mm" height="${leg.heightMm}mm" viewBox="0 0 ${FIELD_W} ${leg.heightMm}" xmlns="http://www.w3.org/2000/svg">${leg.svg}</svg>
-    <div class="abs tiles" style="left:${FIELD_X}mm;top:${belowY}mm;width:${PANEL_W}mm">${tiles}</div>
-    <div class="abs" style="left:${FIELD_X + PANEL_W + GUTTER}mm;top:${belowY}mm;width:${PANEL_W}mm;height:${belowH}mm;overflow:hidden">${table}</div>`;
+    <div class="abs" style="left:${FIELD_X}mm;top:${belowY}mm;width:${FIELD_W}mm;height:${belowH}mm;overflow:hidden">${table}</div>
+    <div class="abs tiles col" style="left:${AUX_X}mm;top:${FIELD_Y}mm;width:${AUX_W}mm">${tiles}</div>`;
   const sub = [b.siteAddress, f.lga ? f.lga.name : '', `${km(f.cbd.distanceM)} from the Sydney CBD`, near ? `${near.name} ${km(near.distanceM)}` : ''].filter(Boolean).join(' · ');
   return { id: '01_location', title: 'Location', subtitle: sub, textHtml, figureHtml: figure };
 }
@@ -716,16 +727,15 @@ export function characterSlide(b: SlidesBundle): Slide {
     if (ph) cells.push(`<div class="frame"><div class="img"><img src="data/${esc(ph.file)}" alt=""><span class="key plc">${ph.n}</span></div><div class="cap">${esc(ph.caption)}</div></div>`);
     else cells.push(`<div class="frame ph"><div class="img">Office photograph</div><div class="cap">${esc(`${i + 1} · for the author: the office's photograph of the place, credited`)}</div></div>`);
   }
-  const X2 = FIELD_X + PANEL_W + GUTTER;
   const rowY = FIELD_Y + PANEL_TITLE_H + PANEL_H + 3;
-  const figure = `<div class="abs ptitle" style="left:${FIELD_X}mm;top:${FIELD_Y}mm;width:${PANEL_W}mm">The place from above<span class="pnote">1:${fmtNum(p.scale)}${f.aerial?.date ? ` · captured ${fmtIso(f.aerial.date)}` : ''} · the places with articles numbered</span></div>
+  const figure = `<div class="abs ptitle" style="left:${FIELD_X}mm;top:${FIELD_Y}mm;width:${FIELD_W}mm">The place from above<span class="pnote">1:${fmtNum(p.scale)}${f.aerial?.date ? ` · captured ${fmtIso(f.aerial.date)}` : ''} · the places with articles numbered</span></div>
     <div class="abs" style="left:${FIELD_X}mm;top:${FIELD_Y + PANEL_TITLE_H}mm">${mapSvg}</div>
-    <div class="abs" style="left:${X2}mm;top:${FIELD_Y}mm;width:${PANEL_W}mm;height:${PANEL_TITLE_H + PANEL_H}mm;overflow:hidden">
-      <div class="ptitle">Places nearby<span class="pnote">Wikipedia's articles placed within ${(f.placesRadiusM / 1000).toFixed(1)} km, nearest first</span></div>
+    <div class="abs ptitle" style="left:${FIELD_X}mm;top:${rowY}mm;width:${FIELD_W}mm">Photographs<span class="pnote">${f.photos.length ? `open-licence frames within ${f.photosRadiusM} m from Wikimedia Commons · the office's photographs replace them` : 'placeholders sized for the office\'s photographs'}</span></div>
+    <div class="abs photos four" style="left:${FIELD_X}mm;top:${rowY + PANEL_TITLE_H}mm;width:${FIELD_W}mm">${cells.join('')}</div>
+    <div class="abs" style="left:${AUX_X}mm;top:${FIELD_Y}mm;width:${AUX_W}mm;height:${SLIDE_H - FIELD_Y - 14}mm;overflow:hidden">
+      <div class="ptitle sm">Places nearby<span class="pnote">within ${(f.placesRadiusM / 1000).toFixed(1)} km, nearest first</span></div>
       ${table}
-    </div>
-    <div class="abs ptitle" style="left:${FIELD_X}mm;top:${rowY}mm;width:${FIELD_W}mm">Photographs<span class="pnote">${f.photos.length ? `open-licence frames within ${f.photosRadiusM} m from Wikimedia Commons, credited as their licences ask · the office's photographs replace them` : 'placeholders sized for the office\'s photographs'}</span></div>
-    <div class="abs photos four" style="left:${FIELD_X}mm;top:${rowY + PANEL_TITLE_H}mm;width:${FIELD_W}mm">${cells.join('')}</div>`;
+    </div>`;
   const sub = [b.siteAddress, f.suburb ?? '', f.places.length ? `${f.places.length} place${f.places.length === 1 ? '' : 's'} with articles` : '', f.photos.length ? `${f.photos.length} open photograph${f.photos.length === 1 ? '' : 's'}` : 'no open photograph'].filter(Boolean).join(' · ');
   return { id: '02_character', title: 'Character', subtitle: sub, textHtml, figureHtml: figure };
 }
@@ -883,7 +893,7 @@ function hobPanel(b: SlidesBundle, proj: Proj, facts: PlanningFacts): PanelOut {
   const legend = order.map((l) => ({ swatch: swatchFill(colour.get(l)!), label: l }));
   const rl = facts.heightsInWindow.some((h) => /RL/i.test(h.units));
   const banded = facts.heightsInWindow.length > 10;
-  return { title: 'Height of building', note: `${banded ? `${facts.heightsInWindow.length} distinct limits, banded · ` : ''}${rl ? 'RL limits are reduced levels above datum, not heights above ground' : 'maximum height above ground'}`, svg, legend };
+  return { title: 'Height of building', note: `${banded ? `${facts.heightsInWindow.length} distinct limits, banded · ` : ''}${rl ? 'RL limits are levels above datum' : 'height above ground'}`, svg, legend };
 }
 
 /** A note in the panel's top-left corner, boxed, where it covers nothing that matters. */
@@ -928,7 +938,7 @@ function heritagePanel(b: SlidesBundle, proj: Proj, facts: PlanningFacts): Panel
   const empty = parts.length ? '' : emptyNote(['No heritage item or conservation area in this window']);
   const svg = baseLayers(b.base, proj, b.panel) + parts.join('') + labels.join('') + overLayers(b.base, proj, b.panel) + empty + panelFurniture(b.panel);
   const n = facts.heritageNearby;
-  return { title: 'Heritage', note: `${n.items} items · ${n.conservationAreas} conservation areas · ${n.shr} State Heritage Register items in window`, svg, legend: [...legendMap.values()] };
+  return { title: 'Heritage', note: `${n.items} items · ${n.conservationAreas} conservation areas · ${n.shr} SHR in window`, svg, legend: [...legendMap.values()] };
 }
 
 function policyPanel(b: SlidesBundle, proj: Proj, facts: PlanningFacts): PanelOut {
@@ -961,13 +971,15 @@ function policyPanel(b: SlidesBundle, proj: Proj, facts: PlanningFacts): PanelOu
 }
 
 export function planningOverviewSlide(b: SlidesBundle, facts: PlanningFacts): Slide {
-  const proj = panelProjector(b.panel);
-  const panels = [zoningPanel(b, proj, facts), hobPanel(b, proj, facts), heritagePanel(b, proj, facts), policyPanel(b, proj, facts)];
+  const hp: Panel = { ...b.panel, wMm: HALF_W, hMm: HALF_H };
+  const hb: SlidesBundle = { ...b, panel: hp };
+  const proj = panelProjector(hp);
+  const panels = [zoningPanel(hb, proj, facts), hobPanel(hb, proj, facts), heritagePanel(hb, proj, facts), policyPanel(hb, proj, facts)];
   const figureHtml = panels.map((p, i) => panelBlock(p, i % 2, Math.floor(i / 2), `p${i}`)).join('\n');
   const sentences = sentenceList(planningSentences(b, facts));
   const textHtml = sentences.map(para).join('') +
     placeholder('Narrative — for the author: how the planning framework reads for this site, where it is moving (rezonings, precinct plans, policy reforms) and what that implies for the brief.') +
-    `<div class="fine">Four maps at 1:${fmtNum(b.panel.scale)}, north up, ${fmtNum(Math.round((PANEL_W / 1000) * b.panel.scale))} × ${fmtNum(Math.round((PANEL_H / 1000) * b.panel.scale))} m each. Zoning, height and heritage from NSW ePlanning (EPI_Primary_Planning_Layers); the State Heritage Register from Heritage NSW; TOD, town-centre and SSD maps from the Housing and Planning Systems SEPP layers; precincts from DPHI. Retrieved ${b.generatedAt.slice(0, 10)}. Mapped controls, not a planning certificate.</div>`;
+    `<div class="fine">Four maps at 1:${fmtNum(b.panel.scale)}, north up, ${fmtNum(Math.round((HALF_W / 1000) * b.panel.scale))} × ${fmtNum(Math.round((HALF_H / 1000) * b.panel.scale))} m each. Zoning, height and heritage from NSW ePlanning (EPI_Primary_Planning_Layers); the State Heritage Register from Heritage NSW; TOD, town-centre and SSD maps from the Housing and Planning Systems SEPP layers; precincts from DPHI. Retrieved ${b.generatedAt.slice(0, 10)}. Mapped controls, not a planning certificate.</div>`;
   const sub = [b.siteAddress, b.context.lga?.name ? titleCase(b.context.lga.name) : '', b.context.district ? `${b.context.district} District` : ''].filter(Boolean).join(' · ');
   return { id: '03_planning_overview', title: 'Planning overview', subtitle: sub, textHtml, figureHtml };
 }
@@ -1423,8 +1435,8 @@ function yearChart(d: DevelopmentFacts, wMm: number, hMm: number): string {
 export function developmentSlide(b: SlidesBundle, facts: PlanningFacts): Slide {
   const d = developmentFacts(b);
   const x0 = FIELD_X, y0 = FIELD_Y;
-  const rightX = FIELD_X + PANEL_W + GUTTER;
-  const rightW = FIELD_W - PANEL_W - GUTTER;
+  const rightX = AUX_X;
+  const rightW = AUX_W;
   const mapTitle = d.available
     ? `Applications lodged since ${fmtMonthYear(d.from)} · ${d.council}`
     : 'Development applications · feed unavailable';
@@ -1441,21 +1453,21 @@ export function developmentSlide(b: SlidesBundle, facts: PlanningFacts): Slide {
     `<div class="lg"><svg width="5mm" height="3.6mm" viewBox="0 0 5 3.6"><circle cx="1" cy="1.8" r="0.9" fill="#948f85"/><circle cx="3.4" cy="1.8" r="1.6" fill="#948f85"/></svg><span>Circle area follows the stated cost; numbers match the table</span></div>` +
     `<div class="lg"><svg width="5mm" height="3.6mm" viewBox="0 0 5 3.6"><circle cx="2.5" cy="1.8" r="0.55" fill="#b3b3b3"/></svg><span>Every other application lodged in the period</span></div>` +
     (d.stateSignificant.sites.length ? `<div class="lg"><svg width="5mm" height="3.6mm" viewBox="0 0 5 3.6"><path d="M2.5,0.15 L4.15,1.8 L2.5,3.45 L0.85,1.8 Z" fill="#948f85"/></svg><span>State significant application from the Department's register, S-numbered, coloured by stage</span></div>` : '');
-  const chartH = 40;
-  const right = `<div class="abs ptitle" style="left:${rightX}mm;top:${y0}mm;width:${rightW}mm">Scale of activity</div>
-    <div class="abs tiles" style="left:${rightX}mm;top:${y0 + PANEL_TITLE_H + 1}mm;width:${rightW}mm">${tiles}</div>
-    <div class="abs legend" style="left:${rightX}mm;top:${y0 + PANEL_TITLE_H + 22}mm;width:${rightW}mm">${legend}</div>
-    <div class="abs" style="left:${rightX}mm;top:${y0 + PANEL_TITLE_H + 52 + (d.stateSignificant.sites.length ? 4 : 0)}mm;width:${rightW}mm">${yearChart(d, rightW, chartH)}</div>`;
+  const chartH = 32;
+  const right = `<div class="abs ptitle sm" style="left:${rightX}mm;top:${y0}mm;width:${rightW}mm">Scale of activity</div>
+    <div class="abs tiles two" style="left:${rightX}mm;top:${y0 + PANEL_TITLE_H + 1}mm;width:${rightW}mm">${tiles}</div>
+    <div class="abs legend" style="left:${rightX}mm;top:${y0 + PANEL_TITLE_H + 32}mm;width:${rightW}mm">${legend}</div>
+    <div class="abs" style="left:${rightX}mm;top:${y0 + PANEL_TITLE_H + 74 + (d.stateSignificant.sites.length ? 6 : 0)}mm;width:${rightW}mm">${yearChart(d, rightW, chartH)}</div>`;
 
   // Rows until the table would run into the footer: about 5 mm a line, and
   // the address and status columns wrap past roughly 50 and 34 characters.
-  const LINE_MM = 2.95, ROW_PAD_MM = 2.05, TABLE_BUDGET_MM = 112, MORE_MM = 5;
-  const rowMm = (st: DaSite) => Math.max(1, Math.ceil(st.statusText.length / 34), Math.ceil(st.address.length / 50)) * LINE_MM + ROW_PAD_MM;
+  const LINE_MM = 2.95, ROW_PAD_MM = 2.05, TABLE_BUDGET_MM = 106, MORE_MM = 5;
+  const rowMm = (st: DaSite) => Math.max(1, Math.ceil(st.statusText.length / 22), Math.ceil(st.address.length / 26), Math.ceil(Math.min(([...new Set(st.primary.developmentTypes)].join(', ') || st.primary.type).length, 72) / 42)) * LINE_MM + ROW_PAD_MM;
   // The State significant applications take the top rows, six at most, and leave the rest to the council's.
   const ssdSite = (q: SsdSite) => shorten(tidyRegisterAddress(q.address) || q.title, 100);
   const ssdDev = (q: SsdSite) => shorten(tidyRegisterAddress(q.address) && q.title.toLowerCase().startsWith(tidyRegisterAddress(q.address).toLowerCase()) && q.description ? q.description : q.title, 72);
   const ssdStatus = (q: SsdSite) => `${q.number} · ${ssdStage(q)}${q.modifications.length ? ` · ${q.modifications.length} modification${q.modifications.length === 1 ? '' : 's'}` : ''}${q.onSite ? ' · on the site' : ''}`;
-  const ssdRowMm = (q: SsdSite) => Math.max(1, Math.ceil(ssdStatus(q).length / 34), Math.ceil(ssdSite(q).length / 50), Math.ceil(ssdDev(q).length / 44)) * LINE_MM + ROW_PAD_MM;
+  const ssdRowMm = (q: SsdSite) => Math.max(1, Math.ceil(ssdStatus(q).length / 22), Math.ceil(ssdSite(q).length / 26), Math.ceil(ssdDev(q).length / 42)) * LINE_MM + ROW_PAD_MM;
   const ssdShown: SsdSite[] = [];
   let used = 0;
   for (const q of d.stateSignificant.sites.slice(0, 6)) { const h = ssdRowMm(q); if (used + h > TABLE_BUDGET_MM * 0.55) break; ssdShown.push(q); used += h; }
@@ -1480,7 +1492,7 @@ export function developmentSlide(b: SlidesBundle, facts: PlanningFacts): Slide {
   const rest = d.sites.length - shown.length;
   const more = rest > 0 ? `<tr><td></td><td colspan="8" class="more">+ ${rest} smaller site${rest > 1 ? 's' : ''} of scale, unnumbered on the map, all in overall.json</td></tr>` : '';
   const empty = !d.sites.length ? `<tr><td></td><td colspan="8" class="more">${d.available ? 'No application of scale in the window for this period' : 'The feed was not available'}</td></tr>` : '';
-  const table = `<table class="da"><thead><tr><th class="n">#</th><th style="width:58mm">Site</th><th>Development as lodged</th><th class="r" style="width:11mm">Storeys</th><th class="r" style="width:13mm">Dwellings</th><th class="r" style="width:15mm">Cost</th><th style="width:44mm">Status</th><th style="width:15mm">Lodged</th><th style="width:15mm">Determined</th></tr></thead><tbody>${ssdRows}${rows}${more}${empty}</tbody></table>`;
+  const table = `<table class="da"><thead><tr><th class="n">#</th><th style="width:38mm">Site</th><th>Development as lodged</th><th class="r" style="width:8mm">St</th><th class="r" style="width:9mm">Dw</th><th class="r" style="width:11mm">Cost</th><th style="width:30mm">Status</th><th style="width:11mm">Lodged</th><th style="width:12mm">Determined</th></tr></thead><tbody>${ssdRows}${rows}${more}${empty}</tbody></table>`;
 
   const sentences = developmentSentences(b, d, facts);
   const textHtml = sentences.map(para).join('') +
@@ -1695,7 +1707,7 @@ export function peopleSlide(b: SlidesBundle): Slide {
 
   // Row B: the population line and the comparison table.
   const halfW = (FIELD_W - GUTTER) / 2;
-  const rowB = FIELD_Y + 26, chartH = 71;
+  const rowB = FIELD_Y, chartH = 52;
   const hist = p.erpSa2, proj = p.tzp24?.sa2 ?? [];
   const popChart = lineWithProjection({
     w: halfW, h: chartH, font: t.font, history: hist, projection: proj,
@@ -1728,8 +1740,8 @@ export function peopleSlide(b: SlidesBundle): Slide {
     `</tbody></table>`;
 
   // Row C: four profiles against the benchmark.
-  const rowC = rowB + chartH + PANEL_TITLE_H + GUTTER, smallH = 66;
-  const qW = (FIELD_W - 3 * GUTTER) / 4;
+  const rowC = rowB + PANEL_TITLE_H + Math.max(chartH, 70) + 3, smallH = 48;
+  const qW = halfW;
   const pair = (rowsIn: { label: string; a: number; b?: number }[], labelW?: number) =>
     pairedBars({ w: qW, h: smallH, font: t.font, rows: rowsIn, aLabel: subjectLabel, bLabel: bench ? benchName : undefined, unit: ' %', labelW });
   const charts: { title: string; svg: string }[] = [
@@ -1748,14 +1760,15 @@ export function peopleSlide(b: SlidesBundle): Slide {
       { label: 'Other', a: tr.other, b: btr?.other }], 24) : '' },
   ];
   const chartCells = charts.map((c, i) => {
-    const x = FIELD_X + i * (qW + GUTTER);
-    return `<div class="abs ptitle" style="left:${x}mm;top:${rowC}mm;width:${qW}mm">${esc(c.title)}</div>
-      <div class="abs" style="left:${x}mm;top:${rowC + PANEL_TITLE_H}mm">${c.svg || emptyBox(qW, smallH, 'not in the census tables for this region')}</div>`;
+    const x = FIELD_X + (i % 2) * (qW + GUTTER);
+    const yC = rowC + Math.floor(i / 2) * (PANEL_TITLE_H + smallH + 3);
+    return `<div class="abs ptitle sm" style="left:${x}mm;top:${yC}mm;width:${qW}mm">${esc(c.title)}</div>
+      <div class="abs" style="left:${x}mm;top:${yC + PANEL_TITLE_H}mm">${c.svg || emptyBox(qW, smallH, 'not in the census tables for this region')}</div>`;
   }).join('');
 
   // Row D: the site's land value and the sales around it.
-  const rowD = rowC + PANEL_TITLE_H + smallH + GUTTER, marketH = 50;
-  const lvW = 95, salesX = FIELD_X + lvW + GUTTER, salesW = FIELD_W - lvW - GUTTER;
+  const rowD = rowC + 2 * (PANEL_TITLE_H + smallH + 3) + 1, marketH = 42;
+  const lvW = AUX_W, lvY = FIELD_Y + 96, salesX = FIELD_X, salesW = FIELD_W;
   const lv = p.landValues;
   const lvTitle = lv ? `Land value · ${titleCase(streetOnly(lv.address))}` : 'Land value';
   const lvNote = lv ? [lv.zone ? lv.zone.split(' - ')[0] : '', lv.stratum ? 'stratum' : '', lv.areaSqm ? `${fmtNum(lv.areaSqm)} m²` : ''].filter(Boolean).join(' · ') : 'no property at the point';
@@ -1777,14 +1790,14 @@ export function peopleSlide(b: SlidesBundle): Slide {
     : emptyBox(salesW, marketH, `no sale on the register within ${p.salesRadiusM} m`);
 
   const figureHtml = `
-    <div class="abs tiles seven" style="left:${FIELD_X}mm;top:${FIELD_Y}mm;width:${FIELD_W}mm">${tiles}</div>
-    <div class="abs ptitle" style="left:${FIELD_X}mm;top:${rowB}mm;width:${halfW}mm">Population · ${esc(p.regions.sa2.name)}<span class="pnote">SA2, June each year</span></div>
+    <div class="abs tiles col" style="left:${AUX_X}mm;top:${FIELD_Y}mm;width:${AUX_W}mm">${tiles}</div>
+    <div class="abs ptitle sm" style="left:${AUX_X}mm;top:${lvY}mm;width:${AUX_W}mm">${esc(lvTitle)}<span class="pnote">${esc(lvNote)}</span></div>
+    <div class="abs" style="left:${AUX_X}mm;top:${lvY + PANEL_TITLE_H}mm">${lvChart}</div>
+    <div class="abs ptitle sm" style="left:${FIELD_X}mm;top:${rowB}mm;width:${halfW}mm">Population · ${esc(p.regions.sa2.name)}<span class="pnote">SA2, June each year</span></div>
     <div class="abs" style="left:${FIELD_X}mm;top:${rowB + PANEL_TITLE_H}mm">${popChart || emptyBox(halfW, chartH, 'no population series for this SA2')}</div>
-    <div class="abs ptitle" style="left:${FIELD_X + halfW + GUTTER}mm;top:${rowB}mm;width:${halfW}mm">Census 2021 against ${esc(benchName)}</div>
+    <div class="abs ptitle sm" style="left:${FIELD_X + halfW + GUTTER}mm;top:${rowB}mm;width:${halfW}mm">Census 2021 against ${esc(benchName)}</div>
     <div class="abs" style="left:${FIELD_X + halfW + GUTTER}mm;top:${rowB + PANEL_TITLE_H}mm;width:${halfW}mm">${table}</div>
     ${chartCells}
-    <div class="abs ptitle" style="left:${FIELD_X}mm;top:${rowD}mm;width:${lvW}mm">${esc(lvTitle)}<span class="pnote">${esc(lvNote)}</span></div>
-    <div class="abs" style="left:${FIELD_X}mm;top:${rowD + PANEL_TITLE_H}mm">${lvChart}</div>
     <div class="abs ptitle" style="left:${salesX}mm;top:${rowD}mm;width:${salesW}mm">Sales within ${p.salesRadiusM} m<span class="pnote">${fmtNum(p.sales.length)} on the register, most recent first</span></div>
     <div class="abs" style="left:${salesX}mm;top:${rowD + PANEL_TITLE_H}mm;width:${salesW}mm">${salesTable}</div>`;
   return { id: '16_people_and_market', title: 'People and market', subtitle: sub, textHtml, figureHtml };
@@ -1922,7 +1935,7 @@ export function terrainSlide(b: SlidesBundle): Slide {
   </svg>`;
 
   // Right of the map: the figures, the legend, section B–B′.
-  const rightX = FIELD_X + PANEL_W + GUTTER, rightW = FIELD_W - PANEL_W - GUTTER;
+  const rightX = AUX_X, rightW = AUX_W;
   const tiles = [
     { v: f.site ? `${f.site.min.toFixed(1)}–${f.site.max.toFixed(1)}` : '—', l: 'RL range of the site, m AHD' },
     { v: f.site ? `${(f.site.max - f.site.min).toFixed(1)} m` : '—', l: f.slope?.faces && f.site && f.site.max - f.site.min >= 0.5 ? `fall across the site, to the ${f.slope.faces}` : 'fall across the site' },
@@ -1938,13 +1951,13 @@ export function terrainSlide(b: SlidesBundle): Slide {
   const secB = f.sections[1] ? sectionSvg({ w: rightW, h: 60, font: t.font, samples: f.sections[1].samples, from: 'B', to: 'B′', siteColour: t.site, waterColour: t.water }) : { svg: '', ve: 1 };
   const secA = f.sections[0] ? sectionSvg({ w: FIELD_W, h: 96, font: t.font, samples: f.sections[0].samples, from: 'A', to: 'A′', siteColour: t.site, waterColour: t.water }) : { svg: '', ve: 1 };
   const secTitle = (s: (typeof f.sections)[number], ve: number) => `Section ${s.id}–${s.id}′<span class="pnote">${bearingName((s.bearing + 180) % 360)} to ${bearingName(s.bearing)} · ${fmtNum(Math.round(s.lengthM))} m · RL ${s.rlMin.toFixed(0)} to ${s.rlMax.toFixed(0)} · vertical exaggeration ${ve % 1 ? ve.toFixed(1) : ve}×</span>`;
-  const yB = FIELD_Y + PANEL_TITLE_H + 24 + 3 + 24;
+  const yB = FIELD_Y + PANEL_TITLE_H + 52;
   const yA = FIELD_Y + PANEL_TITLE_H + DA_PANEL_H + GUTTER;
   const figureHtml = `
     <div class="abs ptitle" style="left:${FIELD_X}mm;top:${FIELD_Y}mm;width:${PANEL_W}mm">Landform<span class="pnote">1:${fmtNum(p.scale)} · hillshade, contours, sections</span></div>
     <div class="abs" style="left:${FIELD_X}mm;top:${FIELD_Y + PANEL_TITLE_H}mm">${mapSvg}</div>
-    <div class="abs tiles" style="left:${rightX}mm;top:${FIELD_Y + PANEL_TITLE_H}mm;width:${rightW}mm">${tiles}</div>
-    <div class="abs legend" style="left:${rightX}mm;top:${FIELD_Y + PANEL_TITLE_H + 24}mm;width:${rightW}mm">${legend}</div>
+    <div class="abs tiles two" style="left:${rightX}mm;top:${FIELD_Y + PANEL_TITLE_H}mm;width:${rightW}mm">${tiles}</div>
+    <div class="abs legend" style="left:${rightX}mm;top:${FIELD_Y + PANEL_TITLE_H + 30}mm;width:${rightW}mm">${legend}</div>
     ${f.sections[1] ? `<div class="abs ptitle" style="left:${rightX}mm;top:${yB}mm;width:${rightW}mm">${secTitle(f.sections[1], secB.ve)}</div>
     <div class="abs" style="left:${rightX}mm;top:${yB + PANEL_TITLE_H}mm">${secB.svg}</div>` : ''}
     ${f.sections[0] ? `<div class="abs ptitle" style="left:${FIELD_X}mm;top:${yA}mm;width:${FIELD_W}mm">${secTitle(f.sections[0], secA.ve)}</div>
@@ -2123,7 +2136,7 @@ export function builtFormSlide(b: SlidesBundle, planning: PlanningFacts): Slide 
   </svg>`;
 
   // Right: figures, legend, the storeys of the neighbourhood against the height plane.
-  const rightX = FIELD_X + PANEL_W + GUTTER, rightW = FIELD_W - PANEL_W - GUTTER;
+  const rightX = AUX_X, rightW = AUX_W;
   const known = f.measured + f.fromStoreys + f.fromDa;
   const tiles = [
     { v: fmtNum(f.count), l: 'buildings in the window' },
@@ -2177,12 +2190,12 @@ export function builtFormSlide(b: SlidesBundle, planning: PlanningFacts): Slide 
     sectionHtml = `<div class="abs ptitle" style="left:${FIELD_X}mm;top:${yA}mm;width:${FIELD_W}mm">Section A–A′ with the buildings it meets<span class="pnote">${bearingName((secA.bearing + 180) % 360)} to ${bearingName(secA.bearing)} · ${fmtNum(Math.round(L))} m · heights measured or ${METRES_PER_STOREY} m a storey, dashed where the storeys are a DA's, faint and one storey where unknown · vertical exaggeration ${sec.ve % 1 ? sec.ve.toFixed(1) : sec.ve}×</span></div>
       <div class="abs" style="left:${FIELD_X}mm;top:${yA + PANEL_TITLE_H}mm">${sec.svg}</div>`;
   }
-  const yHist = FIELD_Y + PANEL_TITLE_H + 24 + 3 + 30;
+  const yHist = FIELD_Y + PANEL_TITLE_H + 76;
   const figureHtml = `
     <div class="abs ptitle" style="left:${FIELD_X}mm;top:${FIELD_Y}mm;width:${PANEL_W}mm">Built form<span class="pnote">1:${fmtNum(p.scale)} · footprints by height</span></div>
     <div class="abs" style="left:${FIELD_X}mm;top:${FIELD_Y + PANEL_TITLE_H}mm">${mapSvg}</div>
-    <div class="abs tiles" style="left:${rightX}mm;top:${FIELD_Y + PANEL_TITLE_H}mm;width:${rightW}mm">${tiles}</div>
-    <div class="abs legend" style="left:${rightX}mm;top:${FIELD_Y + PANEL_TITLE_H + 24}mm;width:${rightW}mm">${legend}</div>
+    <div class="abs tiles two" style="left:${rightX}mm;top:${FIELD_Y + PANEL_TITLE_H}mm;width:${rightW}mm">${tiles}</div>
+    <div class="abs legend" style="left:${rightX}mm;top:${FIELD_Y + PANEL_TITLE_H + 30}mm;width:${rightW}mm">${legend}</div>
     <div class="abs ptitle" style="left:${rightX}mm;top:${yHist}mm;width:${rightW}mm">Storeys within ${f.near.radiusM} m<span class="pnote">${fmtNum(f.near.withHeight)} buildings with a height</span></div>
     <div class="abs" style="left:${rightX}mm;top:${yHist + PANEL_TITLE_H}mm">${histSvg}</div>
     ${sectionHtml}`;
@@ -2359,7 +2372,7 @@ export function movementSlide(b: SlidesBundle): Slide {
   </svg>`;
 
   // Right: figures, legend, stations table.
-  const rightX = FIELD_X + PANEL_W + GUTTER, rightW = FIELD_W - PANEL_W - GUTTER;
+  const rightX = AUX_X, rightW = AUX_W;
   const st0 = f.stations[0];
   const tiles = [
     { v: st0 ? `${fmtNum(st0.distanceM)} m` : '—', l: st0 ? `to ${st0.name} (${st0.kind})${st0.walkBand ? `, within ${st0.walkBand} min on foot` : ''}` : 'no station in the wide window' },
@@ -2402,13 +2415,13 @@ export function movementSlide(b: SlidesBundle): Slide {
     <rect x="0.1" y="0.1" width="${wp.wMm - 0.2}" height="${wp.hMm - 0.2}" fill="none" stroke="${t.rule}" stroke-width="0.2"/>
   </svg>`;
 
-  const yTable = FIELD_Y + PANEL_TITLE_H + 24 + 3 + 6 * 4.3 + 4;
+  const yTable = FIELD_Y + PANEL_TITLE_H + 34 + legendRows.length * 3.8 + 4;
   const yWide = FIELD_Y + PANEL_TITLE_H + DA_PANEL_H + GUTTER;
   const figureHtml = `
     <div class="abs ptitle" style="left:${FIELD_X}mm;top:${FIELD_Y}mm;width:${PANEL_W}mm">Movement<span class="pnote">1:${fmtNum(p.scale)}</span></div>
     <div class="abs" style="left:${FIELD_X}mm;top:${FIELD_Y + PANEL_TITLE_H}mm">${mapSvg}</div>
-    <div class="abs tiles" style="left:${rightX}mm;top:${FIELD_Y + PANEL_TITLE_H}mm;width:${rightW}mm">${tiles}</div>
-    <div class="abs legend" style="left:${rightX}mm;top:${FIELD_Y + PANEL_TITLE_H + 24}mm;width:${rightW}mm">${legend}</div>
+    <div class="abs tiles two" style="left:${rightX}mm;top:${FIELD_Y + PANEL_TITLE_H}mm;width:${rightW}mm">${tiles}</div>
+    <div class="abs legend" style="left:${rightX}mm;top:${FIELD_Y + PANEL_TITLE_H + 30}mm;width:${rightW}mm">${legend}</div>
     <div class="abs ptitle" style="left:${rightX}mm;top:${yTable}mm;width:${rightW}mm">Stations<span class="pnote">nearest first, from the wide window</span></div>
     <div class="abs" style="left:${rightX}mm;top:${yTable + PANEL_TITLE_H}mm;width:${rightW}mm">${stationTable}</div>
     <div class="abs ptitle" style="left:${FIELD_X}mm;top:${yWide}mm;width:${FIELD_W}mm">Walking reach<span class="pnote">1:${fmtNum(wp.scale)} · 5, 10 and 15 minutes on foot from the site · the dashed box is the map above</span></div>
@@ -2708,7 +2721,7 @@ export function greenSlide(b: SlidesBundle): Slide {
   </svg>`;
 
   // Right: figures, legend, the open-space table.
-  const rightX = FIELD_X + PANEL_W + GUTTER, rightW = FIELD_W - PANEL_W - GUTTER;
+  const rightX = AUX_X, rightW = AUX_W;
   const near = f.openSpace.nearest;
   const c = f.canopy;
   const tiles = [
@@ -2730,7 +2743,7 @@ export function greenSlide(b: SlidesBundle): Slide {
   if (isos.length) legendRows.push([sw(`<path d="M0,1.8 H5" stroke="${ISO_FILL[5]}" stroke-width="0.45" stroke-dasharray="1.6,1"/>`), `Walking isochrones from the site: ${isos.map((i) => i.minutes).sort((x, y) => x - y).join(', ')} minutes`]);
   if (c.covered) legendRows.push([sw(CANOPY_CLASSES.map((cl, i) => `<rect x="${i}" y="0.4" width="1" height="2.8" fill="${cl.fill}"/>`).join('') + `<rect x="0" y="0.4" width="5" height="2.8" fill="none" stroke="#a9a69b" stroke-width="0.15"/>`), `Tree canopy ${c.year} by mesh block, in the strip below: ${CANOPY_CLASSES[0].label} to ${CANOPY_CLASSES[CANOPY_CLASSES.length - 1].label}`]);
   const legend = legendRows.map(([s, txt]) => `<div class="lg">${s}<span>${esc(txt)}</span></div>`).join('');
-  const yTable = FIELD_Y + PANEL_TITLE_H + 24 + legendRows.length * 3.7 + 4;
+  const yTable = FIELD_Y + PANEL_TITLE_H + 32 + legendRows.length * 3.7 + 4;
   const tableRoom = FIELD_Y + PANEL_TITLE_H + DA_PANEL_H - (yTable + PANEL_TITLE_H);
   const maxRows = Math.max(2, Math.min(7, Math.floor((tableRoom - 6) / 4.7)));
   const kindWord = (s: OpenSpaceEntity) => `${s.kind}${s.significance && (SIG_RANK[s.significance] ?? 0) >= 2 ? ` · ${s.significance.toLowerCase()}` : ''}`;
@@ -2781,8 +2794,8 @@ export function greenSlide(b: SlidesBundle): Slide {
   const figureHtml = `
     <div class="abs ptitle" style="left:${FIELD_X}mm;top:${FIELD_Y}mm;width:${PANEL_W}mm">Green and public domain<span class="pnote">1:${fmtNum(p.scale)}</span></div>
     <div class="abs" style="left:${FIELD_X}mm;top:${FIELD_Y + PANEL_TITLE_H}mm">${mapSvg}</div>
-    <div class="abs tiles" style="left:${rightX}mm;top:${FIELD_Y + PANEL_TITLE_H}mm;width:${rightW}mm">${tiles}</div>
-    <div class="abs legend" style="left:${rightX}mm;top:${FIELD_Y + PANEL_TITLE_H + 24}mm;width:${rightW}mm">${legend}</div>
+    <div class="abs tiles two" style="left:${rightX}mm;top:${FIELD_Y + PANEL_TITLE_H}mm;width:${rightW}mm">${tiles}</div>
+    <div class="abs legend" style="left:${rightX}mm;top:${FIELD_Y + PANEL_TITLE_H + 30}mm;width:${rightW}mm">${legend}</div>
     <div class="abs ptitle" style="left:${rightX}mm;top:${yTable}mm;width:${rightW}mm">Open space<span class="pnote">nearest first · distance from the site boundary</span></div>
     <div class="abs" style="left:${rightX}mm;top:${yTable + PANEL_TITLE_H}mm;width:${rightW}mm">${table}</div>
     <div class="abs ptitle" style="left:${FIELD_X}mm;top:${yWide}mm;width:${FIELD_W}mm">${c.covered ? `Tree canopy ${c.year}` : 'Open space around the site'}<span class="pnote">1:${fmtNum(wp.scale)} · ${c.covered ? `canopy share of each mesh block${c.wide ? ` · ${fmtPct(c.wide.pct)} of the strip's land` : ''}` : 'recreation and conservation zones · canopy is not mapped here'} · the dashed box is the map above</span></div>
@@ -2985,8 +2998,10 @@ function constraintPanel(b: SlidesBundle, proj: Proj, f: ReturnType<typeof const
 
 export function constraintsSlide(b: SlidesBundle): Slide {
   const f = constraintsFacts(b);
-  const proj = panelProjector(b.panel);
-  const panels = [constraintPanel(b, proj, f, 'A', 'Hazards and soils'), constraintPanel(b, proj, f, 'B', 'Water, coast, ecology and corridors')];
+  const hp: Panel = { ...b.panel, wMm: HALF_W, hMm: HALF_H };
+  const hb: SlidesBundle = { ...b, panel: hp };
+  const proj = panelProjector(hp);
+  const panels = [constraintPanel(hb, proj, f, 'A', 'Hazards and soils'), constraintPanel(hb, proj, f, 'B', 'Water, coast, ecology and corridors')];
   const sentences = constraintsSentences(b, f);
   const textHtml = sentences.map(para).join('') +
     placeholder('Narrative — for the author: which constraints shape the envelope and the ground floor (flood levels, acid sulfate soils, the rail corridor, the coastal maps), which are only due diligence, and which studies to commission (geotechnical, contamination, flood, acoustic, bushfire).') +
@@ -3015,8 +3030,8 @@ export function constraintsSlide(b: SlidesBundle): Slide {
   };
   const rows = GROUP_ORDER.flatMap((g) => f.constraints.filter((x) => x.group === g)).map((x) =>
     `<tr${x.status === 'at-site' ? ' class="hit"' : ''}><td>${esc(x.title)}</td><td>${esc(GROUP_WORD[x.group])}</td><td>${esc(statusText(x))}</td><td>${esc(windowText(x))}</td><td>${esc(sourceText(x))}</td></tr>`).join('');
-  const table = `<table class="da cons"><thead><tr><th style="width:52mm">Constraint</th><th style="width:18mm">Group</th><th style="width:60mm">At the site</th><th style="width:78mm">In the window</th><th>Instrument · map currency</th></tr></thead><tbody>${rows}</tbody></table>`;
-  const yTable = FIELD_Y + PANEL_TITLE_H + PANEL_H + LEGEND_H + GUTTER + 1;
+  const table = `<table class="da cons"><thead><tr><th style="width:36mm">Constraint</th><th style="width:13mm">Group</th><th style="width:33mm">At the site</th><th style="width:52mm">In the window</th><th>Instrument · map currency</th></tr></thead><tbody>${rows}</tbody></table>`;
+  const yTable = FIELD_Y + PANEL_TITLE_H + HALF_H + HALF_LEGEND_H + GUTTER + 1;
   const figureHtml = panels.map((p, i) => panelBlock(p, i, 0, `c${i}`)).join('\n') + `
     <div class="abs ptitle" style="left:${FIELD_X}mm;top:${yTable}mm;width:${FIELD_W}mm">Constraints at the site<span class="pnote">every layer, with its answer · "not mapped by the LEP" means the plan has no such map, checked plan-wide</span></div>
     <div class="abs" style="left:${FIELD_X}mm;top:${yTable + PANEL_TITLE_H}mm;width:${FIELD_W}mm">${table}</div>`;
@@ -3359,7 +3374,7 @@ export function siteSlide(b: SlidesBundle): Slide {
   </svg>`;
 
   // Right: figures and the facts table.
-  const rightX = FIELD_X + PANEL_W + GUTTER, rightW = FIELD_W - PANEL_W - GUTTER;
+  const rightX = AUX_X, rightW = AUX_W;
   const c = f.controls;
   const lv = f.landValue;
   const tiles = [
@@ -3430,18 +3445,19 @@ export function siteSlide(b: SlidesBundle): Slide {
     : emptyBox(rightW, 24, `no single-property sale within ${SALES_RADIUS_M} m in the last ${SALES_MONTHS} months`);
 
   const yBlock = FIELD_Y + PANEL_TITLE_H + DA_PANEL_H + GUTTER;
-  const ySales = yBlock + PANEL_TITLE_H + legendRows.length * 3.7 + 3;
   const figureHtml = `
     <div class="abs ptitle" style="left:${FIELD_X}mm;top:${FIELD_Y}mm;width:${PANEL_W}mm">The site<span class="pnote">1:${fmtNum(p.scale)} · boundary lengths in metres from the digital cadastre · corner levels from the 5 m elevation model</span></div>
     <div class="abs" style="left:${FIELD_X}mm;top:${FIELD_Y + PANEL_TITLE_H}mm">${mapSvg}</div>
-    <div class="abs tiles" style="left:${rightX}mm;top:${FIELD_Y + PANEL_TITLE_H}mm;width:${rightW}mm">${tiles}</div>
-    <div class="abs ptitle" style="left:${rightX}mm;top:${FIELD_Y + PANEL_TITLE_H + 25}mm;width:${rightW}mm">Site facts<span class="pnote">what the open data says before the survey and the title search</span></div>
-    <div class="abs" style="left:${rightX}mm;top:${FIELD_Y + PANEL_TITLE_H + 25 + PANEL_TITLE_H}mm;width:${rightW}mm">${factsTable}</div>
     <div class="abs ptitle" style="left:${FIELD_X}mm;top:${yBlock}mm;width:${PANEL_W}mm">The block<span class="pnote">1:${fmtNum(bp.scale)} · sales within ${SALES_RADIUS_M} m and the public land around</span></div>
     <div class="abs" style="left:${FIELD_X}mm;top:${yBlock + PANEL_TITLE_H}mm">${blockSvg}</div>
-    <div class="abs legend" style="left:${rightX}mm;top:${yBlock + PANEL_TITLE_H}mm;width:${rightW}mm">${legend}</div>
-    <div class="abs ptitle" style="left:${rightX}mm;top:${ySales}mm;width:${rightW}mm">Recent sales<span class="pnote">latest first · single-property sales within ${SALES_RADIUS_M} m · Valuer General</span></div>
-    <div class="abs" style="left:${rightX}mm;top:${ySales + PANEL_TITLE_H}mm;width:${rightW}mm">${salesTable}</div>`;
+    <div class="abs" style="left:${rightX}mm;top:${FIELD_Y}mm;width:${rightW}mm;height:${SLIDE_H - FIELD_Y - 14}mm;overflow:hidden">
+      <div class="tiles two">${tiles}</div>
+      <div class="ptitle sm aux-t">Site facts<span class="pnote">open data, before the survey and the title search</span></div>
+      ${factsTable}
+      <div class="ptitle sm aux-t">Recent sales<span class="pnote">latest first · within ${SALES_RADIUS_M} m · Valuer General</span></div>
+      ${salesTable}
+      <div class="legend" style="margin-top:2.5mm">${legend}</div>
+    </div>`;
   return { id: '11_the_site', title: 'The site', subtitle: sub, textHtml, figureHtml };
 }
 
@@ -3693,13 +3709,13 @@ export function photosSlide(b: SlidesBundle): Slide {
     }
   }
 
-  const X2 = FIELD_X + PANEL_W + GUTTER;
+  const X2 = AUX_X;
   const rowY = FIELD_Y + PANEL_TITLE_H + PANEL_H + 3;
   const figure = `<div class="abs ptitle" style="left:${FIELD_X}mm;top:${FIELD_Y}mm;width:${PANEL_W}mm">Camera positions<span class="pnote">1:${fmtNum(p.scale)} · ${f.photos.length ? 'each wedge the direction of view of the frame below' : 'no open frame to key'}</span></div>
     <div class="abs" style="left:${FIELD_X}mm;top:${FIELD_Y + PANEL_TITLE_H}mm">${planSvg}</div>
-    <div class="abs ptitle" style="left:${X2}mm;top:${FIELD_Y}mm;width:${PANEL_W}mm">Then and now<span class="pnote">1:${fmtNum(pp.scale)} · the 1943 aerial survey beside today's imagery${img?.date ? ` (${fmtIso(img.date)})` : ''}, the same ground</span></div>
+    <div class="abs ptitle sm" style="left:${X2}mm;top:${FIELD_Y}mm;width:${AUX_W}mm">Then and now<span class="pnote">1:${fmtNum(pp.scale)} · the 1943 survey over today's imagery${img?.date ? ` (${fmtIso(img.date)})` : ''}</span></div>
     <div class="abs" style="left:${X2}mm;top:${FIELD_Y + PANEL_TITLE_H}mm">${pairSvg('clip-then', thenParts)}</div>
-    <div class="abs" style="left:${(X2 + PANEL_W - pp.wMm).toFixed(1)}mm;top:${FIELD_Y + PANEL_TITLE_H}mm">${pairSvg('clip-now', nowParts)}</div>
+    <div class="abs" style="left:${X2}mm;top:${FIELD_Y + PANEL_TITLE_H + pp.hMm + 2}mm">${pairSvg('clip-now', nowParts)}</div>
     <div class="abs ptitle" style="left:${FIELD_X}mm;top:${rowY}mm;width:${FIELD_W}mm">Street level<span class="pnote">${f.photos.length ? `${G.count ? `Google Street View${O.count ? ' and open' : ''} frames ${G.street ? 'of the site and its street' : 'that look at the site'}` : 'open frames that look at the site'}, keyed to the plan · the site visit replaces them` : 'placeholders sized for the site visit\'s photographs'}</span></div>
     <div class="abs photos" style="left:${FIELD_X}mm;top:${rowY + PANEL_TITLE_H}mm;width:${FIELD_W}mm">${cells.join('')}</div>`;
   const n = f.photos.length;
@@ -4048,7 +4064,7 @@ export function sunViewSlide(b: SlidesBundle): Slide {
   </svg>`;
 
   // Right: figures, the sun path and the street rose, the legend.
-  const rightX = FIELD_X + PANEL_W + GUTTER, rightW = FIELD_W - PANEL_W - GUTTER;
+  const rightX = AUX_X, rightW = AUX_W;
   const tiles = [
     { v: `${f.grid.primaryDeg}°${f.grid.secondaryDeg !== null ? ` · ${f.grid.secondaryDeg}°` : ''}`, l: `street grid bearings from north · site axis ${f.grid.siteAxisDeg}°, ${f.grid.offGridDeg <= 5 ? 'on the grid' : `${f.grid.offGridDeg}° off`}` },
     { v: f.grid.frontages[0] ? f.grid.frontages[0].facingWord : '—', l: f.grid.frontages[0] ? `${f.grid.frontages[0].name} frontage faces${f.grid.frontages.length > 1 ? ` · ${f.grid.frontages.slice(1).map((fr) => `${fr.name} ${fr.facingWord}`).join(', ')}` : ''}` : 'no frontage to a named road' },
@@ -4108,11 +4124,12 @@ export function sunViewSlide(b: SlidesBundle): Slide {
     <rect x="0.1" y="0.1" width="${vp.wMm - 0.2}" height="${vp.hMm - 0.2}" fill="none" stroke="${t.rule}" stroke-width="0.2"/>
   </svg>`;
   // The wind, bottom-aligned with the views map; the views table keeps the rows that fit above it.
-  const WIND_ROSE_MM = 46;
+  const WIND_ROSE_MM = 42;
   const yViewsTop = FIELD_Y + PANEL_TITLE_H + DA_PANEL_H + GUTTER;
   const windOn = Boolean(f.wind?.ok && f.wind.summer.hours && f.wind.winter.hours);
-  const windTop = yViewsTop + PANEL_TITLE_H + vp.hMm - (PANEL_TITLE_H + WIND_ROSE_MM + 5);
-  const maxViewRows = windOn ? Math.max(3, Math.floor((windTop - 3 - (yViewsTop + PANEL_TITLE_H) - 5.5) / 4.4)) : Infinity;
+  const yViewsTable = FIELD_Y + PANEL_TITLE_H + 33 + PANEL_TITLE_H + Math.min(62, (AUX_W - GUTTER) / 2) + 26;
+  const windTop = yViewsTable + 42;
+  const maxViewRows = windOn ? Math.max(3, Math.floor((windTop - 3 - (yViewsTable + PANEL_TITLE_H) - 5.5) / 4.4)) : Infinity;
   const shownViews = f.views.slice(0, maxViewRows);
   const viewRows = shownViews.map((v) => `<tr${v.clear ? ' class="hit"' : ''}><td>${esc(v.label)}</td><td>${esc(VIEW_WORD[v.kind])}</td><td class="r">${v.bearingDeg}° ${esc(compass16(v.bearingDeg))}</td><td class="r">${v.distanceM >= 1000 ? `${(v.distanceM / 1000).toFixed(1)} km` : `${fmtNum(v.distanceM)} m`}</td><td>${v.clear === true ? 'clear over the ground' : v.clear === false ? `ground rises${v.blockedAtM ? ` at ${v.blockedAtM >= 1000 ? `${(v.blockedAtM / 1000).toFixed(1)} km` : `${fmtNum(v.blockedAtM)} m`}` : ''}` : v.kind === 'park' ? 'adjoins the site' : 'not checked'}</td></tr>`).join('');
   const moreViews = f.views.length - shownViews.length;
@@ -4124,7 +4141,7 @@ export function sunViewSlide(b: SlidesBundle): Slide {
     const w = f.wind;
     const { step, top } = niceScale(Math.max(...sectorTotals(w.summer), ...sectorTotals(w.winter)), 3);
     const cap = (label: string, rose: WindRose) => `${label} · mean ${Math.round(rose.meanKmh)} km/h · calm ${rose.calmPct < 1 ? rose.calmPct.toFixed(1) : Math.round(rose.calmPct)} %`;
-    const legendX = rightX + 2 * WIND_ROSE_MM + 2 * GUTTER;
+    const legendX = rightX;
     const classes = WIND_CLASSES_KMH.map((lo, i) => (i + 1 < WIND_CLASSES_KMH.length ? `${lo}–${WIND_CLASSES_KMH[i + 1]} km/h` : `${lo} km/h and over`));
     const wlegend = classes.map((txt, i) => `<div class="lg"><svg width="5mm" height="3.6mm" viewBox="0 0 5 3.6"><rect x="0" y="0.4" width="5" height="2.8" fill="${WIND_RAMP[i]}"/></svg><span>${esc(txt)}</span></div>`).join('') +
       `<div class="lg" style="margin-top:1.2mm"><span>Petals: the share of the hours the wind blows from each point; rings every ${Math.round(step * 100) / 100} %. Calm is under ${WIND_CLASSES_KMH[0]} km/h.</span></div>`;
@@ -4132,23 +4149,23 @@ export function sunViewSlide(b: SlidesBundle): Slide {
     <div class="abs ptitle" style="left:${rightX}mm;top:${windTop}mm;width:${rightW}mm">Wind<span class="pnote">hourly at 10 m, ${w.years[0]}–${w.years[1]} · NASA POWER, the MERRA-2 reanalysis cell over the site · the region's wind, not the site's</span></div>
     <div class="abs" style="left:${rightX}mm;top:${windTop + PANEL_TITLE_H}mm">${windRoseSvg(w.summer, WIND_ROSE_MM, t.font, top, step)}<div class="wcap">${esc(cap('Summer, Dec–Feb', w.summer))}</div></div>
     <div class="abs" style="left:${rightX + WIND_ROSE_MM + GUTTER}mm;top:${windTop + PANEL_TITLE_H}mm">${windRoseSvg(w.winter, WIND_ROSE_MM, t.font, top, step)}<div class="wcap">${esc(cap('Winter, Jun–Aug', w.winter))}</div></div>
-    <div class="abs legend" style="left:${legendX}mm;top:${windTop + PANEL_TITLE_H + 4}mm;width:${rightX + rightW - legendX}mm">${wlegend}</div>`;
+    <div class="abs legend" style="left:${legendX}mm;top:${windTop + PANEL_TITLE_H + WIND_ROSE_MM + 10.5}mm;width:${rightW}mm">${wlegend}</div>`;
   }
 
   const yViews = FIELD_Y + PANEL_TITLE_H + DA_PANEL_H + GUTTER;
   const figureHtml = `
     <div class="abs ptitle" style="left:${FIELD_X}mm;top:${FIELD_Y}mm;width:${PANEL_W}mm">Winter shadows<span class="pnote">1:${fmtNum(sp.scale)} · the neighbours' shadows on 21 June at 9 am, noon and 3 pm (AEST)</span></div>
     <div class="abs" style="left:${FIELD_X}mm;top:${FIELD_Y + PANEL_TITLE_H}mm">${shadowSvg}</div>
-    <div class="abs tiles" style="left:${rightX}mm;top:${FIELD_Y + PANEL_TITLE_H}mm;width:${rightW}mm">${tiles}</div>
-    <div class="abs ptitle" style="left:${rightX}mm;top:${FIELD_Y + PANEL_TITLE_H + 26}mm;width:${diagW}mm">Sun path<span class="pnote">altitude and azimuth at the site</span></div>
-    <div class="abs" style="left:${rightX}mm;top:${FIELD_Y + PANEL_TITLE_H + 26 + PANEL_TITLE_H}mm">${sunPathSvg(f, centreLL.lat, centreLL.lon, diagW, t.font)}</div>
-    <div class="abs ptitle" style="left:${rightX + diagW + GUTTER}mm;top:${FIELD_Y + PANEL_TITLE_H + 26}mm;width:${diagW}mm">Street grid<span class="pnote">bearings of the roads in the window</span></div>
-    <div class="abs" style="left:${rightX + diagW + GUTTER}mm;top:${FIELD_Y + PANEL_TITLE_H + 26 + PANEL_TITLE_H}mm">${gridRoseSvg(f, diagW, t.font)}</div>
-    <div class="abs legend" style="left:${rightX}mm;top:${FIELD_Y + PANEL_TITLE_H + 26 + PANEL_TITLE_H + diagW + 2}mm;width:${rightW}mm">${legend}</div>
+    <div class="abs tiles two" style="left:${rightX}mm;top:${FIELD_Y + PANEL_TITLE_H}mm;width:${rightW}mm">${tiles}</div>
+    <div class="abs ptitle" style="left:${rightX}mm;top:${FIELD_Y + PANEL_TITLE_H + 33}mm;width:${diagW}mm">Sun path<span class="pnote">altitude and azimuth at the site</span></div>
+    <div class="abs" style="left:${rightX}mm;top:${FIELD_Y + PANEL_TITLE_H + 33 + PANEL_TITLE_H}mm">${sunPathSvg(f, centreLL.lat, centreLL.lon, diagW, t.font)}</div>
+    <div class="abs ptitle" style="left:${rightX + diagW + GUTTER}mm;top:${FIELD_Y + PANEL_TITLE_H + 33}mm;width:${diagW}mm">Street grid<span class="pnote">bearings of the roads in the window</span></div>
+    <div class="abs" style="left:${rightX + diagW + GUTTER}mm;top:${FIELD_Y + PANEL_TITLE_H + 33 + PANEL_TITLE_H}mm">${gridRoseSvg(f, diagW, t.font)}</div>
+    <div class="abs legend" style="left:${rightX}mm;top:${FIELD_Y + PANEL_TITLE_H + 33 + PANEL_TITLE_H + diagW + 2}mm;width:${rightW}mm">${legend}</div>
     <div class="abs ptitle" style="left:${FIELD_X}mm;top:${yViews}mm;width:${PANEL_W}mm">Views<span class="pnote">1:${fmtNum(vp.scale)} · sight lines from the eye at the height limit; cones where the ground leaves them clear</span></div>
     <div class="abs" style="left:${FIELD_X}mm;top:${yViews + PANEL_TITLE_H}mm">${viewsSvg}</div>
-    <div class="abs ptitle" style="left:${rightX}mm;top:${yViews}mm;width:${rightW}mm">Candidate views<span class="pnote">skylines, named water and coast, the park next door · the ground tested, not the buildings</span></div>
-    <div class="abs" style="left:${rightX}mm;top:${yViews + PANEL_TITLE_H}mm;width:${rightW}mm">${viewTable}</div>${windHtml}`;
+    <div class="abs ptitle sm" style="left:${rightX}mm;top:${yViewsTable}mm;width:${rightW}mm">Candidate views<span class="pnote">the ground tested, not the buildings</span></div>
+    <div class="abs" style="left:${rightX}mm;top:${yViewsTable + PANEL_TITLE_H}mm;width:${rightW}mm">${viewTable}</div>${windHtml}`;
   return { id: '13_grid_sun_views', title: 'Grid, sun and views', subtitle: sub, textHtml, figureHtml };
 }
 
@@ -4212,7 +4229,7 @@ export function ocFacts(b: SlidesBundle, planning: PlanningFacts) {
   const bearingTo = (lon: number, lat: number) => { const q = toM(lon, lat); return ((Math.atan2(q.x - centre.x, q.y - centre.y) * 180) / Math.PI + 360) % 360; };
   const distC = (lon: number, lat: number) => { const q = toM(lon, lat); return Math.hypot(q.x - centre.x, q.y - centre.y) / k; };
   const scale = b.site.sitePanel.scale >= 2500 ? 2 * OC_SCALE : OC_SCALE;
-  const panel: Panel = { center: centre, scale, wMm: PANEL_W, hMm: DA_PANEL_H };
+  const panel: Panel = { center: centre, scale, wMm: HALF_W, hMm: 76 };
   const halfWm = ((panel.wMm / 1000) * scale) / 2, halfHm = ((panel.hMm / 1000) * scale) / 2;
   const reachM = Math.hypot(halfWm, halfHm);
   const inPanel = (lon: number, lat: number) => { const q = toM(lon, lat); return Math.abs(q.x - centre.x) / k <= halfWm - 6 * (scale / 1000) && Math.abs(q.y - centre.y) / k <= halfHm - 6 * (scale / 1000); };
@@ -4393,7 +4410,7 @@ export function ocFacts(b: SlidesBundle, planning: PlanningFacts) {
     const sorted = [...xs].map((x, i) => ({ x, i })).sort((a, c) => rank(order)(a.x) - rank(order)(c.x) || a.i - c.i).map((q) => q.x);
     const kept: OcStatement[] = [];
     let used = 0;
-    for (const st of sorted) { const lines = Math.ceil((st.theme.length + st.text.length + 3) / 116); const h = lines * 3.1 + 1.4; if (used + h > 94 || kept.length >= 12) break; used += h; kept.push({ ...st, n: kept.length + 1 }); }
+    for (const st of sorted) { const lines = Math.ceil((st.theme.length + st.text.length + 3) / 56); const h = lines * 3.1 + 1.4; if (used + h > 118 || kept.length >= 12) break; used += h; kept.push({ ...st, n: kept.length + 1 }); }
     return { kept, dropped: sorted.length - kept.length };
   };
   const o = fit(opp, OPP_ORDER), c2 = fit(con, CON_ORDER);
@@ -4686,24 +4703,24 @@ export function ocSlide(b: SlidesBundle, planning: PlanningFacts): Slide {
     placeholder('Narrative — for the author: which of these decide the scheme, which are answered by the controls already, and what the site visit and the survey add; then the design response to each.') +
     `<div class="fine">Assembled from the layers the other slides fetched, at 1:${fmtNum(p.scale)} around the site: stations and walking reach (slide 09), the housing-policy maps (03), open space and facilities (10), sight lines and the winter sun (13), the LEP heritage layer (03), the constraint layers (14), footprints and heights (08), the cadastre (11), the elevation model (06) and the applications of scale (07). The statements are templates from that data, for the author to edit. Retrieved ${b.generatedAt.slice(0, 10)}.</div>`;
   const legendTop = FIELD_Y + PANEL_TITLE_H + p.hMm + 1.5;
-  const listY = legendTop + LEGEND_H + 3;
+  const listY = legendTop + HALF_LEGEND_H + 3;
   const listH = SLIDE_H - 12 - listY;
-  const list = (title: string, items: OcStatement[], colour: string, x: number, dropped: number) => `<div class="abs" style="left:${x}mm;top:${listY}mm;width:${PANEL_W}mm;height:${listH}mm;overflow:hidden">
-    <div class="ptitle">${esc(title)}<span class="pnote">${items.length ? `${items.length} from the data${dropped ? ` · ${dropped} more in the JSON` : ''} · numbered on the diagram, site-wide ones in a row under the site` : 'nothing in the data'}</span></div>
-    ${items.length ? items.map((s) => `<div class="oc"><span class="n" style="background:${colour}">${s.n}</span><span class="t"><b>${esc(s.theme)}</b> · ${esc(s.text)}</span></div>`).join('') : emptyBox(PANEL_W, 20, 'no statement follows from the fetched layers')}
+  const list = (title: string, items: OcStatement[], colour: string, x: number, dropped: number) => `<div class="abs" style="left:${x}mm;top:${listY}mm;width:${HALF_W}mm;height:${listH}mm;overflow:hidden">
+    <div class="ptitle sm">${esc(title)}<span class="pnote">${items.length ? `${items.length} from the data${dropped ? ` · ${dropped} more in the JSON` : ''}` : 'nothing in the data'}</span></div>
+    ${items.length ? items.map((s) => `<div class="oc"><span class="n" style="background:${colour}">${s.n}</span><span class="t"><b>${esc(s.theme)}</b> · ${esc(s.text)}</span></div>`).join('') : emptyBox(HALF_W, 20, 'no statement follows from the fetched layers')}
   </div>`;
   const panelHtml = (title: string, note: string, svg: string, legend: LegendEntry[], col: number) => {
-    const x = FIELD_X + col * (PANEL_W + GUTTER);
-    const leg = legendSvg(legend, PANEL_W, 6, 1.85);
-    return `<div class="abs ptitle" style="left:${x}mm;top:${FIELD_Y}mm;width:${PANEL_W}mm">${esc(title)}<span class="pnote">${esc(note)}</span></div>
+    const x = FIELD_X + col * (HALF_W + GUTTER);
+    const leg = legendSvg(legend, HALF_W, HALF_LEGEND_ROWS, 1.8);
+    return `<div class="abs ptitle sm" style="left:${x}mm;top:${FIELD_Y}mm;width:${HALF_W}mm">${esc(title)}<span class="pnote">${esc(note)}</span></div>
     <div class="abs" style="left:${x}mm;top:${FIELD_Y + PANEL_TITLE_H}mm">${svg}</div>
-    <svg class="abs" style="left:${x}mm;top:${legendTop}mm" width="${PANEL_W}mm" height="${LEGEND_H}mm" viewBox="0 0 ${PANEL_W} ${LEGEND_H}" xmlns="http://www.w3.org/2000/svg">${leg.svg}</svg>`;
+    <svg class="abs" style="left:${x}mm;top:${legendTop}mm" width="${HALF_W}mm" height="${HALF_LEGEND_H}mm" viewBox="0 0 ${HALF_W} ${HALF_LEGEND_H}" xmlns="http://www.w3.org/2000/svg">${leg.svg}</svg>`;
   };
   const figure =
-    panelHtml('Opportunities', `1:${fmtNum(p.scale)} · reach, policy, edges, open space, views and sun`, frame(oParts, 'oc-opp'), oLegend, 0) +
-    panelHtml('Constraints', `1:${fmtNum(p.scale)} · heritage, hazards and corridors, noise, shadows, levels, title`, frame(cParts, 'oc-con'), cLegend, 1) +
+    panelHtml('Opportunities', `1:${fmtNum(p.scale)} · reach, edges, views, sun`, frame(oParts, 'oc-opp'), oLegend, 0) +
+    panelHtml('Constraints', `1:${fmtNum(p.scale)} · heritage, hazards, noise, shadows`, frame(cParts, 'oc-con'), cLegend, 1) +
     list('Opportunities', f.opportunities, OPP_COLOUR, FIELD_X, f.dropped.opportunities) +
-    list('Constraints', f.constraints, CON_COLOUR, FIELD_X + PANEL_W + GUTTER, f.dropped.constraints);
+    list('Constraints', f.constraints, CON_COLOUR, FIELD_X + HALF_W + GUTTER, f.dropped.constraints);
   void mv; void cs;
   return { id: '17_opportunities_constraints', title: 'Opportunities and constraints', subtitle: sub, textHtml: text, figureHtml: figure };
 }
@@ -5364,12 +5381,12 @@ export function countrySlide(b: SlidesBundle): Slide {
   const table = `<table class="da facts"><tbody>${rows.map(([kk, vv]) => `<tr><th>${esc(kk)}</th><td>${esc(vv)}</td></tr>`).join('')}</tbody></table>`;
   // the communities in the strip, in the map's colours
   const classes = f.vegetation.classes;
-  const barW = 28, barX = PANEL_W - barW - 11, rowH = 7.2, vegH = classes.length ? classes.length * rowH + 6 : 0;
-  const vegSvg = classes.length ? `<svg width="${PANEL_W}mm" height="${vegH}mm" viewBox="0 0 ${PANEL_W} ${vegH}" xmlns="http://www.w3.org/2000/svg" font-family="${t.font}">
+  const barW = 18, barX = AUX_W - barW - 9, rowH = 7.6, vegH = classes.length ? classes.length * rowH + 6 : 0;
+  const vegSvg = classes.length ? `<svg width="${AUX_W}mm" height="${vegH}mm" viewBox="0 0 ${AUX_W} ${vegH}" xmlns="http://www.w3.org/2000/svg" font-family="${t.font}">
     <text x="0" y="3" font-size="2.3" font-weight="700" fill="${t.ink}">Pre-1750 plant communities across the strip<tspan font-weight="400" fill="#737c77"> · share of its area (State Vegetation Type Map)</tspan></text>
     ${classes.map((k, i) => { const y = 6 + i * rowH; const w = Math.max(0.6, (k.sharePct / Math.max(1, classes[0].sharePct)) * barW); return `<rect x="0" y="${(y + 0.6).toFixed(1)}" width="4" height="4" fill="${k.colour}" stroke="#777" stroke-width="0.15"/>` +
-      `<text x="6" y="${(y + 2.4).toFixed(1)}" font-size="2.25" font-weight="700" fill="${t.ink}">${esc(clip(k.pct, 60))}${k.pctId && k.pctId !== '0' ? `<tspan font-weight="400" fill="#737c77"> · PCT ${esc(k.pctId)}</tspan>` : ''}</text>` +
-      `<text x="6" y="${(y + 5.3).toFixed(1)}" font-size="1.9" fill="#737c77">${esc(clip([k.cls, k.formation].filter(Boolean).join(' · '), 88))}</text>` +
+      `<text x="6" y="${(y + 2.4).toFixed(1)}" font-size="2.25" font-weight="700" fill="${t.ink}">${esc(clip(k.pct, 36))}${k.pctId && k.pctId !== '0' ? `<tspan font-weight="400" fill="#737c77"> · PCT ${esc(k.pctId)}</tspan>` : ''}</text>` +
+      `<text x="6" y="${(y + 5.3).toFixed(1)}" font-size="1.9" fill="#737c77">${esc(clip([k.cls, k.formation].filter(Boolean).join(' · '), 52))}</text>` +
       `<rect x="${barX.toFixed(1)}" y="${(y + 0.9).toFixed(1)}" width="${w.toFixed(1)}" height="3.4" fill="${k.colour}" fill-opacity="0.85"/>` +
       `<text x="${(barX + w + 1.4).toFixed(1)}" y="${(y + 3.5).toFixed(1)}" font-size="2.2" font-weight="700" fill="${t.ink}">${fmtPct(k.sharePct)}</text>`; }).join('')}
   </svg>` : '';
@@ -5385,10 +5402,10 @@ export function countrySlide(b: SlidesBundle): Slide {
   const figure = `<div class="abs ptitle" style="left:${FIELD_X}mm;top:${FIELD_Y}mm;width:${FIELD_W}mm">Country<span class="pnote">1:${fmtNum(wp.scale)} · ${f.stripKm.w} × ${f.stripKm.h} km · the pre-1750 plant communities over the land's shape, with the watercourses, the crests and the Aboriginal heritage layers</span></div>
     <div class="abs" style="left:${FIELD_X}mm;top:${FIELD_Y + PANEL_TITLE_H}mm">${mapSvg}</div>
     <svg class="abs" style="left:${FIELD_X}mm;top:${legendTop}mm" width="${FIELD_W}mm" height="${leg.heightMm}mm" viewBox="0 0 ${FIELD_W} ${leg.heightMm}" xmlns="http://www.w3.org/2000/svg">${leg.svg}</svg>
-    <div class="abs ptitle" style="left:${FIELD_X}mm;top:${belowY}mm;width:${PANEL_W}mm">Country at the site<span class="pnote">the open layers, read at the geocoded point and over the strip</span></div>
-    <div class="abs" data-fit data-fit-note="country-more" style="left:${FIELD_X}mm;top:${belowY + PANEL_TITLE_H}mm;width:${PANEL_W}mm;height:${belowH - PANEL_TITLE_H}mm;overflow:hidden">${table}</div>
-    <div class="abs" id="country-more" hidden data-text="{n} more rows did not fit; the deck's JSON (overall.json) holds them all." style="left:${FIELD_X}mm;width:${PANEL_W}mm;font-size:2.1mm;line-height:1.3;font-style:italic;color:#6a7572"></div>
-    <div class="abs" style="left:${FIELD_X + PANEL_W + GUTTER}mm;top:${belowY}mm;width:${PANEL_W}mm;height:${belowH}mm;overflow:hidden">
+    <div class="abs ptitle" style="left:${FIELD_X}mm;top:${belowY}mm;width:${FIELD_W}mm">Country at the site<span class="pnote">the open layers, read at the geocoded point and over the strip</span></div>
+    <div class="abs" data-fit data-fit-note="country-more" style="left:${FIELD_X}mm;top:${belowY + PANEL_TITLE_H}mm;width:${FIELD_W}mm;height:${belowH - PANEL_TITLE_H}mm;overflow:hidden">${table}</div>
+    <div class="abs" id="country-more" hidden data-text="{n} more rows did not fit; the deck's JSON (overall.json) holds them all." style="left:${FIELD_X}mm;width:${FIELD_W}mm;font-size:2.1mm;line-height:1.3;font-style:italic;color:#6a7572"></div>
+    <div class="abs" style="left:${AUX_X}mm;top:${FIELD_Y}mm;width:${AUX_W}mm;height:${SLIDE_H - FIELD_Y - 14}mm;overflow:hidden">
       ${vegSvg}
       <div style="margin-top:${classes.length ? 2 : 0}mm">${note}</div>
     </div>`;
@@ -5404,11 +5421,16 @@ export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; 
   const footerLeft = ['SITE ANALYST — OVERALL ANALYSIS', b.siteAddress, meta.client ? `for ${meta.client}` : '', meta.jobNo ? `job ${meta.jobNo}` : ''].filter(Boolean).join(' · ');
   const pages = slides.map((s, i) => `
 <section class="slide" id="${esc(s.id)}">
-  <div class="abs title" style="left:${MARGIN_L}mm;top:12mm;width:${SLIDE_W - MARGIN_L - MARGIN_R}mm">${esc(s.title)}</div>
-  <div class="abs subtitle" style="left:${MARGIN_L}mm;top:20.5mm;width:${SLIDE_W - MARGIN_L - MARGIN_R}mm">${esc(s.subtitle)}</div>
-  <div class="abs text" style="left:${MARGIN_L}mm;top:${FIELD_Y}mm;width:${TEXT_W}mm;height:${SLIDE_H - FIELD_Y - 16}mm">${s.textHtml}</div>
+  <div class="abs rh" style="left:${L_X}mm;top:10mm;width:${L_W}mm"><span>Overall analysis</span><span>${esc(b.siteAddress)}</span></div>
+  <div class="abs rh" style="left:${FIELD_X}mm;top:10mm;width:${FIELD_W}mm"><span>${esc(s.title)}</span><span>${String(i + 1).padStart(2, '0')} / ${slides.length}</span></div>
+  <div class="abs foldtick" style="left:${FOLD}mm;top:3mm"></div>
+  <div class="abs foldtick" style="left:${FOLD}mm;top:${SLIDE_H - 7}mm"></div>
+  <div class="abs title" style="left:${L_X}mm;top:17.5mm;width:${L_W}mm">${esc(s.title)}</div>
+  <div class="abs subtitle" style="left:${L_X}mm;top:26.5mm;width:${L_W}mm">${esc(s.subtitle)}</div>
+  <div class="abs text" style="left:${L_X}mm;top:${FIELD_Y}mm;width:${TEXT_W}mm;height:${SLIDE_H - FIELD_Y - 16}mm">${s.textHtml}</div>
   ${s.figureHtml}
-  <div class="abs foot" style="left:${MARGIN_L}mm;right:${MARGIN_R}mm;top:${SLIDE_H - 8.5}mm"><span>${esc(footerLeft)}</span><span>generated ${esc(b.generatedAt.slice(0, 10))} · ${i + 1} / ${slides.length}</span></div>
+  <div class="abs foot" style="left:${L_X}mm;top:${FOOT_Y}mm;width:${L_W}mm"><span>${esc(footerLeft)}</span><span>${i * 2 + 1}</span></div>
+  <div class="abs foot" style="left:${FIELD_X}mm;top:${FOOT_Y}mm;width:${FIELD_W}mm"><span>generated ${esc(b.generatedAt.slice(0, 10))}</span><span>${i * 2 + 2}</span></div>
 </section>`).join('\n');
 
   const html = `<!DOCTYPE html>
@@ -5421,6 +5443,13 @@ export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; 
   .slide:last-child { page-break-after: auto; break-after: auto; }
   .abs { position: absolute; }
   .title { font-size: 6.6mm; font-weight: 450; letter-spacing: -0.015em; line-height: 1; }
+  .rh { display: flex; justify-content: space-between; font-size: 2.0mm; letter-spacing: 0.14em; text-transform: uppercase; color: #8a918c; border-bottom: 0.15mm solid ${t.rule}; padding-bottom: 1mm; }
+  .foldtick { width: 0; height: 4mm; border-left: 0.15mm solid ${t.rule}; }
+  .ptitle.sm { font-size: 2.4mm; }
+  .aux-t { position: static; height: auto; line-height: 1.25; white-space: normal; margin: 3mm 0 1mm; }
+  .ptitle.sm .pnote { font-size: 1.95mm; margin-left: 1.6mm; }
+  .tiles.col { grid-template-columns: 1fr; gap: 2.6mm; }
+  .tiles.two { grid-template-columns: repeat(2, 1fr); gap: 2.6mm; }
   .subtitle { font-size: 2.7mm; color: #6a7572; letter-spacing: 0.02em; margin-top: 0.4mm; }
   .text { font-size: 3.05mm; line-height: 1.38; overflow: hidden; }
   .text p { margin-bottom: 2.6mm; }
@@ -5478,16 +5507,16 @@ export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; 
   .oc { display: flex; align-items: flex-start; gap: 1.8mm; font-size: 2.35mm; line-height: 1.32; margin-top: 1.4mm; padding-right: 2mm; }
   .oc .n { flex: 0 0 4.2mm; height: 4.2mm; border-radius: 2.1mm; color: #fff; font-weight: 700; font-size: 2.2mm; text-align: center; line-height: 4.2mm; margin-top: 0.1mm; }
   .oc .t b { font-weight: 700; }
-  .photos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3mm ${GUTTER}mm; }
-  .frame .img { position: relative; height: 55mm; background: #f1e9dc; overflow: hidden; }
+  .photos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2.5mm 4mm; }
+  .frame .img { position: relative; height: 40mm; background: #f1e9dc; overflow: hidden; }
   .frame img { display: block; width: 100%; height: 100%; object-fit: cover; }
   .frame img.whole { object-fit: contain; }
   .frame .key { position: absolute; left: 2mm; top: 2mm; width: 6mm; height: 6mm; border-radius: 50%; background: ${CAMERA_COLOUR}; border: 0.35mm solid #fff; color: #fff; font-weight: 700; font-size: 2.9mm; line-height: 5.3mm; text-align: center; }
   .frame .cap { font-size: 2.05mm; line-height: 1.3; color: #454f4b; margin-top: 1mm; }
   .frame.ph .img { display: flex; align-items: center; justify-content: center; text-align: center; padding: 0 8mm; border: 0.3mm dashed #cdc4b4; background: #f7f1e6; color: #9aa19b; font-size: 2.4mm; font-style: italic; }
   .frame.ph .cap { color: #8a918c; font-style: italic; }
-  .photos.four { grid-template-columns: repeat(4, 1fr); gap: 3mm 4mm; }
-  .photos.four .frame .img { height: 50mm; }
+  .photos.four { grid-template-columns: repeat(4, 1fr); gap: 2.5mm 3mm; }
+  .photos.four .frame .img { height: 33mm; }
   .frame .key.plc { background: #2c4c9c; }
   .quote { border-left: 0.5mm solid #d8cfc0; padding: 0.4mm 0 0.4mm 2.6mm; margin: 0 0 2.6mm; }
   .quote p { font-size: 2.75mm; line-height: 1.36; margin-bottom: 1.2mm; }
@@ -5495,10 +5524,10 @@ export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; 
   .dim { color: #737c77; font-weight: 400; }
   table.da.strat { font-size: 2.25mm; line-height: 1.28; }
   table.da.strat th { width: auto; }
-  table.da.strat tbody th { font-weight: 700; font-size: 2.05mm; letter-spacing: 0.04em; text-transform: uppercase; color: #6a7572; width: 22mm; padding-top: 1.3mm; }
+  table.da.strat tbody th { font-weight: 700; font-size: 2.05mm; letter-spacing: 0.04em; text-transform: uppercase; color: #6a7572; width: 16mm; padding-top: 1.3mm; }
   table.da.strat td { padding: 1.1mm 2mm 1.1mm 0; }
-  table.da.strat td.status { width: 46mm; color: #59625d; }
-  table.da.strat td.lnk { width: 64mm; }
+  table.da.strat td.status { width: 30mm; color: #59625d; }
+  table.da.strat td.lnk { width: 34mm; }
   table.da.strat td.lnk a { color: #6a7572; text-decoration: none; word-break: break-all; font-size: 2.0mm; }
   table.da.strat tr.manual td { color: #8a918c; font-style: italic; }
   table.da.strat tr.manual td b { font-weight: 600; }
