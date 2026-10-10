@@ -316,6 +316,9 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   const aerialGround = tpl().ground === 'aerial';
   // Bus routes, on the map and in the legend: dashed, or round dots a little
   // apart at half opacity so the route is there without competing.
+  // Finer than the catchment dots: the railway data has a line per track,
+  // so a corridor of three or four tracks stacks them into a band.
+  const RAIL_DOTS = 'stroke-width="1.15" stroke-dasharray="0.01,2.0" stroke-linecap="round" opacity="0.9"';
   const busLineStyle = tpl().busLine === 'dotted'
     ? 'stroke-width="1.1" stroke-dasharray="0.01,1.9" opacity="0.5"'
     : 'stroke-width="0.9" stroke-dasharray="3,1.9" opacity="0.9"';
@@ -497,9 +500,15 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   // ---- transit route lines (train / tram / bus) --------------------------
   if (bundle.railLines.train.length) {
     const d = bundle.railLines.train.map((l) => pathFromRings([l as any], proj, false)).join('');
-    // classic railway line: dark stroke with white sleeper dashes on top
-    layers.push(`<path d="${d}" fill="none" stroke="${tpl().rail}" stroke-width="1.1"/>`);
-    layers.push(`<path d="${d}" fill="none" stroke="#ffffff" stroke-width="0.55" stroke-dasharray="2.4,2.4"/>`);
+    if (tpl().railLine === 'dotted') {
+      // A line of round dots in the rail colour, close-set so it reads as a
+      // track and not as another route.
+      layers.push(`<path d="${d}" fill="none" stroke="${tpl().rail}" ${RAIL_DOTS}/>`);
+    } else {
+      // classic railway line: dark stroke with white sleeper dashes on top
+      layers.push(`<path d="${d}" fill="none" stroke="${tpl().rail}" stroke-width="1.1"/>`);
+      layers.push(`<path d="${d}" fill="none" stroke="#ffffff" stroke-width="0.55" stroke-dasharray="2.4,2.4"/>`);
+    }
   }
   if (bundle.railLines.tram.length) {
     const d = bundle.railLines.tram.map((l) => pathFromRings([l as any], proj, false)).join('');
@@ -1036,7 +1045,9 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   legendRow(legendRoundel('B', tpl().transit), ['BUS STOPS']);
   if (hasTramStops) legendRow(legendRoundel('L', tpl().busRoute), ['LIGHT RAIL STOP']);
   if (bundle.railLines.train.length)
-    legendRow(`<g><line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${tpl().rail}" stroke-width="1.1"/><line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="#fff" stroke-width="0.55" stroke-dasharray="2.4,2.4"/></g>`, ['TRAIN LINE']);
+    legendRow(tpl().railLine === 'dotted'
+      ? `<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${tpl().rail}" ${RAIL_DOTS}/>`
+      : `<g><line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${tpl().rail}" stroke-width="1.1"/><line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="#fff" stroke-width="0.55" stroke-dasharray="2.4,2.4"/></g>`, ['TRAIN LINE']);
   if (bundle.railLines.tram.length || bundle.bus.tramRouteSegments.length)
     legendRow(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${tpl().busRoute}" stroke-width="0.9" stroke-dasharray="3.4,1.8"/>`, ['TRAM ROUTE']);
   legendRow(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${tpl().transit}" ${busLineStyle} stroke-linecap="round"/>`, ['BUS ROUTE']);
