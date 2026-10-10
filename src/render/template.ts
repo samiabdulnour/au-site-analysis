@@ -72,6 +72,8 @@ export interface Template {
   isochrone: 'band' | 'line';
   /** The stop and station roundels: a white disc with a coloured ring, or a solid coloured disc with a white letter. */
   roundel: 'ring' | 'solid';
+  /** The bus routes: a dashed line, or a dotted one at reduced opacity that stays behind the tints. */
+  busLine: 'dashed' | 'dotted';
   /** What the map sits on: plain white paper, or the aerial under a white veil with the tints thinned so it shows through. */
   ground: 'paper' | 'aerial';
   /** The building footprints: white with a hairline of the family ink, or no fill and only a light outline (for the aerial, where the photograph shows the roofs). */
@@ -182,6 +184,7 @@ const FLAMINGO: Palette = {
   heritage: SAND_INK,
   isochrone: 'band',
   roundel: 'ring',
+  busLine: 'dashed',
   categories: FLAMINGO_CATEGORIES,
 };
 
@@ -206,12 +209,14 @@ const REDFERN: Palette = {
   heritage: R_BROWN,
   isochrone: 'line',
   roundel: 'solid',
+  busLine: 'dashed',
   categories: REDFERN_CATEGORIES,
 };
 
 export const TEMPLATES: Template[] = [
   { id: 'flamingo-white',  label: 'Flamingo white',  note: 'paper and four tints with textures, every building white',
-    ...FLAMINGO, ground: 'paper',  footprints: 'white' },
+    // Redfern's solid roundels, and the bus routes as a faint dotted line.
+    ...FLAMINGO, ground: 'paper',  footprints: 'white', roundel: 'solid', busLine: 'dotted' },
   { id: 'flamingo-aerial', label: 'Flamingo aerial', note: 'the four tints thinned over the aerial, buildings as a light outline',
     ...FLAMINGO, ground: 'aerial', footprints: 'outline' },
   { id: 'redfern-white',   label: 'Redfern white',   note: 'the Redfern deck\'s palette on paper, every building white',

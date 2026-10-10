@@ -314,6 +314,11 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   // below so the photograph reads through them. The tiles are fetched either
   // way; the CAD export carries them on its own layer.
   const aerialGround = tpl().ground === 'aerial';
+  // Bus routes, on the map and in the legend: dashed, or round dots a little
+  // apart at half opacity so the route is there without competing.
+  const busLineStyle = tpl().busLine === 'dotted'
+    ? 'stroke-width="1.1" stroke-dasharray="0.01,1.9" opacity="0.5"'
+    : 'stroke-width="0.9" stroke-dasharray="3,1.9" opacity="0.9"';
   layers.push(`<rect x="0" y="0" width="${MAP_W}" height="${MAP_H}" fill="#ffffff"/>`);
   if (aerialGround) {
     // Tiles cover the axis-aligned fetch extent; place them in that rectangle
@@ -604,7 +609,7 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   }
   if (busSegments.length) {
     const d = busSegments.map((l) => pathFromRings([l as any], proj, false)).join('');
-    layers.push(`<path d="${d}" fill="none" stroke="${tpl().transit}" stroke-width="0.9" stroke-dasharray="3,1.9" opacity="0.9" stroke-linecap="round"/>`);
+    layers.push(`<path d="${d}" fill="none" stroke="${tpl().transit}" ${busLineStyle} stroke-linecap="round"/>`);
   }
 
   // ---- isochrones --------------------------------------------------------
@@ -973,7 +978,7 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     legendRow(`<g><line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${tpl().rail}" stroke-width="1.1"/><line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="#fff" stroke-width="0.55" stroke-dasharray="2.4,2.4"/></g>`, ['TRAIN LINE']);
   if (bundle.railLines.tram.length || bundle.bus.tramRouteSegments.length)
     legendRow(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${tpl().busRoute}" stroke-width="0.9" stroke-dasharray="3.4,1.8"/>`, ['TRAM ROUTE']);
-  legendRow(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${tpl().transit}" stroke-width="0.9" stroke-dasharray="3,1.9"/>`, ['BUS ROUTE']);
+  legendRow(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${tpl().transit}" ${busLineStyle} stroke-linecap="round"/>`, ['BUS ROUTE']);
   const legendIso = (color: string) => lineIso
     ? `<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${color}" stroke-width="1.2"/>`
     : `<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${color}" stroke-width="${ISO_W}" opacity="${ISO_OPACITY}" stroke-linecap="round"/>`;
