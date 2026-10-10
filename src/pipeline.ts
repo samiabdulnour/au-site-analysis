@@ -536,6 +536,8 @@ export interface SlidesBundle {
   daPanel: Panel;
   /** The full-bleed figure page: one A4 page at the deck's scale. */
   bleedPanel: Panel;
+  /** The walking-reach map's window: square at the strip's scale, cut to the catchment when drawn. */
+  reachPanel: Panel;
   /** Applications lodged in the window, from the council-wide feed. */
   applications: DaRecord[];
   /** The Department's register of State significant applications for the council areas the window touches, those within 3 km with their points. */
@@ -644,13 +646,21 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
   const daExtent = panelExtent(daPanel);
   const widePanel: Panel = { center: geo.center, scale: opts.wideScale ?? 16000, wMm: opts.wideWmm ?? 186, hMm: opts.wideHmm ?? 95 };
   const wideExtent = panelExtent(widePanel);
+  // The walking-reach map, cut to the shape of its own fifteen minutes: a square window at the strip's scale,
+  // tall enough that the catchment is never clipped. The strip's lighter base is read over both.
+  const reachPanel: Panel = { center: geo.center, scale: widePanel.scale, wMm: 186, hMm: 186 };
+  const reachExtent = panelExtent(reachPanel);
+  const wideFetch: Extent = {
+    xmin: Math.min(wideExtent.xmin, reachExtent.xmin), ymin: Math.min(wideExtent.ymin, reachExtent.ymin),
+    xmax: Math.max(wideExtent.xmax, reachExtent.xmax), ymax: Math.max(wideExtent.ymax, reachExtent.ymax),
+  };
   // The site plan's panel: the lots fitted into a little over half of a tall panel at a round scale, centred on them.
   const sitePanel = fitSitePanel(siteLots, opts.panelWmm, opts.daPanelHmm);
   const blockPanel: Panel = { center: geo.center, scale: 4000, wMm: opts.panelWmm, hMm: opts.wideHmm ?? 72 };
   // The then-and-now pair: two half-width panels side by side at 1:2500, the 1943 survey and today's imagery over the same ground.
   const pairPanel: Panel = { center: geo.center, scale: 2500, wMm: 90, hMm: 80 };
-  // The location window: a full page at 1:100,000, 21 × 29.7 km, the 5 km ring well inside it.
-  const locationPanel: Panel = { center: geo.center, scale: 100000, wMm: 210, hMm: 297 };
+  // The location window: a 27 km square at 1:100,000 round the site, drawn as a disc across the spread.
+  const locationPanel: Panel = { center: geo.center, scale: 100000, wMm: 270, hMm: 270 };
   // Every fetch window is the larger of the two, so nothing is missing from either map.
   // The full-bleed figure page: a map the size of one A4 page at the deck's scale,
   // for the slides that run their map to the sheet's edges.
@@ -706,11 +716,11 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
     soft(fetchGreenSpace(daExtent, wideExtent, log), emptyGreen, 'green and public domain'),
     soft(fetchConstraints(extent, mercatorToLonLat(geo.center), log), emptyConstraints, 'environmental constraints'),
     soft(fetchSiteData(sitePanel, blockPanel, siteLots, mercatorToLonLat(geo.center), dataDir, log), emptySite, 'site data'),
-    soft(fetchRoads(wideExtent, 'roadnamebase IS NOT NULL AND functionhierarchy <= 5'), [], 'wide roads'),
-    soft(fetchRailLines(wideExtent), { train: [], tram: [] }, 'wide rail lines'),
-    soft(fetchTrainStations(wideExtent), [], 'wide stations'),
-    soft(fetchWaterAreas(wideExtent), emptyFC, 'wide water areas'),
-    soft(queryByExtent('https://portal.spatial.nsw.gov.au/server/rest/services/NSW_Administrative_Boundaries_Theme/FeatureServer/2', wideExtent, 'suburbname'), emptyFC, 'suburbs'),
+    soft(fetchRoads(wideFetch, 'roadnamebase IS NOT NULL AND functionhierarchy <= 5'), [], 'wide roads'),
+    soft(fetchRailLines(wideFetch), { train: [], tram: [] }, 'wide rail lines'),
+    soft(fetchTrainStations(wideFetch), [], 'wide stations'),
+    soft(fetchWaterAreas(wideFetch), emptyFC, 'wide water areas'),
+    soft(queryByExtent('https://portal.spatial.nsw.gov.au/server/rest/services/NSW_Administrative_Boundaries_Theme/FeatureServer/2', wideFetch, 'suburbname'), emptyFC, 'suburbs'),
     soft(fetchCountry(wideExtent, Math.round(((widePanel.wMm / 1000) * widePanel.scale) / 2), Math.round(((widePanel.hMm / 1000) * widePanel.scale) / 2), geo.center, dataDir, log), EMPTY_COUNTRY, 'Country'),
     soft(fetchPhotos({ centre: mercatorToLonLat(geo.center), siteRings: siteLots.features.flatMap((f) => geomRingsOf(f.geometry)), pairPanel, outDir: dataDir, log, lots: lotsRead.then((fc) => fc.features.flatMap((f) => geomRingsOf(f.geometry))), buildings: footprintsRead.then((bd) => bd.buildings.flatMap((x) => x.rings)) }), emptyPhotos(pairPanel), 'street-level frames and the 1943 aerial'),
     soft(fetchLocation(locationPanel, log), emptyLocation(locationPanel), 'location window'),
@@ -753,7 +763,7 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
     zoning, hob, heritage, shr, policy,
     base: { water, lots, roads, rail: railLines, stations, siteLots },
     controls, property, context, housingTarget, cos,
-    daPanel, bleedPanel, applications, majorProjects, wind, daMeta, proposals, people,
+    daPanel, bleedPanel, reachPanel, applications, majorProjects, wind, daMeta, proposals, people,
     terrain: { dem, contours: contourSet.lines, contourIntervalM: contourSet.intervalM, contourSource: contourSet.source, contourAttribution: contourSet.attribution }, buildings, movement, green, constraints, site, views,
     wide: { panel: widePanel, base: { water: wideWater, lots: emptyFC, roads: wideRoads, rail: wideRail, stations: wideStations, siteLots }, suburbs: wideSuburbs },
     country,

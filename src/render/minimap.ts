@@ -69,6 +69,33 @@ export interface BaseData {
   siteLots: GeoJSONFC;
 }
 
+/**
+ * The book's three type styles. Each is one size, one weight and one colour,
+ * and nothing is set in any other: T1 display (titles, big figures), T2 caps
+ * (heads, labels, folios, every word inside a map), T3 body (the rest).
+ */
+export const TYPE = {
+  t1: { size: 6.6, weight: 500 },
+  t2: { size: 2.1, weight: 600, spacing: 0.26 },
+  t3: { size: 2.6, weight: 400 },
+} as const;
+
+/** A T2 label inside a map: caps, haloed in white so it reads over any ground. `k` compensates a map drawn at a reduced size. */
+export function t2Text(x: number, y: number, text: string, anchor: 'start' | 'middle' | 'end' = 'start', k = 1): string {
+  const t = tpl();
+  const size = TYPE.t2.size / k;
+  return `<text x="${x.toFixed(1)}" y="${(y + size * 0.36).toFixed(1)}" text-anchor="${anchor}" font-size="${size.toFixed(2)}" font-weight="${TYPE.t2.weight}" letter-spacing="${(TYPE.t2.spacing / k).toFixed(2)}" fill="${t.ink}" stroke="#ffffff" stroke-width="${(0.55 / k).toFixed(2)}" stroke-linejoin="round" paint-order="stroke">${esc(text.toUpperCase())}</text>`;
+}
+
+/** Width of a T2 label in map millimetres, for the label spacer. */
+export const t2Width = (text: string, k = 1) => (text.length * TYPE.t2.size * 0.72 + 0.8) / k;
+
+/** Railway as a track: a fine rail line crossed by short sleepers, so a yard of parallel lines reads as hatching, not noise. */
+export function railSymbol(d: string, colour: string, k = 1): string {
+  return `<path d="${d}" fill="none" stroke="${colour}" stroke-width="${(0.2 / k).toFixed(2)}"/>` +
+    `<path d="${d}" fill="none" stroke="${colour}" stroke-width="${(1.05 / k).toFixed(2)}" stroke-dasharray="${(0.16 / k).toFixed(2)},${(1.3 / k).toFixed(2)}"/>`;
+}
+
 /** The shared base under every thematic layer. */
 export function baseLayers(b: BaseData, proj: Proj, p: Panel, opts: { lots?: boolean } = {}): string {
   const t = tpl();
@@ -101,11 +128,7 @@ export function overLayers(b: BaseData, proj: Proj, p: Panel, site: SiteLayer = 
     parts.push(`<path d="${ds.join('')}" fill="none" stroke="${t.road}" stroke-width="${(w + 0.22).toFixed(2)}" stroke-linecap="round" stroke-linejoin="round"/>`);
   for (const [w, ds] of [...byWidth.entries()].sort((a, b2) => b2[0] - a[0]))
     parts.push(`<path d="${ds.join('')}" fill="none" stroke="#ffffff" stroke-width="${w.toFixed(2)}" stroke-linecap="round" stroke-linejoin="round"/>`);
-  if (b.rail.train.length) {
-    const d = b.rail.train.map((l) => ringsPath([l], proj, false)).join('');
-    parts.push(`<path d="${d}" fill="none" stroke="${t.rail}" stroke-width="0.7"/>`);
-    parts.push(`<path d="${d}" fill="none" stroke="#ffffff" stroke-width="0.32" stroke-dasharray="1.6,1.6"/>`);
-  }
+  if (b.rail.train.length) parts.push(railSymbol(b.rail.train.map((l) => ringsPath([l], proj, false)).join(''), t.rail));
   if (b.rail.tram.length) {
     const d = b.rail.tram.map((l) => ringsPath([l], proj, false)).join('');
     parts.push(`<path d="${d}" fill="none" stroke="${t.busRoute}" stroke-width="0.55" stroke-dasharray="2,1.2"/>`);
@@ -133,18 +156,17 @@ export function siteLabelPoint(b: BaseData, proj: Proj): { cx: number; cy: numbe
   return best.area >= 0 ? { cx: best.cx, cy: best.cy - 2.6 } : null;
 }
 
-/** The site: a light wash, an accent outline and a short label. */
+/** The site: a solid accent, no word — the red is the site throughout the book. */
 export function siteMark(b: BaseData, proj: Proj, layer: SiteLayer = 'both'): string {
   if (!b.siteLots.features.length || layer === 'none') return '';
   const t = tpl();
   const d = fcPath(b.siteLots, proj);
   const parts: string[] = [];
-  if (layer !== 'outline') parts.push(`<path d="${d}" fill="${t.site}" fill-opacity="0.18" stroke="none"/>`);
-  if (layer !== 'wash') {
-    parts.push(`<path d="${d}" fill="none" stroke="${t.site}" stroke-width="0.6"/>`);
-    const lp = siteLabelPoint(b, proj);
-    if (lp) parts.push(`<text x="${lp.cx.toFixed(1)}" y="${lp.cy.toFixed(1)}" text-anchor="middle" font-size="2.4" font-weight="600" fill="${t.site}" stroke="#ffffff" stroke-width="0.5" paint-order="stroke">SITE</text>`);
-  }
+  // Solid where the site is a mark; at plan scales, where it is a shape with things inside, a wash and an outline.
+  const areaMm2 = b.siteLots.features.reduce((a, f) => a + geomRings(f.geometry).reduce((x, r) => x + ringStats(r, proj).area, 0), 0);
+  const solid = areaMm2 < 150;
+  if (layer !== 'outline') parts.push(`<path d="${d}" fill="${t.site}" fill-opacity="${solid ? 0.9 : 0.16}" stroke="none"/>`);
+  if (layer !== 'wash') parts.push(solid ? `<path d="${d}" fill="${t.site}" stroke="${t.site}" stroke-width="0.4"/>` : `<path d="${d}" fill="none" stroke="${t.site}" stroke-width="0.6"/>`);
   return parts.join('\n');
 }
 
@@ -171,15 +193,16 @@ export function furnitureBox(p: Panel, corner: FurnitureCorner = 'left'): { x0: 
 export function panelFurniture(p: Panel, corner: FurnitureCorner = 'left'): string {
   const t = tpl();
   const { barM, barMm, x0, y0 } = furnitureGeom(p, corner);
-  return `<g font-family="${t.font}" font-size="2" fill="${t.ink}">
+  const caps = `font-size="${TYPE.t2.size}" font-weight="${TYPE.t2.weight}" letter-spacing="${TYPE.t2.spacing}"`;
+  return `<g font-family="${t.font}" fill="${t.ink}">
     <rect x="${x0 - 1.2}" y="${y0 - 8.6}" width="${(barMm + 9).toFixed(1)}" height="10.4" fill="${t.paper}" fill-opacity="0.85"/>
     <rect x="${x0}" y="${y0 - 1.2}" width="${(barMm / 2).toFixed(2)}" height="1.2" fill="${t.ink}"/>
     <rect x="${(x0 + barMm / 2).toFixed(2)}" y="${y0 - 1.2}" width="${(barMm / 2).toFixed(2)}" height="1.2" fill="none" stroke="${t.ink}" stroke-width="0.2"/>
-    <text x="${x0}" y="${y0 - 2}" >0</text>
-    <text x="${(x0 + barMm).toFixed(2)}" y="${y0 - 2}" text-anchor="end">${barM >= 1000 ? `${barM / 1000} km` : `${barM} m`}</text>
+    <text x="${x0}" y="${y0 - 2}" ${caps}>0</text>
+    <text x="${(x0 + barMm).toFixed(2)}" y="${y0 - 2}" text-anchor="end" ${caps}>${barM >= 1000 ? `${barM / 1000} KM` : `${barM} M`}</text>
     <g transform="translate(${(x0 + barMm + 5).toFixed(1)},${y0 - 4.2})">
       <path d="M0,-3.2 L1.3,2.2 L0,1.2 L-1.3,2.2 Z" fill="${t.ink}"/>
-      <text y="-3.8" text-anchor="middle" font-size="1.8" font-weight="600">N</text>
+      <text y="-3.8" text-anchor="middle" ${caps}>N</text>
     </g>
   </g>`;
 }
