@@ -147,6 +147,50 @@ export function arrowAlong(pts: Pt[], lengthMm: number): BandArrow | null {
   return { svg, cx: (a[0] + b[0]) / 2, cy: (a[1] + b[1]) / 2, angDeg: ang };
 }
 
+/** Walking-person pictogram (Material Symbols directions_walk, Apache-2.0),
+ *  24x24 units, recentered; fill takes the given color. */
+export function walkerGlyph(color: string, scale: number): string {
+  return `<g transform="scale(${scale}) translate(-12.6,-13.5)"><path fill="${color}" d="M13.5 5.5c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zM9.8 8.9L7 23h2.1l1.8-8 2.1 2v6h2v-7.5l-2.1-2 .6-3C14.8 12 16.8 13 19 13v-2c-1.9 0-3.5-1-4.3-2.4l-1-1.6c-.4-.6-1-1-1.7-1-.3 0-.5.1-.8.1L6 8.3V13h2V9.6l1.8-.7"/></g>`;
+}
+
+/** Walker-in-circle marker sitting on an isochrone ring, all in ring color. */
+export function walkerMedallion(x: number, y: number, color: string): string {
+  return `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})">
+    <circle r="4.1" fill="#ffffff" stroke="${color}" stroke-width="1.1"/>
+    ${walkerGlyph(color, 0.30)}
+  </g>`;
+}
+
+/**
+ * `count` positions spaced evenly along a closed ring by arc length, skipping
+ * anything off the sheet and never stacking two markers on top of each other.
+ * `phase` (0..1) rotates the whole set so two rings can be staggered.
+ */
+function ringMarkers(pts: Pt[], count: number, phase: number): Pt[] {
+  const inView = ([x, y]: Pt) => x > 14 && x < MAP_W - 14 && y > 14 && y < MAP_H - 14;
+  const cum: number[] = [0];
+  for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+  const total = cum[cum.length - 1];
+  if (!(total > 0)) return [];
+  const visible = pts.map((p, i) => ({ p, s: cum[i] })).filter((o) => inView(o.p));
+  if (!visible.length) return [];
+  const out: Pt[] = [];
+  for (let k = 0; k < count; k++) {
+    const want = total * (((k + phase) / count) % 1);
+    let best: Pt | null = null;
+    let bestDist = Infinity;
+    for (const v of visible) {
+      let d = Math.abs(v.s - want);
+      d = Math.min(d, total - d);                     // the ring is closed
+      if (d >= bestDist) continue;
+      if (out.some((o) => Math.hypot(o[0] - v.p[0], o[1] - v.p[1]) < 26)) continue;
+      bestDist = d; best = v.p;
+    }
+    if (best) out.push(best);
+  }
+  return out;
+}
+
 /**
  * A vector texture (dots, diagonal hatch, cross-hatch) clipped to a shape.
  * Real lines rather than an SVG pattern: patterns rasterize blurrily when
@@ -335,10 +379,10 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
           width="${(t.width * extW).toFixed(2)}" height="${(t.height * extH).toFixed(2)}" preserveAspectRatio="none"/>`)
       .join('\n');
     layers.push(`<g transform="rotate(${view.rotationDeg.toFixed(2)}, ${MAP_W / 2}, ${MAP_H / 2})">${tiles}</g>`);
-    layers.push(`<rect x="0" y="0" width="${MAP_W}" height="${MAP_H}" fill="#ffffff" opacity="0.3"/>`);
+    layers.push(`<rect x="0" y="0" width="${MAP_W}" height="${MAP_H}" fill="#ffffff" opacity="${tpl().veil ?? 0.3}"/>`);
   }
   // Over the aerial the tints are thinned so the photograph shows through.
-  const tintScale = aerialGround ? 0.55 : 1;
+  const tintScale = aerialGround ? (tpl().tintScale ?? 0.55) : 1;
 
   // ---- zoning base -------------------------------------------------------
   const zoningByCat: Record<string, string[]> = {};
@@ -394,7 +438,7 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   // ground, and never black, which would weigh the sheet down again. The
   // ground is the institution parcel or zoning polygon under the footprint's
   // centroid; a footprint on no tinted ground is a mid grey.
-  if (bundle.buildings.buildings.length) {
+  if (bundle.buildings.buildings.length && tpl().footprints !== 'none') {
     interface Ground { cat: string; ring: number[][]; bbox: [number, number, number, number] }
     const grounds: Ground[] = [];
     const addGround = (cat: string, ring: number[][]) => {
@@ -448,8 +492,9 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   // The road reserve in white, as the office sheets and most figure-ground
   // maps show it, so the blocks read as tinted islands on paper. Width by
   // function hierarchy, in metres on the ground scaled to the sheet: an
-  // arterial reserve is about 30 m, a local street 20 m, a lane 8 m.
-  {
+  // arterial reserve is about 30 m, a local street 20 m, a lane 8 m. A
+  // template over the aerial can leave them out: the photograph has them.
+  if (tpl().streets !== 'none') {
     const mmPerM = 1000 / bundle.scale;
     const reserveM = (h: number) => (h <= 2 ? 36 : h === 3 ? 30 : h === 4 ? 24 : h === 5 ? 20 : h === 6 ? 17 : 8);
     const byWidth = new Map<number, string[]>();
@@ -629,6 +674,7 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   };
   const lineIso = tpl().isochrone === 'line';
   const dottedIso = tpl().isochrone === 'dotted';
+  const walkerIso = tpl().isochrone === 'walkers';
   // Round dots a little apart, the way the bus routes are drawn but bolder.
   const ISO_DOTS = 'stroke-width="1.7" stroke-dasharray="0.01,2.8" stroke-linecap="round"';
   for (const iso of bundle.isochrones) {
@@ -636,6 +682,15 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     const d = iso.rings.map((r) => pathFromRings([r as any], proj)).join('');
     if (dottedIso) {
       layers.push(`<path d="${d}" fill="none" stroke="${st.color}" ${ISO_DOTS} opacity="0.85" stroke-linejoin="round"/>`);
+    } else if (walkerIso) {
+      // The office style: a dashed line with walker medallions spaced along
+      // the ring's own length, staggered between the two contours.
+      layers.push(`<path d="${d}" fill="none" stroke="${st.color}" stroke-width="1.3" stroke-dasharray="3.6,2.2" stroke-linejoin="round"/>`);
+      const ring = [...iso.rings].sort((a, b) => b.length - a.length)[0];
+      if (ring) {
+        const pts: Pt[] = ring.map(([lon, lat]) => proj(lon, lat));
+        for (const [x, y] of ringMarkers(pts, 4, iso.minutes === 5 ? 0.15 : 0.6)) layers.push(walkerMedallion(x, y, st.color));
+      }
     } else if (lineIso) {
       // A plain continuous line, nothing on it.
       layers.push(`<path d="${d}" fill="none" stroke="${st.color}" stroke-width="1.2" stroke-linejoin="round"/>`);
@@ -920,96 +975,219 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     layers.push(isoTexts.join('\n'));
   }
 
-  // ---- street labels: repeat along long roads like the original ----------
-  // Names sit plainly on the white street, no arrow band: the band was the
-  // office's old device and it crowded the sheet. Through streets and lanes
-  // are set the same way; the width of the white strip already says which
-  // is which.
-  const roadByName = new Map<string, { segs: Pt[][]; hierarchy: number }>();
-  for (const road of bundle.roads) {
-    const pts = road.coords.map(([lon, lat]) => proj(lon, lat))
-      .filter(([x, y]) => x > -60 && x < MAP_W + 60 && y > -60 && y < MAP_H + 60);
-    if (pts.length < 2) continue;
-    const entry = roadByName.get(road.name) ?? { segs: [], hierarchy: road.hierarchy };
-    entry.segs.push(pts);
-    // Most important classification wins.
-    entry.hierarchy = Math.min(entry.hierarchy, road.hierarchy);
-    roadByName.set(road.name, entry);
-  }
-  let rid = 0;
-  const roadDefs: string[] = [];
-  const roadTexts: string[] = [];
-  interface Run { pts: Pt[]; cum: number[]; len: number }
-  // Important roads label first, so when two names compete for the same
-  // corner the arterial keeps its place and the side street moves along.
-  const roadOrder = [...roadByName].sort((a, b) => a[1].hierarchy - b[1].hierarchy);
-  // The name is centred on the street's own line: a cap height of about
-  // 0.72 em lifted by half of that puts the letters' middle on the path.
-  const streetDy = (T.street * 0.36).toFixed(2);
-  for (const [name, r] of roadOrder) {
-    const label = shortStreetName(name);
-    // Must be an over-estimate: a name wider than the path it is set on has
-    // its overflowing glyphs clamped onto the ends and they pile up. The
-    // narrow face runs about four fifths the width of the grotesk.
-    const textLen = label.length * (T.street * 0.58 + 0.4) + 3;
-    const slack = 6;   // spare road either side of the name
-    const slotLen = textLen + slack;
+  if (tpl().streetLabels === 'band') {
+    // ---- street labels: the office's arrow bands ----------------------------
+    // A through street carries its name in a white double-headed arrow band; a
+    // lane gets a plain bold label along the line. The original labeller, kept
+    // whole for the templates that ask for it.
+    const roadByName = new Map<string, { segs: Pt[][]; hierarchy: number; lanes?: number }>();
+    for (const road of bundle.roads) {
+      const pts = road.coords.map(([lon, lat]) => proj(lon, lat))
+        .filter(([x, y]) => x > -60 && x < MAP_W + 60 && y > -60 && y < MAP_H + 60);
+      if (pts.length < 2) continue;
+      const entry = roadByName.get(road.name) ?? { segs: [], hierarchy: road.hierarchy, lanes: road.lanes };
+      entry.segs.push(pts);
+      // Most important classification and widest recorded section win: a road
+      // is only a lane if every segment of it says so.
+      entry.hierarchy = Math.min(entry.hierarchy, road.hierarchy);
+      if (road.lanes !== undefined) entry.lanes = Math.max(entry.lanes ?? 0, road.lanes);
+      roadByName.set(road.name, entry);
+    }
+    let rid = 0;
+    const roadDefs: string[] = [];
+    const roadArrows: string[] = [];
+    const roadTexts: string[] = [];
+    interface Run { pts: Pt[]; cum: number[]; len: number }
+    // Important roads label first, so when two names compete for the same
+    // corner the arterial keeps its band and the side street moves along.
+    const roadOrder = [...roadByName].sort((a, b) => a[1].hierarchy - b[1].hierarchy);
+    for (const [name, r] of roadOrder) {
+      const label = shortStreetName(name);
+      const major = isMajorStreet(r.hierarchy, r.lanes, name);
+      const spacing = 1.5;  // wide tracking on banded names, mm
+      const arrowedTextLen = label.length * (T.street * 0.62 + spacing);
+      // Must be an over-estimate: a name wider than the path it is set on has
+      // its overflowing glyphs clamped onto the ends and they pile up.
+      const plainTextLen = label.length * (T.street * 0.72 + 0.4) + 3;
+      const slack = 6;   // spare road either side of a plain name
+      // The name plus the two arrow heads. The heads are 8mm each but taper, so
+      // 7mm of clearance either side keeps the text off the points while
+      // letting streets of about 45m still carry a band.
+      const bandLen = arrowedTextLen + 14;
 
-    const runs: Run[] = mergeRuns(r.segs)
-      .map((pts) => { const cum = arcTable(pts); return { pts, cum, len: cum[cum.length - 1] }; })
-      .sort((a, b) => b.len - a.len);
-    if (!runs.length) continue;
+      const runs: Run[] = mergeRuns(r.segs)
+        .map((pts) => { const cum = arcTable(pts); return { pts, cum, len: cum[cum.length - 1] }; })
+        .sort((a, b) => b.len - a.len);
+      if (!runs.length) continue;
 
-    // Half the height of what this name will occupy.
-    const halfW = T.street * 0.62;
+      // A street is labelled the same way everywhere it appears: the white band
+      // means "through street", so a major road must not show up banded on one
+      // run and as plain text on another just because that run is short. If no
+      // run of a major street is long enough for a band, it still needs a name.
+      const banded = major && runs[0].len >= bandLen;
+      const slotLen = banded ? bandLen : plainTextLen + slack;
 
-    // Repeat the name along a long street rather than labelling it once.
-    let placed = 0;
-    for (const run of runs) {
-      if (placed >= 3 || run.len < slotLen) break;
-      const n = Math.min(3 - placed, Math.max(1, Math.floor(run.len / 210)));
-      for (let i = 0; i < n; i++) {
-        const s = ((i + 0.5) / n) * run.len;
-        // Slide the name along its road until it sits inside the map, on
-        // straight-enough geometry, and on ground no earlier label has taken.
-        // A street name that cannot find clear road is dropped rather than
-        // overprinted — searching outward from the ideal spot keeps it as
-        // close to its share of the road as the sheet allows.
-        let slot: Pt[] | null = null;
-        for (let k = 0; k <= 16 && !slot; k++) {
-          const d = (k % 2 ? -1 : 1) * Math.ceil(k / 2) * 0.3;
-          const c = s + d * slotLen;
-          if (c - slotLen / 2 < 0 || c + slotLen / 2 > run.len) continue;
-          const win = sliceAt(run.pts, run.cum, c - slotLen / 2, c + slotLen / 2);
-          const m = halfW + 2;
-          if (win.some(([x, y]) => x < m || x > MAP_W - m || y < m || y > MAP_H - m)) continue;
-          if (!straightEnough(win, 2.2)) continue;
-          // The name is set on the slot's chord, not on the road's own
-          // vertices: a 2mm dog-leg where two road sections join turns the
-          // path tangent through 90 degrees and shuffles the glyphs over each
-          // other, and the deviation test above already keeps the chord
-          // within 2mm of the real road.
-          if (Math.hypot(win[win.length - 1][0] - win[0][0],
-                         win[win.length - 1][1] - win[0][1]) < textLen) continue;
-          if (!isFree(win[0], win[win.length - 1], halfW)) continue;
-          slot = win;
+      // Half the height of what this name will occupy — the arrow band is much
+      // deeper than the bare text it replaces.
+      const halfW = banded ? 6.6 : T.street * 0.62;
+
+      // Repeat the name along a long street rather than labelling it once.
+      let placed = 0;
+      for (const run of runs) {
+        if (placed >= 3 || run.len < slotLen) break;
+        const n = Math.min(3 - placed, Math.max(1, Math.floor(run.len / 210)));
+        for (let i = 0; i < n; i++) {
+          const s = ((i + 0.5) / n) * run.len;
+          // Slide the name along its road until it sits inside the map, on
+          // straight-enough geometry, and on ground no earlier label has taken.
+          // A street name that cannot find clear road is dropped rather than
+          // overprinted — searching outward from the ideal spot keeps it as
+          // close to its share of the road as the sheet allows.
+          let slot: Pt[] | null = null;
+          for (let k = 0; k <= 16 && !slot; k++) {
+            const d = (k % 2 ? -1 : 1) * Math.ceil(k / 2) * 0.3;
+            const c = s + d * slotLen;
+            if (c - slotLen / 2 < 0 || c + slotLen / 2 > run.len) continue;
+            const win = sliceAt(run.pts, run.cum, c - slotLen / 2, c + slotLen / 2);
+            const m = halfW + 2;
+            if (win.some(([x, y]) => x < m || x > MAP_W - m || y < m || y > MAP_H - m)) continue;
+            if (!straightEnough(win, 2.2)) continue;
+            if (banded && !arrowAlong(win, slotLen)) continue;
+            // A plain name is set on the slot's chord, not on the road's own
+            // vertices: a 2mm dog-leg where two road sections join turns the
+            // path tangent through 90 degrees and shuffles the glyphs over each
+            // other, and the deviation test above already keeps the chord
+            // within 2mm of the real road.
+            if (!banded && Math.hypot(win[win.length - 1][0] - win[0][0],
+                                      win[win.length - 1][1] - win[0][1]) < plainTextLen) continue;
+            if (!isFree(win[0], win[win.length - 1], halfW)) continue;
+            slot = win;
+          }
+          if (!slot) continue;
+          reserve(slot[0], slot[slot.length - 1], halfW);
+          placed++;
+
+          let pts = banded ? slot : [slot[0], slot[slot.length - 1]];
+          if (pts[0][0] > pts[pts.length - 1][0]) pts = [...pts].reverse();
+          const id = `rd${rid++}`;
+          const d2 = pts.map((p, i2) => `${i2 === 0 ? 'M' : 'L'}${p[0].toFixed(2)},${p[1].toFixed(2)}`).join('');
+          roadDefs.push(`<path id="${id}" d="${d2}" fill="none"/>`);
+          const arrow = banded ? arrowAlong(pts, slotLen) : null;
+          if (arrow) {
+            roadArrows.push(arrow.svg);
+            // Rotated text centered on the band. textLength+lengthAdjust gives an
+            // exact tracked width — Chromium mis-centers letter-spaced text
+            // (anchor uses the unspaced width), so avoid letter-spacing here.
+            let ta = arrow.angDeg;
+            if (ta > 90) ta -= 180;
+            if (ta < -90) ta += 180;
+            roadTexts.push(`<text transform="translate(${arrow.cx.toFixed(1)},${arrow.cy.toFixed(1)}) rotate(${ta.toFixed(1)})"
+              x="${(-arrowedTextLen / 2).toFixed(1)}" y="1.65" textLength="${arrowedTextLen.toFixed(1)}" lengthAdjust="spacing"
+              font-size="${T.street}" font-weight="700" fill="${tpl().ink}">${esc(label)}</text>`);
+          } else {
+            // Lane, path, or a street too short to band: plain bold label along
+            // the line, same size as the rest of the map text, no halo.
+            roadTexts.push(`<text font-size="${T.street}" font-weight="700" letter-spacing="0.4" dy="-1.4" fill="${tpl().ink}">
+              <textPath href="#${id}" startOffset="50%" text-anchor="middle">${esc(label)}</textPath></text>`);
+          }
         }
-        if (!slot) continue;
-        reserve(slot[0], slot[slot.length - 1], halfW);
-        placed++;
-
-        let pts = [slot[0], slot[slot.length - 1]];
-        if (pts[0][0] > pts[1][0]) pts = [...pts].reverse();
-        const id = `rd${rid++}`;
-        const d2 = pts.map((p, i2) => `${i2 === 0 ? 'M' : 'L'}${p[0].toFixed(2)},${p[1].toFixed(2)}`).join('');
-        roadDefs.push(`<path id="${id}" d="${d2}" fill="none"/>`);
-        roadTexts.push(`<text font-family="${tpl().streetFont}" font-size="${T.street}" font-weight="700" letter-spacing="0.4" dy="${streetDy}" fill="${tpl().streetInk}">
-          <textPath href="#${id}" startOffset="50%" text-anchor="middle">${esc(label)}</textPath></text>`);
       }
     }
+    layers.push(`<defs>${roadDefs.join('')}</defs>`);
+    layers.push(roadArrows.join('\n'));
+    layers.push(roadTexts.join('\n'));
+  } else {
+    // ---- street labels: repeat along long roads like the original ----------
+    // Names sit plainly on the white street, no arrow band: the band was the
+    // office's old device and it crowded the sheet. Through streets and lanes
+    // are set the same way; the width of the white strip already says which
+    // is which.
+    const roadByName = new Map<string, { segs: Pt[][]; hierarchy: number }>();
+    for (const road of bundle.roads) {
+      const pts = road.coords.map(([lon, lat]) => proj(lon, lat))
+        .filter(([x, y]) => x > -60 && x < MAP_W + 60 && y > -60 && y < MAP_H + 60);
+      if (pts.length < 2) continue;
+      const entry = roadByName.get(road.name) ?? { segs: [], hierarchy: road.hierarchy };
+      entry.segs.push(pts);
+      // Most important classification wins.
+      entry.hierarchy = Math.min(entry.hierarchy, road.hierarchy);
+      roadByName.set(road.name, entry);
+    }
+    let rid = 0;
+    const roadDefs: string[] = [];
+    const roadTexts: string[] = [];
+    interface Run { pts: Pt[]; cum: number[]; len: number }
+    // Important roads label first, so when two names compete for the same
+    // corner the arterial keeps its place and the side street moves along.
+    const roadOrder = [...roadByName].sort((a, b) => a[1].hierarchy - b[1].hierarchy);
+    // The name is centred on the street's own line: a cap height of about
+    // 0.72 em lifted by half of that puts the letters' middle on the path.
+    const streetDy = (T.street * 0.36).toFixed(2);
+    for (const [name, r] of roadOrder) {
+      const label = shortStreetName(name);
+      // Must be an over-estimate: a name wider than the path it is set on has
+      // its overflowing glyphs clamped onto the ends and they pile up. The
+      // narrow face runs about four fifths the width of the grotesk.
+      const textLen = label.length * (T.street * 0.58 + 0.4) + 3;
+      const slack = 6;   // spare road either side of the name
+      const slotLen = textLen + slack;
+
+      const runs: Run[] = mergeRuns(r.segs)
+        .map((pts) => { const cum = arcTable(pts); return { pts, cum, len: cum[cum.length - 1] }; })
+        .sort((a, b) => b.len - a.len);
+      if (!runs.length) continue;
+
+      // Half the height of what this name will occupy.
+      const halfW = T.street * 0.62;
+
+      // Repeat the name along a long street rather than labelling it once.
+      let placed = 0;
+      for (const run of runs) {
+        if (placed >= 3 || run.len < slotLen) break;
+        const n = Math.min(3 - placed, Math.max(1, Math.floor(run.len / 210)));
+        for (let i = 0; i < n; i++) {
+          const s = ((i + 0.5) / n) * run.len;
+          // Slide the name along its road until it sits inside the map, on
+          // straight-enough geometry, and on ground no earlier label has taken.
+          // A street name that cannot find clear road is dropped rather than
+          // overprinted — searching outward from the ideal spot keeps it as
+          // close to its share of the road as the sheet allows.
+          let slot: Pt[] | null = null;
+          for (let k = 0; k <= 16 && !slot; k++) {
+            const d = (k % 2 ? -1 : 1) * Math.ceil(k / 2) * 0.3;
+            const c = s + d * slotLen;
+            if (c - slotLen / 2 < 0 || c + slotLen / 2 > run.len) continue;
+            const win = sliceAt(run.pts, run.cum, c - slotLen / 2, c + slotLen / 2);
+            const m = halfW + 2;
+            if (win.some(([x, y]) => x < m || x > MAP_W - m || y < m || y > MAP_H - m)) continue;
+            if (!straightEnough(win, 2.2)) continue;
+            // The name is set on the slot's chord, not on the road's own
+            // vertices: a 2mm dog-leg where two road sections join turns the
+            // path tangent through 90 degrees and shuffles the glyphs over each
+            // other, and the deviation test above already keeps the chord
+            // within 2mm of the real road.
+            if (Math.hypot(win[win.length - 1][0] - win[0][0],
+                           win[win.length - 1][1] - win[0][1]) < textLen) continue;
+            if (!isFree(win[0], win[win.length - 1], halfW)) continue;
+            slot = win;
+          }
+          if (!slot) continue;
+          reserve(slot[0], slot[slot.length - 1], halfW);
+          placed++;
+
+          let pts = [slot[0], slot[slot.length - 1]];
+          if (pts[0][0] > pts[1][0]) pts = [...pts].reverse();
+          const id = `rd${rid++}`;
+          const d2 = pts.map((p, i2) => `${i2 === 0 ? 'M' : 'L'}${p[0].toFixed(2)},${p[1].toFixed(2)}`).join('');
+          roadDefs.push(`<path id="${id}" d="${d2}" fill="none"/>`);
+          roadTexts.push(`<text font-family="${tpl().streetFont}" font-size="${T.street}" font-weight="700" letter-spacing="0.4" dy="${streetDy}" fill="${tpl().streetInk}">
+            <textPath href="#${id}" startOffset="50%" text-anchor="middle">${esc(label)}</textPath></text>`);
+        }
+      }
+    }
+    layers.push(`<defs>${roadDefs.join('')}</defs>`);
+    layers.push(roadTexts.join('\n'));
   }
-  layers.push(`<defs>${roadDefs.join('')}</defs>`);
-  layers.push(roadTexts.join('\n'));
 
   // ---- legend (title column, measured geometry) ---------------------------
   const hobByCat = computeHobByCat(bundle);
@@ -1062,6 +1240,9 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   legendRow(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${tpl().transit}" ${busLineStyle} stroke-linecap="round"/>`, ['BUS ROUTE']);
   const legendIso = (color: string) => dottedIso
     ? `<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${color}" ${ISO_DOTS} opacity="0.85"/>`
+    : walkerIso
+    ? `<g><line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${color}" stroke-width="1.1" stroke-dasharray="3.6,2.2"/>
+       <g transform="translate(${symC},3.2)"><circle r="3.3" fill="#fff" stroke="${color}" stroke-width="0.9"/>${walkerGlyph(color, 0.24)}</g></g>`
     : lineIso
     ? `<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${color}" stroke-width="1.2"/>`
     : `<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${color}" stroke-width="${ISO_W}" opacity="${ISO_OPACITY}" stroke-linecap="round"/>`;

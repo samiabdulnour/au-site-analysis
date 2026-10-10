@@ -36,6 +36,7 @@ const STYLES = [
   ['flamingo-aerial', 'flamingo aerial', '/samples/context-flamingo-aerial.jpg', 'Flamingo aerial — the tints thinned over the photograph, buildings outlined'],
   ['redfern-white',   'redfern',         '/samples/context-redfern-white.jpg',   'Redfern — the deck\'s palette on paper, every building white'],
   ['redfern-aerial',  'redfern aerial',  '/samples/context-redfern-aerial.jpg',  'Redfern aerial — the deck\'s palette over the photograph, buildings outlined'],
+  ['heron',           'heron',           '/samples/context-heron.jpg',           'Heron — the office sheet over the aerial: arrow-banded streets, numbered places'],
 ];
 const NORTH = [
   ['north', 'up',    '/samples/site.jpg',       'north up — the sheet is oriented to north'],

@@ -6,7 +6,10 @@
 // renderers. What a sheet SAYS (which data, which labels, the A1 geometry)
 // is deliberately not part of a template.
 //
-// Two palettes, each in two versions. Flamingo is the paper-and-tints style
+// Heron is the office sheet the restyle started from — the first palette over
+// the aerial, white arrow bands on the street names, dashed catchments with
+// the walker — with Flamingo's stop symbols, red dotted railway and numbered
+// places. Before it, two palettes, each in two versions. Flamingo is the paper-and-tints style
 // the context sheet was redrawn in (four hue families with textures, white
 // streets, numbered places, narrow green street names). Redfern takes the
 // palette and legend of the Redfern deck (five hue rows of three tints with
@@ -68,8 +71,8 @@ export interface Template {
   busRoute: string;   // bus route dashes
   heritage: string;   // heritage hatch
 
-  /** The walking catchments: a broad translucent band, a plain continuous line, or a dotted line with its walking time written along it. */
-  isochrone: 'band' | 'line' | 'dotted';
+  /** The walking catchments: a broad translucent band, a plain continuous line, a dotted line with its walking time written along it, or the office's dashed line with walker medallions on it. */
+  isochrone: 'band' | 'line' | 'dotted' | 'walkers';
   /** The stop and station roundels: a white disc with a coloured ring, or a solid coloured disc with a white letter. */
   roundel: 'ring' | 'solid';
   /** The bus routes: a dashed line, or a dotted one at reduced opacity that stays behind the tints. */
@@ -78,8 +81,15 @@ export interface Template {
   railLine: 'sleepers' | 'dotted';
   /** What the map sits on: plain white paper, or the aerial under a white veil with the tints thinned so it shows through. */
   ground: 'paper' | 'aerial';
-  /** The building footprints: white with a hairline of the family ink, or no fill and only a light outline (for the aerial, where the photograph shows the roofs). */
-  footprints: 'white' | 'outline';
+  /** The building footprints: white with a hairline of the family ink, no fill and only a light outline (for the aerial, where the photograph shows the roofs), or not drawn. */
+  footprints: 'white' | 'outline' | 'none';
+  /** Over the aerial: the white veil's opacity (default 0.3) and how far the tints are thinned (default 0.55). */
+  veil?: number;
+  tintScale?: number;
+  /** The road network as white strips over the tints, or not drawn (the aerial shows the streets). */
+  streets?: 'white' | 'none';
+  /** Street names plain along the road, or a through street's name in a white double-headed arrow band (lanes stay plain). */
+  streetLabels?: 'plain' | 'band';
 
   /** Land-use fills for the context sheet legend. */
   categories: Category[];
@@ -163,6 +173,32 @@ const REDFERN_CATEGORIES: Category[] = [
   { id: 'heritage',       label: 'GENERAL HERITAGE SITE',                    fill: R_BROWN, opacity: 0.6 },
 ];
 
+// Heron's palette, sampled from the legend of the office sheet it follows
+// (the swatch colours backed out of their opacity over white): tan mixed
+// use and centres, peach residential, mint open space, the institutions in
+// slate blues with dark outlines. Categories that sheet's legend did not show
+// are placed in the same warm families.
+const HERON_CATEGORIES: Category[] = [
+  { id: 'site',           label: 'SITE',                                     fill: '#cf4a2e', opacity: 0.5 },
+  { id: 'medical',        label: 'MEDICAL',                                  fill: '#ceddde', opacity: 0.55, stroke: '#4a5a63' },
+  { id: 'education',      label: 'EDUCATION',                                fill: '#b8d1d7', opacity: 0.55, stroke: '#3e5560' },
+  { id: 'childCare',      label: 'CHILD CARE / AGED CARE',                   fill: '#dfebee', opacity: 0.6, stroke: '#5f7480' },
+  { id: 'mixedUse',       label: 'MIXED USE CLUSTER RESIDENTIAL/COMMERCIAL', fill: '#e3c189', opacity: 0.5 },
+  { id: 'retail',         label: 'ACTIVE RETAIL',                            fill: '#ecd4ac', opacity: 0.5 },
+  { id: 'openSpace',      label: 'OPEN SPACE',                               fill: '#cae2cc', opacity: 0.55 },
+  { id: 'community',      label: 'COMMUNITY HUB',                            fill: '#d3e6e3', opacity: 0.55, stroke: '#7f9c98' },
+  { id: 'r2',             label: 'R2 LOW DENSITY RESIDENTIAL',               fill: '#f3ddd0', opacity: 0.5 },
+  { id: 'r3',             label: 'R3 MEDIUM DENSITY RESIDENTIAL',            fill: '#eccbb2', opacity: 0.5 },
+  { id: 'r4',             label: 'R4 HIGH DENSITY RESIDENTIAL',              fill: '#e2ae92', opacity: 0.5 },
+  { id: 'localCentre',    label: 'LOCAL CENTRE',                             fill: '#e5b885', opacity: 0.5 },
+  { id: 'commercial',     label: 'COMMERCIAL CENTRE',                        fill: '#daa66f', opacity: 0.5 },
+  { id: 'industrial',     label: 'GENERAL INDUSTRIAL',                       fill: '#d8d0c4', opacity: 0.5 },
+  { id: 'infrastructure', label: 'INFRASTRUCTURE FACILITY',                  fill: '#eee7da', opacity: 0.55, stroke: '#8a8078' },
+  { id: 'water',          label: 'WATERWAY',                                 fill: '#cbdae2', opacity: 0.6 },
+  { id: 'railway',        label: 'RAILWAY TRACKS',                           fill: '#ddd6cc', opacity: 0.7, stroke: '#8a8078' },
+  { id: 'heritage',       label: 'GENERAL HERITAGE SITE',                    fill: '#c2b39a', opacity: 0.5 },
+];
+
 type Palette = Omit<Template, 'id' | 'label' | 'note' | 'ground' | 'footprints'>;
 
 const FLAMINGO: Palette = {
@@ -228,6 +264,14 @@ export const TEMPLATES: Template[] = [
     ...FLAMINGO, ground: 'aerial', footprints: 'outline' },
   { id: 'redfern-white',   label: 'Redfern white',   note: 'the Redfern deck\'s palette on paper, every building white',
     ...REDFERN,  ground: 'paper',  footprints: 'white' },
+  { id: 'heron', label: 'Heron', note: 'the original office sheet over the aerial, with Flamingo\'s stops, red dotted railway and numbered places',
+    font: GROTESK, streetFont: GROTESK, textScale: 0.96,
+    ink: '#1c1c1c', streetInk: '#1c1c1c', rule: '#8a8a8a',
+    site: '#cf4a2e', dimension: '#3c4c5a', wind: '#6d8a99', sun: '#f0e4c0', road: '#7d7d7d', water: '#cbdae2',
+    transit: NAVY, rail: '#d43d33', walk5: '#1f7a4d', walk10: '#6aaf88', busRoute: '#7a8bb0', heritage: '#94836a',
+    isochrone: 'walkers', roundel: 'solid', busLine: 'dashed', railLine: 'dotted',
+    ground: 'aerial', veil: 0.36, tintScale: 1, footprints: 'none', streets: 'none', streetLabels: 'band',
+    categories: HERON_CATEGORIES },
   { id: 'redfern-aerial',  label: 'Redfern aerial',  note: 'the Redfern deck\'s palette thinned over the aerial, buildings as a light outline',
     ...REDFERN,  ground: 'aerial', footprints: 'outline' },
 ];

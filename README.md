@@ -59,8 +59,8 @@ To refresh the samples, generate the three sheets for the demo address and
 re-render them (the context scale thumbnails `context-2000.jpg`,
 `context-4000.jpg` and `context-5000.jpg` come from the same address at
 `--scale 2000`, `4000` and `5000`, and the STYLE row's
-`context-flamingo-aerial.jpg`, `context-redfern-white.jpg` and
-`context-redfern-aerial.jpg` from the matching `--template`, rendered the same
+`context-flamingo-aerial.jpg`, `context-redfern-white.jpg`,
+`context-redfern-aerial.jpg` and `context-heron.jpg` from the matching `--template`, rendered the same
 way):
 
 ```bash
@@ -463,7 +463,18 @@ colours and the land-use palette. Content is identical between templates; only
 the look changes. They live in `src/render/template.ts`, so a new house style is
 a data change.
 
-There are two palettes, each in two versions, so four templates.
+There are two palettes, each in two versions, and the office sheet they started
+from — five templates.
+
+**Heron** (`heron`) is the office sheet the restyle began from: the aerial
+under a light white veil with the tints at full strength over it (the palette
+sampled from that sheet's legend — tan mixed use and centres, peach
+residential, mint open space, the institutions in outlined slate blues), no
+building footprints and no white street strips, the through streets' names
+in white double-headed arrow bands, lanes named plainly, and the walking
+catchments as dashed green lines with walker medallions. From Flamingo it
+takes the solid stop roundels, the red dotted railway and the numbered
+places with their key, the discs in black.
 
 **Flamingo**: four tints, each a family — peach for the residential zones, sand
 for the centres, teal for open space and the institutions, blue for water, grey
@@ -513,8 +524,10 @@ from the map as well as the key. The aerial tiles are fetched whatever the
 template; the CAD export carries them on its own layer.
 
 What differs between templates beyond colour is declared on the template:
-`ground` (`paper` or `aerial`), `footprints` (`white` or `outline`),
-`isochrone` (`band`, `line` or `dotted`), `roundel` (`ring` or `solid`), `busLine`
+`ground` (`paper` or `aerial`, with `veil` and `tintScale` for the aerial), `footprints`
+(`white`, `outline` or `none`), `streets` (`white` or `none`), `streetLabels`
+(`plain` or `band`),
+`isochrone` (`band`, `line`, `dotted` or `walkers`), `roundel` (`ring` or `solid`), `busLine`
 (`dashed` or `dotted`), `railLine` (`sleepers` or `dotted`), `streetFont`
 and `streetInk`, and each category's `texture`, `textureColor` and `figure`
 (the hairline ink of a white footprint). The CLI takes `--template`; the web
@@ -535,7 +548,7 @@ comes out in the wrong face, so add the package to the `Dockerfile` first.
 
 Options (after `--`): `--type context|site|summary|slides|both`, `--scale 3000` (default 3000;
 the web picker offers 1:2000, 1:3000, 1:4000 and 1:5000, the server accepts 1000 to 6000),
-`--template flamingo-white|flamingo-aerial|redfern-white|redfern-aerial` (the graphic template, see Templates below),
+`--template flamingo-white|flamingo-aerial|redfern-white|redfern-aerial|heron` (the graphic template, see Templates below),
 `--slides-scale 8000` (the deck's map panels), `--da-years 5` (the deck's
 development window), `--job 2539`, `--client "Name"`,
 `--status "DEVELOPMENT APPLICATION"`, `--sheet "DA 003"`.
