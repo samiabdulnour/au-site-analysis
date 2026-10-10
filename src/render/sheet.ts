@@ -457,9 +457,15 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
       const c = cat ? catById()[cat] : undefined;
       const ink = c?.figure ?? c?.fill ?? tpl().road;
       const d = paths.map((p) => `<path d="${p}"/>`).join('');
-      // White buildings with a hairline of the family ink, so they read as
-      // figures on the tint and not as more of the white street.
-      layers.push(`<g fill="#ffffff" fill-opacity="0.92" stroke="${ink}" stroke-width="0.12" stroke-linejoin="round" fill-rule="evenodd">${d}</g>`);
+      if (tpl().footprints === 'colour') {
+        // The building in its family's strong colour on the family's pale
+        // ground; a building on no zone is a quiet grey.
+        layers.push(`<g fill="${c?.figure ?? '#d9d9d6'}" fill-rule="evenodd">${d}</g>`);
+      } else {
+        // White buildings with a hairline of the family ink, so they read as
+        // figures on the tint and not as more of the white street.
+        layers.push(`<g fill="#ffffff" fill-opacity="0.92" stroke="${ink}" stroke-width="0.12" stroke-linejoin="round" fill-rule="evenodd">${d}</g>`);
+      }
     }
   }
 
@@ -1186,10 +1192,15 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   };
   const swatchBox = { x: SWATCH_X, y: 0, w: SWATCH_W, h: 6.5 };
   const swatchD = `M${SWATCH_X},0h${SWATCH_W}v6.5h${-SWATCH_W}Z`;
-  const box = (c: { fill: string; opacity: number; stroke?: string; texture?: Texture; textureColor?: string }) =>
+  const box = (c: { fill: string; opacity: number; stroke?: string; texture?: Texture; textureColor?: string; figure?: string }) =>
     `<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="${c.fill}" fill-opacity="${Math.min(1, c.opacity + 0.15)}"
       stroke="${c.stroke ?? '#999'}" stroke-width="${c.stroke ? 0.9 : 0.2}"/>` +
-    (c.texture ? textureSvg(`ltx${tex++}`, swatchD, c.texture, c.textureColor ?? c.stroke ?? c.fill, swatchBox) : '');
+    (c.texture ? textureSvg(`ltx${tex++}`, swatchD, c.texture, c.textureColor ?? c.stroke ?? c.fill, swatchBox) : '') +
+    // With coloured buildings the swatch shows a few of them on their ground.
+    (tpl().footprints === 'colour' && c.figure && c.figure !== c.fill
+      ? `<g fill="${c.figure}">${[[1.4, 1.3, 4.2, 2.4], [1.4, 4.4, 4.2, 1.0], [6.8, 1.3, 3.0, 3.9], [11.2, 1.3, 4.8, 2.1], [11.2, 4.1, 2.6, 1.3], [17.4, 1.3, 4.2, 3.9]]
+        .map(([x, y, w, h]) => `<rect x="${(SWATCH_X + x).toFixed(1)}" y="${y}" width="${w}" height="${h}"/>`).join('')}</g>`
+      : '');
   for (const c of categories()) {
     if (!usedCats.has(c.id)) continue;
     if (c.id === 'railway') continue; // on the map, not in the legend

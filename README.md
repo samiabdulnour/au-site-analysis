@@ -58,8 +58,8 @@ either it reads KartaView alone. On the server they go in
 To refresh the samples, generate the three sheets for the demo address and
 re-render them (the context scale thumbnails `context-2000.jpg`,
 `context-4000.jpg` and `context-5000.jpg` come from the same address at
-`--scale 2000`, `4000` and `5000`, and the STYLE row's `context-heron.jpg`
-from `--template heron`, rendered the same way):
+`--scale 2000`, `4000` and `5000`, and the STYLE row's `context-flamingo-2.jpg`
+and `context-heron.jpg` from the matching `--template`, rendered the same way):
 
 ```bash
 npm run generate -- "1 Bay Street, Botany NSW 2019" --type both
@@ -461,7 +461,7 @@ colours and the land-use palette. Content is identical between templates; only
 the look changes. They live in `src/render/template.ts`, so a new house style is
 a data change.
 
-There are two: Flamingo, the default, and Heron.
+There are three: Flamingo, the default, Flamingo 2 and Heron.
 
 **Flamingo** (`flamingo`) sits on plain paper. Four tints, each a family —
 peach for the residential zones, sand for the centres, teal for open space and
@@ -480,6 +480,17 @@ letter, the bus routes a faint dotted line, the railway a red dotted line, and
 the walking catchments green dotted lines with "5 MIN" and "10 MIN" written
 along them, twice per ring, on clear straight stretches.
 
+**Flamingo 2** (`flamingo-2`) is Flamingo in the palette of a masterplan
+reference, sampled from it: every zone a pale ground with its buildings filled
+in the family's strong colour (`footprints: 'colour'`) — cyan, mint and blue for
+the three residential tiers, yellow ground with orange buildings for the
+centres and mixed use, pink for the commercial centres, coral for retail,
+lavender for the institutions, grey on stone for industry — open space the deep
+mint with black dots, water the bright cyan, the site and heritage in magenta
+and purple, the railway orange. The legend swatch shows a few buildings on
+their ground. Streets, labels, numbered places and the dotted lines are
+Flamingo's.
+
 **Heron** (`heron`) is the office sheet the restyle began from: the aerial
 under a light white veil with the tints at full strength over it (the palette
 sampled from that sheet's legend — tan mixed use and centres, peach
@@ -495,7 +506,7 @@ The retired ids still resolve: `flamingo-white` to Flamingo, and
 `flamingo-aerial`, `redfern-white` and `redfern-aerial`, like any unknown id,
 to the default.
 
-Common to both: the only words on the map are the street names. Every
+Common to all: the only words on the map are the street names. Every
 institution and park carries a number instead, a solid disc with the number
 knocked out, and the legend carries the key: the institutions in the legend's
 category order, then the open spaces, then the stations under their roundel
@@ -507,7 +518,7 @@ carries them on its own layer.
 
 What differs between templates beyond colour is declared on the template:
 `ground` (`paper` or `aerial`, with `veil` and `tintScale` for the aerial), `footprints`
-(`white` or `none`), `streets` (`white` or `none`), `streetLabels`
+(`white`, `colour` or `none`), `streets` (`white` or `none`), `streetLabels`
 (`plain` or `band`),
 `isochrone` (`band`, `line`, `dotted` or `walkers`), `roundel` (`ring` or `solid`), `busLine`
 (`dashed` or `dotted`), `railLine` (`sleepers` or `dotted`), `streetFont`
@@ -530,7 +541,7 @@ comes out in the wrong face, so add the package to the `Dockerfile` first.
 
 Options (after `--`): `--type context|site|summary|slides|both`, `--scale 3000` (default 3000;
 the web picker offers 1:2000, 1:3000, 1:4000 and 1:5000, the server accepts 1000 to 6000),
-`--template flamingo|heron` (the graphic template, see Templates below),
+`--template flamingo|flamingo-2|heron` (the graphic template, see Templates below),
 `--slides-scale 8000` (the deck's map panels), `--da-years 5` (the deck's
 development window), `--job 2539`, `--client "Name"`,
 `--status "DEVELOPMENT APPLICATION"`, `--sheet "DA 003"`.

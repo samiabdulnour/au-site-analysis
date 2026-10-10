@@ -33,6 +33,7 @@ const SCALES = {
 // The graphic templates the server knows; an unknown one falls back to the default.
 const STYLES = [
   ['flamingo', 'flamingo', '/samples/context.jpg',       'Flamingo — four tints on paper, every building white'],
+  ['flamingo-2', 'flamingo 2', '/samples/context-flamingo-2.jpg', 'Flamingo 2 — the masterplan palette: pale grounds, buildings in each zone\'s colour'],
   ['heron',    'heron',    '/samples/context-heron.jpg', 'Heron — the office sheet over the aerial: black street names, numbered places'],
 ];
 const NORTH = [

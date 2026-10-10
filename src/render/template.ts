@@ -6,10 +6,12 @@
 // renderers. What a sheet SAYS (which data, which labels, the A1 geometry)
 // is deliberately not part of a template.
 //
-// Two templates. Flamingo is the paper-and-tints style the context sheet was
+// Three templates. Flamingo is the paper-and-tints style the context sheet was
 // redrawn in: four hue families with textures, white streets, every building
 // white, numbered places, narrow green street names, dotted catchments, bus
-// routes and railway. Heron is the office sheet the restyle started from —
+// routes and railway. Flamingo 2 is Flamingo in a masterplan reference's
+// palette, every building filled in its zone's strong colour on a pale
+// ground. Heron is the office sheet the restyle started from —
 // its palette over the aerial, plain black street names, dashed catchments
 // with the walker — with Flamingo's stop symbols, red dotted railway and
 // numbered places.
@@ -77,7 +79,7 @@ export interface Template {
   /** What the map sits on: plain white paper, or the aerial under a white veil with the tints thinned so it shows through. */
   ground: 'paper' | 'aerial';
   /** The building footprints: white with a hairline of the family ink, no fill and only a light outline (for the aerial, where the photograph shows the roofs), or not drawn. */
-  footprints: 'white' | 'none';
+  footprints: 'white' | 'colour' | 'none';
   /** Over the aerial: the white veil's opacity (default 0.3) and how far the tints are thinned (default 0.55). */
   veil?: number;
   tintScale?: number;
@@ -141,6 +143,47 @@ const GROTESK = "'DejaVu Sans', Verdana, 'Liberation Sans', sans-serif";
 // use and centres, peach residential, mint open space, the institutions in
 // slate blues with dark outlines. Categories that sheet's legend did not show
 // are placed in the same warm families.
+// Flamingo 2's palette, sampled from the masterplan reference it follows
+// (each family's building colour and the pale ground it stands on, as the
+// image prints them). Every zone is a pale ground with its buildings in the
+// family's strong colour: cyan, mint and blue for the three residential
+// tiers, yellow and orange for the centres, pink for the commercial centres,
+// coral for retail, lavender for the institutions, grey on stone for
+// industry; open space is the deep mint with black dots, water the bright
+// cyan, heritage a purple cross-hatch.
+const F2 = {
+  pink: '#fdcae9', pinkGround: '#faecf4',
+  coral: '#fcbbab', coralGround: '#f8eae6',
+  orange: '#fabd90', orangeGround: '#fbe6d6', yellowGround: '#faf5c8',
+  mint: '#8dceb1', mintGround: '#e3f3ee',
+  cyan: '#a4dbe2', cyanGround: '#e5f7fa',
+  blue: '#7490bf', blueGround: '#e6eef8',
+  violet: '#b4aede', violetGround: '#e8e6f5',
+  grey: '#c4c5c1', stoneGround: '#e8e8d8',
+  water: '#81e0f9', magenta: '#c2367c', purple: '#753583', dots: '#1c1c1c',
+};
+
+const FLAMINGO2_CATEGORIES: Category[] = [
+  { id: 'site',           label: 'SITE',                                     fill: F2.magenta, opacity: 0.3 },
+  { id: 'medical',        label: 'MEDICAL',                                  fill: F2.violetGround, opacity: 1, stroke: F2.violet, figure: F2.violet },
+  { id: 'education',      label: 'EDUCATION',                                fill: F2.violetGround, opacity: 1, texture: 'lines', textureColor: F2.violet, figure: F2.violet },
+  { id: 'childCare',      label: 'CHILD CARE / AGED CARE',                   fill: F2.violetGround, opacity: 1, texture: 'dots', textureColor: F2.violet, figure: F2.violet },
+  { id: 'mixedUse',       label: 'MIXED USE CLUSTER RESIDENTIAL/COMMERCIAL', fill: F2.yellowGround, opacity: 1, texture: 'dots', textureColor: F2.orange, figure: F2.orange },
+  { id: 'retail',         label: 'ACTIVE RETAIL',                            fill: F2.coralGround, opacity: 1, figure: F2.coral },
+  { id: 'openSpace',      label: 'OPEN SPACE',                               fill: F2.mint, opacity: 1, texture: 'dots', textureColor: F2.dots, figure: F2.mint },
+  { id: 'community',      label: 'COMMUNITY HUB',                            fill: F2.violetGround, opacity: 1, texture: 'cross', textureColor: F2.violet, figure: F2.violet },
+  { id: 'r2',             label: 'R2 LOW DENSITY RESIDENTIAL',               fill: F2.cyanGround, opacity: 1, figure: F2.cyan },
+  { id: 'r3',             label: 'R3 MEDIUM DENSITY RESIDENTIAL',            fill: F2.mintGround, opacity: 1, figure: F2.mint },
+  { id: 'r4',             label: 'R4 HIGH DENSITY RESIDENTIAL',              fill: F2.blueGround, opacity: 1, figure: F2.blue },
+  { id: 'localCentre',    label: 'LOCAL CENTRE',                             fill: F2.yellowGround, opacity: 1, figure: F2.orange },
+  { id: 'commercial',     label: 'COMMERCIAL CENTRE',                        fill: F2.pinkGround, opacity: 1, figure: F2.pink },
+  { id: 'industrial',     label: 'GENERAL INDUSTRIAL',                       fill: F2.stoneGround, opacity: 1, figure: F2.grey },
+  { id: 'infrastructure', label: 'INFRASTRUCTURE FACILITY',                  fill: F2.stoneGround, opacity: 0.6, stroke: F2.grey, figure: F2.grey },
+  { id: 'water',          label: 'WATERWAY',                                 fill: F2.water, opacity: 1 },
+  { id: 'railway',        label: 'RAILWAY TRACKS',                           fill: F2.stoneGround, opacity: 0.8, figure: F2.grey },
+  { id: 'heritage',       label: 'GENERAL HERITAGE SITE',                    fill: F2.purple, opacity: 0.55 },
+];
+
 const HERON_CATEGORIES: Category[] = [
   { id: 'site',           label: 'SITE',                                     fill: '#cf4a2e', opacity: 0.5 },
   { id: 'medical',        label: 'MEDICAL',                                  fill: '#ceddde', opacity: 0.55, stroke: '#4a5a63' },
@@ -176,6 +219,14 @@ export const TEMPLATES: Template[] = [
     isochrone: 'dotted', roundel: 'solid', busLine: 'dotted', railLine: 'dotted',
     ground: 'paper', footprints: 'white',
     categories: FLAMINGO_CATEGORIES },
+  { id: 'flamingo-2', label: 'Flamingo 2', note: 'the masterplan palette: pale zone grounds with the buildings in each family\'s strong colour',
+    font: GROTESK, streetFont: NARROW, textScale: 0.96,
+    ink: '#1c1c1c', streetInk: '#2f5f52', rule: '#8a8a8a',
+    site: F2.magenta, dimension: '#56616b', wind: '#87959d', sun: '#efe8d4', road: F2.grey, water: F2.water,
+    transit: '#365696', rail: '#e8835e', walk5: '#1f8a5a', walk10: '#6fb88c', busRoute: '#5b8fd6', heritage: F2.purple,
+    isochrone: 'dotted', roundel: 'solid', busLine: 'dotted', railLine: 'dotted',
+    ground: 'paper', footprints: 'colour',
+    categories: FLAMINGO2_CATEGORIES },
   { id: 'heron', label: 'Heron', note: 'the original office sheet over the aerial, with Flamingo\'s stops, red dotted railway and numbered places',
     font: GROTESK, streetFont: GROTESK, textScale: 0.96,
     ink: '#1c1c1c', streetInk: '#1c1c1c', rule: '#8a8a8a',
