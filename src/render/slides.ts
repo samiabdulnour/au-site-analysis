@@ -71,7 +71,13 @@ const LEGEND_ROWS = 5;
 const HALF_LEGEND_H = 26, HALF_LEGEND_ROWS = 7;
 const FOOT_Y = SLIDE_H - 10;              // the per-page footer line
 
-export interface Slide { id: string; title: string; subtitle: string; textHtml: string; figureHtml: string }
+export interface Slide {
+  id: string; title: string; subtitle: string; textHtml: string; figureHtml: string;
+  /** The figure page is one borderless map to the sheet's edges: no right-page chrome, no fold ticks. */
+  bleed?: boolean;
+  /** Where the narrative column starts, when a figure sits above it on the left page. */
+  textY?: number;
+}
 
 // ---- shared bits ------------------------------------------------------------
 
@@ -481,9 +487,8 @@ export function locationSlide(b: SlidesBundle): Slide {
   const loc = b.location;
   const f = locationFacts(b);
   const sentences = locationSentences(b, f);
-  const textHtml = sentences.map(para).join('') +
-    placeholder('Narrative — for the author: the wider context in four paragraphs — the region and its plan, the corridors and centres the site relates to, the transport that serves it, and the character of the surrounds the location map does not show.') +
-    `<div class="fine">Sources: NSW Spatial Services administrative boundaries (the local government areas as the land, their unincorporated water left blue; the suburbs for their names), water theme (bays, harbours, rivers), transport theme (railways; roads of function hierarchy 1 to 3) and the transport facilities layer (stations), all generalised for the scale; the centres from The Sydney Plan (2026) and the NSW Centres Framework, transcribed with a point for each; distances are straight lines from the site's geocoded point, the CBD at Sydney Town Hall. Retrieved ${b.generatedAt.slice(0, 10)}.</div>`;
+  void sentences;
+  const textHtml = `<div class="fine">Sources: NSW Spatial Services administrative boundaries, water, transport and transport-facility themes, generalised for the scale; the centres from The Sydney Plan (2026) and the NSW Centres Framework; distances are straight lines from the site's geocoded point, the CBD at Sydney Town Hall. The location narrative is in the deck's JSON. Retrieved ${b.generatedAt.slice(0, 10)}.</div>`;
 
   // ---- the map
   const p = loc.panel;
@@ -581,13 +586,12 @@ export function locationSlide(b: SlidesBundle): Slide {
   parts.push(...suburbLabels, ...stationDots, ...stationNames, ...centreMarks);
   parts.push(`<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="2.2" fill="${t.site}" stroke="#ffffff" stroke-width="0.6"/><text x="${(sx + 3.2).toFixed(1)}" y="${(sy + 0.9).toFixed(1)}" font-size="2.6" font-weight="700" fill="${t.site}" stroke="#ffffff" stroke-width="0.5" paint-order="stroke">SITE</text>`);
   legend.unshift({ swatch: `<circle cx="2.5" cy="1.9" r="1.6" fill="${t.site}" stroke="#ffffff" stroke-width="0.4"/>`, label: 'The site' });
-  parts.push(panelFurniture(p, 'left'));
+  parts.push(panelFurniture(p, 'right'));
   const mapSvg = `<svg width="${p.wMm}mm" height="${p.hMm}mm" viewBox="0 0 ${p.wMm} ${p.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
     <defs><clipPath id="clip-location"><rect x="0" y="0" width="${p.wMm}" height="${p.hMm}"/></clipPath></defs>
     <g clip-path="url(#clip-location)" font-family="${t.font}">${parts.join('\n')}</g>
-    <rect x="0.1" y="0.1" width="${p.wMm - 0.2}" height="${p.hMm - 0.2}" fill="none" stroke="${t.rule}" stroke-width="0.2"/>
   </svg>`;
-  const leg = legendSvg(legend, FIELD_W, Math.ceil(legend.length / 2), 2.05);
+  const leg = legendSvg(legend, L_W, Math.ceil(legend.length / 2), 2.05);
 
   // ---- the figures and the table
   const km = (m: number) => (m >= 950 ? `${(m / 1000).toFixed(m >= 10_000 ? 0 : 1)} km` : `${fmtNum(Math.round(m / 10) * 10)} m`);
@@ -600,16 +604,16 @@ export function locationSlide(b: SlidesBundle): Slide {
   ].map((tl) => `<div class="tile"><div class="tv${tl.v.length > 9 ? ' long' : ''}">${esc(tl.v)}</div><div class="tl">${esc(tl.l)}</div></div>`).join('');
   const rows = f.centres.map((c) => `<tr><td><b>${esc(c.name)}</b></td><td>${esc(c.kindWord)}</td><td class="r">${km(c.distanceM)}</td><td>${esc(compassWord(c.bearing))}</td></tr>`).join('');
   const table = `<table class="da cons"><thead><tr><th>Centre of The Sydney Plan</th><th>Type</th><th class="r">Distance</th><th>Direction</th></tr></thead><tbody>${rows}</tbody></table>`;
-  const legendTop = FIELD_Y + PANEL_TITLE_H + p.hMm + 1.5;
-  const belowY = legendTop + leg.heightMm + 3;
-  const belowH = SLIDE_H - 12 - belowY;
-  const figure = `<div class="abs ptitle" style="left:${FIELD_X}mm;top:${FIELD_Y}mm;width:${FIELD_W}mm">Location<span class="pnote">1:${fmtNum(p.scale)} · ${f.widthKm} × ${f.heightKm} km · the site in its region, with the plan's centres and the stations</span></div>
-    <div class="abs" style="left:${FIELD_X}mm;top:${FIELD_Y + PANEL_TITLE_H}mm">${mapSvg}</div>
-    <svg class="abs" style="left:${FIELD_X}mm;top:${legendTop}mm" width="${FIELD_W}mm" height="${leg.heightMm}mm" viewBox="0 0 ${FIELD_W} ${leg.heightMm}" xmlns="http://www.w3.org/2000/svg">${leg.svg}</svg>
-    <div class="abs" style="left:${FIELD_X}mm;top:${belowY}mm;width:${FIELD_W}mm;height:${belowH}mm;overflow:hidden">${table}</div>
-    <div class="abs tiles col" style="left:${AUX_X}mm;top:${FIELD_Y}mm;width:${AUX_W}mm">${tiles}</div>`;
+  const tableY = FIELD_Y + 62;
+  const legendY = SLIDE_H - 56;
+  const figure = `<div class="abs" style="left:${FOLD}mm;top:0">${mapSvg}</div>
+    <div class="abs maplabel" style="left:${FOLD + 8}mm;top:8mm">The region<span class="pnote">1:${fmtNum(p.scale)} · ${f.widthKm} × ${f.heightKm} km · the plan's centres and the stations</span></div>
+    <div class="abs tiles two statrows" style="left:${L_X}mm;top:${FIELD_Y}mm;width:${L_W}mm">${tiles}</div>
+    <div class="abs ptitle sm" style="left:${L_X}mm;top:${tableY}mm;width:${L_W}mm">Centres of The Sydney Plan<span class="pnote">nearest first</span></div>
+    <div class="abs" style="left:${L_X}mm;top:${tableY + PANEL_TITLE_H}mm;width:${L_W}mm;height:${legendY - tableY - PANEL_TITLE_H - 4}mm;overflow:hidden">${table}</div>
+    <svg class="abs" style="left:${L_X}mm;top:${legendY}mm" width="${L_W}mm" height="${leg.heightMm}mm" viewBox="0 0 ${L_W} ${leg.heightMm}" xmlns="http://www.w3.org/2000/svg">${leg.svg}</svg>`;
   const sub = [b.siteAddress, f.lga ? f.lga.name : '', `${km(f.cbd.distanceM)} from the Sydney CBD`, near ? `${near.name} ${km(near.distanceM)}` : ''].filter(Boolean).join(' · ');
-  return { id: '01_location', title: 'Location', subtitle: sub, textHtml, figureHtml: figure };
+  return { id: '01_location', title: 'Location', subtitle: sub, textHtml, figureHtml: figure, bleed: true, textY: SLIDE_H - 40 };
 }
 
 // ---- slide 02: character ----------------------------------------------------------
@@ -2336,13 +2340,12 @@ export function movementSlide(b: SlidesBundle): Slide {
   const t = tpl();
   const mv = b.movement;
   const sentences = movementSentences(b, f);
-  const textHtml = sentences.map(para).join('') +
-    placeholder('Narrative — for the author: how people will arrive and leave (rail, bus, bike, on foot, by car), which frontage is the address and which is the service side, where the active edge belongs, and what the walking catchments say about the mix.') +
+  const textHtml = sentences.slice(0, 3).map(para).join('') +
     `<div class="fine">Sources: NSW Spatial Services roads (function hierarchy), rail and stations; walking isochrones from Valhalla on OpenStreetMap; bus stops from ${f.bus.source === 'tfnsw' ? 'Transport for NSW' : f.bus.source === 'osm' ? 'OpenStreetMap' : 'Transport for NSW or OpenStreetMap (neither answered)'}; bus routes, cycleways, footways and one-way streets from OpenStreetMap contributors (ODbL); active street frontages from the ePlanning development-control layers. Retrieved ${b.generatedAt.slice(0, 10)}.</div>`;
   const sub = [b.siteAddress, f.stations[0] ? `${f.stations[0].name} ${fmtNum(f.stations[0].distanceM)} m` : '', f.frontage.length ? `fronts ${f.frontage.slice(0, 2).map((r) => r.name).join(' and ')}${f.frontage.length > 2 ? ` and ${f.frontage.length - 2} more` : ''}` : ''].filter(Boolean).join(' · ');
 
-  // The movement map over the tall panel.
-  const p = b.daPanel;
+  // The movement map bleeds over the whole figure page.
+  const p = b.bleedPanel;
   const proj = panelProjector(p);
   const parts: string[] = [baseLayers(b.base, proj, p)];
   for (const iso of [...mv.isochrones].sort((x, y) => y.minutes - x.minutes)) {
@@ -2368,7 +2371,6 @@ export function movementSlide(b: SlidesBundle): Slide {
   const mapSvg = `<svg width="${p.wMm}mm" height="${p.hMm}mm" viewBox="0 0 ${p.wMm} ${p.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
     <defs><clipPath id="clip-move"><rect x="0" y="0" width="${p.wMm}" height="${p.hMm}"/></clipPath></defs>
     <g clip-path="url(#clip-move)" font-family="${t.font}">${parts.join('\n')}</g>
-    <rect x="0.1" y="0.1" width="${p.wMm - 0.2}" height="${p.hMm - 0.2}" fill="none" stroke="${t.rule}" stroke-width="0.2"/>
   </svg>`;
 
   // Right: figures, legend, stations table.
@@ -2415,18 +2417,19 @@ export function movementSlide(b: SlidesBundle): Slide {
     <rect x="0.1" y="0.1" width="${wp.wMm - 0.2}" height="${wp.hMm - 0.2}" fill="none" stroke="${t.rule}" stroke-width="0.2"/>
   </svg>`;
 
-  const yTable = FIELD_Y + PANEL_TITLE_H + 34 + legendRows.length * 3.8 + 4;
-  const yWide = FIELD_Y + PANEL_TITLE_H + DA_PANEL_H + GUTTER;
+  const yStrip = FIELD_Y;
+  const yLower = yStrip + PANEL_TITLE_H + wp.hMm + 7;
+  const yTable = yLower + 32 + legendRows.length * 3.8 + 5;
   const figureHtml = `
-    <div class="abs ptitle" style="left:${FIELD_X}mm;top:${FIELD_Y}mm;width:${PANEL_W}mm">Movement<span class="pnote">1:${fmtNum(p.scale)}</span></div>
-    <div class="abs" style="left:${FIELD_X}mm;top:${FIELD_Y + PANEL_TITLE_H}mm">${mapSvg}</div>
-    <div class="abs tiles two" style="left:${rightX}mm;top:${FIELD_Y + PANEL_TITLE_H}mm;width:${rightW}mm">${tiles}</div>
-    <div class="abs legend" style="left:${rightX}mm;top:${FIELD_Y + PANEL_TITLE_H + 30}mm;width:${rightW}mm">${legend}</div>
-    <div class="abs ptitle" style="left:${rightX}mm;top:${yTable}mm;width:${rightW}mm">Stations<span class="pnote">nearest first, from the wide window</span></div>
-    <div class="abs" style="left:${rightX}mm;top:${yTable + PANEL_TITLE_H}mm;width:${rightW}mm">${stationTable}</div>
-    <div class="abs ptitle" style="left:${FIELD_X}mm;top:${yWide}mm;width:${FIELD_W}mm">Walking reach<span class="pnote">1:${fmtNum(wp.scale)} · 5, 10 and 15 minutes on foot from the site · the dashed box is the map above</span></div>
-    <div class="abs" style="left:${FIELD_X}mm;top:${yWide + PANEL_TITLE_H}mm">${wideSvg}</div>`;
-  return { id: '09_movement', title: 'Movement', subtitle: sub, textHtml, figureHtml };
+    <div class="abs" style="left:${FOLD}mm;top:0">${mapSvg}</div>
+    <div class="abs maplabel" style="left:${FOLD + 8}mm;top:8mm">Movement<span class="pnote">1:${fmtNum(p.scale)} · reach, transit, cycling, frontages</span></div>
+    <div class="abs ptitle sm" style="left:${L_X}mm;top:${yStrip}mm;width:${L_W}mm">Walking reach<span class="pnote">1:${fmtNum(wp.scale)} · 5, 10 and 15 minutes on foot · the facing map is the middle of the strip</span></div>
+    <div class="abs" style="left:${L_X}mm;top:${yStrip + PANEL_TITLE_H}mm">${wideSvg}</div>
+    <div class="abs tiles two" style="left:${AUX_X}mm;top:${yLower}mm;width:${AUX_W}mm">${tiles}</div>
+    <div class="abs legend" style="left:${AUX_X}mm;top:${yLower + 32}mm;width:${AUX_W}mm">${legend}</div>
+    <div class="abs ptitle sm" style="left:${AUX_X}mm;top:${yTable}mm;width:${AUX_W}mm">Stations<span class="pnote">nearest first</span></div>
+    <div class="abs" style="left:${AUX_X}mm;top:${yTable + PANEL_TITLE_H}mm;width:${AUX_W}mm">${stationTable}</div>`;
+  return { id: '09_movement', title: 'Movement', subtitle: sub, textHtml, figureHtml, bleed: true, textY: yLower };
 }
 
 // ---- slide 10: green and public domain -------------------------------------
@@ -5422,15 +5425,15 @@ export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; 
   const pages = slides.map((s, i) => `
 <section class="slide" id="${esc(s.id)}">
   <div class="abs rh" style="left:${L_X}mm;top:10mm;width:${L_W}mm"><span>Overall analysis</span><span>${esc(b.siteAddress)}</span></div>
-  <div class="abs rh" style="left:${FIELD_X}mm;top:10mm;width:${FIELD_W}mm"><span>${esc(s.title)}</span><span>${String(i + 1).padStart(2, '0')} / ${slides.length}</span></div>
+  ${s.bleed ? '' : `<div class="abs rh" style="left:${FIELD_X}mm;top:10mm;width:${FIELD_W}mm"><span>${esc(s.title)}</span><span>${String(i + 1).padStart(2, '0')} / ${slides.length}</span></div>
   <div class="abs foldtick" style="left:${FOLD}mm;top:3mm"></div>
-  <div class="abs foldtick" style="left:${FOLD}mm;top:${SLIDE_H - 7}mm"></div>
+  <div class="abs foldtick" style="left:${FOLD}mm;top:${SLIDE_H - 7}mm"></div>`}
   <div class="abs title" style="left:${L_X}mm;top:17.5mm;width:${L_W}mm">${esc(s.title)}</div>
   <div class="abs subtitle" style="left:${L_X}mm;top:26.5mm;width:${L_W}mm">${esc(s.subtitle)}</div>
-  <div class="abs text" style="left:${L_X}mm;top:${FIELD_Y}mm;width:${TEXT_W}mm;height:${SLIDE_H - FIELD_Y - 16}mm">${s.textHtml}</div>
+  <div class="abs text" style="left:${L_X}mm;top:${s.textY ?? FIELD_Y}mm;width:${TEXT_W}mm;height:${SLIDE_H - (s.textY ?? FIELD_Y) - 16}mm">${s.textHtml}</div>
   ${s.figureHtml}
   <div class="abs foot" style="left:${L_X}mm;top:${FOOT_Y}mm;width:${L_W}mm"><span>${esc(footerLeft)}</span><span>${i * 2 + 1}</span></div>
-  <div class="abs foot" style="left:${FIELD_X}mm;top:${FOOT_Y}mm;width:${FIELD_W}mm"><span>generated ${esc(b.generatedAt.slice(0, 10))}</span><span>${i * 2 + 2}</span></div>
+  ${s.bleed ? `<div class="abs foot" style="left:${FIELD_X}mm;top:${FOOT_Y}mm;width:${FIELD_W}mm;border-top:none"><span></span><span style="background:#ffffff;padding:0 1.6mm">${i * 2 + 2}</span></div>` : `<div class="abs foot" style="left:${FIELD_X}mm;top:${FOOT_Y}mm;width:${FIELD_W}mm"><span>generated ${esc(b.generatedAt.slice(0, 10))}</span><span>${i * 2 + 2}</span></div>`}
 </section>`).join('\n');
 
   const html = `<!DOCTYPE html>
@@ -5448,6 +5451,10 @@ export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; 
   .ptitle.sm { font-size: 2.4mm; }
   .aux-t { position: static; height: auto; line-height: 1.25; white-space: normal; margin: 3mm 0 1mm; }
   .ptitle.sm .pnote { font-size: 1.95mm; margin-left: 1.6mm; }
+  .maplabel { font-size: 2.4mm; font-weight: 650; letter-spacing: 0.1em; text-transform: uppercase; background: #ffffff; padding: 1mm 2.2mm 1mm 2mm; }
+  .maplabel .pnote { font-weight: 400; letter-spacing: 0.02em; text-transform: none; color: #737c77; font-size: 2.2mm; margin-left: 2mm; }
+  .statrows .tile { border-top: 0.15mm solid ${t.ink}; padding: 1.8mm 0 2.6mm; }
+  .statrows .tv { font-size: 6.2mm; }
   .tiles.col { grid-template-columns: 1fr; gap: 2.6mm; }
   .tiles.two { grid-template-columns: repeat(2, 1fr); gap: 2.6mm; }
   .subtitle { font-size: 2.7mm; color: #6a7572; letter-spacing: 0.02em; margin-top: 0.4mm; }

@@ -534,6 +534,8 @@ export interface SlidesBundle {
   cos: CityOfSydneyDcp | null;
   /** The development-activity map is taller than a planning panel; same centre and scale. */
   daPanel: Panel;
+  /** The full-bleed figure page: one A4 page at the deck's scale. */
+  bleedPanel: Panel;
   /** Applications lodged in the window, from the council-wide feed. */
   applications: DaRecord[];
   /** The Department's register of State significant applications for the council areas the window touches, those within 3 km with their points. */
@@ -647,12 +649,16 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
   const blockPanel: Panel = { center: geo.center, scale: 4000, wMm: opts.panelWmm, hMm: opts.wideHmm ?? 72 };
   // The then-and-now pair: two half-width panels side by side at 1:2500, the 1943 survey and today's imagery over the same ground.
   const pairPanel: Panel = { center: geo.center, scale: 2500, wMm: 90, hMm: 80 };
-  // The location window: the figure page's width at 1:100,000, about 19 × 15 km, the 5 km ring well inside it.
-  const locationPanel: Panel = { center: geo.center, scale: 100000, wMm: opts.wideWmm ?? 186, hMm: 150 };
+  // The location window: a full page at 1:100,000, 21 × 29.7 km, the 5 km ring well inside it.
+  const locationPanel: Panel = { center: geo.center, scale: 100000, wMm: 210, hMm: 297 };
   // Every fetch window is the larger of the two, so nothing is missing from either map.
+  // The full-bleed figure page: a map the size of one A4 page at the deck's scale,
+  // for the slides that run their map to the sheet's edges.
+  const bleedPanel: Panel = { center: geo.center, scale: opts.scale ?? 8000, wMm: 210, hMm: 297 };
+  const bleedExtent = panelExtent(bleedPanel);
   const fetchExtent: Extent = {
-    xmin: Math.min(extent.xmin, daExtent.xmin), ymin: Math.min(extent.ymin, daExtent.ymin),
-    xmax: Math.max(extent.xmax, daExtent.xmax), ymax: Math.max(extent.ymax, daExtent.ymax),
+    xmin: Math.min(extent.xmin, daExtent.xmin, bleedExtent.xmin), ymin: Math.min(extent.ymin, daExtent.ymin, bleedExtent.ymin),
+    xmax: Math.max(extent.xmax, daExtent.xmax, bleedExtent.xmax), ymax: Math.max(extent.ymax, daExtent.ymax, bleedExtent.ymax),
   };
   const emptyFC: GeoJSONFC = { type: 'FeatureCollection', features: [] };
   const soft = <T,>(p: Promise<T>, fallback: T, name: string): Promise<T> =>
@@ -696,7 +702,7 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
     soft(fetchDemGrid(daExtent), null, 'elevation model'),
     soft(fetchContours(fetchExtent, log), { lines: [], intervalM: 2, source: 'NSW Spatial Services' }, 'contours'),
     footprintsRead,
-    fetchMovement(daExtent, geo.center, log),
+    fetchMovement(bleedExtent, geo.center, log),
     soft(fetchGreenSpace(daExtent, wideExtent, log), emptyGreen, 'green and public domain'),
     soft(fetchConstraints(extent, mercatorToLonLat(geo.center), log), emptyConstraints, 'environmental constraints'),
     soft(fetchSiteData(sitePanel, blockPanel, siteLots, mercatorToLonLat(geo.center), dataDir, log), emptySite, 'site data'),
@@ -747,7 +753,7 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
     zoning, hob, heritage, shr, policy,
     base: { water, lots, roads, rail: railLines, stations, siteLots },
     controls, property, context, housingTarget, cos,
-    daPanel, applications, majorProjects, wind, daMeta, proposals, people,
+    daPanel, bleedPanel, applications, majorProjects, wind, daMeta, proposals, people,
     terrain: { dem, contours: contourSet.lines, contourIntervalM: contourSet.intervalM, contourSource: contourSet.source, contourAttribution: contourSet.attribution }, buildings, movement, green, constraints, site, views,
     wide: { panel: widePanel, base: { water: wideWater, lots: emptyFC, roads: wideRoads, rail: wideRail, stations: wideStations, siteLots }, suburbs: wideSuburbs },
     country,
