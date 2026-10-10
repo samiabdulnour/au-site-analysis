@@ -470,9 +470,9 @@ from — five templates.
 under a light white veil with the tints at full strength over it (the palette
 sampled from that sheet's legend — tan mixed use and centres, peach
 residential, mint open space, the institutions in outlined slate blues), no
-building footprints and no white street strips, every street named in bold
-black with a thin white back-contour so it reads over the photo (no arrow
-bands; `streetLabels: 'band'` brings them back), and the walking
+building footprints and no white street strips, every street named in plain
+bold black straight on the photo (no arrow bands or outline;
+`streetLabels: 'band'` brings the bands back), and the walking
 catchments as dashed green lines with walker medallions. From Flamingo it
 takes the solid stop roundels, the red dotted railway and the numbered
 places with their key, the discs in black.
@@ -738,8 +738,8 @@ address
 
 On the context sheet every street carries its name as plain bold text set
 along, and centred on, its white strip; the width of the strip already says
-whether it is an arterial or a lane (Heron, with no strips, gives the name a
-white back-contour instead). The white double-headed arrow band survives
+whether it is an arterial or a lane (Heron, with no strips, sets the same
+black name straight on the aerial). The white double-headed arrow band survives
 on the site sheet only, where a through street carries its name in the band and
 a laneway gets a plain label. Neither of the two fields NSW publishes decides
 that on its own — Dickson Lane is classified `LocalRoad` exactly like Hall

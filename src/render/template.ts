@@ -7,7 +7,7 @@
 // is deliberately not part of a template.
 //
 // Heron is the office sheet the restyle started from — the first palette over
-// the aerial, street names with a white back-contour, dashed catchments with
+// the aerial, plain black street names, dashed catchments with
 // the walker — with Flamingo's stop symbols, red dotted railway and numbered
 // places. Before it, two palettes, each in two versions. Flamingo is the paper-and-tints style
 // the context sheet was redrawn in (four hue families with textures, white
@@ -88,8 +88,8 @@ export interface Template {
   tintScale?: number;
   /** The road network as white strips over the tints, or not drawn (the aerial shows the streets). */
   streets?: 'white' | 'none';
-  /** Street names plain along the road, plain with a white back-contour (to read over the aerial), or a through street's name in a white double-headed arrow band (lanes stay plain). */
-  streetLabels?: 'plain' | 'halo' | 'band';
+  /** Street names plain along the road, or a through street's name in a white double-headed arrow band (lanes stay plain). */
+  streetLabels?: 'plain' | 'band';
 
   /** Land-use fills for the context sheet legend. */
   categories: Category[];
@@ -270,7 +270,7 @@ export const TEMPLATES: Template[] = [
     site: '#cf4a2e', dimension: '#3c4c5a', wind: '#6d8a99', sun: '#f0e4c0', road: '#7d7d7d', water: '#cbdae2',
     transit: NAVY, rail: '#d43d33', walk5: '#1f7a4d', walk10: '#6aaf88', busRoute: '#7a8bb0', heritage: '#94836a',
     isochrone: 'walkers', roundel: 'solid', busLine: 'dashed', railLine: 'dotted',
-    ground: 'aerial', veil: 0.36, tintScale: 1, footprints: 'none', streets: 'none', streetLabels: 'halo',
+    ground: 'aerial', veil: 0.36, tintScale: 1, footprints: 'none', streets: 'none', streetLabels: 'plain',
     categories: HERON_CATEGORIES },
   { id: 'redfern-aerial',  label: 'Redfern aerial',  note: 'the Redfern deck\'s palette thinned over the aerial, buildings as a light outline',
     ...REDFERN,  ground: 'aerial', footprints: 'outline' },
