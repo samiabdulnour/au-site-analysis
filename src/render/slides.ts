@@ -9,7 +9,7 @@
 import type { SlidesBundle } from '../pipeline.js';
 import type { SheetMeta } from './sheet.js';
 import type { GeoJSONFeature } from '../lib/arcgis.js';
-import { tpl } from './template.js';
+import { tpl, withTemplate } from './template.js';
 import { esc } from './chrome.js';
 import {
   panelProjector, panelExtent, baseLayers, overLayers, panelFurniture, furnitureBox, siteMark, siteLabelPoint, stationMode, ringsPath, fcPath, ringStats, clippedStats, hatchPath, dotsPath, bboxOf,
@@ -158,7 +158,7 @@ function mainRing(f: GeoJSONFeature, proj: Proj) {
 }
 
 const label = (x: number, y: number, text: string, size = 2.2, fill = '#2a3534') =>
-  `<text x="${x.toFixed(1)}" y="${(y + size * 0.35).toFixed(1)}" text-anchor="middle" font-size="${size}" font-weight="700" fill="${fill}" stroke="#ffffff" stroke-width="${(size * 0.22).toFixed(2)}" paint-order="stroke">${esc(text)}</text>`;
+  `<text x="${x.toFixed(1)}" y="${(y + size * 0.35).toFixed(1)}" text-anchor="middle" font-size="${size}" font-weight="600" fill="${fill}" stroke="#ffffff" stroke-width="${(size * 0.22).toFixed(2)}" paint-order="stroke">${esc(text)}</text>`;
 
 function panelSvg(inner: string, id: string, w = PANEL_W, h = PANEL_H): string {
   return `<svg width="${w}mm" height="${h}mm" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg" style="display:block">
@@ -419,8 +419,8 @@ export const sentenceList = (s: PlanningSentences): string[] =>
 
 // ---- slide 01: location -----------------------------------------------------------
 
-const LAND_FILL = '#f3ece0';
-const LGA_LINE = '#cfc5b2';
+const LAND_FILL = '#f6e3d7';
+const LGA_LINE = '#dcb6a0';
 const RING_KM = [2, 5];
 /** How many centres the table and the map name at most. */
 const CENTRES_LISTED = 8;
@@ -496,16 +496,18 @@ export function locationSlide(b: SlidesBundle): Slide {
   const centreLL = mercatorToLonLat(b.panel.center);
   const [sx, sy] = proj(centreLL.lon, centreLL.lat);
   const mmPerM = 1000 / p.scale;
-  const parts: string[] = [`<rect x="0" y="0" width="${p.wMm}" height="${p.hMm}" fill="${t.water}"/>`];
+  // The location map is monochrome: the terracotta family over an unprinted sea.
+  const LOC = { deep: '#6e331d', rail: '#5d3327', road: '#a98d76', road2: '#bba188', road3: '#d9c8b8', name: '#7c4a33', soft: '#b59685' };
+  const parts: string[] = [`<rect x="0" y="0" width="${p.wMm}" height="${p.hMm}" fill="#ffffff"/>`];
   const legend: LegendEntry[] = [];
   const land = loc.lgas.filter((l) => !l.unincorporated);
   if (land.length) {
     parts.push(`<path d="${land.map((l) => ringsPath(l.rings, proj)).join('')}" fill="${LAND_FILL}" fill-rule="evenodd" stroke="none"/>`);
     // farm dams and ponds under about half a hectare are specks at this scale, so they stay off
     const drawn = loc.water.filter((w) => w.rings.reduce((a, r) => a + clippedStats(r, proj, p).area, 0) >= 0.8);
-    if (drawn.length) parts.push(`<path d="${drawn.map((w) => ringsPath(w.rings, proj)).join('')}" fill="${t.water}" fill-rule="evenodd" stroke="none"/>`);
+    if (drawn.length) parts.push(`<path d="${drawn.map((w) => ringsPath(w.rings, proj)).join('')}" fill="#ffffff" fill-rule="evenodd" stroke="none"/>`);
     parts.push(`<path d="${land.map((l) => ringsPath(l.rings, proj)).join('')}" fill="none" stroke="${LGA_LINE}" stroke-width="0.3" stroke-linejoin="round"/>`);
-    legend.push({ swatch: swatchFill(LAND_FILL, LGA_LINE), label: 'Local government areas; the harbour and the sea left blue' });
+    legend.push({ swatch: swatchFill(LAND_FILL, LGA_LINE), label: 'Local government areas; the harbour and the sea unprinted' });
   } else parts.push(emptyNote(['The boundary layers did not answer for this window.']));
   const lgaName = b.context.lga?.name?.toUpperCase();
   const mine = loc.lgas.filter((l) => lgaName && l.name.toUpperCase() === lgaName);
@@ -516,19 +518,19 @@ export function locationSlide(b: SlidesBundle): Slide {
   // roads by hierarchy, then rail with its dashes
   const byH = new Map<number, string[]>();
   for (const r of loc.roads) (byH.get(r.hierarchy) ?? byH.set(r.hierarchy, []).get(r.hierarchy)!).push(ringsPath([r.coords], proj, false));
-  for (const [h, ds] of [...byH.entries()].sort((a, b2) => b2[0] - a[0])) parts.push(`<path d="${ds.join('')}" fill="none" stroke="${h <= 1 ? '#8a918c' : h <= 2 ? '#969696' : '#c2c2c2'}" stroke-width="${h <= 1 ? 0.55 : h <= 2 ? 0.38 : 0.2}" stroke-linecap="round" stroke-linejoin="round"/>`);
-  if (loc.roads.length) legend.push({ swatch: swatchLine('#8a918c', 0.55), label: 'Motorways, highways and arterial roads' });
+  for (const [h, ds] of [...byH.entries()].sort((a, b2) => b2[0] - a[0])) parts.push(`<path d="${ds.join('')}" fill="none" stroke="${h <= 1 ? LOC.road : h <= 2 ? LOC.road2 : LOC.road3}" stroke-width="${h <= 1 ? 0.55 : h <= 2 ? 0.38 : 0.2}" stroke-linecap="round" stroke-linejoin="round"/>`);
+  if (loc.roads.length) legend.push({ swatch: swatchLine(LOC.road, 0.55), label: 'Motorways, highways and arterial roads' });
   if (loc.rail.train.length) {
     const d = loc.rail.train.map((l) => ringsPath([l], proj, false)).join('');
-    parts.push(`<path d="${d}" fill="none" stroke="${t.rail}" stroke-width="0.55"/><path d="${d}" fill="none" stroke="#ffffff" stroke-width="0.25" stroke-dasharray="1.4,1.4"/>`);
-    legend.push({ swatch: swatchLine(t.rail, 0.55), label: 'Railways' });
+    parts.push(`<path d="${d}" fill="none" stroke="${LOC.rail}" stroke-width="0.55"/><path d="${d}" fill="none" stroke="#ffffff" stroke-width="0.25" stroke-dasharray="1.4,1.4"/>`);
+    legend.push({ swatch: swatchLine(LOC.rail, 0.55), label: 'Railways' });
   }
-  if (loc.rail.tram.length) parts.push(`<path d="${loc.rail.tram.map((l) => ringsPath([l], proj, false)).join('')}" fill="none" stroke="${t.rail}" stroke-width="0.35" stroke-dasharray="0.8,0.8"/>`);
+  if (loc.rail.tram.length) parts.push(`<path d="${loc.rail.tram.map((l) => ringsPath([l], proj, false)).join('')}" fill="none" stroke="${LOC.rail}" stroke-width="0.35" stroke-dasharray="0.8,0.8"/>`);
   // the rings
   for (const kmR of RING_KM) {
     const r = kmR * 1000 * mmPerM;
     parts.push(`<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="${r.toFixed(1)}" fill="none" stroke="${t.site}" stroke-width="0.35" stroke-dasharray="2.2,1.3"/>`);
-    parts.push(`<text x="${(sx + 1.2).toFixed(1)}" y="${(sy - r - 1).toFixed(1)}" font-size="2.3" font-weight="700" fill="${t.site}" stroke="#ffffff" stroke-width="0.5" paint-order="stroke">${kmR} km</text>`);
+    parts.push(`<text x="${(sx + 1.2).toFixed(1)}" y="${(sy - r - 1).toFixed(1)}" font-size="2.3" font-weight="600" fill="${t.site}" stroke="#ffffff" stroke-width="0.5" paint-order="stroke">${kmR} km</text>`);
   }
   legend.push({ swatch: swatchLine(t.site, 0.35, '2.2,1.3'), label: '2 and 5 km from the site' });
   const spacer = new LabelSpacer(p.wMm, p.hMm, 120);
@@ -540,9 +542,9 @@ export function locationSlide(b: SlidesBundle): Slide {
   for (const c of CENTRES) {
     const [x, y] = proj(c.lon, c.lat);
     if (x < 2 || y < 2 || x > p.wMm - 2 || y > p.hMm - 2) continue;
-    const mark = c.kind === 'cbd' ? `<rect x="${(x - 1.7).toFixed(1)}" y="${(y - 1.7).toFixed(1)}" width="3.4" height="3.4" fill="${t.ink}" stroke="#ffffff" stroke-width="0.4"/>`
-      : c.kind === 'major' ? `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="1.6" fill="${t.ink}" stroke="#ffffff" stroke-width="0.4"/>`
-        : `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="1.3" fill="#ffffff" stroke="${t.ink}" stroke-width="0.5"/>`;
+    const mark = c.kind === 'cbd' ? `<rect x="${(x - 1.7).toFixed(1)}" y="${(y - 1.7).toFixed(1)}" width="3.4" height="3.4" fill="${LOC.deep}" stroke="#ffffff" stroke-width="0.4"/>`
+      : c.kind === 'major' ? `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="1.6" fill="${LOC.deep}" stroke="#ffffff" stroke-width="0.4"/>`
+        : `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="1.3" fill="#ffffff" stroke="${LOC.deep}" stroke-width="0.5"/>`;
     centreMarks.push(mark);
     const size = c.kind === 'cbd' ? 2.6 : 2.3;
     const w = labelW(c.name, size);
@@ -550,7 +552,7 @@ export function locationSlide(b: SlidesBundle): Slide {
     for (const [lx, ly, anchor] of spots) {
       if (!spacer.take(lx, ly, w, size + 0.6)) continue;
       const tx = anchor === 'start' ? x + 2.4 : anchor === 'end' ? x - 2.4 : x;
-      centreMarks.push(`<text x="${tx.toFixed(1)}" y="${(ly + size * 0.35).toFixed(1)}" text-anchor="${anchor}" font-size="${size}" font-weight="700" fill="${t.ink}" stroke="#ffffff" stroke-width="0.5" paint-order="stroke">${esc(c.name)}</text>`);
+      centreMarks.push(`<text x="${tx.toFixed(1)}" y="${(ly + size * 0.35).toFixed(1)}" text-anchor="${anchor}" font-size="${size}" font-weight="600" fill="${LOC.deep}" stroke="#ffffff" stroke-width="0.5" paint-order="stroke">${esc(c.name)}</text>`);
       centreNamed.add(c.name.toUpperCase().replace(/ CBD$/, ''));
       break;
     }
@@ -565,12 +567,12 @@ export function locationSlide(b: SlidesBundle): Slide {
   // stations: the train and metro ones dotted, the nearest named
   const stationDots: string[] = [];
   const stationNames: string[] = [];
-  for (const s of loc.stations) { if (stationMode(s.name) === 'light rail') continue; const [x, y] = proj(s.lon, s.lat); stationDots.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="0.8" fill="#ffffff" stroke="${t.rail}" stroke-width="0.35"/>`); }
+  for (const s of loc.stations) { if (stationMode(s.name) === 'light rail') continue; const [x, y] = proj(s.lon, s.lat); stationDots.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="0.8" fill="#ffffff" stroke="${LOC.rail}" stroke-width="0.35"/>`); }
   for (const s of f.stations.filter((st) => st.mode !== 'light rail')) {
     const [x, y] = proj(s.lon, s.lat);
-    if (spacer.take(x + 1.6 + labelW(s.name, 2) / 2, y, labelW(s.name, 2), 2.6)) stationNames.push(`<text x="${(x + 1.6).toFixed(1)}" y="${(y + 0.7).toFixed(1)}" font-size="2" fill="${t.rail}" stroke="#ffffff" stroke-width="0.4" paint-order="stroke">${esc(s.name)}</text>`);
+    if (spacer.take(x + 1.6 + labelW(s.name, 2) / 2, y, labelW(s.name, 2), 2.6)) stationNames.push(`<text x="${(x + 1.6).toFixed(1)}" y="${(y + 0.7).toFixed(1)}" font-size="2" fill="${LOC.rail}" stroke="#ffffff" stroke-width="0.4" paint-order="stroke">${esc(s.name)}</text>`);
   }
-  if (stationDots.length) legend.push({ swatch: `<circle cx="2.5" cy="1.9" r="0.9" fill="#ffffff" stroke="${t.rail}" stroke-width="0.35"/>`, label: 'Train and metro stations, the nearest named' });
+  if (stationDots.length) legend.push({ swatch: `<circle cx="2.5" cy="1.9" r="0.9" fill="#ffffff" stroke="${LOC.rail}" stroke-width="0.35"/>`, label: 'Train and metro stations, the nearest named' });
   // suburb names last, the largest in the window first, the site's own bolder, a centre's name not repeated
   const suburbLabels: string[] = [];
   const mySuburb = b.context.suburb?.name?.toUpperCase();
@@ -580,11 +582,11 @@ export function locationSlide(b: SlidesBundle): Slide {
     const own = s.name.toUpperCase() === mySuburb;
     const text = tidyName(titleCase(s.name)).toUpperCase();
     const size = own ? 2.3 : 2.0;
-    if (spacer.take(s.cx, s.cy, labelW(text, size) * 1.06, size + 0.8)) suburbLabels.push(`<text x="${s.cx.toFixed(1)}" y="${(s.cy + 0.7).toFixed(1)}" text-anchor="middle" font-size="${size}" letter-spacing="0.08em" font-weight="${own ? 700 : 400}" fill="${own ? '#454f4b' : '#8a8478'}">${esc(text)}</text>`);
+    if (spacer.take(s.cx, s.cy, labelW(text, size) * 1.06, size + 0.8)) suburbLabels.push(`<text x="${s.cx.toFixed(1)}" y="${(s.cy + 0.7).toFixed(1)}" text-anchor="middle" font-size="${size}" letter-spacing="0.08em" font-weight="${own ? 700 : 400}" fill="${own ? LOC.name : LOC.soft}">${esc(text)}</text>`);
   }
   // the site last
   parts.push(...suburbLabels, ...stationDots, ...stationNames, ...centreMarks);
-  parts.push(`<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="2.2" fill="${t.site}" stroke="#ffffff" stroke-width="0.6"/><text x="${(sx + 3.2).toFixed(1)}" y="${(sy + 0.9).toFixed(1)}" font-size="2.6" font-weight="700" fill="${t.site}" stroke="#ffffff" stroke-width="0.5" paint-order="stroke">SITE</text>`);
+  parts.push(`<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="2.2" fill="${t.site}" stroke="#ffffff" stroke-width="0.6"/><text x="${(sx + 3.2).toFixed(1)}" y="${(sy + 0.9).toFixed(1)}" font-size="2.6" font-weight="600" fill="${t.site}" stroke="#ffffff" stroke-width="0.5" paint-order="stroke">SITE</text>`);
   legend.unshift({ swatch: `<circle cx="2.5" cy="1.9" r="1.6" fill="${t.site}" stroke="#ffffff" stroke-width="0.4"/>`, label: 'The site' });
   parts.push(panelFurniture(p, 'right'));
   const mapSvg = `<svg width="${p.wMm}mm" height="${p.hMm}mm" viewBox="0 0 ${p.wMm} ${p.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
@@ -701,7 +703,7 @@ export function characterSlide(b: SlidesBundle): Slide {
   for (const pl of f.places) {
     if (!pl.onMap) continue;
     const [x, y] = proj(pl.lon, pl.lat);
-    parts.push(`<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="2.4" fill="${WIKI_PLACE_COLOUR}" stroke="#ffffff" stroke-width="0.4"/><text x="${x.toFixed(2)}" y="${(y + 0.9).toFixed(2)}" text-anchor="middle" font-size="2.5" font-weight="700" fill="#ffffff">${pl.n}</text>`);
+    parts.push(`<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="2.4" fill="${WIKI_PLACE_COLOUR}" stroke="#ffffff" stroke-width="0.4"/><text x="${x.toFixed(2)}" y="${(y + 0.9).toFixed(2)}" text-anchor="middle" font-size="2.5" font-weight="600" fill="#ffffff">${pl.n}</text>`);
     spacer.take(x, y, 5, 5);
   }
   for (const pl of f.places) {
@@ -709,7 +711,7 @@ export function characterSlide(b: SlidesBundle): Slide {
     const [x, y] = proj(pl.lon, pl.lat);
     const text = pl.title;
     const w = labelW(text, 2.1);
-    if (spacer.take(x + 3.2 + w / 2, y, w, 2.8)) parts.push(`<text x="${(x + 3.2).toFixed(1)}" y="${(y + 0.75).toFixed(1)}" font-size="2.1" font-weight="700" fill="#ffffff" stroke="#000000" stroke-width="0.35" paint-order="stroke">${esc(text)}</text>`);
+    if (spacer.take(x + 3.2 + w / 2, y, w, 2.8)) parts.push(`<text x="${(x + 3.2).toFixed(1)}" y="${(y + 0.75).toFixed(1)}" font-size="2.1" font-weight="600" fill="#ffffff" stroke="#000000" stroke-width="0.35" paint-order="stroke">${esc(text)}</text>`);
   }
   parts.push(panelFurniture(p, 'right'));
   const mapSvg = `<svg width="${p.wMm}mm" height="${p.hMm}mm" viewBox="0 0 ${p.wMm} ${p.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
@@ -1376,7 +1378,7 @@ function developmentMap(b: SlidesBundle, d: DevelopmentFacts, numbered: number, 
     const text = String(st.n);
     const w = labelW(text, 2), h = 2.4;
     if (r >= 2.3 && spacer.take(x, y, w + 0.6, h)) {
-      labels.push(`<text x="${x.toFixed(1)}" y="${(y + 0.8).toFixed(1)}" text-anchor="middle" font-size="2.2" font-weight="700" fill="${STATUS_STYLE[st.statusClass].hollow ? '#454f4b' : '#ffffff'}">${text}</text>`);
+      labels.push(`<text x="${x.toFixed(1)}" y="${(y + 0.8).toFixed(1)}" text-anchor="middle" font-size="2.2" font-weight="600" fill="${STATUS_STYLE[st.statusClass].hollow ? '#454f4b' : '#ffffff'}">${text}</text>`);
       continue;
     }
     const spots: [number, number][] = [[x + r + 1.2 + w / 2, y], [x - r - 1.2 - w / 2, y], [x, y - r - 1.6], [x, y + r + 1.6]];
@@ -1390,7 +1392,7 @@ function developmentMap(b: SlidesBundle, d: DevelopmentFacts, numbered: number, 
   }
   for (const { st, x, y } of ssdPlaced) {
     if (Number(st.n.slice(1)) > ssdNumbered) continue;
-    if (st.n.length <= 2) { labels.push(`<text x="${x.toFixed(1)}" y="${(y + 0.65).toFixed(1)}" text-anchor="middle" font-size="1.75" font-weight="700" fill="${STATUS_STYLE[st.stageClass].hollow ? '#454f4b' : '#ffffff'}">${st.n}</text>`); continue; }
+    if (st.n.length <= 2) { labels.push(`<text x="${x.toFixed(1)}" y="${(y + 0.65).toFixed(1)}" text-anchor="middle" font-size="1.75" font-weight="600" fill="${STATUS_STYLE[st.stageClass].hollow ? '#454f4b' : '#ffffff'}">${st.n}</text>`); continue; }
     const w = labelW(st.n, 1.9);
     for (const [lx, ly] of [[x + DR + 1 + w / 2, y], [x - DR - 1 - w / 2, y], [x, y - DR - 1.6], [x, y + DR + 1.6]] as [number, number][])
       if (spacer.take(lx, ly, w, 2.3)) { labels.push(label(lx, ly, st.n, 1.9, '#2a3534')); break; }
@@ -1418,7 +1420,7 @@ function yearChart(d: DevelopmentFacts, wMm: number, hMm: number): string {
   const notes: string[] = [];
   if (years.length > 1 && years[0].partial) notes.push(`${years[0].year} from ${monthOf(d.from)}`);
   if (years[years.length - 1].partial) notes.push(`${years[years.length - 1].year} to ${monthOf(d.to)}`);
-  parts.push(`<text x="0" y="3" font-size="2.3" font-weight="700" fill="${t.ink}">Applications lodged per year in the window` +
+  parts.push(`<text x="0" y="3" font-size="2.3" font-weight="600" fill="${t.ink}">Applications lodged per year in the window` +
     (notes.length ? `<tspan font-weight="400" fill="#737c77"> · ${esc(notes.join(' · '))}</tspan>` : '') + `</text>`);
   const base = top + plotH;
   parts.push(`<line x1="${left}" y1="${base.toFixed(1)}" x2="${(wMm - right).toFixed(1)}" y2="${base.toFixed(1)}" stroke="#c9c9c9" stroke-width="0.15"/>`);
@@ -1918,7 +1920,7 @@ export function terrainSlide(b: SlidesBundle): Slide {
       const [x, y] = proj(mid[0], mid[1]);
       const text = `${c.elevation}`;
       if (x > 4 && y > 4 && x < p.wMm - 4 && y < p.hMm - 4 && spacer.take(x, y, labelW(text, 1.9) + 1, 2.4))
-        labels.push(`<text x="${x.toFixed(1)}" y="${(y + 0.65).toFixed(1)}" text-anchor="middle" font-size="1.9" font-weight="700" fill="${CONTOUR}" stroke="#ffffff" stroke-width="0.45" paint-order="stroke">${text}</text>`);
+        labels.push(`<text x="${x.toFixed(1)}" y="${(y + 0.65).toFixed(1)}" text-anchor="middle" font-size="1.9" font-weight="600" fill="${CONTOUR}" stroke="#ffffff" stroke-width="0.45" paint-order="stroke">${text}</text>`);
     }
   }
   parts.push(labels.join(''));
@@ -1929,7 +1931,7 @@ export function terrainSlide(b: SlidesBundle): Slide {
     parts.push(`<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="#ffffff" stroke-width="1.1" stroke-opacity="0.85"/>` +
       `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${t.dimension}" stroke-width="0.4" stroke-dasharray="2.2,1.1"/>`);
     for (const [x, y, text] of [[x1, y1, s.id], [x2, y2, `${s.id}′`]] as [number, number, string][])
-      parts.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.4" fill="#ffffff" stroke="${t.dimension}" stroke-width="0.35"/><text x="${x.toFixed(1)}" y="${(y + 0.9).toFixed(1)}" text-anchor="middle" font-size="2.4" font-weight="700" fill="${t.dimension}">${esc(text)}</text>`);
+      parts.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.4" fill="#ffffff" stroke="${t.dimension}" stroke-width="0.35"/><text x="${x.toFixed(1)}" y="${(y + 0.9).toFixed(1)}" text-anchor="middle" font-size="2.4" font-weight="600" fill="${t.dimension}">${esc(text)}</text>`);
   }
   parts.push(panelFurniture(p, 'right'));
   const mapSvg = `<svg width="${p.wMm}mm" height="${p.hMm}mm" viewBox="0 0 ${p.wMm} ${p.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
@@ -2130,7 +2132,7 @@ export function builtFormSlide(b: SlidesBundle, planning: PlanningFacts): Slide 
     parts.push(`<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="#ffffff" stroke-width="1.1" stroke-opacity="0.85"/>` +
       `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${t.dimension}" stroke-width="0.4" stroke-dasharray="2.2,1.1"/>`);
     for (const [x, y, text] of [[x1, y1, 'A'], [x2, y2, 'A′']] as [number, number, string][])
-      parts.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.4" fill="#ffffff" stroke="${t.dimension}" stroke-width="0.35"/><text x="${x.toFixed(1)}" y="${(y + 0.9).toFixed(1)}" text-anchor="middle" font-size="2.4" font-weight="700" fill="${t.dimension}">${esc(text)}</text>`);
+      parts.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.4" fill="#ffffff" stroke="${t.dimension}" stroke-width="0.35"/><text x="${x.toFixed(1)}" y="${(y + 0.9).toFixed(1)}" text-anchor="middle" font-size="2.4" font-weight="600" fill="${t.dimension}">${esc(text)}</text>`);
   }
   parts.push(panelFurniture(p, 'right'));
   const mapSvg = `<svg width="${p.wMm}mm" height="${p.hMm}mm" viewBox="0 0 ${p.wMm} ${p.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
@@ -2344,20 +2346,22 @@ export function movementSlide(b: SlidesBundle): Slide {
     `<div class="fine">Sources: NSW Spatial Services roads (function hierarchy), rail and stations; walking isochrones from Valhalla on OpenStreetMap; bus stops from ${f.bus.source === 'tfnsw' ? 'Transport for NSW' : f.bus.source === 'osm' ? 'OpenStreetMap' : 'Transport for NSW or OpenStreetMap (neither answered)'}; bus routes, cycleways, footways and one-way streets from OpenStreetMap contributors (ODbL); active street frontages from the ePlanning development-control layers. Retrieved ${b.generatedAt.slice(0, 10)}.</div>`;
   const sub = [b.siteAddress, f.stations[0] ? `${f.stations[0].name} ${fmtNum(f.stations[0].distanceM)} m` : '', f.frontage.length ? `fronts ${f.frontage.slice(0, 2).map((r) => r.name).join(' and ')}${f.frontage.length > 2 ? ` and ${f.frontage.length - 2} more` : ''}` : ''].filter(Boolean).join(' · ');
 
-  // The movement map bleeds over the whole figure page.
+  // The movement map bleeds over the whole figure page, monochrome in the navy family.
+  const MOVE = { iso: { 5: '#2c4c9c', 10: '#7b90c9', 15: '#b7c1e3' } as Record<number, string>, cycle: '#16244f', foot: '#9aa5c4', frontage: '#16244f', water: '#e8edf5', road: '#a9b2c6', rail: '#232e4c' };
+  const mt = { ...t, water: MOVE.water, road: MOVE.road, rail: MOVE.rail };
   const p = b.bleedPanel;
   const proj = panelProjector(p);
-  const parts: string[] = [baseLayers(b.base, proj, p)];
+  const parts: string[] = [withTemplate(mt, () => baseLayers(b.base, proj, p))];
   for (const iso of [...mv.isochrones].sort((x, y) => y.minutes - x.minutes)) {
-    parts.push(`<path d="${ringsPath(iso.rings, proj)}" fill="${ISO_FILL[iso.minutes] ?? '#a8cdc2'}" fill-opacity="0.10" stroke="${ISO_FILL[iso.minutes] ?? '#a8cdc2'}" stroke-width="0.45" stroke-dasharray="1.6,1" fill-rule="evenodd"/>`);
+    parts.push(`<path d="${ringsPath(iso.rings, proj)}" fill="${MOVE.iso[iso.minutes] ?? '#b7c1e3'}" fill-opacity="0.08" stroke="${MOVE.iso[iso.minutes] ?? '#b7c1e3'}" stroke-width="0.45" stroke-dasharray="1.6,1" fill-rule="evenodd"/>`);
   }
-  if (mv.activeFrontages.features.length) parts.push(`<path d="${fcPath(mv.activeFrontages, proj)}" fill="${FRONTAGE_COLOUR}" fill-opacity="0.55" stroke="${FRONTAGE_COLOUR}" stroke-width="0.25" fill-rule="evenodd"/>`);
-  parts.push(overLayers(b.base, proj, p, 'wash'));
+  if (mv.activeFrontages.features.length) parts.push(`<path d="${fcPath(mv.activeFrontages, proj)}" fill="${MOVE.frontage}" fill-opacity="0.55" stroke="${MOVE.frontage}" stroke-width="0.25" fill-rule="evenodd"/>`);
+  parts.push(withTemplate(mt, () => overLayers(b.base, proj, p, 'wash')));
   if (mv.busRoutes.length) parts.push(`<path d="${mv.busRoutes.map((l) => ringsPath([l], proj, false)).join('')}" fill="none" stroke="${t.busRoute}" stroke-width="0.5" stroke-dasharray="1.2,0.9" stroke-linecap="round"/>`);
-  if (mv.footways.length) parts.push(`<path d="${mv.footways.map((l) => ringsPath([l], proj, false)).join('')}" fill="none" stroke="${FOOTWAY_COLOUR}" stroke-width="0.25" stroke-dasharray="0.5,0.5"/>`);
+  if (mv.footways.length) parts.push(`<path d="${mv.footways.map((l) => ringsPath([l], proj, false)).join('')}" fill="none" stroke="${MOVE.foot}" stroke-width="0.25" stroke-dasharray="0.5,0.5"/>`);
   for (const kind of ['shared', 'lane', 'separated'] as CyclewayKind[]) {
     const ls = mv.cycleways.filter((c) => c.kind === kind);
-    if (ls.length) parts.push(`<path d="${ls.map((l) => ringsPath([l.coords], proj, false)).join('')}" fill="none" stroke="${CYCLE_COLOUR}" stroke-width="${kind === 'separated' ? 0.6 : 0.4}"${kind === 'separated' ? '' : ' stroke-dasharray="1.4,0.8"'} stroke-linecap="round"/>`);
+    if (ls.length) parts.push(`<path d="${ls.map((l) => ringsPath([l.coords], proj, false)).join('')}" fill="none" stroke="${MOVE.cycle}" stroke-width="${kind === 'separated' ? 0.6 : 0.4}"${kind === 'separated' ? '' : ' stroke-dasharray="1.4,0.8"'} stroke-linecap="round"/>`);
   }
   if (mv.busStops.length) parts.push(`<g>${mv.busStops.map((s) => { const [x, y] = proj(s.lon, s.lat); return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="0.9" fill="${t.busRoute}" stroke="#ffffff" stroke-width="0.3"/>`; }).join('')}</g>`);
   // isochrone labels where each ring crosses the panel's centre line
@@ -2365,7 +2369,7 @@ export function movementSlide(b: SlidesBundle): Slide {
   for (const iso of mv.isochrones) {
     const pts = iso.rings[0]?.map(([lon, lat]) => proj(lon, lat)) ?? [];
     const top = pts.filter((q) => q[0] > 3 && q[0] < p.wMm - 3 && q[1] > 3 && q[1] < p.hMm - 3).sort((q, r) => q[1] - r[1])[0];
-    if (top && isoSpacer.take(top[0], top[1] - 1.5, 9, 2.6)) parts.push(label(top[0], top[1] - 1.5, `${iso.minutes} min`, 2, ISO_FILL[iso.minutes] ?? '#6ba998'));
+    if (top && isoSpacer.take(top[0], top[1] - 1.5, 9, 2.6)) parts.push(label(top[0], top[1] - 1.5, `${iso.minutes} min`, 2, MOVE.iso[iso.minutes] ?? '#7b90c9'));
   }
   parts.push(siteMark(b.base, proj, 'outline'), panelFurniture(p, 'right'));
   const mapSvg = `<svg width="${p.wMm}mm" height="${p.hMm}mm" viewBox="0 0 ${p.wMm} ${p.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
@@ -2384,14 +2388,14 @@ export function movementSlide(b: SlidesBundle): Slide {
   ].map((tl) => `<div class="tile"><div class="tv${tl.v.length > 9 ? ' long' : ''}">${esc(tl.v)}</div><div class="tl">${esc(tl.l)}</div></div>`).join('');
   const sw = (inner: string) => `<svg width="5mm" height="3.6mm" viewBox="0 0 5 3.6">${inner}</svg>`;
   const legendRows: [string, string][] = [
-    [sw(`<line x1="0" y1="1.8" x2="5" y2="1.8" stroke="#6f6f6f" stroke-width="0.9"/><line x1="0" y1="1.8" x2="5" y2="1.8" stroke="#ffffff" stroke-width="0.6"/>`), 'Roads by function: motorways and arterials heaviest, local streets finest'],
+    [sw(`<line x1="0" y1="1.8" x2="5" y2="1.8" stroke="${MOVE.road}" stroke-width="0.9"/><line x1="0" y1="1.8" x2="5" y2="1.8" stroke="#ffffff" stroke-width="0.6"/>`), 'Roads by function: motorways and arterials heaviest, local streets finest'],
     [sw(`<line x1="0" y1="1.8" x2="5" y2="1.8" stroke="${t.rail}" stroke-width="0.7"/><line x1="0" y1="1.8" x2="5" y2="1.8" stroke="#ffffff" stroke-width="0.32" stroke-dasharray="1.6,1.6"/>`), 'Rail; stations as T, M (metro) or L (light rail)'],
-    [sw(`<path d="M0,1.8 H5" stroke="${ISO_FILL[5]}" stroke-width="0.45" stroke-dasharray="1.6,1"/>`), 'Walking isochrones from the site: 5, 10 and 15 minutes'],
+    [sw(`<path d="M0,1.8 H5" stroke="${MOVE.iso[5]}" stroke-width="0.45" stroke-dasharray="1.6,1"/>`), 'Walking isochrones from the site: 5, 10 and 15 minutes'],
   ];
   if (mv.busStops.length || mv.busRoutes.length) legendRows.push([sw(`<line x1="0" y1="1.8" x2="5" y2="1.8" stroke="${t.busRoute}" stroke-width="0.5" stroke-dasharray="1.2,0.9"/><circle cx="2.5" cy="1.8" r="0.9" fill="${t.busRoute}" stroke="#ffffff" stroke-width="0.3"/>`), `Bus ${mv.busRoutes.length ? 'routes and ' : ''}stops (${f.bus.source === 'tfnsw' ? 'Transport for NSW' : 'OpenStreetMap'})`]);
-  if (mv.cycleways.length) legendRows.push([sw(`<line x1="0" y1="1.2" x2="5" y2="1.2" stroke="${CYCLE_COLOUR}" stroke-width="0.6"/><line x1="0" y1="2.6" x2="5" y2="2.6" stroke="${CYCLE_COLOUR}" stroke-width="0.4" stroke-dasharray="1.4,0.8"/>`), 'Cycleways: separated solid, on-road lanes and shared paths dashed']);
-  if (mv.footways.length) legendRows.push([sw(`<line x1="0" y1="1.8" x2="5" y2="1.8" stroke="${FOOTWAY_COLOUR}" stroke-width="0.25" stroke-dasharray="0.5,0.5"/>`), 'Footways, paths and steps off the streets']);
-  if (mv.activeFrontages.features.length) legendRows.push([sw(`<rect x="0" y="0.6" width="5" height="2.4" fill="${FRONTAGE_COLOUR}" fill-opacity="0.55"/>`), 'LEP active street frontage']);
+  if (mv.cycleways.length) legendRows.push([sw(`<line x1="0" y1="1.2" x2="5" y2="1.2" stroke="${MOVE.cycle}" stroke-width="0.6"/><line x1="0" y1="2.6" x2="5" y2="2.6" stroke="${MOVE.cycle}" stroke-width="0.4" stroke-dasharray="1.4,0.8"/>`), 'Cycleways: separated solid, on-road lanes and shared paths dashed']);
+  if (mv.footways.length) legendRows.push([sw(`<line x1="0" y1="1.8" x2="5" y2="1.8" stroke="${MOVE.foot}" stroke-width="0.25" stroke-dasharray="0.5,0.5"/>`), 'Footways, paths and steps off the streets']);
+  if (mv.activeFrontages.features.length) legendRows.push([sw(`<rect x="0" y="0.6" width="5" height="2.4" fill="${MOVE.frontage}" fill-opacity="0.55"/>`), 'LEP active street frontage']);
   const legend = legendRows.map(([s, txt]) => `<div class="lg">${s}<span>${esc(txt)}</span></div>`).join('');
   const stationRows = f.stations.slice(0, 6).map((s) => `<tr><td>${esc(s.name)}</td><td>${esc(s.kind)}</td><td class="r">${fmtNum(s.distanceM)} m</td><td>${esc(bearingName(s.bearing))}</td><td>${s.walkBand ? `within ${s.walkBand} min` : 'over 15 min'}</td></tr>`).join('');
   const stationTable = f.stations.length
@@ -2402,14 +2406,14 @@ export function movementSlide(b: SlidesBundle): Slide {
   const wp = b.wide.panel;
   const wproj = panelProjector(wp);
   const wparts: string[] = [`<rect x="0" y="0" width="${wp.wMm}" height="${wp.hMm}" fill="#ffffff"/>`];
-  if (b.wide.base.water.features.length) wparts.push(`<path d="${fcPath(b.wide.base.water, wproj)}" fill="${t.water}" fill-rule="evenodd"/>`);
+  if (b.wide.base.water.features.length) wparts.push(`<path d="${fcPath(b.wide.base.water, wproj)}" fill="${MOVE.water}" fill-rule="evenodd"/>`);
   const ISO_DOT_STEP: Record<number, number> = { 5: 1.15, 10: 1.75, 15: 2.5 };
   for (const iso of [...mv.isochrones].sort((x, y) => y.minutes - x.minutes)) {
     const d = ringsPath(iso.rings, wproj);
-    wparts.push(dotsPath(d, `isod${iso.minutes}`, ISO_FILL[iso.minutes] ?? '#a8cdc2', bboxOf(iso.rings, wproj), ISO_DOT_STEP[iso.minutes] ?? 2.5, 0.3, 0.8));
-    wparts.push(`<path d="${d}" fill="none" stroke="${ISO_FILL[iso.minutes] ?? '#a8cdc2'}" stroke-width="0.3" fill-rule="evenodd"/>`);
+    wparts.push(dotsPath(d, `isod${iso.minutes}`, MOVE.iso[iso.minutes] ?? '#b7c1e3', bboxOf(iso.rings, wproj), ISO_DOT_STEP[iso.minutes] ?? 2.5, 0.3, 0.8));
+    wparts.push(`<path d="${d}" fill="none" stroke="${MOVE.iso[iso.minutes] ?? '#b7c1e3'}" stroke-width="0.3" fill-rule="evenodd"/>`);
   }
-  wparts.push(overLayers(b.wide.base, wproj, wp, 'none'));
+  wparts.push(withTemplate(mt, () => overLayers(b.wide.base, wproj, wp, 'none')));
   wparts.push(wideStripLabels(b, wproj, wp));
   const wideSvg = `<svg width="${wp.wMm}mm" height="${wp.hMm}mm" viewBox="0 0 ${wp.wMm} ${wp.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
     <defs><clipPath id="clip-wide"><rect x="0" y="0" width="${wp.wMm}" height="${wp.hMm}"/></clipPath></defs>
@@ -2699,7 +2703,7 @@ export function greenSlide(b: SlidesBundle): Slide {
     let best = { area: 0, cx: 0, cy: 0 };
     for (const r of s.rings) { const st = clippedStats(r, proj, p); if (st.area > best.area) best = st; }
     const size = s.windowMm2 > 60 ? 2.1 : 1.85;
-    if (spacer.take(best.cx, best.cy, labelW(s.name, size), size * 1.3)) labels.push(`<text x="${best.cx.toFixed(1)}" y="${(best.cy + size * 0.35).toFixed(1)}" text-anchor="middle" font-size="${size}" font-style="italic" font-weight="700" fill="${PARK_GREEN}" stroke="#ffffff" stroke-width="${(size * 0.22).toFixed(2)}" paint-order="stroke">${esc(s.name)}</text>`);
+    if (spacer.take(best.cx, best.cy, labelW(s.name, size), size * 1.3)) labels.push(`<text x="${best.cx.toFixed(1)}" y="${(best.cy + size * 0.35).toFixed(1)}" text-anchor="middle" font-size="${size}" font-weight="600" fill="${PARK_GREEN}" stroke="#ffffff" stroke-width="${(size * 0.22).toFixed(2)}" paint-order="stroke">${esc(s.name)}</text>`);
   }
   for (const n of g.npws) {
     let best = { area: 0, cx: 0, cy: 0 };
@@ -2711,7 +2715,7 @@ export function greenSlide(b: SlidesBundle): Slide {
   for (const fa of f.facilities) {
     const [x, y] = proj(fa.lon, fa.lat);
     if (x < 1 || y < 1 || x > p.wMm - 1 || y > p.hMm - 1) continue;
-    facilityMarks.push(`<rect x="${(x - 1.25).toFixed(1)}" y="${(y - 1.25).toFixed(1)}" width="2.5" height="2.5" fill="${t.ink}" stroke="#ffffff" stroke-width="0.3"/><text x="${x.toFixed(1)}" y="${(y + 0.6).toFixed(1)}" text-anchor="middle" font-size="1.7" font-weight="700" fill="#ffffff">${FACILITY_LETTER[fa.kind]}</text>`);
+    facilityMarks.push(`<rect x="${(x - 1.25).toFixed(1)}" y="${(y - 1.25).toFixed(1)}" width="2.5" height="2.5" fill="${t.ink}" stroke="#ffffff" stroke-width="0.3"/><text x="${x.toFixed(1)}" y="${(y + 0.6).toFixed(1)}" text-anchor="middle" font-size="1.7" font-weight="600" fill="#ffffff">${FACILITY_LETTER[fa.kind]}</text>`);
     const w = labelW(fa.name, 1.85);
     for (const [lx, ly] of [[x + 1.9 + w / 2, y], [x - 1.9 - w / 2, y], [x, y + 2.9], [x, y - 2.9], [x, y + 5.4], [x, y - 5.4]] as [number, number][])
       if (spacer.take(lx, ly, w, 2.5)) { labels.push(label(lx, ly, fa.name, 1.85, '#2a3534')); break; }
@@ -2742,7 +2746,7 @@ export function greenSlide(b: SlidesBundle): Slide {
   if (g.greenGrid.length) legendRows.push([sw(`<rect x="0.3" y="0.4" width="4.4" height="2.8" fill="none" stroke="${GREEN_GRID_COLOUR}" stroke-width="0.35" stroke-dasharray="1.2,0.7"/>`), 'Green Grid existing asset (Greater Sydney Green Grid), named']);
   if (g.npws.length) legendRows.push([sw(`<rect x="0" y="0.4" width="5" height="2.8" fill="none" stroke="${NPWS_COLOUR}" stroke-width="0.3"/><line x1="0" y1="3.2" x2="2.8" y2="0.4" stroke="${NPWS_COLOUR}" stroke-width="0.22"/><line x1="2.2" y1="3.2" x2="5" y2="0.4" stroke="${NPWS_COLOUR}" stroke-width="0.22"/>`), 'National Parks and Wildlife Service estate']);
   if (g.trees.points.length) legendRows.push([sw(`<circle cx="1.2" cy="1.8" r="0.5" fill="${TREE_DOT}" fill-opacity="0.6"/><circle cx="2.6" cy="1.8" r="0.8" fill="${TREE_DOT}" fill-opacity="0.6"/><circle cx="4.2" cy="1.8" r="0.6" fill="${TREE_DOT}" fill-opacity="0.6"/>`), `Trees at crown size (${f.trees.source?.name ?? 'council inventory'})`]);
-  if (f.facilities.length) legendRows.push([sw(`<rect x="1.25" y="0.55" width="2.5" height="2.5" fill="${t.ink}"/><text x="2.5" y="2.4" text-anchor="middle" font-size="1.7" font-weight="700" fill="#ffffff">${FACILITY_LETTER[f.facilityCounts[0].kind]}</text>`), `Public facilities: ${f.facilityCounts.map(({ kind }) => `${FACILITY_LETTER[kind]} ${FACILITY_WORD[kind][0]}`).join(', ')}`]);
+  if (f.facilities.length) legendRows.push([sw(`<rect x="1.25" y="0.55" width="2.5" height="2.5" fill="${t.ink}"/><text x="2.5" y="2.4" text-anchor="middle" font-size="1.7" font-weight="600" fill="#ffffff">${FACILITY_LETTER[f.facilityCounts[0].kind]}</text>`), `Public facilities: ${f.facilityCounts.map(({ kind }) => `${FACILITY_LETTER[kind]} ${FACILITY_WORD[kind][0]}`).join(', ')}`]);
   if (isos.length) legendRows.push([sw(`<path d="M0,1.8 H5" stroke="${ISO_FILL[5]}" stroke-width="0.45" stroke-dasharray="1.6,1"/>`), `Walking isochrones from the site: ${isos.map((i) => i.minutes).sort((x, y) => x - y).join(', ')} minutes`]);
   if (c.covered) legendRows.push([sw(CANOPY_CLASSES.map((cl, i) => `<rect x="${i}" y="0.4" width="1" height="2.8" fill="${cl.fill}"/>`).join('') + `<rect x="0" y="0.4" width="5" height="2.8" fill="none" stroke="#a9a69b" stroke-width="0.15"/>`), `Tree canopy ${c.year} by mesh block, in the strip below: ${CANOPY_CLASSES[0].label} to ${CANOPY_CLASSES[CANOPY_CLASSES.length - 1].label}`]);
   const legend = legendRows.map(([s, txt]) => `<div class="lg">${s}<span>${esc(txt)}</span></div>`).join('');
@@ -2779,7 +2783,7 @@ export function greenSlide(b: SlidesBundle): Slide {
     // the class key, inside the strip
     let x = 3;
     const keyParts: string[] = [];
-    keyParts.push(`<text x="${x}" y="3.1" font-size="2" font-weight="700" fill="#454f4b">Canopy ${c.year}</text>`);
+    keyParts.push(`<text x="${x}" y="3.1" font-size="2" font-weight="600" fill="#454f4b">Canopy ${c.year}</text>`);
     x += labelW(`Canopy ${c.year}`, 2) + 1.5;
     for (const cl of CANOPY_CLASSES) {
       keyParts.push(`<rect x="${x.toFixed(1)}" y="0.9" width="2.8" height="2.8" fill="${cl.fill}" stroke="#a9a69b" stroke-width="0.15"/><text x="${(x + 3.6).toFixed(1)}" y="3.1" font-size="2" fill="#454f4b">${esc(cl.label)}</text>`);
@@ -3313,7 +3317,7 @@ export function siteSlide(b: SlidesBundle): Slide {
         let rot = (Math.atan2(cy - ay, cx - ax) * 180) / Math.PI;
         if (rot > 90 || rot < -90) rot += 180;
         const text = `${lengthM.toFixed(2)}`;
-        if (spacer.take(lx, ly, labelW(text, 2.1), 2.6)) out.push(`<text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" transform="rotate(${rot.toFixed(1)} ${lx.toFixed(1)} ${ly.toFixed(1)})" text-anchor="middle" dominant-baseline="middle" font-size="2.1" font-weight="700" fill="#ffffff" stroke="#000000" stroke-width="0.35" paint-order="stroke">${text}</text>`);
+        if (spacer.take(lx, ly, labelW(text, 2.1), 2.6)) out.push(`<text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" transform="rotate(${rot.toFixed(1)} ${lx.toFixed(1)} ${ly.toFixed(1)})" text-anchor="middle" dominant-baseline="middle" font-size="2.1" font-weight="600" fill="#ffffff" stroke="#000000" stroke-width="0.35" paint-order="stroke">${text}</text>`);
       }
     });
     return out;
@@ -3345,7 +3349,7 @@ export function siteSlide(b: SlidesBundle): Slide {
   for (const bd of onSiteFootprints) {
     const [x, y] = proj(bd.centroid[0], bd.centroid[1]);
     const text = bd.floors ? `${bd.floors} st${bd.heightM ? ` · ${fmtNum(bd.heightM)} m` : ''}` : bd.heightM ? `${fmtNum(bd.heightM)} m` : 'existing';
-    if (spacer.take(x, y, labelW(text, 2), 2.6)) labels.push(`<text x="${x.toFixed(1)}" y="${(y + 0.7).toFixed(1)}" text-anchor="middle" font-size="2" font-weight="700" fill="#ffffff" stroke="#000000" stroke-width="0.35" paint-order="stroke">${esc(text)}</text>`);
+    if (spacer.take(x, y, labelW(text, 2), 2.6)) labels.push(`<text x="${x.toFixed(1)}" y="${(y + 0.7).toFixed(1)}" text-anchor="middle" font-size="2" font-weight="600" fill="#ffffff" stroke="#000000" stroke-width="0.35" paint-order="stroke">${esc(text)}</text>`);
   }
   // road names along their centrelines, and the neighbours' numbers
   for (const r of b.base.roads) {
@@ -3670,7 +3674,7 @@ export function photosSlide(b: SlidesBundle): Slide {
   });
   f.photos.forEach((c, i) => {
     const [x, y] = camXY[i];
-    parts.push(`<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="2.5" fill="${CAMERA_COLOUR}" stroke="#ffffff" stroke-width="0.4"/><text x="${x.toFixed(2)}" y="${(y + 0.95).toFixed(2)}" text-anchor="middle" font-size="2.6" font-weight="700" fill="#ffffff">${c.n}</text>`);
+    parts.push(`<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="2.5" fill="${CAMERA_COLOUR}" stroke="#ffffff" stroke-width="0.4"/><text x="${x.toFixed(2)}" y="${(y + 0.95).toFixed(2)}" text-anchor="middle" font-size="2.6" font-weight="600" fill="#ffffff">${c.n}</text>`);
   });
   if (!f.photos.length) parts.push(emptyNote([...(g?.ok && !g.frontages ? ['Street View has no panorama in front of the site.'] : []), ph.kartaview.ok ? (ph.kartaview.frames ? `None of the ${fmtNum(ph.kartaview.frames)} open frames within ${ph.radiusM} m looks at the site.` : `No open street-level frame within ${ph.radiusM} m.`) : 'KartaView did not answer for this run.']));
   parts.push(panelFurniture(p, 'left'));
@@ -3685,7 +3689,7 @@ export function photosSlide(b: SlidesBundle): Slide {
   const pe = panelExtent(pp);
   const pproj = panelProjector(pp);
   const sx = pp.wMm / (pe.xmax - pe.xmin), sy = pp.hMm / (pe.ymax - pe.ymin);
-  const tag = (text: string) => `<g><rect x="1.5" y="1.5" width="${(labelW(text, 2.6) + 1.6).toFixed(1)}" height="4.6" fill="#ffffff" fill-opacity="0.92"/><text x="2.3" y="4.9" font-size="2.6" font-weight="700" fill="${t.ink}">${esc(text)}</text></g>`;
+  const tag = (text: string) => `<g><rect x="1.5" y="1.5" width="${(labelW(text, 2.6) + 1.6).toFixed(1)}" height="4.6" fill="#ffffff" fill-opacity="0.92"/><text x="2.3" y="4.9" font-size="2.6" font-weight="600" fill="${t.ink}">${esc(text)}</text></g>`;
   const pairSvg = (id: string, inner: string[]) => `<svg width="${pp.wMm}mm" height="${pp.hMm}mm" viewBox="0 0 ${pp.wMm} ${pp.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
     <defs><clipPath id="${id}"><rect x="0" y="0" width="${pp.wMm}" height="${pp.hMm}"/></clipPath></defs>
     <g clip-path="url(#${id})" font-family="${t.font}">${inner.join('\n')}</g>
@@ -3936,7 +3940,7 @@ function sunPathSvg(f: ReturnType<typeof sunViewFacts>, lat: number, lon: number
   for (const alt of [0, 30, 60]) parts.push(`<circle cx="${cx}" cy="${cy}" r="${((R * (90 - alt)) / 90).toFixed(1)}" fill="${alt === 0 ? '#ffffff' : 'none'}" stroke="#c9c7c0" stroke-width="${alt === 0 ? 0.3 : 0.2}"/>`);
   for (const alt of [30, 60]) parts.push(`<text x="${(cx + 0.6).toFixed(1)}" y="${(cy - (R * (90 - alt)) / 90 + 2).toFixed(1)}" font-size="1.6" fill="#9aa19b">${alt}°</text>`);
   for (let az = 0; az < 360; az += 30) { const [x1, y1] = pt(0, az), [x2, y2] = pt(-6, az); parts.push(`<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="#9aa19b" stroke-width="0.25"/>`); }
-  for (const [az, txt] of [[0, 'N'], [90, 'E'], [180, 'S'], [270, 'W']] as const) { const [x, y] = pt(-12, az); parts.push(`<text x="${x.toFixed(1)}" y="${(y + 0.8).toFixed(1)}" text-anchor="middle" font-size="2.2" font-weight="700" fill="#454f4b">${txt}</text>`); }
+  for (const [az, txt] of [[0, 'N'], [90, 'E'], [180, 'S'], [270, 'W']] as const) { const [x, y] = pt(-12, az); parts.push(`<text x="${x.toFixed(1)}" y="${(y + 0.8).toFixed(1)}" text-anchor="middle" font-size="2.2" font-weight="600" fill="#454f4b">${txt}</text>`); }
   // the grid axes through the centre
   for (const d of [f.grid.primaryDeg, f.grid.secondaryDeg].filter((x): x is number => x !== null)) { const [x1, y1] = pt(0, d), [x2, y2] = pt(0, d + 180); parts.push(`<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="#bdbbb3" stroke-width="0.3" stroke-dasharray="1,1"/>`); }
   const arcs: [string, number, number, number, string, string][] = [['21 Dec', 12, 21, AEDT, SUN_COLOUR, ''], ['21 Mar / 21 Sep', 3, 21, AEDT, '#c8963f', '1.2,0.8'], ['21 Jun', 6, 21, AEST, '#a4682b', '']];
@@ -3952,7 +3956,7 @@ function sunPathSvg(f: ReturnType<typeof sunViewFacts>, lat: number, lon: number
     }
     const mid = path[Math.floor(path.length / 2)];
     const [lx, ly] = pt(mid.altitudeDeg + 7, mid.azimuthDeg);
-    parts.push(`<text x="${lx.toFixed(1)}" y="${(ly + 0.6).toFixed(1)}" text-anchor="middle" font-size="1.7" font-weight="700" fill="${colour}">${esc(label)}</text>`);
+    parts.push(`<text x="${lx.toFixed(1)}" y="${(ly + 0.6).toFixed(1)}" text-anchor="middle" font-size="1.7" font-weight="600" fill="${colour}">${esc(label)}</text>`);
   }
   parts.push(`<circle cx="${cx}" cy="${cy}" r="0.9" fill="${tpl().site}"/>`);
   return `<svg width="${size}mm" height="${size}mm" viewBox="0 0 ${size} ${size}" xmlns="http://www.w3.org/2000/svg" font-family="${font}" style="display:block">${parts.join('')}</svg>`;
@@ -3962,7 +3966,7 @@ function gridRoseSvg(f: ReturnType<typeof sunViewFacts>, size: number, font: str
   const R = size / 2 - 7, cx = size / 2, cy = size / 2;
   const max = Math.max(1, ...f.grid.bins);
   const parts: string[] = [`<circle cx="${cx}" cy="${cy}" r="${R}" fill="#ffffff" stroke="#c9c7c0" stroke-width="0.3"/>`];
-  for (const [az, txt] of [[0, 'N'], [90, 'E'], [180, 'S'], [270, 'W']] as const) { const a = (az * Math.PI) / 180; parts.push(`<text x="${(cx + (R + 4) * Math.sin(a)).toFixed(1)}" y="${(cy - (R + 4) * Math.cos(a) + 0.8).toFixed(1)}" text-anchor="middle" font-size="2.2" font-weight="700" fill="#454f4b">${txt}</text>`); }
+  for (const [az, txt] of [[0, 'N'], [90, 'E'], [180, 'S'], [270, 'W']] as const) { const a = (az * Math.PI) / 180; parts.push(`<text x="${(cx + (R + 4) * Math.sin(a)).toFixed(1)}" y="${(cy - (R + 4) * Math.cos(a) + 0.8).toFixed(1)}" text-anchor="middle" font-size="2.2" font-weight="600" fill="#454f4b">${txt}</text>`); }
   f.grid.bins.forEach((v, i) => {
     if (!v) return;
     const r = (R * v) / max;
@@ -3990,7 +3994,7 @@ function windRoseSvg(rose: WindRose, size: number, font: string, top: number, st
   // the rings as whole multiples of the step, so 15 prints as 15 and not 15.000000000000002
   const rings = Array.from({ length: Math.round(top / step) }, (_, i) => Math.round((i + 1) * step * 100) / 100);
   for (const q of rings.slice(0, -1)) parts.push(`<circle cx="${cx}" cy="${cy}" r="${r(q).toFixed(2)}" fill="none" stroke="#d6d4cc" stroke-width="0.2" stroke-dasharray="0.8,0.6"/>`);
-  for (const [az, txt] of [[0, 'N'], [90, 'E'], [180, 'S'], [270, 'W']] as const) { const a = (az * Math.PI) / 180; parts.push(`<text x="${(cx + (R + 2.6) * Math.sin(a)).toFixed(1)}" y="${(cy - (R + 2.6) * Math.cos(a) + 0.7).toFixed(1)}" text-anchor="middle" font-size="2" font-weight="700" fill="#454f4b">${txt}</text>`); }
+  for (const [az, txt] of [[0, 'N'], [90, 'E'], [180, 'S'], [270, 'W']] as const) { const a = (az * Math.PI) / 180; parts.push(`<text x="${(cx + (R + 2.6) * Math.sin(a)).toFixed(1)}" y="${(cy - (R + 2.6) * Math.cos(a) + 0.7).toFixed(1)}" text-anchor="middle" font-size="2" font-weight="600" fill="#454f4b">${txt}</text>`); }
   const half = (8.4 * Math.PI) / 180;
   rose.pct.forEach((row, sector) => {
     const a = (sector * 22.5 * Math.PI) / 180;
@@ -4455,7 +4459,7 @@ function ocMarker(x: number, y: number, n: number, colour: string, spacer: Label
     const lx = px - ux * (3.4 + w / 2) + (Math.abs(ux) < 0.5 ? 0 : 0), ly = py - uy * 4.2 + (Math.abs(uy) < 0.5 ? 3.6 : 0);
     if (spacer.take(lx, ly, w, 2.5)) text = label(lx, ly, edgeLabel, 1.9, colour);
   }
-  return `${arrow}<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="2.4" fill="${colour}" stroke="#ffffff" stroke-width="0.4"/><text x="${px.toFixed(1)}" y="${(py + 0.9).toFixed(1)}" text-anchor="middle" font-size="2.6" font-weight="700" fill="#ffffff">${n}</text>${text}`;
+  return `${arrow}<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="2.4" fill="${colour}" stroke="#ffffff" stroke-width="0.4"/><text x="${px.toFixed(1)}" y="${(py + 0.9).toFixed(1)}" text-anchor="middle" font-size="2.6" font-weight="600" fill="#ffffff">${n}</text>${text}`;
 }
 
 export function ocSlide(b: SlidesBundle, planning: PlanningFacts): Slide {
@@ -4590,7 +4594,7 @@ export function ocSlide(b: SlidesBundle, planning: PlanningFacts): Slide {
     const tx = x - ux * 10 - uy * 0, ty = y - uy * 10 + 3.2 * (uy < 0 ? 1 : -1);
     if (oSpacer.take(tx, ty, labelW(text, 1.9), 2.5)) oParts.push(label(tx, ty, text, 1.9, t.site));
   }
-  if (b.base.stations.some((st) => { const [x, y] = proj(st.lon, st.lat); return x >= 0 && y >= 0 && x <= p.wMm && y <= p.hMm; }) || f.stationsBeyond.length) oLegend.push({ swatch: `<circle cx="2.5" cy="1.8" r="1.7" fill="#ffffff" stroke="${t.site}" stroke-width="0.4"/><text x="2.5" y="2.7" text-anchor="middle" font-size="2.4" font-weight="700" fill="${t.site}">T</text>`, label: 'Stations; an edge arrow points to one beyond the diagram' });
+  if (b.base.stations.some((st) => { const [x, y] = proj(st.lon, st.lat); return x >= 0 && y >= 0 && x <= p.wMm && y <= p.hMm; }) || f.stationsBeyond.length) oLegend.push({ swatch: `<circle cx="2.5" cy="1.8" r="1.7" fill="#ffffff" stroke="${t.site}" stroke-width="0.4"/><text x="2.5" y="2.7" text-anchor="middle" font-size="2.4" font-weight="600" fill="${t.site}">T</text>`, label: 'Stations; an edge arrow points to one beyond the diagram' });
   oParts.push(markers(f.opportunities, OPP_COLOUR, oSpacer));
   oParts.push(siteMark(b.base, proj, 'outline'), panelFurniture(p, 'right'));
 
@@ -4957,7 +4961,7 @@ export function sourcesSlide(b: SlidesBundle, planning: PlanningFacts): Slide {
   // data-fit: the printer steps the table's type down until the last row is inside the box, and past its smallest
   // shows the note under the rows that fit, counting the ones left out
   const figure = `<div class="abs" data-fit data-fit-note="src-more" style="left:${FIELD_X}mm;top:${FIELD_Y}mm;width:${FIELD_W}mm;height:${SLIDE_H - FIELD_Y - 12}mm;overflow:hidden">${table}</div>
-    <div class="abs" id="src-more" hidden data-text="{n} more datasets did not fit on this slide; the deck's JSON (overall.json) lists every one, with its currency, retrieval and attribution." style="left:${FIELD_X}mm;width:${FIELD_W}mm;font-size:2.1mm;line-height:1.3;font-style:italic;color:#6a7572"></div>`;
+    <div class="abs" id="src-more" hidden data-text="{n} more datasets did not fit on this slide; the deck's JSON (overall.json) lists every one, with its currency, retrieval and attribution." style="left:${FIELD_X}mm;width:${FIELD_W}mm;font-size:2.1mm;line-height:1.3;color:#6a7572"></div>`;
   const sub = [b.siteAddress, `${f.total} datasets`, `${f.publishers} publishers`, `retrieved ${f.deckDay}`].join(' · ');
   return { id: '18_sources', title: 'Sources', subtitle: sub, textHtml: text, figureHtml: figure };
 }
@@ -5208,7 +5212,7 @@ export function countrySlide(b: SlidesBundle): Slide {
       if (pts.length < 2) continue;
       const mid = pts[Math.floor(pts.length / 2)];
       const text = titleCase(w.name!);
-      if (spacer.take(mid[0], mid[1] - 2.2, labelW(text, 2.1), 2.6)) { parts.push(`<text x="${mid[0].toFixed(1)}" y="${(mid[1] - 1.5).toFixed(1)}" text-anchor="middle" font-size="2.1" font-style="italic" font-weight="700" fill="${CREEK_COLOUR}" stroke="#ffffff" stroke-width="0.45" paint-order="stroke">${esc(text)}</text>`); done.add(w.name!); }
+      if (spacer.take(mid[0], mid[1] - 2.2, labelW(text, 2.1), 2.6)) { parts.push(`<text x="${mid[0].toFixed(1)}" y="${(mid[1] - 1.5).toFixed(1)}" text-anchor="middle" font-size="2.1" font-weight="600" fill="${CREEK_COLOUR}" stroke="#ffffff" stroke-width="0.45" paint-order="stroke">${esc(text)}</text>`); done.add(w.name!); }
     }
   }
   // the crests
@@ -5386,12 +5390,12 @@ export function countrySlide(b: SlidesBundle): Slide {
   const classes = f.vegetation.classes;
   const barW = 18, barX = AUX_W - barW - 9, rowH = 7.6, vegH = classes.length ? classes.length * rowH + 6 : 0;
   const vegSvg = classes.length ? `<svg width="${AUX_W}mm" height="${vegH}mm" viewBox="0 0 ${AUX_W} ${vegH}" xmlns="http://www.w3.org/2000/svg" font-family="${t.font}">
-    <text x="0" y="3" font-size="2.3" font-weight="700" fill="${t.ink}">Pre-1750 plant communities across the strip<tspan font-weight="400" fill="#737c77"> · share of its area (State Vegetation Type Map)</tspan></text>
+    <text x="0" y="3" font-size="2.3" font-weight="600" fill="${t.ink}">Pre-1750 plant communities across the strip<tspan font-weight="400" fill="#737c77"> · share of its area (State Vegetation Type Map)</tspan></text>
     ${classes.map((k, i) => { const y = 6 + i * rowH; const w = Math.max(0.6, (k.sharePct / Math.max(1, classes[0].sharePct)) * barW); return `<rect x="0" y="${(y + 0.6).toFixed(1)}" width="4" height="4" fill="${k.colour}" stroke="#777" stroke-width="0.15"/>` +
-      `<text x="6" y="${(y + 2.4).toFixed(1)}" font-size="2.25" font-weight="700" fill="${t.ink}">${esc(clip(k.pct, 36))}${k.pctId && k.pctId !== '0' ? `<tspan font-weight="400" fill="#737c77"> · PCT ${esc(k.pctId)}</tspan>` : ''}</text>` +
+      `<text x="6" y="${(y + 2.4).toFixed(1)}" font-size="2.25" font-weight="600" fill="${t.ink}">${esc(clip(k.pct, 36))}${k.pctId && k.pctId !== '0' ? `<tspan font-weight="400" fill="#737c77"> · PCT ${esc(k.pctId)}</tspan>` : ''}</text>` +
       `<text x="6" y="${(y + 5.3).toFixed(1)}" font-size="1.9" fill="#737c77">${esc(clip([k.cls, k.formation].filter(Boolean).join(' · '), 52))}</text>` +
       `<rect x="${barX.toFixed(1)}" y="${(y + 0.9).toFixed(1)}" width="${w.toFixed(1)}" height="3.4" fill="${k.colour}" fill-opacity="0.85"/>` +
-      `<text x="${(barX + w + 1.4).toFixed(1)}" y="${(y + 3.5).toFixed(1)}" font-size="2.2" font-weight="700" fill="${t.ink}">${fmtPct(k.sharePct)}</text>`; }).join('')}
+      `<text x="${(barX + w + 1.4).toFixed(1)}" y="${(y + 3.5).toFixed(1)}" font-size="2.2" font-weight="600" fill="${t.ink}">${fmtPct(k.sharePct)}</text>`; }).join('')}
   </svg>` : '';
   const note = `<div class="cnote"><p><b>AHIMS.</b> Registered Aboriginal sites and places are held in the Aboriginal Heritage Information Management System, which is not open data and is not read here. An AHIMS search — and, where it, the landform, the ASDST model or the community advise it, a due-diligence assessment and consultation under the National Parks and Wildlife Act — comes before any ground disturbance.</p><p><b>Country.</b> The name of Country, the language, the place names and the cultural narrative are not generated from these layers: the office develops them with Knowledge Holders and the ${f.lalc ? `${esc(f.lalc.local)} ` : ''}Local Aboriginal Land Council. The layers here are the open proxies — land council, native title, the pre-1750 forest, the creeks and the crests.</p></div>`;
 
@@ -5407,7 +5411,7 @@ export function countrySlide(b: SlidesBundle): Slide {
     <svg class="abs" style="left:${FIELD_X}mm;top:${legendTop}mm" width="${FIELD_W}mm" height="${leg.heightMm}mm" viewBox="0 0 ${FIELD_W} ${leg.heightMm}" xmlns="http://www.w3.org/2000/svg">${leg.svg}</svg>
     <div class="abs ptitle" style="left:${FIELD_X}mm;top:${belowY}mm;width:${FIELD_W}mm">Country at the site<span class="pnote">the open layers, read at the geocoded point and over the strip</span></div>
     <div class="abs" data-fit data-fit-note="country-more" style="left:${FIELD_X}mm;top:${belowY + PANEL_TITLE_H}mm;width:${FIELD_W}mm;height:${belowH - PANEL_TITLE_H}mm;overflow:hidden">${table}</div>
-    <div class="abs" id="country-more" hidden data-text="{n} more rows did not fit; the deck's JSON (overall.json) holds them all." style="left:${FIELD_X}mm;width:${FIELD_W}mm;font-size:2.1mm;line-height:1.3;font-style:italic;color:#6a7572"></div>
+    <div class="abs" id="country-more" hidden data-text="{n} more rows did not fit; the deck's JSON (overall.json) holds them all." style="left:${FIELD_X}mm;width:${FIELD_W}mm;font-size:2.1mm;line-height:1.3;color:#6a7572"></div>
     <div class="abs" style="left:${AUX_X}mm;top:${FIELD_Y}mm;width:${AUX_W}mm;height:${SLIDE_H - FIELD_Y - 14}mm;overflow:hidden">
       ${vegSvg}
       <div style="margin-top:${classes.length ? 2 : 0}mm">${note}</div>
@@ -5445,13 +5449,13 @@ export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; 
   .slide { position: relative; width: ${SLIDE_W}mm; height: ${SLIDE_H}mm; overflow: hidden; background: ${t.paper}; page-break-after: always; break-after: page; }
   .slide:last-child { page-break-after: auto; break-after: auto; }
   .abs { position: absolute; }
-  .title { font-size: 6.6mm; font-weight: 450; letter-spacing: -0.015em; line-height: 1; }
-  .rh { display: flex; justify-content: space-between; font-size: 2.0mm; letter-spacing: 0.14em; text-transform: uppercase; color: #8a918c; border-bottom: 0.15mm solid ${t.rule}; padding-bottom: 1mm; }
+  .title { font-size: 6.6mm; font-weight: 500; letter-spacing: -0.015em; line-height: 1; }
+  .rh { display: flex; justify-content: space-between; font-size: 2.0mm; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: #8a918c; }
   .foldtick { width: 0; height: 4mm; border-left: 0.15mm solid ${t.rule}; }
   .ptitle.sm { font-size: 2.4mm; }
   .aux-t { position: static; height: auto; line-height: 1.25; white-space: normal; margin: 3mm 0 1mm; }
   .ptitle.sm .pnote { font-size: 1.95mm; margin-left: 1.6mm; }
-  .maplabel { font-size: 2.4mm; font-weight: 650; letter-spacing: 0.1em; text-transform: uppercase; background: #ffffff; padding: 1mm 2.2mm 1mm 2mm; }
+  .maplabel { font-size: 2.4mm; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; background: #ffffff; padding: 1mm 2.2mm 1mm 2mm; }
   .maplabel .pnote { font-weight: 400; letter-spacing: 0.02em; text-transform: none; color: #737c77; font-size: 2.2mm; margin-left: 2mm; }
   .statrows .tile { border-top: 0.15mm solid ${t.ink}; padding: 1.8mm 0 2.6mm; }
   .statrows .tv { font-size: 6.2mm; }
@@ -5460,17 +5464,17 @@ export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; 
   .subtitle { font-size: 2.7mm; color: #6a7572; letter-spacing: 0.02em; margin-top: 0.4mm; }
   .text { font-size: 3.05mm; line-height: 1.38; overflow: hidden; }
   .text p { margin-bottom: 2.6mm; }
-  .text p.ph { color: #8a918c; font-style: italic; border-left: 0.4mm solid #d8cfc0; padding-left: 2.2mm; }
+  .text p.ph { color: #8a918c; border-left: 0.4mm solid #d8cfc0; padding-left: 2.2mm; }
   .text .fine { position: absolute; bottom: 0; left: 0; right: 0; font-size: 2.1mm; line-height: 1.3; color: #6a7572; }
-  .ptitle { font-size: 2.65mm; font-weight: 650; letter-spacing: 0.1em; text-transform: uppercase; line-height: ${PANEL_TITLE_H}mm; height: ${PANEL_TITLE_H}mm; white-space: nowrap; overflow: hidden; }
+  .ptitle { font-size: 2.65mm; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; line-height: ${PANEL_TITLE_H}mm; height: ${PANEL_TITLE_H}mm; white-space: nowrap; overflow: hidden; }
   .pnote { font-weight: 400; color: #737c77; font-size: 2.2mm; margin-left: 2.4mm; letter-spacing: 0; text-transform: none; }
   table.controls { width: 100%; border-collapse: collapse; font-size: 2.55mm; line-height: 1.32; }
   table.controls th, table.controls td { text-align: left; vertical-align: top; padding: 1.15mm 2mm 1.15mm 0; border-top: 0.15mm solid ${t.rule}; }
-  table.controls thead th { font-size: 2.2mm; letter-spacing: 0.04em; text-transform: uppercase; color: #6a7572; font-weight: 700; border-top: 0; padding-bottom: 0.8mm; }
-  table.controls tbody th { font-weight: 700; }
+  table.controls thead th { font-size: 2.2mm; letter-spacing: 0.04em; text-transform: uppercase; color: #6a7572; font-weight: 600; border-top: 0; padding-bottom: 0.8mm; }
+  table.controls tbody th { font-weight: 600; }
   table.controls td.src { color: #6a7572; font-size: 2.25mm; }
   table.controls .lnk a { color: #6a7572; text-decoration: none; word-break: break-all; }
-  .foot { display: flex; justify-content: space-between; font-size: 2.1mm; color: #6a7572; border-top: 0.15mm solid ${t.rule}; padding-top: 1.1mm; }
+  .foot { display: flex; justify-content: space-between; font-size: 2.1mm; color: #6a7572; }
   .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3mm; }
   .tile { border-top: 0.2mm solid ${t.ink}; padding-top: 1.6mm; }
   .tv { font-size: 5.4mm; font-weight: 500; line-height: 1.05; letter-spacing: -0.015em; }
@@ -5481,8 +5485,8 @@ export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; 
   table.cmp { width: 100%; border-collapse: collapse; font-size: 2.3mm; line-height: 1.25; }
   table.cmp th, table.cmp td { text-align: right; vertical-align: top; padding: 0.85mm 0 0.85mm 1.5mm; border-top: 0.15mm solid ${t.rule}; font-variant-numeric: tabular-nums; }
   table.cmp th:first-child, table.cmp td:first-child { text-align: left; padding-left: 0; }
-  table.cmp thead th { font-size: 2.0mm; letter-spacing: 0.04em; text-transform: uppercase; color: #6a7572; border-top: 0; padding-bottom: 0.7mm; font-weight: 700; }
-  table.cmp td.hi { font-weight: 700; }
+  table.cmp thead th { font-size: 2.0mm; letter-spacing: 0.04em; text-transform: uppercase; color: #6a7572; border-top: 0; padding-bottom: 0.7mm; font-weight: 600; }
+  table.cmp td.hi { font-weight: 600; }
   .stat { font-size: 2.2mm; color: #454f4b; line-height: 1.3; margin-bottom: 1mm; }
   .legend { font-size: 2.15mm; color: #454f4b; line-height: 1.3; }
   .lg { display: flex; align-items: flex-start; gap: 1.6mm; margin-bottom: 0.7mm; }
@@ -5490,9 +5494,9 @@ export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; 
   table.da { width: 100%; border-collapse: collapse; font-size: 2.3mm; line-height: 1.28; }
   table.da th, table.da td { text-align: left; vertical-align: top; padding: 0.95mm 1.6mm 0.95mm 0; border-top: 0.15mm solid ${t.rule}; }
   table.da thead th { font-size: 2.05mm; letter-spacing: 0.04em; text-transform: uppercase; color: #6a7572; border-top: 0; padding-bottom: 0.7mm; }
-  table.da .n { width: 5mm; font-weight: 700; }
+  table.da .n { width: 5mm; font-weight: 600; }
   table.da .r { text-align: right; padding-right: 3mm; font-variant-numeric: tabular-nums; }
-  table.da .more { color: #6a7572; font-style: italic; }
+  table.da .more { color: #6a7572; }
   table.da .dot { display: inline-block; width: 2.2mm; height: 2.2mm; border-radius: 50%; border: 0.25mm solid; margin-right: 1.2mm; vertical-align: -0.3mm; }
   table.da .dot.dia { border-radius: 0.2mm; transform: rotate(45deg) scale(0.8); }
   table.da.cons { font-size: 2.2mm; line-height: 1.22; }
@@ -5502,26 +5506,26 @@ export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; 
   table.da.facts th { width: 33mm; font-weight: 600; font-size: 2.2mm; text-transform: none; letter-spacing: 0; color: #454f4b; text-align: left; vertical-align: top; }
   .cnote { border-left: 0.6mm solid #b5703a; background: #f4ebdd; padding: 2mm 3mm; font-size: 2.35mm; line-height: 1.34; }
   .cnote p + p { margin-top: 1.2mm; }
-  .cnote b { font-weight: 700; }
+  .cnote b { font-weight: 600; }
   /* spacing in em: the printer steps the type down to fit the box, and the rows close up with it */
   table.da.src { font-size: 2.0mm; line-height: 1.22; }
   table.da.src th, table.da.src td { padding: 0.275em 0.8em 0.275em 0; }
   table.da.src thead th { font-size: 0.95em; }
-  table.da.src tr.grp td { font-weight: 700; padding-top: 0.85em; border-top: 0.3mm solid #a9a69b; color: #2a3534; }
+  table.da.src tr.grp td { font-weight: 600; padding-top: 0.85em; border-top: 0.3mm solid #a9a69b; color: #2a3534; }
   table.da.src td.used, table.da.src td.ret { font-variant-numeric: tabular-nums; white-space: nowrap; }
   table.da.src td.attr { color: #59625d; }
   .wcap { width: 46mm; margin-top: 0.8mm; font-size: 1.9mm; line-height: 1.25; color: #6a7572; text-align: center; }
   .oc { display: flex; align-items: flex-start; gap: 1.8mm; font-size: 2.35mm; line-height: 1.32; margin-top: 1.4mm; padding-right: 2mm; }
-  .oc .n { flex: 0 0 4.2mm; height: 4.2mm; border-radius: 2.1mm; color: #fff; font-weight: 700; font-size: 2.2mm; text-align: center; line-height: 4.2mm; margin-top: 0.1mm; }
-  .oc .t b { font-weight: 700; }
+  .oc .n { flex: 0 0 4.2mm; height: 4.2mm; border-radius: 2.1mm; color: #fff; font-weight: 600; font-size: 2.2mm; text-align: center; line-height: 4.2mm; margin-top: 0.1mm; }
+  .oc .t b { font-weight: 600; }
   .photos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2.5mm 4mm; }
   .frame .img { position: relative; height: 40mm; background: #f1e9dc; overflow: hidden; }
   .frame img { display: block; width: 100%; height: 100%; object-fit: cover; }
   .frame img.whole { object-fit: contain; }
-  .frame .key { position: absolute; left: 2mm; top: 2mm; width: 6mm; height: 6mm; border-radius: 50%; background: ${CAMERA_COLOUR}; border: 0.35mm solid #fff; color: #fff; font-weight: 700; font-size: 2.9mm; line-height: 5.3mm; text-align: center; }
+  .frame .key { position: absolute; left: 2mm; top: 2mm; width: 6mm; height: 6mm; border-radius: 50%; background: ${CAMERA_COLOUR}; border: 0.35mm solid #fff; color: #fff; font-weight: 600; font-size: 2.9mm; line-height: 5.3mm; text-align: center; }
   .frame .cap { font-size: 2.05mm; line-height: 1.3; color: #454f4b; margin-top: 1mm; }
-  .frame.ph .img { display: flex; align-items: center; justify-content: center; text-align: center; padding: 0 8mm; border: 0.3mm dashed #cdc4b4; background: #f7f1e6; color: #9aa19b; font-size: 2.4mm; font-style: italic; }
-  .frame.ph .cap { color: #8a918c; font-style: italic; }
+  .frame.ph .img { display: flex; align-items: center; justify-content: center; text-align: center; padding: 0 8mm; border: 0.3mm dashed #cdc4b4; background: #f7f1e6; color: #9aa19b; font-size: 2.4mm; }
+  .frame.ph .cap { color: #8a918c; }
   .photos.four { grid-template-columns: repeat(4, 1fr); gap: 2.5mm 3mm; }
   .photos.four .frame .img { height: 33mm; }
   .frame .key.plc { background: #2c4c9c; }
@@ -5531,12 +5535,12 @@ export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; 
   .dim { color: #737c77; font-weight: 400; }
   table.da.strat { font-size: 2.25mm; line-height: 1.28; }
   table.da.strat th { width: auto; }
-  table.da.strat tbody th { font-weight: 700; font-size: 2.05mm; letter-spacing: 0.04em; text-transform: uppercase; color: #6a7572; width: 16mm; padding-top: 1.3mm; }
+  table.da.strat tbody th { font-weight: 600; font-size: 2.05mm; letter-spacing: 0.04em; text-transform: uppercase; color: #6a7572; width: 16mm; padding-top: 1.3mm; }
   table.da.strat td { padding: 1.1mm 2mm 1.1mm 0; }
   table.da.strat td.status { width: 30mm; color: #59625d; }
   table.da.strat td.lnk { width: 34mm; }
   table.da.strat td.lnk a { color: #6a7572; text-decoration: none; word-break: break-all; font-size: 2.0mm; }
-  table.da.strat tr.manual td { color: #8a918c; font-style: italic; }
+  table.da.strat tr.manual td { color: #8a918c; }
   table.da.strat tr.manual td b { font-weight: 600; }
 </style></head>
 <body>${pages}</body></html>`;

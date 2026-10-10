@@ -115,7 +115,7 @@ export function overLayers(b: BaseData, proj: Proj, p: Panel, site: SiteLayer = 
     if (x < 2 || y < 2 || x > p.wMm - 2 || y > p.hMm - 2) continue;
     const mode = stationMode(s.name);
     parts.push(`<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})"><circle r="2" fill="#ffffff" stroke="${t.transit}" stroke-width="0.45"/>` +
-      `<text text-anchor="middle" dy="1.05" font-size="3" font-weight="700" fill="${t.transit}">${mode === 'light rail' ? 'L' : mode === 'metro' ? 'M' : 'T'}</text></g>`);
+      `<text text-anchor="middle" dy="1.05" font-size="3" font-weight="600" fill="${t.transit}">${mode === 'light rail' ? 'L' : mode === 'metro' ? 'M' : 'T'}</text></g>`);
   }
   if (site !== 'none') parts.push(siteMark(b, proj, site));
   return parts.join('\n');
@@ -143,7 +143,7 @@ export function siteMark(b: BaseData, proj: Proj, layer: SiteLayer = 'both'): st
   if (layer !== 'wash') {
     parts.push(`<path d="${d}" fill="none" stroke="${t.site}" stroke-width="0.6"/>`);
     const lp = siteLabelPoint(b, proj);
-    if (lp) parts.push(`<text x="${lp.cx.toFixed(1)}" y="${lp.cy.toFixed(1)}" text-anchor="middle" font-size="2.4" font-weight="700" fill="${t.site}" stroke="#ffffff" stroke-width="0.5" paint-order="stroke">SITE</text>`);
+    if (lp) parts.push(`<text x="${lp.cx.toFixed(1)}" y="${lp.cy.toFixed(1)}" text-anchor="middle" font-size="2.4" font-weight="600" fill="${t.site}" stroke="#ffffff" stroke-width="0.5" paint-order="stroke">SITE</text>`);
   }
   return parts.join('\n');
 }
@@ -179,7 +179,7 @@ export function panelFurniture(p: Panel, corner: FurnitureCorner = 'left'): stri
     <text x="${(x0 + barMm).toFixed(2)}" y="${y0 - 2}" text-anchor="end">${barM >= 1000 ? `${barM / 1000} km` : `${barM} m`}</text>
     <g transform="translate(${(x0 + barMm + 5).toFixed(1)},${y0 - 4.2})">
       <path d="M0,-3.2 L1.3,2.2 L0,1.2 L-1.3,2.2 Z" fill="${t.ink}"/>
-      <text y="-3.8" text-anchor="middle" font-size="1.8" font-weight="700">N</text>
+      <text y="-3.8" text-anchor="middle" font-size="1.8" font-weight="600">N</text>
     </g>
   </g>`;
 }
