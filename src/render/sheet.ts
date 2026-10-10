@@ -1123,12 +1123,16 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     // The name is centred on the street's own line: a cap height of about
     // 0.72 em lifted by half of that puts the letters' middle on the path.
     const streetDy = (T.street * 0.36).toFixed(2);
+    const narrowStreets = /narrow|condensed/i.test(tpl().streetFont);
+    // Over the aerial there is no white street to sit on, so the name carries
+    // its own white back-contour: a stroked copy under the filled one.
+    const halo = tpl().streetLabels === 'halo';
     for (const [name, r] of roadOrder) {
       const label = shortStreetName(name);
       // Must be an over-estimate: a name wider than the path it is set on has
       // its overflowing glyphs clamped onto the ends and they pile up. The
       // narrow face runs about four fifths the width of the grotesk.
-      const textLen = label.length * (T.street * 0.58 + 0.4) + 3;
+      const textLen = label.length * (T.street * (narrowStreets ? 0.58 : 0.72) + 0.4) + 3;
       const slack = 6;   // spare road either side of the name
       const slotLen = textLen + slack;
 
@@ -1180,8 +1184,14 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
           const id = `rd${rid++}`;
           const d2 = pts.map((p, i2) => `${i2 === 0 ? 'M' : 'L'}${p[0].toFixed(2)},${p[1].toFixed(2)}`).join('');
           roadDefs.push(`<path id="${id}" d="${d2}" fill="none"/>`);
-          roadTexts.push(`<text font-family="${tpl().streetFont}" font-size="${T.street}" font-weight="700" letter-spacing="0.4" dy="${streetDy}" fill="${tpl().streetInk}">
-            <textPath href="#${id}" startOffset="50%" text-anchor="middle">${esc(label)}</textPath></text>`);
+          const textAttrs = `font-family="${tpl().streetFont}" font-size="${T.street}" font-weight="700" letter-spacing="0.4" dy="${streetDy}"`;
+          const textPath = `<textPath href="#${id}" startOffset="50%" text-anchor="middle">${esc(label)}</textPath>`;
+          if (halo) {
+            roadTexts.push(`<text ${textAttrs} fill="none" stroke="#ffffff" stroke-width="${(T.street * 0.32).toFixed(2)}" stroke-linejoin="round" opacity="0.9">
+            ${textPath}</text>`);
+          }
+          roadTexts.push(`<text ${textAttrs} fill="${tpl().streetInk}">
+            ${textPath}</text>`);
         }
       }
     }
