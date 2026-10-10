@@ -21,7 +21,7 @@ import { renderSiteSheet } from './render/siteSheet.js';
 import { renderSummarySheet } from './render/summarySheet.js';
 import { summaryCsv, summaryJson } from './export/summaryExport.js';
 import { renderSlides, slidesFacts, PANEL_W, PANEL_H, DA_PANEL_H, SLIDE_W, SLIDE_H } from './render/slides.js';
-import { withTemplate, DEFAULT_TEMPLATE, isTemplateId } from './render/template.js';
+import { withTemplate, resolveTemplateId } from './render/template.js';
 import { htmlToPdf, printSlides } from './render/pdf.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -923,9 +923,9 @@ Sitemap: ${siteBase()}/sitemap.xml
     const body = await readBody(req);
     try {
       const { address, scale, rotate, sheet, fresh, template } = JSON.parse(body || '{}');
-      // A template the registry knows, else the default: the choice is the
-      // caller's again now that there are two.
-      const jobTemplate = isTemplateId(String(template ?? '')) ? String(template) : DEFAULT_TEMPLATE;
+      // A template the registry knows (an alias resolved to its id, so the
+      // two spellings share a job), else the default.
+      const jobTemplate = resolveTemplateId(String(template ?? ''));
       const addr = String(address ?? '').trim();
       if (addr.length < 8 || addr.length > 120) return json(res, 400, { error: 'Enter a full NSW street address.' });
       const kind: Job['sheet'] =
@@ -981,7 +981,7 @@ Sitemap: ${siteBase()}/sitemap.xml
     const body = await readBody(req);
     try {
       const b = JSON.parse(body || '{}');
-      const jobTemplate = isTemplateId(String(b.template ?? '')) ? String(b.template) : DEFAULT_TEMPLATE;
+      const jobTemplate = resolveTemplateId(String(b.template ?? ''));
 
       const raw: unknown[] = Array.isArray(b.addresses) ? b.addresses : [];
       const addresses = raw.map((a) => String(a ?? '').trim()).filter(Boolean);

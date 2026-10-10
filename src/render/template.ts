@@ -6,14 +6,15 @@
 // renderers. What a sheet SAYS (which data, which labels, the A1 geometry)
 // is deliberately not part of a template.
 //
-// Two templates. Flamingo is the paper-and-tints style the context sheet was
-// redrawn in (four hue families with textures, white streets, footprints in
-// the family ink, numbered places, narrow green street names). Redfern takes
-// the palette and legend of the Redfern deck: five hue rows of three tints
-// and two line textures each, solid roundels, catchments as plain lines — in
-// two versions, one over the aerial and one on paper with the buildings
-// white. The office style that used to sit beside them is drawn in ArchiCAD
-// now, so it left. Another house style is another entry in TEMPLATES.
+// Two palettes, each in two versions. Flamingo is the paper-and-tints style
+// the context sheet was redrawn in (four hue families with textures, white
+// streets, numbered places, narrow green street names). Redfern takes the
+// palette and legend of the Redfern deck (five hue rows of three tints with
+// ruled textures, solid roundels, catchments as plain lines). Each comes
+// `-white` — on paper, every building filled white — and `-aerial` — on the
+// photograph, the buildings only a light outline because the roofs are
+// already in the picture. The office style that used to sit beside them is
+// drawn in ArchiCAD now, so it left.
 //
 // Fonts are limited to what the runtime image actually ships (Liberation and
 // DejaVu). Naming a font that is not installed does not fail — it silently
@@ -73,8 +74,8 @@ export interface Template {
   roundel: 'ring' | 'solid';
   /** What the map sits on: plain white paper, or the aerial under a white veil with the tints thinned so it shows through. */
   ground: 'paper' | 'aerial';
-  /** The building footprints: the family ink of their ground, or white with a hairline of that ink. */
-  footprints: 'ink' | 'white';
+  /** The building footprints: white with a hairline of the family ink, or no fill and only a light outline (for the aerial, where the photograph shows the roofs). */
+  footprints: 'white' | 'outline';
 
   /** Land-use fills for the context sheet legend. */
   categories: Category[];
@@ -158,95 +159,80 @@ const REDFERN_CATEGORIES: Category[] = [
   { id: 'heritage',       label: 'GENERAL HERITAGE SITE',                    fill: R_BROWN, opacity: 0.6 },
 ];
 
+type Palette = Omit<Template, 'id' | 'label' | 'note' | 'ground' | 'footprints'>;
+
+const FLAMINGO: Palette = {
+  font: GROTESK,
+  streetFont: NARROW,
+  textScale: 0.96,
+  ink: '#1c1c1c',
+  streetInk: '#2f5f52',   // a deep green: present, not shouting
+  rule: '#8a8a8a',
+  site: CORAL,
+  dimension: '#56616b',
+  wind: '#87959d',
+  sun: '#efe8d4',
+  road: GREY_INK,
+  water: BLUE,
+  transit: NAVY,
+  rail: '#3a3a3a',
+  walk5: NAVY,
+  walk10: '#8593bb',
+  busRoute: '#7a8bb0',
+  heritage: SAND_INK,
+  isochrone: 'band',
+  roundel: 'ring',
+  categories: FLAMINGO_CATEGORIES,
+};
+
+const REDFERN: Palette = {
+  font: GROTESK,
+  streetFont: NARROW,
+  textScale: 0.96,
+  ink: '#1c1c1c',
+  streetInk: '#1c1c1c',
+  rule: '#8a8a8a',
+  site: R_RED,
+  dimension: '#56616b',
+  wind: '#87959d',
+  sun: '#efe8d4',
+  road: '#8c8c8c',
+  water: R_BLUE,
+  transit: R_NAVY,
+  rail: '#1c1c1c',
+  walk5: '#1f8a5a',
+  walk10: '#7fc49c',
+  busRoute: '#7fc3f0',
+  heritage: R_BROWN,
+  isochrone: 'line',
+  roundel: 'solid',
+  categories: REDFERN_CATEGORIES,
+};
+
 export const TEMPLATES: Template[] = [
-  {
-    id: 'flamingo',
-    label: 'Flamingo',
-    note: 'paper and four tints with textures, one coral accent — survives a mono print',
-    font: GROTESK,
-    streetFont: NARROW,
-    textScale: 0.96,
-    ink: '#1c1c1c',
-    streetInk: '#2f5f52',   // a deep green: present, not shouting
-    rule: '#8a8a8a',
-    site: CORAL,
-    dimension: '#56616b',
-    wind: '#87959d',
-    sun: '#efe8d4',
-    road: GREY_INK,
-    water: BLUE,
-    transit: NAVY,
-    rail: '#3a3a3a',
-    walk5: NAVY,
-    walk10: '#8593bb',
-    busRoute: '#7a8bb0',
-    heritage: SAND_INK,
-    isochrone: 'band',
-    roundel: 'ring',
-    ground: 'paper',
-    footprints: 'ink',
-    categories: FLAMINGO_CATEGORIES,
-  },
-  {
-    id: 'redfern',
-    label: 'Redfern',
-    note: 'the Redfern deck\'s palette over the aerial: five hue rows in three tints with line textures, solid roundels, catchments as plain lines',
-    ground: 'aerial',
-    footprints: 'ink',
-    font: GROTESK,
-    streetFont: NARROW,
-    textScale: 0.96,
-    ink: '#1c1c1c',
-    streetInk: '#1c1c1c',
-    rule: '#8a8a8a',
-    site: R_RED,
-    dimension: '#56616b',
-    wind: '#87959d',
-    sun: '#efe8d4',
-    road: '#8c8c8c',
-    water: R_BLUE,
-    transit: R_NAVY,
-    rail: '#1c1c1c',
-    walk5: '#1f8a5a',
-    walk10: '#7fc49c',
-    busRoute: '#7fc3f0',
-    heritage: R_BROWN,
-    isochrone: 'line',
-    roundel: 'solid',
-    categories: REDFERN_CATEGORIES,
-  },
-  {
-    id: 'redfern-white',
-    label: 'Redfern white',
-    note: 'the Redfern deck\'s palette on paper, every building white',
-    ground: 'paper',
-    footprints: 'white',
-    font: GROTESK,
-    streetFont: NARROW,
-    textScale: 0.96,
-    ink: '#1c1c1c',
-    streetInk: '#1c1c1c',
-    rule: '#8a8a8a',
-    site: R_RED,
-    dimension: '#56616b',
-    wind: '#87959d',
-    sun: '#efe8d4',
-    road: '#8c8c8c',
-    water: R_BLUE,
-    transit: R_NAVY,
-    rail: '#1c1c1c',
-    walk5: '#1f8a5a',
-    walk10: '#7fc49c',
-    busRoute: '#7fc3f0',
-    heritage: R_BROWN,
-    isochrone: 'line',
-    roundel: 'solid',
-    categories: REDFERN_CATEGORIES,
-  },
+  { id: 'flamingo-white',  label: 'Flamingo white',  note: 'paper and four tints with textures, every building white',
+    ...FLAMINGO, ground: 'paper',  footprints: 'white' },
+  { id: 'flamingo-aerial', label: 'Flamingo aerial', note: 'the four tints thinned over the aerial, buildings as a light outline',
+    ...FLAMINGO, ground: 'aerial', footprints: 'outline' },
+  { id: 'redfern-white',   label: 'Redfern white',   note: 'the Redfern deck\'s palette on paper, every building white',
+    ...REDFERN,  ground: 'paper',  footprints: 'white' },
+  { id: 'redfern-aerial',  label: 'Redfern aerial',  note: 'the Redfern deck\'s palette thinned over the aerial, buildings as a light outline',
+    ...REDFERN,  ground: 'aerial', footprints: 'outline' },
 ];
 
-const byId = Object.fromEntries(TEMPLATES.map((t) => [t.id, t]));
-export const DEFAULT_TEMPLATE = 'flamingo';
+// The bare palette names, from before each came in two versions, still
+// resolve: to the white version, which is what `flamingo` drew.
+const ALIASES: Record<string, string> = { flamingo: 'flamingo-white', redfern: 'redfern-white' };
+const byId: Record<string, Template> = Object.fromEntries([
+  ...TEMPLATES.map((t) => [t.id, t] as const),
+  ...Object.entries(ALIASES).map(([alias, id]) => [alias, TEMPLATES.find((t) => t.id === id)!] as const),
+]);
+export const DEFAULT_TEMPLATE = 'flamingo-white';
+
+/** The registered id an id or alias names, or the default for anything unknown. */
+export function resolveTemplateId(id: string | undefined): string {
+  return byId[id ?? '']?.id ?? DEFAULT_TEMPLATE;
+}
 
 // The renderers read the active template rather than threading it through
 // every drawing helper — forty-five call sites across five files, most of them

@@ -2,7 +2,7 @@
    State lives in one object; the options are plain buttons that write into it,
    which avoids native <select> chrome in a page that is otherwise all text. */
 
-const state = { sheet: 'context', scale: '3000', rotate: 'north', template: 'flamingo' };
+const state = { sheet: 'context', scale: '3000', rotate: 'north', template: 'flamingo-white' };
 
 // [value, label, previewImage, previewCaption] — every option previews a real
 // sheet generated for the same demo address, so the comparison is like for like.
@@ -32,9 +32,10 @@ const SCALES = {
 };
 // The graphic templates the server knows; an unknown one falls back to the default.
 const STYLES = [
-  ['flamingo', 'flamingo', '/samples/context.jpg', 'Flamingo — paper and four tints with textures, green street names'],
-  ['redfern',  'redfern',  '/samples/context-redfern.jpg', 'Redfern — the deck\'s palette over the aerial: red residential, ruled textures, solid roundels'],
-  ['redfern-white', 'redfern white', '/samples/context-redfern-white.jpg', 'Redfern white — the same palette on paper, every building white'],
+  ['flamingo-white',  'flamingo',        '/samples/context.jpg',                 'Flamingo — four tints on paper, every building white'],
+  ['flamingo-aerial', 'flamingo aerial', '/samples/context-flamingo-aerial.jpg', 'Flamingo aerial — the tints thinned over the photograph, buildings outlined'],
+  ['redfern-white',   'redfern',         '/samples/context-redfern-white.jpg',   'Redfern — the deck\'s palette on paper, every building white'],
+  ['redfern-aerial',  'redfern aerial',  '/samples/context-redfern-aerial.jpg',  'Redfern aerial — the deck\'s palette over the photograph, buildings outlined'],
 ];
 const NORTH = [
   ['north', 'up',    '/samples/site.jpg',       'north up — the sheet is oriented to north'],

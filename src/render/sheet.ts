@@ -417,14 +417,16 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     for (const [cat, paths] of byCat) {
       const c = cat ? catById()[cat] : undefined;
       const ink = c?.figure ?? c?.fill ?? tpl().road;
-      if (tpl().footprints === 'white') {
+      const d = paths.map((p) => `<path d="${p}"/>`).join('');
+      if (tpl().footprints === 'outline') {
+        // Over the aerial the roofs are already in the photograph: no fill,
+        // only a light line round each building.
+        layers.push(`<g fill="none" stroke="#ffffff" stroke-opacity="0.9" stroke-width="0.18" stroke-linejoin="round">${d}</g>`);
+      } else {
         // White buildings with a hairline of the family ink, so they read as
         // figures on the tint and not as more of the white street.
-        layers.push(`<g fill="#ffffff" fill-opacity="0.92" stroke="${ink}" stroke-width="0.12" stroke-linejoin="round" fill-rule="evenodd">` + paths.map((d) => `<path d="${d}"/>`).join('') + '</g>');
-        continue;
+        layers.push(`<g fill="#ffffff" fill-opacity="0.92" stroke="${ink}" stroke-width="0.12" stroke-linejoin="round" fill-rule="evenodd">${d}</g>`);
       }
-      const opacity = c?.figure ? 0.62 : c ? Math.min(0.6, c.opacity * 0.8 + 0.15) : 0.35;
-      layers.push(`<g fill="${ink}" fill-opacity="${opacity.toFixed(2)}" fill-rule="evenodd">` + paths.map((d) => `<path d="${d}"/>`).join('') + '</g>');
     }
   }
 
