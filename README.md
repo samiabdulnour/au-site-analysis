@@ -59,7 +59,8 @@ To refresh the samples, generate the three sheets for the demo address and
 re-render them (the context scale thumbnails `context-2000.jpg`,
 `context-4000.jpg` and `context-5000.jpg` come from the same address at
 `--scale 2000`, `4000` and `5000`, and the STYLE row's `context-redfern.jpg`
-from `--template redfern`, rendered the same way):
+and `context-redfern-white.jpg` from `--template redfern` and
+`redfern-white`, rendered the same way):
 
 ```bash
 npm run generate -- "1 Bay Street, Botany NSW 2019" --type both
@@ -461,7 +462,7 @@ colours and the land-use palette. Content is identical between templates; only
 the look changes. They live in `src/render/template.ts`, so a new house style is
 a data change.
 
-There are two. The default, `flamingo` (Flamingo): four tints, each a family — peach for the residential
+There are three. The default, `flamingo` (Flamingo): four tints, each a family — peach for the residential
 zones, sand for the centres, teal for open space and the institutions, blue for
 water, grey for the rest — with the categories inside a family told apart by
 tone and by texture (dots, hatch, cross-hatch, drawn as real lines so they print
@@ -489,14 +490,19 @@ fine ruled textures — vertical lines on medical, horizontal on mixed use and
 the railway, a grid on industrial, dots on open space — solid red, navy and
 light-blue roundels with a white letter, and the walking catchments as plain
 continuous green lines. The residential tiers sit in the red row (R2 the pale
-pink, R3 the mid, R4 the mid ruled), the centres in the orange row. Where the deck's legend did not name a
-category (R2, R4, commercial, industrial, water, the railway), it is placed in
-the same family.
+pink, R3 the mid, R4 the mid ruled), the centres in the orange row. Where the
+deck's legend did not name a category (R2, R4, commercial, industrial, water,
+the railway), it is placed in the same family. It comes in two versions:
+`redfern` sits on the aerial (the tiles under a white veil, the tints thinned
+to about half so the photograph reads through them, the footprints in the
+family ink) and `redfern-white` sits on paper with every building white, a
+hairline of the family ink around it.
 
 What differs between templates beyond colour is declared on the template:
-`isochrone` (`band` or `line`), `roundel` (`ring` or `solid`), `streetFont`
-and `streetInk`, and each category's `texture`, `textureColor` and `figure`
-(the footprint ink). The CLI takes `--template flamingo|redfern`; the web
+`ground` (`paper` or `aerial`), `footprints` (`ink` or `white`), `isochrone`
+(`band` or `line`), `roundel` (`ring` or `solid`), `streetFont` and
+`streetInk`, and each category's `texture`, `textureColor` and `figure` (the
+footprint ink). The CLI takes `--template flamingo|redfern|redfern-white`; the web
 picker has a STYLE row and the job request carries `template`, an unknown one
 falling back to the default. The walking catchments are broad, continuous, translucent navy
 bands. The office
@@ -516,7 +522,7 @@ comes out in the wrong face, so add the package to the `Dockerfile` first.
 
 Options (after `--`): `--type context|site|summary|slides|both`, `--scale 3000` (default 3000;
 the web picker offers 1:2000, 1:3000, 1:4000 and 1:5000, the server accepts 1000 to 6000),
-`--template flamingo|redfern` (the graphic template, see Templates below),
+`--template flamingo|redfern|redfern-white` (the graphic template, see Templates below),
 `--slides-scale 8000` (the deck's map panels), `--da-years 5` (the deck's
 development window), `--job 2539`, `--client "Name"`,
 `--status "DEVELOPMENT APPLICATION"`, `--sheet "DA 003"`.
