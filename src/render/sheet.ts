@@ -655,14 +655,18 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   // ---- transport symbols: one roundel style for all modes -----------------
   // Same size for train/bus/tram; the template says whether it is a white
   // disc with a coloured ring and letter, or a solid disc with a white letter.
-  const RR = 4.0;
+  // The place-number discs share this radius, so every dot on the map is one
+  // size: between the old roundel (4.0 mm) and the old number disc (2.9 mm).
+  const MARK_R = 3.4;
+  const RR = MARK_R;
+  const MARK_LETTER = T.mapSymbol * 0.82;
   const solidRoundel = tpl().roundel === 'solid';
   const roundelAt = (r: number, letter: string, color: string, size: number) =>
     solidRoundel
       ? `<circle r="${r}" fill="${color}"/><text text-anchor="middle" dy="${(size * 0.36).toFixed(2)}" font-size="${size}" font-weight="700" fill="#ffffff">${letter}</text>`
       : `<circle r="${r}" fill="#ffffff" stroke="${color}" stroke-width="${(r * 0.22).toFixed(2)}"/><text text-anchor="middle" dy="${(size * 0.36).toFixed(2)}" font-size="${size}" font-weight="700" fill="${color}">${letter}</text>`;
   const roundel = (x: number, y: number, letter: string, color: string) =>
-    `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})">${roundelAt(RR, letter, color, T.mapSymbol)}</g>`;
+    `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})">${roundelAt(RR, letter, color, MARK_LETTER)}</g>`;
 
   layers.push(bundle.bus.busStops
     .map(({ lon, lat }) => proj(lon, lat))
@@ -793,7 +797,9 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
       places.push({ n: places.length + 1, name: c.name, cat: c.cat, x: c.x, y: c.y });
     }
   }
-  const NR = 2.9;
+  const NR = MARK_R;
+  // The key's markers stay at the legend's own size, so its rows still fit.
+  const KR = 2.9;
   const hasTrainStations = bundle.stations.some((s) => !/LIGHT RAIL|TRAM/i.test(s.name));
   const hasTramStops = bundle.bus.tramStops.length > 0 || bundle.stations.some((s) => /LIGHT RAIL|TRAM/i.test(s.name));
   // The key has only the column the legend leaves it. A wide window
@@ -845,13 +851,16 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
       a.x -= ux; a.y -= uy; b.x += ux; b.y += uy;
     }
   }
+  // Numbers run to two digits, so they are set a little smaller than the
+  // roundels' single letter in the same disc.
   const numberSize = T.legend * 1.3;
+  const mapNumberSize = numberSize * (MARK_R / KR) * 0.92;
   // A solid disc with the number knocked out of it: one small dark mark a
   // reader can find, rather than a ring that competes with the roundels.
-  const numberMarker = (x: number, y: number, n: number) =>
+  const numberMarker = (x: number, y: number, n: number, r = NR, size = mapNumberSize) =>
     `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})">
-      <circle r="${NR}" fill="${tpl().streetInk}"/>
-      <text text-anchor="middle" dy="${(numberSize * 0.36).toFixed(2)}" font-size="${numberSize.toFixed(2)}" font-weight="700" fill="#ffffff">${n}</text></g>`;
+      <circle r="${r}" fill="${tpl().streetInk}"/>
+      <text text-anchor="middle" dy="${(size * 0.36).toFixed(2)}" font-size="${size.toFixed(2)}" font-weight="700" fill="#ffffff">${n}</text></g>`;
   for (const pl of places) reserve([pl.x, pl.y], [pl.x, pl.y], NR + 1);
   layers.push(places.map((pl) => numberMarker(pl.x, pl.y, pl.n)).join('\n'));
 
@@ -1067,16 +1076,16 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     // Rows at the metrics the budget above was measured with.
     const keyRow = (marker: string, name: string) => {
       const lines = wrapLabel(name, keyM.wrap);
-      const y0 = lines.length === 1 ? NR + 1.0 : NR - 0.4;
+      const y0 = lines.length === 1 ? KR + 1.0 : KR - 0.4;
       let row = `<g transform="translate(0,${ly.toFixed(1)})">${marker}`;
       lines.forEach((l, k) => { row += `<text x="${LABEL_X}" y="${(y0 + k * keyM.lineH).toFixed(1)}" font-size="${keyM.size.toFixed(2)}" fill="#222">${esc(l)}</text>`; });
       legendSvg += row + '</g>';
       ly += keyRowHeight(name, keyM);
     };
-    for (const pl of places) keyRow(numberMarker(symC, NR, pl.n), pl.name);
+    for (const pl of places) keyRow(numberMarker(symC, KR, pl.n, KR, numberSize), pl.name);
     for (const st of stationsOnMap) {
       const color = st.tram ? tpl().busRoute : tpl().site;
-      keyRow(`<g transform="translate(${symC},${NR})">${roundelAt(NR, st.tram ? 'L' : 'T', color, numberSize)}</g>`, st.name);
+      keyRow(`<g transform="translate(${symC},${KR})">${roundelAt(KR, st.tram ? 'L' : 'T', color, numberSize)}</g>`, st.name);
     }
   }
 
