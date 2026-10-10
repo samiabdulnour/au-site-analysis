@@ -214,19 +214,6 @@ export function textureSvg(clipId: string, clipPathD: string, kind: Texture, col
   // The hatch falls to the right, the opposite way to the heritage hatch
   // drawn elsewhere, so a heritage item inside a commercial centre still
   // shows as two textures crossing rather than one thicker one.
-  if (kind === 'vertical' || kind === 'horizontal' || kind === 'grid') {
-    // The fine ruled textures of the Redfern palette: hairlines a millimetre
-    // apart, straight up or across, or both for a grid.
-    const fine = 1.0;
-    if (kind !== 'horizontal')
-      for (let o = x + fine / 2; o <= x + w; o += fine)
-        lines += `<line x1="${o.toFixed(2)}" y1="${y.toFixed(1)}" x2="${o.toFixed(2)}" y2="${(y + h).toFixed(1)}"/>`;
-    if (kind !== 'vertical')
-      for (let o = y + fine / 2; o <= y + h; o += fine)
-        lines += `<line x1="${x.toFixed(1)}" y1="${o.toFixed(2)}" x2="${(x + w).toFixed(1)}" y2="${o.toFixed(2)}"/>`;
-    return `<clipPath id="${clipId}"><path d="${clipPathD}" clip-rule="evenodd"/></clipPath>
-      <g clip-path="url(#${clipId})" stroke="${color}" stroke-width="0.2" opacity="${opacity}">${lines}</g>`;
-  }
   const step = kind === 'cross' ? 2.0 : 1.6;
   for (let o = x - h; o <= x + w; o += step)
     lines += `<line x1="${o.toFixed(1)}" y1="${y.toFixed(1)}" x2="${(o + h).toFixed(1)}" y2="${(y + h).toFixed(1)}"/>`;
@@ -470,15 +457,9 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
       const c = cat ? catById()[cat] : undefined;
       const ink = c?.figure ?? c?.fill ?? tpl().road;
       const d = paths.map((p) => `<path d="${p}"/>`).join('');
-      if (tpl().footprints === 'outline') {
-        // Over the aerial the roofs are already in the photograph: no fill,
-        // only a light line round each building.
-        layers.push(`<g fill="none" stroke="#ffffff" stroke-opacity="0.9" stroke-width="0.18" stroke-linejoin="round">${d}</g>`);
-      } else {
-        // White buildings with a hairline of the family ink, so they read as
-        // figures on the tint and not as more of the white street.
-        layers.push(`<g fill="#ffffff" fill-opacity="0.92" stroke="${ink}" stroke-width="0.12" stroke-linejoin="round" fill-rule="evenodd">${d}</g>`);
-      }
+      // White buildings with a hairline of the family ink, so they read as
+      // figures on the tint and not as more of the white street.
+      layers.push(`<g fill="#ffffff" fill-opacity="0.92" stroke="${ink}" stroke-width="0.12" stroke-linejoin="round" fill-rule="evenodd">${d}</g>`);
     }
   }
 

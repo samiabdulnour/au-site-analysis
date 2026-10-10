@@ -58,10 +58,8 @@ either it reads KartaView alone. On the server they go in
 To refresh the samples, generate the three sheets for the demo address and
 re-render them (the context scale thumbnails `context-2000.jpg`,
 `context-4000.jpg` and `context-5000.jpg` come from the same address at
-`--scale 2000`, `4000` and `5000`, and the STYLE row's
-`context-flamingo-aerial.jpg`, `context-redfern-white.jpg`,
-`context-redfern-aerial.jpg` and `context-heron.jpg` from the matching `--template`, rendered the same
-way):
+`--scale 2000`, `4000` and `5000`, and the STYLE row's `context-heron.jpg`
+from `--template heron`, rendered the same way):
 
 ```bash
 npm run generate -- "1 Bay Street, Botany NSW 2019" --type both
@@ -463,8 +461,24 @@ colours and the land-use palette. Content is identical between templates; only
 the look changes. They live in `src/render/template.ts`, so a new house style is
 a data change.
 
-There are two palettes, each in two versions, and the office sheet they started
-from — five templates.
+There are two: Flamingo, the default, and Heron.
+
+**Flamingo** (`flamingo`) sits on plain paper. Four tints, each a family —
+peach for the residential zones, sand for the centres, teal for open space and
+the institutions, blue for water, grey for the rest — with the categories
+inside a family told apart by tone and by texture (dots, hatch, cross-hatch,
+drawn as real lines so they print crisply) rather than by another colour. The
+residential tiers step from a bare blush (R2) through peach (R3) to a deeper
+salmon with hatch (R4). The site is the one accent, coral. Every building
+footprint (Overture, OpenStreetMap as the fallback) is filled white with a
+hairline of its ground's family ink, so a block reads as white figures on a
+tint and not as more of the white street; the streets are white strips over
+the tints, the road reserve scaled from the function hierarchy, named in a
+narrow deep green (Arial Narrow where it is installed, Liberation Sans Narrow
+on the server). The stops and stations are solid roundels with a white
+letter, the bus routes a faint dotted line, the railway a red dotted line, and
+the walking catchments green dotted lines with "5 MIN" and "10 MIN" written
+along them, twice per ring, on clear straight stretches.
 
 **Heron** (`heron`) is the office sheet the restyle began from: the aerial
 under a light white veil with the tints at full strength over it (the palette
@@ -477,56 +491,23 @@ catchments as dashed green lines with walker medallions. From Flamingo it
 takes the solid stop roundels, the red dotted railway and the numbered
 places with their key, the discs in black.
 
-**Flamingo**: four tints, each a family — peach for the residential zones, sand
-for the centres, teal for open space and the institutions, blue for water, grey
-for the rest — with the categories inside a family told apart by tone and by
-texture (dots, hatch, cross-hatch, drawn as real lines so they print crisply)
-rather than by another colour. The residential tiers step from a bare blush (R2)
-through peach (R3) to a deeper salmon with hatch (R4). The site is the one
-accent, coral. The walking catchments are broad, continuous, translucent navy
-bands; the stop and station roundels are white discs with a coloured ring.
+The retired ids still resolve: `flamingo-white` to Flamingo, and
+`flamingo-aerial`, `redfern-white` and `redfern-aerial`, like any unknown id,
+to the default.
 
-**Redfern** takes the palette and legend of the Redfern deck: five hue rows
-(red, orange, stone, green, blue) in three tints each, with fine ruled textures
-— vertical lines on medical, horizontal on mixed use and the railway, a grid on
-industrial, dots on open space — solid red, navy and light-blue roundels with a
-white letter, and the walking catchments as plain continuous green lines. The
-residential tiers sit in the red row (R2 the pale pink, R3 the mid, R4 the mid
-ruled), the centres in the orange row. Where the deck's legend did not name a
-category (R2, R4, commercial, industrial, water, the railway), it is placed in
-the same family.
-
-Each palette comes in two versions:
-
-- **`-white`** (`flamingo-white`, the default, and `redfern-white`) sits on
-  plain paper. Flamingo white also takes Redfern's solid roundels, draws
-  the bus routes as a faint dotted line, the railway as a red dotted line, and
-  the walking catchments as green dotted lines with "5 MIN" and "10 MIN"
-  written along them, twice per ring, on clear straight stretches. Every building footprint (Overture, OpenStreetMap as the
-  fallback) is filled white with a hairline of its ground's family ink, so a
-  block reads as white figures on a tint and not as more of the white street.
-- **`-aerial`** (`flamingo-aerial`, `redfern-aerial`) sits on the aerial, under
-  a white veil, with the tints thinned to about half so the photograph reads
-  through them. The buildings are not filled — the roofs are already in the
-  photograph — only outlined in a light line.
-
-The bare names `flamingo` and `redfern` still resolve, to the white versions.
-
-Common to all four: the streets are white strips over the tints, the road
-reserve scaled from the function hierarchy. The only words on the map are the
-street names, set narrow (Arial Narrow where it is installed, Liberation Sans
-Narrow on the server). Every institution and park carries a number instead, a
-solid disc with the number knocked out, and the legend carries the key: the
-institutions in the legend's category order, then the open spaces, then the
-stations under their roundel letter. The key has only the column the legend
-leaves it, so past twenty-four entries its rows tighten, and when a wide window
-would still overrun it the places nearest the site are kept and the rest go,
-from the map as well as the key. The aerial tiles are fetched whatever the
-template; the CAD export carries them on its own layer.
+Common to both: the only words on the map are the street names. Every
+institution and park carries a number instead, a solid disc with the number
+knocked out, and the legend carries the key: the institutions in the legend's
+category order, then the open spaces, then the stations under their roundel
+letter. The key has only the column the legend leaves it, so past twenty-four
+entries its rows tighten, and when a wide window would still overrun it the
+places nearest the site are kept and the rest go, from the map as well as the
+key. The aerial tiles are fetched whatever the template; the CAD export
+carries them on its own layer.
 
 What differs between templates beyond colour is declared on the template:
 `ground` (`paper` or `aerial`, with `veil` and `tintScale` for the aerial), `footprints`
-(`white`, `outline` or `none`), `streets` (`white` or `none`), `streetLabels`
+(`white` or `none`), `streets` (`white` or `none`), `streetLabels`
 (`plain` or `band`),
 `isochrone` (`band`, `line`, `dotted` or `walkers`), `roundel` (`ring` or `solid`), `busLine`
 (`dashed` or `dotted`), `railLine` (`sleepers` or `dotted`), `streetFont`
@@ -549,7 +530,7 @@ comes out in the wrong face, so add the package to the `Dockerfile` first.
 
 Options (after `--`): `--type context|site|summary|slides|both`, `--scale 3000` (default 3000;
 the web picker offers 1:2000, 1:3000, 1:4000 and 1:5000, the server accepts 1000 to 6000),
-`--template flamingo-white|flamingo-aerial|redfern-white|redfern-aerial|heron` (the graphic template, see Templates below),
+`--template flamingo|heron` (the graphic template, see Templates below),
 `--slides-scale 8000` (the deck's map panels), `--da-years 5` (the deck's
 development window), `--job 2539`, `--client "Name"`,
 `--status "DEVELOPMENT APPLICATION"`, `--sheet "DA 003"`.
