@@ -52,7 +52,7 @@ means a placeholder.
   one HTML page per slide, printed with the same headless Chromium as the
   sheets. Text column on the left (~30 %), figure field on the right; a
   fixed footer with the tool's name, the address and the page number.
-- Composed in the active graphic template (`neutral`), so the deck matches
+- Composed in the active graphic template (`flamingo`), so the deck matches
   the three sheets. Slide chrome is a new module beside `chrome.ts`; the map
   drawing code is the existing renderers at small scale, not new code.
 - Outputs in `out/<slug>/`: `OVERALL_ANALYSIS.pdf`; `slides/NN_<name>.png`

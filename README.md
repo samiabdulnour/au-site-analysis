@@ -460,7 +460,7 @@ colours and the land-use palette. Content is identical between templates; only
 the look changes. They live in `src/render/template.ts`, so a new house style is
 a data change.
 
-There is one: `neutral`. Four tints, each a family — peach for the residential
+There is one, `flamingo` (Flamingo). Four tints, each a family — peach for the residential
 zones, sand for the centres, teal for open space and the institutions, blue for
 water, grey for the rest — with the categories inside a family told apart by
 tone and by texture (dots, hatch, cross-hatch, drawn as real lines so they print

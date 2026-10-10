@@ -6,9 +6,11 @@
 // renderers. What a sheet SAYS (which data, which labels, the A1 geometry)
 // is deliberately not part of a template.
 //
-// There is one template. The office style that used to sit beside it is drawn
-// in ArchiCAD now, so it left; this one is what every sheet comes out in until
-// its replacement is designed.
+// There is one template, Flamingo: the paper-and-tints style the context
+// sheet was redrawn in (four hue families with textures, white streets,
+// footprints in the family ink, numbered places, narrow green street names).
+// The office style that used to sit beside it is drawn in ArchiCAD now, so it
+// left. A second house style is another entry in TEMPLATES.
 //
 // Fonts are limited to what the runtime image actually ships (Liberation and
 // DejaVu). Naming a font that is not installed does not fail — it silently
@@ -66,7 +68,7 @@ export interface Template {
   categories: Category[];
 }
 
-// The land-use palette for the context sheet legend. Four hues, each a
+// Flamingo's land-use palette for the context sheet legend. Four hues, each a
 // family: peach for the residential zones, sand for the centres, teal for
 // open space and the institutions, blue for water — and grey for what is
 // neither. Within a family the categories differ by tone and by texture
@@ -84,7 +86,7 @@ const NAVY = '#3b4f8a';
 const GREY = '#d9d9d9', GREY_INK = '#8c8c8c';
 const CORAL = '#e8705a';
 
-const NEUTRAL_CATEGORIES: Category[] = [
+const FLAMINGO_CATEGORIES: Category[] = [
   { id: 'site',           label: 'SITE',                                     fill: CORAL, opacity: 0.6 },
   { id: 'medical',        label: 'MEDICAL',                                  fill: TEAL, opacity: 0.65, stroke: TEAL_INK, figure: TEAL_INK },
   { id: 'education',      label: 'EDUCATION',                                fill: TEAL, opacity: 0.55, stroke: TEAL_INK, texture: 'lines', textureColor: PAPER, figure: TEAL_INK },
@@ -114,9 +116,9 @@ const GROTESK = "'DejaVu Sans', Verdana, 'Liberation Sans', sans-serif";
 
 export const TEMPLATES: Template[] = [
   {
-    id: 'neutral',
-    label: 'neutral',
-    note: 'four tints and textures, one accent — survives a mono print',
+    id: 'flamingo',
+    label: 'Flamingo',
+    note: 'paper and four tints with textures, one coral accent — survives a mono print',
     font: GROTESK,
     streetFont: NARROW,
     textScale: 0.96,
@@ -135,12 +137,12 @@ export const TEMPLATES: Template[] = [
     walk10: '#8593bb',
     busRoute: '#7a8bb0',
     heritage: SAND_INK,
-    categories: NEUTRAL_CATEGORIES,
+    categories: FLAMINGO_CATEGORIES,
   },
 ];
 
 const byId = Object.fromEntries(TEMPLATES.map((t) => [t.id, t]));
-export const DEFAULT_TEMPLATE = 'neutral';
+export const DEFAULT_TEMPLATE = 'flamingo';
 
 // The renderers read the active template rather than threading it through
 // every drawing helper — forty-five call sites across five files, most of them
