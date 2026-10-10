@@ -6,11 +6,13 @@
 // renderers. What a sheet SAYS (which data, which labels, the A1 geometry)
 // is deliberately not part of a template.
 //
-// There is one template, Flamingo: the paper-and-tints style the context
-// sheet was redrawn in (four hue families with textures, white streets,
-// footprints in the family ink, numbered places, narrow green street names).
-// The office style that used to sit beside it is drawn in ArchiCAD now, so it
-// left. A second house style is another entry in TEMPLATES.
+// Two templates. Flamingo is the paper-and-tints style the context sheet was
+// redrawn in (four hue families with textures, white streets, footprints in
+// the family ink, numbered places, narrow green street names). Redfern takes
+// the palette and legend of the Redfern deck: five hue rows of three tints
+// and two line textures each, solid roundels, dashed catchments with the
+// walker. The office style that used to sit beside them is drawn in ArchiCAD
+// now, so it left. A third house style is another entry in TEMPLATES.
 //
 // Fonts are limited to what the runtime image actually ships (Liberation and
 // DejaVu). Naming a font that is not installed does not fail — it silently
@@ -33,7 +35,7 @@ export interface Category {
   figure?: string;
 }
 
-export type Texture = 'dots' | 'lines' | 'cross';
+export type Texture = 'dots' | 'lines' | 'cross' | 'vertical' | 'horizontal' | 'grid';
 
 export interface Template {
   id: string;
@@ -63,6 +65,11 @@ export interface Template {
   walk10: string;     // 10-minute walking catchment
   busRoute: string;   // bus route dashes
   heritage: string;   // heritage hatch
+
+  /** The walking catchments: a broad translucent band, or a dashed line with a walker medallion on it. */
+  isochrone: 'band' | 'dashed';
+  /** The stop and station roundels: a white disc with a coloured ring, or a solid coloured disc with a white letter. */
+  roundel: 'ring' | 'solid';
 
   /** Land-use fills for the context sheet legend. */
   categories: Category[];
@@ -114,6 +121,38 @@ const SANS = "Arial, 'Liberation Sans', Helvetica, sans-serif";
 const NARROW = "'Arial Narrow', 'Liberation Sans Narrow', 'DejaVu Sans Condensed', sans-serif";
 const GROTESK = "'DejaVu Sans', Verdana, 'Liberation Sans', sans-serif";
 
+// Redfern's palette: five rows, each a hue in three tints, from the deck's
+// palette sheet. The legend there names the categories it had; the rest are
+// placed in the same families (the residential tiers in the stone row, the
+// centres in the orange row, water and the railway in the blue row).
+const R_RED = '#e5343f', R_RED_INK = '#b8232d';
+const R_ORANGE = '#f5a56b', R_PEACH = '#f8ccab', R_PEACH_PALE = '#fdeee4', R_ORANGE_INK = '#d07a3a';
+const R_STONE = '#c9ccb8', R_STONE_MID = '#e2e3d8', R_STONE_PALE = '#f1f1ea', R_STONE_INK = '#9a9d87';
+const R_GREEN = '#6fbf8c', R_GREEN_MID = '#b6e2c5', R_GREEN_PALE = '#dff1e5', R_GREEN_INK = '#3f9a63';
+const R_BLUE = '#9fd4f8', R_BLUE_MID = '#cfe8fa', R_BLUE_PALE = '#eef6fd', R_BLUE_INK = '#5ea9dc';
+const R_NAVY = '#1d3b8a', R_BROWN = '#b08a5a';
+
+const REDFERN_CATEGORIES: Category[] = [
+  { id: 'site',           label: 'SITE',                                     fill: R_RED, opacity: 0.85 },
+  { id: 'medical',        label: 'MEDICAL',                                  fill: R_PEACH_PALE, opacity: 0.9, texture: 'vertical', textureColor: R_ORANGE, figure: R_ORANGE_INK },
+  { id: 'education',      label: 'EDUCATION',                                fill: R_BLUE_MID, opacity: 0.9, figure: R_BLUE_INK },
+  { id: 'childCare',      label: 'CHILD CARE / AGED CARE',                   fill: R_GREEN_MID, opacity: 0.9, figure: R_GREEN_INK },
+  { id: 'mixedUse',       label: 'MIXED USE CLUSTER RESIDENTIAL/COMMERCIAL', fill: R_PEACH_PALE, opacity: 0.9, texture: 'horizontal', textureColor: R_ORANGE, figure: R_ORANGE_INK },
+  { id: 'retail',         label: 'ACTIVE RETAIL',                            fill: R_STONE, opacity: 0.9, figure: R_STONE_INK },
+  { id: 'openSpace',      label: 'OPEN SPACE',                               fill: R_GREEN_PALE, opacity: 0.9, texture: 'dots', textureColor: R_GREEN, figure: R_GREEN_INK },
+  { id: 'community',      label: 'COMMUNITY HUB',                            fill: R_GREEN_PALE, opacity: 0.9, stroke: R_GREEN, figure: R_GREEN_INK },
+  { id: 'r2',             label: 'R2 LOW DENSITY RESIDENTIAL',               fill: R_STONE_PALE, opacity: 0.9, figure: R_STONE_INK },
+  { id: 'r3',             label: 'R3 MEDIUM DENSITY RESIDENTIAL',            fill: R_STONE_MID, opacity: 0.9, figure: R_STONE_INK },
+  { id: 'r4',             label: 'R4 HIGH DENSITY RESIDENTIAL',              fill: R_STONE_MID, opacity: 0.9, texture: 'vertical', textureColor: R_STONE_INK, figure: R_STONE_INK },
+  { id: 'localCentre',    label: 'LOCAL CENTRE',                             fill: R_PEACH, opacity: 0.9, figure: R_ORANGE_INK },
+  { id: 'commercial',     label: 'COMMERCIAL CENTRE',                        fill: R_ORANGE, opacity: 0.9, figure: R_ORANGE_INK },
+  { id: 'industrial',     label: 'GENERAL INDUSTRIAL',                       fill: R_STONE_PALE, opacity: 0.9, texture: 'grid', textureColor: R_STONE_INK, figure: R_STONE_INK },
+  { id: 'infrastructure', label: 'INFRASTRUCTURE FACILITY',                  fill: R_BLUE_PALE, opacity: 0.9, stroke: R_BLUE, figure: R_BLUE_INK },
+  { id: 'water',          label: 'WATERWAY',                                 fill: R_BLUE, opacity: 0.9 },
+  { id: 'railway',        label: 'RAILWAY TRACKS',                           fill: R_BLUE_PALE, opacity: 0.9, texture: 'horizontal', textureColor: R_BLUE, figure: R_BLUE_INK },
+  { id: 'heritage',       label: 'GENERAL HERITAGE SITE',                    fill: R_BROWN, opacity: 0.6 },
+];
+
 export const TEMPLATES: Template[] = [
   {
     id: 'flamingo',
@@ -137,7 +176,35 @@ export const TEMPLATES: Template[] = [
     walk10: '#8593bb',
     busRoute: '#7a8bb0',
     heritage: SAND_INK,
+    isochrone: 'band',
+    roundel: 'ring',
     categories: FLAMINGO_CATEGORIES,
+  },
+  {
+    id: 'redfern',
+    label: 'Redfern',
+    note: 'the Redfern deck\'s palette: five hue rows in three tints with line textures, solid roundels, dashed catchments',
+    font: GROTESK,
+    streetFont: NARROW,
+    textScale: 0.96,
+    ink: '#1c1c1c',
+    streetInk: '#1c1c1c',
+    rule: '#8a8a8a',
+    site: R_RED,
+    dimension: '#56616b',
+    wind: '#87959d',
+    sun: '#efe8d4',
+    road: '#8c8c8c',
+    water: R_BLUE,
+    transit: R_NAVY,
+    rail: '#1c1c1c',
+    walk5: '#1f8a5a',
+    walk10: '#7fc49c',
+    busRoute: '#7fc3f0',
+    heritage: R_BROWN,
+    isochrone: 'dashed',
+    roundel: 'solid',
+    categories: REDFERN_CATEGORIES,
   },
 ];
 

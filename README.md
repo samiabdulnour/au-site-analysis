@@ -460,7 +460,7 @@ colours and the land-use palette. Content is identical between templates; only
 the look changes. They live in `src/render/template.ts`, so a new house style is
 a data change.
 
-There is one, `flamingo` (Flamingo). Four tints, each a family — peach for the residential
+There are two. The default, `flamingo` (Flamingo): four tints, each a family — peach for the residential
 zones, sand for the centres, teal for open space and the institutions, blue for
 water, grey for the rest — with the categories inside a family told apart by
 tone and by texture (dots, hatch, cross-hatch, drawn as real lines so they print
@@ -480,7 +480,24 @@ legend's category order, then the open spaces, then the stations under their
 roundel letter. The key has only the column the legend leaves it, so past
 twenty-four entries its rows tighten, and when a wide window would still
 overrun it the places nearest the site are kept and the rest go, from the
-map as well as the key. The walking catchments are broad, continuous, translucent navy
+map as well as the key.
+
+The second, `redfern` (Redfern), takes the palette and legend of the Redfern
+deck: five hue rows (red, orange, stone, green, blue) in three tints each, with
+fine ruled textures — vertical lines on medical, horizontal on mixed use and
+the railway, a grid on industrial, dots on open space — solid red, navy and
+light-blue roundels with a white letter, and the walking catchments as dashed
+green lines with the walker medallion. The residential tiers sit in the stone
+row, the centres in the orange row. Where the deck's legend did not name a
+category (R2, R4, commercial, industrial, water, the railway), it is placed in
+the same family.
+
+What differs between templates beyond colour is declared on the template:
+`isochrone` (`band` or `dashed`), `roundel` (`ring` or `solid`), `streetFont`
+and `streetInk`, and each category's `texture`, `textureColor` and `figure`
+(the footprint ink). The CLI takes `--template flamingo|redfern`; the web
+picker has a STYLE row and the job request carries `template`, an unknown one
+falling back to the default. The walking catchments are broad, continuous, translucent navy
 bands. The office
 style that sat beside it left with the office door, and took the elaborate
 compass rose with it — that was the only thing the `symbols` field ever
@@ -498,6 +515,7 @@ comes out in the wrong face, so add the package to the `Dockerfile` first.
 
 Options (after `--`): `--type context|site|summary|slides|both`, `--scale 3000` (default 3000;
 the web picker offers 1:2000, 1:3000, 1:4000 and 1:5000, the server accepts 1000 to 6000),
+`--template flamingo|redfern` (the graphic template, see Templates below),
 `--slides-scale 8000` (the deck's map panels), `--da-years 5` (the deck's
 development window), `--job 2539`, `--client "Name"`,
 `--status "DEVELOPMENT APPLICATION"`, `--sheet "DA 003"`.

@@ -147,6 +147,52 @@ export function arrowAlong(pts: Pt[], lengthMm: number): BandArrow | null {
   return { svg, cx: (a[0] + b[0]) / 2, cy: (a[1] + b[1]) / 2, angDeg: ang };
 }
 
+/** Walking-person pictogram (Material Symbols directions_walk, Apache-2.0),
+ *  24x24 units, recentered; fill takes the given color. */
+export function walkerGlyph(color: string, scale: number): string {
+  return `<g transform="scale(${scale}) translate(-12.6,-13.5)"><path fill="${color}" d="M13.5 5.5c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zM9.8 8.9L7 23h2.1l1.8-8 2.1 2v6h2v-7.5l-2.1-2 .6-3C14.8 12 16.8 13 19 13v-2c-1.9 0-3.5-1-4.3-2.4l-1-1.6c-.4-.6-1-1-1.7-1-.3 0-.5.1-.8.1L6 8.3V13h2V9.6l1.8-.7"/></g>`;
+}
+
+/** Walker-in-circle marker sitting on an isochrone ring, all in ring color. */
+export function walkerMedallion(x: number, y: number, color: string): string {
+  return `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})">
+    <circle r="4.1" fill="#ffffff" stroke="${color}" stroke-width="1.1"/>
+    ${walkerGlyph(color, 0.30)}
+  </g>`;
+}
+
+/**
+ * `count` positions spaced evenly along a closed ring by arc length, skipping
+ * anything off the sheet and never stacking two markers on top of each other.
+ * `phase` (0..1) rotates the whole set so two rings can be staggered.
+ */
+function ringMarkers(pts: Pt[], count: number, phase: number): Pt[] {
+  const inView = ([x, y]: Pt) => x > 14 && x < MAP_W - 14 && y > 14 && y < MAP_H - 14;
+  const cum: number[] = [0];
+  for (let i = 1; i < pts.length; i++) {
+    cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+  }
+  const total = cum[cum.length - 1];
+  if (!(total > 0)) return [];
+  const visible = pts.map((p, i) => ({ p, s: cum[i] })).filter((o) => inView(o.p));
+  if (!visible.length) return [];
+  const out: Pt[] = [];
+  for (let k = 0; k < count; k++) {
+    const want = total * (((k + phase) / count) % 1);
+    let best: Pt | null = null;
+    let bestDist = Infinity;
+    for (const v of visible) {
+      let d = Math.abs(v.s - want);
+      d = Math.min(d, total - d);                     // the ring is closed
+      if (d >= bestDist) continue;
+      if (out.some((o) => Math.hypot(o[0] - v.p[0], o[1] - v.p[1]) < 26)) continue;
+      bestDist = d; best = v.p;
+    }
+    if (best) out.push(best);
+  }
+  return out;
+}
+
 /**
  * A vector texture (dots, diagonal hatch, cross-hatch) clipped to a shape.
  * Real lines rather than an SVG pattern: patterns rasterize blurrily when
@@ -170,6 +216,19 @@ export function textureSvg(clipId: string, clipPathD: string, kind: Texture, col
   // The hatch falls to the right, the opposite way to the heritage hatch
   // drawn elsewhere, so a heritage item inside a commercial centre still
   // shows as two textures crossing rather than one thicker one.
+  if (kind === 'vertical' || kind === 'horizontal' || kind === 'grid') {
+    // The fine ruled textures of the Redfern palette: hairlines a millimetre
+    // apart, straight up or across, or both for a grid.
+    const fine = 1.0;
+    if (kind !== 'horizontal')
+      for (let o = x + fine / 2; o <= x + w; o += fine)
+        lines += `<line x1="${o.toFixed(2)}" y1="${y.toFixed(1)}" x2="${o.toFixed(2)}" y2="${(y + h).toFixed(1)}"/>`;
+    if (kind !== 'vertical')
+      for (let o = y + fine / 2; o <= y + h; o += fine)
+        lines += `<line x1="${x.toFixed(1)}" y1="${o.toFixed(2)}" x2="${(x + w).toFixed(1)}" y2="${o.toFixed(2)}"/>`;
+    return `<clipPath id="${clipId}"><path d="${clipPathD}" clip-rule="evenodd"/></clipPath>
+      <g clip-path="url(#${clipId})" stroke="${color}" stroke-width="0.2" opacity="${opacity}">${lines}</g>`;
+  }
   const step = kind === 'cross' ? 2.0 : 1.6;
   for (let o = x - h; o <= x + w; o += step)
     lines += `<line x1="${o.toFixed(1)}" y1="${y.toFixed(1)}" x2="${(o + h).toFixed(1)}" y2="${(y + h).toFixed(1)}"/>`;
@@ -574,12 +633,24 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     5: { color: tpl().walk5, label: '400m (5-MIN WALK)' },
     10: { color: tpl().walk10, label: '800m (10-MIN WALK)' },
   };
+  const dashedIso = tpl().isochrone === 'dashed';
   for (const iso of bundle.isochrones) {
     const st = isoStyle[iso.minutes] ?? { color: tpl().walk5, label: `${iso.minutes} MIN WALK` };
     const d = iso.rings.map((r) => pathFromRings([r as any], proj)).join('');
-    // A broad, continuous, translucent band rather than a dashed hairline:
-    // the catchment reads as a soft edge the map shows through.
-    layers.push(`<path d="${d}" fill="none" stroke="${st.color}" stroke-width="${ISO_W}" opacity="${ISO_OPACITY}" stroke-linejoin="round" stroke-linecap="round"/>`);
+    if (dashedIso) {
+      // The office style: a dashed line with walker medallions spaced along
+      // the ring's own length, staggered between the two contours.
+      layers.push(`<path d="${d}" fill="none" stroke="${st.color}" stroke-width="1.3" stroke-dasharray="3.6,2.2" stroke-linejoin="round"/>`);
+      const ring = [...iso.rings].sort((a, b) => b.length - a.length)[0];
+      if (ring) {
+        const pts: Pt[] = ring.map(([lon, lat]) => proj(lon, lat));
+        for (const [x, y] of ringMarkers(pts, 4, iso.minutes === 5 ? 0.15 : 0.6)) layers.push(walkerMedallion(x, y, st.color));
+      }
+    } else {
+      // A broad, continuous, translucent band rather than a dashed hairline:
+      // the catchment reads as a soft edge the map shows through.
+      layers.push(`<path d="${d}" fill="none" stroke="${st.color}" stroke-width="${ISO_W}" opacity="${ISO_OPACITY}" stroke-linejoin="round" stroke-linecap="round"/>`);
+    }
   }
   // ---- site --------------------------------------------------------------
   {
@@ -589,12 +660,16 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   }
 
   // ---- transport symbols: one roundel style for all modes -----------------
-  // (white circle, colored ring and letter — same size for train/bus/tram)
+  // Same size for train/bus/tram; the template says whether it is a white
+  // disc with a coloured ring and letter, or a solid disc with a white letter.
   const RR = 4.0;
+  const solidRoundel = tpl().roundel === 'solid';
+  const roundelAt = (r: number, letter: string, color: string, size: number) =>
+    solidRoundel
+      ? `<circle r="${r}" fill="${color}"/><text text-anchor="middle" dy="${(size * 0.36).toFixed(2)}" font-size="${size}" font-weight="700" fill="#ffffff">${letter}</text>`
+      : `<circle r="${r}" fill="#ffffff" stroke="${color}" stroke-width="${(r * 0.22).toFixed(2)}"/><text text-anchor="middle" dy="${(size * 0.36).toFixed(2)}" font-size="${size}" font-weight="700" fill="${color}">${letter}</text>`;
   const roundel = (x: number, y: number, letter: string, color: string) =>
-    `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})">
-      <circle r="${RR}" fill="#ffffff" stroke="${color}" stroke-width="0.9"/>
-      <text text-anchor="middle" dy="${(T.mapSymbol * 0.36).toFixed(1)}" font-size="${T.mapSymbol}" font-weight="700" fill="${color}">${letter}</text></g>`;
+    `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})">${roundelAt(RR, letter, color, T.mapSymbol)}</g>`;
 
   layers.push(bundle.bus.busStops
     .map(({ lon, lat }) => proj(lon, lat))
@@ -916,7 +991,7 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   // transport / analysis symbols
   const symC = SWATCH_X + SWATCH_W / 2;
   const legendRoundel = (letter: string, color: string) =>
-    `<g transform="translate(${symC},3.2)"><circle r="3.4" fill="#fff" stroke="${color}" stroke-width="0.8"/><text text-anchor="middle" dy="1.9" font-size="5.7" font-weight="700" fill="${color}">${letter}</text></g>`;
+    `<g transform="translate(${symC},3.2)">${roundelAt(3.4, letter, color, 5.7)}</g>`;
   if (hasTrainStations) legendRow(legendRoundel('T', tpl().site), ['TRAIN STATION']);
   legendRow(legendRoundel('B', tpl().transit), ['BUS STOPS']);
   if (hasTramStops) legendRow(legendRoundel('L', tpl().busRoute), ['LIGHT RAIL STOP']);
@@ -925,8 +1000,10 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   if (bundle.railLines.tram.length || bundle.bus.tramRouteSegments.length)
     legendRow(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${tpl().busRoute}" stroke-width="0.9" stroke-dasharray="3.4,1.8"/>`, ['TRAM ROUTE']);
   legendRow(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${tpl().transit}" stroke-width="0.9" stroke-dasharray="3,1.9"/>`, ['BUS ROUTE']);
-  const legendIso = (color: string) =>
-    `<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${color}" stroke-width="${ISO_W}" opacity="${ISO_OPACITY}" stroke-linecap="round"/>`;
+  const legendIso = (color: string) => dashedIso
+    ? `<g><line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${color}" stroke-width="1.1" stroke-dasharray="3.6,2.2"/>
+       <g transform="translate(${symC},3.2)"><circle r="3.3" fill="#fff" stroke="${color}" stroke-width="0.9"/>${walkerGlyph(color, 0.24)}</g></g>`
+    : `<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${color}" stroke-width="${ISO_W}" opacity="${ISO_OPACITY}" stroke-linecap="round"/>`;
   legendRow(legendIso(tpl().walk5), ['ISOCHRONE -'], '400m/5 min walk');
   legendRow(legendIso(tpl().walk10), ['ISOCHRONE -'], '800m/10 min walk');
 
@@ -947,8 +1024,7 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     for (const pl of places) keyRow(numberMarker(symC, NR, pl.n), pl.name);
     for (const st of stationsOnMap) {
       const color = st.tram ? tpl().busRoute : tpl().site;
-      keyRow(`<g transform="translate(${symC},${NR})"><circle r="${NR}" fill="#ffffff" stroke="${color}" stroke-width="0.6"/>
-        <text text-anchor="middle" dy="${(numberSize * 0.36).toFixed(2)}" font-size="${numberSize.toFixed(2)}" font-weight="700" fill="${color}">${st.tram ? 'L' : 'T'}</text></g>`, st.name);
+      keyRow(`<g transform="translate(${symC},${NR})">${roundelAt(NR, st.tram ? 'L' : 'T', color, numberSize)}</g>`, st.name);
     }
   }
 
