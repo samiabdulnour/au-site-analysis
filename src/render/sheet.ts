@@ -147,52 +147,6 @@ export function arrowAlong(pts: Pt[], lengthMm: number): BandArrow | null {
   return { svg, cx: (a[0] + b[0]) / 2, cy: (a[1] + b[1]) / 2, angDeg: ang };
 }
 
-/** Walking-person pictogram (Material Symbols directions_walk, Apache-2.0),
- *  24x24 units, recentered; fill takes the given color. */
-export function walkerGlyph(color: string, scale: number): string {
-  return `<g transform="scale(${scale}) translate(-12.6,-13.5)"><path fill="${color}" d="M13.5 5.5c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zM9.8 8.9L7 23h2.1l1.8-8 2.1 2v6h2v-7.5l-2.1-2 .6-3C14.8 12 16.8 13 19 13v-2c-1.9 0-3.5-1-4.3-2.4l-1-1.6c-.4-.6-1-1-1.7-1-.3 0-.5.1-.8.1L6 8.3V13h2V9.6l1.8-.7"/></g>`;
-}
-
-/** Walker-in-circle marker sitting on an isochrone ring, all in ring color. */
-export function walkerMedallion(x: number, y: number, color: string): string {
-  return `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})">
-    <circle r="4.1" fill="#ffffff" stroke="${color}" stroke-width="1.1"/>
-    ${walkerGlyph(color, 0.30)}
-  </g>`;
-}
-
-/**
- * `count` positions spaced evenly along a closed ring by arc length, skipping
- * anything off the sheet and never stacking two markers on top of each other.
- * `phase` (0..1) rotates the whole set so two rings can be staggered.
- */
-function ringMarkers(pts: Pt[], count: number, phase: number): Pt[] {
-  const inView = ([x, y]: Pt) => x > 14 && x < MAP_W - 14 && y > 14 && y < MAP_H - 14;
-  const cum: number[] = [0];
-  for (let i = 1; i < pts.length; i++) {
-    cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
-  }
-  const total = cum[cum.length - 1];
-  if (!(total > 0)) return [];
-  const visible = pts.map((p, i) => ({ p, s: cum[i] })).filter((o) => inView(o.p));
-  if (!visible.length) return [];
-  const out: Pt[] = [];
-  for (let k = 0; k < count; k++) {
-    const want = total * (((k + phase) / count) % 1);
-    let best: Pt | null = null;
-    let bestDist = Infinity;
-    for (const v of visible) {
-      let d = Math.abs(v.s - want);
-      d = Math.min(d, total - d);                     // the ring is closed
-      if (d >= bestDist) continue;
-      if (out.some((o) => Math.hypot(o[0] - v.p[0], o[1] - v.p[1]) < 26)) continue;
-      bestDist = d; best = v.p;
-    }
-    if (best) out.push(best);
-  }
-  return out;
-}
-
 /**
  * A vector texture (dots, diagonal hatch, cross-hatch) clipped to a shape.
  * Real lines rather than an SVG pattern: patterns rasterize blurrily when
@@ -633,19 +587,13 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     5: { color: tpl().walk5, label: '400m (5-MIN WALK)' },
     10: { color: tpl().walk10, label: '800m (10-MIN WALK)' },
   };
-  const dashedIso = tpl().isochrone === 'dashed';
+  const lineIso = tpl().isochrone === 'line';
   for (const iso of bundle.isochrones) {
     const st = isoStyle[iso.minutes] ?? { color: tpl().walk5, label: `${iso.minutes} MIN WALK` };
     const d = iso.rings.map((r) => pathFromRings([r as any], proj)).join('');
-    if (dashedIso) {
-      // The office style: a dashed line with walker medallions spaced along
-      // the ring's own length, staggered between the two contours.
-      layers.push(`<path d="${d}" fill="none" stroke="${st.color}" stroke-width="1.3" stroke-dasharray="3.6,2.2" stroke-linejoin="round"/>`);
-      const ring = [...iso.rings].sort((a, b) => b.length - a.length)[0];
-      if (ring) {
-        const pts: Pt[] = ring.map(([lon, lat]) => proj(lon, lat));
-        for (const [x, y] of ringMarkers(pts, 4, iso.minutes === 5 ? 0.15 : 0.6)) layers.push(walkerMedallion(x, y, st.color));
-      }
+    if (lineIso) {
+      // A plain continuous line, nothing on it.
+      layers.push(`<path d="${d}" fill="none" stroke="${st.color}" stroke-width="1.2" stroke-linejoin="round"/>`);
     } else {
       // A broad, continuous, translucent band rather than a dashed hairline:
       // the catchment reads as a soft edge the map shows through.
@@ -1000,9 +948,8 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   if (bundle.railLines.tram.length || bundle.bus.tramRouteSegments.length)
     legendRow(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${tpl().busRoute}" stroke-width="0.9" stroke-dasharray="3.4,1.8"/>`, ['TRAM ROUTE']);
   legendRow(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${tpl().transit}" stroke-width="0.9" stroke-dasharray="3,1.9"/>`, ['BUS ROUTE']);
-  const legendIso = (color: string) => dashedIso
-    ? `<g><line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${color}" stroke-width="1.1" stroke-dasharray="3.6,2.2"/>
-       <g transform="translate(${symC},3.2)"><circle r="3.3" fill="#fff" stroke="${color}" stroke-width="0.9"/>${walkerGlyph(color, 0.24)}</g></g>`
+  const legendIso = (color: string) => lineIso
+    ? `<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${color}" stroke-width="1.2"/>`
     : `<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${color}" stroke-width="${ISO_W}" opacity="${ISO_OPACITY}" stroke-linecap="round"/>`;
   legendRow(legendIso(tpl().walk5), ['ISOCHRONE -'], '400m/5 min walk');
   legendRow(legendIso(tpl().walk10), ['ISOCHRONE -'], '800m/10 min walk');

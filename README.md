@@ -58,7 +58,8 @@ either it reads KartaView alone. On the server they go in
 To refresh the samples, generate the three sheets for the demo address and
 re-render them (the context scale thumbnails `context-2000.jpg`,
 `context-4000.jpg` and `context-5000.jpg` come from the same address at
-`--scale 2000`, `4000` and `5000`, rendered the same way):
+`--scale 2000`, `4000` and `5000`, and the STYLE row's `context-redfern.jpg`
+from `--template redfern`, rendered the same way):
 
 ```bash
 npm run generate -- "1 Bay Street, Botany NSW 2019" --type both
@@ -486,14 +487,14 @@ The second, `redfern` (Redfern), takes the palette and legend of the Redfern
 deck: five hue rows (red, orange, stone, green, blue) in three tints each, with
 fine ruled textures — vertical lines on medical, horizontal on mixed use and
 the railway, a grid on industrial, dots on open space — solid red, navy and
-light-blue roundels with a white letter, and the walking catchments as dashed
-green lines with the walker medallion. The residential tiers sit in the stone
-row, the centres in the orange row. Where the deck's legend did not name a
+light-blue roundels with a white letter, and the walking catchments as plain
+continuous green lines. The residential tiers sit in the red row (R2 the pale
+pink, R3 the mid, R4 the mid ruled), the centres in the orange row. Where the deck's legend did not name a
 category (R2, R4, commercial, industrial, water, the railway), it is placed in
 the same family.
 
 What differs between templates beyond colour is declared on the template:
-`isochrone` (`band` or `dashed`), `roundel` (`ring` or `solid`), `streetFont`
+`isochrone` (`band` or `line`), `roundel` (`ring` or `solid`), `streetFont`
 and `streetInk`, and each category's `texture`, `textureColor` and `figure`
 (the footprint ink). The CLI takes `--template flamingo|redfern`; the web
 picker has a STYLE row and the job request carries `template`, an unknown one

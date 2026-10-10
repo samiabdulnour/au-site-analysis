@@ -10,8 +10,8 @@
 // redrawn in (four hue families with textures, white streets, footprints in
 // the family ink, numbered places, narrow green street names). Redfern takes
 // the palette and legend of the Redfern deck: five hue rows of three tints
-// and two line textures each, solid roundels, dashed catchments with the
-// walker. The office style that used to sit beside them is drawn in ArchiCAD
+// and two line textures each, solid roundels, catchments as plain lines. The
+// office style that used to sit beside them is drawn in ArchiCAD
 // now, so it left. A third house style is another entry in TEMPLATES.
 //
 // Fonts are limited to what the runtime image actually ships (Liberation and
@@ -66,8 +66,8 @@ export interface Template {
   busRoute: string;   // bus route dashes
   heritage: string;   // heritage hatch
 
-  /** The walking catchments: a broad translucent band, or a dashed line with a walker medallion on it. */
-  isochrone: 'band' | 'dashed';
+  /** The walking catchments: a broad translucent band, or a plain continuous line. */
+  isochrone: 'band' | 'line';
   /** The stop and station roundels: a white disc with a coloured ring, or a solid coloured disc with a white letter. */
   roundel: 'ring' | 'solid';
 
@@ -123,9 +123,9 @@ const GROTESK = "'DejaVu Sans', Verdana, 'Liberation Sans', sans-serif";
 
 // Redfern's palette: five rows, each a hue in three tints, from the deck's
 // palette sheet. The legend there names the categories it had; the rest are
-// placed in the same families (the residential tiers in the stone row, the
+// placed in the same families (the residential tiers in the red row, the
 // centres in the orange row, water and the railway in the blue row).
-const R_RED = '#e5343f', R_RED_INK = '#b8232d';
+const R_RED = '#e5343f', R_RED_MID = '#ef8f94', R_RED_PALE = '#f9dde0', R_RED_INK = '#c94a53', R_RED_DEEP = '#9e1f28';
 const R_ORANGE = '#f5a56b', R_PEACH = '#f8ccab', R_PEACH_PALE = '#fdeee4', R_ORANGE_INK = '#d07a3a';
 const R_STONE = '#c9ccb8', R_STONE_MID = '#e2e3d8', R_STONE_PALE = '#f1f1ea', R_STONE_INK = '#9a9d87';
 const R_GREEN = '#6fbf8c', R_GREEN_MID = '#b6e2c5', R_GREEN_PALE = '#dff1e5', R_GREEN_INK = '#3f9a63';
@@ -141,9 +141,9 @@ const REDFERN_CATEGORIES: Category[] = [
   { id: 'retail',         label: 'ACTIVE RETAIL',                            fill: R_STONE, opacity: 0.9, figure: R_STONE_INK },
   { id: 'openSpace',      label: 'OPEN SPACE',                               fill: R_GREEN_PALE, opacity: 0.9, texture: 'dots', textureColor: R_GREEN, figure: R_GREEN_INK },
   { id: 'community',      label: 'COMMUNITY HUB',                            fill: R_GREEN_PALE, opacity: 0.9, stroke: R_GREEN, figure: R_GREEN_INK },
-  { id: 'r2',             label: 'R2 LOW DENSITY RESIDENTIAL',               fill: R_STONE_PALE, opacity: 0.9, figure: R_STONE_INK },
-  { id: 'r3',             label: 'R3 MEDIUM DENSITY RESIDENTIAL',            fill: R_STONE_MID, opacity: 0.9, figure: R_STONE_INK },
-  { id: 'r4',             label: 'R4 HIGH DENSITY RESIDENTIAL',              fill: R_STONE_MID, opacity: 0.9, texture: 'vertical', textureColor: R_STONE_INK, figure: R_STONE_INK },
+  { id: 'r2',             label: 'R2 LOW DENSITY RESIDENTIAL',               fill: R_RED_PALE, opacity: 0.9, figure: R_RED_INK },
+  { id: 'r3',             label: 'R3 MEDIUM DENSITY RESIDENTIAL',            fill: R_RED_MID, opacity: 0.55, figure: R_RED_DEEP },
+  { id: 'r4',             label: 'R4 HIGH DENSITY RESIDENTIAL',              fill: R_RED_MID, opacity: 0.55, texture: 'vertical', textureColor: R_RED_DEEP, figure: R_RED_DEEP },
   { id: 'localCentre',    label: 'LOCAL CENTRE',                             fill: R_PEACH, opacity: 0.9, figure: R_ORANGE_INK },
   { id: 'commercial',     label: 'COMMERCIAL CENTRE',                        fill: R_ORANGE, opacity: 0.9, figure: R_ORANGE_INK },
   { id: 'industrial',     label: 'GENERAL INDUSTRIAL',                       fill: R_STONE_PALE, opacity: 0.9, texture: 'grid', textureColor: R_STONE_INK, figure: R_STONE_INK },
@@ -183,7 +183,7 @@ export const TEMPLATES: Template[] = [
   {
     id: 'redfern',
     label: 'Redfern',
-    note: 'the Redfern deck\'s palette: five hue rows in three tints with line textures, solid roundels, dashed catchments',
+    note: 'the Redfern deck\'s palette: five hue rows in three tints with line textures, solid roundels, catchments as plain lines',
     font: GROTESK,
     streetFont: NARROW,
     textScale: 0.96,
@@ -202,7 +202,7 @@ export const TEMPLATES: Template[] = [
     walk10: '#7fc49c',
     busRoute: '#7fc3f0',
     heritage: R_BROWN,
-    isochrone: 'dashed',
+    isochrone: 'line',
     roundel: 'solid',
     categories: REDFERN_CATEGORIES,
   },
