@@ -58,7 +58,7 @@ either it reads KartaView alone. On the server they go in
 To refresh the samples, generate the three sheets for the demo address and
 re-render them (the context scale thumbnails `context-2000.jpg`,
 `context-4000.jpg` and `context-5000.jpg` come from the same address at
-`--scale 2000`, `4000` and `5000`, and the STYLE row's `context-flamingo-2.jpg`
+`--scale 2000`, `4000` and `5000`, and the STYLE row's `context-kingfisher.jpg`
 and `context-heron.jpg` from the matching `--template`, rendered the same way):
 
 ```bash
@@ -461,7 +461,7 @@ colours and the land-use palette. Content is identical between templates; only
 the look changes. They live in `src/render/template.ts`, so a new house style is
 a data change.
 
-There are three: Flamingo, the default, Flamingo 2 and Heron.
+There are three: Flamingo, the default, Kingfisher and Heron.
 
 **Flamingo** (`flamingo`) sits on plain paper. Four tints, each a family —
 peach for the residential zones, sand for the centres, teal for open space and
@@ -480,7 +480,7 @@ letter, the bus routes a faint dotted line, the railway a red dotted line, and
 the walking catchments green dotted lines with "5 MIN" and "10 MIN" written
 along them, twice per ring, on clear straight stretches.
 
-**Flamingo 2** (`flamingo-2`) is Flamingo in the palette of a masterplan
+**Kingfisher** (`kingfisher`) is Flamingo in the palette of a masterplan
 reference, sampled from it: every zone a pale ground with its buildings filled
 in the family's strong colour (`footprints: 'colour'`) — cyan, mint and blue for
 the three residential tiers, yellow ground with orange buildings for the
@@ -502,7 +502,8 @@ catchments as dashed green lines with walker medallions. From Flamingo it
 takes the solid stop roundels, the red dotted railway and the numbered
 places with their key, the discs in black.
 
-The retired ids still resolve: `flamingo-white` to Flamingo, and
+The retired ids still resolve: `flamingo-white` to Flamingo, `flamingo-2` to
+Kingfisher, and
 `flamingo-aerial`, `redfern-white` and `redfern-aerial`, like any unknown id,
 to the default.
 
@@ -541,7 +542,7 @@ comes out in the wrong face, so add the package to the `Dockerfile` first.
 
 Options (after `--`): `--type context|site|summary|slides|both`, `--scale 3000` (default 3000;
 the web picker offers 1:2000, 1:3000, 1:4000 and 1:5000, the server accepts 1000 to 6000),
-`--template flamingo|flamingo-2|heron` (the graphic template, see Templates below),
+`--template flamingo|kingfisher|heron` (the graphic template, see Templates below),
 `--slides-scale 8000` (the deck's map panels), `--da-years 5` (the deck's
 development window), `--job 2539`, `--client "Name"`,
 `--status "DEVELOPMENT APPLICATION"`, `--sheet "DA 003"`.

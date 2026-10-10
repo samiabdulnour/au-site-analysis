@@ -9,7 +9,7 @@
 // Three templates. Flamingo is the paper-and-tints style the context sheet was
 // redrawn in: four hue families with textures, white streets, every building
 // white, numbered places, narrow green street names, dotted catchments, bus
-// routes and railway. Flamingo 2 is Flamingo in a masterplan reference's
+// routes and railway. Kingfisher is Flamingo in a masterplan reference's
 // palette, every building filled in its zone's strong colour on a pale
 // ground. Heron is the office sheet the restyle started from —
 // its palette over the aerial, plain black street names, dashed catchments
@@ -143,7 +143,7 @@ const GROTESK = "'DejaVu Sans', Verdana, 'Liberation Sans', sans-serif";
 // use and centres, peach residential, mint open space, the institutions in
 // slate blues with dark outlines. Categories that sheet's legend did not show
 // are placed in the same warm families.
-// Flamingo 2's palette, sampled from the masterplan reference it follows
+// Kingfisher's palette, sampled from the masterplan reference it follows
 // (each family's building colour and the pale ground it stands on, as the
 // image prints them). Every zone is a pale ground with its buildings in the
 // family's strong colour: cyan, mint and blue for the three residential
@@ -163,7 +163,7 @@ const F2 = {
   water: '#81e0f9', magenta: '#c2367c', purple: '#753583', dots: '#1c1c1c',
 };
 
-const FLAMINGO2_CATEGORIES: Category[] = [
+const KINGFISHER_CATEGORIES: Category[] = [
   { id: 'site',           label: 'SITE',                                     fill: F2.magenta, opacity: 0.3 },
   { id: 'medical',        label: 'MEDICAL',                                  fill: F2.violetGround, opacity: 1, stroke: F2.violet, figure: F2.violet },
   { id: 'education',      label: 'EDUCATION',                                fill: F2.violetGround, opacity: 1, texture: 'lines', textureColor: F2.violet, figure: F2.violet },
@@ -219,14 +219,14 @@ export const TEMPLATES: Template[] = [
     isochrone: 'dotted', roundel: 'solid', busLine: 'dotted', railLine: 'dotted',
     ground: 'paper', footprints: 'white',
     categories: FLAMINGO_CATEGORIES },
-  { id: 'flamingo-2', label: 'Flamingo 2', note: 'the masterplan palette: pale zone grounds with the buildings in each family\'s strong colour',
+  { id: 'kingfisher', label: 'Kingfisher', note: 'the masterplan palette: pale zone grounds with the buildings in each family\'s strong colour',
     font: GROTESK, streetFont: NARROW, textScale: 0.96,
     ink: '#1c1c1c', streetInk: '#2f5f52', rule: '#8a8a8a',
     site: F2.magenta, dimension: '#56616b', wind: '#87959d', sun: '#efe8d4', road: F2.grey, water: F2.water,
     transit: '#365696', rail: '#e8835e', walk5: '#1f8a5a', walk10: '#6fb88c', busRoute: '#5b8fd6', heritage: F2.purple,
     isochrone: 'dotted', roundel: 'solid', busLine: 'dotted', railLine: 'dotted',
     ground: 'paper', footprints: 'colour',
-    categories: FLAMINGO2_CATEGORIES },
+    categories: KINGFISHER_CATEGORIES },
   { id: 'heron', label: 'Heron', note: 'the original office sheet over the aerial, with Flamingo\'s stops, red dotted railway and numbered places',
     font: GROTESK, streetFont: GROTESK, textScale: 0.96,
     ink: '#1c1c1c', streetInk: '#1c1c1c', rule: '#8a8a8a',
@@ -237,9 +237,9 @@ export const TEMPLATES: Template[] = [
     categories: HERON_CATEGORIES },
 ];
 
-// Retired ids still resolve: Flamingo's white version is Flamingo; the aerial
+// Retired ids still resolve: Flamingo's white version is Flamingo, Flamingo 2 is Kingfisher; the aerial
 // Flamingo and both Redferns fall back to the default, which is Flamingo too.
-const ALIASES: Record<string, string> = { 'flamingo-white': 'flamingo' };
+const ALIASES: Record<string, string> = { 'flamingo-white': 'flamingo', 'flamingo-2': 'kingfisher' };
 const byId: Record<string, Template> = Object.fromEntries([
   ...TEMPLATES.map((t) => [t.id, t] as const),
   ...Object.entries(ALIASES).map(([alias, id]) => [alias, TEMPLATES.find((t) => t.id === id)!] as const),
