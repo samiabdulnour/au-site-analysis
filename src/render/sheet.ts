@@ -307,12 +307,30 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   const usedCats = new Set<string>();
   const layers: string[] = [];
 
-  // ---- paper ground --------------------------------------------------------
-  // The sheet sits on plain white, not on the aerial: the photograph under
-  // the tints greyed every colour and weighed the map down, and its grain is
-  // what the lot hairlines and the white streets already give. The tiles are
-  // still fetched for the CAD export, which carries them on its own layer.
+  // ---- ground --------------------------------------------------------------
+  // Paper: plain white, because the photograph under the tints greys every
+  // colour, and its grain is what the lot hairlines and the white streets
+  // already give. Aerial: the tiles under a white veil, with the tints thinned
+  // below so the photograph reads through them. The tiles are fetched either
+  // way; the CAD export carries them on its own layer.
+  const aerialGround = tpl().ground === 'aerial';
   layers.push(`<rect x="0" y="0" width="${MAP_W}" height="${MAP_H}" fill="#ffffff"/>`);
+  if (aerialGround) {
+    // Tiles cover the axis-aligned fetch extent; place them in that rectangle
+    // (centred on the map) and rotate the whole group with the view.
+    const s = MAP_W / (2 * view.halfW);
+    const extW = (bundle.extent.xmax - bundle.extent.xmin) * s;
+    const extH = (bundle.extent.ymax - bundle.extent.ymin) * s;
+    const ox = MAP_W / 2 - extW / 2, oy = MAP_H / 2 - extH / 2;
+    const tiles = bundle.aerial.tiles
+      .map((t) => `<image href="data/${t.file}" x="${(ox + t.left * extW).toFixed(2)}" y="${(oy + t.top * extH).toFixed(2)}"
+          width="${(t.width * extW).toFixed(2)}" height="${(t.height * extH).toFixed(2)}" preserveAspectRatio="none"/>`)
+      .join('\n');
+    layers.push(`<g transform="rotate(${view.rotationDeg.toFixed(2)}, ${MAP_W / 2}, ${MAP_H / 2})">${tiles}</g>`);
+    layers.push(`<rect x="0" y="0" width="${MAP_W}" height="${MAP_H}" fill="#ffffff" opacity="0.3"/>`);
+  }
+  // Over the aerial the tints are thinned so the photograph shows through.
+  const tintScale = aerialGround ? 0.55 : 1;
 
   // ---- zoning base -------------------------------------------------------
   const zoningByCat: Record<string, string[]> = {};
@@ -324,7 +342,7 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     (zoningByCat[cat] ??= []).push(pathFromRings(rings, proj));
   }
   const catStyle = (c: { fill: string; opacity: number; stroke?: string }) =>
-    `fill="${c.fill}" opacity="${c.opacity}" fill-rule="evenodd"` +
+    `fill="${c.fill}" opacity="${(c.opacity * tintScale).toFixed(2)}" fill-rule="evenodd"` +
     (c.stroke ? ` stroke="${c.stroke}" stroke-width="0.5" stroke-linejoin="round"` : '');
   // A category's fill, then its texture clipped to the same shapes.
   let tex = 0;
@@ -398,9 +416,15 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     }
     for (const [cat, paths] of byCat) {
       const c = cat ? catById()[cat] : undefined;
-      const fill = c?.figure ?? c?.fill ?? tpl().road;
+      const ink = c?.figure ?? c?.fill ?? tpl().road;
+      if (tpl().footprints === 'white') {
+        // White buildings with a hairline of the family ink, so they read as
+        // figures on the tint and not as more of the white street.
+        layers.push(`<g fill="#ffffff" fill-opacity="0.92" stroke="${ink}" stroke-width="0.12" stroke-linejoin="round" fill-rule="evenodd">` + paths.map((d) => `<path d="${d}"/>`).join('') + '</g>');
+        continue;
+      }
       const opacity = c?.figure ? 0.62 : c ? Math.min(0.6, c.opacity * 0.8 + 0.15) : 0.35;
-      layers.push(`<g fill="${fill}" fill-opacity="${opacity.toFixed(2)}" fill-rule="evenodd">` + paths.map((d) => `<path d="${d}"/>`).join('') + '</g>');
+      layers.push(`<g fill="${ink}" fill-opacity="${opacity.toFixed(2)}" fill-rule="evenodd">` + paths.map((d) => `<path d="${d}"/>`).join('') + '</g>');
     }
   }
 

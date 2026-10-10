@@ -10,9 +10,10 @@
 // redrawn in (four hue families with textures, white streets, footprints in
 // the family ink, numbered places, narrow green street names). Redfern takes
 // the palette and legend of the Redfern deck: five hue rows of three tints
-// and two line textures each, solid roundels, catchments as plain lines. The
-// office style that used to sit beside them is drawn in ArchiCAD
-// now, so it left. A third house style is another entry in TEMPLATES.
+// and two line textures each, solid roundels, catchments as plain lines — in
+// two versions, one over the aerial and one on paper with the buildings
+// white. The office style that used to sit beside them is drawn in ArchiCAD
+// now, so it left. Another house style is another entry in TEMPLATES.
 //
 // Fonts are limited to what the runtime image actually ships (Liberation and
 // DejaVu). Naming a font that is not installed does not fail — it silently
@@ -70,6 +71,10 @@ export interface Template {
   isochrone: 'band' | 'line';
   /** The stop and station roundels: a white disc with a coloured ring, or a solid coloured disc with a white letter. */
   roundel: 'ring' | 'solid';
+  /** What the map sits on: plain white paper, or the aerial under a white veil with the tints thinned so it shows through. */
+  ground: 'paper' | 'aerial';
+  /** The building footprints: the family ink of their ground, or white with a hairline of that ink. */
+  footprints: 'ink' | 'white';
 
   /** Land-use fills for the context sheet legend. */
   categories: Category[];
@@ -178,12 +183,44 @@ export const TEMPLATES: Template[] = [
     heritage: SAND_INK,
     isochrone: 'band',
     roundel: 'ring',
+    ground: 'paper',
+    footprints: 'ink',
     categories: FLAMINGO_CATEGORIES,
   },
   {
     id: 'redfern',
     label: 'Redfern',
-    note: 'the Redfern deck\'s palette: five hue rows in three tints with line textures, solid roundels, catchments as plain lines',
+    note: 'the Redfern deck\'s palette over the aerial: five hue rows in three tints with line textures, solid roundels, catchments as plain lines',
+    ground: 'aerial',
+    footprints: 'ink',
+    font: GROTESK,
+    streetFont: NARROW,
+    textScale: 0.96,
+    ink: '#1c1c1c',
+    streetInk: '#1c1c1c',
+    rule: '#8a8a8a',
+    site: R_RED,
+    dimension: '#56616b',
+    wind: '#87959d',
+    sun: '#efe8d4',
+    road: '#8c8c8c',
+    water: R_BLUE,
+    transit: R_NAVY,
+    rail: '#1c1c1c',
+    walk5: '#1f8a5a',
+    walk10: '#7fc49c',
+    busRoute: '#7fc3f0',
+    heritage: R_BROWN,
+    isochrone: 'line',
+    roundel: 'solid',
+    categories: REDFERN_CATEGORIES,
+  },
+  {
+    id: 'redfern-white',
+    label: 'Redfern white',
+    note: 'the Redfern deck\'s palette on paper, every building white',
+    ground: 'paper',
+    footprints: 'white',
     font: GROTESK,
     streetFont: NARROW,
     textScale: 0.96,

@@ -33,7 +33,8 @@ const SCALES = {
 // The graphic templates the server knows; an unknown one falls back to the default.
 const STYLES = [
   ['flamingo', 'flamingo', '/samples/context.jpg', 'Flamingo — paper and four tints with textures, green street names'],
-  ['redfern',  'redfern',  '/samples/context-redfern.jpg', 'Redfern — the deck\'s palette: red residential, ruled textures, solid roundels'],
+  ['redfern',  'redfern',  '/samples/context-redfern.jpg', 'Redfern — the deck\'s palette over the aerial: red residential, ruled textures, solid roundels'],
+  ['redfern-white', 'redfern white', '/samples/context-redfern-white.jpg', 'Redfern white — the same palette on paper, every building white'],
 ];
 const NORTH = [
   ['north', 'up',    '/samples/site.jpg',       'north up — the sheet is oriented to north'],
