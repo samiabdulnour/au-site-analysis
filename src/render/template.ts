@@ -68,8 +68,8 @@ export interface Template {
   busRoute: string;   // bus route dashes
   heritage: string;   // heritage hatch
 
-  /** The walking catchments: a broad translucent band, or a plain continuous line. */
-  isochrone: 'band' | 'line';
+  /** The walking catchments: a broad translucent band, a plain continuous line, or a dotted line with its walking time written along it. */
+  isochrone: 'band' | 'line' | 'dotted';
   /** The stop and station roundels: a white disc with a coloured ring, or a solid coloured disc with a white letter. */
   roundel: 'ring' | 'solid';
   /** The bus routes: a dashed line, or a dotted one at reduced opacity that stays behind the tints. */
@@ -215,8 +215,9 @@ const REDFERN: Palette = {
 
 export const TEMPLATES: Template[] = [
   { id: 'flamingo-white',  label: 'Flamingo white',  note: 'paper and four tints with textures, every building white',
-    // Redfern's solid roundels, and the bus routes as a faint dotted line.
-    ...FLAMINGO, ground: 'paper',  footprints: 'white', roundel: 'solid', busLine: 'dotted' },
+    // Redfern's solid roundels, bus routes as a faint dotted line, and the
+    // catchments dotted with their walking time along them.
+    ...FLAMINGO, ground: 'paper',  footprints: 'white', roundel: 'solid', busLine: 'dotted', isochrone: 'dotted' },
   { id: 'flamingo-aerial', label: 'Flamingo aerial', note: 'the four tints thinned over the aerial, buildings as a light outline',
     ...FLAMINGO, ground: 'aerial', footprints: 'outline' },
   { id: 'redfern-white',   label: 'Redfern white',   note: 'the Redfern deck\'s palette on paper, every building white',

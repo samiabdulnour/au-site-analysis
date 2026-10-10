@@ -619,10 +619,15 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     10: { color: tpl().walk10, label: '800m (10-MIN WALK)' },
   };
   const lineIso = tpl().isochrone === 'line';
+  const dottedIso = tpl().isochrone === 'dotted';
+  // Round dots a little apart, the way the bus routes are drawn but bolder.
+  const ISO_DOTS = 'stroke-width="1.7" stroke-dasharray="0.01,2.8" stroke-linecap="round"';
   for (const iso of bundle.isochrones) {
     const st = isoStyle[iso.minutes] ?? { color: tpl().walk5, label: `${iso.minutes} MIN WALK` };
     const d = iso.rings.map((r) => pathFromRings([r as any], proj)).join('');
-    if (lineIso) {
+    if (dottedIso) {
+      layers.push(`<path d="${d}" fill="none" stroke="${st.color}" ${ISO_DOTS} opacity="0.85" stroke-linejoin="round"/>`);
+    } else if (lineIso) {
       // A plain continuous line, nothing on it.
       layers.push(`<path d="${d}" fill="none" stroke="${st.color}" stroke-width="1.2" stroke-linejoin="round"/>`);
     } else {
@@ -841,6 +846,62 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   for (const pl of places) reserve([pl.x, pl.y], [pl.x, pl.y], NR + 1);
   layers.push(places.map((pl) => numberMarker(pl.x, pl.y, pl.n)).join('\n'));
 
+  // ---- catchment labels: the walking time written along its ring ----------
+  // Placed before the street names, which slide along their roads and so are
+  // the ones to give way. Each ring carries its time twice, half a ring
+  // apart, on a straight stretch inside the map and clear of other labels;
+  // the text sits just outside the line, reading left to right.
+  if (dottedIso) {
+    const isoSize = T.street * 0.9;
+    const isoDefs: string[] = [];
+    const isoTexts: string[] = [];
+    let iid = 0;
+    for (const iso of bundle.isochrones) {
+      const color = iso.minutes === 5 ? tpl().walk5 : tpl().walk10;
+      const label = `${iso.minutes} MIN`;
+      const textLen = label.length * (isoSize * 0.6 + 0.3) + 2;
+      const slotLen = textLen + 4;
+      const ring = [...iso.rings].sort((a, b) => b.length - a.length)[0];
+      if (!ring) continue;
+      const pts: Pt[] = ring.map(([lon, lat]) => proj(lon, lat));
+      const cum = arcTable(pts);
+      const total = cum[cum.length - 1];
+      if (!(total > slotLen * 2)) continue;
+      // Start the 5- and 10-minute searches at different points of their
+      // rings, so the two labels do not end up side by side.
+      const phase = iso.minutes === 5 ? 0.12 : 0.37;
+      let placed = 0;
+      for (const target of [phase, phase + 0.5]) {
+        const want = ((target % 1) + 1) % 1 * total;
+        let slot: Pt[] | null = null;
+        for (let k = 0; k <= 40 && !slot; k++) {
+          const c = want + (k % 2 ? -1 : 1) * Math.ceil(k / 2) * slotLen * 0.5;
+          const c0 = c - slotLen / 2, c1 = c + slotLen / 2;
+          if (c0 < 0 || c1 > total) continue;
+          const win = sliceAt(pts, cum, c0, c1);
+          const m = isoSize + 3;
+          if (win.some(([x, y]) => x < m || x > MAP_W - m || y < m || y > MAP_H - m)) continue;
+          if (!straightEnough(win, 1.6)) continue;
+          const a = win[0], b = win[win.length - 1];
+          if (Math.hypot(b[0] - a[0], b[1] - a[1]) < textLen) continue;
+          if (!isFree(a, b, isoSize * 0.9)) continue;
+          slot = win;
+        }
+        if (!slot) continue;
+        let a = slot[0], b = slot[slot.length - 1];
+        reserve(a, b, isoSize * 0.9);
+        if (a[0] > b[0]) [a, b] = [b, a];
+        const id = `iso${iid++}`;
+        isoDefs.push(`<path id="${id}" d="M${a[0].toFixed(2)},${a[1].toFixed(2)}L${b[0].toFixed(2)},${b[1].toFixed(2)}" fill="none"/>`);
+        isoTexts.push(`<text font-family="${tpl().streetFont}" font-size="${isoSize.toFixed(2)}" font-weight="700" letter-spacing="0.3" dy="${(-1.3).toFixed(2)}" fill="${color}">
+          <textPath href="#${id}" startOffset="50%" text-anchor="middle">${label}</textPath></text>`);
+        placed++;
+      }
+    }
+    layers.push(`<defs>${isoDefs.join('')}</defs>`);
+    layers.push(isoTexts.join('\n'));
+  }
+
   // ---- street labels: repeat along long roads like the original ----------
   // Names sit plainly on the white street, no arrow band: the band was the
   // office's old device and it crowded the sheet. Through streets and lanes
@@ -979,7 +1040,9 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   if (bundle.railLines.tram.length || bundle.bus.tramRouteSegments.length)
     legendRow(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${tpl().busRoute}" stroke-width="0.9" stroke-dasharray="3.4,1.8"/>`, ['TRAM ROUTE']);
   legendRow(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${tpl().transit}" ${busLineStyle} stroke-linecap="round"/>`, ['BUS ROUTE']);
-  const legendIso = (color: string) => lineIso
+  const legendIso = (color: string) => dottedIso
+    ? `<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${color}" ${ISO_DOTS} opacity="0.85"/>`
+    : lineIso
     ? `<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${color}" stroke-width="1.2"/>`
     : `<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${color}" stroke-width="${ISO_W}" opacity="${ISO_OPACITY}" stroke-linecap="round"/>`;
   legendRow(legendIso(tpl().walk5), ['ISOCHRONE -'], '400m/5 min walk');

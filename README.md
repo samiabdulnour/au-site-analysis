@@ -487,8 +487,10 @@ the same family.
 Each palette comes in two versions:
 
 - **`-white`** (`flamingo-white`, the default, and `redfern-white`) sits on
-  plain paper. Flamingo white also takes Redfern's solid roundels and draws
-  the bus routes as a faint dotted line. Every building footprint (Overture, OpenStreetMap as the
+  plain paper. Flamingo white also takes Redfern's solid roundels, draws
+  the bus routes as a faint dotted line, and draws the walking catchments as
+  dotted lines with "5 MIN" and "10 MIN" written along them, twice per ring,
+  on clear straight stretches. Every building footprint (Overture, OpenStreetMap as the
   fallback) is filled white with a hairline of its ground's family ink, so a
   block reads as white figures on a tint and not as more of the white street.
 - **`-aerial`** (`flamingo-aerial`, `redfern-aerial`) sits on the aerial, under
@@ -512,7 +514,7 @@ template; the CAD export carries them on its own layer.
 
 What differs between templates beyond colour is declared on the template:
 `ground` (`paper` or `aerial`), `footprints` (`white` or `outline`),
-`isochrone` (`band` or `line`), `roundel` (`ring` or `solid`), `busLine`
+`isochrone` (`band`, `line` or `dotted`), `roundel` (`ring` or `solid`), `busLine`
 (`dashed` or `dotted`), `streetFont`
 and `streetInk`, and each category's `texture`, `textureColor` and `figure`
 (the hairline ink of a white footprint). The CLI takes `--template`; the web
