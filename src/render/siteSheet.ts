@@ -26,7 +26,10 @@ const BAY_LABEL: Record<Orientation, string> = { parallel: '6.0 m parallel', dia
 // names on the white arrows (wide-spaced, set separately) and the neighbour
 // identification boxes (a step smaller).
 const MAP_TEXT = 5.2;
-const NEIGHBOUR_TEXT = 4.4;
+const NEIGHBOUR_TEXT = 5.2;
+// The neighbours' numbers and the street names: Flamingo's street green, a
+// step lighter so it sits behind the site's own marks.
+const NAME_GREEN = '#4a8571';
 
 // Read at call time, not at module load: setTemplate() runs per job, long
 // after this module is first imported, so a captured constant would freeze to
@@ -48,6 +51,8 @@ class Placer {
   reserve(x: number, y: number, w: number, h: number) {
     this.boxes.push({ x: x - w / 2, y: y - h / 2, w, h });
   }
+  /** Whether a box is clear of everything reserved so far, without reserving it. */
+  isFree(x: number, y: number, w: number, h: number): boolean { return this.free(x, y, w, h); }
   private free(x: number, y: number, w: number, h: number): boolean {
     const a = { x: x - w / 2, y: y - h / 2, w, h };
     return !this.boxes.some((b) =>
@@ -166,37 +171,54 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
   }
 
   // ---- potential views ------------------------------------------------------
-  // A translucent cone at the site edge, as the office draws them, for each
-  // sight line the ground does not block. The cone goes under the linework;
-  // its label is pushed last so nothing draws over it.
+  // Drawn in the sun and wind's hand: for each sight line the ground does not
+  // block, a white arrow in the site pen leaving the site edge along the
+  // bearing and widening as the view opens, named in the same lettering. It
+  // goes under the linework; its label is pushed last so nothing covers it.
   const viewText: string[] = [];
   {
     const centreLL = mercatorToLonLat({ x: view.cx, y: view.cy });
-    const L = 52;                              // cone length on paper, mm
-    const half = (14 * Math.PI) / 180;         // half the opening angle
+    const L = 58;                              // arrow length on paper, mm
+    const LETTER = 5.4;
     for (const v of sb.views ?? []) {
       if (!v.cone) continue;
       const apex = exitPoint(sb.siteRing, centreLL, v.bearingDeg);
       const [ax, ay] = proj(apex.lon, apex.lat);
       const ang = ((v.bearingDeg + view.rotationDeg) * Math.PI) / 180;
-      const arc: string[] = [];
-      for (let i = 0; i <= 10; i++) {
-        const a = ang - half + (2 * half * i) / 10;
-        arc.push(`${(ax + L * Math.sin(a)).toFixed(1)},${(ay - L * Math.cos(a)).toFixed(1)}`);
+      const ux = Math.sin(ang), uy = -Math.cos(ang), nx = -uy, ny = ux;
+      // A gentle bow and a body that widens from 1.4 to 4.4 mm, then a head.
+      const N = 24, body = L - 11, bow = 2.2;
+      const left: string[] = [], right: string[] = [];
+      for (let i = 0; i <= N; i++) {
+        const t = i / N;
+        const off = bow * Math.sin(t * Math.PI);
+        const cx = ax + ux * (4 + body * t) + nx * off, cy = ay + uy * (4 + body * t) + ny * off;
+        const w = 1.4 + 3 * t;
+        left.push(`${(cx + nx * w).toFixed(2)},${(cy + ny * w).toFixed(2)}`);
+        right.push(`${(cx - nx * w).toFixed(2)},${(cy - ny * w).toFixed(2)}`);
       }
-      layers.push(`<path d="M${ax.toFixed(1)},${ay.toFixed(1)} L${arc.join(' L')} Z" fill="#ffffff" fill-opacity="0.58" stroke="#ffffff" stroke-width="0.5" stroke-linejoin="round"/>`);
-      const lx = ax + L * 0.6 * Math.sin(ang), ly = ay - L * 0.6 * Math.cos(ang);
-      const lines = wrapLabel(v.kind === 'park' ? `${v.label} OUTLOOK` : `${v.label} VIEW`, 14);
+      const ex = ax + ux * (4 + body), ey = ay + uy * (4 + body);
+      const tip = [ex + ux * 11, ey + uy * 11];
+      const wing = (sgn: number) => `${(ex + nx * 9 * sgn).toFixed(2)},${(ey + ny * 9 * sgn).toFixed(2)}`;
+      layers.push(`<path d="M${left.join('L')}L${wing(1)}L${tip[0].toFixed(2)},${tip[1].toFixed(2)}L${wing(-1)}L${right.reverse().join('L')}Z" fill="#ffffff" fill-opacity="0.85" stroke="${RED()}" stroke-width="0.7" stroke-linejoin="round"/>`);
+      // An eye at the start: where the view is taken from.
+      layers.push(`<g transform="translate(${ax.toFixed(1)},${ay.toFixed(1)})"><circle r="2.2" fill="#ffffff" stroke="${RED()}" stroke-width="0.7"/><circle r="0.9" fill="${RED()}"/></g>`);
+      const lines = wrapLabel(v.kind === 'park' ? `${v.label} OUTLOOK` : `${v.label} VIEW`, 16);
       const dist = v.distanceM >= 950 ? `${(v.distanceM / 1000).toFixed(1)} KM` : `${Math.round(v.distanceM / 10) * 10} M`;
       const sub = v.kind === 'park' ? 'ADJOINING' : `${dist} · TERRAIN CLEAR`;
-      const lh = MAP_TEXT * 1.08;
-      const w = Math.max(...lines.map((l) => l.length), sub.length * 0.75) * MAP_TEXT * 0.6 + 4;
-      // Several cones can leave one corner of a small site; the label is
+      const lh = LETTER * 1.12;
+      // The arrow claims its own ground first, so its name settles past the
+      // head and not over it.
+      for (let d = 8; d <= L + 2; d += 10) placer.reserve(ax + ux * d, ay + uy * d, 12, 12);
+      const lx = ax + ux * (L + 22), ly = ay + uy * (L + 22);
+      const w = Math.max(...lines.map((l) => l.length), sub.length * 0.75) * LETTER * 0.52 + 4;
+      // Several views can leave one corner of a small site; the label is
       // nudged clear of the others rather than drawn over them.
       const spot = placer.place(lx, ly, w, lines.length * lh + 6, 24) ?? [lx, ly];
       const [tx, ty] = spot;
-      viewText.push(plainText(tx, ty - lh * 0.35, lines, MAP_TEXT, '#111111'));
-      viewText.push(`<text x="${tx.toFixed(1)}" y="${(ty + (lines.length / 2) * lh + 1.6).toFixed(1)}" text-anchor="middle" font-size="${(MAP_TEXT * 0.7).toFixed(2)}" font-weight="700" letter-spacing="0.3" fill="#333333">${esc(sub)}</text>`);
+      const y0 = ty - ((lines.length - 1) * lh) / 2;
+      viewText.push(lines.map((t, i) => `<text x="${tx.toFixed(1)}" y="${(y0 + i * lh).toFixed(1)}" text-anchor="middle" font-size="${LETTER}" font-weight="700" fill="${RED()}">${esc(t)}</text>`).join(''));
+      viewText.push(`<text x="${tx.toFixed(1)}" y="${(y0 + lines.length * lh + 0.6).toFixed(1)}" text-anchor="middle" font-size="${(LETTER * 0.72).toFixed(2)}" font-weight="700" letter-spacing="0.3" fill="${RED()}">${esc(sub)}</text>`);
     }
   }
 
@@ -518,14 +540,14 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     const fs = NEIGHBOUR_TEXT, lh = fs * 1.12;
     for (const c of cands) {
       const lines = c.lines.filter(Boolean);
-      const w = Math.max(...lines.map((t) => t.length)) * fs * 0.6 + 1.5, h = lines.length * lh + 0.8;
+      const w = Math.max(...lines.map((t) => t.length)) * fs * 0.5 + 1.5, h = lines.length * lh + 0.8;
       const spot = placer.place(c.x, c.y, w, h, 6);
       if (!spot) continue;
       if (c.d) outlines.push(`<path d="${c.d}"/>`);
       const y0 = spot[1] - ((lines.length - 1) * lh) / 2 + fs * 0.36;
       lines.forEach((t, i) => {
         const isStorey = /ST$/.test(t) && i === lines.length - 1 && !!c.lines[1];
-        texts.push(`<text x="${spot[0].toFixed(1)}" y="${(y0 + i * lh).toFixed(1)}" text-anchor="middle" font-size="${fs}" font-weight="700" fill="${isStorey ? BLUE() : '#1c1c1c'}">${esc(t)}</text>`);
+        texts.push(`<text x="${spot[0].toFixed(1)}" y="${(y0 + i * lh).toFixed(1)}" text-anchor="middle" font-size="${fs}" font-weight="700" fill="${NAME_GREEN}"${isStorey ? ' opacity="0.8"' : ''}>${esc(t)}</text>`);
       });
       if (c.lines[1]) storeyLabels++;
     }
@@ -552,11 +574,11 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
   let srid = 0;
   for (const [name, r] of best) {
     const label = shortStreetName(name);
-    const SITE_STREET = T.street * 1.15;
+    const SITE_STREET = T.street * 1.35;
     // Every street name as plain bold text along the road, no arrow band;
     // set on the straight chord through the middle of the longest run, since
     // a road's own vertices jog too much to carry text along directly.
-    const plainLen = label.length * (SITE_STREET * 0.72 + 0.4) + 3;
+    const plainLen = label.length * (SITE_STREET * 0.6 + 0.6) + 3;
     const pts = r.pts;
     const cum = [0];
     for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
@@ -569,12 +591,28 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
       return [pts[i - 1][0] + (pts[i][0] - pts[i - 1][0]) * t, pts[i - 1][1] + (pts[i][1] - pts[i - 1][1]) * t];
     };
     const half = Math.min(total / 2, plainLen / 2 + 8);
-    let a = at(total / 2 - half), b = at(total / 2 + half);
-    if (a[0] > b[0]) [a, b] = [b, a];
-    if (Math.hypot(b[0] - a[0], b[1] - a[1]) < plainLen) continue;
+    // Slide along the road, middle first, until the name is clear of the
+    // labels already set (a view's name, a neighbour's number).
+    let a: Pt | null = null, b: Pt | null = null;
+    for (const k2 of [0, 1, -1, 2, -2, 3, -3, 4, -4]) {
+      const c = total / 2 + k2 * 16;
+      if (c - half < 0 || c + half > total) continue;
+      let p0 = at(c - half), p1 = at(c + half);
+      if (p0[0] > p1[0]) [p0, p1] = [p1, p0];
+      if (Math.hypot(p1[0] - p0[0], p1[1] - p0[1]) < plainLen) continue;
+      const mx = (p0[0] + p1[0]) / 2, my = (p0[1] + p1[1]) / 2;
+      const ang2 = Math.atan2(p1[1] - p0[1], p1[0] - p0[0]);
+      const W = Math.abs(plainLen * Math.cos(ang2)) + Math.abs(SITE_STREET * Math.sin(ang2));
+      const H = Math.abs(plainLen * Math.sin(ang2)) + Math.abs(SITE_STREET * Math.cos(ang2));
+      if (!placer.isFree(mx, my, W * 0.8, H * 0.8) && k2 !== 4 && k2 !== -4) continue;
+      a = p0; b = p1;
+      placer.reserve(mx, my, W * 0.8, H * 0.8);
+      break;
+    }
+    if (!a || !b) continue;
     const id = `srd${srid++}`;
     siteRoadDefs.push(`<path id="${id}" d="M${a[0].toFixed(2)},${a[1].toFixed(2)}L${b[0].toFixed(2)},${b[1].toFixed(2)}" fill="none"/>`);
-    layers.push(`<text font-size="${SITE_STREET.toFixed(2)}" font-weight="700" letter-spacing="0.6" dy="${(SITE_STREET * 0.36).toFixed(2)}" fill="#111111">
+    layers.push(`<text font-size="${SITE_STREET.toFixed(2)}" font-weight="700" letter-spacing="0.6" dy="${(SITE_STREET * 0.36).toFixed(2)}" fill="${NAME_GREEN}">
       <textPath href="#${id}" startOffset="50%" text-anchor="middle">${esc(label)}</textPath></text>`);
   }
   if (siteRoadDefs.length) layers.push(`<defs>${siteRoadDefs.join('')}</defs>`);
@@ -841,7 +879,7 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
   row(`<text x="${SWATCH_X}" y="5.4" font-size="3.2" font-weight="700" fill="${RED()}">SB 30.48</text>`, 'BOUNDARY DIMENSION (m)');
   row(`<text x="${SWATCH_X}" y="5.4" font-size="3.2" font-weight="700" fill="${RED()}">RL 24.5</text>`, 'SURFACE LEVEL (AHD)');
   if (sb.contours.length) row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="#a07c3f" stroke-width="0.6"/><text x="${SWATCH_X + 1}" y="2.2" font-size="2.2" font-weight="700" fill="#8a6a2f">RL 20</text>`, `CONTOURS AT ${sb.contourIntervalM ?? 2} m AHD`, sb.contourSource);
-  row(`<g><text x="${SWATCH_X + SWATCH_W / 2}" y="2.8" text-anchor="middle" font-size="2.6" font-weight="700" fill="#1c1c1c">26</text>${storeyLabels ? `<text x="${SWATCH_X + SWATCH_W / 2}" y="5.8" text-anchor="middle" font-size="2.6" font-weight="700" fill="${BLUE()}">3ST</text>` : ''}</g>`,
+  row(`<g><text x="${SWATCH_X + SWATCH_W / 2}" y="2.8" text-anchor="middle" font-size="2.6" font-weight="700" fill="${NAME_GREEN}">26</text>${storeyLabels ? `<text x="${SWATCH_X + SWATCH_W / 2}" y="5.8" text-anchor="middle" font-size="2.6" font-weight="700" fill="${NAME_GREEN}" opacity="0.8">3ST</text>` : ''}</g>`,
     storeyLabels ? 'NEIGHBOUR: NUMBER, STOREYS' : 'NEIGHBOUR: STREET NUMBER',
     storeyLabels ? (sb.buildings?.source === 'overture' ? 'storeys from Overture Maps, OSM levels where it has none' : 'storeys from OpenStreetMap building levels') : undefined);
   // The zones, in the legend's category order, with the context sheet's swatch.
@@ -871,7 +909,7 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     row(`<circle cx="${mid}" cy="3.2" r="2.8" fill="#7dbb57" fill-opacity="0.45" stroke="#4e8c33" stroke-width="0.4"/><circle cx="${mid}" cy="3.2" r="0.5" fill="#2f5e20"/>`, 'TREES, CANOPY TO SCALE', sub);
   }
   if ((sb.views ?? []).some((v) => v.cone)) {
-    row(`<path d="M${SWATCH_X},3.2 L${SWATCH_X + SWATCH_W},0.4 L${SWATCH_X + SWATCH_W},6 Z" fill="#ffffff" stroke="#8a8a8a" stroke-width="0.3"/>`, 'POTENTIAL VIEW', `terrain only, from ${Math.round(sb.eyeAboveM ?? 8)} m up; no buildings`);
+    row(`<path d="M${SWATCH_X + 3},2.7 L${SWATCH_X + 15},1.8 L${SWATCH_X + 15},0.3 L${SWATCH_X + 21},3.2 L${SWATCH_X + 15},6.1 L${SWATCH_X + 15},4.6 L${SWATCH_X + 3},3.7 Z" fill="#fff" stroke="${RED()}" stroke-width="0.4" stroke-linejoin="round"/><circle cx="${SWATCH_X + 2.4}" cy="3.2" r="1.3" fill="#fff" stroke="${RED()}" stroke-width="0.4"/>`, 'POTENTIAL VIEW', `terrain only, from ${Math.round(sb.eyeAboveM ?? 8)} m up; no buildings`);
   }
   if (sb.furniture.powerPoles.length) row(`<g transform="translate(${mid},3.2)"><line x1="-2.4" y1="0" x2="2.4" y2="0" stroke="#333" stroke-width="0.4"/><circle r="1.2" fill="none" stroke="#333" stroke-width="0.45"/></g>`, 'POWER POLE');
   if (sb.furniture.streetLamps.length) row(`<circle cx="${mid}" cy="3.2" r="1.4" fill="#f0c020" stroke="#a8860b" stroke-width="0.3"/>`, 'LIGHT POLE');
@@ -890,6 +928,12 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
   if (utilKinds.has('water')) row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="#2f7fd6" stroke-width="0.9" stroke-dasharray="4,2.2"/>`, 'WATER MAIN');
   if (utilKinds.has('sewer')) row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="#7db87d" stroke-width="0.9" stroke-dasharray="4,2.2"/>`, 'SEWER MAIN');
   if (utilKinds.has('gas')) row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="#e6007e" stroke-width="0.9" stroke-dasharray="4,2.2"/>`, 'GAS MAIN');
+
+  // Arial Narrow (Liberation Sans Narrow on the server) for every word on the
+  // map and in the legend.
+  layers.unshift(`<g font-family="${tpl().streetFont}">`);
+  layers.push('</g>');
+  legendSvg = `<g font-family="${tpl().streetFont}">${legendSvg}</g>`;
 
   return sheetHtml({
     meta,

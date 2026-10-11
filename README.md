@@ -339,7 +339,14 @@ its storeys — `26` over `3ST` (a run of numbers on one building reads
 `32–34`). Storeys are Overture's count, or its measured height at 3.1 m a
 storey, or OpenStreetMap's `building:levels` where Overture has neither; with
 no height anywhere the building keeps its number and no storey line. Street
-names are plain bold text along the road, without the white arrow band.
+names are plain bold text along the road, without the white arrow band, slid
+along it clear of the labels already set. The numbers and street names are in
+Flamingo's street green, a step lighter, and every word on the map and in the
+legend is set in Arial Narrow (Liberation Sans Narrow on the server).
+
+Potential views are drawn in the same hand as the sun and wind: a white arrow
+in the site pen leaving the site edge along the bearing, widening as the view
+opens, with an eye where it is taken from and its name in the same lettering.
 
 The sun and the winds are drawn as a pair, in the template's site ink and the
 same open white-filled marks: a hand-drawn sun — a disc with flame-like rays —
