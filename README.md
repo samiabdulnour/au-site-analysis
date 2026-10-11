@@ -326,6 +326,27 @@ absolute, and a scraper resolves them without ever seeing the request, so the
 pages write `%ORIGIN%` and the server fills it in from the host it was asked
 for.
 
+### Zones, storeys, sun and wind on the site sheet
+
+The site sheet no longer writes the neighbours' zone and address on the map.
+The zones are colour: the active template's land-use tints (and textures) laid
+lightly over the aerial everywhere but the site, named once in the legend. The
+aerial around the site is greyscale so the tints read; the site itself stays in
+full colour. Each neighbouring building carries only its storeys, short —
+`3ST`, `1ST` — set on the footprint: Overture's storey count, or its measured
+height at 3.1 m a storey, or OpenStreetMap's `building:levels` where Overture
+has neither; a building with no height anywhere is left unlabelled.
+
+Sun and wind come in two drawings, chosen with `--site-symbols`:
+
+- `sketch` (the default): a hand-drawn sun — an open disc with flame-like rays —
+  at the summer and winter sunrise and sunset, on a solid summer arc and a
+  dashed winter arc, and the prevailing winds as three twisting ribbons blowing
+  in toward the site, all in the template's site ink.
+- `hours`: the 21 June sun path as an orange dashed arc with the sun's bearing
+  from the site at each hour, 9AM to 3PM, fanned out from the site, a small sun
+  at each end of the day; the winds as three plain arrows.
+
 ### Trees, parking bays and views on the site sheet
 
 Three things the site sheet draws that the data has to be coaxed into:

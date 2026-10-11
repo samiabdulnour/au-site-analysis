@@ -267,6 +267,8 @@ export interface SiteBundle {
   /** Attribution lines the data licences ask for, printed on the sheet. */
   attributions?: string[];
   busStops: { name?: string; lon: number; lat: number }[];
+  /** Footprints with what is known of their height, for the neighbours' storey labels. */
+  buildings?: BuildingsData;
   aerial: AerialResult;
   generatedAt: string;
 }
@@ -350,7 +352,8 @@ export async function runSitePipeline(address: string, opts: SitePipelineOpts): 
 
   log('fetching contours, lots, roads, neighbours, furniture, trees, imagery…');
   const nswContours: ContourSet = { lines: [], intervalM: 2, source: 'NSW Spatial Services' };
-  const [contourSet, allLots, roads, railLines, zoning, neighbours, furniture, aerial, councilTrees, parkPoints, controls] = await Promise.all([
+  const noBuildings: BuildingsData = { source: 'none', buildings: [], fetchedAt: new Date().toISOString() };
+  const [contourSet, allLots, roads, railLines, zoning, neighbours, furniture, aerial, councilTrees, parkPoints, controls, buildings] = await Promise.all([
     soft(fetchContours(extent, log), nswContours, 'contours'),
     soft(fetchAllLots(extent), { type: 'FeatureCollection', features: [] } as GeoJSONFC, 'lots'),
     soft(fetchRoads(extent), [], 'roads'),
@@ -362,6 +365,7 @@ export async function runSitePipeline(address: string, opts: SitePipelineOpts): 
     soft(fetchCouncilTrees(extent, log), [], 'council trees'),
     soft(fetchParkPoints(extent), [], 'park points'),
     soft(fetchSiteControls(geo.center), null, 'site controls'),
+    soft(fetchBuildings(extent, log), noBuildings, 'buildings'),
   ]);
 
   let busStops: { name?: string; lon: number; lat: number }[] = [];
@@ -402,7 +406,7 @@ export async function runSitePipeline(address: string, opts: SitePipelineOpts): 
     siteLots, siteRing: ring, allLots, roads, railLines, zoning,
     contours: contourSet.lines, contourIntervalM: contourSet.intervalM, contourSource: contourSet.source,
     neighbours, furniture, parkingBands, views, eyeAboveM, attributions,
-    busStops, aerial, generatedAt: new Date().toISOString(),
+    busStops, buildings, aerial, generatedAt: new Date().toISOString(),
   };
   await writeFile(join(dataDir, 'site_bundle.json'), JSON.stringify(bundle));
   return bundle;

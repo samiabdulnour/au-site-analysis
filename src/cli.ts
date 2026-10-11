@@ -27,7 +27,7 @@ function arg(name: string, def?: string): string | undefined {
 
 const address = process.argv.slice(2).find((a) => !a.startsWith('--') && process.argv[process.argv.indexOf(a) - 1]?.startsWith('--') !== true);
 if (!address) {
-  console.error('usage: npm run generate -- "<address>" [--type context|site|summary|slides|both] [--scale 3000] [--slides-scale 8000] [--template flamingo|kingfisher|heron] [--job N] [--client X] [--status S] [--sheet "DA 003"]');
+  console.error('usage: npm run generate -- "<address>" [--type context|site|summary|slides|both] [--scale 3000] [--slides-scale 8000] [--template flamingo|kingfisher|heron] [--site-symbols sketch|hours] [--job N] [--client X] [--status S] [--sheet "DA 003"]');
   process.exit(1);
 }
 
@@ -47,6 +47,7 @@ const meta: SheetMeta = {
   drawn: arg('drawn', '')!,
   date: arg('date', '')!,
   preliminary: (arg('status', '') ?? '').toUpperCase().includes('PRELIM'),
+  siteSymbols: arg('site-symbols', 'sketch') === 'hours' ? 'hours' : 'sketch',
 };
 
 const sheetType = arg('type', 'context')!; // context | site | summary | slides | both (the three sheets)
