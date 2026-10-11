@@ -153,16 +153,18 @@ const GROTESK = "'DejaVu Sans', Verdana, 'Liberation Sans', sans-serif";
 // retail are the blue family (told apart by texture), the institutions
 // lavender, industry grey on stone, water the bright cyan, heritage a purple
 // cross-hatch.
+// The sampled colours are printed here with their saturation eased by about
+// a fifth (lightness kept), so the sheet sits a little quieter than the image.
 const F2 = {
-  pink: '#fdcae9', pinkGround: '#faecf4',
-  coral: '#fcbbab', coralGround: '#f8eae6',
-  orange: '#fabd90', orangeGround: '#fbe6d6', yellowGround: '#faf5c8',
-  mint: '#8dceb1',
-  cyan: '#a4dbe2', cyanGround: '#e5f7fa',
-  blue: '#7490bf', blueGround: '#e6eef8',
-  violet: '#b4aede', violetGround: '#e8e6f5',
+  pink: '#f8cfe8', pinkGround: '#f9edf4',
+  coral: '#f5bfb2', coralGround: '#f6ebe8',
+  orange: '#f0be9a', orangeGround: '#f8e6d9', yellowGround: '#f6f1cc',
+  mint: '#93c8b0',
+  cyan: '#aad7dc', cyanGround: '#e7f6f8',
+  blue: '#7b92b8', blueGround: '#e8eef6',
+  violet: '#b7b2da', violetGround: '#e9e7f4',
   grey: '#c4c5c1', stoneGround: '#e8e8d8',
-  water: '#81e0f9', magenta: '#c2367c', purple: '#753583', dots: '#1c1c1c',
+  water: '#8cdaee', magenta: '#c2367c', purple: '#753583', dots: '#1c1c1c',
 };
 
 const KINGFISHER_CATEGORIES: Category[] = [
@@ -223,7 +225,9 @@ export const TEMPLATES: Template[] = [
     categories: FLAMINGO_CATEGORIES },
   { id: 'kingfisher', label: 'Kingfisher', note: 'the masterplan palette: pale zone grounds with the buildings in each family\'s strong colour',
     font: GROTESK, streetFont: NARROW, textScale: 0.96,
-    ink: '#1c1c1c', streetInk: '#2f5f52', rule: '#8a8a8a',
+    ink: '#1c1c1c',
+    streetInk: '#8faf6a',   // a light leaf green, in the hue of the reference's fields
+    rule: '#8a8a8a',
     site: F2.magenta, dimension: '#56616b', wind: '#87959d', sun: '#efe8d4', road: F2.grey, water: F2.water,
     transit: '#365696', rail: '#e8835e', walk5: '#1f8a5a', walk10: '#6fb88c', busRoute: '#5b8fd6', heritage: F2.purple,
     isochrone: 'dotted', roundel: 'solid', busLine: 'dotted', railLine: 'dotted',

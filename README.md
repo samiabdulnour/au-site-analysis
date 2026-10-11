@@ -489,8 +489,10 @@ open space the deep mint with black dots. The local and commercial centres and
 retail are the blue family, told apart by texture, the institutions lavender,
 industry grey on stone; water the bright cyan, the site and heritage in magenta
 and purple, the railway orange. The legend swatch shows a few buildings on
-their ground. Streets, labels, numbered places and the dotted lines are
-Flamingo's.
+their ground. The sampled colours are eased by about a fifth of their
+saturation so the sheet sits a little quieter than the image. Streets, numbered
+places and the dotted lines are Flamingo's, but the street names and the number
+discs are a light leaf green, in the hue of the reference's fields.
 
 **Heron** (`heron`) is the office sheet the restyle began from: the aerial
 under a light white veil with the tints at full strength over it (the palette
