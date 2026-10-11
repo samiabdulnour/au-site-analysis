@@ -263,18 +263,21 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
         <line x1="-2" y1="-2.1" x2="-2" y2="2.1"/>
         <line x1="2" y1="-2.4" x2="2" y2="2.4"/></g>`);
       // Only what the telescope found: how far, and that the ground is clear.
-      // Set along the telescope's line, past its objective end, upright.
+      // Set along the telescope's line, under it, upright.
       const dist = v.distanceM >= 950 ? `${(v.distanceM / 1000).toFixed(1)} KM` : `${Math.round(v.distanceM / 10) * 10} M`;
       const label = v.kind === 'park' ? 'ADJOINING' : `${dist} · TERRAIN CLEAR`;
       const upright = Math.abs(deg) <= 90;
       const tdeg = upright ? deg : deg + 180;
-      const gap = 8.6 * TS + 3;
-      const lx = sx + ux * gap, ly = sy + uy * gap;
+      // Under the telescope: along its line, centred on it, a line below the
+      // tube on the page (the side the text's own "down" points to).
       const tw = label.length * LETTER * 0.5;
-      // Reserve the text's run so later labels keep off it.
-      for (let d = 0; d <= tw; d += 6) placer.reserve(lx + ux * d, ly + uy * d, 8, 8);
+      const down = 3.3 * TS + 2 + LETTER * 0.75;
+      const ar = (tdeg * Math.PI) / 180;
+      const dnx = -Math.sin(ar), dny = Math.cos(ar);   // the text's down, on the page
+      const lx = sx + dnx * down, ly = sy + dny * down;
+      for (let d = -tw / 2; d <= tw / 2; d += 6) placer.reserve(lx + Math.cos(ar) * d, ly + Math.sin(ar) * d, 8, 8);
       for (let d = -9.6; d <= 8.6; d += 4) placer.reserve(sx + ux * d * TS, sy + uy * d * TS, 12, 12);
-      viewText.push(`<text transform="translate(${lx.toFixed(1)},${ly.toFixed(1)}) rotate(${tdeg.toFixed(1)})" x="0" y="${(LETTER * 0.36).toFixed(2)}" text-anchor="${upright ? 'start' : 'end'}" font-size="${LETTER}" font-weight="700" fill="${RED()}" stroke="${RED()}" stroke-width="0.22">${esc(label)}</text>`);
+      viewText.push(`<text transform="translate(${lx.toFixed(1)},${ly.toFixed(1)}) rotate(${tdeg.toFixed(1)})" x="0" y="${(LETTER * 0.36).toFixed(2)}" text-anchor="middle" font-size="${LETTER}" font-weight="700" fill="${RED()}" stroke="${RED()}" stroke-width="0.22">${esc(label)}</text>`);
     }
   }
 
@@ -323,12 +326,9 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     return inside;
   };
   const noiseMarks: string[] = [];
-  // A sound wave beside the source, on the side facing the site: a steady
-  // oscillation (6 mm period) whose amplitude swells into bursts and falls
-  // back, like a recording of traffic going by. The road's line is resampled
-  // every 0.25 mm and set off 12 mm toward the site; the wave breaks where it
-  // would cross the site or leave the sheet. Drawn as a white line in a blue
-  // pen, like the wind.
+  // A sound wave beside the source, on the side facing the site, like a
+  // recording of traffic going by: the road's line resampled every 0.25 mm
+  // and set off 13 mm toward the site, carrying the band described below.
   const soundAlong = (pts: Pt[], seed: number) => {
     const samples: { p: Pt; n: Pt; s: number }[] = [];
     let run = 0;
@@ -344,20 +344,35 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     const mid = samples[Math.floor(samples.length / 2)];
     const side = Math.sign((noiseCentre[0] - mid.p[0]) * mid.n[0] + (noiseCentre[1] - mid.p[1]) * mid.n[1]) || 1;
     // Bursts every 80 mm or so, each with a little texture of its own.
+    // Loud bursts every 70 mm or so, near-silence between them.
     const env = (t: number) => {
-      const burst = Math.max(0, Math.sin((Math.PI * t) / 80 + seed));
-      return 0.6 + 6.4 * burst * burst * (0.8 + 0.2 * Math.sin(t / 6.1 + seed * 1.9));
+      const b0 = Math.max(0, Math.sin((Math.PI * t) / 70 + seed));
+      const burst = b0 * b0 * (0.8 + 0.2 * Math.sin(t / 23 + seed * 2.3));
+      return 0.25 + 6.5 * burst;
     };
-    let d = '', open = false;
+    // A band beside the source, white inside a blue pen like the wind, whose
+    // two edges are a sound wave mirrored: a low ripple that swells into
+    // bursts and falls back, the oscillation's period drifting a little so
+    // it is not mechanical. It breaks where it would cross the site or
+    // leave the sheet.
+    let left: string[] = [], right: string[] = [];
+    const flush = () => {
+      if (left.length > 3) noiseMarks.push(`M${left.join('L')}L${right.reverse().join('L')}Z`);
+      left = []; right = [];
+    };
+    let phase = 0, prevT = samples[0].s;
     for (const { p, n, s: t } of samples) {
-      const off = side * 12 + env(t) * Math.sin((2 * Math.PI * t) / 6);
-      const x = p[0] + n[0] * off, y = p[1] + n[1] * off;
-      const cx = p[0] + n[0] * side * 12, cy = p[1] + n[1] * side * 12;
-      if (!inMap([cx, cy]) || inSiteRing(cx, cy)) { open = false; continue; }
-      d += `${open ? 'L' : 'M'}${x.toFixed(2)},${y.toFixed(2)}`;
-      open = true;
+      phase += ((t - prevT) * Math.PI) / (2.6 * (1 + 0.15 * Math.sin(t / 13 + seed)));
+      prevT = t;
+      const c = side * 13 + 1.2 * Math.sin(t / 17 + seed * 1.3);
+      const cx = p[0] + n[0] * c, cy = p[1] + n[1] * c;
+      if (!inMap([cx, cy]) || inSiteRing(cx, cy)) { flush(); continue; }
+      // Rounded lobes that pinch between them, the lobes tall in a burst.
+      const w = 0.45 + env(t) * Math.pow(Math.abs(Math.sin(phase)), 0.8);
+      left.push(`${(cx + n[0] * w).toFixed(2)},${(cy + n[1] * w).toFixed(2)}`);
+      right.push(`${(cx - n[0] * w).toFixed(2)},${(cy - n[1] * w).toFixed(2)}`);
     }
-    if (d) noiseMarks.push(d);
+    flush();
   };
   const mainRoads = sb.roads.filter((r) => r.hierarchy <= 4);
   const seenNoise = new Set<string>();
@@ -381,9 +396,7 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     const pts = bestLine.map(([lon, lat2]) => proj(lon, lat2));
     if (pts.length >= 2) soundAlong(pts, 4.2);
   }
-  // A white line in a blue pen: the blue drawn wide, the white narrower on top.
-  layers.push(`<path d="${noiseMarks.join('')}" fill="none" stroke="${NOISE_BLUE}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`);
-  layers.push(`<path d="${noiseMarks.join('')}" fill="none" stroke="#ffffff" stroke-width="0.8" stroke-linejoin="round" stroke-linecap="round"/>`);
+  layers.push(`<path d="${noiseMarks.join('')}" fill="#ffffff" stroke="${NOISE_BLUE}" stroke-width="0.6" stroke-linejoin="round"/>`);
 
   // ---- one-way arrows -------------------------------------------------------
   for (const ow of sb.furniture.onewayRoads) {

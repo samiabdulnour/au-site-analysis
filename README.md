@@ -345,8 +345,8 @@ legend is set in Arial Narrow (Liberation Sans Narrow on the server).
 
 Every word on the map is one size. Potential views are a telescope just
 outside the site edge, aimed along the bearing, with what it found — the
-distance and "TERRAIN CLEAR" — written along its line in the site pen's
-lettering. The site itself — boundary, corners,
+distance and "TERRAIN CLEAR" — written under it, along its line, in the site
+pen's lettering. The site itself — boundary, corners,
 dimensions and levels — is a deep red, apart from that coral pen.
 
 The sun, the winds and the noise are drawn in one hand, in the template's
@@ -356,8 +356,8 @@ summer arc and a dashed winter arc, each arc marked with a dot and the time at
 every solar hour; the prevailing winds as three widening arrows blowing in
 toward the site, stopping short of a sun from the same quarter. Noise — the
 busy roads and the railway — is a sound wave beside the source on the site's
-side: a steady oscillation whose amplitude swells into bursts and falls back,
-drawn as a white line in a blue pen. The
+side, drawn like the wind but in blue: a white band in a blue pen whose edges
+are a mirrored waveform, near-silent between loud bursts of sharp peaks. The
 sun, wind and view lettering is set heavy. Contours are green; the cadastre
 and the neighbours' building outlines are white over the aerial.
 
