@@ -25,11 +25,13 @@ const BAY_LABEL: Record<Orientation, string> = { parallel: '6.0 m parallel', dia
 // One uniform bold size for all map text on this sheet. Exceptions: street
 // names on the white arrows (wide-spaced, set separately) and the neighbour
 // identification boxes (a step smaller).
-const MAP_TEXT = 5.2;
-const NEIGHBOUR_TEXT = 5.2;
+const MAP_TEXT = 6.2;
+const NEIGHBOUR_TEXT = MAP_TEXT;
 // The neighbours' numbers and the street names: Flamingo's street green, a
 // step lighter so it sits behind the site's own marks.
 const NAME_GREEN = '#4a8571';
+// Contours in green, apart from the warm site pen and the zones' hatch.
+const CONTOUR = '#3f9a5c';
 
 // Read at call time, not at module load: setTemplate() runs per job, long
 // after this module is first imported, so a captured constant would freeze to
@@ -77,6 +79,58 @@ class Placer {
     }
     return null;
   }
+}
+
+/**
+ * The sheet's hand-drawn arrow: a white strip in the site pen that leaves
+ * (x, y) along the unit direction (ux, uy), bows gently to one side and widens
+ * as it goes, ending in a broad head. `bow` signs which side it bows to.
+ */
+function sketchArrow(x: number, y: number, ux: number, uy: number, L: number, bow = 2.2, w0 = 1.4, w1 = 4.4): string {
+  const nx = -uy, ny = ux;
+  const N = 24, headL = 11, body = L - headL, headW = w1 * 2;
+  const left: string[] = [], right: string[] = [];
+  for (let i = 0; i <= N; i++) {
+    const t = i / N;
+    const off = bow * Math.sin(t * Math.PI);
+    const cx = x + ux * body * t + nx * off, cy = y + uy * body * t + ny * off;
+    const w = w0 + (w1 - w0) * t;
+    left.push(`${(cx + nx * w).toFixed(2)},${(cy + ny * w).toFixed(2)}`);
+    right.push(`${(cx - nx * w).toFixed(2)},${(cy - ny * w).toFixed(2)}`);
+  }
+  const ex = x + ux * body, ey = y + uy * body;
+  const tip = [ex + ux * headL, ey + uy * headL];
+  const wing = (sgn: number) => `${(ex + nx * headW * sgn).toFixed(2)},${(ey + ny * headW * sgn).toFixed(2)}`;
+  return `M${left.join('L')}L${wing(1)}L${tip[0].toFixed(2)},${tip[1].toFixed(2)}L${wing(-1)}L${right.reverse().join('L')}Z`;
+}
+
+/**
+ * The sun's bearing (degrees clockwise from north) and whether it is up, at a
+ * solar hour on a solstice: `decDeg` +23.44 for 21 June, −23.44 for 21 December.
+ */
+function sunBearing(latDeg: number, decDeg: number, hour: number): { az: number; up: boolean } {
+  const phi = (latDeg * Math.PI) / 180, dec = (decDeg * Math.PI) / 180;
+  const H = ((hour - 12) * 15 * Math.PI) / 180;
+  const up = Math.sin(phi) * Math.sin(dec) + Math.cos(phi) * Math.cos(dec) * Math.cos(H) > 0.02;
+  let az = (Math.atan2(Math.sin(H), Math.cos(H) * Math.sin(phi) - Math.tan(dec) * Math.cos(phi)) * 180) / Math.PI + 180;
+  if (az > 180) az -= 360;
+  return { az, up };
+}
+
+/** Hour marks for the two solstice arcs: which hours, at what bearing, labelled how. */
+function solsticeHours(latDeg: number): { winter: { h: number; az: number; label: string }[]; summer: { h: number; az: number; label: string }[] } {
+  // Winter is the solstice with the sun lower: June in the south, December in the north.
+  const winterDec = latDeg < 0 ? 23.44 : -23.44;
+  const fmt = (h: number) => (h < 12 ? `${h}AM` : h === 12 ? '12PM' : `${h - 12}PM`);
+  const marks = (dec: number) => {
+    const out: { h: number; az: number; label: string }[] = [];
+    for (let h = 5; h <= 19; h++) {
+      const b = sunBearing(latDeg, dec, h);
+      if (b.up) out.push({ h, az: b.az, label: fmt(h) });
+    }
+    return out;
+  };
+  return { winter: marks(winterDec), summer: marks(-winterDec) };
 }
 
 export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
@@ -138,8 +192,8 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
       usedZoneCats.add(cat);
       const ink = zoneInk(c);
       const kind = c.texture === 'dots' || c.texture === 'cross' ? c.texture : 'lines';
-      parts.push(textureSvg(`stx${tex++}`, paths.join(''), kind, ink, mapBox, Math.min(0.9, 0.35 + c.opacity * 0.6)));
-      parts.push(`<g fill="none" stroke="${ink}" stroke-width="0.4" opacity="0.8">${paths.map((d) => `<path d="${d}"/>`).join('')}</g>`);
+      parts.push(textureSvg(`stx${tex++}`, paths.join(''), kind, ink, mapBox, Math.min(1, 0.65 + c.opacity * 0.5)));
+      parts.push(`<g fill="none" stroke="${ink}" stroke-width="0.6">${paths.map((d) => `<path d="${d}"/>`).join('')}</g>`);
     }
     layers.push(`<defs><clipPath id="notSite"><path clip-rule="evenodd" d="M-20,-20 H${MAP_W + 20} V${MAP_H + 20} H-20 Z ${dHole}"/></clipPath></defs>
       <g clip-path="url(#notSite)">${parts.join('')}</g>`);
@@ -155,16 +209,24 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     const dec = (23.44 * Math.PI) / 180;
     const azOf = (d: number) => (Math.acos(Math.sin(d) / Math.cos(latR)) * 180) / Math.PI;
     const Ro = Math.min(MAP_W, MAP_H) * 0.42, Ri = Ro * 0.72;
-    const cx = MAP_W / 2, cy = MAP_H / 2;
+    // The sun path is centred on the site, not the sheet.
+    const sr = sb.siteRing.map(([lon, lat2]) => proj(lon, lat2));
+    const sn = Math.max(1, sr.length - 1);
+    const cx = sr.slice(0, sn).reduce((t, p) => t + p[0], 0) / sn;
+    const cy = sr.slice(0, sn).reduce((t, p) => t + p[1], 0) / sn;
     const at = (az: number, R: number): Pt => {
       const azr = ((az + view.rotationDeg) * Math.PI) / 180;
       return [cx + R * Math.sin(azr), cy - R * Math.cos(azr)];
     };
     // The suns sit at the solstices' rise and set points, with their names under them.
-    for (const [az, R] of [[azOf(dec), Ri], [-azOf(dec), Ri], [azOf(-dec), Ro], [-azOf(-dec), Ro], [0, Ro]] as [number, number][]) {
+    for (const [az, R] of [[azOf(dec), Ri], [-azOf(dec), Ri], [azOf(-dec), Ro], [-azOf(-dec), Ro], [0, Ro + 24]] as [number, number][]) {
       const [x, y] = at(az, R);
       placer.reserve(x, y + 6, 48, 58);
     }
+    // And the hours along the arcs.
+    const hrs = solsticeHours(lat);
+    for (const m of hrs.winter) { const [x, y] = at(m.az, Ri); placer.reserve(x, y, 12, 12); const [lx, ly] = at(m.az, Ri - 10); placer.reserve(lx, ly, 18, 9); }
+    for (const m of hrs.summer) { const [x, y] = at(m.az, Ro); placer.reserve(x, y, 12, 12); const [lx, ly] = at(m.az, Ro + 10); placer.reserve(lx, ly, 18, 9); }
     placer.reserve(MAP_W - 95, 55, 110, 20);
     placer.reserve(MAP_W - 85, MAP_H - 75, 120, 20);
     placer.reserve(90, MAP_H - 60, 110, 20);
@@ -172,65 +234,66 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
 
   // ---- potential views ------------------------------------------------------
   // Drawn in the sun and wind's hand: for each sight line the ground does not
-  // block, a white arrow in the site pen leaving the site edge along the
-  // bearing and widening as the view opens, named in the same lettering. It
-  // goes under the linework; its label is pushed last so nothing covers it.
+  // block, a small telescope on its tripod at the site edge, aimed along the
+  // bearing, with a dashed sight line running on toward the view and the
+  // view's name in the same lettering. It goes under the linework; its label
+  // is pushed last so nothing covers it.
   const viewText: string[] = [];
   {
     const centreLL = mercatorToLonLat({ x: view.cx, y: view.cy });
-    const L = 58;                              // arrow length on paper, mm
-    const LETTER = 5.4;
+    const SIGHT = 44;                          // dashed sight line on paper, mm
+    const LETTER = MAP_TEXT;
     for (const v of sb.views ?? []) {
       if (!v.cone) continue;
       const apex = exitPoint(sb.siteRing, centreLL, v.bearingDeg);
       const [ax, ay] = proj(apex.lon, apex.lat);
       const ang = ((v.bearingDeg + view.rotationDeg) * Math.PI) / 180;
-      const ux = Math.sin(ang), uy = -Math.cos(ang), nx = -uy, ny = ux;
-      // A gentle bow and a body that widens from 1.4 to 4.4 mm, then a head.
-      const N = 24, body = L - 11, bow = 2.2;
-      const left: string[] = [], right: string[] = [];
-      for (let i = 0; i <= N; i++) {
-        const t = i / N;
-        const off = bow * Math.sin(t * Math.PI);
-        const cx = ax + ux * (4 + body * t) + nx * off, cy = ay + uy * (4 + body * t) + ny * off;
-        const w = 1.4 + 3 * t;
-        left.push(`${(cx + nx * w).toFixed(2)},${(cy + ny * w).toFixed(2)}`);
-        right.push(`${(cx - nx * w).toFixed(2)},${(cy - ny * w).toFixed(2)}`);
-      }
-      const ex = ax + ux * (4 + body), ey = ay + uy * (4 + body);
-      const tip = [ex + ux * 11, ey + uy * 11];
-      const wing = (sgn: number) => `${(ex + nx * 9 * sgn).toFixed(2)},${(ey + ny * 9 * sgn).toFixed(2)}`;
-      layers.push(`<path d="M${left.join('L')}L${wing(1)}L${tip[0].toFixed(2)},${tip[1].toFixed(2)}L${wing(-1)}L${right.reverse().join('L')}Z" fill="#ffffff" fill-opacity="0.85" stroke="${RED()}" stroke-width="0.7" stroke-linejoin="round"/>`);
-      // An eye at the start: where the view is taken from.
-      layers.push(`<g transform="translate(${ax.toFixed(1)},${ay.toFixed(1)})"><circle r="2.2" fill="#ffffff" stroke="${RED()}" stroke-width="0.7"/><circle r="0.9" fill="${RED()}"/></g>`);
+      const ux = Math.sin(ang), uy = -Math.cos(ang);
+      // The telescope stands a little outside the boundary: tripod feet under
+      // it on the page, the tube tilted up toward the view.
+      const sx = ax + ux * 14, sy = ay + uy * 14;
+      const deg = (Math.atan2(uy, ux) * 180) / Math.PI;
+      const TS = 1.8;   // the telescope's size on paper
+      const tube = `<g transform="translate(${sx.toFixed(1)},${sy.toFixed(1)}) rotate(${deg.toFixed(1)}) scale(${TS})" stroke-width="${(0.7 / TS).toFixed(2)}">
+        <path d="M-7,-1.7 L6,-2.6 L6,2.6 L-7,1.7 Z" fill="#ffffff" stroke="${RED()}" stroke-linejoin="round"/>
+        <rect x="6" y="-3.3" width="2.6" height="6.6" rx="0.6" fill="#ffffff" stroke="${RED()}"/>
+        <rect x="-9.6" y="-1.2" width="2.6" height="2.4" rx="0.4" fill="#ffffff" stroke="${RED()}"/>
+        <line x1="-2" y1="-2.1" x2="-2" y2="2.1" stroke="${RED()}"/></g>`;
+      const legs = `<g stroke="${RED()}" stroke-width="0.7" stroke-linecap="round" fill="none">
+        <path d="M${sx.toFixed(1)},${(sy + 2.5).toFixed(1)} L${(sx - 7.5).toFixed(1)},${(sy + 17).toFixed(1)}"/>
+        <path d="M${sx.toFixed(1)},${(sy + 2.5).toFixed(1)} L${(sx + 7.5).toFixed(1)},${(sy + 17).toFixed(1)}"/>
+        <path d="M${sx.toFixed(1)},${(sy + 2.5).toFixed(1)} L${sx.toFixed(1)},${(sy + 18).toFixed(1)}"/></g>`;
+      const s0x = sx + ux * 20, s0y = sy + uy * 20;
+      const s1x = sx + ux * (20 + SIGHT), s1y = sy + uy * (20 + SIGHT);
+      layers.push(`<line x1="${s0x.toFixed(1)}" y1="${s0y.toFixed(1)}" x2="${s1x.toFixed(1)}" y2="${s1y.toFixed(1)}" stroke="${RED()}" stroke-width="0.7" stroke-dasharray="2.6,1.8" stroke-linecap="round"/>`);
+      layers.push(legs + tube);
       const lines = wrapLabel(v.kind === 'park' ? `${v.label} OUTLOOK` : `${v.label} VIEW`, 16);
       const dist = v.distanceM >= 950 ? `${(v.distanceM / 1000).toFixed(1)} KM` : `${Math.round(v.distanceM / 10) * 10} M`;
       const sub = v.kind === 'park' ? 'ADJOINING' : `${dist} · TERRAIN CLEAR`;
       const lh = LETTER * 1.12;
-      // The arrow claims its own ground first, so its name settles past the
-      // head and not over it.
-      for (let d = 8; d <= L + 2; d += 10) placer.reserve(ax + ux * d, ay + uy * d, 12, 12);
-      const lx = ax + ux * (L + 22), ly = ay + uy * (L + 22);
-      const w = Math.max(...lines.map((l) => l.length), sub.length * 0.75) * LETTER * 0.52 + 4;
-      // Several views can leave one corner of a small site; the label is
-      // nudged clear of the others rather than drawn over them.
-      const spot = placer.place(lx, ly, w, lines.length * lh + 6, 24) ?? [lx, ly];
+      // The telescope and its sight line claim their ground first, so the
+      // name settles past the line's end and not over it.
+      placer.reserve(sx, sy + 5, 36, 30);
+      for (let d = 22; d <= 20 + SIGHT; d += 10) placer.reserve(sx + ux * d, sy + uy * d, 8, 8);
+      const lx = sx + ux * (20 + SIGHT + 16), ly = sy + uy * (20 + SIGHT + 16);
+      const w = Math.max(...lines.map((l) => l.length), sub.length) * LETTER * 0.5 + 4;
+      const spot = placer.place(lx, ly, w, (lines.length + 1) * lh + 2, 64) ?? [lx, ly];
       const [tx, ty] = spot;
-      const y0 = ty - ((lines.length - 1) * lh) / 2;
+      const y0 = ty - (lines.length * lh) / 2 + LETTER * 0.36;
       viewText.push(lines.map((t, i) => `<text x="${tx.toFixed(1)}" y="${(y0 + i * lh).toFixed(1)}" text-anchor="middle" font-size="${LETTER}" font-weight="700" fill="${RED()}">${esc(t)}</text>`).join(''));
-      viewText.push(`<text x="${tx.toFixed(1)}" y="${(y0 + lines.length * lh + 0.6).toFixed(1)}" text-anchor="middle" font-size="${(LETTER * 0.72).toFixed(2)}" font-weight="700" letter-spacing="0.3" fill="${RED()}">${esc(sub)}</text>`);
+      viewText.push(`<text x="${tx.toFixed(1)}" y="${(y0 + lines.length * lh).toFixed(1)}" text-anchor="middle" font-size="${LETTER}" font-weight="700" fill="${RED()}">${esc(sub)}</text>`);
     }
   }
 
   // ---- cadastre + contours -------------------------------------------------
   if (sb.allLots.features.length) {
     const d = sb.allLots.features.map((f) => pathFromRings(geomRings(f.geometry), proj)).join('');
-    layers.push(`<path d="${d}" fill="none" stroke="#5f5f5f" stroke-width="0.18" opacity="0.65"/>`);
+    layers.push(`<path d="${d}" fill="none" stroke="#ffffff" stroke-width="0.45" opacity="0.9"/>`);
   }
   // (2) Terrain: contour lines with elevation tags (RL m AHD) along them.
   if (sb.contours.length) {
     const d = sb.contours.map((c) => pathFromRings([c.coords as any], proj, false)).join('');
-    layers.push(`<path d="${d}" fill="none" stroke="#a07c3f" stroke-width="0.4" opacity="0.85"/>`);
+    layers.push(`<path d="${d}" fill="none" stroke="${CONTOUR}" stroke-width="0.6" opacity="0.9"/>`);
     const tagged: Pt[] = [];
     for (const c of sb.contours) {
       const pts = c.coords.map(([lon, lat2]) => proj(lon, lat2)).filter(inMapWide);
@@ -245,39 +308,58 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
       if (ang < -90) ang += 180;
       layers.push(`<text transform="translate(${x.toFixed(1)},${y.toFixed(1)}) rotate(${ang.toFixed(1)})"
         text-anchor="middle" dy="-1.4" font-size="${MAP_TEXT}" font-weight="700"
-        fill="#8a6a2f">RL ${c.elevation.toFixed(0)}</text>`);
+        fill="${CONTOUR}">RL ${c.elevation.toFixed(0)}</text>`);
     }
   }
 
-  // ---- noise source zigzag along main roads --------------------------------
-  const zig = (pts: Pt[]): string => {
-    let d = '', run = 0, side = 1;
+  // ---- noise sources: sound waves along the main roads and the railway ------
+  // In the sun and wind's pen: every so often along a busy road or the
+  // railway, a source dot and three widening arcs spreading toward the site.
+  const noiseRing = sb.siteRing.map(([lon, lat2]) => proj(lon, lat2));
+  const noiseCentre: Pt = (() => {
+    const n = Math.max(1, noiseRing.length - 1);
+    return [noiseRing.slice(0, n).reduce((t, p) => t + p[0], 0) / n, noiseRing.slice(0, n).reduce((t, p) => t + p[1], 0) / n];
+  })();
+  const inSiteRing = (x: number, y: number) => {
+    let inside = false;
+    for (let i = 0, j = noiseRing.length - 1; i < noiseRing.length; j = i++) {
+      const [xi, yi] = noiseRing[i], [xj, yj] = noiseRing[j];
+      if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
+  };
+  const noiseMarks: string[] = [];
+  const soundAlong = (pts: Pt[], every: number) => {
+    let carry = every / 2;
     for (let i = 1; i < pts.length; i++) {
       const [ax, ay] = pts[i - 1], [bx, by] = pts[i];
       const len = Math.hypot(bx - ax, by - ay);
-      const nx = -(by - ay) / (len || 1), ny = (bx - ax) / (len || 1);
-      const steps = Math.max(1, Math.floor(len / 2.4));
-      for (let sI = 0; sI < steps; sI++) {
-        const t0 = sI / steps, t1 = (sI + 1) / steps;
-        const mx = ax + (bx - ax) * (t0 + t1) / 2 + nx * 1.1 * side;
-        const my = ay + (by - ay) * (t0 + t1) / 2 + ny * 1.1 * side;
-        if (!d) d = `M${(ax + (bx - ax) * t0).toFixed(1)},${(ay + (by - ay) * t0).toFixed(1)}`;
-        d += `L${mx.toFixed(1)},${my.toFixed(1)}L${(ax + (bx - ax) * t1).toFixed(1)},${(ay + (by - ay) * t1).toFixed(1)}`;
-        side = -side; run++;
+      let d = carry;
+      while (d < len) {
+        const t = d / len;
+        const x = ax + (bx - ax) * t, y = ay + (by - ay) * t;
+        d += every;
+        if (!inMap([x, y]) || inSiteRing(x, y)) continue;
+        const toSite = Math.atan2(noiseCentre[1] - y, noiseCentre[0] - x) * 180 / Math.PI;
+        const arcs = [4, 7.5, 11].map((r) => {
+          const a0 = ((toSite - 34) * Math.PI) / 180, a1 = ((toSite + 34) * Math.PI) / 180;
+          return `<path d="M${(r * Math.cos(a0)).toFixed(2)},${(r * Math.sin(a0)).toFixed(2)} A${r},${r} 0 0 1 ${(r * Math.cos(a1)).toFixed(2)},${(r * Math.sin(a1)).toFixed(2)}"/>`;
+        }).join('');
+        noiseMarks.push(`<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})"><circle r="1.5" fill="${RED()}" stroke="none"/>${arcs}</g>`);
       }
+      carry = d - len;
     }
-    return d;
   };
   const mainRoads = sb.roads.filter((r) => r.hierarchy <= 4);
   const seenNoise = new Set<string>();
   for (const r of mainRoads) {
-    if (seenNoise.has(r.name)) continue; // one zigzag band per named road
+    if (seenNoise.has(r.name)) continue; // one run of marks per named road
     seenNoise.add(r.name);
     const pts = r.coords.map(([lon, lat2]) => proj(lon, lat2));
-    if (pts.length >= 2) layers.push(`<path d="${zig(pts)}" fill="none" stroke="#3b4fd8" stroke-width="0.35" opacity="0.85"/>`);
+    if (pts.length >= 2) soundAlong(pts, 90);
   }
-  // Railways are noise sources too — one zigzag along the corridor (the
-  // longest line stands in for the whole track group).
+  // Railways are noise sources too — the longest line stands in for the
+  // whole track group.
   for (const group of [sb.railLines.train, sb.railLines.tram]) {
     if (!group.length) continue;
     let bestLine = group[0], bestLen = 0;
@@ -288,8 +370,9 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
       if (len > bestLen) { bestLen = len; bestLine = line; }
     }
     const pts = bestLine.map(([lon, lat2]) => proj(lon, lat2));
-    if (pts.length >= 2) layers.push(`<path d="${zig(pts)}" fill="none" stroke="#3b4fd8" stroke-width="0.4" opacity="0.9"/>`);
+    if (pts.length >= 2) soundAlong(pts, 90);
   }
+  layers.push(`<g fill="none" stroke="${RED()}" stroke-width="0.7" stroke-linecap="round">${noiseMarks.join('')}</g>`);
 
   // ---- one-way arrows -------------------------------------------------------
   for (const ow of sb.furniture.onewayRoads) {
@@ -574,7 +657,7 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
   let srid = 0;
   for (const [name, r] of best) {
     const label = shortStreetName(name);
-    const SITE_STREET = T.street * 1.35;
+    const SITE_STREET = MAP_TEXT;
     // Every street name as plain bold text along the road, no arrow band;
     // set on the straight chord through the middle of the longest run, since
     // a road's own vertices jog too much to carry text along directly.
@@ -748,8 +831,8 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
   // Drawn as a pair, in the same coral pen and the same open white-filled
   // marks: the sun as a disc with flame-like rays at the solstices' rise and
   // set points (on a solid summer arc and a dashed winter one), the winds as
-  // broad twisting ribbons blowing in toward the site, each named in the same
-  // lettering as the suns.
+  // the sheet's hand-drawn arrows blowing in toward the site, three abreast,
+  // each named in the same lettering as the suns.
   const latR = (Math.abs(lat) * Math.PI) / 180;
   const decR = (23.44 * Math.PI) / 180;
   const riseAz = (d: number) => (Math.acos(Math.sin(d) / Math.cos(latR)) * 180) / Math.PI;
@@ -772,12 +855,31 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
   };
   const PEN = RED();
   const PEN_W = 0.7;
-  const LETTER = 5.4;
+  const LETTER = MAP_TEXT;
   const textBlock = (x: number, y: number, lines: string[]) =>
     lines.map((t, i) => `<text x="${x.toFixed(1)}" y="${(y + i * LETTER * 1.12).toFixed(1)}" text-anchor="middle" font-size="${LETTER}" font-weight="700" fill="${PEN}">${esc(t)}</text>`).join('');
 
-  layers.push(`<path d="${arcPath(summerAz, -summerAz, Ro)}" fill="none" stroke="${PEN}" stroke-width="0.6" opacity="0.6"/>`);
-  layers.push(`<path d="${arcPath(winterAz, -winterAz, Ri)}" fill="none" stroke="${PEN}" stroke-width="0.7" opacity="0.75" stroke-dasharray="4,2.4"/>`);
+  layers.push(`<path d="${arcPath(summerAz, -summerAz, Ro)}" fill="none" stroke="${PEN}" stroke-width="1.4" stroke-linecap="round"/>`);
+  layers.push(`<path d="${arcPath(winterAz, -winterAz, Ri)}" fill="none" stroke="${PEN}" stroke-width="1.4" stroke-dasharray="5,2.6" stroke-linecap="round"/>`);
+  // The hours along each arc: a dot where the sun stands at each solar hour,
+  // its time beside it (inside the winter arc, outside the summer one). An
+  // hour that falls on a sunrise or sunset drawing is left to the sun.
+  {
+    const hrs = solsticeHours(lat);
+    const marks: string[] = [];
+    const put = (list: { az: number; label: string }[], R: number, labelR: number, edgeAz: number) => {
+      for (const m of list) {
+        if (Math.abs(Math.abs(m.az) - edgeAz) < 9) continue;
+        const [x, y] = sunAt(m.az, R);
+        const [lx, ly] = sunAt(m.az, labelR);
+        marks.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2" fill="#ffffff" stroke="${PEN}" stroke-width="${PEN_W}"/>` +
+          `<text x="${lx.toFixed(1)}" y="${(ly + LETTER * 0.36).toFixed(1)}" text-anchor="middle" font-size="${LETTER}" font-weight="700" fill="${PEN}">${m.label}</text>`);
+      }
+    };
+    put(hrs.winter, Ri, Ri - 10, winterAz);
+    put(hrs.summer, Ro, Ro + 10, summerAz);
+    layers.push(marks.join(''));
+  }
   const sketchSun = ([x, y]: Pt, lines: string[]) => {
     const r0 = 10.5, r1 = 13.4, r2 = 21, n = 16;
     let d = '';
@@ -801,39 +903,12 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
   layers.push(sketchSun(sunAt(summerAz, Ro), ['SUMMER', 'SUNRISE']));
   layers.push(sketchSun(sunAt(-summerAz, Ro), ['SUMMER', 'SUNSET']));
   {
-    const [nx, ny] = sunAt(0, Ro);
+    // North sits just beyond the summer noon mark and its label.
+    const [nx, ny] = sunAt(0, Ro + 24);
     layers.push(`<g transform="translate(${nx.toFixed(1)},${ny.toFixed(1)})"><circle r="6.4" fill="#ffffff" stroke="${PEN}" stroke-width="${PEN_W}"/>
       <text text-anchor="middle" dy="2.3" font-size="6.2" font-weight="700" fill="${PEN}">N</text></g>`);
   }
 
-  // A wind ribbon: a broad strip, white inside like the suns, whose width
-  // swells and pinches as it travels so it reads as twisting, ending in an
-  // arrowhead cut from the same strip.
-  const ribbon = (from: Pt, to: Pt, phase: number, half: number) => {
-    const dx = to[0] - from[0], dy = to[1] - from[1];
-    const L = Math.hypot(dx, dy) || 1;
-    const ux = dx / L, uy = dy / L, nx = -uy, ny = ux;
-    const N = 48, sway = 5, headL = 11, headW = half * 2.6;
-    const body = L - headL;
-    const centre = (t: number): Pt => {
-      const w = sway * Math.sin(t * Math.PI * 1.5 + phase) * (1 - 0.6 * t);
-      return [from[0] + ux * body * t + nx * w, from[1] + uy * body * t + ny * w];
-    };
-    const width = (t: number) => half * (0.25 + 0.75 * Math.abs(Math.cos(t * Math.PI * 1.8 + phase))) * (0.55 + 0.45 * t);
-    const left: string[] = [], right: string[] = [];
-    for (let i = 0; i <= N; i++) {
-      const t = i / N;
-      const [cx, cy] = centre(t);
-      const w = width(t);
-      left.push(`${(cx + nx * w).toFixed(2)},${(cy + ny * w).toFixed(2)}`);
-      right.push(`${(cx - nx * w).toFixed(2)},${(cy - ny * w).toFixed(2)}`);
-    }
-    const [ex, ey] = centre(1);
-    const tip: Pt = [ex + ux * headL, ey + uy * headL];
-    const wing = (sgn: number) => `${(ex + nx * headW * sgn).toFixed(2)},${(ey + ny * headW * sgn).toFixed(2)}`;
-    const d = `M${left.join('L')}L${wing(1)}L${tip[0].toFixed(2)},${tip[1].toFixed(2)}L${wing(-1)}L${right.reverse().join('L')}Z`;
-    return `<path d="${d}"/>`;
-  };
   const winds: { at: Pt; label: string[] }[] = [
     { at: [MAP_W - 95, 55], label: ['NE SUMMER', 'SEA BREEZE'] },
     { at: [MAP_W - 85, MAP_H - 75], label: ['S & SE COOL', 'SUMMER WIND'] },
@@ -848,11 +923,12 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     // than running through it.
     const sunSpots = [sunAt(winterAz, Ri), sunAt(-winterAz, Ri), sunAt(summerAz, Ro), sunAt(-summerAz, Ro)];
     const clearOfSuns = (p: Pt) => sunSpots.every(([sx, sy]) => Math.hypot(p[0] - sx, p[1] - (sy + 8)) > 36);
-    const strands = [[-13, 0.0, 88], [0, 1.7, 100], [13, 3.3, 80]].map(([o, ph, len]) => {
+    // Three of the sheet's hand-drawn arrows side by side, bowing alternately.
+    const strands = [[-14, 3.2, 84], [0, -3.2, 96], [14, 3.2, 76]].map(([o, bow, len]) => {
       const from: Pt = [w.at[0] + nx * o, w.at[1] + ny * o];
       let L = len;
       while (L > 40 && ![0.6, 0.8, 1].every((f) => clearOfSuns([from[0] + ux * L * f, from[1] + uy * L * f]))) L -= 4;
-      return ribbon(from, [from[0] + ux * L, from[1] + uy * L], ph, 3.6);
+      return `<path d="${sketchArrow(from[0], from[1], ux, uy, L, bow, 1.6, 4.6)}"/>`;
     }).join('');
     layers.push(`<g fill="#ffffff" fill-opacity="0.85" stroke="${PEN}" stroke-width="${PEN_W}" stroke-linejoin="round">${strands}</g>`);
     layers.push(textBlock(w.at[0] - ux * 18, w.at[1] - uy * 18, w.label));
@@ -878,7 +954,7 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
   row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${BLUE()}" stroke-width="0.8" stroke-dasharray="4,1.6"/><path d="M${SWATCH_X + SWATCH_W - 4},1.2 L${SWATCH_X + SWATCH_W},3.2 L${SWATCH_X + SWATCH_W - 4},5.2" fill="none" stroke="${BLUE()}" stroke-width="0.8"/>`, 'FALL OF TERRAIN');
   row(`<text x="${SWATCH_X}" y="5.4" font-size="3.2" font-weight="700" fill="${RED()}">SB 30.48</text>`, 'BOUNDARY DIMENSION (m)');
   row(`<text x="${SWATCH_X}" y="5.4" font-size="3.2" font-weight="700" fill="${RED()}">RL 24.5</text>`, 'SURFACE LEVEL (AHD)');
-  if (sb.contours.length) row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="#a07c3f" stroke-width="0.6"/><text x="${SWATCH_X + 1}" y="2.2" font-size="2.2" font-weight="700" fill="#8a6a2f">RL 20</text>`, `CONTOURS AT ${sb.contourIntervalM ?? 2} m AHD`, sb.contourSource);
+  if (sb.contours.length) row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${CONTOUR}" stroke-width="0.6"/><text x="${SWATCH_X + 1}" y="2.2" font-size="2.2" font-weight="700" fill="${CONTOUR}">RL 20</text>`, `CONTOURS AT ${sb.contourIntervalM ?? 2} m AHD`, sb.contourSource);
   row(`<g><text x="${SWATCH_X + SWATCH_W / 2}" y="2.8" text-anchor="middle" font-size="2.6" font-weight="700" fill="${NAME_GREEN}">26</text>${storeyLabels ? `<text x="${SWATCH_X + SWATCH_W / 2}" y="5.8" text-anchor="middle" font-size="2.6" font-weight="700" fill="${NAME_GREEN}" opacity="0.8">3ST</text>` : ''}</g>`,
     storeyLabels ? 'NEIGHBOUR: NUMBER, STOREYS' : 'NEIGHBOUR: STREET NUMBER',
     storeyLabels ? (sb.buildings?.source === 'overture' ? 'storeys from Overture Maps, OSM levels where it has none' : 'storeys from OpenStreetMap building levels') : undefined);
@@ -890,7 +966,7 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
       if (!usedZoneCats.has(c.id)) continue;
       const ink = zoneInk(c);
       const kind = c.texture === 'dots' || c.texture === 'cross' ? c.texture : 'lines';
-      row(textureSvg(`sltx${stex++}`, swD, kind, ink, { x: SWATCH_X, y: 0, w: SWATCH_W, h: 6.5 }, Math.min(0.9, 0.35 + c.opacity * 0.6)) +
+      row(textureSvg(`sltx${stex++}`, swD, kind, ink, { x: SWATCH_X, y: 0, w: SWATCH_W, h: 6.5 }, Math.min(1, 0.65 + c.opacity * 0.5)) +
         `<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="none" stroke="${ink}" stroke-width="0.4"/>`, c.label);
     }
   }
@@ -909,18 +985,19 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     row(`<circle cx="${mid}" cy="3.2" r="2.8" fill="#7dbb57" fill-opacity="0.45" stroke="#4e8c33" stroke-width="0.4"/><circle cx="${mid}" cy="3.2" r="0.5" fill="#2f5e20"/>`, 'TREES, CANOPY TO SCALE', sub);
   }
   if ((sb.views ?? []).some((v) => v.cone)) {
-    row(`<path d="M${SWATCH_X + 3},2.7 L${SWATCH_X + 15},1.8 L${SWATCH_X + 15},0.3 L${SWATCH_X + 21},3.2 L${SWATCH_X + 15},6.1 L${SWATCH_X + 15},4.6 L${SWATCH_X + 3},3.7 Z" fill="#fff" stroke="${RED()}" stroke-width="0.4" stroke-linejoin="round"/><circle cx="${SWATCH_X + 2.4}" cy="3.2" r="1.3" fill="#fff" stroke="${RED()}" stroke-width="0.4"/>`, 'POTENTIAL VIEW', `terrain only, from ${Math.round(sb.eyeAboveM ?? 8)} m up; no buildings`);
+    row(`<g transform="translate(${SWATCH_X + 5},2.4) rotate(-12) scale(0.42)"><path d="M-7,-1.7 L6,-2.6 L6,2.6 L-7,1.7 Z" fill="#fff" stroke="${RED()}" stroke-width="1.2"/><rect x="6" y="-3.3" width="2.6" height="6.6" fill="#fff" stroke="${RED()}" stroke-width="1.2"/></g><g stroke="${RED()}" stroke-width="0.35"><path d="M${SWATCH_X + 5},3 L${SWATCH_X + 3.4},6.2 M${SWATCH_X + 5},3 L${SWATCH_X + 6.6},6.2"/><line x1="${SWATCH_X + 9.5}" y1="1.6" x2="${SWATCH_X + 21}" y2="0.2" stroke-dasharray="1.2,0.8"/></g>`, 'POTENTIAL VIEW', `terrain only, from ${Math.round(sb.eyeAboveM ?? 8)} m up; no buildings`);
   }
   if (sb.furniture.powerPoles.length) row(`<g transform="translate(${mid},3.2)"><line x1="-2.4" y1="0" x2="2.4" y2="0" stroke="#333" stroke-width="0.4"/><circle r="1.2" fill="none" stroke="#333" stroke-width="0.45"/></g>`, 'POWER POLE');
   if (sb.furniture.streetLamps.length) row(`<circle cx="${mid}" cy="3.2" r="1.4" fill="#f0c020" stroke="#a8860b" stroke-width="0.3"/>`, 'LIGHT POLE');
   if (sb.furniture.hydrants.length) row(`<circle cx="${mid}" cy="3.2" r="1.8" fill="#1f78d1"/>`, 'HYDRANT');
   if (sb.busStops.length) row(`<g transform="translate(${mid},3.2)"><circle r="3.4" fill="#fff" stroke="#2f7fd6" stroke-width="0.8"/><text text-anchor="middle" dy="1.9" font-size="5.7" font-weight="700" fill="#2f7fd6">B</text></g>`, 'BUS STOPS');
   if (sb.furniture.onewayRoads.length) row(`<path d="M${SWATCH_X},3.2 L${SWATCH_X + SWATCH_W - 4},3.2 M${SWATCH_X + SWATCH_W - 7},1.4 L${SWATCH_X + SWATCH_W - 4},3.2 L${SWATCH_X + SWATCH_W - 7},5" fill="none" stroke="#8a8a8a" stroke-width="1.0"/>`, 'TRAFFIC DIRECTION');
-  row(`<path d="M${SWATCH_X},4.5 ${Array.from({ length: 6 }, (_, i) => `L${(SWATCH_X + 2 + i * 4).toFixed(1)},${i % 2 ? 4.5 : 1.9}`).join(' ')}" fill="none" stroke="#3b4fd8" stroke-width="0.5"/>`, 'NOISE SOURCE');
+  row(`<g transform="translate(${SWATCH_X + 6},3.2)" fill="none" stroke="${RED()}" stroke-width="0.4" stroke-linecap="round"><circle r="0.7" fill="${RED()}" stroke="none"/>${[1.6, 3, 4.4].map((r) => `<path d="M${(r * Math.cos(-0.6)).toFixed(2)},${(r * Math.sin(-0.6)).toFixed(2)} A${r},${r} 0 0 1 ${(r * Math.cos(0.6)).toFixed(2)},${(r * Math.sin(0.6)).toFixed(2)}"/>`).join('')}</g>`, 'NOISE SOURCE', 'busy roads and the railway');
   {
     const rib = `M${SWATCH_X + 2},2.6 C${SWATCH_X + 7},0.8 ${SWATCH_X + 11},4.8 ${SWATCH_X + 16},2.4 L${SWATCH_X + 16},1 L${SWATCH_X + 21},3.2 L${SWATCH_X + 16},5.4 L${SWATCH_X + 16},4 C${SWATCH_X + 11},6.2 ${SWATCH_X + 7},2.6 ${SWATCH_X + 2},3.8 Z`;
-    row(`<path d="${rib}" fill="#fff" stroke="${RED()}" stroke-width="0.4" stroke-linejoin="round"/>`, 'PREVAILING WINDS');
-    row(`<g transform="translate(${mid},3.2)">${[0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330].map((a) => { const ar = (a * Math.PI) / 180; return `<line x1="${(2.7 * Math.cos(ar)).toFixed(2)}" y1="${(2.7 * Math.sin(ar)).toFixed(2)}" x2="${(3.9 * Math.cos(ar)).toFixed(2)}" y2="${(3.9 * Math.sin(ar)).toFixed(2)}" stroke="${RED()}" stroke-width="0.4"/>`; }).join('')}<circle r="2.1" fill="#fff" stroke="${RED()}" stroke-width="0.4"/></g>`, 'SUNRISE AND SUNSET', 'summer arc solid, winter arc dashed');
+    void rib;
+    row(`<path d="${sketchArrow(SWATCH_X + 2, 3.2, 1, 0, 19, 0.8, 0.5, 1.3)}" fill="#fff" stroke="${RED()}" stroke-width="0.35" stroke-linejoin="round"/>`, 'PREVAILING WINDS');
+    row(`<g transform="translate(${mid},3.2)">${[0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330].map((a) => { const ar = (a * Math.PI) / 180; return `<line x1="${(2.7 * Math.cos(ar)).toFixed(2)}" y1="${(2.7 * Math.sin(ar)).toFixed(2)}" x2="${(3.9 * Math.cos(ar)).toFixed(2)}" y2="${(3.9 * Math.sin(ar)).toFixed(2)}" stroke="${RED()}" stroke-width="0.4"/>`; }).join('')}<circle r="2.1" fill="#fff" stroke="${RED()}" stroke-width="0.4"/></g>`, 'SUN PATH', 'summer solid, winter dashed; solar hours');
   }
 
   const utilKinds = new Set(sb.furniture.utilities.map((u) => u.kind));

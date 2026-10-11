@@ -344,15 +344,19 @@ along it clear of the labels already set. The numbers and street names are in
 Flamingo's street green, a step lighter, and every word on the map and in the
 legend is set in Arial Narrow (Liberation Sans Narrow on the server).
 
-Potential views are drawn in the same hand as the sun and wind: a white arrow
-in the site pen leaving the site edge along the bearing, widening as the view
-opens, with an eye where it is taken from and its name in the same lettering.
+Every word on the map is one size. Potential views are a small telescope on
+its tripod at the site edge, aimed along the bearing, with a dashed sight line
+running on and the view's name in the site pen's lettering.
 
-The sun and the winds are drawn as a pair, in the template's site ink and the
-same open white-filled marks: a hand-drawn sun — a disc with flame-like rays —
-at the summer and winter sunrise and sunset, on a solid summer arc and a
-dashed winter arc, and the prevailing winds as broad twisting ribbons blowing
-in toward the site, stopping short of a sun that comes from the same quarter.
+The sun, the winds and the noise are drawn in one hand, in the template's
+site ink and open white-filled marks: a hand-drawn sun — a disc with
+flame-like rays — at the summer and winter sunrise and sunset, on a solid
+summer arc and a dashed winter arc, each arc marked with a dot and the time at
+every solar hour; the prevailing winds as three widening arrows blowing in
+toward the site, stopping short of a sun from the same quarter; and the noise
+of the busy roads and the railway as sound waves, a source dot and three arcs
+spreading toward the site. Contours are green, and the cadastre is drawn in
+white over the aerial.
 
 ### Trees, parking bays and views on the site sheet
 
