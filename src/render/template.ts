@@ -165,18 +165,18 @@ const GROTESK = "'DejaVu Sans', Verdana, 'Liberation Sans', sans-serif";
 // retail are the blue family (told apart by texture), the institutions
 // lavender, industry grey on stone, water the bright cyan, heritage a purple
 // cross-hatch.
-// The sampled colours are printed here with their saturation eased by about
-// a fifth (lightness kept), so the sheet sits a little quieter than the image.
+// Exactly as the reference prints them: each family's building colour and
+// the pale ground it stands on, sampled from the image.
 const F2 = {
-  pink: '#f8cfe8', pinkGround: '#f9edf4',
-  coral: '#f5bfb2', coralGround: '#f6ebe8',
-  orange: '#f0be9a', orangeGround: '#f8e6d9', yellowGround: '#f6f1cc',
-  mint: '#93c8b0',
-  cyan: '#aad7dc', cyanGround: '#e7f6f8',
-  blue: '#7b92b8', blueGround: '#e8eef6',
-  violet: '#b7b2da', violetGround: '#e9e7f4',
-  grey: '#c4c5c1', stoneGround: '#e8e8d8',
-  water: '#8cdaee', magenta: '#c2367c', purple: '#753583', dots: '#1c1c1c',
+  pink: '#f8cee8', pinkGround: '#f9e3f1',
+  coral: '#efc0b2', coralGround: '#f7e5e1',
+  orange: '#f2bf94', orangeGround: '#faebde', yellowGround: '#fbf4c9',
+  mint: '#8fcdb0',
+  cyan: '#b3dadc', cyanGround: '#def5f8',
+  blue: '#7b91b0', blueGround: '#e0e9f6',
+  violet: '#b6b2d3', violetGround: '#e5e3f4',
+  grey: '#c2c2bc', stoneGround: '#e8e8d8',
+  water: '#81e0f9', magenta: '#c2367c', purple: '#753583', dots: '#1c1c1c',
 };
 
 const KINGFISHER_CATEGORIES: Category[] = [
@@ -238,13 +238,16 @@ export const TEMPLATES: Template[] = [
   { id: 'kingfisher', label: 'Kingfisher', note: 'the masterplan palette: pale zone grounds with the buildings in each family\'s strong colour',
     font: GROTESK, streetFont: NARROW, textScale: 0.96,
     ink: '#1c1c1c',
-    streetInk: '#8faf6a',   // a light leaf green, in the hue of the reference's fields
+    // Street names and the institutions' number discs in the reference's
+    // peach, a step deeper so it reads on the pale grounds; the parks' discs
+    // keep the leaf green.
+    streetInk: '#e39a6f', discInk: '#e39a6f', discParkInk: '#8faf6a',
     rule: '#8a8a8a',
     site: F2.magenta, dimension: '#56616b', wind: '#87959d', sun: '#efe8d4', road: F2.grey, water: F2.water,
     transit: '#365696', rail: '#e8835e', walk5: '#1f8a5a', walk10: '#6fb88c', busRoute: '#5b8fd6', heritage: F2.purple,
     isochrone: 'dotted', roundel: 'solid', busLine: 'dotted', railLine: 'dotted',
-    // The cadastre as thin white lines over the pale grounds.
-    ground: 'paper', footprints: 'colour', lots: 'white', lotWidth: 0.2,
+    // The cadastre and every building in a heavy white line.
+    ground: 'paper', footprints: 'colour', footprintEdge: 0.4, lots: 'white', lotWidth: 0.45,
     categories: KINGFISHER_CATEGORIES },
   { id: 'heron', label: 'Heron', note: 'the original office sheet over the aerial, with Flamingo\'s stops, red dotted railway and numbered places',
     font: NARROW, streetFont: NARROW, textScale: 0.96,
