@@ -61,6 +61,8 @@ export interface Bundle {
   bus: BusData;
   isochrones: Isochrone[];
   aerial: AerialResult;
+  /** Building footprints across the window, drawn as the grain inside the blocks. */
+  buildings: BuildingsData;
   generatedAt: string;
 }
 
@@ -133,7 +135,8 @@ export async function runPipeline(address: string, opts: PipelineOpts): Promise<
     p.catch((e) => { log(`  WARN ${name} failed: ${e.message ?? e}`); return fallback; });
 
   const emptyBus: BusData = { busStops: [], busRouteSegments: [], tramStops: [], tramRouteSegments: [] };
-  const [railCorridors, allLots, zoning, hob, heritage, roads, railLines, stations, parkPoints, parkAreas, rawComplex, bus, isochrones, aerial] =
+  const noBuildings: BuildingsData = { source: 'none', buildings: [], fetchedAt: new Date().toISOString() };
+  const [railCorridors, allLots, zoning, hob, heritage, roads, railLines, stations, parkPoints, parkAreas, rawComplex, bus, isochrones, aerial, buildings] =
     await Promise.all([
       soft(fetchRailCorridors(extent), emptyFC, 'rail corridors'),
       soft(fetchAllLots(extent), emptyFC, 'cadastral lots'),
@@ -149,6 +152,7 @@ export async function runPipeline(address: string, opts: PipelineOpts): Promise<
       soft(fetchBusData(extent), emptyBus, 'bus/tram data (OSM)'),
       soft(fetchIsochrones(centerLL), [], 'isochrones'),
       fetchAerial(extent, opts.aerialPxWidth ?? 3200, dataDir),
+      soft(fetchBuildings(extent, log), noBuildings, 'buildings'),
     ]);
 
   // Bus stops: TfNSW when a key is configured (authoritative), else the OSM
@@ -177,7 +181,7 @@ export async function runPipeline(address: string, opts: PipelineOpts): Promise<
 
   log(`  lots:${siteLots.features.length} zoning:${zoning.features.length} roads:${roads.length} ` +
       `stations:${stations.length} parks:${parkPoints.length} complexes:${complexPoints.length} ` +
-      `instPolys:${institutionPolys.length} busStops:${bus.busStops.length} isochrones:${isochrones.length}`);
+      `instPolys:${institutionPolys.length} busStops:${bus.busStops.length} isochrones:${isochrones.length} buildings:${buildings.buildings.length}/${buildings.source}`);
 
   const bundle: Bundle = {
     address,
@@ -203,6 +207,7 @@ export async function runPipeline(address: string, opts: PipelineOpts): Promise<
     bus,
     isochrones,
     aerial,
+    buildings,
     generatedAt: new Date().toISOString(),
   };
   await writeFile(join(dataDir, 'bundle.json'), JSON.stringify(bundle));
@@ -263,6 +268,8 @@ export interface SiteBundle {
   /** Attribution lines the data licences ask for, printed on the sheet. */
   attributions?: string[];
   busStops: { name?: string; lon: number; lat: number }[];
+  /** Footprints with what is known of their height, for the neighbours' storey labels. */
+  buildings?: BuildingsData;
   aerial: AerialResult;
   generatedAt: string;
 }
@@ -346,7 +353,8 @@ export async function runSitePipeline(address: string, opts: SitePipelineOpts): 
 
   log('fetching contours, lots, roads, neighbours, furniture, trees, imagery…');
   const nswContours: ContourSet = { lines: [], intervalM: 2, source: 'NSW Spatial Services' };
-  const [contourSet, allLots, roads, railLines, zoning, neighbours, furniture, aerial, councilTrees, parkPoints, controls] = await Promise.all([
+  const noBuildings: BuildingsData = { source: 'none', buildings: [], fetchedAt: new Date().toISOString() };
+  const [contourSet, allLots, roads, railLines, zoning, neighbours, furniture, aerial, councilTrees, parkPoints, controls, buildings] = await Promise.all([
     soft(fetchContours(extent, log), nswContours, 'contours'),
     soft(fetchAllLots(extent), { type: 'FeatureCollection', features: [] } as GeoJSONFC, 'lots'),
     soft(fetchRoads(extent), [], 'roads'),
@@ -358,6 +366,7 @@ export async function runSitePipeline(address: string, opts: SitePipelineOpts): 
     soft(fetchCouncilTrees(extent, log), [], 'council trees'),
     soft(fetchParkPoints(extent), [], 'park points'),
     soft(fetchSiteControls(geo.center), null, 'site controls'),
+    soft(fetchBuildings(extent, log), noBuildings, 'buildings'),
   ]);
 
   let busStops: { name?: string; lon: number; lat: number }[] = [];
@@ -398,7 +407,7 @@ export async function runSitePipeline(address: string, opts: SitePipelineOpts): 
     siteLots, siteRing: ring, allLots, roads, railLines, zoning,
     contours: contourSet.lines, contourIntervalM: contourSet.intervalM, contourSource: contourSet.source,
     neighbours, furniture, parkingBands, views, eyeAboveM, attributions,
-    busStops, aerial, generatedAt: new Date().toISOString(),
+    busStops, buildings, aerial, generatedAt: new Date().toISOString(),
   };
   await writeFile(join(dataDir, 'site_bundle.json'), JSON.stringify(bundle));
   return bundle;

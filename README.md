@@ -56,7 +56,10 @@ either it reads KartaView alone. On the server they go in
 `/etc/site-analyst.env`, which the deployer passes to the container.
 
 To refresh the samples, generate the three sheets for the demo address and
-re-render them:
+re-render them (the context scale thumbnails `context-2000.jpg`,
+`context-4000.jpg` and `context-5000.jpg` come from the same address at
+`--scale 2000`, `4000` and `5000`, and the STYLE row's `context-kingfisher.jpg`
+and `context-heron.jpg` from the matching `--template`, rendered the same way):
 
 ```bash
 npm run generate -- "1 Bay Street, Botany NSW 2019" --type both
@@ -323,6 +326,41 @@ absolute, and a scraper resolves them without ever seeing the request, so the
 pages write `%ORIGIN%` and the server fills it in from the host it was asked
 for.
 
+### Zones, neighbours, sun and wind on the site sheet
+
+The site sheet no longer writes the neighbours' zone on the map. Each zone is
+a hatch in its family's ink (the active template's palette) with a fine
+outline and no fill, so the aerial stays visible under it; the pattern is the
+category's texture (lines where it has none) and its strength the category's,
+and the legend names each zone once. Nothing is drawn over the site.
+
+Each neighbouring building carries two short lines: its street number(s) and
+its storeys — `26` over `3ST` (a run of numbers on one building reads
+`32–34`). Storeys are Overture's count, or its measured height at 3.1 m a
+storey, or OpenStreetMap's `building:levels` where Overture has neither; with
+no height anywhere the building keeps its number and no storey line. Street
+names are plain bold text along the road, without the white arrow band, slid
+along it clear of the labels already set. The numbers and street names are white, and every word on the map and in the
+legend is set in Arial Narrow (Liberation Sans Narrow on the server).
+
+Every word on the map is one size. Potential views are a telescope just
+outside the site edge, aimed along the bearing, with what it found — the
+distance and "TERRAIN CLEAR" — written under it, along its line, in the site
+pen's lettering. The site itself — boundary, corners,
+dimensions and levels — is a deep red, apart from that coral pen.
+
+The sun, the winds and the noise are drawn in one hand, in the template's
+site ink and open white-filled marks: a hand-drawn sun — a disc with
+flame-like rays — at the summer and winter sunrise and sunset, on a solid
+summer arc and a dashed winter arc, each arc marked with a dot and the time at
+every solar hour; the prevailing winds as three widening arrows blowing in
+toward the site, stopping short of a sun from the same quarter. Noise — the
+busy roads and the railway — is drawn like the wind but in blue, white in a
+blue pen, beside the source on the site's side: one continuous band, swaying
+gently and swelling a little along its length. A view's distance and "TERRAIN CLEAR" are set in two rows. The
+sun, wind and view lettering is set heavy. Contours are green; the cadastre
+and the neighbours' building outlines are white over the aerial.
+
 ### Trees, parking bays and views on the site sheet
 
 Three things the site sheet draws that the data has to be coaxed into:
@@ -458,21 +496,94 @@ colours and the land-use palette. Content is identical between templates; only
 the look changes. They live in `src/render/template.ts`, so a new house style is
 a data change.
 
-There is one: `neutral`, a restrained palette with a single accent that survives
-a mono print. The office style that sat beside it left with the office door, and
-took the elaborate compass rose with it — that was the only thing the `symbols`
-field ever selected between, so it went too. `neutral`'s replacement is the next
-piece of work.
+There are three: Flamingo, the default, Kingfisher and Heron.
+
+**Flamingo** (`flamingo`) sits on plain paper. Four tints, each a family —
+peach for the residential zones, sand for the centres, teal for open space and
+the institutions, blue for water, grey for the rest — with the categories
+inside a family told apart by tone and by texture (dots, hatch, cross-hatch,
+drawn as real lines so they print crisply) rather than by another colour. The
+residential tiers step from a bare blush (R2) through peach (R3) to a deeper
+salmon with hatch (R4). The site is the one accent, coral. Every building
+footprint (Overture, OpenStreetMap as the fallback) is filled white with a
+hairline of its ground's family ink, so a block reads as white figures on a
+tint and not as more of the white street; the streets are white strips over
+the tints, the road reserve scaled from the function hierarchy, named in a
+narrow deep green (Arial Narrow where it is installed, Liberation Sans Narrow
+on the server). The stops and stations are solid roundels with a white
+letter, the bus routes a faint dotted line, the railway a red dotted line, and
+the walking catchments green dotted lines with "5 MIN" and "10 MIN" written
+along them, twice per ring, on clear straight stretches.
+
+**Kingfisher** (`kingfisher`) is Flamingo in the palette of a masterplan
+reference, sampled from it: every zone a pale ground with its buildings filled
+in the family's strong colour (`footprints: 'colour'`). The residential zones
+take the warm colours — yellow ground with orange buildings for R2, pink for
+R3, cyan for R4, peach for mixed use — and green is kept for green space alone,
+open space the deep mint with black dots. The local and commercial centres and
+retail are the blue family, told apart by texture, the institutions lavender,
+industry grey on stone; water the bright cyan, the site and heritage in magenta
+and purple, the railway orange. The legend swatch shows a few buildings on
+their ground. The colours are exactly those the reference prints. Streets, numbered
+places and the dotted lines are Flamingo's, but the street names and the institutions' number discs
+are the reference's peach, the parks' discs a light leaf green, and the lots
+and every building are drawn in a heavy white line.
+
+**Heron** (`heron`) is the office sheet the restyle began from: the aerial,
+in greyscale (`aerialTone: 'grey'`), with the lots and every building as heavy
+white lines over it (`lots: 'white'`, `footprints: 'outline'`) and all its
+text in white Arial Narrow (institutions' number discs a reddish brown, parks' green, `discInk` and `discParkInk`), under a light
+white veil with the tints at full strength over it (the palette
+sampled from that sheet's legend — tan mixed use and centres, peach
+residential, mint open space, the institutions in outlined slate blues), no
+building footprints and no white street strips, every street named in plain
+bold black straight on the photo (no arrow bands or outline;
+`streetLabels: 'band'` brings the bands back), and the walking
+catchments as continuous green lines at reduced opacity with solid green walker discs. From Flamingo it
+takes the solid stop roundels, the red dotted railway and the numbered
+places with their key, the discs in black.
+
+The retired ids still resolve: `flamingo-white` to Flamingo, `flamingo-2` to
+Kingfisher, and
+`flamingo-aerial`, `redfern-white` and `redfern-aerial`, like any unknown id,
+to the default.
+
+Common to all: the only words on the map are the street names. Every
+institution and park carries a number instead, a solid disc with the number
+knocked out, and the legend carries the key: the institutions in the legend's
+category order, then the open spaces, then the stations under their roundel
+letter. The key has only the column the legend leaves it, so past twenty-four
+entries its rows tighten, and when a wide window would still overrun it the
+places nearest the site are kept and the rest go, from the map as well as the
+key. The aerial tiles are fetched whatever the template; the CAD export
+carries them on its own layer.
+
+What differs between templates beyond colour is declared on the template:
+`ground` (`paper` or `aerial`, with `veil` and `tintScale` for the aerial), `footprints`
+(`white`, `colour`, `outline` or `none`), `lots` (`faint` or `white`), `streets` (`white` or `none`), `streetLabels`
+(`plain` or `band`),
+`isochrone` (`band`, `line`, `dotted` or `walkers`), `roundel` (`ring` or `solid`), `busLine`
+(`dashed` or `dotted`), `railLine` (`sleepers` or `dotted`), `streetFont`
+and `streetInk`, and each category's `texture`, `textureColor` and `figure`
+(the hairline ink of a white footprint). The CLI takes `--template`; the web
+picker has a STYLE row and the job request carries `template`, an unknown one
+falling back to the default. The office style that sat beside these left with
+the office door, and took the elaborate compass rose with it — that was the
+only thing the `symbols` field ever selected between, so it went too.
 
 The renderers read the active template from an async context rather than a
 parameter, so `withTemplate()` also takes a `Template` outright — which is what
 lets `test/template-isolation.mts` hold two apart while only one is registered.
 
-Fonts are limited to what the runtime image installs (Liberation, DejaVu).
+Fonts are limited to what the runtime image installs (Liberation — the 1.07
+line Debian bookworm ships, which includes Liberation Sans Narrow for the
+street names — and DejaVu).
 Naming an absent font does not fail; it silently falls back and the sheet
 comes out in the wrong face, so add the package to the `Dockerfile` first.
 
-Options (after `--`): `--type context|site|summary|slides|both`, `--scale 3000` (default 3000),
+Options (after `--`): `--type context|site|summary|slides|both`, `--scale 3000` (default 3000;
+the web picker offers 1:2000, 1:3000, 1:4000 and 1:5000, the server accepts 1000 to 6000),
+`--template flamingo|kingfisher|heron` (the graphic template, see Templates below),
 `--slides-scale 8000` (the deck's map panels), `--da-years 5` (the deck's
 development window), `--job 2539`, `--client "Name"`,
 `--status "DEVELOPMENT APPLICATION"`, `--sheet "DA 003"`.
@@ -670,17 +781,21 @@ address
 
 ### Street names
 
-A through street carries its name in the white double-headed arrow band; a
-laneway gets a plain black label along the line. Neither of the two fields NSW
-publishes decides this on its own — Dickson Lane is classified `LocalRoad`
-exactly like Hall Street, and plenty of real streets have no lane count
-recorded — so the rule combines them: function hierarchy 7+ (service lane,
-track, path, access way), a name ending in LANE/WALK/PATH/TRACK, or a recorded
-single lane means laneway, otherwise street.
+On the context sheet every street carries its name as plain bold text set
+along, and centred on, its white strip; the width of the strip already says
+whether it is an arterial or a lane (Heron, with no strips, sets the same
+black name straight on the aerial). The white double-headed arrow band survives
+on the site sheet only, where a through street carries its name in the band and
+a laneway gets a plain label. Neither of the two fields NSW publishes decides
+that on its own — Dickson Lane is classified `LocalRoad` exactly like Hall
+Street, and plenty of real streets have no lane count recorded — so the rule
+combines them: function hierarchy 7+ (service lane, track, path, access way), a
+name ending in LANE/WALK/PATH/TRACK, or a recorded single lane means laneway,
+otherwise street.
 
 The road network arrives split at every intersection, so the pieces of each
 street are chained back into continuous runs before labelling; without that, a
-band could never span a junction and an arterial would come out looking like a
+name could never span a junction and an arterial would come out looking like a
 laneway. A long street repeats its name up to three times. Every label — street
 and place name alike — reserves the ground it covers, and place names go first
 because they belong to a parcel and cannot move, so a street name slides along

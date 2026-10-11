@@ -2,9 +2,7 @@
    State lives in one object; the options are plain buttons that write into it,
    which avoids native <select> chrome in a page that is otherwise all text. */
 
-// There is one graphic template, so it is not in here: the server draws every
-// sheet in it and the page has nothing to choose.
-const state = { sheet: 'context', scale: '3000', rotate: 'north' };
+const state = { sheet: 'context', scale: '3000', rotate: 'north', template: 'flamingo' };
 
 // [value, label, previewImage, previewCaption] — every option previews a real
 // sheet generated for the same demo address, so the comparison is like for like.
@@ -19,6 +17,7 @@ const SCALES = {
     ['2000', '2000', '/samples/context-2000.jpg', 'context · 1:2000 — tighter, more detail'],
     ['3000', '3000', '/samples/context.jpg',      'context · 1:3000 — the default'],
     ['4000', '4000', '/samples/context-4000.jpg', 'context · 1:4000 — wider catchment'],
+    ['5000', '5000', '/samples/context-5000.jpg', 'context · 1:5000 — the whole suburb'],
   ],
   site: [
     ['0',   'auto', '/samples/site.jpg',     'site · auto — tightest scale that fits the lot'],
@@ -31,6 +30,12 @@ const SCALES = {
   summary: [],
   slides: [],
 };
+// The graphic templates the server knows; an unknown one falls back to the default.
+const STYLES = [
+  ['flamingo', 'flamingo', '/samples/context.jpg',       'Flamingo — four tints on paper, every building white'],
+  ['kingfisher', 'kingfisher', '/samples/context-kingfisher.jpg', 'Kingfisher — the masterplan palette: pale grounds, buildings in each zone\'s colour'],
+  ['heron',    'heron',    '/samples/context-heron.jpg', 'Heron — the office sheet over the aerial: black street names, numbered places'],
+];
 const NORTH = [
   ['north', 'up',    '/samples/site.jpg',       'north up — the sheet is oriented to north'],
   ['auto',  'align', '/samples/north-align.jpg', 'aligned — the lot is squared to the sheet'],
@@ -92,6 +97,7 @@ function renderAll() {
     tokens($('scaleOpts'), scales, state.scale, (v) => { state.scale = v; renderAll(); });
   }
   tokens($('northOpts'), NORTH, state.rotate, (v) => { state.rotate = v; renderAll(); });
+  tokens($('styleOpts'), STYLES, state.template, (v) => { state.template = v; renderAll(); });
 
 }
 
@@ -432,7 +438,7 @@ async function submit(fresh) {
     const r = await fetch('/api/jobs', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ address, scale: state.scale, rotate: state.rotate,
-                             sheet: state.sheet, fresh: fresh === true }),
+                             sheet: state.sheet, template: state.template, fresh: fresh === true }),
     });
     const j = await readJson(r);
     if (!r.ok) throw new Error(httpMessage(r, j));
@@ -456,7 +462,7 @@ async function submitBatch(addresses, fresh) {
     const r = await fetch('/api/batches', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ addresses, scale: state.scale, rotate: state.rotate,
-                             sheet: state.sheet, fresh: fresh === true }),
+                             sheet: state.sheet, template: state.template, fresh: fresh === true }),
     });
     const j = await readJson(r);
     if (!r.ok) throw new Error(httpMessage(r, j));

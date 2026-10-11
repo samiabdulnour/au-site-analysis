@@ -65,6 +65,36 @@ export interface SheetHtmlOpts {
   dataNote?: string;
 }
 
+// The identity blocks' heights, shared by the layout and by the legend's
+// budget: the legend takes whatever the stack leaves above it.
+const BLOCK_H = { client: 24.6, prelim: 7, north: 25.8, address: 15.6, job: 11.1, checked: 10.4, date: 10.4, status: 13.8, title: 17, sheet: 11 };
+
+/** The heights of the identity blocks a sheet with this meta carries, in stack order. */
+function identityBlockHeights(meta: SheetMeta, noMap: boolean): number[] {
+  const h: number[] = [];
+  if (meta.client || (meta.clientLines ?? []).length) h.push(BLOCK_H.client);
+  if (meta.preliminary) h.push(BLOCK_H.prelim);
+  if (!noMap) h.push(BLOCK_H.north);
+  h.push(BLOCK_H.address);
+  if (meta.jobNo) h.push(BLOCK_H.job);
+  if (meta.checked || meta.drawn) h.push(BLOCK_H.checked);
+  h.push(BLOCK_H.date);
+  if (meta.status) h.push(BLOCK_H.status);
+  h.push(BLOCK_H.title);
+  if (meta.sheetNo || meta.revision) h.push(BLOCK_H.sheet);
+  return h;
+}
+
+/** Where the identity stack starts, measured from the sheet top. */
+function identityTopFor(meta: SheetMeta, noMap: boolean): number {
+  return SHEET_H - 8 - identityBlockHeights(meta, noMap).reduce((a, b) => a + b, 0);
+}
+
+/** The height of the legend's svg: from its top (24 mm) to just above the identity stack. */
+export function legendHeightFor(meta: SheetMeta, noMap = false): number {
+  return Math.max(40, identityTopFor(meta, noMap) - 27);
+}
+
 export function sheetHtml(o: SheetHtmlOpts): string {
   const { meta } = o;
   const TW = TITLE_R - TITLE_X;
@@ -107,26 +137,26 @@ export function sheetHtml(o: SheetHtmlOpts): string {
   interface Block { h: number; html: (top: number) => string }
   const blocks: Block[] = [];
   if (meta.client || (meta.clientLines ?? []).length) {
-    blocks.push({ h: 24.6, html: (t) => `
+    blocks.push({ h: BLOCK_H.client, html: (t) => `
       ${rule(t)}
       <div class="abs k" style="top:${t + 0.7}mm;left:4.8mm">CLIENT</div>
       ${meta.client ? `<div class="abs" style="top:${t + 4.6}mm;left:4.8mm;right:0;font-size:${T.value}mm;font-weight:700">${esc(meta.client)}</div>` : ''}
       <div class="abs fine" style="top:${t + 17}mm;left:4.8mm;right:0">${(meta.clientLines ?? []).map(esc).join('<br>')}</div>` });
   }
   if (meta.preliminary) {
-    blocks.push({ h: 7, html: (t) => `<div class="abs prelim" style="top:${t}mm;left:2.6mm;right:2.6mm">P R E L I M I N A R Y</div>` });
+    blocks.push({ h: BLOCK_H.prelim, html: (t) => `<div class="abs prelim" style="top:${t}mm;left:2.6mm;right:2.6mm">P R E L I M I N A R Y</div>` });
   }
   if (!o.noMap) {
-    blocks.push({ h: 25.8, html: (t) => `
+    blocks.push({ h: BLOCK_H.north, html: (t) => `
       <svg class="abs" style="top:${t}mm;left:3.5mm" width="18mm" height="18mm" viewBox="0 0 18 18">${northSvg}</svg>
       <svg class="abs" style="top:${t + 17}mm;left:0" width="${TW}mm" height="8mm" viewBox="0 0 ${TW} 8">${scaleBarSvg}</svg>` });
   }
-  blocks.push({ h: 15.6, html: (t) => `${rule(t)}${field(t + 0.8, 'SITE ADDRESS', `<div class="v-addr">${esc(o.siteAddress)}</div>`)}` });
+  blocks.push({ h: BLOCK_H.address, html: (t) => `${rule(t)}${field(t + 0.8, 'SITE ADDRESS', `<div class="v-addr">${esc(o.siteAddress)}</div>`)}` });
   if (meta.jobNo) {
-    blocks.push({ h: 11.1, html: (t) => `${rule(t)}${field(t + 0.8, 'JOB NO', `<div class="v">${esc(meta.jobNo)}</div>`)}` });
+    blocks.push({ h: BLOCK_H.job, html: (t) => `${rule(t)}${field(t + 0.8, 'JOB NO', `<div class="v">${esc(meta.jobNo)}</div>`)}` });
   }
   if (meta.checked || meta.drawn) {
-    blocks.push({ h: 10.4, html: (t) => `
+    blocks.push({ h: BLOCK_H.checked, html: (t) => `
       ${rule(t)}
       <div class="abs" style="top:${t + 0.8}mm;left:4.8mm;right:0">
         <div style="display:grid;grid-template-columns:1fr 1fr">
@@ -135,7 +165,7 @@ export function sheetHtml(o: SheetHtmlOpts): string {
         </div>
       </div>` });
   }
-  blocks.push({ h: 10.4, html: (t) => `
+  blocks.push({ h: BLOCK_H.date, html: (t) => `
     ${meta.checked || meta.drawn ? '' : rule(t)}
     <div class="abs" style="top:${t + 0.8}mm;left:4.8mm;right:0">
       <div style="display:grid;grid-template-columns:1fr 1fr">
@@ -144,11 +174,11 @@ export function sheetHtml(o: SheetHtmlOpts): string {
       </div>
     </div>` });
   if (meta.status) {
-    blocks.push({ h: 13.8, html: (t) => `${rule(t)}${field(t + 0.8, 'PROJECT STATUS', `<div class="v">${esc(meta.status)}</div>`)}` });
+    blocks.push({ h: BLOCK_H.status, html: (t) => `${rule(t)}${field(t + 0.8, 'PROJECT STATUS', `<div class="v">${esc(meta.status)}</div>`)}` });
   }
-  blocks.push({ h: 17, html: (t) => `${rule(t)}${field(t + 0.8, 'DRAWING TITLE', `<div class="v">${esc(o.drawingTitle)}</div>`)}` });
+  blocks.push({ h: BLOCK_H.title, html: (t) => `${rule(t)}${field(t + 0.8, 'DRAWING TITLE', `<div class="v">${esc(o.drawingTitle)}</div>`)}` });
   if (meta.sheetNo || meta.revision) {
-    blocks.push({ h: 11, html: (t) => `
+    blocks.push({ h: BLOCK_H.sheet, html: (t) => `
       ${rule(t)}
       <div class="abs" style="top:${t + 0.8}mm;left:4.8mm;right:0">
         <div style="display:grid;grid-template-columns:1fr 1fr">
@@ -162,9 +192,9 @@ export function sheetHtml(o: SheetHtmlOpts): string {
   // takes whatever height is left above.
   const stackH = blocks.reduce((sum, b) => sum + b.h, 0);
   let cursor = SHEET_H - 8 - stackH;
-  const identityTop = cursor;
+  if (cursor !== identityTopFor(meta, Boolean(o.noMap))) throw new Error('identity blocks and identityBlockHeights disagree');
   const identityHtml = blocks.map((b) => { const h = b.html(cursor); cursor += b.h; return h; }).join('');
-  const legendH = Math.max(40, identityTop - 27);
+  const legendH = legendHeightFor(meta, Boolean(o.noMap));
 
   return `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>${esc(o.siteAddress)} — ${esc(o.drawingTitle)}</title>
