@@ -262,22 +262,19 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
         <rect x="-9.6" y="-1.2" width="2.6" height="2.4" rx="0.4"/>
         <line x1="-2" y1="-2.1" x2="-2" y2="2.1"/>
         <line x1="2" y1="-2.4" x2="2" y2="2.4"/></g>`);
-      const lines = wrapLabel(v.kind === 'park' ? `${v.label} OUTLOOK` : `${v.label} VIEW`, 16);
+      // Only what the telescope found: how far, and that the ground is clear.
+      // Set along the telescope's line, past its objective end, upright.
       const dist = v.distanceM >= 950 ? `${(v.distanceM / 1000).toFixed(1)} KM` : `${Math.round(v.distanceM / 10) * 10} M`;
-      const sub = v.kind === 'park' ? 'ADJOINING' : `${dist} · TERRAIN CLEAR`;
-      const lh = LETTER * 1.12;
-      // The telescope claims its ground, then the name settles right beside
-      // its objective end.
-      const w = Math.max(...lines.map((l) => l.length), sub.length) * LETTER * 0.5 + 4;
-      const h = (lines.length + 1) * lh + 2;
-      const reach = 8.6 * TS + 3 + (Math.abs(ux) * w + Math.abs(uy) * h) / 2;
-      const lx = sx + ux * reach, ly = sy + uy * reach;
-      const spot = placer.place(lx, ly, w, h, 40) ?? [lx, ly];
+      const label = v.kind === 'park' ? 'ADJOINING' : `${dist} · TERRAIN CLEAR`;
+      const upright = Math.abs(deg) <= 90;
+      const tdeg = upright ? deg : deg + 180;
+      const gap = 8.6 * TS + 3;
+      const lx = sx + ux * gap, ly = sy + uy * gap;
+      const tw = label.length * LETTER * 0.5;
+      // Reserve the text's run so later labels keep off it.
+      for (let d = 0; d <= tw; d += 6) placer.reserve(lx + ux * d, ly + uy * d, 8, 8);
       for (let d = -9.6; d <= 8.6; d += 4) placer.reserve(sx + ux * d * TS, sy + uy * d * TS, 12, 12);
-      const [tx, ty] = spot;
-      const y0 = ty - (lines.length * lh) / 2 + LETTER * 0.36;
-      viewText.push(lines.map((t, i) => `<text x="${tx.toFixed(1)}" y="${(y0 + i * lh).toFixed(1)}" text-anchor="middle" font-size="${LETTER}" font-weight="700" fill="${RED()}" stroke="${RED()}" stroke-width="0.22">${esc(t)}</text>`).join(''));
-      viewText.push(`<text x="${tx.toFixed(1)}" y="${(y0 + lines.length * lh).toFixed(1)}" text-anchor="middle" font-size="${LETTER}" font-weight="700" fill="${RED()}" stroke="${RED()}" stroke-width="0.22">${esc(sub)}</text>`);
+      viewText.push(`<text transform="translate(${lx.toFixed(1)},${ly.toFixed(1)}) rotate(${tdeg.toFixed(1)})" x="0" y="${(LETTER * 0.36).toFixed(2)}" text-anchor="${upright ? 'start' : 'end'}" font-size="${LETTER}" font-weight="700" fill="${RED()}" stroke="${RED()}" stroke-width="0.22">${esc(label)}</text>`);
     }
   }
 
@@ -310,8 +307,8 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
 
   // ---- noise sources: along the main roads and the railway --------------------
   // In blue, so noise reads apart from the coral climate marks, but drawn
-  // like the wind: a continuous white band in a blue pen beside each busy
-  // road and the railway, on the site's side.
+  // in the wind's manner: a white line in a blue pen, a sound wave beside
+  // each busy road and the railway, on the site's side.
   const noiseRing = sb.siteRing.map(([lon, lat2]) => proj(lon, lat2));
   const noiseCentre: Pt = (() => {
     const n = Math.max(1, noiseRing.length - 1);
@@ -326,11 +323,12 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     return inside;
   };
   const noiseMarks: string[] = [];
-  // One continuous band beside the source, on the side facing the site, drawn
-  // like the wind arrows: white inside a blue pen, its width swelling and
-  // pinching irregularly as it runs. The road's line is resampled every
-  // 0.8 mm and set off 10 mm toward the site; the band breaks where it would
-  // cross the site or leave the sheet.
+  // A sound wave beside the source, on the side facing the site: a steady
+  // oscillation (6 mm period) whose amplitude swells into bursts and falls
+  // back, like a recording of traffic going by. The road's line is resampled
+  // every 0.25 mm and set off 12 mm toward the site; the wave breaks where it
+  // would cross the site or leave the sheet. Drawn as a white line in a blue
+  // pen, like the wind.
   const soundAlong = (pts: Pt[], seed: number) => {
     const samples: { p: Pt; n: Pt; s: number }[] = [];
     let run = 0;
@@ -339,30 +337,27 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
       const len = Math.hypot(bx - ax, by - ay);
       if (!len) continue;
       const nx = -(by - ay) / len, ny = (bx - ax) / len;
-      for (let d = 0; d < len; d += 0.8) samples.push({ p: [ax + ((bx - ax) * d) / len, ay + ((by - ay) * d) / len], n: [nx, ny], s: run + d });
+      for (let d = 0; d < len; d += 0.25) samples.push({ p: [ax + ((bx - ax) * d) / len, ay + ((by - ay) * d) / len], n: [nx, ny], s: run + d });
       run += len;
     }
     if (samples.length < 2) return;
     const mid = samples[Math.floor(samples.length / 2)];
     const side = Math.sign((noiseCentre[0] - mid.p[0]) * mid.n[0] + (noiseCentre[1] - mid.p[1]) * mid.n[1]) || 1;
-    // Irregular but smooth: two incommensurate waves, so it swells and pinches
-    // without quite repeating.
-    const half = (t: number) => 3.4 + 2.0 * Math.sin(t / 9.5 + seed) + 0.9 * Math.sin(t / 4.6 + seed * 2.1);
-    const sway = (t: number) => 1.6 * Math.sin(t / 11 + seed * 1.3);
-    let left: string[] = [], right: string[] = [];
-    const flush = () => {
-      if (left.length > 3) noiseMarks.push(`M${left.join('L')}L${right.reverse().join('L')}Z`);
-      left = []; right = [];
+    // Bursts every 80 mm or so, each with a little texture of its own.
+    const env = (t: number) => {
+      const burst = Math.max(0, Math.sin((Math.PI * t) / 80 + seed));
+      return 0.6 + 6.4 * burst * burst * (0.8 + 0.2 * Math.sin(t / 6.1 + seed * 1.9));
     };
+    let d = '', open = false;
     for (const { p, n, s: t } of samples) {
-      const c = side * 11 + sway(t);
-      const cx = p[0] + n[0] * c, cy = p[1] + n[1] * c;
-      if (!inMap([cx, cy]) || inSiteRing(cx, cy)) { flush(); continue; }
-      const w = Math.max(0.8, half(t));
-      left.push(`${(cx + n[0] * w).toFixed(2)},${(cy + n[1] * w).toFixed(2)}`);
-      right.push(`${(cx - n[0] * w).toFixed(2)},${(cy - n[1] * w).toFixed(2)}`);
+      const off = side * 12 + env(t) * Math.sin((2 * Math.PI * t) / 6);
+      const x = p[0] + n[0] * off, y = p[1] + n[1] * off;
+      const cx = p[0] + n[0] * side * 12, cy = p[1] + n[1] * side * 12;
+      if (!inMap([cx, cy]) || inSiteRing(cx, cy)) { open = false; continue; }
+      d += `${open ? 'L' : 'M'}${x.toFixed(2)},${y.toFixed(2)}`;
+      open = true;
     }
-    flush();
+    if (d) noiseMarks.push(d);
   };
   const mainRoads = sb.roads.filter((r) => r.hierarchy <= 4);
   const seenNoise = new Set<string>();
@@ -386,7 +381,9 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     const pts = bestLine.map(([lon, lat2]) => proj(lon, lat2));
     if (pts.length >= 2) soundAlong(pts, 4.2);
   }
-  layers.push(`<path d="${noiseMarks.join('')}" fill="#ffffff" fill-opacity="0.85" stroke="${NOISE_BLUE}" stroke-width="0.7" stroke-linejoin="round"/>`);
+  // A white line in a blue pen: the blue drawn wide, the white narrower on top.
+  layers.push(`<path d="${noiseMarks.join('')}" fill="none" stroke="${NOISE_BLUE}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`);
+  layers.push(`<path d="${noiseMarks.join('')}" fill="none" stroke="#ffffff" stroke-width="0.8" stroke-linejoin="round" stroke-linecap="round"/>`);
 
   // ---- one-way arrows -------------------------------------------------------
   for (const ow of sb.furniture.onewayRoads) {
@@ -1007,13 +1004,12 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
   if (sb.busStops.length) row(`<g transform="translate(${mid},3.2)"><circle r="3.4" fill="#fff" stroke="#2f7fd6" stroke-width="0.8"/><text text-anchor="middle" dy="1.9" font-size="5.7" font-weight="700" fill="#2f7fd6">B</text></g>`, 'BUS STOPS');
   if (sb.furniture.onewayRoads.length) row(`<path d="M${SWATCH_X},3.2 L${SWATCH_X + SWATCH_W - 4},3.2 M${SWATCH_X + SWATCH_W - 7},1.4 L${SWATCH_X + SWATCH_W - 4},3.2 L${SWATCH_X + SWATCH_W - 7},5" fill="none" stroke="#8a8a8a" stroke-width="1.0"/>`, 'TRAFFIC DIRECTION');
   {
-    const top: string[] = [], bot: string[] = [];
-    for (let x = 0; x <= SWATCH_W - 2; x += 0.5) {
-      const w = 0.9 + 0.5 * Math.sin(x / 2.1) + 0.3 * Math.sin(x / 0.9);
-      top.push(`${(SWATCH_X + 1 + x).toFixed(2)},${(3.2 - w).toFixed(2)}`);
-      bot.push(`${(SWATCH_X + 1 + x).toFixed(2)},${(3.2 + w).toFixed(2)}`);
+    let wd = '';
+    for (let x = 0; x <= SWATCH_W - 2; x += 0.1) {
+      const b = Math.max(0, Math.sin((Math.PI * x) / 10.5));
+      wd += `${x ? 'L' : 'M'}${(SWATCH_X + 1 + x).toFixed(2)},${(3.2 + (0.25 + 2.4 * b * b) * Math.sin((2 * Math.PI * x) / 1.2)).toFixed(2)}`;
     }
-    row(`<path d="M${top.join('L')}L${bot.reverse().join('L')}Z" fill="#fff" stroke="${NOISE_BLUE}" stroke-width="0.35" stroke-linejoin="round"/>`, 'NOISE SOURCE', 'busy roads and the railway');
+    row(`<path d="${wd}" fill="none" stroke="${NOISE_BLUE}" stroke-width="0.6" stroke-linejoin="round"/><path d="${wd}" fill="none" stroke="#fff" stroke-width="0.2" stroke-linejoin="round"/>`, 'NOISE SOURCE', 'busy roads and the railway');
   }
   {
     const rib = `M${SWATCH_X + 2},2.6 C${SWATCH_X + 7},0.8 ${SWATCH_X + 11},4.8 ${SWATCH_X + 16},2.4 L${SWATCH_X + 16},1 L${SWATCH_X + 21},3.2 L${SWATCH_X + 16},5.4 L${SWATCH_X + 16},4 C${SWATCH_X + 11},6.2 ${SWATCH_X + 7},2.6 ${SWATCH_X + 2},3.8 Z`;
