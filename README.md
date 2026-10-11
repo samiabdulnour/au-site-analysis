@@ -340,8 +340,7 @@ its storeys — `26` over `3ST` (a run of numbers on one building reads
 storey, or OpenStreetMap's `building:levels` where Overture has neither; with
 no height anywhere the building keeps its number and no storey line. Street
 names are plain bold text along the road, without the white arrow band, slid
-along it clear of the labels already set. The numbers and street names are in
-Flamingo's street green, a step lighter, and every word on the map and in the
+along it clear of the labels already set. The numbers and street names are white, and every word on the map and in the
 legend is set in Arial Narrow (Liberation Sans Narrow on the server).
 
 Every word on the map is one size. Potential views are a telescope just
@@ -355,8 +354,9 @@ flame-like rays — at the summer and winter sunrise and sunset, on a solid
 summer arc and a dashed winter arc, each arc marked with a dot and the time at
 every solar hour; the prevailing winds as three widening arrows blowing in
 toward the site, stopping short of a sun from the same quarter. Noise — the
-busy roads and the railway — is drawn the same way but in blue: a loudspeaker
-with three crescent waves facing the site. Contours are green; the cadastre
+busy roads and the railway — is a continuous blue sound wave running beside
+the source on the site's side, white under the blue like the other marks. The
+sun, wind and view lettering is set heavy. Contours are green; the cadastre
 and the neighbours' building outlines are white over the aerial.
 
 ### Trees, parking bays and views on the site sheet

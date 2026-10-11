@@ -27,9 +27,8 @@ const BAY_LABEL: Record<Orientation, string> = { parallel: '6.0 m parallel', dia
 // identification boxes (a step smaller).
 const MAP_TEXT = 6.2;
 const NEIGHBOUR_TEXT = MAP_TEXT;
-// The neighbours' numbers and the street names: Flamingo's street green, a
-// step lighter so it sits behind the site's own marks.
-const NAME_GREEN = '#4a8571';
+// The neighbours' numbers and the street names: white, read off the aerial.
+const NAME_GREEN = '#ffffff';
 // Contours in green, apart from the warm site pen and the zones' hatch.
 const CONTOUR = '#3f9a5c';
 // The site itself — its boundary, corners, dimensions and levels — in a deep
@@ -37,16 +36,6 @@ const CONTOUR = '#3f9a5c';
 const SITE_RED = '#b3261e';
 // Noise in blue, so it reads apart from the coral climate marks.
 const NOISE_BLUE = '#3f6fc2';
-/** A loudspeaker facing +x with three crescent sound waves, white in the outline pen, about 26 mm across. */
-const NOISE_MARK = (() => {
-  const crescent = (r: number, t: number, span: number) => {
-    const a0 = (-span * Math.PI) / 180, a1 = (span * Math.PI) / 180;
-    const p = (rr: number, a: number) => `${(rr * Math.cos(a)).toFixed(2)},${(rr * Math.sin(a)).toFixed(2)}`;
-    return `<path d="M${p(r, a0)} A${r},${r} 0 0 1 ${p(r, a1)} A${t / 2},${t / 2} 0 0 1 ${p(r + t, a1)} A${r + t},${r + t} 0 0 0 ${p(r + t, a0)} A${t / 2},${t / 2} 0 0 1 ${p(r, a0)} Z"/>`;
-  };
-  return `<path d="M-9,-2.6 L-5,-2.6 L0,-6.4 L0,6.4 L-5,2.6 L-9,2.6 Z"/>` +
-    crescent(3.4, 1.6, 40) + crescent(7, 1.8, 42) + crescent(10.8, 2, 44);
-})();
 
 // Read at call time, not at module load: setTemplate() runs per job, long
 // after this module is first imported, so a captured constant would freeze to
@@ -287,8 +276,8 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
       for (let d = -9.6; d <= 8.6; d += 4) placer.reserve(sx + ux * d * TS, sy + uy * d * TS, 12, 12);
       const [tx, ty] = spot;
       const y0 = ty - (lines.length * lh) / 2 + LETTER * 0.36;
-      viewText.push(lines.map((t, i) => `<text x="${tx.toFixed(1)}" y="${(y0 + i * lh).toFixed(1)}" text-anchor="middle" font-size="${LETTER}" font-weight="700" fill="${RED()}">${esc(t)}</text>`).join(''));
-      viewText.push(`<text x="${tx.toFixed(1)}" y="${(y0 + lines.length * lh).toFixed(1)}" text-anchor="middle" font-size="${LETTER}" font-weight="700" fill="${RED()}">${esc(sub)}</text>`);
+      viewText.push(lines.map((t, i) => `<text x="${tx.toFixed(1)}" y="${(y0 + i * lh).toFixed(1)}" text-anchor="middle" font-size="${LETTER}" font-weight="700" fill="${RED()}" stroke="${RED()}" stroke-width="0.22">${esc(t)}</text>`).join(''));
+      viewText.push(`<text x="${tx.toFixed(1)}" y="${(y0 + lines.length * lh).toFixed(1)}" text-anchor="middle" font-size="${LETTER}" font-weight="700" fill="${RED()}" stroke="${RED()}" stroke-width="0.22">${esc(sub)}</text>`);
     }
   }
 
@@ -320,10 +309,9 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
   }
 
   // ---- noise sources: along the main roads and the railway --------------------
-  // In the sun and wind's manner — white marks in an outline pen — but blue,
-  // so noise reads apart from the climate marks: every so often along a busy
-  // road or the railway, a loudspeaker with three crescent waves facing the
-  // site.
+  // In blue, so noise reads apart from the coral climate marks: a continuous
+  // sound wave running beside each busy road and the railway on the site's
+  // side, white under the blue like the other marks.
   const noiseRing = sb.siteRing.map(([lon, lat2]) => proj(lon, lat2));
   const noiseCentre: Pt = (() => {
     const n = Math.max(1, noiseRing.length - 1);
@@ -338,22 +326,31 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     return inside;
   };
   const noiseMarks: string[] = [];
-  const soundAlong = (pts: Pt[], every: number) => {
-    let carry = every / 2;
+  // One continuous sound wave beside the source, on the side facing the
+  // site: the road's line resampled every 0.8 mm, set off 9 mm toward the
+  // site and swung ±2.6 mm in a sine of 18 mm wavelength. It breaks where it
+  // would cross the site or leave the sheet.
+  const soundAlong = (pts: Pt[], _every: number) => {
+    const samples: { p: Pt; n: Pt }[] = [];
     for (let i = 1; i < pts.length; i++) {
       const [ax, ay] = pts[i - 1], [bx, by] = pts[i];
       const len = Math.hypot(bx - ax, by - ay);
-      let d = carry;
-      while (d < len) {
-        const t = d / len;
-        const x = ax + (bx - ax) * t, y = ay + (by - ay) * t;
-        d += every;
-        if (!inMap([x, y]) || inSiteRing(x, y)) continue;
-        const toSite = Math.atan2(noiseCentre[1] - y, noiseCentre[0] - x) * 180 / Math.PI;
-        noiseMarks.push(`<g transform="translate(${x.toFixed(1)},${y.toFixed(1)}) rotate(${toSite.toFixed(1)})">${NOISE_MARK}</g>`);
-      }
-      carry = d - len;
+      if (!len) continue;
+      const nx = -(by - ay) / len, ny = (bx - ax) / len;
+      for (let d = 0; d < len; d += 0.8) samples.push({ p: [ax + ((bx - ax) * d) / len, ay + ((by - ay) * d) / len], n: [nx, ny] });
     }
+    if (samples.length < 2) return;
+    const mid = samples[Math.floor(samples.length / 2)];
+    const side = Math.sign((noiseCentre[0] - mid.p[0]) * mid.n[0] + (noiseCentre[1] - mid.p[1]) * mid.n[1]) || 1;
+    let d = '', open = false;
+    samples.forEach(({ p, n }, i) => {
+      const off = side * 9 + 2.6 * Math.sin((i * 0.8 * 2 * Math.PI) / 18);
+      const x = p[0] + n[0] * off, y = p[1] + n[1] * off;
+      if (!inMap([x, y]) || inSiteRing(x, y)) { open = false; return; }
+      d += `${open ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`;
+      open = true;
+    });
+    if (d) noiseMarks.push(d);
   };
   const mainRoads = sb.roads.filter((r) => r.hierarchy <= 4);
   const seenNoise = new Set<string>();
@@ -377,7 +374,9 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     const pts = bestLine.map(([lon, lat2]) => proj(lon, lat2));
     if (pts.length >= 2) soundAlong(pts, 120);
   }
-  layers.push(`<g fill="#ffffff" fill-opacity="0.9" stroke="${NOISE_BLUE}" stroke-width="0.7" stroke-linejoin="round">${noiseMarks.join('')}</g>`);
+  // White under the blue, as the other marks are white inside their pen.
+  layers.push(`<path d="${noiseMarks.join('')}" fill="none" stroke="#ffffff" stroke-width="2.6" stroke-opacity="0.85" stroke-linejoin="round" stroke-linecap="round"/>`);
+  layers.push(`<path d="${noiseMarks.join('')}" fill="none" stroke="${NOISE_BLUE}" stroke-width="1.1" stroke-linejoin="round" stroke-linecap="round"/>`);
 
   // ---- one-way arrows -------------------------------------------------------
   for (const ow of sb.furniture.onewayRoads) {
@@ -862,7 +861,7 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
   const PEN_W = 0.7;
   const LETTER = MAP_TEXT;
   const textBlock = (x: number, y: number, lines: string[]) =>
-    lines.map((t, i) => `<text x="${x.toFixed(1)}" y="${(y + i * LETTER * 1.12).toFixed(1)}" text-anchor="middle" font-size="${LETTER}" font-weight="700" fill="${PEN}">${esc(t)}</text>`).join('');
+    lines.map((t, i) => `<text x="${x.toFixed(1)}" y="${(y + i * LETTER * 1.12).toFixed(1)}" text-anchor="middle" font-size="${LETTER}" font-weight="700" fill="${PEN}" stroke="${PEN}" stroke-width="0.22">${esc(t)}</text>`).join('');
 
   layers.push(`<path d="${arcPath(summerAz, -summerAz, Ro)}" fill="none" stroke="${PEN}" stroke-width="1.4" stroke-linecap="round"/>`);
   layers.push(`<path d="${arcPath(winterAz, -winterAz, Ri)}" fill="none" stroke="${PEN}" stroke-width="1.4" stroke-dasharray="5,2.6" stroke-linecap="round"/>`);
@@ -878,7 +877,7 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
         const [x, y] = sunAt(m.az, R);
         const [lx, ly] = sunAt(m.az, labelR);
         marks.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2" fill="#ffffff" stroke="${PEN}" stroke-width="${PEN_W}"/>` +
-          `<text x="${lx.toFixed(1)}" y="${(ly + LETTER * 0.36).toFixed(1)}" text-anchor="middle" font-size="${LETTER}" font-weight="700" fill="${PEN}">${m.label}</text>`);
+          `<text x="${lx.toFixed(1)}" y="${(ly + LETTER * 0.36).toFixed(1)}" text-anchor="middle" font-size="${LETTER}" font-weight="700" fill="${PEN}" stroke="${PEN}" stroke-width="0.22">${m.label}</text>`);
       }
     };
     put(hrs.winter, Ri, Ri - 10, winterAz);
@@ -911,7 +910,7 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     // North sits just beyond the summer noon mark and its label.
     const [nx, ny] = sunAt(0, Ro + 24);
     layers.push(`<g transform="translate(${nx.toFixed(1)},${ny.toFixed(1)})"><circle r="6.4" fill="#ffffff" stroke="${PEN}" stroke-width="${PEN_W}"/>
-      <text text-anchor="middle" dy="2.3" font-size="6.2" font-weight="700" fill="${PEN}">N</text></g>`);
+      <text text-anchor="middle" dy="2.3" font-size="6.2" font-weight="700" fill="${PEN}" stroke="${PEN}" stroke-width="0.22">N</text></g>`);
   }
 
   const winds: { at: Pt; label: string[] }[] = [
@@ -960,7 +959,7 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
   row(`<text x="${SWATCH_X}" y="5.4" font-size="3.2" font-weight="700" fill="${SITE_RED}">SB 30.48</text>`, 'BOUNDARY DIMENSION (m)');
   row(`<text x="${SWATCH_X}" y="5.4" font-size="3.2" font-weight="700" fill="${SITE_RED}">RL 24.5</text>`, 'SURFACE LEVEL (AHD)');
   if (sb.contours.length) row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${CONTOUR}" stroke-width="0.6"/><text x="${SWATCH_X + 1}" y="2.2" font-size="2.2" font-weight="700" fill="${CONTOUR}">RL 20</text>`, `CONTOURS AT ${sb.contourIntervalM ?? 2} m AHD`, sb.contourSource);
-  row(`<g><text x="${SWATCH_X + SWATCH_W / 2}" y="2.8" text-anchor="middle" font-size="2.6" font-weight="700" fill="${NAME_GREEN}">26</text>${storeyLabels ? `<text x="${SWATCH_X + SWATCH_W / 2}" y="5.8" text-anchor="middle" font-size="2.6" font-weight="700" fill="${NAME_GREEN}" opacity="0.8">3ST</text>` : ''}</g>`,
+  row(`<g><rect x="${SWATCH_X + SWATCH_W / 2 - 5}" y="0" width="10" height="6.5" fill="#8a8a8a"/><text x="${SWATCH_X + SWATCH_W / 2}" y="2.8" text-anchor="middle" font-size="2.6" font-weight="700" fill="${NAME_GREEN}">26</text>${storeyLabels ? `<text x="${SWATCH_X + SWATCH_W / 2}" y="5.8" text-anchor="middle" font-size="2.6" font-weight="700" fill="${NAME_GREEN}" opacity="0.8">3ST</text>` : ''}</g>`,
     storeyLabels ? 'NEIGHBOUR: NUMBER, STOREYS' : 'NEIGHBOUR: STREET NUMBER',
     storeyLabels ? (sb.buildings?.source === 'overture' ? 'storeys from Overture Maps, OSM levels where it has none' : 'storeys from OpenStreetMap building levels') : undefined);
   // The zones, in the legend's category order, with the context sheet's swatch.
@@ -997,7 +996,11 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
   if (sb.furniture.hydrants.length) row(`<circle cx="${mid}" cy="3.2" r="1.8" fill="#1f78d1"/>`, 'HYDRANT');
   if (sb.busStops.length) row(`<g transform="translate(${mid},3.2)"><circle r="3.4" fill="#fff" stroke="#2f7fd6" stroke-width="0.8"/><text text-anchor="middle" dy="1.9" font-size="5.7" font-weight="700" fill="#2f7fd6">B</text></g>`, 'BUS STOPS');
   if (sb.furniture.onewayRoads.length) row(`<path d="M${SWATCH_X},3.2 L${SWATCH_X + SWATCH_W - 4},3.2 M${SWATCH_X + SWATCH_W - 7},1.4 L${SWATCH_X + SWATCH_W - 4},3.2 L${SWATCH_X + SWATCH_W - 7},5" fill="none" stroke="#8a8a8a" stroke-width="1.0"/>`, 'TRAFFIC DIRECTION');
-  row(`<g transform="translate(${SWATCH_X + 9},3.2) scale(0.24)" fill="#fff" stroke="${NOISE_BLUE}" stroke-width="2" stroke-linejoin="round">${NOISE_MARK}</g>`, 'NOISE SOURCE', 'busy roads and the railway');
+  {
+    let wd = '';
+    for (let x = 0; x <= SWATCH_W - 2; x += 0.5) wd += `${x ? 'L' : 'M'}${(SWATCH_X + 1 + x).toFixed(2)},${(3.2 + 1.3 * Math.sin((x * 2 * Math.PI) / 5)).toFixed(2)}`;
+    row(`<path d="${wd}" fill="none" stroke="#fff" stroke-width="1.4"/><path d="${wd}" fill="none" stroke="${NOISE_BLUE}" stroke-width="0.55"/>`, 'NOISE SOURCE', 'busy roads and the railway');
+  }
   {
     const rib = `M${SWATCH_X + 2},2.6 C${SWATCH_X + 7},0.8 ${SWATCH_X + 11},4.8 ${SWATCH_X + 16},2.4 L${SWATCH_X + 16},1 L${SWATCH_X + 21},3.2 L${SWATCH_X + 16},5.4 L${SWATCH_X + 16},4 C${SWATCH_X + 11},6.2 ${SWATCH_X + 7},2.6 ${SWATCH_X + 2},3.8 Z`;
     void rib;
