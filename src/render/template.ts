@@ -79,10 +79,14 @@ export interface Template {
   /** What the map sits on: plain white paper, or the aerial under a white veil with the tints thinned so it shows through. */
   ground: 'paper' | 'aerial';
   /** The building footprints: white with a hairline of the family ink, no fill and only a light outline (for the aerial, where the photograph shows the roofs), or not drawn. */
-  footprints: 'white' | 'colour' | 'none';
+  footprints: 'white' | 'colour' | 'outline' | 'none';
   /** Over the aerial: the white veil's opacity (default 0.3) and how far the tints are thinned (default 0.55). */
   veil?: number;
   tintScale?: number;
+  /** The number discs' fill, where it differs from the street names' ink (Heron: white names, black discs). */
+  discInk?: string;
+  /** The cadastre: a faint hairline in the road ink, or a white line over the aerial. */
+  lots?: 'faint' | 'white';
   /** The aerial in its own colours, or in greyscale. */
   aerialTone?: 'colour' | 'grey';
   /** The road network as white strips over the tints, or not drawn (the aerial shows the streets). */
@@ -236,12 +240,14 @@ export const TEMPLATES: Template[] = [
     ground: 'paper', footprints: 'colour',
     categories: KINGFISHER_CATEGORIES },
   { id: 'heron', label: 'Heron', note: 'the original office sheet over the aerial, with Flamingo\'s stops, red dotted railway and numbered places',
-    font: GROTESK, streetFont: GROTESK, textScale: 0.96,
-    ink: '#1c1c1c', streetInk: '#1c1c1c', rule: '#8a8a8a',
+    font: NARROW, streetFont: NARROW, textScale: 0.96,
+    // Arial Narrow throughout, white on the aerial; the place discs stay black.
+    ink: '#1c1c1c', streetInk: '#ffffff', discInk: '#1c1c1c', rule: '#8a8a8a',
     site: '#cf4a2e', dimension: '#3c4c5a', wind: '#6d8a99', sun: '#f0e4c0', road: '#7d7d7d', water: '#cbdae2',
     transit: NAVY, rail: '#d43d33', walk5: '#1f7a4d', walk10: '#6aaf88', busRoute: '#7a8bb0', heritage: '#94836a',
     isochrone: 'walkers', roundel: 'solid', busLine: 'dashed', railLine: 'dotted',
-    ground: 'aerial', aerialTone: 'grey', veil: 0.36, tintScale: 1, footprints: 'none', streets: 'none', streetLabels: 'plain',
+    // Lots and buildings as heavy white lines over the aerial.
+    ground: 'aerial', aerialTone: 'grey', veil: 0.36, tintScale: 1, footprints: 'outline', lots: 'white', streets: 'none', streetLabels: 'plain',
     categories: HERON_CATEGORIES },
 ];
 

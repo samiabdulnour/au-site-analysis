@@ -469,7 +469,11 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
       const c = cat ? catById()[cat] : undefined;
       const ink = c?.figure ?? c?.fill ?? tpl().road;
       const d = paths.map((p) => `<path d="${p}"/>`).join('');
-      if (tpl().footprints === 'colour') {
+      if (tpl().footprints === 'outline') {
+        // Over the aerial the roofs are in the photograph: a heavy white
+        // outline round each building, no fill.
+        layers.push(`<g fill="none" stroke="#ffffff" stroke-width="0.4" stroke-linejoin="round">${d}</g>`);
+      } else if (tpl().footprints === 'colour') {
         // The building in its family's strong colour on the family's pale
         // ground; a building on no zone is a quiet grey.
         layers.push(`<g fill="${c?.figure ?? '#d9d9d6'}" fill-rule="evenodd">${d}</g>`);
@@ -484,7 +488,9 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   // ---- thin cadastral lot-boundary overlay --------------------------------
   if (bundle.allLots.features.length) {
     const d = bundle.allLots.features.map((f) => pathFromRings(geomRings(f.geometry), proj)).join('');
-    layers.push(`<path d="${d}" fill="none" stroke="${tpl().road}" stroke-width="0.12" opacity="0.5"/>`);
+    layers.push(tpl().lots === 'white'
+      ? `<path d="${d}" fill="none" stroke="#ffffff" stroke-width="0.45" opacity="0.95"/>`
+      : `<path d="${d}" fill="none" stroke="${tpl().road}" stroke-width="0.12" opacity="0.5"/>`);
   }
 
   // ---- streets: white strips over the tints -----------------------------
@@ -913,7 +919,7 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   // reader can find, rather than a ring that competes with the roundels.
   const numberMarker = (x: number, y: number, n: number, r = NR, size = mapNumberSize) =>
     `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})">
-      <circle r="${r}" fill="${tpl().streetInk}"/>
+      <circle r="${r}" fill="${tpl().discInk ?? tpl().streetInk}"/>
       <text text-anchor="middle" dy="${(size * 0.36).toFixed(2)}" font-size="${size.toFixed(2)}" font-weight="700" fill="#ffffff">${n}</text></g>`;
   for (const pl of places) reserve([pl.x, pl.y], [pl.x, pl.y], NR + 1);
   layers.push(places.map((pl) => numberMarker(pl.x, pl.y, pl.n)).join('\n'));

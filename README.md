@@ -531,7 +531,10 @@ places and the dotted lines are Flamingo's, but the street names and the number
 discs are a light leaf green, in the hue of the reference's fields.
 
 **Heron** (`heron`) is the office sheet the restyle began from: the aerial,
-in greyscale (`aerialTone: 'grey'`), under a light white veil with the tints at full strength over it (the palette
+in greyscale (`aerialTone: 'grey'`), with the lots and every building as heavy
+white lines over it (`lots: 'white'`, `footprints: 'outline'`) and all its
+text in white Arial Narrow (the place discs black, `discInk`), under a light
+white veil with the tints at full strength over it (the palette
 sampled from that sheet's legend — tan mixed use and centres, peach
 residential, mint open space, the institutions in outlined slate blues), no
 building footprints and no white street strips, every street named in plain
@@ -558,7 +561,7 @@ carries them on its own layer.
 
 What differs between templates beyond colour is declared on the template:
 `ground` (`paper` or `aerial`, with `veil` and `tintScale` for the aerial), `footprints`
-(`white`, `colour` or `none`), `streets` (`white` or `none`), `streetLabels`
+(`white`, `colour`, `outline` or `none`), `lots` (`faint` or `white`), `streets` (`white` or `none`), `streetLabels`
 (`plain` or `band`),
 `isochrone` (`band`, `line`, `dotted` or `walkers`), `roundel` (`ring` or `solid`), `busLine`
 (`dashed` or `dotted`), `railLine` (`sleepers` or `dotted`), `streetFont`
