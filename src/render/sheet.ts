@@ -24,8 +24,6 @@ export interface SheetMeta {
   drawn: string;
   date: string;
   preliminary: boolean;
-  /** The site sheet's sun and wind drawing: sketched sun and wind ribbons, or the 21 June hour fan with straight wind arrows. */
-  siteSymbols?: 'sketch' | 'hours';
 }
 
 export type Pt = [number, number];

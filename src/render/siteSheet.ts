@@ -5,8 +5,8 @@
 import type { SiteBundle } from '../pipeline.js';
 import { lonLatToMercator, mercatorToLonLat, mercatorScaleFactor } from '../lib/geo.js';
 import {
-  makeProjector, plainText, haloText, wrapLabel, arrowAlong, shortStreetName,
-  isMajorStreet, pathFromRings, geomRings, textureSvg, type Pt, type SheetMeta,
+  makeProjector, plainText, haloText, wrapLabel, shortStreetName,
+  pathFromRings, geomRings, textureSvg, type Pt, type SheetMeta,
 } from './sheet.js';
 import { catById, zoneToCategory } from './model.js';
 import { METRES_PER_STOREY } from '../fetch/buildings.js';
@@ -94,14 +94,7 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
       .map((t) => `<image href="data/${t.file}" x="${(ox + t.left * extW).toFixed(2)}" y="${(oy + t.top * extH).toFixed(2)}"
           width="${(t.width * extW).toFixed(2)}" height="${(t.height * extH).toFixed(2)}" preserveAspectRatio="none"/>`)
       .join('\n');
-    // The surroundings in greyscale, so the zone tints over them read as
-    // colour; the site itself drawn again in full colour on top.
-    const rot = `rotate(${view.rotationDeg.toFixed(2)}, ${MAP_W / 2}, ${MAP_H / 2})`;
-    const siteD = 'M' + sb.siteRing.map(([lon, lat2]) => proj(lon, lat2)).map((p) => `${p[0].toFixed(2)},${p[1].toFixed(2)}`).join('L') + 'Z';
-    layers.push(`<defs><filter id="siteGrey" color-interpolation-filters="sRGB"><feColorMatrix type="saturate" values="0"/></filter>
-      <clipPath id="siteOnly"><path d="${siteD}"/></clipPath></defs>
-      <g transform="${rot}" filter="url(#siteGrey)">${tiles}</g>
-      <g clip-path="url(#siteOnly)"><g transform="${rot}">${tiles}</g></g>`);
+    layers.push(`<g transform="rotate(${view.rotationDeg.toFixed(2)}, ${MAP_W / 2}, ${MAP_H / 2})">${tiles}</g>`);
   }
   // (3) White overlay everywhere EXCEPT the site: the analysed lot stays at
   // full aerial saturation, its surroundings are washed back.
@@ -112,11 +105,15 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
       d="M0,0 H${MAP_W} V${MAP_H} H0 Z ${dHole}"/>`);
   }
 
-  // ---- zones as colour, not words -------------------------------------------
-  // The neighbours' zoning reads as the context sheet's tints (and textures)
-  // laid over the washed aerial, everywhere but the site, so the sheet says
-  // R3 or E1 by colour and the legend names it once.
+  // ---- zones as hatch, not words ---------------------------------------------
+  // The neighbours' zoning is drawn, not written: each zone a hatch in its
+  // family's ink with a fine outline, no fill, so the aerial stays readable
+  // under it. The pattern is the category's texture (lines where it has
+  // none), its strength the category's, so R2 sits lighter than R3. Never
+  // over the site.
   const usedZoneCats = new Set<string>();
+  const zoneInk = (c: { fill: string; stroke?: string; figure?: string; textureColor?: string }) =>
+    c.figure ?? c.stroke ?? c.fill;
   {
     const ring = sb.siteRing.map(([lon, lat2]) => proj(lon, lat2));
     const dHole = 'M' + ring.map((p) => `${p[0].toFixed(2)},${p[1].toFixed(2)}`).join('L') + 'Z';
@@ -134,10 +131,10 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     for (const [cat, paths] of byCat) {
       const c = catById()[cat];
       usedZoneCats.add(cat);
-      // Lighter than on the context sheet: at 1:300 a zone is the whole
-      // block, and a full-strength tint would bury the aerial and the marks.
-      parts.push(`<g fill="${c.fill}" opacity="${(c.opacity * 0.5).toFixed(2)}" fill-rule="evenodd">${paths.map((d) => `<path d="${d}"/>`).join('')}</g>`);
-      if (c.texture) parts.push(textureSvg(`stx${tex++}`, paths.join(''), c.texture, c.textureColor ?? c.stroke ?? c.fill, mapBox, 0.35));
+      const ink = zoneInk(c);
+      const kind = c.texture === 'dots' || c.texture === 'cross' ? c.texture : 'lines';
+      parts.push(textureSvg(`stx${tex++}`, paths.join(''), kind, ink, mapBox, Math.min(0.9, 0.35 + c.opacity * 0.6)));
+      parts.push(`<g fill="none" stroke="${ink}" stroke-width="0.4" opacity="0.8">${paths.map((d) => `<path d="${d}"/>`).join('')}</g>`);
     }
     layers.push(`<defs><clipPath id="notSite"><path clip-rule="evenodd" d="M-20,-20 H${MAP_W + 20} V${MAP_H + 20} H-20 Z ${dHole}"/></clipPath></defs>
       <g clip-path="url(#notSite)">${parts.join('')}</g>`);
@@ -158,15 +155,10 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
       const azr = ((az + view.rotationDeg) * Math.PI) / 180;
       return [cx + R * Math.sin(azr), cy - R * Math.cos(azr)];
     };
-    // The sketch's suns sit at the solstices' rise and set points; the hour
-    // fan's labels run round the winter arc.
-    const spots: [number, number][] = (meta.siteSymbols ?? 'sketch') === 'sketch'
-      ? [[azOf(dec), Ri], [-azOf(dec), Ri], [azOf(-dec), Ro], [-azOf(-dec), Ro], [0, Ro]]
-      : [-75, -60, -45, -30, -15, 0, 15, 30, 45, 60, 75].map((az) => [az, Ri + 8] as [number, number]);
-    const box = (meta.siteSymbols ?? 'sketch') === 'sketch' ? 38 : 16;
-    for (const [az, R] of spots) {
+    // The suns sit at the solstices' rise and set points, with their names under them.
+    for (const [az, R] of [[azOf(dec), Ri], [-azOf(dec), Ri], [azOf(-dec), Ro], [-azOf(-dec), Ro], [0, Ro]] as [number, number][]) {
       const [x, y] = at(az, R);
-      placer.reserve(x, y, box, box * 0.7);
+      placer.reserve(x, y + 6, 48, 58);
     }
     placer.reserve(MAP_W - 95, 55, 110, 20);
     placer.reserve(MAP_W - 85, MAP_H - 75, 120, 20);
@@ -437,12 +429,13 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     placer.reserve(cx0, cy0, 56, 24);
   }
 
-  // ---- neighbours: the storeys on each building -----------------------------
-  // Only the storey count, short ("3ST"), set on the building it belongs to:
-  // the zone is the colour under it now, and the address is not what this
-  // sheet is for. Overture's storeys, or its measured height at 3.1 m a
-  // storey; OpenStreetMap's building:levels where Overture has neither. A
-  // building with no height anywhere goes unlabelled rather than guessed.
+  // ---- neighbours: the address and the storeys on each building ------------
+  // Two short lines on the building: its street number(s) and its storeys,
+  // "26" over "3ST". The zone is the hatch under it. Storeys come from
+  // Overture (its count, or its measured height at 3.1 m a storey), else
+  // OpenStreetMap's building:levels; a building with no height anywhere
+  // keeps its number and no storey line rather than a guess. A building with
+  // a height but no address point still gets its storeys.
   let storeyLabels = 0;
   {
     const osmLevelsNear = (lon: number, lat2: number, withinM: number): number | undefined => {
@@ -457,52 +450,90 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
       return best;
     };
     const m2PerMm2 = (sb.scale / 1000) ** 2;
-    interface Lbl { x: number; y: number; st: number; area: number; d: string }
-    const cands: Lbl[] = [];
+    interface Bld { x: number; y: number; st?: number; area: number; d: string; ring: Pt[]; bbox: [number, number, number, number]; numbers: string[] }
+    const blds: Bld[] = [];
     for (const b of sb.buildings?.buildings ?? []) {
       const [x, y] = proj(b.centroid[0], b.centroid[1]);
-      if (!inMap([x, y]) || inSite(x, y)) continue;
-      const outer = b.rings[0].map(([lon, lat2]) => proj(lon, lat2));
-      let a2 = 0;
-      for (let i = 0, j = outer.length - 1; i < outer.length; j = i++) a2 += (outer[j][0] + outer[i][0]) * (outer[j][1] - outer[i][1]);
+      if (!inMapWide([x, y]) || inSite(x, y)) continue;
+      const ring = b.rings[0].map(([lon, lat2]) => proj(lon, lat2));
+      let a2 = 0, x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        a2 += (ring[j][0] + ring[i][0]) * (ring[j][1] - ring[i][1]);
+        x0 = Math.min(x0, ring[i][0]); y0 = Math.min(y0, ring[i][1]); x1 = Math.max(x1, ring[i][0]); y1 = Math.max(y1, ring[i][1]);
+      }
       const area = Math.abs(a2 / 2) * m2PerMm2;
       if (area < 25) continue;   // sheds and carports
       const st = b.floors ?? (b.heightM ? Math.max(1, Math.round(b.heightM / METRES_PER_STOREY)) : osmLevelsNear(b.centroid[0], b.centroid[1], 12));
-      if (!st) continue;
-      cands.push({ x, y, st, area, d: pathFromRings(b.rings, proj) });
+      blds.push({ x, y, st, area, d: pathFromRings(b.rings, proj), ring, bbox: [x0, y0, x1, y1], numbers: [] });
     }
-    // No footprints at all: the address points, with OSM's levels near them.
-    if (!(sb.buildings?.buildings.length)) {
-      for (const n of sb.neighbours) {
-        const [x, y] = proj(n.lon, n.lat);
-        if (!inMap([x, y]) || inSite(x, y)) continue;
-        const st = osmLevelsNear(n.lon, n.lat, 25);
-        if (st) cands.push({ x, y, st, area: 0, d: '' });
+    const inRing = (x: number, y: number, r: Pt[]) => {
+      let inside = false;
+      for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+        const [xi, yi] = r[i], [xj, yj] = r[j];
+        if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
       }
+      return inside;
+    };
+    // Each address point to the building it stands in, or the nearest one
+    // within 12 m (address points often sit at the front of the lot).
+    const near12 = 12 * k * (MAP_W / (2 * view.halfW));
+    const loose: { x: number; y: number; n: string; st?: number }[] = [];
+    for (const n of sb.neighbours) {
+      const [x, y] = proj(n.lon, n.lat);
+      if (!inMap([x, y]) || inSite(x, y)) continue;
+      let hit = blds.find((b) => x >= b.bbox[0] && x <= b.bbox[2] && y >= b.bbox[1] && y <= b.bbox[3] && inRing(x, y, b.ring));
+      if (!hit) {
+        let bestD = near12;
+        for (const b of blds) { const d = Math.hypot(b.x - x, b.y - y); if (d < bestD) { bestD = d; hit = b; } }
+      }
+      const num = n.housenumber.toUpperCase();
+      if (hit) { if (!hit.numbers.includes(num)) hit.numbers.push(num); }
+      else loose.push({ x, y, n: num, st: osmLevelsNear(n.lon, n.lat, 25) });
     }
-    // The big buildings first, so when two crowd each other the block of
-    // flats keeps its label and the garage gives way.
+    // "26", or "26–30" for a building with a run of numbers.
+    const numberLine = (nums: string[]): string => {
+      if (nums.length <= 1) return nums[0] ?? '';
+      const ints = nums.map((t) => parseInt(t, 10));
+      if (ints.every((v) => Number.isFinite(v))) {
+        const lo = Math.min(...ints), hi = Math.max(...ints);
+        return lo === hi ? String(lo) : `${lo}–${hi}`;
+      }
+      return nums[0];
+    };
+    interface Lbl { x: number; y: number; lines: [string, string]; area: number; d: string }
+    const cands: Lbl[] = [];
+    for (const b of blds) {
+      if (!inMap([b.x, b.y])) continue;
+      const num = numberLine(b.numbers);
+      const st = b.st ? `${b.st}ST` : '';
+      if (!num && !st) continue;
+      cands.push({ x: b.x, y: b.y, lines: [num, st], area: b.area + (num ? 10000 : 0), d: b.d });
+    }
+    for (const l of loose) cands.push({ x: l.x, y: l.y, lines: [l.n, l.st ? `${l.st}ST` : ''], area: 5000, d: '' });
+    // Addressed and big buildings first, so when two crowd each other the
+    // block of flats keeps its label and the garage gives way.
     cands.sort((p, q) => q.area - p.area);
     const outlines: string[] = [];
     const texts: string[] = [];
-    const fs = MAP_TEXT;
+    const fs = NEIGHBOUR_TEXT, lh = fs * 1.12;
     for (const c of cands) {
-      const label = `${c.st}ST`;
-      const w = label.length * fs * 0.6 + 1.5, h = fs + 1;
-      const spot = placer.place(c.x, c.y, w, h, 4);
+      const lines = c.lines.filter(Boolean);
+      const w = Math.max(...lines.map((t) => t.length)) * fs * 0.6 + 1.5, h = lines.length * lh + 0.8;
+      const spot = placer.place(c.x, c.y, w, h, 6);
       if (!spot) continue;
       if (c.d) outlines.push(`<path d="${c.d}"/>`);
-      texts.push(`<text x="${spot[0].toFixed(1)}" y="${(spot[1] + fs * 0.36).toFixed(1)}" text-anchor="middle" font-size="${fs}" font-weight="700" fill="#1c1c1c">${label}</text>`);
-      storeyLabels++;
+      const y0 = spot[1] - ((lines.length - 1) * lh) / 2 + fs * 0.36;
+      lines.forEach((t, i) => {
+        const isStorey = /ST$/.test(t) && i === lines.length - 1 && !!c.lines[1];
+        texts.push(`<text x="${spot[0].toFixed(1)}" y="${(y0 + i * lh).toFixed(1)}" text-anchor="middle" font-size="${fs}" font-weight="700" fill="${isStorey ? BLUE() : '#1c1c1c'}">${esc(t)}</text>`);
+      });
+      if (c.lines[1]) storeyLabels++;
     }
     layers.push(`<g fill="none" stroke="#1c1c1c" stroke-width="0.25" stroke-opacity="0.45" stroke-linejoin="round">${outlines.join('')}</g>`);
     layers.push(texts.join(''));
   }
 
-  // ---- street names: arrow band for a street, plain text for a lane -----------
-  // The same distinction the context sheet makes, and it matters just as much
-  // here: at 1:300 the rear laneway is often the widest thing on the sheet
-  // after the street itself, and banding both makes them read as equals.
+  // ---- street names: plain text along the road ------------------------------
   const best = new Map<string, { pts: Pt[]; len: number; hierarchy: number; lanes?: number }>();
   for (const road of sb.roads) {
     const pts = road.coords.map(([lon, lat2]) => proj(lon, lat2))
@@ -521,32 +552,29 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
   let srid = 0;
   for (const [name, r] of best) {
     const label = shortStreetName(name);
-    const spacing = 1.7;
     const SITE_STREET = T.street * 1.15;
-    const textLen = label.length * (SITE_STREET * 0.62 + spacing);
-    let pts = r.pts;
-    if (pts[0][0] > pts[pts.length - 1][0]) pts = [...pts].reverse();
-    const arrow = isMajorStreet(r.hierarchy, r.lanes, name) && r.len * 0.85 >= textLen + 12
-      ? arrowAlong(pts, Math.min(r.len * 0.85, textLen + 20))
-      : null;
-    if (arrow) {
-      let ta = arrow.angDeg;
-      if (ta > 90) ta -= 180;
-      if (ta < -90) ta += 180;
-      layers.push(arrow.svg);
-      layers.push(`<text transform="translate(${arrow.cx.toFixed(1)},${arrow.cy.toFixed(1)}) rotate(${ta.toFixed(1)})"
-        x="${(-textLen / 2).toFixed(1)}" y="1.65" textLength="${textLen.toFixed(1)}" lengthAdjust="spacing"
-        font-size="${SITE_STREET.toFixed(2)}" font-weight="700" fill="#111111">${esc(label)}</text>`);
-      continue;
-    }
-    // Plain label, set on the straight chord of the run: a laneway's own
-    // vertices jog too much to carry text along directly.
+    // Every street name as plain bold text along the road, no arrow band;
+    // set on the straight chord through the middle of the longest run, since
+    // a road's own vertices jog too much to carry text along directly.
     const plainLen = label.length * (SITE_STREET * 0.72 + 0.4) + 3;
-    const a = pts[0], b = pts[pts.length - 1];
+    const pts = r.pts;
+    const cum = [0];
+    for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+    const total = cum[cum.length - 1];
+    if (total < plainLen) continue;
+    const at = (d: number): Pt => {
+      let i = 1;
+      while (i < cum.length - 1 && cum[i] < d) i++;
+      const t = (d - cum[i - 1]) / ((cum[i] - cum[i - 1]) || 1);
+      return [pts[i - 1][0] + (pts[i][0] - pts[i - 1][0]) * t, pts[i - 1][1] + (pts[i][1] - pts[i - 1][1]) * t];
+    };
+    const half = Math.min(total / 2, plainLen / 2 + 8);
+    let a = at(total / 2 - half), b = at(total / 2 + half);
+    if (a[0] > b[0]) [a, b] = [b, a];
     if (Math.hypot(b[0] - a[0], b[1] - a[1]) < plainLen) continue;
     const id = `srd${srid++}`;
     siteRoadDefs.push(`<path id="${id}" d="M${a[0].toFixed(2)},${a[1].toFixed(2)}L${b[0].toFixed(2)},${b[1].toFixed(2)}" fill="none"/>`);
-    layers.push(`<text font-size="${SITE_STREET.toFixed(2)}" font-weight="700" letter-spacing="0.4" dy="-1.4" fill="#111111">
+    layers.push(`<text font-size="${SITE_STREET.toFixed(2)}" font-weight="700" letter-spacing="0.6" dy="${(SITE_STREET * 0.36).toFixed(2)}" fill="#111111">
       <textPath href="#${id}" startOffset="50%" text-anchor="middle">${esc(label)}</textPath></text>`);
   }
   if (siteRoadDefs.length) layers.push(`<defs>${siteRoadDefs.join('')}</defs>`);
@@ -678,13 +706,12 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     </g>`);
   }
 
-  // ---- sun and wind ----------------------------------------------------------
-  // Two drawings to choose from (meta.siteSymbols):
-  //  sketch — the sun as a hand-drawn disc with flame rays at the solstices'
-  //           rise and set points, the winds as twisting ribbons blowing in;
-  //  hours  — the 21 June sun path as an hour fan from the site (9AM–3PM),
-  //           the winds as plain triple arrows.
-  // Both follow the palette: coral ink for the sketch, the sun path in orange.
+  // ---- sun and wind, one hand ---------------------------------------------------
+  // Drawn as a pair, in the same coral pen and the same open white-filled
+  // marks: the sun as a disc with flame-like rays at the solstices' rise and
+  // set points (on a solid summer arc and a dashed winter one), the winds as
+  // broad twisting ribbons blowing in toward the site, each named in the same
+  // lettering as the suns.
   const latR = (Math.abs(lat) * Math.PI) / 180;
   const decR = (23.44 * Math.PI) / 180;
   const riseAz = (d: number) => (Math.acos(Math.sin(d) / Math.cos(latR)) * 180) / Math.PI;
@@ -705,150 +732,92 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     }
     return d;
   };
-  const SKETCH = RED();
-  const ORANGE = '#ee8a2a';
-  // Where each wind comes from, and what it is called: the banners' old
-  // stations, blowing toward the site.
+  const PEN = RED();
+  const PEN_W = 0.7;
+  const LETTER = 5.4;
+  const textBlock = (x: number, y: number, lines: string[]) =>
+    lines.map((t, i) => `<text x="${x.toFixed(1)}" y="${(y + i * LETTER * 1.12).toFixed(1)}" text-anchor="middle" font-size="${LETTER}" font-weight="700" fill="${PEN}">${esc(t)}</text>`).join('');
+
+  layers.push(`<path d="${arcPath(summerAz, -summerAz, Ro)}" fill="none" stroke="${PEN}" stroke-width="0.6" opacity="0.6"/>`);
+  layers.push(`<path d="${arcPath(winterAz, -winterAz, Ri)}" fill="none" stroke="${PEN}" stroke-width="0.7" opacity="0.75" stroke-dasharray="4,2.4"/>`);
+  const sketchSun = ([x, y]: Pt, lines: string[]) => {
+    const r0 = 10.5, r1 = 13.4, r2 = 21, n = 16;
+    let d = '';
+    for (let i = 0; i < n; i++) {
+      const a0 = (i / n) * Math.PI * 2, a1 = ((i + 0.5) / n) * Math.PI * 2, a2 = ((i + 1) / n) * Math.PI * 2;
+      const tipR = r2 - (i % 2) * 3.2;
+      const p0 = [r1 * Math.cos(a0), r1 * Math.sin(a0)];
+      const tip = [tipR * Math.cos(a1 + 0.07), tipR * Math.sin(a1 + 0.07)];
+      const c0 = [(r1 + 3.6) * Math.cos(a1 - 0.11), (r1 + 3.6) * Math.sin(a1 - 0.11)];
+      const p2 = [r1 * Math.cos(a2), r1 * Math.sin(a2)];
+      const c1 = [(r1 + 2.2) * Math.cos(a1 + 0.2), (r1 + 2.2) * Math.sin(a1 + 0.2)];
+      d += `${i ? 'L' : 'M'}${p0[0].toFixed(2)},${p0[1].toFixed(2)} Q${c0[0].toFixed(2)},${c0[1].toFixed(2)} ${tip[0].toFixed(2)},${tip[1].toFixed(2)} Q${c1[0].toFixed(2)},${c1[1].toFixed(2)} ${p2[0].toFixed(2)},${p2[1].toFixed(2)}`;
+    }
+    return `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})">
+      <path d="${d}Z" fill="#ffffff" fill-opacity="0.85" stroke="${PEN}" stroke-width="${PEN_W}" stroke-linejoin="round"/>
+      <circle r="${r0}" fill="#ffffff" stroke="${PEN}" stroke-width="${PEN_W}"/>
+      ${textBlock(0, r2 + 6, lines)}</g>`;
+  };
+  layers.push(sketchSun(sunAt(winterAz, Ri), ['WINTER', 'SUNRISE']));
+  layers.push(sketchSun(sunAt(-winterAz, Ri), ['WINTER', 'SUNSET']));
+  layers.push(sketchSun(sunAt(summerAz, Ro), ['SUMMER', 'SUNRISE']));
+  layers.push(sketchSun(sunAt(-summerAz, Ro), ['SUMMER', 'SUNSET']));
+  {
+    const [nx, ny] = sunAt(0, Ro);
+    layers.push(`<g transform="translate(${nx.toFixed(1)},${ny.toFixed(1)})"><circle r="6.4" fill="#ffffff" stroke="${PEN}" stroke-width="${PEN_W}"/>
+      <text text-anchor="middle" dy="2.3" font-size="6.2" font-weight="700" fill="${PEN}">N</text></g>`);
+  }
+
+  // A wind ribbon: a broad strip, white inside like the suns, whose width
+  // swells and pinches as it travels so it reads as twisting, ending in an
+  // arrowhead cut from the same strip.
+  const ribbon = (from: Pt, to: Pt, phase: number, half: number) => {
+    const dx = to[0] - from[0], dy = to[1] - from[1];
+    const L = Math.hypot(dx, dy) || 1;
+    const ux = dx / L, uy = dy / L, nx = -uy, ny = ux;
+    const N = 48, sway = 5, headL = 11, headW = half * 2.6;
+    const body = L - headL;
+    const centre = (t: number): Pt => {
+      const w = sway * Math.sin(t * Math.PI * 1.5 + phase) * (1 - 0.6 * t);
+      return [from[0] + ux * body * t + nx * w, from[1] + uy * body * t + ny * w];
+    };
+    const width = (t: number) => half * (0.25 + 0.75 * Math.abs(Math.cos(t * Math.PI * 1.8 + phase))) * (0.55 + 0.45 * t);
+    const left: string[] = [], right: string[] = [];
+    for (let i = 0; i <= N; i++) {
+      const t = i / N;
+      const [cx, cy] = centre(t);
+      const w = width(t);
+      left.push(`${(cx + nx * w).toFixed(2)},${(cy + ny * w).toFixed(2)}`);
+      right.push(`${(cx - nx * w).toFixed(2)},${(cy - ny * w).toFixed(2)}`);
+    }
+    const [ex, ey] = centre(1);
+    const tip: Pt = [ex + ux * headL, ey + uy * headL];
+    const wing = (sgn: number) => `${(ex + nx * headW * sgn).toFixed(2)},${(ey + ny * headW * sgn).toFixed(2)}`;
+    const d = `M${left.join('L')}L${wing(1)}L${tip[0].toFixed(2)},${tip[1].toFixed(2)}L${wing(-1)}L${right.reverse().join('L')}Z`;
+    return `<path d="${d}"/>`;
+  };
   const winds: { at: Pt; label: string[] }[] = [
     { at: [MAP_W - 95, 55], label: ['NE SUMMER', 'SEA BREEZE'] },
     { at: [MAP_W - 85, MAP_H - 75], label: ['S & SE COOL', 'SUMMER WIND'] },
     { at: [90, MAP_H - 60], label: ['W & SW', 'WINTER WINDS'] },
   ];
-  const towardSite = (from: Pt, len: number): Pt => {
-    const dx = centroidPx[0] - from[0], dy = centroidPx[1] - from[1];
+  for (const w of winds) {
+    const dx = centroidPx[0] - w.at[0], dy = centroidPx[1] - w.at[1];
     const L = Math.hypot(dx, dy) || 1;
-    return [from[0] + (dx / L) * len, from[1] + (dy / L) * len];
-  };
-  const textBlock = (x: number, y: number, lines: string[], color: string, size: number) =>
-    lines.map((t, i) => `<text x="${x.toFixed(1)}" y="${(y + i * size * 1.15).toFixed(1)}" text-anchor="middle" font-size="${size}" font-weight="700" fill="${color}">${esc(t)}</text>`).join('');
-
-  if ((meta.siteSymbols ?? 'sketch') === 'sketch') {
-    // Solstice arcs, light: the summer arc solid, the winter one dashed.
-    layers.push(`<path d="${arcPath(summerAz, -summerAz, Ro)}" fill="none" stroke="${SKETCH}" stroke-width="0.6" opacity="0.6"/>`);
-    layers.push(`<path d="${arcPath(winterAz, -winterAz, Ri)}" fill="none" stroke="${SKETCH}" stroke-width="0.7" opacity="0.75" stroke-dasharray="4,2.4"/>`);
-    // A drawn sun: an open disc and a ring of flame-like rays, each a soft
-    // spike curving a little, so it reads as a hand mark and not an icon.
-    const sketchSun = ([x, y]: Pt, lines: string[]) => {
-      const r0 = 7.2, r1 = 9.4, r2 = 14.2, n = 14;
-      let d = '';
-      for (let i = 0; i < n; i++) {
-        const a0 = (i / n) * Math.PI * 2, a1 = ((i + 0.5) / n) * Math.PI * 2, a2 = ((i + 1) / n) * Math.PI * 2;
-        const tipR = r2 - (i % 2) * 2.2;
-        const p0 = [r1 * Math.cos(a0), r1 * Math.sin(a0)];
-        const tip = [tipR * Math.cos(a1 + 0.08), tipR * Math.sin(a1 + 0.08)];
-        const c0 = [(r1 + 2.6) * Math.cos(a1 - 0.12), (r1 + 2.6) * Math.sin(a1 - 0.12)];
-        const p2 = [r1 * Math.cos(a2), r1 * Math.sin(a2)];
-        const c1 = [(r1 + 1.6) * Math.cos(a1 + 0.22), (r1 + 1.6) * Math.sin(a1 + 0.22)];
-        d += `${i ? 'L' : 'M'}${p0[0].toFixed(2)},${p0[1].toFixed(2)} Q${c0[0].toFixed(2)},${c0[1].toFixed(2)} ${tip[0].toFixed(2)},${tip[1].toFixed(2)} Q${c1[0].toFixed(2)},${c1[1].toFixed(2)} ${p2[0].toFixed(2)},${p2[1].toFixed(2)}`;
-      }
-      return `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})">
-        <path d="${d}Z" fill="#ffffff" fill-opacity="0.75" stroke="${SKETCH}" stroke-width="0.6" stroke-linejoin="round"/>
-        <circle r="${r0}" fill="#ffffff" stroke="${SKETCH}" stroke-width="0.6"/>
-        ${textBlock(0, r2 + 5, lines, SKETCH, 4.2)}</g>`;
-    };
-    layers.push(sketchSun(sunAt(winterAz, Ri), ['WINTER', 'SUNRISE']));
-    layers.push(sketchSun(sunAt(-winterAz, Ri), ['WINTER', 'SUNSET']));
-    layers.push(sketchSun(sunAt(summerAz, Ro), ['SUMMER', 'SUNRISE']));
-    layers.push(sketchSun(sunAt(-summerAz, Ro), ['SUMMER', 'SUNSET']));
-    {
-      const [nx, ny] = sunAt(0, Ro);
-      layers.push(`<g transform="translate(${nx.toFixed(1)},${ny.toFixed(1)})"><circle r="5.6" fill="#ffffff" stroke="${SKETCH}" stroke-width="0.6"/>
-        <text text-anchor="middle" dy="2.1" font-size="5.6" font-weight="700" fill="${SKETCH}">N</text></g>`);
-    }
-    // A wind ribbon: a strip whose two edges cross back and forth as it
-    // travels, so it seems to twist, ending in an open arrowhead.
-    const ribbon = (from: Pt, to: Pt, phase: number, half: number) => {
-      const dx = to[0] - from[0], dy = to[1] - from[1];
-      const L = Math.hypot(dx, dy) || 1;
-      const ux = dx / L, uy = dy / L, nx = -uy, ny = ux;
-      const N = 48, sway = 4.2, headL = 8.5, headW = 5.6;
-      const centre = (t: number): Pt => {
-        const w = sway * Math.sin(t * Math.PI * 1.6 + phase);
-        return [from[0] + ux * (L - headL) * t + nx * w, from[1] + uy * (L - headL) * t + ny * w];
-      };
-      const edge = (sign: number) => {
-        let d = '';
-        for (let i = 0; i <= N; i++) {
-          const t = i / N;
-          const [cx, cy] = centre(t);
-          const off = sign * half * Math.cos(t * Math.PI * 2.4 + phase) * (0.5 + 0.5 * t);
-          d += `${i ? 'L' : 'M'}${(cx + nx * off).toFixed(2)},${(cy + ny * off).toFixed(2)}`;
-        }
-        return d;
-      };
-      const [ex, ey] = centre(1);
-      const tip: Pt = [ex + ux * headL, ey + uy * headL];
-      const head = `M${(ex + nx * headW).toFixed(2)},${(ey + ny * headW).toFixed(2)} L${tip[0].toFixed(2)},${tip[1].toFixed(2)} L${(ex - nx * headW).toFixed(2)},${(ey - ny * headW).toFixed(2)}`;
-      return `<path d="${edge(1)}"/><path d="${edge(-1)}"/><path d="${head}"/>`;
-    };
-    for (const w of winds) {
-      const dx = centroidPx[0] - w.at[0], dy = centroidPx[1] - w.at[1];
-      const L = Math.hypot(dx, dy) || 1;
-      const nx = -dy / L, ny = dx / L;
-      const strands = [[-11, 0.0, 84], [0, 1.9, 96], [11, 3.7, 78]].map(([o, ph, len]) => {
-        const from: Pt = [w.at[0] + nx * o, w.at[1] + ny * o];
-        return ribbon(from, towardSite(from, len), ph, 3.4);
-      }).join('');
-      layers.push(`<g fill="none" stroke="${SKETCH}" stroke-width="0.6" stroke-linecap="round" stroke-linejoin="round">${strands}</g>`);
-      const [lx, ly2] = towardSite(w.at, -16);
-      layers.push(textBlock(lx, ly2, w.label, SKETCH, 4.6));
-    }
-  } else {
-    // The sun's bearing on 21 June at each hour, from the site's latitude.
-    const phi = (lat * Math.PI) / 180;
-    const sunAz = (hour: number): number => {
-      const H = ((hour - 12) * 15 * Math.PI) / 180;
-      const az = Math.atan2(Math.sin(H), Math.cos(H) * Math.sin(phi) - Math.tan(decR) * Math.cos(phi)) * 180 / Math.PI + 180;
-      return az > 180 ? az - 360 : az;   // clockwise from north: morning east (+), afternoon west (−)
-    };
-    const azOfHour = sunAz;
-    const R = Ri;
-    let d = '';
-    for (let m = 8 * 60; m <= 16 * 60; m += 10) {
-      const [x, y] = sunAt(azOfHour(m / 60), R);
-      d += `${d ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`;
-    }
-    const fan: string[] = [];
-    const dots: string[] = [];
-    for (let h = 9; h <= 15; h++) {
-      const az = azOfHour(h);
-      const [x, y] = sunAt(az, R);
-      const [lx, ly2] = sunAt(az, R + 10);
-      fan.push(`<line x1="${centroidPx[0].toFixed(1)}" y1="${centroidPx[1].toFixed(1)}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}"/>`);
-      const label = h < 12 ? `${h}AM` : h === 12 ? '12PM' : `${h - 12}PM`;
-      dots.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.6" fill="${ORANGE}"/>` +
-        `<text x="${lx.toFixed(1)}" y="${(ly2 + 1.7).toFixed(1)}" text-anchor="middle" font-size="4.8" font-weight="700" fill="${ORANGE}">${label}</text>`);
-    }
-    layers.push(`<g stroke="${ORANGE}" stroke-width="0.5" stroke-dasharray="2.4,1.6" opacity="0.8">${fan.join('')}</g>`);
-    layers.push(`<path d="${d}" fill="none" stroke="${ORANGE}" stroke-width="1.6" stroke-dasharray="4,2.2" stroke-linecap="round"/>`);
-    layers.push(dots.join(''));
-    // A small sun at each end of the day drawn, and the date by the morning end.
-    const glyph = ([x, y]: Pt) => `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})"><circle r="3.6" fill="${ORANGE}"/>${
-      [0, 45, 90, 135, 180, 225, 270, 315].map((a) => { const ar = (a * Math.PI) / 180; return `<line x1="${(5 * Math.cos(ar)).toFixed(1)}" y1="${(5 * Math.sin(ar)).toFixed(1)}" x2="${(7.6 * Math.cos(ar)).toFixed(1)}" y2="${(7.6 * Math.sin(ar)).toFixed(1)}"/>`; }).join('')
-    }</g>`;
-    layers.push(`<g stroke="#1c1c1c" stroke-width="0.6" stroke-linecap="round">${glyph(sunAt(azOfHour(8), R))}${glyph(sunAt(azOfHour(16), R))}</g>`);
-    {
-      const [x, y] = sunAt(azOfHour(8), R + 14);
-      layers.push(`<text x="${x.toFixed(1)}" y="${(y + 1.7).toFixed(1)}" text-anchor="middle" font-size="4.8" font-weight="700" fill="${ORANGE}">21 JUNE</text>`);
-      const [nx, ny] = sunAt(0, R - 10);
-      layers.push(`<text x="${nx.toFixed(1)}" y="${(ny + 1.7).toFixed(1)}" text-anchor="middle" font-size="4.6" font-weight="700" fill="${ORANGE}">N</text>`);
-    }
-    // Winds: three plain arrows side by side, the name beside them.
-    for (const w of winds) {
-      const dx = centroidPx[0] - w.at[0], dy = centroidPx[1] - w.at[1];
-      const L = Math.hypot(dx, dy) || 1;
-      const ux = dx / L, uy = dy / L, nx = -uy, ny = ux;
-      const arrows = [-6.5, 0, 6.5].map((o, i) => {
-        const len = i === 1 ? 64 : 52;
-        const x0 = w.at[0] + nx * o + ux * (i === 1 ? 0 : 6), y0 = w.at[1] + ny * o + uy * (i === 1 ? 0 : 6);
-        const x1 = x0 + ux * len, y1 = y0 + uy * len;
-        return `<line x1="${x0.toFixed(1)}" y1="${y0.toFixed(1)}" x2="${x1.toFixed(1)}" y2="${y1.toFixed(1)}"/>` +
-          `<path d="M${(x1 - ux * 4.4 + nx * 2.6).toFixed(1)},${(y1 - uy * 4.4 + ny * 2.6).toFixed(1)} L${x1.toFixed(1)},${y1.toFixed(1)} L${(x1 - ux * 4.4 - nx * 2.6).toFixed(1)},${(y1 - uy * 4.4 - ny * 2.6).toFixed(1)}"/>`;
-      }).join('');
-      layers.push(`<g fill="none" stroke="${tpl().transit}" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">${arrows}</g>`);
-      const [lx, ly2] = towardSite(w.at, -12);
-      layers.push(textBlock(lx, ly2, w.label, tpl().transit, 4.6));
-    }
+    const ux = dx / L, uy = dy / L, nx = -uy, ny = ux;
+    // A wind and a sun can come from the same quarter (the SE summer wind and
+    // the summer sunrise do); the ribbon then stops short of the sun rather
+    // than running through it.
+    const sunSpots = [sunAt(winterAz, Ri), sunAt(-winterAz, Ri), sunAt(summerAz, Ro), sunAt(-summerAz, Ro)];
+    const clearOfSuns = (p: Pt) => sunSpots.every(([sx, sy]) => Math.hypot(p[0] - sx, p[1] - (sy + 8)) > 36);
+    const strands = [[-13, 0.0, 88], [0, 1.7, 100], [13, 3.3, 80]].map(([o, ph, len]) => {
+      const from: Pt = [w.at[0] + nx * o, w.at[1] + ny * o];
+      let L = len;
+      while (L > 40 && ![0.6, 0.8, 1].every((f) => clearOfSuns([from[0] + ux * L * f, from[1] + uy * L * f]))) L -= 4;
+      return ribbon(from, [from[0] + ux * L, from[1] + uy * L], ph, 3.6);
+    }).join('');
+    layers.push(`<g fill="#ffffff" fill-opacity="0.85" stroke="${PEN}" stroke-width="${PEN_W}" stroke-linejoin="round">${strands}</g>`);
+    layers.push(textBlock(w.at[0] - ux * 18, w.at[1] - uy * 18, w.label));
   }
 
   // View labels last, over everything.
@@ -872,15 +841,19 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
   row(`<text x="${SWATCH_X}" y="5.4" font-size="3.2" font-weight="700" fill="${RED()}">SB 30.48</text>`, 'BOUNDARY DIMENSION (m)');
   row(`<text x="${SWATCH_X}" y="5.4" font-size="3.2" font-weight="700" fill="${RED()}">RL 24.5</text>`, 'SURFACE LEVEL (AHD)');
   if (sb.contours.length) row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="#a07c3f" stroke-width="0.6"/><text x="${SWATCH_X + 1}" y="2.2" font-size="2.2" font-weight="700" fill="#8a6a2f">RL 20</text>`, `CONTOURS AT ${sb.contourIntervalM ?? 2} m AHD`, sb.contourSource);
-  if (storeyLabels) row(`<text x="${SWATCH_X + SWATCH_W / 2}" y="4.6" text-anchor="middle" font-size="3.6" font-weight="700" fill="#1c1c1c">3ST</text>`, 'STOREYS', sb.buildings?.source === 'overture' ? 'Overture Maps; OSM levels where it has none' : 'OpenStreetMap building levels');
+  row(`<g><text x="${SWATCH_X + SWATCH_W / 2}" y="2.8" text-anchor="middle" font-size="2.6" font-weight="700" fill="#1c1c1c">26</text>${storeyLabels ? `<text x="${SWATCH_X + SWATCH_W / 2}" y="5.8" text-anchor="middle" font-size="2.6" font-weight="700" fill="${BLUE()}">3ST</text>` : ''}</g>`,
+    storeyLabels ? 'NEIGHBOUR: NUMBER, STOREYS' : 'NEIGHBOUR: STREET NUMBER',
+    storeyLabels ? (sb.buildings?.source === 'overture' ? 'storeys from Overture Maps, OSM levels where it has none' : 'storeys from OpenStreetMap building levels') : undefined);
   // The zones, in the legend's category order, with the context sheet's swatch.
   {
     let stex = 0;
     const swD = `M${SWATCH_X},0h${SWATCH_W}v6.5h${-SWATCH_W}Z`;
     for (const c of tpl().categories) {
       if (!usedZoneCats.has(c.id)) continue;
-      row(`<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="${c.fill}" fill-opacity="${Math.min(1, c.opacity + 0.15)}" stroke="${c.stroke ?? '#999'}" stroke-width="${c.stroke ? 0.9 : 0.2}"/>` +
-        (c.texture ? textureSvg(`sltx${stex++}`, swD, c.texture, c.textureColor ?? c.stroke ?? c.fill, { x: SWATCH_X, y: 0, w: SWATCH_W, h: 6.5 }) : ''), c.label);
+      const ink = zoneInk(c);
+      const kind = c.texture === 'dots' || c.texture === 'cross' ? c.texture : 'lines';
+      row(textureSvg(`sltx${stex++}`, swD, kind, ink, { x: SWATCH_X, y: 0, w: SWATCH_W, h: 6.5 }, Math.min(0.9, 0.35 + c.opacity * 0.6)) +
+        `<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="none" stroke="${ink}" stroke-width="0.4"/>`, c.label);
     }
   }
   if (bayCount) {
@@ -906,13 +879,10 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
   if (sb.busStops.length) row(`<g transform="translate(${mid},3.2)"><circle r="3.4" fill="#fff" stroke="#2f7fd6" stroke-width="0.8"/><text text-anchor="middle" dy="1.9" font-size="5.7" font-weight="700" fill="#2f7fd6">B</text></g>`, 'BUS STOPS');
   if (sb.furniture.onewayRoads.length) row(`<path d="M${SWATCH_X},3.2 L${SWATCH_X + SWATCH_W - 4},3.2 M${SWATCH_X + SWATCH_W - 7},1.4 L${SWATCH_X + SWATCH_W - 4},3.2 L${SWATCH_X + SWATCH_W - 7},5" fill="none" stroke="#8a8a8a" stroke-width="1.0"/>`, 'TRAFFIC DIRECTION');
   row(`<path d="M${SWATCH_X},4.5 ${Array.from({ length: 6 }, (_, i) => `L${(SWATCH_X + 2 + i * 4).toFixed(1)},${i % 2 ? 4.5 : 1.9}`).join(' ')}" fill="none" stroke="#3b4fd8" stroke-width="0.5"/>`, 'NOISE SOURCE');
-  if ((meta.siteSymbols ?? 'sketch') === 'sketch') {
-    const wav = (o: number) => `M${SWATCH_X + 2},${3.2 + o} C${SWATCH_X + 7},${0.6 + o} ${SWATCH_X + 12},${5.8 + o} ${SWATCH_X + 18},${3.2 + o}`;
-    row(`<g fill="none" stroke="${RED()}" stroke-width="0.4" stroke-linecap="round"><path d="${wav(-0.9)}"/><path d="${wav(0.9)}"/><path d="M${SWATCH_X + 17},0.9 L${SWATCH_X + 21},3.2 L${SWATCH_X + 17},5.5"/></g>`, 'PREVAILING WINDS');
-    row(`<g transform="translate(${mid},3.2)"><circle r="2.2" fill="#fff" stroke="${RED()}" stroke-width="0.4"/>${[0, 45, 90, 135, 180, 225, 270, 315].map((a) => { const ar = (a * Math.PI) / 180; return `<line x1="${(2.9 * Math.cos(ar)).toFixed(2)}" y1="${(2.9 * Math.sin(ar)).toFixed(2)}" x2="${(4 * Math.cos(ar)).toFixed(2)}" y2="${(4 * Math.sin(ar)).toFixed(2)}" stroke="${RED()}" stroke-width="0.4"/>`; }).join('')}</g>`, 'SUNRISE AND SUNSET', 'summer arc solid, winter arc dashed');
-  } else {
-    row(`<g fill="none" stroke="${tpl().transit}" stroke-width="0.5" stroke-linecap="round">${[1.4, 3.2, 5].map((y) => `<line x1="${SWATCH_X + 3}" y1="${y}" x2="${SWATCH_X + 19}" y2="${y}"/><path d="M${SWATCH_X + 17.4},${y - 1} L${SWATCH_X + 19},${y} L${SWATCH_X + 17.4},${y + 1}"/>`).join('')}</g>`, 'PREVAILING WINDS');
-    row(`<g><line x1="${SWATCH_X + 1}" y1="3.2" x2="${SWATCH_X + SWATCH_W - 1}" y2="3.2" stroke="#ee8a2a" stroke-width="0.9" stroke-dasharray="2.4,1.4"/><circle cx="${mid}" cy="3.2" r="1.5" fill="#ee8a2a"/></g>`, 'SUN PATH, 21 JUNE', 'the sun\'s bearing from the site, 9AM to 3PM');
+  {
+    const rib = `M${SWATCH_X + 2},2.6 C${SWATCH_X + 7},0.8 ${SWATCH_X + 11},4.8 ${SWATCH_X + 16},2.4 L${SWATCH_X + 16},1 L${SWATCH_X + 21},3.2 L${SWATCH_X + 16},5.4 L${SWATCH_X + 16},4 C${SWATCH_X + 11},6.2 ${SWATCH_X + 7},2.6 ${SWATCH_X + 2},3.8 Z`;
+    row(`<path d="${rib}" fill="#fff" stroke="${RED()}" stroke-width="0.4" stroke-linejoin="round"/>`, 'PREVAILING WINDS');
+    row(`<g transform="translate(${mid},3.2)">${[0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330].map((a) => { const ar = (a * Math.PI) / 180; return `<line x1="${(2.7 * Math.cos(ar)).toFixed(2)}" y1="${(2.7 * Math.sin(ar)).toFixed(2)}" x2="${(3.9 * Math.cos(ar)).toFixed(2)}" y2="${(3.9 * Math.sin(ar)).toFixed(2)}" stroke="${RED()}" stroke-width="0.4"/>`; }).join('')}<circle r="2.1" fill="#fff" stroke="${RED()}" stroke-width="0.4"/></g>`, 'SUNRISE AND SUNSET', 'summer arc solid, winter arc dashed');
   }
 
   const utilKinds = new Set(sb.furniture.utilities.map((u) => u.kind));
