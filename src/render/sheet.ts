@@ -426,25 +426,33 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   // ground is the institution parcel or zoning polygon under the footprint's
   // centroid; a footprint on no tinted ground is a mid grey.
   if (bundle.buildings.buildings.length && tpl().footprints !== 'none') {
-    interface Ground { cat: string; ring: number[][]; bbox: [number, number, number, number] }
+    // One ground per shape, with all its rings: a point is inside when an odd
+    // number of them contain it, as the fill's evenodd rule draws it. Testing
+    // ring by ring took a hole for more of the shape — a classified-road
+    // reserve is one polygon whose holes are the street blocks, so every house
+    // in those blocks came out as infrastructure.
+    interface Ground { cat: string; rings: number[][][]; bbox: [number, number, number, number] }
     const grounds: Ground[] = [];
-    const addGround = (cat: string, ring: number[][]) => {
+    const addGround = (cat: string, rings: number[][][]) => {
       let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-      for (const [x, y] of ring) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
-      grounds.push({ cat, ring, bbox: [x0, y0, x1, y1] });
+      for (const ring of rings)
+        for (const [x, y] of ring) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+      if (rings.length) grounds.push({ cat, rings, bbox: [x0, y0, x1, y1] });
     };
     // Parcels first, so a school's buildings take the school's tint over the zone's.
-    for (const inst of bundle.institutionPolys) for (const r of inst.rings) addGround(inst.cat, r);
+    for (const inst of bundle.institutionPolys) addGround(inst.cat, inst.rings);
     for (const f of bundle.zoning.features) {
       const cat = zoneToCategory(f.properties.SYM_CODE);
       if (!cat) continue;
-      for (const r of geomRings(f.geometry)) addGround(cat, r);
+      addGround(cat, geomRings(f.geometry));
     }
     const groundAt = (lon: number, lat: number): string | null => {
       for (const g of grounds) {
         const [x0, y0, x1, y1] = g.bbox;
         if (lon < x0 || lon > x1 || lat < y0 || lat > y1) continue;
-        if (pointInRing(lon, lat, g.ring)) return g.cat;
+        let inside = false;
+        for (const r of g.rings) if (pointInRing(lon, lat, r)) inside = !inside;
+        if (inside) return g.cat;
       }
       return null;
     };
