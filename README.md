@@ -356,9 +356,8 @@ summer arc and a dashed winter arc, each arc marked with a dot and the time at
 every solar hour; the prevailing winds as three widening arrows blowing in
 toward the site, stopping short of a sun from the same quarter. Noise — the
 busy roads and the railway — is drawn like the wind but in blue, white in a
-blue pen, beside the source on the site's side: a continuous rope of arcs
-nearest the source, then two rows of shorter, thinner dashes as the sound
-spreads. A view's distance and "TERRAIN CLEAR" are set in two rows. The
+blue pen, beside the source on the site's side: three wavy lines side by side,
+each swelling toward its middle and tapering at its ends. A view's distance and "TERRAIN CLEAR" are set in two rows. The
 sun, wind and view lettering is set heavy. Contours are green; the cadastre
 and the neighbours' building outlines are white over the aerial.
 
@@ -533,14 +532,14 @@ discs are a light leaf green, in the hue of the reference's fields.
 **Heron** (`heron`) is the office sheet the restyle began from: the aerial,
 in greyscale (`aerialTone: 'grey'`), with the lots and every building as heavy
 white lines over it (`lots: 'white'`, `footprints: 'outline'`) and all its
-text in white Arial Narrow (the place discs black, `discInk`), under a light
+text in white Arial Narrow (institutions' number discs brown, parks' green, `discInk` and `discParkInk`), under a light
 white veil with the tints at full strength over it (the palette
 sampled from that sheet's legend — tan mixed use and centres, peach
 residential, mint open space, the institutions in outlined slate blues), no
 building footprints and no white street strips, every street named in plain
 bold black straight on the photo (no arrow bands or outline;
 `streetLabels: 'band'` brings the bands back), and the walking
-catchments as dashed green lines with walker medallions. From Flamingo it
+catchments as continuous green lines at reduced opacity with solid green walker discs. From Flamingo it
 takes the solid stop roundels, the red dotted railway and the numbered
 places with their key, the discs in black.
 

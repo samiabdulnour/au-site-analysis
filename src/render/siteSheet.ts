@@ -329,9 +329,9 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     return inside;
   };
   const noiseMarks: string[] = [];
-  // The sound arcs drawn out along the source, on the site's side, white
-  // inside a blue pen like the wind. They break where they would cross the
-  // site or leave the sheet.
+  // Sound as wavy lines along the source, on the site's side, white inside a
+  // blue pen like the wind. They break where they would cross the site or
+  // leave the sheet.
   const soundAlong = (pts: Pt[], seed: number) => {
     const samples: { p: Pt; n: Pt; s: number }[] = [];
     let run = 0;
@@ -340,43 +340,49 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
       const len = Math.hypot(bx - ax, by - ay);
       if (!len) continue;
       const nx = -(by - ay) / len, ny = (bx - ax) / len;
-      for (let d = 0; d < len; d += 0.6) samples.push({ p: [ax + ((bx - ax) * d) / len, ay + ((by - ay) * d) / len], n: [nx, ny], s: run + d });
+      for (let d = 0; d < len; d += 0.3) samples.push({ p: [ax + ((bx - ax) * d) / len, ay + ((by - ay) * d) / len], n: [nx, ny], s: run + d });
       run += len;
     }
     if (samples.length < 2) return;
     const mid = samples[Math.floor(samples.length / 2)];
     const side = Math.sign((noiseCentre[0] - mid.p[0]) * mid.n[0] + (noiseCentre[1] - mid.p[1]) * mid.n[1]) || 1;
-    // The rope: one continuous strip nearest the source, fattest in each
-    // arc and pinched between them. Beyond it, two rows of shorter, thinner
-    // dashes, each dash an arc on its own, the sound fading as it spreads.
-    // [offset from the source, half-thickness, arc length, dash on, period]
-    const strips: [number, number, number, number, number][] = [
-      [6, 1.6, 15, 0, 0],
-      [13.5, 1.05, 0, 8, 15],
-      [20, 0.7, 0, 5, 15],
-    ];
-    strips.forEach(([off, th, arcLen, on, period], k) => {
-      let left: string[] = [], right: string[] = [];
-      const flush = () => {
-        if (left.length > 3) noiseMarks.push(`<path d="M${left.join('L')}L${right.reverse().join('L')}Z"/>`);
-        left = []; right = [];
-      };
+    // Three wavy lines side by side, each a stroke white inside a blue pen
+    // that swells toward its middle and tapers away at its ends (and a
+    // little along the way), like the wind's arrows and the sun's rays.
+    // [offset from the source (mm), half-thickness at its fullest]
+    const lines: [number, number][] = [[7, 1.3], [17, 1.6], [27, 1.9]];
+    const A = 3.2, P = 12;                   // the waves' amplitude and period, mm
+    lines.forEach(([off, th], k) => {
+      // The wavy centre line, run by run.
+      const runs: Pt[][] = [];
+      let cur: Pt[] = [];
       for (const { p, n, s: t } of samples) {
-        const c = side * (off + 1.2 * Math.sin(t / 23 + seed));
-        const cx = p[0] + n[0] * c, cy = p[1] + n[1] * c;
-        if (!inMap([cx, cy]) || inSiteRing(cx, cy)) { flush(); continue; }
-        let w: number;
-        if (!on) {
-          w = 0.18 + th * Math.pow(Math.abs(Math.sin((Math.PI * t) / arcLen + seed)), 0.7);
-        } else {
-          const u = (((t + k * 4.5 + seed * 3) % period) + period) % period;
-          if (u > on) { flush(); continue; }
-          w = 0.05 + th * Math.pow(Math.sin((Math.PI * u) / on), 0.7);
-        }
-        left.push(`${(cx + n[0] * w).toFixed(2)},${(cy + n[1] * w).toFixed(2)}`);
-        right.push(`${(cx - n[0] * w).toFixed(2)},${(cy - n[1] * w).toFixed(2)}`);
+        const base = side * (off + 0.8 * Math.sin(t / 29 + seed));
+        const bx = p[0] + n[0] * base, by = p[1] + n[1] * base;
+        if (!inMap([bx, by]) || inSiteRing(bx, by)) { if (cur.length > 8) runs.push(cur); cur = []; continue; }
+        const wv = A * Math.sin((2 * Math.PI * t) / P + seed + k * 1.1);
+        cur.push([bx + n[0] * wv, by + n[1] * wv]);
       }
-      flush();
+      if (cur.length > 8) runs.push(cur);
+      for (const r of runs) {
+        const cum = [0];
+        for (let i = 1; i < r.length; i++) cum.push(cum[i - 1] + Math.hypot(r[i][0] - r[i - 1][0], r[i][1] - r[i - 1][1]));
+        const L = cum[cum.length - 1] || 1;
+        const left: string[] = [], right: string[] = [];
+        for (let i = 0; i < r.length; i++) {
+          const a2 = r[Math.max(0, i - 1)], b2 = r[Math.min(r.length - 1, i + 1)];
+          const tx = b2[0] - a2[0], ty = b2[1] - a2[1];
+          const tl = Math.hypot(tx, ty) || 1;
+          const nx = -ty / tl, ny = tx / tl;
+          const u = cum[i] / L;
+          // Tapered at both ends of the run, swelling gently along it.
+          const taper = Math.min(1, u / 0.08, (1 - u) / 0.08);
+          const w = 0.12 + th * Math.max(0, taper) * (0.75 + 0.25 * Math.sin(cum[i] / 17 + seed * 2 + k));
+          left.push(`${(r[i][0] + nx * w).toFixed(2)},${(r[i][1] + ny * w).toFixed(2)}`);
+          right.push(`${(r[i][0] - nx * w).toFixed(2)},${(r[i][1] - ny * w).toFixed(2)}`);
+        }
+        noiseMarks.push(`<path d="M${left.join('L')}L${right.reverse().join('L')}Z"/>`);
+      }
     });
   };
   const mainRoads = sb.roads.filter((r) => r.hierarchy <= 4);
@@ -1022,25 +1028,21 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
   if (sb.busStops.length) row(`<g transform="translate(${mid},3.2)"><circle r="3.4" fill="#fff" stroke="#2f7fd6" stroke-width="0.8"/><text text-anchor="middle" dy="1.9" font-size="5.7" font-weight="700" fill="#2f7fd6">B</text></g>`, 'BUS STOPS');
   if (sb.furniture.onewayRoads.length) row(`<path d="M${SWATCH_X},3.2 L${SWATCH_X + SWATCH_W - 4},3.2 M${SWATCH_X + SWATCH_W - 7},1.4 L${SWATCH_X + SWATCH_W - 4},3.2 L${SWATCH_X + SWATCH_W - 7},5" fill="none" stroke="#8a8a8a" stroke-width="1.0"/>`, 'TRAFFIC DIRECTION');
   {
-    const strip = (y: number, th: number, len: number, ph: number) => {
+    const wavy = (y: number, th: number, ph: number) => {
+      const pts: Pt[] = [];
+      for (let x = 0; x <= SWATCH_W - 2; x += 0.2) pts.push([SWATCH_X + 1 + x, y + 0.55 * Math.sin((2 * Math.PI * x) / 2.6 + ph)]);
       const top: string[] = [], bot: string[] = [];
-      for (let x = 0; x <= SWATCH_W - 2; x += 0.4) {
-        const w = 0.08 + th * Math.pow(Math.abs(Math.sin((Math.PI * x) / len + ph)), 0.7);
-        top.push(`${(SWATCH_X + 1 + x).toFixed(2)},${(y - w).toFixed(2)}`);
-        bot.push(`${(SWATCH_X + 1 + x).toFixed(2)},${(y + w).toFixed(2)}`);
-      }
+      pts.forEach((pt, i) => {
+        const a2 = pts[Math.max(0, i - 1)], b2 = pts[Math.min(pts.length - 1, i + 1)];
+        const tx = b2[0] - a2[0], ty = b2[1] - a2[1], tl = Math.hypot(tx, ty) || 1;
+        const u = i / (pts.length - 1);
+        const w = 0.05 + th * Math.min(1, u / 0.12, (1 - u) / 0.12);
+        top.push(`${(pt[0] - (ty / tl) * w).toFixed(2)},${(pt[1] + (tx / tl) * w).toFixed(2)}`);
+        bot.push(`${(pt[0] + (ty / tl) * w).toFixed(2)},${(pt[1] - (tx / tl) * w).toFixed(2)}`);
+      });
       return `<path d="M${top.join('L')}L${bot.reverse().join('L')}Z"/>`;
     };
-    const dash = (x0: number, y: number, th: number, len: number) => {
-      const top: string[] = [], bot: string[] = [];
-      for (let x = 0; x <= len; x += 0.3) {
-        const w = 0.04 + th * Math.pow(Math.sin((Math.PI * x) / len), 0.7);
-        top.push(`${(SWATCH_X + x0 + x).toFixed(2)},${(y - w).toFixed(2)}`);
-        bot.push(`${(SWATCH_X + x0 + x).toFixed(2)},${(y + w).toFixed(2)}`);
-      }
-      return `<path d="M${top.join('L')}L${bot.reverse().join('L')}Z"/>`;
-    };
-    row(`<g fill="#fff" stroke="${NOISE_BLUE}" stroke-width="0.25" stroke-linejoin="round">${strip(5.4, 0.55, 6, 0)}${dash(2, 3, 0.35, 3.6)}${dash(8.5, 3, 0.35, 3.6)}${dash(15, 3, 0.35, 3.6)}${dash(4, 1, 0.25, 2.4)}${dash(10.5, 1, 0.25, 2.4)}${dash(17, 1, 0.25, 2.4)}</g>`, 'NOISE SOURCE', 'busy roads and the railway');
+    row(`<g fill="#fff" stroke="${NOISE_BLUE}" stroke-width="0.2" stroke-linejoin="round">${wavy(1.2, 0.32, 0)}${wavy(3.2, 0.38, 1.1)}${wavy(5.2, 0.44, 2.2)}</g>`, 'NOISE SOURCE', 'busy roads and the railway');
   }
   {
     const rib = `M${SWATCH_X + 2},2.6 C${SWATCH_X + 7},0.8 ${SWATCH_X + 11},4.8 ${SWATCH_X + 16},2.4 L${SWATCH_X + 16},1 L${SWATCH_X + 21},3.2 L${SWATCH_X + 16},5.4 L${SWATCH_X + 16},4 C${SWATCH_X + 11},6.2 ${SWATCH_X + 7},2.6 ${SWATCH_X + 2},3.8 Z`;

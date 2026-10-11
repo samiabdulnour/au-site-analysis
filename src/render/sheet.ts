@@ -153,11 +153,11 @@ export function walkerGlyph(color: string, scale: number): string {
   return `<g transform="scale(${scale}) translate(-12.6,-13.5)"><path fill="${color}" d="M13.5 5.5c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zM9.8 8.9L7 23h2.1l1.8-8 2.1 2v6h2v-7.5l-2.1-2 .6-3C14.8 12 16.8 13 19 13v-2c-1.9 0-3.5-1-4.3-2.4l-1-1.6c-.4-.6-1-1-1.7-1-.3 0-.5.1-.8.1L6 8.3V13h2V9.6l1.8-.7"/></g>`;
 }
 
-/** Walker-in-circle marker sitting on an isochrone ring, all in ring color. */
-export function walkerMedallion(x: number, y: number, color: string): string {
+/** Walker marker sitting on an isochrone ring: a solid disc in the ring's colour with the walker knocked out in white, the size of the sheet's other round marks. */
+export function walkerMedallion(x: number, y: number, color: string, r = 3.4): string {
   return `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})">
-    <circle r="4.1" fill="#ffffff" stroke="${color}" stroke-width="1.1"/>
-    ${walkerGlyph(color, 0.30)}
+    <circle r="${r}" fill="${color}"/>
+    ${walkerGlyph('#ffffff', r * 0.074)}
   </g>`;
 }
 
@@ -688,9 +688,10 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     if (dottedIso) {
       layers.push(`<path d="${d}" fill="none" stroke="${st.color}" ${ISO_DOTS} opacity="0.85" stroke-linejoin="round"/>`);
     } else if (walkerIso) {
-      // The office style: a dashed line with walker medallions spaced along
-      // the ring's own length, staggered between the two contours.
-      layers.push(`<path d="${d}" fill="none" stroke="${st.color}" stroke-width="1.3" stroke-dasharray="3.6,2.2" stroke-linejoin="round"/>`);
+      // The office style: a continuous line, a little transparent, with
+      // walker medallions spaced along the ring's own length, staggered
+      // between the two contours.
+      layers.push(`<path d="${d}" fill="none" stroke="${st.color}" stroke-width="1.4" opacity="0.65" stroke-linejoin="round"/>`);
       const ring = [...iso.rings].sort((a, b) => b.length - a.length)[0];
       if (ring) {
         const pts: Pt[] = ring.map(([lon, lat]) => proj(lon, lat));
@@ -917,9 +918,15 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   const mapNumberSize = numberSize * (MARK_R / KR) * 0.92;
   // A solid disc with the number knocked out of it: one small dark mark a
   // reader can find, rather than a ring that competes with the roundels.
+  // Parks may take their own disc colour (discParkInk) apart from the
+  // institutions'.
+  const discFor = (n: number) => {
+    const pl = places.find((q) => q.n === n);
+    return (pl?.cat === 'openSpace' ? tpl().discParkInk : undefined) ?? tpl().discInk ?? tpl().streetInk;
+  };
   const numberMarker = (x: number, y: number, n: number, r = NR, size = mapNumberSize) =>
     `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})">
-      <circle r="${r}" fill="${tpl().discInk ?? tpl().streetInk}"/>
+      <circle r="${r}" fill="${discFor(n)}"/>
       <text text-anchor="middle" dy="${(size * 0.36).toFixed(2)}" font-size="${size.toFixed(2)}" font-weight="700" fill="#ffffff">${n}</text></g>`;
   for (const pl of places) reserve([pl.x, pl.y], [pl.x, pl.y], NR + 1);
   layers.push(places.map((pl) => numberMarker(pl.x, pl.y, pl.n)).join('\n'));
@@ -1252,8 +1259,8 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   const legendIso = (color: string) => dottedIso
     ? `<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${color}" ${ISO_DOTS} opacity="0.85"/>`
     : walkerIso
-    ? `<g><line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${color}" stroke-width="1.1" stroke-dasharray="3.6,2.2"/>
-       <g transform="translate(${symC},3.2)"><circle r="3.3" fill="#fff" stroke="${color}" stroke-width="0.9"/>${walkerGlyph(color, 0.24)}</g></g>`
+    ? `<g><line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${color}" stroke-width="1.2" opacity="0.65"/>
+       <g transform="translate(${symC},3.2)"><circle r="2.9" fill="${color}"/>${walkerGlyph('#fff', 0.215)}</g></g>`
     : lineIso
     ? `<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${color}" stroke-width="1.2"/>`
     : `<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${color}" stroke-width="${ISO_W}" opacity="${ISO_OPACITY}" stroke-linecap="round"/>`;

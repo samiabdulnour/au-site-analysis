@@ -85,6 +85,8 @@ export interface Template {
   tintScale?: number;
   /** The number discs' fill, where it differs from the street names' ink (Heron: white names, black discs). */
   discInk?: string;
+  /** The parks' number discs, where they differ from the institutions' (Heron: green parks, brown institutions). */
+  discParkInk?: string;
   /** The cadastre: a faint hairline in the road ink, or a white line over the aerial. */
   lots?: 'faint' | 'white';
   /** The aerial in its own colours, or in greyscale. */
@@ -241,8 +243,9 @@ export const TEMPLATES: Template[] = [
     categories: KINGFISHER_CATEGORIES },
   { id: 'heron', label: 'Heron', note: 'the original office sheet over the aerial, with Flamingo\'s stops, red dotted railway and numbered places',
     font: NARROW, streetFont: NARROW, textScale: 0.96,
-    // Arial Narrow throughout, white on the aerial; the place discs stay black.
-    ink: '#1c1c1c', streetInk: '#ffffff', discInk: '#1c1c1c', rule: '#8a8a8a',
+    // Arial Narrow throughout, white on the aerial; the institutions' discs
+    // brown, the parks' in the catchments' green.
+    ink: '#1c1c1c', streetInk: '#ffffff', discInk: '#8a5a3c', discParkInk: '#1f7a4d', rule: '#8a8a8a',
     site: '#cf4a2e', dimension: '#3c4c5a', wind: '#6d8a99', sun: '#f0e4c0', road: '#7d7d7d', water: '#cbdae2',
     transit: NAVY, rail: '#d43d33', walk5: '#1f7a4d', walk10: '#6aaf88', busRoute: '#7a8bb0', heritage: '#94836a',
     isochrone: 'walkers', roundel: 'solid', busLine: 'dashed', railLine: 'dotted',
