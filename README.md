@@ -354,8 +354,9 @@ flame-like rays — at the summer and winter sunrise and sunset, on a solid
 summer arc and a dashed winter arc, each arc marked with a dot and the time at
 every solar hour; the prevailing winds as three widening arrows blowing in
 toward the site, stopping short of a sun from the same quarter. Noise — the
-busy roads and the railway — is a continuous blue sound wave running beside
-the source on the site's side, white under the blue like the other marks. The
+busy roads and the railway — is drawn like the wind but in blue: a continuous
+white band in a blue pen beside the source on the site's side, swelling and
+pinching irregularly as it runs. The
 sun, wind and view lettering is set heavy. Contours are green; the cadastre
 and the neighbours' building outlines are white over the aerial.
 

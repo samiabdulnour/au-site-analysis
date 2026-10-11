@@ -309,9 +309,9 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
   }
 
   // ---- noise sources: along the main roads and the railway --------------------
-  // In blue, so noise reads apart from the coral climate marks: a continuous
-  // sound wave running beside each busy road and the railway on the site's
-  // side, white under the blue like the other marks.
+  // In blue, so noise reads apart from the coral climate marks, but drawn
+  // like the wind: a continuous white band in a blue pen beside each busy
+  // road and the railway, on the site's side.
   const noiseRing = sb.siteRing.map(([lon, lat2]) => proj(lon, lat2));
   const noiseCentre: Pt = (() => {
     const n = Math.max(1, noiseRing.length - 1);
@@ -326,31 +326,43 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     return inside;
   };
   const noiseMarks: string[] = [];
-  // One continuous sound wave beside the source, on the side facing the
-  // site: the road's line resampled every 0.8 mm, set off 9 mm toward the
-  // site and swung ±2.6 mm in a sine of 18 mm wavelength. It breaks where it
-  // would cross the site or leave the sheet.
-  const soundAlong = (pts: Pt[], _every: number) => {
-    const samples: { p: Pt; n: Pt }[] = [];
+  // One continuous band beside the source, on the side facing the site, drawn
+  // like the wind arrows: white inside a blue pen, its width swelling and
+  // pinching irregularly as it runs. The road's line is resampled every
+  // 0.8 mm and set off 10 mm toward the site; the band breaks where it would
+  // cross the site or leave the sheet.
+  const soundAlong = (pts: Pt[], seed: number) => {
+    const samples: { p: Pt; n: Pt; s: number }[] = [];
+    let run = 0;
     for (let i = 1; i < pts.length; i++) {
       const [ax, ay] = pts[i - 1], [bx, by] = pts[i];
       const len = Math.hypot(bx - ax, by - ay);
       if (!len) continue;
       const nx = -(by - ay) / len, ny = (bx - ax) / len;
-      for (let d = 0; d < len; d += 0.8) samples.push({ p: [ax + ((bx - ax) * d) / len, ay + ((by - ay) * d) / len], n: [nx, ny] });
+      for (let d = 0; d < len; d += 0.8) samples.push({ p: [ax + ((bx - ax) * d) / len, ay + ((by - ay) * d) / len], n: [nx, ny], s: run + d });
+      run += len;
     }
     if (samples.length < 2) return;
     const mid = samples[Math.floor(samples.length / 2)];
     const side = Math.sign((noiseCentre[0] - mid.p[0]) * mid.n[0] + (noiseCentre[1] - mid.p[1]) * mid.n[1]) || 1;
-    let d = '', open = false;
-    samples.forEach(({ p, n }, i) => {
-      const off = side * 9 + 2.6 * Math.sin((i * 0.8 * 2 * Math.PI) / 18);
-      const x = p[0] + n[0] * off, y = p[1] + n[1] * off;
-      if (!inMap([x, y]) || inSiteRing(x, y)) { open = false; return; }
-      d += `${open ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`;
-      open = true;
-    });
-    if (d) noiseMarks.push(d);
+    // Irregular but smooth: two incommensurate waves, so it swells and pinches
+    // without quite repeating.
+    const half = (t: number) => 3.4 + 2.0 * Math.sin(t / 9.5 + seed) + 0.9 * Math.sin(t / 4.6 + seed * 2.1);
+    const sway = (t: number) => 1.6 * Math.sin(t / 11 + seed * 1.3);
+    let left: string[] = [], right: string[] = [];
+    const flush = () => {
+      if (left.length > 3) noiseMarks.push(`M${left.join('L')}L${right.reverse().join('L')}Z`);
+      left = []; right = [];
+    };
+    for (const { p, n, s: t } of samples) {
+      const c = side * 11 + sway(t);
+      const cx = p[0] + n[0] * c, cy = p[1] + n[1] * c;
+      if (!inMap([cx, cy]) || inSiteRing(cx, cy)) { flush(); continue; }
+      const w = Math.max(0.8, half(t));
+      left.push(`${(cx + n[0] * w).toFixed(2)},${(cy + n[1] * w).toFixed(2)}`);
+      right.push(`${(cx - n[0] * w).toFixed(2)},${(cy - n[1] * w).toFixed(2)}`);
+    }
+    flush();
   };
   const mainRoads = sb.roads.filter((r) => r.hierarchy <= 4);
   const seenNoise = new Set<string>();
@@ -358,7 +370,7 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     if (seenNoise.has(r.name)) continue; // one run of marks per named road
     seenNoise.add(r.name);
     const pts = r.coords.map(([lon, lat2]) => proj(lon, lat2));
-    if (pts.length >= 2) soundAlong(pts, 120);
+    if (pts.length >= 2) soundAlong(pts, seenNoise.size * 1.7);
   }
   // Railways are noise sources too — the longest line stands in for the
   // whole track group.
@@ -372,11 +384,9 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
       if (len > bestLen) { bestLen = len; bestLine = line; }
     }
     const pts = bestLine.map(([lon, lat2]) => proj(lon, lat2));
-    if (pts.length >= 2) soundAlong(pts, 120);
+    if (pts.length >= 2) soundAlong(pts, 4.2);
   }
-  // White under the blue, as the other marks are white inside their pen.
-  layers.push(`<path d="${noiseMarks.join('')}" fill="none" stroke="#ffffff" stroke-width="2.6" stroke-opacity="0.85" stroke-linejoin="round" stroke-linecap="round"/>`);
-  layers.push(`<path d="${noiseMarks.join('')}" fill="none" stroke="${NOISE_BLUE}" stroke-width="1.1" stroke-linejoin="round" stroke-linecap="round"/>`);
+  layers.push(`<path d="${noiseMarks.join('')}" fill="#ffffff" fill-opacity="0.85" stroke="${NOISE_BLUE}" stroke-width="0.7" stroke-linejoin="round"/>`);
 
   // ---- one-way arrows -------------------------------------------------------
   for (const ow of sb.furniture.onewayRoads) {
@@ -997,9 +1007,13 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
   if (sb.busStops.length) row(`<g transform="translate(${mid},3.2)"><circle r="3.4" fill="#fff" stroke="#2f7fd6" stroke-width="0.8"/><text text-anchor="middle" dy="1.9" font-size="5.7" font-weight="700" fill="#2f7fd6">B</text></g>`, 'BUS STOPS');
   if (sb.furniture.onewayRoads.length) row(`<path d="M${SWATCH_X},3.2 L${SWATCH_X + SWATCH_W - 4},3.2 M${SWATCH_X + SWATCH_W - 7},1.4 L${SWATCH_X + SWATCH_W - 4},3.2 L${SWATCH_X + SWATCH_W - 7},5" fill="none" stroke="#8a8a8a" stroke-width="1.0"/>`, 'TRAFFIC DIRECTION');
   {
-    let wd = '';
-    for (let x = 0; x <= SWATCH_W - 2; x += 0.5) wd += `${x ? 'L' : 'M'}${(SWATCH_X + 1 + x).toFixed(2)},${(3.2 + 1.3 * Math.sin((x * 2 * Math.PI) / 5)).toFixed(2)}`;
-    row(`<path d="${wd}" fill="none" stroke="#fff" stroke-width="1.4"/><path d="${wd}" fill="none" stroke="${NOISE_BLUE}" stroke-width="0.55"/>`, 'NOISE SOURCE', 'busy roads and the railway');
+    const top: string[] = [], bot: string[] = [];
+    for (let x = 0; x <= SWATCH_W - 2; x += 0.5) {
+      const w = 0.9 + 0.5 * Math.sin(x / 2.1) + 0.3 * Math.sin(x / 0.9);
+      top.push(`${(SWATCH_X + 1 + x).toFixed(2)},${(3.2 - w).toFixed(2)}`);
+      bot.push(`${(SWATCH_X + 1 + x).toFixed(2)},${(3.2 + w).toFixed(2)}`);
+    }
+    row(`<path d="M${top.join('L')}L${bot.reverse().join('L')}Z" fill="#fff" stroke="${NOISE_BLUE}" stroke-width="0.35" stroke-linejoin="round"/>`, 'NOISE SOURCE', 'busy roads and the railway');
   }
   {
     const rib = `M${SWATCH_X + 2},2.6 C${SWATCH_X + 7},0.8 ${SWATCH_X + 11},4.8 ${SWATCH_X + 16},2.4 L${SWATCH_X + 16},1 L${SWATCH_X + 21},3.2 L${SWATCH_X + 16},5.4 L${SWATCH_X + 16},4 C${SWATCH_X + 11},6.2 ${SWATCH_X + 7},2.6 ${SWATCH_X + 2},3.8 Z`;
