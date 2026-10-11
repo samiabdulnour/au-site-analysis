@@ -356,8 +356,8 @@ summer arc and a dashed winter arc, each arc marked with a dot and the time at
 every solar hour; the prevailing winds as three widening arrows blowing in
 toward the site, stopping short of a sun from the same quarter. Noise — the
 busy roads and the railway — is drawn like the wind but in blue, white in a
-blue pen, beside the source on the site's side: three wavy lines side by side,
-each swelling toward its middle and tapering at its ends. A view's distance and "TERRAIN CLEAR" are set in two rows. The
+blue pen, beside the source on the site's side: one continuous band, swaying
+gently and swelling a little along its length. A view's distance and "TERRAIN CLEAR" are set in two rows. The
 sun, wind and view lettering is set heavy. Contours are green; the cadastre
 and the neighbours' building outlines are white over the aerial.
 

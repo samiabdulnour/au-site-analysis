@@ -367,9 +367,14 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
       .join('\n');
     // A greyscale aerial keeps the photograph's grain without its greens and
     // terracottas fighting the tints.
+    // Greyscale by a saturation blend (a neutral grey drawn over the photo in
+    // the 'saturation' mode, isolated to the photo), not an SVG filter: PDF
+    // carries blend modes natively, whereas Chromium rasterizes a filter over
+    // the whole aerial at print time, and under memory pressure that dropped
+    // every layer drawn after it.
     const grey = tpl().aerialTone === 'grey';
-    if (grey) layers.push(`<defs><filter id="aerialGrey" color-interpolation-filters="sRGB"><feColorMatrix type="saturate" values="0"/></filter></defs>`);
-    layers.push(`<g transform="rotate(${view.rotationDeg.toFixed(2)}, ${MAP_W / 2}, ${MAP_H / 2})"${grey ? ' filter="url(#aerialGrey)"' : ''}>${tiles}</g>`);
+    layers.push(`<g style="isolation:isolate"><g transform="rotate(${view.rotationDeg.toFixed(2)}, ${MAP_W / 2}, ${MAP_H / 2})">${tiles}</g>` +
+      (grey ? `<rect x="0" y="0" width="${MAP_W}" height="${MAP_H}" fill="#808080" style="mix-blend-mode:saturation"/>` : '') + `</g>`);
     layers.push(`<rect x="0" y="0" width="${MAP_W}" height="${MAP_H}" fill="#ffffff" opacity="${tpl().veil ?? 0.3}"/>`);
   }
   // Over the aerial the tints are thinned so the photograph shows through.
@@ -472,7 +477,7 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
       if (tpl().footprints === 'outline') {
         // Over the aerial the roofs are in the photograph: a heavy white
         // outline round each building, no fill.
-        layers.push(`<g fill="none" stroke="#ffffff" stroke-width="0.4" stroke-linejoin="round">${d}</g>`);
+        layers.push(`<g fill="none" stroke="#ffffff" stroke-width="0.25" stroke-linejoin="round">${d}</g>`);
       } else if (tpl().footprints === 'colour') {
         // The building in its family's strong colour on the family's pale
         // ground; a building on no zone is a quiet grey.
