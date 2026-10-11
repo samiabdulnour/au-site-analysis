@@ -89,6 +89,10 @@ export interface Template {
   discParkInk?: string;
   /** The cadastre: a faint hairline in the road ink, or a white line over the aerial. */
   lots?: 'faint' | 'white';
+  /** The white cadastre's line width, mm (default 0.45). */
+  lotWidth?: number;
+  /** A white contour round coloured footprints (footprints: 'colour'), mm; none when unset. */
+  footprintEdge?: number;
   /** The aerial in its own colours, or in greyscale. */
   aerialTone?: 'colour' | 'grey';
   /** The road network as white strips over the tints, or not drawn (the aerial shows the streets). */
@@ -239,7 +243,8 @@ export const TEMPLATES: Template[] = [
     site: F2.magenta, dimension: '#56616b', wind: '#87959d', sun: '#efe8d4', road: F2.grey, water: F2.water,
     transit: '#365696', rail: '#e8835e', walk5: '#1f8a5a', walk10: '#6fb88c', busRoute: '#5b8fd6', heritage: F2.purple,
     isochrone: 'dotted', roundel: 'solid', busLine: 'dotted', railLine: 'dotted',
-    ground: 'paper', footprints: 'colour',
+    // The cadastre as thin white lines over the pale grounds.
+    ground: 'paper', footprints: 'colour', lots: 'white', lotWidth: 0.2,
     categories: KINGFISHER_CATEGORIES },
   { id: 'heron', label: 'Heron', note: 'the original office sheet over the aerial, with Flamingo\'s stops, red dotted railway and numbered places',
     font: NARROW, streetFont: NARROW, textScale: 0.96,

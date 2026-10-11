@@ -481,7 +481,8 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
       } else if (tpl().footprints === 'colour') {
         // The building in its family's strong colour on the family's pale
         // ground; a building on no zone is a quiet grey.
-        layers.push(`<g fill="${c?.figure ?? '#d9d9d6'}" fill-rule="evenodd">${d}</g>`);
+        const edge = tpl().footprintEdge;
+        layers.push(`<g fill="${c?.figure ?? '#d9d9d6'}" fill-rule="evenodd"${edge ? ` stroke="#ffffff" stroke-width="${edge}" stroke-linejoin="round"` : ''}>${d}</g>`);
       } else {
         // White buildings with a hairline of the family ink, so they read as
         // figures on the tint and not as more of the white street.
@@ -494,7 +495,7 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   if (bundle.allLots.features.length) {
     const d = bundle.allLots.features.map((f) => pathFromRings(geomRings(f.geometry), proj)).join('');
     layers.push(tpl().lots === 'white'
-      ? `<path d="${d}" fill="none" stroke="#ffffff" stroke-width="0.45" opacity="0.95"/>`
+      ? `<path d="${d}" fill="none" stroke="#ffffff" stroke-width="${tpl().lotWidth ?? 0.45}" opacity="0.95"/>`
       : `<path d="${d}" fill="none" stroke="${tpl().road}" stroke-width="0.12" opacity="0.5"/>`);
   }
 
