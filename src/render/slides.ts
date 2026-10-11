@@ -538,7 +538,7 @@ export function locationSlide(b: SlidesBundle): Slide {
   for (const kmR of RING_KM) {
     const r = kmR * 1000 * mmPerM;
     parts.push(`<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="${r.toFixed(1)}" fill="none" stroke="${LOC.deep}" stroke-width="0.35" stroke-dasharray="2.2,1.3"/>`);
-    parts.push(t2Text(sx + r * 0.7071 + 1.2, sy + r * 0.7071 + 1.2, `${kmR} km`));
+    parts.push(t2Text(sx + r * 0.7071 + 2.2, sy + r * 0.7071 + 2.6, `${kmR} km`));
   }
   legend.push({ swatch: swatchLine(LOC.deep, 0.35, '2.2,1.3'), label: '2 and 5 km from the site' });
   const spacer = new LabelSpacer(p.wMm, p.hMm, 120);
@@ -555,10 +555,10 @@ export function locationSlide(b: SlidesBundle): Slide {
         : `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="1.3" fill="#ffffff" stroke="${LOC.deep}" stroke-width="0.5"/>`;
     centreMarks.push(mark);
     const w = t2Width(c.name);
-    const spots: [number, number, 'start' | 'end' | 'middle'][] = [[x + 2.4 + w / 2, y, 'start'], [x - 2.4 - w / 2, y, 'end'], [x, y - 3, 'middle'], [x, y + 3.4, 'middle']];
+    const spots: [number, number, 'start' | 'end' | 'middle'][] = [[x + 3.6 + w / 2, y, 'start'], [x - 3.6 - w / 2, y, 'end'], [x, y - 4, 'middle'], [x, y + 4.4, 'middle']];
     for (const [lx, ly, anchor] of spots) {
       if (!spacer.take(lx, ly, w, 2.8)) continue;
-      const tx = anchor === 'start' ? x + 2.4 : anchor === 'end' ? x - 2.4 : x;
+      const tx = anchor === 'start' ? x + 3.6 : anchor === 'end' ? x - 3.6 : x;
       centreMarks.push(t2Text(tx, ly, c.name, anchor));
       centreNamed.add(c.name.toUpperCase().replace(/ CBD$/, ''));
       break;
@@ -2366,11 +2366,22 @@ export function movementSlide(b: SlidesBundle): Slide {
   }
   if (mv.busStops.length) parts.push(`<g>${mv.busStops.map((s) => { const [x, y] = proj(s.lon, s.lat); return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="0.9" fill="${t.busRoute}" stroke="#ffffff" stroke-width="0.3"/>`; }).join('')}</g>`);
   // isochrone labels where each ring crosses the panel's centre line
-  const isoSpacer = new LabelSpacer(p.wMm, p.hMm, 20);
+  // Each ring's minutes go where the ring is clear: the station roundels, the site, the map's own label and
+  // scale bar are reserved first, then the ring's points are tried from the top round to the sides.
+  const isoSpacer = new LabelSpacer(p.wMm, p.hMm, 40);
+  for (const st of [...b.base.stations, ...b.wide.base.stations]) { const [x, y] = proj(st.lon, st.lat); isoSpacer.take(x, y, 6, 6); }
+  { const [cx0, cy0] = proj(mercatorToLonLat(p.center).lon, mercatorToLonLat(p.center).lat); isoSpacer.take(cx0, cy0, 10, 10); }
+  isoSpacer.take(30, 10, 56, 10);
   for (const iso of mv.isochrones) {
-    const pts = iso.rings[0]?.map(([lon, lat]) => proj(lon, lat)) ?? [];
-    const top = pts.filter((q) => q[0] > 3 && q[0] < p.wMm - 3 && q[1] > 3 && q[1] < p.hMm - 3).sort((q, r) => q[1] - r[1])[0];
-    if (top && isoSpacer.take(top[0], top[1] - 1.8, t2Width(`${iso.minutes} min`), 2.8)) parts.push(t2Text(top[0], top[1] - 1.8, `${iso.minutes} min`, 'middle'));
+    const text = `${iso.minutes} min`, w = t2Width(text);
+    const pts = (iso.rings[0]?.map(([lon, lat]) => proj(lon, lat)) ?? []).filter((q) => q[0] > 8 && q[0] < p.wMm - 8 && q[1] > 14 && q[1] < p.hMm - 16);
+    const order = [...pts].sort((q, r) => q[1] - r[1]);
+    const tries = [...order.slice(0, 12), ...[...pts].sort((q, r) => q[0] - r[0]).slice(0, 8), ...[...pts].sort((q, r) => r[0] - q[0]).slice(0, 8)];
+    for (const [x, y] of tries) {
+      if (!isoSpacer.take(x, y - 2.2, w + 2, 4)) continue;
+      parts.push(t2Text(x, y - 2.2, text, 'middle'));
+      break;
+    }
   }
   parts.push(siteMark(b.base, proj, 'outline'), panelFurniture(p, 'left'));
   const mapSvg = `<svg width="${p.wMm}mm" height="${p.hMm}mm" viewBox="0 0 ${p.wMm} ${p.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
@@ -2404,55 +2415,51 @@ export function movementSlide(b: SlidesBundle): Slide {
     : '';
 
   // The left page shows what the map cannot: reach as area, the stations as minutes, the network as length.
+  // One rhythm: a head, 4 mm, its graph, then 11 mm to the next block; graphs sit on the two text columns.
   const svgOf = (w: number, h: number, inner: string) => `<svg width="${w}mm" height="${h}mm" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg" style="display:block;overflow:visible" font-family="${t.font}">${inner}</svg>`;
+  const LINE = '#16244f';
 
-  // Reach on foot: one circle per catchment, its area true to the hectares, side by side on a baseline.
-  const isoA = [...f.isochrones].sort((x, y) => x.minutes - y.minutes);
+  // Reach on foot: the three catchments as concentric circles, each the area it covers, labelled down a column.
+  const isoA = [...f.isochrones].sort((x, y) => y.minutes - x.minutes);
   const maxHa = Math.max(1, ...isoA.map((i) => i.areaHa));
-  const RMAX = 20, CBASE = 42;
-  let cx = 0;
-  const circles = isoA.map((i) => {
-    const r = RMAX * Math.sqrt(i.areaHa / maxHa), x = cx + r;
-    cx += 2 * r + 8;
-    return `<circle cx="${x.toFixed(1)}" cy="${(CBASE - r).toFixed(1)}" r="${r.toFixed(1)}" fill="${MOVE.iso[i.minutes] ?? '#b7c1e3'}"/>` +
-      t2Text(x, CBASE + 3.6, `${i.minutes} min`, 'middle') + t3Text(x, CBASE + 9.2, `${fmtNum(i.areaHa)} ha`, 'middle');
-  }).join('');
-  const reachSvg = isoA.length ? svgOf(Math.max(1, cx - 8), CBASE + 11, circles) : '';
+  const R = 22, LABEL_X = 2 * R + 8;
+  const rings = isoA.map((i) => {
+    const r = R * Math.sqrt(i.areaHa / maxHa);
+    return { ...i, r, top: 2 * R - 2 * r };
+  });
+  // circles share a bottom tangent, like the atlas's; each label sits level with its circle's top, kept apart
+  let lastY = -Infinity;
+  const labelY = rings.map((rg) => { const y = Math.max(rg.top + 1, lastY + 5.6); lastY = y; return y; });
+  const reachParts = rings.map((rg) => `<circle cx="${R}" cy="${(2 * R - rg.r).toFixed(2)}" r="${rg.r.toFixed(2)}" fill="${MOVE.iso[rg.minutes] ?? '#b7c1e3'}"/>`).join('') +
+    rings.map((rg, i) => `<polyline points="${R},${rg.top.toFixed(2)} ${R + 2},${labelY[i].toFixed(2)} ${LABEL_X - 1.5},${labelY[i].toFixed(2)}" fill="none" stroke="${LINE}" stroke-width="0.2"/>` +
+      t2Text(LABEL_X, labelY[i], `${rg.minutes} min`) + t3Text(LABEL_X + 19, labelY[i] + 0.95, `${fmtNum(rg.areaHa)} ha`)).join('');
+  const reachSvg = rings.length ? svgOf(TEXT_W, 2 * R, reachParts) : '';
 
-  // Stations on foot: a minutes axis from the site, each station's roundel where its walk ends.
-  const SW = L_W;
+  // Stations on foot: one row each, the walk drawn as a bar from the site, the minutes at its end.
   const minsOf = (m: number) => m / 80;
-  const shown = f.stations.slice(0, 6);
-  const maxMin = Math.max(20, Math.ceil(Math.max(0, ...shown.map((st) => minsOf(st.distanceM))) / 5) * 5);
-  const X = (min: number) => 3 + (min / maxMin) * (SW - 30);
-  // each label takes the lowest row free at its station, so close stops stack instead of colliding
-  const rowEnds: number[] = [];
-  const rowOf = shown.map((st) => {
-    const x = X(minsOf(st.distanceM));
-    const w = t2Width(`${st.name.replace(/ Light Rail Stop$/, '')} · ${fmtNum(st.distanceM)} m`);
-    let r = rowEnds.findIndex((end) => end < x - 1.5);
-    if (r < 0) { r = rowEnds.length; rowEnds.push(0); }
-    rowEnds[r] = x + w;
-    return r;
-  });
-  const ROW = 5.4, AXIS = 6 + Math.max(1, rowEnds.length) * ROW;
+  const seen = new Set<string>();
+  const shown = f.stations.filter((st) => { const k2 = `${st.name.replace(/ (Slr|Light Rail) Stop$/i, '')}|${st.kind}`; if (seen.has(k2)) return false; seen.add(k2); return true; }).slice(0, 5);
+  const maxMin = Math.max(15, Math.ceil(Math.max(0, ...shown.map((st) => minsOf(st.distanceM))) / 5) * 5);
+  const NAME_W = 66, TRACK_X = NAME_W + 4, TRACK_W = L_W - TRACK_X - 16, ROW_H = 6.4, TOP = 5;
+  const MX = (min: number) => TRACK_X + (min / maxMin) * TRACK_W;
   const sParts: string[] = [];
-  for (const [m0, m1] of [[0, 5], [5, 10], [10, 15]] as const) sParts.push(`<rect x="${X(m0).toFixed(1)}" y="${AXIS - 1.4}" width="${(X(m1) - X(m0)).toFixed(1)}" height="2.8" fill="${MOVE.iso[m1]}"/>`);
-  sParts.push(`<line x1="${X(0)}" y1="${AXIS}" x2="${X(maxMin).toFixed(1)}" y2="${AXIS}" stroke="${MOVE.cycle}" stroke-width="0.25"/>`);
-  for (let m = 0; m <= maxMin; m += 5) sParts.push(`<line x1="${X(m).toFixed(1)}" y1="${AXIS + 1.4}" x2="${X(m).toFixed(1)}" y2="${AXIS + 2.6}" stroke="${MOVE.cycle}" stroke-width="0.25"/>` + t2Text(X(m), AXIS + 5.2, m === maxMin ? `${m} min` : String(m), 'middle'));
-  sParts.push(`<circle cx="${X(0)}" cy="${AXIS}" r="1.8" fill="${t.site}"/>`);
-  const sLabels: string[] = [];
-  shown.forEach((st, si) => {
-    const x = X(minsOf(st.distanceM));
-    const name = `${st.name.replace(/ Light Rail Stop$/, '')} · ${fmtNum(st.distanceM)} m`;
-    const ty = AXIS - 4.6 - rowOf[si] * ROW;
-    sParts.push(`<line x1="${x.toFixed(1)}" y1="${(AXIS - 2.4).toFixed(1)}" x2="${x.toFixed(1)}" y2="${(ty + 1.2).toFixed(1)}" stroke="${MOVE.cycle}" stroke-width="0.2"/>`);
-    sParts.push(`<circle cx="${x.toFixed(1)}" cy="${AXIS}" r="2.3" fill="#ffffff" stroke="${MOVE.cycle}" stroke-width="0.4"/>` + t2Text(x, AXIS, st.kind === 'light rail' ? 'L' : st.kind === 'metro' ? 'M' : 'T', 'middle'));
-    sLabels.push(t2Text(x - 0.4, ty, name));
+  for (let m = 0; m <= maxMin; m += 5) {
+    sParts.push(`<line x1="${MX(m).toFixed(1)}" y1="${TOP - 1}" x2="${MX(m).toFixed(1)}" y2="${(TOP + shown.length * ROW_H - 1.2).toFixed(1)}" stroke="${LINE}" stroke-width="0.12" stroke-dasharray="0.4,0.8"/>`);
+    sParts.push(t2Text(MX(m), TOP - 3, m === maxMin ? `${m} min` : String(m), 'middle'));
+  }
+  shown.forEach((st, i) => {
+    const y = TOP + 2 + i * ROW_H, mins = minsOf(st.distanceM);
+    const name = st.name.replace(/ (Slr|Light Rail) Stop$/i, '');
+    sParts.push(t3Text(0, y + 0.95, `${name} · ${st.kind}`));
+    sParts.push(`<line x1="${MX(0).toFixed(1)}" y1="${y}" x2="${MX(mins).toFixed(1)}" y2="${y}" stroke="${MOVE.iso[10]}" stroke-width="2.2"/>`);
+    sParts.push(`<circle cx="${MX(0).toFixed(1)}" cy="${y}" r="1.1" fill="${t.site}"/>`);
+    sParts.push(`<circle cx="${MX(mins).toFixed(1)}" cy="${y}" r="2.1" fill="#ffffff" stroke="${LINE}" stroke-width="0.35"/>` + t2Text(MX(mins), y, st.kind === 'light rail' ? 'L' : st.kind === 'metro' ? 'M' : 'T', 'middle'));
+    sParts.push(t3Text(MX(mins) + 3.6, y + 0.95, `${Math.round(mins)} min`));
   });
-  const stationsSvg = shown.length ? svgOf(SW, AXIS + 8, sParts.join('') + sLabels.join('')) : '';
+  const stationsH = TOP + shown.length * ROW_H;
+  const stationsSvg = shown.length ? svgOf(L_W, stationsH, sParts.join('')) : '';
 
-  // The network in the window: each kind of path drawn in its map symbol, its length true to the kilometres.
+  // The network in the window: each kind of path in its map symbol, its length true to the kilometres.
   const net: [string, number, string][] = [
     ['Separated cycleways', f.cycle.separatedM, `stroke="${MOVE.cycle}" stroke-width="0.6"`],
     ['On-road cycle lanes', f.cycle.laneM, `stroke="${MOVE.cycle}" stroke-width="0.4" stroke-dasharray="1.4,0.8"`],
@@ -2460,34 +2467,35 @@ export function movementSlide(b: SlidesBundle): Slide {
     ['Footways, paths and steps', f.foot.lengthM, `stroke="${MOVE.foot}" stroke-width="0.35" stroke-dasharray="0.5,0.5"`],
   ];
   const maxNet = Math.max(1, ...net.map(([, m]) => m));
-  const NX = 52, NW = SW - NX - 22;
-  const netSvg = f.cycle.osm ? svgOf(SW, net.length * 7, net.map(([name, m, style], i) => {
-    const y = i * 7 + 3.5, len = (m / maxNet) * NW;
-    return t3Text(0, y + 0.9, name) + `<line x1="${NX}" y1="${y}" x2="${(NX + Math.max(0.6, len)).toFixed(1)}" y2="${y}" ${style}/>` + t3Text(NX + len + 2.5, y + 0.9, `${(m / 1000).toFixed(1)} km`);
+  const NNET = 6.4;
+  const netSvg = f.cycle.osm ? svgOf(L_W, net.length * NNET, net.map(([name, m, style], i) => {
+    const y = i * NNET + 2, len = (m / maxNet) * TRACK_W;
+    return t3Text(0, y + 0.95, name) + `<line x1="${TRACK_X}" y1="${y}" x2="${(TRACK_X + Math.max(0.6, len)).toFixed(1)}" y2="${y}" ${style}/>` + t3Text(TRACK_X + len + 3, y + 0.95, `${(m / 1000).toFixed(1)} km`);
   }).join('')) : '';
 
   const busTiles = [
     { v: f.bus.total ? String(f.bus.within400) : '—', l: 'bus stops within 400 m' },
-    { v: f.bus.total ? String(f.bus.within800) : '—', l: 'bus stops within 800 m' },
-    { v: f.bus.routes ? String(f.bus.routes) : '—', l: 'bus routes through the window' },
+    { v: f.bus.total ? String(f.bus.within800) : '—', l: 'within 800 m' },
+    { v: f.bus.routes ? String(f.bus.routes) : '—', l: 'routes through the window' },
   ].map((tl) => `<div class="tile"><div class="tv">${esc(tl.v)}</div><div class="tl">${esc(tl.l)}</div></div>`).join('');
 
-  const y1 = 46, y2 = y1 + 64, y3 = y2 + AXIS + 18, y4 = y3 + 40;
+  const GAP = 11, HEAD = 6;
+  const y1 = 38, y2 = y1 + HEAD + 2 * R + GAP, y3 = y2 + HEAD + stationsH + GAP, y4 = y3 + HEAD + net.length * NNET + GAP;
   const sources = `Sources: NSW Spatial Services roads, rail and stations; walking isochrones from Valhalla on OpenStreetMap; bus stops from ${f.bus.source === 'tfnsw' ? 'Transport for NSW' : 'OpenStreetMap'}; bus routes, cycleways and footways from OpenStreetMap contributors (ODbL); active street frontages from the ePlanning development-control layers; walking minutes are straight-line distance at 80 m a minute. Retrieved ${b.generatedAt.slice(0, 10)}.`;
   const figureHtml = `
     <div class="abs" style="left:${FOLD}mm;top:0">${mapSvg}</div>
     <div class="abs maplabel" style="left:${FOLD + 8}mm;top:8mm">Movement · 1:${fmtNum(p.scale).replace(',', ' ')}</div>
     <div class="abs t2" style="left:${L_X}mm;top:${y1}mm">Reach on foot</div>
-    <div class="abs" style="left:${L_X}mm;top:${y1 + 6}mm">${reachSvg}</div>
+    <div class="abs" style="left:${L_X}mm;top:${y1 + HEAD}mm">${reachSvg}</div>
     <div class="abs t2" style="left:${AUX_X}mm;top:${y1}mm">Bus</div>
-    <div class="abs tiles col" style="left:${AUX_X}mm;top:${y1 + 6}mm;width:${AUX_W}mm">${busTiles}</div>
-    <div class="abs t2" style="left:${L_X}mm;top:${y2}mm">Stations on foot · minutes at 80 m a minute</div>
-    <div class="abs" style="left:${L_X}mm;top:${y2 + 4}mm">${stationsSvg}</div>
+    <div class="abs tiles col" style="left:${AUX_X}mm;top:${y1 + HEAD}mm;width:${AUX_W}mm;gap:2.2mm">${busTiles}</div>
+    <div class="abs t2" style="left:${L_X}mm;top:${y2}mm">Stations on foot</div>
+    <div class="abs" style="left:${L_X}mm;top:${y2 + HEAD}mm">${stationsSvg}</div>
     <div class="abs t2" style="left:${L_X}mm;top:${y3}mm">The network in the window</div>
-    <div class="abs" style="left:${L_X}mm;top:${y3 + 6}mm">${netSvg}</div>
+    <div class="abs" style="left:${L_X}mm;top:${y3 + HEAD}mm">${netSvg}</div>
     <div class="abs" style="left:${L_X}mm;top:${y4}mm;width:${L_W}mm">
       <div class="legend" style="column-count:2;column-gap:8mm">${legend}</div>
-      <div class="anote" style="margin-top:8mm">Narrative — for the author: how people will arrive and leave, which frontage is the address and which the service side, where the active edge belongs, and what the walking catchments say about the mix.</div>
+      <div class="anote" style="margin-top:9mm">Narrative — for the author: how people will arrive and leave, which frontage is the address and which the service side, where the active edge belongs, and what the walking catchments say about the mix.</div>
     </div>`;
   void stationTable; void tiles; void textHtml;
   return { id: '09_movement', title: 'Movement', subtitle: sub, textHtml: '', figureHtml, bleed: true, sources };
@@ -5486,7 +5494,7 @@ export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; 
   const atlasPage = (s: Slide, i: number) => `
 <section class="slide atlas" id="${esc(s.id)}">
   <div class="abs ahead" style="left:${L_X}mm;top:13mm;width:${L_W}mm">${esc(s.title)}</div>
-  <div class="abs aband" style="left:${L_X}mm;top:22mm;width:${L_W}mm">${esc(s.subtitle).split(' · ').join(' <span class="bar">|</span> ')}</div>
+  <div class="abs aband" style="left:${L_X}mm;top:21.5mm;width:${L_W}mm">${esc(s.subtitle).split(' · ').join(' <span class="bar">|</span> ')}</div>
   ${s.textHtml ? `<div class="abs atext" style="left:${L_X}mm;top:${s.textY ?? 56}mm;width:${L_W}mm">${s.textHtml}</div>` : ''}
   ${s.figureHtml}
   ${s.sources ? `<div class="abs asrc" style="left:${L_X}mm;bottom:22mm;width:${L_W}mm">${esc(s.sources)}</div>` : ''}
@@ -5615,12 +5623,12 @@ export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; 
   .slide.atlas .aband, .slide.atlas .afoot, .slide.atlas .afolio, .slide.atlas .t2, .slide.atlas .maplabel, .slide.atlas table th, .slide.atlas .s { font-size: 2.7mm; font-weight: 400; letter-spacing: 0.05em; text-transform: uppercase; line-height: 1.3; }
   .slide.atlas .lg span, .slide.atlas .tl, .slide.atlas .asrc, .slide.atlas table td { font-size: 2.7mm; font-weight: 400; letter-spacing: 0; text-transform: none; line-height: 1.3; }
   .slide.atlas .atext, .slide.atlas .atext p, .slide.atlas .anote, .slide.atlas .b { font-size: 3.4mm; font-weight: 400; letter-spacing: 0; text-transform: none; line-height: 1.32; }
-  .slide.atlas .aband { border-top: 0.2mm solid var(--hair); background: var(--yellow); padding: 3mm 7mm 3.4mm; }
+  .slide.atlas .aband { padding: 0; }
   .slide.atlas .bar { padding: 0 0.6mm; }
   .slide.atlas .atext p { margin-bottom: 4.2mm; hyphens: auto; }
-  .slide.atlas .anote { border-top: 0.2mm solid var(--hair); background: var(--yellow); padding: 5mm 7mm 7mm; margin-top: 14mm; }
+  .slide.atlas .anote { background: var(--yellow); padding: 5mm 7mm 7mm; margin-top: 14mm; }
   .slide.atlas .asrc { color: #8d8d8d; }
-  .slide.atlas .afoot { border-top: 0.2mm solid var(--hair); padding-top: 2.4mm; }
+  .slide.atlas .afoot { padding-top: 0; }
   .slide.atlas .afolio { background: #ffffff; padding: 0.6mm 1.6mm; }
   .slide.atlas .maplabel { background: #ffffff; }
   .slide.atlas .tile { border-top: none; padding-top: 0; }
