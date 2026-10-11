@@ -265,19 +265,22 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
       // Only what the telescope found: how far, and that the ground is clear.
       // Set along the telescope's line, under it, upright.
       const dist = v.distanceM >= 950 ? `${(v.distanceM / 1000).toFixed(1)} KM` : `${Math.round(v.distanceM / 10) * 10} M`;
-      const label = v.kind === 'park' ? 'ADJOINING' : `${dist} · TERRAIN CLEAR`;
+      const rows = v.kind === 'park' ? ['ADJOINING'] : [dist, 'TERRAIN CLEAR'];
       const upright = Math.abs(deg) <= 90;
       const tdeg = upright ? deg : deg + 180;
-      // Under the telescope: along its line, centred on it, a line below the
-      // tube on the page (the side the text's own "down" points to).
-      const tw = label.length * LETTER * 0.5;
+      // Under the telescope: along its line, centred on it, two short rows
+      // below the tube on the page, so the label stays off the boundary.
+      const lh = LETTER * 1.12;
+      const tw = Math.max(...rows.map((r) => r.length)) * LETTER * 0.5;
       const down = 3.3 * TS + 2 + LETTER * 0.75;
       const ar = (tdeg * Math.PI) / 180;
       const dnx = -Math.sin(ar), dny = Math.cos(ar);   // the text's down, on the page
       const lx = sx + dnx * down, ly = sy + dny * down;
-      for (let d = -tw / 2; d <= tw / 2; d += 6) placer.reserve(lx + Math.cos(ar) * d, ly + Math.sin(ar) * d, 8, 8);
+      for (let d = -tw / 2; d <= tw / 2; d += 6)
+        for (let k2 = 0; k2 < rows.length; k2++) placer.reserve(lx + Math.cos(ar) * d + dnx * k2 * lh, ly + Math.sin(ar) * d + dny * k2 * lh, 8, 8);
       for (let d = -9.6; d <= 8.6; d += 4) placer.reserve(sx + ux * d * TS, sy + uy * d * TS, 12, 12);
-      viewText.push(`<text transform="translate(${lx.toFixed(1)},${ly.toFixed(1)}) rotate(${tdeg.toFixed(1)})" x="0" y="${(LETTER * 0.36).toFixed(2)}" text-anchor="middle" font-size="${LETTER}" font-weight="700" fill="${RED()}" stroke="${RED()}" stroke-width="0.22">${esc(label)}</text>`);
+      viewText.push(`<g transform="translate(${lx.toFixed(1)},${ly.toFixed(1)}) rotate(${tdeg.toFixed(1)})">${rows.map((r, i) =>
+        `<text x="0" y="${(LETTER * 0.36 + i * lh).toFixed(2)}" text-anchor="middle" font-size="${LETTER}" font-weight="700" fill="${RED()}" stroke="${RED()}" stroke-width="0.22">${esc(r)}</text>`).join('')}</g>`);
     }
   }
 
@@ -326,9 +329,9 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     return inside;
   };
   const noiseMarks: string[] = [];
-  // A sound wave beside the source, on the side facing the site, like a
-  // recording of traffic going by: the road's line resampled every 0.25 mm
-  // and set off 13 mm toward the site, carrying the band described below.
+  // The sound arcs drawn out along the source, on the site's side, white
+  // inside a blue pen like the wind. They break where they would cross the
+  // site or leave the sheet.
   const soundAlong = (pts: Pt[], seed: number) => {
     const samples: { p: Pt; n: Pt; s: number }[] = [];
     let run = 0;
@@ -337,42 +340,44 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
       const len = Math.hypot(bx - ax, by - ay);
       if (!len) continue;
       const nx = -(by - ay) / len, ny = (bx - ax) / len;
-      for (let d = 0; d < len; d += 0.25) samples.push({ p: [ax + ((bx - ax) * d) / len, ay + ((by - ay) * d) / len], n: [nx, ny], s: run + d });
+      for (let d = 0; d < len; d += 0.6) samples.push({ p: [ax + ((bx - ax) * d) / len, ay + ((by - ay) * d) / len], n: [nx, ny], s: run + d });
       run += len;
     }
     if (samples.length < 2) return;
     const mid = samples[Math.floor(samples.length / 2)];
     const side = Math.sign((noiseCentre[0] - mid.p[0]) * mid.n[0] + (noiseCentre[1] - mid.p[1]) * mid.n[1]) || 1;
-    // Bursts every 80 mm or so, each with a little texture of its own.
-    // Loud bursts every 70 mm or so, near-silence between them.
-    const env = (t: number) => {
-      const b0 = Math.max(0, Math.sin((Math.PI * t) / 70 + seed));
-      const burst = b0 * b0 * (0.8 + 0.2 * Math.sin(t / 23 + seed * 2.3));
-      return 0.25 + 6.5 * burst;
-    };
-    // A band beside the source, white inside a blue pen like the wind, whose
-    // two edges are a sound wave mirrored: a low ripple that swells into
-    // bursts and falls back, the oscillation's period drifting a little so
-    // it is not mechanical. It breaks where it would cross the site or
-    // leave the sheet.
-    let left: string[] = [], right: string[] = [];
-    const flush = () => {
-      if (left.length > 3) noiseMarks.push(`M${left.join('L')}L${right.reverse().join('L')}Z`);
-      left = []; right = [];
-    };
-    let phase = 0, prevT = samples[0].s;
-    for (const { p, n, s: t } of samples) {
-      phase += ((t - prevT) * Math.PI) / (2.6 * (1 + 0.15 * Math.sin(t / 13 + seed)));
-      prevT = t;
-      const c = side * 13 + 1.2 * Math.sin(t / 17 + seed * 1.3);
-      const cx = p[0] + n[0] * c, cy = p[1] + n[1] * c;
-      if (!inMap([cx, cy]) || inSiteRing(cx, cy)) { flush(); continue; }
-      // Rounded lobes that pinch between them, the lobes tall in a burst.
-      const w = 0.45 + env(t) * Math.pow(Math.abs(Math.sin(phase)), 0.8);
-      left.push(`${(cx + n[0] * w).toFixed(2)},${(cy + n[1] * w).toFixed(2)}`);
-      right.push(`${(cx - n[0] * w).toFixed(2)},${(cy - n[1] * w).toFixed(2)}`);
-    }
-    flush();
+    // The rope: one continuous strip nearest the source, fattest in each
+    // arc and pinched between them. Beyond it, two rows of shorter, thinner
+    // dashes, each dash an arc on its own, the sound fading as it spreads.
+    // [offset from the source, half-thickness, arc length, dash on, period]
+    const strips: [number, number, number, number, number][] = [
+      [6, 1.6, 15, 0, 0],
+      [13.5, 1.05, 0, 8, 15],
+      [20, 0.7, 0, 5, 15],
+    ];
+    strips.forEach(([off, th, arcLen, on, period], k) => {
+      let left: string[] = [], right: string[] = [];
+      const flush = () => {
+        if (left.length > 3) noiseMarks.push(`<path d="M${left.join('L')}L${right.reverse().join('L')}Z"/>`);
+        left = []; right = [];
+      };
+      for (const { p, n, s: t } of samples) {
+        const c = side * (off + 1.2 * Math.sin(t / 23 + seed));
+        const cx = p[0] + n[0] * c, cy = p[1] + n[1] * c;
+        if (!inMap([cx, cy]) || inSiteRing(cx, cy)) { flush(); continue; }
+        let w: number;
+        if (!on) {
+          w = 0.18 + th * Math.pow(Math.abs(Math.sin((Math.PI * t) / arcLen + seed)), 0.7);
+        } else {
+          const u = (((t + k * 4.5 + seed * 3) % period) + period) % period;
+          if (u > on) { flush(); continue; }
+          w = 0.05 + th * Math.pow(Math.sin((Math.PI * u) / on), 0.7);
+        }
+        left.push(`${(cx + n[0] * w).toFixed(2)},${(cy + n[1] * w).toFixed(2)}`);
+        right.push(`${(cx - n[0] * w).toFixed(2)},${(cy - n[1] * w).toFixed(2)}`);
+      }
+      flush();
+    });
   };
   const mainRoads = sb.roads.filter((r) => r.hierarchy <= 4);
   const seenNoise = new Set<string>();
@@ -396,7 +401,7 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     const pts = bestLine.map(([lon, lat2]) => proj(lon, lat2));
     if (pts.length >= 2) soundAlong(pts, 4.2);
   }
-  layers.push(`<path d="${noiseMarks.join('')}" fill="#ffffff" stroke="${NOISE_BLUE}" stroke-width="0.6" stroke-linejoin="round"/>`);
+  layers.push(`<g fill="#ffffff" fill-opacity="0.9" stroke="${NOISE_BLUE}" stroke-width="0.6" stroke-linejoin="round">${noiseMarks.join('')}</g>`);
 
   // ---- one-way arrows -------------------------------------------------------
   for (const ow of sb.furniture.onewayRoads) {
@@ -1017,12 +1022,25 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
   if (sb.busStops.length) row(`<g transform="translate(${mid},3.2)"><circle r="3.4" fill="#fff" stroke="#2f7fd6" stroke-width="0.8"/><text text-anchor="middle" dy="1.9" font-size="5.7" font-weight="700" fill="#2f7fd6">B</text></g>`, 'BUS STOPS');
   if (sb.furniture.onewayRoads.length) row(`<path d="M${SWATCH_X},3.2 L${SWATCH_X + SWATCH_W - 4},3.2 M${SWATCH_X + SWATCH_W - 7},1.4 L${SWATCH_X + SWATCH_W - 4},3.2 L${SWATCH_X + SWATCH_W - 7},5" fill="none" stroke="#8a8a8a" stroke-width="1.0"/>`, 'TRAFFIC DIRECTION');
   {
-    let wd = '';
-    for (let x = 0; x <= SWATCH_W - 2; x += 0.1) {
-      const b = Math.max(0, Math.sin((Math.PI * x) / 10.5));
-      wd += `${x ? 'L' : 'M'}${(SWATCH_X + 1 + x).toFixed(2)},${(3.2 + (0.25 + 2.4 * b * b) * Math.sin((2 * Math.PI * x) / 1.2)).toFixed(2)}`;
-    }
-    row(`<path d="${wd}" fill="none" stroke="${NOISE_BLUE}" stroke-width="0.6" stroke-linejoin="round"/><path d="${wd}" fill="none" stroke="#fff" stroke-width="0.2" stroke-linejoin="round"/>`, 'NOISE SOURCE', 'busy roads and the railway');
+    const strip = (y: number, th: number, len: number, ph: number) => {
+      const top: string[] = [], bot: string[] = [];
+      for (let x = 0; x <= SWATCH_W - 2; x += 0.4) {
+        const w = 0.08 + th * Math.pow(Math.abs(Math.sin((Math.PI * x) / len + ph)), 0.7);
+        top.push(`${(SWATCH_X + 1 + x).toFixed(2)},${(y - w).toFixed(2)}`);
+        bot.push(`${(SWATCH_X + 1 + x).toFixed(2)},${(y + w).toFixed(2)}`);
+      }
+      return `<path d="M${top.join('L')}L${bot.reverse().join('L')}Z"/>`;
+    };
+    const dash = (x0: number, y: number, th: number, len: number) => {
+      const top: string[] = [], bot: string[] = [];
+      for (let x = 0; x <= len; x += 0.3) {
+        const w = 0.04 + th * Math.pow(Math.sin((Math.PI * x) / len), 0.7);
+        top.push(`${(SWATCH_X + x0 + x).toFixed(2)},${(y - w).toFixed(2)}`);
+        bot.push(`${(SWATCH_X + x0 + x).toFixed(2)},${(y + w).toFixed(2)}`);
+      }
+      return `<path d="M${top.join('L')}L${bot.reverse().join('L')}Z"/>`;
+    };
+    row(`<g fill="#fff" stroke="${NOISE_BLUE}" stroke-width="0.25" stroke-linejoin="round">${strip(5.4, 0.55, 6, 0)}${dash(2, 3, 0.35, 3.6)}${dash(8.5, 3, 0.35, 3.6)}${dash(15, 3, 0.35, 3.6)}${dash(4, 1, 0.25, 2.4)}${dash(10.5, 1, 0.25, 2.4)}${dash(17, 1, 0.25, 2.4)}</g>`, 'NOISE SOURCE', 'busy roads and the railway');
   }
   {
     const rib = `M${SWATCH_X + 2},2.6 C${SWATCH_X + 7},0.8 ${SWATCH_X + 11},4.8 ${SWATCH_X + 16},2.4 L${SWATCH_X + 16},1 L${SWATCH_X + 21},3.2 L${SWATCH_X + 16},5.4 L${SWATCH_X + 16},4 C${SWATCH_X + 11},6.2 ${SWATCH_X + 7},2.6 ${SWATCH_X + 2},3.8 Z`;
