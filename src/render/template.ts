@@ -147,8 +147,8 @@ const GROTESK = "'DejaVu Sans', Verdana, 'Liberation Sans', sans-serif";
 // (each family's building colour and the pale ground it stands on, as the
 // image prints them). Every zone is a pale ground with its buildings in the
 // family's strong colour. The residential zones take the warm side of the
-// palette — cyan, pink and peach for R2, R3 and R4, yellow with orange
-// buildings for the mixed use — and green is kept for green space alone:
+// palette — cyan for R2, pink for R3, a yellow ground with orange buildings
+// for R4, peach for the mixed use — and green is kept for green space alone:
 // open space is the deep mint with black dots. The centres, commercial and
 // retail are the blue family (told apart by texture), the institutions
 // lavender, industry grey on stone, water the bright cyan, heritage a purple
@@ -172,13 +172,13 @@ const KINGFISHER_CATEGORIES: Category[] = [
   { id: 'medical',        label: 'MEDICAL',                                  fill: F2.violetGround, opacity: 1, stroke: F2.violet, figure: F2.violet },
   { id: 'education',      label: 'EDUCATION',                                fill: F2.violetGround, opacity: 1, texture: 'lines', textureColor: F2.violet, figure: F2.violet },
   { id: 'childCare',      label: 'CHILD CARE / AGED CARE',                   fill: F2.violetGround, opacity: 1, texture: 'dots', textureColor: F2.violet, figure: F2.violet },
-  { id: 'mixedUse',       label: 'MIXED USE CLUSTER RESIDENTIAL/COMMERCIAL', fill: F2.yellowGround, opacity: 1, figure: F2.orange },
+  { id: 'mixedUse',       label: 'MIXED USE CLUSTER RESIDENTIAL/COMMERCIAL', fill: F2.coralGround, opacity: 1, figure: F2.coral },
   { id: 'retail',         label: 'ACTIVE RETAIL',                            fill: F2.blueGround, opacity: 1, texture: 'cross', textureColor: F2.blue, figure: F2.blue },
   { id: 'openSpace',      label: 'OPEN SPACE',                               fill: F2.mint, opacity: 1, texture: 'dots', textureColor: F2.dots, figure: F2.mint },
   { id: 'community',      label: 'COMMUNITY HUB',                            fill: F2.violetGround, opacity: 1, texture: 'cross', textureColor: F2.violet, figure: F2.violet },
   { id: 'r2',             label: 'R2 LOW DENSITY RESIDENTIAL',               fill: F2.cyanGround, opacity: 1, figure: F2.cyan },
   { id: 'r3',             label: 'R3 MEDIUM DENSITY RESIDENTIAL',            fill: F2.pinkGround, opacity: 1, figure: F2.pink },
-  { id: 'r4',             label: 'R4 HIGH DENSITY RESIDENTIAL',              fill: F2.coralGround, opacity: 1, figure: F2.coral },
+  { id: 'r4',             label: 'R4 HIGH DENSITY RESIDENTIAL',              fill: F2.yellowGround, opacity: 1, figure: F2.orange },
   { id: 'localCentre',    label: 'LOCAL CENTRE',                             fill: F2.blueGround, opacity: 1, figure: F2.blue },
   { id: 'commercial',     label: 'COMMERCIAL CENTRE',                        fill: F2.blueGround, opacity: 1, texture: 'lines', textureColor: F2.blue, figure: F2.blue },
   { id: 'industrial',     label: 'GENERAL INDUSTRIAL',                       fill: F2.stoneGround, opacity: 1, figure: F2.grey },
