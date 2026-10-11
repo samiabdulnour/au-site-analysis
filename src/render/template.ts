@@ -83,6 +83,8 @@ export interface Template {
   /** Over the aerial: the white veil's opacity (default 0.3) and how far the tints are thinned (default 0.55). */
   veil?: number;
   tintScale?: number;
+  /** The aerial in its own colours, or in greyscale. */
+  aerialTone?: 'colour' | 'grey';
   /** The road network as white strips over the tints, or not drawn (the aerial shows the streets). */
   streets?: 'white' | 'none';
   /** Street names plain along the road, or a through street's name in a white double-headed arrow band (lanes stay plain). */
@@ -239,7 +241,7 @@ export const TEMPLATES: Template[] = [
     site: '#cf4a2e', dimension: '#3c4c5a', wind: '#6d8a99', sun: '#f0e4c0', road: '#7d7d7d', water: '#cbdae2',
     transit: NAVY, rail: '#d43d33', walk5: '#1f7a4d', walk10: '#6aaf88', busRoute: '#7a8bb0', heritage: '#94836a',
     isochrone: 'walkers', roundel: 'solid', busLine: 'dashed', railLine: 'dotted',
-    ground: 'aerial', veil: 0.36, tintScale: 1, footprints: 'none', streets: 'none', streetLabels: 'plain',
+    ground: 'aerial', aerialTone: 'grey', veil: 0.36, tintScale: 1, footprints: 'none', streets: 'none', streetLabels: 'plain',
     categories: HERON_CATEGORIES },
 ];
 

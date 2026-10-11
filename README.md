@@ -494,8 +494,8 @@ saturation so the sheet sits a little quieter than the image. Streets, numbered
 places and the dotted lines are Flamingo's, but the street names and the number
 discs are a light leaf green, in the hue of the reference's fields.
 
-**Heron** (`heron`) is the office sheet the restyle began from: the aerial
-under a light white veil with the tints at full strength over it (the palette
+**Heron** (`heron`) is the office sheet the restyle began from: the aerial,
+in greyscale (`aerialTone: 'grey'`), under a light white veil with the tints at full strength over it (the palette
 sampled from that sheet's legend — tan mixed use and centres, peach
 residential, mint open space, the institutions in outlined slate blues), no
 building footprints and no white street strips, every street named in plain

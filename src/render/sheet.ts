@@ -365,7 +365,11 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
       .map((t) => `<image href="data/${t.file}" x="${(ox + t.left * extW).toFixed(2)}" y="${(oy + t.top * extH).toFixed(2)}"
           width="${(t.width * extW).toFixed(2)}" height="${(t.height * extH).toFixed(2)}" preserveAspectRatio="none"/>`)
       .join('\n');
-    layers.push(`<g transform="rotate(${view.rotationDeg.toFixed(2)}, ${MAP_W / 2}, ${MAP_H / 2})">${tiles}</g>`);
+    // A greyscale aerial keeps the photograph's grain without its greens and
+    // terracottas fighting the tints.
+    const grey = tpl().aerialTone === 'grey';
+    if (grey) layers.push(`<defs><filter id="aerialGrey" color-interpolation-filters="sRGB"><feColorMatrix type="saturate" values="0"/></filter></defs>`);
+    layers.push(`<g transform="rotate(${view.rotationDeg.toFixed(2)}, ${MAP_W / 2}, ${MAP_H / 2})"${grey ? ' filter="url(#aerialGrey)"' : ''}>${tiles}</g>`);
     layers.push(`<rect x="0" y="0" width="${MAP_W}" height="${MAP_H}" fill="#ffffff" opacity="${tpl().veil ?? 0.3}"/>`);
   }
   // Over the aerial the tints are thinned so the photograph shows through.
