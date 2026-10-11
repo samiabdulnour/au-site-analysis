@@ -146,16 +146,18 @@ const GROTESK = "'DejaVu Sans', Verdana, 'Liberation Sans', sans-serif";
 // Kingfisher's palette, sampled from the masterplan reference it follows
 // (each family's building colour and the pale ground it stands on, as the
 // image prints them). Every zone is a pale ground with its buildings in the
-// family's strong colour: cyan, mint and blue for the three residential
-// tiers, yellow and orange for the centres, pink for the commercial centres,
-// coral for retail, lavender for the institutions, grey on stone for
-// industry; open space is the deep mint with black dots, water the bright
-// cyan, heritage a purple cross-hatch.
+// family's strong colour. The residential zones take the warm side of the
+// palette — cyan, pink and peach for R2, R3 and R4, yellow with orange
+// buildings for the mixed use — and green is kept for green space alone:
+// open space is the deep mint with black dots. The centres, commercial and
+// retail are the blue family (told apart by texture), the institutions
+// lavender, industry grey on stone, water the bright cyan, heritage a purple
+// cross-hatch.
 const F2 = {
   pink: '#fdcae9', pinkGround: '#faecf4',
   coral: '#fcbbab', coralGround: '#f8eae6',
   orange: '#fabd90', orangeGround: '#fbe6d6', yellowGround: '#faf5c8',
-  mint: '#8dceb1', mintGround: '#e3f3ee',
+  mint: '#8dceb1',
   cyan: '#a4dbe2', cyanGround: '#e5f7fa',
   blue: '#7490bf', blueGround: '#e6eef8',
   violet: '#b4aede', violetGround: '#e8e6f5',
@@ -168,15 +170,15 @@ const KINGFISHER_CATEGORIES: Category[] = [
   { id: 'medical',        label: 'MEDICAL',                                  fill: F2.violetGround, opacity: 1, stroke: F2.violet, figure: F2.violet },
   { id: 'education',      label: 'EDUCATION',                                fill: F2.violetGround, opacity: 1, texture: 'lines', textureColor: F2.violet, figure: F2.violet },
   { id: 'childCare',      label: 'CHILD CARE / AGED CARE',                   fill: F2.violetGround, opacity: 1, texture: 'dots', textureColor: F2.violet, figure: F2.violet },
-  { id: 'mixedUse',       label: 'MIXED USE CLUSTER RESIDENTIAL/COMMERCIAL', fill: F2.yellowGround, opacity: 1, texture: 'dots', textureColor: F2.orange, figure: F2.orange },
-  { id: 'retail',         label: 'ACTIVE RETAIL',                            fill: F2.coralGround, opacity: 1, figure: F2.coral },
+  { id: 'mixedUse',       label: 'MIXED USE CLUSTER RESIDENTIAL/COMMERCIAL', fill: F2.yellowGround, opacity: 1, figure: F2.orange },
+  { id: 'retail',         label: 'ACTIVE RETAIL',                            fill: F2.blueGround, opacity: 1, texture: 'cross', textureColor: F2.blue, figure: F2.blue },
   { id: 'openSpace',      label: 'OPEN SPACE',                               fill: F2.mint, opacity: 1, texture: 'dots', textureColor: F2.dots, figure: F2.mint },
   { id: 'community',      label: 'COMMUNITY HUB',                            fill: F2.violetGround, opacity: 1, texture: 'cross', textureColor: F2.violet, figure: F2.violet },
   { id: 'r2',             label: 'R2 LOW DENSITY RESIDENTIAL',               fill: F2.cyanGround, opacity: 1, figure: F2.cyan },
-  { id: 'r3',             label: 'R3 MEDIUM DENSITY RESIDENTIAL',            fill: F2.mintGround, opacity: 1, figure: F2.mint },
-  { id: 'r4',             label: 'R4 HIGH DENSITY RESIDENTIAL',              fill: F2.blueGround, opacity: 1, figure: F2.blue },
-  { id: 'localCentre',    label: 'LOCAL CENTRE',                             fill: F2.yellowGround, opacity: 1, figure: F2.orange },
-  { id: 'commercial',     label: 'COMMERCIAL CENTRE',                        fill: F2.pinkGround, opacity: 1, figure: F2.pink },
+  { id: 'r3',             label: 'R3 MEDIUM DENSITY RESIDENTIAL',            fill: F2.pinkGround, opacity: 1, figure: F2.pink },
+  { id: 'r4',             label: 'R4 HIGH DENSITY RESIDENTIAL',              fill: F2.coralGround, opacity: 1, figure: F2.coral },
+  { id: 'localCentre',    label: 'LOCAL CENTRE',                             fill: F2.blueGround, opacity: 1, figure: F2.blue },
+  { id: 'commercial',     label: 'COMMERCIAL CENTRE',                        fill: F2.blueGround, opacity: 1, texture: 'lines', textureColor: F2.blue, figure: F2.blue },
   { id: 'industrial',     label: 'GENERAL INDUSTRIAL',                       fill: F2.stoneGround, opacity: 1, figure: F2.grey },
   { id: 'infrastructure', label: 'INFRASTRUCTURE FACILITY',                  fill: F2.stoneGround, opacity: 0.6, stroke: F2.grey, figure: F2.grey },
   { id: 'water',          label: 'WATERWAY',                                 fill: F2.water, opacity: 1 },

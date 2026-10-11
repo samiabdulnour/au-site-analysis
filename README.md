@@ -482,11 +482,12 @@ along them, twice per ring, on clear straight stretches.
 
 **Kingfisher** (`kingfisher`) is Flamingo in the palette of a masterplan
 reference, sampled from it: every zone a pale ground with its buildings filled
-in the family's strong colour (`footprints: 'colour'`) — cyan, mint and blue for
-the three residential tiers, yellow ground with orange buildings for the
-centres and mixed use, pink for the commercial centres, coral for retail,
-lavender for the institutions, grey on stone for industry — open space the deep
-mint with black dots, water the bright cyan, the site and heritage in magenta
+in the family's strong colour (`footprints: 'colour'`). The residential zones
+take the warm colours — cyan for R2, pink for R3, peach for R4, yellow ground
+with orange buildings for mixed use — and green is kept for green space alone,
+open space the deep mint with black dots. The local and commercial centres and
+retail are the blue family, told apart by texture, the institutions lavender,
+industry grey on stone; water the bright cyan, the site and heritage in magenta
 and purple, the railway orange. The legend swatch shows a few buildings on
 their ground. Streets, labels, numbered places and the dotted lines are
 Flamingo's.
