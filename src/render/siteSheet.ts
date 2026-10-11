@@ -32,6 +32,21 @@ const NEIGHBOUR_TEXT = MAP_TEXT;
 const NAME_GREEN = '#4a8571';
 // Contours in green, apart from the warm site pen and the zones' hatch.
 const CONTOUR = '#3f9a5c';
+// The site itself — its boundary, corners, dimensions and levels — in a deep
+// red, apart from the coral pen of the sun, wind and views.
+const SITE_RED = '#b3261e';
+// Noise in blue, so it reads apart from the coral climate marks.
+const NOISE_BLUE = '#3f6fc2';
+/** A loudspeaker facing +x with three crescent sound waves, white in the outline pen, about 26 mm across. */
+const NOISE_MARK = (() => {
+  const crescent = (r: number, t: number, span: number) => {
+    const a0 = (-span * Math.PI) / 180, a1 = (span * Math.PI) / 180;
+    const p = (rr: number, a: number) => `${(rr * Math.cos(a)).toFixed(2)},${(rr * Math.sin(a)).toFixed(2)}`;
+    return `<path d="M${p(r, a0)} A${r},${r} 0 0 1 ${p(r, a1)} A${t / 2},${t / 2} 0 0 1 ${p(r + t, a1)} A${r + t},${r + t} 0 0 0 ${p(r + t, a0)} A${t / 2},${t / 2} 0 0 1 ${p(r, a0)} Z"/>`;
+  };
+  return `<path d="M-9,-2.6 L-5,-2.6 L0,-6.4 L0,6.4 L-5,2.6 L-9,2.6 Z"/>` +
+    crescent(3.4, 1.6, 40) + crescent(7, 1.8, 42) + crescent(10.8, 2, 44);
+})();
 
 // Read at call time, not at module load: setTemplate() runs per job, long
 // after this module is first imported, so a captured constant would freeze to
@@ -234,50 +249,42 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
 
   // ---- potential views ------------------------------------------------------
   // Drawn in the sun and wind's hand: for each sight line the ground does not
-  // block, a small telescope on its tripod at the site edge, aimed along the
-  // bearing, with a dashed sight line running on toward the view and the
-  // view's name in the same lettering. It goes under the linework; its label
-  // is pushed last so nothing covers it.
+  // block, a telescope just outside the site edge, aimed along the bearing,
+  // with the view's name set beside it in the same lettering. It goes under
+  // the linework; its label is pushed last so nothing covers it.
   const viewText: string[] = [];
   {
     const centreLL = mercatorToLonLat({ x: view.cx, y: view.cy });
-    const SIGHT = 44;                          // dashed sight line on paper, mm
     const LETTER = MAP_TEXT;
+    const TS = 2.8;                            // the telescope's size on paper
     for (const v of sb.views ?? []) {
       if (!v.cone) continue;
       const apex = exitPoint(sb.siteRing, centreLL, v.bearingDeg);
       const [ax, ay] = proj(apex.lon, apex.lat);
       const ang = ((v.bearingDeg + view.rotationDeg) * Math.PI) / 180;
       const ux = Math.sin(ang), uy = -Math.cos(ang);
-      // The telescope stands a little outside the boundary: tripod feet under
-      // it on the page, the tube tilted up toward the view.
-      const sx = ax + ux * 14, sy = ay + uy * 14;
+      // The tube runs from x = -9.6 (eyepiece) to 8.6 (objective) in its own
+      // units; its eyepiece end sits a few millimetres off the boundary.
+      const sx = ax + ux * (9.6 * TS + 4), sy = ay + uy * (9.6 * TS + 4);
       const deg = (Math.atan2(uy, ux) * 180) / Math.PI;
-      const TS = 1.8;   // the telescope's size on paper
-      const tube = `<g transform="translate(${sx.toFixed(1)},${sy.toFixed(1)}) rotate(${deg.toFixed(1)}) scale(${TS})" stroke-width="${(0.7 / TS).toFixed(2)}">
-        <path d="M-7,-1.7 L6,-2.6 L6,2.6 L-7,1.7 Z" fill="#ffffff" stroke="${RED()}" stroke-linejoin="round"/>
-        <rect x="6" y="-3.3" width="2.6" height="6.6" rx="0.6" fill="#ffffff" stroke="${RED()}"/>
-        <rect x="-9.6" y="-1.2" width="2.6" height="2.4" rx="0.4" fill="#ffffff" stroke="${RED()}"/>
-        <line x1="-2" y1="-2.1" x2="-2" y2="2.1" stroke="${RED()}"/></g>`;
-      const legs = `<g stroke="${RED()}" stroke-width="0.7" stroke-linecap="round" fill="none">
-        <path d="M${sx.toFixed(1)},${(sy + 2.5).toFixed(1)} L${(sx - 7.5).toFixed(1)},${(sy + 17).toFixed(1)}"/>
-        <path d="M${sx.toFixed(1)},${(sy + 2.5).toFixed(1)} L${(sx + 7.5).toFixed(1)},${(sy + 17).toFixed(1)}"/>
-        <path d="M${sx.toFixed(1)},${(sy + 2.5).toFixed(1)} L${sx.toFixed(1)},${(sy + 18).toFixed(1)}"/></g>`;
-      const s0x = sx + ux * 20, s0y = sy + uy * 20;
-      const s1x = sx + ux * (20 + SIGHT), s1y = sy + uy * (20 + SIGHT);
-      layers.push(`<line x1="${s0x.toFixed(1)}" y1="${s0y.toFixed(1)}" x2="${s1x.toFixed(1)}" y2="${s1y.toFixed(1)}" stroke="${RED()}" stroke-width="0.7" stroke-dasharray="2.6,1.8" stroke-linecap="round"/>`);
-      layers.push(legs + tube);
+      layers.push(`<g transform="translate(${sx.toFixed(1)},${sy.toFixed(1)}) rotate(${deg.toFixed(1)}) scale(${TS})" stroke="${RED()}" stroke-width="${(0.7 / TS).toFixed(3)}" stroke-linejoin="round" fill="#ffffff">
+        <path d="M-7,-1.7 L6,-2.6 L6,2.6 L-7,1.7 Z"/>
+        <rect x="6" y="-3.3" width="2.6" height="6.6" rx="0.6"/>
+        <rect x="-9.6" y="-1.2" width="2.6" height="2.4" rx="0.4"/>
+        <line x1="-2" y1="-2.1" x2="-2" y2="2.1"/>
+        <line x1="2" y1="-2.4" x2="2" y2="2.4"/></g>`);
       const lines = wrapLabel(v.kind === 'park' ? `${v.label} OUTLOOK` : `${v.label} VIEW`, 16);
       const dist = v.distanceM >= 950 ? `${(v.distanceM / 1000).toFixed(1)} KM` : `${Math.round(v.distanceM / 10) * 10} M`;
       const sub = v.kind === 'park' ? 'ADJOINING' : `${dist} · TERRAIN CLEAR`;
       const lh = LETTER * 1.12;
-      // The telescope and its sight line claim their ground first, so the
-      // name settles past the line's end and not over it.
-      placer.reserve(sx, sy + 5, 36, 30);
-      for (let d = 22; d <= 20 + SIGHT; d += 10) placer.reserve(sx + ux * d, sy + uy * d, 8, 8);
-      const lx = sx + ux * (20 + SIGHT + 16), ly = sy + uy * (20 + SIGHT + 16);
+      // The telescope claims its ground, then the name settles right beside
+      // its objective end.
       const w = Math.max(...lines.map((l) => l.length), sub.length) * LETTER * 0.5 + 4;
-      const spot = placer.place(lx, ly, w, (lines.length + 1) * lh + 2, 64) ?? [lx, ly];
+      const h = (lines.length + 1) * lh + 2;
+      const reach = 8.6 * TS + 3 + (Math.abs(ux) * w + Math.abs(uy) * h) / 2;
+      const lx = sx + ux * reach, ly = sy + uy * reach;
+      const spot = placer.place(lx, ly, w, h, 40) ?? [lx, ly];
+      for (let d = -9.6; d <= 8.6; d += 4) placer.reserve(sx + ux * d * TS, sy + uy * d * TS, 12, 12);
       const [tx, ty] = spot;
       const y0 = ty - (lines.length * lh) / 2 + LETTER * 0.36;
       viewText.push(lines.map((t, i) => `<text x="${tx.toFixed(1)}" y="${(y0 + i * lh).toFixed(1)}" text-anchor="middle" font-size="${LETTER}" font-weight="700" fill="${RED()}">${esc(t)}</text>`).join(''));
@@ -288,7 +295,7 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
   // ---- cadastre + contours -------------------------------------------------
   if (sb.allLots.features.length) {
     const d = sb.allLots.features.map((f) => pathFromRings(geomRings(f.geometry), proj)).join('');
-    layers.push(`<path d="${d}" fill="none" stroke="#ffffff" stroke-width="0.45" opacity="0.9"/>`);
+    layers.push(`<path d="${d}" fill="none" stroke="#ffffff" stroke-width="0.7" opacity="0.9"/>`);
   }
   // (2) Terrain: contour lines with elevation tags (RL m AHD) along them.
   if (sb.contours.length) {
@@ -312,9 +319,11 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     }
   }
 
-  // ---- noise sources: sound waves along the main roads and the railway ------
-  // In the sun and wind's pen: every so often along a busy road or the
-  // railway, a source dot and three widening arcs spreading toward the site.
+  // ---- noise sources: along the main roads and the railway --------------------
+  // In the sun and wind's manner — white marks in an outline pen — but blue,
+  // so noise reads apart from the climate marks: every so often along a busy
+  // road or the railway, a loudspeaker with three crescent waves facing the
+  // site.
   const noiseRing = sb.siteRing.map(([lon, lat2]) => proj(lon, lat2));
   const noiseCentre: Pt = (() => {
     const n = Math.max(1, noiseRing.length - 1);
@@ -341,11 +350,7 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
         d += every;
         if (!inMap([x, y]) || inSiteRing(x, y)) continue;
         const toSite = Math.atan2(noiseCentre[1] - y, noiseCentre[0] - x) * 180 / Math.PI;
-        const arcs = [4, 7.5, 11].map((r) => {
-          const a0 = ((toSite - 34) * Math.PI) / 180, a1 = ((toSite + 34) * Math.PI) / 180;
-          return `<path d="M${(r * Math.cos(a0)).toFixed(2)},${(r * Math.sin(a0)).toFixed(2)} A${r},${r} 0 0 1 ${(r * Math.cos(a1)).toFixed(2)},${(r * Math.sin(a1)).toFixed(2)}"/>`;
-        }).join('');
-        noiseMarks.push(`<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})"><circle r="1.5" fill="${RED()}" stroke="none"/>${arcs}</g>`);
+        noiseMarks.push(`<g transform="translate(${x.toFixed(1)},${y.toFixed(1)}) rotate(${toSite.toFixed(1)})">${NOISE_MARK}</g>`);
       }
       carry = d - len;
     }
@@ -356,7 +361,7 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     if (seenNoise.has(r.name)) continue; // one run of marks per named road
     seenNoise.add(r.name);
     const pts = r.coords.map(([lon, lat2]) => proj(lon, lat2));
-    if (pts.length >= 2) soundAlong(pts, 90);
+    if (pts.length >= 2) soundAlong(pts, 120);
   }
   // Railways are noise sources too — the longest line stands in for the
   // whole track group.
@@ -370,9 +375,9 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
       if (len > bestLen) { bestLen = len; bestLine = line; }
     }
     const pts = bestLine.map(([lon, lat2]) => proj(lon, lat2));
-    if (pts.length >= 2) soundAlong(pts, 90);
+    if (pts.length >= 2) soundAlong(pts, 120);
   }
-  layers.push(`<g fill="none" stroke="${RED()}" stroke-width="0.7" stroke-linecap="round">${noiseMarks.join('')}</g>`);
+  layers.push(`<g fill="#ffffff" fill-opacity="0.9" stroke="${NOISE_BLUE}" stroke-width="0.7" stroke-linejoin="round">${noiseMarks.join('')}</g>`);
 
   // ---- one-way arrows -------------------------------------------------------
   for (const ow of sb.furniture.onewayRoads) {
@@ -634,7 +639,7 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
       });
       if (c.lines[1]) storeyLabels++;
     }
-    layers.push(`<g fill="none" stroke="#1c1c1c" stroke-width="0.25" stroke-opacity="0.45" stroke-linejoin="round">${outlines.join('')}</g>`);
+    layers.push(`<g fill="none" stroke="#ffffff" stroke-width="0.55" stroke-opacity="0.95" stroke-linejoin="round">${outlines.join('')}</g>`);
     layers.push(texts.join(''));
   }
 
@@ -718,8 +723,8 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
 
   // boundary path (red dash-dot) + corner circles
   const dSite = 'M' + sitePx.map((p) => `${p[0].toFixed(2)},${p[1].toFixed(2)}`).join('L') + 'Z';
-  layers.push(`<path d="${dSite}" fill="none" stroke="${RED()}" stroke-width="1.15" stroke-dasharray="7,2,1.6,2"/>`);
-  layers.push(corners.map((i) => `<circle cx="${ringPx[i][0].toFixed(1)}" cy="${ringPx[i][1].toFixed(1)}" r="1.7" fill="none" stroke="${RED()}" stroke-width="0.55"/>`).join(''));
+  layers.push(`<path d="${dSite}" fill="none" stroke="${SITE_RED}" stroke-width="1.15" stroke-dasharray="7,2,1.6,2"/>`);
+  layers.push(corners.map((i) => `<circle cx="${ringPx[i][0].toFixed(1)}" cy="${ringPx[i][1].toFixed(1)}" r="1.7" fill="none" stroke="${SITE_RED}" stroke-width="0.55"/>`).join(''));
 
   // edge dimensions between consecutive kept corners
   const groundLen = (i0: number, i1: number): number => {
@@ -758,7 +763,7 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     const spot = placer.place(lx, lyy, txt.length * 3.0, 6.4, 16, ang);
     if (!spot) continue;
     layers.push(`<text transform="translate(${spot[0].toFixed(1)},${spot[1].toFixed(1)}) rotate(${ang.toFixed(1)})"
-      text-anchor="middle" font-size="${MAP_TEXT}" font-weight="700" fill="${RED()}">${txt}</text>`);
+      text-anchor="middle" font-size="${MAP_TEXT}" font-weight="700" fill="${SITE_RED}">${txt}</text>`);
   }
 
   // Corner levels: interpolated across the slope between the contours that
@@ -784,7 +789,7 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     const txt = `RL ${rl.toFixed(2)}`;
     const spot = placer.place(x + (ox / on) * 10, y + (oy / on) * 10 - 3.5, txt.length * 3.1, 6.4, 18);
     if (!spot) continue;
-    layers.push(plainText(spot[0], spot[1], [txt], MAP_TEXT, RED()));
+    layers.push(plainText(spot[0], spot[1], [txt], MAP_TEXT, SITE_RED));
   }
 
   // fall arrow: highest -> lowest corner
@@ -950,10 +955,10 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     ly += 10;
   };
   const mid = SWATCH_X + SWATCH_W / 2;
-  row(`<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="none" stroke="${RED()}" stroke-width="0.9" stroke-dasharray="4.5,1.5,1,1.5"/>`, 'SITE');
+  row(`<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="none" stroke="${SITE_RED}" stroke-width="0.9" stroke-dasharray="4.5,1.5,1,1.5"/>`, 'SITE');
   row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${BLUE()}" stroke-width="0.8" stroke-dasharray="4,1.6"/><path d="M${SWATCH_X + SWATCH_W - 4},1.2 L${SWATCH_X + SWATCH_W},3.2 L${SWATCH_X + SWATCH_W - 4},5.2" fill="none" stroke="${BLUE()}" stroke-width="0.8"/>`, 'FALL OF TERRAIN');
-  row(`<text x="${SWATCH_X}" y="5.4" font-size="3.2" font-weight="700" fill="${RED()}">SB 30.48</text>`, 'BOUNDARY DIMENSION (m)');
-  row(`<text x="${SWATCH_X}" y="5.4" font-size="3.2" font-weight="700" fill="${RED()}">RL 24.5</text>`, 'SURFACE LEVEL (AHD)');
+  row(`<text x="${SWATCH_X}" y="5.4" font-size="3.2" font-weight="700" fill="${SITE_RED}">SB 30.48</text>`, 'BOUNDARY DIMENSION (m)');
+  row(`<text x="${SWATCH_X}" y="5.4" font-size="3.2" font-weight="700" fill="${SITE_RED}">RL 24.5</text>`, 'SURFACE LEVEL (AHD)');
   if (sb.contours.length) row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${CONTOUR}" stroke-width="0.6"/><text x="${SWATCH_X + 1}" y="2.2" font-size="2.2" font-weight="700" fill="${CONTOUR}">RL 20</text>`, `CONTOURS AT ${sb.contourIntervalM ?? 2} m AHD`, sb.contourSource);
   row(`<g><text x="${SWATCH_X + SWATCH_W / 2}" y="2.8" text-anchor="middle" font-size="2.6" font-weight="700" fill="${NAME_GREEN}">26</text>${storeyLabels ? `<text x="${SWATCH_X + SWATCH_W / 2}" y="5.8" text-anchor="middle" font-size="2.6" font-weight="700" fill="${NAME_GREEN}" opacity="0.8">3ST</text>` : ''}</g>`,
     storeyLabels ? 'NEIGHBOUR: NUMBER, STOREYS' : 'NEIGHBOUR: STREET NUMBER',
@@ -985,14 +990,14 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     row(`<circle cx="${mid}" cy="3.2" r="2.8" fill="#7dbb57" fill-opacity="0.45" stroke="#4e8c33" stroke-width="0.4"/><circle cx="${mid}" cy="3.2" r="0.5" fill="#2f5e20"/>`, 'TREES, CANOPY TO SCALE', sub);
   }
   if ((sb.views ?? []).some((v) => v.cone)) {
-    row(`<g transform="translate(${SWATCH_X + 5},2.4) rotate(-12) scale(0.42)"><path d="M-7,-1.7 L6,-2.6 L6,2.6 L-7,1.7 Z" fill="#fff" stroke="${RED()}" stroke-width="1.2"/><rect x="6" y="-3.3" width="2.6" height="6.6" fill="#fff" stroke="${RED()}" stroke-width="1.2"/></g><g stroke="${RED()}" stroke-width="0.35"><path d="M${SWATCH_X + 5},3 L${SWATCH_X + 3.4},6.2 M${SWATCH_X + 5},3 L${SWATCH_X + 6.6},6.2"/><line x1="${SWATCH_X + 9.5}" y1="1.6" x2="${SWATCH_X + 21}" y2="0.2" stroke-dasharray="1.2,0.8"/></g>`, 'POTENTIAL VIEW', `terrain only, from ${Math.round(sb.eyeAboveM ?? 8)} m up; no buildings`);
+    row(`<g transform="translate(${SWATCH_X + 11},3.2) rotate(-14) scale(0.62)" fill="#fff" stroke="${RED()}" stroke-width="0.7" stroke-linejoin="round"><path d="M-7,-1.7 L6,-2.6 L6,2.6 L-7,1.7 Z"/><rect x="6" y="-3.3" width="2.6" height="6.6"/><rect x="-9.6" y="-1.2" width="2.6" height="2.4"/></g>`, 'POTENTIAL VIEW', `terrain only, from ${Math.round(sb.eyeAboveM ?? 8)} m up; no buildings`);
   }
   if (sb.furniture.powerPoles.length) row(`<g transform="translate(${mid},3.2)"><line x1="-2.4" y1="0" x2="2.4" y2="0" stroke="#333" stroke-width="0.4"/><circle r="1.2" fill="none" stroke="#333" stroke-width="0.45"/></g>`, 'POWER POLE');
   if (sb.furniture.streetLamps.length) row(`<circle cx="${mid}" cy="3.2" r="1.4" fill="#f0c020" stroke="#a8860b" stroke-width="0.3"/>`, 'LIGHT POLE');
   if (sb.furniture.hydrants.length) row(`<circle cx="${mid}" cy="3.2" r="1.8" fill="#1f78d1"/>`, 'HYDRANT');
   if (sb.busStops.length) row(`<g transform="translate(${mid},3.2)"><circle r="3.4" fill="#fff" stroke="#2f7fd6" stroke-width="0.8"/><text text-anchor="middle" dy="1.9" font-size="5.7" font-weight="700" fill="#2f7fd6">B</text></g>`, 'BUS STOPS');
   if (sb.furniture.onewayRoads.length) row(`<path d="M${SWATCH_X},3.2 L${SWATCH_X + SWATCH_W - 4},3.2 M${SWATCH_X + SWATCH_W - 7},1.4 L${SWATCH_X + SWATCH_W - 4},3.2 L${SWATCH_X + SWATCH_W - 7},5" fill="none" stroke="#8a8a8a" stroke-width="1.0"/>`, 'TRAFFIC DIRECTION');
-  row(`<g transform="translate(${SWATCH_X + 6},3.2)" fill="none" stroke="${RED()}" stroke-width="0.4" stroke-linecap="round"><circle r="0.7" fill="${RED()}" stroke="none"/>${[1.6, 3, 4.4].map((r) => `<path d="M${(r * Math.cos(-0.6)).toFixed(2)},${(r * Math.sin(-0.6)).toFixed(2)} A${r},${r} 0 0 1 ${(r * Math.cos(0.6)).toFixed(2)},${(r * Math.sin(0.6)).toFixed(2)}"/>`).join('')}</g>`, 'NOISE SOURCE', 'busy roads and the railway');
+  row(`<g transform="translate(${SWATCH_X + 9},3.2) scale(0.24)" fill="#fff" stroke="${NOISE_BLUE}" stroke-width="2" stroke-linejoin="round">${NOISE_MARK}</g>`, 'NOISE SOURCE', 'busy roads and the railway');
   {
     const rib = `M${SWATCH_X + 2},2.6 C${SWATCH_X + 7},0.8 ${SWATCH_X + 11},4.8 ${SWATCH_X + 16},2.4 L${SWATCH_X + 16},1 L${SWATCH_X + 21},3.2 L${SWATCH_X + 16},5.4 L${SWATCH_X + 16},4 C${SWATCH_X + 11},6.2 ${SWATCH_X + 7},2.6 ${SWATCH_X + 2},3.8 Z`;
     void rib;
