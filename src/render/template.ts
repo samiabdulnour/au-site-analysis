@@ -244,8 +244,8 @@ export const TEMPLATES: Template[] = [
   { id: 'heron', label: 'Heron', note: 'the original office sheet over the aerial, with Flamingo\'s stops, red dotted railway and numbered places',
     font: NARROW, streetFont: NARROW, textScale: 0.96,
     // Arial Narrow throughout, white on the aerial; the institutions' discs
-    // brown, the parks' in the catchments' green.
-    ink: '#1c1c1c', streetInk: '#ffffff', discInk: '#8a5a3c', discParkInk: '#1f7a4d', rule: '#8a8a8a',
+    // a reddish brown, the parks' in the catchments' green.
+    ink: '#1c1c1c', streetInk: '#ffffff', discInk: '#9c4a36', discParkInk: '#1f7a4d', rule: '#8a8a8a',
     site: '#cf4a2e', dimension: '#3c4c5a', wind: '#6d8a99', sun: '#f0e4c0', road: '#7d7d7d', water: '#cbdae2',
     transit: NAVY, rail: '#d43d33', walk5: '#1f7a4d', walk10: '#6aaf88', busRoute: '#7a8bb0', heritage: '#94836a',
     isochrone: 'walkers', roundel: 'solid', busLine: 'dashed', railLine: 'dotted',

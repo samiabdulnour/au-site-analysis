@@ -532,7 +532,7 @@ discs are a light leaf green, in the hue of the reference's fields.
 **Heron** (`heron`) is the office sheet the restyle began from: the aerial,
 in greyscale (`aerialTone: 'grey'`), with the lots and every building as heavy
 white lines over it (`lots: 'white'`, `footprints: 'outline'`) and all its
-text in white Arial Narrow (institutions' number discs brown, parks' green, `discInk` and `discParkInk`), under a light
+text in white Arial Narrow (institutions' number discs a reddish brown, parks' green, `discInk` and `discParkInk`), under a light
 white veil with the tints at full strength over it (the palette
 sampled from that sheet's legend — tan mixed use and centres, peach
 residential, mint open space, the institutions in outlined slate blues), no
