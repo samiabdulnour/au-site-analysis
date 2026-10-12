@@ -35,7 +35,7 @@ body {
   font-size: 17px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
-  padding: 2.6rem 1.5rem 3rem;
+  padding: 1.8rem 1.5rem 3rem;
 }
 
 .page { max-width: 760px; margin: 0 auto; }
@@ -47,18 +47,18 @@ a { color: inherit; }
   /* About twice the body text, as on the reference — it was three times,
      which made the masthead the loudest thing on a page of small print. */
   font-size: 2.3rem; font-weight: 400; line-height: 1.05;
-  letter-spacing: -.01em; margin-bottom: 4.7rem;
+  letter-spacing: -.01em; margin-bottom: 2rem;
 }
-.lead { margin-bottom: 1.9rem; }
+.lead { margin-bottom: 1rem; }
 /* Two paragraphs that are one block: the prompt sits close to the field it is
    about rather than a full paragraph's distance from it. Two classes, so it
    wins over .lead wherever either happens to be written. */
-.lead.intro { margin-bottom: 1.1rem; }
+.lead.intro { margin-bottom: .6rem; }
 
 /* ---- address bar -------------------------------------------------------- */
 /* Input and button are one rectangle split in two: the button carries the
    left rule so the pair never shows a doubled line between them. */
-.bar { display: flex; border: 1px solid var(--line); margin-bottom: 4.15rem; }
+.bar { display: flex; border: 1px solid var(--line); margin-bottom: 1rem; }
 .entry { position: relative; flex: 1; min-width: 0; display: flex; }
 
 .bar input {
@@ -210,31 +210,30 @@ footer { margin-top: 3rem; color: var(--muted); }
 footer a { color: inherit; }
 
 /* ---- expected result --------------------------------------------------- */
-/* A box of its own under the options table, in the table's terms: the tinted
-   label column on the left, the picture where the options sit. It carries all
-   four rules itself, being separate. */
-.result {
-  display: flex; margin-top: 1.9rem;
-  border-top: 1px solid var(--line); border-left: 1px solid var(--line);
-}
-/* Two words, and the cell is as tall as the picture, so it may wrap. */
+/* A box of its own under the options table, in the table's terms: a row
+   whose label is EXPECTED RESULT and whose cell says what is shown, then the
+   picture across the full width, edge to edge between the rules, so nothing
+   in the box is empty. It carries all four rules itself, being separate. */
+.result { margin-top: 1rem; border-top: 1px solid var(--line); border-left: 1px solid var(--line); }
+/* Two words beside a sentence that may run to two lines, so it may wrap too. */
 .result .rowhead { white-space: normal; }
-.shot {
-  flex: 1; min-width: 0; padding: .6rem;
+.result .cap {
+  flex: 1; min-width: 0; padding: .6rem 1rem;
   border-right: 1px solid var(--line); border-bottom: 1px solid var(--line);
 }
+.result .where { color: var(--muted); }
 /* width and height are written on the element, so the box keeps the sheet's
    proportion while the picture loads instead of jumping when it arrives. */
-.shot img { display: block; width: 100%; height: auto; }
-.shot img[hidden] { display: none; }
-.shot img.loading { opacity: .35; }
-.shot figcaption { padding: .5rem .4rem 0; }
-.shot .where { color: var(--muted); }
+.result img {
+  display: block; width: 100%; height: auto;
+  border-right: 1px solid var(--line); border-bottom: 1px solid var(--line);
+}
+.result img[hidden] { display: none; }
+.result img.loading { opacity: .35; }
 
 @media (max-width: 700px) {
   body { padding: 1.6rem 1rem 2.5rem; }
-  .name { margin-bottom: 2.2rem; }
-  .bar { margin-bottom: 2rem; }
+  .name { margin-bottom: 1.4rem; }
   .rowhead { flex: 0 0 30%; }
   .rowhead, .cell, .cell-empty { padding: .5rem .6rem; }
   .go { padding: .75rem 1rem; }
@@ -246,9 +245,9 @@ footer a { color: inherit; }
    their words — SUMMARY and NEUTRAL both clip — so the label becomes a strip
    above its own row of options and each option gets the full width. */
 @media (max-width: 560px) {
-  .row, .result { flex-direction: column; }
+  .row { flex-direction: column; }
   .rowhead { flex: none; }
-  /* the site sheet offers six scales; they have to share one phone width */
+  /* four options to a row share one phone width */
   .cell, .cell-empty { padding: .5rem .35rem; letter-spacing: 0; }
 }
 

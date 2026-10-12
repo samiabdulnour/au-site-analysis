@@ -23,8 +23,6 @@ const SCALES = {
     ['0',   'auto', 'at the tightest scale that fits the lot'],
     ['200', '200',  'at 1:200'],
     ['250', '250',  'at 1:250'],
-    ['300', '300',  'at 1:300'],
-    ['400', '400',  'at 1:400'],
     ['500', '500',  'at 1:500'],
   ],
   summary: [],

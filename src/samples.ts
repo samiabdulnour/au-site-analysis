@@ -34,7 +34,7 @@ import { htmlToPdf, printSlides } from './render/pdf.js';
 import { TEMPLATES, withTemplate } from './render/template.js';
 
 const CONTEXT_SCALES = [2000, 3000, 4000, 5000];
-const SITE_SCALES = [0, 200, 250, 300, 400, 500];   // 0 is auto, the tightest that fits the lot
+const SITE_SCALES = [0, 200, 250, 500];   // 0 is auto, the tightest that fits the lot
 const ROTATIONS = ['north', 'auto'] as const;
 // The deck's slide the frame shows, as the old slides sample did.
 const SLIDE = '03_planning_overview';

@@ -59,7 +59,7 @@ either it reads KartaView alone. On the server they go in
 
 The frame's pictures are `web/samples/result-<sheet>-<scale>-<rotate>-<template>.jpg`
 for the two maps and `result-<sheet>-<template>.jpg` for the summary and the
-deck — one for every combination the table offers, eighty-eight in all, the
+deck — one for every combination the table offers, seventy-two in all, the
 names `web/app.js` asks for. A combination without one says so in the frame
 rather than showing a broken image. They are drawn for 150 George Street,
 Parramatta; to redraw them, or to move them to another address (and change
