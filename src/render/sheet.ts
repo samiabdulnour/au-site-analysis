@@ -6,12 +6,17 @@ import type { Bundle } from '../pipeline.js';
 import { lonLatToMercator, ringCentroid, type Extent, type MapView } from '../lib/geo.js';
 import { categories, catById, zoneToCategory } from './model.js';
 import { tpl, type Texture } from './template.js';
+import { zoneFill, zoneOrder } from './lepPalette.js';
 import { sheetHtml, legendHeightFor, esc, T, SWATCH_X, SWATCH_W, LABEL_X,
          SHEET_W, SHEET_H, FRAME_L, FRAME_T, TITLE_X, TITLE_R, MAP_BOTTOM, MAP_W, MAP_H } from './chrome.js';
 
 // Geometry/typography constants live in chrome.ts (shared by all sheet
 // types); re-exported here for existing importers (cli, server, pdf).
 export { SHEET_W, SHEET_H, FRAME_L, FRAME_T, TITLE_X, TITLE_R, MAP_BOTTOM, MAP_W, MAP_H };
+
+// The ePlanning zone colours over the greyscale aerial: strong enough to read
+// as the LEP map's colours, thin enough that the roofs show through.
+const LEP_OPACITY = 0.6;
 
 export interface SheetMeta {
   jobNo: string;
@@ -401,14 +406,34 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     return svg;
   };
 
-  for (const [cat, paths] of Object.entries(zoningByCat)) {
+  // The ePlanning mode: each zone code in its statutory colour, keyed by code,
+  // and nothing over it but the site and heritage, so the map reads as the
+  // LEP zoning map a planner already knows.
+  const lepZoning = tpl().zoning === 'lep';
+  const lepZones = new Map<string, { name: string; paths: string[] }>();
+  if (lepZoning) {
+    for (const f of bundle.zoning.features) {
+      const code = String(f.properties.SYM_CODE ?? '').trim().toUpperCase();
+      const rings = geomRings(f.geometry);
+      if (!code || !rings.length) continue;
+      let z = lepZones.get(code);
+      if (!z) lepZones.set(code, z = { name: String(f.properties.LAY_CLASS ?? '').trim(), paths: [] });
+      z.paths.push(pathFromRings(rings, proj));
+    }
+    for (const [code, z] of lepZones)
+      layers.push(`<g fill="${zoneFill(code)}" opacity="${(LEP_OPACITY * tintScale).toFixed(2)}" fill-rule="evenodd">` +
+        z.paths.map((d) => `<path d="${d}"/>`).join('') + '</g>');
+  } else for (const [cat, paths] of Object.entries(zoningByCat)) {
     const c = catById()[cat];
     usedCats.add(cat);
     layers.push(catLayer(c, paths));
   }
+  const lepLegend = [...lepZones.entries()]
+    .sort(([a], [b]) => zoneOrder(a) - zoneOrder(b) || a.localeCompare(b))
+    .map(([code, z]) => ({ code, label: `${code} ${z.name.replace(new RegExp(`^${code}\\s*`, 'i'), '')}`.toUpperCase() }));
 
   // ---- railway corridor --------------------------------------------------
-  if (bundle.railCorridors.features.length) {
+  if (bundle.railCorridors.features.length && !lepZoning) {
     usedCats.add('railway');
     const c = catById().railway;
     const d = bundle.railCorridors.features.map((f) => pathFromRings(geomRings(f.geometry), proj)).join('');
@@ -423,6 +448,7 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     (poiPathsByCat[inst.cat] ??= []).push(pathFromRings(rings, proj));
   }
   for (const [cat, paths] of Object.entries(poiPathsByCat)) {
+    if (lepZoning) break;
     const c = catById()[cat];
     usedCats.add(cat);
     layers.push(catLayer(c, paths));
@@ -728,7 +754,8 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   const RR = MARK_R;
   const MARK_LETTER = T.mapSymbol * 0.82;
   const solidRoundel = tpl().roundel === 'solid';
-  const roundelAt = (r: number, letter: string, color: string, size: number) =>
+  // Two-character labels (T1, T2…) set a step smaller to stay inside the disc.
+  const roundelAt = (r: number, letter: string, color: string, size0: number, size = letter.length > 1 ? size0 * 0.74 : size0) =>
     solidRoundel
       ? `<circle r="${r}" fill="${color}"/><text text-anchor="middle" dy="${(size * 0.36).toFixed(2)}" font-size="${size}" font-weight="700" fill="#ffffff">${letter}</text>`
       : `<circle r="${r}" fill="#ffffff" stroke="${color}" stroke-width="${(r * 0.22).toFixed(2)}"/><text text-anchor="middle" dy="${(size * 0.36).toFixed(2)}" font-size="${size}" font-weight="700" fill="${color}">${letter}</text>`;
@@ -749,11 +776,18 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
 
   // The station's name is in the key, not on the map: the only words on the
   // map are the street names.
+  // More than one station of a kind on the sheet: each gets its own number
+  // (T1, T2… nearest the site first) so the key says which is which.
   const stationsOnMap = bundle.stations
-    .map((s) => ({ p: proj(s.lon, s.lat), name: s.name.replace(/RAILWAY STATION$/i, 'TRAIN STATION'), tram: /LIGHT RAIL|TRAM/i.test(s.name) }))
-    .filter(({ p: [x, y] }) => x > 3 && x < MAP_W - 3 && y > 3 && y < MAP_H - 3);
+    .map((s) => ({ p: proj(s.lon, s.lat), name: s.name.replace(/RAILWAY STATION$/i, 'TRAIN STATION'), tram: /LIGHT RAIL|TRAM/i.test(s.name), label: '' }))
+    .filter(({ p: [x, y] }) => x > 3 && x < MAP_W - 3 && y > 3 && y < MAP_H - 3)
+    .sort((a, b) => Math.hypot(a.p[0] - MAP_W / 2, a.p[1] - MAP_H / 2) - Math.hypot(b.p[0] - MAP_W / 2, b.p[1] - MAP_H / 2));
+  for (const tram of [false, true]) {
+    const group = stationsOnMap.filter((s) => s.tram === tram);
+    group.forEach((s, i) => { s.label = (tram ? 'L' : 'T') + (group.length > 1 ? String(i + 1) : ''); });
+  }
   layers.push(stationsOnMap
-    .map(({ p: [x, y], tram }) => roundel(x, y, tram ? 'L' : 'T', tram ? tpl().busRoute : tpl().site))
+    .map(({ p: [x, y], tram, label }) => roundel(x, y, label, tram ? tpl().busRoute : tpl().site))
     .join('\n'));
 
   // ---- label occupancy ----------------------------------------------------
@@ -884,7 +918,7 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   const keyM = keyMetrics(places.length + stationsOnMap.length);
   {
     // The legend's own rows, counted the way the legend will draw them.
-    const legendRows = categories().filter((c) => usedCats.has(c.id) && c.id !== 'railway').length
+    const legendRows = categories().filter((c) => usedCats.has(c.id) && c.id !== 'railway').length + lepLegend.length
       + (hasTrainStations ? 1 : 0) + 1 + (hasTramStops ? 1 : 0)
       + (bundle.railLines.train.length ? 1 : 0)
       + (bundle.railLines.tram.length || bundle.bus.tramRouteSegments.length ? 1 : 0)
@@ -1238,6 +1272,8 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     const hob = hobByCat[c.id];
     if (c.id === 'site') {
       legendRow(`<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="${tpl().site}" fill-opacity="0.55" stroke="${tpl().site}" stroke-width="0.9" stroke-dasharray="2.2,1.1"/>`, ['SITE']);
+      for (const z of lepLegend)
+        legendRow(`<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="${zoneFill(z.code)}" stroke="#999" stroke-width="0.2"/>`, wrapLabel(z.label, 26));
     } else if (c.id === 'heritage') {
       let hlines = '';
       for (let o = SWATCH_X - 6.5; o <= SWATCH_X + SWATCH_W; o += 2)
@@ -1290,7 +1326,7 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     for (const pl of places) keyRow(numberMarker(symC, KR, pl.n, KR, numberSize), pl.name);
     for (const st of stationsOnMap) {
       const color = st.tram ? tpl().busRoute : tpl().site;
-      keyRow(`<g transform="translate(${symC},${KR})">${roundelAt(KR, st.tram ? 'L' : 'T', color, numberSize)}</g>`, st.name);
+      keyRow(`<g transform="translate(${symC},${KR})">${roundelAt(KR, st.label, color, numberSize)}</g>`, st.name);
     }
   }
 

@@ -509,11 +509,14 @@ footprint (Overture, OpenStreetMap as the fallback) is filled white with a
 hairline of its ground's family ink, so a block reads as white figures on a
 tint and not as more of the white street; the streets are white strips over
 the tints, the road reserve scaled from the function hierarchy, named in a
-narrow deep green (Arial Narrow where it is installed, Liberation Sans Narrow
-on the server). The stops and stations are solid roundels with a white
+narrow light cucumber green (Arial Narrow where it is installed, Liberation Sans Narrow
+on the server); the parks' number discs share that green and the institutions'
+discs take the sand family's light brown. The stops and stations are solid roundels with a white
 letter, the bus routes a faint dotted line, the railway a red dotted line, and
 the walking catchments green dotted lines with "5 MIN" and "10 MIN" written
-along them, twice per ring, on clear straight stretches.
+along them, twice per ring, on clear straight stretches. Where the sheet holds
+more than one train station they are numbered T1, T2… nearest the site first
+(light rail L1, L2…), on the map and in the key, in every template.
 
 **Kingfisher** (`kingfisher`) is Flamingo in the palette of a masterplan
 reference, sampled from it: every zone a pale ground with its buildings filled
@@ -533,9 +536,11 @@ and every building are drawn in a heavy white line.
 in greyscale (`aerialTone: 'grey'`), with the lots and every building as heavy
 white lines over it (`lots: 'white'`, `footprints: 'outline'`) and all its
 text in white Arial Narrow (institutions' number discs a reddish brown, parks' green, `discInk` and `discParkInk`), under a light
-white veil with the tints at full strength over it (the palette
-sampled from that sheet's legend — tan mixed use and centres, peach
-residential, mint open space, the institutions in outlined slate blues), no
+white veil with the zoning at full strength over it in exactly the NSW
+ePlanning Land Zoning colours (`zoning: 'lep'`): each zone code its statutory
+fill, keyed by code and name (R2 LOW DENSITY RESIDENTIAL, E1 LOCAL CENTRE,
+SP2 INFRASTRUCTURE…), with no institution or railway tints laid over it and
+heritage in the ePlanning item tan; no
 building footprints and no white street strips, every street named in plain
 bold black straight on the photo (no arrow bands or outline;
 `streetLabels: 'band'` brings the bands back), and the walking

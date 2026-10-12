@@ -100,6 +100,9 @@ export interface Template {
   /** Street names plain along the road, or a through street's name in a white double-headed arrow band (lanes stay plain). */
   streetLabels?: 'plain' | 'band';
 
+  /** The zoning: the template's land-use categories, or each zone in its own NSW ePlanning colour, keyed by zone code. */
+  zoning?: 'categories' | 'lep';
+
   /** Land-use fills for the context sheet legend. */
   categories: Category[];
 }
@@ -225,7 +228,9 @@ export const TEMPLATES: Template[] = [
   { id: 'flamingo', label: 'Flamingo', note: 'paper and four tints with textures, every building white',
     font: GROTESK, streetFont: NARROW, textScale: 0.96,
     ink: '#1c1c1c',
-    streetInk: '#2f5f52',   // a deep green: present, not shouting
+    // Street names and the parks' discs a light cucumber green; the
+    // institutions' discs the sand family's ink, a light brown.
+    streetInk: '#5f9a58', discInk: SAND_INK, discParkInk: '#5f9a58',
     rule: '#8a8a8a',
     site: CORAL, dimension: '#56616b', wind: '#87959d', sun: '#efe8d4', road: GREY_INK, water: BLUE,
     transit: NAVY, rail: '#d43d33', walk5: '#1f8a5a', walk10: '#6fb88c', busRoute: '#7a8bb0', heritage: SAND_INK,
@@ -255,10 +260,12 @@ export const TEMPLATES: Template[] = [
     // a reddish brown, the parks' in the catchments' green.
     ink: '#1c1c1c', streetInk: '#ffffff', discInk: '#9c4a36', discParkInk: '#1f7a4d', rule: '#8a8a8a',
     site: '#cf4a2e', dimension: '#3c4c5a', wind: '#6d8a99', sun: '#f0e4c0', road: '#7d7d7d', water: '#cbdae2',
-    transit: NAVY, rail: '#d43d33', walk5: '#1f7a4d', walk10: '#6aaf88', busRoute: '#7a8bb0', heritage: '#94836a',
+    transit: NAVY, rail: '#d43d33', walk5: '#1f7a4d', walk10: '#6aaf88', busRoute: '#7a8bb0', heritage: '#dbbb7b',
     isochrone: 'walkers', roundel: 'solid', busLine: 'dashed', railLine: 'dotted',
     // Lots and buildings as heavy white lines over the aerial.
     ground: 'aerial', aerialTone: 'grey', veil: 0.36, tintScale: 1, footprints: 'outline', lots: 'white', streets: 'none', streetLabels: 'plain',
+    // The zones in the NSW ePlanning colours, keyed by zone code.
+    zoning: 'lep',
     categories: HERON_CATEGORIES },
 ];
 
