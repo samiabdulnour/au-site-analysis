@@ -260,11 +260,21 @@ export const TEMPLATES: Template[] = [
     // a reddish brown, the parks' in the catchments' green.
     ink: '#1c1c1c', streetInk: '#ffffff', discInk: '#9c4a36', discParkInk: '#1f7a4d', rule: '#8a8a8a',
     site: '#cf4a2e', dimension: '#3c4c5a', wind: '#6d8a99', sun: '#f0e4c0', road: '#7d7d7d', water: '#cbdae2',
-    transit: NAVY, rail: '#d43d33', walk5: '#1f7a4d', walk10: '#6aaf88', busRoute: '#7a8bb0', heritage: '#dbbb7b',
+    transit: NAVY, rail: '#d43d33', walk5: '#1f7a4d', walk10: '#6aaf88', busRoute: '#7a8bb0', heritage: '#94836a',
     isochrone: 'walkers', roundel: 'solid', busLine: 'dashed', railLine: 'dotted',
     // Lots and buildings as heavy white lines over the aerial.
     ground: 'aerial', aerialTone: 'grey', veil: 0.36, tintScale: 1, footprints: 'outline', lots: 'white', streets: 'none', streetLabels: 'plain',
-    // The zones in the NSW ePlanning colours, keyed by zone code.
+    categories: HERON_CATEGORIES },
+  { id: 'conure', label: 'Conure', note: 'Heron with the zoning in the NSW ePlanning colours, keyed by zone code',
+    font: NARROW, streetFont: NARROW, textScale: 0.96,
+    // Heron's aerial, lines, lettering and marks; only the zoning differs.
+    ink: '#1c1c1c', streetInk: '#ffffff', discInk: '#9c4a36', discParkInk: '#1f7a4d', rule: '#8a8a8a',
+    site: '#cf4a2e', dimension: '#3c4c5a', wind: '#6d8a99', sun: '#f0e4c0', road: '#7d7d7d', water: '#cbdae2',
+    transit: NAVY, rail: '#d43d33', walk5: '#1f7a4d', walk10: '#6aaf88', busRoute: '#7a8bb0', heritage: '#dbbb7b',
+    isochrone: 'walkers', roundel: 'solid', busLine: 'dashed', railLine: 'dotted',
+    ground: 'aerial', aerialTone: 'grey', veil: 0.36, tintScale: 1, footprints: 'outline', lots: 'white', streets: 'none', streetLabels: 'plain',
+    // The zones in exactly the NSW ePlanning colours, keyed by zone code;
+    // heritage in the ePlanning item tan.
     zoning: 'lep',
     categories: HERON_CATEGORIES },
 ];

@@ -762,18 +762,6 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   const roundel = (x: number, y: number, letter: string, color: string) =>
     `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})">${roundelAt(RR, letter, color, MARK_LETTER)}</g>`;
 
-  layers.push(bundle.bus.busStops
-    .map(({ lon, lat }) => proj(lon, lat))
-    .filter(([x, y]) => x > 3 && x < MAP_W - 3 && y > 3 && y < MAP_H - 3)
-    .map(([x, y]) => roundel(x, y, 'B', tpl().transit))
-    .join('\n'));
-
-  layers.push(bundle.bus.tramStops
-    .map(({ lon, lat }) => proj(lon, lat))
-    .filter(([x, y]) => x > 3 && x < MAP_W - 3 && y > 3 && y < MAP_H - 3)
-    .map(([x, y]) => roundel(x, y, 'L', tpl().busRoute))
-    .join('\n'));
-
   // The station's name is in the key, not on the map: the only words on the
   // map are the street names.
   // More than one station of a kind on the sheet: each gets its own number
@@ -786,6 +774,21 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     const group = stationsOnMap.filter((s) => s.tram === tram);
     group.forEach((s, i) => { s.label = (tram ? 'L' : 'T') + (group.length > 1 ? String(i + 1) : ''); });
   }
+
+  // Stops that would overlap a mark already placed are left off: a pair of
+  // stops either side of a road, or a stop under a station, reads as one
+  // roundel. Stations go first, then light rail stops, then bus stops.
+  const inMap = ([x, y]: [number, number]) => x > 3 && x < MAP_W - 3 && y > 3 && y < MAP_H - 3;
+  const placedMarks: [number, number][] = stationsOnMap.map((s) => s.p);
+  const clearOfMarks = (p: [number, number]) => {
+    if (placedMarks.some(([x, y]) => Math.hypot(p[0] - x, p[1] - y) < RR * 2)) return false;
+    placedMarks.push(p);
+    return true;
+  };
+  const tramStopsOnMap = bundle.bus.tramStops.map(({ lon, lat }) => proj(lon, lat)).filter(inMap).filter(clearOfMarks);
+  const busStopsOnMap = bundle.bus.busStops.map(({ lon, lat }) => proj(lon, lat)).filter(inMap).filter(clearOfMarks);
+  layers.push(busStopsOnMap.map(([x, y]) => roundel(x, y, 'B', tpl().transit)).join('\n'));
+  layers.push(tramStopsOnMap.map(([x, y]) => roundel(x, y, 'L', tpl().busRoute)).join('\n'));
   layers.push(stationsOnMap
     .map(({ p: [x, y], tram, label }) => roundel(x, y, label, tram ? tpl().busRoute : tpl().site))
     .join('\n'));

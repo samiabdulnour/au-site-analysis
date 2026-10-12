@@ -58,8 +58,8 @@ either it reads KartaView alone. On the server they go in
 To refresh the samples, generate the three sheets for the demo address and
 re-render them (the context scale thumbnails `context-2000.jpg`,
 `context-4000.jpg` and `context-5000.jpg` come from the same address at
-`--scale 2000`, `4000` and `5000`, and the STYLE row's `context-kingfisher.jpg`
-and `context-heron.jpg` from the matching `--template`, rendered the same way):
+`--scale 2000`, `4000` and `5000`, and the STYLE row's `context-kingfisher.jpg`,
+`context-heron.jpg` and `context-conure.jpg` from the matching `--template`, rendered the same way):
 
 ```bash
 npm run generate -- "1 Bay Street, Botany NSW 2019" --type both
@@ -496,7 +496,7 @@ colours and the land-use palette. Content is identical between templates; only
 the look changes. They live in `src/render/template.ts`, so a new house style is
 a data change.
 
-There are three: Flamingo, the default, Kingfisher and Heron.
+There are four: Flamingo, the default, Kingfisher, Heron and Conure.
 
 **Flamingo** (`flamingo`) sits on plain paper. Four tints, each a family —
 peach for the residential zones, sand for the centres, teal for open space and
@@ -516,7 +516,9 @@ letter, the bus routes a faint dotted line, the railway a red dotted line, and
 the walking catchments green dotted lines with "5 MIN" and "10 MIN" written
 along them, twice per ring, on clear straight stretches. Where the sheet holds
 more than one train station they are numbered T1, T2… nearest the site first
-(light rail L1, L2…), on the map and in the key, in every template.
+(light rail L1, L2…), on the map and in the key, in every template. A bus or
+light rail stop that would overlap a station or another stop is left off, so
+a pair of stops either side of a road reads as one roundel.
 
 **Kingfisher** (`kingfisher`) is Flamingo in the palette of a masterplan
 reference, sampled from it: every zone a pale ground with its buildings filled
@@ -536,17 +538,22 @@ and every building are drawn in a heavy white line.
 in greyscale (`aerialTone: 'grey'`), with the lots and every building as heavy
 white lines over it (`lots: 'white'`, `footprints: 'outline'`) and all its
 text in white Arial Narrow (institutions' number discs a reddish brown, parks' green, `discInk` and `discParkInk`), under a light
-white veil with the zoning at full strength over it in exactly the NSW
-ePlanning Land Zoning colours (`zoning: 'lep'`): each zone code its statutory
-fill, keyed by code and name (R2 LOW DENSITY RESIDENTIAL, E1 LOCAL CENTRE,
-SP2 INFRASTRUCTURE…), with no institution or railway tints laid over it and
-heritage in the ePlanning item tan; no
+white veil with the tints at full strength over it (the palette
+sampled from that sheet's legend — tan mixed use and centres, peach
+residential, mint open space, the institutions in outlined slate blues), no
 building footprints and no white street strips, every street named in plain
 bold black straight on the photo (no arrow bands or outline;
 `streetLabels: 'band'` brings the bands back), and the walking
 catchments as continuous green lines at reduced opacity with solid green walker discs. From Flamingo it
 takes the solid stop roundels, the red dotted railway and the numbered
 places with their key, the discs in black.
+
+**Conure** (`conure`) is Heron with the zoning in exactly the NSW ePlanning
+Land Zoning colours (`zoning: 'lep'`): each zone code in its statutory fill,
+keyed by code and name (R2 LOW DENSITY RESIDENTIAL, E1 LOCAL CENTRE,
+SP2 INFRASTRUCTURE…), with no institution or railway tints laid over it and
+heritage in the ePlanning item tan. The aerial, lines, lettering and marks are
+Heron's.
 
 The retired ids still resolve: `flamingo-white` to Flamingo, `flamingo-2` to
 Kingfisher, and
@@ -588,7 +595,7 @@ comes out in the wrong face, so add the package to the `Dockerfile` first.
 
 Options (after `--`): `--type context|site|summary|slides|both`, `--scale 3000` (default 3000;
 the web picker offers 1:2000, 1:3000, 1:4000 and 1:5000, the server accepts 1000 to 6000),
-`--template flamingo|kingfisher|heron` (the graphic template, see Templates below),
+`--template flamingo|kingfisher|heron|conure` (the graphic template, see Templates below),
 `--slides-scale 8000` (the deck's map panels), `--da-years 5` (the deck's
 development window), `--job 2539`, `--client "Name"`,
 `--status "DEVELOPMENT APPLICATION"`, `--sheet "DA 003"`.
