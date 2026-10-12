@@ -35,6 +35,7 @@ const STYLES = [
   ['flamingo',   'flamingo',   'in Flamingo'],
   ['kingfisher', 'kingfisher', 'in Kingfisher'],
   ['heron',      'heron',      'in Heron'],
+  ['conure',     'conure',     'in Conure'],
 ];
 const NORTH = [
   ['north', 'up',    'north up'],

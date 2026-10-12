@@ -39,7 +39,7 @@ const ROTATIONS = ['north', 'auto'] as const;
 // The deck's slide the frame shows, as the old slides sample did.
 const SLIDE = '03_planning_overview';
 // About 1190 px across an A1 sheet: sharp at the frame's width on a 2× screen,
-// and around 200 kB a picture, of which there are sixty-six.
+// and around 150 kB a picture, one per combination of the table.
 const DPI = 36;
 const QUALITY = 72;
 
