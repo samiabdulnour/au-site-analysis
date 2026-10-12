@@ -36,10 +36,10 @@ npm run serve        # http://localhost:3000  (PORT=… to change)
 
 One address field with the drawing options as a table of cells under it —
 one font, one size, hairline rules, yellow for what is chosen or what to
-press. Under the table, a frame of its own shows the EXPECTED RESULT: the
+press. Under the table, a frame of its own shows the expected result: the
 sheet the chosen options produce — drawing, scale, north and style together —
-drawn for an example address, with a sentence saying what it is. It follows
-what is picked, not what the pointer is over. `/about` explains the tool to
+drawn for an example address, the picture alone. It follows what is picked,
+not what the pointer is over. `/about` explains the tool to
 anyone who lands on it: what the three drawings contain, where the data
 comes from, and what the output must not be relied on for. The generator
 itself sits behind the access code. Sample thumbnails live in `web/samples/`

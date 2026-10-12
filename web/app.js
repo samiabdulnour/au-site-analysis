@@ -5,7 +5,7 @@
 const state = { sheet: 'context', scale: '3000', rotate: 'north', template: 'flamingo' };
 
 // [value, label, caption] — the caption is that option's words in the
-// sentence under the expected result.
+// sentence that describes the expected result to a screen reader.
 const SHEETS = [
   ['context', 'context', 'Context analysis on A1'],
   ['site',    'site',    'Site analysis on A1'],
@@ -50,7 +50,7 @@ const f = $('f'), loginForm = $('login');
 const out = $('out'), logEl = $('log'), queueEl = $('queue');
 const linksEl = $('links'), errEl = $('error'), go = $('go'), noteEl = $('note');
 const addBtn = $('add'), listEl = $('list');
-const resultImg = $('resultImg'), resultCap = $('resultCap'), resultWhere = $('resultWhere');
+const resultImg = $('resultImg'), resultMissing = $('resultMissing');
 
 // ---- token rendering -----------------------------------------------------
 
@@ -162,26 +162,26 @@ function renderResult() {
   let text = caption(SHEETS, state.sheet);
   if (isMap()) text += ' ' + caption(SCALES[state.sheet], state.scale) + ', ' + caption(NORTH, state.rotate);
   text += ', ' + caption(STYLES, state.template) + '.';
-  resultCap.textContent = text;
-  resultWhere.textContent = 'Drawn for ' + EXAMPLE_ADDRESS + '.';
+  // The frame shows the picture alone; what it is is said to a screen reader.
   resultImg.alt = text + ' An example drawn for ' + EXAMPLE_ADDRESS + '.';
   // renderAll runs on every pick; asking again for the picture already shown
   // would only make it flicker.
   if (resultImg.getAttribute('src') !== src) {
     resultImg.hidden = false;
+    resultMissing.hidden = true;
     // The last picture stays up until the next arrives, so it is dimmed
-    // meanwhile rather than passed off under the new caption.
+    // meanwhile rather than passed off as the new choice's.
     resultImg.classList.add('loading');
     resultImg.src = src;
   }
 }
 resultImg.addEventListener('load', () => resultImg.classList.remove('loading'));
 // A combination without a picture says so rather than showing a broken image
-// or, worse, the previous choice's picture under this choice's caption.
+// or, worse, the previous choice's picture as if it were this one's.
 resultImg.addEventListener('error', () => {
   resultImg.classList.remove('loading');
   resultImg.hidden = true;
-  resultWhere.textContent = 'No example has been drawn for this combination yet.';
+  resultMissing.hidden = false;
 });
 
 /* The expected result sits between the options and the progress box, so on a

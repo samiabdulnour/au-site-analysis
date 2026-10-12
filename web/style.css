@@ -210,26 +210,16 @@ footer { margin-top: 3rem; color: var(--muted); }
 footer a { color: inherit; }
 
 /* ---- expected result --------------------------------------------------- */
-/* A box of its own under the options table, in the table's terms: a row
-   whose label is EXPECTED RESULT and whose cell says what is shown, then the
-   picture across the full width, edge to edge between the rules, so nothing
-   in the box is empty. It carries all four rules itself, being separate. */
-.result { margin-top: 1rem; border-top: 1px solid var(--line); border-left: 1px solid var(--line); }
-/* Two words beside a sentence that may run to two lines, so it may wrap too. */
-.result .rowhead { white-space: normal; }
-.result .cap {
-  flex: 1; min-width: 0; padding: .6rem 1rem;
-  border-right: 1px solid var(--line); border-bottom: 1px solid var(--line);
-}
-.result .where { color: var(--muted); }
+/* A frame of its own under the options table, holding the picture alone,
+   edge to edge between its rules. */
+.result { margin-top: 1rem; border: 1px solid var(--line); }
 /* width and height are written on the element, so the box keeps the sheet's
    proportion while the picture loads instead of jumping when it arrives. */
-.result img {
-  display: block; width: 100%; height: auto;
-  border-right: 1px solid var(--line); border-bottom: 1px solid var(--line);
-}
+.result img { display: block; width: 100%; height: auto; }
 .result img[hidden] { display: none; }
 .result img.loading { opacity: .35; }
+/* Only shown when a combination has no picture. */
+.result figcaption { padding: .6rem 1rem; color: var(--muted); }
 
 @media (max-width: 700px) {
   body { padding: 1.6rem 1rem 2.5rem; }
