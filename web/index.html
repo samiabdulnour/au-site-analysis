@@ -79,6 +79,18 @@
       <div class="row" id="styleRow"><span class="rowhead">STYLE</span>
         <span class="cells" id="styleOpts"></span></div>
     </div>
+
+    <!-- What the options chosen above produce, drawn for an example address:
+         it follows the choice, not the pointer, so it holds still while the
+         table is read and changes only when something is picked. -->
+    <div class="result">
+      <span class="rowhead">EXPECTED RESULT</span>
+      <figure class="shot">
+        <img id="resultImg" alt="" width="1193" height="843">
+        <figcaption><span id="resultCap"></span>
+          <span class="where" id="resultWhere"></span></figcaption>
+      </figure>
+    </div>
   </form>
 
   <!-- ---- output ------------------------------------------------------ -->
@@ -101,8 +113,6 @@
   </footer>
 
 </div>
-
-<div id="preview"><img alt=""><div class="cap"></div></div>
 
 <script src="/app.js"></script>
 </body>

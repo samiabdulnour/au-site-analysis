@@ -209,15 +209,27 @@ a { color: inherit; }
 footer { margin-top: 3rem; color: var(--muted); }
 footer a { color: inherit; }
 
-/* ---- hover preview ------------------------------------------------------ */
-#preview {
-  position: fixed; z-index: 30; pointer-events: none; display: none;
-  border: 1px solid var(--line); background: var(--bg);
-  padding: 5px; width: min(46vw, 560px);
+/* ---- expected result --------------------------------------------------- */
+/* A box of its own under the options table, in the table's terms: the tinted
+   label column on the left, the picture where the options sit. It carries all
+   four rules itself, being separate. */
+.result {
+  display: flex; margin-top: 1.9rem;
+  border-top: 1px solid var(--line); border-left: 1px solid var(--line);
 }
-#preview.on { display: block; }
-#preview img { display: block; width: 100%; height: auto; }
-#preview .cap { padding: .35rem .2rem 0; }
+/* Two words, and the cell is as tall as the picture, so it may wrap. */
+.result .rowhead { white-space: normal; }
+.shot {
+  flex: 1; min-width: 0; padding: .6rem;
+  border-right: 1px solid var(--line); border-bottom: 1px solid var(--line);
+}
+/* width and height are written on the element, so the box keeps the sheet's
+   proportion while the picture loads instead of jumping when it arrives. */
+.shot img { display: block; width: 100%; height: auto; }
+.shot img[hidden] { display: none; }
+.shot img.loading { opacity: .35; }
+.shot figcaption { padding: .5rem .4rem 0; }
+.shot .where { color: var(--muted); }
 
 @media (max-width: 700px) {
   body { padding: 1.6rem 1rem 2.5rem; }
@@ -228,14 +240,13 @@ footer a { color: inherit; }
   .go { padding: .75rem 1rem; }
   .actions { flex-direction: column; align-items: stretch; }
   .actions .btn { text-align: center; }
-  #preview { width: 92vw; }
 }
 
 /* On a phone the label column would leave the options too narrow to hold
    their words — SUMMARY and NEUTRAL both clip — so the label becomes a strip
    above its own row of options and each option gets the full width. */
 @media (max-width: 560px) {
-  .row { flex-direction: column; }
+  .row, .result { flex-direction: column; }
   .rowhead { flex: none; }
   /* the site sheet offers six scales; they have to share one phone width */
   .cell, .cell-empty { padding: .5rem .35rem; letter-spacing: 0; }

@@ -36,8 +36,10 @@ npm run serve        # http://localhost:3000  (PORT=… to change)
 
 One address field with the drawing options as a table of cells under it —
 one font, one size, hairline rules, yellow for what is chosen or what to
-press. Hovering an option shows a real sheet generated for the same demo
-address, so the comparison is like for like. `/about` explains the tool to
+press. Under the table, a frame of its own shows the EXPECTED RESULT: the
+sheet the chosen options produce — drawing, scale, north and style together —
+drawn for an example address, with a sentence saying what it is. It follows
+what is picked, not what the pointer is over. `/about` explains the tool to
 anyone who lands on it: what the three drawings contain, where the data
 comes from, and what the output must not be relied on for. The generator
 itself sits behind the access code. Sample thumbnails live in `web/samples/`
@@ -55,25 +57,26 @@ Mapillary's frames with `MAPILLARY_TOKEN=…` (a free client token); without
 either it reads KartaView alone. On the server they go in
 `/etc/site-analyst.env`, which the deployer passes to the container.
 
-To refresh the samples, generate the three sheets for the demo address and
-re-render them (the context scale thumbnails `context-2000.jpg`,
-`context-4000.jpg` and `context-5000.jpg` come from the same address at
-`--scale 2000`, `4000` and `5000`, and the STYLE row's `context-kingfisher.jpg`
-and `context-heron.jpg` from the matching `--template`, rendered the same way):
+The frame's pictures are `web/samples/result-<sheet>-<scale>-<rotate>-<template>.jpg`
+for the two maps and `result-<sheet>-<template>.jpg` for the summary and the
+deck — one for every combination the table offers, sixty-six in all, the
+names `web/app.js` asks for. A combination without one says so in the frame
+rather than showing a broken image. They are drawn for 150 George Street,
+Parramatta; to redraw them, or to move them to another address (and change
+`EXAMPLE_ADDRESS` in `web/app.js` to match):
 
 ```bash
-npm run generate -- "1 Bay Street, Botany NSW 2019" --type both
-npm run generate -- "1 Bay Street, Botany NSW 2019" --type summary
-npm run generate -- "1 Bay Street, Botany NSW 2019" --type slides   # slides.jpg comes from slides/03_planning_overview.png
-python3 - <<'EOF'
-import pymupdf
-src = 'out/1-bay-street-botany-nsw-2019/'
-for name, f in [('context','CONTEXT_ANALYSIS.pdf'), ('site','SITE_ANALYSIS.pdf'),
-                ('summary','DEVELOPMENT_SUMMARY.pdf')]:
-    pymupdf.open(src+f)[0].get_pixmap(dpi=54).pil_save(
-        f'web/samples/{name}.jpg', format='JPEG', quality=76, optimize=True)
-EOF
+pip install pymupdf      # rasterises the PDFs
+npm run samples -- "150 George Street, Parramatta NSW 2150"
+# or a part at a time: --only context | site | summary | slides
 ```
+
+Each scale and orientation is fetched once and drawn in all three styles,
+since a style changes how a sheet looks and never what it fetches. The
+deck's picture is its planning slide, `03_planning_overview`.
+
+`web/samples/context.jpg`, the Botany context sheet, stays only as the source
+of the link-preview card below.
 
 `web/samples/og.jpg` is the image a shared link previews with, drawn from
 `web/og-card.html` — a crop of `context.jpg` over a strip naming the tool. Redraw
