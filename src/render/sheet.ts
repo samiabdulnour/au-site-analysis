@@ -781,7 +781,8 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   const inMap = ([x, y]: [number, number]) => x > 3 && x < MAP_W - 3 && y > 3 && y < MAP_H - 3;
   const placedMarks: [number, number][] = stationsOnMap.map((s) => s.p);
   const clearOfMarks = (p: [number, number]) => {
-    if (placedMarks.some(([x, y]) => Math.hypot(p[0] - x, p[1] - y) < RR * 2)) return false;
+    // A clear gap is kept too: two discs just touching still read as a pair.
+    if (placedMarks.some(([x, y]) => Math.hypot(p[0] - x, p[1] - y) < RR * 2.6)) return false;
     placedMarks.push(p);
     return true;
   };
