@@ -454,6 +454,26 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     layers.push(catLayer(c, paths));
   }
 
+  // ---- streets: white strips over the tints -----------------------------
+  // The road reserve in white, as the office sheets and most figure-ground
+  // maps show it, so the blocks read as tinted islands on paper. Width by
+  // function hierarchy, in metres on the ground scaled to the sheet: an
+  // arterial reserve is about 30 m, a local street 20 m, a lane 8 m. A
+  // template over the aerial can leave them out: the photograph has them.
+  // Drawn under the buildings, so where a reserve's width runs over a
+  // footprint the building's outline still shows.
+  if (tpl().streets !== 'none') {
+    const mmPerM = 1000 / bundle.scale;
+    const reserveM = (h: number) => (h <= 2 ? 36 : h === 3 ? 30 : h === 4 ? 24 : h === 5 ? 20 : h === 6 ? 17 : 8);
+    const byWidth = new Map<number, string[]>();
+    for (const r of bundle.roads) {
+      const w = reserveM(r.hierarchy);
+      (byWidth.get(w) ?? byWidth.set(w, []).get(w)!).push(pathFromRings([r.coords as any], proj, false));
+    }
+    for (const [w, ds] of [...byWidth].sort((a, b) => b[0] - a[0]))
+      layers.push(`<path d="${ds.join('')}" fill="none" stroke="#ffffff" stroke-width="${(w * mmPerM).toFixed(2)}" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>`);
+  }
+
   // ---- building footprints: the grain inside the blocks -------------------
   // Each footprint takes the ink of the ground it stands on — the darker
   // member of the tint's family — so a block reads as a firm figure on a light
@@ -523,24 +543,6 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     layers.push(tpl().lots === 'white'
       ? `<path d="${d}" fill="none" stroke="#ffffff" stroke-width="${tpl().lotWidth ?? 0.45}" opacity="0.95"/>`
       : `<path d="${d}" fill="none" stroke="${tpl().road}" stroke-width="0.12" opacity="0.5"/>`);
-  }
-
-  // ---- streets: white strips over the tints -----------------------------
-  // The road reserve in white, as the office sheets and most figure-ground
-  // maps show it, so the blocks read as tinted islands on paper. Width by
-  // function hierarchy, in metres on the ground scaled to the sheet: an
-  // arterial reserve is about 30 m, a local street 20 m, a lane 8 m. A
-  // template over the aerial can leave them out: the photograph has them.
-  if (tpl().streets !== 'none') {
-    const mmPerM = 1000 / bundle.scale;
-    const reserveM = (h: number) => (h <= 2 ? 36 : h === 3 ? 30 : h === 4 ? 24 : h === 5 ? 20 : h === 6 ? 17 : 8);
-    const byWidth = new Map<number, string[]>();
-    for (const r of bundle.roads) {
-      const w = reserveM(r.hierarchy);
-      (byWidth.get(w) ?? byWidth.set(w, []).get(w)!).push(pathFromRings([r.coords as any], proj, false));
-    }
-    for (const [w, ds] of [...byWidth].sort((a, b) => b[0] - a[0]))
-      layers.push(`<path d="${ds.join('')}" fill="none" stroke="#ffffff" stroke-width="${(w * mmPerM).toFixed(2)}" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>`);
   }
 
   // ---- heritage ----------------------------------------------------------
