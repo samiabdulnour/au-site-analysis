@@ -204,11 +204,10 @@ most 24h old.
 ### Several at once
 
 A dozen sites is an ordinary afternoon, and submitting them one at a time means
-coming back every two minutes to start the next. `ADD` puts the address in the
-field onto a list instead of running it; `GENERATE 5` runs the list. Collected
-one at a time rather than pasted in as free text, because the type-ahead is
-what keeps each address exact and a mistyped one is a sheet that fails two
-minutes later.
+coming back every two minutes to start the next. The page used to collect them
+with an `ADD` button beside GENERATE; that is gone, to keep the bar to the
+address and the one button, and the page runs one address at a time. Running
+several at once is still the batch endpoint below.
 
 A batch is nothing but a named list of ordinary jobs. They queue on the same
 serial queue, in the same order, and each goes through the same reuse check, so
@@ -244,9 +243,7 @@ nothing else to serve.)
 and at most twelve, one hour's worth of the per-IP job budget. All or nothing:
 half a batch accepted is worse than none, since there is no way to tell from
 the outside which half. `GET /api/batches/<id>` reports a row per address, and
-`GET /api/batches/<id>/zip` returns the finished sheets named by address. The
-rows stay on screen once the run ends — which of the twelve worked is the
-reason for running a batch in the first place.
+`GET /api/batches/<id>/zip` returns the finished sheets named by address.
 
 Batches live in `out/web/batches.json`, beside the job index rather than inside
 it: that file is an array an older container still reads, and a rollback that

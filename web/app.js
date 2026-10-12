@@ -49,7 +49,6 @@ const $ = (id) => document.getElementById(id);
 const f = $('f'), loginForm = $('login');
 const out = $('out'), logEl = $('log'), queueEl = $('queue');
 const linksEl = $('links'), errEl = $('error'), go = $('go'), noteEl = $('note');
-const addBtn = $('add'), listEl = $('list');
 const resultImg = $('resultImg'), resultMissing = $('resultMissing');
 
 // ---- token rendering -----------------------------------------------------
@@ -333,85 +332,6 @@ loginForm.addEventListener('submit', async (e) => {
 
 // ---- run -----------------------------------------------------------------
 
-// ---- the staged list -----------------------------------------------------
-//
-// Addresses collected before running, then the same rows showing how each one
-// went. One list, two states, because they are the same thing at two moments
-// and a second table would only ask the reader to connect them.
-let staged = [];
-let batchId = null;
-
-function rowEl(n, address) {
-  const row = document.createElement('div');
-  row.className = 'listrow';
-  const num = document.createElement('span');
-  num.className = 'n';
-  num.textContent = n;
-  const addr = document.createElement('span');
-  addr.className = 'addr';
-  addr.textContent = address;
-  row.append(num, addr);
-  return row;
-}
-
-/** Before the run: what is queued up, each removable. */
-function renderStaged() {
-  listEl.innerHTML = '';
-  listEl.hidden = staged.length === 0;
-  staged.forEach((address, i) => {
-    const row = rowEl(i + 1, address);
-    const rm = document.createElement('button');
-    rm.type = 'button';
-    rm.className = 'rm';
-    rm.textContent = '×';
-    rm.setAttribute('aria-label', 'remove ' + address);
-    rm.addEventListener('click', () => { staged.splice(i, 1); renderStaged(); });
-    row.append(rm);
-    listEl.append(row);
-  });
-  go.textContent = staged.length ? 'GENERATE ' + staged.length : 'GENERATE';
-}
-
-/** During and after: the same rows, carrying each sheet's outcome. */
-function renderBatch(j) {
-  listEl.innerHTML = '';
-  listEl.hidden = false;
-  (j.entries || []).forEach((e, i) => {
-    const row = rowEl(i + 1, e.address);
-    row.classList.add(e.status);
-    const st = document.createElement('span');
-    st.className = 'st';
-    st.textContent = e.status === 'queued' && e.queuePosition > 1
-      ? 'queued ' + e.queuePosition
-      : e.status === 'gone' ? 'lost' : e.status;
-    row.append(st);
-    if ((e.status === 'error' || e.status === 'gone') && (e.error || e.status === 'gone')) {
-      const why = document.createElement('div');
-      why.className = 'why';
-      why.textContent = e.error || 'the sheet is no longer on the server';
-      row.append(why);
-    }
-    listEl.append(row);
-  });
-}
-
-function addStaged() {
-  const a = addrInput.value.trim();
-  if (a.length < 8) return;
-  // The same address twice would share one job on the server anyway; not
-  // listing it twice keeps the rows honest about what will be produced.
-  if (!staged.includes(a)) staged.push(a);
-  addrInput.value = '';
-  // Closing the list is not enough: a lookup already scheduled would fire
-  // afterwards and reopen it on "searching…", over a field that has moved on.
-  clearTimeout(suggestTimer);
-  closeSuggest();
-  renderStaged();
-  addrInput.focus();
-}
-
-addBtn.addEventListener('click', addStaged);
-
 /** How long ago the sheet being handed back was drawn, in words. */
 function ago(mins) {
   if (!(mins > 0)) return 'a moment ago';
@@ -460,88 +380,8 @@ async function submit(fresh) {
   } catch (err) { fail(err.message); }
 }
 
-/* One or many. A batch is the same jobs on the same serial queue, so the only
-   difference here is which endpoint is asked and which rows are drawn. */
-async function submitBatch(addresses, fresh) {
-  out.hidden = false;
-  errEl.textContent = ''; linksEl.innerHTML = ''; noteEl.textContent = '';
-  queueEl.textContent = 'submitting'; logEl.textContent = '';
-  go.disabled = true; addBtn.disabled = true;
-  revealOutput();
-  try {
-    const r = await fetch('/api/batches', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ addresses, scale: state.scale, rotate: state.rotate,
-                             sheet: state.sheet, template: state.template, fresh: fresh === true }),
-    });
-    const j = await readJson(r);
-    if (!r.ok) throw new Error(httpMessage(r, j));
-    if (!j.id) throw new Error('service restarting — try again shortly');
-    batchId = j.id;
-    staged = [];
-    noteEl.textContent = j.queued === 0
-      ? 'every sheet in this list was already drawn — reusing all of them'
-      : j.queued < j.total
-        ? (j.total - j.queued) + ' of ' + j.total + ' already drawn; generating ' + j.queued
-        : '';
-    pollBatch(j.id, 0);
-  } catch (err) { fail(err.message); }
-}
-
-async function pollBatch(id, misses) {
-  try {
-    const r = await fetch('/api/batches/' + id);
-    if (r.status >= 500) {
-      if (misses < 20) {
-        queueEl.textContent = 'service restarting, reconnecting';
-        return setTimeout(() => pollBatch(id, misses + 1), 3000);
-      }
-      throw new Error('service restarting — try again shortly');
-    }
-    const j = await readJson(r);
-    if (r.status === 404) throw new Error('service restarted, batch lost — run again');
-    if (!r.ok) throw new Error(httpMessage(r, j));
-
-    renderBatch(j);
-    const finished = j.done + j.failed;
-    queueEl.textContent = finished >= j.total
-      ? 'done — ' + j.done + ' of ' + j.total
-      : finished + ' of ' + j.total + ' finished';
-
-    if (finished >= j.total) {
-      go.disabled = false; addBtn.disabled = false;
-      linksEl.innerHTML = '';
-      if (j.done) addLink('download ' + j.done + ' sheets', '/api/batches/' + id + '/zip');
-      // Only the label goes back, not the list: renderStaged() would clear the
-      // rows, and which of the twelve worked is the whole reason for running a
-      // batch. They stay until something is staged over them.
-      go.textContent = 'GENERATE';
-      return;
-    }
-    setTimeout(() => pollBatch(id, 0), 2500);
-  } catch (err) {
-    if (err instanceof TypeError && misses < 20) {
-      queueEl.textContent = 'connection lost, reconnecting';
-      return setTimeout(() => pollBatch(id, misses + 1), 3000);
-    }
-    fail(err.message);
-  }
-}
-
 f.addEventListener('submit', (e) => {
   e.preventDefault();
-  // Anything still in the field counts: pressing GENERATE with a typed address
-  // and a list already staged should not silently drop the one in front of you.
-  const typed = addrInput.value.trim();
-  if (typed.length >= 8 && !staged.includes(typed)) staged.push(typed);
-  clearTimeout(suggestTimer);
-  closeSuggest();
-  if (staged.length > 1) {
-    const list = staged.slice();
-    addrInput.value = '';
-    return submitBatch(list, false);
-  }
-  if (staged.length === 1) { addrInput.value = staged[0]; staged = []; renderStaged(); }
   submit(false);
 });
 
@@ -608,7 +448,6 @@ function fail(msg) {
   queueEl.textContent = '';
   errEl.textContent = msg;
   go.disabled = false;
-  addBtn.disabled = false;
 }
 
 renderAll();
