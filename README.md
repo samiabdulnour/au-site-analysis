@@ -552,8 +552,10 @@ places with their key, the discs in black.
 Land Zoning colours (`zoning: 'lep'`): each zone code in its statutory fill,
 keyed by code and name (R2 LOW DENSITY RESIDENTIAL, E1 LOCAL CENTRE,
 SP2 INFRASTRUCTURE…), with no institution or railway tints laid over it and
-heritage in the ePlanning item tan. The aerial, lines, lettering and marks are
-Heron's.
+heritage in the ePlanning item tan. The numbered places are black discs, and
+the walking catchments plain black lines with their time and distance written
+along them ("5 MIN · 400M", `isochrone: 'labelled'`) instead of walker
+medallions. The aerial, lines and lettering are Heron's.
 
 The retired ids still resolve: `flamingo-white` to Flamingo, `flamingo-2` to
 Kingfisher, and
