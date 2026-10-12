@@ -714,6 +714,7 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   const lineIso = tpl().isochrone === 'line';
   const dottedIso = tpl().isochrone === 'dotted';
   const walkerIso = tpl().isochrone === 'walkers';
+  const labelledIso = tpl().isochrone === 'labelled';
   // Round dots a little apart, the way the bus routes are drawn but bolder.
   const ISO_DOTS = 'stroke-width="1.7" stroke-dasharray="0.01,2.8" stroke-linecap="round"';
   for (const iso of bundle.isochrones) {
@@ -731,6 +732,9 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
         const pts: Pt[] = ring.map(([lon, lat]) => proj(lon, lat));
         for (const [x, y] of ringMarkers(pts, 4, iso.minutes === 5 ? 0.15 : 0.6)) layers.push(walkerMedallion(x, y, st.color));
       }
+    } else if (labelledIso) {
+      // A plain continuous line; its time and distance are written along it below.
+      layers.push(`<path d="${d}" fill="none" stroke="${st.color}" stroke-width="0.9" stroke-linejoin="round"/>`);
     } else if (lineIso) {
       // A plain continuous line, nothing on it.
       layers.push(`<path d="${d}" fill="none" stroke="${st.color}" stroke-width="1.2" stroke-linejoin="round"/>`);
@@ -982,14 +986,14 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   // the ones to give way. Each ring carries its time twice, half a ring
   // apart, on a straight stretch inside the map and clear of other labels;
   // the text sits just outside the line, reading left to right.
-  if (dottedIso) {
+  if (dottedIso || labelledIso) {
     const isoSize = T.street * 0.9;
     const isoDefs: string[] = [];
     const isoTexts: string[] = [];
     let iid = 0;
     for (const iso of bundle.isochrones) {
       const color = iso.minutes === 5 ? tpl().walk5 : tpl().walk10;
-      const label = `${iso.minutes} MIN`;
+      const label = labelledIso ? `${iso.minutes} MIN · ${iso.minutes * 80}M` : `${iso.minutes} MIN`;
       const textLen = label.length * (isoSize * 0.6 + 0.3) + 2;
       const slotLen = textLen + 4;
       const ring = [...iso.rings].sort((a, b) => b.length - a.length)[0];
@@ -1304,16 +1308,19 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   if (bundle.railLines.tram.length || bundle.bus.tramRouteSegments.length)
     legendRow(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${tpl().busRoute}" stroke-width="0.9" stroke-dasharray="3.4,1.8"/>`, ['TRAM ROUTE']);
   legendRow(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${tpl().transit}" ${busLineStyle} stroke-linecap="round"/>`, ['BUS ROUTE']);
-  const legendIso = (color: string) => dottedIso
+  const legendIso = (color: string, minutes: number) => dottedIso
     ? `<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${color}" ${ISO_DOTS} opacity="0.85"/>`
     : walkerIso
     ? `<g><line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${color}" stroke-width="1.2" opacity="0.65"/>
        <g transform="translate(${symC},3.2)"><circle r="2.9" fill="${color}"/>${walkerGlyph('#fff', 0.215)}</g></g>`
     : lineIso
     ? `<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${color}" stroke-width="1.2"/>`
+    : labelledIso
+    ? `<line x1="${SWATCH_X}" y1="4.4" x2="${SWATCH_X + SWATCH_W}" y2="4.4" stroke="${color}" stroke-width="0.9"/>` +
+      `<text x="${symC}" y="3.1" text-anchor="middle" font-family="${tpl().streetFont}" font-size="${(T.street * 0.62).toFixed(2)}" font-weight="700" fill="${color}">${minutes} MIN · ${minutes * 80}M</text>`
     : `<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${color}" stroke-width="${ISO_W}" opacity="${ISO_OPACITY}" stroke-linecap="round"/>`;
-  legendRow(legendIso(tpl().walk5), ['ISOCHRONE -'], '400m/5 min walk');
-  legendRow(legendIso(tpl().walk10), ['ISOCHRONE -'], '800m/10 min walk');
+  legendRow(legendIso(tpl().walk5, 5), ['ISOCHRONE -'], '400m/5 min walk');
+  legendRow(legendIso(tpl().walk10, 10), ['ISOCHRONE -'], '800m/10 min walk');
 
   // ---- the key: every numbered place, then the stations ------------------
   if (places.length || stationsOnMap.length) {
