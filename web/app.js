@@ -35,6 +35,7 @@ const STYLES = [
   ['flamingo', 'flamingo', '/samples/context.jpg',       'Flamingo — four tints on paper, every building white'],
   ['kingfisher', 'kingfisher', '/samples/context-kingfisher.jpg', 'Kingfisher — the masterplan palette: pale grounds, buildings in each zone\'s colour'],
   ['heron',    'heron',    '/samples/context-heron.jpg', 'Heron — the office sheet over the aerial: black street names, numbered places'],
+  ['conure',   'conure',   '/samples/context-conure.jpg', 'Conure — Heron with the zoning in the NSW ePlanning colours, keyed by zone code'],
 ];
 const NORTH = [
   ['north', 'up',    '/samples/site.jpg',       'north up — the sheet is oriented to north'],
