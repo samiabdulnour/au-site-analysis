@@ -68,8 +68,8 @@ export interface Template {
   busRoute: string;   // bus route dashes
   heritage: string;   // heritage hatch
 
-  /** The walking catchments: a broad translucent band, a plain continuous line, a dotted line with its walking time written along it, or the office's dashed line with walker medallions on it. */
-  isochrone: 'band' | 'line' | 'dotted' | 'walkers';
+  /** The walking catchments: a broad translucent band, a plain continuous line, a dotted line with its walking time written along it, the office's dashed line with walker medallions on it, or a continuous line with its time and distance written along it. */
+  isochrone: 'band' | 'line' | 'dotted' | 'walkers' | 'labelled';
   /** The stop and station roundels: a white disc with a coloured ring, or a solid coloured disc with a white letter. */
   roundel: 'ring' | 'solid';
   /** The bus routes: a dashed line, or a dotted one at reduced opacity that stays behind the tints. */
@@ -267,11 +267,13 @@ export const TEMPLATES: Template[] = [
     categories: HERON_CATEGORIES },
   { id: 'conure', label: 'Conure', note: 'Heron with the zoning in the NSW ePlanning colours, keyed by zone code',
     font: NARROW, streetFont: NARROW, textScale: 0.96,
-    // Heron's aerial, lines, lettering and marks; only the zoning differs.
-    ink: '#1c1c1c', streetInk: '#ffffff', discInk: '#9c4a36', discParkInk: '#1f7a4d', rule: '#8a8a8a',
+    // Heron's aerial, lines and lettering; the numbered places and the
+    // walking catchments in black, the catchments as plain lines with their
+    // time and distance written along them.
+    ink: '#1c1c1c', streetInk: '#ffffff', discInk: '#1c1c1c', discParkInk: '#1c1c1c', rule: '#8a8a8a',
     site: '#cf4a2e', dimension: '#3c4c5a', wind: '#6d8a99', sun: '#f0e4c0', road: '#7d7d7d', water: '#cbdae2',
-    transit: NAVY, rail: '#d43d33', walk5: '#1f7a4d', walk10: '#6aaf88', busRoute: '#7a8bb0', heritage: '#dbbb7b',
-    isochrone: 'walkers', roundel: 'solid', busLine: 'dashed', railLine: 'dotted',
+    transit: NAVY, rail: '#d43d33', walk5: '#1c1c1c', walk10: '#1c1c1c', busRoute: '#7a8bb0', heritage: '#dbbb7b',
+    isochrone: 'labelled', roundel: 'solid', busLine: 'dashed', railLine: 'dotted',
     ground: 'aerial', aerialTone: 'grey', veil: 0.36, tintScale: 1, footprints: 'outline', lots: 'white', streets: 'none', streetLabels: 'plain',
     // The zones in exactly the NSW ePlanning colours, keyed by zone code;
     // heritage in the ePlanning item tan.
