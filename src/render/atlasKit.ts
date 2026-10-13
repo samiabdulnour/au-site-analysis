@@ -31,6 +31,8 @@ export interface Fill {
   outline?: string;
   outlineW?: number;
   dash?: string;
+  /** How overlapping parts of the shape fill: evenodd (holes) by default, nonzero to union them. */
+  rule?: 'evenodd' | 'nonzero';
 }
 
 type Box = { x0: number; y0: number; x1: number; y1: number };
@@ -70,9 +72,10 @@ export function fillShape(d: string, bb: Box, f: Fill, k = 1): string {
   const id = `ak${++uid}`;
   const pad = 1;
   const box = { x0: bb.x0 - pad, y0: bb.y0 - pad, x1: bb.x1 + pad, y1: bb.y1 + pad };
-  return (f.bg ? `<path d="${d}" fill="${f.bg}" fill-rule="evenodd"/>` : '') +
-    (f.kind ? `<clipPath id="${id}"><path d="${d}" clip-rule="evenodd"/></clipPath><g clip-path="url(#${id})">${strokes(f, box, k)}</g>` : '') +
-    (f.outline ? `<path d="${d}" fill="none" stroke="${f.outline}" stroke-width="${((f.outlineW ?? 0.25) / k).toFixed(3)}"${f.dash ? ` stroke-dasharray="${f.dash}"` : ''} fill-rule="evenodd"/>` : '');
+  const rule = f.rule ?? 'evenodd';
+  return (f.bg ? `<path d="${d}" fill="${f.bg}" fill-rule="${rule}"/>` : '') +
+    (f.kind ? `<clipPath id="${id}"><path d="${d}" clip-rule="${rule}"/></clipPath><g clip-path="url(#${id})">${strokes(f, box, k)}</g>` : '') +
+    (f.outline ? `<path d="${d}" fill="none" stroke="${f.outline}" stroke-width="${((f.outlineW ?? 0.25) / k).toFixed(3)}"${f.dash ? ` stroke-dasharray="${f.dash}"` : ''} fill-rule="${rule}"/>` : '');
 }
 
 /** The key's swatch for a fill, in the legend's 5 × 3.6 box, drawn at the map's density (the box prints 1.54× larger). */
@@ -178,3 +181,83 @@ export const z6 = txt;
 export const zSvg = svg;
 export const Z_W = W;
 export const Z_TRACK = TRACK;
+
+/** Spans on a time axis: a document from the year it began to the year it ends (or the axis' end, open), a dashed line at today. */
+export function zSpans(rows: { name: string; from: number; to?: number; fill: Fill }[], y0: number, y1: number, now?: number): string {
+  const AXIS = 6.3, ROWS = AXIS + 3.7, ROWH = 3.95, BAR = 1.65;
+  const X = (y: number) => TRACK + ((Math.max(y0, Math.min(y1, y)) - y0) / (y1 - y0)) * SPAN;
+  const g: string[] = [];
+  const gy0 = ROWS - 0.6, gy1 = ROWS + rows.length * ROWH - 0.15;
+  const step = y1 - y0 > 30 ? 10 : 5;
+  for (let y = Math.ceil(y0 / step) * step; y <= y1; y += step) {
+    g.push(txt(X(y), AXIS, String(y), 'middle'));
+    g.push(`<line x1="${X(y).toFixed(2)}" y1="${gy0.toFixed(2)}" x2="${X(y).toFixed(2)}" y2="${gy1.toFixed(2)}" stroke="#878787" stroke-width="0.18" stroke-linecap="round" stroke-dasharray="0 0.36"/>`);
+  }
+  rows.forEach((r, i) => {
+    const top = ROWS + i * ROWH;
+    g.push(txt(0, top, r.name));
+    const a = X(r.from), b = X(r.to ?? y1);
+    g.push(barOf(a, top + 0.6, Math.max(0.6, b - a), BAR, r.fill));
+    if (r.to === undefined) g.push(`<path d="M${(b + 0.3).toFixed(2)},${(top + 0.25).toFixed(2)}l1.2,1.18l-1.2,1.18z" fill="#000000"/>`);
+  });
+  if (now !== undefined) {
+    const x = X(now);
+    g.push(`<line x1="${x.toFixed(2)}" y1="${(gy0 - 1).toFixed(2)}" x2="${x.toFixed(2)}" y2="${(gy1 + 0.6).toFixed(2)}" stroke="#000000" stroke-width="0.3" stroke-dasharray="0.9 0.6"/>`);
+    g.push(txt(x, gy1 + 1.2, 'today', 'middle'));
+  }
+  return svg(gy1 + (now !== undefined ? 5 : 1), g.join(''));
+}
+
+/** Paired bars: the place against its benchmark on each row, the place's fill above the benchmark's, a key in the axis row. */
+export function zPairs(rows: { name: string; a: number; b: number }[], max: number, step: number, keys: [string, string], fa: Fill, fb: Fill, unit = ' %'): string {
+  const AXIS = 6.3, ROWS = AXIS + 3.7, ROWH = 4.7, BAR = 1.35;
+  while (rows.some((r) => TRACK + (Math.min(Math.max(r.a, r.b), max) / max) * SPAN + 1 + labelW(`${Math.round(Math.max(r.a, r.b))}${unit}`) > W) && max < 1e9) max += step;
+  const X = (v: number) => TRACK + (Math.min(v, max) / max) * SPAN;
+  const g: string[] = [];
+  const gy0 = ROWS - 0.6, gy1 = ROWS + rows.length * ROWH - 0.6;
+  for (let v = 0; v <= max + 1e-9; v += step) {
+    g.push(txt(X(v), AXIS, String(Math.round(v * 10) / 10), v === 0 ? 'start' : 'middle'));
+    g.push(`<line x1="${X(v).toFixed(2)}" y1="${gy0.toFixed(2)}" x2="${X(v).toFixed(2)}" y2="${gy1.toFixed(2)}" stroke="#878787" stroke-width="0.18" stroke-linecap="round" stroke-dasharray="0 0.36"/>`);
+  }
+  // the key, in the axis row of the names' column
+  g.push(`<g transform="translate(0,${(AXIS - 0.2).toFixed(2)})">${fillShape('M0,0.4H4V2.2H0Z', { x0: 0, y0: 0.4, x1: 4, y1: 2.2 }, fa, 1.4)}</g>`, txt(5, AXIS, keys[0]));
+  const kx = 7 + labelW(keys[0]);
+  g.push(`<g transform="translate(${kx.toFixed(2)},${(AXIS - 0.2).toFixed(2)})">${fillShape('M0,0.4H4V2.2H0Z', { x0: 0, y0: 0.4, x1: 4, y1: 2.2 }, fb, 1.4)}</g>`, txt(kx + 5, AXIS, keys[1]));
+  const halo = (s: string) => s.replace('<text ', '<text stroke="#ffffff" stroke-width="0.7" stroke-linejoin="round" paint-order="stroke" ');
+  rows.forEach((r, i) => {
+    const top = ROWS + i * ROWH;
+    g.push(txt(0, top + 0.6, r.name));
+    g.push(barOf(TRACK - 0.09, top + 0.3, Math.max(0, X(r.a) - TRACK + 0.09), BAR, fa));
+    g.push(barOf(TRACK - 0.09, top + 0.3 + BAR + 0.35, Math.max(0, X(r.b) - TRACK + 0.09), BAR, fb));
+    g.push(halo(txt(X(Math.max(r.a, r.b)) + 1, top + 0.6, `${fmtShort(r.a)}${unit} · ${fmtShort(r.b)}${unit}`)));
+  });
+  return svg(gy1 + 1, g.join(''));
+}
+const fmtShort = (v: number) => (v < 1 && v > 0 ? '<1' : v < 10 ? v.toFixed(1).replace(/\.0$/, '') : String(Math.round(v)));
+
+/** A time line: a series solid, its projection dashed, a dot and the figure at the last of each; the years across the whole column. */
+export function zLine(series: { year: number; value: number }[], projection: { year: number; value: number }[], h = 26, fmt: (v: number) => string = (v) => String(Math.round(v))): string {
+  const all = [...series, ...projection];
+  if (!all.length) return '';
+  const y0 = Math.min(...all.map((p) => p.year)), y1 = Math.max(...all.map((p) => p.year));
+  const ax = niceAxis(Math.max(...all.map((p) => p.value)));
+  const L = 8, TOP = 3, B = TOP + h;
+  const X = (y: number) => L + ((y - y0) / Math.max(1, y1 - y0)) * (W - L - 12);
+  const Y = (v: number) => B - (v / ax.max) * h;
+  const g: string[] = [];
+  for (let v = 0; v <= ax.max + 1e-9; v += ax.step) {
+    g.push(`<line x1="${L}" y1="${Y(v).toFixed(2)}" x2="${(W - 12).toFixed(2)}" y2="${Y(v).toFixed(2)}" stroke="#878787" stroke-width="0.18" stroke-linecap="round" stroke-dasharray="0 0.36"/>`);
+    g.push(txt(0, Y(v) - 1.1, v >= 1000 ? `${Math.round(v / 1000)}k` : String(v)));
+  }
+  const step = y1 - y0 > 40 ? 10 : 5;
+  for (let y = Math.ceil(y0 / step) * step; y <= y1; y += step) g.push(txt(X(y), B + 1.2, String(y), 'middle'));
+  const path = (pts: { year: number; value: number }[]) => pts.map((p, i) => `${i ? 'L' : 'M'}${X(p.year).toFixed(2)},${Y(p.value).toFixed(2)}`).join('');
+  if (series.length) g.push(`<path d="${path(series)}" fill="none" stroke="#000000" stroke-width="0.35" stroke-linejoin="round"/>`);
+  if (projection.length) g.push(`<path d="${path(series.length ? [series[series.length - 1], ...projection] : projection)}" fill="none" stroke="#000000" stroke-width="0.25" stroke-dasharray="0.9 0.6"/>`);
+  for (const pts of [series, projection]) {
+    if (!pts.length) continue;
+    const p = pts[pts.length - 1];
+    g.push(`<circle cx="${X(p.year).toFixed(2)}" cy="${Y(p.value).toFixed(2)}" r="0.55" fill="#000000"/>`, txt(X(p.year) + (pts === projection ? 1.2 : 0), Y(p.value) - 3.4, `${fmt(p.value)} · ${p.year}`, pts === projection ? 'start' : 'middle').replace('<text ', '<text stroke="#ffffff" stroke-width="0.7" paint-order="stroke" '));
+  }
+  return svg(B + 4.4, g.join(''));
+}

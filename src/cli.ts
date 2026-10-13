@@ -125,6 +125,11 @@ if (sheetType === 'slides') {
     daYears: Number(arg('da-years', '5')),
     log: (m) => console.log(m),
   });
+  // A development aid: keep the bundle, so the deck can be re-composed without fetching (scripts/recompose.ts).
+  if (process.env.KEEP_BUNDLE) {
+    const { serialize } = await import('node:v8');
+    await writeFile(join(outDir, 'slides.bundle'), serialize({ sb, meta }));
+  }
   console.log('composing overall analysis slides…');
   const { html } = renderSlides(sb, meta);
   const slidesHtmlPath = join(outDir, 'slides.html');
