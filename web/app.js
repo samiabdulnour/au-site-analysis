@@ -157,7 +157,10 @@ function renderResult() {
   const parts = isMap()
     ? [state.sheet, state.scale, state.rotate, state.template]
     : [state.sheet, state.template];
-  const src = '/samples/result-' + parts.join('-') + '.jpg';
+  // `?r=2` is an address the old day-long cache never stored, so a browser
+  // still holding pictures from before a redraw asks again. The server has
+  // the browser revalidate them since, so a redraw needs no new number.
+  const src = '/samples/result-' + parts.join('-') + '.jpg?r=2';
   let text = caption(SHEETS, state.sheet);
   if (isMap()) text += ' ' + caption(SCALES[state.sheet], state.scale) + ', ' + caption(NORTH, state.rotate);
   text += ', ' + caption(STYLES, state.template) + '.';

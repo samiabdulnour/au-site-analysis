@@ -767,7 +767,14 @@ Sitemap: ${siteBase()}/sitemap.xml
       if (err) { res.writeHead(404); res.end('not found'); return; }
       const ext = sampleMatch[1].split('.').pop()!;
       const type = ext === 'svg' ? 'image/svg+xml' : ext === 'png' ? 'image/png' : 'image/jpeg';
-      res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'public, max-age=86400' });
+      // Revalidated rather than kept blind: a redraw replaces the pictures
+      // under the same names, and a day's max-age went on showing the old
+      // ones for a day after the deploy. The tag is the content's, so an
+      // unchanged picture costs a 304 and a redrawn one arrives at once.
+      const etag = `"${createHash('sha1').update(data).digest('base64url').slice(0, 20)}"`;
+      const headers = { 'Cache-Control': 'no-cache', ETag: etag };
+      if (req.headers['if-none-match'] === etag) { res.writeHead(304, headers); res.end(); return; }
+      res.writeHead(200, { 'Content-Type': type, ...headers });
       res.end(data);
     });
     return;
