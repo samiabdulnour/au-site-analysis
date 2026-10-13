@@ -5213,7 +5213,7 @@ export function conditionAtlas(b: SlidesBundle): Slide {
 
   // eight frames: the street-level ones from the frontages first, then the site's edges from above at 7 cm, clockwise from north
   const sf = siteFacts(b);
-  const cells: { file?: string; svg?: string; n: number | string; caption: string; whole?: boolean }[] = frames.slice(0, 8).map((cam, i) => ({ file: cam.file, n: i + 1, caption: `${i + 1} ${cam.caption.replace(/^\d+ · /, '')}`, whole: cam.source === 'google' }));
+  const cells: { file?: string; svg?: string; n: number | string; caption: string; whole?: boolean }[] = frames.slice(0, 8).map((cam, i) => ({ file: cam.file, n: i + 1, caption: `${i + 1} ${cam.caption.replace(/^\d+ · /, '')}` }));
   const sp = b.site.sitePanel;
   if (b.site.aerial && cells.length < 8) {
     const sproj = panelProjector(sp);
@@ -5237,7 +5237,7 @@ export function conditionAtlas(b: SlidesBundle): Slide {
     }
   }
   const blocks = [zBlock(frames.length ? 'Street level and from above' : 'The site from above', zPhotos(cells), `NSW Imagery${img?.resolutionCm ? ` ${img.resolutionCm} cm` : ''}${img?.date ? ` · ${fmtIso(img.date)}` : ''}`)];
-  const sources = `Sources: ${frames.length ? `street-level frames from ${listWords([...new Set(frames.map((cam) => cam.source === 'google' ? 'Google Street View' : 'KartaView'))])}, credited under each; ` : ''}the 1943 aerial survey from NSW Spatial Services' Historical Imagery; today's aerial NSW Imagery via SIX Maps${img?.date ? `, captured ${fmtIso(img.date)}` : ''}${img?.resolutionCm ? `, ${img.resolutionCm} cm` : ''}. Open street-level imagery has no frame on the site's frontages; Google Street View fills them where its key is set. Retrieved ${b.generatedAt.slice(0, 10)}.`;
+  const sources = `Sources: ${frames.length ? `street-level frames from ${listWords([...new Set(frames.map((cam) => cam.source === 'google' ? 'Google Street View' : 'KartaView'))])}, credited under each; ` : ''}the 1943 aerial survey from NSW Spatial Services' Historical Imagery; today's aerial NSW Imagery via SIX Maps${img?.date ? `, captured ${fmtIso(img.date)}` : ''}${img?.resolutionCm ? `, ${img.resolutionCm} cm` : ''}${frames.length < 8 ? '; where no camera stands in front of a side, that side is shown from above' : ''}. Retrieved ${b.generatedAt.slice(0, 10)}.`;
   const sub = atlasSub(b, f.pair.then !== 'none' ? '1943 and today' : "today's aerial", frames.length ? `${frames.length} street-level frame${frames.length === 1 ? '' : 's'}` : 'the edges from above');
   const pe2 = panelExtent(pp), k2 = mercatorScaleFactor(mercatorToLonLat(pp.center).lat);
   const narrative = brief([

@@ -40,7 +40,7 @@ const STREET_MAX_M = 60;
 const STREET_OFF_AXIS_DEG = 75;
 /** Cameras closer than this show the same thing. */
 const MIN_SPACING_M = 20;
-export const MAX_PHOTOS = 6;
+export const MAX_PHOTOS = 8;
 const LICENCE = 'CC BY-SA 4.0';
 
 export type PhotoSource = 'kartaview' | 'mapillary' | 'google';

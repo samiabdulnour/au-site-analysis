@@ -7,6 +7,8 @@ import { fetchCountry } from '../src/fetch/country.js';
 import { fetchPlaceViews } from '../src/fetch/character.js';
 import { fetchAerial, fetchVegetationMask } from '../src/fetch/imagery.js';
 import { fetchOsmTrees } from '../src/fetch/greenSpace.js';
+import { fetchPhotos } from '../src/fetch/photos.js';
+import { geomRings } from '../src/fetch/planning.js';
 import { mergeTrees } from '../src/fetch/trees.js';
 import { panelExtent } from '../src/render/minimap.js';
 import { mercatorScaleFactor, mercatorToLonLat } from '../src/lib/geo.js';
@@ -42,6 +44,12 @@ if (what.has('trees')) {
 if (what.has('vegetation')) {
   sb.green.vegetation = await fetchVegetationMask(panelExtent(sb.bleedPanel), dataDir, 0.8, 1 / mercatorScaleFactor(mercatorToLonLat(sb.geocode.center).lat));
   console.log(`vegetation: ${sb.green.vegetation.pxWidth}×${sb.green.vegetation.pxHeight}, ${sb.green.vegetation.sharePct} %`);
+}
+if (what.has('photos')) {
+  // Street View is read with GOOGLE_MAPS_API_KEY from the environment, never from a file
+  const rings = (fc: { features: { geometry: unknown }[] }) => fc.features.flatMap((ft) => geomRings(ft.geometry as never));
+  sb.photos = await fetchPhotos({ centre: mercatorToLonLat(sb.geocode.center), siteRings: rings(sb.base.siteLots), pairPanel: sb.photos.pair.panel, outDir: dataDir, log, lots: rings(sb.base.lots), buildings: sb.buildings.buildings.flatMap((x: { rings: number[][][] }) => x.rings) });
+  console.log(`photos: ${sb.photos.photos.length} (${sb.photos.photos.filter((x: { source: string }) => x.source === 'google').length} Street View)`);
 }
 await writeFile(join(outDir, 'slides.bundle'), serialize(kept));
 console.log('bundle patched:', [...what].join(', '));
