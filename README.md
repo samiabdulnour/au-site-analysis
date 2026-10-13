@@ -59,6 +59,20 @@ Mapillary's frames with `MAPILLARY_TOKEN=…` (a free client token); without
 either it reads KartaView alone. On the server they go in
 `/etc/site-analyst.env`, which the deployer passes to the container.
 
+With the key, slide 02 shows each numbered place from the street (the
+camera aimed at the place's building, a view blocked by another building
+refused) and slide 12 walks the site's street end to end in eight frames.
+To control a picture by hand, put `photo_overrides.json` in the address's
+output folder and run again:
+
+```json
+{ "places": { "1": { "lat": -33.8925, "lon": 151.2070, "heading": 95, "fov": 70 }, "5": { "skip": true } },
+  "street": { "3": { "heading": 270 } } }
+```
+
+A camera point takes the nearest panorama to it; `heading`, `pitch` and
+`fov` turn it; `skip` drops the frame.
+
 To refresh the samples, generate the three sheets for the demo address and
 re-render them:
 

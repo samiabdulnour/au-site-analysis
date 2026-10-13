@@ -2630,14 +2630,14 @@ function demPicture(g: DemGrid, proj: Proj, href: string): string {
 
 const SECTION_AX = 11;
 /** A section of the ground after the template: the scale chosen to fill the column, the heights stretched where the relief is slight, the ground in poché, the site's run in red. */
-function groundSection(sec: SectionLine, from: string, to: string, ink: string, maxH = 44): { svg: string; scale: number; ve: number } | null {
+function groundSection(sec: SectionLine, from: string, to: string, ink: string, maxH = 44, fixedVe?: number): { svg: string; scale: number; ve: number } | null {
   const s = sec.samples;
   if (s.length < 2) return null;
   const L = sec.lengthM, AX = SECTION_AX;
   const scale = Math.round((L * 1000) / (Z_W - AX));
   const sx = (Z_W - AX) / L;
   const rls = s.map((q) => q.rl), lo = Math.min(...rls), hi = Math.max(...rls), relief = Math.max(1, hi - lo);
-  const ve = [1, 2, 5, 10, 20, 25, 50].filter((v) => relief * sx * v <= Math.min(26, maxH - 16)).pop() ?? 1;
+  const ve = fixedVe ?? [1, 2, 5, 10, 20, 25, 50].filter((v) => relief * sx * v <= Math.min(26, maxH - 16)).pop() ?? 1;
   const sy = sx * ve, TOP = 9.5, POCHE = 3;
   const X = (d: number) => AX + d * sx, Y = (rl: number) => TOP + (hi - rl) * sy;
   const base = Y(lo) + POCHE;
@@ -2676,7 +2676,9 @@ export function topographyAtlas(b0: SlidesBundle): Slide {
   const gt = greyBase(t);
   const parts: string[] = [`<rect x="0" y="0" width="${p.wMm}" height="${p.hMm}" fill="#ffffff"/>`];
   // a monochrome topographic map: the ground in sage bands every 5 m, the hillshade multiplied over it, the contours
-  const sections = (f?.sections ?? []).map((s) => cropSection(s, fillScale(s.lengthM, Z_W - SECTION_AX), Z_W - SECTION_AX));
+  // one scale for both sections, the shorter filling the column and the longer cropped to it
+  const secScale = Math.min(...(f?.sections ?? []).map((s) => fillScale(s.lengthM, Z_W - SECTION_AX)));
+  const sections = (f?.sections ?? []).map((s) => cropSection(s, secScale, Z_W - SECTION_AX));
   if (g && f) {
     const lo = Math.floor(Math.max(0, f.window.minRl) / 5) * 5, hi = Math.ceil(f.window.maxRl / 5) * 5;
     parts.push(demPicture(g, proj, reliefDataUri(g, S.deep, { stepM: 5, lo, hi })));
@@ -2736,9 +2738,13 @@ export function topographyAtlas(b0: SlidesBundle): Slide {
     ], 9.6);
     blocks.push(zBlock('The site', figs, 'The page'));
     y += blockH(6.3 + 3 * 9.6);
+    // and one vertical exaggeration: the largest both sections' relief allows in their room
+    const roomEach = (limit - y) / Math.max(1, sections.length) - 6.21 - 7.5;
+    const sxC = 1000 / secScale;
+    const commonVe = [1, 2, 5, 10, 20, 25, 50].filter((v) => sections.every((s) => { const r = s.samples.map((q) => q.rl); return Math.max(1, Math.max(...r) - Math.min(...r)) * sxC * v <= Math.min(26, roomEach - 16); })).pop() ?? 1;
     for (const [i, s] of sections.entries()) {
       const room = (limit - y) / (sections.length - i) - 6.21 - 7.5;
-      const sec = groundSection(s, s.id, `${s.id}′`, S.deep, room);
+      const sec = groundSection(s, s.id, `${s.id}′`, S.deep, room, commonVe);
       if (!sec) continue;
       const head = `Section ${s.id}–${s.id}′ · ${bearingName((s.bearing + 180) % 360)} to ${bearingName(s.bearing)} · 1:${fmtNum(sec.scale).replace(',', ' ')}${sec.ve > 1 ? ` · heights ×${sec.ve}` : ''}`;
       blocks.push(zBlock(head, sec.svg));

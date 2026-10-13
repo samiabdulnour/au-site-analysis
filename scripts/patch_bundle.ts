@@ -55,7 +55,7 @@ if (what.has('photos')) {
 if (what.has('placesv')) {
   const key = process.env.GOOGLE_MAPS_API_KEY?.trim();
   if (!key) throw new Error('GOOGLE_MAPS_API_KEY is not set');
-  sb.character.placeStreetViews = await fetchPlaceStreetViews(sb.character.places.items.slice(0, 8).map((pl: { title: string; lon: number; lat: number }, i: number) => ({ n: i + 1, title: pl.title, lon: pl.lon, lat: pl.lat })), dataDir, key, undefined, log);
+  sb.character.placeStreetViews = await fetchPlaceStreetViews(sb.character.places.items.slice(0, 8).map((pl: { title: string; lon: number; lat: number }, i: number) => ({ n: i + 1, title: pl.title, lon: pl.lon, lat: pl.lat })), dataDir, key, undefined, log, sb.buildings.buildings.map((x: { rings: number[][][] }) => x.rings));
   console.log(`place street views: ${sb.character.placeStreetViews.length}`);
 }
 if (what.has('series')) {

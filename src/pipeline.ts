@@ -757,7 +757,7 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
     // Sight lines to the skyline, the water and the park next door, from the eye just under the height limit, over the 5 m elevation surface.
     soft(assessViews({ site: mercatorToLonLat(geo.center), siteRing: largestRing(siteLots), hobM: controls.maxHeightM, zoning, parkPoints: green.parkPoints, log }), { views: [] as ViewTarget[], eyeAboveM: eyeAboveGround(controls.maxHeightM) }, 'views'),
     // The suburb's name comes from the context, so Wikipedia and Commons wait for it; the aerial over the planning window comes with them.
-    soft(fetchCharacter({ centre: mercatorToLonLat(geo.center), suburb: context.suburb?.name ?? '', aerialExtent: bleedExtent, outDir: dataDir, log }), emptyCharacter(), 'character (Wikipedia, Commons)'),
+    soft(fetchCharacter({ centre: mercatorToLonLat(geo.center), suburb: context.suburb?.name ?? '', aerialExtent: bleedExtent, outDir: dataDir, log, buildings: buildingsRead.buildings.map((x) => x.rings) }), emptyCharacter(), 'character (Wikipedia, Commons)'),
     soft(fetchStrategies(geo.center, context.lga?.name, context.lga?.council, log), emptyStrategies(), 'strategic documents'),
   ]);
   // the green of the aerial over the page, for the trees no inventory holds

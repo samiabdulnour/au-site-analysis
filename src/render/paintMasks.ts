@@ -7,7 +7,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { decodePng, encodeRgbaPng } from '../lib/png.js';
-import { AERIAL_GREEN_FILL, VEG_1750_FILLS, type Fill } from './atlasKit.js';
+import { AERIAL_GREEN_FILL, VEG_1750_FILLS, PATTERN_SCALE, PATTERN_WEIGHT, type Fill } from './atlasKit.js';
 import { mercatorScaleFactor, mercatorToLonLat } from '../lib/geo.js';
 
 const UP = 3;
@@ -15,7 +15,7 @@ const rgb = (h: string) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5),
 
 /** Whether a point, in map millimetres, falls on a fill's pattern stroke. */
 function onStroke(f: Fill, x: number, y: number): boolean {
-  const step = f.step ?? 0.8, w = f.w ?? 0.18;
+  const step = (f.step ?? 0.8) * PATTERN_SCALE, w = (f.w ?? 0.18) * PATTERN_WEIGHT;
   const m = (v: number) => ((v % step) + step) % step;
   if (f.kind === 'vlines') return Math.abs(m(x) - step / 2) < w / 2;
   if (f.kind === 'hlines') return Math.abs(m(y) - step / 2) < w / 2;

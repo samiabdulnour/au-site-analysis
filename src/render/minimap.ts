@@ -193,24 +193,28 @@ export function furnitureBox(p: Panel, corner: FurnitureCorner = 'left'): { x0: 
 
 /** Scale bar and north arrow, bottom-left unless the map asks for another corner. */
 export function panelFurniture(p: Panel, corner: FurnitureCorner = 'left'): string {
-  const t = tpl();
   const { barM, barMm, x0, y0 } = furnitureGeom(p, corner);
-  // as on a drawing: a scale bar of four alternate segments and a north point in a circle, 6 pt figures
-  const f6 = `font-size="2.117" letter-spacing="0.19" font-family="Arial, 'Liberation Sans', sans-serif"`;
-  const seg = barMm / 4, h = 0.9, yb = y0 - h;
-  const segs = [0, 1, 2, 3].map((i) => `<rect x="${(x0 + i * seg).toFixed(2)}" y="${yb.toFixed(2)}" width="${seg.toFixed(2)}" height="${h}" fill="${i % 2 ? '#ffffff' : '#000000'}" stroke="#000000" stroke-width="0.15"/>`).join('');
-  const ticks = [0, 2, 4].map((i) => `<line x1="${(x0 + i * seg).toFixed(2)}" y1="${(yb - 0.9).toFixed(2)}" x2="${(x0 + i * seg).toFixed(2)}" y2="${yb.toFixed(2)}" stroke="#000000" stroke-width="0.15"/>`).join('');
-  const label = (x: number, text: string, anchor: string) => `<text x="${x.toFixed(2)}" y="${(yb - 1.5).toFixed(2)}" text-anchor="${anchor}" ${f6} fill="#000000">${text}</text>`;
-  const unit = barM >= 1000 ? (v: number) => `${v / 1000}` : (v: number) => `${v}`;
-  const R = 2.9, cx = x0 + barMm + 4 + R, cy = y0 - R - 0.2;
-  const north = `<circle cx="${cx.toFixed(2)}" cy="${cy.toFixed(2)}" r="${R}" fill="#ffffff" stroke="#000000" stroke-width="0.18"/>` +
-    `<path d="M${cx.toFixed(2)},${(cy - R + 0.35).toFixed(2)}L${(cx - 1.1).toFixed(2)},${(cy + R - 0.6).toFixed(2)}L${cx.toFixed(2)},${(cy + R - 1.5).toFixed(2)}Z" fill="#000000"/>` +
-    `<path d="M${cx.toFixed(2)},${(cy - R + 0.35).toFixed(2)}L${(cx + 1.1).toFixed(2)},${(cy + R - 0.6).toFixed(2)}L${cx.toFixed(2)},${(cy + R - 1.5).toFixed(2)}Z" fill="#ffffff" stroke="#000000" stroke-width="0.15" stroke-linejoin="round"/>` +
-    `<text x="${cx.toFixed(2)}" y="${(cy - R - 1).toFixed(2)}" text-anchor="middle" ${f6} fill="#000000">N</text>`;
-  void t;
+  // line only, as on a drawing: the bar's first half in five alternating tenths, the rest a plain line, a tick at each end;
+  // the north point a circle with one stroke from its centre to north
+  const f6 = `font-size="2.117" letter-spacing="0.19" font-family="Arial, 'Liberation Sans', sans-serif" fill="#000000"`;
+  const h = 0.9, yb = y0, yt = y0 - h, seg = barMm / 10;
+  let d = `M${x0.toFixed(2)},${yb.toFixed(2)}V${yt.toFixed(2)}`;
+  for (let i = 0; i < 5; i++) {
+    const y = i % 2 ? yb : yt;
+    d += `H${(x0 + (i + 1) * seg).toFixed(2)}`;
+    if (i < 4) d += `V${(i % 2 ? yt : yb).toFixed(2)}`;
+    void y;
+  }
+  d += `V${yb.toFixed(2)}H${(x0 + barMm).toFixed(2)}V${yt.toFixed(2)}`;
+  const unit = barM >= 1000 ? `${barM / 1000} KM` : `${barM} M`;
+  const R = 2.6, cx = x0 + barMm + 4 + R, cy = y0 - R;
   return `<g>
-    <rect x="${(x0 - 1.6).toFixed(2)}" y="${(y0 - 2 * R - 4.4).toFixed(2)}" width="${(barMm + 2 * R + 7.6).toFixed(2)}" height="${(2 * R + 5.8).toFixed(2)}" fill="#ffffff" fill-opacity="0.88"/>
-    ${segs}${ticks}${label(x0, '0', 'start')}${label(x0 + 2 * seg, unit(barM / 2), 'middle')}${label(x0 + barMm, `${unit(barM)} ${barM >= 1000 ? 'km' : 'm'}`, 'middle')}${north}
+    <rect x="${(x0 - 1.6).toFixed(2)}" y="${(y0 - 2 * R - 2.4).toFixed(2)}" width="${(barMm + 2 * R + 7.6).toFixed(2)}" height="${(2 * R + 3.6).toFixed(2)}" fill="#ffffff" fill-opacity="0.88"/>
+    <path d="${d}" fill="none" stroke="#000000" stroke-width="0.18" stroke-linejoin="miter"/>
+    <text x="${x0.toFixed(2)}" y="${(yt - 1.1).toFixed(2)}" ${f6}>0</text>
+    <text x="${(x0 + barMm).toFixed(2)}" y="${(yt - 1.1).toFixed(2)}" text-anchor="end" ${f6}>${unit}</text>
+    <circle cx="${cx.toFixed(2)}" cy="${cy.toFixed(2)}" r="${R}" fill="none" stroke="#000000" stroke-width="0.18"/>
+    <line x1="${cx.toFixed(2)}" y1="${cy.toFixed(2)}" x2="${cx.toFixed(2)}" y2="${(cy - R).toFixed(2)}" stroke="#000000" stroke-width="0.5"/>
   </g>`;
 }
 

@@ -37,10 +37,13 @@ export interface Fill {
 
 type Box = { x0: number; y0: number; x1: number; y1: number };
 
+/** Every pattern drawn this much coarser than its fill says, and its strokes this much heavier: open enough at print size to tell one pattern from the next. */
+export const PATTERN_SCALE = 1.7, PATTERN_WEIGHT = 1.35;
+
 /** The strokes of a pattern over a box, scaled by k (k > 1 draws finer, for a reduced swatch). */
 function strokes(f: Fill, bb: Box, k = 1): string {
   if (!f.kind || !f.ink) return '';
-  const step = (f.step ?? 0.8) / k, w = (f.w ?? 0.18) / k;
+  const step = ((f.step ?? 0.8) * PATTERN_SCALE) / k, w = ((f.w ?? 0.18) * PATTERN_WEIGHT) / k;
   const out: string[] = [];
   if (f.kind === 'vlines') {
     for (let x = bb.x0 + step / 2; x <= bb.x1; x += step) out.push(`M${x.toFixed(2)},${bb.y0.toFixed(2)}V${bb.y1.toFixed(2)}`);
