@@ -179,7 +179,9 @@ function zLegend(entries: LegendEntry[]): string {
   const row = (e: LegendEntry) => `<div class="zrow"><svg class="zsw" viewBox="0 0 5 3.6" preserveAspectRatio="xMinYMid meet" xmlns="http://www.w3.org/2000/svg">${e.swatch}</svg><span>${esc(e.label)}</span></div>`;
   if (entries.length <= LEGEND_ONE_COLUMN) return `<div class="abs zleg">${entries.map(row).join('')}</div>`;
   const half = Math.ceil(entries.length / 2);
-  return `<div class="abs zleg" style="left:75.33mm">${entries.slice(0, half).map(row).join('')}</div><div class="abs zleg">${entries.slice(half).map(row).join('')}${half > entries.length - half ? '<div class="zrow" style="border-top-color:transparent"></div>' : ''}</div>`;
+  // both columns hang from the same top, so their rows line up
+  const top = (297 - 12.2 - half * 8.52).toFixed(2);
+  return `<div class="abs zleg" style="left:75.33mm;bottom:auto;top:${top}mm">${entries.slice(0, half).map(row).join('')}</div><div class="abs zleg" style="bottom:auto;top:${top}mm">${entries.slice(half).map(row).join('')}</div>`;
 }
 const LEGEND_ONE_COLUMN = 4;
 
@@ -844,10 +846,19 @@ export function characterAtlas(b0: SlidesBundle): Slide {
     blocks.push(zBlock(`Places nearby · from the site, m`, zBars(rows, ax.max, ax.step), `${f.places.length} within ${(f.placesRadiusM / 1000).toFixed(1)} km`));
   }
   if (nViews) {
-    const cells = views.slice(0, nViews).map((v) => { const pl = f.places.find((q) => q.n === v.n); return { svg: aerialFrame(v.aerial), n: v.n, caption: `${v.n} ${v.title}${pl ? ` · ${fmtNum(pl.distanceM)} m ${pl.side}` : ''}` }; });
-    blocks.push(zBlock('The places from above', zPhotos(cells), `NSW Imagery${f.aerial?.date ? ` · ${fmtIso(f.aerial.date)}` : ''}`));
+    // from the street where Street View stands near the place, else from above
+    const svs = c.placeStreetViews ?? [];
+    const monthYear = (d?: string) => (d ? new Date(`${d}-01T00:00:00Z`).toLocaleDateString('en-AU', { month: 'short', year: 'numeric', timeZone: 'UTC' }) : '');
+    const cells = views.slice(0, nViews).map((v) => {
+      const pl = f.places.find((q) => q.n === v.n);
+      const sv = svs.find((q) => q.n === v.n);
+      const where = `${v.n} ${v.title}${pl ? ` · ${fmtNum(pl.distanceM)} m ${pl.side}` : ''}`;
+      return sv ? { file: sv.file, n: v.n, caption: `${where} · Street View${sv.date ? `, ${monthYear(sv.date)}` : ''} © Google` } : { svg: aerialFrame(v.aerial), n: v.n, caption: `${where} · from above` };
+    });
+    const street = cells.filter((cl) => 'file' in cl && cl.file).length;
+    blocks.push(zBlock(street ? 'The places from the street' : 'The places from above', zPhotos(cells), street ? 'Google Street View' : `NSW Imagery${f.aerial?.date ? ` · ${fmtIso(f.aerial.date)}` : ''}`));
   }
-  const sources = `Sources: Wikipedia${f.wikipedia ? `, "${f.wikipedia.title}", ${f.wikipedia.url.replace(/^https?:\/\//, '')}, text CC BY-SA 4.0,` : ''} and its geosearch for the places with articles within ${(f.placesRadiusM / 1000).toFixed(1)} km; NSW Imagery via SIX Maps for the aerial and the places from above${f.aerial?.date ? `, captured ${fmtIso(f.aerial.date)}` : ''}. Retrieved ${b.generatedAt.slice(0, 10)}.`;
+  const sources = `Sources: Wikipedia${f.wikipedia ? `, "${f.wikipedia.title}", ${f.wikipedia.url.replace(/^https?:\/\//, '')}, text CC BY-SA 4.0,` : ''} and its geosearch for the places with articles within ${(f.placesRadiusM / 1000).toFixed(1)} km; NSW Imagery via SIX Maps for the aerial${f.aerial?.date ? `, captured ${fmtIso(f.aerial.date)}` : ''}${(c.placeStreetViews ?? []).length ? '; Google Street View Static API for the places from the street, each from the panorama nearest it, © Google' : ''}. Retrieved ${b.generatedAt.slice(0, 10)}.`;
   const sub = atlasSub(b0, f.places.length ? `${f.places.length} place${f.places.length === 1 ? '' : 's'} with articles within ${(f.placesRadiusM / 1000).toFixed(1)} km` : '');
   return { id: '02_character', title: 'Character', subtitle: sub, textHtml: '', figureHtml: atlasFigure(mapSvg, `The place from above${f.aerial?.date ? ` · ${fmtIso(f.aerial.date)}` : ''}`, p, zFlow(blocks)), bleed: true, sources, accent: O.text, legend,
     narrative: brief([f.places.length ? `${capFirst(numWord(f.places.length))} place${f.places.length === 1 ? '' : 's'} within ${(f.placesRadiusM / 1000).toFixed(1)} km ${f.places.length === 1 ? 'has an article' : 'have articles'} of ${f.places.length === 1 ? 'its' : 'their'} own; the nearest are ${listWords(f.places.slice(0, 3).map((pl) => `${pl.title} ${fmtNum(pl.distanceM)} m ${pl.side}`))}.` : '']) };
@@ -1900,17 +1911,42 @@ export function developmentAtlas(b0: SlidesBundle, facts: PlanningFacts): Slide 
     <g clip-path="url(#clip-dev)" font-family="${t.font}">${parts.join('\n')}</g></svg>`;
 
   // ---- the text page
-  const scale = d.significant || 1;
-  const circles = zCircles([
-    { value: Math.max(d.applications, 1), label: fmtNum(d.applications), sub: 'applications', fill: { bg: R.light, outline: R.mid, outlineW: 0.35, dash: '1.45 1.45' } },
-    { value: Math.max(scale, 1), label: fmtNum(d.significant), sub: 'of scale', fill: { bg: '#ffffff', kind: 'vlines', ink: R.line, step: 0.7, w: 0.2, outline: R.solid, outlineW: 0.4, dash: '1.6 1.6' } },
-  ]);
-  const figs = zFigures([], [
-    ['sites of scale', fmtNum(d.sites.length)],
-    ['dwellings proposed on them', fmtNum(d.dwellings)],
-    ['stated cost of development', d.cost ? money(d.cost) : '—'],
-    ['State significant applications on the map', fmtNum(d.stateSignificant.sites.length)],
+  const figs = zFigures([
+    ['applications lodged', fmtNum(d.applications)],
+    ['of scale, on sites', `${fmtNum(d.significant)} on ${fmtNum(d.sites.length)}`],
+  ], [
+    ['dwellings proposed · stated cost', `${fmtNum(d.dwellings)} · ${d.cost ? money(d.cost) : '—'}`],
+    ['State significant applications', fmtNum(d.stateSignificant.sites.length)],
   ], 9.6);
+  // where and when: each site of scale on its year's row, at its distance from the site, sized by its cost
+  const c0 = lonLatToMercator(mercatorToLonLat(p.center)), k0 = mercatorScaleFactor(mercatorToLonLat(p.center).lat);
+  const distOf = (lon: number, lat: number) => { const m = lonLatToMercator({ lon, lat }); return Math.hypot(m.x - c0.x, m.y - c0.y) / k0; };
+  const pts = d.sites.map((st) => ({ st, dist: distOf(st.lon, st.lat), year: Number((st.primary.lodged ?? '').slice(0, 4)) })).filter((q) => q.year);
+  const dx = niceAxis(Math.max(100, ...pts.map((q) => q.dist)));
+  const SC = { AX: 6.3, ROW0: 11.5, ROWH: 7.2, X0: 40, X1: Z_W - 4 };
+  const SX = (m: number) => SC.X0 + (Math.min(m, dx.max) / dx.max) * (SC.X1 - SC.X0);
+  const maxCost = Math.max(1, ...pts.map((q) => q.st.cost ?? 0));
+  const sg: string[] = [];
+  const rowsY = d.perYear.map((y, i) => ({ ...y, y: SC.ROW0 + i * SC.ROWH }));
+  const scY1 = SC.ROW0 + (rowsY.length - 0.5) * SC.ROWH;
+  for (let v = 0; v <= dx.max + 1e-9; v += dx.step) {
+    sg.push(z6(SX(v), SC.AX, v === 0 ? '0' : `${fmtNum(v)} m`, v === 0 ? 'start' : 'middle'));
+    sg.push(`<line x1="${SX(v).toFixed(2)}" y1="${(SC.ROW0 - SC.ROWH / 2).toFixed(2)}" x2="${SX(v).toFixed(2)}" y2="${scY1.toFixed(2)}" stroke="#878787" stroke-width="0.18" stroke-linecap="round" stroke-dasharray="0 0.36"/>`);
+  }
+  for (const r of rowsY) {
+    const n = pts.filter((q) => q.year === r.year).length;
+    sg.push(z6(0, r.y - 2.6, `${r.year}${r.partial ? (r === rowsY[0] ? ' from ' + fmtMonthYear(d.from).split(' ')[0] : ' to ' + fmtMonthYear(d.to).split(' ')[0]) : ''}`), z6(0, r.y + 0.1, `${fmtNum(r.count)} lodged · ${n} of scale`).replace('fill="#000000"', 'fill="#878787"'));
+    sg.push(`<line x1="${SC.X0}" y1="${r.y.toFixed(2)}" x2="${SC.X1}" y2="${r.y.toFixed(2)}" stroke="#878787" stroke-width="0.12"/>`);
+  }
+  for (const q of [...pts].sort((a2, b2) => (b2.st.cost ?? 0) - (a2.st.cost ?? 0))) {
+    const r = rowsY.find((x) => x.year === q.year); if (!r) continue;
+    const rad = 0.6 + 2.6 * Math.sqrt((q.st.cost ?? 0) / maxCost), x = SX(q.dist);
+    sg.push(`<circle cx="${x.toFixed(2)}" cy="${r.y.toFixed(2)}" r="${(rad + 0.25).toFixed(2)}" fill="#ffffff"/>` + fillShape(`M${(x - rad).toFixed(2)},${r.y.toFixed(2)}a${rad.toFixed(2)},${rad.toFixed(2)} 0 1,0 ${(2 * rad).toFixed(2)},0a${rad.toFixed(2)},${rad.toFixed(2)} 0 1,0 ${(-2 * rad).toFixed(2)},0Z`, { x0: x - rad, y0: r.y - rad, x1: x + rad, y1: r.y + rad }, STATUS_FILL[q.st.statusClass]));
+  }
+  // the site at the axis' origin
+  sg.push(`<path d="M${(SC.X0 - 0.9).toFixed(2)},${(scY1 + 0.6).toFixed(2)}h1.8v1.8h-1.8Z" fill="${t.site}"/>`);
+  const scatter = zSvg(scY1 + 3, sg.join(''));
+  const scatterH = scY1 + 3;
   const mapKm = `${((p.wMm * p.scale) / 1e6).toFixed(1)} × ${((p.hMm * p.scale) / 1e6).toFixed(1)} km`;
   const method = zTable([
     { label: 'Counted', value: `Every application on the Planning Portal since ${fmtMonthYear(d.from)} on the ${mapKm} of the map.` },
@@ -1932,8 +1968,9 @@ export function developmentAtlas(b0: SlidesBundle, facts: PlanningFacts): Slide 
     { swatch: `<path d="M1.2,0.6H3.8V3H1.2Z" fill="${t.site}"/>`, label: 'The site' },
   ];
   const legendN = legend.length;
-  // the cost chart takes the rows the page holds above the key: after the pipeline (68), the method (46) and the years
-  const free = keyTop(legendN) - 6 - (44 + 68 + 38 + blockH(barsH(years.length)));
+  // the cost chart takes the rows the page holds above the key, after the figures, the scatter and the method
+  const free = keyTop(legendN) - 6 - (44 + blockH(6.3 + 2 * 9.6) + blockH(scatterH) + 38);
+  void ya; void yearRows;
   const top = byCost.slice(0, Math.max(0, Math.min(7, Math.floor((free - blockH(10)) / 3.95))));
   const ca = niceAxis(Math.max(1, ...top.map((st) => (st.cost ?? 0) / 1e6)));
   const costRows = top.map((st) => ({
@@ -1943,9 +1980,9 @@ export function developmentAtlas(b0: SlidesBundle, facts: PlanningFacts): Slide 
     fill: STATUS_FILL[st.statusClass],
   }));
   const flow = `<div class="zflow" style="top:44mm">
-    <div class="zblk">${zHead('The pipeline', 'On this map')}<div style="position:relative">${circles}<div style="position:absolute;left:0;top:0">${figs}</div></div></div>
+    <div class="zblk">${zHead('The pipeline', 'On this map')}${figs}</div>
+    <div class="zblk">${zHead('Sites of scale · when', 'and how far from the site')}${scatter}</div>
     <div class="zblk">${zHead('How it is counted')}${method}</div>
-    <div class="zblk">${zHead('Applications lodged per year')}${zBars(yearRows, ya.max, ya.step)}</div>
     ${top.length >= 3 ? `<div class="zblk">${zHead('Sites of scale · stated cost, $ M')}${zBars(costRows, ca.max, ca.step)}</div>` : ''}
   </div>`;
   const sources = `Sources: NSW Planning Portal Online DA API, every application lodged on the portal since July 2021 on the land the map covers; storeys, dwellings and costs as lodged by the applicant, "determined" not saying approved or refused; complying development certificates are not in the feed. State significant applications from the Department's Major Projects register. Retrieved ${b.generatedAt.slice(0, 10)}.`;
@@ -3068,7 +3105,9 @@ function atlasSection(b: SlidesBundle, sec: SectionLine, envelope: ReturnType<ty
     runs[runs.length - 1].pts.push([X(q.d), Y(Math.min(hi, q.rl + hp.m))]);
   }
   const lepRuns = runs.filter((r) => r.pts.length > 1 && Number.isFinite(r.m));
-  if (lepRuns.length) g.push(`<path d="${lepRuns.map((r) => `M${r.pts.map(([x, y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join('L')}`).join('')}" fill="none" stroke="#000000" stroke-width="0.2" stroke-dasharray="0.6 0.5"/>`);
+  // each run the whole envelope: up from the ground at its start, along the plane, down to the ground at its end
+  const groundY = (x: number) => { const d = x / sx; const q = samples.reduce((a, s2) => (Math.abs(s2.d - d) < Math.abs(a.d - d) ? s2 : a)); return Y(q.rl); };
+  if (lepRuns.length) g.push(`<path d="${lepRuns.map((r) => { const [x0] = r.pts[0], [x1] = r.pts[r.pts.length - 1]; return `M${x0.toFixed(2)},${groundY(x0).toFixed(2)}L${r.pts.map(([x, y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join('L')}L${x1.toFixed(2)},${groundY(x1).toFixed(2)}`; }).join('')}" fill="none" stroke="#000000" stroke-width="0.2" stroke-dasharray="0.6 0.5"/>`);
   let lastLabelX = -Infinity;
   for (const r of lepRuns) {
     const [x0, y0] = r.pts[0], [x1] = r.pts[r.pts.length - 1];
@@ -7468,7 +7507,7 @@ export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; 
   .slide.atlas .zbody, .slide.atlas .zbody p { font-size: 10pt; line-height: 4.23mm; hyphens: auto; }
   .slide.atlas .zbody p { margin: 0 0 4.23mm; }
   .slide.atlas .zsrc { font-size: 8pt; line-height: 3.4mm; color: #878787; hyphens: auto; overflow-wrap: anywhere; }
-  .slide.atlas .zleg { left: 138.67mm; width: 59.33mm; bottom: 12.2mm; border-bottom: 0.18mm solid #878787; }
+  .slide.atlas .zleg { left: 138.67mm; width: 59.33mm; bottom: 12.2mm; }
   .slide.atlas .zrow { position: relative; border-top: 0.18mm solid #878787; min-height: 8.52mm; padding: 0.7mm 0 1mm 11.43mm; }
   .slide.atlas .zrow span { display: block; font-size: 6pt; line-height: 2.55mm; letter-spacing: 0.09em; text-transform: uppercase; hyphens: auto; }
   .slide.atlas .zsw { position: absolute; left: 0; top: 1.05mm; width: 7.7mm; height: 5.54mm; overflow: visible; }

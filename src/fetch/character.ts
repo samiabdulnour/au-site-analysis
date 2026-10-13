@@ -14,6 +14,7 @@ import { retryFetch } from '../lib/http.js';
 import { cachedJson, DAY_MS } from '../lib/cache.js';
 import { lonLatToMercator, mercatorScaleFactor, type LonLat, type Extent } from '../lib/geo.js';
 import { fetchAerial, type AerialResult } from './imagery.js';
+import { fetchPlaceStreetViews, type PlaceStreetView } from './streetView.js';
 
 const UA = 'au-site-analysis/1.0 (site analysis deck; https://github.com/samiabdulnour/au-site-analysis)';
 const WP_REST = 'https://en.wikipedia.org/api/rest_v1';
@@ -75,6 +76,8 @@ export interface CharacterData {
   aerial: AerialResult | null;
   /** Each numbered place from above: NSW Imagery over a 3:2 window round it, for the slide's frames. Optional: decks read before it have none. */
   placeViews?: PlaceView[];
+  /** Each numbered place from the street, where Google Street View is keyed and has a panorama near it. */
+  placeStreetViews?: PlaceStreetView[];
   fetchedAt: string;
 }
 
@@ -291,6 +294,8 @@ export async function fetchCharacter(opts: { centre: LonLat; suburb: string; aer
   const aerial = await aerialP;
   const places = placesRes.items.filter((pl) => looksLikePlace(pl.title, pl.description)).slice(0, MAX_PLACES);
   const placeViews = await fetchPlaceViews(places, outDir, 8, log);
+  const gkey = process.env.GOOGLE_MAPS_API_KEY?.trim();
+  const placeStreetViews = gkey ? await fetchPlaceStreetViews(places.slice(0, 8).map((pl, i) => ({ n: i + 1, title: pl.title, lon: pl.lon, lat: pl.lat })), outDir, gkey, process.env.GOOGLE_MAPS_SIGNING_SECRET?.trim() || undefined, log) : [];
   log(`  character: wikipedia ${wiki.summary ? `"${wiki.summary.title}"` : `none (${wiki.note ?? 'no article'})`}; places ${placesRes.note ? `failed (${placesRes.note})` : `${placesRes.items.length} within ${PLACES_RADIUS_M} m`}; commons ${photosRes.note ? `failed (${photosRes.note})` : `${photosRes.candidates} usable, ${photos.length} saved`}; aerial ${aerial ? 'yes' : 'no'}; ${Math.round((Date.now() - t0) / 1000)} s`);
   return {
     wikipedia: { ok: wiki.summary !== null, summary: wiki.summary, note: wiki.note },
@@ -298,6 +303,7 @@ export async function fetchCharacter(opts: { centre: LonLat; suburb: string; aer
     photos: { ok: !photosRes.note, radiusM: PHOTOS_RADIUS_M, candidates: photosRes.candidates, items: photos, note: photosRes.note },
     aerial,
     placeViews,
+    placeStreetViews,
     fetchedAt: new Date().toISOString(),
   };
 }

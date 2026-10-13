@@ -30,6 +30,8 @@
 import { createHmac } from 'node:crypto';
 import { retryFetch } from '../lib/http.js';
 import type { LonLat } from '../lib/geo.js';
+import { writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 
 const METADATA = 'https://maps.googleapis.com/maps/api/streetview/metadata';
 const IMAGE = 'https://maps.googleapis.com/maps/api/streetview';
@@ -300,4 +302,46 @@ export function metadataService(key: string, secret?: string) {
     // REQUEST_DENIED, OVER_QUERY_LIMIT…: the key or the project is wrong, so the whole source stops
     throw new Error(`Street View metadata answered ${j.status ?? 'nothing'}${j.error_message ? `: ${j.error_message}` : ''}`);
   };
+}
+
+/** A place seen from the street: the panorama nearest it, turned to face it. */
+export interface PlaceStreetView { n: number; title: string; file: string; panoId: string; date?: string; copyright?: string; heading: number; distanceM: number; mapsUrl: string }
+
+/**
+ * Each place from the street: the outdoor panorama nearest its point (within 80 m), the camera turned to
+ * face the point, a field of view that takes in a building at that distance. Saved as `place_sv_<n>.jpg`.
+ */
+export async function fetchPlaceStreetViews(places: { n: number; title: string; lon: number; lat: number }[], outDir: string, key: string, secret?: string, log: (m: string) => void = () => {}): Promise<PlaceStreetView[]> {
+  const meta = metadataService(key, secret);
+  const out: PlaceStreetView[] = [];
+  for (const pl of places) {
+    try {
+      // probe the point and eight points 35 m round it; keep Google's own street panoramas (not visitors' uploads, which
+      // are often interiors) and take the one that stands back from the place far enough to see it, about 35 m
+      const pf = frame({ lon: pl.lon, lat: pl.lat });
+      const probes = [{ x: 0, y: 0 }, ...Array.from({ length: 8 }, (_, i) => ({ x: 35 * Math.sin((i * Math.PI) / 4), y: 35 * Math.cos((i * Math.PI) / 4) }))];
+      const found = new Map<string, SvMeta & { d: number }>();
+      for (const q of probes) {
+        const mm = await meta(pf.toLL(q), 30);
+        if (!mm || !/google/i.test(mm.copyright ?? '')) continue;
+        const r = pf.toXY({ lon: mm.lon, lat: mm.lat });
+        found.set(mm.panoId, { ...mm, d: Math.hypot(r.x, r.y) });
+      }
+      const cands = [...found.values()];
+      const m = cands.filter((c) => c.d >= 15 && c.d <= 70).sort((a, b) => Math.abs(a.d - 35) - Math.abs(b.d - 35))[0] ?? cands.sort((a, b) => Math.abs(a.d - 35) - Math.abs(b.d - 35))[0];
+      if (!m) { log(`  Street View: no street panorama near ${pl.title}`); continue; }
+      const f = frame({ lon: m.lon, lat: m.lat });
+      const target = f.toXY({ lon: pl.lon, lat: pl.lat });
+      const d = Math.hypot(target.x, target.y);
+      const heading = d < 3 ? 0 : norm((Math.atan2(target.x, target.y) * 180) / Math.PI);
+      const fov = d < 25 ? 100 : d < 50 ? 85 : 70;
+      const view: SvView = { ...m, heading, pitch: pitchFor(d), fov, kind: 'frontage', distanceM: d };
+      const res = await retryFetch(imageUrl(view, key, secret), {}, { attempts: 2, timeoutMs: 30_000, label: 'Street View image' });
+      if (!res.ok) { log(`  Street View image for ${pl.title}: HTTP ${res.status}`); continue; }
+      const file = `place_sv_${pl.n}.jpg`;
+      await writeFile(join(outDir, file), Buffer.from(await res.arrayBuffer()));
+      out.push({ n: pl.n, title: pl.title, file, panoId: m.panoId, date: m.date, copyright: m.copyright, heading, distanceM: Math.round(d), mapsUrl: mapsUrl(view) });
+    } catch (e: any) { log(`  Street View for ${pl.title} failed: ${e?.message ?? e}`); }
+  }
+  return out;
 }
