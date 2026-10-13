@@ -148,9 +148,16 @@ a { color: inherit; }
 #note button:hover { color: var(--ink); }
 
 /* ---- bottom actions ----------------------------------------------------- */
-.actions { display: flex; justify-content: space-between; align-items: flex-start;
-           gap: 1rem; margin-top: .9rem; }
+/* From the left: a finished sheet's links when there are any, then HOW IT
+   WORKS, on the frame's left edge whenever there is nothing before it. The
+   session's own controls, SIGN OUT and the operator's STATUS, sit at the far
+   end. Spreading the row instead put HOW IT WORKS wherever the count of its
+   neighbours left it — in the middle, once SIGN OUT joined the row. */
+.actions { display: flex; align-items: flex-start; gap: 1rem; margin-top: .9rem; }
 #links { display: flex; }
+#links:empty { display: none; }
+#signOut, #statusLink { margin-left: auto; }
+#signOut + #statusLink { margin-left: 0; }
 .btn {
   display: inline-block; border: 1px solid var(--line); padding: .45rem 1.4rem;
   /* font first: the shorthand would otherwise undo the weight below. Set at
@@ -190,6 +197,8 @@ footer a { color: inherit; }
   .go { flex-basis: 17.5%; padding: .75rem .3rem; letter-spacing: 0; }
   .actions { flex-direction: column; align-items: stretch; }
   .actions .btn { text-align: center; }
+  /* stacked, every button takes the full width; an auto margin would not */
+  #signOut, #statusLink { margin-left: 0; }
 }
 
 /* On a phone the label column would leave the options too narrow to hold
