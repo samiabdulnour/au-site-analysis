@@ -228,7 +228,7 @@ ${o.layers.join('\n')}
 <div class="titlecol">
   <div class="abs fine" style="top:10mm;left:4.8mm;right:0">
     ${esc(o.address)}<br>Generated: ${esc(o.generatedAt.slice(0, 10))}
-    <br>GENERATED WITH SITE ANALYST — © SAMI ABDULNOUR, LICENSED USE.${o.dataNote ? `<br>${esc(o.dataNote)}` : ''}
+    <br>GENERATED WITH SITE ANALYST — © SAMI ABDULNOUR AND ZOFIA KOSOVA, LICENSED USE.${o.dataNote ? `<br>${esc(o.dataNote)}` : ''}
   </div>
   ${rule(20)}
   <div class="abs" style="top:21.4mm;left:4.8mm;right:0;font-size:${T.legend}mm;font-weight:700">${esc(o.legendHeading)}</div>
