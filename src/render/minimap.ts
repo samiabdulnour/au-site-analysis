@@ -69,14 +69,43 @@ export interface BaseData {
   siteLots: GeoJSONFC;
 }
 
+/**
+ * The book's three type styles. Each is one size, one weight and one colour,
+ * and nothing is set in any other: T1 display (titles, big figures), T2 caps
+ * (heads, labels, folios, every word inside a map), T3 body (the rest).
+ */
+export const TYPE = {
+  h: { size: 6.0, weight: 700, spacing: 0.9 },   // header: bold caps, widely tracked
+  s: { size: 2.7, weight: 400, spacing: 0.14 },  // small: caps for labels, sentence case for keys and sources
+  b: { size: 3.4, weight: 400 },                 // body
+  // the map and graph labels are the small style
+  t2: { size: 2.7, weight: 400, spacing: 0.14 },
+} as const;
+
+/** A small-style label inside a map: caps, haloed in white so it reads over any ground. `k` compensates a map drawn at a reduced size. */
+export function t2Text(x: number, y: number, text: string, anchor: 'start' | 'middle' | 'end' = 'start', k = 1): string {
+  const t = tpl();
+  const size = TYPE.t2.size / k;
+  return `<text x="${x.toFixed(1)}" y="${(y + size * 0.36).toFixed(1)}" text-anchor="${anchor}" font-size="${size.toFixed(2)}" font-weight="${TYPE.t2.weight}" letter-spacing="${(TYPE.t2.spacing / k).toFixed(2)}" fill="${t.ink}" stroke="#ffffff" stroke-width="${(0.55 / k).toFixed(2)}" stroke-linejoin="round" paint-order="stroke">${esc(text.toUpperCase())}</text>`;
+}
+
+/** Width of a T2 label in map millimetres, for the label spacer. */
+export const t2Width = (text: string, k = 1) => (text.length * TYPE.t2.size * 0.68 + 0.8) / k;
+
+/** Railway as a track: a fine rail line crossed by short sleepers, so a yard of parallel lines reads as hatching, not noise. */
+export function railSymbol(d: string, colour: string, k = 1): string {
+  return `<path d="${d}" fill="none" stroke="${colour}" stroke-width="${(0.2 / k).toFixed(2)}"/>` +
+    `<path d="${d}" fill="none" stroke="${colour}" stroke-width="${(1.05 / k).toFixed(2)}" stroke-dasharray="${(0.16 / k).toFixed(2)},${(1.3 / k).toFixed(2)}"/>`;
+}
+
 /** The shared base under every thematic layer. */
 export function baseLayers(b: BaseData, proj: Proj, p: Panel, opts: { lots?: boolean } = {}): string {
   const t = tpl();
   const parts: string[] = [];
-  parts.push(`<rect x="0" y="0" width="${p.wMm}" height="${p.hMm}" fill="#ffffff"/>`);
+  parts.push(`<rect x="0" y="0" width="${p.wMm}" height="${p.hMm}" fill="${t.paper ?? '#ffffff'}"/>`);
   if (b.water.features.length) parts.push(`<path d="${fcPath(b.water, proj)}" fill="${t.water}" fill-rule="evenodd"/>`);
   if (opts.lots !== false && b.lots.features.length)
-    parts.push(`<path d="${fcPath(b.lots, proj)}" fill="none" stroke="#9a9a9a" stroke-width="0.08" opacity="0.7"/>`);
+    parts.push(`<path d="${fcPath(b.lots, proj)}" fill="none" stroke="#b9ae99" stroke-width="0.08" opacity="0.6"/>`);
   return parts.join('\n');
 }
 
@@ -98,14 +127,10 @@ export function overLayers(b: BaseData, proj: Proj, p: Panel, site: SiteLayer = 
   }
   // Casing then fill, so junctions read as one network rather than a pile of ends.
   for (const [w, ds] of [...byWidth.entries()].sort((a, b2) => b2[0] - a[0]))
-    parts.push(`<path d="${ds.join('')}" fill="none" stroke="#6f6f6f" stroke-width="${(w + 0.22).toFixed(2)}" stroke-linecap="round" stroke-linejoin="round"/>`);
+    parts.push(`<path d="${ds.join('')}" fill="none" stroke="${t.road}" stroke-width="${(w + 0.22).toFixed(2)}" stroke-linecap="round" stroke-linejoin="round"/>`);
   for (const [w, ds] of [...byWidth.entries()].sort((a, b2) => b2[0] - a[0]))
     parts.push(`<path d="${ds.join('')}" fill="none" stroke="#ffffff" stroke-width="${w.toFixed(2)}" stroke-linecap="round" stroke-linejoin="round"/>`);
-  if (b.rail.train.length) {
-    const d = b.rail.train.map((l) => ringsPath([l], proj, false)).join('');
-    parts.push(`<path d="${d}" fill="none" stroke="${t.rail}" stroke-width="0.7"/>`);
-    parts.push(`<path d="${d}" fill="none" stroke="#ffffff" stroke-width="0.32" stroke-dasharray="1.6,1.6"/>`);
-  }
+  if (b.rail.train.length) parts.push(railSymbol(b.rail.train.map((l) => ringsPath([l], proj, false)).join(''), t.rail));
   if (b.rail.tram.length) {
     const d = b.rail.tram.map((l) => ringsPath([l], proj, false)).join('');
     parts.push(`<path d="${d}" fill="none" stroke="${t.busRoute}" stroke-width="0.55" stroke-dasharray="2,1.2"/>`);
@@ -114,8 +139,8 @@ export function overLayers(b: BaseData, proj: Proj, p: Panel, site: SiteLayer = 
     const [x, y] = proj(s.lon, s.lat);
     if (x < 2 || y < 2 || x > p.wMm - 2 || y > p.hMm - 2) continue;
     const mode = stationMode(s.name);
-    parts.push(`<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})"><circle r="2" fill="#ffffff" stroke="${t.site}" stroke-width="0.45"/>` +
-      `<text text-anchor="middle" dy="1.05" font-size="3" font-weight="700" fill="${t.site}">${mode === 'light rail' ? 'L' : mode === 'metro' ? 'M' : 'T'}</text></g>`);
+    parts.push(`<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})"><circle r="2" fill="#ffffff" stroke="${t.transit}" stroke-width="0.45"/>` +
+      `<text text-anchor="middle" dy="1.05" font-size="3" font-weight="600" fill="${t.transit}">${mode === 'light rail' ? 'L' : mode === 'metro' ? 'M' : 'T'}</text></g>`);
   }
   if (site !== 'none') parts.push(siteMark(b, proj, site));
   return parts.join('\n');
@@ -133,18 +158,17 @@ export function siteLabelPoint(b: BaseData, proj: Proj): { cx: number; cy: numbe
   return best.area >= 0 ? { cx: best.cx, cy: best.cy - 2.6 } : null;
 }
 
-/** The site: a light wash, an accent outline and a short label. */
+/** The site: a solid accent, no word — the red is the site throughout the book. */
 export function siteMark(b: BaseData, proj: Proj, layer: SiteLayer = 'both'): string {
   if (!b.siteLots.features.length || layer === 'none') return '';
   const t = tpl();
   const d = fcPath(b.siteLots, proj);
   const parts: string[] = [];
-  if (layer !== 'outline') parts.push(`<path d="${d}" fill="${t.site}" fill-opacity="0.18" stroke="none"/>`);
-  if (layer !== 'wash') {
-    parts.push(`<path d="${d}" fill="none" stroke="${t.site}" stroke-width="0.6"/>`);
-    const lp = siteLabelPoint(b, proj);
-    if (lp) parts.push(`<text x="${lp.cx.toFixed(1)}" y="${lp.cy.toFixed(1)}" text-anchor="middle" font-size="2.4" font-weight="700" fill="${t.site}" stroke="#ffffff" stroke-width="0.5" paint-order="stroke">SITE</text>`);
-  }
+  // Solid where the site is a mark; at plan scales, where it is a shape with things inside, a wash and an outline.
+  const areaMm2 = b.siteLots.features.reduce((a, f) => a + geomRings(f.geometry).reduce((x, r) => x + ringStats(r, proj).area, 0), 0);
+  const solid = areaMm2 < 150;
+  if (layer !== 'outline') parts.push(`<path d="${d}" fill="${t.site}" fill-opacity="${solid ? 0.9 : 0.16}" stroke="none"/>`);
+  if (layer !== 'wash') parts.push(solid ? `<path d="${d}" fill="${t.site}" stroke="${t.site}" stroke-width="0.4"/>` : `<path d="${d}" fill="none" stroke="${t.site}" stroke-width="0.6"/>`);
   return parts.join('\n');
 }
 
@@ -169,18 +193,28 @@ export function furnitureBox(p: Panel, corner: FurnitureCorner = 'left'): { x0: 
 
 /** Scale bar and north arrow, bottom-left unless the map asks for another corner. */
 export function panelFurniture(p: Panel, corner: FurnitureCorner = 'left'): string {
-  const t = tpl();
   const { barM, barMm, x0, y0 } = furnitureGeom(p, corner);
-  return `<g font-family="${t.font}" font-size="2" fill="${t.ink}">
-    <rect x="${x0 - 1.2}" y="${y0 - 8.6}" width="${(barMm + 9).toFixed(1)}" height="10.4" fill="#ffffff" fill-opacity="0.85"/>
-    <rect x="${x0}" y="${y0 - 1.2}" width="${(barMm / 2).toFixed(2)}" height="1.2" fill="${t.ink}"/>
-    <rect x="${(x0 + barMm / 2).toFixed(2)}" y="${y0 - 1.2}" width="${(barMm / 2).toFixed(2)}" height="1.2" fill="none" stroke="${t.ink}" stroke-width="0.2"/>
-    <text x="${x0}" y="${y0 - 2}" >0</text>
-    <text x="${(x0 + barMm).toFixed(2)}" y="${y0 - 2}" text-anchor="end">${barM >= 1000 ? `${barM / 1000} km` : `${barM} m`}</text>
-    <g transform="translate(${(x0 + barMm + 5).toFixed(1)},${y0 - 4.2})">
-      <path d="M0,-3.2 L1.3,2.2 L0,1.2 L-1.3,2.2 Z" fill="${t.ink}"/>
-      <text y="-3.8" text-anchor="middle" font-size="1.8" font-weight="700">N</text>
-    </g>
+  // line only, as on a drawing: the bar's first half in five alternating tenths, the rest a plain line, a tick at each end;
+  // the north point a circle with one stroke from its centre to north
+  const f6 = `font-size="2.117" letter-spacing="0.19" font-family="Arial, 'Liberation Sans', sans-serif" fill="#000000"`;
+  const h = 0.9, yb = y0, yt = y0 - h, seg = barMm / 10;
+  let d = `M${x0.toFixed(2)},${yb.toFixed(2)}V${yt.toFixed(2)}`;
+  for (let i = 0; i < 5; i++) {
+    const y = i % 2 ? yb : yt;
+    d += `H${(x0 + (i + 1) * seg).toFixed(2)}`;
+    if (i < 4) d += `V${(i % 2 ? yt : yb).toFixed(2)}`;
+    void y;
+  }
+  d += `V${yb.toFixed(2)}H${(x0 + barMm).toFixed(2)}V${yt.toFixed(2)}`;
+  const unit = barM >= 1000 ? `${barM / 1000} KM` : `${barM} M`;
+  const R = 2.6, cx = x0 + barMm + 4 + R, cy = y0 - R;
+  return `<g>
+    <rect x="${(x0 - 1.6).toFixed(2)}" y="${(y0 - 2 * R - 2.4).toFixed(2)}" width="${(barMm + 2 * R + 7.6).toFixed(2)}" height="${(2 * R + 3.6).toFixed(2)}" fill="#ffffff" fill-opacity="0.88"/>
+    <path d="${d}" fill="none" stroke="#000000" stroke-width="0.18" stroke-linejoin="miter"/>
+    <text x="${x0.toFixed(2)}" y="${(yt - 1.1).toFixed(2)}" ${f6}>0</text>
+    <text x="${(x0 + barMm).toFixed(2)}" y="${(yt - 1.1).toFixed(2)}" text-anchor="end" ${f6}>${unit}</text>
+    <circle cx="${cx.toFixed(2)}" cy="${cy.toFixed(2)}" r="${R}" fill="none" stroke="#000000" stroke-width="0.18"/>
+    <line x1="${cx.toFixed(2)}" y1="${cy.toFixed(2)}" x2="${cx.toFixed(2)}" y2="${(cy - R).toFixed(2)}" stroke="#000000" stroke-width="0.5"/>
   </g>`;
 }
 
@@ -194,6 +228,30 @@ export function hatchPath(d: string, id: string, colour: string, bbox: { x0: num
     `<g clip-path="url(#${id})" stroke="${colour}" stroke-width="0.22" opacity="0.9">${lines}</g>` +
     `<path d="${d}" fill="none" stroke="${colour}" stroke-width="0.35"/>`;
 }
+
+/**
+ * A dot grid clipped to a shape — the book's texture for the living layers
+ * (parks, canopy, reach), drawn as circles for the same reason the hatch is
+ * drawn as lines. Offset rows, so the grid reads as a weave rather than
+ * graph paper. `step` sets the density; `r` the dot.
+ */
+export function dotsPath(d: string, id: string, colour: string, bbox: { x0: number; y0: number; x1: number; y1: number }, step = 1.6, r = 0.3, opacity = 0.9): string {
+  let dots = '';
+  let row = 0;
+  for (let y = bbox.y0; y <= bbox.y1; y += step * 0.866, row++) {
+    const off = row % 2 ? step / 2 : 0;
+    for (let x = bbox.x0 + off; x <= bbox.x1; x += step)
+      dots += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r}"/>`;
+  }
+  return `<clipPath id="${id}"><path d="${d}"/></clipPath>` +
+    `<g clip-path="url(#${id})" fill="${colour}" opacity="${opacity}">${dots}</g>`;
+}
+
+/** The dot-grid legend swatch that matches dotsPath. */
+export const swatchDots = (colour: string, stroke?: string) =>
+  `<rect x="0" y="0.2" width="5" height="3" fill="none" stroke="${stroke ?? colour}" stroke-width="0.25"/>` +
+  `<circle cx="1.2" cy="1.1" r="0.32" fill="${colour}"/><circle cx="2.8" cy="1.1" r="0.32" fill="${colour}"/><circle cx="4.4" cy="1.1" r="0.32" fill="${colour}"/>` +
+  `<circle cx="2" cy="2.3" r="0.32" fill="${colour}"/><circle cx="3.6" cy="2.3" r="0.32" fill="${colour}"/>`;
 
 export function bboxOf(rings: number[][][], proj: Proj) {
   let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
@@ -287,7 +345,7 @@ export function legendSvg(entries: LegendEntry[], widthMm: number, rows = 5, fon
   return { svg: `<g font-family="${tpl().font}" fill="${tpl().ink}">${parts.join('')}</g>`, heightMm: used };
 }
 
-export const swatchFill = (fill: string, stroke = '#777', dash?: string) =>
+export const swatchFill = (fill: string, stroke = '#8a8378', dash?: string) =>
   `<rect x="0" y="0.2" width="5" height="3" fill="${fill}" stroke="${stroke}" stroke-width="0.25"${dash ? ` stroke-dasharray="${dash}"` : ''}/>`;
 export const swatchHatch = (colour: string) =>
   `<rect x="0" y="0.2" width="5" height="3" fill="none" stroke="${colour}" stroke-width="0.3"/>` +

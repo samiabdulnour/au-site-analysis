@@ -11,9 +11,13 @@ space, amenities, planning controls, SWOT, design opportunities, design
 response / massing ideas.
 
 The fourth mode, `slides`, is the content part of a feasibility study or
-design report: an A3 overall-analysis deck (context, planning, development
+design report: an overall-analysis deck (context, planning, development
 activity, topography, built form, movement, site, sun and views, constraints,
-Country, people and market, opportunities). `docs/SLIDES_SPEC.md` fixes its
+Country, people and market, opportunities). Each A3 landscape sheet is laid
+out as a book spread that folds at its vertical centre into two A4 pages —
+the left page the title, narrative and side column, the right page the
+figures, with running heads, facing folios and fold ticks — so the printed
+deck binds into an A4 booklet. `docs/SLIDES_SPEC.md` fixes its
 slide set and records which of that content can be fetched from the web,
 endpoint by endpoint, and which stays manual.
 
@@ -56,6 +60,20 @@ Google Cloud key whose project has the Street View Static API enabled; add
 Mapillary's frames with `MAPILLARY_TOKEN=…` (a free client token); without
 either it reads KartaView alone. On the server they go in
 `/etc/site-analyst.env`, which the deployer passes to the container.
+
+With the key, slide 02 shows each numbered place from the street (the
+camera aimed at the place's building, a view blocked by another building
+refused) and slide 12 walks the site's street end to end in eight frames.
+To control a picture by hand, put `photo_overrides.json` in the address's
+output folder and run again:
+
+```json
+{ "places": { "1": { "lat": -33.8925, "lon": 151.2070, "heading": 95, "fov": 70 }, "5": { "skip": true } },
+  "street": { "3": { "heading": 270 } } }
+```
+
+A camera point takes the nearest panorama to it; `heading`, `pitch` and
+`fov` turn it; `skip` drops the frame.
 
 The frame's pictures are `web/samples/result-<sheet>-<scale>-<rotate>-<style>.jpg`
 for the two maps (the context sheet in each of its four templates, the site
@@ -630,7 +648,7 @@ development window), `--job 2539`, `--client "Name"`,
 
 ### The deck
 
-`--type slides` draws the OVERALL ANALYSIS deck: A3 landscape pages for the
+`--type slides` draws the OVERALL ANALYSIS deck: A3 landscape spreads (each folding into two A4 pages) for the
 content part of a feasibility study or design report, specified in
 `docs/SLIDES_SPEC.md`. All eighteen slides of the spec exist. First *location*: the
 site in its region at 1:75,000 — the local government areas as the land

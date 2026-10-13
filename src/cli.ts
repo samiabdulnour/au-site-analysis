@@ -19,6 +19,8 @@ import { renderSummarySheet } from './render/summarySheet.js';
 import { summaryCsv, summaryJson } from './export/summaryExport.js';
 import { renderSlides, slidesFacts, PANEL_W, PANEL_H, DA_PANEL_H, SLIDE_W, SLIDE_H } from './render/slides.js';
 import { htmlToPdf, printSlides } from './render/pdf.js';
+import { prepareRasters } from './render/paintMasks.js';
+import { BLEED_SCALE, COUNTRY_SCALE } from './pipeline.js';
 
 function arg(name: string, def?: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
@@ -134,7 +136,13 @@ if (sheetType === 'slides') {
     daYears: Number(arg('da-years', '5')),
     log: (m) => console.log(m),
   });
+  // A development aid: keep the bundle, so the deck can be re-composed without fetching (scripts/recompose.ts).
+  if (process.env.KEEP_BUNDLE) {
+    const { serialize } = await import('node:v8');
+    await writeFile(join(outDir, 'slides.bundle'), serialize({ sb, meta }));
+  }
   console.log('composing overall analysis slides…');
+  await prepareRasters(sb, join(outDir, 'data'), BLEED_SCALE, COUNTRY_SCALE);
   const { html } = renderSlides(sb, meta);
   const slidesHtmlPath = join(outDir, 'slides.html');
   await writeFile(slidesHtmlPath, html);

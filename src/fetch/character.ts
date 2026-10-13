@@ -12,8 +12,9 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { retryFetch } from '../lib/http.js';
 import { cachedJson, DAY_MS } from '../lib/cache.js';
-import type { LonLat, Extent } from '../lib/geo.js';
+import { lonLatToMercator, mercatorScaleFactor, type LonLat, type Extent } from '../lib/geo.js';
 import { fetchAerial, type AerialResult } from './imagery.js';
+import { fetchPlaceStreetViews, type PlaceStreetView } from './streetView.js';
 
 const UA = 'au-site-analysis/1.0 (site analysis deck; https://github.com/samiabdulnour/au-site-analysis)';
 const WP_REST = 'https://en.wikipedia.org/api/rest_v1';
@@ -73,7 +74,28 @@ export interface CharacterData {
   places: { ok: boolean; radiusM: number; items: WikiPlace[]; note?: string };
   photos: { ok: boolean; radiusM: number; candidates: number; items: CommonsPhoto[]; note?: string };
   aerial: AerialResult | null;
+  /** Each numbered place from above: NSW Imagery over a 3:2 window round it, for the slide's frames. Optional: decks read before it have none. */
+  placeViews?: PlaceView[];
+  /** Each numbered place from the street, where Google Street View is keyed and has a panorama near it. */
+  placeStreetViews?: PlaceStreetView[];
   fetchedAt: string;
+}
+
+export interface PlaceView { n: number; title: string; lon: number; lat: number; aerial: AerialResult }
+/** The window of a place view: 150 × 100 m, the frame's 3:2. */
+const PLACE_VIEW_M = { w: 150, h: 100 };
+
+/** The places from above: NSW Imagery round each of the first `max`, one after another (one service, one pace). */
+export async function fetchPlaceViews(places: { title: string; lon: number; lat: number }[], outDir: string, max = 8, log: (m: string) => void = () => {}): Promise<PlaceView[]> {
+  const out: PlaceView[] = [];
+  for (const [i, pl] of places.slice(0, max).entries()) {
+    const c = lonLatToMercator({ lon: pl.lon, lat: pl.lat });
+    const k = mercatorScaleFactor(pl.lat);
+    const ext = { xmin: c.x - (PLACE_VIEW_M.w / 2) * k, xmax: c.x + (PLACE_VIEW_M.w / 2) * k, ymin: c.y - (PLACE_VIEW_M.h / 2) * k, ymax: c.y + (PLACE_VIEW_M.h / 2) * k };
+    try { out.push({ n: i + 1, title: pl.title, lon: pl.lon, lat: pl.lat, aerial: await fetchAerial(ext, 900, outDir, `place_${i + 1}`) }); }
+    catch (e: any) { log(`  WARN place view ${pl.title} failed: ${e?.message ?? e}`); }
+  }
+  return out;
 }
 
 export const emptyCharacter = (): CharacterData => ({
@@ -236,7 +258,7 @@ async function saveThumb(url: string, file: string, outDir: string): Promise<boo
 // ---- the whole ------------------------------------------------------------------------
 
 /** Wikipedia's account of the suburb and its places, Commons' photographs saved as `commons_<n>.jpg`, and the aerial over `aerialExtent` saved with the `context` prefix. */
-export async function fetchCharacter(opts: { centre: LonLat; suburb: string; aerialExtent: Extent; outDir: string; log?: (m: string) => void }): Promise<CharacterData> {
+export async function fetchCharacter(opts: { centre: LonLat; suburb: string; aerialExtent: Extent; outDir: string; log?: (m: string) => void; /** Footprint rings, for aiming the places' Street View at their buildings. */ buildings?: number[][][][] }): Promise<CharacterData> {
   const { centre, suburb, outDir } = opts;
   const log = opts.log ?? (() => {});
   await mkdir(outDir, { recursive: true });
@@ -271,12 +293,17 @@ export async function fetchCharacter(opts: { centre: LonLat; suburb: string; aer
   }
   const aerial = await aerialP;
   const places = placesRes.items.filter((pl) => looksLikePlace(pl.title, pl.description)).slice(0, MAX_PLACES);
+  const placeViews = await fetchPlaceViews(places, outDir, 8, log);
+  const gkey = process.env.GOOGLE_MAPS_API_KEY?.trim();
+  const placeStreetViews = gkey ? await fetchPlaceStreetViews(places.slice(0, 8).map((pl, i) => ({ n: i + 1, title: pl.title, lon: pl.lon, lat: pl.lat })), outDir, gkey, process.env.GOOGLE_MAPS_SIGNING_SECRET?.trim() || undefined, log, opts.buildings ?? []) : [];
   log(`  character: wikipedia ${wiki.summary ? `"${wiki.summary.title}"` : `none (${wiki.note ?? 'no article'})`}; places ${placesRes.note ? `failed (${placesRes.note})` : `${placesRes.items.length} within ${PLACES_RADIUS_M} m`}; commons ${photosRes.note ? `failed (${photosRes.note})` : `${photosRes.candidates} usable, ${photos.length} saved`}; aerial ${aerial ? 'yes' : 'no'}; ${Math.round((Date.now() - t0) / 1000)} s`);
   return {
     wikipedia: { ok: wiki.summary !== null, summary: wiki.summary, note: wiki.note },
     places: { ok: !placesRes.note, radiusM: PLACES_RADIUS_M, items: places, note: placesRes.note },
     photos: { ok: !photosRes.note, radiusM: PHOTOS_RADIUS_M, candidates: photosRes.candidates, items: photos, note: photosRes.note },
     aerial,
+    placeViews,
+    placeStreetViews,
     fetchedAt: new Date().toISOString(),
   };
 }

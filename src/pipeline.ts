@@ -5,7 +5,8 @@ import { join } from 'node:path';
 import { geocode, type GeocodeResult } from './fetch/geocode.js';
 import { fetchSiteLots, fetchRailCorridors, fetchZoning, fetchHeightOfBuilding, fetchHeritage, fetchSiteControls } from './fetch/nsw.js';
 import { fetchRoads, fetchRailLines, fetchTrainStations, fetchParkPoints, fetchComplexPoints, fetchNamedAreas, fetchAllLots, fetchPropertiesAt, type TopoRoad, type NamedPoint, type RailLines, type NamedArea } from './fetch/nswTopo.js';
-import { fetchAerial, type AerialResult } from './fetch/imagery.js';
+import { fetchAerial, fetchVegetationMask, type AerialResult } from './fetch/imagery.js';
+import { addressStreet, fetchStreetSeries } from './fetch/streetView.js';
 import { fetchBusData, type BusData } from './fetch/osm.js';
 import { fetchBusStopsTfnsw } from './fetch/tfnsw.js';
 import { fetchIsochrones, type Isochrone } from './fetch/isochrones.js';
@@ -563,6 +564,12 @@ export interface SlidesBundle {
   cos: CityOfSydneyDcp | null;
   /** The development-activity map is taller than a planning panel; same centre and scale. */
   daPanel: Panel;
+  /** The full-bleed figure page: one A4 page at the deck's scale. */
+  bleedPanel: Panel;
+  /** Country's full page at the strip's scale. */
+  countryPanel: Panel;
+  /** The walking-reach map's window: square at the strip's scale, cut to the catchment when drawn. */
+  reachPanel: Panel;
   /** Applications lodged in the window, from the council-wide feed. */
   applications: DaRecord[];
   /** The Department's register of State significant applications for the council areas the window touches, those within 3 km with their points. */
@@ -620,6 +627,8 @@ export interface SlidesPipelineOpts {
 }
 
 /** The round scales the deck's site plan is drawn at. */
+/** The full-page maps' scale, and Country's. */
+export const BLEED_SCALE = 5000, COUNTRY_SCALE = 10000;
 const DECK_SITE_SCALES = [200, 250, 300, 400, 500, 600, 750, 1000, 1250, 1500, 2000, 2500, 3000, 4000, 5000];
 
 /** A panel centred on the site's lots at the smallest round scale that keeps them within 55 % of the panel each way. */
@@ -669,19 +678,45 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
   const extent = panelExtent(panel);
   const daPanel: Panel = { ...panel, hMm: opts.daPanelHmm };
   const daExtent = panelExtent(daPanel);
-  const widePanel: Panel = { center: geo.center, scale: opts.wideScale ?? 16000, wMm: opts.wideWmm ?? 296, hMm: opts.wideHmm ?? 100 };
+  const widePanel: Panel = { center: geo.center, scale: opts.wideScale ?? 16000, wMm: opts.wideWmm ?? 186, hMm: opts.wideHmm ?? 95 };
   const wideExtent = panelExtent(widePanel);
+  // The walking-reach map, cut to the shape of its own fifteen minutes: a square window at the strip's scale,
+  // tall enough that the catchment is never clipped. The strip's lighter base is read over both.
+  const reachPanel: Panel = { center: geo.center, scale: widePanel.scale, wMm: 186, hMm: 186 };
+  const reachExtent = panelExtent(reachPanel);
+  // Country's full page: one A4 page at 1:10,000, 2.1 × 3 km round the site.
+  const countryPanel: Panel = { center: geo.center, scale: COUNTRY_SCALE, wMm: 210, hMm: 297 };
+  const countryExtent = panelExtent(countryPanel);
+  const countryFetch: Extent = {
+    xmin: Math.min(wideExtent.xmin, countryExtent.xmin), ymin: Math.min(wideExtent.ymin, countryExtent.ymin),
+    xmax: Math.max(wideExtent.xmax, countryExtent.xmax), ymax: Math.max(wideExtent.ymax, countryExtent.ymax),
+  };
+  const countryK = mercatorScaleFactor(mercatorToLonLat(geo.center).lat);
+  const wideFetch: Extent = {
+    xmin: Math.min(wideExtent.xmin, reachExtent.xmin, countryExtent.xmin), ymin: Math.min(wideExtent.ymin, reachExtent.ymin, countryExtent.ymin),
+    xmax: Math.max(wideExtent.xmax, reachExtent.xmax, countryExtent.xmax), ymax: Math.max(wideExtent.ymax, reachExtent.ymax, countryExtent.ymax),
+  };
   // The site plan's panel: the lots fitted into a little over half of a tall panel at a round scale, centred on them.
-  const sitePanel = fitSitePanel(siteLots, opts.panelWmm, opts.daPanelHmm);
-  const blockPanel: Panel = { center: geo.center, scale: 4000, wMm: opts.panelWmm, hMm: opts.wideHmm ?? 100 };
+  const sitePanel = fitSitePanel(siteLots, 210, 297);
+  const blockPanel: Panel = { center: geo.center, scale: 4000, wMm: opts.panelWmm, hMm: opts.wideHmm ?? 72 };
   // The then-and-now pair: two half-width panels side by side at 1:2500, the 1943 survey and today's imagery over the same ground.
-  const pairPanel: Panel = { center: geo.center, scale: 2500, wMm: (opts.panelWmm - 4) / 2, hMm: opts.panelHmm };
-  // The location window: the whole figure field's width at 1:75,000, about 22 × 13 km, the 5 km ring well inside it.
-  const locationPanel: Panel = { center: geo.center, scale: 75000, wMm: opts.wideWmm ?? 296, hMm: 170 };
+  const pairPanel: Panel = { center: geo.center, scale: 2500, wMm: 210, hMm: 148.5 };
+  // The location window: one full A4 page at 1:100,000, 21 × 29.7 km round the site.
+  const locationPanel: Panel = { center: geo.center, scale: 100000, wMm: 210, hMm: 297 };
   // Every fetch window is the larger of the two, so nothing is missing from either map.
+  // The full-bleed figure page: a map the size of one A4 page at the deck's scale,
+  // for the slides that run their map to the sheet's edges.
+  // 1:5000: close enough to read the block and its neighbours, wide enough for the walk to the station.
+  const bleedPanel: Panel = { center: geo.center, scale: BLEED_SCALE, wMm: 210, hMm: 297 };
+  const bleedExtent = panelExtent(bleedPanel);
+  // The layers the full-page maps draw are read over the full page as well as the tall panel.
+  const pageExtent: Extent = {
+    xmin: Math.min(daExtent.xmin, bleedExtent.xmin), ymin: Math.min(daExtent.ymin, bleedExtent.ymin),
+    xmax: Math.max(daExtent.xmax, bleedExtent.xmax), ymax: Math.max(daExtent.ymax, bleedExtent.ymax),
+  };
   const fetchExtent: Extent = {
-    xmin: Math.min(extent.xmin, daExtent.xmin), ymin: Math.min(extent.ymin, daExtent.ymin),
-    xmax: Math.max(extent.xmax, daExtent.xmax), ymax: Math.max(extent.ymax, daExtent.ymax),
+    xmin: Math.min(extent.xmin, daExtent.xmin, bleedExtent.xmin), ymin: Math.min(extent.ymin, daExtent.ymin, bleedExtent.ymin),
+    xmax: Math.max(extent.xmax, daExtent.xmax, bleedExtent.xmax), ymax: Math.max(extent.ymax, daExtent.ymax, bleedExtent.ymax),
   };
   const emptyFC: GeoJSONFC = { type: 'FeatureCollection', features: [] };
   const soft = <T,>(p: Promise<T>, fallback: T, name: string): Promise<T> =>
@@ -704,12 +739,12 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
   const emptySite: SiteData = { sitePanel, blockPanel, aerial: null, imagery: null, lots: [], easements: [], neighbours: [], publicLand: [], fetchedAt: new Date().toISOString() };
   // The lots and the footprints are read once and wait for both the maps and Street View, which uses them to tell a camera in the street from one in a shop or behind a neighbour.
   const lotsRead = soft(fetchAllLots(fetchExtent), emptyFC, 'cadastral lots');
-  const footprintsRead = soft(fetchBuildings(daExtent, log), { source: 'none' as const, buildings: [], fetchedAt: new Date().toISOString() }, 'buildings');
+  const footprintsRead = soft(fetchBuildings(pageExtent, log), { source: 'none' as const, buildings: [], fetchedAt: new Date().toISOString() }, 'buildings');
   const [zoning, hob, heritage, shr, policy, water, lots, roads, railLines, stations, context, property, controls, proposals, feed, people, dem, contourSet, buildingsRead, movement, green, constraints, site, wideRoads, wideRail, wideStations, wideWater, wideSuburbs, country, photos, location, majorProjects, wind] = await Promise.all([
-    soft(fetchZoningDetailed(extent), emptyFC, 'zoning'),
-    soft(fetchHobDetailed(extent), emptyFC, 'height of building'),
-    soft(fetchHeritageDetailed(extent), emptyFC, 'heritage'),
-    soft(fetchShrCurtilages(extent), emptyFC, 'State Heritage Register'),
+    soft(fetchZoningDetailed(fetchExtent), emptyFC, 'zoning'),
+    soft(fetchHobDetailed(fetchExtent), emptyFC, 'height of building'),
+    soft(fetchHeritageDetailed(fetchExtent), emptyFC, 'heritage'),
+    soft(fetchShrCurtilages(fetchExtent), emptyFC, 'State Heritage Register'),
     fetchPolicyAreas(fetchExtent, log),
     soft(fetchWaterAreas(fetchExtent), emptyFC, 'water areas'),
     lotsRead,
@@ -719,26 +754,26 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
     fetchPlanningContext(geo.center, log),
     fetchPropertyReport(geo.matchedAddresses[0] ?? address, geo.center, log),
     fetchSiteControls(geo.center),
-    fetchPlanningProposals(daExtent, log),
+    fetchPlanningProposals(pageExtent, log),
     council ? soft(fetchCouncilApplications(council, from, today, log), null, 'Online DA API') : Promise.resolve(null),
     soft(fetchPeopleData(mercatorToLonLat(geo.center), geo.matchedAddresses[0], log), null, 'people and market'),
-    soft(fetchDemGrid(daExtent), null, 'elevation model'),
+    soft(fetchDemGrid(fetchExtent), null, 'elevation model'),
     soft(fetchContours(fetchExtent, log), { lines: [], intervalM: 2, source: 'NSW Spatial Services' }, 'contours'),
     footprintsRead,
-    fetchMovement(daExtent, geo.center, log),
-    soft(fetchGreenSpace(daExtent, wideExtent, log), emptyGreen, 'green and public domain'),
-    soft(fetchConstraints(extent, mercatorToLonLat(geo.center), log), emptyConstraints, 'environmental constraints'),
+    fetchMovement(bleedExtent, geo.center, log),
+    soft(fetchGreenSpace(pageExtent, wideExtent, log), emptyGreen, 'green and public domain'),
+    soft(fetchConstraints(fetchExtent, mercatorToLonLat(geo.center), log), emptyConstraints, 'environmental constraints'),
     soft(fetchSiteData(sitePanel, blockPanel, siteLots, mercatorToLonLat(geo.center), dataDir, log), emptySite, 'site data'),
-    soft(fetchRoads(wideExtent, 'roadnamebase IS NOT NULL AND functionhierarchy <= 5'), [], 'wide roads'),
-    soft(fetchRailLines(wideExtent), { train: [], tram: [] }, 'wide rail lines'),
-    soft(fetchTrainStations(wideExtent), [], 'wide stations'),
-    soft(fetchWaterAreas(wideExtent), emptyFC, 'wide water areas'),
-    soft(queryByExtent('https://portal.spatial.nsw.gov.au/server/rest/services/NSW_Administrative_Boundaries_Theme/FeatureServer/2', wideExtent, 'suburbname'), emptyFC, 'suburbs'),
-    soft(fetchCountry(wideExtent, Math.round(((widePanel.wMm / 1000) * widePanel.scale) / 2), Math.round(((widePanel.hMm / 1000) * widePanel.scale) / 2), geo.center, dataDir, log), EMPTY_COUNTRY, 'Country'),
+    soft(fetchRoads(wideFetch, 'roadnamebase IS NOT NULL AND functionhierarchy <= 5'), [], 'wide roads'),
+    soft(fetchRailLines(wideFetch), { train: [], tram: [] }, 'wide rail lines'),
+    soft(fetchTrainStations(wideFetch), [], 'wide stations'),
+    soft(fetchWaterAreas(wideFetch), emptyFC, 'wide water areas'),
+    soft(queryByExtent('https://portal.spatial.nsw.gov.au/server/rest/services/NSW_Administrative_Boundaries_Theme/FeatureServer/2', wideFetch, 'suburbname'), emptyFC, 'suburbs'),
+    soft(fetchCountry(countryFetch, Math.round((countryFetch.xmax - countryFetch.xmin) / countryK / 2), Math.round((countryFetch.ymax - countryFetch.ymin) / countryK / 2), geo.center, dataDir, log), EMPTY_COUNTRY, 'Country'),
     soft(fetchPhotos({ centre: mercatorToLonLat(geo.center), siteRings: siteLots.features.flatMap((f) => geomRingsOf(f.geometry)), pairPanel, outDir: dataDir, log, lots: lotsRead.then((fc) => fc.features.flatMap((f) => geomRingsOf(f.geometry))), buildings: footprintsRead.then((bd) => bd.buildings.flatMap((x) => x.rings)) }), emptyPhotos(pairPanel), 'street-level frames and the 1943 aerial'),
     soft(fetchLocation(locationPanel, log), emptyLocation(locationPanel), 'location window'),
     // The Department's register of State significant applications: its listing for the council areas the window touches and each project's page, cached.
-    soft(fetchMajorProjects(daExtent, geo.center, log), emptyMajorProjects('the register did not answer'), 'State significant applications'),
+    soft(fetchMajorProjects(pageExtent, geo.center, log), emptyMajorProjects('the register did not answer'), 'State significant applications'),
     // The hourly wind over the last five years from NASA's POWER project, as roses for slide 13; cached by the model's cell.
     soft(fetchWind(mercatorToLonLat(geo.center), log), emptyWind('NASA POWER did not answer'), 'wind'),
   ]);
@@ -751,10 +786,18 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
     // Sight lines to the skyline, the water and the park next door, from the eye just under the height limit, over the 5 m elevation surface.
     soft(assessViews({ site: mercatorToLonLat(geo.center), siteRing: largestRing(siteLots), hobM: controls.maxHeightM, zoning, parkPoints: green.parkPoints, log }), { views: [] as ViewTarget[], eyeAboveM: eyeAboveGround(controls.maxHeightM) }, 'views'),
     // The suburb's name comes from the context, so Wikipedia and Commons wait for it; the aerial over the planning window comes with them.
-    soft(fetchCharacter({ centre: mercatorToLonLat(geo.center), suburb: context.suburb?.name ?? '', aerialExtent: extent, outDir: dataDir, log }), emptyCharacter(), 'character (Wikipedia, Commons)'),
+    soft(fetchCharacter({ centre: mercatorToLonLat(geo.center), suburb: context.suburb?.name ?? '', aerialExtent: bleedExtent, outDir: dataDir, log, buildings: buildingsRead.buildings.map((x) => x.rings) }), emptyCharacter(), 'character (Wikipedia, Commons)'),
     soft(fetchStrategies(geo.center, context.lga?.name, context.lga?.council, log), emptyStrategies(), 'strategic documents'),
   ]);
-  const applications = feed ? clipToExtent(feed.records, daExtent) : [];
+  // the green of the aerial over the page, for the trees no inventory holds
+  green.vegetation = await fetchVegetationMask(bleedExtent, dataDir, 0.8, 1 / mercatorScaleFactor(mercatorToLonLat(geo.center).lat)).catch((e: any) => { log(`  WARN vegetation mask failed: ${e?.message ?? e}`); return null; });
+  // the site's street end to end, where Street View is keyed
+  const gkey = process.env.GOOGLE_MAPS_API_KEY?.trim();
+  if (gkey) {
+    const st = addressStreet(geo.matchedAddresses[0] ?? address, roads, mercatorToLonLat(geo.center));
+    if (st) photos.series = await fetchStreetSeries(st.name, st.segments, mercatorToLonLat(geo.center), dataDir, gkey, process.env.GOOGLE_MAPS_SIGNING_SECRET?.trim() || undefined, 8, log).catch((e: any) => { log(`  WARN street series failed: ${e?.message ?? e}`); return []; });
+  }
+  const applications = feed ? clipToExtent(feed.records, pageExtent) : [];
   const daMeta = feed ? { council: feed.council, from: feed.from, to: feed.to, total: feed.total, complete: feed.complete, fetchedAt: feed.fetchedAt } : null;
   // A footprint with neither a height nor a storey count takes the storeys of a determined application on its lot, and the slides say so.
   const buildings = withDaStoreys(buildingsRead, lots, applications);
@@ -776,7 +819,7 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
     zoning, hob, heritage, shr, policy,
     base: { water, lots, roads, rail: railLines, stations, siteLots },
     controls, property, context, housingTarget, cos,
-    daPanel, applications, majorProjects, wind, daMeta, proposals, people,
+    daPanel, bleedPanel, reachPanel, countryPanel, applications, majorProjects, wind, daMeta, proposals, people,
     terrain: { dem, contours: contourSet.lines, contourIntervalM: contourSet.intervalM, contourSource: contourSet.source, contourAttribution: contourSet.attribution }, buildings, movement, green, constraints, site, views,
     wide: { panel: widePanel, base: { water: wideWater, lots: emptyFC, roads: wideRoads, rail: wideRail, stations: wideStations, siteLots }, suburbs: wideSuburbs },
     country,

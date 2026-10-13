@@ -14,6 +14,7 @@
 // part is soft: a service that does not answer leaves its part empty and a
 // warning in the log.
 
+import { decodePng, encodeGreyPng } from '../lib/png.js';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { retryFetch } from '../lib/http.js';
@@ -40,7 +41,7 @@ export interface AboriginalPlace {
   restricted: boolean;
   lalc?: string; lga?: string; lon: number; lat: number; rings: number[][][]; distanceM: number; bearing: number;
 }
-export interface VegClass { pctId: string; pct: string; cls: string; formation: string; colour: string; sharePct: number }
+export interface VegClass { pctId: string; pct: string; cls: string; formation: string; colour: string; sharePct: number; /** Every colour the State's map draws it in. */ colours?: string[]; /** A greyscale mask of where it stands on the map, white over the community. */ mask?: string }
 export interface Watercourse { name?: string; perenniality: 'perennial' | 'non-perennial' | 'mainly dry' | 'unknown'; hierarchy: 'major' | 'secondary' | 'minor' | 'undefined'; coords: [number, number][] }
 export interface LalcArea { local: string; regional: string; rings: number[][][] }
 
@@ -144,6 +145,8 @@ export interface CountryData {
     atSite: { pctId: string; pct: string; cls: string; formation: string } | null;
     /** The State's own rendering of the plant community types over the strip, written beside the aerial tiles. */
     image: { file: string; extent: Extent; pxWidth: number; pxHeight: number } | null;
+    /** The communities painted with the slide's patterns (render/paintMasks.ts). */
+    paint?: string;
     /** The communities in the strip, by share of its area, in the map's colours. */
     classes: VegClass[];
     source: string;
@@ -289,7 +292,11 @@ async function fetchVegetation(extent: Extent, pxWidth: number, pxHeight: number
     await writeFile(join(outDir, 'veg1750.png'), png);
     out.image = { file: 'veg1750.png', extent, pxWidth, pxHeight };
   }
-  const img = bmp ? decodeBmp(bmp) : null;
+  // the colours are counted on the full picture where it decodes, the small copy otherwise
+  const fullImg = png ? decodePng(png) : null;
+  const img = fullImg
+    ? { width: fullImg.width, height: fullImg.height, px: (x: number, y: number) => { const k = (y * fullImg.width + x) * 4; return (fullImg.data[k + 3] < 128 ? [255, 255, 255] : [fullImg.data[k], fullImg.data[k + 1], fullImg.data[k + 2]]) as [number, number, number]; } }
+    : bmp ? decodeBmp(bmp) : null;
   if (img) {
     // the colours by share, then a name for each colour that covers 1 % of the strip or more
     const counts = new Map<string, { n: number; sx: number; sy: number }>();
@@ -314,8 +321,22 @@ async function fetchVegetation(extent: Extent, pxWidth: number, pxHeight: number
     }));
     // the same community can come back under two colours at a patch edge; merge by name
     const merged = new Map<string, VegClass>();
-    for (const c of named) { const key = c.pctId || c.pct; const cur = merged.get(key); if (cur) cur.sharePct = Math.round((cur.sharePct + c.sharePct) * 10) / 10; else merged.set(key, { ...c }); }
+    for (const c of named) { const key = c.pctId || c.pct; const cur = merged.get(key); if (cur) { cur.sharePct = Math.round((cur.sharePct + c.sharePct) * 10) / 10; cur.colours!.push(c.colour); } else merged.set(key, { ...c, colours: [c.colour] }); }
     out.classes = [...merged.values()].sort((a, b) => b.sharePct - a.sharePct);
+    // a mask per community from the full picture, so the deck can draw each in its own pattern rather than the State's colours
+    const full = png ? decodePng(png) : null;
+    if (full) {
+      const pal = out.classes.flatMap((c, i) => c.colours!.map((h) => ({ i, r: parseInt(h.slice(1, 3), 16), g: parseInt(h.slice(3, 5), 16), b: parseInt(h.slice(5, 7), 16) })));
+      const masks = out.classes.map(() => new Uint8Array(full.width * full.height));
+      for (let k = 0; k < full.width * full.height; k++) {
+        if (full.data[k * 4 + 3] < 128) continue;
+        const r = full.data[k * 4], g = full.data[k * 4 + 1], b = full.data[k * 4 + 2];
+        let best = -1, bd = 60 * 60;
+        for (const q of pal) { const d = (q.r - r) ** 2 + (q.g - g) ** 2 + (q.b - b) ** 2; if (d < bd) { bd = d; best = q.i; } }
+        if (best >= 0) masks[best][k] = 255;
+      }
+      await Promise.all(out.classes.map(async (c, i) => { c.mask = `veg1750_mask${i}.png`; await writeFile(join(outDir, c.mask), encodeGreyPng(full.width, full.height, masks[i])); }));
+    }
   }
   out.ok = Boolean(out.atSite || out.image);
   return out;

@@ -26,11 +26,12 @@ if (existsSync('.env')) {
     if (m && !process.env[m[1]]) process.env[m[1]] = m[2].trim();
   }
 }
-import { runPipeline, runSitePipeline, runSummaryPipeline, runSlidesPipeline } from './pipeline.js';
+import { runPipeline, runSitePipeline, runSummaryPipeline, runSlidesPipeline, BLEED_SCALE, COUNTRY_SCALE } from './pipeline.js';
 import { renderSheet, MAP_W, MAP_H, type SheetMeta } from './render/sheet.js';
 import { renderSiteSheet } from './render/siteSheet.js';
 import { renderSummarySheet } from './render/summarySheet.js';
 import { renderSlides, PANEL_W, PANEL_H, DA_PANEL_H, SLIDE_W, SLIDE_H } from './render/slides.js';
+import { prepareRasters } from './render/paintMasks.js';
 import { htmlToPdf, printSlides } from './render/pdf.js';
 import { TEMPLATES, SITE_THEMES, withTemplate } from './render/template.js';
 
@@ -151,6 +152,7 @@ if (want('slides')) {
   {
     const html = join(outDir, 'slides.html');
     const pngDir = join(outDir, 'slides');
+    await prepareRasters(bundle, join(outDir, 'data'), BLEED_SCALE, COUNTRY_SCALE);
     await writeFile(html, renderSlides(bundle, meta).html);
     await printSlides(html, join(outDir, 'OVERALL_ANALYSIS.pdf'), pngDir, { widthMm: SLIDE_W, heightMm: SLIDE_H });
     toJpeg(join(pngDir, `${SLIDE}.png`), 'slides');
