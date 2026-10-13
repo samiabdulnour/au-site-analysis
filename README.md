@@ -61,7 +61,12 @@ The frame's pictures are `web/samples/result-<sheet>-<scale>-<rotate>-<template>
 for the two maps and `result-<sheet>-<template>.jpg` for the summary and the
 deck — one for every combination the table offers, seventy-two in all, the
 names `web/app.js` asks for. A combination without one says so in the frame
-rather than showing a broken image. They are drawn for 150 George Street,
+rather than showing a broken image. The landing page carries each picture's
+content fingerprint (`%SAMPLES%`, filled in by the server), and the frame asks
+for a picture under it (`?v=`): that address only ever holds that picture, so
+the browser keeps it for good, and a redraw changes the fingerprint and so the
+address. Once the shown picture has arrived, the ones a single pick away are
+fetched in the background, so picking one shows it at once. They are drawn for 150 George Street,
 Parramatta; to redraw them, or to move them to another address (and change
 `EXAMPLE_ADDRESS` in `web/app.js` to match):
 

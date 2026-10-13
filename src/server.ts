@@ -9,7 +9,7 @@
 // Set ALLOW_NO_AUTH=1 only for local use.
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { readFile, readFileSync, existsSync, mkdirSync, writeFileSync, renameSync } from 'node:fs';
+import { readFile, readFileSync, readdirSync, existsSync, mkdirSync, writeFileSync, renameSync } from 'node:fs';
 import { rm, readdir, stat, statfs, writeFile } from 'node:fs/promises';
 import { join, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -683,6 +683,32 @@ function readBody(req: IncomingMessage): Promise<string> {
   });
 }
 
+/** An example picture's fingerprint: its ETag, and the ?v= the page asks for it under. */
+function sampleTag(data: Buffer): string {
+  return createHash('sha1').update(data).digest('base64url').slice(0, 20);
+}
+
+/**
+ * Every example picture's fingerprint, as JSON for the landing page. Taken
+ * once per process: the pictures change only with a deploy, which is a new
+ * process. Redrawn under a running server, the page's fingerprints go stale
+ * and the pictures are simply revalidated, as an unfingerprinted ask is.
+ */
+let sampleTagsJson: string | null = null;
+function sampleTags(): string {
+  if (sampleTagsJson === null) {
+    const dir = join(ROOT, 'web', 'samples');
+    const tags: Record<string, string> = {};
+    try {
+      for (const name of readdirSync(dir)) {
+        if (/^result-[a-z0-9_-]+\.jpg$/.test(name)) tags[name] = sampleTag(readFileSync(join(dir, name)));
+      }
+    } catch { /* none to tag: the frame asks plainly and revalidates */ }
+    sampleTagsJson = JSON.stringify(tags);
+  }
+  return sampleTagsJson;
+}
+
 const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', 'http://localhost');
   const ip = clientIp(req);
@@ -721,8 +747,10 @@ const server = createServer(async (req, res) => {
       if (err) { res.writeHead(500); res.end(`missing web/${page[0]}`); return; }
       // The link-preview tags need absolute URLs, so the pages write %ORIGIN%
       // and it is filled in with whatever host they were asked for.
+      // The landing page also carries every example picture's fingerprint
+      // (%SAMPLES%), so the frame can ask for each under it.
       const body = page[1].startsWith('text/html')
-        ? data.toString('utf8').replaceAll('%ORIGIN%', siteBase())
+        ? data.toString('utf8').replaceAll('%ORIGIN%', siteBase()).replace('%SAMPLES%', sampleTags())
         : data;
       res.writeHead(200, { 'Content-Type': page[1] });
       res.end(body);
@@ -767,12 +795,17 @@ Sitemap: ${siteBase()}/sitemap.xml
       if (err) { res.writeHead(404); res.end('not found'); return; }
       const ext = sampleMatch[1].split('.').pop()!;
       const type = ext === 'svg' ? 'image/svg+xml' : ext === 'png' ? 'image/png' : 'image/jpeg';
-      // Revalidated rather than kept blind: a redraw replaces the pictures
-      // under the same names, and a day's max-age went on showing the old
-      // ones for a day after the deploy. The tag is the content's, so an
-      // unchanged picture costs a 304 and a redrawn one arrives at once.
-      const etag = `"${createHash('sha1').update(data).digest('base64url').slice(0, 20)}"`;
-      const headers = { 'Cache-Control': 'no-cache', ETag: etag };
+      // A redraw replaces the pictures under the same names, so a name alone
+      // is never cached blind — a day's max-age once went on showing the old
+      // ones for a day after the deploy. Asked for under its fingerprint
+      // (?v=, from the page), the address can only ever hold this picture,
+      // and the browser keeps it for good: a redraw changes the fingerprint
+      // and so the address. Asked for any other way, it revalidates, at the
+      // cost of a 304 when unchanged.
+      const tag = sampleTag(data);
+      const etag = `"${tag}"`;
+      const cache = url.searchParams.get('v') === tag ? 'public, max-age=31536000, immutable' : 'no-cache';
+      const headers = { 'Cache-Control': cache, ETag: etag };
       if (req.headers['if-none-match'] === etag) { res.writeHead(304, headers); res.end(); return; }
       res.writeHead(200, { 'Content-Type': type, ...headers });
       res.end(data);

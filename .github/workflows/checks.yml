@@ -296,10 +296,12 @@ jobs:
 
           # og:url and og:image are absolute and filled in per request. The
           # placeholder reaching a browser means every shared link previews
-          # against a URL that does not resolve.
+          # against a URL that does not resolve. %SAMPLES% is the example
+          # pictures' fingerprints; left in, the frame still works but every
+          # picture is fetched afresh on every look.
           for path in / /about; do
-            if curl -s --max-time 10 "http://127.0.0.1:3123$path" | grep -q '%ORIGIN%'; then
-              echo "  %ORIGIN% left unsubstituted in $path"; fail=1
+            if curl -s --max-time 10 "http://127.0.0.1:3123$path" | grep -qE '%(ORIGIN|SAMPLES)%'; then
+              echo "  a %PLACEHOLDER% left unsubstituted in $path"; fail=1
             fi
           done
 
