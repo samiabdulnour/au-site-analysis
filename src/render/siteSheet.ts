@@ -32,9 +32,10 @@ const NAME_GREEN = '#ffffff';
 // Contours in green, apart from the warm site pen and the zones' hatch.
 const CONTOUR = '#3f9a5c';
 // The site itself — its boundary, corners, dimensions and levels — in a deep
-// red, apart from the coral pen of the sun, wind and views.
+// red, and the sun, wind and views in the same pen, so the analysis reads as
+// one red layer over the aerial.
 const SITE_RED = '#b3261e';
-// Noise in blue, so it reads apart from the coral climate marks.
+// Noise in blue, so it reads apart from the red climate marks.
 const NOISE_BLUE = '#3f6fc2';
 
 // Read at call time, not at module load: setTemplate() runs per job, long
@@ -256,7 +257,7 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
       // units; its eyepiece end sits a few millimetres off the boundary.
       const sx = ax + ux * (9.6 * TS + 4), sy = ay + uy * (9.6 * TS + 4);
       const deg = (Math.atan2(uy, ux) * 180) / Math.PI;
-      layers.push(`<g transform="translate(${sx.toFixed(1)},${sy.toFixed(1)}) rotate(${deg.toFixed(1)}) scale(${TS})" stroke="${RED()}" stroke-width="${(0.7 / TS).toFixed(3)}" stroke-linejoin="round" fill="#ffffff">
+      layers.push(`<g transform="translate(${sx.toFixed(1)},${sy.toFixed(1)}) rotate(${deg.toFixed(1)}) scale(${TS})" stroke="${SITE_RED}" stroke-width="${(0.7 / TS).toFixed(3)}" stroke-linejoin="round" fill="#ffffff">
         <path d="M-7,-1.7 L6,-2.6 L6,2.6 L-7,1.7 Z"/>
         <rect x="6" y="-3.3" width="2.6" height="6.6" rx="0.6"/>
         <rect x="-9.6" y="-1.2" width="2.6" height="2.4" rx="0.4"/>
@@ -280,7 +281,7 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
         for (let k2 = 0; k2 < rows.length; k2++) placer.reserve(lx + Math.cos(ar) * d + dnx * k2 * lh, ly + Math.sin(ar) * d + dny * k2 * lh, 8, 8);
       for (let d = -9.6; d <= 8.6; d += 4) placer.reserve(sx + ux * d * TS, sy + uy * d * TS, 12, 12);
       viewText.push(`<g transform="translate(${lx.toFixed(1)},${ly.toFixed(1)}) rotate(${tdeg.toFixed(1)})">${rows.map((r, i) =>
-        `<text x="0" y="${(LETTER * 0.36 + i * lh).toFixed(2)}" text-anchor="middle" font-size="${LETTER}" font-weight="700" fill="${RED()}" stroke="${RED()}" stroke-width="0.22">${esc(r)}</text>`).join('')}</g>`);
+        `<text x="0" y="${(LETTER * 0.36 + i * lh).toFixed(2)}" text-anchor="middle" font-size="${LETTER}" font-weight="700" fill="${SITE_RED}" stroke="${SITE_RED}" stroke-width="0.22">${esc(r)}</text>`).join('')}</g>`);
     }
   }
 
@@ -312,7 +313,7 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
   }
 
   // ---- noise sources: along the main roads and the railway --------------------
-  // In blue, so noise reads apart from the coral climate marks, but drawn
+  // In blue, so noise reads apart from the red climate marks, but drawn
   // in the wind's manner: a white line in a blue pen, a sound wave beside
   // each busy road and the railway, on the site's side.
   const noiseRing = sb.siteRing.map(([lon, lat2]) => proj(lon, lat2));
@@ -844,7 +845,7 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
   }
 
   // ---- sun and wind, one hand ---------------------------------------------------
-  // Drawn as a pair, in the same coral pen and the same open white-filled
+  // Drawn as a pair, in the site's deep red and the same open white-filled
   // marks: the sun as a disc with flame-like rays at the solstices' rise and
   // set points (on a solid summer arc and a dashed winter one), the winds as
   // the sheet's hand-drawn arrows blowing in toward the site, three abreast,
@@ -869,7 +870,7 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     }
     return d;
   };
-  const PEN = RED();
+  const PEN = SITE_RED;
   const PEN_W = 0.7;
   const LETTER = MAP_TEXT;
   const textBlock = (x: number, y: number, lines: string[]) =>
@@ -1013,7 +1014,7 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     row(`<circle cx="${mid}" cy="3.2" r="2.8" fill="#7dbb57" fill-opacity="0.45" stroke="#4e8c33" stroke-width="0.4"/><circle cx="${mid}" cy="3.2" r="0.5" fill="#2f5e20"/>`, 'TREES, CANOPY TO SCALE', sub);
   }
   if ((sb.views ?? []).some((v) => v.cone)) {
-    row(`<g transform="translate(${SWATCH_X + 11},3.2) rotate(-14) scale(0.62)" fill="#fff" stroke="${RED()}" stroke-width="0.7" stroke-linejoin="round"><path d="M-7,-1.7 L6,-2.6 L6,2.6 L-7,1.7 Z"/><rect x="6" y="-3.3" width="2.6" height="6.6"/><rect x="-9.6" y="-1.2" width="2.6" height="2.4"/></g>`, 'POTENTIAL VIEW', `terrain only, from ${Math.round(sb.eyeAboveM ?? 8)} m up; no buildings`);
+    row(`<g transform="translate(${SWATCH_X + 11},3.2) rotate(-14) scale(0.62)" fill="#fff" stroke="${SITE_RED}" stroke-width="0.7" stroke-linejoin="round"><path d="M-7,-1.7 L6,-2.6 L6,2.6 L-7,1.7 Z"/><rect x="6" y="-3.3" width="2.6" height="6.6"/><rect x="-9.6" y="-1.2" width="2.6" height="2.4"/></g>`, 'POTENTIAL VIEW', `terrain only, from ${Math.round(sb.eyeAboveM ?? 8)} m up; no buildings`);
   }
   if (sb.furniture.powerPoles.length) row(`<g transform="translate(${mid},3.2)"><line x1="-2.4" y1="0" x2="2.4" y2="0" stroke="#333" stroke-width="0.4"/><circle r="1.2" fill="none" stroke="#333" stroke-width="0.45"/></g>`, 'POWER POLE');
   if (sb.furniture.streetLamps.length) row(`<circle cx="${mid}" cy="3.2" r="1.4" fill="#f0c020" stroke="#a8860b" stroke-width="0.3"/>`, 'LIGHT POLE');
@@ -1033,8 +1034,8 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
   {
     const rib = `M${SWATCH_X + 2},2.6 C${SWATCH_X + 7},0.8 ${SWATCH_X + 11},4.8 ${SWATCH_X + 16},2.4 L${SWATCH_X + 16},1 L${SWATCH_X + 21},3.2 L${SWATCH_X + 16},5.4 L${SWATCH_X + 16},4 C${SWATCH_X + 11},6.2 ${SWATCH_X + 7},2.6 ${SWATCH_X + 2},3.8 Z`;
     void rib;
-    row(`<path d="${sketchArrow(SWATCH_X + 2, 3.2, 1, 0, 19, 0.8, 0.5, 1.3)}" fill="#fff" stroke="${RED()}" stroke-width="0.35" stroke-linejoin="round"/>`, 'PREVAILING WINDS');
-    row(`<g transform="translate(${mid},3.2)">${[0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330].map((a) => { const ar = (a * Math.PI) / 180; return `<line x1="${(2.7 * Math.cos(ar)).toFixed(2)}" y1="${(2.7 * Math.sin(ar)).toFixed(2)}" x2="${(3.9 * Math.cos(ar)).toFixed(2)}" y2="${(3.9 * Math.sin(ar)).toFixed(2)}" stroke="${RED()}" stroke-width="0.4"/>`; }).join('')}<circle r="2.1" fill="#fff" stroke="${RED()}" stroke-width="0.4"/></g>`, 'SUN PATH', 'summer solid, winter dashed; solar hours');
+    row(`<path d="${sketchArrow(SWATCH_X + 2, 3.2, 1, 0, 19, 0.8, 0.5, 1.3)}" fill="#fff" stroke="${SITE_RED}" stroke-width="0.35" stroke-linejoin="round"/>`, 'PREVAILING WINDS');
+    row(`<g transform="translate(${mid},3.2)">${[0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330].map((a) => { const ar = (a * Math.PI) / 180; return `<line x1="${(2.7 * Math.cos(ar)).toFixed(2)}" y1="${(2.7 * Math.sin(ar)).toFixed(2)}" x2="${(3.9 * Math.cos(ar)).toFixed(2)}" y2="${(3.9 * Math.sin(ar)).toFixed(2)}" stroke="${SITE_RED}" stroke-width="0.4"/>`; }).join('')}<circle r="2.1" fill="#fff" stroke="${SITE_RED}" stroke-width="0.4"/></g>`, 'SUN PATH', 'summer solid, winter dashed; solar hours');
   }
 
   const utilKinds = new Set(sb.furniture.utilities.map((u) => u.kind));

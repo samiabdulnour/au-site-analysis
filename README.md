@@ -347,10 +347,11 @@ Every word on the map is one size. Potential views are a telescope just
 outside the site edge, aimed along the bearing, with what it found — the
 distance and "TERRAIN CLEAR" — written under it, along its line, in the site
 pen's lettering. The site itself — boundary, corners,
-dimensions and levels — is a deep red, apart from that coral pen.
+dimensions and levels — is a deep red, and the sun, winds and views are drawn
+in the same red, so the analysis reads as one layer over the aerial.
 
-The sun, the winds and the noise are drawn in one hand, in the template's
-site ink and open white-filled marks: a hand-drawn sun — a disc with
+The sun, the winds and the noise are drawn in one hand, in open white-filled
+marks (the sun and winds in the site's deep red, the noise in blue): a hand-drawn sun — a disc with
 flame-like rays — at the summer and winter sunrise and sunset, on a solid
 summer arc and a dashed winter arc, each arc marked with a dot and the time at
 every solar hour; the prevailing winds as three widening arrows blowing in
