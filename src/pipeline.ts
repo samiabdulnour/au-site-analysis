@@ -6,6 +6,7 @@ import { geocode, type GeocodeResult } from './fetch/geocode.js';
 import { fetchSiteLots, fetchRailCorridors, fetchZoning, fetchHeightOfBuilding, fetchHeritage, fetchSiteControls } from './fetch/nsw.js';
 import { fetchRoads, fetchRailLines, fetchTrainStations, fetchParkPoints, fetchComplexPoints, fetchNamedAreas, fetchAllLots, fetchPropertiesAt, type TopoRoad, type NamedPoint, type RailLines, type NamedArea } from './fetch/nswTopo.js';
 import { fetchAerial, fetchVegetationMask, type AerialResult } from './fetch/imagery.js';
+import { addressStreet, fetchStreetSeries } from './fetch/streetView.js';
 import { fetchBusData, type BusData } from './fetch/osm.js';
 import { fetchBusStopsTfnsw } from './fetch/tfnsw.js';
 import { fetchIsochrones, type Isochrone } from './fetch/isochrones.js';
@@ -761,6 +762,12 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
   ]);
   // the green of the aerial over the page, for the trees no inventory holds
   green.vegetation = await fetchVegetationMask(bleedExtent, dataDir, 0.8, 1 / mercatorScaleFactor(mercatorToLonLat(geo.center).lat)).catch((e: any) => { log(`  WARN vegetation mask failed: ${e?.message ?? e}`); return null; });
+  // the site's street end to end, where Street View is keyed
+  const gkey = process.env.GOOGLE_MAPS_API_KEY?.trim();
+  if (gkey) {
+    const st = addressStreet(geo.matchedAddresses[0] ?? address, roads, mercatorToLonLat(geo.center));
+    if (st) photos.series = await fetchStreetSeries(st.name, st.segments, mercatorToLonLat(geo.center), dataDir, gkey, process.env.GOOGLE_MAPS_SIGNING_SECRET?.trim() || undefined, 8, log).catch((e: any) => { log(`  WARN street series failed: ${e?.message ?? e}`); return []; });
+  }
   const applications = feed ? clipToExtent(feed.records, pageExtent) : [];
   const daMeta = feed ? { council: feed.council, from: feed.from, to: feed.to, total: feed.total, complete: feed.complete, fetchedAt: feed.fetchedAt } : null;
   // A footprint with neither a height nor a storey count takes the storeys of a determined application on its lot, and the slides say so.

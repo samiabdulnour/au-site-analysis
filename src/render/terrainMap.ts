@@ -6,26 +6,38 @@ import { demAt, demGradient, type DemGrid } from '../fetch/terrain.js';
 import { lonLatToMercator, mercatorToLonLat, type Extent, type XY } from '../lib/geo.js';
 import { pointInRing } from '../fetch/planning.js';
 import { greyPng, pngDataUri } from './png.js';
+import { encodeRgbaPng } from '../lib/png.js';
 
 /**
  * Horn's hillshade from the north-west, flat ground left white and slopes
  * that face away from the light shaded, so it sits under linework rather
  * than competing with it.
  */
-/** Elevation in bands of `stepM`, one grey a band, light at the lowest and darker up the slope: the ground of a monochrome topographic map. */
-export function hypsoDataUri(g: DemGrid, stepM: number, lo: number, hi: number): string {
-  const px = new Uint8Array(g.cols * g.rows);
-  const bands = Math.max(1, Math.ceil((hi - lo) / stepM));
-  for (let i = 0; i < px.length; i++) {
+/**
+ * A toned relief picture, ready to print: the ground in bands of `stepM` (or none), the hillshade multiplied over
+ * them at `shade`, the result run from white to `dark`. One opaque RGB image, so no viewer has a filter or a blend to get wrong.
+ */
+export function reliefDataUri(g: DemGrid, dark: string, opts: { stepM?: number; lo?: number; hi?: number; bandWeight?: number; shade?: number } = {}): string {
+  const hs = hillshadeGrey(g);
+  const d = [1, 3, 5].map((i) => parseInt(dark.slice(i, i + 2), 16));
+  const step = opts.stepM, lo = opts.lo ?? g.min, hi = opts.hi ?? g.max, bw = opts.bandWeight ?? 0.62, shade = opts.shade ?? 0.45;
+  const bands = step ? Math.max(1, Math.ceil((hi - lo) / step)) : 1;
+  const rgba = new Uint8Array(g.cols * g.rows * 4);
+  for (let i = 0; i < g.cols * g.rows; i++) {
     const v = g.values[i];
-    if (!Number.isFinite(v)) { px[i] = 255; continue; }
-    const band = Math.min(bands - 1, Math.max(0, Math.floor((v - lo) / stepM)));
-    px[i] = Math.round(255 - (band / Math.max(1, bands - 1)) * 255 * 0.62);
+    let t = 1; // 1 is paper, 0 is the dark ink
+    if (Number.isFinite(v)) {
+      if (step) t -= (Math.min(bands - 1, Math.max(0, Math.floor((v - lo) / step))) / Math.max(1, bands - 1)) * bw;
+      t *= 1 - shade * (1 - hs[i] / 255);
+    }
+    for (let c = 0; c < 3; c++) rgba[i * 4 + c] = Math.round(d[c] + (255 - d[c]) * t);
+    rgba[i * 4 + 3] = 255;
   }
-  return pngDataUri(greyPng(g.cols, g.rows, px));
+  return `data:image/png;base64,${encodeRgbaPng(g.cols, g.rows, rgba).toString('base64')}`;
 }
 
-export function hillshadeDataUri(g: DemGrid, azimuth = 315, altitude = 45, zFactor = 1): string {
+/** The hillshade, one byte a cell, lit from `azimuth` at `altitude`. */
+export function hillshadeGrey(g: DemGrid, azimuth = 315, altitude = 45, zFactor = 1): Uint8Array {
   const zen = ((90 - altitude) * Math.PI) / 180;
   let azm = 360 - azimuth + 90; if (azm >= 360) azm -= 360;
   const az = (azm * Math.PI) / 180;
@@ -48,7 +60,11 @@ export function hillshadeDataUri(g: DemGrid, azimuth = 315, altitude = 45, zFact
     const hs = Math.cos(zen) * Math.cos(slope) + Math.sin(zen) * Math.sin(slope) * Math.cos(az - aspect);
     px[r * g.cols + c] = Math.round(255 * Math.min(1, Math.max(0, hs / flat)));
   }
-  return pngDataUri(greyPng(g.cols, g.rows, px));
+  return px;
+}
+
+export function hillshadeDataUri(g: DemGrid, azimuth = 315, altitude = 45, zFactor = 1): string {
+  return pngDataUri(greyPng(g.cols, g.rows, hillshadeGrey(g, azimuth, altitude, zFactor)));
 }
 
 export interface Section {

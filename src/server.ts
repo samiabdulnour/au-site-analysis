@@ -14,7 +14,8 @@ import { rm, readdir, stat, statfs, writeFile } from 'node:fs/promises';
 import { join, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID, createHmac, createHash, timingSafeEqual } from 'node:crypto';
-import { runPipeline, runSitePipeline, runSummaryPipeline, runSlidesPipeline } from './pipeline.js';
+import { runPipeline, runSitePipeline, runSummaryPipeline, runSlidesPipeline, BLEED_SCALE, COUNTRY_SCALE } from './pipeline.js';
+import { prepareRasters } from './render/paintMasks.js';
 import { suggestAddresses } from './fetch/geocode.js';
 import { renderSheet, MAP_W, MAP_H, type SheetMeta } from './render/sheet.js';
 import { renderSiteSheet } from './render/siteSheet.js';
@@ -466,6 +467,7 @@ async function runJobBody(job: Job) {
         log: (m) => job.log.push(m),
       });
       job.log.push('composing overall analysis slides…');
+      await prepareRasters(sb, join(outDir, 'data'), BLEED_SCALE, COUNTRY_SCALE);
       const htmlPath = join(outDir, 'slides.html');
       await writeFile(htmlPath, renderSlides(sb, meta).html);
       job.log.push('printing PDF and slide images…');

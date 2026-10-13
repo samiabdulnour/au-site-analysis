@@ -271,3 +271,16 @@ export function zLine(series: { year: number; value: number }[], projection: { y
   }
   return svg(B + 4.4, g.join(''));
 }
+
+/** The green of the aerial on slide 10: a pale ground dotted in the deep green. */
+export const AERIAL_GREEN_FILL: Fill = { bg: INK.green.light, kind: 'dots', ink: INK.green.deep, step: 0.5, w: 0.1 };
+/** The pre-1750 plant communities on slide 15, largest first: one pattern each in the deep green, no ground. */
+export const VEG_1750_FILLS: Fill[] = [
+  { kind: 'vlines', ink: INK.green.deep, step: 1.0, w: 0.16 },
+  { kind: 'dots', ink: INK.green.deep, step: 1.1, w: 0.14 },
+  { kind: 'hlines', ink: INK.green.deep, step: 1.0, w: 0.16 },
+  { kind: 'waves', ink: INK.green.deep, step: 1.3, w: 0.16 },
+  { kind: 'vlines', ink: INK.green.deep, step: 0.45, w: 0.14 },
+  { kind: 'dots', ink: INK.green.deep, step: 0.55, w: 0.12 },
+  { kind: 'hlines', ink: INK.green.deep, step: 0.45, w: 0.14 },
+];

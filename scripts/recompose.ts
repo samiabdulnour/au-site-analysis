@@ -6,6 +6,7 @@ import { deserialize } from 'node:v8';
 import { join } from 'node:path';
 import { renderSlides, SLIDE_W, SLIDE_H } from '../src/render/slides.js';
 import { printSlides } from '../src/render/pdf.js';
+import { prepareRasters } from '../src/render/paintMasks.js';
 import { BLEED_SCALE, COUNTRY_SCALE } from '../src/pipeline.js';
 
 const outDir = process.argv[2];
@@ -14,6 +15,7 @@ const { sb, meta } = deserialize(await readFile(join(outDir, 'slides.bundle')));
 // a bundle kept before a scale change takes the current scales (its data covers the wider window)
 sb.bleedPanel = { ...sb.bleedPanel, scale: BLEED_SCALE };
 if (sb.countryPanel) sb.countryPanel = { ...sb.countryPanel, scale: COUNTRY_SCALE };
+await prepareRasters(sb, join(outDir, 'data'), BLEED_SCALE, COUNTRY_SCALE);
 let { html } = renderSlides(sb, meta);
 // ONLY=02,03 keeps just those slides, printed beside the deck rather than over it
 const only = process.env.ONLY?.split(',').map((x) => x.trim()).filter(Boolean);

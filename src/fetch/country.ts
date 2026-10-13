@@ -145,6 +145,8 @@ export interface CountryData {
     atSite: { pctId: string; pct: string; cls: string; formation: string } | null;
     /** The State's own rendering of the plant community types over the strip, written beside the aerial tiles. */
     image: { file: string; extent: Extent; pxWidth: number; pxHeight: number } | null;
+    /** The communities painted with the slide's patterns (render/paintMasks.ts). */
+    paint?: string;
     /** The communities in the strip, by share of its area, in the map's colours. */
     classes: VegClass[];
     source: string;

@@ -82,7 +82,7 @@ export async function fetchAerial(
 }
 
 /** Where the aerial is green: trees, gardens and grass read from NSW Imagery itself, which no inventory misses. */
-export interface VegetationMask { file: string; extent: Extent; pxWidth: number; pxHeight: number; sharePct: number }
+export interface VegetationMask { file: string; extent: Extent; pxWidth: number; pxHeight: number; sharePct: number; /** The mask painted with the slide's pattern (render/paintMasks.ts). */ paint?: string }
 
 /**
  * The aerial over `extent` at about `mPerPx` a pixel, as PNG, and a greyscale mask of its green: a pixel is

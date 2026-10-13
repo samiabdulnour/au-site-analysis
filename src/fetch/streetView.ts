@@ -345,3 +345,81 @@ export async function fetchPlaceStreetViews(places: { n: number; title: string; 
   }
   return out;
 }
+
+/** A frame of the street series: where the camera stands, which way it looks, and the side of the street it shows. */
+export interface StreetFrame { n: number; street: string; file: string; panoId: string; date?: string; copyright?: string; lon: number; lat: number; heading: number; fov: number; side: 'site' | 'opposite'; alongM: number }
+
+/**
+ * The street the site fronts, end to end, in `count` frames: cameras evenly spaced along it (one opposite the site),
+ * each turned square to a side of the street, the sides alternating, so the views do not overlap and both faces of
+ * the street are seen. Google's own panoramas only. Saved as `street_<n>.jpg`.
+ */
+export async function fetchStreetSeries(street: string, segments: [number, number][][], site: LonLat, outDir: string, key: string, secret?: string, count = 8, log: (m: string) => void = () => {}): Promise<StreetFrame[]> {
+  const f = frame(site);
+  // points every 4 m along every segment of the street, with the street's direction there
+  const pts: { p: P; dir: P }[] = [];
+  for (const seg of segments) {
+    const xy = seg.map(([lon, lat]) => f.toXY({ lon, lat }));
+    for (let i = 0; i < xy.length - 1; i++) {
+      const a = xy[i], b = xy[i + 1], L = dist(a, b);
+      if (L < 0.5) continue;
+      const dir = { x: (b.x - a.x) / L, y: (b.y - a.y) / L };
+      for (let t = 0; t < L; t += 4) pts.push({ p: { x: a.x + dir.x * t, y: a.y + dir.y * t }, dir });
+    }
+  }
+  if (pts.length < 2) return [];
+  // the street's axis: from its two farthest points; positions along it
+  let a0 = pts[0].p, a1 = pts[1].p, best = 0;
+  for (const q of pts) { const d = dist(q.p, pts[0].p); if (d > best) { best = d; a1 = q.p; } }
+  best = 0; for (const q of pts) { const d = dist(q.p, a1); if (d > best) { best = d; a0 = q.p; } }
+  const ax = { x: (a1.x - a0.x) / dist(a0, a1), y: (a1.y - a0.y) / dist(a0, a1) };
+  const along = (p: P) => (p.x - a0.x) * ax.x + (p.y - a0.y) * ax.y;
+  const total = dist(a0, a1), sAt = along({ x: 0, y: 0 });
+  // the frames centred on the site, spread over the street at up to 45 m apart, kept inside its ends
+  const step = Math.min(45, total / count);
+  let start = sAt - step * Math.floor(count / 2);
+  start = Math.max(4, Math.min(start, total - 4 - step * (count - 1)));
+  const meta = metadataService(key, secret);
+  const out: StreetFrame[] = [];
+  const used = new Set<string>();
+  for (let i = 0; i < count; i++) {
+    const s = start + i * step;
+    const near = pts.reduce((a, q) => (Math.abs(along(q.p) - s) < Math.abs(along(a.p) - s) ? q : a));
+    try {
+      const m = await meta(f.toLL(near.p), 15);
+      if (!m || !/google/i.test(m.copyright ?? '') || used.has(m.panoId)) continue;
+      used.add(m.panoId);
+      // square to the street: alternate sides, the first frame facing the site's side
+      const cam = f.toXY({ lon: m.lon, lat: m.lat });
+      const left = { x: -near.dir.y, y: near.dir.x };
+      const siteSide = (0 - cam.x) * left.x + (0 - cam.y) * left.y >= 0 ? left : { x: -left.x, y: -left.y };
+      const side: 'site' | 'opposite' = i % 2 === 0 ? 'site' : 'opposite';
+      const look = side === 'site' ? siteSide : { x: -siteSide.x, y: -siteSide.y };
+      const heading = norm((Math.atan2(look.x, look.y) * 180) / Math.PI);
+      const view: SvView = { ...m, heading, pitch: 6, fov: 80, kind: 'frontage', distanceM: 10 };
+      const res = await retryFetch(imageUrl(view, key, secret), {}, { attempts: 2, timeoutMs: 30_000, label: 'Street View image' });
+      if (!res.ok) continue;
+      const file = `street_${out.length + 1}.jpg`;
+      await writeFile(join(outDir, file), Buffer.from(await res.arrayBuffer()));
+      out.push({ n: out.length + 1, street, file, panoId: m.panoId, date: m.date, copyright: m.copyright, lon: m.lon, lat: m.lat, heading, fov: 80, side, alongM: Math.round(along(cam) - sAt) });
+    } catch (e: any) { log(`  Street View series: ${e?.message ?? e}`); }
+  }
+  log(`  street series: ${out.length} frames along ${street}, ${Math.round(step)} m apart`);
+  return out;
+}
+
+/** The street of the address among the roads: its name in the address after the number, else the named road nearest the site. */
+export function addressStreet(address: string, roads: { name: string; coords: [number, number][] }[], site: LonLat): { name: string; segments: [number, number][][] } | null {
+  const norm2 = (s: string) => s.toUpperCase().replace(/\bST\b/g, 'STREET').replace(/\bRD\b/g, 'ROAD').replace(/\bAVE?\b/g, 'AVENUE').replace(/\bLN\b/g, 'LANE').replace(/[^A-Z ]/g, ' ').replace(/\s+/g, ' ').trim();
+  const a = norm2(address.split(',')[0].replace(/^[\d\-/A-Za-z]*\d[\dA-Za-z\-/]*\s+/, ''));
+  const named = roads.filter((r) => r.name);
+  let hit = named.filter((r) => a.startsWith(norm2(r.name)) || norm2(r.name).startsWith(a));
+  if (!hit.length) {
+    const f = frame(site);
+    const d = (r: { coords: [number, number][] }) => Math.min(...r.coords.map(([lon, lat]) => { const p = f.toXY({ lon, lat }); return Math.hypot(p.x, p.y); }));
+    const nearest = [...named].sort((x, y) => d(x) - d(y))[0];
+    if (!nearest) return null;
+    hit = named.filter((r) => r.name === nearest.name);
+  }
+  return { name: hit[0].name, segments: hit.filter((r) => r.name === hit[0].name).map((r) => r.coords) };
+}

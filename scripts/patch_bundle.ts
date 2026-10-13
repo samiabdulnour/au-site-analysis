@@ -8,7 +8,7 @@ import { fetchPlaceViews } from '../src/fetch/character.js';
 import { fetchAerial, fetchVegetationMask } from '../src/fetch/imagery.js';
 import { fetchOsmTrees } from '../src/fetch/greenSpace.js';
 import { fetchPhotos } from '../src/fetch/photos.js';
-import { fetchPlaceStreetViews } from '../src/fetch/streetView.js';
+import { fetchPlaceStreetViews, fetchStreetSeries, addressStreet } from '../src/fetch/streetView.js';
 import { geomRings } from '../src/fetch/planning.js';
 import { mergeTrees } from '../src/fetch/trees.js';
 import { panelExtent } from '../src/render/minimap.js';
@@ -57,6 +57,13 @@ if (what.has('placesv')) {
   if (!key) throw new Error('GOOGLE_MAPS_API_KEY is not set');
   sb.character.placeStreetViews = await fetchPlaceStreetViews(sb.character.places.items.slice(0, 8).map((pl: { title: string; lon: number; lat: number }, i: number) => ({ n: i + 1, title: pl.title, lon: pl.lon, lat: pl.lat })), dataDir, key, undefined, log);
   console.log(`place street views: ${sb.character.placeStreetViews.length}`);
+}
+if (what.has('series')) {
+  const key = process.env.GOOGLE_MAPS_API_KEY?.trim();
+  if (!key) throw new Error('GOOGLE_MAPS_API_KEY is not set');
+  const st = addressStreet(sb.siteAddress, sb.base.roads, mercatorToLonLat(sb.geocode.center));
+  console.log('street:', st?.name, st?.segments.length);
+  if (st) sb.photos.series = await fetchStreetSeries(st.name, st.segments, mercatorToLonLat(sb.geocode.center), dataDir, key, undefined, 8, log);
 }
 await writeFile(join(outDir, 'slides.bundle'), serialize(kept));
 console.log('bundle patched:', [...what].join(', '));

@@ -23,7 +23,7 @@ export function decodePng(buf: Uint8Array): Rgba | null {
     else if (kind === 'IEND') break;
     pos += 12 + len;
   }
-  if (depth !== 8 || interlace !== 0 || ![2, 3, 6].includes(type)) return null;
+  if (depth !== 8 || interlace !== 0 || ![0, 2, 3, 6].includes(type)) return null;
   const bpp = type === 6 ? 4 : type === 2 ? 3 : 1;
   const raw = inflateSync(Buffer.concat(idat));
   const stride = width * bpp;
@@ -47,6 +47,7 @@ export function decodePng(buf: Uint8Array): Rgba | null {
   for (let i = 0; i < width * height; i++) {
     if (type === 6) data.set(px.subarray(i * 4, i * 4 + 4), i * 4);
     else if (type === 2) { data.set(px.subarray(i * 3, i * 3 + 3), i * 4); data[i * 4 + 3] = 255; }
+    else if (type === 0) { const v = px[i]; data[i * 4] = v; data[i * 4 + 1] = v; data[i * 4 + 2] = v; data[i * 4 + 3] = 255; }
     else { const k = px[i]; data[i * 4] = palette?.[k * 3] ?? 0; data[i * 4 + 1] = palette?.[k * 3 + 1] ?? 0; data[i * 4 + 2] = palette?.[k * 3 + 2] ?? 0; data[i * 4 + 3] = trns && k < trns.length ? trns[k] : 255; }
   }
   return { width, height, data };
@@ -70,5 +71,15 @@ export function encodeGreyPng(width: number, height: number, grey: Uint8Array): 
   for (let y = 0; y < height; y++) { raw[y * (width + 1)] = 0; Buffer.from(grey.subarray(y * width, (y + 1) * width)).copy(raw, y * (width + 1) + 1); }
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(width, 0); ihdr.writeUInt32BE(height, 4); ihdr[8] = 8; ihdr[9] = 0; ihdr[10] = 0; ihdr[11] = 0; ihdr[12] = 0;
+  return Buffer.concat([Buffer.from(SIG), chunk('IHDR', ihdr), chunk('IDAT', deflateSync(raw, { level: 9 })), chunk('IEND', new Uint8Array(0))]);
+}
+
+/** An 8-bit RGBA PNG. */
+export function encodeRgbaPng(width: number, height: number, rgba: Uint8Array): Buffer {
+  const row = width * 4;
+  const raw = Buffer.alloc((row + 1) * height);
+  for (let y = 0; y < height; y++) { raw[y * (row + 1)] = 0; Buffer.from(rgba.subarray(y * row, (y + 1) * row)).copy(raw, y * (row + 1) + 1); }
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0); ihdr.writeUInt32BE(height, 4); ihdr[8] = 8; ihdr[9] = 6; ihdr[10] = 0; ihdr[11] = 0; ihdr[12] = 0;
   return Buffer.concat([Buffer.from(SIG), chunk('IHDR', ihdr), chunk('IDAT', deflateSync(raw, { level: 9 })), chunk('IEND', new Uint8Array(0))]);
 }

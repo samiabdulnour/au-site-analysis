@@ -14,6 +14,7 @@ import { join } from 'node:path';
 import { retryFetch } from '../lib/http.js';
 import { planStreetViews, metadataService, imageUrl, mapsUrl, type SvView } from './streetView.js';
 import { cachedJson, DAY_MS } from '../lib/cache.js';
+import type { StreetFrame } from './streetView.js';
 import { type LonLat, type XY, type Extent } from '../lib/geo.js';
 import { panelExtent, type Panel } from '../render/minimap.js';
 import { fetchAerial, type AerialResult } from './imagery.js';
@@ -91,6 +92,8 @@ export interface PhotosData {
   /** Google Street View: the site's sides, the street frontages the free metadata service found in front of them, the probes it took and the frames kept. Optional: decks cached before it have none. */
   google?: { ok: boolean; frames: number; frontages: number; sides: number; probes: number; /** Panoramas set aside as standing inside another lot or looking through one. */ offStreet?: number; note?: string };
   photos: StreetPhoto[];
+  /** The site's street end to end in Street View frames, square to each side in turn (streetView.ts). */
+  series?: StreetFrame[];
   /** The then-and-now pair: one panel, the 1943 tiles that cover it and today's export. */
   pair: {
     panel: Panel;
