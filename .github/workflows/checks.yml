@@ -135,6 +135,11 @@ jobs:
       - name: the wind roses count the hours right
         run: npx tsx test/wind.mts
 
+      # North-align turns the sheet so the site lies with its long side
+      # horizontal, whatever its bearing or shape, on made-up lots.
+      - name: north-align lays the site's long side horizontal
+        run: npx tsx test/site-rotation.mts
+
       # Slide 15's heritage layers on made-up features: outlines clipped to the
       # strip, a permit over the lot told from one that grazes its kerb, AHIP
       # records merged by permit, the RNE's rejected places left out, and what

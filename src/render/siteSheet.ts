@@ -925,10 +925,22 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
       <text text-anchor="middle" dy="2.3" font-size="6.2" font-weight="700" fill="${PEN}" stroke="${PEN}" stroke-width="0.22">N</text></g>`);
   }
 
+  // Each wind comes in from its own compass quarter, so it turns with the
+  // sheet when north is aligned to the site: it starts where a ray from the
+  // site along its bearing meets a frame kept clear of the sheet's edge.
+  const windFrom = (bearingDeg: number): Pt => {
+    const a = ((bearingDeg + view.rotationDeg) * Math.PI) / 180;
+    const ux = Math.sin(a), uy = -Math.cos(a);
+    const [x0, x1, y0, y1] = [90, MAP_W - 90, 55, MAP_H - 60];
+    const tx = ux > 0 ? (x1 - centroidPx[0]) / ux : ux < 0 ? (x0 - centroidPx[0]) / ux : Infinity;
+    const ty = uy > 0 ? (y1 - centroidPx[1]) / uy : uy < 0 ? (y0 - centroidPx[1]) / uy : Infinity;
+    const t = Math.max(0, Math.min(tx, ty));
+    return [centroidPx[0] + ux * t, centroidPx[1] + uy * t];
+  };
   const winds: { at: Pt; label: string[] }[] = [
-    { at: [MAP_W - 95, 55], label: ['NE SUMMER', 'SEA BREEZE'] },
-    { at: [MAP_W - 85, MAP_H - 75], label: ['S & SE COOL', 'SUMMER WIND'] },
-    { at: [90, MAP_H - 60], label: ['W & SW', 'WINTER WINDS'] },
+    { at: windFrom(50), label: ['NE SUMMER', 'SEA BREEZE'] },
+    { at: windFrom(150), label: ['S & SE COOL', 'SUMMER WIND'] },
+    { at: windFrom(235), label: ['W & SW', 'WINTER WINDS'] },
   ];
   for (const w of winds) {
     const dx = centroidPx[0] - w.at[0], dy = centroidPx[1] - w.at[1];
