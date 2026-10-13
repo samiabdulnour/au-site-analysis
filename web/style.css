@@ -10,20 +10,15 @@
   --ink:   #000000;
   --line:  #000000;
   --hi:    #ffff70;   /* selected option, primary button */
-  --on-hi: #000000;   /* the highlight stays light in both themes, so what
-                         sits on it stays dark — never --ink */
+  --on-hi: #000000;   /* what sits on the highlight */
   --head:  #c6e7cf;   /* the options table's label column */
   --muted: #5a5a5a;
   --err:   #c0392b;
   --font: Arial, Helvetica, "Helvetica Neue", sans-serif;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #111111; --ink: #f2f2f2; --line: #f2f2f2;
-    --hi: #d8d84a; --head: #3f6b4c; --muted: #a9a9a9; --err: #f08b7d;
-    /* --on-hi is deliberately not redefined: the highlight is light here too. */
-  }
+  /* Light only, like the paper the sheets are printed on: the page does not
+     follow the device into dark mode (which many turn on at sunset), and the
+     browser's own controls and scrollbars stay light with it. */
+  color-scheme: light only;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
