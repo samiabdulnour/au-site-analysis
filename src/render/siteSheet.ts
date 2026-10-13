@@ -897,28 +897,54 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     put(hrs.summer, Ro, Ro + 10, summerAz);
     layers.push(marks.join(''));
   }
-  const sketchSun = ([x, y]: Pt, lines: string[]) => {
-    const r0 = 10.5, r1 = 13.4, r2 = 21, n = 16;
-    let d = '';
+  // The sun: an open jagged crown in the pen, white inside, with a hand-drawn
+  // ring in the middle. The teeth are of uneven length, and the four on the
+  // diagonals are drawn out as short, broad flames with a gentle bend, after
+  // the manuscript suns. Each sun is drawn from its own seed, so the four
+  // differ a little, as if drawn one by one.
+  const sketchSun = ([x, y]: Pt, lines: string[], seed: number) => {
+    let st = seed * 9301 + 49297;
+    const rnd = () => { st = (st * 9301 + 49297) % 233280; return st / 233280; };
+    const n = 16, rBase = 12.4, flames = new Set([2, 6, 10, 14]);
+    const P = (r: number, a: number): Pt => [r * Math.cos(a), r * Math.sin(a)];
+    const pts: Pt[] = [];
     for (let i = 0; i < n; i++) {
-      const a0 = (i / n) * Math.PI * 2, a1 = ((i + 0.5) / n) * Math.PI * 2, a2 = ((i + 1) / n) * Math.PI * 2;
-      const tipR = r2 - (i % 2) * 3.2;
-      const p0 = [r1 * Math.cos(a0), r1 * Math.sin(a0)];
-      const tip = [tipR * Math.cos(a1 + 0.07), tipR * Math.sin(a1 + 0.07)];
-      const c0 = [(r1 + 3.6) * Math.cos(a1 - 0.11), (r1 + 3.6) * Math.sin(a1 - 0.11)];
-      const p2 = [r1 * Math.cos(a2), r1 * Math.sin(a2)];
-      const c1 = [(r1 + 2.2) * Math.cos(a1 + 0.2), (r1 + 2.2) * Math.sin(a1 + 0.2)];
-      d += `${i ? 'L' : 'M'}${p0[0].toFixed(2)},${p0[1].toFixed(2)} Q${c0[0].toFixed(2)},${c0[1].toFixed(2)} ${tip[0].toFixed(2)},${tip[1].toFixed(2)} Q${c1[0].toFixed(2)},${c1[1].toFixed(2)} ${p2[0].toFixed(2)},${p2[1].toFixed(2)}`;
+      const a = (i / n) * Math.PI * 2, h = (Math.PI / n) * 0.85;
+      if (!flames.has(i)) {
+        pts.push(P(rBase + rnd() * 0.8, a - h), P(18.5 + rnd() * 4.5, a + (rnd() - 0.5) * 0.12));
+        continue;
+      }
+      // A flame: its centre line leaves the crown radially and bends once,
+      // its width falling from the tooth's own base to a point.
+      const L = 11, w0 = rBase * Math.sin(h), amp = 0.9 * (i % 4 === 2 ? 1 : -1);
+      const ux = Math.cos(a), uy = Math.sin(a), nx = -uy, ny = ux, N = 10;
+      const side = (sgn: number) => Array.from({ length: N + 1 }, (_, k) => {
+        const t = k / N, off = amp * Math.sin(t * Math.PI * 1.5), w = w0 * Math.pow(1 - t, 0.8) + 0.12;
+        const r = rBase * Math.cos(h) + L * t;
+        return [ux * r + nx * (off + sgn * w), uy * r + ny * (off + sgn * w)] as Pt;
+      });
+      pts.push(...side(-1), ...side(1).reverse());
     }
+    // The ring: a circle drawn by hand, its radius wandering a little.
+    const ring: Pt[] = Array.from({ length: 14 }, (_, k) => P(9.6 * (1 + 0.1 * (rnd() - 0.5)), (k / 14) * Math.PI * 2 + 0.3));
+    const smooth = (q: Pt[]) => {
+      const m = q.length, g = (i: number) => q[(i + m) % m];
+      let d = `M${g(0)[0].toFixed(2)},${g(0)[1].toFixed(2)}`;
+      for (let i = 0; i < m; i++) {
+        const p0 = g(i - 1), p1 = g(i), p2 = g(i + 1), p3 = g(i + 2);
+        d += `C${(p1[0] + (p2[0] - p0[0]) / 6).toFixed(2)},${(p1[1] + (p2[1] - p0[1]) / 6).toFixed(2)} ${(p2[0] - (p3[0] - p1[0]) / 6).toFixed(2)},${(p2[1] - (p3[1] - p1[1]) / 6).toFixed(2)} ${p2[0].toFixed(2)},${p2[1].toFixed(2)}`;
+      }
+      return d + 'Z';
+    };
     return `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})">
-      <path d="${d}Z" fill="#ffffff" fill-opacity="0.85" stroke="${PEN}" stroke-width="${PEN_W}" stroke-linejoin="round"/>
-      <circle r="${r0}" fill="#ffffff" stroke="${PEN}" stroke-width="${PEN_W}"/>
-      ${textBlock(0, r2 + 6, lines)}</g>`;
+      <path d="M${pts.map(([px, py]) => `${px.toFixed(2)},${py.toFixed(2)}`).join('L')}Z" fill="#ffffff" fill-opacity="0.9" stroke="${PEN}" stroke-width="${PEN_W}" stroke-linejoin="round"/>
+      <path d="${smooth(ring)}" fill="#ffffff" stroke="${PEN}" stroke-width="${PEN_W}"/>
+      ${textBlock(0, 29, lines)}</g>`;
   };
-  layers.push(sketchSun(sunAt(winterAz, Ri), ['WINTER', 'SUNRISE']));
-  layers.push(sketchSun(sunAt(-winterAz, Ri), ['WINTER', 'SUNSET']));
-  layers.push(sketchSun(sunAt(summerAz, Ro), ['SUMMER', 'SUNRISE']));
-  layers.push(sketchSun(sunAt(-summerAz, Ro), ['SUMMER', 'SUNSET']));
+  layers.push(sketchSun(sunAt(winterAz, Ri), ['WINTER', 'SUNRISE'], 1));
+  layers.push(sketchSun(sunAt(-winterAz, Ri), ['WINTER', 'SUNSET'], 2));
+  layers.push(sketchSun(sunAt(summerAz, Ro), ['SUMMER', 'SUNRISE'], 3));
+  layers.push(sketchSun(sunAt(-summerAz, Ro), ['SUMMER', 'SUNSET'], 4));
   {
     // North sits just beyond the summer noon mark and its label.
     const [nx, ny] = sunAt(0, Ro + 24);
@@ -1035,7 +1061,7 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     const rib = `M${SWATCH_X + 2},2.6 C${SWATCH_X + 7},0.8 ${SWATCH_X + 11},4.8 ${SWATCH_X + 16},2.4 L${SWATCH_X + 16},1 L${SWATCH_X + 21},3.2 L${SWATCH_X + 16},5.4 L${SWATCH_X + 16},4 C${SWATCH_X + 11},6.2 ${SWATCH_X + 7},2.6 ${SWATCH_X + 2},3.8 Z`;
     void rib;
     row(`<path d="${sketchArrow(SWATCH_X + 2, 3.2, 1, 0, 19, 0.8, 0.5, 1.3)}" fill="#fff" stroke="${SITE_RED}" stroke-width="0.35" stroke-linejoin="round"/>`, 'PREVAILING WINDS');
-    row(`<g transform="translate(${mid},3.2)">${[0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330].map((a) => { const ar = (a * Math.PI) / 180; return `<line x1="${(2.7 * Math.cos(ar)).toFixed(2)}" y1="${(2.7 * Math.sin(ar)).toFixed(2)}" x2="${(3.9 * Math.cos(ar)).toFixed(2)}" y2="${(3.9 * Math.sin(ar)).toFixed(2)}" stroke="${SITE_RED}" stroke-width="0.4"/>`; }).join('')}<circle r="2.1" fill="#fff" stroke="${SITE_RED}" stroke-width="0.4"/></g>`, 'SUN PATH', 'summer solid, winter dashed; solar hours');
+    row(`<g transform="translate(${mid},3.2)"><path d="M${Array.from({ length: 24 }, (_, k) => { const a = (k / 24) * Math.PI * 2, r = k % 2 ? 2.3 : (k % 6 === 0 ? 4.2 : 3.6); return `${(r * Math.cos(a)).toFixed(2)},${(r * Math.sin(a)).toFixed(2)}`; }).join('L')}Z" fill="#fff" stroke="${SITE_RED}" stroke-width="0.35" stroke-linejoin="round"/><circle r="1.7" fill="#fff" stroke="${SITE_RED}" stroke-width="0.35"/></g>`, 'SUN PATH', 'summer solid, winter dashed; solar hours');
   }
 
   const utilKinds = new Set(sb.furniture.utilities.map((u) => u.kind));
