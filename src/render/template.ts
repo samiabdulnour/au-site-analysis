@@ -335,6 +335,36 @@ export function tpl(): Template {
   // The context when there is one; otherwise whatever setTemplate last chose.
   return als.getStore() ?? active;
 }
+// ---- site analysis themes ---------------------------------------------------
+// The templates above are the context sheet's. The site analysis has themes of
+// its own; each draws on one of the templates for what it does not set itself
+// (fonts, the zones' palette), and the sheet sets the rest. The development
+// summary and the deck have no themes: they are drawn in the default template.
+
+export interface SiteTheme { id: string; label: string; note: string; base: string }
+export const SITE_THEMES: SiteTheme[] = [
+  { id: 'cardinal', label: 'Cardinal', base: 'flamingo',
+    note: 'the aerial with the zones hatched; the site, sun, winds and views in one deep red, the sun a crown of broad teeth round a plain circle' },
+];
+export const DEFAULT_SITE_THEME = 'cardinal';
+
+/** A site theme by id, or the default for anything unknown. */
+export function siteTheme(id: string | undefined): SiteTheme {
+  return SITE_THEMES.find((t) => t.id === id) ?? SITE_THEMES.find((t) => t.id === DEFAULT_SITE_THEME)!;
+}
+
+export type SheetKind = 'context' | 'site' | 'summary' | 'slides';
+
+/** The theme a sheet of this kind is drawn in: a template for the context sheet, a site theme for the site sheet, none ('') for the summary and the deck. */
+export function themeFor(sheet: SheetKind, id: string | undefined): string {
+  return sheet === 'context' ? resolveTemplateId(id) : sheet === 'site' ? siteTheme(id).id : '';
+}
+
+/** The template a sheet of this kind is rendered under, given its theme. */
+export function templateFor(sheet: SheetKind, theme: string | undefined): string {
+  return sheet === 'context' ? resolveTemplateId(theme) : sheet === 'site' ? siteTheme(theme).base : DEFAULT_TEMPLATE;
+}
+
 export function isTemplateId(id: string): boolean {
   return Object.hasOwn(byId, id);
 }

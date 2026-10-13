@@ -5,7 +5,8 @@
 //
 //   npm run samples -- "150 George Street, Parramatta NSW 2150" [--only context|site|summary|slides]
 //
-// and writes web/samples/result-<sheet>[-<scale>-<rotate>]-<template>.jpg,
+// and writes web/samples/result-<sheet>[-<scale>-<rotate>][-<theme>].jpg
+// (context in each template, site in each site theme, summary and slides once),
 // the names web/app.js asks for. The data is fetched once per scale and
 // orientation and drawn in each style from the same bundle, since a style
 // changes how a sheet looks and never what it fetches. `--only` splits the
@@ -31,7 +32,7 @@ import { renderSiteSheet } from './render/siteSheet.js';
 import { renderSummarySheet } from './render/summarySheet.js';
 import { renderSlides, PANEL_W, PANEL_H, DA_PANEL_H, SLIDE_W, SLIDE_H } from './render/slides.js';
 import { htmlToPdf, printSlides } from './render/pdf.js';
-import { TEMPLATES, withTemplate } from './render/template.js';
+import { TEMPLATES, SITE_THEMES, withTemplate } from './render/template.js';
 
 const CONTEXT_SCALES = [2000, 3000, 4000, 5000];
 const SITE_SCALES = [0, 200, 250, 500];   // 0 is auto, the tightest that fits the lot
@@ -79,7 +80,7 @@ else:
   console.log(`  wrote ${out}`);
 }
 
-/** One bundle drawn in every style: `draw` returns the PDF or PNG for one. */
+/** One context bundle drawn in every template: `draw` returns the PDF for one. */
 async function eachTemplate(name: string, draw: (template: string) => Promise<string>) {
   for (const t of TEMPLATES) {
     const file = await withTemplate(t.id, () => draw(t.id));
@@ -114,13 +115,14 @@ if (want('site')) {
       const bundle = await runSitePipeline(address, {
         mapWidthMm: MAP_W, mapHeightMm: MAP_H, outDir, scale: scale || undefined, rotate, log,
       });
-      await eachTemplate(`site-${scale}-${rotate}`, async (t) => {
-        const html = join(outDir, `site_sheet-${t}.html`);
-        const pdf = join(outDir, `SITE_ANALYSIS-${t}.pdf`);
-        await writeFile(html, renderSiteSheet(bundle, meta));
+      // The site sheet has its own themes, not the context templates.
+      for (const t of SITE_THEMES) {
+        const html = join(outDir, `site_sheet-${t.id}.html`);
+        const pdf = join(outDir, `SITE_ANALYSIS-${t.id}.pdf`);
+        await writeFile(html, renderSiteSheet(bundle, meta, t.id));
         await htmlToPdf(html, pdf);
-        return pdf;
-      });
+        toJpeg(pdf, `site-${scale}-${rotate}-${t.id}`);
+      }
     }
   }
 }
@@ -129,13 +131,14 @@ if (want('summary')) {
   const outDir = join(root, 'summary');
   log('summary');
   const bundle = await runSummaryPipeline(address, { outDir, log });
-  await eachTemplate('summary', async (t) => {
-    const html = join(outDir, `summary_sheet-${t}.html`);
-    const pdf = join(outDir, `DEVELOPMENT_SUMMARY-${t}.pdf`);
+  // The summary has no themes: one picture.
+  {
+    const html = join(outDir, 'summary_sheet.html');
+    const pdf = join(outDir, 'DEVELOPMENT_SUMMARY.pdf');
     await writeFile(html, renderSummarySheet(bundle, meta));
     await htmlToPdf(html, pdf);
-    return pdf;
-  });
+    toJpeg(pdf, 'summary');
+  }
 }
 
 if (want('slides')) {
@@ -144,13 +147,14 @@ if (want('slides')) {
   const bundle = await runSlidesPipeline(address, {
     outDir, panelWmm: PANEL_W, panelHmm: PANEL_H, daPanelHmm: DA_PANEL_H, log,
   });
-  await eachTemplate('slides', async (t) => {
-    const html = join(outDir, `slides-${t}.html`);
-    const pngDir = join(outDir, `slides-${t}`);
+  // Nor does the deck: one picture of its planning slide.
+  {
+    const html = join(outDir, 'slides.html');
+    const pngDir = join(outDir, 'slides');
     await writeFile(html, renderSlides(bundle, meta).html);
-    await printSlides(html, join(outDir, `OVERALL_ANALYSIS-${t}.pdf`), pngDir, { widthMm: SLIDE_W, heightMm: SLIDE_H });
-    return join(pngDir, `${SLIDE}.png`);
-  });
+    await printSlides(html, join(outDir, 'OVERALL_ANALYSIS.pdf'), pngDir, { widthMm: SLIDE_W, heightMm: SLIDE_H });
+    toJpeg(join(pngDir, `${SLIDE}.png`), 'slides');
+  }
 }
 
 console.log('done');

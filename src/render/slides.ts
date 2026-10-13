@@ -9,7 +9,7 @@
 import type { SlidesBundle } from '../pipeline.js';
 import type { SheetMeta } from './sheet.js';
 import type { GeoJSONFeature } from '../lib/arcgis.js';
-import { tpl } from './template.js';
+import { tpl, withTemplate, DEFAULT_TEMPLATE } from './template.js';
 import { esc } from './chrome.js';
 import {
   panelProjector, panelExtent, baseLayers, overLayers, panelFurniture, furnitureBox, siteMark, siteLabelPoint, stationMode, ringsPath, fcPath, ringStats, clippedStats, hatchPath, bboxOf,
@@ -5389,7 +5389,12 @@ export function countrySlide(b: SlidesBundle): Slide {
   return { id: '15_country', title: 'Country', subtitle: sub, textHtml: text, figureHtml: figure };
 }
 
+/** The overall analysis deck: it has no themes, and is always drawn in the default template. */
 export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; slides: Slide[] } {
+  return withTemplate(DEFAULT_TEMPLATE, () => drawSlides(b, meta));
+}
+
+function drawSlides(b: SlidesBundle, meta: SheetMeta): { html: string; slides: Slide[] } {
   const facts = planningFacts(b);
   const slides = [locationSlide(b), characterSlide(b), planningOverviewSlide(b, facts), planningControlsSlide(b, facts), strategicSlide(b, facts), terrainSlide(b), developmentSlide(b, facts), builtFormSlide(b, facts), movementSlide(b), greenSlide(b), siteSlide(b), photosSlide(b), sunViewSlide(b), constraintsSlide(b), countrySlide(b), peopleSlide(b), ocSlide(b, facts), sourcesSlide(b, facts)];
   const t = tpl();

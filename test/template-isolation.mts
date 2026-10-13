@@ -21,7 +21,7 @@
  *   npx tsx test/template-isolation.mts
  */
 
-import { TEMPLATES, withTemplate, tpl } from '../src/render/template.js';
+import { TEMPLATES, withTemplate, tpl, themeFor, templateFor } from '../src/render/template.js';
 
 const nap = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -64,3 +64,21 @@ if (seen.length) {
   process.exit(1);
 }
 console.log('  ok — two concurrent renders each kept their own template');
+
+// Each kind of sheet keeps only a style of its own kind: the context sheet a
+// template, the site sheet a site theme, the summary and the deck none — so a
+// context template sent with a site job can never reach the site sheet.
+const styleChecks: [string, boolean][] = [
+  ['context keeps its template', themeFor('context', 'heron') === 'heron'],
+  ['context: unknown → default template', themeFor('context', 'cardinal') === 'flamingo'],
+  ['site: a context template → Cardinal', themeFor('site', 'heron') === 'cardinal'],
+  ['site: Cardinal draws on Flamingo', templateFor('site', 'cardinal') === 'flamingo'],
+  ['summary has no theme', themeFor('summary', 'conure') === ''],
+  ['slides drawn in the default template', templateFor('slides', 'kingfisher') === 'flamingo'],
+];
+const badStyle = styleChecks.filter(([, ok]) => !ok);
+if (badStyle.length) {
+  console.error('FAIL: ' + badStyle.map(([n]) => n).join('; '));
+  process.exit(1);
+}
+console.log('  ok — each sheet keeps only a style of its own kind');

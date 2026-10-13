@@ -11,7 +11,7 @@ import {
 import { catById, zoneToCategory } from './model.js';
 import { METRES_PER_STOREY } from '../fetch/buildings.js';
 import { sheetHtml, esc, T, SWATCH_X, SWATCH_W, LABEL_X, MAP_W, MAP_H } from './chrome.js';
-import { tpl } from './template.js';
+import { tpl, withTemplate, siteTheme } from './template.js';
 import { exitPoint } from '../fetch/views.js';
 import { NOMINAL_CANOPY_M } from '../fetch/trees.js';
 import { buildParkingBands, type Orientation } from '../lib/parking.js';
@@ -138,7 +138,12 @@ function solsticeHours(latDeg: number): { winter: { h: number; az: number; label
   return { winter: marks(winterDec), summer: marks(-winterDec) };
 }
 
-export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
+/** The site analysis sheet, in one of its own themes (Cardinal unless another is named); it never takes the context sheet's templates. */
+export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta, theme?: string): string {
+  return withTemplate(siteTheme(theme).base, () => drawSiteSheet(sb, meta));
+}
+
+function drawSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
   const view = sb.view;
   const proj = makeProjector(view);
   const layers: string[] = [];
