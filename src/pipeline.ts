@@ -666,6 +666,11 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
   // for the slides that run their map to the sheet's edges.
   const bleedPanel: Panel = { center: geo.center, scale: opts.scale ?? 8000, wMm: 210, hMm: 297 };
   const bleedExtent = panelExtent(bleedPanel);
+  // The layers the full-page maps draw are read over the full page as well as the tall panel.
+  const pageExtent: Extent = {
+    xmin: Math.min(daExtent.xmin, bleedExtent.xmin), ymin: Math.min(daExtent.ymin, bleedExtent.ymin),
+    xmax: Math.max(daExtent.xmax, bleedExtent.xmax), ymax: Math.max(daExtent.ymax, bleedExtent.ymax),
+  };
   const fetchExtent: Extent = {
     xmin: Math.min(extent.xmin, daExtent.xmin, bleedExtent.xmin), ymin: Math.min(extent.ymin, daExtent.ymin, bleedExtent.ymin),
     xmax: Math.max(extent.xmax, daExtent.xmax, bleedExtent.xmax), ymax: Math.max(extent.ymax, daExtent.ymax, bleedExtent.ymax),
@@ -691,7 +696,7 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
   const emptySite: SiteData = { sitePanel, blockPanel, aerial: null, imagery: null, lots: [], easements: [], neighbours: [], publicLand: [], fetchedAt: new Date().toISOString() };
   // The lots and the footprints are read once and wait for both the maps and Street View, which uses them to tell a camera in the street from one in a shop or behind a neighbour.
   const lotsRead = soft(fetchAllLots(fetchExtent), emptyFC, 'cadastral lots');
-  const footprintsRead = soft(fetchBuildings(daExtent, log), { source: 'none' as const, buildings: [], fetchedAt: new Date().toISOString() }, 'buildings');
+  const footprintsRead = soft(fetchBuildings(pageExtent, log), { source: 'none' as const, buildings: [], fetchedAt: new Date().toISOString() }, 'buildings');
   const [zoning, hob, heritage, shr, policy, water, lots, roads, railLines, stations, context, property, controls, proposals, feed, people, dem, contourSet, buildingsRead, movement, green, constraints, site, wideRoads, wideRail, wideStations, wideWater, wideSuburbs, country, photos, location, majorProjects, wind] = await Promise.all([
     soft(fetchZoningDetailed(extent), emptyFC, 'zoning'),
     soft(fetchHobDetailed(extent), emptyFC, 'height of building'),
@@ -706,14 +711,14 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
     fetchPlanningContext(geo.center, log),
     fetchPropertyReport(geo.matchedAddresses[0] ?? address, geo.center, log),
     fetchSiteControls(geo.center),
-    fetchPlanningProposals(daExtent, log),
+    fetchPlanningProposals(pageExtent, log),
     council ? soft(fetchCouncilApplications(council, from, today, log), null, 'Online DA API') : Promise.resolve(null),
     soft(fetchPeopleData(mercatorToLonLat(geo.center), geo.matchedAddresses[0], log), null, 'people and market'),
     soft(fetchDemGrid(daExtent), null, 'elevation model'),
     soft(fetchContours(fetchExtent, log), { lines: [], intervalM: 2, source: 'NSW Spatial Services' }, 'contours'),
     footprintsRead,
     fetchMovement(bleedExtent, geo.center, log),
-    soft(fetchGreenSpace(daExtent, wideExtent, log), emptyGreen, 'green and public domain'),
+    soft(fetchGreenSpace(pageExtent, wideExtent, log), emptyGreen, 'green and public domain'),
     soft(fetchConstraints(extent, mercatorToLonLat(geo.center), log), emptyConstraints, 'environmental constraints'),
     soft(fetchSiteData(sitePanel, blockPanel, siteLots, mercatorToLonLat(geo.center), dataDir, log), emptySite, 'site data'),
     soft(fetchRoads(wideFetch, 'roadnamebase IS NOT NULL AND functionhierarchy <= 5'), [], 'wide roads'),
@@ -725,7 +730,7 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
     soft(fetchPhotos({ centre: mercatorToLonLat(geo.center), siteRings: siteLots.features.flatMap((f) => geomRingsOf(f.geometry)), pairPanel, outDir: dataDir, log, lots: lotsRead.then((fc) => fc.features.flatMap((f) => geomRingsOf(f.geometry))), buildings: footprintsRead.then((bd) => bd.buildings.flatMap((x) => x.rings)) }), emptyPhotos(pairPanel), 'street-level frames and the 1943 aerial'),
     soft(fetchLocation(locationPanel, log), emptyLocation(locationPanel), 'location window'),
     // The Department's register of State significant applications: its listing for the council areas the window touches and each project's page, cached.
-    soft(fetchMajorProjects(daExtent, geo.center, log), emptyMajorProjects('the register did not answer'), 'State significant applications'),
+    soft(fetchMajorProjects(pageExtent, geo.center, log), emptyMajorProjects('the register did not answer'), 'State significant applications'),
     // The hourly wind over the last five years from NASA's POWER project, as roses for slide 13; cached by the model's cell.
     soft(fetchWind(mercatorToLonLat(geo.center), log), emptyWind('NASA POWER did not answer'), 'wind'),
   ]);
@@ -741,7 +746,7 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
     soft(fetchCharacter({ centre: mercatorToLonLat(geo.center), suburb: context.suburb?.name ?? '', aerialExtent: extent, outDir: dataDir, log }), emptyCharacter(), 'character (Wikipedia, Commons)'),
     soft(fetchStrategies(geo.center, context.lga?.name, context.lga?.council, log), emptyStrategies(), 'strategic documents'),
   ]);
-  const applications = feed ? clipToExtent(feed.records, daExtent) : [];
+  const applications = feed ? clipToExtent(feed.records, pageExtent) : [];
   const daMeta = feed ? { council: feed.council, from: feed.from, to: feed.to, total: feed.total, complete: feed.complete, fetchedAt: feed.fetchedAt } : null;
   // A footprint with neither a height nor a storey count takes the storeys of a determined application on its lot, and the slides say so.
   const buildings = withDaStoreys(buildingsRead, lots, applications);

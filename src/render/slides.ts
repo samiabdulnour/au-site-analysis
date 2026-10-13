@@ -10,6 +10,7 @@ import type { SlidesBundle } from '../pipeline.js';
 import type { SheetMeta } from './sheet.js';
 import type { GeoJSONFeature } from '../lib/arcgis.js';
 import { tpl, withTemplate } from './template.js';
+import { INK, fillShape, swatchOf, zHead, zBars, zFigures, zCircles, niceAxis, z6, zSvg, Z_W, type Fill } from './atlasKit.js';
 import { esc } from './chrome.js';
 import {
   panelProjector, panelExtent, baseLayers, overLayers, panelFurniture, furnitureBox, siteMark, siteLabelPoint, stationMode, ringsPath, fcPath, ringStats, clippedStats, hatchPath, dotsPath, bboxOf, t2Text, t2Width, railSymbol,
@@ -1449,6 +1450,132 @@ function yearChart(d: DevelopmentFacts, wMm: number, hMm: number): string {
   return `<svg width="${wMm}mm" height="${hMm}mm" viewBox="0 0 ${wMm} ${hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block" font-family="${t.font}">${parts.join('')}</svg>`;
 }
 
+/** A circle swatch for the key, filled after the kit. */
+const circleSwatch = (f: Fill, r = 1.45) => fillShape(`M${(2.5 - r).toFixed(2)},1.8a${r},${r} 0 1,0 ${2 * r},0a${r},${r} 0 1,0 ${-2 * r},0Z`, { x0: 2.5 - r, y0: 1.8 - r, x1: 2.5 + r, y1: 1.8 + r }, f, 1.54);
+
+/** A 6 pt word on a map, haloed in white: the template's map labels. */
+const m6 = (x: number, y: number, text: string, anchor: 'start' | 'middle' | 'end' = 'middle') =>
+  `<text x="${x.toFixed(2)}" y="${(y + 0.75).toFixed(2)}" text-anchor="${anchor}" font-size="2.117" letter-spacing="0.19" font-family="Arial, 'Liberation Sans', sans-serif" fill="#000000" stroke="#ffffff" stroke-width="0.5" stroke-linejoin="round" paint-order="stroke">${esc(text)}</text>`;
+
+/** The base every template map stands on: white ground, the cadastre and the roads in greys, rail as track. */
+const greyBase = (t: ReturnType<typeof tpl>) => ({ ...t, water: '#eef3f6', road: '#c9c9c9', rail: '#8a8a8a', transit: '#6f6f6f', busRoute: '#9a9a9a' });
+
+/** Development activity on the template: the red family, the status told by pattern. */
+export function developmentAtlas(b0: SlidesBundle, facts: PlanningFacts): Slide {
+  const b: SlidesBundle = { ...b0, daPanel: b0.bleedPanel };
+  const t = tpl();
+  const d = developmentFacts(b);
+  const R = INK.red;
+  const STATUS_FILL: Record<DaStatusClass, Fill> = {
+    determined: { bg: R.mid, outline: R.solid, outlineW: 0.2 },
+    active: { bg: '#ffffff', kind: 'vlines', ink: R.line, step: 0.7, w: 0.2, outline: R.line, outlineW: 0.3 },
+    appeal: { bg: '#ffffff', kind: 'vlines', ink: R.deep, step: 0.45, w: 0.22, outline: R.deep, outlineW: 0.3 },
+    withdrawn: { bg: '#ffffff', outline: R.solid, outlineW: 0.3, dash: '0.8 0.5' },
+  };
+  const STATUS_WORD: Record<DaStatusClass, string> = {
+    determined: 'Determined (the feed does not say approved or refused)',
+    active: 'Under assessment, on exhibition or awaiting information',
+    appeal: 'Before the Land and Environment Court',
+    withdrawn: 'Withdrawn, rejected or cancelled',
+  };
+
+  // ---- the map, over the whole figure page
+  const p = b.bleedPanel;
+  const proj = panelProjector(p);
+  const gt = greyBase(t);
+  const parts: string[] = [withTemplate(gt, () => baseLayers(b.base, proj, p)), withTemplate(gt, () => overLayers(b.base, proj, p, 'none'))];
+  const seen = new Set<string>();
+  const minor: string[] = [];
+  for (const r of b.applications) {
+    if (isSignificant(r) || r.lon === undefined || r.lat === undefined) continue;
+    const key = `${r.lon.toFixed(5)},${r.lat.toFixed(5)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const [x, y] = proj(r.lon, r.lat);
+    minor.push(`M${x.toFixed(2)},${y.toFixed(2)}h0`);
+  }
+  parts.push(`<path d="${minor.join('')}" stroke="${R.mid}" stroke-width="1.1" stroke-linecap="round" fill="none"/>`);
+  const byCost = [...d.sites].sort((x, y) => (y.cost ?? 0) - (x.cost ?? 0));
+  const charted = new Set(byCost.slice(0, 7).map((st) => st.n));
+  const placed = d.sites.map((st) => { const [x, y] = proj(st.lon, st.lat); return { st, x, y, r: dotRadius(st.cost) }; })
+    .filter((q) => q.x >= 0 && q.y >= 0 && q.x <= p.wMm && q.y <= p.hMm).sort((a, b2) => b2.r - a.r);
+  const spacer = new LabelSpacer(p.wMm, p.hMm, 80);
+  spacer.take(36, 10, 64, 10);
+  const circle = (x: number, y: number, r: number) => `M${(x - r).toFixed(2)},${y.toFixed(2)}a${r.toFixed(2)},${r.toFixed(2)} 0 1,0 ${(2 * r).toFixed(2)},0a${r.toFixed(2)},${r.toFixed(2)} 0 1,0 ${(-2 * r).toFixed(2)},0Z`;
+  for (const q of placed) parts.push(`<circle cx="${q.x.toFixed(2)}" cy="${q.y.toFixed(2)}" r="${(q.r + 0.4).toFixed(2)}" fill="#ffffff"/>` + fillShape(circle(q.x, q.y, q.r), { x0: q.x - q.r, y0: q.y - q.r, x1: q.x + q.r, y1: q.y + q.r }, STATUS_FILL[q.st.statusClass]));
+  const DR = 2.4;
+  const dia = (x: number, y: number, r: number) => `M${x.toFixed(2)},${(y - r).toFixed(2)}L${(x + r).toFixed(2)},${y.toFixed(2)}L${x.toFixed(2)},${(y + r).toFixed(2)}L${(x - r).toFixed(2)},${y.toFixed(2)}Z`;
+  const ssd = d.stateSignificant.sites.map((st) => { const [x, y] = proj(st.lon!, st.lat!); return { st, x, y }; }).filter((q) => q.x >= 0 && q.y >= 0 && q.x <= p.wMm && q.y <= p.hMm);
+  for (const q of ssd) {
+    parts.push(`<path d="${dia(q.x, q.y, DR + 0.45)}" fill="#ffffff"/>` + fillShape(dia(q.x, q.y, DR), { x0: q.x - DR, y0: q.y - DR, x1: q.x + DR, y1: q.y + DR }, STATUS_FILL[q.st.stageClass as DaStatusClass] ?? STATUS_FILL.active));
+    spacer.take(q.x, q.y, DR * 2, DR * 2);
+  }
+  const labels: string[] = [];
+  for (const q of placed) {
+    if (!charted.has(q.st.n)) continue;
+    const text = String(q.st.n), w = text.length * 1.6 + 0.8;
+    const spots: [number, number][] = [[q.x + q.r + 1.2 + w / 2, q.y], [q.x - q.r - 1.2 - w / 2, q.y], [q.x, q.y - q.r - 1.8], [q.x, q.y + q.r + 1.8]];
+    for (const [lx, ly] of spots) if (spacer.take(lx, ly, w, 2.6)) { labels.push(m6(lx, ly, text)); break; }
+  }
+  for (const q of ssd) {
+    const text = q.st.n, w = text.length * 1.6 + 0.8;
+    for (const [lx, ly] of [[q.x + DR + 1.2 + w / 2, q.y], [q.x - DR - 1.2 - w / 2, q.y], [q.x, q.y - DR - 1.8]] as [number, number][]) if (spacer.take(lx, ly, w, 2.6)) { labels.push(m6(lx, ly, text)); break; }
+  }
+  parts.push(...labels, siteMark(b.base, proj, 'both'), panelFurniture(p, 'left'));
+  const mapSvg = `<svg width="${p.wMm}mm" height="${p.hMm}mm" viewBox="0 0 ${p.wMm} ${p.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
+    <defs><clipPath id="clip-dev"><rect x="0" y="0" width="${p.wMm}" height="${p.hMm}"/></clipPath></defs>
+    <g clip-path="url(#clip-dev)" font-family="${t.font}">${parts.join('\n')}</g></svg>`;
+
+  // ---- the text page
+  const scale = d.significant || 1;
+  const circles = zCircles([
+    { value: Math.max(d.applications, 1), label: fmtNum(d.applications), sub: 'applications', fill: { bg: R.light, outline: R.mid, outlineW: 0.35, dash: '1.45 1.45' } },
+    { value: Math.max(scale, 1), label: fmtNum(d.significant), sub: 'of scale', fill: { bg: '#ffffff', kind: 'vlines', ink: R.line, step: 0.7, w: 0.2, outline: R.solid, outlineW: 0.4, dash: '1.6 1.6' } },
+  ]);
+  const figs = zFigures([], [
+    ['sites of scale', fmtNum(d.sites.length)],
+    ['dwellings proposed on them', fmtNum(d.dwellings)],
+    ['stated cost of development', d.cost ? money(d.cost) : '—'],
+    ['State significant in the window', fmtNum(d.stateSignificant.sites.length)],
+  ], 9.6);
+  const years = d.perYear;
+  const ya = niceAxis(Math.max(1, ...years.map((y) => y.count)));
+  const yearRows = years.map((y, i) => ({
+    name: `${y.year}${y.partial ? (i === 0 ? ` from ${fmtMonthYear(d.from).split(' ')[0]}` : ` to ${fmtMonthYear(d.to).split(' ')[0]}`) : ''}`,
+    value: y.count, label: fmtNum(y.count),
+    fill: y.partial ? STATUS_FILL.active : { bg: R.mid },
+  }));
+  const top = byCost.slice(0, 7);
+  const ca = niceAxis(Math.max(1, ...top.map((st) => (st.cost ?? 0) / 1e6)));
+  const costRows = top.map((st) => ({
+    name: `${st.n}  ${shorten(st.address.replace(/\s+(Redfern|Surry Hills|Waterloo|Chippendale|Darlington|Eveleigh|Alexandria|Zetland|Rosebery)$/i, ''), 34)}`,
+    value: (st.cost ?? 0) / 1e6,
+    label: `${st.cost ? money(st.cost) : '—'}${st.dwellings ? ` · ${st.dwellings} dw` : ''}`,
+    fill: STATUS_FILL[st.statusClass],
+  }));
+  const flow = `<div class="zflow" style="top:44mm">
+    <div class="zblk">${zHead('The pipeline', 'In the window')}<div style="position:relative">${circles}<div style="position:absolute;left:0;top:0">${figs}</div></div></div>
+    <div class="zblk">${zHead('Applications lodged per year')}${zBars(yearRows, ya.max, ya.step)}</div>
+    ${top.length ? `<div class="zblk">${zHead('Sites of scale · stated cost, $ M')}${zBars(costRows, ca.max, ca.step)}</div>` : ''}
+  </div>`;
+  const legend: LegendEntry[] = [
+    ...(['determined', 'active', 'appeal', 'withdrawn'] as DaStatusClass[]).filter((k) => d.byStatus[k] || d.stateSignificant.sites.some((q) => q.stageClass === k)).map((k) => ({ swatch: circleSwatch(STATUS_FILL[k]), label: STATUS_WORD[k] })),
+    { swatch: `<circle cx="1.1" cy="2.4" r="0.7" fill="${R.mid}"/><circle cx="3.4" cy="1.8" r="1.4" fill="${R.mid}"/>`, label: 'Circle area follows the stated cost; numbers match the chart' },
+    { swatch: `<circle cx="2.5" cy="1.8" r="0.45" fill="${R.mid}"/>`, label: 'Every other application lodged in the period' },
+    ...(d.stateSignificant.sites.length ? [{ swatch: `<path d="M2.5,0.2L4.1,1.8L2.5,3.4L0.9,1.8Z" fill="${R.mid}"/>`, label: "State significant application, the Department's register, S-numbered" }] : []),
+    { swatch: `<path d="M1.2,0.6H3.8V3H1.2Z" fill="${t.site}"/>`, label: 'The site' },
+  ];
+  const sources = `Sources: NSW Planning Portal Online DA API, every application lodged on the portal since July 2021, clipped to the window; storeys, dwellings and costs as lodged by the applicant, "determined" not saying approved or refused; complying development certificates are not in the feed. State significant applications from the Department's Major Projects register. Retrieved ${b.generatedAt.slice(0, 10)}.`;
+  const lga = b.context.lga?.name ? titleCase(b.context.lga.name) : '';
+  const sub = [`${b.siteAddress}${lga ? ` ${lga}` : ''}`, d.available ? `${fmtNum(d.applications)} applications since ${fmtMonthYear(d.from)}` : 'feed unavailable', d.stateSignificant.sites.length ? `${d.stateSignificant.sites.length} State significant` : ''].filter(Boolean).join(' · ');
+  const figureHtml = `<div class="abs" style="left:${FOLD}mm;top:0">${mapSvg}</div>
+    <div class="abs maplabel" style="left:${FOLD + 8}mm;top:8mm">Development activity · 1:${fmtNum(p.scale).replace(',', ' ')}</div>
+    ${flow}`;
+  void facts;
+  return { id: '07_development_activity', title: 'Development activity', subtitle: sub, textHtml: '', figureHtml, bleed: true, sources, accent: R.text, legend,
+    narrative: 'Narrative — for the author: what the pipeline says about the pace and direction of change here, which approvals set the built-form precedent for this site, and which are worth a site visit or a read of the approved plans.' };
+}
+
 export function developmentSlide(b: SlidesBundle, facts: PlanningFacts): Slide {
   const d = developmentFacts(b);
   const x0 = FIELD_X, y0 = FIELD_Y;
@@ -2219,6 +2346,219 @@ export function builtFormSlide(b: SlidesBundle, planning: PlanningFacts): Slide 
   return { id: '08_built_form', title: 'Built form and height planes', subtitle: sub, textHtml, figureHtml };
 }
 
+/** The storey bands on the template: one sage ink, the height told by pattern — open, sparse lines, dense lines, tint, tint and lines. */
+const SAGE = INK.sage;
+const BAND_FILL: Fill[] = [
+  { bg: '#ffffff', outline: SAGE.deep, outlineW: 0.12 },
+  { bg: '#ffffff', kind: 'vlines', ink: SAGE.deep, step: 0.95, w: 0.13, outline: SAGE.deep, outlineW: 0.12 },
+  { bg: '#ffffff', kind: 'vlines', ink: SAGE.deep, step: 0.45, w: 0.13, outline: SAGE.deep, outlineW: 0.12 },
+  { bg: SAGE.solid, outline: SAGE.deep, outlineW: 0.12 },
+  { bg: SAGE.solid, kind: 'vlines', ink: SAGE.deep, step: 0.45, w: 0.16, outline: SAGE.deep, outlineW: 0.15 },
+];
+const NO_HEIGHT: Fill = { bg: SAGE.light, kind: 'dots', ink: SAGE.deep, step: 1.1, w: 0.09 };
+const bandFill = (h?: number): Fill => { const bd = bandOf(h); return bd ? BAND_FILL[HEIGHT_BANDS.indexOf(bd)] : NO_HEIGHT; };
+/** Below the free space a flow may take, the key rises from the foot of the page: 8.52 mm a row, 12.2 mm up. */
+const keyTop = (rows: number) => 297 - 12.2 - rows * 8.52;
+/** The height a block of the kit takes in the flow: head, body, gap. */
+const blockH = (body: number) => 6.21 + body + 7.5;
+const barsH = (rows: number, ref = false) => 10 + rows * 3.95 + (ref ? 4 : 0);
+
+type SectionLine = NonNullable<ReturnType<typeof terrainFacts>>['sections'][number];
+/** The stretch of a section centred on the site, as long as the column holds at the scale given. */
+function cropSection(sec: SectionLine, scale: number): SectionLine {
+  const len = Math.floor(((Z_W - 8) * scale) / 1000 / 10) * 10;
+  const L = sec.lengthM;
+  if (L <= len) return sec;
+  const run = sec.samples.filter((s) => s.site);
+  const mid = run.length ? (run[0].d + run[run.length - 1].d) / 2 : L / 2;
+  const d0 = Math.max(0, Math.min(L - len, mid - len / 2));
+  const at = (d: number) => ({ x: sec.from.x + (sec.to.x - sec.from.x) * (d / L), y: sec.from.y + (sec.to.y - sec.from.y) * (d / L) });
+  return { ...sec, lengthM: len, from: at(d0), to: at(d0 + len), samples: sec.samples.filter((s) => s.d >= d0 - 1e-6 && s.d <= d0 + len + 1e-6).map((s) => ({ ...s, d: s.d - d0 })) };
+}
+
+/** Section A–A′ after the template: true scale where it reads, the ground in poché, buildings in their storey pattern, the height plane dashed. */
+function atlasSection(b: SlidesBundle, sec: SectionLine, envelope: ReturnType<typeof builtFormFacts>['envelope'], maxH: number): { svg: string; scale: number; ve: number; h: number } | null {
+  const samples = sec.samples;
+  if (samples.length < 2) return null;
+  const L = sec.lengthM;
+  const scale = [1000, 1250, 2000, 2500, 5000, 10000, 20000].find((s) => (L * 1000) / s <= Z_W - 8 + 1e-6) ?? 20000;
+  const sx = 1000 / scale;
+  const at = (d: number) => { const fr = d / L; return mercatorToLonLat({ x: sec.from.x + (sec.to.x - sec.from.x) * fr, y: sec.from.y + (sec.to.y - sec.from.y) * fr }); };
+  const siteRings = b.base.siteLots.features.flatMap((ft) => geomRings(ft.geometry));
+  const blocks: { d0: number; d1: number; ground: number; h?: number; site: boolean }[] = [];
+  let cur: { bd: Building; d0: number; rls: number[] } | null = null;
+  const flush = (dEnd: number) => {
+    if (!cur) return;
+    const onSite = siteRings.some((r) => pointInRing(cur!.bd.centroid[0], cur!.bd.centroid[1], r));
+    blocks.push({ d0: cur.d0, d1: dEnd, ground: Math.min(...cur.rls), h: cur.bd.estimatedHeightM, site: onSite });
+    cur = null;
+  };
+  for (const s of samples) {
+    const ll = at(s.d);
+    let hit: Building | undefined;
+    for (const bd of b.buildings.buildings) {
+      if (Math.abs(bd.centroid[0] - ll.lon) > 0.003 || Math.abs(bd.centroid[1] - ll.lat) > 0.003) continue;
+      if (pointInRing(ll.lon, ll.lat, bd.rings[0])) { hit = bd; break; }
+    }
+    if (hit && cur && cur.bd === hit) { cur.rls.push(s.rl); continue; }
+    if (cur) flush(s.d);
+    if (hit) cur = { bd: hit, d0: s.d, rls: [s.rl] };
+  }
+  if (cur) flush(samples[samples.length - 1].d);
+  const lo = Math.min(...samples.map((s) => s.rl)), groundHi = Math.max(...samples.map((s) => s.rl));
+  const siteRun = samples.filter((s) => s.site);
+  const envTop = envelope?.topRl !== undefined && siteRun.length ? envelope.topRl : -Infinity;
+  const tallest = Math.max(groundHi, envTop, ...blocks.map((bk) => bk.ground + (bk.h ?? METRES_PER_STOREY)));
+  const hi = Math.min(tallest, Math.max(groundHi + 45, envTop + 4));
+  // true scale unless the fabric would read as a line
+  const ve = (hi - lo) * sx < 9 ? 2 : 1;
+  const sy = sx * ve;
+  const TOP = 6.3, POCHE = 3.2;
+  let h = TOP + (hi - lo) * sy + POCHE + 4.2;
+  if (h > maxH) return null;
+  const X = (d: number) => 4 + d * sx;
+  const Y = (rl: number) => TOP + (hi - rl) * sy;
+  const base = Y(lo) + POCHE;
+  const g: string[] = [];
+  const line = samples.map((s, i) => `${i ? 'L' : 'M'}${X(s.d).toFixed(2)},${Y(s.rl).toFixed(2)}`).join('');
+  const groundD = `${line}L${X(L).toFixed(2)},${base.toFixed(2)}L${X(0).toFixed(2)},${base.toFixed(2)}Z`;
+  g.push(fillShape(groundD, { x0: X(0), y0: Y(groundHi), x1: X(L), y1: base }, { bg: '#ffffff', kind: 'hlines', ink: SAGE.deep, step: 0.5, w: 0.1 }));
+  const clipId = `asec${Math.random().toString(36).slice(2, 7)}`;
+  g.push(`<clipPath id="${clipId}"><rect x="0" y="${(TOP - 0.2).toFixed(2)}" width="${Z_W}" height="${(base - TOP).toFixed(2)}"/></clipPath><g clip-path="url(#${clipId})">`);
+  const cut: string[] = [];
+  for (const bk of blocks) {
+    if (bk.d1 - bk.d0 < 0.5) continue;
+    const top = bk.ground + (bk.h ?? METRES_PER_STOREY);
+    const x0 = X(bk.d0), x1 = X(bk.d1), y0 = Y(top), y1 = Y(bk.ground);
+    const f: Fill = bk.site ? { bg: tpl().site } : bandFill(bk.h);
+    g.push(fillShape(`M${x0.toFixed(2)},${y0.toFixed(2)}H${x1.toFixed(2)}V${y1.toFixed(2)}H${x0.toFixed(2)}Z`, { x0, y0, x1, y1 }, f));
+    if (top > hi + 0.5 && bk.h) cut.push(z6((x0 + x1) / 2, TOP - 2.9, `↑${Math.round(bk.h / METRES_PER_STOREY)}`, 'middle'));
+  }
+  g.push('</g>');
+  g.push(`<path d="${line}" fill="none" stroke="#000000" stroke-width="0.25" stroke-linejoin="round"/>`, ...cut);
+  if (envTop > -Infinity) {
+    const d0 = siteRun[0].d, d1 = siteRun[siteRun.length - 1].d;
+    const gAt = (d: number) => samples.reduce((a, s) => (Math.abs(s.d - d) < Math.abs(a.d - d) ? s : a)).rl;
+    g.push(`<path d="M${X(d0).toFixed(2)},${Y(gAt(d0)).toFixed(2)}V${Y(envTop).toFixed(2)}H${X(d1).toFixed(2)}V${Y(gAt(d1)).toFixed(2)}" fill="none" stroke="${tpl().site}" stroke-width="0.3" stroke-dasharray="0.9 0.6"/>`);
+    g.push(z6(X(d1) + 1.2, Y(envTop) - 1.1, `LEP ${envelope!.label}`));
+  }
+  g.push(z6(X(0), base + 1.2, 'A'), z6(X(L), base + 1.2, 'A′', 'end'));
+  const step = L > 1200 ? 200 : L > 600 ? 100 : 50;
+  for (let d = step; d < L - step / 3; d += step) g.push(z6(X(d), base + 1.2, `${d} m`, 'middle'));
+  h = base + 4.2;
+  return { svg: zSvg(h, g.join('')), scale, ve, h };
+}
+
+/** Built form on the template: the sage family, the storeys told by pattern. */
+export function builtFormAtlas(b0: SlidesBundle, planning: PlanningFacts): Slide {
+  const b: SlidesBundle = { ...b0, daPanel: b0.bleedPanel };
+  const t = tpl();
+  const f = builtFormFacts(b, planning);
+  const p = b.bleedPanel;
+  const proj = panelProjector(p);
+  const gt = greyBase(t);
+  const parts: string[] = [withTemplate(gt, () => baseLayers(b.base, proj, p, { lots: false }))];
+  const box = { x0: 0, y0: 0, x1: p.wMm, y1: p.hMm };
+  const groups = new Map<Fill, string[]>();
+  for (const bd of b.buildings.buildings) { const fl = bandFill(bd.estimatedHeightM); (groups.get(fl) ?? groups.set(fl, []).get(fl)!).push(ringsPath(bd.rings, proj)); }
+  for (const fl of [NO_HEIGHT, ...BAND_FILL]) { const ds = groups.get(fl); if (ds) parts.push(fillShape(ds.join(''), box, fl)); }
+  const fromDa = b.buildings.buildings.filter((bd) => bd.heightFrom === 'da');
+  if (fromDa.length) parts.push(`<path d="${fromDa.map((bd) => ringsPath(bd.rings, proj)).join('')}" fill="none" stroke="${SAGE.line}" stroke-width="0.4" fill-rule="evenodd"/>`);
+  parts.push(withTemplate(gt, () => overLayers(b.base, proj, p, 'none')));
+  // the section line, as on the topography slide
+  const terrain = terrainFacts(b0);
+  const SECTION_SCALE = 2500;
+  const secA = terrain?.sections[0] ? cropSection(terrain.sections[0], SECTION_SCALE) : undefined;
+  const spacer = new LabelSpacer(p.wMm, p.hMm, 80);
+  spacer.take(36, 10, 64, 10);
+  const labels: string[] = [];
+  if (secA) {
+    const ll = (xy: { x: number; y: number }) => { const l = mercatorToLonLat(xy); return proj(l.lon, l.lat); };
+    const [x1, y1] = ll(secA.from), [x2, y2] = ll(secA.to);
+    parts.push(`<line x1="${x1.toFixed(2)}" y1="${y1.toFixed(2)}" x2="${x2.toFixed(2)}" y2="${y2.toFixed(2)}" stroke="#000000" stroke-width="0.25" stroke-dasharray="2.4 0.8 0.4 0.8"/>`);
+    const ux = (x2 - x1) / Math.hypot(x2 - x1, y2 - y1), uy = (y2 - y1) / Math.hypot(x2 - x1, y2 - y1);
+    for (const [x, y, s, text] of [[x1, y1, -1, 'A'], [x2, y2, 1, 'A′']] as [number, number, number, string][]) {
+      const lx = x + s * ux * 2.6, ly = y + s * uy * 2.6;
+      spacer.take(lx, ly, 3, 3);
+      labels.push(m6(lx, ly, text));
+    }
+  }
+  // the tallest buildings on the page carry their storeys
+  const tallest = b.buildings.buildings.filter((bd) => bd.estimatedHeightM).map((bd) => { const [x, y] = proj(bd.centroid[0], bd.centroid[1]); return { bd, x, y }; })
+    .filter((q) => q.x > 4 && q.y > 14 && q.x < p.wMm - 4 && q.y < p.hMm - 14).sort((q, r) => r.bd.estimatedHeightM! - q.bd.estimatedHeightM!).slice(0, 8);
+  for (const q of tallest) {
+    const text = String(q.bd.floors ?? storeysOf(q.bd.estimatedHeightM!)), w = text.length * 1.6 + 0.8;
+    for (const [lx, ly] of [[q.x, q.y], [q.x + w, q.y], [q.x - w, q.y], [q.x, q.y - 2.8], [q.x, q.y + 2.8]] as [number, number][]) if (spacer.take(lx, ly, w, 2.6)) { labels.push(m6(lx, ly, text)); break; }
+  }
+  parts.push(siteMark(b.base, proj, 'both'), ...labels, panelFurniture(p, 'left'));
+  const mapSvg = `<svg width="${p.wMm}mm" height="${p.hMm}mm" viewBox="0 0 ${p.wMm} ${p.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
+    <defs><clipPath id="clip-built-atlas"><rect x="0" y="0" width="${p.wMm}" height="${p.hMm}"/></clipPath></defs>
+    <g clip-path="url(#clip-built-atlas)" font-family="${t.font}">${parts.join('\n')}</g></svg>`;
+
+  // ---- the key first, so the flow knows where it must stop
+  const legend: LegendEntry[] = [
+    ...HEIGHT_BANDS.map((bd, i) => ({ swatch: swatchOf(BAND_FILL[i]), label: `${i ? bd.label : '1–2'} storeys · ${fmtNum(f.bands[i].count)}`.replace('and more storeys', 'storeys and more') })),
+    { swatch: swatchOf(NO_HEIGHT), label: `No height recorded · ${fmtNum(f.bands[5].count)}` },
+    ...(fromDa.length ? [{ swatch: `<rect x="0.2" y="0.6" width="4.6" height="2.4" fill="#ffffff" stroke="${SAGE.line}" stroke-width="0.4"/>`, label: `Storeys from a determined DA on the lot · ${fmtNum(fromDa.length)}` }] : []),
+    ...(secA ? [{ swatch: `<path d="M0,1.8H5" stroke="#000000" stroke-width="0.25" stroke-dasharray="2.4 0.8 0.4 0.8"/>`, label: 'Section line A–A′; numbers on the map are storeys' }] : []),
+    { swatch: `<path d="M1.2,0.6H3.8V3H1.2Z" fill="${t.site}"/>`, label: 'The site' },
+  ];
+  const limit = keyTop(legend.length) - 6;
+
+  // ---- the text page
+  const known = f.measured + f.fromStoreys + f.fromDa;
+  const e = f.envelope;
+  const onSiteSt = f.onSite.filter((x) => x.storeys).map((x) => x.storeys!);
+  const t0 = f.tallest[0];
+  const figs = zFigures([
+    ['buildings on the page', fmtNum(f.count)],
+    ['with a recorded height', f.count ? fmtPct(pct(known, f.count)) : '—'],
+    ['tallest on the page', t0 ? `${t0.storeys} storeys · ${fmtNum(t0.distanceM)} m ${bearingName(t0.bearing)}` : '—'],
+  ], [
+    ['LEP height of building', e ? e.label : 'not mapped'],
+    ['storeys within the plane', e?.storeys ? `about ${e.storeys}` : '—'],
+    ['on the site today', onSiteSt.length ? `${Math.max(...onSiteSt)} storey${Math.max(...onSiteSt) === 1 ? '' : 's'}` : f.onSite.length ? 'height not recorded' : 'no building'],
+  ], 9.6);
+  let y = 44 + blockH(6.3 + 3 * 9.6);
+  const blocks: string[] = [`<div class="zblk">${zHead('The fabric', 'At the site')}${figs}</div>`];
+  // heights against the plane: what is around, what is allowed
+  const rows: { name: string; value: number; label: string; fill: Fill }[] = [];
+  // the nearest buildings whose height is known, and the run of storeys within 250 m
+  const c0 = p.center, k0 = mercatorScaleFactor(mercatorToLonLat(c0).lat);
+  const siteRings = b.base.siteLots.features.flatMap((ft) => geomRings(ft.geometry));
+  const geo = (bd: Building) => { const m = lonLatToMercator({ lon: bd.centroid[0], lat: bd.centroid[1] }); return { d: Math.hypot(m.x - c0.x, m.y - c0.y) / k0, brg: ((Math.atan2(m.x - c0.x, m.y - c0.y) * 180) / Math.PI + 360) % 360 }; };
+  const nearKnown = b.buildings.buildings.filter((bd) => bd.estimatedHeightM && !siteRings.some((r) => pointInRing(bd.centroid[0], bd.centroid[1], r)))
+    .map((bd) => ({ bd, ...geo(bd) })).filter((q) => q.d <= f.near.radiusM);
+  const st = (bd: Building) => bd.floors ?? storeysOf(bd.estimatedHeightM!);
+  const tall250 = [...nearKnown].sort((q, r) => r.bd.estimatedHeightM! - q.bd.estimatedHeightM!)[0];
+  if (tall250) rows.push({ name: `Tallest within ${f.near.radiusM} m · ${fmtNum(Math.round(tall250.d))} m ${bearingName(tall250.brg)}`, value: st(tall250.bd), label: `${st(tall250.bd)} st · ${Math.round(tall250.bd.estimatedHeightM!)} m`, fill: bandFill(tall250.bd.estimatedHeightM) });
+  if (f.near.medianStoreys) rows.push({ name: `Median within ${f.near.radiusM} m`, value: f.near.medianStoreys, label: `${f.near.medianStoreys} st`, fill: bandFill(f.near.medianM) });
+  for (const q of [...nearKnown].sort((x, z) => x.d - z.d).slice(0, 4)) rows.push({ name: `Nearest known · ${fmtNum(Math.round(q.d))} m ${bearingName(q.brg)}`, value: st(q.bd), label: `${st(q.bd)} st · ${Math.round(q.bd.estimatedHeightM!)} m`, fill: bandFill(q.bd.estimatedHeightM) });
+  const siteKnown = f.onSite.filter((x) => x.storeys);
+  rows.push(siteKnown.length
+    ? { name: 'On the site today', value: Math.max(...siteKnown.map((x) => x.storeys!)), label: `${Math.max(...siteKnown.map((x) => x.storeys!))} st`, fill: { bg: t.site } }
+    : { name: 'On the site today', value: 0, label: f.onSite.length ? 'height not recorded' : 'no building', fill: { bg: t.site } });
+  const hAx = niceAxis(Math.max(1, ...rows.map((r) => r.value), e?.storeys ?? 0));
+  if (rows.length) {
+    blocks.push(`<div class="zblk">${zHead('Heights against the plane · storeys')}${zBars(rows, hAx.max, hAx.step, e?.storeys ? { ref: { value: e.storeys, label: `LEP ${e.label}`, ink: t.site } } : {})}</div>`);
+    y += blockH(barsH(rows.length, !!e?.storeys));
+  }
+  if (secA) {
+    const sec = atlasSection(b0, secA, e, limit - y - 6.21);
+    if (sec) blocks.push(`<div class="zblk">${zHead(`Section A–A′ · 1:${fmtNum(sec.scale).replace(',', ' ')}${sec.ve > 1 ? ` · heights ×${sec.ve}` : ''}`)}${sec.svg}</div>`);
+  }
+  const flow = `<div class="zflow" style="top:44mm">${blocks.join('')}</div>`;
+  const src = f.source === 'overture' ? `Overture Maps Foundation buildings${f.release ? ` (release ${f.release})` : ''}, footprints and heights from OpenStreetMap, Microsoft, Esri Community Maps and Google Open Buildings (ODbL, CDLA Permissive 2.0)` : f.source === 'osm' ? 'OpenStreetMap contributors (ODbL)' : 'no building source answered';
+  const sources = `Sources: ${src}; heights measured, or ${METRES_PER_STOREY} m a storey, else the storeys of a determined application on the lot (NSW Planning Portal); the LEP height of building from the ePlanning layer; ground from the 5 m elevation model. Retrieved ${b.generatedAt.slice(0, 10)}.`;
+  const lga = b.context.lga?.name ? titleCase(b.context.lga.name) : '';
+  const sub = [`${b.siteAddress}${lga ? ` ${lga}` : ''}`, e ? `HOB ${e.label}` : 'no HOB mapped', f.near.medianStoreys ? `median ${f.near.medianStoreys} storeys within ${f.near.radiusM} m` : ''].filter(Boolean).join(' · ');
+  const figureHtml = `<div class="abs" style="left:${FOLD}mm;top:0">${mapSvg}</div>
+    <div class="abs maplabel" style="left:${FOLD + 8}mm;top:8mm">Built form · 1:${fmtNum(p.scale).replace(',', ' ')}</div>
+    ${flow}`;
+  return { id: '08_built_form', title: 'Built form', subtitle: sub, textHtml: '', figureHtml, bleed: true, sources, accent: SAGE.text, legend,
+    narrative: 'Narrative — for the author: what the surrounding scale is and where it is changing, how the height plane at the site sits against the neighbours and the approvals of slide 07, and which frontages and setbacks the fabric suggests.' };
+}
+
 // ---- slide 09: movement ------------------------------------------------------
 
 const ISO_MINUTES = [5, 10, 15];
@@ -2880,6 +3220,134 @@ export function greenSlide(b: SlidesBundle): Slide {
     <div class="abs ptitle" style="left:${FIELD_X}mm;top:${yWide}mm;width:${FIELD_W}mm">${c.covered ? `Tree canopy ${c.year}` : 'Open space around the site'}<span class="pnote">1:${fmtNum(wp.scale)} · ${c.covered ? `canopy share of each mesh block${c.wide ? ` · ${fmtPct(c.wide.pct)} of the strip's land` : ''}` : 'recreation and conservation zones · canopy is not mapped here'} · the dashed box is the map above</span></div>
     <div class="abs" style="left:${FIELD_X}mm;top:${yWide + PANEL_TITLE_H}mm">${wideSvg}</div>`;
   return { id: '10_green_public_domain', title: 'Green and public domain', subtitle: sub, textHtml, figureHtml };
+}
+
+/** Green and public domain on the template: the green family, the kind of open space told by pattern. */
+export function greenAtlas(b0: SlidesBundle): Slide {
+  const b: SlidesBundle = { ...b0, daPanel: b0.bleedPanel };
+  const t = tpl();
+  const f = greenFacts(b);
+  const g = b.green;
+  const G = INK.green;
+  const ZONE_FILL: Record<string, Fill> = {
+    RE1: { bg: G.mid, outline: G.solid, outlineW: 0.2 },
+    RE2: { bg: '#ffffff', kind: 'vlines', ink: G.line, step: 0.8, w: 0.15, outline: G.solid, outlineW: 0.2 },
+    C: { bg: '#ffffff', kind: 'dots', ink: G.deep, step: 0.9, w: 0.12, outline: G.solid, outlineW: 0.2 },
+  };
+  const NPWS_FILL: Fill = { bg: '#ffffff', kind: 'hlines', ink: G.deep, step: 0.7, w: 0.14, outline: G.deep, outlineW: 0.2 };
+  const GRID_DASH = '1.2 0.7';
+  const p = b.bleedPanel;
+  const proj = panelProjector(p);
+  const gt = greyBase(t);
+  const parts: string[] = [withTemplate(gt, () => baseLayers(b.base, proj, p))];
+  const box = { x0: 0, y0: 0, x1: p.wMm, y1: p.hMm };
+  for (const [key, codes] of [['RE2', ['RE2']], ['C', ['C3', 'C2', 'C1']], ['RE1', ['RE1']]] as [string, string[]][]) {
+    const zs = g.openSpace.filter((z) => codes.includes(z.code));
+    if (zs.length) parts.push(fillShape(zs.map((z) => ringsPath(z.rings, proj)).join(''), box, ZONE_FILL[key]));
+  }
+  if (g.npws.length) parts.push(fillShape(g.npws.map((n) => ringsPath(n.rings, proj)).join(''), box, NPWS_FILL));
+  if (g.greenGrid.length) parts.push(`<path d="${g.greenGrid.map((a) => ringsPath(a.rings, proj)).join('')}" fill="none" stroke="${G.deep}" stroke-width="0.3" stroke-dasharray="${GRID_DASH}" fill-rule="evenodd"/>`);
+  if (g.trees.points.length) {
+    const mmPerM = 1000 / p.scale;
+    parts.push(`<g fill="none" stroke="${G.deep}" stroke-width="0.13">${g.trees.points.map((tr) => { const [x, y] = proj(tr.lon, tr.lat); if (x < -2 || y < -2 || x > p.wMm + 2 || y > p.hMm + 2) return ''; const r = Math.min(1.6, Math.max(0.3, (tr.canopyM / 2) * mmPerM)); return `<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="${r.toFixed(2)}"/>`; }).join('')}</g>`);
+  }
+  parts.push(withTemplate(gt, () => overLayers(b.base, proj, p, 'none')));
+  const spacer = new LabelSpacer(p.wMm, p.hMm, 80);
+  spacer.take(36, 10, 64, 10);
+  const siteRings = b.base.siteLots.features.flatMap((ft) => geomRings(ft.geometry));
+  if (siteRings.length) { const sb = bboxOf(siteRings, proj); spacer.take((sb.x0 + sb.x1) / 2, (sb.y0 + sb.y1) / 2, sb.x1 - sb.x0 + 2, sb.y1 - sb.y0 + 2); }
+  const marks: string[] = [];
+  for (const fa of f.facilities) {
+    const [x, y] = proj(fa.lon, fa.lat);
+    if (x < 2 || y < 2 || x > p.wMm - 2 || y > p.hMm - 2) continue;
+    marks.push(`<rect x="${(x - 1.3).toFixed(2)}" y="${(y - 1.3).toFixed(2)}" width="2.6" height="2.6" fill="#000000" stroke="#ffffff" stroke-width="0.3"/><text x="${x.toFixed(2)}" y="${(y + 0.68).toFixed(2)}" text-anchor="middle" font-size="1.9" font-family="Arial, 'Liberation Sans', sans-serif" fill="#ffffff">${FACILITY_LETTER[fa.kind]}</text>`);
+    spacer.take(x, y, 3, 3);
+  }
+  const labels: string[] = [];
+  for (const s of [...f.openSpace.spaces].sort((x, y) => y.windowMm2 - x.windowMm2)) {
+    if (!s.name || s.windowMm2 < 25 || labels.length >= 10) continue;
+    let best = { area: 0, cx: 0, cy: 0 };
+    for (const r of s.rings) { const st = clippedStats(r, proj, p); if (st.area > best.area) best = st; }
+    const w = s.name.length * 1.6 + 0.8;
+    if (spacer.take(best.cx, best.cy, w, 2.6)) labels.push(m6(best.cx, best.cy, s.name));
+  }
+  parts.push(...marks, siteMark(b.base, proj, 'both'), ...labels, panelFurniture(p, 'left'));
+  const mapSvg = `<svg width="${p.wMm}mm" height="${p.hMm}mm" viewBox="0 0 ${p.wMm} ${p.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
+    <defs><clipPath id="clip-green-atlas"><rect x="0" y="0" width="${p.wMm}" height="${p.hMm}"/></clipPath></defs>
+    <g clip-path="url(#clip-green-atlas)" font-family="${t.font}">${parts.join('\n')}</g></svg>`;
+
+  // ---- the key
+  const zones = f.openSpace.zonesPresent;
+  const legend: LegendEntry[] = [
+    ...(zones.includes('RE1') ? [{ swatch: swatchOf(ZONE_FILL.RE1), label: 'Public open space, RE1 public recreation zone' }] : []),
+    ...(zones.includes('RE2') ? [{ swatch: swatchOf(ZONE_FILL.RE2), label: 'Private recreation, RE2' }] : []),
+    ...(zones.some((z) => z.startsWith('C')) ? [{ swatch: swatchOf(ZONE_FILL.C), label: `Conservation zones, ${zones.filter((z) => z.startsWith('C')).sort().join(', ')}` }] : []),
+    ...(g.npws.length ? [{ swatch: swatchOf(NPWS_FILL), label: 'National Parks and Wildlife Service estate' }] : []),
+    ...(g.greenGrid.length ? [{ swatch: `<rect x="0.3" y="0.6" width="4.4" height="2.4" fill="none" stroke="${G.deep}" stroke-width="0.3" stroke-dasharray="${GRID_DASH}"/>`, label: 'Greater Sydney Green Grid asset, named on the map' }] : []),
+    ...(g.trees.points.length ? [{ swatch: `<g fill="none" stroke="${G.deep}" stroke-width="0.2"><circle cx="1.1" cy="2.2" r="0.7"/><circle cx="3.3" cy="1.6" r="1.2"/></g>`, label: `Trees at crown size, ${f.trees.source?.name ?? 'council inventory'}` }] : []),
+    ...(f.facilities.length ? [{ swatch: `<rect x="1.2" y="0.5" width="2.6" height="2.6" fill="#000000"/><text x="2.5" y="2.48" text-anchor="middle" font-size="1.9" fill="#ffffff">${FACILITY_LETTER[f.facilityCounts[0].kind]}</text>`, label: `Public facilities: ${f.facilityCounts.map(({ kind }) => `${FACILITY_LETTER[kind]} ${FACILITY_SHORT[kind][0]}`).join(', ')}` }] : []),
+    { swatch: `<path d="M1.2,0.6H3.8V3H1.2Z" fill="${t.site}"/>`, label: 'The site' },
+  ];
+  const limit = keyTop(legend.length) - 6;
+
+  // ---- the text page
+  const c = f.canopy, o = f.openSpace;
+  const near = o.nearest;
+  const figs = zFigures([
+    ["tree canopy on the site's block", c.siteBlock ? fmtPct(c.siteBlock.pct) : '—'],
+    ['tree canopy across the page', c.window ? fmtPct(c.window.pct) : '—'],
+    ['trees in the council inventory', f.trees.count ? fmtNum(f.trees.count) : '—'],
+  ], [
+    ['public open space, RE1', zones.includes('RE1') ? `${fmtNum(o.publicHa, 1)} ha · ${fmtPct(o.publicShareOfLandPct)} of the land` : 'none zoned'],
+    ['parks and reserves on the page', fmtNum(o.parks)],
+    ['the nearest', near ? `${shorten(near.name ?? near.kind, 28)} · ${near.distanceM < ADJOINS_M ? 'adjoins' : `${fmtNum(near.distanceM)} m`}` : '—'],
+  ], 9.6);
+  let y = 44 + blockH(6.3 + 3 * 9.6);
+  const blocks: string[] = [`<div class="zblk">${zHead('Canopy', 'Open space')}${figs}</div>`];
+  if (c.covered && (c.siteBlock || c.window)) {
+    const AGG: Fill = { bg: G.mid }, CAT: Fill = { bg: '#ffffff', kind: 'vlines', ink: G.line, step: 0.55, w: 0.16, outline: G.line, outlineW: 0.12 };
+    const rows = [
+      ...(c.siteBlock ? [{ name: "The site's mesh block", value: c.siteBlock.pct, label: fmtPct(c.siteBlock.pct), fill: { bg: G.solid } as Fill }] : []),
+      ...(c.window ? [{ name: 'Across the page', value: c.window.pct, label: fmtPct(c.window.pct), fill: AGG }] : []),
+      ...(c.wide ? [{ name: `Across the ${f.wideKm.w} × ${f.wideKm.h} km strip`, value: c.wide.pct, label: fmtPct(c.wide.pct), fill: AGG }] : []),
+      ...(c.window?.byCategory ?? []).filter((x) => x.shareOfLandPct >= 4).slice(0, 4).map((x) => ({ name: `${capFirst(canopyCatWord(x.cat))} land · ${fmtPct(x.shareOfLandPct)} of the page`, value: x.pct, label: fmtPct(x.pct), fill: CAT })),
+    ];
+    const ax = niceAxis(Math.max(c.targetPct, ...rows.map((r) => r.value)));
+    blocks.push(`<div class="zblk">${zHead(`Tree canopy ${c.year} · share of the land, %`)}${zBars(rows, ax.max, ax.step, { ref: { value: c.targetPct, label: `Region Plan target ${c.targetPct} %`, ink: G.deep } })}</div>`);
+    y += blockH(barsH(rows.length, true));
+  }
+  const spaceFill = (s: OpenSpaceEntity): Fill => /conservation|national park|environmental/i.test(s.kind) ? ZONE_FILL.C : s.park ? { bg: G.mid } : ZONE_FILL.RE2;
+  const parks = o.spaces.filter((s) => s.name || s.areaHa >= 0.2);
+  const fit = (n: number) => Math.max(0, Math.min(n, Math.floor((limit - y - blockH(10)) / 3.95)));
+  const nParks = fit(Math.min(7, parks.length));
+  if (nParks) {
+    const rows = parks.slice(0, nParks).map((s) => ({
+      name: shorten(s.name ?? `Unnamed ${s.kind}`, 36),
+      value: s.distanceM, label: `${s.distanceM < ADJOINS_M ? 'adjoins' : `${fmtNum(s.distanceM)} m`} · ${s.areaHa >= 0.1 ? `${fmtNum(s.areaHa, 1)} ha` : `${fmtNum(Math.round(s.areaHa * 1e4))} m²`}`,
+      fill: spaceFill(s),
+    }));
+    const ax = niceAxis(Math.max(100, ...rows.map((r) => r.value)));
+    blocks.push(`<div class="zblk">${zHead('Open space from the site boundary · m')}${zBars(rows, ax.max, ax.step)}</div>`);
+    y += blockH(barsH(rows.length));
+  }
+  const nFac = fit(f.facilityCounts.length);
+  if (nFac) {
+    const rows = [...f.facilityCounts].sort((x, z) => z.n - x.n).slice(0, nFac).map(({ kind, n }) => {
+      const nearest = f.facilities.find((x) => x.kind === kind)!;
+      return { name: `${FACILITY_LETTER[kind]}  ${capFirst(FACILITY_WORD[kind][1])}`, value: n, label: `${n} · nearest ${fmtNum(nearest.distanceM)} m`, fill: { bg: '#ffffff', kind: 'hlines', ink: '#000000', step: 0.5, w: 0.12, outline: '#000000', outlineW: 0.12 } as Fill };
+    });
+    const ax = niceAxis(Math.max(4, ...rows.map((r) => r.value)));
+    blocks.push(`<div class="zblk">${zHead('Public facilities on the page')}${zBars(rows, ax.max, ax.step)}</div>`);
+  }
+  const flow = `<div class="zflow" style="top:44mm">${blocks.join('')}</div>`;
+  const sources = `Sources: tree canopy from NSW ePlanning's Greater Sydney Tree Canopy Cover ${c.year} (2 m Geoscape surface features by mesh block); recreation and conservation zones from the EPI primary planning layers; Green Grid assets, open-space and facility points from the ePlanning public-spaces layers; NPWS estate from DCCEEW${f.trees.source ? `; ${f.trees.source.attribution}` : ''}; walking isochrones from Valhalla on OpenStreetMap. Retrieved ${b.generatedAt.slice(0, 10)}.`;
+  const lga = b.context.lga?.name ? titleCase(b.context.lga.name) : '';
+  const sub = [`${b.siteAddress}${lga ? ` ${lga}` : ''}`, c.siteBlock ? `canopy ${fmtPct(c.siteBlock.pct)} on the block` : '', near ? `${near.name ?? 'open space'} ${near.distanceM < ADJOINS_M ? 'adjoins' : `${fmtNum(near.distanceM)} m`}` : ''].filter(Boolean).join(' · ');
+  const figureHtml = `<div class="abs" style="left:${FOLD}mm;top:0">${mapSvg}</div>
+    <div class="abs maplabel" style="left:${FOLD + 8}mm;top:8mm">Green and public domain · 1:${fmtNum(p.scale).replace(',', ' ')}</div>
+    ${flow}`;
+  return { id: '10_green_public_domain', title: 'Green and public domain', subtitle: sub, textHtml: '', figureHtml, bleed: true, sources, accent: G.text, legend,
+    narrative: 'Narrative — for the author: what the green network offers the site and what the site can give back — a through-link, a frontage to the park, canopy on the street — where deep soil and the big trees belong, and which facilities new residents will use.' };
 }
 
 // ---- slide 14: environmental constraints -----------------------------------
@@ -5495,7 +5963,7 @@ export function countrySlide(b: SlidesBundle): Slide {
 
 export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; slides: Slide[] } {
   const facts = planningFacts(b);
-  const slides = [locationSlide(b), characterSlide(b), planningOverviewSlide(b, facts), planningControlsSlide(b, facts), strategicSlide(b, facts), terrainSlide(b), developmentSlide(b, facts), builtFormSlide(b, facts), movementSlide(b), greenSlide(b), siteSlide(b), photosSlide(b), sunViewSlide(b), constraintsSlide(b), countrySlide(b), peopleSlide(b), ocSlide(b, facts), sourcesSlide(b, facts)];
+  const slides = [locationSlide(b), characterSlide(b), planningOverviewSlide(b, facts), planningControlsSlide(b, facts), strategicSlide(b, facts), terrainSlide(b), developmentAtlas(b, facts), builtFormAtlas(b, facts), movementSlide(b), greenAtlas(b), siteSlide(b), photosSlide(b), sunViewSlide(b), constraintsSlide(b), countrySlide(b), peopleSlide(b), ocSlide(b, facts), sourcesSlide(b, facts)];
   const t = tpl();
   const footerLeft = ['SITE ANALYST — OVERALL ANALYSIS', b.siteAddress, meta.client ? `for ${meta.client}` : '', meta.jobNo ? `job ${meta.jobNo}` : ''].filter(Boolean).join(' · ');
   // The atlas page, after the office's template (Z. 2026-10): measurements in mm from her A3 spread.
@@ -5644,6 +6112,10 @@ export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; 
   .slide.atlas .zrow { position: relative; border-top: 0.18mm solid #878787; min-height: 8.52mm; padding: 0.7mm 0 1mm 11.43mm; }
   .slide.atlas .zrow span { display: block; font-size: 6pt; line-height: 2.55mm; letter-spacing: 0.09em; text-transform: uppercase; hyphens: auto; }
   .slide.atlas .zsw { position: absolute; left: 0; top: 1.05mm; width: 7.7mm; height: 5.54mm; overflow: visible; }
+  .slide.atlas .zflow { position: absolute; left: 75.33mm; width: 122.67mm; }
+  .slide.atlas .zh { position: relative; height: 6.21mm; border-bottom: 0.18mm solid #878787; font-size: 10pt; line-height: 1.15; }
+  .slide.atlas .zh span { position: absolute; left: 0; top: 0; white-space: nowrap; }
+  .slide.atlas .zblk { margin-bottom: 7.5mm; }
   .slide.atlas .maplabel { font-size: 6pt; letter-spacing: 0.09em; text-transform: uppercase; background: #ffffff; padding: 1.3mm 2.4mm; line-height: 1.2; }
 </style></head>
 <body>${pages}</body></html>`;
