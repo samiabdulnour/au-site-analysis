@@ -8,7 +8,14 @@ import type { Extent } from '../lib/geo.js';
 import { retryFetch } from '../lib/http.js';
 
 const EXPORT = 'https://maps.six.nsw.gov.au/arcgis/rest/services/public/NSW_Imagery/MapServer/export';
-const MAX_PX = 4000; // stay under the service's export cap
+// At most this many pixels a side per tile. The service caps an export at
+// 4000, but a sheet turned to lay the site's long side horizontal rotates its
+// aerial, and Chromium's PDF printer silently drops every layer drawn after a
+// rotated image that large: a 3200 x 3645 photo turned 75 degrees lost the
+// whole overlay and the title column (the context sheet at 1:4000, Heron and
+// Conure). The same photo in tiles of 1600 x 1823 prints whole, every time,
+// and the tiles meet without a seam.
+const MAX_PX = 2000;
 
 export interface AerialTile {
   file: string;

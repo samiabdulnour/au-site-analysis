@@ -45,6 +45,17 @@ const NORTH = [
 // what is shown is what the chosen options produce rather than a likeness.
 const EXAMPLE_ADDRESS = '150 George Street, Parramatta';
 
+// Each picture's content fingerprint, written into the page by the server. A
+// picture asked for under its fingerprint is kept by the browser for good, so
+// one seen once comes back at once; a redraw changes the fingerprint, and with
+// it the address. Without one (a picture added since the page was served) it
+// is asked for plainly and the browser checks it with the server each time.
+const SAMPLE_TAGS = (() => {
+  try { return JSON.parse(document.getElementById('sampleTags').textContent) || {}; }
+  catch { return {}; }
+})();
+const sampleUrl = (name) => '/samples/' + name + (SAMPLE_TAGS[name] ? '?v=' + SAMPLE_TAGS[name] : '?r=2');
+
 const $ = (id) => document.getElementById(id);
 const f = $('f'), loginForm = $('login');
 const out = $('out'), logEl = $('log'), queueEl = $('queue');
@@ -133,14 +144,13 @@ function applySession(j) {
   renderAll();
 }
 
-/** Keep the scale valid when the drawing changes — 1:3000 means nothing for a lot. */
-function syncScale() {
-  const valid = SCALES[state.sheet].map((s) => s[0]);
-  if (!valid.length) { state.scale = '0'; return; }
-  if (!valid.includes(state.scale)) {
-    state.scale = state.sheet === 'context' ? '3000' : valid[0];
-  }
+/** The scale a drawing keeps when it is picked — 1:3000 means nothing for a lot. */
+function validScale(sheet, scale) {
+  const valid = SCALES[sheet].map((s) => s[0]);
+  if (!valid.length) return '0';
+  return valid.includes(scale) ? scale : sheet === 'context' ? '3000' : valid[0];
 }
+function syncScale() { state.scale = validScale(state.sheet, state.scale); }
 
 // ---- expected result -----------------------------------------------------
 
@@ -152,12 +162,16 @@ function caption(items, value) {
   return hit ? hit[2] : '';
 }
 
-/** Show the sample for the whole selection, named as `npm run samples` writes it. */
+/** A selection's picture, named as `npm run samples` writes it. */
+function resultName(s) {
+  const map = s.sheet === 'context' || s.sheet === 'site';
+  const parts = map ? [s.sheet, s.scale, s.rotate, s.template] : [s.sheet, s.template];
+  return 'result-' + parts.join('-') + '.jpg';
+}
+
+/** Show the sample for the whole selection. */
 function renderResult() {
-  const parts = isMap()
-    ? [state.sheet, state.scale, state.rotate, state.template]
-    : [state.sheet, state.template];
-  const src = '/samples/result-' + parts.join('-') + '.jpg';
+  const src = sampleUrl(resultName(state));
   let text = caption(SHEETS, state.sheet);
   if (isMap()) text += ' ' + caption(SCALES[state.sheet], state.scale) + ', ' + caption(NORTH, state.rotate);
   text += ', ' + caption(STYLES, state.template) + '.';
@@ -174,7 +188,35 @@ function renderResult() {
     resultImg.src = src;
   }
 }
-resultImg.addEventListener('load', () => resultImg.classList.remove('loading'));
+resultImg.addEventListener('load', () => {
+  resultImg.classList.remove('loading');
+  warmNeighbours();
+});
+
+/* The pictures one pick away — every other option in each row — are fetched
+   quietly once the shown one has arrived, so picking one shows it at once
+   rather than after a round trip to the server. Each is fetched once a visit,
+   and not at all on a connection asking to save data. */
+const warmed = new Set();
+function warmNeighbours() {
+  if (navigator.connection && navigator.connection.saveData) return;
+  const rows = [['sheet', SHEETS], ['template', STYLES]];
+  if (isMap()) rows.push(['scale', SCALES[state.sheet]], ['rotate', NORTH]);
+  for (const [key, items] of rows) {
+    for (const [value] of items) {
+      if (value === state[key]) continue;
+      const next = { ...state, [key]: value };
+      next.scale = validScale(next.sheet, next.scale);
+      const name = resultName(next);
+      // Only pictures that exist: the page knows them by their fingerprints.
+      if (!SAMPLE_TAGS[name] || warmed.has(name)) continue;
+      warmed.add(name);
+      const img = new Image();
+      img.fetchPriority = 'low';
+      img.src = sampleUrl(name);
+    }
+  }
+}
 // A combination without a picture says so rather than showing a broken image
 // or, worse, the previous choice's picture as if it were this one's.
 resultImg.addEventListener('error', () => {
