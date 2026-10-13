@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { geocode, type GeocodeResult } from './fetch/geocode.js';
 import { fetchSiteLots, fetchRailCorridors, fetchZoning, fetchHeightOfBuilding, fetchHeritage, fetchSiteControls } from './fetch/nsw.js';
 import { fetchRoads, fetchRailLines, fetchTrainStations, fetchParkPoints, fetchComplexPoints, fetchNamedAreas, fetchAllLots, fetchPropertiesAt, type TopoRoad, type NamedPoint, type RailLines, type NamedArea } from './fetch/nswTopo.js';
-import { fetchAerial, type AerialResult } from './fetch/imagery.js';
+import { fetchAerial, fetchVegetationMask, type AerialResult } from './fetch/imagery.js';
 import { fetchBusData, type BusData } from './fetch/osm.js';
 import { fetchBusStopsTfnsw } from './fetch/tfnsw.js';
 import { fetchIsochrones, type Isochrone } from './fetch/isochrones.js';
@@ -597,6 +597,8 @@ export interface SlidesPipelineOpts {
 }
 
 /** The round scales the deck's site plan is drawn at. */
+/** The full-page maps' scale, and Country's. */
+export const BLEED_SCALE = 5000, COUNTRY_SCALE = 10000;
 const DECK_SITE_SCALES = [200, 250, 300, 400, 500, 600, 750, 1000, 1250, 1500, 2000, 2500, 3000, 4000, 5000];
 
 /** A panel centred on the site's lots at the smallest round scale that keeps them within 55 % of the panel each way. */
@@ -652,8 +654,8 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
   // tall enough that the catchment is never clipped. The strip's lighter base is read over both.
   const reachPanel: Panel = { center: geo.center, scale: widePanel.scale, wMm: 186, hMm: 186 };
   const reachExtent = panelExtent(reachPanel);
-  // Country's full page: one A4 page at the strip's scale, 3.4 × 4.8 km round the site.
-  const countryPanel: Panel = { center: geo.center, scale: widePanel.scale, wMm: 210, hMm: 297 };
+  // Country's full page: one A4 page at 1:10,000, 2.1 × 3 km round the site.
+  const countryPanel: Panel = { center: geo.center, scale: COUNTRY_SCALE, wMm: 210, hMm: 297 };
   const countryExtent = panelExtent(countryPanel);
   const countryFetch: Extent = {
     xmin: Math.min(wideExtent.xmin, countryExtent.xmin), ymin: Math.min(wideExtent.ymin, countryExtent.ymin),
@@ -674,7 +676,8 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
   // Every fetch window is the larger of the two, so nothing is missing from either map.
   // The full-bleed figure page: a map the size of one A4 page at the deck's scale,
   // for the slides that run their map to the sheet's edges.
-  const bleedPanel: Panel = { center: geo.center, scale: opts.scale ?? 8000, wMm: 210, hMm: 297 };
+  // 1:5000: close enough to read the block and its neighbours, wide enough for the walk to the station.
+  const bleedPanel: Panel = { center: geo.center, scale: BLEED_SCALE, wMm: 210, hMm: 297 };
   const bleedExtent = panelExtent(bleedPanel);
   // The layers the full-page maps draw are read over the full page as well as the tall panel.
   const pageExtent: Extent = {
@@ -756,6 +759,8 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
     soft(fetchCharacter({ centre: mercatorToLonLat(geo.center), suburb: context.suburb?.name ?? '', aerialExtent: bleedExtent, outDir: dataDir, log }), emptyCharacter(), 'character (Wikipedia, Commons)'),
     soft(fetchStrategies(geo.center, context.lga?.name, context.lga?.council, log), emptyStrategies(), 'strategic documents'),
   ]);
+  // the green of the aerial over the page, for the trees no inventory holds
+  green.vegetation = await fetchVegetationMask(bleedExtent, dataDir, 0.8, 1 / mercatorScaleFactor(mercatorToLonLat(geo.center).lat)).catch((e: any) => { log(`  WARN vegetation mask failed: ${e?.message ?? e}`); return null; });
   const applications = feed ? clipToExtent(feed.records, pageExtent) : [];
   const daMeta = feed ? { council: feed.council, from: feed.from, to: feed.to, total: feed.total, complete: feed.complete, fetchedAt: feed.fetchedAt } : null;
   // A footprint with neither a height nor a storey count takes the storeys of a determined application on its lot, and the slides say so.

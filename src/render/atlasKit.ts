@@ -115,9 +115,6 @@ export interface BarRow { name: string; value: number; label: string; fill: Fill
 /** The template's bar chart: names down the left, a scale over the right column, dotted gridlines, the value after each bar. */
 export function zBars(rows: BarRow[], max: number, step: number, opts: { ref?: { value: number; label: string; ink: string } } = {}): string {
   const AXIS = 6.3, ROWS = AXIS + 3.7, ROWH = 3.95, BAR = 1.65;
-  // the scale runs on a step at a time until every value's label stays inside the column
-  const fits = (m: number) => rows.every((r) => TRACK + (Math.min(r.value, m) / m) * SPAN + 1 + labelW(r.label) <= W);
-  while (!fits(max) && max < 1e12) max += step;
   const X = (v: number) => TRACK + (Math.min(v, max) / max) * SPAN;
   const h = ROWS + rows.length * ROWH;
   const g: string[] = [];
@@ -134,7 +131,9 @@ export function zBars(rows: BarRow[], max: number, step: number, opts: { ref?: {
     const top = ROWS + i * ROWH, end = X(r.value);
     g.push(txt(0, top, r.name));
     g.push(barOf(TRACK - 0.09, top + 0.6, Math.max(0, end - TRACK + 0.09), BAR, r.fill));
-    g.push(txt(end + 1.0, top, r.label).replace('<text ', '<text stroke="#ffffff" stroke-width="0.7" stroke-linejoin="round" paint-order="stroke" '));
+    // past the fold's margin the value goes inside the bar's end, haloed
+    const inside = end + 1 + labelW(r.label) > W + 11;
+    g.push(txt(inside ? end - 1 : end + 1.0, top, r.label, inside ? 'end' : 'start').replace('<text ', '<text stroke="#ffffff" stroke-width="0.7" stroke-linejoin="round" paint-order="stroke" '));
   });
   if (opts.ref) {
     const x = X(opts.ref.value);
@@ -167,13 +166,20 @@ export function zCircles(items: { value: number; label: string; sub: string; fil
   return svg(BOTTOM + 1, g.join(''));
 }
 
-/** A round axis for a maximum: the top of the scale and its step, four or five ticks. */
+/** A round axis for a maximum: the tightest round top over the data with three to six steps (14 → 0–15, 45 → 0–50). */
 export function niceAxis(maxValue: number): { max: number; step: number } {
-  const raw = Math.max(maxValue, 1e-9) / 4;
-  const mag = 10 ** Math.floor(Math.log10(raw));
-  const n = raw / mag;
-  const step = (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10) * mag;
-  return { max: Math.ceil(maxValue / step) * step || step, step };
+  const v = Math.max(maxValue, 1e-9);
+  let best: { max: number; step: number } | null = null;
+  for (let e = Math.floor(Math.log10(v)) - 2; e <= Math.floor(Math.log10(v)) + 1; e++) {
+    for (const m of [1, 2, 2.5, 5]) {
+      const step = m * 10 ** e;
+      const n = Math.ceil(v / step - 1e-9);
+      if (n < 3 || n > 6) continue;
+      const max = n * step;
+      if (!best || max < best.max - 1e-9 || (Math.abs(max - best.max) < 1e-9 && step > best.step)) best = { max, step };
+    }
+  }
+  return best ?? { max: v, step: v / 4 };
 }
 
 /** The template's 6 pt word, and its column-wide SVG, for blocks drawn outside the kit. */
@@ -210,11 +216,10 @@ export function zSpans(rows: { name: string; from: number; to?: number; fill: Fi
 
 /** Paired bars: the place against its benchmark on each row, the place's fill above the benchmark's, a key in the axis row. */
 export function zPairs(rows: { name: string; a: number; b: number }[], max: number, step: number, keys: [string, string], fa: Fill, fb: Fill, unit = ' %'): string {
-  const AXIS = 6.3, ROWS = AXIS + 3.7, ROWH = 4.7, BAR = 1.35;
-  while (rows.some((r) => TRACK + (Math.min(Math.max(r.a, r.b), max) / max) * SPAN + 1 + labelW(`${Math.round(Math.max(r.a, r.b))}${unit}`) > W) && max < 1e9) max += step;
+  const AXIS = 6.3, ROWS = AXIS + 4.6, BAR = 1.5, GAP = 0.9, ROWH = 2 * BAR + GAP + 2.6;
   const X = (v: number) => TRACK + (Math.min(v, max) / max) * SPAN;
   const g: string[] = [];
-  const gy0 = ROWS - 0.6, gy1 = ROWS + rows.length * ROWH - 0.6;
+  const gy0 = ROWS - 0.6, gy1 = ROWS + rows.length * ROWH - 2.2;
   for (let v = 0; v <= max + 1e-9; v += step) {
     g.push(txt(X(v), AXIS, String(Math.round(v * 10) / 10), v === 0 ? 'start' : 'middle'));
     g.push(`<line x1="${X(v).toFixed(2)}" y1="${gy0.toFixed(2)}" x2="${X(v).toFixed(2)}" y2="${gy1.toFixed(2)}" stroke="#878787" stroke-width="0.18" stroke-linecap="round" stroke-dasharray="0 0.36"/>`);
@@ -223,13 +228,15 @@ export function zPairs(rows: { name: string; a: number; b: number }[], max: numb
   g.push(`<g transform="translate(0,${(AXIS - 0.2).toFixed(2)})">${fillShape('M0,0.4H4V2.2H0Z', { x0: 0, y0: 0.4, x1: 4, y1: 2.2 }, fa, 1.4)}</g>`, txt(5, AXIS, keys[0]));
   const kx = 7 + labelW(keys[0]);
   g.push(`<g transform="translate(${kx.toFixed(2)},${(AXIS - 0.2).toFixed(2)})">${fillShape('M0,0.4H4V2.2H0Z', { x0: 0, y0: 0.4, x1: 4, y1: 2.2 }, fb, 1.4)}</g>`, txt(kx + 5, AXIS, keys[1]));
-  const halo = (s: string) => s.replace('<text ', '<text stroke="#ffffff" stroke-width="0.7" stroke-linejoin="round" paint-order="stroke" ');
+  const halo = (str: string) => str.replace('<text ', '<text stroke="#ffffff" stroke-width="0.7" stroke-linejoin="round" paint-order="stroke" ');
+  // a value sits beside its own bar, centred on it
+  const val = (x: number, cy: number, v: number) => halo(txt(x + 1, cy - 0.905 * S6 / 2 - 0.15, `${fmtShort(v)}${unit}`));
   rows.forEach((r, i) => {
     const top = ROWS + i * ROWH;
-    g.push(txt(0, top + 0.6, r.name));
-    g.push(barOf(TRACK - 0.09, top + 0.3, Math.max(0, X(r.a) - TRACK + 0.09), BAR, fa));
-    g.push(barOf(TRACK - 0.09, top + 0.3 + BAR + 0.35, Math.max(0, X(r.b) - TRACK + 0.09), BAR, fb));
-    g.push(halo(txt(X(Math.max(r.a, r.b)) + 1, top + 0.6, `${fmtShort(r.a)}${unit} · ${fmtShort(r.b)}${unit}`)));
+    g.push(txt(0, top + BAR - 0.4, r.name));
+    g.push(barOf(TRACK - 0.09, top, Math.max(0, X(r.a) - TRACK + 0.09), BAR, fa), val(X(r.a), top + BAR / 2, r.a));
+    const tb = top + BAR + GAP;
+    g.push(barOf(TRACK - 0.09, tb, Math.max(0, X(r.b) - TRACK + 0.09), BAR, fb), val(X(r.b), tb + BAR / 2, r.b));
   });
   return svg(gy1 + 1, g.join(''));
 }
@@ -241,23 +248,26 @@ export function zLine(series: { year: number; value: number }[], projection: { y
   if (!all.length) return '';
   const y0 = Math.min(...all.map((p) => p.year)), y1 = Math.max(...all.map((p) => p.year));
   const ax = niceAxis(Math.max(...all.map((p) => p.value)));
-  const L = 8, TOP = 3, B = TOP + h;
-  const X = (y: number) => L + ((y - y0) / Math.max(1, y1 - y0)) * (W - L - 12);
+  const L = 8, TOP = 6, B = TOP + h;
+  const X = (y: number) => L + ((y - y0) / Math.max(1, y1 - y0)) * (W - L);
   const Y = (v: number) => B - (v / ax.max) * h;
   const g: string[] = [];
   for (let v = 0; v <= ax.max + 1e-9; v += ax.step) {
-    g.push(`<line x1="${L}" y1="${Y(v).toFixed(2)}" x2="${(W - 12).toFixed(2)}" y2="${Y(v).toFixed(2)}" stroke="#878787" stroke-width="0.18" stroke-linecap="round" stroke-dasharray="0 0.36"/>`);
+    g.push(`<line x1="${L}" y1="${Y(v).toFixed(2)}" x2="${W.toFixed(2)}" y2="${Y(v).toFixed(2)}" stroke="#878787" stroke-width="0.18" stroke-linecap="round" stroke-dasharray="0 0.36"/>`);
     g.push(txt(0, Y(v) - 1.1, v >= 1000 ? `${Math.round(v / 1000)}k` : String(v)));
   }
   const step = y1 - y0 > 40 ? 10 : 5;
-  for (let y = Math.ceil(y0 / step) * step; y <= y1; y += step) g.push(txt(X(y), B + 1.2, String(y), 'middle'));
+  for (let y = Math.ceil(y0 / step) * step; y <= y1; y += step) if (X(y) < W - 6) g.push(txt(X(y), B + 1.2, String(y), 'middle'));
   const path = (pts: { year: number; value: number }[]) => pts.map((p, i) => `${i ? 'L' : 'M'}${X(p.year).toFixed(2)},${Y(p.value).toFixed(2)}`).join('');
   if (series.length) g.push(`<path d="${path(series)}" fill="none" stroke="#000000" stroke-width="0.35" stroke-linejoin="round"/>`);
   if (projection.length) g.push(`<path d="${path(series.length ? [series[series.length - 1], ...projection] : projection)}" fill="none" stroke="#000000" stroke-width="0.25" stroke-dasharray="0.9 0.6"/>`);
+  const halo = (str: string) => str.replace('<text ', '<text stroke="#ffffff" stroke-width="0.7" paint-order="stroke" ');
   for (const pts of [series, projection]) {
     if (!pts.length) continue;
     const p = pts[pts.length - 1];
-    g.push(`<circle cx="${X(p.year).toFixed(2)}" cy="${Y(p.value).toFixed(2)}" r="0.55" fill="#000000"/>`, txt(X(p.year) + (pts === projection ? 1.2 : 0), Y(p.value) - 3.4, `${fmt(p.value)} · ${p.year}`, pts === projection ? 'start' : 'middle').replace('<text ', '<text stroke="#ffffff" stroke-width="0.7" paint-order="stroke" '));
+    const x = X(p.year), anchor = x > W - 8 ? 'end' : 'middle';
+    // the figure over the point, the year under it
+    g.push(`<circle cx="${x.toFixed(2)}" cy="${Y(p.value).toFixed(2)}" r="0.55" fill="#000000"/>`, halo(txt(x, Y(p.value) - 3.6, fmt(p.value), anchor)), halo(txt(x, Y(p.value) + 1.1, String(p.year), anchor)));
   }
   return svg(B + 4.4, g.join(''));
 }

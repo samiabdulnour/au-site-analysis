@@ -8,9 +8,11 @@
 
 import { queryByExtent, type GeoJSONFC, type GeoJSONFeature } from '../lib/arcgis.js';
 import { cachedJson, DAY_MS } from '../lib/cache.js';
-import type { Extent } from '../lib/geo.js';
+import { extentToLonLatBbox, type Extent } from '../lib/geo.js';
+import { overpassQuery } from '../lib/http.js';
+import { fetchVegetationMask, type VegetationMask } from './imagery.js';
 import { titleCase } from './planning.js';
-import { fetchCouncilTrees, sourcesFor } from './trees.js';
+import { fetchCouncilTrees, mergeTrees, sourcesFor, treeFromOsm, type SiteTree } from './trees.js';
 
 const M3 = 'https://mapprod3.environment.nsw.gov.au/arcgis/rest/services';
 const CANOPY = `${M3}/ePlanning/Planning_Portal_Tree_Canopy/MapServer/1`;
@@ -41,7 +43,7 @@ export interface NamedPlace { name: string; kind: string; lon: number; lat: numb
 export type FacilityKind = 'school' | 'childcare' | 'library' | 'community' | 'pool' | 'health' | 'culture';
 export interface Facility { name: string; kind: FacilityKind; lon: number; lat: number; source: 'eplanning' | 'foi' }
 export interface NpwsReserve { name: string; type: string; rings: number[][][] }
-export interface StreetTree { lon: number; lat: number; canopyM: number }
+export interface StreetTree { lon: number; lat: number; canopyM: number; /** Mapped in OpenStreetMap rather than the council's inventory. */ osm?: boolean }
 
 export interface GreenData {
   /** Mesh blocks over the wide strip. `covered` is false where the dataset (Greater Sydney) does not reach. */
@@ -53,6 +55,8 @@ export interface GreenData {
   parkPoints: NamedPlace[];
   facilities: Facility[];
   npws: NpwsReserve[];
+  /** The green of the aerial over the page: optional, decks read before it have none. */
+  vegetation?: VegetationMask | null;
   trees: { points: StreetTree[]; source?: { name: string; attribution: string } };
   fetchedAt: string;
 }
@@ -180,13 +184,25 @@ export async function fetchNpws(extent: Extent): Promise<NpwsReserve[]> {
   return fc.features.map((f) => ({ name: String(f.properties.NAME ?? '').trim(), type: String(f.properties.TYPE ?? ''), rings: allRings(f.geometry) })).filter((r) => r.rings.length);
 }
 
+/** OpenStreetMap's mapped trees in the extent: the trees in yards, parks and lanes a council's street inventory leaves out. */
+export async function fetchOsmTrees(extent: Extent): Promise<SiteTree[]> {
+  const b = extentToLonLatBbox(extent);
+  const data = await overpassQuery(`[out:json][timeout:90];node["natural"="tree"](${b.south},${b.west},${b.north},${b.east});out;`);
+  return (data.elements ?? []).filter((el: any) => el.type === 'node').map((el: any) => treeFromOsm(el.lon, el.lat, el.tags ?? {}));
+}
+
 async function fetchStreetTrees(extent: Extent, log: (m: string) => void): Promise<GreenData['trees']> {
   const sources = sourcesFor(extent);
-  if (!sources.length) return { points: [] };
-  const trees = await fetchCouncilTrees(extent, log);
+  // the council's inventory first, then OpenStreetMap's trees it does not already hold
+  const [council, osm] = await Promise.all([
+    sources.length ? fetchCouncilTrees(extent, log) : Promise.resolve([] as SiteTree[]),
+    fetchOsmTrees(extent).catch((e) => { log(`  WARN OpenStreetMap trees failed: ${e?.message ?? e}`); return [] as SiteTree[]; }),
+  ]);
+  const trees = mergeTrees(council, osm);
+  log(`  trees: ${council.length} council, ${trees.length - council.length} more from OpenStreetMap`);
   return {
-    points: trees.map((t) => ({ lon: round6(t.lon), lat: round6(t.lat), canopyM: Math.round(t.canopyM * 10) / 10 })),
-    source: { name: sources[0].name, attribution: sources[0].attribution },
+    points: trees.map((t) => ({ lon: round6(t.lon), lat: round6(t.lat), canopyM: Math.round(t.canopyM * 10) / 10, osm: t.source === 'osm' || undefined })),
+    source: sources.length ? { name: `${sources[0].name} and OpenStreetMap`, attribution: `${sources[0].attribution}; trees © OpenStreetMap contributors, ODbL` } : { name: 'OpenStreetMap', attribution: 'trees © OpenStreetMap contributors, ODbL' },
   };
 }
 

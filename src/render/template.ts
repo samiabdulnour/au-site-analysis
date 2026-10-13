@@ -82,7 +82,7 @@ const NEUTRAL_CATEGORIES: Category[] = [
 ];
 
 const SANS = "Arial, 'Liberation Sans', Helvetica, sans-serif";
-const GROTESK = "'Helvetica Neue', Helvetica, Arial, 'Liberation Sans', sans-serif";
+const GROTESK = "Arial, 'Liberation Sans', Helvetica, sans-serif";
 
 export const TEMPLATES: Template[] = [
   {

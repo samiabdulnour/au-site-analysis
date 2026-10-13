@@ -25,6 +25,8 @@ const TILES_1943 = 'https://portal.spatial.nsw.gov.au/tileservices/Hosted/Histor
 const SOURCE_1943 = 'Historical Imagery 1943 (NSW Spatial Services tile service)';
 /** The finest level the 1943 service answers; 19 is a 404 everywhere. */
 const ZOOM_1943 = 18;
+/** An open frame further than this from the site's boundary stands in another street, and does not show the site. */
+const FRONTAGE_REACH_M = 25;
 const R = 6378137;
 
 /** How far from the site a frame is looked for. */
@@ -402,7 +404,7 @@ export async function fetchPhotos(opts: { centre: LonLat; siteRings: number[][][
   const within = (f: RawFrame) => dist(toXY(f), { x: 0, y: 0 }) <= PHOTO_RADIUS_M;
   const kvIn = kv.frames.filter(within), mlyIn = mly.frames.filter(within);
   const today = Date.now();
-  const cands = fillHeadings([...kvIn, ...mlyIn], toXY).map(({ frame, headingSource }) => toCandidate(frame, headingSource, toXY(frame), rings, today)).filter((c): c is Candidate => c !== null);
+  const cands = fillHeadings([...kvIn, ...mlyIn], toXY).map(({ frame, headingSource }) => toCandidate(frame, headingSource, toXY(frame), rings, today)).filter((c): c is Candidate => c !== null && c.distanceM <= FRONTAGE_REACH_M);
   // Google's frames of the frontages first; the open frames fill the cells Google leaves, away from its cameras
   const googleCands = gkey ? gv.views.map((v) => svCandidate(v, toXY, rings, gkey, gsecret)) : [];
   const chosen = [...googleCands, ...choose(cands).filter((c) => googleCands.every((g) => dist(g.xy, c.xy) >= MIN_SPACING_M || angDiff(g.heading, c.heading) >= 60))]

@@ -12,6 +12,19 @@ import { greyPng, pngDataUri } from './png.js';
  * that face away from the light shaded, so it sits under linework rather
  * than competing with it.
  */
+/** Elevation in bands of `stepM`, one grey a band, light at the lowest and darker up the slope: the ground of a monochrome topographic map. */
+export function hypsoDataUri(g: DemGrid, stepM: number, lo: number, hi: number): string {
+  const px = new Uint8Array(g.cols * g.rows);
+  const bands = Math.max(1, Math.ceil((hi - lo) / stepM));
+  for (let i = 0; i < px.length; i++) {
+    const v = g.values[i];
+    if (!Number.isFinite(v)) { px[i] = 255; continue; }
+    const band = Math.min(bands - 1, Math.max(0, Math.floor((v - lo) / stepM)));
+    px[i] = Math.round(255 - (band / Math.max(1, bands - 1)) * 255 * 0.62);
+  }
+  return pngDataUri(greyPng(g.cols, g.rows, px));
+}
+
 export function hillshadeDataUri(g: DemGrid, azimuth = 315, altitude = 45, zFactor = 1): string {
   const zen = ((90 - altitude) * Math.PI) / 180;
   let azm = 360 - azimuth + 90; if (azm >= 360) azm -= 360;
