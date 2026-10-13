@@ -352,7 +352,7 @@ in the same red, so the analysis reads as one layer over the aerial.
 
 The sun, the winds and the noise are drawn in one hand, in open white-filled
 marks (the sun and winds in the site's deep red, the noise in blue): a sun drawn as an open jagged crown
-with a hand-drawn ring inside and four short, broad flames on the diagonals — at the summer and winter sunrise and sunset, on a solid
+of twelve teeth round a plain circle, four of them short, broad flames — at the summer and winter sunrise and sunset, on a solid
 summer arc and a dashed winter arc, each arc marked with a dot and the time at
 every solar hour; the prevailing winds as three widening arrows blowing in
 toward the site, stopping short of a sun from the same quarter. Noise — the
