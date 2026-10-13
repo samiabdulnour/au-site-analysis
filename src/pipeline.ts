@@ -62,6 +62,8 @@ export interface Bundle {
   bus: BusData;
   isochrones: Isochrone[];
   aerial: AerialResult;
+  /** Building footprints across the window, drawn as the grain inside the blocks. */
+  buildings: BuildingsData;
   generatedAt: string;
 }
 
@@ -70,8 +72,8 @@ export interface PipelineOpts {
   mapWidthMm: number;
   mapHeightMm: number;
   outDir: string;
-  /** 'north' = north up (default); 'auto' = rotate so the site's longest
-   *  boundary edge runs horizontally (better fit for elongated sites). */
+  /** 'north' = north up (default); 'auto' = rotate so the site lies with its
+   *  long side horizontal (its bounding rectangle's long axis along the sheet). */
   rotate?: 'north' | 'auto';
   aerialPxWidth?: number;
   log?: (msg: string) => void;
@@ -79,23 +81,43 @@ export interface PipelineOpts {
 
 /** Angle (deg, mercator CCW-from-east) of the longest outer-ring edge of the
  *  site lots, snapped into (-45, 45] so the map never turns on its head. */
-function siteLongEdgeDeg(siteLots: GeoJSONFC): number {
-  let best = 0, bestLen = 0;
+/**
+ * The turn that lays the site with its long side horizontal: the long axis
+ * of the site's minimum-area bounding rectangle, as an angle in (-90°, 90°].
+ * The rectangle is tried along every boundary edge (the minimum one always
+ * lies along an edge of the hull, and so of the boundary), so an irregular or
+ * multi-lot site still reads by its overall shape, not by one long edge. The
+ * sheet is landscape, so the long side lying along it also fits it best.
+ */
+export function siteLongEdgeDeg(siteLots: GeoJSONFC): number {
+  const pts: { x: number; y: number }[] = [];
+  const edges: number[] = [];
   for (const f of siteLots.features) {
     const rings = f.geometry?.type === 'Polygon' ? f.geometry.coordinates
       : f.geometry?.type === 'MultiPolygon' ? f.geometry.coordinates.flat() : [];
     for (const ring of rings) {
-      for (let i = 1; i < ring.length; i++) {
-        const a = lonLatToMercator({ lon: ring[i - 1][0], lat: ring[i - 1][1] });
-        const b = lonLatToMercator({ lon: ring[i][0], lat: ring[i][1] });
-        const len = Math.hypot(b.x - a.x, b.y - a.y);
-        if (len > bestLen) { bestLen = len; best = Math.atan2(b.y - a.y, b.x - a.x); }
-      }
+      const m = ring.map(([lon, lat]: number[]) => lonLatToMercator({ lon, lat }));
+      pts.push(...m);
+      for (let i = 1; i < m.length; i++)
+        if (Math.hypot(m[i].x - m[i - 1].x, m[i].y - m[i - 1].y) > 0.01) edges.push(Math.atan2(m[i].y - m[i - 1].y, m[i].x - m[i - 1].x));
     }
   }
-  let deg = (best * 180) / Math.PI;
-  while (deg > 45) deg -= 90;
-  while (deg <= -45) deg += 90;
+  if (pts.length < 3 || !edges.length) return 0;
+  let bestArea = Infinity, axis = 0;
+  for (const t of edges) {
+    const c = Math.cos(t), s = Math.sin(t);
+    let u0 = Infinity, u1 = -Infinity, v0 = Infinity, v1 = -Infinity;
+    for (const { x, y } of pts) {
+      const u = x * c + y * s, v = -x * s + y * c;
+      if (u < u0) u0 = u; if (u > u1) u1 = u; if (v < v0) v0 = v; if (v > v1) v1 = v;
+    }
+    const area = (u1 - u0) * (v1 - v0);
+    if (area < bestArea - 1e-6) { bestArea = area; axis = u1 - u0 >= v1 - v0 ? t : t + Math.PI / 2; }
+  }
+  // An axis has no direction: fold it into (-90°, 90°].
+  let deg = (axis * 180) / Math.PI;
+  while (deg > 90) deg -= 180;
+  while (deg <= -90) deg += 180;
   return deg;
 }
 
@@ -134,7 +156,8 @@ export async function runPipeline(address: string, opts: PipelineOpts): Promise<
     p.catch((e) => { log(`  WARN ${name} failed: ${e.message ?? e}`); return fallback; });
 
   const emptyBus: BusData = { busStops: [], busRouteSegments: [], tramStops: [], tramRouteSegments: [] };
-  const [railCorridors, allLots, zoning, hob, heritage, roads, railLines, stations, parkPoints, parkAreas, rawComplex, bus, isochrones, aerial] =
+  const noBuildings: BuildingsData = { source: 'none', buildings: [], fetchedAt: new Date().toISOString() };
+  const [railCorridors, allLots, zoning, hob, heritage, roads, railLines, stations, parkPoints, parkAreas, rawComplex, bus, isochrones, aerial, buildings] =
     await Promise.all([
       soft(fetchRailCorridors(extent), emptyFC, 'rail corridors'),
       soft(fetchAllLots(extent), emptyFC, 'cadastral lots'),
@@ -150,6 +173,7 @@ export async function runPipeline(address: string, opts: PipelineOpts): Promise<
       soft(fetchBusData(extent), emptyBus, 'bus/tram data (OSM)'),
       soft(fetchIsochrones(centerLL), [], 'isochrones'),
       fetchAerial(extent, opts.aerialPxWidth ?? 3200, dataDir),
+      soft(fetchBuildings(extent, log), noBuildings, 'buildings'),
     ]);
 
   // Bus stops: TfNSW when a key is configured (authoritative), else the OSM
@@ -178,7 +202,7 @@ export async function runPipeline(address: string, opts: PipelineOpts): Promise<
 
   log(`  lots:${siteLots.features.length} zoning:${zoning.features.length} roads:${roads.length} ` +
       `stations:${stations.length} parks:${parkPoints.length} complexes:${complexPoints.length} ` +
-      `instPolys:${institutionPolys.length} busStops:${bus.busStops.length} isochrones:${isochrones.length}`);
+      `instPolys:${institutionPolys.length} busStops:${bus.busStops.length} isochrones:${isochrones.length} buildings:${buildings.buildings.length}/${buildings.source}`);
 
   const bundle: Bundle = {
     address,
@@ -204,6 +228,7 @@ export async function runPipeline(address: string, opts: PipelineOpts): Promise<
     bus,
     isochrones,
     aerial,
+    buildings,
     generatedAt: new Date().toISOString(),
   };
   await writeFile(join(dataDir, 'bundle.json'), JSON.stringify(bundle));
@@ -264,6 +289,8 @@ export interface SiteBundle {
   /** Attribution lines the data licences ask for, printed on the sheet. */
   attributions?: string[];
   busStops: { name?: string; lon: number; lat: number }[];
+  /** Footprints with what is known of their height, for the neighbours' storey labels. */
+  buildings?: BuildingsData;
   aerial: AerialResult;
   generatedAt: string;
 }
@@ -347,7 +374,8 @@ export async function runSitePipeline(address: string, opts: SitePipelineOpts): 
 
   log('fetching contours, lots, roads, neighbours, furniture, trees, imagery…');
   const nswContours: ContourSet = { lines: [], intervalM: 2, source: 'NSW Spatial Services' };
-  const [contourSet, allLots, roads, railLines, zoning, neighbours, furniture, aerial, councilTrees, parkPoints, controls] = await Promise.all([
+  const noBuildings: BuildingsData = { source: 'none', buildings: [], fetchedAt: new Date().toISOString() };
+  const [contourSet, allLots, roads, railLines, zoning, neighbours, furniture, aerial, councilTrees, parkPoints, controls, buildings] = await Promise.all([
     soft(fetchContours(extent, log), nswContours, 'contours'),
     soft(fetchAllLots(extent), { type: 'FeatureCollection', features: [] } as GeoJSONFC, 'lots'),
     soft(fetchRoads(extent), [], 'roads'),
@@ -359,6 +387,7 @@ export async function runSitePipeline(address: string, opts: SitePipelineOpts): 
     soft(fetchCouncilTrees(extent, log), [], 'council trees'),
     soft(fetchParkPoints(extent), [], 'park points'),
     soft(fetchSiteControls(geo.center), null, 'site controls'),
+    soft(fetchBuildings(extent, log), noBuildings, 'buildings'),
   ]);
 
   let busStops: { name?: string; lon: number; lat: number }[] = [];
@@ -399,7 +428,7 @@ export async function runSitePipeline(address: string, opts: SitePipelineOpts): 
     siteLots, siteRing: ring, allLots, roads, railLines, zoning,
     contours: contourSet.lines, contourIntervalM: contourSet.intervalM, contourSource: contourSet.source,
     neighbours, furniture, parkingBands, views, eyeAboveM, attributions,
-    busStops, aerial, generatedAt: new Date().toISOString(),
+    busStops, buildings, aerial, generatedAt: new Date().toISOString(),
   };
   await writeFile(join(dataDir, 'site_bundle.json'), JSON.stringify(bundle));
   return bundle;

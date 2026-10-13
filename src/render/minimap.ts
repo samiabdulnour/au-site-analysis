@@ -102,7 +102,7 @@ export function railSymbol(d: string, colour: string, k = 1): string {
 export function baseLayers(b: BaseData, proj: Proj, p: Panel, opts: { lots?: boolean } = {}): string {
   const t = tpl();
   const parts: string[] = [];
-  parts.push(`<rect x="0" y="0" width="${p.wMm}" height="${p.hMm}" fill="${t.paper}"/>`);
+  parts.push(`<rect x="0" y="0" width="${p.wMm}" height="${p.hMm}" fill="${t.paper ?? '#ffffff'}"/>`);
   if (b.water.features.length) parts.push(`<path d="${fcPath(b.water, proj)}" fill="${t.water}" fill-rule="evenodd"/>`);
   if (opts.lots !== false && b.lots.features.length)
     parts.push(`<path d="${fcPath(b.lots, proj)}" fill="none" stroke="#b9ae99" stroke-width="0.08" opacity="0.6"/>`);

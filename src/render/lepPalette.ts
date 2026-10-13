@@ -26,6 +26,13 @@ export function zoneFill(code: string | undefined): string {
   return ZONE_FILL[c] ?? ZONE_FILL[c.replace(/\s.*$/, '')] ?? '#d9d9d9';
 }
 
+/** A zone code's place in the LEP legend order (residential, centres, employment, … roads). */
+export function zoneOrder(code: string | undefined): number {
+  const c = String(code ?? '').trim().toUpperCase();
+  const i = Object.keys(ZONE_FILL).indexOf(ZONE_FILL[c] ? c : c.replace(/\s.*$/, ''));
+  return i < 0 ? Infinity : i;
+}
+
 /** Statutory heritage styles by LAY_CLASS: items solid, conservation areas hatched. */
 export type HeritageStyle = { fill: string; hatch: boolean; label: string };
 export function heritageStyle(layClass: string | undefined): HeritageStyle {

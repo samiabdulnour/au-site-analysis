@@ -35,7 +35,7 @@ body {
   font-size: 17px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
-  padding: 2.6rem 1.5rem 3rem;
+  padding: 1.8rem 1.5rem 3rem;
 }
 
 .page { max-width: 760px; margin: 0 auto; }
@@ -47,18 +47,18 @@ a { color: inherit; }
   /* About twice the body text, as on the reference — it was three times,
      which made the masthead the loudest thing on a page of small print. */
   font-size: 2.3rem; font-weight: 400; line-height: 1.05;
-  letter-spacing: -.01em; margin-bottom: 4.7rem;
+  letter-spacing: -.01em; margin-bottom: 2rem;
 }
-.lead { margin-bottom: 1.9rem; }
+.lead { margin-bottom: 1rem; }
 /* Two paragraphs that are one block: the prompt sits close to the field it is
    about rather than a full paragraph's distance from it. Two classes, so it
    wins over .lead wherever either happens to be written. */
-.lead.intro { margin-bottom: 1.1rem; }
+.lead.intro { margin-bottom: .6rem; }
 
 /* ---- address bar -------------------------------------------------------- */
 /* Input and button are one rectangle split in two: the button carries the
    left rule so the pair never shows a doubled line between them. */
-.bar { display: flex; border: 1px solid var(--line); margin-bottom: 4.15rem; }
+.bar { display: flex; border: 1px solid var(--line); margin-bottom: 1rem; }
 .entry { position: relative; flex: 1; min-width: 0; display: flex; }
 
 .bar input {
@@ -70,58 +70,18 @@ a { color: inherit; }
 .bar:focus-within { box-shadow: 0 0 0 1px var(--line); }
 
 .go {
-  flex: none; font: inherit; font-weight: 700; letter-spacing: .02em;
+  font: inherit; font-weight: 700; letter-spacing: .02em;
   color: var(--on-hi); background: var(--hi);
   border: 0; border-left: 1px solid var(--line);
-  /* One column of the options table, so the bar and the table share edges. */
-  flex: 0 0 25%;
-  padding: .75rem 1rem; cursor: pointer;
+  /* As wide as one option cell — a quarter of the three quarters beside the
+     label column — so its left rule continues the SLIDES column's. A flex
+     item never shrinks below its word, so where a cell is narrower than
+     GENERATE the button keeps the word whole rather than the alignment. */
+  flex: 0 0 18.75%;
+  padding: .75rem .6rem; cursor: pointer;
 }
 .go:hover { filter: brightness(.95); }
 .go:disabled { background: transparent; color: var(--muted); cursor: wait; }
-
-/* Secondary to GENERATE, so it carries the rule and not the highlight: yellow
-   means what is chosen or what to press, and this is neither until there is a
-   list to press it for. */
-.add {
-  flex: 0 0 18%; font: inherit; font-weight: 700; letter-spacing: .02em;
-  color: var(--ink); background: transparent;
-  border: 0; border-left: 1px solid var(--line);
-  padding: .75rem .6rem; cursor: pointer;
-}
-.add:hover { background: rgba(0,0,0,.05); }
-.add:disabled { color: var(--muted); cursor: default; }
-
-/* ---- the staged list / batch rows --------------------------------------- */
-/* Addresses are sentences, not labels, so these are full-width rows rather
-   than cells in the options table, which clips what it cannot fit. */
-#list { border-top: 1px solid var(--line); border-left: 1px solid var(--line);
-        margin-bottom: 1.2rem; }
-.listrow {
-  display: grid; grid-template-columns: 2.6rem 1fr auto;
-  border-right: 1px solid var(--line); border-bottom: 1px solid var(--line);
-}
-.listrow > * { padding: .5rem 1rem; min-width: 0; overflow-wrap: anywhere; }
-.listrow .n { color: var(--muted); padding-right: 0; }
-.listrow .st { text-align: right; font-weight: 700; text-transform: uppercase;
-               letter-spacing: .02em; white-space: nowrap; }
-.listrow.done .st { color: var(--ink); }
-.listrow.error .st, .listrow.gone .st { color: var(--err); }
-.listrow.running { background: var(--hi); color: var(--on-hi); }
-.listrow.running .n { color: inherit; opacity: .7; }
-.listrow .why { grid-column: 2 / -1; padding-top: 0; color: var(--err); }
-/* The remove control is a glyph, not a button-shaped thing: the row is the
-   object, and this is the one edge of it you can act on. */
-.listrow .rm {
-  font: inherit; color: var(--muted); background: transparent; border: 0;
-  cursor: pointer; line-height: 1;
-}
-.listrow .rm:hover { color: var(--err); }
-
-@media (max-width: 560px) {
-  .add { flex: 0 0 22%; padding: .75rem .4rem; }
-  .listrow > * { padding: .5rem .6rem; }
-}
 
 /* ---- options table ------------------------------------------------------ */
 /* Cells carry their own right and bottom rule and the table carries the top
@@ -188,9 +148,16 @@ a { color: inherit; }
 #note button:hover { color: var(--ink); }
 
 /* ---- bottom actions ----------------------------------------------------- */
-.actions { display: flex; justify-content: space-between; align-items: flex-start;
-           gap: 1rem; margin-top: .9rem; }
+/* From the left: a finished sheet's links when there are any, then HOW IT
+   WORKS, on the frame's left edge whenever there is nothing before it. The
+   session's own controls, SIGN OUT and the operator's STATUS, sit at the far
+   end. Spreading the row instead put HOW IT WORKS wherever the count of its
+   neighbours left it — in the middle, once SIGN OUT joined the row. */
+.actions { display: flex; align-items: flex-start; gap: 1rem; margin-top: .9rem; }
 #links { display: flex; }
+#links:empty { display: none; }
+#signOut, #statusLink { margin-left: auto; }
+#signOut + #statusLink { margin-left: 0; }
 .btn {
   display: inline-block; border: 1px solid var(--line); padding: .45rem 1.4rem;
   /* font first: the shorthand would otherwise undo the weight below. Set at
@@ -209,26 +176,29 @@ a { color: inherit; }
 footer { margin-top: 3rem; color: var(--muted); }
 footer a { color: inherit; }
 
-/* ---- hover preview ------------------------------------------------------ */
-#preview {
-  position: fixed; z-index: 30; pointer-events: none; display: none;
-  border: 1px solid var(--line); background: var(--bg);
-  padding: 5px; width: min(46vw, 560px);
-}
-#preview.on { display: block; }
-#preview img { display: block; width: 100%; height: auto; }
-#preview .cap { padding: .35rem .2rem 0; }
+/* ---- expected result --------------------------------------------------- */
+/* A frame of its own under the options table, holding the picture alone,
+   edge to edge between its rules. */
+.result { margin-top: 1rem; border: 1px solid var(--line); }
+/* width and height are written on the element, so the box keeps the sheet's
+   proportion while the picture loads instead of jumping when it arrives. */
+.result img { display: block; width: 100%; height: auto; }
+.result img[hidden] { display: none; }
+.result img.loading { opacity: .35; }
+/* Only shown when a combination has no picture. */
+.result figcaption { padding: .6rem 1rem; color: var(--muted); }
 
 @media (max-width: 700px) {
   body { padding: 1.6rem 1rem 2.5rem; }
-  .name { margin-bottom: 2.2rem; }
-  .bar { margin-bottom: 2rem; }
+  .name { margin-bottom: 1.4rem; }
   .rowhead { flex: 0 0 30%; }
   .rowhead, .cell, .cell-empty { padding: .5rem .6rem; }
-  .go { padding: .75rem 1rem; }
+  /* the label column is 30% here; the word gets the cell's tighter spacing */
+  .go { flex-basis: 17.5%; padding: .75rem .3rem; letter-spacing: 0; }
   .actions { flex-direction: column; align-items: stretch; }
   .actions .btn { text-align: center; }
-  #preview { width: 92vw; }
+  /* stacked, every button takes the full width; an auto margin would not */
+  #signOut, #statusLink { margin-left: 0; }
 }
 
 /* On a phone the label column would leave the options too narrow to hold
@@ -237,7 +207,8 @@ footer a { color: inherit; }
 @media (max-width: 560px) {
   .row { flex-direction: column; }
   .rowhead { flex: none; }
-  /* the site sheet offers six scales; they have to share one phone width */
+  .go { flex-basis: 25%; }     /* the options take the full width, four to a row */
+  /* four options to a row share one phone width */
   .cell, .cell-empty { padding: .5rem .35rem; letter-spacing: 0; }
 }
 

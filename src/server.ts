@@ -22,7 +22,7 @@ import { renderSiteSheet } from './render/siteSheet.js';
 import { renderSummarySheet } from './render/summarySheet.js';
 import { summaryCsv, summaryJson } from './export/summaryExport.js';
 import { renderSlides, slidesFacts, PANEL_W, PANEL_H, DA_PANEL_H, SLIDE_W, SLIDE_H } from './render/slides.js';
-import { withTemplate, DEFAULT_TEMPLATE } from './render/template.js';
+import { withTemplate, themeFor, templateFor } from './render/template.js';
 import { htmlToPdf, printSlides } from './render/pdf.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -403,7 +403,7 @@ async function runCadExport(script: string, outDir: string): Promise<boolean> {
  * be true before jobs could ever overlap.
  */
 async function runJob(job: Job) {
-  return withTemplate(job.template, () => runJobBody(job));
+  return withTemplate(templateFor(job.sheet, job.template), () => runJobBody(job));
 }
 
 async function runJobBody(job: Job) {
@@ -445,7 +445,7 @@ async function runJobBody(job: Job) {
       });
       job.log.push('composing site analysis…');
       const htmlPath = join(outDir, 'site_sheet.html');
-      await writeFile(htmlPath, renderSiteSheet(sb, meta));
+      await writeFile(htmlPath, renderSiteSheet(sb, meta, job.template));
       job.log.push('printing PDF…');
       const pdfPath = join(outDir, 'SITE_ANALYSIS.pdf');
       await htmlToPdf(htmlPath, pdfPath);
@@ -924,13 +924,15 @@ Sitemap: ${siteBase()}/sitemap.xml
   if (req.method === 'POST' && url.pathname === '/api/jobs') {
     const body = await readBody(req);
     try {
-      const { address, scale, rotate, sheet, fresh } = JSON.parse(body || '{}');
-      // There is one template, so it is not the caller's to pick.
-      const jobTemplate = DEFAULT_TEMPLATE;
+      const { address, scale, rotate, sheet, fresh, template } = JSON.parse(body || '{}');
       const addr = String(address ?? '').trim();
       if (addr.length < 8 || addr.length > 120) return json(res, 400, { error: 'Enter a full NSW street address.' });
       const kind: Job['sheet'] =
         sheet === 'site' ? 'site' : sheet === 'summary' ? 'summary' : sheet === 'slides' ? 'slides' : 'context';
+      // The theme this kind of sheet takes (an alias resolved to its id, so
+      // the two spellings share a job): a context template, a site theme, or
+      // none for the summary and the deck.
+      const jobTemplate = themeFor(kind, String(template ?? ''));
       const raw = Number(scale) || 0;
       const sc = kind === 'site'
         ? (raw ? Math.min(1000, Math.max(100, raw)) : 0)          // 0 = auto-fit
@@ -982,8 +984,6 @@ Sitemap: ${siteBase()}/sitemap.xml
     const body = await readBody(req);
     try {
       const b = JSON.parse(body || '{}');
-      const jobTemplate = DEFAULT_TEMPLATE;
-
       const raw: unknown[] = Array.isArray(b.addresses) ? b.addresses : [];
       const addresses = raw.map((a) => String(a ?? '').trim()).filter(Boolean);
       if (!addresses.length) return json(res, 400, { error: 'No addresses.' });
@@ -994,6 +994,7 @@ Sitemap: ${siteBase()}/sitemap.xml
 
       const kind: Job['sheet'] =
         b.sheet === 'site' ? 'site' : b.sheet === 'summary' ? 'summary' : b.sheet === 'slides' ? 'slides' : 'context';
+      const jobTemplate = themeFor(kind, String(b.template ?? ''));
       const n = Number(b.scale) || 0;
       const sc = kind === 'site'
         ? (n ? Math.min(1000, Math.max(100, n)) : 0)

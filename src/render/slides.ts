@@ -11,7 +11,7 @@ import type { Extent } from '../lib/geo.js';
 import type { SlidesBundle } from '../pipeline.js';
 import type { SheetMeta } from './sheet.js';
 import type { GeoJSONFeature } from '../lib/arcgis.js';
-import { tpl, withTemplate } from './template.js';
+import { tpl, withTemplate, DECK_TEMPLATE } from './template.js';
 import { INK, AERIAL_GREEN_FILL, VEG_1750_FILLS, fillShape, swatchOf, barOf, zHead, zBars, zFigures, zCircles, zSpans, zPairs, zLine, niceAxis, z6, zSvg, Z_W, Z_TRACK, type Fill } from './atlasKit.js';
 import { esc } from './chrome.js';
 import {
@@ -7359,7 +7359,12 @@ export function countrySlide(b: SlidesBundle): Slide {
   return { id: '15_country', title: 'Country', subtitle: sub, textHtml: text, figureHtml: figure };
 }
 
+/** The overall analysis deck: it has no themes, and is always drawn in its own template. */
 export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; slides: Slide[] } {
+  return withTemplate(DECK_TEMPLATE, () => drawSlides(b, meta));
+}
+
+function drawSlides(b: SlidesBundle, meta: SheetMeta): { html: string; slides: Slide[] } {
   const facts = planningFacts(b);
   const slides = [locationSlide(b), characterAtlas(b), planningAtlas(b), controlsAtlas(b, facts), strategicAtlas(b, facts), topographyAtlas(b), developmentAtlas(b, facts), builtFormAtlas(b, facts), movementSlide(b), greenAtlas(b), siteAtlas(b), conditionAtlas(b), sunAtlas(b), constraintsAtlas(b), countryAtlas(b), peopleAtlas(b), ocAtlas(b, facts), sourcesAtlas(b, facts)];
   const t = tpl();

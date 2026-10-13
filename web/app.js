@@ -2,46 +2,63 @@
    State lives in one object; the options are plain buttons that write into it,
    which avoids native <select> chrome in a page that is otherwise all text. */
 
-// There is one graphic template, so it is not in here: the server draws every
-// sheet in it and the page has nothing to choose.
-const state = { sheet: 'context', scale: '3000', rotate: 'north' };
+const state = { sheet: 'context', scale: '3000', rotate: 'north', template: 'flamingo' };
 
-// [value, label, previewImage, previewCaption] — every option previews a real
-// sheet generated for the same demo address, so the comparison is like for like.
+// [value, label, caption] — the caption is that option's words in the
+// sentence that describes the expected result to a screen reader.
 const SHEETS = [
-  ['context', 'context', '/samples/context.jpg', 'context analysis · A1 · 1:3000'],
-  ['site',    'site',    '/samples/site.jpg',    'site analysis · A1 · auto scale'],
-  ['summary', 'summary', '/samples/summary.jpg', 'development summary · A1 · table'],
-  ['slides',  'slides',  '/samples/slides.jpg',  'overall analysis · A3 deck · planning slides'],
+  ['context', 'context', 'Context analysis on A1'],
+  ['site',    'site',    'Site analysis on A1'],
+  ['summary', 'summary', 'Development summary, an A1 table'],
+  ['slides',  'slides',  'Overall analysis deck on A3, its planning slide shown'],
 ];
 const SCALES = {
   context: [
-    ['2000', '2000', '/samples/context-2000.jpg', 'context · 1:2000 — tighter, more detail'],
-    ['3000', '3000', '/samples/context.jpg',      'context · 1:3000 — the default'],
-    ['4000', '4000', '/samples/context-4000.jpg', 'context · 1:4000 — wider catchment'],
+    ['2000', '2000', 'at 1:2000'],
+    ['3000', '3000', 'at 1:3000'],
+    ['4000', '4000', 'at 1:4000'],
+    ['5000', '5000', 'at 1:5000'],
   ],
   site: [
-    ['0',   'auto', '/samples/site.jpg',     'site · auto — tightest scale that fits the lot'],
-    ['200', '200',  '/samples/site-200.jpg', 'site · 1:200 — a small lot fills the sheet'],
-    ['250', '250',  '/samples/site-250.jpg', 'site · 1:250'],
-    ['300', '300',  '/samples/site-300.jpg', 'site · 1:300'],
-    ['400', '400',  '/samples/site-400.jpg', 'site · 1:400'],
-    ['500', '500',  '/samples/site-500.jpg', 'site · 1:500 — more of the surrounds'],
+    ['0',   'auto', 'at the tightest scale that fits the lot'],
+    ['200', '200',  'at 1:200'],
+    ['250', '250',  'at 1:250'],
+    ['500', '500',  'at 1:500'],
+  ],
+  summary: [],
+  slides: [],
+};
+// The styles each drawing takes: the context sheet has its templates, the site
+// analysis its own themes, and the summary and the deck none. An unknown one
+// falls back to the drawing's default on the server.
+const STYLES = {
+  context: [
+    ['flamingo',   'flamingo',   'in Flamingo'],
+    ['kingfisher', 'kingfisher', 'in Kingfisher'],
+    ['heron',      'heron',      'in Heron'],
+    ['conure',     'conure',     'in Conure'],
+  ],
+  site: [
+    ['cardinal', 'cardinal', 'in Cardinal'],
   ],
   summary: [],
   slides: [],
 };
 const NORTH = [
-  ['north', 'up',    '/samples/site.jpg',       'north up — the sheet is oriented to north'],
-  ['auto',  'align', '/samples/north-align.jpg', 'aligned — the lot is squared to the sheet'],
+  ['north', 'up',    'north up'],
+  ['auto',  'align', 'long side horizontal'],
 ];
+
+// Every picture in the expected-result frame is a real sheet drawn for this
+// one address, in every combination the table offers (`npm run samples`), so
+// what is shown is what the chosen options produce rather than a likeness.
+const EXAMPLE_ADDRESS = '150 George Street, Parramatta';
 
 const $ = (id) => document.getElementById(id);
 const f = $('f'), loginForm = $('login');
 const out = $('out'), logEl = $('log'), queueEl = $('queue');
 const linksEl = $('links'), errEl = $('error'), go = $('go'), noteEl = $('note');
-const addBtn = $('add'), listEl = $('list');
-const preview = $('preview');
+const resultImg = $('resultImg'), resultMissing = $('resultMissing');
 
 // ---- token rendering -----------------------------------------------------
 
@@ -52,22 +69,13 @@ const ROW_CELLS = 4;
 
 function tokens(host, items, current, onPick) {
   host.innerHTML = '';
-  items.forEach(([value, label, img, cap]) => {
+  items.forEach(([value, label]) => {
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'cell';
     b.textContent = label;
     b.setAttribute('aria-pressed', String(value === current));
     b.addEventListener('click', () => onPick(value));
-    if (img) {
-      b.addEventListener('mouseenter', (e) => showPreview(img, cap, e));
-      b.addEventListener('mousemove', movePreview);
-      b.addEventListener('mouseleave', hidePreview);
-      // Touch has no hover: a tap also pins the preview open.
-      b.addEventListener('click', () => {
-        if (matchMedia('(hover: none)').matches) togglePreview(img, cap, b);
-      });
-    }
     host.append(b);
   });
   for (let i = items.length; i < ROW_CELLS; i++) {
@@ -80,7 +88,7 @@ function tokens(host, items, current, onPick) {
 
 function renderAll() {
   tokens($('sheetOpts'), SHEETS, state.sheet,
-    (v) => { state.sheet = v; syncScale(); renderAll(); });
+    (v) => { state.sheet = v; syncScale(); syncStyle(); renderAll(); });
 
   // A table has neither a scale nor an orientation; the deck's maps are drawn
   // at a fixed scale, north up.
@@ -92,7 +100,10 @@ function renderAll() {
     tokens($('scaleOpts'), scales, state.scale, (v) => { state.scale = v; renderAll(); });
   }
   tokens($('northOpts'), NORTH, state.rotate, (v) => { state.rotate = v; renderAll(); });
-
+  const styles = STYLES[state.sheet];
+  $('styleRow').hidden = styles.length === 0;
+  if (styles.length) tokens($('styleOpts'), styles, state.template, (v) => { state.template = v; renderAll(); });
+  renderResult();
 }
 
 /** Take what the server told us about this session. */
@@ -133,6 +144,12 @@ function applySession(j) {
   renderAll();
 }
 
+/** Keep the style valid when the drawing changes: each drawing has its own, or none. */
+function syncStyle() {
+  const valid = STYLES[state.sheet].map((s) => s[0]);
+  if (!valid.includes(state.template)) state.template = valid[0] ?? '';
+}
+
 /** Keep the scale valid when the drawing changes — 1:3000 means nothing for a lot. */
 function syncScale() {
   const valid = SCALES[state.sheet].map((s) => s[0]);
@@ -142,41 +159,55 @@ function syncScale() {
   }
 }
 
-// ---- hover preview -------------------------------------------------------
+// ---- expected result -----------------------------------------------------
 
-let pinned = false;
+/** The two sheets that are maps take a scale and an orientation; the summary and the deck do not. */
+const isMap = () => state.sheet === 'context' || state.sheet === 'site';
 
-function showPreview(src, cap, e) {
-  if (pinned) return;
-  preview.querySelector('img').src = src;
-  preview.querySelector('.cap').textContent = cap;
-  preview.classList.add('on');
-  movePreview(e);
+function caption(items, value) {
+  const hit = items.find((i) => i[0] === value);
+  return hit ? hit[2] : '';
 }
-function movePreview(e) {
-  if (!preview.classList.contains('on') || pinned) return;
-  const w = preview.offsetWidth, h = preview.offsetHeight, pad = 16;
-  let x = e.clientX + pad, y = e.clientY + pad;
-  if (x + w > innerWidth - pad) x = Math.max(pad, e.clientX - w - pad);
-  if (y + h > innerHeight - pad) y = Math.max(pad, innerHeight - h - pad);
-  preview.style.left = x + 'px';
-  preview.style.top = y + 'px';
-}
-function hidePreview() { if (!pinned) preview.classList.remove('on'); }
 
-function togglePreview(src, cap, anchor) {
-  pinned = !pinned;
-  if (!pinned) { preview.classList.remove('on'); return; }
-  preview.querySelector('img').src = src;
-  preview.querySelector('.cap').textContent = cap;
-  preview.classList.add('on');
-  const r = anchor.getBoundingClientRect();
-  preview.style.left = Math.max(8, Math.min(r.left, innerWidth - preview.offsetWidth - 8)) + 'px';
-  preview.style.top = (r.bottom + 8) + 'px';
+/** Show the sample for the whole selection, named as `npm run samples` writes it. */
+function renderResult() {
+  const parts = isMap()
+    ? [state.sheet, state.scale, state.rotate, state.template]
+    : [state.sheet];
+  const src = '/samples/result-' + parts.join('-') + '.jpg';
+  let text = caption(SHEETS, state.sheet);
+  if (isMap()) text += ' ' + caption(SCALES[state.sheet], state.scale) + ', ' + caption(NORTH, state.rotate);
+  const style = caption(STYLES[state.sheet], state.template);
+  text += (style ? ', ' + style : '') + '.';
+  // The frame shows the picture alone; what it is is said to a screen reader.
+  resultImg.alt = text + ' An example drawn for ' + EXAMPLE_ADDRESS + '.';
+  // renderAll runs on every pick; asking again for the picture already shown
+  // would only make it flicker.
+  if (resultImg.getAttribute('src') !== src) {
+    resultImg.hidden = false;
+    resultMissing.hidden = true;
+    // The last picture stays up until the next arrives, so it is dimmed
+    // meanwhile rather than passed off as the new choice's.
+    resultImg.classList.add('loading');
+    resultImg.src = src;
+  }
 }
-document.addEventListener('click', (e) => {
-  if (pinned && !e.target.closest('.cell')) { pinned = false; preview.classList.remove('on'); }
+resultImg.addEventListener('load', () => resultImg.classList.remove('loading'));
+// A combination without a picture says so rather than showing a broken image
+// or, worse, the previous choice's picture as if it were this one's.
+resultImg.addEventListener('error', () => {
+  resultImg.classList.remove('loading');
+  resultImg.hidden = true;
+  resultMissing.hidden = false;
 });
+
+/* The expected result sits between the options and the progress box, so on a
+   laptop screen that box opens below the fold and GENERATE looks as if it did
+   nothing. Bring it, and the row its links appear in, into view. */
+function revealOutput() {
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  document.querySelector('.actions').scrollIntoView({ block: 'nearest', behavior: reduce ? 'auto' : 'smooth' });
+}
 
 // ---- http helpers --------------------------------------------------------
 
@@ -319,85 +350,6 @@ loginForm.addEventListener('submit', async (e) => {
 
 // ---- run -----------------------------------------------------------------
 
-// ---- the staged list -----------------------------------------------------
-//
-// Addresses collected before running, then the same rows showing how each one
-// went. One list, two states, because they are the same thing at two moments
-// and a second table would only ask the reader to connect them.
-let staged = [];
-let batchId = null;
-
-function rowEl(n, address) {
-  const row = document.createElement('div');
-  row.className = 'listrow';
-  const num = document.createElement('span');
-  num.className = 'n';
-  num.textContent = n;
-  const addr = document.createElement('span');
-  addr.className = 'addr';
-  addr.textContent = address;
-  row.append(num, addr);
-  return row;
-}
-
-/** Before the run: what is queued up, each removable. */
-function renderStaged() {
-  listEl.innerHTML = '';
-  listEl.hidden = staged.length === 0;
-  staged.forEach((address, i) => {
-    const row = rowEl(i + 1, address);
-    const rm = document.createElement('button');
-    rm.type = 'button';
-    rm.className = 'rm';
-    rm.textContent = '×';
-    rm.setAttribute('aria-label', 'remove ' + address);
-    rm.addEventListener('click', () => { staged.splice(i, 1); renderStaged(); });
-    row.append(rm);
-    listEl.append(row);
-  });
-  go.textContent = staged.length ? 'GENERATE ' + staged.length : 'GENERATE';
-}
-
-/** During and after: the same rows, carrying each sheet's outcome. */
-function renderBatch(j) {
-  listEl.innerHTML = '';
-  listEl.hidden = false;
-  (j.entries || []).forEach((e, i) => {
-    const row = rowEl(i + 1, e.address);
-    row.classList.add(e.status);
-    const st = document.createElement('span');
-    st.className = 'st';
-    st.textContent = e.status === 'queued' && e.queuePosition > 1
-      ? 'queued ' + e.queuePosition
-      : e.status === 'gone' ? 'lost' : e.status;
-    row.append(st);
-    if ((e.status === 'error' || e.status === 'gone') && (e.error || e.status === 'gone')) {
-      const why = document.createElement('div');
-      why.className = 'why';
-      why.textContent = e.error || 'the sheet is no longer on the server';
-      row.append(why);
-    }
-    listEl.append(row);
-  });
-}
-
-function addStaged() {
-  const a = addrInput.value.trim();
-  if (a.length < 8) return;
-  // The same address twice would share one job on the server anyway; not
-  // listing it twice keeps the rows honest about what will be produced.
-  if (!staged.includes(a)) staged.push(a);
-  addrInput.value = '';
-  // Closing the list is not enough: a lookup already scheduled would fire
-  // afterwards and reopen it on "searching…", over a field that has moved on.
-  clearTimeout(suggestTimer);
-  closeSuggest();
-  renderStaged();
-  addrInput.focus();
-}
-
-addBtn.addEventListener('click', addStaged);
-
 /** How long ago the sheet being handed back was drawn, in words. */
 function ago(mins) {
   if (!(mins > 0)) return 'a moment ago';
@@ -428,11 +380,12 @@ async function submit(fresh) {
   noteEl.textContent = '';
   go.disabled = true;
   logEl.textContent = 'submitting';
+  revealOutput();
   try {
     const r = await fetch('/api/jobs', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ address, scale: state.scale, rotate: state.rotate,
-                             sheet: state.sheet, fresh: fresh === true }),
+                             sheet: state.sheet, template: state.template, fresh: fresh === true }),
     });
     const j = await readJson(r);
     if (!r.ok) throw new Error(httpMessage(r, j));
@@ -445,87 +398,8 @@ async function submit(fresh) {
   } catch (err) { fail(err.message); }
 }
 
-/* One or many. A batch is the same jobs on the same serial queue, so the only
-   difference here is which endpoint is asked and which rows are drawn. */
-async function submitBatch(addresses, fresh) {
-  out.hidden = false;
-  errEl.textContent = ''; linksEl.innerHTML = ''; noteEl.textContent = '';
-  queueEl.textContent = 'submitting'; logEl.textContent = '';
-  go.disabled = true; addBtn.disabled = true;
-  try {
-    const r = await fetch('/api/batches', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ addresses, scale: state.scale, rotate: state.rotate,
-                             sheet: state.sheet, fresh: fresh === true }),
-    });
-    const j = await readJson(r);
-    if (!r.ok) throw new Error(httpMessage(r, j));
-    if (!j.id) throw new Error('service restarting — try again shortly');
-    batchId = j.id;
-    staged = [];
-    noteEl.textContent = j.queued === 0
-      ? 'every sheet in this list was already drawn — reusing all of them'
-      : j.queued < j.total
-        ? (j.total - j.queued) + ' of ' + j.total + ' already drawn; generating ' + j.queued
-        : '';
-    pollBatch(j.id, 0);
-  } catch (err) { fail(err.message); }
-}
-
-async function pollBatch(id, misses) {
-  try {
-    const r = await fetch('/api/batches/' + id);
-    if (r.status >= 500) {
-      if (misses < 20) {
-        queueEl.textContent = 'service restarting, reconnecting';
-        return setTimeout(() => pollBatch(id, misses + 1), 3000);
-      }
-      throw new Error('service restarting — try again shortly');
-    }
-    const j = await readJson(r);
-    if (r.status === 404) throw new Error('service restarted, batch lost — run again');
-    if (!r.ok) throw new Error(httpMessage(r, j));
-
-    renderBatch(j);
-    const finished = j.done + j.failed;
-    queueEl.textContent = finished >= j.total
-      ? 'done — ' + j.done + ' of ' + j.total
-      : finished + ' of ' + j.total + ' finished';
-
-    if (finished >= j.total) {
-      go.disabled = false; addBtn.disabled = false;
-      linksEl.innerHTML = '';
-      if (j.done) addLink('download ' + j.done + ' sheets', '/api/batches/' + id + '/zip');
-      // Only the label goes back, not the list: renderStaged() would clear the
-      // rows, and which of the twelve worked is the whole reason for running a
-      // batch. They stay until something is staged over them.
-      go.textContent = 'GENERATE';
-      return;
-    }
-    setTimeout(() => pollBatch(id, 0), 2500);
-  } catch (err) {
-    if (err instanceof TypeError && misses < 20) {
-      queueEl.textContent = 'connection lost, reconnecting';
-      return setTimeout(() => pollBatch(id, misses + 1), 3000);
-    }
-    fail(err.message);
-  }
-}
-
 f.addEventListener('submit', (e) => {
   e.preventDefault();
-  // Anything still in the field counts: pressing GENERATE with a typed address
-  // and a list already staged should not silently drop the one in front of you.
-  const typed = addrInput.value.trim();
-  if (typed.length >= 8 && !staged.includes(typed)) staged.push(typed);
-  clearTimeout(suggestTimer);
-  closeSuggest();
-  if (staged.length > 1) {
-    const list = staged.slice();
-    addrInput.value = '';
-    return submitBatch(list, false);
-  }
-  if (staged.length === 1) { addrInput.value = staged[0]; staged = []; renderStaged(); }
   submit(false);
 });
 
@@ -592,7 +466,6 @@ function fail(msg) {
   queueEl.textContent = '';
   errEl.textContent = msg;
   go.disabled = false;
-  addBtn.disabled = false;
 }
 
 renderAll();

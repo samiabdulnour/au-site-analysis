@@ -5,13 +5,18 @@
 import type { Bundle } from '../pipeline.js';
 import { lonLatToMercator, ringCentroid, type Extent, type MapView } from '../lib/geo.js';
 import { categories, catById, zoneToCategory } from './model.js';
-import { tpl } from './template.js';
-import { sheetHtml, esc, T, SWATCH_X, SWATCH_W, LABEL_X,
+import { tpl, type Texture } from './template.js';
+import { zoneFill, zoneOrder } from './lepPalette.js';
+import { sheetHtml, legendHeightFor, esc, T, SWATCH_X, SWATCH_W, LABEL_X,
          SHEET_W, SHEET_H, FRAME_L, FRAME_T, TITLE_X, TITLE_R, MAP_BOTTOM, MAP_W, MAP_H } from './chrome.js';
 
 // Geometry/typography constants live in chrome.ts (shared by all sheet
 // types); re-exported here for existing importers (cli, server, pdf).
 export { SHEET_W, SHEET_H, FRAME_L, FRAME_T, TITLE_X, TITLE_R, MAP_BOTTOM, MAP_W, MAP_H };
+
+// The ePlanning zone colours over the greyscale aerial: strong enough to read
+// as the LEP map's colours, thin enough that the roofs show through.
+const LEP_OPACITY = 0.6;
 
 export interface SheetMeta {
   jobNo: string;
@@ -108,7 +113,8 @@ export function plainText(x: number, y: number, lines: string[], size: number, f
 
 /**
  * White double-headed arrow along the (straight-enough) middle of a polyline.
- * Returns '' when the geometry bends too much for a straight arrow.
+ * Returns null when the geometry bends too much for a straight arrow. The
+ * context sheet no longer bands its street names; the site sheet still does.
  */
 export interface BandArrow { svg: string; cx: number; cy: number; angDeg: number }
 
@@ -152,21 +158,12 @@ export function walkerGlyph(color: string, scale: number): string {
   return `<g transform="scale(${scale}) translate(-12.6,-13.5)"><path fill="${color}" d="M13.5 5.5c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zM9.8 8.9L7 23h2.1l1.8-8 2.1 2v6h2v-7.5l-2.1-2 .6-3C14.8 12 16.8 13 19 13v-2c-1.9 0-3.5-1-4.3-2.4l-1-1.6c-.4-.6-1-1-1.7-1-.3 0-.5.1-.8.1L6 8.3V13h2V9.6l1.8-.7"/></g>`;
 }
 
-/** Walker-in-circle marker sitting on an isochrone ring, all in ring color. */
-export function walkerMedallion(x: number, y: number, color: string): string {
+/** Walker marker sitting on an isochrone ring: a solid disc in the ring's colour with the walker knocked out in white, the size of the sheet's other round marks. */
+export function walkerMedallion(x: number, y: number, color: string, r = 3.4): string {
   return `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})">
-    <circle r="4.1" fill="#ffffff" stroke="${color}" stroke-width="1.1"/>
-    ${walkerGlyph(color, 0.30)}
+    <circle r="${r}" fill="${color}"/>
+    ${walkerGlyph('#ffffff', r * 0.074)}
   </g>`;
-}
-
-/** Abbreviate street types the way the office labels them (CAMPSIE ST, WILFRED AVE). */
-export function shortStreetName(name: string): string {
-  return name.toUpperCase()
-    .replace(/\bSTREET\b/, 'ST').replace(/\bROAD\b/, 'RD').replace(/\bAVENUE\b/, 'AVE')
-    .replace(/\bPARADE\b/, 'PDE').replace(/\bHIGHWAY\b/, 'HWY').replace(/\bDRIVE\b/, 'DR')
-    .replace(/\bLANE\b/, 'LN').replace(/\bPLACE\b/, 'PL').replace(/\bCRESCENT\b/, 'CRES')
-    .replace(/\bBOULEVARD\b/, 'BVD').replace(/\bTERRACE\b/, 'TCE').replace(/\bCOURT\b/, 'CT');
 }
 
 /**
@@ -177,15 +174,11 @@ export function shortStreetName(name: string): string {
 function ringMarkers(pts: Pt[], count: number, phase: number): Pt[] {
   const inView = ([x, y]: Pt) => x > 14 && x < MAP_W - 14 && y > 14 && y < MAP_H - 14;
   const cum: number[] = [0];
-  for (let i = 1; i < pts.length; i++) {
-    cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
-  }
+  for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
   const total = cum[cum.length - 1];
   if (!(total > 0)) return [];
-
   const visible = pts.map((p, i) => ({ p, s: cum[i] })).filter((o) => inView(o.p));
   if (!visible.length) return [];
-
   const out: Pt[] = [];
   for (let k = 0; k < count; k++) {
     const want = total * (((k + phase) / count) % 1);
@@ -204,8 +197,50 @@ function ringMarkers(pts: Pt[], count: number, phase: number): Pt[] {
 }
 
 /**
- * Does this road carry the white arrow band, or is it a lane that only gets a
- * plain label? NSW classifies both function and lane count, and neither alone
+ * A vector texture (dots, diagonal hatch, cross-hatch) clipped to a shape.
+ * Real lines rather than an SVG pattern: patterns rasterize blurrily when
+ * Chromium prints to PDF. Dots are a round-capped line with a hairline dash,
+ * so a textured suburb costs a few hundred elements, not a hundred thousand.
+ * `box` is the area the texture must cover (the map, or a legend swatch).
+ */
+export function textureSvg(clipId: string, clipPathD: string, kind: Texture, color: string,
+                           box: { x: number; y: number; w: number; h: number }, opacity = 0.8): string {
+  const { x, y, w, h } = box;
+  let lines = '';
+  if (kind === 'dots') {
+    const step = 1.7;
+    for (let i = 0, yy = y + step / 2; yy <= y + h; yy += step, i++) {
+      const off = i % 2 ? step / 2 : 0;
+      lines += `<line x1="${(x - off).toFixed(1)}" y1="${yy.toFixed(1)}" x2="${(x + w).toFixed(1)}" y2="${yy.toFixed(1)}"/>`;
+    }
+    return `<clipPath id="${clipId}"><path d="${clipPathD}" clip-rule="evenodd"/></clipPath>
+      <g clip-path="url(#${clipId})" stroke="${color}" stroke-width="0.6" stroke-linecap="round" stroke-dasharray="0.01,${1.7}" opacity="${opacity}">${lines}</g>`;
+  }
+  // The hatch falls to the right, the opposite way to the heritage hatch
+  // drawn elsewhere, so a heritage item inside a commercial centre still
+  // shows as two textures crossing rather than one thicker one.
+  const step = kind === 'cross' ? 2.0 : 1.6;
+  for (let o = x - h; o <= x + w; o += step)
+    lines += `<line x1="${o.toFixed(1)}" y1="${y.toFixed(1)}" x2="${(o + h).toFixed(1)}" y2="${(y + h).toFixed(1)}"/>`;
+  if (kind === 'cross')
+    for (let o = x - h; o <= x + w; o += step)
+      lines += `<line x1="${o.toFixed(1)}" y1="${(y + h).toFixed(1)}" x2="${(o + h).toFixed(1)}" y2="${y.toFixed(1)}"/>`;
+  return `<clipPath id="${clipId}"><path d="${clipPathD}" clip-rule="evenodd"/></clipPath>
+    <g clip-path="url(#${clipId})" stroke="${color}" stroke-width="0.22" opacity="${opacity}">${lines}</g>`;
+}
+
+/** Abbreviate street types the way the office labels them (CAMPSIE ST, WILFRED AVE). */
+export function shortStreetName(name: string): string {
+  return name.toUpperCase()
+    .replace(/\bSTREET\b/, 'ST').replace(/\bROAD\b/, 'RD').replace(/\bAVENUE\b/, 'AVE')
+    .replace(/\bPARADE\b/, 'PDE').replace(/\bHIGHWAY\b/, 'HWY').replace(/\bDRIVE\b/, 'DR')
+    .replace(/\bLANE\b/, 'LN').replace(/\bPLACE\b/, 'PL').replace(/\bCRESCENT\b/, 'CRES')
+    .replace(/\bBOULEVARD\b/, 'BVD').replace(/\bTERRACE\b/, 'TCE').replace(/\bCOURT\b/, 'CT');
+}
+
+/**
+ * Does this road carry the white arrow band (on the site sheet), or is it a
+ * lane that only gets a plain label? NSW classifies both function and lane count, and neither alone
  * is enough: Dickson Lane is a "LocalRoad" (6) exactly like Hall Street, but
  * it is one lane wide — while an arterial with unrecorded lanes is still a
  * street. Hierarchy 7+ is service lane / track / path / access way.
@@ -308,22 +343,47 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   const usedCats = new Set<string>();
   const layers: string[] = [];
 
-  // ---- aerial base (no CSS filter: keeps JPEGs as JPEGs in the PDF) ------
-  // Tiles cover the axis-aligned fetch extent; place them in that rectangle
-  // (centered on the map) and rotate the whole group with the view.
-  {
+  // ---- ground --------------------------------------------------------------
+  // Paper: plain white, because the photograph under the tints greys every
+  // colour, and its grain is what the lot hairlines and the white streets
+  // already give. Aerial: the tiles under a white veil, with the tints thinned
+  // below so the photograph reads through them. The tiles are fetched either
+  // way; the CAD export carries them on its own layer.
+  const aerialGround = tpl().ground === 'aerial';
+  // Bus routes, on the map and in the legend: dashed, or round dots a little
+  // apart at half opacity so the route is there without competing.
+  // Finer than the catchment dots: the railway data has a line per track,
+  // so a corridor of three or four tracks stacks them into a band.
+  const RAIL_DOTS = 'stroke-width="1.15" stroke-dasharray="0.01,2.0" stroke-linecap="round" opacity="0.9"';
+  const busLineStyle = tpl().busLine === 'dotted'
+    ? 'stroke-width="1.1" stroke-dasharray="0.01,1.9" opacity="0.5"'
+    : 'stroke-width="0.9" stroke-dasharray="3,1.9" opacity="0.9"';
+  layers.push(`<rect x="0" y="0" width="${MAP_W}" height="${MAP_H}" fill="#ffffff"/>`);
+  if (aerialGround) {
+    // Tiles cover the axis-aligned fetch extent; place them in that rectangle
+    // (centred on the map) and rotate the whole group with the view.
     const s = MAP_W / (2 * view.halfW);
     const extW = (bundle.extent.xmax - bundle.extent.xmin) * s;
     const extH = (bundle.extent.ymax - bundle.extent.ymin) * s;
-    const ox = MAP_W / 2 - extW / 2;
-    const oy = MAP_H / 2 - extH / 2;
+    const ox = MAP_W / 2 - extW / 2, oy = MAP_H / 2 - extH / 2;
     const tiles = bundle.aerial.tiles
       .map((t) => `<image href="data/${t.file}" x="${(ox + t.left * extW).toFixed(2)}" y="${(oy + t.top * extH).toFixed(2)}"
           width="${(t.width * extW).toFixed(2)}" height="${(t.height * extH).toFixed(2)}" preserveAspectRatio="none"/>`)
       .join('\n');
-    layers.push(`<g transform="rotate(${view.rotationDeg.toFixed(2)}, ${MAP_W / 2}, ${MAP_H / 2})">${tiles}</g>`);
+    // A greyscale aerial keeps the photograph's grain without its greens and
+    // terracottas fighting the tints.
+    // Greyscale by a saturation blend (a neutral grey drawn over the photo in
+    // the 'saturation' mode, isolated to the photo), not an SVG filter: PDF
+    // carries blend modes natively, whereas Chromium rasterizes a filter over
+    // the whole aerial at print time, and under memory pressure that dropped
+    // every layer drawn after it.
+    const grey = tpl().aerialTone === 'grey';
+    layers.push(`<g style="isolation:isolate"><g transform="rotate(${view.rotationDeg.toFixed(2)}, ${MAP_W / 2}, ${MAP_H / 2})">${tiles}</g>` +
+      (grey ? `<rect x="0" y="0" width="${MAP_W}" height="${MAP_H}" fill="#808080" style="mix-blend-mode:saturation"/>` : '') + `</g>`);
+    layers.push(`<rect x="0" y="0" width="${MAP_W}" height="${MAP_H}" fill="#ffffff" opacity="${tpl().veil ?? 0.3}"/>`);
   }
-  layers.push(`<rect x="0" y="0" width="${MAP_W}" height="${MAP_H}" fill="#ffffff" opacity="0.36"/>`);
+  // Over the aerial the tints are thinned so the photograph shows through.
+  const tintScale = aerialGround ? (tpl().tintScale ?? 0.55) : 1;
 
   // ---- zoning base -------------------------------------------------------
   const zoningByCat: Record<string, string[]> = {};
@@ -335,17 +395,45 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     (zoningByCat[cat] ??= []).push(pathFromRings(rings, proj));
   }
   const catStyle = (c: { fill: string; opacity: number; stroke?: string }) =>
-    `fill="${c.fill}" opacity="${c.opacity}" fill-rule="evenodd"` +
-    (c.stroke ? ` stroke="${c.stroke}" stroke-width="0.7" stroke-linejoin="round"` : '');
+    `fill="${c.fill}" opacity="${(c.opacity * tintScale).toFixed(2)}" fill-rule="evenodd"` +
+    (c.stroke ? ` stroke="${c.stroke}" stroke-width="0.5" stroke-linejoin="round"` : '');
+  // A category's fill, then its texture clipped to the same shapes.
+  let tex = 0;
+  const mapBox = { x: 0, y: 0, w: MAP_W, h: MAP_H };
+  const catLayer = (c: { fill: string; opacity: number; stroke?: string; texture?: Texture; textureColor?: string }, paths: string[]) => {
+    let svg = `<g ${catStyle(c)}>` + paths.map((d) => `<path d="${d}"/>`).join('') + '</g>';
+    if (c.texture) svg += textureSvg(`tx${tex++}`, paths.join(''), c.texture, c.textureColor ?? c.stroke ?? c.fill, mapBox);
+    return svg;
+  };
 
-  for (const [cat, paths] of Object.entries(zoningByCat)) {
+  // The ePlanning mode: each zone code in its statutory colour, keyed by code,
+  // and nothing over it but the site and heritage, so the map reads as the
+  // LEP zoning map a planner already knows.
+  const lepZoning = tpl().zoning === 'lep';
+  const lepZones = new Map<string, { name: string; paths: string[] }>();
+  if (lepZoning) {
+    for (const f of bundle.zoning.features) {
+      const code = String(f.properties.SYM_CODE ?? '').trim().toUpperCase();
+      const rings = geomRings(f.geometry);
+      if (!code || !rings.length) continue;
+      let z = lepZones.get(code);
+      if (!z) lepZones.set(code, z = { name: String(f.properties.LAY_CLASS ?? '').trim(), paths: [] });
+      z.paths.push(pathFromRings(rings, proj));
+    }
+    for (const [code, z] of lepZones)
+      layers.push(`<g fill="${zoneFill(code)}" opacity="${(LEP_OPACITY * tintScale).toFixed(2)}" fill-rule="evenodd">` +
+        z.paths.map((d) => `<path d="${d}"/>`).join('') + '</g>');
+  } else for (const [cat, paths] of Object.entries(zoningByCat)) {
     const c = catById()[cat];
     usedCats.add(cat);
-    layers.push(`<g ${catStyle(c)}>` + paths.map((d) => `<path d="${d}"/>`).join('') + '</g>');
+    layers.push(catLayer(c, paths));
   }
+  const lepLegend = [...lepZones.entries()]
+    .sort(([a], [b]) => zoneOrder(a) - zoneOrder(b) || a.localeCompare(b))
+    .map(([code, z]) => ({ code, label: `${code} ${z.name.replace(new RegExp(`^${code}\\s*`, 'i'), '')}`.toUpperCase() }));
 
   // ---- railway corridor --------------------------------------------------
-  if (bundle.railCorridors.features.length) {
+  if (bundle.railCorridors.features.length && !lepZoning) {
     usedCats.add('railway');
     const c = catById().railway;
     const d = bundle.railCorridors.features.map((f) => pathFromRings(geomRings(f.geometry), proj)).join('');
@@ -360,15 +448,101 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     (poiPathsByCat[inst.cat] ??= []).push(pathFromRings(rings, proj));
   }
   for (const [cat, paths] of Object.entries(poiPathsByCat)) {
+    if (lepZoning) break;
     const c = catById()[cat];
     usedCats.add(cat);
-    layers.push(`<g ${catStyle(c)}>` + paths.map((d) => `<path d="${d}"/>`).join('') + '</g>');
+    layers.push(catLayer(c, paths));
+  }
+
+  // ---- streets: white strips over the tints -----------------------------
+  // The road reserve in white, as the office sheets and most figure-ground
+  // maps show it, so the blocks read as tinted islands on paper. Width by
+  // function hierarchy, in metres on the ground scaled to the sheet: an
+  // arterial reserve is about 30 m, a local street 20 m, a lane 8 m. A
+  // template over the aerial can leave them out: the photograph has them.
+  // Drawn under the buildings, so where a reserve's width runs over a
+  // footprint the building's outline still shows.
+  if (tpl().streets !== 'none') {
+    const mmPerM = 1000 / bundle.scale;
+    const reserveM = (h: number) => (h <= 2 ? 36 : h === 3 ? 30 : h === 4 ? 24 : h === 5 ? 20 : h === 6 ? 17 : 8);
+    const byWidth = new Map<number, string[]>();
+    for (const r of bundle.roads) {
+      const w = reserveM(r.hierarchy);
+      (byWidth.get(w) ?? byWidth.set(w, []).get(w)!).push(pathFromRings([r.coords as any], proj, false));
+    }
+    for (const [w, ds] of [...byWidth].sort((a, b) => b[0] - a[0]))
+      layers.push(`<path d="${ds.join('')}" fill="none" stroke="#ffffff" stroke-width="${(w * mmPerM).toFixed(2)}" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>`);
+  }
+
+  // ---- building footprints: the grain inside the blocks -------------------
+  // Each footprint takes the ink of the ground it stands on — the darker
+  // member of the tint's family — so a block reads as a firm figure on a light
+  // ground, and never black, which would weigh the sheet down again. The
+  // ground is the institution parcel or zoning polygon under the footprint's
+  // centroid; a footprint on no tinted ground is a mid grey.
+  if (bundle.buildings.buildings.length && tpl().footprints !== 'none') {
+    // One ground per shape, with all its rings: a point is inside when an odd
+    // number of them contain it, as the fill's evenodd rule draws it. Testing
+    // ring by ring took a hole for more of the shape — a classified-road
+    // reserve is one polygon whose holes are the street blocks, so every house
+    // in those blocks came out as infrastructure.
+    interface Ground { cat: string; rings: number[][][]; bbox: [number, number, number, number] }
+    const grounds: Ground[] = [];
+    const addGround = (cat: string, rings: number[][][]) => {
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (const ring of rings)
+        for (const [x, y] of ring) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+      if (rings.length) grounds.push({ cat, rings, bbox: [x0, y0, x1, y1] });
+    };
+    // Parcels first, so a school's buildings take the school's tint over the zone's.
+    for (const inst of bundle.institutionPolys) addGround(inst.cat, inst.rings);
+    for (const f of bundle.zoning.features) {
+      const cat = zoneToCategory(f.properties.SYM_CODE);
+      if (!cat) continue;
+      addGround(cat, geomRings(f.geometry));
+    }
+    const groundAt = (lon: number, lat: number): string | null => {
+      for (const g of grounds) {
+        const [x0, y0, x1, y1] = g.bbox;
+        if (lon < x0 || lon > x1 || lat < y0 || lat > y1) continue;
+        let inside = false;
+        for (const r of g.rings) if (pointInRing(lon, lat, r)) inside = !inside;
+        if (inside) return g.cat;
+      }
+      return null;
+    };
+    const byCat = new Map<string, string[]>();
+    for (const b of bundle.buildings.buildings) {
+      const cat = groundAt(b.centroid[0], b.centroid[1]) ?? '';
+      (byCat.get(cat) ?? byCat.set(cat, []).get(cat)!).push(pathFromRings(b.rings, proj));
+    }
+    for (const [cat, paths] of byCat) {
+      const c = cat ? catById()[cat] : undefined;
+      const ink = c?.figure ?? c?.fill ?? tpl().road;
+      const d = paths.map((p) => `<path d="${p}"/>`).join('');
+      if (tpl().footprints === 'outline') {
+        // Over the aerial the roofs are in the photograph: a heavy white
+        // outline round each building, no fill.
+        layers.push(`<g fill="none" stroke="#ffffff" stroke-width="0.25" stroke-linejoin="round">${d}</g>`);
+      } else if (tpl().footprints === 'colour') {
+        // The building in its family's strong colour on the family's pale
+        // ground; a building on no zone is a quiet grey.
+        const edge = tpl().footprintEdge;
+        layers.push(`<g fill="${c?.figure ?? '#d9d9d6'}" fill-rule="evenodd"${edge ? ` stroke="#ffffff" stroke-width="${edge}" stroke-linejoin="round"` : ''}>${d}</g>`);
+      } else {
+        // White buildings with a hairline of the family ink, so they read as
+        // figures on the tint and not as more of the white street.
+        layers.push(`<g fill="#ffffff" fill-opacity="0.92" stroke="${ink}" stroke-width="0.12" stroke-linejoin="round" fill-rule="evenodd">${d}</g>`);
+      }
+    }
   }
 
   // ---- thin cadastral lot-boundary overlay --------------------------------
   if (bundle.allLots.features.length) {
     const d = bundle.allLots.features.map((f) => pathFromRings(geomRings(f.geometry), proj)).join('');
-    layers.push(`<path d="${d}" fill="none" stroke="${tpl().road}" stroke-width="0.12" opacity="0.5"/>`);
+    layers.push(tpl().lots === 'white'
+      ? `<path d="${d}" fill="none" stroke="#ffffff" stroke-width="${tpl().lotWidth ?? 0.45}" opacity="0.95"/>`
+      : `<path d="${d}" fill="none" stroke="${tpl().road}" stroke-width="0.12" opacity="0.5"/>`);
   }
 
   // ---- heritage ----------------------------------------------------------
@@ -410,9 +584,15 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   // ---- transit route lines (train / tram / bus) --------------------------
   if (bundle.railLines.train.length) {
     const d = bundle.railLines.train.map((l) => pathFromRings([l as any], proj, false)).join('');
-    // classic railway line: dark stroke with white sleeper dashes on top
-    layers.push(`<path d="${d}" fill="none" stroke="${tpl().rail}" stroke-width="1.1"/>`);
-    layers.push(`<path d="${d}" fill="none" stroke="#ffffff" stroke-width="0.55" stroke-dasharray="2.4,2.4"/>`);
+    if (tpl().railLine === 'dotted') {
+      // A line of round dots in the rail colour, close-set so it reads as a
+      // track and not as another route.
+      layers.push(`<path d="${d}" fill="none" stroke="${tpl().rail}" ${RAIL_DOTS}/>`);
+    } else {
+      // classic railway line: dark stroke with white sleeper dashes on top
+      layers.push(`<path d="${d}" fill="none" stroke="${tpl().rail}" stroke-width="1.1"/>`);
+      layers.push(`<path d="${d}" fill="none" stroke="#ffffff" stroke-width="0.55" stroke-dasharray="2.4,2.4"/>`);
+    }
   }
   if (bundle.railLines.tram.length) {
     const d = bundle.railLines.tram.map((l) => pathFromRings([l as any], proj, false)).join('');
@@ -522,39 +702,48 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   }
   if (busSegments.length) {
     const d = busSegments.map((l) => pathFromRings([l as any], proj, false)).join('');
-    layers.push(`<path d="${d}" fill="none" stroke="${tpl().transit}" stroke-width="0.9" stroke-dasharray="3,1.9" opacity="0.9" stroke-linecap="round"/>`);
+    layers.push(`<path d="${d}" fill="none" stroke="${tpl().transit}" ${busLineStyle} stroke-linecap="round"/>`);
   }
 
   // ---- isochrones --------------------------------------------------------
+  const ISO_W = 3.4, ISO_OPACITY = 0.3;
   const isoStyle: Record<number, { color: string; label: string }> = {
     5: { color: tpl().walk5, label: '400m (5-MIN WALK)' },
     10: { color: tpl().walk10, label: '800m (10-MIN WALK)' },
   };
+  const lineIso = tpl().isochrone === 'line';
+  const dottedIso = tpl().isochrone === 'dotted';
+  const walkerIso = tpl().isochrone === 'walkers';
+  const labelledIso = tpl().isochrone === 'labelled';
+  // Round dots a little apart, the way the bus routes are drawn but bolder.
+  const ISO_DOTS = 'stroke-width="1.7" stroke-dasharray="0.01,2.8" stroke-linecap="round"';
   for (const iso of bundle.isochrones) {
     const st = isoStyle[iso.minutes] ?? { color: tpl().walk5, label: `${iso.minutes} MIN WALK` };
     const d = iso.rings.map((r) => pathFromRings([r as any], proj)).join('');
-    layers.push(`<path d="${d}" fill="none" stroke="${st.color}" stroke-width="1.3" stroke-dasharray="3.6,2.2" stroke-linejoin="round"/>`);
-  }
-  // Walker medallions ON the ring (the office style): white disc, ring in the
-  // isochrone colour, pedestrian icon. Spaced evenly along the ring's own
-  // length rather than at fixed compass bearings — a bearing with no ring
-  // point near it simply produced no marker, which is why most of them were
-  // missing on irregular or clipped catchments.
-  {
-    for (const iso of bundle.isochrones) {
-      const st = isoStyle[iso.minutes] ?? { color: tpl().walk5, label: `${iso.minutes} MIN WALK` };
-      // The longest ring is the catchment proper; the rest are slivers.
+    if (dottedIso) {
+      layers.push(`<path d="${d}" fill="none" stroke="${st.color}" ${ISO_DOTS} opacity="0.85" stroke-linejoin="round"/>`);
+    } else if (walkerIso) {
+      // The office style: a continuous line, a little transparent, with
+      // walker medallions spaced along the ring's own length, staggered
+      // between the two contours.
+      layers.push(`<path d="${d}" fill="none" stroke="${st.color}" stroke-width="1.4" opacity="0.65" stroke-linejoin="round"/>`);
       const ring = [...iso.rings].sort((a, b) => b.length - a.length)[0];
-      if (!ring) continue;
-      const pts: Pt[] = ring.map(([lon, lat]) => proj(lon, lat));
-      // Stagger the two contours so their markers do not line up radially.
-      const phase = iso.minutes === 5 ? 0.15 : 0.6;
-      for (const [x, y] of ringMarkers(pts, 4, phase)) {
-        layers.push(walkerMedallion(x, y, st.color));
+      if (ring) {
+        const pts: Pt[] = ring.map(([lon, lat]) => proj(lon, lat));
+        for (const [x, y] of ringMarkers(pts, 4, iso.minutes === 5 ? 0.15 : 0.6)) layers.push(walkerMedallion(x, y, st.color));
       }
+    } else if (labelledIso) {
+      // A plain continuous line; its time and distance are written along it below.
+      layers.push(`<path d="${d}" fill="none" stroke="${st.color}" stroke-width="0.9" stroke-linejoin="round"/>`);
+    } else if (lineIso) {
+      // A plain continuous line, nothing on it.
+      layers.push(`<path d="${d}" fill="none" stroke="${st.color}" stroke-width="1.2" stroke-linejoin="round"/>`);
+    } else {
+      // A broad, continuous, translucent band rather than a dashed hairline:
+      // the catchment reads as a soft edge the map shows through.
+      layers.push(`<path d="${d}" fill="none" stroke="${st.color}" stroke-width="${ISO_W}" opacity="${ISO_OPACITY}" stroke-linejoin="round" stroke-linecap="round"/>`);
     }
   }
-
   // ---- site --------------------------------------------------------------
   {
     usedCats.add('site');
@@ -563,30 +752,52 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   }
 
   // ---- transport symbols: one roundel style for all modes -----------------
-  // (white circle, colored ring and letter — same size for train/bus/tram)
-  const RR = 4.0;
+  // Same size for train/bus/tram; the template says whether it is a white
+  // disc with a coloured ring and letter, or a solid disc with a white letter.
+  // The place-number discs share this radius, so every dot on the map is one
+  // size: between the old roundel (4.0 mm) and the old number disc (2.9 mm).
+  const MARK_R = 3.4;
+  const RR = MARK_R;
+  const MARK_LETTER = T.mapSymbol * 0.82;
+  const solidRoundel = tpl().roundel === 'solid';
+  // Two-character labels (T1, T2…) set a step smaller to stay inside the disc.
+  const roundelAt = (r: number, letter: string, color: string, size0: number, size = letter.length > 1 ? size0 * 0.74 : size0) =>
+    solidRoundel
+      ? `<circle r="${r}" fill="${color}"/><text text-anchor="middle" dy="${(size * 0.36).toFixed(2)}" font-size="${size}" font-weight="700" fill="#ffffff">${letter}</text>`
+      : `<circle r="${r}" fill="#ffffff" stroke="${color}" stroke-width="${(r * 0.22).toFixed(2)}"/><text text-anchor="middle" dy="${(size * 0.36).toFixed(2)}" font-size="${size}" font-weight="700" fill="${color}">${letter}</text>`;
   const roundel = (x: number, y: number, letter: string, color: string) =>
-    `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})">
-      <circle r="${RR}" fill="#ffffff" stroke="${color}" stroke-width="0.9"/>
-      <text text-anchor="middle" dy="${(T.mapSymbol * 0.36).toFixed(1)}" font-size="${T.mapSymbol}" font-weight="700" fill="${color}">${letter}</text></g>`;
+    `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})">${roundelAt(RR, letter, color, MARK_LETTER)}</g>`;
 
-  layers.push(bundle.bus.busStops
-    .map(({ lon, lat }) => proj(lon, lat))
-    .filter(([x, y]) => x > 3 && x < MAP_W - 3 && y > 3 && y < MAP_H - 3)
-    .map(([x, y]) => roundel(x, y, 'B', tpl().transit))
-    .join('\n'));
-
-  layers.push(bundle.bus.tramStops
-    .map(({ lon, lat }) => proj(lon, lat))
-    .filter(([x, y]) => x > 3 && x < MAP_W - 3 && y > 3 && y < MAP_H - 3)
-    .map(([x, y]) => roundel(x, y, 'L', tpl().busRoute))
-    .join('\n'));
-
-  layers.push(bundle.stations
-    .map((s) => ({ p: proj(s.lon, s.lat), name: s.name.replace(/RAILWAY STATION$/i, 'TRAIN STATION'), tram: /LIGHT RAIL|TRAM/i.test(s.name) }))
+  // The station's name is in the key, not on the map: the only words on the
+  // map are the street names.
+  // More than one station of a kind on the sheet: each gets its own number
+  // (T1, T2… nearest the site first) so the key says which is which.
+  const stationsOnMap = bundle.stations
+    .map((s) => ({ p: proj(s.lon, s.lat), name: s.name.replace(/RAILWAY STATION$/i, 'TRAIN STATION'), tram: /LIGHT RAIL|TRAM/i.test(s.name), label: '' }))
     .filter(({ p: [x, y] }) => x > 3 && x < MAP_W - 3 && y > 3 && y < MAP_H - 3)
-    .map(({ p: [x, y], name, tram }) =>
-      roundel(x, y, tram ? 'L' : 'T', tram ? tpl().busRoute : tpl().site) + plainText(x, y - RR - 6, wrapLabel(name), T.poi, '#111111'))
+    .sort((a, b) => Math.hypot(a.p[0] - MAP_W / 2, a.p[1] - MAP_H / 2) - Math.hypot(b.p[0] - MAP_W / 2, b.p[1] - MAP_H / 2));
+  for (const tram of [false, true]) {
+    const group = stationsOnMap.filter((s) => s.tram === tram);
+    group.forEach((s, i) => { s.label = (tram ? 'L' : 'T') + (group.length > 1 ? String(i + 1) : ''); });
+  }
+
+  // Stops that would overlap a mark already placed are left off: a pair of
+  // stops either side of a road, or a stop under a station, reads as one
+  // roundel. Stations go first, then light rail stops, then bus stops.
+  const inMap = ([x, y]: [number, number]) => x > 3 && x < MAP_W - 3 && y > 3 && y < MAP_H - 3;
+  const placedMarks: [number, number][] = stationsOnMap.map((s) => s.p);
+  const clearOfMarks = (p: [number, number]) => {
+    // A clear gap is kept too: two discs just touching still read as a pair.
+    if (placedMarks.some(([x, y]) => Math.hypot(p[0] - x, p[1] - y) < RR * 2.6)) return false;
+    placedMarks.push(p);
+    return true;
+  };
+  const tramStopsOnMap = bundle.bus.tramStops.map(({ lon, lat }) => proj(lon, lat)).filter(inMap).filter(clearOfMarks);
+  const busStopsOnMap = bundle.bus.busStops.map(({ lon, lat }) => proj(lon, lat)).filter(inMap).filter(clearOfMarks);
+  layers.push(busStopsOnMap.map(([x, y]) => roundel(x, y, 'B', tpl().transit)).join('\n'));
+  layers.push(tramStopsOnMap.map(([x, y]) => roundel(x, y, 'L', tpl().busRoute)).join('\n'));
+  layers.push(stationsOnMap
+    .map(({ p: [x, y], tram, label }) => roundel(x, y, label, tram ? tpl().busRoute : tpl().site))
     .join('\n'));
 
   // ---- label occupancy ----------------------------------------------------
@@ -618,51 +829,18 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   const isFree = (a: Pt, b: Pt, r: number) => !claims.some((c) => segGap(a, b, c.a, c.b) < r + c.r);
   const reserve = (a: Pt, b: Pt, r: number) => { claims.push({ a, b, r }); };
 
-  // ---- POI labels ---------------------------------------------------------
-  // Institutions with a colored parcel are labeled at the parcel centroid so
-  // the name sits centered on its color field; open spaces are labeled from
-  // the named-area centroids (parks must always carry their name).
-  interface PoiLabel { x: number; y: number; lines: string[]; priority: number }
-  const poiLabels: PoiLabel[] = [];
+  // ---- places: a number on the map, the name in the key -------------------
+  // The only words on the map are the street names. Every institution and
+  // park carries a number instead — at the parcel's centroid, at the point
+  // itself where no parcel was coloured, and for a park at the centroid of
+  // the open-space field it sits in — and the legend carries the key, the
+  // institutions in the legend's category order, then the open spaces.
   const inBounds = (x: number, y: number) => x > 10 && x < MAP_W - 10 && y > 8 && y < MAP_H - 8;
-  const labeledNames = new Set<string>();
+  interface Place { n: number; name: string; cat: string; x: number; y: number }
+  const places: Place[] = [];
 
-  for (const inst of bundle.institutionPolys) {
-    let best = inst.rings[0], bestA = 0;
-    for (const r of inst.rings) {
-      let a = 0;
-      for (let i = 0; i < r.length - 1; i++) a += r[i][0] * r[i + 1][1] - r[i + 1][0] * r[i][1];
-      if (Math.abs(a) > bestA) { bestA = Math.abs(a); best = r; }
-    }
-    const [clon, clat] = ringCentroid(best);
-    const [x, y] = proj(clon, clat);
-    if (!inBounds(x, y)) continue;
-    labeledNames.add(inst.name.toUpperCase());
-    poiLabels.push({ x, y, lines: wrapLabel(inst.name), priority: 1 });
-  }
-  for (const p of bundle.complexPoints) {
-    if (!p.cat || labeledNames.has(p.name.toUpperCase())) continue;
-    const [x, y] = proj(p.lon, p.lat);
-    if (inBounds(x, y)) poiLabels.push({ x, y, lines: wrapLabel(p.name), priority: 2 });
-  }
-  // Open spaces: named areas (centered) first, loose park points as fallback.
-  const parkSeen = new Set<string>();
-  for (const p of bundle.parkAreas) {
-    if (p.areaM2 < 2000) continue;
-    const [x, y] = proj(p.lon, p.lat);
-    if (!inBounds(x, y)) continue;
-    parkSeen.add(p.name.toUpperCase());
-    poiLabels.push({ x, y, lines: wrapLabel(p.name), priority: 1 });
-  }
-  for (const p of bundle.parkPoints) {
-    if (parkSeen.has(p.name.toUpperCase())) continue;
-    const [x, y] = proj(p.lon, p.lat);
-    if (inBounds(x, y)) poiLabels.push({ x, y, lines: wrapLabel(p.name), priority: 2 });
-  }
-
-  // Recenter every label into the colored field it sits on: find the
-  // smallest institution/open-space polygon containing the label point and
-  // move the label to that ring's centroid.
+  // Open-space fields, so a park's number sits in the middle of its green
+  // rather than on the point the topo layer happens to carry.
   interface Field { ring: Pt[]; area: number; cx: number; cy: number }
   const fields: Field[] = [];
   const addField = (ringLL: number[][]) => {
@@ -675,7 +853,6 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     if (Math.abs(a) < 1) return;
     fields.push({ ring, area: Math.abs(a / 2), cx: cx / (3 * a), cy: cy / (3 * a) });
   };
-  for (const inst of bundle.institutionPolys) for (const r of inst.rings) addField(r);
   for (const f of bundle.zoning.features) {
     if (zoneToCategory(f.properties.SYM_CODE) !== 'openSpace') continue;
     for (const r of geomRings(f.geometry)) addField(r);
@@ -683,7 +860,7 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   const recenter = (x: number, y: number): Pt => {
     let best: Field | null = null;
     for (const f of fields) {
-      if (f.area > 25_000) continue; // whole-suburb polygons are not label fields
+      if (f.area > 25_000) continue; // whole-suburb polygons are not fields
       if (!pointInRing(x, y, f.ring as any)) continue;
       if (!best || f.area < best.area) best = f;
     }
@@ -691,140 +868,389 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     return [x, y];
   };
 
-  poiLabels.sort((a, b) => a.priority - b.priority);
-  const placed: Pt[] = [];
-  const poiTexts: string[] = [];
-  for (const pl of poiLabels) {
-    const [x, y] = recenter(pl.x, pl.y);
-    if (placed.some(([px, py]) => Math.hypot(px - x, py - y) < 15)) continue;
-    placed.push([x, y]);
-    poiTexts.push(plainText(x, y, pl.lines, T.poi));
-    // The block a wrapped name occupies: half its widest line either side of
-    // the centre, and half its stack of lines as the capsule radius.
-    const w = Math.max(...pl.lines.map((l) => l.length)) * T.poi * 0.62;
-    const h = pl.lines.length * T.poi * 1.08;
-    reserve([x - w / 2, y], [x + w / 2, y], h / 2);
+  {
+    const candidates: { name: string; cat: string; x: number; y: number; rank: number }[] = [];
+    for (const inst of bundle.institutionPolys) {
+      let best = inst.rings[0], bestA = 0;
+      for (const r of inst.rings) {
+        let a = 0;
+        for (let i = 0; i < r.length - 1; i++) a += r[i][0] * r[i + 1][1] - r[i + 1][0] * r[i][1];
+        if (Math.abs(a) > bestA) { bestA = Math.abs(a); best = r; }
+      }
+      const [clon, clat] = ringCentroid(best);
+      const [x, y] = proj(clon, clat);
+      candidates.push({ name: inst.name, cat: inst.cat, x, y, rank: 0 });
+    }
+    for (const p of bundle.complexPoints) {
+      if (!p.cat) continue;
+      const [x, y] = proj(p.lon, p.lat);
+      candidates.push({ name: p.name, cat: p.cat, x, y, rank: 0 });
+    }
+    // Named areas first (centred), loose park points as the fallback.
+    for (const p of bundle.parkAreas) {
+      if (p.areaM2 < 2000) continue;
+      const [x, y] = recenter(...proj(p.lon, p.lat));
+      candidates.push({ name: p.name, cat: 'openSpace', x, y, rank: 1 });
+    }
+    for (const p of bundle.parkPoints) {
+      const [x, y] = recenter(...proj(p.lon, p.lat));
+      candidates.push({ name: p.name, cat: 'openSpace', x, y, rank: 1 });
+    }
+    // Institutions in legend order, then the open spaces; within a name the
+    // better position was listed first and the sort is stable.
+    const order = categories().map((c) => c.id);
+    candidates.sort((a, b) => a.rank - b.rank || order.indexOf(a.cat) - order.indexOf(b.cat) || a.name.localeCompare(b.name));
+    const seen = new Set<string>();
+    for (const c of candidates) {
+      const key = c.name.toUpperCase();
+      if (seen.has(key) || !inBounds(c.x, c.y)) continue;
+      seen.add(key);
+      places.push({ n: places.length + 1, name: c.name, cat: c.cat, x: c.x, y: c.y });
+    }
   }
-
-  // ---- street labels: repeat along long roads like the original ----------
-  const roadByName = new Map<string, { segs: Pt[][]; hierarchy: number; lanes?: number }>();
-  for (const road of bundle.roads) {
-    const pts = road.coords.map(([lon, lat]) => proj(lon, lat))
-      .filter(([x, y]) => x > -60 && x < MAP_W + 60 && y > -60 && y < MAP_H + 60);
-    if (pts.length < 2) continue;
-    const entry = roadByName.get(road.name) ?? { segs: [], hierarchy: road.hierarchy, lanes: road.lanes };
-    entry.segs.push(pts);
-    // Most important classification and widest recorded section win: a road
-    // is only a lane if every segment of it says so.
-    entry.hierarchy = Math.min(entry.hierarchy, road.hierarchy);
-    if (road.lanes !== undefined) entry.lanes = Math.max(entry.lanes ?? 0, road.lanes);
-    roadByName.set(road.name, entry);
+  const NR = MARK_R;
+  // The key's markers stay at the legend's own size, so its rows still fit.
+  const KR = 2.9;
+  const hasTrainStations = bundle.stations.some((s) => !/LIGHT RAIL|TRAM/i.test(s.name));
+  const hasTramStops = bundle.bus.tramStops.length > 0 || bundle.stations.some((s) => /LIGHT RAIL|TRAM/i.test(s.name));
+  // The key has only the column the legend leaves it. A wide window
+  // (1:5000) keys forty places, so past twenty-four entries the rows
+  // tighten; and when even that would overrun the column, the places
+  // nearest the site are kept and the rest go, from the map as well as the
+  // key — a sheet about a site names what is around it, and the far corner
+  // of a wide window can go without its bowling club.
+  const keyMetrics = (count: number) => {
+    const many = count > 24;
+    return { size: many ? T.legend * 0.9 : T.legend, lineH: many ? 2.9 : 3.2, wrap: many ? 38 : 34, pitch: many ? 5.4 : 6.6, pad: many ? 2.6 : 3.6 };
+  };
+  const keyRowHeight = (name: string, m: ReturnType<typeof keyMetrics>) =>
+    Math.max(m.pitch, m.lineH * wrapLabel(name, m.wrap).length + m.pad);
+  const keyM = keyMetrics(places.length + stationsOnMap.length);
+  {
+    // The legend's own rows, counted the way the legend will draw them.
+    const legendRows = categories().filter((c) => usedCats.has(c.id) && c.id !== 'railway').length + lepLegend.length
+      + (hasTrainStations ? 1 : 0) + 1 + (hasTramStops ? 1 : 0)
+      + (bundle.railLines.train.length ? 1 : 0)
+      + (bundle.railLines.tram.length || bundle.bus.tramRouteSegments.length ? 1 : 0)
+      + 1 + 2;
+    const budget = legendHeightFor(meta) - (7 + legendRows * 10) - 6.5 - 4;
+    let used = stationsOnMap.reduce((h, st) => h + keyRowHeight(st.name, keyM), 0);
+    const dist = (pl: Place) => Math.hypot(pl.x - MAP_W / 2, pl.y - MAP_H / 2);
+    const keep = new Set<Place>();
+    for (const pl of [...places].sort((a, b) => dist(a) - dist(b))) {
+      const h = keyRowHeight(pl.name, keyM);
+      if (used + h > budget) break;
+      used += h;
+      keep.add(pl);
+    }
+    if (keep.size < places.length) {
+      const kept = places.filter((pl) => keep.has(pl));
+      places.length = 0;
+      kept.forEach((pl, i) => places.push({ ...pl, n: i + 1 }));
+    }
   }
-  let rid = 0;
-  const roadDefs: string[] = [];
-  const roadArrows: string[] = [];
-  const roadTexts: string[] = [];
-  interface Run { pts: Pt[]; cum: number[]; len: number }
-  // Important roads label first, so when two names compete for the same
-  // corner the arterial keeps its band and the side street moves along.
-  const roadOrder = [...roadByName].sort((a, b) => a[1].hierarchy - b[1].hierarchy);
-  for (const [name, r] of roadOrder) {
-    const label = shortStreetName(name);
-    const major = isMajorStreet(r.hierarchy, r.lanes, name);
-    const spacing = 1.5;  // wide tracking on banded names, mm
-    const arrowedTextLen = label.length * (T.street * 0.62 + spacing);
-    // Must be an over-estimate: a name wider than the path it is set on has
-    // its overflowing glyphs clamped onto the ends and they pile up.
-    const plainTextLen = label.length * (T.street * 0.72 + 0.4) + 3;
-    const slack = 6;   // spare road either side of a plain name
-    // The name plus the two arrow heads. The heads are 8mm each but taper, so
-    // 7mm of clearance either side keeps the text off the points while
-    // letting streets of about 45m still carry a band.
-    const bandLen = arrowedTextLen + 14;
+  // Two places on one block (a centre and its clinic) put their discs on top
+  // of each other; nudge such pairs apart along the line between them until
+  // the discs just clear, a few passes for a cluster.
+  for (let pass = 0; pass < 4; pass++) {
+    for (let i = 0; i < places.length; i++) for (let j = i + 1; j < places.length; j++) {
+      const a = places[i], b = places[j];
+      const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 0.01;
+      const gap = 2 * NR + 0.6 - d;
+      if (gap <= 0) continue;
+      const ux = (dx / d) * (gap / 2), uy = (dy / d) * (gap / 2);
+      a.x -= ux; a.y -= uy; b.x += ux; b.y += uy;
+    }
+  }
+  // Numbers run to two digits, so they are set a little smaller than the
+  // roundels' single letter in the same disc.
+  const numberSize = T.legend * 1.3;
+  const mapNumberSize = numberSize * (MARK_R / KR) * 0.92;
+  // A solid disc with the number knocked out of it: one small dark mark a
+  // reader can find, rather than a ring that competes with the roundels.
+  // Parks may take their own disc colour (discParkInk) apart from the
+  // institutions'.
+  const discFor = (n: number) => {
+    const pl = places.find((q) => q.n === n);
+    return (pl?.cat === 'openSpace' ? tpl().discParkInk : undefined) ?? tpl().discInk ?? tpl().streetInk;
+  };
+  const numberMarker = (x: number, y: number, n: number, r = NR, size = mapNumberSize) =>
+    `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})">
+      <circle r="${r}" fill="${discFor(n)}"/>
+      <text text-anchor="middle" dy="${(size * 0.36).toFixed(2)}" font-size="${size.toFixed(2)}" font-weight="700" fill="#ffffff">${n}</text></g>`;
+  for (const pl of places) reserve([pl.x, pl.y], [pl.x, pl.y], NR + 1);
+  layers.push(places.map((pl) => numberMarker(pl.x, pl.y, pl.n)).join('\n'));
 
-    const runs: Run[] = mergeRuns(r.segs)
-      .map((pts) => { const cum = arcTable(pts); return { pts, cum, len: cum[cum.length - 1] }; })
-      .sort((a, b) => b.len - a.len);
-    if (!runs.length) continue;
-
-    // A street is labelled the same way everywhere it appears: the white band
-    // means "through street", so a major road must not show up banded on one
-    // run and as plain text on another just because that run is short. If no
-    // run of a major street is long enough for a band, it still needs a name.
-    const banded = major && runs[0].len >= bandLen;
-    const slotLen = banded ? bandLen : plainTextLen + slack;
-
-    // Half the height of what this name will occupy — the arrow band is much
-    // deeper than the bare text it replaces.
-    const halfW = banded ? 6.6 : T.street * 0.62;
-
-    // Repeat the name along a long street rather than labelling it once.
-    let placed = 0;
-    for (const run of runs) {
-      if (placed >= 3 || run.len < slotLen) break;
-      const n = Math.min(3 - placed, Math.max(1, Math.floor(run.len / 210)));
-      for (let i = 0; i < n; i++) {
-        const s = ((i + 0.5) / n) * run.len;
-        // Slide the name along its road until it sits inside the map, on
-        // straight-enough geometry, and on ground no earlier label has taken.
-        // A street name that cannot find clear road is dropped rather than
-        // overprinted — searching outward from the ideal spot keeps it as
-        // close to its share of the road as the sheet allows.
+  // ---- catchment labels: the walking time written along its ring ----------
+  // Placed before the street names, which slide along their roads and so are
+  // the ones to give way. Each ring carries its time twice, half a ring
+  // apart, on a straight stretch inside the map and clear of other labels;
+  // the text sits just outside the line, reading left to right.
+  if (dottedIso || labelledIso) {
+    const isoSize = T.street * 0.9;
+    const isoDefs: string[] = [];
+    const isoTexts: string[] = [];
+    let iid = 0;
+    for (const iso of bundle.isochrones) {
+      const color = iso.minutes === 5 ? tpl().walk5 : tpl().walk10;
+      const label = labelledIso ? `${iso.minutes} MIN · ${iso.minutes * 80}M` : `${iso.minutes} MIN`;
+      const textLen = label.length * (isoSize * 0.6 + 0.3) + 2;
+      const slotLen = textLen + 4;
+      const ring = [...iso.rings].sort((a, b) => b.length - a.length)[0];
+      if (!ring) continue;
+      const pts: Pt[] = ring.map(([lon, lat]) => proj(lon, lat));
+      const cum = arcTable(pts);
+      const total = cum[cum.length - 1];
+      if (!(total > slotLen * 2)) continue;
+      // Start the 5- and 10-minute searches at different points of their
+      // rings, so the two labels do not end up side by side.
+      const phase = iso.minutes === 5 ? 0.12 : 0.37;
+      let placed = 0;
+      for (const target of [phase, phase + 0.5]) {
+        const want = ((target % 1) + 1) % 1 * total;
         let slot: Pt[] | null = null;
-        for (let k = 0; k <= 16 && !slot; k++) {
-          const d = (k % 2 ? -1 : 1) * Math.ceil(k / 2) * 0.3;
-          const c = s + d * slotLen;
-          if (c - slotLen / 2 < 0 || c + slotLen / 2 > run.len) continue;
-          const win = sliceAt(run.pts, run.cum, c - slotLen / 2, c + slotLen / 2);
-          const m = halfW + 2;
+        for (let k = 0; k <= 40 && !slot; k++) {
+          const c = want + (k % 2 ? -1 : 1) * Math.ceil(k / 2) * slotLen * 0.5;
+          const c0 = c - slotLen / 2, c1 = c + slotLen / 2;
+          if (c0 < 0 || c1 > total) continue;
+          const win = sliceAt(pts, cum, c0, c1);
+          const m = isoSize + 3;
           if (win.some(([x, y]) => x < m || x > MAP_W - m || y < m || y > MAP_H - m)) continue;
-          if (!straightEnough(win, 2.2)) continue;
-          if (banded && !arrowAlong(win, slotLen)) continue;
-          // A plain name is set on the slot's chord, not on the road's own
-          // vertices: a 2mm dog-leg where two road sections join turns the
-          // path tangent through 90 degrees and shuffles the glyphs over each
-          // other, and the deviation test above already keeps the chord
-          // within 2mm of the real road.
-          if (!banded && Math.hypot(win[win.length - 1][0] - win[0][0],
-                                    win[win.length - 1][1] - win[0][1]) < plainTextLen) continue;
-          if (!isFree(win[0], win[win.length - 1], halfW)) continue;
+          if (!straightEnough(win, 1.6)) continue;
+          const a = win[0], b = win[win.length - 1];
+          if (Math.hypot(b[0] - a[0], b[1] - a[1]) < textLen) continue;
+          if (!isFree(a, b, isoSize * 0.9)) continue;
           slot = win;
         }
         if (!slot) continue;
-        reserve(slot[0], slot[slot.length - 1], halfW);
+        let a = slot[0], b = slot[slot.length - 1];
+        reserve(a, b, isoSize * 0.9);
+        if (a[0] > b[0]) [a, b] = [b, a];
+        const id = `iso${iid++}`;
+        isoDefs.push(`<path id="${id}" d="M${a[0].toFixed(2)},${a[1].toFixed(2)}L${b[0].toFixed(2)},${b[1].toFixed(2)}" fill="none"/>`);
+        isoTexts.push(`<text font-family="${tpl().streetFont}" font-size="${isoSize.toFixed(2)}" font-weight="700" letter-spacing="0.3" dy="${(-1.3).toFixed(2)}" fill="${color}">
+          <textPath href="#${id}" startOffset="50%" text-anchor="middle">${label}</textPath></text>`);
         placed++;
+      }
+    }
+    layers.push(`<defs>${isoDefs.join('')}</defs>`);
+    layers.push(isoTexts.join('\n'));
+  }
 
-        let pts = banded ? slot : [slot[0], slot[slot.length - 1]];
-        if (pts[0][0] > pts[pts.length - 1][0]) pts = [...pts].reverse();
-        const id = `rd${rid++}`;
-        const d2 = pts.map((p, i2) => `${i2 === 0 ? 'M' : 'L'}${p[0].toFixed(2)},${p[1].toFixed(2)}`).join('');
-        roadDefs.push(`<path id="${id}" d="${d2}" fill="none"/>`);
-        const arrow = banded ? arrowAlong(pts, slotLen) : null;
-        if (arrow) {
-          roadArrows.push(arrow.svg);
-          // Rotated text centered on the band. textLength+lengthAdjust gives an
-          // exact tracked width — Chromium mis-centers letter-spaced text
-          // (anchor uses the unspaced width), so avoid letter-spacing here.
-          let ta = arrow.angDeg;
-          if (ta > 90) ta -= 180;
-          if (ta < -90) ta += 180;
-          roadTexts.push(`<text transform="translate(${arrow.cx.toFixed(1)},${arrow.cy.toFixed(1)}) rotate(${ta.toFixed(1)})"
-            x="${(-arrowedTextLen / 2).toFixed(1)}" y="1.65" textLength="${arrowedTextLen.toFixed(1)}" lengthAdjust="spacing"
-            font-size="${T.street}" font-weight="700" fill="${tpl().ink}">${esc(label)}</text>`);
-        } else {
-          // Lane, path, or a street too short to band: plain bold label along
-          // the line, same size as the rest of the map text, no halo.
-          roadTexts.push(`<text font-size="${T.street}" font-weight="700" letter-spacing="0.4" dy="-1.4" fill="${tpl().ink}">
+  if (tpl().streetLabels === 'band') {
+    // ---- street labels: the office's arrow bands ----------------------------
+    // A through street carries its name in a white double-headed arrow band; a
+    // lane gets a plain bold label along the line. The original labeller, kept
+    // whole for the templates that ask for it.
+    const roadByName = new Map<string, { segs: Pt[][]; hierarchy: number; lanes?: number }>();
+    for (const road of bundle.roads) {
+      const pts = road.coords.map(([lon, lat]) => proj(lon, lat))
+        .filter(([x, y]) => x > -60 && x < MAP_W + 60 && y > -60 && y < MAP_H + 60);
+      if (pts.length < 2) continue;
+      const entry = roadByName.get(road.name) ?? { segs: [], hierarchy: road.hierarchy, lanes: road.lanes };
+      entry.segs.push(pts);
+      // Most important classification and widest recorded section win: a road
+      // is only a lane if every segment of it says so.
+      entry.hierarchy = Math.min(entry.hierarchy, road.hierarchy);
+      if (road.lanes !== undefined) entry.lanes = Math.max(entry.lanes ?? 0, road.lanes);
+      roadByName.set(road.name, entry);
+    }
+    let rid = 0;
+    const roadDefs: string[] = [];
+    const roadArrows: string[] = [];
+    const roadTexts: string[] = [];
+    interface Run { pts: Pt[]; cum: number[]; len: number }
+    // Important roads label first, so when two names compete for the same
+    // corner the arterial keeps its band and the side street moves along.
+    const roadOrder = [...roadByName].sort((a, b) => a[1].hierarchy - b[1].hierarchy);
+    for (const [name, r] of roadOrder) {
+      const label = shortStreetName(name);
+      const major = isMajorStreet(r.hierarchy, r.lanes, name);
+      const spacing = 1.5;  // wide tracking on banded names, mm
+      const arrowedTextLen = label.length * (T.street * 0.62 + spacing);
+      // Must be an over-estimate: a name wider than the path it is set on has
+      // its overflowing glyphs clamped onto the ends and they pile up.
+      const plainTextLen = label.length * (T.street * 0.72 + 0.4) + 3;
+      const slack = 6;   // spare road either side of a plain name
+      // The name plus the two arrow heads. The heads are 8mm each but taper, so
+      // 7mm of clearance either side keeps the text off the points while
+      // letting streets of about 45m still carry a band.
+      const bandLen = arrowedTextLen + 14;
+
+      const runs: Run[] = mergeRuns(r.segs)
+        .map((pts) => { const cum = arcTable(pts); return { pts, cum, len: cum[cum.length - 1] }; })
+        .sort((a, b) => b.len - a.len);
+      if (!runs.length) continue;
+
+      // A street is labelled the same way everywhere it appears: the white band
+      // means "through street", so a major road must not show up banded on one
+      // run and as plain text on another just because that run is short. If no
+      // run of a major street is long enough for a band, it still needs a name.
+      const banded = major && runs[0].len >= bandLen;
+      const slotLen = banded ? bandLen : plainTextLen + slack;
+
+      // Half the height of what this name will occupy — the arrow band is much
+      // deeper than the bare text it replaces.
+      const halfW = banded ? 6.6 : T.street * 0.62;
+
+      // Repeat the name along a long street rather than labelling it once.
+      let placed = 0;
+      for (const run of runs) {
+        if (placed >= 3 || run.len < slotLen) break;
+        const n = Math.min(3 - placed, Math.max(1, Math.floor(run.len / 210)));
+        for (let i = 0; i < n; i++) {
+          const s = ((i + 0.5) / n) * run.len;
+          // Slide the name along its road until it sits inside the map, on
+          // straight-enough geometry, and on ground no earlier label has taken.
+          // A street name that cannot find clear road is dropped rather than
+          // overprinted — searching outward from the ideal spot keeps it as
+          // close to its share of the road as the sheet allows.
+          let slot: Pt[] | null = null;
+          for (let k = 0; k <= 16 && !slot; k++) {
+            const d = (k % 2 ? -1 : 1) * Math.ceil(k / 2) * 0.3;
+            const c = s + d * slotLen;
+            if (c - slotLen / 2 < 0 || c + slotLen / 2 > run.len) continue;
+            const win = sliceAt(run.pts, run.cum, c - slotLen / 2, c + slotLen / 2);
+            const m = halfW + 2;
+            if (win.some(([x, y]) => x < m || x > MAP_W - m || y < m || y > MAP_H - m)) continue;
+            if (!straightEnough(win, 2.2)) continue;
+            if (banded && !arrowAlong(win, slotLen)) continue;
+            // A plain name is set on the slot's chord, not on the road's own
+            // vertices: a 2mm dog-leg where two road sections join turns the
+            // path tangent through 90 degrees and shuffles the glyphs over each
+            // other, and the deviation test above already keeps the chord
+            // within 2mm of the real road.
+            if (!banded && Math.hypot(win[win.length - 1][0] - win[0][0],
+                                      win[win.length - 1][1] - win[0][1]) < plainTextLen) continue;
+            if (!isFree(win[0], win[win.length - 1], halfW)) continue;
+            slot = win;
+          }
+          if (!slot) continue;
+          reserve(slot[0], slot[slot.length - 1], halfW);
+          placed++;
+
+          let pts = banded ? slot : [slot[0], slot[slot.length - 1]];
+          if (pts[0][0] > pts[pts.length - 1][0]) pts = [...pts].reverse();
+          const id = `rd${rid++}`;
+          const d2 = pts.map((p, i2) => `${i2 === 0 ? 'M' : 'L'}${p[0].toFixed(2)},${p[1].toFixed(2)}`).join('');
+          roadDefs.push(`<path id="${id}" d="${d2}" fill="none"/>`);
+          const arrow = banded ? arrowAlong(pts, slotLen) : null;
+          if (arrow) {
+            roadArrows.push(arrow.svg);
+            // Rotated text centered on the band. textLength+lengthAdjust gives an
+            // exact tracked width — Chromium mis-centers letter-spaced text
+            // (anchor uses the unspaced width), so avoid letter-spacing here.
+            let ta = arrow.angDeg;
+            if (ta > 90) ta -= 180;
+            if (ta < -90) ta += 180;
+            roadTexts.push(`<text transform="translate(${arrow.cx.toFixed(1)},${arrow.cy.toFixed(1)}) rotate(${ta.toFixed(1)})"
+              x="${(-arrowedTextLen / 2).toFixed(1)}" y="1.65" textLength="${arrowedTextLen.toFixed(1)}" lengthAdjust="spacing"
+              font-size="${T.street}" font-weight="700" fill="${tpl().ink}">${esc(label)}</text>`);
+          } else {
+            // Lane, path, or a street too short to band: plain bold label along
+            // the line, same size as the rest of the map text, no halo.
+            roadTexts.push(`<text font-size="${T.street}" font-weight="700" letter-spacing="0.4" dy="-1.4" fill="${tpl().ink}">
+              <textPath href="#${id}" startOffset="50%" text-anchor="middle">${esc(label)}</textPath></text>`);
+          }
+        }
+      }
+    }
+    layers.push(`<defs>${roadDefs.join('')}</defs>`);
+    layers.push(roadArrows.join('\n'));
+    layers.push(roadTexts.join('\n'));
+  } else {
+    // ---- street labels: repeat along long roads like the original ----------
+    // Names sit plainly on the white street, no arrow band: the band was the
+    // office's old device and it crowded the sheet. Through streets and lanes
+    // are set the same way; the width of the white strip already says which
+    // is which.
+    const roadByName = new Map<string, { segs: Pt[][]; hierarchy: number }>();
+    for (const road of bundle.roads) {
+      const pts = road.coords.map(([lon, lat]) => proj(lon, lat))
+        .filter(([x, y]) => x > -60 && x < MAP_W + 60 && y > -60 && y < MAP_H + 60);
+      if (pts.length < 2) continue;
+      const entry = roadByName.get(road.name) ?? { segs: [], hierarchy: road.hierarchy };
+      entry.segs.push(pts);
+      // Most important classification wins.
+      entry.hierarchy = Math.min(entry.hierarchy, road.hierarchy);
+      roadByName.set(road.name, entry);
+    }
+    let rid = 0;
+    const roadDefs: string[] = [];
+    const roadTexts: string[] = [];
+    interface Run { pts: Pt[]; cum: number[]; len: number }
+    // Important roads label first, so when two names compete for the same
+    // corner the arterial keeps its place and the side street moves along.
+    const roadOrder = [...roadByName].sort((a, b) => a[1].hierarchy - b[1].hierarchy);
+    // The name is centred on the street's own line: a cap height of about
+    // 0.72 em lifted by half of that puts the letters' middle on the path.
+    const streetDy = (T.street * 0.36).toFixed(2);
+    const narrowStreets = /narrow|condensed/i.test(tpl().streetFont);
+    for (const [name, r] of roadOrder) {
+      const label = shortStreetName(name);
+      // Must be an over-estimate: a name wider than the path it is set on has
+      // its overflowing glyphs clamped onto the ends and they pile up. The
+      // narrow face runs about four fifths the width of the grotesk.
+      const textLen = label.length * (T.street * (narrowStreets ? 0.58 : 0.72) + 0.4) + 3;
+      const slack = 6;   // spare road either side of the name
+      const slotLen = textLen + slack;
+
+      const runs: Run[] = mergeRuns(r.segs)
+        .map((pts) => { const cum = arcTable(pts); return { pts, cum, len: cum[cum.length - 1] }; })
+        .sort((a, b) => b.len - a.len);
+      if (!runs.length) continue;
+
+      // Half the height of what this name will occupy.
+      const halfW = T.street * 0.62;
+
+      // Repeat the name along a long street rather than labelling it once.
+      let placed = 0;
+      for (const run of runs) {
+        if (placed >= 3 || run.len < slotLen) break;
+        const n = Math.min(3 - placed, Math.max(1, Math.floor(run.len / 210)));
+        for (let i = 0; i < n; i++) {
+          const s = ((i + 0.5) / n) * run.len;
+          // Slide the name along its road until it sits inside the map, on
+          // straight-enough geometry, and on ground no earlier label has taken.
+          // A street name that cannot find clear road is dropped rather than
+          // overprinted — searching outward from the ideal spot keeps it as
+          // close to its share of the road as the sheet allows.
+          let slot: Pt[] | null = null;
+          for (let k = 0; k <= 16 && !slot; k++) {
+            const d = (k % 2 ? -1 : 1) * Math.ceil(k / 2) * 0.3;
+            const c = s + d * slotLen;
+            if (c - slotLen / 2 < 0 || c + slotLen / 2 > run.len) continue;
+            const win = sliceAt(run.pts, run.cum, c - slotLen / 2, c + slotLen / 2);
+            const m = halfW + 2;
+            if (win.some(([x, y]) => x < m || x > MAP_W - m || y < m || y > MAP_H - m)) continue;
+            if (!straightEnough(win, 2.2)) continue;
+            // The name is set on the slot's chord, not on the road's own
+            // vertices: a 2mm dog-leg where two road sections join turns the
+            // path tangent through 90 degrees and shuffles the glyphs over each
+            // other, and the deviation test above already keeps the chord
+            // within 2mm of the real road.
+            if (Math.hypot(win[win.length - 1][0] - win[0][0],
+                           win[win.length - 1][1] - win[0][1]) < textLen) continue;
+            if (!isFree(win[0], win[win.length - 1], halfW)) continue;
+            slot = win;
+          }
+          if (!slot) continue;
+          reserve(slot[0], slot[slot.length - 1], halfW);
+          placed++;
+
+          let pts = [slot[0], slot[slot.length - 1]];
+          if (pts[0][0] > pts[1][0]) pts = [...pts].reverse();
+          const id = `rd${rid++}`;
+          const d2 = pts.map((p, i2) => `${i2 === 0 ? 'M' : 'L'}${p[0].toFixed(2)},${p[1].toFixed(2)}`).join('');
+          roadDefs.push(`<path id="${id}" d="${d2}" fill="none"/>`);
+          roadTexts.push(`<text font-family="${tpl().streetFont}" font-size="${T.street}" font-weight="700" letter-spacing="0.4" dy="${streetDy}" fill="${tpl().streetInk}">
             <textPath href="#${id}" startOffset="50%" text-anchor="middle">${esc(label)}</textPath></text>`);
         }
       }
     }
+    layers.push(`<defs>${roadDefs.join('')}</defs>`);
+    layers.push(roadTexts.join('\n'));
   }
-  layers.push(`<defs>${roadDefs.join('')}</defs>`);
-  layers.push(roadArrows.join('\n'));
-  layers.push(roadTexts.join('\n'));
-
-  layers.push(poiTexts.join('\n'));
 
   // ---- legend (title column, measured geometry) ---------------------------
   const hobByCat = computeHobByCat(bundle);
@@ -839,15 +1265,25 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     legendSvg += row + '</g>';
     ly += 10;
   };
-  const box = (c: { fill: string; opacity: number; stroke?: string }) =>
+  const swatchBox = { x: SWATCH_X, y: 0, w: SWATCH_W, h: 6.5 };
+  const swatchD = `M${SWATCH_X},0h${SWATCH_W}v6.5h${-SWATCH_W}Z`;
+  const box = (c: { fill: string; opacity: number; stroke?: string; texture?: Texture; textureColor?: string; figure?: string }) =>
     `<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="${c.fill}" fill-opacity="${Math.min(1, c.opacity + 0.15)}"
-      stroke="${c.stroke ?? '#999'}" stroke-width="${c.stroke ? 0.9 : 0.2}"/>`;
+      stroke="${c.stroke ?? '#999'}" stroke-width="${c.stroke ? 0.9 : 0.2}"/>` +
+    (c.texture ? textureSvg(`ltx${tex++}`, swatchD, c.texture, c.textureColor ?? c.stroke ?? c.fill, swatchBox) : '') +
+    // With coloured buildings the swatch shows a few of them on their ground.
+    (tpl().footprints === 'colour' && c.figure && c.figure !== c.fill
+      ? `<g fill="${c.figure}">${[[1.4, 1.3, 4.2, 2.4], [1.4, 4.4, 4.2, 1.0], [6.8, 1.3, 3.0, 3.9], [11.2, 1.3, 4.8, 2.1], [11.2, 4.1, 2.6, 1.3], [17.4, 1.3, 4.2, 3.9]]
+        .map(([x, y, w, h]) => `<rect x="${(SWATCH_X + x).toFixed(1)}" y="${y}" width="${w}" height="${h}"/>`).join('')}</g>`
+      : '');
   for (const c of categories()) {
     if (!usedCats.has(c.id)) continue;
     if (c.id === 'railway') continue; // on the map, not in the legend
     const hob = hobByCat[c.id];
     if (c.id === 'site') {
       legendRow(`<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="${tpl().site}" fill-opacity="0.55" stroke="${tpl().site}" stroke-width="0.9" stroke-dasharray="2.2,1.1"/>`, ['SITE']);
+      for (const z of lepLegend)
+        legendRow(`<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="${zoneFill(z.code)}" stroke="#999" stroke-width="0.2"/>`, wrapLabel(z.label, 26));
     } else if (c.id === 'heritage') {
       let hlines = '';
       for (let o = SWATCH_X - 6.5; o <= SWATCH_X + SWATCH_W; o += 2)
@@ -861,22 +1297,51 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   // transport / analysis symbols
   const symC = SWATCH_X + SWATCH_W / 2;
   const legendRoundel = (letter: string, color: string) =>
-    `<g transform="translate(${symC},3.2)"><circle r="3.4" fill="#fff" stroke="${color}" stroke-width="0.8"/><text text-anchor="middle" dy="1.9" font-size="5.7" font-weight="700" fill="${color}">${letter}</text></g>`;
-  const hasTrainStations = bundle.stations.some((s) => !/LIGHT RAIL|TRAM/i.test(s.name));
-  const hasTramStops = bundle.bus.tramStops.length > 0 || bundle.stations.some((s) => /LIGHT RAIL|TRAM/i.test(s.name));
+    `<g transform="translate(${symC},3.2)">${roundelAt(3.4, letter, color, 5.7)}</g>`;
   if (hasTrainStations) legendRow(legendRoundel('T', tpl().site), ['TRAIN STATION']);
   legendRow(legendRoundel('B', tpl().transit), ['BUS STOPS']);
   if (hasTramStops) legendRow(legendRoundel('L', tpl().busRoute), ['LIGHT RAIL STOP']);
   if (bundle.railLines.train.length)
-    legendRow(`<g><line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${tpl().rail}" stroke-width="1.1"/><line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="#fff" stroke-width="0.55" stroke-dasharray="2.4,2.4"/></g>`, ['TRAIN LINE']);
+    legendRow(tpl().railLine === 'dotted'
+      ? `<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${tpl().rail}" ${RAIL_DOTS}/>`
+      : `<g><line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${tpl().rail}" stroke-width="1.1"/><line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="#fff" stroke-width="0.55" stroke-dasharray="2.4,2.4"/></g>`, ['TRAIN LINE']);
   if (bundle.railLines.tram.length || bundle.bus.tramRouteSegments.length)
     legendRow(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${tpl().busRoute}" stroke-width="0.9" stroke-dasharray="3.4,1.8"/>`, ['TRAM ROUTE']);
-  legendRow(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${tpl().transit}" stroke-width="0.9" stroke-dasharray="3,1.9"/>`, ['BUS ROUTE']);
-  const legendIso = (color: string) =>
-    `<g><line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${color}" stroke-width="1.1" stroke-dasharray="3.6,2.2"/>
-     <g transform="translate(${symC},3.2)"><circle r="3.3" fill="#fff" stroke="${color}" stroke-width="0.9"/>${walkerGlyph(color, 0.24)}</g></g>`;
-  legendRow(legendIso(tpl().walk5), ['ISOCHRONE -'], '400m/5 min walk');
-  legendRow(legendIso(tpl().walk10), ['ISOCHRONE -'], '800m/10 min walk');
+  legendRow(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${tpl().transit}" ${busLineStyle} stroke-linecap="round"/>`, ['BUS ROUTE']);
+  const legendIso = (color: string, minutes: number) => dottedIso
+    ? `<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${color}" ${ISO_DOTS} opacity="0.85"/>`
+    : walkerIso
+    ? `<g><line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${color}" stroke-width="1.2" opacity="0.65"/>
+       <g transform="translate(${symC},3.2)"><circle r="2.9" fill="${color}"/>${walkerGlyph('#fff', 0.215)}</g></g>`
+    : lineIso
+    ? `<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${color}" stroke-width="1.2"/>`
+    : labelledIso
+    ? `<line x1="${SWATCH_X}" y1="4.4" x2="${SWATCH_X + SWATCH_W}" y2="4.4" stroke="${color}" stroke-width="0.9"/>` +
+      `<text x="${symC}" y="3.1" text-anchor="middle" font-family="${tpl().streetFont}" font-size="${(T.street * 0.62).toFixed(2)}" font-weight="700" fill="${color}">${minutes} MIN · ${minutes * 80}M</text>`
+    : `<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${color}" stroke-width="${ISO_W}" opacity="${ISO_OPACITY}" stroke-linecap="round"/>`;
+  legendRow(legendIso(tpl().walk5, 5), ['ISOCHRONE -'], '400m/5 min walk');
+  legendRow(legendIso(tpl().walk10, 10), ['ISOCHRONE -'], '800m/10 min walk');
+
+  // ---- the key: every numbered place, then the stations ------------------
+  if (places.length || stationsOnMap.length) {
+    ly += 2;
+    legendSvg += `<text x="${SWATCH_X}" y="${ly}" font-size="${T.legend}" font-weight="700" fill="#222">KEY</text>`;
+    ly += 4.5;
+    // Rows at the metrics the budget above was measured with.
+    const keyRow = (marker: string, name: string) => {
+      const lines = wrapLabel(name, keyM.wrap);
+      const y0 = lines.length === 1 ? KR + 1.0 : KR - 0.4;
+      let row = `<g transform="translate(0,${ly.toFixed(1)})">${marker}`;
+      lines.forEach((l, k) => { row += `<text x="${LABEL_X}" y="${(y0 + k * keyM.lineH).toFixed(1)}" font-size="${keyM.size.toFixed(2)}" fill="#222">${esc(l)}</text>`; });
+      legendSvg += row + '</g>';
+      ly += keyRowHeight(name, keyM);
+    };
+    for (const pl of places) keyRow(numberMarker(symC, KR, pl.n, KR, numberSize), pl.name);
+    for (const st of stationsOnMap) {
+      const color = st.tram ? tpl().busRoute : tpl().site;
+      keyRow(`<g transform="translate(${symC},${KR})">${roundelAt(KR, st.label, color, numberSize)}</g>`, st.name);
+    }
+  }
 
   return sheetHtml({
     meta,

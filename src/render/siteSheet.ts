@@ -5,11 +5,13 @@
 import type { SiteBundle } from '../pipeline.js';
 import { lonLatToMercator, mercatorToLonLat, mercatorScaleFactor } from '../lib/geo.js';
 import {
-  makeProjector, plainText, haloText, wrapLabel, arrowAlong, shortStreetName,
-  isMajorStreet, pathFromRings, geomRings, type Pt, type SheetMeta,
+  makeProjector, plainText, haloText, wrapLabel, shortStreetName,
+  pathFromRings, geomRings, textureSvg, type Pt, type SheetMeta,
 } from './sheet.js';
+import { catById, zoneToCategory } from './model.js';
+import { METRES_PER_STOREY } from '../fetch/buildings.js';
 import { sheetHtml, esc, T, SWATCH_X, SWATCH_W, LABEL_X, MAP_W, MAP_H } from './chrome.js';
-import { tpl } from './template.js';
+import { tpl, withTemplate, siteTheme } from './template.js';
 import { exitPoint } from '../fetch/views.js';
 import { NOMINAL_CANOPY_M } from '../fetch/trees.js';
 import { buildParkingBands, type Orientation } from '../lib/parking.js';
@@ -23,8 +25,18 @@ const BAY_LABEL: Record<Orientation, string> = { parallel: '6.0 m parallel', dia
 // One uniform bold size for all map text on this sheet. Exceptions: street
 // names on the white arrows (wide-spaced, set separately) and the neighbour
 // identification boxes (a step smaller).
-const MAP_TEXT = 5.2;
-const NEIGHBOUR_TEXT = 4.4;
+const MAP_TEXT = 6.2;
+const NEIGHBOUR_TEXT = MAP_TEXT;
+// The neighbours' numbers and the street names: white, read off the aerial.
+const NAME_GREEN = '#ffffff';
+// Contours in green, apart from the warm site pen and the zones' hatch.
+const CONTOUR = '#3f9a5c';
+// The site itself — its boundary, corners, dimensions and levels — in a deep
+// red, and the sun, wind and views in the same pen, so the analysis reads as
+// one red layer over the aerial.
+const SITE_RED = '#b3261e';
+// Noise in blue, so it reads apart from the red climate marks.
+const NOISE_BLUE = '#3f6fc2';
 
 // Read at call time, not at module load: setTemplate() runs per job, long
 // after this module is first imported, so a captured constant would freeze to
@@ -46,6 +58,8 @@ class Placer {
   reserve(x: number, y: number, w: number, h: number) {
     this.boxes.push({ x: x - w / 2, y: y - h / 2, w, h });
   }
+  /** Whether a box is clear of everything reserved so far, without reserving it. */
+  isFree(x: number, y: number, w: number, h: number): boolean { return this.free(x, y, w, h); }
   private free(x: number, y: number, w: number, h: number): boolean {
     const a = { x: x - w / 2, y: y - h / 2, w, h };
     return !this.boxes.some((b) =>
@@ -72,7 +86,64 @@ class Placer {
   }
 }
 
-export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
+/**
+ * The sheet's hand-drawn arrow: a white strip in the site pen that leaves
+ * (x, y) along the unit direction (ux, uy), bows gently to one side and widens
+ * as it goes, ending in a broad head. `bow` signs which side it bows to.
+ */
+function sketchArrow(x: number, y: number, ux: number, uy: number, L: number, bow = 2.2, w0 = 1.4, w1 = 4.4): string {
+  const nx = -uy, ny = ux;
+  const N = 24, headL = 11, body = L - headL, headW = w1 * 2;
+  const left: string[] = [], right: string[] = [];
+  for (let i = 0; i <= N; i++) {
+    const t = i / N;
+    const off = bow * Math.sin(t * Math.PI);
+    const cx = x + ux * body * t + nx * off, cy = y + uy * body * t + ny * off;
+    const w = w0 + (w1 - w0) * t;
+    left.push(`${(cx + nx * w).toFixed(2)},${(cy + ny * w).toFixed(2)}`);
+    right.push(`${(cx - nx * w).toFixed(2)},${(cy - ny * w).toFixed(2)}`);
+  }
+  const ex = x + ux * body, ey = y + uy * body;
+  const tip = [ex + ux * headL, ey + uy * headL];
+  const wing = (sgn: number) => `${(ex + nx * headW * sgn).toFixed(2)},${(ey + ny * headW * sgn).toFixed(2)}`;
+  return `M${left.join('L')}L${wing(1)}L${tip[0].toFixed(2)},${tip[1].toFixed(2)}L${wing(-1)}L${right.reverse().join('L')}Z`;
+}
+
+/**
+ * The sun's bearing (degrees clockwise from north) and whether it is up, at a
+ * solar hour on a solstice: `decDeg` +23.44 for 21 June, −23.44 for 21 December.
+ */
+function sunBearing(latDeg: number, decDeg: number, hour: number): { az: number; up: boolean } {
+  const phi = (latDeg * Math.PI) / 180, dec = (decDeg * Math.PI) / 180;
+  const H = ((hour - 12) * 15 * Math.PI) / 180;
+  const up = Math.sin(phi) * Math.sin(dec) + Math.cos(phi) * Math.cos(dec) * Math.cos(H) > 0.02;
+  let az = (Math.atan2(Math.sin(H), Math.cos(H) * Math.sin(phi) - Math.tan(dec) * Math.cos(phi)) * 180) / Math.PI + 180;
+  if (az > 180) az -= 360;
+  return { az, up };
+}
+
+/** Hour marks for the two solstice arcs: which hours, at what bearing, labelled how. */
+function solsticeHours(latDeg: number): { winter: { h: number; az: number; label: string }[]; summer: { h: number; az: number; label: string }[] } {
+  // Winter is the solstice with the sun lower: June in the south, December in the north.
+  const winterDec = latDeg < 0 ? 23.44 : -23.44;
+  const fmt = (h: number) => (h < 12 ? `${h}AM` : h === 12 ? '12PM' : `${h - 12}PM`);
+  const marks = (dec: number) => {
+    const out: { h: number; az: number; label: string }[] = [];
+    for (let h = 5; h <= 19; h++) {
+      const b = sunBearing(latDeg, dec, h);
+      if (b.up) out.push({ h, az: b.az, label: fmt(h) });
+    }
+    return out;
+  };
+  return { winter: marks(winterDec), summer: marks(-winterDec) };
+}
+
+/** The site analysis sheet, in one of its own themes (Cardinal unless another is named); it never takes the context sheet's templates. */
+export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta, theme?: string): string {
+  return withTemplate(siteTheme(theme).base, () => drawSiteSheet(sb, meta));
+}
+
+function drawSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
   const view = sb.view;
   const proj = makeProjector(view);
   const layers: string[] = [];
@@ -103,6 +174,41 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
       d="M0,0 H${MAP_W} V${MAP_H} H0 Z ${dHole}"/>`);
   }
 
+  // ---- zones as hatch, not words ---------------------------------------------
+  // The neighbours' zoning is drawn, not written: each zone a hatch in its
+  // family's ink with a fine outline, no fill, so the aerial stays readable
+  // under it. The pattern is the category's texture (lines where it has
+  // none), its strength the category's, so R2 sits lighter than R3. Never
+  // over the site.
+  const usedZoneCats = new Set<string>();
+  const zoneInk = (c: { fill: string; stroke?: string; figure?: string; textureColor?: string }) =>
+    c.figure ?? c.stroke ?? c.fill;
+  {
+    const ring = sb.siteRing.map(([lon, lat2]) => proj(lon, lat2));
+    const dHole = 'M' + ring.map((p) => `${p[0].toFixed(2)},${p[1].toFixed(2)}`).join('L') + 'Z';
+    const byCat = new Map<string, string[]>();
+    for (const f of sb.zoning.features) {
+      const cat = zoneToCategory(f.properties.SYM_CODE);
+      if (!cat || !catById()[cat]) continue;
+      const rings = geomRings(f.geometry);
+      if (!rings.length) continue;
+      (byCat.get(cat) ?? byCat.set(cat, []).get(cat)!).push(pathFromRings(rings, proj));
+    }
+    let tex = 0;
+    const mapBox = { x: 0, y: 0, w: MAP_W, h: MAP_H };
+    const parts: string[] = [];
+    for (const [cat, paths] of byCat) {
+      const c = catById()[cat];
+      usedZoneCats.add(cat);
+      const ink = zoneInk(c);
+      const kind = c.texture === 'dots' || c.texture === 'cross' ? c.texture : 'lines';
+      parts.push(textureSvg(`stx${tex++}`, paths.join(''), kind, ink, mapBox, Math.min(1, 0.65 + c.opacity * 0.5)));
+      parts.push(`<g fill="none" stroke="${ink}" stroke-width="0.6">${paths.map((d) => `<path d="${d}"/>`).join('')}</g>`);
+    }
+    layers.push(`<defs><clipPath id="notSite"><path clip-rule="evenodd" d="M-20,-20 H${MAP_W + 20} V${MAP_H + 20} H-20 Z ${dHole}"/></clipPath></defs>
+      <g clip-path="url(#notSite)">${parts.join('')}</g>`);
+  }
+
   const inMapWide = ([x, y]: Pt) => x > -10 && x < MAP_W + 10 && y > -10 && y < MAP_H + 10;
   const inMap = ([x, y]: Pt) => x > 2 && x < MAP_W - 2 && y > 2 && y < MAP_H - 2;
 
@@ -113,64 +219,86 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     const dec = (23.44 * Math.PI) / 180;
     const azOf = (d: number) => (Math.acos(Math.sin(d) / Math.cos(latR)) * 180) / Math.PI;
     const Ro = Math.min(MAP_W, MAP_H) * 0.42, Ri = Ro * 0.72;
-    const cx = MAP_W / 2, cy = MAP_H / 2;
+    // The sun path is centred on the site, not the sheet.
+    const sr = sb.siteRing.map(([lon, lat2]) => proj(lon, lat2));
+    const sn = Math.max(1, sr.length - 1);
+    const cx = sr.slice(0, sn).reduce((t, p) => t + p[0], 0) / sn;
+    const cy = sr.slice(0, sn).reduce((t, p) => t + p[1], 0) / sn;
     const at = (az: number, R: number): Pt => {
       const azr = ((az + view.rotationDeg) * Math.PI) / 180;
       return [cx + R * Math.sin(azr), cy - R * Math.cos(azr)];
     };
-    for (const [az, R] of [[azOf(dec), Ri], [-azOf(dec), Ri], [azOf(-dec), Ro], [-azOf(-dec), Ro], [0, Ro]] as [number, number][]) {
+    // The suns sit at the solstices' rise and set points, with their names under them.
+    for (const [az, R] of [[azOf(dec), Ri], [-azOf(dec), Ri], [azOf(-dec), Ro], [-azOf(-dec), Ro], [0, Ro + 24]] as [number, number][]) {
       const [x, y] = at(az, R);
-      placer.reserve(x, y, 38, 38);
+      placer.reserve(x, y + 6, 48, 58);
     }
+    // And the hours along the arcs.
+    const hrs = solsticeHours(lat);
+    for (const m of hrs.winter) { const [x, y] = at(m.az, Ri); placer.reserve(x, y, 12, 12); const [lx, ly] = at(m.az, Ri - 10); placer.reserve(lx, ly, 18, 9); }
+    for (const m of hrs.summer) { const [x, y] = at(m.az, Ro); placer.reserve(x, y, 12, 12); const [lx, ly] = at(m.az, Ro + 10); placer.reserve(lx, ly, 18, 9); }
     placer.reserve(MAP_W - 95, 55, 110, 20);
     placer.reserve(MAP_W - 85, MAP_H - 75, 120, 20);
     placer.reserve(90, MAP_H - 60, 110, 20);
   }
 
   // ---- potential views ------------------------------------------------------
-  // A translucent cone at the site edge, as the office draws them, for each
-  // sight line the ground does not block. The cone goes under the linework;
-  // its label is pushed last so nothing draws over it.
+  // Drawn in the sun and wind's hand: for each sight line the ground does not
+  // block, a telescope just outside the site edge, aimed along the bearing,
+  // with the view's name set beside it in the same lettering. It goes under
+  // the linework; its label is pushed last so nothing covers it.
   const viewText: string[] = [];
   {
     const centreLL = mercatorToLonLat({ x: view.cx, y: view.cy });
-    const L = 52;                              // cone length on paper, mm
-    const half = (14 * Math.PI) / 180;         // half the opening angle
+    const LETTER = MAP_TEXT;
+    const TS = 2.8;                            // the telescope's size on paper
     for (const v of sb.views ?? []) {
       if (!v.cone) continue;
       const apex = exitPoint(sb.siteRing, centreLL, v.bearingDeg);
       const [ax, ay] = proj(apex.lon, apex.lat);
       const ang = ((v.bearingDeg + view.rotationDeg) * Math.PI) / 180;
-      const arc: string[] = [];
-      for (let i = 0; i <= 10; i++) {
-        const a = ang - half + (2 * half * i) / 10;
-        arc.push(`${(ax + L * Math.sin(a)).toFixed(1)},${(ay - L * Math.cos(a)).toFixed(1)}`);
-      }
-      layers.push(`<path d="M${ax.toFixed(1)},${ay.toFixed(1)} L${arc.join(' L')} Z" fill="#ffffff" fill-opacity="0.58" stroke="#ffffff" stroke-width="0.5" stroke-linejoin="round"/>`);
-      const lx = ax + L * 0.6 * Math.sin(ang), ly = ay - L * 0.6 * Math.cos(ang);
-      const lines = wrapLabel(v.kind === 'park' ? `${v.label} OUTLOOK` : `${v.label} VIEW`, 14);
+      const ux = Math.sin(ang), uy = -Math.cos(ang);
+      // The tube runs from x = -9.6 (eyepiece) to 8.6 (objective) in its own
+      // units; its eyepiece end sits a few millimetres off the boundary.
+      const sx = ax + ux * (9.6 * TS + 4), sy = ay + uy * (9.6 * TS + 4);
+      const deg = (Math.atan2(uy, ux) * 180) / Math.PI;
+      layers.push(`<g transform="translate(${sx.toFixed(1)},${sy.toFixed(1)}) rotate(${deg.toFixed(1)}) scale(${TS})" stroke="${SITE_RED}" stroke-width="${(0.7 / TS).toFixed(3)}" stroke-linejoin="round" fill="#ffffff">
+        <path d="M-7,-1.7 L6,-2.6 L6,2.6 L-7,1.7 Z"/>
+        <rect x="6" y="-3.3" width="2.6" height="6.6" rx="0.6"/>
+        <rect x="-9.6" y="-1.2" width="2.6" height="2.4" rx="0.4"/>
+        <line x1="-2" y1="-2.1" x2="-2" y2="2.1"/>
+        <line x1="2" y1="-2.4" x2="2" y2="2.4"/></g>`);
+      // Only what the telescope found: how far, and that the ground is clear.
+      // Set along the telescope's line, under it, upright.
       const dist = v.distanceM >= 950 ? `${(v.distanceM / 1000).toFixed(1)} KM` : `${Math.round(v.distanceM / 10) * 10} M`;
-      const sub = v.kind === 'park' ? 'ADJOINING' : `${dist} · TERRAIN CLEAR`;
-      const lh = MAP_TEXT * 1.08;
-      const w = Math.max(...lines.map((l) => l.length), sub.length * 0.75) * MAP_TEXT * 0.6 + 4;
-      // Several cones can leave one corner of a small site; the label is
-      // nudged clear of the others rather than drawn over them.
-      const spot = placer.place(lx, ly, w, lines.length * lh + 6, 24) ?? [lx, ly];
-      const [tx, ty] = spot;
-      viewText.push(plainText(tx, ty - lh * 0.35, lines, MAP_TEXT, '#111111'));
-      viewText.push(`<text x="${tx.toFixed(1)}" y="${(ty + (lines.length / 2) * lh + 1.6).toFixed(1)}" text-anchor="middle" font-size="${(MAP_TEXT * 0.7).toFixed(2)}" font-weight="700" letter-spacing="0.3" fill="#333333">${esc(sub)}</text>`);
+      const rows = v.kind === 'park' ? ['ADJOINING'] : [dist, 'TERRAIN CLEAR'];
+      const upright = Math.abs(deg) <= 90;
+      const tdeg = upright ? deg : deg + 180;
+      // Under the telescope: along its line, centred on it, two short rows
+      // below the tube on the page, so the label stays off the boundary.
+      const lh = LETTER * 1.12;
+      const tw = Math.max(...rows.map((r) => r.length)) * LETTER * 0.5;
+      const down = 3.3 * TS + 2 + LETTER * 0.75;
+      const ar = (tdeg * Math.PI) / 180;
+      const dnx = -Math.sin(ar), dny = Math.cos(ar);   // the text's down, on the page
+      const lx = sx + dnx * down, ly = sy + dny * down;
+      for (let d = -tw / 2; d <= tw / 2; d += 6)
+        for (let k2 = 0; k2 < rows.length; k2++) placer.reserve(lx + Math.cos(ar) * d + dnx * k2 * lh, ly + Math.sin(ar) * d + dny * k2 * lh, 8, 8);
+      for (let d = -9.6; d <= 8.6; d += 4) placer.reserve(sx + ux * d * TS, sy + uy * d * TS, 12, 12);
+      viewText.push(`<g transform="translate(${lx.toFixed(1)},${ly.toFixed(1)}) rotate(${tdeg.toFixed(1)})">${rows.map((r, i) =>
+        `<text x="0" y="${(LETTER * 0.36 + i * lh).toFixed(2)}" text-anchor="middle" font-size="${LETTER}" font-weight="700" fill="${SITE_RED}" stroke="${SITE_RED}" stroke-width="0.22">${esc(r)}</text>`).join('')}</g>`);
     }
   }
 
   // ---- cadastre + contours -------------------------------------------------
   if (sb.allLots.features.length) {
     const d = sb.allLots.features.map((f) => pathFromRings(geomRings(f.geometry), proj)).join('');
-    layers.push(`<path d="${d}" fill="none" stroke="#5f5f5f" stroke-width="0.18" opacity="0.65"/>`);
+    layers.push(`<path d="${d}" fill="none" stroke="#ffffff" stroke-width="0.7" opacity="0.9"/>`);
   }
   // (2) Terrain: contour lines with elevation tags (RL m AHD) along them.
   if (sb.contours.length) {
     const d = sb.contours.map((c) => pathFromRings([c.coords as any], proj, false)).join('');
-    layers.push(`<path d="${d}" fill="none" stroke="#a07c3f" stroke-width="0.4" opacity="0.85"/>`);
+    layers.push(`<path d="${d}" fill="none" stroke="${CONTOUR}" stroke-width="0.6" opacity="0.9"/>`);
     const tagged: Pt[] = [];
     for (const c of sb.contours) {
       const pts = c.coords.map(([lon, lat2]) => proj(lon, lat2)).filter(inMapWide);
@@ -185,39 +313,75 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
       if (ang < -90) ang += 180;
       layers.push(`<text transform="translate(${x.toFixed(1)},${y.toFixed(1)}) rotate(${ang.toFixed(1)})"
         text-anchor="middle" dy="-1.4" font-size="${MAP_TEXT}" font-weight="700"
-        fill="#8a6a2f">RL ${c.elevation.toFixed(0)}</text>`);
+        fill="${CONTOUR}">RL ${c.elevation.toFixed(0)}</text>`);
     }
   }
 
-  // ---- noise source zigzag along main roads --------------------------------
-  const zig = (pts: Pt[]): string => {
-    let d = '', run = 0, side = 1;
+  // ---- noise sources: along the main roads and the railway --------------------
+  // In blue, so noise reads apart from the red climate marks, but drawn
+  // in the wind's manner: a white line in a blue pen, a sound wave beside
+  // each busy road and the railway, on the site's side.
+  const noiseRing = sb.siteRing.map(([lon, lat2]) => proj(lon, lat2));
+  const noiseCentre: Pt = (() => {
+    const n = Math.max(1, noiseRing.length - 1);
+    return [noiseRing.slice(0, n).reduce((t, p) => t + p[0], 0) / n, noiseRing.slice(0, n).reduce((t, p) => t + p[1], 0) / n];
+  })();
+  const inSiteRing = (x: number, y: number) => {
+    let inside = false;
+    for (let i = 0, j = noiseRing.length - 1; i < noiseRing.length; j = i++) {
+      const [xi, yi] = noiseRing[i], [xj, yj] = noiseRing[j];
+      if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
+  };
+  const noiseMarks: string[] = [];
+  // Sound as a band along the source, on the site's side, white inside a
+  // blue pen like the wind. It breaks where it would cross the site or leave
+  // the sheet.
+  const soundAlong = (pts: Pt[], seed: number) => {
+    const samples: { p: Pt; n: Pt; s: number }[] = [];
+    let run = 0;
     for (let i = 1; i < pts.length; i++) {
       const [ax, ay] = pts[i - 1], [bx, by] = pts[i];
       const len = Math.hypot(bx - ax, by - ay);
-      const nx = -(by - ay) / (len || 1), ny = (bx - ax) / (len || 1);
-      const steps = Math.max(1, Math.floor(len / 2.4));
-      for (let sI = 0; sI < steps; sI++) {
-        const t0 = sI / steps, t1 = (sI + 1) / steps;
-        const mx = ax + (bx - ax) * (t0 + t1) / 2 + nx * 1.1 * side;
-        const my = ay + (by - ay) * (t0 + t1) / 2 + ny * 1.1 * side;
-        if (!d) d = `M${(ax + (bx - ax) * t0).toFixed(1)},${(ay + (by - ay) * t0).toFixed(1)}`;
-        d += `L${mx.toFixed(1)},${my.toFixed(1)}L${(ax + (bx - ax) * t1).toFixed(1)},${(ay + (by - ay) * t1).toFixed(1)}`;
-        side = -side; run++;
-      }
+      if (!len) continue;
+      const nx = -(by - ay) / len, ny = (bx - ax) / len;
+      for (let d = 0; d < len; d += 0.8) samples.push({ p: [ax + ((bx - ax) * d) / len, ay + ((by - ay) * d) / len], n: [nx, ny], s: run + d });
+      run += len;
     }
-    return d;
+    if (samples.length < 2) return;
+    const mid = samples[Math.floor(samples.length / 2)];
+    const side = Math.sign((noiseCentre[0] - mid.p[0]) * mid.n[0] + (noiseCentre[1] - mid.p[1]) * mid.n[1]) || 1;
+    // One continuous band, white inside a blue pen like the wind, swaying
+    // gently and swelling a little along its length — never pinching shut,
+    // so it reads as one line and not a string of beads.
+    const half = (t: number) => 2.3 + 0.55 * Math.sin(t / 9.5 + seed) + 0.3 * Math.sin(t / 4.6 + seed * 2.1);
+    const sway = (t: number) => 1.6 * Math.sin(t / 11 + seed * 1.3);
+    let left: string[] = [], right: string[] = [];
+    const flush = () => {
+      if (left.length > 3) noiseMarks.push(`<path d="M${left.join('L')}L${right.reverse().join('L')}Z"/>`);
+      left = []; right = [];
+    };
+    for (const { p, n, s: t } of samples) {
+      const c = side * 11 + sway(t);
+      const cx = p[0] + n[0] * c, cy = p[1] + n[1] * c;
+      if (!inMap([cx, cy]) || inSiteRing(cx, cy)) { flush(); continue; }
+      const w = half(t);
+      left.push(`${(cx + n[0] * w).toFixed(2)},${(cy + n[1] * w).toFixed(2)}`);
+      right.push(`${(cx - n[0] * w).toFixed(2)},${(cy - n[1] * w).toFixed(2)}`);
+    }
+    flush();
   };
   const mainRoads = sb.roads.filter((r) => r.hierarchy <= 4);
   const seenNoise = new Set<string>();
   for (const r of mainRoads) {
-    if (seenNoise.has(r.name)) continue; // one zigzag band per named road
+    if (seenNoise.has(r.name)) continue; // one run of marks per named road
     seenNoise.add(r.name);
     const pts = r.coords.map(([lon, lat2]) => proj(lon, lat2));
-    if (pts.length >= 2) layers.push(`<path d="${zig(pts)}" fill="none" stroke="#3b4fd8" stroke-width="0.35" opacity="0.85"/>`);
+    if (pts.length >= 2) soundAlong(pts, seenNoise.size * 1.7);
   }
-  // Railways are noise sources too — one zigzag along the corridor (the
-  // longest line stands in for the whole track group).
+  // Railways are noise sources too — the longest line stands in for the
+  // whole track group.
   for (const group of [sb.railLines.train, sb.railLines.tram]) {
     if (!group.length) continue;
     let bestLine = group[0], bestLen = 0;
@@ -228,8 +392,9 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
       if (len > bestLen) { bestLen = len; bestLine = line; }
     }
     const pts = bestLine.map(([lon, lat2]) => proj(lon, lat2));
-    if (pts.length >= 2) layers.push(`<path d="${zig(pts)}" fill="none" stroke="#3b4fd8" stroke-width="0.4" opacity="0.9"/>`);
+    if (pts.length >= 2) soundAlong(pts, 4.2);
   }
+  layers.push(`<g fill="#ffffff" fill-opacity="0.9" stroke="${NOISE_BLUE}" stroke-width="0.6" stroke-linejoin="round">${noiseMarks.join('')}</g>`);
 
   // ---- one-way arrows -------------------------------------------------------
   for (const ow of sb.furniture.onewayRoads) {
@@ -391,43 +556,18 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     placer.reserve(cx0, cy0, 56, 24);
   }
 
-  // ---- (4) neighbour info boxes: address, storeys (where known), zone ------
+  // ---- neighbours: the address and the storeys on each building ------------
+  // Two short lines on the building: its street number(s) and its storeys,
+  // "26" over "3ST". The zone is the hatch under it. Storeys come from
+  // Overture (its count, or its measured height at 3.1 m a storey), else
+  // OpenStreetMap's building:levels; a building with no height anywhere
+  // keeps its number and no storey line rather than a guess. A building with
+  // a height but no address point still gets its storeys.
+  let storeyLabels = 0;
   {
-    // zone lookup by point-in-polygon over the LEP zoning layer
-    const zonePolys = sb.zoning.features
-      .map((f) => ({ code: f.properties.SYM_CODE as string, rings: geomRings(f.geometry) }))
-      .filter((z) => z.code && z.rings.length);
-    const zoneLabel = (code: string): string | null => {
-      const c = (code || '').toUpperCase();
-      if (c.startsWith('R2')) return 'R2 LOW DENSITY RESIDENTIAL';
-      if (c.startsWith('R3')) return 'R3 MEDIUM DENSITY RESIDENTIAL';
-      if (c.startsWith('R4')) return 'R4 HIGH DENSITY RESIDENTIAL';
-      if (c.startsWith('R1')) return 'R1 GENERAL RESIDENTIAL';
-      if (c === 'B2' || c === 'E1') return 'E1 LOCAL CENTRE';
-      if (c === 'B4' || c === 'MU1') return 'MU1 MIXED USE';
-      if (c.startsWith('SP')) return 'SP2 INFRASTRUCTURE';
-      if (c.startsWith('RE')) return 'RE1 PUBLIC RECREATION';
-      if (c.startsWith('E4') || c.startsWith('IN')) return 'E4 GENERAL INDUSTRIAL';
-      return c || null;
-    };
-    const zoneAt = (lon: number, lat2: number): string | null => {
-      for (const z of zonePolys) {
-        for (const r of z.rings) {
-          let inside = false;
-          for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
-            const [xi, yi] = r[i], [xj, yj] = r[j];
-            if (yi > lat2 !== yj > lat2 && lon < ((xj - xi) * (lat2 - yi)) / (yj - yi) + xi) inside = !inside;
-          }
-          if (inside) return zoneLabel(z.code);
-        }
-      }
-      return null;
-    };
-    // nearest OSM building with a levels tag (within 25m) gives storeys
-    const storeysAt = (lon: number, lat2: number): number | undefined => {
+    const osmLevelsNear = (lon: number, lat2: number, withinM: number): number | undefined => {
       const P = lonLatToMercator({ lon, lat: lat2 });
-      let best: number | undefined;
-      let bestD = 25 * k;
+      let best: number | undefined, bestD = withinM * k;
       for (const b of sb.furniture.buildings) {
         if (!b.levels) continue;
         const Q = lonLatToMercator({ lon: b.lon, lat: b.lat });
@@ -436,61 +576,91 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
       }
       return best;
     };
-
-    // "26 CAMPSIE STREET CAMPSIE" -> "CAMPSIE ST" (abbreviated, no suburb)
-    const full = (sb.geocode.matchedAddresses[0] ?? '').split(' ').slice(1);
-    const TYPES = new Set(['STREET','ROAD','AVENUE','PARADE','HIGHWAY','DRIVE','LANE','PLACE','CRESCENT','COURT','BOULEVARD','TERRACE','CIRCUIT','CLOSE','WAY','GROVE','ESPLANADE']);
-    let cut = full.length;
-    for (let i = 0; i < full.length; i++) if (TYPES.has(full[i])) { cut = i + 1; break; }
-    void shortStreetName(full.slice(0, cut).join(' ')); // street name intentionally unused in labels
-    const boxes: string[] = [];
-    const nearLimit = (70 * k) * (MAP_W / (2 * view.halfW)); // 70 m in mm
-    const distToSite = (x: number, y: number): number => {
-      let best = Infinity;
-      for (let i = 1; i < sitePx.length; i++) {
-        const [ax, ay] = sitePx[i - 1], [bx, by] = sitePx[i];
-        const dx = bx - ax, dy = by - ay;
-        const L2 = dx * dx + dy * dy;
-        const t = L2 ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / L2)) : 0;
-        best = Math.min(best, Math.hypot(x - (ax + t * dx), y - (ay + t * dy)));
+    const m2PerMm2 = (sb.scale / 1000) ** 2;
+    interface Bld { x: number; y: number; st?: number; area: number; d: string; ring: Pt[]; bbox: [number, number, number, number]; numbers: string[] }
+    const blds: Bld[] = [];
+    for (const b of sb.buildings?.buildings ?? []) {
+      const [x, y] = proj(b.centroid[0], b.centroid[1]);
+      if (!inMapWide([x, y]) || inSite(x, y)) continue;
+      const ring = b.rings[0].map(([lon, lat2]) => proj(lon, lat2));
+      let a2 = 0, x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        a2 += (ring[j][0] + ring[i][0]) * (ring[j][1] - ring[i][1]);
+        x0 = Math.min(x0, ring[i][0]); y0 = Math.min(y0, ring[i][1]); x1 = Math.max(x1, ring[i][0]); y1 = Math.max(y1, ring[i][1]);
       }
-      return best;
-    };
-    const sorted = [...sb.neighbours].map((n) => {
-      const [x, y] = proj(n.lon, n.lat);
-      return { n, x, y, d: distToSite(x, y) };
-    }).filter((e) => e.d <= nearLimit).sort((a, b) => a.d - b.d);
-    for (const { n, x, y } of sorted) {
-      if (!inMap([x, y]) || inSite(x, y)) continue;
-      const zone = zoneAt(n.lon, n.lat);
-      const st = storeysAt(n.lon, n.lat);
-      const l1 = n.housenumber.toUpperCase();   // number only — no street name
-      const l2 = st ? `${st} STOREY` : '';
-      const lines = [l1, l2].filter(Boolean);
-      const zoneLines = zone ? wrapLabel(zone, 22) : [];
-      const fs = NEIGHBOUR_TEXT, lh = fs * 1.16;
-      const w = Math.max(...[...lines, ...zoneLines].map((t) => t.length)) * fs * 0.54 + 4.5;
-      const h = (lines.length + zoneLines.length) * lh + 2.4;
-      const spot = placer.place(x, y, w, h, 30);
-      if (!spot) continue;
-      const [px, py] = spot;
-      const bx = px - w / 2, by = py - h / 2;
-      let inner = '';
-      lines.forEach((t, i) => {
-        inner += `<text x="${px.toFixed(1)}" y="${(by + 1.2 + lh * (i + 0.8)).toFixed(1)}" text-anchor="middle" font-size="${fs}" font-weight="700" fill="#111">${esc(t)}</text>`;
-      });
-      zoneLines.forEach((t, i) => {
-        inner += `<text x="${px.toFixed(1)}" y="${(by + 1.2 + lh * (lines.length + i + 0.8)).toFixed(1)}" text-anchor="middle" font-size="${fs}" font-weight="700" fill="${BLUE()}">${esc(t)}</text>`;
-      });
-      boxes.push(`<g>${inner}</g>`);   // no white background panel
+      const area = Math.abs(a2 / 2) * m2PerMm2;
+      if (area < 25) continue;   // sheds and carports
+      const st = b.floors ?? (b.heightM ? Math.max(1, Math.round(b.heightM / METRES_PER_STOREY)) : osmLevelsNear(b.centroid[0], b.centroid[1], 12));
+      blds.push({ x, y, st, area, d: pathFromRings(b.rings, proj), ring, bbox: [x0, y0, x1, y1], numbers: [] });
     }
-    layers.push(boxes.join(''));
+    const inRing = (x: number, y: number, r: Pt[]) => {
+      let inside = false;
+      for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+        const [xi, yi] = r[i], [xj, yj] = r[j];
+        if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+      }
+      return inside;
+    };
+    // Each address point to the building it stands in, or the nearest one
+    // within 12 m (address points often sit at the front of the lot).
+    const near12 = 12 * k * (MAP_W / (2 * view.halfW));
+    const loose: { x: number; y: number; n: string; st?: number }[] = [];
+    for (const n of sb.neighbours) {
+      const [x, y] = proj(n.lon, n.lat);
+      if (!inMap([x, y]) || inSite(x, y)) continue;
+      let hit = blds.find((b) => x >= b.bbox[0] && x <= b.bbox[2] && y >= b.bbox[1] && y <= b.bbox[3] && inRing(x, y, b.ring));
+      if (!hit) {
+        let bestD = near12;
+        for (const b of blds) { const d = Math.hypot(b.x - x, b.y - y); if (d < bestD) { bestD = d; hit = b; } }
+      }
+      const num = n.housenumber.toUpperCase();
+      if (hit) { if (!hit.numbers.includes(num)) hit.numbers.push(num); }
+      else loose.push({ x, y, n: num, st: osmLevelsNear(n.lon, n.lat, 25) });
+    }
+    // "26", or "26–30" for a building with a run of numbers.
+    const numberLine = (nums: string[]): string => {
+      if (nums.length <= 1) return nums[0] ?? '';
+      const ints = nums.map((t) => parseInt(t, 10));
+      if (ints.every((v) => Number.isFinite(v))) {
+        const lo = Math.min(...ints), hi = Math.max(...ints);
+        return lo === hi ? String(lo) : `${lo}–${hi}`;
+      }
+      return nums[0];
+    };
+    interface Lbl { x: number; y: number; lines: [string, string]; area: number; d: string }
+    const cands: Lbl[] = [];
+    for (const b of blds) {
+      if (!inMap([b.x, b.y])) continue;
+      const num = numberLine(b.numbers);
+      const st = b.st ? `${b.st}ST` : '';
+      if (!num && !st) continue;
+      cands.push({ x: b.x, y: b.y, lines: [num, st], area: b.area + (num ? 10000 : 0), d: b.d });
+    }
+    for (const l of loose) cands.push({ x: l.x, y: l.y, lines: [l.n, l.st ? `${l.st}ST` : ''], area: 5000, d: '' });
+    // Addressed and big buildings first, so when two crowd each other the
+    // block of flats keeps its label and the garage gives way.
+    cands.sort((p, q) => q.area - p.area);
+    const outlines: string[] = [];
+    const texts: string[] = [];
+    const fs = NEIGHBOUR_TEXT, lh = fs * 1.12;
+    for (const c of cands) {
+      const lines = c.lines.filter(Boolean);
+      const w = Math.max(...lines.map((t) => t.length)) * fs * 0.5 + 1.5, h = lines.length * lh + 0.8;
+      const spot = placer.place(c.x, c.y, w, h, 6);
+      if (!spot) continue;
+      if (c.d) outlines.push(`<path d="${c.d}"/>`);
+      const y0 = spot[1] - ((lines.length - 1) * lh) / 2 + fs * 0.36;
+      lines.forEach((t, i) => {
+        const isStorey = /ST$/.test(t) && i === lines.length - 1 && !!c.lines[1];
+        texts.push(`<text x="${spot[0].toFixed(1)}" y="${(y0 + i * lh).toFixed(1)}" text-anchor="middle" font-size="${fs}" font-weight="700" fill="${NAME_GREEN}"${isStorey ? ' opacity="0.8"' : ''}>${esc(t)}</text>`);
+      });
+      if (c.lines[1]) storeyLabels++;
+    }
+    layers.push(`<g fill="none" stroke="#ffffff" stroke-width="0.55" stroke-opacity="0.95" stroke-linejoin="round">${outlines.join('')}</g>`);
+    layers.push(texts.join(''));
   }
 
-  // ---- street names: arrow band for a street, plain text for a lane -----------
-  // The same distinction the context sheet makes, and it matters just as much
-  // here: at 1:300 the rear laneway is often the widest thing on the sheet
-  // after the street itself, and banding both makes them read as equals.
+  // ---- street names: plain text along the road ------------------------------
   const best = new Map<string, { pts: Pt[]; len: number; hierarchy: number; lanes?: number }>();
   for (const road of sb.roads) {
     const pts = road.coords.map(([lon, lat2]) => proj(lon, lat2))
@@ -509,32 +679,45 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
   let srid = 0;
   for (const [name, r] of best) {
     const label = shortStreetName(name);
-    const spacing = 1.7;
-    const SITE_STREET = T.street * 1.15;
-    const textLen = label.length * (SITE_STREET * 0.62 + spacing);
-    let pts = r.pts;
-    if (pts[0][0] > pts[pts.length - 1][0]) pts = [...pts].reverse();
-    const arrow = isMajorStreet(r.hierarchy, r.lanes, name) && r.len * 0.85 >= textLen + 12
-      ? arrowAlong(pts, Math.min(r.len * 0.85, textLen + 20))
-      : null;
-    if (arrow) {
-      let ta = arrow.angDeg;
-      if (ta > 90) ta -= 180;
-      if (ta < -90) ta += 180;
-      layers.push(arrow.svg);
-      layers.push(`<text transform="translate(${arrow.cx.toFixed(1)},${arrow.cy.toFixed(1)}) rotate(${ta.toFixed(1)})"
-        x="${(-textLen / 2).toFixed(1)}" y="1.65" textLength="${textLen.toFixed(1)}" lengthAdjust="spacing"
-        font-size="${SITE_STREET.toFixed(2)}" font-weight="700" fill="#111111">${esc(label)}</text>`);
-      continue;
+    const SITE_STREET = MAP_TEXT;
+    // Every street name as plain bold text along the road, no arrow band;
+    // set on the straight chord through the middle of the longest run, since
+    // a road's own vertices jog too much to carry text along directly.
+    const plainLen = label.length * (SITE_STREET * 0.6 + 0.6) + 3;
+    const pts = r.pts;
+    const cum = [0];
+    for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+    const total = cum[cum.length - 1];
+    if (total < plainLen) continue;
+    const at = (d: number): Pt => {
+      let i = 1;
+      while (i < cum.length - 1 && cum[i] < d) i++;
+      const t = (d - cum[i - 1]) / ((cum[i] - cum[i - 1]) || 1);
+      return [pts[i - 1][0] + (pts[i][0] - pts[i - 1][0]) * t, pts[i - 1][1] + (pts[i][1] - pts[i - 1][1]) * t];
+    };
+    const half = Math.min(total / 2, plainLen / 2 + 8);
+    // Slide along the road, middle first, until the name is clear of the
+    // labels already set (a view's name, a neighbour's number).
+    let a: Pt | null = null, b: Pt | null = null;
+    for (const k2 of [0, 1, -1, 2, -2, 3, -3, 4, -4]) {
+      const c = total / 2 + k2 * 16;
+      if (c - half < 0 || c + half > total) continue;
+      let p0 = at(c - half), p1 = at(c + half);
+      if (p0[0] > p1[0]) [p0, p1] = [p1, p0];
+      if (Math.hypot(p1[0] - p0[0], p1[1] - p0[1]) < plainLen) continue;
+      const mx = (p0[0] + p1[0]) / 2, my = (p0[1] + p1[1]) / 2;
+      const ang2 = Math.atan2(p1[1] - p0[1], p1[0] - p0[0]);
+      const W = Math.abs(plainLen * Math.cos(ang2)) + Math.abs(SITE_STREET * Math.sin(ang2));
+      const H = Math.abs(plainLen * Math.sin(ang2)) + Math.abs(SITE_STREET * Math.cos(ang2));
+      if (!placer.isFree(mx, my, W * 0.8, H * 0.8) && k2 !== 4 && k2 !== -4) continue;
+      a = p0; b = p1;
+      placer.reserve(mx, my, W * 0.8, H * 0.8);
+      break;
     }
-    // Plain label, set on the straight chord of the run: a laneway's own
-    // vertices jog too much to carry text along directly.
-    const plainLen = label.length * (SITE_STREET * 0.72 + 0.4) + 3;
-    const a = pts[0], b = pts[pts.length - 1];
-    if (Math.hypot(b[0] - a[0], b[1] - a[1]) < plainLen) continue;
+    if (!a || !b) continue;
     const id = `srd${srid++}`;
     siteRoadDefs.push(`<path id="${id}" d="M${a[0].toFixed(2)},${a[1].toFixed(2)}L${b[0].toFixed(2)},${b[1].toFixed(2)}" fill="none"/>`);
-    layers.push(`<text font-size="${SITE_STREET.toFixed(2)}" font-weight="700" letter-spacing="0.4" dy="-1.4" fill="#111111">
+    layers.push(`<text font-size="${SITE_STREET.toFixed(2)}" font-weight="700" letter-spacing="0.6" dy="${(SITE_STREET * 0.36).toFixed(2)}" fill="${NAME_GREEN}">
       <textPath href="#${id}" startOffset="50%" text-anchor="middle">${esc(label)}</textPath></text>`);
   }
   if (siteRoadDefs.length) layers.push(`<defs>${siteRoadDefs.join('')}</defs>`);
@@ -557,8 +740,8 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
 
   // boundary path (red dash-dot) + corner circles
   const dSite = 'M' + sitePx.map((p) => `${p[0].toFixed(2)},${p[1].toFixed(2)}`).join('L') + 'Z';
-  layers.push(`<path d="${dSite}" fill="none" stroke="${RED()}" stroke-width="1.15" stroke-dasharray="7,2,1.6,2"/>`);
-  layers.push(corners.map((i) => `<circle cx="${ringPx[i][0].toFixed(1)}" cy="${ringPx[i][1].toFixed(1)}" r="1.7" fill="none" stroke="${RED()}" stroke-width="0.55"/>`).join(''));
+  layers.push(`<path d="${dSite}" fill="none" stroke="${SITE_RED}" stroke-width="1.15" stroke-dasharray="7,2,1.6,2"/>`);
+  layers.push(corners.map((i) => `<circle cx="${ringPx[i][0].toFixed(1)}" cy="${ringPx[i][1].toFixed(1)}" r="1.7" fill="none" stroke="${SITE_RED}" stroke-width="0.55"/>`).join(''));
 
   // edge dimensions between consecutive kept corners
   const groundLen = (i0: number, i1: number): number => {
@@ -597,7 +780,7 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     const spot = placer.place(lx, lyy, txt.length * 3.0, 6.4, 16, ang);
     if (!spot) continue;
     layers.push(`<text transform="translate(${spot[0].toFixed(1)},${spot[1].toFixed(1)}) rotate(${ang.toFixed(1)})"
-      text-anchor="middle" font-size="${MAP_TEXT}" font-weight="700" fill="${RED()}">${txt}</text>`);
+      text-anchor="middle" font-size="${MAP_TEXT}" font-weight="700" fill="${SITE_RED}">${txt}</text>`);
   }
 
   // Corner levels: interpolated across the slope between the contours that
@@ -623,7 +806,7 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     const txt = `RL ${rl.toFixed(2)}`;
     const spot = placer.place(x + (ox / on) * 10, y + (oy / on) * 10 - 3.5, txt.length * 3.1, 6.4, 18);
     if (!spot) continue;
-    layers.push(plainText(spot[0], spot[1], [txt], MAP_TEXT, RED()));
+    layers.push(plainText(spot[0], spot[1], [txt], MAP_TEXT, SITE_RED));
   }
 
   // fall arrow: highest -> lowest corner
@@ -666,73 +849,140 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     </g>`);
   }
 
-  // ---- sun path -------------------------------------------------------------
+  // ---- sun and wind, one hand ---------------------------------------------------
+  // Drawn as a pair, in the site's deep red and the same open white-filled
+  // marks: the sun as a disc with flame-like rays at the solstices' rise and
+  // set points (on a solid summer arc and a dashed winter one), the winds as
+  // the sheet's hand-drawn arrows blowing in toward the site, three abreast,
+  // each named in the same lettering as the suns.
+  const latR = (Math.abs(lat) * Math.PI) / 180;
+  const decR = (23.44 * Math.PI) / 180;
+  const riseAz = (d: number) => (Math.acos(Math.sin(d) / Math.cos(latR)) * 180) / Math.PI;
+  const winterAz = riseAz(decR);       // ≈61° at Sydney (NE), the sun over north
+  const summerAz = riseAz(-decR);      // ≈119° (ESE)
+  const Ro = Math.min(MAP_W, MAP_H) * 0.42;
+  const Ri = Ro * 0.72;
+  const sunAt = (az: number, R: number): Pt => {
+    const azr = ((az + view.rotationDeg) * Math.PI) / 180;
+    return [centroidPx[0] + R * Math.sin(azr), centroidPx[1] - R * Math.cos(azr)];
+  };
+  const arcPath = (az0: number, az1: number, R: number, step = 3): string => {
+    let d = '';
+    const n = Math.max(2, Math.ceil(Math.abs(az1 - az0) / step));
+    for (let i = 0; i <= n; i++) {
+      const [x, y] = sunAt(az0 + ((az1 - az0) * i) / n, R);
+      d += `${d ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`;
+    }
+    return d;
+  };
+  const PEN = SITE_RED;
+  const PEN_W = 0.7;
+  const LETTER = MAP_TEXT;
+  const textBlock = (x: number, y: number, lines: string[]) =>
+    lines.map((t, i) => `<text x="${x.toFixed(1)}" y="${(y + i * LETTER * 1.12).toFixed(1)}" text-anchor="middle" font-size="${LETTER}" font-weight="700" fill="${PEN}" stroke="${PEN}" stroke-width="0.22">${esc(t)}</text>`).join('');
+
+  layers.push(`<path d="${arcPath(summerAz, -summerAz, Ro)}" fill="none" stroke="${PEN}" stroke-width="1.4" stroke-linecap="round"/>`);
+  layers.push(`<path d="${arcPath(winterAz, -winterAz, Ri)}" fill="none" stroke="${PEN}" stroke-width="1.4" stroke-dasharray="5,2.6" stroke-linecap="round"/>`);
+  // The hours along each arc: a dot where the sun stands at each solar hour,
+  // its time beside it (inside the winter arc, outside the summer one). An
+  // hour that falls on a sunrise or sunset drawing is left to the sun.
   {
-    const latR = (Math.abs(lat) * Math.PI) / 180;
-    const dec = (23.44 * Math.PI) / 180;
-    const azOf = (d: number) => (Math.acos(Math.sin(d) / Math.cos(latR)) * 180) / Math.PI;
-    const winterAz = azOf(dec);      // ≈61° at Sydney (NE), sun over north
-    const summerAz = azOf(-dec);     // ≈119° (ESE)
-    const Ro = Math.min(MAP_W, MAP_H) * 0.42;
-    const Ri = Ro * 0.72;
-    const c: Pt = centroidPx;
-    const pt = (az: number, R: number): Pt => {
-      const azr = ((az + view.rotationDeg) * Math.PI) / 180;
-      return [c[0] + R * Math.sin(azr), c[1] - R * Math.cos(azr)];
-    };
-    const arc = (azRise: number, R: number): string => {
-      let d = '';
-      for (let az = azRise; az >= -azRise; az -= 4) {
-        const [x, y] = pt(az, R);
-        d += `${d ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`;
+    const hrs = solsticeHours(lat);
+    const marks: string[] = [];
+    const put = (list: { az: number; label: string }[], R: number, labelR: number, edgeAz: number) => {
+      for (const m of list) {
+        if (Math.abs(Math.abs(m.az) - edgeAz) < 9) continue;
+        const [x, y] = sunAt(m.az, R);
+        const [lx, ly] = sunAt(m.az, labelR);
+        marks.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2" fill="#ffffff" stroke="${PEN}" stroke-width="${PEN_W}"/>` +
+          `<text x="${lx.toFixed(1)}" y="${(ly + LETTER * 0.36).toFixed(1)}" text-anchor="middle" font-size="${LETTER}" font-weight="700" fill="${PEN}" stroke="${PEN}" stroke-width="0.22">${m.label}</text>`);
       }
-      return d;
     };
-    layers.push(`<path d="${arc(summerAz, Ro)}" fill="none" stroke="${SUN()}" stroke-width="0.9" opacity="0.85"/>`);
-    layers.push(`<path d="${arc(winterAz, Ri)}" fill="none" stroke="${SUN()}" stroke-width="0.9" opacity="0.85" stroke-dasharray="5,2.4"/>`);
-    const sun = (az: number, R: number, l1: string, l2: string) => {
-      const [x, y] = pt(az, R);
-      const SUN_R = 10.7;                   // 21.4mm disc on the reference
-      const rays = [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330].map((a) => {
-        const ar = (a * Math.PI) / 180;
-        return `<line x1="${(SUN_R * Math.cos(ar)).toFixed(1)}" y1="${(SUN_R * Math.sin(ar)).toFixed(1)}" x2="${((SUN_R + 7) * Math.cos(ar)).toFixed(1)}" y2="${((SUN_R + 7) * Math.sin(ar)).toFixed(1)}" stroke="${SUN()}" stroke-width="1.5" stroke-linecap="round"/>`;
-      }).join('');
-      return `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})">
-        ${rays}<circle r="${SUN_R}" fill="${SUN()}"/>
-        <text text-anchor="middle" dy="-0.6" font-size="${SUN_TEXT}" font-weight="700" fill="#000">${l1}</text>
-        <text text-anchor="middle" dy="${SUN_TEXT}" font-size="${SUN_TEXT}" font-weight="700" fill="#000">${l2}</text></g>`;
-    };
-    layers.push(sun(winterAz, Ri, 'W', 'AM'));
-    layers.push(sun(-winterAz, Ri, 'W', 'PM'));
-    layers.push(sun(summerAz, Ro, 'S', 'AM'));
-    layers.push(sun(-summerAz, Ro, 'S', 'PM'));
-    const [nx, ny] = pt(0, Ro);
-    layers.push(`<g transform="translate(${nx.toFixed(1)},${ny.toFixed(1)})">
-      <circle r="10.7" fill="${SUN()}"/>
-      <text text-anchor="middle" dy="3.1" font-size="${SUN_TEXT}" font-weight="700" fill="#000">N</text></g>`);
+    put(hrs.winter, Ri, Ri - 10, winterAz);
+    put(hrs.summer, Ro, Ro + 10, summerAz);
+    layers.push(marks.join(''));
+  }
+  // The sun: an open jagged crown in the pen, white inside, round a plain
+  // circle. Twelve teeth of uneven length, and the four on the diagonals
+  // drawn out as short, broad flames with one gentle bend, after the
+  // manuscript suns. Each sun is drawn from its own seed, so the four differ
+  // a little, as if drawn one by one.
+  const sketchSun = ([x, y]: Pt, lines: string[], seed: number) => {
+    let st = seed * 9301 + 49297;
+    const rnd = () => { st = (st * 9301 + 49297) % 233280; return st / 233280; };
+    const n = 12, rBase = 12.4, flames = [1, 4, 7, 10];
+    const P = (r: number, a: number): Pt => [r * Math.cos(a), r * Math.sin(a)];
+    const pts: Pt[] = [];
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2, h = (Math.PI / n) * 0.85;
+      const f = flames.indexOf(i);
+      if (f < 0) {
+        pts.push(P(rBase + rnd() * 0.8, a - h), P(18 + rnd() * 4, a + (rnd() - 0.5) * 0.12));
+        continue;
+      }
+      // A flame: its centre line leaves the crown radially and bends once,
+      // its width falling from a little over the tooth's base to a point;
+      // neighbouring flames bend opposite ways.
+      const L = 8.5, w0 = rBase * Math.sin(h) * 1.2, amp = 0.5 * (f % 2 ? -1 : 1);
+      const ux = Math.cos(a), uy = Math.sin(a), nx = -uy, ny = ux, N = 10;
+      const side = (sgn: number) => Array.from({ length: N + 1 }, (_, k) => {
+        const t = k / N, off = amp * Math.sin(t * Math.PI * 1.5), w = w0 * Math.pow(1 - t, 0.8) + 0.12;
+        const r = rBase * Math.cos(h) + L * t;
+        return [ux * r + nx * (off + sgn * w), uy * r + ny * (off + sgn * w)] as Pt;
+      });
+      pts.push(...side(-1), ...side(1).reverse());
+    }
+    return `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})">
+      <path d="M${pts.map(([px, py]) => `${px.toFixed(2)},${py.toFixed(2)}`).join('L')}Z" fill="#ffffff" fill-opacity="0.9" stroke="${PEN}" stroke-width="${PEN_W}" stroke-linejoin="round"/>
+      <circle r="9.6" fill="#ffffff" stroke="${PEN}" stroke-width="${PEN_W}"/>
+      ${textBlock(0, 28, lines)}</g>`;
+  };
+  layers.push(sketchSun(sunAt(winterAz, Ri), ['WINTER', 'SUNRISE'], 1));
+  layers.push(sketchSun(sunAt(-winterAz, Ri), ['WINTER', 'SUNSET'], 2));
+  layers.push(sketchSun(sunAt(summerAz, Ro), ['SUMMER', 'SUNRISE'], 3));
+  layers.push(sketchSun(sunAt(-summerAz, Ro), ['SUMMER', 'SUNSET'], 4));
+  {
+    // North sits just beyond the summer noon mark and its label.
+    const [nx, ny] = sunAt(0, Ro + 24);
+    layers.push(`<g transform="translate(${nx.toFixed(1)},${ny.toFixed(1)})"><circle r="6.4" fill="#ffffff" stroke="${PEN}" stroke-width="${PEN_W}"/>
+      <text text-anchor="middle" dy="2.3" font-size="6.2" font-weight="700" fill="${PEN}" stroke="${PEN}" stroke-width="0.22">N</text></g>`);
   }
 
-  // ---- prevailing wind banners ----------------------------------------------
-  {
-    // Banner arrow points toward the site; when that direction would put the
-    // text upside-down, keep the text upright and mirror only the arrow tip.
-    const banner = (x: number, y: number, text: string) => {
-      let ang = (Math.atan2(MAP_H / 2 - y, MAP_W / 2 - x) * 180) / Math.PI;
-      let tipRight = true;
-      if (ang > 90 || ang < -90) { ang += 180; tipRight = false; }
-      if (ang > 180) ang -= 360;
-      const W = text.length * 3.3 + 22, H = 14;
-      const tip = tipRight
-        ? `M${(-W / 2).toFixed(1)},${-H / 2} L${(W / 2 - 6).toFixed(1)},${-H / 2} L${(W / 2).toFixed(1)},0 L${(W / 2 - 6).toFixed(1)},${H / 2} L${(-W / 2).toFixed(1)},${H / 2} Z`
-        : `M${(W / 2).toFixed(1)},${-H / 2} L${(-W / 2 + 6).toFixed(1)},${-H / 2} L${(-W / 2).toFixed(1)},0 L${(-W / 2 + 6).toFixed(1)},${H / 2} L${(W / 2).toFixed(1)},${H / 2} Z`;
-      return `<g transform="translate(${x},${y}) rotate(${ang.toFixed(1)})">
-        <path d="${tip}" fill="#ffffff" fill-opacity="0.92" stroke="${WINDBLUE()}" stroke-width="1.4"/>
-        <text text-anchor="middle" dy="1.8" font-size="${MAP_TEXT}" font-weight="700" fill="${WINDBLUE()}">${esc(text)}</text>
-      </g>`;
-    };
-    layers.push(banner(MAP_W - 95, 55, 'NE SUMMER SEA BREEZE'));
-    layers.push(banner(MAP_W - 85, MAP_H - 75, 'S & SE COOL SUMMER WIND'));
-    layers.push(banner(90, MAP_H - 60, 'W & SW WINTER WINDS'));
+  // Each wind comes in from its own compass quarter, so it turns with the
+  // sheet when north is aligned to the site: it starts where a ray from the
+  // site along its bearing meets a frame kept clear of the sheet's edge.
+  const windFrom = (bearingDeg: number): Pt => {
+    const a = ((bearingDeg + view.rotationDeg) * Math.PI) / 180;
+    const ux = Math.sin(a), uy = -Math.cos(a);
+    const [x0, x1, y0, y1] = [90, MAP_W - 90, 55, MAP_H - 60];
+    const tx = ux > 0 ? (x1 - centroidPx[0]) / ux : ux < 0 ? (x0 - centroidPx[0]) / ux : Infinity;
+    const ty = uy > 0 ? (y1 - centroidPx[1]) / uy : uy < 0 ? (y0 - centroidPx[1]) / uy : Infinity;
+    const t = Math.max(0, Math.min(tx, ty));
+    return [centroidPx[0] + ux * t, centroidPx[1] + uy * t];
+  };
+  const winds: { at: Pt; label: string[] }[] = [
+    { at: windFrom(50), label: ['NE SUMMER', 'SEA BREEZE'] },
+    { at: windFrom(150), label: ['S & SE COOL', 'SUMMER WIND'] },
+    { at: windFrom(235), label: ['W & SW', 'WINTER WINDS'] },
+  ];
+  for (const w of winds) {
+    const dx = centroidPx[0] - w.at[0], dy = centroidPx[1] - w.at[1];
+    const L = Math.hypot(dx, dy) || 1;
+    const ux = dx / L, uy = dy / L, nx = -uy, ny = ux;
+    // A wind and a sun can come from the same quarter (the SE summer wind and
+    // the summer sunrise do); the ribbon then stops short of the sun rather
+    // than running through it.
+    const sunSpots = [sunAt(winterAz, Ri), sunAt(-winterAz, Ri), sunAt(summerAz, Ro), sunAt(-summerAz, Ro)];
+    const clearOfSuns = (p: Pt) => sunSpots.every(([sx, sy]) => Math.hypot(p[0] - sx, p[1] - (sy + 8)) > 36);
+    // Three of the sheet's hand-drawn arrows side by side, bowing alternately.
+    const strands = [[-14, 3.2, 84], [0, -3.2, 96], [14, 3.2, 76]].map(([o, bow, len]) => {
+      const from: Pt = [w.at[0] + nx * o, w.at[1] + ny * o];
+      let L = len;
+      while (L > 40 && ![0.6, 0.8, 1].every((f) => clearOfSuns([from[0] + ux * L * f, from[1] + uy * L * f]))) L -= 4;
+      return `<path d="${sketchArrow(from[0], from[1], ux, uy, L, bow, 1.6, 4.6)}"/>`;
+    }).join('');
+    layers.push(`<g fill="#ffffff" fill-opacity="0.85" stroke="${PEN}" stroke-width="${PEN_W}" stroke-linejoin="round">${strands}</g>`);
+    layers.push(textBlock(w.at[0] - ux * 18, w.at[1] - uy * 18, w.label));
   }
 
   // View labels last, over everything.
@@ -751,12 +1001,26 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     ly += 10;
   };
   const mid = SWATCH_X + SWATCH_W / 2;
-  row(`<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="none" stroke="${RED()}" stroke-width="0.9" stroke-dasharray="4.5,1.5,1,1.5"/>`, 'SITE');
+  row(`<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="none" stroke="${SITE_RED}" stroke-width="0.9" stroke-dasharray="4.5,1.5,1,1.5"/>`, 'SITE');
   row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${BLUE()}" stroke-width="0.8" stroke-dasharray="4,1.6"/><path d="M${SWATCH_X + SWATCH_W - 4},1.2 L${SWATCH_X + SWATCH_W},3.2 L${SWATCH_X + SWATCH_W - 4},5.2" fill="none" stroke="${BLUE()}" stroke-width="0.8"/>`, 'FALL OF TERRAIN');
-  row(`<text x="${SWATCH_X}" y="5.4" font-size="3.2" font-weight="700" fill="${RED()}">SB 30.48</text>`, 'BOUNDARY DIMENSION (m)');
-  row(`<text x="${SWATCH_X}" y="5.4" font-size="3.2" font-weight="700" fill="${RED()}">RL 24.5</text>`, 'SURFACE LEVEL (AHD)');
-  if (sb.contours.length) row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="#a07c3f" stroke-width="0.6"/><text x="${SWATCH_X + 1}" y="2.2" font-size="2.2" font-weight="700" fill="#8a6a2f">RL 20</text>`, `CONTOURS AT ${sb.contourIntervalM ?? 2} m AHD`, sb.contourSource);
-  row(`<g><rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="#fff" stroke="#bbb" stroke-width="0.2"/><text x="${SWATCH_X + SWATCH_W / 2}" y="2.8" text-anchor="middle" font-size="2" font-weight="700" fill="#111">8 LEVUKA ST</text><text x="${SWATCH_X + SWATCH_W / 2}" y="5.2" text-anchor="middle" font-size="2" font-weight="700" fill="${BLUE()}">R3 MEDIUM</text></g>`, 'NEIGHBOUR: ADDRESS, STOREYS, ZONE');
+  row(`<text x="${SWATCH_X}" y="5.4" font-size="3.2" font-weight="700" fill="${SITE_RED}">SB 30.48</text>`, 'BOUNDARY DIMENSION (m)');
+  row(`<text x="${SWATCH_X}" y="5.4" font-size="3.2" font-weight="700" fill="${SITE_RED}">RL 24.5</text>`, 'SURFACE LEVEL (AHD)');
+  if (sb.contours.length) row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${CONTOUR}" stroke-width="0.6"/><text x="${SWATCH_X + 1}" y="2.2" font-size="2.2" font-weight="700" fill="${CONTOUR}">RL 20</text>`, `CONTOURS AT ${sb.contourIntervalM ?? 2} m AHD`, sb.contourSource);
+  row(`<g><rect x="${SWATCH_X + SWATCH_W / 2 - 5}" y="0" width="10" height="6.5" fill="#8a8a8a"/><text x="${SWATCH_X + SWATCH_W / 2}" y="2.8" text-anchor="middle" font-size="2.6" font-weight="700" fill="${NAME_GREEN}">26</text>${storeyLabels ? `<text x="${SWATCH_X + SWATCH_W / 2}" y="5.8" text-anchor="middle" font-size="2.6" font-weight="700" fill="${NAME_GREEN}" opacity="0.8">3ST</text>` : ''}</g>`,
+    storeyLabels ? 'NEIGHBOUR: NUMBER, STOREYS' : 'NEIGHBOUR: STREET NUMBER',
+    storeyLabels ? (sb.buildings?.source === 'overture' ? 'storeys from Overture Maps, OSM levels where it has none' : 'storeys from OpenStreetMap building levels') : undefined);
+  // The zones, in the legend's category order, with the context sheet's swatch.
+  {
+    let stex = 0;
+    const swD = `M${SWATCH_X},0h${SWATCH_W}v6.5h${-SWATCH_W}Z`;
+    for (const c of tpl().categories) {
+      if (!usedZoneCats.has(c.id)) continue;
+      const ink = zoneInk(c);
+      const kind = c.texture === 'dots' || c.texture === 'cross' ? c.texture : 'lines';
+      row(textureSvg(`sltx${stex++}`, swD, kind, ink, { x: SWATCH_X, y: 0, w: SWATCH_W, h: 6.5 }, Math.min(1, 0.65 + c.opacity * 0.5)) +
+        `<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="none" stroke="${ink}" stroke-width="0.4"/>`, c.label);
+    }
+  }
   if (bayCount) {
     const quads = Array.from({ length: 4 }, (_, i) => `<rect x="${(SWATCH_X + i * 5.6).toFixed(1)}" y="1.2" width="5.6" height="4.4" fill="${PARK}" fill-opacity="0.35" stroke="${PARK_INK}" stroke-width="0.3"/>`).join('');
     const kinds = [...orientations].map((o) => BAY_LABEL[o]).join(', ');
@@ -772,23 +1036,41 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     row(`<circle cx="${mid}" cy="3.2" r="2.8" fill="#7dbb57" fill-opacity="0.45" stroke="#4e8c33" stroke-width="0.4"/><circle cx="${mid}" cy="3.2" r="0.5" fill="#2f5e20"/>`, 'TREES, CANOPY TO SCALE', sub);
   }
   if ((sb.views ?? []).some((v) => v.cone)) {
-    row(`<path d="M${SWATCH_X},3.2 L${SWATCH_X + SWATCH_W},0.4 L${SWATCH_X + SWATCH_W},6 Z" fill="#ffffff" stroke="#8a8a8a" stroke-width="0.3"/>`, 'POTENTIAL VIEW', `terrain only, from ${Math.round(sb.eyeAboveM ?? 8)} m up; no buildings`);
+    row(`<g transform="translate(${SWATCH_X + 11},3.2) rotate(-14) scale(0.62)" fill="#fff" stroke="${SITE_RED}" stroke-width="0.7" stroke-linejoin="round"><path d="M-7,-1.7 L6,-2.6 L6,2.6 L-7,1.7 Z"/><rect x="6" y="-3.3" width="2.6" height="6.6"/><rect x="-9.6" y="-1.2" width="2.6" height="2.4"/></g>`, 'POTENTIAL VIEW', `terrain only, from ${Math.round(sb.eyeAboveM ?? 8)} m up; no buildings`);
   }
   if (sb.furniture.powerPoles.length) row(`<g transform="translate(${mid},3.2)"><line x1="-2.4" y1="0" x2="2.4" y2="0" stroke="#333" stroke-width="0.4"/><circle r="1.2" fill="none" stroke="#333" stroke-width="0.45"/></g>`, 'POWER POLE');
   if (sb.furniture.streetLamps.length) row(`<circle cx="${mid}" cy="3.2" r="1.4" fill="#f0c020" stroke="#a8860b" stroke-width="0.3"/>`, 'LIGHT POLE');
   if (sb.furniture.hydrants.length) row(`<circle cx="${mid}" cy="3.2" r="1.8" fill="#1f78d1"/>`, 'HYDRANT');
   if (sb.busStops.length) row(`<g transform="translate(${mid},3.2)"><circle r="3.4" fill="#fff" stroke="#2f7fd6" stroke-width="0.8"/><text text-anchor="middle" dy="1.9" font-size="5.7" font-weight="700" fill="#2f7fd6">B</text></g>`, 'BUS STOPS');
   if (sb.furniture.onewayRoads.length) row(`<path d="M${SWATCH_X},3.2 L${SWATCH_X + SWATCH_W - 4},3.2 M${SWATCH_X + SWATCH_W - 7},1.4 L${SWATCH_X + SWATCH_W - 4},3.2 L${SWATCH_X + SWATCH_W - 7},5" fill="none" stroke="#8a8a8a" stroke-width="1.0"/>`, 'TRAFFIC DIRECTION');
-  row(`<path d="M${SWATCH_X},4.5 ${Array.from({ length: 6 }, (_, i) => `L${(SWATCH_X + 2 + i * 4).toFixed(1)},${i % 2 ? 4.5 : 1.9}`).join(' ')}" fill="none" stroke="#3b4fd8" stroke-width="0.5"/>`, 'NOISE SOURCE');
-  row(`<g transform="translate(${mid},3.2)"><path d="M-9,-3 L5,-3 L9,0 L5,3 L-9,3 Z" fill="#fff" stroke="${WINDBLUE()}" stroke-width="0.8"/></g>`, 'PREVAILING BREEZES');
-  row(`<g transform="translate(${mid},3.2)"><circle r="3.2" fill="${SUN()}"/><text text-anchor="middle" dy="1.2" font-size="3.2" font-weight="700" fill="#000">W</text></g>`, 'WINTER SUN (AM/PM)');
-  row(`<g transform="translate(${mid},3.2)"><circle r="3.2" fill="${SUN()}"/><text text-anchor="middle" dy="1.2" font-size="3.2" font-weight="700" fill="#000">S</text></g>`, 'SUMMER SUN (AM/PM)');
+  {
+    const top: string[] = [], bot: string[] = [];
+    for (let x = 0; x <= SWATCH_W - 2; x += 0.4) {
+      const yc = 3.2 + 0.6 * Math.sin(x / 2.6);
+      const w = 1.05 + 0.25 * Math.sin(x / 1.7);
+      top.push(`${(SWATCH_X + 1 + x).toFixed(2)},${(yc - w).toFixed(2)}`);
+      bot.push(`${(SWATCH_X + 1 + x).toFixed(2)},${(yc + w).toFixed(2)}`);
+    }
+    row(`<path d="M${top.join('L')}L${bot.reverse().join('L')}Z" fill="#fff" stroke="${NOISE_BLUE}" stroke-width="0.3" stroke-linejoin="round"/>`, 'NOISE SOURCE', 'busy roads and the railway');
+  }
+  {
+    const rib = `M${SWATCH_X + 2},2.6 C${SWATCH_X + 7},0.8 ${SWATCH_X + 11},4.8 ${SWATCH_X + 16},2.4 L${SWATCH_X + 16},1 L${SWATCH_X + 21},3.2 L${SWATCH_X + 16},5.4 L${SWATCH_X + 16},4 C${SWATCH_X + 11},6.2 ${SWATCH_X + 7},2.6 ${SWATCH_X + 2},3.8 Z`;
+    void rib;
+    row(`<path d="${sketchArrow(SWATCH_X + 2, 3.2, 1, 0, 19, 0.8, 0.5, 1.3)}" fill="#fff" stroke="${SITE_RED}" stroke-width="0.35" stroke-linejoin="round"/>`, 'PREVAILING WINDS');
+    row(`<g transform="translate(${mid},3.2)"><path d="M${Array.from({ length: 24 }, (_, k) => { const a = (k / 24) * Math.PI * 2, r = k % 2 ? 2.4 : (k % 6 === 2 ? 4.3 : 3.7); return `${(r * Math.cos(a)).toFixed(2)},${(r * Math.sin(a)).toFixed(2)}`; }).join('L')}Z" fill="#fff" stroke="${SITE_RED}" stroke-width="0.35" stroke-linejoin="round"/><circle r="1.7" fill="#fff" stroke="${SITE_RED}" stroke-width="0.35"/></g>`, 'SUN PATH', 'summer solid, winter dashed; solar hours');
+  }
 
   const utilKinds = new Set(sb.furniture.utilities.map((u) => u.kind));
   if (utilKinds.has('power')) row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="#f2c200" stroke-width="0.9" stroke-dasharray="4,2.2"/>`, 'POWER LINES');
   if (utilKinds.has('water')) row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="#2f7fd6" stroke-width="0.9" stroke-dasharray="4,2.2"/>`, 'WATER MAIN');
   if (utilKinds.has('sewer')) row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="#7db87d" stroke-width="0.9" stroke-dasharray="4,2.2"/>`, 'SEWER MAIN');
   if (utilKinds.has('gas')) row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="#e6007e" stroke-width="0.9" stroke-dasharray="4,2.2"/>`, 'GAS MAIN');
+
+  // Arial Narrow (Liberation Sans Narrow on the server) for every word on the
+  // map and in the legend.
+  layers.unshift(`<g font-family="${tpl().streetFont}">`);
+  layers.push('</g>');
+  legendSvg = `<g font-family="${tpl().streetFont}">${legendSvg}</g>`;
 
   return sheetHtml({
     meta,

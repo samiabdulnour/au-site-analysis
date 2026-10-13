@@ -13,6 +13,7 @@ if (existsSync('.env')) {
 }
 import { runPipeline, runSitePipeline, runSummaryPipeline, runSlidesPipeline } from './pipeline.js';
 import { renderSheet, MAP_W, MAP_H, type SheetMeta } from './render/sheet.js';
+import { setTemplate, DEFAULT_TEMPLATE, isTemplateId } from './render/template.js';
 import { renderSiteSheet } from './render/siteSheet.js';
 import { renderSummarySheet } from './render/summarySheet.js';
 import { summaryCsv, summaryJson } from './export/summaryExport.js';
@@ -28,7 +29,7 @@ function arg(name: string, def?: string): string | undefined {
 
 const address = process.argv.slice(2).find((a) => !a.startsWith('--') && process.argv[process.argv.indexOf(a) - 1]?.startsWith('--') !== true);
 if (!address) {
-  console.error('usage: npm run generate -- "<address>" [--type context|site|summary|slides|both] [--scale 3000] [--slides-scale 8000] [--job N] [--client X] [--status S] [--sheet "DA 003"]');
+  console.error('usage: npm run generate -- "<address>" [--type context|site|summary|slides|both] [--scale 3000] [--slides-scale 8000] [--template flamingo|kingfisher|heron|conure] [--site-theme cardinal] [--job N] [--client X] [--status S] [--sheet "DA 003"]');
   process.exit(1);
 }
 
@@ -52,6 +53,14 @@ const meta: SheetMeta = {
 
 const sheetType = arg('type', 'context')!; // context | site | summary | slides | both (the three sheets)
 const rotate = arg('rotate', 'north') === 'auto' ? 'auto' as const : 'north' as const;
+// The context sheet's graphic template, process-wide for the CLI (it renders one
+// address and exits). The site sheet takes --site-theme instead; the summary
+// and the deck have no themes.
+{
+  const want = arg('template', DEFAULT_TEMPLATE)!;
+  if (!isTemplateId(want)) { console.error(`unknown template "${want}"; using ${DEFAULT_TEMPLATE}`); }
+  setTemplate(want);
+}
 const outputs: string[] = [];
 
 if (sheetType === 'context' || sheetType === 'both') {
@@ -89,7 +98,7 @@ if (sheetType === 'site' || sheetType === 'both') {
   });
   console.log('composing site analysis…');
   const siteHtmlPath = join(outDir, 'site_sheet.html');
-  await writeFile(siteHtmlPath, renderSiteSheet(sb, { ...meta, sheetNo: meta.sheetNo || '' }));
+  await writeFile(siteHtmlPath, renderSiteSheet(sb, { ...meta, sheetNo: meta.sheetNo || '' }, arg('site-theme')));
   const sitePdfPath = join(outDir, 'SITE_ANALYSIS.pdf');
   await htmlToPdf(siteHtmlPath, sitePdfPath);
   outputs.push(sitePdfPath);
