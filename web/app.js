@@ -37,7 +37,7 @@ const STYLES = [
 ];
 const NORTH = [
   ['north', 'up',    'north up'],
-  ['auto',  'align', 'squared to the lot'],
+  ['auto',  'align', 'long side horizontal'],
 ];
 
 // Every picture in the expected-result frame is a real sheet drawn for this

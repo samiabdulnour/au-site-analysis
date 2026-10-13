@@ -71,8 +71,8 @@ export interface PipelineOpts {
   mapWidthMm: number;
   mapHeightMm: number;
   outDir: string;
-  /** 'north' = north up (default); 'auto' = rotate so the site's longest
-   *  boundary edge runs horizontally (better fit for elongated sites). */
+  /** 'north' = north up (default); 'auto' = rotate so the site lies with its
+   *  long side horizontal (its bounding rectangle's long axis along the sheet). */
   rotate?: 'north' | 'auto';
   aerialPxWidth?: number;
   log?: (msg: string) => void;
@@ -80,23 +80,43 @@ export interface PipelineOpts {
 
 /** Angle (deg, mercator CCW-from-east) of the longest outer-ring edge of the
  *  site lots, snapped into (-45, 45] so the map never turns on its head. */
-function siteLongEdgeDeg(siteLots: GeoJSONFC): number {
-  let best = 0, bestLen = 0;
+/**
+ * The turn that lays the site with its long side horizontal: the long axis
+ * of the site's minimum-area bounding rectangle, as an angle in (-90°, 90°].
+ * The rectangle is tried along every boundary edge (the minimum one always
+ * lies along an edge of the hull, and so of the boundary), so an irregular or
+ * multi-lot site still reads by its overall shape, not by one long edge. The
+ * sheet is landscape, so the long side lying along it also fits it best.
+ */
+export function siteLongEdgeDeg(siteLots: GeoJSONFC): number {
+  const pts: { x: number; y: number }[] = [];
+  const edges: number[] = [];
   for (const f of siteLots.features) {
     const rings = f.geometry?.type === 'Polygon' ? f.geometry.coordinates
       : f.geometry?.type === 'MultiPolygon' ? f.geometry.coordinates.flat() : [];
     for (const ring of rings) {
-      for (let i = 1; i < ring.length; i++) {
-        const a = lonLatToMercator({ lon: ring[i - 1][0], lat: ring[i - 1][1] });
-        const b = lonLatToMercator({ lon: ring[i][0], lat: ring[i][1] });
-        const len = Math.hypot(b.x - a.x, b.y - a.y);
-        if (len > bestLen) { bestLen = len; best = Math.atan2(b.y - a.y, b.x - a.x); }
-      }
+      const m = ring.map(([lon, lat]: number[]) => lonLatToMercator({ lon, lat }));
+      pts.push(...m);
+      for (let i = 1; i < m.length; i++)
+        if (Math.hypot(m[i].x - m[i - 1].x, m[i].y - m[i - 1].y) > 0.01) edges.push(Math.atan2(m[i].y - m[i - 1].y, m[i].x - m[i - 1].x));
     }
   }
-  let deg = (best * 180) / Math.PI;
-  while (deg > 45) deg -= 90;
-  while (deg <= -45) deg += 90;
+  if (pts.length < 3 || !edges.length) return 0;
+  let bestArea = Infinity, axis = 0;
+  for (const t of edges) {
+    const c = Math.cos(t), s = Math.sin(t);
+    let u0 = Infinity, u1 = -Infinity, v0 = Infinity, v1 = -Infinity;
+    for (const { x, y } of pts) {
+      const u = x * c + y * s, v = -x * s + y * c;
+      if (u < u0) u0 = u; if (u > u1) u1 = u; if (v < v0) v0 = v; if (v > v1) v1 = v;
+    }
+    const area = (u1 - u0) * (v1 - v0);
+    if (area < bestArea - 1e-6) { bestArea = area; axis = u1 - u0 >= v1 - v0 ? t : t + Math.PI / 2; }
+  }
+  // An axis has no direction: fold it into (-90°, 90°].
+  let deg = (axis * 180) / Math.PI;
+  while (deg > 90) deg -= 180;
+  while (deg <= -90) deg += 180;
   return deg;
 }
 
