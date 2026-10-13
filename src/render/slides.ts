@@ -77,8 +77,14 @@ export interface Slide {
   bleed?: boolean;
   /** One map across the whole spread, the text set in its white ground. */
   full?: boolean;
-  /** An atlas page's sources, set small and grey above its footer. */
+  /** An atlas page's sources, set small and grey at the foot of the narrative column. */
   sources?: string;
+  /** The author's prompt, bold, in the slide's colour, in the narrative column. */
+  narrative?: string;
+  /** The slide's colour: the narrative's ink, matched to its map. */
+  accent?: string;
+  /** The key, as hairline-ruled rows at the foot of the right column. */
+  legend?: LegendEntry[];
   /** Where the narrative column starts, when a figure sits above it on the left page. */
   textY?: number;
 }
@@ -163,6 +169,11 @@ function mainRing(f: GeoJSONFeature, proj: Proj) {
 
 const label = (x: number, y: number, text: string, size = 2.2, fill = '#2a3534') =>
   `<text x="${x.toFixed(1)}" y="${(y + size * 0.35).toFixed(1)}" text-anchor="middle" font-size="${size}" font-weight="600" fill="${fill}" stroke="#ffffff" stroke-width="${(size * 0.22).toFixed(2)}" paint-order="stroke">${esc(text)}</text>`;
+
+/** The key as the template sets it: a hairline over each row, the swatch at the left, 6 pt caps beside it. */
+function zLegend(entries: LegendEntry[]): string {
+  return `<div class="abs zleg">${entries.map((e) => `<div class="zrow"><svg class="zsw" viewBox="0 0 5 3.6" preserveAspectRatio="xMinYMid meet" xmlns="http://www.w3.org/2000/svg">${e.swatch}</svg><span>${esc(e.label)}</span></div>`).join('')}</div>`;
+}
 
 /** A T3 word inside a graph: the body style, one size, one weight, ink. */
 const t3Text = (x: number, y: number, text: string, anchor: 'start' | 'middle' | 'end' = 'start') =>
@@ -611,12 +622,11 @@ export function locationSlide(b: SlidesBundle): Slide {
   const table = `<table class="da"><thead><tr><th>Centre</th><th>Type</th><th class="r">Distance</th><th>Direction</th></tr></thead><tbody>${rows}</tbody></table>`;
   const figure = `<div class="abs" style="left:${FOLD}mm;top:0">${mapSvg}</div>
     <div class="abs maplabel" style="left:${FOLD + 8}mm;top:8mm">The region · 1:${fmtNum(p.scale).replace(',', ' ')}</div>`;
-  const textHtml = sentences.map(para).join('') +
-    `<div class="anote">Narrative — for the author: the wider context in four paragraphs — the region and its plan, the corridors and centres the site relates to, the transport that serves it, and the character of the surrounds the location map does not show.</div>` +
-    `<div class="legend" style="margin-top:12mm;column-count:2;column-gap:8mm">${legendHtml}</div>`;
-  void tiles; void table;
+  const textHtml = sentences.map(para).join('');
+  const narrative = 'Narrative — for the author: the wider context in four paragraphs — the region and its plan, the corridors and centres the site relates to, the transport that serves it, and the character of the surrounds the location map does not show.';
+  void tiles; void table; void legendHtml;
   const sub = [[b.siteAddress, f.lga ? f.lga.name : ''].filter(Boolean).join(' '), `${km(f.cbd.distanceM)} from the Sydney CBD`, near ? `${near.name} ${km(near.distanceM)}` : ''].filter(Boolean).join(' · ');
-  return { id: '01_location', title: 'Location', subtitle: sub, textHtml, figureHtml: figure, bleed: true, sources, textY: 48 };
+  return { id: '01_location', title: 'Location', subtitle: sub, textHtml, figureHtml: figure, bleed: true, sources, narrative, accent: '#f5a470', legend };
 }
 
 // ---- slide 02: character ----------------------------------------------------------
@@ -2414,91 +2424,88 @@ export function movementSlide(b: SlidesBundle): Slide {
     ? `<table class="da"><thead><tr><th>Station</th><th class="r" style="width:18mm">Distance</th></tr></thead><tbody>${stationRows}</tbody></table>`
     : '';
 
-  // The left page shows what the map cannot: reach as area, the stations as minutes, the network as length.
-  // One rhythm: a head, 4 mm, its graph, then 11 mm to the next block; graphs sit on the two text columns.
-  const svgOf = (w: number, h: number, inner: string) => `<svg width="${w}mm" height="${h}mm" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg" style="display:block;overflow:visible" font-family="${t.font}">${inner}</svg>`;
-  const LINE = '#16244f';
+  // The left page, after the office's template (Z. 2026-10): its graphs drawn at her coordinates, in page millimetres.
+  const PT = 25.4 / 72;
+  const S6 = 6 * PT, S10 = 10 * PT;
+  const base = (top: number, size: number) => top + 0.905 * size;
+  const txt = (x: number, top: number, text: string, size = S6, anchor: 'start' | 'middle' | 'end' = 'start', track = 0.09) =>
+    `<text x="${x.toFixed(2)}" y="${base(top, size).toFixed(2)}" text-anchor="${anchor}" font-size="${size.toFixed(3)}" letter-spacing="${(track * size).toFixed(3)}" fill="#000000">${esc(text)}</text>`;
+  const hair = (x0: number, x1: number, y: number) => `<line x1="${x0}" y1="${y}" x2="${x1}" y2="${y}" stroke="#878787" stroke-width="0.18"/>`;
+  const X0 = 75.33, X1 = 198, C2 = 138.67;
+  const g: string[] = [];
 
-  // Reach on foot: the three catchments as concentric circles, each the area it covers, labelled down a column.
-  const isoA = [...f.isochrones].sort((x, y) => y.minutes - x.minutes);
+  // Reach on foot · Bus
+  g.push(txt(X0, 44.0, 'Reach on foot', S10, 'start', 0), txt(C2, 44.0, 'Bus', S10, 'start', 0), hair(X0, X1, 50.23));
+  const isoA = [...f.isochrones].sort((x, y) => y.areaHa - x.areaHa).slice(0, 3);
+  const R0 = 29.52, CX = 104.97, BOTTOM = 116.85, STEP = 5.5;
+  const RING = [
+    { fill: '#f9fafd', stroke: '#86a9da', w: 0.35, dash: 1.45 },
+    { fill: '#eff1f9', stroke: '#0068b3', w: 0.41, dash: 1.69 },
+    { fill: '#dfe4f1', stroke: '#312783', w: 0.44, dash: 1.63 },
+  ];
   const maxHa = Math.max(1, ...isoA.map((i) => i.areaHa));
-  const R = 22, LABEL_X = 2 * R + 8;
-  const rings = isoA.map((i) => {
-    const r = R * Math.sqrt(i.areaHa / maxHa);
-    return { ...i, r, top: 2 * R - 2 * r };
-  });
-  // circles share a bottom tangent, like the atlas's; each label sits level with its circle's top, kept apart
-  let lastY = -Infinity;
-  const labelY = rings.map((rg) => { const y = Math.max(rg.top + 1, lastY + 5.6); lastY = y; return y; });
-  const reachParts = rings.map((rg) => `<circle cx="${R}" cy="${(2 * R - rg.r).toFixed(2)}" r="${rg.r.toFixed(2)}" fill="${MOVE.iso[rg.minutes] ?? '#b7c1e3'}"/>`).join('') +
-    rings.map((rg, i) => `<polyline points="${R},${rg.top.toFixed(2)} ${R + 2},${labelY[i].toFixed(2)} ${LABEL_X - 1.5},${labelY[i].toFixed(2)}" fill="none" stroke="${LINE}" stroke-width="0.2"/>` +
-      t2Text(LABEL_X, labelY[i], `${rg.minutes} min`) + t3Text(LABEL_X + 19, labelY[i] + 0.95, `${fmtNum(rg.areaHa)} ha`)).join('');
-  const reachSvg = rings.length ? svgOf(TEXT_W, 2 * R, reachParts) : '';
+  const circ = isoA.map((iso, k) => { const r = R0 * Math.sqrt(iso.areaHa / maxHa); const cy = BOTTOM - k * STEP - r; return { ...iso, r, cy, top: cy - r }; });
+  circ.forEach((c, k) => g.push(`<circle cx="${CX}" cy="${c.cy.toFixed(2)}" r="${c.r.toFixed(2)}" fill="${RING[k].fill}" stroke="${RING[k].stroke}" stroke-width="${RING[k].w}" stroke-dasharray="${RING[k].dash} ${RING[k].dash}"/>`));
+  // each label centred in the band between its circle's top and the next one in; the last in its circle
+  const labelTop = circ.map((c, k) => (k < circ.length - 1 ? (c.top + circ[k + 1].top) / 2 : c.cy) - 2.3);
+  circ.forEach((c, k) => g.push(txt(CX, labelTop[k], `${c.minutes} min`, S6, 'middle'), txt(CX, labelTop[k] + 2.5, `${fmtNum(c.areaHa)} ha`, S6, 'middle')));
+  const busTop = labelTop.length === 3 ? labelTop : [62.3, 79.1, 95.2];
+  const bus: [string, string][] = [
+    ['bus stops within 400 m', f.bus.total ? String(f.bus.within400) : '—'],
+    ['within 800 m', f.bus.total ? String(f.bus.within800) : '—'],
+    ['routes through the window', f.bus.routes ? String(f.bus.routes) : '—'],
+  ];
+  bus.forEach(([l, v], k) => g.push(txt(C2, busTop[k], l), txt(C2, busTop[k] + 2.5, v)));
 
-  // Stations on foot: one row each, the walk drawn as a bar from the site, the minutes at its end.
+  // a bar chart as the template draws it: names down the left, a scale over the right column, dotted gridlines, pale bars
+  const ROWH = 3.95, BAR = 1.65, TRACK0 = 138.67;
+  const chart = (head: string, headTop: number, rows: { name: string; value: number; label: string; dash?: string }[], max: number, step: number, span: number, axisOff = 12.5, rowsOff = 3.7) => {
+    g.push(txt(X0, headTop, head, S10, 'start', 0), hair(X0, X1, headTop + 6.21));
+    const axisTop = headTop + axisOff, rowsTop = axisTop + rowsOff;
+    const X = (v: number) => TRACK0 + (v / max) * span;
+    const gy0 = rowsTop - 0.6, gy1 = rowsTop + rows.length * ROWH - 0.15;
+    for (let v = 0; v <= max + 1e-9; v += step) {
+      g.push(txt(X(v), axisTop, String(v), S6, v === 0 ? 'start' : 'middle'));
+      g.push(`<line x1="${X(v).toFixed(2)}" y1="${gy0.toFixed(2)}" x2="${X(v).toFixed(2)}" y2="${gy1.toFixed(2)}" stroke="#878787" stroke-width="0.18" stroke-linecap="round" stroke-dasharray="0 0.36"/>`);
+    }
+    rows.forEach((r, i) => {
+      const top = rowsTop + i * ROWH, yb = top + 0.6 + BAR / 2, end = X(Math.min(r.value, max));
+      g.push(txt(X0, top, r.name));
+      g.push(`<line x1="${(TRACK0 - 0.09).toFixed(2)}" y1="${yb.toFixed(2)}" x2="${end.toFixed(2)}" y2="${yb.toFixed(2)}" stroke="#a7dcf8" stroke-width="${BAR}"${r.dash ? ` stroke-dasharray="${r.dash}"` : ''}/>`);
+      g.push(txt(end + 1.0, top, r.label));
+    });
+  };
+
+  // Stations on foot: minutes at 80 m a minute
   const minsOf = (m: number) => m / 80;
   const seen = new Set<string>();
   const shown = f.stations.filter((st) => { const k2 = `${st.name.replace(/ (Slr|Light Rail) Stop$/i, '')}|${st.kind}`; if (seen.has(k2)) return false; seen.add(k2); return true; }).slice(0, 5);
   const maxMin = Math.max(15, Math.ceil(Math.max(0, ...shown.map((st) => minsOf(st.distanceM))) / 5) * 5);
-  const NAME_W = 66, TRACK_X = NAME_W + 4, TRACK_W = L_W - TRACK_X - 16, ROW_H = 6.4, TOP = 5;
-  const MX = (min: number) => TRACK_X + (min / maxMin) * TRACK_W;
-  const sParts: string[] = [];
-  for (let m = 0; m <= maxMin; m += 5) {
-    sParts.push(`<line x1="${MX(m).toFixed(1)}" y1="${TOP - 1}" x2="${MX(m).toFixed(1)}" y2="${(TOP + shown.length * ROW_H - 1.2).toFixed(1)}" stroke="${LINE}" stroke-width="0.12" stroke-dasharray="0.4,0.8"/>`);
-    sParts.push(t2Text(MX(m), TOP - 3, m === maxMin ? `${m} min` : String(m), 'middle'));
-  }
-  shown.forEach((st, i) => {
-    const y = TOP + 2 + i * ROW_H, mins = minsOf(st.distanceM);
-    const name = st.name.replace(/ (Slr|Light Rail) Stop$/i, '');
-    sParts.push(t3Text(0, y + 0.95, `${name} · ${st.kind}`));
-    sParts.push(`<line x1="${MX(0).toFixed(1)}" y1="${y}" x2="${MX(mins).toFixed(1)}" y2="${y}" stroke="${MOVE.iso[10]}" stroke-width="2.2"/>`);
-    sParts.push(`<circle cx="${MX(0).toFixed(1)}" cy="${y}" r="1.1" fill="${t.site}"/>`);
-    sParts.push(`<circle cx="${MX(mins).toFixed(1)}" cy="${y}" r="2.1" fill="#ffffff" stroke="${LINE}" stroke-width="0.35"/>` + t2Text(MX(mins), y, st.kind === 'light rail' ? 'L' : st.kind === 'metro' ? 'M' : 'T', 'middle'));
-    sParts.push(t3Text(MX(mins) + 3.6, y + 0.95, `${Math.round(mins)} min`));
-  });
-  const stationsH = TOP + shown.length * ROW_H;
-  const stationsSvg = shown.length ? svgOf(L_W, stationsH, sParts.join('')) : '';
+  if (shown.length) chart('Stations on foot', 126.2, shown.map((st) => ({ name: `${st.name.replace(/ (Slr|Light Rail) Stop$/i, '')} ${st.kind}`, value: minsOf(st.distanceM), label: `${Math.round(minsOf(st.distanceM))} min` })), maxMin, 5, 59.24);
 
-  // The network in the window: each kind of path in its map symbol, its length true to the kilometres.
-  const net: [string, number, string][] = [
-    ['Separated cycleways', f.cycle.separatedM, `stroke="${MOVE.cycle}" stroke-width="0.6"`],
-    ['On-road cycle lanes', f.cycle.laneM, `stroke="${MOVE.cycle}" stroke-width="0.4" stroke-dasharray="1.4,0.8"`],
-    ['Shared paths', f.cycle.sharedM, `stroke="${MOVE.cycle}" stroke-width="0.3" stroke-dasharray="0.8,0.8"`],
-    ['Footways, paths and steps', f.foot.lengthM, `stroke="${MOVE.foot}" stroke-width="0.35" stroke-dasharray="0.5,0.5"`],
+  // The network in the window: kilometres, each kind in its own texture
+  const net = [
+    { name: 'Separated cycleways', m: f.cycle.separatedM },
+    { name: 'On-road cycle lanes', m: f.cycle.laneM, dash: '2.26 1.21' },
+    { name: 'Shared paths', m: f.cycle.sharedM, dash: '0.92 0.77' },
+    { name: 'Footways, paths and steps', m: f.foot.lengthM, dash: '0.59 0.46' },
   ];
-  const maxNet = Math.max(1, ...net.map(([, m]) => m));
-  const NNET = 6.4;
-  const netSvg = f.cycle.osm ? svgOf(L_W, net.length * NNET, net.map(([name, m, style], i) => {
-    const y = i * NNET + 2, len = (m / maxNet) * TRACK_W;
-    return t3Text(0, y + 0.95, name) + `<line x1="${TRACK_X}" y1="${y}" x2="${(TRACK_X + Math.max(0.6, len)).toFixed(1)}" y2="${y}" ${style}/>` + t3Text(TRACK_X + len + 3, y + 0.95, `${(m / 1000).toFixed(1)} km`);
-  }).join('')) : '';
+  const maxKm = Math.max(10, Math.ceil(Math.max(...net.map((n) => n.m / 1000)) / 10) * 10);
+  const kmStep = maxKm <= 50 ? 10 : maxKm <= 100 ? 20 : 50;
+  if (f.cycle.osm) chart('The network in the window', 169.6, net.map((n) => ({ name: n.name, value: n.m / 1000, label: `${(n.m / 1000).toFixed(1)} km`, dash: n.dash })), Math.ceil(maxKm / kmStep) * kmStep, kmStep, 58.78, 11.0, 4.0);
 
-  const busTiles = [
-    { v: f.bus.total ? String(f.bus.within400) : '—', l: 'bus stops within 400 m' },
-    { v: f.bus.total ? String(f.bus.within800) : '—', l: 'within 800 m' },
-    { v: f.bus.routes ? String(f.bus.routes) : '—', l: 'routes through the window' },
-  ].map((tl) => `<div class="tile"><div class="tv">${esc(tl.v)}</div><div class="tl">${esc(tl.l)}</div></div>`).join('');
-
-  const GAP = 11, HEAD = 6;
-  const y1 = 38, y2 = y1 + HEAD + 2 * R + GAP, y3 = y2 + HEAD + stationsH + GAP, y4 = y3 + HEAD + net.length * NNET + GAP;
+  const graphs = `<svg class="abs" style="left:0;top:0" width="${FOLD}mm" height="${SLIDE_H}mm" viewBox="0 0 ${FOLD} ${SLIDE_H}" xmlns="http://www.w3.org/2000/svg" font-family="Arial, 'Liberation Sans', sans-serif">${g.join('')}</svg>`;
+  const keyRows: LegendEntry[] = legendRows.map(([sv, label]) => ({ swatch: sv.replace(/^<svg[^>]*>/, '').replace(/<\/svg>$/, ''), label }));
   const sources = `Sources: NSW Spatial Services roads, rail and stations; walking isochrones from Valhalla on OpenStreetMap; bus stops from ${f.bus.source === 'tfnsw' ? 'Transport for NSW' : 'OpenStreetMap'}; bus routes, cycleways and footways from OpenStreetMap contributors (ODbL); active street frontages from the ePlanning development-control layers; walking minutes are straight-line distance at 80 m a minute. Retrieved ${b.generatedAt.slice(0, 10)}.`;
   const figureHtml = `
     <div class="abs" style="left:${FOLD}mm;top:0">${mapSvg}</div>
     <div class="abs maplabel" style="left:${FOLD + 8}mm;top:8mm">Movement · 1:${fmtNum(p.scale).replace(',', ' ')}</div>
-    <div class="abs t2" style="left:${L_X}mm;top:${y1}mm">Reach on foot</div>
-    <div class="abs" style="left:${L_X}mm;top:${y1 + HEAD}mm">${reachSvg}</div>
-    <div class="abs t2" style="left:${AUX_X}mm;top:${y1}mm">Bus</div>
-    <div class="abs tiles col" style="left:${AUX_X}mm;top:${y1 + HEAD}mm;width:${AUX_W}mm;gap:2.2mm">${busTiles}</div>
-    <div class="abs t2" style="left:${L_X}mm;top:${y2}mm">Stations on foot</div>
-    <div class="abs" style="left:${L_X}mm;top:${y2 + HEAD}mm">${stationsSvg}</div>
-    <div class="abs t2" style="left:${L_X}mm;top:${y3}mm">The network in the window</div>
-    <div class="abs" style="left:${L_X}mm;top:${y3 + HEAD}mm">${netSvg}</div>
-    <div class="abs" style="left:${L_X}mm;top:${y4}mm;width:${L_W}mm">
-      <div class="legend" style="column-count:2;column-gap:8mm">${legend}</div>
-      <div class="anote" style="margin-top:9mm">Narrative — for the author: how people will arrive and leave, which frontage is the address and which the service side, where the active edge belongs, and what the walking catchments say about the mix.</div>
-    </div>`;
+    ${graphs}`;
   void stationTable; void tiles; void textHtml;
-  return { id: '09_movement', title: 'Movement', subtitle: sub, textHtml: '', figureHtml, bleed: true, sources };
+  const lga = b.context.lga?.name ? titleCase(b.context.lga.name) : '';
+  const subT = [`${b.siteAddress}${lga ? ` ${lga}` : ''}`, f.stations[0] ? `${f.stations[0].name} ${fmtNum(f.stations[0].distanceM)} m` : ''].filter(Boolean).join(' · ');
+  const narrative = 'Narrative — for the author: how people will arrive and leave, which frontage is the address and which the service side, where the active edge belongs, and what the walking catchments say about the mix.';
+  return { id: '09_movement', title: 'Movement', subtitle: subT, textHtml: '', figureHtml, bleed: true, sources, narrative, accent: '#0068b3', legend: keyRows };
 }
 
 // ---- slide 10: green and public domain -------------------------------------
@@ -5491,16 +5498,23 @@ export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; 
   const slides = [locationSlide(b), characterSlide(b), planningOverviewSlide(b, facts), planningControlsSlide(b, facts), strategicSlide(b, facts), terrainSlide(b), developmentSlide(b, facts), builtFormSlide(b, facts), movementSlide(b), greenSlide(b), siteSlide(b), photosSlide(b), sunViewSlide(b), constraintsSlide(b), countrySlide(b), peopleSlide(b), ocSlide(b, facts), sourcesSlide(b, facts)];
   const t = tpl();
   const footerLeft = ['SITE ANALYST — OVERALL ANALYSIS', b.siteAddress, meta.client ? `for ${meta.client}` : '', meta.jobNo ? `job ${meta.jobNo}` : ''].filter(Boolean).join(' · ');
-  const atlasPage = (s: Slide, i: number) => `
+  // The atlas page, after the office's template (Z. 2026-10): measurements in mm from her A3 spread.
+  const atlasPage = (s: Slide, i: number) => {
+    const [line1, ...rest] = s.subtitle.split(' · ');
+    return `
 <section class="slide atlas" id="${esc(s.id)}">
-  <div class="abs ahead" style="left:${L_X}mm;top:13mm;width:${L_W}mm">${esc(s.title)}</div>
-  <div class="abs aband" style="left:${L_X}mm;top:21.5mm;width:${L_W}mm">${esc(s.subtitle).split(' · ').join(' <span class="bar">|</span> ')}</div>
-  ${s.textHtml ? `<div class="abs atext" style="left:${L_X}mm;top:${s.textY ?? 56}mm;width:${L_W}mm">${s.textHtml}</div>` : ''}
+  <div class="abs znum" style="left:12mm;top:10.6mm">${String(i + 1).padStart(2, '0')}</div>
+  <div class="abs znum" style="left:75.3mm;top:10.6mm">${esc(s.title)}</div>
+  <div class="abs zrule" style="left:12mm;top:20mm;width:186mm"></div>
+  <div class="abs zsub" style="left:75.3mm;top:23.8mm;width:122.7mm">${esc(line1)}${rest.length ? `<br>${rest.map(esc).join('<span class="zbar">|</span>')}` : ''}</div>
+  <div class="abs zrule" style="left:75.33mm;top:35mm;width:122.67mm"></div>
+  ${s.narrative ? `<div class="abs znarr" style="left:12mm;top:43.9mm;width:58.5mm;color:${s.accent ?? '#000000'}">${esc(s.narrative)}</div>` : ''}
+  ${s.textHtml ? `<div class="abs zbody" style="left:75.3mm;top:44mm;width:122.7mm">${s.textHtml}</div>` : ''}
   ${s.figureHtml}
-  ${s.sources ? `<div class="abs asrc" style="left:${L_X}mm;bottom:22mm;width:${L_W}mm">${esc(s.sources)}</div>` : ''}
-  <div class="abs afoot" style="left:${L_X}mm;top:${FOOT_Y - 3}mm;width:${L_W}mm">Generated ${esc(b.generatedAt.slice(0, 10))} <span class="bar">|</span> ${i + 1} / ${slides.length}</div>
-  <div class="abs afolio" style="right:${MARGIN_R}mm;top:${FOOT_Y}mm">${s.full ? '' : i * 2 + 2}</div>
+  ${s.legend?.length ? zLegend(s.legend) : ''}
+  ${s.sources ? `<div class="abs zsrc" style="left:12mm;bottom:11.6mm;width:58.5mm">${esc(s.sources)}</div>` : ''}
 </section>`;
+  };
   const pages = slides.map((s, i) => s.bleed || s.full ? atlasPage(s, i) : `
 <section class="slide${s.bleed || s.full ? ' atlas' : ''}" id="${esc(s.id)}">
   <div class="abs rh" style="left:${L_X}mm;top:10mm;width:${s.full ? 115 : L_W}mm"><span>Overall analysis</span>${s.full ? '' : `<span>${esc(b.siteAddress)}</span>`}</div>
@@ -5516,7 +5530,7 @@ export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; 
 </section>`).join('\n');
 
   const html = `<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>${esc(b.siteAddress)} — OVERALL ANALYSIS</title>
+<html lang="en"><head><meta charset="utf-8"><title>${esc(b.siteAddress)} — OVERALL ANALYSIS</title>
 <style>
   @page { size: ${SLIDE_W}mm ${SLIDE_H}mm; margin: 0; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -5617,24 +5631,20 @@ export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; 
   table.da.strat td.lnk a { color: #6a7572; text-decoration: none; word-break: break-all; font-size: 2.0mm; }
   table.da.strat tr.manual td { color: #8a918c; }
   table.da.strat tr.manual td b { font-weight: 600; }
-  .slide.atlas { --yellow: #f9f19a; --hair: #b9b9b9; --ink: #161616; }
-  .slide.atlas, .slide.atlas * { color: var(--ink); }
-  .slide.atlas .ahead, .slide.atlas .tv, .slide.atlas .h { font-size: 6mm; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; line-height: 1.1; }
-  .slide.atlas .aband, .slide.atlas .afoot, .slide.atlas .afolio, .slide.atlas .t2, .slide.atlas .maplabel, .slide.atlas table th, .slide.atlas .s { font-size: 2.7mm; font-weight: 400; letter-spacing: 0.05em; text-transform: uppercase; line-height: 1.3; }
-  .slide.atlas .lg span, .slide.atlas .tl, .slide.atlas .asrc, .slide.atlas table td { font-size: 2.7mm; font-weight: 400; letter-spacing: 0; text-transform: none; line-height: 1.3; }
-  .slide.atlas .atext, .slide.atlas .atext p, .slide.atlas .anote, .slide.atlas .b { font-size: 3.4mm; font-weight: 400; letter-spacing: 0; text-transform: none; line-height: 1.32; }
-  .slide.atlas .aband { padding: 0; }
-  .slide.atlas .bar { padding: 0 0.6mm; }
-  .slide.atlas .atext p { margin-bottom: 4.2mm; hyphens: auto; }
-  .slide.atlas .anote { background: var(--yellow); padding: 5mm 7mm 7mm; margin-top: 14mm; }
-  .slide.atlas .asrc { color: #8d8d8d; }
-  .slide.atlas .afoot { padding-top: 0; }
-  .slide.atlas .afolio { background: #ffffff; padding: 0.6mm 1.6mm; }
-  .slide.atlas .maplabel { background: #ffffff; }
-  .slide.atlas .tile { border-top: none; padding-top: 0; }
-  .slide.atlas .tl { margin-top: 1mm; }
-  .slide.atlas table th, .slide.atlas table td { border-top: none; padding: 0.5mm 2mm 0.5mm 0; }
-  .slide.atlas .lg { margin-bottom: 1mm; }
+  .slide.atlas { font-family: Arial, 'Liberation Sans', 'Helvetica Neue', Helvetica, sans-serif; color: #000000; }
+  .slide.atlas .znum { font-size: 14pt; font-weight: 700; letter-spacing: 0.08em; line-height: 1.15; text-transform: uppercase; white-space: nowrap; }
+  .slide.atlas .zrule { height: 0; border-top: 0.18mm solid #878787; }
+  .slide.atlas .zsub { font-size: 8pt; line-height: 3.4mm; letter-spacing: 0.025em; text-transform: uppercase; }
+  .slide.atlas .zbar { font-size: 8.4pt; padding: 0 0.15mm; }
+  .slide.atlas .znarr { font-size: 10pt; font-weight: 700; line-height: 4.23mm; letter-spacing: 0.01em; hyphens: auto; }
+  .slide.atlas .zbody, .slide.atlas .zbody p { font-size: 10pt; line-height: 4.23mm; hyphens: auto; }
+  .slide.atlas .zbody p { margin: 0 0 4.23mm; }
+  .slide.atlas .zsrc { font-size: 8pt; line-height: 3.4mm; color: #878787; hyphens: auto; }
+  .slide.atlas .zleg { left: 138.67mm; width: 59.33mm; bottom: 12.2mm; border-bottom: 0.18mm solid #878787; }
+  .slide.atlas .zrow { position: relative; border-top: 0.18mm solid #878787; min-height: 8.52mm; padding: 0.7mm 0 1mm 11.43mm; }
+  .slide.atlas .zrow span { display: block; font-size: 6pt; line-height: 2.55mm; letter-spacing: 0.09em; text-transform: uppercase; hyphens: auto; }
+  .slide.atlas .zsw { position: absolute; left: 0; top: 1.05mm; width: 7.7mm; height: 5.54mm; overflow: visible; }
+  .slide.atlas .maplabel { font-size: 6pt; letter-spacing: 0.09em; text-transform: uppercase; background: #ffffff; padding: 1.3mm 2.4mm; line-height: 1.2; }
 </style></head>
 <body>${pages}</body></html>`;
   return { html, slides };
