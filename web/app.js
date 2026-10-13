@@ -28,13 +28,22 @@ const SCALES = {
   summary: [],
   slides: [],
 };
-// The graphic templates the server knows; an unknown one falls back to the default.
-const STYLES = [
-  ['flamingo',   'flamingo',   'in Flamingo'],
-  ['kingfisher', 'kingfisher', 'in Kingfisher'],
-  ['heron',      'heron',      'in Heron'],
-  ['conure',     'conure',     'in Conure'],
-];
+// The styles each drawing takes: the context sheet has its templates, the site
+// analysis its own themes, and the summary and the deck none. An unknown one
+// falls back to the drawing's default on the server.
+const STYLES = {
+  context: [
+    ['flamingo',   'flamingo',   'in Flamingo'],
+    ['kingfisher', 'kingfisher', 'in Kingfisher'],
+    ['heron',      'heron',      'in Heron'],
+    ['conure',     'conure',     'in Conure'],
+  ],
+  site: [
+    ['cardinal', 'cardinal', 'in Cardinal'],
+  ],
+  summary: [],
+  slides: [],
+};
 const NORTH = [
   ['north', 'up',    'north up'],
   ['auto',  'align', 'long side horizontal'],
@@ -79,7 +88,7 @@ function tokens(host, items, current, onPick) {
 
 function renderAll() {
   tokens($('sheetOpts'), SHEETS, state.sheet,
-    (v) => { state.sheet = v; syncScale(); renderAll(); });
+    (v) => { state.sheet = v; syncScale(); syncStyle(); renderAll(); });
 
   // A table has neither a scale nor an orientation; the deck's maps are drawn
   // at a fixed scale, north up.
@@ -91,7 +100,9 @@ function renderAll() {
     tokens($('scaleOpts'), scales, state.scale, (v) => { state.scale = v; renderAll(); });
   }
   tokens($('northOpts'), NORTH, state.rotate, (v) => { state.rotate = v; renderAll(); });
-  tokens($('styleOpts'), STYLES, state.template, (v) => { state.template = v; renderAll(); });
+  const styles = STYLES[state.sheet];
+  $('styleRow').hidden = styles.length === 0;
+  if (styles.length) tokens($('styleOpts'), styles, state.template, (v) => { state.template = v; renderAll(); });
   renderResult();
 }
 
@@ -133,6 +144,12 @@ function applySession(j) {
   renderAll();
 }
 
+/** Keep the style valid when the drawing changes: each drawing has its own, or none. */
+function syncStyle() {
+  const valid = STYLES[state.sheet].map((s) => s[0]);
+  if (!valid.includes(state.template)) state.template = valid[0] ?? '';
+}
+
 /** Keep the scale valid when the drawing changes — 1:3000 means nothing for a lot. */
 function syncScale() {
   const valid = SCALES[state.sheet].map((s) => s[0]);
@@ -156,11 +173,12 @@ function caption(items, value) {
 function renderResult() {
   const parts = isMap()
     ? [state.sheet, state.scale, state.rotate, state.template]
-    : [state.sheet, state.template];
+    : [state.sheet];
   const src = '/samples/result-' + parts.join('-') + '.jpg';
   let text = caption(SHEETS, state.sheet);
   if (isMap()) text += ' ' + caption(SCALES[state.sheet], state.scale) + ', ' + caption(NORTH, state.rotate);
-  text += ', ' + caption(STYLES, state.template) + '.';
+  const style = caption(STYLES[state.sheet], state.template);
+  text += (style ? ', ' + style : '') + '.';
   // The frame shows the picture alone; what it is is said to a screen reader.
   resultImg.alt = text + ' An example drawn for ' + EXAMPLE_ADDRESS + '.';
   // renderAll runs on every pick; asking again for the picture already shown

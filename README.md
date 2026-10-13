@@ -57,10 +57,11 @@ Mapillary's frames with `MAPILLARY_TOKEN=…` (a free client token); without
 either it reads KartaView alone. On the server they go in
 `/etc/site-analyst.env`, which the deployer passes to the container.
 
-The frame's pictures are `web/samples/result-<sheet>-<scale>-<rotate>-<template>.jpg`
-for the two maps and `result-<sheet>-<template>.jpg` for the summary and the
-deck — one for every combination the table offers, seventy-two in all, the
-names `web/app.js` asks for. A combination without one says so in the frame
+The frame's pictures are `web/samples/result-<sheet>-<scale>-<rotate>-<style>.jpg`
+for the two maps (the context sheet in each of its four templates, the site
+sheet in each of its themes) and `result-summary.jpg` and `result-slides.jpg`
+for the summary and the deck, which have no styles — one for every
+combination the table offers, the names `web/app.js` asks for. A combination without one says so in the frame
 rather than showing a broken image. They are drawn for 150 George Street,
 Parramatta; to redraw them, or to move them to another address (and change
 `EXAMPLE_ADDRESS` in `web/app.js` to match):
@@ -347,11 +348,12 @@ Every word on the map is one size. Potential views are a telescope just
 outside the site edge, aimed along the bearing, with what it found — the
 distance and "TERRAIN CLEAR" — written under it, along its line, in the site
 pen's lettering. The site itself — boundary, corners,
-dimensions and levels — is a deep red, apart from that coral pen.
+dimensions and levels — is a deep red, and the sun, winds and views are drawn
+in the same red, so the analysis reads as one layer over the aerial.
 
-The sun, the winds and the noise are drawn in one hand, in the template's
-site ink and open white-filled marks: a hand-drawn sun — a disc with
-flame-like rays — at the summer and winter sunrise and sunset, on a solid
+The sun, the winds and the noise are drawn in one hand, in open white-filled
+marks (the sun and winds in the site's deep red, the noise in blue): a sun drawn as an open jagged crown
+of twelve teeth round a plain circle, four of them short, broad flames — at the summer and winter sunrise and sunset, on a solid
 summer arc and a dashed winter arc, each arc marked with a dot and the time at
 every solar hour; the prevailing winds as three widening arrows blowing in
 toward the site, stopping short of a sun from the same quarter. Noise — the
@@ -496,6 +498,10 @@ colours and the land-use palette. Content is identical between templates; only
 the look changes. They live in `src/render/template.ts`, so a new house style is
 a data change.
 
+Templates are the context sheet's. The site analysis has its own themes (see
+Site analysis themes below), and the development summary and the deck have
+none: they are always drawn in the default template.
+
 There are four: Flamingo, the default, Kingfisher, Heron and Conure.
 
 **Flamingo** (`flamingo`) sits on plain paper. Four tints, each a family —
@@ -585,6 +591,25 @@ falling back to the default. The office style that sat beside these left with
 the office door, and took the elaborate compass rose with it — that was the
 only thing the `symbols` field ever selected between, so it went too.
 
+### Site analysis themes
+
+The site sheet does not take the context templates. It has themes of its own,
+listed in `SITE_THEMES` in `src/render/template.ts`; each names the template
+it draws on for what it does not set itself (the typeface and the zones'
+palette), and the sheet sets the rest. There is one so far:
+
+**Cardinal** (`cardinal`, the default) — the aerial with the zones hatched in
+their family colours, the neighbours' numbers and storeys and the street names
+in white, contours in green, noise in blue, and the site, the sun path and
+suns, the winds and the views all in one deep red. The sun is an open crown of
+twelve uneven teeth round a plain circle, the four on the diagonals drawn out
+as short, broad flames. It draws on Flamingo.
+
+The web picker shows the site sheet's themes in the STYLE row when the site
+sheet is chosen, and no STYLE row for the summary or the deck; the job request
+carries the theme in `template`, and the server keeps only a theme valid for
+the sheet (`themeFor()`). The CLI takes `--site-theme`.
+
 The renderers read the active template from an async context rather than a
 parameter, so `withTemplate()` also takes a `Template` outright — which is what
 lets `test/template-isolation.mts` hold two apart while only one is registered.
@@ -597,7 +622,8 @@ comes out in the wrong face, so add the package to the `Dockerfile` first.
 
 Options (after `--`): `--type context|site|summary|slides|both`, `--scale 3000` (default 3000;
 the web picker offers 1:2000, 1:3000, 1:4000 and 1:5000, the server accepts 1000 to 6000),
-`--template flamingo|kingfisher|heron|conure` (the graphic template, see Templates below),
+`--template flamingo|kingfisher|heron|conure` (the context sheet's template, see Templates below),
+`--site-theme cardinal` (the site sheet's theme),
 `--slides-scale 8000` (the deck's map panels), `--da-years 5` (the deck's
 development window), `--job 2539`, `--client "Name"`,
 `--status "DEVELOPMENT APPLICATION"`, `--sheet "DA 003"`.

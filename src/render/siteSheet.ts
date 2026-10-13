@@ -11,7 +11,7 @@ import {
 import { catById, zoneToCategory } from './model.js';
 import { METRES_PER_STOREY } from '../fetch/buildings.js';
 import { sheetHtml, esc, T, SWATCH_X, SWATCH_W, LABEL_X, MAP_W, MAP_H } from './chrome.js';
-import { tpl } from './template.js';
+import { tpl, withTemplate, siteTheme } from './template.js';
 import { exitPoint } from '../fetch/views.js';
 import { NOMINAL_CANOPY_M } from '../fetch/trees.js';
 import { buildParkingBands, type Orientation } from '../lib/parking.js';
@@ -32,9 +32,10 @@ const NAME_GREEN = '#ffffff';
 // Contours in green, apart from the warm site pen and the zones' hatch.
 const CONTOUR = '#3f9a5c';
 // The site itself — its boundary, corners, dimensions and levels — in a deep
-// red, apart from the coral pen of the sun, wind and views.
+// red, and the sun, wind and views in the same pen, so the analysis reads as
+// one red layer over the aerial.
 const SITE_RED = '#b3261e';
-// Noise in blue, so it reads apart from the coral climate marks.
+// Noise in blue, so it reads apart from the red climate marks.
 const NOISE_BLUE = '#3f6fc2';
 
 // Read at call time, not at module load: setTemplate() runs per job, long
@@ -137,7 +138,12 @@ function solsticeHours(latDeg: number): { winter: { h: number; az: number; label
   return { winter: marks(winterDec), summer: marks(-winterDec) };
 }
 
-export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
+/** The site analysis sheet, in one of its own themes (Cardinal unless another is named); it never takes the context sheet's templates. */
+export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta, theme?: string): string {
+  return withTemplate(siteTheme(theme).base, () => drawSiteSheet(sb, meta));
+}
+
+function drawSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
   const view = sb.view;
   const proj = makeProjector(view);
   const layers: string[] = [];
@@ -256,7 +262,7 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
       // units; its eyepiece end sits a few millimetres off the boundary.
       const sx = ax + ux * (9.6 * TS + 4), sy = ay + uy * (9.6 * TS + 4);
       const deg = (Math.atan2(uy, ux) * 180) / Math.PI;
-      layers.push(`<g transform="translate(${sx.toFixed(1)},${sy.toFixed(1)}) rotate(${deg.toFixed(1)}) scale(${TS})" stroke="${RED()}" stroke-width="${(0.7 / TS).toFixed(3)}" stroke-linejoin="round" fill="#ffffff">
+      layers.push(`<g transform="translate(${sx.toFixed(1)},${sy.toFixed(1)}) rotate(${deg.toFixed(1)}) scale(${TS})" stroke="${SITE_RED}" stroke-width="${(0.7 / TS).toFixed(3)}" stroke-linejoin="round" fill="#ffffff">
         <path d="M-7,-1.7 L6,-2.6 L6,2.6 L-7,1.7 Z"/>
         <rect x="6" y="-3.3" width="2.6" height="6.6" rx="0.6"/>
         <rect x="-9.6" y="-1.2" width="2.6" height="2.4" rx="0.4"/>
@@ -280,7 +286,7 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
         for (let k2 = 0; k2 < rows.length; k2++) placer.reserve(lx + Math.cos(ar) * d + dnx * k2 * lh, ly + Math.sin(ar) * d + dny * k2 * lh, 8, 8);
       for (let d = -9.6; d <= 8.6; d += 4) placer.reserve(sx + ux * d * TS, sy + uy * d * TS, 12, 12);
       viewText.push(`<g transform="translate(${lx.toFixed(1)},${ly.toFixed(1)}) rotate(${tdeg.toFixed(1)})">${rows.map((r, i) =>
-        `<text x="0" y="${(LETTER * 0.36 + i * lh).toFixed(2)}" text-anchor="middle" font-size="${LETTER}" font-weight="700" fill="${RED()}" stroke="${RED()}" stroke-width="0.22">${esc(r)}</text>`).join('')}</g>`);
+        `<text x="0" y="${(LETTER * 0.36 + i * lh).toFixed(2)}" text-anchor="middle" font-size="${LETTER}" font-weight="700" fill="${SITE_RED}" stroke="${SITE_RED}" stroke-width="0.22">${esc(r)}</text>`).join('')}</g>`);
     }
   }
 
@@ -312,7 +318,7 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
   }
 
   // ---- noise sources: along the main roads and the railway --------------------
-  // In blue, so noise reads apart from the coral climate marks, but drawn
+  // In blue, so noise reads apart from the red climate marks, but drawn
   // in the wind's manner: a white line in a blue pen, a sound wave beside
   // each busy road and the railway, on the site's side.
   const noiseRing = sb.siteRing.map(([lon, lat2]) => proj(lon, lat2));
@@ -844,7 +850,7 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
   }
 
   // ---- sun and wind, one hand ---------------------------------------------------
-  // Drawn as a pair, in the same coral pen and the same open white-filled
+  // Drawn as a pair, in the site's deep red and the same open white-filled
   // marks: the sun as a disc with flame-like rays at the solstices' rise and
   // set points (on a solid summer arc and a dashed winter one), the winds as
   // the sheet's hand-drawn arrows blowing in toward the site, three abreast,
@@ -869,7 +875,7 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     }
     return d;
   };
-  const PEN = RED();
+  const PEN = SITE_RED;
   const PEN_W = 0.7;
   const LETTER = MAP_TEXT;
   const textBlock = (x: number, y: number, lines: string[]) =>
@@ -896,28 +902,45 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     put(hrs.summer, Ro, Ro + 10, summerAz);
     layers.push(marks.join(''));
   }
-  const sketchSun = ([x, y]: Pt, lines: string[]) => {
-    const r0 = 10.5, r1 = 13.4, r2 = 21, n = 16;
-    let d = '';
+  // The sun: an open jagged crown in the pen, white inside, round a plain
+  // circle. Twelve teeth of uneven length, and the four on the diagonals
+  // drawn out as short, broad flames with one gentle bend, after the
+  // manuscript suns. Each sun is drawn from its own seed, so the four differ
+  // a little, as if drawn one by one.
+  const sketchSun = ([x, y]: Pt, lines: string[], seed: number) => {
+    let st = seed * 9301 + 49297;
+    const rnd = () => { st = (st * 9301 + 49297) % 233280; return st / 233280; };
+    const n = 12, rBase = 12.4, flames = [1, 4, 7, 10];
+    const P = (r: number, a: number): Pt => [r * Math.cos(a), r * Math.sin(a)];
+    const pts: Pt[] = [];
     for (let i = 0; i < n; i++) {
-      const a0 = (i / n) * Math.PI * 2, a1 = ((i + 0.5) / n) * Math.PI * 2, a2 = ((i + 1) / n) * Math.PI * 2;
-      const tipR = r2 - (i % 2) * 3.2;
-      const p0 = [r1 * Math.cos(a0), r1 * Math.sin(a0)];
-      const tip = [tipR * Math.cos(a1 + 0.07), tipR * Math.sin(a1 + 0.07)];
-      const c0 = [(r1 + 3.6) * Math.cos(a1 - 0.11), (r1 + 3.6) * Math.sin(a1 - 0.11)];
-      const p2 = [r1 * Math.cos(a2), r1 * Math.sin(a2)];
-      const c1 = [(r1 + 2.2) * Math.cos(a1 + 0.2), (r1 + 2.2) * Math.sin(a1 + 0.2)];
-      d += `${i ? 'L' : 'M'}${p0[0].toFixed(2)},${p0[1].toFixed(2)} Q${c0[0].toFixed(2)},${c0[1].toFixed(2)} ${tip[0].toFixed(2)},${tip[1].toFixed(2)} Q${c1[0].toFixed(2)},${c1[1].toFixed(2)} ${p2[0].toFixed(2)},${p2[1].toFixed(2)}`;
+      const a = (i / n) * Math.PI * 2, h = (Math.PI / n) * 0.85;
+      const f = flames.indexOf(i);
+      if (f < 0) {
+        pts.push(P(rBase + rnd() * 0.8, a - h), P(18 + rnd() * 4, a + (rnd() - 0.5) * 0.12));
+        continue;
+      }
+      // A flame: its centre line leaves the crown radially and bends once,
+      // its width falling from a little over the tooth's base to a point;
+      // neighbouring flames bend opposite ways.
+      const L = 8.5, w0 = rBase * Math.sin(h) * 1.2, amp = 0.5 * (f % 2 ? -1 : 1);
+      const ux = Math.cos(a), uy = Math.sin(a), nx = -uy, ny = ux, N = 10;
+      const side = (sgn: number) => Array.from({ length: N + 1 }, (_, k) => {
+        const t = k / N, off = amp * Math.sin(t * Math.PI * 1.5), w = w0 * Math.pow(1 - t, 0.8) + 0.12;
+        const r = rBase * Math.cos(h) + L * t;
+        return [ux * r + nx * (off + sgn * w), uy * r + ny * (off + sgn * w)] as Pt;
+      });
+      pts.push(...side(-1), ...side(1).reverse());
     }
     return `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})">
-      <path d="${d}Z" fill="#ffffff" fill-opacity="0.85" stroke="${PEN}" stroke-width="${PEN_W}" stroke-linejoin="round"/>
-      <circle r="${r0}" fill="#ffffff" stroke="${PEN}" stroke-width="${PEN_W}"/>
-      ${textBlock(0, r2 + 6, lines)}</g>`;
+      <path d="M${pts.map(([px, py]) => `${px.toFixed(2)},${py.toFixed(2)}`).join('L')}Z" fill="#ffffff" fill-opacity="0.9" stroke="${PEN}" stroke-width="${PEN_W}" stroke-linejoin="round"/>
+      <circle r="9.6" fill="#ffffff" stroke="${PEN}" stroke-width="${PEN_W}"/>
+      ${textBlock(0, 28, lines)}</g>`;
   };
-  layers.push(sketchSun(sunAt(winterAz, Ri), ['WINTER', 'SUNRISE']));
-  layers.push(sketchSun(sunAt(-winterAz, Ri), ['WINTER', 'SUNSET']));
-  layers.push(sketchSun(sunAt(summerAz, Ro), ['SUMMER', 'SUNRISE']));
-  layers.push(sketchSun(sunAt(-summerAz, Ro), ['SUMMER', 'SUNSET']));
+  layers.push(sketchSun(sunAt(winterAz, Ri), ['WINTER', 'SUNRISE'], 1));
+  layers.push(sketchSun(sunAt(-winterAz, Ri), ['WINTER', 'SUNSET'], 2));
+  layers.push(sketchSun(sunAt(summerAz, Ro), ['SUMMER', 'SUNRISE'], 3));
+  layers.push(sketchSun(sunAt(-summerAz, Ro), ['SUMMER', 'SUNSET'], 4));
   {
     // North sits just beyond the summer noon mark and its label.
     const [nx, ny] = sunAt(0, Ro + 24);
@@ -1013,7 +1036,7 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
     row(`<circle cx="${mid}" cy="3.2" r="2.8" fill="#7dbb57" fill-opacity="0.45" stroke="#4e8c33" stroke-width="0.4"/><circle cx="${mid}" cy="3.2" r="0.5" fill="#2f5e20"/>`, 'TREES, CANOPY TO SCALE', sub);
   }
   if ((sb.views ?? []).some((v) => v.cone)) {
-    row(`<g transform="translate(${SWATCH_X + 11},3.2) rotate(-14) scale(0.62)" fill="#fff" stroke="${RED()}" stroke-width="0.7" stroke-linejoin="round"><path d="M-7,-1.7 L6,-2.6 L6,2.6 L-7,1.7 Z"/><rect x="6" y="-3.3" width="2.6" height="6.6"/><rect x="-9.6" y="-1.2" width="2.6" height="2.4"/></g>`, 'POTENTIAL VIEW', `terrain only, from ${Math.round(sb.eyeAboveM ?? 8)} m up; no buildings`);
+    row(`<g transform="translate(${SWATCH_X + 11},3.2) rotate(-14) scale(0.62)" fill="#fff" stroke="${SITE_RED}" stroke-width="0.7" stroke-linejoin="round"><path d="M-7,-1.7 L6,-2.6 L6,2.6 L-7,1.7 Z"/><rect x="6" y="-3.3" width="2.6" height="6.6"/><rect x="-9.6" y="-1.2" width="2.6" height="2.4"/></g>`, 'POTENTIAL VIEW', `terrain only, from ${Math.round(sb.eyeAboveM ?? 8)} m up; no buildings`);
   }
   if (sb.furniture.powerPoles.length) row(`<g transform="translate(${mid},3.2)"><line x1="-2.4" y1="0" x2="2.4" y2="0" stroke="#333" stroke-width="0.4"/><circle r="1.2" fill="none" stroke="#333" stroke-width="0.45"/></g>`, 'POWER POLE');
   if (sb.furniture.streetLamps.length) row(`<circle cx="${mid}" cy="3.2" r="1.4" fill="#f0c020" stroke="#a8860b" stroke-width="0.3"/>`, 'LIGHT POLE');
@@ -1033,8 +1056,8 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta): string {
   {
     const rib = `M${SWATCH_X + 2},2.6 C${SWATCH_X + 7},0.8 ${SWATCH_X + 11},4.8 ${SWATCH_X + 16},2.4 L${SWATCH_X + 16},1 L${SWATCH_X + 21},3.2 L${SWATCH_X + 16},5.4 L${SWATCH_X + 16},4 C${SWATCH_X + 11},6.2 ${SWATCH_X + 7},2.6 ${SWATCH_X + 2},3.8 Z`;
     void rib;
-    row(`<path d="${sketchArrow(SWATCH_X + 2, 3.2, 1, 0, 19, 0.8, 0.5, 1.3)}" fill="#fff" stroke="${RED()}" stroke-width="0.35" stroke-linejoin="round"/>`, 'PREVAILING WINDS');
-    row(`<g transform="translate(${mid},3.2)">${[0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330].map((a) => { const ar = (a * Math.PI) / 180; return `<line x1="${(2.7 * Math.cos(ar)).toFixed(2)}" y1="${(2.7 * Math.sin(ar)).toFixed(2)}" x2="${(3.9 * Math.cos(ar)).toFixed(2)}" y2="${(3.9 * Math.sin(ar)).toFixed(2)}" stroke="${RED()}" stroke-width="0.4"/>`; }).join('')}<circle r="2.1" fill="#fff" stroke="${RED()}" stroke-width="0.4"/></g>`, 'SUN PATH', 'summer solid, winter dashed; solar hours');
+    row(`<path d="${sketchArrow(SWATCH_X + 2, 3.2, 1, 0, 19, 0.8, 0.5, 1.3)}" fill="#fff" stroke="${SITE_RED}" stroke-width="0.35" stroke-linejoin="round"/>`, 'PREVAILING WINDS');
+    row(`<g transform="translate(${mid},3.2)"><path d="M${Array.from({ length: 24 }, (_, k) => { const a = (k / 24) * Math.PI * 2, r = k % 2 ? 2.4 : (k % 6 === 2 ? 4.3 : 3.7); return `${(r * Math.cos(a)).toFixed(2)},${(r * Math.sin(a)).toFixed(2)}`; }).join('L')}Z" fill="#fff" stroke="${SITE_RED}" stroke-width="0.35" stroke-linejoin="round"/><circle r="1.7" fill="#fff" stroke="${SITE_RED}" stroke-width="0.35"/></g>`, 'SUN PATH', 'summer solid, winter dashed; solar hours');
   }
 
   const utilKinds = new Set(sb.furniture.utilities.map((u) => u.kind));

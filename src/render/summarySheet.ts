@@ -11,7 +11,7 @@
 // those rows are ruled up and left for manual entry rather than guessed at.
 
 import { FRAME_L, FRAME_T, esc, sheetHtml, T } from './chrome.js';
-import { tpl } from './template.js';
+import { tpl, withTemplate, DEFAULT_TEMPLATE } from './template.js';
 import type { SheetMeta } from './sheet.js';
 import type { SiteControls } from '../fetch/nsw.js';
 
@@ -221,7 +221,12 @@ export interface SummaryBundle extends SummaryData {
   siteAddress: string;
 }
 
+/** The development summary: it has no themes, and is always drawn in the default template. */
 export function renderSummarySheet(sb: SummaryBundle, meta: SheetMeta): string {
+  return withTemplate(DEFAULT_TEMPLATE, () => drawSummarySheet(sb, meta));
+}
+
+function drawSummarySheet(sb: SummaryBundle, meta: SheetMeta): string {
   // The legend column has nothing to list on a table sheet; use it for the
   // note that matters — which columns a person still has to fill in.
   const noteLines = [
