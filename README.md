@@ -731,7 +731,11 @@ each lane the same way; a corner splay or curve that runs with neither
 street carries the footpath round between them. Where the boundary has no
 street at all (a park, a back fence) the kerb ends in a return. A kerb
 OpenStreetMap maps as a line is drawn as it is. The legend calls the line
-indicative.
+indicative. The kerbs are worked out once, when the site bundle is built
+(`kerbs` in `site_bundle.json`; an older bundle has none, and the sheet works
+them out as it draws), so the CAD export carries the same lines, whatever the
+sheet's style: `SA_KERBS-INDICATIVE`, dashed, for the estimate, and
+`SA_KERBS-OSM` for the kerbs OpenStreetMap maps itself.
 
 **Canary** (`canary`) — the office's classic site sheet (the DA 004s at
 Arncliffe, Cabramatta and Randwick in `examples/packages`) drawn in the
