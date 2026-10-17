@@ -4,9 +4,11 @@
 // The left half is the development summary the office issues, with the
 // column the generated summary had to leave empty now filled: CONTROLS,
 // PROPOSED and COMPLIANCE, the proposal being the yield study's
-// (lib/yield.ts). The right half draws that study: the indicative massing as
-// an axonometric among the neighbours at their recorded heights, the envelope
-// in plan with its setback tiers, and the schedule of storeys and floor area.
+// (lib/yield.ts), and under it the schedule of tiers, storeys and floor area
+// with the assumptions the study rests on. The right half draws that study:
+// the indicative massing as an axonometric among the neighbours at their
+// recorded heights, with what each may rise to under its own height control
+// dashed over it, and the envelope in plan with its setback tiers numbered.
 //
 // It is a feasibility figure, not a design: the envelope is the controls'
 // and the ADG's, the plates are held to a building depth or a tower size, and
@@ -16,14 +18,17 @@
 
 import { FRAME_L, FRAME_T, esc, sheetHtml, SWATCH_X, SWATCH_W, LABEL_X } from './chrome.js';
 import { tpl, withTemplate, DEFAULT_TEMPLATE } from './template.js';
-import { wrapLabel, type SheetMeta } from './sheet.js';
+import { wrapLabel, shortStreetName, type SheetMeta } from './sheet.js';
+import { estimateKerbs, type KerbLine } from '../lib/kerbs.js';
 import type { SummaryData } from './summarySheet.js';
 import type { TopoRoad } from '../fetch/nswTopo.js';
 import type { PolicyKind } from '../fetch/planning.js';
+import turfUnion from '@turf/union';
+import { featureCollection, polygon } from '@turf/helpers';
 import { lonLatToMercator, mercatorScaleFactor, mercatorToLonLat } from '../lib/geo.js';
 import {
-  computeYield, edgeKinds, PARKING_RATES, DEFAULT_ASSUMPTIONS,
-  type XY, type YieldAssumptions, type YieldResult, type Use, type Tier,
+  computeYield, edgeKinds, ringArea, withFour, PARKING_RATES, DEFAULT_ASSUMPTIONS, UNIT_KINDS, ADG_MINIMUM,
+  type XY, type YieldAssumptions, type YieldResult, type Use, type Tier, type UnitKind,
 } from '../lib/yield.js';
 
 export interface YieldBundle extends SummaryData {
@@ -41,14 +46,33 @@ export interface YieldBundle extends SummaryData {
   cbd?: { name: string; distanceM: number };
   policyAtSite: { kind: PolicyKind; name: string }[];
   roads: TopoRoad[];
-  /** The lots around, as rings (lon/lat), for the plan. */
-  lots: number[][][][];
-  /** The neighbours' footprints with their heights, for the massing's context. */
-  context: { rings: number[][][]; heightM: number; known: boolean }[];
+  /** The lots around, with what the plan writes on them. A bundle from before them has `lots` instead. */
+  parcels?: Parcel[];
+  /** The lots around, as rings (lon/lat): the older bundle's, with nothing on them. */
+  lots?: number[][][][];
+  /** Indicative kerb lines (lib/kerbs.ts); an older bundle has none, and the plan works them out. */
+  kerbs?: KerbLine[];
+  /**
+   * The neighbours' footprints with their heights, for the massing's context,
+   * and the height each may rise to where that is more (lib/yield.ts
+   * futureHeight). A bundle from before the future heights has none.
+   */
+  context: { rings: number[][][]; heightM: number; known: boolean; futureM?: number }[];
   buildingsSource: string;
   /** From `yield_assumptions.json` beside the output, when there is one. */
   assumptions?: Partial<YieldAssumptions>;
 }
+
+/** A lot round about: its rings (lon/lat), its street numbers, and the zone and height of building at it. */
+export interface Parcel {
+  rings: number[][][];
+  numbers?: string[];
+  zone?: string;
+  hob?: { value: number; units: string };
+}
+
+/** The lots, from a bundle of either age. */
+const parcelsOf = (b: YieldBundle): Parcel[] => b.parcels ?? (b.lots ?? []).map((rings) => ({ rings }));
 
 // ---- the study --------------------------------------------------------------
 
@@ -82,7 +106,7 @@ export function yieldStudy(b: YieldBundle): YieldStudy {
   // The parking rates: the Guide's within 800 m of a station (its CBD rates in a CBD), a typical DCP's beyond.
   const near = (b.station?.distanceM ?? Infinity) <= 800;
   const parkingSet: YieldStudy['parkingSet'] = b.assumptions?.parking ? 'custom' : near ? (b.cbd ? 'cbd' : 'subRegional') : 'dcp';
-  const assumptions: Partial<YieldAssumptions> = { ...b.assumptions, parking: { ...(parkingSet === 'custom' ? DEFAULT_ASSUMPTIONS.parking : PARKING_RATES[parkingSet]), ...b.assumptions?.parking } };
+  const assumptions: Partial<YieldAssumptions> = { ...b.assumptions, parking: withFour({ ...(parkingSet === 'custom' ? DEFAULT_ASSUMPTIONS.parking : PARKING_RATES[parkingSet]), ...b.assumptions?.parking }, b.assumptions?.parking) };
 
   const area = b.siteAreaSqm ?? 0;
   const base = computeYield({ ring, fronts, siteAreaSqm: area, zone: c.zoneCode, hobM: hob?.metres, fsr: c.fsr, assumptions });
@@ -127,6 +151,12 @@ const USE_WORD: Record<Use, string> = { retail: 'retail', residential: 'resident
 const titleWords = (t: string) => t.toLowerCase().replace(/\b[a-z]/g, (c) => c.toUpperCase());
 const rate = (v: number) => (v < 1 && v > 0 && Math.abs(1 / v - Math.round(1 / v)) < 0.01 ? `1 per ${Math.round(1 / v)}` : fmt(v, v % 1 ? 1 : 0));
 
+const UNIT_NAME: Record<UnitKind, string> = { studio: 'Studio', one: '1 Bedroom', two: '2 Bedroom', three: '3 Bedroom', four: '4 Bedroom' };
+const UNIT_SHORT: Record<UnitKind, string> = { studio: 'studio', one: '1 bed', two: '2 bed', three: '3 bed', four: '4 bed' };
+
+/** The kinds of apartment the mix has a share of (or that a count landed on), smallest first. */
+const inMix = (y: YieldResult): UnitKind[] => UNIT_KINDS.filter((k) => y.assumptions.mix[k] > 0 || y.units[k] > 0);
+
 export function yieldRows(b: YieldBundle, s: YieldStudy = yieldStudy(b)): YieldRow[] {
   const y = s.base, a = y.assumptions, c = b.controls, A = b.siteAreaSqm ?? 0;
   const rows: YieldRow[] = [];
@@ -148,13 +178,13 @@ export function yieldRows(b: YieldBundle, s: YieldStudy = yieldStudy(b)): YieldR
     if (apartments) rows.push({
       label: 'RESIDENTIAL MIX',
       controls: [
-        ...(y.units.studio ? [`Studio: ${y.units.studio}`] : []),
-        `1 Bedroom: ${y.units.one}`, `2 Bedroom: ${y.units.two}`, `3 Bedroom: ${y.units.three}`,
+        ...inMix(y).map((k) => `${UNIT_NAME[k]}: ${y.units[k]}`),
         `TOTAL UNITS: ${y.units.total}`,
       ],
     });
-    if (y.gfaByUse.retail) rows.push({ label: 'RETAIL AREA (sqm)', controls: [`${sqm(y.gfaByUse.retail)} GFA, ground floor`] });
-    if (y.gfaByUse.commercial) rows.push({ label: 'COMMERCIAL AREA (sqm)', controls: [`${sqm(y.gfaByUse.commercial)} GFA`, `${sqm(y.gfaByUse.commercial * 0.9)} NLA at 90%`] });
+    const pct = (v: number) => `${fmt(v * 100, (v * 100) % 1 ? 1 : 0)}%`;
+    if (y.gfaByUse.retail) rows.push({ label: 'RETAIL AREA (sqm)', controls: [`${sqm(y.gfaByUse.retail)} GFA, ground floor`, `${sqm(y.gfaByUse.retail * a.retailNlaRatio)} NLA at ${pct(a.retailNlaRatio)}`] });
+    if (y.gfaByUse.commercial) rows.push({ label: 'COMMERCIAL AREA (sqm)', controls: [`${sqm(y.gfaByUse.commercial)} GFA`, `${sqm(y.gfaByUse.commercial * a.commercialNlaRatio)} NLA at ${pct(a.commercialNlaRatio)}`] });
     rows.push({ label: 'GROSS FLOOR AREA', controls: [`${sqm(y.gfa)}${A ? ` (FSR ${(y.gfa / A).toFixed(2)}:1)` : ''}`, y.governs === 'fsr' ? 'the floor space ratio governs' : y.governs === 'envelope' ? 'the envelope governs: the FSR is not reached' : 'no FSR is mapped: the height governs'] });
     rows.push({ label: 'BUILDING', controls: [`${storeyWord(y.storeys)}, ${m1(Math.round(y.heightM * 10) / 10)} to the roof${y.storeys < y.storeysByHeight ? ` (the height allows ${y.storeysByHeight})` : ''}`] });
     const kindsOfSpace = [apartments ? `${y.parking.residents} resident, ${y.parking.visitors} visitor` : '', y.parking.nonResidential ? `${y.parking.nonResidential} ${y.gfaByUse.retail ? 'retail' : 'commercial'}` : ''].filter(Boolean).join(', ');
@@ -183,9 +213,11 @@ export function yieldRows(b: YieldBundle, s: YieldStudy = yieldStudy(b)): YieldR
     rows.push({ head: true });
     if (apartments) {
       const p = a.parking, u = y.units;
+      // Four bedrooms at the three-bedroom rate, as the Guide's "three or more" reads, unless set apart.
+      const fourApart = p.four !== p.three;
       rows.push({ label: 'RESIDENTIAL CAR PARKING', controls: [
-        `${rate(p.one)} space per studio and 1 bedroom`, `${rate(p.two)} per 2 bedroom, ${rate(p.three)} per 3 bedroom`, `(${basis})`],
-        proposed: [`${fmt(u.studio + u.one)} x ${fmt(p.one, 1)} + ${fmt(u.two)} x ${fmt(p.two, 1)} + ${fmt(u.three)} x ${fmt(p.three, 1)}`, `= ${y.parking.residents} spaces`], ok: true });
+        `${rate(p.one)} space per studio and 1 bedroom`, `${rate(p.two)} per 2 bedroom, ${rate(p.three)} per 3 bedroom${fourApart ? `, ${rate(p.four)} per 4 bedroom` : ' or more'}`, `(${basis})`],
+        proposed: [`${fmt(u.studio + u.one)} x ${fmt(p.one, 1)} + ${fmt(u.two)} x ${fmt(p.two, 1)} + ${fmt(u.three + (fourApart ? 0 : u.four))} x ${fmt(p.three, 1)}${fourApart && u.four ? ` + ${fmt(u.four)} x ${fmt(p.four, 1)}` : ''}`, `= ${y.parking.residents} spaces`], ok: true });
       rows.push({ label: 'VISITOR CAR PARKING', controls: [`${rate(p.visitor)} dwellings`.replace(/^1 per (\d+) dwellings$/, '1 space per $1 dwellings')], proposed: [`= ${y.parking.visitors} spaces`], ok: true });
     }
     if (y.gfaByUse.retail || y.gfaByUse.commercial) rows.push({ label: `${y.gfaByUse.retail ? 'RETAIL' : 'COMMERCIAL'} CAR PARKING`, controls: [`${rate(a.parking.nonResidentialPerSqm)} sqm GFA`.replace(/^1 per (\d+) sqm GFA$/, '1 space per $1 sqm GFA')], proposed: [`= ${y.parking.nonResidential} spaces`], ok: true });
@@ -205,8 +237,9 @@ export function yieldRows(b: YieldBundle, s: YieldStudy = yieldStudy(b)): YieldR
     rows.push({ label: '3F. VISUAL PRIVACY', controls: [`${a.adgSide4}m to side and rear boundaries to 4 storeys,`, `${a.adgSide8}m to 8 storeys, ${a.adgSide9}m above`], proposed: ['built into the envelope'], ok: true });
     rows.push({ label: '4A. SOLAR AND DAYLIGHT ACCESS', controls: ['70% of apartments receive 2 hours direct', 'sunlight 9 am – 3 pm at mid winter'], proposed: ['to be tested in design'], ok: null });
     rows.push({ label: '4B. NATURAL VENTILATION', controls: ['60% of apartments cross ventilated', 'in the first nine storeys'], proposed: ['to be tested in design'], ok: null });
-    const sz = a.sizes;
-    rows.push({ label: '4D. APARTMENT SIZE', controls: ['Studio 35, 1 bed 50, 2 bed 70, 3 bed 90 sqm', '(+5 sqm for a second bathroom)'], proposed: [`${sz.studio}, ${sz.one}, ${sz.two} and ${sz.three} sqm assumed`], ok: sz.studio >= 35 && sz.one >= 50 && sz.two >= 70 && sz.three >= 90 });
+    const kinds = inMix(y);
+    rows.push({ label: '4D. APARTMENT SIZE', controls: ['Studio 35, 1 bed 50, 2 bed 70, 3 bed 90 sqm,', '12 sqm more a bedroom over three (+5 sqm for a second bathroom)'],
+      proposed: [`${kinds.map((k) => `${UNIT_SHORT[k]} ${fmt(a.sizes[k])}`).join(', ')} sqm assumed`], ok: kinds.every((k) => a.sizes[k] >= ADG_MINIMUM[k]) });
   }
 
   const tod = b.policyAtSite.find((p) => p.kind === 'tod' || p.kind === 'todAccelerated');
@@ -231,6 +264,8 @@ const TAB_L = 45.6, TAB_R = 384;
 const COL_LABEL = 46.3, COL_CONTROLS = 104, COL_PROPOSED = 236, COL_OK = 368;
 const TITLE_Y = 20.5, TABLE_TOP = 26.8, TITLE_SIZE = 8.23;
 const BODY = 3.3, LEAD = 4.35, PAD_TOP = 4.6, ROW_MIN = 6.4, ROW_SECTION = 8.2, RULE_W = 0.12;
+/** A one-line row, as the table works its height out. */
+const ROW_ONE = Math.max(ROW_MIN, PAD_TOP + 2.2);
 
 const txt = (x: number, y: number, s: string, bold = false, size = BODY, fill?: string, anchor = 'start') =>
   `<text x="${x.toFixed(2)}" y="${y.toFixed(2)}" font-size="${size}"${bold ? ' font-weight="700"' : ''}${fill ? ` fill="${fill}"` : ''}${anchor !== 'start' ? ` text-anchor="${anchor}"` : ''}>${esc(s)}</text>`;
@@ -266,11 +301,12 @@ function mark(x: number, y: number, ok: boolean | null | undefined): string {
     : `<path d="M${x - 1.7},${y - 2.9} L${x + 1.7},${y + 0.3} M${x + 1.7},${y - 2.9} L${x - 1.7},${y + 0.3}" stroke="#c8372d" stroke-width="0.55" stroke-linecap="round"/>`;
 }
 
-function renderTable(rows: YieldRow[]): string {
+const rule = (y: number) => `<line x1="${TAB_L}" y1="${y.toFixed(2)}" x2="${TAB_R}" y2="${y.toFixed(2)}" stroke="${tpl().ink}" stroke-width="${RULE_W}"/>`;
+
+/** The rows from `top` down, ruled; where the last rule fell. */
+function renderTable(rows: YieldRow[], top: number): { svg: string; bottom: number } {
   const out: string[] = [];
-  const rule = (y: number) => `<line x1="${TAB_L}" y1="${y.toFixed(2)}" x2="${TAB_R}" y2="${y.toFixed(2)}" stroke="${tpl().ink}" stroke-width="${RULE_W}"/>`;
-  out.push(txt(COL_LABEL, TITLE_Y, 'PLANNING YIELD', true, TITLE_SIZE));
-  let y = TABLE_TOP;
+  let y = top;
   out.push(rule(y));
   for (const r of rows) {
     const lab = !r.section && !r.head && r.label ? labelLines(r.label) : [];
@@ -291,7 +327,80 @@ function renderTable(rows: YieldRow[]): string {
     y += h;
     out.push(rule(y));
   }
-  return out.join('');
+  return { svg: out.join(''), bottom: y };
+}
+
+/** A tier's number in its ring: the plan's mark, and the schedule's key to it. */
+function tierBadge(x: number, y: number, n: number, r = 2): string {
+  return `<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="${r}" fill="#ffffff" stroke="${ENVELOPE}" stroke-width="0.25"/>` +
+    `<text x="${x.toFixed(2)}" y="${(y + r * 0.47).toFixed(2)}" text-anchor="middle" font-size="${(r * 1.3).toFixed(2)}" font-weight="700" fill="${ENVELOPE}">${n}</text>`;
+}
+
+/**
+ * The schedule, under the summary and ruled as it is: one row per tier keyed
+ * to the plan's numbers, and the totals. Each column is set out for its
+ * longest entry, the areas set right so their digits line up.
+ */
+function renderSchedule(y: YieldResult, top: number): { svg: string; bottom: number } {
+  const out: string[] = [];
+  const C = { storeys: 62, use: 96, setbacks: 162, envelope: 262, plate: 320, gfa: TAB_R - 3 };
+  let yy = top;
+  out.push(rule(yy));
+  out.push(txt(COL_LABEL, yy + PAD_TOP + 0.6, 'SCHEDULE', true));
+  yy += ROW_SECTION;
+  out.push(rule(yy));
+  // A row's cells are worked out when it is set, at the row's own height.
+  const row = (cells: () => string[]) => { out.push(...cells()); yy += ROW_ONE; out.push(rule(yy)); };
+  row(() => {
+    const b = yy + PAD_TOP;
+    return [txt(COL_LABEL, b, 'TIER', true), txt(C.storeys, b, 'STOREYS', true), txt(C.use, b, 'USE', true), txt(C.setbacks, b, 'SETBACKS FRONT / SIDE / REAR', true),
+      txt(C.envelope, b, 'ENVELOPE', true, BODY, undefined, 'end'), txt(C.plate, b, 'PLATE GBA', true, BODY, undefined, 'end'), txt(C.gfa, b, 'GFA', true, BODY, undefined, 'end')];
+  });
+  if (!y.tiers.length) {
+    row(() => [txt(C.storeys, yy + PAD_TOP, 'No building type is studied for this zone: the floor space ratio\'s floor area alone.')]);
+    return { svg: out.join(''), bottom: yy };
+  }
+  const gfaOf = (t: Tier) => y.floors.filter((f) => f.storey >= t.from && f.storey <= t.to).reduce((sum, f) => sum + f.gfa, 0);
+  const a = y.assumptions;
+  y.tiers.forEach((t, i) => {
+    const built = Math.max(0, Math.min(t.to, y.storeys) - t.from + 1);
+    const ink = built ? undefined : '#9a9a9a';
+    const st = t.from === t.to ? `${t.from}` : `${t.from}–${t.to}`;
+    const held = t.held === 'tower' ? `, tower plate to ${sqm(a.towerPlateMax)}` : t.held === 'depth' ? `, ${m1(a.maxDepth)} deep` : '';
+    const set = (v: number) => fmt(v, v % 1 ? 1 : 0);
+    row(() => {
+      const b = yy + PAD_TOP;
+      return [tierBadge(COL_LABEL + 2.6, b - 1.1, i + 1, 2.3), txt(C.storeys, b, built && built < t.to - t.from + 1 ? `${st} (${built} built)` : st, false, BODY, ink),
+        txt(C.use, b, USE_WORD[t.use] + held, false, BODY, ink), txt(C.setbacks, b, `${set(t.front)} / ${set(t.side)} / ${set(t.rear)}m`, false, BODY, ink),
+        txt(C.envelope, b, sqm(t.envelopeSqm), false, BODY, ink, 'end'), txt(C.plate, b, sqm(t.plateSqm), false, BODY, ink, 'end'), txt(C.gfa, b, built ? sqm(gfaOf(t)) : 'not built', false, BODY, ink, 'end')];
+    });
+  });
+  row(() => {
+    const b = yy + PAD_TOP;
+    return [txt(COL_LABEL, b, 'TOTAL', true), txt(C.storeys, b, `${y.storeys} ${y.storeys === 1 ? 'storey' : 'storeys'}`, true), txt(C.plate, b, sqm(y.gba), true, BODY, undefined, 'end'), txt(C.gfa, b, sqm(y.gfa), true, BODY, undefined, 'end')];
+  });
+  // The apartments: each kind in the mix with its share, the ADG's least
+  // area for it, its own area, how many there are and the area they take.
+  if (y.units.total) {
+    const kinds = inMix(y);
+    const pc = (v: number) => `${fmt(v * 100, (v * 100) % 1 ? 1 : 0)}%`;
+    row(() => {
+      const b = yy + PAD_TOP;
+      return [txt(COL_LABEL, b, 'UNIT', true), txt(C.storeys, b, 'SHARE', true), txt(C.setbacks, b, 'ADG 4D MINIMUM', true),
+        txt(C.envelope, b, 'AREA EACH', true, BODY, undefined, 'end'), txt(C.plate, b, 'UNITS', true, BODY, undefined, 'end'), txt(C.gfa, b, 'AREA', true, BODY, undefined, 'end')];
+    });
+    for (const k of kinds) row(() => {
+      const b = yy + PAD_TOP;
+      return [txt(COL_LABEL, b, UNIT_SHORT[k].toUpperCase(), true), txt(C.storeys, b, pc(a.mix[k])), txt(C.setbacks, b, sqm(ADG_MINIMUM[k])),
+        txt(C.envelope, b, sqm(a.sizes[k]), false, BODY, undefined, 'end'), txt(C.plate, b, fmt(y.units[k]), false, BODY, undefined, 'end'), txt(C.gfa, b, sqm(y.units[k] * a.sizes[k]), false, BODY, undefined, 'end')];
+    });
+    row(() => {
+      const b = yy + PAD_TOP;
+      return [txt(COL_LABEL, b, 'TOTAL', true), txt(C.envelope, b, `average ${fmt(y.averageUnitSqm, 1)} sqm`, true, BODY, undefined, 'end'),
+        txt(C.plate, b, fmt(y.units.total), true, BODY, undefined, 'end'), txt(C.gfa, b, sqm(kinds.reduce((t, k) => t + y.units[k] * a.sizes[k], 0)), true, BODY, undefined, 'end')];
+    });
+  }
+  return { svg: out.join(''), bottom: yy };
 }
 
 // ---- the drawings ------------------------------------------------------------------
@@ -299,6 +408,8 @@ function renderTable(rows: YieldRow[]): string {
 /** Each use's colour in the massing and the plan. */
 const USE_FILL: Record<Use, string> = { residential: '#f0c9a6', retail: '#e69ea1', commercial: '#a9cfe9' };
 const CONTEXT_FILL = '#e9e9e6', CONTEXT_EDGE = '#a3a39e';
+/** A neighbour's future, over what stands: a pale glass, dashed, light enough to see the proposal through. */
+const FUTURE_FILL = '#e4ebf3', FUTURE_EDGE = '#8495a8', FUTURE_OPACITY = 0.3, FUTURE_DASH = '1.4,0.8';
 const SITE_RED = '#c8372d', ENVELOPE = '#5b6670';
 
 function shade(hex: string, f: number): string {
@@ -315,7 +426,7 @@ function storeyZ(y: YieldResult): { bottom: (s: number) => number; top: (s: numb
   return { bottom: (s) => (s <= 1 ? 0 : g + (s - 2) * t), top: (s) => g + (s - 1) * t };
 }
 
-interface Prism { rings: XY[][]; z0: number; z1: number; fill: string; edge: string; edgeW: number; storeys?: number[]; dashed?: boolean }
+interface Prism { rings: XY[][]; z0: number; z1: number; fill: string; edge: string; edgeW: number; storeys?: number[]; dashed?: boolean; dash?: string; opacity?: number }
 
 /**
  * The axonometric: the camera stands off the main frontage's corner, looking
@@ -351,7 +462,11 @@ function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number;
     if (!rings.length) continue;
     const cen = rings[0].reduce((t, p) => ({ x: t.x + p.x / rings[0].length, y: t.y + p.y / rings[0].length }), { x: 0, y: 0 });
     if (Math.hypot(cen.x, cen.y) > reach) continue;
-    prisms.push({ key: depth(cen), group: [{ rings, z0: 0, z1: cb.known ? cb.heightM : 6.2, fill: CONTEXT_FILL, edge: CONTEXT_EDGE, edgeW: 0.12, dashed: !cb.known }] });
+    const z1 = cb.known ? cb.heightM : 6.2;
+    const group: Prism[] = [{ rings, z0: 0, z1, fill: CONTEXT_FILL, edge: CONTEXT_EDGE, edgeW: 0.12, dashed: !cb.known }];
+    // What it may rise to under its own height control, over what stands.
+    if (cb.futureM && cb.futureM > z1) group.push({ rings, z0: z1, z1: cb.futureM, fill: FUTURE_FILL, edge: FUTURE_EDGE, edgeW: 0.12, dashed: true, dash: FUTURE_DASH, opacity: FUTURE_OPACITY });
+    prisms.push({ key: depth(cen), group });
   }
   const z = storeyZ(y);
   const built: Prism[] = [];
@@ -369,7 +484,7 @@ function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number;
   const poly = (pts: [number, number][]) => `M${pts.map(([px, py]) => `${px.toFixed(2)},${py.toFixed(2)}`).join('L')}Z`;
   // The ground: the lots round about and the site.
   const ground: string[] = [];
-  for (const lot of b.lots) for (const rg of lot) {
+  for (const lot of parcelsOf(b)) for (const rg of lot.rings) {
     const pts = rg.map(([lon, lat]) => s.toLocal(lon, lat));
     if (pts.some((p) => Math.hypot(p.x, p.y) > reach + 20)) continue;
     ground.push(`<path d="${poly(pts.map((p) => P(p, 0)))}" fill="none" stroke="#c9c9c4" stroke-width="0.12"/>`);
@@ -377,6 +492,8 @@ function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number;
   ground.push(`<path d="${poly(s.ring.map((p) => P(p, 0)))}" fill="${SITE_RED}" fill-opacity="0.08" stroke="${SITE_RED}" stroke-width="0.35"/>`);
   const prismSvg = (pr: Prism) => {
     const out: string[] = [];
+    const dash = pr.dashed ? ` stroke-dasharray="${pr.dash ?? '0.8,0.6'}"` : '';
+    const alpha = pr.opacity != null ? ` fill-opacity="${pr.opacity}"` : '';
     for (const rg of pr.rings) {
       let sa = 0;
       for (let i = 0; i < rg.length; i++) { const u = rg[i], v = rg[(i + 1) % rg.length]; sa += u.x * v.y - v.x * u.y; }
@@ -387,17 +504,39 @@ function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number;
       }).filter((f) => f.m.x * d.x + f.m.y * d.y < 0).sort((f, g) => g.mid - f.mid);
       for (const f of faces) {
         const lit = 0.72 + 0.28 * Math.max(0, f.m.x * light.x + f.m.y * light.y);
-        out.push(`<path d="${poly([P(f.p, pr.z0), P(f.q, pr.z0), P(f.q, pr.z1), P(f.p, pr.z1)])}" fill="${shade(pr.fill, lit)}" stroke="${pr.edge}" stroke-width="${pr.edgeW}" stroke-linejoin="round"${pr.dashed ? ' stroke-dasharray="0.8,0.6"' : ''}/>`);
+        out.push(`<path d="${poly([P(f.p, pr.z0), P(f.q, pr.z0), P(f.q, pr.z1), P(f.p, pr.z1)])}" fill="${shade(pr.fill, lit)}"${alpha} stroke="${pr.edge}" stroke-width="${pr.edgeW}" stroke-linejoin="round"${dash}/>`);
         for (const zz of pr.storeys ?? []) {
           const [x1, y1] = P(f.p, zz), [x2, y2] = P(f.q, zz);
           out.push(`<line x1="${x1.toFixed(2)}" y1="${y1.toFixed(2)}" x2="${x2.toFixed(2)}" y2="${y2.toFixed(2)}" stroke="${shade(pr.fill, 0.62)}" stroke-width="0.08"/>`);
         }
       }
     }
-    out.push(`<path d="${pr.rings.map((rg) => poly(rg.map((p) => P(p, pr.z1)))).join('')}" fill="${shade(pr.fill, 1.12)}" fill-rule="evenodd" stroke="${pr.edge}" stroke-width="${pr.edgeW}" stroke-linejoin="round"${pr.dashed ? ' stroke-dasharray="0.8,0.6"' : ''}/>`);
+    out.push(`<path d="${pr.rings.map((rg) => poly(rg.map((p) => P(p, pr.z1)))).join('')}" fill="${shade(pr.fill, 1.12)}"${alpha} fill-rule="evenodd" stroke="${pr.edge}" stroke-width="${pr.edgeW}" stroke-linejoin="round"${dash}/>`);
     return out.join('');
   };
+  // The outer edge of what the prisms cover on paper: every face, joined.
+  const silhouette = (group: Prism[]): string => {
+    const faces: number[][][][] = [];
+    const add = (pts: [number, number][]) => {
+      let a = 0;
+      for (let i = 0; i < pts.length; i++) { const u = pts[i], v = pts[(i + 1) % pts.length]; a += u[0] * v[1] - v[0] * u[1]; }
+      if (Math.abs(a) > 1e-6) faces.push([[...pts, pts[0]]]);
+    };
+    for (const pr of group) for (const rg of pr.rings) {
+      add(rg.map((p) => P(p, pr.z1)));
+      rg.forEach((p, i) => { const q = rg[(i + 1) % rg.length]; add([P(p, pr.z0), P(q, pr.z0), P(q, pr.z1), P(p, pr.z1)]); });
+    }
+    if (!faces.length) return '';
+    try {
+      const joined = turfUnion(featureCollection(faces.map((f) => polygon(f)))) as any;
+      const g = joined?.geometry;
+      const rings: number[][][] = g?.type === 'Polygon' ? g.coordinates : g?.type === 'MultiPolygon' ? g.coordinates.flat() : [];
+      return `<path d="${rings.map((rg) => poly(rg.slice(0, -1) as [number, number][])).join('')}" fill="none" stroke="#2e2e2e" stroke-width="0.24" stroke-linejoin="round"/>`;
+    } catch { return ''; }
+  };
   for (const { group } of prisms) for (const pr of group) parts.push(prismSvg(pr));
+  // The proposal's outline over everything, so a future neighbour in front of it does not lose it.
+  if (b.context.some((cb) => cb.futureM)) parts.push(silhouette(built));
 
   // The envelope each tier is allowed, dashed at its top; the height plane over the site.
   const over: string[] = [];
@@ -413,40 +552,103 @@ function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number;
 
   // Fit it all to the box. A height plane far above everything built (an
   // airspace RL in a CBD) is not fitted: it runs out of the frame, and the
-  // frame says where it is.
+  // frame says where it is. Nor is a neighbour's future far above what
+  // stands: it is cut at the same height, so a CBD's towers-to-be do not
+  // shrink the proposal to a speck, and the frame says how high they go.
   const pts: [number, number][] = [];
   let tallest = 0;
-  for (const { group } of prisms) for (const pr of group) { tallest = Math.max(tallest, pr.z1); for (const rg of pr.rings) for (const p of rg) pts.push(P(p, pr.z0), P(p, pr.z1)); }
+  for (const { group } of prisms) for (const pr of group) if (pr.fill !== FUTURE_FILL) tallest = Math.max(tallest, pr.z1);
+  const cap = Math.max(tallest, 12) * 1.6;
+  let futureTop = 0;
+  for (const { group } of prisms) for (const pr of group) {
+    const z1 = pr.fill === FUTURE_FILL ? Math.min(pr.z1, cap) : pr.z1;
+    if (pr.fill === FUTURE_FILL) futureTop = Math.max(futureTop, pr.z1);
+    for (const rg of pr.rings) for (const p of rg) pts.push(P(p, pr.z0), P(p, z1));
+  }
   const planeZ = s.hob?.metres ?? 0;
-  const planeFits = planeZ <= Math.max(tallest, 12) * 1.6;
+  const planeFits = planeZ <= cap;
   for (const p of s.ring) pts.push(P(p, 0), P(p, planeFits ? planeZ : Math.max(tallest, 12) * 1.25));
   const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
   const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
   const k = Math.min(box.w / (x1 - x0 || 1), box.h / (y1 - y0 || 1));
   const tx = box.x + (box.w - (x1 - x0) * k) / 2 - x0 * k, ty = box.y + (box.h - (y1 - y0) * k) / 2 - y0 * k;
   // Strokes are set in sheet millimetres: divide them back out of the scale.
-  const above = s.hob?.metres && !planeFits
-    ? `<text x="${(box.x + box.w / 2).toFixed(1)}" y="${(box.y + 4).toFixed(1)}" text-anchor="middle" font-size="2.8" fill="${SITE_RED}" stroke="#ffffff" stroke-width="1.4" paint-order="stroke">HEIGHT OF BUILDING PLANE ${s.hob.rl ? `RL ${fmt(s.hob.value, 1)}, ` : ''}${fmt(Math.round(planeZ))}m ABOVE THE GROUND, ABOVE THE FRAME</text>`
-    : '';
+  const note = (line: number, ink: string, text: string) =>
+    `<text x="${(box.x + box.w / 2).toFixed(1)}" y="${(box.y + 4 + line * 4).toFixed(1)}" text-anchor="middle" font-size="2.8" fill="${ink}" stroke="#ffffff" stroke-width="1.4" paint-order="stroke">${esc(text)}</text>`;
+  const notes: string[] = [];
+  if (s.hob?.metres && !planeFits) notes.push(note(notes.length, SITE_RED, `HEIGHT OF BUILDING PLANE ${s.hob.rl ? `RL ${fmt(s.hob.value, 1)}, ` : ''}${fmt(Math.round(planeZ))}m ABOVE THE GROUND, ABOVE THE FRAME`));
+  if (futureTop > cap) notes.push(note(notes.length, FUTURE_EDGE, `NEIGHBOURS' FUTURE HEIGHTS RUN ABOVE THE FRAME, TO ${fmt(Math.round(futureTop))}m`));
+  const above = notes.join('');
   return `<defs><clipPath id="axoclip"><rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}"/></clipPath></defs>
     <g clip-path="url(#axoclip)"><g transform="translate(${tx.toFixed(2)},${ty.toFixed(2)}) scale(${k.toFixed(4)})">
     <g style="vector-effect:non-scaling-stroke">${ground.join('')}${parts.join('')}${over.join('')}</g></g></g>${above}`;
 }
 
-/** The envelope in plan, north up, at a round scale: the lots, the neighbours, each tier's envelope and plate, the frontages named. */
-function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w: number; h: number }): { svg: string; scale: number } {
+const KERB_INK = '#8a8a8a', LOT_INK = '#b4b4ae', STREET_INK = '#555555';
+
+/** "26", or "26–30" for a lot with a run of numbers, ranged or one by one. */
+function numberLine(nums: string[]): string {
+  if (nums.length <= 1) return (nums[0] ?? '').replace('-', '–');
+  const ints = nums.flatMap((t) => t.split('-')).map((t) => parseInt(t, 10));
+  if (!ints.every((v) => Number.isFinite(v))) return nums[0];
+  const lo = Math.min(...ints), hi = Math.max(...ints);
+  return lo === hi ? String(lo) : `${lo}–${hi}`;
+}
+
+/** "HOB = 18m", or "HOB = RL 45" where the plan limits height by level, as the site analysis writes it. */
+const hobLine = (h: { value: number; units: string }) => {
+  const fig = h.value % 1 ? h.value.toFixed(1) : String(h.value);
+  return /rl|ahd/i.test(h.units) ? `HOB = RL ${fig}` : `HOB = ${fig}m`;
+};
+
+interface PlanResult { svg: string; scale: number; kerbs: KerbLine[] }
+
+/**
+ * The envelope in plan, north up, at a round scale, on the ground the site
+ * analysis draws, kept to black and grey: the lot lines, the kerbs, the
+ * buildings, and in each neighbour's building its street number, zone and
+ * height of building; the street names along the roads. Over it each tier's
+ * envelope and plate, numbered.
+ */
+function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w: number; h: number }): PlanResult {
   const y = s.base;
   const xs = s.ring.map((p) => p.x), ys = s.ring.map((p) => p.y);
   const w = Math.max(...xs) - Math.min(...xs), h = Math.max(...ys) - Math.min(...ys);
   const scale = [100, 200, 250, 500, 750, 1000, 1250, 1500, 2000, 2500, 5000].find((sc) => (w * 1.35 * 1000) / sc <= box.w && (h * 1.35 * 1000) / sc <= box.h) ?? 5000;
   const mm = 1000 / scale;
   const cx = (Math.max(...xs) + Math.min(...xs)) / 2, cy = (Math.max(...ys) + Math.min(...ys)) / 2;
-  const P = (p: XY): string => `${(box.x + box.w / 2 + (p.x - cx) * mm).toFixed(2)},${(box.y + box.h / 2 - (p.y - cy) * mm).toFixed(2)}`;
+  const at = (p: XY): [number, number] => [box.x + box.w / 2 + (p.x - cx) * mm, box.y + box.h / 2 - (p.y - cy) * mm];
+  const P = (p: XY): string => at(p).map((v) => v.toFixed(2)).join(',');
   const path = (rg: XY[]) => `M${rg.map(P).join('L')}Z`;
+  const line = (rg: XY[]) => `M${rg.map(P).join('L')}`;
+  const local = (rg: number[][]) => rg.map(([lon, lat]) => s.toLocal(lon, lat));
+  // What is written is kept apart: each word's box, in sheet millimetres.
+  type Box = [number, number, number, number];
+  const taken: Box[] = [];
+  const clear = (bx: Box) => bx[0] >= box.x + 1 && bx[2] <= box.x + box.w - 1 && bx[1] >= box.y + 1 && bx[3] <= box.y + box.h - 1
+    && !taken.some((t) => bx[0] < t[2] && bx[2] > t[0] && bx[1] < t[3] && bx[3] > t[1]);
   const out: string[] = [];
-  for (const lot of b.lots) for (const rg of lot) out.push(`<path d="${path(rg.map(([lon, lat]) => s.toLocal(lon, lat)))}" fill="none" stroke="#cfcfca" stroke-width="0.15"/>`);
-  for (const cb of b.context) { const rg = cb.rings[0]; if (rg) out.push(`<path d="${path(rg.map(([lon, lat]) => s.toLocal(lon, lat)))}" fill="${CONTEXT_FILL}" stroke="${CONTEXT_EDGE}" stroke-width="0.12"/>`); }
-  // Widest tier first, so the narrower plates over it stay visible.
+
+  // The ground: the lot lines and the kerbs. Each lot, and each building, is
+  // also cut to the frame, for where a label can go.
+  const fx = box.w / 2 / mm, fy = box.h / 2 / mm;
+  const inFrame = (rg: XY[]) => clipRect(rg, cx - fx, cy - fy, cx + fx, cy + fy);
+  const centre = (rg: XY[]) => rg.reduce((t, p) => ({ x: t.x + p.x / rg.length, y: t.y + p.y / rg.length }), { x: 0, y: 0 });
+  const parcels = parcelsOf(b).map((pc) => {
+    const rings = pc.rings.map(local);
+    const shown = rings.map(inFrame).filter((rg) => rg.length >= 3);
+    return { ...pc, local: rings, shown, site: inRing(centre(rings[0] ?? []), s.ring) };
+  });
+  out.push(`<path d="${parcels.flatMap((pc) => pc.local.map(path)).join('')}" fill="none" stroke="${LOT_INK}" stroke-width="0.15"/>`);
+  let kerbs = b.kerbs;
+  if (!kerbs) {
+    try { kerbs = estimateKerbs(parcels.flatMap((pc) => pc.rings), b.roads, [], []); } catch { kerbs = []; }
+  }
+  if (kerbs.length) out.push(`<path d="${kerbs.map((kl) => line(local(kl.coords))).join('')}" fill="none" stroke="${KERB_INK}" stroke-width="0.3" stroke-linecap="round" stroke-linejoin="round"/>`);
+  const blds = b.context.map((cb) => local(cb.rings[0] ?? [])).filter((rg) => rg.length >= 3);
+  for (const rg of blds) out.push(`<path d="${path(rg)}" fill="${CONTEXT_FILL}" stroke="${CONTEXT_EDGE}" stroke-width="0.12"/>`);
+
+  // The study: the plates, widest tier first so the narrower ones over it stay visible; each tier's envelope; the site.
   const tiers = [...y.tiers].sort((p, q) => q.envelopeSqm - p.envelopeSqm);
   for (const t of tiers) {
     const built = t.from <= y.storeys;
@@ -454,64 +656,231 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
   }
   y.tiers.forEach((t, i) => { for (const rg of t.envelope) out.push(`<path d="${path(rg)}" fill="none" stroke="${ENVELOPE}" stroke-width="0.3" stroke-dasharray="${['2,1', '1.2,1.2', '3,1,0.8,1', '0.6,0.9'][i % 4]}"/>`); });
   out.push(`<path d="${path(s.ring)}" fill="none" stroke="${SITE_RED}" stroke-width="0.6" stroke-dasharray="3,1.2"/>`);
-  // Each tier's number at its envelope's middle, keyed to the schedule.
-  y.tiers.forEach((t, i) => {
-    const rg = t.envelope[0];
-    if (!rg) return;
-    const c = rg.reduce((a, p) => ({ x: a.x + p.x / rg.length, y: a.y + p.y / rg.length }), { x: 0, y: 0 });
-    const [px, py] = P({ x: c.x + i * 2.5 * (scale / 500), y: c.y - i * 2.5 * (scale / 500) }).split(',').map(Number);
-    out.push(`<circle cx="${px}" cy="${py}" r="2" fill="#ffffff" stroke="${ENVELOPE}" stroke-width="0.25"/><text x="${px}" y="${(py + 1).toFixed(2)}" text-anchor="middle" font-size="2.6" font-weight="700" fill="${ENVELOPE}">${i + 1}</text>`);
-  });
-  // The frontages named outside their edge.
-  const done = new Set<string>();
-  s.ring.forEach((p, i) => {
-    const name = b.frontages[i];
-    if (!name || done.has(name)) return;
-    done.add(name);
-    const q = s.ring[(i + 1) % s.ring.length];
-    const mid = { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 }, l = Math.hypot(q.x - p.x, q.y - p.y) || 1;
-    let sa = 0;
-    for (let j = 0; j < s.ring.length; j++) { const u = s.ring[j], v = s.ring[(j + 1) % s.ring.length]; sa += u.x * v.y - v.x * u.y; }
-    const n = sa > 0 ? { x: (q.y - p.y) / l, y: -(q.x - p.x) / l } : { x: -(q.y - p.y) / l, y: (q.x - p.x) / l };
-    const off = 6 * (scale / 500) + 2;
-    const [lx, ly] = P({ x: mid.x + n.x * off, y: mid.y + n.y * off }).split(',').map(Number);
-    let ang = (-Math.atan2(q.y - p.y, q.x - p.x) * 180) / Math.PI;
-    if (ang > 90) ang -= 180;
-    if (ang < -90) ang += 180;
-    out.push(`<text transform="translate(${lx},${ly}) rotate(${ang.toFixed(1)})" y="1" text-anchor="middle" font-size="2.8" font-weight="700" letter-spacing="0.5" fill="#555">${esc(name.toUpperCase())}</text>`);
-  });
-  // North, and a bar of round metres.
+
+  // North, and a bar of round metres, first: what is written later keeps off them.
   const nx = box.x + box.w - 7, ny = box.y + 8;
   out.push(`<g transform="translate(${nx},${ny})"><path d="M0,-4.4 L1.6,3.6 L0,2 L-1.6,3.6 Z" fill="#1c1c1c"/><text y="-5.6" text-anchor="middle" font-size="2.8" font-weight="700">N</text></g>`);
+  taken.push([nx - 4, ny - 9, nx + 4, ny + 5]);
   const bar = [5, 10, 20, 50, 100].find((m) => m * mm >= 18) ?? 100;
   const bx = box.x + 2, by = box.y + box.h - 3;
   out.push(`<path d="M${bx},${by - 1.4} V${by} H${bx + bar * mm} V${by - 1.4} M${bx + (bar * mm) / 2},${by} V${by - 0.8}" fill="none" stroke="#1c1c1c" stroke-width="0.25"/><text x="${bx}" y="${by - 2.2}" font-size="2.4">0</text><text x="${(bx + bar * mm).toFixed(2)}" y="${by - 2.2}" text-anchor="middle" font-size="2.4">${bar}m</text>`);
-  return { svg: `<defs><clipPath id="planclip"><rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}"/></clipPath></defs><g clip-path="url(#planclip)">${out.join('')}</g>`, scale };
+  taken.push([bx - 1, by - 5, bx + bar * mm + 4, by + 1]);
+
+  // Each tier's number in the band of the envelope that is its own, keyed to
+  // the schedule, drawn toward the middle of the main street frontage so the
+  // numbers read in from the street.
+  const R = 2.2;
+  const placed: XY[] = [];
+  const anchor = frontageMiddle(s.ring, b.frontages);
+  y.tiers.forEach((t, i) => {
+    const spot = tierSpot(t.envelope, y.tiers.slice(i + 1).flatMap((u) => u.envelope), placed, (R + 0.5) / mm, (2 * R + 1) / mm, t.plate, anchor);
+    if (!spot) return;
+    placed.push(spot);
+    const [px, py] = at(spot);
+    out.push(tierBadge(px, py, i + 1, R));
+    taken.push([px - R - 0.4, py - R - 0.4, px + R + 0.4, py + R + 0.4]);
+  });
+
+  // The street names, as the site analysis sets them: bold, along the chord
+  // through the middle of the road's longest run in the frame, slid along it
+  // until clear of what is written.
+  const FS = 2.8;
+  const runs = new Map<string, { pts: [number, number][]; len: number }>();
+  for (const r of b.roads) {
+    if (!r.name) continue;
+    const pts = local(r.coords).map(at).filter(([px, py]) => px > box.x - 20 && px < box.x + box.w + 20 && py > box.y - 20 && py < box.y + box.h + 20);
+    if (pts.length < 2) continue;
+    let len = 0;
+    for (let i = 1; i < pts.length; i++) len += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+    const cur = runs.get(r.name);
+    if (!cur || len > cur.len) runs.set(r.name, { pts, len });
+  }
+  const named = new Set<string>();
+  const defs: string[] = [];
+  for (const [name, r] of runs) {
+    const label = shortStreetName(name).toUpperCase();
+    const textLen = label.length * (FS * 0.62 + 0.5) + 2;
+    const cum = [0];
+    for (let i = 1; i < r.pts.length; i++) cum.push(cum[i - 1] + Math.hypot(r.pts[i][0] - r.pts[i - 1][0], r.pts[i][1] - r.pts[i - 1][1]));
+    const total = cum[cum.length - 1];
+    if (total < textLen) continue;
+    const along = (d: number): [number, number] => {
+      let i = 1;
+      while (i < cum.length - 1 && cum[i] < d) i++;
+      const t = (d - cum[i - 1]) / ((cum[i] - cum[i - 1]) || 1);
+      return [r.pts[i - 1][0] + (r.pts[i][0] - r.pts[i - 1][0]) * t, r.pts[i - 1][1] + (r.pts[i][1] - r.pts[i - 1][1]) * t];
+    };
+    const half = Math.min(total / 2, textLen / 2 + 6);
+    for (const k of [0, 1, -1, 2, -2, 3, -3]) {
+      const c = total / 2 + k * 12;
+      if (c - half < 0 || c + half > total) continue;
+      let p0 = along(c - half), p1 = along(c + half);
+      if (p0[0] > p1[0]) [p0, p1] = [p1, p0];
+      if (Math.hypot(p1[0] - p0[0], p1[1] - p0[1]) < textLen) continue;
+      const mx = (p0[0] + p1[0]) / 2, my = (p0[1] + p1[1]) / 2, ang = Math.atan2(p1[1] - p0[1], p1[0] - p0[0]);
+      const W = Math.abs(textLen * Math.cos(ang)) + Math.abs(FS * Math.sin(ang)), H = Math.abs(textLen * Math.sin(ang)) + Math.abs(FS * Math.cos(ang));
+      const bx2: Box = [mx - W * 0.4, my - H * 0.4, mx + W * 0.4, my + H * 0.4];
+      if (!clear(bx2)) continue;
+      taken.push(bx2);
+      const id = `yrd${defs.length}`;
+      defs.push(`<path id="${id}" d="M${p0[0].toFixed(2)},${p0[1].toFixed(2)}L${p1[0].toFixed(2)},${p1[1].toFixed(2)}" fill="none"/>`);
+      out.push(`<text font-size="${FS}" font-weight="700" letter-spacing="0.5" dy="${(FS * 0.36).toFixed(2)}" fill="${STREET_INK}"><textPath href="#${id}" startOffset="50%" text-anchor="middle">${esc(label)}</textPath></text>`);
+      named.add(name);
+      break;
+    }
+  }
+  // A frontage whose road could not carry its name is named outside the site's edge.
+  const done = new Set<string>();
+  let sa = 0;
+  for (let j = 0; j < s.ring.length; j++) { const u = s.ring[j], v = s.ring[(j + 1) % s.ring.length]; sa += u.x * v.y - v.x * u.y; }
+  s.ring.forEach((p, i) => {
+    const name = b.frontages[i];
+    if (!name || named.has(name) || done.has(name)) return;
+    done.add(name);
+    const q = s.ring[(i + 1) % s.ring.length];
+    const mid = { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 }, l = Math.hypot(q.x - p.x, q.y - p.y) || 1;
+    const n = sa > 0 ? { x: (q.y - p.y) / l, y: -(q.x - p.x) / l } : { x: -(q.y - p.y) / l, y: (q.x - p.x) / l };
+    const off = 6 * (scale / 500) + 2;
+    const [lx, ly] = at({ x: mid.x + n.x * off, y: mid.y + n.y * off });
+    let ang = (-Math.atan2(q.y - p.y, q.x - p.x) * 180) / Math.PI;
+    if (ang > 90) ang -= 180;
+    if (ang < -90) ang += 180;
+    out.push(`<text transform="translate(${lx.toFixed(2)},${ly.toFixed(2)}) rotate(${ang.toFixed(1)})" y="1" text-anchor="middle" font-size="${FS}" font-weight="700" letter-spacing="0.5" fill="${STREET_INK}">${esc(shortStreetName(name).toUpperCase())}</text>`);
+  });
+
+  // On each numbered neighbour: its number, then its zone and height of
+  // building, written in its building where they fit (the largest on the lot),
+  // else on the lot; the lots next to the site first.
+  const F1 = 2.6, F2 = 2.3, LH = 3.1;
+  const labelled = parcels.filter((pc) => !pc.site && pc.numbers?.length && pc.shown.length)
+    .map((pc) => ({ pc, d: Math.min(...(pc.local[0] ?? []).map((p) => Math.min(...s.ring.map((q) => Math.hypot(p.x - q.x, p.y - q.y))))) }))
+    .sort((p, q) => p.d - q.d);
+  const within = (p: XY, rs: XY[][]) => rs.filter((rg) => inRing(p, rg)).length % 2 === 1;
+  for (const { pc } of labelled) {
+    const lines = [`NO. ${numberLine(pc.numbers!)}`, [pc.zone, pc.hob ? hobLine(pc.hob) : ''].filter(Boolean).join(' · ')].filter(Boolean);
+    const wMm = Math.max(lines[0].length * F1 * 0.66, (lines[1]?.length ?? 0) * F2 * 0.6) + 2.4, hMm = lines.length * LH + 0.8;
+    const hw = wMm / 2 / mm, hh = hMm / 2 / mm;
+    // The label's box, its corners and the middles of its sides, all inside the outline.
+    const fits = (p: XY, rs: XY[][]) => [[-1, -1], [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0]].every(([u, v]) => within({ x: p.x + u * hw, y: p.y + v * hh }, rs));
+    const inLot = blds.filter((rg) => within(centre(rg), pc.local)).map((rg) => inFrame(rg)).filter((rg) => rg.length >= 3).sort((p, q) => ringArea(q) - ringArea(p));
+    let spot: XY | undefined;
+    for (const rg of inLot) {
+      const p = tierSpot([rg], [], [], hh, 0);
+      if (p && fits(p, [rg])) { spot = p; break; }
+    }
+    spot ??= tierSpot(pc.shown, [], [], hh, 0);
+    if (!spot) continue;
+    const [px, py] = at(spot);
+    const bx2: Box = [px - wMm / 2, py - hMm / 2, px + wMm / 2, py + hMm / 2];
+    if (!clear(bx2)) continue;
+    taken.push(bx2);
+    const y0 = py - ((lines.length - 1) * LH) / 2 + F1 * 0.36;
+    lines.forEach((t, i) => out.push(`<text x="${px.toFixed(2)}" y="${(y0 + i * LH).toFixed(2)}" text-anchor="middle" font-size="${i ? F2 : F1}" font-weight="${i ? 400 : 700}" fill="#111111">${esc(t)}</text>`));
+  }
+
+  return {
+    svg: `<defs><clipPath id="planclip"><rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}"/></clipPath>${defs.join('')}</defs><g clip-path="url(#planclip)">${out.join('')}</g>`,
+    scale, kerbs,
+  };
 }
 
-/** The schedule: one row per tier, keyed to the plan's numbers, and the totals. */
-function schedule(y: YieldResult, x: number, top: number, w: number): string {
-  const out: string[] = [];
-  const cols = [0, 7, 30, 52, 81, 103, 125].map((c) => x + (c * w) / 150);
-  const fs = 2.75, lh = 4.6;
-  const head = ['', 'STOREYS', 'USE', 'SETBACKS F/S/R', 'ENVELOPE', 'PLATE GBA', 'GFA'];
-  head.forEach((t, i) => out.push(txt(cols[i], top, t, true, fs * 0.92)));
-  out.push(`<line x1="${x}" y1="${(top + 1.4).toFixed(2)}" x2="${x + w}" y2="${(top + 1.4).toFixed(2)}" stroke="#1c1c1c" stroke-width="0.15"/>`);
-  let yy = top + lh + 0.6;
-  const gfaOf = (t: Tier) => y.floors.filter((f) => f.storey >= t.from && f.storey <= t.to).reduce((sum, f) => sum + f.gfa, 0);
-  y.tiers.forEach((t, i) => {
-    const built = Math.max(0, Math.min(t.to, y.storeys) - t.from + 1);
-    const ink = built ? undefined : '#9a9a9a';
-    const st = t.from === t.to ? `${t.from}` : `${t.from}–${t.to}`;
-    out.push(txt(cols[0], yy, String(i + 1), true, fs, ink), txt(cols[1], yy, built && built < t.to - t.from + 1 ? `${st} (${built} built)` : st, false, fs, ink),
-      txt(cols[2], yy, USE_WORD[t.use] + (t.held ? (t.held === 'tower' ? ', tower plate' : ', depth held') : ''), false, fs, ink),
-      txt(cols[3], yy, `${fmt(t.front, t.front % 1 ? 1 : 0)} / ${fmt(t.side, t.side % 1 ? 1 : 0)} / ${fmt(t.rear, t.rear % 1 ? 1 : 0)}m`, false, fs, ink),
-      txt(cols[4], yy, sqm(t.envelopeSqm), false, fs, ink), txt(cols[5], yy, sqm(t.plateSqm), false, fs, ink), txt(cols[6], yy, built ? sqm(gfaOf(t)) : 'not built', false, fs, ink));
-    yy += lh;
-  });
-  out.push(`<line x1="${x}" y1="${(yy - lh + 1.4).toFixed(2)}" x2="${x + w}" y2="${(yy - lh + 1.4).toFixed(2)}" stroke="#1c1c1c" stroke-width="0.15"/>`);
-  out.push(txt(cols[1], yy + 0.4, `${y.storeys}`, true, fs), txt(cols[2], yy + 0.4, 'total', true, fs), txt(cols[5], yy + 0.4, sqm(y.gba), true, fs), txt(cols[6], yy + 0.4, sqm(y.gfa), true, fs));
-  return out.join('');
+/** The middle of the longest run of boundary along one street: where the tier numbers are drawn toward. */
+export function frontageMiddle(ring: XY[], frontages: (string | null)[]): XY | undefined {
+  const n = ring.length;
+  if (!frontages.some(Boolean)) return undefined;
+  // Start where a street's run begins, so no run is cut in two at the ring's seam.
+  const start = Math.max(0, frontages.findIndex((f, i) => f && frontages[(i - 1 + n) % n] !== f));
+  let best: XY[] = [], run: XY[] = [];
+  for (let k = 0; k < n; k++) {
+    const i = (start + k) % n, name = frontages[i];
+    if (!(run.length && name && frontages[(i - 1 + n) % n] === name)) {
+      if (pathLength(run) > pathLength(best)) best = run;
+      run = name ? [ring[i]] : [];
+    }
+    if (name) run.push(ring[(i + 1) % n]);
+  }
+  if (pathLength(run) > pathLength(best)) best = run;
+  let left = pathLength(best) / 2;
+  for (let i = 1; i < best.length; i++) {
+    const l = Math.hypot(best[i].x - best[i - 1].x, best[i].y - best[i - 1].y);
+    if (l >= left) { const t = left / (l || 1); return { x: best[i - 1].x + (best[i].x - best[i - 1].x) * t, y: best[i - 1].y + (best[i].y - best[i - 1].y) * t }; }
+    left -= l;
+  }
+  return best[best.length - 1];
+}
+
+const pathLength = (pts: XY[]) => pts.slice(1).reduce((t, p, i) => t + Math.hypot(p.x - pts[i].x, p.y - pts[i].y), 0);
+
+/** The ring cut to a rectangle: Sutherland–Hodgman, one pass a side, the rectangle being convex. */
+function clipRect(rg: XY[], x0: number, y0: number, x1: number, y1: number): XY[] {
+  const sides: [(p: XY) => boolean, (a: XY, b: XY) => XY][] = [
+    [(p) => p.x >= x0, (a, b) => ({ x: x0, y: a.y + ((x0 - a.x) * (b.y - a.y)) / (b.x - a.x) })],
+    [(p) => p.x <= x1, (a, b) => ({ x: x1, y: a.y + ((x1 - a.x) * (b.y - a.y)) / (b.x - a.x) })],
+    [(p) => p.y >= y0, (a, b) => ({ x: a.x + ((y0 - a.y) * (b.x - a.x)) / (b.y - a.y), y: y0 })],
+    [(p) => p.y <= y1, (a, b) => ({ x: a.x + ((y1 - a.y) * (b.x - a.x)) / (b.y - a.y), y: y1 })],
+  ];
+  let pts = rg;
+  for (const [inside, cut] of sides) {
+    const next: XY[] = [];
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[(i + pts.length - 1) % pts.length], b = pts[i];
+      if (inside(b)) { if (!inside(a)) next.push(cut(a, b)); next.push(b); }
+      else if (inside(a)) next.push(cut(a, b));
+    }
+    pts = next;
+    if (!pts.length) break;
+  }
+  return pts;
+}
+
+/** Inside the ring, by crossings. */
+function inRing(p: XY, rg: XY[]): boolean {
+  let inside = false;
+  for (let i = 0, j = rg.length - 1; i < rg.length; j = i++) {
+    if (rg[i].y > p.y !== rg[j].y > p.y && p.x < ((rg[j].x - rg[i].x) * (p.y - rg[i].y)) / (rg[j].y - rg[i].y) + rg[i].x) inside = !inside;
+  }
+  return inside;
+}
+
+/** From a point to the nearest point of a segment. */
+function segDist(p: XY, a: XY, b: XY): number {
+  const dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy;
+  const t = l2 ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / l2)) : 0;
+  return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+}
+
+/**
+ * Where a tier's number goes in plan: inside its envelope and, where it can,
+ * outside the envelopes of the tiers above it — the band that is its own —
+ * and on the plate built there, clear of the band's edges and of the numbers
+ * already placed. Of the spots where the mark sits clear, the one nearest
+ * `toward` (the envelope's middle when not given); where none is, the
+ * roomiest. Found on a grid over the envelope; `fit` is the clearance the mark
+ * needs from an edge and `apart` from another mark's centre, in metres.
+ */
+export function tierSpot(env: XY[][], above: XY[][], placed: XY[], fit: number, apart: number, plate: XY[][] = [], toward?: XY): XY | undefined {
+  const rings = env.filter((rg) => rg.length >= 3), over = above.filter((rg) => rg.length >= 3), built = plate.filter((rg) => rg.length >= 3);
+  if (!rings.length) return undefined;
+  const all = rings.flat();
+  const x0 = Math.min(...all.map((p) => p.x)), x1 = Math.max(...all.map((p) => p.x));
+  const y0 = Math.min(...all.map((p) => p.y)), y1 = Math.max(...all.map((p) => p.y));
+  const mid = toward ?? { x: (x0 + x1) / 2, y: (y0 + y1) / 2 };
+  const step = Math.max(x1 - x0, y1 - y0) / 80 || 1;
+  const within = (p: XY, rs: XY[][]) => rs.filter((rg) => inRing(p, rg)).length % 2 === 1;
+  const edge = (p: XY, rs: XY[][]) => { let d = Infinity; for (const rg of rs) for (let i = 0; i < rg.length; i++) d = Math.min(d, segDist(p, rg[i], rg[(i + 1) % rg.length])); return d; };
+  let best: { p: XY; rank: number } | undefined;
+  for (let x = x0 + step / 2; x < x1; x += step) for (let yy = y0 + step / 2; yy < y1; yy += step) {
+    const p = { x, y: yy };
+    if (!within(p, rings)) continue;
+    const own = !within(p, over), onPlate = !built.length || within(p, built);
+    const room = Math.min(edge(p, rings), own ? edge(p, over) : Infinity, onPlate && built.length ? edge(p, built) : Infinity);
+    const score = Math.min(room - fit, Math.min(Infinity, ...placed.map((q) => Math.hypot(p.x - q.x, p.y - q.y) - apart)));
+    // Clear and its own beats clear, clear beats cramped; on the plate breaks a tie; then the middle, or the room.
+    const clear = score >= 0;
+    const rank = (clear ? (own ? 4e6 : 2e6) : 0) + (onPlate ? 1e6 : 0) + (clear ? -Math.hypot(p.x - mid.x, p.y - mid.y) : score);
+    if (!best || rank > best.rank) best = { p, rank };
+  }
+  return best?.p;
 }
 
 // ---- the sheet -------------------------------------------------------------------------
@@ -527,49 +896,59 @@ function drawYieldSheet(b: YieldBundle, meta: SheetMeta): string {
   const rows = yieldRows(b, s);
   const ink = tpl().ink;
 
-  // The right half: the massing over the envelope plan and the schedule.
-  const RX = 398, RW = 327;
+  // The left half: the summary, then the schedule and what it rests on, ruled as one table.
+  const apartments = y.archetype === 'residential' || y.archetype === 'mixed';
+  const pc = (v: number) => `${fmt(v * 100, (v * 100) % 1 ? 1 : 0)}%`;
+  const EFFICIENCIES = ['residentialEfficiency', 'commercialEfficiency', 'retailEfficiency', 'nsaRatio', 'commercialNlaRatio', 'retailNlaRatio'] as const;
+  const officeEfficiencies = EFFICIENCIES.every((k) => a[k] === DEFAULT_ASSUMPTIONS[k]);
+  const assumptionRows: YieldRow[] = [
+    { label: 'ASSUMPTIONS', section: true },
+    { label: 'FLOOR TO FLOOR', controls: [`${y.archetype === 'mixed' ? `${a.groundRetailF2F}m retail ground floor, ` : ''}${y.archetype === 'commercial' ? `${a.commercialF2F}m commercial` : `${a.residentialF2F}m residential`}`] },
+    { label: 'ROOF AND PLANT', controls: [`${a.roofAllowance}m kept under the height of building`] },
+    { label: 'EFFICIENCY', controls: [`${officeEfficiencies ? 'the office\'s feasibility template' : 'from yield_assumptions.json'}: ${apartments
+      ? `GFA ${pc(a.residentialEfficiency)} of GBA residential${y.archetype === 'mixed' ? `, ${pc(a.retailEfficiency)} retail` : ''}; NLA (saleable) ${pc(a.nsaRatio)} of residential GFA${y.archetype === 'mixed' ? `, ${pc(a.retailNlaRatio)} retail` : ''}`
+      : `GFA ${pc(a.commercialEfficiency)} of GBA; NLA ${pc(a.commercialNlaRatio)} of GFA`}`] },
+    ...(apartments ? [
+      { label: 'MIX', controls: [`${UNIT_KINDS.every((k) => a.mix[k] === DEFAULT_ASSUMPTIONS.mix[k] && a.sizes[k] === DEFAULT_ASSUMPTIONS.sizes[k]) ? 'the office\'s feasibility template' : 'from yield_assumptions.json'}: ${inMix(y).map((k) => `${pc(a.mix[k])} ${UNIT_SHORT[k]} at ${fmt(a.sizes[k])} sqm`).join(', ')}; average ${fmt(y.averageUnitSqm, 1)} sqm`] },
+      { label: 'PLATES', controls: [`held to ${m1(a.maxDepth)} deep; towers to ${sqm(a.towerPlateMax)} GBA`] },
+    ] : []),
+    { label: 'NEAREST STATION', controls: [b.station ? `${titleWords(b.station.name)}, ${fmt(b.station.distanceM)}m` : 'none within 1.2 km'] },
+    { label: 'TO CHANGE', controls: ['every figure here is set in yield_assumptions.json beside the output'] },
+  ];
+  const summary = renderTable(rows, TABLE_TOP);
+  const sched = renderSchedule(y, summary.bottom + 6);
+  const notes = renderTable(assumptionRows, sched.bottom);
+  const left = txt(COL_LABEL, TITLE_Y, 'PLANNING YIELD', true, TITLE_SIZE) + summary.svg + sched.svg + notes.svg;
+
+  // The right half: the massing over the envelope plan, the plan the width of the half.
+  const RX = 398, RW = 327, BOTTOM = 562.8;
   const right: string[] = [];
   const heading = (x: number, yy: number, t: string, note?: string) =>
     txt(x, yy, t, true, 4.2) + (note ? txt(x + t.length * 2.75 + 4, yy, note, false, 3, '#6a6a6a') : '');
   right.push(heading(RX, TITLE_Y, 'INDICATIVE MASSING', y.storeys ? `${y.storeys} storeys · ${sqm(y.gfa)} GFA${y.units.total ? ` · ${y.units.total} units` : ''}` : 'the height plane over the site'));
   right.push(`<line x1="${RX}" y1="${TABLE_TOP}" x2="${RX + RW}" y2="${TABLE_TOP}" stroke="${ink}" stroke-width="${RULE_W}"/>`);
-  right.push(axonometric(b, s, { x: RX, y: TABLE_TOP + 4, w: RW, h: 318 }));
-  const PY = TABLE_TOP + 330;
-  const plan = planView(b, s, { x: RX, y: PY + 10, w: 150, h: 196 });
-  right.push(heading(RX, PY + 4.6, 'ENVELOPE', `plan 1:${fmt(plan.scale)}`), `<line x1="${RX}" y1="${PY + 7}" x2="${RX + 150}" y2="${PY + 7}" stroke="${ink}" stroke-width="${RULE_W}"/>`, plan.svg);
-  const SX = RX + 162, SW = RW - 162;
-  right.push(heading(SX, PY + 4.6, 'SCHEDULE'), `<line x1="${SX}" y1="${PY + 7}" x2="${SX + SW}" y2="${PY + 7}" stroke="${ink}" stroke-width="${RULE_W}"/>`);
-  if (y.tiers.length) right.push(schedule(y, SX, PY + 13, SW));
-  else right.push(txt(SX, PY + 13, 'No building type is studied for this zone.', false, 3));
-  // What the schedule rests on, under it.
-  const apartments = y.archetype === 'residential' || y.archetype === 'mixed';
-  const assumptionLines = [
-    `Floor to floor: ${y.archetype === 'mixed' ? `${a.groundRetailF2F}m retail ground floor, ` : ''}${y.archetype === 'commercial' ? `${a.commercialF2F}m commercial` : `${a.residentialF2F}m residential`};`,
-    `${a.roofAllowance}m kept under the height for the roof and plant.`,
-    apartments ? `GFA is ${Math.round(a.residentialEfficiency * 100)}% of GBA residential, ${Math.round(a.commercialEfficiency * 100)}% retail;` : `GFA is ${Math.round(a.commercialEfficiency * 100)}% of GBA.`,
-    apartments ? `saleable area ${Math.round(a.nsaRatio * 100)}% of residential GFA.` : '',
-    apartments ? `Mix: ${[a.mix.studio ? `${Math.round(a.mix.studio * 100)}% studio` : '', `${Math.round(a.mix.one * 100)}% 1 bed`, `${Math.round(a.mix.two * 100)}% 2 bed`, `${Math.round(a.mix.three * 100)}% 3 bed`].filter(Boolean).join(', ')}; average ${fmt(y.averageUnitSqm, 1)} sqm.` : '',
-    apartments ? `Plates held to ${a.maxDepth}m deep and towers to ${sqm(a.towerPlateMax)} GBA.` : '',
-    b.station ? `Nearest station or stop: ${titleWords(b.station.name)}, ${fmt(b.station.distanceM)}m.` : 'No station within 1.2 km.',
-  ].filter(Boolean);
-  const ny = PY + 18 + (y.tiers.length + 2) * 4.6 + 6;
-  right.push(txt(SX, ny, 'ASSUMPTIONS', true, 2.9));
-  assumptionLines.forEach((l, i) => right.push(txt(SX, ny + 4.4 + i * 3.7, l, false, 2.6, '#454545')));
-  right.push(txt(SX, ny + 4.4 + assumptionLines.length * 3.7 + 2, 'Every figure can be changed in yield_assumptions.json.', false, 2.6, '#6a6a6a'));
+  right.push(axonometric(b, s, { x: RX, y: TABLE_TOP + 4, w: RW, h: 280 }));
+  const PY = TABLE_TOP + 292;
+  const plan = planView(b, s, { x: RX, y: PY + 10, w: RW, h: BOTTOM - PY - 10 });
+  right.push(heading(RX, PY + 4.6, 'ENVELOPE', `plan 1:${fmt(plan.scale)} · tiers numbered as in the schedule`), `<line x1="${RX}" y1="${PY + 7}" x2="${RX + RW}" y2="${PY + 7}" stroke="${ink}" stroke-width="${RULE_W}"/>`, plan.svg);
 
   // The legend column: the massing's key, then what the sheet is and is not.
   let legend = '';
   let ly = 7;
   const row = (swatch: string, label: string) => {
-    legend += `<g transform="translate(0,${ly})">${swatch}${wrapLabel(label, 26).map((l, i) => `<text x="${LABEL_X}" y="${3.5 + i * 3.2}" font-size="2.6" fill="#222">${esc(l)}</text>`).join('')}</g>`;
-    ly += 10;
+    const lines = wrapLabel(label, 26);
+    legend += `<g transform="translate(0,${ly})">${swatch}${lines.map((l, i) => `<text x="${LABEL_X}" y="${3.5 + i * 3.2}" font-size="2.6" fill="#222">${esc(l)}</text>`).join('')}</g>`;
+    ly += Math.max(10, lines.length * 3.2 + 4);
   };
   row(`<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="${SITE_RED}" fill-opacity="0.08" stroke="${SITE_RED}" stroke-width="0.6" stroke-dasharray="3,1.2"/>`, 'SITE');
   for (const u of ['residential', 'retail', 'commercial'] as Use[]) if (y.tiers.some((t) => t.use === u)) row(`<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="${USE_FILL[u]}" stroke="#3a3a3a" stroke-width="0.2"/>`, `INDICATIVE MASSING, ${USE_WORD[u].toUpperCase()}`);
   if (y.tiers.length) row(`<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="none" stroke="${ENVELOPE}" stroke-width="0.4" stroke-dasharray="1.6,1"/>`, 'ENVELOPE OF EACH TIER');
   if (s.hob?.metres) row(`<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="${SITE_RED}" fill-opacity="0.05" stroke="${SITE_RED}" stroke-width="0.4" stroke-dasharray="2.4,1.2"/>`, 'HEIGHT OF BUILDING PLANE');
   row(`<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="${CONTEXT_FILL}" stroke="${CONTEXT_EDGE}" stroke-width="0.25"/>`, `NEIGHBOURS AT THEIR HEIGHTS (${b.buildingsSource === 'overture' ? 'OVERTURE' : 'OSM'}; DASHED: NOT RECORDED)`);
+  // The plan's kerbs.
+  if (plan.kerbs.length) row(`<line x1="${SWATCH_X}" y1="3.25" x2="${SWATCH_X + SWATCH_W}" y2="3.25" stroke="${KERB_INK}" stroke-width="0.35"/>`, 'KERB LINE (INDICATIVE)');
+  const futures = b.context.some((cb) => cb.futureM);
+  if (futures) row(`<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="${FUTURE_FILL}" fill-opacity="${FUTURE_OPACITY}" stroke="${FUTURE_EDGE}" stroke-width="0.3" stroke-dasharray="${FUTURE_DASH}"/>`, "NEIGHBOURS' FUTURE HEIGHT, TO THEIR LEP HEIGHT OF BUILDING");
   const notesText = [
     'A feasibility study, not a design:',
     'the envelope follows the mapped LEP',
@@ -580,6 +959,15 @@ function drawYieldSheet(b: YieldBundle, meta: SheetMeta): string {
     '',
     'Mapped controls are not a s10.7',
     'planning certificate.',
+    ...(futures ? [
+      '',
+      'Future neighbours: each building in',
+      'a zone that permits flats (R1, R3,',
+      'R4, MU1, E1, E2, B1–B4), raised to',
+      'the whole 3.1m storeys its LEP',
+      'height of building holds; never',
+      'lowered.',
+    ] : []),
   ];
   ly += 2;
   legend += `<text x="0" y="${ly}" font-size="2.9" font-weight="700" fill="${ink}">NOTES</text>`;
@@ -595,7 +983,7 @@ function drawYieldSheet(b: YieldBundle, meta: SheetMeta): string {
     drawingTitle: 'PLANNING YIELD',
     legendHeading: 'LEGEND',
     legendSvg: `<g font-family="${tpl().font}">${legend}</g>`,
-    layers: [`<g transform="translate(${-FRAME_L},${-FRAME_T})" font-family="${tpl().font}" fill="${ink}">${renderTable(rows)}${right.join('')}</g>`],
+    layers: [`<g transform="translate(${-FRAME_L},${-FRAME_T})" font-family="${tpl().font}" fill="${ink}">${left}${right.join('')}</g>`],
     noMap: true,
   });
 }

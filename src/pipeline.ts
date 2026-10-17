@@ -18,6 +18,7 @@ import type { SummaryBundle } from './render/summarySheet.js';
 import type { YieldBundle } from './render/yieldSheet.js';
 import { CENTRES } from './data/centres.js';
 import { levelAt, type ContourM } from './lib/levels.js';
+import { futureHeight } from './lib/yield.js';
 import {
   fetchZoningDetailed, fetchHobDetailed, fetchHeritageDetailed, fetchShrCurtilages, fetchPolicyAreas,
   fetchWaterAreas, fetchPlanningContext, fetchPropertyReport, fetchHousingTarget,
@@ -521,9 +522,11 @@ export async function runSummaryPipeline(
 // the lot's boundary with the streets along it, the ground's level, the
 // nearest station (which decides the parking rates), the housing-policy maps
 // at the site, and the neighbours' footprints with their heights for the
-// massing's context. The study itself is computed when the sheet is drawn
-// (render/yieldSheet.ts), so an edited `yield_assumptions.json` beside the
-// output needs no refetch.
+// massing's context, each with the height its zone and height control let it
+// rise to. For the plan, drawn as the site analysis draws its ground: each
+// lot's street numbers, zone and height of building, and the kerbs. The study
+// itself is computed when the sheet is drawn (render/yieldSheet.ts), so an
+// edited `yield_assumptions.json` beside the output needs no refetch.
 
 export async function runYieldPipeline(
   address: string,
@@ -553,14 +556,18 @@ export async function runYieldPipeline(
   log('reading planning controls, streets, levels, stations and the neighbours…');
   const emptyFc: GeoJSONFC = { type: 'FeatureCollection', features: [] };
   const noBuildings: BuildingsData = { source: 'none', buildings: [], fetchedAt: new Date().toISOString() };
-  const [controls, roads, lots, contourSet, stations, policy, buildings] = await Promise.all([
+  const [controls, roads, lots, contourSet, stations, policy, buildings, zoning, hob, addresses, footways] = await Promise.all([
     fetchSiteControls(geo.center),
-    soft(fetchRoads(around(60)), [], 'roads'),
-    soft(fetchAllLots(around(70)), emptyFc, 'lots'),
+    soft(fetchRoads(around(110)), [], 'roads'),
+    soft(fetchAllLots(around(110)), emptyFc, 'lots'),
     soft(fetchContours(around(40), log), { lines: [], intervalM: 2, source: 'NSW Spatial Services' } as ContourSet, 'contours'),
     soft(fetchTrainStations(around(1200)), [], 'stations'),
     soft(fetchPolicyAreas(around(5), log), [], 'housing policy maps'),
     soft(fetchBuildings(around(110), log), noBuildings, 'buildings'),
+    soft(fetchZoning(around(110)), emptyFc, 'zoning'),
+    soft(fetchHeightOfBuilding(around(110)), emptyFc, 'height of building'),
+    soft(fetchNeighbourAddresses(around(110)), [] as NeighbourAddress[], 'addresses'),
+    soft(fetchFootways(around(110), log), { source: 'none', lines: [], fetchedAt: new Date().toISOString() } as FootwaysData, 'footways'),
   ]);
   log(`  ${[controls.epiName, controls.zoneCode, controls.maxHeightM ? `HOB ${controls.maxHeightM} ${controls.heightUnits ?? 'm'}` : '', controls.fsr ? `FSR ${controls.fsr}:1` : ''].filter(Boolean).join(' · ') || 'no LEP mapped'}`);
 
@@ -600,11 +607,53 @@ export async function runYieldPipeline(
   const policyAtSite = policy.filter((pa) => pa.rings.some((r) => pointInRingLL(centreLL.lon, centreLL.lat, r))).map((pa) => ({ kind: pa.kind, name: pa.name }));
 
   // The neighbours' footprints with what is known of their height; one with
-  // none stands in at a nominal two storeys, drawn as such.
+  // none stands in at a nominal two storeys, drawn as such. Each also gets its
+  // future: raised to the whole storeys its height control holds where the
+  // zone permits flats (lib/yield.ts futureHeight). A control mapped as an RL
+  // is read above the ground the contours give at the building.
   const siteRingLL = ring;
+  // Even-odd over every ring, so a point in a polygon's hole is outside it.
+  const at = (fc: GeoJSONFC, lon: number, lat: number) =>
+    fc.features.find((f) => ringsOf(f.geometry).filter((rg) => pointInRingLL(lon, lat, rg)).length % 2 === 1)?.properties;
   const context = buildings.buildings
     .filter((bd) => !pointInRingLL(bd.centroid[0], bd.centroid[1], siteRingLL))
-    .map((bd) => ({ rings: bd.rings, heightM: bd.estimatedHeightM ?? bd.heightM ?? (bd.floors ? bd.floors * METRES_PER_STOREY : 0), known: !!(bd.estimatedHeightM ?? bd.heightM ?? bd.floors) }));
+    .map((bd) => {
+      const heightM = bd.estimatedHeightM ?? bd.heightM ?? (bd.floors ? bd.floors * METRES_PER_STOREY : 0);
+      const [lon, lat] = bd.centroid;
+      const h = at(hob, lon, lat), value = Number(h?.MAX_B_H);
+      let hobM: number | undefined = Number.isFinite(value) && value > 0 ? value : undefined;
+      if (hobM && /rl|ahd/i.test(String(h?.UNITS ?? ''))) {
+        const g = levelAt(toM([lon, lat]), contoursM, contourSet.intervalM);
+        hobM = g == null ? undefined : hobM - g;
+      }
+      const futureM = futureHeight(String(at(zoning, lon, lat)?.SYM_CODE ?? ''), hobM, heightM, METRES_PER_STOREY);
+      return { rings: bd.rings, heightM, known: !!(bd.estimatedHeightM ?? bd.heightM ?? bd.floors), ...(futureM ? { futureM } : {}) };
+    });
+  log(`  neighbours: ${context.length}, ${context.filter((c) => c.futureM).length} with a future height over today's`);
+
+  // Each lot with what the plan writes on it: its street numbers (the address
+  // points inside it), and the zone and height of building at a point inside it.
+  const near = (lon: number, lat: number) => metres(lon, lat) < reach + 110;
+  const parcels = lots.features.map((f) => {
+    const rings = ringsOf(f.geometry);
+    const inside = (lon: number, lat: number) => rings.filter((rg) => pointInRingLL(lon, lat, rg)).length % 2 === 1;
+    const numbers = [...new Set(addresses.filter((a) => inside(a.lon, a.lat)).map((a) => a.housenumber.toUpperCase()))];
+    const [lon, lat] = interiorLL(rings);
+    const z = at(zoning, lon, lat), h = at(hob, lon, lat), v = Number(h?.MAX_B_H);
+    return {
+      rings,
+      ...(numbers.length ? { numbers } : {}),
+      ...(z?.SYM_CODE ? { zone: String(z.SYM_CODE).trim() } : {}),
+      ...(Number.isFinite(v) && v > 0 ? { hob: { value: v, units: String(h?.UNITS ?? 'm') } } : {}),
+    };
+  }).filter((pc) => pc.rings.length && pc.rings[0].some(([lon, lat]) => near(lon, lat)));
+
+  // The kerbs, as the site sheet places them: a footpath's width out from the boundary.
+  let kerbs: KerbLine[] = [];
+  try { kerbs = estimateKerbs(lots.features.flatMap((f) => ringsOf(f.geometry)), roads, footways.lines, []); }
+  catch (e) { log(`  kerbs: not worked out (${(e as Error).message})`); }
+  kerbs = kerbs.filter((kl) => kl.coords.some(([lon, lat]) => near(lon, lat)));
+  log(`  plan: ${parcels.length} lots, ${parcels.filter((pc) => pc.numbers).length} numbered, ${kerbs.length} kerb lines`);
 
   let assumptions: YieldBundle['assumptions'];
   try { assumptions = JSON.parse(await readFile(join(opts.outDir, 'yield_assumptions.json'), 'utf8')); log('  assumptions from yield_assumptions.json'); } catch { /* the defaults */ }
@@ -623,14 +672,33 @@ export async function runYieldPipeline(
     station: nearest,
     cbd: cbd && cbd.distanceM <= 1500 ? cbd : undefined,
     policyAtSite,
-    roads: roads.filter((r) => r.coords.some(([lon, lat]) => metres(lon, lat) < reach + 60)),
-    lots: lots.features.map((f) => ringsOf(f.geometry)).filter((r) => r.length),
+    roads: roads.filter((r) => r.coords.some(([lon, lat]) => near(lon, lat))),
+    parcels,
+    kerbs,
     context,
     buildingsSource: buildings.source,
     assumptions,
   };
   await writeFile(join(dataDir, 'yield.json'), JSON.stringify(bundle));
   return bundle;
+}
+
+/** A point inside the lot: its centroid where that is inside, else the middle of the widest run across it at that latitude. */
+function interiorLL(rings: number[][][]): [number, number] {
+  const outer = rings[0] ?? [];
+  if (!outer.length) return [0, 0];
+  const lon = outer.reduce((t, p) => t + p[0], 0) / outer.length, lat = outer.reduce((t, p) => t + p[1], 0) / outer.length;
+  const inside = (x: number, y: number) => rings.filter((rg) => pointInRingLL(x, y, rg)).length % 2 === 1;
+  if (inside(lon, lat)) return [lon, lat];
+  const xs: number[] = [];
+  for (const rg of rings) for (let i = 0, j = rg.length - 1; i < rg.length; j = i++) {
+    const [xi, yi] = rg[i], [xj, yj] = rg[j];
+    if (yi > lat !== yj > lat) xs.push(xi + ((lat - yi) * (xj - xi)) / (yj - yi));
+  }
+  xs.sort((a, b) => a - b);
+  let best: [number, number] = [lon, lat], widest = 0;
+  for (let i = 0; i + 1 < xs.length; i += 2) if (xs[i + 1] - xs[i] > widest) { widest = xs[i + 1] - xs[i]; best = [(xs[i] + xs[i + 1]) / 2, lat]; }
+  return best;
 }
 
 function pointInRingLL(lon: number, lat: number, ring: number[][]): boolean {

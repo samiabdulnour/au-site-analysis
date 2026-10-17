@@ -819,12 +819,32 @@ controls let the site hold, as a feasibility study first states it. The left
 half is the office's development summary (DA 002) with the column the
 generated summary had to leave empty now filled — CONTROLS, PROPOSED and
 COMPLIANCE — for the site, the project summary, the LEP, the parking, the
-Apartment Design Guide and the Housing SEPP. The right half draws the study:
-the indicative massing as an axonometric, seen from the main street's corner,
-among the neighbours at their recorded heights (Overture; dashed where none is
-recorded), with each tier's envelope dashed and the height of building plane
-over the site; the envelope in plan at a round scale with its tiers numbered;
-and the schedule of tiers, storeys, setbacks, envelope, plate and floor area.
+Apartment Design Guide and the Housing SEPP. Under it, ruled as the same
+table, the schedule of tiers — storeys, use, setbacks, envelope, plate and
+floor area, each tier's number in the ring the plan draws it in — then the
+apartments, a row for each kind in the mix with its share, ADG 4D-1's least
+area for it, its own area, how many there are and the area they take, and
+the assumptions the study rests on (floor to floor, efficiencies, the mix,
+the plates, the nearest station).
+
+The right half draws the study. The indicative massing as an axonometric,
+seen from the main street's corner, among the neighbours at their recorded
+heights (Overture; dashed where none is recorded), with each tier's envelope
+dashed and the height of building plane over the site. Over each neighbour,
+in pale dashed glass, its future: its own footprint raised to the whole 3.1 m
+storeys its LEP height of building holds, where its zone permits flats (R1,
+R3, R4, MU1, E1, E2, B1–B4), never lowered — the way sun-study's future
+context reads it (`futureHeight()` in `src/lib/yield.ts`). The proposal's
+outline is drawn over everything, so a future neighbour in front of it does
+not hide it, and a future far above what stands (a CBD's airspace RL) runs out
+of the frame, as the height plane does, the frame saying how high it goes. Under the massing, the envelope in plan at a round scale, the
+width of the half, on the ground the site analysis draws, kept to black and
+grey: the lot lines, the kerbs (`src/lib/kerbs.ts`, indicative), the
+neighbours' buildings, and on each numbered neighbour its street number, zone
+and height of building (`NO. 13–17`, `R4 · HOB = 28m`), written inside its
+building where they fit and on its lot where there is no building to hold
+them; the street names along the roads. Over it each tier's envelope and plate, the tiers numbered in the band
+that is each one's own, toward the middle of the main street frontage.
 
 The study (`src/lib/yield.ts`, tested in `test/yield.mts`) works on the lot in
 local metres:
@@ -852,12 +872,21 @@ local metres:
   round a courtyard that keeps the separation across it, on a wide lot — and
   a residential tower (nine storeys and up) to a 750 m² plate, centred by
   eroding the envelope evenly.
-- **The floor area.** Storey by storey up the tiers, GFA at 82% of the plate
-  residential and 85% otherwise, until the height runs out or the floor space
-  ratio does; the sheet says which governs. No FSR mapped: the height does.
-- **Apartments.** The saleable area (85% of residential GFA) over the mix's
-  average size — 5% studios, 25% one bedroom, 55% two, 15% three at 40, 55, 80
-  and 105 m² — shared out by the mix.
+- **The floor area.** Storey by storey up the tiers, until the height runs
+  out or the floor space ratio does; the sheet says which governs. No FSR
+  mapped: the height does. GFA is taken from each storey's plate (its gross
+  building area, the office template's BEA) by the template's building
+  efficiencies, as sun-study's yield analysis keeps them: 72.5% residential,
+  95% retail, 85% commercial; the net lettable area is 85% of residential
+  GFA and 90% of retail and commercial. Where the FSR governs, a leaner
+  efficiency builds the same floor area higher.
+- **Apartments.** The net lettable (saleable) area over the mix's
+  average size, shared out by the mix. The mix is the office's feasibility
+  template, as sun-study's yield analysis keeps it: no studios, 20% one
+  bedroom, 70% two, 10% three and no four-bedroom flats, at 35, 50, 75, 100
+  and 120 m² — an average of 72.5 m², each at or over ADG 4D-1's minimum
+  (35, 50, 70, 90, and 12 m² more a bedroom over three). Four bedrooms park
+  at the three-bedroom rate, the Guide's being for three or more.
 - **Parking.** Within 800 m of a station or light rail stop, ADG 3J-1 caps a
   council's rates at the Guide to Traffic Generating Developments': its CBD
   rates in Parramatta and Sydney CBDs (0.4, 0.7 and 1.2 a dwelling, a visitor
@@ -879,7 +908,7 @@ from `yield_assumptions.json` in the address's output folder (the CLI's
 `out/<slug>/`), any subset of the fields:
 
 ```json
-{ "mix": { "studio": 0, "one": 0.3, "two": 0.55, "three": 0.15 },
+{ "mix": { "studio": 0.05, "one": 0.25, "two": 0.55, "three": 0.15, "four": 0 },
   "sizes": { "two": 85 }, "podiumStoreys": 3, "towerPlateMax": 850,
   "parking": { "one": 0.5, "two": 1, "three": 1.5, "visitor": 0.2, "basis": "the council's DCP" } }
 ```
@@ -888,7 +917,9 @@ The sheet prints the ones a run used. It is a feasibility figure, not a design:
 DCP setbacks, street wall heights, solar access and overshadowing are the
 design's to test, and mapped controls are not a planning certificate. Outputs:
 `PLANNING_YIELD.pdf`, `.csv`, `.json`, and `data/yield.json` (the bundle, which
-redraws with no refetch).
+redraws with no refetch). A bundle from before the future heights, the lots'
+zones and numbers and the kerbs still draws: without the future neighbours
+and the plan's labels, its kerbs worked out from the lots and the roads.
 
 ### The deck
 

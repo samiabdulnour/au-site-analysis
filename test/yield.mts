@@ -2,13 +2,15 @@
  *
  * Geometry and arithmetic only: which storeys a height holds, how the ADG's
  * separations and the podium step the envelope, where the floor space ratio
- * stops the building, and the apartments and parking that floor area makes.
+ * stops the building, the apartments and parking that floor area makes, how
+ * high a neighbour may rise, and where the plan writes each tier's number.
  * Nothing here asks a network.
  *
  *   npx tsx test/yield.mts
  */
 
-import { computeYield, storeysUnder, archetypeFor, edgeKinds, ringArea, DEFAULT_ASSUMPTIONS, PARKING_RATES, type XY } from '../src/lib/yield.js';
+import { computeYield, storeysUnder, archetypeFor, edgeKinds, ringArea, futureHeight, withFour, DEFAULT_ASSUMPTIONS, PARKING_RATES, UNIT_KINDS, ADG_MINIMUM, type XY } from '../src/lib/yield.js';
+import { tierSpot, frontageMiddle } from '../src/render/yieldSheet.js';
 
 const failures: string[] = [];
 const check = (name: string, ok: boolean, detail = '') => {
@@ -54,11 +56,15 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
   check('R4: storeys 5–6 step back to 9 m from the sides and rear', near(t2.envelopeSqm, 22 * 35, 12), t2.envelopeSqm.toFixed(1));
   check('R4: the floor space ratio caps the floor area', near(y.gfa, 1.5 * 2000, 1) && y.governs === 'fsr', `${y.gfa.toFixed(0)} ${y.governs}`);
   check('R4: fewer storeys are built than the height allows', y.storeys < y.storeysByHeight, `${y.storeys} of ${y.storeysByHeight}`);
-  // 3000 m² × 0.85 / 75.5 m² = 33.8 → 33 apartments.
-  check('R4: the apartments are the saleable area over the average size', y.units.total === 33, String(y.units.total));
-  check('R4: the mix adds up', y.units.studio + y.units.one + y.units.two + y.units.three === y.units.total);
+  // The office's mix averages 72.5 m²: 3000 m² × 0.85 / 72.5 m² = 35.2 → 35 apartments.
+  check('R4: the office mix averages 72.5 m²', near(y.averageUnitSqm, 72.5, 1e-9), String(y.averageUnitSqm));
+  check('R4: the apartments are the saleable area over the average size', y.units.total === 35, String(y.units.total));
+  check('R4: the mix adds up', UNIT_KINDS.reduce((t, k) => t + y.units[k], 0) === y.units.total);
+  check('R4: no studios or four-bedroom flats in the office mix', y.units.studio === 0 && y.units.four === 0);
+  check('R4: the mix shares the units by its shares (7, 25, 3)', y.units.one === 7 && y.units.two === 25 && y.units.three === 3, `${y.units.one} ${y.units.two} ${y.units.three}`);
+  check('R4: every size in the office mix meets ADG 4D-1', UNIT_KINDS.every((k) => DEFAULT_ASSUMPTIONS.sizes[k] >= ADG_MINIMUM[k]));
   const r = DEFAULT_ASSUMPTIONS.parking;
-  const want = Math.ceil(y.units.studio * r.studio + y.units.one * r.one + y.units.two * r.two + y.units.three * r.three) + Math.ceil(y.units.total * r.visitor);
+  const want = Math.ceil(UNIT_KINDS.reduce((t, k) => t + y.units[k] * r[k], 0)) + Math.ceil(y.units.total * r.visitor);
   check('R4: parking is the mix at its rates, plus visitors', y.parking.total === want, `${y.parking.total} vs ${want}`);
   check('R4: the ADG asks a 6 m deep soil dimension on a site over 1500 m²', y.adg.deepSoil.minDimension === 6);
 }
@@ -75,6 +81,10 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
   check('MU1: the podium keeps 6 m off the rear only', near(podium.envelopeSqm, 1200 - 6 * 40, 12), podium.envelopeSqm.toFixed(0));
   check('MU1: retail floor area is counted apart from the apartments', y.gfaByUse.retail > 0 && y.gfaByUse.residential > 0);
   check('MU1: the storeys follow the height', y.storeys === y.storeysByHeight, `${y.storeys} vs ${y.storeysByHeight}`);
+  // The office template's efficiencies: 95% of the plate for the shops, 72.5% for the apartments.
+  const shop = y.floors.find((f) => f.use === 'retail')!, flat = y.floors.find((f) => f.use === 'residential')!;
+  check('MU1: the shops take 95% of their plate as GFA', near(shop.gfa / shop.gba, 0.95, 1e-9), String(shop.gfa / shop.gba));
+  check('MU1: the apartments take 72.5% of theirs', near(flat.gfa / flat.gba, 0.725, 1e-9), String(flat.gfa / flat.gba));
 }
 
 // ---- an L-shaped lot: the envelope is eroded per edge, not clipped by half-planes ------
@@ -105,11 +115,67 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
   check('tower: the plate is held to its size', tower.held === 'tower' && near(tower.plateSqm, DEFAULT_ASSUMPTIONS.towerPlateMax, 40), `${tower.held} ${tower.plateSqm.toFixed(0)}`);
 }
 
+// ---- four bedrooms ----------------------------------------------------------------------
+{
+  const ring = rect(40, 50);
+  const y = computeYield({ ring, fronts: [true, false, false, false], siteAreaSqm: 2000, zone: 'R4', hobM: 22, fsr: 1.5,
+    assumptions: { mix: { studio: 0, one: 0.2, two: 0.5, three: 0.2, four: 0.1 } } });
+  check('four: a share of four-bedroom flats is counted', y.units.four > 0 && UNIT_KINDS.reduce((t, k) => t + y.units[k], 0) === y.units.total, JSON.stringify(y.units));
+  check('four: four bedrooms park at the three-bedroom rate', y.assumptions.parking.four === y.assumptions.parking.three);
+  // A rate set from yield_assumptions.json that names three bedrooms and not four gives four bedrooms the same.
+  check('four: a three-bedroom rate given alone carries to four', withFour({ ...PARKING_RATES.subRegional }, { three: 2 }).four === 2);
+  check('four: a four-bedroom rate given is kept', withFour({ ...PARKING_RATES.subRegional }, { three: 2, four: 2.5 }).four === 2.5);
+}
+
 // ---- overrides ---------------------------------------------------------------------------
 {
   const ring = rect(40, 50);
   const y = computeYield({ ring, fronts: [true, false, false, false], siteAreaSqm: 2000, zone: 'R4', hobM: 22, fsr: 1.5, assumptions: { parking: { ...PARKING_RATES.cbd } } });
   check('an override replaces a rate set', y.assumptions.parking.two === 0.7 && y.assumptions.mix.two === DEFAULT_ASSUMPTIONS.mix.two);
+}
+
+// ---- the neighbours' future ----------------------------------------------------------------
+{
+  const f = futureHeight('R4', 22, 6.2);
+  check('future: an R4 neighbour of two storeys rises to the whole storeys under 22 m', f !== undefined && near(f, 7 * 3.1, 1e-6), String(f));
+  check('future: R2 stays a house', futureHeight('R2', 22, 6.2) === undefined);
+  check('future: a zone code is read whatever its case and spacing', futureHeight(' mu1 ', 30, 9) !== undefined);
+  check('future: a building at its control is its own future', futureHeight('R4', 22, 21.7) === undefined);
+  check('future: a building over its control is never lowered', futureHeight('R4', 12, 30) === undefined);
+  check('future: no height control, no future', futureHeight('R4', undefined, 6.2) === undefined);
+  // Two storeys assumed: 8 m holds two at 3.1 m and is no rise; 9.5 m holds three.
+  const unknown = futureHeight('R4', 9.5, undefined);
+  check('future: a height not recorded stands at two storeys', futureHeight('R4', 8, undefined) === undefined && futureHeight('R4', 8, 0) === undefined
+    && unknown !== undefined && near(unknown, 9.3, 1e-6), `${futureHeight('R4', 8, undefined)} ${unknown}`);
+}
+
+// ---- the tier numbers in plan ------------------------------------------------------------------
+{
+  const sq = (x0: number, y0: number, x1: number, y1: number): XY[] => [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }];
+  const inside = (p: XY, r: XY[]) => p.x > Math.min(...r.map((q) => q.x)) && p.x < Math.max(...r.map((q) => q.x)) && p.y > Math.min(...r.map((q) => q.y)) && p.y < Math.max(...r.map((q) => q.y));
+  const lower = sq(0, 0, 40, 30), upper = sq(4, 4, 36, 26);
+  const one = tierSpot([lower], [upper], [], 1, 3)!;
+  check('labels: the lower tier is numbered in its own band, clear of its edges', !!one && inside(one, lower) && !inside(one, upper)
+    && Math.min(one.x, 40 - one.x, one.y, 30 - one.y) >= 1 && Math.min(Math.abs(one.x - 4), Math.abs(one.x - 36), Math.abs(one.y - 4), Math.abs(one.y - 26)) >= 1, JSON.stringify(one));
+  const two = tierSpot([upper], [], [one], 1, 3)!;
+  check('labels: the upper tier is numbered inside it, apart from the first', !!two && inside(two, upper) && Math.hypot(two.x - one.x, two.y - one.y) >= 3, JSON.stringify(two));
+  // Identical envelopes leave no band: the second number still goes in, apart from the first.
+  const same = tierSpot([lower], [lower], [], 1, 3)!, next = tierSpot([lower], [], [same], 1, 3)!;
+  check('labels: a tier with no band of its own is still numbered, apart', !!same && !!next && inside(same, lower) && Math.hypot(next.x - same.x, next.y - same.y) >= 3);
+  check('labels: a tier with no envelope is not numbered', tierSpot([], [], [], 1, 3) === undefined);
+}
+
+// ---- the middle of the street frontage -----------------------------------------------------
+{
+  // A frontage the cadastre draws as two edges is one run: its middle is the run's, not either edge's.
+  const ring: XY[] = [{ x: 0, y: 0 }, { x: 20, y: 0 }, { x: 50, y: 0 }, { x: 50, y: 30 }, { x: 0, y: 30 }];
+  const m = frontageMiddle(ring, ['MAIN STREET', 'MAIN STREET', null, null, null]);
+  check('frontage: the middle of a run of two edges', !!m && near(m.x, 25, 1e-6) && near(m.y, 0, 1e-6), JSON.stringify(m));
+  // A run across the ring's seam (the last edge and the first) is still one: 30 m down, then 20 m along, its middle 25 m in.
+  const seam = frontageMiddle(ring, ['SIDE ROAD', null, null, null, 'SIDE ROAD']);
+  check('frontage: a run across the seam is one run', !!seam && near(seam.x, 0, 1e-6) && near(seam.y, 5, 1e-6), JSON.stringify(seam));
+  check('frontage: the longer street wins', (() => { const q = frontageMiddle(ring, ['A ST', null, 'B ST', null, null]); return !!q && near(q.x, 50, 1e-6) && near(q.y, 15, 1e-6); })());
+  check('frontage: no street, no middle', frontageMiddle(ring, [null, null, null, null, null]) === undefined);
 }
 
 if (failures.length) {
