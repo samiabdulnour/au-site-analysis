@@ -375,7 +375,8 @@ names are plain bold text along the road, without the white arrow band, slid
 along it clear of the labels already set. The numbers and street names are white, and every word on the map and in the
 legend is set in Arial Narrow (Liberation Sans Narrow on the server).
 
-Every word on the map is one size. Potential views are a telescope just
+Every word on the map is one size, which a theme can scale as a whole
+(`textScale`; Heron sets it a fifth larger). Potential views are a telescope just
 outside the site edge, aimed along the bearing, with what it found — the
 distance and "TERRAIN CLEAR" — written under it, along its line, in the site
 pen's lettering. The site itself — boundary, corners,
@@ -678,8 +679,10 @@ colour; the zones are hatched and tinted in Heron's palette (tan centres and
 mixed use, peach residential, mint open space, slate institutions; the tint
 at 0.55, multiplied into the grey photograph, since Heron's tints are too pale
 to read as a hatch alone), the site, its levels and its boundary dimensions
-are in Heron's red, and the fall in its slate, its FALL and AREA written
-straight on the photograph with a fine white edge to the letters and no box. The
+are in Heron's red, and the fall arrow in its slate; the FALL and AREA are
+written in the red too, plain on the photograph like the levels, with no box
+and no white edge (`fallWords: 'plain'`). Every word on the map is set a fifth
+larger than the other site themes' (`textScale: 1.2`). The
 neighbours' numbers and storeys and the street names are white over a fine
 white outline of each building, noise in blue, and the climate is drawn
 quietly as before: the sun, its path, its hours and words, the telescopes and
@@ -793,6 +796,8 @@ comes out in the wrong face, so add the package to the `Dockerfile` first.
 
 Options (after `--`): `--type context|site|yield|slides|summary|both`, `--scale 3000` (default 3000;
 the web picker offers 1:2000, 1:3000, 1:4000 and 1:5000, the server accepts 1000 to 6000),
+`--site-scale 500` (the site sheet's; the web picker offers 1:250, 1:500 and 1:1000, defaulting to 1:500;
+left out, the tightest that fits the lot),
 `--template flamingo|kingfisher|heron|canary` (the context sheet's template, see Templates below),
 `--site-theme heron|kookaburra|canary` (the site sheet's theme),
 `--slides-scale 8000` (the deck's map panels), `--da-years 5` (the deck's
