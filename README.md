@@ -670,7 +670,7 @@ it draws on for what it does not set itself (the typeface and the zones'
 palette), and the sheet sets the rest — its `look` (`SiteLook`): the face, the
 veil and the aerial's tone, the site's pen and dash, how the zones, heritage,
 neighbours, streets, suns, winds, noise, views and kerbside parking are drawn,
-and in which inks. There are three, on the aerial or on paper:
+and in which inks. There are four, on the aerial or on paper:
 
 **Heron** (`heron`, the default) — the aerial with the zones hatched, in the
 Heron template's colours. The aerial goes grey outside the site (`aerial: 'grey'`, by the
@@ -698,7 +698,7 @@ plain Arial with no white halo. Where no open tree data reaches the site (no
 council register, nothing in OpenStreetMap within 15 m), the legend says so
 instead of leaving the trees out without a word.
 
-**Kookaburra** (`kookaburra`) — Kingfisher on paper, with no aerial: the
+**Kingfisher** (`kingfisher`) — Kingfisher on paper, with no aerial: the
 zones as Kingfisher's pale grounds with their textures, laid on the lots only
 so the roads stay white (water is drawn whole), every building in its zone
 family's strong colour with a white edge and its number in white (a quiet grey
@@ -713,9 +713,17 @@ on the A1). The ring is a bold yellow line, solid in summer and dashed in
 winter, and carries no hours. Views are plain outlined triangles opening
 from the site edge, their distance written beyond the open end or, where a
 sun's name is there, beside it. No word has a white edge, and FALL and AREA
-sit straight on the site.
+sit straight on the site. It was called Kookaburra; a request that still
+names `kookaburra` is drawn in Kingfisher.
 
-With no photograph to show them, Kookaburra draws the kerbs, indicatively
+**Flamingo** (`flamingo`) — Kingfisher's sheet in Flamingo's palette: the
+same paper, marks, suns, winds and views, with the zones as Flamingo's tints
+and textures, every building in its zone family's ink (peach, sand, teal,
+grey), the site in Flamingo's coral and the street names in its green. It
+draws on Flamingo, and its look is Kingfisher's with only those inks changed,
+so a change to Kingfisher's marks carries over.
+
+With no photograph to show them, Kingfisher and Flamingo draw the kerbs, indicatively
 (`src/lib/kerbs.ts`): NSW publishes no kerbs or footpath edges as open data
 (the state's roads are centre lines only, a few metres out), so each kerb
 runs a footpath's width out from the lot boundary on the street side. The
@@ -799,7 +807,7 @@ the web picker offers 1:2000, 1:3000, 1:4000 and 1:5000, the server accepts 1000
 `--site-scale 500` (the site sheet's; the web picker offers 1:250, 1:500 and 1:1000, defaulting to 1:500;
 left out, the tightest that fits the lot),
 `--template flamingo|kingfisher|heron|canary` (the context sheet's template, see Templates below),
-`--site-theme heron|kookaburra|canary` (the site sheet's theme),
+`--site-theme heron|kingfisher|flamingo|canary` (the site sheet's theme),
 `--slides-scale 8000` (the deck's map panels), `--da-years 5` (the deck's
 development window), `--job 2539`, `--client "Name"`,
 `--status "DEVELOPMENT APPLICATION"`, `--sheet "DA 003"`.

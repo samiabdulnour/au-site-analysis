@@ -72,9 +72,11 @@ const styleChecks: [string, boolean][] = [
   ['context keeps its template', themeFor('context', 'heron') === 'heron'],
   ['context: unknown → default template', themeFor('context', 'dove') === 'flamingo'],
   ['context: Conure, its former name, → Canary', themeFor('context', 'conure') === 'canary'],
-  ['site: a context template → Heron', themeFor('site', 'kingfisher') === 'heron'],
+  ['site: a context-only name → Heron', themeFor('site', 'flamingo-2') === 'heron'],
   ['site: Heron draws on Heron', templateFor('site', 'heron') === 'heron'],
   ['site: Dove and Cardinal, its former names, → Heron', themeFor('site', 'dove') === 'heron' && themeFor('site', 'cardinal') === 'heron'],
+  ['site: Kookaburra, its former name, → Kingfisher', themeFor('site', 'kookaburra') === 'kingfisher'],
+  ['site: Kingfisher draws on Kingfisher, Flamingo on Flamingo', templateFor('site', 'kingfisher') === 'kingfisher' && templateFor('site', 'flamingo') === 'flamingo'],
   ['summary has no theme', themeFor('summary', 'conure') === ''],
   ['slides drawn in the default template', templateFor('slides', 'kingfisher') === 'flamingo'],
 ];
