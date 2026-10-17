@@ -13,6 +13,7 @@ import { METRES_PER_STOREY } from '../fetch/buildings.js';
 import { sheetHtml, esc, T, SWATCH_X, SWATCH_W, LABEL_X, MAP_W, MAP_H } from './chrome.js';
 import { tpl, withTemplate, siteTheme, PARK_GREEN, PARK_GREEN_INK, type SiteLook } from './template.js';
 import { SUNS, WINDS as WIND_SYMBOLS } from './climateSymbols.js';
+import { estimateKerbs, type KerbLine } from '../lib/kerbs.js';
 import { exitPoint } from '../fetch/views.js';
 import { NOMINAL_CANOPY_M, TREE_SOURCES } from '../fetch/trees.js';
 import { buildParkingBands, type Orientation } from '../lib/parking.js';
@@ -538,6 +539,15 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
   if (sb.allLots.features.length) {
     const d = sb.allLots.features.map((f) => pathFromRings(geomRings(f.geometry), proj)).join('');
     layers.push(`<path d="${d}" fill="none" stroke="#ffffff" stroke-width="0.7" opacity="0.9"/>`);
+  }
+  // Kerb lines, on a sheet with no photograph to show them: a footpath's
+  // width out from the lot boundary, measured where OpenStreetMap maps the
+  // footpath, typical where it does not, and its own kerbs where it maps them.
+  let kerbs: KerbLine[] = [];
+  if (look.kerbs && sb.allLots.features.length) {
+    kerbs = estimateKerbs(sb.allLots.features.flatMap((f) => geomRings(f.geometry)), sb.roads, sb.footways?.lines ?? [], sb.furniture.kerbs ?? []);
+    const d = kerbs.map((kl) => pathFromRings([kl.coords as any], proj, false)).join('');
+    if (d) layers.push(`<path d="${d}" fill="none" stroke="#8a8a8a" stroke-width="0.35" stroke-linecap="round"/>`);
   }
   // (2) Terrain: contour lines with elevation tags (RL m AHD) along them.
   if (look.contours && sb.contours.length) {
@@ -1262,7 +1272,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
     const w = Math.max(...lines.map((t) => t.length)) * fs * 0.55 + 4;
     const h = lines.length * lh + 2;
     layers.push(`<g transform="translate(${centroidPx[0].toFixed(1)},${centroidPx[1].toFixed(1)}) rotate(${ang.toFixed(1)})">
-      <rect x="${(-w / 2).toFixed(1)}" y="${(-h / 2).toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" fill="#ffffff" fill-opacity="0.9"/>
+      ${look.infoBox ? `<rect x="${(-w / 2).toFixed(1)}" y="${(-h / 2).toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" fill="#ffffff" fill-opacity="0.9"/>` : ''}
       ${lines.map((t, i) => `<text x="0" y="${(-h / 2 + 1 + lh * (i + 0.8)).toFixed(1)}" text-anchor="middle" font-size="${fs}" font-weight="700" fill="${BLUE()}">${esc(t)}</text>`).join('')}
     </g>`);
   }
@@ -1473,6 +1483,12 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
   const legendDash = look.siteDash.split(',').map((v) => (Number(v) * 0.64).toFixed(2)).join(',');
   row(`<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="none" stroke="${SITE_RED}" stroke-width="0.9" stroke-dasharray="${legendDash}"/>`, 'SITE');
   row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${BLUE()}" stroke-width="0.8" stroke-dasharray="4,1.6"/><path d="M${SWATCH_X + SWATCH_W - 4},1.2 L${SWATCH_X + SWATCH_W},3.2 L${SWATCH_X + SWATCH_W - 4},5.2" fill="none" stroke="${BLUE()}" stroke-width="0.8"/>`, 'FALL OF TERRAIN');
+  if (kerbs.length) {
+    const measured = kerbs.some((kl) => kl.from === 'footway'), mapped = kerbs.some((kl) => kl.from === 'osm');
+    row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="#8a8a8a" stroke-width="0.35"/>`,
+      'KERB LINE (INDICATIVE)', mapped ? 'OSM kerbs where mapped; elsewhere a footpath in from the boundary'
+        : measured ? 'footpath width from OSM footpaths where mapped, typical elsewhere' : 'a typical footpath width in from the boundary; not surveyed');
+  }
   row(`<text x="${SWATCH_X}" y="5.4" font-size="3.2" font-weight="700" fill="${look.dimensionInk}">SB 30.48</text>`, 'BOUNDARY DIMENSION (m)');
   row(`<text x="${SWATCH_X}" y="5.4" font-size="3.2" font-weight="700" fill="${SITE_RED}">RL 24.5</text>`, 'SURFACE LEVEL (AHD)');
   if (look.contours && sb.contours.length) row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${look.contourInk}" stroke-width="0.6"/><text x="${SWATCH_X + 1}" y="2.2" font-size="2.2" font-weight="700" fill="${look.contourInk}">RL 20</text>`, `CONTOURS AT ${sb.contourIntervalM ?? 2} m AHD`, sb.contourSource);

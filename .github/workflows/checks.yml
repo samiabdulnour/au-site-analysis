@@ -123,6 +123,13 @@ jobs:
       - name: the yield study builds what the controls allow
         run: npx tsx test/yield.mts
 
+      # Kerb lines on paper: a footpath's width out from the boundary on the
+      # street's side, measured from a mapped footpath where there is one,
+      # none along a lane or between two lots, a carriageway kept in a
+      # narrow reserve, and a mapped kerb in place of the estimate beside it.
+      - name: the kerb lines sit where a footpath would end
+        run: npx tsx test/kerbs.mts
+
       # The Major Projects register is HTML, parsed: its listing cards, a
       # project page's details and point, and the council-area matching, on
       # trimmed copies of the markup. CI never calls the Planning Portal.
