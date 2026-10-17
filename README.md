@@ -813,9 +813,11 @@ generated summary had to leave empty now filled — CONTROLS, PROPOSED and
 COMPLIANCE — for the site, the project summary, the LEP, the parking, the
 Apartment Design Guide and the Housing SEPP. Under it, ruled as the same
 table, the schedule of tiers — storeys, use, setbacks, envelope, plate and
-floor area, each tier's number in the ring the plan draws it in — and the
-assumptions the study rests on (floor to floor, efficiencies, the mix, the
-plates, the nearest station).
+floor area, each tier's number in the ring the plan draws it in — then the
+apartments, a row for each kind in the mix with its share, ADG 4D-1's least
+area for it, its own area, how many there are and the area they take, and
+the assumptions the study rests on (floor to floor, efficiencies, the mix,
+the plates, the nearest station).
 
 The right half draws the study. The indicative massing as an axonometric,
 seen from the main street's corner, among the neighbours at their recorded
@@ -866,8 +868,12 @@ local metres:
   residential and 85% otherwise, until the height runs out or the floor space
   ratio does; the sheet says which governs. No FSR mapped: the height does.
 - **Apartments.** The saleable area (85% of residential GFA) over the mix's
-  average size — 5% studios, 25% one bedroom, 55% two, 15% three at 40, 55, 80
-  and 105 m² — shared out by the mix.
+  average size, shared out by the mix. The mix is the office's feasibility
+  template, as sun-study's yield analysis keeps it: no studios, 20% one
+  bedroom, 70% two, 10% three and no four-bedroom flats, at 35, 50, 75, 100
+  and 120 m² — an average of 72.5 m², each at or over ADG 4D-1's minimum
+  (35, 50, 70, 90, and 12 m² more a bedroom over three). Four bedrooms park
+  at the three-bedroom rate, the Guide's being for three or more.
 - **Parking.** Within 800 m of a station or light rail stop, ADG 3J-1 caps a
   council's rates at the Guide to Traffic Generating Developments': its CBD
   rates in Parramatta and Sydney CBDs (0.4, 0.7 and 1.2 a dwelling, a visitor
@@ -889,7 +895,7 @@ from `yield_assumptions.json` in the address's output folder (the CLI's
 `out/<slug>/`), any subset of the fields:
 
 ```json
-{ "mix": { "studio": 0, "one": 0.3, "two": 0.55, "three": 0.15 },
+{ "mix": { "studio": 0.05, "one": 0.25, "two": 0.55, "three": 0.15, "four": 0 },
   "sizes": { "two": 85 }, "podiumStoreys": 3, "towerPlateMax": 850,
   "parking": { "one": 0.5, "two": 1, "three": 1.5, "visitor": 0.2, "basis": "the council's DCP" } }
 ```

@@ -21,6 +21,13 @@
 
 export interface XY { x: number; y: number }
 
+/** The kinds of apartment, smallest first. */
+export const UNIT_KINDS = ['studio', 'one', 'two', 'three', 'four'] as const;
+export type UnitKind = typeof UNIT_KINDS[number];
+
+/** ADG 4D-1's minimum internal areas: 35, 50, 70 and 90 m², and 12 m² more for each bedroom over three. */
+export const ADG_MINIMUM: Record<UnitKind, number> = { studio: 35, one: 50, two: 70, three: 90, four: 102 };
+
 /** The numbers a yield study assumes. Lengths in metres, areas in m², rates per dwelling or per m². */
 export interface YieldAssumptions {
   /** Floor to floor: a ground floor of shops or offices, a residential storey, an office storey. */
@@ -50,11 +57,11 @@ export interface YieldAssumptions {
   commercialEfficiency: number;
   /** Net saleable area as a share of residential GFA: corridors and lobbies come out. */
   nsaRatio: number;
-  /** The apartment mix, shares summing to 1, and the internal area of each (ADG 4D-1 minima are 35, 50, 70 and 90 m²). */
-  mix: { studio: number; one: number; two: number; three: number };
-  sizes: { studio: number; one: number; two: number; three: number };
+  /** The apartment mix, shares summing to 1, and the area of each (net lettable, at least ADG_MINIMUM). */
+  mix: Record<UnitKind, number>;
+  sizes: Record<UnitKind, number>;
   /** Car parking per dwelling and visitors per dwelling, and per m² of other floor area — the rate sets the slide states. */
-  parking: { studio: number; one: number; two: number; three: number; visitor: number; nonResidentialPerSqm: number; basis: string };
+  parking: Record<UnitKind, number> & { visitor: number; nonResidentialPerSqm: number; basis: string };
   /** Bicycles: per dwelling, visitors per dwelling, per m² of other floor area. */
   bicycles: { perDwelling: number; visitorPerDwelling: number; nonResidentialPerSqm: number };
   /** One motorcycle space per this many car spaces. */
@@ -71,11 +78,12 @@ export interface YieldAssumptions {
 // 800 m of a railway station or light rail stop in the Sydney metropolitan
 // area: the metropolitan regional (CBD) centres' rates and the sub-regional
 // centres'. Beyond 800 m the council's DCP governs; the defaults then are a
-// typical DCP's, and say so.
+// typical DCP's, and say so. A rate for three bedrooms is the Guide's for
+// three or more, so four bedrooms take it too.
 export const PARKING_RATES = {
-  cbd: { studio: 0.4, one: 0.4, two: 0.7, three: 1.2, visitor: 1 / 7, nonResidentialPerSqm: 1 / 100, basis: 'the Guide to Traffic Generating Developments, CBD centres (ADG 3J-1, within 800 m of a station)' },
-  subRegional: { studio: 0.6, one: 0.6, two: 0.9, three: 1.4, visitor: 1 / 5, nonResidentialPerSqm: 1 / 100, basis: 'the Guide to Traffic Generating Developments, sub-regional centres (ADG 3J-1, within 800 m of a station)' },
-  dcp: { studio: 1, one: 1, two: 1, three: 1.5, visitor: 0.2, nonResidentialPerSqm: 1 / 40, basis: 'a typical council DCP (more than 800 m from a station: the council\'s rates govern)' },
+  cbd: { studio: 0.4, one: 0.4, two: 0.7, three: 1.2, four: 1.2, visitor: 1 / 7, nonResidentialPerSqm: 1 / 100, basis: 'the Guide to Traffic Generating Developments, CBD centres (ADG 3J-1, within 800 m of a station)' },
+  subRegional: { studio: 0.6, one: 0.6, two: 0.9, three: 1.4, four: 1.4, visitor: 1 / 5, nonResidentialPerSqm: 1 / 100, basis: 'the Guide to Traffic Generating Developments, sub-regional centres (ADG 3J-1, within 800 m of a station)' },
+  dcp: { studio: 1, one: 1, two: 1, three: 1.5, four: 1.5, visitor: 0.2, nonResidentialPerSqm: 1 / 40, basis: 'a typical council DCP (more than 800 m from a station: the council\'s rates govern)' },
 } as const;
 
 export const DEFAULT_ASSUMPTIONS: YieldAssumptions = {
@@ -84,8 +92,10 @@ export const DEFAULT_ASSUMPTIONS: YieldAssumptions = {
   adgSide4: 6, adgSide8: 9, adgSide9: 12, commercialTowerSide: 3,
   maxDepth: 18, towerPlateMax: 750,
   residentialEfficiency: 0.82, commercialEfficiency: 0.85, nsaRatio: 0.85,
-  mix: { studio: 0.05, one: 0.25, two: 0.55, three: 0.15 },
-  sizes: { studio: 40, one: 55, two: 80, three: 105 },
+  // The office's feasibility template, as sun-study's yield analysis keeps it:
+  // no studios or four-bedroom flats, mostly two bedrooms, an average of 72.5 m².
+  mix: { studio: 0, one: 0.2, two: 0.7, three: 0.1, four: 0 },
+  sizes: { studio: 35, one: 50, two: 75, three: 100, four: 120 },
   parking: { ...PARKING_RATES.subRegional },
   bicycles: { perDwelling: 1, visitorPerDwelling: 0.1, nonResidentialPerSqm: 1 / 200 },
   motorcycleEvery: 50,
@@ -168,7 +178,7 @@ export interface YieldInput {
   assumptions?: Partial<YieldAssumptions>;
 }
 
-export interface UnitCount { studio: number; one: number; two: number; three: number; total: number }
+export type UnitCount = Record<UnitKind, number> & { total: number };
 
 export interface YieldResult {
   archetype: Archetype;
@@ -381,12 +391,17 @@ export function edgeKinds(ring: XY[], fronts: boolean[]): ('front' | 'side' | 'r
   });
 }
 
+/** A set of parking rates with a four-bedroom rate: the one given, else the three-bedroom rate given with it. */
+export function withFour<T extends { three: number; four: number }>(merged: T, given?: Partial<T>): T {
+  return { ...merged, four: given?.four ?? given?.three ?? merged.four };
+}
+
 export function computeYield(input: YieldInput): YieldResult {
   const a: YieldAssumptions = {
     ...DEFAULT_ASSUMPTIONS, ...input.assumptions,
     mix: { ...DEFAULT_ASSUMPTIONS.mix, ...input.assumptions?.mix },
     sizes: { ...DEFAULT_ASSUMPTIONS.sizes, ...input.assumptions?.sizes },
-    parking: { ...DEFAULT_ASSUMPTIONS.parking, ...input.assumptions?.parking },
+    parking: withFour({ ...DEFAULT_ASSUMPTIONS.parking, ...input.assumptions?.parking }, input.assumptions?.parking),
     bicycles: { ...DEFAULT_ASSUMPTIONS.bicycles, ...input.assumptions?.bicycles },
   };
   const arch = archetypeFor(input.zone);
@@ -399,7 +414,7 @@ export function computeYield(input: YieldInput): YieldResult {
     archetype: arch, assumptions: a, siteAreaSqm: A, hobM: input.hobM, fsr: input.fsr,
     storeysByHeight, storeys: 0, heightM: 0, tiers: [], gfaByFsr: input.fsr ? input.fsr * A : undefined, gfaCapacity: 0, gfa: 0,
     governs: 'height', gfaByUse: { retail: 0, residential: 0, commercial: 0 }, gba: 0, floors: [], nsa: 0,
-    units: { studio: 0, one: 0, two: 0, three: 0, total: 0 }, averageUnitSqm: 0,
+    units: { studio: 0, one: 0, two: 0, three: 0, four: 0, total: 0 }, averageUnitSqm: 0,
     parking: { residents: 0, visitors: 0, nonResidential: 0, total: 0, motorcycles: 0, bicycles: 0, basementLevels: 0 },
     adg: { communalOpenSpaceSqm: 0.25 * A, deepSoil: { requiredSqm: 0.07 * A, minDimension: A < 650 ? 0 : A <= 1500 ? 3 : 6, groundFreeSqm: A, possible: true } },
   };
@@ -459,12 +474,12 @@ export function computeYield(input: YieldInput): YieldResult {
 
   // Apartments: the saleable area over the mix's average size, shared out by the mix (largest remainder).
   const nsa = gfaByUse.residential * a.nsaRatio;
-  const keys = ['studio', 'one', 'two', 'three'] as const;
+  const keys = UNIT_KINDS;
   const mixSum = keys.reduce((s, k) => s + a.mix[k], 0) || 1;
   const avg = keys.reduce((s, k) => s + (a.mix[k] / mixSum) * a.sizes[k], 0);
   const n = avg > 0 ? Math.floor(nsa / avg) : 0;
   const raw = keys.map((k) => (n * a.mix[k]) / mixSum);
-  const units = { studio: 0, one: 0, two: 0, three: 0, total: n };
+  const units: UnitCount = { studio: 0, one: 0, two: 0, three: 0, four: 0, total: n };
   keys.forEach((k, i) => { units[k] = Math.floor(raw[i]); });
   let left = n - keys.reduce((s, k) => s + units[k], 0);
   for (const i of raw.map((v, i) => i).sort((p, q) => (raw[q] % 1) - (raw[p] % 1))) { if (left <= 0) break; units[keys[i]]++; left--; }

@@ -27,8 +27,8 @@ import turfUnion from '@turf/union';
 import { featureCollection, polygon } from '@turf/helpers';
 import { lonLatToMercator, mercatorScaleFactor, mercatorToLonLat } from '../lib/geo.js';
 import {
-  computeYield, edgeKinds, ringArea, PARKING_RATES, DEFAULT_ASSUMPTIONS,
-  type XY, type YieldAssumptions, type YieldResult, type Use, type Tier,
+  computeYield, edgeKinds, ringArea, withFour, PARKING_RATES, DEFAULT_ASSUMPTIONS, UNIT_KINDS, ADG_MINIMUM,
+  type XY, type YieldAssumptions, type YieldResult, type Use, type Tier, type UnitKind,
 } from '../lib/yield.js';
 
 export interface YieldBundle extends SummaryData {
@@ -106,7 +106,7 @@ export function yieldStudy(b: YieldBundle): YieldStudy {
   // The parking rates: the Guide's within 800 m of a station (its CBD rates in a CBD), a typical DCP's beyond.
   const near = (b.station?.distanceM ?? Infinity) <= 800;
   const parkingSet: YieldStudy['parkingSet'] = b.assumptions?.parking ? 'custom' : near ? (b.cbd ? 'cbd' : 'subRegional') : 'dcp';
-  const assumptions: Partial<YieldAssumptions> = { ...b.assumptions, parking: { ...(parkingSet === 'custom' ? DEFAULT_ASSUMPTIONS.parking : PARKING_RATES[parkingSet]), ...b.assumptions?.parking } };
+  const assumptions: Partial<YieldAssumptions> = { ...b.assumptions, parking: withFour({ ...(parkingSet === 'custom' ? DEFAULT_ASSUMPTIONS.parking : PARKING_RATES[parkingSet]), ...b.assumptions?.parking }, b.assumptions?.parking) };
 
   const area = b.siteAreaSqm ?? 0;
   const base = computeYield({ ring, fronts, siteAreaSqm: area, zone: c.zoneCode, hobM: hob?.metres, fsr: c.fsr, assumptions });
@@ -151,6 +151,12 @@ const USE_WORD: Record<Use, string> = { retail: 'retail', residential: 'resident
 const titleWords = (t: string) => t.toLowerCase().replace(/\b[a-z]/g, (c) => c.toUpperCase());
 const rate = (v: number) => (v < 1 && v > 0 && Math.abs(1 / v - Math.round(1 / v)) < 0.01 ? `1 per ${Math.round(1 / v)}` : fmt(v, v % 1 ? 1 : 0));
 
+const UNIT_NAME: Record<UnitKind, string> = { studio: 'Studio', one: '1 Bedroom', two: '2 Bedroom', three: '3 Bedroom', four: '4 Bedroom' };
+const UNIT_SHORT: Record<UnitKind, string> = { studio: 'studio', one: '1 bed', two: '2 bed', three: '3 bed', four: '4 bed' };
+
+/** The kinds of apartment the mix has a share of (or that a count landed on), smallest first. */
+const inMix = (y: YieldResult): UnitKind[] => UNIT_KINDS.filter((k) => y.assumptions.mix[k] > 0 || y.units[k] > 0);
+
 export function yieldRows(b: YieldBundle, s: YieldStudy = yieldStudy(b)): YieldRow[] {
   const y = s.base, a = y.assumptions, c = b.controls, A = b.siteAreaSqm ?? 0;
   const rows: YieldRow[] = [];
@@ -172,8 +178,7 @@ export function yieldRows(b: YieldBundle, s: YieldStudy = yieldStudy(b)): YieldR
     if (apartments) rows.push({
       label: 'RESIDENTIAL MIX',
       controls: [
-        ...(y.units.studio ? [`Studio: ${y.units.studio}`] : []),
-        `1 Bedroom: ${y.units.one}`, `2 Bedroom: ${y.units.two}`, `3 Bedroom: ${y.units.three}`,
+        ...inMix(y).map((k) => `${UNIT_NAME[k]}: ${y.units[k]}`),
         `TOTAL UNITS: ${y.units.total}`,
       ],
     });
@@ -207,9 +212,11 @@ export function yieldRows(b: YieldBundle, s: YieldStudy = yieldStudy(b)): YieldR
     rows.push({ head: true });
     if (apartments) {
       const p = a.parking, u = y.units;
+      // Four bedrooms at the three-bedroom rate, as the Guide's "three or more" reads, unless set apart.
+      const fourApart = p.four !== p.three;
       rows.push({ label: 'RESIDENTIAL CAR PARKING', controls: [
-        `${rate(p.one)} space per studio and 1 bedroom`, `${rate(p.two)} per 2 bedroom, ${rate(p.three)} per 3 bedroom`, `(${basis})`],
-        proposed: [`${fmt(u.studio + u.one)} x ${fmt(p.one, 1)} + ${fmt(u.two)} x ${fmt(p.two, 1)} + ${fmt(u.three)} x ${fmt(p.three, 1)}`, `= ${y.parking.residents} spaces`], ok: true });
+        `${rate(p.one)} space per studio and 1 bedroom`, `${rate(p.two)} per 2 bedroom, ${rate(p.three)} per 3 bedroom${fourApart ? `, ${rate(p.four)} per 4 bedroom` : ' or more'}`, `(${basis})`],
+        proposed: [`${fmt(u.studio + u.one)} x ${fmt(p.one, 1)} + ${fmt(u.two)} x ${fmt(p.two, 1)} + ${fmt(u.three + (fourApart ? 0 : u.four))} x ${fmt(p.three, 1)}${fourApart && u.four ? ` + ${fmt(u.four)} x ${fmt(p.four, 1)}` : ''}`, `= ${y.parking.residents} spaces`], ok: true });
       rows.push({ label: 'VISITOR CAR PARKING', controls: [`${rate(p.visitor)} dwellings`.replace(/^1 per (\d+) dwellings$/, '1 space per $1 dwellings')], proposed: [`= ${y.parking.visitors} spaces`], ok: true });
     }
     if (y.gfaByUse.retail || y.gfaByUse.commercial) rows.push({ label: `${y.gfaByUse.retail ? 'RETAIL' : 'COMMERCIAL'} CAR PARKING`, controls: [`${rate(a.parking.nonResidentialPerSqm)} sqm GFA`.replace(/^1 per (\d+) sqm GFA$/, '1 space per $1 sqm GFA')], proposed: [`= ${y.parking.nonResidential} spaces`], ok: true });
@@ -229,8 +236,9 @@ export function yieldRows(b: YieldBundle, s: YieldStudy = yieldStudy(b)): YieldR
     rows.push({ label: '3F. VISUAL PRIVACY', controls: [`${a.adgSide4}m to side and rear boundaries to 4 storeys,`, `${a.adgSide8}m to 8 storeys, ${a.adgSide9}m above`], proposed: ['built into the envelope'], ok: true });
     rows.push({ label: '4A. SOLAR AND DAYLIGHT ACCESS', controls: ['70% of apartments receive 2 hours direct', 'sunlight 9 am – 3 pm at mid winter'], proposed: ['to be tested in design'], ok: null });
     rows.push({ label: '4B. NATURAL VENTILATION', controls: ['60% of apartments cross ventilated', 'in the first nine storeys'], proposed: ['to be tested in design'], ok: null });
-    const sz = a.sizes;
-    rows.push({ label: '4D. APARTMENT SIZE', controls: ['Studio 35, 1 bed 50, 2 bed 70, 3 bed 90 sqm', '(+5 sqm for a second bathroom)'], proposed: [`${sz.studio}, ${sz.one}, ${sz.two} and ${sz.three} sqm assumed`], ok: sz.studio >= 35 && sz.one >= 50 && sz.two >= 70 && sz.three >= 90 });
+    const kinds = inMix(y);
+    rows.push({ label: '4D. APARTMENT SIZE', controls: ['Studio 35, 1 bed 50, 2 bed 70, 3 bed 90 sqm,', '12 sqm more a bedroom over three (+5 sqm for a second bathroom)'],
+      proposed: [`${kinds.map((k) => `${UNIT_SHORT[k]} ${fmt(a.sizes[k])}`).join(', ')} sqm assumed`], ok: kinds.every((k) => a.sizes[k] >= ADG_MINIMUM[k]) });
   }
 
   const tod = b.policyAtSite.find((p) => p.kind === 'tod' || p.kind === 'todAccelerated');
@@ -370,6 +378,27 @@ function renderSchedule(y: YieldResult, top: number): { svg: string; bottom: num
     const b = yy + PAD_TOP;
     return [txt(COL_LABEL, b, 'TOTAL', true), txt(C.storeys, b, `${y.storeys} ${y.storeys === 1 ? 'storey' : 'storeys'}`, true), txt(C.plate, b, sqm(y.gba), true, BODY, undefined, 'end'), txt(C.gfa, b, sqm(y.gfa), true, BODY, undefined, 'end')];
   });
+  // The apartments: each kind in the mix with its share, the ADG's least
+  // area for it, its own area, how many there are and the area they take.
+  if (y.units.total) {
+    const kinds = inMix(y);
+    const pc = (v: number) => `${fmt(v * 100, (v * 100) % 1 ? 1 : 0)}%`;
+    row(() => {
+      const b = yy + PAD_TOP;
+      return [txt(COL_LABEL, b, 'UNIT', true), txt(C.storeys, b, 'SHARE', true), txt(C.setbacks, b, 'ADG 4D MINIMUM', true),
+        txt(C.envelope, b, 'AREA EACH', true, BODY, undefined, 'end'), txt(C.plate, b, 'UNITS', true, BODY, undefined, 'end'), txt(C.gfa, b, 'AREA', true, BODY, undefined, 'end')];
+    });
+    for (const k of kinds) row(() => {
+      const b = yy + PAD_TOP;
+      return [txt(COL_LABEL, b, UNIT_SHORT[k].toUpperCase(), true), txt(C.storeys, b, pc(a.mix[k])), txt(C.setbacks, b, sqm(ADG_MINIMUM[k])),
+        txt(C.envelope, b, sqm(a.sizes[k]), false, BODY, undefined, 'end'), txt(C.plate, b, fmt(y.units[k]), false, BODY, undefined, 'end'), txt(C.gfa, b, sqm(y.units[k] * a.sizes[k]), false, BODY, undefined, 'end')];
+    });
+    row(() => {
+      const b = yy + PAD_TOP;
+      return [txt(COL_LABEL, b, 'TOTAL', true), txt(C.envelope, b, `average ${fmt(y.averageUnitSqm, 1)} sqm`, true, BODY, undefined, 'end'),
+        txt(C.plate, b, fmt(y.units.total), true, BODY, undefined, 'end'), txt(C.gfa, b, sqm(kinds.reduce((t, k) => t + y.units[k] * a.sizes[k], 0)), true, BODY, undefined, 'end')];
+    });
+  }
   return { svg: out.join(''), bottom: yy };
 }
 
@@ -877,7 +906,7 @@ function drawYieldSheet(b: YieldBundle, meta: SheetMeta): string {
       ? `GFA ${pc(a.residentialEfficiency)} of GBA residential${y.archetype === 'mixed' ? `, ${pc(a.commercialEfficiency)} retail` : ''}; saleable area ${pc(a.nsaRatio)} of residential GFA`
       : `GFA ${pc(a.commercialEfficiency)} of GBA`] },
     ...(apartments ? [
-      { label: 'MIX', controls: [`${[a.mix.studio ? `${pc(a.mix.studio)} studio` : '', `${pc(a.mix.one)} 1 bed`, `${pc(a.mix.two)} 2 bed`, `${pc(a.mix.three)} 3 bed`].filter(Boolean).join(', ')}; average ${fmt(y.averageUnitSqm, 1)} sqm`] },
+      { label: 'MIX', controls: [`${UNIT_KINDS.every((k) => a.mix[k] === DEFAULT_ASSUMPTIONS.mix[k] && a.sizes[k] === DEFAULT_ASSUMPTIONS.sizes[k]) ? 'the office\'s feasibility template' : 'from yield_assumptions.json'}: ${inMix(y).map((k) => `${pc(a.mix[k])} ${UNIT_SHORT[k]} at ${fmt(a.sizes[k])} sqm`).join(', ')}; average ${fmt(y.averageUnitSqm, 1)} sqm`] },
       { label: 'PLATES', controls: [`held to ${m1(a.maxDepth)} deep; towers to ${sqm(a.towerPlateMax)} GBA`] },
     ] : []),
     { label: 'NEAREST STATION', controls: [b.station ? `${titleWords(b.station.name)}, ${fmt(b.station.distanceM)}m` : 'none within 1.2 km'] },

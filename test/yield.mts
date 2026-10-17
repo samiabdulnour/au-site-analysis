@@ -9,7 +9,7 @@
  *   npx tsx test/yield.mts
  */
 
-import { computeYield, storeysUnder, archetypeFor, edgeKinds, ringArea, futureHeight, DEFAULT_ASSUMPTIONS, PARKING_RATES, type XY } from '../src/lib/yield.js';
+import { computeYield, storeysUnder, archetypeFor, edgeKinds, ringArea, futureHeight, withFour, DEFAULT_ASSUMPTIONS, PARKING_RATES, UNIT_KINDS, ADG_MINIMUM, type XY } from '../src/lib/yield.js';
 import { tierSpot, frontageMiddle } from '../src/render/yieldSheet.js';
 
 const failures: string[] = [];
@@ -56,11 +56,15 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
   check('R4: storeys 5–6 step back to 9 m from the sides and rear', near(t2.envelopeSqm, 22 * 35, 12), t2.envelopeSqm.toFixed(1));
   check('R4: the floor space ratio caps the floor area', near(y.gfa, 1.5 * 2000, 1) && y.governs === 'fsr', `${y.gfa.toFixed(0)} ${y.governs}`);
   check('R4: fewer storeys are built than the height allows', y.storeys < y.storeysByHeight, `${y.storeys} of ${y.storeysByHeight}`);
-  // 3000 m² × 0.85 / 75.5 m² = 33.8 → 33 apartments.
-  check('R4: the apartments are the saleable area over the average size', y.units.total === 33, String(y.units.total));
-  check('R4: the mix adds up', y.units.studio + y.units.one + y.units.two + y.units.three === y.units.total);
+  // The office's mix averages 72.5 m²: 3000 m² × 0.85 / 72.5 m² = 35.2 → 35 apartments.
+  check('R4: the office mix averages 72.5 m²', near(y.averageUnitSqm, 72.5, 1e-9), String(y.averageUnitSqm));
+  check('R4: the apartments are the saleable area over the average size', y.units.total === 35, String(y.units.total));
+  check('R4: the mix adds up', UNIT_KINDS.reduce((t, k) => t + y.units[k], 0) === y.units.total);
+  check('R4: no studios or four-bedroom flats in the office mix', y.units.studio === 0 && y.units.four === 0);
+  check('R4: the mix shares the units by its shares (7, 25, 3)', y.units.one === 7 && y.units.two === 25 && y.units.three === 3, `${y.units.one} ${y.units.two} ${y.units.three}`);
+  check('R4: every size in the office mix meets ADG 4D-1', UNIT_KINDS.every((k) => DEFAULT_ASSUMPTIONS.sizes[k] >= ADG_MINIMUM[k]));
   const r = DEFAULT_ASSUMPTIONS.parking;
-  const want = Math.ceil(y.units.studio * r.studio + y.units.one * r.one + y.units.two * r.two + y.units.three * r.three) + Math.ceil(y.units.total * r.visitor);
+  const want = Math.ceil(UNIT_KINDS.reduce((t, k) => t + y.units[k] * r[k], 0)) + Math.ceil(y.units.total * r.visitor);
   check('R4: parking is the mix at its rates, plus visitors', y.parking.total === want, `${y.parking.total} vs ${want}`);
   check('R4: the ADG asks a 6 m deep soil dimension on a site over 1500 m²', y.adg.deepSoil.minDimension === 6);
 }
@@ -105,6 +109,18 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
   const y = computeYield({ ring, fronts: [true, false, false, false], siteAreaSqm: 3600, zone: 'MU1', hobM: 90 });
   const tower = y.tiers.find((t) => t.from >= 9)!;
   check('tower: the plate is held to its size', tower.held === 'tower' && near(tower.plateSqm, DEFAULT_ASSUMPTIONS.towerPlateMax, 40), `${tower.held} ${tower.plateSqm.toFixed(0)}`);
+}
+
+// ---- four bedrooms ----------------------------------------------------------------------
+{
+  const ring = rect(40, 50);
+  const y = computeYield({ ring, fronts: [true, false, false, false], siteAreaSqm: 2000, zone: 'R4', hobM: 22, fsr: 1.5,
+    assumptions: { mix: { studio: 0, one: 0.2, two: 0.5, three: 0.2, four: 0.1 } } });
+  check('four: a share of four-bedroom flats is counted', y.units.four > 0 && UNIT_KINDS.reduce((t, k) => t + y.units[k], 0) === y.units.total, JSON.stringify(y.units));
+  check('four: four bedrooms park at the three-bedroom rate', y.assumptions.parking.four === y.assumptions.parking.three);
+  // A rate set from yield_assumptions.json that names three bedrooms and not four gives four bedrooms the same.
+  check('four: a three-bedroom rate given alone carries to four', withFour({ ...PARKING_RATES.subRegional }, { three: 2 }).four === 2);
+  check('four: a four-bedroom rate given is kept', withFour({ ...PARKING_RATES.subRegional }, { three: 2, four: 2.5 }).four === 2.5);
 }
 
 // ---- overrides ---------------------------------------------------------------------------
