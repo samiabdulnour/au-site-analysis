@@ -99,9 +99,10 @@ export function sheetHtml(o: SheetHtmlOpts): string {
   const { meta } = o;
   const TW = TITLE_R - TITLE_X;
 
-  // Bar length adapts to the sheet scale (site sheets need a 10/20m bar,
-  // context sheets a 100m bar); same stepped-outline style either way.
-  const bar = o.scale <= 300 ? [0, 2, 5, 10] : o.scale <= 900 ? [0, 5, 10, 20] : [0, 20, 50, 100];
+  // Bar length adapts to the sheet scale (site sheets need a 10/20/50m bar,
+  // context sheets a 100m bar); same stepped-outline style either way. A
+  // 100m bar at 1:1000 would be 100mm, wider than the title column.
+  const bar = o.scale <= 300 ? [0, 2, 5, 10] : o.scale <= 900 ? [0, 5, 10, 20] : o.scale <= 1200 ? [0, 10, 20, 50] : [0, 20, 50, 100];
   const [m1, m2, m3] = [bar[1], bar[2], bar[3]];
   const full = m3;
   const mmFull = (full * 1000) / o.scale;
