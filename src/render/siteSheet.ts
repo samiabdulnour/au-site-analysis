@@ -183,7 +183,7 @@ function windEntry(c: Pt, bearingDeg: number, rotationDeg: number): Pt {
 interface Banner { at: Pt; ux: number; uy: number; len: number; text: string }
 const BANNER_TEXT = 5.2, BANNER_HALF = 5.4;
 /** The ring wind's half-length on paper (mm), and the drawn sun's radius. */
-const RING_WIND_HALF = 26, SYMBOL_SUN_R = 14;
+const RING_WIND_HALF = 40, SYMBOL_SUN_R = 22;
 
 /**
  * The office's wind banner, blowing in from the wind's entry toward the site:
@@ -393,6 +393,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
     for (const [az, R] of [[azOf(dec), Ri], [-azOf(dec), Ri], [azOf(-dec), Ro], [-azOf(-dec), Ro], [0, Ro + 24]] as [number, number][]) {
       const [x, y] = at(az, R);
       if (look.sun === 'disc') placer.reserve(x, y, 30, 30);
+      else if (look.sun === 'symbol') placer.reserve(x, y + 10, SYMBOL_SUN_R * 2 + 8, SYMBOL_SUN_R * 2 + 30);
       else placer.reserve(x, y + 6, 48, 58);
     }
     // And the hours along the arcs.
@@ -1317,10 +1318,11 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
       layers.push(`<path transform="translate(${x1.toFixed(1)},${y1.toFixed(1)}) rotate(${ang.toFixed(1)})" d="M-4,-3.4 L0,0 L-4,3.4" fill="none" stroke="${look.sunEdge}" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>`);
     }
   } else {
-    // With the drawn suns the ring only places them: a fine line, not a figure.
-    const arcW = look.sun === 'symbol' ? 0.6 : 1.4;
+    // With the drawn suns the ring is a bold yellow band they sit on.
+    const arcW = look.sun === 'symbol' ? 2.2 : 1.4;
+    const arcDash = look.sun === 'symbol' ? '9,4.5' : '5,2.6';
     layers.push(`<path d="${arcPath(summerAz, -summerAz, Ro)}" fill="none" stroke="${look.sunPen}" stroke-width="${arcW}" stroke-linecap="round"/>`);
-    layers.push(`<path d="${arcPath(winterAz, -winterAz, Ri)}" fill="none" stroke="${look.sunPen}" stroke-width="${arcW}" stroke-dasharray="5,2.6" stroke-linecap="round"/>`);
+    layers.push(`<path d="${arcPath(winterAz, -winterAz, Ri)}" fill="none" stroke="${look.sunPen}" stroke-width="${arcW}" stroke-dasharray="${arcDash}" stroke-linecap="round"/>`);
   }
   // The hours along each arc: a dot where the sun stands at each solar hour,
   // its time beside it (inside the winter arc, outside the summer one). An
@@ -1398,7 +1400,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
   // does not show through it), its name under it.
   const drawnSun = ([x, y]: Pt, lines: string[], i: number) =>
     `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})"><circle r="${(SYMBOL_SUN_R * 0.6).toFixed(1)}" fill="#ffffff"/><path transform="rotate(${[0, 14, -10, 22][i % 4]}) scale(${SYMBOL_SUN_R})" d="${SUNS[i % SUNS.length]}" fill="${look.sunFill}" fill-rule="evenodd"/>
-      ${sunBlock(0, SYMBOL_SUN_R + 7, lines)}</g>`;
+      ${sunBlock(0, SYMBOL_SUN_R + 8, lines)}</g>`;
   const sunMark = look.sun === 'symbol' ? drawnSun : sketchSun;
   layers.push(sunMark(sunAt(winterAz, Ri), ['WINTER', 'SUNRISE'], look.sun === 'symbol' ? 0 : 1));
   layers.push(sunMark(sunAt(-winterAz, Ri), ['WINTER', 'SUNSET'], look.sun === 'symbol' ? 1 : 2));

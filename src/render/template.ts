@@ -514,7 +514,7 @@ const CANARY_LOOK: SiteLook = {
 // white, the white cadastre, its grotesk and its peach street names, the site
 // in its magenta. The office's own suns in yellow, a different one at each
 // rise and set, and its triple-arrow winds in light blue, both set on the sun
-// path's ring, which itself is drawn lightly and carries no hours. Views are
+// path's ring, both large; the ring a bold yellow line with no hours. Views are
 // plain triangles; no word has a white edge.
 const KOOKABURRA_LOOK: SiteLook = {
   font: GROTESK, ground: 'paper', veil: 0, site: F2.magenta, siteDash: '7,2,1.6,2', dimensionInk: '#56616b', fall: '#56616b',

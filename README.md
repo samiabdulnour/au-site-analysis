@@ -692,8 +692,9 @@ office's own drawn suns (`src/render/climateSymbols.ts`, traced from its
 symbol sheet) in yellow, a different one at each solstice rise and set, and
 the winds its triple arrows in light blue, set on the sun path's summer ring
 at their bearing and pointing in at the site, slid along the ring off a sun
-from the same quarter. The ring is drawn finely and carries no hours; it only
-places them. Views are plain outlined triangles opening from the site edge,
+from the same quarter; both are large (a sun 44 mm across, a wind 80 mm long
+on the A1). The ring is a bold yellow line, solid in summer and dashed in
+winter, and carries no hours. Views are plain outlined triangles opening from the site edge,
 their distance written beyond the open end or, where a sun's name is there,
 beside it. No word has a white edge.
 
