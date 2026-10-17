@@ -522,21 +522,33 @@ function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number;
 
   // Fit it all to the box. A height plane far above everything built (an
   // airspace RL in a CBD) is not fitted: it runs out of the frame, and the
-  // frame says where it is.
+  // frame says where it is. Nor is a neighbour's future far above what
+  // stands: it is cut at the same height, so a CBD's towers-to-be do not
+  // shrink the proposal to a speck, and the frame says how high they go.
   const pts: [number, number][] = [];
   let tallest = 0;
-  for (const { group } of prisms) for (const pr of group) { tallest = Math.max(tallest, pr.z1); for (const rg of pr.rings) for (const p of rg) pts.push(P(p, pr.z0), P(p, pr.z1)); }
+  for (const { group } of prisms) for (const pr of group) if (pr.fill !== FUTURE_FILL) tallest = Math.max(tallest, pr.z1);
+  const cap = Math.max(tallest, 12) * 1.6;
+  let futureTop = 0;
+  for (const { group } of prisms) for (const pr of group) {
+    const z1 = pr.fill === FUTURE_FILL ? Math.min(pr.z1, cap) : pr.z1;
+    if (pr.fill === FUTURE_FILL) futureTop = Math.max(futureTop, pr.z1);
+    for (const rg of pr.rings) for (const p of rg) pts.push(P(p, pr.z0), P(p, z1));
+  }
   const planeZ = s.hob?.metres ?? 0;
-  const planeFits = planeZ <= Math.max(tallest, 12) * 1.6;
+  const planeFits = planeZ <= cap;
   for (const p of s.ring) pts.push(P(p, 0), P(p, planeFits ? planeZ : Math.max(tallest, 12) * 1.25));
   const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
   const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
   const k = Math.min(box.w / (x1 - x0 || 1), box.h / (y1 - y0 || 1));
   const tx = box.x + (box.w - (x1 - x0) * k) / 2 - x0 * k, ty = box.y + (box.h - (y1 - y0) * k) / 2 - y0 * k;
   // Strokes are set in sheet millimetres: divide them back out of the scale.
-  const above = s.hob?.metres && !planeFits
-    ? `<text x="${(box.x + box.w / 2).toFixed(1)}" y="${(box.y + 4).toFixed(1)}" text-anchor="middle" font-size="2.8" fill="${SITE_RED}" stroke="#ffffff" stroke-width="1.4" paint-order="stroke">HEIGHT OF BUILDING PLANE ${s.hob.rl ? `RL ${fmt(s.hob.value, 1)}, ` : ''}${fmt(Math.round(planeZ))}m ABOVE THE GROUND, ABOVE THE FRAME</text>`
-    : '';
+  const note = (line: number, ink: string, text: string) =>
+    `<text x="${(box.x + box.w / 2).toFixed(1)}" y="${(box.y + 4 + line * 4).toFixed(1)}" text-anchor="middle" font-size="2.8" fill="${ink}" stroke="#ffffff" stroke-width="1.4" paint-order="stroke">${esc(text)}</text>`;
+  const notes: string[] = [];
+  if (s.hob?.metres && !planeFits) notes.push(note(notes.length, SITE_RED, `HEIGHT OF BUILDING PLANE ${s.hob.rl ? `RL ${fmt(s.hob.value, 1)}, ` : ''}${fmt(Math.round(planeZ))}m ABOVE THE GROUND, ABOVE THE FRAME`));
+  if (futureTop > cap) notes.push(note(notes.length, FUTURE_EDGE, `NEIGHBOURS' FUTURE HEIGHTS RUN ABOVE THE FRAME, TO ${fmt(Math.round(futureTop))}m`));
+  const above = notes.join('');
   return `<defs><clipPath id="axoclip"><rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}"/></clipPath></defs>
     <g clip-path="url(#axoclip)"><g transform="translate(${tx.toFixed(2)},${ty.toFixed(2)}) scale(${k.toFixed(4)})">
     <g style="vector-effect:non-scaling-stroke">${ground.join('')}${parts.join('')}${over.join('')}</g></g></g>${above}`;
@@ -716,7 +728,7 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
   const within = (p: XY, rs: XY[][]) => rs.filter((rg) => inRing(p, rg)).length % 2 === 1;
   for (const { pc } of labelled) {
     const lines = [`NO. ${numberLine(pc.numbers!)}`, [pc.zone, pc.hob ? hobLine(pc.hob) : ''].filter(Boolean).join(' · ')].filter(Boolean);
-    const wMm = Math.max(lines[0].length * F1 * 0.64, (lines[1]?.length ?? 0) * F2 * 0.56) + 1.2, hMm = lines.length * LH + 0.6;
+    const wMm = Math.max(lines[0].length * F1 * 0.66, (lines[1]?.length ?? 0) * F2 * 0.6) + 2.4, hMm = lines.length * LH + 0.8;
     const hw = wMm / 2 / mm, hh = hMm / 2 / mm;
     // The label's box, its corners and the middles of its sides, all inside the outline.
     const fits = (p: XY, rs: XY[][]) => [[-1, -1], [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0]].every(([u, v]) => within({ x: p.x + u * hw, y: p.y + v * hh }, rs));

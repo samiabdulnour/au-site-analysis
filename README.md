@@ -826,7 +826,8 @@ storeys its LEP height of building holds, where its zone permits flats (R1,
 R3, R4, MU1, E1, E2, B1–B4), never lowered — the way sun-study's future
 context reads it (`futureHeight()` in `src/lib/yield.ts`). The proposal's
 outline is drawn over everything, so a future neighbour in front of it does
-not hide it. Under the massing, the envelope in plan at a round scale, the
+not hide it, and a future far above what stands (a CBD's airspace RL) runs out
+of the frame, as the height plane does, the frame saying how high it goes. Under the massing, the envelope in plan at a round scale, the
 width of the half, on the ground the site analysis draws, kept to black and
 grey: the lot lines, the kerbs (`src/lib/kerbs.ts`, indicative), the
 neighbours' buildings, and on each numbered neighbour its street number, zone
