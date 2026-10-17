@@ -202,15 +202,17 @@ footer a { color: inherit; }
 }
 
 /* On a phone the label column would leave the options too narrow to hold
-   their words, so the label becomes a strip above its own row of options and
-   each option gets the full width — and a two-word option (SITE REPORT) may
-   still break onto a second line rather than clip. */
+   their words, so the label becomes a strip above its own options, and they
+   go two to a line so every name is whole: four options make two lines of
+   two. A blank cell is kept only beside a lone option, to hold the grid; a
+   line that would be all blanks is dropped. */
 @media (max-width: 560px) {
   .row { flex-direction: column; }
   .rowhead { flex: none; }
-  .go { flex-basis: 25%; }     /* the options take the full width, four to a row */
-  /* four options to a row share one phone width */
-  .cell, .cell-empty { padding: .3rem .35rem; letter-spacing: 0; white-space: normal; }
+  .go { flex-basis: 25%; }
+  .cells { flex-wrap: wrap; }
+  .cell, .cell-empty { flex: 1 0 50%; padding: .3rem .6rem; }
+  .cell-empty:nth-child(odd), .cell-empty:nth-child(odd) + .cell-empty { display: none; }
 }
 
 /* ---- about page --------------------------------------------------------- */
@@ -293,19 +295,10 @@ h2 { font-size: 1em; font-weight: 400; text-transform: uppercase;
   .masthead .btn { text-align: center; }
 }
 
-/* Narrowest phones: six scale options cannot share 288px without clipping
-   "auto", so the row wraps onto a second line of cells instead. */
+/* Narrowest phones: take the room for the options out of the margins rather
+   than the type. */
 @media (max-width: 380px) {
-  /* At one type size for every screen, SUMMARY no longer fits a third of a
-     320px phone. Take the room out of the margins rather than the type. */
   body { padding-left: .6rem; padding-right: .6rem; }
-  .cells { flex-wrap: wrap; }
-  .cell, .cell-empty { flex: 1 0 30%; padding: .3rem .3rem; }
-}
-
-/* Narrower than any phone but the folded ones: two options to a line. */
-@media (max-width: 315px) {
-  .cell, .cell-empty { flex: 1 0 45%; }
 }
 
 /* A note in the suggestion list — searching, no match, or what to type.
