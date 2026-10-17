@@ -11,7 +11,7 @@ const SHEETS = [
   ['context', 'context',     'Context analysis on A1'],
   ['site',    'site',        'Site analysis on A1'],
   ['yield',   'yield',       'Planning yield on A1: the controls, the envelope, the floor area, apartments and parking'],
-  ['slides',  'site report', 'Site report on A3, its planning slide shown'],
+  ['slides',  'site report', 'Site report on A3, its pages shown in turn'],
 ];
 const SCALES = {
   context: [
@@ -171,8 +171,63 @@ function caption(items, value) {
   return hit ? hit[2] : '';
 }
 
+// The site report has pages, so its frame turns through them: one every three
+// seconds, from result-slides-1.jpg on until a number has no picture, then back
+// to the first. The pointer over the frame holds the page, a click turns it,
+// and with reduced motion asked for it only turns on a click.
+const PAGE_MS = 3000;
+let deck = null;   // { page, last, timer, held }
+
+const pageSrc = (n) => '/samples/result-slides-' + n + '.jpg';
+
+function stopDeck() {
+  if (deck) clearTimeout(deck.timer);
+  deck = null;
+}
+
+function showPage(n) {
+  deck.page = n;
+  resultImg.src = pageSrc(n);
+  resultImg.alt = caption(SHEETS, 'slides') + ', page ' + n + (deck.last ? ' of ' + deck.last : '') +
+    '. An example drawn for ' + EXAMPLE_ADDRESS + '.';
+}
+
+/** The next page, fetched before it is shown so the frame never blinks; past the last, the first. */
+function turnPage() {
+  if (!deck) return;
+  clearTimeout(deck.timer);
+  const d = deck;
+  const next = d.last && d.page >= d.last ? 1 : d.page + 1;
+  const img = new Image();
+  img.onload = () => { if (deck === d) { showPage(next); schedulePage(); } };
+  img.onerror = () => { if (deck === d) { d.last = d.page; if (d.page > 1) showPage(1); schedulePage(); } };
+  img.src = pageSrc(next);
+}
+
+function schedulePage() {
+  if (!deck || deck.held || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  clearTimeout(deck.timer);
+  deck.timer = setTimeout(turnPage, PAGE_MS);
+}
+
+resultImg.addEventListener('click', () => { if (deck) turnPage(); });
+resultImg.parentElement.addEventListener('mouseenter', () => { if (deck) { deck.held = true; clearTimeout(deck.timer); } });
+resultImg.parentElement.addEventListener('mouseleave', () => { if (deck) { deck.held = false; schedulePage(); } });
+
 /** Show the sample for the whole selection, named as `npm run samples` writes it. */
 function renderResult() {
+  if (state.sheet === 'slides') {
+    // renderAll runs on every pick; a deck already turning keeps its place.
+    if (deck) return;
+    deck = { page: 1, last: 0, timer: 0, held: resultImg.parentElement.matches(':hover') };
+    resultImg.hidden = false;
+    resultMissing.hidden = true;
+    resultImg.classList.add('loading');
+    showPage(1);
+    schedulePage();
+    return;
+  }
+  stopDeck();
   const parts = isMap()
     ? [state.sheet, state.scale, state.rotate, state.template]
     : [state.sheet];
@@ -198,6 +253,7 @@ resultImg.addEventListener('load', () => resultImg.classList.remove('loading'));
 // A combination without a picture says so rather than showing a broken image
 // or, worse, the previous choice's picture as if it were this one's.
 resultImg.addEventListener('error', () => {
+  stopDeck();
   resultImg.classList.remove('loading');
   resultImg.hidden = true;
   resultMissing.hidden = false;

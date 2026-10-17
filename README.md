@@ -84,8 +84,9 @@ A camera point takes the nearest panorama to it; `heading`, `pitch` and
 
 The frame's pictures are `web/samples/result-<sheet>-<scale>-<rotate>-<style>.jpg`
 for the two maps (the context sheet in each of its four templates, the site
-sheet in each of its themes) and `result-yield.jpg` and `result-slides.jpg`
-for the yield and the site report, which have no styles — one for every
+sheet in each of its themes), `result-yield.jpg` for the yield and
+`result-slides-1.jpg`, `-2`… for the site report's pages, which have no
+styles — one for every
 combination the table offers, the names `web/app.js` asks for. A combination without one says so in the frame
 rather than showing a broken image. They are drawn for 150 George Street,
 Parramatta; to redraw them, or to move them to another address (and change
@@ -99,7 +100,9 @@ npm run samples -- "150 George Street, Parramatta NSW 2150"
 
 Each scale and orientation is fetched once and drawn in every style,
 since a style changes how a sheet looks and never what it fetches. The
-deck's picture is its planning slide, `03_planning_overview`.
+site report's frame turns through its pages, one every three seconds, from
+`result-slides-1.jpg` until a number has no picture; the pointer over it
+holds the page and a click turns it.
 
 `web/samples/context.jpg`, the Botany context sheet, stays only as the source
 of the link-preview card below.

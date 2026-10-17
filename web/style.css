@@ -182,6 +182,8 @@ footer a { color: inherit; }
 .result img { display: block; width: 100%; height: auto; }
 .result img[hidden] { display: none; }
 .result img.loading { opacity: .35; }
+/* The site report's pages turn on a click as well as on their own. */
+.result:has(img[src*="result-slides-"]) img { cursor: pointer; }
 /* Only shown when a combination has no picture. */
 .result figcaption { padding: .6rem 1rem; color: var(--muted); }
 
