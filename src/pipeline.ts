@@ -30,6 +30,7 @@ import { fetchPlanningProposals, type PlanningProposal } from './fetch/planning.
 import { fetchPeopleData, type PeopleData } from './fetch/people.js';
 import { fetchDemGrid, type DemGrid } from './fetch/terrain.js';
 import { fetchBuildings, withDaStoreys, METRES_PER_STOREY, type BuildingsData } from './fetch/buildings.js';
+import { fetchFootways, type FootwaysData } from './fetch/footways.js';
 import { fetchMajorProjects, emptyMajorProjects, type MajorProjectsData } from './fetch/majorProjects.js';
 import { fetchWind, emptyWind, type WindData } from './fetch/wind.js';
 import { fetchMovement, type MovementData } from './fetch/movement.js';
@@ -284,6 +285,8 @@ export interface SiteBundle {
   heritage?: GeoJSONFC;
   /** The services an open licence lets the sheet draw (fetch/services.ts; older bundles: none). */
   services?: ServicesData;
+  /** OpenStreetMap's sidewalks from Overture, which set the kerb lines' footpath width (fetch/footways.ts; older bundles: none). */
+  footways?: FootwaysData;
   contours: ContourLine[];
   /** Interval and origin of the contours drawn (older bundles: 2 m, NSW). */
   contourIntervalM?: number;
@@ -378,7 +381,7 @@ export async function runSitePipeline(address: string, opts: SitePipelineOpts): 
   const nswContours: ContourSet = { lines: [], intervalM: 2, source: 'NSW Spatial Services' };
   const noBuildings: BuildingsData = { source: 'none', buildings: [], fetchedAt: new Date().toISOString() };
   const emptyFc: GeoJSONFC = { type: 'FeatureCollection', features: [] };
-  const [contourSet, allLots, roads, railLines, zoning, heights, heritage, services, neighbours, furniture, aerial, councilTrees, parkPoints, controls, buildings] = await Promise.all([
+  const [contourSet, allLots, roads, railLines, zoning, heights, heritage, services, neighbours, furniture, aerial, councilTrees, parkPoints, controls, buildings, footways] = await Promise.all([
     soft(fetchContours(extent, log), nswContours, 'contours'),
     soft(fetchAllLots(extent), { type: 'FeatureCollection', features: [] } as GeoJSONFC, 'lots'),
     soft(fetchRoads(extent), [], 'roads'),
@@ -394,6 +397,7 @@ export async function runSitePipeline(address: string, opts: SitePipelineOpts): 
     soft(fetchParkPoints(extent), [], 'park points'),
     soft(fetchSiteControls(geo.center), null, 'site controls'),
     soft(fetchBuildings(extent, log), noBuildings, 'buildings'),
+    soft(fetchFootways(extent, log), { source: 'none', lines: [], fetchedAt: new Date().toISOString() } as FootwaysData, 'footways'),
   ]);
 
   let busStops: { name?: string; lon: number; lat: number }[] = [];
@@ -433,7 +437,7 @@ export async function runSitePipeline(address: string, opts: SitePipelineOpts): 
 
   const bundle: SiteBundle = {
     address, geocode: geo, extent, view, scale,
-    siteLots, siteRing: ring, allLots, roads, railLines, zoning, heights, heritage, services,
+    siteLots, siteRing: ring, allLots, roads, railLines, zoning, heights, heritage, services, footways,
     contours: contourSet.lines, contourIntervalM: contourSet.intervalM, contourSource: contourSet.source,
     neighbours, furniture, parkingBands, views, eyeAboveM, attributions,
     busStops, buildings, aerial, generatedAt: new Date().toISOString(),

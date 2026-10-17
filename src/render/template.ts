@@ -418,6 +418,8 @@ export const BOOK = {
 export interface SiteLook {
   /** The face of every word on the map and in the legend. */
   font: string;
+  /** What the map is drawn on: the aerial photograph, or plain paper. */
+  ground: 'aerial' | 'paper';
   /** The white veil over the aerial outside the site. */
   veil: number;
   /** The aerial outside the site in its own colours, or in greyscale; the site keeps its colours either way. */
@@ -430,16 +432,18 @@ export interface SiteLook {
   dimensionInk: string;
   /** The fall of terrain and the FALL/AREA words. */
   fall: string;
-  /** The FALL/AREA words on a white box, or on the photograph with only a fine white edge to the letters. */
+  /** The FALL/AREA words on a white box, or straight on the site (with a fine white edge to the letters where the theme has textHalo). */
   fallBox: boolean;
   /** The neighbours' building outlines, white, this wide (mm). */
   buildingEdge: number;
+  /** The buildings: an outline over the aerial's roofs, or filled in their zone family's strong colour. */
+  buildings: 'outline' | 'colour';
   /** The neighbours: number and storeys in white on the building, or number, storeys and height limit in black, written straight on the map. */
   neighbours: 'white' | 'black';
   /** The second ink, for the height limit. */
   neighbourHeightInk: string;
-  /** The zones hatched over the aerial in their family colours, filled in their NSW ePlanning colours, or not drawn. */
-  zones: 'hatch' | 'lep' | 'none';
+  /** The zones hatched over the aerial in their family colours, filled in their NSW ePlanning colours, filled as the context template's pale grounds, or not drawn. */
+  zones: 'hatch' | 'lep' | 'fill' | 'none';
   /** Under the hatch, each zone tinted in its category's fill, multiplied into the aerial: the tint's opacity (0 for the hatch alone). */
   zoneTint: number;
   /** The LEP heritage items and conservation areas, hatched. */
@@ -452,8 +456,8 @@ export interface SiteLook {
   contourInk: string;
   /** The street names' ink, plain along the road. */
   streetInk: string;
-  /** The suns: an open jagged crown at each solstice's rise and set on its arc, or a plain sun at each inside the climate circle, named, with north an arrow on the circle. */
-  sun: 'crown' | 'circle';
+  /** The suns: an open jagged crown at each solstice's rise and set on its arc, a plain sun at each inside the climate circle, named, with north an arrow on the circle, or the office's own drawn suns (climateSymbols.ts) on the arcs, no two alike. */
+  sun: 'crown' | 'circle' | 'symbol';
   /** The sun path's pen, and the suns' fill and edge. */
   sunPen: string;
   sunFill: string;
@@ -462,16 +466,20 @@ export interface SiteLook {
   sunInk: string;
   /** The solar hours marked along the crowns' arcs. */
   sunHours: boolean;
-  /** The winds: three hand-drawn strands abreast, or each named around a circle about the site, its quarter hatched on the circle. */
-  wind: 'strands' | 'circle';
+  /** The winds: three hand-drawn strands abreast, each named around a circle about the site with its quarter hatched on the circle, or the office's triple arrow set on the sun path's ring. */
+  wind: 'strands' | 'circle' | 'symbol';
   windPen: string;
   /** The ink of the winds' and the suns' words. */
   climateInk: string;
   /** Noise: a swelling band beside the source, or a zigzag. */
   noise: 'band' | 'zigzag';
   noisePen: string;
-  /** Views: a telescope aimed along the sight line, or a white band inside the climate circle with the view's name around it. */
-  views: 'telescope' | 'circle';
+  /** Views: a telescope aimed along the sight line, a white band inside the climate circle with the view's name around it, or a plain outlined triangle opening from the site edge. */
+  views: 'telescope' | 'circle' | 'triangle';
+  /** A thin white edge on words drawn over busy ground (the trees' numbers, FALL and AREA without their box). */
+  textHalo: boolean;
+  /** Indicative kerb lines along the streets (lib/kerbs.ts), for a sheet with no aerial to show them. */
+  kerbs: boolean;
   /** The telescope's pen and its words. */
   viewPen: string;
   /** Kerbside parking: one quad per bay, or a hatched zone. */
@@ -494,13 +502,13 @@ export interface SiteTheme { id: string; label: string; note: string; base: stri
 // site's red; a request naming either is drawn in Heron.
 const CLIMATE_GREY = '#6f7377';
 const HERON_LOOK: SiteLook = {
-  font: NARROW, veil: 0.55, aerial: 'grey', site: HERON_RED, siteDash: '7,2,1.6,2', dimensionInk: HERON_RED, fall: HERON_SLATE, fallBox: false,
-  buildingEdge: 0.3, neighbours: 'white', neighbourHeightInk: '#ffffff', zones: 'hatch', zoneTint: 0.55,
+  font: NARROW, ground: 'aerial', veil: 0.55, aerial: 'grey', site: HERON_RED, siteDash: '7,2,1.6,2', dimensionInk: HERON_RED, fall: HERON_SLATE, fallBox: false,
+  buildingEdge: 0.3, buildings: 'outline', neighbours: 'white', neighbourHeightInk: '#ffffff', zones: 'hatch', zoneTint: 0.55,
   heritage: false, heritageInk: { item: '#e39a3b', area: '#c8372d' }, contours: true, contourInk: '#a9adb1',
   streetInk: '#ffffff',
   sun: 'crown', sunPen: CLIMATE_GREY, sunFill: '#ffffff', sunEdge: CLIMATE_GREY, sunInk: CLIMATE_GREY, sunHours: true,
   wind: 'strands', windPen: CLIMATE_GREY, climateInk: CLIMATE_GREY,
-  noise: 'band', noisePen: '#3f6fc2', views: 'telescope', viewPen: CLIMATE_GREY, parking: 'bays',
+  noise: 'band', noisePen: '#3f6fc2', views: 'telescope', viewPen: CLIMATE_GREY, parking: 'bays', textHalo: true, kerbs: false,
 };
 
 // Canary: the office's classic site sheet (DA 004 at Arncliffe, Cabramatta,
@@ -515,19 +523,41 @@ const HERON_LOOK: SiteLook = {
 // solstices' rise and set within, and north an arrow on it.
 const CANARY_CONTEXT = TEMPLATES.find((t) => t.id === 'canary')!;
 const CANARY_LOOK: SiteLook = {
-  font: SANS, veil: CANARY_CONTEXT.veil!, aerial: 'grey', site: CANARY_CONTEXT.site, siteDash: '4.2,1.8',
+  font: SANS, ground: 'aerial', veil: CANARY_CONTEXT.veil!, aerial: 'grey', site: CANARY_CONTEXT.site, siteDash: '4.2,1.8',
   dimensionInk: CANARY_CONTEXT.dimension, fall: CANARY_CONTEXT.dimension, fallBox: false,
-  buildingEdge: 0.55, neighbours: 'black', neighbourHeightInk: CANARY_CONTEXT.transit, zones: 'lep', zoneTint: 0,
+  buildingEdge: 0.55, buildings: 'outline', neighbours: 'black', neighbourHeightInk: CANARY_CONTEXT.transit, zones: 'lep', zoneTint: 0,
   heritage: true, heritageInk: { item: CANARY_CONTEXT.heritage, area: '#ff0000' }, contours: false, contourInk: '#3f9a5c',
   streetInk: CANARY_CONTEXT.ink,
   sun: 'circle', sunPen: CANARY_CONTEXT.ink, sunFill: '#ffffff', sunEdge: CANARY_CONTEXT.ink, sunInk: CANARY_CONTEXT.ink, sunHours: false,
   wind: 'circle', windPen: CANARY_CONTEXT.ink, climateInk: CANARY_CONTEXT.ink,
-  noise: 'zigzag', noisePen: CANARY_CONTEXT.transit, views: 'circle', viewPen: CANARY_CONTEXT.ink, parking: 'hatch',
+  noise: 'zigzag', noisePen: CANARY_CONTEXT.transit, views: 'circle', viewPen: CANARY_CONTEXT.ink, parking: 'hatch', textHalo: true, kerbs: false,
+};
+
+// Kookaburra: the site sheet on Kingfisher's paper, no photograph: the zones
+// as its pale grounds on the lots only, so the roads stay white, every
+// building in its family's strong colour with a white edge and its number in
+// white, the white cadastre, its grotesk and its peach street names, the site
+// in its magenta. The office's own suns in yellow, a different one at each
+// rise and set, and its triple-arrow winds in light blue, both set on the sun
+// path's ring, both large; the ring a bold yellow line with no hours. Views are
+// plain triangles; no word has a white edge, and FALL and AREA sit straight on
+// the site. The kerbs are drawn, indicatively, since there is no photograph
+// to show them.
+const KOOKABURRA_LOOK: SiteLook = {
+  font: GROTESK, ground: 'paper', veil: 0, aerial: 'colour', site: F2.magenta, siteDash: '7,2,1.6,2', dimensionInk: '#56616b', fall: '#56616b', fallBox: false,
+  buildingEdge: 0.4, buildings: 'colour', neighbours: 'white', neighbourHeightInk: '#ffffff', zones: 'fill', zoneTint: 0,
+  heritage: false, heritageInk: { item: '#e39a3b', area: '#c8372d' }, contours: true, contourInk: '#a9adb1',
+  streetInk: '#e39a6f',
+  sun: 'symbol', sunPen: '#f2c200', sunFill: '#f2c200', sunEdge: '#f2c200', sunInk: '#c99700', sunHours: false,
+  wind: 'symbol', windPen: '#7cc4ea', climateInk: '#3d93c7',
+  noise: 'band', noisePen: '#3f6fc2', views: 'triangle', viewPen: '#56616b', parking: 'bays', textHalo: false, kerbs: true,
 };
 
 export const SITE_THEMES: SiteTheme[] = [
   { id: 'heron', label: 'Heron', base: 'heron', look: HERON_LOOK,
     note: 'the grey aerial with the zones in Heron\'s palette; the site in Heron\'s red, the sun path, its crowns, the telescopes and the winds in grey, the contours in light grey' },
+  { id: 'kookaburra', label: 'Kookaburra', base: 'kingfisher', look: KOOKABURRA_LOOK,
+    note: 'Kingfisher on paper, no aerial: the zones as its pale grounds, the buildings in their family colour, the office\'s yellow suns and light-blue triple-arrow winds on the sun path\'s ring' },
   { id: 'canary', label: 'Canary', base: 'flamingo', look: CANARY_LOOK,
     note: 'the office classic in the context Canary\'s colours: a grey aerial with the zones in the ePlanning colours, one black circle for the sun, the winds and the views, each neighbour\'s number, storeys and height limit' },
 ];

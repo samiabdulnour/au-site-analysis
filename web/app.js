@@ -41,6 +41,7 @@ const STYLES = {
   ],
   site: [
     ['heron',    'heron',    'in Heron'],
+    ['kookaburra', 'kookaburra', 'in Kookaburra'],
     ['canary',   'canary',   'in Canary'],
   ],
   yield: [],
