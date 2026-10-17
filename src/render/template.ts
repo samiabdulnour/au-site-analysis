@@ -435,6 +435,8 @@ export interface SiteLook {
   heritage: boolean;
   /** Contours with their levels along them. */
   contours: boolean;
+  /** Their ink, and their levels'. */
+  contourInk: string;
   /** The street names: plain text along the road, or a through street's name in a white double-headed arrow band. */
   streetNames: 'plain' | 'band';
   /** Their ink. */
@@ -473,7 +475,7 @@ export interface SiteTheme { id: string; label: string; note: string; base: stri
 const MUSTARD = '#b8860b';
 const CARDINAL_LOOK: SiteLook = {
   font: NARROW, veil: 0.55, site: '#b3261e', siteDash: '7,2,1.6,2', dimensionInk: '#b3261e', fall: '#56616b',
-  buildingEdge: 0.3, neighbours: 'white', neighbourZoneInk: '#ffffff', zones: 'hatch', heritage: false, contours: true,
+  buildingEdge: 0.3, neighbours: 'white', neighbourZoneInk: '#ffffff', zones: 'hatch', heritage: false, contours: true, contourInk: '#3f9a5c',
   streetNames: 'plain', streetInk: '#ffffff',
   sun: 'crown', sunPen: MUSTARD, sunFill: '#ffffff', sunEdge: MUSTARD, sunInk: MUSTARD, sunHours: true,
   wind: 'strands', windPen: '#b3261e', climateInk: '#b3261e',
@@ -481,12 +483,14 @@ const CARDINAL_LOOK: SiteLook = {
 };
 
 // Dove: Cardinal with the climate drawn quietly — the sun, its path, the
-// telescopes and the winds in one grey — so only the site stays in red.
+// telescopes and the winds in one grey, the contours a lighter one — so only
+// the site stays in red.
 const DOVE_GREY = '#6f7377';
 const DOVE_LOOK: SiteLook = {
   ...CARDINAL_LOOK,
   sunPen: DOVE_GREY, sunEdge: DOVE_GREY, sunInk: DOVE_GREY,
   windPen: DOVE_GREY, climateInk: DOVE_GREY, viewPen: DOVE_GREY,
+  contourInk: '#a9adb1',
 };
 
 // Canary: the office's classic site sheet (DA 004 at Arncliffe, Cabramatta,
@@ -496,7 +500,7 @@ const DOVE_LOOK: SiteLook = {
 // with its zone and height limit in blue, the streets in white arrow bands.
 const CANARY_LOOK: SiteLook = {
   font: SANS, veil: 0.42, site: '#e3241b', siteDash: '4.2,1.8', dimensionInk: '#111111', fall: '#3346c8',
-  buildingEdge: 0.55, neighbours: 'box', neighbourZoneInk: '#2b3fd0', zones: 'none', heritage: true, contours: false,
+  buildingEdge: 0.55, neighbours: 'box', neighbourZoneInk: '#2b3fd0', zones: 'none', heritage: true, contours: false, contourInk: '#3f9a5c',
   streetNames: 'band', streetInk: '#111111',
   sun: 'disc', sunPen: '#f3d75a', sunFill: '#fbe78c', sunEdge: '#e0b82a', sunInk: '#111111', sunHours: false,
   wind: 'banner', windPen: '#3b8be0', climateInk: '#111111',
@@ -507,7 +511,7 @@ export const SITE_THEMES: SiteTheme[] = [
   { id: 'cardinal', label: 'Cardinal', base: 'flamingo', look: CARDINAL_LOOK,
     note: 'the aerial with the zones hatched; the site, winds and views in a deep red, the sun path and its crowns of broad teeth in mustard' },
   { id: 'dove', label: 'Dove', base: 'flamingo', look: DOVE_LOOK,
-    note: 'Cardinal with the sun, its path, the telescopes and the winds in grey, only the site in red' },
+    note: 'Cardinal with the sun, its path, the telescopes, the winds and the contours in grey, only the site in red' },
   { id: 'canary', label: 'Canary', base: 'flamingo', look: CANARY_LOOK,
     note: 'the office classic: a veiled aerial, a yellow sun path with the suns named inside, blue wind banners, white boxes naming each neighbour with its zone and height limit' },
 ];

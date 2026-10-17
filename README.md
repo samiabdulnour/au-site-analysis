@@ -669,8 +669,13 @@ crown of twelve uneven teeth round a plain circle, the four on the diagonals
 drawn out as short, broad flames. It draws on Flamingo.
 
 **Dove** (`dove`) — Cardinal with the climate drawn quietly: the sun, its path,
-its hours and words, the telescopes and the winds all in one grey, so only the
-site and its levels stay in red.
+its hours and words, the telescopes and the winds all in one grey, and the
+contours in a lighter grey, so only the site and its levels stay in red.
+
+In every style, the services' words (11 kV, Ø 375, DS 1616 · 969 kVA spare) are
+plain Arial with no white halo. Where no open tree data reaches the site (no
+council register, nothing in OpenStreetMap within 15 m), the legend says so
+instead of leaving the trees out without a word.
 
 **Canary** (`canary`) — the office's classic site sheet (the DA 004s at
 Arncliffe, Cabramatta and Randwick in `examples/packages`): the aerial under a

@@ -27,8 +27,6 @@ const BAY_LABEL: Record<Orientation, string> = { parallel: '6.0 m parallel', dia
 // identification boxes (a step smaller).
 const MAP_TEXT = 6.2;
 const NEIGHBOUR_TEXT = MAP_TEXT;
-// Contours in green, apart from the warm site pen and the zones' hatch.
-const CONTOUR = '#3f9a5c';
 // The pens that differ between themes — the site's, the climate marks', the
 // neighbours' and the street names' — are the theme's look (SITE_THEMES in
 // template.ts): Cardinal draws the site and the analysis in one deep red with
@@ -45,6 +43,9 @@ const BOX_TEXT = 4.4;
 const SERVICE_INK = { stormwater: '#e8862a', cable: '#e3241b', power: '#f2c200', powerHV: '#d9a300', water: '#2f7fd6', sewer: '#7db87d', gas: '#e6007e' } as const;
 const MANHOLE_INK: Record<string, string> = { sewer: '#5f9f5f', drain: '#e8862a', water: '#2f7fd6', telecom: '#9b7fc4', gas: '#e6007e', power: '#e3241b' };
 const SERVICE_TEXT = 3.6;
+// The services' words (11 kV, Ø 375, DS 1616 · 969 kVA spare) in plain Arial
+// whatever the theme's face, and with no halo: read as notes on the lines.
+const SERVICE_FONT = "Arial, 'Liberation Sans', Helvetica, sans-serif";
 // The trees the legend lists: those within this reach of the boundary, at most this many, numbered in this size.
 const TREE_REACH_M = 15, TREE_SCHEDULE_MAX = 16, TREE_TEXT = 4.2;
 // Heritage, where a theme draws it: the office's orange for the items, its red for the conservation areas.
@@ -427,7 +428,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
   // (2) Terrain: contour lines with elevation tags (RL m AHD) along them.
   if (look.contours && sb.contours.length) {
     const d = sb.contours.map((c) => pathFromRings([c.coords as any], proj, false)).join('');
-    layers.push(`<path d="${d}" fill="none" stroke="${CONTOUR}" stroke-width="0.6" opacity="0.9"/>`);
+    layers.push(`<path d="${d}" fill="none" stroke="${look.contourInk}" stroke-width="0.6" opacity="0.9"/>`);
     const tagged: Pt[] = [];
     for (const c of sb.contours) {
       const pts = c.coords.map(([lon, lat2]) => proj(lon, lat2)).filter(inMapWide);
@@ -442,7 +443,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
       if (ang < -90) ang += 180;
       layers.push(`<text transform="translate(${x.toFixed(1)},${y.toFixed(1)}) rotate(${ang.toFixed(1)})"
         text-anchor="middle" dy="-1.4" font-size="${MAP_TEXT}" font-weight="700"
-        fill="${CONTOUR}">RL ${c.elevation.toFixed(0)}</text>`);
+        fill="${look.contourInk}">RL ${c.elevation.toFixed(0)}</text>`);
     }
   }
 
@@ -590,7 +591,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
       const spot = placer.place(x, y, text.length * SERVICE_TEXT * 0.6, SERVICE_TEXT, 4, ang);
       if (!spot) return;
       labelled.push({ x, y, t: text });
-      layers.push(`<text transform="translate(${spot[0].toFixed(1)},${spot[1].toFixed(1)}) rotate(${ang.toFixed(1)})" text-anchor="middle" dy="${(SERVICE_TEXT * 0.36).toFixed(2)}" font-size="${SERVICE_TEXT}" font-weight="700" fill="${ink}" stroke="#ffffff" stroke-width="0.8" paint-order="stroke">${esc(text)}</text>`);
+      layers.push(`<text transform="translate(${spot[0].toFixed(1)},${spot[1].toFixed(1)}) rotate(${ang.toFixed(1)})" text-anchor="middle" dy="${(SERVICE_TEXT * 0.36).toFixed(2)}" font-family="${SERVICE_FONT}" font-size="${SERVICE_TEXT}" font-weight="700" fill="${ink}">${esc(text)}</text>`);
     };
     for (const l of services.lines) {
       const pts = l.coords.map(([lon, lat2]) => proj(lon, lat2));
@@ -614,7 +615,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
       if (label && (kind === 'stormwaterPit' || kind === 'substation')) {
         const w = label.length * SERVICE_TEXT * 0.55;
         const spot = placer.place(x + w / 2 + 2.6, y, w, SERVICE_TEXT, 6);
-        if (spot) marks.push(`<text x="${(spot[0] - w / 2).toFixed(1)}" y="${(spot[1] + SERVICE_TEXT * 0.36).toFixed(1)}" font-size="${SERVICE_TEXT}" font-weight="700" fill="${kind === 'substation' ? SERVICE_INK.cable : SERVICE_INK.stormwater}" stroke="#ffffff" stroke-width="0.8" paint-order="stroke">${esc(label)}</text>`);
+        if (spot) marks.push(`<text x="${(spot[0] - w / 2).toFixed(1)}" y="${(spot[1] + SERVICE_TEXT * 0.36).toFixed(1)}" font-family="${SERVICE_FONT}" font-size="${SERVICE_TEXT}" font-weight="700" fill="${kind === 'substation' ? SERVICE_INK.cable : SERVICE_INK.stormwater}">${esc(label)}</text>`);
       }
     };
     for (const pt of services.points) if (pt.kind !== 'lightPole' && pt.kind !== 'powerPole') point(pt.kind, pt.lon, pt.lat, pt.label);
@@ -1343,7 +1344,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
   row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${BLUE()}" stroke-width="0.8" stroke-dasharray="4,1.6"/><path d="M${SWATCH_X + SWATCH_W - 4},1.2 L${SWATCH_X + SWATCH_W},3.2 L${SWATCH_X + SWATCH_W - 4},5.2" fill="none" stroke="${BLUE()}" stroke-width="0.8"/>`, 'FALL OF TERRAIN');
   row(`<text x="${SWATCH_X}" y="5.4" font-size="3.2" font-weight="700" fill="${look.dimensionInk}">SB 30.48</text>`, 'BOUNDARY DIMENSION (m)');
   row(`<text x="${SWATCH_X}" y="5.4" font-size="3.2" font-weight="700" fill="${SITE_RED}">RL 24.5</text>`, 'SURFACE LEVEL (AHD)');
-  if (look.contours && sb.contours.length) row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${CONTOUR}" stroke-width="0.6"/><text x="${SWATCH_X + 1}" y="2.2" font-size="2.2" font-weight="700" fill="${CONTOUR}">RL 20</text>`, `CONTOURS AT ${sb.contourIntervalM ?? 2} m AHD`, sb.contourSource);
+  if (look.contours && sb.contours.length) row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${look.contourInk}" stroke-width="0.6"/><text x="${SWATCH_X + 1}" y="2.2" font-size="2.2" font-weight="700" fill="${look.contourInk}">RL 20</text>`, `CONTOURS AT ${sb.contourIntervalM ?? 2} m AHD`, sb.contourSource);
   if (look.neighbours === 'box') {
     row(`<g><rect x="${SWATCH_X + 1}" y="-0.6" width="${SWATCH_W - 2}" height="7.6" fill="#ffffff" stroke="#9a9a9a" stroke-width="0.2"/><text x="${mid}" y="1.9" text-anchor="middle" font-size="2.1" font-weight="700" fill="#111">NO. 26 · 3 STOREYS</text><text x="${mid}" y="4.2" text-anchor="middle" font-size="2.1" fill="${look.neighbourZoneInk}">R4 HIGH DENSITY</text><text x="${mid}" y="6.4" text-anchor="middle" font-size="2.1" fill="${look.neighbourZoneInk}">HOB = 18m</text></g>`,
       'NEIGHBOUR IDENTIFICATION',
@@ -1411,6 +1412,10 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
     }
     legendSvg += cell(cols[0], yy + lh, `from ${sources}`, false, '#666');
     ly = yy + lh + 6;
+  } else {
+    // Said, not left out: outside a council with an open register (Parramatta
+    // has none) the trees are OpenStreetMap's, often none at all.
+    row('', 'TREES: NONE IN OPEN DATA', `none mapped within ${TREE_REACH_M} m; survey or arborist to confirm`);
   }
   if ((sb.views ?? []).some((v) => v.cone) && look.views === 'cone') {
     row(`<path d="M${SWATCH_X + 2},3.2 L${SWATCH_X + SWATCH_W - 1},-0.4 A12,12 0 0 1 ${SWATCH_X + SWATCH_W - 1},6.8 Z" fill="#ffffff" stroke="#9a9a9a" stroke-width="0.25"/>`, 'POTENTIAL VIEW', `terrain only, from ${Math.round(sb.eyeAboveM ?? 8)} m up; no buildings`);
