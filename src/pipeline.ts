@@ -251,7 +251,7 @@ function pointInRing(x: number, y: number, ring: number[][]): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// SITE ANALYSIS pipeline: a site-scale bundle (~1:200-1:500) with the site
+// SITE ANALYSIS pipeline: a site-scale bundle (~1:200-1:1000) with the site
 // outline (lots unioned), contours for levels, neighbours and street
 // furniture. Shares the geocode/lots/rotation logic with the context sheet.
 
@@ -321,7 +321,7 @@ export interface SitePipelineOpts {
   log?: (msg: string) => void;
 }
 
-const SITE_SCALES = [200, 250, 300, 400, 500, 600, 750];
+const SITE_SCALES = [200, 250, 300, 400, 500, 600, 750, 1000];
 
 export async function runSitePipeline(address: string, opts: SitePipelineOpts): Promise<SiteBundle> {
   const log = opts.log ?? (() => {});
