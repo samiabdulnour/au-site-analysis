@@ -718,12 +718,19 @@ runs a footpath's width out from the lot boundary on the street side. The
 width is measured where OpenStreetMap maps the footpath (Overture Maps'
 sidewalks, `src/fetch/footways.ts`; a sidewalk is mapped along its middle,
 so the width is twice its distance from the boundary) and typical for the
-street's class elsewhere (5 m on an arterial to 3.5 m on a local street,
-none along a lane), never closer than a lane's width to the reserve's
-middle. The line is traced where the distance out from the lots equals the
-width there, so it runs unbroken along a street and turns each corner and
-crossroads in an arc. A kerb OpenStreetMap maps as a line is drawn as it is.
-The legend calls the line indicative.
+street's class elsewhere (5 m on an arterial to 3.5 m on a local street),
+never closer than a lane's width to the reserve's middle. A lane has no
+footpath, so its kerb stands 0.6 m off the boundary, and so does a street
+too narrow for one. Along one block face of one street the width is
+averaged, so the line does not shift at every lot. Each frontage's kerb runs
+straight on to meet the next, and every corner is then rounded to a 3.5 m
+kerb return (less where the lot is too near), so the line runs unbroken
+along a street, turns each corner and crossroads in one arc and swings into
+each lane the same way; a corner splay or curve that runs with neither
+street carries the footpath round between them. Where the boundary has no
+street at all (a park, a back fence) the kerb ends in a return. A kerb
+OpenStreetMap maps as a line is drawn as it is. The legend calls the line
+indicative.
 
 **Canary** (`canary`) — the office's classic site sheet (the DA 004s at
 Arncliffe, Cabramatta and Randwick in `examples/packages`): the aerial under a
