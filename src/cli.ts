@@ -52,6 +52,8 @@ const meta: SheetMeta = {
   preliminary: (arg('status', '') ?? '').toUpperCase().includes('PRELIM'),
 };
 
+// A services source still on trial (fetch/services.ts) is drawn only when a run names it.
+if (arg('trial-services')) process.env.SERVICES_TRIAL = arg('trial-services');
 const sheetType = arg('type', 'context')!; // context | site | yield | slides | summary | both (context, site, summary)
 const rotate = arg('rotate', 'north') === 'auto' ? 'auto' as const : 'north' as const;
 // The context sheet's graphic template, process-wide for the CLI (it renders one

@@ -221,7 +221,8 @@ for u in fur.get("utilities") or []:
 # replace them kind by kind. Not a substitute for a Before You Dig enquiry. ----
 SERVICE_RGB = {"STORMWATER": 0xE8862A, "STORMWATERPIT": 0xE8862A, "LIGHTPOLE": 0xA8860B,
                "POWERHV": 0xD9A300, "SUBSTATION": 0xE3241B, "TRANSFORMER": 0xE3241B,
-               "CABINET": 0x8A8A8A, "MANHOLE": 0x6F6F6F}
+               "CABINET": 0x8A8A8A, "MANHOLE": 0x6F6F6F, "POWERCABLE": 0xE3241B,
+               "POWEROVERHEAD": 0xF2C200, "POWERPOLE": 0x333333, "PILLAR": 0xE3241B}
 svc = bundle.get("services") or {}
 for l in svc.get("lines") or []:
     name = f"SERVICES-{str(l.get('kind', 'OTHER')).upper()}"

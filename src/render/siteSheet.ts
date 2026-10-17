@@ -595,8 +595,8 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
     for (const l of services.lines) {
       const pts = l.coords.map(([lon, lat2]) => proj(lon, lat2));
       if (pts.length < 2 || !pts.some(inMapWide)) continue;
-      const ink = SERVICE_INK[l.kind as keyof typeof SERVICE_INK] ?? '#555';
-      const style = l.kind === 'powerHV' ? `stroke-width="1.1" stroke-dasharray="${l.underground ? '1.2,1.6' : '7,2,1.4,2'}"` : 'stroke-width="0.8" stroke-dasharray="4,2.2"';
+      const ink = l.kind === 'powerCable' ? SERVICE_INK.cable : l.kind === 'powerOverhead' ? SERVICE_INK.power : SERVICE_INK[l.kind as keyof typeof SERVICE_INK] ?? '#555';
+      const style = l.kind === 'powerHV' ? `stroke-width="1.1" stroke-dasharray="${l.underground ? '1.2,1.6' : '7,2,1.4,2'}"` : l.kind === 'powerCable' ? 'stroke-width="0.5" stroke-dasharray="3,2"' : 'stroke-width="0.8" stroke-dasharray="4,2.2"';
       layers.push(`<path d="${dash(pts)}" fill="none" stroke="${ink}" ${style}/>`);
       if (l.label) along(pts, l.kind === 'powerHV' && l.underground ? `${l.label} UG` : l.label, ink);
     }
@@ -607,6 +607,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
       const g = (inner: string) => marks.push(`<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})">${inner}</g>`);
       if (kind === 'stormwaterPit') g(`<rect x="-1.5" y="-1.5" width="3" height="3" fill="#ffffff" stroke="${SERVICE_INK.stormwater}" stroke-width="0.4"/><path d="M-1.5,0H1.5M0,-1.5V1.5" stroke="${SERVICE_INK.stormwater}" stroke-width="0.25"/>`);
       else if (kind === 'substation' || kind === 'transformer') g(`<rect x="-2" y="-2" width="4" height="4" fill="#ffffff" stroke="${SERVICE_INK.cable}" stroke-width="0.45"/><path d="M0.5,-1.5 L-0.9,0.3 H0.7 L-0.5,1.6" fill="none" stroke="${SERVICE_INK.cable}" stroke-width="0.35" stroke-linejoin="round"/>`);
+      else if (kind === 'pillar') g(`<rect x="-1.2" y="-1.2" width="2.4" height="2.4" fill="#ffffff" stroke="${SERVICE_INK.cable}" stroke-width="0.4"/>`);
       else if (kind === 'cabinet') g(`<rect x="-1.4" y="-0.8" width="2.8" height="1.6" fill="#8a8a8a" stroke="#ffffff" stroke-width="0.2"/>`);
       else if (kind === 'manhole') { const ink = MANHOLE_INK[label ?? ''] ?? '#6f6f6f'; g(`<circle r="1.5" fill="#ffffff" stroke="${ink}" stroke-width="0.4"/><path d="M-1.06,-1.06L1.06,1.06M1.06,-1.06L-1.06,1.06" stroke="${ink}" stroke-width="0.3"/>`); }
       else return;
@@ -616,7 +617,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
         if (spot) marks.push(`<text x="${(spot[0] - w / 2).toFixed(1)}" y="${(spot[1] + SERVICE_TEXT * 0.36).toFixed(1)}" font-size="${SERVICE_TEXT}" font-weight="700" fill="${kind === 'substation' ? SERVICE_INK.cable : SERVICE_INK.stormwater}" stroke="#ffffff" stroke-width="0.8" paint-order="stroke">${esc(label)}</text>`);
       }
     };
-    for (const pt of services.points) if (pt.kind !== 'lightPole') point(pt.kind, pt.lon, pt.lat, pt.label);
+    for (const pt of services.points) if (pt.kind !== 'lightPole' && pt.kind !== 'powerPole') point(pt.kind, pt.lon, pt.lat, pt.label);
     for (const pt of servicePoints) point(pt.kind, pt.lon, pt.lat, pt.label);
     layers.push(marks.join(''));
   }
@@ -768,7 +769,13 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
   layers.push(sb.furniture.hydrants.map((p) => proj(p.lon, p.lat)).filter(inMap)
     .map(([x, y]) => `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="1.4" fill="#1f78d1"/>`)
     .join(''));
-  layers.push(sb.furniture.powerPoles.map((p) => proj(p.lon, p.lat)).filter(inMap)
+  const poles = [...sb.furniture.powerPoles];
+  for (const pt of services.points) {
+    if (pt.kind !== 'powerPole') continue;
+    const P = lonLatToMercator({ lon: pt.lon, lat: pt.lat });
+    if (!sb.furniture.powerPoles.some((q) => { const Q = lonLatToMercator(q); return Math.hypot(Q.x - P.x, Q.y - P.y) < 3 * k; })) poles.push({ lon: pt.lon, lat: pt.lat });
+  }
+  layers.push(poles.map((p) => proj(p.lon, p.lat)).filter(inMap)
     .map(([x, y]) => `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})"><line x1="-1.8" y1="0" x2="1.8" y2="0" stroke="#333" stroke-width="0.3"/><circle r="0.9" fill="none" stroke="#333" stroke-width="0.35"/></g>`)
     .join(''));
   const lamps = [...sb.furniture.streetLamps];
@@ -1320,12 +1327,15 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
   let ly = 7;
   const row = (swatch: string, label: string, sub?: string) => {
     let r2 = `<g transform="translate(0,${ly})">${swatch}`;
-    wrapLabel(label, 26).forEach((l, i) => {
+    const lines = wrapLabel(label, 26);
+    lines.forEach((l, i) => {
       r2 += `<text x="${LABEL_X}" y="${3.5 + i * 3.2}" font-size="${T.legend}" fill="#222">${esc(l)}</text>`;
     });
-    if (sub) r2 += `<text x="${LABEL_X}" y="6.7" font-size="${T.legend * 0.85}" fill="#555">${esc(sub)}</text>`;
+    // A label run onto a second line pushes its note down under it.
+    const extra = sub ? (lines.length - 1) * 3.2 : 0;
+    if (sub) r2 += `<text x="${LABEL_X}" y="${(6.7 + extra).toFixed(1)}" font-size="${T.legend * 0.85}" fill="#555">${esc(sub)}</text>`;
     legendSvg += r2 + '</g>';
-    ly += 10;
+    ly += 10 + extra;
   };
   const mid = SWATCH_X + SWATCH_W / 2;
   const legendDash = look.siteDash.split(',').map((v) => (Number(v) * 0.64).toFixed(2)).join(',');
@@ -1407,7 +1417,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
   } else if ((sb.views ?? []).some((v) => v.cone)) {
     row(`<g transform="translate(${SWATCH_X + 11},3.2) rotate(-14) scale(0.62)" fill="#fff" stroke="${look.viewPen}" stroke-width="0.7" stroke-linejoin="round"><path d="M-7,-1.7 L6,-2.6 L6,2.6 L-7,1.7 Z"/><rect x="6" y="-3.3" width="2.6" height="6.6"/><rect x="-9.6" y="-1.2" width="2.6" height="2.4"/></g>`, 'POTENTIAL VIEW', `terrain only, from ${Math.round(sb.eyeAboveM ?? 8)} m up; no buildings`);
   }
-  if (sb.furniture.powerPoles.length) row(`<g transform="translate(${mid},3.2)"><line x1="-2.4" y1="0" x2="2.4" y2="0" stroke="#333" stroke-width="0.4"/><circle r="1.2" fill="none" stroke="#333" stroke-width="0.45"/></g>`, 'POWER POLE');
+  if (poles.length) row(`<g transform="translate(${mid},3.2)"><line x1="-2.4" y1="0" x2="2.4" y2="0" stroke="#333" stroke-width="0.4"/><circle r="1.2" fill="none" stroke="#333" stroke-width="0.45"/></g>`, 'POWER POLE');
   if (lamps.length) row(`<circle cx="${mid}" cy="3.2" r="1.4" fill="#f0c020" stroke="#a8860b" stroke-width="0.3"/>`, 'LIGHT POLE');
   if (sb.furniture.hydrants.length) row(`<circle cx="${mid}" cy="3.2" r="1.8" fill="#1f78d1"/>`, 'HYDRANT');
   if (sb.busStops.length) row(`<g transform="translate(${mid},3.2)"><circle r="3.4" fill="#fff" stroke="#2f7fd6" stroke-width="0.8"/><text text-anchor="middle" dy="1.9" font-size="5.7" font-weight="700" fill="#2f7fd6">B</text></g>`, 'BUS STOPS');
@@ -1435,7 +1445,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
   }
 
   const utilKinds = new Set(sb.furniture.utilities.map((u) => u.kind));
-  const srcName = (id: string) => (id === 'cityofsydney' ? 'City of Sydney, CC BY 4.0' : id === 'ga' ? 'Geoscience Australia, CC BY 4.0' : id);
+  const srcName = (id: string) => (id === 'cityofsydney' ? 'City of Sydney, CC BY 4.0' : id === 'ga' ? 'Geoscience Australia, CC BY 4.0' : id === 'endeavour' ? 'Endeavour Energy, TRIAL: licence to be confirmed' : id);
   const linesOf = (kind: string) => services.lines.filter((l) => l.kind === kind);
   const pointsOf = (kind: string) => services.points.filter((p) => p.kind === kind);
   const fromSources = (items: { source: string }[]) => [...new Set(items.map((i) => srcName(i.source)))].join('; ');
@@ -1443,7 +1453,10 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
   if (pointsOf('stormwaterPit').length) row(`<g transform="translate(${mid},3.2)"><rect x="-1.8" y="-1.8" width="3.6" height="3.6" fill="#fff" stroke="${SERVICE_INK.stormwater}" stroke-width="0.4"/><path d="M-1.8,0H1.8M0,-1.8V1.8" stroke="${SERVICE_INK.stormwater}" stroke-width="0.25"/></g>`, 'DRAINAGE PIT (IL m AHD)', fromSources(pointsOf('stormwaterPit')));
   if (linesOf('powerHV').length) row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${SERVICE_INK.powerHV}" stroke-width="1.1" stroke-dasharray="5,1.6,1,1.6"/>`, 'HIGH VOLTAGE LINE (kV)', fromSources(linesOf('powerHV')));
   if (pointsOf('substation').length || servicePoints.some((p) => p.kind === 'substation' || p.kind === 'transformer'))
-    row(`<g transform="translate(${mid},3.2)"><rect x="-2" y="-2" width="4" height="4" fill="#fff" stroke="${SERVICE_INK.cable}" stroke-width="0.45"/><path d="M0.5,-1.5 L-0.9,0.3 H0.7 L-0.5,1.6" fill="none" stroke="${SERVICE_INK.cable}" stroke-width="0.35"/></g>`, 'SUBSTATION / TRANSFORMER', [fromSources(pointsOf('substation')), servicePoints.some((p) => p.kind === 'substation' || p.kind === 'transformer') ? 'OpenStreetMap' : ''].filter(Boolean).join('; '));
+    row(`<g transform="translate(${mid},3.2)"><rect x="-2" y="-2" width="4" height="4" fill="#fff" stroke="${SERVICE_INK.cable}" stroke-width="0.45"/><path d="M0.5,-1.5 L-0.9,0.3 H0.7 L-0.5,1.6" fill="none" stroke="${SERVICE_INK.cable}" stroke-width="0.35"/></g>`, pointsOf('substation').some((p) => /kVA/.test(p.label ?? '')) ? 'SUBSTATION (kVA SPARE)' : 'SUBSTATION / TRANSFORMER', [fromSources(pointsOf('substation')), servicePoints.some((p) => p.kind === 'substation' || p.kind === 'transformer') ? 'OpenStreetMap' : ''].filter(Boolean).join('; '));
+  if (linesOf('powerCable').length) row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${SERVICE_INK.cable}" stroke-width="0.6" stroke-dasharray="3,2"/>`, 'ELECTRICAL CABLES (UG)', fromSources(linesOf('powerCable')));
+  if (linesOf('powerOverhead').length) row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${SERVICE_INK.power}" stroke-width="0.9" stroke-dasharray="4,2.2"/>`, 'POWER LINES (OH)', fromSources(linesOf('powerOverhead')));
+  if (pointsOf('pillar').length) row(`<rect x="${mid - 1.4}" y="1.8" width="2.8" height="2.8" fill="#fff" stroke="${SERVICE_INK.cable}" stroke-width="0.4"/>`, 'ELECTRICAL PILLAR', fromSources(pointsOf('pillar')));
   if (utilKinds.has('cable')) row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${SERVICE_INK.cable}" stroke-width="0.9" stroke-dasharray="4,2.2"/>`, 'ELECTRICAL CABLES', 'where OpenStreetMap maps them');
   if (servicePoints.some((p) => p.kind === 'cabinet')) row(`<rect x="${mid - 1.6}" y="2.3" width="3.2" height="1.8" fill="#8a8a8a"/>`, 'SERVICE CABINET', 'OpenStreetMap');
   if (servicePoints.some((p) => p.kind === 'manhole')) row(`<g transform="translate(${mid},3.2)"><circle r="1.7" fill="#fff" stroke="#6f6f6f" stroke-width="0.4"/><path d="M-1.2,-1.2L1.2,1.2M1.2,-1.2L-1.2,1.2" stroke="#6f6f6f" stroke-width="0.3"/></g>`, 'MANHOLE', 'OpenStreetMap; coloured by what it serves');
@@ -1469,13 +1482,16 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
       (groups.get(key) ?? groups.set(key, []).get(key)!).push(m[1]);
     }
     const licences = new Set([...groups.keys()].map((k) => k.split('|')[1]).filter(Boolean));
+    // One licence closes the line only when every holder's data is under it;
+    // a credit with none of its own (a trial source) would read as covered.
+    const shared = licences.size === 1 && [...groups.keys()].every((k) => k.includes('|'));
     const parts = [...groups].map(([key, subjects]) => {
       const [holder, lic] = key.split('|');
       if (!subjects.length) return key;
       const what = subjects.map((w, i) => (i ? w.toLowerCase() : w)).join(', ');
-      return `${what} ${holder}${licences.size > 1 && lic ? `, ${lic}` : ''}`;
+      return `${what} ${holder}${!shared && lic ? `, ${lic}` : ''}`;
     });
-    return parts.length ? `${parts.join(' · ')}${licences.size === 1 ? `, ${[...licences][0]}` : ''}` : '';
+    return parts.length ? `${parts.join(' · ')}${shared ? `, ${[...licences][0]}` : ''}` : '';
   })();
   const creditInLegend = credit.length > 90;
   if (creditInLegend) {

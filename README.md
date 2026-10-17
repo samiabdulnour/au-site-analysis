@@ -425,9 +425,13 @@ Three things the site sheet draws that the data has to be coaxed into:
   `SERVICE_SOURCES` in `src/fetch/services.ts`. A public layer with no licence
   statement does not qualify, nor one whose terms contradict its label: that
   leaves out Parramatta's, Canterbury-Bankstown's and Bayside's stormwater,
-  Essential Energy's network, Before You Dig's Look Up and Live layers and
+  Essential Energy's network and Before You Dig's Look Up and Live layers.
   Endeavour Energy's portal (ODbL on the datasets, use-only terms on the
-  portal). Water and sewer mains, gas, electrical cables and telecom pits are
+  portal) is wired in as a trial, off unless asked for with
+  `SERVICES_TRIAL=endeavour` or `--trial-services endeavour`: its cables
+  (underground red, overhead yellow, 11 kV labelled), poles, pillars and
+  substations with today's spare kVA, every row of the legend marked TRIAL
+  until Endeavour confirms the ODbL in writing. Water and sewer mains, gas, electrical cables and telecom pits are
   not open anywhere; every site sheet says, under its legend, that what it
   draws is open data only and no substitute for a Before You Dig enquiry. The
   CAD export carries the services on `SA_SERVICES-<KIND>` layers.
