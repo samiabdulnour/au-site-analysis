@@ -376,11 +376,11 @@ Every word on the map is one size. Potential views are a telescope just
 outside the site edge, aimed along the bearing, with what it found — the
 distance and "TERRAIN CLEAR" — written under it, along its line, in the site
 pen's lettering. The site itself — boundary, corners,
-dimensions and levels — is a deep red, and the sun, winds and views are drawn
+dimensions and levels — is in Heron's red, and the sun, winds and views are drawn
 in grey, so the site reads first and the analysis quietly round it.
 
 The sun, the winds and the noise are drawn in one hand, in open white-filled
-marks (in Dove the sun and the winds in grey, the noise in blue): a sun drawn as an open jagged crown
+marks (in Heron the sun and the winds in grey, the noise in blue): a sun drawn as an open jagged crown
 of twelve teeth round a plain circle, four of them short, broad flames — at the summer and winter sunrise and sunset, on a solid
 summer arc and a dashed winter arc, each arc marked with a dot and the time at
 every solar hour; the prevailing winds as three widening arrows blowing in
@@ -665,17 +665,23 @@ listed in `SITE_THEMES` in `src/render/template.ts`; each names the template
 it draws on for what it does not set itself (the typeface and the zones'
 palette), and the sheet sets the rest — its `look` (`SiteLook`): the face, the
 veil, the site's pen and dash, how the neighbours, streets, suns, winds, noise,
-views and kerbside parking are drawn, and in which inks. There are three:
+views and kerbside parking are drawn, and in which inks. There are two:
 
-**Dove** (`dove`, the default) — the aerial with the zones hatched in their
-family colours, the neighbours' numbers and storeys and the street names in
-white over a fine white outline of each building, noise in blue, the site and
-its levels in a deep red, and the climate drawn quietly: the sun, its path,
-its hours and words, the telescopes and the winds in one grey, the contours in
-a lighter grey. The sun is an open crown of twelve uneven teeth round a plain
-circle, the four on the diagonals drawn out as short, broad flames. It draws on
-Flamingo. It was called Cardinal (with the sun in mustard and the winds and
-views in red); a request that still names `cardinal` is drawn in Dove.
+**Heron** (`heron`, the default) — the aerial with the zones hatched, in the
+Heron template's colours. The aerial goes grey outside the site (Heron's `aerialTone`, by the
+same saturation blend as the context sheet), so the lot alone keeps its
+colour; the zones are hatched in Heron's palette (tan centres and mixed use,
+peach residential, mint open space, slate institutions), the site, its levels
+and its boundary dimensions are in Heron's red, and the fall in its slate. The
+neighbours' numbers and storeys and the street names are white over a fine
+white outline of each building, noise in blue, and the climate is drawn
+quietly as before: the sun, its path, its hours and words, the telescopes and
+the winds in one grey, the contours in a lighter grey. The sun is an open
+crown of twelve uneven teeth round a plain circle, the four on the diagonals
+drawn out as short, broad flames. It draws on Heron. It was called Dove (on
+Flamingo's palette, with the site in a deeper red) and before that Cardinal
+(with the sun in mustard and the winds and views in red); a request that still
+names `dove` or `cardinal` is drawn in Heron.
 
 In every style, the services' words (11 kV, Ø 375, DS 1616 · 969 kVA spare) are
 plain Arial with no white halo. Where no open tree data reaches the site (no
@@ -718,7 +724,7 @@ comes out in the wrong face, so add the package to the `Dockerfile` first.
 Options (after `--`): `--type context|site|yield|slides|summary|both`, `--scale 3000` (default 3000;
 the web picker offers 1:2000, 1:3000, 1:4000 and 1:5000, the server accepts 1000 to 6000),
 `--template flamingo|kingfisher|heron|conure` (the context sheet's template, see Templates below),
-`--site-theme dove|canary` (the site sheet's theme),
+`--site-theme heron|canary` (the site sheet's theme),
 `--slides-scale 8000` (the deck's map panels), `--da-years 5` (the deck's
 development window), `--job 2539`, `--client "Name"`,
 `--status "DEVELOPMENT APPLICATION"`, `--sheet "DA 003"`.

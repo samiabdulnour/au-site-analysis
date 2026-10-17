@@ -29,7 +29,7 @@ const MAP_TEXT = 6.2;
 const NEIGHBOUR_TEXT = MAP_TEXT;
 // The pens that differ between themes — the site's, the climate marks', the
 // neighbours' and the street names' — are the theme's look (SITE_THEMES in
-// template.ts): Dove draws the site in a deep red and the analysis in grey with
+// template.ts): Heron draws the site in Heron's red and the analysis in grey with
 // white words, Canary in the office's red, yellow and blue with black words.
 
 // Read at call time, not at module load: setTemplate() runs per job, long
@@ -222,7 +222,7 @@ function heightLine(v: number, units: unknown): string {
   return /rl|ahd/i.test(String(units ?? '')) ? `HOB = RL ${fig}` : `HOB = ${fig}m`;
 }
 
-/** The site analysis sheet, in one of its own themes (Dove unless another is named); it never takes the context sheet's templates. */
+/** The site analysis sheet, in one of its own themes (Heron unless another is named); it never takes the context sheet's templates. */
 export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta, theme?: string): string {
   const t = siteTheme(theme);
   return withTemplate(t.base, () => drawSiteSheet(sb, meta, t.look));
@@ -242,6 +242,8 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
   const MM = view.halfW * 2 / MAP_W; // mercator meters per mm
 
   // ---- aerial (rotated group over fetch bounds), light wash ---------------
+  const siteHole = 'M' + sb.siteRing.map(([lon, lat2]) => proj(lon, lat2))
+    .map((p) => `${p[0].toFixed(2)},${p[1].toFixed(2)}`).join('L') + 'Z';
   {
     const s = MAP_W / (2 * view.halfW);
     const extW = (sb.extent.xmax - sb.extent.xmin) * s;
@@ -252,16 +254,18 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
       .map((t) => `<image href="data/${t.file}" x="${(ox + t.left * extW).toFixed(2)}" y="${(oy + t.top * extH).toFixed(2)}"
           width="${(t.width * extW).toFixed(2)}" height="${(t.height * extH).toFixed(2)}" preserveAspectRatio="none"/>`)
       .join('\n');
-    layers.push(`<g transform="rotate(${view.rotationDeg.toFixed(2)}, ${MAP_W / 2}, ${MAP_H / 2})">${tiles}</g>`);
+    // A theme on a grey template (Heron) takes the photograph to grey outside
+    // the site, by the context sheet's saturation blend rather than a filter
+    // (see sheet.ts), so the zones' tints are the only colour round the lot.
+    const photo = `<g transform="rotate(${view.rotationDeg.toFixed(2)}, ${MAP_W / 2}, ${MAP_H / 2})">${tiles}</g>`;
+    layers.push(tpl().aerialTone === 'grey'
+      ? `<g style="isolation:isolate">${photo}<path fill-rule="evenodd" fill="#808080" style="mix-blend-mode:saturation" d="M0,0 H${MAP_W} V${MAP_H} H0 Z ${siteHole}"/></g>`
+      : photo);
   }
   // (3) White overlay everywhere EXCEPT the site: the analysed lot stays at
   // full aerial saturation, its surroundings are washed back.
-  {
-    const ring = sb.siteRing.map(([lon, lat2]) => proj(lon, lat2));
-    const dHole = 'M' + ring.map((p) => `${p[0].toFixed(2)},${p[1].toFixed(2)}`).join('L') + 'Z';
-    layers.push(`<path fill-rule="evenodd" fill="#ffffff" opacity="${look.veil}"
-      d="M0,0 H${MAP_W} V${MAP_H} H0 Z ${dHole}"/>`);
-  }
+  layers.push(`<path fill-rule="evenodd" fill="#ffffff" opacity="${look.veil}"
+      d="M0,0 H${MAP_W} V${MAP_H} H0 Z ${siteHole}"/>`);
 
   // ---- zones as hatch, not words ---------------------------------------------
   // The neighbours' zoning is drawn, not written: each zone a hatch in its
@@ -1193,7 +1197,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
   const PEN = look.windPen;
   const PEN_W = 0.7;
   const LETTER = MAP_TEXT;
-  // The climate marks' words: in the pen, slightly heavy, for Dove; plain black for Canary.
+  // The climate marks' words: in the pen, slightly heavy, for Heron; plain black for Canary.
   const INK = look.climateInk;
   const heavy = INK === PEN ? ` stroke="${INK}" stroke-width="0.22"` : '';
   const textBlock = (x: number, y: number, lines: string[]) =>
@@ -1518,7 +1522,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
   }
 
   // The theme's face for every word on the map and in the legend: Arial
-  // Narrow for Dove (Liberation Sans Narrow on the server), Arial for Canary.
+  // Narrow for Heron (Liberation Sans Narrow on the server), Arial for Canary.
   layers.unshift(`<g font-family="${look.font}">`);
   layers.push('</g>');
   legendSvg = `<g font-family="${look.font}">${legendSvg}</g>`;

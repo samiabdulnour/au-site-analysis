@@ -163,7 +163,9 @@ const GROTESK = "'DejaVu Sans', Verdana, 'Liberation Sans', sans-serif";
 // (the swatch colours backed out of their opacity over white): tan mixed
 // use and centres, peach residential, mint open space, the institutions in
 // slate blues with dark outlines. Categories that sheet's legend did not show
-// are placed in the same warm families.
+// are placed in the same warm families. Its red and its slate are the site
+// sheet's Heron's too.
+const HERON_RED = '#cf4a2e', HERON_SLATE = '#3c4c5a';
 // Kingfisher's palette, sampled from the masterplan reference it follows
 // (each family's building colour and the pale ground it stands on, as the
 // image prints them). Every zone is a pale ground with its buildings in the
@@ -210,7 +212,7 @@ const KINGFISHER_CATEGORIES: Category[] = [
 ];
 
 const HERON_CATEGORIES: Category[] = [
-  { id: 'site',           label: 'SITE',                                     fill: '#cf4a2e', opacity: 0.5 },
+  { id: 'site',           label: 'SITE',                                     fill: HERON_RED, opacity: 0.5 },
   { id: 'medical',        label: 'MEDICAL',                                  fill: '#ceddde', opacity: 0.55, stroke: '#4a5a63' },
   { id: 'education',      label: 'EDUCATION',                                fill: '#b8d1d7', opacity: 0.55, stroke: '#3e5560' },
   { id: 'childCare',      label: 'CHILD CARE / AGED CARE',                   fill: '#dfebee', opacity: 0.6, stroke: '#5f7480' },
@@ -265,7 +267,7 @@ export const TEMPLATES: Template[] = [
     // Arial Narrow throughout, white on the aerial; the institutions' discs
     // a reddish brown, the parks' in the catchments' green.
     ink: '#1c1c1c', streetInk: '#ffffff', discInk: '#9c4a36', discParkInk: '#1f7a4d', rule: '#8a8a8a',
-    site: '#cf4a2e', dimension: '#3c4c5a', wind: '#6d8a99', sun: '#f0e4c0', road: '#7d7d7d', water: '#cbdae2',
+    site: HERON_RED, dimension: HERON_SLATE, wind: '#6d8a99', sun: '#f0e4c0', road: '#7d7d7d', water: '#cbdae2',
     transit: NAVY, rail: '#d43d33', walk5: '#1f7a4d', walk10: '#6aaf88', busRoute: '#7a8bb0', heritage: '#94836a',
     isochrone: 'walkers', roundel: 'solid', busLine: 'dashed', railLine: 'dotted',
     // Lots and buildings as heavy white lines over the aerial.
@@ -277,7 +279,7 @@ export const TEMPLATES: Template[] = [
     // walking catchments in black, the catchments as plain lines with their
     // time and distance written along them.
     ink: '#1c1c1c', streetInk: '#ffffff', discInk: '#1c1c1c', discParkInk: '#1c1c1c', rule: '#8a8a8a',
-    site: '#cf4a2e', dimension: '#3c4c5a', wind: '#6d8a99', sun: '#f0e4c0', road: '#7d7d7d', water: '#cbdae2',
+    site: HERON_RED, dimension: HERON_SLATE, wind: '#6d8a99', sun: '#f0e4c0', road: '#7d7d7d', water: '#cbdae2',
     transit: NAVY, rail: '#d43d33', walk5: '#1c1c1c', walk10: '#1c1c1c', busRoute: '#7a8bb0', heritage: '#dbbb7b',
     isochrone: 'labelled', roundel: 'solid', busLine: 'dashed', railLine: 'dotted',
     ground: 'aerial', aerialTone: 'grey', veil: 0.36, tintScale: 1, footprints: 'outline', lots: 'white', streets: 'none', streetLabels: 'plain',
@@ -421,7 +423,7 @@ export interface SiteLook {
   site: string;
   /** The boundary's dash. */
   siteDash: string;
-  /** The boundary dimensions' ink (Dove sets them in the site's red, Canary in black). */
+  /** The boundary dimensions' ink (Heron sets them in the site's red, Canary in black). */
   dimensionInk: string;
   /** The fall of terrain and the FALL/AREA box. */
   fall: string;
@@ -471,19 +473,22 @@ export interface SiteLook {
 
 export interface SiteTheme { id: string; label: string; note: string; base: string; look: SiteLook }
 
-// Dove: the aerial with the zones hatched and the site in a deep red; the
-// climate drawn quietly, the sun, its path, the telescopes and the winds in
-// one grey and the contours a lighter one; the neighbours white, in a fine
-// outline. It was Cardinal, which drew the sun in mustard and the winds and
-// views in the site's red; a request naming Cardinal is drawn in Dove.
-const DOVE_GREY = '#6f7377';
-const DOVE_LOOK: SiteLook = {
-  font: NARROW, veil: 0.55, site: '#b3261e', siteDash: '7,2,1.6,2', dimensionInk: '#b3261e', fall: '#56616b',
+// Heron: Dove's marks in the Heron template's colours. The aerial in grey
+// outside the site, the zones in Heron's palette, the site, its levels and
+// boundary dimensions in Heron's red and the fall in its slate; the climate
+// still drawn quietly, the sun, its path, the telescopes and the winds in one
+// grey and the contours a lighter one; the neighbours white, in a fine
+// outline. It was Dove, on Flamingo's palette with the site in a deeper red,
+// and before that Cardinal, with the sun in mustard and the winds and views
+// in the site's red; a request naming either is drawn in Heron.
+const CLIMATE_GREY = '#6f7377';
+const HERON_LOOK: SiteLook = {
+  font: NARROW, veil: 0.55, site: HERON_RED, siteDash: '7,2,1.6,2', dimensionInk: HERON_RED, fall: HERON_SLATE,
   buildingEdge: 0.3, neighbours: 'white', neighbourZoneInk: '#ffffff', zones: 'hatch', heritage: false, contours: true, contourInk: '#a9adb1',
   streetNames: 'plain', streetInk: '#ffffff',
-  sun: 'crown', sunPen: DOVE_GREY, sunFill: '#ffffff', sunEdge: DOVE_GREY, sunInk: DOVE_GREY, sunHours: true,
-  wind: 'strands', windPen: DOVE_GREY, climateInk: DOVE_GREY,
-  noise: 'band', noisePen: '#3f6fc2', views: 'telescope', viewPen: DOVE_GREY, parking: 'bays',
+  sun: 'crown', sunPen: CLIMATE_GREY, sunFill: '#ffffff', sunEdge: CLIMATE_GREY, sunInk: CLIMATE_GREY, sunHours: true,
+  wind: 'strands', windPen: CLIMATE_GREY, climateInk: CLIMATE_GREY,
+  noise: 'band', noisePen: '#3f6fc2', views: 'telescope', viewPen: CLIMATE_GREY, parking: 'bays',
 };
 
 // Canary: the office's classic site sheet (DA 004 at Arncliffe, Cabramatta,
@@ -501,15 +506,15 @@ const CANARY_LOOK: SiteLook = {
 };
 
 export const SITE_THEMES: SiteTheme[] = [
-  { id: 'dove', label: 'Dove', base: 'flamingo', look: DOVE_LOOK,
-    note: 'the aerial with the zones hatched; the site in a deep red, the sun path, its crowns, the telescopes and the winds in grey, the contours in light grey' },
+  { id: 'heron', label: 'Heron', base: 'heron', look: HERON_LOOK,
+    note: 'the grey aerial with the zones in Heron\'s palette; the site in Heron\'s red, the sun path, its crowns, the telescopes and the winds in grey, the contours in light grey' },
   { id: 'canary', label: 'Canary', base: 'flamingo', look: CANARY_LOOK,
     note: 'the office classic: a veiled aerial, a yellow sun path with the suns named inside, blue wind banners, white boxes naming each neighbour with its zone and height limit' },
 ];
-export const DEFAULT_SITE_THEME = 'dove';
+export const DEFAULT_SITE_THEME = 'heron';
 
 /** Old names still asked for by saved requests and batches. */
-const SITE_THEME_ALIASES: Record<string, string> = { cardinal: 'dove' };
+const SITE_THEME_ALIASES: Record<string, string> = { dove: 'heron', cardinal: 'heron' };
 
 /** A site theme by id (or a former name), or the default for anything unknown. */
 export function siteTheme(id: string | undefined): SiteTheme {
