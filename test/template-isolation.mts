@@ -70,9 +70,10 @@ console.log('  ok — two concurrent renders each kept their own template');
 // context template sent with a site job can never reach the site sheet.
 const styleChecks: [string, boolean][] = [
   ['context keeps its template', themeFor('context', 'heron') === 'heron'],
-  ['context: unknown → default template', themeFor('context', 'cardinal') === 'flamingo'],
-  ['site: a context template → Cardinal', themeFor('site', 'heron') === 'cardinal'],
-  ['site: Cardinal draws on Flamingo', templateFor('site', 'cardinal') === 'flamingo'],
+  ['context: unknown → default template', themeFor('context', 'dove') === 'flamingo'],
+  ['site: a context template → Dove', themeFor('site', 'heron') === 'dove'],
+  ['site: Dove draws on Flamingo', templateFor('site', 'dove') === 'flamingo'],
+  ['site: Cardinal, its former name, → Dove', themeFor('site', 'cardinal') === 'dove'],
   ['summary has no theme', themeFor('summary', 'conure') === ''],
   ['slides drawn in the default template', templateFor('slides', 'kingfisher') === 'flamingo'],
 ];

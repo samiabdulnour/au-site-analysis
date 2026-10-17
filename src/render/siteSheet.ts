@@ -29,7 +29,7 @@ const MAP_TEXT = 6.2;
 const NEIGHBOUR_TEXT = MAP_TEXT;
 // The pens that differ between themes — the site's, the climate marks', the
 // neighbours' and the street names' — are the theme's look (SITE_THEMES in
-// template.ts): Cardinal draws the site and the analysis in one deep red with
+// template.ts): Dove draws the site in a deep red and the analysis in grey with
 // white words, Canary in the office's red, yellow and blue with black words.
 
 // Read at call time, not at module load: setTemplate() runs per job, long
@@ -211,7 +211,7 @@ function heightLine(v: number, units: unknown): string {
   return /rl|ahd/i.test(String(units ?? '')) ? `HOB = RL ${fig}` : `HOB = ${fig}m`;
 }
 
-/** The site analysis sheet, in one of its own themes (Cardinal unless another is named); it never takes the context sheet's templates. */
+/** The site analysis sheet, in one of its own themes (Dove unless another is named); it never takes the context sheet's templates. */
 export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta, theme?: string): string {
   const t = siteTheme(theme);
   return withTemplate(t.base, () => drawSiteSheet(sb, meta, t.look));
@@ -1181,12 +1181,12 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
   const PEN = look.windPen;
   const PEN_W = 0.7;
   const LETTER = MAP_TEXT;
-  // The climate marks' words: in the pen, slightly heavy, for Cardinal; plain black for Canary.
+  // The climate marks' words: in the pen, slightly heavy, for Dove; plain black for Canary.
   const INK = look.climateInk;
   const heavy = INK === PEN ? ` stroke="${INK}" stroke-width="0.22"` : '';
   const textBlock = (x: number, y: number, lines: string[]) =>
     lines.map((t, i) => `<text x="${x.toFixed(1)}" y="${(y + i * LETTER * 1.12).toFixed(1)}" text-anchor="middle" font-size="${LETTER}" font-weight="700" fill="${INK}"${heavy}>${esc(t)}</text>`).join('');
-  // The sun's words in its own ink (Cardinal's mustard), as heavy as the winds' when it is the pen's.
+  // The sun's words in its own ink, as heavy as the winds' when it is the pen's.
   const SUN_INK = look.sunInk;
   const sunHeavy = SUN_INK === look.sunEdge ? ` stroke="${SUN_INK}" stroke-width="0.22"` : '';
   const sunBlock = (x: number, y: number, lines: string[]) =>
@@ -1506,7 +1506,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
   }
 
   // The theme's face for every word on the map and in the legend: Arial
-  // Narrow for Cardinal (Liberation Sans Narrow on the server), Arial for Canary.
+  // Narrow for Dove (Liberation Sans Narrow on the server), Arial for Canary.
   layers.unshift(`<g font-family="${look.font}">`);
   layers.push('</g>');
   legendSvg = `<g font-family="${look.font}">${legendSvg}</g>`;

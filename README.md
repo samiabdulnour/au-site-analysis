@@ -374,10 +374,10 @@ outside the site edge, aimed along the bearing, with what it found — the
 distance and "TERRAIN CLEAR" — written under it, along its line, in the site
 pen's lettering. The site itself — boundary, corners,
 dimensions and levels — is a deep red, and the sun, winds and views are drawn
-in the same red, so the analysis reads as one layer over the aerial.
+in grey, so the site reads first and the analysis quietly round it.
 
 The sun, the winds and the noise are drawn in one hand, in open white-filled
-marks (in Cardinal the sun in mustard, the winds in the site's deep red, the noise in blue): a sun drawn as an open jagged crown
+marks (in Dove the sun and the winds in grey, the noise in blue): a sun drawn as an open jagged crown
 of twelve teeth round a plain circle, four of them short, broad flames — at the summer and winter sunrise and sunset, on a solid
 summer arc and a dashed winter arc, each arc marked with a dot and the time at
 every solar hour; the prevailing winds as three widening arrows blowing in
@@ -660,17 +660,15 @@ palette), and the sheet sets the rest — its `look` (`SiteLook`): the face, the
 veil, the site's pen and dash, how the neighbours, streets, suns, winds, noise,
 views and kerbside parking are drawn, and in which inks. There are three:
 
-**Cardinal** (`cardinal`, the default) — the aerial with the zones hatched in
-their family colours, the neighbours' numbers and storeys and the street names
-in white over a fine white outline of each building, contours in green, noise
-in blue, the site, the winds and the views in one deep red, and the sun — its
-path, its suns, its hours and their words — in mustard. The sun is an open
-crown of twelve uneven teeth round a plain circle, the four on the diagonals
-drawn out as short, broad flames. It draws on Flamingo.
-
-**Dove** (`dove`) — Cardinal with the climate drawn quietly: the sun, its path,
-its hours and words, the telescopes and the winds all in one grey, and the
-contours in a lighter grey, so only the site and its levels stay in red.
+**Dove** (`dove`, the default) — the aerial with the zones hatched in their
+family colours, the neighbours' numbers and storeys and the street names in
+white over a fine white outline of each building, noise in blue, the site and
+its levels in a deep red, and the climate drawn quietly: the sun, its path,
+its hours and words, the telescopes and the winds in one grey, the contours in
+a lighter grey. The sun is an open crown of twelve uneven teeth round a plain
+circle, the four on the diagonals drawn out as short, broad flames. It draws on
+Flamingo. It was called Cardinal (with the sun in mustard and the winds and
+views in red); a request that still names `cardinal` is drawn in Dove.
 
 In every style, the services' words (11 kV, Ø 375, DS 1616 · 969 kVA spare) are
 plain Arial with no white halo. Where no open tree data reaches the site (no
@@ -713,7 +711,7 @@ comes out in the wrong face, so add the package to the `Dockerfile` first.
 Options (after `--`): `--type context|site|yield|slides|summary|both`, `--scale 3000` (default 3000;
 the web picker offers 1:2000, 1:3000, 1:4000 and 1:5000, the server accepts 1000 to 6000),
 `--template flamingo|kingfisher|heron|conure` (the context sheet's template, see Templates below),
-`--site-theme cardinal|dove|canary` (the site sheet's theme),
+`--site-theme dove|canary` (the site sheet's theme),
 `--slides-scale 8000` (the deck's map panels), `--da-years 5` (the deck's
 development window), `--job 2539`, `--client "Name"`,
 `--status "DEVELOPMENT APPLICATION"`, `--sheet "DA 003"`.

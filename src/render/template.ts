@@ -419,7 +419,7 @@ export interface SiteLook {
   site: string;
   /** The boundary's dash. */
   siteDash: string;
-  /** The boundary dimensions' ink (Cardinal sets them in the site's red, Canary in black). */
+  /** The boundary dimensions' ink (Dove sets them in the site's red, Canary in black). */
   dimensionInk: string;
   /** The fall of terrain and the FALL/AREA box. */
   fall: string;
@@ -469,28 +469,19 @@ export interface SiteLook {
 
 export interface SiteTheme { id: string; label: string; note: string; base: string; look: SiteLook }
 
-// Cardinal: a deep red for the site, the winds and the views, mustard for
-// the sun — its path, its suns, its hours and its words — and white for the
-// neighbours, drawn in a fine outline.
-const MUSTARD = '#b8860b';
-const CARDINAL_LOOK: SiteLook = {
-  font: NARROW, veil: 0.55, site: '#b3261e', siteDash: '7,2,1.6,2', dimensionInk: '#b3261e', fall: '#56616b',
-  buildingEdge: 0.3, neighbours: 'white', neighbourZoneInk: '#ffffff', zones: 'hatch', heritage: false, contours: true, contourInk: '#3f9a5c',
-  streetNames: 'plain', streetInk: '#ffffff',
-  sun: 'crown', sunPen: MUSTARD, sunFill: '#ffffff', sunEdge: MUSTARD, sunInk: MUSTARD, sunHours: true,
-  wind: 'strands', windPen: '#b3261e', climateInk: '#b3261e',
-  noise: 'band', noisePen: '#3f6fc2', views: 'telescope', viewPen: '#b3261e', parking: 'bays',
-};
-
-// Dove: Cardinal with the climate drawn quietly — the sun, its path, the
-// telescopes and the winds in one grey, the contours a lighter one — so only
-// the site stays in red.
+// Dove: the aerial with the zones hatched and the site in a deep red; the
+// climate drawn quietly, the sun, its path, the telescopes and the winds in
+// one grey and the contours a lighter one; the neighbours white, in a fine
+// outline. It was Cardinal, which drew the sun in mustard and the winds and
+// views in the site's red; a request naming Cardinal is drawn in Dove.
 const DOVE_GREY = '#6f7377';
 const DOVE_LOOK: SiteLook = {
-  ...CARDINAL_LOOK,
-  sunPen: DOVE_GREY, sunEdge: DOVE_GREY, sunInk: DOVE_GREY,
-  windPen: DOVE_GREY, climateInk: DOVE_GREY, viewPen: DOVE_GREY,
-  contourInk: '#a9adb1',
+  font: NARROW, veil: 0.55, site: '#b3261e', siteDash: '7,2,1.6,2', dimensionInk: '#b3261e', fall: '#56616b',
+  buildingEdge: 0.3, neighbours: 'white', neighbourZoneInk: '#ffffff', zones: 'hatch', heritage: false, contours: true, contourInk: '#a9adb1',
+  streetNames: 'plain', streetInk: '#ffffff',
+  sun: 'crown', sunPen: DOVE_GREY, sunFill: '#ffffff', sunEdge: DOVE_GREY, sunInk: DOVE_GREY, sunHours: true,
+  wind: 'strands', windPen: DOVE_GREY, climateInk: DOVE_GREY,
+  noise: 'band', noisePen: '#3f6fc2', views: 'telescope', viewPen: DOVE_GREY, parking: 'bays',
 };
 
 // Canary: the office's classic site sheet (DA 004 at Arncliffe, Cabramatta,
@@ -508,18 +499,20 @@ const CANARY_LOOK: SiteLook = {
 };
 
 export const SITE_THEMES: SiteTheme[] = [
-  { id: 'cardinal', label: 'Cardinal', base: 'flamingo', look: CARDINAL_LOOK,
-    note: 'the aerial with the zones hatched; the site, winds and views in a deep red, the sun path and its crowns of broad teeth in mustard' },
   { id: 'dove', label: 'Dove', base: 'flamingo', look: DOVE_LOOK,
-    note: 'Cardinal with the sun, its path, the telescopes, the winds and the contours in grey, only the site in red' },
+    note: 'the aerial with the zones hatched; the site in a deep red, the sun path, its crowns, the telescopes and the winds in grey, the contours in light grey' },
   { id: 'canary', label: 'Canary', base: 'flamingo', look: CANARY_LOOK,
     note: 'the office classic: a veiled aerial, a yellow sun path with the suns named inside, blue wind banners, white boxes naming each neighbour with its zone and height limit' },
 ];
-export const DEFAULT_SITE_THEME = 'cardinal';
+export const DEFAULT_SITE_THEME = 'dove';
 
-/** A site theme by id, or the default for anything unknown. */
+/** Old names still asked for by saved requests and batches. */
+const SITE_THEME_ALIASES: Record<string, string> = { cardinal: 'dove' };
+
+/** A site theme by id (or a former name), or the default for anything unknown. */
 export function siteTheme(id: string | undefined): SiteTheme {
-  return SITE_THEMES.find((t) => t.id === id) ?? SITE_THEMES.find((t) => t.id === DEFAULT_SITE_THEME)!;
+  const want = id && (SITE_THEME_ALIASES[id] ?? id);
+  return SITE_THEMES.find((t) => t.id === want) ?? SITE_THEMES.find((t) => t.id === DEFAULT_SITE_THEME)!;
 }
 
 export type SheetKind = 'context' | 'site' | 'summary' | 'yield' | 'slides';
