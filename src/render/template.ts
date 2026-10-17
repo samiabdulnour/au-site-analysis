@@ -436,8 +436,8 @@ export interface SiteLook {
   fallInk: string;
   /** What the FALL/AREA words stand on: a white box, a fine white edge to the letters, or nothing but the photograph. */
   fallGround: 'box' | 'edge' | 'none';
-  /** The FALL/AREA words' size, as a multiple of the map's one lettering size. */
-  fallScale: number;
+  /** Every word on the map, as a multiple of the sheet's one lettering size (6.2 mm on the A1). */
+  textScale: number;
   /** The neighbours' building outlines, white, this wide (mm). */
   buildingEdge: number;
   /** The buildings: an outline over the aerial's roofs, or filled in their zone family's strong colour. */
@@ -501,13 +501,13 @@ export interface SiteTheme { id: string; label: string; note: string; base: stri
 // outline. Heron's tints are pale, so each zone is tinted as well as
 // hatched, the tint multiplied into the grey photograph so its roofs and
 // trees still read; the FALL/AREA words sit plain on the photograph like
-// the levels, with no box and no white edge, a step larger than the map's
-// other words since they are the site's own figures. It was Dove, on Flamingo's palette with the site in a deeper red, and before
+// the levels, with no box and no white edge. Every word on the map is a
+// fifth larger than the sheet's usual lettering. It was Dove, on Flamingo's palette with the site in a deeper red, and before
 // that Cardinal, with the sun in mustard and the winds and views in the
 // site's red; a request naming either is drawn in Heron.
 const CLIMATE_GREY = '#6f7377';
 const HERON_LOOK: SiteLook = {
-  font: NARROW, ground: 'aerial', veil: 0.55, aerial: 'grey', site: HERON_RED, siteDash: '7,2,1.6,2', dimensionInk: HERON_RED, fall: HERON_SLATE, fallInk: HERON_RED, fallGround: 'none', fallScale: 1.2,
+  font: NARROW, ground: 'aerial', veil: 0.55, aerial: 'grey', site: HERON_RED, siteDash: '7,2,1.6,2', dimensionInk: HERON_RED, fall: HERON_SLATE, fallInk: HERON_RED, fallGround: 'none', textScale: 1.2,
   buildingEdge: 0.3, buildings: 'outline', neighbours: 'white', neighbourHeightInk: '#ffffff', zones: 'hatch', zoneTint: 0.55,
   heritage: false, heritageInk: { item: '#e39a3b', area: '#c8372d' }, contours: true, contourInk: '#a9adb1',
   streetInk: '#ffffff',
@@ -529,7 +529,7 @@ const HERON_LOOK: SiteLook = {
 const CANARY_CONTEXT = TEMPLATES.find((t) => t.id === 'canary')!;
 const CANARY_LOOK: SiteLook = {
   font: SANS, ground: 'aerial', veil: CANARY_CONTEXT.veil!, aerial: 'grey', site: CANARY_CONTEXT.site, siteDash: '4.2,1.8',
-  dimensionInk: CANARY_CONTEXT.dimension, fall: CANARY_CONTEXT.dimension, fallInk: CANARY_CONTEXT.dimension, fallGround: 'edge', fallScale: 1,
+  dimensionInk: CANARY_CONTEXT.dimension, fall: CANARY_CONTEXT.dimension, fallInk: CANARY_CONTEXT.dimension, fallGround: 'edge', textScale: 1,
   buildingEdge: 0.55, buildings: 'outline', neighbours: 'black', neighbourHeightInk: CANARY_CONTEXT.transit, zones: 'lep', zoneTint: 0,
   heritage: true, heritageInk: { item: CANARY_CONTEXT.heritage, area: '#ff0000' }, contours: false, contourInk: '#3f9a5c',
   streetInk: CANARY_CONTEXT.ink,
@@ -549,7 +549,7 @@ const CANARY_LOOK: SiteLook = {
 // the site. The kerbs are drawn, indicatively, since there is no photograph
 // to show them.
 const KOOKABURRA_LOOK: SiteLook = {
-  font: GROTESK, ground: 'paper', veil: 0, aerial: 'colour', site: F2.magenta, siteDash: '7,2,1.6,2', dimensionInk: '#56616b', fall: '#56616b', fallInk: '#56616b', fallGround: 'none', fallScale: 1,
+  font: GROTESK, ground: 'paper', veil: 0, aerial: 'colour', site: F2.magenta, siteDash: '7,2,1.6,2', dimensionInk: '#56616b', fall: '#56616b', fallInk: '#56616b', fallGround: 'none', textScale: 1,
   buildingEdge: 0.4, buildings: 'colour', neighbours: 'white', neighbourHeightInk: '#ffffff', zones: 'fill', zoneTint: 0,
   heritage: false, heritageInk: { item: '#e39a3b', area: '#c8372d' }, contours: true, contourInk: '#a9adb1',
   streetInk: '#e39a6f',

@@ -25,11 +25,11 @@ const PARK = '#9b5b6e';
 const PARK_INK = '#7a3c50';
 const BAY_LABEL: Record<Orientation, string> = { parallel: '6.0 m parallel', diagonal: '45° angle', perpendicular: '90°' };
 
-// One uniform bold size for all map text on this sheet. Exceptions: street
+// One uniform bold size for all map text on this sheet, which a theme can
+// scale (look.textScale: MAP_TEXT inside drawSiteSheet). Exceptions: street
 // names on the white arrows (wide-spaced, set separately) and the neighbour
 // identification boxes (a step smaller).
-const MAP_TEXT = 6.2;
-const NEIGHBOUR_TEXT = MAP_TEXT;
+const BASE_MAP_TEXT = 6.2;
 // The pens that differ between themes — the site's, the climate marks', the
 // neighbours' and the street names' — are the theme's look (SITE_THEMES in
 // template.ts): Heron draws the site in Heron's red and the analysis in grey with
@@ -56,12 +56,12 @@ const SEWER = '#bfa76a';
 const GAS = '#e0b000';
 const SERVICE_INK = { stormwater: STORMWATER, cable: ELECTRIC, power: ELECTRIC, powerHV: '#c45a00', water: '#2f7fd6', sewer: SEWER, gas: GAS } as const;
 const MANHOLE_INK: Record<string, string> = { sewer: SEWER, drain: STORMWATER, water: '#2f7fd6', telecom: '#222222', gas: GAS, power: ELECTRIC };
-const SERVICE_TEXT = 3.6;
+const BASE_SERVICE_TEXT = 3.6;
 // The services' words (11 kV, Ø 375, DS 1616 · 969 kVA spare) in plain Arial
 // whatever the theme's face, and with no halo: read as notes on the lines.
 const SERVICE_FONT = "Arial, 'Liberation Sans', Helvetica, sans-serif";
 // The trees the legend lists: those within this reach of the boundary, at most this many, numbered in this size.
-const TREE_REACH_M = 15, TREE_SCHEDULE_MAX = 16, TREE_TEXT = 4.2;
+const TREE_REACH_M = 15, TREE_SCHEDULE_MAX = 16, BASE_TREE_TEXT = 4.2;
 
 
 /**
@@ -218,12 +218,12 @@ const bearingGap = (a: number, b: number) => Math.abs((((a - b) % 360) + 540) % 
  * sweep at radius r: the clear ones in their rank, any whose name would run
  * into a better one's left off.
  */
-function viewsOnCircle(views: SightLine[], r: number): { v: SightLine; label: string; span: number }[] {
+function viewsOnCircle(views: SightLine[], r: number, letter: number): { v: SightLine; label: string; span: number }[] {
   const kept: { v: SightLine; label: string; span: number }[] = [];
   for (const v of views) {
     if (!v.cone) continue;
     const label = `${v.label} ${v.kind === 'park' ? '' : 'VIEW'}`.trim();
-    const span = Math.max(VIEW_SPAN, ((label.length * MAP_TEXT * 0.7) / 2 / r) * (180 / Math.PI) + 2);
+    const span = Math.max(VIEW_SPAN, ((label.length * letter * 0.7) / 2 / r) * (180 / Math.PI) + 2);
     if (kept.some((o) => bearingGap(o.v.bearingDeg, v.bearingDeg) < o.span + span)) continue;
     kept.push({ v, label, span });
   }
@@ -285,6 +285,9 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta, theme?: string)
 }
 
 function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string {
+  // Every word on the map in the theme's size.
+  const MAP_TEXT = BASE_MAP_TEXT * look.textScale, NEIGHBOUR_TEXT = MAP_TEXT;
+  const SERVICE_TEXT = BASE_SERVICE_TEXT * look.textScale, TREE_TEXT = BASE_TREE_TEXT * look.textScale;
   const SITE_RED = look.site;
   const NAME_GREEN = look.streetInk;
   const NOISE_BLUE = look.noisePen;
@@ -509,7 +512,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
       for (const w of WINDS)
         for (let d = -WIND_SPAN - 8; d <= WIND_SPAN + 8; d += 5) placer.reserve(...at(w.bearing + d, R + WIND_BAND / 2 + 4), 14, 14);
     if (look.views === 'circle')
-      for (const { v, span } of viewsOnCircle(sb.views ?? [], R - VIEW_BAND - 6))
+      for (const { v, span } of viewsOnCircle(sb.views ?? [], R - VIEW_BAND - 6, MAP_TEXT))
         for (let d = -span; d <= span; d += 4) placer.reserve(...at(v.bearingDeg + d, R - VIEW_BAND - 2), 12, 12);
     if (look.sunHours) {
       for (const m of hrs.winter) { const [x, y] = at(m.az, Ri); placer.reserve(x, y, 12, 12); const [lx, ly] = at(m.az, Ri - 10); placer.reserve(lx, ly, 18, 9); }
@@ -1003,7 +1006,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
   {
     const cx0 = sitePx.reduce((s2, p) => s2 + p[0], 0) / sitePx.length;
     const cy0 = sitePx.reduce((s2, p) => s2 + p[1], 0) / sitePx.length;
-    placer.reserve(cx0, cy0, 56 * look.fallScale, 24 * look.fallScale);
+    placer.reserve(cx0, cy0, 56 * look.textScale, 24 * look.textScale);
   }
 
   // ---- neighbours: the address and the storeys on each building ------------
@@ -1310,7 +1313,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
     const fallTxt = fallInfo ? `FALL ${fallInfo.drop.toFixed(2)}m` : null;
     const lines = fallTxt ? [fallTxt, areaTxt] : [areaTxt];
     const ang = fallInfo ? fallInfo.angDeg : 0;
-    const fs = MAP_TEXT * look.fallScale, lh = fs * 1.12;
+    const fs = MAP_TEXT, lh = fs * 1.12;
     const w = Math.max(...lines.map((t) => t.length)) * fs * 0.55 + 4;
     const h = lines.length * lh + 2;
     // Without the box, a fine white edge can keep the words clear of a dark
@@ -1456,7 +1459,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
     const cap = LETTER * 0.72;
     layers.push(`<circle cx="${c[0].toFixed(1)}" cy="${c[1].toFixed(1)}" r="${R.toFixed(1)}" fill="none" stroke="${PEN}" stroke-width="0.6" stroke-dasharray="3.2,1.8"/>`);
     if (look.views === 'circle')
-      viewsOnCircle(sb.views ?? [], R - VIEW_BAND - 6).forEach(({ v, label, span }, i) => {
+      viewsOnCircle(sb.views ?? [], R - VIEW_BAND - 6, LETTER).forEach(({ v, label, span }, i) => {
         const a = page(v.bearingDeg);
         const band = `${arcD(c, R, a - VIEW_SPAN, a + VIEW_SPAN)} ${arcD(c, R - VIEW_BAND, a + VIEW_SPAN, a - VIEW_SPAN, false)} Z`;
         layers.push(`<path d="${band}" fill="#ffffff" fill-opacity="0.9" stroke="${look.viewPen}" stroke-width="0.35"/>`);
