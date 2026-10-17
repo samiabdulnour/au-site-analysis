@@ -188,7 +188,7 @@ function stopDeck() {
 function showPage(n) {
   deck.page = n;
   resultImg.src = pageSrc(n);
-  resultImg.alt = caption(SHEETS, 'slides') + ', page ' + n + (deck.last ? ' of ' + deck.last : '') +
+  resultImg.alt = 'Site report on A3, page ' + n + (deck.last ? ' of ' + deck.last : '') +
     '. An example drawn for ' + EXAMPLE_ADDRESS + '.';
 }
 
