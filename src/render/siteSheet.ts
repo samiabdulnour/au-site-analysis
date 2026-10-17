@@ -30,8 +30,8 @@ const MAP_TEXT = 6.2;
 const NEIGHBOUR_TEXT = MAP_TEXT;
 // The pens that differ between themes — the site's, the climate marks', the
 // neighbours' and the street names' — are the theme's look (SITE_THEMES in
-// template.ts): Dove draws the site in a deep red and the analysis in grey with
-// white words, Canary in Conure's red, slate, cream and navy with black words.
+// template.ts): Heron draws the site in Heron's red and the analysis in grey with
+// white words, Canary in the context Canary's red, slate and navy with black words.
 
 // Read at call time, not at module load: setTemplate() runs per job, long
 // after this module is first imported, so a captured constant would freeze to
@@ -274,7 +274,7 @@ function heightLine(v: number, units: unknown): string {
   return /rl|ahd/i.test(String(units ?? '')) ? `HOB = RL ${fig}` : `HOB = ${fig}m`;
 }
 
-/** The site analysis sheet, in one of its own themes (Dove unless another is named); it never takes the context sheet's templates. */
+/** The site analysis sheet, in one of its own themes (Heron unless another is named); it never takes the context sheet's templates. */
 export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta, theme?: string): string {
   const t = siteTheme(theme);
   return withTemplate(t.base, () => drawSiteSheet(sb, meta, t.look));
@@ -307,11 +307,13 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
       .map((t) => `<image href="data/${t.file}" x="${(ox + t.left * extW).toFixed(2)}" y="${(oy + t.top * extH).toFixed(2)}"
           width="${(t.width * extW).toFixed(2)}" height="${(t.height * extH).toFixed(2)}" preserveAspectRatio="none"/>`)
       .join('\n');
-    // Greyed, as the context sheet greys it, by a saturation blend isolated to
-    // the photo rather than a filter, which PDF would not carry.
-    const grey = look.aerial === 'grey'
-      ? `<path fill-rule="evenodd" fill="#808080" style="mix-blend-mode:saturation" d="${outsideSite}"/>` : '';
-    layers.push(`<g style="isolation:isolate"><g transform="rotate(${view.rotationDeg.toFixed(2)}, ${MAP_W / 2}, ${MAP_H / 2})">${tiles}</g>${grey}</g>`);
+    // A theme with a grey aerial (Heron, Canary) takes the photograph to grey
+    // outside the site, by the context sheet's saturation blend rather than a
+    // filter (see sheet.ts), so the zones' colours are the only colour round the lot.
+    const photo = `<g transform="rotate(${view.rotationDeg.toFixed(2)}, ${MAP_W / 2}, ${MAP_H / 2})">${tiles}</g>`;
+    layers.push(look.aerial === 'grey'
+      ? `<g style="isolation:isolate">${photo}<path fill-rule="evenodd" fill="#808080" style="mix-blend-mode:saturation" d="${outsideSite}"/></g>`
+      : photo);
   }
   // (3) White overlay everywhere EXCEPT the site: the analysed lot stays at
   // full aerial saturation, its surroundings are washed back.
@@ -319,11 +321,13 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
 
   // ---- zones as hatch, not words ---------------------------------------------
   // The neighbours' zoning is drawn, not written: each zone a hatch in its
-  // family's ink with a fine outline, no fill, so the aerial stays readable
-  // under it. The pattern is the category's texture (lines where it has
-  // none), its strength the category's, so R2 sits lighter than R3. Or, as
-  // Conure draws them, each zone code filled in its NSW ePlanning colour.
-  // Never over the site.
+  // family's ink with a fine outline, so the aerial stays readable under it.
+  // The pattern is the category's texture (lines where it has none), its
+  // strength the category's, so R2 sits lighter than R3. A theme can tint
+  // the zones under the hatch (look.zoneTint) in the category's fill,
+  // multiplied into the photograph rather than laid over it, so the colour
+  // reads without washing out the roofs. Or, as the context Canary draws
+  // them, each zone code filled in its NSW ePlanning colour. Never over the site.
   const usedZoneCats = new Set<string>();
   const zoneInk = (c: { fill: string; stroke?: string; figure?: string; textureColor?: string }) =>
     c.figure ?? c.stroke ?? c.fill;
@@ -339,12 +343,14 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
     }
     let tex = 0;
     const mapBox = { x: 0, y: 0, w: MAP_W, h: MAP_H };
+    const tints: string[] = [];
     const parts: string[] = [];
     for (const [cat, paths] of byCat) {
       const c = catById()[cat];
       usedZoneCats.add(cat);
       const ink = zoneInk(c);
       const kind = c.texture === 'dots' || c.texture === 'cross' ? c.texture : 'lines';
+      tints.push(`<g fill="${c.fill}">${paths.map((d) => `<path d="${d}"/>`).join('')}</g>`);
       parts.push(textureSvg(`stx${tex++}`, paths.join(''), kind, ink, mapBox, Math.min(1, 0.65 + c.opacity * 0.5)));
       parts.push(`<g fill="none" stroke="${ink}" stroke-width="0.6">${paths.map((d) => `<path d="${d}"/>`).join('')}</g>`);
     }
@@ -358,8 +364,12 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
     }
     for (const [code, z] of lepZones)
       parts.push(`<g fill="${zoneFill(code)}" opacity="${LEP_OPACITY}" fill-rule="evenodd">${z.paths.map((d) => `<path d="${d}"/>`).join('')}</g>`);
-    layers.push(`<defs><clipPath id="notSite"><path clip-rule="evenodd" d="M-20,-20 H${MAP_W + 20} V${MAP_H + 20} H-20 Z ${siteHole}"/></clipPath></defs>
-      <g clip-path="url(#notSite)">${parts.join('')}</g>`);
+    layers.push(`<defs><clipPath id="notSite"><path clip-rule="evenodd" d="M-20,-20 H${MAP_W + 20} V${MAP_H + 20} H-20 Z ${siteHole}"/></clipPath></defs>`);
+    // The blend sits on the clipped group itself: a clip on a parent would
+    // isolate it, and the tint would multiply into nothing.
+    if (look.zoneTint && tints.length)
+      layers.push(`<g clip-path="url(#notSite)" fill-rule="evenodd" opacity="${look.zoneTint}" style="mix-blend-mode:multiply">${tints.join('')}</g>`);
+    layers.push(`<g clip-path="url(#notSite)">${parts.join('')}</g>`);
   }
 
   // ---- heritage: the LEP's items and conservation areas, hatched -------------
@@ -1190,9 +1200,11 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
     const fs = MAP_TEXT, lh = fs * 1.12;
     const w = Math.max(...lines.map((t) => t.length)) * fs * 0.55 + 4;
     const h = lines.length * lh + 2;
+    // Without the box, a fine white edge keeps the words clear of a dark roof.
+    const edge = look.fallBox ? '' : ' stroke="#ffffff" stroke-width="0.6" stroke-opacity="0.85" paint-order="stroke" stroke-linejoin="round"';
     layers.push(`<g transform="translate(${centroidPx[0].toFixed(1)},${centroidPx[1].toFixed(1)}) rotate(${ang.toFixed(1)})">
       ${look.fallBox ? `<rect x="${(-w / 2).toFixed(1)}" y="${(-h / 2).toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" fill="#ffffff" fill-opacity="0.9"/>` : ''}
-      ${lines.map((t, i) => `<text x="0" y="${(-h / 2 + 1 + lh * (i + 0.8)).toFixed(1)}" text-anchor="middle" font-size="${fs}" font-weight="700" fill="${BLUE()}"${look.fallBox ? '' : ' stroke="#ffffff" stroke-width="0.9" stroke-linejoin="round" paint-order="stroke"'}>${esc(t)}</text>`).join('')}
+      ${lines.map((t, i) => `<text x="0" y="${(-h / 2 + 1 + lh * (i + 0.8)).toFixed(1)}" text-anchor="middle" font-size="${fs}" font-weight="700" fill="${BLUE()}"${edge}>${esc(t)}</text>`).join('')}
     </g>`);
   }
 
@@ -1225,7 +1237,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
   const PEN = look.windPen;
   const PEN_W = 0.7;
   const LETTER = MAP_TEXT;
-  // The climate marks' words: in the pen, slightly heavy, for Dove; plain for Canary.
+  // The climate marks' words: in the pen, slightly heavy, for Heron; plain for Canary.
   const INK = look.climateInk;
   const heavy = INK === PEN ? ` stroke="${INK}" stroke-width="0.22"` : '';
   const textBlock = (x: number, y: number, lines: string[]) =>
@@ -1423,7 +1435,8 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
       if (!usedZoneCats.has(c.id)) continue;
       const ink = zoneInk(c);
       const kind = c.texture === 'dots' || c.texture === 'cross' ? c.texture : 'lines';
-      row(textureSvg(`sltx${stex++}`, swD, kind, ink, { x: SWATCH_X, y: 0, w: SWATCH_W, h: 6.5 }, Math.min(1, 0.65 + c.opacity * 0.5)) +
+      row((look.zoneTint ? `<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="${c.fill}" opacity="${look.zoneTint}"/>` : '') +
+        textureSvg(`sltx${stex++}`, swD, kind, ink, { x: SWATCH_X, y: 0, w: SWATCH_W, h: 6.5 }, Math.min(1, 0.65 + c.opacity * 0.5)) +
         `<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="none" stroke="${ink}" stroke-width="0.4"/>`, c.label);
     }
   }
@@ -1575,7 +1588,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
   }
 
   // The theme's face for every word on the map and in the legend: Arial
-  // Narrow for Dove (Liberation Sans Narrow on the server), Arial for Canary.
+  // Narrow for Heron (Liberation Sans Narrow on the server), Arial for Canary.
   layers.unshift(`<g font-family="${look.font}">`);
   layers.push('</g>');
   legendSvg = `<g font-family="${look.font}">${legendSvg}</g>`;

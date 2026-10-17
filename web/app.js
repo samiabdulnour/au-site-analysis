@@ -40,7 +40,7 @@ const STYLES = {
     ['canary',     'canary',     'in Canary'],
   ],
   site: [
-    ['dove',     'dove',     'in Dove'],
+    ['heron',    'heron',    'in Heron'],
     ['canary',   'canary',   'in Canary'],
   ],
   yield: [],
