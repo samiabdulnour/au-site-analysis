@@ -6,11 +6,12 @@ const state = { sheet: 'context', scale: '3000', rotate: 'north', template: 'fla
 
 // [value, label, caption] — the caption is that option's words in the
 // sentence that describes the expected result to a screen reader.
+// The yield took the summary's place; the deck is offered as the site report.
 const SHEETS = [
-  ['context', 'context', 'Context analysis on A1'],
-  ['site',    'site',    'Site analysis on A1'],
-  ['summary', 'summary', 'Development summary, an A1 table'],
-  ['slides',  'slides',  'Overall analysis deck on A3, its planning slide shown'],
+  ['context', 'context',     'Context analysis on A1'],
+  ['site',    'site',        'Site analysis on A1'],
+  ['yield',   'yield',       'Planning yield on A1: the controls, the envelope, the floor area, apartments and parking'],
+  ['slides',  'site report', 'Site report on A3, its planning slide shown'],
 ];
 const SCALES = {
   context: [
@@ -25,11 +26,11 @@ const SCALES = {
     ['250', '250',  'at 1:250'],
     ['500', '500',  'at 1:500'],
   ],
-  summary: [],
+  yield: [],
   slides: [],
 };
 // The styles each drawing takes: the context sheet has its templates, the site
-// analysis its own themes, and the summary and the deck none. An unknown one
+// analysis its own themes, and the yield and the site report none. An unknown one
 // falls back to the drawing's default on the server.
 const STYLES = {
   context: [
@@ -40,8 +41,9 @@ const STYLES = {
   ],
   site: [
     ['cardinal', 'cardinal', 'in Cardinal'],
+    ['canary',   'canary',   'in Canary'],
   ],
-  summary: [],
+  yield: [],
   slides: [],
 };
 const NORTH = [
@@ -93,7 +95,7 @@ function renderAll() {
   // A table has neither a scale nor an orientation; the deck's maps are drawn
   // at a fixed scale, north up.
   const scales = SCALES[state.sheet];
-  const isTable = state.sheet === 'summary' || state.sheet === 'slides';
+  const isTable = state.sheet === 'yield' || state.sheet === 'slides';
   $('scaleRow').hidden = isTable || scales.length === 0;
   $('northRow').hidden = isTable;
   if (scales.length) {
@@ -161,7 +163,7 @@ function syncScale() {
 
 // ---- expected result -----------------------------------------------------
 
-/** The two sheets that are maps take a scale and an orientation; the summary and the deck do not. */
+/** The two sheets that are maps take a scale and an orientation; the yield and the site report do not. */
 const isMap = () => state.sheet === 'context' || state.sheet === 'site';
 
 function caption(items, value) {

@@ -116,6 +116,13 @@ jobs:
       - name: the DA-storey height fallback picks the right applications
         run: npx tsx test/heights.mts
 
+      # The planning yield is geometry and arithmetic on made-up lots: the
+      # storeys a height holds, the ADG's separations stepping the envelope,
+      # the podium, an L-shaped lot, the plates held to a depth or a tower
+      # size, and the apartments and parking the floor area makes.
+      - name: the yield study builds what the controls allow
+        run: npx tsx test/yield.mts
+
       # The Major Projects register is HTML, parsed: its listing cards, a
       # project page's details and point, and the council-area matching, on
       # trimmed copies of the markup. CI never calls the Planning Portal.

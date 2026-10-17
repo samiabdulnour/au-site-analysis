@@ -3,10 +3,10 @@
 // scale × north × style — not one per option. This draws them all for one
 // address:
 //
-//   npm run samples -- "150 George Street, Parramatta NSW 2150" [--only context|site|summary|slides]
+//   npm run samples -- "150 George Street, Parramatta NSW 2150" [--only context|site|yield|summary|slides]
 //
 // and writes web/samples/result-<sheet>[-<scale>-<rotate>][-<theme>].jpg
-// (context in each template, site in each site theme, summary and slides once),
+// (context in each template, site in each site theme, the yield, summary and slides once),
 // the names web/app.js asks for. The data is fetched once per scale and
 // orientation and drawn in each style from the same bundle, since a style
 // changes how a sheet looks and never what it fetches. `--only` splits the
@@ -26,10 +26,11 @@ if (existsSync('.env')) {
     if (m && !process.env[m[1]]) process.env[m[1]] = m[2].trim();
   }
 }
-import { runPipeline, runSitePipeline, runSummaryPipeline, runSlidesPipeline, BLEED_SCALE, COUNTRY_SCALE } from './pipeline.js';
+import { runPipeline, runSitePipeline, runSummaryPipeline, runYieldPipeline, runSlidesPipeline, BLEED_SCALE, COUNTRY_SCALE } from './pipeline.js';
 import { renderSheet, MAP_W, MAP_H, type SheetMeta } from './render/sheet.js';
 import { renderSiteSheet } from './render/siteSheet.js';
 import { renderSummarySheet } from './render/summarySheet.js';
+import { renderYieldSheet } from './render/yieldSheet.js';
 import { renderSlides, PANEL_W, PANEL_H, DA_PANEL_H, SLIDE_W, SLIDE_H } from './render/slides.js';
 import { prepareRasters } from './render/paintMasks.js';
 import { htmlToPdf, printSlides } from './render/pdf.js';
@@ -47,7 +48,7 @@ const QUALITY = 72;
 
 const address = process.argv.slice(2).find((a, i, all) => !a.startsWith('--') && !all[i - 1]?.startsWith('--'));
 if (!address) {
-  console.error('usage: npm run samples -- "<address>" [--only context|site|summary|slides]');
+  console.error('usage: npm run samples -- "<address>" [--only context|site|yield|summary|slides]');
   process.exit(1);
 }
 const only = (() => { const i = process.argv.indexOf('--only'); return i > -1 ? process.argv[i + 1] : undefined; })();
@@ -126,6 +127,18 @@ if (want('site')) {
       }
     }
   }
+}
+
+if (want('yield')) {
+  const outDir = join(root, 'yield');
+  log('yield');
+  const bundle = await runYieldPipeline(address, { outDir, log });
+  // No themes either: one picture.
+  const html = join(outDir, 'yield_sheet.html');
+  const pdf = join(outDir, 'PLANNING_YIELD.pdf');
+  await writeFile(html, renderYieldSheet(bundle, meta));
+  await htmlToPdf(html, pdf);
+  toJpeg(pdf, 'yield');
 }
 
 if (want('summary')) {

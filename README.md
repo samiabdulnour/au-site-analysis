@@ -10,7 +10,14 @@ sun analysis, heritage context, transport and access, walkability, public
 space, amenities, planning controls, SWOT, design opportunities, design
 response / massing ideas.
 
-The fourth mode, `slides`, is the content part of a feasibility study or
+The options table offers four drawings: **context**, **site**, **yield** and
+**site report**. The yield (`--type yield`) took the development summary's
+place: see *The planning yield* below. The site report is the `slides` mode,
+relabelled on the page and in `/about`; its API value, its files and its CLI
+`--type` are still `slides`. The summary is still drawn for a request that
+names it (`--type summary`, `sheet: "summary"`), so older batches keep working.
+
+The site report, `slides`, is the content part of a feasibility study or
 design report: an overall-analysis deck (context, planning, development
 activity, topography, built form, movement, site, sun and views, constraints,
 Country, people and market, opportunities). Each A3 landscape sheet is laid
@@ -44,7 +51,7 @@ press. Under the table, a frame of its own shows the expected result: the
 sheet the chosen options produce — drawing, scale, north and style together —
 drawn for an example address, the picture alone. It follows what is picked,
 not what the pointer is over. `/about` explains the tool to
-anyone who lands on it: what the three drawings contain, where the data
+anyone who lands on it: what the four drawings contain, where the data
 comes from, and what the output must not be relied on for. The generator
 itself sits behind the access code. Sample thumbnails live in `web/samples/`
 and are served from `/samples/<name>.jpg` (whitelisted names only).
@@ -77,8 +84,8 @@ A camera point takes the nearest panorama to it; `heading`, `pitch` and
 
 The frame's pictures are `web/samples/result-<sheet>-<scale>-<rotate>-<style>.jpg`
 for the two maps (the context sheet in each of its four templates, the site
-sheet in each of its themes) and `result-summary.jpg` and `result-slides.jpg`
-for the summary and the deck, which have no styles — one for every
+sheet in each of its themes) and `result-yield.jpg` and `result-slides.jpg`
+for the yield and the site report, which have no styles — one for every
 combination the table offers, the names `web/app.js` asks for. A combination without one says so in the frame
 rather than showing a broken image. They are drawn for 150 George Street,
 Parramatta; to redraw them, or to move them to another address (and change
@@ -87,7 +94,7 @@ Parramatta; to redraw them, or to move them to another address (and change
 ```bash
 pip install pymupdf      # rasterises the PDFs
 npm run samples -- "150 George Street, Parramatta NSW 2150"
-# or a part at a time: --only context | site | summary | slides
+# or a part at a time: --only context | site | yield | slides (| summary, which the table no longer offers)
 ```
 
 Each scale and orientation is fetched once and drawn in every style,
@@ -504,6 +511,10 @@ Every drawing also exports in an open, editable format:
   real-world meters on the MGA2020 grid, one `SA_`-prefixed layer per data
   class, plus a true `.dwg` when the ODA File Converter is installed. Site geometry is written at
   true ground scale, so it drops straight under a survey.
+- **Planning yield** — `PLANNING_YIELD.csv` (section, item, controls,
+  proposed, compliance) and `PLANNING_YIELD.json`, the table with the numbers
+  behind it: every tier's setbacks and areas, the floor-by-floor floor area,
+  the mix, the parking and the affordable-housing scenario.
 - **Development summary** — `.csv` (opens in Excel, pastes into a Word or
   InDesign table) and `.json` for anything reading the controls
   programmatically. A table is data, not geometry, so DXF would only produce
@@ -517,8 +528,8 @@ the look changes. They live in `src/render/template.ts`, so a new house style is
 a data change.
 
 Templates are the context sheet's. The site analysis has its own themes (see
-Site analysis themes below), and the development summary and the deck have
-none: they are always drawn in the default template.
+Site analysis themes below), and the yield, the development summary and the
+deck have none: they are always drawn in the default template.
 
 There are four: Flamingo, the default, Kingfisher, Heron and Conure.
 
@@ -614,7 +625,9 @@ only thing the `symbols` field ever selected between, so it went too.
 The site sheet does not take the context templates. It has themes of its own,
 listed in `SITE_THEMES` in `src/render/template.ts`; each names the template
 it draws on for what it does not set itself (the typeface and the zones'
-palette), and the sheet sets the rest. There is one so far:
+palette), and the sheet sets the rest — its `look` (`SiteLook`): the face, the
+veil, the site's pen and dash, how the neighbours, streets, suns, winds, noise,
+views and kerbside parking are drawn, and in which inks. There are two:
 
 **Cardinal** (`cardinal`, the default) — the aerial with the zones hatched in
 their family colours, the neighbours' numbers and storeys and the street names
@@ -623,8 +636,26 @@ suns, the winds and the views all in one deep red. The sun is an open crown of
 twelve uneven teeth round a plain circle, the four on the diagonals drawn out
 as short, broad flames. It draws on Flamingo.
 
+**Canary** (`canary`) — the office's classic site sheet (the DA 004s at
+Arncliffe, Cabramatta and Randwick in `examples/packages`): the aerial under a
+lighter veil, the site in a bright red dash with its boundary dimensions in
+black and its levels in red, the street names spaced out in white
+double-headed arrow bands (lanes plain), a pale yellow sun path with an arrow
+toward each sunset and yellow suns named inside — W AM, W PM, S AM, S PM, and
+N over north — the winds as blue outlined banners with their names inside,
+noise as a blue zigzag beside the busy roads and the railway, views as white
+cones named inside, kerbside parking as one hatched street parking zone, and
+the LEP's heritage items (orange) and conservation areas (red) hatched. Each
+neighbour gets a white identification box: its number and storeys in black,
+the zone and the height of building at it in blue (`HOB = 18m`, or
+`HOB = RL 211` where the plan limits by level). No zone hatch and no
+contours: the boxes say the zone, the fall arrow and the levels the ground. It
+draws on Flamingo, set in Arial. The site bundle now carries the LEP height and
+heritage layers over the sheet for it (`heights`, `heritage`); a bundle from
+before them draws its boxes without the height line.
+
 The web picker shows the site sheet's themes in the STYLE row when the site
-sheet is chosen, and no STYLE row for the summary or the deck; the job request
+sheet is chosen, and no STYLE row for the yield or the site report; the job request
 carries the theme in `template`, and the server keeps only a theme valid for
 the sheet (`themeFor()`). The CLI takes `--site-theme`.
 
@@ -638,13 +669,91 @@ street names — and DejaVu).
 Naming an absent font does not fail; it silently falls back and the sheet
 comes out in the wrong face, so add the package to the `Dockerfile` first.
 
-Options (after `--`): `--type context|site|summary|slides|both`, `--scale 3000` (default 3000;
+Options (after `--`): `--type context|site|yield|slides|summary|both`, `--scale 3000` (default 3000;
 the web picker offers 1:2000, 1:3000, 1:4000 and 1:5000, the server accepts 1000 to 6000),
 `--template flamingo|kingfisher|heron|conure` (the context sheet's template, see Templates below),
-`--site-theme cardinal` (the site sheet's theme),
+`--site-theme cardinal|canary` (the site sheet's theme),
 `--slides-scale 8000` (the deck's map panels), `--da-years 5` (the deck's
 development window), `--job 2539`, `--client "Name"`,
 `--status "DEVELOPMENT APPLICATION"`, `--sheet "DA 003"`.
+
+### The planning yield
+
+`--type yield` draws PLANNING YIELD, an A1 sheet in the office frame: what the
+controls let the site hold, as a feasibility study first states it. The left
+half is the office's development summary (DA 002) with the column the
+generated summary had to leave empty now filled — CONTROLS, PROPOSED and
+COMPLIANCE — for the site, the project summary, the LEP, the parking, the
+Apartment Design Guide and the Housing SEPP. The right half draws the study:
+the indicative massing as an axonometric, seen from the main street's corner,
+among the neighbours at their recorded heights (Overture; dashed where none is
+recorded), with each tier's envelope dashed and the height of building plane
+over the site; the envelope in plan at a round scale with its tiers numbered;
+and the schedule of tiers, storeys, setbacks, envelope, plate and floor area.
+
+The study (`src/lib/yield.ts`, tested in `test/yield.mts`) works on the lot in
+local metres:
+
+- **Building type, from the zone.** Residential flat buildings in R1, R3 and
+  R4; shop-top housing — shops on the ground floor, apartments above — in MU1,
+  E1 and the old business zones; offices over a podium in E2–E5, B3, B5–B7 and
+  IN1–IN2; nothing apartment-shaped elsewhere (R2, the recreation, special
+  purpose and conservation zones), where the sheet gives the FSR's floor area
+  alone. Permissibility is the LEP's land use table's to confirm.
+- **Storeys, from the height.** A 4.5 m retail ground floor in a mixed zone,
+  3.1 m residential storeys, 3.8 m commercial, and 1.5 m kept under the
+  height for the roof and plant. A height mapped as an RL (Parramatta CBD's
+  `m(RL)`) is read above the ground the contours give at the corners.
+- **The envelope, in tiers.** Each boundary is a street frontage (a named road
+  within 20 m and 35° of it), the rear (facing away from the main frontage) or
+  a side. Apartments step back from the side and rear boundaries by ADG 3F's
+  separations — 6 m to four storeys, 9 m to eight, 12 m above — and 6 m from
+  the street in a residential zone. In a centre the shops fill the lot, the
+  podium (four storeys) is built to the street and side boundaries and kept
+  6 m off the rear, and the tower above steps 3 m back from the street. The
+  envelope is found on a grid, each cell tested against each boundary's
+  setback, so an L-shaped lot keeps both wings.
+- **The plates.** Apartments are held to ADG 2E's 18 m depth — a perimeter
+  round a courtyard that keeps the separation across it, on a wide lot — and
+  a residential tower (nine storeys and up) to a 750 m² plate, centred by
+  eroding the envelope evenly.
+- **The floor area.** Storey by storey up the tiers, GFA at 82% of the plate
+  residential and 85% otherwise, until the height runs out or the floor space
+  ratio does; the sheet says which governs. No FSR mapped: the height does.
+- **Apartments.** The saleable area (85% of residential GFA) over the mix's
+  average size — 5% studios, 25% one bedroom, 55% two, 15% three at 40, 55, 80
+  and 105 m² — shared out by the mix.
+- **Parking.** Within 800 m of a station or light rail stop, ADG 3J-1 caps a
+  council's rates at the Guide to Traffic Generating Developments': its CBD
+  rates in Parramatta and Sydney CBDs (0.4, 0.7 and 1.2 a dwelling, a visitor
+  space per seven), its sub-regional centres' elsewhere (0.6, 0.9, 1.4, one per
+  five). Beyond 800 m a typical DCP's rates stand in, and say so. Retail and
+  offices at one space per 100 m² near a station, per 40 m² beyond; bicycles,
+  motorcycles (one per fifty car spaces) and the basement levels the spaces
+  need at 30 m² each over 90% of the site.
+- **The ADG checks.** Communal open space (25%), deep soil (7%, with its
+  minimum dimension by site area, against the ground the ground floor leaves),
+  the separations, apartment sizes against 4D-1's minima; solar access and
+  cross-ventilation are marked for the design to test.
+- **The Housing SEPP.** The in-fill affordable housing bonus — up to 30% more
+  FSR and height for 15% affordable housing — as a second run of the study,
+  and a note where the site is in a TOD area, whose controls may apply instead.
+
+Every one of these numbers is in `DEFAULT_ASSUMPTIONS` and can be overridden
+from `yield_assumptions.json` in the address's output folder (the CLI's
+`out/<slug>/`), any subset of the fields:
+
+```json
+{ "mix": { "studio": 0, "one": 0.3, "two": 0.55, "three": 0.15 },
+  "sizes": { "two": 85 }, "podiumStoreys": 3, "towerPlateMax": 850,
+  "parking": { "one": 0.5, "two": 1, "three": 1.5, "visitor": 0.2, "basis": "the council's DCP" } }
+```
+
+The sheet prints the ones a run used. It is a feasibility figure, not a design:
+DCP setbacks, street wall heights, solar access and overshadowing are the
+design's to test, and mapped controls are not a planning certificate. Outputs:
+`PLANNING_YIELD.pdf`, `.csv`, `.json`, and `data/yield.json` (the bundle, which
+redraws with no refetch).
 
 ### The deck
 

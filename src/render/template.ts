@@ -406,10 +406,90 @@ export const BOOK = {
 // summary has no theme and is drawn in the default template; the deck has none
 // either and is drawn in its own (DECK_TEMPLATE, above).
 
-export interface SiteTheme { id: string; label: string; note: string; base: string }
+/**
+ * How a site theme draws what the site sheet shows. What the sheet says is the
+ * same in every theme; these are the choices of hand: which marks, in which pens.
+ */
+export interface SiteLook {
+  /** The face of every word on the map and in the legend. */
+  font: string;
+  /** The white veil over the aerial outside the site. */
+  veil: number;
+  /** The site's pen: its boundary, corners and levels. */
+  site: string;
+  /** The boundary's dash. */
+  siteDash: string;
+  /** The boundary dimensions' ink (Cardinal sets them in the site's red, Canary in black). */
+  dimensionInk: string;
+  /** The fall of terrain and the FALL/AREA box. */
+  fall: string;
+  /** The neighbours: number and storeys in white on the building, or a white box with number, storeys, zone and height limit. */
+  neighbours: 'white' | 'box';
+  /** The box's second ink, for the zone and the height limit. */
+  neighbourZoneInk: string;
+  /** The zones hatched over the aerial, or left to the neighbours' boxes. */
+  zones: 'hatch' | 'none';
+  /** The LEP heritage items and conservation areas, hatched. */
+  heritage: boolean;
+  /** Contours with their levels along them. */
+  contours: boolean;
+  /** The street names: plain text along the road, or a through street's name in a white double-headed arrow band. */
+  streetNames: 'plain' | 'band';
+  /** Their ink. */
+  streetInk: string;
+  /** The suns: an open jagged crown in the climate pen, or a yellow disc with short rays and its season and time inside. */
+  sun: 'crown' | 'disc';
+  /** The sun path's pen, and for the disc its fill and edge. */
+  sunPen: string;
+  sunFill: string;
+  sunEdge: string;
+  /** The solar hours marked along the arcs. */
+  sunHours: boolean;
+  /** The winds: three hand-drawn strands abreast, or one outlined banner with its name inside. */
+  wind: 'strands' | 'banner';
+  windPen: string;
+  /** The ink of the winds' and the suns' words. */
+  climateInk: string;
+  /** Noise: a swelling band beside the source, or a zigzag. */
+  noise: 'band' | 'zigzag';
+  noisePen: string;
+  /** Views: a telescope aimed along the sight line, or a white cone with the view's name. */
+  views: 'telescope' | 'cone';
+  /** Kerbside parking: one quad per bay, or a hatched zone. */
+  parking: 'bays' | 'hatch';
+}
+
+export interface SiteTheme { id: string; label: string; note: string; base: string; look: SiteLook }
+
+// Cardinal: one deep red for the site and the analysis, white for the words.
+const CARDINAL_LOOK: SiteLook = {
+  font: NARROW, veil: 0.55, site: '#b3261e', siteDash: '7,2,1.6,2', dimensionInk: '#b3261e', fall: '#56616b',
+  neighbours: 'white', neighbourZoneInk: '#ffffff', zones: 'hatch', heritage: false, contours: true,
+  streetNames: 'plain', streetInk: '#ffffff',
+  sun: 'crown', sunPen: '#b3261e', sunFill: '#ffffff', sunEdge: '#b3261e', sunHours: true,
+  wind: 'strands', windPen: '#b3261e', climateInk: '#b3261e',
+  noise: 'band', noisePen: '#3f6fc2', views: 'telescope', parking: 'bays',
+};
+
+// Canary: the office's classic site sheet (DA 004 at Arncliffe, Cabramatta,
+// Randwick): the aerial under a veil, a bright red dashed site with black
+// boundary dimensions and red levels, a pale yellow sun path with yellow suns
+// named inside, blue outlined wind banners, white boxes naming each neighbour
+// with its zone and height limit in blue, the streets in white arrow bands.
+const CANARY_LOOK: SiteLook = {
+  font: SANS, veil: 0.42, site: '#e3241b', siteDash: '4.2,1.8', dimensionInk: '#111111', fall: '#3346c8',
+  neighbours: 'box', neighbourZoneInk: '#2b3fd0', zones: 'none', heritage: true, contours: false,
+  streetNames: 'band', streetInk: '#111111',
+  sun: 'disc', sunPen: '#f3d75a', sunFill: '#fbe78c', sunEdge: '#e0b82a', sunHours: false,
+  wind: 'banner', windPen: '#3b8be0', climateInk: '#111111',
+  noise: 'zigzag', noisePen: '#3d3fd8', views: 'cone', parking: 'hatch',
+};
+
 export const SITE_THEMES: SiteTheme[] = [
-  { id: 'cardinal', label: 'Cardinal', base: 'flamingo',
+  { id: 'cardinal', label: 'Cardinal', base: 'flamingo', look: CARDINAL_LOOK,
     note: 'the aerial with the zones hatched; the site, sun, winds and views in one deep red, the sun a crown of broad teeth round a plain circle' },
+  { id: 'canary', label: 'Canary', base: 'flamingo', look: CANARY_LOOK,
+    note: 'the office classic: a veiled aerial, a yellow sun path with the suns named inside, blue wind banners, white boxes naming each neighbour with its zone and height limit' },
 ];
 export const DEFAULT_SITE_THEME = 'cardinal';
 
@@ -418,9 +498,9 @@ export function siteTheme(id: string | undefined): SiteTheme {
   return SITE_THEMES.find((t) => t.id === id) ?? SITE_THEMES.find((t) => t.id === DEFAULT_SITE_THEME)!;
 }
 
-export type SheetKind = 'context' | 'site' | 'summary' | 'slides';
+export type SheetKind = 'context' | 'site' | 'summary' | 'yield' | 'slides';
 
-/** The theme a sheet of this kind is drawn in: a template for the context sheet, a site theme for the site sheet, none ('') for the summary and the deck. */
+/** The theme a sheet of this kind is drawn in: a template for the context sheet, a site theme for the site sheet, none ('') for the summary, the yield and the deck. */
 export function themeFor(sheet: SheetKind, id: string | undefined): string {
   return sheet === 'context' ? resolveTemplateId(id) : sheet === 'site' ? siteTheme(id).id : '';
 }

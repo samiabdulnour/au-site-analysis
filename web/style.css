@@ -68,11 +68,11 @@ a { color: inherit; }
   font: inherit; font-weight: 700; letter-spacing: .02em;
   color: var(--on-hi); background: var(--hi);
   border: 0; border-left: 1px solid var(--line);
-  /* As wide as one option cell — a quarter of the three quarters beside the
-     label column — so its left rule continues the SLIDES column's. A flex
+  /* As wide as one option cell — a quarter of the four fifths beside the
+     label column — so its left rule continues the SITE REPORT column's. A flex
      item never shrinks below its word, so where a cell is narrower than
      GENERATE the button keeps the word whole rather than the alignment. */
-  flex: 0 0 18.75%;
+  flex: 0 0 20%;
   padding: .75rem .6rem; cursor: pointer;
 }
 .go:hover { filter: brightness(.95); }
@@ -98,7 +98,9 @@ a { color: inherit; }
   font-weight: 700; letter-spacing: .02em; text-transform: uppercase;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.rowhead { flex: 0 0 25%; background: var(--head); }
+/* A fifth, not a quarter: the options' four fifths are what SITE REPORT, the
+   longest of them, needs to stay whole at the page's full width. */
+.rowhead { flex: 0 0 20%; background: var(--head); }
 .cells { flex: 1; display: flex; min-width: 0; }
 .cell, .cell-empty { flex: 1 1 0; min-width: 0; }
 
@@ -197,14 +199,15 @@ footer a { color: inherit; }
 }
 
 /* On a phone the label column would leave the options too narrow to hold
-   their words — SUMMARY and NEUTRAL both clip — so the label becomes a strip
-   above its own row of options and each option gets the full width. */
+   their words, so the label becomes a strip above its own row of options and
+   each option gets the full width — and a two-word option (SITE REPORT) may
+   still break onto a second line rather than clip. */
 @media (max-width: 560px) {
   .row { flex-direction: column; }
   .rowhead { flex: none; }
   .go { flex-basis: 25%; }     /* the options take the full width, four to a row */
   /* four options to a row share one phone width */
-  .cell, .cell-empty { padding: .5rem .35rem; letter-spacing: 0; }
+  .cell, .cell-empty { padding: .5rem .35rem; letter-spacing: 0; white-space: normal; }
 }
 
 /* ---- about page --------------------------------------------------------- */

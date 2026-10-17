@@ -44,7 +44,8 @@ export interface SiteControls {
   lgaName?: string;      // "GEORGES RIVER"
   zoneCode?: string;     // "R2"
   zonePurpose?: string;  // "Low Density Residential"
-  maxHeightM?: number;   // MAX_B_H, metres
+  maxHeightM?: number;   // MAX_B_H, metres — or an RL where heightUnits says so
+  heightUnits?: string;  // "m", or "m(RL)" where the plan limits height by level (Parramatta CBD)
   fsr?: number;          // 0.55 -> printed as "0.55:1"
   minLotSizeSqm?: number;
   heritage: { name: string; significance?: string }[];
@@ -89,6 +90,7 @@ export async function fetchSiteControls(point: XY): Promise<SiteControls> {
     // LAY_CLASS ("Low Density Residential").
     zonePurpose: String(zone?.LAY_CLASS ?? zone?.PURPOSE ?? '').trim() || undefined,
     maxHeightM: num(hob?.MAX_B_H),
+    heightUnits: hob?.UNITS ? String(hob.UNITS) : undefined,
     fsr: num(fsr?.FSR),
     minLotSizeSqm: num(lot?.LOT_SIZE),
     heritage: her as { name: string; significance?: string }[],

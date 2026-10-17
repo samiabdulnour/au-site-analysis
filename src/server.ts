@@ -14,15 +14,16 @@ import { rm, readdir, stat, statfs, writeFile } from 'node:fs/promises';
 import { join, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID, createHmac, createHash, timingSafeEqual } from 'node:crypto';
-import { runPipeline, runSitePipeline, runSummaryPipeline, runSlidesPipeline, BLEED_SCALE, COUNTRY_SCALE } from './pipeline.js';
+import { runPipeline, runSitePipeline, runSummaryPipeline, runYieldPipeline, runSlidesPipeline, BLEED_SCALE, COUNTRY_SCALE } from './pipeline.js';
 import { prepareRasters } from './render/paintMasks.js';
 import { suggestAddresses } from './fetch/geocode.js';
 import { renderSheet, MAP_W, MAP_H, type SheetMeta } from './render/sheet.js';
 import { renderSiteSheet } from './render/siteSheet.js';
 import { renderSummarySheet } from './render/summarySheet.js';
 import { summaryCsv, summaryJson } from './export/summaryExport.js';
+import { renderYieldSheet, yieldCsv, yieldJson } from './render/yieldSheet.js';
 import { renderSlides, slidesFacts, PANEL_W, PANEL_H, DA_PANEL_H, SLIDE_W, SLIDE_H } from './render/slides.js';
-import { withTemplate, themeFor, templateFor } from './render/template.js';
+import { withTemplate, themeFor, templateFor, type SheetKind } from './render/template.js';
 import { htmlToPdf, printSlides } from './render/pdf.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -134,10 +135,24 @@ async function probeLocalOverpass(): Promise<string> {
   return state;
 }
 
+/**
+ * The drawing a request names. The yield took the summary's place in the
+ * options table; the summary is still drawn for a request that asks for it,
+ * so a batch or a bookmark from before keeps working.
+ */
+function sheetKind(v: unknown): SheetKind {
+  return v === 'site' || v === 'summary' || v === 'yield' || v === 'slides' ? v : 'context';
+}
+
+/** What each drawing's PDF is called when it is downloaded. */
+const PDF_NAME: Record<SheetKind, string> = {
+  context: 'CONTEXT_ANALYSIS', site: 'SITE_ANALYSIS', summary: 'DEVELOPMENT_SUMMARY', yield: 'PLANNING_YIELD', slides: 'OVERALL_ANALYSIS',
+};
+
 interface Job {
   id: string;
   address: string;
-  sheet: 'context' | 'site' | 'summary' | 'slides';
+  sheet: SheetKind;
   scale: number;            // 0 = auto (site sheets, slides)
   rotate: 'north' | 'auto';
   template: string;
@@ -252,7 +267,7 @@ function loadIndex() {
     const job: Job = {
       id: r.id,
       address: String(r.address ?? ''),
-      sheet: r.sheet === 'site' ? 'site' : r.sheet === 'summary' ? 'summary' : r.sheet === 'slides' ? 'slides' : 'context',
+      sheet: sheetKind(r.sheet),
       scale: Number(r.scale) || 0,
       rotate: r.rotate === 'auto' ? 'auto' : 'north',
       template: String(r.template ?? ''),
@@ -342,7 +357,7 @@ function loadBatches() {
     batches.set(r.id, {
       id: r.id,
       createdAt: Number(r.createdAt) || Date.now(),
-      sheet: r.sheet === 'site' ? 'site' : r.sheet === 'summary' ? 'summary' : r.sheet === 'slides' ? 'slides' : 'context',
+      sheet: sheetKind(r.sheet),
       entries: r.entries
         .filter((e) => e && typeof e.address === 'string' && typeof e.jobId === 'string')
         .map((e) => ({ address: String(e.address), jobId: String(e.jobId) })),
@@ -416,7 +431,21 @@ async function runJobBody(job: Job) {
       jobNo: '', client: '', status: '', sheetNo: '', revision: '',
       checked: '', drawn: '', date: '', preliminary: false,
     };
-    if (job.sheet === 'summary') {
+    if (job.sheet === 'yield') {
+      const yb = await runYieldPipeline(job.address, { outDir, log: (m) => job.log.push(m) });
+      job.log.push('composing planning yield…');
+      const htmlPath = join(outDir, 'yield_sheet.html');
+      await writeFile(htmlPath, renderYieldSheet(yb, meta));
+      job.log.push('printing PDF…');
+      const pdfPath = join(outDir, 'PLANNING_YIELD.pdf');
+      await htmlToPdf(htmlPath, pdfPath);
+      job.pdfPath = pdfPath;
+      // Like the summary it replaces, a table: CSV for Excel, JSON for the numbers behind it.
+      const csvPath = join(outDir, 'PLANNING_YIELD.csv');
+      await writeFile(csvPath, yieldCsv(yb));
+      await writeFile(join(outDir, 'PLANNING_YIELD.json'), yieldJson(yb));
+      job.dataPath = csvPath;
+    } else if (job.sheet === 'summary') {
       const sub = await runSummaryPipeline(job.address, {
         outDir,
         log: (m) => job.log.push(m),
@@ -927,8 +956,7 @@ Sitemap: ${siteBase()}/sitemap.xml
       const { address, scale, rotate, sheet, fresh, template } = JSON.parse(body || '{}');
       const addr = String(address ?? '').trim();
       if (addr.length < 8 || addr.length > 120) return json(res, 400, { error: 'Enter a full NSW street address.' });
-      const kind: Job['sheet'] =
-        sheet === 'site' ? 'site' : sheet === 'summary' ? 'summary' : sheet === 'slides' ? 'slides' : 'context';
+      const kind = sheetKind(sheet);
       // The theme this kind of sheet takes (an alias resolved to its id, so
       // the two spellings share a job): a context template, a site theme, or
       // none for the summary and the deck.
@@ -992,8 +1020,7 @@ Sitemap: ${siteBase()}/sitemap.xml
       if (addresses.some((a) => a.length < 8 || a.length > 120))
         return json(res, 400, { error: 'Every entry must be a full NSW street address.' });
 
-      const kind: Job['sheet'] =
-        b.sheet === 'site' ? 'site' : b.sheet === 'summary' ? 'summary' : b.sheet === 'slides' ? 'slides' : 'context';
+      const kind = sheetKind(b.sheet);
       const jobTemplate = themeFor(kind, String(b.template ?? ''));
       const n = Number(b.scale) || 0;
       const sc = kind === 'site'
@@ -1089,9 +1116,7 @@ Sitemap: ${siteBase()}/sitemap.xml
     for (const e of batch.entries) {
       const job = jobs.get(e.jobId);
       if (!job?.pdfPath || !existsSync(job.pdfPath)) continue;
-      const kind = job.sheet === 'site' ? 'SITE_ANALYSIS'
-        : job.sheet === 'summary' ? 'DEVELOPMENT_SUMMARY'
-        : job.sheet === 'slides' ? 'OVERALL_ANALYSIS' : 'CONTEXT_ANALYSIS';
+      const kind = PDF_NAME[job.sheet];
       // The same address twice in one batch shares a job, so it would other-
       // wise be added to the zip twice under one name.
       let name = `${kind}_${e.address.replace(/[^a-z0-9]+/gi, '_').toUpperCase()}.pdf`;
@@ -1150,9 +1175,7 @@ Sitemap: ${siteBase()}/sitemap.xml
     readFile(job.pdfPath, (err, data) => {
       if (err) return json(res, 500, { error: 'PDF unreadable.' });
       const slug = job.address.replace(/[^a-z0-9]+/gi, '_').toUpperCase();
-      const kind = job.sheet === 'site' ? 'SITE_ANALYSIS'
-        : job.sheet === 'summary' ? 'DEVELOPMENT_SUMMARY'
-        : job.sheet === 'slides' ? 'OVERALL_ANALYSIS' : 'CONTEXT_ANALYSIS';
+      const kind = PDF_NAME[job.sheet];
       res.writeHead(200, {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `inline; filename="${kind}_${slug}.pdf"`,

@@ -11,12 +11,13 @@ if (existsSync('.env')) {
     if (m && !process.env[m[1]]) process.env[m[1]] = m[2].trim();
   }
 }
-import { runPipeline, runSitePipeline, runSummaryPipeline, runSlidesPipeline } from './pipeline.js';
+import { runPipeline, runSitePipeline, runSummaryPipeline, runYieldPipeline, runSlidesPipeline } from './pipeline.js';
 import { renderSheet, MAP_W, MAP_H, type SheetMeta } from './render/sheet.js';
 import { setTemplate, DEFAULT_TEMPLATE, isTemplateId } from './render/template.js';
 import { renderSiteSheet } from './render/siteSheet.js';
 import { renderSummarySheet } from './render/summarySheet.js';
 import { summaryCsv, summaryJson } from './export/summaryExport.js';
+import { renderYieldSheet, yieldCsv, yieldJson } from './render/yieldSheet.js';
 import { renderSlides, slidesFacts, PANEL_W, PANEL_H, DA_PANEL_H, SLIDE_W, SLIDE_H } from './render/slides.js';
 import { htmlToPdf, printSlides } from './render/pdf.js';
 import { prepareRasters } from './render/paintMasks.js';
@@ -29,7 +30,7 @@ function arg(name: string, def?: string): string | undefined {
 
 const address = process.argv.slice(2).find((a) => !a.startsWith('--') && process.argv[process.argv.indexOf(a) - 1]?.startsWith('--') !== true);
 if (!address) {
-  console.error('usage: npm run generate -- "<address>" [--type context|site|summary|slides|both] [--scale 3000] [--slides-scale 8000] [--template flamingo|kingfisher|heron|conure] [--site-theme cardinal] [--job N] [--client X] [--status S] [--sheet "DA 003"]');
+  console.error('usage: npm run generate -- "<address>" [--type context|site|yield|slides|summary|both] [--scale 3000] [--slides-scale 8000] [--template flamingo|kingfisher|heron|conure] [--site-theme cardinal] [--job N] [--client X] [--status S] [--sheet "DA 003"]');
   process.exit(1);
 }
 
@@ -51,7 +52,7 @@ const meta: SheetMeta = {
   preliminary: (arg('status', '') ?? '').toUpperCase().includes('PRELIM'),
 };
 
-const sheetType = arg('type', 'context')!; // context | site | summary | slides | both (the three sheets)
+const sheetType = arg('type', 'context')!; // context | site | yield | slides | summary | both (context, site, summary)
 const rotate = arg('rotate', 'north') === 'auto' ? 'auto' as const : 'north' as const;
 // The context sheet's graphic template, process-wide for the CLI (it renders one
 // address and exits). The site sheet takes --site-theme instead; the summary
@@ -124,6 +125,19 @@ if (sheetType === 'summary' || sheetType === 'both') {
   await writeFile(csvPath, summaryCsv(sub));
   await writeFile(jsonPath, summaryJson(sub));
   outputs.push(csvPath, jsonPath);
+}
+
+if (sheetType === 'yield') {
+  const yb = await runYieldPipeline(address, { outDir, log: (m) => console.log(m) });
+  console.log('composing planning yield…');
+  const yieldHtmlPath = join(outDir, 'yield_sheet.html');
+  await writeFile(yieldHtmlPath, renderYieldSheet(yb, { ...meta, sheetNo: meta.sheetNo || '' }));
+  const yieldPdfPath = join(outDir, 'PLANNING_YIELD.pdf');
+  await htmlToPdf(yieldHtmlPath, yieldPdfPath);
+  const csvPath = join(outDir, 'PLANNING_YIELD.csv'), jsonPath = join(outDir, 'PLANNING_YIELD.json');
+  await writeFile(csvPath, yieldCsv(yb));
+  await writeFile(jsonPath, yieldJson(yb));
+  outputs.push(yieldPdfPath, csvPath, jsonPath);
 }
 
 if (sheetType === 'slides') {
