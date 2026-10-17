@@ -64,7 +64,8 @@ def prefix_layers(doc):
 
 def layer(name, rgb, linetype="Continuous"):
     if name not in doc.layers:
-        doc.layers.add(name, dxfattribs={"true_color": rgb, "linetype": linetype})
+        # ezdxf's own linetype argument wins over one in dxfattribs.
+        doc.layers.add(name, linetype=linetype, dxfattribs={"true_color": rgb})
     return name
 
 # One layer per class so the architect can switch off what they don't want.
@@ -74,6 +75,8 @@ layer("CADASTRE", 0x9A9A9A)
 layer("CONTOURS", 0xB07A3C)
 layer("CONTOUR-LEVELS", 0xB07A3C)
 layer("ROADS", 0x6E6E6E)
+layer("KERBS-INDICATIVE", 0x8A8A8A, "DASHED")
+layer("KERBS-OSM", 0x6E6E6E)
 layer("ROAD-NAMES", 0x333333)
 layer("RAIL", 0xEF8B1D)
 layer("BUILDINGS", 0x8A8A8A)
@@ -145,6 +148,12 @@ for r in bundle.get("roads", []):
         if rot > 90 or rot < -90:
             rot += 180
         add_text("ROAD-NAMES", name.upper(), (ax + bx) / 2, (ay + by) / 2, 1.2, rot)
+
+# ---- kerb lines, as the site sheet draws them (lib/kerbs.ts): estimated a
+# footpath's width out from the cadastre on their own dashed layer, the ones
+# OpenStreetMap maps on another. An older bundle carries none. ----------------
+for k in bundle.get("kerbs") or []:
+    add_poly("KERBS-OSM" if k.get("from") == "osm" else "KERBS-INDICATIVE", k.get("coords") or [], closed=False)
 
 rail = bundle.get("railLines") or {}
 for key in ("train", "tram"):
@@ -326,5 +335,8 @@ with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
                "Tree canopies are at the recorded size where a council inventory\n"
                "or OSM records one, otherwise a nominal 6 m. Kerbside bays are set\n"
                "out at AS/NZS 2890.5 sizes from OSM kerbside tags, not surveyed.\n"
+               "Kerb lines (SA_KERBS-INDICATIVE) are estimated a footpath's width\n"
+               "out from the cadastre, measured from OSM footpaths where mapped,\n"
+               "not surveyed; SA_KERBS-OSM holds the kerbs OSM maps itself.\n"
                "View cones are ground sight lines only; buildings not assessed.\n")
 print(f"zip: {zip_path}")

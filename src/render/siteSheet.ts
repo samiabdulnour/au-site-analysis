@@ -613,9 +613,11 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
   // Kerb lines, on a sheet with no photograph to show them: a footpath's
   // width out from the lot boundary, measured where OpenStreetMap maps the
   // footpath, typical where it does not, and its own kerbs where it maps them.
+  // The bundle carries them (the CAD export draws the same); an older one
+  // has none, and they are worked out here.
   let kerbs: KerbLine[] = [];
   if (look.kerbs && sb.allLots.features.length) {
-    kerbs = estimateKerbs(sb.allLots.features.flatMap((f) => geomRings(f.geometry)), sb.roads, sb.footways?.lines ?? [], sb.furniture.kerbs ?? []);
+    kerbs = sb.kerbs ?? estimateKerbs(sb.allLots.features.flatMap((f) => geomRings(f.geometry)), sb.roads, sb.footways?.lines ?? [], sb.furniture.kerbs ?? []);
     const d = kerbs.map((kl) => pathFromRings([kl.coords as any], proj, false)).join('');
     if (d) layers.push(`<path d="${d}" fill="none" stroke="#8a8a8a" stroke-width="0.35" stroke-linecap="round"/>`);
   }
