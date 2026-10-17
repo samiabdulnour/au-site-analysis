@@ -459,6 +459,8 @@ export interface SiteLook {
   noisePen: string;
   /** Views: a telescope aimed along the sight line, or a white cone with the view's name. */
   views: 'telescope' | 'cone';
+  /** The telescope's pen and its words. */
+  viewPen: string;
   /** Kerbside parking: one quad per bay, or a hatched zone. */
   parking: 'bays' | 'hatch';
 }
@@ -475,7 +477,16 @@ const CARDINAL_LOOK: SiteLook = {
   streetNames: 'plain', streetInk: '#ffffff',
   sun: 'crown', sunPen: MUSTARD, sunFill: '#ffffff', sunEdge: MUSTARD, sunInk: MUSTARD, sunHours: true,
   wind: 'strands', windPen: '#b3261e', climateInk: '#b3261e',
-  noise: 'band', noisePen: '#3f6fc2', views: 'telescope', parking: 'bays',
+  noise: 'band', noisePen: '#3f6fc2', views: 'telescope', viewPen: '#b3261e', parking: 'bays',
+};
+
+// Dove: Cardinal with the climate drawn quietly — the sun, its path, the
+// telescopes and the winds in one grey — so only the site stays in red.
+const DOVE_GREY = '#6f7377';
+const DOVE_LOOK: SiteLook = {
+  ...CARDINAL_LOOK,
+  sunPen: DOVE_GREY, sunEdge: DOVE_GREY, sunInk: DOVE_GREY,
+  windPen: DOVE_GREY, climateInk: DOVE_GREY, viewPen: DOVE_GREY,
 };
 
 // Canary: the office's classic site sheet (DA 004 at Arncliffe, Cabramatta,
@@ -489,12 +500,14 @@ const CANARY_LOOK: SiteLook = {
   streetNames: 'band', streetInk: '#111111',
   sun: 'disc', sunPen: '#f3d75a', sunFill: '#fbe78c', sunEdge: '#e0b82a', sunInk: '#111111', sunHours: false,
   wind: 'banner', windPen: '#3b8be0', climateInk: '#111111',
-  noise: 'zigzag', noisePen: '#3d3fd8', views: 'cone', parking: 'hatch',
+  noise: 'zigzag', noisePen: '#3d3fd8', views: 'cone', viewPen: '#111111', parking: 'hatch',
 };
 
 export const SITE_THEMES: SiteTheme[] = [
   { id: 'cardinal', label: 'Cardinal', base: 'flamingo', look: CARDINAL_LOOK,
     note: 'the aerial with the zones hatched; the site, winds and views in a deep red, the sun path and its crowns of broad teeth in mustard' },
+  { id: 'dove', label: 'Dove', base: 'flamingo', look: DOVE_LOOK,
+    note: 'Cardinal with the sun, its path, the telescopes and the winds in grey, only the site in red' },
   { id: 'canary', label: 'Canary', base: 'flamingo', look: CANARY_LOOK,
     note: 'the office classic: a veiled aerial, a yellow sun path with the suns named inside, blue wind banners, white boxes naming each neighbour with its zone and height limit' },
 ];

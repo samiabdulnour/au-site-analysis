@@ -391,7 +391,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
       // units; its eyepiece end sits a few millimetres off the boundary.
       const sx = ax + ux * (9.6 * TS + 4), sy = ay + uy * (9.6 * TS + 4);
       const deg = (Math.atan2(uy, ux) * 180) / Math.PI;
-      layers.push(`<g transform="translate(${sx.toFixed(1)},${sy.toFixed(1)}) rotate(${deg.toFixed(1)}) scale(${TS})" stroke="${SITE_RED}" stroke-width="${(0.7 / TS).toFixed(3)}" stroke-linejoin="round" fill="#ffffff">
+      layers.push(`<g transform="translate(${sx.toFixed(1)},${sy.toFixed(1)}) rotate(${deg.toFixed(1)}) scale(${TS})" stroke="${look.viewPen}" stroke-width="${(0.7 / TS).toFixed(3)}" stroke-linejoin="round" fill="#ffffff">
         <path d="M-7,-1.7 L6,-2.6 L6,2.6 L-7,1.7 Z"/>
         <rect x="6" y="-3.3" width="2.6" height="6.6" rx="0.6"/>
         <rect x="-9.6" y="-1.2" width="2.6" height="2.4" rx="0.4"/>
@@ -415,7 +415,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
         for (let k2 = 0; k2 < rows.length; k2++) placer.reserve(lx + Math.cos(ar) * d + dnx * k2 * lh, ly + Math.sin(ar) * d + dny * k2 * lh, 8, 8);
       for (let d = -9.6; d <= 8.6; d += 4) placer.reserve(sx + ux * d * TS, sy + uy * d * TS, 12, 12);
       viewText.push(`<g transform="translate(${lx.toFixed(1)},${ly.toFixed(1)}) rotate(${tdeg.toFixed(1)})">${rows.map((r, i) =>
-        `<text x="0" y="${(LETTER * 0.36 + i * lh).toFixed(2)}" text-anchor="middle" font-size="${LETTER}" font-weight="700" fill="${SITE_RED}" stroke="${SITE_RED}" stroke-width="0.22">${esc(r)}</text>`).join('')}</g>`);
+        `<text x="0" y="${(LETTER * 0.36 + i * lh).toFixed(2)}" text-anchor="middle" font-size="${LETTER}" font-weight="700" fill="${look.viewPen}" stroke="${look.viewPen}" stroke-width="0.22">${esc(r)}</text>`).join('')}</g>`);
     }
   }
 
@@ -1405,7 +1405,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
   if ((sb.views ?? []).some((v) => v.cone) && look.views === 'cone') {
     row(`<path d="M${SWATCH_X + 2},3.2 L${SWATCH_X + SWATCH_W - 1},-0.4 A12,12 0 0 1 ${SWATCH_X + SWATCH_W - 1},6.8 Z" fill="#ffffff" stroke="#9a9a9a" stroke-width="0.25"/>`, 'POTENTIAL VIEW', `terrain only, from ${Math.round(sb.eyeAboveM ?? 8)} m up; no buildings`);
   } else if ((sb.views ?? []).some((v) => v.cone)) {
-    row(`<g transform="translate(${SWATCH_X + 11},3.2) rotate(-14) scale(0.62)" fill="#fff" stroke="${SITE_RED}" stroke-width="0.7" stroke-linejoin="round"><path d="M-7,-1.7 L6,-2.6 L6,2.6 L-7,1.7 Z"/><rect x="6" y="-3.3" width="2.6" height="6.6"/><rect x="-9.6" y="-1.2" width="2.6" height="2.4"/></g>`, 'POTENTIAL VIEW', `terrain only, from ${Math.round(sb.eyeAboveM ?? 8)} m up; no buildings`);
+    row(`<g transform="translate(${SWATCH_X + 11},3.2) rotate(-14) scale(0.62)" fill="#fff" stroke="${look.viewPen}" stroke-width="0.7" stroke-linejoin="round"><path d="M-7,-1.7 L6,-2.6 L6,2.6 L-7,1.7 Z"/><rect x="6" y="-3.3" width="2.6" height="6.6"/><rect x="-9.6" y="-1.2" width="2.6" height="2.4"/></g>`, 'POTENTIAL VIEW', `terrain only, from ${Math.round(sb.eyeAboveM ?? 8)} m up; no buildings`);
   }
   if (sb.furniture.powerPoles.length) row(`<g transform="translate(${mid},3.2)"><line x1="-2.4" y1="0" x2="2.4" y2="0" stroke="#333" stroke-width="0.4"/><circle r="1.2" fill="none" stroke="#333" stroke-width="0.45"/></g>`, 'POWER POLE');
   if (lamps.length) row(`<circle cx="${mid}" cy="3.2" r="1.4" fill="#f0c020" stroke="#a8860b" stroke-width="0.3"/>`, 'LIGHT POLE');
@@ -1429,7 +1429,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
     const rib = `M${SWATCH_X + 2},2.6 C${SWATCH_X + 7},0.8 ${SWATCH_X + 11},4.8 ${SWATCH_X + 16},2.4 L${SWATCH_X + 16},1 L${SWATCH_X + 21},3.2 L${SWATCH_X + 16},5.4 L${SWATCH_X + 16},4 C${SWATCH_X + 11},6.2 ${SWATCH_X + 7},2.6 ${SWATCH_X + 2},3.8 Z`;
     void rib;
     if (look.wind === 'banner') row(`<g transform="translate(${SWATCH_X + 1},3.2) scale(0.36)"><path d="${bannerPath(58)}" fill="#fff" stroke="${look.windPen}" stroke-width="1.6"/></g>`, 'PREVAILING BREEZES');
-    else row(`<path d="${sketchArrow(SWATCH_X + 2, 3.2, 1, 0, 19, 0.8, 0.5, 1.3)}" fill="#fff" stroke="${SITE_RED}" stroke-width="0.35" stroke-linejoin="round"/>`, 'PREVAILING WINDS');
+    else row(`<path d="${sketchArrow(SWATCH_X + 2, 3.2, 1, 0, 19, 0.8, 0.5, 1.3)}" fill="#fff" stroke="${look.windPen}" stroke-width="0.35" stroke-linejoin="round"/>`, 'PREVAILING WINDS');
     if (look.sun === 'disc') row(`<g transform="translate(${mid},3.2) scale(0.3)"><path d="${Array.from({ length: 12 }, (_, i) => { const a = (i / 12) * Math.PI * 2; return `M${(9.8 * Math.cos(a)).toFixed(2)},${(9.8 * Math.sin(a)).toFixed(2)}L${(13.2 * Math.cos(a)).toFixed(2)},${(13.2 * Math.sin(a)).toFixed(2)}`; }).join('')}" stroke="${look.sunEdge}" stroke-width="2"/><circle r="8.4" fill="${look.sunFill}" stroke="${look.sunEdge}" stroke-width="1"/></g>`, 'SUN PATH', 'W winter, S summer; AM sunrise, PM sunset');
     else row(`<g transform="translate(${mid},3.2)"><path d="M${Array.from({ length: 24 }, (_, k) => { const a = (k / 24) * Math.PI * 2, r = k % 2 ? 2.4 : (k % 6 === 2 ? 4.3 : 3.7); return `${(r * Math.cos(a)).toFixed(2)},${(r * Math.sin(a)).toFixed(2)}`; }).join('L')}Z" fill="#fff" stroke="${look.sunEdge}" stroke-width="0.35" stroke-linejoin="round"/><circle r="1.7" fill="#fff" stroke="${look.sunEdge}" stroke-width="0.35"/></g>`, 'SUN PATH', 'summer solid, winter dashed; solar hours');
   }

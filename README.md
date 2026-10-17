@@ -654,7 +654,7 @@ listed in `SITE_THEMES` in `src/render/template.ts`; each names the template
 it draws on for what it does not set itself (the typeface and the zones'
 palette), and the sheet sets the rest — its `look` (`SiteLook`): the face, the
 veil, the site's pen and dash, how the neighbours, streets, suns, winds, noise,
-views and kerbside parking are drawn, and in which inks. There are two:
+views and kerbside parking are drawn, and in which inks. There are three:
 
 **Cardinal** (`cardinal`, the default) — the aerial with the zones hatched in
 their family colours, the neighbours' numbers and storeys and the street names
@@ -663,6 +663,10 @@ in blue, the site, the winds and the views in one deep red, and the sun — its
 path, its suns, its hours and their words — in mustard. The sun is an open
 crown of twelve uneven teeth round a plain circle, the four on the diagonals
 drawn out as short, broad flames. It draws on Flamingo.
+
+**Dove** (`dove`) — Cardinal with the climate drawn quietly: the sun, its path,
+its hours and words, the telescopes and the winds all in one grey, so only the
+site and its levels stay in red.
 
 **Canary** (`canary`) — the office's classic site sheet (the DA 004s at
 Arncliffe, Cabramatta and Randwick in `examples/packages`): the aerial under a
@@ -700,7 +704,7 @@ comes out in the wrong face, so add the package to the `Dockerfile` first.
 Options (after `--`): `--type context|site|yield|slides|summary|both`, `--scale 3000` (default 3000;
 the web picker offers 1:2000, 1:3000, 1:4000 and 1:5000, the server accepts 1000 to 6000),
 `--template flamingo|kingfisher|heron|conure` (the context sheet's template, see Templates below),
-`--site-theme cardinal|canary` (the site sheet's theme),
+`--site-theme cardinal|dove|canary` (the site sheet's theme),
 `--slides-scale 8000` (the deck's map panels), `--da-years 5` (the deck's
 development window), `--job 2539`, `--client "Name"`,
 `--status "DEVELOPMENT APPLICATION"`, `--sheet "DA 003"`.

@@ -41,6 +41,7 @@ const STYLES = {
   ],
   site: [
     ['cardinal', 'cardinal', 'in Cardinal'],
+    ['dove',     'dove',     'in Dove'],
     ['canary',   'canary',   'in Canary'],
   ],
   yield: [],
