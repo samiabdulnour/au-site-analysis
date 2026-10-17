@@ -182,8 +182,9 @@ export function yieldRows(b: YieldBundle, s: YieldStudy = yieldStudy(b)): YieldR
         `TOTAL UNITS: ${y.units.total}`,
       ],
     });
-    if (y.gfaByUse.retail) rows.push({ label: 'RETAIL AREA (sqm)', controls: [`${sqm(y.gfaByUse.retail)} GFA, ground floor`] });
-    if (y.gfaByUse.commercial) rows.push({ label: 'COMMERCIAL AREA (sqm)', controls: [`${sqm(y.gfaByUse.commercial)} GFA`, `${sqm(y.gfaByUse.commercial * 0.9)} NLA at 90%`] });
+    const pct = (v: number) => `${fmt(v * 100, (v * 100) % 1 ? 1 : 0)}%`;
+    if (y.gfaByUse.retail) rows.push({ label: 'RETAIL AREA (sqm)', controls: [`${sqm(y.gfaByUse.retail)} GFA, ground floor`, `${sqm(y.gfaByUse.retail * a.retailNlaRatio)} NLA at ${pct(a.retailNlaRatio)}`] });
+    if (y.gfaByUse.commercial) rows.push({ label: 'COMMERCIAL AREA (sqm)', controls: [`${sqm(y.gfaByUse.commercial)} GFA`, `${sqm(y.gfaByUse.commercial * a.commercialNlaRatio)} NLA at ${pct(a.commercialNlaRatio)}`] });
     rows.push({ label: 'GROSS FLOOR AREA', controls: [`${sqm(y.gfa)}${A ? ` (FSR ${(y.gfa / A).toFixed(2)}:1)` : ''}`, y.governs === 'fsr' ? 'the floor space ratio governs' : y.governs === 'envelope' ? 'the envelope governs: the FSR is not reached' : 'no FSR is mapped: the height governs'] });
     rows.push({ label: 'BUILDING', controls: [`${storeyWord(y.storeys)}, ${m1(Math.round(y.heightM * 10) / 10)} to the roof${y.storeys < y.storeysByHeight ? ` (the height allows ${y.storeysByHeight})` : ''}`] });
     const kindsOfSpace = [apartments ? `${y.parking.residents} resident, ${y.parking.visitors} visitor` : '', y.parking.nonResidential ? `${y.parking.nonResidential} ${y.gfaByUse.retail ? 'retail' : 'commercial'}` : ''].filter(Boolean).join(', ');
@@ -897,14 +898,16 @@ function drawYieldSheet(b: YieldBundle, meta: SheetMeta): string {
 
   // The left half: the summary, then the schedule and what it rests on, ruled as one table.
   const apartments = y.archetype === 'residential' || y.archetype === 'mixed';
-  const pc = (v: number) => `${Math.round(v * 100)}%`;
+  const pc = (v: number) => `${fmt(v * 100, (v * 100) % 1 ? 1 : 0)}%`;
+  const EFFICIENCIES = ['residentialEfficiency', 'commercialEfficiency', 'retailEfficiency', 'nsaRatio', 'commercialNlaRatio', 'retailNlaRatio'] as const;
+  const officeEfficiencies = EFFICIENCIES.every((k) => a[k] === DEFAULT_ASSUMPTIONS[k]);
   const assumptionRows: YieldRow[] = [
     { label: 'ASSUMPTIONS', section: true },
     { label: 'FLOOR TO FLOOR', controls: [`${y.archetype === 'mixed' ? `${a.groundRetailF2F}m retail ground floor, ` : ''}${y.archetype === 'commercial' ? `${a.commercialF2F}m commercial` : `${a.residentialF2F}m residential`}`] },
     { label: 'ROOF AND PLANT', controls: [`${a.roofAllowance}m kept under the height of building`] },
-    { label: 'EFFICIENCY', controls: [apartments
-      ? `GFA ${pc(a.residentialEfficiency)} of GBA residential${y.archetype === 'mixed' ? `, ${pc(a.commercialEfficiency)} retail` : ''}; saleable area ${pc(a.nsaRatio)} of residential GFA`
-      : `GFA ${pc(a.commercialEfficiency)} of GBA`] },
+    { label: 'EFFICIENCY', controls: [`${officeEfficiencies ? 'the office\'s feasibility template' : 'from yield_assumptions.json'}: ${apartments
+      ? `GFA ${pc(a.residentialEfficiency)} of GBA residential${y.archetype === 'mixed' ? `, ${pc(a.retailEfficiency)} retail` : ''}; NLA (saleable) ${pc(a.nsaRatio)} of residential GFA${y.archetype === 'mixed' ? `, ${pc(a.retailNlaRatio)} retail` : ''}`
+      : `GFA ${pc(a.commercialEfficiency)} of GBA; NLA ${pc(a.commercialNlaRatio)} of GFA`}`] },
     ...(apartments ? [
       { label: 'MIX', controls: [`${UNIT_KINDS.every((k) => a.mix[k] === DEFAULT_ASSUMPTIONS.mix[k] && a.sizes[k] === DEFAULT_ASSUMPTIONS.sizes[k]) ? 'the office\'s feasibility template' : 'from yield_assumptions.json'}: ${inMix(y).map((k) => `${pc(a.mix[k])} ${UNIT_SHORT[k]} at ${fmt(a.sizes[k])} sqm`).join(', ')}; average ${fmt(y.averageUnitSqm, 1)} sqm`] },
       { label: 'PLATES', controls: [`held to ${m1(a.maxDepth)} deep; towers to ${sqm(a.towerPlateMax)} GBA`] },

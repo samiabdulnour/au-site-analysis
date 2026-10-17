@@ -81,6 +81,10 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
   check('MU1: the podium keeps 6 m off the rear only', near(podium.envelopeSqm, 1200 - 6 * 40, 12), podium.envelopeSqm.toFixed(0));
   check('MU1: retail floor area is counted apart from the apartments', y.gfaByUse.retail > 0 && y.gfaByUse.residential > 0);
   check('MU1: the storeys follow the height', y.storeys === y.storeysByHeight, `${y.storeys} vs ${y.storeysByHeight}`);
+  // The office template's efficiencies: 95% of the plate for the shops, 72.5% for the apartments.
+  const shop = y.floors.find((f) => f.use === 'retail')!, flat = y.floors.find((f) => f.use === 'residential')!;
+  check('MU1: the shops take 95% of their plate as GFA', near(shop.gfa / shop.gba, 0.95, 1e-9), String(shop.gfa / shop.gba));
+  check('MU1: the apartments take 72.5% of theirs', near(flat.gfa / flat.gba, 0.725, 1e-9), String(flat.gfa / flat.gba));
 }
 
 // ---- an L-shaped lot: the envelope is eroded per edge, not clipped by half-planes ------

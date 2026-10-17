@@ -872,10 +872,15 @@ local metres:
   round a courtyard that keeps the separation across it, on a wide lot — and
   a residential tower (nine storeys and up) to a 750 m² plate, centred by
   eroding the envelope evenly.
-- **The floor area.** Storey by storey up the tiers, GFA at 82% of the plate
-  residential and 85% otherwise, until the height runs out or the floor space
-  ratio does; the sheet says which governs. No FSR mapped: the height does.
-- **Apartments.** The saleable area (85% of residential GFA) over the mix's
+- **The floor area.** Storey by storey up the tiers, until the height runs
+  out or the floor space ratio does; the sheet says which governs. No FSR
+  mapped: the height does. GFA is taken from each storey's plate (its gross
+  building area, the office template's BEA) by the template's building
+  efficiencies, as sun-study's yield analysis keeps them: 72.5% residential,
+  95% retail, 85% commercial; the net lettable area is 85% of residential
+  GFA and 90% of retail and commercial. Where the FSR governs, a leaner
+  efficiency builds the same floor area higher.
+- **Apartments.** The net lettable (saleable) area over the mix's
   average size, shared out by the mix. The mix is the office's feasibility
   template, as sun-study's yield analysis keeps it: no studios, 20% one
   bedroom, 70% two, 10% three and no four-bedroom flats, at 35, 50, 75, 100

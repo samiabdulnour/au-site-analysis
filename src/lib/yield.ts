@@ -52,11 +52,18 @@ export interface YieldAssumptions {
   /** ADG 2E: building depth, glass line to glass line, and the plate a residential tower is held to (GBA). */
   maxDepth: number;
   towerPlateMax: number;
-  /** Gross floor area as a share of the gross building area: walls, cores and risers come out. */
+  /**
+   * Gross floor area as a share of the gross building area — the plate to its
+   * outside face, the office template's built envelope area (BEA): walls,
+   * cores and risers come out. One a use.
+   */
   residentialEfficiency: number;
   commercialEfficiency: number;
-  /** Net saleable area as a share of residential GFA: corridors and lobbies come out. */
+  retailEfficiency: number;
+  /** Net lettable (saleable) area as a share of GFA: corridors and lobbies come out. One a use. */
   nsaRatio: number;
+  commercialNlaRatio: number;
+  retailNlaRatio: number;
   /** The apartment mix, shares summing to 1, and the area of each (net lettable, at least ADG_MINIMUM). */
   mix: Record<UnitKind, number>;
   sizes: Record<UnitKind, number>;
@@ -91,7 +98,9 @@ export const DEFAULT_ASSUMPTIONS: YieldAssumptions = {
   podiumStoreys: 4, podiumRear: 6, towerFront: 3, residentialFront: 6,
   adgSide4: 6, adgSide8: 9, adgSide9: 12, commercialTowerSide: 3,
   maxDepth: 18, towerPlateMax: 750,
-  residentialEfficiency: 0.82, commercialEfficiency: 0.85, nsaRatio: 0.85,
+  // The office's feasibility template's building efficiencies, as sun-study's yield analysis keeps them.
+  residentialEfficiency: 0.725, commercialEfficiency: 0.85, retailEfficiency: 0.95,
+  nsaRatio: 0.85, commercialNlaRatio: 0.9, retailNlaRatio: 0.9,
   // The office's feasibility template, as sun-study's yield analysis keeps it:
   // no studios or four-bedroom flats, mostly two bedrooms, an average of 72.5 m².
   mix: { studio: 0, one: 0.2, two: 0.7, three: 0.1, four: 0 },
@@ -454,7 +463,7 @@ export function computeYield(input: YieldInput): YieldResult {
   });
 
   // Storey by storey, until the height runs out or the floor space ratio does.
-  const eff = (u: Use) => (u === 'residential' ? a.residentialEfficiency : a.commercialEfficiency);
+  const eff = (u: Use) => (u === 'residential' ? a.residentialEfficiency : u === 'retail' ? a.retailEfficiency : a.commercialEfficiency);
   const cap = input.fsr ? input.fsr * A : Infinity;
   const floors: YieldResult['floors'] = [];
   let capacity = 0, total = 0;
