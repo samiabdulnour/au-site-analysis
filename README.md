@@ -683,16 +683,19 @@ council register, nothing in OpenStreetMap within 15 m), the legend says so
 instead of leaving the trees out without a word.
 
 **Kookaburra** (`kookaburra`) — Kingfisher on paper, with no aerial: the
-zones as Kingfisher's pale grounds with their textures, every building in its
-zone family's strong colour with a white edge (a quiet grey on the site and
-where no zone is mapped), the white cadastre, Kingfisher's grotesk, its peach
-street names and its magenta site. The suns are the office's own drawn suns
-(`src/render/climateSymbols.ts`, traced from its symbol sheet) in yellow, a
-different one at each solstice rise and set, and the winds its triple arrows
-in light blue, set on the sun path's summer ring at their bearing and pointing
-in at the site, slid along the ring off a sun from the same quarter. The ring
-itself is drawn finely; it only places them. On paper the climate words keep a
-thin white edge, since a name can fall on a slate-blue commercial building.
+zones as Kingfisher's pale grounds with their textures, laid on the lots only
+so the roads stay white (water is drawn whole), every building in its zone
+family's strong colour with a white edge and its number in white (a quiet grey
+on the site and where no zone is mapped), the white cadastre, Kingfisher's
+grotesk, its peach street names and its magenta site. The suns are the
+office's own drawn suns (`src/render/climateSymbols.ts`, traced from its
+symbol sheet) in yellow, a different one at each solstice rise and set, and
+the winds its triple arrows in light blue, set on the sun path's summer ring
+at their bearing and pointing in at the site, slid along the ring off a sun
+from the same quarter. The ring is drawn finely and carries no hours; it only
+places them. Views are plain outlined triangles opening from the site edge,
+their distance written beyond the open end or, where a sun's name is there,
+beside it. No word has a white edge.
 
 **Canary** (`canary`) — the office's classic site sheet (the DA 004s at
 Arncliffe, Cabramatta and Randwick in `examples/packages`): the aerial under a

@@ -292,14 +292,18 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
     let tex = 0;
     const mapBox = { x: 0, y: 0, w: MAP_W, h: MAP_H };
     const parts: string[] = [];
+    // Filled grounds lie on the lots only, so where a plan zones its roads
+    // with the land beside them the road reserve still reads white; water is
+    // rarely a lot, so it is drawn whole.
+    const freeParts: string[] = [];
     for (const [cat, paths] of byCat) {
       const c = catById()[cat];
       usedZoneCats.add(cat);
       if (look.zones === 'fill') {
         // The context template's own ground: its fill at its strength, its
         // texture over it, as the context sheet draws the zone.
-        parts.push(`<g fill="${c.fill}" opacity="${c.opacity.toFixed(2)}" fill-rule="evenodd"${c.stroke ? ` stroke="${c.stroke}" stroke-width="0.5"` : ''}>${paths.map((d) => `<path d="${d}"/>`).join('')}</g>`);
-        if (c.texture) parts.push(textureSvg(`stx${tex++}`, paths.join(''), c.texture, c.textureColor ?? c.stroke ?? c.fill, mapBox));
+        (cat === 'water' ? freeParts : parts).push(`<g fill="${c.fill}" opacity="${c.opacity.toFixed(2)}" fill-rule="evenodd"${c.stroke ? ` stroke="${c.stroke}" stroke-width="0.5"` : ''}>${paths.map((d) => `<path d="${d}"/>`).join('')}</g>`);
+        if (c.texture) (cat === 'water' ? freeParts : parts).push(textureSvg(`stx${tex++}`, paths.join(''), c.texture, c.textureColor ?? c.stroke ?? c.fill, mapBox));
         continue;
       }
       const ink = zoneInk(c);
@@ -307,8 +311,12 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
       parts.push(textureSvg(`stx${tex++}`, paths.join(''), kind, ink, mapBox, Math.min(1, 0.65 + c.opacity * 0.5)));
       parts.push(`<g fill="none" stroke="${ink}" stroke-width="0.6">${paths.map((d) => `<path d="${d}"/>`).join('')}</g>`);
     }
+    const lotsD = look.zones === 'fill' ? sb.allLots.features.map((f) => pathFromRings(geomRings(f.geometry), proj)).join('') : '';
+    const zoned = lotsD
+      ? `<defs><clipPath id="onLots"><path d="${lotsD}"/></clipPath></defs><g clip-path="url(#onLots)">${parts.join('')}</g>`
+      : parts.join('');
     layers.push(`<defs><clipPath id="notSite"><path clip-rule="evenodd" d="M-20,-20 H${MAP_W + 20} V${MAP_H + 20} H-20 Z ${dHole}"/></clipPath></defs>
-      <g clip-path="url(#notSite)">${parts.join('')}</g>`);
+      <g clip-path="url(#notSite)">${freeParts.join('')}${zoned}</g>`);
     // On paper the site takes the template's site tint, as on the context sheet.
     const siteCat = catById().site;
     if (look.ground === 'paper' && siteCat) layers.push(`<path d="${dHole}" fill="${siteCat.fill}" opacity="${siteCat.opacity}"/>`);
@@ -457,6 +465,40 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
         const tw = Math.max(...rows.map((r) => r.length)) * LETTER * 0.62;
         placer.reserve(lx, ly, tw, rows.length * lh);
         viewText.push(rows.map((r, i) => `<text x="${lx.toFixed(1)}" y="${(ly - ((rows.length - 1) * lh) / 2 + LETTER * 0.36 + i * lh).toFixed(1)}" text-anchor="middle" font-size="${LETTER}" font-weight="700" fill="${look.climateInk}">${esc(r)}</text>`).join(''));
+        continue;
+      }
+      if (look.views === 'triangle') {
+        // A plain triangle: its point a little off the boundary, opening
+        // outward along the sight line, outlined in the pen; what it found
+        // is written beyond its open end, along the line, upright.
+        const L = 30, half = (13 * Math.PI) / 180, gap = 3;
+        const px = ax + ux * gap, py = ay + uy * gap;
+        const end = (a: number): string => `${(px + L * Math.sin(a)).toFixed(1)},${(py - L * Math.cos(a)).toFixed(1)}`;
+        layers.push(`<path d="M${px.toFixed(1)},${py.toFixed(1)} L${end(ang - half)} L${end(ang + half)} Z" fill="#ffffff" fill-opacity="0.85" stroke="${look.viewPen}" stroke-width="0.6" stroke-linejoin="round"/>`);
+        const dist = v.distanceM >= 950 ? `${(v.distanceM / 1000).toFixed(1)} KM` : `${Math.round(v.distanceM / 10) * 10} M`;
+        const rows = v.kind === 'park' ? ['ADJOINING'] : [dist, 'TERRAIN CLEAR'];
+        const deg = (Math.atan2(uy, ux) * 180) / Math.PI;
+        const tdeg = Math.abs(deg) <= 90 ? deg : deg + 180;
+        const lh = LETTER * 1.12;
+        const tw = Math.max(...rows.map((r) => r.length)) * LETTER * 0.62;
+        // Centred a half text-width beyond the open end, so the words run on
+        // from the triangle; where that spot is taken (a sun's name), beside
+        // the triangle instead, on whichever side is clear.
+        const th = rows.length * lh;
+        const boxW = Math.abs(tw * ux) + Math.abs(th * uy), boxH = Math.abs(tw * uy) + Math.abs(th * ux);
+        const nx = -uy, ny = ux, side = L * Math.sin(half) + th / 2 + 2;
+        const spots: Pt[] = [
+          [px + ux * (L + 4 + tw / 2), py + uy * (L + 4 + tw / 2)],
+          [px + ux * L * 0.6 + nx * side, py + uy * L * 0.6 + ny * side],
+          [px + ux * L * 0.6 - nx * side, py + uy * L * 0.6 - ny * side],
+          [px + ux * L * 0.6 + nx * (side + 8), py + uy * L * 0.6 + ny * (side + 8)],
+          [px + ux * L * 0.6 - nx * (side + 8), py + uy * L * 0.6 - ny * (side + 8)],
+        ];
+        const [lx, ly] = spots.find(([x, y]) => placer.isFree(x, y, boxW * 0.9, boxH * 0.9)) ?? spots[0];
+        for (let d = 4; d <= L; d += 6) placer.reserve(px + ux * d, py + uy * d, 10, 10);
+        for (let d = -tw / 2; d <= tw / 2; d += 6) placer.reserve(lx + ux * d, ly + uy * d, 10, th + 2);
+        viewText.push(`<g transform="translate(${lx.toFixed(1)},${ly.toFixed(1)}) rotate(${tdeg.toFixed(1)})">${rows.map((r, i) =>
+          `<text x="0" y="${(LETTER * 0.36 + (i - (rows.length - 1) / 2) * lh).toFixed(2)}" text-anchor="middle" font-size="${LETTER}" font-weight="700" fill="${look.viewPen}">${esc(r)}</text>`).join('')}</g>`);
         continue;
       }
       // The tube runs from x = -9.6 (eyepiece) to 8.6 (objective) in its own
@@ -832,7 +874,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
       if (tpzM) svg.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${(tpzM * mmPerM).toFixed(1)}" fill="none" stroke="${PARK_GREEN_INK}" stroke-width="0.35" stroke-dasharray="2,1.2"/>`);
       const label = `T${i + 1}`;
       const spot = placer.place(x + 3.2, y - 3.2, label.length * TREE_TEXT * 0.62, TREE_TEXT, 8);
-      if (spot) svg.push(`<text x="${spot[0].toFixed(1)}" y="${(spot[1] + TREE_TEXT * 0.36).toFixed(1)}" text-anchor="middle" font-size="${TREE_TEXT}" font-weight="700" fill="${PARK_GREEN_INK}" stroke="#ffffff" stroke-width="0.9" paint-order="stroke">${label}</text>`);
+      if (spot) svg.push(`<text x="${spot[0].toFixed(1)}" y="${(spot[1] + TREE_TEXT * 0.36).toFixed(1)}" text-anchor="middle" font-size="${TREE_TEXT}" font-weight="700" fill="${PARK_GREEN_INK}"${look.textHalo ? ' stroke="#ffffff" stroke-width="0.9" paint-order="stroke"' : ''}>${label}</text>`);
       nearTrees.push({ n: i + 1, t: c.t, distM: c.distM, tpzM });
     });
     layers.push(svg.join(''));
@@ -1255,15 +1297,12 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
   const LETTER = MAP_TEXT;
   // The climate marks' words: in the pen, slightly heavy, for Dove; plain black for Canary.
   const INK = look.climateInk;
-  // On paper a name can fall on a building in a strong colour (a commercial
-  // centre's slate blue), so the climate words keep a thin white edge there.
-  const paperHalo = look.ground === 'paper' ? ' stroke="#ffffff" stroke-width="1.1" stroke-linejoin="round" paint-order="stroke"' : '';
-  const heavy = INK === PEN ? ` stroke="${INK}" stroke-width="0.22"` : paperHalo;
+  const heavy = INK === PEN ? ` stroke="${INK}" stroke-width="0.22"` : '';
   const textBlock = (x: number, y: number, lines: string[]) =>
     lines.map((t, i) => `<text x="${x.toFixed(1)}" y="${(y + i * LETTER * 1.12).toFixed(1)}" text-anchor="middle" font-size="${LETTER}" font-weight="700" fill="${INK}"${heavy}>${esc(t)}</text>`).join('');
   // The sun's words in its own ink, as heavy as the winds' when it is the pen's.
   const SUN_INK = look.sunInk;
-  const sunHeavy = SUN_INK === look.sunEdge ? ` stroke="${SUN_INK}" stroke-width="0.22"` : paperHalo;
+  const sunHeavy = SUN_INK === look.sunEdge ? ` stroke="${SUN_INK}" stroke-width="0.22"` : '';
   const sunBlock = (x: number, y: number, lines: string[]) =>
     lines.map((t, i) => `<text x="${x.toFixed(1)}" y="${(y + i * LETTER * 1.12).toFixed(1)}" text-anchor="middle" font-size="${LETTER}" font-weight="700" fill="${SUN_INK}"${sunHeavy}>${esc(t)}</text>`).join('');
 
@@ -1519,6 +1558,8 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
   }
   if ((sb.views ?? []).some((v) => v.cone) && look.views === 'cone') {
     row(`<path d="M${SWATCH_X + 2},3.2 L${SWATCH_X + SWATCH_W - 1},-0.4 A12,12 0 0 1 ${SWATCH_X + SWATCH_W - 1},6.8 Z" fill="#ffffff" stroke="#9a9a9a" stroke-width="0.25"/>`, 'POTENTIAL VIEW', `terrain only, from ${Math.round(sb.eyeAboveM ?? 8)} m up; no buildings`);
+  } else if ((sb.views ?? []).some((v) => v.cone) && look.views === 'triangle') {
+    row(`<path d="M${SWATCH_X + 2},3.2 L${SWATCH_X + SWATCH_W - 1},0.2 L${SWATCH_X + SWATCH_W - 1},6.2 Z" fill="#ffffff" stroke="${look.viewPen}" stroke-width="0.4" stroke-linejoin="round"/>`, 'POTENTIAL VIEW', `terrain only, from ${Math.round(sb.eyeAboveM ?? 8)} m up; no buildings`);
   } else if ((sb.views ?? []).some((v) => v.cone)) {
     row(`<g transform="translate(${SWATCH_X + 11},3.2) rotate(-14) scale(0.62)" fill="#fff" stroke="${look.viewPen}" stroke-width="0.7" stroke-linejoin="round"><path d="M-7,-1.7 L6,-2.6 L6,2.6 L-7,1.7 Z"/><rect x="6" y="-3.3" width="2.6" height="6.6"/><rect x="-9.6" y="-1.2" width="2.6" height="2.4"/></g>`, 'POTENTIAL VIEW', `terrain only, from ${Math.round(sb.eyeAboveM ?? 8)} m up; no buildings`);
   }

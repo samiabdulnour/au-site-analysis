@@ -467,8 +467,10 @@ export interface SiteLook {
   /** Noise: a swelling band beside the source, or a zigzag. */
   noise: 'band' | 'zigzag';
   noisePen: string;
-  /** Views: a telescope aimed along the sight line, or a white cone with the view's name. */
-  views: 'telescope' | 'cone';
+  /** Views: a telescope aimed along the sight line, a white cone with the view's name, or a plain outlined triangle opening from the site edge. */
+  views: 'telescope' | 'cone' | 'triangle';
+  /** A thin white edge on words drawn over busy ground (the trees' numbers). */
+  textHalo: boolean;
   /** The telescope's pen and its words. */
   viewPen: string;
   /** Kerbside parking: one quad per bay, or a hatched zone. */
@@ -489,7 +491,7 @@ const DOVE_LOOK: SiteLook = {
   streetNames: 'plain', streetInk: '#ffffff',
   sun: 'crown', sunPen: DOVE_GREY, sunFill: '#ffffff', sunEdge: DOVE_GREY, sunInk: DOVE_GREY, sunHours: true,
   wind: 'strands', windPen: DOVE_GREY, climateInk: DOVE_GREY,
-  noise: 'band', noisePen: '#3f6fc2', views: 'telescope', viewPen: DOVE_GREY, parking: 'bays',
+  noise: 'band', noisePen: '#3f6fc2', views: 'telescope', viewPen: DOVE_GREY, parking: 'bays', textHalo: true,
 };
 
 // Canary: the office's classic site sheet (DA 004 at Arncliffe, Cabramatta,
@@ -503,23 +505,25 @@ const CANARY_LOOK: SiteLook = {
   streetNames: 'band', streetInk: '#111111',
   sun: 'disc', sunPen: '#f3d75a', sunFill: '#fbe78c', sunEdge: '#e0b82a', sunInk: '#111111', sunHours: false,
   wind: 'banner', windPen: '#3b8be0', climateInk: '#111111',
-  noise: 'zigzag', noisePen: '#3d3fd8', views: 'cone', viewPen: '#111111', parking: 'hatch',
+  noise: 'zigzag', noisePen: '#3d3fd8', views: 'cone', viewPen: '#111111', parking: 'hatch', textHalo: true,
 };
 
 // Kookaburra: the site sheet on Kingfisher's paper, no photograph: the zones
-// as its pale grounds, every building in its family's strong colour with a
-// white edge, the white cadastre, its grotesk and its peach street names, the
-// site in its magenta. The office's own suns in yellow, a different one at
-// each rise and set, and its triple-arrow winds in light blue, both set on the
-// sun path's ring, which itself is drawn lightly.
+// as its pale grounds on the lots only, so the roads stay white, every
+// building in its family's strong colour with a white edge and its number in
+// white, the white cadastre, its grotesk and its peach street names, the site
+// in its magenta. The office's own suns in yellow, a different one at each
+// rise and set, and its triple-arrow winds in light blue, both set on the sun
+// path's ring, which itself is drawn lightly and carries no hours. Views are
+// plain triangles; no word has a white edge.
 const KOOKABURRA_LOOK: SiteLook = {
   font: GROTESK, ground: 'paper', veil: 0, site: F2.magenta, siteDash: '7,2,1.6,2', dimensionInk: '#56616b', fall: '#56616b',
-  buildingEdge: 0.4, buildings: 'colour', neighbours: 'white', neighbourInk: '#1c1c1c', neighbourZoneInk: '#1c1c1c',
+  buildingEdge: 0.4, buildings: 'colour', neighbours: 'white', neighbourInk: '#ffffff', neighbourZoneInk: '#1c1c1c',
   zones: 'fill', heritage: false, contours: true, contourInk: '#a9adb1',
   streetNames: 'plain', streetInk: '#e39a6f',
-  sun: 'symbol', sunPen: '#f2c200', sunFill: '#f2c200', sunEdge: '#f2c200', sunInk: '#c99700', sunHours: true,
+  sun: 'symbol', sunPen: '#f2c200', sunFill: '#f2c200', sunEdge: '#f2c200', sunInk: '#c99700', sunHours: false,
   wind: 'symbol', windPen: '#7cc4ea', climateInk: '#3d93c7',
-  noise: 'band', noisePen: '#3f6fc2', views: 'telescope', viewPen: '#56616b', parking: 'bays',
+  noise: 'band', noisePen: '#3f6fc2', views: 'triangle', viewPen: '#56616b', parking: 'bays', textHalo: false,
 };
 
 export const SITE_THEMES: SiteTheme[] = [
