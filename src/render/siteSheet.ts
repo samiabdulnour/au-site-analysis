@@ -933,7 +933,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
       });
       if (c.lines[1]) storeyLabels++;
     }
-    layers.push(`<g fill="none" stroke="#ffffff" stroke-width="0.55" stroke-opacity="0.95" stroke-linejoin="round">${outlines.join('')}</g>`);
+    layers.push(`<g fill="none" stroke="#ffffff" stroke-width="${look.buildingEdge}" stroke-opacity="0.95" stroke-linejoin="round">${outlines.join('')}</g>`);
     layers.push(texts.join(''));
   }
 
@@ -1178,6 +1178,11 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
   const heavy = INK === PEN ? ` stroke="${INK}" stroke-width="0.22"` : '';
   const textBlock = (x: number, y: number, lines: string[]) =>
     lines.map((t, i) => `<text x="${x.toFixed(1)}" y="${(y + i * LETTER * 1.12).toFixed(1)}" text-anchor="middle" font-size="${LETTER}" font-weight="700" fill="${INK}"${heavy}>${esc(t)}</text>`).join('');
+  // The sun's words in its own ink (Cardinal's mustard), as heavy as the winds' when it is the pen's.
+  const SUN_INK = look.sunInk;
+  const sunHeavy = SUN_INK === look.sunEdge ? ` stroke="${SUN_INK}" stroke-width="0.22"` : '';
+  const sunBlock = (x: number, y: number, lines: string[]) =>
+    lines.map((t, i) => `<text x="${x.toFixed(1)}" y="${(y + i * LETTER * 1.12).toFixed(1)}" text-anchor="middle" font-size="${LETTER}" font-weight="700" fill="${SUN_INK}"${sunHeavy}>${esc(t)}</text>`).join('');
 
   if (look.sun === 'disc') {
     // The office's sun path: two pale yellow arcs, the sun travelling east to
@@ -1205,7 +1210,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
         const [x, y] = sunAt(m.az, R);
         const [lx, ly] = sunAt(m.az, labelR);
         marks.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2" fill="#ffffff" stroke="${look.sunPen}" stroke-width="${PEN_W}"/>` +
-          `<text x="${lx.toFixed(1)}" y="${(ly + LETTER * 0.36).toFixed(1)}" text-anchor="middle" font-size="${LETTER}" font-weight="700" fill="${INK}"${heavy}>${m.label}</text>`);
+          `<text x="${lx.toFixed(1)}" y="${(ly + LETTER * 0.36).toFixed(1)}" text-anchor="middle" font-size="${LETTER}" font-weight="700" fill="${SUN_INK}"${sunHeavy}>${m.label}</text>`);
       }
     };
     put(hrs.winter, Ri, Ri - 10, winterAz);
@@ -1245,7 +1250,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
     return `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})">
       <path d="M${pts.map(([px, py]) => `${px.toFixed(2)},${py.toFixed(2)}`).join('L')}Z" fill="${look.sunFill}" fill-opacity="0.9" stroke="${look.sunEdge}" stroke-width="${PEN_W}" stroke-linejoin="round"/>
       <circle r="9.6" fill="${look.sunFill}" stroke="${look.sunEdge}" stroke-width="${PEN_W}"/>
-      ${textBlock(0, 28, lines)}</g>`;
+      ${sunBlock(0, 28, lines)}</g>`;
   };
   // The office's sun: a yellow disc with twelve short rays, its season and
   // time inside — W AM, S PM — and N for the noon sun over north.
@@ -1258,7 +1263,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
     return `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})">
       <path d="${rays}" stroke="${look.sunEdge}" stroke-width="1" stroke-linecap="round"/>
       <circle r="8.4" fill="${look.sunFill}" stroke="${look.sunEdge}" stroke-width="0.5"/>
-      ${lines.map((t, i) => `<text x="0" y="${(-((lines.length - 1) * lh) / 2 + fs * 0.36 + i * lh).toFixed(2)}" text-anchor="middle" font-size="${fs}" font-weight="700" fill="${INK}">${esc(t)}</text>`).join('')}</g>`;
+      ${lines.map((t, i) => `<text x="0" y="${(-((lines.length - 1) * lh) / 2 + fs * 0.36 + i * lh).toFixed(2)}" text-anchor="middle" font-size="${fs}" font-weight="700" fill="${SUN_INK}">${esc(t)}</text>`).join('')}</g>`;
   };
   if (look.sun === 'disc') {
     layers.push(discSun(sunAt(winterAz, Ri), ['W', 'AM']), discSun(sunAt(-winterAz, Ri), ['W', 'PM']),
@@ -1271,8 +1276,8 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
   {
     // North sits just beyond the summer noon mark and its label.
     const [nx, ny] = sunAt(0, Ro + 24);
-    layers.push(`<g transform="translate(${nx.toFixed(1)},${ny.toFixed(1)})"><circle r="6.4" fill="#ffffff" stroke="${PEN}" stroke-width="${PEN_W}"/>
-      <text text-anchor="middle" dy="2.3" font-size="6.2" font-weight="700" fill="${PEN}" stroke="${PEN}" stroke-width="0.22">N</text></g>`);
+    layers.push(`<g transform="translate(${nx.toFixed(1)},${ny.toFixed(1)})"><circle r="6.4" fill="#ffffff" stroke="${look.sunEdge}" stroke-width="${PEN_W}"/>
+      <text text-anchor="middle" dy="2.3" font-size="6.2" font-weight="700" fill="${SUN_INK}"${sunHeavy}>N</text></g>`);
   }
   }
 
@@ -1426,7 +1431,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
     if (look.wind === 'banner') row(`<g transform="translate(${SWATCH_X + 1},3.2) scale(0.36)"><path d="${bannerPath(58)}" fill="#fff" stroke="${look.windPen}" stroke-width="1.6"/></g>`, 'PREVAILING BREEZES');
     else row(`<path d="${sketchArrow(SWATCH_X + 2, 3.2, 1, 0, 19, 0.8, 0.5, 1.3)}" fill="#fff" stroke="${SITE_RED}" stroke-width="0.35" stroke-linejoin="round"/>`, 'PREVAILING WINDS');
     if (look.sun === 'disc') row(`<g transform="translate(${mid},3.2) scale(0.3)"><path d="${Array.from({ length: 12 }, (_, i) => { const a = (i / 12) * Math.PI * 2; return `M${(9.8 * Math.cos(a)).toFixed(2)},${(9.8 * Math.sin(a)).toFixed(2)}L${(13.2 * Math.cos(a)).toFixed(2)},${(13.2 * Math.sin(a)).toFixed(2)}`; }).join('')}" stroke="${look.sunEdge}" stroke-width="2"/><circle r="8.4" fill="${look.sunFill}" stroke="${look.sunEdge}" stroke-width="1"/></g>`, 'SUN PATH', 'W winter, S summer; AM sunrise, PM sunset');
-    else row(`<g transform="translate(${mid},3.2)"><path d="M${Array.from({ length: 24 }, (_, k) => { const a = (k / 24) * Math.PI * 2, r = k % 2 ? 2.4 : (k % 6 === 2 ? 4.3 : 3.7); return `${(r * Math.cos(a)).toFixed(2)},${(r * Math.sin(a)).toFixed(2)}`; }).join('L')}Z" fill="#fff" stroke="${SITE_RED}" stroke-width="0.35" stroke-linejoin="round"/><circle r="1.7" fill="#fff" stroke="${SITE_RED}" stroke-width="0.35"/></g>`, 'SUN PATH', 'summer solid, winter dashed; solar hours');
+    else row(`<g transform="translate(${mid},3.2)"><path d="M${Array.from({ length: 24 }, (_, k) => { const a = (k / 24) * Math.PI * 2, r = k % 2 ? 2.4 : (k % 6 === 2 ? 4.3 : 3.7); return `${(r * Math.cos(a)).toFixed(2)},${(r * Math.sin(a)).toFixed(2)}`; }).join('L')}Z" fill="#fff" stroke="${look.sunEdge}" stroke-width="0.35" stroke-linejoin="round"/><circle r="1.7" fill="#fff" stroke="${look.sunEdge}" stroke-width="0.35"/></g>`, 'SUN PATH', 'summer solid, winter dashed; solar hours');
   }
 
   const utilKinds = new Set(sb.furniture.utilities.map((u) => u.kind));

@@ -423,6 +423,8 @@ export interface SiteLook {
   dimensionInk: string;
   /** The fall of terrain and the FALL/AREA box. */
   fall: string;
+  /** The neighbours' building outlines, white, this wide (mm). */
+  buildingEdge: number;
   /** The neighbours: number and storeys in white on the building, or a white box with number, storeys, zone and height limit. */
   neighbours: 'white' | 'box';
   /** The box's second ink, for the zone and the height limit. */
@@ -443,6 +445,8 @@ export interface SiteLook {
   sunPen: string;
   sunFill: string;
   sunEdge: string;
+  /** The suns' words and the solar hours. */
+  sunInk: string;
   /** The solar hours marked along the arcs. */
   sunHours: boolean;
   /** The winds: three hand-drawn strands abreast, or one outlined banner with its name inside. */
@@ -461,12 +465,15 @@ export interface SiteLook {
 
 export interface SiteTheme { id: string; label: string; note: string; base: string; look: SiteLook }
 
-// Cardinal: one deep red for the site and the analysis, white for the words.
+// Cardinal: a deep red for the site, the winds and the views, mustard for
+// the sun — its path, its suns, its hours and its words — and white for the
+// neighbours, drawn in a fine outline.
+const MUSTARD = '#b8860b';
 const CARDINAL_LOOK: SiteLook = {
   font: NARROW, veil: 0.55, site: '#b3261e', siteDash: '7,2,1.6,2', dimensionInk: '#b3261e', fall: '#56616b',
-  neighbours: 'white', neighbourZoneInk: '#ffffff', zones: 'hatch', heritage: false, contours: true,
+  buildingEdge: 0.3, neighbours: 'white', neighbourZoneInk: '#ffffff', zones: 'hatch', heritage: false, contours: true,
   streetNames: 'plain', streetInk: '#ffffff',
-  sun: 'crown', sunPen: '#b3261e', sunFill: '#ffffff', sunEdge: '#b3261e', sunHours: true,
+  sun: 'crown', sunPen: MUSTARD, sunFill: '#ffffff', sunEdge: MUSTARD, sunInk: MUSTARD, sunHours: true,
   wind: 'strands', windPen: '#b3261e', climateInk: '#b3261e',
   noise: 'band', noisePen: '#3f6fc2', views: 'telescope', parking: 'bays',
 };
@@ -478,16 +485,16 @@ const CARDINAL_LOOK: SiteLook = {
 // with its zone and height limit in blue, the streets in white arrow bands.
 const CANARY_LOOK: SiteLook = {
   font: SANS, veil: 0.42, site: '#e3241b', siteDash: '4.2,1.8', dimensionInk: '#111111', fall: '#3346c8',
-  neighbours: 'box', neighbourZoneInk: '#2b3fd0', zones: 'none', heritage: true, contours: false,
+  buildingEdge: 0.55, neighbours: 'box', neighbourZoneInk: '#2b3fd0', zones: 'none', heritage: true, contours: false,
   streetNames: 'band', streetInk: '#111111',
-  sun: 'disc', sunPen: '#f3d75a', sunFill: '#fbe78c', sunEdge: '#e0b82a', sunHours: false,
+  sun: 'disc', sunPen: '#f3d75a', sunFill: '#fbe78c', sunEdge: '#e0b82a', sunInk: '#111111', sunHours: false,
   wind: 'banner', windPen: '#3b8be0', climateInk: '#111111',
   noise: 'zigzag', noisePen: '#3d3fd8', views: 'cone', parking: 'hatch',
 };
 
 export const SITE_THEMES: SiteTheme[] = [
   { id: 'cardinal', label: 'Cardinal', base: 'flamingo', look: CARDINAL_LOOK,
-    note: 'the aerial with the zones hatched; the site, sun, winds and views in one deep red, the sun a crown of broad teeth round a plain circle' },
+    note: 'the aerial with the zones hatched; the site, winds and views in a deep red, the sun path and its crowns of broad teeth in mustard' },
   { id: 'canary', label: 'Canary', base: 'flamingo', look: CANARY_LOOK,
     note: 'the office classic: a veiled aerial, a yellow sun path with the suns named inside, blue wind banners, white boxes naming each neighbour with its zone and height limit' },
 ];

@@ -377,7 +377,7 @@ dimensions and levels — is a deep red, and the sun, winds and views are drawn
 in the same red, so the analysis reads as one layer over the aerial.
 
 The sun, the winds and the noise are drawn in one hand, in open white-filled
-marks (the sun and winds in the site's deep red, the noise in blue): a sun drawn as an open jagged crown
+marks (in Cardinal the sun in mustard, the winds in the site's deep red, the noise in blue): a sun drawn as an open jagged crown
 of twelve teeth round a plain circle, four of them short, broad flames — at the summer and winter sunrise and sunset, on a solid
 summer arc and a dashed winter arc, each arc marked with a dot and the time at
 every solar hour; the prevailing winds as three widening arrows blowing in
@@ -658,10 +658,11 @@ views and kerbside parking are drawn, and in which inks. There are two:
 
 **Cardinal** (`cardinal`, the default) — the aerial with the zones hatched in
 their family colours, the neighbours' numbers and storeys and the street names
-in white, contours in green, noise in blue, and the site, the sun path and
-suns, the winds and the views all in one deep red. The sun is an open crown of
-twelve uneven teeth round a plain circle, the four on the diagonals drawn out
-as short, broad flames. It draws on Flamingo.
+in white over a fine white outline of each building, contours in green, noise
+in blue, the site, the winds and the views in one deep red, and the sun — its
+path, its suns, its hours and their words — in mustard. The sun is an open
+crown of twelve uneven teeth round a plain circle, the four on the diagonals
+drawn out as short, broad flames. It draws on Flamingo.
 
 **Canary** (`canary`) — the office's classic site sheet (the DA 004s at
 Arncliffe, Cabramatta and Randwick in `examples/packages`): the aerial under a
