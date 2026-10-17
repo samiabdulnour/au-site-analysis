@@ -428,8 +428,10 @@ export interface SiteLook {
   siteDash: string;
   /** The boundary dimensions' ink (Heron sets them in the site's red, Canary in black). */
   dimensionInk: string;
-  /** The fall of terrain and the FALL/AREA words. */
+  /** The fall of terrain. */
   fall: string;
+  /** The FALL/AREA words. */
+  fallInk: string;
   /** The FALL/AREA words on a white box, or on the photograph with only a fine white edge to the letters. */
   fallBox: boolean;
   /** The neighbours' building outlines, white, this wide (mm). */
@@ -482,7 +484,8 @@ export interface SiteTheme { id: string; label: string; note: string; base: stri
 
 // Heron: Dove's marks in the Heron template's colours. The aerial in grey
 // outside the site, the zones in Heron's palette, the site, its levels and
-// boundary dimensions in Heron's red and the fall in its slate; the climate
+// boundary dimensions in Heron's red, the fall in its slate and the FALL/AREA
+// words in the red again, with the site's other figures; the climate
 // still drawn quietly, the sun, its path, the telescopes and the winds in one
 // grey and the contours a lighter one; the neighbours white, in a fine
 // outline. Heron's tints are pale, so each zone is tinted as well as
@@ -494,7 +497,7 @@ export interface SiteTheme { id: string; label: string; note: string; base: stri
 // site's red; a request naming either is drawn in Heron.
 const CLIMATE_GREY = '#6f7377';
 const HERON_LOOK: SiteLook = {
-  font: NARROW, veil: 0.55, aerial: 'grey', site: HERON_RED, siteDash: '7,2,1.6,2', dimensionInk: HERON_RED, fall: HERON_SLATE, fallBox: false,
+  font: NARROW, veil: 0.55, aerial: 'grey', site: HERON_RED, siteDash: '7,2,1.6,2', dimensionInk: HERON_RED, fall: HERON_SLATE, fallInk: HERON_RED, fallBox: false,
   buildingEdge: 0.3, neighbours: 'white', neighbourHeightInk: '#ffffff', zones: 'hatch', zoneTint: 0.55,
   heritage: false, heritageInk: { item: '#e39a3b', area: '#c8372d' }, contours: true, contourInk: '#a9adb1',
   streetInk: '#ffffff',
@@ -516,7 +519,7 @@ const HERON_LOOK: SiteLook = {
 const CANARY_CONTEXT = TEMPLATES.find((t) => t.id === 'canary')!;
 const CANARY_LOOK: SiteLook = {
   font: SANS, veil: CANARY_CONTEXT.veil!, aerial: 'grey', site: CANARY_CONTEXT.site, siteDash: '4.2,1.8',
-  dimensionInk: CANARY_CONTEXT.dimension, fall: CANARY_CONTEXT.dimension, fallBox: false,
+  dimensionInk: CANARY_CONTEXT.dimension, fall: CANARY_CONTEXT.dimension, fallInk: CANARY_CONTEXT.dimension, fallBox: false,
   buildingEdge: 0.55, neighbours: 'black', neighbourHeightInk: CANARY_CONTEXT.transit, zones: 'lep', zoneTint: 0,
   heritage: true, heritageInk: { item: CANARY_CONTEXT.heritage, area: '#ff0000' }, contours: false, contourInk: '#3f9a5c',
   streetInk: CANARY_CONTEXT.ink,

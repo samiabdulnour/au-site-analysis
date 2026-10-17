@@ -1204,7 +1204,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
     const edge = look.fallBox ? '' : ' stroke="#ffffff" stroke-width="0.6" stroke-opacity="0.85" paint-order="stroke" stroke-linejoin="round"';
     layers.push(`<g transform="translate(${centroidPx[0].toFixed(1)},${centroidPx[1].toFixed(1)}) rotate(${ang.toFixed(1)})">
       ${look.fallBox ? `<rect x="${(-w / 2).toFixed(1)}" y="${(-h / 2).toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" fill="#ffffff" fill-opacity="0.9"/>` : ''}
-      ${lines.map((t, i) => `<text x="0" y="${(-h / 2 + 1 + lh * (i + 0.8)).toFixed(1)}" text-anchor="middle" font-size="${fs}" font-weight="700" fill="${BLUE()}"${edge}>${esc(t)}</text>`).join('')}
+      ${lines.map((t, i) => `<text x="0" y="${(-h / 2 + 1 + lh * (i + 0.8)).toFixed(1)}" text-anchor="middle" font-size="${fs}" font-weight="700" fill="${look.fallInk}"${edge}>${esc(t)}</text>`).join('')}
     </g>`);
   }
 

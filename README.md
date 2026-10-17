@@ -678,8 +678,9 @@ colour; the zones are hatched and tinted in Heron's palette (tan centres and
 mixed use, peach residential, mint open space, slate institutions; the tint
 at 0.55, multiplied into the grey photograph, since Heron's tints are too pale
 to read as a hatch alone), the site, its levels and its boundary dimensions
-are in Heron's red, and the fall in its slate, its FALL and AREA written
-straight on the photograph with a fine white edge to the letters and no box. The
+are in Heron's red, and the fall arrow in its slate; the FALL and AREA are
+written in the red too, straight on the photograph with a fine white edge to
+the letters and no box. The
 neighbours' numbers and storeys and the street names are white over a fine
 white outline of each building, noise in blue, and the climate is drawn
 quietly as before: the sun, its path, its hours and words, the telescopes and
