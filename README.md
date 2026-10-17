@@ -771,8 +771,8 @@ parking one hatched street parking zone. The LEP's heritage items are hatched
 in the ePlanning tan and its conservation areas in the ePlanning red. Each
 neighbour's number and storeys are written in black straight on the map, with
 no box behind them and no zone name (the colour under it says the zone), and
-the height of building at it in navy under them (`HOB = 18m`, or `HOB = RL 211` where the plan limits by level;
-`neighbours: 'black'`). No contours: the fall arrow and the levels give the
+the height of building at it in black under them (`HOB = 18m`, or
+`HOB = RL 211` where the plan limits by level; `neighbours: 'black'`). No contours: the fall arrow and the levels give the
 ground. Its inks are read from the context Canary, so a change to that palette
 carries over. It draws on Flamingo for the title block and is set in Arial.
 The site bundle now carries the LEP height and heritage layers over the sheet
