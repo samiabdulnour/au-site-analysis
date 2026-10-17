@@ -100,7 +100,7 @@ npm run samples -- "150 George Street, Parramatta NSW 2150"
 
 Each scale and orientation is fetched once and drawn in every style,
 since a style changes how a sheet looks and never what it fetches. The
-site report's frame turns through its pages, one every three seconds, from
+site report's frame turns through its pages, one every second and a half, from
 `result-slides-1.jpg` until a number has no picture; the pointer over it
 holds the page and a click turns it.
 

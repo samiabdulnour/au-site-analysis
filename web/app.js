@@ -171,11 +171,11 @@ function caption(items, value) {
   return hit ? hit[2] : '';
 }
 
-// The site report has pages, so its frame turns through them: one every three
-// seconds, from result-slides-1.jpg on until a number has no picture, then back
+// The site report has pages, so its frame turns through them: one every second
+// and a half, from result-slides-1.jpg on until a number has no picture, then back
 // to the first. The pointer over the frame holds the page, a click turns it,
 // and with reduced motion asked for it only turns on a click.
-const PAGE_MS = 3000;
+const PAGE_MS = 1500;
 let deck = null;   // { page, last, timer, held }
 
 const pageSrc = (n) => '/samples/result-slides-' + n + '.jpg';
