@@ -375,7 +375,8 @@ names are plain bold text along the road, without the white arrow band, slid
 along it clear of the labels already set. The numbers and street names are white, and every word on the map and in the
 legend is set in Arial Narrow (Liberation Sans Narrow on the server).
 
-Every word on the map is one size. Potential views are a telescope just
+Every word on the map is one size, which a theme can scale as a whole
+(`textScale`; Heron sets it a fifth larger). Potential views are a telescope just
 outside the site edge, aimed along the bearing, with what it found — the
 distance and "TERRAIN CLEAR" — written under it, along its line, in the site
 pen's lettering. The site itself — boundary, corners,
@@ -678,8 +679,10 @@ colour; the zones are hatched and tinted in Heron's palette (tan centres and
 mixed use, peach residential, mint open space, slate institutions; the tint
 at 0.55, multiplied into the grey photograph, since Heron's tints are too pale
 to read as a hatch alone), the site, its levels and its boundary dimensions
-are in Heron's red, and the fall in its slate, its FALL and AREA written
-straight on the photograph with a fine white edge to the letters and no box. The
+are in Heron's red, and the fall arrow in its slate; the FALL and AREA are
+written in the red too, plain on the photograph like the levels, with no box
+and no white edge (`fallWords: 'plain'`). Every word on the map is set a fifth
+larger than the other site themes' (`textScale: 1.2`). The
 neighbours' numbers and storeys and the street names are white over a fine
 white outline of each building, noise in blue, and the climate is drawn
 quietly as before: the sun, its path, its hours and words, the telescopes and
@@ -768,8 +771,8 @@ parking one hatched street parking zone. The LEP's heritage items are hatched
 in the ePlanning tan and its conservation areas in the ePlanning red. Each
 neighbour's number and storeys are written in black straight on the map, with
 no box behind them and no zone name (the colour under it says the zone), and
-the height of building at it in navy under them (`HOB = 18m`, or `HOB = RL 211` where the plan limits by level;
-`neighbours: 'black'`). No contours: the fall arrow and the levels give the
+the height of building at it in black under them (`HOB = 18m`, or
+`HOB = RL 211` where the plan limits by level; `neighbours: 'black'`). No contours: the fall arrow and the levels give the
 ground. Its inks are read from the context Canary, so a change to that palette
 carries over. It draws on Flamingo for the title block and is set in Arial.
 The site bundle now carries the LEP height and heritage layers over the sheet
