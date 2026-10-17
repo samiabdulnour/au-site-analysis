@@ -572,7 +572,7 @@ Templates are the context sheet's. The site analysis has its own themes (see
 Site analysis themes below), and the yield, the development summary and the
 deck have none: they are always drawn in the default template.
 
-There are four: Flamingo, the default, Kingfisher, Heron and Conure.
+There are four: Flamingo, the default, Kingfisher, Heron and Canary.
 
 **Flamingo** (`flamingo`) sits on plain paper. Four tints, each a family —
 peach for the residential zones, sand for the centres, teal for open space and
@@ -624,17 +624,17 @@ catchments as continuous green lines at reduced opacity with solid green walker 
 takes the solid stop roundels, the red dotted railway and the numbered
 places with their key, the discs in black.
 
-**Conure** (`conure`) is Heron with the zoning in exactly the NSW ePlanning
-Land Zoning colours (`zoning: 'lep'`): each zone code in its statutory fill,
-keyed by code and name (R2 LOW DENSITY RESIDENTIAL, E1 LOCAL CENTRE,
-SP2 INFRASTRUCTURE…), with no institution or railway tints laid over it and
-heritage in the ePlanning item tan. The numbered places are black discs, and
+**Canary** (`canary`, formerly Conure) is Heron with the zoning in exactly
+the NSW ePlanning Land Zoning colours (`zoning: 'lep'`): each zone code in its
+statutory fill, keyed by code and name (R2 LOW DENSITY RESIDENTIAL, E1 LOCAL
+CENTRE, SP2 INFRASTRUCTURE…), with no institution or railway tints laid over
+it and heritage in the ePlanning item tan. The numbered places are black discs, and
 the walking catchments plain black lines with their time and distance written
 along them ("5 MIN · 400M", `isochrone: 'labelled'`) instead of walker
 medallions. The aerial, lines and lettering are Heron's.
 
 The retired ids still resolve: `flamingo-white` to Flamingo, `flamingo-2` to
-Kingfisher, and
+Kingfisher, `conure` to Canary, and
 `flamingo-aerial`, `redfern-white` and `redfern-aerial`, like any unknown id,
 to the default.
 
@@ -667,11 +667,12 @@ The site sheet does not take the context templates. It has themes of its own,
 listed in `SITE_THEMES` in `src/render/template.ts`; each names the template
 it draws on for what it does not set itself (the typeface and the zones'
 palette), and the sheet sets the rest — its `look` (`SiteLook`): the face, the
-veil, the site's pen and dash, how the neighbours, streets, suns, winds, noise,
-views and kerbside parking are drawn, and in which inks. There are two:
+veil and the aerial's tone, the site's pen and dash, how the zones, heritage,
+neighbours, streets, suns, winds, noise, views and kerbside parking are drawn,
+and in which inks. There are two:
 
 **Heron** (`heron`, the default) — the aerial with the zones hatched, in the
-Heron template's colours. The aerial goes grey outside the site (Heron's `aerialTone`, by the
+Heron template's colours. The aerial goes grey outside the site (`aerial: 'grey'`, by the
 same saturation blend as the context sheet), so the lot alone keeps its
 colour; the zones are hatched and tinted in Heron's palette (tan centres and
 mixed use, peach residential, mint open space, slate institutions; the tint
@@ -695,22 +696,43 @@ council register, nothing in OpenStreetMap within 15 m), the legend says so
 instead of leaving the trees out without a word.
 
 **Canary** (`canary`) — the office's classic site sheet (the DA 004s at
-Arncliffe, Cabramatta and Randwick in `examples/packages`): the aerial under a
-lighter veil, the site in a bright red dash with its boundary dimensions in
-black and its levels in red, the street names spaced out in white
-double-headed arrow bands (lanes plain), a pale yellow sun path with an arrow
-toward each sunset and yellow suns named inside — W AM, W PM, S AM, S PM, and
-N over north — the winds as blue outlined banners with their names inside,
-noise as a blue zigzag beside the busy roads and the railway, views as white
-cones named inside, kerbside parking as one hatched street parking zone, and
-the LEP's heritage items (orange) and conservation areas (red) hatched. Each
-neighbour gets a white identification box: its number and storeys in black,
-the zone and the height of building at it in blue (`HOB = 18m`, or
-`HOB = RL 211` where the plan limits by level). No zone hatch and no
-contours: the boxes say the zone, the fall arrow and the levels the ground. It
-draws on Flamingo, set in Arial. The site bundle now carries the LEP height and
-heritage layers over the sheet for it (`heights`, `heritage`); a bundle from
-before them draws its boxes without the height line.
+Arncliffe, Cabramatta and Randwick in `examples/packages`) drawn in the
+colours of the context sheet's Canary, so the two drawings of a package match.
+The aerial outside the site is greyed (`aerial: 'grey'`) under the same veil,
+and the zones are filled in exactly the NSW ePlanning colours (`zones: 'lep'`,
+at the context sheet's strength), keyed in the legend by code and name; the
+site itself keeps the photograph's colours. The site is a dash in Canary's red
+with its levels in the same red and its boundary dimensions and fall in its
+slate; the FALL and AREA words sit straight on the site with a thin white edge
+to the letters (`fallBox: false`) rather than on a white box. The street names
+are plain bold black along the road.
+
+The sun, the winds and the views are one black dashed circle about the site,
+after the office's view diagrams. Around the outside the winds are only
+written (`wind: 'circle'`): each name set along the circle, upright whichever
+way the sheet is turned, outside a black hatched band over the quarter it
+blows from. Around the inside are the views (`views: 'circle'`): each clear
+sight line a white band on the circle with its name inside it; a view whose
+name would run into a better-ranked one's is left off. Further in are four
+plain suns, small open discs with eight rays, where the sun rises and sets at
+the two solstices, each named (WINTER SUNRISE, SUMMER SUNSET…) toward the
+centre, with no hours (`sun: 'circle'`). North is a black arrowhead standing
+out of the circle with N beyond it. The circle sits clear of the lot with room
+for the suns' names inside it, and short of the sheet's edge with the winds'
+names outside it.
+
+Noise is a navy zigzag beside the busy roads and the railway, and kerbside
+parking one hatched street parking zone. The LEP's heritage items are hatched
+in the ePlanning tan and its conservation areas in the ePlanning red. Each
+neighbour's number and storeys are written in black straight on the map, with
+no box behind them and no zone name (the colour under it says the zone), and
+the height of building at it in navy under them (`HOB = 18m`, or `HOB = RL 211` where the plan limits by level;
+`neighbours: 'black'`). No contours: the fall arrow and the levels give the
+ground. Its inks are read from the context Canary, so a change to that palette
+carries over. It draws on Flamingo for the title block and is set in Arial.
+The site bundle now carries the LEP height and heritage layers over the sheet
+for it (`heights`, `heritage`); a bundle from before them draws its neighbours
+without the height line.
 
 The web picker shows the site sheet's themes in the STYLE row when the site
 sheet is chosen, and no STYLE row for the yield or the site report; the job request
@@ -729,7 +751,7 @@ comes out in the wrong face, so add the package to the `Dockerfile` first.
 
 Options (after `--`): `--type context|site|yield|slides|summary|both`, `--scale 3000` (default 3000;
 the web picker offers 1:2000, 1:3000, 1:4000 and 1:5000, the server accepts 1000 to 6000),
-`--template flamingo|kingfisher|heron|conure` (the context sheet's template, see Templates below),
+`--template flamingo|kingfisher|heron|canary` (the context sheet's template, see Templates below),
 `--site-theme heron|canary` (the site sheet's theme),
 `--slides-scale 8000` (the deck's map panels), `--da-years 5` (the deck's
 development window), `--job 2539`, `--client "Name"`,
@@ -1009,9 +1031,10 @@ address
 On the context sheet every street carries its name as plain bold text set
 along, and centred on, its white strip; the width of the strip already says
 whether it is an arterial or a lane (Heron, with no strips, sets the same
-black name straight on the aerial). The white double-headed arrow band survives
-on the site sheet only, where a through street carries its name in the band and
-a laneway gets a plain label. Neither of the two fields NSW publishes decides
+black name straight on the aerial). The white double-headed arrow band is no
+longer drawn in any style, the site sheet's Canary having dropped it; a context
+template can still ask for it (`streetLabels: 'band'`), and then a through
+street carries its name in the band and a laneway gets a plain label. Neither of the two fields NSW publishes decides
 that on its own — Dickson Lane is classified `LocalRoad` exactly like Hall
 Street, and plenty of real streets have no lane count recorded — so the rule
 combines them: function hierarchy 7+ (service lane, track, path, access way), a

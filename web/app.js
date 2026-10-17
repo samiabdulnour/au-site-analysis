@@ -37,7 +37,7 @@ const STYLES = {
     ['flamingo',   'flamingo',   'in Flamingo'],
     ['kingfisher', 'kingfisher', 'in Kingfisher'],
     ['heron',      'heron',      'in Heron'],
-    ['conure',     'conure',     'in Conure'],
+    ['canary',     'canary',     'in Canary'],
   ],
   site: [
     ['heron',    'heron',    'in Heron'],

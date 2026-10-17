@@ -15,8 +15,9 @@ import { sheetHtml, legendHeightFor, esc, T, SWATCH_X, SWATCH_W, LABEL_X,
 export { SHEET_W, SHEET_H, FRAME_L, FRAME_T, TITLE_X, TITLE_R, MAP_BOTTOM, MAP_W, MAP_H };
 
 // The ePlanning zone colours over the greyscale aerial: strong enough to read
-// as the LEP map's colours, thin enough that the roofs show through.
-const LEP_OPACITY = 0.6;
+// as the LEP map's colours, thin enough that the roofs show through. Canary's
+// site sheet fills its zones the same.
+export const LEP_OPACITY = 0.6;
 
 export interface SheetMeta {
   jobNo: string;
