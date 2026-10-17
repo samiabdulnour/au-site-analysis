@@ -40,7 +40,7 @@ const STYLES = {
     ['conure',     'conure',     'in Conure'],
   ],
   site: [
-    ['dove',     'dove',     'in Dove'],
+    ['heron',    'heron',    'in Heron'],
     ['kookaburra', 'kookaburra', 'in Kookaburra'],
     ['canary',   'canary',   'in Canary'],
   ],

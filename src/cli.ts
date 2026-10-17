@@ -30,7 +30,7 @@ function arg(name: string, def?: string): string | undefined {
 
 const address = process.argv.slice(2).find((a) => !a.startsWith('--') && process.argv[process.argv.indexOf(a) - 1]?.startsWith('--') !== true);
 if (!address) {
-  console.error('usage: npm run generate -- "<address>" [--type context|site|yield|slides|summary|both] [--scale 3000] [--slides-scale 8000] [--template flamingo|kingfisher|heron|conure] [--site-theme dove|kookaburra|canary] [--job N] [--client X] [--status S] [--sheet "DA 003"]');
+  console.error('usage: npm run generate -- "<address>" [--type context|site|yield|slides|summary|both] [--scale 3000] [--slides-scale 8000] [--template flamingo|kingfisher|heron|conure] [--site-theme heron|kookaburra|canary] [--job N] [--client X] [--status S] [--sheet "DA 003"]');
   process.exit(1);
 }
 
