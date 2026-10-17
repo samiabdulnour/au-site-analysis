@@ -694,9 +694,22 @@ the winds its triple arrows in light blue, set on the sun path's summer ring
 at their bearing and pointing in at the site, slid along the ring off a sun
 from the same quarter; both are large (a sun 44 mm across, a wind 80 mm long
 on the A1). The ring is a bold yellow line, solid in summer and dashed in
-winter, and carries no hours. Views are plain outlined triangles opening from the site edge,
-their distance written beyond the open end or, where a sun's name is there,
-beside it. No word has a white edge.
+winter, and carries no hours. Views are plain outlined triangles opening
+from the site edge, their distance written beyond the open end or, where a
+sun's name is there, beside it. No word has a white edge, and FALL and AREA
+sit straight on the site.
+
+With no photograph to show them, Kookaburra draws the kerbs, indicatively
+(`src/lib/kerbs.ts`): NSW publishes no kerbs or footpath edges as open data
+(the state's roads are centre lines only, a few metres out), so each kerb
+runs a footpath's width out from the lot boundary on the street side. The
+width is measured where OpenStreetMap maps the footpath (Overture Maps'
+sidewalks, `src/fetch/footways.ts`; a sidewalk is mapped along its middle,
+so the width is twice its distance from the boundary) and typical for the
+street's class elsewhere (5 m on an arterial to 3.5 m on a local street,
+none along a lane), never closer than a lane's width to the reserve's
+middle; a kerb OpenStreetMap maps as a line is drawn as it is. The legend
+calls the line indicative.
 
 **Canary** (`canary`) — the office's classic site sheet (the DA 004s at
 Arncliffe, Cabramatta and Randwick in `examples/packages`): the aerial under a
