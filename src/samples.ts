@@ -39,7 +39,7 @@ import { htmlToPdf, printSlides } from './render/pdf.js';
 import { TEMPLATES, SITE_THEMES, withTemplate } from './render/template.js';
 
 const CONTEXT_SCALES = [2000, 3000, 4000, 5000];
-const SITE_SCALES = [250, 500, 1000];
+const SITE_SCALES = [0, 250, 500, 1000];   // 0 is auto, the tightest that fits the lot
 const ROTATIONS = ['north', 'auto'] as const;
 // About 1190 px across an A1 sheet: sharp at the frame's width on a 2× screen,
 // and around 150 kB a picture, one per combination of the table.
@@ -113,9 +113,9 @@ if (want('site')) {
   for (const rotate of ROTATIONS) {
     for (const scale of SITE_SCALES) {
       const outDir = join(root, `site-${scale}-${rotate}`);
-      log(`site 1:${scale}, ${rotate}`);
+      log(`site ${scale ? `1:${scale}` : 'auto'}, ${rotate}`);
       const bundle = await runSitePipeline(address, {
-        mapWidthMm: MAP_W, mapHeightMm: MAP_H, outDir, scale, rotate, log,
+        mapWidthMm: MAP_W, mapHeightMm: MAP_H, outDir, scale: scale || undefined, rotate, log,
       });
       // The site sheet has its own themes, not the context templates.
       for (const t of SITE_THEMES) {

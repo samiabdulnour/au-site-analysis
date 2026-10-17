@@ -804,8 +804,8 @@ comes out in the wrong face, so add the package to the `Dockerfile` first.
 
 Options (after `--`): `--type context|site|yield|slides|summary|both`, `--scale 3000` (default 3000;
 the web picker offers 1:2000, 1:3000, 1:4000 and 1:5000, the server accepts 1000 to 6000),
-`--site-scale 500` (the site sheet's; the web picker offers 1:250, 1:500 and 1:1000, defaulting to 1:500;
-left out, the tightest that fits the lot),
+`--site-scale 500` (the site sheet's; the web picker offers auto, 1:250, 1:500 and 1:1000, starting on auto;
+auto, or left out, takes the tightest of 1:200, 1:250, 1:300, 1:400, 1:500, 1:600, 1:750 and 1:1000 that fits the lot),
 `--template flamingo|kingfisher|heron|canary` (the context sheet's template, see Templates below),
 `--site-theme heron|kingfisher|flamingo|canary` (the site sheet's theme),
 `--slides-scale 8000` (the deck's map panels), `--da-years 5` (the deck's
