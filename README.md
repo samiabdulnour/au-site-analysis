@@ -375,7 +375,8 @@ names are plain bold text along the road, without the white arrow band, slid
 along it clear of the labels already set. The numbers and street names are white, and every word on the map and in the
 legend is set in Arial Narrow (Liberation Sans Narrow on the server).
 
-Every word on the map is one size. Potential views are a telescope just
+Every word on the map is one size, save that a theme may set the site's FALL and
+AREA a step larger (`fallScale`). Potential views are a telescope just
 outside the site edge, aimed along the bearing, with what it found — the
 distance and "TERRAIN CLEAR" — written under it, along its line, in the site
 pen's lettering. The site itself — boundary, corners,
@@ -679,8 +680,9 @@ mixed use, peach residential, mint open space, slate institutions; the tint
 at 0.55, multiplied into the grey photograph, since Heron's tints are too pale
 to read as a hatch alone), the site, its levels and its boundary dimensions
 are in Heron's red, and the fall arrow in its slate; the FALL and AREA are
-written in the red too, straight on the photograph with a fine white edge to
-the letters and no box. The
+written in the red too, plain on the photograph like the levels, with no box
+and no white edge (`fallGround: 'none'`), a fifth larger than the map's other
+words (`fallScale: 1.2`). The
 neighbours' numbers and storeys and the street names are white over a fine
 white outline of each building, noise in blue, and the climate is drawn
 quietly as before: the sun, its path, its hours and words, the telescopes and
@@ -705,7 +707,7 @@ at the context sheet's strength), keyed in the legend by code and name; the
 site itself keeps the photograph's colours. The site is a dash in Canary's red
 with its levels in the same red and its boundary dimensions and fall in its
 slate; the FALL and AREA words sit straight on the site with a thin white edge
-to the letters (`fallBox: false`) rather than on a white box. The street names
+to the letters (`fallGround: 'edge'`) rather than on a white box. The street names
 are plain bold black along the road.
 
 The sun, the winds and the views are one black dashed circle about the site,

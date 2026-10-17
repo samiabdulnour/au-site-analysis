@@ -890,7 +890,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
   {
     const cx0 = sitePx.reduce((s2, p) => s2 + p[0], 0) / sitePx.length;
     const cy0 = sitePx.reduce((s2, p) => s2 + p[1], 0) / sitePx.length;
-    placer.reserve(cx0, cy0, 56, 24);
+    placer.reserve(cx0, cy0, 56 * look.fallScale, 24 * look.fallScale);
   }
 
   // ---- neighbours: the address and the storeys on each building ------------
@@ -1197,13 +1197,13 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
     const fallTxt = fallInfo ? `FALL ${fallInfo.drop.toFixed(2)}m` : null;
     const lines = fallTxt ? [fallTxt, areaTxt] : [areaTxt];
     const ang = fallInfo ? fallInfo.angDeg : 0;
-    const fs = MAP_TEXT, lh = fs * 1.12;
+    const fs = MAP_TEXT * look.fallScale, lh = fs * 1.12;
     const w = Math.max(...lines.map((t) => t.length)) * fs * 0.55 + 4;
     const h = lines.length * lh + 2;
-    // Without the box, a fine white edge keeps the words clear of a dark roof.
-    const edge = look.fallBox ? '' : ' stroke="#ffffff" stroke-width="0.6" stroke-opacity="0.85" paint-order="stroke" stroke-linejoin="round"';
+    // Without the box, a fine white edge can keep the words clear of a dark roof.
+    const edge = look.fallGround === 'edge' ? ' stroke="#ffffff" stroke-width="0.6" stroke-opacity="0.85" paint-order="stroke" stroke-linejoin="round"' : '';
     layers.push(`<g transform="translate(${centroidPx[0].toFixed(1)},${centroidPx[1].toFixed(1)}) rotate(${ang.toFixed(1)})">
-      ${look.fallBox ? `<rect x="${(-w / 2).toFixed(1)}" y="${(-h / 2).toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" fill="#ffffff" fill-opacity="0.9"/>` : ''}
+      ${look.fallGround === 'box' ? `<rect x="${(-w / 2).toFixed(1)}" y="${(-h / 2).toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" fill="#ffffff" fill-opacity="0.9"/>` : ''}
       ${lines.map((t, i) => `<text x="0" y="${(-h / 2 + 1 + lh * (i + 0.8)).toFixed(1)}" text-anchor="middle" font-size="${fs}" font-weight="700" fill="${look.fallInk}"${edge}>${esc(t)}</text>`).join('')}
     </g>`);
   }
