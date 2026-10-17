@@ -414,6 +414,33 @@ Three things the site sheet draws that the data has to be coaxed into:
   ground leaves the line clear. Buildings and trees in between are not open
   data, so the legend says: ground only.
 
+- **Services, where the licence allows.** The pipes, pits, poles and lines
+  next to the site come from publishers that release them under an open
+  licence, and nowhere else: City of Sydney's stormwater pipes (with their
+  diameter), drainage pits (with their invert level) and light poles (CC BY
+  4.0, inside the LGA), Geoscience Australia's high-voltage lines and
+  substations (CC BY 4.0, everywhere), and what OpenStreetMap maps (ODbL):
+  overhead lines, cables, pipelines, substations and transformers, street
+  cabinets and manholes. Adding a publisher is one entry in
+  `SERVICE_SOURCES` in `src/fetch/services.ts`. A public layer with no licence
+  statement does not qualify, nor one whose terms contradict its label: that
+  leaves out Parramatta's, Canterbury-Bankstown's and Bayside's stormwater,
+  Essential Energy's network, Before You Dig's Look Up and Live layers and
+  Endeavour Energy's portal (ODbL on the datasets, use-only terms on the
+  portal). Water and sewer mains, gas, electrical cables and telecom pits are
+  not open anywhere; every site sheet says, under its legend, that what it
+  draws is open data only and no substitute for a Before You Dig enquiry. The
+  CAD export carries the services on `SA_SERVICES-<KIND>` layers.
+- **The trees by the site, with their data.** The trees within 15 m of the
+  boundary are numbered T1, T2… nearest first (sixteen at most) and listed in
+  the legend with what their source recorded — species, height, canopy and
+  trunk — and, where a trunk diameter is recorded, their tree protection zone
+  is drawn dashed: AS 4970-2009's 12 × DBH, between 2 and 15 m.
+
+The licences' attributions are folded by holder ("Trees, contours, drainage
+and light poles © City of Sydney, CC BY 4.0") and printed under the date, or
+at the foot of the legend when they run longer than a line.
+
 Where a council publishes finer contours under an open licence (City of
 Sydney: 1 m, from a 2020 aerial survey), they replace the state's 2 m contours
 when they cover the whole sheet, and the legend names the source. Same

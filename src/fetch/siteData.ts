@@ -142,8 +142,10 @@ export interface SiteFurniture {
   onewayRoads: { name?: string; coords: [number, number][] }[];
   /** Building footprints; levels only where OSM records them. */
   buildings: { levels?: number; lon: number; lat: number }[];
-  /** Utility lines where mapped (power/water/sewer are sparse in OSM). */
-  utilities: { kind: 'power' | 'water' | 'sewer' | 'gas'; coords: [number, number][] }[];
+  /** Utility lines where mapped (power/water/sewer are sparse in OSM); `cable` is an underground power cable. */
+  utilities: { kind: 'power' | 'cable' | 'water' | 'sewer' | 'gas'; coords: [number, number][] }[];
+  /** Service points where mapped: substations and transformers, street cabinets, manholes (with what they serve). */
+  servicePoints?: { kind: 'substation' | 'transformer' | 'cabinet' | 'manhole'; lon: number; lat: number; label?: string }[];
   /** Driveways — the road end becomes a vehicular-access triangle. */
   driveways: { coords: [number, number][] }[];
   /** Road runs tagged with kerbside parking, one entry per parked side. */
@@ -156,7 +158,7 @@ export interface SiteFurniture {
 
 export const emptyFurniture = (): SiteFurniture => ({
   trees: [], hydrants: [], powerPoles: [], streetLamps: [], onewayRoads: [],
-  buildings: [], utilities: [], driveways: [], parkingLanes: [], carParks: [], parkingBays: [],
+  buildings: [], utilities: [], servicePoints: [], driveways: [], parkingLanes: [], carParks: [], parkingBays: [],
 });
 
 // OSM has tagged kerbside parking two ways. The older parking:lane:<side>
@@ -234,6 +236,11 @@ export async function fetchSiteFurniture(extent: Extent): Promise<SiteFurniture>
   way["building"](${bbox});
   way["power"="line"](${bbox});
   way["power"="minor_line"](${bbox});
+  way["power"="cable"](${bbox});
+  node["power"~"^(substation|transformer)$"](${bbox});
+  way["power"="substation"](${bbox});
+  node["man_made"="street_cabinet"](${bbox});
+  node["manhole"](${bbox});
   way["man_made"="pipeline"](${bbox});
   way["service"="driveway"](${bbox});
   way["highway"]["parking:lane:left"](${bbox});
@@ -257,6 +264,9 @@ out geom;`;
       else if (t.emergency === 'fire_hydrant') out.hydrants.push(p);
       else if (t.power === 'pole') out.powerPoles.push(p);
       else if (t.highway === 'street_lamp') out.streetLamps.push(p);
+      else if (t.power === 'substation' || t.power === 'transformer') out.servicePoints!.push({ kind: t.power, ...p });
+      else if (t.man_made === 'street_cabinet') out.servicePoints!.push({ kind: 'cabinet', ...p, label: t.street_cabinet || t.utility });
+      else if (t.manhole) out.servicePoints!.push({ kind: 'manhole', ...p, label: t.manhole === 'yes' ? undefined : t.manhole });
       continue;
     }
     if (el.type !== 'way' || !el.geometry) continue;
@@ -294,6 +304,11 @@ out geom;`;
       out.buildings.push({ levels: Number.isFinite(lv) ? lv : undefined, lon: cx, lat: cy });
     } else if (t.power === 'line' || t.power === 'minor_line') {
       out.utilities.push({ kind: 'power', coords });
+    } else if (t.power === 'cable') {
+      out.utilities.push({ kind: 'cable', coords });
+    } else if (t.power === 'substation' && coords.length >= 3) {
+      const n = coords.length;
+      out.servicePoints!.push({ kind: 'substation', lon: coords.reduce((s, c) => s + c[0], 0) / n, lat: coords.reduce((s, c) => s + c[1], 0) / n, label: t.name });
     } else if (t.man_made === 'pipeline') {
       const sub = (t.substance ?? '').toLowerCase();
       out.utilities.push({ kind: sub === 'gas' ? 'gas' : sub === 'sewage' ? 'sewer' : 'water', coords });

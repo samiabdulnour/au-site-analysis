@@ -18,6 +18,7 @@ viewer, Nearmap) are replaced with programmatic equivalents:
 | Trees with a size (site sheet) | site visit / arborist | City of Sydney `Trees/FeatureServer/0` on `services1.arcgis.com/cNVyNtjGVZybOQWZ` (height, canopy spread, species; CC BY 4.0) inside the LGA; OSM `natural=tree` with `diameter_crown` / `height` / `circumference` where tagged; nominal 6 m otherwise |
 | Kerbside parking, car parks | site visit | OSM `parking:*` road tags (both schemes), `amenity=parking`, `amenity=parking_space`; kerb position from the cadastral lots |
 | Ground for sight lines | — | NSW SIX `public/NSW_5M_Elevation/ImageServer` (`getSamples` along the line, DFSI 2019) |
+| Services (site sheet) | BYDA enquiry | City of Sydney `Drainage_pipes`, `Drainage_pits`, `Light_poles` (`FeatureServer/0` on `services1.arcgis.com/cNVyNtjGVZybOQWZ`, CC BY 4.0) inside the LGA; Geoscience Australia `services.ga.gov.au/gis/rest/services/Electricity_Infrastructure/MapServer` 2 power lines, 0 substations (CC BY 4.0); OSM `power=line/minor_line/cable/substation/transformer`, `man_made=street_cabinet/pipeline`, `manhole=*` (ODbL). Licence-less or contradicted layers are left out on purpose (see `src/fetch/services.ts`) |
 | Water bodies and coast (view targets) | — | NSW Spatial `NSW_Water_Theme/FeatureServer` — 6 HydroArea (named bays, rivers, lakes), 4 Coastline |
 
 Notes:

@@ -13,7 +13,7 @@ import { METRES_PER_STOREY } from '../fetch/buildings.js';
 import { sheetHtml, esc, T, SWATCH_X, SWATCH_W, LABEL_X, MAP_W, MAP_H } from './chrome.js';
 import { tpl, withTemplate, siteTheme, type SiteLook } from './template.js';
 import { exitPoint } from '../fetch/views.js';
-import { NOMINAL_CANOPY_M } from '../fetch/trees.js';
+import { NOMINAL_CANOPY_M, TREE_SOURCES } from '../fetch/trees.js';
 import { buildParkingBands, type Orientation } from '../lib/parking.js';
 import { levelAt, type ContourM } from '../lib/levels.js';
 
@@ -40,6 +40,13 @@ const CONTOUR = '#3f9a5c';
 const SUN_TEXT = 8.8;    // label size (mm) on the reference
 // The neighbours' boxes, where a theme draws them: a step under the map's lettering, since they stack four or five lines.
 const BOX_TEXT = 4.4;
+// The services' pens, after the office's legend: stormwater orange, electrical
+// cables red, power lines yellow, water blue, sewer green, gas magenta.
+const SERVICE_INK = { stormwater: '#e8862a', cable: '#e3241b', power: '#f2c200', powerHV: '#d9a300', water: '#2f7fd6', sewer: '#7db87d', gas: '#e6007e' } as const;
+const MANHOLE_INK: Record<string, string> = { sewer: '#5f9f5f', drain: '#e8862a', water: '#2f7fd6', telecom: '#9b7fc4', gas: '#e6007e', power: '#e3241b' };
+const SERVICE_TEXT = 3.6;
+// The trees the legend lists: those within this reach of the boundary, at most this many, numbered in this size.
+const TREE_REACH_M = 15, TREE_SCHEDULE_MAX = 16, TREE_TEXT = 4.2;
 // Heritage, where a theme draws it: the office's orange for the items, its red for the conservation areas.
 const HERITAGE_INK = { item: '#e39a3b', area: '#c8372d' } as const;
 
@@ -297,7 +304,9 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
       if (!byKind[kind].length) continue;
       heritageKinds.add(kind);
       const ink = HERITAGE_INK[kind];
-      layers.push(textureSvg(`her${kind}`, byKind[kind].join(''), 'lines', ink, mapBox, 0.8) +
+      // A conservation area can take in the whole sheet (Redfern, Paddington):
+      // its hatch is kept light so the aerial and the analysis still read.
+      layers.push(textureSvg(`her${kind}`, byKind[kind].join(''), 'lines', ink, mapBox, kind === 'area' ? 0.3 : 0.8) +
         `<path d="${byKind[kind].join('')}" fill="none" stroke="${ink}" stroke-width="0.5"/>`);
     }
   }
@@ -549,18 +558,67 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
         fill="none" stroke="#ffffff" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/></g>`);
   }
 
-  // (6) Utilities where mapped (OSM power lines / pipelines; DBYD-grade
-  // service data is not open, so this is best-effort).
+  // (6) Services, where an open licence lets the sheet draw them: the
+  // council's stormwater pipes and pits, Geoscience Australia's high-voltage
+  // lines and substations, and what OpenStreetMap has mapped (overhead lines,
+  // cables, pipelines, substations, cabinets, manholes). The office's own
+  // services come from a Before You Dig enquiry, and the legend says so.
+  const services = sb.services ?? { lines: [], points: [], sources: [] };
+  const servicePoints = sb.furniture.servicePoints ?? [];
   {
-    const styles: Record<string, string> = {
-      power: '#f2c200', water: '#2f7fd6', sewer: '#7db87d', gas: '#e6007e',
-    };
+    const dash = (pts: Pt[]) => 'M' + pts.map((p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join('L');
     for (const u of sb.furniture.utilities) {
       const pts = u.coords.map(([lon, lat2]) => proj(lon, lat2));
       if (pts.length < 2) continue;
-      const d = 'M' + pts.map((p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join('L');
-      layers.push(`<path d="${d}" fill="none" stroke="${styles[u.kind]}" stroke-width="0.7" stroke-dasharray="4,2.2"/>`);
+      layers.push(`<path d="${dash(pts)}" fill="none" stroke="${SERVICE_INK[u.kind]}" stroke-width="0.7" stroke-dasharray="4,2.2"/>`);
     }
+    // A label every so often along a run, kept off the others: the pipe's
+    // size, the line's voltage.
+    const labelled: { x: number; y: number; t: string }[] = [];
+    const along = (pts: Pt[], text: string, ink: string) => {
+      let len = 0;
+      for (let i = 1; i < pts.length; i++) len += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+      if (len < 18) return;
+      let at = len / 2, i = 1;
+      for (; i < pts.length; i++) { const l = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]); if (at <= l) break; at -= l; }
+      const [ax, ay] = pts[i - 1], [bx, by] = pts[Math.min(i, pts.length - 1)];
+      const l = Math.hypot(bx - ax, by - ay) || 1, x = ax + ((bx - ax) * at) / l, y = ay + ((by - ay) * at) / l;
+      if (!inMap([x, y]) || labelled.some((o) => o.t === text && Math.hypot(o.x - x, o.y - y) < 45)) return;
+      let ang = (Math.atan2(by - ay, bx - ax) * 180) / Math.PI;
+      if (ang > 90) ang -= 180;
+      if (ang < -90) ang += 180;
+      const spot = placer.place(x, y, text.length * SERVICE_TEXT * 0.6, SERVICE_TEXT, 4, ang);
+      if (!spot) return;
+      labelled.push({ x, y, t: text });
+      layers.push(`<text transform="translate(${spot[0].toFixed(1)},${spot[1].toFixed(1)}) rotate(${ang.toFixed(1)})" text-anchor="middle" dy="${(SERVICE_TEXT * 0.36).toFixed(2)}" font-size="${SERVICE_TEXT}" font-weight="700" fill="${ink}" stroke="#ffffff" stroke-width="0.8" paint-order="stroke">${esc(text)}</text>`);
+    };
+    for (const l of services.lines) {
+      const pts = l.coords.map(([lon, lat2]) => proj(lon, lat2));
+      if (pts.length < 2 || !pts.some(inMapWide)) continue;
+      const ink = SERVICE_INK[l.kind as keyof typeof SERVICE_INK] ?? '#555';
+      const style = l.kind === 'powerHV' ? `stroke-width="1.1" stroke-dasharray="${l.underground ? '1.2,1.6' : '7,2,1.4,2'}"` : 'stroke-width="0.8" stroke-dasharray="4,2.2"';
+      layers.push(`<path d="${dash(pts)}" fill="none" stroke="${ink}" ${style}/>`);
+      if (l.label) along(pts, l.kind === 'powerHV' && l.underground ? `${l.label} UG` : l.label, ink);
+    }
+    const marks: string[] = [];
+    const point = (kind: string, lon: number, lat2: number, label?: string) => {
+      const [x, y] = proj(lon, lat2);
+      if (!inMap([x, y])) return;
+      const g = (inner: string) => marks.push(`<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})">${inner}</g>`);
+      if (kind === 'stormwaterPit') g(`<rect x="-1.5" y="-1.5" width="3" height="3" fill="#ffffff" stroke="${SERVICE_INK.stormwater}" stroke-width="0.4"/><path d="M-1.5,0H1.5M0,-1.5V1.5" stroke="${SERVICE_INK.stormwater}" stroke-width="0.25"/>`);
+      else if (kind === 'substation' || kind === 'transformer') g(`<rect x="-2" y="-2" width="4" height="4" fill="#ffffff" stroke="${SERVICE_INK.cable}" stroke-width="0.45"/><path d="M0.5,-1.5 L-0.9,0.3 H0.7 L-0.5,1.6" fill="none" stroke="${SERVICE_INK.cable}" stroke-width="0.35" stroke-linejoin="round"/>`);
+      else if (kind === 'cabinet') g(`<rect x="-1.4" y="-0.8" width="2.8" height="1.6" fill="#8a8a8a" stroke="#ffffff" stroke-width="0.2"/>`);
+      else if (kind === 'manhole') { const ink = MANHOLE_INK[label ?? ''] ?? '#6f6f6f'; g(`<circle r="1.5" fill="#ffffff" stroke="${ink}" stroke-width="0.4"/><path d="M-1.06,-1.06L1.06,1.06M1.06,-1.06L-1.06,1.06" stroke="${ink}" stroke-width="0.3"/>`); }
+      else return;
+      if (label && (kind === 'stormwaterPit' || kind === 'substation')) {
+        const w = label.length * SERVICE_TEXT * 0.55;
+        const spot = placer.place(x + w / 2 + 2.6, y, w, SERVICE_TEXT, 6);
+        if (spot) marks.push(`<text x="${(spot[0] - w / 2).toFixed(1)}" y="${(spot[1] + SERVICE_TEXT * 0.36).toFixed(1)}" font-size="${SERVICE_TEXT}" font-weight="700" fill="${kind === 'substation' ? SERVICE_INK.cable : SERVICE_INK.stormwater}" stroke="#ffffff" stroke-width="0.8" paint-order="stroke">${esc(label)}</text>`);
+      }
+    };
+    for (const pt of services.points) if (pt.kind !== 'lightPole') point(pt.kind, pt.lon, pt.lat, pt.label);
+    for (const pt of servicePoints) point(pt.kind, pt.lon, pt.lat, pt.label);
+    layers.push(marks.join(''));
   }
 
 
@@ -666,6 +724,46 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
     layers.push(svg.join(''));
   }
 
+  // ---- the trees on the lot and beside it: numbered, with their data -----------
+  // A DA's arborist starts from these: each tree within reach of the site,
+  // nearest first, numbered T1, T2… on the map and listed in the legend with
+  // what its source recorded — species, height, canopy, trunk — and, where a
+  // trunk diameter is recorded, its tree protection zone drawn dashed:
+  // AS 4970-2009, 12 × DBH, at least 2 m and at most 15 m.
+  const nearTrees: { n: number; t: (typeof sb.furniture.trees)[number]; distM: number; tpzM?: number }[] = [];
+  {
+    const ringM = sb.siteRing.map(([lon, lat2]) => lonLatToMercator({ lon, lat: lat2 }));
+    const distM = (lon: number, lat2: number): number => {
+      const P = lonLatToMercator({ lon, lat: lat2 });
+      let inside = false, best = Infinity;
+      for (let i = 0, j = ringM.length - 1; i < ringM.length; j = i++) {
+        const a = ringM[j], b = ringM[i];
+        if (b.y > P.y !== a.y > P.y && P.x < ((a.x - b.x) * (P.y - b.y)) / (a.y - b.y) + b.x) inside = !inside;
+        const dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy;
+        const t = l2 ? Math.max(0, Math.min(1, ((P.x - a.x) * dx + (P.y - a.y) * dy) / l2)) : 0;
+        best = Math.min(best, Math.hypot(P.x - (a.x + t * dx), P.y - (a.y + t * dy)));
+      }
+      return inside ? 0 : best / k;
+    };
+    const cands = sb.furniture.trees
+      .filter((t) => inMap(proj(t.lon, t.lat)))
+      .map((t) => ({ t, distM: distM(t.lon, t.lat) }))
+      .filter((c) => c.distM <= TREE_REACH_M)
+      .sort((p, q) => p.distM - q.distM)
+      .slice(0, TREE_SCHEDULE_MAX);
+    const svg: string[] = [];
+    cands.forEach((c, i) => {
+      const [x, y] = proj(c.t.lon, c.t.lat);
+      const tpzM = c.t.dbhCm ? Math.min(15, Math.max(2, (12 * c.t.dbhCm) / 100)) : undefined;
+      if (tpzM) svg.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${(tpzM * mmPerM).toFixed(1)}" fill="none" stroke="#2f5e20" stroke-width="0.35" stroke-dasharray="2,1.2"/>`);
+      const label = `T${i + 1}`;
+      const spot = placer.place(x + 3.2, y - 3.2, label.length * TREE_TEXT * 0.62, TREE_TEXT, 8);
+      if (spot) svg.push(`<text x="${spot[0].toFixed(1)}" y="${(spot[1] + TREE_TEXT * 0.36).toFixed(1)}" text-anchor="middle" font-size="${TREE_TEXT}" font-weight="700" fill="#2f5e20" stroke="#ffffff" stroke-width="0.9" paint-order="stroke">${label}</text>`);
+      nearTrees.push({ n: i + 1, t: c.t, distM: c.distM, tpzM });
+    });
+    layers.push(svg.join(''));
+  }
+
   // ---- street furniture ------------------------------------------------------
   layers.push(sb.furniture.hydrants.map((p) => proj(p.lon, p.lat)).filter(inMap)
     .map(([x, y]) => `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="1.4" fill="#1f78d1"/>`)
@@ -673,7 +771,13 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
   layers.push(sb.furniture.powerPoles.map((p) => proj(p.lon, p.lat)).filter(inMap)
     .map(([x, y]) => `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})"><line x1="-1.8" y1="0" x2="1.8" y2="0" stroke="#333" stroke-width="0.3"/><circle r="0.9" fill="none" stroke="#333" stroke-width="0.35"/></g>`)
     .join(''));
-  layers.push(sb.furniture.streetLamps.map((p) => proj(p.lon, p.lat)).filter(inMap)
+  const lamps = [...sb.furniture.streetLamps];
+  for (const pt of services.points) {
+    if (pt.kind !== 'lightPole') continue;
+    const P = lonLatToMercator({ lon: pt.lon, lat: pt.lat });
+    if (!sb.furniture.streetLamps.some((q) => { const Q = lonLatToMercator(q); return Math.hypot(Q.x - P.x, Q.y - P.y) < 3 * k; })) lamps.push({ lon: pt.lon, lat: pt.lat });
+  }
+  layers.push(lamps.map((p) => proj(p.lon, p.lat)).filter(inMap)
     .map(([x, y]) => `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})"><circle r="1" fill="#f0c020" stroke="#a8860b" stroke-width="0.25"/>${[0, 60, 120, 180, 240, 300].map((a) => { const r0 = 1.3, r1 = 2.1, ar = (a * Math.PI) / 180; return `<line x1="${(r0 * Math.cos(ar)).toFixed(1)}" y1="${(r0 * Math.sin(ar)).toFixed(1)}" x2="${(r1 * Math.cos(ar)).toFixed(1)}" y2="${(r1 * Math.sin(ar)).toFixed(1)}" stroke="#a8860b" stroke-width="0.2"/>`; }).join('')}</g>`)
     .join(''));
 
@@ -1272,13 +1376,34 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
       : treeStats.nominal ? `nominal ${NOMINAL_CANOPY_M} m canopy, not measured` : 'recorded canopy';
     row(`<circle cx="${mid}" cy="3.2" r="2.8" fill="#7dbb57" fill-opacity="0.45" stroke="#4e8c33" stroke-width="0.4"/><circle cx="${mid}" cy="3.2" r="0.5" fill="#2f5e20"/>`, 'TREES, CANOPY TO SCALE', sub);
   }
+  if (nearTrees.length) {
+    // The schedule: one line a tree, in columns, under a row that keys the numbers and the zone.
+    const sources = [...new Set(nearTrees.map((x) => (x.t.source === 'osm' ? 'OpenStreetMap' : TREE_SOURCES.find((s2) => s2.id === x.t.source)?.name ?? x.t.source)))].join('; ');
+    row(`<text x="${SWATCH_X + 1}" y="4.6" font-size="3.4" font-weight="700" fill="#2f5e20">T1</text><circle cx="${SWATCH_X + 15}" cy="3.2" r="3" fill="none" stroke="#2f5e20" stroke-width="0.35" stroke-dasharray="1.4,0.8"/>`,
+      'TREES BY THE SITE', `within ${TREE_REACH_M} m · TPZ dashed, 12 × DBH (AS 4970-2009)`);
+    const cols = [0, 6, 44, 52, 60, 70].map((c) => SWATCH_X + c);
+    const fs = 2.15, lh = 3.3;
+    const cell = (x: number, y: number, t: string, bold = false, ink = '#222') => `<text x="${x}" y="${y.toFixed(2)}" font-size="${fs}"${bold ? ' font-weight="700"' : ''} fill="${ink}">${esc(t)}</text>`;
+    let yy = ly + 1;
+    legendSvg += ['', 'TREE', 'H m', 'C m', 'DBH cm', 'TPZ m'].map((h, i) => cell(cols[i], yy, h, true, '#666')).join('');
+    for (const x of nearTrees) {
+      yy += lh;
+      const name = (x.t.common || x.t.species || 'species not recorded').replace(/\s+/g, ' ');
+      const fig = (v?: number) => (v ? (v >= 10 ? Math.round(v).toString() : v.toFixed(1)) : '–');
+      legendSvg += cell(cols[0], yy, `T${x.n}`, true, '#2f5e20') + cell(cols[1], yy, name.length > 30 ? `${name.slice(0, 29)}…` : name) +
+        cell(cols[2], yy, fig(x.t.heightM)) + cell(cols[3], yy, x.t.canopySource === 'nominal' ? '–' : fig(x.t.canopyM)) +
+        cell(cols[4], yy, x.t.dbhCm ? String(Math.round(x.t.dbhCm)) : '–') + cell(cols[5], yy, fig(x.tpzM));
+    }
+    legendSvg += cell(cols[0], yy + lh, `from ${sources}`, false, '#666');
+    ly = yy + lh + 6;
+  }
   if ((sb.views ?? []).some((v) => v.cone) && look.views === 'cone') {
     row(`<path d="M${SWATCH_X + 2},3.2 L${SWATCH_X + SWATCH_W - 1},-0.4 A12,12 0 0 1 ${SWATCH_X + SWATCH_W - 1},6.8 Z" fill="#ffffff" stroke="#9a9a9a" stroke-width="0.25"/>`, 'POTENTIAL VIEW', `terrain only, from ${Math.round(sb.eyeAboveM ?? 8)} m up; no buildings`);
   } else if ((sb.views ?? []).some((v) => v.cone)) {
     row(`<g transform="translate(${SWATCH_X + 11},3.2) rotate(-14) scale(0.62)" fill="#fff" stroke="${SITE_RED}" stroke-width="0.7" stroke-linejoin="round"><path d="M-7,-1.7 L6,-2.6 L6,2.6 L-7,1.7 Z"/><rect x="6" y="-3.3" width="2.6" height="6.6"/><rect x="-9.6" y="-1.2" width="2.6" height="2.4"/></g>`, 'POTENTIAL VIEW', `terrain only, from ${Math.round(sb.eyeAboveM ?? 8)} m up; no buildings`);
   }
   if (sb.furniture.powerPoles.length) row(`<g transform="translate(${mid},3.2)"><line x1="-2.4" y1="0" x2="2.4" y2="0" stroke="#333" stroke-width="0.4"/><circle r="1.2" fill="none" stroke="#333" stroke-width="0.45"/></g>`, 'POWER POLE');
-  if (sb.furniture.streetLamps.length) row(`<circle cx="${mid}" cy="3.2" r="1.4" fill="#f0c020" stroke="#a8860b" stroke-width="0.3"/>`, 'LIGHT POLE');
+  if (lamps.length) row(`<circle cx="${mid}" cy="3.2" r="1.4" fill="#f0c020" stroke="#a8860b" stroke-width="0.3"/>`, 'LIGHT POLE');
   if (sb.furniture.hydrants.length) row(`<circle cx="${mid}" cy="3.2" r="1.8" fill="#1f78d1"/>`, 'HYDRANT');
   if (sb.busStops.length) row(`<g transform="translate(${mid},3.2)"><circle r="3.4" fill="#fff" stroke="#2f7fd6" stroke-width="0.8"/><text text-anchor="middle" dy="1.9" font-size="5.7" font-weight="700" fill="#2f7fd6">B</text></g>`, 'BUS STOPS');
   if (sb.furniture.onewayRoads.length) row(`<path d="M${SWATCH_X},3.2 L${SWATCH_X + SWATCH_W - 4},3.2 M${SWATCH_X + SWATCH_W - 7},1.4 L${SWATCH_X + SWATCH_W - 4},3.2 L${SWATCH_X + SWATCH_W - 7},5" fill="none" stroke="#8a8a8a" stroke-width="1.0"/>`, 'TRAFFIC DIRECTION');
@@ -1305,10 +1430,54 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
   }
 
   const utilKinds = new Set(sb.furniture.utilities.map((u) => u.kind));
+  const srcName = (id: string) => (id === 'cityofsydney' ? 'City of Sydney, CC BY 4.0' : id === 'ga' ? 'Geoscience Australia, CC BY 4.0' : id);
+  const linesOf = (kind: string) => services.lines.filter((l) => l.kind === kind);
+  const pointsOf = (kind: string) => services.points.filter((p) => p.kind === kind);
+  const fromSources = (items: { source: string }[]) => [...new Set(items.map((i) => srcName(i.source)))].join('; ');
+  if (linesOf('stormwater').length) row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${SERVICE_INK.stormwater}" stroke-width="0.9" stroke-dasharray="4,2.2"/>`, 'STORMWATER (Ø mm)', fromSources(linesOf('stormwater')));
+  if (pointsOf('stormwaterPit').length) row(`<g transform="translate(${mid},3.2)"><rect x="-1.8" y="-1.8" width="3.6" height="3.6" fill="#fff" stroke="${SERVICE_INK.stormwater}" stroke-width="0.4"/><path d="M-1.8,0H1.8M0,-1.8V1.8" stroke="${SERVICE_INK.stormwater}" stroke-width="0.25"/></g>`, 'DRAINAGE PIT (IL m AHD)', fromSources(pointsOf('stormwaterPit')));
+  if (linesOf('powerHV').length) row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${SERVICE_INK.powerHV}" stroke-width="1.1" stroke-dasharray="5,1.6,1,1.6"/>`, 'HIGH VOLTAGE LINE (kV)', fromSources(linesOf('powerHV')));
+  if (pointsOf('substation').length || servicePoints.some((p) => p.kind === 'substation' || p.kind === 'transformer'))
+    row(`<g transform="translate(${mid},3.2)"><rect x="-2" y="-2" width="4" height="4" fill="#fff" stroke="${SERVICE_INK.cable}" stroke-width="0.45"/><path d="M0.5,-1.5 L-0.9,0.3 H0.7 L-0.5,1.6" fill="none" stroke="${SERVICE_INK.cable}" stroke-width="0.35"/></g>`, 'SUBSTATION / TRANSFORMER', [fromSources(pointsOf('substation')), servicePoints.some((p) => p.kind === 'substation' || p.kind === 'transformer') ? 'OpenStreetMap' : ''].filter(Boolean).join('; '));
+  if (utilKinds.has('cable')) row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${SERVICE_INK.cable}" stroke-width="0.9" stroke-dasharray="4,2.2"/>`, 'ELECTRICAL CABLES', 'where OpenStreetMap maps them');
+  if (servicePoints.some((p) => p.kind === 'cabinet')) row(`<rect x="${mid - 1.6}" y="2.3" width="3.2" height="1.8" fill="#8a8a8a"/>`, 'SERVICE CABINET', 'OpenStreetMap');
+  if (servicePoints.some((p) => p.kind === 'manhole')) row(`<g transform="translate(${mid},3.2)"><circle r="1.7" fill="#fff" stroke="#6f6f6f" stroke-width="0.4"/><path d="M-1.2,-1.2L1.2,1.2M1.2,-1.2L-1.2,1.2" stroke="#6f6f6f" stroke-width="0.3"/></g>`, 'MANHOLE', 'OpenStreetMap; coloured by what it serves');
   if (utilKinds.has('power')) row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="#f2c200" stroke-width="0.9" stroke-dasharray="4,2.2"/>`, 'POWER LINES');
   if (utilKinds.has('water')) row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="#2f7fd6" stroke-width="0.9" stroke-dasharray="4,2.2"/>`, 'WATER MAIN');
   if (utilKinds.has('sewer')) row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="#7db87d" stroke-width="0.9" stroke-dasharray="4,2.2"/>`, 'SEWER MAIN');
   if (utilKinds.has('gas')) row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="#e6007e" stroke-width="0.9" stroke-dasharray="4,2.2"/>`, 'GAS MAIN');
+  // Every sheet says where its services stop: what is drawn is open data
+  // only, and the water, sewer, gas, electrical and telecom plans are a
+  // Before You Dig enquiry's.
+  const anyServices = services.lines.length || services.points.length || sb.furniture.utilities.length || servicePoints.length;
+  row('', anyServices ? 'SERVICES: OPEN DATA ONLY' : 'SERVICES: NONE OPEN HERE', 'not a substitute for a Before You Dig enquiry');
+
+  // The licences' attributions, folded by holder and licence ("Trees,
+  // contours, drainage © City of Sydney · … · CC BY 4.0"). Short enough, they
+  // go on the data line under the date; longer, they close the legend.
+  const credit = (() => {
+    const groups = new Map<string, string[]>();
+    for (const a of sb.attributions ?? []) {
+      const m = a.match(/^(.*?)\s*©\s*(.*?),\s*(CC BY[^,]*|ODbL[^,]*)$/);
+      if (!m) { groups.set(a, []); continue; }
+      const key = `© ${m[2]}|${m[3]}`;
+      (groups.get(key) ?? groups.set(key, []).get(key)!).push(m[1]);
+    }
+    const licences = new Set([...groups.keys()].map((k) => k.split('|')[1]).filter(Boolean));
+    const parts = [...groups].map(([key, subjects]) => {
+      const [holder, lic] = key.split('|');
+      if (!subjects.length) return key;
+      const what = subjects.map((w, i) => (i ? w.toLowerCase() : w)).join(', ');
+      return `${what} ${holder}${licences.size > 1 && lic ? `, ${lic}` : ''}`;
+    });
+    return parts.length ? `${parts.join(' · ')}${licences.size === 1 ? `, ${[...licences][0]}` : ''}` : '';
+  })();
+  const creditInLegend = credit.length > 90;
+  if (creditInLegend) {
+    ly += 2;
+    legendSvg += `<text x="${SWATCH_X}" y="${ly}" font-size="${T.legend}" font-weight="700" fill="#222">DATA</text>`;
+    wrapLabel(credit, 56).forEach((l, i) => { legendSvg += `<text x="${SWATCH_X}" y="${(ly + 3.4 + i * 3).toFixed(1)}" font-size="${T.legend * 0.85}" fill="#555">${esc(l)}</text>`; });
+  }
 
   // The theme's face for every word on the map and in the legend: Arial
   // Narrow for Cardinal (Liberation Sans Narrow on the server), Arial for Canary.
@@ -1327,6 +1496,6 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
     legendHeading: 'LEGEND',
     legendSvg,
     layers,
-    dataNote: sb.attributions?.length ? sb.attributions.join(' · ') : undefined,
+    dataNote: credit && !creditInLegend ? credit : undefined,
   });
 }

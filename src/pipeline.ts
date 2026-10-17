@@ -255,6 +255,7 @@ function pointInRing(x: number, y: number, ring: number[][]): boolean {
 
 import { fetchContours, fetchNeighbourAddresses, fetchSiteFurniture, emptyFurniture, type ContourLine, type ContourSet, type NeighbourAddress, type SiteFurniture } from './fetch/siteData.js';
 import { fetchCouncilTrees, mergeTrees, TREE_SOURCES } from './fetch/trees.js';
+import { fetchServices, emptyServices, type ServicesData } from './fetch/services.js';
 import { assessViews, eyeAboveGround, type ViewTarget } from './fetch/views.js';
 import { fetchCountry, EMPTY_COUNTRY, type CountryData } from './fetch/country.js';
 import { fetchPhotos, emptyPhotos, type PhotosData } from './fetch/photos.js';
@@ -281,6 +282,8 @@ export interface SiteBundle {
   heights?: GeoJSONFC;
   /** The LEP's heritage items and conservation areas over the sheet (older bundles: none). */
   heritage?: GeoJSONFC;
+  /** The services an open licence lets the sheet draw (fetch/services.ts; older bundles: none). */
+  services?: ServicesData;
   contours: ContourLine[];
   /** Interval and origin of the contours drawn (older bundles: 2 m, NSW). */
   contourIntervalM?: number;
@@ -375,7 +378,7 @@ export async function runSitePipeline(address: string, opts: SitePipelineOpts): 
   const nswContours: ContourSet = { lines: [], intervalM: 2, source: 'NSW Spatial Services' };
   const noBuildings: BuildingsData = { source: 'none', buildings: [], fetchedAt: new Date().toISOString() };
   const emptyFc: GeoJSONFC = { type: 'FeatureCollection', features: [] };
-  const [contourSet, allLots, roads, railLines, zoning, heights, heritage, neighbours, furniture, aerial, councilTrees, parkPoints, controls, buildings] = await Promise.all([
+  const [contourSet, allLots, roads, railLines, zoning, heights, heritage, services, neighbours, furniture, aerial, councilTrees, parkPoints, controls, buildings] = await Promise.all([
     soft(fetchContours(extent, log), nswContours, 'contours'),
     soft(fetchAllLots(extent), { type: 'FeatureCollection', features: [] } as GeoJSONFC, 'lots'),
     soft(fetchRoads(extent), [], 'roads'),
@@ -383,6 +386,7 @@ export async function runSitePipeline(address: string, opts: SitePipelineOpts): 
     soft(fetchZoning(extent), { type: 'FeatureCollection', features: [] } as GeoJSONFC, 'zoning'),
     soft(fetchHeightOfBuilding(extent), emptyFc, 'height of building'),
     soft(fetchHeritage(extent), emptyFc, 'heritage'),
+    soft(fetchServices(extent, log), emptyServices(), 'services'),
     soft(fetchNeighbourAddresses(extent), [], 'neighbour addresses'),
     soft(fetchSiteFurniture(extent), emptyFurniture(), 'street furniture (OSM)'),
     fetchAerial(extent, 3600, dataDir),
@@ -423,11 +427,13 @@ export async function runSitePipeline(address: string, opts: SitePipelineOpts): 
   const attributions = [
     ...TREE_SOURCES.filter((s) => councilTrees.some((t) => t.source === s.id)).map((s) => s.attribution),
     ...(contourSet.attribution ? [contourSet.attribution] : []),
+    ...services.sources.map((s) => s.attribution),
   ];
+  if (services.sources.length) log(`  services: ${services.sources.map((s) => `${s.name} (${s.count})`).join(', ')}`);
 
   const bundle: SiteBundle = {
     address, geocode: geo, extent, view, scale,
-    siteLots, siteRing: ring, allLots, roads, railLines, zoning, heights, heritage,
+    siteLots, siteRing: ring, allLots, roads, railLines, zoning, heights, heritage, services,
     contours: contourSet.lines, contourIntervalM: contourSet.intervalM, contourSource: contourSet.source,
     neighbours, furniture, parkingBands, views, eyeAboveM, attributions,
     busStops, buildings, aerial, generatedAt: new Date().toISOString(),
