@@ -31,6 +31,9 @@ export const fetchZoning = (extent: Extent) =>
 export const fetchHeightOfBuilding = (extent: Extent) =>
   queryByExtent(`${EPI}/5`, extent, 'MAX_B_H,UNITS,LAY_CLASS');
 
+export const fetchFloorSpaceRatio = (extent: Extent) =>
+  queryByExtent(`${EPI}/1`, extent, 'FSR');
+
 export const fetchHeritage = (extent: Extent) =>
   queryByExtent(`${EPI}/0`, extent, 'LAY_CLASS,H_NAME,SIG');
 

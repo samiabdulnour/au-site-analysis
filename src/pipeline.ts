@@ -3,7 +3,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { geocode, type GeocodeResult } from './fetch/geocode.js';
-import { fetchSiteLots, fetchRailCorridors, fetchZoning, fetchHeightOfBuilding, fetchHeritage, fetchSiteControls } from './fetch/nsw.js';
+import { fetchSiteLots, fetchRailCorridors, fetchZoning, fetchHeightOfBuilding, fetchFloorSpaceRatio, fetchHeritage, fetchSiteControls } from './fetch/nsw.js';
 import { fetchRoads, fetchRailLines, fetchTrainStations, fetchParkPoints, fetchComplexPoints, fetchNamedAreas, fetchAllLots, fetchPropertiesAt, type TopoRoad, type NamedPoint, type RailLines, type NamedArea } from './fetch/nswTopo.js';
 import { fetchAerial, fetchVegetationMask, type AerialResult } from './fetch/imagery.js';
 import { addressStreet, fetchStreetSeries } from './fetch/streetView.js';
@@ -18,7 +18,7 @@ import type { SummaryBundle } from './render/summarySheet.js';
 import type { YieldBundle } from './render/yieldSheet.js';
 import { CENTRES } from './data/centres.js';
 import { levelAt, type ContourM } from './lib/levels.js';
-import { futureHeight } from './lib/yield.js';
+import { futureHeight, ringArea, type FutureControls } from './lib/yield.js';
 import {
   fetchZoningDetailed, fetchHobDetailed, fetchHeritageDetailed, fetchShrCurtilages, fetchPolicyAreas,
   fetchWaterAreas, fetchPlanningContext, fetchPropertyReport, fetchHousingTarget,
@@ -522,8 +522,8 @@ export async function runSummaryPipeline(
 // the lot's boundary with the streets along it, the ground's level, the
 // nearest station (which decides the parking rates), the housing-policy maps
 // at the site, and the neighbours' footprints with their heights for the
-// massing's context, each with the height its zone and height control let it
-// rise to. For the plan, drawn as the site analysis draws its ground: each
+// massing's context, each with what its zone, height of building and floor
+// space ratio let it rise to. For the plan, drawn as the site analysis draws its ground: each
 // lot's street numbers, zone and height of building, and the kerbs. The study
 // itself is computed when the sheet is drawn (render/yieldSheet.ts), so an
 // edited `yield_assumptions.json` beside the output needs no refetch.
@@ -556,7 +556,7 @@ export async function runYieldPipeline(
   log('reading planning controls, streets, levels, stations and the neighbours…');
   const emptyFc: GeoJSONFC = { type: 'FeatureCollection', features: [] };
   const noBuildings: BuildingsData = { source: 'none', buildings: [], fetchedAt: new Date().toISOString() };
-  const [controls, roads, lots, contourSet, stations, policy, buildings, zoning, hob, addresses, footways] = await Promise.all([
+  const [controls, roads, lots, contourSet, stations, policy, buildings, zoning, hob, fsr, addresses, footways] = await Promise.all([
     fetchSiteControls(geo.center),
     soft(fetchRoads(around(110)), [], 'roads'),
     soft(fetchAllLots(around(110)), emptyFc, 'lots'),
@@ -566,6 +566,7 @@ export async function runYieldPipeline(
     soft(fetchBuildings(around(110), log), noBuildings, 'buildings'),
     soft(fetchZoning(around(110)), emptyFc, 'zoning'),
     soft(fetchHeightOfBuilding(around(110)), emptyFc, 'height of building'),
+    soft(fetchFloorSpaceRatio(around(110)), emptyFc, 'floor space ratio'),
     soft(fetchNeighbourAddresses(around(110)), [] as NeighbourAddress[], 'addresses'),
     soft(fetchFootways(around(110), log), { source: 'none', lines: [], fetchedAt: new Date().toISOString() } as FootwaysData, 'footways'),
   ]);
@@ -607,29 +608,43 @@ export async function runYieldPipeline(
   const policyAtSite = policy.filter((pa) => pa.rings.some((r) => pointInRingLL(centreLL.lon, centreLL.lat, r))).map((pa) => ({ kind: pa.kind, name: pa.name }));
 
   // The neighbours' footprints with what is known of their height; one with
-  // none stands in at a nominal two storeys, drawn as such. Each also gets its
-  // future: raised to the whole storeys its height control holds where the
-  // zone permits flats (lib/yield.ts futureHeight). A control mapped as an RL
-  // is read above the ground the contours give at the building.
+  // none stands in at a nominal two storeys, drawn as such. Each also carries
+  // what its future is read from (lib/yield.ts futureHeight, worked out when
+  // the sheet is drawn so a changed efficiency carries): its zone, its height
+  // of building — a control mapped as an RL read above the ground the
+  // contours give at the building — its floor space ratio, and the land it
+  // stands on, its lot shared between the buildings on it by footprint.
   const siteRingLL = ring;
   // Even-odd over every ring, so a point in a polygon's hole is outside it.
   const at = (fc: GeoJSONFC, lon: number, lat: number) =>
     fc.features.find((f) => ringsOf(f.geometry).filter((rg) => pointInRingLL(lon, lat, rg)).length % 2 === 1)?.properties;
-  const context = buildings.buildings
-    .filter((bd) => !pointInRingLL(bd.centroid[0], bd.centroid[1], siteRingLL))
-    .map((bd) => {
-      const heightM = bd.estimatedHeightM ?? bd.heightM ?? (bd.floors ? bd.floors * METRES_PER_STOREY : 0);
-      const [lon, lat] = bd.centroid;
-      const h = at(hob, lon, lat), value = Number(h?.MAX_B_H);
-      let hobM: number | undefined = Number.isFinite(value) && value > 0 ? value : undefined;
-      if (hobM && /rl|ahd/i.test(String(h?.UNITS ?? ''))) {
-        const g = levelAt(toM([lon, lat]), contoursM, contourSet.intervalM);
-        hobM = g == null ? undefined : hobM - g;
-      }
-      const futureM = futureHeight(String(at(zoning, lon, lat)?.SYM_CODE ?? ''), hobM, heightM, METRES_PER_STOREY);
-      return { rings: bd.rings, heightM, known: !!(bd.estimatedHeightM ?? bd.heightM ?? bd.floors), ...(futureM ? { futureM } : {}) };
-    });
-  log(`  neighbours: ${context.length}, ${context.filter((c) => c.futureM).length} with a future height over today's`);
+  const areaM = (rings: number[][][]) => rings.reduce((t, rg, i) => t + (i ? -1 : 1) * ringArea(rg.map(toM)), 0);
+  const lotRingsAll = lots.features.map((f) => ringsOf(f.geometry)).filter((r) => r.length);
+  const lotOf = (lon: number, lat: number) => lotRingsAll.findIndex((rings) => rings.filter((rg) => pointInRingLL(lon, lat, rg)).length % 2 === 1);
+  const standing = buildings.buildings.filter((bd) => !pointInRingLL(bd.centroid[0], bd.centroid[1], siteRingLL))
+    .map((bd) => ({ bd, footprint: areaM(bd.rings.slice(0, 1)), lot: lotOf(bd.centroid[0], bd.centroid[1]) }));
+  const footprintOnLot = new Map<number, number>();
+  for (const s of standing) if (s.lot >= 0) footprintOnLot.set(s.lot, (footprintOnLot.get(s.lot) ?? 0) + s.footprint);
+  const context = standing.map(({ bd, footprint, lot }) => {
+    const heightM = bd.estimatedHeightM ?? bd.heightM ?? (bd.floors ? bd.floors * METRES_PER_STOREY : 0);
+    const [lon, lat] = bd.centroid;
+    const h = at(hob, lon, lat), value = Number(h?.MAX_B_H);
+    let hobM: number | undefined = Number.isFinite(value) && value > 0 ? value : undefined;
+    if (hobM && /rl|ahd/i.test(String(h?.UNITS ?? ''))) {
+      const g = levelAt(toM([lon, lat]), contoursM, contourSet.intervalM);
+      hobM = g == null ? undefined : hobM - g;
+    }
+    const zone = at(zoning, lon, lat)?.SYM_CODE, f = Number(at(fsr, lon, lat)?.FSR);
+    const landSqm = lot >= 0 ? (areaM(lotRingsAll[lot]) * footprint) / (footprintOnLot.get(lot) || footprint) : undefined;
+    const controls: FutureControls = {
+      ...(zone ? { zone: String(zone).trim() } : {}),
+      ...(hobM ? { hobM: Math.round(hobM * 10) / 10 } : {}),
+      ...(Number.isFinite(f) && f > 0 ? { fsr: f } : {}),
+      ...(landSqm ? { landSqm: Math.round(landSqm) } : {}),
+    };
+    return { rings: bd.rings, heightM, known: !!(bd.estimatedHeightM ?? bd.heightM ?? bd.floors), controls, footprint };
+  });
+  log(`  neighbours: ${context.length}, ${context.filter((c) => futureHeight(c.controls, c.footprint, c.known ? c.heightM : undefined)).length} with a future height over today's`);
 
   // Each lot with what the plan writes on it: its street numbers (the address
   // points inside it), and the zone and height of building at a point inside it.
@@ -675,7 +690,7 @@ export async function runYieldPipeline(
     roads: roads.filter((r) => r.coords.some(([lon, lat]) => near(lon, lat))),
     parcels,
     kerbs,
-    context,
+    context: context.map(({ footprint: _f, ...c }) => c),
     buildingsSource: buildings.source,
     assumptions,
   };

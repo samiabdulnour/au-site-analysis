@@ -27,8 +27,8 @@ import turfUnion from '@turf/union';
 import { featureCollection, polygon } from '@turf/helpers';
 import { lonLatToMercator, mercatorScaleFactor, mercatorToLonLat } from '../lib/geo.js';
 import {
-  computeYield, edgeKinds, ringArea, withFour, PARKING_RATES, DEFAULT_ASSUMPTIONS, UNIT_KINDS, ADG_MINIMUM,
-  type XY, type YieldAssumptions, type YieldResult, type Use, type Tier, type UnitKind,
+  computeYield, edgeKinds, ringArea, withFour, futureHeight, PARKING_RATES, DEFAULT_ASSUMPTIONS, UNIT_KINDS, ADG_MINIMUM,
+  type XY, type YieldAssumptions, type YieldResult, type Use, type Tier, type UnitKind, type FutureControls,
 } from '../lib/yield.js';
 
 export interface YieldBundle extends SummaryData {
@@ -54,10 +54,12 @@ export interface YieldBundle extends SummaryData {
   kerbs?: KerbLine[];
   /**
    * The neighbours' footprints with their heights, for the massing's context,
-   * and the height each may rise to where that is more (lib/yield.ts
-   * futureHeight). A bundle from before the future heights has none.
+   * and what each one's future is read from (lib/yield.ts futureHeight): its
+   * zone, height of building, floor space ratio and land. A bundle from
+   * before the floor space ratio carries the future itself instead
+   * (`futureM`, by the height alone); one from before the futures, neither.
    */
-  context: { rings: number[][][]; heightM: number; known: boolean; futureM?: number }[];
+  context: { rings: number[][][]; heightM: number; known: boolean; controls?: FutureControls; futureM?: number }[];
   buildingsSource: string;
   /** From `yield_assumptions.json` beside the output, when there is one. */
   assumptions?: Partial<YieldAssumptions>;
@@ -87,6 +89,8 @@ export interface YieldStudy {
   hob?: { value: number; rl: boolean; metres?: number };
   parkingSet: keyof typeof PARKING_RATES | 'custom';
   frontageLengths: { name: string; lengthM: number }[];
+  /** Each neighbour's future height where it would rise, in the order of the bundle's context. */
+  futures: (number | undefined)[];
 }
 
 export function yieldStudy(b: YieldBundle): YieldStudy {
@@ -123,7 +127,12 @@ export function yieldStudy(b: YieldBundle): YieldStudy {
     byName.set(name, (byName.get(name) ?? 0) + Math.hypot(q.x - p.x, q.y - p.y));
   });
   const frontageLengths = [...byName].map(([name, lengthM]) => ({ name, lengthM })).sort((p, q) => q.lengthM - p.lengthM);
-  return { base, bonus, ring, fronts, toLocal, hob, parkingSet, frontageLengths };
+  const futures = b.context.map((cb) => {
+    if (!cb.controls) return cb.futureM;
+    const rg = (cb.rings[0] ?? []).map(([lon, lat]) => toLocal(lon, lat));
+    return futureHeight(cb.controls, rg.length >= 3 ? ringArea(rg) : 0, cb.known ? cb.heightM : undefined, base.assumptions);
+  });
+  return { base, bonus, ring, fronts, toLocal, hob, parkingSet, frontageLengths, futures };
 }
 
 // ---- the table's rows ---------------------------------------------------------
@@ -457,17 +466,18 @@ function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number;
   // What is drawn: the neighbours within reach, the built tiers, the envelope and the height plane.
   const reach = Math.max(...s.ring.map((p) => Math.hypot(p.x, p.y))) + 70;
   const prisms: { key: number; group: Prism[] }[] = [];
-  for (const cb of b.context) {
+  b.context.forEach((cb, i) => {
     const rings = [cb.rings[0]?.map(([lon, lat]) => s.toLocal(lon, lat)) ?? []].filter((rg) => rg.length >= 3);
-    if (!rings.length) continue;
+    if (!rings.length) return;
     const cen = rings[0].reduce((t, p) => ({ x: t.x + p.x / rings[0].length, y: t.y + p.y / rings[0].length }), { x: 0, y: 0 });
-    if (Math.hypot(cen.x, cen.y) > reach) continue;
+    if (Math.hypot(cen.x, cen.y) > reach) return;
     const z1 = cb.known ? cb.heightM : 6.2;
     const group: Prism[] = [{ rings, z0: 0, z1, fill: CONTEXT_FILL, edge: CONTEXT_EDGE, edgeW: 0.12, dashed: !cb.known }];
-    // What it may rise to under its own height control, over what stands.
-    if (cb.futureM && cb.futureM > z1) group.push({ rings, z0: z1, z1: cb.futureM, fill: FUTURE_FILL, edge: FUTURE_EDGE, edgeW: 0.12, dashed: true, dash: FUTURE_DASH, opacity: FUTURE_OPACITY });
+    // What it may rise to under its own controls, over what stands.
+    const future = s.futures[i];
+    if (future && future > z1) group.push({ rings, z0: z1, z1: future, fill: FUTURE_FILL, edge: FUTURE_EDGE, edgeW: 0.12, dashed: true, dash: FUTURE_DASH, opacity: FUTURE_OPACITY });
     prisms.push({ key: depth(cen), group });
-  }
+  });
   const z = storeyZ(y);
   const built: Prism[] = [];
   for (const t of y.tiers) {
@@ -536,7 +546,7 @@ function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number;
   };
   for (const { group } of prisms) for (const pr of group) parts.push(prismSvg(pr));
   // The proposal's outline over everything, so a future neighbour in front of it does not lose it.
-  if (b.context.some((cb) => cb.futureM)) parts.push(silhouette(built));
+  if (s.futures.some(Boolean)) parts.push(silhouette(built));
 
   // The envelope each tier is allowed, dashed at its top; the height plane over the site.
   const over: string[] = [];
@@ -947,8 +957,8 @@ function drawYieldSheet(b: YieldBundle, meta: SheetMeta): string {
   row(`<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="${CONTEXT_FILL}" stroke="${CONTEXT_EDGE}" stroke-width="0.25"/>`, `NEIGHBOURS AT THEIR HEIGHTS (${b.buildingsSource === 'overture' ? 'OVERTURE' : 'OSM'}; DASHED: NOT RECORDED)`);
   // The plan's kerbs.
   if (plan.kerbs.length) row(`<line x1="${SWATCH_X}" y1="3.25" x2="${SWATCH_X + SWATCH_W}" y2="3.25" stroke="${KERB_INK}" stroke-width="0.35"/>`, 'KERB LINE (INDICATIVE)');
-  const futures = b.context.some((cb) => cb.futureM);
-  if (futures) row(`<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="${FUTURE_FILL}" fill-opacity="${FUTURE_OPACITY}" stroke="${FUTURE_EDGE}" stroke-width="0.3" stroke-dasharray="${FUTURE_DASH}"/>`, "NEIGHBOURS' FUTURE HEIGHT, TO THEIR LEP HEIGHT OF BUILDING");
+  const futures = s.futures.some(Boolean);
+  if (futures) row(`<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="${FUTURE_FILL}" fill-opacity="${FUTURE_OPACITY}" stroke="${FUTURE_EDGE}" stroke-width="0.3" stroke-dasharray="${FUTURE_DASH}"/>`, "NEIGHBOURS' FUTURE HEIGHT, TO THEIR LEP HEIGHT AND FSR");
   const notesText = [
     'A feasibility study, not a design:',
     'the envelope follows the mapped LEP',
@@ -965,7 +975,9 @@ function drawYieldSheet(b: YieldBundle, meta: SheetMeta): string {
       'a zone that permits flats (R1, R3,',
       'R4, MU1, E1, E2, B1–B4), raised to',
       'the whole 3.1m storeys its LEP',
-      'height of building holds; never',
+      'height of building allows, and no',
+      'more than its lot\'s floor space',
+      'ratio holds on its footprint; never',
       'lowered.',
     ] : []),
   ];

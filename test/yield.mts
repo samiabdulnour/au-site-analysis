@@ -136,17 +136,34 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
 
 // ---- the neighbours' future ----------------------------------------------------------------
 {
-  const f = futureHeight('R4', 22, 6.2);
+  const R4 = (hobM?: number, fsr?: number, landSqm?: number) => ({ zone: 'R4', hobM, fsr, landSqm });
+  // Height alone (no FSR mapped): the whole storeys under it.
+  const f = futureHeight(R4(22), 300, 6.2);
   check('future: an R4 neighbour of two storeys rises to the whole storeys under 22 m', f !== undefined && near(f, 7 * 3.1, 1e-6), String(f));
-  check('future: R2 stays a house', futureHeight('R2', 22, 6.2) === undefined);
-  check('future: a zone code is read whatever its case and spacing', futureHeight(' mu1 ', 30, 9) !== undefined);
-  check('future: a building at its control is its own future', futureHeight('R4', 22, 21.7) === undefined);
-  check('future: a building over its control is never lowered', futureHeight('R4', 12, 30) === undefined);
-  check('future: no height control, no future', futureHeight('R4', undefined, 6.2) === undefined);
+  check('future: R2 stays a house', futureHeight({ zone: 'R2', hobM: 22 }, 300, 6.2) === undefined);
+  check('future: a zone code is read whatever its case and spacing', futureHeight({ zone: ' mu1 ', hobM: 30 }, 300, 9) !== undefined);
+  check('future: a building at its control is its own future', futureHeight(R4(22), 300, 21.7) === undefined);
+  check('future: a building over its control is never lowered', futureHeight(R4(12), 300, 30) === undefined);
+  check('future: no control, no future', futureHeight(R4(), 300, 6.2) === undefined);
   // Two storeys assumed: 8 m holds two at 3.1 m and is no rise; 9.5 m holds three.
-  const unknown = futureHeight('R4', 9.5, undefined);
-  check('future: a height not recorded stands at two storeys', futureHeight('R4', 8, undefined) === undefined && futureHeight('R4', 8, 0) === undefined
-    && unknown !== undefined && near(unknown, 9.3, 1e-6), `${futureHeight('R4', 8, undefined)} ${unknown}`);
+  const unknown = futureHeight(R4(9.5), 300, undefined);
+  check('future: a height not recorded stands at two storeys', futureHeight(R4(8), 300, undefined) === undefined && futureHeight(R4(8), 300, 0) === undefined
+    && unknown !== undefined && near(unknown, 9.3, 1e-6), `${futureHeight(R4(8), 300, undefined)} ${unknown}`);
+  // The FSR caps it: a 600 m² lot at 2:1 holds 1200 m² of GFA; on a 250 m² footprint at 72.5%
+  // that is 1200 / (250 × 0.725) = 6.6 → 6 storeys, under the 28 m height's 9.
+  const capped = futureHeight(R4(28, 2, 600), 250, 6.2);
+  check('future: the floor space ratio caps the storeys', capped !== undefined && near(capped, 6 * 3.1, 1e-6), String(capped));
+  // An airspace RL far above: the ratio governs (Parramatta CBD: 203 m, FSR 10:1, a 500 m² lot, a 400 m² footprint, offices at 85%).
+  const cbd = futureHeight({ zone: 'E2', hobM: 203, fsr: 10, landSqm: 500 }, 400, 20);
+  check('future: in a CBD the ratio, not the airspace, sets the height', cbd !== undefined && near(cbd, 14 * 3.1, 1e-6), String(cbd));
+  // Land less than the footprint (a building over several lots, or a lot shared): at least its footprint.
+  const wide = futureHeight(R4(60, 3, 100), 1000, 6.2);
+  check('future: the land is at least the footprint', wide !== undefined && near(wide, 4 * 3.1, 1e-6), String(wide));
+  check('future: the ratio alone, where no height is mapped', futureHeight(R4(undefined, 2, 600), 250, 6.2) !== undefined);
+  check('future: a ratio that holds no more than stands is no rise', futureHeight(R4(28, 0.5, 600), 250, 6.2) === undefined);
+  // A leaner efficiency holds fewer storeys from the same floor area.
+  const lean = futureHeight(R4(28, 2, 600), 250, 6.2, { residentialEfficiency: 0.95, commercialEfficiency: 0.85 });
+  check('future: the efficiency is the study\'s', lean !== undefined && near(lean, 5 * 3.1, 1e-6), String(lean));
 }
 
 // ---- the tier numbers in plan ------------------------------------------------------------------
