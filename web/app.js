@@ -21,10 +21,9 @@ const SCALES = {
     ['5000', '5000', 'at 1:5000'],
   ],
   site: [
-    ['0',   'auto', 'at the tightest scale that fits the lot'],
-    ['200', '200',  'at 1:200'],
-    ['250', '250',  'at 1:250'],
-    ['500', '500',  'at 1:500'],
+    ['250',  '250',  'at 1:250'],
+    ['500',  '500',  'at 1:500'],
+    ['1000', '1000', 'at 1:1000'],
   ],
   yield: [],
   slides: [],
@@ -158,7 +157,7 @@ function syncScale() {
   const valid = SCALES[state.sheet].map((s) => s[0]);
   if (!valid.length) { state.scale = '0'; return; }
   if (!valid.includes(state.scale)) {
-    state.scale = state.sheet === 'context' ? '3000' : valid[0];
+    state.scale = { context: '3000', site: '500' }[state.sheet] ?? valid[0];
   }
 }
 
