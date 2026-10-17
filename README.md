@@ -806,12 +806,29 @@ controls let the site hold, as a feasibility study first states it. The left
 half is the office's development summary (DA 002) with the column the
 generated summary had to leave empty now filled — CONTROLS, PROPOSED and
 COMPLIANCE — for the site, the project summary, the LEP, the parking, the
-Apartment Design Guide and the Housing SEPP. The right half draws the study:
-the indicative massing as an axonometric, seen from the main street's corner,
-among the neighbours at their recorded heights (Overture; dashed where none is
-recorded), with each tier's envelope dashed and the height of building plane
-over the site; the envelope in plan at a round scale with its tiers numbered;
-and the schedule of tiers, storeys, setbacks, envelope, plate and floor area.
+Apartment Design Guide and the Housing SEPP. Under it, ruled as the same
+table, the schedule of tiers — storeys, use, setbacks, envelope, plate and
+floor area, each tier's number in the ring the plan draws it in — and the
+assumptions the study rests on (floor to floor, efficiencies, the mix, the
+plates, the nearest station).
+
+The right half draws the study. The indicative massing as an axonometric,
+seen from the main street's corner, among the neighbours at their recorded
+heights (Overture; dashed where none is recorded), with each tier's envelope
+dashed and the height of building plane over the site. Over each neighbour,
+in pale dashed glass, its future: its own footprint raised to the whole 3.1 m
+storeys its LEP height of building holds, where its zone permits flats (R1,
+R3, R4, MU1, E1, E2, B1–B4), never lowered — the way sun-study's future
+context reads it (`futureHeight()` in `src/lib/yield.ts`). The proposal's
+outline is drawn over everything, so a future neighbour in front of it does
+not hide it. Under the massing, the envelope in plan at a round scale, the
+width of the half, on the ground the site analysis draws, kept to black and
+grey: the lot lines, the kerbs (`src/lib/kerbs.ts`, indicative), the
+neighbours' buildings, and on each numbered neighbour its street number, zone
+and height of building (`NO. 13–17`, `R4 · HOB = 28m`), written inside its
+building where they fit and on its lot where there is no building to hold
+them; the street names along the roads. Over it each tier's envelope and plate, the tiers numbered in the band
+that is each one's own, toward the middle of the main street frontage.
 
 The study (`src/lib/yield.ts`, tested in `test/yield.mts`) works on the lot in
 local metres:
@@ -875,7 +892,9 @@ The sheet prints the ones a run used. It is a feasibility figure, not a design:
 DCP setbacks, street wall heights, solar access and overshadowing are the
 design's to test, and mapped controls are not a planning certificate. Outputs:
 `PLANNING_YIELD.pdf`, `.csv`, `.json`, and `data/yield.json` (the bundle, which
-redraws with no refetch).
+redraws with no refetch). A bundle from before the future heights, the lots'
+zones and numbers and the kerbs still draws: without the future neighbours
+and the plan's labels, its kerbs worked out from the lots and the roads.
 
 ### The deck
 

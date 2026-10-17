@@ -111,6 +111,28 @@ export function archetypeFor(zone: string | undefined): Archetype {
   return 'none';
 }
 
+/**
+ * The zones a residential flat building or shop-top housing is permitted in
+ * under the Standard Instrument, where a neighbour's future is built up to
+ * its height control. Low density and rural are left out: their future is a
+ * house. Sun-study's future context reads the same list.
+ */
+export const FUTURE_ZONES = ['R1', 'R3', 'R4', 'B1', 'B2', 'B3', 'B4', 'E1', 'E2', 'MU1'];
+
+/**
+ * A neighbour's future height: its own footprint raised to the whole storeys
+ * its height of building holds, in a zone that permits flats. Never lowered —
+ * a building already at or over the control is its own future — so undefined
+ * where it would not rise. A building whose height is not recorded stands at
+ * two storeys, as the massing draws it.
+ */
+export function futureHeight(zone: string | undefined, hobM: number | undefined, standingM: number | undefined, storeyM = 3.1): number | undefined {
+  if (!hobM || hobM <= 0 || !FUTURE_ZONES.includes((zone ?? '').toUpperCase().trim())) return undefined;
+  const allowed = Math.floor(hobM / storeyM + 1e-9);
+  const standing = standingM && standingM > 0 ? Math.max(1, Math.round(standingM / storeyM)) : 2;
+  return allowed > standing ? allowed * storeyM : undefined;
+}
+
 export type Use = 'retail' | 'residential' | 'commercial';
 
 /** A band of storeys built to one set of setbacks. */
