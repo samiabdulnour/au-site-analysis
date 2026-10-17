@@ -664,8 +664,9 @@ The site sheet does not take the context templates. It has themes of its own,
 listed in `SITE_THEMES` in `src/render/template.ts`; each names the template
 it draws on for what it does not set itself (the typeface and the zones'
 palette), and the sheet sets the rest — its `look` (`SiteLook`): the face, the
-veil, the site's pen and dash, how the neighbours, streets, suns, winds, noise,
-views and kerbside parking are drawn, and in which inks. There are three:
+veil and the aerial's tone, the site's pen and dash, how the zones, heritage,
+neighbours, streets, suns, winds, noise, views and kerbside parking are drawn,
+and in which inks. There are two:
 
 **Dove** (`dove`, the default) — the aerial with the zones hatched in their
 family colours, the neighbours' numbers and storeys and the street names in
@@ -683,22 +684,27 @@ council register, nothing in OpenStreetMap within 15 m), the legend says so
 instead of leaving the trees out without a word.
 
 **Canary** (`canary`) — the office's classic site sheet (the DA 004s at
-Arncliffe, Cabramatta and Randwick in `examples/packages`): the aerial under a
-lighter veil, the site in a bright red dash with its boundary dimensions in
-black and its levels in red, the street names spaced out in white
-double-headed arrow bands (lanes plain), a pale yellow sun path with an arrow
-toward each sunset and yellow suns named inside — W AM, W PM, S AM, S PM, and
-N over north — the winds as blue outlined banners with their names inside,
-noise as a blue zigzag beside the busy roads and the railway, views as white
-cones named inside, kerbside parking as one hatched street parking zone, and
-the LEP's heritage items (orange) and conservation areas (red) hatched. Each
-neighbour gets a white identification box: its number and storeys in black,
-the zone and the height of building at it in blue (`HOB = 18m`, or
-`HOB = RL 211` where the plan limits by level). No zone hatch and no
-contours: the boxes say the zone, the fall arrow and the levels the ground. It
-draws on Flamingo, set in Arial. The site bundle now carries the LEP height and
-heritage layers over the sheet for it (`heights`, `heritage`); a bundle from
-before them draws its boxes without the height line.
+Arncliffe, Cabramatta and Randwick in `examples/packages`) drawn in Conure's
+colours. The aerial outside the site is greyed (`aerial: 'grey'`) under
+Conure's veil, and the zones are filled in exactly the NSW ePlanning colours
+(`zones: 'lep'`, at Conure's strength), keyed in the legend by code and name;
+the site itself keeps the photograph's colours. The site is a dash in Conure's
+red with its levels in the same red and its boundary dimensions and fall in
+Conure's slate. The street names are spaced out in white double-headed arrow
+bands (lanes plain). A tan sun path carries an arrow toward each sunset and
+cream suns named inside — W AM, W PM, S AM, S PM, and N over north. The winds
+are banners outlined in Conure's slate blue with their names inside, noise a
+navy zigzag beside the busy roads and the railway, views white cones named
+inside, and kerbside parking one hatched street parking zone. The LEP's
+heritage items are hatched in the ePlanning tan and its conservation areas in
+the ePlanning red. Each neighbour gets a white identification box: its number
+and storeys in black, the zone and the height of building at it in navy
+(`HOB = 18m`, or `HOB = RL 211` where the plan limits by level). No contours:
+the fall arrow and the levels give the ground. Its inks are read from the
+Conure template, so a change to Conure's palette carries over. It draws on
+Flamingo for the title block and is set in Arial. The site bundle now carries
+the LEP height and heritage layers over the sheet for it (`heights`,
+`heritage`); a bundle from before them draws its boxes without the height line.
 
 The web picker shows the site sheet's themes in the STYLE row when the site
 sheet is chosen, and no STYLE row for the yield or the site report; the job request

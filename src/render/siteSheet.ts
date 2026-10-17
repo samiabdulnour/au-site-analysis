@@ -6,9 +6,10 @@ import type { SiteBundle } from '../pipeline.js';
 import { lonLatToMercator, mercatorToLonLat, mercatorScaleFactor } from '../lib/geo.js';
 import {
   makeProjector, plainText, haloText, wrapLabel, shortStreetName, arrowAlong, isMajorStreet, pointInRing,
-  pathFromRings, geomRings, textureSvg, type Pt, type SheetMeta,
+  pathFromRings, geomRings, textureSvg, LEP_OPACITY, type Pt, type SheetMeta,
 } from './sheet.js';
 import { catById, zoneToCategory } from './model.js';
+import { zoneFill, zoneOrder } from './lepPalette.js';
 import { METRES_PER_STOREY } from '../fetch/buildings.js';
 import { sheetHtml, esc, T, SWATCH_X, SWATCH_W, LABEL_X, MAP_W, MAP_H } from './chrome.js';
 import { tpl, withTemplate, siteTheme, PARK_GREEN, PARK_GREEN_INK, type SiteLook } from './template.js';
@@ -30,7 +31,7 @@ const NEIGHBOUR_TEXT = MAP_TEXT;
 // The pens that differ between themes — the site's, the climate marks', the
 // neighbours' and the street names' — are the theme's look (SITE_THEMES in
 // template.ts): Dove draws the site in a deep red and the analysis in grey with
-// white words, Canary in the office's red, yellow and blue with black words.
+// white words, Canary in Conure's red, slate, cream and navy with black words.
 
 // Read at call time, not at module load: setTemplate() runs per job, long
 // after this module is first imported, so a captured constant would freeze to
@@ -59,8 +60,6 @@ const SERVICE_TEXT = 3.6;
 const SERVICE_FONT = "Arial, 'Liberation Sans', Helvetica, sans-serif";
 // The trees the legend lists: those within this reach of the boundary, at most this many, numbered in this size.
 const TREE_REACH_M = 15, TREE_SCHEDULE_MAX = 16, TREE_TEXT = 4.2;
-// Heritage, where a theme draws it: the office's orange for the items, its red for the conservation areas.
-const HERITAGE_INK = { item: '#e39a3b', area: '#c8372d' } as const;
 
 
 /**
@@ -242,6 +241,9 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
   const MM = view.halfW * 2 / MAP_W; // mercator meters per mm
 
   // ---- aerial (rotated group over fetch bounds), light wash ---------------
+  // The whole map with the site cut out of it: where the aerial is greyed and veiled.
+  const siteHole = 'M' + sb.siteRing.map(([lon, lat2]) => proj(lon, lat2)).map((p) => `${p[0].toFixed(2)},${p[1].toFixed(2)}`).join('L') + 'Z';
+  const outsideSite = `M0,0 H${MAP_W} V${MAP_H} H0 Z ${siteHole}`;
   {
     const s = MAP_W / (2 * view.halfW);
     const extW = (sb.extent.xmax - sb.extent.xmin) * s;
@@ -252,29 +254,28 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
       .map((t) => `<image href="data/${t.file}" x="${(ox + t.left * extW).toFixed(2)}" y="${(oy + t.top * extH).toFixed(2)}"
           width="${(t.width * extW).toFixed(2)}" height="${(t.height * extH).toFixed(2)}" preserveAspectRatio="none"/>`)
       .join('\n');
-    layers.push(`<g transform="rotate(${view.rotationDeg.toFixed(2)}, ${MAP_W / 2}, ${MAP_H / 2})">${tiles}</g>`);
+    // Greyed, as the context sheet greys it, by a saturation blend isolated to
+    // the photo rather than a filter, which PDF would not carry.
+    const grey = look.aerial === 'grey'
+      ? `<path fill-rule="evenodd" fill="#808080" style="mix-blend-mode:saturation" d="${outsideSite}"/>` : '';
+    layers.push(`<g style="isolation:isolate"><g transform="rotate(${view.rotationDeg.toFixed(2)}, ${MAP_W / 2}, ${MAP_H / 2})">${tiles}</g>${grey}</g>`);
   }
   // (3) White overlay everywhere EXCEPT the site: the analysed lot stays at
   // full aerial saturation, its surroundings are washed back.
-  {
-    const ring = sb.siteRing.map(([lon, lat2]) => proj(lon, lat2));
-    const dHole = 'M' + ring.map((p) => `${p[0].toFixed(2)},${p[1].toFixed(2)}`).join('L') + 'Z';
-    layers.push(`<path fill-rule="evenodd" fill="#ffffff" opacity="${look.veil}"
-      d="M0,0 H${MAP_W} V${MAP_H} H0 Z ${dHole}"/>`);
-  }
+  layers.push(`<path fill-rule="evenodd" fill="#ffffff" opacity="${look.veil}" d="${outsideSite}"/>`);
 
   // ---- zones as hatch, not words ---------------------------------------------
   // The neighbours' zoning is drawn, not written: each zone a hatch in its
   // family's ink with a fine outline, no fill, so the aerial stays readable
   // under it. The pattern is the category's texture (lines where it has
-  // none), its strength the category's, so R2 sits lighter than R3. Never
-  // over the site.
+  // none), its strength the category's, so R2 sits lighter than R3. Or, as
+  // Conure draws them, each zone code filled in its NSW ePlanning colour.
+  // Never over the site.
   const usedZoneCats = new Set<string>();
   const zoneInk = (c: { fill: string; stroke?: string; figure?: string; textureColor?: string }) =>
     c.figure ?? c.stroke ?? c.fill;
+  const lepZones = new Map<string, { name: string; paths: string[] }>();
   {
-    const ring = sb.siteRing.map(([lon, lat2]) => proj(lon, lat2));
-    const dHole = 'M' + ring.map((p) => `${p[0].toFixed(2)},${p[1].toFixed(2)}`).join('L') + 'Z';
     const byCat = new Map<string, string[]>();
     for (const f of look.zones === 'hatch' ? sb.zoning.features : []) {
       const cat = zoneToCategory(f.properties.SYM_CODE);
@@ -294,14 +295,25 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
       parts.push(textureSvg(`stx${tex++}`, paths.join(''), kind, ink, mapBox, Math.min(1, 0.65 + c.opacity * 0.5)));
       parts.push(`<g fill="none" stroke="${ink}" stroke-width="0.6">${paths.map((d) => `<path d="${d}"/>`).join('')}</g>`);
     }
-    layers.push(`<defs><clipPath id="notSite"><path clip-rule="evenodd" d="M-20,-20 H${MAP_W + 20} V${MAP_H + 20} H-20 Z ${dHole}"/></clipPath></defs>
+    for (const f of look.zones === 'lep' ? sb.zoning.features : []) {
+      const code = String(f.properties.SYM_CODE ?? '').trim().toUpperCase();
+      const rings = geomRings(f.geometry);
+      if (!code || !rings.length) continue;
+      let z = lepZones.get(code);
+      if (!z) lepZones.set(code, z = { name: String(f.properties.LAY_CLASS ?? '').trim(), paths: [] });
+      z.paths.push(pathFromRings(rings, proj));
+    }
+    for (const [code, z] of lepZones)
+      parts.push(`<g fill="${zoneFill(code)}" opacity="${LEP_OPACITY}" fill-rule="evenodd">${z.paths.map((d) => `<path d="${d}"/>`).join('')}</g>`);
+    layers.push(`<defs><clipPath id="notSite"><path clip-rule="evenodd" d="M-20,-20 H${MAP_W + 20} V${MAP_H + 20} H-20 Z ${siteHole}"/></clipPath></defs>
       <g clip-path="url(#notSite)">${parts.join('')}</g>`);
   }
 
   // ---- heritage: the LEP's items and conservation areas, hatched -------------
-  // The items in the office's orange, the conservation areas in its red, each
-  // a hatch with a fine outline so the aerial reads through. Drawn over the
-  // site too: a listing on the lot is the first thing the sheet must say.
+  // The items and the conservation areas each in the theme's ink (Canary's are
+  // the ePlanning tan and red), a hatch with a fine outline so the aerial reads
+  // through. Drawn over the site too: a listing on the lot is the first thing
+  // the sheet must say.
   const heritageKinds = new Set<'item' | 'area'>();
   if (look.heritage && sb.heritage?.features.length) {
     const byKind: Record<'item' | 'area', string[]> = { item: [], area: [] };
@@ -315,7 +327,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
     for (const kind of ['area', 'item'] as const) {
       if (!byKind[kind].length) continue;
       heritageKinds.add(kind);
-      const ink = HERITAGE_INK[kind];
+      const ink = look.heritageInk[kind];
       // A conservation area can take in the whole sheet (Redfern, Paddington):
       // its hatch is kept light so the aerial and the analysis still read.
       layers.push(textureSvg(`her${kind}`, byKind[kind].join(''), 'lines', ink, mapBox, kind === 'area' ? 0.3 : 0.8) +
@@ -1378,11 +1390,16 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
         `<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="none" stroke="${ink}" stroke-width="0.4"/>`, c.label);
     }
   }
+  // Or the ePlanning zones, keyed by code and name in the LEP's order, with Conure's swatch.
+  for (const [code, z] of [...lepZones].sort(([a], [b]) => zoneOrder(a) - zoneOrder(b) || a.localeCompare(b)))
+    row(`<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="${zoneFill(code)}" stroke="#999" stroke-width="0.2"/>`,
+      `${code} ${z.name.replace(new RegExp(`^${code}\\s*`, 'i'), '')}`.toUpperCase());
   for (const kind of ['item', 'area'] as const) {
     if (!heritageKinds.has(kind)) continue;
     const swD = `M${SWATCH_X},0h${SWATCH_W}v6.5h${-SWATCH_W}Z`;
-    row(textureSvg(`lher${kind}`, swD, 'lines', HERITAGE_INK[kind], { x: SWATCH_X, y: 0, w: SWATCH_W, h: 6.5 }, 0.9) +
-      `<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="none" stroke="${HERITAGE_INK[kind]}" stroke-width="0.4"/>`,
+    const ink = look.heritageInk[kind];
+    row(textureSvg(`lher${kind}`, swD, 'lines', ink, { x: SWATCH_X, y: 0, w: SWATCH_W, h: 6.5 }, 0.9) +
+      `<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="none" stroke="${ink}" stroke-width="0.4"/>`,
       kind === 'item' ? 'HERITAGE ITEM' : 'HERITAGE CONSERVATION AREA', 'from the LEP heritage map');
   }
   if (bayCount && look.parking === 'hatch') {

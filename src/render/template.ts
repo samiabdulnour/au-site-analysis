@@ -417,6 +417,8 @@ export interface SiteLook {
   font: string;
   /** The white veil over the aerial outside the site. */
   veil: number;
+  /** The aerial outside the site in its own colours, or in greyscale; the site keeps its colours either way. */
+  aerial: 'colour' | 'grey';
   /** The site's pen: its boundary, corners and levels. */
   site: string;
   /** The boundary's dash. */
@@ -431,10 +433,12 @@ export interface SiteLook {
   neighbours: 'white' | 'box';
   /** The box's second ink, for the zone and the height limit. */
   neighbourZoneInk: string;
-  /** The zones hatched over the aerial, or left to the neighbours' boxes. */
-  zones: 'hatch' | 'none';
+  /** The zones hatched over the aerial in their family colours, filled in their NSW ePlanning colours, or left to the neighbours' boxes. */
+  zones: 'hatch' | 'lep' | 'none';
   /** The LEP heritage items and conservation areas, hatched. */
   heritage: boolean;
+  /** Their inks. */
+  heritageInk: { item: string; area: string };
   /** Contours with their levels along them. */
   contours: boolean;
   /** Their ink, and their levels'. */
@@ -478,8 +482,9 @@ export interface SiteTheme { id: string; label: string; note: string; base: stri
 // views in the site's red; a request naming Cardinal is drawn in Dove.
 const DOVE_GREY = '#6f7377';
 const DOVE_LOOK: SiteLook = {
-  font: NARROW, veil: 0.55, site: '#b3261e', siteDash: '7,2,1.6,2', dimensionInk: '#b3261e', fall: '#56616b',
-  buildingEdge: 0.3, neighbours: 'white', neighbourZoneInk: '#ffffff', zones: 'hatch', heritage: false, contours: true, contourInk: '#a9adb1',
+  font: NARROW, veil: 0.55, aerial: 'colour', site: '#b3261e', siteDash: '7,2,1.6,2', dimensionInk: '#b3261e', fall: '#56616b',
+  buildingEdge: 0.3, neighbours: 'white', neighbourZoneInk: '#ffffff', zones: 'hatch',
+  heritage: false, heritageInk: { item: '#e39a3b', area: '#c8372d' }, contours: true, contourInk: '#a9adb1',
   streetNames: 'plain', streetInk: '#ffffff',
   sun: 'crown', sunPen: DOVE_GREY, sunFill: '#ffffff', sunEdge: DOVE_GREY, sunInk: DOVE_GREY, sunHours: true,
   wind: 'strands', windPen: DOVE_GREY, climateInk: DOVE_GREY,
@@ -487,24 +492,28 @@ const DOVE_LOOK: SiteLook = {
 };
 
 // Canary: the office's classic site sheet (DA 004 at Arncliffe, Cabramatta,
-// Randwick): the aerial under a veil, a bright red dashed site with black
-// boundary dimensions and red levels, a pale yellow sun path with yellow suns
-// named inside, blue outlined wind banners, white boxes naming each neighbour
-// with its zone and height limit in blue, the streets in white arrow bands.
+// Randwick) in Conure's colours: the aerial in grey under Conure's veil, the
+// zones in the NSW ePlanning colours, Conure's red for the dashed site and its
+// levels, its slate for the boundary dimensions and the fall, cream suns named
+// inside on a tan sun path, slate wind banners, white boxes naming each
+// neighbour with its zone and height limit in navy, the streets in white arrow
+// bands, and heritage in the ePlanning tan and red.
+const CONURE = TEMPLATES.find((t) => t.id === 'conure')!;
 const CANARY_LOOK: SiteLook = {
-  font: SANS, veil: 0.42, site: '#e3241b', siteDash: '4.2,1.8', dimensionInk: '#111111', fall: '#3346c8',
-  buildingEdge: 0.55, neighbours: 'box', neighbourZoneInk: '#2b3fd0', zones: 'none', heritage: true, contours: false, contourInk: '#3f9a5c',
-  streetNames: 'band', streetInk: '#111111',
-  sun: 'disc', sunPen: '#f3d75a', sunFill: '#fbe78c', sunEdge: '#e0b82a', sunInk: '#111111', sunHours: false,
-  wind: 'banner', windPen: '#3b8be0', climateInk: '#111111',
-  noise: 'zigzag', noisePen: '#3d3fd8', views: 'cone', viewPen: '#111111', parking: 'hatch',
+  font: SANS, veil: CONURE.veil!, aerial: 'grey', site: CONURE.site, siteDash: '4.2,1.8', dimensionInk: CONURE.dimension, fall: CONURE.dimension,
+  buildingEdge: 0.55, neighbours: 'box', neighbourZoneInk: CONURE.transit, zones: 'lep',
+  heritage: true, heritageInk: { item: CONURE.heritage, area: '#ff0000' }, contours: false, contourInk: '#3f9a5c',
+  streetNames: 'band', streetInk: CONURE.ink,
+  sun: 'disc', sunPen: CONURE.heritage, sunFill: CONURE.sun, sunEdge: CONURE.heritage, sunInk: CONURE.ink, sunHours: false,
+  wind: 'banner', windPen: CONURE.wind, climateInk: CONURE.ink,
+  noise: 'zigzag', noisePen: CONURE.transit, views: 'cone', viewPen: CONURE.ink, parking: 'hatch',
 };
 
 export const SITE_THEMES: SiteTheme[] = [
   { id: 'dove', label: 'Dove', base: 'flamingo', look: DOVE_LOOK,
     note: 'the aerial with the zones hatched; the site in a deep red, the sun path, its crowns, the telescopes and the winds in grey, the contours in light grey' },
   { id: 'canary', label: 'Canary', base: 'flamingo', look: CANARY_LOOK,
-    note: 'the office classic: a veiled aerial, a yellow sun path with the suns named inside, blue wind banners, white boxes naming each neighbour with its zone and height limit' },
+    note: 'the office classic in Conure\'s colours: a grey aerial with the zones in the ePlanning colours, cream suns named inside, slate wind banners, white boxes naming each neighbour with its zone and height limit' },
 ];
 export const DEFAULT_SITE_THEME = 'dove';
 
