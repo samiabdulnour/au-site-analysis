@@ -40,8 +40,19 @@ const SUN_TEXT = 8.8;    // label size (mm) on the reference
 const BOX_TEXT = 4.4;
 // The services' pens, after the office's legend: stormwater orange, electrical
 // cables red, power lines yellow, water blue, sewer green, gas magenta.
-const SERVICE_INK = { stormwater: '#e8862a', cable: '#e3241b', power: '#f2c200', powerHV: '#d9a300', water: '#2f7fd6', sewer: '#7db87d', gas: '#e6007e' } as const;
-const MANHOLE_INK: Record<string, string> = { sewer: '#5f9f5f', drain: '#e8862a', water: '#2f7fd6', telecom: '#9b7fc4', gas: '#e6007e', power: '#e3241b' };
+// The services in AS 5488.1's ground-marking colours: electricity orange
+// (underground dashed, overhead solid, high voltage heavier in a deeper
+// orange), water blue, stormwater green, sewer cream (darkened to read on
+// paper), gas yellow, communications white (black on paper).
+const ELECTRIC = '#ef7d00';
+// Its words a shade deeper: with no halo, the line's orange is faint as text on the aerial.
+const ELECTRIC_WORDS = '#b85000';
+const wordsIn = (ink: string) => (ink === ELECTRIC ? ELECTRIC_WORDS : ink);
+const STORMWATER = '#2e8b3a';
+const SEWER = '#bfa76a';
+const GAS = '#e0b000';
+const SERVICE_INK = { stormwater: STORMWATER, cable: ELECTRIC, power: ELECTRIC, powerHV: '#c45a00', water: '#2f7fd6', sewer: SEWER, gas: GAS } as const;
+const MANHOLE_INK: Record<string, string> = { sewer: SEWER, drain: STORMWATER, water: '#2f7fd6', telecom: '#222222', gas: GAS, power: ELECTRIC };
 const SERVICE_TEXT = 3.6;
 // The services' words (11 kV, Ø 375, DS 1616 · 969 kVA spare) in plain Arial
 // whatever the theme's face, and with no halo: read as notes on the lines.
@@ -571,7 +582,8 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
     for (const u of sb.furniture.utilities) {
       const pts = u.coords.map(([lon, lat2]) => proj(lon, lat2));
       if (pts.length < 2) continue;
-      layers.push(`<path d="${dash(pts)}" fill="none" stroke="${SERVICE_INK[u.kind]}" stroke-width="0.7" stroke-dasharray="4,2.2"/>`);
+      const style = u.kind === 'power' ? 'stroke-width="0.5"' : u.kind === 'cable' ? 'stroke-width="0.5" stroke-dasharray="3,2"' : 'stroke-width="0.7" stroke-dasharray="4,2.2"';
+      layers.push(`<path d="${dash(pts)}" fill="none" stroke="${SERVICE_INK[u.kind]}" ${style}/>`);
     }
     // A label every so often along a run, kept off the others: the pipe's
     // size, the line's voltage.
@@ -591,13 +603,13 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
       const spot = placer.place(x, y, text.length * SERVICE_TEXT * 0.6, SERVICE_TEXT, 4, ang);
       if (!spot) return;
       labelled.push({ x, y, t: text });
-      layers.push(`<text transform="translate(${spot[0].toFixed(1)},${spot[1].toFixed(1)}) rotate(${ang.toFixed(1)})" text-anchor="middle" dy="${(SERVICE_TEXT * 0.36).toFixed(2)}" font-family="${SERVICE_FONT}" font-size="${SERVICE_TEXT}" font-weight="700" fill="${ink}">${esc(text)}</text>`);
+      layers.push(`<text transform="translate(${spot[0].toFixed(1)},${spot[1].toFixed(1)}) rotate(${ang.toFixed(1)})" text-anchor="middle" dy="${(SERVICE_TEXT * 0.36).toFixed(2)}" font-family="${SERVICE_FONT}" font-size="${SERVICE_TEXT}" font-weight="700" fill="${wordsIn(ink)}">${esc(text)}</text>`);
     };
     for (const l of services.lines) {
       const pts = l.coords.map(([lon, lat2]) => proj(lon, lat2));
       if (pts.length < 2 || !pts.some(inMapWide)) continue;
       const ink = l.kind === 'powerCable' ? SERVICE_INK.cable : l.kind === 'powerOverhead' ? SERVICE_INK.power : SERVICE_INK[l.kind as keyof typeof SERVICE_INK] ?? '#555';
-      const style = l.kind === 'powerHV' ? `stroke-width="1.1" stroke-dasharray="${l.underground ? '1.2,1.6' : '7,2,1.4,2'}"` : l.kind === 'powerCable' ? 'stroke-width="0.5" stroke-dasharray="3,2"' : 'stroke-width="0.8" stroke-dasharray="4,2.2"';
+      const style = l.kind === 'powerHV' ? `stroke-width="1.1" stroke-dasharray="${l.underground ? '1.2,1.6' : '7,2,1.4,2'}"` : l.kind === 'powerCable' ? 'stroke-width="0.5" stroke-dasharray="3,2"' : l.kind === 'powerOverhead' ? 'stroke-width="0.5"' : 'stroke-width="0.8" stroke-dasharray="4,2.2"';
       layers.push(`<path d="${dash(pts)}" fill="none" stroke="${ink}" ${style}/>`);
       if (l.label) along(pts, l.kind === 'powerHV' && l.underground ? `${l.label} UG` : l.label, ink);
     }
@@ -615,7 +627,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
       if (label && (kind === 'stormwaterPit' || kind === 'substation')) {
         const w = label.length * SERVICE_TEXT * 0.55;
         const spot = placer.place(x + w / 2 + 2.6, y, w, SERVICE_TEXT, 6);
-        if (spot) marks.push(`<text x="${(spot[0] - w / 2).toFixed(1)}" y="${(spot[1] + SERVICE_TEXT * 0.36).toFixed(1)}" font-family="${SERVICE_FONT}" font-size="${SERVICE_TEXT}" font-weight="700" fill="${kind === 'substation' ? SERVICE_INK.cable : SERVICE_INK.stormwater}">${esc(label)}</text>`);
+        if (spot) marks.push(`<text x="${(spot[0] - w / 2).toFixed(1)}" y="${(spot[1] + SERVICE_TEXT * 0.36).toFixed(1)}" font-family="${SERVICE_FONT}" font-size="${SERVICE_TEXT}" font-weight="700" fill="${wordsIn(kind === 'substation' ? SERVICE_INK.cable : SERVICE_INK.stormwater)}">${esc(label)}</text>`);
       }
     };
     for (const pt of services.points) if (pt.kind !== 'lightPole' && pt.kind !== 'powerPole') point(pt.kind, pt.lon, pt.lat, pt.label);
@@ -1460,15 +1472,15 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
   if (pointsOf('substation').length || servicePoints.some((p) => p.kind === 'substation' || p.kind === 'transformer'))
     row(`<g transform="translate(${mid},3.2)"><rect x="-2" y="-2" width="4" height="4" fill="#fff" stroke="${SERVICE_INK.cable}" stroke-width="0.45"/><path d="M0.5,-1.5 L-0.9,0.3 H0.7 L-0.5,1.6" fill="none" stroke="${SERVICE_INK.cable}" stroke-width="0.35"/></g>`, pointsOf('substation').some((p) => /kVA/.test(p.label ?? '')) ? 'SUBSTATION (kVA SPARE)' : 'SUBSTATION / TRANSFORMER', [fromSources(pointsOf('substation')), servicePoints.some((p) => p.kind === 'substation' || p.kind === 'transformer') ? 'OpenStreetMap' : ''].filter(Boolean).join('; '));
   if (linesOf('powerCable').length) row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${SERVICE_INK.cable}" stroke-width="0.6" stroke-dasharray="3,2"/>`, 'ELECTRICAL CABLES (UG)', fromSources(linesOf('powerCable')));
-  if (linesOf('powerOverhead').length) row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${SERVICE_INK.power}" stroke-width="0.9" stroke-dasharray="4,2.2"/>`, 'POWER LINES (OH)', fromSources(linesOf('powerOverhead')));
+  if (linesOf('powerOverhead').length) row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${SERVICE_INK.power}" stroke-width="0.6"/>`, 'POWER LINES (OH)', fromSources(linesOf('powerOverhead')));
   if (pointsOf('pillar').length) row(`<rect x="${mid - 1.4}" y="1.8" width="2.8" height="2.8" fill="#fff" stroke="${SERVICE_INK.cable}" stroke-width="0.4"/>`, 'ELECTRICAL PILLAR', fromSources(pointsOf('pillar')));
-  if (utilKinds.has('cable')) row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${SERVICE_INK.cable}" stroke-width="0.9" stroke-dasharray="4,2.2"/>`, 'ELECTRICAL CABLES', 'where OpenStreetMap maps them');
+  if (utilKinds.has('cable')) row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${SERVICE_INK.cable}" stroke-width="0.6" stroke-dasharray="3,2"/>`, 'ELECTRICAL CABLES', 'where OpenStreetMap maps them');
   if (servicePoints.some((p) => p.kind === 'cabinet')) row(`<rect x="${mid - 1.6}" y="2.3" width="3.2" height="1.8" fill="#8a8a8a"/>`, 'SERVICE CABINET', 'OpenStreetMap');
   if (servicePoints.some((p) => p.kind === 'manhole')) row(`<g transform="translate(${mid},3.2)"><circle r="1.7" fill="#fff" stroke="#6f6f6f" stroke-width="0.4"/><path d="M-1.2,-1.2L1.2,1.2M1.2,-1.2L-1.2,1.2" stroke="#6f6f6f" stroke-width="0.3"/></g>`, 'MANHOLE', 'OpenStreetMap; coloured by what it serves');
-  if (utilKinds.has('power')) row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="#f2c200" stroke-width="0.9" stroke-dasharray="4,2.2"/>`, 'POWER LINES');
+  if (utilKinds.has('power')) row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${SERVICE_INK.power}" stroke-width="0.6"/>`, 'POWER LINES');
   if (utilKinds.has('water')) row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="#2f7fd6" stroke-width="0.9" stroke-dasharray="4,2.2"/>`, 'WATER MAIN');
-  if (utilKinds.has('sewer')) row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="#7db87d" stroke-width="0.9" stroke-dasharray="4,2.2"/>`, 'SEWER MAIN');
-  if (utilKinds.has('gas')) row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="#e6007e" stroke-width="0.9" stroke-dasharray="4,2.2"/>`, 'GAS MAIN');
+  if (utilKinds.has('sewer')) row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${SEWER}" stroke-width="0.9" stroke-dasharray="4,2.2"/>`, 'SEWER MAIN');
+  if (utilKinds.has('gas')) row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${GAS}" stroke-width="0.9" stroke-dasharray="4,2.2"/>`, 'GAS MAIN');
   // Every sheet says where its services stop: what is drawn is open data
   // only, and the water, sewer, gas, electrical and telecom plans are a
   // Before You Dig enquiry's.

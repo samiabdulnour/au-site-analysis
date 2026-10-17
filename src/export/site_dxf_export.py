@@ -219,10 +219,11 @@ for u in fur.get("utilities") or []:
 # ---- services an open licence lets the sheet draw (fetch/services.ts) and the
 # ones OpenStreetMap maps; one layer each, so a BYDA plan traced over them can
 # replace them kind by kind. Not a substitute for a Before You Dig enquiry. ----
-SERVICE_RGB = {"STORMWATER": 0xE8862A, "STORMWATERPIT": 0xE8862A, "LIGHTPOLE": 0xA8860B,
-               "POWERHV": 0xD9A300, "SUBSTATION": 0xE3241B, "TRANSFORMER": 0xE3241B,
-               "CABINET": 0x8A8A8A, "MANHOLE": 0x6F6F6F, "POWERCABLE": 0xE3241B,
-               "POWEROVERHEAD": 0xF2C200, "POWERPOLE": 0x333333, "PILLAR": 0xE3241B}
+# AS 5488.1's colours, as on the sheet: electricity orange, stormwater green.
+SERVICE_RGB = {"STORMWATER": 0x2E8B3A, "STORMWATERPIT": 0x2E8B3A, "LIGHTPOLE": 0xA8860B,
+               "POWERHV": 0xC45A00, "SUBSTATION": 0xEF7D00, "TRANSFORMER": 0xEF7D00,
+               "CABINET": 0x8A8A8A, "MANHOLE": 0x6F6F6F, "POWERCABLE": 0xEF7D00,
+               "POWEROVERHEAD": 0xEF7D00, "POWERPOLE": 0x333333, "PILLAR": 0xEF7D00}
 svc = bundle.get("services") or {}
 for l in svc.get("lines") or []:
     name = f"SERVICES-{str(l.get('kind', 'OTHER')).upper()}"

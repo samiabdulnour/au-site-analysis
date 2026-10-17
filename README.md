@@ -429,12 +429,16 @@ Three things the site sheet draws that the data has to be coaxed into:
   Endeavour Energy's portal (ODbL on the datasets, use-only terms on the
   portal) is wired in as a trial, off unless asked for with
   `SERVICES_TRIAL=endeavour` or `--trial-services endeavour`: its cables
-  (underground red, overhead yellow, 11 kV labelled), poles, pillars and
-  substations with today's spare kVA, every row of the legend marked TRIAL
-  until Endeavour confirms the ODbL in writing. Water and sewer mains, gas, electrical cables and telecom pits are
+  (11 kV labelled), poles, pillars and substations with today's spare kVA,
+  every row of the legend marked TRIAL until Endeavour confirms the ODbL in
+  writing. Water and sewer mains, gas, electrical cables and telecom pits are
   not open anywhere; every site sheet says, under its legend, that what it
   draws is open data only and no substitute for a Before You Dig enquiry. The
-  CAD export carries the services on `SA_SERVICES-<KIND>` layers.
+  colours are AS 5488.1's for marking buried services: electricity orange
+  (underground dashed, overhead solid, high voltage heavier in a deeper
+  orange), water blue, stormwater green, sewer cream (darkened to read on
+  paper), gas yellow, communications black. The CAD export carries the
+  services on `SA_SERVICES-<KIND>` layers in the same colours.
 - **The trees by the site, with their data.** The trees within 15 m of the
   boundary are numbered T1, T2… nearest first (sixteen at most) and listed in
   the legend with what their source recorded — species, height, canopy and
