@@ -569,7 +569,7 @@ Templates are the context sheet's. The site analysis has its own themes (see
 Site analysis themes below), and the yield, the development summary and the
 deck have none: they are always drawn in the default template.
 
-There are four: Flamingo, the default, Kingfisher, Heron and Conure.
+There are four: Flamingo, the default, Kingfisher, Heron and Canary.
 
 **Flamingo** (`flamingo`) sits on plain paper. Four tints, each a family —
 peach for the residential zones, sand for the centres, teal for open space and
@@ -621,17 +621,17 @@ catchments as continuous green lines at reduced opacity with solid green walker 
 takes the solid stop roundels, the red dotted railway and the numbered
 places with their key, the discs in black.
 
-**Conure** (`conure`) is Heron with the zoning in exactly the NSW ePlanning
-Land Zoning colours (`zoning: 'lep'`): each zone code in its statutory fill,
-keyed by code and name (R2 LOW DENSITY RESIDENTIAL, E1 LOCAL CENTRE,
-SP2 INFRASTRUCTURE…), with no institution or railway tints laid over it and
-heritage in the ePlanning item tan. The numbered places are black discs, and
+**Canary** (`canary`, formerly Conure) is Heron with the zoning in exactly
+the NSW ePlanning Land Zoning colours (`zoning: 'lep'`): each zone code in its
+statutory fill, keyed by code and name (R2 LOW DENSITY RESIDENTIAL, E1 LOCAL
+CENTRE, SP2 INFRASTRUCTURE…), with no institution or railway tints laid over
+it and heritage in the ePlanning item tan. The numbered places are black discs, and
 the walking catchments plain black lines with their time and distance written
 along them ("5 MIN · 400M", `isochrone: 'labelled'`) instead of walker
 medallions. The aerial, lines and lettering are Heron's.
 
 The retired ids still resolve: `flamingo-white` to Flamingo, `flamingo-2` to
-Kingfisher, and
+Kingfisher, `conure` to Canary, and
 `flamingo-aerial`, `redfern-white` and `redfern-aerial`, like any unknown id,
 to the default.
 
@@ -684,27 +684,39 @@ council register, nothing in OpenStreetMap within 15 m), the legend says so
 instead of leaving the trees out without a word.
 
 **Canary** (`canary`) — the office's classic site sheet (the DA 004s at
-Arncliffe, Cabramatta and Randwick in `examples/packages`) drawn in Conure's
-colours. The aerial outside the site is greyed (`aerial: 'grey'`) under
-Conure's veil, and the zones are filled in exactly the NSW ePlanning colours
-(`zones: 'lep'`, at Conure's strength), keyed in the legend by code and name;
-the site itself keeps the photograph's colours. The site is a dash in Conure's
-red with its levels in the same red and its boundary dimensions and fall in
-Conure's slate. The street names are spaced out in white double-headed arrow
-bands (lanes plain). A tan sun path carries an arrow toward each sunset and
-cream suns named inside — W AM, W PM, S AM, S PM, and N over north. The winds
-are banners outlined in Conure's slate blue with their names inside, noise a
-navy zigzag beside the busy roads and the railway, views white cones named
-inside, and kerbside parking one hatched street parking zone. The LEP's
-heritage items are hatched in the ePlanning tan and its conservation areas in
-the ePlanning red. Each neighbour gets a white identification box: its number
-and storeys in black, the zone and the height of building at it in navy
-(`HOB = 18m`, or `HOB = RL 211` where the plan limits by level). No contours:
-the fall arrow and the levels give the ground. Its inks are read from the
-Conure template, so a change to Conure's palette carries over. It draws on
-Flamingo for the title block and is set in Arial. The site bundle now carries
-the LEP height and heritage layers over the sheet for it (`heights`,
-`heritage`); a bundle from before them draws its boxes without the height line.
+Arncliffe, Cabramatta and Randwick in `examples/packages`) drawn in the
+colours of the context sheet's Canary, so the two drawings of a package match.
+The aerial outside the site is greyed (`aerial: 'grey'`) under the same veil,
+and the zones are filled in exactly the NSW ePlanning colours (`zones: 'lep'`,
+at the context sheet's strength), keyed in the legend by code and name; the
+site itself keeps the photograph's colours. The site is a dash in Canary's red
+with its levels in the same red and its boundary dimensions and fall in its
+slate. The street names are spaced out in white double-headed arrow bands
+(lanes plain).
+
+The sun and the winds are one black dashed circle about the site, after the
+office's view diagrams. Inside it is the 21 June sun path from 9 AM to 3 PM
+(`sun: 'hours'`): a dashed arc with a plain sun symbol, a small open disc with
+eight rays, and its time at each solar hour, a dash-dot ray from the site's
+edge to each, and 21 JUNE running on past 9 AM. Around it the winds are only
+written (`wind: 'circle'`): each name set along the circle, upright whichever
+way the sheet is turned, outside a black hatched band over the quarter it
+blows from. The circle sits clear of the lot with room for the path inside it,
+and short of the sheet's edge with the names outside it.
+
+Noise is a navy zigzag beside the busy roads and the railway, views white
+cones named inside, and kerbside parking one hatched street parking zone. The
+LEP's heritage items are hatched in the ePlanning tan and its conservation
+areas in the ePlanning red. Each neighbour's number and storeys are written
+in black straight on the map, with no box behind them and no zone name (the
+colour under it says the zone), and the height of building at it in navy
+under them (`HOB = 18m`, or `HOB = RL 211` where the plan limits by level;
+`neighbours: 'black'`). No contours: the fall arrow and the levels give the
+ground. Its inks are read from the context Canary, so a change to that palette
+carries over. It draws on Flamingo for the title block and is set in Arial.
+The site bundle now carries the LEP height and heritage layers over the sheet
+for it (`heights`, `heritage`); a bundle from before them draws its neighbours
+without the height line.
 
 The web picker shows the site sheet's themes in the STYLE row when the site
 sheet is chosen, and no STYLE row for the yield or the site report; the job request
@@ -723,7 +735,7 @@ comes out in the wrong face, so add the package to the `Dockerfile` first.
 
 Options (after `--`): `--type context|site|yield|slides|summary|both`, `--scale 3000` (default 3000;
 the web picker offers 1:2000, 1:3000, 1:4000 and 1:5000, the server accepts 1000 to 6000),
-`--template flamingo|kingfisher|heron|conure` (the context sheet's template, see Templates below),
+`--template flamingo|kingfisher|heron|canary` (the context sheet's template, see Templates below),
 `--site-theme dove|canary` (the site sheet's theme),
 `--slides-scale 8000` (the deck's map panels), `--da-years 5` (the deck's
 development window), `--job 2539`, `--client "Name"`,

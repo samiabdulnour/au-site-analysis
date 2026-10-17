@@ -271,7 +271,8 @@ export const TEMPLATES: Template[] = [
     // Lots and buildings as heavy white lines over the aerial.
     ground: 'aerial', aerialTone: 'grey', veil: 0.36, tintScale: 1, footprints: 'outline', lots: 'white', streets: 'none', streetLabels: 'plain',
     categories: HERON_CATEGORIES },
-  { id: 'conure', label: 'Conure', note: 'Heron with the zoning in the NSW ePlanning colours, keyed by zone code',
+  // Canary was called Conure; a request that still names it is drawn in Canary.
+  { id: 'canary', label: 'Canary', note: 'Heron with the zoning in the NSW ePlanning colours, keyed by zone code',
     font: NARROW, streetFont: NARROW, textScale: 0.96,
     // Heron's aerial, lines and lettering; the numbered places and the
     // walking catchments in black, the catchments as plain lines with their
@@ -287,9 +288,9 @@ export const TEMPLATES: Template[] = [
     categories: HERON_CATEGORIES },
 ];
 
-// Retired ids still resolve: Flamingo's white version is Flamingo, Flamingo 2 is Kingfisher; the aerial
-// Flamingo and both Redferns fall back to the default, which is Flamingo too.
-const ALIASES: Record<string, string> = { 'flamingo-white': 'flamingo', 'flamingo-2': 'kingfisher' };
+// Retired ids still resolve: Flamingo's white version is Flamingo, Flamingo 2 is Kingfisher, Conure is
+// Canary; the aerial Flamingo and both Redferns fall back to the default, which is Flamingo too.
+const ALIASES: Record<string, string> = { 'flamingo-white': 'flamingo', 'flamingo-2': 'kingfisher', conure: 'canary' };
 const byId: Record<string, Template> = Object.fromEntries([
   ...TEMPLATES.map((t) => [t.id, t] as const),
   ...Object.entries(ALIASES).map(([alias, id]) => [alias, TEMPLATES.find((t) => t.id === id)!] as const),
@@ -429,11 +430,11 @@ export interface SiteLook {
   fall: string;
   /** The neighbours' building outlines, white, this wide (mm). */
   buildingEdge: number;
-  /** The neighbours: number and storeys in white on the building, or a white box with number, storeys, zone and height limit. */
-  neighbours: 'white' | 'box';
-  /** The box's second ink, for the zone and the height limit. */
-  neighbourZoneInk: string;
-  /** The zones hatched over the aerial in their family colours, filled in their NSW ePlanning colours, or left to the neighbours' boxes. */
+  /** The neighbours: number and storeys in white on the building, or number, storeys and height limit in black, written straight on the map. */
+  neighbours: 'white' | 'black';
+  /** The second ink, for the height limit. */
+  neighbourHeightInk: string;
+  /** The zones hatched over the aerial in their family colours, filled in their NSW ePlanning colours, or not drawn. */
   zones: 'hatch' | 'lep' | 'none';
   /** The LEP heritage items and conservation areas, hatched. */
   heritage: boolean;
@@ -447,18 +448,18 @@ export interface SiteLook {
   streetNames: 'plain' | 'band';
   /** Their ink. */
   streetInk: string;
-  /** The suns: an open jagged crown in the climate pen, or a yellow disc with short rays and its season and time inside. */
-  sun: 'crown' | 'disc';
-  /** The sun path's pen, and for the disc its fill and edge. */
+  /** The suns: an open jagged crown at each solstice's rise and set, or the 21 June path from 9 AM to 3 PM with a plain sun symbol and the time at each hour. */
+  sun: 'crown' | 'hours';
+  /** The sun path's pen, and the suns' fill and edge. */
   sunPen: string;
   sunFill: string;
   sunEdge: string;
   /** The suns' words and the solar hours. */
   sunInk: string;
-  /** The solar hours marked along the arcs. */
+  /** The solar hours marked along the crowns' arcs. */
   sunHours: boolean;
-  /** The winds: three hand-drawn strands abreast, or one outlined banner with its name inside. */
-  wind: 'strands' | 'banner';
+  /** The winds: three hand-drawn strands abreast, or each named around a circle about the site, its quarter hatched on the circle. */
+  wind: 'strands' | 'circle';
   windPen: string;
   /** The ink of the winds' and the suns' words. */
   climateInk: string;
@@ -483,7 +484,7 @@ export interface SiteTheme { id: string; label: string; note: string; base: stri
 const DOVE_GREY = '#6f7377';
 const DOVE_LOOK: SiteLook = {
   font: NARROW, veil: 0.55, aerial: 'colour', site: '#b3261e', siteDash: '7,2,1.6,2', dimensionInk: '#b3261e', fall: '#56616b',
-  buildingEdge: 0.3, neighbours: 'white', neighbourZoneInk: '#ffffff', zones: 'hatch',
+  buildingEdge: 0.3, neighbours: 'white', neighbourHeightInk: '#ffffff', zones: 'hatch',
   heritage: false, heritageInk: { item: '#e39a3b', area: '#c8372d' }, contours: true, contourInk: '#a9adb1',
   streetNames: 'plain', streetInk: '#ffffff',
   sun: 'crown', sunPen: DOVE_GREY, sunFill: '#ffffff', sunEdge: DOVE_GREY, sunInk: DOVE_GREY, sunHours: true,
@@ -492,28 +493,31 @@ const DOVE_LOOK: SiteLook = {
 };
 
 // Canary: the office's classic site sheet (DA 004 at Arncliffe, Cabramatta,
-// Randwick) in Conure's colours: the aerial in grey under Conure's veil, the
-// zones in the NSW ePlanning colours, Conure's red for the dashed site and its
-// levels, its slate for the boundary dimensions and the fall, cream suns named
-// inside on a tan sun path, slate wind banners, white boxes naming each
-// neighbour with its zone and height limit in navy, the streets in white arrow
-// bands, and heritage in the ePlanning tan and red.
-const CONURE = TEMPLATES.find((t) => t.id === 'conure')!;
+// Randwick) in the colours of the context sheet's Canary: the aerial in grey
+// under its veil, the zones in the NSW ePlanning colours, its red for the
+// dashed site and its levels, its slate for the boundary dimensions and the
+// fall, each neighbour's number, storeys and height limit written straight on
+// the map, the streets in white arrow bands, heritage in the ePlanning tan and
+// red. The sun and the winds are one black circle about the site: the 21 June
+// path inside it with a plain sun at each hour, the winds named around it with
+// their quarters hatched.
+const CANARY_CONTEXT = TEMPLATES.find((t) => t.id === 'canary')!;
 const CANARY_LOOK: SiteLook = {
-  font: SANS, veil: CONURE.veil!, aerial: 'grey', site: CONURE.site, siteDash: '4.2,1.8', dimensionInk: CONURE.dimension, fall: CONURE.dimension,
-  buildingEdge: 0.55, neighbours: 'box', neighbourZoneInk: CONURE.transit, zones: 'lep',
-  heritage: true, heritageInk: { item: CONURE.heritage, area: '#ff0000' }, contours: false, contourInk: '#3f9a5c',
-  streetNames: 'band', streetInk: CONURE.ink,
-  sun: 'disc', sunPen: CONURE.heritage, sunFill: CONURE.sun, sunEdge: CONURE.heritage, sunInk: CONURE.ink, sunHours: false,
-  wind: 'banner', windPen: CONURE.wind, climateInk: CONURE.ink,
-  noise: 'zigzag', noisePen: CONURE.transit, views: 'cone', viewPen: CONURE.ink, parking: 'hatch',
+  font: SANS, veil: CANARY_CONTEXT.veil!, aerial: 'grey', site: CANARY_CONTEXT.site, siteDash: '4.2,1.8',
+  dimensionInk: CANARY_CONTEXT.dimension, fall: CANARY_CONTEXT.dimension,
+  buildingEdge: 0.55, neighbours: 'black', neighbourHeightInk: CANARY_CONTEXT.transit, zones: 'lep',
+  heritage: true, heritageInk: { item: CANARY_CONTEXT.heritage, area: '#ff0000' }, contours: false, contourInk: '#3f9a5c',
+  streetNames: 'band', streetInk: CANARY_CONTEXT.ink,
+  sun: 'hours', sunPen: CANARY_CONTEXT.ink, sunFill: '#ffffff', sunEdge: CANARY_CONTEXT.ink, sunInk: CANARY_CONTEXT.ink, sunHours: false,
+  wind: 'circle', windPen: CANARY_CONTEXT.ink, climateInk: CANARY_CONTEXT.ink,
+  noise: 'zigzag', noisePen: CANARY_CONTEXT.transit, views: 'cone', viewPen: CANARY_CONTEXT.ink, parking: 'hatch',
 };
 
 export const SITE_THEMES: SiteTheme[] = [
   { id: 'dove', label: 'Dove', base: 'flamingo', look: DOVE_LOOK,
     note: 'the aerial with the zones hatched; the site in a deep red, the sun path, its crowns, the telescopes and the winds in grey, the contours in light grey' },
   { id: 'canary', label: 'Canary', base: 'flamingo', look: CANARY_LOOK,
-    note: 'the office classic in Conure\'s colours: a grey aerial with the zones in the ePlanning colours, cream suns named inside, slate wind banners, white boxes naming each neighbour with its zone and height limit' },
+    note: 'the office classic in the context Canary\'s colours: a grey aerial with the zones in the ePlanning colours, one black circle for the 21 June sun and the winds, each neighbour\'s number, storeys and height limit' },
 ];
 export const DEFAULT_SITE_THEME = 'dove';
 
