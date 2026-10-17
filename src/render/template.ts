@@ -415,6 +415,8 @@ export const BOOK = {
 export interface SiteLook {
   /** The face of every word on the map and in the legend. */
   font: string;
+  /** What the map is drawn on: the aerial photograph, or plain paper. */
+  ground: 'aerial' | 'paper';
   /** The white veil over the aerial outside the site. */
   veil: number;
   /** The site's pen: its boundary, corners and levels. */
@@ -427,12 +429,16 @@ export interface SiteLook {
   fall: string;
   /** The neighbours' building outlines, white, this wide (mm). */
   buildingEdge: number;
-  /** The neighbours: number and storeys in white on the building, or a white box with number, storeys, zone and height limit. */
+  /** The buildings: an outline over the aerial's roofs, or filled in their zone family's strong colour. */
+  buildings: 'outline' | 'colour';
+  /** The neighbours: number and storeys on the building, or a white box with number, storeys, zone and height limit. */
   neighbours: 'white' | 'box';
+  /** The ink of the numbers and storeys set on the buildings. */
+  neighbourInk: string;
   /** The box's second ink, for the zone and the height limit. */
   neighbourZoneInk: string;
-  /** The zones hatched over the aerial, or left to the neighbours' boxes. */
-  zones: 'hatch' | 'none';
+  /** The zones hatched over the aerial, filled as pale grounds (the context template's), or left to the neighbours' boxes. */
+  zones: 'hatch' | 'fill' | 'none';
   /** The LEP heritage items and conservation areas, hatched. */
   heritage: boolean;
   /** Contours with their levels along them. */
@@ -443,8 +449,8 @@ export interface SiteLook {
   streetNames: 'plain' | 'band';
   /** Their ink. */
   streetInk: string;
-  /** The suns: an open jagged crown in the climate pen, or a yellow disc with short rays and its season and time inside. */
-  sun: 'crown' | 'disc';
+  /** The suns: an open jagged crown in the climate pen, a yellow disc with short rays and its season and time inside, or the office's own drawn suns (climateSymbols.ts), no two alike. */
+  sun: 'crown' | 'disc' | 'symbol';
   /** The sun path's pen, and for the disc its fill and edge. */
   sunPen: string;
   sunFill: string;
@@ -453,8 +459,8 @@ export interface SiteLook {
   sunInk: string;
   /** The solar hours marked along the arcs. */
   sunHours: boolean;
-  /** The winds: three hand-drawn strands abreast, or one outlined banner with its name inside. */
-  wind: 'strands' | 'banner';
+  /** The winds: three hand-drawn strands abreast, one outlined banner with its name inside, or the office's triple arrow set on the sun path's ring. */
+  wind: 'strands' | 'banner' | 'symbol';
   windPen: string;
   /** The ink of the winds' and the suns' words. */
   climateInk: string;
@@ -478,8 +484,8 @@ export interface SiteTheme { id: string; label: string; note: string; base: stri
 // views in the site's red; a request naming Cardinal is drawn in Dove.
 const DOVE_GREY = '#6f7377';
 const DOVE_LOOK: SiteLook = {
-  font: NARROW, veil: 0.55, site: '#b3261e', siteDash: '7,2,1.6,2', dimensionInk: '#b3261e', fall: '#56616b',
-  buildingEdge: 0.3, neighbours: 'white', neighbourZoneInk: '#ffffff', zones: 'hatch', heritage: false, contours: true, contourInk: '#a9adb1',
+  font: NARROW, ground: 'aerial', veil: 0.55, site: '#b3261e', siteDash: '7,2,1.6,2', dimensionInk: '#b3261e', fall: '#56616b',
+  buildingEdge: 0.3, buildings: 'outline', neighbours: 'white', neighbourInk: '#ffffff', neighbourZoneInk: '#ffffff', zones: 'hatch', heritage: false, contours: true, contourInk: '#a9adb1',
   streetNames: 'plain', streetInk: '#ffffff',
   sun: 'crown', sunPen: DOVE_GREY, sunFill: '#ffffff', sunEdge: DOVE_GREY, sunInk: DOVE_GREY, sunHours: true,
   wind: 'strands', windPen: DOVE_GREY, climateInk: DOVE_GREY,
@@ -492,17 +498,35 @@ const DOVE_LOOK: SiteLook = {
 // named inside, blue outlined wind banners, white boxes naming each neighbour
 // with its zone and height limit in blue, the streets in white arrow bands.
 const CANARY_LOOK: SiteLook = {
-  font: SANS, veil: 0.42, site: '#e3241b', siteDash: '4.2,1.8', dimensionInk: '#111111', fall: '#3346c8',
-  buildingEdge: 0.55, neighbours: 'box', neighbourZoneInk: '#2b3fd0', zones: 'none', heritage: true, contours: false, contourInk: '#3f9a5c',
+  font: SANS, ground: 'aerial', veil: 0.42, site: '#e3241b', siteDash: '4.2,1.8', dimensionInk: '#111111', fall: '#3346c8',
+  buildingEdge: 0.55, buildings: 'outline', neighbours: 'box', neighbourInk: '#111111', neighbourZoneInk: '#2b3fd0', zones: 'none', heritage: true, contours: false, contourInk: '#3f9a5c',
   streetNames: 'band', streetInk: '#111111',
   sun: 'disc', sunPen: '#f3d75a', sunFill: '#fbe78c', sunEdge: '#e0b82a', sunInk: '#111111', sunHours: false,
   wind: 'banner', windPen: '#3b8be0', climateInk: '#111111',
   noise: 'zigzag', noisePen: '#3d3fd8', views: 'cone', viewPen: '#111111', parking: 'hatch',
 };
 
+// Kookaburra: the site sheet on Kingfisher's paper, no photograph: the zones
+// as its pale grounds, every building in its family's strong colour with a
+// white edge, the white cadastre, its grotesk and its peach street names, the
+// site in its magenta. The office's own suns in yellow, a different one at
+// each rise and set, and its triple-arrow winds in light blue, both set on the
+// sun path's ring, which itself is drawn lightly.
+const KOOKABURRA_LOOK: SiteLook = {
+  font: GROTESK, ground: 'paper', veil: 0, site: F2.magenta, siteDash: '7,2,1.6,2', dimensionInk: '#56616b', fall: '#56616b',
+  buildingEdge: 0.4, buildings: 'colour', neighbours: 'white', neighbourInk: '#1c1c1c', neighbourZoneInk: '#1c1c1c',
+  zones: 'fill', heritage: false, contours: true, contourInk: '#a9adb1',
+  streetNames: 'plain', streetInk: '#e39a6f',
+  sun: 'symbol', sunPen: '#f2c200', sunFill: '#f2c200', sunEdge: '#f2c200', sunInk: '#c99700', sunHours: true,
+  wind: 'symbol', windPen: '#7cc4ea', climateInk: '#3d93c7',
+  noise: 'band', noisePen: '#3f6fc2', views: 'telescope', viewPen: '#56616b', parking: 'bays',
+};
+
 export const SITE_THEMES: SiteTheme[] = [
   { id: 'dove', label: 'Dove', base: 'flamingo', look: DOVE_LOOK,
     note: 'the aerial with the zones hatched; the site in a deep red, the sun path, its crowns, the telescopes and the winds in grey, the contours in light grey' },
+  { id: 'kookaburra', label: 'Kookaburra', base: 'kingfisher', look: KOOKABURRA_LOOK,
+    note: 'Kingfisher on paper, no aerial: the zones as its pale grounds, the buildings in their family colour, the office\'s yellow suns and light-blue triple-arrow winds on the sun path\'s ring' },
   { id: 'canary', label: 'Canary', base: 'flamingo', look: CANARY_LOOK,
     note: 'the office classic: a veiled aerial, a yellow sun path with the suns named inside, blue wind banners, white boxes naming each neighbour with its zone and height limit' },
 ];

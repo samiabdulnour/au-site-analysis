@@ -665,7 +665,7 @@ listed in `SITE_THEMES` in `src/render/template.ts`; each names the template
 it draws on for what it does not set itself (the typeface and the zones'
 palette), and the sheet sets the rest — its `look` (`SiteLook`): the face, the
 veil, the site's pen and dash, how the neighbours, streets, suns, winds, noise,
-views and kerbside parking are drawn, and in which inks. There are three:
+views and kerbside parking are drawn, and in which inks. There are three, on the aerial or on paper:
 
 **Dove** (`dove`, the default) — the aerial with the zones hatched in their
 family colours, the neighbours' numbers and storeys and the street names in
@@ -681,6 +681,18 @@ In every style, the services' words (11 kV, Ø 375, DS 1616 · 969 kVA spare) ar
 plain Arial with no white halo. Where no open tree data reaches the site (no
 council register, nothing in OpenStreetMap within 15 m), the legend says so
 instead of leaving the trees out without a word.
+
+**Kookaburra** (`kookaburra`) — Kingfisher on paper, with no aerial: the
+zones as Kingfisher's pale grounds with their textures, every building in its
+zone family's strong colour with a white edge (a quiet grey on the site and
+where no zone is mapped), the white cadastre, Kingfisher's grotesk, its peach
+street names and its magenta site. The suns are the office's own drawn suns
+(`src/render/climateSymbols.ts`, traced from its symbol sheet) in yellow, a
+different one at each solstice rise and set, and the winds its triple arrows
+in light blue, set on the sun path's summer ring at their bearing and pointing
+in at the site, slid along the ring off a sun from the same quarter. The ring
+itself is drawn finely; it only places them. On paper the climate words keep a
+thin white edge, since a name can fall on a slate-blue commercial building.
 
 **Canary** (`canary`) — the office's classic site sheet (the DA 004s at
 Arncliffe, Cabramatta and Randwick in `examples/packages`): the aerial under a
@@ -718,7 +730,7 @@ comes out in the wrong face, so add the package to the `Dockerfile` first.
 Options (after `--`): `--type context|site|yield|slides|summary|both`, `--scale 3000` (default 3000;
 the web picker offers 1:2000, 1:3000, 1:4000 and 1:5000, the server accepts 1000 to 6000),
 `--template flamingo|kingfisher|heron|conure` (the context sheet's template, see Templates below),
-`--site-theme dove|canary` (the site sheet's theme),
+`--site-theme dove|kookaburra|canary` (the site sheet's theme),
 `--slides-scale 8000` (the deck's map panels), `--da-years 5` (the deck's
 development window), `--job 2539`, `--client "Name"`,
 `--status "DEVELOPMENT APPLICATION"`, `--sheet "DA 003"`.
