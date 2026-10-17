@@ -430,10 +430,12 @@ export interface SiteLook {
   siteDash: string;
   /** The boundary dimensions' ink (Heron sets them in the site's red, Canary in black). */
   dimensionInk: string;
-  /** The fall of terrain and the FALL/AREA words. */
+  /** The fall of terrain's arrow. */
   fall: string;
-  /** The FALL/AREA words on a white box, or straight on the site (with a fine white edge to the letters where the theme has textHalo). */
-  fallBox: boolean;
+  /** The FALL/AREA words: on a white box, straight on the site with a fine white edge to the letters, or plain. */
+  fallWords: 'box' | 'edge' | 'plain';
+  /** Their ink. */
+  fallInk: string;
   /** The neighbours' building outlines, white, this wide (mm). */
   buildingEdge: number;
   /** The buildings: an outline over the aerial's roofs, or filled in their zone family's strong colour. */
@@ -476,7 +478,7 @@ export interface SiteLook {
   noisePen: string;
   /** Views: a telescope aimed along the sight line, a white band inside the climate circle with the view's name around it, or a plain outlined triangle opening from the site edge. */
   views: 'telescope' | 'circle' | 'triangle';
-  /** A thin white edge on words drawn over busy ground (the trees' numbers, FALL and AREA without their box). */
+  /** A thin white edge on words drawn over busy ground (the trees' numbers). */
   textHalo: boolean;
   /** Indicative kerb lines along the streets (lib/kerbs.ts), for a sheet with no aerial to show them. */
   kerbs: boolean;
@@ -502,7 +504,7 @@ export interface SiteTheme { id: string; label: string; note: string; base: stri
 // site's red; a request naming either is drawn in Heron.
 const CLIMATE_GREY = '#6f7377';
 const HERON_LOOK: SiteLook = {
-  font: NARROW, ground: 'aerial', veil: 0.55, aerial: 'grey', site: HERON_RED, siteDash: '7,2,1.6,2', dimensionInk: HERON_RED, fall: HERON_SLATE, fallBox: false,
+  font: NARROW, ground: 'aerial', veil: 0.55, aerial: 'grey', site: HERON_RED, siteDash: '7,2,1.6,2', dimensionInk: HERON_RED, fall: HERON_SLATE, fallWords: 'edge', fallInk: HERON_SLATE,
   buildingEdge: 0.3, buildings: 'outline', neighbours: 'white', neighbourHeightInk: '#ffffff', zones: 'hatch', zoneTint: 0.55,
   heritage: false, heritageInk: { item: '#e39a3b', area: '#c8372d' }, contours: true, contourInk: '#a9adb1',
   streetInk: '#ffffff',
@@ -524,7 +526,7 @@ const HERON_LOOK: SiteLook = {
 const CANARY_CONTEXT = TEMPLATES.find((t) => t.id === 'canary')!;
 const CANARY_LOOK: SiteLook = {
   font: SANS, ground: 'aerial', veil: CANARY_CONTEXT.veil!, aerial: 'grey', site: CANARY_CONTEXT.site, siteDash: '4.2,1.8',
-  dimensionInk: CANARY_CONTEXT.dimension, fall: CANARY_CONTEXT.dimension, fallBox: false,
+  dimensionInk: CANARY_CONTEXT.dimension, fall: CANARY_CONTEXT.dimension, fallWords: 'plain', fallInk: CANARY_CONTEXT.site,
   buildingEdge: 0.55, buildings: 'outline', neighbours: 'black', neighbourHeightInk: CANARY_CONTEXT.transit, zones: 'lep', zoneTint: 0,
   heritage: true, heritageInk: { item: CANARY_CONTEXT.heritage, area: '#ff0000' }, contours: false, contourInk: '#3f9a5c',
   streetInk: CANARY_CONTEXT.ink,
@@ -544,7 +546,7 @@ const CANARY_LOOK: SiteLook = {
 // the site. The kerbs are drawn, indicatively, since there is no photograph
 // to show them.
 const KOOKABURRA_LOOK: SiteLook = {
-  font: GROTESK, ground: 'paper', veil: 0, aerial: 'colour', site: F2.magenta, siteDash: '7,2,1.6,2', dimensionInk: '#56616b', fall: '#56616b', fallBox: false,
+  font: GROTESK, ground: 'paper', veil: 0, aerial: 'colour', site: F2.magenta, siteDash: '7,2,1.6,2', dimensionInk: '#56616b', fall: '#56616b', fallWords: 'plain', fallInk: '#56616b',
   buildingEdge: 0.4, buildings: 'colour', neighbours: 'white', neighbourHeightInk: '#ffffff', zones: 'fill', zoneTint: 0,
   heritage: false, heritageInk: { item: '#e39a3b', area: '#c8372d' }, contours: true, contourInk: '#a9adb1',
   streetInk: '#e39a6f',

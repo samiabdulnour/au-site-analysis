@@ -185,7 +185,9 @@ function windEntry(c: Pt, bearingDeg: number, rotationDeg: number): Pt {
 // and the four suns this far inside it with their names further in.
 const WIND_BAND = 5, WIND_SPAN = 22;   // the bands' depth (mm) and half their sweep (°)
 const VIEW_BAND = 5, VIEW_SPAN = 10;
-const SUN_INSET = 22;
+const SUN_INSET = 24, SUN_SIZE = 2;
+// How far a sun's rays reach from its centre, and a little room past them.
+const SUN_CLEAR = 4.5 * SUN_SIZE + 3;
 // A sun's name, two lines of the map's lettering, and the box it takes.
 const SUN_NAME_W = 30, SUN_NAME_H = 14;
 /** The ring wind's half-length on paper (mm), and the drawn sun's radius. */
@@ -195,7 +197,7 @@ const RING_WIND_HALF = 40, SYMBOL_SUN_R = 22;
 function climateRadius(c: Pt, ring: Pt[]): number {
   const reach = Math.max(...ring.map(([x, y]) => Math.hypot(x - c[0], y - c[1])));
   const room = Math.min(c[0], MAP_W - c[0], c[1], MAP_H - c[1]) - (WIND_BAND + 16);
-  return Math.min(Math.max(reach * 1.3, reach + SUN_INSET + 9 + SUN_NAME_W + SUN_NAME_H / 2), room);
+  return Math.min(Math.max(reach * 1.3, reach + SUN_INSET + SUN_CLEAR + SUN_NAME_W + SUN_NAME_H / 2), room);
 }
 
 /**
@@ -205,7 +207,7 @@ function climateRadius(c: Pt, ring: Pt[]): number {
  */
 function sunNameAt(c: Pt, r: number, deg: number): Pt {
   const a = (deg * Math.PI) / 180, ux = Math.sin(a), uy = -Math.cos(a);
-  return onCircle(c, r - (9 + (SUN_NAME_W / 2) * Math.abs(ux) + (SUN_NAME_H / 2) * Math.abs(uy)), deg);
+  return onCircle(c, r - (SUN_CLEAR + (SUN_NAME_W / 2) * Math.abs(ux) + (SUN_NAME_H / 2) * Math.abs(uy)), deg);
 }
 
 type SightLine = NonNullable<SiteBundle['views']>[number];
@@ -477,7 +479,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
     const R = climateRadius([cx, cy], sr.slice(0, sn));
     if (look.sun === 'circle') {
       for (const az of [azOf(dec), -azOf(dec), azOf(-dec), -azOf(-dec)]) {
-        placer.reserve(...at(az, R - SUN_INSET), 16, 16);
+        placer.reserve(...at(az, R - SUN_INSET), SUN_CLEAR * 2, SUN_CLEAR * 2);
         placer.reserve(...sunNameAt([cx, cy], R - SUN_INSET, az + view.rotationDeg), SUN_NAME_W, SUN_NAME_H);
       }
       placer.reserve(...at(0, R + 10), 12, 22);
@@ -1313,12 +1315,12 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
     const fs = MAP_TEXT, lh = fs * 1.12;
     const w = Math.max(...lines.map((t) => t.length)) * fs * 0.55 + 4;
     const h = lines.length * lh + 2;
-    // Without the box, a fine white edge keeps the words clear of a dark roof
-    // (on paper there is no roof, and no edge).
-    const edge = look.fallBox || !look.textHalo ? '' : ' stroke="#ffffff" stroke-width="0.6" stroke-opacity="0.85" paint-order="stroke" stroke-linejoin="round"';
+    // Without the box, a theme can give the words a fine white edge to keep
+    // them clear of a dark roof, or set them plain (on paper there is no roof).
+    const edge = look.fallWords === 'edge' ? ' stroke="#ffffff" stroke-width="0.6" stroke-opacity="0.85" paint-order="stroke" stroke-linejoin="round"' : '';
     layers.push(`<g transform="translate(${centroidPx[0].toFixed(1)},${centroidPx[1].toFixed(1)}) rotate(${ang.toFixed(1)})">
-      ${look.fallBox ? `<rect x="${(-w / 2).toFixed(1)}" y="${(-h / 2).toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" fill="#ffffff" fill-opacity="0.9"/>` : ''}
-      ${lines.map((t, i) => `<text x="0" y="${(-h / 2 + 1 + lh * (i + 0.8)).toFixed(1)}" text-anchor="middle" font-size="${fs}" font-weight="700" fill="${BLUE()}"${edge}>${esc(t)}</text>`).join('')}
+      ${look.fallWords === 'box' ? `<rect x="${(-w / 2).toFixed(1)}" y="${(-h / 2).toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" fill="#ffffff" fill-opacity="0.9"/>` : ''}
+      ${lines.map((t, i) => `<text x="0" y="${(-h / 2 + 1 + lh * (i + 0.8)).toFixed(1)}" text-anchor="middle" font-size="${fs}" font-weight="700" fill="${look.fallInk}"${edge}>${esc(t)}</text>`).join('')}
     </g>`);
   }
 
@@ -1470,7 +1472,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
       ];
       for (const [az, name] of suns) {
         const [lx, ly] = sunNameAt(c, R - SUN_INSET, page(az));
-        layers.push(sunMark(onCircle(c, R - SUN_INSET, page(az)), look.sunEdge, look.sunFill, 1.5) +
+        layers.push(sunMark(onCircle(c, R - SUN_INSET, page(az)), look.sunEdge, look.sunFill, SUN_SIZE) +
           name.map((t, i) => `<text x="${lx.toFixed(1)}" y="${(ly + (i - (name.length - 1) / 2) * LETTER * 1.12 + LETTER * 0.36).toFixed(1)}" text-anchor="middle" font-size="${LETTER}" font-weight="700" fill="${SUN_INK}">${t}</text>`).join(''));
       }
       // North: an arrowhead standing out of the ring, N beyond its point.
