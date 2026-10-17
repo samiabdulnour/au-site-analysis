@@ -670,7 +670,7 @@ it draws on for what it does not set itself (the typeface and the zones'
 palette), and the sheet sets the rest — its `look` (`SiteLook`): the face, the
 veil and the aerial's tone, the site's pen and dash, how the zones, heritage,
 neighbours, streets, suns, winds, noise, views and kerbside parking are drawn,
-and in which inks. There are two:
+and in which inks. There are three, on the aerial or on paper:
 
 **Heron** (`heron`, the default) — the aerial with the zones hatched, in the
 Heron template's colours. The aerial goes grey outside the site (`aerial: 'grey'`, by the
@@ -697,6 +697,44 @@ In every style, the services' words (11 kV, Ø 375, DS 1616 · 969 kVA spare) ar
 plain Arial with no white halo. Where no open tree data reaches the site (no
 council register, nothing in OpenStreetMap within 15 m), the legend says so
 instead of leaving the trees out without a word.
+
+**Kookaburra** (`kookaburra`) — Kingfisher on paper, with no aerial: the
+zones as Kingfisher's pale grounds with their textures, laid on the lots only
+so the roads stay white (water is drawn whole), every building in its zone
+family's strong colour with a white edge and its number in white (a quiet grey
+on the site and where no zone is mapped), the white cadastre, Kingfisher's
+grotesk, its peach street names and its magenta site. The suns are the
+office's own drawn suns (`src/render/climateSymbols.ts`, traced from its
+symbol sheet) in yellow, a different one at each solstice rise and set, and
+the winds its triple arrows in light blue, set on the sun path's summer ring
+at their bearing and pointing in at the site, slid along the ring off a sun
+from the same quarter; both are large (a sun 44 mm across, a wind 80 mm long
+on the A1). The ring is a bold yellow line, solid in summer and dashed in
+winter, and carries no hours. Views are plain outlined triangles opening
+from the site edge, their distance written beyond the open end or, where a
+sun's name is there, beside it. No word has a white edge, and FALL and AREA
+sit straight on the site.
+
+With no photograph to show them, Kookaburra draws the kerbs, indicatively
+(`src/lib/kerbs.ts`): NSW publishes no kerbs or footpath edges as open data
+(the state's roads are centre lines only, a few metres out), so each kerb
+runs a footpath's width out from the lot boundary on the street side. The
+width is measured where OpenStreetMap maps the footpath (Overture Maps'
+sidewalks, `src/fetch/footways.ts`; a sidewalk is mapped along its middle,
+so the width is twice its distance from the boundary) and typical for the
+street's class elsewhere (5 m on an arterial to 3.5 m on a local street),
+never closer than a lane's width to the reserve's middle. A lane has no
+footpath, so its kerb stands 0.6 m off the boundary, and so does a street
+too narrow for one. Along one block face of one street the width is
+averaged, so the line does not shift at every lot. Each frontage's kerb runs
+straight on to meet the next, and every corner is then rounded to a 3.5 m
+kerb return (less where the lot is too near), so the line runs unbroken
+along a street, turns each corner and crossroads in one arc and swings into
+each lane the same way; a corner splay or curve that runs with neither
+street carries the footpath round between them. Where the boundary has no
+street at all (a park, a back fence) the kerb ends in a return. A kerb
+OpenStreetMap maps as a line is drawn as it is. The legend calls the line
+indicative.
 
 **Canary** (`canary`) — the office's classic site sheet (the DA 004s at
 Arncliffe, Cabramatta and Randwick in `examples/packages`) drawn in the
@@ -755,7 +793,7 @@ comes out in the wrong face, so add the package to the `Dockerfile` first.
 Options (after `--`): `--type context|site|yield|slides|summary|both`, `--scale 3000` (default 3000;
 the web picker offers 1:2000, 1:3000, 1:4000 and 1:5000, the server accepts 1000 to 6000),
 `--template flamingo|kingfisher|heron|canary` (the context sheet's template, see Templates below),
-`--site-theme heron|canary` (the site sheet's theme),
+`--site-theme heron|kookaburra|canary` (the site sheet's theme),
 `--slides-scale 8000` (the deck's map panels), `--da-years 5` (the deck's
 development window), `--job 2539`, `--client "Name"`,
 `--status "DEVELOPMENT APPLICATION"`, `--sheet "DA 003"`.

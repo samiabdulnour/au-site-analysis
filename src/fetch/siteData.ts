@@ -154,11 +154,13 @@ export interface SiteFurniture {
   carParks: CarPark[];
   /** Individually mapped bays (OSM amenity=parking_space areas). */
   parkingBays: { ring: [number, number][] }[];
+  /** Kerbs OpenStreetMap maps as lines (barrier=kerb; older bundles: none). */
+  kerbs?: [number, number][][];
 }
 
 export const emptyFurniture = (): SiteFurniture => ({
   trees: [], hydrants: [], powerPoles: [], streetLamps: [], onewayRoads: [],
-  buildings: [], utilities: [], servicePoints: [], driveways: [], parkingLanes: [], carParks: [], parkingBays: [],
+  buildings: [], utilities: [], servicePoints: [], driveways: [], parkingLanes: [], carParks: [], parkingBays: [], kerbs: [],
 });
 
 // OSM has tagged kerbside parking two ways. The older parking:lane:<side>
@@ -251,6 +253,7 @@ export async function fetchSiteFurniture(extent: Extent): Promise<SiteFurniture>
   way["highway"]["parking:right"](${bbox});
   way["amenity"="parking"](${bbox});
   way["amenity"="parking_space"](${bbox});
+  way["barrier"="kerb"](${bbox});
 );
 out geom;`;
   const data = await overpassQuery(q);
@@ -281,6 +284,10 @@ out geom;`;
     }
     if (t.service === 'driveway') {
       out.driveways.push({ coords });
+      continue;
+    }
+    if (t.barrier === 'kerb') {
+      out.kerbs!.push(coords);
       continue;
     }
     if (t.amenity === 'parking' && coords.length >= 4) {
