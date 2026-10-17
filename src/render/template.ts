@@ -538,7 +538,7 @@ const CANARY_LOOK: SiteLook = {
   noise: 'zigzag', noisePen: CANARY_CONTEXT.transit, views: 'circle', viewPen: CANARY_CONTEXT.ink, parking: 'hatch', textHalo: true, kerbs: false,
 };
 
-// Kookaburra: the site sheet on Kingfisher's paper, no photograph: the zones
+// Kingfisher: the site sheet on Kingfisher's paper, no photograph: the zones
 // as its pale grounds on the lots only, so the roads stay white, every
 // building in its family's strong colour with a white edge and its number in
 // white, the white cadastre, its grotesk and its peach street names, the site
@@ -547,8 +547,9 @@ const CANARY_LOOK: SiteLook = {
 // path's ring, both large; the ring a bold yellow line with no hours. Views are
 // plain triangles; no word has a white edge, and FALL and AREA sit straight on
 // the site. The kerbs are drawn, indicatively, since there is no photograph
-// to show them.
-const KOOKABURRA_LOOK: SiteLook = {
+// to show them. It was called Kookaburra; a request naming it is drawn in
+// Kingfisher.
+const KINGFISHER_LOOK: SiteLook = {
   font: GROTESK, ground: 'paper', veil: 0, aerial: 'colour', site: F2.magenta, siteDash: '7,2,1.6,2', dimensionInk: '#56616b', fall: '#56616b', fallWords: 'plain', fallInk: '#56616b', textScale: 1,
   buildingEdge: 0.4, buildings: 'colour', neighbours: 'white', neighbourHeightInk: '#ffffff', zones: 'fill', zoneTint: 0,
   heritage: false, heritageInk: { item: '#e39a3b', area: '#c8372d' }, contours: true, contourInk: '#a9adb1',
@@ -558,18 +559,26 @@ const KOOKABURRA_LOOK: SiteLook = {
   noise: 'band', noisePen: '#3f6fc2', views: 'triangle', viewPen: '#56616b', parking: 'bays', textHalo: false, kerbs: true,
 };
 
+// Flamingo: Kingfisher's sheet in Flamingo's palette. The same paper, marks and
+// climate, with the zones as Flamingo's tints and textures, every building in
+// its family's ink, the site in its coral and the street names in its green.
+const FLAMINGO_CONTEXT = TEMPLATES.find((t) => t.id === 'flamingo')!;
+const FLAMINGO_LOOK: SiteLook = { ...KINGFISHER_LOOK, site: FLAMINGO_CONTEXT.site, streetInk: FLAMINGO_CONTEXT.streetInk };
+
 export const SITE_THEMES: SiteTheme[] = [
   { id: 'heron', label: 'Heron', base: 'heron', look: HERON_LOOK,
     note: 'the grey aerial with the zones in Heron\'s palette; the site in Heron\'s red, the sun path, its crowns, the telescopes and the winds in grey, the contours in light grey' },
-  { id: 'kookaburra', label: 'Kookaburra', base: 'kingfisher', look: KOOKABURRA_LOOK,
+  { id: 'kingfisher', label: 'Kingfisher', base: 'kingfisher', look: KINGFISHER_LOOK,
     note: 'Kingfisher on paper, no aerial: the zones as its pale grounds, the buildings in their family colour, the office\'s yellow suns and light-blue triple-arrow winds on the sun path\'s ring' },
+  { id: 'flamingo', label: 'Flamingo', base: 'flamingo', look: FLAMINGO_LOOK,
+    note: 'Kingfisher\'s sheet in Flamingo\'s palette: the zones as its tints and textures, the buildings in their family ink, the site in its coral, the street names in its green' },
   { id: 'canary', label: 'Canary', base: 'flamingo', look: CANARY_LOOK,
     note: 'the office classic in the context Canary\'s colours: a grey aerial with the zones in the ePlanning colours, one black circle for the sun, the winds and the views, each neighbour\'s number, storeys and height limit' },
 ];
 export const DEFAULT_SITE_THEME = 'heron';
 
 /** Old names still asked for by saved requests and batches. */
-const SITE_THEME_ALIASES: Record<string, string> = { dove: 'heron', cardinal: 'heron' };
+const SITE_THEME_ALIASES: Record<string, string> = { dove: 'heron', cardinal: 'heron', kookaburra: 'kingfisher' };
 
 /** A site theme by id (or a former name), or the default for anything unknown. */
 export function siteTheme(id: string | undefined): SiteTheme {
