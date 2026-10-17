@@ -138,16 +138,33 @@ export function archetypeFor(zone: string | undefined): Archetype {
  */
 export const FUTURE_ZONES = ['R1', 'R3', 'R4', 'B1', 'B2', 'B3', 'B4', 'E1', 'E2', 'MU1'];
 
+/** What a neighbour's future is read from: its zone, the controls where it stands (the height in metres above its ground), and the land it stands on. */
+export interface FutureControls { zone?: string; hobM?: number; fsr?: number; landSqm?: number }
+
 /**
  * A neighbour's future height: its own footprint raised to the whole storeys
- * its height of building holds, in a zone that permits flats. Never lowered —
- * a building already at or over the control is its own future — so undefined
- * where it would not rise. A building whose height is not recorded stands at
- * two storeys, as the massing draws it.
+ * its controls allow, in a zone that permits flats. That is the storeys
+ * under its height of building, and no more than its floor space ratio's
+ * floor area (the land it stands on by the ratio, the land at least its
+ * footprint) spread over its footprint at the study's efficiency, offices
+ * in a commercial zone and apartments elsewhere. Where only one control is
+ * mapped, that one; neither, no future. Never lowered — a building already
+ * at or over its controls is its own future — so undefined where it would
+ * not rise. A building whose height is not recorded stands at two storeys,
+ * as the massing draws it.
  */
-export function futureHeight(zone: string | undefined, hobM: number | undefined, standingM: number | undefined, storeyM = 3.1): number | undefined {
-  if (!hobM || hobM <= 0 || !FUTURE_ZONES.includes((zone ?? '').toUpperCase().trim())) return undefined;
-  const allowed = Math.floor(hobM / storeyM + 1e-9);
+export function futureHeight(
+  c: FutureControls, footprintSqm: number, standingM: number | undefined,
+  a: Pick<YieldAssumptions, 'residentialEfficiency' | 'commercialEfficiency'> = DEFAULT_ASSUMPTIONS, storeyM = 3.1,
+): number | undefined {
+  const zone = (c.zone ?? '').toUpperCase().trim();
+  if (!FUTURE_ZONES.includes(zone)) return undefined;
+  const byHeight = c.hobM && c.hobM > 0 ? Math.floor(c.hobM / storeyM + 1e-9) : Infinity;
+  const eff = archetypeFor(zone) === 'commercial' ? a.commercialEfficiency : a.residentialEfficiency;
+  const byRatio = c.fsr && c.fsr > 0 && footprintSqm > 0
+    ? Math.floor((c.fsr * Math.max(c.landSqm ?? 0, footprintSqm)) / (footprintSqm * eff) + 1e-9) : Infinity;
+  const allowed = Math.min(byHeight, byRatio);
+  if (!Number.isFinite(allowed)) return undefined;
   const standing = standingM && standingM > 0 ? Math.max(1, Math.round(standingM / storeyM)) : 2;
   return allowed > standing ? allowed * storeyM : undefined;
 }

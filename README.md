@@ -834,10 +834,19 @@ dashed and the height of building plane over the site. Over each neighbour,
 in pale dashed glass, its future: its own footprint raised to the whole 3.1 m
 storeys its LEP height of building holds, where its zone permits flats (R1,
 R3, R4, MU1, E1, E2, B1–B4), never lowered — the way sun-study's future
-context reads it (`futureHeight()` in `src/lib/yield.ts`). The proposal's
+context reads it — and no higher than its floor space ratio allows: the land
+it stands on by the ratio (its lot, shared between the buildings on it by
+footprint, and never less than its own footprint), spread over its footprint
+at the study's efficiency, offices in a commercial zone and apartments
+elsewhere (`futureHeight()` in `src/lib/yield.ts`). So where the height is an
+airspace RL, as in Parramatta's CBD, the ratio sets the neighbours' futures
+as it sets the proposal. The bundle carries each neighbour's zone, height,
+ratio and land, and the future is worked out when the sheet is drawn, so an
+efficiency changed in `yield_assumptions.json` carries to it. The proposal's
 outline is drawn over everything, so a future neighbour in front of it does
-not hide it, and a future far above what stands (a CBD's airspace RL) runs out
-of the frame, as the height plane does, the frame saying how high it goes. Under the massing, the envelope in plan at a round scale, the
+not hide it, and a future far above what stands runs out of the frame, as the
+height plane does, the frame saying how high it goes. Under the massing, the
+envelope in plan at a round scale, the
 width of the half, on the ground the site analysis draws, kept to black and
 grey: the lot lines, the kerbs (`src/lib/kerbs.ts`, indicative), the
 neighbours' buildings, and on each numbered neighbour its street number, zone
