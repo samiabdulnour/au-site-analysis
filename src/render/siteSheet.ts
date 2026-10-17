@@ -11,7 +11,7 @@ import {
 import { catById, zoneToCategory } from './model.js';
 import { METRES_PER_STOREY } from '../fetch/buildings.js';
 import { sheetHtml, esc, T, SWATCH_X, SWATCH_W, LABEL_X, MAP_W, MAP_H } from './chrome.js';
-import { tpl, withTemplate, siteTheme, type SiteLook } from './template.js';
+import { tpl, withTemplate, siteTheme, PARK_GREEN, PARK_GREEN_INK, type SiteLook } from './template.js';
 import { exitPoint } from '../fetch/views.js';
 import { NOMINAL_CANOPY_M, TREE_SOURCES } from '../fetch/trees.js';
 import { buildParkingBands, type Orientation } from '../lib/parking.js';
@@ -732,8 +732,8 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
       const src = t.canopySource ?? 'nominal';
       treeStats[src]++;
       const r = Math.min(45, Math.max(1.6, ((t.canopyM ?? NOMINAL_CANOPY_M) / 2) * mmPerM));
-      svg.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r.toFixed(1)}" fill="#7dbb57" fill-opacity="0.38" stroke="#4e8c33" stroke-width="0.35"${src === 'nominal' ? ' stroke-dasharray="1.5,0.9"' : ''}/>` +
-        `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="0.55" fill="#2f5e20"/>`);
+      svg.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r.toFixed(1)}" fill="${PARK_GREEN}" fill-opacity="0.38" stroke="${PARK_GREEN_INK}" stroke-width="0.35"${src === 'nominal' ? ' stroke-dasharray="1.5,0.9"' : ''}/>` +
+        `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="0.55" fill="${PARK_GREEN_INK}"/>`);
     }
     layers.push(svg.join(''));
   }
@@ -769,10 +769,10 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
     cands.forEach((c, i) => {
       const [x, y] = proj(c.t.lon, c.t.lat);
       const tpzM = c.t.dbhCm ? Math.min(15, Math.max(2, (12 * c.t.dbhCm) / 100)) : undefined;
-      if (tpzM) svg.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${(tpzM * mmPerM).toFixed(1)}" fill="none" stroke="#2f5e20" stroke-width="0.35" stroke-dasharray="2,1.2"/>`);
+      if (tpzM) svg.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${(tpzM * mmPerM).toFixed(1)}" fill="none" stroke="${PARK_GREEN_INK}" stroke-width="0.35" stroke-dasharray="2,1.2"/>`);
       const label = `T${i + 1}`;
       const spot = placer.place(x + 3.2, y - 3.2, label.length * TREE_TEXT * 0.62, TREE_TEXT, 8);
-      if (spot) svg.push(`<text x="${spot[0].toFixed(1)}" y="${(spot[1] + TREE_TEXT * 0.36).toFixed(1)}" text-anchor="middle" font-size="${TREE_TEXT}" font-weight="700" fill="#2f5e20" stroke="#ffffff" stroke-width="0.9" paint-order="stroke">${label}</text>`);
+      if (spot) svg.push(`<text x="${spot[0].toFixed(1)}" y="${(spot[1] + TREE_TEXT * 0.36).toFixed(1)}" text-anchor="middle" font-size="${TREE_TEXT}" font-weight="700" fill="${PARK_GREEN_INK}" stroke="#ffffff" stroke-width="0.9" paint-order="stroke">${label}</text>`);
       nearTrees.push({ n: i + 1, t: c.t, distM: c.distM, tpzM });
     });
     layers.push(svg.join(''));
@@ -1402,12 +1402,12 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
     const sub = treeStats.nominal && (treeStats.measured || treeStats.estimated)
       ? `solid: recorded size · dashed: nominal ${NOMINAL_CANOPY_M} m`
       : treeStats.nominal ? `nominal ${NOMINAL_CANOPY_M} m canopy, not measured` : 'recorded canopy';
-    row(`<circle cx="${mid}" cy="3.2" r="2.8" fill="#7dbb57" fill-opacity="0.45" stroke="#4e8c33" stroke-width="0.4"/><circle cx="${mid}" cy="3.2" r="0.5" fill="#2f5e20"/>`, 'TREES, CANOPY TO SCALE', sub);
+    row(`<circle cx="${mid}" cy="3.2" r="2.8" fill="${PARK_GREEN}" fill-opacity="0.45" stroke="${PARK_GREEN_INK}" stroke-width="0.4"/><circle cx="${mid}" cy="3.2" r="0.5" fill="${PARK_GREEN_INK}"/>`, 'TREES, CANOPY TO SCALE', sub);
   }
   if (nearTrees.length) {
     // The schedule: one line a tree, in columns, under a row that keys the numbers and the zone.
     const sources = [...new Set(nearTrees.map((x) => (x.t.source === 'osm' ? 'OpenStreetMap' : TREE_SOURCES.find((s2) => s2.id === x.t.source)?.name ?? x.t.source)))].join('; ');
-    row(`<text x="${SWATCH_X + 1}" y="4.6" font-size="3.4" font-weight="700" fill="#2f5e20">T1</text><circle cx="${SWATCH_X + 15}" cy="3.2" r="3" fill="none" stroke="#2f5e20" stroke-width="0.35" stroke-dasharray="1.4,0.8"/>`,
+    row(`<text x="${SWATCH_X + 1}" y="4.6" font-size="3.4" font-weight="700" fill="${PARK_GREEN_INK}">T1</text><circle cx="${SWATCH_X + 15}" cy="3.2" r="3" fill="none" stroke="${PARK_GREEN_INK}" stroke-width="0.35" stroke-dasharray="1.4,0.8"/>`,
       'TREES BY THE SITE', `within ${TREE_REACH_M} m · TPZ dashed, 12 × DBH (AS 4970-2009)`);
     const cols = [0, 6, 44, 52, 60, 70].map((c) => SWATCH_X + c);
     const fs = 2.15, lh = 3.3;
@@ -1418,7 +1418,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
       yy += lh;
       const name = (x.t.common || x.t.species || 'species not recorded').replace(/\s+/g, ' ');
       const fig = (v?: number) => (v ? (v >= 10 ? Math.round(v).toString() : v.toFixed(1)) : '–');
-      legendSvg += cell(cols[0], yy, `T${x.n}`, true, '#2f5e20') + cell(cols[1], yy, name.length > 30 ? `${name.slice(0, 29)}…` : name) +
+      legendSvg += cell(cols[0], yy, `T${x.n}`, true, PARK_GREEN_INK) + cell(cols[1], yy, name.length > 30 ? `${name.slice(0, 29)}…` : name) +
         cell(cols[2], yy, fig(x.t.heightM)) + cell(cols[3], yy, x.t.canopySource === 'nominal' ? '–' : fig(x.t.canopyM)) +
         cell(cols[4], yy, x.t.dbhCm ? String(Math.round(x.t.dbhCm)) : '–') + cell(cols[5], yy, fig(x.tpzM));
     }

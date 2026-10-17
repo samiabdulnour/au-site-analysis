@@ -123,6 +123,8 @@ const PEACH = '#f3b8a4', PEACH_INK = '#d48b75';
 const PEACH_DEEP = '#e8957c', PEACH_DEEP_INK = '#b5614a';   // the high-density tier, a step down the same hue
 const SAND = '#f1cf98', SAND_INK = '#c49a52';
 const TEAL = '#5a9c89', TEAL_INK = '#3f7f6d';
+/** Flamingo's park green and its ink, which the site sheet's trees borrow. */
+export const PARK_GREEN = TEAL, PARK_GREEN_INK = TEAL_INK;
 const PAPER = '#ffffff';
 const BLUE = '#b4d0dc';
 const NAVY = '#3b4f8a';
