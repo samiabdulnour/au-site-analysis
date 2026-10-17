@@ -30,7 +30,8 @@ const SCALES = {
 };
 // The styles each drawing takes: the context sheet has its templates, the site
 // analysis its own themes, and the yield and the site report none. An unknown one
-// falls back to the drawing's default on the server.
+// falls back to the drawing's default on the server. The two maps share their
+// style names, so the site's are in the context's order: a style keeps its column.
 const STYLES = {
   context: [
     ['flamingo',   'flamingo',   'in Flamingo'],
@@ -39,10 +40,10 @@ const STYLES = {
     ['canary',     'canary',     'in Canary'],
   ],
   site: [
-    ['heron',    'heron',    'in Heron'],
+    ['flamingo',   'flamingo',   'in Flamingo'],
     ['kingfisher', 'kingfisher', 'in Kingfisher'],
-    ['flamingo', 'flamingo', 'in Flamingo'],
-    ['canary',   'canary',   'in Canary'],
+    ['heron',      'heron',      'in Heron'],
+    ['canary',     'canary',     'in Canary'],
   ],
   yield: [],
   slides: [],
