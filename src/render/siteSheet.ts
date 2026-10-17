@@ -185,7 +185,7 @@ function windEntry(c: Pt, bearingDeg: number, rotationDeg: number): Pt {
 // and the four suns this far inside it with their names further in.
 const WIND_BAND = 5, WIND_SPAN = 22;   // the bands' depth (mm) and half their sweep (°)
 const VIEW_BAND = 5, VIEW_SPAN = 10;
-const SUN_INSET = 24, SUN_SIZE = 2;
+const SUN_INSET = 26, SUN_SIZE = 2.4;
 // How far a sun's rays reach from its centre, and a little room past them.
 const SUN_CLEAR = 4.5 * SUN_SIZE + 3;
 // A sun's name, two lines of the map's lettering, and the box it takes.
