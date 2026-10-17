@@ -426,8 +426,10 @@ export interface SiteLook {
   siteDash: string;
   /** The boundary dimensions' ink (Dove sets them in the site's red, Canary in black). */
   dimensionInk: string;
-  /** The fall of terrain and the FALL/AREA box. */
+  /** The fall of terrain and the FALL/AREA words. */
   fall: string;
+  /** Those words on a white box, or set straight on the site with a thin white edge to the letters. */
+  fallBox: boolean;
   /** The neighbours' building outlines, white, this wide (mm). */
   buildingEdge: number;
   /** The neighbours: number and storeys in white on the building, or number, storeys and height limit in black, written straight on the map. */
@@ -444,12 +446,10 @@ export interface SiteLook {
   contours: boolean;
   /** Their ink, and their levels'. */
   contourInk: string;
-  /** The street names: plain text along the road, or a through street's name in a white double-headed arrow band. */
-  streetNames: 'plain' | 'band';
-  /** Their ink. */
+  /** The street names' ink, plain along the road. */
   streetInk: string;
-  /** The suns: an open jagged crown at each solstice's rise and set, or the 21 June path from 9 AM to 3 PM with a plain sun symbol and the time at each hour. */
-  sun: 'crown' | 'hours';
+  /** The suns: an open jagged crown at each solstice's rise and set on its arc, or a plain sun at each inside the climate circle, named, with north an arrow on the circle. */
+  sun: 'crown' | 'circle';
   /** The sun path's pen, and the suns' fill and edge. */
   sunPen: string;
   sunFill: string;
@@ -466,8 +466,8 @@ export interface SiteLook {
   /** Noise: a swelling band beside the source, or a zigzag. */
   noise: 'band' | 'zigzag';
   noisePen: string;
-  /** Views: a telescope aimed along the sight line, or a white cone with the view's name. */
-  views: 'telescope' | 'cone';
+  /** Views: a telescope aimed along the sight line, or a white band inside the climate circle with the view's name around it. */
+  views: 'telescope' | 'circle';
   /** The telescope's pen and its words. */
   viewPen: string;
   /** Kerbside parking: one quad per bay, or a hatched zone. */
@@ -483,10 +483,10 @@ export interface SiteTheme { id: string; label: string; note: string; base: stri
 // views in the site's red; a request naming Cardinal is drawn in Dove.
 const DOVE_GREY = '#6f7377';
 const DOVE_LOOK: SiteLook = {
-  font: NARROW, veil: 0.55, aerial: 'colour', site: '#b3261e', siteDash: '7,2,1.6,2', dimensionInk: '#b3261e', fall: '#56616b',
+  font: NARROW, veil: 0.55, aerial: 'colour', site: '#b3261e', siteDash: '7,2,1.6,2', dimensionInk: '#b3261e', fall: '#56616b', fallBox: true,
   buildingEdge: 0.3, neighbours: 'white', neighbourHeightInk: '#ffffff', zones: 'hatch',
   heritage: false, heritageInk: { item: '#e39a3b', area: '#c8372d' }, contours: true, contourInk: '#a9adb1',
-  streetNames: 'plain', streetInk: '#ffffff',
+  streetInk: '#ffffff',
   sun: 'crown', sunPen: DOVE_GREY, sunFill: '#ffffff', sunEdge: DOVE_GREY, sunInk: DOVE_GREY, sunHours: true,
   wind: 'strands', windPen: DOVE_GREY, climateInk: DOVE_GREY,
   noise: 'band', noisePen: '#3f6fc2', views: 'telescope', viewPen: DOVE_GREY, parking: 'bays',
@@ -496,28 +496,29 @@ const DOVE_LOOK: SiteLook = {
 // Randwick) in the colours of the context sheet's Canary: the aerial in grey
 // under its veil, the zones in the NSW ePlanning colours, its red for the
 // dashed site and its levels, its slate for the boundary dimensions and the
-// fall, each neighbour's number, storeys and height limit written straight on
-// the map, the streets in white arrow bands, heritage in the ePlanning tan and
-// red. The sun and the winds are one black circle about the site: the 21 June
-// path inside it with a plain sun at each hour, the winds named around it with
-// their quarters hatched.
+// fall, written straight on the site; each neighbour's number, storeys and
+// height limit and the street names written straight on the map; heritage in
+// the ePlanning tan and red. The sun, the winds and the views are one black
+// circle about the site: the winds named around it outside over hatched
+// quarters, the views inside over white ones, four plain suns at the
+// solstices' rise and set within, and north an arrow on it.
 const CANARY_CONTEXT = TEMPLATES.find((t) => t.id === 'canary')!;
 const CANARY_LOOK: SiteLook = {
   font: SANS, veil: CANARY_CONTEXT.veil!, aerial: 'grey', site: CANARY_CONTEXT.site, siteDash: '4.2,1.8',
-  dimensionInk: CANARY_CONTEXT.dimension, fall: CANARY_CONTEXT.dimension,
+  dimensionInk: CANARY_CONTEXT.dimension, fall: CANARY_CONTEXT.dimension, fallBox: false,
   buildingEdge: 0.55, neighbours: 'black', neighbourHeightInk: CANARY_CONTEXT.transit, zones: 'lep',
   heritage: true, heritageInk: { item: CANARY_CONTEXT.heritage, area: '#ff0000' }, contours: false, contourInk: '#3f9a5c',
-  streetNames: 'band', streetInk: CANARY_CONTEXT.ink,
-  sun: 'hours', sunPen: CANARY_CONTEXT.ink, sunFill: '#ffffff', sunEdge: CANARY_CONTEXT.ink, sunInk: CANARY_CONTEXT.ink, sunHours: false,
+  streetInk: CANARY_CONTEXT.ink,
+  sun: 'circle', sunPen: CANARY_CONTEXT.ink, sunFill: '#ffffff', sunEdge: CANARY_CONTEXT.ink, sunInk: CANARY_CONTEXT.ink, sunHours: false,
   wind: 'circle', windPen: CANARY_CONTEXT.ink, climateInk: CANARY_CONTEXT.ink,
-  noise: 'zigzag', noisePen: CANARY_CONTEXT.transit, views: 'cone', viewPen: CANARY_CONTEXT.ink, parking: 'hatch',
+  noise: 'zigzag', noisePen: CANARY_CONTEXT.transit, views: 'circle', viewPen: CANARY_CONTEXT.ink, parking: 'hatch',
 };
 
 export const SITE_THEMES: SiteTheme[] = [
   { id: 'dove', label: 'Dove', base: 'flamingo', look: DOVE_LOOK,
     note: 'the aerial with the zones hatched; the site in a deep red, the sun path, its crowns, the telescopes and the winds in grey, the contours in light grey' },
   { id: 'canary', label: 'Canary', base: 'flamingo', look: CANARY_LOOK,
-    note: 'the office classic in the context Canary\'s colours: a grey aerial with the zones in the ePlanning colours, one black circle for the 21 June sun and the winds, each neighbour\'s number, storeys and height limit' },
+    note: 'the office classic in the context Canary\'s colours: a grey aerial with the zones in the ePlanning colours, one black circle for the sun, the winds and the views, each neighbour\'s number, storeys and height limit' },
 ];
 export const DEFAULT_SITE_THEME = 'dove';
 

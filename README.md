@@ -691,26 +691,30 @@ and the zones are filled in exactly the NSW ePlanning colours (`zones: 'lep'`,
 at the context sheet's strength), keyed in the legend by code and name; the
 site itself keeps the photograph's colours. The site is a dash in Canary's red
 with its levels in the same red and its boundary dimensions and fall in its
-slate. The street names are spaced out in white double-headed arrow bands
-(lanes plain).
+slate; the FALL and AREA words sit straight on the site with a thin white edge
+to the letters (`fallBox: false`) rather than on a white box. The street names
+are plain bold black along the road.
 
-The sun and the winds are one black dashed circle about the site, after the
-office's view diagrams. Inside it is the 21 June sun path from 9 AM to 3 PM
-(`sun: 'hours'`): a dashed arc with a plain sun symbol, a small open disc with
-eight rays, and its time at each solar hour, a dash-dot ray from the site's
-edge to each, and 21 JUNE running on past 9 AM. Around it the winds are only
+The sun, the winds and the views are one black dashed circle about the site,
+after the office's view diagrams. Around the outside the winds are only
 written (`wind: 'circle'`): each name set along the circle, upright whichever
 way the sheet is turned, outside a black hatched band over the quarter it
-blows from. The circle sits clear of the lot with room for the path inside it,
-and short of the sheet's edge with the names outside it.
+blows from. Around the inside are the views (`views: 'circle'`): each clear
+sight line a white band on the circle with its name inside it; a view whose
+name would run into a better-ranked one's is left off. Further in are four
+plain suns, small open discs with eight rays, where the sun rises and sets at
+the two solstices, each named (WINTER SUNRISE, SUMMER SUNSET…) toward the
+centre, with no hours (`sun: 'circle'`). North is a black arrowhead standing
+out of the circle with N beyond it. The circle sits clear of the lot with room
+for the suns' names inside it, and short of the sheet's edge with the winds'
+names outside it.
 
-Noise is a navy zigzag beside the busy roads and the railway, views white
-cones named inside, and kerbside parking one hatched street parking zone. The
-LEP's heritage items are hatched in the ePlanning tan and its conservation
-areas in the ePlanning red. Each neighbour's number and storeys are written
-in black straight on the map, with no box behind them and no zone name (the
-colour under it says the zone), and the height of building at it in navy
-under them (`HOB = 18m`, or `HOB = RL 211` where the plan limits by level;
+Noise is a navy zigzag beside the busy roads and the railway, and kerbside
+parking one hatched street parking zone. The LEP's heritage items are hatched
+in the ePlanning tan and its conservation areas in the ePlanning red. Each
+neighbour's number and storeys are written in black straight on the map, with
+no box behind them and no zone name (the colour under it says the zone), and
+the height of building at it in navy under them (`HOB = 18m`, or `HOB = RL 211` where the plan limits by level;
 `neighbours: 'black'`). No contours: the fall arrow and the levels give the
 ground. Its inks are read from the context Canary, so a change to that palette
 carries over. It draws on Flamingo for the title block and is set in Arial.
@@ -1015,9 +1019,10 @@ address
 On the context sheet every street carries its name as plain bold text set
 along, and centred on, its white strip; the width of the strip already says
 whether it is an arterial or a lane (Heron, with no strips, sets the same
-black name straight on the aerial). The white double-headed arrow band survives
-on the site sheet only, where a through street carries its name in the band and
-a laneway gets a plain label. Neither of the two fields NSW publishes decides
+black name straight on the aerial). The white double-headed arrow band is no
+longer drawn in any style, the site sheet's Canary having dropped it; a context
+template can still ask for it (`streetLabels: 'band'`), and then a through
+street carries its name in the band and a laneway gets a plain label. Neither of the two fields NSW publishes decides
 that on its own — Dickson Lane is classified `LocalRoad` exactly like Hall
 Street, and plenty of real streets have no lane count recorded — so the rule
 combines them: function hierarchy 7+ (service lane, track, path, access way), a
