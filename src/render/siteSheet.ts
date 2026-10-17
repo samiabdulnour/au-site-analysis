@@ -269,16 +269,16 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
 
   // ---- zones as hatch, not words ---------------------------------------------
   // The neighbours' zoning is drawn, not written: each zone a hatch in its
-  // family's ink with a fine outline, no fill, so the aerial stays readable
-  // under it. The pattern is the category's texture (lines where it has
-  // none), its strength the category's, so R2 sits lighter than R3. Never
-  // over the site.
+  // family's ink with a fine outline, so the aerial stays readable under it.
+  // The pattern is the category's texture (lines where it has none), its
+  // strength the category's, so R2 sits lighter than R3. A theme can tint
+  // the zones under the hatch (look.zoneTint) in the category's fill,
+  // multiplied into the photograph rather than laid over it, so the colour
+  // reads without washing out the roofs. Never over the site.
   const usedZoneCats = new Set<string>();
   const zoneInk = (c: { fill: string; stroke?: string; figure?: string; textureColor?: string }) =>
     c.figure ?? c.stroke ?? c.fill;
   {
-    const ring = sb.siteRing.map(([lon, lat2]) => proj(lon, lat2));
-    const dHole = 'M' + ring.map((p) => `${p[0].toFixed(2)},${p[1].toFixed(2)}`).join('L') + 'Z';
     const byCat = new Map<string, string[]>();
     for (const f of look.zones === 'hatch' ? sb.zoning.features : []) {
       const cat = zoneToCategory(f.properties.SYM_CODE);
@@ -289,17 +289,23 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
     }
     let tex = 0;
     const mapBox = { x: 0, y: 0, w: MAP_W, h: MAP_H };
+    const tints: string[] = [];
     const parts: string[] = [];
     for (const [cat, paths] of byCat) {
       const c = catById()[cat];
       usedZoneCats.add(cat);
       const ink = zoneInk(c);
       const kind = c.texture === 'dots' || c.texture === 'cross' ? c.texture : 'lines';
+      tints.push(`<g fill="${c.fill}">${paths.map((d) => `<path d="${d}"/>`).join('')}</g>`);
       parts.push(textureSvg(`stx${tex++}`, paths.join(''), kind, ink, mapBox, Math.min(1, 0.65 + c.opacity * 0.5)));
       parts.push(`<g fill="none" stroke="${ink}" stroke-width="0.6">${paths.map((d) => `<path d="${d}"/>`).join('')}</g>`);
     }
-    layers.push(`<defs><clipPath id="notSite"><path clip-rule="evenodd" d="M-20,-20 H${MAP_W + 20} V${MAP_H + 20} H-20 Z ${dHole}"/></clipPath></defs>
-      <g clip-path="url(#notSite)">${parts.join('')}</g>`);
+    layers.push(`<defs><clipPath id="notSite"><path clip-rule="evenodd" d="M-20,-20 H${MAP_W + 20} V${MAP_H + 20} H-20 Z ${siteHole}"/></clipPath></defs>`);
+    // The blend sits on the clipped group itself: a clip on a parent would
+    // isolate it, and the tint would multiply into nothing.
+    if (look.zoneTint && tints.length)
+      layers.push(`<g clip-path="url(#notSite)" fill-rule="evenodd" opacity="${look.zoneTint}" style="mix-blend-mode:multiply">${tints.join('')}</g>`);
+    layers.push(`<g clip-path="url(#notSite)">${parts.join('')}</g>`);
   }
 
   // ---- heritage: the LEP's items and conservation areas, hatched -------------
@@ -1162,9 +1168,11 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
     const fs = MAP_TEXT, lh = fs * 1.12;
     const w = Math.max(...lines.map((t) => t.length)) * fs * 0.55 + 4;
     const h = lines.length * lh + 2;
+    // Without the box, a fine white edge keeps the words clear of a dark roof.
+    const edge = look.fallBox ? '' : ' stroke="#ffffff" stroke-width="0.6" stroke-opacity="0.85" paint-order="stroke" stroke-linejoin="round"';
     layers.push(`<g transform="translate(${centroidPx[0].toFixed(1)},${centroidPx[1].toFixed(1)}) rotate(${ang.toFixed(1)})">
-      <rect x="${(-w / 2).toFixed(1)}" y="${(-h / 2).toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" fill="#ffffff" fill-opacity="0.9"/>
-      ${lines.map((t, i) => `<text x="0" y="${(-h / 2 + 1 + lh * (i + 0.8)).toFixed(1)}" text-anchor="middle" font-size="${fs}" font-weight="700" fill="${BLUE()}">${esc(t)}</text>`).join('')}
+      ${look.fallBox ? `<rect x="${(-w / 2).toFixed(1)}" y="${(-h / 2).toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" fill="#ffffff" fill-opacity="0.9"/>` : ''}
+      ${lines.map((t, i) => `<text x="0" y="${(-h / 2 + 1 + lh * (i + 0.8)).toFixed(1)}" text-anchor="middle" font-size="${fs}" font-weight="700" fill="${BLUE()}"${edge}>${esc(t)}</text>`).join('')}
     </g>`);
   }
 
@@ -1378,7 +1386,8 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
       if (!usedZoneCats.has(c.id)) continue;
       const ink = zoneInk(c);
       const kind = c.texture === 'dots' || c.texture === 'cross' ? c.texture : 'lines';
-      row(textureSvg(`sltx${stex++}`, swD, kind, ink, { x: SWATCH_X, y: 0, w: SWATCH_W, h: 6.5 }, Math.min(1, 0.65 + c.opacity * 0.5)) +
+      row((look.zoneTint ? `<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="${c.fill}" opacity="${look.zoneTint}"/>` : '') +
+        textureSvg(`sltx${stex++}`, swD, kind, ink, { x: SWATCH_X, y: 0, w: SWATCH_W, h: 6.5 }, Math.min(1, 0.65 + c.opacity * 0.5)) +
         `<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="none" stroke="${ink}" stroke-width="0.4"/>`, c.label);
     }
   }

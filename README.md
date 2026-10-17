@@ -359,9 +359,12 @@ for.
 
 The site sheet no longer writes the neighbours' zone on the map. Each zone is
 a hatch in its family's ink (the active template's palette) with a fine
-outline and no fill, so the aerial stays visible under it; the pattern is the
+outline, so the aerial stays visible under it; the pattern is the
 category's texture (lines where it has none) and its strength the category's,
-and the legend names each zone once. Nothing is drawn over the site.
+and the legend names each zone once. A theme can also tint each zone in its
+category's fill under the hatch (`zoneTint`, the tint's opacity), multiplied
+into the photograph so the roofs and trees still show through it. Nothing is
+drawn over the site.
 
 Each neighbouring building carries two short lines: its street number(s) and
 its storeys — `26` over `3ST` (a run of numbers on one building reads
@@ -670,9 +673,12 @@ views and kerbside parking are drawn, and in which inks. There are two:
 **Heron** (`heron`, the default) — the aerial with the zones hatched, in the
 Heron template's colours. The aerial goes grey outside the site (Heron's `aerialTone`, by the
 same saturation blend as the context sheet), so the lot alone keeps its
-colour; the zones are hatched in Heron's palette (tan centres and mixed use,
-peach residential, mint open space, slate institutions), the site, its levels
-and its boundary dimensions are in Heron's red, and the fall in its slate. The
+colour; the zones are hatched and tinted in Heron's palette (tan centres and
+mixed use, peach residential, mint open space, slate institutions; the tint
+at 0.55, multiplied into the grey photograph, since Heron's tints are too pale
+to read as a hatch alone), the site, its levels and its boundary dimensions
+are in Heron's red, and the fall in its slate, its FALL and AREA written
+straight on the photograph with a fine white edge to the letters and no box. The
 neighbours' numbers and storeys and the street names are white over a fine
 white outline of each building, noise in blue, and the climate is drawn
 quietly as before: the sun, its path, its hours and words, the telescopes and

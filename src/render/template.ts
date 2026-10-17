@@ -425,8 +425,10 @@ export interface SiteLook {
   siteDash: string;
   /** The boundary dimensions' ink (Heron sets them in the site's red, Canary in black). */
   dimensionInk: string;
-  /** The fall of terrain and the FALL/AREA box. */
+  /** The fall of terrain and the FALL/AREA words. */
   fall: string;
+  /** The FALL/AREA words on a white box, or on the photograph with only a fine white edge to the letters. */
+  fallBox: boolean;
   /** The neighbours' building outlines, white, this wide (mm). */
   buildingEdge: number;
   /** The neighbours: number and storeys in white on the building, or a white box with number, storeys, zone and height limit. */
@@ -435,6 +437,8 @@ export interface SiteLook {
   neighbourZoneInk: string;
   /** The zones hatched over the aerial, or left to the neighbours' boxes. */
   zones: 'hatch' | 'none';
+  /** Under the hatch, each zone tinted in its category's fill, multiplied into the aerial: the tint's opacity (0 for the hatch alone). */
+  zoneTint: number;
   /** The LEP heritage items and conservation areas, hatched. */
   heritage: boolean;
   /** Contours with their levels along them. */
@@ -478,13 +482,17 @@ export interface SiteTheme { id: string; label: string; note: string; base: stri
 // boundary dimensions in Heron's red and the fall in its slate; the climate
 // still drawn quietly, the sun, its path, the telescopes and the winds in one
 // grey and the contours a lighter one; the neighbours white, in a fine
-// outline. It was Dove, on Flamingo's palette with the site in a deeper red,
-// and before that Cardinal, with the sun in mustard and the winds and views
-// in the site's red; a request naming either is drawn in Heron.
+// outline. Heron's tints are pale, so each zone is tinted as well as
+// hatched, the tint multiplied into the grey photograph so its roofs and
+// trees still read; the FALL/AREA words sit on the photograph with no box,
+// a fine white edge to the letters keeping them clear of a dark roof. It
+// was Dove, on Flamingo's palette with the site in a deeper red, and before
+// that Cardinal, with the sun in mustard and the winds and views in the
+// site's red; a request naming either is drawn in Heron.
 const CLIMATE_GREY = '#6f7377';
 const HERON_LOOK: SiteLook = {
-  font: NARROW, veil: 0.55, site: HERON_RED, siteDash: '7,2,1.6,2', dimensionInk: HERON_RED, fall: HERON_SLATE,
-  buildingEdge: 0.3, neighbours: 'white', neighbourZoneInk: '#ffffff', zones: 'hatch', heritage: false, contours: true, contourInk: '#a9adb1',
+  font: NARROW, veil: 0.55, site: HERON_RED, siteDash: '7,2,1.6,2', dimensionInk: HERON_RED, fall: HERON_SLATE, fallBox: false,
+  buildingEdge: 0.3, neighbours: 'white', neighbourZoneInk: '#ffffff', zones: 'hatch', zoneTint: 0.55, heritage: false, contours: true, contourInk: '#a9adb1',
   streetNames: 'plain', streetInk: '#ffffff',
   sun: 'crown', sunPen: CLIMATE_GREY, sunFill: '#ffffff', sunEdge: CLIMATE_GREY, sunInk: CLIMATE_GREY, sunHours: true,
   wind: 'strands', windPen: CLIMATE_GREY, climateInk: CLIMATE_GREY,
@@ -497,8 +505,8 @@ const HERON_LOOK: SiteLook = {
 // named inside, blue outlined wind banners, white boxes naming each neighbour
 // with its zone and height limit in blue, the streets in white arrow bands.
 const CANARY_LOOK: SiteLook = {
-  font: SANS, veil: 0.42, site: '#e3241b', siteDash: '4.2,1.8', dimensionInk: '#111111', fall: '#3346c8',
-  buildingEdge: 0.55, neighbours: 'box', neighbourZoneInk: '#2b3fd0', zones: 'none', heritage: true, contours: false, contourInk: '#3f9a5c',
+  font: SANS, veil: 0.42, site: '#e3241b', siteDash: '4.2,1.8', dimensionInk: '#111111', fall: '#3346c8', fallBox: true,
+  buildingEdge: 0.55, neighbours: 'box', neighbourZoneInk: '#2b3fd0', zones: 'none', zoneTint: 0, heritage: true, contours: false, contourInk: '#3f9a5c',
   streetNames: 'band', streetInk: '#111111',
   sun: 'disc', sunPen: '#f3d75a', sunFill: '#fbe78c', sunEdge: '#e0b82a', sunInk: '#111111', sunHours: false,
   wind: 'banner', windPen: '#3b8be0', climateInk: '#111111',
