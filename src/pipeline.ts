@@ -1,6 +1,6 @@
 // Orchestrates all fetches for one address and saves the data bundle.
 
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { geocode, type GeocodeResult } from './fetch/geocode.js';
 import { fetchSiteLots, fetchRailCorridors, fetchZoning, fetchHeightOfBuilding, fetchHeritage, fetchSiteControls } from './fetch/nsw.js';
@@ -15,6 +15,9 @@ import { queryByPoint, queryByExtent, type GeoJSONFC } from './lib/arcgis.js';
 import { keywordCategory } from './render/model.js';
 import { setTemplate } from './render/template.js';
 import type { SummaryBundle } from './render/summarySheet.js';
+import type { YieldBundle } from './render/yieldSheet.js';
+import { CENTRES } from './data/centres.js';
+import { levelAt, type ContourM } from './lib/levels.js';
 import {
   fetchZoningDetailed, fetchHobDetailed, fetchHeritageDetailed, fetchShrCurtilages, fetchPolicyAreas,
   fetchWaterAreas, fetchPlanningContext, fetchPropertyReport, fetchHousingTarget,
@@ -26,7 +29,7 @@ import { fetchCouncilApplications, apiCouncilName, clipToExtent, PORTAL_MANDATED
 import { fetchPlanningProposals, type PlanningProposal } from './fetch/planning.js';
 import { fetchPeopleData, type PeopleData } from './fetch/people.js';
 import { fetchDemGrid, type DemGrid } from './fetch/terrain.js';
-import { fetchBuildings, withDaStoreys, type BuildingsData } from './fetch/buildings.js';
+import { fetchBuildings, withDaStoreys, METRES_PER_STOREY, type BuildingsData } from './fetch/buildings.js';
 import { fetchMajorProjects, emptyMajorProjects, type MajorProjectsData } from './fetch/majorProjects.js';
 import { fetchWind, emptyWind, type WindData } from './fetch/wind.js';
 import { fetchMovement, type MovementData } from './fetch/movement.js';
@@ -252,6 +255,7 @@ function pointInRing(x: number, y: number, ring: number[][]): boolean {
 
 import { fetchContours, fetchNeighbourAddresses, fetchSiteFurniture, emptyFurniture, type ContourLine, type ContourSet, type NeighbourAddress, type SiteFurniture } from './fetch/siteData.js';
 import { fetchCouncilTrees, mergeTrees, TREE_SOURCES } from './fetch/trees.js';
+import { fetchServices, emptyServices, type ServicesData } from './fetch/services.js';
 import { assessViews, eyeAboveGround, type ViewTarget } from './fetch/views.js';
 import { fetchCountry, EMPTY_COUNTRY, type CountryData } from './fetch/country.js';
 import { fetchPhotos, emptyPhotos, type PhotosData } from './fetch/photos.js';
@@ -274,6 +278,12 @@ export interface SiteBundle {
   roads: TopoRoad[];
   railLines: RailLines;
   zoning: GeoJSONFC;
+  /** The LEP's height of building map over the sheet, for the neighbours' boxes (older bundles: none). */
+  heights?: GeoJSONFC;
+  /** The LEP's heritage items and conservation areas over the sheet (older bundles: none). */
+  heritage?: GeoJSONFC;
+  /** The services an open licence lets the sheet draw (fetch/services.ts; older bundles: none). */
+  services?: ServicesData;
   contours: ContourLine[];
   /** Interval and origin of the contours drawn (older bundles: 2 m, NSW). */
   contourIntervalM?: number;
@@ -317,15 +327,7 @@ export async function runSitePipeline(address: string, opts: SitePipelineOpts): 
   const siteLots = await fetchSiteLots(geo.points);
   if (!siteLots.features.length) throw new Error('No cadastral lots found for the site.');
 
-  // union of lots -> single outer boundary
-  const polys = siteLots.features.filter((f) => f.geometry);
-  let ring: [number, number][];
-  if (polys.length === 1) {
-    ring = geomOuter(polys[0].geometry);
-  } else {
-    const merged = turfUnion(featureCollection(polys as any)) as any;
-    ring = geomOuter(merged?.geometry ?? polys[0].geometry);
-  }
+  const ring = siteOuterRing(siteLots);
 
   // rotation from the union's longest edge
   let rotationDeg = 0;
@@ -375,12 +377,16 @@ export async function runSitePipeline(address: string, opts: SitePipelineOpts): 
   log('fetching contours, lots, roads, neighbours, furniture, trees, imagery…');
   const nswContours: ContourSet = { lines: [], intervalM: 2, source: 'NSW Spatial Services' };
   const noBuildings: BuildingsData = { source: 'none', buildings: [], fetchedAt: new Date().toISOString() };
-  const [contourSet, allLots, roads, railLines, zoning, neighbours, furniture, aerial, councilTrees, parkPoints, controls, buildings] = await Promise.all([
+  const emptyFc: GeoJSONFC = { type: 'FeatureCollection', features: [] };
+  const [contourSet, allLots, roads, railLines, zoning, heights, heritage, services, neighbours, furniture, aerial, councilTrees, parkPoints, controls, buildings] = await Promise.all([
     soft(fetchContours(extent, log), nswContours, 'contours'),
     soft(fetchAllLots(extent), { type: 'FeatureCollection', features: [] } as GeoJSONFC, 'lots'),
     soft(fetchRoads(extent), [], 'roads'),
     soft(fetchRailLines(extent), { train: [], tram: [] }, 'rail lines'),
     soft(fetchZoning(extent), { type: 'FeatureCollection', features: [] } as GeoJSONFC, 'zoning'),
+    soft(fetchHeightOfBuilding(extent), emptyFc, 'height of building'),
+    soft(fetchHeritage(extent), emptyFc, 'heritage'),
+    soft(fetchServices(extent, log), emptyServices(), 'services'),
     soft(fetchNeighbourAddresses(extent), [], 'neighbour addresses'),
     soft(fetchSiteFurniture(extent), emptyFurniture(), 'street furniture (OSM)'),
     fetchAerial(extent, 3600, dataDir),
@@ -421,17 +427,27 @@ export async function runSitePipeline(address: string, opts: SitePipelineOpts): 
   const attributions = [
     ...TREE_SOURCES.filter((s) => councilTrees.some((t) => t.source === s.id)).map((s) => s.attribution),
     ...(contourSet.attribution ? [contourSet.attribution] : []),
+    ...services.sources.map((s) => s.attribution),
   ];
+  if (services.sources.length) log(`  services: ${services.sources.map((s) => `${s.name} (${s.count})`).join(', ')}`);
 
   const bundle: SiteBundle = {
     address, geocode: geo, extent, view, scale,
-    siteLots, siteRing: ring, allLots, roads, railLines, zoning,
+    siteLots, siteRing: ring, allLots, roads, railLines, zoning, heights, heritage, services,
     contours: contourSet.lines, contourIntervalM: contourSet.intervalM, contourSource: contourSet.source,
     neighbours, furniture, parkingBands, views, eyeAboveM, attributions,
     busStops, buildings, aerial, generatedAt: new Date().toISOString(),
   };
   await writeFile(join(dataDir, 'site_bundle.json'), JSON.stringify(bundle));
   return bundle;
+}
+
+/** The outer boundary of the site's lots, unioned: one ring, lon/lat. */
+function siteOuterRing(siteLots: GeoJSONFC): [number, number][] {
+  const polys = siteLots.features.filter((f) => f.geometry);
+  if (polys.length === 1) return geomOuter(polys[0].geometry);
+  const merged = turfUnion(featureCollection(polys as any)) as any;
+  return geomOuter(merged?.geometry ?? polys[0].geometry);
 }
 
 function ringsOf(geometry: any): number[][][] {
@@ -487,6 +503,132 @@ export async function runSummaryPipeline(
   };
   await writeFile(join(opts.outDir, 'data', 'summary.json'), JSON.stringify(bundle, null, 2));
   return bundle;
+}
+
+// ---------------------------------------------------------------------------
+// PLANNING YIELD — the summary's controls, and what they let the site hold:
+// the lot's boundary with the streets along it, the ground's level, the
+// nearest station (which decides the parking rates), the housing-policy maps
+// at the site, and the neighbours' footprints with their heights for the
+// massing's context. The study itself is computed when the sheet is drawn
+// (render/yieldSheet.ts), so an edited `yield_assumptions.json` beside the
+// output needs no refetch.
+
+export async function runYieldPipeline(
+  address: string,
+  opts: { outDir: string; log?: (m: string) => void },
+): Promise<YieldBundle> {
+  const log = opts.log ?? (() => {});
+  const dataDir = join(opts.outDir, 'data');
+  await mkdir(dataDir, { recursive: true });
+
+  log(`geocoding "${address}"…`);
+  const geo = await geocode(address);
+  log(`  matched: ${geo.matchedAddresses.join('; ')}`);
+  const siteLots = await fetchSiteLots(geo.points);
+  if (!siteLots.features.length) throw new Error('No cadastral lots found for the site.');
+  const ring = siteOuterRing(siteLots);
+
+  // Windows around the site: the streets, lots and levels close by, the
+  // neighbours' footprints a little further, the stations within reach.
+  const ringM = ring.map(([lon, lat]) => lonLatToMercator({ lon, lat }));
+  const cx = ringM.reduce((t, p) => t + p.x, 0) / ringM.length, cy = ringM.reduce((t, p) => t + p.y, 0) / ringM.length;
+  const k = mercatorScaleFactor(mercatorToLonLat({ x: cx, y: cy }).lat);
+  const reach = Math.max(...ringM.map((p) => Math.hypot(p.x - cx, p.y - cy))) / k;
+  const around = (m: number): Extent => ({ xmin: cx - (reach + m) * k, ymin: cy - (reach + m) * k, xmax: cx + (reach + m) * k, ymax: cy + (reach + m) * k });
+
+  const soft = <T,>(p: Promise<T>, fallback: T, name: string): Promise<T> =>
+    p.catch((e) => { log(`  WARN ${name} failed: ${e.message ?? e}`); return fallback; });
+  log('reading planning controls, streets, levels, stations and the neighbours…');
+  const emptyFc: GeoJSONFC = { type: 'FeatureCollection', features: [] };
+  const noBuildings: BuildingsData = { source: 'none', buildings: [], fetchedAt: new Date().toISOString() };
+  const [controls, roads, lots, contourSet, stations, policy, buildings] = await Promise.all([
+    fetchSiteControls(geo.center),
+    soft(fetchRoads(around(60)), [], 'roads'),
+    soft(fetchAllLots(around(70)), emptyFc, 'lots'),
+    soft(fetchContours(around(40), log), { lines: [], intervalM: 2, source: 'NSW Spatial Services' } as ContourSet, 'contours'),
+    soft(fetchTrainStations(around(1200)), [], 'stations'),
+    soft(fetchPolicyAreas(around(5), log), [], 'housing policy maps'),
+    soft(fetchBuildings(around(110), log), noBuildings, 'buildings'),
+  ]);
+  log(`  ${[controls.epiName, controls.zoneCode, controls.maxHeightM ? `HOB ${controls.maxHeightM} ${controls.heightUnits ?? 'm'}` : '', controls.fsr ? `FSR ${controls.fsr}:1` : ''].filter(Boolean).join(' · ') || 'no LEP mapped'}`);
+
+  // Each boundary edge: the named street running along it, if one does (its
+  // centreline within 20 m of the edge's middle and within 35° of its bearing).
+  const toM = ([lon, lat]: number[]) => { const m = lonLatToMercator({ lon, lat }); return { x: (m.x - cx) / k, y: (m.y - cy) / k }; };
+  const frontages = ring.slice(0, -1).map((_, i) => {
+    const a = toM(ring[i]), b = toM(ring[(i + 1) % ring.length]);
+    if (Math.hypot(b.x - a.x, b.y - a.y) < 1) return null;
+    const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    const eb = Math.atan2(b.y - a.y, b.x - a.x);
+    let best: { name: string; d: number } | null = null;
+    for (const r of roads) {
+      const pts = r.coords.map(toM);
+      for (let j = 1; j < pts.length; j++) {
+        const p = pts[j - 1], q = pts[j], dx = q.x - p.x, dy = q.y - p.y, l2 = dx * dx + dy * dy;
+        if (!l2) continue;
+        const t = Math.max(0, Math.min(1, ((mid.x - p.x) * dx + (mid.y - p.y) * dy) / l2));
+        const d = Math.hypot(mid.x - (p.x + t * dx), mid.y - (p.y + t * dy));
+        let da = Math.abs(Math.atan2(dy, dx) - eb) % Math.PI;
+        if (da > Math.PI / 2) da = Math.PI - da;
+        if (d <= 20 && da <= (35 * Math.PI) / 180 && (!best || d < best.d)) best = { name: r.name, d };
+      }
+    }
+    return best?.name ?? null;
+  });
+
+  // The ground at the corners, from the contours.
+  const contoursM: ContourM[] = contourSet.lines.map((c) => ({ z: c.elevation, pts: c.coords.map(toM) }));
+  const levels = ring.slice(0, -1).map((p) => levelAt(toM(p), contoursM, contourSet.intervalM)).filter((v): v is number => v != null);
+  const groundRL = levels.length ? { min: Math.min(...levels), max: Math.max(...levels), mean: levels.reduce((t, v) => t + v, 0) / levels.length } : undefined;
+
+  const centreLL = mercatorToLonLat({ x: cx, y: cy });
+  const metres = (lon: number, lat: number) => { const m = lonLatToMercator({ lon, lat }); return Math.hypot(m.x - cx, m.y - cy) / k; };
+  const nearest = stations.map((s) => ({ name: s.name, distanceM: Math.round(metres(s.lon, s.lat)) })).sort((p, q) => p.distanceM - q.distanceM)[0];
+  const cbd = CENTRES.filter((c) => c.kind === 'cbd').map((c) => ({ name: c.name, kind: c.kind, distanceM: Math.round(metres(c.lon, c.lat)) })).sort((p, q) => p.distanceM - q.distanceM)[0];
+  const policyAtSite = policy.filter((pa) => pa.rings.some((r) => pointInRingLL(centreLL.lon, centreLL.lat, r))).map((pa) => ({ kind: pa.kind, name: pa.name }));
+
+  // The neighbours' footprints with what is known of their height; one with
+  // none stands in at a nominal two storeys, drawn as such.
+  const siteRingLL = ring;
+  const context = buildings.buildings
+    .filter((bd) => !pointInRingLL(bd.centroid[0], bd.centroid[1], siteRingLL))
+    .map((bd) => ({ rings: bd.rings, heightM: bd.estimatedHeightM ?? bd.heightM ?? (bd.floors ? bd.floors * METRES_PER_STOREY : 0), known: !!(bd.estimatedHeightM ?? bd.heightM ?? bd.floors) }));
+
+  let assumptions: YieldBundle['assumptions'];
+  try { assumptions = JSON.parse(await readFile(join(opts.outDir, 'yield_assumptions.json'), 'utf8')); log('  assumptions from yield_assumptions.json'); } catch { /* the defaults */ }
+
+  const bundle: YieldBundle = {
+    address,
+    siteAddress: geo.matchedAddresses[0] ?? address,
+    generatedAt: new Date().toISOString(),
+    lotDescription: describeLots(siteLots),
+    siteAreaSqm: lotsAreaSqm(siteLots, geo.center),
+    areaIsCadastral: true,
+    controls,
+    siteRing: ring,
+    frontages,
+    groundRL,
+    station: nearest,
+    cbd: cbd && cbd.distanceM <= 1500 ? cbd : undefined,
+    policyAtSite,
+    roads: roads.filter((r) => r.coords.some(([lon, lat]) => metres(lon, lat) < reach + 60)),
+    lots: lots.features.map((f) => ringsOf(f.geometry)).filter((r) => r.length),
+    context,
+    buildingsSource: buildings.source,
+    assumptions,
+  };
+  await writeFile(join(dataDir, 'yield.json'), JSON.stringify(bundle));
+  return bundle;
+}
+
+function pointInRingLL(lon: number, lat: number, ring: number[][]): boolean {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i], [xj, yj] = ring[j];
+    if (yi > lat !== yj > lat && lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
 }
 
 /** "1//DP212120" + "2//DP212120" -> "LOT 1&2 - DP 212120" */

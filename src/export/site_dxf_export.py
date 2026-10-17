@@ -216,6 +216,33 @@ for u in fur.get("utilities") or []:
     if p is not None:
         p.dxf.layer = layer(f"UTILITIES-{u.get('kind', 'OTHER').upper()}", 0x9B59B6)
 
+# ---- services an open licence lets the sheet draw (fetch/services.ts) and the
+# ones OpenStreetMap maps; one layer each, so a BYDA plan traced over them can
+# replace them kind by kind. Not a substitute for a Before You Dig enquiry. ----
+# AS 5488.1's colours, as on the sheet: electricity orange, stormwater green.
+SERVICE_RGB = {"STORMWATER": 0x2E8B3A, "STORMWATERPIT": 0x2E8B3A, "LIGHTPOLE": 0xA8860B,
+               "POWERHV": 0xC45A00, "SUBSTATION": 0xEF7D00, "TRANSFORMER": 0xEF7D00,
+               "CABINET": 0x8A8A8A, "MANHOLE": 0x6F6F6F, "POWERCABLE": 0xEF7D00,
+               "POWEROVERHEAD": 0xEF7D00, "POWERPOLE": 0x333333, "PILLAR": 0xEF7D00}
+svc = bundle.get("services") or {}
+for l in svc.get("lines") or []:
+    name = f"SERVICES-{str(l.get('kind', 'OTHER')).upper()}"
+    p = add_poly("UTILITIES", l.get("coords") or [], closed=False)
+    if p is None:
+        continue
+    p.dxf.layer = layer(name, SERVICE_RGB.get(name[9:], 0x9B59B6))
+    if l.get("label") and len(l["coords"]) >= 2:
+        a, b = P(*l["coords"][0][:2]), P(*l["coords"][-1][:2])
+        add_text(layer(name, SERVICE_RGB.get(name[9:], 0x9B59B6)), l["label"], (a[0] + b[0]) / 2, (a[1] + b[1]) / 2, 0.4,
+                 math.degrees(math.atan2(b[1] - a[1], b[0] - a[0])))
+for pt in (svc.get("points") or []) + (fur.get("servicePoints") or []):
+    name = f"SERVICES-{str(pt.get('kind', 'OTHER')).upper()}"
+    lay = layer(name, SERVICE_RGB.get(name[9:], 0x9B59B6))
+    x, y = P(pt["lon"], pt["lat"])
+    msp.add_circle((x, y), 0.4, dxfattribs={"layer": lay})
+    if pt.get("label"):
+        add_text(lay, pt["label"], x + 0.6, y, 0.35)
+
 for s in bundle.get("busStops", []) or []:
     x, y = P(s["lon"], s["lat"])
     msp.add_circle((x, y), 1.0, dxfattribs={"layer": "BUS-STOPS"})
