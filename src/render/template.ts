@@ -430,12 +430,12 @@ export interface SiteLook {
   siteDash: string;
   /** The boundary dimensions' ink (Heron sets them in the site's red, Canary in black). */
   dimensionInk: string;
-  /** The fall of terrain. */
+  /** The fall of terrain's arrow. */
   fall: string;
-  /** The FALL/AREA words. */
+  /** The FALL/AREA words: on a white box, straight on the site with a fine white edge to the letters, or plain. */
+  fallWords: 'box' | 'edge' | 'plain';
+  /** Their ink. */
   fallInk: string;
-  /** What the FALL/AREA words stand on: a white box, a fine white edge to the letters, or nothing but the photograph. */
-  fallGround: 'box' | 'edge' | 'none';
   /** Every word on the map, as a multiple of the sheet's one lettering size (6.2 mm on the A1). */
   textScale: number;
   /** The neighbours' building outlines, white, this wide (mm). */
@@ -480,7 +480,7 @@ export interface SiteLook {
   noisePen: string;
   /** Views: a telescope aimed along the sight line, a white band inside the climate circle with the view's name around it, or a plain outlined triangle opening from the site edge. */
   views: 'telescope' | 'circle' | 'triangle';
-  /** A thin white edge on the trees' numbers, drawn over busy ground (FALL and AREA set theirs with fallGround). */
+  /** A thin white edge on words drawn over busy ground (the trees' numbers). */
   textHalo: boolean;
   /** Indicative kerb lines along the streets (lib/kerbs.ts), for a sheet with no aerial to show them. */
   kerbs: boolean;
@@ -507,7 +507,7 @@ export interface SiteTheme { id: string; label: string; note: string; base: stri
 // site's red; a request naming either is drawn in Heron.
 const CLIMATE_GREY = '#6f7377';
 const HERON_LOOK: SiteLook = {
-  font: NARROW, ground: 'aerial', veil: 0.55, aerial: 'grey', site: HERON_RED, siteDash: '7,2,1.6,2', dimensionInk: HERON_RED, fall: HERON_SLATE, fallInk: HERON_RED, fallGround: 'none', textScale: 1.2,
+  font: NARROW, ground: 'aerial', veil: 0.55, aerial: 'grey', site: HERON_RED, siteDash: '7,2,1.6,2', dimensionInk: HERON_RED, fall: HERON_SLATE, fallWords: 'plain', fallInk: HERON_RED, textScale: 1.2,
   buildingEdge: 0.3, buildings: 'outline', neighbours: 'white', neighbourHeightInk: '#ffffff', zones: 'hatch', zoneTint: 0.55,
   heritage: false, heritageInk: { item: '#e39a3b', area: '#c8372d' }, contours: true, contourInk: '#a9adb1',
   streetInk: '#ffffff',
@@ -529,7 +529,7 @@ const HERON_LOOK: SiteLook = {
 const CANARY_CONTEXT = TEMPLATES.find((t) => t.id === 'canary')!;
 const CANARY_LOOK: SiteLook = {
   font: SANS, ground: 'aerial', veil: CANARY_CONTEXT.veil!, aerial: 'grey', site: CANARY_CONTEXT.site, siteDash: '4.2,1.8',
-  dimensionInk: CANARY_CONTEXT.dimension, fall: CANARY_CONTEXT.dimension, fallInk: CANARY_CONTEXT.dimension, fallGround: 'edge', textScale: 1,
+  dimensionInk: CANARY_CONTEXT.dimension, fall: CANARY_CONTEXT.dimension, fallWords: 'plain', fallInk: CANARY_CONTEXT.site, textScale: 1,
   buildingEdge: 0.55, buildings: 'outline', neighbours: 'black', neighbourHeightInk: CANARY_CONTEXT.transit, zones: 'lep', zoneTint: 0,
   heritage: true, heritageInk: { item: CANARY_CONTEXT.heritage, area: '#ff0000' }, contours: false, contourInk: '#3f9a5c',
   streetInk: CANARY_CONTEXT.ink,
@@ -549,7 +549,7 @@ const CANARY_LOOK: SiteLook = {
 // the site. The kerbs are drawn, indicatively, since there is no photograph
 // to show them.
 const KOOKABURRA_LOOK: SiteLook = {
-  font: GROTESK, ground: 'paper', veil: 0, aerial: 'colour', site: F2.magenta, siteDash: '7,2,1.6,2', dimensionInk: '#56616b', fall: '#56616b', fallInk: '#56616b', fallGround: 'none', textScale: 1,
+  font: GROTESK, ground: 'paper', veil: 0, aerial: 'colour', site: F2.magenta, siteDash: '7,2,1.6,2', dimensionInk: '#56616b', fall: '#56616b', fallWords: 'plain', fallInk: '#56616b', textScale: 1,
   buildingEdge: 0.4, buildings: 'colour', neighbours: 'white', neighbourHeightInk: '#ffffff', zones: 'fill', zoneTint: 0,
   heritage: false, heritageInk: { item: '#e39a3b', area: '#c8372d' }, contours: true, contourInk: '#a9adb1',
   streetInk: '#e39a6f',

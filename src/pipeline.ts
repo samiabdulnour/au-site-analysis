@@ -264,6 +264,7 @@ import { fetchLocation, emptyLocation, type LocationData } from './fetch/locatio
 import { fetchCharacter, emptyCharacter, type CharacterData } from './fetch/character.js';
 import { fetchStrategies, emptyStrategies, type StrategiesData } from './fetch/strategies.js';
 import { buildParkingBands, type ParkingBand } from './lib/parking.js';
+import { estimateKerbs, type KerbLine } from './lib/kerbs.js';
 import turfUnion from '@turf/union';
 import { featureCollection } from '@turf/helpers';
 
@@ -295,6 +296,8 @@ export interface SiteBundle {
   furniture: SiteFurniture;
   /** Kerbside bays set out from the tagged runs and the cadastre. */
   parkingBands?: ParkingBand[];
+  /** Indicative kerb lines (lib/kerbs.ts), for the sheet and the CAD export (older bundles: none; the sheet works them out). */
+  kerbs?: KerbLine[];
   /** Potential views, each with its sight line checked where one could be. */
   views?: ViewTarget[];
   /** Height above the site's ground the sight lines were taken from. */
@@ -414,10 +417,14 @@ export async function runSitePipeline(address: string, opts: SitePipelineOpts): 
   const parkingBands = buildParkingBands(furniture.parkingLanes, lotRings,
     furniture.driveways.map((d) => d.coords), roads.map((r) => r.coords));
   const bays = parkingBands.reduce((n, b) => n + b.bays.length, 0);
+  // Kerb lines, worked out once here so the sheet and the CAD export draw the same ones.
+  let kerbs: KerbLine[] = [];
+  try { kerbs = estimateKerbs(lotRings, roads, footways.lines, furniture.kerbs ?? []); }
+  catch (e) { log(`  kerbs: not worked out (${(e as Error).message})`); }
 
   log(`  contours:${contourSet.lines.length} (${contourSet.intervalM} m) lots:${allLots.features.length} roads:${roads.length} ` +
       `neighbours:${neighbours.length} trees:${furniture.trees.length} (council ${councilTrees.length}, osm ${osmTrees}) ` +
-      `parking bays:${bays} car parks:${furniture.carParks.length} busStops:${busStops.length}`);
+      `parking bays:${bays} kerb lines:${kerbs.length} car parks:${furniture.carParks.length} busStops:${busStops.length}`);
 
   // Sight lines to the skyline, the water and the park next door.
   log('checking sight lines over the terrain…');
@@ -439,7 +446,7 @@ export async function runSitePipeline(address: string, opts: SitePipelineOpts): 
     address, geocode: geo, extent, view, scale,
     siteLots, siteRing: ring, allLots, roads, railLines, zoning, heights, heritage, services, footways,
     contours: contourSet.lines, contourIntervalM: contourSet.intervalM, contourSource: contourSet.source,
-    neighbours, furniture, parkingBands, views, eyeAboveM, attributions,
+    neighbours, furniture, parkingBands, kerbs, views, eyeAboveM, attributions,
     busStops, buildings, aerial, generatedAt: new Date().toISOString(),
   };
   await writeFile(join(dataDir, 'site_bundle.json'), JSON.stringify(bundle));
