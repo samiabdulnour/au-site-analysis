@@ -740,10 +740,10 @@ The aerial outside the site is greyed (`aerial: 'grey'`) under the same veil,
 and the zones are filled in exactly the NSW ePlanning colours (`zones: 'lep'`,
 at the context sheet's strength), keyed in the legend by code and name; the
 site itself keeps the photograph's colours. The site is a dash in Canary's red
-with its levels in the same red and its boundary dimensions and fall in its
-slate; the FALL and AREA words sit straight on the site with a thin white edge
-to the letters (`fallBox: false`) rather than on a white box. The street names
-are plain bold black along the road.
+with its levels in the same red, and its boundary dimensions and fall arrow in
+its slate; the FALL and AREA words are in the site's red too, set straight on
+the site with no box and no white edge (`fallWords: 'plain'`, `fallInk`). The
+street names are plain bold black along the road.
 
 The sun, the winds and the views are one black dashed circle about the site,
 after the office's view diagrams. Around the outside the winds are only
@@ -752,7 +752,7 @@ way the sheet is turned, outside a black hatched band over the quarter it
 blows from. Around the inside are the views (`views: 'circle'`): each clear
 sight line a white band on the circle with its name inside it; a view whose
 name would run into a better-ranked one's is left off. Further in are four
-plain suns, small open discs with eight rays, where the sun rises and sets at
+plain suns, open discs with eight rays, where the sun rises and sets at
 the two solstices, each named (WINTER SUNRISE, SUMMER SUNSET…) toward the
 centre, with no hours (`sun: 'circle'`). North is a black arrowhead standing
 out of the circle with N beyond it. The circle sits clear of the lot with room
