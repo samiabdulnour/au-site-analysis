@@ -71,6 +71,7 @@ console.log('  ok — two concurrent renders each kept their own template');
 const styleChecks: [string, boolean][] = [
   ['context keeps its template', themeFor('context', 'heron') === 'heron'],
   ['context: unknown → default template', themeFor('context', 'dove') === 'flamingo'],
+  ['context: Conure, its former name, → Canary', themeFor('context', 'conure') === 'canary'],
   ['site: a context template → Heron', themeFor('site', 'kingfisher') === 'heron'],
   ['site: Heron draws on Heron', templateFor('site', 'heron') === 'heron'],
   ['site: Dove and Cardinal, its former names, → Heron', themeFor('site', 'dove') === 'heron' && themeFor('site', 'cardinal') === 'heron'],
