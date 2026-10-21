@@ -199,10 +199,14 @@ STRIPE_WEBHOOK_SECRET=whsec_…
 PRICE_LABEL=A$49 a month        # what /pricing says it costs
 ```
 
-Unset, `/pricing` says subscriptions open soon and the free side works alone;
-`/api/version` reports `billing`, and `/status` shows the account counts and
-warns when there is a key but no webhook secret, which would take payments that
-never reach the accounts. A subscription is on while Stripe calls it `active`
+Unset, `/pricing` says subscriptions open soon and the free side works alone.
+`/api/version` reports whether `billing` is on. Once it is, `/status` asks Stripe
+what it has and says, a line each: which Stripe account the key belongs to and
+whether it is live or test, the price, the webhook endpoint and any event it is
+missing, whether the customer portal is saved, and whether an event has arrived
+signed with `STRIPE_WEBHOOK_SECRET` — Stripe never shows the secret again, so
+use the endpoint's "send test event" once and this line turns to `matches`. The
+same lines go to `docker logs site-analyst` at every start. A subscription is on while Stripe calls it `active`
 or `trialing`; the webhook moves the account back to free when it lapses, and
 on again when a retried payment lands.
 

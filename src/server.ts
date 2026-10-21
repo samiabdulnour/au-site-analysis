@@ -34,7 +34,9 @@ import {
   initAccounts, accountFromCookie, accountCounts, createAccount, signIn, sessionCookieValue,
   normaliseEmail, validEmail, PASSWORD_MIN, ACCOUNT_COOKIE, SESSION_DAYS, type Account,
 } from './accounts.js';
-import { billingEnabled, webhookEnabled, checkoutUrl, portalUrl, verifySignature, handleEvent } from './billing.js';
+import {
+  billingEnabled, webhookEnabled, checkoutUrl, portalUrl, verifySignature, handleEvent, checkBilling, webhookSeen,
+} from './billing.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -987,7 +989,8 @@ Sitemap: ${siteBase()}/sitemap.xml
         freeBytes: fs ? fs.bavail * fs.bsize : null,
         totalBytes: fs ? fs.blocks * fs.bsize : null,
       },
-      accounts: { ...accountCounts(), billing: billingEnabled, webhook: webhookEnabled },
+      accounts: accountCounts(),
+      billing: await checkBilling(),
       // 24h of retention is already the ceiling on how many there can be.
       jobs: all.slice(0, 100).map((j) => ({
         id: j.id, address: j.address, sheet: j.sheet, scale: j.scale,
@@ -1120,10 +1123,16 @@ Sitemap: ${siteBase()}/sitemap.xml
   if (req.method === 'POST' && url.pathname === '/api/billing/webhook') {
     if (!webhookEnabled) return json(res, 503, { error: 'Billing is not configured.' });
     const raw = await readRaw(req, 1_000_000);
-    if (!raw || !verifySignature(raw, String(req.headers['stripe-signature'] ?? '')))
+    const signature = String(req.headers['stripe-signature'] ?? '');
+    if (!raw || !verifySignature(raw, signature)) {
+      // Counted only when it carries a signature at all: an unsigned POST is
+      // somebody probing, not Stripe with the wrong secret.
+      if (signature) webhookSeen.refused = Date.now();
       return json(res, 400, { error: 'Bad signature.' });
+    }
     let event: any;
     try { event = JSON.parse(raw.toString('utf8')); } catch { return json(res, 400, { error: 'Bad payload.' }); }
+    webhookSeen.accepted = { at: Date.now(), type: String(event?.type) };
     try {
       console.log(`billing: ${await handleEvent(event)}`);
       return json(res, 200, { received: true });
@@ -1489,3 +1498,11 @@ void cleanupOldJobs();
 const PORT = Number(process.env.PORT ?? 3000);
 server.listen(PORT, () => console.log(`site analyst web UI on http://localhost:${PORT}${NO_AUTH ? ' (NO AUTH)' : ''}` +
   ` — subscriptions ${billingEnabled ? 'on' : 'off (no STRIPE_SECRET_KEY / STRIPE_PRICE_ID)'}`));
+
+// What Stripe says about the settings, in the container's log at every start,
+// so a wrong key shows in `docker logs` as well as on /status.
+if (billingEnabled) {
+  void checkBilling().then((rows) => {
+    for (const [k, v, ok] of rows) console.log(`billing check: ${ok ? 'ok  ' : 'WARN'} ${k} — ${v}`);
+  });
+}

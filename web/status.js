@@ -91,10 +91,9 @@ function renderServer(j) {
     ['queue', j.queue.running + ' running, ' + j.queue.queued + ' waiting'],
     // Counts only: who the accounts are is Stripe's dashboard's business.
     ['accounts', j.accounts.total + ', ' + j.accounts.subscription + ' on the subscription'],
-    // Checkout without the webhook takes payment and never grants anything.
-    ['billing', !j.accounts.billing ? 'off — no Stripe key or price'
-      : j.accounts.webhook ? 'on' : 'on, but no webhook secret — payments will not reach accounts',
-      j.accounts.billing && !j.accounts.webhook ? 'warn' : ''],
+    // What Stripe says about the server's settings, a line each: the account
+    // the key belongs to, the price, the webhook, the portal, the secret.
+    ...(j.billing || []).map(([k, v, ok]) => [k, v, ok ? '' : 'warn']),
   ]);
 }
 

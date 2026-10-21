@@ -91,6 +91,108 @@ export function verifySignature(raw: Buffer, header: string, secret = WEBHOOK_SE
     && timingSafeEqual(Buffer.from(v, 'hex'), want));
 }
 
+// ---- checking the setup ------------------------------------------------------
+//
+// The keys live on the host, where nobody can see them from here, and most of
+// what can be wrong with them is quiet: a test key with a live price fails only
+// when someone tries to pay, and a webhook missing an event takes the money
+// without ever granting the subscription. So the operator view asks Stripe what
+// it has, and says what it found, a line each.
+
+export type CheckRow = [label: string, finding: string, ok: boolean];
+
+const EVENTS = [
+  'checkout.session.completed',
+  'customer.subscription.created', 'customer.subscription.updated', 'customer.subscription.deleted',
+];
+
+/**
+ * The last event that arrived signed, and the last one refused. Stripe never
+ * hands the signing secret back, so an event arriving is the only proof that
+ * STRIPE_WEBHOOK_SECRET is the endpoint's.
+ */
+export const webhookSeen: { accepted?: { at: number; type: string }; refused?: number } = {};
+
+const minutesAgo = (t: number) => {
+  const m = Math.round((Date.now() - t) / 60_000);
+  return m < 1 ? 'just now' : m === 1 ? 'a minute ago' : `${m} minutes ago`;
+};
+
+function webhookRow(): CheckRow {
+  const { accepted, refused } = webhookSeen;
+  if (!webhookEnabled) return ['webhook secret', 'not set: payments will not reach the accounts', false];
+  if (refused && (!accepted || refused > accepted.at))
+    return ['webhook secret', `an event was refused ${minutesAgo(refused)}: the secret is not this endpoint's`, false];
+  if (accepted) return ['webhook secret', `matches: ${accepted.type} received ${minutesAgo(accepted.at)}`, true];
+  return ['webhook secret', "set; nothing received yet — send a test event from the endpoint's page in Stripe", true];
+}
+
+let checked: { at: number; rows: CheckRow[] } | undefined;
+
+/** What Stripe says about this server's settings. Asked at most every five minutes. */
+export async function checkBilling(): Promise<CheckRow[]> {
+  if (!billingEnabled) return [['billing', 'off — no STRIPE_SECRET_KEY or STRIPE_PRICE_ID', true]];
+  if (checked && Date.now() - checked.at < 5 * 60_000) return [...checked.rows, webhookRow()];
+  const live = /^(sk|rk)_live_/.test(KEY);
+  const ask = (path: string) => stripe(path).then((v) => ({ v }), (e: Error) => ({ e }));
+  const [account, price, hooks, portal] = await Promise.all([
+    ask('account'),
+    ask(`prices/${encodeURIComponent(PRICE)}`),
+    ask('webhook_endpoints?limit=100'),
+    ask('billing_portal/configurations?is_default=true&limit=1'),
+  ]);
+  const rows: CheckRow[] = [];
+
+  if ('e' in account) {
+    rows.push(['stripe account', `the key was refused: ${account.e.message}`, false]);
+  } else {
+    const a = account.v;
+    // The name is the thing to read: it says which of your Stripe accounts the key belongs to.
+    const name = a.settings?.dashboard?.display_name || a.business_profile?.name || a.id;
+    const ready = !live || Boolean(a.charges_enabled);
+    rows.push(['stripe account', `${name} · ${live ? 'live' : 'test'} mode` +
+      (ready ? '' : ' · cannot take payments until the account is activated'), ready]);
+  }
+
+  if ('e' in price) {
+    rows.push(['price', `${PRICE}: ${price.e.message}` +
+      (/no such price/i.test(price.e.message) ? ` — is it a ${live ? 'test' : 'live'}-mode price?` : ''), false]);
+  } else {
+    const p = price.v;
+    const amount = p.unit_amount == null ? 'no fixed amount'
+      : `${(p.unit_amount / 100).toFixed(2)} ${String(p.currency).toUpperCase()}`;
+    const n = p.recurring?.interval_count ?? 1;
+    const every = p.recurring ? ` every ${n > 1 ? `${n} ${p.recurring.interval}s` : p.recurring.interval}` : '';
+    rows.push(['price', amount + every +
+      (p.active ? '' : ' · archived') +
+      (p.recurring ? '' : ' · one-off: a subscription needs a recurring price'), Boolean(p.active && p.recurring)]);
+  }
+
+  if ('e' in hooks) {
+    rows.push(['webhook endpoint', hooks.e.message, false]);
+  } else {
+    const mine = (hooks.v.data ?? []).filter((h: any) => String(h.url).endsWith('/api/billing/webhook'));
+    if (!mine.length) rows.push(['webhook endpoint', 'none points at /api/billing/webhook', false]);
+    for (const h of mine) {
+      const events: string[] = h.enabled_events ?? [];
+      const missing = events.includes('*') ? [] : EVENTS.filter((e) => !events.includes(e));
+      const on = h.status === 'enabled';
+      rows.push(['webhook endpoint', String(h.url) + (on ? '' : ' · disabled') +
+        (missing.length ? ` · missing ${missing.join(', ')}` : ''), on && !missing.length]);
+    }
+  }
+
+  if ('e' in portal) {
+    rows.push(['customer portal', portal.e.message, false]);
+  } else {
+    const saved = Boolean(portal.v.data?.[0]?.active);
+    rows.push(['customer portal', saved ? 'saved' : 'not saved yet: Settings → Billing → Customer portal, then Save', saved]);
+  }
+
+  checked = { at: Date.now(), rows };
+  return [...rows, webhookRow()];
+}
+
 /** A Stripe reference is an id, or the object itself when it was expanded. */
 const idOf = (v: any): string | undefined =>
   typeof v === 'string' ? v : typeof v?.id === 'string' ? v.id : undefined;

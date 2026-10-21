@@ -172,6 +172,12 @@ jobs:
       - name: the free side is stamped and the subscription is not
         run: npx tsx test/plans.mts
 
+      # The operator view's Stripe check, on made-up answers: it names the
+      # account the key belongs to, and finds a price from the other mode, a
+      # webhook missing an event, a portal never saved and a wrong secret.
+      - name: the Stripe check finds what is set up wrong
+        run: npx tsx test/billing-check.mts
+
       # The deployer's one job here is to leave a record even when it dies on
       # its first command — which is exactly what happened once, for six days,
       # unnoticed. Reproduce that: a repo whose origin cannot be reached, and a
