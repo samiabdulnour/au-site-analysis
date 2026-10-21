@@ -1,8 +1,9 @@
-# The landing page's example pictures (web/samples/result-*.jpg), drawn on
-# GitHub's runner rather than on someone's machine: the runner reaches every
-# public service the pipelines read, where a laptop on an office network or a
-# cloud session may not, and it draws in the image the server runs, so the
-# faces and the rasteriser are the server's.
+# The landing page's example pictures (web/samples/result-*.jpg), and with the
+# context sheets the link-preview card (og.jpg), drawn on GitHub's runner
+# rather than on someone's machine: the runner reaches every public service the
+# pipelines read, where a laptop on an office network or a cloud session may
+# not, and it draws in the image the server runs, so the faces and the
+# rasteriser are the server's.
 #
 # It runs only when started by hand (Actions → samples → Run workflow). The
 # checks workflow never touches NSW ePlanning, Overpass, SIX or Valhalla, and
@@ -22,7 +23,7 @@ on:
       only:
         description: Which drawing's pictures to redraw
         type: choice
-        options: [site, context, yield, slides, all]
+        options: [site, context, yield, slides, card, all]
         default: site
       address:
         description: The example address (web/app.js names it in EXAMPLE_ADDRESS)
@@ -55,6 +56,8 @@ jobs:
 
       # The inputs reach the script as arguments, never pasted into it. The keys
       # are optional: a secret that is not set arrives empty and is ignored.
+      # All of web is mounted, not only its samples: redrawing the card also
+      # rewrites its ?v= in index.html and about.html.
       - name: draw
         env:
           ONLY: ${{ inputs.only }}
@@ -69,7 +72,7 @@ jobs:
           [ "$ONLY" = all ] || only=(--only "$ONLY")
           mkdir -p out
           docker run --rm \
-            -v "$PWD/web/samples:/app/web/samples" -v "$PWD/out:/app/out" \
+            -v "$PWD/web:/app/web" -v "$PWD/out:/app/out" \
             -e TFNSW_API_KEY -e GOOGLE_MAPS_API_KEY -e GOOGLE_MAPS_SIGNING_SECRET -e MAPILLARY_TOKEN \
             site-analyst \
             sh -c 'pip3 install --break-system-packages --no-cache-dir --quiet pymupdf pillow && exec npx tsx src/samples.ts "$@"' \
@@ -99,7 +102,8 @@ jobs:
           ADDRESS: ${{ inputs.address }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
-          git add -A web/samples
+          # The pages name the card with its hash, so a new card changes them too.
+          git add -A web/samples web/index.html web/about.html
           if git diff --cached --quiet; then
             echo 'No picture changed.' >> "$GITHUB_STEP_SUMMARY"
             exit 0

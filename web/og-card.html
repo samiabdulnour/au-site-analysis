@@ -8,8 +8,8 @@
   Drawn rather than photographed, like everything else here. 1200x630 is what
   the platforms crop to, and a whole A1 sheet scaled into it is a grey field of
   unreadable lines — so the card shows a crop of one at about the size it is
-  read at, over a strip that says what the thing is. Regenerate with the recipe
-  in the README.
+  read at, over a strip that says what the thing is. `npm run samples` redraws
+  it whenever it draws the context sheets, and `--only card` redraws it alone.
 
   Geometry is in pixels rather than percentages: the card is one fixed size,
   and a percentage for `top` resolves against the box's height while `width`
@@ -33,9 +33,12 @@
      sheet is under a pixel per line and reads as grey. */
   .art { height: 425px; overflow: hidden; position: relative;
          border-bottom: 3px solid #000; }
-  /* The sample is 1789x1264. Shown at 1791px wide and offset to the middle of
-     the sheet, which is where the site and its labels are. */
-  .art img { position: absolute; width: 1791px; left: -300px; top: -430px; }
+  /* The context sheet the landing page opens on (1:3000, north up, Flamingo),
+     which is 1193x843. Shown at 1491px wide and offset to the middle of the
+     map, where every context sheet puts its site, clear of the legend on the
+     sheet's right. The path is relative because the page is only ever opened
+     from disk. */
+  .art img { position: absolute; width: 1491px; left: -84px; top: -300px; }
 
   .strip { flex: 1; display: flex; align-items: center;
            justify-content: space-between; padding: 0 40px; gap: 48px; }
@@ -49,7 +52,7 @@
 </head>
 <body>
   <div class="card">
-    <div class="art"><img src="/samples/context.jpg" alt=""></div>
+    <div class="art"><img src="samples/result-context-3000-north-flamingo.jpg" alt=""></div>
     <div class="strip">
       <div>
         <div class="name">SITE ANALYST</div>

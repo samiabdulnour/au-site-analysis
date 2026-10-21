@@ -96,6 +96,7 @@ Parramatta; to redraw them, or to move them to another address (and change
 pip install pymupdf      # rasterises the PDFs
 npm run samples -- "150 George Street, Parramatta NSW 2150"
 # or a part at a time: --only context | site | yield | slides (| summary, which the table no longer offers)
+# or only the link-preview card, from the context sheet already drawn: npm run samples -- --only card
 ```
 
 Or let GitHub draw them: **Actions → samples → Run workflow**
@@ -120,31 +121,16 @@ site report's frame turns through its pages, one every second and a half, from
 `result-slides-1.jpg` until a number has no picture; the pointer over it
 holds the page and a click turns it.
 
-`web/samples/context.jpg`, the Botany context sheet, stays only as the source
-of the link-preview card below.
-
 `web/samples/og.jpg` is the image a shared link previews with, drawn from
-`web/og-card.html` — a crop of `context.jpg` over a strip naming the tool. Redraw
-it whenever that sample changes:
-
-```bash
-node - <<'EOF'
-import { chromium } from 'playwright-core';
-import { globSync } from 'node:fs';
-import { pathToFileURL } from 'node:url';
-const browser = await chromium.launch({
-  executablePath: globSync('/opt/pw-browsers/chromium-*/chrome-linux/chrome')[0]
-    ?? process.env.CHROMIUM_PATH,
-  args: ['--no-sandbox'] });
-const page = await browser.newPage({ viewport: { width: 1200, height: 630 } });
-await page.goto(pathToFileURL(process.cwd() + '/web/og-card.html').href);
-await page.$eval('.art img', (el) => { el.src = 'samples/context.jpg'; });
-await page.waitForFunction(() => {
-  const i = document.querySelector('.art img'); return i.complete && i.naturalWidth > 0; });
-await page.screenshot({ path: 'web/samples/og.jpg', type: 'jpeg', quality: 86 });
-await browser.close();
-EOF
-```
+`web/og-card.html` — a crop of the context sheet the landing page opens on
+(`result-context-3000-north-flamingo.jpg`) over a strip naming the tool. The
+script redraws it whenever it draws the context sheets, by hand or in the
+workflow, and `--only card` (a `card` run of the workflow) redraws it alone,
+after a change to the card itself. Each redraw writes the picture's hash into
+the `?v=` on the `og:image` and `twitter:image` tags of `index.html` and
+`about.html`, since a scraper keeps a picture by its URL and would go on
+showing the old card under the old one; the workflow commits those two pages
+with the pictures.
 
 ### One door, and an operator code
 

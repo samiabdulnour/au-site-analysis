@@ -14,12 +14,19 @@
 // changes how a sheet looks and never what it fetches. `--only` splits the
 // run, which is twenty-odd pipelines' worth of public services' time.
 //
+// Drawing the context sheets also redraws web/samples/og.jpg, the card a
+// shared link previews with, since it is a crop of one of them. `--only card`
+// redraws the card alone, from the sheet already drawn, and needs no address:
+//
+//   npm run samples -- --only card
+//
 // Rasterising goes through pymupdf, as the other samples do (pip install
 // pymupdf). The scales and orientations below must match the options table's.
 
 import { mkdir, writeFile } from 'node:fs/promises';
 import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 
 if (existsSync('.env')) {
@@ -35,7 +42,7 @@ import { renderSummarySheet } from './render/summarySheet.js';
 import { renderYieldSheet } from './render/yieldSheet.js';
 import { renderSlides, PANEL_W, PANEL_H, DA_PANEL_H, SLIDE_W, SLIDE_H } from './render/slides.js';
 import { prepareRasters } from './render/paintMasks.js';
-import { htmlToPdf, printSlides } from './render/pdf.js';
+import { htmlToPdf, htmlToJpeg, printSlides } from './render/pdf.js';
 import { TEMPLATES, SITE_THEMES, withTemplate } from './render/template.js';
 
 const CONTEXT_SCALES = [2000, 3000, 4000, 5000];
@@ -46,22 +53,50 @@ const ROTATIONS = ['north', 'auto'] as const;
 const DPI = 36;
 const QUALITY = 72;
 
+const only = (() => { const i = process.argv.indexOf('--only'); return i > -1 ? process.argv[i + 1] : undefined; })();
+const want = (sheet: string) => !only || only === sheet;
+const samples = join('web', 'samples');
+const log = (m: string) => console.log(m);
+
+/**
+ * The link-preview card, web/og-card.html, as og.jpg. The pages name it with
+ * the picture's hash in a ?v=, rewritten here: a scraper keeps a picture by
+ * its URL, so the old card would go on being shown under the old one.
+ */
+async function drawCard() {
+  const card = join(samples, 'og.jpg');
+  await htmlToJpeg(join('web', 'og-card.html'), card, { width: 1200, height: 630 }, 86);
+  const v = createHash('sha256').update(readFileSync(card)).digest('hex').slice(0, 8);
+  for (const page of ['index.html', 'about.html']) {
+    const file = join('web', page);
+    const html = readFileSync(file, 'utf8');
+    const tag = /\/samples\/og\.jpg(\?v=[a-z0-9]*)?"/g;
+    if (html.search(tag) < 0) throw new Error(`${file} no longer names /samples/og.jpg`);
+    await writeFile(file, html.replace(tag, `/samples/og.jpg?v=${v}"`));
+  }
+  console.log(`  wrote ${card}, named ?v=${v}`);
+}
+
+// The card is a crop of a picture already drawn, so it needs no address.
+if (only === 'card') {
+  log('card');
+  await drawCard();
+  process.exit(0);
+}
+
 const address = process.argv.slice(2).find((a, i, all) => !a.startsWith('--') && !all[i - 1]?.startsWith('--'));
 if (!address) {
   console.error('usage: npm run samples -- "<address>" [--only context|site|yield|summary|slides]');
+  console.error('       npm run samples -- --only card');
   process.exit(1);
 }
-const only = (() => { const i = process.argv.indexOf('--only'); return i > -1 ? process.argv[i + 1] : undefined; })();
-const want = (sheet: string) => !only || only === sheet;
 
 const slug = address.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 const root = join('out', 'samples', slug);
-const samples = join('web', 'samples');
 const meta: SheetMeta = {
   jobNo: '', client: '', status: '', sheetNo: '', revision: '',
   checked: '', drawn: '', date: '', preliminary: false,
 };
-const log = (m: string) => console.log(m);
 
 /** Page one of a PDF, or a PNG, as the frame's JPEG. */
 function toJpeg(src: string, name: string) {
@@ -107,6 +142,8 @@ if (want('context')) {
       });
     }
   }
+  log('card');
+  await drawCard();
 }
 
 if (want('site')) {

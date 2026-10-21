@@ -46,6 +46,23 @@ export async function htmlToPdf(htmlPath: string, pdfPath: string): Promise<void
   }
 }
 
+/** A page drawn at one fixed size, such as the link-preview card, as a JPEG of its viewport. */
+export async function htmlToJpeg(
+  htmlPath: string,
+  jpgPath: string,
+  size: { width: number; height: number },
+  quality: number,
+): Promise<void> {
+  const browser = await launch();
+  try {
+    const page = await browser.newPage({ viewport: size });
+    await page.goto(pathToFileURL(htmlPath).href, { waitUntil: 'networkidle', timeout: 120_000 });
+    await page.screenshot({ path: jpgPath, type: 'jpeg', quality });
+  } finally {
+    await browser.close();
+  }
+}
+
 /**
  * Run in the page before it is printed, where the text is actually measured
  * (a string, because the page's DOM is not this program's).
