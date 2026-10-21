@@ -194,7 +194,7 @@ export function yieldRows(b: YieldBundle, s: YieldStudy = yieldStudy(b)): YieldR
     const pct = (v: number) => `${fmt(v * 100, (v * 100) % 1 ? 1 : 0)}%`;
     if (y.gfaByUse.retail) rows.push({ label: 'RETAIL AREA (sqm)', controls: [`${sqm(y.gfaByUse.retail)} GFA, ground floor`, `${sqm(y.gfaByUse.retail * a.retailNlaRatio)} NLA at ${pct(a.retailNlaRatio)}`] });
     if (y.gfaByUse.commercial) rows.push({ label: 'COMMERCIAL AREA (sqm)', controls: [`${sqm(y.gfaByUse.commercial)} GFA`, `${sqm(y.gfaByUse.commercial * a.commercialNlaRatio)} NLA at ${pct(a.commercialNlaRatio)}`] });
-    rows.push({ label: 'GROSS FLOOR AREA', controls: [`${sqm(y.gfa)}${A ? ` (FSR ${(y.gfa / A).toFixed(2)}:1)` : ''}`, y.governs === 'fsr' ? (y.tiers.some((t) => t.slim) ? `the floor space ratio governs: the plates slimmed to reach the height` : 'the floor space ratio governs') : y.governs === 'envelope' ? 'the envelope governs: the FSR is not reached' : 'no FSR is mapped: the height governs'] });
+    rows.push({ label: 'GROSS FLOOR AREA', controls: [`${sqm(y.gfa)}${A ? ` (FSR ${(y.gfa / A).toFixed(2)}:1)` : ''}`, y.governs === 'fsr' ? 'the floor space ratio governs' : y.governs === 'envelope' ? 'the envelope governs: the FSR is not reached' : 'no FSR is mapped: the height governs'] });
     rows.push({ label: 'BUILDING', controls: [`${storeyWord(y.storeys)}, ${m1(Math.round(y.heightM * 10) / 10)} to the roof${y.storeys < y.storeysByHeight ? ` (the height allows ${y.storeysByHeight})` : ''}`] });
     const kindsOfSpace = [apartments ? `${y.parking.residents} resident, ${y.parking.visitors} visitor` : '', y.parking.nonResidential ? `${y.parking.nonResidential} ${y.gfaByUse.retail ? 'retail' : 'commercial'}` : ''].filter(Boolean).join(', ');
     rows.push({ label: 'CAR PARKING', controls: [
@@ -375,7 +375,7 @@ function renderSchedule(y: YieldResult, top: number): { svg: string; bottom: num
     const built = Math.max(0, Math.min(t.to, y.storeys) - t.from + 1);
     const ink = built ? undefined : '#9a9a9a';
     const st = t.from === t.to ? `${t.from}` : `${t.from}–${t.to}`;
-    const held = t.slim ? `, slimmed to ${fmt(t.slim * 100)}%` : t.held === 'tower' ? `, tower plate to ${sqm(a.towerPlateMax)}` : t.held === 'depth' ? `, ${m1(a.maxDepth)} deep` : '';
+    const held = t.held === 'tower' ? `, tower plate to ${sqm(a.towerPlateMax)}` : t.held === 'depth' ? `, ${m1(a.maxDepth)} deep` : '';
     const set = (v: number) => fmt(v, v % 1 ? 1 : 0);
     row(() => {
       const b = yy + PAD_TOP;
@@ -920,7 +920,7 @@ function drawYieldSheet(b: YieldBundle, meta: SheetMeta): string {
       : `GFA ${pc(a.commercialEfficiency)} of GBA; NLA ${pc(a.commercialNlaRatio)} of GFA`}`] },
     ...(apartments ? [
       { label: 'MIX', controls: [`${UNIT_KINDS.every((k) => a.mix[k] === DEFAULT_ASSUMPTIONS.mix[k] && a.sizes[k] === DEFAULT_ASSUMPTIONS.sizes[k]) ? 'the office\'s feasibility template' : 'from yield_assumptions.json'}: ${inMix(y).map((k) => `${pc(a.mix[k])} ${UNIT_SHORT[k]} at ${fmt(a.sizes[k])} sqm`).join(', ')}; average ${fmt(y.averageUnitSqm, 1)} sqm`] },
-      { label: 'PLATES', controls: [`held to ${m1(a.maxDepth)} deep; towers to ${sqm(a.towerPlateMax)} GBA${a.reachHeight ? `; where the FSR governs, slimmed above the podium to reach the height (at least ${sqm(a.minPlateSqm)})` : ''}`] },
+      { label: 'PLATES', controls: [`held to ${m1(a.maxDepth)} deep; towers to ${sqm(a.towerPlateMax)} GBA`] },
     ] : []),
     { label: 'NEAREST STATION', controls: [b.station ? `${titleWords(b.station.name)}, ${fmt(b.station.distanceM)}m` : 'none within 1.2 km'] },
     { label: 'TO CHANGE', controls: ['every figure here is set in yield_assumptions.json beside the output'] },
