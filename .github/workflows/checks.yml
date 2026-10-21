@@ -78,10 +78,11 @@ jobs:
                     deploy/update.sh | sed 's# >/dev/null##')
           { echo 'docker() { printf "%s\n" "$@"; }'; printf '%s\n' "$block"; } > /tmp/dr.sh
           argv=$(ACCESS_CODE=pub ADMIN_CODE=ops TFNSW_API_KEY=tf \
+                 STRIPE_SECRET_KEY=sk STRIPE_WEBHOOK_SECRET=wh PRICES_AUD=49 \
                  NET=net OUT=/tmp/out bash /tmp/dr.sh)
           printf '%s\n' "$argv" | sed 's/^/    /'
           fail=0
-          for want in ACCESS_CODE=pub ADMIN_CODE=ops; do
+          for want in ACCESS_CODE=pub ADMIN_CODE=ops STRIPE_SECRET_KEY=sk STRIPE_WEBHOOK_SECRET=wh PRICES_AUD=49; do
             printf '%s\n' "$argv" | grep -qx -- "$want" || { echo "  missing $want"; fail=1; }
           done
           if [ "$(printf '%s\n' "$argv" | tail -1)" != "site-analyst" ]; then
@@ -148,6 +149,13 @@ jobs:
       # JSON, on made-up hours. CI never calls NASA.
       - name: the wind roses count the hours right
         run: npx tsx test/wind.mts
+
+      # Paying for a drawing: the prices read from the env, the Checkout
+      # session asked for, a session read back and the webhook's signature,
+      # with fetch stood in for and a made-up signing secret. CI never calls
+      # Stripe.
+      - name: payments ask Stripe the right things and trust only its signature
+        run: npx tsx test/payments.mts
 
       # North-align turns the sheet so the site lies with its long side
       # horizontal, whatever its bearing or shape, on made-up lots.

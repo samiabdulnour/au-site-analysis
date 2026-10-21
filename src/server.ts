@@ -25,6 +25,7 @@ import { renderYieldSheet, yieldCsv, yieldJson } from './render/yieldSheet.js';
 import { renderSlides, slidesFacts, PANEL_W, PANEL_H, DA_PANEL_H, SLIDE_W, SLIDE_H } from './render/slides.js';
 import { withTemplate, themeFor, templateFor, type SheetKind } from './render/template.js';
 import { htmlToPdf, printSlides } from './render/pdf.js';
+import { paymentsFromEnv, createCheckout, paidOrder, webhookPayment, SESSION_ID, StripeError, type Order } from './payments.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -62,6 +63,12 @@ const tokenFor = (code: string) =>
   code ? createHmac('sha256', code).update('site-analyst-session-v1').digest('hex') : '';
 const SESSION_TOKEN = tokenFor(ACCESS_CODE);
 const ADMIN_SESSION_TOKEN = tokenFor(ADMIN_CODE);
+
+// Paying is the other way in. With STRIPE_SECRET_KEY and PRICES_AUD set, a
+// visitor without a code pays for one drawing at a time; the access code goes
+// on drawing for nothing. Unset, the site is exactly what it was.
+const { pay: PAY, note: PAY_NOTE } = paymentsFromEnv(process.env);
+console.log(PAY_NOTE);
 
 const JOB_RETENTION_MS = 24 * 3600 * 1000;
 const WEB_OUT = join(ROOT, 'out', 'web');
@@ -148,6 +155,33 @@ function sheetKind(v: unknown): SheetKind {
 const PDF_NAME: Record<SheetKind, string> = {
   context: 'CONTEXT_ANALYSIS', site: 'SITE_ANALYSIS', summary: 'DEVELOPMENT_SUMMARY', yield: 'PLANNING_YIELD', slides: 'OVERALL_ANALYSIS',
 };
+
+/** What each drawing is called on the checkout page and the receipt — the deck as the page names it. */
+const SHEET_LABEL: Record<SheetKind, string> = {
+  context: 'Context analysis', site: 'Site analysis', summary: 'Development summary', yield: 'Planning yield', slides: 'Site report',
+};
+
+/**
+ * A request's drawing, its options held to what that drawing takes; null for
+ * an address too short or too long to be one. A paid order goes through here
+ * twice, opening the session and drawing it, and comes out the same both times.
+ */
+function wanted(b: any): Pick<Job, 'address' | 'sheet' | 'scale' | 'rotate' | 'template'> | null {
+  const addr = String(b?.address ?? '').trim();
+  if (addr.length < 8 || addr.length > 120) return null;
+  const kind = sheetKind(b.sheet);
+  // The theme this kind of sheet takes (an alias resolved to its id, so
+  // the two spellings share a job): a context template, a site theme, or
+  // none for the summary and the deck.
+  const template = themeFor(kind, String(b.template ?? ''));
+  const raw = Number(b.scale) || 0;
+  const scale = kind === 'site'
+    ? (raw ? Math.min(1000, Math.max(100, raw)) : 0)          // 0 = auto-fit
+    : kind === 'slides'
+      ? Math.min(12000, Math.max(4000, raw || 8000))           // the panels' scale
+      : Math.min(6000, Math.max(1000, raw || 3000));
+  return { address: addr, sheet: kind, scale, rotate: b.rotate === 'auto' ? 'auto' : 'north', template };
+}
 
 interface Job {
   id: string;
@@ -363,6 +397,93 @@ function loadBatches() {
         .map((e) => ({ address: String(e.address), jobId: String(e.jobId) })),
     });
   }
+}
+
+// ---- paid orders ---------------------------------------------------------
+//
+// A paid Checkout session is a claim on one drawing. The record ties the
+// session to the job that answers it, so the redirect and the webhook — both
+// arrive, in either order — draw it once between them, and a payer who reloads
+// or comes back later finds the same job rather than paying for another.
+const ORDER_INDEX = join(WEB_OUT, 'orders.json');
+const ORDER_RETENTION_MS = 30 * 24 * 3600 * 1000;
+// A paid drawing that fails, or whose sheet the 24h sweep took, is drawn again
+// for nothing, up to this many runs. The public services it reads go down for
+// an afternoon at a time, and the payer should not pay twice for that — nor
+// draw forever on one payment.
+const RUNS_PER_ORDER = 3;
+
+interface PaidOrder {
+  session: string;
+  jobId: string;
+  runs: number;
+  createdAt: number;
+  address: string;
+  sheet: Job['sheet'];
+}
+
+const orders = new Map<string, PaidOrder>();
+
+function saveOrders() {
+  try {
+    mkdirSync(WEB_OUT, { recursive: true });
+    const tmp = `${ORDER_INDEX}.${process.pid}.tmp`;
+    writeFileSync(tmp, JSON.stringify([...orders.values()]));
+    renameSync(tmp, ORDER_INDEX);
+  } catch { /* as with the job index, never fail a payment over this */ }
+}
+
+function loadOrders() {
+  let rows: unknown;
+  try { rows = JSON.parse(readFileSync(ORDER_INDEX, 'utf8')); } catch { return; }
+  if (!Array.isArray(rows)) return;
+  for (const r of rows as PaidOrder[]) {
+    if (!r || !SESSION_ID.test(String(r.session)) || typeof r.jobId !== 'string') continue;
+    orders.set(r.session, {
+      session: r.session, jobId: r.jobId, runs: Number(r.runs) || 0,
+      createdAt: Number(r.createdAt) || Date.now(),
+      address: String(r.address ?? ''), sheet: sheetKind(r.sheet),
+    });
+  }
+}
+
+/** The jobs a payer may reach without a code: the ones an order points at. */
+function paidJobIds(): Set<string> {
+  return new Set([...orders.values()].map((o) => o.jobId));
+}
+
+/**
+ * The job a paid session gets: the one it already has, unless that failed or
+ * was swept; else the same request already drawn or drawing; else a new run.
+ * Synchronous on purpose — the redirect and the webhook can land together, and
+ * with no await between reading the record and writing it, the second always
+ * finds the first's.
+ *
+ * Not charged to the hourly per-IP budget: the payment is the throttle, and a
+ * payer refused after paying is the one outcome worse than a slow queue.
+ */
+function fulfil(session: string, order: Order): { job: Job } | { error: string } {
+  const rec = orders.get(session);
+  const had = rec && jobs.get(rec.jobId);
+  if (had && had.status !== 'error') return { job: had };
+  const want = wanted(order);
+  if (!want) return { error: 'This payment names no address.' };
+  const key = jobKey(want);
+  const hit = reusable(key);
+  const runs = rec?.runs ?? 0;
+  if (!hit && runs >= RUNS_PER_ORDER)
+    return { error: `This payment has used its ${RUNS_PER_ORDER} runs. Contact us if you still need the drawing.` };
+  const job: Job = hit ?? {
+    id: randomUUID(), ...want, key,
+    status: 'queued', log: [], createdAt: Date.now(),
+  };
+  if (!hit) enqueue(job);
+  orders.set(session, {
+    session, jobId: job.id, runs: runs + (hit ? 0 : 1),
+    createdAt: rec?.createdAt ?? Date.now(), address: want.address, sheet: want.sheet,
+  });
+  saveOrders();
+  return { job };
 }
 
 /**
@@ -591,6 +712,10 @@ async function cleanupOldJobs() {
   // Per-IP counters. Without this the map keeps a row for every address that
   // ever asked for anything, which on a public site is a leak with no ceiling.
   for (const [key, b] of buckets) if (Date.now() > b.resetAt) buckets.delete(key);
+  // A payment older than this is refused at the door (see /api/checkout/complete),
+  // so its record has nothing left to answer.
+  for (const [s, o] of orders) if (Date.now() - o.createdAt > ORDER_RETENTION_MS) orders.delete(s);
+  saveOrders();
 
   // A job still in the queue owns its directory even if it is momentarily the
   // oldest thing here, so it is never a candidate.
@@ -712,6 +837,29 @@ function readBody(req: IncomingMessage): Promise<string> {
     req.on('data', (c) => { body += c; if (body.length > 10_000) req.destroy(); });
     req.on('end', () => resolve(body));
   });
+}
+
+/** The body as bytes: a webhook's signature is over exactly what was sent. */
+function readRaw(req: IncomingMessage, cap: number): Promise<Buffer> {
+  return new Promise((resolve) => {
+    const chunks: Buffer[] = [];
+    let n = 0;
+    req.on('data', (c: Buffer) => { n += c.length; if (n > cap) req.destroy(); else chunks.push(c); });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('close', () => resolve(Buffer.concat(chunks)));
+  });
+}
+
+/**
+ * What a visitor without a code can reach once payments are on: the type-ahead,
+ * to find the address they are about to pay for, and the drawings they paid
+ * for — by job id, a random UUID handed back to whoever paid.
+ */
+function payerMayReach(url: URL): boolean {
+  if (!PAY) return false;
+  if (url.pathname === '/api/address') return true;
+  const m = url.pathname.match(/^\/api\/jobs\/([0-9a-f-]{36})(?:\/(?:pdf|cad|data))?$/);
+  return Boolean(m) && paidJobIds().has(m![1]);
 }
 
 const server = createServer(async (req, res) => {
@@ -865,7 +1013,10 @@ Sitemap: ${siteBase()}/sitemap.xml
   }
 
   if (req.method === 'GET' && url.pathname === '/api/me') {
-    if (!authed(req)) return json(res, 401, { authed: false, required: true });
+    // The prices are public — they are on the button — and with them the page
+    // offers to take a payment instead of asking for a code.
+    const pay = PAY ? { currency: 'AUD', prices: PAY.prices, live: PAY.live } : null;
+    if (!authed(req)) return json(res, 401, { authed: false, required: true, pay });
     // `required` is not a secret: the login field is shown to anyone. It tells
     // the page whether signing out means anything here.
     return json(res, 200, { authed: true, operator: isOperator(req), required: Boolean(ACCESS_CODE) });
@@ -933,11 +1084,75 @@ Sitemap: ${siteBase()}/sitemap.xml
     return;
   }
 
+  // ---- payments ----------------------------------------------------------
+  //
+  // Ahead of the auth gate: the people these are for hold no code. Each stands
+  // on something other than a session instead — Stripe's own answer to whether
+  // a session is paid, or Stripe's signature on a webhook.
+
+  if (req.method === 'POST' && url.pathname === '/api/checkout') {
+    if (!PAY) return json(res, 404, { error: 'Payments are not set up.' });
+    // Each one is a call to Stripe; this is there against a script, not a customer.
+    if (limited(`checkout:${ip}`, 30, 3600_000)) return json(res, 429, { error: 'Too many attempts. Try later.' });
+    let want: ReturnType<typeof wanted> = null;
+    try { want = wanted(JSON.parse((await readBody(req)) || '{}')); } catch { /* refused below */ }
+    if (!want) return json(res, 400, { error: 'Enter a full NSW street address.' });
+    try {
+      const s = await createCheckout(PAY, want, SHEET_LABEL[want.sheet], siteBase());
+      return json(res, 200, { url: s.url });
+    } catch (e: any) {
+      console.error(`checkout: ${e?.message ?? e}`);
+      return json(res, 502, { error: 'The payment service did not answer. Try again shortly.' });
+    }
+  }
+
+  // Where Stripe sends the payer back. The session id in the URL is only a
+  // question: whether it is paid, and for what, is asked of Stripe.
+  if (req.method === 'POST' && url.pathname === '/api/checkout/complete') {
+    if (!PAY) return json(res, 404, { error: 'Payments are not set up.' });
+    if (limited(`paid:${ip}`, 120, 3600_000)) return json(res, 429, { error: 'Too many attempts. Try later.' });
+    let session = '';
+    try { session = String(JSON.parse((await readBody(req)) || '{}').session ?? ''); } catch { /* refused below */ }
+    if (!SESSION_ID.test(session)) return json(res, 404, { error: 'No such payment.' });
+    let paid: Awaited<ReturnType<typeof paidOrder>>;
+    try {
+      paid = await paidOrder(PAY, session);
+    } catch (e: any) {
+      if (e instanceof StripeError && e.status === 404) return json(res, 404, { error: 'No such payment.' });
+      console.error(`checkout complete: ${e?.message ?? e}`);
+      return json(res, 502, { error: 'The payment service did not answer. Reload to try again.' });
+    }
+    if (!paid.order) return json(res, 404, { error: 'No such payment.' });
+    // Abandoned on Stripe's page, or a bank debit still clearing — the webhook
+    // draws the latter when it clears, and this link finds it then.
+    if (!paid.paid) return json(res, 402, { error: 'The payment has not cleared yet. This page\u2019s link brings the drawing once it has.' });
+    if (Date.now() - paid.createdAt > ORDER_RETENTION_MS)
+      return json(res, 410, { error: 'This payment is more than 30 days old.' });
+    const done = fulfil(session, paid.order);
+    if ('error' in done) return json(res, 410, { error: done.error });
+    return json(res, 200, { id: done.job.id, address: done.job.address });
+  }
+
+  // Stripe's word that a session was paid, for the payer who closed the tab
+  // before the redirect brought them back. Answered 200 for anything signed,
+  // drawn for or not, so Stripe does not retry what was deliberately ignored.
+  if (req.method === 'POST' && url.pathname === '/api/stripe/webhook') {
+    if (!PAY?.webhookSecret) return json(res, 404, { error: 'No webhook here.' });
+    const raw = await readRaw(req, 512 * 1024);
+    const got = webhookPayment(raw, String(req.headers['stripe-signature'] ?? ''), PAY.webhookSecret);
+    if (!got.ok) return json(res, 400, { error: 'Bad signature.' });
+    if (got.session && got.order) {
+      const done = fulfil(got.session, got.order);
+      if ('error' in done) console.error(`webhook ${got.session}: ${done.error}`);
+    }
+    return json(res, 200, { received: true });
+  }
+
   // Everything below requires auth. Scoped to the API rather than to every
   // remaining path: an unknown URL is not a place to ask for an access code,
   // and answering /robots.txt with 401 told every crawler the site was broken
   // rather than that the file was absent.
-  if (url.pathname.startsWith('/api/') && !authed(req))
+  if (url.pathname.startsWith('/api/') && !authed(req) && !payerMayReach(url))
     return json(res, 401, { error: 'Not authorised.' });
 
   if (req.method === 'GET' && url.pathname === '/api/address') {
@@ -953,25 +1168,10 @@ Sitemap: ${siteBase()}/sitemap.xml
   if (req.method === 'POST' && url.pathname === '/api/jobs') {
     const body = await readBody(req);
     try {
-      const { address, scale, rotate, sheet, fresh, template } = JSON.parse(body || '{}');
-      const addr = String(address ?? '').trim();
-      if (addr.length < 8 || addr.length > 120) return json(res, 400, { error: 'Enter a full NSW street address.' });
-      const kind = sheetKind(sheet);
-      // The theme this kind of sheet takes (an alias resolved to its id, so
-      // the two spellings share a job): a context template, a site theme, or
-      // none for the summary and the deck.
-      const jobTemplate = themeFor(kind, String(template ?? ''));
-      const raw = Number(scale) || 0;
-      const sc = kind === 'site'
-        ? (raw ? Math.min(1000, Math.max(100, raw)) : 0)          // 0 = auto-fit
-        : kind === 'slides'
-          ? Math.min(12000, Math.max(4000, raw || 8000))           // the panels' scale
-          : Math.min(6000, Math.max(1000, raw || 3000));
-      const want = {
-        address: addr, sheet: kind, scale: sc,
-        rotate: (rotate === 'auto' ? 'auto' : 'north') as Job['rotate'],
-        template: jobTemplate,
-      };
+      const b = JSON.parse(body || '{}');
+      const fresh = b.fresh;
+      const want = wanted(b);
+      if (!want) return json(res, 400, { error: 'Enter a full NSW street address.' });
       const key = jobKey(want);
 
       // Before the rate limit, because reuse costs nothing this limit is
@@ -1226,6 +1426,7 @@ Sitemap: ${siteBase()}/sitemap.xml
 // directory swept whether or not anyone is generating.
 loadIndex();
 loadBatches();
+loadOrders();
 const CLEANUP_INTERVAL_MS = 3600_000;
 setInterval(() => void cleanupOldJobs(), CLEANUP_INTERVAL_MS);
 void cleanupOldJobs();

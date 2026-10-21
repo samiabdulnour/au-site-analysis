@@ -181,6 +181,47 @@ Every existing session dies with the old code — the cookie is an HMAC of it �
 so everyone signs in again. If the deploy prints `deferring`, a sheet is
 generating; run it again once `"busy"` is false.
 
+### Paying for a drawing
+
+The access code is one way in; paying is the other. With a Stripe key and the
+prices set, a visitor without a code gets the tool itself, the price on its
+button, and pays for one drawing at a time through Stripe's hosted Checkout —
+no account, no card field on this site. The code goes on drawing for nothing,
+and an `ACCESS CODE` button beside `HOW IT WORKS` takes it.
+
+```
+STRIPE_SECRET_KEY=sk_live_…        # sk_test_… for the sandbox; the page says which
+PRICES_AUD=49,slides=149           # one price for all, any drawing priced apart
+STRIPE_WEBHOOK_SECRET=whsec_…      # the endpoint's signing secret
+```
+
+`PRICES_AUD` takes a bare amount for every drawing and `kind=amount` for any
+drawing priced apart from it (`context`, `site`, `yield`, `slides` — the site
+report — and `summary`). A drawing left without a price switches payments off
+rather than guessing one, and the server says so on startup. Unset, nothing is
+sold and the site is what it was.
+
+The order — address, drawing, scale, north, style — rides in the session's
+metadata. Stripe sends the payer back to `/?paid=<session>`, and the server asks
+Stripe whether that session is paid before it draws anything: the id in the URL
+is a question, never proof. The webhook, `POST /api/stripe/webhook`, does the
+same on Stripe's signed word, for a payer who closed the tab before the
+redirect; both land on one record in `out/web/orders.json`, so a payment is
+drawn once however many times either arrives. Point a Stripe webhook endpoint
+at `https://<domain>/api/stripe/webhook` with the event
+`checkout.session.completed` (and `checkout.session.async_payment_succeeded` if
+a bank debit is turned on), and put its signing secret in
+`STRIPE_WEBHOOK_SECRET`. Which ways to pay are offered is Stripe's dashboard
+setting, not this server's.
+
+A payer reaches the drawing they paid for by its job id and the type-ahead to
+find the address, and nothing else; a free run, a batch and `/status` still take
+a code. Paid runs are not charged to the hourly per-IP budget — the payment is
+the throttle. A paid drawing that fails, or whose sheet the 24-hour sweep has
+taken, is drawn again at no charge from the same link, up to three runs in all;
+after that the page asks the payer to get in touch. Payments older than 30 days
+are not drawn again. Refunds are made in Stripe's dashboard.
+
 ### What a deploy is allowed to cost
 
 Nothing that anyone is waiting on. The auto-deployer replaces the container

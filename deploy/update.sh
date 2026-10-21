@@ -122,7 +122,9 @@ docker rm -f site-analyst >/dev/null 2>&1 || true
 # ADMIN_CODE opens /status, and nothing else does. Unset, the ops view has no
 # code that opens it. GOOGLE_MAPS_API_KEY (and its signing secret, if the
 # project has one) gives slide 12 its Street View frames; unset, the slide
-# reads the open frames alone.
+# reads the open frames alone. STRIPE_SECRET_KEY and PRICES_AUD together let
+# a visitor without a code pay for a drawing; STRIPE_WEBHOOK_SECRET lets Stripe
+# say a payment cleared for a payer who closed the tab. Unset, nothing is sold.
 docker run -d --name site-analyst --restart unless-stopped \
   --network "$NET" \
   -p 127.0.0.1:3100:3000 \
@@ -134,6 +136,9 @@ docker run -d --name site-analyst --restart unless-stopped \
   -e GOOGLE_MAPS_SIGNING_SECRET="${GOOGLE_MAPS_SIGNING_SECRET:-}" \
   -e OVERPASS_LOCAL="${OVERPASS_LOCAL:-}" \
   -e WEB_OUT_BUDGET_MB="${WEB_OUT_BUDGET_MB:-4096}" \
+  -e STRIPE_SECRET_KEY="${STRIPE_SECRET_KEY:-}" \
+  -e STRIPE_WEBHOOK_SECRET="${STRIPE_WEBHOOK_SECRET:-}" \
+  -e PRICES_AUD="${PRICES_AUD:-}" \
   -v /var/lib/site-analyst:/hostinfo:ro \
   -v "$OUT":/app/out \
   site-analyst >/dev/null

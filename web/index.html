@@ -36,16 +36,17 @@
   <h1 class="name">SITE ANALYST</h1>
 
   <!-- ---- access ------------------------------------------------------ -->
+  <!-- Someone arriving from a search result sees this first, so it has to say
+       what the thing is before it asks them for a code or a payment. -->
+  <p class="lead intro" id="intro" hidden>Give it a NSW street address and it draws the
+  site-analysis sheets an architect prepares for a development application — the
+  lot on its cadastre and aerial, zoning and height controls, heritage, transport,
+  walking catchments — entirely from government open data. Out come a print-ready
+  A1 PDF and the same geometry as CAD. <a href="/about">How it works</a>.</p>
+
   <!-- method=post for the same reason as the operator gate: if app.js fails to
        load, a native submit must not carry the access code in the URL. -->
   <form id="login" method="post" action="/" hidden>
-    <!-- Someone arriving from a search result sees this and nothing else, so
-         it has to say what the thing is before it asks them for a code. -->
-    <p class="lead intro" id="intro">Give it a NSW street address and it draws the
-    site-analysis sheets an architect prepares for a development application — the
-    lot on its cadastre and aerial, zoning and height controls, heritage, transport,
-    walking catchments — entirely from government open data. Out come a print-ready
-    A1 PDF and the same geometry as CAD. <a href="/about">How it works</a>.</p>
     <p class="lead">Enter your access code to generate drawings.</p>
     <div class="bar">
       <input id="code" type="password" placeholder="" autocomplete="current-password">
@@ -55,7 +56,7 @@
 
   <!-- ---- the tool ---------------------------------------------------- -->
   <form id="f" hidden>
-    <p class="lead">Search a NSW address to generate its site analysis.</p>
+    <p class="lead" id="toolLead">Search a NSW address to generate its site analysis.</p>
     <div class="bar">
       <span class="entry">
         <input id="address" type="text" placeholder="212 Bondi Road, Bondi"
