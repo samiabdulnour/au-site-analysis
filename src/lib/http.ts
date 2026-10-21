@@ -97,9 +97,12 @@ export async function overpassQuery(
 
   const rounds = opts.rounds ?? 2;
   const timeoutMs = opts.timeoutMs ?? (process.env.OVERPASS_LOCAL ? 90_000 : 40_000);
-  let lastErr: unknown;
+  // Each mirror's own failure in the last round, so a run that could reach
+  // none says why of every one rather than only of the last tried.
+  let failures: string[] = [];
 
   for (let round = 0; round < rounds; round++) {
+    failures = [];
     if (round) {
       const wait = Math.min(8_000 * round, 16_000);
       opts.log?.(`  OSM busy, waiting ${Math.round(wait / 1000)}s before retry ${round + 1}/${rounds}`);
@@ -112,10 +115,10 @@ export async function overpassQuery(
           body: new URLSearchParams({ data: query }),
           signal: AbortSignal.timeout(timeoutMs),
         });
-        if (!res.ok) { lastErr = new Error(`${mirror} -> HTTP ${res.status}`); continue; }
+        if (!res.ok) { failures.push(`${new URL(mirror).host} HTTP ${res.status}`); continue; }
         const text = await res.text();
         if (!text.trimStart().startsWith('{')) {  // HTML error page
-          lastErr = new Error(`${mirror} -> non-JSON response`);
+          failures.push(`${new URL(mirror).host} non-JSON response`);
           continue;
         }
         try {
@@ -123,8 +126,10 @@ export async function overpassQuery(
           writeFileSync(cacheFile, text);
         } catch { /* cache is optional */ }
         return JSON.parse(text);
-      } catch (e) {
-        lastErr = e;
+      } catch (e: any) {
+        // fetch's own message is only "fetch failed"; the reason is its cause.
+        const why = e?.name === 'TimeoutError' ? `timed out after ${timeoutMs / 1000} s` : e?.cause?.code ?? e?.cause?.message ?? e?.message ?? String(e);
+        failures.push(`${new URL(mirror).host} ${why}`);
       }
     }
   }
@@ -134,5 +139,5 @@ export async function overpassQuery(
     opts.log?.('  OSM unavailable — using cached data from an earlier run');
     return JSON.parse(stale);
   } catch { /* nothing cached */ }
-  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+  throw new Error(`no Overpass mirror answered: ${failures.join('; ')}`);
 }
