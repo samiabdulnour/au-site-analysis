@@ -193,9 +193,15 @@ STRIPE_SECRET_KEY=sk_live_…     # sk_test_… to try it first
 STRIPE_PRICE_ID=price_…           # the subscription
 STRIPE_SITE_PRICE_ID=price_…      # one site
 STRIPE_WEBHOOK_SECRET=whsec_…
-PRICE_LABEL=A$49 a month          # what /pricing says each costs
-SITE_PRICE_LABEL=A$79
+PRICE_LABEL='A$49 a month'        # what /pricing says each costs
+SITE_PRICE_LABEL='A$79'
 ```
+
+The labels are in single quotes because the deployer reads this file as bash,
+under `set -u`: unquoted, `A$49` is the shell's `$4`, unset, and the deploy
+stops there with `$4: unbound variable` (the running container is left as it
+was, but nothing deploys until the line is fixed). A space unquoted ends the
+value.
 
 Unset, `/pricing` says subscriptions open soon and the free side works alone.
 `/api/version` reports whether `billing` is on. Once it is, `/status` asks Stripe
