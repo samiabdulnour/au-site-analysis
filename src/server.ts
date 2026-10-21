@@ -1014,9 +1014,10 @@ Sitemap: ${siteBase()}/sitemap.xml
 
   if (req.method === 'GET' && url.pathname === '/api/me') {
     // The prices are public — they are on the button — and with them the page
-    // offers to take a payment instead of asking for a code.
-    const pay = PAY ? { currency: 'AUD', prices: PAY.prices, live: PAY.live } : null;
-    if (!authed(req)) return json(res, 401, { authed: false, required: true, pay });
+    // offers to take a payment instead of asking for a code. Left out when
+    // nothing is sold, so the answer is what it always was.
+    const pay = PAY ? { pay: { currency: 'AUD', prices: PAY.prices, live: PAY.live } } : {};
+    if (!authed(req)) return json(res, 401, { authed: false, required: true, ...pay });
     // `required` is not a secret: the login field is shown to anyone. It tells
     // the page whether signing out means anything here.
     return json(res, 200, { authed: true, operator: isOperator(req), required: Boolean(ACCESS_CODE) });
