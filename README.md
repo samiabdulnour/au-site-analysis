@@ -98,6 +98,22 @@ npm run samples -- "150 George Street, Parramatta NSW 2150"
 # or a part at a time: --only context | site | yield | slides (| summary, which the table no longer offers)
 ```
 
+Or let GitHub draw them: **Actions → samples → Run workflow**
+(`.github/workflows/samples.yml`) runs the same script on GitHub's runner,
+inside the image the server runs, so it needs nothing installed and reaches
+every service the pipelines read. Pick which drawing (`site` by default) and
+the address. Started on `main`, it pushes the pictures to a new branch,
+`samples/run-<n>`, and opens a pull request into `main`. If the repository
+does not let Actions open pull requests, the run's summary links to opening
+one by hand. Started on another branch, it commits them to that branch. A
+run in which any data source failed (any `WARN` line in its log) commits
+nothing and lists the failures in its summary, since its pictures would be
+missing that source's layer; `allow_warnings` overrides that when the gap is
+known. It only ever runs when started by hand, so like `checks` it never
+spends the public services' capacity on its own. The TfNSW, Google Maps and
+Mapillary keys are read from repository secrets of the same names when they
+are set.
+
 Each scale and orientation is fetched once and drawn in every style,
 since a style changes how a sheet looks and never what it fetches. The
 site report's frame turns through its pages, one every second and a half, from
