@@ -55,7 +55,12 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
   // Storeys 5–6: 6 m from the street, 9 m from the sides and the rear: (40 − 18) × (50 − 6 − 9).
   check('R4: storeys 5–6 step back to 9 m from the sides and rear', near(t2.envelopeSqm, 22 * 35, 12), t2.envelopeSqm.toFixed(1));
   check('R4: the floor space ratio caps the floor area', near(y.gfa, 1.5 * 2000, 1) && y.governs === 'fsr', `${y.gfa.toFixed(0)} ${y.governs}`);
-  check('R4: fewer storeys are built than the height allows', y.storeys < y.storeysByHeight, `${y.storeys} of ${y.storeysByHeight}`);
+  // The ratio stops it below the height at full plates, so the plates are slimmed and it reaches the height.
+  check('R4: slimmed, the building reaches the height', y.storeys === y.storeysByHeight, `${y.storeys} of ${y.storeysByHeight}`);
+  check('R4: every tier is slimmed by the same share', y.tiers.every((t) => t.slim !== undefined && t.slim < 1) && Math.abs(y.tiers[0].slim! - y.tiers[1].slim!) < 0.03,
+    y.tiers.map((t) => t.slim?.toFixed(3)).join(' '));
+  const stout = computeYield({ ring, fronts: [true, false, false, false], siteAreaSqm: 2000, zone: 'R4', hobM: 22, fsr: 1.5, assumptions: { reachHeight: false } });
+  check('R4: without reachHeight, fewer storeys at full plates', stout.storeys < stout.storeysByHeight && near(stout.gfa, 3000, 1) && stout.tiers.every((t) => t.slim === undefined), `${stout.storeys} of ${stout.storeysByHeight}`);
   // The office's mix averages 72.5 m²: 3000 m² × 0.85 / 72.5 m² = 35.2 → 35 apartments.
   check('R4: the office mix averages 72.5 m²', near(y.averageUnitSqm, 72.5, 1e-9), String(y.averageUnitSqm));
   check('R4: the apartments are the saleable area over the average size', y.units.total === 35, String(y.units.total));
@@ -113,6 +118,25 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
   const y = computeYield({ ring, fronts: [true, false, false, false], siteAreaSqm: 3600, zone: 'MU1', hobM: 90 });
   const tower = y.tiers.find((t) => t.from >= 9)!;
   check('tower: the plate is held to its size', tower.held === 'tower' && near(tower.plateSqm, DEFAULT_ASSUMPTIONS.towerPlateMax, 40), `${tower.held} ${tower.plateSqm.toFixed(0)}`);
+}
+
+// ---- reaching the height under the ratio ------------------------------------------------
+{
+  // Offices: the podium keeps its plate, the tower above slims until the ratio's floor area reaches the height.
+  const y = computeYield({ ring: rect(60, 60), fronts: [true, false, false, false], siteAreaSqm: 3600, zone: 'E2', hobM: 60, fsr: 5 });
+  const podium = y.tiers[0], tower = y.tiers[1];
+  check('height: the podium keeps its plate', podium.slim === undefined, String(podium.slim));
+  check('height: the tower slims', tower.slim !== undefined && tower.slim < 0.5, String(tower.slim));
+  check('height: the building reaches the height', y.storeys === y.storeysByHeight, `${y.storeys} of ${y.storeysByHeight}`);
+  check('height: the floor area is still the ratio\'s', near(y.gfa, 18000, 1), y.gfa.toFixed(0));
+  // A ratio far under the height (an airspace RL): no plate under minPlateSqm, so it stops short.
+  const z = computeYield({ ring: rect(40, 40), fronts: [true, false, false, false], siteAreaSqm: 1600, zone: 'E2', hobM: 200, fsr: 4 });
+  const zt = z.tiers[1];
+  check('height: a slimmed plate keeps at least minPlateSqm', near(zt.plateSqm, DEFAULT_ASSUMPTIONS.minPlateSqm, 15), zt.plateSqm.toFixed(0));
+  check('height: and then the building stops short of the height', z.storeys < z.storeysByHeight && near(z.gfa, 6400, 1), `${z.storeys} of ${z.storeysByHeight}, ${z.gfa.toFixed(0)}`);
+  // Where the envelope, not the ratio, stops it, nothing is slimmed.
+  const e = computeYield({ ring: rect(30, 40), fronts: [true, true, false, false], siteAreaSqm: 1200, zone: 'MU1', hobM: 40 });
+  check('height: nothing slims where no ratio stops it', e.tiers.every((t) => t.slim === undefined));
 }
 
 // ---- four bedrooms ----------------------------------------------------------------------
