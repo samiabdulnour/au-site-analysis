@@ -64,6 +64,16 @@ const f = $('f'), loginForm = $('login');
 const out = $('out'), logEl = $('log'), queueEl = $('queue');
 const linksEl = $('links'), errEl = $('error'), go = $('go'), noteEl = $('note');
 const resultImg = $('resultImg'), resultMissing = $('resultMissing');
+const introEl = $('intro');
+
+// Set when the server sells drawings to visitors without a code: the prices,
+// in cents by drawing, and whether its Stripe key is a live one.
+let pay = null;
+// The Checkout session a paid drawing came back from, so a run that failed can
+// be drawn again without paying again.
+let paidSession = '';
+
+const money = (cents) => 'A$' + (cents % 100 ? (cents / 100).toFixed(2) : String(cents / 100));
 
 // ---- token rendering -----------------------------------------------------
 
@@ -108,6 +118,8 @@ function renderAll() {
   const styles = STYLES[state.sheet];
   $('styleRow').hidden = styles.length === 0;
   if (styles.length) tokens($('styleOpts'), styles, state.template, (v) => { state.template = v; renderAll(); });
+  // The price is the drawing's, so it changes with the pick.
+  go.textContent = pay ? 'PAY ' + money(pay.prices[state.sheet]) : 'GENERATE';
   renderResult();
 }
 
@@ -379,16 +391,54 @@ addrInput.addEventListener('blur', () => setTimeout(closeSuggest, 120));
 function showLogin() {
   f.hidden = true;
   loginForm.hidden = false;
+  introEl.hidden = false;
   $('code').focus();
 }
 
-fetch('/api/me').then(async (r) => {
-  if (!r.ok) return showLogin();
-  const j = await readJson(r);
+/* No code, but the server takes payments: the tool itself, the price on its
+   button, and the code field a click away for whoever has one. */
+function showPay(p) {
+  pay = p;
   f.hidden = false;
   loginForm.hidden = true;
-  applySession(j);
+  introEl.hidden = false;
+  $('toolLead').textContent = 'Search a NSW address, pick a drawing and pay for it — no account needed.' +
+    (p.live ? '' : ' Test mode: pay with card 4242 4242 4242 4242, any future date, any CVC.');
+  const actions = document.querySelector('.actions');
+  if (actions && !document.getElementById('codeLink')) {
+    const b = document.createElement('button');
+    b.id = 'codeLink';
+    b.type = 'button';
+    b.className = 'btn';
+    b.textContent = 'ACCESS CODE';
+    b.addEventListener('click', () => { b.remove(); showLogin(); });
+    actions.append(b);
+  }
+  renderAll();
+}
+
+/** Back from Stripe: the drawing that was paid for, or word that nothing was charged. */
+function afterCheckout() {
+  const q = new URLSearchParams(location.search);
+  if (q.get('paid')) return claim(q.get('paid'));
+  if (q.has('cancelled')) {
+    out.hidden = false;
+    noteEl.textContent = 'payment cancelled — nothing was charged';
+  }
+}
+
+fetch('/api/me').then(async (r) => {
+  const j = await readJson(r);
+  if (!r.ok) {
+    if (!j.pay) return showLogin();
+    showPay(j.pay);
+  } else {
+    f.hidden = false;
+    loginForm.hidden = true;
+    applySession(j);
+  }
   addrInput.focus();
+  afterCheckout();
 }).catch(showLogin);
 
 loginForm.addEventListener('submit', async (e) => {
@@ -398,6 +448,10 @@ loginForm.addEventListener('submit', async (e) => {
     body: JSON.stringify({ code: $('code').value }),
   });
   if (r.ok) {
+    // A code draws for nothing, so the payment the page was offering goes.
+    pay = null;
+    $('toolLead').textContent = 'Search a NSW address to generate its site analysis.';
+    introEl.hidden = true;
     loginForm.hidden = true;
     f.hidden = false;
     applySession(await readJson(r));
@@ -443,6 +497,20 @@ async function submit(fresh) {
   logEl.textContent = 'submitting';
   revealOutput();
   try {
+    if (pay) {
+      // Paid for first: Stripe brings the visitor back to ?paid=<session>, and
+      // the drawing starts from there.
+      const r = await fetch('/api/checkout', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address, scale: state.scale, rotate: state.rotate,
+                               sheet: state.sheet, template: state.template }),
+      });
+      const j = await readJson(r);
+      if (!r.ok || !j.url) throw new Error(httpMessage(r, j));
+      logEl.textContent = 'opening the payment page';
+      location.assign(j.url);
+      return;
+    }
     const r = await fetch('/api/jobs', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ address, scale: state.scale, rotate: state.rotate,
@@ -463,6 +531,34 @@ f.addEventListener('submit', (e) => {
   e.preventDefault();
   submit(false);
 });
+
+// Back from the payment page by the browser's back button: the page comes out
+// of the cache as it was left, its button still waiting on a redirect.
+addEventListener('pageshow', (e) => { if (e.persisted) go.disabled = false; });
+
+/* The session id is only a question for the server, which asks Stripe whether
+   it is paid; the answer is the job to follow. Asked again after a run that
+   failed, it draws again at no charge. */
+async function claim(session) {
+  paidSession = session;
+  out.hidden = false;
+  errEl.textContent = ''; linksEl.innerHTML = ''; queueEl.textContent = '';
+  noteEl.textContent = '';
+  go.disabled = true;
+  logEl.textContent = 'checking the payment';
+  revealOutput();
+  try {
+    const r = await fetch('/api/checkout/complete', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session }),
+    });
+    const j = await readJson(r);
+    if (!r.ok || !j.id) throw new Error(httpMessage(r, j));
+    if (j.address) addrInput.value = j.address;
+    noteEl.textContent = 'paid, thank you — this page’s link brings you back to the drawing';
+    poll(j.id);
+  } catch (err) { fail(err.message); }
+}
 
 // misses: consecutive transient failures. A generation takes minutes, so a
 // deploy or a dropped connection mid-run must not throw the sheet away —
@@ -510,6 +606,16 @@ async function poll(id, misses) {
       return setTimeout(() => poll(id, misses + 1), 3000);
     }
     fail(err.message);
+    // A paid run that failed is the server's to answer for, not the payer's:
+    // the same session draws again, and the server counts how many times.
+    if (paidSession) {
+      noteEl.textContent = 'this drawing is paid for — running it again costs nothing · ';
+      const again = document.createElement('button');
+      again.type = 'button';
+      again.textContent = 'run it again';
+      again.addEventListener('click', () => claim(paidSession));
+      noteEl.append(again);
+    }
   }
 }
 

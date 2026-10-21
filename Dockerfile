@@ -1,6 +1,7 @@
 # Autonomous Site Analyst — web interface.
 #   docker build -t site-analyst .
 #   docker run -p 3000:3000 -e ACCESS_CODE=… -e TFNSW_API_KEY=… site-analyst
+#   (add -e STRIPE_SECRET_KEY=… -e PRICES_AUD=… to sell drawings; see README)
 FROM node:22-slim
 
 RUN apt-get update \
