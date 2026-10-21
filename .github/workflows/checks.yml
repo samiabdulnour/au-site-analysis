@@ -78,10 +78,13 @@ jobs:
                     deploy/update.sh | sed 's# >/dev/null##')
           { echo 'docker() { printf "%s\n" "$@"; }'; printf '%s\n' "$block"; } > /tmp/dr.sh
           argv=$(ACCESS_CODE=pub ADMIN_CODE=ops TFNSW_API_KEY=tf \
+                 STRIPE_SECRET_KEY=sk STRIPE_PRICE_ID=price STRIPE_SITE_PRICE_ID=site \
+                 STRIPE_WEBHOOK_SECRET=wh \
                  NET=net OUT=/tmp/out bash /tmp/dr.sh)
           printf '%s\n' "$argv" | sed 's/^/    /'
           fail=0
-          for want in ACCESS_CODE=pub ADMIN_CODE=ops; do
+          for want in ACCESS_CODE=pub ADMIN_CODE=ops STRIPE_SECRET_KEY=sk \
+                      STRIPE_PRICE_ID=price STRIPE_SITE_PRICE_ID=site STRIPE_WEBHOOK_SECRET=wh; do
             printf '%s\n' "$argv" | grep -qx -- "$want" || { echo "  missing $want"; fail=1; }
           done
           if [ "$(printf '%s\n' "$argv" | tail -1)" != "site-analyst" ]; then
@@ -161,6 +164,20 @@ jobs:
       # Heritage NSW, DCCEEW or ePlanning.
       - name: the Country slide's permits, lists and landscape maps read right
         run: npx tsx test/country-heritage.mts
+
+      # Free and subscription, through the server on a planted sheet: a free
+      # account's PDF stamped and its CAD and data refused, the subscription's
+      # clean whether given, held by code or paid for by a signed Stripe
+      # webhook, and a forged webhook granting nothing. Nothing is drawn, and
+      # nothing reaches Stripe or the public data services.
+      - name: the free side is stamped and the subscription is not
+        run: npx tsx test/plans.mts
+
+      # The operator view's Stripe check, on made-up answers: it names the
+      # account the key belongs to, and finds a price from the other mode, a
+      # webhook missing an event, a portal never saved and a wrong secret.
+      - name: the Stripe check finds what is set up wrong
+        run: npx tsx test/billing-check.mts
 
       # The deployer's one job here is to leave a record even when it dies on
       # its first command — which is exactly what happened once, for six days,
@@ -289,6 +306,8 @@ jobs:
           check /             200
           check /fuse         404   # the office door was removed
           check /about        200
+          check /pricing      200
+          check /pricing.js   200
           check /status       200
           check /style.css    200
           check /app.js       200
@@ -311,7 +330,7 @@ jobs:
           # og:url and og:image are absolute and filled in per request. The
           # placeholder reaching a browser means every shared link previews
           # against a URL that does not resolve.
-          for path in / /about; do
+          for path in / /about /pricing; do
             if curl -s --max-time 10 "http://127.0.0.1:3123$path" | grep -q '%ORIGIN%'; then
               echo "  %ORIGIN% left unsubstituted in $path"; fail=1
             fi
@@ -434,8 +453,10 @@ jobs:
           }
 
           none='{"authed":false,"required":true}|403'
-          user='{"authed":true,"operator":false,"required":true}|403'
-          oper='{"authed":true,"operator":true,"required":true}|200'
+          # Both codes carry the subscription; neither is an account.
+          tail='"plan":"subscription","grants":{"cleanPdf":true,"openData":true},"account":null,"billing":{"subscription":false,"site":false}}'
+          user="{\"authed\":true,\"operator\":false,\"required\":true,$tail|403"
+          oper="{\"authed\":true,\"operator\":true,\"required\":true,$tail|200"
 
           holds "no session"                            "$none"
           login "shared gate, wrong code"          401  '{"code":"nope"}'

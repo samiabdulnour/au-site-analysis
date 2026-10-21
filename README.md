@@ -53,7 +53,8 @@ drawn for an example address, the picture alone. It follows what is picked,
 not what the pointer is over. `/about` explains the tool to
 anyone who lands on it: what the four drawings contain, where the data
 comes from, and what the output must not be relied on for. The generator
-itself sits behind the access code. Sample thumbnails live in `web/samples/`
+itself sits behind a free account (see *Free, one site, and subscription* below), and
+`/pricing` compares the two sides. Sample thumbnails live in `web/samples/`
 and are served from `/samples/<name>.jpg` (whitelisted names only).
 
 Progress streams while the pipeline fetches and composes; the finished A1 PDF
@@ -132,6 +133,92 @@ the `?v=` on the `og:image` and `twitter:image` tags of `index.html` and
 showing the old card under the old one; the workflow commits those two pages
 with the pictures.
 
+### Free, one site, and subscription
+
+Every account generates every drawing, from the same data, drawn the same way;
+what differs is what can be taken away:
+
+| | free | one site | subscription |
+|---|---|---|---|
+| PDF | stamped with the watermark | clean, for that address | clean |
+| CAD (DXF/DWG) | — | for that address | yes |
+| data (CSV, JSON) | — | for that address | yes |
+| lasts | — | 30 days | while subscribed |
+
+A site is bought from its drawing: under a free account's finished sheet,
+UNLOCK THIS SITE goes to Stripe for one card payment, and back to the same
+drawing, now clean. It covers every drawing of that address at any scale or
+style, matched on the address with case, punctuation and spacing ignored. A
+site is what most offices need once per project; the subscription is for
+whoever screens sites every week.
+
+`src/plans.ts` is that table in code, and every download route reads it, so a
+new privilege is a new column there rather than a new condition in the server.
+
+**Accounts.** Anyone can make one on `/` with an email and a password (`SIGN
+UP`), and starts on the free side. Accounts live in `out/accounts/accounts.json`
+on the host volume, beside the job index and written the same way, with scrypt
+password hashes; the key that signs session cookies is `SESSION_SECRET`, or,
+unset, one made once and kept in the same directory, so a deploy signs nobody
+out. `ACCESS_CODE` still works and carries the subscription, so the office keeps
+clean PDFs and CAD without an account; unset it once everyone has one.
+`SUBSCRIPTION_EMAILS=a@x.com,b@y.com` gives those accounts the subscription
+without charge, which is also the way to see the subscriber's side before
+billing is switched on.
+
+**The watermark.** Put it in `assets/watermark/watermark.png`. It is stamped on
+each page when a free account downloads, not when the sheet is drawn, so the
+sheet on disk stays clean and one job serves both sides: a subscriber asking
+for an address a free account has just drawn gets it at once, clean. Until the
+file is there, the words `SITE ANALYST · FREE` stand in. If stamping fails the
+download is refused rather than served clean.
+
+**Payment.** Stripe Checkout sells both, and Stripe's customer portal manages
+the subscription (card, invoices, cancelling), so no card number reaches this
+server. To switch it on, in Stripe's dashboard:
+
+1. Make a product with a recurring price; its `price_…` id is `STRIPE_PRICE_ID`.
+   Make another with a one-off price for a site; its id is `STRIPE_SITE_PRICE_ID`.
+   Either can be left out, and that way to pay stays closed.
+2. Add a webhook endpoint at `https://<domain>/api/billing/webhook` sending
+   `checkout.session.completed` and `customer.subscription.created`, `.updated`
+   and `.deleted`; its signing secret is `STRIPE_WEBHOOK_SECRET`.
+3. Save the customer portal's settings once (Settings → Billing → Customer
+   portal), or MANAGE BILLING has nothing to open.
+
+Then in `/etc/site-analyst.env`:
+
+```
+STRIPE_SECRET_KEY=sk_live_…     # sk_test_… to try it first
+STRIPE_PRICE_ID=price_…           # the subscription
+STRIPE_SITE_PRICE_ID=price_…      # one site
+STRIPE_WEBHOOK_SECRET=whsec_…
+PRICE_LABEL=A$49 a month          # what /pricing says each costs
+SITE_PRICE_LABEL=A$79
+```
+
+Unset, `/pricing` says subscriptions open soon and the free side works alone.
+`/api/version` reports whether `billing` is on. Once it is, `/status` asks Stripe
+what it has and says, a line each: which Stripe account the key belongs to and
+whether it is live or test, each price and whether it is the right kind
+(recurring for the subscription, one-off for a site), the webhook endpoint and any event it is
+missing, whether the customer portal is saved, and whether an event has arrived
+signed with `STRIPE_WEBHOOK_SECRET` — Stripe never shows the secret again, so
+use the endpoint's "send test event" once and this line turns to `matches`. The
+same lines go to `docker logs site-analyst` at every start. A subscription is on while Stripe calls it `active`
+or `trialing`; the webhook moves the account back to free when it lapses, and
+on again when a retried payment lands.
+
+The routes: `POST /api/signup` and `/api/login` (`{email, password}`, or
+`{code}` as before), `POST /api/billing/checkout` and `/api/billing/portal`
+and `/api/billing/unlock` (`{job}`; each answers `{url}` to send the browser
+to), and the webhook. `/api/me` reports the session's `plan`, its `grants`, its
+`account` with the sites it has bought, and which ways to pay are open;
+`/api/jobs/<id>` reports what this viewer may take of that drawing (`grants`)
+and, where the site can be bought, its price (`unlock`). A free account asking
+for `/cad` or `/data` of a site it has not bought gets `402`. `test/plans.mts` drives all of it on a
+planted sheet, without drawing anything or calling Stripe.
+
 ### One door, and an operator code
 
 `/` is the only entrance. There used to be a second at `/fuse` for the office's
@@ -144,7 +231,7 @@ riding on the office tier because that was the only notion of "privileged" this
 server had. It takes its own credential now:
 
 ```
-ACCESS_CODE=…    # generates drawings
+ACCESS_CODE=…    # generates drawings, with the subscription; optional
 ADMIN_CODE=…     # also opens /status; omit and nothing opens it
 ```
 
@@ -164,10 +251,11 @@ Until one is set, nothing opens `/status`. That is the right way for it to fail:
 an ops view that is closed until someone deliberately opens it, rather than one
 that stays open on a credential nobody meant to repurpose.
 
-Authentication: visitors enter `ACCESS_CODE` once and get a 30-day session
-cookie. Login attempts and job submissions are rate-limited per IP, and job
-outputs are deleted after 24h. `ALLOW_NO_AUTH=1` disables the gate for local use
-only.
+Authentication: visitors sign in with an account, or enter `ACCESS_CODE` once,
+and either way get a 30-day session cookie. Login attempts, sign-ups and job
+submissions are rate-limited per IP, and job outputs are deleted after 24h.
+`ALLOW_NO_AUTH=1` disables the gate for local use only, and only while no
+`ACCESS_CODE` is set.
 
 The code lives in `/etc/site-analyst.env` on the server and never in the repo,
 so rotating it is a change on the host rather than a deploy:

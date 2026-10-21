@@ -89,6 +89,11 @@ function renderServer(j) {
     // and a thin one, not just a slower one.
     ['openstreetmap', osm, j.osm.mode === 'local' && j.osm.state !== 'serving' ? 'warn' : ''],
     ['queue', j.queue.running + ' running, ' + j.queue.queued + ' waiting'],
+    // Counts only: who the accounts are is Stripe's dashboard's business.
+    ['accounts', j.accounts.total + ', ' + j.accounts.subscription + ' on the subscription'],
+    // What Stripe says about the server's settings, a line each: the account
+    // the key belongs to, the price, the webhook, the portal, the secret.
+    ...(j.billing || []).map(([k, v, ok]) => [k, v, ok ? '' : 'warn']),
   ]);
 }
 

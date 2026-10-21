@@ -2,15 +2,18 @@
 // Plain node:http, no extra dependencies. Jobs run one at a time (the NSW
 // endpoints and the public isochrone server should not be hit in parallel).
 //
-//   ACCESS_CODE=… npm run serve     # http://localhost:3000  (PORT to change)
+//   npm run serve     # http://localhost:3000  (PORT to change)
 //
-// Auth: single shared access code (ACCESS_CODE env). Successful login sets an
-// HttpOnly session cookie derived from the code, so restarts keep sessions.
-// Set ALLOW_NO_AUTH=1 only for local use.
+// Two sides, free and subscription (src/plans.ts). Anyone can make an account
+// with an email and a password and generate every drawing; a free account's
+// PDFs are served watermarked (src/render/watermark.ts), and the subscription
+// (src/billing.ts) serves them clean with the CAD and data files beside them.
+// ACCESS_CODE, when set, is the office's shared code and carries the
+// subscription. Set ALLOW_NO_AUTH=1 only for local use: no sign-in, all granted.
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { readFile, readFileSync, existsSync, mkdirSync, writeFileSync, renameSync } from 'node:fs';
-import { rm, readdir, stat, statfs, writeFile } from 'node:fs/promises';
+import { rm, readdir, stat, statfs, writeFile, utimes } from 'node:fs/promises';
 import { join, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID, createHmac, createHash, timingSafeEqual } from 'node:crypto';
@@ -25,6 +28,17 @@ import { renderYieldSheet, yieldCsv, yieldJson } from './render/yieldSheet.js';
 import { renderSlides, slidesFacts, PANEL_W, PANEL_H, DA_PANEL_H, SLIDE_W, SLIDE_H } from './render/slides.js';
 import { withTemplate, themeFor, templateFor, type SheetKind } from './render/template.js';
 import { htmlToPdf, printSlides } from './render/pdf.js';
+import { stampPdf, watermarkId } from './render/watermark.js';
+import { GRANTS, PRICE_LABEL, SITE_PRICE_LABEL, planOf, paidFor, siteKey, type Plan, type Grants } from './plans.js';
+import {
+  initAccounts, accountFromCookie, accountCounts, createAccount, signIn, sessionCookieValue,
+  normaliseEmail, validEmail, PASSWORD_MIN, ACCOUNT_COOKIE, SESSION_DAYS, type Account,
+  unlockedSites, siteUnlocked,
+} from './accounts.js';
+import {
+  billingEnabled, subscriptionsOpen, sitesOpen, webhookEnabled, checkoutUrl, siteCheckoutUrl, portalUrl,
+  verifySignature, handleEvent, checkBilling, webhookSeen,
+} from './billing.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -46,16 +60,20 @@ if (existsSync(join(ROOT, '.env'))) {
 // riding on the office tier because that was the only notion of "privileged"
 // this server had. It gets its own credential rather than inheriting one from
 // a graphic style that no longer exists.
+//
+// The shared code is no longer the only way in: accounts are (src/accounts.ts).
+// It stays as the office's own code, which carries the subscription, so the
+// people already using it keep clean PDFs and their CAD without an account.
+// Unset, it opens nothing and accounts are the only door.
 const ACCESS_CODE = process.env.ACCESS_CODE ?? '';
 // Its own secret, deliberately not inherited from the office code that used to
 // gate the house style. Those grant different things: one drew a template, this
 // one shows every address anyone searched for and why their sheets failed.
 // Unset, nothing opens /status — which is the right way for it to fail.
 const ADMIN_CODE = process.env.ADMIN_CODE ?? '';
-if (!ACCESS_CODE && process.env.ALLOW_NO_AUTH !== '1') {
-  console.error('Set ACCESS_CODE=<shared code> (or ALLOW_NO_AUTH=1 for local use).');
-  process.exit(1);
-}
+// Local use: no sign-in at all, and everything granted. Only when no code is
+// set either — a server given a code is a server meant to ask for it.
+const NO_AUTH = process.env.ALLOW_NO_AUTH === '1' && !ACCESS_CODE;
 // An empty code must never derive a usable token, or an unset ADMIN_CODE would
 // hand the status view to anyone presenting the HMAC of the empty key.
 const tokenFor = (code: string) =>
@@ -64,7 +82,10 @@ const SESSION_TOKEN = tokenFor(ACCESS_CODE);
 const ADMIN_SESSION_TOKEN = tokenFor(ADMIN_CODE);
 
 const JOB_RETENTION_MS = 24 * 3600 * 1000;
-const WEB_OUT = join(ROOT, 'out', 'web');
+// Both on the host volume in production. Settable so a test can run the
+// server against directories of its own.
+const WEB_OUT = process.env.WEB_OUT_DIR?.trim() || join(ROOT, 'out', 'web');
+const ACCOUNTS_DIR = process.env.ACCOUNTS_DIR?.trim() || join(ROOT, 'out', 'accounts');
 
 // Is the local Overpass container up and serving yet? Reported by /api/version
 // so the switchover can be checked without shell access to the host. Cached,
@@ -197,9 +218,8 @@ const JOB_INDEX = join(WEB_OUT, 'jobs.json');
  * which is what most repeats are.
  */
 function jobKey(r: Pick<Job, 'address' | 'sheet' | 'scale' | 'rotate' | 'template'>): string {
-  const addr = r.address.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
   return createHash('sha256')
-    .update([addr, r.sheet, r.scale, r.rotate, r.template].join('|'))
+    .update([siteKey(r.address), r.sheet, r.scale, r.rotate, r.template].join('|'))
     .digest('hex').slice(0, 32);
 }
 
@@ -677,19 +697,82 @@ function sessionToken(req: IncomingMessage): string | null {
   return m ? m[1] : null;
 }
 
-/** May this request generate? The operator code counts, so an operator need
- *  not hold two sessions to do both things. */
-function authed(req: IncomingMessage): boolean {
-  if (!ACCESS_CODE) return true;         // ALLOW_NO_AUTH: local use
-  const t = sessionToken(req);
-  return Boolean(t) && (sameToken(t!, SESSION_TOKEN) || sameToken(t!, ADMIN_SESSION_TOKEN));
+/**
+ * Who is asking, and which side of the site they are on. Three ways in:
+ *
+ *   an account     email and password; free until it subscribes
+ *   ACCESS_CODE    the office's shared code, which carries the subscription
+ *   ADMIN_CODE     the operator's, which carries it too and opens /status
+ *
+ * A browser can hold an account and a code at once — the office signed in to
+ * an account to see what a free visitor gets, say — and then has the better.
+ */
+interface Viewer {
+  /** May generate: any session at all. */
+  signedIn: boolean;
+  operator: boolean;
+  plan: Plan;
+  account?: Account;
 }
 
-/** May this request see what the server has been doing? */
-function isOperator(req: IncomingMessage): boolean {
-  if (!ACCESS_CODE) return true;         // ALLOW_NO_AUTH: local use sees everything
+/** The code session this request holds, if any. */
+function heldCode(req: IncomingMessage): { code: boolean; operator: boolean } {
+  if (NO_AUTH) return { code: true, operator: true };
   const t = sessionToken(req);
-  return Boolean(t) && sameToken(t!, ADMIN_SESSION_TOKEN);
+  const operator = Boolean(t) && sameToken(t!, ADMIN_SESSION_TOKEN);
+  return { code: operator || (Boolean(t) && sameToken(t!, SESSION_TOKEN)), operator };
+}
+
+function viewerFrom(held: { code: boolean; operator: boolean }, account?: Account): Viewer {
+  return {
+    signedIn: held.code || Boolean(account),
+    operator: held.operator,
+    plan: held.code || (account && planOf(account) === 'subscription') ? 'subscription' : 'free',
+    account,
+  };
+}
+
+const viewerOf = (req: IncomingMessage) => viewerFrom(heldCode(req), accountFromCookie(req.headers.cookie));
+
+/**
+ * What /api/me says about a session, and what a sign-in answers with: one
+ * shape from one place, so the page reads the same whichever arrives first.
+ */
+function describe(v: Viewer) {
+  const a = v.account;
+  return {
+    authed: true,
+    operator: v.operator,
+    // `required` is not a secret: the sign-in form is shown to anyone. It
+    // tells the page whether signing out means anything here.
+    required: !NO_AUTH,
+    plan: v.plan,
+    grants: GRANTS[v.plan],
+    account: a ? {
+      email: a.email,
+      status: a.subscriptionStatus ?? null,
+      renewsAt: a.currentPeriodEnd ?? null,
+      // Stripe's portal needs a customer, which an account has once it has
+      // been through Checkout.
+      portal: billingEnabled && Boolean(a.stripeCustomerId),
+      sites: unlockedSites(a).map((s) => ({ address: s.address, until: s.until })),
+    } : null,
+    // Which ways to pay are open here.
+    billing: { subscription: subscriptionsOpen, site: sitesOpen },
+  };
+}
+
+/**
+ * What this viewer may take away of this job: the plan's grants, or the
+ * subscription's when the account has bought the job's site.
+ */
+function grantsFor(v: Viewer, job: Job): Grants {
+  return v.account && siteUnlocked(v.account, job.address) ? GRANTS.subscription : GRANTS[v.plan];
+}
+
+function cookie(req: IncomingMessage, name: string, value: string, maxAgeSeconds: number): string {
+  const secure = req.headers['x-forwarded-proto'] === 'https' ? '; Secure' : '';
+  return `${name}=${value}; HttpOnly; SameSite=Lax; Max-Age=${maxAgeSeconds}; Path=/${secure}`;
 }
 
 /** The codes are checked with a constant-time compare over a fixed width. */
@@ -713,6 +796,64 @@ function readBody(req: IncomingMessage): Promise<string> {
     req.on('end', () => resolve(body));
   });
 }
+
+/**
+ * The body as the bytes that arrived, for a signature computed over exactly
+ * those: Stripe's webhooks are larger than readBody allows, and a string built
+ * chunk by chunk can split a multi-byte character. Null past the cap.
+ */
+function readRaw(req: IncomingMessage, cap: number): Promise<Buffer | null> {
+  return new Promise((resolve) => {
+    const chunks: Buffer[] = [];
+    let n = 0;
+    req.on('data', (c: Buffer) => {
+      n += c.length;
+      if (n > cap) { resolve(null); req.destroy(); } else chunks.push(c);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', () => resolve(null));
+  });
+}
+
+const escapeHtml = (s: string) =>
+  s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
+
+// ---- the free side's PDFs ------------------------------------------------
+//
+// Stamped on the first download and kept beside the clean one, named for the
+// watermark they carry. In flight here, so two free visitors opening one sheet
+// at once stamp it once.
+const stamping = new Map<string, Promise<string>>();
+
+/**
+ * Downloads say whose they are. A cache in between must not hand a
+ * subscriber's clean PDF to the next free visitor, nor a stamped one to
+ * someone who has just subscribed.
+ */
+const PRIVATE = { 'Cache-Control': 'private, no-store' };
+
+function watermarked(job: Job): Promise<string> {
+  const dest = job.pdfPath!.replace(/\.pdf$/, `.wm-${watermarkId()}.pdf`);
+  if (existsSync(dest)) return Promise.resolve(dest);
+  let pending = stamping.get(dest);
+  if (!pending) {
+    pending = (async () => {
+      // Writing into the job's directory moves its mtime, which the sweep ages
+      // it by; put it back, so a sheet opened on its last day still goes on time.
+      const dir = dirname(dest);
+      const before = await stat(dir);
+      await stampPdf(job.pdfPath!, dest);
+      await utimes(dir, before.atime, before.mtime).catch(() => {});
+      return dest;
+    })().finally(() => stamping.delete(dest));
+    stamping.set(dest, pending);
+  }
+  return pending;
+}
+
+/** The PDF this viewer is given: the sheet as drawn, or the stamped copy. Never the first on a failure of the second. */
+const pdfFor = (job: Job, v: Viewer) =>
+  grantsFor(v, job).cleanPdf ? Promise.resolve(job.pdfPath!) : watermarked(job);
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', 'http://localhost');
@@ -739,6 +880,8 @@ const server = createServer(async (req, res) => {
   const PAGES: Record<string, [string, string]> = {
     '/': ['index.html', 'text/html; charset=utf-8'],
     '/about': ['about.html', 'text/html; charset=utf-8'],
+    '/pricing': ['pricing.html', 'text/html; charset=utf-8'],
+    '/pricing.js': ['pricing.js', 'text/javascript; charset=utf-8'],
     '/status': ['status.html', 'text/html; charset=utf-8'],
     '/admin': ['admin.html', 'text/html; charset=utf-8'],
     '/status.js': ['status.js', 'text/javascript; charset=utf-8'],
@@ -751,9 +894,11 @@ const server = createServer(async (req, res) => {
     readFile(join(ROOT, 'web', page[0]), (err, data) => {
       if (err) { res.writeHead(500); res.end(`missing web/${page[0]}`); return; }
       // The link-preview tags need absolute URLs, so the pages write %ORIGIN%
-      // and it is filled in with whatever host they were asked for.
+      // and it is filled in with whatever host they were asked for. %PRICE% and
+      // %SITE_PRICE% are the pricing page's, from PRICE_LABEL and
+      // SITE_PRICE_LABEL, so a price change is not a deploy.
       const body = page[1].startsWith('text/html')
-        ? data.toString('utf8').replaceAll('%ORIGIN%', siteBase())
+        ? data.toString('utf8').replaceAll('%ORIGIN%', siteBase()).replaceAll('%PRICE%', escapeHtml(PRICE_LABEL)).replaceAll('%SITE_PRICE%', escapeHtml(SITE_PRICE_LABEL))
         : data;
       res.writeHead(200, { 'Content-Type': page[1] });
       res.end(body);
@@ -784,6 +929,7 @@ Sitemap: ${siteBase()}/sitemap.xml
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url><loc>${base}/</loc><changefreq>monthly</changefreq><priority>1.0</priority></url>
   <url><loc>${base}/about</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>${base}/pricing</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
 </urlset>
 `);
     return;
@@ -818,6 +964,9 @@ Sitemap: ${siteBase()}/sitemap.xml
       // name, so there is nothing in it to withhold.
       deploy: deployStatus(),
       busy: [...jobs.values()].some((j) => j.status === 'running' || j.status === 'queued'),
+      // Whether Stripe is configured, so the switch-on can be checked from
+      // outside the host. Says nothing about any account.
+      billing: billingEnabled,
     });
   }
 
@@ -826,7 +975,7 @@ Sitemap: ${siteBase()}/sitemap.xml
   // whether the thing is up, whereas this names addresses people searched for
   // and the reasons their sheets failed.
   if (req.method === 'GET' && url.pathname === '/api/status') {
-    if (!isOperator(req)) return json(res, 403, { error: 'Operator access only.' });
+    if (!viewerOf(req).operator) return json(res, 403, { error: 'Operator access only.' });
     const all = [...jobs.values()].sort((a, b) => b.createdAt - a.createdAt);
     const fs = await statfs(WEB_OUT).catch(() => null);
     return json(res, 200, {
@@ -852,6 +1001,8 @@ Sitemap: ${siteBase()}/sitemap.xml
         freeBytes: fs ? fs.bavail * fs.bsize : null,
         totalBytes: fs ? fs.blocks * fs.bsize : null,
       },
+      accounts: accountCounts(),
+      billing: await checkBilling(),
       // 24h of retention is already the ceiling on how many there can be.
       jobs: all.slice(0, 100).map((j) => ({
         id: j.id, address: j.address, sheet: j.sheet, scale: j.scale,
@@ -865,21 +1016,65 @@ Sitemap: ${siteBase()}/sitemap.xml
   }
 
   if (req.method === 'GET' && url.pathname === '/api/me') {
-    if (!authed(req)) return json(res, 401, { authed: false, required: true });
-    // `required` is not a secret: the login field is shown to anyone. It tells
-    // the page whether signing out means anything here.
-    return json(res, 200, { authed: true, operator: isOperator(req), required: Boolean(ACCESS_CODE) });
+    const v = viewerOf(req);
+    if (!v.signedIn) return json(res, 401, { authed: false, required: true });
+    return json(res, 200, describe(v));
+  }
+
+  // A free account: an email and a password, and nothing else asked. It can
+  // generate every drawing at once; the subscription is bought from it later.
+  if (req.method === 'POST' && url.pathname === '/api/signup') {
+    if (limited(`signup:${ip}`, 5, 3600_000)) return json(res, 429, { error: 'Too many sign-ups from here. Try later.' });
+    let email = '', password = '';
+    try {
+      const parsed = JSON.parse((await readBody(req)) || '{}');
+      email = normaliseEmail(parsed.email);
+      password = String(parsed.password ?? '');
+    } catch { /* refused below */ }
+    if (!validEmail(email)) return json(res, 400, { error: 'Enter an email address.' });
+    if (password.length < PASSWORD_MIN || password.length > 200)
+      return json(res, 400, { error: `Choose a password of ${PASSWORD_MIN} characters or more.` });
+    let account: Account;
+    try {
+      account = await createAccount(email, password);
+    } catch (e: any) {
+      if (e?.message === 'exists') return json(res, 409, { error: 'That email already has an account. Sign in instead.' });
+      console.log(`accounts: sign-up failed — ${e?.message ?? e}`);
+      return json(res, 500, { error: 'Could not create the account. Try again shortly.' });
+    }
+    res.writeHead(201, {
+      'Content-Type': 'application/json',
+      'Set-Cookie': cookie(req, ACCOUNT_COOKIE, sessionCookieValue(account), SESSION_DAYS * 86400),
+    });
+    res.end(JSON.stringify({ ok: true, ...describe(viewerFrom(heldCode(req), account)) }));
+    return;
   }
 
   if (req.method === 'POST' && url.pathname === '/api/login') {
     if (limited(`login:${ip}`, 10, 15 * 60_000)) return json(res, 429, { error: 'Too many attempts. Try later.' });
     const body = await readBody(req);
-    let code = '', gate = '';
+    let code = '', gate = '', email = '', password = '';
     try {
       const parsed = JSON.parse(body || '{}');
       code = String(parsed.code ?? '');
       gate = String(parsed.gate ?? '');
+      email = normaliseEmail(parsed.email);
+      password = String(parsed.password ?? '');
     } catch { /* fall through to the refusal below */ }
+
+    // An account, by email and password. Whatever code the browser already
+    // holds is kept, and still counts.
+    if (email) {
+      const account = await signIn(email, password);
+      if (!account) return json(res, 401, { error: 'Wrong email or password.' });
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+        'Set-Cookie': cookie(req, ACCOUNT_COOKIE, sessionCookieValue(account), SESSION_DAYS * 86400),
+      });
+      // The new cookie is not on this request, so the account is put in by hand.
+      res.end(JSON.stringify({ ok: true, ...describe(viewerFrom(heldCode(req), account)) }));
+      return;
+    }
 
     // Two doors, one endpoint. The shared gate takes either code — the operator
     // code is a superset of what the shared one grants, so an operator holds one
@@ -904,16 +1099,17 @@ Sitemap: ${siteBase()}/sitemap.xml
       return json(res, 401, { error: 'Wrong access code.' });
     }
     const token = operator ? ADMIN_SESSION_TOKEN : SESSION_TOKEN;
-    const secure = req.headers['x-forwarded-proto'] === 'https' ? '; Secure' : '';
     res.writeHead(200, {
       'Content-Type': 'application/json',
-      'Set-Cookie': `sa_session=${token}; HttpOnly; SameSite=Lax; Max-Age=2592000; Path=/${secure}`,
+      'Set-Cookie': cookie(req, 'sa_session', token, 2592000),
     });
-    // Described exactly as /api/me describes it, from the same expression: the
+    // Described exactly as /api/me describes it, from the same function: the
     // page takes whichever reaches it first, and a session that looked
     // different depending on which answer arrived would show the controls for
-    // one of them. The new cookie is not on this request, hence not isOperator.
-    res.end(JSON.stringify({ ok: true, operator, required: Boolean(ACCESS_CODE) }));
+    // one of them. The new cookie is not on this request, so it is put in by hand.
+    res.end(JSON.stringify({
+      ok: true, ...describe(viewerFrom({ code: true, operator }, accountFromCookie(req.headers.cookie))),
+    }));
     return;
   }
 
@@ -924,21 +1120,97 @@ Sitemap: ${siteBase()}/sitemap.xml
   // page cannot clear it either. Deliberately open — ending a session you hold
   // is not a privilege, and there is nothing here to refuse.
   if (req.method === 'POST' && url.pathname === '/api/logout') {
-    const secure = req.headers['x-forwarded-proto'] === 'https' ? '; Secure' : '';
+    // Both: the code session and the account, whichever this browser holds.
     res.writeHead(200, {
       'Content-Type': 'application/json',
-      'Set-Cookie': `sa_session=; HttpOnly; SameSite=Lax; Max-Age=0; Path=/${secure}`,
+      'Set-Cookie': [cookie(req, 'sa_session', '', 0), cookie(req, ACCOUNT_COOKIE, '', 0)],
     });
     res.end(JSON.stringify({ ok: true }));
     return;
   }
 
-  // Everything below requires auth. Scoped to the API rather than to every
+  // Stripe telling this server what happened at Checkout and since: a new
+  // subscription, a renewal, a card that failed, a cancellation. Before the
+  // auth wall, because Stripe holds no session; the signature is its proof.
+  if (req.method === 'POST' && url.pathname === '/api/billing/webhook') {
+    if (!webhookEnabled) return json(res, 503, { error: 'Billing is not configured.' });
+    const raw = await readRaw(req, 1_000_000);
+    const signature = String(req.headers['stripe-signature'] ?? '');
+    if (!raw || !verifySignature(raw, signature)) {
+      // Counted only when it carries a signature at all: an unsigned POST is
+      // somebody probing, not Stripe with the wrong secret.
+      if (signature) webhookSeen.refused = Date.now();
+      return json(res, 400, { error: 'Bad signature.' });
+    }
+    let event: any;
+    try { event = JSON.parse(raw.toString('utf8')); } catch { return json(res, 400, { error: 'Bad payload.' }); }
+    webhookSeen.accepted = { at: Date.now(), type: String(event?.type) };
+    try {
+      console.log(`billing: ${await handleEvent(event)}`);
+      return json(res, 200, { received: true });
+    } catch (e: any) {
+      // Stripe retries a refused webhook for days, so failing here loses nothing.
+      console.log(`billing: ${String(event?.type)} failed — ${e?.message ?? e}`);
+      return json(res, 500, { error: 'Could not apply the event.' });
+    }
+  }
+
+  // Everything below requires a session. Scoped to the API rather than to every
   // remaining path: an unknown URL is not a place to ask for an access code,
   // and answering /robots.txt with 401 told every crawler the site was broken
   // rather than that the file was absent.
-  if (url.pathname.startsWith('/api/') && !authed(req))
+  if (url.pathname.startsWith('/api/') && !viewerOf(req).signedIn)
     return json(res, 401, { error: 'Not authorised.' });
+
+  // ---- billing -----------------------------------------------------------
+
+  // Off to Stripe's own payment page; the webhook above brings the answer back.
+  if (req.method === 'POST' && url.pathname === '/api/billing/checkout') {
+    const v = viewerOf(req);
+    if (!v.account) return json(res, 400, { error: 'A subscription belongs to an account. Sign in with your email first.' });
+    if (!subscriptionsOpen) return json(res, 503, { error: 'Subscriptions are not open yet.' });
+    if (paidFor(v.account.subscriptionStatus)) return json(res, 409, { error: 'This account is already subscribed.' });
+    if (limited(`billing:${ip}`, 20, 3600_000)) return json(res, 429, { error: 'Too many attempts. Try later.' });
+    try {
+      return json(res, 200, { url: await checkoutUrl(v.account, siteBase()) });
+    } catch (e: any) {
+      console.log(`billing: checkout failed — ${e?.message ?? e}`);
+      return json(res, 502, { error: 'Could not reach the payment page. Try again shortly.' });
+    }
+  }
+
+  // One site, bought from the drawing the visitor is looking at: the job names
+  // the address, as it was drawn, so what is paid for is a site this server
+  // has actually drawn rather than whatever was typed into a request.
+  if (req.method === 'POST' && url.pathname === '/api/billing/unlock') {
+    const v = viewerOf(req);
+    if (!v.account) return json(res, 400, { error: 'A site is bought by an account. Sign in with your email first.' });
+    if (!sitesOpen) return json(res, 503, { error: 'Sites cannot be bought yet.' });
+    let jobId = '';
+    try { jobId = String(JSON.parse((await readBody(req)) || '{}').job ?? ''); } catch { /* refused below */ }
+    const job = jobs.get(jobId);
+    if (!job) return json(res, 404, { error: 'That drawing is gone. Generate it again, then unlock it.' });
+    if (grantsFor(v, job).cleanPdf) return json(res, 409, { error: 'This site is already unlocked for you.' });
+    if (limited(`billing:${ip}`, 20, 3600_000)) return json(res, 429, { error: 'Too many attempts. Try later.' });
+    try {
+      return json(res, 200, { url: await siteCheckoutUrl(v.account, job.address, job.id, siteBase()) });
+    } catch (e: any) {
+      console.log(`billing: site checkout failed — ${e?.message ?? e}`);
+      return json(res, 502, { error: 'Could not reach the payment page. Try again shortly.' });
+    }
+  }
+
+  // Stripe's page for the card, the invoices and cancelling.
+  if (req.method === 'POST' && url.pathname === '/api/billing/portal') {
+    const v = viewerOf(req);
+    if (!billingEnabled || !v.account?.stripeCustomerId) return json(res, 400, { error: 'This account has no billing yet.' });
+    try {
+      return json(res, 200, { url: await portalUrl(v.account, siteBase()) });
+    } catch (e: any) {
+      console.log(`billing: portal failed — ${e?.message ?? e}`);
+      return json(res, 502, { error: 'Could not reach the billing page. Try again shortly.' });
+    }
+  }
 
   if (req.method === 'GET' && url.pathname === '/api/address') {
     const q = url.searchParams.get('q') ?? '';
@@ -1111,7 +1383,8 @@ Sitemap: ${siteBase()}/sitemap.xml
   if (req.method === 'GET' && batchZip) {
     const batch = batches.get(batchZip[1]);
     if (!batch) return json(res, 404, { error: 'Unknown batch.' });
-    const files: { path: string; name: string }[] = [];
+    const v = viewerOf(req);
+    const found: { job: Job; name: string }[] = [];
     const used = new Set<string>();
     for (const e of batch.entries) {
       const job = jobs.get(e.jobId);
@@ -1122,11 +1395,18 @@ Sitemap: ${siteBase()}/sitemap.xml
       let name = `${kind}_${e.address.replace(/[^a-z0-9]+/gi, '_').toUpperCase()}.pdf`;
       if (used.has(name)) continue;
       used.add(name);
-      files.push({ path: job.pdfPath, name });
+      found.push({ job, name });
     }
-    if (!files.length) return json(res, 404, { error: 'Nothing finished yet.' });
+    if (!found.length) return json(res, 404, { error: 'Nothing finished yet.' });
     try {
-      const zipPath = join(WEB_OUT, `${batch.id}.zip`);
+      // The same PDFs as the single download: stamped for a free account.
+      const files: { path: string; name: string }[] = [];
+      for (const f of found) files.push({ path: await pdfFor(f.job, v), name: f.name });
+      // A zip of its own wherever any sheet in it is stamped — per account, since
+      // which sites an account has bought decides which — so no request is
+      // answered with a zip written for someone entitled to more.
+      const clean = found.every((f) => grantsFor(v, f.job).cleanPdf);
+      const zipPath = join(WEB_OUT, `${batch.id}${clean ? '' : `.wm-${v.account?.id ?? 'code'}`}.zip`);
       // python3 is already a dependency (the DXF export needs it) and this is
       // the same zipfile the CAD package is built with. execFile, not
       // spawnSync: the latter blocks the event loop, which on a server that
@@ -1147,6 +1427,7 @@ Sitemap: ${siteBase()}/sitemap.xml
         res.writeHead(200, {
           'Content-Type': 'application/zip',
           'Content-Disposition': `attachment; filename="SITE_ANALYST_${files.length}_SHEETS.zip"`,
+          ...PRIVATE,
         });
         res.end(data);
       });
@@ -1160,11 +1441,17 @@ Sitemap: ${siteBase()}/sitemap.xml
   if (req.method === 'GET' && jobMatch) {
     const job = jobs.get(jobMatch[1]);
     if (!job) return json(res, 404, { error: 'Unknown job.' });
+    const v = viewerOf(req);
+    const grants = grantsFor(v, job);
     return json(res, 200, {
       id: job.id, address: job.address, status: job.status,
       log: job.log.slice(-12), error: job.error, hasCad: Boolean(job.cadPath),
       hasData: Boolean(job.dataPath), sheet: job.sheet,
       queuePosition: queuePosition(job), etaMinutes: etaMinutes(job),
+      // What this viewer may take away of it, and, where it can be bought on
+      // its own, what that costs: the page offers what the server will serve.
+      grants,
+      unlock: sitesOpen && v.account && !grants.cleanPdf ? SITE_PRICE_LABEL : null,
     });
   }
 
@@ -1172,29 +1459,46 @@ Sitemap: ${siteBase()}/sitemap.xml
   if (req.method === 'GET' && pdfMatch) {
     const job = jobs.get(pdfMatch[1]);
     if (!job?.pdfPath) return json(res, 404, { error: 'Not ready.' });
-    readFile(job.pdfPath, (err, data) => {
+    let path: string;
+    try {
+      path = await pdfFor(job, viewerOf(req));
+    } catch (e: any) {
+      // Refused rather than served clean: a failed stamp must not become a
+      // free way to the subscriber's PDF.
+      console.log(`watermark: ${job.id} failed — ${e?.message ?? e}`);
+      return json(res, 500, { error: 'Could not prepare the PDF. Try again shortly.' });
+    }
+    readFile(path, (err, data) => {
       if (err) return json(res, 500, { error: 'PDF unreadable.' });
       const slug = job.address.replace(/[^a-z0-9]+/gi, '_').toUpperCase();
       const kind = PDF_NAME[job.sheet];
       res.writeHead(200, {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `inline; filename="${kind}_${slug}.pdf"`,
+        ...PRIVATE,
       });
       res.end(data);
     });
     return;
   }
 
+  // The open formats are paid for, by the site or by the subscription. 402
+  // rather than 403: nothing is wrong with who is asking, only with what they
+  // have paid for.
+  const OPEN_DATA_ONLY = { error: 'The CAD and data files come with an unlocked site or the subscription.', upgrade: '/pricing' };
+
   const cadMatch = url.pathname.match(/^\/api\/jobs\/([0-9a-f-]{36})\/cad$/);
   if (req.method === 'GET' && cadMatch) {
     const job = jobs.get(cadMatch[1]);
     if (!job?.cadPath) return json(res, 404, { error: 'Not ready.' });
+    if (!grantsFor(viewerOf(req), job).openData) return json(res, 402, OPEN_DATA_ONLY);
     readFile(job.cadPath, (err, data) => {
       if (err) return json(res, 500, { error: 'CAD package unreadable.' });
       const slug = job.address.replace(/[^a-z0-9]+/gi, '_').toUpperCase();
       res.writeHead(200, {
         'Content-Type': 'application/zip',
         'Content-Disposition': `attachment; filename="${job.sheet === 'site' ? 'SITE' : 'CONTEXT'}_ANALYSIS_CAD_${slug}.zip"`,
+        ...PRIVATE,
       });
       res.end(data);
     });
@@ -1206,6 +1510,7 @@ Sitemap: ${siteBase()}/sitemap.xml
   if (req.method === 'GET' && dataMatch) {
     const job = jobs.get(dataMatch[1]);
     if (!job?.dataPath) return json(res, 404, { error: 'Not ready.' });
+    if (!grantsFor(viewerOf(req), job).openData) return json(res, 402, OPEN_DATA_ONLY);
     readFile(job.dataPath, (err, data) => {
       if (err) return json(res, 500, { error: 'Data file unreadable.' });
       const slug = job.address.replace(/[^a-z0-9]+/gi, '_').toUpperCase();
@@ -1213,6 +1518,7 @@ Sitemap: ${siteBase()}/sitemap.xml
       res.writeHead(200, {
         'Content-Type': isJson ? 'application/json; charset=utf-8' : 'text/csv; charset=utf-8',
         'Content-Disposition': `attachment; filename="${isJson ? `OVERALL_ANALYSIS_${slug}.json` : `DEVELOPMENT_SUMMARY_${slug}.csv`}"`,
+        ...PRIVATE,
       });
       res.end(data);
     });
@@ -1224,6 +1530,7 @@ Sitemap: ${siteBase()}/sitemap.xml
 
 // Pick the previous container's finished sheets back up, then keep the
 // directory swept whether or not anyone is generating.
+initAccounts(ACCOUNTS_DIR);
 loadIndex();
 loadBatches();
 const CLEANUP_INTERVAL_MS = 3600_000;
@@ -1231,4 +1538,13 @@ setInterval(() => void cleanupOldJobs(), CLEANUP_INTERVAL_MS);
 void cleanupOldJobs();
 
 const PORT = Number(process.env.PORT ?? 3000);
-server.listen(PORT, () => console.log(`site analyst web UI on http://localhost:${PORT}${ACCESS_CODE ? ' (auth on)' : ' (NO AUTH)'}`));
+server.listen(PORT, () => console.log(`site analyst web UI on http://localhost:${PORT}${NO_AUTH ? ' (NO AUTH)' : ''}` +
+  ` — subscriptions ${subscriptionsOpen ? 'on' : 'off'}, single sites ${sitesOpen ? 'on' : 'off'}`));
+
+// What Stripe says about the settings, in the container's log at every start,
+// so a wrong key shows in `docker logs` as well as on /status.
+if (billingEnabled) {
+  void checkBilling().then((rows) => {
+    for (const [k, v, ok] of rows) console.log(`billing check: ${ok ? 'ok  ' : 'WARN'} ${k} — ${v}`);
+  });
+}

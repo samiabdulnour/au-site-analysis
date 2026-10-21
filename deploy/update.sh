@@ -123,11 +123,24 @@ docker rm -f site-analyst >/dev/null 2>&1 || true
 # code that opens it. GOOGLE_MAPS_API_KEY (and its signing secret, if the
 # project has one) gives slide 12 its Street View frames; unset, the slide
 # reads the open frames alone.
+#
+# ACCESS_CODE is optional now that accounts are the way in; set, it is the
+# office's code and carries the subscription. The STRIPE_ settings switch on
+# the subscription and single sites (see src/billing.ts); unset, the free side
+# works alone. SUBSCRIPTION_EMAILS gives accounts the subscription without
+# charge, and the two _LABELs are what the plans page says each costs.
 docker run -d --name site-analyst --restart unless-stopped \
   --network "$NET" \
   -p 127.0.0.1:3100:3000 \
-  -e ACCESS_CODE="$ACCESS_CODE" \
+  -e ACCESS_CODE="${ACCESS_CODE:-}" \
   -e ADMIN_CODE="${ADMIN_CODE:-}" \
+  -e STRIPE_SECRET_KEY="${STRIPE_SECRET_KEY:-}" \
+  -e STRIPE_PRICE_ID="${STRIPE_PRICE_ID:-}" \
+  -e STRIPE_SITE_PRICE_ID="${STRIPE_SITE_PRICE_ID:-}" \
+  -e STRIPE_WEBHOOK_SECRET="${STRIPE_WEBHOOK_SECRET:-}" \
+  -e SUBSCRIPTION_EMAILS="${SUBSCRIPTION_EMAILS:-}" \
+  -e PRICE_LABEL="${PRICE_LABEL:-}" \
+  -e SITE_PRICE_LABEL="${SITE_PRICE_LABEL:-}" \
   -e TFNSW_API_KEY="$TFNSW_API_KEY" \
   -e MAPILLARY_TOKEN="${MAPILLARY_TOKEN:-}" \
   -e GOOGLE_MAPS_API_KEY="${GOOGLE_MAPS_API_KEY:-}" \

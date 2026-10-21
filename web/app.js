@@ -113,6 +113,8 @@ function renderAll() {
 
 /** Take what the server told us about this session. */
 function applySession(j) {
+  // A free account is told what it gets once, above the bar, with the way to more.
+  $('plan').hidden = !(j.grants && !j.grants.cleanPdf);
   // A session is a thirty-day cookie and the code field is hidden while one is
   // valid, so without a way to put it down a browser that entered the shared
   // code could not be handed the operator's — for a month. The cookie is
@@ -371,42 +373,70 @@ addrInput.addEventListener('blur', () => setTimeout(closeSuggest, 120));
 
 // ---- session -------------------------------------------------------------
 
-/* This is the shared gate: it takes the access code, and the operator code too,
-   since that one grants a superset and an operator should not need two sessions.
-   The operator's own gate is /admin, which asks whatever session is held — this
-   page hides its code field once any session exists, which is what made it
-   impossible to get past holding the shared code. */
+/* Three ways in: an account's email and password, a new free account, or the
+   office's shared code (which also takes the operator code, since that grants a
+   superset and an operator should not need two sessions). The operator's own
+   gate is /admin, which asks whatever session is held — this page hides its
+   form once any session exists. */
+const AUTH_MODES = [
+  // [value, label, button, password placeholder, autocomplete]
+  ['signin', 'sign in',     'SIGN IN', 'password',                       'current-password'],
+  ['signup', 'sign up',     'SIGN UP', 'password, 8 characters or more', 'new-password'],
+  ['code',   'code',        'UNLOCK',  'access code',                    'off'],
+];
+// ?signup is where the pricing page sends someone who has no account yet.
+let authMode = new URLSearchParams(location.search).has('signup') ? 'signup' : 'signin';
+
+function renderAuth() {
+  tokens($('authOpts'), AUTH_MODES, authMode, (v) => { authMode = v; renderAuth(); $('authError').textContent = ''; });
+  const m = AUTH_MODES.find((x) => x[0] === authMode);
+  $('emailBar').hidden = authMode === 'code';
+  $('authGo').textContent = m[2];
+  $('code').placeholder = m[3];
+  $('code').autocomplete = m[4];
+}
+
 function showLogin() {
   f.hidden = true;
   loginForm.hidden = false;
-  $('code').focus();
+  renderAuth();
+  (authMode === 'code' ? $('code') : $('email')).focus();
+}
+
+function enter(j) {
+  loginForm.hidden = true;
+  f.hidden = false;
+  applySession(j);
+  addrInput.focus();
+  resumeJob();
 }
 
 fetch('/api/me').then(async (r) => {
   if (!r.ok) return showLogin();
-  const j = await readJson(r);
-  f.hidden = false;
-  loginForm.hidden = true;
-  applySession(j);
-  addrInput.focus();
+  enter(await readJson(r));
 }).catch(showLogin);
 
 loginForm.addEventListener('submit', async (e) => {
   e.preventDefault();
-  const r = await fetch('/api/login', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ code: $('code').value }),
-  });
-  if (r.ok) {
-    loginForm.hidden = true;
-    f.hidden = false;
-    applySession(await readJson(r));
-    addrInput.focus();
-  } else {
-    const j = await readJson(r);
-    out.hidden = false;
-    errEl.textContent = j.error || 'wrong access code';
+  const authErr = $('authError');
+  authErr.textContent = '';
+  const password = $('code').value;
+  const body = authMode === 'code'
+    ? { code: password }
+    : { email: $('email').value.trim(), password };
+  let r;
+  try {
+    r = await fetch(authMode === 'signup' ? '/api/signup' : '/api/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    authErr.textContent = 'no answer from the server — try again';
+    return;
   }
+  const j = await readJson(r);
+  if (r.ok) return enter(j);
+  authErr.textContent = httpMessage(r, j);
 });
 
 // ---- run -----------------------------------------------------------------
@@ -495,9 +525,33 @@ async function poll(id, misses) {
     if (j.status === 'done') {
       queueEl.textContent = 'done';
       linksEl.innerHTML = '';
-      addLink('open pdf', '/api/jobs/' + id + '/pdf', true);
-      if (j.hasCad) addLink('download cad', '/api/jobs/' + id + '/cad');
-      if (j.hasData) addLink(j.sheet === 'slides' ? 'download json' : 'download csv', '/api/jobs/' + id + '/data');
+      // What this viewer may take away of this drawing, as the server says:
+      // the plan's, or everything once its site is bought. The server decides
+      // regardless — a free account asking for the CAD gets 402.
+      const grants = j.grants || { cleanPdf: false, openData: false };
+      // Back from paying for this site: Stripe tells the server by webhook,
+      // which can land a few seconds after the visitor does.
+      if (awaitingPayment > 0 && !grants.cleanPdf) {
+        awaitingPayment -= 1;
+        noteEl.textContent = 'payment received — unlocking the site…';
+        return setTimeout(() => poll(id, 0), 2000);
+      }
+      if (returnedFromPayment) {
+        noteEl.textContent = grants.cleanPdf ? 'site unlocked'
+          : 'payment not confirmed yet — reload this page in a minute';
+        returnedFromPayment = false;
+      }
+      if (j.unlock) addButton('unlock this site · ' + j.unlock, () => unlock(id));
+      addLink(grants.cleanPdf ? 'open pdf' : 'open pdf · watermarked', '/api/jobs/' + id + '/pdf', true);
+      const dataLabel = j.sheet === 'slides' ? 'download json' : 'download csv';
+      if (grants.openData) {
+        if (j.hasCad) addLink('download cad', '/api/jobs/' + id + '/cad');
+        if (j.hasData) addLink(dataLabel, '/api/jobs/' + id + '/data');
+      } else {
+        // Shown, not hidden: what paying adds is the reason to pay.
+        if (j.hasCad) addLink('cad · locked', '/pricing', false, true);
+        if (j.hasData) addLink(dataLabel.replace('download ', '') + ' · locked', '/pricing', false, true);
+      }
       go.disabled = false;
       return;
     }
@@ -513,14 +567,57 @@ async function poll(id, misses) {
   }
 }
 
-function addLink(label, href, newTab) {
+function addLink(label, href, newTab, locked) {
   const a = document.createElement('a');
   a.href = href;
   a.textContent = label;
   // The first result is the one to press; the rest sit beside it sharing a rule.
   a.className = linksEl.childNodes.length ? 'btn' : 'btn primary';
+  if (locked) a.classList.add('locked');
   if (newTab) a.target = '_blank';
   linksEl.append(a);
+}
+
+function addButton(label, onClick) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = linksEl.childNodes.length ? 'btn' : 'btn primary';
+  b.textContent = label;
+  b.addEventListener('click', onClick);
+  linksEl.append(b);
+}
+
+// Polls left to wait for a site's payment to arrive, after Stripe sends the
+// visitor back (?paid=1).
+let awaitingPayment = 0, returnedFromPayment = false;
+
+/** Off to Stripe to pay for this drawing's site; it sends the visitor back here. */
+async function unlock(id) {
+  errEl.textContent = '';
+  try {
+    const r = await fetch('/api/billing/unlock', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ job: id }),
+    });
+    const j = await readJson(r);
+    if (r.ok && j.url) return location.assign(j.url);
+    errEl.textContent = httpMessage(r, j);
+  } catch {
+    errEl.textContent = 'no answer from the server — try again';
+  }
+}
+
+/** Back from Stripe (or from a link to a drawing): show that drawing again. */
+function resumeJob() {
+  const params = new URLSearchParams(location.search);
+  const id = params.get('job');
+  if (!id || !/^[0-9a-f-]{36}$/.test(id)) return;
+  if (params.has('paid')) { awaitingPayment = 15; returnedFromPayment = true; }
+  // Once, not on every reload.
+  history.replaceState(null, '', '/');
+  out.hidden = false;
+  logEl.textContent = '';
+  poll(id);
 }
 
 function fail(msg) {
