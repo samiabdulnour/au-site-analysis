@@ -353,3 +353,26 @@ h2 { font-size: 1em; font-weight: 400; text-transform: uppercase;
   .job .num { display: inline; }
   .job .num::before { content: ' · '; }
 }
+
+/* ---- sign-in ------------------------------------------------------------ */
+/* The way-in row, the email and the password are one box: each part leaves
+   off the rule the part above it already draws. A flex box ignores [hidden]
+   unless told, like the options rows. */
+.bar[hidden] { display: none; }
+.bar.stack { margin-bottom: 0; }
+.opts.auth + .bar, .bar.stack + .bar { border-top: 0; }
+
+/* What the subscription would add, shown to a free account as the way to it:
+   still a box to press, but muted, since what it opens is the plans page. */
+.btn.locked { color: var(--muted); }
+
+/* ---- plans -------------------------------------------------------------- */
+/* The about page's hairline table with a column for each side. It stays three
+   columns on a phone: stacked, "watermarked" and "clean" would lose which
+   side they belong to. */
+.deftable.plans { grid-template-columns: 28% 1fr 1fr; grid-auto-rows: auto; }
+.deftable.plans .head { text-transform: uppercase; letter-spacing: .02em; }
+@media (max-width: 560px) {
+  .deftable.plans { grid-template-columns: 30% 1fr 1fr; }
+}
+#mine { margin-top: .2rem; }

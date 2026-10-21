@@ -43,16 +43,30 @@
     lot on its cadastre and aerial, zoning and height controls, heritage, transport,
     walking catchments — entirely from government open data. Out come a print-ready
     A1 PDF and the same geometry as CAD. <a href="/about">How it works</a>.</p>
-    <p class="lead">Enter your access code to generate drawings.</p>
-    <div class="bar">
-      <input id="code" type="password" placeholder="" autocomplete="current-password">
-      <button class="go" type="submit">UNLOCK</button>
+    <p class="lead">Sign in, or make a free account: free PDFs carry a watermark, and
+    the <a href="/pricing">subscription</a> takes it off and adds the CAD and data files.</p>
+    <!-- The three ways in, as a row of the options table. The office's shared
+         code is the third, for the people who had it before accounts. -->
+    <div class="opts auth">
+      <div class="row"><span class="rowhead">ACCOUNT</span>
+        <span class="cells" id="authOpts"></span></div>
     </div>
+    <div class="bar stack" id="emailBar">
+      <input id="email" type="email" placeholder="email" autocomplete="username">
+    </div>
+    <div class="bar">
+      <input id="code" type="password" placeholder="password" autocomplete="current-password">
+      <button class="go" id="authGo" type="submit">SIGN IN</button>
+    </div>
+    <div class="errline" id="authError"></div>
   </form>
 
   <!-- ---- the tool ---------------------------------------------------- -->
   <form id="f" hidden>
     <p class="lead">Search a NSW address to generate its site analysis.</p>
+    <!-- Said only to a free account: what it gets, and the way to more. -->
+    <p class="lead muted" id="plan" hidden>Free account: PDFs come with a watermark.
+    <a href="/pricing">Subscribe</a> for clean PDFs and the CAD and data files.</p>
     <div class="bar">
       <span class="entry">
         <input id="address" type="text" placeholder="212 Bondi Road, Bondi"
@@ -93,6 +107,7 @@
   <div class="actions">
     <div id="links"></div>
     <a class="btn" href="/about">HOW IT WORKS</a>
+    <a class="btn" href="/pricing">PLANS</a>
   </div>
 
   <footer>

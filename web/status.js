@@ -89,6 +89,12 @@ function renderServer(j) {
     // and a thin one, not just a slower one.
     ['openstreetmap', osm, j.osm.mode === 'local' && j.osm.state !== 'serving' ? 'warn' : ''],
     ['queue', j.queue.running + ' running, ' + j.queue.queued + ' waiting'],
+    // Counts only: who the accounts are is Stripe's dashboard's business.
+    ['accounts', j.accounts.total + ', ' + j.accounts.subscription + ' on the subscription'],
+    // Checkout without the webhook takes payment and never grants anything.
+    ['billing', !j.accounts.billing ? 'off — no Stripe key or price'
+      : j.accounts.webhook ? 'on' : 'on, but no webhook secret — payments will not reach accounts',
+      j.accounts.billing && !j.accounts.webhook ? 'warn' : ''],
   ]);
 }
 

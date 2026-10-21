@@ -111,8 +111,14 @@ function renderAll() {
   renderResult();
 }
 
+// What the server said about this session: its plan, and what that grants.
+let session = null;
+
 /** Take what the server told us about this session. */
 function applySession(j) {
+  session = j;
+  // A free account is told what it gets once, above the bar, with the way to more.
+  $('plan').hidden = !(j.grants && !j.grants.cleanPdf);
   // A session is a thirty-day cookie and the code field is hidden while one is
   // valid, so without a way to put it down a browser that entered the shared
   // code could not be handed the operator's — for a month. The cookie is
@@ -371,42 +377,69 @@ addrInput.addEventListener('blur', () => setTimeout(closeSuggest, 120));
 
 // ---- session -------------------------------------------------------------
 
-/* This is the shared gate: it takes the access code, and the operator code too,
-   since that one grants a superset and an operator should not need two sessions.
-   The operator's own gate is /admin, which asks whatever session is held — this
-   page hides its code field once any session exists, which is what made it
-   impossible to get past holding the shared code. */
+/* Three ways in: an account's email and password, a new free account, or the
+   office's shared code (which also takes the operator code, since that grants a
+   superset and an operator should not need two sessions). The operator's own
+   gate is /admin, which asks whatever session is held — this page hides its
+   form once any session exists. */
+const AUTH_MODES = [
+  // [value, label, button, password placeholder, autocomplete]
+  ['signin', 'sign in',     'SIGN IN', 'password',                       'current-password'],
+  ['signup', 'sign up',     'SIGN UP', 'password, 8 characters or more', 'new-password'],
+  ['code',   'code',        'UNLOCK',  'access code',                    'off'],
+];
+// ?signup is where the pricing page sends someone who has no account yet.
+let authMode = new URLSearchParams(location.search).has('signup') ? 'signup' : 'signin';
+
+function renderAuth() {
+  tokens($('authOpts'), AUTH_MODES, authMode, (v) => { authMode = v; renderAuth(); $('authError').textContent = ''; });
+  const m = AUTH_MODES.find((x) => x[0] === authMode);
+  $('emailBar').hidden = authMode === 'code';
+  $('authGo').textContent = m[2];
+  $('code').placeholder = m[3];
+  $('code').autocomplete = m[4];
+}
+
 function showLogin() {
   f.hidden = true;
   loginForm.hidden = false;
-  $('code').focus();
+  renderAuth();
+  (authMode === 'code' ? $('code') : $('email')).focus();
+}
+
+function enter(j) {
+  loginForm.hidden = true;
+  f.hidden = false;
+  applySession(j);
+  addrInput.focus();
 }
 
 fetch('/api/me').then(async (r) => {
   if (!r.ok) return showLogin();
-  const j = await readJson(r);
-  f.hidden = false;
-  loginForm.hidden = true;
-  applySession(j);
-  addrInput.focus();
+  enter(await readJson(r));
 }).catch(showLogin);
 
 loginForm.addEventListener('submit', async (e) => {
   e.preventDefault();
-  const r = await fetch('/api/login', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ code: $('code').value }),
-  });
-  if (r.ok) {
-    loginForm.hidden = true;
-    f.hidden = false;
-    applySession(await readJson(r));
-    addrInput.focus();
-  } else {
-    const j = await readJson(r);
-    out.hidden = false;
-    errEl.textContent = j.error || 'wrong access code';
+  const authErr = $('authError');
+  authErr.textContent = '';
+  const password = $('code').value;
+  const body = authMode === 'code'
+    ? { code: password }
+    : { email: $('email').value.trim(), password };
+  let r;
+  try {
+    r = await fetch(authMode === 'signup' ? '/api/signup' : '/api/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    authErr.textContent = 'no answer from the server — try again';
+    return;
   }
+  const j = await readJson(r);
+  if (r.ok) return enter(j);
+  authErr.textContent = httpMessage(r, j);
 });
 
 // ---- run -----------------------------------------------------------------
@@ -495,9 +528,19 @@ async function poll(id, misses) {
     if (j.status === 'done') {
       queueEl.textContent = 'done';
       linksEl.innerHTML = '';
-      addLink('open pdf', '/api/jobs/' + id + '/pdf', true);
-      if (j.hasCad) addLink('download cad', '/api/jobs/' + id + '/cad');
-      if (j.hasData) addLink(j.sheet === 'slides' ? 'download json' : 'download csv', '/api/jobs/' + id + '/data');
+      // What this session may take away, as the server described it. The
+      // server decides regardless: a free account asking for the CAD gets 402.
+      const grants = (session && session.grants) || { cleanPdf: false, openData: false };
+      addLink(grants.cleanPdf ? 'open pdf' : 'open pdf · watermarked', '/api/jobs/' + id + '/pdf', true);
+      const dataLabel = j.sheet === 'slides' ? 'download json' : 'download csv';
+      if (grants.openData) {
+        if (j.hasCad) addLink('download cad', '/api/jobs/' + id + '/cad');
+        if (j.hasData) addLink(dataLabel, '/api/jobs/' + id + '/data');
+      } else {
+        // Shown, not hidden: what the subscription would add is the reason to take it.
+        if (j.hasCad) addLink('cad · subscription', '/pricing', false, true);
+        if (j.hasData) addLink(dataLabel.replace('download ', '') + ' · subscription', '/pricing', false, true);
+      }
       go.disabled = false;
       return;
     }
@@ -513,12 +556,13 @@ async function poll(id, misses) {
   }
 }
 
-function addLink(label, href, newTab) {
+function addLink(label, href, newTab, locked) {
   const a = document.createElement('a');
   a.href = href;
   a.textContent = label;
   // The first result is the one to press; the rest sit beside it sharing a rule.
   a.className = linksEl.childNodes.length ? 'btn' : 'btn primary';
+  if (locked) a.classList.add('locked');
   if (newTab) a.target = '_blank';
   linksEl.append(a);
 }
