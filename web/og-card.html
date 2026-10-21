@@ -33,9 +33,10 @@
      sheet is under a pixel per line and reads as grey. */
   .art { height: 425px; overflow: hidden; position: relative;
          border-bottom: 3px solid #000; }
-  /* The sample is 1789x1264. Shown at 1791px wide and offset to the middle of
-     the sheet, which is where the site and its labels are. */
-  .art img { position: absolute; width: 1791px; left: -300px; top: -430px; }
+  /* The context sheet the landing page opens on (1:3000, north up, Flamingo),
+     which is 1193x843. Shown at 1491px wide and offset to the site, the river
+     and the station, clear of the legend on the sheet's right. */
+  .art img { position: absolute; width: 1491px; left: -84px; top: -300px; }
 
   .strip { flex: 1; display: flex; align-items: center;
            justify-content: space-between; padding: 0 40px; gap: 48px; }
@@ -49,7 +50,7 @@
 </head>
 <body>
   <div class="card">
-    <div class="art"><img src="/samples/context.jpg" alt=""></div>
+    <div class="art"><img src="/samples/result-context-3000-north-flamingo.jpg" alt=""></div>
     <div class="strip">
       <div>
         <div class="name">SITE ANALYST</div>
