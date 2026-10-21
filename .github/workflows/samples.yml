@@ -54,6 +54,18 @@ jobs:
       - name: build the image the server runs
         run: docker build --build-arg GIT_SHA="$GITHUB_SHA" -t site-analyst .
 
+      # Overpass is the source most often out of reach. Ask it one small thing,
+      # the way the pipelines do, and stop here if no mirror answers: twenty
+      # minutes of drawing would only end in pictures the check below refuses.
+      - name: reach Overpass
+        if: ${{ !inputs.allow_warnings }}
+        run: |
+          docker run --rm site-analyst npx tsx -e "(async () => {
+            const { overpassQuery } = await import('./src/lib/http.ts');
+            try { await overpassQuery('[out:json][timeout:25];node(1);out;', { rounds: 1 }); console.log('Overpass answers'); }
+            catch (e) { console.log('::error::' + e.message); process.exitCode = 1; }
+          })()"
+
       # The inputs reach the script as arguments, never pasted into it. The keys
       # are optional: a secret that is not set arrives empty and is ignored.
       # All of web is mounted, not only its samples: redrawing the card also
@@ -75,13 +87,15 @@ jobs:
             -v "$PWD/web:/app/web" -v "$PWD/out:/app/out" \
             -e TFNSW_API_KEY -e GOOGLE_MAPS_API_KEY -e GOOGLE_MAPS_SIGNING_SECRET -e MAPILLARY_TOKEN \
             site-analyst \
-            sh -c 'pip3 install --break-system-packages --no-cache-dir --quiet pymupdf pillow && exec npx tsx src/samples.ts "$@"' \
+            sh -c 'pip3 install --break-system-packages --root-user-action=ignore --no-cache-dir --quiet pymupdf pillow && exec npx tsx src/samples.ts "$@"' \
             samples "$ADDRESS" "${only[@]}" 2>&1 | tee samples.log
 
+      # The pipelines' own warnings are a WARN word of their own ("  WARN
+      # street furniture (OSM) failed: …"); a tool's WARNING is not one.
       - name: refuse pictures drawn with a source missing
         if: ${{ !inputs.allow_warnings }}
         run: |
-          if grep -n 'WARN' samples.log > warnings.txt; then
+          if grep -nE '(^|[[:space:]])WARN[[:space:]]' samples.log > warnings.txt; then
             {
               echo '### A data source failed, so nothing was committed'
               echo
