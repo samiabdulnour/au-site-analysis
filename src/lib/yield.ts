@@ -78,14 +78,6 @@ export interface YieldAssumptions {
   basementCoverage: number;
   /** The in-fill affordable housing bonus (Housing SEPP): extra FSR and height, as fractions. */
   affordableBonus: number;
-  /**
-   * Where the floor space ratio stops the building below its height: slim the
-   * plates above the shops and the podium until its floor area reaches the
-   * height (true), or stop it short of the height at full plates (false).
-   */
-  reachHeight: boolean;
-  /** The least a slimmed plate keeps (GBA): under it, the building stops short of the height. */
-  minPlateSqm: number;
 }
 
 // The parking rates of the Guide to Traffic Generating Developments (RTA
@@ -118,7 +110,6 @@ export const DEFAULT_ASSUMPTIONS: YieldAssumptions = {
   motorcycleEvery: 50,
   basementSqmPerSpace: 30, basementCoverage: 0.9,
   affordableBonus: 0.3,
-  reachHeight: true, minPlateSqm: 250,
 };
 
 /** What the zone builds: apartments, shops under apartments, offices, or none of these. */
@@ -198,8 +189,6 @@ export interface Tier {
   plate: XY[][];
   /** The plate's limit, when one applies: 'depth' (ADG 2E) or 'tower' (the plate size). */
   held?: 'depth' | 'tower';
-  /** Slimmed to reach the height under the floor space ratio: the share of its plate it keeps. */
-  slim?: number;
 }
 
 export interface YieldInput {
@@ -462,11 +451,8 @@ export function computeYield(input: YieldInput): YieldResult {
   // The lot's own area on the grid, so a plate is scaled to the cadastral area rather than the grid's approximation of it.
   const scale = A / Math.max(cellA, count(g.inside) * cellA);
   const kinds = edgeKinds(ring, ring.map((_, i) => !!input.fronts[i]));
-  const slacks: Float32Array[] = [], slimmable: boolean[] = [];
   const tiers: Tier[] = tiersFor(arch, storeysByHeight, a).map(({ podium: isPodium, ...t }) => {
     const slack = slackOf(g, kinds.map((kd) => (kd === 'front' ? t.front : kd === 'rear' ? t.rear : t.side)));
-    slacks.push(slack);
-    slimmable.push(!isPodium && t.use !== 'retail');
     const env = cellsWhere(slack, () => true);
     const envelopeSqm = count(env) * cellA * scale;
     let plateMask = env, held: Tier['held'];
@@ -496,57 +482,15 @@ export function computeYield(input: YieldInput): YieldResult {
   // Storey by storey, until the height runs out or the floor space ratio does.
   const eff = (u: Use) => (u === 'residential' ? a.residentialEfficiency : u === 'retail' ? a.retailEfficiency : a.commercialEfficiency);
   const cap = input.fsr ? input.fsr * A : Infinity;
-  const build = () => {
-    const out: YieldResult['floors'] = [];
-    let full = 0, built = 0;
-    for (const t of tiers) for (let s = t.from; s <= t.to; s++) {
-      const whole = t.plateSqm * eff(t.use);
-      full += whole;
-      if (built >= cap - 1e-6 || t.plateSqm < 1) continue;
-      const take = Math.min(whole, cap - built);
-      out.push({ storey: s, use: t.use, gba: t.plateSqm * (take / whole), gfa: take });
-      built += take;
-    }
-    return { floors: out, full, built };
-  };
-  let { floors, full: capacity, built: total } = build();
-
-  // Where the floor space ratio stops the building below its height, the
-  // plates above the shops and the podium are slimmed by one share until the
-  // floor area the ratio allows reaches the top storey the height holds — the
-  // same floor area, taller and slimmer, a perimeter block's wings shallower
-  // round a wider courtyard, a block or a tower set further in. No plate is
-  // slimmed under minPlateSqm; where it would have to be, the building stops
-  // short of the height at that plate.
-  if (a.reachHeight && Number.isFinite(cap) && capacity > cap + 1e-6 && floors.length < storeysByHeight) {
-    const area = (t: Tier) => t.plateSqm * eff(t.use) * Math.max(0, t.to - t.from + 1);
-    const fixed = tiers.reduce((sum, t, i) => sum + (slimmable[i] ? 0 : area(t)), 0);
-    const flex = tiers.reduce((sum, t, i) => sum + (slimmable[i] ? area(t) : 0), 0);
-    if (flex > 0 && cap > fixed) {
-      const share = (cap - fixed) / flex;
-      tiers.forEach((t, i) => {
-        if (!slimmable[i] || t.plateSqm < 1) return;
-        const target = Math.max(t.plateSqm * share, Math.min(t.plateSqm, a.minPlateSqm));
-        // A perimeter round a courtyard keeps the cells within a depth of the
-        // setback line; anything else keeps the cells at least so far in.
-        const keep = t.held === 'depth' ? (d: number) => (s: number) => s <= d : (d: number) => (s: number) => s >= d;
-        const areaAt = (d: number) => count(cellsWhere(slacks[i], keep(d))) * cellA * scale;
-        let deepest = 0;
-        for (const v of slacks[i]) if (v > deepest) deepest = v;
-        let lo = 0, hi = deepest;
-        for (let it = 0; it < 28; it++) {
-          const mid = (lo + hi) / 2;
-          // Depth grows the perimeter; a set-in shrinks the block.
-          if ((areaAt(mid) > target) === (t.held === 'depth')) hi = mid; else lo = mid;
-        }
-        // The side of the search at or over the target, so the ratio, not the grid, trims the top storey.
-        const mask = cellsWhere(slacks[i], keep(t.held === 'depth' ? hi : lo));
-        const plateSqm = count(mask) * cellA * scale;
-        if (plateSqm >= t.plateSqm - 1e-6 || plateSqm < 1) return;
-        tiers[i] = { ...t, plateSqm, plate: outline(g, mask), slim: plateSqm / t.plateSqm };
-      });
-      ({ floors, built: total } = build());
-    }
+  const floors: YieldResult['floors'] = [];
+  let capacity = 0, total = 0;
+  for (const t of tiers) for (let s = t.from; s <= t.to; s++) {
+    const full = t.plateSqm * eff(t.use);
+    capacity += full;
+    if (total >= cap - 1e-6 || t.plateSqm < 1) continue;
+    const take = Math.min(full, cap - total);
+    floors.push({ storey: s, use: t.use, gba: t.plateSqm * (take / full), gfa: take });
+    total += take;
   }
   const storeys = floors.length;
   const gfaByUse: Record<Use, number> = { retail: 0, residential: 0, commercial: 0 };
