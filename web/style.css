@@ -145,19 +145,25 @@ a { color: inherit; }
 }
 #note button:hover { color: var(--ink); }
 
-/* ---- bottom actions ----------------------------------------------------- */
-/* From the left: a finished sheet's links when there are any, then HOW IT
-   WORKS, on the frame's left edge whenever there is nothing before it. The
-   session's own controls, SIGN OUT and the operator's STATUS, sit at the far
-   end. Spreading the row instead put HOW IT WORKS wherever the count of its
-   neighbours left it — in the middle, once SIGN OUT joined the row. */
-/* It wraps: a free account's sheet adds UNLOCK THIS SITE and the locked files
-   to the row, which on one line pushed HOW IT WORKS past the page's edge. */
-.actions { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 1rem; margin-top: .9rem; }
-#links { display: flex; }
+/* ---- top nav ------------------------------------------------------------ */
+/* HOW IT WORKS and PLANS beside the title, then the session's own controls,
+   SIGN OUT and the operator's STATUS, once there is a session. */
+/* A little tighter than a lone button, so all four fit beside the title. */
+.nav { display: flex; }
+.nav .btn { padding-left: 1rem; padding-right: 1rem; }
+
+/* ---- a finished sheet's links ------------------------------------------- */
+/* Under the progress box: OPEN PDF to press, then DOWNLOAD PDF and the files.
+   It wraps, since a free account's sheet adds UNLOCK THIS SITE and the locked
+   files to the row, which on one line ran past the page's edge. */
+/* While a sheet is being drawn the row keeps a button's height, empty: GENERATE
+   scrolls it into view (app.js, revealOutput), so the links land in sight. */
+.actions { margin-top: .9rem; min-height: calc(1.5em + .9rem + 2px); }
+#out[hidden] + .actions { display: none; }
+#links { display: flex; flex-wrap: wrap; }
 #links:empty { display: none; }
-#signOut, #statusLink { margin-left: auto; }
-#signOut + #statusLink { margin-left: 0; }
+/* the links share each line between them, so a wrapped row ends square */
+#links .btn { flex: 1 1 auto; text-align: center; }
 .btn {
   display: inline-block; border: 1px solid var(--line); padding: .45rem 1.4rem;
   /* font first, then the weight: set at all because this class lands on a
@@ -168,7 +174,12 @@ a { color: inherit; }
   text-decoration: none; color: var(--ink); background: transparent;
   white-space: nowrap;
 }
-#links .btn + .btn { border-left: 0; }
+/* A row of boxes sharing their rules: each box steps back over the rule of
+   the one before it, and of the line above it once the row wraps, so no rule
+   is drawn twice whichever box a line starts with. The row's padding gives
+   back the pixel the first box steps out of it. */
+.nav, #links { padding: 1px 0 0 1px; }
+.nav .btn, #links .btn { margin: -1px 0 0 -1px; }
 .btn:hover { background: rgba(0,0,0,.05); }
 .btn.primary { background: var(--hi); color: var(--on-hi); }
 .btn.primary:hover { background: var(--hi); filter: brightness(.95); }
@@ -197,10 +208,6 @@ footer a { color: inherit; }
   .rowhead, .cell, .cell-empty { padding: .3rem .6rem; }
   /* the label column is 30% here; the word gets the cell's tighter spacing */
   .go { flex-basis: 17.5%; padding: .45rem .3rem; letter-spacing: 0; }
-  .actions { flex-direction: column; align-items: stretch; }
-  .actions .btn { text-align: center; }
-  /* stacked, every button takes the full width; an auto margin would not */
-  #signOut, #statusLink { margin-left: 0; }
 }
 
 /* On a phone the label column would leave the options too narrow to hold
@@ -220,7 +227,9 @@ footer a { color: inherit; }
 /* ---- about page --------------------------------------------------------- */
 /* The same hairline table as the options, but the second column carries
    sentences, so it wraps and the row grows to fit. */
-.masthead { display: flex; justify-content: space-between; align-items: flex-start;
+/* It wraps: beside the landing page's title the nav can be wider than what is
+   left of the page (SIGN OUT and STATUS join it), and goes under it then. */
+.masthead { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start;
             gap: 1rem; margin-bottom: 2.6rem; }
 .masthead .name { margin-bottom: 0; }
 .name a { text-decoration: none; }
@@ -295,6 +304,9 @@ h2 { font-size: 1em; font-weight: 400; text-transform: uppercase;
      page wider than the screen; below the title it simply fits. */
   .masthead { flex-direction: column; align-items: stretch; }
   .masthead .btn { text-align: center; }
+  /* the nav's boxes share the width between them, wrapping if they must */
+  .nav { flex-wrap: wrap; }
+  .nav .btn { flex: 1 1 auto; }
 }
 
 /* Narrowest phones: take the room for the options out of the margins rather

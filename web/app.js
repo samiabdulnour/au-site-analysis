@@ -120,8 +120,8 @@ function applySession(j) {
   // code could not be handed the operator's — for a month. The cookie is
   // HttpOnly; only the server can clear it.
   if (j.required) {
-    const actions = document.querySelector('.actions');
-    if (actions && !document.getElementById('signOut')) {
+    const nav = $('nav');
+    if (nav && !document.getElementById('signOut')) {
       const b = document.createElement('button');
       b.id = 'signOut';
       b.type = 'button';
@@ -132,20 +132,20 @@ function applySession(j) {
         try { await fetch('/api/logout', { method: 'POST' }); } catch { /* offline: ask anyway */ }
         location.replace('/');
       });
-      actions.append(b);
+      nav.append(b);
     }
   }
   if (j.operator) {
     // The status view is the operator's, so the way to it only exists once the
     // operator code has been given. /api/status refuses anyone else regardless.
-    const actions = document.querySelector('.actions');
-    if (actions && !document.getElementById('statusLink')) {
+    const nav = $('nav');
+    if (nav && !document.getElementById('statusLink')) {
       const a = document.createElement('a');
       a.id = 'statusLink';
       a.className = 'btn';
       a.href = '/status';
       a.textContent = 'STATUS';
-      actions.append(a);
+      nav.append(a);
     }
   }
   renderAll();
@@ -295,6 +295,8 @@ function httpMessage(r, j) {
 
 const addrInput = $('address');
 const suggestBox = $('suggest');
+// The field suggests the address the expected-result pictures were drawn for.
+addrInput.placeholder = EXAMPLE_ADDRESS;
 let suggestTimer = null, activeIdx = -1, lastQuery = '';
 
 function closeSuggest() { suggestBox.classList.remove('open'); activeIdx = -1; }
@@ -334,7 +336,7 @@ addrInput.addEventListener('input', () => {
   // the house number, so a street-first query cannot be answered at all —
   // matching mid-string takes the service half a minute. Say what to type
   // instead of leaving the field looking broken.
-  if (!/^\d/.test(q)) return showNote('start with the house number — e.g. 212 Bondi Road, Bondi');
+  if (!/^\d/.test(q)) return showNote('start with the house number — e.g. ' + EXAMPLE_ADDRESS);
   suggestTimer = setTimeout(async () => {
     if (q === lastQuery) return;
     lastQuery = q;
@@ -542,15 +544,18 @@ async function poll(id, misses) {
         returnedFromPayment = false;
       }
       if (j.unlock) addButton('unlock this site · ' + j.unlock, () => unlock(id));
-      addLink(grants.cleanPdf ? 'open pdf' : 'open pdf · watermarked', '/api/jobs/' + id + '/pdf', true);
+      // The same PDF twice: in the browser's viewer, or saved straight to disk.
+      // Whether it is watermarked is said once, on the first.
+      addLink(grants.cleanPdf ? 'open pdf' : 'open pdf · watermarked', '/api/jobs/' + id + '/pdf', { newTab: true });
+      addLink('download pdf', '/api/jobs/' + id + '/pdf?download', { download: true });
       const dataLabel = j.sheet === 'slides' ? 'download json' : 'download csv';
       if (grants.openData) {
         if (j.hasCad) addLink('download cad', '/api/jobs/' + id + '/cad');
         if (j.hasData) addLink(dataLabel, '/api/jobs/' + id + '/data');
       } else {
         // Shown, not hidden: what paying adds is the reason to pay.
-        if (j.hasCad) addLink('cad · locked', '/pricing', false, true);
-        if (j.hasData) addLink(dataLabel.replace('download ', '') + ' · locked', '/pricing', false, true);
+        if (j.hasCad) addLink('cad · locked', '/pricing', { locked: true });
+        if (j.hasData) addLink(dataLabel.replace('download ', '') + ' · locked', '/pricing', { locked: true });
       }
       go.disabled = false;
       return;
@@ -567,7 +572,7 @@ async function poll(id, misses) {
   }
 }
 
-function addLink(label, href, newTab, locked) {
+function addLink(label, href, { newTab, locked, download } = {}) {
   const a = document.createElement('a');
   a.href = href;
   a.textContent = label;
@@ -575,6 +580,9 @@ function addLink(label, href, newTab, locked) {
   a.className = linksEl.childNodes.length ? 'btn' : 'btn primary';
   if (locked) a.classList.add('locked');
   if (newTab) a.target = '_blank';
+  // Saved rather than followed, so an error in place of the file never takes
+  // the page, and the job on it, away. The server's filename wins over this one.
+  if (download) a.download = '';
   linksEl.append(a);
 }
 

@@ -111,7 +111,8 @@ async function holds(b: ReturnType<typeof browser>, id = jobId) {
   const cad = (await b(`/api/jobs/${id}/cad`)).status;
   const data = (await b(`/api/jobs/${id}/data`)).status;
   return { plan: me.plan, pdfStatus: pdfRes.status, cleanPdf: pdf.equals(clean), pdf, cad, data,
-           cache: pdfRes.headers.get('cache-control'), grants: job.grants, me };
+           cache: pdfRes.headers.get('cache-control'), disposition: pdfRes.headers.get('content-disposition'),
+           grants: job.grants, me };
 }
 
 try {
@@ -152,6 +153,13 @@ try {
   check('downloads are not cached in between', f1.cache === 'private, no-store', String(f1.cache));
   const kept = readFileSync(join(jobDir, 'CONTEXT_ANALYSIS.pdf'));
   check('the sheet on disk stays clean', kept.equals(clean));
+  // OPEN PDF shows it in the browser; DOWNLOAD PDF asks for the same file to be saved.
+  check('the PDF opens in the browser', f1.disposition?.startsWith('inline;') === true, String(f1.disposition));
+  const saved = await free(`/api/jobs/${jobId}/pdf?download`);
+  const savedAs = saved.headers.get('content-disposition');
+  check('?download saves it, stamped all the same',
+    saved.status === 200 && savedAs?.startsWith('attachment;') === true && !Buffer.from(await saved.arrayBuffer()).equals(clean),
+    `${saved.status} ${savedAs}`);
 
   // ---- signing in and out ---------------------------------------------------
   const again = browser();
