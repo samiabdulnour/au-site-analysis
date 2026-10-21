@@ -111,12 +111,8 @@ function renderAll() {
   renderResult();
 }
 
-// What the server said about this session: its plan, and what that grants.
-let session = null;
-
 /** Take what the server told us about this session. */
 function applySession(j) {
-  session = j;
   // A free account is told what it gets once, above the bar, with the way to more.
   $('plan').hidden = !(j.grants && !j.grants.cleanPdf);
   // A session is a thirty-day cookie and the code field is hidden while one is
@@ -412,6 +408,7 @@ function enter(j) {
   f.hidden = false;
   applySession(j);
   addrInput.focus();
+  resumeJob();
 }
 
 fetch('/api/me').then(async (r) => {
@@ -528,18 +525,32 @@ async function poll(id, misses) {
     if (j.status === 'done') {
       queueEl.textContent = 'done';
       linksEl.innerHTML = '';
-      // What this session may take away, as the server described it. The
-      // server decides regardless: a free account asking for the CAD gets 402.
-      const grants = (session && session.grants) || { cleanPdf: false, openData: false };
+      // What this viewer may take away of this drawing, as the server says:
+      // the plan's, or everything once its site is bought. The server decides
+      // regardless — a free account asking for the CAD gets 402.
+      const grants = j.grants || { cleanPdf: false, openData: false };
+      // Back from paying for this site: Stripe tells the server by webhook,
+      // which can land a few seconds after the visitor does.
+      if (awaitingPayment > 0 && !grants.cleanPdf) {
+        awaitingPayment -= 1;
+        noteEl.textContent = 'payment received — unlocking the site…';
+        return setTimeout(() => poll(id, 0), 2000);
+      }
+      if (returnedFromPayment) {
+        noteEl.textContent = grants.cleanPdf ? 'site unlocked'
+          : 'payment not confirmed yet — reload this page in a minute';
+        returnedFromPayment = false;
+      }
+      if (j.unlock) addButton('unlock this site · ' + j.unlock, () => unlock(id));
       addLink(grants.cleanPdf ? 'open pdf' : 'open pdf · watermarked', '/api/jobs/' + id + '/pdf', true);
       const dataLabel = j.sheet === 'slides' ? 'download json' : 'download csv';
       if (grants.openData) {
         if (j.hasCad) addLink('download cad', '/api/jobs/' + id + '/cad');
         if (j.hasData) addLink(dataLabel, '/api/jobs/' + id + '/data');
       } else {
-        // Shown, not hidden: what the subscription would add is the reason to take it.
-        if (j.hasCad) addLink('cad · subscription', '/pricing', false, true);
-        if (j.hasData) addLink(dataLabel.replace('download ', '') + ' · subscription', '/pricing', false, true);
+        // Shown, not hidden: what paying adds is the reason to pay.
+        if (j.hasCad) addLink('cad · locked', '/pricing', false, true);
+        if (j.hasData) addLink(dataLabel.replace('download ', '') + ' · locked', '/pricing', false, true);
       }
       go.disabled = false;
       return;
@@ -565,6 +576,48 @@ function addLink(label, href, newTab, locked) {
   if (locked) a.classList.add('locked');
   if (newTab) a.target = '_blank';
   linksEl.append(a);
+}
+
+function addButton(label, onClick) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = linksEl.childNodes.length ? 'btn' : 'btn primary';
+  b.textContent = label;
+  b.addEventListener('click', onClick);
+  linksEl.append(b);
+}
+
+// Polls left to wait for a site's payment to arrive, after Stripe sends the
+// visitor back (?paid=1).
+let awaitingPayment = 0, returnedFromPayment = false;
+
+/** Off to Stripe to pay for this drawing's site; it sends the visitor back here. */
+async function unlock(id) {
+  errEl.textContent = '';
+  try {
+    const r = await fetch('/api/billing/unlock', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ job: id }),
+    });
+    const j = await readJson(r);
+    if (r.ok && j.url) return location.assign(j.url);
+    errEl.textContent = httpMessage(r, j);
+  } catch {
+    errEl.textContent = 'no answer from the server — try again';
+  }
+}
+
+/** Back from Stripe (or from a link to a drawing): show that drawing again. */
+function resumeJob() {
+  const params = new URLSearchParams(location.search);
+  const id = params.get('job');
+  if (!id || !/^[0-9a-f-]{36}$/.test(id)) return;
+  if (params.has('paid')) { awaitingPayment = 15; returnedFromPayment = true; }
+  // Once, not on every reload.
+  history.replaceState(null, '', '/');
+  out.hidden = false;
+  logEl.textContent = '';
+  poll(id);
 }
 
 function fail(msg) {

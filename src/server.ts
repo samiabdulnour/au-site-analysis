@@ -29,13 +29,15 @@ import { renderSlides, slidesFacts, PANEL_W, PANEL_H, DA_PANEL_H, SLIDE_W, SLIDE
 import { withTemplate, themeFor, templateFor, type SheetKind } from './render/template.js';
 import { htmlToPdf, printSlides } from './render/pdf.js';
 import { stampPdf, watermarkId } from './render/watermark.js';
-import { GRANTS, PRICE_LABEL, planOf, paidFor, type Plan } from './plans.js';
+import { GRANTS, PRICE_LABEL, SITE_PRICE_LABEL, planOf, paidFor, siteKey, type Plan, type Grants } from './plans.js';
 import {
   initAccounts, accountFromCookie, accountCounts, createAccount, signIn, sessionCookieValue,
   normaliseEmail, validEmail, PASSWORD_MIN, ACCOUNT_COOKIE, SESSION_DAYS, type Account,
+  unlockedSites, siteUnlocked,
 } from './accounts.js';
 import {
-  billingEnabled, webhookEnabled, checkoutUrl, portalUrl, verifySignature, handleEvent, checkBilling, webhookSeen,
+  billingEnabled, subscriptionsOpen, sitesOpen, webhookEnabled, checkoutUrl, siteCheckoutUrl, portalUrl,
+  verifySignature, handleEvent, checkBilling, webhookSeen,
 } from './billing.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -216,9 +218,8 @@ const JOB_INDEX = join(WEB_OUT, 'jobs.json');
  * which is what most repeats are.
  */
 function jobKey(r: Pick<Job, 'address' | 'sheet' | 'scale' | 'rotate' | 'template'>): string {
-  const addr = r.address.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
   return createHash('sha256')
-    .update([addr, r.sheet, r.scale, r.rotate, r.template].join('|'))
+    .update([siteKey(r.address), r.sheet, r.scale, r.rotate, r.template].join('|'))
     .digest('hex').slice(0, 32);
 }
 
@@ -754,9 +755,19 @@ function describe(v: Viewer) {
       // Stripe's portal needs a customer, which an account has once it has
       // been through Checkout.
       portal: billingEnabled && Boolean(a.stripeCustomerId),
+      sites: unlockedSites(a).map((s) => ({ address: s.address, until: s.until })),
     } : null,
-    billing: billingEnabled,
+    // Which ways to pay are open here.
+    billing: { subscription: subscriptionsOpen, site: sitesOpen },
   };
+}
+
+/**
+ * What this viewer may take away of this job: the plan's grants, or the
+ * subscription's when the account has bought the job's site.
+ */
+function grantsFor(v: Viewer, job: Job): Grants {
+  return v.account && siteUnlocked(v.account, job.address) ? GRANTS.subscription : GRANTS[v.plan];
 }
 
 function cookie(req: IncomingMessage, name: string, value: string, maxAgeSeconds: number): string {
@@ -842,7 +853,7 @@ function watermarked(job: Job): Promise<string> {
 
 /** The PDF this viewer is given: the sheet as drawn, or the stamped copy. Never the first on a failure of the second. */
 const pdfFor = (job: Job, v: Viewer) =>
-  GRANTS[v.plan].cleanPdf ? Promise.resolve(job.pdfPath!) : watermarked(job);
+  grantsFor(v, job).cleanPdf ? Promise.resolve(job.pdfPath!) : watermarked(job);
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', 'http://localhost');
@@ -883,10 +894,11 @@ const server = createServer(async (req, res) => {
     readFile(join(ROOT, 'web', page[0]), (err, data) => {
       if (err) { res.writeHead(500); res.end(`missing web/${page[0]}`); return; }
       // The link-preview tags need absolute URLs, so the pages write %ORIGIN%
-      // and it is filled in with whatever host they were asked for. %PRICE% is
-      // the pricing page's, from PRICE_LABEL, so a price change is not a deploy.
+      // and it is filled in with whatever host they were asked for. %PRICE% and
+      // %SITE_PRICE% are the pricing page's, from PRICE_LABEL and
+      // SITE_PRICE_LABEL, so a price change is not a deploy.
       const body = page[1].startsWith('text/html')
-        ? data.toString('utf8').replaceAll('%ORIGIN%', siteBase()).replaceAll('%PRICE%', escapeHtml(PRICE_LABEL))
+        ? data.toString('utf8').replaceAll('%ORIGIN%', siteBase()).replaceAll('%PRICE%', escapeHtml(PRICE_LABEL)).replaceAll('%SITE_PRICE%', escapeHtml(SITE_PRICE_LABEL))
         : data;
       res.writeHead(200, { 'Content-Type': page[1] });
       res.end(body);
@@ -1156,13 +1168,34 @@ Sitemap: ${siteBase()}/sitemap.xml
   if (req.method === 'POST' && url.pathname === '/api/billing/checkout') {
     const v = viewerOf(req);
     if (!v.account) return json(res, 400, { error: 'A subscription belongs to an account. Sign in with your email first.' });
-    if (!billingEnabled) return json(res, 503, { error: 'Subscriptions are not open yet.' });
+    if (!subscriptionsOpen) return json(res, 503, { error: 'Subscriptions are not open yet.' });
     if (paidFor(v.account.subscriptionStatus)) return json(res, 409, { error: 'This account is already subscribed.' });
     if (limited(`billing:${ip}`, 20, 3600_000)) return json(res, 429, { error: 'Too many attempts. Try later.' });
     try {
       return json(res, 200, { url: await checkoutUrl(v.account, siteBase()) });
     } catch (e: any) {
       console.log(`billing: checkout failed — ${e?.message ?? e}`);
+      return json(res, 502, { error: 'Could not reach the payment page. Try again shortly.' });
+    }
+  }
+
+  // One site, bought from the drawing the visitor is looking at: the job names
+  // the address, as it was drawn, so what is paid for is a site this server
+  // has actually drawn rather than whatever was typed into a request.
+  if (req.method === 'POST' && url.pathname === '/api/billing/unlock') {
+    const v = viewerOf(req);
+    if (!v.account) return json(res, 400, { error: 'A site is bought by an account. Sign in with your email first.' });
+    if (!sitesOpen) return json(res, 503, { error: 'Sites cannot be bought yet.' });
+    let jobId = '';
+    try { jobId = String(JSON.parse((await readBody(req)) || '{}').job ?? ''); } catch { /* refused below */ }
+    const job = jobs.get(jobId);
+    if (!job) return json(res, 404, { error: 'That drawing is gone. Generate it again, then unlock it.' });
+    if (grantsFor(v, job).cleanPdf) return json(res, 409, { error: 'This site is already unlocked for you.' });
+    if (limited(`billing:${ip}`, 20, 3600_000)) return json(res, 429, { error: 'Too many attempts. Try later.' });
+    try {
+      return json(res, 200, { url: await siteCheckoutUrl(v.account, job.address, job.id, siteBase()) });
+    } catch (e: any) {
+      console.log(`billing: site checkout failed — ${e?.message ?? e}`);
       return json(res, 502, { error: 'Could not reach the payment page. Try again shortly.' });
     }
   }
@@ -1369,9 +1402,11 @@ Sitemap: ${siteBase()}/sitemap.xml
       // The same PDFs as the single download: stamped for a free account.
       const files: { path: string; name: string }[] = [];
       for (const f of found) files.push({ path: await pdfFor(f.job, v), name: f.name });
-      // One zip per side, so a free visitor's request can never be answered
-      // with the clean zip a subscriber's request has just written.
-      const zipPath = join(WEB_OUT, `${batch.id}${GRANTS[v.plan].cleanPdf ? '' : '.wm'}.zip`);
+      // A zip of its own wherever any sheet in it is stamped — per account, since
+      // which sites an account has bought decides which — so no request is
+      // answered with a zip written for someone entitled to more.
+      const clean = found.every((f) => grantsFor(v, f.job).cleanPdf);
+      const zipPath = join(WEB_OUT, `${batch.id}${clean ? '' : `.wm-${v.account?.id ?? 'code'}`}.zip`);
       // python3 is already a dependency (the DXF export needs it) and this is
       // the same zipfile the CAD package is built with. execFile, not
       // spawnSync: the latter blocks the event loop, which on a server that
@@ -1406,11 +1441,17 @@ Sitemap: ${siteBase()}/sitemap.xml
   if (req.method === 'GET' && jobMatch) {
     const job = jobs.get(jobMatch[1]);
     if (!job) return json(res, 404, { error: 'Unknown job.' });
+    const v = viewerOf(req);
+    const grants = grantsFor(v, job);
     return json(res, 200, {
       id: job.id, address: job.address, status: job.status,
       log: job.log.slice(-12), error: job.error, hasCad: Boolean(job.cadPath),
       hasData: Boolean(job.dataPath), sheet: job.sheet,
       queuePosition: queuePosition(job), etaMinutes: etaMinutes(job),
+      // What this viewer may take away of it, and, where it can be bought on
+      // its own, what that costs: the page offers what the server will serve.
+      grants,
+      unlock: sitesOpen && v.account && !grants.cleanPdf ? SITE_PRICE_LABEL : null,
     });
   }
 
@@ -1441,15 +1482,16 @@ Sitemap: ${siteBase()}/sitemap.xml
     return;
   }
 
-  // The open formats are the subscription's. 402 rather than 403: nothing is
-  // wrong with who is asking, only with what they have paid for.
-  const OPEN_DATA_ONLY = { error: 'The CAD and data files come with the subscription.', upgrade: '/pricing' };
+  // The open formats are paid for, by the site or by the subscription. 402
+  // rather than 403: nothing is wrong with who is asking, only with what they
+  // have paid for.
+  const OPEN_DATA_ONLY = { error: 'The CAD and data files come with an unlocked site or the subscription.', upgrade: '/pricing' };
 
   const cadMatch = url.pathname.match(/^\/api\/jobs\/([0-9a-f-]{36})\/cad$/);
   if (req.method === 'GET' && cadMatch) {
     const job = jobs.get(cadMatch[1]);
     if (!job?.cadPath) return json(res, 404, { error: 'Not ready.' });
-    if (!GRANTS[viewerOf(req).plan].openData) return json(res, 402, OPEN_DATA_ONLY);
+    if (!grantsFor(viewerOf(req), job).openData) return json(res, 402, OPEN_DATA_ONLY);
     readFile(job.cadPath, (err, data) => {
       if (err) return json(res, 500, { error: 'CAD package unreadable.' });
       const slug = job.address.replace(/[^a-z0-9]+/gi, '_').toUpperCase();
@@ -1468,7 +1510,7 @@ Sitemap: ${siteBase()}/sitemap.xml
   if (req.method === 'GET' && dataMatch) {
     const job = jobs.get(dataMatch[1]);
     if (!job?.dataPath) return json(res, 404, { error: 'Not ready.' });
-    if (!GRANTS[viewerOf(req).plan].openData) return json(res, 402, OPEN_DATA_ONLY);
+    if (!grantsFor(viewerOf(req), job).openData) return json(res, 402, OPEN_DATA_ONLY);
     readFile(job.dataPath, (err, data) => {
       if (err) return json(res, 500, { error: 'Data file unreadable.' });
       const slug = job.address.replace(/[^a-z0-9]+/gi, '_').toUpperCase();
@@ -1497,7 +1539,7 @@ void cleanupOldJobs();
 
 const PORT = Number(process.env.PORT ?? 3000);
 server.listen(PORT, () => console.log(`site analyst web UI on http://localhost:${PORT}${NO_AUTH ? ' (NO AUTH)' : ''}` +
-  ` — subscriptions ${billingEnabled ? 'on' : 'off (no STRIPE_SECRET_KEY / STRIPE_PRICE_ID)'}`));
+  ` — subscriptions ${subscriptionsOpen ? 'on' : 'off'}, single sites ${sitesOpen ? 'on' : 'off'}`));
 
 // What Stripe says about the settings, in the container's log at every start,
 // so a wrong key shows in `docker logs` as well as on /status.

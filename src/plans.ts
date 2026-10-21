@@ -10,6 +10,11 @@
 // for a free account is reused, clean, by a subscriber who asks for the same
 // address, and the reverse — nothing is ever drawn twice to serve two plans.
 //
+// Between the two, one site bought on its own: what the subscription gives, for
+// that one address, for UNLOCK_DAYS — every drawing of it, any scale or style,
+// clean, with its files. A site is needed once per project, so most offices
+// would rather pay for the site than subscribe.
+//
 // Every route that decides what a visitor may download reads this table, so a
 // new privilege is a new column here rather than a new condition scattered
 // through the server.
@@ -52,3 +57,15 @@ export function planOf(a: { email: string; subscriptionStatus?: string }): Plan 
 
 /** What the pricing page says the subscription costs, e.g. "A$49 a month". */
 export const PRICE_LABEL = process.env.PRICE_LABEL?.trim() || 'monthly';
+
+/** How long one site bought on its own stays unlocked. */
+export const UNLOCK_DAYS = 30;
+/** What the pricing page and the unlock button say one site costs, e.g. "A$79". */
+export const SITE_PRICE_LABEL = process.env.SITE_PRICE_LABEL?.trim() || 'per site';
+
+/**
+ * The address as a site is known by: case, punctuation and spacing do not make
+ * a different site. Two genuinely different spellings still do, the same as
+ * for reusing a drawn sheet — the type-ahead hands back one canonical string.
+ */
+export const siteKey = (address: string) => address.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();

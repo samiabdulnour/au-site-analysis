@@ -78,12 +78,13 @@ jobs:
                     deploy/update.sh | sed 's# >/dev/null##')
           { echo 'docker() { printf "%s\n" "$@"; }'; printf '%s\n' "$block"; } > /tmp/dr.sh
           argv=$(ACCESS_CODE=pub ADMIN_CODE=ops TFNSW_API_KEY=tf \
-                 STRIPE_SECRET_KEY=sk STRIPE_PRICE_ID=price STRIPE_WEBHOOK_SECRET=wh \
+                 STRIPE_SECRET_KEY=sk STRIPE_PRICE_ID=price STRIPE_SITE_PRICE_ID=site \
+                 STRIPE_WEBHOOK_SECRET=wh \
                  NET=net OUT=/tmp/out bash /tmp/dr.sh)
           printf '%s\n' "$argv" | sed 's/^/    /'
           fail=0
           for want in ACCESS_CODE=pub ADMIN_CODE=ops STRIPE_SECRET_KEY=sk \
-                      STRIPE_PRICE_ID=price STRIPE_WEBHOOK_SECRET=wh; do
+                      STRIPE_PRICE_ID=price STRIPE_SITE_PRICE_ID=site STRIPE_WEBHOOK_SECRET=wh; do
             printf '%s\n' "$argv" | grep -qx -- "$want" || { echo "  missing $want"; fail=1; }
           done
           if [ "$(printf '%s\n' "$argv" | tail -1)" != "site-analyst" ]; then
@@ -453,7 +454,7 @@ jobs:
 
           none='{"authed":false,"required":true}|403'
           # Both codes carry the subscription; neither is an account.
-          tail='"plan":"subscription","grants":{"cleanPdf":true,"openData":true},"account":null,"billing":false}'
+          tail='"plan":"subscription","grants":{"cleanPdf":true,"openData":true},"account":null,"billing":{"subscription":false,"site":false}}'
           user="{\"authed\":true,\"operator\":false,\"required\":true,$tail|403"
           oper="{\"authed\":true,\"operator\":true,\"required\":true,$tail|200"
 

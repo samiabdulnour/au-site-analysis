@@ -38,10 +38,18 @@ const clean = Buffer.from(await doc.save());
 writeFileSync(join(jobDir, 'CONTEXT_ANALYSIS.pdf'), clean);
 writeFileSync(join(jobDir, 'CONTEXT_ANALYSIS_CAD.zip'), 'not really a zip');
 writeFileSync(join(jobDir, 'DATA.csv'), 'a,b\n1,2\n');
+// A second sheet at another address: unlocking one site must leave this one stamped.
+const otherId = randomUUID();
+mkdirSync(join(webOut, otherId), { recursive: true });
+writeFileSync(join(webOut, otherId, 'SITE_ANALYSIS.pdf'), clean);
 writeFileSync(join(webOut, 'jobs.json'), JSON.stringify([{
   id: jobId, address: '1 Test Street, Sydney NSW 2000', sheet: 'context', scale: 3000,
   rotate: 'north', template: 'flamingo', status: 'done', log: [], createdAt: Date.now(),
   pdf: 'CONTEXT_ANALYSIS.pdf', cad: 'CONTEXT_ANALYSIS_CAD.zip', data: 'DATA.csv',
+}, {
+  id: otherId, address: '9 Other Road, Sydney NSW 2000', sheet: 'site', scale: 0,
+  rotate: 'north', template: 'flamingo', status: 'done', log: [], createdAt: Date.now(),
+  pdf: 'SITE_ANALYSIS.pdf',
 }]));
 
 // ---- the server -------------------------------------------------------------
@@ -94,15 +102,16 @@ function webhook(event: unknown, secret = WEBHOOK_SECRET) {
   });
 }
 
-/** What a session is given: its plan, whether the PDF comes clean, and the CAD's answer. */
-async function holds(b: ReturnType<typeof browser>) {
+/** What a session is given of a sheet: its plan, whether the PDF comes clean, and the CAD's answer. */
+async function holds(b: ReturnType<typeof browser>, id = jobId) {
   const me = await (await b('/api/me')).json();
-  const pdfRes = await b(`/api/jobs/${jobId}/pdf`);
+  const job = await (await b(`/api/jobs/${id}`)).json();
+  const pdfRes = await b(`/api/jobs/${id}/pdf`);
   const pdf = Buffer.from(await pdfRes.arrayBuffer());
-  const cad = (await b(`/api/jobs/${jobId}/cad`)).status;
-  const data = (await b(`/api/jobs/${jobId}/data`)).status;
+  const cad = (await b(`/api/jobs/${id}/cad`)).status;
+  const data = (await b(`/api/jobs/${id}/data`)).status;
   return { plan: me.plan, pdfStatus: pdfRes.status, cleanPdf: pdf.equals(clean), pdf, cad, data,
-           cache: pdfRes.headers.get('cache-control') };
+           cache: pdfRes.headers.get('cache-control'), grants: job.grants, me };
 }
 
 try {
@@ -189,6 +198,34 @@ try {
   await webhook({ ...sub('canceled'), type: 'customer.subscription.deleted' });
   const lapsed = await holds(free);
   check('cancelled: back to free, stamped again', lapsed.plan === 'free' && !lapsed.cleanPdf && lapsed.cad === 402);
+
+  // ---- one site, bought on its own ---------------------------------------------
+  const paidFor = (id: string, address: string, paymentStatus = 'paid') => ({
+    type: 'checkout.session.completed',
+    data: { object: { id, mode: 'payment', payment_status: paymentStatus, customer: 'cus_site',
+                      client_reference_id: freeId, metadata: { account_id: freeId, kind: 'site', address } } },
+  });
+  await webhook(paidFor('cs_unsettled', '1 Test Street, Sydney NSW 2000', 'unpaid'));
+  check('an unsettled payment unlocks nothing', !(await holds(free)).cleanPdf);
+
+  // Spelt differently from the job: case and punctuation do not make another site.
+  check('a paid site is accepted', (await webhook(paidFor('cs_site', '1 TEST STREET SYDNEY NSW 2000'))).status === 200);
+  const site = await holds(free);
+  check('unlocked: that site\'s PDF as drawn, and its CAD and data',
+    site.plan === 'free' && site.cleanPdf && site.cad === 200 && site.data === 200, JSON.stringify(site.grants));
+  check('unlocked: the job says so to the page', site.grants?.cleanPdf === true && site.grants?.openData === true);
+  const other = await holds(free, otherId);
+  check('unlocked: another site is still stamped', !other.cleanPdf && other.grants?.cleanPdf === false);
+  const until = site.me.account?.sites?.[0]?.until;
+  check('unlocked: /api/me lists the site and when it runs out',
+    site.me.account?.sites?.length === 1 && until > Date.now() + 29 * 86400_000, JSON.stringify(site.me.account));
+
+  await webhook(paidFor('cs_site', '1 Test Street, Sydney NSW 2000'));
+  const twice = (await (await free('/api/me')).json()).account?.sites?.[0]?.until;
+  check('the same payment delivered twice extends nothing', twice === until, `${twice} vs ${until}`);
+
+  check('unlock refuses without Stripe',
+    (await post(free, '/api/billing/unlock', { job: otherId })).status === 503);
 
   // ---- billing with Stripe switched off ---------------------------------------
   const checkout = await free('/api/billing/checkout', { method: 'POST' });

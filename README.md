@@ -53,7 +53,7 @@ drawn for an example address, the picture alone. It follows what is picked,
 not what the pointer is over. `/about` explains the tool to
 anyone who lands on it: what the four drawings contain, where the data
 comes from, and what the output must not be relied on for. The generator
-itself sits behind a free account (see *Free and subscription* below), and
+itself sits behind a free account (see *Free, one site, and subscription* below), and
 `/pricing` compares the two sides. Sample thumbnails live in `web/samples/`
 and are served from `/samples/<name>.jpg` (whitelisted names only).
 
@@ -147,16 +147,24 @@ await browser.close();
 EOF
 ```
 
-### Free and subscription
+### Free, one site, and subscription
 
-The site has two sides. Both generate every drawing, from the same data, drawn
-the same way; what differs is what can be taken away:
+Every account generates every drawing, from the same data, drawn the same way;
+what differs is what can be taken away:
 
-| | free | subscription |
-|---|---|---|
-| PDF | stamped with the watermark | clean |
-| CAD (DXF/DWG) | — | yes |
-| data (CSV, JSON) | — | yes |
+| | free | one site | subscription |
+|---|---|---|---|
+| PDF | stamped with the watermark | clean, for that address | clean |
+| CAD (DXF/DWG) | — | for that address | yes |
+| data (CSV, JSON) | — | for that address | yes |
+| lasts | — | 30 days | while subscribed |
+
+A site is bought from its drawing: under a free account's finished sheet,
+UNLOCK THIS SITE goes to Stripe for one card payment, and back to the same
+drawing, now clean. It covers every drawing of that address at any scale or
+style, matched on the address with case, punctuation and spacing ignored. A
+site is what most offices need once per project; the subscription is for
+whoever screens sites every week.
 
 `src/plans.ts` is that table in code, and every download route reads it, so a
 new privilege is a new column there rather than a new condition in the server.
@@ -179,11 +187,13 @@ for an address a free account has just drawn gets it at once, clean. Until the
 file is there, the words `SITE ANALYST · FREE` stand in. If stamping fails the
 download is refused rather than served clean.
 
-**Payment.** Stripe Checkout sells the subscription and Stripe's customer
-portal manages it (card, invoices, cancelling), so no card number reaches this
+**Payment.** Stripe Checkout sells both, and Stripe's customer portal manages
+the subscription (card, invoices, cancelling), so no card number reaches this
 server. To switch it on, in Stripe's dashboard:
 
 1. Make a product with a recurring price; its `price_…` id is `STRIPE_PRICE_ID`.
+   Make another with a one-off price for a site; its id is `STRIPE_SITE_PRICE_ID`.
+   Either can be left out, and that way to pay stays closed.
 2. Add a webhook endpoint at `https://<domain>/api/billing/webhook` sending
    `checkout.session.completed` and `customer.subscription.created`, `.updated`
    and `.deleted`; its signing secret is `STRIPE_WEBHOOK_SECRET`.
@@ -194,15 +204,18 @@ Then in `/etc/site-analyst.env`:
 
 ```
 STRIPE_SECRET_KEY=sk_live_…     # sk_test_… to try it first
-STRIPE_PRICE_ID=price_…
+STRIPE_PRICE_ID=price_…           # the subscription
+STRIPE_SITE_PRICE_ID=price_…      # one site
 STRIPE_WEBHOOK_SECRET=whsec_…
-PRICE_LABEL=A$49 a month        # what /pricing says it costs
+PRICE_LABEL=A$49 a month          # what /pricing says each costs
+SITE_PRICE_LABEL=A$79
 ```
 
 Unset, `/pricing` says subscriptions open soon and the free side works alone.
 `/api/version` reports whether `billing` is on. Once it is, `/status` asks Stripe
 what it has and says, a line each: which Stripe account the key belongs to and
-whether it is live or test, the price, the webhook endpoint and any event it is
+whether it is live or test, each price and whether it is the right kind
+(recurring for the subscription, one-off for a site), the webhook endpoint and any event it is
 missing, whether the customer portal is saved, and whether an event has arrived
 signed with `STRIPE_WEBHOOK_SECRET` — Stripe never shows the secret again, so
 use the endpoint's "send test event" once and this line turns to `matches`. The
@@ -212,9 +225,12 @@ on again when a retried payment lands.
 
 The routes: `POST /api/signup` and `/api/login` (`{email, password}`, or
 `{code}` as before), `POST /api/billing/checkout` and `/api/billing/portal`
-(each answers `{url}` to send the browser to), and the webhook. `/api/me`
-reports the session's `plan`, its `grants` and its `account`. A free account
-asking for `/cad` or `/data` gets `402`. `test/plans.mts` drives all of it on a
+and `/api/billing/unlock` (`{job}`; each answers `{url}` to send the browser
+to), and the webhook. `/api/me` reports the session's `plan`, its `grants`, its
+`account` with the sites it has bought, and which ways to pay are open;
+`/api/jobs/<id>` reports what this viewer may take of that drawing (`grants`)
+and, where the site can be bought, its price (`unlock`). A free account asking
+for `/cad` or `/data` of a site it has not bought gets `402`. `test/plans.mts` drives all of it on a
 planted sheet, without drawing anything or calling Stripe.
 
 ### One door, and an operator code

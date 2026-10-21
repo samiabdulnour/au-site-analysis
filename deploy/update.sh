@@ -125,10 +125,10 @@ docker rm -f site-analyst >/dev/null 2>&1 || true
 # reads the open frames alone.
 #
 # ACCESS_CODE is optional now that accounts are the way in; set, it is the
-# office's code and carries the subscription. The STRIPE_ trio switches the
-# subscription on (see src/billing.ts); unset, the free side works alone.
-# SUBSCRIPTION_EMAILS gives accounts the subscription without charge, and
-# PRICE_LABEL is what the plans page says it costs.
+# office's code and carries the subscription. The STRIPE_ settings switch on
+# the subscription and single sites (see src/billing.ts); unset, the free side
+# works alone. SUBSCRIPTION_EMAILS gives accounts the subscription without
+# charge, and the two _LABELs are what the plans page says each costs.
 docker run -d --name site-analyst --restart unless-stopped \
   --network "$NET" \
   -p 127.0.0.1:3100:3000 \
@@ -136,9 +136,11 @@ docker run -d --name site-analyst --restart unless-stopped \
   -e ADMIN_CODE="${ADMIN_CODE:-}" \
   -e STRIPE_SECRET_KEY="${STRIPE_SECRET_KEY:-}" \
   -e STRIPE_PRICE_ID="${STRIPE_PRICE_ID:-}" \
+  -e STRIPE_SITE_PRICE_ID="${STRIPE_SITE_PRICE_ID:-}" \
   -e STRIPE_WEBHOOK_SECRET="${STRIPE_WEBHOOK_SECRET:-}" \
   -e SUBSCRIPTION_EMAILS="${SUBSCRIPTION_EMAILS:-}" \
   -e PRICE_LABEL="${PRICE_LABEL:-}" \
+  -e SITE_PRICE_LABEL="${SITE_PRICE_LABEL:-}" \
   -e TFNSW_API_KEY="$TFNSW_API_KEY" \
   -e MAPILLARY_TOKEN="${MAPILLARY_TOKEN:-}" \
   -e GOOGLE_MAPS_API_KEY="${GOOGLE_MAPS_API_KEY:-}" \

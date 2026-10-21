@@ -13,7 +13,7 @@
 import { randomUUID, randomBytes, scrypt, createHmac, timingSafeEqual } from 'node:crypto';
 import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { planOf } from './plans.js';
+import { planOf, siteKey, UNLOCK_DAYS } from './plans.js';
 
 export interface Account {
   id: string;
@@ -27,6 +27,18 @@ export interface Account {
   subscriptionStatus?: string;
   /** When the period paid for ends, ms since the epoch. */
   currentPeriodEnd?: number;
+  /** Sites bought one at a time. */
+  sites?: SiteUnlock[];
+}
+
+export interface SiteUnlock {
+  /** siteKey(address): what a job's address is matched against. */
+  key: string;
+  /** As it was when bought, for the account's own list. */
+  address: string;
+  until: number;
+  /** The Checkout sessions that paid for it, so a webhook delivered twice extends nothing. */
+  sessions: string[];
 }
 
 let file = '';
@@ -89,6 +101,28 @@ export function updateAccount(a: Account, patch: Partial<Omit<Account, 'id' | 'e
   Object.assign(a, patch);
   save();
 }
+
+/**
+ * A site paid for: unlocked for UNLOCK_DAYS from now, or from when it would
+ * have run out if it is still unlocked. False when this payment was already
+ * counted.
+ */
+export function unlockSite(a: Account, address: string, session: string): boolean {
+  const sites = a.sites ?? [];
+  if (sites.some((s) => s.sessions.includes(session))) return false;
+  const key = siteKey(address);
+  let site = sites.find((s) => s.key === key);
+  if (!site) sites.push(site = { key, address, until: 0, sessions: [] });
+  site.until = Math.max(site.until, Date.now()) + UNLOCK_DAYS * 86400_000;
+  site.sessions.push(session);
+  a.sites = sites;
+  save();
+  return true;
+}
+
+export const unlockedSites = (a: Account) => (a.sites ?? []).filter((s) => s.until > Date.now());
+export const siteUnlocked = (a: Account, address: string) =>
+  unlockedSites(a).some((s) => s.key === siteKey(address));
 
 // ---- passwords -------------------------------------------------------------
 //

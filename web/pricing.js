@@ -66,9 +66,14 @@ function show(j) {
     return;
   }
   mine.textContent = 'Free, ' + a.email + '.';
-  if (j.billing) toStripe('SUBSCRIBE', '/api/billing/checkout', true);
+  if (j.billing && j.billing.subscription) toStripe('SUBSCRIBE', '/api/billing/checkout', true);
   else mine.textContent += ' Subscriptions open soon.';
   if (a.portal) toStripe('MANAGE BILLING', '/api/billing/portal');
+  // The sites bought one at a time, each with the day it runs out.
+  if (a.sites && a.sites.length) {
+    mine.textContent += ' Unlocked: ' +
+      a.sites.map((s) => s.address + ', until ' + day(s.until)).join('; ') + '.';
+  }
 }
 
 async function me() {

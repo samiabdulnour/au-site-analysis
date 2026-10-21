@@ -151,7 +151,9 @@ a { color: inherit; }
    session's own controls, SIGN OUT and the operator's STATUS, sit at the far
    end. Spreading the row instead put HOW IT WORKS wherever the count of its
    neighbours left it — in the middle, once SIGN OUT joined the row. */
-.actions { display: flex; align-items: flex-start; gap: 1rem; margin-top: .9rem; }
+/* It wraps: a free account's sheet adds UNLOCK THIS SITE and the locked files
+   to the row, which on one line pushed HOW IT WORKS past the page's edge. */
+.actions { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 1rem; margin-top: .9rem; }
 #links { display: flex; }
 #links:empty { display: none; }
 #signOut, #statusLink { margin-left: auto; }
@@ -367,12 +369,19 @@ h2 { font-size: 1em; font-weight: 400; text-transform: uppercase;
 .btn.locked { color: var(--muted); }
 
 /* ---- plans -------------------------------------------------------------- */
-/* The about page's hairline table with a column for each side. It stays three
-   columns on a phone: stacked, "watermarked" and "clean" would lose which
-   side they belong to. */
-.deftable.plans { grid-template-columns: 28% 1fr 1fr; grid-auto-rows: auto; }
+/* The about page's hairline table with a column for each way to have the
+   drawings. It keeps its columns on a phone: stacked, "watermarked" and
+   "clean" would lose which column they belong to. */
+.deftable.plans { grid-template-columns: 19% 1fr 1fr 1fr; grid-auto-rows: auto; }
 .deftable.plans .head { text-transform: uppercase; letter-spacing: .02em; }
+/* A phone has room for neither four columns of whole words nor a smaller type,
+   so the table keeps its width and scrolls sideways in its own box; the page
+   itself never does. Words stay whole rather than breaking mid-letter. */
+.plans-frame { overflow-x: auto; }
+.deftable.plans .k, .deftable.plans .v { overflow-wrap: normal; }
 @media (max-width: 560px) {
-  .deftable.plans { grid-template-columns: 30% 1fr 1fr; }
+  .deftable.plans { grid-template-columns: 7.5rem 9rem 9rem 10rem; }
+  .deftable.plans .k, .deftable.plans .v { padding-left: .6rem; padding-right: .6rem; }
 }
 #mine { margin-top: .2rem; }
+#howUnlock { margin-top: .8rem; }
