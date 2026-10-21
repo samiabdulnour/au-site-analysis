@@ -1,0 +1,129 @@
+# The landing page's example pictures (web/samples/result-*.jpg), drawn on
+# GitHub's runner rather than on someone's machine: the runner reaches every
+# public service the pipelines read, where a laptop on an office network or a
+# cloud session may not, and it draws in the image the server runs, so the
+# faces and the rasteriser are the server's.
+#
+# It runs only when started by hand (Actions → samples → Run workflow). The
+# checks workflow never touches NSW ePlanning, Overpass, SIX or Valhalla, and
+# nothing automatic here does either: a run spends their capacity once, because
+# someone asked for it, as `npm run samples` would.
+#
+# Started on main, the pictures go to a new branch, samples/run-<n>, with a pull
+# request into main; started on another branch, they are committed to it. A run
+# in which any data source failed commits nothing, since its pictures would be
+# missing what that source draws, unless allow_warnings says the gap is known.
+
+name: samples
+
+on:
+  workflow_dispatch:
+    inputs:
+      only:
+        description: Which drawing's pictures to redraw
+        type: choice
+        options: [site, context, yield, slides, all]
+        default: site
+      address:
+        description: The example address (web/app.js names it in EXAMPLE_ADDRESS)
+        type: string
+        default: 150 George Street, Parramatta NSW 2150
+      allow_warnings:
+        description: Commit even if a data source failed (its layer will be missing)
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+# One run at a time: two would ask the same services for the same data twice.
+concurrency:
+  group: samples
+  cancel-in-progress: false
+
+jobs:
+  draw:
+    name: draw the example pictures
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: build the image the server runs
+        run: docker build --build-arg GIT_SHA="$GITHUB_SHA" -t site-analyst .
+
+      # The inputs reach the script as arguments, never pasted into it. The keys
+      # are optional: a secret that is not set arrives empty and is ignored.
+      - name: draw
+        env:
+          ONLY: ${{ inputs.only }}
+          ADDRESS: ${{ inputs.address }}
+          TFNSW_API_KEY: ${{ secrets.TFNSW_API_KEY }}
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+          GOOGLE_MAPS_SIGNING_SECRET: ${{ secrets.GOOGLE_MAPS_SIGNING_SECRET }}
+          MAPILLARY_TOKEN: ${{ secrets.MAPILLARY_TOKEN }}
+        run: |
+          set -o pipefail
+          only=()
+          [ "$ONLY" = all ] || only=(--only "$ONLY")
+          mkdir -p out
+          docker run --rm \
+            -v "$PWD/web/samples:/app/web/samples" -v "$PWD/out:/app/out" \
+            -e TFNSW_API_KEY -e GOOGLE_MAPS_API_KEY -e GOOGLE_MAPS_SIGNING_SECRET -e MAPILLARY_TOKEN \
+            site-analyst \
+            sh -c 'pip3 install --break-system-packages --no-cache-dir --quiet pymupdf pillow && exec npx tsx src/samples.ts "$@"' \
+            samples "$ADDRESS" "${only[@]}" 2>&1 | tee samples.log
+
+      - name: refuse pictures drawn with a source missing
+        if: ${{ !inputs.allow_warnings }}
+        run: |
+          if grep -n 'WARN' samples.log > warnings.txt; then
+            {
+              echo '### A data source failed, so nothing was committed'
+              echo
+              echo 'The pictures would be missing what it draws. Run again later, or with allow_warnings if the gap is expected.'
+              echo
+              echo '```'
+              cat warnings.txt
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            cat warnings.txt
+            exit 1
+          fi
+
+      - name: commit the pictures
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ONLY: ${{ inputs.only }}
+          ADDRESS: ${{ inputs.address }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          git add -A web/samples
+          if git diff --cached --quiet; then
+            echo 'No picture changed.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          msg="Web previews: redrawn for $ADDRESS ($ONLY)"
+          run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          if [ "$GITHUB_REF_NAME" = "$DEFAULT_BRANCH" ]; then
+            branch="samples/run-$GITHUB_RUN_NUMBER"
+            git switch -q -c "$branch"
+            git commit -q -m "$msg" -m "Drawn by $run_url"
+            git push -q -u origin "$branch"
+            # A repository can forbid Actions to open pull requests; the branch
+            # is pushed either way, and the summary links to opening one by hand.
+            if url=$(gh pr create --base "$DEFAULT_BRANCH" --head "$branch" --title "$msg" \
+                --body "The example pictures, redrawn by the samples workflow: $run_url"); then
+              echo "Pull request: $url" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "Pushed $branch; open its pull request at $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/compare/$DEFAULT_BRANCH...$branch" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          else
+            git commit -q -m "$msg" -m "Drawn by $run_url"
+            git push -q origin "HEAD:$GITHUB_REF_NAME"
+            echo "Committed to $GITHUB_REF_NAME." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          { echo '```'; git show --stat --format='%s' HEAD; echo '```'; } | tee -a "$GITHUB_STEP_SUMMARY"
