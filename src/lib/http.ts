@@ -64,6 +64,11 @@ const PUBLIC_MIRRORS = [
   'https://overpass.osm.jp/api/interpreter',
 ];
 
+// overpass-api.de answers 406 to a request that does not say who is asking
+// (fetch's own User-Agent is just "node"), so every query names the tool, as
+// the other fetchers that need to do already do.
+const OVERPASS_UA = 'au-site-analysis/1.0 (site analysis; https://github.com/samiabdulnour/au-site-analysis)';
+
 /**
  * A local Overpass (OVERPASS_LOCAL, e.g. http://127.0.0.1:12345/api/interpreter)
  * is always tried first: it is fast, unmetered and unaffected by the public
@@ -112,6 +117,7 @@ export async function overpassQuery(
       try {
         const res = await fetch(mirror, {
           method: 'POST',
+          headers: { 'User-Agent': OVERPASS_UA },
           body: new URLSearchParams({ data: query }),
           signal: AbortSignal.timeout(timeoutMs),
         });
