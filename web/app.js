@@ -122,14 +122,6 @@ const GUEST = { pdf: false, cleanPdf: false, openData: false };
 /** Take what the server told us about this session. */
 function applySession(j) {
   session = j;
-  // Whoever holds a session has read what the tool is.
-  $('intro').hidden = Boolean(j.authed);
-  // Whoever does not take the PDF clean is told what they get once, above the
-  // bar, with the way to more: without an account the free one, with it buying.
-  const g = j.grants || GUEST;
-  $('plan').hidden = g.cleanPdf;
-  $('planGuest').hidden = g.pdf;
-  $('planFree').hidden = !g.pdf;
   // An account that has not clicked its verification link is told generating
   // waits on it, with the resend beside the words. Just back from the link
   // (?verified=1), the banner's place says so instead.
@@ -486,6 +478,11 @@ async function syncHuman() {
     if (humanWidget !== null) return;
     humanWidget = ts.render(box, {
       sitekey: humanKey(),
+      // Invisible unless Cloudflare needs a click: most people see nothing,
+      // and the frame appears only for the few it asks.
+      appearance: 'interaction-only',
+      'before-interactive-callback': () => { $('humanBar').classList.remove('quiet'); },
+      'after-interactive-callback': () => { $('humanBar').classList.add('quiet'); },
       callback: (t) => { humanToken = t; },
       'expired-callback': () => { humanToken = ''; },
       'error-callback': () => { humanToken = ''; },
@@ -493,6 +490,20 @@ async function syncHuman() {
   } catch (err) {
     $('authError').textContent = err.message + ' — reload the page and try again';
   }
+}
+
+/**
+ * Pressed before the silent check has answered: wait for it a few seconds,
+ * rather than send a form the server will turn away. Not while Cloudflare is
+ * asking for a click: that one is the person's to answer.
+ */
+async function humanReady() {
+  const bar = $('humanBar');
+  if (bar.hidden || humanToken || !bar.classList.contains('quiet')) return;
+  $('authGo').disabled = true;
+  for (let i = 0; i < 40 && !humanToken && bar.classList.contains('quiet'); i++)
+    await new Promise((r) => setTimeout(r, 250));
+  $('authGo').disabled = false;
 }
 
 /** A token is good once: after every answer the widget is asked for a fresh one. */
@@ -646,6 +657,7 @@ loginForm.addEventListener('submit', async (e) => {
     }
   }
   // The human check's token, and the trap field that only a bot fills in.
+  await humanReady();
   body.human = humanToken;
   body.website = $('website').value;
   let r;

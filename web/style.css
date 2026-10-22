@@ -46,10 +46,6 @@ a { color: inherit; }
   letter-spacing: -.01em; margin-bottom: 2rem;
 }
 .lead { margin-bottom: 1rem; }
-/* Two paragraphs that are one block: the prompt sits close to the field it is
-   about rather than a full paragraph's distance from it. Two classes, so it
-   wins over .lead wherever either happens to be written. */
-.lead.intro { margin-bottom: .6rem; }
 /* The sign-up's agreement to the terms: the box beside its sentence, in the page's one size. */
 .agree { display: flex; gap: .6rem; align-items: flex-start; margin: .9rem 0 0; color: var(--muted); cursor: pointer; }
 .agree[hidden] { display: none; }
@@ -474,10 +470,9 @@ h2 { font-size: 1em; font-weight: 400; text-transform: uppercase;
 
 /* ---- sign-in: the human check, and the bot trap ----------------------------- */
 /* The way in and the human check share a line under the box: the check at the
-   box's left edge, the button at its right where it always was. Both stand as
-   tall as the taller, so they read as a pair of boxes. On a phone the check
-   takes its own line and the button follows it. */
-.authgo { display: flex; flex-wrap: wrap; align-items: stretch; justify-content: flex-end;
+   box's left edge, the button at its right where it always was and at its own
+   height. On a phone the check takes its own line and the button follows it. */
+.authgo { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: flex-end;
           gap: 1rem; margin: 1rem 0; }
 .authgo .go.under { margin: 0; }
 /* Cloudflare's widget is 300 by 65 and its look is its own, in a frame inside
@@ -488,5 +483,9 @@ h2 { font-size: 1em; font-weight: 400; text-transform: uppercase;
               border: 1px solid var(--line); }
 .humanframe[hidden] { display: none; }
 .humanframe > div { margin: -1px; }
+/* Most of the time Cloudflare decides without asking anything, and the widget
+   shows nothing: then there is no frame either, and no space kept for one. */
+.humanframe.quiet { width: 0; height: 0; border: 0; margin: 0; }
+.humanframe.quiet > div { margin: 0; }
 /* Off the page, not hidden: a field that is display:none is one bots skip. */
 .trap { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
