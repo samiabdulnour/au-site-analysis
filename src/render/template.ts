@@ -549,9 +549,9 @@ const CANARY_LOOK: SiteLook = {
 // building in its family's strong colour with a white edge and its number in
 // white, the white cadastre, its grotesk and its peach street names, the site
 // in its magenta. The climate as the office drew it for this palette: each
-// solstice's path a translucent crescent running from yellow at its ends to a
-// yellow-green at noon, the office's small rayed sun at each rise and set;
-// each wind a translucent blue crescent over the quarter it blows from with
+// solstice's path a translucent crescent in warm yellow, amber at its ends and
+// brightest at noon, the office's small rayed sun at each rise and set; each
+// wind a smaller translucent blue crescent over the quarter it blows from with
 // the office's broken-shaft arrow on it in white; each view a green triangle
 // with the eye white in it. No word has a white edge, and FALL and AREA sit
 // straight on the site. The kerbs are drawn, indicatively, since there is no
@@ -565,13 +565,14 @@ const KINGFISHER_LOOK: SiteLook = {
   sun: 'band', sunPen: '#f2c200', sunFill: '#f5a800', sunEdge: '#f5a800', sunInk: '#c98a00', sunHours: false,
   wind: 'band', windPen: '#4aa3e8', climateInk: '#2f86c9',
   noise: 'band', noisePen: '#3f6fc2', views: 'band', viewPen: '#3a8f5c', parking: 'bays', textHalo: false, kerbs: true,
-  marks: { fill: '#ffffff', edge: '#ffffff', sunBand: ['#f7c400', '#b8d43a'], windBand: '#4aa3e8', view: '#3fa66b' },
+  marks: { fill: '#ffffff', edge: '#ffffff', sunBand: ['#f7a21b', '#ffd12e'], windBand: '#4aa3e8', view: '#3fa66b' },
 };
 
 // Flamingo: the same paper and plan in Flamingo's palette, drawn as its context
 // sheet draws them: the zones as its tints and textures, every building white
-// with a hairline of its family's ink, the cadastre the context sheet's fine
-// grey, the site in its coral, the street names and the neighbours' numbers in
+// in a heavy outline of its family's ink so it stands clear of its ground, the
+// cadastre the context sheet's fine grey, the site in its coral, the street
+// names and the neighbours' numbers in
 // its green. The climate in the office's drawn marks, each a pale peach shape
 // in a fine blue outline: a sun at each rise and set on the solstices' arcs,
 // dashed in yellow; the winds on the same ring, which is dashed in blue where
@@ -579,11 +580,11 @@ const KINGFISHER_LOOK: SiteLook = {
 const FLAMINGO_CONTEXT = TEMPLATES.find((t) => t.id === 'flamingo')!;
 const FLAMINGO_LOOK: SiteLook = {
   ...KINGFISHER_LOOK, site: FLAMINGO_CONTEXT.site, streetInk: FLAMINGO_CONTEXT.streetInk,
-  buildings: 'white', buildingEdge: 0.2, lotInk: FLAMINGO_CONTEXT.road, neighbourInk: FLAMINGO_CONTEXT.streetInk,
+  buildings: 'white', buildingEdge: 0.8, lotInk: FLAMINGO_CONTEXT.road, neighbourInk: FLAMINGO_CONTEXT.streetInk,
   sun: 'drawn', sunPen: '#f5b400', sunFill: '#fcddd4', sunEdge: '#5ba8e1', sunInk: '#d48f00',
   wind: 'drawn', windPen: '#5ba8e1', climateInk: '#3d8fd1',
   views: 'drawn', viewPen: '#3d8fd1',
-  marks: { fill: '#fcddd4', edge: '#5ba8e1', sunBand: ['#f7c400', '#b8d43a'], windBand: '#5ba8e1', view: '#fcddd4' },
+  marks: { fill: '#fcddd4', edge: '#5ba8e1', sunBand: ['#f7a21b', '#ffd12e'], windBand: '#5ba8e1', view: '#fcddd4' },
 };
 
 export const SITE_THEMES: SiteTheme[] = [

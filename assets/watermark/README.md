@@ -3,7 +3,8 @@
 `watermark.pdf` is the office's bird sheet (the flamingo, the kingfisher, the
 heron and their company), one vector page of plain filled paths in yellow.
 Every page of a PDF downloaded without a subscription gets it laid over the
-whole page at 55% opacity — see `src/render/watermark.ts`.
+whole page at 30% opacity, and `site-analyst.com` is written in its bottom-left
+corner — see `src/render/watermark.ts`.
 
 To replace it, put another one-page PDF here under the same name. Draw it as
 plain filled paths with no transparency of its own: an opacity set inside the

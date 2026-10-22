@@ -196,7 +196,7 @@ const SUN_NAME_W = 30, SUN_NAME_H = 14;
 // the sun's and the winds' crescents at their deepest, a wind crescent's half
 // sweep (°), and the view triangle's length and half angle (°).
 const DRAWN_SUN_R = 13, DRAWN_WIND_HALF = 17, DRAWN_VIEW_L = 32, DRAWN_EDGE = 0.35;
-const RAY_SUN_R = 8, ARROW_HALF = 7.5, SUN_BAND_W = 16, WIND_BAND_W = 22, WIND_BAND_SPAN = 34, BAND_VIEW_L = 30, BAND_VIEW_HALF = 17;
+const RAY_SUN_R = 8, ARROW_HALF = 5.5, SUN_BAND_W = 16, WIND_BAND_W = 15, WIND_BAND_SPAN = 24, BAND_VIEW_L = 30, BAND_VIEW_HALF = 17;
 
 /**
  * A crescent along a circle about c, between two page bearings: its outer edge
@@ -1677,7 +1677,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
         const blocks = `<rect x="${SWATCH_X + 2}" y="1.3" width="6" height="3.9"/><rect x="${SWATCH_X + 10}" y="1.3" width="4.4" height="2.6"/>`;
         const figures = look.buildings === 'colour' && c.figure && c.figure !== c.fill
           ? `<g fill="${c.figure}" stroke="#ffffff" stroke-width="0.3">${blocks}</g>`
-          : whiteBuildings && c.figure ? `<g fill="#ffffff" stroke="${c.figure}" stroke-width="0.2">${blocks}</g>` : '';
+          : whiteBuildings && c.figure ? `<g fill="#ffffff" stroke="${c.figure}" stroke-width="0.5">${blocks}</g>` : '';
         row(ground + texture + figures, c.label);
         continue;
       }

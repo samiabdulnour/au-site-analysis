@@ -243,9 +243,10 @@ verified too — the feature arriving must not lock out everyone already
 signed up.
 
 **The watermark.** The office's bird sheet, `assets/watermark/watermark.pdf`:
-one vector page laid over the whole of each page at 55% opacity (the folder's
-README says how to replace it; a `watermark.png` there is used instead when the
-PDF is missing). It is stamped when a free account downloads, not when the
+one vector page laid over the whole of each page at 30% opacity, with
+`site-analyst.com` in the bottom-left corner, in the margin under the map (the
+folder's README says how to replace the birds; a `watermark.png` there is used
+instead when the PDF is missing). It is stamped when a free account downloads, not when the
 sheet is drawn, so the sheet on disk stays clean and one job serves both sides:
 a subscriber asking for an address a free account has just drawn gets it at
 once, clean. Without either file, the words `SITE ANALYST · FREE` stand in. If
@@ -922,10 +923,11 @@ on the site and where no zone is mapped), the white cadastre, Kingfisher's
 grotesk, its peach street names and its magenta site. The climate is drawn in
 the office's marks for this palette (`src/render/climateSymbols.ts`, taken
 as drawn from its symbol sheet): each solstice's sun path a translucent
-crescent, deepest at noon and running from yellow at its points to a
-yellow-green in the middle (summer outer, winter inner), with the office's
-small rayed sun in orange at each rise and set; each wind a translucent blue
-crescent over the quarter it blows from, on the summer ring and slid along it
+crescent in warm yellow, deepest at noon and running from amber at its points
+to its brightest yellow in the middle (summer outer, winter inner), with the
+office's small rayed sun in orange at each rise and set; each wind a smaller
+translucent blue crescent (15 mm deep, sweeping 48°) over the quarter it
+blows from, on the summer ring and slid along it
 off a sun from the same quarter, carrying three white broken-shaft arrows
 pointing in at the site; each view a green triangle opening from the site
 edge with the eye white in it, its distance written beyond the open end or,
@@ -936,7 +938,8 @@ still names `kookaburra` is drawn in Kingfisher.
 
 **Flamingo** (`flamingo`) — the same paper and plan drawn as the context
 sheet's Flamingo draws them: the zones as Flamingo's tints and textures,
-every building white with a hairline of its zone family's ink, the cadastre
+every building white in a heavy 0.8 mm outline of its zone family's ink (sand,
+peach, teal, grey) so it stands clear of its tinted ground, the cadastre
 in the context sheet's fine grey over them, the site in Flamingo's coral, the
 street names and the neighbours' numbers and storeys in its green. The
 climate is the office's other set of marks, each a pale peach shape in a fine
