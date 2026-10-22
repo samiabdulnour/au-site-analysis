@@ -64,7 +64,7 @@ const f = $('f'), loginForm = $('login');
 const out = $('out'), queueEl = $('queue');
 const linksEl = $('links'), errEl = $('error'), go = $('go'), noteEl = $('note');
 const progressEl = $('progress'), fillEl = $('progressFill');
-const doneEl = $('done'), doneImg = $('doneImg'), unlockWhat = $('unlockWhat');
+const unlockWhat = $('unlockWhat');
 const resultImg = $('resultImg'), resultMissing = $('resultMissing');
 
 // ---- token rendering -----------------------------------------------------
@@ -113,9 +113,16 @@ function renderAll() {
   renderResult();
 }
 
+// What the server last said about this session: who is signed in, which side
+// of the site they are on. The page is open either way.
+let session = null;
+
 /** Take what the server told us about this session. */
 function applySession(j) {
-  // A free account is told what it gets once, above the bar, with the way to more.
+  session = j;
+  // Whoever holds a session has read what the tool is.
+  $('intro').hidden = Boolean(j.authed);
+  // The free side is told what it gets once, above the bar, with the way to more.
   $('plan').hidden = !(j.grants && !j.grants.cleanPdf);
   // An account that has not clicked its verification link is told generating
   // waits on it, with the resend beside the words. Just back from the link
@@ -126,12 +133,24 @@ function applySession(j) {
     $('verify').textContent = 'Email verified.';
     $('verify').hidden = false;
   }
+  // Without a session, the way in sits in the nav; it is never a wall.
+  const nav = $('nav');
+  const signInBtn = document.getElementById('signIn');
+  if (j.authed && signInBtn) signInBtn.remove();
+  if (!j.authed && nav && !signInBtn) {
+    const b = document.createElement('button');
+    b.id = 'signIn';
+    b.type = 'button';
+    b.className = 'btn';
+    b.textContent = 'SIGN IN';
+    b.addEventListener('click', () => openAuth('signin'));
+    nav.append(b);
+  }
   // A session is a thirty-day cookie and the code field is hidden while one is
   // valid, so without a way to put it down a browser that entered the shared
   // code could not be handed the operator's — for a month. The cookie is
   // HttpOnly; only the server can clear it.
-  if (j.required) {
-    const nav = $('nav');
+  if (j.authed && j.required) {
     if (nav && !document.getElementById('signOut')) {
       const b = document.createElement('button');
       b.id = 'signOut';
@@ -232,6 +251,9 @@ resultImg.parentElement.addEventListener('mouseleave', () => { if (deck) { deck.
 
 /** Show the sample for the whole selection, named as `npm run samples` writes it. */
 function renderResult() {
+  // Whatever finished drawing held the frame, an option picked or a new run
+  // started means the frame is the expected sample again.
+  $('resultDrawn').hidden = true;
   if (state.sheet === 'slides') {
     // renderAll runs on every pick; a deck already turning keeps its place.
     if (deck) return;
@@ -265,6 +287,19 @@ function renderResult() {
     resultImg.src = src;
   }
 }
+/** A finished drawing takes the result frame, captioned with its address. */
+function showDrawn(id, address) {
+  stopDeck();
+  resultMissing.hidden = true;
+  const cap = $('resultDrawn');
+  cap.textContent = 'Drawn for ' + address + ' — the downloads below are this drawing.';
+  cap.hidden = false;
+  resultImg.hidden = false;
+  resultImg.alt = 'The finished drawing for ' + address + '.';
+  resultImg.classList.add('loading');
+  resultImg.src = '/api/jobs/' + id + '/preview';
+}
+
 resultImg.addEventListener('load', () => resultImg.classList.remove('loading'));
 // A combination without a picture says so rather than showing a broken image
 // or, worse, the previous choice's picture as if it were this one's.
@@ -444,11 +479,19 @@ function showLogin() {
   f.hidden = true;
   loginForm.hidden = false;
   renderAuth();
+  $('authError').textContent = '';
   // Clicked in a browser that holds no session (another device, say): the
   // click still verified, so say so beside the form it lands on.
   if (verifiedParam === '1') note('Email verified — sign in.');
   else if (verifiedParam === '0') note('That verification link has expired or was already used. Sign in and resend it.');
   (resetToken || authMode === 'code' ? $('code') : $('email')).focus();
+}
+
+/** The form opened on purpose — SIGN IN, an unlock, an emailed link. */
+function openAuth(mode, why) {
+  authMode = mode;
+  showLogin();
+  if (why) note(why);
 }
 
 function enter(j) {
@@ -457,15 +500,36 @@ function enter(j) {
   applySession(j);
   addrInput.focus();
   resumeJob();
+  // They came to the form from UNLOCK THIS ADDRESS: carry on to Stripe now
+  // that there is an account to buy with.
+  if (pendingUnlockJob && j.account) {
+    const id = pendingUnlockJob;
+    pendingUnlockJob = null;
+    unlock(id);
+  }
 }
+
+// Drawing never waits on the form: this is the way back out of it.
+$('skipAuth').addEventListener('click', () => {
+  loginForm.hidden = true;
+  f.hidden = false;
+  addrInput.focus();
+});
 
 // The emailed reset link outranks whatever session this browser holds: the
 // person following it came to set a password, not to be signed straight in.
+// Everyone else lands on the tool — the form opens only where it is wanted:
+// ?signup and ?signin (the pricing page's buttons), or back from the
+// verification link with no session to land in.
 if (resetToken) showLogin();
 else fetch('/api/me').then(async (r) => {
-  if (!r.ok) return showLogin();
-  enter(await readJson(r));
-}).catch(showLogin);
+  const j = await readJson(r);
+  if (!j.authed && (boot.has('signup') || boot.has('signin') || verifiedParam !== null)) {
+    applySession(j);
+    return showLogin();
+  }
+  enter(j);
+}).catch(() => enter({ authed: false, grants: { cleanPdf: false, openData: false } }));
 
 loginForm.addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -602,9 +666,9 @@ function startOutput(word) {
   runningSince = 0;
   progressEl.hidden = false;
   setProgress(0);
-  doneEl.hidden = true;
-  doneImg.removeAttribute('src');
   unlockWhat.hidden = true;
+  // The result frame goes back to the expected sample while this one draws.
+  renderResult();
 }
 
 // misses: consecutive transient failures. A generation takes minutes, so a
@@ -657,14 +721,10 @@ async function poll(id, misses) {
           : 'payment not confirmed yet — reload this page in a minute';
         returnedFromPayment = false;
       }
-      // The drawing itself, small: a picture of a few hundred kilobytes shows at
-      // once where the PDF can be tens of megabytes, so the PDF is downloaded
-      // rather than opened in the browser.
-      if (j.hasPreview) {
-        doneImg.src = '/api/jobs/' + id + '/preview';
-        doneImg.alt = 'The finished drawing for ' + j.address + '.';
-        doneEl.hidden = false;
-      }
+      // The drawing itself takes the result frame above: a picture of a few
+      // hundred kilobytes shows at once where the PDF can be tens of
+      // megabytes, so the PDF is downloaded rather than opened.
+      if (j.hasPreview) showDrawn(id, j.address);
       if (j.unlock) {
         // What is bought, said in full: the address, not just this drawing of it.
         unlockWhat.textContent = 'Unlocking this address gives you every drawing of it — context, ' +
@@ -723,11 +783,19 @@ function addButton(label, onClick) {
 }
 
 // Polls left to wait for a site's payment to arrive, after Stripe sends the
-// visitor back (?paid=1).
-let awaitingPayment = 0, returnedFromPayment = false;
+// visitor back (?paid=1) — and the job whose unlock is waiting on the sign-in
+// it sent the visitor to first.
+let awaitingPayment = 0, returnedFromPayment = false, pendingUnlockJob = null;
 
-/** Off to Stripe to pay for this drawing's site; it sends the visitor back here. */
+/** Off to Stripe to pay for this drawing's address; it sends the visitor back here. */
 async function unlock(id) {
+  // Buying starts with an account; the drawing never did. The form remembers
+  // the job, so signing in carries straight on to Stripe.
+  if (!session || !session.authed) {
+    pendingUnlockJob = id;
+    openAuth('signup', 'Buying starts with a free account — sign up, or sign in, and payment follows.');
+    return;
+  }
   errEl.textContent = '';
   try {
     const r = await fetch('/api/billing/unlock', {
