@@ -17,7 +17,7 @@ import { setTemplate, DEFAULT_TEMPLATE, isTemplateId } from './render/template.j
 import { renderSiteSheet } from './render/siteSheet.js';
 import { renderSummarySheet } from './render/summarySheet.js';
 import { summaryCsv, summaryJson } from './export/summaryExport.js';
-import { renderYieldSheet, yieldCsv, yieldJson } from './render/yieldSheet.js';
+import { renderYieldDeck, yieldCsv, yieldJson } from './render/yieldSheet.js';
 import { renderSlides, slidesFacts, PANEL_W, PANEL_H, DA_PANEL_H, SLIDE_W, SLIDE_H } from './render/slides.js';
 import { htmlToPdf, printSlides } from './render/pdf.js';
 import { prepareRasters } from './render/paintMasks.js';
@@ -132,14 +132,15 @@ if (sheetType === 'summary' || sheetType === 'both') {
 if (sheetType === 'yield') {
   const yb = await runYieldPipeline(address, { outDir, log: (m) => console.log(m) });
   console.log('composing planning yield…');
-  const yieldHtmlPath = join(outDir, 'yield_sheet.html');
-  await writeFile(yieldHtmlPath, renderYieldSheet(yb, { ...meta, sheetNo: meta.sheetNo || '' }));
+  // A3 spreads, as the site report prints: a page a path, each its own PNG too.
+  const yieldHtmlPath = join(outDir, 'yield_deck.html');
+  await writeFile(yieldHtmlPath, renderYieldDeck(yb, meta).html);
   const yieldPdfPath = join(outDir, 'PLANNING_YIELD.pdf');
-  await htmlToPdf(yieldHtmlPath, yieldPdfPath);
+  const yieldPngs = await printSlides(yieldHtmlPath, yieldPdfPath, join(outDir, 'yield'), { widthMm: SLIDE_W, heightMm: SLIDE_H });
   const csvPath = join(outDir, 'PLANNING_YIELD.csv'), jsonPath = join(outDir, 'PLANNING_YIELD.json');
   await writeFile(csvPath, yieldCsv(yb));
   await writeFile(jsonPath, yieldJson(yb));
-  outputs.push(yieldPdfPath, csvPath, jsonPath);
+  outputs.push(yieldPdfPath, ...yieldPngs, csvPath, jsonPath);
 }
 
 if (sheetType === 'slides') {

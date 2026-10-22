@@ -26,7 +26,7 @@ import { renderSheet, MAP_W, MAP_H, type SheetMeta } from './render/sheet.js';
 import { renderSiteSheet } from './render/siteSheet.js';
 import { renderSummarySheet } from './render/summarySheet.js';
 import { summaryCsv, summaryJson } from './export/summaryExport.js';
-import { renderYieldSheet, yieldCsv, yieldJson } from './render/yieldSheet.js';
+import { renderYieldDeck, yieldCsv, yieldJson } from './render/yieldSheet.js';
 import { renderSlides, slidesFacts, PANEL_W, PANEL_H, DA_PANEL_H, SLIDE_W, SLIDE_H } from './render/slides.js';
 import { withTemplate, themeFor, templateFor, type SheetKind } from './render/template.js';
 import { htmlToPdf, printSlides } from './render/pdf.js';
@@ -40,7 +40,7 @@ import {
   isVerified, issueVerification, confirmEmail, accountByVerifyToken,
   issueReset, accountByResetToken, resetPassword,
 } from './accounts.js';
-import { emailEnabled, sendVerification, sendReset } from './email.js';
+import { emailEnabled, emailVia, sendVerification, sendReset } from './email.js';
 import {
   billingEnabled, subscriptionsOpen, sitesOpen, webhookEnabled, checkoutUrl, siteCheckoutUrl, portalUrl,
   verifySignature, handleEvent, checkBilling, webhookSeen,
@@ -468,11 +468,11 @@ async function runJobBody(job: Job) {
     if (job.sheet === 'yield') {
       const yb = await runYieldPipeline(job.address, { outDir, log: (m) => job.log.push(m) });
       job.log.push('composing planning yield…');
-      const htmlPath = join(outDir, 'yield_sheet.html');
-      await writeFile(htmlPath, renderYieldSheet(yb, meta));
+      const htmlPath = join(outDir, 'yield_deck.html');
+      await writeFile(htmlPath, renderYieldDeck(yb, meta).html);
       job.log.push('printing PDF…');
       const pdfPath = join(outDir, 'PLANNING_YIELD.pdf');
-      await htmlToPdf(htmlPath, pdfPath, previewOf(outDir));
+      await printSlides(htmlPath, pdfPath, join(outDir, 'yield'), { widthMm: SLIDE_W, heightMm: SLIDE_H }, previewOf(outDir));
       job.pdfPath = pdfPath;
       // Like the summary it replaces, a table: CSV for Excel, JSON for the numbers behind it.
       const csvPath = join(outDir, 'PLANNING_YIELD.csv');
@@ -1701,7 +1701,7 @@ void cleanupOldJobs();
 
 const PORT = Number(process.env.PORT ?? 3000);
 server.listen(PORT, () => console.log(`site analyst web UI on http://localhost:${PORT}${NO_AUTH ? ' (NO AUTH)' : ''}` +
-  ` — subscriptions ${subscriptionsOpen ? 'on' : 'off'}, single sites ${sitesOpen ? 'on' : 'off'}`));
+  ` — subscriptions ${subscriptionsOpen ? 'on' : 'off'}, single sites ${sitesOpen ? 'on' : 'off'}, email ${emailVia}`));
 
 // What Stripe says about the settings, in the container's log at every start,
 // so a wrong key shows in `docker logs` as well as on /status.

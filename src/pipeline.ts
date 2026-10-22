@@ -629,6 +629,7 @@ export async function runYieldPipeline(
       footprintSqm: Math.round(areaM(bd.rings.slice(0, 1))),
       ...(bd.heightM || bd.estimatedHeightM ? { heightM: Math.round((bd.heightM ?? bd.estimatedHeightM!) * 10) / 10 } : {}),
       ...(bd.floors ? { storeys: bd.floors } : {}),
+      rings: bd.rings.slice(0, 1),
     }))
     .filter((e) => e.footprintSqm >= 25);   // a shed says nothing about the site's use
   const standing = buildings.buildings.filter((bd) => !pointInRingLL(bd.centroid[0], bd.centroid[1], siteRingLL))
