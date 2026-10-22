@@ -42,7 +42,7 @@ export interface Account {
   /** SHA-256 of the password-reset link's token, while one is out. */
   resetTokenHash?: string;
   resetTokenExp?: number;
-  /** The terms of use agreed to at sign-up (TERMS_VERSION), and when; absent on accounts from before the terms. */
+  /** The terms of use in force when the account was made (TERMS_VERSION), and when; absent on accounts from before the terms. */
   termsVersion?: string;
   termsAcceptedAt?: number;
 }
@@ -295,7 +295,7 @@ const PENDING_MAX = 5000;
 
 interface PendingSignup {
   email: string; passwordHash: string; tokenHash: string; exp: number;
-  /** The terms agreed to at the form, and when: the account takes them on the click. */
+  /** The terms in force at the form, and when: the account takes them on the click. */
   termsVersion?: string; termsAcceptedAt?: number;
 }
 

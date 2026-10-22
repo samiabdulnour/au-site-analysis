@@ -522,7 +522,6 @@ if (boot.has('address')) history.replaceState(null, '', '/');
 
 function renderAuth() {
   $('authRow').hidden = Boolean(resetToken || confirmToken);
-  $('agreeRow').hidden = Boolean(resetToken || confirmToken) || authMode !== 'signup';
   syncHuman();
   if (confirmToken) {
     // Nothing to type: the link is the proof, and the press is the person.
@@ -651,10 +650,6 @@ loginForm.addEventListener('submit', async (e) => {
   } else {
     path = authMode === 'signup' ? '/api/signup' : '/api/login';
     body = { email: $('email').value.trim(), password };
-    if (authMode === 'signup') {
-      if (!$('agree').checked) { authErr.textContent = 'Agree to the terms of use to create an account.'; return; }
-      body.agreed = true;
-    }
   }
   // The human check's token, and the trap field that only a bot fills in.
   await humanReady();
