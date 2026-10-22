@@ -30,7 +30,7 @@ import turfUnion from '@turf/union';
 import { featureCollection, polygon } from '@turf/helpers';
 import { lonLatToMercator, mercatorScaleFactor, mercatorToLonLat } from '../lib/geo.js';
 import {
-  computeYield, edgeKinds, ringArea, withFour, futureHeight, existingSummary, PARKING_RATES, DEFAULT_ASSUMPTIONS, UNIT_KINDS, ADG_MINIMUM,
+  computeYield, computeRetained, edgeKinds, ringArea, withFour, futureHeight, existingSummary, PARKING_RATES, DEFAULT_ASSUMPTIONS, UNIT_KINDS, ADG_MINIMUM,
   type XY, type YieldAssumptions, type YieldResult, type Use, type Tier, type UnitKind, type FutureControls, type ExistingBuilding,
 } from '../lib/yield.js';
 
@@ -89,6 +89,8 @@ export interface YieldStudy {
   bonus?: YieldResult;
   /** The envelope filled to the height, where the floor space ratio stops the base below it. */
   max?: YieldResult;
+  /** What stands, rebuilt on its footprints to its height, where that holds more than the controls give. */
+  retained?: YieldResult;
   ring: XY[];
   fronts: boolean[];
   toLocal: (lon: number, lat: number) => XY;
@@ -143,7 +145,14 @@ export function yieldStudy(b: YieldBundle): YieldStudy {
     const rg = (cb.rings[0] ?? []).map(([lon, lat]) => toLocal(lon, lat));
     return futureHeight(cb.controls, rg.length >= 3 ? ringArea(rg) : 0, cb.known ? cb.heightM : undefined, base.assumptions);
   });
-  return { base, bonus, max, ring, fronts, toLocal, hob, parkingSet, frontageLengths, futures };
+  // What stands, kept or rebuilt to its own envelope: a path only where it holds more than the controls give.
+  const standing = (b.existing ?? []).map((e) => ({
+    rings: (e.rings ?? []).map((rg) => rg.map(([lon, lat]) => toLocal(lon, lat))).filter((rg) => rg.length >= 3),
+    heightM: e.heightM ?? (e.storeys ? e.storeys * base.assumptions.residentialF2F : 0),
+  })).filter((e) => e.rings.length && e.heightM > 0);
+  const kept = standing.length ? computeRetained({ ring, fronts, siteAreaSqm: area, zone: c.zoneCode, assumptions, standing }) : undefined;
+  const retained = kept && kept.gfa > base.gfa + 1 ? kept : undefined;
+  return { base, bonus, max, retained, ring, fronts, toLocal, hob, parkingSet, frontageLengths, futures };
 }
 
 // ---- the table's rows ---------------------------------------------------------
@@ -787,7 +796,7 @@ export function tierSpot(env: XY[][], above: XY[][], placed: XY[], fit: number, 
 
 /** One path the site may take, for the SCENARIOS table, the CSV and the JSON: display figures, not geometry. */
 export interface Scenario {
-  id: 'standsToday' | 'withinControls' | 'affordableBonus' | 'envelopeToHeight';
+  id: 'standsToday' | 'rebuiltAsStands' | 'withinControls' | 'affordableBonus' | 'envelopeToHeight';
   label: string;
   note: string;
   storeys?: string;
@@ -802,7 +811,9 @@ export interface Scenario {
 
 /**
  * The paths an investor weighs, each against the same site: what stands
- * today (indicative, from the recorded footprints and heights), the scheme
+ * today (indicative, from the recorded footprints and heights), what stands
+ * kept or rebuilt to its own envelope where it holds more than the controls
+ * give (a clause 4.6 variation argued on the bulk that stands), the scheme
  * within the LEP's controls and the ADG's separations (the one the drawings
  * show), the Housing SEPP's in-fill affordable housing bonus, and the
  * envelope filled to the height — what the setbacks and the height plane
@@ -826,6 +837,11 @@ export function scenarioRows(b: YieldBundle, s: YieldStudy = yieldStudy(b)): Sce
     fsr: A && y.gfa ? `${(y.gfa / A).toFixed(2)}:1` : undefined,
     units: y.units.total ? fmt(y.units.total) : undefined,
     parking: y.parking.total ? fmt(y.parking.total) : undefined,
+  });
+  if (s.retained) out.push({
+    id: 'rebuiltAsStands', label: 'REBUILT TO WHAT STANDS',
+    note: 'what stands, kept and refurbished or rebuilt on its footprint to its height: over the LEP\'s controls, a clause 4.6 variation argued on the bulk that stands (existing use rights for a use the zone has dropped); to confirm with a planner',
+    ...fill(s.retained), ok: null,
   });
   out.push({
     id: 'withinControls', label: 'WITHIN THE CONTROLS — DRAWN',
@@ -871,7 +887,7 @@ const ARCH_SHORT: Record<YieldResult['archetype'], string> = {
   residential: 'Residential flat building', mixed: 'Shop-top housing', commercial: 'Commercial building', none: 'None studied for the zone',
 };
 const SCENARIO_TITLE: Record<Scenario['id'], string> = {
-  standsToday: 'Stands today', withinControls: 'Within the controls', affordableBonus: 'Affordable housing bonus', envelopeToHeight: 'Envelope to the height',
+  standsToday: 'Stands today', rebuiltAsStands: 'Rebuilt to what stands', withinControls: 'Within the controls', affordableBonus: 'Affordable housing bonus', envelopeToHeight: 'Envelope to the height',
 };
 
 /** The ✓, the ✗ or the dash of a compliance cell. */
@@ -920,6 +936,7 @@ const KEY = {
 const R = INK.red;
 const BAR_FILL: Record<Scenario['id'], Fill> = {
   standsToday: { bg: '#ffffff', kind: 'vlines', ink: R.line, step: 0.55, w: 0.16, outline: R.line, outlineW: 0.12 },
+  rebuiltAsStands: { bg: '#ffffff', kind: 'waves', ink: R.deep, step: 0.8, w: 0.14, outline: R.line, outlineW: 0.12 },
   withinControls: { bg: R.mid },
   affordableBonus: { bg: '#ffffff', kind: 'dots', ink: R.deep, step: 0.8, w: 0.12, outline: R.line, outlineW: 0.12 },
   envelopeToHeight: { bg: '#ffffff', kind: 'hlines', ink: R.line, step: 0.55, w: 0.16, outline: R.line, outlineW: 0.12 },
@@ -930,6 +947,7 @@ interface Path { sc: Scenario; y?: YieldResult }
 /** What each drawn path rests on, for its page's foot. */
 const PATH_BASIS: Record<Scenario['id'], string> = {
   standsToday: '',
+  rebuiltAsStands: 'This path keeps the bulk that stands: over the LEP\'s height and floor space ratio, it needs a clause 4.6 variation (or the building kept and refurbished), and existing use rights where the zone no longer permits the use; to confirm with a planner.',
   withinControls: 'This path keeps to the LEP\'s height of building and floor space ratio.',
   affordableBonus: 'This path takes the Housing SEPP\'s in-fill affordable housing bonus (chapter 2, part 2, division 1); the site\'s eligibility is to confirm.',
   envelopeToHeight: 'This path sets the floor space ratio aside: it needs a clause 4.6 variation or a planning proposal.',
@@ -937,7 +955,7 @@ const PATH_BASIS: Record<Scenario['id'], string> = {
 
 /** The paths, each with the study's result behind it (none for what stands). */
 function pathsOf(b: YieldBundle, s: YieldStudy): Path[] {
-  const of: Record<Scenario['id'], YieldResult | undefined> = { standsToday: undefined, withinControls: s.base, affordableBonus: s.bonus, envelopeToHeight: s.max };
+  const of: Record<Scenario['id'], YieldResult | undefined> = { standsToday: undefined, rebuiltAsStands: s.retained, withinControls: s.base, affordableBonus: s.bonus, envelopeToHeight: s.max };
   return scenarioRows(b, s).map((sc) => ({ sc, y: of[sc.id] }));
 }
 
@@ -1022,12 +1040,13 @@ function overviewSlide(b: YieldBundle, s: YieldStudy, paths: Path[]): Slide {
   const right = rightHead(RTOP, 'The site and its neighbours', `plan 1:${fmt(plan.scale)} at A3 · their numbers, zones and heights`) + rightFigure(RTOP + HEAD_H, RFOOT - RTOP - HEAD_H, plan.svg);
   const legend: LegendEntry[] = [{ swatch: KEY.site, label: 'The site' }, { swatch: KEY.neighbours, label: 'Buildings round about' }, { swatch: KEY.lot, label: 'Lot boundaries, NSW cadastre' }];
   if (plan.kerbs.length) legend.push({ swatch: KEY.kerb, label: 'Kerb line, indicative' });
-  const exceeds = ex?.gbaSqm && ex.gbaSqm > Math.max(...paths.filter((p) => p.y).map((p) => p.y!.gba), 0);
+  const exceeds = ex?.gbaSqm && ex.gbaSqm > Math.max(...paths.filter((p) => p.y && p.sc.id !== 'rebuiltAsStands').map((p) => p.y!.gba), 0);
   const narrative = brief([
     y.archetype === 'none'
       ? `${c.zoneCode ?? 'The zone'} takes no residential flat building, shop-top housing or office building: the floor space ratio gives ${A && c.fsr ? area(c.fsr * A) : 'the floor area'} alone.`
       : `Within the controls the site holds ${y.archetype === 'mixed' ? 'shop-top housing' : y.archetype === 'commercial' ? 'a commercial building' : 'a residential flat building'} of ${storeyWord(y.storeys)}: ${area(y.gfa)} of floor area${y.units.total ? `, ${fmt(y.units.total)} apartments` : ''}${y.parking.total ? ` and ${fmt(y.parking.total)} parking spaces` : ''}.`,
-    exceeds ? `What stands today, about ${ex!.storeys ?? '?'} storeys and ${about(ex!.gbaSqm!, A)}, exceeds every path: redevelopment would cut the floor area.`
+    exceeds && s.retained ? `What stands today, about ${ex!.storeys ?? '?'} storeys and ${about(ex!.gbaSqm!, A)}, is over the controls, and need not come down to them: kept, or rebuilt to its own envelope under a clause 4.6 variation, it holds about ${area(s.retained.gfa)}${s.retained.units.total ? ` and ${fmt(s.retained.units.total)} apartments` : ''}.`
+      : exceeds ? `What stands today, about ${ex!.storeys ?? '?'} storeys and ${about(ex!.gbaSqm!, A)}, exceeds every path: redevelopment within the controls would cut the floor area.`
       : ex?.gbaSqm && y.gfa ? `What stands today holds about ${area(ex.gbaSqm)}${y.gfa > ex.gbaSqm ? `: redevelopment within the controls adds about ${area(y.gfa - ex.gbaSqm)}` : ''}.` : '',
     s.bonus && paths.some((p) => p.sc.id === 'affordableBonus') ? `The affordable housing bonus adds ${area(s.bonus.gfa - y.gfa)}${s.bonus.units.total > y.units.total ? ` and ${fmt(s.bonus.units.total - y.units.total)} apartments` : ''}.` : '',
     s.max ? `Filled to the height, the envelope holds ${area(s.max.gfa)}, the case for a clause 4.6 variation or a planning proposal.` : '',
@@ -1064,7 +1083,9 @@ function schemeSlide(b: YieldBundle, s: YieldStudy, p: Path, n: number, last: nu
   if (c.fsr && A) ctl.push({ cells: ['Gross floor area', esc(area(c.fsr * k * A)), esc(y.gfa ? area(y.gfa) : '—'), okMark(y.gfa ? y.gfa <= c.fsr * k * A + 1 : null)] });
   if (c.minLotSizeSqm) ctl.push({ cells: ['Minimum lot size', esc(area(c.minLotSizeSqm)), esc(A ? area(A) : '—'), okMark(A ? A >= c.minLotSizeSqm : null)] });
   if (apartments) {
-    ctl.push({ cells: ['ADG 2E building depth', '12–18 m', esc(y.tiers.some((t) => t.held === 'depth') ? `plates held to ${m1(a.maxDepth)}` : 'within the depth'), okMark(true)] });
+    ctl.push(id === 'rebuiltAsStands'
+      ? { cells: ['ADG 2E building depth', '12–18 m', 'as it stands: to test', okMark(null)] }
+      : { cells: ['ADG 2E building depth', '12–18 m', esc(y.tiers.some((t) => t.held === 'depth') ? `plates held to ${m1(a.maxDepth)}` : 'within the depth'), okMark(true)] });
     const ds = y.adg.deepSoil;
     ctl.push({ cells: ['ADG 3E deep soil', esc(area(ds.requiredSqm)), esc(ds.possible ? `${area(ds.groundFreeSqm)} clear` : 'not in this envelope'), okMark(ds.possible)] });
   }
@@ -1077,7 +1098,7 @@ function schemeSlide(b: YieldBundle, s: YieldStudy, p: Path, n: number, last: nu
     const st = t.from === t.to ? `${t.from}` : `${t.from}–${t.to}`;
     const held = t.held === 'tower' ? ', tower plate' : t.held === 'depth' ? `, ${m1(a.maxDepth)} deep` : '';
     return { cls: built ? undefined : 'dim', cells: [tierKey(i + 1), esc(built && built < t.to - t.from + 1 ? `${st} (${built} built)` : st), esc(USE_WORD[t.use] + held),
-      esc(`${set(t.front)} / ${set(t.side)} / ${set(t.rear)} m`), esc(area(t.plateSqm)), esc(built ? area(gfaOf(t)) : 'not built')] };
+      esc(t.existing ? 'as it stands' : `${set(t.front)} / ${set(t.side)} / ${set(t.rear)} m`), esc(area(t.plateSqm)), esc(built ? area(gfaOf(t)) : 'not built')] };
   });
   if (y.tiers.length) sched.push({ cls: 'tot', cells: ['Total', esc(storeyWord(y.storeys)), '', '', esc(area(y.gba)), esc(area(y.gfa))] });
   const schedTable = y.tiers.length
@@ -1099,6 +1120,9 @@ function schemeSlide(b: YieldBundle, s: YieldStudy, p: Path, n: number, last: nu
     : id === 'affordableBonus'
       ? brief([`With ${pct}% more height and floor space ratio for 15% affordable housing, held for 15 years, the Housing SEPP's in-fill bonus gives ${what}.`,
         `That is ${area(y.gfa - s.base.gfa)}${y.units.total > s.base.units.total ? ` and ${fmt(y.units.total - s.base.units.total)} apartments` : ''} more than within the controls, about ${fmt(Math.round(y.units.total * 0.15))} of them affordable. Eligibility to confirm.`])
+      : id === 'rebuiltAsStands'
+        ? brief([`Kept and refurbished, or rebuilt on its footprint to the height it stands at, what stands holds ${what}.`,
+          `That is ${area(y.gfa - s.base.gfa)}${y.units.total > s.base.units.total ? ` and ${fmt(y.units.total - s.base.units.total)} apartments` : ''} more than within the controls. Over the LEP's height and floor space ratio, it needs a clause 4.6 variation, argued on adding no bulk to what stands${y.archetype === 'residential' && s.base.archetype === 'none' ? ', and existing use rights for apartments the zone no longer permits' : ''}; to confirm with a planner.`])
       : brief([`Filled to the height plane within the setbacks, the envelope holds ${what}.`,
         c.fsr ? `That is ${area(y.gfa - s.base.gfa)} over the LEP's ${c.fsr.toFixed(2)}:1: the case a clause 4.6 variation or a planning proposal has to carry.` : '']);
   return { id: `${String(n).padStart(2, '0')}_${id.replace(/[A-Z]/g, (ch) => `_${ch.toLowerCase()}`)}`, title: SCENARIO_TITLE[id], subtitle: subtitleOf(b, s), textHtml: '',
@@ -1124,11 +1148,11 @@ function standingSlide(b: YieldBundle, s: YieldStudy, paths: Path[], n: number):
   ], 9.6);
   const blocks = [zBlock('What stands', figs), ...pathBars(b, s, paths)];
   const figures = schemeFigures(b, s, { standing }, 'standing', standing.length ? 'at its recorded height, among the neighbours' : 'no outline of what stands in this bundle', 'What stands');
-  const best = Math.max(...paths.filter((p) => p.y).map((p) => p.y!.gba), 0);
+  const best = Math.max(...paths.filter((p) => p.y && p.sc.id !== 'rebuiltAsStands').map((p) => p.y!.gba), 0);
   const narrative = brief([
     `${ex.count === 1 ? 'A building' : `${COUNT_WORD[ex.count] ?? ex.count} buildings`} of ${ex.storeys ? `about ${ex.storeys} storeys` : 'unrecorded height'} ${ex.count === 1 ? 'stands' : 'stand'} on the site today, ${area(ex.footprintSqm)} on the ground${ex.gbaSqm ? ` and about ${area(ex.gbaSqm)} of floor${A ? `, ${about(ex.gbaSqm, A)}` : ''}` : ''}${c.fsr ? ` against the LEP's ${c.fsr.toFixed(2)}:1` : ''}.`,
     ex.gbaSqm && ex.gbaSqm > best
-      ? 'It exceeds every path: the controls have tightened since it was built, and redevelopment would cut the floor area. Its value is in what stands.'
+      ? `It is over today's controls: they have tightened since it was built, and redevelopment within them would cut the floor area.${s.retained ? ' The bulk need not be given up: kept, or rebuilt to its own envelope, it is the next spread\'s path.' : ' Its value is in what stands.'}`
       : ex.gbaSqm ? `Redevelopment within the controls would hold ${area(s.base.gfa)}, ${(s.base.gfa / ex.gbaSqm).toFixed(1)} times what stands.` : '',
   ]);
   return { id: `${String(n).padStart(2, '0')}_stands_today`, title: 'Stands today', subtitle: subtitleOf(b, s), textHtml: '', figureHtml: zFlow(blocks) + figures.html, full: true,
@@ -1249,7 +1273,7 @@ export function yieldJson(b: YieldBundle): string {
     siteAreaSource: 'NSW cadastre (confirm against survey)', planningControls: b.controls, groundRL: b.groundRL,
     station: b.station, cbd: b.cbd, policyAtSite: b.policyAtSite, frontages: s.frontageLengths, heightLimit: s.hob,
     parkingRates: s.parkingSet, standsToday: existingSummary(b.existing ?? []),
-    study: strip(s.base), affordableHousingBonus: strip(s.bonus), envelopeToHeight: strip(s.max),
+    study: strip(s.base), affordableHousingBonus: strip(s.bonus), envelopeToHeight: strip(s.max), rebuiltAsStands: strip(s.retained),
     scenarios: scenarioRows(b, s),
     table: yieldRows(b, s).filter((r) => !r.section && !r.head),
   }, null, 2);

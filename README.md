@@ -1011,10 +1011,19 @@ site may take, so a site with more paths has more pages:
    — its storeys, height, footprint and indicative gross building area (each
    footprint by its storeys), the ratio that makes on the site against the
    LEP's, and the same bars. The right page draws it at its recorded height
-   among the neighbours, over its plan. Where what stands exceeds every path,
-   the narrative says so: the controls have tightened since it was built, and
-   redevelopment would cut the floor area.
-3. **Within the controls** — the scheme inside the LEP's height and FSR and
+   among the neighbours, over its plan.
+3. **Rebuilt to what stands**, where what stands holds more than the controls
+   give: a building over today's controls need not come down to them. Kept and
+   refurbished, or rebuilt on its own footprint to its own height under a
+   clause 4.6 variation argued on adding no bulk to what stands (existing use
+   rights carrying a use the zone has since dropped), it keeps its bulk.
+   `computeRetained()` in `src/lib/yield.ts` builds it: each building's
+   footprint a plate, its storeys the study's floor heights under its
+   recorded height, the zone's uses on them (apartments where the zone takes
+   none), no floor space ratio over it; the floor area, apartments and parking
+   as for any scheme. It is marked to confirm, not compliant, since the
+   variation is the consent authority's to grant — a planner's call.
+4. **Within the controls** — the scheme inside the LEP's height and FSR and
    the ADG's separations: its building type, storeys, floor area, apartments,
    saleable area and parking; the controls it is held to (height, FSR, floor
    area, minimum lot size, ADG 2E depth and 3E deep soil) with a mark each;
@@ -1022,14 +1031,14 @@ site may take, so a site with more paths has more pages:
    tier's number in the ring the plan draws it in — and the apartments, a row
    for each kind in the mix with its share, ADG 4D-1's least area for it, its
    own area, how many there are and the area they take.
-4. **Affordable housing bonus** — the same for the Housing SEPP's in-fill
+5. **Affordable housing bonus** — the same for the Housing SEPP's in-fill
    bonus, 30% more height and FSR for 15% affordable housing, eligibility to
    confirm; drawn only where it gains floor area or apartments.
-5. **Envelope to the height** — the setbacks filled to the height plane with
+6. **Envelope to the height** — the setbacks filled to the height plane with
    the FSR set aside, the case a clause 4.6 variation or a planning proposal
    has to carry, marked non-compliant; drawn only where the FSR stops the
    scheme below the height.
-6. **Controls and assumptions** — the assumptions the study rests on (floor
+7. **Controls and assumptions** — the assumptions the study rests on (floor
    to floor, efficiencies, the mix, the plates, the parking rates, the nearest
    station) on the left; on the right, the full table the office's
    development summary (DA 002) keeps — CONTROLS, PROPOSED and COMPLIANCE for

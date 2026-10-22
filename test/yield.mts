@@ -244,6 +244,18 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
   check('scenarios: a bonus the envelope eats is no path', s3.bonus !== undefined && scenarioRows(sliver, s3).map((r) => r.id).join(',') === 'withinControls',
     scenarioRows(sliver, s3).map((r) => r.id).join(','));
 
+  // What stands over the controls is a path of its own: kept, or rebuilt on its footprint to its height.
+  const inner = [[151.20005, -33.89995], [151.20038, -33.89995], [151.20038, -33.8996], [151.20005, -33.8996], [151.20005, -33.89995]];
+  const tall: YieldBundle = { ...bundle, existing: [{ footprintSqm: 1060, heightM: 37.2, rings: [inner] }] };
+  const st = yieldStudy(tall);
+  const tallIds = scenarioRows(tall, st).map((r) => r.id).join(',');
+  check('rebuilt: a building over the controls keeps its bulk as a path', tallIds === 'standsToday,rebuiltAsStands,withinControls,affordableBonus,envelopeToHeight', tallIds);
+  check('rebuilt: its storeys under its own height, more floor area than the controls give, no ratio over it',
+    !!st.retained && st.retained.storeys === 11 && st.retained.gfa > st.base.gfa * 2 && st.retained.tiers.every((t) => t.existing), JSON.stringify(st.retained && { storeys: st.retained.storeys, gfa: st.retained.gfa, base: st.base.gfa }));
+  check('rebuilt: it waits on a variation, not marked compliant', scenarioRows(tall, st)[1].ok === null);
+  const low: YieldBundle = { ...bundle, existing: [{ footprintSqm: 1060, heightM: 6.2, rings: [inner] }] };
+  check('rebuilt: a building under the controls is no path of its own', yieldStudy(low).retained === undefined);
+
   // ---- the deck, of the same lots: a spread a path ----
 
   const meta = { jobNo: '', client: '', status: '', sheetNo: '', revision: '', checked: '', drawn: '', date: '', preliminary: false };
@@ -256,6 +268,7 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
   const used = [...all.html.matchAll(/\bid="([^"]+)"/g)].map((m) => m[1]);
   const twice = used.filter((v, i) => used.indexOf(v) !== i);
   check('deck: no id is used twice', twice.length === 0, [...new Set(twice)].slice(0, 5).join(', '));
+  check('deck: the kept bulk gets its spread', deck(tall).slides[2]?.id === '03_rebuilt_as_stands', deck(tall).slides.map((sl) => sl.id).join(','));
   check('deck: fewer paths, fewer pages', deck(openB).slides.length === 4 && deck(sliver).slides.length === 3,
     `${deck(openB).slides.length}, ${deck(sliver).slides.length}`);
   check('deck: the overview names each path\'s page', /Envelope to the height<\/td>(?:.(?!<\/tr>))*>05<\/td>/.test(all.html));
