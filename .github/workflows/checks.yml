@@ -337,6 +337,7 @@ jobs:
           check /fuse         404   # the office door was removed
           check /about        200
           check /pricing      200
+          check /terms        200
           check /pricing.js   200
           check /status       200
           check /style.css    200
@@ -360,7 +361,7 @@ jobs:
           # og:url and og:image are absolute and filled in per request. The
           # placeholder reaching a browser means every shared link previews
           # against a URL that does not resolve.
-          for path in / /about /pricing; do
+          for path in / /about /pricing /terms; do
             if curl -s --max-time 10 "http://127.0.0.1:3123$path" | grep -q '%ORIGIN%'; then
               echo "  %ORIGIN% left unsubstituted in $path"; fail=1
             fi

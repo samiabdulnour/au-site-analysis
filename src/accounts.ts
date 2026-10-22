@@ -293,8 +293,11 @@ export async function resetPassword(a: Account, password: string) {
 export const SIGNUP_HOURS = 24;
 const PENDING_MAX = 5000;
 
-/** `terms`: the version of the terms agreed to on the sign-up form, and when, carried to the account the link makes. */
-interface PendingSignup { email: string; passwordHash: string; tokenHash: string; exp: number; termsVersion?: string; termsAcceptedAt?: number }
+interface PendingSignup {
+  email: string; passwordHash: string; tokenHash: string; exp: number;
+  /** The terms agreed to at the form, and when: the account takes them on the click. */
+  termsVersion?: string; termsAcceptedAt?: number;
+}
 
 let pendingFile = '';
 /** By email: a second sign-up for the same address replaces the first, and its link. */
@@ -330,7 +333,10 @@ export function startSignup(email: string, passwordHash: string, termsVersion?: 
     if (pending.size >= PENDING_MAX) return undefined;
   }
   const token = randomBytes(32).toString('hex');
-  pending.set(e, { email: e, passwordHash, tokenHash: tokenHash(token), exp: Date.now() + SIGNUP_HOURS * 3600_000, ...(termsVersion ? { termsVersion, termsAcceptedAt: Date.now() } : {}) });
+  pending.set(e, {
+    email: e, passwordHash, tokenHash: tokenHash(token), exp: Date.now() + SIGNUP_HOURS * 3600_000,
+    ...(termsVersion ? { termsVersion, termsAcceptedAt: Date.now() } : {}),
+  });
   savePending();
   return token;
 }
@@ -358,21 +364,21 @@ export async function finishSignup(token: string): Promise<Account | undefined> 
   if (!found) return undefined;
   pending.delete(found.email);
   savePending();
+  // The agreement as it was given at the form, so the record says when.
+  const terms = found.termsVersion ? { termsVersion: found.termsVersion, termsAcceptedAt: found.termsAcceptedAt } : {};
   const existing = accountByEmail(found.email);
   if (existing) {
     if (!isVerified(existing)) {
       updateAccount(existing, {
         passwordHash: found.passwordHash, emailVerified: Date.now(),
-        verifyTokenHash: undefined, verifyTokenExp: undefined,
-        ...(found.termsVersion ? { termsVersion: found.termsVersion, termsAcceptedAt: found.termsAcceptedAt } : {}),
+        verifyTokenHash: undefined, verifyTokenExp: undefined, ...terms,
       });
     }
     return existing;
   }
   const account: Account = {
     id: randomUUID(), email: found.email, passwordHash: found.passwordHash,
-    createdAt: Date.now(), emailVerified: Date.now(),
-    ...(found.termsVersion ? { termsVersion: found.termsVersion, termsAcceptedAt: found.termsAcceptedAt } : {}),
+    createdAt: Date.now(), emailVerified: Date.now(), ...terms,
   };
   accounts.set(account.id, account);
   save();

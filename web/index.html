@@ -44,17 +44,6 @@
     </nav>
   </div>
 
-  <!-- Someone arriving from a search result starts here, so the page says
-       what the thing is before anything else. Hidden once a session is held:
-       whoever signed in has read it. -->
-  <p class="lead intro" id="intro">Give it a NSW street address and it draws the
-  site-analysis sheets an architect prepares for a development application — the
-  lot on its cadastre and aerial, zoning and height controls, heritage, transport,
-  walking catchments — entirely from government open data. Anyone can generate
-  them and see the result; a free account downloads the print-ready A1 PDF,
-  watermarked, and an unlocked address or the subscription gives it clean, with
-  the same geometry as CAD. <a href="/about">How it works</a>.</p>
-
   <!-- ---- an account, when one is wanted -------------------------------- -->
   <!-- Not a wall: drawing never asks for it. It opens from SIGN IN in the
        nav, from UNLOCK THIS ADDRESS and the pricing page (buying starts with
@@ -79,23 +68,29 @@
     <div class="bar stack" id="codeBar">
       <input id="code" type="password" placeholder="password" autocomplete="current-password">
     </div>
-    <!-- Sign-up only: the account records the terms it agreed to, and the
-         server refuses a sign-up without this. -->
+    <!-- Sign-up only, under the box rather than a row of it: the account
+         records the terms it agreed to, and the server refuses a sign-up
+         without this. -->
     <label class="agree" id="agreeRow" hidden><input type="checkbox" id="agree">
     <span>I agree to the <a href="/terms" target="_blank" rel="noopener">terms of use</a>:
     the drawings are made from open public data as it is available, with no guarantee
     that it is complete, current or correct.</span></label>
+    <!-- The way in, on a line of its own under the box: the button, and beside
+         it the human check (Cloudflare Turnstile, drawn by app.js). The check
+         is invisible unless Cloudflare needs a click, and only then does its
+         frame, like the button's, appear. -->
+    <div class="authgo">
+      <div class="humanframe quiet" id="humanBar" hidden><div id="human"></div></div>
+      <!-- Its own button under the box, not a cell of it: pressing in is a
+           different act from typing, so the two are not one rectangle. -->
+      <button class="go under" id="authGo" type="submit">SIGN IN</button>
+    </div>
     <!-- A field people never see, off the page rather than display:none (which
          the simplest bots know to skip): only a bot fills it in, and the server
-         answers it like anyone and does nothing. -->
+         answers it like anyone and does nothing. Below the button, so it never
+         sits between two rows of the box and breaks their shared rule. -->
     <input class="trap" id="website" name="website" type="text" tabindex="-1"
            autocomplete="off" aria-hidden="true">
-    <!-- The human check (Cloudflare Turnstile), drawn here by app.js when the
-         server has one and this form needs it. -->
-    <div id="human" hidden></div>
-    <!-- Its own button under the box, not a cell of it: pressing in is a
-         different act from typing, so the two are not one rectangle. -->
-    <button class="go under" id="authGo" type="submit">SIGN IN</button>
     <div class="errline" id="authError"></div>
     <!-- Not an error: "the reset link is on its way", "email verified". -->
     <p class="lead muted" id="authNote" hidden></p>
@@ -105,15 +100,6 @@
 
   <!-- ---- the tool ---------------------------------------------------- -->
   <form id="f" hidden>
-    <p class="lead">Search a NSW address to generate its site analysis.</p>
-    <!-- Said to whoever does not take the PDF clean: what they get, the way to
-         more. Without an account, the next step is the free account; with
-         one, buying. -->
-    <p class="lead muted" id="plan" hidden><span id="planGuest">Without an account
-    you see each drawing here. <a href="/?signup">Make a free account</a> to download
-    its PDF, with a watermark.</span><span id="planFree">Free: PDFs come with a
-    watermark.</span> Unlock an address, or <a href="/pricing">subscribe</a>, for
-    clean PDFs and the CAD and data files.</p>
     <!-- Said only to an account that has not clicked its verification link.
          Drawing does not wait on it; the password reset goes to that inbox. -->
     <p class="lead muted" id="verify" hidden>Your email is not verified yet — the

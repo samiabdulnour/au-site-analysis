@@ -1107,7 +1107,7 @@ Canonical: ${base}/.well-known/security.txt
   // the account is made and signed in at once, as it always was.
   if (req.method === 'POST' && url.pathname === '/api/signup') {
     if (limited(`signup:${ip}`, 5, 3600_000)) return json(res, 429, { error: 'Too many sign-ups from here. Try later.' });
-    let email = '', password = '', agreed = false, human: unknown, trap = '';
+    let email = '', password = '', human: unknown, trap = '', agreed = false;
     try {
       const parsed = JSON.parse((await readBody(req)) || '{}');
       email = normaliseEmail(parsed.email);
@@ -1119,6 +1119,10 @@ Canonical: ${base}/.well-known/security.txt
     if (!validEmail(email)) return json(res, 400, { error: 'Enter an email address.' });
     if (password.length < PASSWORD_MIN || password.length > 200)
       return json(res, 400, { error: `Choose a password of ${PASSWORD_MIN} characters or more.` });
+    // The account records which terms it agreed to: that the drawings come from open data as available,
+    // with no guarantee that data is complete. Refused here, not only in the page, so no client skips it;
+    // and before the human check, so a forgotten tick does not spend the person's check.
+    if (!agreed) return json(res, 400, { error: 'Agree to the terms of use to create an account.' });
     const CHECK_EMAIL = { ok: true, pending: true, message: `Check ${email} — the link to finish signing up is on its way.` };
     // The honeypot: a field people never see, so only a bot fills it in. It is
     // told what everyone is told, and nothing is made or sent.
@@ -1127,10 +1131,6 @@ Canonical: ${base}/.well-known/security.txt
       console.log(`bots: sign-up honeypot filled from ${ip}`);
       return json(res, 202, CHECK_EMAIL);
     }
-    // The account records which terms it agreed to: that the drawings come from open data as available,
-    // with no guarantee that data is complete. Refused here, not only in the page, so no client skips it;
-    // and before the human check, so a forgotten tick does not spend the person's check.
-    if (!agreed) return json(res, 400, { error: 'Agree to the terms of use to create an account.' });
     if (!(await isHuman(human, ip)))
       return json(res, 403, { error: 'Confirm you are human, then sign up again.', human: true });
 
