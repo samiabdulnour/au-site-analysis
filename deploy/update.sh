@@ -129,6 +129,17 @@ docker rm -f site-analyst >/dev/null 2>&1 || true
 # the subscription and single sites (see src/billing.ts); unset, the free side
 # works alone. SUBSCRIPTION_EMAILS gives accounts the subscription without
 # charge, and the two _LABELs are what the plans page says each costs.
+#
+# RESEND_API_KEY and EMAIL_FROM switch on the two emails the server sends —
+# the sign-up's verification link and the password-reset link (src/email.ts);
+# unset, accounts count as verified and the reset form says it cannot send.
+#
+# SITE_ANALYSIS_CONTACT (an email or URL) is a direct contact for whoever
+# operates this instance. Set, it is appended to the User-Agent every outbound
+# request carries, sent as a From header, and listed first at
+# /.well-known/security.txt (src/lib/http.ts, SECURITY.md); unset, the identity
+# still names the tool and links the repo, and security.txt keeps its GitHub
+# links.
 docker run -d --name site-analyst --restart unless-stopped \
   --network "$NET" \
   -p 127.0.0.1:3100:3000 \
@@ -139,6 +150,8 @@ docker run -d --name site-analyst --restart unless-stopped \
   -e STRIPE_SITE_PRICE_ID="${STRIPE_SITE_PRICE_ID:-}" \
   -e STRIPE_WEBHOOK_SECRET="${STRIPE_WEBHOOK_SECRET:-}" \
   -e SUBSCRIPTION_EMAILS="${SUBSCRIPTION_EMAILS:-}" \
+  -e RESEND_API_KEY="${RESEND_API_KEY:-}" \
+  -e EMAIL_FROM="${EMAIL_FROM:-}" \
   -e PRICE_LABEL="${PRICE_LABEL:-}" \
   -e SITE_PRICE_LABEL="${SITE_PRICE_LABEL:-}" \
   -e TFNSW_API_KEY="$TFNSW_API_KEY" \
@@ -146,6 +159,7 @@ docker run -d --name site-analyst --restart unless-stopped \
   -e GOOGLE_MAPS_API_KEY="${GOOGLE_MAPS_API_KEY:-}" \
   -e GOOGLE_MAPS_SIGNING_SECRET="${GOOGLE_MAPS_SIGNING_SECRET:-}" \
   -e OVERPASS_LOCAL="${OVERPASS_LOCAL:-}" \
+  -e SITE_ANALYSIS_CONTACT="${SITE_ANALYSIS_CONTACT:-}" \
   -e WEB_OUT_BUDGET_MB="${WEB_OUT_BUDGET_MB:-4096}" \
   -v /var/lib/site-analyst:/hostinfo:ro \
   -v "$OUT":/app/out \

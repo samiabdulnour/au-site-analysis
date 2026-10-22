@@ -21,6 +21,23 @@ export interface RetryOpts {
 
 const TRANSIENT = new Set([408, 425, 429, 500, 502, 503, 504, 522, 524]);
 
+// The single identity every outbound request carries, so the firewalls and
+// WAFs in front of the public and NSW-government endpoints this tool fetches
+// can tell an honest, documented crawler from an anonymous scraper. The `+`
+// URL is the convention (as Googlebot uses) for "read about this bot here":
+// it points at the public repo, whose SECURITY.md and /.well-known/security.txt
+// say what the tool does, how lightly it fetches, and how to contact or block
+// it. An operator can set SITE_ANALYSIS_CONTACT (an email or URL) to add a
+// direct contact to the identity. Centralised here so there is exactly one
+// string to verify; retryFetch applies it unless a caller sets its own.
+export const USER_AGENT = buildUserAgent();
+
+function buildUserAgent(): string {
+  const base = 'au-site-analysis/1.0 (NSW architectural site-analysis tool; +https://github.com/samiabdulnour/au-site-analysis)';
+  const contact = process.env.SITE_ANALYSIS_CONTACT?.trim();
+  return contact ? base.replace(/\)$/, `; ${contact})`) : base;
+}
+
 export async function retryFetch(
   url: string,
   init: RequestInit = {},
@@ -31,6 +48,16 @@ export async function retryFetch(
   const base = opts.baseDelayMs ?? 1500;
   let lastErr: unknown;
 
+  // Attach the shared identity unless the caller named its own User-Agent.
+  // Without this, Node's fetch sends "node", which WAFs routinely block.
+  const headers = new Headers(init.headers);
+  if (!headers.has('user-agent')) headers.set('User-Agent', USER_AGENT);
+  const contact = process.env.SITE_ANALYSIS_CONTACT?.trim();
+  if (contact && contact.includes('@') && !contact.includes('/') && !headers.has('from')) {
+    headers.set('From', contact);
+  }
+  const request: RequestInit = { ...init, headers };
+
   for (let i = 0; i < attempts; i++) {
     if (i) {
       // exponential backoff with jitter, capped so a run cannot stall forever
@@ -39,7 +66,7 @@ export async function retryFetch(
       await new Promise((r) => setTimeout(r, delay));
     }
     try {
-      const res = await fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
+      const res = await fetch(url, { ...request, signal: AbortSignal.timeout(timeoutMs) });
       if (TRANSIENT.has(res.status)) {
         lastErr = new Error(`${opts.label ?? url} -> HTTP ${res.status}`);
         continue;
@@ -65,9 +92,9 @@ const PUBLIC_MIRRORS = [
 ];
 
 // overpass-api.de answers 406 to a request that does not say who is asking
-// (fetch's own User-Agent is just "node"), so every query names the tool, as
-// the other fetchers that need to do already do.
-const OVERPASS_UA = 'au-site-analysis/1.0 (site analysis; https://github.com/samiabdulnour/au-site-analysis)';
+// (fetch's own User-Agent is just "node"), so every query names the tool via
+// the shared identity used for every other upstream.
+const OVERPASS_UA = USER_AGENT;
 
 /**
  * A local Overpass (OVERPASS_LOCAL, e.g. http://127.0.0.1:12345/api/interpreter)

@@ -27,8 +27,8 @@ import turfUnion from '@turf/union';
 import { featureCollection, polygon } from '@turf/helpers';
 import { lonLatToMercator, mercatorScaleFactor, mercatorToLonLat } from '../lib/geo.js';
 import {
-  computeYield, edgeKinds, ringArea, withFour, futureHeight, PARKING_RATES, DEFAULT_ASSUMPTIONS, UNIT_KINDS, ADG_MINIMUM,
-  type XY, type YieldAssumptions, type YieldResult, type Use, type Tier, type UnitKind, type FutureControls,
+  computeYield, edgeKinds, ringArea, withFour, futureHeight, existingSummary, PARKING_RATES, DEFAULT_ASSUMPTIONS, UNIT_KINDS, ADG_MINIMUM,
+  type XY, type YieldAssumptions, type YieldResult, type Use, type Tier, type UnitKind, type FutureControls, type ExistingBuilding,
 } from '../lib/yield.js';
 
 export interface YieldBundle extends SummaryData {
@@ -61,6 +61,8 @@ export interface YieldBundle extends SummaryData {
    */
   context: { rings: number[][][]; heightM: number; known: boolean; controls?: FutureControls; futureM?: number }[];
   buildingsSource: string;
+  /** What stands on the site today: each building whose centroid is inside the boundary. A bundle from before them has none. */
+  existing?: ExistingBuilding[];
   /** From `yield_assumptions.json` beside the output, when there is one. */
   assumptions?: Partial<YieldAssumptions>;
 }
@@ -82,6 +84,8 @@ export interface YieldStudy {
   base: YieldResult;
   /** The in-fill affordable housing bonus, where the zone takes apartments. */
   bonus?: YieldResult;
+  /** The envelope filled to the height, where the floor space ratio stops the base below it. */
+  max?: YieldResult;
   ring: XY[];
   fronts: boolean[];
   toLocal: (lon: number, lat: number) => XY;
@@ -118,6 +122,10 @@ export function yieldStudy(b: YieldBundle): YieldStudy {
   const bonus = base.archetype === 'residential' || base.archetype === 'mixed'
     ? computeYield({ ring, fronts, siteAreaSqm: area, zone: c.zoneCode, hobM: hob?.metres ? hob.metres * bonusK : undefined, fsr: c.fsr ? c.fsr * bonusK : undefined, assumptions })
     : undefined;
+  // The same envelope with no ratio over it, where the ratio is what stops the base.
+  const max = base.gfaCapacity > base.gfa + 1
+    ? computeYield({ ring, fronts, siteAreaSqm: area, zone: c.zoneCode, hobM: hob?.metres, assumptions })
+    : undefined;
 
   const byName = new Map<string, number>();
   ring.forEach((p, i) => {
@@ -132,7 +140,7 @@ export function yieldStudy(b: YieldBundle): YieldStudy {
     const rg = (cb.rings[0] ?? []).map(([lon, lat]) => toLocal(lon, lat));
     return futureHeight(cb.controls, rg.length >= 3 ? ringArea(rg) : 0, cb.known ? cb.heightM : undefined, base.assumptions);
   });
-  return { base, bonus, ring, fronts, toLocal, hob, parkingSet, frontageLengths, futures };
+  return { base, bonus, max, ring, fronts, toLocal, hob, parkingSet, frontageLengths, futures };
 }
 
 // ---- the table's rows ---------------------------------------------------------
@@ -178,6 +186,10 @@ export function yieldRows(b: YieldBundle, s: YieldStudy = yieldStudy(b)): YieldR
   rows.push({ label: 'SITE AREA', controls: A ? [sqm(A), '(cadastral boundary, confirm against survey)'] : ['—'] });
   rows.push({ label: 'FRONTAGES', controls: s.frontageLengths.length ? s.frontageLengths.map((f) => `${f.name}: ${fmt(f.lengthM, 1)}m`) : ['No street frontage found along the boundary'] });
   if (b.groundRL) rows.push({ label: 'GROUND LEVEL', controls: [`RL ${b.groundRL.min.toFixed(1)}–${b.groundRL.max.toFixed(1)} AHD at the corners`] });
+  const ex = existingSummary(b.existing ?? []);
+  if (ex) rows.push({ label: 'STANDS TODAY', controls: [
+    `${ex.count === 1 ? 'a building' : `${ex.count} buildings`} of ${ex.storeys ? `~${ex.storeys} storeys${ex.heightM ? ` (${m1(Math.round(ex.heightM * 10) / 10)})` : ''}` : 'unrecorded height'}, ${sqm(ex.footprintSqm)} footprint`,
+    'on the site — redevelopment forgoes it (see SCENARIOS)'] });
 
   rows.push({ label: 'PROJECT SUMMARY', section: true });
   if (y.archetype === 'none') {
@@ -893,6 +905,108 @@ export function tierSpot(env: XY[][], above: XY[][], placed: XY[], fit: number, 
   return best?.p;
 }
 
+// ---- the scenarios ---------------------------------------------------------------------
+
+/** One path the site may take, for the SCENARIOS table, the CSV and the JSON: display figures, not geometry. */
+export interface Scenario {
+  id: 'standsToday' | 'withinControls' | 'affordableBonus' | 'envelopeToHeight';
+  label: string;
+  note: string;
+  storeys?: string;
+  heightM?: number;
+  gfa?: string;
+  fsr?: string;
+  units?: string;
+  parking?: string;
+  /** true complies, false does not, null needs a gate passed (eligibility), undefined takes no mark (what stands). */
+  ok?: boolean | null;
+}
+
+/**
+ * The paths an investor weighs, each against the same site: what stands
+ * today (indicative, from the recorded footprints and heights), the scheme
+ * within the LEP's controls and the ADG's separations (the one the drawings
+ * show), the Housing SEPP's in-fill affordable housing bonus, and the
+ * envelope filled to the height — what the setbacks and the height plane
+ * hold with the floor space ratio set aside, the case a clause 4.6
+ * variation or a planning proposal has to carry.
+ */
+export function scenarioRows(b: YieldBundle, s: YieldStudy = yieldStudy(b)): Scenario[] {
+  const A = b.siteAreaSqm ?? 0;
+  const out: Scenario[] = [];
+  const ex = existingSummary(b.existing ?? []);
+  if (ex) out.push({
+    id: 'standsToday', label: 'STANDS TODAY',
+    note: `${ex.count === 1 ? 'the building that stands' : `the ${ex.count} buildings that stand`}, from the recorded footprint${ex.known ? ' and height' : ' alone: no height is recorded'}; not a survey`,
+    storeys: ex.storeys ? `~${ex.storeys}` : undefined,
+    heightM: ex.heightM ? Math.round(ex.heightM * 10) / 10 : undefined,
+    gfa: ex.gbaSqm ? `≈ ${sqm(ex.gbaSqm)} GBA` : undefined,
+    fsr: ex.gbaSqm && A ? `≈ ${(ex.gbaSqm / A).toFixed(1)}:1` : undefined,
+  });
+  const fill = (y: YieldResult) => ({
+    storeys: fmt(y.storeys), heightM: Math.round(y.heightM * 10) / 10, gfa: sqm(y.gfa),
+    fsr: A && y.gfa ? `${(y.gfa / A).toFixed(2)}:1` : undefined,
+    units: y.units.total ? fmt(y.units.total) : undefined,
+    parking: y.parking.total ? fmt(y.parking.total) : undefined,
+  });
+  out.push({
+    id: 'withinControls', label: 'WITHIN THE CONTROLS — DRAWN',
+    note: 'the LEP\'s height and floor space ratio and the ADG\'s separations: the massing, the plan and the schedule show this one',
+    ...fill(s.base), ok: true,
+  });
+  // A bonus the envelope eats (no more floor area or units than the base) is no path at all.
+  if (s.bonus && (s.bonus.gfa > s.base.gfa + 1 || s.bonus.units.total > s.base.units.total)) out.push({
+    id: 'affordableBonus', label: 'AFFORDABLE HOUSING BONUS',
+    note: `the Housing SEPP's in-fill bonus, ${Math.round((s.base.assumptions.affordableBonus) * 100)}% more FSR and height for 15% affordable housing (≈ ${fmt(Math.round(s.bonus.units.total * 0.15))} units for 15 years); eligibility to confirm`,
+    ...fill(s.bonus), ok: null,
+  });
+  if (s.max) {
+    const permitted = b.controls.fsr ? `${Math.round(b.controls.fsr * 100) / 100}:1` : undefined;
+    out.push({
+      id: 'envelopeToHeight', label: 'ENVELOPE TO THE HEIGHT',
+      note: `the setbacks filled to the height plane${permitted ? `: over the LEP's FSR ${permitted}` : ''} — the case a clause 4.6 variation or a planning proposal has to carry`,
+      ...fill(s.max), ok: false,
+    });
+  }
+  return out;
+}
+
+/** The SCENARIOS table, in the right half: a row a path, its note under it, the figures as the schedule writes them. */
+function renderScenarios(b: YieldBundle, s: YieldStudy, x: number, w: number, top: number): { svg: string; bottom: number } {
+  const rows = scenarioRows(b, s);
+  const C = { label: x + 0.7, storeys: x + 122, height: x + 158, gfa: x + 220, fsr: x + 252, units: x + 278, parking: x + 303 };
+  const line = (yy: number) => `<line x1="${x}" y1="${yy.toFixed(2)}" x2="${x + w}" y2="${yy.toFixed(2)}" stroke="${tpl().ink}" stroke-width="${RULE_W}"/>`;
+  const out: string[] = [];
+  let yy = top;
+  const head = yy + PAD_TOP;
+  out.push(txt(C.label, head, 'SCENARIO', true), txt(C.storeys, head, 'STOREYS', true, BODY, undefined, 'end'), txt(C.height, head, 'HEIGHT', true, BODY, undefined, 'end'),
+    txt(C.gfa, head, 'GFA', true, BODY, undefined, 'end'), txt(C.fsr, head, 'FSR', true, BODY, undefined, 'end'), txt(C.units, head, 'UNITS', true, BODY, undefined, 'end'),
+    txt(C.parking, head, 'PARKING', true, BODY, undefined, 'end'), txt(x + w, head, 'COMPLIANCE', true, BODY * 0.8, undefined, 'end'));
+  yy += ROW_ONE;
+  out.push(line(yy));
+  for (const r of rows) {
+    const base = yy + PAD_TOP;
+    const note = wrapCell([r.note], w - 12);
+    out.push(txt(C.label, base, r.label, true),
+      txt(C.storeys, base, r.storeys ?? '—', false, BODY, undefined, 'end'), txt(C.height, base, r.heightM ? m1(r.heightM) : '—', false, BODY, undefined, 'end'),
+      txt(C.gfa, base, r.gfa ?? '—', false, BODY, undefined, 'end'), txt(C.fsr, base, r.fsr ?? '—', false, BODY, undefined, 'end'),
+      txt(C.units, base, r.units ?? '—', false, BODY, undefined, 'end'), txt(C.parking, base, r.parking ?? '—', false, BODY, undefined, 'end'),
+      mark(x + w - 4, base, r.ok));
+    note.forEach((l, i) => out.push(txt(C.label, base + (i + 1) * LEAD, l, false, 2.7, '#555555')));
+    yy += PAD_TOP + (note.length + 1 - 1) * LEAD + LEAD * 0.55 + 2.2;
+    out.push(line(yy));
+  }
+  // What stands against the best of the paths: an investor's first question.
+  const ex = existingSummary(b.existing ?? []);
+  const biggest = Math.max(s.base.gba, s.bonus?.gba ?? 0, s.max?.gba ?? 0);
+  if (ex?.gbaSqm && biggest > 0 && ex.gbaSqm > biggest) {
+    yy += PAD_TOP;
+    out.push(txt(C.label, yy, 'What stands exceeds every scenario: the controls have tightened since it was built, and redevelopment would cut the floor area.', false, 2.9, SITE_RED));
+    yy += 2.6;
+  }
+  return { svg: out.join(''), bottom: yy };
+}
+
 // ---- the sheet -------------------------------------------------------------------------
 
 /** The planning yield: no themes, drawn in the default template like the summary it replaces. */
@@ -937,8 +1051,13 @@ function drawYieldSheet(b: YieldBundle, meta: SheetMeta): string {
     txt(x, yy, t, true, 4.2) + (note ? txt(x + t.length * 2.75 + 4, yy, note, false, 3, '#6a6a6a') : '');
   right.push(heading(RX, TITLE_Y, 'INDICATIVE MASSING', y.storeys ? `${y.storeys} storeys · ${sqm(y.gfa)} GFA${y.units.total ? ` · ${y.units.total} units` : ''}` : 'the height plane over the site'));
   right.push(`<line x1="${RX}" y1="${TABLE_TOP}" x2="${RX + RW}" y2="${TABLE_TOP}" stroke="${ink}" stroke-width="${RULE_W}"/>`);
-  right.push(axonometric(b, s, { x: RX, y: TABLE_TOP + 4, w: RW, h: 280 }));
-  const PY = TABLE_TOP + 292;
+  right.push(axonometric(b, s, { x: RX, y: TABLE_TOP + 4, w: RW, h: 232 }));
+  const SCY = TABLE_TOP + 244;
+  right.push(heading(RX, SCY + 4.6, 'SCENARIOS', 'what the site may hold under each path · the drawings show the first compliant one'),
+    `<line x1="${RX}" y1="${SCY + 7}" x2="${RX + RW}" y2="${SCY + 7}" stroke="${ink}" stroke-width="${RULE_W}"/>`);
+  const scen = renderScenarios(b, s, RX, RW, SCY + 7);
+  right.push(scen.svg);
+  const PY = scen.bottom + 2;
   const plan = planView(b, s, { x: RX, y: PY + 10, w: RW, h: BOTTOM - PY - 10 });
   right.push(heading(RX, PY + 4.6, 'ENVELOPE', `plan 1:${fmt(plan.scale)} · tiers numbered as in the schedule`), `<line x1="${RX}" y1="${PY + 7}" x2="${RX + RW}" y2="${PY + 7}" stroke="${ink}" stroke-width="${RULE_W}"/>`, plan.svg);
 
@@ -969,6 +1088,12 @@ function drawYieldSheet(b: YieldBundle, meta: SheetMeta): string {
     '',
     'Mapped controls are not a s10.7',
     'planning certificate.',
+    '',
+    'The drawings show the scheme',
+    'within the controls; SCENARIOS',
+    'sets it against what stands, the',
+    'Housing SEPP bonus and the',
+    'envelope filled to the height.',
     ...(futures ? [
       '',
       'Future neighbours: each building in',
@@ -1006,13 +1131,20 @@ const csvCell = (v: string) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` 
 
 /** The table as CSV: section, item, controls, proposed, compliance. */
 export function yieldCsv(b: YieldBundle): string {
+  const s = yieldStudy(b);
   const lines = [['SECTION', 'ITEM', 'CONTROLS', 'PROPOSED', 'COMPLIANCE'].join(',')];
   let section = '';
-  for (const r of yieldRows(b)) {
+  for (const r of yieldRows(b, s)) {
     if (r.section) { section = r.label ?? ''; continue; }
     if (r.head) continue;
     lines.push([section, r.label ?? '', (r.controls ?? []).filter(Boolean).join(' '), (r.proposed ?? []).filter(Boolean).join(' '),
       r.ok === true ? 'yes' : r.ok === false ? 'no' : r.ok === null ? 'to design' : ''].map(csvCell).join(','));
+  }
+  for (const sc of scenarioRows(b, s)) {
+    const figures = [sc.storeys && `${sc.storeys} storeys`, sc.heightM && m1(sc.heightM), sc.gfa, sc.fsr && `FSR ${sc.fsr}`,
+      sc.units && `${sc.units} units`, sc.parking && `${sc.parking} spaces`].filter(Boolean).join(', ');
+    lines.push(['SCENARIOS', sc.label, sc.note, figures,
+      sc.ok === true ? 'yes' : sc.ok === false ? 'no' : sc.ok === null ? 'to confirm' : ''].map(csvCell).join(','));
   }
   return '﻿' + lines.join('\r\n') + '\r\n';
 }
@@ -1025,7 +1157,9 @@ export function yieldJson(b: YieldBundle): string {
     address: b.address, siteAddress: b.siteAddress, lotDescription: b.lotDescription, siteAreaSqm: b.siteAreaSqm,
     siteAreaSource: 'NSW cadastre (confirm against survey)', planningControls: b.controls, groundRL: b.groundRL,
     station: b.station, cbd: b.cbd, policyAtSite: b.policyAtSite, frontages: s.frontageLengths, heightLimit: s.hob,
-    parkingRates: s.parkingSet, study: strip(s.base), affordableHousingBonus: strip(s.bonus),
+    parkingRates: s.parkingSet, standsToday: existingSummary(b.existing ?? []),
+    study: strip(s.base), affordableHousingBonus: strip(s.bonus), envelopeToHeight: strip(s.max),
+    scenarios: scenarioRows(b, s),
     table: yieldRows(b, s).filter((r) => !r.section && !r.head),
   }, null, 2);
 }

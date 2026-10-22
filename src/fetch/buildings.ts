@@ -3,9 +3,11 @@
 // quarter of them and storeys on half — read from its public bucket by
 // DuckDB through a small Python script (the wheel is in the image;
 // without it the script says so and we move on). OpenStreetMap through
-// Overpass is the fallback: fewer heights, but the deployer's local
-// Overpass always answers. Either answer is cached on the volume for a
-// month, since both sources move monthly.
+// Overpass fills Overture's gaps and is the fallback when Overture gives
+// nothing: around a Bondi Road site Overture had no height at all on any
+// neighbour and no footprint on 27 numbered lots within 120 m, all of
+// which OpenStreetMap carries. The merged answer is cached on the volume
+// for a month, since all these sources move monthly.
 
 import { execFile } from 'node:child_process';
 import { dirname, join } from 'node:path';
@@ -195,27 +197,64 @@ export function withDaStoreys(data: BuildingsData, lots: GeoJSONFC, applications
   return { ...data, buildings };
 }
 
+/**
+ * The primary source's footprints, filled in from a supplement where the
+ * primary is silent: a supplement building whose centroid stands inside no
+ * primary footprint joins, and a primary footprint with no height at all
+ * takes the height or storeys of a supplement building whose centroid it
+ * holds. Nothing of the primary's own is replaced. Pure, so the filling is
+ * tested without a network.
+ */
+export function mergeBuildings(primary: BuildingsData, supplement: BuildingsData): BuildingsData {
+  if (!supplement.buildings.length || !primary.buildings.length) return primary.buildings.length ? primary : supplement;
+  const prim = primary.buildings.map((b) => ({ b, bb: bboxOf(b.rings[0]) }));
+  const hostOf = (x: number, y: number) =>
+    prim.find(({ b, bb }) => x >= bb[0] && x <= bb[2] && y >= bb[1] && y <= bb[3] && pointInRing(x, y, b.rings[0]))?.b;
+  const added: Building[] = [];
+  const donors = new Map<string, Building>();
+  for (const sb of supplement.buildings) {
+    const host = hostOf(sb.centroid[0], sb.centroid[1]);
+    if (!host) { added.push(sb); continue; }
+    if (!host.estimatedHeightM && sb.estimatedHeightM && !donors.has(host.id)) donors.set(host.id, sb);
+  }
+  if (!added.length && !donors.size) return primary;
+  const buildings = primary.buildings
+    .map((b): Building => {
+      const d = donors.get(b.id);
+      return d ? { ...b, heightM: d.heightM, floors: d.floors, estimatedHeightM: d.estimatedHeightM, heightFrom: d.heightFrom } : b;
+    })
+    .concat(added);
+  const word = supplement.source === 'osm' ? 'OpenStreetMap' : supplement.source;
+  return { ...primary, buildings, note: [primary.note, `${added.length} footprints and ${donors.size} heights from ${word}`].filter(Boolean).join('; ') };
+}
+
 /** Every building footprint touching the extent, with what is known of its height. */
 export async function fetchBuildings(extent: Extent, log: (m: string) => void = () => {}): Promise<BuildingsData> {
   const key = ['xmin', 'ymin', 'xmax', 'ymax'].map((k) => Math.round(extent[k as keyof Extent])).join('_');
-  let data: BuildingsData;
+  // The sources are cached apart and merged on the way out, so an Overpass
+  // outage costs one run its fill and is retried on the next, while
+  // Overture's answer keeps serving from the volume; a failure is never
+  // cached, where a cached outage drew every sheet of this window without
+  // buildings for a month, and said nothing after the first.
+  let overture: BuildingsData | null = null;
   try {
-    data = await cachedJson('buildings', key, 30 * DAY_MS, async (): Promise<BuildingsData> => {
-      try {
-        const o = await fromOverture(extent, log);
-        if (o && o.buildings.length) return o;
-      } catch (e: any) {
-        log(`  WARN Overture buildings failed: ${e?.message ?? e}; trying OpenStreetMap`);
-      }
-      return await fromOsm(extent, log);
+    overture = await cachedJson('buildings-overture', key, 30 * DAY_MS, async (): Promise<BuildingsData> => {
+      const o = await fromOverture(extent, log);
+      if (!o?.buildings.length) throw new Error(o ? 'Overture gave no buildings here' : 'duckdb is not installed');
+      return o;
     });
   } catch (e: any) {
-    // Neither source answered, and that is not cached: an outage is gone by
-    // the next sheet, where a cached "none" drew every sheet of this window
-    // without buildings for a month, and said nothing after the first.
-    log(`  WARN OpenStreetMap buildings failed: ${e?.message ?? e}`);
-    data = { source: 'none', buildings: [], fetchedAt: new Date().toISOString(), note: String(e?.message ?? e) };
+    log(`  WARN Overture buildings failed: ${e?.message ?? e}; trying OpenStreetMap`);
   }
+  let osm: BuildingsData | null = null;
+  try {
+    osm = await cachedJson('buildings-osm', key, 30 * DAY_MS, () => fromOsm(extent, log));
+  } catch (e: any) {
+    log(`  WARN OpenStreetMap buildings${overture ? ' supplement' : ''} failed: ${e?.message ?? e}${overture ? '; Overture alone' : ''}`);
+  }
+  const data: BuildingsData = overture && osm ? mergeBuildings(overture, osm)
+    : overture ?? osm ?? { source: 'none', buildings: [], fetchedAt: new Date().toISOString(), note: 'no building source answered' };
+  if (overture && osm && data.note) log(`  buildings: ${data.note}`);
   // the centroid is recomputed on the way out, so a cache written before the centroid arithmetic was fixed still reads right
   return { ...data, buildings: data.buildings.map((b) => ({ ...b, centroid: ringCentroid(b.rings[0]) })) };
 }

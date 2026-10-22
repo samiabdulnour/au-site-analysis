@@ -41,10 +41,11 @@ const day = (ms) => new Date(ms).toLocaleDateString('en-AU', { day: 'numeric', m
 
 function show(j) {
   act.innerHTML = '';
-  if (!j || (j.plan !== 'subscription' && !j.account)) {
-    mine.textContent = 'Every drawing starts with a free account: an email and a password.';
+  if (!j || !j.authed) {
+    mine.textContent = 'Drawing is free, with no account. Buying — one address, or the ' +
+      'subscription — starts with a free account: an email and a password.';
     link('CREATE A FREE ACCOUNT', '/?signup', true);
-    link('SIGN IN', '/');
+    link('SIGN IN', '/?signin');
     return;
   }
   const a = j.account;

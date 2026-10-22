@@ -10,7 +10,7 @@
 // up to date by the webhook (src/billing.ts), so this file going missing
 // would cost accounts their passwords but not their subscriptions.
 
-import { randomUUID, randomBytes, scrypt, createHmac, timingSafeEqual } from 'node:crypto';
+import { randomUUID, randomBytes, scrypt, createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { planOf, siteKey, UNLOCK_DAYS } from './plans.js';
@@ -29,6 +29,19 @@ export interface Account {
   currentPeriodEnd?: number;
   /** Sites bought one at a time. */
   sites?: SiteUnlock[];
+  /**
+   * When the address clicked its verification link, ms since the epoch.
+   * 0 means asked and not yet clicked; absent means the account is from
+   * before verification existed, which counts as verified (isVerified) —
+   * shipping the feature must not lock out everyone already signed up.
+   */
+  emailVerified?: number;
+  /** SHA-256 of the verification link's token, while one is out. */
+  verifyTokenHash?: string;
+  verifyTokenExp?: number;
+  /** SHA-256 of the password-reset link's token, while one is out. */
+  resetTokenHash?: string;
+  resetTokenExp?: number;
 }
 
 export interface SiteUnlock {
@@ -182,6 +195,81 @@ export async function signIn(email: string, password: string): Promise<Account |
     return undefined;
   }
   return (await passwordMatches(password, a.passwordHash)) ? a : undefined;
+}
+
+// ---- emailed links: verification and password reset -------------------------
+//
+// Both features are one emailed link each. The account keeps only the SHA-256
+// of the token in the link, so this file — and any backup of it — never holds
+// anything that opens an account; the email is the secret's only copy. Lookup
+// walks the accounts the way accountByEmail does: the same few thousand rows,
+// and the same module to move onto a database when that stops being fine.
+
+export const VERIFY_DAYS = 7;
+export const RESET_MINUTES = 60;
+
+const tokenHash = (t: string) => createHash('sha256').update(t).digest('hex');
+
+/** Verified: the address clicked its link, or the account predates asking. */
+export const isVerified = (a: Account) => a.emailVerified !== 0;
+
+/** A fresh verification link's token; whatever was emailed before stops working. */
+export function issueVerification(a: Account): string {
+  const token = randomBytes(32).toString('hex');
+  updateAccount(a, {
+    emailVerified: 0,
+    verifyTokenHash: tokenHash(token),
+    verifyTokenExp: Date.now() + VERIFY_DAYS * 86400_000,
+  });
+  return token;
+}
+
+export function confirmEmail(a: Account) {
+  updateAccount(a, { emailVerified: Date.now(), verifyTokenHash: undefined, verifyTokenExp: undefined });
+}
+
+/** A fresh reset link's token. Issuing one touches nothing — only using it does. */
+export function issueReset(a: Account): string {
+  const token = randomBytes(32).toString('hex');
+  updateAccount(a, {
+    resetTokenHash: tokenHash(token),
+    resetTokenExp: Date.now() + RESET_MINUTES * 60_000,
+  });
+  return token;
+}
+
+function byToken(token: string, kind: 'verify' | 'reset'): Account | undefined {
+  if (!/^[0-9a-f]{64}$/.test(token)) return undefined;
+  const want = Buffer.from(tokenHash(token));
+  for (const a of accounts.values()) {
+    const hash = kind === 'verify' ? a.verifyTokenHash : a.resetTokenHash;
+    const exp = kind === 'verify' ? a.verifyTokenExp : a.resetTokenExp;
+    if (!hash || !exp || exp < Date.now()) continue;
+    const got = Buffer.from(hash);
+    if (got.length === want.length && timingSafeEqual(got, want)) return a;
+  }
+  return undefined;
+}
+
+export const accountByVerifyToken = (token: string) => byToken(token, 'verify');
+export const accountByResetToken = (token: string) => byToken(token, 'reset');
+
+/**
+ * The reset link used: the new password in, the link spent. Every session
+ * signed over the old hash dies with it (the cookie's signature covers its
+ * tail), which is the point — whoever asked for the reset wants the browsers
+ * holding the old password out. The link arriving back also proves the
+ * address receives this account's mail, which is everything verification
+ * asks, so an unverified account that resets its password is verified by it.
+ */
+export async function resetPassword(a: Account, password: string) {
+  const passwordHash = await hashPassword(password);
+  updateAccount(a, {
+    passwordHash,
+    resetTokenHash: undefined, resetTokenExp: undefined,
+    emailVerified: a.emailVerified === 0 ? Date.now() : a.emailVerified,
+    verifyTokenHash: undefined, verifyTokenExp: undefined,
+  });
 }
 
 // ---- sessions --------------------------------------------------------------

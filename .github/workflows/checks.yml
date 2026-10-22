@@ -173,6 +173,15 @@ jobs:
       - name: the free side is stamped and the subscription is not
         run: npx tsx test/plans.mts
 
+      # The emailed links, through the server with Resend stood in for by a
+      # local endpoint: a sign-up is unverified and refused generation until
+      # its link is clicked, resend replaces the link, forgot answers unknown
+      # addresses like known ones and sends them nothing, and the reset link
+      # sets the new password once, signs the old sessions out and verifies
+      # the address it arrived on. Nothing reaches Resend.
+      - name: the emailed links verify and reset what they should
+        run: npx tsx test/auth-email.mts
+
       # The operator view's Stripe check, on made-up answers: it names the
       # account the key belongs to, and finds a price from the other mode, a
       # webhook missing an event, a portal never saved and a wrong secret.
@@ -452,13 +461,25 @@ jobs:
             fi
           }
 
-          none='{"authed":false,"required":true}|403'
+          # No session is still an answer, not a refusal: the site is open,
+          # and /api/me says which side of it this viewer is on (free).
+          none='{"authed":false,"operator":false,"required":true,"plan":"free","grants":{"cleanPdf":false,"openData":false},"account":null,"billing":{"subscription":false,"site":false}}|403'
           # Both codes carry the subscription; neither is an account.
           tail='"plan":"subscription","grants":{"cleanPdf":true,"openData":true},"account":null,"billing":{"subscription":false,"site":false}}'
           user="{\"authed\":true,\"operator\":false,\"required\":true,$tail|403"
           oper="{\"authed\":true,\"operator\":true,\"required\":true,$tail|200"
 
           holds "no session"                            "$none"
+
+          # Drawing is open: without any session, a job lookup answers about
+          # the job (404 for one that does not exist), never 401.
+          got=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 \
+                  "$B/api/jobs/00000000-0000-4000-8000-000000000000")
+          if [ "$got" = "404" ]; then
+            echo "  anonymous job lookup -> $got (open, not a 401)"
+          else
+            echo "  anonymous job lookup -> $got, expected 404"; fail=1
+          fi
           login "shared gate, wrong code"          401  '{"code":"nope"}'
           login "shared gate, shared code"         200  '{"code":"shared-for-ci"}'
           holds "holding the shared code"               "$user"

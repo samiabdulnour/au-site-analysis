@@ -143,8 +143,8 @@ with the pictures.
 
 ### Free, one address, and subscription
 
-Every account generates every drawing, from the same data, drawn the same way;
-what differs is what can be taken away:
+Anyone generates every drawing, with or without an account, from the same
+data, drawn the same way; what differs is what can be taken away:
 
 | | free | one address | subscription |
 |---|---|---|---|
@@ -153,9 +153,11 @@ what differs is what can be taken away:
 | data (CSV, JSON) | — | for that address | yes |
 | lasts | — | 30 days | while subscribed |
 
-An address is bought from any of its drawings: under a free account's
-finished sheet, a line says what unlocking gives, and UNLOCK THIS ADDRESS goes
-to Stripe for one payment and back to the same drawing, now clean. It covers
+An address is bought from any of its drawings: under a finished sheet the
+viewer cannot take clean, a line says what unlocking gives, and UNLOCK THIS
+ADDRESS goes to Stripe for one payment and back to the same drawing, now
+clean. A visitor without an account is asked to make one on the way — buying
+is what an account is for — and carries straight on to Stripe. It covers
 every drawing of that address — context, site, yield and site report — at any
 scale or style, matched on the address with case, punctuation and spacing
 ignored. It is named for the address rather than the site because "this site"
@@ -166,8 +168,13 @@ and its settings still say site: `STRIPE_SITE_PRICE_ID`, `unlockSite`.)
 `src/plans.ts` is that table in code, and every download route reads it, so a
 new privilege is a new column there rather than a new condition in the server.
 
-**Accounts.** Anyone can make one on `/` with an email and a password (`SIGN
-UP`), and starts on the free side. Accounts live in `out/accounts/accounts.json`
+**Accounts.** Drawing never asks for one: the tool is the landing page, and
+the account form opens only from SIGN IN in the nav, from an unlock or the
+pricing page (buying starts with an account), and from the emailed
+verification and reset links. Anyone can make one with an email and a
+password (`SIGN UP`), and starts on the free side. What holds the open side
+down is what always did: the per-IP budgets (12 sheets an hour, and the
+sign-in and sign-up limiters) and the one-at-a-time queue. Accounts live in `out/accounts/accounts.json`
 on the host volume, beside the job index and written the same way, with scrypt
 password hashes; the key that signs session cookies is `SESSION_SECRET`, or,
 unset, one made once and kept in the same directory, so a deploy signs nobody
@@ -176,6 +183,27 @@ clean PDFs and CAD without an account; unset it once everyone has one.
 `SUBSCRIPTION_EMAILS=a@x.com,b@y.com` gives those accounts the subscription
 without charge, which is also the way to see the subscriber's side before
 billing is switched on.
+
+**Email: verification and password reset.** The server sends two emails, both
+through [Resend](https://resend.com)'s REST API with plain fetch, the way it
+talks to Stripe. A sign-up is sent a verification link; the page notes an
+unverified address (and resends the link), but generating never waits on it —
+with drawing open to everyone, a gate there would only mean signing out to get
+past it. What the click still proves is the mailbox the reset link goes to. The sign-in form's `reset` emails a password-reset link,
+which opens the page asking for the new password; setting it signs that browser
+in and every other one out (the cookie's signature covers the password hash).
+Each link's token is random and stored only as its SHA-256, so the accounts
+file never holds anything that opens an account. In `/etc/site-analyst.env`:
+
+```
+RESEND_API_KEY=re_…                                # resend.com, with the sending domain verified
+EMAIL_FROM=Site Analyst <no-reply@site-analyst.com>
+```
+
+With either unset nothing is sent and both features switch themselves off: new
+accounts count as verified, and the reset form says this server cannot email a
+link. Accounts from before verification existed count as verified too — the
+feature arriving must not lock out everyone already signed up.
 
 **The watermark.** Put it in `assets/watermark/watermark.png`. It is stamped on
 each page when a free account downloads, not when the sheet is drawn, so the
@@ -271,11 +299,13 @@ Until one is set, nothing opens `/status`. That is the right way for it to fail:
 an ops view that is closed until someone deliberately opens it, rather than one
 that stays open on a credential nobody meant to repurpose.
 
-Authentication: visitors sign in with an account, or enter `ACCESS_CODE` once,
-and either way get a 30-day session cookie. Login attempts, sign-ups and job
+Authentication: drawing needs none — the site is open, and a visitor without
+a session is simply on the free side, watermarked. Signing in (an account, or
+`ACCESS_CODE` once) sets a 30-day session cookie and is what buying, clean
+downloads and the office's grants hang off. Login attempts, sign-ups and job
 submissions are rate-limited per IP, and job outputs are deleted after 24h.
-`ALLOW_NO_AUTH=1` disables the gate for local use only, and only while no
-`ACCESS_CODE` is set.
+`ALLOW_NO_AUTH=1` is for local use only, and only while no `ACCESS_CODE` is
+set: everything granted, no sign-in offered.
 
 The code lives in `/etc/site-analyst.env` on the server and never in the repo,
 so rotating it is a change on the host rather than a deploy:
@@ -387,6 +417,41 @@ the outside which half. `GET /api/batches/<id>` reports a row per address, and
 Batches live in `out/web/batches.json`, beside the job index rather than inside
 it: that file is an array an older container still reads, and a rollback that
 met an object there would find no jobs at all.
+
+### Identifying this tool
+
+Being a good guest is also being a recognisable one. The firewall in front of a
+government endpoint decides whether to trust a request largely from its
+`User-Agent`, and whether that identity resolves to something a human can look
+up; an anonymous request — what Node's `fetch` sends by default, a bare `node`
+— is what such a firewall blocks. So every outbound request carries one
+identity, defined once in `src/lib/http.ts` and attached by `retryFetch` to any
+request that does not set its own, naming the tool and linking this repository
+with the `+URL` convention:
+
+```
+au-site-analysis/1.0 (NSW architectural site-analysis tool; +https://github.com/samiabdulnour/au-site-analysis)
+```
+
+The link is the point. A provider who looks it up lands on
+[`SECURITY.md`](SECURITY.md), which says what the tool fetches, how lightly (one
+address at a time, cached, backed off on 429/503), and how to reach or block the
+operator. The running site serves the same record at `/.well-known/security.txt`
+(RFC 9116), so the identity holds from both ends — the request points at the
+repo, and the site points back at the same policy.
+
+`SITE_ANALYSIS_CONTACT` adds a direct contact to that identity. Set it to an
+email or a URL and it is appended to the `User-Agent`, sent as a `From` header,
+and listed first in `security.txt`, so a provider has someone to email before
+reaching for a block. Like the rest, it lives in `/etc/site-analyst.env`:
+
+```
+SITE_ANALYSIS_CONTACT=hi@site-analyst.com
+```
+
+Unset, the identity still names the tool and links the repo — only the direct
+contact is missing, and `security.txt` keeps its GitHub advisory and issues
+links regardless.
 
 ### Status view
 
@@ -930,7 +995,8 @@ development window), `--job 2539`, `--client "Name"`,
 controls let the site hold, as a feasibility study first states it. The left
 half is the office's development summary (DA 002) with the column the
 generated summary had to leave empty now filled — CONTROLS, PROPOSED and
-COMPLIANCE — for the site, the project summary, the LEP, the parking, the
+COMPLIANCE — for the site (what stands on it today included, where the
+building sources record it), the project summary, the LEP, the parking, the
 Apartment Design Guide and the Housing SEPP. Under it, ruled as the same
 table, the schedule of tiers — storeys, use, setbacks, envelope, plate and
 floor area, each tier's number in the ring the plan draws it in — then the
@@ -939,9 +1005,24 @@ area for it, its own area, how many there are and the area they take, and
 the assumptions the study rests on (floor to floor, efficiencies, the mix,
 the plates, the nearest station).
 
-The right half draws the study. The indicative massing as an axonometric,
+The right half draws the study, and weighs it. Under the massing, a
+SCENARIOS table sets the paths an investor compares against one another,
+each with its storeys, height, GFA, FSR, units and parking
+(`scenarioRows()`, also in the CSV and the JSON): *stands today* — the
+building on the site from its recorded footprint and height, indicative
+GBA, no mark, since it is a fact and not a proposal; *within the controls*
+— the scheme the drawings show, inside the LEP's height and FSR and the
+ADG's separations; *affordable housing bonus* — the Housing SEPP's in-fill
+30%, eligibility to confirm; and *envelope to the height* — the setbacks
+filled to the height plane with the FSR set aside, the case a clause 4.6
+variation or a planning proposal has to carry, marked non-compliant. Where
+what stands exceeds every scenario, a red line says so: the controls have
+tightened since it was built, and redevelopment would cut the floor area.
+
+The indicative massing as an axonometric,
 seen from the main street's corner, among the neighbours at their recorded
-heights (Overture; dashed where none is recorded), with each tier's envelope
+heights (Overture, its gaps filled from OpenStreetMap; dashed where neither
+records one), with each tier's envelope
 dashed and the height of building plane over the site. Over each neighbour,
 in pale dashed glass, its future: its own footprint raised to the whole 3.1 m
 storeys its LEP height of building holds, where its zone permits flats (R1,
@@ -1080,8 +1161,10 @@ with the site and its levels marked; the text gives the site's RL range,
 fall, grade and aspect and where the high ground and the water are. Then
 *built form*: every building footprint in the window coloured by height
 band (Overture Maps, read from its public bucket by DuckDB through
-`src/py/overture_buildings.py`; OpenStreetMap through Overpass when DuckDB
-or Overture is not there; where neither gives a height, the storeys of a
+`src/py/overture_buildings.py`, its gaps filled from OpenStreetMap through
+Overpass — a footprint Overture misses joins, and a footprint it holds with
+no height takes OSM's height or storeys; OpenStreetMap alone when DuckDB
+or Overture is not there; where no source gives a height, the storeys of a
 determined development application on the lot, hatched and said so), the
 storeys of the buildings within 250 m as a
 histogram with the LEP height plane marked on it, and section A–A′ again

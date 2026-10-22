@@ -18,7 +18,7 @@ import type { SummaryBundle } from './render/summarySheet.js';
 import type { YieldBundle } from './render/yieldSheet.js';
 import { CENTRES } from './data/centres.js';
 import { levelAt, type ContourM } from './lib/levels.js';
-import { futureHeight, ringArea, type FutureControls } from './lib/yield.js';
+import { futureHeight, ringArea, type ExistingBuilding, type FutureControls } from './lib/yield.js';
 import {
   fetchZoningDetailed, fetchHobDetailed, fetchHeritageDetailed, fetchShrCurtilages, fetchPolicyAreas, isRealPolicyArea,
   fetchWaterAreas, fetchPlanningContext, fetchPropertyReport, fetchHousingTarget,
@@ -621,6 +621,16 @@ export async function runYieldPipeline(
   const areaM = (rings: number[][][]) => rings.reduce((t, rg, i) => t + (i ? -1 : 1) * ringArea(rg.map(toM)), 0);
   const lotRingsAll = lots.features.map((f) => ringsOf(f.geometry)).filter((r) => r.length);
   const lotOf = (lon: number, lat: number) => lotRingsAll.findIndex((rings) => rings.filter((rg) => pointInRingLL(lon, lat, rg)).length % 2 === 1);
+  // What stands on the site today is kept, not dropped: the sheet states it
+  // and the scenarios stand against it.
+  const existing: ExistingBuilding[] = buildings.buildings
+    .filter((bd) => pointInRingLL(bd.centroid[0], bd.centroid[1], siteRingLL))
+    .map((bd) => ({
+      footprintSqm: Math.round(areaM(bd.rings.slice(0, 1))),
+      ...(bd.heightM || bd.estimatedHeightM ? { heightM: Math.round((bd.heightM ?? bd.estimatedHeightM!) * 10) / 10 } : {}),
+      ...(bd.floors ? { storeys: bd.floors } : {}),
+    }))
+    .filter((e) => e.footprintSqm >= 25);   // a shed says nothing about the site's use
   const standing = buildings.buildings.filter((bd) => !pointInRingLL(bd.centroid[0], bd.centroid[1], siteRingLL))
     .map((bd) => ({ bd, footprint: areaM(bd.rings.slice(0, 1)), lot: lotOf(bd.centroid[0], bd.centroid[1]) }));
   const footprintOnLot = new Map<number, number>();
@@ -645,6 +655,7 @@ export async function runYieldPipeline(
     return { rings: bd.rings, heightM, known: !!(bd.estimatedHeightM ?? bd.heightM ?? bd.floors), controls, footprint };
   });
   log(`  neighbours: ${context.length}, ${context.filter((c) => futureHeight(c.controls, c.footprint, c.known ? c.heightM : undefined)).length} with a future height over today's`);
+  if (existing.length) log(`  stands today: ${existing.length} building${existing.length > 1 ? 's' : ''} on the site${existing.some((e) => e.storeys || e.heightM) ? '' : ', no height recorded'}`);
 
   // Each lot with what the plan writes on it: its street numbers (the address
   // points inside it), and the zone and height of building at a point inside it.
@@ -691,6 +702,7 @@ export async function runYieldPipeline(
     parcels,
     kerbs,
     context: context.map(({ footprint: _f, ...c }) => c),
+    existing,
     buildingsSource: buildings.source,
     assumptions,
   };

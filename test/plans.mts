@@ -125,10 +125,19 @@ try {
   }
   if (!up) throw new Error(`server never answered:\n${serverLog}`);
 
-  // ---- no session -----------------------------------------------------------
+  // ---- no session: the open side ---------------------------------------------
   const anon = browser();
-  check('no session: /api/me is 401', (await anon('/api/me')).status === 401);
-  check('no session: the PDF is 401', (await anon(`/api/jobs/${jobId}/pdf`)).status === 401);
+  const anonMe = await (await anon('/api/me')).json();
+  check('no session: /api/me answers, free side', anonMe.authed === false && anonMe.plan === 'free',
+    JSON.stringify(anonMe));
+  const a1 = await holds(anon);
+  check('no session: the PDF is served, stamped', a1.pdfStatus === 200 && !a1.cleanPdf);
+  check('no session: the CAD and data are 402', a1.cad === 402 && a1.data === 402, `${a1.cad} ${a1.data}`);
+  // This run sells no addresses (no STRIPE_SITE_PRICE_ID), so the job offers
+  // no unlock to anyone; when one is sold, it is offered without an account
+  // too — the sign-up happens on the way to Stripe.
+  check('no session: no unlock offered while none is sellable',
+    (await (await anon(`/api/jobs/${jobId}`)).json()).unlock === null);
   check('the plans page answers, price filled in',
     await anon('/pricing').then(async (r) => r.status === 200 && !(await r.text()).includes('%PRICE%')));
 
@@ -179,7 +188,8 @@ try {
   const login = await post(again, '/api/login', { email: 'FREE@example.com', password: 'long enough' });
   check('right password signs in', login.status === 200 && (await login.json()).plan === 'free');
   await again('/api/logout', { method: 'POST' });
-  check('signing out puts the account down', (await again('/api/me')).status === 401);
+  check('signing out puts the account down, back to the open side',
+    (await (await again('/api/me')).json()).authed === false);
 
   // ---- the subscription, three ways ------------------------------------------
   const office = browser();

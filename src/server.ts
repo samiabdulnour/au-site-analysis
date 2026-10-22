@@ -4,12 +4,14 @@
 //
 //   npm run serve     # http://localhost:3000  (PORT to change)
 //
-// Two sides, free and subscription (src/plans.ts). Anyone can make an account
-// with an email and a password and generate every drawing; a free account's
-// PDFs are served watermarked (src/render/watermark.ts), and the subscription
-// (src/billing.ts) serves them clean with the CAD and data files beside them.
-// ACCESS_CODE, when set, is the office's shared code and carries the
-// subscription. Set ALLOW_NO_AUTH=1 only for local use: no sign-in, all granted.
+// Open to anyone: drawing needs no account, and the free side's PDFs are
+// served watermarked (src/render/watermark.ts). An account (an email and a
+// password) exists for buying — unlocking an address, or the subscription
+// (src/billing.ts, src/plans.ts) — which serves them clean with the CAD and
+// data files beside them. What holds the open side down is the per-IP budgets
+// and the one-at-a-time queue, not a login. ACCESS_CODE, when set, is the
+// office's shared code and carries the subscription. Set ALLOW_NO_AUTH=1 only
+// for local use: everything granted, and SIGN IN never offered.
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { readFile, readFileSync, existsSync, mkdirSync, writeFileSync, renameSync } from 'node:fs';
@@ -33,8 +35,11 @@ import { GRANTS, PRICE_LABEL, SITE_PRICE_LABEL, planOf, paidFor, siteKey, type P
 import {
   initAccounts, accountFromCookie, accountCounts, createAccount, signIn, sessionCookieValue,
   normaliseEmail, validEmail, PASSWORD_MIN, ACCOUNT_COOKIE, SESSION_DAYS, type Account,
-  unlockedSites, siteUnlocked,
+  unlockedSites, siteUnlocked, accountByEmail,
+  isVerified, issueVerification, confirmEmail, accountByVerifyToken,
+  issueReset, accountByResetToken, resetPassword,
 } from './accounts.js';
+import { emailEnabled, sendVerification, sendReset } from './email.js';
 import {
   billingEnabled, subscriptionsOpen, sitesOpen, webhookEnabled, checkoutUrl, siteCheckoutUrl, portalUrl,
   verifySignature, handleEvent, checkBilling, webhookSeen,
@@ -716,9 +721,12 @@ function sessionToken(req: IncomingMessage): string | null {
  * an account to see what a free visitor gets, say — and then has the better.
  */
 interface Viewer {
-  /** May generate: any session at all. */
+  /** Holds a session — an account or a code. Drawing does not need one; this
+   *  is what SIGN OUT means, and what buying starts from. */
   signedIn: boolean;
   operator: boolean;
+  /** Holds the office or operator code, which generates without an account. */
+  code: boolean;
   plan: Plan;
   account?: Account;
 }
@@ -735,6 +743,7 @@ function viewerFrom(held: { code: boolean; operator: boolean }, account?: Accoun
   return {
     signedIn: held.code || Boolean(account),
     operator: held.operator,
+    code: held.code,
     plan: held.code || (account && planOf(account) === 'subscription') ? 'subscription' : 'free',
     account,
   };
@@ -749,7 +758,7 @@ const viewerOf = (req: IncomingMessage) => viewerFrom(heldCode(req), accountFrom
 function describe(v: Viewer) {
   const a = v.account;
   return {
-    authed: true,
+    authed: v.signedIn,
     operator: v.operator,
     // `required` is not a secret: the sign-in form is shown to anyone. It
     // tells the page whether signing out means anything here.
@@ -758,6 +767,9 @@ function describe(v: Viewer) {
     grants: GRANTS[v.plan],
     account: a ? {
       email: a.email,
+      // Whether generating waits on the verification click. With email off
+      // there is no link to click, so nothing is said to wait on one.
+      verified: !emailEnabled || isVerified(a),
       status: a.subscriptionStatus ?? null,
       renewsAt: a.currentPeriodEnd ?? null,
       // Stripe's portal needs a customer, which an account has once it has
@@ -943,6 +955,30 @@ Sitemap: ${siteBase()}/sitemap.xml
     return;
   }
 
+  // RFC 9116: where a firewall or data provider that sees this tool's
+  // requests can read what it is and reach its operator. The User-Agent its
+  // fetchers send points at the GitHub repo; this points at the same record,
+  // served from the running site so the identity is verifiable from both ends.
+  if (req.method === 'GET' && (url.pathname === '/.well-known/security.txt' || url.pathname === '/security.txt')) {
+    const base = siteBase();
+    const repo = 'https://github.com/samiabdulnour/au-site-analysis';
+    const expires = new Date(Date.now() + 365 * 86_400_000).toISOString();
+    const contact = process.env.SITE_ANALYSIS_CONTACT?.trim();
+    const contactLines = [
+      contact ? `Contact: ${contact.includes('@') && !contact.includes(':') ? `mailto:${contact}` : contact}` : null,
+      `Contact: ${repo}/security/advisories/new`,
+      `Contact: ${repo}/issues`,
+    ].filter(Boolean);
+    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=86400' });
+    res.end(`${contactLines.join('\n')}
+Expires: ${expires}
+Policy: ${repo}/blob/main/SECURITY.md
+Preferred-Languages: en
+Canonical: ${base}/.well-known/security.txt
+`);
+    return;
+  }
+
   // Sample thumbnails for the landing page. Whitelisted names only — never
   // join user input onto a filesystem path.
   const sampleMatch = url.pathname.match(/^\/samples\/([a-z0-9_-]+\.(?:jpg|png|svg))$/);
@@ -1024,9 +1060,9 @@ Sitemap: ${siteBase()}/sitemap.xml
   }
 
   if (req.method === 'GET' && url.pathname === '/api/me') {
-    const v = viewerOf(req);
-    if (!v.signedIn) return json(res, 401, { authed: false, required: true });
-    return json(res, 200, describe(v));
+    // 200 with or without a session: the page is open to anyone, and what it
+    // asks here is which side of the site this viewer is on.
+    return json(res, 200, describe(viewerOf(req)));
   }
 
   // A free account: an email and a password, and nothing else asked. It can
@@ -1049,6 +1085,14 @@ Sitemap: ${siteBase()}/sitemap.xml
       if (e?.message === 'exists') return json(res, 409, { error: 'That email already has an account. Sign in instead.' });
       console.log(`accounts: sign-up failed — ${e?.message ?? e}`);
       return json(res, 500, { error: 'Could not create the account. Try again shortly.' });
+    }
+    // The verification link, sent on the way out rather than awaited: the
+    // email service's latency is not the sign-up's, and a send that fails
+    // leaves the page's RESEND button to try again.
+    if (emailEnabled) {
+      const token = issueVerification(account);
+      void sendVerification(account.email, siteBase(), token)
+        .catch((e) => console.log(`email: verification for ${account.id} failed — ${e?.message ?? e}`));
     }
     res.writeHead(201, {
       'Content-Type': 'application/json',
@@ -1137,6 +1181,68 @@ Sitemap: ${siteBase()}/sitemap.xml
     return;
   }
 
+  // ---- emailed links: verification and password reset ----------------------
+  //
+  // Before the session wall, both of them: a verification click arrives from
+  // an email client holding no cookie, and the person asking for a reset is
+  // precisely the one who cannot sign in.
+
+  // The verification email's link. A GET, because an email client opens links
+  // with GET; it answers with a redirect so the address bar lands on the page
+  // rather than on an API answer. The token is 256 random bits, which is what
+  // makes a GET that changes state safe to leave this exposed.
+  if (req.method === 'GET' && url.pathname === '/api/verify') {
+    const a = accountByVerifyToken(String(url.searchParams.get('token') ?? ''));
+    if (a) confirmEmail(a);
+    res.writeHead(303, { Location: a ? '/?verified=1' : '/?verified=0' });
+    res.end();
+    return;
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/password/forgot') {
+    if (!emailEnabled)
+      return json(res, 503, { error: 'This server cannot send email, so passwords cannot be reset here. Contact the operator.' });
+    if (limited(`forgot:${ip}`, 5, 3600_000)) return json(res, 429, { error: 'Too many attempts. Try later.' });
+    let email = '';
+    try { email = normaliseEmail(JSON.parse((await readBody(req)) || '{}').email); } catch { /* refused below */ }
+    if (!validEmail(email)) return json(res, 400, { error: 'Enter an email address.' });
+    const a = accountByEmail(email);
+    // One answer whether or not the address has an account, and the send is
+    // not awaited: the reply must not say — in words or in timing — which
+    // addresses have accounts here.
+    if (a) {
+      const token = issueReset(a);
+      void sendReset(a.email, siteBase(), token)
+        .catch((e) => console.log(`email: reset for ${a.id} failed — ${e?.message ?? e}`));
+    }
+    return json(res, 200, { ok: true, message: 'If that email has an account, a reset link is on its way to it.' });
+  }
+
+  // The reset email's link used: the new password in, and this browser signed
+  // in with it. Everywhere else signs out — the cookie's signature covers the
+  // hash that just changed.
+  if (req.method === 'POST' && url.pathname === '/api/password/reset') {
+    if (limited(`reset:${ip}`, 10, 15 * 60_000)) return json(res, 429, { error: 'Too many attempts. Try later.' });
+    let token = '', password = '';
+    try {
+      const parsed = JSON.parse((await readBody(req)) || '{}');
+      token = String(parsed.token ?? '');
+      password = String(parsed.password ?? '');
+    } catch { /* refused below */ }
+    if (password.length < PASSWORD_MIN || password.length > 200)
+      return json(res, 400, { error: `Choose a password of ${PASSWORD_MIN} characters or more.` });
+    const a = accountByResetToken(token);
+    if (!a) return json(res, 400, { error: 'That reset link has expired or was already used. Ask for a new one.' });
+    await resetPassword(a, password);
+    res.writeHead(200, {
+      'Content-Type': 'application/json',
+      'Set-Cookie': cookie(req, ACCOUNT_COOKIE, sessionCookieValue(a), SESSION_DAYS * 86400),
+    });
+    // The new cookie is not on this request, so the account is put in by hand.
+    res.end(JSON.stringify({ ok: true, ...describe(viewerFrom(heldCode(req), a)) }));
+    return;
+  }
+
   // Stripe telling this server what happened at Checkout and since: a new
   // subscription, a renewal, a card that failed, a cancellation. Before the
   // auth wall, because Stripe holds no session; the signature is its proof.
@@ -1163,12 +1269,30 @@ Sitemap: ${siteBase()}/sitemap.xml
     }
   }
 
-  // Everything below requires a session. Scoped to the API rather than to every
-  // remaining path: an unknown URL is not a place to ask for an access code,
-  // and answering /robots.txt with 401 told every crawler the site was broken
-  // rather than that the file was absent.
-  if (url.pathname.startsWith('/api/') && !viewerOf(req).signedIn)
-    return json(res, 401, { error: 'Not authorised.' });
+  // There is no wall below: drawing is open to anyone, and what holds it down
+  // is the per-IP budgets on each route and the one-at-a-time queue. The
+  // routes that do grant something guard themselves — billing wants an
+  // account, the status view the operator code — and the open formats answer
+  // 402 until the address is bought or the account subscribes.
+
+  // The sign-up's email never arrived, or its link ran out. Only a signed-in
+  // account has an address to resend to.
+  if (req.method === 'POST' && url.pathname === '/api/verify/resend') {
+    const v = viewerOf(req);
+    if (!v.account) return json(res, 400, { error: 'Sign in with your email first.' });
+    if (!emailEnabled || isVerified(v.account)) return json(res, 409, { error: 'This email does not need verifying.' });
+    if (limited(`resend:${ip}`, 5, 3600_000)) return json(res, 429, { error: 'Too many attempts. Try later.' });
+    const token = issueVerification(v.account);
+    try {
+      // Awaited, unlike the sign-up's: whoever presses RESEND is asking
+      // whether sending works, and deserves the real answer.
+      await sendVerification(v.account.email, siteBase(), token);
+    } catch (e: any) {
+      console.log(`email: verification for ${v.account.id} failed — ${e?.message ?? e}`);
+      return json(res, 502, { error: 'Could not send the email. Try again shortly.' });
+    }
+    return json(res, 200, { ok: true, message: `Sent — check ${v.account.email}.` });
+  }
 
   // ---- billing -----------------------------------------------------------
 
@@ -1230,6 +1354,10 @@ Sitemap: ${siteBase()}/sitemap.xml
     }
   }
 
+  // Generating is open to accounts verified or not, and to nobody in
+  // particular: with no wall, a gate here would only mean signing out to get
+  // past it. Verification keeps guarding what it can prove — the mailbox the
+  // password reset goes to.
   if (req.method === 'POST' && url.pathname === '/api/jobs') {
     const body = await readBody(req);
     try {
@@ -1460,7 +1588,9 @@ Sitemap: ${siteBase()}/sitemap.xml
       // What this viewer may take away of it, and, where it can be bought on
       // its own, what that costs: the page offers what the server will serve.
       grants,
-      unlock: sitesOpen && v.account && !grants.cleanPdf ? SITE_PRICE_LABEL : null,
+      // Offered to anyone the PDF is stamped for; buying it starts with a
+      // free account, which the page asks for on the way to Stripe.
+      unlock: sitesOpen && !grants.cleanPdf ? SITE_PRICE_LABEL : null,
     });
   }
 
