@@ -531,7 +531,8 @@ const HERON_LOOK: SiteLook = {
 // the ePlanning tan and red. The sun, the winds and the views are one black
 // circle about the site: the winds named around it outside over hatched
 // quarters, the views inside over white ones, four plain suns at the
-// solstices' rise and set within, and north an arrow on it.
+// solstices' rise and set within, each solstice's path joining its two over
+// north (summer solid, winter dashed), and north an arrow on it.
 const CANARY_CONTEXT = TEMPLATES.find((t) => t.id === 'canary')!;
 const CANARY_LOOK: SiteLook = {
   font: SANS, ground: 'aerial', veil: CANARY_CONTEXT.veil!, aerial: 'grey', site: CANARY_CONTEXT.site, siteDash: '4.2,1.8',
