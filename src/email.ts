@@ -23,7 +23,7 @@
 // email one. The free side never needed email to work and still does not.
 
 import { createTransport, type Transporter } from 'nodemailer';
-import { VERIFY_DAYS, RESET_MINUTES } from './accounts.js';
+import { VERIFY_DAYS, RESET_MINUTES, SIGNUP_HOURS } from './accounts.js';
 
 const KEY = process.env.RESEND_API_KEY?.trim() ?? '';
 const FROM = process.env.EMAIL_FROM?.trim() ?? '';
@@ -60,7 +60,60 @@ function smtp(): Transporter {
   });
 }
 
-async function send(to: string, subject: string, text: string): Promise<void> {
+// ---- how much may go out ------------------------------------------------------
+//
+// Every email here goes to an address somebody typed into a form, so without a
+// ceiling the forms are a way to mail strangers from this mailbox — and a
+// mailbox that does that gets suspended by its host and its domain filed as
+// spam, which takes the real links down with it. Per recipient, so one inbox
+// cannot be flooded; and in all, so many inboxes cannot be either. Held in
+// memory: a restart forgets them, but a visitor cannot make one happen.
+//
+// The links (sign-up, verification, reset) and the "you already have an
+// account" note are counted apart: anyone can make the note go to an address
+// by signing up with it, and if notes spent the links' allowance, a stranger
+// could stop an owner's own reset email from being sent.
+
+const LIMITS = {
+  link: { hour: 3, day: 10 },
+  note: { hour: 1, day: 3 },
+} as const;
+type Kind = keyof typeof LIMITS;
+const PER_HOUR = Number(process.env.EMAIL_MAX_PER_HOUR) || 100;
+
+const sentTo = new Map<string, number[]>();
+let sentAll: number[] = [];
+let warnedAt = 0;
+
+/** Refused for the cap rather than by the mail server: said apart, so a form can say "try later". */
+export class EmailCapped extends Error {}
+
+function spendAllowance(to: string, kind: Kind) {
+  const now = Date.now(), hour = now - 3600_000, day = now - 86400_000;
+  const key = `${kind}:${to}`, cap = LIMITS[kind];
+  sentAll = sentAll.filter((t) => t > hour);
+  for (const [k, ts] of sentTo) {
+    const kept = ts.filter((t) => t > day);
+    if (kept.length) sentTo.set(k, kept); else sentTo.delete(k);
+  }
+  const mine = sentTo.get(key) ?? [];
+  if (mine.filter((t) => t > hour).length >= cap.hour || mine.length >= cap.day)
+    throw new EmailCapped(`${to} has had its ${kind === 'note' ? 'notes' : 'links'} for now`);
+  if (sentAll.length >= PER_HOUR) {
+    // Once an hour in the log, not once a refusal: a flood would bury it.
+    if (now - warnedAt > 3600_000) {
+      warnedAt = now;
+      console.log(`email: WARNING — ${PER_HOUR} emails in the last hour, the cap; holding the rest (EMAIL_MAX_PER_HOUR)`);
+    }
+    throw new EmailCapped('the hourly cap is reached');
+  }
+  mine.push(now);
+  sentTo.set(key, mine);
+  sentAll.push(now);
+}
+
+async function send(to: string, subject: string, text: string, kind: Kind = 'link'): Promise<void> {
+  spendAllowance(to.toLowerCase(), kind);
   if (emailVia === 'smtp') {
     try {
       await smtp().sendMail({ from: FROM, to, subject, text });
@@ -89,8 +142,37 @@ async function send(to: string, subject: string, text: string): Promise<void> {
   }
 }
 
-// Plain text, both of them: each is one line of purpose and one link, and a
+// Plain text, all of them: each is one line of purpose and one link, and a
 // link in plain text is one a cautious reader can see the address of.
+
+// The link opens the page, which asks for a press before anything happens:
+// mail scanners open every link in a message, and one that made the account
+// on being opened would spend itself before its owner ever clicked.
+export function sendSignupLink(to: string, origin: string, token: string): Promise<void> {
+  return send(to, 'Finish signing up — Site Analyst',
+`Click to finish making your Site Analyst account:
+
+${origin}/?confirm=${token}
+
+The link works once, within ${SIGNUP_HOURS} hours. If you did not sign up,
+ignore this email and no account is made.
+`);
+}
+
+// What a sign-up for an address that already has an account is sent instead
+// of a link, so the form can answer every sign-up alike and not say which
+// addresses have accounts.
+export function sendAlreadyRegistered(to: string, origin: string): Promise<void> {
+  return send(to, 'You already have an account — Site Analyst',
+`Someone, perhaps you, tried to sign up to Site Analyst with this address,
+but it already has an account. Sign in at
+
+${origin}/?signin
+
+and if the password is forgotten, choose "reset" there to email a new one.
+If it was not you, ignore this email: nothing has changed.
+`, 'note');
+}
 
 export function sendVerification(to: string, origin: string, token: string): Promise<void> {
   return send(to, 'Verify your email — Site Analyst',

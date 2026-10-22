@@ -56,9 +56,18 @@ const COMPLIMENTARY = new Set(
     .split(',').map((e) => e.trim().toLowerCase()).filter(Boolean),
 );
 
-/** An account's plan: an account is never a guest, so free at the least. */
-export function planOf(a: { email: string; subscriptionStatus?: string }): Exclude<Plan, 'guest'> {
-  return COMPLIMENTARY.has(a.email) || paidFor(a.subscriptionStatus) ? 'subscription' : 'free';
+/**
+ * An account's plan: an account is never a guest, so free at the least.
+ *
+ * The list names addresses, and an address is only somebody's once its
+ * mailbox has answered: an account still waiting on its verification click
+ * (emailVerified 0) is not given the subscription, or anyone could claim a
+ * listed address that has not signed up yet. Accounts from before
+ * verification existed carry no field and keep what they had.
+ */
+export function planOf(a: { email: string; subscriptionStatus?: string; emailVerified?: number }): Exclude<Plan, 'guest'> {
+  return (COMPLIMENTARY.has(a.email) && a.emailVerified !== 0) || paidFor(a.subscriptionStatus)
+    ? 'subscription' : 'free';
 }
 
 /** What the pricing page says the subscription costs, e.g. "A$49 a month". */

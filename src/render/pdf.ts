@@ -171,7 +171,13 @@ export async function printSlides(
       const el = sections.nth(i);
       const id = (await el.getAttribute('id')) || `slide_${String(i + 1).padStart(2, '0')}`;
       const file = join(pngDir, `${id.replace(/[^a-z0-9_-]/gi, '_')}.png`);
-      await el.screenshot({ path: file, type: 'png' });
+      // A page is 297 mm, not a whole number of pixels: shot by its own box it takes in the
+      // last row of the page before, a hairline of whatever bled to that page's foot. Rounded inward.
+      const bb = await el.boundingBox();
+      if (bb) {
+        const y0 = Math.ceil(bb.y), y1 = Math.floor(bb.y + bb.height);
+        await page.screenshot({ path: file, type: 'png', fullPage: true, clip: { x: Math.round(bb.x), y: y0, width: Math.round(bb.width), height: y1 - y0 } });
+      } else await el.screenshot({ path: file, type: 'png' });
       pngs.push(file);
     }
     // The deck's picture is its first page, at one pixel to the CSS pixel

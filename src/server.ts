@@ -39,8 +39,12 @@ import {
   unlockedSites, siteUnlocked, accountByEmail,
   isVerified, issueVerification, confirmEmail, accountByVerifyToken,
   issueReset, accountByResetToken, resetPassword,
+  hashPassword, startSignup, dropSignup, finishSignup,
 } from './accounts.js';
-import { emailEnabled, emailVia, sendVerification, sendReset } from './email.js';
+import {
+  emailEnabled, emailVia, sendVerification, sendReset, sendSignupLink, sendAlreadyRegistered, EmailCapped,
+} from './email.js';
+import { humanCheckKey, isHuman } from './human.js';
 import {
   billingEnabled, subscriptionsOpen, sitesOpen, webhookEnabled, checkoutUrl, siteCheckoutUrl, portalUrl,
   verifySignature, handleEvent, checkBilling, webhookSeen,
@@ -693,11 +697,27 @@ function spend(key: string, windowMs: number, n: number) {
   if (!b || now > b.resetAt) buckets.set(key, { count: n, resetAt: now + windowMs });
   else b.count += n;
 }
+// The last entry, not the first: Caddy appends the address it was reached
+// from, and anything before that is whatever the visitor chose to send. Older
+// Caddy passes a visitor's own X-Forwarded-For through, so the first entry is
+// one a bot could change on every request to start every limit afresh.
 function clientIp(req: IncomingMessage): string {
   const fwd = req.headers['x-forwarded-for'];
-  if (typeof fwd === 'string' && fwd) return fwd.split(',')[0].trim();
+  if (typeof fwd === 'string' && fwd) return fwd.split(',').pop()!.trim();
   return req.socket.remoteAddress ?? 'unknown';
 }
+
+// Wrong passwords, counted per account and per address over fifteen minutes.
+// With the human check on, a few of them put it in front of the next attempt
+// rather than refusing it: a lockout is a way for a stranger to keep an owner
+// out of their own account. Without the check, the account's attempts are
+// held for the rest of the window after many, which is the only brake left.
+const FAIL_WINDOW = 15 * 60_000;
+const failuresOf = (key: string) => {
+  const b = buckets.get(key);
+  return b && Date.now() <= b.resetAt ? b.count : 0;
+};
+const failed = (key: string) => spend(key, FAIL_WINDOW, 1);
 
 // ---- auth ----------------------------------------------------------------
 function sameToken(got: string, want: string): boolean {
@@ -780,6 +800,8 @@ function describe(v: Viewer) {
     } : null,
     // Which ways to pay are open here.
     billing: { subscription: subscriptionsOpen, site: sitesOpen },
+    // The human check's site key, public by design, or null when there is none.
+    humanCheck: humanCheckKey,
   };
 }
 
@@ -1073,19 +1095,64 @@ Canonical: ${base}/.well-known/security.txt
     return json(res, 200, describe(viewerOf(req)));
   }
 
-  // A free account: an email and a password, and nothing else asked. It can
-  // generate every drawing at once; the subscription is bought from it later.
+  // A free account: an email and a password. With email on it is not made
+  // here: the address gets a link and the click makes it (accounts.ts), so an
+  // address nobody holds never becomes an account. Every sign-up is answered
+  // alike — a new address, one that has an account, a bot's honeypot — so the
+  // form does not say which addresses are taken; the address that is taken is
+  // emailed to say so instead. With email off there is no link to send, and
+  // the account is made and signed in at once, as it always was.
   if (req.method === 'POST' && url.pathname === '/api/signup') {
     if (limited(`signup:${ip}`, 5, 3600_000)) return json(res, 429, { error: 'Too many sign-ups from here. Try later.' });
-    let email = '', password = '';
+    let email = '', password = '', human: unknown, trap = '';
     try {
       const parsed = JSON.parse((await readBody(req)) || '{}');
       email = normaliseEmail(parsed.email);
       password = String(parsed.password ?? '');
+      human = parsed.human;
+      trap = String(parsed.website ?? '');
     } catch { /* refused below */ }
     if (!validEmail(email)) return json(res, 400, { error: 'Enter an email address.' });
     if (password.length < PASSWORD_MIN || password.length > 200)
       return json(res, 400, { error: `Choose a password of ${PASSWORD_MIN} characters or more.` });
+    const CHECK_EMAIL = { ok: true, pending: true, message: `Check ${email} — the link to finish signing up is on its way.` };
+    // The honeypot: a field people never see, so only a bot fills it in. It is
+    // told what everyone is told, and nothing is made or sent.
+    if (trap) {
+      // Said in the log, in case a browser's autofill ever fills it for a person.
+      console.log(`bots: sign-up honeypot filled from ${ip}`);
+      return json(res, 202, CHECK_EMAIL);
+    }
+    if (!(await isHuman(human, ip)))
+      return json(res, 403, { error: 'Confirm you are human, then sign up again.', human: true });
+
+    if (emailEnabled) {
+      // Hashed whichever way it goes, so a taken address takes as long to
+      // answer as a free one.
+      const passwordHash = await hashPassword(password);
+      // An account never verified is answered with a link like a new address:
+      // whoever signed up with it before never proved the mailbox, and the
+      // click hands it to the one who does (finishSignup).
+      const taken = accountByEmail(email);
+      if (taken && isVerified(taken)) {
+        void sendAlreadyRegistered(taken.email, siteBase())
+          .catch((e) => console.log(`email: already-registered note for ${taken.id} not sent — ${e?.message ?? e}`));
+        return json(res, 202, CHECK_EMAIL);
+      }
+      const token = startSignup(email, passwordHash);
+      if (!token) {
+        console.log('accounts: the list of sign-ups waiting on their email is full');
+        return json(res, 503, { error: 'Sign-ups are paused for a moment. Try again later.' });
+      }
+      // Not awaited, so the answer's timing is the same for every address. A
+      // link that never left is taken back off the list.
+      void sendSignupLink(email, siteBase(), token).catch((e) => {
+        dropSignup(email, token);
+        console.log(`email: sign-up link not sent — ${e?.message ?? e}`);
+      });
+      return json(res, 202, CHECK_EMAIL);
+    }
+
     let account: Account;
     try {
       account = await createAccount(email, password);
@@ -1094,15 +1161,24 @@ Canonical: ${base}/.well-known/security.txt
       console.log(`accounts: sign-up failed — ${e?.message ?? e}`);
       return json(res, 500, { error: 'Could not create the account. Try again shortly.' });
     }
-    // The verification link, sent on the way out rather than awaited: the
-    // email service's latency is not the sign-up's, and a send that fails
-    // leaves the page's RESEND button to try again.
-    if (emailEnabled) {
-      const token = issueVerification(account);
-      void sendVerification(account.email, siteBase(), token)
-        .catch((e) => console.log(`email: verification for ${account.id} failed — ${e?.message ?? e}`));
-    }
     res.writeHead(201, {
+      'Content-Type': 'application/json',
+      'Set-Cookie': cookie(req, ACCOUNT_COOKIE, sessionCookieValue(account), SESSION_DAYS * 86400),
+    });
+    res.end(JSON.stringify({ ok: true, ...describe(viewerFrom(heldCode(req), account)) }));
+    return;
+  }
+
+  // The sign-up link pressed: the account made, and this browser signed in.
+  // A POST from the page rather than the link's own GET, so a mail scanner
+  // opening the link spends nothing.
+  if (req.method === 'POST' && url.pathname === '/api/signup/confirm') {
+    if (limited(`confirm:${ip}`, 10, 15 * 60_000)) return json(res, 429, { error: 'Too many attempts. Try later.' });
+    let token = '';
+    try { token = String(JSON.parse((await readBody(req)) || '{}').token ?? ''); } catch { /* refused below */ }
+    const account = await finishSignup(token);
+    if (!account) return json(res, 400, { error: 'That sign-up link has expired or was already used. Sign up again.' });
+    res.writeHead(200, {
       'Content-Type': 'application/json',
       'Set-Cookie': cookie(req, ACCOUNT_COOKIE, sessionCookieValue(account), SESSION_DAYS * 86400),
     });
@@ -1113,20 +1189,38 @@ Canonical: ${base}/.well-known/security.txt
   if (req.method === 'POST' && url.pathname === '/api/login') {
     if (limited(`login:${ip}`, 10, 15 * 60_000)) return json(res, 429, { error: 'Too many attempts. Try later.' });
     const body = await readBody(req);
-    let code = '', gate = '', email = '', password = '';
+    let code = '', gate = '', email = '', password = '', human: unknown;
     try {
       const parsed = JSON.parse(body || '{}');
       code = String(parsed.code ?? '');
       gate = String(parsed.gate ?? '');
       email = normaliseEmail(parsed.email);
       password = String(parsed.password ?? '');
+      human = parsed.human;
     } catch { /* fall through to the refusal below */ }
+
+    // Wrong guesses so far, for whatever this attempt is against: the account,
+    // or the codes, and from this address. Three at one account or five from
+    // one address, and the human check stands in front of the next try.
+    const target = email ? `fail:acct:${email}` : 'fail:code';
+    const fromHere = `fail:ip:${ip}`;
+    const askHuman = () => Boolean(humanCheckKey) && (failuresOf(target) >= 3 || failuresOf(fromHere) >= 5);
+    if (askHuman() && !(await isHuman(human, ip)))
+      return json(res, 401, { error: 'Confirm you are human, then sign in again.', human: true });
+    if (!humanCheckKey && email && failuresOf(target) >= 10)
+      return json(res, 429, { error: 'Too many wrong passwords for this account. Try again in 15 minutes, or reset the password.' });
+    /** A wrong answer, counted; the reply says whether the next try meets the check. */
+    const wrong = (error: string) => {
+      failed(target); failed(fromHere);
+      return json(res, 401, { error, human: askHuman() });
+    };
 
     // An account, by email and password. Whatever code the browser already
     // holds is kept, and still counts.
     if (email) {
       const account = await signIn(email, password);
-      if (!account) return json(res, 401, { error: 'Wrong email or password.' });
+      if (!account) return wrong('Wrong email or password.');
+      buckets.delete(target);
       res.writeHead(200, {
         'Content-Type': 'application/json',
         'Set-Cookie': cookie(req, ACCOUNT_COOKIE, sessionCookieValue(account), SESSION_DAYS * 86400),
@@ -1153,10 +1247,10 @@ Canonical: ${base}/.well-known/security.txt
             error: 'That is the shared access code. This gate takes the operator code.',
           });
         }
-        return json(res, 401, { error: 'Wrong operator code.' });
+        return wrong('Wrong operator code.');
       }
     } else if (!operator && !codeMatches(code, ACCESS_CODE)) {
-      return json(res, 401, { error: 'Wrong access code.' });
+      return wrong('Wrong access code.');
     }
     const token = operator ? ADMIN_SESSION_TOKEN : SESSION_TOKEN;
     res.writeHead(200, {
@@ -1211,9 +1305,22 @@ Canonical: ${base}/.well-known/security.txt
     if (!emailEnabled)
       return json(res, 503, { error: 'This server cannot send email, so passwords cannot be reset here. Contact the operator.' });
     if (limited(`forgot:${ip}`, 5, 3600_000)) return json(res, 429, { error: 'Too many attempts. Try later.' });
-    let email = '';
-    try { email = normaliseEmail(JSON.parse((await readBody(req)) || '{}').email); } catch { /* refused below */ }
+    let email = '', human: unknown, trap = '';
+    try {
+      const parsed = JSON.parse((await readBody(req)) || '{}');
+      email = normaliseEmail(parsed.email);
+      human = parsed.human;
+      trap = String(parsed.website ?? '');
+    } catch { /* refused below */ }
     if (!validEmail(email)) return json(res, 400, { error: 'Enter an email address.' });
+    const ON_ITS_WAY = { ok: true, message: 'If that email has an account, a reset link is on its way to it.' };
+    // The honeypot, as at sign-up: answered like everyone, and nothing sent.
+    if (trap) {
+      console.log(`bots: reset honeypot filled from ${ip}`);
+      return json(res, 200, ON_ITS_WAY);
+    }
+    if (!(await isHuman(human, ip)))
+      return json(res, 403, { error: 'Confirm you are human, then ask again.', human: true });
     const a = accountByEmail(email);
     // One answer whether or not the address has an account, and the send is
     // not awaited: the reply must not say — in words or in timing — which
@@ -1223,7 +1330,7 @@ Canonical: ${base}/.well-known/security.txt
       void sendReset(a.email, siteBase(), token)
         .catch((e) => console.log(`email: reset for ${a.id} failed — ${e?.message ?? e}`));
     }
-    return json(res, 200, { ok: true, message: 'If that email has an account, a reset link is on its way to it.' });
+    return json(res, 200, ON_ITS_WAY);
   }
 
   // The reset email's link used: the new password in, and this browser signed
@@ -1297,6 +1404,8 @@ Canonical: ${base}/.well-known/security.txt
       await sendVerification(v.account.email, siteBase(), token);
     } catch (e: any) {
       console.log(`email: verification for ${v.account.id} failed — ${e?.message ?? e}`);
+      if (e instanceof EmailCapped)
+        return json(res, 429, { error: 'Enough emails have gone to this address for now. Try again later.' });
       return json(res, 502, { error: 'Could not send the email. Try again shortly.' });
     }
     return json(res, 200, { ok: true, message: `Sent — check ${v.account.email}.` });

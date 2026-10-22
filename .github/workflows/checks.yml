@@ -79,13 +79,13 @@ jobs:
           { echo 'docker() { printf "%s\n" "$@"; }'; printf '%s\n' "$block"; } > /tmp/dr.sh
           argv=$(ACCESS_CODE=pub ADMIN_CODE=ops TFNSW_API_KEY=tf \
                  STRIPE_SECRET_KEY=sk STRIPE_PRICE_ID=price STRIPE_SITE_PRICE_ID=site \
-                 STRIPE_WEBHOOK_SECRET=wh SMTP_HOST=mx SMTP_PASS=pw \
+                 STRIPE_WEBHOOK_SECRET=wh SMTP_HOST=mx SMTP_PASS=pw TURNSTILE_SECRET_KEY=ts \
                  NET=net OUT=/tmp/out bash /tmp/dr.sh)
           printf '%s\n' "$argv" | sed 's/^/    /'
           fail=0
           for want in ACCESS_CODE=pub ADMIN_CODE=ops STRIPE_SECRET_KEY=sk \
                       STRIPE_PRICE_ID=price STRIPE_SITE_PRICE_ID=site STRIPE_WEBHOOK_SECRET=wh \
-                      SMTP_HOST=mx SMTP_PASS=pw; do
+                      SMTP_HOST=mx SMTP_PASS=pw TURNSTILE_SECRET_KEY=ts; do
             printf '%s\n' "$argv" | grep -qx -- "$want" || { echo "  missing $want"; fail=1; }
           done
           if [ "$(printf '%s\n' "$argv" | tail -1)" != "site-analyst" ]; then
@@ -166,7 +166,8 @@ jobs:
       - name: the Country slide's permits, lists and landscape maps read right
         run: npx tsx test/country-heritage.mts
 
-      # Free and subscription, through the server on a planted sheet: a free
+      # Guest, free and subscription, through the server on a planted sheet:
+      # no session sees the picture and is refused the PDF, a free
       # account's PDF stamped and its CAD and data refused, the subscription's
       # clean whether given, held by code or paid for by a signed Stripe
       # webhook, and a forged webhook granting nothing. Nothing is drawn, and
@@ -174,13 +175,15 @@ jobs:
       - name: the free side is stamped and the subscription is not
         run: npx tsx test/plans.mts
 
-      # The emailed links, through the server with Resend stood in for by a
-      # local endpoint: a sign-up is unverified and refused generation until
-      # its link is clicked, resend replaces the link, forgot answers unknown
-      # addresses like known ones and sends them nothing, and the reset link
-      # sets the new password once, signs the old sessions out and verifies
-      # the address it arrived on. Nothing reaches Resend.
-      - name: the emailed links verify and reset what they should
+      # The emailed links and what holds the account forms down, through the
+      # server with Resend stood in for: a sign-up is no account until its
+      # emailed link is pressed, a taken address is answered alike and its
+      # owner emailed instead, a stranger's unverified sign-up is handed to
+      # whoever proves the mailbox, a listed address gets the subscription only
+      # once verified, one inbox gets at most three emails an hour, wrong
+      # passwords from many addresses hold the account, and a forged
+      # X-Forwarded-For starts no limit afresh. Nothing reaches Resend.
+      - name: the emailed links verify, reset, and cannot be turned on strangers
         run: npx tsx test/auth-email.mts
 
       # The same links over SMTP, as through a Namecheap Private Email box,
@@ -190,6 +193,15 @@ jobs:
       # say it could not send. Nothing reaches a real mail server.
       - name: the emailed links go out over SMTP
         run: npx tsx test/smtp-email.mts
+
+      # The human check (Cloudflare Turnstile) and the honeypot, with
+      # Cloudflare's siteverify stood in for: sign-up and the reset email need
+      # a good token, a filled-in honeypot is answered alike with nothing sent,
+      # sign-in meets the check after three wrong passwords at an account or
+      # five from an address, and Cloudflare not answering refuses rather than
+      # lets through. Nothing reaches Cloudflare.
+      - name: the forms stand up to bots
+        run: npx tsx test/bots.mts
 
       # The operator view's Stripe check, on made-up answers: it names the
       # account the key belongs to, and finds a price from the other mode, a
@@ -471,10 +483,11 @@ jobs:
           }
 
           # No session is still an answer, not a refusal: the site is open,
-          # and /api/me says which side of it this viewer is on (free).
-          none='{"authed":false,"operator":false,"required":true,"plan":"free","grants":{"cleanPdf":false,"openData":false},"account":null,"billing":{"subscription":false,"site":false}}|403'
+          # and /api/me says which side of it this viewer is on (guest: the
+          # drawings on the page, no PDF).
+          none='{"authed":false,"operator":false,"required":true,"plan":"guest","grants":{"pdf":false,"cleanPdf":false,"openData":false},"account":null,"billing":{"subscription":false,"site":false},"humanCheck":null}|403'
           # Both codes carry the subscription; neither is an account.
-          tail='"plan":"subscription","grants":{"cleanPdf":true,"openData":true},"account":null,"billing":{"subscription":false,"site":false}}'
+          tail='"plan":"subscription","grants":{"pdf":true,"cleanPdf":true,"openData":true},"account":null,"billing":{"subscription":false,"site":false},"humanCheck":null}'
           user="{\"authed\":true,\"operator\":false,\"required\":true,$tail|403"
           oper="{\"authed\":true,\"operator\":true,\"required\":true,$tail|200"
 
