@@ -149,19 +149,15 @@ try {
   // ---- a free account -------------------------------------------------------
   const free = browser();
   check('sign-up refuses a short password',
-    (await post(free, '/api/signup', { agreed: true, email: 'free@example.com', password: 'short' })).status === 400);
+    (await post(free, '/api/signup', { email: 'free@example.com', password: 'short' })).status === 400);
   check('sign-up refuses a non-address',
-    (await post(free, '/api/signup', { agreed: true, email: 'nobody', password: 'long enough' })).status === 400);
-  // From an address of its own: sign-ups are limited to five an hour from one, and the checks below need theirs.
-  check('sign-up refuses an account that has not agreed to the terms',
-    (await free('/api/signup', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-forwarded-for': '203.0.113.9' },
-      body: JSON.stringify({ email: 'free@example.com', password: 'long enough' }) })).status === 400);
-  const signed = await post(free, '/api/signup', { agreed: true, email: 'Free@Example.com ', password: 'long enough' });
+    (await post(free, '/api/signup', { email: 'nobody', password: 'long enough' })).status === 400);
+  const signed = await post(free, '/api/signup', { email: 'Free@Example.com ', password: 'long enough' });
   const signedBody = await signed.json();
   check('sign-up makes a free account', signed.status === 201 && signedBody.plan === 'free',
     JSON.stringify(signedBody));
   check('the same email cannot sign up twice',
-    (await post(browser(), '/api/signup', { agreed: true, email: 'free@example.com', password: 'another one' })).status === 409);
+    (await post(browser(), '/api/signup', { email: 'free@example.com', password: 'another one' })).status === 409);
 
   const f1 = await holds(free);
   check('free: the job offers the PDF', f1.grants?.pdf === true && f1.grants?.cleanPdf === false, JSON.stringify(f1.grants));
@@ -203,7 +199,7 @@ try {
 
   // ---- the subscription, three ways ------------------------------------------
   const office = browser();
-  await post(office, '/api/signup', { agreed: true, email: 'office@example.com', password: 'long enough' });
+  await post(office, '/api/signup', { email: 'office@example.com', password: 'long enough' });
   const o = await holds(office);
   check('given without charge: the PDF as drawn', o.plan === 'subscription' && o.cleanPdf);
   check('given without charge: the CAD and data', o.cad === 200 && o.data === 200, `${o.cad} ${o.data}`);
@@ -217,7 +213,7 @@ try {
   const freeAccount = JSON.parse(readFileSync(join(accountsDir, 'accounts.json'), 'utf8'))
     .find((a: any) => a.email === 'free@example.com');
   const freeId = freeAccount.id;
-  check('the account records the terms it agreed to, and when',
+  check('the account records the terms in force when it was made, and when',
     typeof freeAccount.termsVersion === 'string' && freeAccount.termsVersion.length > 0 && freeAccount.termsAcceptedAt > 0,
     JSON.stringify({ v: freeAccount.termsVersion, at: freeAccount.termsAcceptedAt }));
   const sub = (status: string) => ({

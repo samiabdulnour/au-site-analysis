@@ -172,7 +172,7 @@ try {
 
   // ---- the sign-up link, over SMTP -------------------------------------------------
   const carol = browser();
-  const signed = await post(carol, '/api/signup', { agreed: true, email: 'carol@example.com', password: 'long enough' });
+  const signed = await post(carol, '/api/signup', { email: 'carol@example.com', password: 'long enough' });
   check('sign-up says to check the email', signed.status === 202 && (await signed.json()).pending === true);
   const v = await mail('carol@example.com', 1);
   check('the mail server was logged in to as the mailbox, password intact', v.login === MAILBOX);
@@ -197,7 +197,7 @@ try {
 
   // ---- the mail server refusing the login ----------------------------------------
   acceptLogin = false;
-  const refused = await post(browser(), '/api/signup', { agreed: true, email: 'dave@example.com', password: 'long enough' });
+  const refused = await post(browser(), '/api/signup', { email: 'dave@example.com', password: 'long enough' });
   check('a refused login: the sign-up is answered as ever', refused.status === 202);
   for (let i = 0; i < 40 && !/sign-up link not sent/.test(serverLog); i++) await new Promise((r) => setTimeout(r, 250));
   check('…and the log names the server\'s refusal', /sign-up link not sent.*535/.test(serverLog), serverLog.slice(-400));

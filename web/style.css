@@ -46,10 +46,6 @@ a { color: inherit; }
   letter-spacing: -.01em; margin-bottom: 2rem;
 }
 .lead { margin-bottom: 1rem; }
-/* The sign-up's agreement to the terms: the box beside its sentence, in the page's one size. */
-.agree { display: flex; gap: .6rem; align-items: flex-start; margin: .9rem 0 0; color: var(--muted); cursor: pointer; }
-.agree[hidden] { display: none; }
-.agree input { margin-top: .25rem; flex: none; accent-color: #000; }
 
 /* ---- address bar -------------------------------------------------------- */
 /* Input and button are one rectangle split in two: the button carries the

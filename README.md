@@ -180,9 +180,10 @@ new privilege is a new column there rather than a new condition in the server.
 **Terms of use.** `/terms` (`web/terms.html`) says what every drawing is: made
 from open public data as it stands when it is drawn, with no guarantee that the
 data is complete, current or correct, and no substitute for a s10.7 certificate,
-a survey or professional advice. Sign-up asks for agreement to them, and the
-server refuses a sign-up without `agreed: true`; the account stores the version
-agreed to (`TERMS_VERSION` in `src/terms.ts`, the page's version line) and when.
+a survey or professional advice. Every footer says so, and that using the site
+is accepting the terms; sign-up asks nothing more. An account stores the version
+in force when it was made (`TERMS_VERSION` in `src/terms.ts`, the page's version
+line) and when, carried through the emailed link from the sign-up form.
 The same sentence stands before every payment: on `/pricing`, beside UNLOCK THIS
 ADDRESS, and above the pay button on Stripe's Checkout page (`custom_text`).
 Accounts from before the terms carry no version. The page is a plain-language

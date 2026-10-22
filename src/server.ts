@@ -1107,22 +1107,17 @@ Canonical: ${base}/.well-known/security.txt
   // the account is made and signed in at once, as it always was.
   if (req.method === 'POST' && url.pathname === '/api/signup') {
     if (limited(`signup:${ip}`, 5, 3600_000)) return json(res, 429, { error: 'Too many sign-ups from here. Try later.' });
-    let email = '', password = '', human: unknown, trap = '', agreed = false;
+    let email = '', password = '', human: unknown, trap = '';
     try {
       const parsed = JSON.parse((await readBody(req)) || '{}');
       email = normaliseEmail(parsed.email);
       password = String(parsed.password ?? '');
-      agreed = parsed.agreed === true;
       human = parsed.human;
       trap = String(parsed.website ?? '');
     } catch { /* refused below */ }
     if (!validEmail(email)) return json(res, 400, { error: 'Enter an email address.' });
     if (password.length < PASSWORD_MIN || password.length > 200)
       return json(res, 400, { error: `Choose a password of ${PASSWORD_MIN} characters or more.` });
-    // The account records which terms it agreed to: that the drawings come from open data as available,
-    // with no guarantee that data is complete. Refused here, not only in the page, so no client skips it;
-    // and before the human check, so a forgotten tick does not spend the person's check.
-    if (!agreed) return json(res, 400, { error: 'Agree to the terms of use to create an account.' });
     const CHECK_EMAIL = { ok: true, pending: true, message: `Check ${email} — the link to finish signing up is on its way.` };
     // The honeypot: a field people never see, so only a bot fills it in. It is
     // told what everyone is told, and nothing is made or sent.
