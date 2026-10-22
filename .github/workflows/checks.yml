@@ -147,6 +147,13 @@ jobs:
       - name: the Street View planner frames the frontages and nothing else
         run: npx tsx test/street-view.mts
 
+      # Slide 12's open frames with KartaView stood in for: a frame gone from
+      # its file store drops out with a note and the rest close up, while the
+      # listing not answering is a WARN, which the samples workflow refuses
+      # to commit on. CI never calls KartaView.
+      - name: a frame that will not download is a note, KartaView down a WARN
+        run: npx tsx test/photos.mts
+
       # Slide 13's wind roses are counted from hours: the sectors, the speed
       # classes and calms, the seasons, the prevailing runs and NASA POWER's
       # JSON, on made-up hours. CI never calls NASA.
