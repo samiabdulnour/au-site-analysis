@@ -184,26 +184,53 @@ clean PDFs and CAD without an account; unset it once everyone has one.
 without charge, which is also the way to see the subscriber's side before
 billing is switched on.
 
-**Email: verification and password reset.** The server sends two emails, both
-through [Resend](https://resend.com)'s REST API with plain fetch, the way it
-talks to Stripe. A sign-up is sent a verification link; the page notes an
-unverified address (and resends the link), but generating never waits on it —
-with drawing open to everyone, a gate there would only mean signing out to get
-past it. What the click still proves is the mailbox the reset link goes to. The sign-in form's `reset` emails a password-reset link,
-which opens the page asking for the new password; setting it signs that browser
-in and every other one out (the cookie's signature covers the password hash).
-Each link's token is random and stored only as its SHA-256, so the accounts
-file never holds anything that opens an account. In `/etc/site-analyst.env`:
+**Email: verification and password reset.** The server sends two emails: a
+sign-up is sent a verification link; the page notes an unverified address (and
+resends the link), but generating never waits on it — with drawing open to
+everyone, a gate there would only mean signing out to get past it. What the
+click still proves is the mailbox the reset link goes to. The sign-in form's
+`reset` emails a password-reset link, which opens the page asking for the new
+password; setting it signs that browser in and every other one out (the
+cookie's signature covers the password hash). Each link's token is random and
+stored only as its SHA-256, so the accounts file never holds anything that
+opens an account.
+
+They go out one of two ways (`src/email.ts`). Through a mailbox of your own
+over SMTP — Namecheap Private Email, for one — in `/etc/site-analyst.env`:
 
 ```
-RESEND_API_KEY=re_…                                # resend.com, with the sending domain verified
-EMAIL_FROM=Site Analyst <no-reply@site-analyst.com>
+SMTP_HOST=mail.privateemail.com
+SMTP_PORT=465                                     # SSL; 587 for STARTTLS
+SMTP_USER=no-reply@site-analyst.com               # the mailbox's full address
+SMTP_PASS='the mailbox password'
+EMAIL_FROM='Site Analyst <no-reply@site-analyst.com>'
 ```
 
-With either unset nothing is sent and both features switch themselves off: new
-accounts count as verified, and the reset form says this server cannot email a
-link. Accounts from before verification existed count as verified too — the
-feature arriving must not lock out everyone already signed up.
+or through [Resend](https://resend.com)'s REST API, with plain fetch the way the
+server talks to Stripe:
+
+```
+RESEND_API_KEY=re_…                               # resend.com, with the sending domain verified
+EMAIL_FROM='Site Analyst <no-reply@site-analyst.com>'
+```
+
+SMTP wins when both are set, and the container's log says which at start
+(`email smtp`, `email resend` or `email off`). Keep the quotes: the deployer
+reads the file with bash, where an unquoted `<` is a syntax error that stops
+the deploy, and a password's `$` or space would be taken apart. Over SMTP,
+`EMAIL_FROM` must be the mailbox itself or one of its aliases — a mail server
+refuses, or marks as spam, mail "from" an address it does not hold — and the
+domain wants the mail host's SPF and DKIM records, or the links land in spam
+(Namecheap adds them itself when it runs the DNS). The host has to be allowed
+to connect out on port 465 or 587; many cloud providers block both until
+asked. Sending is not awaited on sign-up, so a failure shows only in the log;
+the page's RESEND button awaits it, which makes it the quickest test.
+
+With neither way complete nothing is sent and both features switch themselves
+off: new accounts count as verified, and the reset form says this server
+cannot email a link. Accounts from before verification existed count as
+verified too — the feature arriving must not lock out everyone already
+signed up.
 
 **The watermark.** Put it in `assets/watermark/watermark.png`. It is stamped on
 each page when a free account downloads, not when the sheet is drawn, so the
