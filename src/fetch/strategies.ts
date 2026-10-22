@@ -5,7 +5,7 @@
 // LSPS (an HTML page, parsed and cached), the plan and the DCP from what
 // the deck already read at the site. The extracts stay the author's.
 
-import { retryFetch } from '../lib/http.js';
+import { retryFetch, USER_AGENT } from '../lib/http.js';
 import { cachedJson, DAY_MS } from '../lib/cache.js';
 import { queryByPoint } from '../lib/arcgis.js';
 import type { XY } from '../lib/geo.js';
@@ -13,7 +13,7 @@ import type { XY } from '../lib/geo.js';
 const REGIONS_LAYER = 'https://mapprod3.environment.nsw.gov.au/arcgis/rest/services/Planning/Administrative_Boundary/MapServer/2';
 const LSPS_INDEX = 'https://www.planningportal.nsw.gov.au/local-strategic-planning-statements';
 const PLANS_BY_REGION = 'https://www.planning.nsw.gov.au/plans-in-nsw/plans-by-region';
-const UA = 'au-site-analysis/1.0 (site analysis deck; https://github.com/samiabdulnour/au-site-analysis)';
+const UA = USER_AGENT;
 
 export interface RegionalPlan { region: string; name: string; url: string; year?: number; note?: string }
 

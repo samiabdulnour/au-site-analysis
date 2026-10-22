@@ -18,7 +18,7 @@
 // (/state-significant-projects-spatial-data) would be one call, but it
 // answered 503 through September 2026 while the rest of the site answered.
 
-import { retryFetch } from '../lib/http.js';
+import { retryFetch, USER_AGENT } from '../lib/http.js';
 import { cachedJson, DAY_MS } from '../lib/cache.js';
 import { queryByExtent } from '../lib/arcgis.js';
 import { lonLatToMercator, mercatorScaleFactor, mercatorToLonLat, type Extent, type XY } from '../lib/geo.js';
@@ -26,7 +26,7 @@ import { lonLatToMercator, mercatorScaleFactor, mercatorToLonLat, type Extent, t
 const PORTAL = 'https://www.planningportal.nsw.gov.au';
 export const MAJOR_PROJECTS_LISTING = `${PORTAL}/major-projects/projects`;
 const LGA_LAYER = 'https://portal.spatial.nsw.gov.au/server/rest/services/NSW_Administrative_Boundaries_Theme/FeatureServer/8';
-const UA = 'au-site-analysis/1.0 (site analysis deck; https://github.com/samiabdulnour/au-site-analysis)';
+const UA = USER_AGENT;
 const FOLDER = 'majorprojects';
 
 /** The register's project case types the deck reads; their modifications come from the project pages. */
