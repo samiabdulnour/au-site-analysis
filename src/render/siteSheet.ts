@@ -182,12 +182,14 @@ function windEntry(c: Pt, bearingDeg: number, rotationDeg: number): Pt {
 // The climate circle, where a theme draws one: a dashed ring about the site,
 // each wind named around it outside a hatched band over the quarter it blows
 // from, each view named around it inside a white band over its sight line,
-// and the four suns this far inside it with their names further in.
+// and the suns on the solstices' paths inside it, the summer path this far
+// in and the winter one as far again, with their names further in still.
 const WIND_BAND = 5, WIND_SPAN = 22;   // the bands' depth (mm) and half their sweep (°)
 const VIEW_BAND = 5, VIEW_SPAN = 10;
-const SUN_INSET = 26, SUN_SIZE = 2.4;
-// The nearest the sun paths come to the lot's farthest corner (mm).
-const SUN_PATH_CLEAR = 12;
+const SUN_INSET = 17, SUN_SIZE = 2.4;
+// How much further in the winter path runs than the summer one (mm): the
+// same step, so the ring and the two paths stand evenly apart.
+const SUN_PATH_STEP = SUN_INSET;
 // How far a sun's rays reach from its centre, and a little room past them.
 const SUN_CLEAR = 4.5 * SUN_SIZE + 3;
 // A sun's name, two lines of the map's lettering, and the box it takes.
@@ -223,7 +225,7 @@ function crescentD(c: Pt, r: number, a0: number, a1: number, w: number): string 
 function climateRadius(c: Pt, ring: Pt[]): number {
   const reach = Math.max(...ring.map(([x, y]) => Math.hypot(x - c[0], y - c[1])));
   const room = Math.min(c[0], MAP_W - c[0], c[1], MAP_H - c[1]) - (WIND_BAND + 16);
-  return Math.min(Math.max(reach * 1.3, reach + SUN_INSET + SUN_CLEAR + SUN_NAME_W + SUN_NAME_H / 2), room);
+  return Math.min(Math.max(reach * 1.3, reach + SUN_INSET + SUN_PATH_STEP + SUN_CLEAR + SUN_NAME_W + SUN_NAME_H / 2), room);
 }
 
 /**
@@ -268,31 +270,6 @@ function onCircle(c: Pt, r: number, deg: number): Pt {
 function arcD(c: Pt, r: number, a0: number, a1: number, move = true): string {
   const [x0, y0] = onCircle(c, r, a0), [x1, y1] = onCircle(c, r, a1);
   return `${move ? 'M' : 'L'}${x0.toFixed(2)},${y0.toFixed(2)} A${r.toFixed(2)},${r.toFixed(2)} 0 ${Math.abs(a1 - a0) > 180 ? 1 : 0} ${a1 > a0 ? 1 : 0} ${x1.toFixed(2)},${y1.toFixed(2)}`;
-}
-
-/**
- * A solstice's sun path for the climate circle: from its sunrise at bearing az
- * east of north on radius r about c, over north, down to its sunset at -az,
- * passing north at radius rNoon — the arc of the one circle through the three.
- * `north` is north's page bearing.
- */
-function sunPathD(c: Pt, r: number, az: number, rNoon: number, north: number): string {
-  const a = (az * Math.PI) / 180;
-  // The sunrise in a north-up frame about c; the circle's centre is on the north line, k from c.
-  const ax = r * Math.sin(a), ay = r * Math.cos(a);
-  const den = 2 * (ay - rNoon);
-  const k = Math.abs(den) < 1e-6 ? -1e6 : (r * r - rNoon * rNoon) / den;
-  const rho = rNoon - k;
-  const t0 = Math.atan2(ay - k, ax), t1 = Math.PI - t0;
-  const n = (north * Math.PI) / 180;
-  const N: Pt = [Math.sin(n), -Math.cos(n)], E: Pt = [Math.cos(n), Math.sin(n)];
-  const pts: string[] = [];
-  for (let i = 0; i <= 72; i++) {
-    const t = t0 + ((t1 - t0) * i) / 72;
-    const x = rho * Math.cos(t), y = k + rho * Math.sin(t);
-    pts.push(`${(c[0] + E[0] * x + N[0] * y).toFixed(2)},${(c[1] + E[1] * x + N[1] * y).toFixed(2)}`);
-  }
-  return `M${pts.join('L')}`;
 }
 
 /**
@@ -541,9 +518,10 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
     // band and name outside, and each view's band and name inside.
     const R = climateRadius([cx, cy], sr.slice(0, sn));
     if (look.sun === 'circle') {
-      for (const az of [azOf(dec), -azOf(dec), azOf(-dec), -azOf(-dec)]) {
-        placer.reserve(...at(az, R - SUN_INSET), SUN_CLEAR * 2, SUN_CLEAR * 2);
-        placer.reserve(...sunNameAt([cx, cy], R - SUN_INSET, az + view.rotationDeg), SUN_NAME_W, SUN_NAME_H);
+      // Winter's suns on the inner path, summer's on the outer.
+      for (const [az, r] of [[azOf(dec), R - SUN_INSET - SUN_PATH_STEP], [-azOf(dec), R - SUN_INSET - SUN_PATH_STEP], [azOf(-dec), R - SUN_INSET], [-azOf(-dec), R - SUN_INSET]]) {
+        placer.reserve(...at(az, r), SUN_CLEAR * 2, SUN_CLEAR * 2);
+        placer.reserve(...sunNameAt([cx, cy], r, az + view.rotationDeg), SUN_NAME_W, SUN_NAME_H);
       }
       placer.reserve(...at(0, R + 10), 12, 22);
     }
@@ -1580,26 +1558,21 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
         layers.push(`<text font-size="${LETTER}" font-weight="700" letter-spacing="0.6" fill="${look.viewPen}"><textPath href="#vw${i}" startOffset="50%" text-anchor="middle">${esc(label)}</textPath></text>`);
       });
     if (look.sun === 'circle') {
-      // The two solstices' paths through their suns, as a sun-path diagram
-      // draws them: from the sunrise over north to the sunset, passing north
-      // nearer the site the higher the noon sun stands (summer high and
-      // solid, winter low and dashed), and never closer than clear of the lot.
-      const rs = R - SUN_INSET;
-      const reach = Math.max(...ringPx.map(([x, y]) => Math.hypot(x - c[0], y - c[1])));
-      const inner = Math.min(rs * 0.9, reach + SUN_PATH_CLEAR);
-      const noonR = (alt: number) => rs - ((rs - inner) * Math.min(Math.max(alt, 0), 89)) / 90;
-      const latAbs = Math.abs(lat);
-      // Winter's dash shorter than the climate circle's, so the two read apart.
+      // The two solstices' paths through their suns: arcs of circles about
+      // the site, each the climate circle drawn smaller, from the sunrise
+      // over north to the sunset. Summer's (solid) this far in, winter's
+      // (dashed, shorter than the climate circle's dash) a step further.
+      const rSummer = R - SUN_INSET, rWinter = rSummer - SUN_PATH_STEP;
       layers.push(`<g fill="none" stroke="${look.sunPen}" stroke-width="0.7" stroke-linecap="round">` +
-        `<path d="${sunPathD(c, rs, summerAz, noonR(90 - latAbs + 23.44), page(0))}"/>` +
-        `<path d="${sunPathD(c, rs, winterAz, noonR(90 - latAbs - 23.44), page(0))}" stroke-dasharray="1.4,1.6"/></g>`);
-      const suns: [number, string[]][] = [
-        [winterAz, ['WINTER', 'SUNRISE']], [-winterAz, ['WINTER', 'SUNSET']],
-        [summerAz, ['SUMMER', 'SUNRISE']], [-summerAz, ['SUMMER', 'SUNSET']],
+        `<path d="${arcD(c, rSummer, page(-summerAz), page(summerAz))}"/>` +
+        `<path d="${arcD(c, rWinter, page(-winterAz), page(winterAz))}" stroke-dasharray="1.4,1.6"/></g>`);
+      const suns: [number, number, string[]][] = [
+        [winterAz, rWinter, ['WINTER', 'SUNRISE']], [-winterAz, rWinter, ['WINTER', 'SUNSET']],
+        [summerAz, rSummer, ['SUMMER', 'SUNRISE']], [-summerAz, rSummer, ['SUMMER', 'SUNSET']],
       ];
-      for (const [az, name] of suns) {
-        const [lx, ly] = sunNameAt(c, R - SUN_INSET, page(az));
-        layers.push(sunMark(onCircle(c, R - SUN_INSET, page(az)), look.sunEdge, look.sunFill, SUN_SIZE) +
+      for (const [az, r, name] of suns) {
+        const [lx, ly] = sunNameAt(c, r, page(az));
+        layers.push(sunMark(onCircle(c, r, page(az)), look.sunEdge, look.sunFill, SUN_SIZE) +
           name.map((t, i) => `<text x="${lx.toFixed(1)}" y="${(ly + (i - (name.length - 1) / 2) * LETTER * 1.12 + LETTER * 0.36).toFixed(1)}" text-anchor="middle" font-size="${LETTER}" font-weight="700" fill="${SUN_INK}">${t}</text>`).join(''));
       }
       // North: an arrowhead standing out of the ring, N beyond its point.
@@ -1829,9 +1802,9 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
     } else row(`<path d="${sketchArrow(SWATCH_X + 2, 3.2, 1, 0, 19, 0.8, 0.5, 1.3)}" fill="#fff" stroke="${look.windPen}" stroke-width="0.35" stroke-linejoin="round"/>`, 'PREVAILING WINDS');
     if (look.sun === 'circle')
       row(`<g fill="none" stroke="${look.sunPen}" stroke-width="0.35" stroke-linecap="round">` +
-        `<path d="M${SWATCH_X + 3},6 Q${mid},0.4 ${SWATCH_X + SWATCH_W - 3},6"/>` +
-        `<path d="M${SWATCH_X + 7},3.4 Q${mid},-2 ${SWATCH_X + SWATCH_W - 7},3.4" stroke-dasharray="0.8,0.9"/></g>` +
-        sunMark([SWATCH_X + 3, 6], look.sunEdge, look.sunFill, 0.45),
+        `<path d="M${SWATCH_X + 3},5.2 Q${mid},-1.6 ${SWATCH_X + SWATCH_W - 3},5.2"/>` +
+        `<path d="M${SWATCH_X + 7},6.2 Q${mid},1.4 ${SWATCH_X + SWATCH_W - 7},6.2" stroke-dasharray="0.8,0.9"/></g>` +
+        sunMark([SWATCH_X + 3, 5.2], look.sunEdge, look.sunFill, 0.45),
         'SUN PATH, SUMMER AND WINTER', 'solstice rise and set; summer solid, winter dashed');
     else if (look.sun === 'drawn')
       row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${look.sunPen}" stroke-width="0.9" stroke-dasharray="3,1.6"/>` +
