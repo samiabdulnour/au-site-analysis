@@ -20,7 +20,7 @@ import { CENTRES } from './data/centres.js';
 import { levelAt, type ContourM } from './lib/levels.js';
 import { futureHeight, ringArea, type FutureControls } from './lib/yield.js';
 import {
-  fetchZoningDetailed, fetchHobDetailed, fetchHeritageDetailed, fetchShrCurtilages, fetchPolicyAreas,
+  fetchZoningDetailed, fetchHobDetailed, fetchHeritageDetailed, fetchShrCurtilages, fetchPolicyAreas, isRealPolicyArea,
   fetchWaterAreas, fetchPlanningContext, fetchPropertyReport, fetchHousingTarget,
   type PolicyArea, type PlanningContext, type PropertyReport, type HousingTarget,
 } from './fetch/planning.js';
@@ -605,7 +605,7 @@ export async function runYieldPipeline(
   const metres = (lon: number, lat: number) => { const m = lonLatToMercator({ lon, lat }); return Math.hypot(m.x - cx, m.y - cy) / k; };
   const nearest = stations.map((s) => ({ name: s.name, distanceM: Math.round(metres(s.lon, s.lat)) })).sort((p, q) => p.distanceM - q.distanceM)[0];
   const cbd = CENTRES.filter((c) => c.kind === 'cbd').map((c) => ({ name: c.name, kind: c.kind, distanceM: Math.round(metres(c.lon, c.lat)) })).sort((p, q) => p.distanceM - q.distanceM)[0];
-  const policyAtSite = policy.filter((pa) => pa.rings.some((r) => pointInRingLL(centreLL.lon, centreLL.lat, r))).map((pa) => ({ kind: pa.kind, name: pa.name }));
+  const policyAtSite = policy.filter((pa) => isRealPolicyArea(pa.name) && pa.rings.some((r) => pointInRingLL(centreLL.lon, centreLL.lat, r))).map((pa) => ({ kind: pa.kind, name: pa.name }));
 
   // The neighbours' footprints with what is known of their height; one with
   // none stands in at a nominal two storeys, drawn as such. Each also carries

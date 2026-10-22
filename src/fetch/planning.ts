@@ -40,6 +40,9 @@ export const fetchShrCurtilages = (extent: Extent) =>
 export type PolicyKind = 'tod' | 'todAccelerated' | 'todDeferred' | 'townCentre' | 'ssdSite' | 'precinct';
 export interface PolicyArea { kind: PolicyKind; name: string; rings: number[][][]; source: string }
 
+/** DPHI's precinct layer fills the land between precincts with polygons named "Not Applicable"; a name like that is the absence of a policy area, not one. */
+export const isRealPolicyArea = (name: string) => !/^(not applicable|n\/?a|none|nil|null|<null>)\.?$/i.test(name.trim());
+
 /**
  * The housing-policy maps: Transport Oriented Development areas and their
  * accelerated and deferred precincts, the Town Centres map that anchors the
@@ -67,7 +70,8 @@ export async function fetchPolicyAreas(extent: Extent, log: (m: string) => void 
       const fc = await queryByExtent(s.url, extent, s.fields);
       for (const f of fc.features) {
         const rings = geomRings(f.geometry);
-        if (rings.length) out.push({ kind: s.kind, name: s.name(f.properties), rings, source: s.source });
+        const name = s.name(f.properties);
+        if (rings.length && isRealPolicyArea(name)) out.push({ kind: s.kind, name, rings, source: s.source });
       }
     } catch (e: any) {
       log(`  WARN ${s.kind} layer failed: ${e?.message ?? e}`);
