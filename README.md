@@ -951,7 +951,8 @@ development window), `--job 2539`, `--client "Name"`,
 controls let the site hold, as a feasibility study first states it. The left
 half is the office's development summary (DA 002) with the column the
 generated summary had to leave empty now filled — CONTROLS, PROPOSED and
-COMPLIANCE — for the site, the project summary, the LEP, the parking, the
+COMPLIANCE — for the site (what stands on it today included, where the
+building sources record it), the project summary, the LEP, the parking, the
 Apartment Design Guide and the Housing SEPP. Under it, ruled as the same
 table, the schedule of tiers — storeys, use, setbacks, envelope, plate and
 floor area, each tier's number in the ring the plan draws it in — then the
@@ -960,9 +961,24 @@ area for it, its own area, how many there are and the area they take, and
 the assumptions the study rests on (floor to floor, efficiencies, the mix,
 the plates, the nearest station).
 
-The right half draws the study. The indicative massing as an axonometric,
+The right half draws the study, and weighs it. Under the massing, a
+SCENARIOS table sets the paths an investor compares against one another,
+each with its storeys, height, GFA, FSR, units and parking
+(`scenarioRows()`, also in the CSV and the JSON): *stands today* — the
+building on the site from its recorded footprint and height, indicative
+GBA, no mark, since it is a fact and not a proposal; *within the controls*
+— the scheme the drawings show, inside the LEP's height and FSR and the
+ADG's separations; *affordable housing bonus* — the Housing SEPP's in-fill
+30%, eligibility to confirm; and *envelope to the height* — the setbacks
+filled to the height plane with the FSR set aside, the case a clause 4.6
+variation or a planning proposal has to carry, marked non-compliant. Where
+what stands exceeds every scenario, a red line says so: the controls have
+tightened since it was built, and redevelopment would cut the floor area.
+
+The indicative massing as an axonometric,
 seen from the main street's corner, among the neighbours at their recorded
-heights (Overture; dashed where none is recorded), with each tier's envelope
+heights (Overture, its gaps filled from OpenStreetMap; dashed where neither
+records one), with each tier's envelope
 dashed and the height of building plane over the site. Over each neighbour,
 in pale dashed glass, its future: its own footprint raised to the whole 3.1 m
 storeys its LEP height of building holds, where its zone permits flats (R1,
@@ -1101,8 +1117,10 @@ with the site and its levels marked; the text gives the site's RL range,
 fall, grade and aspect and where the high ground and the water are. Then
 *built form*: every building footprint in the window coloured by height
 band (Overture Maps, read from its public bucket by DuckDB through
-`src/py/overture_buildings.py`; OpenStreetMap through Overpass when DuckDB
-or Overture is not there; where neither gives a height, the storeys of a
+`src/py/overture_buildings.py`, its gaps filled from OpenStreetMap through
+Overpass — a footprint Overture misses joins, and a footprint it holds with
+no height takes OSM's height or storeys; OpenStreetMap alone when DuckDB
+or Overture is not there; where no source gives a height, the storeys of a
 determined development application on the lot, hatched and said so), the
 storeys of the buildings within 250 m as a
 histogram with the LEP height plane marked on it, and section A–A′ again

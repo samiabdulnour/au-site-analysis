@@ -1,14 +1,16 @@
-/* The storeys-from-the-DA fallback for building footprints, on made-up lots.
+/* The storeys-from-the-DA fallback for building footprints, and the
+ * OpenStreetMap fill of Overture's gaps, on made-up lots.
  *
  * Pure geometry and record selection: which application on a footprint's
- * cadastral lot may lend it a storey count, which footprints take one, and
- * what stays as it was. Nothing here asks a network, so it can say exactly
- * what a change broke.
+ * cadastral lot may lend it a storey count, which footprints take one, what
+ * stays as it was, which supplement footprints join and which heights carry
+ * over. Nothing here asks a network, so it can say exactly what a change
+ * broke.
  *
  *   npx tsx test/heights.mts
  */
 
-import { withDaStoreys, ringAreaSqm, daGivesStoreys, METRES_PER_STOREY, type Building, type BuildingsData } from '../src/fetch/buildings.js';
+import { withDaStoreys, mergeBuildings, ringAreaSqm, daGivesStoreys, METRES_PER_STOREY, type Building, type BuildingsData } from '../src/fetch/buildings.js';
 import type { DaRecord } from '../src/fetch/da.js';
 import type { GeoJSONFC } from '../src/lib/arcgis.js';
 import { lonLatToMercator, mercatorToLonLat, mercatorScaleFactor, ringCentroid } from '../src/lib/geo.js';
@@ -92,6 +94,36 @@ check('lot B: a 20 m² shed takes two storeys', low.buildings.find((b) => b.id =
 // a lodged date orders an application that has no determination date
 const undated = withDaStoreys(data, lots, [da('A-late', 'Determined', 'determined', 7, ll(5, 5), undefined, '2025-09-01'), applications[1]]);
 check('lot A: the lodged date stands in for a missing determination date', undated.buildings.find((b) => b.id === 'a-unknown')?.floors === 7);
+
+// ---- the OpenStreetMap fill of Overture's gaps --------------------------------------------
+{
+  const osm = (id: string, ring: number[][], extra: Partial<Building> = {}): Building => ({ ...building(id, ring, extra), source: 'osm' });
+  const overture: BuildingsData = {
+    source: 'overture', release: '2026-09-23.1', fetchedAt: 't0',
+    buildings: [
+      building('o-tall', rect(2, 2, 12, 12)),                                                            // no height; OSM knows it
+      building('o-known', rect(2, 15, 12, 25), { heightM: 9, estimatedHeightM: 9, heightFrom: 'measured' }), // its own height stays
+    ],
+  };
+  const supplement: BuildingsData = {
+    source: 'osm', fetchedAt: 't1',
+    buildings: [
+      osm('s-tall', rect(4, 4, 10, 10), { floors: 12, estimatedHeightM: 12 * METRES_PER_STOREY, heightFrom: 'floors' }), // inside o-tall
+      osm('s-known', rect(4, 17, 10, 23), { floors: 2, estimatedHeightM: 2 * METRES_PER_STOREY, heightFrom: 'floors' }), // inside o-known
+      osm('s-gap', rect(22, 2, 32, 12), { floors: 3, estimatedHeightM: 3 * METRES_PER_STOREY, heightFrom: 'floors' }),   // on no Overture footprint
+    ],
+  };
+  const merged = mergeBuildings(overture, supplement);
+  const by = (id: string) => merged.buildings.find((b) => b.id === id);
+  check('fill: a footprint Overture misses joins from OSM', !!by('s-gap') && by('s-gap')!.source === 'osm');
+  check('fill: a footprint Overture holds is not doubled', !by('s-tall') && !by('s-known') && merged.buildings.length === 3);
+  check('fill: an Overture footprint with no height takes OSM\'s storeys', by('o-tall')?.floors === 12 && by('o-tall')?.heightFrom === 'floors');
+  check('fill: an Overture height is never replaced', by('o-known')?.heightM === 9 && by('o-known')?.heightFrom === 'measured');
+  check('fill: the answer stays Overture\'s, and says what was filled', merged.source === 'overture' && merged.release === '2026-09-23.1' && /1 footprints and 1 heights from OpenStreetMap/.test(merged.note ?? ''), merged.note);
+  check('fill: nothing to add or fill: the same data back', mergeBuildings(overture, { source: 'osm', fetchedAt: 't1', buildings: [osm('s-known', rect(4, 17, 10, 23))] }) === overture);
+  check('fill: an empty supplement: the same data back', mergeBuildings(overture, { source: 'osm', fetchedAt: 't1', buildings: [] }) === overture);
+  check('fill: an empty primary: the supplement stands', mergeBuildings({ source: 'overture', buildings: [], fetchedAt: 't0' }, supplement) === supplement);
+}
 
 if (failures.length) {
   console.error(`heights: ${failures.length} failure(s)\n - ${failures.join('\n - ')}`);

@@ -3,9 +3,11 @@
 // quarter of them and storeys on half — read from its public bucket by
 // DuckDB through a small Python script (the wheel is in the image;
 // without it the script says so and we move on). OpenStreetMap through
-// Overpass is the fallback: fewer heights, but the deployer's local
-// Overpass always answers. Either answer is cached on the volume for a
-// month, since both sources move monthly.
+// Overpass fills Overture's gaps and is the fallback when Overture gives
+// nothing: around a Bondi Road site Overture had no height at all on any
+// neighbour and no footprint on 27 numbered lots within 120 m, all of
+// which OpenStreetMap carries. The merged answer is cached on the volume
+// for a month, since all these sources move monthly.
 
 import { execFile } from 'node:child_process';
 import { dirname, join } from 'node:path';
@@ -195,19 +197,61 @@ export function withDaStoreys(data: BuildingsData, lots: GeoJSONFC, applications
   return { ...data, buildings };
 }
 
+/**
+ * The primary source's footprints, filled in from a supplement where the
+ * primary is silent: a supplement building whose centroid stands inside no
+ * primary footprint joins, and a primary footprint with no height at all
+ * takes the height or storeys of a supplement building whose centroid it
+ * holds. Nothing of the primary's own is replaced. Pure, so the filling is
+ * tested without a network.
+ */
+export function mergeBuildings(primary: BuildingsData, supplement: BuildingsData): BuildingsData {
+  if (!supplement.buildings.length || !primary.buildings.length) return primary.buildings.length ? primary : supplement;
+  const prim = primary.buildings.map((b) => ({ b, bb: bboxOf(b.rings[0]) }));
+  const hostOf = (x: number, y: number) =>
+    prim.find(({ b, bb }) => x >= bb[0] && x <= bb[2] && y >= bb[1] && y <= bb[3] && pointInRing(x, y, b.rings[0]))?.b;
+  const added: Building[] = [];
+  const donors = new Map<string, Building>();
+  for (const sb of supplement.buildings) {
+    const host = hostOf(sb.centroid[0], sb.centroid[1]);
+    if (!host) { added.push(sb); continue; }
+    if (!host.estimatedHeightM && sb.estimatedHeightM && !donors.has(host.id)) donors.set(host.id, sb);
+  }
+  if (!added.length && !donors.size) return primary;
+  const buildings = primary.buildings
+    .map((b): Building => {
+      const d = donors.get(b.id);
+      return d ? { ...b, heightM: d.heightM, floors: d.floors, estimatedHeightM: d.estimatedHeightM, heightFrom: d.heightFrom } : b;
+    })
+    .concat(added);
+  const word = supplement.source === 'osm' ? 'OpenStreetMap' : supplement.source;
+  return { ...primary, buildings, note: [primary.note, `${added.length} footprints and ${donors.size} heights from ${word}`].filter(Boolean).join('; ') };
+}
+
 /** Every building footprint touching the extent, with what is known of its height. */
 export async function fetchBuildings(extent: Extent, log: (m: string) => void = () => {}): Promise<BuildingsData> {
   const key = ['xmin', 'ymin', 'xmax', 'ymax'].map((k) => Math.round(extent[k as keyof Extent])).join('_');
   let data: BuildingsData;
   try {
-    data = await cachedJson('buildings', key, 30 * DAY_MS, async (): Promise<BuildingsData> => {
+    // The kind is versioned: a cache written before the OpenStreetMap fill
+    // would otherwise serve its gaps for a month.
+    data = await cachedJson('buildings-v2', key, 30 * DAY_MS, async (): Promise<BuildingsData> => {
+      let overture: BuildingsData | null = null;
       try {
-        const o = await fromOverture(extent, log);
-        if (o && o.buildings.length) return o;
+        overture = await fromOverture(extent, log);
       } catch (e: any) {
         log(`  WARN Overture buildings failed: ${e?.message ?? e}; trying OpenStreetMap`);
       }
-      return await fromOsm(extent, log);
+      if (!overture?.buildings.length) return await fromOsm(extent, log);
+      // An Overpass outage costs only the fill, not the sheet.
+      try {
+        const merged = mergeBuildings(overture, await fromOsm(extent, log));
+        if (merged.note) log(`  buildings: ${merged.note}`);
+        return merged;
+      } catch (e: any) {
+        log(`  WARN OpenStreetMap supplement failed: ${e?.message ?? e}; Overture alone`);
+        return overture;
+      }
     });
   } catch (e: any) {
     // Neither source answered, and that is not cached: an outage is gone by

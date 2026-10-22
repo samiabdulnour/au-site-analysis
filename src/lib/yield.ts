@@ -169,6 +169,32 @@ export function futureHeight(
   return allowed > standing ? allowed * storeyM : undefined;
 }
 
+/** A building standing on the site today: its footprint, and what is recorded of its height. */
+export interface ExistingBuilding { footprintSqm: number; heightM?: number; storeys?: number }
+
+/**
+ * What stands on the site today, in one line: the buildings' count and
+ * ground cover, the tallest one's storeys and height, and an indicative
+ * gross building area — each footprint by its storeys — for the scenarios
+ * to stand against. `known` says a height was recorded for at least one;
+ * without any, no floor area is guessed. None of it is a survey.
+ */
+export function existingSummary(list: ExistingBuilding[], storeyM = 3.1):
+  { count: number; footprintSqm: number; storeys?: number; heightM?: number; gbaSqm?: number; known: boolean } | undefined {
+  if (!list.length) return undefined;
+  const storeys = list.map((b) => b.storeys ?? (b.heightM && b.heightM > 0 ? Math.max(1, Math.round(b.heightM / storeyM)) : undefined));
+  const known = storeys.some((v) => v !== undefined);
+  const heights = list.map((b) => b.heightM ?? (b.storeys ? b.storeys * storeyM : 0));
+  return {
+    count: list.length,
+    footprintSqm: list.reduce((t, b) => t + b.footprintSqm, 0),
+    storeys: known ? Math.max(...storeys.map((v) => v ?? 1)) : undefined,
+    heightM: known ? Math.max(...heights) : undefined,
+    gbaSqm: known ? list.reduce((t, b, i) => t + b.footprintSqm * (storeys[i] ?? 1), 0) : undefined,
+    known,
+  };
+}
+
 export type Use = 'retail' | 'residential' | 'commercial';
 
 /** A band of storeys built to one set of setbacks. */
