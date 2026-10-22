@@ -50,9 +50,10 @@
   <p class="lead intro" id="intro">Give it a NSW street address and it draws the
   site-analysis sheets an architect prepares for a development application — the
   lot on its cadastre and aerial, zoning and height controls, heritage, transport,
-  walking catchments — entirely from government open data. Out come a print-ready
-  A1 PDF and the same geometry as CAD, free and without an account.
-  <a href="/about">How it works</a>.</p>
+  walking catchments — entirely from government open data. Anyone can generate
+  them and see the result; a free account downloads the print-ready A1 PDF,
+  watermarked, and an unlocked address or the subscription gives it clean, with
+  the same geometry as CAD. <a href="/about">How it works</a>.</p>
 
   <!-- ---- an account, when one is wanted -------------------------------- -->
   <!-- Not a wall: drawing never asks for it. It opens from SIGN IN in the
@@ -61,9 +62,10 @@
        method=post so that, if app.js fails to load, a native submit does not
        carry the access code in the URL. -->
   <form id="login" method="post" action="/" hidden>
-    <p class="lead">An account is for buying — unlocking an address, or the
-    <a href="/pricing">subscription</a> — and drawing stays free without one.
-    Free PDFs carry a watermark either way.</p>
+    <p class="lead">A free account downloads the PDF of every drawing, with a
+    watermark. Unlocking an address, or the <a href="/pricing">subscription</a>,
+    takes the watermark off and adds the CAD and data files. Drawing and seeing
+    the result need no account.</p>
     <!-- The ways in, as a row of the options table: an account, a new one, the
          office's shared code, and asking for a password-reset email. The row
          hides when the emailed reset link (?reset=…) takes the form over. -->
@@ -88,10 +90,14 @@
   <!-- ---- the tool ---------------------------------------------------- -->
   <form id="f" hidden>
     <p class="lead">Search a NSW address to generate its site analysis.</p>
-    <!-- Said to the free side, account or not: what it gets, the way to more. -->
-    <p class="lead muted" id="plan" hidden>Free: PDFs come with a watermark.
-    Unlock an address, or <a href="/pricing">subscribe</a>, for clean PDFs and the CAD
-    and data files.</p>
+    <!-- Said to whoever does not take the PDF clean: what they get, the way to
+         more. Without an account, the next step is the free account; with
+         one, buying. -->
+    <p class="lead muted" id="plan" hidden><span id="planGuest">Without an account
+    you see each drawing here. <a href="/?signup">Make a free account</a> to download
+    its PDF, with a watermark.</span><span id="planFree">Free: PDFs come with a
+    watermark.</span> Unlock an address, or <a href="/pricing">subscribe</a>, for
+    clean PDFs and the CAD and data files.</p>
     <!-- Said only to an account that has not clicked its verification link.
          Drawing does not wait on it; the password reset goes to that inbox. -->
     <p class="lead muted" id="verify" hidden>Your email is not verified yet — the

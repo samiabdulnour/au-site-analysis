@@ -116,14 +116,20 @@ function renderAll() {
 // What the server last said about this session: who is signed in, which side
 // of the site they are on. The page is open either way.
 let session = null;
+/** What a visitor without an account may take away: the picture, no PDF. */
+const GUEST = { pdf: false, cleanPdf: false, openData: false };
 
 /** Take what the server told us about this session. */
 function applySession(j) {
   session = j;
   // Whoever holds a session has read what the tool is.
   $('intro').hidden = Boolean(j.authed);
-  // The free side is told what it gets once, above the bar, with the way to more.
-  $('plan').hidden = !(j.grants && !j.grants.cleanPdf);
+  // Whoever does not take the PDF clean is told what they get once, above the
+  // bar, with the way to more: without an account the free one, with it buying.
+  const g = j.grants || GUEST;
+  $('plan').hidden = g.cleanPdf;
+  $('planGuest').hidden = g.pdf;
+  $('planFree').hidden = !g.pdf;
   // An account that has not clicked its verification link is told generating
   // waits on it, with the resend beside the words. Just back from the link
   // (?verified=1), the banner's place says so instead.
@@ -509,6 +515,13 @@ function enter(j) {
     pendingUnlockJob = null;
     unlock(id);
   }
+  // They came from DOWNLOAD under a drawing: show it again, now with its PDF.
+  else if (pendingDownloadJob && j.authed) {
+    const id = pendingDownloadJob;
+    pendingDownloadJob = null;
+    startOutput('');
+    poll(id);
+  }
 }
 
 // Drawing never waits on the form: this is the way back out of it.
@@ -531,7 +544,7 @@ else fetch('/api/me').then(async (r) => {
     return showLogin();
   }
   enter(j);
-}).catch(() => enter({ authed: false, grants: { cleanPdf: false, openData: false } }));
+}).catch(() => enter({ authed: false, grants: GUEST }));
 
 loginForm.addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -710,7 +723,7 @@ async function poll(id, misses) {
       // What this viewer may take away of this drawing, as the server says:
       // the plan's, or everything once its site is bought. The server decides
       // regardless — a free account asking for the CAD gets 402.
-      const grants = j.grants || { cleanPdf: false, openData: false };
+      const grants = j.grants || GUEST;
       // Back from paying for this site: Stripe tells the server by webhook,
       // which can land a few seconds after the visitor does.
       if (awaitingPayment > 0 && !grants.cleanPdf) {
@@ -727,6 +740,14 @@ async function poll(id, misses) {
       // hundred kilobytes shows at once where the PDF can be tens of
       // megabytes, so the PDF is downloaded rather than opened.
       if (j.hasPreview) showDrawn(id, j.address);
+      // Without an account the drawing is its picture above; the PDF starts
+      // with a free account, and the form brings the visitor back to it.
+      if (!grants.pdf) {
+        addButton('sign up free to download the pdf', () => {
+          pendingDownloadJob = id;
+          openAuth('signup', 'A free account downloads the PDF, with a watermark — sign up, or sign in, and the drawing is waiting.');
+        });
+      }
       if (j.unlock) {
         // What is bought, said in full: the address, not just this drawing of it.
         unlockWhat.textContent = 'Unlocking this address gives you every drawing of it — context, ' +
@@ -735,8 +756,9 @@ async function poll(id, misses) {
         unlockWhat.hidden = false;
         addButton('unlock this address · ' + j.unlock, () => unlock(id));
       }
-      addLink(grants.cleanPdf ? 'download pdf' : 'download pdf · watermarked',
-        '/api/jobs/' + id + '/pdf?download', { download: true });
+      if (grants.pdf)
+        addLink(grants.cleanPdf ? 'download pdf' : 'download pdf · watermarked',
+          '/api/jobs/' + id + '/pdf?download', { download: true });
       const dataLabel = j.sheet === 'slides' ? 'download json' : 'download csv';
       if (grants.openData) {
         if (j.hasCad) addLink('download cad', '/api/jobs/' + id + '/cad');
@@ -788,6 +810,8 @@ function addButton(label, onClick) {
 // visitor back (?paid=1) — and the job whose unlock is waiting on the sign-in
 // it sent the visitor to first.
 let awaitingPayment = 0, returnedFromPayment = false, pendingUnlockJob = null;
+// The job whose PDF a visitor without an account asked for, until they have one.
+let pendingDownloadJob = null;
 
 /** Off to Stripe to pay for this drawing's address; it sends the visitor back here. */
 async function unlock(id) {

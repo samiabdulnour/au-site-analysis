@@ -4,11 +4,12 @@
 //
 //   npm run serve     # http://localhost:3000  (PORT to change)
 //
-// Open to anyone: drawing needs no account, and the free side's PDFs are
-// served watermarked (src/render/watermark.ts). An account (an email and a
-// password) exists for buying — unlocking an address, or the subscription
-// (src/billing.ts, src/plans.ts) — which serves them clean with the CAD and
-// data files beside them. What holds the open side down is the per-IP budgets
+// Open to anyone: drawing needs no account, and without one a drawing is its
+// picture on the page. A free account (an email and a password) downloads the
+// PDFs, served watermarked (src/render/watermark.ts), and is what buying starts
+// from — unlocking an address, or the subscription (src/billing.ts,
+// src/plans.ts) — which serves them clean with the CAD and data files beside
+// them. What holds the open side down is the per-IP budgets
 // and the one-at-a-time queue, not a login. ACCESS_CODE, when set, is the
 // office's shared code and carries the subscription. Set ALLOW_NO_AUTH=1 only
 // for local use: everything granted, and SIGN IN never offered.
@@ -744,7 +745,7 @@ function viewerFrom(held: { code: boolean; operator: boolean }, account?: Accoun
     signedIn: held.code || Boolean(account),
     operator: held.operator,
     code: held.code,
-    plan: held.code || (account && planOf(account) === 'subscription') ? 'subscription' : 'free',
+    plan: held.code ? 'subscription' : account ? planOf(account) : 'guest',
     account,
   };
 }
@@ -870,6 +871,13 @@ function watermarked(job: Job): Promise<string> {
   }
   return pending;
 }
+
+/**
+ * Without an account a drawing is its picture on the page: the PDF, stamped or
+ * not, starts with one. 401 rather than 402: signing up is free, so what is
+ * missing is who is asking, not what they have paid for.
+ */
+const PDF_NEEDS_ACCOUNT = { error: 'Make a free account to download the PDF.', signup: true };
 
 /** The PDF this viewer is given: the sheet as drawn, or the stamped copy. Never the first on a failure of the second. */
 const pdfFor = (job: Job, v: Viewer) =>
@@ -1534,6 +1542,7 @@ Canonical: ${base}/.well-known/security.txt
       found.push({ job, name });
     }
     if (!found.length) return json(res, 404, { error: 'Nothing finished yet.' });
+    if (!found.every((f) => grantsFor(v, f.job).pdf)) return json(res, 401, PDF_NEEDS_ACCOUNT);
     try {
       // The same PDFs as the single download: stamped for a free account.
       const files: { path: string; name: string }[] = [];
@@ -1612,9 +1621,11 @@ Canonical: ${base}/.well-known/security.txt
   if (req.method === 'GET' && pdfMatch) {
     const job = jobs.get(pdfMatch[1]);
     if (!job?.pdfPath) return json(res, 404, { error: 'Not ready.' });
+    const v = viewerOf(req);
+    if (!grantsFor(v, job).pdf) return json(res, 401, PDF_NEEDS_ACCOUNT);
     let path: string;
     try {
-      path = await pdfFor(job, viewerOf(req));
+      path = await pdfFor(job, v);
     } catch (e: any) {
       // Refused rather than served clean: a failed stamp must not become a
       // free way to the subscriber's PDF.

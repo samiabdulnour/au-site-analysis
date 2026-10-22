@@ -144,14 +144,23 @@ with the pictures.
 ### Free, one address, and subscription
 
 Anyone generates every drawing, with or without an account, from the same
-data, drawn the same way; what differs is what can be taken away:
+data, drawn the same way, and sees it on the page; what differs is what can be
+taken away:
 
-| | free | one address | subscription |
-|---|---|---|---|
-| PDF | stamped with the watermark | clean, for that address | clean |
-| CAD (DXF/DWG) | — | for that address | yes |
-| data (CSV, JSON) | — | for that address | yes |
-| lasts | — | 30 days | while subscribed |
+| | no account | free account | one address | subscription |
+|---|---|---|---|---|
+| drawing on the page | yes | yes | yes | yes |
+| PDF | — | stamped with the watermark | clean, for that address | clean |
+| CAD (DXF/DWG) | — | — | for that address | yes |
+| data (CSV, JSON) | — | — | for that address | yes |
+| lasts | — | — | 30 days | while subscribed |
+
+Without an account the finished drawing shows as its picture (the job's
+`preview.jpg`, the same for every plan) with SIGN UP FREE TO DOWNLOAD THE PDF
+under it, which opens the account form and brings the visitor back to the same
+drawing, now with its watermarked PDF. The server refuses the PDF and the
+batch zip to a visitor without a session (401, since a free account is all it
+takes), so the page offers only what the server will serve.
 
 An address is bought from any of its drawings: under a finished sheet the
 viewer cannot take clean, a line says what unlocking gives, and UNLOCK THIS
@@ -169,10 +178,11 @@ and its settings still say site: `STRIPE_SITE_PRICE_ID`, `unlockSite`.)
 new privilege is a new column there rather than a new condition in the server.
 
 **Accounts.** Drawing never asks for one: the tool is the landing page, and
-the account form opens only from SIGN IN in the nav, from an unlock or the
-pricing page (buying starts with an account), and from the emailed
+the account form opens only from SIGN IN in the nav, from SIGN UP FREE TO
+DOWNLOAD THE PDF under a drawing (the PDF starts with an account), from an
+unlock or the pricing page (buying starts with one too), and from the emailed
 verification and reset links. Anyone can make one with an email and a
-password (`SIGN UP`), and starts on the free side. What holds the open side
+password (`SIGN UP`), and starts on the free side, with watermarked PDFs. What holds the open side
 down is what always did: the per-IP budgets (12 sheets an hour, and the
 sign-in and sign-up limiters) and the one-at-a-time queue. Accounts live in `out/accounts/accounts.json`
 on the host volume, beside the job index and written the same way, with scrypt
@@ -329,9 +339,9 @@ an ops view that is closed until someone deliberately opens it, rather than one
 that stays open on a credential nobody meant to repurpose.
 
 Authentication: drawing needs none — the site is open, and a visitor without
-a session is simply on the free side, watermarked. Signing in (an account, or
-`ACCESS_CODE` once) sets a 30-day session cookie and is what buying, clean
-downloads and the office's grants hang off. Login attempts, sign-ups and job
+a session sees each drawing on the page but downloads nothing. Signing in (an
+account, or `ACCESS_CODE` once) sets a 30-day session cookie and is what
+downloads, buying, clean PDFs and the office's grants hang off. Login attempts, sign-ups and job
 submissions are rate-limited per IP, and job outputs are deleted after 24h.
 `ALLOW_NO_AUTH=1` is for local use only, and only while no `ACCESS_CODE` is
 set: everything granted, no sign-in offered.
