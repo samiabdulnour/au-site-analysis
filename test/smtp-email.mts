@@ -170,7 +170,7 @@ try {
 
   // ---- verification, over SMTP -------------------------------------------------
   const carol = browser();
-  const signed = await post(carol, '/api/signup', { email: 'carol@example.com', password: 'long enough' });
+  const signed = await post(carol, '/api/signup', { email: 'carol@example.com', password: 'long enough', agreed: true });
   check('sign-up says the email is unverified',
     signed.status === 201 && (await signed.json()).account?.verified === false);
   const v = await mail('carol@example.com', 1);
@@ -197,7 +197,7 @@ try {
   // ---- the mail server refusing the login ----------------------------------------
   acceptLogin = false;
   const dave = browser();
-  await post(dave, '/api/signup', { email: 'dave@example.com', password: 'long enough' });
+  await post(dave, '/api/signup', { email: 'dave@example.com', password: 'long enough', agreed: true });
   const resend = await dave('/api/verify/resend', { method: 'POST' });
   check('a refused login: RESEND says it could not send', resend.status === 502, String(resend.status));
   await new Promise((r) => setTimeout(r, 300));
