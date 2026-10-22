@@ -265,7 +265,7 @@ export async function fetchHousingTarget(lgaName: string): Promise<HousingTarget
   if (!slug) return null;
   const url = `https://www.planning.nsw.gov.au/the-planning-system/housing/housing-targets/${slug}-councils-snapshot`;
   try {
-    const res = await retryFetch(url, { headers: { 'User-Agent': 'site-analyst (housing target lookup)' } },
+    const res = await retryFetch(url, {},
       { attempts: 2, timeoutMs: 20_000, label: 'housing target' });
     if (!res.ok) return null;
     const text = (await res.text()).replace(/<script[\s\S]*?<\/script>/g, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');

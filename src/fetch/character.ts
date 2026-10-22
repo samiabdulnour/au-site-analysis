@@ -10,13 +10,13 @@
 
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { retryFetch } from '../lib/http.js';
+import { retryFetch, USER_AGENT } from '../lib/http.js';
 import { cachedJson, DAY_MS } from '../lib/cache.js';
 import { lonLatToMercator, mercatorScaleFactor, type LonLat, type Extent } from '../lib/geo.js';
 import { fetchAerial, type AerialResult } from './imagery.js';
 import { fetchPlaceStreetViews, type PlaceStreetView } from './streetView.js';
 
-const UA = 'au-site-analysis/1.0 (site analysis deck; https://github.com/samiabdulnour/au-site-analysis)';
+const UA = USER_AGENT;
 const WP_REST = 'https://en.wikipedia.org/api/rest_v1';
 const WP_API = 'https://en.wikipedia.org/w/api.php';
 const COMMONS_API = 'https://commons.wikimedia.org/w/api.php';

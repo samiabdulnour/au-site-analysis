@@ -952,6 +952,30 @@ Sitemap: ${siteBase()}/sitemap.xml
     return;
   }
 
+  // RFC 9116: where a firewall or data provider that sees this tool's
+  // requests can read what it is and reach its operator. The User-Agent its
+  // fetchers send points at the GitHub repo; this points at the same record,
+  // served from the running site so the identity is verifiable from both ends.
+  if (req.method === 'GET' && (url.pathname === '/.well-known/security.txt' || url.pathname === '/security.txt')) {
+    const base = siteBase();
+    const repo = 'https://github.com/samiabdulnour/au-site-analysis';
+    const expires = new Date(Date.now() + 365 * 86_400_000).toISOString();
+    const contact = process.env.SITE_ANALYSIS_CONTACT?.trim();
+    const contactLines = [
+      contact ? `Contact: ${contact.includes('@') && !contact.includes(':') ? `mailto:${contact}` : contact}` : null,
+      `Contact: ${repo}/security/advisories/new`,
+      `Contact: ${repo}/issues`,
+    ].filter(Boolean);
+    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=86400' });
+    res.end(`${contactLines.join('\n')}
+Expires: ${expires}
+Policy: ${repo}/blob/main/SECURITY.md
+Preferred-Languages: en
+Canonical: ${base}/.well-known/security.txt
+`);
+    return;
+  }
+
   // Sample thumbnails for the landing page. Whitelisted names only — never
   // join user input onto a filesystem path.
   const sampleMatch = url.pathname.match(/^\/samples\/([a-z0-9_-]+\.(?:jpg|png|svg))$/);
