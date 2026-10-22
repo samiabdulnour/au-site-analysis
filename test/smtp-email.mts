@@ -4,10 +4,11 @@
  * keeps the login and every message, and the site's server is booted against
  * it on throwaway directories — with a Resend key set too, aimed at a port
  * nothing answers on, so a link that arrives is proof SMTP won. Then: the log
- * says email goes by SMTP; the verification email logs in as the mailbox,
- * comes from it, reaches the sign-up's address, and its link verifies; the
+ * says email goes by SMTP; the sign-up email logs in as the mailbox, comes
+ * from it, reaches the sign-up's address, and its link makes the account; the
  * reset email's link sets a new password that signs in; and a mail server
- * refusing the login makes RESEND say it could not send rather than "sent".
+ * refusing the login leaves a sign-up answered as ever, with the refusal in
+ * the log and the password nowhere in it.
  * Nothing reaches a real mail server, Resend, NSW ePlanning or Stripe.
  *
  *   npx tsx test/smtp-email.mts
@@ -124,6 +125,7 @@ const server = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'src', 'se
     SMTP_HOST: '127.0.0.1', SMTP_PORT: String(SMTP_PORT), SMTP_USER: MAILBOX, SMTP_PASS: PASSWORD,
     EMAIL_FROM: `Site Analyst <${MAILBOX}>`,
     RESEND_API_KEY: 're_unused', EMAIL_API_URL: `http://127.0.0.1:${DEAD_PORT}/emails`,
+    TURNSTILE_SITE_KEY: '', TURNSTILE_SECRET_KEY: '',
     STRIPE_SECRET_KEY: '', STRIPE_PRICE_ID: '', STRIPE_WEBHOOK_SECRET: '',
   },
   stdio: ['ignore', 'pipe', 'pipe'],
@@ -168,21 +170,20 @@ try {
   if (!up) throw new Error(`server never answered:\n${serverLog}`);
   check('the log says email goes by SMTP', serverLog.includes('email smtp'), serverLog.trim());
 
-  // ---- verification, over SMTP -------------------------------------------------
+  // ---- the sign-up link, over SMTP -------------------------------------------------
   const carol = browser();
   const signed = await post(carol, '/api/signup', { email: 'carol@example.com', password: 'long enough' });
-  check('sign-up says the email is unverified',
-    signed.status === 201 && (await signed.json()).account?.verified === false);
+  check('sign-up says to check the email', signed.status === 202 && (await signed.json()).pending === true);
   const v = await mail('carol@example.com', 1);
   check('the mail server was logged in to as the mailbox, password intact', v.login === MAILBOX);
   check('it comes from the mailbox', v.envelopeFrom === MAILBOX && v.headers.from?.includes(MAILBOX), JSON.stringify(v.headers.from));
   check('it goes to the sign-up and no one else', v.rcpt.length === 1 && v.headers.to?.includes('carol@example.com'));
-  check('the subject arrives whole, dash and all', v.headers.subject === 'Verify your email — Site Analyst', v.headers.subject);
-  const verifyToken = tokenIn(v, 'token');
-  check('the email carries the link', verifyToken.length === 64, v.text);
-  const clicked = await carol(`/api/verify?token=${verifyToken}`);
-  check('the emailed link verifies', clicked.headers.get('location') === '/?verified=1');
-  check('verified: /api/me says so', (await (await carol('/api/me')).json()).account?.verified === true);
+  check('the subject arrives whole, dash and all', v.headers.subject === 'Finish signing up — Site Analyst', v.headers.subject);
+  const confirmToken = tokenIn(v, 'confirm');
+  check('the email carries the link', confirmToken.length === 64, v.text);
+  const made = await post(carol, '/api/signup/confirm', { token: confirmToken });
+  check('the emailed link makes the account, verified',
+    made.status === 200 && (await (await carol('/api/me')).json()).account?.verified === true);
 
   // ---- the password reset, over SMTP ---------------------------------------------
   await post(browser(), '/api/password/forgot', { email: 'carol@example.com' });
@@ -196,12 +197,10 @@ try {
 
   // ---- the mail server refusing the login ----------------------------------------
   acceptLogin = false;
-  const dave = browser();
-  await post(dave, '/api/signup', { email: 'dave@example.com', password: 'long enough' });
-  const resend = await dave('/api/verify/resend', { method: 'POST' });
-  check('a refused login: RESEND says it could not send', resend.status === 502, String(resend.status));
-  await new Promise((r) => setTimeout(r, 300));
-  check('…and the log names the server\'s refusal', /535/.test(serverLog), serverLog.slice(-400));
+  const refused = await post(browser(), '/api/signup', { email: 'dave@example.com', password: 'long enough' });
+  check('a refused login: the sign-up is answered as ever', refused.status === 202);
+  for (let i = 0; i < 40 && !/sign-up link not sent/.test(serverLog); i++) await new Promise((r) => setTimeout(r, 250));
+  check('…and the log names the server\'s refusal', /sign-up link not sent.*535/.test(serverLog), serverLog.slice(-400));
   check('…and the password never reaches the log', !serverLog.includes(PASSWORD));
 } finally {
   server.kill();

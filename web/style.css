@@ -460,3 +460,8 @@ h2 { font-size: 1em; font-weight: 400; text-transform: uppercase;
 }
 #mine { margin-top: .2rem; }
 #howUnlock { margin-top: .8rem; }
+
+/* ---- sign-in: the bot trap and the human check ---------------------------- */
+/* Off the page, not hidden: a field that is display:none is one bots skip. */
+.trap { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+#human { margin-top: 1rem; }

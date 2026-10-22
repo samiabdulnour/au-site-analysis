@@ -443,6 +443,57 @@ let authMode = boot.has('signup') ? 'signup' : 'signin';
 // The emailed reset link. The token is spent on the server when the new
 // password is set, so the URL is only cleaned then — a reload keeps the form.
 let resetToken = /^[0-9a-f]{64}$/.test(boot.get('reset') || '') ? boot.get('reset') : null;
+// The emailed sign-up link, which makes the account only when its button is
+// pressed: mail scanners open links, and one opening must spend nothing.
+let confirmToken = /^[0-9a-f]{64}$/.test(boot.get('confirm') || '') ? boot.get('confirm') : null;
+
+// ---- the human check -----------------------------------------------------
+// Cloudflare Turnstile, when the server has a key for it (/api/me says which).
+// Asked at sign-up and for a reset email always, and at sign-in once the
+// server says a few wrong passwords have gone before. Its script is fetched
+// only when the widget is first needed, so a visitor who never signs in never
+// loads it.
+let humanToken = '', humanWidget = null, humanScript = null, signinNeedsHuman = false;
+const humanKey = () => (session && session.humanCheck) || null;
+
+function loadTurnstile() {
+  humanScript = humanScript || new Promise((resolve, reject) => {
+    const sc = document.createElement('script');
+    sc.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+    sc.async = true;
+    sc.onload = () => resolve(window.turnstile);
+    sc.onerror = () => { humanScript = null; reject(new Error('the human check did not load')); };
+    document.head.append(sc);
+  });
+  return humanScript;
+}
+
+/** The widget shown when this form needs it, and put away when it does not. */
+async function syncHuman() {
+  const box = $('human');
+  const wanted = Boolean(humanKey()) && !resetToken && !confirmToken &&
+    (authMode === 'signup' || authMode === 'reset' || signinNeedsHuman);
+  box.hidden = !wanted;
+  if (!wanted || humanWidget !== null) return;
+  try {
+    const ts = await loadTurnstile();
+    if (humanWidget !== null) return;
+    humanWidget = ts.render(box, {
+      sitekey: humanKey(),
+      callback: (t) => { humanToken = t; },
+      'expired-callback': () => { humanToken = ''; },
+      'error-callback': () => { humanToken = ''; },
+    });
+  } catch (err) {
+    $('authError').textContent = err.message + ' — reload the page and try again';
+  }
+}
+
+/** A token is good once: after every answer the widget is asked for a fresh one. */
+function resetHuman() {
+  humanToken = '';
+  if (humanWidget !== null && window.turnstile) window.turnstile.reset(humanWidget);
+}
 // Back from the verification link: '1' verified, '0' expired or already used.
 const verifiedParam = boot.get('verified');
 if (verifiedParam !== null) history.replaceState(null, '', '/');
@@ -453,7 +504,16 @@ let bootAddress = (boot.get('address') || '').trim();
 if (boot.has('address')) history.replaceState(null, '', '/');
 
 function renderAuth() {
-  $('authRow').hidden = Boolean(resetToken);
+  $('authRow').hidden = Boolean(resetToken || confirmToken);
+  syncHuman();
+  if (confirmToken) {
+    // Nothing to type: the link is the proof, and the press is the person.
+    $('emailBar').hidden = true;
+    $('codeBar').hidden = true;
+    $('authGo').textContent = 'FINISH SIGNING UP';
+    note('Your email is confirmed by the link. Press to make the account and sign in.');
+    return;
+  }
   if (resetToken) {
     $('emailBar').hidden = true;
     $('codeBar').hidden = false;
@@ -491,7 +551,8 @@ function showLogin() {
   // click still verified, so say so beside the form it lands on.
   if (verifiedParam === '1') note('Email verified — sign in.');
   else if (verifiedParam === '0') note('That verification link has expired or was already used. Sign in and resend it.');
-  (resetToken || authMode === 'code' ? $('code') : $('email')).focus();
+  if (confirmToken) $('authGo').focus();
+  else (resetToken || authMode === 'code' ? $('code') : $('email')).focus();
 }
 
 /** The form opened on purpose — SIGN IN, an unlock, an emailed link. */
@@ -535,7 +596,7 @@ $('skipAuth').addEventListener('click', () => {
 // Everyone else lands on the tool — the form opens only where it is wanted:
 // ?signup and ?signin (the pricing page's buttons), or back from the
 // verification link with no session to land in.
-if (resetToken) showLogin();
+if (resetToken || confirmToken) showLogin();
 else fetch('/api/me').then(async (r) => {
   const j = await readJson(r);
   if (!j.authed && (boot.has('signup') || boot.has('signin') || verifiedParam !== null)) {
@@ -552,7 +613,9 @@ loginForm.addEventListener('submit', async (e) => {
   note('');
   const password = $('code').value;
   let path, body;
-  if (resetToken) {
+  if (confirmToken) {
+    path = '/api/signup/confirm'; body = { token: confirmToken };
+  } else if (resetToken) {
     path = '/api/password/reset'; body = { token: resetToken, password };
   } else if (authMode === 'reset') {
     path = '/api/password/forgot'; body = { email: $('email').value.trim() };
@@ -562,6 +625,9 @@ loginForm.addEventListener('submit', async (e) => {
     path = authMode === 'signup' ? '/api/signup' : '/api/login';
     body = { email: $('email').value.trim(), password };
   }
+  // The human check's token, and the trap field that only a bot fills in.
+  body.human = humanToken;
+  body.website = $('website').value;
   let r;
   try {
     r = await fetch(path, {
@@ -573,14 +639,33 @@ loginForm.addEventListener('submit', async (e) => {
     return;
   }
   const j = await readJson(r);
-  if (!r.ok) { authErr.textContent = httpMessage(r, j); return; }
-  if (!resetToken && authMode === 'reset') {
+  resetHuman();
+  if (!r.ok) {
+    authErr.textContent = httpMessage(r, j);
+    // A few wrong passwords, and the next try meets the human check.
+    if (j.human && !signinNeedsHuman) { signinNeedsHuman = true; syncHuman(); }
+    if (confirmToken && r.status === 400) {
+      // A spent or expired link: back to an ordinary form, to sign up again.
+      confirmToken = null; history.replaceState(null, '', '/'); authMode = 'signup'; renderAuth();
+      // This path never asked /api/me, so the human check's key comes now.
+      fetch('/api/me').then(readJson).then((m) => { session = m; syncHuman(); }).catch(() => {});
+    }
+    return;
+  }
+  if (j.pending) {
+    // Signed up, but no account until the emailed link is pressed.
+    $('code').value = '';
+    note(j.message || 'Check your email — the link to finish signing up is on its way.');
+    return;
+  }
+  if (!resetToken && !confirmToken && authMode === 'reset') {
     // One answer whether or not the address has an account — the server's
     // words, so the page cannot be made to say which.
     note(j.message || 'If that email has an account, a reset link is on its way to it.');
     return;
   }
-  if (resetToken) { resetToken = null; history.replaceState(null, '', '/'); }
+  if (resetToken || confirmToken) { resetToken = confirmToken = null; history.replaceState(null, '', '/'); }
+  signinNeedsHuman = false;
   enter(j);
 });
 
