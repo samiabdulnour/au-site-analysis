@@ -74,9 +74,8 @@
     <div class="bar stack" id="emailBar">
       <input id="email" type="email" placeholder="email" autocomplete="username">
     </div>
-    <div class="bar">
+    <div class="bar stack" id="codeBar">
       <input id="code" type="password" placeholder="password" autocomplete="current-password">
-      <button class="go" id="authGo" type="submit">SIGN IN</button>
     </div>
     <!-- A field people never see, off the page rather than display:none (which
          the simplest bots know to skip): only a bot fills it in, and the server
@@ -86,6 +85,9 @@
     <!-- The human check (Cloudflare Turnstile), drawn here by app.js when the
          server has one and this form needs it. -->
     <div id="human" hidden></div>
+    <!-- Its own button under the box, not a cell of it: pressing in is a
+         different act from typing, so the two are not one rectangle. -->
+    <button class="go under" id="authGo" type="submit">SIGN IN</button>
     <div class="errline" id="authError"></div>
     <!-- Not an error: "the reset link is on its way", "email verified". -->
     <p class="lead muted" id="authNote" hidden></p>
