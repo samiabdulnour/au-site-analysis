@@ -168,11 +168,22 @@ and its settings still say site: `STRIPE_SITE_PRICE_ID`, `unlockSite`.)
 `src/plans.ts` is that table in code, and every download route reads it, so a
 new privilege is a new column there rather than a new condition in the server.
 
+**Terms of use.** `/terms` (`web/terms.html`) says what every drawing is: made
+from open public data as it stands when it is drawn, with no guarantee that the
+data is complete, current or correct, and no substitute for a s10.7 certificate,
+a survey or professional advice. Sign-up asks for agreement to them, and the
+server refuses a sign-up without `agreed: true`; the account stores the version
+agreed to (`TERMS_VERSION` in `src/terms.ts`, the page's version line) and when.
+The same sentence stands before every payment: on `/pricing`, beside UNLOCK THIS
+ADDRESS, and above the pay button on Stripe's Checkout page (`custom_text`).
+Accounts from before the terms carry no version. The page is a plain-language
+draft and wants a lawyer's reading before it is relied on.
+
 **Accounts.** Drawing never asks for one: the tool is the landing page, and
 the account form opens only from SIGN IN in the nav, from an unlock or the
 pricing page (buying starts with an account), and from the emailed
 verification and reset links. Anyone can make one with an email and a
-password (`SIGN UP`), and starts on the free side. What holds the open side
+password (`SIGN UP`, with the terms agreed to), and starts on the free side. What holds the open side
 down is what always did: the per-IP budgets (12 sheets an hour, and the
 sign-in and sign-up limiters) and the one-at-a-time queue. Accounts live in `out/accounts/accounts.json`
 on the host volume, beside the job index and written the same way, with scrypt
@@ -245,17 +256,6 @@ off: `SIGN UP` makes the account at once, as it did before email, and the
 reset form says this server cannot email a link. Accounts from before
 verification existed count as verified — the feature arriving must not lock
 out everyone already signed up.
-
-**Terms of use.** `/terms` (`web/terms.html`) says the drawings are made from
-open public data as it is available, with no guarantee that it is complete,
-current or correct, and are no substitute for a planning certificate, a survey
-or professional advice. Signing up means ticking that agreement, a row of the
-form; the server refuses a sign-up without it, and the account records
-`termsVersion` (`TERMS_VERSION` in `src/terms.ts`, which changes with the
-page's version line) and `termsAcceptedAt`, from when the box was ticked, not
-when the emailed link was pressed. The same sentence is on `/pricing`, beside
-UNLOCK THIS ADDRESS, and above Stripe Checkout's pay button. The page is a
-plain-language draft: have a lawyer read it before relying on it.
 
 **Bots.** Sign-up, the reset email and sign-in are what a bot fills in, so
 they carry three defences on top of the per-IP limits:

@@ -56,7 +56,7 @@ function areas(fc: GeoJSONFC, nameOf: (p: Record<string, any>) => string): Locat
 /** The window's layers, generalised for 1:75,000; cached a month per window, since none of them moves. */
 export async function fetchLocation(panel: Panel, log: (m: string) => void = () => {}): Promise<LocationData> {
   const extent = panelExtent(panel);
-  const key = `${panel.center.x.toFixed(0)}_${panel.center.y.toFixed(0)}_${panel.scale}_${panel.wMm}x${panel.hMm}`;
+  const key = `${panel.center.x.toFixed(0)}_${panel.center.y.toFixed(0)}_${panel.scale}_${panel.wMm}x${panel.hMm}_rel`;
   const soft = <T,>(p: Promise<T>, fallback: T, name: string): Promise<T> => p.catch((e) => { log(`  WARN location ${name} failed: ${e?.message ?? e}`); return fallback; });
   const emptyFc: GeoJSONFC = { type: 'FeatureCollection', features: [] };
   const t0 = Date.now();
@@ -64,7 +64,7 @@ export async function fetchLocation(panel: Panel, log: (m: string) => void = () 
     const [lgaFc, waterFc, railFc, roadFc, stations, suburbFc] = await Promise.all([
       soft(queryByExtent(`${ADMIN}/8`, extent, 'lganame,councilname', '1=1', { maxAllowableOffset: OFFSET_COARSE }), emptyFc, 'local government areas'),
       soft(queryByExtent(`${WATER}/6`, extent, 'hydroname,hydronametype,hydrotype', '1=1', { maxAllowableOffset: OFFSET_FINE }), emptyFc, 'water areas'),
-      soft(queryByExtent(`${TRANSPORT}/7`, extent, 'classsubtype', '1=1', { maxAllowableOffset: OFFSET_FINE }), emptyFc, 'railways'),
+      soft(queryByExtent(`${TRANSPORT}/7`, extent, 'classsubtype,relevance', '1=1', { maxAllowableOffset: OFFSET_FINE }), emptyFc, 'railways'),
       soft(queryByExtent(`${TRANSPORT}/5`, extent, 'functionhierarchy', `functionhierarchy <= ${ROAD_HIERARCHY_MAX}`, { maxAllowableOffset: OFFSET_FINE }), emptyFc, 'roads'),
       soft(fetchTrainStations(extent), [] as NamedPoint[], 'stations'),
       soft(queryByExtent(`${ADMIN}/2`, extent, 'suburbname', '1=1', { maxAllowableOffset: OFFSET_COARSE }), emptyFc, 'suburbs'),
@@ -79,8 +79,12 @@ export async function fetchLocation(panel: Panel, log: (m: string) => void = () 
       .map((w) => ({ ...w, area: w.rings.reduce((a, r) => { let s = 0; for (let i = 0; i < r.length - 1; i++) s += r[i][0] * r[i + 1][1] - r[i + 1][0] * r[i][1]; return a + Math.abs(s); }, 0) }))
       .sort((a, b) => b.area - a.area)
       .map(({ area: _a, ...w }) => w);
+    // The theme's `relevance` is its own level of detail: 1 on every named line, 10 on the yards, sidings and
+    // extra tracks (and on the Metro's tunnels, so it cannot simply filter). Main lines first lets the map
+    // thin parallel tracks against them (thinParallelLines in render/slides.ts).
     const rail: RailLines = { train: [], tram: [] };
-    for (const f of railFc.features) for (const line of linesOf(f.geometry)) (f.properties?.classsubtype === 2 ? rail.tram : rail.train).push(line as [number, number][]);
+    const railByRelevance = [...railFc.features].sort((a, b) => (Number(a.properties?.relevance) || 10) - (Number(b.properties?.relevance) || 10));
+    for (const f of railByRelevance) for (const line of linesOf(f.geometry)) (f.properties?.classsubtype === 2 ? rail.tram : rail.train).push(line as [number, number][]);
     const roads: LocationRoad[] = [];
     for (const f of roadFc.features) for (const line of linesOf(f.geometry)) roads.push({ hierarchy: Number(f.properties?.functionhierarchy ?? ROAD_HIERARCHY_MAX), coords: line });
     const suburbs = areas(suburbFc, (p) => String(p.suburbname ?? ''));

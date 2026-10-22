@@ -262,7 +262,7 @@ export function isMajorStreet(hierarchy: number, lanes: number | undefined, name
  * ends up looking like a laneway. Chaining the pieces back together first
  * gives each street its real length to label along.
  */
-function mergeRuns(segs: Pt[][]): Pt[][] {
+export function mergeRuns(segs: Pt[][]): Pt[][] {
   const EPS = 0.4; // mm; endpoints of touching pieces are not bit-identical
   const key = (p: Pt) => `${Math.round(p[0] / EPS)},${Math.round(p[1] / EPS)}`;
   const at = new Map<string, number[]>();
@@ -302,7 +302,7 @@ function mergeRuns(segs: Pt[][]): Pt[][] {
  * the bend ("COULTO N ST"), so the slot has to be rejected and the label slid
  * further along the road.
  */
-function straightEnough(pts: Pt[], tolMm: number): boolean {
+export function straightEnough(pts: Pt[], tolMm: number): boolean {
   const a = pts[0], b = pts[pts.length - 1];
   const [dx, dy] = [b[0] - a[0], b[1] - a[1]];
   const chord = Math.hypot(dx, dy);
@@ -313,13 +313,13 @@ function straightEnough(pts: Pt[], tolMm: number): boolean {
 }
 
 /** Arc-length table for a polyline, and the sub-polyline between two arc positions. */
-function arcTable(pts: Pt[]): number[] {
+export function arcTable(pts: Pt[]): number[] {
   const cum = [0];
   for (let i = 1; i < pts.length; i++)
     cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
   return cum;
 }
-function sliceAt(pts: Pt[], cum: number[], s0: number, s1: number): Pt[] {
+export function sliceAt(pts: Pt[], cum: number[], s0: number, s1: number): Pt[] {
   const point = (s: number): Pt => {
     let i = cum.findIndex((c) => c >= s);
     if (i <= 0) i = 1;

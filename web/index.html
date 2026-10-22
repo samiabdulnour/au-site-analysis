@@ -77,18 +77,22 @@
     <div class="bar stack" id="codeBar">
       <input id="code" type="password" placeholder="password" autocomplete="current-password">
     </div>
-    <!-- Sign-up only, a row of the box: the account records the terms it
-         agreed to, and the server refuses a sign-up without this. -->
-    <label class="bar stack agree" id="agreeRow" hidden><input type="checkbox" id="agree">
+    <!-- Sign-up only, under the box rather than a row of it: the account
+         records the terms it agreed to, and the server refuses a sign-up
+         without this. -->
+    <label class="agree" id="agreeRow" hidden><input type="checkbox" id="agree">
     <span>I agree to the <a href="/terms" target="_blank" rel="noopener">terms of use</a>:
     the drawings are made from open public data as it is available, with no guarantee
     that it is complete, current or correct.</span></label>
-    <!-- The human check (Cloudflare Turnstile), a row of the box too, drawn by
-         app.js when the server has one and this form needs it. -->
-    <div class="bar stack humanbar" id="humanBar" hidden><div id="human"></div></div>
-    <!-- Its own button under the box, not a cell of it: pressing in is a
-         different act from typing, so the two are not one rectangle. -->
-    <button class="go under" id="authGo" type="submit">SIGN IN</button>
+    <!-- The way in, on a line of its own under the box: the button, and when
+         this form needs it the human check (Cloudflare Turnstile, drawn by
+         app.js) beside it in a frame like the button's. -->
+    <div class="authgo">
+      <div class="humanframe" id="humanBar" hidden><div id="human"></div></div>
+      <!-- Its own button under the box, not a cell of it: pressing in is a
+           different act from typing, so the two are not one rectangle. -->
+      <button class="go under" id="authGo" type="submit">SIGN IN</button>
+    </div>
     <!-- A field people never see, off the page rather than display:none (which
          the simplest bots know to skip): only a bot fills it in, and the server
          answers it like anyone and does nothing. Below the button, so it never

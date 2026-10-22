@@ -219,7 +219,8 @@ export async function planStreetViews(
   const usable = (at: P, target: P) => { const ok = inStreet(at) && clear(at, target); if (!ok) offStreet++; return ok; };
   const view = (m: SvMeta, at: P, target: P, halfWidthM: number, kind: SvView['kind'], fovCap = 100): SvView => {
     const d = Math.max(1, dist(at, target));
-    return { ...m, heading: Math.round(bearing(at, target) * 10) / 10, pitch: pitchFor(d), fov: Math.round(clamp((2 * Math.atan(halfWidthM / d) * 180) / Math.PI, 55, fovCap)), kind, distanceM: Math.round(d) };
+    // never tighter than 70°: a narrower frame from across a street shows a wall, not the building in its street
+    return { ...m, heading: Math.round(bearing(at, target) * 10) / 10, pitch: pitchFor(d), fov: Math.round(clamp((2 * Math.atan(halfWidthM / d) * 180) / Math.PI, 70, fovCap)), kind, distanceM: Math.round(d) };
   };
   // a panorama stands in front of an edge when it is on the edge's outer side, within reach, not far past its ends,
   // and sees its target near enough square: a camera in the cross street past a corner sees the side edge-on
@@ -371,12 +372,13 @@ export async function fetchPlaceStreetViews(places: { n: number; title: string; 
       const tgt = f.toXY(pf.toLL(aim));
       const d = Math.hypot(tgt.x, tgt.y);
       const heading = ov?.heading ?? (d < 3 ? 0 : norm((Math.atan2(tgt.x, tgt.y) * 180) / Math.PI));
-      // the field of view: the building's width as seen from the camera, with a margin
-      let fov = d < 25 ? 95 : d < 50 ? 80 : 65;
+      // the field of view: the building's width as seen from the camera, with a generous margin, so the frame
+      // shows the place in its street rather than a door or a wall of it (Google allows 120° at most)
+      let fov = d < 25 ? 115 : d < 50 ? 100 : 85;
       if (target) {
         const angs = target.map((q) => { const v = f.toXY(pf.toLL(q)); return norm((Math.atan2(v.x, v.y) * 180) / Math.PI); });
         const span = Math.max(...angs.map((a2) => angDiff(a2, heading))) * 2;
-        fov = clamp(span * 1.25, 50, 110);
+        fov = clamp(span * 1.6, 80, 120);
       }
       fov = ov?.fov ?? fov;
       const view: SvView = { ...m, heading, pitch: ov?.pitch ?? pitchFor(d), fov: Math.round(fov), kind: 'frontage', distanceM: d };
@@ -389,6 +391,9 @@ export async function fetchPlaceStreetViews(places: { n: number; title: string; 
   }
   return out;
 }
+
+/** The street series' field of view, in degrees. */
+const STREET_FOV = 110;
 
 /** A frame of the street series: where the camera stands, which way it looks, and the side of the street it shows. */
 export interface StreetFrame { n: number; street: string; file: string; panoId: string; date?: string; copyright?: string; lon: number; lat: number; heading: number; fov: number; side: 'site' | 'opposite'; alongM: number }
@@ -443,12 +448,14 @@ export async function fetchStreetSeries(street: string, segments: [number, numbe
       const side: 'site' | 'opposite' = i % 2 === 0 ? 'site' : 'opposite';
       const look = side === 'site' ? siteSide : { x: -siteSide.x, y: -siteSide.y };
       const heading = ov?.heading ?? norm((Math.atan2(look.x, look.y) * 180) / Math.PI);
-      const view: SvView = { ...m, heading, pitch: ov?.pitch ?? 6, fov: ov?.fov ?? 80, kind: 'frontage', distanceM: 10 };
+      // a camera in the street stands 10 m or less from the far kerb's shopfronts: a wide frame tipped up a little
+      // shows the buildings and their tops, not an awning across the whole picture
+      const view: SvView = { ...m, heading, pitch: ov?.pitch ?? 10, fov: ov?.fov ?? STREET_FOV, kind: 'frontage', distanceM: 10 };
       const res = await retryFetch(imageUrl(view, key, secret), {}, { attempts: 2, timeoutMs: 30_000, label: 'Street View image' });
       if (!res.ok) continue;
       const file = `street_${out.length + 1}.jpg`;
       await writeFile(join(outDir, file), Buffer.from(await res.arrayBuffer()));
-      out.push({ n: out.length + 1, street, file, panoId: m.panoId, date: m.date, copyright: m.copyright, lon: m.lon, lat: m.lat, heading, fov: 80, side, alongM: Math.round(along(cam) - sAt) });
+      out.push({ n: out.length + 1, street, file, panoId: m.panoId, date: m.date, copyright: m.copyright, lon: m.lon, lat: m.lat, heading, fov: view.fov, side, alongM: Math.round(along(cam) - sAt) });
     } catch (e: any) { log(`  Street View series: ${e?.message ?? e}`); }
   }
   log(`  street series: ${out.length} frames along ${street}, ${Math.round(step)} m apart`);

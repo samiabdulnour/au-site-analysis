@@ -107,6 +107,8 @@ async function fetchCanopy(wideExtent: Extent, log: (m: string) => void): Promis
 }
 
 const FACILITY_RULES: [FacilityKind, RegExp][] = [
+  // a School of Arts is the colonial mechanics' institute, a community hall now, not a school
+  ['community', /\bSCHOOLS? OF ARTS?\b/],
   ['childcare', /\b(CHILD ?CARE|KINDERGARTEN|PRE-?SCHOOL|NURSERY SCHOOL|EARLY LEARNING|DAY ?CARE|OOSH|PLAYGROUP)\b/],
   ['school', /\b(SCHOOL|COLLEGE|GRAMMAR|TAFE|UNIVERSITY|CAMPUS|ACADEMY)\b/],
   ['library', /\bLIBRARY\b/],
