@@ -13,7 +13,7 @@ import { zoneFill, zoneOrder } from './lepPalette.js';
 import { METRES_PER_STOREY } from '../fetch/buildings.js';
 import { sheetHtml, esc, T, SWATCH_X, SWATCH_W, LABEL_X, MAP_W, MAP_H } from './chrome.js';
 import { tpl, withTemplate, siteTheme, PARK_GREEN, PARK_GREEN_INK, type SiteLook } from './template.js';
-import { SUNS, WINDS as WIND_SYMBOLS } from './climateSymbols.js';
+import { SUN, WIND, VIEW, RAY_SUN, ARROW, EYE } from './climateSymbols.js';
 import { estimateKerbs, type KerbLine } from '../lib/kerbs.js';
 import { exitPoint } from '../fetch/views.js';
 import { NOMINAL_CANOPY_M, TREE_SOURCES } from '../fetch/trees.js';
@@ -190,8 +190,30 @@ const SUN_INSET = 26, SUN_SIZE = 2.4;
 const SUN_CLEAR = 4.5 * SUN_SIZE + 3;
 // A sun's name, two lines of the map's lettering, and the box it takes.
 const SUN_NAME_W = 30, SUN_NAME_H = 14;
-/** The ring wind's half-length on paper (mm), and the drawn sun's radius. */
-const RING_WIND_HALF = 40, SYMBOL_SUN_R = 22;
+// The office's marks on paper (mm), as its sheet sizes them on the A1. Drawn:
+// the sun's radius, the wind's half-length, the view's length and the
+// outline's weight. Banded: the rayed sun's radius, the arrow's half-length,
+// the sun's and the winds' crescents at their deepest, a wind crescent's half
+// sweep (°), and the view triangle's length and half angle (°).
+const DRAWN_SUN_R = 13, DRAWN_WIND_HALF = 17, DRAWN_VIEW_L = 32, DRAWN_EDGE = 0.35;
+const RAY_SUN_R = 8, ARROW_HALF = 7.5, SUN_BAND_W = 16, WIND_BAND_W = 22, WIND_BAND_SPAN = 34, BAND_VIEW_L = 30, BAND_VIEW_HALF = 17;
+
+/**
+ * A crescent along a circle about c, between two page bearings: its outer edge
+ * on radius r, its inner edge swelling in to depth w at the middle and closing
+ * to a point at each end.
+ */
+function crescentD(c: Pt, r: number, a0: number, a1: number, w: number): string {
+  const n = Math.max(8, Math.ceil(Math.abs(a1 - a0) / 2));
+  const outer: string[] = [], inner: string[] = [];
+  for (let i = 0; i <= n; i++) {
+    const u = i / n, a = a0 + (a1 - a0) * u;
+    const [ox, oy] = onCircle(c, r, a), [ix, iy] = onCircle(c, r - w * Math.sin(Math.PI * u), a);
+    outer.push(`${ox.toFixed(2)},${oy.toFixed(2)}`);
+    inner.push(`${ix.toFixed(2)},${iy.toFixed(2)}`);
+  }
+  return `M${outer.join('L')}L${inner.reverse().join('L')}Z`;
+}
 
 /** The circle's radius: clear of the lot with room for the suns' names inside it, and short of the sheet's edge with the winds' names and north outside it. */
 function climateRadius(c: Pt, ring: Pt[]): number {
@@ -405,19 +427,23 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
   // ---- buildings, filled: on paper the grain is the buildings themselves ------
   // Each building in the strong colour of the zone family it stands on (the
   // context template's figure), a quiet grey where no zone is mapped and on
-  // the site itself, with a white edge, as the context sheet draws them.
-  if (look.buildings === 'colour' && sb.buildings?.buildings.length) {
+  // the site itself, with a white edge, as the context sheet draws them. Or
+  // white, edged in that family's ink, as the context Flamingo draws them.
+  const whiteBuildings = look.buildings === 'white';
+  if ((look.buildings === 'colour' || whiteBuildings) && sb.buildings?.buildings.length) {
     const byInk = new Map<string, string[]>();
     for (const b of sb.buildings.buildings) {
       const [x, y] = proj(b.centroid[0], b.centroid[1]);
       if (!(x > -40 && x < MAP_W + 40 && y > -40 && y < MAP_H + 40)) continue;
       const z = pointInRing(b.centroid[0], b.centroid[1], sb.siteRing) ? null : featureAt(sb.zoning.features, b.centroid[0], b.centroid[1]);
       const cat = z ? zoneToCategory(z.SYM_CODE) : null;
-      const ink = (cat && catById()[cat]?.figure) || '#d9d9d6';
+      const ink = (cat && catById()[cat]?.figure) || (whiteBuildings ? tpl().road : '#d9d9d6');
       (byInk.get(ink) ?? byInk.set(ink, []).get(ink)!).push(`<path d="${pathFromRings(b.rings, proj)}"/>`);
     }
     for (const [ink, ds] of byInk)
-      layers.push(`<g fill="${ink}" fill-rule="evenodd" stroke="#ffffff" stroke-width="${look.buildingEdge}" stroke-linejoin="round">${ds.join('')}</g>`);
+      layers.push(whiteBuildings
+        ? `<g fill="#ffffff" fill-opacity="0.92" fill-rule="evenodd" stroke="${ink}" stroke-width="${look.buildingEdge}" stroke-linejoin="round">${ds.join('')}</g>`
+        : `<g fill="${ink}" fill-rule="evenodd" stroke="#ffffff" stroke-width="${look.buildingEdge}" stroke-linejoin="round">${ds.join('')}</g>`);
   }
 
   // ---- heritage: the LEP's items and conservation areas, hatched -------------
@@ -449,9 +475,14 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
   const inMapWide = ([x, y]: Pt) => x > -10 && x < MAP_W + 10 && y > -10 && y < MAP_H + 10;
   const inMap = ([x, y]: Pt) => x > 2 && x < MAP_W - 2 && y > 2 && y < MAP_H - 2;
 
-  // The office's triple-arrow winds, set on the summer ring at their bearing
-  // and pointing in at the site: where each stands, which way, its name.
-  const ringWinds: { at: Pt; deg: number; label: string[]; labelAt: Pt }[] = [];
+  // The office's winds, set on the summer ring at their bearing and pointing in
+  // at the site: where each stands, its bearing, which way it points, its name.
+  const ringWinds: { at: Pt; az: number; deg: number; label: string[]; labelAt: Pt }[] = [];
+  const drawnSun = look.sun === 'drawn' || look.sun === 'band';
+  const ringWind = look.wind === 'drawn' || look.wind === 'band';
+  // How far a ring wind reaches either side of its spot, along it and across.
+  const windHalf = look.wind === 'band' ? WIND_BAND_W / 2 : DRAWN_WIND_HALF;
+  const sunR = look.sun === 'band' ? RAY_SUN_R : DRAWN_SUN_R;
   // Reserve the fixed graphic furniture up-front (suns, the winds' names,
   // site info box) so every later label is nudged clear of them.
   {
@@ -469,10 +500,10 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
       return [cx + R * Math.sin(azr), cy - R * Math.cos(azr)];
     };
     // The crowns, or the drawn suns, sit at the solstices' rise and set points, with their names under them.
-    if (look.sun === 'crown' || look.sun === 'symbol')
+    if (look.sun === 'crown' || drawnSun)
       for (const [az, R] of [[azOf(dec), Ri], [-azOf(dec), Ri], [azOf(-dec), Ro], [-azOf(-dec), Ro], [0, Ro + 24]] as [number, number][]) {
         const [x, y] = at(az, R);
-        if (look.sun === 'symbol') placer.reserve(x, y + 10, SYMBOL_SUN_R * 2 + 8, SYMBOL_SUN_R * 2 + 30);
+        if (drawnSun) placer.reserve(x, y + 10, sunR * 2 + 8, sunR * 2 + 30);
         else placer.reserve(x, y + 6, 48, 58);
       }
     // And the hours along the arcs.
@@ -487,7 +518,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
       }
       placer.reserve(...at(0, R + 10), 12, 22);
     }
-    if (look.wind === 'symbol') {
+    if (ringWind) {
       // Slid along the ring, a few degrees at a time, off a sun from the same
       // quarter (the W wind and the summer sunset share one) and off each other.
       const suns = [at(azOf(dec), Ri), at(-azOf(dec), Ri), at(azOf(-dec), Ro), at(-azOf(-dec), Ro), at(0, Ro + 24)];
@@ -495,19 +526,26 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
         let pick: Pt | null = null, pickAz = w.bearing;
         for (const off of [0, 8, -8, 16, -16, 24, -24, 32, -32]) {
           const p = at(w.bearing + off, Ro);
-          const clear = suns.every(([sx, sy]) => Math.hypot(p[0] - sx, p[1] - sy) > RING_WIND_HALF + 20) &&
-            ringWinds.every((o) => Math.hypot(p[0] - o.at[0], p[1] - o.at[1]) > RING_WIND_HALF * 2.4) &&
+          const clear = suns.every(([sx, sy]) => Math.hypot(p[0] - sx, p[1] - sy) > windHalf + sunR + 10) &&
+            ringWinds.every((o) => Math.hypot(p[0] - o.at[0], p[1] - o.at[1]) > windHalf * 2.4) &&
             p[0] > 30 && p[0] < MAP_W - 30 && p[1] > 30 && p[1] < MAP_H - 30;
           if (clear) { pick = p; pickAz = w.bearing + off; break; }
         }
         const p = pick ?? at(w.bearing, Ro);
         const deg = (Math.atan2(cy - p[1], cx - p[0]) * 180) / Math.PI;
-        // Its name beyond the tail, two lines clear of the arrow.
-        const labelAt = at(pickAz, Ro + RING_WIND_HALF + 12);
-        ringWinds.push({ at: p, deg, label: w.label, labelAt });
-        const ux = Math.cos((deg * Math.PI) / 180), uy = Math.sin((deg * Math.PI) / 180);
-        for (let d = -RING_WIND_HALF; d <= RING_WIND_HALF; d += 8) placer.reserve(p[0] + ux * d, p[1] + uy * d, 14, 14);
-        placer.reserve(labelAt[0], labelAt[1] + 2, 46, 14);
+        // Its name centred beyond the tail, its near edge clear of the mark
+        // whichever side of the ring it stands.
+        const nameW = Math.max(...w.label.map((t) => t.length)) * MAP_TEXT * 0.62, nameH = w.label.length * MAP_TEXT * 1.12;
+        const pr = ((pickAz + view.rotationDeg) * Math.PI) / 180;
+        const labelAt = at(pickAz, Ro + windHalf + (look.wind === 'band' ? 9 : 4) + (Math.abs(Math.sin(pr)) * nameW + Math.abs(Math.cos(pr)) * nameH) / 2);
+        ringWinds.push({ at: p, az: pickAz, deg, label: w.label, labelAt });
+        if (look.wind === 'band')
+          for (let d = -WIND_BAND_SPAN; d <= WIND_BAND_SPAN; d += 6) placer.reserve(...at(pickAz + d, Ro), 12, 12);
+        else {
+          const ux = Math.cos((deg * Math.PI) / 180), uy = Math.sin((deg * Math.PI) / 180);
+          for (let d = -windHalf; d <= windHalf; d += 8) placer.reserve(p[0] + ux * d, p[1] + uy * d, windHalf, windHalf);
+        }
+        placer.reserve(labelAt[0], labelAt[1], nameW, nameH);
       }
     }
     if (look.wind === 'circle')
@@ -536,23 +574,33 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
     const centreLL = mercatorToLonLat({ x: view.cx, y: view.cy });
     const LETTER = MAP_TEXT;
     const TS = 2.8;                            // the telescope's size on paper
-    for (const v of look.views === 'telescope' ? sb.views ?? [] : []) {
+    for (const v of look.views === 'circle' ? [] : sb.views ?? []) {
       if (!v.cone) continue;
       const apex = exitPoint(sb.siteRing, centreLL, v.bearingDeg);
       const [ax, ay] = proj(apex.lon, apex.lat);
       const ang = ((v.bearingDeg + view.rotationDeg) * Math.PI) / 180;
       const ux = Math.sin(ang), uy = -Math.cos(ang);
-      if (look.views === 'triangle') {
-        // A plain triangle: its point a little off the boundary, opening
-        // outward along the sight line, outlined in the pen; what it found
-        // is written beyond its open end, along the line, upright.
-        const L = 30, half = (13 * Math.PI) / 180, gap = 3;
+      if (look.views === 'drawn' || look.views === 'band') {
+        // The office's view: its point a little off the boundary, opening
+        // outward along the sight line. Drawn, the wedge and the eye in its
+        // triangle, outlined; banded, a solid triangle with the eye upright
+        // and white in it. What it found is written beyond its open end,
+        // along the line, upright.
+        const m = look.marks!;
+        const drawn = look.views === 'drawn';
+        const L = drawn ? DRAWN_VIEW_L : BAND_VIEW_L, half = drawn ? Math.atan(0.54) : (BAND_VIEW_HALF * Math.PI) / 180, gap = 3;
         const px = ax + ux * gap, py = ay + uy * gap;
-        const end = (a: number): string => `${(px + L * Math.sin(a)).toFixed(1)},${(py - L * Math.cos(a)).toFixed(1)}`;
-        layers.push(`<path d="M${px.toFixed(1)},${py.toFixed(1)} L${end(ang - half)} L${end(ang + half)} Z" fill="#ffffff" fill-opacity="0.85" stroke="${look.viewPen}" stroke-width="0.6" stroke-linejoin="round"/>`);
+        const deg = (Math.atan2(uy, ux) * 180) / Math.PI;
+        if (drawn) {
+          layers.push(`<path transform="translate(${px.toFixed(1)},${py.toFixed(1)}) rotate(${deg.toFixed(1)}) scale(${L})" d="${VIEW}" fill="${m.fill}" stroke="${m.edge}" stroke-width="${(DRAWN_EDGE / L).toFixed(4)}" stroke-linejoin="round"/>`);
+        } else {
+          const end = (a: number): string => `${(px + L * Math.sin(a)).toFixed(1)},${(py - L * Math.cos(a)).toFixed(1)}`;
+          const eyeS = L * 0.15, ex = px + ux * L * 0.68, ey = py + uy * L * 0.68;
+          layers.push(`<path d="M${px.toFixed(1)},${py.toFixed(1)} L${end(ang - half)} L${end(ang + half)} Z" fill="${m.view}" fill-opacity="0.85"/>` +
+            `<path transform="translate(${ex.toFixed(1)},${ey.toFixed(1)}) scale(${eyeS.toFixed(2)})" d="${EYE}" fill="#ffffff"/>`);
+        }
         const dist = v.distanceM >= 950 ? `${(v.distanceM / 1000).toFixed(1)} KM` : `${Math.round(v.distanceM / 10) * 10} M`;
         const rows = v.kind === 'park' ? ['ADJOINING'] : [dist, 'TERRAIN CLEAR'];
-        const deg = (Math.atan2(uy, ux) * 180) / Math.PI;
         const tdeg = Math.abs(deg) <= 90 ? deg : deg + 180;
         const lh = LETTER * 1.12;
         const tw = Math.max(...rows.map((r) => r.length)) * LETTER * 0.62;
@@ -563,7 +611,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
         const boxW = Math.abs(tw * ux) + Math.abs(th * uy), boxH = Math.abs(tw * uy) + Math.abs(th * ux);
         const nx = -uy, ny = ux, side = L * Math.sin(half) + th / 2 + 2;
         const spots: Pt[] = [
-          [px + ux * (L + 4 + tw / 2), py + uy * (L + 4 + tw / 2)],
+          [px + ux * (L + 7 + tw / 2), py + uy * (L + 7 + tw / 2)],
           [px + ux * L * 0.6 + nx * side, py + uy * L * 0.6 + ny * side],
           [px + ux * L * 0.6 - nx * side, py + uy * L * 0.6 - ny * side],
           [px + ux * L * 0.6 + nx * (side + 8), py + uy * L * 0.6 + ny * (side + 8)],
@@ -611,7 +659,9 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
   // ---- cadastre + contours -------------------------------------------------
   if (sb.allLots.features.length) {
     const d = sb.allLots.features.map((f) => pathFromRings(geomRings(f.geometry), proj)).join('');
-    layers.push(`<path d="${d}" fill="none" stroke="#ffffff" stroke-width="0.7" opacity="0.9"/>`);
+    layers.push(look.lotInk
+      ? `<path d="${d}" fill="none" stroke="${look.lotInk}" stroke-width="0.3" opacity="0.6"/>`
+      : `<path d="${d}" fill="none" stroke="#ffffff" stroke-width="0.7" opacity="0.9"/>`);
   }
   // Kerb lines, on a sheet with no photograph to show them: a footpath's
   // width out from the lot boundary, measured where OpenStreetMap maps the
@@ -1132,11 +1182,13 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
       const y0 = spot[1] - ((lines.length - 1) * lh) / 2 + fs * 0.36;
       lines.forEach((t, i) => {
         const isStorey = /ST$/.test(t) && i === lines.length - 1 && !!c.lines[1];
-        texts.push(`<text x="${spot[0].toFixed(1)}" y="${(y0 + i * lh).toFixed(1)}" text-anchor="middle" font-size="${fs}" font-weight="700" fill="#ffffff"${isStorey ? ' opacity="0.8"' : ''}>${esc(t)}</text>`);
+        texts.push(`<text x="${spot[0].toFixed(1)}" y="${(y0 + i * lh).toFixed(1)}" text-anchor="middle" font-size="${fs}" font-weight="700" fill="${look.neighbourInk ?? '#ffffff'}"${isStorey ? ' opacity="0.8"' : ''}>${esc(t)}</text>`);
       });
       if (c.lines[1]) storeyLabels++;
     }
-    layers.push(`<g fill="none" stroke="#ffffff" stroke-width="${look.buildingEdge}" stroke-opacity="0.95" stroke-linejoin="round">${outlines.join('')}</g>`);
+    // A white building already carries its family's hairline; a white outline would rub it out.
+    if (!whiteBuildings)
+      layers.push(`<g fill="none" stroke="#ffffff" stroke-width="${look.buildingEdge}" stroke-opacity="0.95" stroke-linejoin="round">${outlines.join('')}</g>`);
     layers.push(texts.join(''));
   }
 
@@ -1369,13 +1421,38 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
   const sunBlock = (x: number, y: number, lines: string[]) =>
     lines.map((t, i) => `<text x="${x.toFixed(1)}" y="${(y + i * LETTER * 1.12).toFixed(1)}" text-anchor="middle" font-size="${LETTER}" font-weight="700" fill="${SUN_INK}"${sunHeavy}>${esc(t)}</text>`).join('');
 
-  if (look.sun === 'crown' || look.sun === 'symbol') {
-    // With the drawn suns the ring is a bold yellow band they sit on.
-    const arcW = look.sun === 'symbol' ? 2.2 : 1.4;
-    const arcDash = look.sun === 'symbol' ? '9,4.5' : '5,2.6';
-    layers.push(`<path d="${arcPath(summerAz, -summerAz, Ro)}" fill="none" stroke="${look.sunPen}" stroke-width="${arcW}" stroke-linecap="round"/>`);
-    layers.push(`<path d="${arcPath(winterAz, -winterAz, Ri)}" fill="none" stroke="${look.sunPen}" stroke-width="${arcW}" stroke-dasharray="${arcDash}" stroke-linecap="round"/>`);
+  if (look.sun === 'crown') {
+    layers.push(`<path d="${arcPath(summerAz, -summerAz, Ro)}" fill="none" stroke="${look.sunPen}" stroke-width="1.4" stroke-linecap="round"/>`);
+    layers.push(`<path d="${arcPath(winterAz, -winterAz, Ri)}" fill="none" stroke="${look.sunPen}" stroke-width="1.4" stroke-dasharray="5,2.6" stroke-linecap="round"/>`);
   }
+  // The office's drawn suns sit on dashed arcs, summer dashed and winter
+  // dotted, and where the winds are drawn too, the summer ring goes on round
+  // the side the sun never reaches dashed in the wind's pen: the winds' ring.
+  if (look.sun === 'drawn') {
+    layers.push(`<path d="${arcPath(summerAz, -summerAz, Ro)}" fill="none" stroke="${look.sunPen}" stroke-width="1.3" stroke-dasharray="7,3.5"/>`);
+    layers.push(`<path d="${arcPath(winterAz, -winterAz, Ri)}" fill="none" stroke="${look.sunPen}" stroke-width="1.6" stroke-dasharray="0.1,3" stroke-linecap="round"/>`);
+    if (look.wind === 'drawn')
+      layers.push(`<path d="${arcPath(summerAz + 4, 360 - summerAz - 4, Ro)}" fill="none" stroke="${look.windPen}" stroke-width="1.3" stroke-dasharray="7,3.5"/>`);
+  }
+  // Or each solstice's path a translucent crescent, deepest at noon, from the
+  // yellow of its ends to the yellow-green of its middle.
+  if (look.sun === 'band') {
+    const [from, to] = look.marks!.sunBand;
+    const page = (az: number) => az + view.rotationDeg;
+    [[summerAz, Ro], [winterAz, Ri]].forEach(([az, R], i) => {
+      const [x0, y0] = sunAt(az, R), [x1, y1] = sunAt(-az, R), [xn, yn] = sunAt(0, R);
+      layers.push(`<defs><linearGradient id="sunBand${i}" gradientUnits="userSpaceOnUse" x1="${((x0 + x1) / 2).toFixed(1)}" y1="${((y0 + y1) / 2).toFixed(1)}" x2="${xn.toFixed(1)}" y2="${yn.toFixed(1)}"><stop offset="0" stop-color="${from}"/><stop offset="1" stop-color="${to}"/></linearGradient></defs>` +
+        `<path d="${crescentD(centroidPx, R, page(-az), page(az), SUN_BAND_W)}" fill="url(#sunBand${i})" fill-opacity="0.6"/>`);
+    });
+  }
+  // The winds' crescents go down before the suns, so a sun from the same
+  // quarter stands on its wind's band rather than under it.
+  const windOuter = Ro + WIND_BAND_W / 2;
+  if (look.wind === 'band')
+    for (const w of ringWinds) {
+      const a = w.az + view.rotationDeg;
+      layers.push(`<path d="${crescentD(centroidPx, windOuter, a - WIND_BAND_SPAN, a + WIND_BAND_SPAN, WIND_BAND_W)}" fill="${look.marks!.windBand}" fill-opacity="0.55"/>`);
+    }
   // The hours along each arc: a dot where the sun stands at each solar hour,
   // its time beside it (inside the winter arc, outside the summer one). An
   // hour that falls on a sunrise or sunset drawing is left to the sun.
@@ -1430,18 +1507,21 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
       <circle r="9.6" fill="${look.sunFill}" stroke="${look.sunEdge}" stroke-width="${PEN_W}"/>
       ${sunBlock(0, 28, lines)}</g>`;
   };
-  if (look.sun === 'crown' || look.sun === 'symbol') {
-  // The office's drawn suns: a different one at each rise and set, each
-  // turned a little, solid yellow with the centre open (white, so the ring
-  // does not show through it), its name under it.
-  const drawnSun = ([x, y]: Pt, lines: string[], i: number) =>
-    `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})"><circle r="${(SYMBOL_SUN_R * 0.6).toFixed(1)}" fill="#ffffff"/><path transform="rotate(${[0, 14, -10, 22][i % 4]}) scale(${SYMBOL_SUN_R})" d="${SUNS[i % SUNS.length]}" fill="${look.sunFill}" fill-rule="evenodd"/>
-      ${sunBlock(0, SYMBOL_SUN_R + 8, lines)}</g>`;
-  const mark = look.sun === 'symbol' ? drawnSun : sketchSun;
-  layers.push(mark(sunAt(winterAz, Ri), ['WINTER', 'SUNRISE'], look.sun === 'symbol' ? 0 : 1));
-  layers.push(mark(sunAt(-winterAz, Ri), ['WINTER', 'SUNSET'], look.sun === 'symbol' ? 1 : 2));
-  layers.push(mark(sunAt(summerAz, Ro), ['SUMMER', 'SUNRISE'], look.sun === 'symbol' ? 2 : 3));
-  layers.push(mark(sunAt(-summerAz, Ro), ['SUMMER', 'SUNSET'], look.sun === 'symbol' ? 3 : 4));
+  if (look.sun === 'crown' || drawnSun) {
+  // The office's suns: drawn, the peach sun in its fine outline; banded, the
+  // small rayed sun, solid, at the crescent's point; each with its name under it.
+  const officeSun = ([x, y]: Pt, lines: string[]) => {
+    const m = look.marks!;
+    const sun = look.sun === 'drawn'
+      ? `<path transform="scale(${DRAWN_SUN_R})" d="${SUN}" fill="${m.fill}" stroke="${m.edge}" stroke-width="${(DRAWN_EDGE / DRAWN_SUN_R).toFixed(4)}" stroke-linejoin="round"/>`
+      : `<path transform="scale(${RAY_SUN_R})" d="${RAY_SUN}" fill="${look.sunFill}"/>`;
+    return `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})">${sun}${sunBlock(0, sunR + 8, lines)}</g>`;
+  };
+  const mark = drawnSun ? officeSun : sketchSun;
+  layers.push(mark(sunAt(winterAz, Ri), ['WINTER', 'SUNRISE'], 1));
+  layers.push(mark(sunAt(-winterAz, Ri), ['WINTER', 'SUNSET'], 2));
+  layers.push(mark(sunAt(summerAz, Ro), ['SUMMER', 'SUNRISE'], 3));
+  layers.push(mark(sunAt(-summerAz, Ro), ['SUMMER', 'SUNSET'], 4));
   {
     // North sits just beyond the summer noon mark and its label.
     const [nx, ny] = sunAt(0, Ro + 24);
@@ -1503,11 +1583,24 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
       });
     if (defs.length) layers.push(`<defs>${defs.join('')}</defs>`);
   }
-  // The office's triple arrows on the ring, two drawings taken in turn, each
-  // pointing in at the site, its name just outside the ring.
-  ringWinds.forEach((w, i) => {
-    layers.push(`<path transform="translate(${w.at[0].toFixed(1)},${w.at[1].toFixed(1)}) rotate(${w.deg.toFixed(1)}) scale(${RING_WIND_HALF})" d="${WIND_SYMBOLS[i % WIND_SYMBOLS.length]}" fill="${PEN}" fill-rule="evenodd"/>`);
-    layers.push(textBlock(w.labelAt[0], w.labelAt[1], w.label));
+  // The office's winds on the ring, each pointing in at the site, its name
+  // just outside the ring. Drawn, the peach wind in its outline; banded, three
+  // white arrows on the blue crescent (laid down above, before the suns).
+  ringWinds.forEach((w) => {
+    const m = look.marks!;
+    if (look.wind === 'drawn') {
+      layers.push(`<path transform="translate(${w.at[0].toFixed(1)},${w.at[1].toFixed(1)}) rotate(${w.deg.toFixed(1)}) scale(${DRAWN_WIND_HALF})" d="${WIND}" fill="${m.fill}" stroke="${m.edge}" stroke-width="${(DRAWN_EDGE / DRAWN_WIND_HALF).toFixed(4)}" stroke-linejoin="round"/>`);
+    } else {
+      const a = w.az + view.rotationDeg;
+      for (const off of [-WIND_BAND_SPAN * 0.42, 0, WIND_BAND_SPAN * 0.42]) {
+        // Each arrow in the middle of the crescent's depth where it stands.
+        const depth = WIND_BAND_W * Math.sin(Math.PI * (0.5 + off / (2 * WIND_BAND_SPAN)));
+        const [x, y] = onCircle(centroidPx, windOuter - depth / 2, a + off);
+        const deg = (Math.atan2(centroidPx[1] - y, centroidPx[0] - x) * 180) / Math.PI;
+        layers.push(`<path transform="translate(${x.toFixed(1)},${y.toFixed(1)}) rotate(${deg.toFixed(1)}) scale(${ARROW_HALF})" d="${ARROW}" fill="#ffffff"/>`);
+      }
+    }
+    layers.push(textBlock(w.labelAt[0], w.labelAt[1] - ((w.label.length - 1) * LETTER * 1.12) / 2 + LETTER * 0.36, w.label));
   });
   const winds = look.wind === 'strands' ? WINDS.map((w) => ({ at: windEntry(centroidPx, w.bearing, view.rotationDeg), label: w.label })) : [];
   for (const w of winds) {
@@ -1567,7 +1660,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
       ['number', storeyLabels ? 'storeys' : '', heightLabels ? 'HOB' : ''].filter(Boolean).join(', ') +
         (storeyLabels ? (sb.buildings?.source === 'overture' ? '; storeys from Overture' : '; storeys from OSM') : ''));
   } else
-  row(`<g><rect x="${SWATCH_X + SWATCH_W / 2 - 5}" y="0" width="10" height="6.5" fill="${look.buildings === 'colour' ? '#c2c2bc' : '#8a8a8a'}"/><text x="${SWATCH_X + SWATCH_W / 2}" y="2.8" text-anchor="middle" font-size="2.6" font-weight="700" fill="#ffffff">26</text>${storeyLabels ? `<text x="${SWATCH_X + SWATCH_W / 2}" y="5.8" text-anchor="middle" font-size="2.6" font-weight="700" fill="#ffffff" opacity="0.8">3ST</text>` : ''}</g>`,
+  row(`<g><rect x="${SWATCH_X + SWATCH_W / 2 - 5}" y="0" width="10" height="6.5" fill="${whiteBuildings ? '#ffffff' : look.buildings === 'colour' ? '#c2c2bc' : '#8a8a8a'}"${whiteBuildings ? ` stroke="${tpl().road}" stroke-width="0.2"` : ''}/><text x="${SWATCH_X + SWATCH_W / 2}" y="2.8" text-anchor="middle" font-size="2.6" font-weight="700" fill="${look.neighbourInk ?? '#ffffff'}">26</text>${storeyLabels ? `<text x="${SWATCH_X + SWATCH_W / 2}" y="5.8" text-anchor="middle" font-size="2.6" font-weight="700" fill="${look.neighbourInk ?? '#ffffff'}" opacity="0.8">3ST</text>` : ''}</g>`,
     storeyLabels ? 'NEIGHBOUR: NUMBER, STOREYS' : 'NEIGHBOUR: STREET NUMBER',
     storeyLabels ? (sb.buildings?.source === 'overture' ? 'storeys from Overture Maps, OSM levels where it has none' : 'storeys from OpenStreetMap building levels') : undefined);
   // The zones, in the legend's category order, with the context sheet's swatch.
@@ -1581,8 +1674,10 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
         // buildings in the family's strong colour standing on it.
         const ground = `<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="${c.fill}" opacity="${c.opacity.toFixed(2)}"${c.stroke ? ` stroke="${c.stroke}" stroke-width="0.4"` : ''}/>`;
         const texture = c.texture ? textureSvg(`sltx${stex++}`, swD, c.texture, c.textureColor ?? c.stroke ?? c.fill, { x: SWATCH_X, y: 0, w: SWATCH_W, h: 6.5 }) : '';
+        const blocks = `<rect x="${SWATCH_X + 2}" y="1.3" width="6" height="3.9"/><rect x="${SWATCH_X + 10}" y="1.3" width="4.4" height="2.6"/>`;
         const figures = look.buildings === 'colour' && c.figure && c.figure !== c.fill
-          ? `<g fill="${c.figure}" stroke="#ffffff" stroke-width="0.3"><rect x="${SWATCH_X + 2}" y="1.3" width="6" height="3.9"/><rect x="${SWATCH_X + 10}" y="1.3" width="4.4" height="2.6"/></g>` : '';
+          ? `<g fill="${c.figure}" stroke="#ffffff" stroke-width="0.3">${blocks}</g>`
+          : whiteBuildings && c.figure ? `<g fill="#ffffff" stroke="${c.figure}" stroke-width="0.2">${blocks}</g>` : '';
         row(ground + texture + figures, c.label);
         continue;
       }
@@ -1651,8 +1746,11 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
   }
   if ((sb.views ?? []).some((v) => v.cone) && look.views === 'circle') {
     row(`<path d="M${SWATCH_X},1.2h${SWATCH_W}v4h${-SWATCH_W}Z" fill="#ffffff" stroke="${look.viewPen}" stroke-width="0.3"/>`, 'POTENTIAL VIEW', `named around the circle; terrain only, from ${Math.round(sb.eyeAboveM ?? 8)} m up`);
-  } else if ((sb.views ?? []).some((v) => v.cone) && look.views === 'triangle') {
-    row(`<path d="M${SWATCH_X + 2},3.2 L${SWATCH_X + SWATCH_W - 1},0.2 L${SWATCH_X + SWATCH_W - 1},6.2 Z" fill="#ffffff" stroke="${look.viewPen}" stroke-width="0.4" stroke-linejoin="round"/>`, 'POTENTIAL VIEW', `terrain only, from ${Math.round(sb.eyeAboveM ?? 8)} m up; no buildings`);
+  } else if ((sb.views ?? []).some((v) => v.cone) && look.views === 'drawn') {
+    row(`<path transform="translate(${SWATCH_X + 7},3.2) scale(6.4)" d="${VIEW}" fill="${look.marks!.fill}" stroke="${look.marks!.edge}" stroke-width="${(0.25 / 6.4).toFixed(4)}" stroke-linejoin="round"/>`, 'POTENTIAL VIEW', `terrain only, from ${Math.round(sb.eyeAboveM ?? 8)} m up; no buildings`);
+  } else if ((sb.views ?? []).some((v) => v.cone) && look.views === 'band') {
+    row(`<path d="M${SWATCH_X + 5},3.2 L${SWATCH_X + 16},0.2 L${SWATCH_X + 16},6.2 Z" fill="${look.marks!.view}" fill-opacity="0.85"/>` +
+      `<path transform="translate(${SWATCH_X + 12.4},3.2) scale(1.9)" d="${EYE}" fill="#ffffff"/>`, 'POTENTIAL VIEW', `terrain only, from ${Math.round(sb.eyeAboveM ?? 8)} m up; no buildings`);
   } else if ((sb.views ?? []).some((v) => v.cone)) {
     row(`<g transform="translate(${SWATCH_X + 11},3.2) rotate(-14) scale(0.62)" fill="#fff" stroke="${look.viewPen}" stroke-width="0.7" stroke-linejoin="round"><path d="M-7,-1.7 L6,-2.6 L6,2.6 L-7,1.7 Z"/><rect x="6" y="-3.3" width="2.6" height="6.6"/><rect x="-9.6" y="-1.2" width="2.6" height="2.4"/></g>`, 'POTENTIAL VIEW', `terrain only, from ${Math.round(sb.eyeAboveM ?? 8)} m up; no buildings`);
   }
@@ -1681,10 +1779,22 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
       const swD = `M${SWATCH_X},1.2h${SWATCH_W}v4h${-SWATCH_W}Z`;
       row(textureSvg('lwind', swD, 'lines', look.windPen, { x: SWATCH_X, y: 0, w: SWATCH_W, h: 6.5 }, 1) +
         `<path d="${swD}" fill="none" stroke="${look.windPen}" stroke-width="0.3"/>`, 'PREVAILING WINDS', 'named around the circle, hatched where they blow from');
-    } else if (look.wind === 'symbol') row(`<path transform="translate(${mid},3.2) scale(10)" d="${WIND_SYMBOLS[0]}" fill="${look.windPen}" fill-rule="evenodd"/>`, 'PREVAILING WINDS');
-    else row(`<path d="${sketchArrow(SWATCH_X + 2, 3.2, 1, 0, 19, 0.8, 0.5, 1.3)}" fill="#fff" stroke="${look.windPen}" stroke-width="0.35" stroke-linejoin="round"/>`, 'PREVAILING WINDS');
+    } else if (look.wind === 'drawn') {
+      row(`<path transform="translate(${mid},3.2) scale(4.6)" d="${WIND}" fill="${look.marks!.fill}" stroke="${look.marks!.edge}" stroke-width="${(0.25 / 4.6).toFixed(3)}"/>`, 'PREVAILING WINDS', 'on the ring, dashed blue where the sun never goes');
+    } else if (look.wind === 'band') {
+      row(`<path d="M${SWATCH_X},0 Q${mid},2.6 ${SWATCH_X + SWATCH_W},0 L${SWATCH_X + SWATCH_W},4.6 Q${mid},7.2 ${SWATCH_X},4.6 Z" fill="${look.marks!.windBand}" fill-opacity="0.55"/>` +
+        `<path transform="translate(${mid},3.6) rotate(90) scale(2.2)" d="${ARROW}" fill="#ffffff"/>`, 'PREVAILING WINDS', 'over the quarter each blows from');
+    } else row(`<path d="${sketchArrow(SWATCH_X + 2, 3.2, 1, 0, 19, 0.8, 0.5, 1.3)}" fill="#fff" stroke="${look.windPen}" stroke-width="0.35" stroke-linejoin="round"/>`, 'PREVAILING WINDS');
     if (look.sun === 'circle') row(sunMark([mid, 3.2], look.sunEdge, look.sunFill, 0.7), 'SUN, SUMMER AND WINTER', 'where it rises and sets at the solstices');
-    else if (look.sun === 'symbol') row(`<path transform="translate(${mid},3.2) scale(3.6)" d="${SUNS[0]}" fill="${look.sunFill}" fill-rule="evenodd"/>`, 'SUN PATH', look.sunHours ? 'summer solid, winter dashed; solar hours' : 'summer solid, winter dashed');
+    else if (look.sun === 'drawn')
+      row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${look.sunPen}" stroke-width="0.9" stroke-dasharray="3,1.6"/>` +
+        `<path transform="translate(${mid},3.2) scale(3.2)" d="${SUN}" fill="${look.marks!.fill}" stroke="${look.marks!.edge}" stroke-width="${(0.25 / 3.2).toFixed(3)}"/>`,
+        'SUN PATH', 'summer dashed, winter dotted; sunrise and sunset');
+    else if (look.sun === 'band')
+      row(`<defs><linearGradient id="lsunBand" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="${look.marks!.sunBand[0]}"/><stop offset="0.5" stop-color="${look.marks!.sunBand[1]}"/><stop offset="1" stop-color="${look.marks!.sunBand[0]}"/></linearGradient></defs>` +
+        `<path d="M${SWATCH_X},1.2 Q${mid},9 ${SWATCH_X + SWATCH_W},1.2 Q${mid},4.4 ${SWATCH_X},1.2 Z" fill="url(#lsunBand)" fill-opacity="0.6"/>` +
+        `<path transform="translate(${SWATCH_X + 2.2},2.2) scale(2)" d="${RAY_SUN}" fill="${look.sunFill}"/>`,
+        'SUN PATH', 'summer outer, winter inner; sunrise and sunset');
     else row(`<g transform="translate(${mid},3.2)"><path d="M${Array.from({ length: 24 }, (_, k) => { const a = (k / 24) * Math.PI * 2, r = k % 2 ? 2.4 : (k % 6 === 2 ? 4.3 : 3.7); return `${(r * Math.cos(a)).toFixed(2)},${(r * Math.sin(a)).toFixed(2)}`; }).join('L')}Z" fill="#fff" stroke="${look.sunEdge}" stroke-width="0.35" stroke-linejoin="round"/><circle r="1.7" fill="#fff" stroke="${look.sunEdge}" stroke-width="0.35"/></g>`, 'SUN PATH', 'summer solid, winter dashed; solar hours');
   }
 

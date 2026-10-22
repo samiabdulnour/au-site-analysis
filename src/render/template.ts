@@ -440,10 +440,14 @@ export interface SiteLook {
   textScale: number;
   /** The neighbours' building outlines, white, this wide (mm). */
   buildingEdge: number;
-  /** The buildings: an outline over the aerial's roofs, or filled in their zone family's strong colour. */
-  buildings: 'outline' | 'colour';
-  /** The neighbours: number and storeys in white on the building, or number, storeys and height limit in black, written straight on the map. */
+  /** The buildings: an outline over the aerial's roofs, filled in their zone family's strong colour, or white with a hairline of the family's ink, as the context sheet's Flamingo draws them. */
+  buildings: 'outline' | 'colour' | 'white';
+  /** The cadastre's pen: a white line where unset, or this ink as a fine line, as the context sheet's faint lots. */
+  lotInk?: string;
+  /** The neighbours: number and storeys on the building, or number, storeys and height limit in black, written straight on the map. */
   neighbours: 'white' | 'black';
+  /** The number and storeys' ink where they go on the building: white where unset. */
+  neighbourInk?: string;
   /** The second ink, for the height limit. */
   neighbourHeightInk: string;
   /** The zones hatched over the aerial in their family colours, filled in their NSW ePlanning colours, filled as the context template's pale grounds, or not drawn. */
@@ -460,8 +464,8 @@ export interface SiteLook {
   contourInk: string;
   /** The street names' ink, plain along the road. */
   streetInk: string;
-  /** The suns: an open jagged crown at each solstice's rise and set on its arc, a plain sun at each inside the climate circle, named, with north an arrow on the circle, or the office's own drawn suns (climateSymbols.ts) on the arcs, no two alike. */
-  sun: 'crown' | 'circle' | 'symbol';
+  /** The suns: an open jagged crown at each solstice's rise and set on its arc, a plain sun at each inside the climate circle, named, with north an arrow on the circle, the office's drawn sun (climateSymbols.ts) at each rise and set on dashed arcs, or its small rayed sun at the tips of a crescent band for each solstice. */
+  sun: 'crown' | 'circle' | 'drawn' | 'band';
   /** The sun path's pen, and the suns' fill and edge. */
   sunPen: string;
   sunFill: string;
@@ -470,16 +474,18 @@ export interface SiteLook {
   sunInk: string;
   /** The solar hours marked along the crowns' arcs. */
   sunHours: boolean;
-  /** The winds: three hand-drawn strands abreast, each named around a circle about the site with its quarter hatched on the circle, or the office's triple arrow set on the sun path's ring. */
-  wind: 'strands' | 'circle' | 'symbol';
+  /** The winds: three hand-drawn strands abreast, each named around a circle about the site with its quarter hatched on the circle, the office's drawn wind on the sun path's ring with the ring dashed in the wind's pen where the sun does not go, or its broken-shaft arrow on a crescent band over the quarter it blows from. */
+  wind: 'strands' | 'circle' | 'drawn' | 'band';
   windPen: string;
   /** The ink of the winds' and the suns' words. */
   climateInk: string;
   /** Noise: a swelling band beside the source, or a zigzag. */
   noise: 'band' | 'zigzag';
   noisePen: string;
-  /** Views: a telescope aimed along the sight line, a white band inside the climate circle with the view's name around it, or a plain outlined triangle opening from the site edge. */
-  views: 'telescope' | 'circle' | 'triangle';
+  /** Views: a telescope aimed along the sight line, a white band inside the climate circle with the view's name around it, the office's drawn view (a wedge and the eye in a triangle) opening from the site edge, or a solid triangle with the eye white in it. */
+  views: 'telescope' | 'circle' | 'drawn' | 'band';
+  /** The office's marks, where the sun, the winds or the views are drawn or banded: the drawn marks' fill and outline, the sun's crescent (from its rising end's colour to its noon's), the winds' crescent, and the views' triangle. */
+  marks?: { fill: string; edge: string; sunBand: [string, string]; windBand: string; view: string };
   /** A thin white edge on words drawn over busy ground (the trees' numbers). */
   textHalo: boolean;
   /** Indicative kerb lines along the streets (lib/kerbs.ts), for a sheet with no aerial to show them. */
@@ -542,36 +548,51 @@ const CANARY_LOOK: SiteLook = {
 // as its pale grounds on the lots only, so the roads stay white, every
 // building in its family's strong colour with a white edge and its number in
 // white, the white cadastre, its grotesk and its peach street names, the site
-// in its magenta. The office's own suns in yellow, a different one at each
-// rise and set, and its triple-arrow winds in light blue, both set on the sun
-// path's ring, both large; the ring a bold yellow line with no hours. Views are
-// plain triangles; no word has a white edge, and FALL and AREA sit straight on
-// the site. The kerbs are drawn, indicatively, since there is no photograph
-// to show them. It was called Kookaburra; a request naming it is drawn in
-// Kingfisher.
+// in its magenta. The climate as the office drew it for this palette: each
+// solstice's path a translucent crescent running from yellow at its ends to a
+// yellow-green at noon, the office's small rayed sun at each rise and set;
+// each wind a translucent blue crescent over the quarter it blows from with
+// the office's broken-shaft arrow on it in white; each view a green triangle
+// with the eye white in it. No word has a white edge, and FALL and AREA sit
+// straight on the site. The kerbs are drawn, indicatively, since there is no
+// photograph to show them. It was called Kookaburra; a request naming it is
+// drawn in Kingfisher.
 const KINGFISHER_LOOK: SiteLook = {
   font: GROTESK, ground: 'paper', veil: 0, aerial: 'colour', site: F2.magenta, siteDash: '7,2,1.6,2', dimensionInk: '#56616b', fall: '#56616b', fallWords: 'plain', fallInk: '#56616b', textScale: 1,
   buildingEdge: 0.4, buildings: 'colour', neighbours: 'white', neighbourHeightInk: '#ffffff', zones: 'fill', zoneTint: 0,
   heritage: false, heritageInk: { item: '#e39a3b', area: '#c8372d' }, contours: true, contourInk: '#a9adb1',
   streetInk: '#e39a6f',
-  sun: 'symbol', sunPen: '#f2c200', sunFill: '#f2c200', sunEdge: '#f2c200', sunInk: '#c99700', sunHours: false,
-  wind: 'symbol', windPen: '#7cc4ea', climateInk: '#3d93c7',
-  noise: 'band', noisePen: '#3f6fc2', views: 'triangle', viewPen: '#56616b', parking: 'bays', textHalo: false, kerbs: true,
+  sun: 'band', sunPen: '#f2c200', sunFill: '#f5a800', sunEdge: '#f5a800', sunInk: '#c98a00', sunHours: false,
+  wind: 'band', windPen: '#4aa3e8', climateInk: '#2f86c9',
+  noise: 'band', noisePen: '#3f6fc2', views: 'band', viewPen: '#3a8f5c', parking: 'bays', textHalo: false, kerbs: true,
+  marks: { fill: '#ffffff', edge: '#ffffff', sunBand: ['#f7c400', '#b8d43a'], windBand: '#4aa3e8', view: '#3fa66b' },
 };
 
-// Flamingo: Kingfisher's sheet in Flamingo's palette. The same paper, marks and
-// climate, with the zones as Flamingo's tints and textures, every building in
-// its family's ink, the site in its coral and the street names in its green.
+// Flamingo: the same paper and plan in Flamingo's palette, drawn as its context
+// sheet draws them: the zones as its tints and textures, every building white
+// with a hairline of its family's ink, the cadastre the context sheet's fine
+// grey, the site in its coral, the street names and the neighbours' numbers in
+// its green. The climate in the office's drawn marks, each a pale peach shape
+// in a fine blue outline: a sun at each rise and set on the solstices' arcs,
+// dashed in yellow; the winds on the same ring, which is dashed in blue where
+// the sun never goes; the views a wedge and an eye in a widening triangle.
 const FLAMINGO_CONTEXT = TEMPLATES.find((t) => t.id === 'flamingo')!;
-const FLAMINGO_LOOK: SiteLook = { ...KINGFISHER_LOOK, site: FLAMINGO_CONTEXT.site, streetInk: FLAMINGO_CONTEXT.streetInk };
+const FLAMINGO_LOOK: SiteLook = {
+  ...KINGFISHER_LOOK, site: FLAMINGO_CONTEXT.site, streetInk: FLAMINGO_CONTEXT.streetInk,
+  buildings: 'white', buildingEdge: 0.2, lotInk: FLAMINGO_CONTEXT.road, neighbourInk: FLAMINGO_CONTEXT.streetInk,
+  sun: 'drawn', sunPen: '#f5b400', sunFill: '#fcddd4', sunEdge: '#5ba8e1', sunInk: '#d48f00',
+  wind: 'drawn', windPen: '#5ba8e1', climateInk: '#3d8fd1',
+  views: 'drawn', viewPen: '#3d8fd1',
+  marks: { fill: '#fcddd4', edge: '#5ba8e1', sunBand: ['#f7c400', '#b8d43a'], windBand: '#5ba8e1', view: '#fcddd4' },
+};
 
 export const SITE_THEMES: SiteTheme[] = [
   { id: 'heron', label: 'Heron', base: 'heron', look: HERON_LOOK,
     note: 'the grey aerial with the zones in Heron\'s palette; the site in Heron\'s red, the sun path, its crowns, the telescopes and the winds in grey, the contours in light grey' },
   { id: 'kingfisher', label: 'Kingfisher', base: 'kingfisher', look: KINGFISHER_LOOK,
-    note: 'Kingfisher on paper, no aerial: the zones as its pale grounds, the buildings in their family colour, the office\'s yellow suns and light-blue triple-arrow winds on the sun path\'s ring' },
+    note: 'Kingfisher on paper, no aerial: the zones as its pale grounds, the buildings in their family colour, the sun paths as yellow crescents, the winds as blue ones with white arrows, the views as green triangles with an eye' },
   { id: 'flamingo', label: 'Flamingo', base: 'flamingo', look: FLAMINGO_LOOK,
-    note: 'Kingfisher\'s sheet in Flamingo\'s palette: the zones as its tints and textures, the buildings in their family ink, the site in its coral, the street names in its green' },
+    note: 'Flamingo on paper, as its context sheet: the zones as its tints and textures, the buildings white, the cadastre fine grey, the street names and numbers green; the office\'s peach suns, winds and views outlined in blue' },
   { id: 'canary', label: 'Canary', base: 'flamingo', look: CANARY_LOOK,
     note: 'the office classic in the context Canary\'s colours: a grey aerial with the zones in the ePlanning colours, one black circle for the sun, the winds and the views, each neighbour\'s number, storeys and height limit' },
 ];

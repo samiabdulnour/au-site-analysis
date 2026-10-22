@@ -907,25 +907,34 @@ zones as Kingfisher's pale grounds with their textures, laid on the lots only
 so the roads stay white (water is drawn whole), every building in its zone
 family's strong colour with a white edge and its number in white (a quiet grey
 on the site and where no zone is mapped), the white cadastre, Kingfisher's
-grotesk, its peach street names and its magenta site. The suns are the
-office's own drawn suns (`src/render/climateSymbols.ts`, traced from its
-symbol sheet) in yellow, a different one at each solstice rise and set, and
-the winds its triple arrows in light blue, set on the sun path's summer ring
-at their bearing and pointing in at the site, slid along the ring off a sun
-from the same quarter; both are large (a sun 44 mm across, a wind 80 mm long
-on the A1). The ring is a bold yellow line, solid in summer and dashed in
-winter, and carries no hours. Views are plain outlined triangles opening
-from the site edge, their distance written beyond the open end or, where a
-sun's name is there, beside it. No word has a white edge, and FALL and AREA
-sit straight on the site. It was called Kookaburra; a request that still
-names `kookaburra` is drawn in Kingfisher.
+grotesk, its peach street names and its magenta site. The climate is drawn in
+the office's marks for this palette (`src/render/climateSymbols.ts`, taken
+as drawn from its symbol sheet): each solstice's sun path a translucent
+crescent, deepest at noon and running from yellow at its points to a
+yellow-green in the middle (summer outer, winter inner), with the office's
+small rayed sun in orange at each rise and set; each wind a translucent blue
+crescent over the quarter it blows from, on the summer ring and slid along it
+off a sun from the same quarter, carrying three white broken-shaft arrows
+pointing in at the site; each view a green triangle opening from the site
+edge with the eye white in it, its distance written beyond the open end or,
+where a sun's name is there, beside it. The wind crescents go down before the
+suns, so a sun stands on its wind's band. No word has a white edge, and FALL
+and AREA sit straight on the site. It was called Kookaburra; a request that
+still names `kookaburra` is drawn in Kingfisher.
 
-**Flamingo** (`flamingo`) — Kingfisher's sheet in Flamingo's palette: the
-same paper, marks, suns, winds and views, with the zones as Flamingo's tints
-and textures, every building in its zone family's ink (peach, sand, teal,
-grey), the site in Flamingo's coral and the street names in its green. It
-draws on Flamingo, and its look is Kingfisher's with only those inks changed,
-so a change to Kingfisher's marks carries over.
+**Flamingo** (`flamingo`) — the same paper and plan drawn as the context
+sheet's Flamingo draws them: the zones as Flamingo's tints and textures,
+every building white with a hairline of its zone family's ink, the cadastre
+in the context sheet's fine grey over them, the site in Flamingo's coral, the
+street names and the neighbours' numbers and storeys in its green. The
+climate is the office's other set of marks, each a pale peach shape in a fine
+blue outline: a sun of eight tapered rays at each solstice rise and set, on
+the summer arc dashed in yellow and the winter arc dotted; the winds, two
+curled arrowheads one behind the other, on the summer ring pointing in, the
+ring carried on round the side the sun never reaches dashed in blue; the
+views a small wedge pointing back at the site and the eye in a widening
+triangle. It draws on Flamingo and shares Kingfisher's paper, kerbs and
+lettering.
 
 With no photograph to show them, Kingfisher and Flamingo draw the kerbs, indicatively
 (`src/lib/kerbs.ts`): NSW publishes no kerbs or footpath edges as open data
