@@ -166,7 +166,8 @@ jobs:
       - name: the Country slide's permits, lists and landscape maps read right
         run: npx tsx test/country-heritage.mts
 
-      # Free and subscription, through the server on a planted sheet: a free
+      # Guest, free and subscription, through the server on a planted sheet:
+      # no session sees the picture and is refused the PDF, a free
       # account's PDF stamped and its CAD and data refused, the subscription's
       # clean whether given, held by code or paid for by a signed Stripe
       # webhook, and a forged webhook granting nothing. Nothing is drawn, and
@@ -483,10 +484,11 @@ jobs:
           }
 
           # No session is still an answer, not a refusal: the site is open,
-          # and /api/me says which side of it this viewer is on (free).
-          none='{"authed":false,"operator":false,"required":true,"plan":"free","grants":{"cleanPdf":false,"openData":false},"account":null,"billing":{"subscription":false,"site":false},"humanCheck":null}|403'
+          # and /api/me says which side of it this viewer is on (guest: the
+          # drawings on the page, no PDF).
+          none='{"authed":false,"operator":false,"required":true,"plan":"guest","grants":{"pdf":false,"cleanPdf":false,"openData":false},"account":null,"billing":{"subscription":false,"site":false},"humanCheck":null}|403'
           # Both codes carry the subscription; neither is an account.
-          tail='"plan":"subscription","grants":{"cleanPdf":true,"openData":true},"account":null,"billing":{"subscription":false,"site":false},"humanCheck":null}'
+          tail='"plan":"subscription","grants":{"pdf":true,"cleanPdf":true,"openData":true},"account":null,"billing":{"subscription":false,"site":false},"humanCheck":null}'
           user="{\"authed\":true,\"operator\":false,\"required\":true,$tail|403"
           oper="{\"authed\":true,\"operator\":true,\"required\":true,$tail|200"
 
