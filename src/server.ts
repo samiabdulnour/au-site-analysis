@@ -4,12 +4,14 @@
 //
 //   npm run serve     # http://localhost:3000  (PORT to change)
 //
-// Two sides, free and subscription (src/plans.ts). Anyone can make an account
-// with an email and a password and generate every drawing; a free account's
-// PDFs are served watermarked (src/render/watermark.ts), and the subscription
-// (src/billing.ts) serves them clean with the CAD and data files beside them.
-// ACCESS_CODE, when set, is the office's shared code and carries the
-// subscription. Set ALLOW_NO_AUTH=1 only for local use: no sign-in, all granted.
+// Open to anyone: drawing needs no account, and the free side's PDFs are
+// served watermarked (src/render/watermark.ts). An account (an email and a
+// password) exists for buying — unlocking an address, or the subscription
+// (src/billing.ts, src/plans.ts) — which serves them clean with the CAD and
+// data files beside them. What holds the open side down is the per-IP budgets
+// and the one-at-a-time queue, not a login. ACCESS_CODE, when set, is the
+// office's shared code and carries the subscription. Set ALLOW_NO_AUTH=1 only
+// for local use: everything granted, and SIGN IN never offered.
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { readFile, readFileSync, existsSync, mkdirSync, writeFileSync, renameSync } from 'node:fs';
@@ -719,7 +721,8 @@ function sessionToken(req: IncomingMessage): string | null {
  * an account to see what a free visitor gets, say — and then has the better.
  */
 interface Viewer {
-  /** May generate: any session at all. */
+  /** Holds a session — an account or a code. Drawing does not need one; this
+   *  is what SIGN OUT means, and what buying starts from. */
   signedIn: boolean;
   operator: boolean;
   /** Holds the office or operator code, which generates without an account. */
@@ -755,7 +758,7 @@ const viewerOf = (req: IncomingMessage) => viewerFrom(heldCode(req), accountFrom
 function describe(v: Viewer) {
   const a = v.account;
   return {
-    authed: true,
+    authed: v.signedIn,
     operator: v.operator,
     // `required` is not a secret: the sign-in form is shown to anyone. It
     // tells the page whether signing out means anything here.
@@ -1057,9 +1060,9 @@ Canonical: ${base}/.well-known/security.txt
   }
 
   if (req.method === 'GET' && url.pathname === '/api/me') {
-    const v = viewerOf(req);
-    if (!v.signedIn) return json(res, 401, { authed: false, required: true });
-    return json(res, 200, describe(v));
+    // 200 with or without a session: the page is open to anyone, and what it
+    // asks here is which side of the site this viewer is on.
+    return json(res, 200, describe(viewerOf(req)));
   }
 
   // A free account: an email and a password, and nothing else asked. It can
@@ -1266,15 +1269,14 @@ Canonical: ${base}/.well-known/security.txt
     }
   }
 
-  // Everything below requires a session. Scoped to the API rather than to every
-  // remaining path: an unknown URL is not a place to ask for an access code,
-  // and answering /robots.txt with 401 told every crawler the site was broken
-  // rather than that the file was absent.
-  if (url.pathname.startsWith('/api/') && !viewerOf(req).signedIn)
-    return json(res, 401, { error: 'Not authorised.' });
+  // There is no wall below: drawing is open to anyone, and what holds it down
+  // is the per-IP budgets on each route and the one-at-a-time queue. The
+  // routes that do grant something guard themselves — billing wants an
+  // account, the status view the operator code — and the open formats answer
+  // 402 until the address is bought or the account subscribes.
 
-  // The sign-up's email never arrived, or its link ran out. Behind the wall:
-  // only a signed-in account has an address to resend to.
+  // The sign-up's email never arrived, or its link ran out. Only a signed-in
+  // account has an address to resend to.
   if (req.method === 'POST' && url.pathname === '/api/verify/resend') {
     const v = viewerOf(req);
     if (!v.account) return json(res, 400, { error: 'Sign in with your email first.' });
@@ -1352,15 +1354,11 @@ Canonical: ${base}/.well-known/security.txt
     }
   }
 
-  // A generation spends the budget this server is a guest of, and an account
-  // is only an email address somebody typed — so generating waits on the
-  // verification click. What is already drawn stays downloadable, and a code
-  // session generates regardless: the code is the office's own credential.
-  const unverified = (v: Viewer) => emailEnabled && !v.code && Boolean(v.account) && !isVerified(v.account!);
-  const VERIFY_FIRST = { error: 'Verify your email first — the link is in your inbox, and the page can resend it.' };
-
+  // Generating is open to accounts verified or not, and to nobody in
+  // particular: with no wall, a gate here would only mean signing out to get
+  // past it. Verification keeps guarding what it can prove — the mailbox the
+  // password reset goes to.
   if (req.method === 'POST' && url.pathname === '/api/jobs') {
-    if (unverified(viewerOf(req))) return json(res, 403, VERIFY_FIRST);
     const body = await readBody(req);
     try {
       const { address, scale, rotate, sheet, fresh, template } = JSON.parse(body || '{}');
@@ -1419,7 +1417,6 @@ Canonical: ${base}/.well-known/security.txt
   // ---- batches -----------------------------------------------------------
 
   if (req.method === 'POST' && url.pathname === '/api/batches') {
-    if (unverified(viewerOf(req))) return json(res, 403, VERIFY_FIRST);
     const body = await readBody(req);
     try {
       const b = JSON.parse(body || '{}');
@@ -1591,7 +1588,9 @@ Canonical: ${base}/.well-known/security.txt
       // What this viewer may take away of it, and, where it can be bought on
       // its own, what that costs: the page offers what the server will serve.
       grants,
-      unlock: sitesOpen && v.account && !grants.cleanPdf ? SITE_PRICE_LABEL : null,
+      // Offered to anyone the PDF is stamped for; buying it starts with a
+      // free account, which the page asks for on the way to Stripe.
+      unlock: sitesOpen && !grants.cleanPdf ? SITE_PRICE_LABEL : null,
     });
   }
 

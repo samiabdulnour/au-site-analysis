@@ -144,11 +144,14 @@ a { color: inherit; }
   .progress > span { transition: none; }
 }
 
-/* The finished drawing, the box's full width between its own rules. */
-.done { margin-top: .8rem; border: 1px solid var(--line); }
-.done[hidden] { display: none; }
-.done img { display: block; width: 100%; height: auto; }
 #unlockWhat { margin-top: .8rem; }
+
+/* A button that reads as a line of text — the way out of the account form. */
+.linkish {
+  font: inherit; color: inherit; background: transparent; border: 0;
+  padding: 0; text-decoration: underline; cursor: pointer;
+}
+.linkish:hover { color: var(--ink); }
 
 /* Why this answer came back as fast as it did, and how to insist on a new one.
    Muted like the type-ahead's guidance: it reports what happened rather than

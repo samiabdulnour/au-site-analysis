@@ -127,9 +127,14 @@ try {
   const signedBody = await signed.json();
   check('sign-up works and says the email is unverified',
     signed.status === 201 && signedBody.account?.verified === false, JSON.stringify(signedBody));
-  check('unverified: generating is refused', (await post(alice, '/api/jobs', JOB)).status === 403);
-  check('unverified: a batch is refused too',
-    (await post(alice, '/api/batches', { addresses: [JOB.address], sheet: 'context' })).status === 403);
+  // Drawing is open to everyone, unverified accounts included: with no wall,
+  // a 403 here would only mean signing out to get past it. The planted sheet
+  // is reused, so nothing is drawn. What the click still proves is the
+  // mailbox the reset link goes to.
+  check('unverified: generating is open regardless (the planted sheet is reused)',
+    (await post(alice, '/api/jobs', JOB)).status === 200);
+  check('unverified: a batch is open too',
+    (await post(alice, '/api/batches', { addresses: [JOB.address], sheet: 'context' })).status === 202);
 
   const sent = await mail('alice@example.com', 1);
   const verifyToken = tokenIn(sent, 'token');
@@ -188,7 +193,10 @@ try {
   check('the reset link sets the password and signs this browser in',
     done.status === 200 && (await (await fresh('/api/me')).json()).authed === true, JSON.stringify(doneBody));
   check('the link arriving back verifies the address it was sent to', doneBody.account?.verified === true);
-  check('the browser holding the old password is signed out', (await bob('/api/me')).status === 401);
+  // Signed out onto the open side: the stale cookie no longer validates, and
+  // /api/me answers 200 for everyone, saying which side this viewer is on.
+  check('the browser holding the old password is signed out',
+    (await (await bob('/api/me')).json()).authed === false);
   check('a reset link works once',
     (await post(browser(), '/api/password/reset', { token: resetToken, password: 'another password' })).status === 400);
   check('the old password is dead',

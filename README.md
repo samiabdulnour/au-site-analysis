@@ -143,8 +143,8 @@ with the pictures.
 
 ### Free, one address, and subscription
 
-Every account generates every drawing, from the same data, drawn the same way;
-what differs is what can be taken away:
+Anyone generates every drawing, with or without an account, from the same
+data, drawn the same way; what differs is what can be taken away:
 
 | | free | one address | subscription |
 |---|---|---|---|
@@ -153,9 +153,11 @@ what differs is what can be taken away:
 | data (CSV, JSON) | — | for that address | yes |
 | lasts | — | 30 days | while subscribed |
 
-An address is bought from any of its drawings: under a free account's
-finished sheet, a line says what unlocking gives, and UNLOCK THIS ADDRESS goes
-to Stripe for one payment and back to the same drawing, now clean. It covers
+An address is bought from any of its drawings: under a finished sheet the
+viewer cannot take clean, a line says what unlocking gives, and UNLOCK THIS
+ADDRESS goes to Stripe for one payment and back to the same drawing, now
+clean. A visitor without an account is asked to make one on the way — buying
+is what an account is for — and carries straight on to Stripe. It covers
 every drawing of that address — context, site, yield and site report — at any
 scale or style, matched on the address with case, punctuation and spacing
 ignored. It is named for the address rather than the site because "this site"
@@ -166,8 +168,13 @@ and its settings still say site: `STRIPE_SITE_PRICE_ID`, `unlockSite`.)
 `src/plans.ts` is that table in code, and every download route reads it, so a
 new privilege is a new column there rather than a new condition in the server.
 
-**Accounts.** Anyone can make one on `/` with an email and a password (`SIGN
-UP`), and starts on the free side. Accounts live in `out/accounts/accounts.json`
+**Accounts.** Drawing never asks for one: the tool is the landing page, and
+the account form opens only from SIGN IN in the nav, from an unlock or the
+pricing page (buying starts with an account), and from the emailed
+verification and reset links. Anyone can make one with an email and a
+password (`SIGN UP`), and starts on the free side. What holds the open side
+down is what always did: the per-IP budgets (12 sheets an hour, and the
+sign-in and sign-up limiters) and the one-at-a-time queue. Accounts live in `out/accounts/accounts.json`
 on the host volume, beside the job index and written the same way, with scrypt
 password hashes; the key that signs session cookies is `SESSION_SECRET`, or,
 unset, one made once and kept in the same directory, so a deploy signs nobody
@@ -179,10 +186,10 @@ billing is switched on.
 
 **Email: verification and password reset.** The server sends two emails, both
 through [Resend](https://resend.com)'s REST API with plain fetch, the way it
-talks to Stripe. A sign-up is sent a verification link; until it is clicked the
-account signs in and keeps its downloads, but generating waits — an account is
-only an email address somebody typed, and generating is what a throwaway one
-would be made for. The sign-in form's `reset` emails a password-reset link,
+talks to Stripe. A sign-up is sent a verification link; the page notes an
+unverified address (and resends the link), but generating never waits on it —
+with drawing open to everyone, a gate there would only mean signing out to get
+past it. What the click still proves is the mailbox the reset link goes to. The sign-in form's `reset` emails a password-reset link,
 which opens the page asking for the new password; setting it signs that browser
 in and every other one out (the cookie's signature covers the password hash).
 Each link's token is random and stored only as its SHA-256, so the accounts
@@ -292,11 +299,13 @@ Until one is set, nothing opens `/status`. That is the right way for it to fail:
 an ops view that is closed until someone deliberately opens it, rather than one
 that stays open on a credential nobody meant to repurpose.
 
-Authentication: visitors sign in with an account, or enter `ACCESS_CODE` once,
-and either way get a 30-day session cookie. Login attempts, sign-ups and job
+Authentication: drawing needs none — the site is open, and a visitor without
+a session is simply on the free side, watermarked. Signing in (an account, or
+`ACCESS_CODE` once) sets a 30-day session cookie and is what buying, clean
+downloads and the office's grants hang off. Login attempts, sign-ups and job
 submissions are rate-limited per IP, and job outputs are deleted after 24h.
-`ALLOW_NO_AUTH=1` disables the gate for local use only, and only while no
-`ACCESS_CODE` is set.
+`ALLOW_NO_AUTH=1` is for local use only, and only while no `ACCESS_CODE` is
+set: everything granted, no sign-in offered.
 
 The code lives in `/etc/site-analyst.env` on the server and never in the repo,
 so rotating it is a change on the host rather than a deploy:
