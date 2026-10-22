@@ -79,12 +79,13 @@ jobs:
           { echo 'docker() { printf "%s\n" "$@"; }'; printf '%s\n' "$block"; } > /tmp/dr.sh
           argv=$(ACCESS_CODE=pub ADMIN_CODE=ops TFNSW_API_KEY=tf \
                  STRIPE_SECRET_KEY=sk STRIPE_PRICE_ID=price STRIPE_SITE_PRICE_ID=site \
-                 STRIPE_WEBHOOK_SECRET=wh \
+                 STRIPE_WEBHOOK_SECRET=wh SMTP_HOST=mx SMTP_PASS=pw \
                  NET=net OUT=/tmp/out bash /tmp/dr.sh)
           printf '%s\n' "$argv" | sed 's/^/    /'
           fail=0
           for want in ACCESS_CODE=pub ADMIN_CODE=ops STRIPE_SECRET_KEY=sk \
-                      STRIPE_PRICE_ID=price STRIPE_SITE_PRICE_ID=site STRIPE_WEBHOOK_SECRET=wh; do
+                      STRIPE_PRICE_ID=price STRIPE_SITE_PRICE_ID=site STRIPE_WEBHOOK_SECRET=wh \
+                      SMTP_HOST=mx SMTP_PASS=pw; do
             printf '%s\n' "$argv" | grep -qx -- "$want" || { echo "  missing $want"; fail=1; }
           done
           if [ "$(printf '%s\n' "$argv" | tail -1)" != "site-analyst" ]; then
@@ -181,6 +182,14 @@ jobs:
       # the address it arrived on. Nothing reaches Resend.
       - name: the emailed links verify and reset what they should
         run: npx tsx test/auth-email.mts
+
+      # The same links over SMTP, as through a Namecheap Private Email box,
+      # with the mail server stood in for by a small one on the runner: the
+      # login is the mailbox's, the mail comes from it and carries working
+      # links, SMTP wins over a Resend key, and a refused login makes RESEND
+      # say it could not send. Nothing reaches a real mail server.
+      - name: the emailed links go out over SMTP
+        run: npx tsx test/smtp-email.mts
 
       # The operator view's Stripe check, on made-up answers: it names the
       # account the key belongs to, and finds a price from the other mode, a

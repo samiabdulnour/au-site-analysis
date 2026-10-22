@@ -39,7 +39,7 @@ import {
   isVerified, issueVerification, confirmEmail, accountByVerifyToken,
   issueReset, accountByResetToken, resetPassword,
 } from './accounts.js';
-import { emailEnabled, sendVerification, sendReset } from './email.js';
+import { emailEnabled, emailVia, sendVerification, sendReset } from './email.js';
 import {
   billingEnabled, subscriptionsOpen, sitesOpen, webhookEnabled, checkoutUrl, siteCheckoutUrl, portalUrl,
   verifySignature, handleEvent, checkBilling, webhookSeen,
@@ -1694,7 +1694,7 @@ void cleanupOldJobs();
 
 const PORT = Number(process.env.PORT ?? 3000);
 server.listen(PORT, () => console.log(`site analyst web UI on http://localhost:${PORT}${NO_AUTH ? ' (NO AUTH)' : ''}` +
-  ` — subscriptions ${subscriptionsOpen ? 'on' : 'off'}, single sites ${sitesOpen ? 'on' : 'off'}`));
+  ` — subscriptions ${subscriptionsOpen ? 'on' : 'off'}, single sites ${sitesOpen ? 'on' : 'off'}, email ${emailVia}`));
 
 // What Stripe says about the settings, in the container's log at every start,
 // so a wrong key shows in `docker logs` as well as on /status.
