@@ -26,7 +26,7 @@
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -153,7 +153,7 @@ const me = async (b: Browser) => (await b('/api/me')).json();
 /** Sign up and press the emailed link, the way a person does. */
 async function signUp(b: Browser, email: string, password: string) {
   const before = countTo(email);
-  await post(b, '/api/signup', { email, password });
+  await post(b, '/api/signup', { agreed: true, email, password });
   const link = await mail(email, before + 1);
   return post(b, '/api/signup/confirm', { token: tokenIn(link, 'confirm') });
 }
@@ -166,9 +166,15 @@ try {
   }
   if (!up) throw new Error(`server never answered:\n${serverLog}`);
 
+  // ---- the terms ---------------------------------------------------------------------
+  const unagreed = await post(browser(), '/api/signup', { email: 'zed@example.com', password: 'long enough' });
+  check('a sign-up that has not agreed to the terms is refused', unagreed.status === 400, String(unagreed.status));
+  await settle();
+  check('…and sends nothing', countTo('zed@example.com') === 0);
+
   // ---- a sign-up is no account until its link is pressed -------------------------
   const alice = browser();
-  const signed = await post(alice, '/api/signup', { email: 'alice@example.com', password: 'long enough' });
+  const signed = await post(alice, '/api/signup', { agreed: true, email: 'alice@example.com', password: 'long enough' });
   const signedBody = await signed.json();
   check('sign-up answers "check your email", 202', signed.status === 202 && signedBody.pending === true, JSON.stringify(signedBody));
   check('…and signs nobody in', (await me(alice)).authed === false);
@@ -187,13 +193,18 @@ try {
   check('pressed: the account is made and this browser signed in',
     done.status === 200 && (await me(alice)).account?.email === 'alice@example.com', JSON.stringify(doneBody));
   check('…verified from the start', doneBody.account?.verified === true);
+  const stored = JSON.parse(readFileSync(join(accountsDir, 'accounts.json'), 'utf8'))
+    .find((a: any) => a.email === 'alice@example.com');
+  check('the account records the terms agreed to at the form, and when',
+    typeof stored?.termsVersion === 'string' && stored.termsAcceptedAt > 0 && stored.termsAcceptedAt <= Date.now(),
+    JSON.stringify({ v: stored?.termsVersion, at: stored?.termsAcceptedAt }));
   check('a sign-up link works once',
     (await post(browser(), '/api/signup/confirm', { token: confirmToken })).status === 400);
   check('the password chosen at sign-up signs in',
     (await post(browser(), '/api/login', { email: 'alice@example.com', password: 'long enough' })).status === 200);
 
   // ---- an address with an account ------------------------------------------------
-  const again = await post(browser(), '/api/signup', { email: 'alice@example.com', password: 'somebody else' });
+  const again = await post(browser(), '/api/signup', { agreed: true, email: 'alice@example.com', password: 'somebody else' });
   const againBody = await again.json();
   check('signing up with a taken address is answered like any sign-up',
     again.status === 202 && againBody.pending === true &&
@@ -278,7 +289,7 @@ try {
   // Strangers signing up with alice's address send her "you already have an
   // account" notes; past one an hour they stop, and her own reset still goes.
   const aliceBefore = countTo('alice@example.com');
-  for (let i = 0; i < 4; i++) await post(browser(), '/api/signup', { email: 'alice@example.com', password: 'a stranger' });
+  for (let i = 0; i < 4; i++) await post(browser(), '/api/signup', { agreed: true, email: 'alice@example.com', password: 'a stranger' });
   await settle();
   check('repeated sign-ups with a taken address send its owner no flood of notes',
     countTo('alice@example.com') === aliceBefore, `${countTo('alice@example.com') - aliceBefore} more`);

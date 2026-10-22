@@ -246,6 +246,17 @@ reset form says this server cannot email a link. Accounts from before
 verification existed count as verified — the feature arriving must not lock
 out everyone already signed up.
 
+**Terms of use.** `/terms` (`web/terms.html`) says the drawings are made from
+open public data as it is available, with no guarantee that it is complete,
+current or correct, and are no substitute for a planning certificate, a survey
+or professional advice. Signing up means ticking that agreement, a row of the
+form; the server refuses a sign-up without it, and the account records
+`termsVersion` (`TERMS_VERSION` in `src/terms.ts`, which changes with the
+page's version line) and `termsAcceptedAt`, from when the box was ticked, not
+when the emailed link was pressed. The same sentence is on `/pricing`, beside
+UNLOCK THIS ADDRESS, and above Stripe Checkout's pay button. The page is a
+plain-language draft: have a lawyer read it before relying on it.
+
 **Bots.** Sign-up, the reset email and sign-in are what a bot fills in, so
 they carry three defences on top of the per-IP limits:
 

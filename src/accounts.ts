@@ -42,6 +42,9 @@ export interface Account {
   /** SHA-256 of the password-reset link's token, while one is out. */
   resetTokenHash?: string;
   resetTokenExp?: number;
+  /** The terms of use agreed to at sign-up (TERMS_VERSION), and when; absent on accounts from before the terms. */
+  termsVersion?: string;
+  termsAcceptedAt?: number;
 }
 
 export interface SiteUnlock {
@@ -173,12 +176,13 @@ async function passwordMatches(password: string, stored: string): Promise<boolea
 // emails have accounts.
 let decoy: Promise<string> | undefined;
 
-export async function createAccount(email: string, password: string): Promise<Account> {
+export async function createAccount(email: string, password: string, termsVersion?: string): Promise<Account> {
   const account: Account = {
     id: randomUUID(),
     email: normaliseEmail(email),
     passwordHash: await hashPassword(password),
     createdAt: Date.now(),
+    ...(termsVersion ? { termsVersion, termsAcceptedAt: Date.now() } : {}),
   };
   // Checked after the hash, not before: the hash yields the event loop, and a
   // second sign-up for the same address could have landed in the meantime.
@@ -289,7 +293,11 @@ export async function resetPassword(a: Account, password: string) {
 export const SIGNUP_HOURS = 24;
 const PENDING_MAX = 5000;
 
-interface PendingSignup { email: string; passwordHash: string; tokenHash: string; exp: number }
+interface PendingSignup {
+  email: string; passwordHash: string; tokenHash: string; exp: number;
+  /** The terms agreed to at the form, and when: the account takes them on the click. */
+  termsVersion?: string; termsAcceptedAt?: number;
+}
 
 let pendingFile = '';
 /** By email: a second sign-up for the same address replaces the first, and its link. */
@@ -318,14 +326,17 @@ function savePending() {
  * the waiting list is full. The password arrives already hashed, so the caller
  * can spend the same time on an address that has an account.
  */
-export function startSignup(email: string, passwordHash: string): string | undefined {
+export function startSignup(email: string, passwordHash: string, termsVersion?: string): string | undefined {
   const e = normaliseEmail(email);
   if (!pending.has(e) && pending.size >= PENDING_MAX) {
     savePending();                                   // prunes the expired first
     if (pending.size >= PENDING_MAX) return undefined;
   }
   const token = randomBytes(32).toString('hex');
-  pending.set(e, { email: e, passwordHash, tokenHash: tokenHash(token), exp: Date.now() + SIGNUP_HOURS * 3600_000 });
+  pending.set(e, {
+    email: e, passwordHash, tokenHash: tokenHash(token), exp: Date.now() + SIGNUP_HOURS * 3600_000,
+    ...(termsVersion ? { termsVersion, termsAcceptedAt: Date.now() } : {}),
+  });
   savePending();
   return token;
 }
@@ -353,19 +364,21 @@ export async function finishSignup(token: string): Promise<Account | undefined> 
   if (!found) return undefined;
   pending.delete(found.email);
   savePending();
+  // The agreement as it was given at the form, so the record says when.
+  const terms = found.termsVersion ? { termsVersion: found.termsVersion, termsAcceptedAt: found.termsAcceptedAt } : {};
   const existing = accountByEmail(found.email);
   if (existing) {
     if (!isVerified(existing)) {
       updateAccount(existing, {
         passwordHash: found.passwordHash, emailVerified: Date.now(),
-        verifyTokenHash: undefined, verifyTokenExp: undefined,
+        verifyTokenHash: undefined, verifyTokenExp: undefined, ...terms,
       });
     }
     return existing;
   }
   const account: Account = {
     id: randomUUID(), email: found.email, passwordHash: found.passwordHash,
-    createdAt: Date.now(), emailVerified: Date.now(),
+    createdAt: Date.now(), emailVerified: Date.now(), ...terms,
   };
   accounts.set(account.id, account);
   save();

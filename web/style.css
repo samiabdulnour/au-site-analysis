@@ -461,7 +461,11 @@ h2 { font-size: 1em; font-weight: 400; text-transform: uppercase;
 #mine { margin-top: .2rem; }
 #howUnlock { margin-top: .8rem; }
 
-/* ---- sign-in: the bot trap and the human check ---------------------------- */
+/* ---- sign-in: the terms, the human check, and the bot trap ---------------- */
+/* The two are rows of the form's box, so the way in stays under the box where
+   it always was rather than being pushed down past a widget of its own. */
+.bar.agree { gap: .7rem; align-items: flex-start; padding: .45rem 1rem; cursor: pointer; color: var(--muted); }
+.bar.agree input { width: auto; padding: 0; margin-top: .3rem; flex: none; accent-color: #000; }
+.bar.humanbar { padding: .6rem 1rem; }
 /* Off the page, not hidden: a field that is display:none is one bots skip. */
 .trap { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
-#human { margin-top: 1rem; }
