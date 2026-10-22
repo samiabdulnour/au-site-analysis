@@ -38,6 +38,8 @@ const clean = Buffer.from(await doc.save());
 writeFileSync(join(jobDir, 'CONTEXT_ANALYSIS.pdf'), clean);
 writeFileSync(join(jobDir, 'CONTEXT_ANALYSIS_CAD.zip'), 'not really a zip');
 writeFileSync(join(jobDir, 'DATA.csv'), 'a,b\n1,2\n');
+// The picture the page shows once a drawing is done. Any bytes will do here.
+writeFileSync(join(jobDir, 'preview.jpg'), Buffer.from([0xff, 0xd8, 0xff, 0xd9]));
 // A second sheet at another address: unlocking one site must leave this one stamped.
 const otherId = randomUUID();
 mkdirSync(join(webOut, otherId), { recursive: true });
@@ -151,6 +153,13 @@ try {
   check('free: the CAD is refused with 402', f1.cad === 402, String(f1.cad));
   check('free: the data is refused with 402', f1.data === 402, String(f1.data));
   check('downloads are not cached in between', f1.cache === 'private, no-store', String(f1.cache));
+  const shown = await (await free(`/api/jobs/${jobId}`)).json();
+  const picture = await free(`/api/jobs/${jobId}/preview`);
+  check('the finished drawing\'s picture is offered and served, to every plan',
+    shown.hasPreview === true && picture.status === 200 && picture.headers.get('content-type') === 'image/jpeg');
+  const none = await (await free(`/api/jobs/${otherId}`)).json();
+  check('a drawing without a picture says so, and serves none',
+    none.hasPreview === false && (await free(`/api/jobs/${otherId}/preview`)).status === 404);
   const kept = readFileSync(join(jobDir, 'CONTEXT_ANALYSIS.pdf'));
   check('the sheet on disk stays clean', kept.equals(clean));
   // OPEN PDF shows it in the browser; DOWNLOAD PDF asks for the same file to be saved.

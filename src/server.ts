@@ -165,6 +165,14 @@ function sheetKind(v: unknown): SheetKind {
   return v === 'site' || v === 'summary' || v === 'yield' || v === 'slides' ? v : 'context';
 }
 
+/**
+ * The picture of a finished drawing the page shows when it is done, beside its
+ * PDF (src/render/pdf.ts). Found by name rather than kept on the job, so the
+ * job index needs nothing new and a sheet drawn before there were pictures
+ * simply has none.
+ */
+const previewOf = (dir: string) => join(dir, 'preview.jpg');
+
 /** What each drawing's PDF is called when it is downloaded. */
 const PDF_NAME: Record<SheetKind, string> = {
   context: 'CONTEXT_ANALYSIS', site: 'SITE_ANALYSIS', summary: 'DEVELOPMENT_SUMMARY', yield: 'PLANNING_YIELD', slides: 'OVERALL_ANALYSIS',
@@ -458,7 +466,7 @@ async function runJobBody(job: Job) {
       await writeFile(htmlPath, renderYieldSheet(yb, meta));
       job.log.push('printing PDF…');
       const pdfPath = join(outDir, 'PLANNING_YIELD.pdf');
-      await htmlToPdf(htmlPath, pdfPath);
+      await htmlToPdf(htmlPath, pdfPath, previewOf(outDir));
       job.pdfPath = pdfPath;
       // Like the summary it replaces, a table: CSV for Excel, JSON for the numbers behind it.
       const csvPath = join(outDir, 'PLANNING_YIELD.csv');
@@ -475,7 +483,7 @@ async function runJobBody(job: Job) {
       await writeFile(htmlPath, renderSummarySheet(sub, meta));
       job.log.push('printing PDF…');
       const pdfPath = join(outDir, 'DEVELOPMENT_SUMMARY.pdf');
-      await htmlToPdf(htmlPath, pdfPath);
+      await htmlToPdf(htmlPath, pdfPath, previewOf(outDir));
       job.pdfPath = pdfPath;
       // A table's open format is data, not CAD: CSV opens in Excel, JSON is
       // there for anything reading the controls programmatically.
@@ -497,7 +505,7 @@ async function runJobBody(job: Job) {
       await writeFile(htmlPath, renderSiteSheet(sb, meta, job.template));
       job.log.push('printing PDF…');
       const pdfPath = join(outDir, 'SITE_ANALYSIS.pdf');
-      await htmlToPdf(htmlPath, pdfPath);
+      await htmlToPdf(htmlPath, pdfPath, previewOf(outDir));
       job.pdfPath = pdfPath;
       job.log.push('exporting CAD (DXF/DWG)…');
       const zip = join(outDir, 'SITE_ANALYSIS_CAD.zip');
@@ -521,7 +529,7 @@ async function runJobBody(job: Job) {
       await writeFile(htmlPath, renderSlides(sb, meta).html);
       job.log.push('printing PDF and slide images…');
       const pdfPath = join(outDir, 'OVERALL_ANALYSIS.pdf');
-      await printSlides(htmlPath, pdfPath, join(outDir, 'slides'), { widthMm: SLIDE_W, heightMm: SLIDE_H });
+      await printSlides(htmlPath, pdfPath, join(outDir, 'slides'), { widthMm: SLIDE_W, heightMm: SLIDE_H }, previewOf(outDir));
       job.pdfPath = pdfPath;
       // The deck's open format is its facts: everything it says, as JSON.
       const factsPath = join(outDir, 'overall.json');
@@ -541,7 +549,7 @@ async function runJobBody(job: Job) {
       await writeFile(htmlPath, renderSheet(bundle, meta));
       job.log.push('printing PDF…');
       const pdfPath = join(outDir, 'CONTEXT_ANALYSIS.pdf');
-      await htmlToPdf(htmlPath, pdfPath);
+      await htmlToPdf(htmlPath, pdfPath, previewOf(outDir));
       job.pdfPath = pdfPath;
       job.log.push('exporting CAD (DXF/DWG)…');
       const zip = join(outDir, 'CONTEXT_ANALYSIS_CAD.zip');
@@ -1184,13 +1192,13 @@ Sitemap: ${siteBase()}/sitemap.xml
   // has actually drawn rather than whatever was typed into a request.
   if (req.method === 'POST' && url.pathname === '/api/billing/unlock') {
     const v = viewerOf(req);
-    if (!v.account) return json(res, 400, { error: 'A site is bought by an account. Sign in with your email first.' });
-    if (!sitesOpen) return json(res, 503, { error: 'Sites cannot be bought yet.' });
+    if (!v.account) return json(res, 400, { error: 'An address is bought by an account. Sign in with your email first.' });
+    if (!sitesOpen) return json(res, 503, { error: 'Addresses cannot be bought yet.' });
     let jobId = '';
     try { jobId = String(JSON.parse((await readBody(req)) || '{}').job ?? ''); } catch { /* refused below */ }
     const job = jobs.get(jobId);
     if (!job) return json(res, 404, { error: 'That drawing is gone. Generate it again, then unlock it.' });
-    if (grantsFor(v, job).cleanPdf) return json(res, 409, { error: 'This site is already unlocked for you.' });
+    if (grantsFor(v, job).cleanPdf) return json(res, 409, { error: 'This address is already unlocked for you.' });
     if (limited(`billing:${ip}`, 20, 3600_000)) return json(res, 429, { error: 'Too many attempts. Try later.' });
     try {
       return json(res, 200, { url: await siteCheckoutUrl(v.account, job.address, job.id, siteBase()) });
@@ -1447,12 +1455,27 @@ Sitemap: ${siteBase()}/sitemap.xml
       id: job.id, address: job.address, status: job.status,
       log: job.log.slice(-12), error: job.error, hasCad: Boolean(job.cadPath),
       hasData: Boolean(job.dataPath), sheet: job.sheet,
+      hasPreview: Boolean(job.pdfPath && existsSync(previewOf(dirname(job.pdfPath)))),
       queuePosition: queuePosition(job), etaMinutes: etaMinutes(job),
       // What this viewer may take away of it, and, where it can be bought on
       // its own, what that costs: the page offers what the server will serve.
       grants,
       unlock: sitesOpen && v.account && !grants.cleanPdf ? SITE_PRICE_LABEL : null,
     });
+  }
+
+  // The finished drawing's picture. The same for every plan: at this size it
+  // shows what was drawn and is no use printed, like the examples on the page.
+  const previewMatch = url.pathname.match(/^\/api\/jobs\/([0-9a-f-]{36})\/preview$/);
+  if (req.method === 'GET' && previewMatch) {
+    const job = jobs.get(previewMatch[1]);
+    if (!job?.pdfPath) return json(res, 404, { error: 'Not ready.' });
+    readFile(previewOf(dirname(job.pdfPath)), (err, data) => {
+      if (err) return json(res, 404, { error: 'No picture of this drawing.' });
+      res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, max-age=86400' });
+      res.end(data);
+    });
+    return;
   }
 
   const pdfMatch = url.pathname.match(/^\/api\/jobs\/([0-9a-f-]{36})\/pdf$/);
@@ -1487,7 +1510,7 @@ Sitemap: ${siteBase()}/sitemap.xml
   // The open formats are paid for, by the site or by the subscription. 402
   // rather than 403: nothing is wrong with who is asking, only with what they
   // have paid for.
-  const OPEN_DATA_ONLY = { error: 'The CAD and data files come with an unlocked site or the subscription.', upgrade: '/pricing' };
+  const OPEN_DATA_ONLY = { error: 'The CAD and data files come with an unlocked address or the subscription.', upgrade: '/pricing' };
 
   const cadMatch = url.pathname.match(/^\/api\/jobs\/([0-9a-f-]{36})\/cad$/);
   if (req.method === 'GET' && cadMatch) {

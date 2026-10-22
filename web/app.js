@@ -61,8 +61,10 @@ const EXAMPLE_ADDRESS = '150 George Street, Parramatta';
 
 const $ = (id) => document.getElementById(id);
 const f = $('f'), loginForm = $('login');
-const out = $('out'), logEl = $('log'), queueEl = $('queue');
+const out = $('out'), queueEl = $('queue');
 const linksEl = $('links'), errEl = $('error'), go = $('go'), noteEl = $('note');
+const progressEl = $('progress'), fillEl = $('progressFill');
+const doneEl = $('done'), doneImg = $('doneImg'), unlockWhat = $('unlockWhat');
 const resultImg = $('resultImg'), resultMissing = $('resultMissing');
 
 // ---- token rendering -----------------------------------------------------
@@ -468,11 +470,8 @@ async function submit(fresh) {
   if (!address) return;
   clearTimeout(suggestTimer);
   closeSuggest();
-  out.hidden = false;
-  errEl.textContent = ''; linksEl.innerHTML = ''; queueEl.textContent = '';
-  noteEl.textContent = '';
+  startOutput('sending');
   go.disabled = true;
-  logEl.textContent = 'submitting';
   revealOutput();
   try {
     const r = await fetch('/api/jobs', {
@@ -496,6 +495,37 @@ f.addEventListener('submit', (e) => {
   submit(false);
 });
 
+// ---- progress ------------------------------------------------------------
+
+/* The server says where a job is (queued, drawing, done), not how far along it
+   is: nothing inside the pipeline knows its own fraction, and a sheet takes one
+   to three minutes, the site report longer. So the bar is filled by time, fast
+   at first and ever more slowly: it never stands still, and it never reaches
+   the end before the server says the drawing is done. */
+let runningSince = 0;
+
+function timeFraction(seconds, sheet) {
+  const pace = sheet === 'slides' ? 150 : 60;
+  return Math.min(0.95, 1 - Math.exp(-seconds / pace));
+}
+
+function setProgress(fraction) {
+  fillEl.style.width = (fraction * 100).toFixed(1) + '%';
+}
+
+/** A fresh output box: the bar empty, nothing of the last drawing left in it. */
+function startOutput(word) {
+  out.hidden = false;
+  errEl.textContent = ''; linksEl.innerHTML = ''; noteEl.textContent = '';
+  queueEl.textContent = word;
+  runningSince = 0;
+  progressEl.hidden = false;
+  setProgress(0);
+  doneEl.hidden = true;
+  doneImg.removeAttribute('src');
+  unlockWhat.hidden = true;
+}
+
 // misses: consecutive transient failures. A generation takes minutes, so a
 // deploy or a dropped connection mid-run must not throw the sheet away —
 // keep polling for a while before giving up.
@@ -505,7 +535,7 @@ async function poll(id, misses) {
     const r = await fetch('/api/jobs/' + id);
     if (r.status >= 500) {
       if (misses < 20) {
-        logEl.textContent = 'service restarting, reconnecting';
+        queueEl.textContent = 'reconnecting';
         return setTimeout(() => poll(id, misses + 1), 3000);
       }
       throw new Error('service restarting — try again shortly');
@@ -516,16 +546,19 @@ async function poll(id, misses) {
 
     if (j.status === 'queued' && j.queuePosition > 0) {
       queueEl.textContent = j.queuePosition === 1
-        ? 'queued, next in line'
-        : 'queued, position ' + j.queuePosition + ' — about ' + j.etaMinutes + ' minutes';
+        ? 'queued · next in line'
+        : 'queued · ' + (j.queuePosition - 1) + ' ahead · about ' + j.etaMinutes + ' minutes';
+      runningSince = 0;
+      setProgress(0);
     } else if (j.status === 'running') {
-      queueEl.textContent = 'generating';
+      queueEl.textContent = 'drawing';
+      if (!runningSince) runningSince = Date.now();
+      setProgress(timeFraction((Date.now() - runningSince) / 1000, j.sheet));
     }
-    logEl.textContent = (j.log || []).map((l) => l.trim()).join('\n');
-    logEl.scrollTop = logEl.scrollHeight;
 
     if (j.status === 'done') {
       queueEl.textContent = 'done';
+      progressEl.hidden = true;
       linksEl.innerHTML = '';
       // What this viewer may take away of this drawing, as the server says:
       // the plan's, or everything once its site is bought. The server decides
@@ -543,11 +576,24 @@ async function poll(id, misses) {
           : 'payment not confirmed yet — reload this page in a minute';
         returnedFromPayment = false;
       }
-      if (j.unlock) addButton('unlock this site · ' + j.unlock, () => unlock(id));
-      // The same PDF twice: in the browser's viewer, or saved straight to disk.
-      // Whether it is watermarked is said once, on the first.
-      addLink(grants.cleanPdf ? 'open pdf' : 'open pdf · watermarked', '/api/jobs/' + id + '/pdf', { newTab: true });
-      addLink('download pdf', '/api/jobs/' + id + '/pdf?download', { download: true });
+      // The drawing itself, small: a picture of a few hundred kilobytes shows at
+      // once where the PDF can be tens of megabytes, so the PDF is downloaded
+      // rather than opened in the browser.
+      if (j.hasPreview) {
+        doneImg.src = '/api/jobs/' + id + '/preview';
+        doneImg.alt = 'The finished drawing for ' + j.address + '.';
+        doneEl.hidden = false;
+      }
+      if (j.unlock) {
+        // What is bought, said in full: the address, not just this drawing of it.
+        unlockWhat.textContent = 'Unlocking this address gives you every drawing of it — context, ' +
+          'site, yield and site report, at any scale or style — clean, with the CAD and data files, ' +
+          'for 30 days.';
+        unlockWhat.hidden = false;
+        addButton('unlock this address · ' + j.unlock, () => unlock(id));
+      }
+      addLink(grants.cleanPdf ? 'download pdf' : 'download pdf · watermarked',
+        '/api/jobs/' + id + '/pdf?download', { download: true });
       const dataLabel = j.sheet === 'slides' ? 'download json' : 'download csv';
       if (grants.openData) {
         if (j.hasCad) addLink('download cad', '/api/jobs/' + id + '/cad');
@@ -565,7 +611,7 @@ async function poll(id, misses) {
   } catch (err) {
     // fetch() rejects outright when the connection drops — same transient case.
     if (err instanceof TypeError && misses < 20) {
-      logEl.textContent = 'connection lost, reconnecting';
+      queueEl.textContent = 'reconnecting';
       return setTimeout(() => poll(id, misses + 1), 3000);
     }
     fail(err.message);
@@ -623,13 +669,13 @@ function resumeJob() {
   if (params.has('paid')) { awaitingPayment = 15; returnedFromPayment = true; }
   // Once, not on every reload.
   history.replaceState(null, '', '/');
-  out.hidden = false;
-  logEl.textContent = '';
+  startOutput('');
   poll(id);
 }
 
 function fail(msg) {
   queueEl.textContent = '';
+  progressEl.hidden = true;
   errEl.textContent = msg;
   go.disabled = false;
 }

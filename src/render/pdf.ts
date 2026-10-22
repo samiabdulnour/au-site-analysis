@@ -29,7 +29,15 @@ async function launch(): Promise<Browser> {
   return chromium.launch({ executablePath, headless: true, args });
 }
 
-export async function htmlToPdf(htmlPath: string, pdfPath: string): Promise<void> {
+/**
+ * How wide, in pixels, the picture of a finished drawing is that the page shows
+ * once it is done: the drawing at a glance, about the size of the examples, and
+ * nowhere near enough to print. An A1 PDF can be tens of megabytes; this is a
+ * few hundred kilobytes, so the result shows at once.
+ */
+export const PREVIEW_WIDTH = 1200;
+
+export async function htmlToPdf(htmlPath: string, pdfPath: string, previewPath?: string): Promise<void> {
   const browser = await launch();
   try {
     const page = await browser.newPage();
@@ -41,6 +49,19 @@ export async function htmlToPdf(htmlPath: string, pdfPath: string): Promise<void
       printBackground: true,
       pageRanges: '1',
     });
+    if (previewPath) {
+      // The sheet again in a page of its printed size, laid out for print as
+      // the PDF was, and scaled down as it is drawn rather than afterwards.
+      // A drawing without its picture is still a drawing, so a failure here
+      // costs the picture and nothing else.
+      try {
+        const width = Math.ceil((SHEET_W / 25.4) * 96), height = Math.ceil((SHEET_H / 25.4) * 96);
+        const shot = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: PREVIEW_WIDTH / width });
+        await shot.emulateMedia({ media: 'print' });
+        await shot.goto(pathToFileURL(htmlPath).href, { waitUntil: 'networkidle', timeout: 120_000 });
+        await shot.screenshot({ path: previewPath, type: 'jpeg', quality: 80 });
+      } catch { /* no picture this time */ }
+    }
   } finally {
     await browser.close();
   }
@@ -129,6 +150,7 @@ export async function printSlides(
   pdfPath: string,
   pngDir: string,
   size: { widthMm: number; heightMm: number },
+  previewPath?: string,
 ): Promise<string[]> {
   const browser = await launch();
   const pngs: string[] = [];
@@ -151,6 +173,12 @@ export async function printSlides(
       const file = join(pngDir, `${id.replace(/[^a-z0-9_-]/gi, '_')}.png`);
       await el.screenshot({ path: file, type: 'png' });
       pngs.push(file);
+    }
+    // The deck's picture is its first page, at one pixel to the CSS pixel
+    // rather than the PNGs' two.
+    if (previewPath && n) {
+      await sections.first().screenshot({ path: previewPath, type: 'jpeg', quality: 80, scale: 'css' })
+        .catch(() => { /* no picture this time */ });
     }
   } finally {
     await browser.close();

@@ -127,11 +127,28 @@ a { color: inherit; }
 #suggest li:hover, #suggest li.active { background: var(--hi); color: var(--on-hi); }
 
 /* ---- output ------------------------------------------------------------- */
-#out { margin-top: .9rem; border: 1px solid var(--line); padding: 1rem 1.2rem;
-       min-height: 11rem; }
+/* A word for where the drawing is, and a bar that moves while it is drawn; once
+   it is done, the drawing itself. No log: what the pipeline is fetching is the
+   operator's business, not the visitor's. */
+#out { margin-top: .9rem; border: 1px solid var(--line); padding: 1rem 1.2rem; }
 #queue { text-transform: uppercase; font-weight: 400; }
-#log { white-space: pre-wrap; max-height: 16rem; overflow-y: auto; }
 .errline { color: var(--err); }
+
+/* A hairline track the yellow fills. The fill moves in steps as the page asks
+   the server, so it slides over each step rather than jumping. */
+.progress { height: .7rem; border: 1px solid var(--line); margin-top: .6rem; }
+.progress[hidden] { display: none; }
+.progress > span { display: block; height: 100%; width: 0; background: var(--hi);
+                   transition: width 2.5s linear; }
+@media (prefers-reduced-motion: reduce) {
+  .progress > span { transition: none; }
+}
+
+/* The finished drawing, the box's full width between its own rules. */
+.done { margin-top: .8rem; border: 1px solid var(--line); }
+.done[hidden] { display: none; }
+.done img { display: block; width: 100%; height: auto; }
+#unlockWhat { margin-top: .8rem; }
 
 /* Why this answer came back as fast as it did, and how to insist on a new one.
    Muted like the type-ahead's guidance: it reports what happened rather than

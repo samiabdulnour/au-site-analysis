@@ -56,7 +56,7 @@
     walking catchments — entirely from government open data. Out come a print-ready
     A1 PDF and the same geometry as CAD. <a href="/about">How it works</a>.</p>
     <p class="lead">Sign in, or make a free account: free PDFs carry a watermark.
-    Unlocking a site, or the <a href="/pricing">subscription</a>, takes it off and adds
+    Unlocking an address, or the <a href="/pricing">subscription</a>, takes it off and adds
     the CAD and data files.</p>
     <!-- The three ways in, as a row of the options table. The office's shared
          code is the third, for the people who had it before accounts. -->
@@ -79,7 +79,7 @@
     <p class="lead">Search a NSW address to generate its site analysis.</p>
     <!-- Said only to a free account: what it gets, and the way to more. -->
     <p class="lead muted" id="plan" hidden>Free account: PDFs come with a watermark.
-    Unlock a site, or <a href="/pricing">subscribe</a>, for clean PDFs and the CAD
+    Unlock an address, or <a href="/pricing">subscribe</a>, for clean PDFs and the CAD
     and data files.</p>
     <div class="bar">
       <span class="entry">
@@ -114,10 +114,16 @@
   </form>
 
   <!-- ---- output ------------------------------------------------------ -->
+  <!-- While it draws: a word for where it is, and a bar that moves. When it is
+       done: the drawing itself, small, and what can be taken away under it. -->
   <div id="out" hidden>
     <div id="queue"></div>
+    <div class="progress" id="progress"><span id="progressFill"></span></div>
     <div id="note"></div>
-    <div id="log"></div>
+    <figure class="done" id="done" hidden>
+      <img id="doneImg" alt="">
+    </figure>
+    <p class="muted" id="unlockWhat" hidden></p>
     <div class="errline" id="error"></div>
   </div>
 

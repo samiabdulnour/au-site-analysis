@@ -53,14 +53,22 @@ drawn for an example address, the picture alone. It follows what is picked,
 not what the pointer is over. `/about` explains the tool to
 anyone who lands on it: what the four drawings contain, where the data
 comes from, and what the output must not be relied on for. The generator
-itself sits behind a free account (see *Free, one site, and subscription* below), and
+itself sits behind a free account (see *Free, one address, and subscription* below), and
 `/pricing` compares the two sides. Sample thumbnails live in `web/samples/`
 and are served from `/samples/<name>.jpg` (whitelisted names only).
 
-Progress streams while the pipeline fetches and composes; the finished A1 PDF
-opens in the browser. Jobs run one at a time so simultaneous users don't
-hammer the public data services, and the page reports queue position and a
-rough ETA rather than an anonymous spinner. Put `TFNSW_API_KEY=…` in `.env`
+While a sheet is drawn the page shows one word for where it is — queued (and
+how many are ahead, with a rough ETA), drawing, done — over a yellow bar. The
+pipeline does not know its own fraction, so the bar is filled by time, quickly
+at first and ever more slowly, and only reaches the end when the server says
+done; what the pipeline is fetching stays in the server's log, not the page.
+Once done, the page shows the drawing itself as a picture about 1200 px wide
+(`preview.jpg`, taken in the same Chromium session that prints the PDF: a few
+hundred kilobytes against an A1 PDF's tens of megabytes) with the downloads
+under it — the PDF is downloaded rather than opened in the browser, which
+could take a long while at that size. The picture is the same for every plan,
+like the examples. Jobs run one at a time so simultaneous users don't
+hammer the public data services. Put `TFNSW_API_KEY=…` in `.env`
 for authoritative bus stops. The deck's existing-condition slide takes Google
 Street View frames of each street frontage with `GOOGLE_MAPS_API_KEY=…` (a
 Google Cloud key whose project has the Street View Static API enabled; add
@@ -133,24 +141,27 @@ the `?v=` on the `og:image` and `twitter:image` tags of `index.html` and
 showing the old card under the old one; the workflow commits those two pages
 with the pictures.
 
-### Free, one site, and subscription
+### Free, one address, and subscription
 
 Every account generates every drawing, from the same data, drawn the same way;
 what differs is what can be taken away:
 
-| | free | one site | subscription |
+| | free | one address | subscription |
 |---|---|---|---|
 | PDF | stamped with the watermark | clean, for that address | clean |
 | CAD (DXF/DWG) | — | for that address | yes |
 | data (CSV, JSON) | — | for that address | yes |
 | lasts | — | 30 days | while subscribed |
 
-A site is bought from its drawing: under a free account's finished sheet,
-UNLOCK THIS SITE goes to Stripe for one card payment, and back to the same
-drawing, now clean. It covers every drawing of that address at any scale or
-style, matched on the address with case, punctuation and spacing ignored. A
-site is what most offices need once per project; the subscription is for
-whoever screens sites every week.
+An address is bought from any of its drawings: under a free account's
+finished sheet, a line says what unlocking gives, and UNLOCK THIS ADDRESS goes
+to Stripe for one payment and back to the same drawing, now clean. It covers
+every drawing of that address — context, site, yield and site report — at any
+scale or style, matched on the address with case, punctuation and spacing
+ignored. It is named for the address rather than the site because "this site"
+read as this one drawing. An address is what most offices need once per
+project; the subscription is for whoever screens sites every week. (The code
+and its settings still say site: `STRIPE_SITE_PRICE_ID`, `unlockSite`.)
 
 `src/plans.ts` is that table in code, and every download route reads it, so a
 new privilege is a new column there rather than a new condition in the server.
