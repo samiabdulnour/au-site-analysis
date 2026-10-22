@@ -3446,7 +3446,8 @@ export function movementSlide(b: SlidesBundle): Slide {
     const [x, y] = proj(st.lon, st.lat);
     const text = tidyStation(st.name);
     const w = labelW(text, 2);
-    for (const [lx, ly] of [[x + 2.8 + w / 2, y], [x - 2.8 - w / 2, y], [x, y - 3], [x, y + 3.2]] as [number, number][]) {
+    // each candidate clears the 6 × 6 mm box reserved on the roundel itself, past the spacer's own margins
+    for (const [lx, ly] of [[x + 4.0 + w / 2, y], [x - 4.0 - w / 2, y], [x, y - 5.2], [x, y + 5.4]] as [number, number][]) {
       if (isoSpacer.take(lx, ly, w, 2.6)) { parts.push(label(lx, ly, text, 2, MOVE.rail)); break; }
     }
   }
@@ -6888,6 +6889,8 @@ const LEP_ABORIGINAL_FILL = '#e3b53a', LEP_ABORIGINAL_EDGE = '#8a6a3c';
 /** The LEP maps of Aboriginal cultural landscapes, hatched: the Sensitive Aboriginal Landscape Map in a darker shade of ePlanning's green, the Aboriginal Cultural Significance Map in the heritage edge colour. */
 const LEP_LANDSCAPE_COLOUR = (map: string) => (/sensitive/i.test(map) ? '#00866a' : LEP_ABORIGINAL_EDGE);
 const AHIP_COLOUR = '#7c4a9e';
+/** How many impact permits carry their number on a map: the nearest few, the legend counting the rest. */
+const AHIP_NAMED = 8;
 const LIST_COLOUR = '#9e2b27', RNE_COLOUR = '#737c77';
 const LIST_WORD: Record<string, string> = { NHL: 'National Heritage List', CHL: 'Commonwealth Heritage List', RNE: 'Register of the National Estate' };
 /** A list's status in words: whether the place is listed, only nominated, or, on the archived register, how far it got. */
@@ -7123,7 +7126,11 @@ export function countryAtlas(b: SlidesBundle): Slide {
   const permits = c.ahips?.permits ?? [];
   const state = new Map(f.ahips.permits.map((q) => [q.id, q.active]));
   for (const pm of permits) parts.push(`<path d="${ringsPath(pm.rings, proj)}" fill="#ffffff" fill-opacity="0.6" stroke="#000000" stroke-width="0.3" fill-rule="nonzero"${state.get(pm.id) ? '' : ' stroke-dasharray="1 0.6"'}/>`);
+  // A busy council area holds ninety-odd permits: named one and all they carpet
+  // the map, so only the nearest few carry their number and the legend counts the rest.
+  const namedPermits = new Set([...f.ahips.permits].sort((x2, y2) => x2.distanceM - y2.distanceM).slice(0, AHIP_NAMED).map((q) => q.id));
   for (const pm of permits) {
+    if (!namedPermits.has(pm.id)) continue;
     let best = { area: 0, cx: 0, cy: 0 }; for (const r of pm.rings) { const st = clippedStats(r, proj, p); if (st.area > best.area) best = st; }
     const [x, y] = best.area > 0 ? [best.cx, best.cy] : proj(pm.lon, pm.lat);
     if (x < 3 || y < 3 || x > p.wMm - 3 || y > p.hMm - 3) continue;
@@ -7144,7 +7151,7 @@ export function countryAtlas(b: SlidesBundle): Slide {
     { swatch: `<path d="M0,2.4C1.5,0.6 3.5,3 5,1.2" fill="none" stroke="${G.deep}" stroke-width="0.4"/>`, label: 'Watercourses, dashed where not perennial; the land in hillshade' },
     ...(c.ridges.length ? [{ swatch: `<path d="M0,1.8H5" stroke="#000000" stroke-width="0.35" stroke-dasharray="1.8 0.9"/>`, label: 'Crests read from the elevation model' }] : []),
     ...(c.lalcs.length > 1 ? [{ swatch: `<path d="M0,1.8H5" stroke="#000000" stroke-width="0.5" stroke-dasharray="3 1 0.6 1"/>`, label: 'Local Aboriginal Land Council boundary' }] : []),
-    ...(permits.length ? [{ swatch: `<rect x="0.4" y="0.6" width="4.2" height="2.4" fill="#ffffff" stroke="#000000" stroke-width="0.3" stroke-dasharray="1 0.6"/>`, label: 'Aboriginal Heritage Impact Permit, dashed where expired' }] : []),
+    ...(permits.length ? [{ swatch: `<rect x="0.4" y="0.6" width="4.2" height="2.4" fill="#ffffff" stroke="#000000" stroke-width="0.3" stroke-dasharray="1 0.6"/>`, label: `Aboriginal Heritage Impact Permit, dashed where expired${permits.length > AHIP_NAMED ? `; ${permits.length} on the page, the nearest ${AHIP_NAMED} numbered` : ''}` }] : []),
     { swatch: `<circle cx="2.5" cy="1.8" r="1.3" fill="${t.site}"/>`, label: 'The site' },
   ];
   const limit = keyTop(legend.length) - 6;
@@ -7292,7 +7299,6 @@ export function countrySlide(b: SlidesBundle): Slide {
     for (const p of permits) parts.push(`<path d="${ringsPath(p.rings, wproj)}" fill="${AHIP_COLOUR}" fill-opacity="0.16" stroke="${AHIP_COLOUR}" stroke-width="0.45" fill-rule="nonzero"${state.get(p.id) ? '' : ' stroke-dasharray="1.4,0.8"'}/>`);
     // A busy council area holds a hundred permits: naming every one carpets the
     // map, so only the nearest few carry their number and the legend counts the rest.
-    const AHIP_NAMED = 8;
     const named = new Set([...f.ahips.permits].sort((x, y) => x.distanceM - y.distanceM).slice(0, AHIP_NAMED).map((q) => q.id));
     for (const p of permits) {
       if (!named.has(p.id)) continue;
@@ -7304,7 +7310,7 @@ export function countrySlide(b: SlidesBundle): Slide {
       if (small) parts.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="1" fill="${AHIP_COLOUR}" stroke="#ffffff" stroke-width="0.3"/>`);
       for (const [lx, ly] of (small ? [[x, y - 2.6], [x, y + 3.2], [x + w / 2 + 1.8, y + 0.2], [x - w / 2 - 1.8, y + 0.2]] : [[x, y], [x, y - 3], [x, y + 3]]) as [number, number][]) if (spacer.take(lx, ly, w, 2.4)) { parts.push(label(lx, ly, text, 1.9, AHIP_COLOUR)); break; }
     }
-    legend.push({ swatch: swatchFill(AHIP_COLOUR, AHIP_COLOUR, [...state.values()].some((v) => !v) ? '1.4,0.8' : undefined).replace('fill="', 'fill-opacity="0.3" fill="'), label: `Aboriginal Heritage Impact Permit boundary (Heritage NSW)${[...state.values()].some((v) => !v) ? ', dashed where expired' : ''}${permits.length > 8 ? `; ${permits.length} on the page, the nearest 8 numbered` : ''}` });
+    legend.push({ swatch: swatchFill(AHIP_COLOUR, AHIP_COLOUR, [...state.values()].some((v) => !v) ? '1.4,0.8' : undefined).replace('fill="', 'fill-opacity="0.3" fill="'), label: `Aboriginal Heritage Impact Permit boundary (Heritage NSW)${[...state.values()].some((v) => !v) ? ', dashed where expired' : ''}${permits.length > AHIP_NAMED ? `; ${permits.length} on the page, the nearest ${AHIP_NAMED} numbered` : ''}` });
   }
   // gazetted Aboriginal Places: in the strip drawn, beyond it pointed to
   const placesIn = c.places.filter((p) => { const [x, y] = wproj(p.lon, p.lat); return x >= 0 && y >= 0 && x <= wp.wMm && y <= wp.hMm; });
