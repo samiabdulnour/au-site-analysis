@@ -977,7 +977,7 @@ family's strong colour with a white edge and its number in white (a quiet grey
 on the site and where no zone is mapped), the white cadastre, Kingfisher's
 grotesk, its peach street names and its magenta site. The climate is drawn in
 the office's marks for this palette (`src/render/climateSymbols.ts`, taken
-as drawn from its symbol sheet): each solstice's sun path a translucent
+as drawn from its symbol sheet): each solstice's sun path a nearly solid
 crescent in warm yellow, deepest at noon and running from amber at its points
 to its brightest yellow in the middle (summer outer, winter inner), with the
 office's small rayed sun in orange at each rise and set; each wind a smaller

@@ -197,6 +197,8 @@ const SUN_NAME_W = 30, SUN_NAME_H = 14;
 // sweep (°), and the view triangle's length and half angle (°).
 const DRAWN_SUN_R = 13, DRAWN_WIND_HALF = 17, DRAWN_VIEW_L = 32, DRAWN_EDGE = 0.35;
 const RAY_SUN_R = 8, ARROW_HALF = 5.5, SUN_BAND_W = 16, WIND_BAND_W = 15, WIND_BAND_SPAN = 24, BAND_VIEW_L = 30, BAND_VIEW_HALF = 17;
+/** The sun's crescent all but solid, so its yellow holds over the darker zones; the winds' stay translucent. */
+const SUN_BAND_OPACITY = 0.9;
 
 /**
  * A crescent along a circle about c, between two page bearings: its outer edge
@@ -1442,7 +1444,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
     [[summerAz, Ro], [winterAz, Ri]].forEach(([az, R], i) => {
       const [x0, y0] = sunAt(az, R), [x1, y1] = sunAt(-az, R), [xn, yn] = sunAt(0, R);
       layers.push(`<defs><linearGradient id="sunBand${i}" gradientUnits="userSpaceOnUse" x1="${((x0 + x1) / 2).toFixed(1)}" y1="${((y0 + y1) / 2).toFixed(1)}" x2="${xn.toFixed(1)}" y2="${yn.toFixed(1)}"><stop offset="0" stop-color="${from}"/><stop offset="1" stop-color="${to}"/></linearGradient></defs>` +
-        `<path d="${crescentD(centroidPx, R, page(-az), page(az), SUN_BAND_W)}" fill="url(#sunBand${i})" fill-opacity="0.6"/>`);
+        `<path d="${crescentD(centroidPx, R, page(-az), page(az), SUN_BAND_W)}" fill="url(#sunBand${i})" fill-opacity="${SUN_BAND_OPACITY}"/>`);
     });
   }
   // The winds' crescents go down before the suns, so a sun from the same
@@ -1792,7 +1794,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
         'SUN PATH', 'summer dashed, winter dotted; sunrise and sunset');
     else if (look.sun === 'band')
       row(`<defs><linearGradient id="lsunBand" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="${look.marks!.sunBand[0]}"/><stop offset="0.5" stop-color="${look.marks!.sunBand[1]}"/><stop offset="1" stop-color="${look.marks!.sunBand[0]}"/></linearGradient></defs>` +
-        `<path d="M${SWATCH_X},1.2 Q${mid},9 ${SWATCH_X + SWATCH_W},1.2 Q${mid},4.4 ${SWATCH_X},1.2 Z" fill="url(#lsunBand)" fill-opacity="0.6"/>` +
+        `<path d="M${SWATCH_X},1.2 Q${mid},9 ${SWATCH_X + SWATCH_W},1.2 Q${mid},4.4 ${SWATCH_X},1.2 Z" fill="url(#lsunBand)" fill-opacity="${SUN_BAND_OPACITY}"/>` +
         `<path transform="translate(${SWATCH_X + 2.2},2.2) scale(2)" d="${RAY_SUN}" fill="${look.sunFill}"/>`,
         'SUN PATH', 'summer outer, winter inner; sunrise and sunset');
     else row(`<g transform="translate(${mid},3.2)"><path d="M${Array.from({ length: 24 }, (_, k) => { const a = (k / 24) * Math.PI * 2, r = k % 2 ? 2.4 : (k % 6 === 2 ? 4.3 : 3.7); return `${(r * Math.cos(a)).toFixed(2)},${(r * Math.sin(a)).toFixed(2)}`; }).join('L')}Z" fill="#fff" stroke="${look.sunEdge}" stroke-width="0.35" stroke-linejoin="round"/><circle r="1.7" fill="#fff" stroke="${look.sunEdge}" stroke-width="0.35"/></g>`, 'SUN PATH', 'summer solid, winter dashed; solar hours');
