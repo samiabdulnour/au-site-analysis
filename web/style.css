@@ -458,11 +458,11 @@ h2 { font-size: 1em; font-weight: 400; text-transform: uppercase;
    word's left edge. */
 .deftable.plans .yn { text-align: center; }
 @media (max-width: 560px) {
-  /* Columns sized to their words now the cells are ticks: FREE narrow, ONE
-     ADDRESS wrapping to its two lines, SUBSCRIPTION as wide as its one word.
-     Rows go back to fitting their content: evened to 1fr they would all take
-     the wrapped header's two lines. */
-  .deftable.plans { grid-template-columns: 7rem 4rem 6rem 9.5rem; grid-auto-rows: auto; }
+  /* Columns sized to their words now the cells are ticks: FREE as wide as
+     "watermarked", ONE ADDRESS wrapping to its two lines, SUBSCRIPTION as
+     wide as its one word. Rows go back to fitting their content: evened to
+     1fr they would all take the wrapped header's two lines. */
+  .deftable.plans { grid-template-columns: 7rem 7rem 6rem 9.5rem; grid-auto-rows: auto; }
   .deftable.plans .k, .deftable.plans .v { padding-left: .6rem; padding-right: .6rem; }
 }
 #mine { margin-top: .2rem; }
