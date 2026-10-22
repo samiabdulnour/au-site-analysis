@@ -182,18 +182,32 @@ out. `ACCESS_CODE` still works and carries the subscription, so the office keeps
 clean PDFs and CAD without an account; unset it once everyone has one.
 `SUBSCRIPTION_EMAILS=a@x.com,b@y.com` gives those accounts the subscription
 without charge, which is also the way to see the subscriber's side before
-billing is switched on.
+billing is switched on — once the address is verified: an account still
+waiting on its verification click gets nothing from the list, or anyone could
+claim a listed address that had not signed up yet. On a server without email
+there is no verifying, so list only addresses that already have accounts.
 
-**Email: verification and password reset.** The server sends two emails: a
-sign-up is sent a verification link; the page notes an unverified address (and
-resends the link), but generating never waits on it — with drawing open to
-everyone, a gate there would only mean signing out to get past it. What the
-click still proves is the mailbox the reset link goes to. The sign-in form's
-`reset` emails a password-reset link, which opens the page asking for the new
-password; setting it signs that browser in and every other one out (the
-cookie's signature covers the password hash). Each link's token is random and
-stored only as its SHA-256, so the accounts file never holds anything that
-opens an account.
+**Email: sign-up and password reset.** With email on, a sign-up is not an
+account until its mailbox answers: `SIGN UP` emails a link (`/?confirm=…`),
+the page it opens has a `FINISH SIGNING UP` button, and the press makes the
+account, verified, and signs that browser in. A press rather than the link's
+own opening, because mail scanners open every link in a message. Until then
+the address and the password's hash wait in `out/accounts/pending.json` for
+24 hours. Every sign-up is answered alike, so the form does not say which
+addresses are taken; a taken address is emailed "you already have an
+account" instead of a link. An account somebody made on an address and never
+verified (before this, sign-up made the account at once) is left as it is,
+but a sign-up from that address gets a link, and the press hands the account
+to whoever proved the mailbox, with their password, signing the other out.
+The sign-in form's `reset` emails a password-reset link, which opens the page
+asking for the new password; setting it signs that browser in and every other
+one out (the cookie's signature covers the password hash). Each link's token
+is random and stored only as its SHA-256, so neither file ever holds anything
+that opens an account. One inbox is sent at most three emails an hour and ten
+a day, and the server at most `EMAIL_MAX_PER_HOUR` (100) in all, with a
+warning in the log when it holds some back: the forms mail whatever address is
+typed into them, and a mailbox used to flood strangers is one its host
+suspends.
 
 They go out one of two ways (`src/email.ts`). Through a mailbox of your own
 over SMTP — Namecheap Private Email, for one — in `/etc/site-analyst.env`:
@@ -227,10 +241,39 @@ asked. Sending is not awaited on sign-up, so a failure shows only in the log;
 the page's RESEND button awaits it, which makes it the quickest test.
 
 With neither way complete nothing is sent and both features switch themselves
-off: new accounts count as verified, and the reset form says this server
-cannot email a link. Accounts from before verification existed count as
-verified too — the feature arriving must not lock out everyone already
-signed up.
+off: `SIGN UP` makes the account at once, as it did before email, and the
+reset form says this server cannot email a link. Accounts from before
+verification existed count as verified — the feature arriving must not lock
+out everyone already signed up.
+
+**Bots.** Sign-up, the reset email and sign-in are what a bot fills in, so
+they carry three defences on top of the per-IP limits:
+
+- **A human check**, [Cloudflare Turnstile](https://www.cloudflare.com/products/turnstile/)
+  (`src/human.ts`), which asks most people nothing and the rest to tick a
+  box. It stands in front of every sign-up and reset email, and in front of
+  sign-in after three wrong passwords at one account or five from one
+  address — never a lockout, which would let a stranger keep an owner out.
+  Make a widget for the domain on the Turnstile page of a free Cloudflare
+  account (the DNS stays where it is), then in `/etc/site-analyst.env`:
+
+  ```
+  TURNSTILE_SITE_KEY=0x4AAA…        # public: it goes to the page
+  TURNSTILE_SECRET_KEY=0x4AAA…      # this server's alone
+  ```
+
+  Unset, there is no check. Then ten wrong passwords at one account in
+  fifteen minutes hold it for the rest of the window instead, whichever
+  addresses they came from. If Cloudflare does not answer, the check refuses
+  rather than lets through, and says so in the log.
+- **A honeypot**, a field off the page that only a bot fills in: it is
+  answered like anyone, and nothing is made or sent.
+- **The email caps** above, so the forms cannot be turned on strangers'
+  inboxes however many addresses a bot comes from.
+
+The per-IP limits read the address Caddy adds as the last `X-Forwarded-For`
+entry, not the first, which is whatever the visitor sent. They are held in
+memory, so a deploy clears them; a visitor cannot make a deploy happen.
 
 **The watermark.** Put it in `assets/watermark/watermark.png`. It is stamped on
 each page when a free account downloads, not when the sheet is drawn, so the

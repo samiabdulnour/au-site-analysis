@@ -136,6 +136,10 @@ docker rm -f site-analyst >/dev/null 2>&1 || true
 # password-reset link (src/email.ts); SMTP wins when both are set. Unset,
 # accounts count as verified and the reset form says it cannot send.
 #
+# TURNSTILE_SITE_KEY and TURNSTILE_SECRET_KEY switch on the human check at
+# sign-up, for a reset email, and at sign-in after a few wrong passwords
+# (src/human.ts); unset, the forms work without it.
+#
 # SITE_ANALYSIS_CONTACT (an email or URL) is a direct contact for whoever
 # operates this instance. Set, it is appended to the User-Agent every outbound
 # request carries, sent as a From header, and listed first at
@@ -158,6 +162,8 @@ docker run -d --name site-analyst --restart unless-stopped \
   -e SMTP_PORT="${SMTP_PORT:-}" \
   -e SMTP_USER="${SMTP_USER:-}" \
   -e SMTP_PASS="${SMTP_PASS:-}" \
+  -e TURNSTILE_SITE_KEY="${TURNSTILE_SITE_KEY:-}" \
+  -e TURNSTILE_SECRET_KEY="${TURNSTILE_SECRET_KEY:-}" \
   -e PRICE_LABEL="${PRICE_LABEL:-}" \
   -e SITE_PRICE_LABEL="${SITE_PRICE_LABEL:-}" \
   -e TFNSW_API_KEY="$TFNSW_API_KEY" \
