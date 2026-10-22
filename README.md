@@ -705,7 +705,9 @@ and purple, the railway orange. The legend swatch shows a few buildings on
 their ground. The colours are exactly those the reference prints. Streets, numbered
 places and the dotted lines are Flamingo's, but the street names and the institutions' number discs
 are the reference's peach, the parks' discs a light leaf green, and the lots
-and every building are drawn in a heavy white line.
+and every building are drawn in a heavy white line. The lots lie under the
+buildings, as part of the ground they stand on, so a lot line never cuts
+across a building's fill.
 
 **Heron** (`heron`) is the office sheet the restyle began from: the aerial,
 in greyscale (`aerialTone: 'grey'`), with the lots and every building as heavy
@@ -983,17 +985,8 @@ local metres:
   building area, the office template's BEA) by the template's building
   efficiencies, as sun-study's yield analysis keeps them: 72.5% residential,
   95% retail, 85% commercial; the net lettable area is 85% of residential
-  GFA and 90% of retail and commercial.
-- **To the height.** Where the FSR would stop the building below its
-  height at full plates, the plates above the shops and the podium are
-  slimmed by one share until the ratio's floor area reaches the top storey
-  the height holds: the same floor area and apartments, taller and slimmer —
-  a perimeter block's wings shallower round a wider courtyard, a block or a
-  tower set further in. 9-11 Thallon St rises to 8 storeys at 82% plates;
-  150 George St, Parramatta becomes its podium and a 52-storey tower of
-  828 m² plates to RL 207.6. No plate is slimmed under 250 m²
-  (`minPlateSqm`); `"reachHeight": false` in `yield_assumptions.json` keeps
-  full plates and stops the building where the ratio runs out.
+  GFA and 90% of retail and commercial. Where the FSR governs, a leaner
+  efficiency builds the same floor area higher.
 - **Apartments.** The net lettable (saleable) area over the mix's
   average size, shared out by the mix. The mix is the office's feasibility
   template, as sun-study's yield analysis keeps it: no studios, 20% one

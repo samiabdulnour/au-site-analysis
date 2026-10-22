@@ -198,20 +198,24 @@ export function withDaStoreys(data: BuildingsData, lots: GeoJSONFC, applications
 /** Every building footprint touching the extent, with what is known of its height. */
 export async function fetchBuildings(extent: Extent, log: (m: string) => void = () => {}): Promise<BuildingsData> {
   const key = ['xmin', 'ymin', 'xmax', 'ymax'].map((k) => Math.round(extent[k as keyof Extent])).join('_');
-  const data = await cachedJson('buildings', key, 30 * DAY_MS, async (): Promise<BuildingsData> => {
-    try {
-      const o = await fromOverture(extent, log);
-      if (o && o.buildings.length) return o;
-    } catch (e: any) {
-      log(`  WARN Overture buildings failed: ${e?.message ?? e}; trying OpenStreetMap`);
-    }
-    try {
+  let data: BuildingsData;
+  try {
+    data = await cachedJson('buildings', key, 30 * DAY_MS, async (): Promise<BuildingsData> => {
+      try {
+        const o = await fromOverture(extent, log);
+        if (o && o.buildings.length) return o;
+      } catch (e: any) {
+        log(`  WARN Overture buildings failed: ${e?.message ?? e}; trying OpenStreetMap`);
+      }
       return await fromOsm(extent, log);
-    } catch (e: any) {
-      log(`  WARN OpenStreetMap buildings failed: ${e?.message ?? e}`);
-      return { source: 'none', buildings: [], fetchedAt: new Date().toISOString(), note: String(e?.message ?? e) };
-    }
-  });
+    });
+  } catch (e: any) {
+    // Neither source answered, and that is not cached: an outage is gone by
+    // the next sheet, where a cached "none" drew every sheet of this window
+    // without buildings for a month, and said nothing after the first.
+    log(`  WARN OpenStreetMap buildings failed: ${e?.message ?? e}`);
+    data = { source: 'none', buildings: [], fetchedAt: new Date().toISOString(), note: String(e?.message ?? e) };
+  }
   // the centroid is recomputed on the way out, so a cache written before the centroid arithmetic was fixed still reads right
   return { ...data, buildings: data.buildings.map((b) => ({ ...b, centroid: ringCentroid(b.rings[0]) })) };
 }
