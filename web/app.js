@@ -446,12 +446,17 @@ let resetToken = /^[0-9a-f]{64}$/.test(boot.get('reset') || '') ? boot.get('rese
 // Back from the verification link: '1' verified, '0' expired or already used.
 const verifiedParam = boot.get('verified');
 if (verifiedParam !== null) history.replaceState(null, '', '/');
+// The about page's search submits here as ?address=: the address is typed
+// into the field on landing, once, and the URL cleaned so a reload or a
+// shared link does not keep re-searching it.
+let bootAddress = (boot.get('address') || '').trim();
+if (boot.has('address')) history.replaceState(null, '', '/');
 
 function renderAuth() {
   $('authRow').hidden = Boolean(resetToken);
   if (resetToken) {
     $('emailBar').hidden = true;
-    $('code').hidden = false;
+    $('codeBar').hidden = false;
     $('code').placeholder = 'new password, 8 characters or more';
     $('code').autocomplete = 'new-password';
     $('authGo').textContent = 'SET NEW PASSWORD';
@@ -465,7 +470,7 @@ function renderAuth() {
   $('emailBar').hidden = authMode === 'code';
   // Asking for the reset email takes only the address; a password field here
   // would invite typing the new password into a form that cannot take one yet.
-  $('code').hidden = authMode === 'reset';
+  $('codeBar').hidden = authMode === 'reset';
   $('authGo').textContent = m[2];
   $('code').placeholder = m[3];
   $('code').autocomplete = m[4];
@@ -501,6 +506,13 @@ function enter(j) {
   f.hidden = false;
   applySession(j);
   addrInput.focus();
+  // Carried over from the about page's search: the field takes the address as
+  // if it had been typed, so the suggestions open on what was searched.
+  if (bootAddress) {
+    addrInput.value = bootAddress;
+    bootAddress = '';
+    addrInput.dispatchEvent(new Event('input'));
+  }
   resumeJob();
   // They came to the form from UNLOCK THIS ADDRESS: carry on to Stripe now
   // that there is an account to buy with.
