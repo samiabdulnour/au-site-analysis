@@ -1803,7 +1803,7 @@ const greyBase = (t: ReturnType<typeof tpl>) => ({ ...t, water: '#eef3f6', road:
 
 
 /** The narrative: the slide's own facts in two or three sentences, cut where the next would run past `max`. */
-const brief = (parts: (string | undefined | false | null)[], max = 430) => {
+export const brief = (parts: (string | undefined | false | null)[], max = 430) => {
   let out = '';
   for (const part of parts) { if (!part) continue; const next = out ? `${out} ${part}` : part; if (out && next.length > max) break; out = next; }
   return out;
@@ -1822,10 +1822,10 @@ const atlasSub = (b: SlidesBundle, ...rest: (string | undefined | false | null)[
   return [`${b.siteAddress}${lga ? ` ${lga}` : ''}`, ...rest].filter(Boolean).join(' · ');
 };
 /** The left page's column of blocks, from under the second rule. */
-const zFlow = (blocks: string[], top = 44) => `<div class="zflow" style="top:${top}mm">${blocks.join('')}</div>`;
-const zBlock = (head: string, body: string, right?: string) => `<div class="zblk">${zHead(head, right)}${body}</div>`;
+export const zFlow = (blocks: string[], top = 44) => `<div class="zflow" style="top:${top}mm">${blocks.join('')}</div>`;
+export const zBlock = (head: string, body: string, right?: string) => `<div class="zblk">${zHead(head, right)}${body}</div>`;
 /** The template's rows: a 6 pt label, an 8 pt value, a hairline under each; a grey 6 pt note under the value. */
-const zTable = (rows: { label: string; value: string | string[]; note?: string; dim?: boolean }[]) =>
+export const zTable = (rows: { label: string; value: string | string[]; note?: string; dim?: boolean }[]) =>
   rows.map((r) => `<div class="zr${r.dim ? ' dim' : ''}"><div class="l">${esc(r.label)}</div><div class="v">${(Array.isArray(r.value) ? r.value : [r.value]).map((v) => `<div>${esc(v)}</div>`).join('')}${r.note ? `<div class="n">${esc(r.note)}</div>` : ''}</div></div>`).join('');
 /** A square key for the legend: the site. */
 const SITE_KEY = (t: ReturnType<typeof tpl>): LegendEntry => ({ swatch: `<path d="M1.2,0.6H3.8V3H1.2Z" fill="${t.site}"/>`, label: 'The site' });
@@ -7360,50 +7360,10 @@ export function countrySlide(b: SlidesBundle): Slide {
 }
 
 /** The overall analysis deck: it has no themes, and is always drawn in its own template. */
-export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; slides: Slide[] } {
-  return withTemplate(DECK_TEMPLATE, () => drawSlides(b, meta));
-}
-
-function drawSlides(b: SlidesBundle, meta: SheetMeta): { html: string; slides: Slide[] } {
-  const facts = planningFacts(b);
-  const slides = [locationSlide(b), characterAtlas(b), planningAtlas(b), controlsAtlas(b, facts), strategicAtlas(b, facts), topographyAtlas(b), developmentAtlas(b, facts), builtFormAtlas(b, facts), movementSlide(b), greenAtlas(b), siteAtlas(b), conditionAtlas(b), sunAtlas(b), constraintsAtlas(b), countryAtlas(b), peopleAtlas(b), ocAtlas(b, facts), sourcesAtlas(b, facts)];
+/** The deck's page styles, the atlas pages' among them: the planning yield prints with them too. */
+export function deckCss(): string {
   const t = tpl();
-  const footerLeft = ['SITE ANALYST — OVERALL ANALYSIS', b.siteAddress, meta.client ? `for ${meta.client}` : '', meta.jobNo ? `job ${meta.jobNo}` : ''].filter(Boolean).join(' · ');
-  // The atlas page, after the office's template (Z. 2026-10): measurements in mm from her A3 spread.
-  const atlasPage = (s: Slide, i: number) => {
-    const [line1, ...rest] = s.subtitle.split(' · ');
-    return `
-<section class="slide atlas" id="${esc(s.id)}">
-  <div class="abs znum" style="left:12mm;top:10.6mm">${String(i + 1).padStart(2, '0')}</div>
-  <div class="abs znum" style="left:75.3mm;top:10.6mm">${esc(s.title)}</div>
-  <div class="abs zrule" style="left:12mm;top:20mm;width:186mm"></div>
-  <div class="abs zsub" style="left:75.3mm;top:23.8mm;width:122.7mm">${esc(line1)}${rest.length ? `<br>${rest.map(esc).join('<span class="zbar">|</span>')}` : ''}</div>
-  <div class="abs zrule" style="left:75.33mm;top:35mm;width:122.67mm"></div>
-  ${s.narrative ? `<div class="abs znarr" style="left:12mm;top:43.9mm;width:58.5mm;color:${s.accent ?? '#000000'}">${esc(s.narrative)}</div>` : ''}
-  ${s.textHtml ? `<div class="abs zbody" style="left:75.3mm;top:44mm;width:122.7mm">${s.textHtml}</div>` : ''}
-  ${s.figureHtml}
-  ${s.legend?.length ? zLegend(s.legend) : ''}
-  ${s.sources ? `<div class="abs zsrc" style="left:12mm;bottom:11.6mm;width:58.5mm">${esc(s.sources)}</div>` : ''}
-</section>`;
-  };
-  const pages = slides.map((s, i) => s.bleed || s.full ? atlasPage(s, i) : `
-<section class="slide${s.bleed || s.full ? ' atlas' : ''}" id="${esc(s.id)}">
-  <div class="abs rh" style="left:${L_X}mm;top:10mm;width:${s.full ? 115 : L_W}mm"><span>Overall analysis</span>${s.full ? '' : `<span>${esc(b.siteAddress)}</span>`}</div>
-  ${s.bleed || s.full ? '' : `<div class="abs rh" style="left:${FIELD_X}mm;top:10mm;width:${FIELD_W}mm"><span>${esc(s.title)}</span><span>${String(i + 1).padStart(2, '0')} / ${slides.length}</span></div>
-  <div class="abs foldtick" style="left:${FOLD}mm;top:3mm"></div>
-  <div class="abs foldtick" style="left:${FOLD}mm;top:${SLIDE_H - 7}mm"></div>`}
-  <div class="abs title" style="left:${L_X}mm;top:17.5mm;width:${s.full ? 115 : L_W}mm">${esc(s.title)}</div>
-  <div class="abs subtitle" style="left:${L_X}mm;top:26.5mm;width:${s.full ? 115 : L_W}mm">${esc(s.subtitle)}</div>
-  <div class="abs text" style="left:${L_X}mm;top:${s.textY ?? FIELD_Y}mm;width:${TEXT_W}mm;height:${SLIDE_H - (s.textY ?? FIELD_Y) - 16}mm">${s.textHtml}</div>
-  ${s.figureHtml}
-  <div class="abs foot" style="left:${L_X}mm;top:${FOOT_Y}mm;width:${s.full ? 115 : L_W}mm"><span>${s.bleed || s.full ? '' : esc(footerLeft)}</span><span>${s.full ? '' : i * 2 + 1}</span></div>
-  ${s.bleed || s.full ? `<div class="abs foot" style="left:${FIELD_X}mm;top:${FOOT_Y}mm;width:${FIELD_W}mm"><span></span><span style="background:#ffffff;padding:0 1.6mm">${s.full ? `${i * 2 + 1}–${i * 2 + 2}` : i * 2 + 2}</span></div>` : `<div class="abs foot" style="left:${FIELD_X}mm;top:${FOOT_Y}mm;width:${FIELD_W}mm"><span>generated ${esc(b.generatedAt.slice(0, 10))}</span><span>${i * 2 + 2}</span></div>`}
-</section>`).join('\n');
-
-  const html = `<!DOCTYPE html>
-<html lang="en"><head><meta charset="utf-8"><title>${esc(b.siteAddress)} — OVERALL ANALYSIS</title>
-<style>
-  @page { size: ${SLIDE_W}mm ${SLIDE_H}mm; margin: 0; }
+  return `  @page { size: ${SLIDE_W}mm ${SLIDE_H}mm; margin: 0; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { font-family: ${t.font}; background: ${t.paper}; color: ${t.ink}; }
   .slide { position: relative; width: ${SLIDE_W}mm; height: ${SLIDE_H}mm; overflow: hidden; background: ${t.paper}; page-break-after: always; break-after: page; }
@@ -7539,7 +7499,54 @@ function drawSlides(b: SlidesBundle, meta: SheetMeta): { html: string; slides: S
   .slide.atlas .zlist .it .no { position: absolute; left: 0; top: 0.2mm; width: 3.6mm; height: 3.6mm; border-radius: 1.8mm; font-size: 6pt; line-height: 3.6mm; text-align: center; color: #ffffff; }
   .slide.atlas .zlist .it b { font-weight: 700; }
   .slide.atlas .maplabel { font-size: 6pt; letter-spacing: 0.09em; text-transform: uppercase; background: #ffffff; padding: 1.3mm 2.4mm; line-height: 1.2; }
-</style></head>
+`;
+}
+
+// The atlas page, after the office's template (Z. 2026-10): measurements in mm from her A3 spread.
+export function atlasPage(s: Slide, i: number): string {
+  const [line1, ...rest] = s.subtitle.split(' · ');
+  return `
+<section class="slide atlas" id="${esc(s.id)}">
+<div class="abs znum" style="left:12mm;top:10.6mm">${String(i + 1).padStart(2, '0')}</div>
+<div class="abs znum" style="left:75.3mm;top:10.6mm">${esc(s.title)}</div>
+<div class="abs zrule" style="left:12mm;top:20mm;width:186mm"></div>
+<div class="abs zsub" style="left:75.3mm;top:23.8mm;width:122.7mm">${esc(line1)}${rest.length ? `<br>${rest.map(esc).join('<span class="zbar">|</span>')}` : ''}</div>
+<div class="abs zrule" style="left:75.33mm;top:35mm;width:122.67mm"></div>
+${s.narrative ? `<div class="abs znarr" style="left:12mm;top:43.9mm;width:58.5mm;color:${s.accent ?? '#000000'}">${esc(s.narrative)}</div>` : ''}
+${s.textHtml ? `<div class="abs zbody" style="left:75.3mm;top:44mm;width:122.7mm">${s.textHtml}</div>` : ''}
+${s.figureHtml}
+${s.legend?.length ? zLegend(s.legend) : ''}
+${s.sources ? `<div class="abs zsrc" style="left:12mm;bottom:11.6mm;width:58.5mm">${esc(s.sources)}</div>` : ''}
+</section>`;
+}
+
+export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; slides: Slide[] } {
+  return withTemplate(DECK_TEMPLATE, () => drawSlides(b, meta));
+}
+
+function drawSlides(b: SlidesBundle, meta: SheetMeta): { html: string; slides: Slide[] } {
+  const facts = planningFacts(b);
+  const slides = [locationSlide(b), characterAtlas(b), planningAtlas(b), controlsAtlas(b, facts), strategicAtlas(b, facts), topographyAtlas(b), developmentAtlas(b, facts), builtFormAtlas(b, facts), movementSlide(b), greenAtlas(b), siteAtlas(b), conditionAtlas(b), sunAtlas(b), constraintsAtlas(b), countryAtlas(b), peopleAtlas(b), ocAtlas(b, facts), sourcesAtlas(b, facts)];
+  const t = tpl();
+  const footerLeft = ['SITE ANALYST — OVERALL ANALYSIS', b.siteAddress, meta.client ? `for ${meta.client}` : '', meta.jobNo ? `job ${meta.jobNo}` : ''].filter(Boolean).join(' · ');
+  const pages = slides.map((s, i) => s.bleed || s.full ? atlasPage(s, i) : `
+<section class="slide${s.bleed || s.full ? ' atlas' : ''}" id="${esc(s.id)}">
+  <div class="abs rh" style="left:${L_X}mm;top:10mm;width:${s.full ? 115 : L_W}mm"><span>Overall analysis</span>${s.full ? '' : `<span>${esc(b.siteAddress)}</span>`}</div>
+  ${s.bleed || s.full ? '' : `<div class="abs rh" style="left:${FIELD_X}mm;top:10mm;width:${FIELD_W}mm"><span>${esc(s.title)}</span><span>${String(i + 1).padStart(2, '0')} / ${slides.length}</span></div>
+  <div class="abs foldtick" style="left:${FOLD}mm;top:3mm"></div>
+  <div class="abs foldtick" style="left:${FOLD}mm;top:${SLIDE_H - 7}mm"></div>`}
+  <div class="abs title" style="left:${L_X}mm;top:17.5mm;width:${s.full ? 115 : L_W}mm">${esc(s.title)}</div>
+  <div class="abs subtitle" style="left:${L_X}mm;top:26.5mm;width:${s.full ? 115 : L_W}mm">${esc(s.subtitle)}</div>
+  <div class="abs text" style="left:${L_X}mm;top:${s.textY ?? FIELD_Y}mm;width:${TEXT_W}mm;height:${SLIDE_H - (s.textY ?? FIELD_Y) - 16}mm">${s.textHtml}</div>
+  ${s.figureHtml}
+  <div class="abs foot" style="left:${L_X}mm;top:${FOOT_Y}mm;width:${s.full ? 115 : L_W}mm"><span>${s.bleed || s.full ? '' : esc(footerLeft)}</span><span>${s.full ? '' : i * 2 + 1}</span></div>
+  ${s.bleed || s.full ? `<div class="abs foot" style="left:${FIELD_X}mm;top:${FOOT_Y}mm;width:${FIELD_W}mm"><span></span><span style="background:#ffffff;padding:0 1.6mm">${s.full ? `${i * 2 + 1}–${i * 2 + 2}` : i * 2 + 2}</span></div>` : `<div class="abs foot" style="left:${FIELD_X}mm;top:${FOOT_Y}mm;width:${FIELD_W}mm"><span>generated ${esc(b.generatedAt.slice(0, 10))}</span><span>${i * 2 + 2}</span></div>`}
+</section>`).join('\n');
+
+  const html = `<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>${esc(b.siteAddress)} — OVERALL ANALYSIS</title>
+<style>
+${deckCss()}</style></head>
 <body>${pages}</body></html>`;
   return { html, slides };
 }

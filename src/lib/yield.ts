@@ -170,7 +170,8 @@ export function futureHeight(
 }
 
 /** A building standing on the site today: its footprint, and what is recorded of its height. */
-export interface ExistingBuilding { footprintSqm: number; heightM?: number; storeys?: number }
+/** A building on the site: its ground cover, what is recorded of its height, and its outline (lon/lat, outer ring first) for the drawings; a bundle from before the outlines has none. */
+export interface ExistingBuilding { footprintSqm: number; heightM?: number; storeys?: number; rings?: number[][][] }
 
 /**
  * What stands on the site today, in one line: the buildings' count and
@@ -215,6 +216,8 @@ export interface Tier {
   plate: XY[][];
   /** The plate's limit, when one applies: 'depth' (ADG 2E) or 'tower' (the plate size). */
   held?: 'depth' | 'tower';
+  /** A building that stands, rebuilt on its own footprint: no setbacks of the study's. */
+  existing?: boolean;
 }
 
 export interface YieldInput {
@@ -448,6 +451,38 @@ export function withFour<T extends { three: number; four: number }>(merged: T, g
   return { ...merged, four: given?.four ?? given?.three ?? merged.four };
 }
 
+/** A building that stands on the site: its footprint (local metres) and its height. */
+export interface Standing { rings: XY[][]; heightM: number }
+
+/**
+ * What stands, rebuilt on its own footprints to its own height: the floor
+ * area a building over today's controls keeps where it is refurbished, or
+ * rebuilt to the envelope it already has under a clause 4.6 variation argued
+ * on that bulk (existing use rights carrying a use the zone has since
+ * dropped). The zone's building type sets the uses (apartments where it takes
+ * none); the storeys are the study's floor heights under each building's
+ * height, and the floor space ratio is not applied.
+ */
+export function computeRetained(input: YieldInput & { standing: Standing[] }): YieldResult {
+  const base = computeYield({ ...input, hobM: undefined });
+  const a = base.assumptions;
+  const arch: Archetype = base.archetype === 'none' ? 'residential' : base.archetype;
+  const ground = arch === 'mixed' ? a.groundRetailF2F : arch === 'commercial' ? a.commercialF2F : a.residentialF2F;
+  const typical = arch === 'commercial' ? a.commercialF2F : a.residentialF2F;
+  const tiers: Tier[] = [];
+  let tallest = 0;
+  for (const st of input.standing) {
+    const n = storeysUnder(st.heightM, ground, typical, a.roofAllowance);
+    const plateSqm = st.rings.reduce((t, rg, i) => t + (i ? -1 : 1) * ringArea(rg), 0);
+    if (!n || plateSqm < 1) continue;
+    tallest = Math.max(tallest, n);
+    const tier = (from: number, to: number, use: Use): Tier => ({ name: 'existing', from, to, use, front: 0, side: 0, rear: 0, envelopeSqm: plateSqm, plateSqm, envelope: st.rings, plate: st.rings, existing: true });
+    if (arch === 'mixed') { tiers.push(tier(1, 1, 'retail')); if (n > 1) tiers.push(tier(2, n, 'residential')); }
+    else tiers.push(tier(1, n, arch === 'commercial' ? 'commercial' : 'residential'));
+  }
+  return fill({ ...input, hobM: undefined, fsr: undefined }, a, arch, tiers, tallest, ground, typical);
+}
+
 export function computeYield(input: YieldInput): YieldResult {
   const a: YieldAssumptions = {
     ...DEFAULT_ASSUMPTIONS, ...input.assumptions,
@@ -505,7 +540,15 @@ export function computeYield(input: YieldInput): YieldResult {
     return { ...t, envelopeSqm, plateSqm: count(plateMask) * cellA * scale, envelope: outline(g, env), plate: outline(g, plateMask), held };
   });
 
-  // Storey by storey, until the height runs out or the floor space ratio does.
+  return fill(input, a, arch, tiers, storeysByHeight, ground, typical);
+}
+
+/**
+ * The floors, apartments and parking a set of tiers holds: storey by storey
+ * up each tier, until the height runs out or the floor space ratio does.
+ */
+function fill(input: YieldInput, a: YieldAssumptions, arch: Archetype, tiers: Tier[], storeysByHeight: number, ground: number, typical: number): YieldResult {
+  const A = input.siteAreaSqm;
   const eff = (u: Use) => (u === 'residential' ? a.residentialEfficiency : u === 'retail' ? a.retailEfficiency : a.commercialEfficiency);
   const cap = input.fsr ? input.fsr * A : Infinity;
   const floors: YieldResult['floors'] = [];
@@ -518,7 +561,8 @@ export function computeYield(input: YieldInput): YieldResult {
     floors.push({ storey: s, use: t.use, gba: t.plateSqm * (take / full), gfa: take });
     total += take;
   }
-  const storeys = floors.length;
+  // The tallest building's storeys: tiers side by side (buildings kept on their footprints) share storey numbers.
+  const storeys = floors.reduce((m, f) => Math.max(m, f.storey), 0);
   const gfaByUse: Record<Use, number> = { retail: 0, residential: 0, commercial: 0 };
   for (const f of floors) gfaByUse[f.use] += f.gfa;
   const heightM = storeys ? (storeys === 1 ? ground : ground + (storeys - 1) * typical) + a.roofAllowance : 0;
@@ -544,7 +588,7 @@ export function computeYield(input: YieldInput): YieldResult {
   const bicycles = Math.ceil(n * a.bicycles.perDwelling) + Math.ceil(n * a.bicycles.visitorPerDwelling) + Math.ceil(nonRes * a.bicycles.nonResidentialPerSqm);
   const basementLevels = totalCars ? Math.ceil((totalCars * a.basementSqmPerSpace) / (A * a.basementCoverage)) : 0;
 
-  const groundPlate = floors.length ? floors[0].gba : 0;
+  const groundPlate = floors.filter((f) => f.storey === 1).reduce((t, f) => t + f.gba, 0);
   const minDimension = A < 650 ? 0 : A <= 1500 ? 3 : 6;
   return {
     archetype: arch, assumptions: a, siteAreaSqm: A, hobM: input.hobM, fsr: input.fsr,

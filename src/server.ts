@@ -26,7 +26,7 @@ import { renderSheet, MAP_W, MAP_H, type SheetMeta } from './render/sheet.js';
 import { renderSiteSheet } from './render/siteSheet.js';
 import { renderSummarySheet } from './render/summarySheet.js';
 import { summaryCsv, summaryJson } from './export/summaryExport.js';
-import { renderYieldSheet, yieldCsv, yieldJson } from './render/yieldSheet.js';
+import { renderYieldDeck, yieldCsv, yieldJson } from './render/yieldSheet.js';
 import { renderSlides, slidesFacts, PANEL_W, PANEL_H, DA_PANEL_H, SLIDE_W, SLIDE_H } from './render/slides.js';
 import { withTemplate, themeFor, templateFor, type SheetKind } from './render/template.js';
 import { htmlToPdf, printSlides } from './render/pdf.js';
@@ -467,11 +467,11 @@ async function runJobBody(job: Job) {
     if (job.sheet === 'yield') {
       const yb = await runYieldPipeline(job.address, { outDir, log: (m) => job.log.push(m) });
       job.log.push('composing planning yield…');
-      const htmlPath = join(outDir, 'yield_sheet.html');
-      await writeFile(htmlPath, renderYieldSheet(yb, meta));
+      const htmlPath = join(outDir, 'yield_deck.html');
+      await writeFile(htmlPath, renderYieldDeck(yb, meta).html);
       job.log.push('printing PDF…');
       const pdfPath = join(outDir, 'PLANNING_YIELD.pdf');
-      await htmlToPdf(htmlPath, pdfPath, previewOf(outDir));
+      await printSlides(htmlPath, pdfPath, join(outDir, 'yield'), { widthMm: SLIDE_W, heightMm: SLIDE_H }, previewOf(outDir));
       job.pdfPath = pdfPath;
       // Like the summary it replaces, a table: CSV for Excel, JSON for the numbers behind it.
       const csvPath = join(outDir, 'PLANNING_YIELD.csv');
