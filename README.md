@@ -1055,8 +1055,9 @@ plain suns, open discs with eight rays, where the sun rises and sets at
 the two solstices, each named (WINTER SUNRISE, SUMMER SUNSET…) toward the
 centre, with no hours (`sun: 'circle'`). Each solstice's path joins its
 sunrise to its sunset over north as an arc of a circle about the site, the
-climate circle drawn smaller: the summer path solid, 26 mm inside the ring,
-the winter one dashed and 8 mm further in, each with its two suns on it.
+climate circle drawn smaller: the summer path solid, 17 mm inside the ring,
+the winter one dashed and 17 mm further in, so the three stand evenly apart,
+each path with its two suns on it.
 North is a black arrowhead standing
 out of the circle with N beyond it. The circle sits clear of the lot with room
 for the suns' names inside it, and short of the sheet's edge with the winds'

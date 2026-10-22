@@ -183,12 +183,13 @@ function windEntry(c: Pt, bearingDeg: number, rotationDeg: number): Pt {
 // each wind named around it outside a hatched band over the quarter it blows
 // from, each view named around it inside a white band over its sight line,
 // and the suns on the solstices' paths inside it, the summer path this far
-// in and the winter one a step further, with their names further in still.
+// in and the winter one as far again, with their names further in still.
 const WIND_BAND = 5, WIND_SPAN = 22;   // the bands' depth (mm) and half their sweep (°)
 const VIEW_BAND = 5, VIEW_SPAN = 10;
-const SUN_INSET = 26, SUN_SIZE = 2.4;
-// How much further in the winter path runs than the summer one (mm).
-const SUN_PATH_STEP = 8;
+const SUN_INSET = 17, SUN_SIZE = 2.4;
+// How much further in the winter path runs than the summer one (mm): the
+// same step, so the ring and the two paths stand evenly apart.
+const SUN_PATH_STEP = SUN_INSET;
 // How far a sun's rays reach from its centre, and a little room past them.
 const SUN_CLEAR = 4.5 * SUN_SIZE + 3;
 // A sun's name, two lines of the map's lettering, and the box it takes.
