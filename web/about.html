@@ -35,7 +35,15 @@
 
   <div class="masthead">
     <h1 class="name"><a href="/">SITE ANALYST</a></h1>
-    <a class="btn" href="/">GENERATE A DRAWING</a>
+    <!-- The way to a drawing from here is the address itself: a plain GET to
+         the landing page, which picks ?address= up, suggests and generates.
+         Empty, it is simply the way back to the tool. -->
+    <form class="bar search" action="/" method="get">
+      <input name="address" type="text" placeholder="search a NSW address"
+             aria-label="NSW street address"
+             autocomplete="off" autocapitalize="off" spellcheck="false">
+      <button class="go" type="submit">SEARCH</button>
+    </form>
   </div>
 
   <p class="lead">No model is involved in the drawing. Every line is placed by code from a

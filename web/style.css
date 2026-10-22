@@ -178,6 +178,20 @@ a { color: inherit; }
 /* A little tighter than a lone button, so all four fit beside the title. */
 .nav { display: flex; }
 .nav .btn { padding-left: 1rem; padding-right: 1rem; }
+/* The nav takes the width of the last three option columns — HOW IT WORKS,
+   PLANS and SIGN IN above sign up, code and reset — and its buttons share it
+   evenly, so with three of them its rules continue the table's own. */
+/* At least that width rather than exactly it: signed in, SIGN OUT and the
+   operator's STATUS join the row, which then grows to hold their words. The
+   tighter padding is what lets HOW IT WORKS fit a fifth of the page. */
+.masthead .nav { flex: 0 0 auto; min-width: 60%; }
+.masthead .nav .btn { flex: 1 1 0; text-align: center; padding-left: .4rem; padding-right: .4rem; }
+/* On a narrow page a fifth of it cannot hold HOW IT WORKS: the nav goes back
+   to fitting its words, and the table below stacks anyway. */
+@media (max-width: 700px) {
+  .masthead .nav { flex: 0 1 auto; }
+  .masthead .nav .btn { flex: 1 1 auto; }
+}
 
 /* ---- a finished sheet's links ------------------------------------------- */
 /* Under the progress box: OPEN PDF to press, then DOWNLOAD PDF and the files.
@@ -259,6 +273,13 @@ footer a { color: inherit; }
 .masthead { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start;
             gap: 1rem; margin-bottom: 2.6rem; }
 .masthead .name { margin-bottom: 0; }
+/* The about page's search, where the landing page's nav sits and at its
+   width. Beside the title it keeps the bar's own hairline and no margin of
+   its own; narrow, it takes a full line under the title instead. */
+.masthead .search { flex: 0 1 60%; margin-bottom: 0; }
+@media (max-width: 700px) {
+  .masthead .search { flex: 1 1 100%; }
+}
 .name a { text-decoration: none; }
 
 h2 { font-size: 1em; font-weight: 400; text-transform: uppercase;
@@ -401,7 +422,23 @@ h2 { font-size: 1em; font-weight: 400; text-transform: uppercase;
    unless told, like the options rows. */
 .bar[hidden] { display: none; }
 .bar.stack { margin-bottom: 0; }
-.opts.auth + .bar, .bar.stack + .bar { border-top: 0; }
+.opts.auth + .bar, .bar + .bar { border-top: 0; }
+/* Alone under the emailed reset link, with the row and the email hidden
+   above it, the password box draws its own top rule back. */
+.opts.auth[hidden] + .bar[hidden] + .bar { border-top: 1px solid var(--line); }
+/* The way in is its own button under the box, not a cell of it. It keeps the
+   last column's width and place, continuing the line GENERATE draws, and sits
+   clear of the box above and the words below. */
+.go.under {
+  display: block; width: fit-content; min-width: 20%;
+  margin: 1rem 0 1rem auto;
+  border: 1px solid var(--line);
+}
+/* On a phone the way-in options go two to a line: the button takes the
+   right-hand one's width. */
+@media (max-width: 560px) {
+  .go.under { min-width: 50%; }
+}
 
 /* What the subscription would add, shown to a free account as the way to it:
    still a box to press, but muted, since what it opens is the plans page. */
@@ -411,16 +448,31 @@ h2 { font-size: 1em; font-weight: 400; text-transform: uppercase;
 /* The about page's hairline table with a column for each way to have the
    drawings. It keeps its columns on a phone: stacked, "watermarked" and
    "clean" would lose which column they belong to. */
-.deftable.plans { grid-template-columns: 19% 1fr 1fr 1fr; grid-auto-rows: auto; }
+/* 1fr rows, not the about page's stated minimum: every row takes the tallest
+   one's height, so the boxes come out even instead of stepping with their
+   sentences. */
+.deftable.plans { grid-template-columns: 19% 1fr 1fr 1fr; grid-auto-rows: 1fr; }
 .deftable.plans .head { text-transform: uppercase; letter-spacing: .02em; }
 /* A phone has room for neither four columns of whole words nor a smaller type,
    so the table keeps its width and scrolls sideways in its own box; the page
    itself never does. Words stay whole rather than breaking mid-letter. */
 .plans-frame { overflow-x: auto; }
 .deftable.plans .k, .deftable.plans .v { overflow-wrap: normal; }
+/* A tick or a dash reads from the middle of its column; the price row keeps a
+   word's left edge. */
+.deftable.plans .yn { text-align: center; }
 @media (max-width: 560px) {
-  .deftable.plans { grid-template-columns: 7.5rem 9rem 9rem 10rem; }
+  /* Columns sized to their words now the cells are ticks: FREE narrow, ONE
+     ADDRESS wrapping to its two lines, SUBSCRIPTION as wide as its one word.
+     Rows go back to fitting their content: evened to 1fr they would all take
+     the wrapped header's two lines. */
+  .deftable.plans { grid-template-columns: 7rem 4rem 6rem 9.5rem; grid-auto-rows: auto; }
   .deftable.plans .k, .deftable.plans .v { padding-left: .6rem; padding-right: .6rem; }
 }
 #mine { margin-top: .2rem; }
 #howUnlock { margin-top: .8rem; }
+
+/* ---- sign-in: the bot trap and the human check ---------------------------- */
+/* Off the page, not hidden: a field that is display:none is one bots skip. */
+.trap { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+#human { margin-top: 1rem; }

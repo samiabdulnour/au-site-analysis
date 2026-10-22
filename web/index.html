@@ -74,9 +74,8 @@
     <div class="bar stack" id="emailBar">
       <input id="email" type="email" placeholder="email" autocomplete="username">
     </div>
-    <div class="bar">
+    <div class="bar stack" id="codeBar">
       <input id="code" type="password" placeholder="password" autocomplete="current-password">
-      <button class="go" id="authGo" type="submit">SIGN IN</button>
     </div>
     <!-- Sign-up only: the account records the terms it agreed to, and the
          server refuses a sign-up without this. -->
@@ -84,6 +83,17 @@
     <span>I agree to the <a href="/terms" target="_blank" rel="noopener">terms of use</a>:
     the drawings are made from open public data as it is available, with no guarantee
     that it is complete, current or correct.</span></label>
+    <!-- A field people never see, off the page rather than display:none (which
+         the simplest bots know to skip): only a bot fills it in, and the server
+         answers it like anyone and does nothing. -->
+    <input class="trap" id="website" name="website" type="text" tabindex="-1"
+           autocomplete="off" aria-hidden="true">
+    <!-- The human check (Cloudflare Turnstile), drawn here by app.js when the
+         server has one and this form needs it. -->
+    <div id="human" hidden></div>
+    <!-- Its own button under the box, not a cell of it: pressing in is a
+         different act from typing, so the two are not one rectangle. -->
+    <button class="go under" id="authGo" type="submit">SIGN IN</button>
     <div class="errline" id="authError"></div>
     <!-- Not an error: "the reset link is on its way", "email verified". -->
     <p class="lead muted" id="authNote" hidden></p>

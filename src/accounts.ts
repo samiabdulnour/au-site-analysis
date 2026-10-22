@@ -71,6 +71,7 @@ const accounts = new Map<string, Account>();
 export function initAccounts(dir: string) {
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   file = join(dir, 'accounts.json');
+  loadPending(join(dir, 'pending.json'));
   secret = process.env.SESSION_SECRET?.trim() ?? '';
   if (!secret) {
     const keyFile = join(dir, 'session.secret');
@@ -154,7 +155,7 @@ function derive(password: string, salt: Buffer, n: number, r: number, p: number)
       (err, key) => (err ? reject(err) : resolve(key))));
 }
 
-async function hashPassword(password: string): Promise<string> {
+export async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(16);
   const key = await derive(password, salt, N, R, P);
   // The parameters travel with the hash, so they can be raised later without
@@ -274,6 +275,108 @@ export async function resetPassword(a: Account, password: string) {
     emailVerified: a.emailVerified === 0 ? Date.now() : a.emailVerified,
     verifyTokenHash: undefined, verifyTokenExp: undefined,
   });
+}
+
+// ---- sign-ups waiting on their email -----------------------------------------
+//
+// With email on, a sign-up is not an account until its mailbox answers: the
+// address and the password's hash wait here, beside the accounts, under the
+// SHA-256 of the token the emailed link carries, and the click makes the
+// account. An address somebody typed but does not hold never becomes one, so
+// it cannot be squatted, claimed for a listed subscription, or counted.
+//
+// In a file of its own, written whole like accounts.json, because the auto-
+// deployer restarts the server whenever main moves and a link emailed a
+// minute before must still work. Capped, so a flood of sign-ups for made-up
+// addresses has a ceiling on disk as well as in the mail it may send.
+
+export const SIGNUP_HOURS = 24;
+const PENDING_MAX = 5000;
+
+/** `terms`: the version of the terms agreed to on the sign-up form, and when, carried to the account the link makes. */
+interface PendingSignup { email: string; passwordHash: string; tokenHash: string; exp: number; termsVersion?: string; termsAcceptedAt?: number }
+
+let pendingFile = '';
+/** By email: a second sign-up for the same address replaces the first, and its link. */
+const pending = new Map<string, PendingSignup>();
+
+function loadPending(path: string) {
+  pendingFile = path;
+  let rows: unknown;
+  try { rows = JSON.parse(readFileSync(path, 'utf8')); } catch { return; }
+  if (!Array.isArray(rows)) return;
+  for (const r of rows as PendingSignup[]) {
+    if (r && typeof r.email === 'string' && typeof r.tokenHash === 'string' && r.exp > Date.now())
+      pending.set(r.email, r);
+  }
+}
+
+function savePending() {
+  for (const [email, p] of pending) if (p.exp <= Date.now()) pending.delete(email);
+  const tmp = `${pendingFile}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify([...pending.values()]), { mode: 0o600 });
+  renameSync(tmp, pendingFile);
+}
+
+/**
+ * A sign-up waiting on its link; the token for the link, or undefined when
+ * the waiting list is full. The password arrives already hashed, so the caller
+ * can spend the same time on an address that has an account.
+ */
+export function startSignup(email: string, passwordHash: string, termsVersion?: string): string | undefined {
+  const e = normaliseEmail(email);
+  if (!pending.has(e) && pending.size >= PENDING_MAX) {
+    savePending();                                   // prunes the expired first
+    if (pending.size >= PENDING_MAX) return undefined;
+  }
+  const token = randomBytes(32).toString('hex');
+  pending.set(e, { email: e, passwordHash, tokenHash: tokenHash(token), exp: Date.now() + SIGNUP_HOURS * 3600_000, ...(termsVersion ? { termsVersion, termsAcceptedAt: Date.now() } : {}) });
+  savePending();
+  return token;
+}
+
+/** The link's email never left: take its sign-up back off the list. */
+export function dropSignup(email: string, token: string) {
+  const p = pending.get(normaliseEmail(email));
+  if (p && p.tokenHash === tokenHash(token)) { pending.delete(p.email); savePending(); }
+}
+
+/**
+ * The emailed link used: the account made, verified, with the password typed
+ * at sign-up. Where an account already holds the address it is that account
+ * that is answered for, and one never verified takes this password — the
+ * mailbox has just proved it, which nobody who signed up with it before did.
+ */
+export async function finishSignup(token: string): Promise<Account | undefined> {
+  if (!/^[0-9a-f]{64}$/.test(token)) return undefined;
+  const want = Buffer.from(tokenHash(token));
+  let found: PendingSignup | undefined;
+  for (const p of pending.values()) {
+    const got = Buffer.from(p.tokenHash);
+    if (p.exp > Date.now() && got.length === want.length && timingSafeEqual(got, want)) { found = p; break; }
+  }
+  if (!found) return undefined;
+  pending.delete(found.email);
+  savePending();
+  const existing = accountByEmail(found.email);
+  if (existing) {
+    if (!isVerified(existing)) {
+      updateAccount(existing, {
+        passwordHash: found.passwordHash, emailVerified: Date.now(),
+        verifyTokenHash: undefined, verifyTokenExp: undefined,
+        ...(found.termsVersion ? { termsVersion: found.termsVersion, termsAcceptedAt: found.termsAcceptedAt } : {}),
+      });
+    }
+    return existing;
+  }
+  const account: Account = {
+    id: randomUUID(), email: found.email, passwordHash: found.passwordHash,
+    createdAt: Date.now(), emailVerified: Date.now(),
+    ...(found.termsVersion ? { termsVersion: found.termsVersion, termsAcceptedAt: found.termsAcceptedAt } : {}),
+  };
+  accounts.set(account.id, account);
+  save();
+  return account;
 }
 
 // ---- sessions --------------------------------------------------------------

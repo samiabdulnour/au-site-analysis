@@ -517,7 +517,14 @@ interface PlanResult { svg: string; scale: number; kerbs: KerbLine[] }
  * height of building; the street names along the roads. Over it each tier's
  * envelope and plate, numbered.
  */
-function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w: number; h: number }, scheme: Scheme, id: string, room = 1.35): PlanResult {
+/**
+ * `room` is how much wider than the site the plan is drawn; `inset` keeps
+ * the north and the bar off the page's edge where the plan runs to it, and
+ * `keepOut` holds the boxes (sheet millimetres) a label laid over it covers.
+ */
+function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w: number; h: number }, scheme: Scheme, id: string,
+  opts: { room?: number; inset?: number; keepOut?: [number, number, number, number][] } = {}): PlanResult {
+  const room = opts.room ?? 1.35, inset = opts.inset ?? 0;
   const y = scheme.y;
   const xs = s.ring.map((p) => p.x), ys = s.ring.map((p) => p.y);
   const w = Math.max(...xs) - Math.min(...xs), h = Math.max(...ys) - Math.min(...ys);
@@ -531,7 +538,7 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
   const local = (rg: number[][]) => rg.map(([lon, lat]) => s.toLocal(lon, lat));
   // What is written is kept apart: each word's box, in sheet millimetres.
   type Box = [number, number, number, number];
-  const taken: Box[] = [];
+  const taken: Box[] = [...(opts.keepOut ?? [])];
   const clear = (bx: Box) => bx[0] >= box.x + 1 && bx[2] <= box.x + box.w - 1 && bx[1] >= box.y + 1 && bx[3] <= box.y + box.h - 1
     && !taken.some((t) => bx[0] < t[2] && bx[2] > t[0] && bx[1] < t[3] && bx[3] > t[1]);
   const out: string[] = [];
@@ -567,11 +574,11 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
   out.push(`<path d="${path(s.ring)}" fill="none" stroke="${SITE_RED}" stroke-width="0.6" stroke-dasharray="3,1.2"/>`);
 
   // North, and a bar of round metres, first: what is written later keeps off them.
-  const nx = box.x + box.w - 7, ny = box.y + 8;
+  const nx = box.x + box.w - 7 - inset, ny = box.y + 8 + inset;
   out.push(`<g transform="translate(${nx},${ny})"><path d="M0,-4.4 L1.6,3.6 L0,2 L-1.6,3.6 Z" fill="#1c1c1c"/><text y="-5.6" text-anchor="middle" font-size="2.8" font-weight="700">N</text></g>`);
   taken.push([nx - 4, ny - 9, nx + 4, ny + 5]);
   const bar = [5, 10, 20, 50, 100].find((m) => m * mm >= 18) ?? 100;
-  const bx = box.x + 2, by = box.y + box.h - 3;
+  const bx = box.x + 2 + inset, by = box.y + box.h - 3 - inset;
   out.push(`<path d="M${bx},${by - 1.4} V${by} H${bx + bar * mm} V${by - 1.4} M${bx + (bar * mm) / 2},${by} V${by - 0.8}" fill="none" stroke="#1c1c1c" stroke-width="0.25"/><text x="${bx}" y="${by - 2.2}" font-size="2.4">0</text><text x="${(bx + bar * mm).toFixed(2)}" y="${by - 2.2}" text-anchor="middle" font-size="2.4">${bar}m</text>`);
   taken.push([bx - 1, by - 5, bx + bar * mm + 4, by + 1]);
 
@@ -873,9 +880,12 @@ export function scenarioRows(b: YieldBundle, s: YieldStudy = yieldStudy(b)): Sce
 // its neighbours; each path then has its own spread, its massing over its
 // plan; the last holds the controls table and the assumptions.
 
-/** The right page's field: the drawings' width and their top and foot. */
+/** The right page's field, for the table that sits in its margins: its left, width, top and foot. */
 const RX = 222, RW = 186, RTOP = 11.6, RFOOT = 285;
-const HEAD_H = 8.6;
+/** The right page itself, which the drawings run to the edges of, as the report's maps do. */
+const PAGE_X = 210, PAGE_W = 210, PAGE_H = 297;
+/** The name over a drawing: the report's white box in its corner, 8 mm in. */
+const LABEL_IN = 8;
 
 const area = (v: number) => `${fmt(Math.round(v))} m²`;
 const m2 = (t: string) => t.replace(/ sqm\b/g, ' m²');
@@ -911,13 +921,17 @@ function ytable(cols: { head: string; r?: boolean; w?: string }[], rows: TRow[])
   return `<table class="yt">${cg}<thead>${head}</thead><tbody>${body}</tbody></table>`;
 }
 
-/** A head over a drawing on the right page, a grey note at its right. */
-const rightHead = (top: number, title: string, note = '') =>
-  `<div class="abs" style="left:${RX}mm;top:${top}mm;width:${RW}mm"><div class="zh"><span>${esc(title)}</span>${note ? `<span class="zn">${esc(note)}</span>` : ''}</div></div>`;
+/** A drawing's name, in the white box the report sets in a map's corner; `top` is the drawing's. */
+const mapLabel = (top: number, parts: string[]) =>
+  `<div class="abs maplabel" style="left:${PAGE_X + LABEL_IN}mm;top:${top + LABEL_IN}mm">${esc(parts.filter(Boolean).join(' · '))}</div>`;
 
-/** A drawing on the right page, drawn into a box at the origin. */
-const rightFigure = (top: number, h: number, inner: string) =>
-  `<svg class="abs" style="left:${RX}mm;top:${top}mm" width="${RW}mm" height="${h}mm" viewBox="0 0 ${RW} ${h}" xmlns="http://www.w3.org/2000/svg" font-family="${tpl().font}" fill="${tpl().ink}">${inner}</svg>`;
+/** The box the name covers, in the drawing's millimetres, for the plan's own words to keep off (6 pt tracked caps, padded). */
+const labelBox = (parts: string[]): [number, number, number, number] =>
+  [LABEL_IN - 1, LABEL_IN - 1, LABEL_IN + parts.filter(Boolean).join(' · ').length * 1.42 + 6, LABEL_IN + 5.5];
+
+/** A drawing across the right page, edge to edge, from `top` down `h`; drawn into a box at the origin. */
+const bleedFigure = (top: number, h: number, inner: string) =>
+  `<svg class="abs" style="left:${PAGE_X}mm;top:${top}mm" width="${PAGE_W}mm" height="${h}mm" viewBox="0 0 ${PAGE_W} ${h}" xmlns="http://www.w3.org/2000/svg" font-family="${tpl().font}" fill="${tpl().ink}">${inner}</svg>`;
 
 /** The key's swatches, in its 5 × 3.6 box. */
 const KEY = {
@@ -988,12 +1002,15 @@ function schemeLegend(b: YieldBundle, s: YieldStudy, y: YieldResult | undefined,
 
 /** The two drawings of a path's right page: its massing over its plan. */
 function schemeFigures(b: YieldBundle, s: YieldStudy, scheme: Scheme, id: string, massingNote: string, massingTitle = 'Indicative massing'): { html: string; kerbs: boolean } {
-  const AXO_TOP = RTOP + HEAD_H, AXO_H = 146;
-  const PLAN_HEAD = AXO_TOP + AXO_H + 4, PLAN_TOP = PLAN_HEAD + HEAD_H, PLAN_H = RFOOT - PLAN_TOP;
-  const plan = planView(b, s, { x: 0, y: 0, w: RW, h: PLAN_H }, scheme, id);
+  // The massing over the top half, its neighbours out to the page's edges; the plan under it, to the edges and the foot.
+  const AXO_H = 150, PLAN_TOP = AXO_H, PLAN_H = PAGE_H - PLAN_TOP;
+  const planName = (scale: number) => ['Plan', `1:${fmt(scale).replace(',', ' ')}`, scheme.y?.tiers.length ? 'tiers numbered as in the schedule' : ''];
+  const plan = planView(b, s, { x: 0, y: 0, w: PAGE_W, h: PLAN_H }, scheme, id, { inset: 6, keepOut: [labelBox(planName(5000))] });
+  // A hairline where the plan's ground meets the massing's white.
+  const seam = `<div class="abs" style="left:${PAGE_X}mm;top:${PLAN_TOP}mm;width:${PAGE_W}mm;height:0;border-top:0.18mm solid #878787"></div>`;
   return {
-    html: rightHead(RTOP, massingTitle, massingNote) + rightFigure(AXO_TOP, AXO_H, axonometric(b, s, { x: 0, y: 2, w: RW, h: AXO_H - 2 }, scheme, id)) +
-      rightHead(PLAN_HEAD, 'Plan', `1:${fmt(plan.scale)} at A3${scheme.y?.tiers.length ? ' · tiers numbered as in the schedule' : ''}`) + rightFigure(PLAN_TOP, PLAN_H, plan.svg),
+    html: bleedFigure(0, AXO_H, axonometric(b, s, { x: 2, y: LABEL_IN + 9, w: PAGE_W - 4, h: AXO_H - LABEL_IN - 11 }, scheme, id)) + mapLabel(0, [massingTitle, massingNote]) +
+      bleedFigure(PLAN_TOP, PLAN_H, plan.svg) + seam + mapLabel(PLAN_TOP, planName(plan.scale)),
     kerbs: plan.kerbs.length > 0,
   };
 }
@@ -1036,8 +1053,9 @@ function overviewSlide(b: YieldBundle, s: YieldStudy, paths: Path[]): Slide {
         esc(p.y ? fmt(Math.round(p.y.gfa)) : ex?.gbaSqm ? `≈ ${fmt(Math.round(ex.gbaSqm))}` : '—'), esc(p.sc.fsr ?? '—'), esc(p.sc.units ?? '—'), esc(p.sc.parking ?? '—'), okMark(p.sc.ok), String(i + 2).padStart(2, '0')],
     })));
   const blocks = [zBlock('The site', figs, 'The controls'), zBlock('The paths', table), ...pathBars(b, s, paths)];
-  const plan = planView(b, s, { x: 0, y: 0, w: RW, h: RFOOT - RTOP - HEAD_H }, {}, 'site', 2.4);
-  const right = rightHead(RTOP, 'The site and its neighbours', `plan 1:${fmt(plan.scale)} at A3 · their numbers, zones and heights`) + rightFigure(RTOP + HEAD_H, RFOOT - RTOP - HEAD_H, plan.svg);
+  const name = (scale: number) => ['The site and its neighbours', `1:${fmt(scale).replace(',', ' ')}`, 'their numbers, zones and heights'];
+  const plan = planView(b, s, { x: 0, y: 0, w: PAGE_W, h: PAGE_H }, {}, 'site', { room: 2.4, inset: 6, keepOut: [labelBox(name(5000))] });
+  const right = bleedFigure(0, PAGE_H, plan.svg) + mapLabel(0, name(plan.scale));
   const legend: LegendEntry[] = [{ swatch: KEY.site, label: 'The site' }, { swatch: KEY.neighbours, label: 'Buildings round about' }, { swatch: KEY.lot, label: 'Lot boundaries, NSW cadastre' }];
   if (plan.kerbs.length) legend.push({ swatch: KEY.kerb, label: 'Kerb line, indicative' });
   const exceeds = ex?.gbaSqm && ex.gbaSqm > Math.max(...paths.filter((p) => p.y && p.sc.id !== 'rebuiltAsStands').map((p) => p.y!.gba), 0);
