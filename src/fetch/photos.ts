@@ -327,15 +327,16 @@ function choose(cands: Candidate[]): Candidate[] {
   return chosen.sort((a, b) => a.bearingFromSite - b.bearingFromSite);
 }
 
-async function saveFrame(url: string, file: string, outDir: string): Promise<boolean> {
+/** Saves the frame and answers null, or why it was not saved. */
+async function saveFrame(url: string, file: string, outDir: string): Promise<string | null> {
   try {
     const res = await retryFetch(url, {}, { attempts: 2, timeoutMs: 60_000, label: 'street-level frame' });
-    if (!res.ok) return false;
+    if (!res.ok) return `HTTP ${res.status}`;
     const buf = Buffer.from(await res.arrayBuffer());
-    if (buf.length < 2000 || !(res.headers.get('content-type') ?? '').startsWith('image/')) return false;
+    if (buf.length < 2000 || !(res.headers.get('content-type') ?? '').startsWith('image/')) return 'not an image';
     await writeFile(join(outDir, file), buf);
-    return true;
-  } catch { return false; }
+    return null;
+  } catch (e) { return (e as Error)?.message ?? String(e); }
 }
 
 // ---- the 1943 tiles -------------------------------------------------------------
@@ -413,19 +414,24 @@ export async function fetchPhotos(opts: { centre: LonLat; siteRings: number[][][
   const chosen = [...googleCands, ...choose(cands).filter((c) => googleCands.every((g) => dist(g.xy, c.xy) >= MIN_SPACING_M || angDiff(g.heading, c.heading) >= 60))]
     .slice(0, MAX_PHOTOS).sort((a, b) => a.bearingFromSite - b.bearingFromSite);
 
+  // KartaView not answering is a source missing; one of its frames gone from its file store is not
+  if (!kv.ok) log(`  WARN street-level frames (KartaView) failed: ${kv.note}`);
+
   // save the frames; a frame that will not download drops out and the rest close up, still clockwise
   const photos: StreetPhoto[] = [];
+  let skipped = 0;
   for (const c of chosen) {
     const n = photos.length + 1;
     const file = `photo_${n}.jpg`;
-    if (!(await saveFrame(c.thumbUrl, file, outDir))) { log(`  WARN street-level frame ${c.source} ${c.id} did not download`); continue; }
+    const failed = await saveFrame(c.thumbUrl, file, outDir);
+    if (failed) { skipped++; log(`  street-level frame ${c.source} ${c.id} skipped: did not download (${failed})`); continue; }
     const { thumbUrl: _u, score: _s, xy: _xy, ...rest } = c;
     photos.push({ n, file, ...rest });
   }
 
   const secs = Math.round((Date.now() - t0) / 1000);
   const googleKept = photos.filter((p) => p.source === 'google').length;
-  log(`  photos: google ${gv.ok ? `${gv.frontages} of ${gv.sides} sides front a street, ${googleKept} frames from ${gv.probes} probes (${gv.offStreet} panoramas off the street or looking through a neighbour)` : gv.note}; kartaview ${kv.ok ? `${kvIn.length} frames (${kvIn.filter((f) => Number.isFinite(f.heading)).length} with a heading)` : `failed (${kv.note})`}; mapillary ${mly.ok ? `${mlyIn.length} frames` : mly.note}; ${cands.filter((c) => c.facing === 'site').length} face the site, ${photos.length} kept; 1943 tiles ${then.tiles.length}${then.missing ? ` (${then.missing} missing)` : ''}; today's aerial ${now ? 'yes' : 'no'}; ${secs} s`);
+  log(`  photos: google ${gv.ok ? `${gv.frontages} of ${gv.sides} sides front a street, ${googleKept} frames from ${gv.probes} probes (${gv.offStreet} panoramas off the street or looking through a neighbour)` : gv.note}; kartaview ${kv.ok ? `${kvIn.length} frames (${kvIn.filter((f) => Number.isFinite(f.heading)).length} with a heading)` : `failed (${kv.note})`}; mapillary ${mly.ok ? `${mlyIn.length} frames` : mly.note}; ${cands.filter((c) => c.facing === 'site').length} face the site, ${photos.length} kept${skipped ? ` (${skipped} did not download)` : ''}; 1943 tiles ${then.tiles.length}${then.missing ? ` (${then.missing} missing)` : ''}; today's aerial ${now ? 'yes' : 'no'}; ${secs} s`);
   return {
     radiusM: PHOTO_RADIUS_M,
     kartaview: { ok: kv.ok, frames: kvIn.length, withHeading: kvIn.filter((f) => Number.isFinite(f.heading)).length, note: kv.note },
