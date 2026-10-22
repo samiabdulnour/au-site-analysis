@@ -318,7 +318,7 @@ roads and rail, FOI points and areas, elevation contours. New:
 |---|---|
 | `NSW_Administrative_Boundaries_Theme/FeatureServer` 1 LocalAboriginalLandCouncil, 2 Suburb, 8 LGA, 5 Parish, 7 MinesSubsidenceDistrict, 12–15 ABS SA4–SA1 | slide 01, 15, 16 |
 | `NSW_Land_Parcel_Property_Theme/FeatureServer` 9 Easement (geometry, no purpose text), 12 Property, 1 RoadCentreline | slide 11 |
-| `NSW_FOI_Transport_Facilities/FeatureServer/1` | stations, Metro included (Victoria Cross came back) |
+| `NSW_FOI_Transport_Facilities/FeatureServer/1` | stations, Metro included (Victoria Cross came back); read with `operationalstatus=1`, since the layer also carries proposed and under-construction stations, which must not count as stations today |
 | `NSW_Water_Theme/FeatureServer` 6 HydroArea, 2 NamedWatercourse, 5 HydroLine | water for slides 01, 10, 15 |
 | `NSW_FOI_Education_Facilities`, `_Health_Facilities`, `_Emergency_Service_Facilities` | amenity by function |
 | `Hosted/TfNSW_Offstreet_Parking_Public`, `Hosted/NSW_BushFire_Prone_Land` | listed, not tested |
@@ -473,6 +473,45 @@ NASA POWER hourly point API: `https://power.larc.nasa.gov/api/temporal/hourly/po
   `sepp` separately.
 - **Overpass** public mirrors were unreachable throughout the test; the local
   Overpass is not optional for this mode either.
+- **DPHI's precinct layer maps the space between precincts** as polygons named
+  "Not Applicable". `fetchPolicyAreas` drops any policy feature with a
+  null-ish name (`isRealPolicyArea`), and the facts functions filter again for
+  bundles fetched before that — otherwise the deck says the site is "inside
+  the Not Applicable" and slide 17 sells it as a policy opportunity.
+- **Rail yards at small scale.** The transport theme's `relevance` is its own
+  level of detail: 1 on every named line, 10 on yards, sidings and extra tracks —
+  and on Sydney Metro's tunnels, so it cannot filter alone. Slide 01 reads it to
+  take the main lines first, then drops any track that runs within 0.9 mm on the
+  paper of one already drawn (`thinParallelLines`): Central's yard prints as one
+  line, the Metro's own alignment survives.
+- **Streets on the 1:5000 maps.** Roads are drawn at least as wide as their
+  carriageway at the panel's scale (24 m for a motorway down to 6 m for a lane,
+  `overLayers`), and the deck's 1:4000–1:5000 maps (03, 05–10, 14, 16, 17) name
+  their streets along the road (`streetNameLayer`, the context sheet's run
+  merging and straightness test), after every other label, so a name gives way.
+- **Open footprints have gaps.** Overture (2026-09-23.1 and 2026-10-21.0 alike)
+  and OpenStreetMap both miss most of Bondi Road's shopping strip; no open NSW
+  footprint layer exists (the State's are Geoscape's, licensed). Slide 08 hatches
+  the lots that should hold a building and have no footprint
+  (`lotsWithoutFootprint`: outside recreation, conservation, infrastructure and
+  waterway zones, 40–5,000 m²), counts them in the legend and says so in the
+  text when they are 15 % of the lots or more, so a gap reads as missing data
+  rather than open ground. Footprints without a height are outlined for the same
+  reason, and "the tallest on the map" leaves out the site's own building.
+- **What the walk reaches.** Slide 09 numbers the stations, public facilities and
+  named parks inside the 15-minute isochrone on the map and keys them in a box in
+  its bottom-right corner, by the band the walking network reaches each in, with
+  the straight-line distance (`walkDestinations`).
+- **A page with no policy on it.** Slide 05 reads the housing-policy maps 3 km
+  round the site as well (`policyNear`) and, for each kind not on the page,
+  points to the nearest from the map's edge with its distance, with the plan's
+  nearest centre; the narrative names the nearest.
+- **One walking-minute rule.** Every slide states a point destination's walk
+  the same way: straight-line distance at 80 m a minute (`walkMinutes`), the
+  rule the fine print declares. The Valhalla isochrone bands remain for areas
+  (parks "within a five-minute walk") and for saying what each band holds;
+  they are never printed as a point destination's own time, which once let
+  one deck call the same 356 m stop a 4-minute and a 10-minute walk.
 - **Request budget.** A full deck is roughly 60–80 requests: ~35 ArcGIS
   queries and 6 raster exports, 2–5 DA API pages (cached a day per
   council), 6 ABS calls, 3 Wikimedia
@@ -628,6 +667,15 @@ Overpass is the answer) the slide says which layers are unknown rather
 than drawing them empty. The wide strip fetches major roads (function
 hierarchy 5 and above), rail, stations, water and suburb polygons for a
 4.7 × 1.6 km window.
+
+The slide says what the isochrones reach, not only how far they run: every
+station on the map is named beside its roundel (spacer-placed, nearest
+first), and the reach panel's bands carry what each holds — the stations,
+parks, bus stops and public facilities inside the 5, 10 and 15 minute
+lines (`walkReachFacts`; the parks counted as slide 10 counts them) — with
+the band's hectares only where nothing nameable is inside it. Walking
+minutes for a named destination are the straight-line rule above, never
+the band's ceiling.
 
 Slide 10 reads the tree canopy from `Planning_Portal_Tree_Canopy` layer 1,
 which is not a raster but the Greater Sydney canopy of 2022 by modified

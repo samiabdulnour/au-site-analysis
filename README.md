@@ -144,14 +144,23 @@ with the pictures.
 ### Free, one address, and subscription
 
 Anyone generates every drawing, with or without an account, from the same
-data, drawn the same way; what differs is what can be taken away:
+data, drawn the same way, and sees it on the page; what differs is what can be
+taken away:
 
-| | free | one address | subscription |
-|---|---|---|---|
-| PDF | stamped with the watermark | clean, for that address | clean |
-| CAD (DXF/DWG) | — | for that address | yes |
-| data (CSV, JSON) | — | for that address | yes |
-| lasts | — | 30 days | while subscribed |
+| | no account | free account | one address | subscription |
+|---|---|---|---|---|
+| drawing on the page | yes | yes | yes | yes |
+| PDF | — | stamped with the watermark | clean, for that address | clean |
+| CAD (DXF/DWG) | — | — | for that address | yes |
+| data (CSV, JSON) | — | — | for that address | yes |
+| lasts | — | — | 30 days | while subscribed |
+
+Without an account the finished drawing shows as its picture (the job's
+`preview.jpg`, the same for every plan) with SIGN UP FREE TO DOWNLOAD THE PDF
+under it, which opens the account form and brings the visitor back to the same
+drawing, now with its watermarked PDF. The server refuses the PDF and the
+batch zip to a visitor without a session (401, since a free account is all it
+takes), so the page offers only what the server will serve.
 
 An address is bought from any of its drawings: under a finished sheet the
 viewer cannot take clean, a line says what unlocking gives, and UNLOCK THIS
@@ -168,11 +177,24 @@ and its settings still say site: `STRIPE_SITE_PRICE_ID`, `unlockSite`.)
 `src/plans.ts` is that table in code, and every download route reads it, so a
 new privilege is a new column there rather than a new condition in the server.
 
+**Terms of use.** `/terms` (`web/terms.html`) says what every drawing is: made
+from open public data as it stands when it is drawn, with no guarantee that the
+data is complete, current or correct, and no substitute for a s10.7 certificate,
+a survey or professional advice. Sign-up asks for agreement to them, and the
+server refuses a sign-up without `agreed: true`; the account stores the version
+agreed to (`TERMS_VERSION` in `src/terms.ts`, the page's version line) and when.
+The same sentence stands before every payment: on `/pricing`, beside UNLOCK THIS
+ADDRESS, and above the pay button on Stripe's Checkout page (`custom_text`).
+Accounts from before the terms carry no version. The page is a plain-language
+draft and wants a lawyer's reading before it is relied on.
+
 **Accounts.** Drawing never asks for one: the tool is the landing page, and
-the account form opens only from SIGN IN in the nav, from an unlock or the
-pricing page (buying starts with an account), and from the emailed
+the account form opens only from SIGN IN in the nav, from SIGN UP FREE TO
+DOWNLOAD THE PDF under a drawing (the PDF starts with an account), from an
+unlock or the pricing page (buying starts with one too), and from the emailed
 verification and reset links. Anyone can make one with an email and a
-password (`SIGN UP`), and starts on the free side. What holds the open side
+password (`SIGN UP`, with the terms agreed to), and starts on the free side,
+with watermarked PDFs. What holds the open side
 down is what always did: the per-IP budgets (12 sheets an hour, and the
 sign-in and sign-up limiters) and the one-at-a-time queue. Accounts live in `out/accounts/accounts.json`
 on the host volume, beside the job index and written the same way, with scrypt
@@ -275,12 +297,15 @@ The per-IP limits read the address Caddy adds as the last `X-Forwarded-For`
 entry, not the first, which is whatever the visitor sent. They are held in
 memory, so a deploy clears them; a visitor cannot make a deploy happen.
 
-**The watermark.** Put it in `assets/watermark/watermark.png`. It is stamped on
-each page when a free account downloads, not when the sheet is drawn, so the
-sheet on disk stays clean and one job serves both sides: a subscriber asking
-for an address a free account has just drawn gets it at once, clean. Until the
-file is there, the words `SITE ANALYST · FREE` stand in. If stamping fails the
-download is refused rather than served clean.
+**The watermark.** The office's bird sheet, `assets/watermark/watermark.pdf`:
+one vector page laid over the whole of each page at 30% opacity, with
+`site-analyst.com` in the bottom-left corner, in the margin under the map (the
+folder's README says how to replace the birds; a `watermark.png` there is used
+instead when the PDF is missing). It is stamped when a free account downloads, not when the
+sheet is drawn, so the sheet on disk stays clean and one job serves both sides:
+a subscriber asking for an address a free account has just drawn gets it at
+once, clean. Without either file, the words `SITE ANALYST · FREE` stand in. If
+stamping fails the download is refused rather than served clean.
 
 **Payment.** Stripe Checkout sells both, and Stripe's customer portal manages
 the subscription (card, invoices, cancelling), so no card number reaches this
@@ -370,9 +395,9 @@ an ops view that is closed until someone deliberately opens it, rather than one
 that stays open on a credential nobody meant to repurpose.
 
 Authentication: drawing needs none — the site is open, and a visitor without
-a session is simply on the free side, watermarked. Signing in (an account, or
-`ACCESS_CODE` once) sets a 30-day session cookie and is what buying, clean
-downloads and the office's grants hang off. Login attempts, sign-ups and job
+a session sees each drawing on the page but downloads nothing. Signing in (an
+account, or `ACCESS_CODE` once) sets a 30-day session cookie and is what
+downloads, buying, clean PDFs and the office's grants hang off. Login attempts, sign-ups and job
 submissions are rate-limited per IP, and job outputs are deleted after 24h.
 `ALLOW_NO_AUTH=1` is for local use only, and only while no `ACCESS_CODE` is
 set: everything granted, no sign-in offered.
@@ -950,25 +975,36 @@ zones as Kingfisher's pale grounds with their textures, laid on the lots only
 so the roads stay white (water is drawn whole), every building in its zone
 family's strong colour with a white edge and its number in white (a quiet grey
 on the site and where no zone is mapped), the white cadastre, Kingfisher's
-grotesk, its peach street names and its magenta site. The suns are the
-office's own drawn suns (`src/render/climateSymbols.ts`, traced from its
-symbol sheet) in yellow, a different one at each solstice rise and set, and
-the winds its triple arrows in light blue, set on the sun path's summer ring
-at their bearing and pointing in at the site, slid along the ring off a sun
-from the same quarter; both are large (a sun 44 mm across, a wind 80 mm long
-on the A1). The ring is a bold yellow line, solid in summer and dashed in
-winter, and carries no hours. Views are plain outlined triangles opening
-from the site edge, their distance written beyond the open end or, where a
-sun's name is there, beside it. No word has a white edge, and FALL and AREA
-sit straight on the site. It was called Kookaburra; a request that still
-names `kookaburra` is drawn in Kingfisher.
+grotesk, its peach street names and its magenta site. The climate is drawn in
+the office's marks for this palette (`src/render/climateSymbols.ts`, taken
+as drawn from its symbol sheet): each solstice's sun path a translucent
+crescent in warm yellow, deepest at noon and running from amber at its points
+to its brightest yellow in the middle (summer outer, winter inner), with the
+office's small rayed sun in orange at each rise and set; each wind a smaller
+translucent blue crescent (15 mm deep, sweeping 48°) over the quarter it
+blows from, on the summer ring and slid along it
+off a sun from the same quarter, carrying three white broken-shaft arrows
+pointing in at the site; each view a green triangle opening from the site
+edge with the eye white in it, its distance written beyond the open end or,
+where a sun's name is there, beside it. The wind crescents go down before the
+suns, so a sun stands on its wind's band. No word has a white edge, and FALL
+and AREA sit straight on the site. It was called Kookaburra; a request that
+still names `kookaburra` is drawn in Kingfisher.
 
-**Flamingo** (`flamingo`) — Kingfisher's sheet in Flamingo's palette: the
-same paper, marks, suns, winds and views, with the zones as Flamingo's tints
-and textures, every building in its zone family's ink (peach, sand, teal,
-grey), the site in Flamingo's coral and the street names in its green. It
-draws on Flamingo, and its look is Kingfisher's with only those inks changed,
-so a change to Kingfisher's marks carries over.
+**Flamingo** (`flamingo`) — the same paper and plan drawn as the context
+sheet's Flamingo draws them: the zones as Flamingo's tints and textures,
+every building white in a heavy 0.8 mm outline of its zone family's ink (sand,
+peach, teal, grey) so it stands clear of its tinted ground, the cadastre
+in the context sheet's fine grey over them, the site in Flamingo's coral, the
+street names and the neighbours' numbers and storeys in its green. The
+climate is the office's other set of marks, each a pale peach shape in a fine
+blue outline: a sun of eight tapered rays at each solstice rise and set, on
+the summer arc dashed in yellow and the winter arc dotted; the winds, two
+curled arrowheads one behind the other, on the summer ring pointing in, the
+ring carried on round the side the sun never reaches dashed in blue; the
+views a small wedge pointing back at the site and the eye in a widening
+triangle. It draws on Flamingo and shares Kingfisher's paper, kerbs and
+lettering.
 
 With no photograph to show them, Kingfisher and Flamingo draw the kerbs, indicatively
 (`src/lib/kerbs.ts`): NSW publishes no kerbs or footpath edges as open data

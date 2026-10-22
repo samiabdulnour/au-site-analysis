@@ -1,9 +1,10 @@
-/* The two sides of the site, driven through the server.
+/* The sides of the site, driven through the server.
  *
  * A finished sheet is planted in a job index of its own — a PDF, a CAD zip and
  * a CSV — and the server is booted on it with throwaway directories, so no
  * sheet is drawn and nothing reaches NSW ePlanning, Overpass or Stripe. Then:
- * a free account gets the PDF stamped and is refused the open formats; an
+ * no session sees the drawing's picture and is refused its PDF; a free
+ * account gets the PDF stamped and is refused the open formats; an
  * account given the subscription, the shared code, and an account Stripe's
  * webhook says has paid all get the PDF as drawn and the files; a forged
  * webhook changes nothing; and a cancelled subscription goes back to free.
@@ -128,10 +129,14 @@ try {
   // ---- no session: the open side ---------------------------------------------
   const anon = browser();
   const anonMe = await (await anon('/api/me')).json();
-  check('no session: /api/me answers, free side', anonMe.authed === false && anonMe.plan === 'free',
+  check('no session: /api/me answers, the guest side', anonMe.authed === false && anonMe.plan === 'guest',
     JSON.stringify(anonMe));
   const a1 = await holds(anon);
-  check('no session: the PDF is served, stamped', a1.pdfStatus === 200 && !a1.cleanPdf);
+  check('no session: the job says there is no PDF to take', a1.grants?.pdf === false, JSON.stringify(a1.grants));
+  check('no session: the PDF is refused with 401, stamped or not', a1.pdfStatus === 401, String(a1.pdfStatus));
+  const anonPicture = await anon(`/api/jobs/${jobId}/preview`);
+  check('no session: the drawing\'s picture is served',
+    anonPicture.status === 200 && anonPicture.headers.get('content-type') === 'image/jpeg');
   check('no session: the CAD and data are 402', a1.cad === 402 && a1.data === 402, `${a1.cad} ${a1.data}`);
   // This run sells no addresses (no STRIPE_SITE_PRICE_ID), so the job offers
   // no unlock to anyone; when one is sold, it is offered without an account
@@ -144,17 +149,21 @@ try {
   // ---- a free account -------------------------------------------------------
   const free = browser();
   check('sign-up refuses a short password',
-    (await post(free, '/api/signup', { email: 'free@example.com', password: 'short' })).status === 400);
+    (await post(free, '/api/signup', { email: 'free@example.com', password: 'short', agreed: true })).status === 400);
   check('sign-up refuses a non-address',
-    (await post(free, '/api/signup', { email: 'nobody', password: 'long enough' })).status === 400);
-  const signed = await post(free, '/api/signup', { email: 'Free@Example.com ', password: 'long enough' });
+    (await post(free, '/api/signup', { email: 'nobody', password: 'long enough', agreed: true })).status === 400);
+  // from an address of its own: sign-ups are limited to five an hour from one, and the checks below need theirs
+  check('sign-up refuses an account that has not agreed to the terms',
+    (await free('/api/signup', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-forwarded-for': '203.0.113.9' }, body: JSON.stringify({ email: 'free@example.com', password: 'long enough' }) })).status === 400);
+  const signed = await post(free, '/api/signup', { email: 'Free@Example.com ', password: 'long enough', agreed: true });
   const signedBody = await signed.json();
   check('sign-up makes a free account', signed.status === 201 && signedBody.plan === 'free',
     JSON.stringify(signedBody));
   check('the same email cannot sign up twice',
-    (await post(browser(), '/api/signup', { email: 'free@example.com', password: 'another one' })).status === 409);
+    (await post(browser(), '/api/signup', { email: 'free@example.com', password: 'another one', agreed: true })).status === 409);
 
   const f1 = await holds(free);
+  check('free: the job offers the PDF', f1.grants?.pdf === true && f1.grants?.cleanPdf === false, JSON.stringify(f1.grants));
   check('free: the PDF is served', f1.pdfStatus === 200);
   check('free: the PDF is stamped, not the one drawn', !f1.cleanPdf);
   const stamped = await PDFDocument.load(f1.pdf);
@@ -193,7 +202,7 @@ try {
 
   // ---- the subscription, three ways ------------------------------------------
   const office = browser();
-  await post(office, '/api/signup', { email: 'office@example.com', password: 'long enough' });
+  await post(office, '/api/signup', { email: 'office@example.com', password: 'long enough', agreed: true });
   const o = await holds(office);
   check('given without charge: the PDF as drawn', o.plan === 'subscription' && o.cleanPdf);
   check('given without charge: the CAD and data', o.cad === 200 && o.data === 200, `${o.cad} ${o.data}`);
@@ -204,8 +213,11 @@ try {
   check('the shared code: the PDF as drawn, and the files', c.plan === 'subscription' && c.cleanPdf && c.cad === 200);
 
   // What Checkout puts on the subscription, so Stripe's events name the account.
-  const freeId = JSON.parse(readFileSync(join(accountsDir, 'accounts.json'), 'utf8'))
-    .find((a: any) => a.email === 'free@example.com').id;
+  const freeAccount = JSON.parse(readFileSync(join(accountsDir, 'accounts.json'), 'utf8'))
+    .find((a: any) => a.email === 'free@example.com');
+  const freeId = freeAccount.id;
+  check('the account records the terms it agreed to, and when',
+    typeof freeAccount.termsVersion === 'string' && freeAccount.termsVersion.length > 0 && freeAccount.termsAcceptedAt > 0, JSON.stringify({ v: freeAccount.termsVersion, at: freeAccount.termsAcceptedAt }));
   const sub = (status: string) => ({
     type: 'customer.subscription.updated',
     data: { object: { id: 'sub_test', customer: 'cus_test', status, metadata: { account_id: freeId },

@@ -99,7 +99,9 @@ function namedPoints(fc: GeoJSONFC): NamedPoint[] {
 }
 
 export async function fetchTrainStations(extent: Extent): Promise<NamedPoint[]> {
-  const fc = await queryByExtent(`${FOI_TRANSPORT}/1`, extent, 'generalname');
+  // The layer also carries proposed and under-construction stations (operationalstatus 3 and 2);
+  // only what is open today counts as a station on a sheet.
+  const fc = await queryByExtent(`${FOI_TRANSPORT}/1`, extent, 'generalname', 'operationalstatus=1 OR operationalstatus IS NULL');
   return namedPoints(fc);
 }
 

@@ -125,7 +125,7 @@ try {
   check('the page is told the site key', (await (await browser()('/api/me')).json()).humanCheck === SITE_KEY);
 
   // ---- sign-up --------------------------------------------------------------------
-  const who = { email: 'erin@example.com', password: 'erin\'s password' };
+  const who = { email: 'erin@example.com', password: 'erin\'s password', agreed: true };
   const none = await answer(await browser()('/api/signup', who));
   check('sign-up without the check is refused, and says to do it', none.status === 403 && none.human === true, JSON.stringify(none));
   check('…as is a token Cloudflare does not pass',
@@ -140,7 +140,7 @@ try {
   check('…and the link needs no check of its own: pressing it is the proof',
     (await erin('/api/signup/confirm', { token })).status === 200);
 
-  const trapped = await answer(await browser()('/api/signup', { email: 'bot@example.com', password: 'a bot\'s pass', human: GOOD, website: 'http://spam.example' }));
+  const trapped = await answer(await browser()('/api/signup', { email: 'bot@example.com', password: 'a bot\'s pass', agreed: true, human: GOOD, website: 'http://spam.example' }));
   check('a filled-in honeypot is answered like anyone', trapped.status === 202 && trapped.pending === true);
   await settle();
   check('…and nothing is sent', countTo('bot@example.com') === 0);
@@ -189,7 +189,7 @@ try {
   // ---- Cloudflare not answering ----------------------------------------------------------------
   cfDown = true;
   check('Cloudflare not answering refuses, rather than lets through',
-    (await browser()('/api/signup', { email: 'frank@example.com', password: 'frank\'s pass', human: GOOD })).status === 403);
+    (await browser()('/api/signup', { email: 'frank@example.com', password: 'frank\'s pass', agreed: true, human: GOOD })).status === 403);
   check('…and says so in the log', /human check: Cloudflare answered 502/.test(serverLog), serverLog.slice(-300));
 } finally {
   server.kill();

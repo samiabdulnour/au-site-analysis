@@ -4,11 +4,12 @@
 //
 //   npm run serve     # http://localhost:3000  (PORT to change)
 //
-// Open to anyone: drawing needs no account, and the free side's PDFs are
-// served watermarked (src/render/watermark.ts). An account (an email and a
-// password) exists for buying — unlocking an address, or the subscription
-// (src/billing.ts, src/plans.ts) — which serves them clean with the CAD and
-// data files beside them. What holds the open side down is the per-IP budgets
+// Open to anyone: drawing needs no account, and without one a drawing is its
+// picture on the page. A free account (an email and a password) downloads the
+// PDFs, served watermarked (src/render/watermark.ts), and is what buying starts
+// from — unlocking an address, or the subscription (src/billing.ts,
+// src/plans.ts) — which serves them clean with the CAD and data files beside
+// them. What holds the open side down is the per-IP budgets
 // and the one-at-a-time queue, not a login. ACCESS_CODE, when set, is the
 // office's shared code and carries the subscription. Set ALLOW_NO_AUTH=1 only
 // for local use: everything granted, and SIGN IN never offered.
@@ -32,6 +33,7 @@ import { withTemplate, themeFor, templateFor, type SheetKind } from './render/te
 import { htmlToPdf, printSlides } from './render/pdf.js';
 import { stampPdf, watermarkId } from './render/watermark.js';
 import { GRANTS, PRICE_LABEL, SITE_PRICE_LABEL, planOf, paidFor, siteKey, type Plan, type Grants } from './plans.js';
+import { TERMS_VERSION } from './terms.js';
 import {
   initAccounts, accountFromCookie, accountCounts, createAccount, signIn, sessionCookieValue,
   normaliseEmail, validEmail, PASSWORD_MIN, ACCOUNT_COOKIE, SESSION_DAYS, type Account,
@@ -764,7 +766,7 @@ function viewerFrom(held: { code: boolean; operator: boolean }, account?: Accoun
     signedIn: held.code || Boolean(account),
     operator: held.operator,
     code: held.code,
-    plan: held.code || (account && planOf(account) === 'subscription') ? 'subscription' : 'free',
+    plan: held.code ? 'subscription' : account ? planOf(account) : 'guest',
     account,
   };
 }
@@ -893,6 +895,13 @@ function watermarked(job: Job): Promise<string> {
   return pending;
 }
 
+/**
+ * Without an account a drawing is its picture on the page: the PDF, stamped or
+ * not, starts with one. 401 rather than 402: signing up is free, so what is
+ * missing is who is asking, not what they have paid for.
+ */
+const PDF_NEEDS_ACCOUNT = { error: 'Make a free account to download the PDF.', signup: true };
+
 /** The PDF this viewer is given: the sheet as drawn, or the stamped copy. Never the first on a failure of the second. */
 const pdfFor = (job: Job, v: Viewer) =>
   grantsFor(v, job).cleanPdf ? Promise.resolve(job.pdfPath!) : watermarked(job);
@@ -923,6 +932,7 @@ const server = createServer(async (req, res) => {
     '/': ['index.html', 'text/html; charset=utf-8'],
     '/about': ['about.html', 'text/html; charset=utf-8'],
     '/pricing': ['pricing.html', 'text/html; charset=utf-8'],
+    '/terms': ['terms.html', 'text/html; charset=utf-8'],
     '/pricing.js': ['pricing.js', 'text/javascript; charset=utf-8'],
     '/status': ['status.html', 'text/html; charset=utf-8'],
     '/admin': ['admin.html', 'text/html; charset=utf-8'],
@@ -972,6 +982,7 @@ Sitemap: ${siteBase()}/sitemap.xml
   <url><loc>${base}/</loc><changefreq>monthly</changefreq><priority>1.0</priority></url>
   <url><loc>${base}/about</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
   <url><loc>${base}/pricing</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>${base}/terms</loc><changefreq>yearly</changefreq><priority>0.3</priority></url>
 </urlset>
 `);
     return;
@@ -1096,11 +1107,12 @@ Canonical: ${base}/.well-known/security.txt
   // the account is made and signed in at once, as it always was.
   if (req.method === 'POST' && url.pathname === '/api/signup') {
     if (limited(`signup:${ip}`, 5, 3600_000)) return json(res, 429, { error: 'Too many sign-ups from here. Try later.' });
-    let email = '', password = '', human: unknown, trap = '';
+    let email = '', password = '', agreed = false, human: unknown, trap = '';
     try {
       const parsed = JSON.parse((await readBody(req)) || '{}');
       email = normaliseEmail(parsed.email);
       password = String(parsed.password ?? '');
+      agreed = parsed.agreed === true;
       human = parsed.human;
       trap = String(parsed.website ?? '');
     } catch { /* refused below */ }
@@ -1115,6 +1127,10 @@ Canonical: ${base}/.well-known/security.txt
       console.log(`bots: sign-up honeypot filled from ${ip}`);
       return json(res, 202, CHECK_EMAIL);
     }
+    // The account records which terms it agreed to: that the drawings come from open data as available,
+    // with no guarantee that data is complete. Refused here, not only in the page, so no client skips it;
+    // and before the human check, so a forgotten tick does not spend the person's check.
+    if (!agreed) return json(res, 400, { error: 'Agree to the terms of use to create an account.' });
     if (!(await isHuman(human, ip)))
       return json(res, 403, { error: 'Confirm you are human, then sign up again.', human: true });
 
@@ -1131,7 +1147,7 @@ Canonical: ${base}/.well-known/security.txt
           .catch((e) => console.log(`email: already-registered note for ${taken.id} not sent — ${e?.message ?? e}`));
         return json(res, 202, CHECK_EMAIL);
       }
-      const token = startSignup(email, passwordHash);
+      const token = startSignup(email, passwordHash, TERMS_VERSION);
       if (!token) {
         console.log('accounts: the list of sign-ups waiting on their email is full');
         return json(res, 503, { error: 'Sign-ups are paused for a moment. Try again later.' });
@@ -1147,7 +1163,7 @@ Canonical: ${base}/.well-known/security.txt
 
     let account: Account;
     try {
-      account = await createAccount(email, password);
+      account = await createAccount(email, password, TERMS_VERSION);
     } catch (e: any) {
       if (e?.message === 'exists') return json(res, 409, { error: 'That email already has an account. Sign in instead.' });
       console.log(`accounts: sign-up failed — ${e?.message ?? e}`);
@@ -1643,6 +1659,7 @@ Canonical: ${base}/.well-known/security.txt
       found.push({ job, name });
     }
     if (!found.length) return json(res, 404, { error: 'Nothing finished yet.' });
+    if (!found.every((f) => grantsFor(v, f.job).pdf)) return json(res, 401, PDF_NEEDS_ACCOUNT);
     try {
       // The same PDFs as the single download: stamped for a free account.
       const files: { path: string; name: string }[] = [];
@@ -1721,9 +1738,11 @@ Canonical: ${base}/.well-known/security.txt
   if (req.method === 'GET' && pdfMatch) {
     const job = jobs.get(pdfMatch[1]);
     if (!job?.pdfPath) return json(res, 404, { error: 'Not ready.' });
+    const v = viewerOf(req);
+    if (!grantsFor(v, job).pdf) return json(res, 401, PDF_NEEDS_ACCOUNT);
     let path: string;
     try {
-      path = await pdfFor(job, viewerOf(req));
+      path = await pdfFor(job, v);
     } catch (e: any) {
       // Refused rather than served clean: a failed stamp must not become a
       // free way to the subscriber's PDF.

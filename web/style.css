@@ -50,6 +50,10 @@ a { color: inherit; }
    about rather than a full paragraph's distance from it. Two classes, so it
    wins over .lead wherever either happens to be written. */
 .lead.intro { margin-bottom: .6rem; }
+/* The sign-up's agreement to the terms: the box beside its sentence, in the page's one size. */
+.agree { display: flex; gap: .6rem; align-items: flex-start; margin-bottom: 1rem; color: var(--muted); cursor: pointer; }
+.agree[hidden] { display: none; }
+.agree input { margin-top: .25rem; flex: none; accent-color: #000; }
 
 /* ---- address bar -------------------------------------------------------- */
 /* Input and button are one rectangle split in two: the button carries the
@@ -447,9 +451,9 @@ h2 { font-size: 1em; font-weight: 400; text-transform: uppercase;
 /* 1fr rows, not the about page's stated minimum: every row takes the tallest
    one's height, so the boxes come out even instead of stepping with their
    sentences. */
-.deftable.plans { grid-template-columns: 19% 1fr 1fr 1fr; grid-auto-rows: 1fr; }
+.deftable.plans { grid-template-columns: 16% 1fr 1fr 1fr 1fr; grid-auto-rows: 1fr; }
 .deftable.plans .head { text-transform: uppercase; letter-spacing: .02em; }
-/* A phone has room for neither four columns of whole words nor a smaller type,
+/* A phone has room for neither five columns of whole words nor a smaller type,
    so the table keeps its width and scrolls sideways in its own box; the page
    itself never does. Words stay whole rather than breaking mid-letter. */
 .plans-frame { overflow-x: auto; }
@@ -458,11 +462,12 @@ h2 { font-size: 1em; font-weight: 400; text-transform: uppercase;
    word's left edge. */
 .deftable.plans .yn { text-align: center; }
 @media (max-width: 560px) {
-  /* Columns sized to their words now the cells are ticks: FREE as wide as
-     "watermarked", ONE ADDRESS wrapping to its two lines, SUBSCRIPTION as
-     wide as its one word. Rows go back to fitting their content: evened to
-     1fr they would all take the wrapped header's two lines. */
-  .deftable.plans { grid-template-columns: 7rem 7rem 6rem 9.5rem; grid-auto-rows: auto; }
+  /* Columns sized to their words now the cells are ticks: NO ACCOUNT and ONE
+     ADDRESS each wrapping to their two lines, FREE ACCOUNT as wide as
+     "watermarked", SUBSCRIPTION as wide as its one word. Rows go back to
+     fitting their content: evened to 1fr they would all take the wrapped
+     headers' two lines. */
+  .deftable.plans { grid-template-columns: 6rem 6rem 7rem 6rem 9.5rem; grid-auto-rows: auto; }
   .deftable.plans .k, .deftable.plans .v { padding-left: .6rem; padding-right: .6rem; }
 }
 #mine { margin-top: .2rem; }

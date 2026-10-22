@@ -1,9 +1,11 @@
-// The two sides of the site, and what each one is given.
+// The three sides of the site, and what each one is given.
 //
-// Free: every drawing, generated the same way, with its PDF served with the
-// watermark stamped on every page. Subscription: the PDF as drawn, and the
-// open formats beside it — the CAD package (DXF, and DWG where the converter is
-// installed), the yield's CSV and the deck's JSON.
+// Every drawing is generated the same way for everyone. Without an account
+// (guest): the finished drawing's picture on the page, and no PDF. A free
+// account: the PDF too, served with the watermark stamped on every page.
+// Subscription: the PDF as drawn, and the open formats beside it — the CAD
+// package (DXF, and DWG where the converter is installed), the yield's CSV and
+// the deck's JSON.
 //
 // The drawing itself is identical on both sides: one job, one PDF on disk, and
 // the watermark is applied when a free account downloads it. So a sheet drawn
@@ -19,9 +21,11 @@
 // new privilege is a new column here rather than a new condition scattered
 // through the server.
 
-export type Plan = 'free' | 'subscription';
+export type Plan = 'guest' | 'free' | 'subscription';
 
 export interface Grants {
+  /** The PDF at all. Without it the drawing is only its picture on the page. */
+  pdf: boolean;
   /** The PDF as drawn. Without it the PDF is served watermarked. */
   cleanPdf: boolean;
   /** The CAD package and the data files (CSV, JSON). */
@@ -29,8 +33,9 @@ export interface Grants {
 }
 
 export const GRANTS: Record<Plan, Grants> = {
-  free:         { cleanPdf: false, openData: false },
-  subscription: { cleanPdf: true,  openData: true },
+  guest:        { pdf: false, cleanPdf: false, openData: false },
+  free:         { pdf: true,  cleanPdf: false, openData: false },
+  subscription: { pdf: true,  cleanPdf: true,  openData: true },
 };
 
 /**
@@ -52,13 +57,15 @@ const COMPLIMENTARY = new Set(
 );
 
 /**
+ * An account's plan: an account is never a guest, so free at the least.
+ *
  * The list names addresses, and an address is only somebody's once its
  * mailbox has answered: an account still waiting on its verification click
  * (emailVerified 0) is not given the subscription, or anyone could claim a
  * listed address that has not signed up yet. Accounts from before
  * verification existed carry no field and keep what they had.
  */
-export function planOf(a: { email: string; subscriptionStatus?: string; emailVerified?: number }): Plan {
+export function planOf(a: { email: string; subscriptionStatus?: string; emailVerified?: number }): Exclude<Plan, 'guest'> {
   return (COMPLIMENTARY.has(a.email) && a.emailVerified !== 0) || paidFor(a.subscriptionStatus)
     ? 'subscription' : 'free';
 }
