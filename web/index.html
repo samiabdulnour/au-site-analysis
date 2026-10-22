@@ -77,6 +77,12 @@
     <div class="bar stack" id="codeBar">
       <input id="code" type="password" placeholder="password" autocomplete="current-password">
     </div>
+    <!-- Sign-up only: the account records the terms it agreed to, and the
+         server refuses a sign-up without this. -->
+    <label class="agree" id="agreeRow" hidden><input type="checkbox" id="agree">
+    <span>I agree to the <a href="/terms" target="_blank" rel="noopener">terms of use</a>:
+    the drawings are made from open public data as it is available, with no guarantee
+    that it is complete, current or correct.</span></label>
     <!-- A field people never see, off the page rather than display:none (which
          the simplest bots know to skip): only a bot fills it in, and the server
          answers it like anyone and does nothing. -->
@@ -159,7 +165,7 @@
 
   <footer>
     Generated drafts, not a survey or a planning certificate.
-    <a href="/about">What that means</a>.<br>
+    <a href="/about">What that means</a>. <a href="/terms">Terms of use</a>.<br>
     © 2026 Sami Abdulnour and Zofia Kosova. All rights reserved.
   </footer>
 

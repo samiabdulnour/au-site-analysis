@@ -168,11 +168,22 @@ and its settings still say site: `STRIPE_SITE_PRICE_ID`, `unlockSite`.)
 `src/plans.ts` is that table in code, and every download route reads it, so a
 new privilege is a new column there rather than a new condition in the server.
 
+**Terms of use.** `/terms` (`web/terms.html`) says what every drawing is: made
+from open public data as it stands when it is drawn, with no guarantee that the
+data is complete, current or correct, and no substitute for a s10.7 certificate,
+a survey or professional advice. Sign-up asks for agreement to them, and the
+server refuses a sign-up without `agreed: true`; the account stores the version
+agreed to (`TERMS_VERSION` in `src/terms.ts`, the page's version line) and when.
+The same sentence stands before every payment: on `/pricing`, beside UNLOCK THIS
+ADDRESS, and above the pay button on Stripe's Checkout page (`custom_text`).
+Accounts from before the terms carry no version. The page is a plain-language
+draft and wants a lawyer's reading before it is relied on.
+
 **Accounts.** Drawing never asks for one: the tool is the landing page, and
 the account form opens only from SIGN IN in the nav, from an unlock or the
 pricing page (buying starts with an account), and from the emailed
 verification and reset links. Anyone can make one with an email and a
-password (`SIGN UP`), and starts on the free side. What holds the open side
+password (`SIGN UP`, with the terms agreed to), and starts on the free side. What holds the open side
 down is what always did: the per-IP budgets (12 sheets an hour, and the
 sign-in and sign-up limiters) and the one-at-a-time queue. Accounts live in `out/accounts/accounts.json`
 on the host volume, beside the job index and written the same way, with scrypt

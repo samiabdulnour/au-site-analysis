@@ -505,6 +505,8 @@ if (boot.has('address')) history.replaceState(null, '', '/');
 
 function renderAuth() {
   $('authRow').hidden = Boolean(resetToken || confirmToken);
+  // the agreement is the sign-up form's: a confirm link has nothing left to agree to
+  $('agreeRow').hidden = Boolean(resetToken || confirmToken) || authMode !== 'signup';
   syncHuman();
   if (confirmToken) {
     // Nothing to type: the link is the proof, and the press is the person.
@@ -624,6 +626,10 @@ loginForm.addEventListener('submit', async (e) => {
   } else {
     path = authMode === 'signup' ? '/api/signup' : '/api/login';
     body = { email: $('email').value.trim(), password };
+    if (authMode === 'signup') {
+      if (!$('agree').checked) { authErr.textContent = 'Agree to the terms of use to create an account.'; return; }
+      body.agreed = true;
+    }
   }
   // The human check's token, and the trap field that only a bot fills in.
   body.human = humanToken;
@@ -828,7 +834,8 @@ async function poll(id, misses) {
         // What is bought, said in full: the address, not just this drawing of it.
         unlockWhat.textContent = 'Unlocking this address gives you every drawing of it — context, ' +
           'site, yield and site report, at any scale or style — clean, with the CAD and data files, ' +
-          'for 30 days.';
+          'for 30 days. They are made from open public data as it is available, with no guarantee that ' +
+          'it is complete (see the terms of use at /terms).';
         unlockWhat.hidden = false;
         addButton('unlock this address · ' + j.unlock, () => unlock(id));
       }

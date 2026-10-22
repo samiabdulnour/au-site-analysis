@@ -17,6 +17,7 @@
 
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { accountById, accountByCustomer, updateAccount, unlockSite, type Account } from './accounts.js';
+import { paymentNotice } from './terms.js';
 import { paidFor } from './plans.js';
 
 const KEY = process.env.STRIPE_SECRET_KEY?.trim() ?? '';
@@ -69,6 +70,8 @@ export async function checkoutUrl(a: Account, origin: string): Promise<string> {
     'metadata[account_id]': a.id,
     'subscription_data[metadata][account_id]': a.id,
     allow_promotion_codes: 'true',
+    // above the pay button: what is bought is a drawing of the open data as it stands
+    'custom_text[submit][message]': paymentNotice(origin),
   };
   // An account that has paid before keeps its Stripe customer, so its invoices
   // and card stay in one place.
@@ -101,6 +104,8 @@ export async function siteCheckoutUrl(a: Account, address: string, jobId: string
     'metadata[kind]': 'site',
     'metadata[address]': address,
     'payment_intent_data[description]': `Site Analyst: ${address}`,
+    // above the pay button: what is bought is a drawing of the open data as it stands
+    'custom_text[submit][message]': paymentNotice(origin),
   };
   if (a.stripeCustomerId) params.customer = a.stripeCustomerId;
   else {

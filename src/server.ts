@@ -32,6 +32,7 @@ import { withTemplate, themeFor, templateFor, type SheetKind } from './render/te
 import { htmlToPdf, printSlides } from './render/pdf.js';
 import { stampPdf, watermarkId } from './render/watermark.js';
 import { GRANTS, PRICE_LABEL, SITE_PRICE_LABEL, planOf, paidFor, siteKey, type Plan, type Grants } from './plans.js';
+import { TERMS_VERSION } from './terms.js';
 import {
   initAccounts, accountFromCookie, accountCounts, createAccount, signIn, sessionCookieValue,
   normaliseEmail, validEmail, PASSWORD_MIN, ACCOUNT_COOKIE, SESSION_DAYS, type Account,
@@ -923,6 +924,7 @@ const server = createServer(async (req, res) => {
     '/': ['index.html', 'text/html; charset=utf-8'],
     '/about': ['about.html', 'text/html; charset=utf-8'],
     '/pricing': ['pricing.html', 'text/html; charset=utf-8'],
+    '/terms': ['terms.html', 'text/html; charset=utf-8'],
     '/pricing.js': ['pricing.js', 'text/javascript; charset=utf-8'],
     '/status': ['status.html', 'text/html; charset=utf-8'],
     '/admin': ['admin.html', 'text/html; charset=utf-8'],
@@ -972,6 +974,7 @@ Sitemap: ${siteBase()}/sitemap.xml
   <url><loc>${base}/</loc><changefreq>monthly</changefreq><priority>1.0</priority></url>
   <url><loc>${base}/about</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
   <url><loc>${base}/pricing</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>${base}/terms</loc><changefreq>yearly</changefreq><priority>0.3</priority></url>
 </urlset>
 `);
     return;
@@ -1096,11 +1099,12 @@ Canonical: ${base}/.well-known/security.txt
   // the account is made and signed in at once, as it always was.
   if (req.method === 'POST' && url.pathname === '/api/signup') {
     if (limited(`signup:${ip}`, 5, 3600_000)) return json(res, 429, { error: 'Too many sign-ups from here. Try later.' });
-    let email = '', password = '', human: unknown, trap = '';
+    let email = '', password = '', agreed = false, human: unknown, trap = '';
     try {
       const parsed = JSON.parse((await readBody(req)) || '{}');
       email = normaliseEmail(parsed.email);
       password = String(parsed.password ?? '');
+      agreed = parsed.agreed === true;
       human = parsed.human;
       trap = String(parsed.website ?? '');
     } catch { /* refused below */ }
@@ -1115,6 +1119,10 @@ Canonical: ${base}/.well-known/security.txt
       console.log(`bots: sign-up honeypot filled from ${ip}`);
       return json(res, 202, CHECK_EMAIL);
     }
+    // The account records which terms it agreed to: that the drawings come from open data as available,
+    // with no guarantee that data is complete. Refused here, not only in the page, so no client skips it;
+    // and before the human check, so a forgotten tick does not spend the person's check.
+    if (!agreed) return json(res, 400, { error: 'Agree to the terms of use to create an account.' });
     if (!(await isHuman(human, ip)))
       return json(res, 403, { error: 'Confirm you are human, then sign up again.', human: true });
 
@@ -1131,7 +1139,7 @@ Canonical: ${base}/.well-known/security.txt
           .catch((e) => console.log(`email: already-registered note for ${taken.id} not sent — ${e?.message ?? e}`));
         return json(res, 202, CHECK_EMAIL);
       }
-      const token = startSignup(email, passwordHash);
+      const token = startSignup(email, passwordHash, TERMS_VERSION);
       if (!token) {
         console.log('accounts: the list of sign-ups waiting on their email is full');
         return json(res, 503, { error: 'Sign-ups are paused for a moment. Try again later.' });
@@ -1147,7 +1155,7 @@ Canonical: ${base}/.well-known/security.txt
 
     let account: Account;
     try {
-      account = await createAccount(email, password);
+      account = await createAccount(email, password, TERMS_VERSION);
     } catch (e: any) {
       if (e?.message === 'exists') return json(res, 409, { error: 'That email already has an account. Sign in instead.' });
       console.log(`accounts: sign-up failed — ${e?.message ?? e}`);
