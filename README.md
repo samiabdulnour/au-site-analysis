@@ -181,8 +181,11 @@ server. To switch it on, in Stripe's dashboard:
    Make another with a one-off price for a site; its id is `STRIPE_SITE_PRICE_ID`.
    Either can be left out, and that way to pay stays closed.
 2. Add a webhook endpoint at `https://<domain>/api/billing/webhook` sending
-   `checkout.session.completed` and `customer.subscription.created`, `.updated`
-   and `.deleted`; its signing secret is `STRIPE_WEBHOOK_SECRET`.
+   `checkout.session.completed` and `.async_payment_succeeded`, and
+   `customer.subscription.created`, `.updated` and `.deleted`; its signing
+   secret is `STRIPE_WEBHOOK_SECRET`. The second is a site paid for by a
+   method that settles days later, which the dashboard's payment-method
+   settings decide whether to offer.
 3. Save the customer portal's settings once (Settings → Billing → Customer
    portal), or MANAGE BILLING has nothing to open.
 

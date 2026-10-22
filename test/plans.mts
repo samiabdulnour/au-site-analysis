@@ -232,6 +232,13 @@ try {
   const twice = (await (await free('/api/me')).json()).account?.sites?.[0]?.until;
   check('the same payment delivered twice extends nothing', twice === until, `${twice} vs ${until}`);
 
+  // A method that settles days later: completed arrives unpaid, then the same
+  // session again as async_payment_succeeded once the money is in.
+  await webhook(paidFor('cs_slow', '9 Other Road, Sydney NSW 2000', 'unpaid'));
+  check('a slow payment, not yet settled, unlocks nothing', !(await holds(free, otherId)).cleanPdf);
+  await webhook({ ...paidFor('cs_slow', '9 Other Road, Sydney NSW 2000'), type: 'checkout.session.async_payment_succeeded' });
+  check('…and unlocks the site once Stripe says it settled', (await holds(free, otherId)).cleanPdf);
+
   check('unlock refuses without Stripe',
     (await post(free, '/api/billing/unlock', { job: otherId })).status === 503);
 

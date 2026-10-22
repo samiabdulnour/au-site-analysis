@@ -34,8 +34,9 @@ const good: Answers = {
   'prices/price_site': { status: 200, body: { active: true, unit_amount: 7900, currency: 'aud', recurring: null } },
   'webhook_endpoints?limit=100': { status: 200, body: { data: [{
     url: 'https://site-analyst.com/api/billing/webhook', status: 'enabled',
-    enabled_events: ['checkout.session.completed', 'customer.subscription.created',
-                     'customer.subscription.updated', 'customer.subscription.deleted'],
+    enabled_events: ['checkout.session.completed', 'checkout.session.async_payment_succeeded',
+                     'customer.subscription.created', 'customer.subscription.updated',
+                     'customer.subscription.deleted'],
   }] } },
   'billing_portal/configurations?is_default=true&limit=1': { status: 200, body: { data: [{ active: true }] } },
 };
