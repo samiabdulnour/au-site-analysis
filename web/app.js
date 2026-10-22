@@ -10,7 +10,7 @@ const state = { sheet: 'context', scale: '3000', rotate: 'north', template: 'fla
 const SHEETS = [
   ['context', 'context',     'Context analysis on A1'],
   ['site',    'site',        'Site analysis on A1'],
-  ['yield',   'yield',       'Planning yield on A1: the controls, the envelope, the floor area, apartments and parking'],
+  ['yield',   'yield',       'Planning yield on A3, a page a path, shown in turn: the controls, the massing, the floor area, apartments and parking'],
   ['slides',  'site report', 'Site report on A3, its pages shown in turn'],
 ];
 const SCALES = {
@@ -206,14 +206,15 @@ function caption(items, value) {
   return hit ? hit[2] : '';
 }
 
-// The site report has pages, so its frame turns through them: one every second
-// and a half, from result-slides-1.jpg on until a number has no picture, then back
-// to the first. The pointer over the frame holds the page, a click turns it,
+// The site report and the yield have pages, so their frame turns through them:
+// one every second and a half, from result-slides-1.jpg (result-yield-1.jpg) on
+// until a number has no picture, then back to the first. The pointer over the frame holds the page, a click turns it,
 // and with reduced motion asked for it only turns on a click.
 const PAGE_MS = 1500;
-let deck = null;   // { page, last, timer, held }
+let deck = null;   // { sheet, page, last, timer, held }
 
-const pageSrc = (n) => '/samples/result-slides-' + n + '.jpg';
+const pageSrc = (n) => '/samples/result-' + (deck ? deck.sheet : 'slides') + '-' + n + '.jpg';
+const PAGED = { slides: 'Site report', yield: 'Planning yield' };
 
 function stopDeck() {
   if (deck) clearTimeout(deck.timer);
@@ -223,7 +224,7 @@ function stopDeck() {
 function showPage(n) {
   deck.page = n;
   resultImg.src = pageSrc(n);
-  resultImg.alt = 'Site report on A3, page ' + n + (deck.last ? ' of ' + deck.last : '') +
+  resultImg.alt = PAGED[deck.sheet] + ' on A3, page ' + n + (deck.last ? ' of ' + deck.last : '') +
     '. An example drawn for ' + EXAMPLE_ADDRESS + '.';
 }
 
@@ -254,10 +255,11 @@ function renderResult() {
   // Whatever finished drawing held the frame, an option picked or a new run
   // started means the frame is the expected sample again.
   $('resultDrawn').hidden = true;
-  if (state.sheet === 'slides') {
+  if (PAGED[state.sheet]) {
     // renderAll runs on every pick; a deck already turning keeps its place.
-    if (deck) return;
-    deck = { page: 1, last: 0, timer: 0, held: resultImg.parentElement.matches(':hover') };
+    if (deck && deck.sheet === state.sheet) return;
+    stopDeck();
+    deck = { sheet: state.sheet, page: 1, last: 0, timer: 0, held: resultImg.parentElement.matches(':hover') };
     resultImg.hidden = false;
     resultMissing.hidden = true;
     resultImg.classList.add('loading');

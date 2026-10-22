@@ -39,7 +39,7 @@ import { runPipeline, runSitePipeline, runSummaryPipeline, runYieldPipeline, run
 import { renderSheet, MAP_W, MAP_H, type SheetMeta } from './render/sheet.js';
 import { renderSiteSheet } from './render/siteSheet.js';
 import { renderSummarySheet } from './render/summarySheet.js';
-import { renderYieldSheet } from './render/yieldSheet.js';
+import { renderYieldDeck } from './render/yieldSheet.js';
 import { renderSlides, PANEL_W, PANEL_H, DA_PANEL_H, SLIDE_W, SLIDE_H } from './render/slides.js';
 import { prepareRasters } from './render/paintMasks.js';
 import { htmlToPdf, htmlToJpeg, printSlides } from './render/pdf.js';
@@ -170,12 +170,13 @@ if (want('yield')) {
   const outDir = join(root, 'yield');
   log('yield');
   const bundle = await runYieldPipeline(address, { outDir, log });
-  // No themes either: one picture.
-  const html = join(outDir, 'yield_sheet.html');
-  const pdf = join(outDir, 'PLANNING_YIELD.pdf');
-  await writeFile(html, renderYieldSheet(bundle, meta));
-  await htmlToPdf(html, pdf);
-  toJpeg(pdf, 'yield');
+  // No themes either, but pages, as the site report has: result-yield-1.jpg, -2…
+  const html = join(outDir, 'yield_deck.html');
+  await writeFile(html, renderYieldDeck(bundle, meta).html);
+  const pages = await printSlides(html, join(outDir, 'PLANNING_YIELD.pdf'), join(outDir, 'pages'), { widthMm: SLIDE_W, heightMm: SLIDE_H });
+  pages.forEach((png, i) => toJpeg(png, `yield-${i + 1}`));
+  for (let n = pages.length + 1; existsSync(join(samples, `result-yield-${n}.jpg`)); n++) rmSync(join(samples, `result-yield-${n}.jpg`));
+  rmSync(join(samples, 'result-yield.jpg'), { force: true });
 }
 
 if (want('summary')) {

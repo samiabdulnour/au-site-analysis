@@ -93,8 +93,8 @@ A camera point takes the nearest panorama to it; `heading`, `pitch` and
 
 The frame's pictures are `web/samples/result-<sheet>-<scale>-<rotate>-<style>.jpg`
 for the two maps (the context sheet in each of its four templates, the site
-sheet in each of its themes), `result-yield.jpg` for the yield and
-`result-slides-1.jpg`, `-2`… for the site report's pages, which have no
+sheet in each of its themes), `result-yield-1.jpg`, `-2`… for the yield's
+pages and `result-slides-1.jpg`, `-2`… for the site report's, which have no
 styles — one for every
 combination the table offers, the names `web/app.js` asks for. A combination without one says so in the frame
 rather than showing a broken image. They are drawn for 150 George Street,
@@ -991,39 +991,55 @@ development window), `--job 2539`, `--client "Name"`,
 
 ### The planning yield
 
-`--type yield` draws PLANNING YIELD, an A1 sheet in the office frame: what the
-controls let the site hold, as a feasibility study first states it. The left
-half is the office's development summary (DA 002) with the column the
-generated summary had to leave empty now filled — CONTROLS, PROPOSED and
-COMPLIANCE — for the site (what stands on it today included, where the
-building sources record it), the project summary, the LEP, the parking, the
-Apartment Design Guide and the Housing SEPP. Under it, ruled as the same
-table, the schedule of tiers — storeys, use, setbacks, envelope, plate and
-floor area, each tier's number in the ring the plan draws it in — then the
-apartments, a row for each kind in the mix with its share, ADG 4D-1's least
-area for it, its own area, how many there are and the area they take, and
-the assumptions the study rests on (floor to floor, efficiencies, the mix,
-the plates, the nearest station).
+`--type yield` draws PLANNING YIELD: what the controls let the site hold, as a
+feasibility study first states it, laid out as the site report is — A3
+landscape spreads, the left page for what is said (the figures, the tables and
+the key, the narrative in red down its left column, the sources at its foot)
+and the right page for the drawings — and printed the same way, one PDF page
+and one PNG (`yield/<page>.png`) a spread. There is a spread for each path the
+site may take, so a site with more paths has more pages:
 
-The right half draws the study, and weighs it. Under the massing, a
-SCENARIOS table sets the paths an investor compares against one another,
-each with its storeys, height, GFA, FSR, units and parking
-(`scenarioRows()`, also in the CSV and the JSON): *stands today* — the
-building on the site from its recorded footprint and height, indicative
-GBA, no mark, since it is a fact and not a proposal; *within the controls*
-— the scheme the drawings show, inside the LEP's height and FSR and the
-ADG's separations; *affordable housing bonus* — the Housing SEPP's in-fill
-30%, eligibility to confirm; and *envelope to the height* — the setbacks
-filled to the height plane with the FSR set aside, the case a clause 4.6
-variation or a planning proposal has to carry, marked non-compliant. Where
-what stands exceeds every scenario, a red line says so: the controls have
-tightened since it was built, and redevelopment would cut the floor area.
+1. **Planning yield** — the site (area, lot, frontage) and its controls (zone,
+   height of building, floor space ratio and the floor area it gives), then
+   the paths side by side (`scenarioRows()`, also in the CSV and the JSON):
+   each one's storeys, height, floor area, FSR, units, parking, compliance and
+   the page it is drawn on, and the floor area and height of each as bars
+   against the FSR's floor area and the height of building. The right page is
+   the site among its neighbours in plan, each numbered neighbour's street
+   number, zone and height written in its building.
+2. **Stands today**, where the building sources record a building on the site
+   — its storeys, height, footprint and indicative gross building area (each
+   footprint by its storeys), the ratio that makes on the site against the
+   LEP's, and the same bars. The right page draws it at its recorded height
+   among the neighbours, over its plan. Where what stands exceeds every path,
+   the narrative says so: the controls have tightened since it was built, and
+   redevelopment would cut the floor area.
+3. **Within the controls** — the scheme inside the LEP's height and FSR and
+   the ADG's separations: its building type, storeys, floor area, apartments,
+   saleable area and parking; the controls it is held to (height, FSR, floor
+   area, minimum lot size, ADG 2E depth and 3E deep soil) with a mark each;
+   the schedule of tiers — storeys, use, setbacks, plate and floor area, each
+   tier's number in the ring the plan draws it in — and the apartments, a row
+   for each kind in the mix with its share, ADG 4D-1's least area for it, its
+   own area, how many there are and the area they take.
+4. **Affordable housing bonus** — the same for the Housing SEPP's in-fill
+   bonus, 30% more height and FSR for 15% affordable housing, eligibility to
+   confirm; drawn only where it gains floor area or apartments.
+5. **Envelope to the height** — the setbacks filled to the height plane with
+   the FSR set aside, the case a clause 4.6 variation or a planning proposal
+   has to carry, marked non-compliant; drawn only where the FSR stops the
+   scheme below the height.
+6. **Controls and assumptions** — the assumptions the study rests on (floor
+   to floor, efficiencies, the mix, the plates, the parking rates, the nearest
+   station) on the left; on the right, the full table the office's
+   development summary (DA 002) keeps — CONTROLS, PROPOSED and COMPLIANCE for
+   the LEP, the parking, the Apartment Design Guide and the Housing SEPP.
 
-The indicative massing as an axonometric,
+Each drawn path's right page is its indicative massing as an axonometric,
 seen from the main street's corner, among the neighbours at their recorded
 heights (Overture, its gaps filled from OpenStreetMap; dashed where neither
 records one), with each tier's envelope
-dashed and the height of building plane over the site. Over each neighbour,
+dashed and the LEP's height of building plane over the site. Over each neighbour,
 in pale dashed glass, its future: its own footprint raised to the whole 3.1 m
 storeys its LEP height of building holds, where its zone permits flats (R1,
 R3, R4, MU1, E1, E2, B1–B4), never lowered — the way sun-study's future
@@ -1034,13 +1050,12 @@ at the study's efficiency, offices in a commercial zone and apartments
 elsewhere (`futureHeight()` in `src/lib/yield.ts`). So where the height is an
 airspace RL, as in Parramatta's CBD, the ratio sets the neighbours' futures
 as it sets the proposal. The bundle carries each neighbour's zone, height,
-ratio and land, and the future is worked out when the sheet is drawn, so an
+ratio and land, and the future is worked out when the deck is drawn, so an
 efficiency changed in `yield_assumptions.json` carries to it. The proposal's
 outline is drawn over everything, so a future neighbour in front of it does
 not hide it, and a future far above what stands runs out of the frame, as the
 height plane does, the frame saying how high it goes. Under the massing, the
-envelope in plan at a round scale, the
-width of the half, on the ground the site analysis draws, kept to black and
+envelope in plan at a round scale, on the ground the site analysis draws, kept to black and
 grey: the lot lines, the kerbs (`src/lib/kerbs.ts`, indicative), the
 neighbours' buildings, and on each numbered neighbour its street number, zone
 and height of building (`NO. 13–17`, `R4 · HOB = 28m`), written inside its
@@ -1115,13 +1130,15 @@ from `yield_assumptions.json` in the address's output folder (the CLI's
   "parking": { "one": 0.5, "two": 1, "three": 1.5, "visitor": 0.2, "basis": "the council's DCP" } }
 ```
 
-The sheet prints the ones a run used. It is a feasibility figure, not a design:
+The deck prints the ones a run used. It is a feasibility figure, not a design:
 DCP setbacks, street wall heights, solar access and overshadowing are the
 design's to test, and mapped controls are not a planning certificate. Outputs:
-`PLANNING_YIELD.pdf`, `.csv`, `.json`, and `data/yield.json` (the bundle, which
-redraws with no refetch). A bundle from before the future heights, the lots'
-zones and numbers and the kerbs still draws: without the future neighbours
-and the plan's labels, its kerbs worked out from the lots and the roads.
+`PLANNING_YIELD.pdf`, a PNG a spread in `yield/`, `.csv`, `.json`, and
+`data/yield.json` (the bundle, which redraws with no refetch). A bundle from
+before the future heights, the lots' zones and numbers and the kerbs still
+draws: without the future neighbours and the plan's labels, its kerbs worked
+out from the lots and the roads; one from before the outlines of what stands
+gives its figures without drawing it.
 
 ### The deck
 

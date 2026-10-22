@@ -1,24 +1,27 @@
 // PLANNING YIELD — what the controls let the site hold (sheet DA 002's
-// successor in the options table).
+// successor in the options table), laid out as the site report is.
 //
-// The left half is the development summary the office issues, with the
-// column the generated summary had to leave empty now filled: CONTROLS,
-// PROPOSED and COMPLIANCE, the proposal being the yield study's
-// (lib/yield.ts), and under it the schedule of tiers, storeys and floor area
-// with the assumptions the study rests on. The right half draws that study:
-// the indicative massing as an axonometric among the neighbours at their
-// recorded heights, with what each may rise to under its own height control
-// dashed over it, and the envelope in plan with its setback tiers numbered.
+// A3 spreads, the left page for what is said and the right for the
+// drawings: first the paths the site may take side by side over the site and
+// its neighbours; then a spread for each path — what stands today, the scheme
+// within the controls, the affordable housing bonus, the envelope filled to
+// the height — its figures, controls, schedule and mix beside its indicative
+// massing among the neighbours (each one's future dashed over it) and its
+// envelope in plan; last, the development summary's CONTROLS, PROPOSED and
+// COMPLIANCE table with the assumptions the study (lib/yield.ts) rests on.
 //
 // It is a feasibility figure, not a design: the envelope is the controls'
 // and the ADG's, the plates are held to a building depth or a tower size, and
 // every assumption — floor heights, efficiencies, the mix, the parking rates —
-// is printed in the notes and can be changed in `yield_assumptions.json`
+// is printed in the deck and can be changed in `yield_assumptions.json`
 // beside the output.
 
-import { FRAME_L, FRAME_T, esc, sheetHtml, SWATCH_X, SWATCH_W, LABEL_X } from './chrome.js';
-import { tpl, withTemplate, DEFAULT_TEMPLATE } from './template.js';
-import { wrapLabel, shortStreetName, type SheetMeta } from './sheet.js';
+import { esc } from './chrome.js';
+import { tpl, withTemplate, DECK_TEMPLATE } from './template.js';
+import { shortStreetName, type SheetMeta } from './sheet.js';
+import { atlasPage, deckCss, zFlow, zBlock, zTable, brief, type Slide } from './slides.js';
+import { INK, zFigures, zBars, niceAxis, type Fill } from './atlasKit.js';
+import type { LegendEntry } from './minimap.js';
 import { estimateKerbs, type KerbLine } from '../lib/kerbs.js';
 import type { SummaryData } from './summarySheet.js';
 import type { TopoRoad } from '../fetch/nswTopo.js';
@@ -279,149 +282,10 @@ export function yieldRows(b: YieldBundle, s: YieldStudy = yieldStudy(b)): YieldR
   return rows;
 }
 
-// ---- the table, drawn -----------------------------------------------------------
-
-const TAB_L = 45.6, TAB_R = 384;
-const COL_LABEL = 46.3, COL_CONTROLS = 104, COL_PROPOSED = 236, COL_OK = 368;
-const TITLE_Y = 20.5, TABLE_TOP = 26.8, TITLE_SIZE = 8.23;
-const BODY = 3.3, LEAD = 4.35, PAD_TOP = 4.6, ROW_MIN = 6.4, ROW_SECTION = 8.2, RULE_W = 0.12;
-/** A one-line row, as the table works its height out. */
-const ROW_ONE = Math.max(ROW_MIN, PAD_TOP + 2.2);
-
-const txt = (x: number, y: number, s: string, bold = false, size = BODY, fill?: string, anchor = 'start') =>
-  `<text x="${x.toFixed(2)}" y="${y.toFixed(2)}" font-size="${size}"${bold ? ' font-weight="700"' : ''}${fill ? ` fill="${fill}"` : ''}${anchor !== 'start' ? ` text-anchor="${anchor}"` : ''}>${esc(s)}</text>`;
-
-/** The label column breaks a clause number onto its own line, as the office's summary does; bold capitals run about 0.7 of the size. */
-function labelLines(label: string): string[] {
-  const clause = label.match(/^(\d+[A-Z]?\.)\s+(.+)$/);
-  const maxChars = Math.floor((COL_CONTROLS - COL_LABEL - 3) / (BODY * 0.7));
-  return [...(clause ? [clause[1]] : []), ...wrapLabel(clause ? clause[2] : label, maxChars)];
-}
-
-/** A cell's lines broken to its column's width (regular text, about 0.52 of the size a character). */
-function wrapCell(lines: string[] | undefined, widthMm: number): string[] {
-  const max = Math.floor(widthMm / (BODY * 0.52));
-  const out: string[] = [];
-  for (const line of lines ?? []) {
-    let cur = '';
-    for (const w of line.split(' ')) {
-      const next = cur ? `${cur} ${w}` : w;
-      if (next.length > max && cur) { out.push(cur); cur = w; } else cur = next;
-    }
-    out.push(cur);
-  }
-  return out;
-}
-
-/** The ✓, the ✗ or the dash of the compliance column. */
-function mark(x: number, y: number, ok: boolean | null | undefined): string {
-  if (ok === undefined) return '';
-  if (ok === null) return `<line x1="${x - 1.6}" y1="${y - 1.1}" x2="${x + 1.6}" y2="${y - 1.1}" stroke="#8a8a8a" stroke-width="0.35"/>`;
-  return ok
-    ? `<path d="M${x - 2},${y - 1.2} L${x - 0.6},${y + 0.3} L${x + 2.2},${y - 3}" fill="none" stroke="#2f8f55" stroke-width="0.55" stroke-linecap="round" stroke-linejoin="round"/>`
-    : `<path d="M${x - 1.7},${y - 2.9} L${x + 1.7},${y + 0.3} M${x + 1.7},${y - 2.9} L${x - 1.7},${y + 0.3}" stroke="#c8372d" stroke-width="0.55" stroke-linecap="round"/>`;
-}
-
-const rule = (y: number) => `<line x1="${TAB_L}" y1="${y.toFixed(2)}" x2="${TAB_R}" y2="${y.toFixed(2)}" stroke="${tpl().ink}" stroke-width="${RULE_W}"/>`;
-
-/** The rows from `top` down, ruled; where the last rule fell. */
-function renderTable(rows: YieldRow[], top: number): { svg: string; bottom: number } {
-  const out: string[] = [];
-  let y = top;
-  out.push(rule(y));
-  for (const r of rows) {
-    const lab = !r.section && !r.head && r.label ? labelLines(r.label) : [];
-    // A row with no proposal lets its controls run on over the proposed column.
-    const ctl = wrapCell(r.controls, (r.proposed ? COL_PROPOSED : TAB_R) - COL_CONTROLS - 4);
-    const prop = wrapCell(r.proposed, COL_OK - COL_PROPOSED - 4);
-    const lines = Math.max(ctl.length || 1, prop.length || 1, lab.length, 1);
-    const h = r.section ? ROW_SECTION : Math.max(ROW_MIN, PAD_TOP + (lines - 1) * LEAD + 2.2);
-    const base = y + PAD_TOP;
-    if (r.section) out.push(txt(COL_LABEL, base + 0.6, r.label ?? '', true));
-    else if (r.head) out.push(txt(COL_CONTROLS, base, 'CONTROLS', true), txt(COL_PROPOSED, base, 'PROPOSED', true), txt(COL_OK + 6, base, 'COMPLIANCE', true, BODY * 0.8, undefined, 'end'));
-    else {
-      lab.forEach((line, i) => out.push(txt(COL_LABEL, base + i * LEAD, line, true)));
-      ctl.forEach((line, i) => { if (line) out.push(txt(COL_CONTROLS, base + i * LEAD, line)); });
-      prop.forEach((line, i) => { if (line) out.push(txt(COL_PROPOSED, base + i * LEAD, line)); });
-      out.push(mark(COL_OK + 2, base, r.ok));
-    }
-    y += h;
-    out.push(rule(y));
-  }
-  return { svg: out.join(''), bottom: y };
-}
-
 /** A tier's number in its ring: the plan's mark, and the schedule's key to it. */
 function tierBadge(x: number, y: number, n: number, r = 2): string {
   return `<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="${r}" fill="#ffffff" stroke="${ENVELOPE}" stroke-width="0.25"/>` +
     `<text x="${x.toFixed(2)}" y="${(y + r * 0.47).toFixed(2)}" text-anchor="middle" font-size="${(r * 1.3).toFixed(2)}" font-weight="700" fill="${ENVELOPE}">${n}</text>`;
-}
-
-/**
- * The schedule, under the summary and ruled as it is: one row per tier keyed
- * to the plan's numbers, and the totals. Each column is set out for its
- * longest entry, the areas set right so their digits line up.
- */
-function renderSchedule(y: YieldResult, top: number): { svg: string; bottom: number } {
-  const out: string[] = [];
-  const C = { storeys: 62, use: 96, setbacks: 162, envelope: 262, plate: 320, gfa: TAB_R - 3 };
-  let yy = top;
-  out.push(rule(yy));
-  out.push(txt(COL_LABEL, yy + PAD_TOP + 0.6, 'SCHEDULE', true));
-  yy += ROW_SECTION;
-  out.push(rule(yy));
-  // A row's cells are worked out when it is set, at the row's own height.
-  const row = (cells: () => string[]) => { out.push(...cells()); yy += ROW_ONE; out.push(rule(yy)); };
-  row(() => {
-    const b = yy + PAD_TOP;
-    return [txt(COL_LABEL, b, 'TIER', true), txt(C.storeys, b, 'STOREYS', true), txt(C.use, b, 'USE', true), txt(C.setbacks, b, 'SETBACKS FRONT / SIDE / REAR', true),
-      txt(C.envelope, b, 'ENVELOPE', true, BODY, undefined, 'end'), txt(C.plate, b, 'PLATE GBA', true, BODY, undefined, 'end'), txt(C.gfa, b, 'GFA', true, BODY, undefined, 'end')];
-  });
-  if (!y.tiers.length) {
-    row(() => [txt(C.storeys, yy + PAD_TOP, 'No building type is studied for this zone: the floor space ratio\'s floor area alone.')]);
-    return { svg: out.join(''), bottom: yy };
-  }
-  const gfaOf = (t: Tier) => y.floors.filter((f) => f.storey >= t.from && f.storey <= t.to).reduce((sum, f) => sum + f.gfa, 0);
-  const a = y.assumptions;
-  y.tiers.forEach((t, i) => {
-    const built = Math.max(0, Math.min(t.to, y.storeys) - t.from + 1);
-    const ink = built ? undefined : '#9a9a9a';
-    const st = t.from === t.to ? `${t.from}` : `${t.from}–${t.to}`;
-    const held = t.held === 'tower' ? `, tower plate to ${sqm(a.towerPlateMax)}` : t.held === 'depth' ? `, ${m1(a.maxDepth)} deep` : '';
-    const set = (v: number) => fmt(v, v % 1 ? 1 : 0);
-    row(() => {
-      const b = yy + PAD_TOP;
-      return [tierBadge(COL_LABEL + 2.6, b - 1.1, i + 1, 2.3), txt(C.storeys, b, built && built < t.to - t.from + 1 ? `${st} (${built} built)` : st, false, BODY, ink),
-        txt(C.use, b, USE_WORD[t.use] + held, false, BODY, ink), txt(C.setbacks, b, `${set(t.front)} / ${set(t.side)} / ${set(t.rear)}m`, false, BODY, ink),
-        txt(C.envelope, b, sqm(t.envelopeSqm), false, BODY, ink, 'end'), txt(C.plate, b, sqm(t.plateSqm), false, BODY, ink, 'end'), txt(C.gfa, b, built ? sqm(gfaOf(t)) : 'not built', false, BODY, ink, 'end')];
-    });
-  });
-  row(() => {
-    const b = yy + PAD_TOP;
-    return [txt(COL_LABEL, b, 'TOTAL', true), txt(C.storeys, b, `${y.storeys} ${y.storeys === 1 ? 'storey' : 'storeys'}`, true), txt(C.plate, b, sqm(y.gba), true, BODY, undefined, 'end'), txt(C.gfa, b, sqm(y.gfa), true, BODY, undefined, 'end')];
-  });
-  // The apartments: each kind in the mix with its share, the ADG's least
-  // area for it, its own area, how many there are and the area they take.
-  if (y.units.total) {
-    const kinds = inMix(y);
-    const pc = (v: number) => `${fmt(v * 100, (v * 100) % 1 ? 1 : 0)}%`;
-    row(() => {
-      const b = yy + PAD_TOP;
-      return [txt(COL_LABEL, b, 'UNIT', true), txt(C.storeys, b, 'SHARE', true), txt(C.setbacks, b, 'ADG 4D MINIMUM', true),
-        txt(C.envelope, b, 'AREA EACH', true, BODY, undefined, 'end'), txt(C.plate, b, 'UNITS', true, BODY, undefined, 'end'), txt(C.gfa, b, 'AREA', true, BODY, undefined, 'end')];
-    });
-    for (const k of kinds) row(() => {
-      const b = yy + PAD_TOP;
-      return [txt(COL_LABEL, b, UNIT_SHORT[k].toUpperCase(), true), txt(C.storeys, b, pc(a.mix[k])), txt(C.setbacks, b, sqm(ADG_MINIMUM[k])),
-        txt(C.envelope, b, sqm(a.sizes[k]), false, BODY, undefined, 'end'), txt(C.plate, b, fmt(y.units[k]), false, BODY, undefined, 'end'), txt(C.gfa, b, sqm(y.units[k] * a.sizes[k]), false, BODY, undefined, 'end')];
-    });
-    row(() => {
-      const b = yy + PAD_TOP;
-      return [txt(COL_LABEL, b, 'TOTAL', true), txt(C.envelope, b, `average ${fmt(y.averageUnitSqm, 1)} sqm`, true, BODY, undefined, 'end'),
-        txt(C.plate, b, fmt(y.units.total), true, BODY, undefined, 'end'), txt(C.gfa, b, sqm(kinds.reduce((t, k) => t + y.units[k] * a.sizes[k], 0)), true, BODY, undefined, 'end')];
-    });
-  }
-  return { svg: out.join(''), bottom: yy };
 }
 
 // ---- the drawings ------------------------------------------------------------------
@@ -432,6 +296,11 @@ const CONTEXT_FILL = '#e9e9e6', CONTEXT_EDGE = '#a3a39e';
 /** A neighbour's future, over what stands: a pale glass, dashed, light enough to see the proposal through. */
 const FUTURE_FILL = '#e4ebf3', FUTURE_EDGE = '#8495a8', FUTURE_OPACITY = 0.3, FUTURE_DASH = '1.4,0.8';
 const SITE_RED = '#c8372d', ENVELOPE = '#5b6670';
+/** What stands on the site today, where a scenario keeps it. */
+const STANDING_FILL = '#c9c7c0';
+
+/** What a page draws on the site: a scheme of the study's, or what stands there today, or neither (the site alone). */
+interface Scheme { y?: YieldResult; standing?: { rings: XY[][]; heightM?: number; storeys?: number }[] }
 
 function shade(hex: string, f: number): string {
   const n = parseInt(hex.slice(1), 16);
@@ -455,8 +324,8 @@ interface Prism { rings: XY[][]; z0: number; z1: number; fill: string; edge: str
  * far to near, faces turned from the camera left out; the envelope and the
  * height plane go over them as dashed lines.
  */
-function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w: number; h: number }): string {
-  const y = s.base;
+function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w: number; h: number }, scheme: Scheme, id: string): string {
+  const y = scheme.y;
   const kinds = edgeKinds(s.ring, s.fronts);
   // The main frontage's outward normal; the camera stands out along it, turned 40° to take in a side.
   let signed = 0;
@@ -490,12 +359,19 @@ function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number;
     if (future && future > z1) group.push({ rings, z0: z1, z1: future, fill: FUTURE_FILL, edge: FUTURE_EDGE, edgeW: 0.12, dashed: true, dash: FUTURE_DASH, opacity: FUTURE_OPACITY });
     prisms.push({ key: depth(cen), group });
   });
-  const z = storeyZ(y);
+  const z = y ? storeyZ(y) : undefined;
   const built: Prism[] = [];
-  for (const t of y.tiers) {
+  if (y && z) for (const t of y.tiers) {
     const top = Math.min(t.to, y.storeys);
     if (top < t.from || !t.plate.length) continue;
     built.push({ rings: t.plate, z0: z.bottom(t.from), z1: z.top(top), fill: USE_FILL[t.use], edge: '#3a3a3a', edgeW: 0.16, storeys: Array.from({ length: top - t.from }, (_, i) => z.top(t.from + i)) });
+  }
+  // What stands, at its recorded height, its storeys ruled; one with none recorded at a nominal two, dashed.
+  for (const e of scheme.standing ?? []) {
+    const known = !!(e.heightM || e.storeys);
+    const top = e.heightM ?? (e.storeys ? e.storeys * 3.1 : 6.2);
+    const n = e.storeys ?? Math.max(1, Math.round(top / 3.1));
+    built.push({ rings: e.rings, z0: 0, z1: top, fill: STANDING_FILL, edge: '#3a3a3a', edgeW: 0.16, dashed: !known, storeys: Array.from({ length: n - 1 }, (_, i) => ((i + 1) * top) / n) });
   }
   prisms.push({ key: 0, group: built });
   prisms.sort((p, q) => q.key - p.key);
@@ -562,7 +438,7 @@ function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number;
 
   // The envelope each tier is allowed, dashed at its top; the height plane over the site.
   const over: string[] = [];
-  for (const t of y.tiers) {
+  if (y && z) for (const t of y.tiers) {
     const zt = z.top(t.to);
     for (const rg of t.envelope) over.push(`<path d="${poly(rg.map((p) => P(p, zt)))}" fill="none" stroke="${ENVELOPE}" stroke-width="0.22" stroke-dasharray="1.6,1"/>`);
   }
@@ -601,8 +477,8 @@ function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number;
   if (s.hob?.metres && !planeFits) notes.push(note(notes.length, SITE_RED, `HEIGHT OF BUILDING PLANE ${s.hob.rl ? `RL ${fmt(s.hob.value, 1)}, ` : ''}${fmt(Math.round(planeZ))}m ABOVE THE GROUND, ABOVE THE FRAME`));
   if (futureTop > cap) notes.push(note(notes.length, FUTURE_EDGE, `NEIGHBOURS' FUTURE HEIGHTS RUN ABOVE THE FRAME, TO ${fmt(Math.round(futureTop))}m`));
   const above = notes.join('');
-  return `<defs><clipPath id="axoclip"><rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}"/></clipPath></defs>
-    <g clip-path="url(#axoclip)"><g transform="translate(${tx.toFixed(2)},${ty.toFixed(2)}) scale(${k.toFixed(4)})">
+  return `<defs><clipPath id="axo-${id}"><rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}"/></clipPath></defs>
+    <g clip-path="url(#axo-${id})"><g transform="translate(${tx.toFixed(2)},${ty.toFixed(2)}) scale(${k.toFixed(4)})">
     <g style="vector-effect:non-scaling-stroke">${ground.join('')}${parts.join('')}${over.join('')}</g></g></g>${above}`;
 }
 
@@ -632,11 +508,11 @@ interface PlanResult { svg: string; scale: number; kerbs: KerbLine[] }
  * height of building; the street names along the roads. Over it each tier's
  * envelope and plate, numbered.
  */
-function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w: number; h: number }): PlanResult {
-  const y = s.base;
+function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w: number; h: number }, scheme: Scheme, id: string, room = 1.35): PlanResult {
+  const y = scheme.y;
   const xs = s.ring.map((p) => p.x), ys = s.ring.map((p) => p.y);
   const w = Math.max(...xs) - Math.min(...xs), h = Math.max(...ys) - Math.min(...ys);
-  const scale = [100, 200, 250, 500, 750, 1000, 1250, 1500, 2000, 2500, 5000].find((sc) => (w * 1.35 * 1000) / sc <= box.w && (h * 1.35 * 1000) / sc <= box.h) ?? 5000;
+  const scale = [100, 200, 250, 500, 750, 1000, 1250, 1500, 2000, 2500, 5000].find((sc) => (w * room * 1000) / sc <= box.w && (h * room * 1000) / sc <= box.h) ?? 5000;
   const mm = 1000 / scale;
   const cx = (Math.max(...xs) + Math.min(...xs)) / 2, cy = (Math.max(...ys) + Math.min(...ys)) / 2;
   const at = (p: XY): [number, number] => [box.x + box.w / 2 + (p.x - cx) * mm, box.y + box.h / 2 - (p.y - cy) * mm];
@@ -670,13 +546,15 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
   const blds = b.context.map((cb) => local(cb.rings[0] ?? [])).filter((rg) => rg.length >= 3);
   for (const rg of blds) out.push(`<path d="${path(rg)}" fill="${CONTEXT_FILL}" stroke="${CONTEXT_EDGE}" stroke-width="0.12"/>`);
 
+  // What stands on the site, where the scheme is what stands.
+  for (const e of scheme.standing ?? []) out.push(`<path d="${e.rings.map(path).join('')}" fill="${STANDING_FILL}" fill-rule="evenodd" stroke="#3a3a3a" stroke-width="0.2"/>`);
   // The study: the plates, widest tier first so the narrower ones over it stay visible; each tier's envelope; the site.
-  const tiers = [...y.tiers].sort((p, q) => q.envelopeSqm - p.envelopeSqm);
+  const tiers = y ? [...y.tiers].sort((p, q) => q.envelopeSqm - p.envelopeSqm) : [];
   for (const t of tiers) {
-    const built = t.from <= y.storeys;
+    const built = t.from <= y!.storeys;
     if (t.plate.length) out.push(`<path d="${t.plate.map(path).join('')}" fill="${USE_FILL[t.use]}" fill-opacity="${built ? 0.55 : 0.18}" fill-rule="evenodd" stroke="none"/>`);
   }
-  y.tiers.forEach((t, i) => { for (const rg of t.envelope) out.push(`<path d="${path(rg)}" fill="none" stroke="${ENVELOPE}" stroke-width="0.3" stroke-dasharray="${['2,1', '1.2,1.2', '3,1,0.8,1', '0.6,0.9'][i % 4]}"/>`); });
+  y?.tiers.forEach((t, i) => { for (const rg of t.envelope) out.push(`<path d="${path(rg)}" fill="none" stroke="${ENVELOPE}" stroke-width="0.3" stroke-dasharray="${['2,1', '1.2,1.2', '3,1,0.8,1', '0.6,0.9'][i % 4]}"/>`); });
   out.push(`<path d="${path(s.ring)}" fill="none" stroke="${SITE_RED}" stroke-width="0.6" stroke-dasharray="3,1.2"/>`);
 
   // North, and a bar of round metres, first: what is written later keeps off them.
@@ -694,7 +572,7 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
   const R = 2.2;
   const placed: XY[] = [];
   const anchor = frontageMiddle(s.ring, b.frontages);
-  y.tiers.forEach((t, i) => {
+  y?.tiers.forEach((t, i) => {
     const spot = tierSpot(t.envelope, y.tiers.slice(i + 1).flatMap((u) => u.envelope), placed, (R + 0.5) / mm, (2 * R + 1) / mm, t.plate, anchor);
     if (!spot) return;
     placed.push(spot);
@@ -744,9 +622,9 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
       const bx2: Box = [mx - W * 0.4, my - H * 0.4, mx + W * 0.4, my + H * 0.4];
       if (!clear(bx2)) continue;
       taken.push(bx2);
-      const id = `yrd${defs.length}`;
-      defs.push(`<path id="${id}" d="M${p0[0].toFixed(2)},${p0[1].toFixed(2)}L${p1[0].toFixed(2)},${p1[1].toFixed(2)}" fill="none"/>`);
-      out.push(`<text font-size="${FS}" font-weight="700" letter-spacing="0.5" dy="${(FS * 0.36).toFixed(2)}" fill="${STREET_INK}"><textPath href="#${id}" startOffset="50%" text-anchor="middle">${esc(label)}</textPath></text>`);
+      const rid = `${id}-rd${defs.length}`;
+      defs.push(`<path id="${rid}" d="M${p0[0].toFixed(2)},${p0[1].toFixed(2)}L${p1[0].toFixed(2)},${p1[1].toFixed(2)}" fill="none"/>`);
+      out.push(`<text font-size="${FS}" font-weight="700" letter-spacing="0.5" dy="${(FS * 0.36).toFixed(2)}" fill="${STREET_INK}"><textPath href="#${rid}" startOffset="50%" text-anchor="middle">${esc(label)}</textPath></text>`);
       named.add(name);
       break;
     }
@@ -801,7 +679,7 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
   }
 
   return {
-    svg: `<defs><clipPath id="planclip"><rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}"/></clipPath>${defs.join('')}</defs><g clip-path="url(#planclip)">${out.join('')}</g>`,
+    svg: `<defs><clipPath id="plan-${id}"><rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}"/></clipPath>${defs.join('')}</defs><g clip-path="url(#plan-${id})">${out.join('')}</g>`,
     scale, kerbs,
   };
 }
@@ -971,159 +849,372 @@ export function scenarioRows(b: YieldBundle, s: YieldStudy = yieldStudy(b)): Sce
   return out;
 }
 
-/** The SCENARIOS table, in the right half: a row a path, its note under it, the figures as the schedule writes them. */
-function renderScenarios(b: YieldBundle, s: YieldStudy, x: number, w: number, top: number): { svg: string; bottom: number } {
-  const rows = scenarioRows(b, s);
-  const C = { label: x + 0.7, storeys: x + 122, height: x + 158, gfa: x + 220, fsr: x + 252, units: x + 278, parking: x + 303 };
-  const line = (yy: number) => `<line x1="${x}" y1="${yy.toFixed(2)}" x2="${x + w}" y2="${yy.toFixed(2)}" stroke="${tpl().ink}" stroke-width="${RULE_W}"/>`;
-  const out: string[] = [];
-  let yy = top;
-  const head = yy + PAD_TOP;
-  out.push(txt(C.label, head, 'SCENARIO', true), txt(C.storeys, head, 'STOREYS', true, BODY, undefined, 'end'), txt(C.height, head, 'HEIGHT', true, BODY, undefined, 'end'),
-    txt(C.gfa, head, 'GFA', true, BODY, undefined, 'end'), txt(C.fsr, head, 'FSR', true, BODY, undefined, 'end'), txt(C.units, head, 'UNITS', true, BODY, undefined, 'end'),
-    txt(C.parking, head, 'PARKING', true, BODY, undefined, 'end'), txt(x + w, head, 'COMPLIANCE', true, BODY * 0.8, undefined, 'end'));
-  yy += ROW_ONE;
-  out.push(line(yy));
-  for (const r of rows) {
-    const base = yy + PAD_TOP;
-    const note = wrapCell([r.note], w - 12);
-    out.push(txt(C.label, base, r.label, true),
-      txt(C.storeys, base, r.storeys ?? '—', false, BODY, undefined, 'end'), txt(C.height, base, r.heightM ? m1(r.heightM) : '—', false, BODY, undefined, 'end'),
-      txt(C.gfa, base, r.gfa ?? '—', false, BODY, undefined, 'end'), txt(C.fsr, base, r.fsr ?? '—', false, BODY, undefined, 'end'),
-      txt(C.units, base, r.units ?? '—', false, BODY, undefined, 'end'), txt(C.parking, base, r.parking ?? '—', false, BODY, undefined, 'end'),
-      mark(x + w - 4, base, r.ok));
-    note.forEach((l, i) => out.push(txt(C.label, base + (i + 1) * LEAD, l, false, 2.7, '#555555')));
-    yy += PAD_TOP + (note.length + 1 - 1) * LEAD + LEAD * 0.55 + 2.2;
-    out.push(line(yy));
-  }
-  // What stands against the best of the paths: an investor's first question.
+// ---- the deck -------------------------------------------------------------------------
+//
+// The yield prints as the site report does: A3 spreads, the left page for
+// what is said — the figures, the tables, the key — and the right for the
+// drawings. The first spread sets the paths side by side over the site and
+// its neighbours; each path then has its own spread, its massing over its
+// plan; the last holds the controls table and the assumptions.
+
+/** The right page's field: the drawings' width and their top and foot. */
+const RX = 222, RW = 186, RTOP = 11.6, RFOOT = 285;
+const HEAD_H = 8.6;
+
+const area = (v: number) => `${fmt(Math.round(v))} m²`;
+const m2 = (t: string) => t.replace(/ sqm\b/g, ' m²');
+const ratio = (gfa: number, A: number) => (A && gfa ? `${(gfa / A).toFixed(2)}:1` : '—');
+/** A ratio of an estimate, to one place. */
+const about = (gba: number, A: number) => (A && gba ? `≈ ${(gba / A).toFixed(1)}:1` : '—');
+const storeyWord = (n: number) => `${n} ${n === 1 ? 'storey' : 'storeys'}`;
+const ARCH_SHORT: Record<YieldResult['archetype'], string> = {
+  residential: 'Residential flat building', mixed: 'Shop-top housing', commercial: 'Commercial building', none: 'None studied for the zone',
+};
+const SCENARIO_TITLE: Record<Scenario['id'], string> = {
+  standsToday: 'Stands today', withinControls: 'Within the controls', affordableBonus: 'Affordable housing bonus', envelopeToHeight: 'Envelope to the height',
+};
+
+/** The ✓, the ✗ or the dash of a compliance cell. */
+function okMark(ok: boolean | null | undefined): string {
+  if (ok === undefined) return '';
+  const body = ok === null ? '<line x1="1" y1="2" x2="4" y2="2" stroke="#878787" stroke-width="0.45"/>'
+    : ok ? '<path d="M0.6,2.1 L1.9,3.3 L4.4,0.6" fill="none" stroke="#2f8f55" stroke-width="0.55" stroke-linecap="round" stroke-linejoin="round"/>'
+      : '<path d="M1,0.6 L4,3.4 M4,0.6 L1,3.4" stroke="#c8372d" stroke-width="0.55" stroke-linecap="round"/>';
+  return `<svg class="mk" viewBox="0 0 5 4" width="3.4mm" height="2.7mm" xmlns="http://www.w3.org/2000/svg">${body}</svg>`;
+}
+
+/** A tier's number, as the plan draws it. */
+const tierKey = (n: number) => `<span class="ytier">${n}</span>`;
+
+interface TRow { cells: string[]; cls?: string }
+/** A table in the template's manner: grey 6 pt heads, a hairline under each row; `r` marks a column set right. Cells are HTML. */
+function ytable(cols: { head: string; r?: boolean; w?: string }[], rows: TRow[]): string {
+  const cg = `<colgroup>${cols.map((c) => `<col${c.w ? ` style="width:${c.w}"` : ''}>`).join('')}</colgroup>`;
+  const head = `<tr>${cols.map((c) => `<th${c.r ? ' class="r"' : ''}>${esc(c.head)}</th>`).join('')}</tr>`;
+  const body = rows.map((row) => `<tr${row.cls ? ` class="${row.cls}"` : ''}>${row.cells.map((c, i) => `<td${cols[i]?.r ? ' class="r"' : ''}>${c}</td>`).join('')}</tr>`).join('');
+  return `<table class="yt">${cg}<thead>${head}</thead><tbody>${body}</tbody></table>`;
+}
+
+/** A head over a drawing on the right page, a grey note at its right. */
+const rightHead = (top: number, title: string, note = '') =>
+  `<div class="abs" style="left:${RX}mm;top:${top}mm;width:${RW}mm"><div class="zh"><span>${esc(title)}</span>${note ? `<span class="zn">${esc(note)}</span>` : ''}</div></div>`;
+
+/** A drawing on the right page, drawn into a box at the origin. */
+const rightFigure = (top: number, h: number, inner: string) =>
+  `<svg class="abs" style="left:${RX}mm;top:${top}mm" width="${RW}mm" height="${h}mm" viewBox="0 0 ${RW} ${h}" xmlns="http://www.w3.org/2000/svg" font-family="${tpl().font}" fill="${tpl().ink}">${inner}</svg>`;
+
+/** The key's swatches, in its 5 × 3.6 box. */
+const KEY = {
+  site: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="${SITE_RED}" fill-opacity="0.08" stroke="${SITE_RED}" stroke-width="0.3" stroke-dasharray="1,0.4"/>`,
+  use: (u: Use) => `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="${USE_FILL[u]}" stroke="#3a3a3a" stroke-width="0.15"/>`,
+  standing: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="${STANDING_FILL}" stroke="#3a3a3a" stroke-width="0.15"/>`,
+  envelope: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="none" stroke="${ENVELOPE}" stroke-width="0.25" stroke-dasharray="0.8,0.5"/>`,
+  plane: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="${SITE_RED}" fill-opacity="0.05" stroke="${SITE_RED}" stroke-width="0.25" stroke-dasharray="1.2,0.6"/>`,
+  neighbours: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="${CONTEXT_FILL}" stroke="${CONTEXT_EDGE}" stroke-width="0.15"/>`,
+  future: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="${FUTURE_FILL}" fill-opacity="0.6" stroke="${FUTURE_EDGE}" stroke-width="0.2" stroke-dasharray="0.7,0.4"/>`,
+  kerb: `<line x1="0.3" y1="1.8" x2="4.7" y2="1.8" stroke="${KERB_INK}" stroke-width="0.3"/>`,
+  lot: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="none" stroke="${LOT_INK}" stroke-width="0.15"/>`,
+};
+
+/** The scenarios' fills in the bar charts: one family, told apart by pattern. */
+const R = INK.red;
+const BAR_FILL: Record<Scenario['id'], Fill> = {
+  standsToday: { bg: '#ffffff', kind: 'vlines', ink: R.line, step: 0.55, w: 0.16, outline: R.line, outlineW: 0.12 },
+  withinControls: { bg: R.mid },
+  affordableBonus: { bg: '#ffffff', kind: 'dots', ink: R.deep, step: 0.8, w: 0.12, outline: R.line, outlineW: 0.12 },
+  envelopeToHeight: { bg: '#ffffff', kind: 'hlines', ink: R.line, step: 0.55, w: 0.16, outline: R.line, outlineW: 0.12 },
+};
+
+interface Path { sc: Scenario; y?: YieldResult }
+
+/** What each drawn path rests on, for its page's foot. */
+const PATH_BASIS: Record<Scenario['id'], string> = {
+  standsToday: '',
+  withinControls: 'This path keeps to the LEP\'s height of building and floor space ratio.',
+  affordableBonus: 'This path takes the Housing SEPP\'s in-fill affordable housing bonus (chapter 2, part 2, division 1); the site\'s eligibility is to confirm.',
+  envelopeToHeight: 'This path sets the floor space ratio aside: it needs a clause 4.6 variation or a planning proposal.',
+};
+
+/** The paths, each with the study's result behind it (none for what stands). */
+function pathsOf(b: YieldBundle, s: YieldStudy): Path[] {
+  const of: Record<Scenario['id'], YieldResult | undefined> = { standsToday: undefined, withinControls: s.base, affordableBonus: s.bonus, envelopeToHeight: s.max };
+  return scenarioRows(b, s).map((sc) => ({ sc, y: of[sc.id] }));
+}
+
+/** What stands, in the study's metres. */
+const standingOf = (b: YieldBundle, s: YieldStudy) => (b.existing ?? []).filter((e) => e.rings?.length)
+  .map((e) => ({ rings: e.rings!.map((rg) => rg.map(([lon, lat]) => s.toLocal(lon, lat))).filter((rg) => rg.length >= 3), heightM: e.heightM, storeys: e.storeys }))
+  .filter((e) => e.rings.length);
+
+/** The page's second line: the zone, the height and the ratio, as the report writes them. */
+function subtitleOf(b: YieldBundle, s: YieldStudy): string {
+  const c = b.controls;
+  return [b.siteAddress, [c.zoneCode, c.zonePurpose].filter(Boolean).join(' '), s.hob ? `HOB ${s.hob.rl ? `RL ${fmt(s.hob.value, 1)}` : m1(s.hob.value)}` : '', c.fsr ? `FSR ${c.fsr.toFixed(2)}:1` : '']
+    .filter(Boolean).join(' · ');
+}
+
+const NOT_A_DESIGN = 'A feasibility study, not a design: the envelope follows the mapped LEP controls and the ADG\'s separations; DCP setbacks, street wall heights, solar access and overshadowing are for the design to test. Mapped controls are not a s10.7 planning certificate.';
+
+/** The key to the massing and the plan of a path's spread. */
+function schemeLegend(b: YieldBundle, s: YieldStudy, y: YieldResult | undefined, standing: boolean, kerbs: boolean): LegendEntry[] {
+  const out: LegendEntry[] = [{ swatch: KEY.site, label: 'The site' }];
+  if (standing) out.push({ swatch: KEY.standing, label: 'What stands on the site, recorded height' });
+  for (const u of ['residential', 'retail', 'commercial'] as Use[]) if (y?.tiers.some((t) => t.use === u)) out.push({ swatch: KEY.use(u), label: `Indicative massing, ${USE_WORD[u]}` });
+  if (y?.tiers.length) out.push({ swatch: KEY.envelope, label: 'Envelope of each tier' });
+  if (s.hob?.metres) out.push({ swatch: KEY.plane, label: 'The LEP\'s height of building plane' });
+  out.push({ swatch: KEY.neighbours, label: `Neighbours at their heights (${b.buildingsSource === 'overture' ? 'Overture' : 'OSM'}; dashed: not recorded)` });
+  if (s.futures.some(Boolean)) out.push({ swatch: KEY.future, label: 'Neighbours\' future, to their LEP height and FSR' });
+  if (kerbs) out.push({ swatch: KEY.kerb, label: 'Kerb line, indicative' });
+  return out;
+}
+
+/** The two drawings of a path's right page: its massing over its plan. */
+function schemeFigures(b: YieldBundle, s: YieldStudy, scheme: Scheme, id: string, massingNote: string, massingTitle = 'Indicative massing'): { html: string; kerbs: boolean } {
+  const AXO_TOP = RTOP + HEAD_H, AXO_H = 146;
+  const PLAN_HEAD = AXO_TOP + AXO_H + 4, PLAN_TOP = PLAN_HEAD + HEAD_H, PLAN_H = RFOOT - PLAN_TOP;
+  const plan = planView(b, s, { x: 0, y: 0, w: RW, h: PLAN_H }, scheme, id);
+  return {
+    html: rightHead(RTOP, massingTitle, massingNote) + rightFigure(AXO_TOP, AXO_H, axonometric(b, s, { x: 0, y: 2, w: RW, h: AXO_H - 2 }, scheme, id)) +
+      rightHead(PLAN_HEAD, 'Plan', `1:${fmt(plan.scale)} at A3${scheme.y?.tiers.length ? ' · tiers numbered as in the schedule' : ''}`) + rightFigure(PLAN_TOP, PLAN_H, plan.svg),
+    kerbs: plan.kerbs.length > 0,
+  };
+}
+
+/** Floor area and height, path by path, against what the controls give. */
+function pathBars(b: YieldBundle, s: YieldStudy, paths: Path[]): string[] {
+  const A = b.siteAreaSqm ?? 0, c = b.controls;
   const ex = existingSummary(b.existing ?? []);
-  const biggest = Math.max(s.base.gba, s.bonus?.gba ?? 0, s.max?.gba ?? 0);
-  if (ex?.gbaSqm && biggest > 0 && ex.gbaSqm > biggest) {
-    yy += PAD_TOP;
-    out.push(txt(C.label, yy, 'What stands exceeds every scenario: the controls have tightened since it was built, and redevelopment would cut the floor area.', false, 2.9, SITE_RED));
-    yy += 2.6;
+  const gfaRows = paths.map((p) => ({ id: p.sc.id, v: p.y ? p.y.gfa : ex?.gbaSqm ?? 0, approx: !p.y })).filter((r) => r.v > 0)
+    .map((r) => ({ name: SCENARIO_TITLE[r.id], value: r.v, label: `${r.approx ? '≈ ' : ''}${fmt(Math.round(r.v))} m²${r.approx ? ' GBA' : ''}`, fill: BAR_FILL[r.id] }));
+  const hRows = paths.map((p) => ({ id: p.sc.id, v: p.y ? p.y.heightM : ex?.heightM ?? 0 })).filter((r) => r.v > 0)
+    .map((r) => ({ name: SCENARIO_TITLE[r.id], value: r.v, label: m1(Math.round(r.v * 10) / 10), fill: BAR_FILL[r.id] }));
+  const out: string[] = [];
+  const ref = c.fsr && A ? { value: c.fsr * A, label: `FSR ${c.fsr.toFixed(2)}:1`, ink: R.deep } : undefined;
+  if (gfaRows.length) { const ax = niceAxis(Math.max(...gfaRows.map((r) => r.value), ref?.value ?? 0)); out.push(zBlock('Floor area · m²', zBars(gfaRows, ax.max, ax.step, { ref }))); }
+  const hRef = s.hob?.metres ? { value: s.hob.metres, label: `HOB ${m1(Math.round(s.hob.metres))}`, ink: R.deep } : undefined;
+  if (hRows.length) { const ax = niceAxis(Math.max(...hRows.map((r) => r.value), hRef?.value ?? 0)); out.push(zBlock('Height · m', zBars(hRows, ax.max, ax.step, { ref: hRef }))); }
+  return out;
+}
+
+/** Spread one: the paths side by side, over the site and its neighbours. */
+function overviewSlide(b: YieldBundle, s: YieldStudy, paths: Path[]): Slide {
+  const A = b.siteAreaSqm ?? 0, c = b.controls, y = s.base;
+  const ex = existingSummary(b.existing ?? []);
+  const front = s.frontageLengths[0];
+  const figs = zFigures([
+    ['site area, cadastre', A ? area(A) : '—'],
+    ['lot', b.lotDescription || '—'],
+    ['frontage', front ? `${shortStreetName(front.name)} ${fmt(front.lengthM, 1)} m${s.frontageLengths.length > 1 ? ` + ${s.frontageLengths.length - 1} more` : ''}` : 'none found'],
+  ], [
+    ['zone', [c.zoneCode, c.zonePurpose].filter(Boolean).join(' ') || 'not mapped'],
+    ['height of building', s.hob ? `${s.hob.rl ? `RL ${fmt(s.hob.value, 1)}${s.hob.metres ? ` · about ${m1(Math.round(s.hob.metres))}` : ''}` : m1(s.hob.value)}` : 'not mapped'],
+    ['floor space ratio', c.fsr ? `${c.fsr.toFixed(2)}:1${A ? ` · ${area(c.fsr * A)}` : ''}` : 'not mapped'],
+  ], 9.6);
+  const table = ytable(
+    [{ head: 'Path', w: '36mm' }, { head: 'Storeys', r: true }, { head: 'Height', r: true }, { head: 'Floor area', r: true }, { head: 'FSR', r: true }, { head: 'Units', r: true }, { head: 'Cars', r: true }, { head: '', w: '5mm' }, { head: 'Page', r: true }],
+    paths.map((p, i) => ({
+      cls: p.sc.id === 'withinControls' ? 'hi' : undefined,
+      cells: [esc(SCENARIO_TITLE[p.sc.id]), esc(p.sc.storeys ?? '—'), p.sc.heightM ? esc(m1(p.sc.heightM)) : '—',
+        esc(p.y ? fmt(Math.round(p.y.gfa)) : ex?.gbaSqm ? `≈ ${fmt(Math.round(ex.gbaSqm))}` : '—'), esc(p.sc.fsr ?? '—'), esc(p.sc.units ?? '—'), esc(p.sc.parking ?? '—'), okMark(p.sc.ok), String(i + 2).padStart(2, '0')],
+    })));
+  const blocks = [zBlock('The site', figs, 'The controls'), zBlock('The paths', table), ...pathBars(b, s, paths)];
+  const plan = planView(b, s, { x: 0, y: 0, w: RW, h: RFOOT - RTOP - HEAD_H }, {}, 'site', 2.4);
+  const right = rightHead(RTOP, 'The site and its neighbours', `plan 1:${fmt(plan.scale)} at A3 · their numbers, zones and heights`) + rightFigure(RTOP + HEAD_H, RFOOT - RTOP - HEAD_H, plan.svg);
+  const legend: LegendEntry[] = [{ swatch: KEY.site, label: 'The site' }, { swatch: KEY.neighbours, label: 'Buildings round about' }, { swatch: KEY.lot, label: 'Lot boundaries, NSW cadastre' }];
+  if (plan.kerbs.length) legend.push({ swatch: KEY.kerb, label: 'Kerb line, indicative' });
+  const exceeds = ex?.gbaSqm && ex.gbaSqm > Math.max(...paths.filter((p) => p.y).map((p) => p.y!.gba), 0);
+  const narrative = brief([
+    y.archetype === 'none'
+      ? `${c.zoneCode ?? 'The zone'} takes no residential flat building, shop-top housing or office building: the floor space ratio gives ${A && c.fsr ? area(c.fsr * A) : 'the floor area'} alone.`
+      : `Within the controls the site holds ${y.archetype === 'mixed' ? 'shop-top housing' : y.archetype === 'commercial' ? 'a commercial building' : 'a residential flat building'} of ${storeyWord(y.storeys)}: ${area(y.gfa)} of floor area${y.units.total ? `, ${fmt(y.units.total)} apartments` : ''}${y.parking.total ? ` and ${fmt(y.parking.total)} parking spaces` : ''}.`,
+    exceeds ? `What stands today, about ${ex!.storeys ?? '?'} storeys and ${about(ex!.gbaSqm!, A)}, exceeds every path: redevelopment would cut the floor area.`
+      : ex?.gbaSqm && y.gfa ? `What stands today holds about ${area(ex.gbaSqm)}${y.gfa > ex.gbaSqm ? `: redevelopment within the controls adds about ${area(y.gfa - ex.gbaSqm)}` : ''}.` : '',
+    s.bonus && paths.some((p) => p.sc.id === 'affordableBonus') ? `The affordable housing bonus adds ${area(s.bonus.gfa - y.gfa)}${s.bonus.units.total > y.units.total ? ` and ${fmt(s.bonus.units.total - y.units.total)} apartments` : ''}.` : '',
+    s.max ? `Filled to the height, the envelope holds ${area(s.max.gfa)}, the case for a clause 4.6 variation or a planning proposal.` : '',
+  ]);
+  return { id: '01_planning_yield', title: 'Planning yield', subtitle: subtitleOf(b, s), textHtml: '', figureHtml: zFlow(blocks) + right, full: true,
+    narrative, accent: R.text, legend, sources: `${NOT_A_DESIGN} Site area from the NSW cadastre: confirm against survey. Retrieved ${b.generatedAt.slice(0, 10)}.` };
+}
+
+/** A path's spread: its figures, its controls, its schedule and its mix; its massing over its plan. */
+function schemeSlide(b: YieldBundle, s: YieldStudy, p: Path, n: number, last: number): Slide {
+  const y = p.y!, a = y.assumptions, c = b.controls, A = b.siteAreaSqm ?? 0;
+  const id = p.sc.id;
+  const apartments = y.units.total > 0;
+  const k = id === 'affordableBonus' ? 1 + a.affordableBonus : 1;
+  const pct = Math.round(a.affordableBonus * 100);
+  const figs = zFigures([
+    ['building type', ARCH_SHORT[y.archetype]],
+    ['storeys · height', y.storeys ? `${y.storeys} · ${m1(Math.round(y.heightM * 10) / 10)} to the roof` : '—'],
+    ['gross floor area · FSR', y.gfa ? `${area(y.gfa)} · ${ratio(y.gfa, A)}` : '—'],
+  ], [
+    apartments ? ['apartments', `${fmt(y.units.total)} · average ${fmt(y.averageUnitSqm, 1)} m²`] : ['commercial floor area', y.gfaByUse.commercial ? `${area(y.gfaByUse.commercial)} GFA · ${area(y.gfaByUse.commercial * a.commercialNlaRatio)} NLA` : '—'],
+    apartments ? ['saleable area · retail', `${area(y.nsa)} NSA${y.gfaByUse.retail ? ` · ${area(y.gfaByUse.retail * a.retailNlaRatio)} retail NLA` : ''}`] : ['retail', y.gfaByUse.retail ? `${area(y.gfaByUse.retail)} GFA` : '—'],
+    ['car parking', y.parking.total ? `${fmt(y.parking.total)} spaces · ${y.parking.basementLevels} basement ${y.parking.basementLevels === 1 ? 'level' : 'levels'}` : '—'],
+  ], 9.6);
+  // Against the controls: the LEP's (lifted by the bonus on its spread), and the ADG's that the drawing answers.
+  const ctl: TRow[] = [];
+  if (s.hob) {
+    const limitM = s.hob.metres ? s.hob.metres * k : undefined;
+    const hob = s.hob.rl ? `RL ${fmt(s.hob.value, 1)}` : m1(s.hob.value);
+    ctl.push({ cells: ['Height of building', esc(k > 1 ? `${hob} + ${pct}%` : hob),
+      esc(y.heightM ? `${m1(Math.round(y.heightM * 10) / 10)}, ${storeyWord(y.storeys)}` : '—'), okMark(limitM && y.heightM ? y.heightM <= limitM + 1e-6 : null)] });
   }
-  return { svg: out.join(''), bottom: yy };
+  if (c.fsr) ctl.push({ cells: ['Floor space ratio', esc(`${c.fsr.toFixed(2)}:1${k > 1 ? ` + ${pct}%` : ''}`), esc(ratio(y.gfa, A)), okMark(y.gfa ? y.gfa <= c.fsr * k * A + 1 : null)] });
+  if (c.fsr && A) ctl.push({ cells: ['Gross floor area', esc(area(c.fsr * k * A)), esc(y.gfa ? area(y.gfa) : '—'), okMark(y.gfa ? y.gfa <= c.fsr * k * A + 1 : null)] });
+  if (c.minLotSizeSqm) ctl.push({ cells: ['Minimum lot size', esc(area(c.minLotSizeSqm)), esc(A ? area(A) : '—'), okMark(A ? A >= c.minLotSizeSqm : null)] });
+  if (apartments) {
+    ctl.push({ cells: ['ADG 2E building depth', '12–18 m', esc(y.tiers.some((t) => t.held === 'depth') ? `plates held to ${m1(a.maxDepth)}` : 'within the depth'), okMark(true)] });
+    const ds = y.adg.deepSoil;
+    ctl.push({ cells: ['ADG 3E deep soil', esc(area(ds.requiredSqm)), esc(ds.possible ? `${area(ds.groundFreeSqm)} clear` : 'not in this envelope'), okMark(ds.possible)] });
+  }
+  const ctlTable = ytable([{ head: 'Control', w: '38mm' }, { head: id === 'affordableBonus' ? 'Permitted, with the bonus' : 'Permitted' }, { head: 'This path' }, { head: '', w: '5mm' }], ctl);
+  // The schedule, tier by tier, keyed to the plan's numbers.
+  const set = (v: number) => fmt(v, v % 1 ? 1 : 0);
+  const gfaOf = (t: Tier) => y.floors.filter((f) => f.storey >= t.from && f.storey <= t.to).reduce((sum, f) => sum + f.gfa, 0);
+  const sched: TRow[] = y.tiers.map((t, i) => {
+    const built = Math.max(0, Math.min(t.to, y.storeys) - t.from + 1);
+    const st = t.from === t.to ? `${t.from}` : `${t.from}–${t.to}`;
+    const held = t.held === 'tower' ? ', tower plate' : t.held === 'depth' ? `, ${m1(a.maxDepth)} deep` : '';
+    return { cls: built ? undefined : 'dim', cells: [tierKey(i + 1), esc(built && built < t.to - t.from + 1 ? `${st} (${built} built)` : st), esc(USE_WORD[t.use] + held),
+      esc(`${set(t.front)} / ${set(t.side)} / ${set(t.rear)} m`), esc(area(t.plateSqm)), esc(built ? area(gfaOf(t)) : 'not built')] };
+  });
+  if (y.tiers.length) sched.push({ cls: 'tot', cells: ['Total', esc(storeyWord(y.storeys)), '', '', esc(area(y.gba)), esc(area(y.gfa))] });
+  const schedTable = y.tiers.length
+    ? ytable([{ head: 'Tier', w: '9mm' }, { head: 'Storeys' }, { head: 'Use' }, { head: 'Setbacks F / S / R' }, { head: 'Plate GBA', r: true }, { head: 'GFA', r: true }], sched)
+    : '<div class="ynote">No building type is studied for this zone: the floor space ratio\'s floor area alone.</div>';
+  const blocks = [zBlock('The scheme', figs), zBlock('Against the controls', ctlTable), zBlock('Schedule', schedTable)];
+  if (apartments) {
+    const kinds = inMix(y);
+    const pc = (v: number) => `${fmt(v * 100, (v * 100) % 1 ? 1 : 0)}%`;
+    const mixRows: TRow[] = kinds.map((kd) => ({ cells: [esc(UNIT_NAME[kd]), esc(pc(a.mix[kd])), esc(area(ADG_MINIMUM[kd])), esc(area(a.sizes[kd])), esc(fmt(y.units[kd])), esc(area(y.units[kd] * a.sizes[kd]))] }));
+    mixRows.push({ cls: 'tot', cells: ['Total', '', '', esc(`avg ${fmt(y.averageUnitSqm, 1)} m²`), esc(fmt(y.units.total)), esc(area(kinds.reduce((t, kd) => t + y.units[kd] * a.sizes[kd], 0)))] });
+    blocks.push(zBlock('Apartments', ytable([{ head: 'Unit', w: '24mm' }, { head: 'Share', r: true }, { head: 'ADG 4D min.', r: true }, { head: 'Area each', r: true }, { head: 'Units', r: true }, { head: 'Area', r: true }], mixRows)));
+  }
+  const figures = schemeFigures(b, s, { y }, id, y.storeys ? `${storeyWord(y.storeys)} · ${area(y.gfa)} GFA${y.units.total ? ` · ${fmt(y.units.total)} units` : ''}` : 'the height plane over the site');
+  const governs = y.governs === 'fsr' ? `The floor space ratio governs: the height would allow ${y.storeysByHeight} storeys.` : y.governs === 'envelope' ? 'The setbacks and the height govern: the floor space ratio is not reached.' : 'No floor space ratio is mapped: the height governs.';
+  const what = `${storeyWord(y.storeys)}, ${m1(Math.round(y.heightM * 10) / 10)} to the roof: ${area(y.gfa)} of floor area (${ratio(y.gfa, A)})${y.units.total ? `, ${fmt(y.units.total)} apartments` : ''}${y.parking.total ? ` and ${fmt(y.parking.total)} parking spaces` : ''}`;
+  const narrative = id === 'withinControls'
+    ? brief([y.archetype === 'none' ? `${c.zoneCode ?? 'The zone'} takes no residential flat building, shop-top housing or office building.` : `Within the LEP's height and floor space ratio and the ADG's separations, the site holds ${what}.`, y.archetype === 'none' ? '' : governs])
+    : id === 'affordableBonus'
+      ? brief([`With ${pct}% more height and floor space ratio for 15% affordable housing, held for 15 years, the Housing SEPP's in-fill bonus gives ${what}.`,
+        `That is ${area(y.gfa - s.base.gfa)}${y.units.total > s.base.units.total ? ` and ${fmt(y.units.total - s.base.units.total)} apartments` : ''} more than within the controls, about ${fmt(Math.round(y.units.total * 0.15))} of them affordable. Eligibility to confirm.`])
+      : brief([`Filled to the height plane within the setbacks, the envelope holds ${what}.`,
+        c.fsr ? `That is ${area(y.gfa - s.base.gfa)} over the LEP's ${c.fsr.toFixed(2)}:1: the case a clause 4.6 variation or a planning proposal has to carry.` : '']);
+  return { id: `${String(n).padStart(2, '0')}_${id.replace(/[A-Z]/g, (ch) => `_${ch.toLowerCase()}`)}`, title: SCENARIO_TITLE[id], subtitle: subtitleOf(b, s), textHtml: '',
+    figureHtml: zFlow(blocks) + figures.html, full: true, narrative, accent: id === 'envelopeToHeight' ? SITE_RED : R.text,
+    legend: schemeLegend(b, s, y, false, figures.kerbs), sources: `${NOT_A_DESIGN} ${PATH_BASIS[id]} Every assumption is on page ${String(last).padStart(2, '0')}.` };
 }
 
-// ---- the sheet -------------------------------------------------------------------------
+const COUNT_WORD = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
 
-/** The planning yield: no themes, drawn in the default template like the summary it replaces. */
-export function renderYieldSheet(b: YieldBundle, meta: SheetMeta): string {
-  return withTemplate(DEFAULT_TEMPLATE, () => drawYieldSheet(b, meta));
+/** What stands today: the building or buildings on the site, set against the paths. */
+function standingSlide(b: YieldBundle, s: YieldStudy, paths: Path[], n: number): Slide {
+  const A = b.siteAreaSqm ?? 0, c = b.controls;
+  const ex = existingSummary(b.existing ?? [])!;
+  const standing = standingOf(b, s);
+  const figs = zFigures([
+    ['buildings on the site', fmt(ex.count)],
+    ['storeys · height', ex.storeys ? `~${ex.storeys}${ex.heightM ? ` · ${m1(Math.round(ex.heightM * 10) / 10)}` : ''}` : 'not recorded'],
+    ['footprint', area(ex.footprintSqm)],
+  ], [
+    ['gross building area', ex.gbaSqm ? `≈ ${area(ex.gbaSqm)}` : 'not known without a height'],
+    ['on the site', ex.gbaSqm && A ? about(ex.gbaSqm, A) : '—'],
+    ['the LEP permits', c.fsr ? `${c.fsr.toFixed(2)}:1${A ? ` · ${area(c.fsr * A)}` : ''}` : 'no FSR mapped'],
+  ], 9.6);
+  const blocks = [zBlock('What stands', figs), ...pathBars(b, s, paths)];
+  const figures = schemeFigures(b, s, { standing }, 'standing', standing.length ? 'at its recorded height, among the neighbours' : 'no outline of what stands in this bundle', 'What stands');
+  const best = Math.max(...paths.filter((p) => p.y).map((p) => p.y!.gba), 0);
+  const narrative = brief([
+    `${ex.count === 1 ? 'A building' : `${COUNT_WORD[ex.count] ?? ex.count} buildings`} of ${ex.storeys ? `about ${ex.storeys} storeys` : 'unrecorded height'} ${ex.count === 1 ? 'stands' : 'stand'} on the site today, ${area(ex.footprintSqm)} on the ground${ex.gbaSqm ? ` and about ${area(ex.gbaSqm)} of floor${A ? `, ${about(ex.gbaSqm, A)}` : ''}` : ''}${c.fsr ? ` against the LEP's ${c.fsr.toFixed(2)}:1` : ''}.`,
+    ex.gbaSqm && ex.gbaSqm > best
+      ? 'It exceeds every path: the controls have tightened since it was built, and redevelopment would cut the floor area. Its value is in what stands.'
+      : ex.gbaSqm ? `Redevelopment within the controls would hold ${area(s.base.gfa)}, ${(s.base.gfa / ex.gbaSqm).toFixed(1)} times what stands.` : '',
+  ]);
+  return { id: `${String(n).padStart(2, '0')}_stands_today`, title: 'Stands today', subtitle: subtitleOf(b, s), textHtml: '', figureHtml: zFlow(blocks) + figures.html, full: true,
+    narrative, accent: R.text, legend: schemeLegend(b, s, undefined, standing.length > 0, figures.kerbs),
+    sources: `What stands is read from the recorded footprints and heights (${b.buildingsSource === 'overture' ? 'Overture, OSM where it has none' : 'OSM'}), its floor area each footprint by its storeys: indicative, not a survey.` };
 }
 
-function drawYieldSheet(b: YieldBundle, meta: SheetMeta): string {
-  const s = yieldStudy(b);
+/** The last spread: the assumptions on the left, the controls table in full on the right. */
+function controlsSlide(b: YieldBundle, s: YieldStudy, n: number): Slide {
   const y = s.base, a = y.assumptions;
-  const rows = yieldRows(b, s);
-  const ink = tpl().ink;
-
-  // The left half: the summary, then the schedule and what it rests on, ruled as one table.
   const apartments = y.archetype === 'residential' || y.archetype === 'mixed';
   const pc = (v: number) => `${fmt(v * 100, (v * 100) % 1 ? 1 : 0)}%`;
   const EFFICIENCIES = ['residentialEfficiency', 'commercialEfficiency', 'retailEfficiency', 'nsaRatio', 'commercialNlaRatio', 'retailNlaRatio'] as const;
   const officeEfficiencies = EFFICIENCIES.every((k) => a[k] === DEFAULT_ASSUMPTIONS[k]);
-  const assumptionRows: YieldRow[] = [
-    { label: 'ASSUMPTIONS', section: true },
-    { label: 'FLOOR TO FLOOR', controls: [`${y.archetype === 'mixed' ? `${a.groundRetailF2F}m retail ground floor, ` : ''}${y.archetype === 'commercial' ? `${a.commercialF2F}m commercial` : `${a.residentialF2F}m residential`}`] },
-    { label: 'ROOF AND PLANT', controls: [`${a.roofAllowance}m kept under the height of building`] },
-    { label: 'EFFICIENCY', controls: [`${officeEfficiencies ? 'the office\'s feasibility template' : 'from yield_assumptions.json'}: ${apartments
-      ? `GFA ${pc(a.residentialEfficiency)} of GBA residential${y.archetype === 'mixed' ? `, ${pc(a.retailEfficiency)} retail` : ''}; NLA (saleable) ${pc(a.nsaRatio)} of residential GFA${y.archetype === 'mixed' ? `, ${pc(a.retailNlaRatio)} retail` : ''}`
-      : `GFA ${pc(a.commercialEfficiency)} of GBA; NLA ${pc(a.commercialNlaRatio)} of GFA`}`] },
+  const officeMix = UNIT_KINDS.every((k) => a.mix[k] === DEFAULT_ASSUMPTIONS.mix[k] && a.sizes[k] === DEFAULT_ASSUMPTIONS.sizes[k]);
+  const rows = [
+    { label: 'floor to floor', value: `${y.archetype === 'mixed' ? `${a.groundRetailF2F} m retail ground floor, ` : ''}${y.archetype === 'commercial' ? `${a.commercialF2F} m commercial` : `${a.residentialF2F} m residential`}` },
+    { label: 'roof and plant', value: `${a.roofAllowance} m kept under the height of building` },
+    { label: 'efficiency', value: apartments
+      ? `GFA ${pc(a.residentialEfficiency)} of GBA residential${y.archetype === 'mixed' ? `, ${pc(a.retailEfficiency)} retail` : ''}; NSA ${pc(a.nsaRatio)} of residential GFA${y.archetype === 'mixed' ? `, retail NLA ${pc(a.retailNlaRatio)}` : ''}`
+      : `GFA ${pc(a.commercialEfficiency)} of GBA; NLA ${pc(a.commercialNlaRatio)} of GFA`, note: officeEfficiencies ? 'the office\'s feasibility template' : 'from yield_assumptions.json' },
     ...(apartments ? [
-      { label: 'MIX', controls: [`${UNIT_KINDS.every((k) => a.mix[k] === DEFAULT_ASSUMPTIONS.mix[k] && a.sizes[k] === DEFAULT_ASSUMPTIONS.sizes[k]) ? 'the office\'s feasibility template' : 'from yield_assumptions.json'}: ${inMix(y).map((k) => `${pc(a.mix[k])} ${UNIT_SHORT[k]} at ${fmt(a.sizes[k])} sqm`).join(', ')}; average ${fmt(y.averageUnitSqm, 1)} sqm`] },
-      { label: 'PLATES', controls: [`held to ${m1(a.maxDepth)} deep; towers to ${sqm(a.towerPlateMax)} GBA`] },
+      { label: 'mix', value: `${inMix(y).map((k) => `${pc(a.mix[k])} ${UNIT_SHORT[k]} at ${fmt(a.sizes[k])} m²`).join(', ')}`, note: officeMix ? 'the office\'s feasibility template' : 'from yield_assumptions.json' },
+      { label: 'plates', value: `held to ${m1(a.maxDepth)} deep; towers to ${area(a.towerPlateMax)} GBA` },
     ] : []),
-    { label: 'NEAREST STATION', controls: [b.station ? `${titleWords(b.station.name)}, ${fmt(b.station.distanceM)}m` : 'none within 1.2 km'] },
-    { label: 'TO CHANGE', controls: ['every figure here is set in yield_assumptions.json beside the output'] },
+    { label: 'parking rates', value: s.parkingSet === 'custom' ? 'from yield_assumptions.json' : PARKING_RATES[s.parkingSet].basis },
+    { label: 'nearest station', value: b.station ? `${titleWords(b.station.name)}, ${fmt(b.station.distanceM)} m` : 'none within 1.2 km' },
+    { label: 'affordable housing bonus', value: `${Math.round(a.affordableBonus * 100)}% more height and FSR for 15% affordable housing` },
   ];
-  const summary = renderTable(rows, TABLE_TOP);
-  const sched = renderSchedule(y, summary.bottom + 6);
-  const notes = renderTable(assumptionRows, sched.bottom);
-  const left = txt(COL_LABEL, TITLE_Y, 'PLANNING YIELD', true, TITLE_SIZE) + summary.svg + sched.svg + notes.svg;
-
-  // The right half: the massing over the envelope plan, the plan the width of the half.
-  const RX = 398, RW = 327, BOTTOM = 562.8;
-  const right: string[] = [];
-  const heading = (x: number, yy: number, t: string, note?: string) =>
-    txt(x, yy, t, true, 4.2) + (note ? txt(x + t.length * 2.75 + 4, yy, note, false, 3, '#6a6a6a') : '');
-  right.push(heading(RX, TITLE_Y, 'INDICATIVE MASSING', y.storeys ? `${y.storeys} storeys · ${sqm(y.gfa)} GFA${y.units.total ? ` · ${y.units.total} units` : ''}` : 'the height plane over the site'));
-  right.push(`<line x1="${RX}" y1="${TABLE_TOP}" x2="${RX + RW}" y2="${TABLE_TOP}" stroke="${ink}" stroke-width="${RULE_W}"/>`);
-  right.push(axonometric(b, s, { x: RX, y: TABLE_TOP + 4, w: RW, h: 232 }));
-  const SCY = TABLE_TOP + 244;
-  right.push(heading(RX, SCY + 4.6, 'SCENARIOS', 'what the site may hold under each path · the drawings show the first compliant one'),
-    `<line x1="${RX}" y1="${SCY + 7}" x2="${RX + RW}" y2="${SCY + 7}" stroke="${ink}" stroke-width="${RULE_W}"/>`);
-  const scen = renderScenarios(b, s, RX, RW, SCY + 7);
-  right.push(scen.svg);
-  const PY = scen.bottom + 2;
-  const plan = planView(b, s, { x: RX, y: PY + 10, w: RW, h: BOTTOM - PY - 10 });
-  right.push(heading(RX, PY + 4.6, 'ENVELOPE', `plan 1:${fmt(plan.scale)} · tiers numbered as in the schedule`), `<line x1="${RX}" y1="${PY + 7}" x2="${RX + RW}" y2="${PY + 7}" stroke="${ink}" stroke-width="${RULE_W}"/>`, plan.svg);
-
-  // The legend column: the massing's key, then what the sheet is and is not.
-  let legend = '';
-  let ly = 7;
-  const row = (swatch: string, label: string) => {
-    const lines = wrapLabel(label, 26);
-    legend += `<g transform="translate(0,${ly})">${swatch}${lines.map((l, i) => `<text x="${LABEL_X}" y="${3.5 + i * 3.2}" font-size="2.6" fill="#222">${esc(l)}</text>`).join('')}</g>`;
-    ly += Math.max(10, lines.length * 3.2 + 4);
-  };
-  row(`<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="${SITE_RED}" fill-opacity="0.08" stroke="${SITE_RED}" stroke-width="0.6" stroke-dasharray="3,1.2"/>`, 'SITE');
-  for (const u of ['residential', 'retail', 'commercial'] as Use[]) if (y.tiers.some((t) => t.use === u)) row(`<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="${USE_FILL[u]}" stroke="#3a3a3a" stroke-width="0.2"/>`, `INDICATIVE MASSING, ${USE_WORD[u].toUpperCase()}`);
-  if (y.tiers.length) row(`<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="none" stroke="${ENVELOPE}" stroke-width="0.4" stroke-dasharray="1.6,1"/>`, 'ENVELOPE OF EACH TIER');
-  if (s.hob?.metres) row(`<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="${SITE_RED}" fill-opacity="0.05" stroke="${SITE_RED}" stroke-width="0.4" stroke-dasharray="2.4,1.2"/>`, 'HEIGHT OF BUILDING PLANE');
-  row(`<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="${CONTEXT_FILL}" stroke="${CONTEXT_EDGE}" stroke-width="0.25"/>`, `NEIGHBOURS AT THEIR HEIGHTS (${b.buildingsSource === 'overture' ? 'OVERTURE' : 'OSM'}; DASHED: NOT RECORDED)`);
-  // The plan's kerbs.
-  if (plan.kerbs.length) row(`<line x1="${SWATCH_X}" y1="3.25" x2="${SWATCH_X + SWATCH_W}" y2="3.25" stroke="${KERB_INK}" stroke-width="0.35"/>`, 'KERB LINE (INDICATIVE)');
-  const futures = s.futures.some(Boolean);
-  if (futures) row(`<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="${FUTURE_FILL}" fill-opacity="${FUTURE_OPACITY}" stroke="${FUTURE_EDGE}" stroke-width="0.3" stroke-dasharray="${FUTURE_DASH}"/>`, "NEIGHBOURS' FUTURE HEIGHT, TO THEIR LEP HEIGHT AND FSR");
-  const notesText = [
-    'A feasibility study, not a design:',
-    'the envelope follows the mapped LEP',
-    'controls and the ADG\'s separations;',
-    'DCP setbacks, street wall heights,',
-    'solar access and overshadowing are',
-    'for the design to test.',
-    '',
-    'Mapped controls are not a s10.7',
-    'planning certificate.',
-    '',
-    'The drawings show the scheme',
-    'within the controls; SCENARIOS',
-    'sets it against what stands, the',
-    'Housing SEPP bonus and the',
-    'envelope filled to the height.',
-    ...(futures ? [
-      '',
-      'Future neighbours: each building in',
-      'a zone that permits flats (R1, R3,',
-      'R4, MU1, E1, E2, B1–B4), raised to',
-      'the whole 3.1m storeys its LEP',
-      'height of building allows, and no',
-      'more than its lot\'s floor space',
-      'ratio holds on its footprint; never',
-      'lowered.',
-    ] : []),
-  ];
-  ly += 2;
-  legend += `<text x="0" y="${ly}" font-size="2.9" font-weight="700" fill="${ink}">NOTES</text>`;
-  notesText.forEach((l, i) => { legend += `<text x="0" y="${(ly + 4.4 + i * 3.2).toFixed(1)}" font-size="2.4" fill="#333">${esc(l)}</text>`; });
-
-  return sheetHtml({
-    meta,
-    address: b.address,
-    generatedAt: b.generatedAt,
-    siteAddress: b.siteAddress,
-    scale: 0,
-    rotationDeg: 0,
-    drawingTitle: 'PLANNING YIELD',
-    legendHeading: 'LEGEND',
-    legendSvg: `<g font-family="${tpl().font}">${legend}</g>`,
-    layers: [`<g transform="translate(${-FRAME_L},${-FRAME_T})" font-family="${tpl().font}" fill="${ink}">${left}${right.join('')}</g>`],
-    noMap: true,
-  });
+  // The table, its site and summary sections left to the first spread.
+  const table: string[] = [];
+  let skip = false;
+  for (const r of yieldRows(b, s)) {
+    if (r.section) { skip = r.label === 'SITE INFO' || r.label === 'PROJECT SUMMARY'; if (!skip) table.push(`<tr class="sec"><td colspan="4">${esc(r.label ?? '')}</td></tr>`); continue; }
+    if (skip) continue;
+    if (r.head) { table.push('<tr class="hd"><td></td><td>Controls</td><td>Proposed</td><td></td></tr>'); continue; }
+    const cell = (v?: string[]) => (v ?? []).filter(Boolean).map((t) => `<div>${esc(m2(t))}</div>`).join('');
+    table.push(`<tr><td class="l">${esc(r.label ?? '')}</td><td${r.proposed ? '' : ' colspan="2"'}>${cell(r.controls)}</td>${r.proposed ? `<td>${cell(r.proposed)}</td>` : ''}<td>${okMark(r.ok)}</td></tr>`);
+  }
+  const right = `<div class="abs" data-fit style="left:${RX}mm;top:${RTOP}mm;width:${RW}mm;height:${RFOOT - RTOP}mm;overflow:hidden"><div class="ytw"><table class="yt yc"><colgroup><col style="width:42mm"><col><col><col style="width:5mm"></colgroup><tbody>${table.join('')}</tbody></table></div></div>`;
+  return { id: `${String(n).padStart(2, '0')}_controls_and_assumptions`, title: 'Controls and assumptions', subtitle: subtitleOf(b, s), textHtml: '',
+    figureHtml: zFlow([zBlock('The assumptions', zTable(rows))]) + right, full: true, accent: R.text,
+    narrative: 'Every figure rests on these assumptions. Each can be changed in yield_assumptions.json beside the output, and the study drawn again. The table sets the scheme within the controls against each control.',
+    sources: `Controls from the NSW ePlanning layers at the site; the Apartment Design Guide; the Housing SEPP 2021. ${NOT_A_DESIGN.replace(/^A feasibility study, not a design: [^;]+; /, '')}` };
 }
+
+/** The planning yield as a deck: the A3 spreads of the site report. */
+export function renderYieldDeck(b: YieldBundle, meta: SheetMeta): { html: string; slides: Slide[] } {
+  return withTemplate(DECK_TEMPLATE, () => drawYieldDeck(b, meta));
+}
+
+function drawYieldDeck(b: YieldBundle, _meta: SheetMeta): { html: string; slides: Slide[] } {
+  const s = yieldStudy(b);
+  const paths = pathsOf(b, s);
+  const slides: Slide[] = [overviewSlide(b, s, paths)];
+  paths.forEach((p) => slides.push(p.y ? schemeSlide(b, s, p, slides.length + 1, paths.length + 2) : standingSlide(b, s, paths, slides.length + 1)));
+  slides.push(controlsSlide(b, s, slides.length + 1));
+  const html = `<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>${esc(b.siteAddress)} — PLANNING YIELD</title>
+<style>
+${deckCss()}${YIELD_CSS}</style></head>
+<body>${slides.map((sl, i) => atlasPage(sl, i)).join('\n')}</body></html>`;
+  return { html, slides };
+}
+
+/** The yield's tables, in the atlas pages' type: 6 pt grey heads, 7.5 pt rows, hairlines. */
+const YIELD_CSS = `
+  .slide.atlas table.yt { width: 100%; border-collapse: collapse; table-layout: auto; font-size: 7.5pt; }
+  .slide.atlas .ytw { font-size: 7.5pt; }
+  .slide.atlas .ytw table.yt { font-size: 1em; }
+  .slide.atlas table.yt th { font-size: 0.8em; line-height: 1.4; letter-spacing: 0.09em; text-transform: uppercase; font-weight: 400; color: #878787; text-align: left; padding: 1.2mm 1.4mm 0.7mm 0; vertical-align: bottom; white-space: nowrap; }
+  .slide.atlas table.yt td { line-height: 1.3; padding: 0.75mm 1.4mm 0.85mm 0; border-bottom: 0.18mm solid #878787; vertical-align: top; }
+  .slide.atlas table.yt .r { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .slide.atlas table.yt th:last-child, .slide.atlas table.yt td:last-child { padding-right: 0; }
+  .slide.atlas table.yt tr.tot td { font-weight: 700; }
+  .slide.atlas table.yt tr.hi td { font-weight: 700; }
+  .slide.atlas table.yt tr.dim td { color: #878787; }
+  .slide.atlas table.yt svg.mk { display: block; margin-top: 0.15mm; }
+  .slide.atlas table.yc td.l { font-size: 0.8em; letter-spacing: 0.09em; text-transform: uppercase; padding-top: 1.1mm; }
+  .slide.atlas table.yc tr.sec td { font-size: 1.33em; line-height: 1.15; padding: 4mm 0 1mm; border-bottom: 0.18mm solid #000000; }
+  .slide.atlas table.yc tr:first-child td { padding-top: 0.6mm; }
+  .slide.atlas table.yc tr.hd td { font-size: 0.8em; letter-spacing: 0.09em; text-transform: uppercase; color: #878787; padding: 1mm 1.4mm 0.6mm 0; }
+  .slide.atlas .ytier { display: inline-block; width: 3.4mm; height: 3.4mm; border-radius: 1.7mm; border: 0.25mm solid ${ENVELOPE}; color: ${ENVELOPE}; font-size: 6pt; line-height: 2.95mm; text-align: center; font-weight: 700; box-sizing: border-box; }
+  .slide.atlas .ynote { font-size: 8pt; line-height: 3.4mm; padding-top: 1.5mm; }
+  .slide.atlas .zh span.zn { left: auto; right: 0; top: 1.4mm; font-size: 6pt; letter-spacing: 0.09em; text-transform: uppercase; color: #878787; }
+`;
 
 // ---- the open formats -------------------------------------------------------------
 

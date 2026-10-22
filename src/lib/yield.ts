@@ -170,7 +170,8 @@ export function futureHeight(
 }
 
 /** A building standing on the site today: its footprint, and what is recorded of its height. */
-export interface ExistingBuilding { footprintSqm: number; heightM?: number; storeys?: number }
+/** A building on the site: its ground cover, what is recorded of its height, and its outline (lon/lat, outer ring first) for the drawings; a bundle from before the outlines has none. */
+export interface ExistingBuilding { footprintSqm: number; heightM?: number; storeys?: number; rings?: number[][][] }
 
 /**
  * What stands on the site today, in one line: the buildings' count and
