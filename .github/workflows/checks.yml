@@ -173,6 +173,15 @@ jobs:
       - name: the free side is stamped and the subscription is not
         run: npx tsx test/plans.mts
 
+      # The emailed links, through the server with Resend stood in for by a
+      # local endpoint: a sign-up is unverified and refused generation until
+      # its link is clicked, resend replaces the link, forgot answers unknown
+      # addresses like known ones and sends them nothing, and the reset link
+      # sets the new password once, signs the old sessions out and verifies
+      # the address it arrived on. Nothing reaches Resend.
+      - name: the emailed links verify and reset what they should
+        run: npx tsx test/auth-email.mts
+
       # The operator view's Stripe check, on made-up answers: it names the
       # account the key belongs to, and finds a price from the other mode, a
       # webhook missing an event, a portal never saved and a wrong secret.

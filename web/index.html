@@ -58,9 +58,10 @@
     <p class="lead">Sign in, or make a free account: free PDFs carry a watermark.
     Unlocking an address, or the <a href="/pricing">subscription</a>, takes it off and adds
     the CAD and data files.</p>
-    <!-- The three ways in, as a row of the options table. The office's shared
-         code is the third, for the people who had it before accounts. -->
-    <div class="opts auth">
+    <!-- The ways in, as a row of the options table: an account, a new one, the
+         office's shared code, and asking for a password-reset email. The row
+         hides when the emailed reset link (?reset=…) takes the form over. -->
+    <div class="opts auth" id="authRow">
       <div class="row"><span class="rowhead">ACCOUNT</span>
         <span class="cells" id="authOpts"></span></div>
     </div>
@@ -72,6 +73,8 @@
       <button class="go" id="authGo" type="submit">SIGN IN</button>
     </div>
     <div class="errline" id="authError"></div>
+    <!-- Not an error: "the reset link is on its way", "email verified". -->
+    <p class="lead muted" id="authNote" hidden></p>
   </form>
 
   <!-- ---- the tool ---------------------------------------------------- -->
@@ -81,6 +84,11 @@
     <p class="lead muted" id="plan" hidden>Free account: PDFs come with a watermark.
     Unlock an address, or <a href="/pricing">subscribe</a>, for clean PDFs and the CAD
     and data files.</p>
+    <!-- Said only to an account that has not clicked its verification link:
+         generating waits on it, so it is said where generating is asked for. -->
+    <p class="lead muted" id="verify" hidden>Generating waits on your email being
+    verified — the link is in your inbox.
+    <button type="button" id="resend">Resend the email</button></p>
     <div class="bar">
       <span class="entry">
         <!-- The placeholder is the samples' address, set from EXAMPLE_ADDRESS

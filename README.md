@@ -177,6 +177,27 @@ clean PDFs and CAD without an account; unset it once everyone has one.
 without charge, which is also the way to see the subscriber's side before
 billing is switched on.
 
+**Email: verification and password reset.** The server sends two emails, both
+through [Resend](https://resend.com)'s REST API with plain fetch, the way it
+talks to Stripe. A sign-up is sent a verification link; until it is clicked the
+account signs in and keeps its downloads, but generating waits — an account is
+only an email address somebody typed, and generating is what a throwaway one
+would be made for. The sign-in form's `reset` emails a password-reset link,
+which opens the page asking for the new password; setting it signs that browser
+in and every other one out (the cookie's signature covers the password hash).
+Each link's token is random and stored only as its SHA-256, so the accounts
+file never holds anything that opens an account. In `/etc/site-analyst.env`:
+
+```
+RESEND_API_KEY=re_…                                # resend.com, with the sending domain verified
+EMAIL_FROM=Site Analyst <no-reply@site-analyst.com>
+```
+
+With either unset nothing is sent and both features switch themselves off: new
+accounts count as verified, and the reset form says this server cannot email a
+link. Accounts from before verification existed count as verified too — the
+feature arriving must not lock out everyone already signed up.
+
 **The watermark.** Put it in `assets/watermark/watermark.png`. It is stamped on
 each page when a free account downloads, not when the sheet is drawn, so the
 sheet on disk stays clean and one job serves both sides: a subscriber asking

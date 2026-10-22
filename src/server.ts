@@ -33,8 +33,11 @@ import { GRANTS, PRICE_LABEL, SITE_PRICE_LABEL, planOf, paidFor, siteKey, type P
 import {
   initAccounts, accountFromCookie, accountCounts, createAccount, signIn, sessionCookieValue,
   normaliseEmail, validEmail, PASSWORD_MIN, ACCOUNT_COOKIE, SESSION_DAYS, type Account,
-  unlockedSites, siteUnlocked,
+  unlockedSites, siteUnlocked, accountByEmail,
+  isVerified, issueVerification, confirmEmail, accountByVerifyToken,
+  issueReset, accountByResetToken, resetPassword,
 } from './accounts.js';
+import { emailEnabled, sendVerification, sendReset } from './email.js';
 import {
   billingEnabled, subscriptionsOpen, sitesOpen, webhookEnabled, checkoutUrl, siteCheckoutUrl, portalUrl,
   verifySignature, handleEvent, checkBilling, webhookSeen,
@@ -719,6 +722,8 @@ interface Viewer {
   /** May generate: any session at all. */
   signedIn: boolean;
   operator: boolean;
+  /** Holds the office or operator code, which generates without an account. */
+  code: boolean;
   plan: Plan;
   account?: Account;
 }
@@ -735,6 +740,7 @@ function viewerFrom(held: { code: boolean; operator: boolean }, account?: Accoun
   return {
     signedIn: held.code || Boolean(account),
     operator: held.operator,
+    code: held.code,
     plan: held.code || (account && planOf(account) === 'subscription') ? 'subscription' : 'free',
     account,
   };
@@ -758,6 +764,9 @@ function describe(v: Viewer) {
     grants: GRANTS[v.plan],
     account: a ? {
       email: a.email,
+      // Whether generating waits on the verification click. With email off
+      // there is no link to click, so nothing is said to wait on one.
+      verified: !emailEnabled || isVerified(a),
       status: a.subscriptionStatus ?? null,
       renewsAt: a.currentPeriodEnd ?? null,
       // Stripe's portal needs a customer, which an account has once it has
@@ -1050,6 +1059,14 @@ Sitemap: ${siteBase()}/sitemap.xml
       console.log(`accounts: sign-up failed — ${e?.message ?? e}`);
       return json(res, 500, { error: 'Could not create the account. Try again shortly.' });
     }
+    // The verification link, sent on the way out rather than awaited: the
+    // email service's latency is not the sign-up's, and a send that fails
+    // leaves the page's RESEND button to try again.
+    if (emailEnabled) {
+      const token = issueVerification(account);
+      void sendVerification(account.email, siteBase(), token)
+        .catch((e) => console.log(`email: verification for ${account.id} failed — ${e?.message ?? e}`));
+    }
     res.writeHead(201, {
       'Content-Type': 'application/json',
       'Set-Cookie': cookie(req, ACCOUNT_COOKIE, sessionCookieValue(account), SESSION_DAYS * 86400),
@@ -1137,6 +1154,68 @@ Sitemap: ${siteBase()}/sitemap.xml
     return;
   }
 
+  // ---- emailed links: verification and password reset ----------------------
+  //
+  // Before the session wall, both of them: a verification click arrives from
+  // an email client holding no cookie, and the person asking for a reset is
+  // precisely the one who cannot sign in.
+
+  // The verification email's link. A GET, because an email client opens links
+  // with GET; it answers with a redirect so the address bar lands on the page
+  // rather than on an API answer. The token is 256 random bits, which is what
+  // makes a GET that changes state safe to leave this exposed.
+  if (req.method === 'GET' && url.pathname === '/api/verify') {
+    const a = accountByVerifyToken(String(url.searchParams.get('token') ?? ''));
+    if (a) confirmEmail(a);
+    res.writeHead(303, { Location: a ? '/?verified=1' : '/?verified=0' });
+    res.end();
+    return;
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/password/forgot') {
+    if (!emailEnabled)
+      return json(res, 503, { error: 'This server cannot send email, so passwords cannot be reset here. Contact the operator.' });
+    if (limited(`forgot:${ip}`, 5, 3600_000)) return json(res, 429, { error: 'Too many attempts. Try later.' });
+    let email = '';
+    try { email = normaliseEmail(JSON.parse((await readBody(req)) || '{}').email); } catch { /* refused below */ }
+    if (!validEmail(email)) return json(res, 400, { error: 'Enter an email address.' });
+    const a = accountByEmail(email);
+    // One answer whether or not the address has an account, and the send is
+    // not awaited: the reply must not say — in words or in timing — which
+    // addresses have accounts here.
+    if (a) {
+      const token = issueReset(a);
+      void sendReset(a.email, siteBase(), token)
+        .catch((e) => console.log(`email: reset for ${a.id} failed — ${e?.message ?? e}`));
+    }
+    return json(res, 200, { ok: true, message: 'If that email has an account, a reset link is on its way to it.' });
+  }
+
+  // The reset email's link used: the new password in, and this browser signed
+  // in with it. Everywhere else signs out — the cookie's signature covers the
+  // hash that just changed.
+  if (req.method === 'POST' && url.pathname === '/api/password/reset') {
+    if (limited(`reset:${ip}`, 10, 15 * 60_000)) return json(res, 429, { error: 'Too many attempts. Try later.' });
+    let token = '', password = '';
+    try {
+      const parsed = JSON.parse((await readBody(req)) || '{}');
+      token = String(parsed.token ?? '');
+      password = String(parsed.password ?? '');
+    } catch { /* refused below */ }
+    if (password.length < PASSWORD_MIN || password.length > 200)
+      return json(res, 400, { error: `Choose a password of ${PASSWORD_MIN} characters or more.` });
+    const a = accountByResetToken(token);
+    if (!a) return json(res, 400, { error: 'That reset link has expired or was already used. Ask for a new one.' });
+    await resetPassword(a, password);
+    res.writeHead(200, {
+      'Content-Type': 'application/json',
+      'Set-Cookie': cookie(req, ACCOUNT_COOKIE, sessionCookieValue(a), SESSION_DAYS * 86400),
+    });
+    // The new cookie is not on this request, so the account is put in by hand.
+    res.end(JSON.stringify({ ok: true, ...describe(viewerFrom(heldCode(req), a)) }));
+    return;
+  }
+
   // Stripe telling this server what happened at Checkout and since: a new
   // subscription, a renewal, a card that failed, a cancellation. Before the
   // auth wall, because Stripe holds no session; the signature is its proof.
@@ -1169,6 +1248,25 @@ Sitemap: ${siteBase()}/sitemap.xml
   // rather than that the file was absent.
   if (url.pathname.startsWith('/api/') && !viewerOf(req).signedIn)
     return json(res, 401, { error: 'Not authorised.' });
+
+  // The sign-up's email never arrived, or its link ran out. Behind the wall:
+  // only a signed-in account has an address to resend to.
+  if (req.method === 'POST' && url.pathname === '/api/verify/resend') {
+    const v = viewerOf(req);
+    if (!v.account) return json(res, 400, { error: 'Sign in with your email first.' });
+    if (!emailEnabled || isVerified(v.account)) return json(res, 409, { error: 'This email does not need verifying.' });
+    if (limited(`resend:${ip}`, 5, 3600_000)) return json(res, 429, { error: 'Too many attempts. Try later.' });
+    const token = issueVerification(v.account);
+    try {
+      // Awaited, unlike the sign-up's: whoever presses RESEND is asking
+      // whether sending works, and deserves the real answer.
+      await sendVerification(v.account.email, siteBase(), token);
+    } catch (e: any) {
+      console.log(`email: verification for ${v.account.id} failed — ${e?.message ?? e}`);
+      return json(res, 502, { error: 'Could not send the email. Try again shortly.' });
+    }
+    return json(res, 200, { ok: true, message: `Sent — check ${v.account.email}.` });
+  }
 
   // ---- billing -----------------------------------------------------------
 
@@ -1230,7 +1328,15 @@ Sitemap: ${siteBase()}/sitemap.xml
     }
   }
 
+  // A generation spends the budget this server is a guest of, and an account
+  // is only an email address somebody typed — so generating waits on the
+  // verification click. What is already drawn stays downloadable, and a code
+  // session generates regardless: the code is the office's own credential.
+  const unverified = (v: Viewer) => emailEnabled && !v.code && Boolean(v.account) && !isVerified(v.account!);
+  const VERIFY_FIRST = { error: 'Verify your email first — the link is in your inbox, and the page can resend it.' };
+
   if (req.method === 'POST' && url.pathname === '/api/jobs') {
+    if (unverified(viewerOf(req))) return json(res, 403, VERIFY_FIRST);
     const body = await readBody(req);
     try {
       const { address, scale, rotate, sheet, fresh, template } = JSON.parse(body || '{}');
@@ -1289,6 +1395,7 @@ Sitemap: ${siteBase()}/sitemap.xml
   // ---- batches -----------------------------------------------------------
 
   if (req.method === 'POST' && url.pathname === '/api/batches') {
+    if (unverified(viewerOf(req))) return json(res, 403, VERIFY_FIRST);
     const body = await readBody(req);
     try {
       const b = JSON.parse(body || '{}');

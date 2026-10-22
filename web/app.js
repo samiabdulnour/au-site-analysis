@@ -117,6 +117,15 @@ function renderAll() {
 function applySession(j) {
   // A free account is told what it gets once, above the bar, with the way to more.
   $('plan').hidden = !(j.grants && !j.grants.cleanPdf);
+  // An account that has not clicked its verification link is told generating
+  // waits on it, with the resend beside the words. Just back from the link
+  // (?verified=1), the banner's place says so instead.
+  const unverified = Boolean(j.account) && j.account.verified === false;
+  $('verify').hidden = !unverified;
+  if (!unverified && verifiedParam === '1') {
+    $('verify').textContent = 'Email verified.';
+    $('verify').hidden = false;
+  }
   // A session is a thirty-day cookie and the code field is hidden while one is
   // valid, so without a way to put it down a browser that entered the shared
   // code could not be handed the operator's — for a month. The cookie is
@@ -377,34 +386,69 @@ addrInput.addEventListener('blur', () => setTimeout(closeSuggest, 120));
 
 // ---- session -------------------------------------------------------------
 
-/* Three ways in: an account's email and password, a new free account, or the
-   office's shared code (which also takes the operator code, since that grants a
-   superset and an operator should not need two sessions). The operator's own
-   gate is /admin, which asks whatever session is held — this page hides its
-   form once any session exists. */
+/* Four uses of one form: an account's email and password, a new free account,
+   the office's shared code (which also takes the operator code, since that
+   grants a superset and an operator should not need two sessions), and asking
+   for a password-reset email. The operator's own gate is /admin, which asks
+   whatever session is held — this page hides its form once any session exists.
+   A fifth state, choosing the new password, arrives only by the emailed link
+   (?reset=<token>) and takes the form over. */
 const AUTH_MODES = [
   // [value, label, button, password placeholder, autocomplete]
-  ['signin', 'sign in',     'SIGN IN', 'password',                       'current-password'],
-  ['signup', 'sign up',     'SIGN UP', 'password, 8 characters or more', 'new-password'],
-  ['code',   'code',        'UNLOCK',  'access code',                    'off'],
+  ['signin', 'sign in',  'SIGN IN',          'password',                       'current-password'],
+  ['signup', 'sign up',  'SIGN UP',          'password, 8 characters or more', 'new-password'],
+  ['code',   'code',     'UNLOCK',           'access code',                    'off'],
+  ['reset',  'reset',    'EMAIL RESET LINK', '',                               'off'],
 ];
+const boot = new URLSearchParams(location.search);
 // ?signup is where the pricing page sends someone who has no account yet.
-let authMode = new URLSearchParams(location.search).has('signup') ? 'signup' : 'signin';
+let authMode = boot.has('signup') ? 'signup' : 'signin';
+// The emailed reset link. The token is spent on the server when the new
+// password is set, so the URL is only cleaned then — a reload keeps the form.
+let resetToken = /^[0-9a-f]{64}$/.test(boot.get('reset') || '') ? boot.get('reset') : null;
+// Back from the verification link: '1' verified, '0' expired or already used.
+const verifiedParam = boot.get('verified');
+if (verifiedParam !== null) history.replaceState(null, '', '/');
 
 function renderAuth() {
-  tokens($('authOpts'), AUTH_MODES, authMode, (v) => { authMode = v; renderAuth(); $('authError').textContent = ''; });
+  $('authRow').hidden = Boolean(resetToken);
+  if (resetToken) {
+    $('emailBar').hidden = true;
+    $('code').hidden = false;
+    $('code').placeholder = 'new password, 8 characters or more';
+    $('code').autocomplete = 'new-password';
+    $('authGo').textContent = 'SET NEW PASSWORD';
+    return;
+  }
+  tokens($('authOpts'), AUTH_MODES, authMode, (v) => {
+    authMode = v; renderAuth();
+    $('authError').textContent = ''; $('authNote').hidden = true;
+  });
   const m = AUTH_MODES.find((x) => x[0] === authMode);
   $('emailBar').hidden = authMode === 'code';
+  // Asking for the reset email takes only the address; a password field here
+  // would invite typing the new password into a form that cannot take one yet.
+  $('code').hidden = authMode === 'reset';
   $('authGo').textContent = m[2];
   $('code').placeholder = m[3];
   $('code').autocomplete = m[4];
+}
+
+function note(text) {
+  const n = $('authNote');
+  n.textContent = text;
+  n.hidden = !text;
 }
 
 function showLogin() {
   f.hidden = true;
   loginForm.hidden = false;
   renderAuth();
-  (authMode === 'code' ? $('code') : $('email')).focus();
+  // Clicked in a browser that holds no session (another device, say): the
+  // click still verified, so say so beside the form it lands on.
+  if (verifiedParam === '1') note('Email verified — sign in.');
+  else if (verifiedParam === '0') note('That verification link has expired or was already used. Sign in and resend it.');
+  (resetToken || authMode === 'code' ? $('code') : $('email')).focus();
 }
 
 function enter(j) {
@@ -415,7 +459,10 @@ function enter(j) {
   resumeJob();
 }
 
-fetch('/api/me').then(async (r) => {
+// The emailed reset link outranks whatever session this browser holds: the
+// person following it came to set a password, not to be signed straight in.
+if (resetToken) showLogin();
+else fetch('/api/me').then(async (r) => {
   if (!r.ok) return showLogin();
   enter(await readJson(r));
 }).catch(showLogin);
@@ -424,13 +471,22 @@ loginForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   const authErr = $('authError');
   authErr.textContent = '';
+  note('');
   const password = $('code').value;
-  const body = authMode === 'code'
-    ? { code: password }
-    : { email: $('email').value.trim(), password };
+  let path, body;
+  if (resetToken) {
+    path = '/api/password/reset'; body = { token: resetToken, password };
+  } else if (authMode === 'reset') {
+    path = '/api/password/forgot'; body = { email: $('email').value.trim() };
+  } else if (authMode === 'code') {
+    path = '/api/login'; body = { code: password };
+  } else {
+    path = authMode === 'signup' ? '/api/signup' : '/api/login';
+    body = { email: $('email').value.trim(), password };
+  }
   let r;
   try {
-    r = await fetch(authMode === 'signup' ? '/api/signup' : '/api/login', {
+    r = await fetch(path, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
@@ -439,8 +495,33 @@ loginForm.addEventListener('submit', async (e) => {
     return;
   }
   const j = await readJson(r);
-  if (r.ok) return enter(j);
-  authErr.textContent = httpMessage(r, j);
+  if (!r.ok) { authErr.textContent = httpMessage(r, j); return; }
+  if (!resetToken && authMode === 'reset') {
+    // One answer whether or not the address has an account — the server's
+    // words, so the page cannot be made to say which.
+    note(j.message || 'If that email has an account, a reset link is on its way to it.');
+    return;
+  }
+  if (resetToken) { resetToken = null; history.replaceState(null, '', '/'); }
+  enter(j);
+});
+
+// The sign-up's email never arrived, or its link ran out.
+$('resend').addEventListener('click', async () => {
+  const b = $('resend');
+  b.disabled = true;
+  let r, j;
+  try {
+    r = await fetch('/api/verify/resend', { method: 'POST' });
+    j = await readJson(r);
+  } catch {
+    b.disabled = false;
+    b.textContent = 'no answer from the server — resend the email';
+    return;
+  }
+  if (r.ok) { b.textContent = j.message || 'sent'; return; }
+  b.disabled = false;
+  b.textContent = httpMessage(r, j) + ' — resend the email';
 });
 
 // ---- run -----------------------------------------------------------------

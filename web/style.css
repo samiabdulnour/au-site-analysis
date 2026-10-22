@@ -156,11 +156,12 @@ a { color: inherit; }
    being underlined instead of by becoming another box. */
 #note { color: var(--muted); }
 #note:empty { display: none; }
-#note button {
+#note button, #verify button {
   font: inherit; color: inherit; background: transparent; border: 0;
   padding: 0; text-decoration: underline; cursor: pointer;
 }
-#note button:hover { color: var(--ink); }
+#note button:hover, #verify button:hover { color: var(--ink); }
+#verify button:disabled { text-decoration: none; cursor: default; }
 
 /* ---- top nav ------------------------------------------------------------ */
 /* HOW IT WORKS and PLANS beside the title, then the session's own controls,
