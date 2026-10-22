@@ -409,6 +409,41 @@ Batches live in `out/web/batches.json`, beside the job index rather than inside
 it: that file is an array an older container still reads, and a rollback that
 met an object there would find no jobs at all.
 
+### Identifying this tool
+
+Being a good guest is also being a recognisable one. The firewall in front of a
+government endpoint decides whether to trust a request largely from its
+`User-Agent`, and whether that identity resolves to something a human can look
+up; an anonymous request — what Node's `fetch` sends by default, a bare `node`
+— is what such a firewall blocks. So every outbound request carries one
+identity, defined once in `src/lib/http.ts` and attached by `retryFetch` to any
+request that does not set its own, naming the tool and linking this repository
+with the `+URL` convention:
+
+```
+au-site-analysis/1.0 (NSW architectural site-analysis tool; +https://github.com/samiabdulnour/au-site-analysis)
+```
+
+The link is the point. A provider who looks it up lands on
+[`SECURITY.md`](SECURITY.md), which says what the tool fetches, how lightly (one
+address at a time, cached, backed off on 429/503), and how to reach or block the
+operator. The running site serves the same record at `/.well-known/security.txt`
+(RFC 9116), so the identity holds from both ends — the request points at the
+repo, and the site points back at the same policy.
+
+`SITE_ANALYSIS_CONTACT` adds a direct contact to that identity. Set it to an
+email or a URL and it is appended to the `User-Agent`, sent as a `From` header,
+and listed first in `security.txt`, so a provider has someone to email before
+reaching for a block. Like the rest, it lives in `/etc/site-analyst.env`:
+
+```
+SITE_ANALYSIS_CONTACT=hi@site-analyst.com
+```
+
+Unset, the identity still names the tool and links the repo — only the direct
+contact is missing, and `security.txt` keeps its GitHub advisory and issues
+links regardless.
+
 ### Status view
 
 `/status` is the operator's window onto what the server has been doing: version
