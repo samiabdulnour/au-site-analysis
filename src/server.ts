@@ -1472,9 +1472,11 @@ Sitemap: ${siteBase()}/sitemap.xml
       if (err) return json(res, 500, { error: 'PDF unreadable.' });
       const slug = job.address.replace(/[^a-z0-9]+/gi, '_').toUpperCase();
       const kind = PDF_NAME[job.sheet];
+      // Shown in the browser's viewer, or with ?download saved straight to disk.
+      const disposition = url.searchParams.has('download') ? 'attachment' : 'inline';
       res.writeHead(200, {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `inline; filename="${kind}_${slug}.pdf"`,
+        'Content-Disposition': `${disposition}; filename="${kind}_${slug}.pdf"`,
         ...PRIVATE,
       });
       res.end(data);

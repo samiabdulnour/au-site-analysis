@@ -475,6 +475,21 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
       layers.push(`<path d="${ds.join('')}" fill="none" stroke="#ffffff" stroke-width="${(w * mmPerM).toFixed(2)}" stroke-linecap="round" stroke-linejoin="round" opacity="0.92"/>`);
   }
 
+  // ---- thin cadastral lot-boundary overlay --------------------------------
+  // Over the buildings, except where they are filled in their family's colour
+  // (Kingfisher): there the lots are part of the ground and the buildings
+  // stand on them, so a lot line never cuts across a building.
+  const lotsLayer = bundle.allLots.features.length
+    ? (() => {
+      const d = bundle.allLots.features.map((f) => pathFromRings(geomRings(f.geometry), proj)).join('');
+      return tpl().lots === 'white'
+        ? `<path d="${d}" fill="none" stroke="#ffffff" stroke-width="${tpl().lotWidth ?? 0.45}" opacity="0.95"/>`
+        : `<path d="${d}" fill="none" stroke="${tpl().road}" stroke-width="0.12" opacity="0.5"/>`;
+    })()
+    : '';
+  const lotsUnder = tpl().footprints === 'colour';
+  if (lotsLayer && lotsUnder) layers.push(lotsLayer);
+
   // ---- building footprints: the grain inside the blocks -------------------
   // Each footprint takes the ink of the ground it stands on — the darker
   // member of the tint's family — so a block reads as a firm figure on a light
@@ -538,13 +553,7 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     }
   }
 
-  // ---- thin cadastral lot-boundary overlay --------------------------------
-  if (bundle.allLots.features.length) {
-    const d = bundle.allLots.features.map((f) => pathFromRings(geomRings(f.geometry), proj)).join('');
-    layers.push(tpl().lots === 'white'
-      ? `<path d="${d}" fill="none" stroke="#ffffff" stroke-width="${tpl().lotWidth ?? 0.45}" opacity="0.95"/>`
-      : `<path d="${d}" fill="none" stroke="${tpl().road}" stroke-width="0.12" opacity="0.5"/>`);
-  }
+  if (lotsLayer && !lotsUnder) layers.push(lotsLayer);
 
   // ---- heritage ----------------------------------------------------------
   // Hatch drawn as real vector lines clipped to each polygon — SVG patterns

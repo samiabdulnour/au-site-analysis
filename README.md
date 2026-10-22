@@ -699,7 +699,9 @@ and purple, the railway orange. The legend swatch shows a few buildings on
 their ground. The colours are exactly those the reference prints. Streets, numbered
 places and the dotted lines are Flamingo's, but the street names and the institutions' number discs
 are the reference's peach, the parks' discs a light leaf green, and the lots
-and every building are drawn in a heavy white line.
+and every building are drawn in a heavy white line. The lots lie under the
+buildings, as part of the ground they stand on, so a lot line never cuts
+across a building's fill.
 
 **Heron** (`heron`) is the office sheet the restyle began from: the aerial,
 in greyscale (`aerialTone: 'grey'`), with the lots and every building as heavy
