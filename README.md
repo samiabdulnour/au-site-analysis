@@ -1054,10 +1054,10 @@ name would run into a better-ranked one's is left off. Further in are four
 plain suns, open discs with eight rays, where the sun rises and sets at
 the two solstices, each named (WINTER SUNRISE, SUMMER SUNSET…) toward the
 centre, with no hours (`sun: 'circle'`). Each solstice's path joins its
-sunrise to its sunset over north, as a sun-path diagram draws it: the summer
-path solid and passing north nearer the site (the noon sun stands high), the
-winter one dashed and further out, and neither closer than 12 mm to the lot's
-farthest corner. North is a black arrowhead standing
+sunrise to its sunset over north as an arc of a circle about the site, the
+climate circle drawn smaller: the summer path solid, 26 mm inside the ring,
+the winter one dashed and 8 mm further in, each with its two suns on it.
+North is a black arrowhead standing
 out of the circle with N beyond it. The circle sits clear of the lot with room
 for the suns' names inside it, and short of the sheet's edge with the winds'
 names outside it.
