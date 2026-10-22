@@ -61,9 +61,11 @@ a { color: inherit; }
   font: inherit; color: var(--ink); background: transparent;
   border: 0; width: 100%; padding: .45rem 1rem;
 }
+/* No focus ring on the bar or its field: a second line over the 1px rule read
+   as a thicker box than every other hairline on the page. The caret says
+   where typing goes. */
 .bar input:focus { outline: 0; }
 .bar input::placeholder { color: var(--muted); }
-.bar:focus-within { box-shadow: 0 0 0 1px var(--line); }
 
 .go {
   font: inherit; font-weight: 400; letter-spacing: .02em;
