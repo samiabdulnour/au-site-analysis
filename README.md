@@ -1065,7 +1065,8 @@ development window), `--job 2539`, `--client "Name"`,
 feasibility study first states it, laid out as the site report is — A3
 landscape spreads, the left page for what is said (the figures, the tables and
 the key, the narrative in red down its left column, the sources at its foot)
-and the right page for the drawings — and printed the same way, one PDF page
+and the right page for the drawings, run to its edges as the report's maps
+are, each named in a white box in its corner — and printed the same way, one PDF page
 and one PNG (`yield/<page>.png`) a spread. There is a spread for each path the
 site may take, so a site with more paths has more pages:
 
