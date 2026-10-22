@@ -977,7 +977,7 @@ family's strong colour with a white edge and its number in white (a quiet grey
 on the site and where no zone is mapped), the white cadastre, Kingfisher's
 grotesk, its peach street names and its magenta site. The climate is drawn in
 the office's marks for this palette (`src/render/climateSymbols.ts`, taken
-as drawn from its symbol sheet): each solstice's sun path a translucent
+as drawn from its symbol sheet): each solstice's sun path a nearly solid
 crescent in warm yellow, deepest at noon and running from amber at its points
 to its brightest yellow in the middle (summer outer, winter inner), with the
 office's small rayed sun in orange at each rise and set; each wind a smaller
@@ -1052,7 +1052,11 @@ sight line a white band on the circle with its name inside it; a view whose
 name would run into a better-ranked one's is left off. Further in are four
 plain suns, open discs with eight rays, where the sun rises and sets at
 the two solstices, each named (WINTER SUNRISE, SUMMER SUNSET…) toward the
-centre, with no hours (`sun: 'circle'`). North is a black arrowhead standing
+centre, with no hours (`sun: 'circle'`). Each solstice's path joins its
+sunrise to its sunset over north, as a sun-path diagram draws it: the summer
+path solid and passing north nearer the site (the noon sun stands high), the
+winter one dashed and further out, and neither closer than 12 mm to the lot's
+farthest corner. North is a black arrowhead standing
 out of the circle with N beyond it. The circle sits clear of the lot with room
 for the suns' names inside it, and short of the sheet's edge with the winds'
 names outside it.
