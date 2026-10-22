@@ -9,8 +9,8 @@
  *   npx tsx test/yield.mts
  */
 
-import { computeYield, storeysUnder, archetypeFor, edgeKinds, ringArea, futureHeight, withFour, DEFAULT_ASSUMPTIONS, PARKING_RATES, UNIT_KINDS, ADG_MINIMUM, type XY } from '../src/lib/yield.js';
-import { tierSpot, frontageMiddle } from '../src/render/yieldSheet.js';
+import { computeYield, storeysUnder, archetypeFor, edgeKinds, ringArea, futureHeight, withFour, existingSummary, DEFAULT_ASSUMPTIONS, PARKING_RATES, UNIT_KINDS, ADG_MINIMUM, type XY } from '../src/lib/yield.js';
+import { tierSpot, frontageMiddle, yieldStudy, scenarioRows, type YieldBundle } from '../src/render/yieldSheet.js';
 
 const failures: string[] = [];
 const check = (name: string, ok: boolean, detail = '') => {
@@ -193,6 +193,56 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
   check('frontage: a run across the seam is one run', !!seam && near(seam.x, 0, 1e-6) && near(seam.y, 5, 1e-6), JSON.stringify(seam));
   check('frontage: the longer street wins', (() => { const q = frontageMiddle(ring, ['A ST', null, 'B ST', null, null]); return !!q && near(q.x, 50, 1e-6) && near(q.y, 15, 1e-6); })());
   check('frontage: no street, no middle', frontageMiddle(ring, [null, null, null, null, null]) === undefined);
+}
+
+// ---- what stands today -------------------------------------------------------------------
+{
+  check('stands: nothing standing, nothing said', existingSummary([]) === undefined);
+  const one = existingSummary([{ footprintSqm: 980, heightM: 37.2 }])!;
+  check('stands: one building, storeys from its height', one.count === 1 && one.storeys === 12 && one.known && near(one.gbaSqm!, 980 * 12, 1), JSON.stringify(one));
+  const two = existingSummary([{ footprintSqm: 400, storeys: 3 }, { footprintSqm: 200, heightM: 6.2 }])!;
+  check('stands: the tallest speaks, the floor areas add', two.storeys === 3 && near(two.gbaSqm!, 400 * 3 + 200 * 2, 1) && two.footprintSqm === 600, JSON.stringify(two));
+  const dumb = existingSummary([{ footprintSqm: 500 }])!;
+  check('stands: no height anywhere, no floor area guessed', !dumb.known && dumb.storeys === undefined && dumb.gbaSqm === undefined && dumb.footprintSqm === 500);
+}
+
+// ---- the scenarios -------------------------------------------------------------------------
+{
+  // A 40 × 50 m R4 lot whose FSR (1.5) stops the building below its height (22 m): every path diverges.
+  const ringLL: [number, number][] = [[151.2, -33.9], [151.20043, -33.9], [151.20043, -33.89955], [151.2, -33.89955], [151.2, -33.9]];
+  const bundle: YieldBundle = {
+    address: 'TEST', siteAddress: 'TEST', generatedAt: 't', lotDescription: '—', areaIsCadastral: true,
+    siteAreaSqm: 2000, controls: { zoneCode: 'R4', maxHeightM: 22, fsr: 1.5, heritage: [] },
+    siteRing: ringLL, frontages: ['TEST ST', null, null, null], roads: [], context: [], buildingsSource: 'none', policyAtSite: [],
+    existing: [{ footprintSqm: 900, heightM: 37.2 }],
+  };
+  const s = yieldStudy(bundle);
+  check('scenarios: the ratio stops the base below the height', s.base.governs === 'fsr' && s.base.storeys < s.base.storeysByHeight);
+  const rows = scenarioRows(bundle, s);
+  const ids = rows.map((r) => r.id).join(',');
+  check('scenarios: all four paths, what stands first', ids === 'standsToday,withinControls,affordableBonus,envelopeToHeight', ids);
+  const today = rows[0], base = rows[1], bonus = rows[2], max = rows[3];
+  check('scenarios: what stands is indicative GBA with no mark', today.storeys === '~12' && /GBA/.test(today.gfa ?? '') && today.ok === undefined, JSON.stringify(today));
+  check('scenarios: the drawn scheme complies', base.ok === true && /DRAWN/.test(base.label));
+  check('scenarios: the bonus waits on eligibility', bonus.ok === null && /eligibility/.test(bonus.note));
+  check('scenarios: the maxed envelope does not comply, and names the path', max.ok === false && /clause 4.6|planning proposal/.test(max.note));
+  check('scenarios: the maxed envelope reaches the height and holds more', s.max!.storeys === s.base.storeysByHeight && s.max!.gfa > s.base.gfa + 1);
+  // Where the envelope, not the ratio, governs, there is no envelope-to-the-height path.
+  const openB: YieldBundle = { ...bundle, controls: { zoneCode: 'R4', maxHeightM: 22, heritage: [] }, existing: [] };
+  const s2 = yieldStudy(openB);
+  const ids2 = scenarioRows(openB, s2).map((r) => r.id).join(',');
+  check('scenarios: no ratio, no maxed-envelope path and nothing standing', ids2 === 'withinControls,affordableBonus', ids2);
+  // A 16 m sliver: the separations eat every storey over four, so the bonus gains nothing and is no path.
+  const dLon = 16 / (111320 * Math.cos((-33.9 * Math.PI) / 180)), dLat = 40 / 110574;
+  const sliver: YieldBundle = {
+    ...bundle, existing: [],
+    controls: { zoneCode: 'R4', maxHeightM: 40, heritage: [] },
+    siteRing: [[151.21, -33.9], [151.21 + dLon, -33.9], [151.21 + dLon, -33.9 + dLat], [151.21, -33.9 + dLat], [151.21, -33.9]],
+    siteAreaSqm: 16 * 40,
+  };
+  const s3 = yieldStudy(sliver);
+  check('scenarios: a bonus the envelope eats is no path', s3.bonus !== undefined && scenarioRows(sliver, s3).map((r) => r.id).join(',') === 'withinControls',
+    scenarioRows(sliver, s3).map((r) => r.id).join(','));
 }
 
 if (failures.length) {
