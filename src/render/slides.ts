@@ -9,7 +9,8 @@
 import type { DemGrid } from '../fetch/terrain.js';
 import type { Extent } from '../lib/geo.js';
 import type { SlidesBundle } from '../pipeline.js';
-import type { SheetMeta } from './sheet.js';
+import { mergeRuns, straightEnough, arcTable, sliceAt, shortStreetName, type SheetMeta, type Pt } from './sheet.js';
+import type { TopoRoad } from '../fetch/nswTopo.js';
 import type { GeoJSONFeature } from '../lib/arcgis.js';
 import { tpl, withTemplate, DECK_TEMPLATE } from './template.js';
 import { INK, AERIAL_GREEN_FILL, VEG_1750_FILLS, fillShape, swatchOf, barOf, zHead, zBars, zFigures, zCircles, zSpans, zPairs, zLine, niceAxis, z6, zSvg, Z_W, Z_TRACK, type Fill } from './atlasKit.js';
@@ -514,6 +515,97 @@ export function locationSentences(b: SlidesBundle, f: ReturnType<typeof location
   return out;
 }
 
+/**
+ * The street names along their roads, so a reader can find their way on a map at 1:5000: arterials first,
+ * each name once (twice along a long road), slid along its road to a straight stretch clear of every label
+ * the map has already set, else left off. `id` keeps the text paths of one map apart from another's.
+ */
+export function streetNameLayer(roads: TopoRoad[], proj: Proj, p: Panel, spacer: LabelSpacer, id: string, ink = '#3c3c3c', size = 2.0): string {
+  const byName = new Map<string, { segs: Pt[][]; hierarchy: number; lenMm: number }>();
+  for (const r of roads) {
+    if (!r.name || r.hierarchy >= 8) continue;
+    const pts = r.coords.map(([lon, lat]) => proj(lon, lat) as Pt);
+    if (pts.length < 2 || pts.every(([x, y]) => x < 0 || y < 0 || x > p.wMm || y > p.hMm)) continue;
+    const e = byName.get(r.name) ?? byName.set(r.name, { segs: [], hierarchy: r.hierarchy, lenMm: 0 }).get(r.name)!;
+    e.segs.push(pts);
+    e.hierarchy = Math.min(e.hierarchy, r.hierarchy);
+    e.lenMm += arcTable(pts).pop() ?? 0;
+  }
+  const M = 6; // keep clear of the panel's edge
+  const defs: string[] = [], texts: string[] = [];
+  let n = 0;
+  for (const [name, r] of [...byName].sort((a, b2) => a[1].hierarchy - b2[1].hierarchy || b2[1].lenMm - a[1].lenMm)) {
+    const label = shortStreetName(name);
+    const textLen = label.length * size * 0.68 + 1;
+    const runs = mergeRuns(r.segs).map((pts) => { const cum = arcTable(pts); return { pts, cum, len: cum[cum.length - 1] }; }).filter((q) => q.len >= textLen + 4).sort((a, b2) => b2.len - a.len);
+    let placed = 0;
+    for (const run of runs) {
+      if (placed >= 2) break;
+      const want = run.len > 150 && placed === 0 ? [run.len * 0.3, run.len * 0.7] : [run.len / 2];
+      for (const centre of want) {
+        if (placed >= 2) break;
+        for (let k = 0; k <= 24; k++) {
+          const c = centre + (k % 2 ? -1 : 1) * Math.ceil(k / 2) * textLen * 0.4;
+          const c0 = c - textLen / 2, c1 = c + textLen / 2;
+          if (c0 < 0 || c1 > run.len) continue;
+          const win = sliceAt(run.pts, run.cum, c0, c1);
+          if (win.some(([x, y]) => x < M || y < M || x > p.wMm - M || y > p.hMm - M) || !straightEnough(win, 0.5)) continue;
+          // the name as boxes along its path, each tested before any is taken
+          const steps = Math.max(2, Math.ceil(textLen / 2.4));
+          const boxes = Array.from({ length: steps + 1 }, (_, i) => { const q = sliceAt(run.pts, run.cum, c0 + (textLen * i) / steps, c0 + (textLen * i) / steps + 0.01)[0]; return { x: q[0], y: q[1], w: 2.4, h: size * 1.2 }; });
+          if (!boxes.every((bx) => spacer.free(bx.x, bx.y, bx.w, bx.h))) continue;
+          spacer.takeAll(boxes);
+          let [a, z] = [win[0], win[win.length - 1]];
+          if (a[0] > z[0]) [a, z] = [z, a];
+          const pid = `${id}-st${n++}`;
+          defs.push(`<path id="${pid}" d="M${a[0].toFixed(2)},${a[1].toFixed(2)}L${z[0].toFixed(2)},${z[1].toFixed(2)}" fill="none"/>`);
+          texts.push(`<text font-size="${size}" font-weight="700" letter-spacing="0.12" dy="${(size * 0.36).toFixed(2)}" fill="${ink}" stroke="#ffffff" stroke-width="0.5" stroke-linejoin="round" paint-order="stroke"><textPath href="#${pid}" startOffset="50%" text-anchor="middle">${esc(label)}</textPath></text>`);
+          placed++;
+          break;
+        }
+      }
+    }
+  }
+  return defs.length ? `<defs>${defs.join('')}</defs>${texts.join('')}` : '';
+}
+
+/**
+ * Lines that run beside one already kept, within `tolMm` on the paper, add nothing at a small scale but ink:
+ * a rail yard's twenty tracks print as one dark smear. Lines are taken in the order given (the main lines
+ * first) and one is dropped when most of its length lies that close to the lines kept before it.
+ */
+export function thinParallelLines<T extends number[][]>(lines: T[], proj: Proj, tolMm: number, dropShare = 0.75): T[] {
+  const cell = tolMm;
+  const grid = new Map<string, [number, number][]>();
+  const keyOf = (x: number, y: number) => `${Math.floor(x / cell)},${Math.floor(y / cell)}`;
+  // points along a projected line, no further apart than half the tolerance, so point distance stands for line distance
+  const along = (line: number[][]): [number, number][] => {
+    const pts = line.map(([lon, lat]) => proj(lon, lat) as [number, number]);
+    const out: [number, number][] = [];
+    for (let i = 0; i < pts.length; i++) {
+      if (i === 0) { out.push(pts[0]); continue; }
+      const [x0, y0] = pts[i - 1], [x1, y1] = pts[i];
+      const n = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0) / (tolMm / 2)));
+      for (let k = 1; k <= n; k++) out.push([x0 + ((x1 - x0) * k) / n, y0 + ((y1 - y0) * k) / n]);
+    }
+    return out;
+  };
+  const near = ([x, y]: [number, number]) => {
+    const cx = Math.floor(x / cell), cy = Math.floor(y / cell);
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (const [qx, qy] of grid.get(`${cx + dx},${cy + dy}`) ?? []) if (Math.hypot(qx - x, qy - y) <= tolMm) return true;
+    return false;
+  };
+  const kept: T[] = [];
+  for (const line of lines) {
+    const pts = along(line);
+    if (!pts.length) continue;
+    if (kept.length && pts.filter(near).length / pts.length >= dropShare) continue;
+    kept.push(line);
+    for (const q of pts) { const k = keyOf(q[0], q[1]); (grid.get(k) ?? grid.set(k, []).get(k)!).push(q); }
+  }
+  return kept;
+}
+
 export function locationSlide(b: SlidesBundle): Slide {
   const t = tpl();
   const loc = b.location;
@@ -553,11 +645,12 @@ export function locationSlide(b: SlidesBundle): Slide {
   for (const [h, ds] of [...byH.entries()].sort((a, b2) => b2[0] - a[0])) parts.push(`<path d="${ds.join('')}" fill="none" stroke="${h <= 1 ? LOC.road : h <= 2 ? LOC.road2 : LOC.road3}" stroke-width="${h <= 1 ? 0.55 : h <= 2 ? 0.38 : 0.2}" stroke-linecap="round" stroke-linejoin="round"/>`);
   if (loc.roads.length) legend.push({ swatch: swatchLine(LOC.road, 0.55), label: 'Motorways, highways and arterial roads' });
   if (loc.rail.train.length) {
-    const d = loc.rail.train.map((l) => ringsPath([l], proj, false)).join('');
+    // a corridor's parallel tracks and its yards drawn as one line: 0.9 mm on the paper is 90 m at 1:100 000
+    const d = thinParallelLines(loc.rail.train, proj, 0.9).map((l) => ringsPath([l], proj, false)).join('');
     parts.push(railSymbol(d, LOC.rail));
     legend.push({ swatch: `<line x1="0" y1="1.8" x2="5" y2="1.8" stroke="${LOC.rail}" stroke-width="0.2"/><line x1="0" y1="1.8" x2="5" y2="1.8" stroke="${LOC.rail}" stroke-width="1.05" stroke-dasharray="0.16,1.3"/>`, label: 'Railways' });
   }
-  if (loc.rail.tram.length) parts.push(`<path d="${loc.rail.tram.map((l) => ringsPath([l], proj, false)).join('')}" fill="none" stroke="${LOC.rail}" stroke-width="0.35" stroke-dasharray="0.8,0.8"/>`);
+  if (loc.rail.tram.length) parts.push(`<path d="${thinParallelLines(loc.rail.tram, proj, 0.9).map((l) => ringsPath([l], proj, false)).join('')}" fill="none" stroke="${LOC.rail}" stroke-width="0.35" stroke-dasharray="0.8,0.8"/>`);
   // the rings
   for (const kmR of RING_KM) {
     const r = kmR * 1000 * mmPerM;
@@ -954,6 +1047,48 @@ export function strategicSlide(b: SlidesBundle, planning: PlanningFacts): Slide 
 }
 
 /** Strategic context on the template: the policy areas round the site mapped, the plans over it on a time line, then listed. */
+/**
+ * The strategic places the page does not reach: the nearest housing-policy areas (one of each kind, from the
+ * maps read 3 km round the site) and the nearest centre of The Sydney Plan, each with its bearing and distance
+ * from the site's centre, so a page with nothing on it still says where the policy is.
+ */
+export function nearestBeyond(b: SlidesBundle, p: Panel): { label: string; distanceM: number; bearing: number; kind: 'policy' | 'centre' }[] {
+  const ext = panelExtent(p);
+  const c = p.center, k = mercatorScaleFactor(mercatorToLonLat(c).lat);
+  const onPage = (m: XY) => m.x >= ext.xmin && m.x <= ext.xmax && m.y >= ext.ymin && m.y <= ext.ymax;
+  const out: { label: string; distanceM: number; bearing: number; kind: 'policy' | 'centre' }[] = [];
+  const near = (b.policyNear ?? []).filter((a) => isRealPolicyArea(a.name));
+  const best = new Map<PolicyKind, { label: string; distanceM: number; bearing: number }>();
+  for (const a of near) {
+    let d = Infinity, at: XY = c, anyOnPage = false;
+    for (const r of a.rings) for (const [lon, lat] of r) { const m = lonLatToMercator({ lon, lat }); if (onPage(m)) anyOnPage = true; const dd = Math.hypot(m.x - c.x, m.y - c.y) / k; if (dd < d) { d = dd; at = m; } }
+    if (anyOnPage) continue;
+    const cur = best.get(a.kind);
+    if (!cur || d < cur.distanceM) best.set(a.kind, { label: policyPhrase(a.name, a.kind), distanceM: d, bearing: ((Math.atan2(at.x - c.x, at.y - c.y) * 180) / Math.PI + 360) % 360 });
+  }
+  for (const v of [...best.values()].sort((x, y) => x.distanceM - y.distanceM).slice(0, 3)) out.push({ ...v, kind: 'policy' });
+  const centre = CENTRES.map((q) => { const m = lonLatToMercator({ lon: q.lon, lat: q.lat }); return { q, m, d: Math.hypot(m.x - c.x, m.y - c.y) / k }; }).filter((x) => !onPage(x.m) && x.d <= 8000).sort((x, y) => x.d - y.d)[0];
+  if (centre) out.push({ label: `${centre.q.name} ${CENTRE_KIND_WORD[centre.q.kind]}`, distanceM: centre.d, bearing: ((Math.atan2(centre.m.x - c.x, centre.m.y - c.y) * 180) / Math.PI + 360) % 360, kind: 'centre' });
+  return out;
+}
+
+/** An arrowhead on the panel's edge at a bearing from its centre, pointing out, its words set inward of it. */
+function edgePointer(p: Panel, bearing: number, text: string, spacer: LabelSpacer, ink: string): string {
+  const INSET = 9;
+  const dx = Math.sin((bearing * Math.PI) / 180), dy = -Math.cos((bearing * Math.PI) / 180);
+  const cx = p.wMm / 2, cy = p.hMm / 2;
+  const t = Math.min(dx ? (dx > 0 ? p.wMm - INSET - cx : INSET - cx) / dx : Infinity, dy ? (dy > 0 ? p.hMm - INSET - cy : INSET - cy) / dy : Infinity);
+  const x = cx + dx * t, y = cy + dy * t;
+  const a = (bearing * Math.PI) / 180;
+  const tip = [x + dx * 2.2, y + dy * 2.2], l = [x + Math.cos(a) * 1.3, y + Math.sin(a) * 1.3], r = [x - Math.cos(a) * 1.3, y - Math.sin(a) * 1.3];
+  const arrow = `<path d="M${tip[0].toFixed(2)},${tip[1].toFixed(2)}L${l[0].toFixed(2)},${l[1].toFixed(2)}L${r[0].toFixed(2)},${r[1].toFixed(2)}Z" fill="${ink}"/>`;
+  const w = labelW(text, 1.9);
+  // the words inward of the arrow, slid along the edge until they are clear
+  const lx0 = Math.max(4 + w / 2, Math.min(p.wMm - 4 - w / 2, x - dx * (w / 2 + 2))), ly0 = Math.max(6, Math.min(p.hMm - 6, y - dy * 4.2));
+  for (const [lx, ly] of [[lx0, ly0], [lx0, ly0 - 3.4], [lx0, ly0 + 3.4]] as [number, number][]) if (spacer.take(lx, ly, w, 2.6)) return arrow + label(lx, ly, text, 1.9, ink);
+  return arrow;
+}
+
 export function strategicAtlas(b0: SlidesBundle, planning: PlanningFacts): Slide {
   const p = b0.bleedPanel;
   const b: SlidesBundle = { ...b0, panel: p, daPanel: p };
@@ -994,6 +1129,11 @@ export function strategicAtlas(b0: SlidesBundle, planning: PlanningFacts): Slide
     const w = c.text.length * 1.6 + 1;
     for (const [lx, ly] of [[c.cx, c.cy], [c.cx, c.cy - 4], [c.cx, c.cy + 4]] as [number, number][]) if (spacer.take(lx, ly, w, 2.8)) { labels.push(m6(lx, ly, c.text)); break; }
   }
+  // what lies beyond the page: the nearest policy areas and the plan's nearest centre, pointed to from its edge
+  const beyond = nearestBeyond(b, p);
+  const beyondPolicy = beyond.find((q) => q.kind === 'policy');
+  for (const q of beyond) labels.push(edgePointer(p, q.bearing, `${q.label.toUpperCase()} · ${q.distanceM >= 1000 ? `${(q.distanceM / 1000).toFixed(1)} KM` : `${fmtNum(Math.round(q.distanceM / 10) * 10)} M`}`, spacer, R.deep));
+  labels.push(streetNameLayer(b.base.roads, proj, p, spacer, 'strat05'));
   parts.push(...labels, siteMark(b.base, proj, 'both'), panelFurniture(p, 'left'));
   const mapSvg = bleedSvg('strat05', p, parts.join('\n'));
 
@@ -1019,12 +1159,13 @@ export function strategicAtlas(b0: SlidesBundle, planning: PlanningFacts): Slide
   const legend: LegendEntry[] = [
     ...present.map((k) => ({ swatch: swatchOf(POLICY_FILL[k]), label: POLICY_STYLE[k].label })),
     ...(present.length ? [] : [{ swatch: '', label: 'No TOD area, town centre, State significant site or precinct on the page' }]),
+    ...(beyond.length ? [{ swatch: `<path d="M3.6,1.8L1.4,0.5L1.4,3.1Z" fill="${R.deep}"/>`, label: 'The nearest policy areas and centre beyond the page, with their distance from the site' }] : []),
     SITE_KEY(t),
   ];
   const sources = `Sources: the Department's planning-regions layer and plans-by-region pages; the Planning Portal's index of local strategic planning statements; the local plan, the DCP and the contributions from ePlanning and the property report; TOD, town-centre, State significant site and precinct maps from the Housing and Planning Systems SEPP layers and DPHI. The documents themselves are not read. Retrieved ${b.generatedAt.slice(0, 10)}.`;
   const sub = atlasSub(b0, f.region.plan?.name ?? '', f.lsps ? 'local strategic planning statement linked' : 'local strategic planning statement to find', b0.housingTarget ? `target ${fmtNum(b0.housingTarget.homes)} homes by ${b0.housingTarget.by}` : '');
   return { id: '05_strategic_context', title: 'Strategic context', subtitle: sub, textHtml: '', figureHtml: atlasFigure(mapSvg, 'Housing policy and precincts', p, zFlow(blocks)), bleed: true, sources, accent: R.text, legend,
-    narrative: brief([strategicSentences(b0, f)[0], b0.housingTarget ? `The City's housing target is ${fmtNum(b0.housingTarget.homes)} new homes by ${b0.housingTarget.by}.` : '', planning.policyAtSite.length ? `The site is inside ${planning.policyAtSite.map((q) => `the ${q.name} ${POLICY_WORD[q.kind]}`).join(' and ')}.` : 'The site is outside every mapped housing policy area and precinct.']) };
+    narrative: brief([strategicSentences(b0, f)[0], b0.housingTarget ? `The City's housing target is ${fmtNum(b0.housingTarget.homes)} new homes by ${b0.housingTarget.by}.` : '', planning.policyAtSite.length ? `The site is inside ${planning.policyAtSite.map((q) => `the ${q.name} ${POLICY_WORD[q.kind]}`).join(' and ')}.` : `The site is outside every mapped housing policy area and precinct${beyondPolicy ? `; the nearest is the ${beyondPolicy.label}, ${beyondPolicy.distanceM >= 1000 ? `${(beyondPolicy.distanceM / 1000).toFixed(1)} km` : `${fmtNum(Math.round(beyondPolicy.distanceM / 10) * 10)} m`} ${bearingName(beyondPolicy.bearing)}` : (b0.policyNear ? ', and none lies within 3 km' : '')}.`]) };
 }
 
 // ---- slide 03: planning overview ----------------------------------------------
@@ -1231,6 +1372,7 @@ export function planningAtlas(b0: SlidesBundle): Slide {
   keepSiteClear(b, proj, spacer);
   const labels: string[] = [];
   for (const c of cands.sort((x, y) => y.area - x.area)) if (spacer.take(c.cx, c.cy, c.text.length * 1.6 + 1, 2.8)) labels.push(m6(c.cx, c.cy, c.text));
+  labels.push(streetNameLayer(b.base.roads, proj, p, spacer, 'plan03'));
   parts.push(...labels, siteMark(b.base, proj, 'both'), siteEdge(b, proj), panelFurniture(p, 'left'));
   const mapSvg = bleedSvg('plan03', p, parts.join('\n'));
 
@@ -1839,7 +1981,7 @@ const siteEdge = (b: SlidesBundle, proj: Proj) => `<path d="${b.base.siteLots.fe
 /** The site's rings and their bounding box on a map, for the spacer to keep clear. */
 const keepSiteClear = (b: SlidesBundle, proj: Proj, spacer: LabelSpacer) => {
   const rings = b.base.siteLots.features.flatMap((ft) => geomRings(ft.geometry));
-  if (rings.length) { const sb = bboxOf(rings, proj); spacer.take((sb.x0 + sb.x1) / 2, (sb.y0 + sb.y1) / 2, sb.x1 - sb.x0 + 2, sb.y1 - sb.y0 + 2); }
+  if (rings.length) { const sb = bboxOf(rings, proj); spacer.block((sb.x0 + sb.x1) / 2, (sb.y0 + sb.y1) / 2, sb.x1 - sb.x0 + 2, sb.y1 - sb.y0 + 2); }
 };
 /** The share of the page each feature group covers, clipped to the page. */
 const pageShare = (rings: number[][][], proj: Proj, p: Panel) => rings.reduce((a, r) => a + clippedStats(r, proj, p).area, 0) / (p.wMm * p.hMm);
@@ -1908,6 +2050,10 @@ export function developmentAtlas(b0: SlidesBundle, facts: PlanningFacts): Slide 
     const text = q.st.n, w = text.length * 1.6 + 0.8;
     for (const [lx, ly] of [[q.x + DR + 1.2 + w / 2, q.y], [q.x - DR - 1.2 - w / 2, q.y], [q.x, q.y - DR - 1.8]] as [number, number][]) if (spacer.take(lx, ly, w, 2.6)) { labels.push(m6(lx, ly, text)); break; }
   }
+  // the street names after every mark, round the circles of the sites of scale
+  for (const q of placed) spacer.block(q.x, q.y, q.r * 2, q.r * 2);
+  keepSiteClear(b, proj, spacer);
+  labels.push(streetNameLayer(b.base.roads, proj, p, spacer, 'dev07'));
   parts.push(...labels, siteMark(b.base, proj, 'both'), panelFurniture(p, 'left'));
   const mapSvg = `<svg width="${p.wMm}mm" height="${p.hMm}mm" viewBox="0 0 ${p.wMm} ${p.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
     <defs><clipPath id="clip-dev"><rect x="0" y="0" width="${p.wMm}" height="${p.hMm}"/></clipPath></defs>
@@ -2267,7 +2413,7 @@ export function peopleAtlas(b: SlidesBundle): Slide {
     const r = 0.9 + 3.2 * Math.sqrt(s.price / maxP);
     parts.push(fillShape(circle(x, y, r), { x0: x - r, y0: y - r, x1: x + r, y1: y + r }, s.strata ? STRATA : WHOLE));
   }
-  const spacer = new LabelSpacer(p.wMm, p.hMm, 30);
+  const spacer = new LabelSpacer(p.wMm, p.hMm, 70);
   spacer.take(40, 10, 72, 10);
   keepSiteClear(b, proj, spacer);
   const labels: string[] = [];
@@ -2276,6 +2422,8 @@ export function peopleAtlas(b: SlidesBundle): Slide {
     const text = money(s.price);
     for (const [lx, ly] of [[x + 5 + text.length * 0.8, y], [x - 5 - text.length * 0.8, y], [x, y - 5]] as [number, number][]) if (spacer.take(lx, ly, text.length * 1.6 + 1, 2.8)) { labels.push(m6(lx, ly, text)); break; }
   }
+  for (const s of recent) { const [x, y] = proj(s.lon, s.lat); const r = 0.9 + 3.2 * Math.sqrt(s.price / maxP); spacer.block(x, y, r * 2, r * 2); }
+  labels.push(streetNameLayer(b.base.roads, proj, p, spacer, 'people16'));
   parts.push(...labels, siteMark(b.base, proj, 'both'), panelFurniture(p, 'left'));
   void box;
   const mapSvg = bleedSvg('people16', p, parts.join('\n'));
@@ -2716,6 +2864,7 @@ export function topographyAtlas(b0: SlidesBundle): Slide {
       spacer.take(lx, ly, 4, 3); labels.push(m6(lx, ly, text));
     }
   }
+  labels.push(streetNameLayer(b.base.roads, proj, p, spacer, 'topo06'));
   parts.push(...labels, siteMark(b.base, proj, 'both'), panelFurniture(p, 'left'));
   const mapSvg = bleedSvg('topo06', p, parts.join('\n'));
 
@@ -2772,6 +2921,54 @@ const NO_HEIGHT_FILL = '#ddd5c6';
 const bandOf = (h?: number) => (h ? HEIGHT_BANDS.find((b) => h <= b.maxM)! : null);
 const storeysOf = (h: number) => Math.max(1, Math.round(h / METRES_PER_STOREY));
 
+/**
+ * The lots on the panel that no footprint touches, outside the zones that are meant to stand empty (recreation,
+ * conservation, infrastructure and waterways). Neither open source maps every building — Overture and
+ * OpenStreetMap both miss most of Bondi Road's shopping strip — so these are drawn and counted as a gap in the
+ * data, not as open land. Slivers under 40 m² and lots over 5,000 m² are left out of the count.
+ */
+export function lotsWithoutFootprint(b: SlidesBundle, panel: Panel) {
+  const ext = panelExtent(panel);
+  const CELL = 0.0005;
+  const grid = new Map<string, Building[]>();
+  for (const bd of b.buildings.buildings) {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const [lon, lat] of bd.rings[0] ?? []) { x0 = Math.min(x0, lon); y0 = Math.min(y0, lat); x1 = Math.max(x1, lon); y1 = Math.max(y1, lat); }
+    for (let i = Math.floor(x0 / CELL); i <= Math.floor(x1 / CELL); i++) for (let j = Math.floor(y0 / CELL); j <= Math.floor(y1 / CELL); j++) {
+      const key = `${i},${j}`; (grid.get(key) ?? grid.set(key, []).get(key)!).push(bd);
+    }
+  }
+  const near = (lon: number, lat: number) => grid.get(`${Math.floor(lon / CELL)},${Math.floor(lat / CELL)}`) ?? [];
+  const zones = b.zoning.features.map((f) => ({ code: String(f.properties.SYM_CODE ?? ''), rings: geomRings(f.geometry) }));
+  const EMPTY_ZONE = /^(RE\d|C\d|SP2|W\d)$/;
+  const siteRings = b.base.siteLots.features.flatMap((f) => geomRings(f.geometry));
+  const gaps: number[][][][] = [];
+  let built = 0;
+  for (const f of b.base.lots.features) {
+    const rings = geomRings(f.geometry);
+    const outer = rings[0];
+    if (!outer || outer.length < 4) continue;
+    const [clon, clat] = centroidLL(outer);
+    const m = lonLatToMercator({ lon: clon, lat: clat });
+    if (m.x < ext.xmin || m.x > ext.xmax || m.y < ext.ymin || m.y > ext.ymax) continue;
+    if (siteRings.some((r) => pointInRing(clon, clat, r))) continue;
+    const zone = zones.find((z) => z.rings.some((r) => pointInRing(clon, clat, r)));
+    if (!zone || EMPTY_ZONE.test(zone.code)) continue;
+    const k = mercatorScaleFactor(clat);
+    let s = 0; const pts = outer.map(([lon, lat]) => lonLatToMercator({ lon, lat }));
+    for (let i = 0; i < pts.length - 1; i++) s += pts[i].x * pts[i + 1].y - pts[i + 1].x * pts[i].y;
+    const areaM2 = Math.abs(s / 2) / (k * k);
+    if (areaM2 < 40 || areaM2 > 5000) continue;
+    // a footprint stands on the lot when its centroid or a vertex is inside it, or the lot's centroid is inside it
+    const cands = new Set<Building>();
+    for (const [lon, lat] of outer) for (const bd of near(lon, lat)) cands.add(bd);
+    for (const bd of near(clon, clat)) cands.add(bd);
+    const hit = [...cands].some((bd) => pointInRing(bd.centroid[0], bd.centroid[1], outer) || pointInRing(clon, clat, bd.rings[0]) || bd.rings[0].some(([lon, lat]) => pointInRing(lon, lat, outer)));
+    if (hit) built++; else gaps.push(rings);
+  }
+  return { gaps, count: gaps.length, lots: built + gaps.length };
+}
+
 export function builtFormFacts(b: SlidesBundle, planning: PlanningFacts) {
   const data = b.buildings;
   const all = data.buildings;
@@ -2788,7 +2985,8 @@ export function builtFormFacts(b: SlidesBundle, planning: PlanningFacts) {
   const medianNearM = nearHeights.length ? nearHeights[Math.floor(nearHeights.length / 2)] : undefined;
   const storeyCounts = new Map<number, number>();
   for (const h of nearHeights) { const st = Math.min(20, storeysOf(h)); storeyCounts.set(st, (storeyCounts.get(st) ?? 0) + 1); }
-  const tallest = [...withHeight].sort((p, q) => q.estimatedHeightM! - p.estimatedHeightM!).slice(0, 5)
+  // the site's own building is told on its own line; ranked here it was "the tallest on the map, 1 m south-east"
+  const tallest = withHeight.filter((x) => !onSite.includes(x)).sort((p, q) => q.estimatedHeightM! - p.estimatedHeightM!).slice(0, 5)
     .map((x) => ({ name: x.name, heightM: x.estimatedHeightM!, storeys: x.floors ?? storeysOf(x.estimatedHeightM!), from: x.heightFrom, distanceM: Math.round(dist(x)), bearing: bearing(x) }));
   const neighbours = all.filter((x) => !onSite.includes(x) && dist(x) <= 45).sort((p, q) => dist(p) - dist(q)).slice(0, 4)
     .map((x) => ({ name: x.name, heightM: x.estimatedHeightM, storeys: x.estimatedHeightM ? (x.floors ?? storeysOf(x.estimatedHeightM)) : undefined, from: x.heightFrom, distanceM: Math.round(dist(x)), bearing: bearing(x), kind: x.kind }));
@@ -3004,7 +3202,10 @@ const BAND_FILL: Fill[] = [
   { bg: SAGE.solid, outline: SAGE.deep, outlineW: 0.12 },
   { bg: SAGE.solid, kind: 'vlines', ink: SAGE.deep, step: 0.45, w: 0.16, outline: SAGE.deep, outlineW: 0.15 },
 ];
-const NO_HEIGHT: Fill = { bg: SAGE.light, kind: 'dots', ink: SAGE.deep, step: 1.1, w: 0.09 };
+// outlined, so a footprint with no recorded height still reads as a building and not as open ground
+const NO_HEIGHT: Fill = { bg: SAGE.mid, kind: 'dots', ink: SAGE.deep, step: 1.1, w: 0.09, outline: SAGE.deep, outlineW: 0.08 };
+/** A lot the open footprints miss (lotsWithoutFootprint): sparse level lines in a dashed edge, plainly not a building. */
+const LOT_GAP: Fill = { bg: '#ffffff', kind: 'hlines', ink: SAGE.deep, step: 0.9, w: 0.08, outline: SAGE.deep, outlineW: 0.12, dash: '0.6 0.4' };
 const bandFill = (h?: number): Fill => { const bd = bandOf(h); return bd ? BAND_FILL[HEIGHT_BANDS.indexOf(bd)] : NO_HEIGHT; };
 /** Below the free space a flow may take, the key rises from the foot of the page: 8.52 mm a row, 12.2 mm up. */
 const keyTop = (entries: number) => 297 - 12.2 - (entries > LEGEND_ONE_COLUMN ? Math.ceil(entries / 2) : entries) * 8.52;
@@ -3140,6 +3341,9 @@ export function builtFormAtlas(b0: SlidesBundle, planning: PlanningFacts): Slide
   for (const fl of [NO_HEIGHT, ...BAND_FILL]) { const ds = groups.get(fl); if (ds) parts.push(fillShape(ds.join(''), box, fl)); }
   const fromDa = b.buildings.buildings.filter((bd) => bd.heightFrom === 'da');
   if (fromDa.length) parts.push(`<path d="${fromDa.map((bd) => ringsPath(bd.rings, proj)).join('')}" fill="none" stroke="${SAGE.line}" stroke-width="0.4" fill-rule="evenodd"/>`);
+  // the lots no open source has a footprint on: a gap in the data, hatched so it does not read as open ground
+  const gap = lotsWithoutFootprint(b, p);
+  if (gap.count) parts.push(fillShape(gap.gaps.map((rs) => ringsPath(rs, proj)).join(''), box, LOT_GAP));
   parts.push(withTemplate(gt, () => overLayers(b.base, proj, p, 'none')));
   // the section line, as on the topography slide
   const terrain = terrainFacts(b0);
@@ -3165,6 +3369,8 @@ export function builtFormAtlas(b0: SlidesBundle, planning: PlanningFacts): Slide
     const text = String(q.bd.floors ?? storeysOf(q.bd.estimatedHeightM!)), w = text.length * 1.6 + 0.8;
     for (const [lx, ly] of [[q.x, q.y], [q.x + w, q.y], [q.x - w, q.y], [q.x, q.y - 2.8], [q.x, q.y + 2.8]] as [number, number][]) if (spacer.take(lx, ly, w, 2.6)) { labels.push(m6(lx, ly, text)); break; }
   }
+  keepSiteClear(b, proj, spacer);
+  labels.push(streetNameLayer(b.base.roads, proj, p, spacer, 'built08'));
   parts.push(siteMark(b.base, proj, 'both'), ...labels, panelFurniture(p, 'left'));
   const mapSvg = `<svg width="${p.wMm}mm" height="${p.hMm}mm" viewBox="0 0 ${p.wMm} ${p.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
     <defs><clipPath id="clip-built-atlas"><rect x="0" y="0" width="${p.wMm}" height="${p.hMm}"/></clipPath></defs>
@@ -3174,6 +3380,7 @@ export function builtFormAtlas(b0: SlidesBundle, planning: PlanningFacts): Slide
   const legend: LegendEntry[] = [
     ...HEIGHT_BANDS.map((bd, i) => ({ swatch: swatchOf(BAND_FILL[i]), label: `${i ? bd.label : '1–2'} storeys · ${fmtNum(f.bands[i].count)}`.replace('and more storeys', 'storeys and more') })),
     { swatch: swatchOf(NO_HEIGHT), label: `No height recorded · ${fmtNum(f.bands[5].count)}` },
+    ...(gap.count ? [{ swatch: swatchOf(LOT_GAP), label: `Lot with no footprint in the open data, likely built · ${fmtNum(gap.count)}` }] : []),
     ...(fromDa.length ? [{ swatch: `<rect x="0.2" y="0.6" width="4.6" height="2.4" fill="#ffffff" stroke="${SAGE.line}" stroke-width="0.4"/>`, label: `Storeys from a determined DA on the lot · ${fmtNum(fromDa.length)}` }] : []),
     ...(secA ? [{ swatch: `<path d="M0,1.8H5" stroke="#000000" stroke-width="0.25" stroke-dasharray="2.4 0.8 0.4 0.8"/>`, label: 'Section line A–A′; numbers on the map are storeys' }] : []),
     ...(secA ? [{ swatch: `<path d="M0,1.8H5" stroke="#000000" stroke-width="0.2" stroke-dasharray="0.6 0.5"/>`, label: 'LEP height of building along the section, in metres' }] : []),
@@ -3232,7 +3439,8 @@ export function builtFormAtlas(b0: SlidesBundle, planning: PlanningFacts): Slide
     <div class="abs maplabel" style="left:${FOLD + 8}mm;top:8mm">Built form · 1:${fmtNum(p.scale).replace(',', ' ')}</div>
     ${flow}`;
   return { id: '08_built_form', title: 'Built form', subtitle: sub, textHtml: '', figureHtml, bleed: true, sources, accent: SAGE.text, legend,
-    narrative: brief([f.near.medianStoreys ? `Within ${f.near.radiusM} m of the site the typical building is ${f.near.medianStoreys} storeys.` : '', e?.storeys ? `The ${e.label} height of building allows about ${e.storeys} at the site${f.near.medianStoreys ? `, ${e.storeys >= 2 * f.near.medianStoreys ? 'twice' : 'more than'} the neighbourhood's` : ''}.` : '', t0 ? `The tallest with a recorded height on the map, ${t0.name ?? 'a tower'}, is ${Math.round(t0.heightM)} m (${t0.storeys} storeys), ${fmtNum(t0.distanceM)} m away to the ${bearingName(t0.bearing)}.` : '']) };
+    narrative: brief([f.near.medianStoreys ? `Within ${f.near.radiusM} m of the site the typical building is ${f.near.medianStoreys} storeys.` : '',
+      gap.lots && gap.count / gap.lots >= 0.15 ? `${fmtNum(gap.count)} of the ${fmtNum(gap.lots)} lots on the map that should hold a building have no footprint in the open data; they are hatched, not empty.` : '', e?.storeys ? `The ${e.label} height of building allows about ${e.storeys} at the site${f.near.medianStoreys ? `, ${e.storeys >= 2 * f.near.medianStoreys ? 'twice' : 'more than'} the neighbourhood's` : ''}.` : '', t0 ? `The tallest with a recorded height on the map, ${t0.name ?? 'a tower'}, is ${Math.round(t0.heightM)} m (${t0.storeys} storeys), ${fmtNum(t0.distanceM)} m away to the ${bearingName(t0.bearing)}.` : '']) };
 }
 
 // ---- slide 09: movement ------------------------------------------------------
@@ -3306,7 +3514,7 @@ export function movementFacts(b: SlidesBundle) {
   const seenStations = new Set<string>();
   const stations = [...b.wide.base.stations, ...b.base.stations]
     .filter((s) => { const key = s.name.toUpperCase(); if (seenStations.has(key)) return false; seenStations.add(key); return true; })
-    .map((s) => ({ name: tidyStation(s.name), kind: stationKind(s.name), distanceM: Math.round(distM(s.lon, s.lat)), bearing: bearing(s.lon, s.lat), walkBand: walkBand(s.lon, s.lat), walkMin: walkMinutes(distM(s.lon, s.lat)) }))
+    .map((s) => ({ name: tidyStation(s.name), kind: stationKind(s.name), distanceM: Math.round(distM(s.lon, s.lat)), bearing: bearing(s.lon, s.lat), walkBand: walkBand(s.lon, s.lat), walkMin: walkMinutes(distM(s.lon, s.lat)), lon: s.lon, lat: s.lat }))
     .sort((p, q) => p.distanceM - q.distanceM).slice(0, 8);
   const stops = mv.busStops.map((s) => ({ ...s, distanceM: distM(s.lon, s.lat) }));
   const cycleLength = (kind?: CyclewayKind) => Math.round(mv.cycleways.filter((c) => !kind || c.kind === kind).reduce((n, c) => n + lineLengthM(c.coords), 0));
@@ -3354,6 +3562,32 @@ export function walkReachFacts(b: SlidesBundle, f: ReturnType<typeof movementFac
     facilities: facilityBands.filter((x) => x.band !== null && x.band <= i.minutes).length,
     schools: facilityBands.filter((x) => x.band !== null && x.band <= i.minutes && x.kind === 'school').length,
   }));
+}
+
+/**
+ * The places within a fifteen-minute walk, numbered for the movement map's key: the stations, the public
+ * facilities (schools, libraries, health, community, pools, culture, childcare) and the named parks, each in
+ * the band the walking network reaches it in, nearest first within a band. The bands are the isochrones'
+ * own, so the key agrees with the lines drawn round it; the distance is the straight line from the site.
+ */
+export function walkDestinations(b: SlidesBundle, f: ReturnType<typeof movementFacts>, max = 18) {
+  const mv = b.movement;
+  if (!mv.isochrones.length) return [];
+  const bandOf = (lon: number, lat: number) => { for (const min of ISO_MINUTES) { const iso = mv.isochrones.find((i) => i.minutes === min); if (iso && iso.rings.some((r) => pointInRing(lon, lat, r))) return min; } return null; };
+  const g = greenFacts(b);
+  const out: { name: string; kind: string; band: number; distanceM: number; lon: number; lat: number }[] = [];
+  const seen = new Set<string>();
+  for (const s of f.stations) if (s.walkBand !== null && !seen.has(s.name.toUpperCase())) { seen.add(s.name.toUpperCase()); out.push({ name: s.name, kind: s.kind === 'light rail' ? 'light rail stop' : `${s.kind} station`, band: s.walkBand, distanceM: s.distanceM, lon: s.lon, lat: s.lat }); }
+  for (const x of g.facilities) { const band = bandOf(x.lon, x.lat); if (band !== null && x.name && !seen.has(x.name.toUpperCase())) { seen.add(x.name.toUpperCase()); out.push({ name: x.name, kind: FACILITY_WORD[x.kind][0], band, distanceM: x.distanceM, lon: x.lon, lat: x.lat }); } }
+  for (const s of g.openSpace.spaces) {
+    if (!s.park || !s.name || s.walkBand === null || seen.has(s.name.toUpperCase())) continue;
+    seen.add(s.name.toUpperCase());
+    // the park's number at the middle of its largest part
+    const big = [...s.rings].sort((r1, r2) => r2.length - r1.length)[0];
+    const [lon, lat] = centroidLL(big);
+    out.push({ name: s.name, kind: s.kind, band: s.walkBand, distanceM: s.distanceM, lon, lat });
+  }
+  return out.sort((x, y) => x.band - y.band || x.distanceM - y.distanceM).slice(0, max).map((d, i) => ({ ...d, n: i + 1 }));
 }
 
 export function movementSentences(b: SlidesBundle, f: ReturnType<typeof movementFacts>): string[] {
@@ -3431,9 +3665,41 @@ export function movementSlide(b: SlidesBundle): Slide {
   // isochrone labels where each ring crosses the panel's centre line
   // Each ring's minutes go where the ring is clear: the station roundels, the site, the map's own label and
   // scale bar are reserved first, then the ring's points are tried from the top round to the sides.
-  const isoSpacer = new LabelSpacer(p.wMm, p.hMm, 40);
+  const isoSpacer = new LabelSpacer(p.wMm, p.hMm, 90);
   { const [cx0, cy0] = proj(mercatorToLonLat(p.center).lon, mercatorToLonLat(p.center).lat); isoSpacer.take(cx0, cy0, 10, 10); }
   isoSpacer.take(30, 10, 56, 10);
+  // What the walk reaches, numbered on the map and keyed in a box in its bottom-right corner, by the band the
+  // walking network reaches each in: the reader sees where they can get to, not only how far the lines run.
+  const dests = walkDestinations(b, f);
+  if (dests.length) {
+    const KW = 76, ROW = 3.05, PAD = 2.2;
+    const bands = ISO_MINUTES.filter((m) => dests.some((d) => d.band === m));
+    const kh = PAD * 2 + 3.6 + (dests.length + bands.length) * ROW;
+    const kx = p.wMm - 6 - KW, ky = p.hMm - 6 - kh;
+    isoSpacer.block(kx + KW / 2, ky + kh / 2, KW + 2, kh + 2);
+    const key: string[] = [`<rect x="${kx}" y="${ky.toFixed(2)}" width="${KW}" height="${kh.toFixed(2)}" fill="#ffffff" fill-opacity="0.94" stroke="${MOVE.rail}" stroke-width="0.2"/>`,
+      `<text x="${kx + PAD}" y="${(ky + PAD + 2.2).toFixed(2)}" font-size="2.1" font-weight="700" letter-spacing="0.1" fill="${MOVE.rail}">WITHIN A 15-MINUTE WALK</text>`];
+    let ry = ky + PAD + 3.6;
+    for (const m of bands) {
+      ry += ROW;
+      key.push(`<text x="${kx + PAD}" y="${(ry - 0.7).toFixed(2)}" font-size="1.8" font-weight="700" letter-spacing="0.1" fill="${MOVE.iso[m]}">${m === 5 ? 'WITHIN 5 MINUTES' : `${m - 5} TO ${m} MINUTES`}</text>`);
+      for (const d of dests.filter((q) => q.band === m)) {
+        ry += ROW;
+        const nm = shorten(`${d.name} · ${d.kind}`, 46);
+        key.push(`<circle cx="${(kx + PAD + 1.3).toFixed(2)}" cy="${(ry - 1.3).toFixed(2)}" r="1.25" fill="#ffffff" stroke="${MOVE.rail}" stroke-width="0.2"/><text x="${(kx + PAD + 1.3).toFixed(2)}" y="${(ry - 0.75).toFixed(2)}" text-anchor="middle" font-size="1.55" font-weight="700" fill="${MOVE.rail}">${d.n}</text>`,
+          `<text x="${(kx + PAD + 3.6).toFixed(2)}" y="${(ry - 0.7).toFixed(2)}" font-size="1.8" fill="#1b2340">${esc(nm)}</text>`,
+          `<text x="${(kx + KW - PAD).toFixed(2)}" y="${(ry - 0.7).toFixed(2)}" text-anchor="end" font-size="1.8" fill="#4a5470">${d.distanceM >= 1000 ? `${(d.distanceM / 1000).toFixed(1)} km` : `${fmtNum(Math.round(d.distanceM / 10) * 10)} m`}</text>`);
+      }
+    }
+    // the numbers on the map, each where its place is, if the page reaches it
+    for (const d of dests) {
+      const [x, y] = proj(d.lon, d.lat);
+      if (x < 3 || y < 3 || x > p.wMm - 3 || y > p.hMm - 3 || (x > kx - 2 && y > ky - 2)) continue;
+      isoSpacer.block(x, y, 3.6, 3.6);
+      parts.push(`<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="1.55" fill="#ffffff" stroke="${MOVE.rail}" stroke-width="0.3"/><text x="${x.toFixed(2)}" y="${(y + 0.62).toFixed(2)}" text-anchor="middle" font-size="1.75" font-weight="700" fill="${MOVE.rail}">${d.n}</text>`);
+    }
+    parts.push(`<g>${key.join('')}</g>`);
+  }
   // Station roundels keep their room, then each station on the map is named,
   // so the reader sees what the isochrones reach, not only anonymous letters.
   const panelStations = [...b.base.stations, ...b.wide.base.stations].filter((st) => { const [x, y] = proj(st.lon, st.lat); return x >= 2 && y >= 2 && x <= p.wMm - 2 && y <= p.hMm - 2; });
@@ -3462,6 +3728,8 @@ export function movementSlide(b: SlidesBundle): Slide {
       break;
     }
   }
+  keepSiteClear(b, proj, isoSpacer);
+  parts.push(streetNameLayer(b.base.roads, proj, p, isoSpacer, 'move09', '#2a3350'));
   parts.push(siteMark(b.base, proj, 'outline'), panelFurniture(p, 'left'));
   const mapSvg = `<svg width="${p.wMm}mm" height="${p.hMm}mm" viewBox="0 0 ${p.wMm} ${p.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
     <defs><clipPath id="clip-move"><rect x="0" y="0" width="${p.wMm}" height="${p.hMm}"/></clipPath></defs>
@@ -3483,6 +3751,7 @@ export function movementSlide(b: SlidesBundle): Slide {
     [sw(`<line x1="0" y1="1.8" x2="5" y2="1.8" stroke="${MOVE.rail}" stroke-width="0.2"/><line x1="0" y1="1.8" x2="5" y2="1.8" stroke="${MOVE.rail}" stroke-width="1.05" stroke-dasharray="0.16,1.3"/>`), 'Rail; stations as T, M (metro) or L (light rail)'],
     [sw(`<path d="M0,1.8 H5" stroke="${MOVE.iso[5]}" stroke-width="0.45" stroke-dasharray="1.6,1"/>`), 'Walking isochrones from the site: 5, 10 and 15 minutes'],
   ];
+  if (walkDestinations(b, f).length) legendRows.push([sw(`<circle cx="2.5" cy="1.8" r="1.4" fill="#ffffff" stroke="${MOVE.rail}" stroke-width="0.3"/><text x="2.5" y="2.4" text-anchor="middle" font-size="1.7" font-weight="700" fill="${MOVE.rail}">1</text>`), 'Stations, schools, health, community places and parks within the walk, keyed on the map']);
   if (mv.busStops.length || mv.busRoutes.length) legendRows.push([sw(`<line x1="0" y1="1.8" x2="5" y2="1.8" stroke="${t.busRoute}" stroke-width="0.5" stroke-dasharray="1.2,0.9"/><circle cx="2.5" cy="1.8" r="0.9" fill="${t.busRoute}" stroke="#ffffff" stroke-width="0.3"/>`), `Bus ${mv.busRoutes.length ? 'routes and ' : ''}stops (${f.bus.source === 'tfnsw' ? 'Transport for NSW' : 'OpenStreetMap'})`]);
   if (mv.cycleways.length) legendRows.push([sw(`<line x1="0" y1="1.2" x2="5" y2="1.2" stroke="${MOVE.cycle}" stroke-width="0.6"/><line x1="0" y1="2.6" x2="5" y2="2.6" stroke="${MOVE.cycle}" stroke-width="0.4" stroke-dasharray="1.4,0.8"/>`), 'Cycleways: separated solid, on-road lanes and shared paths dashed']);
   if (mv.footways.length) legendRows.push([sw(`<line x1="0" y1="1.8" x2="5" y2="1.8" stroke="${MOVE.foot}" stroke-width="0.25" stroke-dasharray="0.5,0.5"/>`), 'Footways, paths and steps off the streets']);
@@ -4025,6 +4294,7 @@ export function greenAtlas(b0: SlidesBundle): Slide {
     const w = s.name.length * 1.6 + 0.8;
     if (spacer.take(best.cx, best.cy, w, 2.6)) labels.push(m6(best.cx, best.cy, s.name));
   }
+  labels.push(streetNameLayer(b.base.roads, proj, p, spacer, 'green10'));
   parts.push(...marks, siteMark(b.base, proj, 'both'), ...labels, panelFurniture(p, 'left'));
   const mapSvg = `<svg width="${p.wMm}mm" height="${p.hMm}mm" viewBox="0 0 ${p.wMm} ${p.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
     <defs><clipPath id="clip-green-atlas"><rect x="0" y="0" width="${p.wMm}" height="${p.hMm}"/></clipPath></defs>
@@ -4352,6 +4622,7 @@ export function constraintsAtlas(b0: SlidesBundle): Slide {
   keepSiteClear(b, proj, spacer);
   const labels: string[] = [];
   for (const c of cands.sort((x, y) => y.area - x.area)) if (spacer.take(c.cx, c.cy, c.text.length * 1.6 + 1, 2.8)) labels.push(m6(c.cx, c.cy, c.text));
+  labels.push(streetNameLayer(b.base.roads, proj, p, spacer, 'cons14'));
   parts.push(...labels, siteMark(b.base, proj, 'both'), panelFurniture(p, 'left'));
   if (!fillOf.size) parts.push(m6(p.wMm / 2, p.hMm / 2, 'No hazard or protection layer is mapped on this page'));
   const mapSvg = bleedSvg('cons14', p, parts.join('\n'));
@@ -6323,6 +6594,7 @@ export function ocAtlas(b: SlidesBundle, planning: PlanningFacts): Slide {
   };
   place(f.opportunities, G.deep, 0);
   place(f.constraints, R.deep, Math.ceil(f.opportunities.filter((q) => !q.mark).length / 5));
+  marks.push(streetNameLayer(b.base.roads, proj, p, spacer, 'oc17'));
   parts.push(siteMark(b.base, proj, 'both'), siteEdge(b, proj), ...marks, panelFurniture(p, 'left'));
   const mapSvg = bleedSvg('oc17', p, parts.join('\n'));
   legend.unshift(

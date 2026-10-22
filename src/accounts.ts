@@ -42,6 +42,9 @@ export interface Account {
   /** SHA-256 of the password-reset link's token, while one is out. */
   resetTokenHash?: string;
   resetTokenExp?: number;
+  /** The terms of use agreed to at sign-up (TERMS_VERSION), and when; absent on accounts from before the terms. */
+  termsVersion?: string;
+  termsAcceptedAt?: number;
 }
 
 export interface SiteUnlock {
@@ -172,12 +175,13 @@ async function passwordMatches(password: string, stored: string): Promise<boolea
 // emails have accounts.
 let decoy: Promise<string> | undefined;
 
-export async function createAccount(email: string, password: string): Promise<Account> {
+export async function createAccount(email: string, password: string, termsVersion?: string): Promise<Account> {
   const account: Account = {
     id: randomUUID(),
     email: normaliseEmail(email),
     passwordHash: await hashPassword(password),
     createdAt: Date.now(),
+    ...(termsVersion ? { termsVersion, termsAcceptedAt: Date.now() } : {}),
   };
   // Checked after the hash, not before: the hash yields the event loop, and a
   // second sign-up for the same address could have landed in the meantime.

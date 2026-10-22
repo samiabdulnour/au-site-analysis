@@ -119,7 +119,11 @@ export const stationMode = (name: string): StationMode =>
 export function overLayers(b: BaseData, proj: Proj, p: Panel, site: SiteLayer = 'both'): string {
   const t = tpl();
   const parts: string[] = [];
-  const width = (h: number) => (h <= 2 ? 0.75 : h <= 4 ? 0.5 : h <= 6 ? 0.3 : 0.16);
+  // At least the carriageway's own width at the panel's scale, so at 1:5000 the streets read as streets and
+  // one can find one's way; the fixed hairlines still hold at the small scales where that width is less.
+  const carriagewayM = (h: number) => (h <= 2 ? 24 : h === 3 ? 20 : h === 4 ? 16 : h === 5 ? 14 : h === 6 ? 11 : 6);
+  const hairline = (h: number) => (h <= 2 ? 0.75 : h <= 4 ? 0.5 : h <= 6 ? 0.3 : 0.16);
+  const width = (h: number) => Math.round(Math.max(hairline(h), Math.min(4, (carriagewayM(h) * 1000) / p.scale)) * 20) / 20;
   const byWidth = new Map<number, string[]>();
   for (const r of b.roads) {
     const w = width(r.hierarchy);
@@ -309,14 +313,31 @@ export function clippedStats(ring: number[][], proj: Proj, p: Panel): { area: nu
  */
 export class LabelSpacer {
   private placed: { x: number; y: number; w: number; h: number }[] = [];
+  /** Labels taken, which the cap counts: a label set along a road is several boxes but one label. */
+  private labels = 0;
   constructor(private wMm: number, private hMm: number, private max = 60) {}
   take(x: number, y: number, w: number, h = 2.6): boolean {
-    if (this.placed.length >= this.max) return false;
+    if (!this.free(x, y, w, h)) return false;
+    this.placed.push({ x, y, w, h });
+    this.labels++;
+    return true;
+  }
+  /** Whether a box could be taken, without taking it: a label made of several boxes tests them all first. */
+  free(x: number, y: number, w: number, h = 2.6): boolean {
+    if (this.labels >= this.max) return false;
     if (x - w / 2 < 1 || x + w / 2 > this.wMm - 1 || y - h / 2 < 1 || y + h / 2 > this.hMm - 1) return false;
     for (const q of this.placed)
       if (Math.abs(q.x - x) < (q.w + w) / 2 + 0.8 && Math.abs(q.y - y) < (q.h + h) / 2 + 0.6) return false;
-    this.placed.push({ x, y, w, h });
     return true;
+  }
+  /** Takes a label made of several boxes, each tested with `free` first, as one label. */
+  takeAll(boxes: { x: number; y: number; w: number; h: number }[]): void {
+    this.placed.push(...boxes);
+    this.labels++;
+  }
+  /** Keeps a mark's room clear of the labels to come, without counting it as a label. */
+  block(x: number, y: number, w: number, h: number): void {
+    this.placed.push({ x, y, w, h });
   }
 }
 

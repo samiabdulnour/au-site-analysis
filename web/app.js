@@ -447,6 +447,7 @@ if (verifiedParam !== null) history.replaceState(null, '', '/');
 
 function renderAuth() {
   $('authRow').hidden = Boolean(resetToken);
+  $('agreeRow').hidden = Boolean(resetToken) || authMode !== 'signup';
   if (resetToken) {
     $('emailBar').hidden = true;
     $('code').hidden = false;
@@ -547,6 +548,10 @@ loginForm.addEventListener('submit', async (e) => {
   } else {
     path = authMode === 'signup' ? '/api/signup' : '/api/login';
     body = { email: $('email').value.trim(), password };
+    if (authMode === 'signup') {
+      if (!$('agree').checked) { authErr.textContent = 'Agree to the terms of use to create an account.'; return; }
+      body.agreed = true;
+    }
   }
   let r;
   try {
@@ -729,7 +734,8 @@ async function poll(id, misses) {
         // What is bought, said in full: the address, not just this drawing of it.
         unlockWhat.textContent = 'Unlocking this address gives you every drawing of it — context, ' +
           'site, yield and site report, at any scale or style — clean, with the CAD and data files, ' +
-          'for 30 days.';
+          'for 30 days. They are made from open public data as it is available, with no guarantee that ' +
+          'it is complete (see the terms of use at /terms).';
         unlockWhat.hidden = false;
         addButton('unlock this address · ' + j.unlock, () => unlock(id));
       }

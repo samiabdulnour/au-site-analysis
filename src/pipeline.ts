@@ -803,6 +803,8 @@ export interface SlidesBundle {
   heritage: GeoJSONFC;
   shr: GeoJSONFC;
   policy: PolicyArea[];
+  /** The same maps 3 km round the site, for pointing to the nearest when none is on the page; absent in older bundles. */
+  policyNear?: PolicyArea[];
   base: BaseData;
   controls: SiteControls;
   property: PropertyReport | null;
@@ -988,7 +990,7 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
   // The lots and the footprints are read once and wait for both the maps and Street View, which uses them to tell a camera in the street from one in a shop or behind a neighbour.
   const lotsRead = soft(fetchAllLots(fetchExtent), emptyFC, 'cadastral lots');
   const footprintsRead = soft(fetchBuildings(pageExtent, log), { source: 'none' as const, buildings: [], fetchedAt: new Date().toISOString() }, 'buildings');
-  const [zoning, hob, heritage, shr, policy, water, lots, roads, railLines, stations, context, property, controls, proposals, feed, people, dem, contourSet, buildingsRead, movement, green, constraints, site, wideRoads, wideRail, wideStations, wideWater, wideSuburbs, country, photos, location, majorProjects, wind] = await Promise.all([
+  const [zoning, hob, heritage, shr, policy, water, lots, roads, railLines, stations, context, property, controls, proposals, feed, people, dem, contourSet, buildingsRead, movement, green, constraints, site, wideRoads, wideRail, wideStations, wideWater, wideSuburbs, country, photos, location, majorProjects, wind, policyNear] = await Promise.all([
     soft(fetchZoningDetailed(fetchExtent), emptyFC, 'zoning'),
     soft(fetchHobDetailed(fetchExtent), emptyFC, 'height of building'),
     soft(fetchHeritageDetailed(fetchExtent), emptyFC, 'heritage'),
@@ -1024,6 +1026,8 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
     soft(fetchMajorProjects(pageExtent, geo.center, log), emptyMajorProjects('the register did not answer'), 'State significant applications'),
     // The hourly wind over the last five years from NASA's POWER project, as roses for slide 13; cached by the model's cell.
     soft(fetchWind(mercatorToLonLat(geo.center), log), emptyWind('NASA POWER did not answer'), 'wind'),
+    // The housing-policy maps 3 km round the site, so a page with none on it can say where the nearest are.
+    soft(fetchPolicyAreas({ xmin: geo.center.x - 3000 * countryK, ymin: geo.center.y - 3000 * countryK, xmax: geo.center.x + 3000 * countryK, ymax: geo.center.y + 3000 * countryK }, log), [] as PolicyArea[], 'housing policy maps round the site'),
   ]);
   const [housingTarget, cos, , views, character, strategies] = await Promise.all([
     context.lga?.name ? fetchHousingTarget(context.lga.name) : Promise.resolve(null),
@@ -1064,7 +1068,7 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
     siteLots,
     lotDescription: describeLots(siteLots),
     siteAreaSqm: lotsAreaSqm(siteLots, geo.center),
-    zoning, hob, heritage, shr, policy,
+    zoning, hob, heritage, shr, policy, policyNear,
     base: { water, lots, roads, rail: railLines, stations, siteLots },
     controls, property, context, housingTarget, cos,
     daPanel, bleedPanel, reachPanel, countryPanel, applications, majorProjects, wind, daMeta, proposals, people,

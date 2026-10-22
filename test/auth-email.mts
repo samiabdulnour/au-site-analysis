@@ -123,7 +123,7 @@ try {
 
   // ---- a sign-up is asked to verify ------------------------------------------
   const alice = browser();
-  const signed = await post(alice, '/api/signup', { email: 'alice@example.com', password: 'long enough' });
+  const signed = await post(alice, '/api/signup', { email: 'alice@example.com', password: 'long enough', agreed: true });
   const signedBody = await signed.json();
   check('sign-up works and says the email is unverified',
     signed.status === 201 && signedBody.account?.verified === false, JSON.stringify(signedBody));
@@ -167,7 +167,7 @@ try {
 
   // ---- the password reset -----------------------------------------------------
   const bob = browser();
-  await post(bob, '/api/signup', { email: 'bob@example.com', password: 'the old password' });
+  await post(bob, '/api/signup', { email: 'bob@example.com', password: 'the old password', agreed: true });
   await mail('bob@example.com', 1);
 
   const unknown = await post(browser(), '/api/password/forgot', { email: 'nobody@example.com' });

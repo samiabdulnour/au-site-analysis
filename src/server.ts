@@ -32,6 +32,7 @@ import { withTemplate, themeFor, templateFor, type SheetKind } from './render/te
 import { htmlToPdf, printSlides } from './render/pdf.js';
 import { stampPdf, watermarkId } from './render/watermark.js';
 import { GRANTS, PRICE_LABEL, SITE_PRICE_LABEL, planOf, paidFor, siteKey, type Plan, type Grants } from './plans.js';
+import { TERMS_VERSION } from './terms.js';
 import {
   initAccounts, accountFromCookie, accountCounts, createAccount, signIn, sessionCookieValue,
   normaliseEmail, validEmail, PASSWORD_MIN, ACCOUNT_COOKIE, SESSION_DAYS, type Account,
@@ -901,6 +902,7 @@ const server = createServer(async (req, res) => {
     '/': ['index.html', 'text/html; charset=utf-8'],
     '/about': ['about.html', 'text/html; charset=utf-8'],
     '/pricing': ['pricing.html', 'text/html; charset=utf-8'],
+    '/terms': ['terms.html', 'text/html; charset=utf-8'],
     '/pricing.js': ['pricing.js', 'text/javascript; charset=utf-8'],
     '/status': ['status.html', 'text/html; charset=utf-8'],
     '/admin': ['admin.html', 'text/html; charset=utf-8'],
@@ -950,6 +952,7 @@ Sitemap: ${siteBase()}/sitemap.xml
   <url><loc>${base}/</loc><changefreq>monthly</changefreq><priority>1.0</priority></url>
   <url><loc>${base}/about</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
   <url><loc>${base}/pricing</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>${base}/terms</loc><changefreq>yearly</changefreq><priority>0.3</priority></url>
 </urlset>
 `);
     return;
@@ -1069,18 +1072,22 @@ Canonical: ${base}/.well-known/security.txt
   // generate every drawing at once; the subscription is bought from it later.
   if (req.method === 'POST' && url.pathname === '/api/signup') {
     if (limited(`signup:${ip}`, 5, 3600_000)) return json(res, 429, { error: 'Too many sign-ups from here. Try later.' });
-    let email = '', password = '';
+    let email = '', password = '', agreed = false;
     try {
       const parsed = JSON.parse((await readBody(req)) || '{}');
       email = normaliseEmail(parsed.email);
       password = String(parsed.password ?? '');
+      agreed = parsed.agreed === true;
     } catch { /* refused below */ }
     if (!validEmail(email)) return json(res, 400, { error: 'Enter an email address.' });
     if (password.length < PASSWORD_MIN || password.length > 200)
       return json(res, 400, { error: `Choose a password of ${PASSWORD_MIN} characters or more.` });
+    // The account records which terms it agreed to: that the drawings come from open data as available,
+    // with no guarantee that data is complete. Refused here, not only in the page, so no client skips it.
+    if (!agreed) return json(res, 400, { error: 'Agree to the terms of use to create an account.' });
     let account: Account;
     try {
-      account = await createAccount(email, password);
+      account = await createAccount(email, password, TERMS_VERSION);
     } catch (e: any) {
       if (e?.message === 'exists') return json(res, 409, { error: 'That email already has an account. Sign in instead.' });
       console.log(`accounts: sign-up failed — ${e?.message ?? e}`);

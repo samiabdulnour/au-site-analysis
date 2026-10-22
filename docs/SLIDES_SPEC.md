@@ -478,6 +478,34 @@ NASA POWER hourly point API: `https://power.larc.nasa.gov/api/temporal/hourly/po
   null-ish name (`isRealPolicyArea`), and the facts functions filter again for
   bundles fetched before that — otherwise the deck says the site is "inside
   the Not Applicable" and slide 17 sells it as a policy opportunity.
+- **Rail yards at small scale.** The transport theme's `relevance` is its own
+  level of detail: 1 on every named line, 10 on yards, sidings and extra tracks —
+  and on Sydney Metro's tunnels, so it cannot filter alone. Slide 01 reads it to
+  take the main lines first, then drops any track that runs within 0.9 mm on the
+  paper of one already drawn (`thinParallelLines`): Central's yard prints as one
+  line, the Metro's own alignment survives.
+- **Streets on the 1:5000 maps.** Roads are drawn at least as wide as their
+  carriageway at the panel's scale (24 m for a motorway down to 6 m for a lane,
+  `overLayers`), and the deck's 1:4000–1:5000 maps (03, 05–10, 14, 16, 17) name
+  their streets along the road (`streetNameLayer`, the context sheet's run
+  merging and straightness test), after every other label, so a name gives way.
+- **Open footprints have gaps.** Overture (2026-09-23.1 and 2026-10-21.0 alike)
+  and OpenStreetMap both miss most of Bondi Road's shopping strip; no open NSW
+  footprint layer exists (the State's are Geoscape's, licensed). Slide 08 hatches
+  the lots that should hold a building and have no footprint
+  (`lotsWithoutFootprint`: outside recreation, conservation, infrastructure and
+  waterway zones, 40–5,000 m²), counts them in the legend and says so in the
+  text when they are 15 % of the lots or more, so a gap reads as missing data
+  rather than open ground. Footprints without a height are outlined for the same
+  reason, and "the tallest on the map" leaves out the site's own building.
+- **What the walk reaches.** Slide 09 numbers the stations, public facilities and
+  named parks inside the 15-minute isochrone on the map and keys them in a box in
+  its bottom-right corner, by the band the walking network reaches each in, with
+  the straight-line distance (`walkDestinations`).
+- **A page with no policy on it.** Slide 05 reads the housing-policy maps 3 km
+  round the site as well (`policyNear`) and, for each kind not on the page,
+  points to the nearest from the map's edge with its distance, with the plan's
+  nearest centre; the narrative names the nearest.
 - **One walking-minute rule.** Every slide states a point destination's walk
   the same way: straight-line distance at 80 m a minute (`walkMinutes`), the
   rule the fine print declares. The Valhalla isochrone bands remain for areas
