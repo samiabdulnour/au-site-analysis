@@ -78,19 +78,21 @@ export async function checkoutUrl(a: Account, origin: string): Promise<string> {
 }
 
 /**
- * A Checkout page for one site: a single card payment, after which the webhook
+ * A Checkout page for one site: a single payment, after which the webhook
  * unlocks the address for the account. The address rides in the metadata, as
  * the job had it, and on the payment's description, so the receipt says which
  * site it paid for — the line an office passes on to its client.
+ *
+ * Which ways to pay it offers is the dashboard's to say (Settings → Payment
+ * methods): Stripe refuses `payment_method_types` on a Checkout Session now.
+ * A card settles at once; a method that settles days later unlocks the site on
+ * checkout.session.async_payment_succeeded instead (handleEvent).
  */
 export async function siteCheckoutUrl(a: Account, address: string, jobId: string, origin: string): Promise<string> {
   const params: Record<string, string> = {
     mode: 'payment',
     'line_items[0][price]': SITE_PRICE,
     'line_items[0][quantity]': '1',
-    // Cards (and the wallets that carry them) settle at once. A debit that
-    // settles days later would need another webhook event to unlock on.
-    'payment_method_types[0]': 'card',
     // Back to the same drawing, which the page picks up and offers again clean.
     success_url: `${origin}/?job=${jobId}&paid=1`,
     cancel_url: `${origin}/?job=${jobId}`,
@@ -147,8 +149,8 @@ export function verifySignature(raw: Buffer, header: string, secret = WEBHOOK_SE
 
 export type CheckRow = [label: string, finding: string, ok: boolean];
 
-const EVENTS = [
-  'checkout.session.completed',
+export const EVENTS = [
+  'checkout.session.completed', 'checkout.session.async_payment_succeeded',
   'customer.subscription.created', 'customer.subscription.updated', 'customer.subscription.deleted',
 ];
 
@@ -280,7 +282,11 @@ function applySubscription(a: Account, sub: any) {
 export async function handleEvent(event: any): Promise<string> {
   const o = event?.data?.object ?? {};
   switch (event?.type) {
-    case 'checkout.session.completed': {
+    // The second is the same session again, days later, once a payment that
+    // settles slowly has: completed arrived with it still unpaid, and unlocked
+    // nothing. The session's id makes counting it twice impossible.
+    case 'checkout.session.completed':
+    case 'checkout.session.async_payment_succeeded': {
       const a = accountById(String(o.client_reference_id ?? o.metadata?.account_id ?? ''));
       if (!a) return 'checkout for no known account';
       if (o.mode === 'payment') {
