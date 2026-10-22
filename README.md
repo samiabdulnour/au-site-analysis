@@ -232,12 +232,14 @@ cannot email a link. Accounts from before verification existed count as
 verified too — the feature arriving must not lock out everyone already
 signed up.
 
-**The watermark.** Put it in `assets/watermark/watermark.png`. It is stamped on
-each page when a free account downloads, not when the sheet is drawn, so the
-sheet on disk stays clean and one job serves both sides: a subscriber asking
-for an address a free account has just drawn gets it at once, clean. Until the
-file is there, the words `SITE ANALYST · FREE` stand in. If stamping fails the
-download is refused rather than served clean.
+**The watermark.** The office's bird sheet, `assets/watermark/watermark.pdf`:
+one vector page laid over the whole of each page at 55% opacity (the folder's
+README says how to replace it; a `watermark.png` there is used instead when the
+PDF is missing). It is stamped when a free account downloads, not when the
+sheet is drawn, so the sheet on disk stays clean and one job serves both sides:
+a subscriber asking for an address a free account has just drawn gets it at
+once, clean. Without either file, the words `SITE ANALYST · FREE` stand in. If
+stamping fails the download is refused rather than served clean.
 
 **Payment.** Stripe Checkout sells both, and Stripe's customer portal manages
 the subscription (card, invoices, cancelling), so no card number reaches this
