@@ -10,15 +10,18 @@
  * address, then wants a good token even with the right password, and forgets
  * once someone gets in; the codes are guarded the same way; a new sheet or
  * batch from a visitor without a session needs a good token, and then meets
- * the ceiling on guests' sheets (0 here, so nothing is ever queued); and
- * Cloudflare not answering refuses rather than lets through.
+ * that visitor's own day of free sheets — one address's spent day, kept on
+ * disk from before the server started, is not another's (and nothing is
+ * ever queued); and Cloudflare not answering refuses rather than lets
+ * through.
  *
  *   npx tsx test/bots.mts
  */
 
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -29,6 +32,14 @@ const BASE = `http://127.0.0.1:${PORT}`;
 const SITE_KEY = 'site-key-for-tests', SECRET = 'secret-for-tests', GOOD = 'good-token';
 
 const tmp = mkdtempSync(join(tmpdir(), 'bots-'));
+
+// One visitor who drew both their free sheets before this server started, as
+// the server keeps it on the volume: the address hashed, its day still running.
+const SPENT = '10.0.9.1', GUEST_SHEETS = 2;
+const guestKey = (ip: string) => createHash('sha256').update(`site-analyst-guest:${ip}`).digest('hex').slice(0, 32);
+mkdirSync(join(tmp, 'web'), { recursive: true });
+writeFileSync(join(tmp, 'web', 'guests.json'),
+  JSON.stringify({ [guestKey(SPENT)]: { count: GUEST_SHEETS, resetAt: Date.now() + 3600_000 } }));
 
 // ---- Cloudflare, stood in for -------------------------------------------------
 let cfDown = false;
@@ -81,7 +92,7 @@ const server = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'src', 'se
     RESEND_API_KEY: 're_for_tests', EMAIL_FROM: 'Site Analyst <test@example.com>',
     EMAIL_API_URL: `http://127.0.0.1:${MAIL_PORT}/emails`, SMTP_HOST: '',
     STRIPE_SECRET_KEY: '', STRIPE_PRICE_ID: '', STRIPE_WEBHOOK_SECRET: '',
-    GUEST_JOBS_PER_HOUR: '0',
+    GUEST_SHEETS_PER_DAY: String(GUEST_SHEETS),
   },
   stdio: ['ignore', 'pipe', 'pipe'],
 });
@@ -191,18 +202,19 @@ try {
 
   // ---- drawing without a session ------------------------------------------------------------
   const sheet = { address: '26-30 Campsie St, Campsie NSW 2194', sheet: 'context' };
-  const guestNone = await answer(await browser()('/api/jobs', sheet));
+  const guestNone = await answer(await browser(SPENT)('/api/jobs', sheet));
   check('a new sheet without a session and without the check is refused, and says to do it',
     guestNone.status === 403 && guestNone.human === true, JSON.stringify(guestNone));
-  check('…as is a forged token', (await browser()('/api/jobs', { ...sheet, human: 'forged' })).status === 403);
-  const guestOk = await answer(await browser()('/api/jobs', { ...sheet, human: GOOD }));
-  check('a good token passes the check, and meets the ceiling on guests\' sheets',
-    guestOk.status === 429 && /sign up free/.test(guestOk.error ?? ''), JSON.stringify(guestOk));
-  const batch = { addresses: [sheet.address, '1 Bay Street, Botany NSW 2019'], sheet: 'context' };
+  check('…as is a forged token', (await browser(SPENT)('/api/jobs', { ...sheet, human: 'forged' })).status === 403);
+  const spent = await answer(await browser(SPENT)('/api/jobs', { ...sheet, human: GOOD }));
+  check('a good token passes the check, and a visitor whose free sheets are drawn is told to sign up',
+    spent.status === 429 && /free sheets for today/.test(spent.error ?? ''), JSON.stringify(spent));
+  const batch = { addresses: [sheet.address, '1 Bay Street, Botany NSW 2019', '2 Bay Street, Botany NSW 2019'], sheet: 'context' };
   check('a batch without a session needs the check too',
     (await answer(await browser()('/api/batches', batch))).human === true);
-  check('…and with it meets the same ceiling',
-    (await browser()('/api/batches', { ...batch, human: GOOD })).status === 429);
+  const own = await answer(await browser('10.0.9.2')('/api/batches', { ...batch, human: GOOD }));
+  check('another visitor has a day of their own, not what is left of the first one\'s',
+    own.status === 429 && own.error?.includes(`${GUEST_SHEETS} of your free sheets left today`), JSON.stringify(own));
 
   // ---- Cloudflare not answering ----------------------------------------------------------------
   cfDown = true;

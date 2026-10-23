@@ -198,7 +198,7 @@ password (`SIGN UP`, with the terms agreed to), and starts on the free side,
 with watermarked PDFs. What holds the open side
 down is the per-IP budgets (12 sheets an hour, and the sign-in and sign-up
 limiters), the one-at-a-time queue, and for a visitor without a session the
-human check and a ceiling on guests' sheets (see *Bots* below). Accounts live in `out/accounts/accounts.json`
+human check and a few free sheets a day each (see *Bots* below). Accounts live in `out/accounts/accounts.json`
 on the host volume, beside the job index and written the same way, with scrypt
 password hashes; the key that signs session cookies is `SESSION_SECRET`, or,
 unset, one made once and kept in the same directory, so a deploy signs nobody
@@ -300,17 +300,22 @@ of the per-IP limits:
   answered like anyone, and nothing is made or sent.
 - **The email caps** above, so the forms cannot be turned on strangers'
   inboxes however many addresses a bot comes from.
-- **A ceiling on guests' sheets**: `GUEST_JOBS_PER_HOUR` (default 30) new
-  sheets an hour for every visitor without a session together, whichever
-  addresses they come from, so a bot spread over many addresses — or one that
-  pays to have the check solved — cannot take the queue from everyone signed
-  in. Past it, a visitor is told to sign up free to carry on. It holds with or
-  without Turnstile; `0` leaves guests only the sheets already drawn, a switch
-  for a bad hour.
+- **A few free sheets a day for each visitor without a session**:
+  `GUEST_SHEETS_PER_DAY` (default 3) new sheets per visitor's address, over
+  a day from the first. Each visitor has their own: one who has used theirs
+  takes nothing from anyone else. Past it, the visitor is told to sign up
+  free to keep going; an account draws on within the per-IP budget. A sheet
+  already drawn is handed back without counting. The counts are kept in
+  `out/web/guests.json` — the address hashed, and only until its day is out —
+  so a deploy does not hand everyone a fresh day. It holds with or without
+  Turnstile; `0` leaves visitors without a session only the sheets already
+  drawn. An office behind one address shares one allowance, which is a
+  reason to sign up.
 
 The per-IP limits read the address Caddy adds as the last `X-Forwarded-For`
-entry, not the first, which is whatever the visitor sent. They are held in
-memory, so a deploy clears them; a visitor cannot make a deploy happen.
+entry, not the first, which is whatever the visitor sent. Apart from the
+guests' day above, they are held in memory, so a deploy clears them; a
+visitor cannot make a deploy happen.
 
 **The watermark.** The office's bird sheet, `assets/watermark/watermark.pdf`:
 one vector page laid over the whole of each page at 30% opacity, with
@@ -411,7 +416,7 @@ that stays open on a credential nobody meant to repurpose.
 
 Authentication: drawing needs none — the site is open, and a visitor without
 a session sees each drawing on the page but downloads nothing; such a visitor
-meets the human check and the guests' ceiling instead (*Bots* above). Signing in (an
+meets the human check and a few free sheets a day instead (*Bots* above). Signing in (an
 account, or `ACCESS_CODE` once) sets a 30-day session cookie and is what
 downloads, buying, clean PDFs and the office's grants hang off. Login attempts, sign-ups and job
 submissions are rate-limited per IP, and job outputs are deleted after 24h.

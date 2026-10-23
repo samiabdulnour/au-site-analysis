@@ -363,14 +363,50 @@ function loadIndex() {
 const BATCH_INDEX = join(WEB_OUT, 'batches.json');
 const MAX_BATCH = 12;          // one hour's worth of the per-IP job budget
 const JOBS_PER_HOUR = 12;
-// New sheets drawn for visitors without a session, all addresses together.
-// The per-IP budget holds one visitor down; a bot spread over many addresses
-// meets this instead, and what it cannot take is the queue's time for
-// everyone signed in. A sheet takes one to three minutes, so the default is
-// about half an hour of the queue's hour. 0 leaves visitors without a session
-// only the sheets already drawn.
-const GUEST_JOBS_PER_HOUR = Math.max(0, Math.floor(Number(process.env.GUEST_JOBS_PER_HOUR ?? 30) || 0));
-const GUEST_BUSY = 'Drawing without an account is at its limit this hour — sign up free to carry on.';
+// New sheets a visitor without a session may draw: a few, each visitor their
+// own, counted by address over a day from the first. Kept on the volume, not
+// only in memory, since the auto-deployer lands whenever main moves and a
+// count that every deploy forgot would be no count at all. The address is
+// kept hashed, and only until its day is out. 0 leaves visitors without a
+// session only the sheets already drawn.
+const GUEST_SHEETS_PER_DAY = Math.max(0, Math.floor(Number(process.env.GUEST_SHEETS_PER_DAY ?? 3) || 0));
+const GUEST_DAY = 24 * 3600_000;
+const GUEST_INDEX = join(WEB_OUT, 'guests.json');
+const guestUse = new Map<string, { count: number; resetAt: number }>();
+const guestKey = (ip: string) => createHash('sha256').update(`site-analyst-guest:${ip}`).digest('hex').slice(0, 32);
+const GUEST_DONE = GUEST_SHEETS_PER_DAY
+  ? `You have drawn your ${GUEST_SHEETS_PER_DAY} free sheets for today — sign up free to keep going.`
+  : 'A new sheet needs an account — sign up free to keep going.';
+
+function guestLeft(ip: string): number {
+  const g = guestUse.get(guestKey(ip));
+  return !g || Date.now() > g.resetAt ? GUEST_SHEETS_PER_DAY : Math.max(0, GUEST_SHEETS_PER_DAY - g.count);
+}
+
+function guestSpend(ip: string, n: number) {
+  const now = Date.now(), key = guestKey(ip);
+  const g = guestUse.get(key);
+  if (!g || now > g.resetAt) guestUse.set(key, { count: n, resetAt: now + GUEST_DAY });
+  else g.count += n;
+  for (const [k, v] of guestUse) if (now > v.resetAt) guestUse.delete(k);
+  try {
+    mkdirSync(WEB_OUT, { recursive: true });
+    const tmp = `${GUEST_INDEX}.${process.pid}.tmp`;
+    writeFileSync(tmp, JSON.stringify(Object.fromEntries(guestUse)));
+    renameSync(tmp, GUEST_INDEX);
+  } catch { /* the memory still counts; never fail a submission over this */ }
+}
+
+function loadGuests() {
+  let rows: any;
+  try { rows = JSON.parse(readFileSync(GUEST_INDEX, 'utf8')); } catch { return; }
+  if (!rows || typeof rows !== 'object') return;
+  const now = Date.now();
+  for (const [k, v] of Object.entries<any>(rows)) {
+    const count = Number(v?.count), resetAt = Number(v?.resetAt);
+    if (/^[0-9a-f]{32}$/.test(k) && count > 0 && resetAt > now) guestUse.set(k, { count, resetAt });
+  }
+}
 
 interface BatchEntry {
   /** As submitted. Kept here so a row still reads after its job is swept. */
@@ -1486,10 +1522,10 @@ Canonical: ${base}/.well-known/security.txt
   // particular: with no wall, a gate here would only mean signing out to get
   // past it. Verification keeps guarding what it can prove — the mailbox the
   // password reset goes to. Nobody in particular is asked the human check
-  // instead, and shares GUEST_JOBS_PER_HOUR with everyone else without a
-  // session: a new sheet is the one request a bot without an account can make
-  // that costs the public data services anything. A session already passed
-  // the check, at sign-up, or holds the office's code.
+  // instead, and draws GUEST_SHEETS_PER_DAY new sheets of their own: a new
+  // sheet is the one request a bot without an account can make that costs the
+  // public data services anything. A session already passed the check, at
+  // sign-up, or holds the office's code.
   if (req.method === 'POST' && url.pathname === '/api/jobs') {
     const body = await readBody(req);
     const guest = !viewerOf(req).signedIn;
@@ -1536,12 +1572,9 @@ Canonical: ${base}/.well-known/security.txt
         return json(res, 403, { error: 'Confirm you are human, then press GENERATE again.', human: true });
       if (remaining(`jobs:${ip}`, JOBS_PER_HOUR, 3600_000) < 1)
         return json(res, 429, { error: 'Rate limit: try again later.' });
-      if (guest && remaining('jobs:guests', GUEST_JOBS_PER_HOUR, 3600_000) < 1) {
-        console.log(`bots: guest sheets at their ${GUEST_JOBS_PER_HOUR} an hour, ${ip} turned away`);
-        return json(res, 429, { error: GUEST_BUSY });
-      }
+      if (guest && guestLeft(ip) < 1) return json(res, 429, { error: GUEST_DONE });
       spend(`jobs:${ip}`, 3600_000, 1);
-      if (guest) spend('jobs:guests', 3600_000, 1);
+      if (guest) guestSpend(ip, 1);
       const job: Job = {
         id: randomUUID(), ...want, key,
         status: 'queued', log: [], createdAt: Date.now(),
@@ -1594,9 +1627,12 @@ Canonical: ${base}/.well-known/security.txt
       // As for one sheet: asked only when the batch draws something new.
       if (guest && toRun > 0 && !(await isHuman(b.human, ip)))
         return json(res, 403, { error: 'Confirm you are human, then send the batch again.', human: true });
-      if (guest && toRun > remaining('jobs:guests', GUEST_JOBS_PER_HOUR, 3600_000)) {
-        console.log(`bots: guest sheets at their ${GUEST_JOBS_PER_HOUR} an hour, a batch from ${ip} turned away`);
-        return json(res, 429, { error: GUEST_BUSY });
+      const guestHas = guest ? guestLeft(ip) : Infinity;
+      if (toRun > guestHas) {
+        return json(res, 429, {
+          error: guestHas === 0 ? GUEST_DONE
+            : `${toRun} new sheets asked for, ${guestHas} of your free sheets left today — sign up free to draw more.`,
+        });
       }
       const left = remaining(`jobs:${ip}`, JOBS_PER_HOUR, 3600_000);
       if (toRun > left) {
@@ -1609,7 +1645,7 @@ Canonical: ${base}/.well-known/security.txt
         });
       }
       spend(`jobs:${ip}`, 3600_000, toRun);
-      if (guest) spend('jobs:guests', 3600_000, toRun);
+      if (guest) guestSpend(ip, toRun);
 
       const batch: Batch = {
         id: randomUUID(), createdAt: Date.now(), sheet: kind, entries: [],
@@ -1840,6 +1876,7 @@ Canonical: ${base}/.well-known/security.txt
 initAccounts(ACCOUNTS_DIR);
 loadIndex();
 loadBatches();
+loadGuests();
 const CLEANUP_INTERVAL_MS = 3600_000;
 setInterval(() => void cleanupOldJobs(), CLEANUP_INTERVAL_MS);
 void cleanupOldJobs();

@@ -10,7 +10,7 @@
 //
 // With either unset there is no check and every form works as before; what
 // holds the forms down then is the per-IP limits and the email caps alone, and
-// what holds guests' drawing down is GUEST_JOBS_PER_HOUR in server.ts.
+// what holds guests' drawing down is GUEST_SHEETS_PER_DAY in server.ts.
 
 const SITE_KEY = process.env.TURNSTILE_SITE_KEY?.trim() ?? '';
 const SECRET = process.env.TURNSTILE_SECRET_KEY?.trim() ?? '';
