@@ -10,9 +10,9 @@
   --bg:     #ffffff;
   --ink:    #000000;
   --line:   #000000;
-  --hi:     #ffff70;   /* selected option, primary button, the signed-in band */
+  --hi:     #ffff7a;   /* selected option, primary button, the signed-in band */
   --on-hi:  #000000;   /* what sits on the highlight */
-  --head:   #ffff70;   /* the tables' label column, yellow like the mark-up */
+  --head:   #ffff7a;   /* the tables' label column, yellow like the mark-up */
   --accent: #c238b6;   /* the illustrations' magenta; the current page's underline */
   --muted:  #5a5a5a;
   --err:    #c0392b;
@@ -40,7 +40,9 @@ body {
    screen inside margins of about a twentieth of it. The band is the one
    full-bleed element — signed in it turns yellow edge to edge — so the page's
    margins live on .page, not on body. */
-.page { max-width: 1920px; margin: 0 auto; padding: 0 min(4.5vw, 88px); }
+/* Sized from the mock-up, a 1512 by 832 sheet drawn at a laptop browser's
+   size: its margins are 85px there, and scale with the screen around it. */
+.page { max-width: 1920px; margin: 0 auto; padding: 0 clamp(16px, 5.625vw, 108px); }
 body > .page { padding-bottom: 3rem; }
 /* The operator views read better narrower; the header band stays full-bleed. */
 .page.narrow { max-width: 920px; padding: 0 1.5rem; }
@@ -51,23 +53,22 @@ a { color: inherit; }
 /* White for a visitor; yellow edge to edge once there is a session (app.js
    puts .hi on it). The band is outside .page so the colour runs full-bleed
    while the masthead inside keeps the page's margins. */
-.band { padding: 1rem 0 .85rem; margin-bottom: 1.5rem; }
+/* The mock-up's band: 116px, the title's top 47px down, 36px to the bar. */
+.band { height: 116px; padding-top: 47px; margin-bottom: 36px; }
 .band.hi { background: var(--hi); }
 
 .masthead { display: flex; flex-wrap: wrap; justify-content: space-between;
-            align-items: baseline; gap: 1rem 2rem; }
+            align-items: flex-start; gap: 1rem 2rem; }
 .name {
-  /* Large enough to be the page's name, small enough that the drawing
-     below it still fits the screen. */
-  font-size: clamp(1.6rem, 1.8vw, 2.2rem); font-weight: 400; line-height: 1.05;
-  letter-spacing: -.01em;
+  /* The mock-up's 41px Arial, set solid. */
+  font-size: 41px; font-weight: 400; line-height: normal;
 }
 .name a { text-decoration: none; }
 
 /* Plain words, not boxes: the nav is the sheet's running head. The page the
    visitor is on carries the accent underline. */
-.nav { display: flex; flex-wrap: wrap; gap: .4rem 2.2rem; align-items: baseline;
-       font-size: .85em; }
+.nav { display: flex; flex-wrap: wrap; gap: .4rem 58px; align-items: baseline;
+       font-size: 15px; margin-top: 3px; }
 .nav .btn {
   border: 0; background: transparent; padding: 0; margin: 0;
   font: inherit; letter-spacing: .02em; text-transform: uppercase;
@@ -88,7 +89,7 @@ a { color: inherit; }
 /* The welcome, TRY included, fits one screen: the panels give up height
    to the header, the words and the button, and their sheets crop to fit. */
 .hero-panel { position: relative; aspect-ratio: 10 / 7; overflow: hidden;
-              max-height: calc(100svh - 16rem); min-height: 12rem;
+              max-height: calc(100svh - 330px); min-height: 12rem;
               margin: 0; }
 /* One picture per panel, swapped in a cut once the next frame has loaded:
    gif-like, no fade. */
@@ -121,28 +122,33 @@ a { color: inherit; }
 /* Signed in (or past TRY): the options down the left like a sheet's key, the
    address bar and the drawing taking the rest. On a phone the bar leads, then
    the options, then the drawing. */
-.tool { display: grid; grid-template-columns: minmax(270px, 23.5%) minmax(0, 1fr);
-        grid-template-rows: auto 1fr; gap: 0 2rem;
+/* The mock-up's split: a 483px sidebar and an 827px drawing, 31px apart,
+   kept in that proportion on other screens. */
+.tool { display: grid; grid-template-columns: minmax(300px, 483fr) minmax(0, 827fr);
+        grid-template-rows: auto 1fr; gap: 0 31px;
         grid-template-areas: ". bar" "side view"; align-items: start; }
 .toolbar  { grid-area: bar; min-width: 0; }
 /* As on the mock-up: the address bar stands alone at the top, and the first
    option box's top rule continues the drawing frame's — so the sidebar starts
-   level with the frame and its first label is lifted into the gap above. */
-.toolside { grid-area: side; min-width: 0; margin-top: calc(-1.5em - .35rem); }
-/* The sheet's cells scale with it: SITE REPORT keeps its one line in a
-   quarter-width sidebar at any screen, growing no larger than the body. */
-.toolside .cell, .toolside .cell-empty,
-.toolbar .bar {
-  font-size: clamp(14px, 1.3vw, 20px);
-}
-/* The address bar is one option cell high: their size, their padding, less
-   the half pixel of the rule a cell shares with its neighbour. */
-.toolbar .bar input, .toolbar .go { padding-top: calc(.35rem - .5px);
-                                    padding-bottom: calc(.35rem - .5px);
-                                    line-height: normal; }
+   level with the frame and its first label (20.7px and 10.7px to its box) is
+   lifted into the gap above. */
+.toolside { grid-area: side; min-width: 0; margin-top: -31.4px; }
+/* The mock-up's cells: 18px type, 36px high, the word 14px in. */
 .toolside .cell, .toolside .cell-empty {
-  padding-left: .7rem; padding-right: .7rem;
+  font-size: 18px; line-height: normal; padding: 7.25px 14px;
 }
+.toolside .rowhead { line-height: normal; padding-bottom: 10.7px; }
+.toolside .row { margin-bottom: 28px; }
+/* The mock-up's bar: 35px high, its words 22px in, GENERATE 170px wide with
+   its word 12px in, 29px above the drawing. */
+.toolbar .bar { font-size: 18px; margin-bottom: 29px; }
+.toolbar .bar input { line-height: normal; padding: 6.25px 22px; letter-spacing: .025em; }
+.toolbar .bar input::placeholder { color: var(--ink); }
+.toolbar .go { line-height: normal; padding: 6.25px 12px; flex: 0 0 170px;
+               min-width: 0; text-align: left; }
+/* The mock-up's way out, under the options: a yellow box 39px high with its
+   words left, 29px in. */
+.toolside #links .btn { text-align: left; line-height: normal; padding: 8.5px 29px; }
 .toolview { grid-area: view; min-width: 0; }
 
 /* ---- address bar --------------------------------------------------------- */
@@ -316,7 +322,7 @@ footer a { color: inherit; }
 /* width and height are written on the element, so the box keeps the sheet's
    proportion while the picture loads instead of jumping when it arrives. */
 .result img { display: block; width: auto; height: auto; max-width: 100%;
-              max-height: calc(100svh - 9.5rem); }
+              max-height: calc(100svh - 253px); }
 .result img[hidden] { display: none; }
 .result img.loading { opacity: .35; }
 /* The site report's pages turn on a click as well as on their own. */
@@ -495,7 +501,10 @@ h2 { font-size: 1em; font-weight: 400; text-transform: uppercase;
 @media (max-width: 900px) {
   body { font-size: 17px; }
   .name { font-size: 2rem; }
-  .band { padding: 1.2rem 0 1rem; margin-bottom: 1.4rem; }
+  .band { height: auto; padding: 1.2rem 0 1rem; margin-bottom: 1.4rem; }
+  .nav { margin-top: 0; }
+  .toolbar .go { flex-basis: auto; padding-left: 1rem; padding-right: 1rem; }
+  .toolbar .bar { margin-bottom: 1rem; }
   .hero, .welcome-copy, .splash, .twocol { grid-template-columns: minmax(0, 1fr); }
   .hero { gap: 1.2rem; }
   .tool { grid-template-columns: 1fr; gap: 0;
