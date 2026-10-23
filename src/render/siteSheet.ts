@@ -1444,13 +1444,20 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
     lines.map((t, i) => `<text x="${x.toFixed(1)}" y="${(y + i * LETTER * 1.12).toFixed(1)}" text-anchor="middle" font-size="${LETTER}" font-weight="700" fill="${INK}"${heavy}>${esc(t)}</text>`).join('');
   // The sun's words in its own ink, as heavy as the winds' when it is the pen's.
   const SUN_INK = look.sunInk;
+  const SUN_PATH_W = 2;
   const sunHeavy = SUN_INK === look.sunEdge ? ` stroke="${SUN_INK}" stroke-width="0.22"` : '';
   const sunBlock = (x: number, y: number, lines: string[]) =>
     lines.map((t, i) => `<text x="${x.toFixed(1)}" y="${(y + i * LETTER * 1.12).toFixed(1)}" text-anchor="middle" font-size="${LETTER}" font-weight="700" fill="${SUN_INK}"${sunHeavy}>${esc(t)}</text>`).join('');
 
+  // The crowns' arcs are drawn as the winds and the telescopes are, white in
+  // a fine outline in the pen: a band, summer's whole and winter's broken
+  // into dashes, each closed at its ends by the outline's round cap.
   if (look.sun === 'crown') {
-    layers.push(`<path d="${arcPath(summerAz, -summerAz, Ro)}" fill="none" stroke="${look.sunPen}" stroke-width="1.4" stroke-linecap="round"/>`);
-    layers.push(`<path d="${arcPath(winterAz, -winterAz, Ri)}" fill="none" stroke="${look.sunPen}" stroke-width="1.4" stroke-dasharray="5,2.6" stroke-linecap="round"/>`);
+    const band = (d: string, dash: string) =>
+      `<path d="${d}" fill="none" stroke="${look.sunPen}" stroke-width="${SUN_PATH_W + 2 * PEN_W}" stroke-linecap="round"${dash}/>` +
+      `<path d="${d}" fill="none" stroke="#ffffff" stroke-width="${SUN_PATH_W}" stroke-linecap="butt"${dash}/>`;
+    layers.push(band(arcPath(summerAz, -summerAz, Ro), ''));
+    layers.push(band(arcPath(winterAz, -winterAz, Ri), ' stroke-dasharray="6,5"'));
   }
   // The office's drawn suns sit on dashed arcs, summer dashed and winter
   // dotted, and where the winds are drawn too, the summer ring goes on round
@@ -1833,7 +1840,8 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
         `<path d="M${SWATCH_X},1.2 Q${mid},9 ${SWATCH_X + SWATCH_W},1.2 Q${mid},4.4 ${SWATCH_X},1.2 Z" fill="url(#lsunBand)" fill-opacity="${SUN_BAND_OPACITY}"/>` +
         `<path transform="translate(${SWATCH_X + 2.2},2.2) scale(2)" d="${RAY_SUN}" fill="${look.sunFill}"/>`,
         'SUN PATH', 'summer outer, winter inner; sunrise and sunset');
-    else row(`<g transform="translate(${mid},3.2)"><path d="M${Array.from({ length: 24 }, (_, k) => { const a = (k / 24) * Math.PI * 2, r = k % 2 ? 2.4 : (k % 6 === 2 ? 4.3 : 3.7); return `${(r * Math.cos(a)).toFixed(2)},${(r * Math.sin(a)).toFixed(2)}`; }).join('L')}Z" fill="#fff" stroke="${look.sunEdge}" stroke-width="0.35" stroke-linejoin="round"/><circle r="1.7" fill="#fff" stroke="${look.sunEdge}" stroke-width="0.35"/></g>`, 'SUN PATH', 'summer solid, winter dashed; solar hours');
+    else row(`<line x1="${SWATCH_X + 1}" y1="3.2" x2="${SWATCH_X + SWATCH_W - 1}" y2="3.2" stroke="${look.sunPen}" stroke-width="1.5" stroke-linecap="round"/><line x1="${SWATCH_X + 1}" y1="3.2" x2="${SWATCH_X + SWATCH_W - 1}" y2="3.2" stroke="#ffffff" stroke-width="0.9"/>` +
+      `<g transform="translate(${mid},3.2)"><path d="M${Array.from({ length: 24 }, (_, k) => { const a = (k / 24) * Math.PI * 2, r = k % 2 ? 2.4 : (k % 6 === 2 ? 4.3 : 3.7); return `${(r * Math.cos(a)).toFixed(2)},${(r * Math.sin(a)).toFixed(2)}`; }).join('L')}Z" fill="#fff" stroke="${look.sunEdge}" stroke-width="0.35" stroke-linejoin="round"/><circle r="1.7" fill="#fff" stroke="${look.sunEdge}" stroke-width="0.35"/></g>`, 'SUN PATH', 'summer solid, winter dashed; solar hours');
   }
 
   const utilKinds = new Set(sb.furniture.utilities.map((u) => u.kind));
