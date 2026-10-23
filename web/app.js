@@ -337,7 +337,7 @@ function revealOutput() {
    fetched before it is shown and swapped in one cut; the second panel runs
    half a beat behind the first. Held still when motion is asked not to. */
 const sample = (name) => '/samples/' + name + SAMPLE_Q;
-const HERO_COUNT = 22;   // web/samples/hero-1.jpg … hero-<n>.jpg
+const HERO_COUNT = 25;   // web/samples/hero-1.jpg … hero-<n>.jpg
 const HERO_SHEETS = Array.from({ length: HERO_COUNT }, (_, i) => sample('hero-' + (i + 1) + '.jpg'));
 
 function shuffled(list) {
