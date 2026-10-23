@@ -50,30 +50,27 @@
 <div class="page">
 
   <!-- ---- welcome --------------------------------------------------------- -->
-  <!-- What a visitor without a session sees first: the drawings the app makes
-       turning in one panel, the birds its styles are named after drawing
-       themselves in the other, a few words, and TRY across the page. Not a
-       wall: TRY opens the tool, which needs no account. -->
+  <!-- What a visitor without a session sees first: two panels blinking through
+       the app's own sheets and the illustrations, a couple of words, and TRY
+       across the page. Not a wall: TRY opens the tool, which needs no
+       account. -->
   <section id="welcome" hidden>
     <div class="hero">
       <figure class="hero-panel hero-shots"
-              aria-label="Sheets drawn by Site Analyst, shown one after another.">
-        <img id="heroA" class="show" alt="A sheet drawn by Site Analyst." width="1193" height="843">
-        <img id="heroB" alt="" aria-hidden="true" width="1193" height="843">
+              aria-label="Sheets drawn by Site Analyst and its illustrations, shown one after another.">
+        <img id="heroA" alt="A sheet drawn by Site Analyst." width="1193" height="843">
       </figure>
-      <figure class="hero-panel hero-art">
-        <img src="/birds.svg" alt="Line drawings of a heron, a flamingo, a kingfisher and a canary — the four drawing styles — sketching themselves on yellow.">
+      <figure class="hero-panel hero-shots"
+              aria-label="Sheets drawn by Site Analyst and its illustrations, shown one after another.">
+        <img id="heroB" alt="A sheet drawn by Site Analyst." width="1193" height="843">
       </figure>
     </div>
     <div class="welcome-copy">
       <div class="k"><a href="/about">about…</a></div>
-      <p>Give it a NSW street address and watch the site analysis draw itself —
-      the lot on its cadastre and aerial, zoning and height controls, heritage,
-      transport, walking catchments — every line placed by code from government
-      open data, print-ready on A1 in minutes. Generating and seeing the result
-      is free; a free account downloads the PDF, and an unlocked address or the
-      <a href="/pricing">subscription</a> gives it clean, with the same geometry
-      as CAD.</p>
+      <p>Type a NSW street address and watch its site analysis draw itself, from
+      the cadastre and aerial to zoning, heritage, transport and walking
+      catchments. Seeing the result is free, and an account downloads the
+      print-ready A1 PDF with the same geometry as CAD.</p>
     </div>
     <button type="button" class="try" id="tryBtn">TRY</button>
   </section>
@@ -197,12 +194,14 @@
   </form>
 
   <footer>
-    Generated drafts, not a survey or a planning certificate.
-    <a href="/about">What that means</a>.<br>
-    The drawings are made from open public data as it is available, with no
-    guarantee that it is complete, current or correct. By using Site Analyst
-    you accept its <a href="/terms">terms of use</a>.<br>
-    © 2026 Sami Abdulnour and Zofia Kosova. All rights reserved.
+    <div class="foot2">
+      <p>Generated drafts, not a survey or a planning certificate.
+      <a href="/about">What that means</a>.</p>
+      <p>The drawings are made from open public data as it is available, with no
+      guarantee that it is complete, current or correct. By using Site Analyst
+      you accept its <a href="/terms">terms of use</a>.</p>
+    </div>
+    <p>© 2026 Sami Abdulnour and Zofia Kosova. All rights reserved.</p>
   </footer>
 
 </div>
