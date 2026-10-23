@@ -1515,12 +1515,11 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
       ${sunBlock(0, 28, lines)}</g>`;
   };
   if (look.sun === 'crown' || drawnSun) {
-  // The office's suns: drawn, the peach sun in its fine outline; banded, the
-  // small rayed sun, solid, at the crescent's point; each with its name under it.
+  // The office's suns: drawn, the sun solid in the ink of its name; banded,
+  // the small rayed sun, solid, at the crescent's point; each with its name under it.
   const officeSun = ([x, y]: Pt, lines: string[]) => {
-    const m = look.marks!;
     const sun = look.sun === 'drawn'
-      ? `<path transform="scale(${DRAWN_SUN_R})" d="${SUN}" fill="${m.fill}" stroke="${m.edge}" stroke-width="${(DRAWN_EDGE / DRAWN_SUN_R).toFixed(4)}" stroke-linejoin="round"/>`
+      ? `<path transform="scale(${DRAWN_SUN_R})" d="${SUN}" fill="${SUN_INK}" stroke="${SUN_INK}" stroke-width="${(DRAWN_EDGE / DRAWN_SUN_R).toFixed(4)}" stroke-linejoin="round"/>`
       : `<path transform="scale(${RAY_SUN_R})" d="${RAY_SUN}" fill="${look.sunFill}"/>`;
     return `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})">${sun}${sunBlock(0, sunR + 8, lines)}</g>`;
   };
@@ -1599,12 +1598,11 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
     if (defs.length) layers.push(`<defs>${defs.join('')}</defs>`);
   }
   // The office's winds on the ring, each pointing in at the site, its name
-  // just outside the ring. Drawn, the peach wind in its outline; banded, three
+  // just outside the ring. Drawn, the wind solid in the ink of its name; banded, three
   // white arrows on the blue crescent (laid down above, before the suns).
   ringWinds.forEach((w) => {
-    const m = look.marks!;
     if (look.wind === 'drawn') {
-      layers.push(`<path transform="translate(${w.at[0].toFixed(1)},${w.at[1].toFixed(1)}) rotate(${w.deg.toFixed(1)}) scale(${DRAWN_WIND_HALF})" d="${WIND}" fill="${m.fill}" stroke="${m.edge}" stroke-width="${(DRAWN_EDGE / DRAWN_WIND_HALF).toFixed(4)}" stroke-linejoin="round"/>`);
+      layers.push(`<path transform="translate(${w.at[0].toFixed(1)},${w.at[1].toFixed(1)}) rotate(${w.deg.toFixed(1)}) scale(${DRAWN_WIND_HALF})" d="${WIND}" fill="${INK}" stroke="${INK}" stroke-width="${(DRAWN_EDGE / DRAWN_WIND_HALF).toFixed(4)}" stroke-linejoin="round"/>`);
     } else {
       const a = w.az + view.rotationDeg;
       for (const off of [-WIND_BAND_SPAN * 0.42, 0, WIND_BAND_SPAN * 0.42]) {
@@ -1795,7 +1793,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
       row(textureSvg('lwind', swD, 'lines', look.windPen, { x: SWATCH_X, y: 0, w: SWATCH_W, h: 6.5 }, 1) +
         `<path d="${swD}" fill="none" stroke="${look.windPen}" stroke-width="0.3"/>`, 'PREVAILING WINDS', 'named around the circle, hatched where they blow from');
     } else if (look.wind === 'drawn') {
-      row(`<path transform="translate(${mid},3.2) scale(4.6)" d="${WIND}" fill="${look.marks!.fill}" stroke="${look.marks!.edge}" stroke-width="${(0.25 / 4.6).toFixed(3)}"/>`, 'PREVAILING WINDS', 'on the ring, dashed blue where the sun never goes');
+      row(`<path transform="translate(${mid},3.2) scale(4.6)" d="${WIND}" fill="${look.climateInk}" stroke="${look.climateInk}" stroke-width="${(0.25 / 4.6).toFixed(3)}"/>`, 'PREVAILING WINDS', 'on the ring, dashed blue where the sun never goes');
     } else if (look.wind === 'band') {
       row(`<path d="M${SWATCH_X},0 Q${mid},2.6 ${SWATCH_X + SWATCH_W},0 L${SWATCH_X + SWATCH_W},4.6 Q${mid},7.2 ${SWATCH_X},4.6 Z" fill="${look.marks!.windBand}" fill-opacity="0.55"/>` +
         `<path transform="translate(${mid},3.6) rotate(90) scale(2.2)" d="${ARROW}" fill="#ffffff"/>`, 'PREVAILING WINDS', 'over the quarter each blows from');
@@ -1808,7 +1806,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
         'SUN PATH, SUMMER AND WINTER', 'solstice rise and set; summer solid, winter dashed');
     else if (look.sun === 'drawn')
       row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${look.sunPen}" stroke-width="0.9" stroke-dasharray="3,1.6"/>` +
-        `<path transform="translate(${mid},3.2) scale(3.2)" d="${SUN}" fill="${look.marks!.fill}" stroke="${look.marks!.edge}" stroke-width="${(0.25 / 3.2).toFixed(3)}"/>`,
+        `<path transform="translate(${mid},3.2) scale(3.2)" d="${SUN}" fill="${look.sunInk}" stroke="${look.sunInk}" stroke-width="${(0.25 / 3.2).toFixed(3)}"/>`,
         'SUN PATH', 'summer dashed, winter dotted; sunrise and sunset');
     else if (look.sun === 'band')
       row(`<defs><linearGradient id="lsunBand" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="${look.marks!.sunBand[0]}"/><stop offset="0.5" stop-color="${look.marks!.sunBand[1]}"/><stop offset="1" stop-color="${look.marks!.sunBand[0]}"/></linearGradient></defs>` +
