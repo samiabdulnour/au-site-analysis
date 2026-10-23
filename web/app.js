@@ -433,8 +433,8 @@ function httpMessage(r, j) {
 
 const addrInput = $('address');
 const suggestBox = $('suggest');
-// The field suggests the address the expected-result pictures were drawn for.
-addrInput.placeholder = EXAMPLE_ADDRESS;
+// The mock-up's words in the empty field.
+addrInput.placeholder = 'Search a NSW address to generate its site analysis.';
 let suggestTimer = null, activeIdx = -1, lastQuery = '';
 
 function closeSuggest() { suggestBox.classList.remove('open'); activeIdx = -1; }
