@@ -140,6 +140,15 @@ docker rm -f site-analyst >/dev/null 2>&1 || true
 # sign-up, for a reset email, and at sign-in after a few wrong passwords
 # (src/human.ts); unset, the forms work without it.
 #
+# WORKERS is how many sheets are drawn at once, each in its own process
+# (src/worker.ts); unset, one, as the site has always run. PRINT_SLOTS bounds
+# how many of them print at once, since a browser is a job's memory peak
+# (default 2), and UPSTREAM_PER_HOST (default 16) or UPSTREAM_LIMITS
+# ("host=n,host=n") what all of them together may ask of one outside service
+# (src/lib/slots.ts). JOB_TIMEOUT_MS stops a job that has hung (default 20
+# minutes). scripts/loadtest.ts says what a machine can take before raising
+# WORKERS on it.
+#
 # SITE_ANALYSIS_CONTACT (an email or URL) is a direct contact for whoever
 # operates this instance. Set, it is appended to the User-Agent every outbound
 # request carries, sent as a From header, and listed first at
@@ -173,6 +182,11 @@ docker run -d --name site-analyst --restart unless-stopped \
   -e OVERPASS_LOCAL="${OVERPASS_LOCAL:-}" \
   -e SITE_ANALYSIS_CONTACT="${SITE_ANALYSIS_CONTACT:-}" \
   -e WEB_OUT_BUDGET_MB="${WEB_OUT_BUDGET_MB:-4096}" \
+  -e WORKERS="${WORKERS:-1}" \
+  -e PRINT_SLOTS="${PRINT_SLOTS:-}" \
+  -e UPSTREAM_PER_HOST="${UPSTREAM_PER_HOST:-}" \
+  -e UPSTREAM_LIMITS="${UPSTREAM_LIMITS:-}" \
+  -e JOB_TIMEOUT_MS="${JOB_TIMEOUT_MS:-}" \
   -v /var/lib/site-analyst:/hostinfo:ro \
   -v "$OUT":/app/out \
   site-analyst >/dev/null

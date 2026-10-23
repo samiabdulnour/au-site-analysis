@@ -1,6 +1,8 @@
 // Web interface: enter a NSW address, get the CONTEXT ANALYSIS PDF.
-// Plain node:http, no extra dependencies. Jobs run one at a time (the NSW
-// endpoints and the public isochrone server should not be hit in parallel).
+// Plain node:http, no extra dependencies. Each job is drawn in a process of
+// its own (src/worker.ts), WORKERS of them at once (default 1); what they may
+// ask of each upstream host, and how many browsers they may open, is counted
+// across all of them (src/lib/slots.ts).
 //
 //   npm run serve     # http://localhost:3000  (PORT to change)
 //
@@ -10,27 +12,21 @@
 // from — unlocking an address, or the subscription (src/billing.ts,
 // src/plans.ts) — which serves them clean with the CAD and data files beside
 // them. What holds the open side down is the per-IP budgets
-// and the one-at-a-time queue, not a login. ACCESS_CODE, when set, is the
+// and the bounded worker pool, not a login. ACCESS_CODE, when set, is the
 // office's shared code and carries the subscription. Set ALLOW_NO_AUTH=1 only
 // for local use: everything granted, and SIGN IN never offered.
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { readFile, readFileSync, existsSync, mkdirSync, writeFileSync, renameSync } from 'node:fs';
-import { rm, readdir, stat, statfs, writeFile, utimes } from 'node:fs/promises';
+import { rm, readdir, stat, statfs, utimes } from 'node:fs/promises';
 import { join, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID, createHmac, createHash, timingSafeEqual } from 'node:crypto';
-import { runPipeline, runSitePipeline, runSummaryPipeline, runYieldPipeline, runSlidesPipeline, BLEED_SCALE, COUNTRY_SCALE } from './pipeline.js';
-import { prepareRasters } from './render/paintMasks.js';
+import { fork } from 'node:child_process';
 import { suggestAddresses } from './fetch/geocode.js';
-import { renderSheet, MAP_W, MAP_H, type SheetMeta } from './render/sheet.js';
-import { renderSiteSheet } from './render/siteSheet.js';
-import { renderSummarySheet } from './render/summarySheet.js';
-import { summaryCsv, summaryJson } from './export/summaryExport.js';
-import { renderYieldDeck, yieldCsv, yieldJson } from './render/yieldSheet.js';
-import { renderSlides, slidesFacts, PANEL_W, PANEL_H, DA_PANEL_H, SLIDE_W, SLIDE_H } from './render/slides.js';
-import { withTemplate, themeFor, templateFor, type SheetKind } from './render/template.js';
-import { htmlToPdf, printSlides } from './render/pdf.js';
+import { themeFor, type SheetKind } from './render/template.js';
+import { previewOf, type SheetSpec, type DrawnSheet } from './draw.js';
+import { serveSlots, slotState } from './lib/slots.js';
 import { stampPdf, watermarkId } from './render/watermark.js';
 import { GRANTS, PRICE_LABEL, SITE_PRICE_LABEL, planOf, paidFor, siteKey, type Plan, type Grants } from './plans.js';
 import { TERMS_VERSION } from './terms.js';
@@ -176,14 +172,6 @@ function sheetKind(v: unknown): SheetKind {
   return v === 'site' || v === 'summary' || v === 'yield' || v === 'slides' ? v : 'context';
 }
 
-/**
- * The picture of a finished drawing the page shows when it is done, beside its
- * PDF (src/render/pdf.ts). Found by name rather than kept on the job, so the
- * job index needs nothing new and a sheet drawn before there were pictures
- * simply has none.
- */
-const previewOf = (dir: string) => join(dir, 'preview.jpg');
-
 /** What each drawing's PDF is called when it is downloaded. */
 const PDF_NAME: Record<SheetKind, string> = {
   context: 'CONTEXT_ANALYSIS', site: 'SITE_ANALYSIS', summary: 'DEVELOPMENT_SUMMARY', yield: 'PLANNING_YIELD', slides: 'OVERALL_ANALYSIS',
@@ -211,7 +199,6 @@ interface Job {
 }
 
 const jobs = new Map<string, Job>();
-let queue: Promise<void> = Promise.resolve();
 
 // ---- the job index -------------------------------------------------------
 //
@@ -349,25 +336,26 @@ function loadIndex() {
 // A dozen sites is an ordinary afternoon's work, and submitting them one at a
 // time means coming back every two minutes to start the next. A batch is
 // nothing more than a named list of ordinary jobs: they queue on the same
-// serial queue, in the same order, and each one goes through the same reuse
-// check — so a batch of twelve where five are already drawn runs seven.
-//
-// Deliberately not concurrency. Jobs stay one at a time, which keeps the
-// promise this tool makes to the four free services it is a guest of, and
-// avoids the fact that the active graphic template is a module-level global
-// that two simultaneous renders would trample.
+// queue, in the same order, and each one goes through the same reuse check —
+// so a batch of twelve where five are already drawn runs seven. A batch gets
+// no workers of its own: it shares the pool with everyone else, so one office
+// submitting a dozen does not shut the site to the next visitor for longer
+// than the pool's share of it.
 //
 // Kept in their own file rather than folded into jobs.json, which is an array
 // an older container would still read: a rollback that met an object there
 // would find no jobs at all.
 const BATCH_INDEX = join(WEB_OUT, 'batches.json');
 const MAX_BATCH = 12;          // one hour's worth of the per-IP job budget
-const JOBS_PER_HOUR = 12;
+// The per-IP budget. A setting so a load test (scripts/loadtest.ts) can run
+// thirty sheets from one address against a server of its own; the public site
+// leaves it at the default.
+const JOBS_PER_HOUR = Math.max(1, Number(process.env.JOBS_PER_HOUR) || 12);
 // New sheets drawn for visitors without a session, all addresses together.
 // The per-IP budget holds one visitor down; a bot spread over many addresses
 // meets this instead, and what it cannot take is the queue's time for
 // everyone signed in. A sheet takes one to three minutes, so the default is
-// about half an hour of the queue's hour. 0 leaves visitors without a session
+// about half an hour of one worker's hour. 0 leaves visitors without a session
 // only the sheets already drawn.
 const GUEST_JOBS_PER_HOUR = Math.max(0, Math.floor(Number(process.env.GUEST_JOBS_PER_HOUR ?? 30) || 0));
 const GUEST_BUSY = 'Drawing without an account is at its limit this hour — sign up free to carry on.';
@@ -413,8 +401,8 @@ function loadBatches() {
 }
 
 /**
- * Position in the queue, 1 = next to run (0 = already running). Jobs run one
- * at a time, so a visitor who is fourth in line waits for three sheets before
+ * Position in the queue, 1 = next to run (0 = already running). A visitor who
+ * is fourth in line with two workers waits for two rounds of sheets before
  * theirs starts — better to say so than to show a spinner for ten minutes.
  */
 function queuePosition(job: Job): number {
@@ -425,164 +413,111 @@ function queuePosition(job: Job): number {
   return waiting.findIndex((j) => j.id === job.id) + 1;
 }
 
-/** Rough minutes until this job finishes, for the waiting message. */
+/**
+ * Rough minutes until this job finishes, for the waiting message: the rounds
+ * of the pool ahead of it, its own included. With one worker that is the old
+ * count, one sheet after another.
+ */
 const MINUTES_PER_SHEET = 2;
 function etaMinutes(job: Job): number {
-  const running = [...jobs.values()].some((j) => j.status === 'running') ? 1 : 0;
-  return (queuePosition(job) + running) * MINUTES_PER_SHEET;
+  const running = [...jobs.values()].filter((j) => j.status === 'running').length;
+  const ahead = job.status === 'running' ? 0 : queuePosition(job) + running;
+  return Math.max(1, Math.ceil(ahead / WORKERS)) * MINUTES_PER_SHEET;
 }
+
+// ---- the worker pool ------------------------------------------------------
+//
+// Jobs ran one at a time for two reasons. The free services this tool fetches
+// from should not see a burst of everyone's sheets at once; and the graphic
+// template was a module-level global that two renders would trample. The
+// second went with withTemplate(); the first is now a count per host that
+// every worker shares (src/lib/slots.ts), which bounds what any one service
+// sees however many sheets are being drawn. So the pool can be as wide as the
+// machine: WORKERS sheets at once, each in its own process (src/worker.ts),
+// and the rest wait in order.
+//
+// One is the default, which is how the site has always behaved. A machine with
+// the data held locally can take one per core or so: a sheet keeps about a
+// core busy while it composes and needs a gigabyte and a half while it prints,
+// and PRINT_SLOTS bounds how many print at once.
+const WORKERS = Math.max(1, Math.min(64, Math.floor(Number(process.env.WORKERS)) || 1));
+// A job stuck on a service that never answers would hold its worker for good,
+// so after this long it is stopped and reported, and the worker freed.
+const JOB_TIMEOUT_MS = Math.max(60_000, Number(process.env.JOB_TIMEOUT_MS) || 20 * 60_000);
+const WORKER = join(ROOT, 'src', 'worker.ts');
+
+const waiting: Job[] = [];
+let runningCount = 0;
 
 function enqueue(job: Job) {
   jobs.set(job.id, job);
   saveIndex();
-  queue = queue.then(() => runJob(job)).catch(() => {});
+  waiting.push(job);
+  pump();
 }
 
-/**
- * The DXF export is a python script. It ran through spawnSync, which blocks the
- * event loop for its whole duration — so for the seconds it took, this server
- * answered nothing at all: no progress for the visitor waiting on that sheet,
- * and no response to anyone else on the site. Nothing about it was ever
- * required to be synchronous.
- *
- * Returns whether the script exited cleanly; the caller still checks that the
- * zip it was supposed to write is actually there.
- */
-async function runCadExport(script: string, outDir: string): Promise<boolean> {
-  const { execFile } = await import('node:child_process');
-  const { promisify } = await import('node:util');
-  try {
-    await promisify(execFile)('python3', [join(ROOT, 'src', 'export', script), outDir]);
-    return true;
-  } catch {
-    return false;     // missing ezdxf/pyproj, or a site the exporter cannot draw
+function pump() {
+  while (runningCount < WORKERS && waiting.length) {
+    const job = waiting.shift()!;
+    runningCount += 1;
+    void runJob(job).finally(() => { runningCount -= 1; pump(); });
   }
 }
 
 /**
- * The template is bound to this job's async context rather than set globally,
- * so the render reads its own and nothing else's — the one thing that had to
- * be true before jobs could ever overlap.
+ * Draws `job` in a worker and keeps its record up to date: the progress lines
+ * as they come, then the files or the error. Resolves once the worker has
+ * gone, however it went, so the pool's count is always the real one.
  */
 async function runJob(job: Job) {
-  return withTemplate(templateFor(job.sheet, job.template), () => runJobBody(job));
-}
-
-async function runJobBody(job: Job) {
   job.status = 'running';
   job.startedAt = Date.now();
   saveIndex();
   const outDir = join(WEB_OUT, job.id);
+  const spec: SheetSpec = {
+    address: job.address, sheet: job.sheet, scale: job.scale, rotate: job.rotate, template: job.template,
+  };
+  // The loader the server itself was started with (tsx), so the worker can
+  // import TypeScript too, unless the server was started with it already.
+  const execArgv = process.execArgv.some((a) => a.includes('tsx')) ? process.execArgv : [...process.execArgv, '--import', 'tsx'];
+  let outcome: { done?: DrawnSheet; error?: string } = {};
   try {
-    const meta: SheetMeta = {
-      jobNo: '', client: '', status: '', sheetNo: '', revision: '',
-      checked: '', drawn: '', date: '', preliminary: false,
-    };
-    if (job.sheet === 'yield') {
-      const yb = await runYieldPipeline(job.address, { outDir, log: (m) => job.log.push(m) });
-      job.log.push('composing planning yield…');
-      const htmlPath = join(outDir, 'yield_deck.html');
-      await writeFile(htmlPath, renderYieldDeck(yb, meta).html);
-      job.log.push('printing PDF…');
-      const pdfPath = join(outDir, 'PLANNING_YIELD.pdf');
-      await printSlides(htmlPath, pdfPath, join(outDir, 'yield'), { widthMm: SLIDE_W, heightMm: SLIDE_H }, previewOf(outDir));
-      job.pdfPath = pdfPath;
-      // Like the summary it replaces, a table: CSV for Excel, JSON for the numbers behind it.
-      const csvPath = join(outDir, 'PLANNING_YIELD.csv');
-      await writeFile(csvPath, yieldCsv(yb));
-      await writeFile(join(outDir, 'PLANNING_YIELD.json'), yieldJson(yb));
-      job.dataPath = csvPath;
-    } else if (job.sheet === 'summary') {
-      const sub = await runSummaryPipeline(job.address, {
-        outDir,
-        log: (m) => job.log.push(m),
+    await new Promise<void>((resolve) => {
+      const child = fork(WORKER, [], { cwd: ROOT, execArgv, stdio: ['ignore', 'inherit', 'inherit', 'ipc'] });
+      serveSlots(child);
+      const timer = setTimeout(() => {
+        outcome = { error: `stopped after ${Math.round(JOB_TIMEOUT_MS / 60_000)} minutes — run again` };
+        child.kill('SIGKILL');
+      }, JOB_TIMEOUT_MS);
+      child.on('message', (m: any) => {
+        if (typeof m?.log === 'string') job.log.push(m.log);
+        else if (m?.done) outcome = { done: m.done };
+        else if (typeof m?.error === 'string') outcome = { error: m.error };
       });
-      job.log.push('composing development summary…');
-      const htmlPath = join(outDir, 'summary_sheet.html');
-      await writeFile(htmlPath, renderSummarySheet(sub, meta));
-      job.log.push('printing PDF…');
-      const pdfPath = join(outDir, 'DEVELOPMENT_SUMMARY.pdf');
-      await htmlToPdf(htmlPath, pdfPath, previewOf(outDir));
-      job.pdfPath = pdfPath;
-      // A table's open format is data, not CAD: CSV opens in Excel, JSON is
-      // there for anything reading the controls programmatically.
-      const csvPath = join(outDir, 'DEVELOPMENT_SUMMARY.csv');
-      await writeFile(csvPath, summaryCsv(sub));
-      await writeFile(join(outDir, 'DEVELOPMENT_SUMMARY.json'), summaryJson(sub));
-      job.dataPath = csvPath;
-    } else if (job.sheet === 'site') {
-      const sb = await runSitePipeline(job.address, {
-        mapWidthMm: MAP_W,
-        mapHeightMm: MAP_H,
-        outDir,
-        scale: job.scale || undefined,   // 0 => auto-fit
-        rotate: job.rotate,
-        log: (m) => job.log.push(m),
+      child.once('spawn', () => child.send({ run: { spec, outDir } }));
+      // A fork that never started emits this and may never emit 'exit'.
+      child.once('error', (e) => {
+        if (!outcome.done) outcome = { error: `worker failed: ${e.message}` };
+        if (child.exitCode === null && child.pid === undefined) { clearTimeout(timer); resolve(); }
       });
-      job.log.push('composing site analysis…');
-      const htmlPath = join(outDir, 'site_sheet.html');
-      await writeFile(htmlPath, renderSiteSheet(sb, meta, job.template));
-      job.log.push('printing PDF…');
-      const pdfPath = join(outDir, 'SITE_ANALYSIS.pdf');
-      await htmlToPdf(htmlPath, pdfPath, previewOf(outDir));
-      job.pdfPath = pdfPath;
-      job.log.push('exporting CAD (DXF/DWG)…');
-      const zip = join(outDir, 'SITE_ANALYSIS_CAD.zip');
-      if (await runCadExport('site_dxf_export.py', outDir) && existsSync(zip)) {
-        job.cadPath = zip;
-      } else {
-        job.log.push('CAD export unavailable for this run');
-      }
-    } else if (job.sheet === 'slides') {
-      const sb = await runSlidesPipeline(job.address, {
-        outDir,
-        scale: job.scale || undefined,
-        panelWmm: PANEL_W,
-        panelHmm: PANEL_H,
-        daPanelHmm: DA_PANEL_H,
-        log: (m) => job.log.push(m),
+      child.once('exit', (code, signal) => {
+        clearTimeout(timer);
+        if (!outcome.done && !outcome.error) outcome = { error: `worker stopped (${signal ?? `exit ${code}`}) — run again` };
+        resolve();
       });
-      job.log.push('composing overall analysis slides…');
-      await prepareRasters(sb, join(outDir, 'data'), BLEED_SCALE, COUNTRY_SCALE);
-      const htmlPath = join(outDir, 'slides.html');
-      await writeFile(htmlPath, renderSlides(sb, meta).html);
-      job.log.push('printing PDF and slide images…');
-      const pdfPath = join(outDir, 'OVERALL_ANALYSIS.pdf');
-      await printSlides(htmlPath, pdfPath, join(outDir, 'slides'), { widthMm: SLIDE_W, heightMm: SLIDE_H }, previewOf(outDir));
-      job.pdfPath = pdfPath;
-      // The deck's open format is its facts: everything it says, as JSON.
-      const factsPath = join(outDir, 'overall.json');
-      await writeFile(factsPath, JSON.stringify(slidesFacts(sb), null, 2));
-      job.dataPath = factsPath;
-    } else {
-      const bundle = await runPipeline(job.address, {
-        scale: job.scale,
-        mapWidthMm: MAP_W,
-        mapHeightMm: MAP_H,
-        outDir,
-        rotate: job.rotate,
-        log: (m) => job.log.push(m),
-      });
-      job.log.push('composing context analysis…');
-      const htmlPath = join(outDir, 'sheet.html');
-      await writeFile(htmlPath, renderSheet(bundle, meta));
-      job.log.push('printing PDF…');
-      const pdfPath = join(outDir, 'CONTEXT_ANALYSIS.pdf');
-      await htmlToPdf(htmlPath, pdfPath, previewOf(outDir));
-      job.pdfPath = pdfPath;
-      job.log.push('exporting CAD (DXF/DWG)…');
-      const zip = join(outDir, 'CONTEXT_ANALYSIS_CAD.zip');
-      if (await runCadExport('dxf_export.py', outDir) && existsSync(zip)) {
-        job.cadPath = zip;
-      } else {
-        job.log.push('CAD export unavailable for this run');
-      }
-    }
+    });
+  } catch (e: any) {
+    outcome = { error: e?.message ?? String(e) };
+  }
+  if (outcome.done) {
+    job.pdfPath = outcome.done.pdfPath;
+    job.cadPath = outcome.done.cadPath;
+    job.dataPath = outcome.done.dataPath;
     job.status = 'done';
     job.log.push('done');
-  } catch (e: any) {
+  } else {
     job.status = 'error';
-    job.error = e?.message ?? String(e);
+    job.error = outcome.error ?? 'unknown error';
     job.log.push(`ERROR: ${job.error}`);
   }
   job.finishedAt = Date.now();
@@ -1083,6 +1018,10 @@ Canonical: ${base}/.well-known/security.txt
       queue: {
         running: all.filter((j) => j.status === 'running').length,
         queued: all.filter((j) => j.status === 'queued').length,
+        workers: WORKERS,
+        // The counted slots in use: browsers printing, requests in flight
+        // to each limited host, and how many are waiting for one.
+        slots: slotState(),
       },
       disk: {
         // What the sheets are using, what they are allowed, and what is left on
@@ -1403,7 +1342,7 @@ Canonical: ${base}/.well-known/security.txt
   }
 
   // There is no wall below: drawing is open to anyone, and what holds it down
-  // is the per-IP budgets on each route and the one-at-a-time queue. The
+  // is the per-IP budgets on each route and the bounded worker pool. The
   // routes that do grant something guard themselves — billing wants an
   // account, the status view the operator code — and the open formats answer
   // 402 until the address is bought or the account subscribes.

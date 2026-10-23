@@ -6,6 +6,7 @@ import { globSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { SHEET_W, SHEET_H } from './sheet.js';
+import { acquire } from '../lib/slots.js';
 
 function findChromium(): string | undefined {
   if (process.env.CHROMIUM_PATH && existsSync(process.env.CHROMIUM_PATH)) return process.env.CHROMIUM_PATH;
@@ -23,10 +24,25 @@ function findChromium(): string | undefined {
   return undefined;
 }
 
+/**
+ * A browser, once a print slot is free (src/lib/slots.ts). A job's memory
+ * peaks here, at several hundred megabytes for an A1 sheet, so with jobs side
+ * by side it is the number of browsers open at once, not the number of jobs,
+ * that the machine has to hold. The slot goes back when the browser closes or
+ * dies, whichever comes first.
+ */
 async function launch(): Promise<Browser> {
-  const executablePath = findChromium();
-  const args = process.env.CHROMIUM_NO_SANDBOX === '1' ? ['--no-sandbox'] : [];
-  return chromium.launch({ executablePath, headless: true, args });
+  const release = await acquire('chromium');
+  try {
+    const executablePath = findChromium();
+    const args = process.env.CHROMIUM_NO_SANDBOX === '1' ? ['--no-sandbox'] : [];
+    const browser = await chromium.launch({ executablePath, headless: true, args });
+    browser.on('disconnected', release);
+    return browser;
+  } catch (e) {
+    release();
+    throw e;
+  }
 }
 
 /**

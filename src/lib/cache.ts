@@ -4,7 +4,7 @@
 // names its folder and its shelf life; a miss or an unwritable volume is
 // simply a fetch.
 
-import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -27,8 +27,19 @@ export function writeCached(folder: string, key: string, text: string): void {
   try {
     const dir = join(ROOT, safe(folder));
     mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, safe(key)), text);
+    writeFileAtomic(join(dir, safe(key)), text);
   } catch { /* the cache is optional */ }
+}
+
+/**
+ * Written beside and moved into place. Jobs run side by side (src/worker.ts)
+ * and share this cache, so one job reading what another is halfway through
+ * writing would take half a census table for the whole of it.
+ */
+export function writeFileAtomic(file: string, text: string): void {
+  const tmp = `${file}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
+  writeFileSync(tmp, text);
+  renameSync(tmp, file);
 }
 
 /** `fetchText()` once per `maxAgeMs`, through the cache. */
