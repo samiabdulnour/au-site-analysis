@@ -288,12 +288,10 @@ a { color: inherit; }
    still a box to press, but muted, since what it opens is the plans page. */
 .btn.locked { color: var(--muted); }
 
-footer { margin-top: 3rem; color: var(--muted); }
+/* Small print, at the tables' size, one note under the other. */
+footer { margin-top: 3rem; color: var(--muted); font-size: .8em; }
 footer a { color: inherit; }
-/* The footer's two notes side by side, like the tables above them; the
-   copyright line under both. */
-.foot2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 2.4rem;
-         margin-bottom: .8rem; }
+.foot2 { margin-bottom: .8rem; }
 
 /* ---- expected result ----------------------------------------------------- */
 /* A frame of its own beside the options, holding the picture alone,
@@ -475,7 +473,7 @@ h2 { font-size: 1em; font-weight: 400; text-transform: uppercase;
   body { font-size: 17px; }
   .name { font-size: 2.3rem; }
   .band { padding: 1.7rem 0 1.5rem; margin-bottom: 2rem; }
-  .hero, .welcome-copy, .splash, .twocol, .foot2 { grid-template-columns: 1fr; }
+  .hero, .welcome-copy, .splash, .twocol { grid-template-columns: 1fr; }
   .hero { gap: 1.2rem; }
   .tool { grid-template-columns: 1fr; gap: 0;
           grid-template-areas: "bar" "side" "view"; }
