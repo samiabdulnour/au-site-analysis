@@ -110,6 +110,10 @@
       </span>
       <button class="go" id="go" type="submit">GENERATE</button>
     </div>
+    <!-- The human check again, for a visitor without a session: a new sheet is
+         what a bot without an account would ask for. Invisible unless
+         Cloudflare needs a click, as on the account form. -->
+    <div class="humanframe quiet gen" id="genHumanBar" hidden><div id="genHuman"></div></div>
 
     <div class="opts">
       <div class="row" id="sheetGroup"><span class="rowhead">DRAWING</span>
