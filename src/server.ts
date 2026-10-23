@@ -878,6 +878,7 @@ const server = createServer(async (req, res) => {
     '/terms': ['terms.html', 'text/html; charset=utf-8'],
     '/pricing.js': ['pricing.js', 'text/javascript; charset=utf-8'],
     '/nav.js': ['nav.js', 'text/javascript; charset=utf-8'],
+    '/hero.js': ['hero.js', 'text/javascript; charset=utf-8'],
     '/status': ['status.html', 'text/html; charset=utf-8'],
     '/admin': ['admin.html', 'text/html; charset=utf-8'],
     '/status.js': ['status.js', 'text/javascript; charset=utf-8'],
