@@ -1021,7 +1021,10 @@ Canonical: ${base}/.well-known/security.txt
   }
 
   // Sample thumbnails for the landing page. Whitelisted names only — never
-  // join user input onto a filesystem path.
+  // join user input onto a filesystem path. Their names stay the same when the
+  // samples are redrawn, so a browser asks again each time (no-cache) and the
+  // ETag, the picture's hash, answers 304 until the picture itself changes;
+  // a day's max-age kept showing the old drawing for a day after a redraw.
   const sampleMatch = url.pathname.match(/^\/samples\/([a-z0-9_-]+\.(?:jpg|png|svg))$/);
   if (req.method === 'GET' && sampleMatch) {
     const file = join(ROOT, 'web', 'samples', sampleMatch[1]);
@@ -1029,7 +1032,10 @@ Canonical: ${base}/.well-known/security.txt
       if (err) { res.writeHead(404); res.end('not found'); return; }
       const ext = sampleMatch[1].split('.').pop()!;
       const type = ext === 'svg' ? 'image/svg+xml' : ext === 'png' ? 'image/png' : 'image/jpeg';
-      res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'public, max-age=86400' });
+      const etag = `"${createHash('sha256').update(data).digest('hex').slice(0, 16)}"`;
+      const headers = { 'Content-Type': type, 'Cache-Control': 'public, no-cache', ETag: etag };
+      if (req.headers['if-none-match'] === etag) { res.writeHead(304, headers); res.end(); return; }
+      res.writeHead(200, headers);
       res.end(data);
     });
     return;
