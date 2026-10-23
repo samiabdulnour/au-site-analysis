@@ -913,12 +913,15 @@ function okMark(ok: boolean | null | undefined): string {
 const tierKey = (n: number) => `<span class="ytier">${n}</span>`;
 
 interface TRow { cells: string[]; cls?: string }
-/** A table in the template's manner: grey 6 pt heads, a hairline under each row; `r` marks a column set right. Cells are HTML. */
-function ytable(cols: { head: string; r?: boolean; w?: string }[], rows: TRow[]): string {
+/**
+ * A table in the template's manner: grey 6 pt heads, a hairline under each row; `r` marks a column set right. Cells are HTML.
+ * `fixed` holds the columns to their widths whatever the cells hold, so a table met on page after page stands the same on each.
+ */
+function ytable(cols: { head: string; r?: boolean; w?: string }[], rows: TRow[], fixed = false): string {
   const cg = `<colgroup>${cols.map((c) => `<col${c.w ? ` style="width:${c.w}"` : ''}>`).join('')}</colgroup>`;
   const head = `<tr>${cols.map((c) => `<th${c.r ? ' class="r"' : ''}>${esc(c.head)}</th>`).join('')}</tr>`;
   const body = rows.map((row) => `<tr${row.cls ? ` class="${row.cls}"` : ''}>${row.cells.map((c, i) => `<td${cols[i]?.r ? ' class="r"' : ''}>${c}</td>`).join('')}</tr>`).join('');
-  return `<table class="yt">${cg}<thead>${head}</thead><tbody>${body}</tbody></table>`;
+  return `<table class="yt${fixed ? ' yf' : ''}">${cg}<thead>${head}</thead><tbody>${body}</tbody></table>`;
 }
 
 /** A drawing's name, in the white box the report sets in a map's corner; `top` is the drawing's. */
@@ -1006,11 +1009,9 @@ function schemeFigures(b: YieldBundle, s: YieldStudy, scheme: Scheme, id: string
   const AXO_H = 150, PLAN_TOP = AXO_H, PLAN_H = PAGE_H - PLAN_TOP;
   const planName = (scale: number) => ['Plan', `1:${fmt(scale).replace(',', ' ')}`, scheme.y?.tiers.length ? 'tiers numbered as in the schedule' : ''];
   const plan = planView(b, s, { x: 0, y: 0, w: PAGE_W, h: PLAN_H }, scheme, id, { inset: 6, keepOut: [labelBox(planName(5000))] });
-  // A hairline where the plan's ground meets the massing's white.
-  const seam = `<div class="abs" style="left:${PAGE_X}mm;top:${PLAN_TOP}mm;width:${PAGE_W}mm;height:0;border-top:0.18mm solid #878787"></div>`;
   return {
     html: bleedFigure(0, AXO_H, axonometric(b, s, { x: 2, y: LABEL_IN + 9, w: PAGE_W - 4, h: AXO_H - LABEL_IN - 11 }, scheme, id)) + mapLabel(0, [massingTitle, massingNote]) +
-      bleedFigure(PLAN_TOP, PLAN_H, plan.svg) + seam + mapLabel(PLAN_TOP, planName(plan.scale)),
+      bleedFigure(PLAN_TOP, PLAN_H, plan.svg) + mapLabel(PLAN_TOP, planName(plan.scale)),
     kerbs: plan.kerbs.length > 0,
   };
 }
@@ -1107,7 +1108,8 @@ function schemeSlide(b: YieldBundle, s: YieldStudy, p: Path, n: number, last: nu
     const ds = y.adg.deepSoil;
     ctl.push({ cells: ['ADG 3E deep soil', esc(area(ds.requiredSqm)), esc(ds.possible ? `${area(ds.groundFreeSqm)} clear` : 'not in this envelope'), okMark(ds.possible)] });
   }
-  const ctlTable = ytable([{ head: 'Control', w: '38mm' }, { head: id === 'affordableBonus' ? 'Permitted, with the bonus' : 'Permitted' }, { head: 'This path' }, { head: '', w: '5mm' }], ctl);
+  // Each path's tables keep the same columns, page after page: the widths are the widest any path needs.
+  const ctlTable = ytable([{ head: 'Control', w: '38mm' }, { head: id === 'affordableBonus' ? 'Permitted, with the bonus' : 'Permitted', w: '50mm' }, { head: 'This path' }, { head: '', w: '5mm' }], ctl, true);
   // The schedule, tier by tier, keyed to the plan's numbers.
   const set = (v: number) => fmt(v, v % 1 ? 1 : 0);
   const gfaOf = (t: Tier) => y.floors.filter((f) => f.storey >= t.from && f.storey <= t.to).reduce((sum, f) => sum + f.gfa, 0);
@@ -1120,7 +1122,7 @@ function schemeSlide(b: YieldBundle, s: YieldStudy, p: Path, n: number, last: nu
   });
   if (y.tiers.length) sched.push({ cls: 'tot', cells: ['Total', esc(storeyWord(y.storeys)), '', '', esc(area(y.gba)), esc(area(y.gfa))] });
   const schedTable = y.tiers.length
-    ? ytable([{ head: 'Tier', w: '9mm' }, { head: 'Storeys' }, { head: 'Use' }, { head: 'Setbacks F / S / R' }, { head: 'Plate GBA', r: true }, { head: 'GFA', r: true }], sched)
+    ? ytable([{ head: 'Tier', w: '9mm' }, { head: 'Storeys', w: '22mm' }, { head: 'Use', w: '24mm' }, { head: 'Setbacks F / S / R', w: '28mm' }, { head: 'Plate GBA', r: true }, { head: 'GFA', r: true, w: '18mm' }], sched, true)
     : '<div class="ynote">No building type is studied for this zone: the floor space ratio\'s floor area alone.</div>';
   const blocks = [zBlock('The scheme', figs), zBlock('Against the controls', ctlTable), zBlock('Schedule', schedTable)];
   if (apartments) {
@@ -1128,7 +1130,7 @@ function schemeSlide(b: YieldBundle, s: YieldStudy, p: Path, n: number, last: nu
     const pc = (v: number) => `${fmt(v * 100, (v * 100) % 1 ? 1 : 0)}%`;
     const mixRows: TRow[] = kinds.map((kd) => ({ cells: [esc(UNIT_NAME[kd]), esc(pc(a.mix[kd])), esc(area(ADG_MINIMUM[kd])), esc(area(a.sizes[kd])), esc(fmt(y.units[kd])), esc(area(y.units[kd] * a.sizes[kd]))] }));
     mixRows.push({ cls: 'tot', cells: ['Total', '', '', esc(`avg ${fmt(y.averageUnitSqm, 1)} m²`), esc(fmt(y.units.total)), esc(area(kinds.reduce((t, kd) => t + y.units[kd] * a.sizes[kd], 0)))] });
-    blocks.push(zBlock('Apartments', ytable([{ head: 'Unit', w: '24mm' }, { head: 'Share', r: true }, { head: 'ADG 4D min.', r: true }, { head: 'Area each', r: true }, { head: 'Units', r: true }, { head: 'Area', r: true }], mixRows)));
+    blocks.push(zBlock('Apartments', ytable([{ head: 'Unit', w: '24mm' }, { head: 'Share', r: true, w: '16mm' }, { head: 'ADG 4D min.', r: true, w: '28mm' }, { head: 'Area each', r: true, w: '24mm' }, { head: 'Units', r: true, w: '14mm' }, { head: 'Area', r: true }], mixRows, true)));
   }
   const figures = schemeFigures(b, s, { y }, id, y.storeys ? `${storeyWord(y.storeys)} · ${area(y.gfa)} GFA${y.units.total ? ` · ${fmt(y.units.total)} units` : ''}` : 'the height plane over the site');
   const governs = y.governs === 'fsr' ? `The floor space ratio governs: the height would allow ${y.storeysByHeight} storeys.` : y.governs === 'envelope' ? 'The setbacks and the height govern: the floor space ratio is not reached.' : 'No floor space ratio is mapped: the height governs.';
@@ -1239,6 +1241,7 @@ ${deckCss()}${YIELD_CSS}</style></head>
 /** The yield's tables, in the atlas pages' type: 6 pt grey heads, 7.5 pt rows, hairlines. */
 const YIELD_CSS = `
   .slide.atlas table.yt { width: 100%; border-collapse: collapse; table-layout: auto; font-size: 7.5pt; }
+  .slide.atlas table.yt.yf { table-layout: fixed; }
   .slide.atlas .ytw { font-size: 7.5pt; }
   .slide.atlas .ytw table.yt { font-size: 1em; }
   .slide.atlas table.yt th { font-size: 0.8em; line-height: 1.4; letter-spacing: 0.09em; text-transform: uppercase; font-weight: 400; color: #878787; text-align: left; padding: 1.2mm 1.4mm 0.7mm 0; vertical-align: bottom; white-space: nowrap; }
