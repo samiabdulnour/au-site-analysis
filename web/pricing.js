@@ -42,9 +42,8 @@ const day = (ms) => new Date(ms).toLocaleDateString('en-AU', { day: 'numeric', m
 function show(j) {
   act.innerHTML = '';
   if (!j || !j.authed) {
-    mine.textContent = 'No account: you can generate every drawing and see it on the page. ' +
-      'A free account — an email and a password — downloads its PDF, with a watermark, ' +
-      'and buying one address or the subscription starts from it.';
+    mine.textContent = 'A free account downloads the PDF, and buying an address ' +
+      'or the subscription starts from it.';
     link('CREATE A FREE ACCOUNT', '/?signup', true);
     link('SIGN IN', '/?signin');
     return;

@@ -328,32 +328,31 @@ function revealOutput() {
 // ---- the welcome page ------------------------------------------------------
 
 /* What a visitor without a session sees first: two panels blinking, gif-like,
-   through the app's sheets and the illustrations, mixed on both sides. The
-   sheets are hero-*.jpg, drawn for a handful of addresses around NSW just for
-   this panel (`npm run generate`, rasterised like the samples), so the
-   welcome never shows the example the generator's result frame uses. Each
-   frame is fetched before it is shown and swapped in one cut; the second
-   panel runs half a beat behind the first. Held still when motion is asked
-   not to. */
-const BIRDS = '/birds.png';
+   through the app's sheets. The sheets are hero-*.jpg, drawn for addresses
+   around NSW just for this panel (`npm run generate`, rasterised like the
+   samples), so the welcome never shows the example the generator's result
+   frame uses. The pool is shuffled on every visit and dealt into the two
+   windows, so each turns through its own sheets — never the same picture on
+   both sides — in an order with no visible start or end. Each frame is
+   fetched before it is shown and swapped in one cut; the second panel runs
+   half a beat behind the first. Held still when motion is asked not to. */
 const sample = (name) => '/samples/' + name + SAMPLE_Q;
+const HERO_COUNT = 14;   // web/samples/hero-1.jpg … hero-<n>.jpg
+const HERO_SHEETS = Array.from({ length: HERO_COUNT }, (_, i) => sample('hero-' + (i + 1) + '.jpg'));
+
+function shuffled(list) {
+  const a = list.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+const heroPool = shuffled(HERO_SHEETS);
 const HERO_PANELS = [
-  { img: 'heroA', at: 0, frames: [
-    sample('hero-1.jpg'),
-    BIRDS,
-    sample('hero-3.jpg'),
-    sample('hero-5.jpg'),
-    BIRDS,
-    sample('hero-2.jpg'),
-  ] },
-  { img: 'heroB', at: 0, frames: [
-    BIRDS,
-    sample('hero-4.jpg'),
-    sample('hero-6.jpg'),
-    BIRDS,
-    sample('hero-2.jpg'),
-    sample('hero-5.jpg'),
-  ] },
+  { img: 'heroA', at: 0, frames: heroPool.filter((_, i) => i % 2 === 0) },
+  { img: 'heroB', at: 0, frames: heroPool.filter((_, i) => i % 2 === 1) },
 ];
 const HERO_MS = 2200;
 let heroOn = false;

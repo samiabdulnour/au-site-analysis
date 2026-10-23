@@ -417,7 +417,7 @@ h2 { font-size: 1em; font-weight: 400; text-transform: uppercase;
    "clean" would lose which column they belong to. */
 /* 1fr rows: every row takes the tallest one's height, so the boxes come out
    even instead of stepping with their sentences. */
-.deftable.plans { grid-template-columns: 16% 1fr 1fr 1fr 1fr; grid-auto-rows: 1fr; }
+.deftable.plans { grid-template-columns: 26% 1.2fr .7fr .7fr 1.4fr; grid-auto-rows: 1fr; }
 .deftable.plans .head { text-transform: uppercase; letter-spacing: .02em; }
 /* A phone has room for neither five columns of whole words nor a smaller type,
    so the table keeps its width and scrolls sideways in its own box; the page
@@ -427,16 +427,22 @@ h2 { font-size: 1em; font-weight: 400; text-transform: uppercase;
 /* A tick or a dash reads from the middle of its column; the price row keeps a
    word's left edge. */
 .deftable.plans .yn { text-align: center; }
-/* In the two-column spread the plans side takes the larger share, and the
-   table tightens so SUBSCRIPTION keeps its one line. */
+/* In the two-column spread the plans side takes the larger share. */
 .twocol.plans2 { grid-template-columns: 3fr 2fr; }
-.twocol .deftable.plans { grid-template-columns: 12% 1fr 1fr 1fr 1fr; }
-.twocol .deftable.plans .k, .twocol .deftable.plans .v {
-  padding-left: .6rem; padding-right: .6rem;
-}
 @media (max-width: 900px) {
-  .twocol.plans2 { grid-template-columns: 1fr; }
+  .twocol.plans2 { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* What a tick stands for, under the table: the tables' small size, muted. */
+.smallprint { margin-top: 1rem; color: var(--muted); font-size: .8em; }
+.smallprint p { margin-bottom: .6rem; }
+
+/* The way in, as big as the page allows: one full-width box a line, the
+   first yellow, each sharing the rule of the one above. */
+.bigacts { display: flex; flex-direction: column; margin-top: 1.4rem; }
+.bigacts .btn { display: block; width: 100%; text-align: center;
+                padding: 1.1rem 1rem; letter-spacing: .06em; }
+.bigacts .btn + .btn { margin: -1px 0 0; }
 #mine { margin-top: .2rem; }
 #howUnlock { margin-top: .8rem; }
 /* The plans page's own buttons stay a boxed row, as before the nav went plain. */
@@ -473,7 +479,7 @@ h2 { font-size: 1em; font-weight: 400; text-transform: uppercase;
   body { font-size: 17px; }
   .name { font-size: 2.3rem; }
   .band { padding: 1.7rem 0 1.5rem; margin-bottom: 2rem; }
-  .hero, .welcome-copy, .splash, .twocol { grid-template-columns: 1fr; }
+  .hero, .welcome-copy, .splash, .twocol { grid-template-columns: minmax(0, 1fr); }
   .hero { gap: 1.2rem; }
   .tool { grid-template-columns: 1fr; gap: 0;
           grid-template-areas: "bar" "side" "view"; }
@@ -505,8 +511,11 @@ h2 { font-size: 1em; font-weight: 400; text-transform: uppercase;
   /* On a phone a label column wide enough for OPENSTREETMAP leaves the
      sentences in a gutter: the label becomes a strip above its own text. */
   .deftable { grid-template-columns: 1fr; }
-  .deftable.plans { grid-template-columns: 6rem 6rem 7rem 6rem 9.5rem; grid-auto-rows: auto; }
-  .deftable.plans .k, .deftable.plans .v { padding-left: .6rem; padding-right: .6rem; }
+  /* Each column as wide as its words, wrapping between them, so the five fit
+     a phone's width without scrolling. */
+  .deftable.plans { grid-template-columns: repeat(5, auto); grid-auto-rows: auto; }
+  .deftable.plans .k, .deftable.plans .v { padding-left: .35rem; padding-right: .35rem;
+                                           min-width: auto; }
 }
 /* Three columns cannot hold an address on a phone: the time and the outcome
    become one strip above it, the way the options table's label does. Placed
