@@ -51,7 +51,7 @@ a { color: inherit; }
 /* White for a visitor; yellow edge to edge once there is a session (app.js
    puts .hi on it). The band is outside .page so the colour runs full-bleed
    while the masthead inside keeps the page's margins. */
-.band { padding: 1.6rem 0 1.3rem; margin-bottom: 2rem; }
+.band { padding: 1rem 0 .85rem; margin-bottom: 1.5rem; }
 .band.hi { background: var(--hi); }
 
 .masthead { display: flex; flex-wrap: wrap; justify-content: space-between;
@@ -59,14 +59,15 @@ a { color: inherit; }
 .name {
   /* Large enough to be the page's name, small enough that the drawing
      below it still fits the screen. */
-  font-size: clamp(2rem, 2.3vw, 2.8rem); font-weight: 400; line-height: 1.05;
+  font-size: clamp(1.6rem, 1.8vw, 2.2rem); font-weight: 400; line-height: 1.05;
   letter-spacing: -.01em;
 }
 .name a { text-decoration: none; }
 
 /* Plain words, not boxes: the nav is the sheet's running head. The page the
    visitor is on carries the accent underline. */
-.nav { display: flex; flex-wrap: wrap; gap: .4rem 2.6rem; align-items: baseline; }
+.nav { display: flex; flex-wrap: wrap; gap: .4rem 2.2rem; align-items: baseline;
+       font-size: .85em; }
 .nav .btn {
   border: 0; background: transparent; padding: 0; margin: 0;
   font: inherit; letter-spacing: .02em; text-transform: uppercase;
@@ -87,7 +88,7 @@ a { color: inherit; }
 /* The welcome, TRY included, fits one screen: the panels give up height
    to the header, the words and the button, and their sheets crop to fit. */
 .hero-panel { position: relative; aspect-ratio: 10 / 7; overflow: hidden;
-              max-height: calc(100svh - 18.5rem); min-height: 12rem;
+              max-height: calc(100svh - 16rem); min-height: 12rem;
               margin: 0; }
 /* One picture per panel, swapped in a cut once the next frame has loaded:
    gif-like, no fade. */
@@ -130,8 +131,16 @@ a { color: inherit; }
 .toolside { grid-area: side; min-width: 0; margin-top: calc(-1.5em - .35rem); }
 /* The sheet's cells scale with it: SITE REPORT keeps its one line in a
    quarter-width sidebar at any screen, growing no larger than the body. */
-.toolside .cell, .toolside .cell-empty {
+.toolside .cell, .toolside .cell-empty,
+.toolbar .bar {
   font-size: clamp(14px, 1.3vw, 20px);
+}
+/* The address bar is one option cell high: their size, their padding, less
+   the half pixel of the rule a cell shares with its neighbour. */
+.toolbar .bar input, .toolbar .go { padding-top: calc(.35rem - .5px);
+                                    padding-bottom: calc(.35rem - .5px);
+                                    line-height: normal; }
+.toolside .cell, .toolside .cell-empty {
   padding-left: .7rem; padding-right: .7rem;
 }
 .toolview { grid-area: view; min-width: 0; }
@@ -307,7 +316,7 @@ footer a { color: inherit; }
 /* width and height are written on the element, so the box keeps the sheet's
    proportion while the picture loads instead of jumping when it arrives. */
 .result img { display: block; width: auto; height: auto; max-width: 100%;
-              max-height: calc(100svh - 12.5rem); }
+              max-height: calc(100svh - 9.5rem); }
 .result img[hidden] { display: none; }
 .result img.loading { opacity: .35; }
 /* The site report's pages turn on a click as well as on their own. */
