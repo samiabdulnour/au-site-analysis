@@ -1022,6 +1022,9 @@ Canonical: ${base}/.well-known/security.txt
 
   // Sample thumbnails for the landing page. Whitelisted names only — never
   // join user input onto a filesystem path.
+  // A redraw keeps a picture's name, so the browser asks each time (no-cache)
+  // and is told by its hash whether what it holds is still the one: a 304 when
+  // it is, the new picture the moment a redraw is deployed.
   const sampleMatch = url.pathname.match(/^\/samples\/([a-z0-9_-]+\.(?:jpg|png|svg))$/);
   if (req.method === 'GET' && sampleMatch) {
     const file = join(ROOT, 'web', 'samples', sampleMatch[1]);
@@ -1029,7 +1032,10 @@ Canonical: ${base}/.well-known/security.txt
       if (err) { res.writeHead(404); res.end('not found'); return; }
       const ext = sampleMatch[1].split('.').pop()!;
       const type = ext === 'svg' ? 'image/svg+xml' : ext === 'png' ? 'image/png' : 'image/jpeg';
-      res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'public, max-age=86400' });
+      const etag = `"${createHash('sha1').update(data).digest('hex').slice(0, 16)}"`;
+      const cache = { 'Cache-Control': 'public, no-cache', ETag: etag };
+      if (req.headers['if-none-match'] === etag) { res.writeHead(304, cache); res.end(); return; }
+      res.writeHead(200, { 'Content-Type': type, ...cache });
       res.end(data);
     });
     return;
