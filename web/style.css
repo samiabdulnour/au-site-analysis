@@ -132,12 +132,14 @@ a { color: inherit; }
    option box's top rule continues the drawing frame's — so the sidebar starts
    level with the frame and its first label (20.7px and 10.7px to its box) is
    lifted into the gap above. */
-.toolside { grid-area: side; min-width: 0; margin-top: -31.4px; }
+.toolside { grid-area: side; min-width: 0; margin-top: -31px; }
 /* The mock-up's cells: 18px type, 36px high, the word 14px in. */
 .toolside .cell, .toolside .cell-empty {
   font-size: 18px; line-height: normal; padding: 7.25px 14px;
 }
-.toolside .rowhead { line-height: normal; padding-bottom: 10.7px; }
+/* Whole pixels, so the label and its gap are exactly the 31px the sidebar
+   is lifted by, and the table's top rule lands on the frame's. */
+.toolside .rowhead { line-height: 21px; padding-bottom: 10px; }
 .toolside .row { margin-bottom: 28px; }
 /* The mock-up's bar: 35px high, its words 22px in, GENERATE 170px wide with
    its word 12px in, 29px above the drawing. */
@@ -316,14 +318,12 @@ footer a { color: inherit; }
 /* ---- expected result ----------------------------------------------------- */
 /* A frame of its own beside the options, holding the picture alone,
    edge to edge between its rules. */
-/* The whole sheet in view without scrolling: the picture keeps its
-   proportion and gives up width rather than run under the screen's edge, and
-   the frame hugs it. */
-.result { border: 1px solid var(--line); width: fit-content; max-width: 100%; }
-/* width and height are written on the element, so the box keeps the sheet's
-   proportion while the picture loads instead of jumping when it arrives. */
-.result img { display: block; width: auto; height: auto; max-width: 100%;
-              max-height: calc(100svh - 253px); }
+/* The frame is the column's full width, its edges continuing the address
+   bar's above it. The sheet is whole inside it: as wide as the frame, or,
+   where the screen is short, as tall as the screen allows, centred. */
+.result { border: 1px solid var(--line); }
+.result img { display: block; width: 100%; height: auto;
+              max-height: calc(100svh - 253px); object-fit: contain; }
 .result img[hidden] { display: none; }
 .result img.loading { opacity: .35; }
 /* The site report's pages turn on a click as well as on their own. */
