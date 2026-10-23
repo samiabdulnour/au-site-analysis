@@ -201,8 +201,8 @@ const SUN_NAME_W = 30, SUN_NAME_H = 14;
 // sweep (°), and the view triangle's length and half angle (°).
 const DRAWN_SUN_R = 13, DRAWN_WIND_HALF = 17, DRAWN_VIEW_L = 32, DRAWN_EDGE = 0.35;
 const RAY_SUN_R = 8, ARROW_HALF = 5.5, SUN_BAND_W = 16, WIND_BAND_W = 15, WIND_BAND_SPAN = 24, BAND_VIEW_L = 30, BAND_VIEW_HALF = 17;
-/** The sun's crescent all but solid, so its yellow holds over the darker zones; the winds' stay translucent. */
-const SUN_BAND_OPACITY = 0.9;
+/** The sun's crescent translucent, a little more so than the winds', so its yellow sits back behind the site rather than catching the eye first. */
+const SUN_BAND_OPACITY = 0.4;
 
 /**
  * A crescent along a circle about c, between two page bearings: its outer edge
