@@ -211,7 +211,12 @@ function caption(items, value) {
 const PAGE_MS = 1500;
 let deck = null;   // { sheet, page, last, timer, held }
 
-const pageSrc = (n) => '/samples/result-' + (deck ? deck.sheet : 'slides') + '-' + n + '.jpg';
+// The samples once went out with a day's max-age, and a browser holding one of
+// those copies would not ask again until the day was out. The query names them
+// afresh, so those copies are never asked for; the server now revalidates every
+// picture by its ETag, so this never needs bumping for a redraw.
+const SAMPLE_Q = '?r=2';
+const pageSrc = (n) => '/samples/result-' + (deck ? deck.sheet : 'slides') + '-' + n + '.jpg' + SAMPLE_Q;
 const PAGED = { slides: 'Site report', yield: 'Planning yield' };
 
 function stopDeck() {
@@ -269,7 +274,7 @@ function renderResult() {
   const parts = isMap()
     ? [state.sheet, state.scale, state.rotate, state.template]
     : [state.sheet];
-  const src = '/samples/result-' + parts.join('-') + '.jpg';
+  const src = '/samples/result-' + parts.join('-') + '.jpg' + SAMPLE_Q;
   let text = caption(SHEETS, state.sheet);
   if (isMap()) text += ' ' + caption(SCALES[state.sheet], state.scale) + ', ' + caption(NORTH, state.rotate);
   const style = caption(STYLES[state.sheet], state.template);
