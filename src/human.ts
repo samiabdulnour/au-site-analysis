@@ -1,5 +1,6 @@
-// The human check on the forms a bot would fill: Cloudflare Turnstile, which
-// asks most people nothing at all and the rest to tick a box. The page renders
+// The human check on the forms a bot would fill, and on a new sheet asked for
+// without a session: Cloudflare Turnstile, which asks most people nothing at
+// all and the rest to tick a box. The page renders
 // the widget with the site key and sends back the token it hands over; this
 // asks Cloudflare whether the token is good. Plain fetch, like Stripe and
 // Resend. Two settings, from the Turnstile page of a Cloudflare account:
@@ -8,7 +9,8 @@
 //   TURNSTILE_SECRET_KEY   0x4AAA… — this server's alone
 //
 // With either unset there is no check and every form works as before; what
-// holds the forms down then is the per-IP limits and the email caps alone.
+// holds the forms down then is the per-IP limits and the email caps alone, and
+// what holds guests' drawing down is GUEST_JOBS_PER_HOUR in server.ts.
 
 const SITE_KEY = process.env.TURNSTILE_SITE_KEY?.trim() ?? '';
 const SECRET = process.env.TURNSTILE_SECRET_KEY?.trim() ?? '';

@@ -484,5 +484,7 @@ h2 { font-size: 1em; font-weight: 400; text-transform: uppercase;
    shows nothing: then there is no frame either, and no space kept for one. */
 .humanframe.quiet { width: 0; height: 0; border: 0; margin: 0; }
 .humanframe.quiet > div { margin: 0; }
+/* Under the address bar, when Cloudflare asks before a drawing. */
+.humanframe.gen:not(.quiet) { margin: 1rem 0 0; }
 /* Off the page, not hidden: a field that is display:none is one bots skip. */
 .trap { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }

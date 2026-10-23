@@ -447,10 +447,10 @@ let confirmToken = /^[0-9a-f]{64}$/.test(boot.get('confirm') || '') ? boot.get('
 
 // ---- the human check -----------------------------------------------------
 // Cloudflare Turnstile, when the server has a key for it (/api/me says which).
-// Asked at sign-up and for a reset email always, and at sign-in once the
-// server says a few wrong passwords have gone before. Its script is fetched
-// only when the widget is first needed, so a visitor who never signs in never
-// loads it.
+// Asked at sign-up and for a reset email always, at sign-in once the server
+// says a few wrong passwords have gone before, and before GENERATE for a
+// visitor without a session. Its script is fetched only when a widget is first
+// needed, so a signed-in visitor who never opens the form never loads it.
 let humanToken = '', humanWidget = null, humanScript = null, signinNeedsHuman = false;
 const humanKey = () => (session && session.humanCheck) || null;
 
@@ -510,6 +510,44 @@ async function humanReady() {
 function resetHuman() {
   humanToken = '';
   if (humanWidget !== null && window.turnstile) window.turnstile.reset(humanWidget);
+}
+
+// The same check before GENERATE, a widget of its own: the account form and
+// the tool are never on the page together, and a token is good for one form.
+// Only without a session — an account passed the check at sign-up.
+let genToken = '', genWidget = null;
+
+async function syncGenHuman() {
+  const wanted = Boolean(humanKey()) && !(session && session.authed);
+  $('genHumanBar').hidden = !wanted;
+  if (!wanted || genWidget !== null) return;
+  try {
+    const ts = await loadTurnstile();
+    if (genWidget !== null) return;
+    genWidget = ts.render($('genHuman'), {
+      sitekey: humanKey(),
+      appearance: 'interaction-only',
+      'before-interactive-callback': () => { $('genHumanBar').classList.remove('quiet'); },
+      'after-interactive-callback': () => { $('genHumanBar').classList.add('quiet'); },
+      callback: (t) => { genToken = t; },
+      'expired-callback': () => { genToken = ''; },
+      'error-callback': () => { genToken = ''; },
+    });
+  } catch (err) {
+    fail(err.message + ' — reload the page and try again');
+  }
+}
+
+/** As humanReady, for GENERATE: wait out the silent check, not a click. */
+async function genReady() {
+  const bar = $('genHumanBar');
+  for (let i = 0; i < 40 && !bar.hidden && !genToken && bar.classList.contains('quiet'); i++)
+    await new Promise((r) => setTimeout(r, 250));
+}
+
+function resetGenHuman() {
+  genToken = '';
+  if (genWidget !== null && window.turnstile) window.turnstile.reset(genWidget);
 }
 // Back from the verification link: '1' verified, '0' expired or already used.
 const verifiedParam = boot.get('verified');
@@ -583,6 +621,7 @@ function enter(j) {
   loginForm.hidden = true;
   f.hidden = false;
   applySession(j);
+  syncGenHuman();
   addrInput.focus();
   // Carried over from the about page's search: the field takes the address as
   // if it had been typed, so the suggestions open on what was searched.
@@ -614,6 +653,7 @@ function enter(j) {
 $('skipAuth').addEventListener('click', () => {
   loginForm.hidden = true;
   f.hidden = false;
+  syncGenHuman();
   addrInput.focus();
 });
 
@@ -745,10 +785,14 @@ async function submit(fresh) {
   go.disabled = true;
   revealOutput();
   try {
+    await genReady();
+    const human = genToken;
+    resetGenHuman();
     const r = await fetch('/api/jobs', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ address, scale: state.scale, rotate: state.rotate,
-                             sheet: state.sheet, template: state.template, fresh: fresh === true }),
+                             sheet: state.sheet, template: state.template, fresh: fresh === true,
+                             human }),
     });
     const j = await readJson(r);
     if (!r.ok) throw new Error(httpMessage(r, j));
