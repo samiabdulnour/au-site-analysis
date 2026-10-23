@@ -336,11 +336,12 @@ function revealOutput() {
 
    The sheets are shuffled on every visit and dealt between the two windows,
    so each turns through its own and never shows the same one as the other;
-   a window reshuffles its share when it has been through it. After every one
-   to three sheets, two on average, a window cuts to an illustration picked at
-   random from all of them, so either window may show any one, never the same
-   one twice running. A sheet holds for SHEET_MS, an illustration for half
-   that. Each frame is fetched before it is shown and swapped in one cut; the
+   a window reshuffles its share when it has been through it. After every
+   three to five sheets, four on average, a window cuts to an illustration
+   picked at random from all of them, so either window may show any one, never
+   the same one twice running, and never while the other window shows one:
+   then it shows a sheet and takes its illustration at the next cut. A sheet
+   holds for SHEET_MS, an illustration only a flash, ART_MS. Each frame is fetched before it is shown and swapped in one cut; the
    second window runs half a beat behind the first. Held still when motion is
    asked not to. */
 const sample = (name) => '/samples/' + name + SAMPLE_Q;
@@ -349,7 +350,7 @@ const HERO_SHEETS = Array.from({ length: HERO_COUNT }, (_, i) => sample('hero-' 
 // web/samples/art-1 … art-8, each in whichever of PNG or JPEG kept it lighter.
 const HERO_ART = ['art-1.png', 'art-2.jpg', 'art-3.jpg', 'art-4.jpg',
                   'art-5.jpg', 'art-6.png', 'art-7.png', 'art-8.png'].map(sample);
-const SHEET_MS = 2000, ART_MS = 1000;
+const SHEET_MS = 2000, ART_MS = 500;
 
 function shuffled(list) {
   const a = list.slice();
@@ -360,25 +361,30 @@ function shuffled(list) {
   return a;
 }
 const pick = (list) => list[Math.floor(Math.random() * list.length)];
-/** Sheets before the next illustration: one, two or three, two on average. */
-const sheetsBeforeArt = () => 1 + Math.floor(Math.random() * 3);
+/** Sheets before the next illustration: three, four or five, four on average. */
+const sheetsBeforeArt = () => 3 + Math.floor(Math.random() * 3);
 
 const heroPool = shuffled(HERO_SHEETS);
 const HERO_PANELS = [0, 1].map((side) => {
   const sheets = heroPool.filter((_, i) => i % 2 === side);
+  // artBusy: an illustration is this window's, from the moment it is chosen
+  // until the frame after it is on screen, so the other window waits it out.
   return { img: side ? 'heroB' : 'heroA', sheets, deck: sheets.slice(),
-           sinceArt: 0, artAfter: sheetsBeforeArt(), lastArt: null, lastSheet: null };
+           sinceArt: 0, artAfter: sheetsBeforeArt(), lastArt: null, lastSheet: null,
+           artBusy: false };
 });
 let heroOn = false;
 
 /** The next frame for a window: its next sheet, or, when its turn has come, an illustration. */
 function nextFrame(panel) {
-  if (panel.sinceArt >= panel.artAfter) {
+  const other = HERO_PANELS.find((p) => p !== panel);
+  if (panel.sinceArt >= panel.artAfter && !(other && other.artBusy)) {
     const art = pick(HERO_ART.filter((a) => a !== panel.lastArt));
     panel.lastArt = art;
     panel.sinceArt = 0;
     panel.artAfter = sheetsBeforeArt();
-    return { src: art, ms: ART_MS };
+    panel.artBusy = true;
+    return { src: art, ms: ART_MS, art: true };
   }
   if (!panel.deck.length) {
     // Through its share: deal it again in a new order, not opening on the
@@ -400,10 +406,13 @@ function heroTurn(panel) {
   pre.onload = () => {
     if (!heroOn) return;
     el.src = frame.src;
+    // The illustration before this frame is off screen now.
+    if (!frame.art) panel.artBusy = false;
     panel.timer = setTimeout(() => heroTurn(panel), frame.ms);
   };
   pre.onerror = () => {
     if (!heroOn) return;
+    if (frame.art) panel.artBusy = false;
     panel.timer = setTimeout(() => heroTurn(panel), 0);   // a missing frame is skipped over
   };
   pre.src = frame.src;
