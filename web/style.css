@@ -29,19 +29,21 @@ body {
   background: var(--bg);
   color: var(--ink);
   font-family: var(--font);
-  font-size: 17px;
+  /* The mock-up's type at a laptop's width; the definition tables are set
+     smaller below, as on its sheets. */
+  font-size: 20px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
 
-/* The page is a wide sheet now: the tool has a sidebar and the about page two
-   tables abreast. The band is the one full-bleed element — signed in it turns
-   yellow edge to edge — so the page's margins live on .page, not on body. */
-.page { max-width: 1240px; margin: 0 auto; padding: 0 1.5rem; }
+/* The page is the mock-up's sheet: content nearly the full width of the
+   screen inside margins of about a twentieth of it. The band is the one
+   full-bleed element — signed in it turns yellow edge to edge — so the page's
+   margins live on .page, not on body. */
+.page { max-width: 1920px; margin: 0 auto; padding: 0 min(4.5vw, 88px); }
 body > .page { padding-bottom: 3rem; }
-/* Pages of prose and small tables — plans, terms, status — read better
-   narrower; the width is theirs, the header band stays full-bleed. */
-.page.narrow { max-width: 920px; }
+/* The operator views read better narrower; the header band stays full-bleed. */
+.page.narrow { max-width: 920px; padding: 0 1.5rem; }
 
 a { color: inherit; }
 
@@ -49,20 +51,21 @@ a { color: inherit; }
 /* White for a visitor; yellow edge to edge once there is a session (app.js
    puts .hi on it). The band is outside .page so the colour runs full-bleed
    while the masthead inside keeps the page's margins. */
-.band { padding: 1.7rem 0 1.5rem; margin-bottom: 2.4rem; }
+.band { padding: 2.8rem 0 2.4rem; margin-bottom: 3.2rem; }
 .band.hi { background: var(--hi); }
 
 .masthead { display: flex; flex-wrap: wrap; justify-content: space-between;
             align-items: baseline; gap: 1rem 2rem; }
 .name {
-  font-size: 2.6rem; font-weight: 400; line-height: 1.05;
+  /* The mock-up's title is about a thirty-second of the screen's width. */
+  font-size: clamp(2.4rem, 3.1vw, 3.8rem); font-weight: 400; line-height: 1.05;
   letter-spacing: -.01em;
 }
 .name a { text-decoration: none; }
 
 /* Plain words, not boxes: the nav is the sheet's running head. The page the
    visitor is on carries the accent underline. */
-.nav { display: flex; flex-wrap: wrap; gap: .4rem 2.4rem; align-items: baseline; }
+.nav { display: flex; flex-wrap: wrap; gap: .4rem 2.6rem; align-items: baseline; }
 .nav .btn {
   border: 0; background: transparent; padding: 0; margin: 0;
   font: inherit; letter-spacing: .02em; text-transform: uppercase;
@@ -78,8 +81,8 @@ a { color: inherit; }
 /* What a visitor sees first: two panels blinking through the app's sheets and
    the illustrations; then the invitation, then TRY across the page. Signed
    in, the tool takes the page instead. */
-.hero { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;
-        margin-bottom: 1.8rem; }
+.hero { display: grid; grid-template-columns: 1fr 1fr; gap: 1.6rem;
+        margin-bottom: 2.4rem; }
 .hero-panel { position: relative; aspect-ratio: 10 / 7; overflow: hidden;
               margin: 0; }
 /* One picture per panel, swapped in a cut once the next frame has loaded:
@@ -95,10 +98,9 @@ a { color: inherit; }
 .art img { display: block; width: 100%; height: auto; }
 
 /* The words beside "about…", set like the sheet's own two-column notes. */
-.welcome-copy { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;
-                margin-bottom: 2rem; }
+.welcome-copy { display: grid; grid-template-columns: 1fr 1fr; gap: 1.6rem;
+                margin-bottom: 2.4rem; }
 .welcome-copy .k { color: var(--ink); }
-.welcome-copy p { max-width: 60ch; }
 
 /* The whole width, one word: the way in. */
 .try {
@@ -114,14 +116,20 @@ a { color: inherit; }
 /* Signed in (or past TRY): the options down the left like a sheet's key, the
    address bar and the drawing taking the rest. On a phone the bar leads, then
    the options, then the drawing. */
-.tool { display: grid; grid-template-columns: 300px minmax(0, 1fr);
-        grid-template-rows: auto 1fr; gap: 0 2.4rem;
+.tool { display: grid; grid-template-columns: minmax(270px, 23.5%) minmax(0, 1fr);
+        grid-template-rows: auto 1fr; gap: 0 2rem;
         grid-template-areas: ". bar" "side view"; align-items: start; }
 .toolbar  { grid-area: bar; min-width: 0; }
 /* As on the mock-up: the address bar stands alone at the top, and the first
    option box's top rule continues the drawing frame's — so the sidebar starts
    level with the frame and its first label is lifted into the gap above. */
 .toolside { grid-area: side; min-width: 0; margin-top: calc(-1.5em - .35rem); }
+/* The sheet's cells scale with it: SITE REPORT keeps its one line in a
+   quarter-width sidebar at any screen, growing no larger than the body. */
+.toolside .cell, .toolside .cell-empty {
+  font-size: clamp(14px, 1.3vw, 20px);
+  padding-left: .7rem; padding-right: .7rem;
+}
 .toolview { grid-area: view; min-width: 0; }
 
 /* ---- address bar --------------------------------------------------------- */
@@ -144,7 +152,8 @@ a { color: inherit; }
   font: inherit; font-weight: 400; letter-spacing: .02em;
   color: var(--on-hi); background: var(--hi);
   border: 0; border-left: 1px solid var(--line);
-  flex: 0 0 auto;
+  /* About a sixth of the bar, as the mock-up draws GENERATE. */
+  flex: 0 0 auto; min-width: 17%;
   padding: .45rem 2rem; cursor: pointer; text-transform: uppercase;
 }
 .go:hover { filter: brightness(.95); }
@@ -156,7 +165,7 @@ a { color: inherit; }
    Cells carry their own right and bottom rule and the box the top and left,
    so no line is ever drawn twice. */
 .opts { border: 0; }
-.row { margin-bottom: 1.3rem; }
+.row { margin-bottom: 2rem; }
 .row[hidden] { display: none; }
 
 .rowhead {
@@ -309,20 +318,22 @@ h2 { font-size: 1em; font-weight: 400; text-transform: uppercase;
 
 /* The about page's intro beside the illustrations' panel. */
 .splash { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-          gap: 2.4rem; align-items: start; margin-bottom: 2.6rem; }
+          gap: 2rem; align-items: start; margin-bottom: 2.6rem; }
 
 /* Two sheets abreast: HOW IT WORKS beside DATA SOURCES, each column its own
    stack of heading and table. */
 .twocol { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-          gap: 0 2.4rem; align-items: start; }
+          gap: 0 2rem; align-items: start; }
 
 /* The same hairline table as the options, but the second column carries
    sentences, so it wraps and the row grows to fit. `display: contents`
    dissolves the row wrappers so the cells are the grid's own items. */
 .deftable {
   --cell-pad-y: .6rem;
+  /* The mock-up sets its tables smaller than the running text. */
+  font-size: .8em;
   display: grid;
-  grid-template-columns: 28% 1fr;
+  grid-template-columns: 24% 1fr;
   grid-auto-rows: auto;
   border-top: 1px solid var(--line);
   border-left: 1px solid var(--line);
@@ -461,7 +472,9 @@ h2 { font-size: 1em; font-weight: 400; text-transform: uppercase;
 /* One column: the welcome panels stack, the two sheets stack, and the tool
    goes bar first, then the options, then the drawing. */
 @media (max-width: 900px) {
+  body { font-size: 17px; }
   .name { font-size: 2.3rem; }
+  .band { padding: 1.7rem 0 1.5rem; margin-bottom: 2rem; }
   .hero, .welcome-copy, .splash, .twocol, .foot2 { grid-template-columns: 1fr; }
   .hero { gap: 1.2rem; }
   .tool { grid-template-columns: 1fr; gap: 0;
