@@ -201,8 +201,8 @@ const SUN_NAME_W = 30, SUN_NAME_H = 14;
 // sweep (°), and the view triangle's length and half angle (°).
 const DRAWN_SUN_R = 13, DRAWN_WIND_HALF = 17, DRAWN_VIEW_L = 32, DRAWN_EDGE = 0.35;
 const RAY_SUN_R = 8, ARROW_HALF = 5.5, SUN_BAND_W = 16, WIND_BAND_W = 15, WIND_BAND_SPAN = 24, BAND_VIEW_L = 30, BAND_VIEW_HALF = 17;
-/** The sun's crescent translucent, a little more so than the winds', so its yellow sits back behind the site rather than catching the eye first. */
-const SUN_BAND_OPACITY = 0.4;
+/** The sun's and the winds' crescents translucent, the winds' a step lighter, so they sit back behind the site rather than catching the eye first. */
+const SUN_BAND_OPACITY = 0.5, WIND_BAND_OPACITY = 0.45;
 
 /**
  * A crescent along a circle about c, between two page bearings: its outer edge
@@ -1458,7 +1458,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
   if (look.wind === 'band')
     for (const w of ringWinds) {
       const a = w.az + view.rotationDeg;
-      layers.push(`<path d="${crescentD(centroidPx, windOuter, a - WIND_BAND_SPAN, a + WIND_BAND_SPAN, WIND_BAND_W)}" fill="${look.marks!.windBand}" fill-opacity="0.55"/>`);
+      layers.push(`<path d="${crescentD(centroidPx, windOuter, a - WIND_BAND_SPAN, a + WIND_BAND_SPAN, WIND_BAND_W)}" fill="${look.marks!.windBand}" fill-opacity="${WIND_BAND_OPACITY}"/>`);
     }
   // The hours along each arc: a dot where the sun stands at each solar hour,
   // its time beside it (inside the winter arc, outside the summer one). An
@@ -1797,7 +1797,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
     } else if (look.wind === 'drawn') {
       row(`<path transform="translate(${mid},3.2) scale(4.6)" d="${WIND}" fill="${look.marks!.fill}" stroke="${look.marks!.edge}" stroke-width="${(0.25 / 4.6).toFixed(3)}"/>`, 'PREVAILING WINDS', 'on the ring, dashed blue where the sun never goes');
     } else if (look.wind === 'band') {
-      row(`<path d="M${SWATCH_X},0 Q${mid},2.6 ${SWATCH_X + SWATCH_W},0 L${SWATCH_X + SWATCH_W},4.6 Q${mid},7.2 ${SWATCH_X},4.6 Z" fill="${look.marks!.windBand}" fill-opacity="0.55"/>` +
+      row(`<path d="M${SWATCH_X},0 Q${mid},2.6 ${SWATCH_X + SWATCH_W},0 L${SWATCH_X + SWATCH_W},4.6 Q${mid},7.2 ${SWATCH_X},4.6 Z" fill="${look.marks!.windBand}" fill-opacity="${WIND_BAND_OPACITY}"/>` +
         `<path transform="translate(${mid},3.6) rotate(90) scale(2.2)" d="${ARROW}" fill="#ffffff"/>`, 'PREVAILING WINDS', 'over the quarter each blows from');
     } else row(`<path d="${sketchArrow(SWATCH_X + 2, 3.2, 1, 0, 19, 0.8, 0.5, 1.3)}" fill="#fff" stroke="${look.windPen}" stroke-width="0.35" stroke-linejoin="round"/>`, 'PREVAILING WINDS');
     if (look.sun === 'circle')
