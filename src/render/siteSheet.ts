@@ -314,6 +314,12 @@ export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta, theme?: string)
   return withTemplate(t.base, () => drawSiteSheet(sb, meta, t.look));
 }
 
+/** The white buildings' fine hatch: a pattern of diagonal lines in the given ink, 1.4 mm apart. */
+function buildingHatch(id: string, ink: string): string {
+  return `<pattern id="${id}" patternUnits="userSpaceOnUse" width="1.4" height="1.4" patternTransform="rotate(45)">` +
+    `<line x1="0.7" y1="0" x2="0.7" y2="1.4" stroke="${ink}" stroke-width="0.25" stroke-opacity="0.55"/></pattern>`;
+}
+
 function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string {
   // Every word on the map in the theme's size.
   const MAP_TEXT = BASE_MAP_TEXT * look.textScale, NEIGHBOUR_TEXT = MAP_TEXT;
@@ -434,8 +440,11 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
   // Each building in the strong colour of the zone family it stands on (the
   // context template's figure), a quiet grey where no zone is mapped and on
   // the site itself, with a white edge, as the context sheet draws them. Or
-  // white, edged in that family's ink, as the context Flamingo draws them.
+  // white, edged in that family's ink, as the context Flamingo draws them,
+  // and where the look asks, finely hatched in that ink so they read apart
+  // from the white roads.
   const whiteBuildings = look.buildings === 'white';
+  const buildingDs: string[] = [];
   if ((look.buildings === 'colour' || whiteBuildings) && sb.buildings?.buildings.length) {
     const byInk = new Map<string, string[]>();
     for (const b of sb.buildings.buildings) {
@@ -446,10 +455,14 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
       const ink = (cat && catById()[cat]?.figure) || (whiteBuildings ? tpl().road : '#d9d9d6');
       (byInk.get(ink) ?? byInk.set(ink, []).get(ink)!).push(`<path d="${pathFromRings(b.rings, proj)}"/>`);
     }
-    for (const [ink, ds] of byInk)
+    [...byInk].forEach(([ink, ds], i) => {
+      buildingDs.push(...ds);
+      const hatch = whiteBuildings && look.buildingHatch
+        ? `${buildingHatch(`bldHatch${i}`, ink)}<g fill="#ffffff" fill-rule="evenodd">${ds.join('')}</g>` : '';
       layers.push(whiteBuildings
-        ? `<g fill="#ffffff" fill-opacity="0.92" fill-rule="evenodd" stroke="${ink}" stroke-width="${look.buildingEdge}" stroke-linejoin="round">${ds.join('')}</g>`
+        ? `${hatch}<g fill="${hatch ? `url(#bldHatch${i})` : '#ffffff'}" fill-opacity="${hatch ? 1 : 0.92}" fill-rule="evenodd" stroke="${ink}" stroke-width="${look.buildingEdge}" stroke-linejoin="round">${ds.join('')}</g>`
         : `<g fill="${ink}" fill-rule="evenodd" stroke="#ffffff" stroke-width="${look.buildingEdge}" stroke-linejoin="round">${ds.join('')}</g>`);
+    });
   }
 
   // ---- heritage: the LEP's items and conservation areas, hatched -------------
@@ -590,8 +603,9 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
       if (look.views === 'drawn' || look.views === 'band') {
         // The office's view: its point a little off the boundary, opening
         // outward along the sight line. Drawn, the wedge and the eye in its
-        // triangle, outlined; banded, a translucent triangle with the eye
-        // white in it, turned to look along the sight line, its lid outward. What it found is written beyond its open end,
+        // triangle, solid in the ink of its words; banded, a translucent
+        // triangle with the eye white in it, turned to look along the sight
+        // line, its lid outward. What it found is written beyond its open end,
         // along the line, upright.
         const m = look.marks!;
         const drawn = look.views === 'drawn';
@@ -599,7 +613,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
         const px = ax + ux * gap, py = ay + uy * gap;
         const deg = (Math.atan2(uy, ux) * 180) / Math.PI;
         if (drawn) {
-          layers.push(`<path transform="translate(${px.toFixed(1)},${py.toFixed(1)}) rotate(${deg.toFixed(1)}) scale(${L})" d="${VIEW}" fill="${m.fill}" stroke="${m.edge}" stroke-width="${(DRAWN_EDGE / L).toFixed(4)}" stroke-linejoin="round"/>`);
+          layers.push(`<path transform="translate(${px.toFixed(1)},${py.toFixed(1)}) rotate(${deg.toFixed(1)}) scale(${L})" d="${VIEW}" fill="${look.viewPen}" stroke="${look.viewPen}" stroke-width="${(DRAWN_EDGE / L).toFixed(4)}" stroke-linejoin="round"/>`);
         } else {
           const end = (a: number): string => `${(px + L * Math.sin(a)).toFixed(1)},${(py - L * Math.cos(a)).toFixed(1)}`;
           const eyeS = L * 0.2, ex = px + ux * L * 0.7, ey = py + uy * L * 0.7;
@@ -684,7 +698,14 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
   // (2) Terrain: contour lines with elevation tags (RL m AHD) along them.
   if (look.contours && sb.contours.length) {
     const d = sb.contours.map((c) => pathFromRings([c.coords as any], proj, false)).join('');
-    layers.push(`<path d="${d}" fill="none" stroke="${look.contourInk}" stroke-width="0.6" opacity="0.9"/>`);
+    // Where the look asks, the lines all but vanish under the buildings.
+    const under = look.contourUnderBuildings;
+    const mask = under !== undefined && buildingDs.length
+      ? `<mask id="contourMask" maskUnits="userSpaceOnUse" x="-50" y="-50" width="${MAP_W + 100}" height="${MAP_H + 100}">` +
+        `<rect x="-50" y="-50" width="${MAP_W + 100}" height="${MAP_H + 100}" fill="#ffffff"/>` +
+        `<g fill="#000000" fill-opacity="${1 - under}" fill-rule="evenodd">${buildingDs.join('')}</g></mask>`
+      : '';
+    layers.push(`${mask}<path d="${d}" fill="none" stroke="${look.contourInk}" stroke-width="0.6" opacity="0.9"${mask ? ' mask="url(#contourMask)"' : ''}/>`);
     const tagged: Pt[] = [];
     for (const c of sb.contours) {
       const pts = c.coords.map(([lon, lat2]) => proj(lon, lat2)).filter(inMapWide);
@@ -1515,12 +1536,11 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
       ${sunBlock(0, 28, lines)}</g>`;
   };
   if (look.sun === 'crown' || drawnSun) {
-  // The office's suns: drawn, the peach sun in its fine outline; banded, the
-  // small rayed sun, solid, at the crescent's point; each with its name under it.
+  // The office's suns: drawn, the sun solid in the ink of its name; banded,
+  // the small rayed sun, solid, at the crescent's point; each with its name under it.
   const officeSun = ([x, y]: Pt, lines: string[]) => {
-    const m = look.marks!;
     const sun = look.sun === 'drawn'
-      ? `<path transform="scale(${DRAWN_SUN_R})" d="${SUN}" fill="${m.fill}" stroke="${m.edge}" stroke-width="${(DRAWN_EDGE / DRAWN_SUN_R).toFixed(4)}" stroke-linejoin="round"/>`
+      ? `<path transform="scale(${DRAWN_SUN_R})" d="${SUN}" fill="${SUN_INK}" stroke="${SUN_INK}" stroke-width="${(DRAWN_EDGE / DRAWN_SUN_R).toFixed(4)}" stroke-linejoin="round"/>`
       : `<path transform="scale(${RAY_SUN_R})" d="${RAY_SUN}" fill="${look.sunFill}"/>`;
     return `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})">${sun}${sunBlock(0, sunR + 8, lines)}</g>`;
   };
@@ -1599,12 +1619,11 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
     if (defs.length) layers.push(`<defs>${defs.join('')}</defs>`);
   }
   // The office's winds on the ring, each pointing in at the site, its name
-  // just outside the ring. Drawn, the peach wind in its outline; banded, three
+  // just outside the ring. Drawn, the wind solid in the ink of its name; banded, three
   // white arrows on the blue crescent (laid down above, before the suns).
   ringWinds.forEach((w) => {
-    const m = look.marks!;
     if (look.wind === 'drawn') {
-      layers.push(`<path transform="translate(${w.at[0].toFixed(1)},${w.at[1].toFixed(1)}) rotate(${w.deg.toFixed(1)}) scale(${DRAWN_WIND_HALF})" d="${WIND}" fill="${m.fill}" stroke="${m.edge}" stroke-width="${(DRAWN_EDGE / DRAWN_WIND_HALF).toFixed(4)}" stroke-linejoin="round"/>`);
+      layers.push(`<path transform="translate(${w.at[0].toFixed(1)},${w.at[1].toFixed(1)}) rotate(${w.deg.toFixed(1)}) scale(${DRAWN_WIND_HALF})" d="${WIND}" fill="${INK}" stroke="${INK}" stroke-width="${(DRAWN_EDGE / DRAWN_WIND_HALF).toFixed(4)}" stroke-linejoin="round"/>`);
     } else {
       const a = w.az + view.rotationDeg;
       for (const off of [-WIND_BAND_SPAN * 0.42, 0, WIND_BAND_SPAN * 0.42]) {
@@ -1675,7 +1694,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
       ['number', storeyLabels ? 'storeys' : '', heightLabels ? 'HOB' : ''].filter(Boolean).join(', ') +
         (storeyLabels ? (sb.buildings?.source === 'overture' ? '; storeys from Overture' : '; storeys from OSM') : ''));
   } else
-  row(`<g><rect x="${SWATCH_X + SWATCH_W / 2 - 5}" y="0" width="10" height="6.5" fill="${whiteBuildings ? '#ffffff' : look.buildings === 'colour' ? '#c2c2bc' : '#8a8a8a'}"${whiteBuildings ? ` stroke="${tpl().road}" stroke-width="0.2"` : ''}/><text x="${SWATCH_X + SWATCH_W / 2}" y="2.8" text-anchor="middle" font-size="2.6" font-weight="700" fill="${look.neighbourInk ?? '#ffffff'}">26</text>${storeyLabels ? `<text x="${SWATCH_X + SWATCH_W / 2}" y="5.8" text-anchor="middle" font-size="2.6" font-weight="700" fill="${look.neighbourInk ?? '#ffffff'}" opacity="0.8">3ST</text>` : ''}</g>`,
+  row(`<g>${whiteBuildings && look.buildingHatch ? `${buildingHatch('lbldHatch', tpl().road)}<rect x="${SWATCH_X + SWATCH_W / 2 - 5}" y="0" width="10" height="6.5" fill="#ffffff"/>` : ''}<rect x="${SWATCH_X + SWATCH_W / 2 - 5}" y="0" width="10" height="6.5" fill="${whiteBuildings ? (look.buildingHatch ? 'url(#lbldHatch)' : '#ffffff') : look.buildings === 'colour' ? '#c2c2bc' : '#8a8a8a'}"${whiteBuildings ? ` stroke="${tpl().road}" stroke-width="0.2"` : ''}/><text x="${SWATCH_X + SWATCH_W / 2}" y="2.8" text-anchor="middle" font-size="2.6" font-weight="700" fill="${look.neighbourInk ?? '#ffffff'}">26</text>${storeyLabels ? `<text x="${SWATCH_X + SWATCH_W / 2}" y="5.8" text-anchor="middle" font-size="2.6" font-weight="700" fill="${look.neighbourInk ?? '#ffffff'}" opacity="0.8">3ST</text>` : ''}</g>`,
     storeyLabels ? 'NEIGHBOUR: NUMBER, STOREYS' : 'NEIGHBOUR: STREET NUMBER',
     storeyLabels ? (sb.buildings?.source === 'overture' ? 'storeys from Overture Maps, OSM levels where it has none' : 'storeys from OpenStreetMap building levels') : undefined);
   // The zones, in the legend's category order, with the context sheet's swatch.
@@ -1762,7 +1781,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
   if ((sb.views ?? []).some((v) => v.cone) && look.views === 'circle') {
     row(`<path d="M${SWATCH_X},1.2h${SWATCH_W}v4h${-SWATCH_W}Z" fill="#ffffff" stroke="${look.viewPen}" stroke-width="0.3"/>`, 'POTENTIAL VIEW', `named around the circle; terrain only, from ${Math.round(sb.eyeAboveM ?? 8)} m up`);
   } else if ((sb.views ?? []).some((v) => v.cone) && look.views === 'drawn') {
-    row(`<path transform="translate(${SWATCH_X + 7},3.2) scale(6.4)" d="${VIEW}" fill="${look.marks!.fill}" stroke="${look.marks!.edge}" stroke-width="${(0.25 / 6.4).toFixed(4)}" stroke-linejoin="round"/>`, 'POTENTIAL VIEW', `terrain only, from ${Math.round(sb.eyeAboveM ?? 8)} m up; no buildings`);
+    row(`<path transform="translate(${SWATCH_X + 7},3.2) scale(6.4)" d="${VIEW}" fill="${look.viewPen}" stroke="${look.viewPen}" stroke-width="${(0.25 / 6.4).toFixed(4)}" stroke-linejoin="round"/>`, 'POTENTIAL VIEW', `terrain only, from ${Math.round(sb.eyeAboveM ?? 8)} m up; no buildings`);
   } else if ((sb.views ?? []).some((v) => v.cone) && look.views === 'band') {
     row(`<path d="M${SWATCH_X + 5},3.2 L${SWATCH_X + 16},0.2 L${SWATCH_X + 16},6.2 Z" fill="${look.marks!.view}" fill-opacity="${BAND_VIEW_OPACITY}"/>` +
       `<path transform="translate(${SWATCH_X + 12.6},3.2) rotate(90) scale(1.9)" d="${EYE}" fill="#ffffff"/>`, 'POTENTIAL VIEW', `terrain only, from ${Math.round(sb.eyeAboveM ?? 8)} m up; no buildings`);
@@ -1795,7 +1814,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
       row(textureSvg('lwind', swD, 'lines', look.windPen, { x: SWATCH_X, y: 0, w: SWATCH_W, h: 6.5 }, 1) +
         `<path d="${swD}" fill="none" stroke="${look.windPen}" stroke-width="0.3"/>`, 'PREVAILING WINDS', 'named around the circle, hatched where they blow from');
     } else if (look.wind === 'drawn') {
-      row(`<path transform="translate(${mid},3.2) scale(4.6)" d="${WIND}" fill="${look.marks!.fill}" stroke="${look.marks!.edge}" stroke-width="${(0.25 / 4.6).toFixed(3)}"/>`, 'PREVAILING WINDS', 'on the ring, dashed blue where the sun never goes');
+      row(`<path transform="translate(${mid},3.2) scale(4.6)" d="${WIND}" fill="${look.climateInk}" stroke="${look.climateInk}" stroke-width="${(0.25 / 4.6).toFixed(3)}"/>`, 'PREVAILING WINDS', 'on the ring, dashed blue where the sun never goes');
     } else if (look.wind === 'band') {
       row(`<path d="M${SWATCH_X},0 Q${mid},2.6 ${SWATCH_X + SWATCH_W},0 L${SWATCH_X + SWATCH_W},4.6 Q${mid},7.2 ${SWATCH_X},4.6 Z" fill="${look.marks!.windBand}" fill-opacity="${WIND_BAND_OPACITY}"/>` +
         `<path transform="translate(${mid},3.6) rotate(90) scale(2.2)" d="${ARROW}" fill="#ffffff"/>`, 'PREVAILING WINDS', 'over the quarter each blows from');
@@ -1808,7 +1827,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
         'SUN PATH, SUMMER AND WINTER', 'solstice rise and set; summer solid, winter dashed');
     else if (look.sun === 'drawn')
       row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${look.sunPen}" stroke-width="0.9" stroke-dasharray="3,1.6"/>` +
-        `<path transform="translate(${mid},3.2) scale(3.2)" d="${SUN}" fill="${look.marks!.fill}" stroke="${look.marks!.edge}" stroke-width="${(0.25 / 3.2).toFixed(3)}"/>`,
+        `<path transform="translate(${mid},3.2) scale(3.2)" d="${SUN}" fill="${look.sunInk}" stroke="${look.sunInk}" stroke-width="${(0.25 / 3.2).toFixed(3)}"/>`,
         'SUN PATH', 'summer dashed, winter dotted; sunrise and sunset');
     else if (look.sun === 'band')
       row(`<defs><linearGradient id="lsunBand" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="${look.marks!.sunBand[0]}"/><stop offset="0.5" stop-color="${look.marks!.sunBand[1]}"/><stop offset="1" stop-color="${look.marks!.sunBand[0]}"/></linearGradient></defs>` +
