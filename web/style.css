@@ -116,11 +116,11 @@ a { color: inherit; }
 .try {
   display: block; width: 100%;
   font: inherit; letter-spacing: .08em; text-transform: uppercase;
-  color: var(--ink); background: transparent;
+  color: var(--on-hi); background: var(--hi);
   border: 1px solid var(--line); padding: .6rem 1rem;
   cursor: pointer; text-align: center;
 }
-.try:hover { background: var(--hi); }
+.try:hover { filter: brightness(.95); }
 
 /* ---- the tool ------------------------------------------------------------ */
 /* Signed in (or past TRY): the options down the left like a sheet's key, the
