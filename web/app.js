@@ -60,7 +60,7 @@ const NORTH = [
 const EXAMPLE_ADDRESS = '150 George Street, Parramatta';
 
 const $ = (id) => document.getElementById(id);
-const f = $('f'), loginForm = $('login');
+const f = $('f'), loginForm = $('login'), welcome = $('welcome');
 const out = $('out'), queueEl = $('queue');
 const linksEl = $('links'), errEl = $('error'), go = $('go'), noteEl = $('note');
 const progressEl = $('progress'), fillEl = $('progressFill');
@@ -122,6 +122,9 @@ const GUEST = { pdf: false, cleanPdf: false, openData: false };
 /** Take what the server told us about this session. */
 function applySession(j) {
   session = j;
+  // Signed in, the header band turns yellow: the page says whose it is
+  // before a word is read.
+  $('band').classList.toggle('hi', Boolean(j.authed));
   // An account that has not clicked its verification link is told generating
   // waits on it, with the resend beside the words. Just back from the link
   // (?verified=1), the banner's place says so instead.
@@ -211,7 +214,12 @@ function caption(items, value) {
 const PAGE_MS = 1500;
 let deck = null;   // { sheet, page, last, timer, held }
 
-const pageSrc = (n) => '/samples/result-' + (deck ? deck.sheet : 'slides') + '-' + n + '.jpg';
+// The samples once went out with a day's max-age, and a browser holding one of
+// those copies would not ask again until the day was out. The query names them
+// afresh, so those copies are never asked for; the server now revalidates every
+// picture by its ETag, so this never needs bumping for a redraw.
+const SAMPLE_Q = '?r=2';
+const pageSrc = (n) => '/samples/result-' + (deck ? deck.sheet : 'slides') + '-' + n + '.jpg' + SAMPLE_Q;
 const PAGED = { slides: 'Site report', yield: 'Planning yield' };
 
 function stopDeck() {
@@ -269,7 +277,7 @@ function renderResult() {
   const parts = isMap()
     ? [state.sheet, state.scale, state.rotate, state.template]
     : [state.sheet];
-  const src = '/samples/result-' + parts.join('-') + '.jpg';
+  const src = '/samples/result-' + parts.join('-') + '.jpg' + SAMPLE_Q;
   let text = caption(SHEETS, state.sheet);
   if (isMap()) text += ' ' + caption(SCALES[state.sheet], state.scale) + ', ' + caption(NORTH, state.rotate);
   const style = caption(STYLES[state.sheet], state.template);
@@ -310,13 +318,99 @@ resultImg.addEventListener('error', () => {
   resultMissing.hidden = false;
 });
 
-/* The expected result sits between the options and the progress box, so on a
-   laptop screen that box opens below the fold and GENERATE looks as if it did
-   nothing. Bring it, and the row its links appear in, into view. */
+/* On a phone the progress box opens below the options, so GENERATE can look
+   as if it did nothing. Bring the box into view. */
 function revealOutput() {
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  document.querySelector('.actions').scrollIntoView({ block: 'nearest', behavior: reduce ? 'auto' : 'smooth' });
+  out.scrollIntoView({ block: 'nearest', behavior: reduce ? 'auto' : 'smooth' });
 }
+
+// ---- the welcome page ------------------------------------------------------
+
+/* What a visitor without a session sees first: two panels blinking, gif-like,
+   through the app's own sheets (real samples, the same pictures the result
+   frame shows) and the illustrations, mixed on both sides. Each frame is
+   fetched before it is shown and swapped in one cut; the second panel runs
+   half a beat behind the first. Held still when motion is asked not to. */
+const BIRDS = '/birds.png';
+const sample = (name) => '/samples/' + name + SAMPLE_Q;
+const HERO_PANELS = [
+  { img: 'heroA', at: 0, frames: [
+    sample('result-context-3000-auto-flamingo.jpg'),
+    BIRDS,
+    sample('result-slides-2.jpg'),
+    sample('result-site-250-north-heron.jpg'),
+    BIRDS,
+    sample('result-yield-2.jpg'),
+    sample('result-context-2000-north-kingfisher.jpg'),
+    sample('result-slides-6.jpg'),
+  ] },
+  { img: 'heroB', at: 0, frames: [
+    BIRDS,
+    sample('result-site-0-auto-flamingo.jpg'),
+    sample('result-context-4000-auto-canary.jpg'),
+    BIRDS,
+    sample('result-slides-9.jpg'),
+    sample('result-context-5000-auto-heron.jpg'),
+    BIRDS,
+    sample('result-yield-3.jpg'),
+  ] },
+];
+const HERO_MS = 2200;
+let heroOn = false;
+
+function heroTurn(panel) {
+  const el = $(panel.img);
+  const next = (panel.at + 1) % panel.frames.length;
+  // The next frame is fetched before it is shown, so the cut never flashes white.
+  const pre = new Image();
+  pre.onload = () => {
+    if (!heroOn) return;
+    el.src = panel.frames[next];
+    panel.at = next;
+    panel.timer = setTimeout(() => heroTurn(panel), HERO_MS);
+  };
+  pre.onerror = () => {
+    if (!heroOn) return;
+    panel.at = next;                      // a missing frame is skipped over
+    panel.timer = setTimeout(() => heroTurn(panel), HERO_MS);
+  };
+  pre.src = panel.frames[next];
+}
+
+function startHero() {
+  HERO_PANELS.forEach((p) => {
+    const el = $(p.img);
+    if (!el.getAttribute('src')) el.src = p.frames[0];
+  });
+  if (heroOn || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  heroOn = true;
+  // Out of step by half a beat, so the two sides blink in turn.
+  HERO_PANELS.forEach((p, i) => {
+    p.timer = setTimeout(() => heroTurn(p), HERO_MS + i * (HERO_MS / 2));
+  });
+}
+
+function stopHero() {
+  heroOn = false;
+  HERO_PANELS.forEach((p) => clearTimeout(p.timer));
+}
+
+function showWelcome() {
+  loginForm.hidden = true;
+  f.hidden = true;
+  welcome.hidden = false;
+  startHero();
+}
+
+/** TRY: into the tool, account or none — drawing never asks for one. */
+$('tryBtn').addEventListener('click', () => {
+  welcome.hidden = true;
+  stopHero();
+  f.hidden = false;
+  syncGenHuman();
+  addrInput.focus();
+});
 
 // ---- http helpers --------------------------------------------------------
 
@@ -447,10 +541,10 @@ let confirmToken = /^[0-9a-f]{64}$/.test(boot.get('confirm') || '') ? boot.get('
 
 // ---- the human check -----------------------------------------------------
 // Cloudflare Turnstile, when the server has a key for it (/api/me says which).
-// Asked at sign-up and for a reset email always, and at sign-in once the
-// server says a few wrong passwords have gone before. Its script is fetched
-// only when the widget is first needed, so a visitor who never signs in never
-// loads it.
+// Asked at sign-up and for a reset email always, at sign-in once the server
+// says a few wrong passwords have gone before, and before GENERATE for a
+// visitor without a session. Its script is fetched only when a widget is first
+// needed, so a signed-in visitor who never opens the form never loads it.
 let humanToken = '', humanWidget = null, humanScript = null, signinNeedsHuman = false;
 const humanKey = () => (session && session.humanCheck) || null;
 
@@ -511,6 +605,44 @@ function resetHuman() {
   humanToken = '';
   if (humanWidget !== null && window.turnstile) window.turnstile.reset(humanWidget);
 }
+
+// The same check before GENERATE, a widget of its own: the account form and
+// the tool are never on the page together, and a token is good for one form.
+// Only without a session — an account passed the check at sign-up.
+let genToken = '', genWidget = null;
+
+async function syncGenHuman() {
+  const wanted = Boolean(humanKey()) && !(session && session.authed);
+  $('genHumanBar').hidden = !wanted;
+  if (!wanted || genWidget !== null) return;
+  try {
+    const ts = await loadTurnstile();
+    if (genWidget !== null) return;
+    genWidget = ts.render($('genHuman'), {
+      sitekey: humanKey(),
+      appearance: 'interaction-only',
+      'before-interactive-callback': () => { $('genHumanBar').classList.remove('quiet'); },
+      'after-interactive-callback': () => { $('genHumanBar').classList.add('quiet'); },
+      callback: (t) => { genToken = t; },
+      'expired-callback': () => { genToken = ''; },
+      'error-callback': () => { genToken = ''; },
+    });
+  } catch (err) {
+    fail(err.message + ' — reload the page and try again');
+  }
+}
+
+/** As humanReady, for GENERATE: wait out the silent check, not a click. */
+async function genReady() {
+  const bar = $('genHumanBar');
+  for (let i = 0; i < 40 && !bar.hidden && !genToken && bar.classList.contains('quiet'); i++)
+    await new Promise((r) => setTimeout(r, 250));
+}
+
+function resetGenHuman() {
+  genToken = '';
+  if (genWidget !== null && window.turnstile) window.turnstile.reset(genWidget);
+}
 // Back from the verification link: '1' verified, '0' expired or already used.
 const verifiedParam = boot.get('verified');
 if (verifiedParam !== null) history.replaceState(null, '', '/');
@@ -561,6 +693,8 @@ function note(text) {
 
 function showLogin() {
   f.hidden = true;
+  welcome.hidden = true;
+  stopHero();
   loginForm.hidden = false;
   renderAuth();
   $('authError').textContent = '';
@@ -581,8 +715,11 @@ function openAuth(mode, why) {
 
 function enter(j) {
   loginForm.hidden = true;
+  welcome.hidden = true;
+  stopHero();
   f.hidden = false;
   applySession(j);
+  syncGenHuman();
   addrInput.focus();
   // Carried over from the about page's search: the field takes the address as
   // if it had been typed, so the suggestions open on what was searched.
@@ -614,14 +751,18 @@ function enter(j) {
 $('skipAuth').addEventListener('click', () => {
   loginForm.hidden = true;
   f.hidden = false;
+  syncGenHuman();
   addrInput.focus();
 });
 
 // The emailed reset link outranks whatever session this browser holds: the
 // person following it came to set a password, not to be signed straight in.
-// Everyone else lands on the tool — the form opens only where it is wanted:
-// ?signup and ?signin (the pricing page's buttons), or back from the
-// verification link with no session to land in.
+// Signed in, the tool takes the page; a visitor lands on the welcome, and TRY
+// opens the same tool — unless they arrived wanting it: an ?address= from the
+// about page's search, or a ?job= link back to a drawing. The form opens only
+// where it is wanted: ?signup and ?signin (the pricing page's buttons), or
+// back from the verification link with no session to land in.
+const wantsTool = Boolean(bootAddress) || new URLSearchParams(location.search).has('job');
 if (resetToken || confirmToken) showLogin();
 else fetch('/api/me').then(async (r) => {
   const j = await readJson(r);
@@ -629,8 +770,16 @@ else fetch('/api/me').then(async (r) => {
     applySession(j);
     return showLogin();
   }
+  if (!j.authed && !wantsTool) {
+    applySession(j);
+    return showWelcome();
+  }
   enter(j);
-}).catch(() => enter({ authed: false, grants: GUEST }));
+}).catch(() => {
+  applySession({ authed: false, grants: GUEST });
+  if (wantsTool) enter({ authed: false, grants: GUEST });
+  else showWelcome();
+});
 
 loginForm.addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -745,10 +894,14 @@ async function submit(fresh) {
   go.disabled = true;
   revealOutput();
   try {
+    await genReady();
+    const human = genToken;
+    resetGenHuman();
     const r = await fetch('/api/jobs', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ address, scale: state.scale, rotate: state.rotate,
-                             sheet: state.sheet, template: state.template, fresh: fresh === true }),
+                             sheet: state.sheet, template: state.template, fresh: fresh === true,
+                             human }),
     });
     const j = await readJson(r);
     if (!r.ok) throw new Error(httpMessage(r, j));

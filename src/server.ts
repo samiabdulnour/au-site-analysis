@@ -351,6 +351,14 @@ const MAX_BATCH = 12;          // one hour's worth of the per-IP job budget
 // thirty sheets from one address against a server of its own; the public site
 // leaves it at the default.
 const JOBS_PER_HOUR = Math.max(1, Number(process.env.JOBS_PER_HOUR) || 12);
+// New sheets drawn for visitors without a session, all addresses together.
+// The per-IP budget holds one visitor down; a bot spread over many addresses
+// meets this instead, and what it cannot take is the queue's time for
+// everyone signed in. A sheet takes one to three minutes, so the default is
+// about half an hour of one worker's hour. 0 leaves visitors without a session
+// only the sheets already drawn.
+const GUEST_JOBS_PER_HOUR = Math.max(0, Math.floor(Number(process.env.GUEST_JOBS_PER_HOUR ?? 30) || 0));
+const GUEST_BUSY = 'Drawing without an account is at its limit this hour — sign up free to carry on.';
 
 interface BatchEntry {
   /** As submitted. Kept here so a row still reads after its job is swept. */
@@ -873,6 +881,7 @@ const server = createServer(async (req, res) => {
     '/admin': ['admin.html', 'text/html; charset=utf-8'],
     '/status.js': ['status.js', 'text/javascript; charset=utf-8'],
     '/style.css': ['style.css', 'text/css; charset=utf-8'],
+    '/birds.png': ['birds.png', 'image/png'],
     '/app.js': ['app.js', 'text/javascript; charset=utf-8'],
     '/admin.js': ['admin.js', 'text/javascript; charset=utf-8'],
   };
@@ -948,7 +957,10 @@ Canonical: ${base}/.well-known/security.txt
   }
 
   // Sample thumbnails for the landing page. Whitelisted names only — never
-  // join user input onto a filesystem path.
+  // join user input onto a filesystem path. Their names stay the same when the
+  // samples are redrawn, so a browser asks again each time (no-cache) and the
+  // ETag, the picture's hash, answers 304 until the picture itself changes;
+  // a day's max-age kept showing the old drawing for a day after a redraw.
   const sampleMatch = url.pathname.match(/^\/samples\/([a-z0-9_-]+\.(?:jpg|png|svg))$/);
   if (req.method === 'GET' && sampleMatch) {
     const file = join(ROOT, 'web', 'samples', sampleMatch[1]);
@@ -956,7 +968,10 @@ Canonical: ${base}/.well-known/security.txt
       if (err) { res.writeHead(404); res.end('not found'); return; }
       const ext = sampleMatch[1].split('.').pop()!;
       const type = ext === 'svg' ? 'image/svg+xml' : ext === 'png' ? 'image/png' : 'image/jpeg';
-      res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'public, max-age=86400' });
+      const etag = `"${createHash('sha256').update(data).digest('hex').slice(0, 16)}"`;
+      const headers = { 'Content-Type': type, 'Cache-Control': 'public, no-cache', ETag: etag };
+      if (req.headers['if-none-match'] === etag) { res.writeHead(304, headers); res.end(); return; }
+      res.writeHead(200, headers);
       res.end(data);
     });
     return;
@@ -1416,11 +1431,16 @@ Canonical: ${base}/.well-known/security.txt
   // Generating is open to accounts verified or not, and to nobody in
   // particular: with no wall, a gate here would only mean signing out to get
   // past it. Verification keeps guarding what it can prove — the mailbox the
-  // password reset goes to.
+  // password reset goes to. Nobody in particular is asked the human check
+  // instead, and shares GUEST_JOBS_PER_HOUR with everyone else without a
+  // session: a new sheet is the one request a bot without an account can make
+  // that costs the public data services anything. A session already passed
+  // the check, at sign-up, or holds the office's code.
   if (req.method === 'POST' && url.pathname === '/api/jobs') {
     const body = await readBody(req);
+    const guest = !viewerOf(req).signedIn;
     try {
-      const { address, scale, rotate, sheet, fresh, template } = JSON.parse(body || '{}');
+      const { address, scale, rotate, sheet, fresh, template, human } = JSON.parse(body || '{}');
       const addr = String(address ?? '').trim();
       if (addr.length < 8 || addr.length > 120) return json(res, 400, { error: 'Enter a full NSW street address.' });
       const kind = sheetKind(sheet);
@@ -1458,9 +1478,16 @@ Canonical: ${base}/.well-known/security.txt
         }
       }
 
+      if (guest && !(await isHuman(human, ip)))
+        return json(res, 403, { error: 'Confirm you are human, then press GENERATE again.', human: true });
       if (remaining(`jobs:${ip}`, JOBS_PER_HOUR, 3600_000) < 1)
         return json(res, 429, { error: 'Rate limit: try again later.' });
+      if (guest && remaining('jobs:guests', GUEST_JOBS_PER_HOUR, 3600_000) < 1) {
+        console.log(`bots: guest sheets at their ${GUEST_JOBS_PER_HOUR} an hour, ${ip} turned away`);
+        return json(res, 429, { error: GUEST_BUSY });
+      }
       spend(`jobs:${ip}`, 3600_000, 1);
+      if (guest) spend('jobs:guests', 3600_000, 1);
       const job: Job = {
         id: randomUUID(), ...want, key,
         status: 'queued', log: [], createdAt: Date.now(),
@@ -1477,6 +1504,7 @@ Canonical: ${base}/.well-known/security.txt
 
   if (req.method === 'POST' && url.pathname === '/api/batches') {
     const body = await readBody(req);
+    const guest = !viewerOf(req).signedIn;
     try {
       const b = JSON.parse(body || '{}');
       const raw: unknown[] = Array.isArray(b.addresses) ? b.addresses : [];
@@ -1509,6 +1537,13 @@ Canonical: ${base}/.well-known/security.txt
       // loop below finds the first already queued when it reaches the second —
       // so counting rows would charge the hour's budget twice for one sheet.
       const toRun = new Set(plan.filter((p) => !p.hit).map((p) => p.key)).size;
+      // As for one sheet: asked only when the batch draws something new.
+      if (guest && toRun > 0 && !(await isHuman(b.human, ip)))
+        return json(res, 403, { error: 'Confirm you are human, then send the batch again.', human: true });
+      if (guest && toRun > remaining('jobs:guests', GUEST_JOBS_PER_HOUR, 3600_000)) {
+        console.log(`bots: guest sheets at their ${GUEST_JOBS_PER_HOUR} an hour, a batch from ${ip} turned away`);
+        return json(res, 429, { error: GUEST_BUSY });
+      }
       const left = remaining(`jobs:${ip}`, JOBS_PER_HOUR, 3600_000);
       if (toRun > left) {
         // All or nothing: half a batch accepted is worse than none, because
@@ -1520,6 +1555,7 @@ Canonical: ${base}/.well-known/security.txt
         });
       }
       spend(`jobs:${ip}`, 3600_000, toRun);
+      if (guest) spend('jobs:guests', 3600_000, toRun);
 
       const batch: Batch = {
         id: randomUUID(), createdAt: Date.now(), sheet: kind, entries: [],

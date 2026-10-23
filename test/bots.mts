@@ -8,8 +8,10 @@
  * filled-in honeypot is answered like anyone with nothing sent; sign-in asks
  * nothing until three wrong passwords at one account or five from one
  * address, then wants a good token even with the right password, and forgets
- * once someone gets in; the codes are guarded the same way; and Cloudflare not
- * answering refuses rather than lets through.
+ * once someone gets in; the codes are guarded the same way; a new sheet or
+ * batch from a visitor without a session needs a good token, and then meets
+ * the ceiling on guests' sheets (0 here, so nothing is ever queued); and
+ * Cloudflare not answering refuses rather than lets through.
  *
  *   npx tsx test/bots.mts
  */
@@ -79,6 +81,7 @@ const server = spawn(process.execPath, ['--import', 'tsx', join(ROOT, 'src', 'se
     RESEND_API_KEY: 're_for_tests', EMAIL_FROM: 'Site Analyst <test@example.com>',
     EMAIL_API_URL: `http://127.0.0.1:${MAIL_PORT}/emails`, SMTP_HOST: '',
     STRIPE_SECRET_KEY: '', STRIPE_PRICE_ID: '', STRIPE_WEBHOOK_SECRET: '',
+    GUEST_JOBS_PER_HOUR: '0',
   },
   stdio: ['ignore', 'pipe', 'pipe'],
 });
@@ -185,6 +188,21 @@ try {
   check('three wrong codes, and the right one needs the check',
     (await answer(await office('/api/login', { code: 'office-code' }))).human === true);
   check('…and gets in with it', (await office('/api/login', { code: 'office-code', human: GOOD })).status === 200);
+
+  // ---- drawing without a session ------------------------------------------------------------
+  const sheet = { address: '26-30 Campsie St, Campsie NSW 2194', sheet: 'context' };
+  const guestNone = await answer(await browser()('/api/jobs', sheet));
+  check('a new sheet without a session and without the check is refused, and says to do it',
+    guestNone.status === 403 && guestNone.human === true, JSON.stringify(guestNone));
+  check('…as is a forged token', (await browser()('/api/jobs', { ...sheet, human: 'forged' })).status === 403);
+  const guestOk = await answer(await browser()('/api/jobs', { ...sheet, human: GOOD }));
+  check('a good token passes the check, and meets the ceiling on guests\' sheets',
+    guestOk.status === 429 && /sign up free/.test(guestOk.error ?? ''), JSON.stringify(guestOk));
+  const batch = { addresses: [sheet.address, '1 Bay Street, Botany NSW 2019'], sheet: 'context' };
+  check('a batch without a session needs the check too',
+    (await answer(await browser()('/api/batches', batch))).human === true);
+  check('…and with it meets the same ceiling',
+    (await browser()('/api/batches', { ...batch, human: GOOD })).status === 429);
 
   // ---- Cloudflare not answering ----------------------------------------------------------------
   cfDown = true;

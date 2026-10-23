@@ -16,7 +16,8 @@
 //                      mix takes them in turn)
 //   --addresses FILE   one address per line instead of the built-in thirty
 //   --base URL         test a server that is already running instead; its
-//                      per-IP budget (JOBS_PER_HOUR) must allow the sheets, and
+//                      budgets (JOBS_PER_HOUR, GUEST_JOBS_PER_HOUR) must allow
+//                      the sheets, its human check must be off, and
 //                      CPU and memory are only sampled if it is on this machine
 //   --port N           port for the server it boots (default 3190)
 //
@@ -113,7 +114,7 @@ async function bootServer() {
       WEB_OUT_DIR: join(tmp, 'web'), ACCOUNTS_DIR: join(tmp, 'accounts'),
       // A budget for the test, not the public one; and no human check, email
       // or billing, none of which a load test touches.
-      JOBS_PER_HOUR: '100000',
+      JOBS_PER_HOUR: '100000', GUEST_JOBS_PER_HOUR: '100000',
       TURNSTILE_SITE_KEY: '', TURNSTILE_SECRET_KEY: '',
       STRIPE_SECRET_KEY: '', RESEND_API_KEY: '', SMTP_HOST: '',
     },

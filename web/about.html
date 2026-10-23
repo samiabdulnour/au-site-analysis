@@ -31,32 +31,43 @@
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
+
+<header class="band">
+  <div class="page masthead">
+    <h1 class="name"><a href="/">SITE ANALYST</a></h1>
+    <!-- The page the visitor is on carries the accent underline. -->
+    <nav class="nav">
+      <a class="btn active" href="/about">HOW IT WORKS</a>
+      <a class="btn" href="/pricing">PLANS</a>
+    </nav>
+  </div>
+</header>
+
 <div class="page">
 
-  <div class="masthead">
-    <h1 class="name"><a href="/">SITE ANALYST</a></h1>
-    <!-- The way to a drawing from here is the address itself: a plain GET to
-         the landing page, which picks ?address= up, suggests and generates.
-         Empty, it is simply the way back to the tool. -->
-    <form class="bar search" action="/" method="get">
-      <input name="address" type="text" placeholder="search a NSW address"
-             aria-label="NSW street address"
-             autocomplete="off" autocapitalize="off" spellcheck="false">
-      <button class="go" type="submit">SEARCH</button>
-    </form>
+  <!-- The intro beside the illustrations' panel, like the welcome page; the
+       two tables abreast below it, two sheets to a spread. -->
+  <div class="splash">
+    <div>
+      <p class="lead">Give it a NSW street address and it draws the site-analysis sheets
+      an architect prepares for a development application — the lot on its cadastre and
+      aerial, zoning and height controls, heritage, transport, walking catchments —
+      entirely from government open data. Anyone can generate them and see the result; a
+      free account downloads the print-ready A1 PDF, watermarked, and an unlocked address
+      or the <a href="/pricing">subscription</a> gives it clean, with the same geometry as
+      CAD.</p>
+
+      <p class="lead">No model is involved in the drawing. Every line is placed by code from a
+      government dataset, so the same address always produces the same sheet.</p>
+    </div>
+    <figure class="art">
+      <img src="/birds.png" width="576" height="398"
+           alt="Engraved line drawings of the birds the drawing styles are named after — a flamingo, a heron, kingfishers and canaries — in magenta on yellow.">
+    </figure>
   </div>
 
-  <p class="lead">Give it a NSW street address and it draws the site-analysis sheets
-  an architect prepares for a development application — the lot on its cadastre and
-  aerial, zoning and height controls, heritage, transport, walking catchments —
-  entirely from government open data. Anyone can generate them and see the result; a
-  free account downloads the print-ready A1 PDF, watermarked, and an unlocked address
-  or the <a href="/pricing">subscription</a> gives it clean, with the same geometry as
-  CAD.</p>
-
-  <p class="lead">No model is involved in the drawing. Every line is placed by code from a
-  government dataset, so the same address always produces the same sheet.</p>
-
+  <div class="twocol">
+  <section>
   <h2>How it works</h2>
   <div class="deftable">
     <div class="row"><div class="k">geocode</div>
@@ -120,6 +131,42 @@
       The author's narrative is left as placeholders.</div></div>
   </div>
 
+  <h2>What it does not do</h2>
+  <div class="deftable">
+    <div class="row"><div class="k">not a survey</div>
+      <div class="v">Boundaries come from the cadastre, a mapping approximation. Site areas
+      typically differ from the surveyed figure by a few per cent. Levels are read between
+      the mapped contours, 1 m apart where a council publishes them and 2 m elsewhere.</div></div>
+    <div class="row"><div class="k">not a s10.7</div>
+      <div class="v">The controls shown are the mapped LEP layers. A planning certificate
+      from council is the authoritative document.</div></div>
+    <div class="row"><div class="k">no DCP</div>
+      <div class="v">Council setbacks, landscaped area and parking rates are not published
+      as open data, so those rows are left blank to complete by hand.</div></div>
+    <div class="row"><div class="k">OSM varies</div>
+      <div class="v">Trees, driveways and parking are volunteered data and vary in
+      completeness between suburbs.</div></div>
+    <div class="row"><div class="k">tree sizes</div>
+      <div class="v">A canopy is drawn at its recorded size only where a council publishes
+      one. Elsewhere it is estimated from a tagged height or trunk, or a nominal 6 m
+      drawn dashed.</div></div>
+    <div class="row"><div class="k">parking bays</div>
+      <div class="v">Kerbside bays are set out at standard sizes along the kerb the
+      cadastre implies, where OpenStreetMap tags the street. The count is kerb length
+      over bay length, not a survey of the line marking.</div></div>
+    <div class="row"><div class="k">views</div>
+      <div class="v">A potential view is a sight line over the ground only, from just
+      under the height limit. Buildings and trees in the way are not open data, so
+      confirm on site. The deck's winter shadows are cast from footprints and recorded
+      heights only, not a model of the block; the sun positions are computed, not
+      measured.</div></div>
+    <div class="row"><div class="k">coverage</div>
+      <div class="v">New South Wales, Australia. Sydney basin addresses resolve fastest.</div></div>
+
+  </div>
+  </section>
+
+  <section>
   <h2>Data sources</h2>
   <div class="deftable">
     <div class="row"><div class="k">NSW Spatial</div>
@@ -220,48 +267,18 @@
     <div class="row"><div class="k">Valhalla</div>
       <div class="v">5 and 10 minute walking catchments</div></div>
   </div>
-
-  <h2>What it does not do</h2>
-  <div class="deftable">
-    <div class="row"><div class="k">not a survey</div>
-      <div class="v">Boundaries come from the cadastre, a mapping approximation. Site areas
-      typically differ from the surveyed figure by a few per cent. Levels are read between
-      the mapped contours, 1 m apart where a council publishes them and 2 m elsewhere.</div></div>
-    <div class="row"><div class="k">not a s10.7</div>
-      <div class="v">The controls shown are the mapped LEP layers. A planning certificate
-      from council is the authoritative document.</div></div>
-    <div class="row"><div class="k">no DCP</div>
-      <div class="v">Council setbacks, landscaped area and parking rates are not published
-      as open data, so those rows are left blank to complete by hand.</div></div>
-    <div class="row"><div class="k">OSM varies</div>
-      <div class="v">Trees, driveways and parking are volunteered data and vary in
-      completeness between suburbs.</div></div>
-    <div class="row"><div class="k">tree sizes</div>
-      <div class="v">A canopy is drawn at its recorded size only where a council publishes
-      one. Elsewhere it is estimated from a tagged height or trunk, or a nominal 6 m
-      drawn dashed.</div></div>
-    <div class="row"><div class="k">parking bays</div>
-      <div class="v">Kerbside bays are set out at standard sizes along the kerb the
-      cadastre implies, where OpenStreetMap tags the street. The count is kerb length
-      over bay length, not a survey of the line marking.</div></div>
-    <div class="row"><div class="k">views</div>
-      <div class="v">A potential view is a sight line over the ground only, from just
-      under the height limit. Buildings and trees in the way are not open data, so
-      confirm on site. The deck's winter shadows are cast from footprints and recorded
-      heights only, not a model of the block; the sun positions are computed, not
-      measured.</div></div>
-    <div class="row"><div class="k">coverage</div>
-      <div class="v">New South Wales, Australia. Sydney basin addresses resolve fastest.</div></div>
-
+  </section>
   </div>
 
   <footer>
-    Confirm boundaries and levels against a registered survey, and planning controls
-    against a s10.7 certificate, before issuing anything for approval.<br>
-    The drawings are made from open public data as it is available, with no
-    guarantee that it is complete, current or correct. By using Site Analyst
-    you accept its <a href="/terms">terms of use</a>.<br>
-    © 2026 Sami Abdulnour and Zofia Kosova. All rights reserved.
+    <div class="foot2">
+      <p>Confirm boundaries and levels against a registered survey, and planning
+      controls against a s10.7 certificate, before issuing anything for approval.</p>
+      <p>The drawings are made from open public data as it is available, with no
+      guarantee that it is complete, current or correct. By using Site Analyst
+      you accept its <a href="/terms">terms of use</a>.</p>
+    </div>
+    <p>© 2026 Sami Abdulnour and Zofia Kosova. All rights reserved.</p>
   </footer>
 
 </div>

@@ -197,8 +197,9 @@ unlock or the pricing page (buying starts with one too), and from the emailed
 verification and reset links. Anyone can make one with an email and a
 password (`SIGN UP`, with the terms agreed to), and starts on the free side,
 with watermarked PDFs. What holds the open side
-down is what always did: the per-IP budgets (12 sheets an hour, and the
-sign-in and sign-up limiters) and the bounded worker pool. Accounts live in `out/accounts/accounts.json`
+down is the per-IP budgets (12 sheets an hour, and the sign-in and sign-up
+limiters), the bounded worker pool, and for a visitor without a session the
+human check and a ceiling on guests' sheets (see *Bots* below). Accounts live in `out/accounts/accounts.json`
 on the host volume, beside the job index and written the same way, with scrypt
 password hashes; the key that signs session cookies is `SESSION_SECRET`, or,
 unset, one made once and kept in the same directory, so a deploy signs nobody
@@ -270,14 +271,20 @@ reset form says this server cannot email a link. Accounts from before
 verification existed count as verified — the feature arriving must not lock
 out everyone already signed up.
 
-**Bots.** Sign-up, the reset email and sign-in are what a bot fills in, so
-they carry three defences on top of the per-IP limits:
+**Bots.** Sign-up, the reset email and sign-in are what a bot fills in, and
+a new sheet is what a bot without an account asks for — the one request that
+costs the public data services anything — so they carry these defences on top
+of the per-IP limits:
 
 - **A human check**, [Cloudflare Turnstile](https://www.cloudflare.com/products/turnstile/)
   (`src/human.ts`), which asks most people nothing and the rest to tick a
-  box. It stands in front of every sign-up and reset email, and in front of
+  box. It stands in front of every sign-up and reset email, in front of
   sign-in after three wrong passwords at one account or five from one
-  address — never a lockout, which would let a stranger keep an owner out.
+  address — never a lockout, which would let a stranger keep an owner out —
+  and in front of every new sheet or batch from a visitor without a session,
+  with a widget of its own under the address bar. A sheet already drawn is
+  handed back without asking, and a session (an account, which passed the
+  check at sign-up, or a code) is never asked.
   Make a widget for the domain on the Turnstile page of a free Cloudflare
   account (the DNS stays where it is), then in `/etc/site-analyst.env`:
 
@@ -294,6 +301,13 @@ they carry three defences on top of the per-IP limits:
   answered like anyone, and nothing is made or sent.
 - **The email caps** above, so the forms cannot be turned on strangers'
   inboxes however many addresses a bot comes from.
+- **A ceiling on guests' sheets**: `GUEST_JOBS_PER_HOUR` (default 30) new
+  sheets an hour for every visitor without a session together, whichever
+  addresses they come from, so a bot spread over many addresses — or one that
+  pays to have the check solved — cannot take the queue from everyone signed
+  in. Past it, a visitor is told to sign up free to carry on. It holds with or
+  without Turnstile; `0` leaves guests only the sheets already drawn, a switch
+  for a bad hour.
 
 The per-IP limits read the address Caddy adds as the last `X-Forwarded-For`
 entry, not the first, which is whatever the visitor sent. They are held in
@@ -397,7 +411,8 @@ an ops view that is closed until someone deliberately opens it, rather than one
 that stays open on a credential nobody meant to repurpose.
 
 Authentication: drawing needs none — the site is open, and a visitor without
-a session sees each drawing on the page but downloads nothing. Signing in (an
+a session sees each drawing on the page but downloads nothing; such a visitor
+meets the human check and the guests' ceiling instead (*Bots* above). Signing in (an
 account, or `ACCESS_CODE` once) sets a 30-day session cookie and is what
 downloads, buying, clean PDFs and the office's grants hang off. Login attempts, sign-ups and job
 submissions are rate-limited per IP, and job outputs are deleted after 24h.

@@ -442,6 +442,8 @@ export interface SiteLook {
   buildingEdge: number;
   /** The buildings: an outline over the aerial's roofs, filled in their zone family's strong colour, or white with a hairline of the family's ink, as the context sheet's Flamingo draws them. */
   buildings: 'outline' | 'colour' | 'white';
+  /** White buildings finely hatched in their family's ink, so they read apart from the white roads. */
+  buildingHatch?: boolean;
   /** The cadastre's pen: a white line where unset, or this ink as a fine line, as the context sheet's faint lots. */
   lotInk?: string;
   /** The neighbours: number and storeys on the building, or number, storeys and height limit in black, written straight on the map. */
@@ -462,6 +464,8 @@ export interface SiteLook {
   contours: boolean;
   /** Their ink, and their levels'. */
   contourInk: string;
+  /** Where set, the contour lines' strength under the buildings (0 to 1), so the buildings read clean. */
+  contourUnderBuildings?: number;
   /** The street names' ink, plain along the road. */
   streetInk: string;
   /** The suns: an open jagged crown at each solstice's rise and set on its arc, a plain sun at each inside the climate circle, named, with north an arrow on the circle, the office's drawn sun (climateSymbols.ts) at each rise and set on dashed arcs, or its small rayed sun at the tips of a crescent band for each solstice. */
@@ -572,20 +576,23 @@ const KINGFISHER_LOOK: SiteLook = {
 
 // Flamingo: the same paper and plan in Flamingo's palette, drawn as its context
 // sheet draws them: the zones as its tints and textures, every building white
-// in a heavy outline of its family's ink so it stands clear of its ground, the
+// in a heavy outline of its family's ink so it stands clear of its ground, and
+// finely hatched in that ink so it stands clear of the white roads, the
+// contours all but gone where they cross it, the
 // cadastre the context sheet's fine grey, the site in its coral, the street
 // names and the neighbours' numbers in
-// its green. The climate in the office's drawn marks, each a pale peach shape
-// in a fine blue outline: a sun at each rise and set on the solstices' arcs,
-// dashed in yellow; the winds on the same ring, which is dashed in blue where
-// the sun never goes; the views a wedge and an eye in a widening triangle.
+// its green. The climate in the office's drawn marks: a sun at each rise and
+// set on the solstices' arcs, dashed in yellow, solid in the amber of its
+// name; the winds on the same ring, which is dashed in blue where the sun
+// never goes, solid in the blue of theirs; the views a wedge and an eye in a
+// widening triangle, solid in a deeper green than the streets', as their words.
 const FLAMINGO_CONTEXT = TEMPLATES.find((t) => t.id === 'flamingo')!;
 const FLAMINGO_LOOK: SiteLook = {
   ...KINGFISHER_LOOK, site: FLAMINGO_CONTEXT.site, streetInk: FLAMINGO_CONTEXT.streetInk,
-  buildings: 'white', buildingEdge: 0.8, lotInk: FLAMINGO_CONTEXT.road, neighbourInk: FLAMINGO_CONTEXT.streetInk,
+  buildings: 'white', buildingEdge: 1.5, buildingHatch: true, contourUnderBuildings: 0.12, lotInk: FLAMINGO_CONTEXT.road, neighbourInk: FLAMINGO_CONTEXT.streetInk,
   sun: 'drawn', sunPen: '#f5b400', sunFill: '#fcddd4', sunEdge: '#5ba8e1', sunInk: '#d48f00',
   wind: 'drawn', windPen: '#5ba8e1', climateInk: '#3d8fd1',
-  views: 'drawn', viewPen: '#3d8fd1',
+  views: 'drawn', viewPen: '#2e9257',
   marks: { fill: '#fcddd4', edge: '#5ba8e1', sunBand: ['#f7a21b', '#ffd12e'], windBand: '#5ba8e1', view: '#fcddd4' },
 };
 
@@ -595,7 +602,7 @@ export const SITE_THEMES: SiteTheme[] = [
   { id: 'kingfisher', label: 'Kingfisher', base: 'kingfisher', look: KINGFISHER_LOOK,
     note: 'Kingfisher on paper, no aerial: the zones as its pale grounds, the buildings in their family colour, the sun paths as yellow crescents, the winds as blue ones with white arrows, the views as green triangles with an eye' },
   { id: 'flamingo', label: 'Flamingo', base: 'flamingo', look: FLAMINGO_LOOK,
-    note: 'Flamingo on paper, as its context sheet: the zones as its tints and textures, the buildings white, the cadastre fine grey, the street names and numbers green; the office\'s peach suns, winds and views outlined in blue' },
+    note: 'Flamingo on paper, as its context sheet: the zones as its tints and textures, the buildings white and finely hatched, the cadastre fine grey, the street names and numbers green; the office\'s suns in amber, winds in blue and views in green, each as its words' },
   { id: 'canary', label: 'Canary', base: 'flamingo', look: CANARY_LOOK,
     note: 'the office classic in the context Canary\'s colours: a grey aerial with the zones in the ePlanning colours, one black circle for the sun, the winds and the views, each neighbour\'s number, storeys and height limit' },
 ];
