@@ -30,7 +30,7 @@
   </div>
 </header>
 
-<div class="page narrow">
+<div class="page">
 
   <p class="lead">Every drawing is free to generate and to see, from the same data,
   drawn the same way. A free account downloads its PDF, with a watermark. Paying is
@@ -38,6 +38,10 @@
   behind it, to draw over and to work with. Pay for the one address a project needs,
   or subscribe if you look at sites every week.</p>
 
+  <!-- Two sheets to a spread, like the about page: the plans beside yours. The
+       plans table is five columns, so its side takes the larger share. -->
+  <div class="twocol plans2">
+  <section>
   <h2>Plans</h2>
   <!-- Three ticks and a price: what differs between the plans and nothing
        else. What a tick stands for — the formats, the watermark, how long an
@@ -66,20 +70,26 @@
   when the drawing is made. Site Analyst does not guarantee that data is complete,
   current or correct, and a gap in it is not a fault in the drawing — read a drawing in
   full before paying for it. See the <a href="/terms">terms of use</a>.</p>
+  </section>
 
+  <section>
   <h2>Your plan</h2>
   <p class="lead" id="mine">…</p>
   <div class="actions" id="act"></div>
   <div class="errline" id="error"></div>
+  </section>
+  </div>
 
   <footer>
-    Payments are taken by Stripe; no card number reaches this site. Cancel at any
-    time from MANAGE BILLING, and the subscription runs to the end of the period
-    paid for.<br>
-    The drawings are made from open public data as it is available, with no
-    guarantee that it is complete, current or correct. By using Site Analyst
-    you accept its <a href="/terms">terms of use</a>.<br>
-    © 2026 Sami Abdulnour and Zofia Kosova. All rights reserved.
+    <div class="foot2">
+      <p>Payments are taken by Stripe; no card number reaches this site. Cancel at
+      any time from MANAGE BILLING, and the subscription runs to the end of the
+      period paid for.</p>
+      <p>The drawings are made from open public data as it is available, with no
+      guarantee that it is complete, current or correct. By using Site Analyst
+      you accept its <a href="/terms">terms of use</a>.</p>
+    </div>
+    <p>© 2026 Sami Abdulnour and Zofia Kosova. All rights reserved.</p>
   </footer>
 
 </div>

@@ -75,28 +75,24 @@ a { color: inherit; }
 .lead { margin-bottom: 1rem; max-width: 76ch; }
 
 /* ---- welcome ------------------------------------------------------------- */
-/* What a visitor sees first: two panels, the drawings the app makes and the
-   birds its styles are named after, both moving; then the invitation, then TRY
-   across the page. Signed in, the tool takes the page instead. */
+/* What a visitor sees first: two panels blinking through the app's sheets and
+   the illustrations; then the invitation, then TRY across the page. Signed
+   in, the tool takes the page instead. */
 .hero { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;
         margin-bottom: 1.8rem; }
-.hero-panel { position: relative; aspect-ratio: 10 / 7; overflow: hidden; }
-/* The app's own sheets, one after another: two pictures stacked, the front
-   one fading over the back as they take turns. */
+.hero-panel { position: relative; aspect-ratio: 10 / 7; overflow: hidden;
+              margin: 0; }
+/* One picture per panel, swapped in a cut once the next frame has loaded:
+   gif-like, no fade. */
 .hero-shots { border: 1px solid var(--line); background: var(--bg); }
 .hero-shots img {
   position: absolute; inset: 0; width: 100%; height: 100%;
   object-fit: cover; object-position: center top;
-  opacity: 0; transition: opacity .5s ease;
 }
-.hero-shots img.show { opacity: 1; }
-@media (prefers-reduced-motion: reduce) {
-  .hero-shots img { transition: none; }
-}
-/* The illustrations' panel: solid yellow, the drawing inside it. */
-.hero-art { background: var(--hi); }
-.hero-art img, .hero-art svg { position: absolute; inset: 0;
-                               width: 100%; height: 100%; display: block; }
+
+/* An illustration standing on the page (the about page), at its own size. */
+.art { margin: 0; }
+.art img { display: block; width: 100%; height: auto; }
 
 /* The words beside "about…", set like the sheet's own two-column notes. */
 .welcome-copy { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;
@@ -120,9 +116,12 @@ a { color: inherit; }
    the options, then the drawing. */
 .tool { display: grid; grid-template-columns: 300px minmax(0, 1fr);
         grid-template-rows: auto 1fr; gap: 0 2.4rem;
-        grid-template-areas: "side bar" "side view"; align-items: start; }
+        grid-template-areas: ". bar" "side view"; align-items: start; }
 .toolbar  { grid-area: bar; min-width: 0; }
-.toolside { grid-area: side; min-width: 0; }
+/* As on the mock-up: the address bar stands alone at the top, and the first
+   option box's top rule continues the drawing frame's — so the sidebar starts
+   level with the frame and its first label is lifted into the gap above. */
+.toolside { grid-area: side; min-width: 0; margin-top: calc(-1.5em - .35rem); }
 .toolview { grid-area: view; min-width: 0; }
 
 /* ---- address bar --------------------------------------------------------- */
@@ -282,6 +281,10 @@ a { color: inherit; }
 
 footer { margin-top: 3rem; color: var(--muted); }
 footer a { color: inherit; }
+/* The footer's two notes side by side, like the tables above them; the
+   copyright line under both. */
+.foot2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 2.4rem;
+         margin-bottom: .8rem; }
 
 /* ---- expected result ----------------------------------------------------- */
 /* A frame of its own beside the options, holding the picture alone,
@@ -300,8 +303,9 @@ footer a { color: inherit; }
 /* ---- headings and the definition tables ----------------------------------- */
 h2 { font-size: 1em; font-weight: 400; text-transform: uppercase;
      letter-spacing: .02em; margin: 2.6rem 0 .8rem; }
-/* The first heading of a column sits level with its neighbour's. */
-.twocol h2, .splash h2 { margin-top: 0; }
+/* The first heading of a column sits level with its neighbour's; the ones
+   below keep their air. */
+.twocol section > h2:first-child, .splash h2:first-child { margin-top: 0; }
 
 /* The about page's intro beside the illustrations' panel. */
 .splash { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -414,6 +418,16 @@ h2 { font-size: 1em; font-weight: 400; text-transform: uppercase;
 /* A tick or a dash reads from the middle of its column; the price row keeps a
    word's left edge. */
 .deftable.plans .yn { text-align: center; }
+/* In the two-column spread the plans side takes the larger share, and the
+   table tightens so SUBSCRIPTION keeps its one line. */
+.twocol.plans2 { grid-template-columns: 3fr 2fr; }
+.twocol .deftable.plans { grid-template-columns: 12% 1fr 1fr 1fr 1fr; }
+.twocol .deftable.plans .k, .twocol .deftable.plans .v {
+  padding-left: .6rem; padding-right: .6rem;
+}
+@media (max-width: 900px) {
+  .twocol.plans2 { grid-template-columns: 1fr; }
+}
 #mine { margin-top: .2rem; }
 #howUnlock { margin-top: .8rem; }
 /* The plans page's own buttons stay a boxed row, as before the nav went plain. */
@@ -448,10 +462,11 @@ h2 { font-size: 1em; font-weight: 400; text-transform: uppercase;
    goes bar first, then the options, then the drawing. */
 @media (max-width: 900px) {
   .name { font-size: 2.3rem; }
-  .hero, .welcome-copy, .splash, .twocol { grid-template-columns: 1fr; }
+  .hero, .welcome-copy, .splash, .twocol, .foot2 { grid-template-columns: 1fr; }
   .hero { gap: 1.2rem; }
   .tool { grid-template-columns: 1fr; gap: 0;
           grid-template-areas: "bar" "side" "view"; }
+  .toolside { margin-top: 0; }
   .toolside .row:first-child { margin-top: .4rem; }
   .toolview { margin-top: .4rem; }
 }
