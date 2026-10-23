@@ -328,17 +328,28 @@ function revealOutput() {
 // ---- the welcome page ------------------------------------------------------
 
 /* What a visitor without a session sees first: two panels blinking, gif-like,
-   through the app's sheets. The sheets are hero-*.jpg, drawn for addresses
-   around NSW just for this panel (`npm run generate`, rasterised like the
-   samples), so the welcome never shows the example the generator's result
-   frame uses. The pool is shuffled on every visit and dealt into the two
-   windows, so each turns through its own sheets — never the same picture on
-   both sides — in an order with no visible start or end. Each frame is
-   fetched before it is shown and swapped in one cut; the second panel runs
-   half a beat behind the first. Held still when motion is asked not to. */
+   through the app's sheets with the illustrations cut in among them. The
+   sheets are hero-*.jpg, drawn for addresses around NSW just for this panel
+   (`npm run generate`, rasterised like the samples), so the welcome never
+   shows the example the generator's result frame uses; the illustrations are
+   art-*, the studio's graphics.
+
+   The sheets are shuffled on every visit and dealt between the two windows,
+   so each turns through its own and never shows the same one as the other;
+   a window reshuffles its share when it has been through it. After every one
+   to three sheets, two on average, a window cuts to an illustration picked at
+   random from all of them, so either window may show any one, never the same
+   one twice running. A sheet holds for SHEET_MS, an illustration for half
+   that. Each frame is fetched before it is shown and swapped in one cut; the
+   second window runs half a beat behind the first. Held still when motion is
+   asked not to. */
 const sample = (name) => '/samples/' + name + SAMPLE_Q;
 const HERO_COUNT = 25;   // web/samples/hero-1.jpg … hero-<n>.jpg
 const HERO_SHEETS = Array.from({ length: HERO_COUNT }, (_, i) => sample('hero-' + (i + 1) + '.jpg'));
+// web/samples/art-1 … art-8, each in whichever of PNG or JPEG kept it lighter.
+const HERO_ART = ['art-1.png', 'art-2.jpg', 'art-3.jpg', 'art-4.jpg',
+                  'art-5.jpg', 'art-6.png', 'art-7.png', 'art-8.png'].map(sample);
+const SHEET_MS = 2000, ART_MS = 1000;
 
 function shuffled(list) {
   const a = list.slice();
@@ -348,44 +359,66 @@ function shuffled(list) {
   }
   return a;
 }
+const pick = (list) => list[Math.floor(Math.random() * list.length)];
+/** Sheets before the next illustration: one, two or three, two on average. */
+const sheetsBeforeArt = () => 1 + Math.floor(Math.random() * 3);
 
 const heroPool = shuffled(HERO_SHEETS);
-const HERO_PANELS = [
-  { img: 'heroA', at: 0, frames: heroPool.filter((_, i) => i % 2 === 0) },
-  { img: 'heroB', at: 0, frames: heroPool.filter((_, i) => i % 2 === 1) },
-];
-const HERO_MS = 2200;
+const HERO_PANELS = [0, 1].map((side) => {
+  const sheets = heroPool.filter((_, i) => i % 2 === side);
+  return { img: side ? 'heroB' : 'heroA', sheets, deck: sheets.slice(),
+           sinceArt: 0, artAfter: sheetsBeforeArt(), lastArt: null, lastSheet: null };
+});
 let heroOn = false;
+
+/** The next frame for a window: its next sheet, or, when its turn has come, an illustration. */
+function nextFrame(panel) {
+  if (panel.sinceArt >= panel.artAfter) {
+    const art = pick(HERO_ART.filter((a) => a !== panel.lastArt));
+    panel.lastArt = art;
+    panel.sinceArt = 0;
+    panel.artAfter = sheetsBeforeArt();
+    return { src: art, ms: ART_MS };
+  }
+  if (!panel.deck.length) {
+    // Through its share: deal it again in a new order, not opening on the
+    // sheet it has just shown.
+    do panel.deck = shuffled(panel.sheets);
+    while (panel.sheets.length > 1 && panel.deck[0] === panel.lastSheet);
+  }
+  const sheet = panel.deck.shift();
+  panel.lastSheet = sheet;
+  panel.sinceArt += 1;
+  return { src: sheet, ms: SHEET_MS };
+}
 
 function heroTurn(panel) {
   const el = $(panel.img);
-  const next = (panel.at + 1) % panel.frames.length;
+  const frame = nextFrame(panel);
   // The next frame is fetched before it is shown, so the cut never flashes white.
   const pre = new Image();
   pre.onload = () => {
     if (!heroOn) return;
-    el.src = panel.frames[next];
-    panel.at = next;
-    panel.timer = setTimeout(() => heroTurn(panel), HERO_MS);
+    el.src = frame.src;
+    panel.timer = setTimeout(() => heroTurn(panel), frame.ms);
   };
   pre.onerror = () => {
     if (!heroOn) return;
-    panel.at = next;                      // a missing frame is skipped over
-    panel.timer = setTimeout(() => heroTurn(panel), HERO_MS);
+    panel.timer = setTimeout(() => heroTurn(panel), 0);   // a missing frame is skipped over
   };
-  pre.src = panel.frames[next];
+  pre.src = frame.src;
 }
 
 function startHero() {
   HERO_PANELS.forEach((p) => {
     const el = $(p.img);
-    if (!el.getAttribute('src')) el.src = p.frames[0];
+    if (!el.getAttribute('src')) el.src = nextFrame(p).src;
   });
   if (heroOn || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   heroOn = true;
   // Out of step by half a beat, so the two sides blink in turn.
   HERO_PANELS.forEach((p, i) => {
-    p.timer = setTimeout(() => heroTurn(p), HERO_MS + i * (HERO_MS / 2));
+    p.timer = setTimeout(() => heroTurn(p), SHEET_MS + i * (SHEET_MS / 2));
   });
 }
 
