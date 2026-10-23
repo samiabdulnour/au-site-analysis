@@ -99,7 +99,11 @@ a { color: inherit; }
   object-fit: cover; object-position: center top;
 }
 
-/* An illustration standing on the page (the about page), at its own size. */
+/* How it works' animated window keeps its full proportion: the welcome's
+   height cap is there to keep TRY on screen. */
+.splash .hero-panel { max-height: none; }
+
+/* An illustration standing on the page, at its own size. */
 .art { margin: 0; }
 .art img { display: block; width: 100%; height: auto; }
 
