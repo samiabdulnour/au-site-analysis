@@ -60,7 +60,7 @@ const NORTH = [
 const EXAMPLE_ADDRESS = '150 George Street, Parramatta';
 
 const $ = (id) => document.getElementById(id);
-const f = $('f'), loginForm = $('login');
+const f = $('f'), loginForm = $('login'), welcome = $('welcome');
 const out = $('out'), queueEl = $('queue');
 const linksEl = $('links'), errEl = $('error'), go = $('go'), noteEl = $('note');
 const progressEl = $('progress'), fillEl = $('progressFill');
@@ -122,6 +122,9 @@ const GUEST = { pdf: false, cleanPdf: false, openData: false };
 /** Take what the server told us about this session. */
 function applySession(j) {
   session = j;
+  // Signed in, the header band turns yellow: the page says whose it is
+  // before a word is read.
+  $('band').classList.toggle('hi', Boolean(j.authed));
   // An account that has not clicked its verification link is told generating
   // waits on it, with the resend beside the words. Just back from the link
   // (?verified=1), the banner's place says so instead.
@@ -315,13 +318,82 @@ resultImg.addEventListener('error', () => {
   resultMissing.hidden = false;
 });
 
-/* The expected result sits between the options and the progress box, so on a
-   laptop screen that box opens below the fold and GENERATE looks as if it did
-   nothing. Bring it, and the row its links appear in, into view. */
+/* On a phone the progress box opens below the options, so GENERATE can look
+   as if it did nothing. Bring the box into view. */
 function revealOutput() {
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  document.querySelector('.actions').scrollIntoView({ block: 'nearest', behavior: reduce ? 'auto' : 'smooth' });
+  out.scrollIntoView({ block: 'nearest', behavior: reduce ? 'auto' : 'smooth' });
 }
+
+// ---- the welcome page ------------------------------------------------------
+
+/* What a visitor without a session sees first: the app's own sheets taking
+   turns in one panel (real samples, the same pictures the result frame
+   shows), the birds drawing themselves in the other, and TRY into the tool.
+   Gif-like: a steady turn of frames, held still when motion is asked not to. */
+const HERO_FRAMES = [
+  'result-context-3000-auto-flamingo.jpg',
+  'result-site-250-north-heron.jpg',
+  'result-slides-2.jpg',
+  'result-context-2000-north-kingfisher.jpg',
+  'result-yield-2.jpg',
+  'result-site-0-auto-flamingo.jpg',
+  'result-slides-6.jpg',
+  'result-context-4000-auto-canary.jpg',
+];
+const HERO_MS = 2600;
+let heroOn = false, heroTimer = 0, heroIdx = 0;
+const heroSrc = (i) => '/samples/' + HERO_FRAMES[i] + SAMPLE_Q;
+
+function heroTurn() {
+  const a = $('heroA'), b = $('heroB');
+  const front = b.classList.contains('show') ? b : a;
+  const back = front === a ? b : a;
+  const next = (heroIdx + 1) % HERO_FRAMES.length;
+  // The next frame is fetched before it is shown, so the panel never blinks.
+  back.onload = () => {
+    if (!heroOn) return;
+    back.classList.add('show');
+    front.classList.remove('show');
+    heroIdx = next;
+    heroTimer = setTimeout(heroTurn, HERO_MS);
+  };
+  back.onerror = () => {
+    if (!heroOn) return;
+    heroIdx = next;                       // a missing sample is skipped over
+    heroTimer = setTimeout(heroTurn, HERO_MS);
+  };
+  back.src = heroSrc(next);
+}
+
+function startHero() {
+  const a = $('heroA');
+  if (!a.getAttribute('src')) a.src = heroSrc(0);
+  if (heroOn || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  heroOn = true;
+  heroTimer = setTimeout(heroTurn, HERO_MS);
+}
+
+function stopHero() {
+  heroOn = false;
+  clearTimeout(heroTimer);
+}
+
+function showWelcome() {
+  loginForm.hidden = true;
+  f.hidden = true;
+  welcome.hidden = false;
+  startHero();
+}
+
+/** TRY: into the tool, account or none — drawing never asks for one. */
+$('tryBtn').addEventListener('click', () => {
+  welcome.hidden = true;
+  stopHero();
+  f.hidden = false;
+  syncGenHuman();
+  addrInput.focus();
+});
 
 // ---- http helpers --------------------------------------------------------
 
@@ -604,6 +676,8 @@ function note(text) {
 
 function showLogin() {
   f.hidden = true;
+  welcome.hidden = true;
+  stopHero();
   loginForm.hidden = false;
   renderAuth();
   $('authError').textContent = '';
@@ -624,6 +698,8 @@ function openAuth(mode, why) {
 
 function enter(j) {
   loginForm.hidden = true;
+  welcome.hidden = true;
+  stopHero();
   f.hidden = false;
   applySession(j);
   syncGenHuman();
@@ -664,9 +740,12 @@ $('skipAuth').addEventListener('click', () => {
 
 // The emailed reset link outranks whatever session this browser holds: the
 // person following it came to set a password, not to be signed straight in.
-// Everyone else lands on the tool — the form opens only where it is wanted:
-// ?signup and ?signin (the pricing page's buttons), or back from the
-// verification link with no session to land in.
+// Signed in, the tool takes the page; a visitor lands on the welcome, and TRY
+// opens the same tool — unless they arrived wanting it: an ?address= from the
+// about page's search, or a ?job= link back to a drawing. The form opens only
+// where it is wanted: ?signup and ?signin (the pricing page's buttons), or
+// back from the verification link with no session to land in.
+const wantsTool = Boolean(bootAddress) || new URLSearchParams(location.search).has('job');
 if (resetToken || confirmToken) showLogin();
 else fetch('/api/me').then(async (r) => {
   const j = await readJson(r);
@@ -674,8 +753,16 @@ else fetch('/api/me').then(async (r) => {
     applySession(j);
     return showLogin();
   }
+  if (!j.authed && !wantsTool) {
+    applySession(j);
+    return showWelcome();
+  }
   enter(j);
-}).catch(() => enter({ authed: false, grants: GUEST }));
+}).catch(() => {
+  applySession({ authed: false, grants: GUEST });
+  if (wantsTool) enter({ authed: false, grants: GUEST });
+  else showWelcome();
+});
 
 loginForm.addEventListener('submit', async (e) => {
   e.preventDefault();

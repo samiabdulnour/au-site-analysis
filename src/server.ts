@@ -946,6 +946,7 @@ const server = createServer(async (req, res) => {
     '/admin': ['admin.html', 'text/html; charset=utf-8'],
     '/status.js': ['status.js', 'text/javascript; charset=utf-8'],
     '/style.css': ['style.css', 'text/css; charset=utf-8'],
+    '/birds.svg': ['birds.svg', 'image/svg+xml'],
     '/app.js': ['app.js', 'text/javascript; charset=utf-8'],
     '/admin.js': ['admin.js', 'text/javascript; charset=utf-8'],
   };
