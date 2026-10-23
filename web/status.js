@@ -88,7 +88,12 @@ function renderServer(j) {
     // from, so "building" or "absent" is the difference between a full sheet
     // and a thin one, not just a slower one.
     ['openstreetmap', osm, j.osm.mode === 'local' && j.osm.state !== 'serving' ? 'warn' : ''],
-    ['queue', j.queue.running + ' running, ' + j.queue.queued + ' waiting'],
+    ['queue', j.queue.running + ' running, ' + j.queue.queued + ' waiting' + (j.queue.workers ? ' · ' + j.queue.workers + ' at once' : '')],
+    // What the running jobs are queued behind, if anything: browsers to print
+    // in, or requests to a host that is at its limit.
+    ...Object.entries(j.queue.slots || {}).map(([k, v]) => [
+      k.replace(/^host:/, ''), v.held + ' of ' + v.limit + (v.waiting ? ', ' + v.waiting + ' waiting' : ''), v.waiting ? 'warn' : '',
+    ]),
     // Counts only: who the accounts are is Stripe's dashboard's business.
     ['accounts', j.accounts.total + ', ' + j.accounts.subscription + ' on the subscription'],
     // What Stripe says about the server's settings, a line each: the account

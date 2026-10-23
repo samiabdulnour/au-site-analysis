@@ -80,12 +80,12 @@ jobs:
           argv=$(ACCESS_CODE=pub ADMIN_CODE=ops TFNSW_API_KEY=tf \
                  STRIPE_SECRET_KEY=sk STRIPE_PRICE_ID=price STRIPE_SITE_PRICE_ID=site \
                  STRIPE_WEBHOOK_SECRET=wh SMTP_HOST=mx SMTP_PASS=pw TURNSTILE_SECRET_KEY=ts \
-                 NET=net OUT=/tmp/out bash /tmp/dr.sh)
+                 WORKERS=8 NET=net OUT=/tmp/out bash /tmp/dr.sh)
           printf '%s\n' "$argv" | sed 's/^/    /'
           fail=0
           for want in ACCESS_CODE=pub ADMIN_CODE=ops STRIPE_SECRET_KEY=sk \
                       STRIPE_PRICE_ID=price STRIPE_SITE_PRICE_ID=site STRIPE_WEBHOOK_SECRET=wh \
-                      SMTP_HOST=mx SMTP_PASS=pw TURNSTILE_SECRET_KEY=ts; do
+                      SMTP_HOST=mx SMTP_PASS=pw TURNSTILE_SECRET_KEY=ts WORKERS=8; do
             printf '%s\n' "$argv" | grep -qx -- "$want" || { echo "  missing $want"; fail=1; }
           done
           if [ "$(printf '%s\n' "$argv" | tail -1)" != "site-analyst" ]; then
@@ -109,6 +109,13 @@ jobs:
       # sheet in the wrong house style — the kind of bug that ships.
       - name: templates do not leak between concurrent renders
         run: npx tsx test/template-isolation.mts
+
+      # The worker pool's shared limits (src/lib/slots.ts) hold across
+      # processes: forked children asking for one host's slots never exceed
+      # its limit together, and a worker that dies holding one gives it back.
+      # Nothing is fetched.
+      - name: the workers' slots hold across processes and survive a crash
+        run: npx tsx test/slots.mts
 
       # The site sheet's tree canopies, kerbside bays and sight lines are pure
       # geometry on made-up ground, so they are checked here without a network.

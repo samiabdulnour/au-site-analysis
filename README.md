@@ -67,8 +67,9 @@ Once done, the page shows the drawing itself as a picture about 1200 px wide
 hundred kilobytes against an A1 PDF's tens of megabytes) with the downloads
 under it — the PDF is downloaded rather than opened in the browser, which
 could take a long while at that size. The picture is the same for every plan,
-like the examples. Jobs run one at a time so simultaneous users don't
-hammer the public data services. Put `TFNSW_API_KEY=…` in `.env`
+like the examples. Jobs run in a pool of `WORKERS` (one by default), and
+what they may ask of each public data service is counted across all of them,
+so simultaneous users don't hammer it — see *Many at once* below. Put `TFNSW_API_KEY=…` in `.env`
 for authoritative bus stops. The deck's existing-condition slide takes Google
 Street View frames of each street frontage with `GOOGLE_MAPS_API_KEY=…` (a
 Google Cloud key whose project has the Street View Static API enabled; add
@@ -197,7 +198,7 @@ verification and reset links. Anyone can make one with an email and a
 password (`SIGN UP`, with the terms agreed to), and starts on the free side,
 with watermarked PDFs. What holds the open side
 down is what always did: the per-IP budgets (12 sheets an hour, and the
-sign-in and sign-up limiters) and the one-at-a-time queue. Accounts live in `out/accounts/accounts.json`
+sign-in and sign-up limiters) and the bounded worker pool. Accounts live in `out/accounts/accounts.json`
 on the host volume, beside the job index and written the same way, with scrypt
 password hashes; the key that signs session cookies is `SESSION_SECRET`, or,
 unset, one made once and kept in the same directory, so a deploy signs nobody
@@ -475,15 +476,19 @@ address and the one button, and the page runs one address at a time. Running
 several at once is still the batch endpoint below.
 
 A batch is nothing but a named list of ordinary jobs. They queue on the same
-serial queue, in the same order, and each goes through the same reuse check, so
+queue, in the same order, and each goes through the same reuse check, so
 a batch of twelve where five were drawn this morning runs seven. Two spellings
 of one address inside a batch share a single job, and the hour's budget is
 charged for the sheets it will actually draw rather than the rows submitted.
 
-It is deliberately not concurrency. Jobs still run one at a time, which keeps
-the promise this tool makes to the four free services it is a guest of.
+A batch gets no workers of its own. It shares the pool with everyone else, so
+one office submitting a dozen holds the site up for the next visitor only for
+as long as the pool takes to get through them.
 
-What stopped being a reason is the graphic template. It was a module-level
+Jobs used to run strictly one at a time, for two reasons. The first was the
+promise this tool makes to the free services it is a guest of; that is now
+kept by a count per service rather than by the queue (*Many at once*, below).
+The second was the graphic template. It was a module-level
 global in `src/render/template.ts`, read from forty-five places across the
 renderers, and two simultaneous renders would not have failed — the second's
 `setTemplate` would have changed the palette out from under the first, and out
@@ -503,6 +508,58 @@ for its whole duration: for the seconds it took, the server answered nothing at
 all — no progress for the visitor waiting on that sheet, and no response to
 anyone else. (`src/cli.ts` still uses it, and should: a one-shot process has
 nothing else to serve.)
+
+### Many at once
+
+`WORKERS=n` draws n sheets at once, each in a process of its own
+(`src/worker.ts`, forked by the server for one job and gone when it is done),
+and the rest wait in order. One is the default, which behaves as the site
+always has. A process rather than more of the server's own loop because
+composing a sheet and encoding its PNGs is CPU on the main thread — ten jobs
+in one loop would take turns with each other and with every page request —
+and because a job that crashes or leaks then takes only itself down.
+
+What the workers share is counted in the server, not in each worker
+(`src/lib/slots.ts`): a worker asks for a slot over the channel it was forked
+with, and a dead worker's slots go back when it exits.
+
+- **Requests to one host** — `UPSTREAM_PER_HOST`, default 16, or
+  `UPSTREAM_LIMITS="mapprod3.environment.nsw.gov.au=8,…"` for one host. Every
+  outbound request goes through `src/lib/http.ts`, which holds the host's slot
+  until the body has been read. This is what keeps the promise the serial queue
+  used to: however many sheets are drawing, a service sees at most that many
+  requests at once. The local Overpass, and anything else on this machine or
+  the Docker network, is ours and not counted.
+- **Printing browsers** — `PRINT_SLOTS`, default 2. A sheet's memory peaks in
+  Chromium, so it is the number printing at once, not the number of jobs, that
+  the machine has to hold.
+
+`JOB_TIMEOUT_MS` (default 20 minutes) stops a job that has hung on a service
+that never answers, so it cannot hold a worker for good. The queue position and
+the wait the page shows count rounds of the pool, and `/status` shows the
+workers and any slot something is waiting for.
+
+The shared caches under `out/.cache` are written beside and moved into place,
+so one job never reads another's half-written census table.
+
+How many workers a machine takes is measured, not guessed:
+
+```bash
+npx tsx scripts/loadtest.ts --workers 10 --levels 5,10,30 --sheet context
+```
+
+boots a server of its own on throwaway directories with that many workers,
+submits each level's sheets together, each for a different address, follows
+every one to the end, and reports how long the lot took, each one's wait and
+drawing time, what failed and why, and the machine's CPU and memory peaks
+(`out/loadtest/<time>.json`). `--sheet mix` takes the four kinds in turn,
+`--base` tests a server already running. The sheets are real and fetch from the
+real services, within the per-host slots: run the big levels where the data is
+held locally. As a rule of thumb from one sheet of each kind, measured on four
+cores: a sheet keeps about a core busy while it composes and holds 1.2–1.8 GB
+while it prints.
+
+### Batches
 
 `POST /api/batches` takes `{ addresses: [...], sheet, scale, rotate, template }`
 and at most twelve, one hour's worth of the per-IP job budget. All or nothing:

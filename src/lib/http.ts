@@ -1,7 +1,9 @@
 import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { writeFileAtomic } from './cache.js';
+import { acquire, hostKey } from './slots.js';
 
 const CACHE_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'out', '.cache', 'osm');
 
@@ -65,18 +67,47 @@ export async function retryFetch(
       opts.onRetry?.(i, String(lastErr ?? 'retry'));
       await new Promise((r) => setTimeout(r, delay));
     }
+    // One slot of the host's, held to the end of the body rather than to the
+    // headers: a 20 MB imagery export is still a request in flight while it
+    // downloads. The backoff above waits outside it, so a host that is shedding
+    // load is not also holding the slot another job is waiting for.
+    const release = await acquire(hostKey(url));
     try {
       const res = await fetch(url, { ...request, signal: AbortSignal.timeout(timeoutMs) });
       if (TRANSIENT.has(res.status)) {
+        release();
         lastErr = new Error(`${opts.label ?? url} -> HTTP ${res.status}`);
         continue;
       }
-      return res;
+      return holdUntilRead(res, release, timeoutMs);
     } catch (e) {
+      release();
       lastErr = e;   // network error / timeout — retry
     }
   }
   throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+}
+
+/**
+ * The response, with `release` called once its body has been read to the end,
+ * failed, or been cancelled. A caller that looks at the status and never reads
+ * the body would hold the slot for ever, so it also goes back after the
+ * request's own timeout, by which time the fetch would have given up anyway.
+ */
+function holdUntilRead(res: Response, release: () => void, timeoutMs: number): Response {
+  if (!res.body) { release(); return res; }
+  setTimeout(release, timeoutMs).unref();
+  const reader = res.body.getReader();
+  const body = new ReadableStream<Uint8Array>({
+    async pull(ctl) {
+      try {
+        const { done, value } = await reader.read();
+        if (done) { release(); ctl.close(); } else ctl.enqueue(value);
+      } catch (e) { release(); ctl.error(e); }
+    },
+    cancel(reason) { release(); return reader.cancel(reason); },
+  });
+  return new Response(body, { status: res.status, statusText: res.statusText, headers: res.headers });
 }
 
 /**
@@ -141,6 +172,7 @@ export async function overpassQuery(
       await new Promise((r) => setTimeout(r, wait));
     }
     for (const mirror of overpassEndpoints()) {
+      const release = await acquire(hostKey(mirror));
       try {
         const res = await fetch(mirror, {
           method: 'POST',
@@ -156,13 +188,15 @@ export async function overpassQuery(
         }
         try {
           mkdirSync(CACHE_DIR, { recursive: true });
-          writeFileSync(cacheFile, text);
+          writeFileAtomic(cacheFile, text);
         } catch { /* cache is optional */ }
         return JSON.parse(text);
       } catch (e: any) {
         // fetch's own message is only "fetch failed"; the reason is its cause.
         const why = e?.name === 'TimeoutError' ? `timed out after ${timeoutMs / 1000} s` : e?.cause?.code ?? e?.cause?.message ?? e?.message ?? String(e);
         failures.push(`${new URL(mirror).host} ${why}`);
+      } finally {
+        release();
       }
     }
   }

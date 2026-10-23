@@ -5,10 +5,11 @@
 // batch of sites in one LGA reads it once), and clipped to the map window
 // here. Parameters travel in request headers; a query string is refused.
 
-import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { retryFetch } from '../lib/http.js';
+import { writeFileAtomic } from '../lib/cache.js';
 import { lonLatToMercator, type Extent } from '../lib/geo.js';
 
 const API = 'https://api.apps1.nsw.gov.au/eplanning/data/v0/OnlineDA';
@@ -159,7 +160,7 @@ export async function fetchCouncilApplications(
   }
   const feed: DaFeed = { council, from, to, total, complete: pages <= MAX_PAGES, fetchedAt: new Date().toISOString(), records };
   log(`  DA feed for ${council}: ${records.length} of ${total} applications since ${from}${feed.complete ? '' : ' (page cap reached)'}`);
-  try { mkdirSync(CACHE_DIR, { recursive: true }); writeFileSync(file, JSON.stringify(feed)); } catch { /* cache is optional */ }
+  try { mkdirSync(CACHE_DIR, { recursive: true }); writeFileAtomic(file, JSON.stringify(feed)); } catch { /* cache is optional */ }
   return feed;
 }
 
