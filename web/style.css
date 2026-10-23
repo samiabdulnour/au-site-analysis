@@ -132,12 +132,14 @@ a { color: inherit; }
    option box's top rule continues the drawing frame's — so the sidebar starts
    level with the frame and its first label (20.7px and 10.7px to its box) is
    lifted into the gap above. */
-.toolside { grid-area: side; min-width: 0; margin-top: -31.4px; }
+.toolside { grid-area: side; min-width: 0; margin-top: -31px; }
 /* The mock-up's cells: 18px type, 36px high, the word 14px in. */
 .toolside .cell, .toolside .cell-empty {
   font-size: 18px; line-height: normal; padding: 7.25px 14px;
 }
-.toolside .rowhead { line-height: normal; padding-bottom: 10.7px; }
+/* Whole pixels, so the label and its gap are exactly the 31px the sidebar
+   is lifted by, and the table's top rule lands on the frame's. */
+.toolside .rowhead { line-height: 21px; padding-bottom: 10px; }
 .toolside .row { margin-bottom: 28px; }
 /* The mock-up's bar: 35px high, its words 22px in, GENERATE 170px wide with
    its word 12px in, 29px above the drawing. */
@@ -308,21 +310,20 @@ a { color: inherit; }
 .btn.locked { color: var(--muted); }
 
 /* Small print, at the tables' size, one note under the other. */
-footer { margin-top: 3rem; color: var(--muted); font-size: .8em; }
+/* Small print in the mock-up's small size, the nav's 15px. */
+footer { margin-top: 3rem; color: var(--muted); font-size: 15px; }
 footer a { color: inherit; }
 .foot2 { margin-bottom: .8rem; }
 
 /* ---- expected result ----------------------------------------------------- */
 /* A frame of its own beside the options, holding the picture alone,
    edge to edge between its rules. */
-/* The whole sheet in view without scrolling: the picture keeps its
-   proportion and gives up width rather than run under the screen's edge, and
-   the frame hugs it. */
-.result { border: 1px solid var(--line); width: fit-content; max-width: 100%; }
-/* width and height are written on the element, so the box keeps the sheet's
-   proportion while the picture loads instead of jumping when it arrives. */
-.result img { display: block; width: auto; height: auto; max-width: 100%;
-              max-height: calc(100svh - 253px); }
+/* The frame is the column's full width, its edges continuing the address
+   bar's above it. The sheet is whole inside it: as wide as the frame, or,
+   where the screen is short, as tall as the screen allows, centred. */
+.result { border: 1px solid var(--line); }
+.result img { display: block; width: 100%; height: auto;
+              max-height: calc(100svh - 253px); object-fit: contain; }
 .result img[hidden] { display: none; }
 .result img.loading { opacity: .35; }
 /* The site report's pages turn on a click as well as on their own. */
@@ -331,8 +332,9 @@ footer a { color: inherit; }
 .result figcaption { padding: .6rem 1rem; color: var(--muted); }
 
 /* ---- headings and the definition tables ----------------------------------- */
-h2 { font-size: 1em; font-weight: 400; text-transform: uppercase;
-     letter-spacing: .02em; margin: 2.6rem 0 .8rem; }
+/* Set like the mock-up's DRAWING label: 18px, solid, 10.7px over its table. */
+h2 { font-size: 18px; font-weight: 400; text-transform: uppercase; line-height: normal;
+     letter-spacing: .02em; margin: 36px 0 10.7px; }
 /* The first heading of a column sits level with its neighbour's; the ones
    below keep their air. */
 .twocol section > h2:first-child, .splash h2:first-child { margin-top: 0; }
@@ -350,9 +352,10 @@ h2 { font-size: 1em; font-weight: 400; text-transform: uppercase;
    sentences, so it wraps and the row grows to fit. `display: contents`
    dissolves the row wrappers so the cells are the grid's own items. */
 .deftable {
-  --cell-pad-y: .6rem;
-  /* The mock-up sets its tables smaller than the running text. */
-  font-size: .8em;
+  /* The mock-up's option cells: 18px, a one-line row 36px high, the words
+     14px in. Paragraphs keep a reading leading of 1.4. */
+  --cell-pad-y: 5px;
+  font-size: 18px; line-height: 1.4;
   display: grid;
   grid-template-columns: 24% 1fr;
   grid-auto-rows: auto;
@@ -363,7 +366,7 @@ h2 { font-size: 1em; font-weight: 400; text-transform: uppercase;
 .deftable .k, .deftable .v {
   border-right: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
-  padding: var(--cell-pad-y) 1rem;
+  padding: var(--cell-pad-y) 14px;
   min-width: 0; overflow-wrap: anywhere;
 }
 .deftable .k {
@@ -457,7 +460,7 @@ h2 { font-size: 1em; font-weight: 400; text-transform: uppercase;
 }
 
 /* What a tick stands for, under the table: the tables' small size, muted. */
-.smallprint { margin-top: 1rem; color: var(--muted); font-size: .8em; }
+.smallprint { margin-top: 1rem; color: var(--muted); font-size: 15px; }
 .smallprint p { margin-bottom: .6rem; }
 
 /* The way in, as big as the page allows: one full-width box a line, the
@@ -525,7 +528,7 @@ h2 { font-size: 1em; font-weight: 400; text-transform: uppercase;
   .nav { gap: .4rem 1.4rem; }
   .cell, .cell-empty { padding: .3rem .6rem; }
   .go { padding: .45rem 1rem; }
-  .deftable { grid-template-columns: 34% 1fr; --cell-pad-y: .5rem; }
+  .deftable { grid-template-columns: 34% 1fr; --cell-pad-y: 5px; font-size: 15px; }
   .deftable .k, .deftable .v { padding: var(--cell-pad-y) .6rem; }
   .job > * { padding: .5rem .6rem; }
   .job { grid-template-columns: 6rem 1fr 7rem; }
