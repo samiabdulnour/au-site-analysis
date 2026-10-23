@@ -579,14 +579,14 @@ const KINGFISHER_LOOK: SiteLook = {
 // set on the solstices' arcs, dashed in yellow, solid in the amber of its
 // name; the winds on the same ring, which is dashed in blue where the sun
 // never goes, solid in the blue of theirs; the views a wedge and an eye in a
-// widening triangle, a pale peach shape in a fine blue outline.
+// widening triangle, solid in a deeper green than the streets', as their words.
 const FLAMINGO_CONTEXT = TEMPLATES.find((t) => t.id === 'flamingo')!;
 const FLAMINGO_LOOK: SiteLook = {
   ...KINGFISHER_LOOK, site: FLAMINGO_CONTEXT.site, streetInk: FLAMINGO_CONTEXT.streetInk,
   buildings: 'white', buildingEdge: 0.8, lotInk: FLAMINGO_CONTEXT.road, neighbourInk: FLAMINGO_CONTEXT.streetInk,
   sun: 'drawn', sunPen: '#f5b400', sunFill: '#fcddd4', sunEdge: '#5ba8e1', sunInk: '#d48f00',
   wind: 'drawn', windPen: '#5ba8e1', climateInk: '#3d8fd1',
-  views: 'drawn', viewPen: '#3d8fd1',
+  views: 'drawn', viewPen: '#2e9257',
   marks: { fill: '#fcddd4', edge: '#5ba8e1', sunBand: ['#f7a21b', '#ffd12e'], windBand: '#5ba8e1', view: '#fcddd4' },
 };
 
@@ -596,7 +596,7 @@ export const SITE_THEMES: SiteTheme[] = [
   { id: 'kingfisher', label: 'Kingfisher', base: 'kingfisher', look: KINGFISHER_LOOK,
     note: 'Kingfisher on paper, no aerial: the zones as its pale grounds, the buildings in their family colour, the sun paths as yellow crescents, the winds as blue ones with white arrows, the views as green triangles with an eye' },
   { id: 'flamingo', label: 'Flamingo', base: 'flamingo', look: FLAMINGO_LOOK,
-    note: 'Flamingo on paper, as its context sheet: the zones as its tints and textures, the buildings white, the cadastre fine grey, the street names and numbers green; the office\'s suns in amber and winds in blue, as their names, the views peach outlined in blue' },
+    note: 'Flamingo on paper, as its context sheet: the zones as its tints and textures, the buildings white, the cadastre fine grey, the street names and numbers green; the office\'s suns in amber, winds in blue and views in green, each as its words' },
   { id: 'canary', label: 'Canary', base: 'flamingo', look: CANARY_LOOK,
     note: 'the office classic in the context Canary\'s colours: a grey aerial with the zones in the ePlanning colours, one black circle for the sun, the winds and the views, each neighbour\'s number, storeys and height limit' },
 ];

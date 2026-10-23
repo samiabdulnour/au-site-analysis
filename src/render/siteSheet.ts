@@ -590,7 +590,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
       if (look.views === 'drawn' || look.views === 'band') {
         // The office's view: its point a little off the boundary, opening
         // outward along the sight line. Drawn, the wedge and the eye in its
-        // triangle, outlined; banded, a solid triangle with the eye upright
+        // triangle, solid in the ink of its words; banded, a solid triangle with the eye upright
         // and white in it. What it found is written beyond its open end,
         // along the line, upright.
         const m = look.marks!;
@@ -599,7 +599,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
         const px = ax + ux * gap, py = ay + uy * gap;
         const deg = (Math.atan2(uy, ux) * 180) / Math.PI;
         if (drawn) {
-          layers.push(`<path transform="translate(${px.toFixed(1)},${py.toFixed(1)}) rotate(${deg.toFixed(1)}) scale(${L})" d="${VIEW}" fill="${m.fill}" stroke="${m.edge}" stroke-width="${(DRAWN_EDGE / L).toFixed(4)}" stroke-linejoin="round"/>`);
+          layers.push(`<path transform="translate(${px.toFixed(1)},${py.toFixed(1)}) rotate(${deg.toFixed(1)}) scale(${L})" d="${VIEW}" fill="${look.viewPen}" stroke="${look.viewPen}" stroke-width="${(DRAWN_EDGE / L).toFixed(4)}" stroke-linejoin="round"/>`);
         } else {
           const end = (a: number): string => `${(px + L * Math.sin(a)).toFixed(1)},${(py - L * Math.cos(a)).toFixed(1)}`;
           const eyeS = L * 0.15, ex = px + ux * L * 0.68, ey = py + uy * L * 0.68;
@@ -1760,7 +1760,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
   if ((sb.views ?? []).some((v) => v.cone) && look.views === 'circle') {
     row(`<path d="M${SWATCH_X},1.2h${SWATCH_W}v4h${-SWATCH_W}Z" fill="#ffffff" stroke="${look.viewPen}" stroke-width="0.3"/>`, 'POTENTIAL VIEW', `named around the circle; terrain only, from ${Math.round(sb.eyeAboveM ?? 8)} m up`);
   } else if ((sb.views ?? []).some((v) => v.cone) && look.views === 'drawn') {
-    row(`<path transform="translate(${SWATCH_X + 7},3.2) scale(6.4)" d="${VIEW}" fill="${look.marks!.fill}" stroke="${look.marks!.edge}" stroke-width="${(0.25 / 6.4).toFixed(4)}" stroke-linejoin="round"/>`, 'POTENTIAL VIEW', `terrain only, from ${Math.round(sb.eyeAboveM ?? 8)} m up; no buildings`);
+    row(`<path transform="translate(${SWATCH_X + 7},3.2) scale(6.4)" d="${VIEW}" fill="${look.viewPen}" stroke="${look.viewPen}" stroke-width="${(0.25 / 6.4).toFixed(4)}" stroke-linejoin="round"/>`, 'POTENTIAL VIEW', `terrain only, from ${Math.round(sb.eyeAboveM ?? 8)} m up; no buildings`);
   } else if ((sb.views ?? []).some((v) => v.cone) && look.views === 'band') {
     row(`<path d="M${SWATCH_X + 5},3.2 L${SWATCH_X + 16},0.2 L${SWATCH_X + 16},6.2 Z" fill="${look.marks!.view}" fill-opacity="0.85"/>` +
       `<path transform="translate(${SWATCH_X + 12.4},3.2) scale(1.9)" d="${EYE}" fill="#ffffff"/>`, 'POTENTIAL VIEW', `terrain only, from ${Math.round(sb.eyeAboveM ?? 8)} m up; no buildings`);
