@@ -328,32 +328,31 @@ function revealOutput() {
 // ---- the welcome page ------------------------------------------------------
 
 /* What a visitor without a session sees first: two panels blinking, gif-like,
-   through the app's own sheets (real samples, the same pictures the result
-   frame shows) and the illustrations, mixed on both sides. Each frame is
-   fetched before it is shown and swapped in one cut; the second panel runs
-   half a beat behind the first. Held still when motion is asked not to. */
+   through the app's sheets and the illustrations, mixed on both sides. The
+   sheets are hero-*.jpg, drawn for a handful of addresses around NSW just for
+   this panel (`npm run generate`, rasterised like the samples), so the
+   welcome never shows the example the generator's result frame uses. Each
+   frame is fetched before it is shown and swapped in one cut; the second
+   panel runs half a beat behind the first. Held still when motion is asked
+   not to. */
 const BIRDS = '/birds.png';
 const sample = (name) => '/samples/' + name + SAMPLE_Q;
 const HERO_PANELS = [
   { img: 'heroA', at: 0, frames: [
-    sample('result-context-3000-auto-flamingo.jpg'),
+    sample('hero-1.jpg'),
     BIRDS,
-    sample('result-slides-2.jpg'),
-    sample('result-site-250-north-heron.jpg'),
+    sample('hero-3.jpg'),
+    sample('hero-5.jpg'),
     BIRDS,
-    sample('result-yield-2.jpg'),
-    sample('result-context-2000-north-kingfisher.jpg'),
-    sample('result-slides-6.jpg'),
+    sample('hero-2.jpg'),
   ] },
   { img: 'heroB', at: 0, frames: [
     BIRDS,
-    sample('result-site-0-auto-flamingo.jpg'),
-    sample('result-context-4000-auto-canary.jpg'),
+    sample('hero-4.jpg'),
+    sample('hero-6.jpg'),
     BIRDS,
-    sample('result-slides-9.jpg'),
-    sample('result-context-5000-auto-heron.jpg'),
-    BIRDS,
-    sample('result-yield-3.jpg'),
+    sample('hero-2.jpg'),
+    sample('hero-5.jpg'),
   ] },
 ];
 const HERO_MS = 2200;
