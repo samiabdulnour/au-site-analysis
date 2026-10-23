@@ -1012,10 +1012,8 @@ async function poll(id, misses) {
       }
       if (j.unlock) {
         // What is bought, said in full: the address, not just this drawing of it.
-        unlockWhat.textContent = 'Unlocking this address gives you every drawing of it — context, ' +
-          'site, yield and site report, at any scale or style — clean, with the CAD and data files, ' +
-          'for 30 days. They are made from open public data as it is available, with no guarantee that ' +
-          'it is complete (see the terms of use at /terms).';
+        unlockWhat.textContent = 'Every drawing of this address, clean, with CAD and data, ' +
+          'for 30 days. Made from open data with no guarantee it is complete (see /terms).';
         unlockWhat.hidden = false;
         addButton('unlock this address · ' + j.unlock, () => unlock(id));
       }

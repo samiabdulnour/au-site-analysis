@@ -29,9 +29,9 @@ body {
   background: var(--bg);
   color: var(--ink);
   font-family: var(--font);
-  /* The mock-up's type at a laptop's width; the definition tables are set
-     smaller below, as on its sheets. */
-  font-size: 20px;
+  /* One size for the running text; the definition tables are set smaller
+     below, as on the mock-up's sheets. */
+  font-size: 18px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
@@ -51,14 +51,15 @@ a { color: inherit; }
 /* White for a visitor; yellow edge to edge once there is a session (app.js
    puts .hi on it). The band is outside .page so the colour runs full-bleed
    while the masthead inside keeps the page's margins. */
-.band { padding: 2.8rem 0 2.4rem; margin-bottom: 3.2rem; }
+.band { padding: 1.6rem 0 1.3rem; margin-bottom: 2rem; }
 .band.hi { background: var(--hi); }
 
 .masthead { display: flex; flex-wrap: wrap; justify-content: space-between;
             align-items: baseline; gap: 1rem 2rem; }
 .name {
-  /* The mock-up's title is about a thirty-second of the screen's width. */
-  font-size: clamp(2.4rem, 3.1vw, 3.8rem); font-weight: 400; line-height: 1.05;
+  /* Large enough to be the page's name, small enough that the drawing
+     below it still fits the screen. */
+  font-size: clamp(2rem, 2.3vw, 2.8rem); font-weight: 400; line-height: 1.05;
   letter-spacing: -.01em;
 }
 .name a { text-decoration: none; }
@@ -82,8 +83,11 @@ a { color: inherit; }
    the illustrations; then the invitation, then TRY across the page. Signed
    in, the tool takes the page instead. */
 .hero { display: grid; grid-template-columns: 1fr 1fr; gap: 1.6rem;
-        margin-bottom: 2.4rem; }
+        margin-bottom: 1.2rem; }
+/* The welcome, TRY included, fits one screen: the panels give up height
+   to the header, the words and the button, and their sheets crop to fit. */
 .hero-panel { position: relative; aspect-ratio: 10 / 7; overflow: hidden;
+              max-height: calc(100svh - 18.5rem); min-height: 12rem;
               margin: 0; }
 /* One picture per panel, swapped in a cut once the next frame has loaded:
    gif-like, no fade. */
@@ -99,7 +103,7 @@ a { color: inherit; }
 
 /* The words beside "about…", set like the sheet's own two-column notes. */
 .welcome-copy { display: grid; grid-template-columns: 1fr 1fr; gap: 1.6rem;
-                margin-bottom: 2.4rem; }
+                margin-bottom: 1.4rem; }
 .welcome-copy .k { color: var(--ink); }
 
 /* The whole width, one word: the way in. */
@@ -296,10 +300,14 @@ footer a { color: inherit; }
 /* ---- expected result ----------------------------------------------------- */
 /* A frame of its own beside the options, holding the picture alone,
    edge to edge between its rules. */
-.result { border: 1px solid var(--line); }
+/* The whole sheet in view without scrolling: the picture keeps its
+   proportion and gives up width rather than run under the screen's edge, and
+   the frame hugs it. */
+.result { border: 1px solid var(--line); width: fit-content; max-width: 100%; }
 /* width and height are written on the element, so the box keeps the sheet's
    proportion while the picture loads instead of jumping when it arrives. */
-.result img { display: block; width: 100%; height: auto; }
+.result img { display: block; width: auto; height: auto; max-width: 100%;
+              max-height: calc(100svh - 12.5rem); }
 .result img[hidden] { display: none; }
 .result img.loading { opacity: .35; }
 /* The site report's pages turn on a click as well as on their own. */
@@ -477,8 +485,8 @@ h2 { font-size: 1em; font-weight: 400; text-transform: uppercase;
    goes bar first, then the options, then the drawing. */
 @media (max-width: 900px) {
   body { font-size: 17px; }
-  .name { font-size: 2.3rem; }
-  .band { padding: 1.7rem 0 1.5rem; margin-bottom: 2rem; }
+  .name { font-size: 2rem; }
+  .band { padding: 1.2rem 0 1rem; margin-bottom: 1.4rem; }
   .hero, .welcome-copy, .splash, .twocol { grid-template-columns: minmax(0, 1fr); }
   .hero { gap: 1.2rem; }
   .tool { grid-template-columns: 1fr; gap: 0;
@@ -486,6 +494,11 @@ h2 { font-size: 1em; font-weight: 400; text-transform: uppercase;
   .toolside { margin-top: 0; }
   .toolside .row:first-child { margin-top: .4rem; }
   .toolview { margin-top: .4rem; }
+  /* One panel on a narrow screen, so TRY is still in view on arrival; the
+     drawing sits under the options here, so it needs no height cap. */
+  .hero .hero-panel:nth-child(2) { display: none; }
+  .hero-panel { max-height: none; }
+  .result img { max-height: none; }
 }
 
 @media (max-width: 700px) {
