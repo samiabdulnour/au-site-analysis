@@ -200,9 +200,9 @@ const SUN_NAME_W = 30, SUN_NAME_H = 14;
 // the sun's and the winds' crescents at their deepest, a wind crescent's half
 // sweep (°), and the view triangle's length and half angle (°).
 const DRAWN_SUN_R = 13, DRAWN_WIND_HALF = 17, DRAWN_VIEW_L = 32, DRAWN_EDGE = 0.35;
-const RAY_SUN_R = 8, ARROW_HALF = 5.5, SUN_BAND_W = 16, WIND_BAND_W = 15, WIND_BAND_SPAN = 24, BAND_VIEW_L = 30, BAND_VIEW_HALF = 17;
-/** The sun's and the winds' crescents translucent, the winds' a step lighter, so they sit back behind the site rather than catching the eye first. */
-const SUN_BAND_OPACITY = 0.5, WIND_BAND_OPACITY = 0.45;
+const RAY_SUN_R = 8, ARROW_HALF = 5.5, SUN_BAND_W = 16, WIND_BAND_W = 15, WIND_BAND_SPAN = 24, BAND_VIEW_L = 30, BAND_VIEW_HALF = 22;
+/** The sun's and the winds' crescents translucent, the winds' a step lighter, so they sit back behind the site rather than catching the eye first; the views' triangles a little stronger. */
+const SUN_BAND_OPACITY = 0.5, WIND_BAND_OPACITY = 0.45, BAND_VIEW_OPACITY = 0.6;
 
 /**
  * A crescent along a circle about c, between two page bearings: its outer edge
@@ -603,8 +603,9 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
       if (look.views === 'drawn' || look.views === 'band') {
         // The office's view: its point a little off the boundary, opening
         // outward along the sight line. Drawn, the wedge and the eye in its
-        // triangle, solid in the ink of its words; banded, a solid triangle with the eye upright
-        // and white in it. What it found is written beyond its open end,
+        // triangle, solid in the ink of its words; banded, a translucent
+        // triangle with the eye white in it, turned to look along the sight
+        // line, its lid outward. What it found is written beyond its open end,
         // along the line, upright.
         const m = look.marks!;
         const drawn = look.views === 'drawn';
@@ -615,9 +616,9 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
           layers.push(`<path transform="translate(${px.toFixed(1)},${py.toFixed(1)}) rotate(${deg.toFixed(1)}) scale(${L})" d="${VIEW}" fill="${look.viewPen}" stroke="${look.viewPen}" stroke-width="${(DRAWN_EDGE / L).toFixed(4)}" stroke-linejoin="round"/>`);
         } else {
           const end = (a: number): string => `${(px + L * Math.sin(a)).toFixed(1)},${(py - L * Math.cos(a)).toFixed(1)}`;
-          const eyeS = L * 0.15, ex = px + ux * L * 0.68, ey = py + uy * L * 0.68;
-          layers.push(`<path d="M${px.toFixed(1)},${py.toFixed(1)} L${end(ang - half)} L${end(ang + half)} Z" fill="${m.view}" fill-opacity="0.85"/>` +
-            `<path transform="translate(${ex.toFixed(1)},${ey.toFixed(1)}) scale(${eyeS.toFixed(2)})" d="${EYE}" fill="#ffffff"/>`);
+          const eyeS = L * 0.2, ex = px + ux * L * 0.7, ey = py + uy * L * 0.7;
+          layers.push(`<path d="M${px.toFixed(1)},${py.toFixed(1)} L${end(ang - half)} L${end(ang + half)} Z" fill="${m.view}" fill-opacity="${BAND_VIEW_OPACITY}"/>` +
+            `<path transform="translate(${ex.toFixed(1)},${ey.toFixed(1)}) rotate(${((ang * 180) / Math.PI).toFixed(1)}) scale(${eyeS.toFixed(2)})" d="${EYE}" fill="#ffffff"/>`);
         }
         const dist = v.distanceM >= 950 ? `${(v.distanceM / 1000).toFixed(1)} KM` : `${Math.round(v.distanceM / 10) * 10} M`;
         const rows = v.kind === 'park' ? ['ADJOINING'] : [dist, 'TERRAIN CLEAR'];
@@ -1789,8 +1790,8 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
   } else if ((sb.views ?? []).some((v) => v.cone) && look.views === 'drawn') {
     row(`<path transform="translate(${SWATCH_X + 7},3.2) scale(6.4)" d="${VIEW}" fill="${look.viewPen}" stroke="${look.viewPen}" stroke-width="${(0.25 / 6.4).toFixed(4)}" stroke-linejoin="round"/>`, 'POTENTIAL VIEW', `terrain only, from ${Math.round(sb.eyeAboveM ?? 8)} m up; no buildings`);
   } else if ((sb.views ?? []).some((v) => v.cone) && look.views === 'band') {
-    row(`<path d="M${SWATCH_X + 5},3.2 L${SWATCH_X + 16},0.2 L${SWATCH_X + 16},6.2 Z" fill="${look.marks!.view}" fill-opacity="0.85"/>` +
-      `<path transform="translate(${SWATCH_X + 12.4},3.2) scale(1.9)" d="${EYE}" fill="#ffffff"/>`, 'POTENTIAL VIEW', `terrain only, from ${Math.round(sb.eyeAboveM ?? 8)} m up; no buildings`);
+    row(`<path d="M${SWATCH_X + 5},3.2 L${SWATCH_X + 16},0.2 L${SWATCH_X + 16},6.2 Z" fill="${look.marks!.view}" fill-opacity="${BAND_VIEW_OPACITY}"/>` +
+      `<path transform="translate(${SWATCH_X + 12.6},3.2) rotate(90) scale(1.9)" d="${EYE}" fill="#ffffff"/>`, 'POTENTIAL VIEW', `terrain only, from ${Math.round(sb.eyeAboveM ?? 8)} m up; no buildings`);
   } else if ((sb.views ?? []).some((v) => v.cone)) {
     row(`<g transform="translate(${SWATCH_X + 11},3.2) rotate(-14) scale(0.62)" fill="#fff" stroke="${look.viewPen}" stroke-width="0.7" stroke-linejoin="round"><path d="M-7,-1.7 L6,-2.6 L6,2.6 L-7,1.7 Z"/><rect x="6" y="-3.3" width="2.6" height="6.6"/><rect x="-9.6" y="-1.2" width="2.6" height="2.4"/></g>`, 'POTENTIAL VIEW', `terrain only, from ${Math.round(sb.eyeAboveM ?? 8)} m up; no buildings`);
   }
