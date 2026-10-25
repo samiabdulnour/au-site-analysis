@@ -441,7 +441,7 @@ container's own filesystem is gone every few minutes of active development.
 `/var/lib/site-analyst/out`), and the job list is mirrored to
 `out/web/jobs.json` on every state change and read back at boot. A visitor who
 generated a sheet before the deploy still has their download link afterwards;
-what was mid-flight comes back as `interrupted by a server restart — run
+what was mid-flight comes back as `interrupted by a server restart, run
 again`, because the pipeline's work was in the process that died. The same
 volume carries the OSM disk cache (`out/.cache/osm`), which is what keeps
 sheets generating while Overpass is down — it used to be discarded on every

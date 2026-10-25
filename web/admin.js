@@ -28,7 +28,7 @@ $('gate').addEventListener('submit', async (e) => {
       body: JSON.stringify({ code: $('code').value, gate: 'admin' }),
     });
   } catch {
-    err.textContent = 'no answer from the server — try again';
+    err.textContent = 'no answer from the server, try again';
     return;
   }
   // Straight to what they came for; the cookie is set by now.
