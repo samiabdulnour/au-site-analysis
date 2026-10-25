@@ -14,7 +14,7 @@
   --hi:     #ffff7a;   /* selected option, primary button, the signed-in band */
   --on-hi:  #000000;   /* what sits on the highlight */
   --head:   #ffff7a;   /* the tables' label column, yellow like the mark-up */
-  --accent: #c238b6;   /* the illustrations' magenta; the current page's underline */
+  --accent: #ff00ff;   /* true magenta: the current page's underline */
   --muted:  #5a5a5a;
   --err:    #c0392b;
   --font: Arial, Helvetica, "Helvetica Neue", sans-serif;
@@ -86,25 +86,27 @@ a { color: inherit; }
 
 /* Plain words, not boxes: the nav is the sheet's running head, in the small
    size, the tops of its capitals level with the title's. The page the
-   visitor is on carries the accent underline. Both underlines are drawn as a
-   background, under the word where the accent's 3px have always sat, so they
-   can grow from the left: a hairline on hover, the accent as the page comes
-   in. */
+   visitor is on carries the accent underline. Both underlines are a line of
+   their own under the word, where the accent's 3px have always sat — never
+   the word's background, which a browser could paint whole — and grow from
+   the left: a hairline on hover, the accent as the page comes in. */
 .nav { display: flex; flex-wrap: wrap; gap: .4rem 58px; align-items: baseline;
        font-size: var(--small); margin-top: 3.5px; }
 .nav .btn {
-  border: 0; padding: 0 0 calc(.1rem + 3px); margin: 0;
-  background: linear-gradient(currentColor, currentColor) no-repeat
-              left calc(100% - 2px) / 0 1px;
+  position: relative;
+  border: 0; padding: 0 0 calc(.1rem + 3px); margin: 0; background: transparent;
   font: inherit; letter-spacing: .02em; text-transform: uppercase;
   text-decoration: none; color: var(--ink); cursor: pointer; white-space: nowrap;
-  transition: background-size var(--med) var(--ease);
 }
-.nav .btn:hover { background-size: 100% 1px; }
-.nav .btn.active, .nav .btn.active:hover {
-  background-image: linear-gradient(var(--accent), var(--accent));
-  background-position: left bottom; background-size: 100% 3px;
+.nav .btn:hover { background: transparent; }
+.nav .btn::after {
+  content: ''; position: absolute; left: 0; right: 0; bottom: 2px; height: 1px;
+  background: currentColor; pointer-events: none;
+  transform: scaleX(0); transform-origin: left center;
+  transition: transform var(--med) var(--ease);
 }
+.nav .btn:hover::after { transform: scaleX(1); }
+.nav .btn.active::after { bottom: 0; height: 3px; background: var(--accent); transform: scaleX(1); }
 
 .lead { margin-bottom: 1rem; max-width: 76ch; }
 
@@ -585,7 +587,7 @@ h2 { font-size: 18px; font-weight: 400; text-transform: uppercase; line-height: 
 @keyframes rise { from { opacity: 0; transform: translateY(6px); } }
 @keyframes drop { from { opacity: 0; transform: translateY(-4px); } }
 @keyframes fade { from { opacity: 0; } }
-@keyframes draw { from { background-size: 0 3px; } }
+@keyframes draw { from { transform: scaleX(0); } }
 
 @media (prefers-reduced-motion: no-preference) {
   /* The index page's views, as each is shown. */
@@ -600,7 +602,7 @@ h2 { font-size: 18px; font-weight: 400; text-transform: uppercase; line-height: 
   /* The plans headline, when it changes to say which plan this is. */
   .headline.swap { animation: fade var(--med) var(--ease) both; }
   /* The page's accent underline is drawn in as the page arrives. */
-  .nav .btn.active { animation: draw 420ms var(--ease) 80ms both; }
+  .nav .btn.active::after { animation: draw 420ms var(--ease) 80ms both; }
 
   /* From page to page: the header band holds still and the page under it
      crossfades, the new one rising a few pixels — in browsers that do
@@ -611,7 +613,7 @@ h2 { font-size: 18px; font-weight: 400; text-transform: uppercase; line-height: 
   ::view-transition-new(root) { animation: rise var(--med) var(--ease) both; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .btn, .cell, .try, .go, #suggest li, .linkish, .nav .btn, .result img { transition: none; }
+  .btn, .cell, .try, .go, #suggest li, .linkish, .nav .btn::after, .result img { transition: none; }
 }
 
 /* ---- narrower screens ----------------------------------------------------- */
