@@ -60,9 +60,22 @@ const NORTH = [
 const EXAMPLE_ADDRESS = '150 George Street, Parramatta';
 
 const $ = (id) => document.getElementById(id);
-// Yellow from the start when the last page knew of a session; applySession
-// puts it right once the server answers.
-try { if (localStorage.getItem('sa:authed')) $('band').classList.add('hi'); } catch { /* private mode */ }
+// Yellow from the start when the last page knew of a session, with SIGN OUT
+// where SIGN IN would be; applySession puts both right once the server answers.
+try {
+  if (localStorage.getItem('sa:authed')) {
+    $('band').classList.add('hi');
+    $('signIn').hidden = true;
+    $('signOut').hidden = false;
+  }
+} catch { /* private mode */ }
+$('signIn').addEventListener('click', (e) => { e.preventDefault(); openAuth('signin'); });
+// The cookie is HttpOnly; only the server can clear it.
+$('signOut').addEventListener('click', async () => {
+  $('signOut').disabled = true;
+  try { await fetch('/api/logout', { method: 'POST' }); } catch { /* offline: ask anyway */ }
+  location.replace('/');
+});
 const f = $('f'), loginForm = $('login'), welcome = $('welcome');
 const out = $('out'), queueEl = $('queue');
 const linksEl = $('links'), errEl = $('error'), go = $('go'), noteEl = $('note');
@@ -153,38 +166,14 @@ function applySession(j) {
     $('verify').textContent = 'Email verified.';
     $('verify').hidden = false;
   }
-  // Without a session, the way in sits in the nav; it is never a wall.
-  const nav = $('nav');
-  const signInBtn = document.getElementById('signIn');
-  if (j.authed && signInBtn) signInBtn.remove();
-  if (!j.authed && nav && !signInBtn) {
-    const b = document.createElement('button');
-    b.id = 'signIn';
-    b.type = 'button';
-    b.className = 'btn';
-    b.textContent = 'SIGN IN';
-    b.addEventListener('click', () => openAuth('signin'));
-    nav.append(b);
-  }
-  // A session is a thirty-day cookie and the code field is hidden while one is
+  // Without a session, the way in sits in the nav; it is never a wall. A
+  // session is a thirty-day cookie and the code field is hidden while one is
   // valid, so without a way to put it down a browser that entered the shared
-  // code could not be handed the operator's — for a month. The cookie is
-  // HttpOnly; only the server can clear it.
-  if (j.authed && j.required) {
-    if (nav && !document.getElementById('signOut')) {
-      const b = document.createElement('button');
-      b.id = 'signOut';
-      b.type = 'button';
-      b.className = 'btn';
-      b.textContent = 'SIGN OUT';
-      b.addEventListener('click', async () => {
-        b.disabled = true;
-        try { await fetch('/api/logout', { method: 'POST' }); } catch { /* offline: ask anyway */ }
-        location.replace('/');
-      });
-      nav.append(b);
-    }
-  }
+  // code could not be handed the operator's — for a month. Both are in the
+  // page from the start, one hidden, so the nav never gains a word after it
+  // is drawn.
+  $('signIn').hidden = Boolean(j.authed);
+  $('signOut').hidden = !(j.authed && j.required);
   if (j.operator) {
     // The status view is the operator's, so the way to it only exists once the
     // operator code has been given. /api/status refuses anyone else regardless.
@@ -754,7 +743,6 @@ function enter(j) {
 }
 
 // Drawing never waits on the form: this is the way back out of it.
-$('skipAuth').addEventListener('click', openTool);
 
 // The emailed reset link outranks whatever session this browser holds: the
 // person following it came to set a password, not to be signed straight in.
@@ -983,7 +971,9 @@ async function poll(id, misses) {
     }
 
     if (j.status === 'done') {
-      queueEl.textContent = 'done';
+      // Done says itself: the drawing takes the frame and its downloads come
+      // under the options, so the box is left with no word of its own.
+      queueEl.textContent = '';
       progressEl.hidden = true;
       linksEl.innerHTML = '';
       // What this viewer may take away of this drawing, as the server says:
@@ -1033,6 +1023,9 @@ async function poll(id, misses) {
         if (j.hasCad) addLink('cad · locked', '/pricing', { locked: true });
         if (j.hasData) addLink(dataLabel.replace('download ', '') + ' · locked', '/pricing', { locked: true });
       }
+      // The box stays only for something to say: a drawing reused, with the
+      // way to a fresh one, or what came of a payment.
+      out.hidden = !noteEl.textContent && !errEl.textContent;
       go.disabled = false;
       return;
     }
