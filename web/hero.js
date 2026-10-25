@@ -24,8 +24,9 @@
    sheet is enlarged and shifted by its own margin, measured once on a small
    canvas, so the drawing starts on the panel's left and top edges; the
    illustrations keep their white, which is part of them. A context or site
-   sheet shows its map alone: whole, fitted into the window at its top left,
-   the legend column beside it left out.
+   sheet shows its map alone, the legend column beside it left out, filling
+   the window: scaled evenly until it covers it, centred, so the map's taller
+   shape gives up a strip at its top and foot.
 
    Each window holds two pictures, one shown and one hidden. The next frame
    loads, decodes and is fitted in the hidden one, and the two change places
@@ -142,8 +143,8 @@ function marginsOf(img) {
 /** Enlarge and shift a window's picture by the sheet's margins (none for an
     illustration). Widths and margins in % are of the panel's width, so the
     one panel width sizes all three; the panel crops what runs past its foot.
-    A context or site sheet's map is fitted whole instead: as large as the
-    window holds it, at the window's top left, in pixels of the window as it
+    A context or site sheet's map fills the window instead: scaled evenly
+    until it covers the window, centred on it, in pixels of the window as it
     is now (so it is fitted again when the window changes size), with the
     legend beside it clipped away. */
 function fit(el, img) {
@@ -153,10 +154,12 @@ function fit(el, img) {
     const box = el.parentElement.getBoundingClientRect();
     if (!box.width || !box.height) return;   // not on screen: fitted when it is
     const mw = m.map.r - m.l, mh = m.map.b - m.t;
-    const width = Math.min(box.width / mw, box.height / (mh * ratio));
+    const width = Math.max(box.width / mw, box.height / (mh * ratio));
+    // What of the map runs past the window, shared between its two sides.
+    const overX = (mw * width - box.width) / 2, overY = (mh * width * ratio - box.height) / 2;
     el.style.width = width + 'px';
-    el.style.marginLeft = (-m.l * width) + 'px';
-    el.style.marginTop = (-m.t * width * ratio) + 'px';
+    el.style.marginLeft = (-m.l * width - overX) + 'px';
+    el.style.marginTop = (-m.t * width * ratio - overY) + 'px';
     el.style.clipPath = `inset(${100 * m.t}% ${100 * (1 - m.map.r)}% ${100 * (1 - m.map.b)}% ${100 * m.l}%)`;
     return;
   }
