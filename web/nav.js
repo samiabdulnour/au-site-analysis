@@ -7,14 +7,22 @@
   const nav = document.querySelector('.nav');
   const band = document.querySelector('.band');
   if (!nav) return;
+  // The band is yellow from the start when the last page knew of a session,
+  // rather than turning yellow once the server answers; the answer puts it
+  // right either way, and is remembered for the next page.
+  const remember = (on) => { try { localStorage.setItem('sa:authed', on ? '1' : ''); } catch { /* private mode */ } };
+  try { if (band && localStorage.getItem('sa:authed')) band.classList.add('hi'); } catch { /* private mode */ }
   let me = null;
   try {
     const r = await fetch('/api/me');
     me = r.ok ? await r.json() : null;
   } catch { /* offline: offer the way in */ }
+  if (me) {
+    if (band) band.classList.toggle('hi', Boolean(me.authed));
+    remember(me.authed);
+  }
 
   if (me && me.authed) {
-    if (band) band.classList.add('hi');
     // A session given by the office's code ends the same way; the server
     // clears the HttpOnly cookie, so the page only asks it to.
     if (!me.required) return;
