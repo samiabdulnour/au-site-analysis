@@ -25,7 +25,13 @@
    canvas, so the drawing starts on the panel's left and top edges; the
    illustrations keep their white, which is part of them. A context or site
    sheet shows its map alone: whole, fitted into the window at its top left,
-   the legend column beside it left out. */
+   the legend column beside it left out.
+
+   Each window holds two pictures, one shown and one hidden. The next frame
+   loads, decodes and is fitted in the hidden one, and the two change places
+   in one go, so no picture is ever on screen with another's crop: a browser
+   that keeps the old picture up while it decodes the new one (Safari) would
+   otherwise show it cut to the next one's shape for a moment. */
 // The samples' cache-busting query, as app.js names them.
 const sample = (name) => '/samples/' + name + '?r=2';
 const HERO_COUNT = 25;   // web/samples/hero-1.jpg … hero-<n>.jpg
@@ -51,9 +57,19 @@ const heroPool = shuffled(HERO_SHEETS);
 const heroEls = [...document.querySelectorAll('img[data-hero]')];
 const HERO_PANELS = heroEls.map((el, side) => {
   const sheets = heroPool.filter((_, i) => i % heroEls.length === side);
+  // The window's second picture, hidden behind the first until it holds the
+  // next frame, ready.
+  const back = el.cloneNode(false);
+  back.removeAttribute('id');
+  back.removeAttribute('data-hero');
+  back.removeAttribute('data-hero-autostart');
+  back.alt = '';
+  back.setAttribute('aria-hidden', 'true');
+  back.hidden = true;
+  el.after(back);
   // artBusy: an illustration is this window's, from the moment it is chosen
   // until the frame after it is on screen, so the other window waits it out.
-  return { el, sheets, deck: sheets.slice(),
+  return { front: el, back, sheets, deck: sheets.slice(),
            sinceArt: 0, artAfter: sheetsBeforeArt(), lastArt: null, lastSheet: null,
            artBusy: false };
 });
@@ -150,13 +166,14 @@ function fit(el, img) {
   el.style.marginTop = (-100 * m.t * k * ratio) + '%';
   el.style.clipPath = '';
 }
-// The first frames, and any set without a preload, fit once they are in; a
-// window that changes size, or comes on screen, fits its picture again.
-heroEls.forEach((el) => el.addEventListener('load', () => fit(el, el)));
+// The first frames fit once they are in; a window that changes size, or
+// comes on screen, fits its pictures again.
+HERO_PANELS.forEach((p) => p.front.addEventListener('load', () => fit(p.front, p.front)));
 if (window.ResizeObserver) {
   const refit = new ResizeObserver((entries) => entries.forEach((e) => {
-    const el = e.target.querySelector('img[data-hero]');
-    if (el && el.complete && el.naturalWidth) fit(el, el);
+    e.target.querySelectorAll('img').forEach((el) => {
+      if (el.complete && el.naturalWidth) fit(el, el);
+    });
   }));
   heroEls.forEach((el) => refit.observe(el.parentElement));
 }
@@ -184,29 +201,38 @@ function nextFrame(panel) {
 }
 
 function heroTurn(panel) {
-  const el = panel.el;
+  const next = panel.back;
   const frame = nextFrame(panel);
-  // The next frame is fetched before it is shown, so the cut never flashes white.
-  const pre = new Image();
-  pre.onload = () => {
+  // The next frame is loaded, decoded and fitted out of sight, then the two
+  // pictures change places in one go: the cut never flashes white, and never
+  // shows a picture in another's crop.
+  const cut = () => {
     if (!heroOn) return;
-    fit(el, pre);
-    el.src = frame.src;
+    fit(next, next);
+    next.hidden = false;
+    panel.front.hidden = true;
+    panel.back = panel.front;
+    panel.front = next;
     // The illustration before this frame is off screen now.
     if (!frame.art) panel.artBusy = false;
     panel.timer = setTimeout(() => heroTurn(panel), frame.ms);
   };
-  pre.onerror = () => {
+  const ready = () => (next.decode ? next.decode() : Promise.resolve()).catch(() => {}).then(cut);
+  next.onload = ready;
+  next.onerror = () => {
     if (!heroOn) return;
     if (frame.art) panel.artBusy = false;
     panel.timer = setTimeout(() => heroTurn(panel), 0);   // a missing frame is skipped over
   };
-  pre.src = frame.src;
+  // The hidden picture may already hold this frame (it showed it two cuts
+  // ago), and setting the same address again need not load it again.
+  if (next.getAttribute('src') === frame.src && next.complete && next.naturalWidth) ready();
+  else next.src = frame.src;
 }
 
 function startHero() {
   HERO_PANELS.forEach((p) => {
-    if (!p.el.getAttribute('src')) p.el.src = nextFrame(p).src;
+    if (!p.front.getAttribute('src')) p.front.src = nextFrame(p).src;
   });
   if (heroOn || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   heroOn = true;
