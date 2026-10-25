@@ -232,6 +232,23 @@ a { color: inherit; }
 }
 .go:hover { filter: brightness(.95); }
 .go:disabled { background: transparent; color: var(--muted); cursor: wait; }
+/* Where app.js can follow the mouse, the busy button hides the system's wait
+   cursor and a turning sun takes its place (#sunCursor, below). */
+.go.sun:disabled { cursor: none; }
+
+/* The sun at the pointer over a busy GENERATE: the page's yellow with the
+   hairline every yellow box has, centred on the pointer, turning slowly.
+   A cursor itself cannot be animated, so this is an element that follows. */
+#sunCursor { position: fixed; left: 0; top: 0; z-index: 1000; width: 30px; height: 30px;
+             margin: -15px 0 0 -15px; pointer-events: none; display: none; }
+#sunCursor.on { display: block; }
+#sunCursor svg { display: block; width: 100%; height: 100%;
+                 animation: spin 2.4s linear infinite; }
+#sunCursor .edge { stroke: var(--ink); stroke-width: 3.6; stroke-linecap: round; }
+#sunCursor .ray { stroke: var(--hi); stroke-width: 1.6; stroke-linecap: round; }
+#sunCursor .disc { fill: var(--hi); stroke: var(--ink); stroke-width: 1; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { #sunCursor svg { animation: none; } }
 
 /* ---- options, down the left ---------------------------------------------- */
 /* Each row of choices is its own small table under its name: the name a plain

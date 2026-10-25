@@ -1141,4 +1141,50 @@ function fail(msg) {
   go.disabled = false;
 }
 
+// ---- the sun over a busy GENERATE ------------------------------------------
+
+/* GENERATE is disabled while a drawing is made, and the system's wait cursor
+   (macOS's spinning ball) sat over it. A cursor cannot be animated, so over
+   the busy button the system's is hidden and a sun in the page's yellow turns
+   at the pointer instead. Only where there is a mouse to follow: on a touch
+   screen, or without this script, the wait cursor stays as it was. */
+const sunCursor = document.createElement('div');
+sunCursor.id = 'sunCursor';
+sunCursor.setAttribute('aria-hidden', 'true');
+{
+  const rays = Array.from({ length: 8 }, (_, i) => {
+    const a = (i * Math.PI) / 4, c = Math.cos(a), s = Math.sin(a);
+    return `M${(16 + 9.5 * c).toFixed(2)} ${(16 + 9.5 * s).toFixed(2)}L${(16 + 13.5 * c).toFixed(2)} ${(16 + 13.5 * s).toFixed(2)}`;
+  }).join('');
+  sunCursor.innerHTML = `<svg viewBox="0 0 32 32"><path class="edge" d="${rays}"/>` +
+    `<path class="ray" d="${rays}"/><circle class="disc" cx="16" cy="16" r="6.2"/></svg>`;
+}
+let pointerAt = null;
+
+/** The sun shows at the pointer while it is over GENERATE and GENERATE is busy. */
+function placeSun() {
+  const r = go.getBoundingClientRect();
+  const p = pointerAt;
+  const over = go.disabled && p && p.x >= r.left && p.x <= r.right && p.y >= r.top && p.y <= r.bottom;
+  sunCursor.classList.toggle('on', Boolean(over));
+  if (over) sunCursor.style.transform = `translate(${p.x}px, ${p.y}px)`;
+}
+
+if (matchMedia('(hover: hover) and (pointer: fine)').matches) {
+  document.body.append(sunCursor);
+  go.classList.add('sun');
+  const track = (e) => { pointerAt = { x: e.clientX, y: e.clientY }; };
+  document.addEventListener('pointermove', (e) => {
+    track(e);
+    if (go.disabled || sunCursor.classList.contains('on')) placeSun();
+  }, { passive: true });
+  document.addEventListener('pointerdown', track, { passive: true });
+  document.documentElement.addEventListener('mouseleave', () => { pointerAt = null; placeSun(); });
+  addEventListener('scroll', placeSun, { passive: true });
+  // Pressed with the pointer resting on it, the button goes busy with no move
+  // to report: the sun is placed the moment it is disabled, and taken away the
+  // moment it is not.
+  new MutationObserver(placeSun).observe(go, { attributes: true, attributeFilter: ['disabled'] });
+}
+
 renderAll();
