@@ -299,7 +299,7 @@ function loadIndex() {
       template: String(r.template ?? ''),
       status: lost ? 'error' : r.status === 'done' ? 'done' : 'error',
       log: Array.isArray(r.log) ? r.log.map(String) : [],
-      error: lost ? 'interrupted by a server restart — run again' : r.error,
+      error: lost ? 'interrupted by a server restart, run again' : r.error,
       createdAt: Number(r.createdAt) || Date.now(),
       // Records from when jobs carried a door still have `tier`; it is simply
       // not read, so they load as they are rather than needing a migration.
@@ -358,7 +358,7 @@ const JOBS_PER_HOUR = Math.max(1, Number(process.env.JOBS_PER_HOUR) || 12);
 // about half an hour of one worker's hour. 0 leaves visitors without a session
 // only the sheets already drawn.
 const GUEST_JOBS_PER_HOUR = Math.max(0, Math.floor(Number(process.env.GUEST_JOBS_PER_HOUR ?? 30) || 0));
-const GUEST_BUSY = 'Drawing without an account is at its limit this hour — sign up free to carry on.';
+const GUEST_BUSY = 'Drawing without an account is at its limit this hour, so sign up free to carry on.';
 
 interface BatchEntry {
   /** As submitted. Kept here so a row still reads after its job is swept. */
@@ -486,7 +486,7 @@ async function runJob(job: Job) {
       const child = fork(WORKER, [], { cwd: ROOT, execArgv, stdio: ['ignore', 'inherit', 'inherit', 'ipc'] });
       serveSlots(child);
       const timer = setTimeout(() => {
-        outcome = { error: `stopped after ${Math.round(JOB_TIMEOUT_MS / 60_000)} minutes — run again` };
+        outcome = { error: `stopped after ${Math.round(JOB_TIMEOUT_MS / 60_000)} minutes, run again` };
         child.kill('SIGKILL');
       }, JOB_TIMEOUT_MS);
       child.on('message', (m: any) => {
@@ -502,7 +502,7 @@ async function runJob(job: Job) {
       });
       child.once('exit', (code, signal) => {
         clearTimeout(timer);
-        if (!outcome.done && !outcome.error) outcome = { error: `worker stopped (${signal ?? `exit ${code}`}) — run again` };
+        if (!outcome.done && !outcome.error) outcome = { error: `worker stopped (${signal ?? `exit ${code}`}), run again` };
         resolve();
       });
     });
@@ -1074,7 +1074,7 @@ Canonical: ${base}/.well-known/security.txt
     if (!validEmail(email)) return json(res, 400, { error: 'Enter an email address.' });
     if (password.length < PASSWORD_MIN || password.length > 200)
       return json(res, 400, { error: `Choose a password of ${PASSWORD_MIN} characters or more.` });
-    const CHECK_EMAIL = { ok: true, pending: true, message: `Check ${email} — the link to finish signing up is on its way.` };
+    const CHECK_EMAIL = { ok: true, pending: true, message: `Check ${email}. The link to finish signing up is on its way.` };
     // The honeypot: a field people never see, so only a bot fills it in. It is
     // told what everyone is told, and nothing is made or sent.
     if (trap) {
@@ -1367,7 +1367,7 @@ Canonical: ${base}/.well-known/security.txt
         return json(res, 429, { error: 'Enough emails have gone to this address for now. Try again later.' });
       return json(res, 502, { error: 'Could not send the email. Try again shortly.' });
     }
-    return json(res, 200, { ok: true, message: `Sent — check ${v.account.email}.` });
+    return json(res, 200, { ok: true, message: `Sent. Check ${v.account.email}.` });
   }
 
   // ---- billing -----------------------------------------------------------

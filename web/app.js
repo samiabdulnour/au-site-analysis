@@ -315,7 +315,7 @@ function showDrawn(id, address) {
   stopDeck();
   resultMissing.hidden = true;
   const cap = $('resultDrawn');
-  cap.textContent = 'Drawn for ' + address + ' — the downloads below are this drawing.';
+  cap.textContent = 'Drawn for ' + address + '. The downloads are for this drawing.';
   cap.hidden = false;
   resultImg.hidden = false;
   resultImg.alt = 'The finished drawing for ' + address + '.';
@@ -388,16 +388,30 @@ function showWelcome() {
   f.hidden = true;
   welcome.hidden = false;
   startHero();
+  markNav();
 }
 
-/** TRY: into the tool, account or none — drawing never asks for one. */
-$('tryBtn').addEventListener('click', () => {
+/** GENERATE in the nav carries the accent underline while the tool is the
+    view, as the other pages' names do on their own page. */
+function markNav() {
+  $('navGen').classList.toggle('active', !f.hidden);
+}
+
+/** Into the tool, account or none — drawing never asks for one: TRY, GENERATE
+    in the nav, and the way back out of the account form. */
+function openTool() {
   welcome.hidden = true;
+  loginForm.hidden = true;
   stopHero();
   f.hidden = false;
+  markNav();
   syncGenHuman();
   addrInput.focus();
-});
+}
+$('tryBtn').addEventListener('click', openTool);
+// On this page GENERATE opens the tool where it stands; from the other pages
+// its link, /?generate, lands on it.
+$('navGen').addEventListener('click', (e) => { e.preventDefault(); openTool(); });
 
 // ---- http helpers --------------------------------------------------------
 
@@ -412,9 +426,9 @@ async function readJson(r) {
 
 function httpMessage(r, j) {
   if (j && j.error) return j.error;
-  if (r.status === 401) return 'session expired — reload and unlock again';
-  if (r.status === 429) return 'rate limited — wait a minute';
-  if (r.status >= 500) return 'service restarting — try again shortly';
+  if (r.status === 401) return 'session expired, reload and unlock again';
+  if (r.status === 429) return 'rate limited, wait a minute';
+  if (r.status >= 500) return 'service restarting, try again shortly';
   return 'request failed (HTTP ' + r.status + ')';
 }
 
@@ -440,7 +454,7 @@ function showNote(text) {
 }
 
 function renderSuggest(items) {
-  if (!items.length) return showNote('no match — check the street and the suburb');
+  if (!items.length) return showNote('no match, check the street and the suburb');
   suggestBox.innerHTML = '';
   items.forEach((a, i) => {
     const li = document.createElement('li');
@@ -463,7 +477,7 @@ addrInput.addEventListener('input', () => {
   // the house number, so a street-first query cannot be answered at all —
   // matching mid-string takes the service half a minute. Say what to type
   // instead of leaving the field looking broken.
-  if (!/^\d/.test(q)) return showNote('start with the house number — e.g. ' + EXAMPLE_ADDRESS);
+  if (!/^\d/.test(q)) return showNote('start with the house number, e.g. ' + EXAMPLE_ADDRESS);
   suggestTimer = setTimeout(async () => {
     if (q === lastQuery) return;
     lastQuery = q;
@@ -514,7 +528,7 @@ const AUTH_MODES = [
   ['signin', 'sign in',  'SIGN IN',          'password',                       'current-password'],
   ['signup', 'sign up',  'SIGN UP',          'password, 8 characters or more', 'new-password'],
   ['code',   'code',     'UNLOCK',           'access code',                    'off'],
-  ['reset',  'reset',    'EMAIL RESET LINK', '',                               'off'],
+  ['reset',  'reset',    'RESET',            '',                               'off'],
 ];
 const boot = new URLSearchParams(location.search);
 // ?signup is where the pricing page sends someone who has no account yet.
@@ -569,7 +583,7 @@ async function syncHuman() {
       'error-callback': () => { humanToken = ''; },
     });
   } catch (err) {
-    $('authError').textContent = err.message + ' — reload the page and try again';
+    $('authError').textContent = err.message + ', reload the page and try again';
   }
 }
 
@@ -615,7 +629,7 @@ async function syncGenHuman() {
       'error-callback': () => { genToken = ''; },
     });
   } catch (err) {
-    fail(err.message + ' — reload the page and try again');
+    fail(err.message + ', reload the page and try again');
   }
 }
 
@@ -638,6 +652,9 @@ if (verifiedParam !== null) history.replaceState(null, '', '/');
 // shared link does not keep re-searching it.
 let bootAddress = (boot.get('address') || '').trim();
 if (boot.has('address')) history.replaceState(null, '', '/');
+// GENERATE in the other pages' nav asks for the tool the same way, by ?generate.
+const bootGenerate = boot.has('generate');
+if (bootGenerate) history.replaceState(null, '', '/');
 
 function renderAuth() {
   $('authRow').hidden = Boolean(resetToken || confirmToken);
@@ -683,11 +700,12 @@ function showLogin() {
   welcome.hidden = true;
   stopHero();
   loginForm.hidden = false;
+  markNav();
   renderAuth();
   $('authError').textContent = '';
   // Clicked in a browser that holds no session (another device, say): the
   // click still verified, so say so beside the form it lands on.
-  if (verifiedParam === '1') note('Email verified — sign in.');
+  if (verifiedParam === '1') note('Email verified. Sign in.');
   else if (verifiedParam === '0') note('That verification link has expired or was already used. Sign in and resend it.');
   if (confirmToken) $('authGo').focus();
   else (resetToken || authMode === 'code' ? $('code') : $('email')).focus();
@@ -705,6 +723,7 @@ function enter(j) {
   welcome.hidden = true;
   stopHero();
   f.hidden = false;
+  markNav();
   applySession(j);
   syncGenHuman();
   addrInput.focus();
@@ -735,21 +754,17 @@ function enter(j) {
 }
 
 // Drawing never waits on the form: this is the way back out of it.
-$('skipAuth').addEventListener('click', () => {
-  loginForm.hidden = true;
-  f.hidden = false;
-  syncGenHuman();
-  addrInput.focus();
-});
+$('skipAuth').addEventListener('click', openTool);
 
 // The emailed reset link outranks whatever session this browser holds: the
 // person following it came to set a password, not to be signed straight in.
 // Signed in, the tool takes the page; a visitor lands on the welcome, and TRY
 // opens the same tool — unless they arrived wanting it: an ?address= from the
-// about page's search, or a ?job= link back to a drawing. The form opens only
+// about page's search, GENERATE in another page's nav (?generate), or a ?job=
+// link back to a drawing. The form opens only
 // where it is wanted: ?signup and ?signin (the pricing page's buttons), or
 // back from the verification link with no session to land in.
-const wantsTool = Boolean(bootAddress) || new URLSearchParams(location.search).has('job');
+const wantsTool = Boolean(bootAddress) || bootGenerate || new URLSearchParams(location.search).has('job');
 if (resetToken || confirmToken) showLogin();
 else fetch('/api/me').then(async (r) => {
   const j = await readJson(r);
@@ -798,7 +813,7 @@ loginForm.addEventListener('submit', async (e) => {
       body: JSON.stringify(body),
     });
   } catch {
-    authErr.textContent = 'no answer from the server — try again';
+    authErr.textContent = 'no answer from the server, try again';
     return;
   }
   const j = await readJson(r);
@@ -818,7 +833,7 @@ loginForm.addEventListener('submit', async (e) => {
   if (j.pending) {
     // Signed up, but no account until the emailed link is pressed.
     $('code').value = '';
-    note(j.message || 'Check your email — the link to finish signing up is on its way.');
+    note(j.message || 'Check your email. The link to finish signing up is on its way.');
     return;
   }
   if (!resetToken && !confirmToken && authMode === 'reset') {
@@ -842,12 +857,12 @@ $('resend').addEventListener('click', async () => {
     j = await readJson(r);
   } catch {
     b.disabled = false;
-    b.textContent = 'no answer from the server — resend the email';
+    b.textContent = 'no answer from the server, resend the email';
     return;
   }
   if (r.ok) { b.textContent = j.message || 'sent'; return; }
   b.disabled = false;
-  b.textContent = httpMessage(r, j) + ' — resend the email';
+  b.textContent = httpMessage(r, j) + ', resend the email';
 });
 
 // ---- run -----------------------------------------------------------------
@@ -864,7 +879,7 @@ function ago(mins) {
    say so — an instant PDF is otherwise indistinguishable from a stale one — and
    put the way to insist on a new one right next to the claim. */
 function noteReused(mins) {
-  noteEl.textContent = 'this sheet was drawn ' + ago(mins) + ' — reusing it · ';
+  noteEl.textContent = 'this sheet was drawn ' + ago(mins) + ', reusing it · ';
   const again = document.createElement('button');
   again.type = 'button';
   again.textContent = 'generate a fresh one';
@@ -892,11 +907,11 @@ async function submit(fresh) {
     });
     const j = await readJson(r);
     if (!r.ok) throw new Error(httpMessage(r, j));
-    if (!j.id) throw new Error('service restarting — try again shortly');
+    if (!j.id) throw new Error('service restarting, try again shortly');
     if (j.reused) noteReused(j.ageMinutes);
     // Someone else asked for this drawing first and it is still running;
     // following their job is why this one does not join the queue behind it.
-    else if (j.joined) noteEl.textContent = 'already being drawn for this address — following that run';
+    else if (j.joined) noteEl.textContent = 'already being drawn for this address, following that run';
     poll(j.id);
   } catch (err) { fail(err.message); }
 }
@@ -949,10 +964,10 @@ async function poll(id, misses) {
         queueEl.textContent = 'reconnecting';
         return setTimeout(() => poll(id, misses + 1), 3000);
       }
-      throw new Error('service restarting — try again shortly');
+      throw new Error('service restarting, try again shortly');
     }
     const j = await readJson(r);
-    if (r.status === 404) throw new Error('service restarted, job lost — run again');
+    if (r.status === 404) throw new Error('service restarted and lost the job, run again');
     if (!r.ok) throw new Error(httpMessage(r, j));
 
     if (j.status === 'queued' && j.queuePosition > 0) {
@@ -979,12 +994,12 @@ async function poll(id, misses) {
       // which can land a few seconds after the visitor does.
       if (awaitingPayment > 0 && !grants.cleanPdf) {
         awaitingPayment -= 1;
-        noteEl.textContent = 'payment received — unlocking the site…';
+        noteEl.textContent = 'payment received, unlocking the site…';
         return setTimeout(() => poll(id, 0), 2000);
       }
       if (returnedFromPayment) {
         noteEl.textContent = grants.cleanPdf ? 'site unlocked'
-          : 'payment not confirmed yet — reload this page in a minute';
+          : 'payment not confirmed yet, reload this page in a minute';
         returnedFromPayment = false;
       }
       // The drawing itself takes the result frame above: a picture of a few
@@ -996,7 +1011,7 @@ async function poll(id, misses) {
       if (!grants.pdf) {
         addButton('sign up free to download the pdf', () => {
           rememberDownload(id);
-          openAuth('signup', 'A free account downloads the PDF, with a watermark — sign up, or sign in, and the drawing is waiting.');
+          openAuth('signup', 'A free account downloads the PDF, with a watermark. Sign up, or sign in, and the drawing is waiting.');
         });
       }
       if (j.unlock) {
@@ -1090,7 +1105,7 @@ async function unlock(id) {
   // the job, so signing in carries straight on to Stripe.
   if (!session || !session.authed) {
     pendingUnlockJob = id;
-    openAuth('signup', 'Buying starts with a free account — sign up, or sign in, and payment follows.');
+    openAuth('signup', 'Buying starts with a free account. Sign up, or sign in, and payment follows.');
     return;
   }
   errEl.textContent = '';
@@ -1103,7 +1118,7 @@ async function unlock(id) {
     if (r.ok && j.url) return location.assign(j.url);
     errEl.textContent = httpMessage(r, j);
   } catch {
-    errEl.textContent = 'no answer from the server — try again';
+    errEl.textContent = 'no answer from the server, try again';
   }
 }
 

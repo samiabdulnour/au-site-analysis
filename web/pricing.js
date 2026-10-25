@@ -28,9 +28,9 @@ function toStripe(label, path, primary) {
       const r = await fetch(path, { method: 'POST' });
       const j = await r.json().catch(() => ({}));
       if (r.ok && j.url) return location.assign(j.url);
-      err.textContent = j.error || 'something went wrong — try again';
+      err.textContent = j.error || 'something went wrong, try again';
     } catch {
-      err.textContent = 'no answer from the server — try again';
+      err.textContent = 'no answer from the server, try again';
     }
     b.disabled = false;
   });
@@ -107,7 +107,7 @@ async function me() {
   // few seconds after the visitor does, so wait for it rather than showing
   // "Free" to someone who has just paid.
   if (new URLSearchParams(location.search).has('subscribed') && j && j.plan !== 'subscription') {
-    headline('Payment received — confirming with Stripe…');
+    headline('Payment received. Confirming with Stripe…');
     for (let i = 0; i < 15 && j && j.plan !== 'subscription'; i++) {
       await new Promise((r) => setTimeout(r, 2000));
       j = await me();

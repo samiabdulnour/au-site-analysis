@@ -149,7 +149,7 @@ async function send(to: string, subject: string, text: string, kind: Kind = 'lin
 // mail scanners open every link in a message, and one that made the account
 // on being opened would spend itself before its owner ever clicked.
 export function sendSignupLink(to: string, origin: string, token: string): Promise<void> {
-  return send(to, 'Finish signing up — Site Analyst',
+  return send(to, 'Finish signing up · Site Analyst',
 `Click to finish making your Site Analyst account:
 
 ${origin}/?confirm=${token}
@@ -163,7 +163,7 @@ ignore this email and no account is made.
 // of a link, so the form can answer every sign-up alike and not say which
 // addresses have accounts.
 export function sendAlreadyRegistered(to: string, origin: string): Promise<void> {
-  return send(to, 'You already have an account — Site Analyst',
+  return send(to, 'You already have an account · Site Analyst',
 `Someone, perhaps you, tried to sign up to Site Analyst with this address,
 but it already has an account. Sign in at
 
@@ -175,7 +175,7 @@ If it was not you, ignore this email: nothing has changed.
 }
 
 export function sendVerification(to: string, origin: string, token: string): Promise<void> {
-  return send(to, 'Verify your email — Site Analyst',
+  return send(to, 'Verify your email · Site Analyst',
 `Click to verify this address for your Site Analyst account:
 
 ${origin}/api/verify?token=${token}
@@ -186,7 +186,7 @@ ignore this email and the account stays unverified.
 }
 
 export function sendReset(to: string, origin: string, token: string): Promise<void> {
-  return send(to, 'Reset your password — Site Analyst',
+  return send(to, 'Reset your password · Site Analyst',
 `Someone asked to reset the password of the Site Analyst account on this
 address. Click to choose a new one:
 

@@ -35,7 +35,7 @@ interface Mail { login: string; envelopeFrom: string; rcpt: string[]; headers: R
 const mails: Mail[] = [];
 let acceptLogin = true;
 
-/** RFC 2047 words, as a subject with an em dash in it arrives. */
+/** RFC 2047 words, as a subject with a middle dot in it arrives. */
 const decodeWords = (s: string) => s.replace(/=\?utf-8\?([qb])\?([^?]*)\?=/gi, (_, enc, data) =>
   enc.toLowerCase() === 'b' ? Buffer.from(data, 'base64').toString('utf8')
     : Buffer.from(data.replace(/_/g, ' ').replace(/=([0-9a-f]{2})/gi, (_m: string, h: string) => String.fromCharCode(parseInt(h, 16))), 'latin1').toString('utf8'));
@@ -178,7 +178,7 @@ try {
   check('the mail server was logged in to as the mailbox, password intact', v.login === MAILBOX);
   check('it comes from the mailbox', v.envelopeFrom === MAILBOX && v.headers.from?.includes(MAILBOX), JSON.stringify(v.headers.from));
   check('it goes to the sign-up and no one else', v.rcpt.length === 1 && v.headers.to?.includes('carol@example.com'));
-  check('the subject arrives whole, dash and all', v.headers.subject === 'Finish signing up — Site Analyst', v.headers.subject);
+  check('the subject arrives whole, middle dot and all', v.headers.subject === 'Finish signing up · Site Analyst', v.headers.subject);
   const confirmToken = tokenIn(v, 'confirm');
   check('the email carries the link', confirmToken.length === 64, v.text);
   const made = await post(carol, '/api/signup/confirm', { token: confirmToken });

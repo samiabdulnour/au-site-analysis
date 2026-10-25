@@ -65,7 +65,7 @@ const DEPLOY_STALE_SECONDS = 15 * 60;
 /** The deployer's last pass, and whether it looks like there was one. */
 function deployRow(dep) {
   if (!dep || !dep.text || dep.text === 'none')
-    return ['deployer', 'no status — deployer has not reported', 'warn'];
+    return ['deployer', 'no status, the deployer has not reported', 'warn'];
   const failed = /^FAILED/.test(dep.text);
   const stale = dep.ageSeconds === null || dep.ageSeconds > DEPLOY_STALE_SECONDS;
   const age = dep.ageSeconds === null ? 'age unknown' : uptime(dep.ageSeconds) + ' ago';

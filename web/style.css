@@ -491,9 +491,11 @@ h2 { font-size: 18px; font-weight: 400; text-transform: uppercase; line-height: 
 /* The way in is its own button under the box, not a cell of it. It keeps the
    last column's width and place — its left rule on the line between the last
    two cells — and sits clear of the box above and the words below. Its two
-   rules and padding make the box's 36px. */
+   rules and padding make the box's 36px. A longer word, which only the
+   emailed links' forms ask for and those have no row of cells above, widens
+   it leftwards rather than being cut short. */
 .go.under {
-  display: block; width: calc((100% - 1px) / 5 + 1px);
+  display: block; width: auto; min-width: calc((100% - 1px) / 5 + 1px);
   margin: 1rem 0 1rem auto;
   border: 1px solid var(--line);
   line-height: normal; padding: 6.75px .9rem;
@@ -594,7 +596,7 @@ h2 { font-size: 18px; font-weight: 400; text-transform: uppercase; line-height: 
   #suggest.open { animation: drop var(--fast) var(--ease) both; }
   #links .btn { animation: fade var(--med) var(--ease) both; }
   /* SIGN IN or SIGN OUT joins the nav once the session is known. */
-  .nav .btn:nth-child(n+3) { animation: fade var(--med) var(--ease) both; }
+  .nav .btn:nth-child(n+4) { animation: fade var(--med) var(--ease) both; }
   /* The plans headline, when it changes to say which plan this is. */
   .headline.swap { animation: fade var(--med) var(--ease) both; }
   /* The page's accent underline is drawn in as the page arrives. */
@@ -657,7 +659,7 @@ h2 { font-size: 18px; font-weight: 400; text-transform: uppercase; line-height: 
   .opts.auth .rowhead { flex: none; border-right-width: 0; }
   .opts.auth .cells { flex-wrap: wrap; }
   .opts.auth .cell, .opts.auth .cell-empty { flex: 1 0 50%; }
-  .go.under { width: calc((100% - 1px) / 2 + 1px); }
+  .go.under { min-width: calc((100% - 1px) / 2 + 1px); }
   /* Two notes abreast are too narrow on a phone: one under the other. */
   footer { grid-template-columns: minmax(0, 1fr); }
   /* On a phone a label column wide enough for OPENSTREETMAP leaves the
