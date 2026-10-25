@@ -23,6 +23,11 @@
   /* Between the two columns of every spread: the welcome's windows, the
      tables abreast, and the footer's two notes. */
   --gutter: 2rem;
+  /* Motion: short, eased out, never bouncing — a colour that settles, a box
+     that fades up into place. Off when the device asks for less motion. */
+  --ease: cubic-bezier(.2, .7, .2, 1);
+  --fast: 160ms;     /* hovers and picks */
+  --med: 280ms;      /* things appearing, pictures crossing */
   /* Light only, like the paper the sheets are printed on: the page does not
      follow the device into dark mode (which many turn on at sunset), and the
      browser's own controls and scrollbars stay light with it. */
@@ -81,17 +86,25 @@ a { color: inherit; }
 
 /* Plain words, not boxes: the nav is the sheet's running head, in the small
    size, the tops of its capitals level with the title's. The page the
-   visitor is on carries the accent underline. */
+   visitor is on carries the accent underline. Both underlines are drawn as a
+   background, under the word where the accent's 3px have always sat, so they
+   can grow from the left: a hairline on hover, the accent as the page comes
+   in. */
 .nav { display: flex; flex-wrap: wrap; gap: .4rem 58px; align-items: baseline;
        font-size: var(--small); margin-top: 3.5px; }
 .nav .btn {
-  border: 0; background: transparent; padding: 0; margin: 0;
+  border: 0; padding: 0 0 calc(.1rem + 3px); margin: 0;
+  background: linear-gradient(currentColor, currentColor) no-repeat
+              left calc(100% - 2px) / 0 1px;
   font: inherit; letter-spacing: .02em; text-transform: uppercase;
   text-decoration: none; color: var(--ink); cursor: pointer; white-space: nowrap;
+  transition: background-size var(--med) var(--ease);
 }
-.nav .btn:hover { background: transparent; text-decoration: underline;
-                  text-underline-offset: .4em; }
-.nav .btn.active { border-bottom: 3px solid var(--accent); padding-bottom: .1rem; }
+.nav .btn:hover { background-size: 100% 1px; }
+.nav .btn.active, .nav .btn.active:hover {
+  background-image: linear-gradient(var(--accent), var(--accent));
+  background-position: left bottom; background-size: 100% 3px;
+}
 
 .lead { margin-bottom: 1rem; max-width: 76ch; }
 
@@ -549,6 +562,55 @@ h2 { font-size: 18px; font-weight: 400; text-transform: uppercase; line-height: 
 .humanframe.gen:not(.quiet) { margin: 0 0 1rem; }
 /* Off the page, not hidden: a field that is display:none is one bots skip. */
 .trap { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+
+/* ---- motion --------------------------------------------------------------- */
+/* Nothing moves far or for long: colours settle over a sixth of a second, and
+   what appears — a view of the tool, the progress box, the suggestions, the
+   downloads — fades up a few pixels into place. A box shown by taking away
+   [hidden] starts its animation each time it is shown, so no script is
+   needed for it. The welcome's windows keep their cut: that one is a gif. */
+.btn, .cell, .try, .go, #suggest li, .linkish, #note button, #verify button {
+  transition: background-color var(--fast) var(--ease), color var(--fast) var(--ease),
+              filter var(--fast) var(--ease);
+}
+/* The result frame: a new picture comes in under the one shown, which fades
+   away over it (app.js keeps it there as .ghost until the new one is in). */
+.result { position: relative; }
+.result img { transition: opacity var(--med) var(--ease); }
+.result img.ghost { position: absolute; top: 0; left: 0; pointer-events: none; }
+.result img.ghost.out { opacity: 0; }
+
+@keyframes rise { from { opacity: 0; transform: translateY(6px); } }
+@keyframes drop { from { opacity: 0; transform: translateY(-4px); } }
+@keyframes fade { from { opacity: 0; } }
+@keyframes draw { from { background-size: 0 3px; } }
+
+@media (prefers-reduced-motion: no-preference) {
+  /* The index page's views, as each is shown. */
+  #welcome, #login, #f { animation: rise var(--med) var(--ease) both; }
+  /* Within them, what turns up later. */
+  #out, #verify, #authNote, #unlockWhat, #resultDrawn, #sites,
+  .bigacts .btn { animation: rise var(--med) var(--ease) both; }
+  #suggest.open { animation: drop var(--fast) var(--ease) both; }
+  #links .btn { animation: fade var(--med) var(--ease) both; }
+  /* SIGN IN or SIGN OUT joins the nav once the session is known. */
+  .nav .btn:nth-child(n+3) { animation: fade var(--med) var(--ease) both; }
+  /* The plans headline, when it changes to say which plan this is. */
+  .headline.swap { animation: fade var(--med) var(--ease) both; }
+  /* The page's accent underline is drawn in as the page arrives. */
+  .nav .btn.active { animation: draw 420ms var(--ease) 80ms both; }
+
+  /* From page to page: the header band holds still and the page under it
+     crossfades, the new one rising a few pixels — in browsers that do
+     cross-document view transitions; the rest change pages as before. */
+  @view-transition { navigation: auto; }
+  .band { view-transition-name: band; }
+  ::view-transition-old(root) { animation: fade var(--fast) var(--ease) reverse both; }
+  ::view-transition-new(root) { animation: rise var(--med) var(--ease) both; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .btn, .cell, .try, .go, #suggest li, .linkish, .nav .btn, .result img { transition: none; }
+}
 
 /* ---- narrower screens ----------------------------------------------------- */
 /* One column: the welcome panels stack, the two sheets stack, and the tool

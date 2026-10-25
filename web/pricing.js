@@ -39,38 +39,49 @@ function toStripe(label, path, primary) {
 
 const day = (ms) => new Date(ms).toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' });
 
+/** The headline says which plan this is. When that changes what it said, the
+    new words fade in rather than replace the old in a cut; the visitor's,
+    which the page is served with, stays still. */
+function headline(text) {
+  if (mine.textContent.replace(/\s+/g, ' ').trim() === text) return;
+  mine.textContent = text;
+  mine.classList.remove('swap');
+  void mine.offsetWidth;   // so the animation starts again
+  mine.classList.add('swap');
+}
+
 function show(j) {
   act.innerHTML = '';
   sites.hidden = true;
   // The headline the page is served with is the visitor's; the way in is
   // the one button under it, SIGN IN being in the nav.
   if (!j || !j.authed) {
-    mine.textContent = 'A free account downloads the PDF, and buying an address ' +
-      'or the subscription starts from it.';
+    headline('A free account downloads the PDF, and buying an address ' +
+      'or the subscription starts from it.');
     link('CREATE A FREE ACCOUNT', '/?signup', true);
     return;
   }
   const a = j.account;
   if (j.plan === 'subscription') {
     if (!a) {
-      mine.textContent = 'This browser holds the office access code, which includes everything the subscription does.';
+      headline('This browser holds the office access code, which includes everything the subscription does.');
     } else if (a.status) {
-      mine.textContent = 'Subscription, ' + a.email + (a.renewsAt ? ', paid to ' + day(a.renewsAt) : '') + '.';
+      headline('Subscription, ' + a.email + (a.renewsAt ? ', paid to ' + day(a.renewsAt) : '') + '.');
     } else {
-      mine.textContent = 'Subscription, ' + a.email + ', given without charge.';
+      headline('Subscription, ' + a.email + ', given without charge.');
     }
     if (a && a.portal) toStripe('MANAGE BILLING', '/api/billing/portal');
     return;
   }
   if (a.status === 'past_due' || a.status === 'unpaid') {
-    mine.textContent = 'Free, ' + a.email + ': the last payment did not go through. ' +
-      'Update the card and the subscription comes back.';
+    headline('Free, ' + a.email + ': the last payment did not go through. ' +
+      'Update the card and the subscription comes back.');
     toStripe('MANAGE BILLING', '/api/billing/portal', true);
     return;
   }
-  mine.textContent = 'Free, ' + a.email + '.';
-  if (j.billing && j.billing.subscription) toStripe('SUBSCRIBE', '/api/billing/checkout', true);
-  else mine.textContent += ' Subscriptions open soon.';
+  const open = Boolean(j.billing && j.billing.subscription);
+  headline('Free, ' + a.email + '.' + (open ? '' : ' Subscriptions open soon.'));
+  if (open) toStripe('SUBSCRIBE', '/api/billing/checkout', true);
   if (a.portal) toStripe('MANAGE BILLING', '/api/billing/portal');
   // The sites bought one at a time, each with the day it runs out: under the
   // buttons, since a list of addresses is no headline.
@@ -96,7 +107,7 @@ async function me() {
   // few seconds after the visitor does, so wait for it rather than showing
   // "Free" to someone who has just paid.
   if (new URLSearchParams(location.search).has('subscribed') && j && j.plan !== 'subscription') {
-    mine.textContent = 'Payment received — confirming with Stripe…';
+    headline('Payment received — confirming with Stripe…');
     for (let i = 0; i < 15 && j && j.plan !== 'subscription'; i++) {
       await new Promise((r) => setTimeout(r, 2000));
       j = await me();

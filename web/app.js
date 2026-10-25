@@ -60,6 +60,9 @@ const NORTH = [
 const EXAMPLE_ADDRESS = '150 George Street, Parramatta';
 
 const $ = (id) => document.getElementById(id);
+// Yellow from the start when the last page knew of a session; applySession
+// puts it right once the server answers.
+try { if (localStorage.getItem('sa:authed')) $('band').classList.add('hi'); } catch { /* private mode */ }
 const f = $('f'), loginForm = $('login'), welcome = $('welcome');
 const out = $('out'), queueEl = $('queue');
 const linksEl = $('links'), errEl = $('error'), go = $('go'), noteEl = $('note');
@@ -75,6 +78,19 @@ const resultImg = $('resultImg'), resultMissing = $('resultMissing');
 const ROW_CELLS = 4;
 
 function tokens(host, items, current, onPick) {
+  // A pick re-renders every row. A row offering the same choices as before
+  // keeps its buttons and only moves the pressed one, so the yellow eases
+  // from the old choice to the new instead of the row being drawn afresh.
+  // The buttons ask the host for the latest handler, so a kept button never
+  // runs a stale one.
+  host.pick = onPick;
+  const key = JSON.stringify(items);
+  if (host.dataset.key === key) {
+    host.querySelectorAll('.cell').forEach((b, i) =>
+      b.setAttribute('aria-pressed', String(items[i][0] === current)));
+    return;
+  }
+  host.dataset.key = key;
   host.innerHTML = '';
   items.forEach(([value, label]) => {
     const b = document.createElement('button');
@@ -82,7 +98,7 @@ function tokens(host, items, current, onPick) {
     b.className = 'cell';
     b.textContent = label;
     b.setAttribute('aria-pressed', String(value === current));
-    b.addEventListener('click', () => onPick(value));
+    b.addEventListener('click', () => host.pick(value));
     host.append(b);
   });
   for (let i = items.length; i < ROW_CELLS; i++) {
@@ -123,8 +139,11 @@ const GUEST = { pdf: false, cleanPdf: false, openData: false };
 function applySession(j) {
   session = j;
   // Signed in, the header band turns yellow: the page says whose it is
-  // before a word is read.
+  // before a word is read. Remembered for the next page (nav.js), whose band
+  // can then be yellow from the start instead of turning yellow on the
+  // server's answer.
   $('band').classList.toggle('hi', Boolean(j.authed));
+  try { localStorage.setItem('sa:authed', j.authed ? '1' : ''); } catch { /* private mode */ }
   // An account that has not clicked its verification link is told generating
   // waits on it, with the resend beside the words. Just back from the link
   // (?verified=1), the banner's place says so instead.
@@ -229,7 +248,7 @@ function stopDeck() {
 
 function showPage(n) {
   deck.page = n;
-  resultImg.src = pageSrc(n);
+  swapTo(pageSrc(n));
   resultImg.alt = PAGED[deck.sheet] + ' on A3, page ' + n + (deck.last ? ' of ' + deck.last : '') +
     '. An example drawn for ' + EXAMPLE_ADDRESS + '.';
 }
@@ -268,7 +287,6 @@ function renderResult() {
     deck = { sheet: state.sheet, page: 1, last: 0, timer: 0, held: resultImg.parentElement.matches(':hover') };
     resultImg.hidden = false;
     resultMissing.hidden = true;
-    resultImg.classList.add('loading');
     showPage(1);
     schedulePage();
     return;
@@ -289,10 +307,7 @@ function renderResult() {
   if (resultImg.getAttribute('src') !== src) {
     resultImg.hidden = false;
     resultMissing.hidden = true;
-    // The last picture stays up until the next arrives, so it is dimmed
-    // meanwhile rather than passed off as the new choice's.
-    resultImg.classList.add('loading');
-    resultImg.src = src;
+    swapTo(src);
   }
 }
 /** A finished drawing takes the result frame, captioned with its address. */
@@ -304,15 +319,54 @@ function showDrawn(id, address) {
   cap.hidden = false;
   resultImg.hidden = false;
   resultImg.alt = 'The finished drawing for ' + address + '.';
-  resultImg.classList.add('loading');
-  resultImg.src = '/api/jobs/' + id + '/preview';
+  swapTo('/api/jobs/' + id + '/preview');
 }
 
-resultImg.addEventListener('load', () => resultImg.classList.remove('loading'));
+/* A new picture in the frame crossfades with the one shown: a copy of the old
+   one, the ghost, stays over the frame while the next loads under it, and
+   fades away once it is in. The last picture is still dimmed while a slow one
+   is on its way, so it is not passed off as the new choice's — the ghost
+   dims, after a beat, so a picture that is already at hand does not blink.
+   With nothing on show yet, or less motion asked for, the picture is just
+   swapped, dimmed until it loads. */
+let ghost = null;
+function dropGhost() {
+  if (ghost) ghost.remove();
+  ghost = null;
+}
+function swapTo(src) {
+  dropGhost();
+  const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!still && !resultImg.hidden && resultImg.complete && resultImg.naturalWidth) {
+    const g = resultImg.cloneNode();
+    g.removeAttribute('id');
+    g.alt = '';
+    g.setAttribute('aria-hidden', 'true');
+    g.className = 'ghost';
+    // Last in the frame, so it is over any ghost still fading from a pick
+    // just before.
+    resultImg.parentElement.append(g);
+    ghost = g;
+    setTimeout(() => { if (ghost === g) g.classList.add('loading'); }, 150);
+  } else {
+    resultImg.classList.add('loading');
+  }
+  resultImg.src = src;
+}
+
+resultImg.addEventListener('load', () => {
+  resultImg.classList.remove('loading');
+  if (!ghost) return;
+  const g = ghost;
+  ghost = null;
+  g.classList.add('out');
+  setTimeout(() => g.remove(), 400);
+});
 // A combination without a picture says so rather than showing a broken image
 // or, worse, the previous choice's picture as if it were this one's.
 resultImg.addEventListener('error', () => {
   stopDeck();
+  dropGhost();
   resultImg.classList.remove('loading');
   resultImg.hidden = true;
   resultMissing.hidden = false;
