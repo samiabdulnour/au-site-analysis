@@ -99,6 +99,8 @@ a { color: inherit; }
   text-decoration: none; color: var(--ink); cursor: pointer; white-space: nowrap;
 }
 .nav .btn:hover { background: transparent; }
+/* .btn is inline-block, which would otherwise outrank [hidden]. */
+.nav .btn[hidden] { display: none; }
 .nav .btn::after {
   content: ''; position: absolute; left: 0; right: 0; bottom: 2px; height: 1px;
   background: currentColor; pointer-events: none;
@@ -232,6 +234,23 @@ a { color: inherit; }
 }
 .go:hover { filter: brightness(.95); }
 .go:disabled { background: transparent; color: var(--muted); cursor: wait; }
+/* Where app.js can follow the mouse, the busy button hides the system's wait
+   cursor and a turning sun takes its place (#sunCursor, below). */
+.go.sun:disabled { cursor: none; }
+
+/* The sun at the pointer over a busy GENERATE: the page's yellow with the
+   hairline every yellow box has, centred on the pointer, turning slowly.
+   A cursor itself cannot be animated, so this is an element that follows. */
+#sunCursor { position: fixed; left: 0; top: 0; z-index: 1000; width: 30px; height: 30px;
+             margin: -15px 0 0 -15px; pointer-events: none; display: none; }
+#sunCursor.on { display: block; }
+#sunCursor svg { display: block; width: 100%; height: 100%;
+                 animation: spin 2.4s linear infinite; }
+#sunCursor .edge { stroke: var(--ink); stroke-width: 3.6; stroke-linecap: round; }
+#sunCursor .ray { stroke: var(--hi); stroke-width: 1.6; stroke-linecap: round; }
+#sunCursor .disc { fill: var(--hi); stroke: var(--ink); stroke-width: 1; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { #sunCursor svg { animation: none; } }
 
 /* ---- options, down the left ---------------------------------------------- */
 /* Each row of choices is its own small table under its name: the name a plain
@@ -500,7 +519,8 @@ h2 { font-size: 18px; font-weight: 400; text-transform: uppercase; line-height: 
   display: block; width: auto; min-width: calc((100% - 1px) / 5 + 1px);
   margin: 1rem 0 1rem auto;
   border: 1px solid var(--line);
-  line-height: normal; padding: 6.75px .9rem;
+  /* Its word at the left, as far in as the cells' words above it. */
+  line-height: normal; padding: 6.75px .9rem; text-align: left;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
@@ -597,8 +617,6 @@ h2 { font-size: 18px; font-weight: 400; text-transform: uppercase; line-height: 
   .bigacts .btn { animation: rise var(--med) var(--ease) both; }
   #suggest.open { animation: drop var(--fast) var(--ease) both; }
   #links .btn { animation: fade var(--med) var(--ease) both; }
-  /* SIGN IN or SIGN OUT joins the nav once the session is known. */
-  .nav .btn:nth-child(n+4) { animation: fade var(--med) var(--ease) both; }
   /* The plans headline, when it changes to say which plan this is. */
   .headline.swap { animation: fade var(--med) var(--ease) both; }
   /* The page's accent underline is drawn in as the page arrives. */
