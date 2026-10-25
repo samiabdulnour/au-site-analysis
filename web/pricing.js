@@ -5,7 +5,7 @@
    itself happens on Stripe's pages; this one only sends the visitor there. */
 
 const $ = (id) => document.getElementById(id);
-const mine = $('mine'), act = $('act'), err = $('error');
+const mine = $('mine'), act = $('act'), err = $('error'), sites = $('sites');
 
 function link(label, href, primary) {
   const a = document.createElement('a');
@@ -41,11 +41,13 @@ const day = (ms) => new Date(ms).toLocaleDateString('en-AU', { day: 'numeric', m
 
 function show(j) {
   act.innerHTML = '';
+  sites.hidden = true;
+  // The headline the page is served with is the visitor's; the way in is
+  // the one button under it, SIGN IN being in the nav.
   if (!j || !j.authed) {
     mine.textContent = 'A free account downloads the PDF, and buying an address ' +
       'or the subscription starts from it.';
     link('CREATE A FREE ACCOUNT', '/?signup', true);
-    link('SIGN IN', '/?signin');
     return;
   }
   const a = j.account;
@@ -70,10 +72,12 @@ function show(j) {
   if (j.billing && j.billing.subscription) toStripe('SUBSCRIBE', '/api/billing/checkout', true);
   else mine.textContent += ' Subscriptions open soon.';
   if (a.portal) toStripe('MANAGE BILLING', '/api/billing/portal');
-  // The sites bought one at a time, each with the day it runs out.
+  // The sites bought one at a time, each with the day it runs out: under the
+  // buttons, since a list of addresses is no headline.
   if (a.sites && a.sites.length) {
-    mine.textContent += ' Unlocked: ' +
+    sites.textContent = 'Unlocked: ' +
       a.sites.map((s) => s.address + ', until ' + day(s.until)).join('; ') + '.';
+    sites.hidden = false;
   }
 }
 

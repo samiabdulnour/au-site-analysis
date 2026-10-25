@@ -50,11 +50,14 @@
 <div class="page">
 
   <!-- ---- welcome --------------------------------------------------------- -->
-  <!-- What a visitor without a session sees first: two panels blinking through
-       the app's own sheets and the illustrations, a couple of words, and TRY
-       across the page. Not a wall: TRY opens the tool, which needs no
-       account. -->
+  <!-- What a visitor without a session sees first: the invitation as the
+       headline, standing on two panels blinking through the app's own sheets
+       and the illustrations, and TRY across the page. Not a wall: TRY opens
+       the tool, which needs no account. -->
   <section id="welcome" hidden>
+    <!-- Broken where the mock-up breaks it; the lines still fit a phone. -->
+    <p class="headline">Type a NSW address<br> and watch its site analysis<br>
+    draw itself.</p>
     <div class="hero">
       <figure class="hero-panel hero-shots"
               aria-label="Sheets drawn by Site Analyst and its illustrations, shown one after another.">
@@ -64,11 +67,6 @@
               aria-label="Sheets drawn by Site Analyst and its illustrations, shown one after another.">
         <img id="heroB" data-hero alt="A sheet drawn by Site Analyst." width="1193" height="843">
       </figure>
-    </div>
-    <div class="welcome-copy">
-      <div class="k"><a href="/about">about…</a></div>
-      <p>Type a NSW address and watch its site analysis draw itself. Seeing it
-      is free.</p>
     </div>
     <button type="button" class="try" id="tryBtn">TRY</button>
   </section>
@@ -120,8 +118,9 @@
 
   <!-- ---- the tool ------------------------------------------------------- -->
   <!-- The options down the left like a sheet's key; the address bar and the
-       drawing take the rest. A finished sheet's links — pay, open, download —
-       land under the options, where the eye already is. -->
+       drawing take the rest. Where the drawing is, and then a finished sheet's
+       links — pay, open, download — land under the options, where the eye
+       already is. -->
   <form id="f" hidden>
     <!-- Said only to an account that has not clicked its verification link.
          Drawing does not wait on it; the password reset goes to that inbox. -->
@@ -140,6 +139,15 @@
             <span class="cells" id="northOpts"></span></div>
           <div class="row" id="styleRow"><span class="rowhead">STYLE</span>
             <span class="cells" id="styleOpts"></span></div>
+        </div>
+        <!-- While it draws: a word for where it is, and a bar that moves, under
+             the options' tables. When it is done, the drawing itself takes the
+             result frame beside them. -->
+        <div id="out" hidden>
+          <div id="queue"></div>
+          <div class="progress" id="progress"><span id="progressFill"></span></div>
+          <div id="note"></div>
+          <div class="errline" id="error"></div>
         </div>
         <!-- A finished sheet's links: open, download, and the files beside it. -->
         <div class="actions">
@@ -167,15 +175,6 @@
       </div>
 
       <div class="toolview">
-        <!-- While it draws: a word for where it is, and a bar that moves. When
-             it is done, the drawing itself takes the result frame below. -->
-        <div id="out" hidden>
-          <div id="queue"></div>
-          <div class="progress" id="progress"><span id="progressFill"></span></div>
-          <div id="note"></div>
-          <div class="errline" id="error"></div>
-        </div>
-
         <!-- What the options chosen on the left produce, drawn for an example
              address — it follows the choice, not the pointer, so it holds still
              while the options are read — and, once a drawing finishes, that

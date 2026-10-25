@@ -32,49 +32,48 @@
 
 <div class="page">
 
-  <p class="lead">Every drawing is free to generate and to see. Pay to use them:
-  the clean PDF, and the CAD and data behind it.</p>
+  <!-- The page opens on what this browser can do next, as the headline: for a
+       visitor the line below, then the way in across the page; signed in,
+       pricing.js puts the plan it is on there and the buttons that go with
+       it. -->
+  <p class="headline" id="mine">A free account downloads the PDF, and buying an
+  address or the subscription starts from it.</p>
+  <div class="actions bigacts" id="act"></div>
+  <p class="lead" id="sites" hidden></p>
+  <div class="errline" id="error"></div>
 
-  <!-- Two sheets to a spread, like the about page: the plans beside yours. -->
+  <!-- Two columns, like the about page: the words beside the plans. -->
   <div class="twocol plans2">
-  <section>
-  <h2>Plans</h2>
-  <!-- A row a plan, a column for each thing it gives: what differs between
-       the plans and nothing else. What a tick stands for is the small print
-       under the table. -->
-  <div class="plans-frame"><div class="deftable plans">
-    <div class="row"><div class="k"></div>
-      <div class="v head">PDF</div><div class="v head">CAD</div><div class="v head">Data</div><div class="v head">Price</div></div>
-    <div class="row"><div class="k">no account</div>
-      <div class="v yn">—</div><div class="v yn">—</div><div class="v yn">—</div><div class="v">free</div></div>
-    <div class="row"><div class="k">free account</div>
-      <div class="v">watermarked</div><div class="v yn">—</div><div class="v yn">—</div><div class="v">free</div></div>
-    <div class="row"><div class="k">one address</div>
-      <div class="v yn">✓</div><div class="v yn">✓</div><div class="v yn">✓</div><div class="v">%SITE_PRICE%</div></div>
-    <div class="row"><div class="k">subscrip&shy;tion</div>
-      <div class="v yn">✓</div><div class="v yn">✓</div><div class="v yn">✓</div><div class="v">%PRICE%</div></div>
-  </div></div>
-  <div class="smallprint">
+  <div class="plans-words">
+    <p>Every drawing is free to generate and to see. Pay to use them: the
+    clean PDF, and the CAD and data behind it.</p>
     <p>Every plan draws every sheet, at any scale or style. CAD is the geometry as
     DXF on the MGA2020 grid and as DWG; data is the yield's CSV and JSON and the
     site report's JSON.</p>
-    <p id="howUnlock">One address unlocks everything for that address for 30 days:
-    press UNLOCK THIS ADDRESS under any drawing of it. The subscription covers
-    every address while it runs.</p>
+    <p>One address unlocks everything for that address for 30 days: press
+    UNLOCK THIS ADDRESS under any drawing of it. The subscription covers every
+    address while it runs.</p>
     <p>The one-address price is a launch price while Site Analyst is new; it
     will rise. An address already unlocked stays unlocked for its 30 days.</p>
     <p>Drawings come from open public data, with no guarantee it is complete,
     current or correct, so read one in full before paying. See the
     <a href="/terms">terms of use</a>.</p>
   </div>
-  </section>
 
-  <section>
-  <h2>Your plan</h2>
-  <p class="lead" id="mine">…</p>
-  <div class="actions bigacts" id="act"></div>
-  <div class="errline" id="error"></div>
-  </section>
+  <!-- A row a plan, a column for each thing it gives: what differs between
+       the plans and nothing else, the corner cell naming the table. -->
+  <div class="plans-frame"><div class="deftable plans">
+    <div class="row"><div class="k">plans</div>
+      <div class="v head">PDF</div><div class="v head">CAD</div><div class="v head">Data</div><div class="v head">Price</div></div>
+    <div class="row"><div class="k">no account</div>
+      <div class="v">no</div><div class="v">no</div><div class="v">no</div><div class="v">free</div></div>
+    <div class="row"><div class="k">free account</div>
+      <div class="v">watermarked</div><div class="v">no</div><div class="v">no</div><div class="v">free</div></div>
+    <div class="row"><div class="k">one address</div>
+      <div class="v">yes</div><div class="v">yes</div><div class="v">yes</div><div class="v">%SITE_PRICE%</div></div>
+    <div class="row"><div class="k">subscrip&shy;tion</div>
+      <div class="v">yes</div><div class="v">yes</div><div class="v">yes</div><div class="v">%PRICE%</div></div>
+  </div></div>
   </div>
 
   <footer>

@@ -1,6 +1,7 @@
-/* One font (Arial) at one size and one weight everywhere, never bold — no
-   breakpoint changes it, and the SITE ANALYST header is the only thing set
-   larger. Square boxes and hairline rules — the page reads like a drawing
+/* One font (Arial) at one weight everywhere, never bold, in four sizes: the
+   running text; the SITE ANALYST header; the headline a page opens with; and
+   the small size the nav, the footer and the text tables share. Square boxes
+   and hairline rules — the page reads like a drawing
    sheet's title block rather than a website. Colour does the work of
    hierarchy: yellow marks what is chosen, what to press and each table's
    label column; the magenta of the illustrations underlines the page the
@@ -17,6 +18,11 @@
   --muted:  #5a5a5a;
   --err:    #c0392b;
   --font: Arial, Helvetica, "Helvetica Neue", sans-serif;
+  /* The mock-up's small size: the nav's, the footer's and every text table's. */
+  --small: 12px;
+  /* Between the two columns of every spread: the welcome's windows, the
+     tables abreast, and the footer's two notes. */
+  --gutter: 2rem;
   /* Light only, like the paper the sheets are printed on: the page does not
      follow the device into dark mode (which many turn on at sunset), and the
      browser's own controls and scrollbars stay light with it. */
@@ -34,6 +40,10 @@ body {
   font-size: 18px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  /* The footer stands at the foot of the window when a page is shorter than
+     it, and under the content when it is longer. */
+  min-height: 100svh;
+  display: flex; flex-direction: column;
 }
 
 /* The page is the mock-up's sheet: content nearly the full width of the
@@ -43,7 +53,11 @@ body {
 /* Sized from the mock-up, a 1512 by 832 sheet drawn at a laptop browser's
    size: its margins are 85px there, and scale with the screen around it. */
 .page { max-width: 1920px; margin: 0 auto; padding: 0 clamp(16px, 5.625vw, 108px); }
-body > .page { padding-bottom: 3rem; }
+/* The page's column takes the height the band leaves, so the footer's
+   margin-top: auto can carry it down; the mock-up keeps about 80px between
+   the footer's last line and the foot of the window. */
+body > .page { width: 100%; flex: 1 0 auto; display: flex; flex-direction: column;
+               padding-bottom: 74px; }
 /* The operator views read better narrower; the header band stays full-bleed. */
 .page.narrow { max-width: 920px; padding: 0 1.5rem; }
 
@@ -65,10 +79,11 @@ a { color: inherit; }
 }
 .name a { text-decoration: none; }
 
-/* Plain words, not boxes: the nav is the sheet's running head. The page the
+/* Plain words, not boxes: the nav is the sheet's running head, in the small
+   size, the tops of its capitals level with the title's. The page the
    visitor is on carries the accent underline. */
 .nav { display: flex; flex-wrap: wrap; gap: .4rem 58px; align-items: baseline;
-       font-size: 15px; margin-top: 3px; }
+       font-size: var(--small); margin-top: 3.5px; }
 .nav .btn {
   border: 0; background: transparent; padding: 0; margin: 0;
   font: inherit; letter-spacing: .02em; text-transform: uppercase;
@@ -80,23 +95,47 @@ a { color: inherit; }
 
 .lead { margin-bottom: 1rem; max-width: 76ch; }
 
+/* Every page's content starts on one line, 36px under the band: an image's
+   top edge, a box's top rule, and the tops of the capitals of the first words
+   — so the words that open a page are lifted by the space their line keeps
+   above its capitals. */
+.page > .lead:first-child, #login > .lead:first-child,
+.splash > div > .lead:first-child { margin-top: -.356em; }
+
+/* A page's opening words kept to the left column, so they never run on into
+   the right one. */
+.lead.intro { max-width: calc((100% - var(--gutter)) / 2); }
+
+/* The headline a page opens with: the mock-up's 68px on its 1512px screen,
+   in proportion to the screen below that, its lines 1.083 apart and the tops
+   of its capitals on the content line. */
+.headline { font-size: clamp(30px, 4.5vw, 68px); line-height: 1.083;
+            font-weight: 400; margin-top: -.16em; }
+
 /* ---- welcome ------------------------------------------------------------- */
-/* What a visitor sees first: two panels blinking through the app's sheets and
-   the illustrations; then the invitation, then TRY across the page. Signed
-   in, the tool takes the page instead. */
-.hero { display: grid; grid-template-columns: 1fr 1fr; gap: 1.6rem;
-        margin-bottom: 1.2rem; }
-/* The welcome, TRY included, fits one screen: the panels give up height
-   to the header, the words and the button, and their sheets crop to fit. */
-.hero-panel { position: relative; aspect-ratio: 10 / 7; overflow: hidden;
-              max-height: calc(100svh - 330px); min-height: 12rem;
+/* What a visitor sees first: the invitation as the headline, laid over two
+   panels blinking through the app's sheets and the illustrations, then TRY
+   across the page. Signed in, the tool takes the page instead. */
+/* The headline stands on the panels: they start a line down, their top edge
+   just under the capitals of its second line, and it is drawn over them. */
+#welcome .headline { position: relative; z-index: 1; margin-bottom: -1.874em; }
+.hero { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gutter);
+        margin-bottom: 38px; }
+/* The welcome, TRY and the footer included, fits one screen: the panels give
+   up height to the header, the headline, the button and the footer, and
+   their sheets crop to fit — the panels keep their columns' width. */
+.hero-panel { position: relative; aspect-ratio: 10 / 7; overflow: hidden; width: 100%;
+              max-height: calc(100svh - 451px); min-height: 12rem;
               margin: 0; }
 /* One picture per panel, swapped in a cut once the next frame has loaded:
-   gif-like, no fade. */
-.hero-shots { border: 1px solid var(--line); background: var(--bg); }
+   gif-like, no fade. No frame: the sheet stands on the page. */
+.hero-shots { background: var(--bg); }
+/* The picture at the panel's width, cropped at its foot. hero.js enlarges and
+   shifts each sheet by its own white margin, which the frame used to close
+   off, so the drawing starts on the panel's left and top edges. */
 .hero-shots img {
-  position: absolute; inset: 0; width: 100%; height: 100%;
-  object-fit: cover; object-position: center top;
+  position: absolute; top: 0; left: 0;
+  width: 100%; height: auto; max-width: none;
 }
 
 /* How it works' animated window keeps its full proportion: the welcome's
@@ -107,17 +146,12 @@ a { color: inherit; }
 .art { margin: 0; }
 .art img { display: block; width: 100%; height: auto; }
 
-/* The words beside "about…", set like the sheet's own two-column notes. */
-.welcome-copy { display: grid; grid-template-columns: 1fr 1fr; gap: 1.6rem;
-                margin-bottom: 1.4rem; }
-.welcome-copy .k { color: var(--ink); }
-
-/* The whole width, one word: the way in. */
+/* The whole width, one word: the way in, the mock-up's 39px high. */
 .try {
   display: block; width: 100%;
-  font: inherit; letter-spacing: .08em; text-transform: uppercase;
+  font: inherit; line-height: normal; letter-spacing: .08em; text-transform: uppercase;
   color: var(--ink); background: transparent;
-  border: 1px solid var(--line); padding: .6rem 1rem;
+  border: 1px solid var(--line); padding: 8.15px 1rem;
   cursor: pointer; text-align: center;
 }
 .try:hover { background: var(--hi); }
@@ -243,8 +277,9 @@ a { color: inherit; }
 /* ---- output -------------------------------------------------------------- */
 /* A word for where the drawing is, and a bar that moves while it is drawn; once
    it is done, the drawing itself. No log: what the pipeline is fetching is the
-   operator's business, not the visitor's. */
-#out { margin-bottom: 1rem; border: 1px solid var(--line); padding: 1rem 1.2rem; }
+   operator's business, not the visitor's. It stands under the options' tables,
+   the same distance below them as they are apart. */
+#out { margin-bottom: 28px; border: 1px solid var(--line); padding: 1rem 1.2rem; }
 #queue { text-transform: uppercase; font-weight: 400; }
 .errline { color: var(--err); }
 
@@ -313,11 +348,13 @@ a { color: inherit; }
    still a box to press, but muted, since what it opens is the plans page. */
 .btn.locked { color: var(--muted); }
 
-/* Small print, at the tables' size, one note under the other. */
-/* Small print in the mock-up's small size, the nav's 15px. */
-footer { margin-top: 3rem; color: var(--muted); font-size: 15px; }
+/* Small print in the nav's small size, two notes abreast like the spreads'
+   two columns: what the drawings are on the left, the copyright on the right.
+   margin-top: auto carries it to the foot of a short page. */
+footer { margin-top: auto; padding-top: 48px; color: var(--muted); font-size: var(--small);
+         display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+         gap: .6rem var(--gutter); align-items: start; }
 footer a { color: inherit; }
-.foot2 { margin-bottom: .8rem; }
 
 /* ---- expected result ----------------------------------------------------- */
 /* A frame of its own beside the options, holding the picture alone,
@@ -345,21 +382,22 @@ h2 { font-size: 18px; font-weight: 400; text-transform: uppercase; line-height: 
 
 /* The about page's intro beside the illustrations' panel. */
 .splash { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-          gap: 2rem; align-items: start; margin-bottom: 2.6rem; }
+          gap: var(--gutter); align-items: start; margin-bottom: 2.6rem; }
 
 /* Two sheets abreast: HOW IT WORKS beside DATA SOURCES, each column its own
    stack of heading and table. */
 .twocol { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-          gap: 0 2rem; align-items: start; }
+          gap: 0 var(--gutter); align-items: start; }
 
 /* The same hairline table as the options, but the second column carries
    sentences, so it wraps and the row grows to fit. `display: contents`
    dissolves the row wrappers so the cells are the grid's own items. */
 .deftable {
-  /* The mock-up's option cells: 18px, a one-line row 36px high, the words
-     14px in. Paragraphs keep a reading leading of 1.4. */
-  --cell-pad-y: 5px;
-  font-size: 18px; line-height: 1.4;
+  /* The nav's small size, as the mock-up asks of every text table; a
+     one-line row stays 36px high, like the option cells and the mock-up's
+     rows, and the words 14px in. Paragraphs keep a reading leading of 1.4. */
+  --cell-pad-y: 9.1px;
+  font-size: var(--small); line-height: 1.4;
   display: grid;
   grid-template-columns: 24% 1fr;
   grid-auto-rows: auto;
@@ -418,10 +456,15 @@ h2 { font-size: 18px; font-weight: 400; text-transform: uppercase; line-height: 
 .bar[hidden] { display: none; }
 .bar.stack { margin-bottom: 0; }
 /* The way-in options are one line of four cells, not the sidebar's two by
-   two: a row of modes reads left to right. */
+   two: a row of modes reads left to right. The label and the four cells are
+   five equal columns, and every line of the box — the row, the email, the
+   password — and the button under it are the same 36px high, the tool's
+   cells' height: 18px type set solid, 7.25px above and below, one rule. */
 .opts.auth { border-top: 1px solid var(--line); border-left: 1px solid var(--line); }
 .opts.auth .row { margin: 0; display: flex; }
-.opts.auth .rowhead { flex: 0 0 25%; padding: .35rem .9rem;
+.opts.auth .rowhead, .opts.auth .cell, .opts.auth .cell-empty,
+#login .bar input { line-height: normal; padding-top: 7.25px; padding-bottom: 7.25px; }
+.opts.auth .rowhead { flex: 0 0 20%; padding-left: .9rem; padding-right: .9rem;
   background: var(--head);
   border: 0 solid var(--line); border-right-width: 1px; border-bottom-width: 1px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -433,12 +476,15 @@ h2 { font-size: 18px; font-weight: 400; text-transform: uppercase; line-height: 
 .opts.auth[hidden] + .bar[hidden] + .bar { border-top: 1px solid var(--line); }
 .opts.auth[hidden] { display: none; }
 /* The way in is its own button under the box, not a cell of it. It keeps the
-   last column's width and place, and sits clear of the box above and the
-   words below. */
+   last column's width and place — its left rule on the line between the last
+   two cells — and sits clear of the box above and the words below. Its two
+   rules and padding make the box's 36px. */
 .go.under {
-  display: block; width: fit-content; min-width: 25%;
+  display: block; width: calc((100% - 1px) / 5 + 1px);
   margin: 1rem 0 1rem auto;
   border: 1px solid var(--line);
+  line-height: normal; padding: 6.75px .9rem;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
 /* ---- plans --------------------------------------------------------------- */
@@ -446,35 +492,37 @@ h2 { font-size: 18px; font-weight: 400; text-transform: uppercase; line-height: 
    drawings. It keeps its columns on a phone: stacked, "watermarked" and
    "clean" would lose which column they belong to. */
 /* 1fr rows: every row takes the tallest one's height, so the boxes come out
-   even instead of stepping with their sentences. */
-.deftable.plans { grid-template-columns: 26% 1.2fr .7fr .7fr 1.4fr; grid-auto-rows: 1fr; }
+   even instead of stepping with their sentences. The columns are the
+   mock-up's: the label a quarter, the words and the price alike, the yes and
+   no narrower. */
+.deftable.plans { grid-template-columns: 26% 1.1fr .8fr .8fr 1.1fr; grid-auto-rows: 1fr; }
 .deftable.plans .head { text-transform: uppercase; letter-spacing: .02em; }
 /* A phone has room for neither five columns of whole words nor a smaller type,
    so the table keeps its width and scrolls sideways in its own box; the page
    itself never does. Words stay whole rather than breaking mid-letter. */
 .plans-frame { overflow-x: auto; }
 .deftable.plans .k, .deftable.plans .v { overflow-wrap: normal; }
-/* A tick or a dash reads from the middle of its column; the price row keeps a
-   word's left edge. */
-.deftable.plans .yn { text-align: center; }
-/* In the two-column spread the plans side takes the larger share. */
-.twocol.plans2 { grid-template-columns: 3fr 2fr; }
-@media (max-width: 900px) {
-  .twocol.plans2 { grid-template-columns: minmax(0, 1fr); }
-}
+/* The plans page's headline breaks where the mock-up's does: after "PDF,"
+   and after "the". */
+#mine { max-width: 16em; }
 
-/* What a tick stands for, under the table: the tables' small size, muted. */
-.smallprint { margin-top: 1rem; color: var(--muted); font-size: 15px; }
-.smallprint p { margin-bottom: .6rem; }
-
-/* The way in, as big as the page allows: one full-width box a line, the
-   first yellow, each sharing the rule of the one above. */
-.bigacts { display: flex; flex-direction: column; margin-top: 1.4rem; }
+/* The way in, across the page under the headline: one full-width box a line,
+   39px high like TRY, the first yellow, each sharing the rule of the one
+   above. */
+.bigacts { display: flex; flex-direction: column; margin-top: 33px; }
 .bigacts .btn { display: block; width: 100%; text-align: center;
-                padding: 1.1rem 1rem; letter-spacing: .06em; }
+                line-height: normal; padding: 8.15px 1rem; letter-spacing: .02em; }
 .bigacts .btn + .btn { margin: -1px 0 0; }
-#mine { margin-top: .2rem; }
-#howUnlock { margin-top: .8rem; }
+.bigacts:empty { display: none; }
+#sites { margin-top: 1rem; }
+
+/* The words beside the plans table, set as close as the mock-up sets them, a
+   line's space between paragraphs. The table's top rule is level with the
+   tops of the first line's capitals. */
+.plans2 { margin-top: 35px; }
+.plans-words p { line-height: 1.19; margin-bottom: 1.19em; }
+.plans-words p:last-child { margin-bottom: 0; }
+.plans2 .plans-frame { margin-top: 4px; }
 /* The plans page's own buttons stay a boxed row, as before the nav went plain. */
 .actions .btn + .btn { margin-left: -1px; }
 
@@ -512,7 +560,9 @@ h2 { font-size: 18px; font-weight: 400; text-transform: uppercase; line-height: 
   .nav { margin-top: 0; }
   .toolbar .go { flex-basis: auto; padding-left: 1rem; padding-right: 1rem; }
   .toolbar .bar { margin-bottom: 1rem; }
-  .hero, .welcome-copy, .splash, .twocol { grid-template-columns: minmax(0, 1fr); }
+  .hero, .splash, .twocol { grid-template-columns: minmax(0, 1fr); }
+  .twocol.plans2 { gap: 1.6rem; }
+  .lead.intro { max-width: none; }
   .hero { gap: 1.2rem; }
   .tool { grid-template-columns: 1fr; gap: 0;
           grid-template-areas: "bar" "side" "view"; }
@@ -532,7 +582,7 @@ h2 { font-size: 18px; font-weight: 400; text-transform: uppercase; line-height: 
   .nav { gap: .4rem 1.4rem; }
   .cell, .cell-empty { padding: .3rem .6rem; }
   .go { padding: .45rem 1rem; }
-  .deftable { grid-template-columns: 34% 1fr; --cell-pad-y: 5px; font-size: 15px; }
+  .deftable { grid-template-columns: 34% 1fr; }
   .deftable .k, .deftable .v { padding: var(--cell-pad-y) .6rem; }
   .job > * { padding: .5rem .6rem; }
   .job { grid-template-columns: 6rem 1fr 7rem; }
@@ -545,7 +595,9 @@ h2 { font-size: 18px; font-weight: 400; text-transform: uppercase; line-height: 
   .opts.auth .rowhead { flex: none; border-right-width: 0; }
   .opts.auth .cells { flex-wrap: wrap; }
   .opts.auth .cell, .opts.auth .cell-empty { flex: 1 0 50%; }
-  .go.under { min-width: 50%; }
+  .go.under { width: calc((100% - 1px) / 2 + 1px); }
+  /* Two notes abreast are too narrow on a phone: one under the other. */
+  footer { grid-template-columns: minmax(0, 1fr); }
   /* On a phone a label column wide enough for OPENSTREETMAP leaves the
      sentences in a gutter: the label becomes a strip above its own text. */
   .deftable { grid-template-columns: 1fr; }

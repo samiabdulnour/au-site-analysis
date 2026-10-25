@@ -17,7 +17,13 @@
    then it shows a sheet and takes its illustration at the next cut. A sheet
    holds for SHEET_MS, an illustration only a flash, ART_MS. Each frame is fetched before it is shown and swapped in one cut; each
    window after the first runs half a beat behind the one before. Held still when motion is
-   asked not to. */
+   asked not to.
+
+   The windows have no frame, so a sheet's own white paper margin would leave
+   the drawing short of the panel's edges and below the words beside it. Each
+   sheet is enlarged and shifted by its own margin, measured once on a small
+   canvas, so the drawing starts on the panel's left and top edges; the
+   illustrations keep their white, which is part of them. */
 // The samples' cache-busting query, as app.js names them.
 const sample = (name) => '/samples/' + name + '?r=2';
 const HERO_COUNT = 25;   // web/samples/hero-1.jpg … hero-<n>.jpg
@@ -51,6 +57,49 @@ const HERO_PANELS = heroEls.map((el, side) => {
 });
 let heroOn = false;
 
+// A picture's white margins, as fractions of its width and height, by URL.
+const margins = new Map();
+const INK = 240 * 3;      // darker than near-white, summed over r, g and b
+
+/** The white margin round a sheet: rows and columns in which less than one
+    pixel in two hundred is drawn on count as paper. */
+function marginsOf(img) {
+  if (margins.has(img.src)) return margins.get(img.src);
+  let m = { l: 0, t: 0, r: 0 };
+  try {
+    const w = 600, h = Math.round(w * img.naturalHeight / img.naturalWidth);
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const g = c.getContext('2d', { willReadFrequently: true });
+    g.drawImage(img, 0, 0, w, h);
+    const d = g.getImageData(0, 0, w, h).data;
+    const cols = new Uint32Array(w), rows = new Uint32Array(h);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      if (d[i] + d[i + 1] + d[i + 2] < INK) { cols[x]++; rows[y]++; }
+    }
+    const first = (a, n) => { const i = a.findIndex((v) => v > n / 200); return i < 0 ? 0 : i; };
+    const l = first(cols, h), t = first(rows, w), r = first([...cols].reverse(), h);
+    // A margin over a tenth is no paper edge; leave such a picture as it is.
+    if (l < w / 10 && r < w / 10 && t < h / 10) m = { l: l / w, t: t / h, r: r / w };
+  } catch { /* unreadable: shown as it is */ }
+  margins.set(img.src, m);
+  return m;
+}
+
+/** Enlarge and shift a window's picture by the sheet's margins (none for an
+    illustration). Widths and margins in % are of the panel's width, so the
+    one panel width sizes all three; the panel crops what runs past its foot. */
+function fit(el, img) {
+  const m = /\/samples\/hero-/.test(img.src) ? marginsOf(img) : { l: 0, t: 0, r: 0 };
+  const k = 1 / (1 - m.l - m.r);
+  el.style.width = (100 * k) + '%';
+  el.style.marginLeft = (-100 * m.l * k) + '%';
+  el.style.marginTop = (-100 * m.t * k * img.naturalHeight / img.naturalWidth) + '%';
+}
+// The first frames, and any set without a preload, fit once they are in.
+heroEls.forEach((el) => el.addEventListener('load', () => fit(el, el)));
+
 /** The next frame for a window: its next sheet, or, when its turn has come, an illustration. */
 function nextFrame(panel) {
   if (panel.sinceArt >= panel.artAfter && !HERO_PANELS.some((p) => p !== panel && p.artBusy)) {
@@ -80,6 +129,7 @@ function heroTurn(panel) {
   const pre = new Image();
   pre.onload = () => {
     if (!heroOn) return;
+    fit(el, pre);
     el.src = frame.src;
     // The illustration before this frame is off screen now.
     if (!frame.art) panel.artBusy = false;
