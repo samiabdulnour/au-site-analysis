@@ -1163,14 +1163,15 @@ street names — and DejaVu).
 Naming an absent font does not fail; it silently falls back and the sheet
 comes out in the wrong face, so add the package to the `Dockerfile` first.
 
-Options (after `--`): `--type context|site|yield|slides|summary|both`, `--scale 3000` (default 3000;
+Options (after `--`): `--type context|site|yield|slides|streetscape|summary|both`, `--scale 3000` (default 3000;
 the web picker offers 1:2000, 1:3000, 1:4000 and 1:5000, the server accepts 1000 to 6000),
 `--site-scale 500` (the site sheet's; the web picker offers auto, 1:250, 1:500 and 1:1000, starting on auto;
 auto, or left out, takes the tightest of 1:200, 1:250, 1:300, 1:400, 1:500, 1:600, 1:750 and 1:1000 that fits the lot),
 `--template flamingo|kingfisher|heron|canary` (the context sheet's template, see Templates below),
 `--site-theme heron|kingfisher|flamingo|canary` (the site sheet's theme),
 `--slides-scale 8000` (the deck's map panels), `--da-years 5` (the deck's
-development window), `--job 2539`, `--client "Name"`,
+development window), `--half-length 95` (how far the streetscape runs either
+way from the site, metres), `--job 2539`, `--client "Name"`,
 `--status "DEVELOPMENT APPLICATION"`, `--sheet "DA 003"`.
 
 ### The planning yield
@@ -1508,6 +1509,47 @@ placeholder for the author's narrative. Outputs: `OVERALL_ANALYSIS.pdf`, `slides
 Where a council publishes its own DCP mapping as open data — the City of
 Sydney does — the deck reads it too, for the sites in that LGA: building
 height in storeys, street frontage heights, active frontages, setbacks.
+
+### The streetscape
+
+`--type streetscape` draws STREETSCAPE: the site's street as two elevations on
+one A3 landscape sheet, the site's side above and the side across the road
+below, each as a viewer standing in the street sees it, so the two run
+opposite ways. Each is a run of Google Street View frames laid edge to edge at
+one true scale (1:500 for the default 190 m) over the ground, every property's
+frontage dashed off under it and named by its address, the roads and lanes
+that come in named in their gaps, and the site marked in red between dashed
+lines, with the stretch across the road from it marked too.
+
+The street is the address's own, its centreline from the NSW Transport
+Theme, and `s` is the distance along it, zero opposite the site. From the
+centreline every metre a ray goes out square to each side; the first boundary
+of the NSW property layer it meets is that metre's frontage, with the
+property's own address (a corner lot keeps its other street's), and a ray that
+meets nothing near the side's building line is a gap. The ground is the 5 m
+elevation model at the boundary.
+
+A panorama is found every 7 m along the centreline by the free metadata
+service (Google's own, in this street, and not over a road the Transport Theme
+puts in a tunnel: the Cross City Tunnel's panoramas under Riley Street are
+filed as outdoor), and turned square to either side twice: once tipped so
+its foot takes in the footpath, once tipped up as far as a vertical plane's
+picture holds, for the storeys over it. A frame is a pinhole picture and a
+frontage near enough a plane, so the sheet rectifies each frame onto its
+side's boundary by its homography, a CSS `matrix3d` the browser prints: a
+metre along the street is the same width in every frame, and the frames meet
+where the street does. Each keeps the strip from halfway to its neighbours
+either side, cut along the ground a little below the boundary and along one
+top line, as high as most of the frames reach. What stands in front of the
+boundary (trees, cars, awnings) reads larger and a building set back from it
+smaller, as in any montage, and the fine print says so. Without
+`GOOGLE_MAPS_API_KEY` the faces are drawn as their ground and frontages alone.
+At 70-76 Riley Street Darlinghurst in October 2026: 18 panoramas from March
+2021 to October 2024, one more in the tunnel's portal left out, and about 60
+images, well inside the free 10,000 a month. Outputs: `STREETSCAPE.pdf` and
+`streetscape.png`, the frames and `data/streetscape_bundle.json` beside them.
+
+The streetscape is not yet one of the web page's drawings.
 
 ## How it works
 

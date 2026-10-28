@@ -1,0 +1,278 @@
+// The streetscape sheet: the site's street as two elevations on one A3
+// landscape page, the site's face above and the face across the road below,
+// each drawn as a viewer standing in the street sees it (so the two run
+// opposite ways). Every Street View frame is rectified onto its face's
+// boundary plane in the browser, by a CSS matrix3d that is the frame's
+// homography (src/fetch/streetscape.ts), and clipped to its strip and to the
+// footpath below the ground line; the frontages are dashed off under the
+// ground and named by their addresses, the roads that come in are named in
+// their gaps, and the site is marked in the deck's red.
+
+import type { StreetscapeBundle } from '../pipeline.js';
+import { planeToImage, frameTop, mul3, inv3, BELOW_GROUND_M, FRAME_PX, type Face, type ScapeFrame } from '../fetch/streetscape.js';
+import { deckCss, SLIDE_W, SLIDE_H } from './slides.js';
+import { tpl, withTemplate, DECK_TEMPLATE } from './template.js';
+import { shortStreetName, type SheetMeta } from './sheet.js';
+import { esc } from './chrome.js';
+
+const MARGIN = 15;
+const BAND_TOP = 44;
+/** How far above the face's highest ground its band runs at most, metres: nine storeys at the boundary and the sky over them. */
+const SKY_M = 30;
+/** Never lower than this over the highest ground, whatever the frames reach: four storeys. */
+const MIN_SKY_M = 13;
+const LABEL_ROWS = 3;
+const ROW_MM = 4.6;
+/** From the foot of a band to its labels' first row, the rows, and the caption under them with its scale bar. */
+const LABEL_GAP = 2.2;
+const LABELS_H = LABEL_ROWS * ROW_MM + 2;
+const CAPTION_H = 7.6;
+const FACE_GAP = 7;
+const FOOT_TOP = SLIDE_H - 22;
+const PX_PER_MM = 96 / 25.4;
+const SEAM_MM = 0.05;
+const SCALES = [200, 250, 500, 750, 1000, 1250, 1500, 2000, 2500];
+/** The label type's size and a generous width per character, mm. */
+const LABEL_MM = 1.75, CHAR_MM = 1.12;
+
+const f2 = (v: number) => v.toFixed(2);
+const bearingWord = (deg: number) => ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'][Math.round(deg / 45) % 8];
+const titleCase = (s: string) => s.toLowerCase().replace(/\b[a-z]/g, (c) => c.toUpperCase());
+const monthName = (ym?: string) => { const m = ym?.match(/^(\d{4})-(\d{2})/); return m ? `${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][Number(m[2]) - 1]} ${m[1]}` : ''; };
+
+interface Layout { scale: number; k: number; x0: number; bands: { top: number; zTop: number; zBot: number; h: number }[] }
+
+/** The largest round scale at which the window fits the sheet's width and both bands its height. */
+export function layoutFaces(b: StreetscapeBundle): Layout {
+  const p = b.plan, len = p.s1 - p.s0, width = SLIDE_W - 2 * MARGIN;
+  const wanted = p.faces.map((f) => {
+    const zs = f.ground.map((g) => g.z);
+    const lo = zs.length ? Math.min(...zs) : 0, hi = zs.length ? Math.max(...zs) : 0;
+    // the frames are cut along one line, as high as three in four of the highest of them reach, so the face's top is straight
+    const own = b.frames.filter((fr) => fr.side === f.side), top = Math.max(0, ...own.map((fr) => fr.tier ?? 0));
+    const tops = own.filter((fr) => (fr.tier ?? 0) === top).map((fr) => frameTop(p, fr)).filter(Number.isFinite).sort((x, y) => x - y);
+    const reach = tops.length ? tops[Math.floor(tops.length / 4)] : hi + SKY_M;
+    return { zTop: Math.max(hi + MIN_SKY_M, Math.min(hi + SKY_M, reach)), zMin: hi + MIN_SKY_M, zBot: lo - BELOW_GROUND_M - 0.6 };
+  });
+  const room = FOOT_TOP - BAND_TOP - p.faces.length * (LABEL_GAP + LABELS_H + CAPTION_H) - (p.faces.length - 1) * FACE_GAP;
+  // the scale the street's length allows, at which the faces fit at their lowest; then as much of their height as fits
+  const scale = SCALES.find((s) => (len * 1000) / s <= width && wanted.reduce((t, r) => t + ((r.zMin - r.zBot) * 1000) / s, 0) <= room) ?? SCALES[SCALES.length - 1];
+  const k = 1000 / scale;
+  const ranges = wanted.map((r) => ({ zTop: Math.max(r.zMin, Math.min(r.zTop, r.zBot + room / wanted.length / k)), zBot: r.zBot }));
+  const x0 = MARGIN + (width - len * k) / 2;
+  // what the faces leave of the page's height goes a third above them and a third between them
+  const spare = Math.max(0, room - ranges.reduce((t, r) => t + (r.zTop - r.zBot) * k, 0)) / 3;
+  let top = BAND_TOP + spare;
+  const bands = ranges.map((r) => {
+    const h = (r.zTop - r.zBot) * k;
+    const band = { top, zTop: r.zTop, zBot: r.zBot, h };
+    top += h + LABEL_GAP + LABELS_H + CAPTION_H + FACE_GAP + spare;
+    return band;
+  });
+  return { scale, k, x0, bands };
+}
+
+/** Rows of labels, each placed in the first row it fits without touching the one before. */
+class Rows {
+  private spans: [number, number][][] = Array.from({ length: LABEL_ROWS }, () => []);
+  take(row: number, x0: number, x1: number) { this.spans[row].push([x0, x1]); }
+  place(x0: number, x1: number, from = 0): number {
+    for (let r = from; r < LABEL_ROWS; r++) if (!this.spans[r].some(([a, b]) => x0 < b + 0.8 && x1 > a - 0.8)) { this.spans[r].push([x0, x1]); return r; }
+    return -1;
+  }
+}
+
+function faceSvg(b: StreetscapeBundle, face: Face, L: Layout, i: number): { html: string; svg: string } {
+  const t = tpl();
+  const p = b.plan, band = L.bands[i], k = L.k;
+  const X = (s: number) => (face.sRightward ? L.x0 + (s - p.s0) * k : L.x0 + (p.s1 - s) * k);
+  const Y = (z: number) => band.top + (band.zTop - z) * k;
+  const groundAt = (s: number) => {
+    const g = face.ground;
+    if (!g.length) return band.zBot + 0.6 + BELOW_GROUND_M;
+    const j = Math.max(0, Math.min(g.length - 1, Math.round(s - g[0].s)));
+    return g[j].z;
+  };
+  const frames = b.frames.filter((fr) => fr.side === face.side);
+  const views = frames.filter((fr) => fr.tier === 0);
+
+  // the frames, each its homography from the picture to the sheet, clipped to its strip and the footpath
+  // the upper frames first, so the lower ones, which hold the street, lie over them where the two overlap
+  const slices = [...frames].sort((x, y) => y.tier - x.tier).map((fr) => sliceHtml(b, face, fr, X, band.top, band.zTop, groundAt, k)).join('');
+
+  const svg: string[] = [];
+  // the ground at the boundary
+  const ground = face.ground.map((g) => `${f2(X(g.s))},${f2(Y(g.z))}`).join(' ');
+  if (ground) svg.push(`<polyline points="${ground}" fill="none" stroke="${t.ink}" stroke-width="0.3" stroke-linejoin="round"/>`);
+  const footY = (s: number) => Y(groundAt(s) - BELOW_GROUND_M);
+  const labelTop = band.top + band.h + LABEL_GAP;
+  const rows = new Rows();
+  const labels: string[] = [];
+  const site = face.hasSite ? p.site : null;
+  const siteX = site ? [X(site.s0), X(site.s1)].sort((a, c) => a - c) : null;
+  if (siteX) { rows.take(0, siteX[0], siteX[1]); }
+
+  // the frontages: a dashed line at each boundary, the address at the frontage's start as the viewer reads it
+  const bounds = new Set<number>();
+  for (const fr of face.frontages) { bounds.add(Math.round(fr.s0 * 2) / 2); bounds.add(Math.round(fr.s1 * 2) / 2); }
+  for (const g of face.gaps) { bounds.add(Math.round(g.s0 * 2) / 2); bounds.add(Math.round(g.s1 * 2) / 2); }
+  const items = [
+    ...face.frontages.map((fr) => ({ s0: fr.s0, s1: fr.s1, lines: fr.number ? [fr.number, `${shortStreetName(fr.street)}.`] : [], site: fr.site, road: false })),
+    ...face.gaps.filter((g) => g.road).map((g) => ({ s0: g.s0, s1: g.s1, lines: [shortStreetName(g.road!)], site: false, road: true })),
+  ].sort((a, c) => Math.min(X(a.s0), X(a.s1)) - Math.min(X(c.s0), X(c.s1)));
+  const leaderTo = new Map<number, number>();
+  for (const it of items) {
+    if (!it.lines.length) continue;
+    const xa = Math.min(X(it.s0), X(it.s1)), xb = Math.max(X(it.s0), X(it.s1));
+    const w = Math.max(...it.lines.map((l) => l.length)) * CHAR_MM + 1;
+    if (it.site) {
+      // under the site's marker, centred on it
+      const cx = (xa + xb) / 2;
+      labels.push(`<text x="${f2(cx)}" y="${f2(labelTop + ROW_MM + 1.9)}" text-anchor="middle" class="lb site">${it.lines.map((l, j) => `<tspan x="${f2(cx)}" dy="${j ? 2.05 : 0}">${esc(l)}</tspan>`).join('')}</text>`);
+      rows.take(1, cx - w / 2, cx + w / 2);
+      continue;
+    }
+    const x = it.road ? (xa + xb) / 2 - w / 2 + 0.5 : xa + 0.7;
+    let lines = it.lines, row = rows.place(x, x + w);
+    // a narrow frontage among narrow frontages keeps its number alone
+    if (row < 0 && lines.length > 1) { lines = lines.slice(0, 1); row = rows.place(x, x + lines[0].length * CHAR_MM + 1); }
+    if (row < 0) continue;
+    const y = labelTop + row * ROW_MM + 1.9;
+    labels.push(`<text x="${f2(x)}" y="${f2(y)}" class="lb${it.road ? ' road' : ''}">${lines.map((l, j) => `<tspan x="${f2(x)}" dy="${j ? 2.05 : 0}">${esc(l)}</tspan>`).join('')}</text>`);
+    if (!it.road) { const key = Math.round((face.sRightward ? it.s0 : it.s1) * 2) / 2; leaderTo.set(key, Math.max(leaderTo.get(key) ?? 0, y + (lines.length - 1) * 2.05 + 0.6)); }
+  }
+  for (const s of bounds) {
+    if (s <= p.s0 + 0.5 || s >= p.s1 - 0.5) continue;
+    if (siteX && site && (Math.abs(s - site.s0) < 0.6 || Math.abs(s - site.s1) < 0.6)) continue;
+    const y1 = leaderTo.get(s) ?? labelTop + 1;
+    svg.push(`<line x1="${f2(X(s))}" y1="${f2(footY(s))}" x2="${f2(X(s))}" y2="${f2(y1)}" stroke="#7d817f" stroke-width="0.13" stroke-dasharray="0.9,0.7"/>`);
+  }
+
+  // the site: red dashes through the band and down to its marker, an arrowed box between them
+  if (site && siteX) {
+    for (const x of siteX) svg.push(`<line x1="${f2(x)}" y1="${f2(band.top + 2)}" x2="${f2(x)}" y2="${f2(labelTop + ROW_MM * 2 + 2.6)}" stroke="${t.site}" stroke-width="0.4" stroke-dasharray="2.2,1.1"/>`);
+    const [xa, xb] = siteX, ym = labelTop + 1.4, hh = 1.3;
+    svg.push(`<path d="M${f2(xa + 0.4)},${f2(ym)} L${f2(xa + 2)},${f2(ym - hh)} H${f2(xb - 2)} L${f2(xb - 0.4)},${f2(ym)} L${f2(xb - 2)},${f2(ym + hh)} H${f2(xa + 2)} Z" fill="#ffffff" stroke="${t.ink}" stroke-width="0.18"/>`);
+    svg.push(`<text x="${f2((xa + xb) / 2)}" y="${f2(ym + 0.62)}" text-anchor="middle" class="lb">SITE</text>`);
+  } else if (p.site) {
+    // across the road from the site: its stretch, lightly
+    const xs = [X(p.site.s0), X(p.site.s1)].sort((a, c) => a - c);
+    for (const x of xs) svg.push(`<line x1="${f2(x)}" y1="${f2(band.top - 0.6)}" x2="${f2(x)}" y2="${f2(band.top + band.h)}" stroke="${t.site}" stroke-width="0.25" stroke-dasharray="0.8,1.2" opacity="0.8"/>`);
+    svg.push(`<text x="${f2((xs[0] + xs[1]) / 2)}" y="${f2(band.top - 1.2)}" text-anchor="middle" class="lb opp">OPPOSITE THE SITE</text>`);
+  }
+
+  // the face's caption, its imagery's credit and the scale bar
+  const capY = labelTop + LABELS_H;
+  const dates = views.map((fr) => fr.date).filter((d): d is string => !!d).sort();
+  const credit = views.length
+    ? `Street View © Google · ${views.length} panoramas · ${dates.length ? (monthName(dates[0]) === monthName(dates[dates.length - 1]) ? monthName(dates[0]) : `${monthName(dates[0])} – ${monthName(dates[dates.length - 1])}`) : 'undated'}`
+    : (b.framesNote ? 'No Street View frames' : '');
+  // a face is the side of the street the viewer turns to: its name and the way the viewer looks are one
+  const title = `${titleCase(p.street)}, the ${bearingWord(face.facing)} side, looking ${bearingWord(face.facing)}${face.hasSite ? ' · the site’s side' : ''}`;
+  const bar = scaleBar(L, SLIDE_W - MARGIN, capY + 2.4);
+  return {
+    html: `${slices}<div class="abs cap" style="left:${MARGIN}mm;top:${f2(capY)}mm;width:${SLIDE_W - 2 * MARGIN - 70}mm"><span class="ct">${esc(title)}</span><span class="cr">${esc(credit)}</span></div>`,
+    svg: `${svg.join('')}${labels.join('')}${bar}`,
+  };
+}
+
+function sliceHtml(b: StreetscapeBundle, face: Face, fr: ScapeFrame, X: (s: number) => number, top: number, zTop: number, groundAt: (s: number) => number, k: number): string {
+  // a hair of overlap either side, so neighbouring frames meet without a seam of paper between them
+  const sA = Math.min(fr.a, fr.b), sB = Math.max(fr.a, fr.b);
+  const left = Math.min(X(sA), X(sB)) - SEAM_MM, wMm = Math.abs(X(sB) - X(sA)) + 2 * SEAM_MM;
+  // the sheet's px, from the slice's corner, to the face's (s, z): s runs with the sheet or against it
+  const K = k * PX_PER_MM, sgn = face.sRightward ? 1 : -1;
+  const sAtLeft = face.sRightward ? sA - SEAM_MM / k : sB + SEAM_MM / k;
+  const sheetToPlane = [[sgn / K, 0, sAtLeft], [0, -1 / K, zTop], [0, 0, 1]];
+  let T = inv3(mul3(planeToImage(b.plan, fr), sheetToPlane));
+  // the picture's middle comes out with a positive w, or the browser takes it for behind the eye
+  if (T[2][0] * (FRAME_PX / 2) + T[2][1] * (FRAME_PX / 2) + T[2][2] < 0) T = T.map((r) => r.map((v) => -v));
+  const n = (v: number) => Number(v.toPrecision(9));
+  const m3d = [T[0][0], T[1][0], 0, T[2][0], T[0][1], T[1][1], 0, T[2][1], 0, 0, 1, 0, T[0][2], T[1][2], 0, T[2][2]].map(n).join(',');
+  // the clip: the strip's top and sides, and along its foot the footpath below the ground line, right to left
+  const steps = Math.max(2, Math.ceil(sB - sA));
+  const foot = Array.from({ length: steps + 1 }, (_, j) => {
+    const s = sA + ((sB - sA) * j) / steps;
+    return { x: Math.min(wMm, Math.max(0, X(s) - left)), y: (zTop - (groundAt(s) - BELOW_GROUND_M)) * k };
+  }).sort((p, q) => q.x - p.x);
+  foot[0].x = wMm; foot[foot.length - 1].x = 0;
+  const clip = `polygon(0mm 0mm, ${f2(wMm)}mm 0mm, ${foot.map((p) => `${f2(p.x)}mm ${f2(p.y)}mm`).join(', ')})`;
+  const h = Math.max(...foot.map((p) => p.y)) + 1;
+  return `<div class="abs slice" style="left:${f2(left)}mm;top:${f2(top)}mm;width:${f2(wMm)}mm;height:${f2(h)}mm;clip-path:${clip}"><img src="data/${esc(fr.file)}" style="transform:matrix3d(${m3d})" alt=""></div>`;
+}
+
+function scaleBar(L: Layout, right: number, y: number): string {
+  const steps = L.scale <= 500 ? [0, 10, 20, 50] : L.scale <= 1000 ? [0, 20, 50, 100] : [0, 50, 100, 200];
+  const w = steps[steps.length - 1] * L.k, x0 = right - w;
+  const ticks = steps.map((s) => `<line x1="${f2(x0 + s * L.k)}" y1="${f2(y - 0.9)}" x2="${f2(x0 + s * L.k)}" y2="${f2(y + 0.9)}" stroke="#2a2e2c" stroke-width="0.15"/><text x="${f2(x0 + s * L.k)}" y="${f2(y + 3.1)}" text-anchor="middle" class="lb sb">${s}${s === steps[steps.length - 1] ? ' M' : ''}</text>`).join('');
+  return `<line x1="${f2(x0)}" y1="${f2(y)}" x2="${f2(right)}" y2="${f2(y)}" stroke="#2a2e2c" stroke-width="0.25"/>${ticks}<text x="${f2(x0 - 2)}" y="${f2(y + 0.6)}" text-anchor="end" class="lb sb">1:${L.scale} AT A3</text>`;
+}
+
+/** What the sheet says above the faces: the street's length and fall, and the site's frontage. */
+export function streetscapeSentences(b: StreetscapeBundle): string[] {
+  const p = b.plan, out: string[] = [];
+  const g = p.faces[0]?.ground ?? [];
+  const len = Math.round(p.s1 - p.s0);
+  if (g.length > 1) {
+    const a = g[0], z = g[g.length - 1], fall = Math.abs(a.z - z.z);
+    const toward = bearingWord(((a.z > z.z ? 0 : 180) + (Math.atan2(p.axis.x, p.axis.y) * 180) / Math.PI + 360) % 360);
+    out.push(fall < 0.5 ? `${titleCase(p.street)} runs ${len} m here, nearly level.` : `${titleCase(p.street)} runs ${len} m here, falling ${fall.toFixed(1)} m to the ${toward}.`);
+  } else out.push(`${titleCase(p.street)} runs ${len} m here.`);
+  const sf = p.faces.find((f) => f.hasSite);
+  if (sf && p.site) {
+    const own = sf.frontages.filter((f) => f.site);
+    const w = Math.round(p.site.s1 - p.site.s0);
+    const others = sf.frontages.filter((f) => !f.site).length;
+    out.push(`The site’s frontage is ${w} m${own.length === 1 && own[0].address ? `, ${titleCase(own[0].address)}` : ''}, among ${others} other propert${others === 1 ? 'y' : 'ies'} on its side of the window.`);
+  }
+  return out;
+}
+
+export function renderStreetscape(b: StreetscapeBundle, meta: SheetMeta): string {
+  return withTemplate(DECK_TEMPLATE, () => drawStreetscape(b, meta));
+}
+
+function drawStreetscape(b: StreetscapeBundle, meta: SheetMeta): string {
+  const t = tpl();
+  const L = layoutFaces(b);
+  const faces = b.plan.faces.map((f, i) => faceSvg(b, f, L, i));
+  const lead = streetscapeSentences(b).join(' ');
+  const sources = [
+    b.frames.length ? 'Frames: Google Street View, each rectified onto its frontage’s boundary as a plane, so the street reads at one true scale; what stands in front of the boundary (trees, cars, awnings) reads larger, a building set back from it smaller, and the seams between frames are the frames’, not the street’s.' : (b.framesNote ?? ''),
+    'Frontages and addresses: NSW property and cadastre layers (NSW Spatial Services); a frontage is where a ray square to the street from its centreline first meets a property boundary.',
+    `Ground: ${b.demSource ?? 'no elevation model'}, at the boundary, indicative to about a metre.`,
+    `Retrieved ${b.generatedAt.slice(0, 10)}.`,
+  ].filter(Boolean).join(' ');
+  const footerLeft = ['SITE ANALYST — STREETSCAPE', b.siteAddress, meta.client ? `for ${meta.client}` : '', meta.jobNo ? `job ${meta.jobNo}` : ''].filter(Boolean).join(' · ');
+  const subtitle = `${b.siteAddress} · ${titleCase(b.plan.street)}, both sides, ${Math.round(b.plan.s1 - b.plan.s0)} m · 1:${L.scale}`;
+  return `<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>${esc(b.siteAddress)} — STREETSCAPE</title>
+<style>
+${deckCss()}
+  .slice { overflow: hidden; }
+  .slice img { position: absolute; left: 0; top: 0; width: ${FRAME_PX}px; height: ${FRAME_PX}px; transform-origin: 0 0; max-width: none; }
+  svg.over { position: absolute; left: 0; top: 0; overflow: visible; }
+  .lb { font-size: ${LABEL_MM}px; font-weight: 600; letter-spacing: 0.04em; fill: #2a2e2c; }
+  .lb.road { fill: #6a7572; font-weight: 500; letter-spacing: 0.08em; }
+  .lb.site { fill: ${t.site}; }
+  .lb.opp { fill: ${t.site}; font-weight: 500; letter-spacing: 0.1em; paint-order: stroke; stroke: #ffffff; stroke-width: 0.5px; stroke-linejoin: round; }
+  .lb.sb { font-weight: 500; fill: #454f4b; }
+  .cap { display: flex; gap: 4mm; align-items: baseline; font-size: 2.5mm; }
+  .cap .ct { font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+  .cap .cr { color: #6a7572; font-size: 2.1mm; }
+  .lead { font-size: 3.05mm; line-height: 1.38; font-weight: 600; color: ${t.site}; }
+  .src { font-size: 2.1mm; line-height: 1.3; color: #6a7572; }
+</style></head>
+<body>
+<section class="slide" id="streetscape">
+  <div class="abs rh" style="left:${MARGIN}mm;top:10mm;width:${SLIDE_W - 2 * MARGIN}mm"><span>Streetscape</span><span>${esc(b.siteAddress)}</span></div>
+  <div class="abs title" style="left:${MARGIN}mm;top:17.5mm;width:200mm">Streetscape</div>
+  <div class="abs subtitle" style="left:${MARGIN}mm;top:26.5mm;width:200mm">${esc(subtitle)}</div>
+  <div class="abs lead" style="left:${SLIDE_W - MARGIN - 150}mm;top:17.5mm;width:150mm">${esc(lead)}</div>
+  ${faces.map((f) => f.html).join('\n  ')}
+  <svg class="over" width="${SLIDE_W}mm" height="${SLIDE_H}mm" viewBox="0 0 ${SLIDE_W} ${SLIDE_H}">${faces.map((f) => f.svg).join('')}</svg>
+  <div class="abs src" style="left:${MARGIN}mm;top:${FOOT_TOP + 1}mm;width:${SLIDE_W - 2 * MARGIN}mm">${esc(sources)}</div>
+  <div class="abs foot" style="left:${MARGIN}mm;top:${SLIDE_H - 10}mm;width:${SLIDE_W - 2 * MARGIN}mm"><span>${esc(footerLeft)}</span><span>generated ${esc(b.generatedAt.slice(0, 10))}</span></div>
+</section>
+</body></html>`;
+}

@@ -4,13 +4,14 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { geocode, type GeocodeResult } from './fetch/geocode.js';
 import { fetchSiteLots, fetchRailCorridors, fetchZoning, fetchHeightOfBuilding, fetchFloorSpaceRatio, fetchHeritage, fetchSiteControls } from './fetch/nsw.js';
-import { fetchRoads, fetchRailLines, fetchTrainStations, fetchParkPoints, fetchComplexPoints, fetchNamedAreas, fetchAllLots, fetchPropertiesAt, type TopoRoad, type NamedPoint, type RailLines, type NamedArea } from './fetch/nswTopo.js';
+import { fetchRoads, fetchRailLines, fetchTrainStations, fetchParkPoints, fetchComplexPoints, fetchNamedAreas, fetchAllLots, fetchPropertiesAt, fetchProperties, type TopoRoad, type NamedPoint, type RailLines, type NamedArea } from './fetch/nswTopo.js';
 import { fetchAerial, fetchVegetationMask, type AerialResult } from './fetch/imagery.js';
 import { addressStreet, fetchStreetSeries } from './fetch/streetView.js';
+import { planStreetscape, planPoint, fetchStreetscapeFrames, type StreetscapePlan, type ScapeFrame } from './fetch/streetscape.js';
 import { fetchBusData, type BusData } from './fetch/osm.js';
 import { fetchBusStopsTfnsw } from './fetch/tfnsw.js';
 import { fetchIsochrones, type Isochrone } from './fetch/isochrones.js';
-import { mercatorScaleFactor, mercatorToLonLat, lonLatToMercator, viewBounds, type Extent, type MapView } from './lib/geo.js';
+import { mercatorScaleFactor, mercatorToLonLat, lonLatToMercator, viewBounds, type Extent, type LonLat, type MapView } from './lib/geo.js';
 import { queryByPoint, queryByExtent, type GeoJSONFC } from './lib/arcgis.js';
 import { keywordCategory } from './render/model.js';
 import { setTemplate } from './render/template.js';
@@ -29,7 +30,7 @@ import { fetchCityOfSydneyDcp, type CityOfSydneyDcp } from './fetch/cityOfSydney
 import { fetchCouncilApplications, apiCouncilName, clipToExtent, PORTAL_MANDATED, type DaRecord } from './fetch/da.js';
 import { fetchPlanningProposals, type PlanningProposal } from './fetch/planning.js';
 import { fetchPeopleData, type PeopleData } from './fetch/people.js';
-import { fetchDemGrid, type DemGrid } from './fetch/terrain.js';
+import { fetchDemGrid, demAt, type DemGrid } from './fetch/terrain.js';
 import { fetchBuildings, withDaStoreys, METRES_PER_STOREY, type BuildingsData } from './fetch/buildings.js';
 import { fetchFootways, type FootwaysData } from './fetch/footways.js';
 import { fetchMajorProjects, emptyMajorProjects, type MajorProjectsData } from './fetch/majorProjects.js';
@@ -1085,3 +1086,85 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
   await writeFile(join(dataDir, 'slides_bundle.json'), JSON.stringify(bundle));
   return bundle;
 }
+
+// ---- the streetscape ------------------------------------------------------------------
+
+export interface StreetscapeBundle {
+  address: string;
+  siteAddress: string;
+  generatedAt: string;
+  plan: StreetscapePlan;
+  /** The Street View frames, their pictures in `data/` beside the drawing; none without GOOGLE_MAPS_API_KEY. */
+  frames: ScapeFrame[];
+  /** Why there are no frames, when there are none. */
+  framesNote?: string;
+  demSource?: string;
+  warnings: string[];
+}
+
+/**
+ * The site's street, both faces, `halfLengthM` either way from the site: the
+ * frontages and their addresses from the property layer, the ground from the
+ * 5 m elevation model, and with GOOGLE_MAPS_API_KEY the Street View frames
+ * that the drawing rectifies onto them (src/fetch/streetscape.ts).
+ */
+export async function runStreetscapePipeline(address: string, opts: { outDir: string; halfLengthM?: number; log?: (m: string) => void }): Promise<StreetscapeBundle> {
+  const warnings: string[] = [];
+  const log = (m: string) => { opts.log?.(m); if (/WARN/.test(m)) warnings.push(m.trim()); };
+  const dataDir = join(opts.outDir, 'data');
+  await mkdir(dataDir, { recursive: true });
+  const half = opts.halfLengthM ?? 95;
+
+  log(`geocoding "${address}"…`);
+  const geo = await geocode(address);
+  log(`  matched: ${geo.matchedAddresses.join('; ')}`);
+  const siteLots = await fetchSiteLots(geo.points);
+  if (!siteLots.features.length) throw new Error('No cadastral lots found for the site.');
+  const centre = mercatorToLonLat(geo.center);
+  const k = mercatorScaleFactor(centre.lat);
+  const r = (half + 90) * k;
+  const extent: Extent = { xmin: geo.center.x - r, ymin: geo.center.y - r, xmax: geo.center.x + r, ymax: geo.center.y + r };
+
+  const soft = <T,>(p: Promise<T>, fallback: T, name: string): Promise<T> =>
+    p.catch((e) => { log(`  WARN ${name} failed: ${e.message ?? e}`); return fallback; });
+  const [roads, properties, dem] = await Promise.all([
+    fetchRoads(extent),
+    fetchProperties(extent),
+    soft(fetchDemGrid(extent, 2.5), null, 'elevation model'),
+  ]);
+  const st = addressStreet(geo.matchedAddresses[0] ?? address, roads.filter((x) => !x.tunnel), centre);
+  if (!st) throw new Error('No named street found beside the site.');
+  const plan = planStreetscape({
+    street: st.name, segments: st.segments, centre, halfLengthM: half,
+    siteRings: siteLots.features.flatMap((f) => geomRingsOf(f.geometry)),
+    properties: properties.features.map((f) => ({ id: String(f.properties.propid), address: f.properties.address ?? '', housenumber: f.properties.housenumber ?? undefined, rings: geomRingsOf(f.geometry) })),
+    roads: roads.map((x) => ({ name: x.name, coords: x.coords, tunnel: x.tunnel })),
+  });
+  if (!plan) throw new Error(`${st.name} is too short or too far from the site to draw.`);
+
+  const groundAt = (p: LonLat) => { if (!dem) return undefined; const m = lonLatToMercator(p); return demAt(dem, m.x, m.y); };
+  for (const face of plan.faces) {
+    for (let s = plan.s0; s <= plan.s1; s++) {
+      const fr = face.frontages.find((x) => s >= x.s0 && s <= x.s1);
+      const z = groundAt(planPoint(plan, s, (fr?.offsetM ?? face.offsetM) * face.side));
+      if (z !== undefined) face.ground.push({ s, z: Math.round(z * 100) / 100 });
+    }
+    log(`  ${bearingWord(face.facing)} face: ${face.frontages.length} frontages, ${face.gaps.length} gaps${face.gaps.some((g) => g.road) ? ` (${face.gaps.filter((g) => g.road).map((g) => g.road).join(', ')})` : ''}, building line ${face.offsetM.toFixed(1)} m off the axis${face.hasSite ? ', the site' : ''}`);
+  }
+
+  const gkey = process.env.GOOGLE_MAPS_API_KEY?.trim();
+  let frames: ScapeFrame[] = [], framesNote: string | undefined;
+  if (!gkey) framesNote = 'Street View frames need GOOGLE_MAPS_API_KEY; the faces are drawn as their ground and frontages alone.';
+  else if (!dem) framesNote = 'The elevation model did not answer, so the frames could not be set on the ground.';
+  else frames = await fetchStreetscapeFrames(plan, groundAt, dataDir, gkey, process.env.GOOGLE_MAPS_SIGNING_SECRET?.trim() || undefined, log, roads.filter((x) => x.tunnel).map((x) => x.coords))
+    .catch((e: any) => { log(`  WARN streetscape frames failed: ${e?.message ?? e}`); return []; });
+
+  const bundle: StreetscapeBundle = {
+    address, siteAddress: geo.matchedAddresses[0] ?? address, generatedAt: new Date().toISOString(),
+    plan, frames, framesNote, demSource: dem?.source, warnings,
+  };
+  await writeFile(join(dataDir, 'streetscape_bundle.json'), JSON.stringify(bundle));
+  return bundle;
+}
+
+const bearingWord = (deg: number) => ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'][Math.round(deg / 45) % 8];
