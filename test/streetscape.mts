@@ -9,6 +9,7 @@
 
 import { planStreetscape, planeToImage, inv3, mul3, apply3, tiersFor, choosePanoramas, leafOff, assignStrips, splitAddress, CAMERA_HEIGHT_M, BELOW_GROUND_M, FRAME_PX, type Property } from '../src/fetch/streetscape.js';
 import type { LonLat } from '../src/lib/geo.js';
+import { roofSteps } from '../src/render/streetscape.js';
 
 const failures: string[] = [];
 const check = (name: string, ok: boolean, detail = '') => { if (!ok) failures.push(`${name}${detail ? ` — ${detail}` : ''}`); };
@@ -112,6 +113,21 @@ check('the kept panoramas come back in order along the street', chosen.every((p,
 
 check('an address splits into its number and street', JSON.stringify(splitAddress('70-76 RILEY STREET DARLINGHURST', '70-76')) === JSON.stringify({ number: '70-76', street: 'RILEY STREET' }));
 check('a suffixed number keeps its letter', splitAddress('111A RILEY STREET DARLINGHURST').number === '111A');
+
+// a frontage's roofline in steps: metres of building tops over a flat ground at 30
+{
+  const at = (s: number, h: number) => ({ s, z: 30 + h, g: 30 });
+  // 12 m at 10 m with a one-metre chimney, then 8 m at 16 m with a two-metre sliver at 14 m between
+  const pts = [...Array.from({ length: 12 }, (_, i) => at(i + 0.5, i === 5 ? 14 : 10)), at(12.5, 14), at(13.5, 14), ...Array.from({ length: 8 }, (_, i) => at(i + 14.5, 16))];
+  const [b1, ...more] = roofSteps(pts);
+  check('one building, its steps', !!b1 && !more.length && b1.length === 2, JSON.stringify(roofSteps(pts)));
+  check('a chimney is passed over', !!b1 && near(b1[0].z, 40, 1e-9) && near(b1[0].s0, 0, 1e-9));
+  check('a sliver folds into the step nearer its height', !!b1 && near(b1[1].s0, 12, 1e-9) && near(b1[1].z, 46, 1e-9) && near(b1[1].s1, 22, 1e-9), JSON.stringify(b1));
+  // an open yard between two buildings, and a low wall, split them
+  const two = roofSteps([...Array.from({ length: 6 }, (_, i) => at(i + 0.5, 9)), at(6.5, 1), at(7.5, 1.2), ...Array.from({ length: 6 }, (_, i) => at(i + 8.5, 9))]);
+  check('a yard parts two buildings', two.length === 2 && near(two[0][0].s1, 6, 1e-9) && near(two[1][0].s0, 8, 1e-9), JSON.stringify(two));
+  check('nothing standing is no building', roofSteps([at(0.5, 1), at(1.5, 2)]).length === 0);
+}
 
 if (failures.length) {
   console.error(`streetscape: ${failures.length} failure(s)\n - ${failures.join('\n - ')}`);

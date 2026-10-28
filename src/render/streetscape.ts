@@ -21,6 +21,7 @@ import { shortStreetName, type SheetMeta } from './sheet.js';
 import { esc } from './chrome.js';
 import { SCAPE_SKY, type Elevation } from './elevation3d.js';
 import type { Montage } from './montage.js';
+import { METRES_PER_STOREY } from '../fetch/buildings.js';
 
 const MARGIN = 15;
 const BAND_TOP = 44;
@@ -102,7 +103,7 @@ class Rows {
   }
 }
 
-function faceSvg(b: StreetscapeBundle, face: Face, L: Layout, i: number): { html: string; svg: string } {
+function faceSvg(b: StreetscapeBundle, face: Face, L: Layout, i: number, overlay = false): { html: string; svg: string } {
   const t = tpl();
   const p = b.plan, band = L.bands[i], k = L.k;
   const X = (s: number) => (face.sRightward ? L.x0 + (s - p.s0) * k : L.x0 + (p.s1 - s) * k);
@@ -135,6 +136,7 @@ function faceSvg(b: StreetscapeBundle, face: Face, L: Layout, i: number): { html
     svg.push(`<polygon points="${foot} ${f2(xs[xs.length - 1])},${f2(band.top + band.h + 0.2)} ${f2(xs[0])},${f2(band.top + band.h + 0.2)}" fill="${GROUND_FILL}"/>`);
   }
   if (ground) svg.push(`<polyline points="${ground}" fill="none" stroke="${t.ink}" stroke-width="0.3" stroke-linejoin="round"/>`);
+  if (overlay && elev?.roofs?.length) svg.push(buildingLines(elev, elev.roofs, face, X, Y, groundAt, t.site));
   const footY = (s: number) => (elev ? band.top + band.h : Y(groundAt(s) - BELOW_GROUND_M));
 
   // the roads that come in, named upright in their gaps over the ground, as the street's own signs would be
@@ -222,6 +224,85 @@ function faceSvg(b: StreetscapeBundle, face: Face, L: Layout, i: number): { html
   };
 }
 
+/**
+ * A frontage's roofline in steps: its metres' building tops (`z`, over ground `g`), a lone metre's spike (a chimney, a
+ * mast) passed over, grouped where they stand within `tol` metres of one another, a step narrower than `minRun`
+ * metres folded into the neighbour nearer its height, each at the 80th percentile of its metres. A metre standing
+ * under `minH` over its ground is open (a yard, a lane) and ends a building; a building is a list of steps.
+ */
+export function roofSteps(pts: { s: number; z: number; g: number }[], tol = 1.2, minRun = 3, minH = 2.5): { s0: number; s1: number; z: number; g: number }[][] {
+  const med = (r: { z: number }[]) => { const zs = r.map((p) => p.z).sort((a, b) => a - b); return zs[Math.floor((zs.length - 1) / 2)]; };
+  const sorted = [...pts].sort((a, b) => a.s - b.s);
+  const smooth = sorted.map((p, i) => ({ ...p, z: med(sorted.slice(Math.max(0, i - 1), i + 2)) }));
+  const buildings: (typeof smooth)[] = [];
+  let cur: typeof smooth = [];
+  for (const p of smooth) {
+    if (p.z - p.g < minH || (cur.length && p.s - cur[cur.length - 1].s > 1.5)) { if (cur.length) buildings.push(cur); cur = []; }
+    if (p.z - p.g >= minH) cur.push(p);
+  }
+  if (cur.length) buildings.push(cur);
+  return buildings.filter((bd) => bd.length >= 2).map((bd) => {
+    const runs: (typeof smooth)[] = [];
+    for (const p of bd) {
+      const r = runs[runs.length - 1];
+      if (r && Math.abs(p.z - med(r)) <= tol) r.push(p); else runs.push([p]);
+    }
+    for (let i = runs.findIndex((r) => r.length < minRun); runs.length > 1 && i >= 0; i = runs.findIndex((r) => r.length < minRun)) {
+      const m = med(runs[i]), l = runs[i - 1], r = runs[i + 1];
+      const j = !l ? i + 1 : !r ? i - 1 : Math.abs(med(l) - m) <= Math.abs(med(r) - m) ? i - 1 : i + 1;
+      const a = Math.min(i, j);
+      runs.splice(a, 2, [...runs[a], ...runs[a + 1]]);
+    }
+    return runs.map((r) => {
+      const zs = r.map((p) => p.z).sort((a, b) => a - b);
+      return { s0: r[0].s - 0.5, s1: r[r.length - 1].s + 0.5, z: zs[Math.floor((zs.length - 1) * 0.8)], g: r.reduce((t, p) => t + p.g, 0) / r.length };
+    });
+  });
+}
+
+/**
+ * The buildings drawn over a face, gently: each frontage's building a veil of white over the picture, its roofline
+ * in steps and down to the ground at its ends (the party walls at the lot lines) in a hairline, floor lines at its
+ * storeys (its measured height at METRES_PER_STOREY a storey, evenly spaced) in white, and over its tallest step its
+ * height over the ground and its level in AHD. The site's building in the site's red.
+ */
+function buildingLines(e: Elevation, roofs: { s: number; z: number }[], face: Face, X: (s: number) => number, Y: (z: number) => number, groundAt: (s: number) => number, siteInk: string): string {
+  const lines: string[] = [], floors: string[] = [], tags: { x: number; y: number; h: number; text: string[]; site: boolean }[] = [];
+  for (const fr of face.frontages) {
+    const a = Math.min(fr.s0, fr.s1), b = Math.max(fr.s0, fr.s1);
+    const pts = roofs.filter((r) => r.s > a && r.s < b).map((r) => ({ s: r.s, z: r.z, g: groundAt(r.s) }));
+    for (const steps of roofSteps(pts)) {
+      const s0 = Math.max(a, steps[0].s0), s1 = Math.min(b, steps[steps.length - 1].s1);
+      const d = [`M${f2(X(s0))},${f2(Y(groundAt(s0)))}`, `V${f2(Y(steps[0].z))}`];
+      steps.forEach((st, k) => {
+        d.push(`H${f2(X(k === steps.length - 1 ? s1 : st.s1))}`);
+        if (k < steps.length - 1) d.push(`V${f2(Y(steps[k + 1].z))}`);
+        const h = st.z - st.g, n = Math.max(1, Math.round(h / METRES_PER_STOREY));
+        for (let j = 1; j < n; j++) floors.push(`M${f2(X(Math.max(s0, st.s0)))},${f2(Y(st.g + (j * h) / n))}H${f2(X(Math.min(s1, st.s1)))}`);
+      });
+      d.push(`V${f2(Y(groundAt(s1)))}`);
+      // and back along the ground, so the building is a shape to fill
+      for (let q = Math.floor(s1); q > s0; q--) d.push(`L${f2(X(q))},${f2(Y(groundAt(q)))}`);
+      d.push(`L${f2(X(s0))},${f2(Y(groundAt(s0)))}Z`);
+      lines.push(`<path d="${d.join('')}" class="bl${fr.site ? ' site' : ''}"${fr.site ? ` style="fill:${siteInk};stroke:${siteInk}"` : ''}/>`);
+      const top = steps.reduce((m, st) => (st.z - st.g > m.z - m.g ? st : m));
+      const h = top.z - top.g;
+      tags.push({ x: (X(Math.max(s0, top.s0)) + X(Math.min(s1, top.s1))) / 2, y: Y(top.z) - 0.9, h, site: !!fr.site,
+        text: [`${h.toFixed(1)} m · ${Math.max(1, Math.round(h / METRES_PER_STOREY))} ST`, `RL ${(top.z - e.offsetM).toFixed(1)}`] });
+    }
+  }
+  // the tallest first, each where it clears those already set
+  const set: [number, number, number, number][] = [];
+  const out: string[] = [];
+  for (const tg of tags.sort((p, q) => q.h - p.h)) {
+    const w = Math.max(...tg.text.map((l) => l.length)) * 0.82 + 0.6, box: [number, number, number, number] = [tg.x - w / 2, tg.y - 3.5, tg.x + w / 2, tg.y + 0.4];
+    if (set.some((o) => box[0] < o[2] && o[0] < box[2] && box[1] < o[3] && o[1] < box[3])) continue;
+    set.push(box);
+    out.push(`<text x="${f2(tg.x)}" y="${f2(tg.y - 1.75)}" text-anchor="middle" class="bh${tg.site ? ' site' : ''}"><tspan x="${f2(tg.x)}">${esc(tg.text[0])}</tspan><tspan x="${f2(tg.x)}" dy="1.75">${esc(tg.text[1])}</tspan></text>`);
+  }
+  return `<g>${lines.join('')}${floors.length ? `<path d="${floors.join('')}" class="fl"/>` : ''}${out.join('')}</g>`;
+}
+
 /** An elevation, or a montage, in its band: the picture placed by what it spans, the band cutting it to the face's sky and ground. */
 function elevationHtml(e: Pick<Elevation, 'file' | 'sAtLeft' | 'sAtRight' | 'zTop' | 'zBottom'>, X: (s: number) => number, Y: (z: number) => number, band: Layout['bands'][number], k: number): string {
   const xa = Math.min(X(e.sAtLeft), X(e.sAtRight)), w = Math.abs(X(e.sAtRight) - X(e.sAtLeft));
@@ -280,14 +361,16 @@ export function streetscapeSentences(b: StreetscapeBundle): string[] {
   return out;
 }
 
-export function renderStreetscape(b: StreetscapeBundle, meta: SheetMeta): string {
-  return withTemplate(DECK_TEMPLATE, () => drawStreetscape(b, meta));
+/** The sheet; `overlay` draws the buildings' lines, heights and levels over the 3D faces. */
+export function renderStreetscape(b: StreetscapeBundle, meta: SheetMeta, opts: { overlay?: boolean } = {}): string {
+  return withTemplate(DECK_TEMPLATE, () => drawStreetscape(b, meta, opts.overlay ?? false));
 }
 
-function drawStreetscape(b: StreetscapeBundle, meta: SheetMeta): string {
+function drawStreetscape(b: StreetscapeBundle, meta: SheetMeta, overlay: boolean): string {
   const t = tpl();
   const L = layoutFaces(b);
-  const faces = b.plan.faces.map((f, i) => faceSvg(b, f, L, i));
+  const faces = b.plan.faces.map((f, i) => faceSvg(b, f, L, i, overlay));
+  const lined = overlay && !!b.elevations?.some((e) => e?.roofs?.length);
   const lead = streetscapeSentences(b).join(' ');
   const montaged = !b.elevations?.some(Boolean) && b.montages?.some(Boolean);
   const drives = montaged ? [...new Set(b.montages!.flatMap((m) => m?.dates ?? []))].sort() : [];
@@ -295,6 +378,7 @@ function drawStreetscape(b: StreetscapeBundle, meta: SheetMeta): string {
     montaged ? `Faces: Google Street View, every panorama along the street${drives.length > 1 ? ` from ${drives.length} drives (${drives.map((d) => d.slice(0, 4)).filter((y, i, a) => a.indexOf(y) === i).join(', ')})` : ''}, each rectified onto its frontage’s boundary as a plane, and every column of the face taken from the panorama that saw it squarest with the least foliage in the way, the ${[...new Set(b.montages!.map((m) => m?.drive).filter(Boolean))].map((d) => monthName(d)).join(' and ')} drive where those are equal and an earlier drive to see through a tree it passed bare, the seams where two agree, so the street reads at one true scale. The sky is the sheet’s; what stands in front of the boundary (a tree, a car, an awning) reads larger than life, a building set back from it smaller, as in any montage.` :
     b.elevations?.some(Boolean) ? `Faces: orthographic elevations of Google’s Photorealistic 3D Tiles${b.elevations.some((e) => e?.draped) ? ', each Google Street View photograph laid on the meshes from where its camera stood, so a facade is the photograph’s and stands at its own depth; the street’s trees, and what no photograph saw clear (a roof, a wall behind a tree from every camera), keep the meshes’ own texture, and the meshes’ outlines, as photogrammetry, are soft' : ' (photogrammetry, so trees and fine detail are approximate)'}. Seen square from the street’s centreline with its near half cut away, and with what stands more than 35 m behind the boundary left out; the ground line is the elevation model’s at the boundary, set on the meshes${b.groundOffsetM !== undefined ? `, which stand ${b.groundOffsetM.toFixed(1)} m above AHD here` : ''}.` : b.frames.length ? 'Frames: Google Street View, each rectified onto its frontage’s boundary as a plane, so the street reads at one true scale; what stands in front of the boundary (trees, cars, awnings) reads larger, a building set back from it smaller, and the seams between frames are the frames’, not the street’s.' : (b.framesNote ?? ''),
     'Frontages and addresses: NSW property and cadastre layers (NSW Spatial Services); a frontage is where a ray square to the street from its centreline first meets a property boundary.',
+    lined ? `Buildings (the pale veils over the faces): each frontage’s building as the meshes stand at and behind its boundary (the street’s trees and the awnings over the footpath cut away, a garden’s trees left out), in steps where it changes by more than a metre; floor lines at ${METRES_PER_STOREY} m a storey of the measured height, evenly spaced, not surveyed; heights over the ground at the boundary and levels in AHD, to about a metre.` : '',
     b.ai ? `AI-enhanced and illustrative: ${b.ai.tiles} of ${b.ai.of} tiles of the faces redrawn by ${b.ai.model} through Artlist, each scaled back into its place, so ${b.elevations?.some((e) => e?.draped) ? 'the outlines and the photographed facades stand where they did, but the trees, the seams and what neither the photographs nor the meshes showed are the model’s' : 'the outlines stand where the meshes put them, but every facade, window and tree is the model’s, drawn on the meshes’ shapes and colours, not the buildings’ own'}; the measured drawing is STREETSCAPE.pdf.` : '',
     `Ground: ${b.demSource ?? 'no elevation model'}, at the boundary, indicative to about a metre.`,
     `Retrieved ${b.generatedAt.slice(0, 10)}.`,
@@ -316,6 +400,11 @@ ${deckCss()}
   .lb.site { fill: ${t.site}; }
   .lb.opp { fill: ${t.site}; font-weight: 500; letter-spacing: 0.1em; paint-order: stroke; stroke: #ffffff; stroke-width: 0.5px; stroke-linejoin: round; }
   .lb.sb { font-weight: 500; fill: #454f4b; }
+  .bl { fill: #ffffff; fill-opacity: 0.3; stroke: #2a2e2c; stroke-opacity: 0.5; stroke-width: 0.14px; stroke-linejoin: miter; }
+  .bl.site { fill-opacity: 0.14; stroke-opacity: 0.85; stroke-width: 0.2px; }
+  .fl { fill: none; stroke: #ffffff; stroke-width: 0.14px; opacity: 0.7; }
+  .bh { font-size: 1.3px; font-weight: 500; letter-spacing: 0.02em; fill: #3a403d; paint-order: stroke; stroke: #ffffff; stroke-width: 0.4px; stroke-linejoin: round; }
+  .bh.site { fill: ${t.site}; }
   .cap { display: flex; gap: 4mm; align-items: baseline; font-size: 2.5mm; }
   .cap .ct { font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
   .cap .cr { color: #6a7572; font-size: 2.1mm; }

@@ -31,7 +31,7 @@ function arg(name: string, def?: string): string | undefined {
 
 const address = process.argv.slice(2).find((a) => !a.startsWith('--') && process.argv[process.argv.indexOf(a) - 1]?.startsWith('--') !== true);
 if (!address) {
-  console.error('usage: npm run generate -- "<address>" [--type context|site|yield|slides|streetscape|summary|both] [--scale 3000] [--slides-scale 8000] [--half-length 95] [--source photo|mesh|montage] [--skip-drives 2024-10] [--template flamingo|kingfisher|heron|canary] [--site-theme heron|kingfisher|flamingo|canary] [--job N] [--client X] [--status S] [--sheet "DA 003"]');
+  console.error('usage: npm run generate -- "<address>" [--type context|site|yield|slides|streetscape|summary|both] [--scale 3000] [--slides-scale 8000] [--half-length 95] [--source photo|mesh|montage] [--skip-drives 2024-10] [--overlay] [--template flamingo|kingfisher|heron|canary] [--site-theme heron|kingfisher|flamingo|canary] [--job N] [--client X] [--status S] [--sheet "DA 003"]');
   process.exit(1);
 }
 
@@ -180,7 +180,7 @@ if (sheetType === 'streetscape') {
   const sb = await runStreetscapePipeline(address, { outDir, halfLengthM: Number(arg('half-length', '95')), source, skipDrives, log: (m) => console.log(m) });
   console.log('composing streetscape…');
   const htmlPath = join(outDir, 'streetscape.html');
-  await writeFile(htmlPath, renderStreetscape(sb, meta));
+  await writeFile(htmlPath, renderStreetscape(sb, meta, { overlay: process.argv.includes('--overlay') }));
   const pdfPath = join(outDir, 'STREETSCAPE.pdf');
   const pngs = await printSlides(htmlPath, pdfPath, outDir, { widthMm: SLIDE_W, heightMm: SLIDE_H });
   outputs.push(pdfPath, ...pngs);
