@@ -198,16 +198,24 @@ export function planStreetscape(input: {
     }
   }
   if (pts.length < 10) return null;
-  // the axis between the street's two farthest points
-  const far = (from: P) => pts.reduce((m, q) => (Math.hypot(q.p.x - from.x, q.p.y - from.y) > Math.hypot(m.x - from.x, m.y - from.y) ? q.p : m), from);
-  const e1 = far(pts[0].p), e0 = far(e1);
+  // the axis: the line that best fits the street's metres within the window, pointing from one of its two farthest
+  // points to the other. Not the chord between those two: a street that turns near the window's ends (Riley Street
+  // past Liverpool Street) pulls the chord off the street by tens of metres at the site
+  const near = pts.filter((q) => Math.hypot(q.p.x, q.p.y) <= input.halfLengthM + 40);
+  const span = near.length >= 10 ? near : pts;
+  const far = (from: P) => span.reduce((m, q) => (Math.hypot(q.p.x - from.x, q.p.y - from.y) > Math.hypot(m.x - from.x, m.y - from.y) ? q.p : m), from);
+  const e1 = far(span[0].p), e0 = far(e1);
   const len = Math.hypot(e1.x - e0.x, e1.y - e0.y);
   if (len < 20) return null;
-  const axis = { x: (e1.x - e0.x) / len, y: (e1.y - e0.y) / len };
+  const c = span.reduce((m, q) => ({ x: m.x + q.p.x / span.length, y: m.y + q.p.y / span.length }), { x: 0, y: 0 });
+  let sxx = 0, sxy = 0, syy = 0;
+  for (const q of span) { const dx = q.p.x - c.x, dy = q.p.y - c.y; sxx += dx * dx; sxy += dx * dy; syy += dy * dy; }
+  const th = 0.5 * Math.atan2(2 * sxy, sxx - syy);
+  const fit = { x: Math.cos(th), y: Math.sin(th) }, sign = dot(fit, { x: e1.x - e0.x, y: e1.y - e0.y }) >= 0 ? 1 : -1;
+  const axis = { x: fit.x * sign, y: fit.y * sign };
   const left = { x: -axis.y, y: axis.x };
   // s = 0 opposite the site's centre (the frame's origin)
-  const sSite = -dot(e0, axis);
-  const at0 = { x: e0.x + axis.x * sSite, y: e0.y + axis.y * sSite };
+  const at0 = { x: c.x - axis.x * dot(c, axis), y: c.y - axis.y * dot(c, axis) };
   const sOf = (p: P) => dot({ x: p.x - at0.x, y: p.y - at0.y }, axis);
   const dOf = (p: P) => dot({ x: p.x - at0.x, y: p.y - at0.y }, left);
   const ptAt = (s: number, d: number): P => ({ x: at0.x + axis.x * s + left.x * d, y: at0.y + axis.y * s + left.y * d });

@@ -9,7 +9,9 @@
 
 import { planStreetscape, planeToImage, inv3, mul3, apply3, aimAt, assignStrips, splitAddress, CAMERA_HEIGHT_M, BELOW_GROUND_M, FRAME_PX, type Property } from '../src/fetch/streetscape.js';
 import type { LonLat } from '../src/lib/geo.js';
-import { roofSteps } from '../src/render/streetscape.js';
+import { roofSteps, layoutFaces, renderStreetscape, streetscapePage, CONTRIBUTION_INK, ITEM_INK } from '../src/render/streetscape.js';
+import { SLIDE_W } from '../src/render/slides.js';
+import type { StreetscapeBundle } from '../src/pipeline.js';
 
 const failures: string[] = [];
 const check = (name: string, ok: boolean, detail = '') => { if (!ok) failures.push(`${name}${detail ? ` — ${detail}` : ''}`); };
@@ -109,6 +111,41 @@ check('a suffixed number keeps its letter', splitAddress('111A RILEY STREET DARL
   const two = roofSteps([...Array.from({ length: 6 }, (_, i) => at(i + 0.5, 9)), at(6.5, 1), at(7.5, 1.2), ...Array.from({ length: 6 }, (_, i) => at(i + 8.5, 9))]);
   check('a yard parts two buildings', two.length === 2 && near(two[0][0].s1, 6, 1e-9) && near(two[1][0].s0, 8, 1e-9), JSON.stringify(two));
   check('nothing standing is no building', roofSteps([at(0.5, 1), at(1.5, 2)]).length === 0);
+}
+
+// the sheet: at a forced scale as long as the street needs, the buildings filled by their contribution to the
+// conservation area that is bracketed over them
+if (plan) {
+  const elevation = (side: 1 | -1) => ({
+    side, file: `elevation_${side > 0 ? 'l' : 'r'}.jpg`, ppm: 10, width: 1800, height: 400, sAtLeft: side > 0 ? 90 : -90, sAtRight: side > 0 ? -90 : 90, zTop: 70, zBottom: 30, offsetM: 20, draped: 0, photoShare: 0,
+    ground: Array.from({ length: 181 }, (_, i) => ({ s: i - 90, z: 40 })),
+    tops: Array.from({ length: 180 }, (_, i) => ({ s: i - 89.5, z: 52 })),
+    // a 30 m tower over three metres of a long face of 12 m buildings
+    roofs: Array.from({ length: 180 }, (_, i) => ({ s: i - 89.5, z: i >= 100 && i < 103 ? 70 : 52 })),
+  });
+  const ratings = ['Contributing', 'Neutral', 'Detracting'] as const;
+  const heritage = {
+    plan: 'Test LEP', ratings: 'Test DCP',
+    faces: plan.faces.map((f) => ({
+      side: f.side, areas: [{ s0: -90, s1: 30, id: 'C99', name: 'Test' }],
+      frontages: f.frontages.map((fr, i) => ({ s0: fr.s0, s1: fr.s1, rating: ratings[i % 3], ...(i === 2 ? { item: { id: 'I7', name: 'Terrace' } } : {}) })),
+    })),
+  };
+  const b = { address: 'x', siteAddress: 'X', generatedAt: '2026-01-01', plan, frames: [], warnings: [], elevations: [elevation(plan.faces[0].side), elevation(plan.faces[1].side)], heritage } as StreetscapeBundle;
+  const meta = { jobNo: '', client: '', status: '', sheetNo: '', revision: '', checked: '', drawn: '', date: '', preliminary: false };
+  check('the scale that fits is on A3', layoutFaces(b).pageW === SLIDE_W);
+  const L = layoutFaces(b, 200);
+  check('a forced scale makes the sheet as long as the street', L.scale === 200 && L.pageW === 180 * 5 + 30 && near(L.x0, 15, 1e-9), JSON.stringify({ scale: L.scale, pageW: L.pageW, x0: L.x0 }));
+  check('a band rises over a narrow tower its tops would pass over', near(layoutFaces(b).bands[0].zTop, 72, 1e-9), String(layoutFaces(b).bands[0].zTop));
+  const her = renderStreetscape(b, meta, { fill: 'heritage', scale: 200 });
+  check('the long sheet sets its own page', her.includes('@page { size: 930mm 297mm') && streetscapePage(b, { scale: 200 }).widthMm === 930);
+  check('buildings are tinted by their contribution', her.includes(`fill:${CONTRIBUTION_INK.Contributing}`) && her.includes(`fill:${CONTRIBUTION_INK.Detracting}`));
+  check('a heritage item is outlined and named', her.includes(`stroke:${ITEM_INK}`) && />I7</.test(her));
+  check('the conservation area is bracketed and named', her.includes('TEST CONSERVATION AREA · C99'));
+  check('the legend and the heritage sentence', her.includes('CONTRIBUTION TO THE CONSERVATION AREA') && her.includes('It runs through the Test (C99) conservation area'));
+  const none = renderStreetscape(b, meta, { overlay: true, fill: 'none', scale: 200 });
+  check('outlines alone fill nothing', none.includes('class="bl none') && !none.includes(`fill:${CONTRIBUTION_INK.Contributing}`) && !none.includes('CONTRIBUTION TO THE CONSERVATION AREA'));
+  check('the A3 sheet keeps its page', !renderStreetscape(b, meta).includes('@page { size: 930mm'));
 }
 
 if (failures.length) {

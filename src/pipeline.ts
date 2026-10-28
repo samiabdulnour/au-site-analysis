@@ -34,6 +34,7 @@ import { fetchPlanningProposals, type PlanningProposal } from './fetch/planning.
 import { fetchPeopleData, type PeopleData } from './fetch/people.js';
 import { fetchDemGrid, demAt, type DemGrid } from './fetch/terrain.js';
 import { fetchBuildings, withDaStoreys, METRES_PER_STOREY, type BuildingsData } from './fetch/buildings.js';
+import { fetchStreetscapeHeritage, type StreetscapeHeritage } from './fetch/streetscapeHeritage.js';
 import { fetchFootways, type FootwaysData } from './fetch/footways.js';
 import { fetchMajorProjects, emptyMajorProjects, type MajorProjectsData } from './fetch/majorProjects.js';
 import { fetchWind, emptyWind, type WindData } from './fetch/wind.js';
@@ -1102,6 +1103,8 @@ export interface StreetscapeBundle {
   tileCredits?: string[];
   /** How far the meshes stand above AHD at the boundary: the geoid and the meshes' own error (about 22 m at Sydney). */
   groundOffsetM?: number;
+  /** The conservation areas along each face, the LEP's heritage items that front it, and the DCP's rating of each building (src/fetch/streetscapeHeritage.ts). */
+  heritage?: StreetscapeHeritage;
   /** Set when the elevations have been through an image model (src/render/aiTiles.ts): which, how many of the tiles were laid back, and on which faces. */
   ai?: { model: string; tiles: number; of: number; sides: (1 | -1)[] };
   /** Without the 3D tiles: the Street View frames, their pictures in `data/` beside the drawing; none without GOOGLE_MAPS_API_KEY. */
@@ -1199,9 +1202,10 @@ export async function runStreetscapePipeline(address: string, opts: { outDir: st
   else if (!dem) framesNote = 'The elevation model did not answer, so the frames could not be set on the ground.';
   else if (!frames.length) frames = await fetchFrames();
 
+  const heritage = await soft(fetchStreetscapeHeritage(plan, log), null, 'heritage');
   const bundle: StreetscapeBundle = {
     address, siteAddress: geo.matchedAddresses[0] ?? address, generatedAt: new Date().toISOString(),
-    plan, elevations, tileCredits, groundOffsetM, frames, framesNote, demSource: dem?.source, warnings,
+    plan, elevations, tileCredits, groundOffsetM, ...(heritage ? { heritage } : {}), frames, framesNote, demSource: dem?.source, warnings,
   };
   await writeFile(join(dataDir, 'streetscape_bundle.json'), JSON.stringify(bundle));
   return bundle;

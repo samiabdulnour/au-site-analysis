@@ -18,6 +18,7 @@ import { shortStreetName, type SheetMeta } from './sheet.js';
 import { esc } from './chrome.js';
 import { SCAPE_SKY, type Elevation } from './elevation3d.js';
 import { METRES_PER_STOREY } from '../fetch/buildings.js';
+import type { Contribution, FaceHeritage } from '../fetch/streetscapeHeritage.js';
 
 const MARGIN = 15;
 const BAND_TOP = 44;
@@ -49,18 +50,28 @@ const bearingWord = (deg: number) => ['north', 'north-east', 'east', 'south-east
 const titleCase = (s: string) => s.toLowerCase().replace(/\b[a-z]/g, (c) => c.toUpperCase());
 const monthName = (ym?: string) => { const m = ym?.match(/^(\d{4})-(\d{2})/); return m ? `${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][Number(m[2]) - 1]} ${m[1]}` : ''; };
 
-interface Layout { scale: number; k: number; x0: number; bands: { top: number; zTop: number; zBot: number; h: number }[] }
+interface Layout { scale: number; k: number; x0: number; pageW: number; bands: { top: number; zTop: number; zBot: number; h: number }[] }
 
-/** The largest round scale at which the window fits the sheet's width and both bands its height. */
-export function layoutFaces(b: StreetscapeBundle): Layout {
-  const p = b.plan, len = p.s1 - p.s0, width = SLIDE_W - 2 * MARGIN;
+/** How the buildings over the faces are filled: a white veil, not at all, or by their contribution to their conservation area. */
+export type BuildingFill = 'veil' | 'none' | 'heritage';
+export interface StreetscapeOptions { overlay?: boolean; fill?: BuildingFill; scale?: number }
+
+/**
+ * The largest round scale at which the window fits the sheet's width and both bands its height; or, given `scale`, that
+ * scale, on a sheet as long as the window then needs (and never shorter than A3), at A3's height.
+ */
+export function layoutFaces(b: StreetscapeBundle, scale?: number): Layout {
+  const p = b.plan, len = p.s1 - p.s0;
+  const pageW = scale ? Math.max(SLIDE_W, Math.ceil((len * 1000) / scale) + 2 * MARGIN) : SLIDE_W, width = pageW - 2 * MARGIN;
   const wanted = p.faces.map((f, i) => {
     const e = b.elevations?.[i];
     if (e) {
       // as high as the face's buildings stand, and a little sky over them
       const zs = e.ground.map((g) => g.z), lo = Math.min(...zs), hi = Math.max(...zs);
       const tops = e.tops.map((x) => x.z).sort((x, y) => x - y);
-      const reach = (tops[Math.floor(tops.length * 0.98)] ?? hi + SKY_M) + 2;
+      // and over its tallest building, where its roofs are measured: a narrow tower is under 2% of a long face's metres
+      const roofs = (e.roofs ?? []).map((x) => x.z).sort((x, y) => y - x);
+      const reach = Math.max(tops[Math.floor(tops.length * 0.98)] ?? hi + SKY_M, roofs[2] ?? -Infinity) + 2;
       return { zTop: Math.max(hi + MIN_SKY_M, Math.min(hi + SKY_3D_M, reach)), zMin: hi + MIN_SKY_M, zBot: lo - GROUND_BAND_M };
     }
     const zs = f.ground.map((g) => g.z);
@@ -73,8 +84,8 @@ export function layoutFaces(b: StreetscapeBundle): Layout {
   });
   const room = FOOT_TOP - BAND_TOP - p.faces.length * (LABEL_GAP + LABELS_H + CAPTION_H) - (p.faces.length - 1) * FACE_GAP;
   // the scale the street's length allows, at which the faces fit at their lowest; then as much of their height as fits
-  const scale = SCALES.find((s) => (len * 1000) / s <= width && wanted.reduce((t, r) => t + ((r.zMin - r.zBot) * 1000) / s, 0) <= room) ?? SCALES[SCALES.length - 1];
-  const k = 1000 / scale;
+  const fit = scale ?? SCALES.find((s) => (len * 1000) / s <= width && wanted.reduce((t, r) => t + ((r.zMin - r.zBot) * 1000) / s, 0) <= room) ?? SCALES[SCALES.length - 1];
+  const k = 1000 / fit;
   const ranges = wanted.map((r) => ({ zTop: Math.max(r.zMin, Math.min(r.zTop, r.zBot + room / wanted.length / k)), zBot: r.zBot }));
   const x0 = MARGIN + (width - len * k) / 2;
   // what the faces leave of the page's height goes a third above them and a third between them
@@ -86,7 +97,12 @@ export function layoutFaces(b: StreetscapeBundle): Layout {
     top += h + LABEL_GAP + LABELS_H + CAPTION_H + FACE_GAP + spare;
     return band;
   });
-  return { scale, k, x0, bands };
+  return { scale: fit, k, x0, pageW, bands };
+}
+
+/** The sheet's page, mm: A3, or as long as a forced scale needs. */
+export function streetscapePage(b: StreetscapeBundle, opts: StreetscapeOptions = {}): { widthMm: number; heightMm: number } {
+  return { widthMm: layoutFaces(b, opts.scale).pageW, heightMm: SLIDE_H };
 }
 
 /** Rows of labels, each placed in the first row it fits without touching the one before. */
@@ -99,7 +115,7 @@ class Rows {
   }
 }
 
-function faceSvg(b: StreetscapeBundle, face: Face, L: Layout, i: number, overlay = false): { html: string; svg: string } {
+function faceSvg(b: StreetscapeBundle, face: Face, L: Layout, i: number, overlay = false, fill: BuildingFill = 'veil'): { html: string; svg: string } {
   const t = tpl();
   const p = b.plan, band = L.bands[i], k = L.k;
   const X = (s: number) => (face.sRightward ? L.x0 + (s - p.s0) * k : L.x0 + (p.s1 - s) * k);
@@ -131,7 +147,10 @@ function faceSvg(b: StreetscapeBundle, face: Face, L: Layout, i: number, overlay
     svg.push(`<polygon points="${ground} ${f2(xs[xs.length - 1])},${f2(band.top + band.h)} ${f2(xs[0])},${f2(band.top + band.h)}" fill="${GROUND_FILL}"/>`);
   }
   if (ground) svg.push(`<polyline points="${ground}" fill="none" stroke="${t.ink}" stroke-width="0.3" stroke-linejoin="round"/>`);
-  if (overlay && elev?.roofs?.length) svg.push(buildingLines(elev, elev.roofs, face, X, Y, groundAt, t.site));
+  const her = b.heritage?.faces.find((h) => h.side === face.side);
+  if (overlay && elev?.roofs?.length) svg.push(buildingLines(elev, elev.roofs, face, X, Y, groundAt, t.site, fill, her));
+  // the conservation areas the face stands in, bracketed over its band
+  if (her?.areas.length) svg.push(areaBrackets(her, X, band.top, p.s0, p.s1));
   const footY = (s: number) => (elev ? band.top + band.h : Y(groundAt(s) - BELOW_GROUND_M));
 
   // the roads that come in, named upright in their gaps over the ground, as the street's own signs would be
@@ -208,9 +227,9 @@ function faceSvg(b: StreetscapeBundle, face: Face, L: Layout, i: number, overlay
       : (b.framesNote ? 'No Street View frames' : '');
   // a face is the side of the street the viewer turns to: its name and the way the viewer looks are one
   const title = `${titleCase(p.street)}, the ${bearingWord(face.facing)} side, looking ${bearingWord(face.facing)}${face.hasSite ? ' · the site’s side' : ''}`;
-  const bar = scaleBar(L, SLIDE_W - MARGIN, capY + 2.4);
+  const bar = scaleBar(L, L.pageW - MARGIN, capY + 2.4);
   return {
-    html: `${slices}<div class="abs cap" style="left:${MARGIN}mm;top:${f2(capY)}mm;width:${SLIDE_W - 2 * MARGIN - 70}mm"><span class="ct">${esc(title)}</span><span class="cr">${esc(credit)}</span></div>`,
+    html: `${slices}<div class="abs cap" style="left:${MARGIN}mm;top:${f2(capY)}mm;width:${L.pageW - 2 * MARGIN - 70}mm"><span class="ct">${esc(title)}</span><span class="cr">${esc(credit)}</span></div>`,
     svg: `${svg.join('')}${labels.join('')}${bar}`,
   };
 }
@@ -251,16 +270,27 @@ export function roofSteps(pts: { s: number; z: number; g: number }[], tol = 1.2,
   });
 }
 
+/** A building's tint by its contribution to its conservation area (Sydney DCP 2012), and the outline of an LEP heritage item. */
+export const CONTRIBUTION_INK: Record<Contribution, string> = { Contributing: '#c98a3a', Neutral: '#ffffff', Detracting: '#5b6b8c' };
+export const ITEM_INK = '#8a2b1f';
+const AREA_INK = '#5a4a3a';
+
 /**
- * The buildings drawn over a face, gently: each frontage's building a veil of white over the picture, its roofline
- * in steps and down to the ground at its ends (the party walls at the lot lines) in a hairline, floor lines at its
- * storeys (its measured height at METRES_PER_STOREY a storey, evenly spaced) in white, and over its tallest step its
- * height over the ground and its level in AHD. The site's building in the site's red.
+ * The buildings drawn over a face, gently: each frontage's building a shape over the picture (a veil of white, an
+ * outline alone, or tinted by its contribution to its conservation area with the LEP's heritage items outlined and
+ * named), its roofline in steps and down to the ground at its ends (the party walls at the lot lines) in a hairline,
+ * floor lines at its storeys (its measured height at METRES_PER_STOREY a storey, evenly spaced) in white, and over
+ * its tallest step its height over the ground and its level in AHD. The site's building in the site's red.
  */
-function buildingLines(e: Elevation, roofs: { s: number; z: number }[], face: Face, X: (s: number) => number, Y: (z: number) => number, groundAt: (s: number) => number, siteInk: string): string {
-  const lines: string[] = [], floors: string[] = [], tags: { x: number; y: number; h: number; text: string[]; site: boolean }[] = [];
-  for (const fr of face.frontages) {
+function buildingLines(e: Elevation, roofs: { s: number; z: number }[], face: Face, X: (s: number) => number, Y: (z: number) => number, groundAt: (s: number) => number, siteInk: string, fill: BuildingFill = 'veil', her?: FaceHeritage): string {
+  const lines: string[] = [], floors: string[] = [], tags: { x: number; y: number; h: number; text: string[]; site: boolean; item?: string }[] = [];
+  // each heritage item named once over the run of frontages it covers
+  let lastItem = '';
+  for (const fr of [...face.frontages].sort((p, q) => Math.min(p.s0, p.s1) - Math.min(q.s0, q.s1))) {
     const a = Math.min(fr.s0, fr.s1), b = Math.max(fr.s0, fr.s1);
+    const h8 = fill === 'heritage' ? her?.frontages.find((x) => Math.abs(x.s0 - fr.s0) < 0.01 && Math.abs(x.s1 - fr.s1) < 0.01) : undefined;
+    const itemId = h8?.item?.id ?? '', named = !!itemId && itemId !== lastItem;
+    let drawn = false;
     const pts = roofs.filter((r) => r.s > a && r.s < b).map((r) => ({ s: r.s, z: r.z, g: groundAt(r.s) }));
     for (const steps of roofSteps(pts)) {
       const s0 = Math.max(a, steps[0].s0), s1 = Math.min(b, steps[steps.length - 1].s1);
@@ -275,23 +305,45 @@ function buildingLines(e: Elevation, roofs: { s: number; z: number }[], face: Fa
       // and back along the ground, so the building is a shape to fill
       for (let q = Math.floor(s1); q > s0; q--) d.push(`L${f2(X(q))},${f2(Y(groundAt(q)))}`);
       d.push(`L${f2(X(s0))},${f2(Y(groundAt(s0)))}Z`);
-      lines.push(`<path d="${d.join('')}" class="bl${fr.site ? ' site' : ''}"${fr.site ? ` style="fill:${siteInk};stroke:${siteInk}"` : ''}/>`);
+      const style = fill === 'heritage'
+        ? [h8?.rating ? `fill:${CONTRIBUTION_INK[h8.rating]}` : 'fill:none', fr.site ? `stroke:${siteInk}` : itemId ? `stroke:${ITEM_INK}` : ''].filter(Boolean).join(';')
+        : fr.site ? `${fill === 'none' ? '' : `fill:${siteInk};`}stroke:${siteInk}` : '';
+      const cls = ['bl', fill === 'veil' ? '' : fill, h8?.rating ? h8.rating.toLowerCase() : '', itemId ? 'item' : '', fr.site ? 'site' : ''].filter(Boolean).join(' ');
+      lines.push(`<path d="${d.join('')}" class="${cls}"${style ? ` style="${style}"` : ''}/>`);
       const top = steps.reduce((m, st) => (st.z - st.g > m.z - m.g ? st : m));
       const h = top.z - top.g;
-      tags.push({ x: (X(Math.max(s0, top.s0)) + X(Math.min(s1, top.s1))) / 2, y: Y(top.z) - 0.9, h, site: !!fr.site,
+      tags.push({ x: (X(Math.max(s0, top.s0)) + X(Math.min(s1, top.s1))) / 2, y: Y(top.z) - 0.9, h, site: !!fr.site, ...(named && !drawn ? { item: itemId } : {}),
         text: [`${h.toFixed(1)} m · ${Math.max(1, Math.round(h / METRES_PER_STOREY))} ST`, `RL ${(top.z - e.offsetM).toFixed(1)}`] });
+      drawn = true;
     }
+    if (drawn || !itemId) lastItem = itemId;
   }
-  // the tallest first, each where it clears those already set
+  // the heritage items first, then the tallest, each where it clears those already set
   const set: [number, number, number, number][] = [];
   const out: string[] = [];
-  for (const tg of tags.sort((p, q) => q.h - p.h)) {
-    const w = Math.max(...tg.text.map((l) => l.length)) * 0.82 + 0.6, box: [number, number, number, number] = [tg.x - w / 2, tg.y - 3.5, tg.x + w / 2, tg.y + 0.4];
+  for (const tg of tags.sort((p, q) => Number(!!q.item) - Number(!!p.item) || q.h - p.h)) {
+    const text = tg.item ? [tg.item, ...tg.text] : tg.text;
+    const w = Math.max(...text.map((l) => l.length)) * 0.82 + 0.6, box: [number, number, number, number] = [tg.x - w / 2, tg.y - 1.75 * text.length - 0.1, tg.x + w / 2, tg.y + 0.4];
     if (set.some((o) => box[0] < o[2] && o[0] < box[2] && box[1] < o[3] && o[1] < box[3])) continue;
     set.push(box);
-    out.push(`<text x="${f2(tg.x)}" y="${f2(tg.y - 1.75)}" text-anchor="middle" class="bh${tg.site ? ' site' : ''}"><tspan x="${f2(tg.x)}">${esc(tg.text[0])}</tspan><tspan x="${f2(tg.x)}" dy="1.75">${esc(tg.text[1])}</tspan></text>`);
+    const y = tg.y - 1.75 * (text.length - 1);
+    out.push(`<text x="${f2(tg.x)}" y="${f2(y)}" text-anchor="middle" class="bh${tg.site ? ' site' : ''}">${text.map((l, j) => `<tspan x="${f2(tg.x)}"${j ? ' dy="1.75"' : ''}${tg.item && !j ? ' class="hi"' : ''}>${esc(l)}</tspan>`).join('')}</text>`);
   }
   return `<g>${lines.join('')}${floors.length ? `<path d="${floors.join('')}" class="fl"/>` : ''}${out.join('')}</g>`;
+}
+
+/** The conservation areas along a face, each a bracket over the band from where it starts to where it ends, named at its start as the viewer reads; an end the window cuts has no tick. */
+function areaBrackets(her: FaceHeritage, X: (s: number) => number, top: number, sMin: number, sMax: number): string {
+  const y = top - 4.2, out: string[] = [];
+  for (const a of her.areas) {
+    const [sa, sb] = X(a.s0) <= X(a.s1) ? [a.s0, a.s1] : [a.s1, a.s0];
+    const xa = X(sa), xb = X(sb), tick = (s: number) => (s <= sMin + 1 || s >= sMax - 1 ? 0 : 1);
+    out.push(`<path d="M${f2(xa + 0.3)},${f2(y + tick(sa))}V${f2(y)}H${f2(xb - 0.3)}V${f2(y + tick(sb))}" class="ha"/>`);
+    const full = `${a.name.toUpperCase()} CONSERVATION AREA · ${a.id}`, short = a.id;
+    const text = full.length * 1.1 + 1 <= xb - xa ? full : short.length * 1.1 + 1 <= xb - xa ? short : '';
+    if (text) out.push(`<text x="${f2(xa + 0.6)}" y="${f2(y - 0.7)}" class="hn">${esc(text)}</text>`);
+  }
+  return `<g>${out.join('')}</g>`;
 }
 
 /** An elevation in its band: the picture placed by what it spans, the band cutting it to the face's sky and ground. */
@@ -329,7 +381,7 @@ function scaleBar(L: Layout, right: number, y: number): string {
   const steps = L.scale <= 500 ? [0, 10, 20, 50] : L.scale <= 1000 ? [0, 20, 50, 100] : [0, 50, 100, 200];
   const w = steps[steps.length - 1] * L.k, x0 = right - w;
   const ticks = steps.map((s) => `<line x1="${f2(x0 + s * L.k)}" y1="${f2(y - 0.9)}" x2="${f2(x0 + s * L.k)}" y2="${f2(y + 0.9)}" stroke="#2a2e2c" stroke-width="0.15"/><text x="${f2(x0 + s * L.k)}" y="${f2(y + 3.1)}" text-anchor="middle" class="lb sb">${s}${s === steps[steps.length - 1] ? ' M' : ''}</text>`).join('');
-  return `<line x1="${f2(x0)}" y1="${f2(y)}" x2="${f2(right)}" y2="${f2(y)}" stroke="#2a2e2c" stroke-width="0.25"/>${ticks}<text x="${f2(x0 - 2)}" y="${f2(y + 0.6)}" text-anchor="end" class="lb sb">1:${L.scale} AT A3</text>`;
+  return `<line x1="${f2(x0)}" y1="${f2(y)}" x2="${f2(right)}" y2="${f2(y)}" stroke="#2a2e2c" stroke-width="0.25"/>${ticks}<text x="${f2(x0 - 2)}" y="${f2(y + 0.6)}" text-anchor="end" class="lb sb">1:${L.scale} AT ${L.pageW === SLIDE_W ? 'A3' : `${L.pageW} × ${SLIDE_H} MM`}</text>`;
 }
 
 /** What the sheet says above the faces: the street's length and fall, and the site's frontage. */
@@ -352,22 +404,55 @@ export function streetscapeSentences(b: StreetscapeBundle): string[] {
   return out;
 }
 
-/** The sheet; `overlay` draws the buildings' lines, heights and levels over the 3D faces. */
-export function renderStreetscape(b: StreetscapeBundle, meta: SheetMeta, opts: { overlay?: boolean } = {}): string {
-  return withTemplate(DECK_TEMPLATE, () => drawStreetscape(b, meta, opts.overlay ?? false));
+/** What the sheet says of the street's heritage: the conservation areas it runs through, and how its buildings are rated in them. */
+export function heritageSentence(b: StreetscapeBundle): string {
+  const h = b.heritage;
+  if (!h) return '';
+  const areas = [...new Map(h.faces.flatMap((f) => f.areas).map((a) => [a.id, a])).values()];
+  const fronts = h.faces.flatMap((f) => f.frontages);
+  const n = (r: Contribution) => fronts.filter((x) => x.rating === r).length;
+  const items = new Set(fronts.map((x) => x.item?.id).filter(Boolean)).size;
+  const where = areas.length ? `It runs through the ${areas.map((a) => `${a.name} (${a.id})`).join(', ').replace(/, ([^,]*)$/, ' and $1')} conservation area${areas.length === 1 ? '' : 's'}` : 'It runs through no conservation area';
+  const rated = n('Contributing') + n('Neutral') + n('Detracting');
+  return `${where}${rated ? `: of its ${rated} rated frontages, ${n('Contributing')} contribute, ${n('Neutral')} ${n('Neutral') === 1 ? 'is' : 'are'} neutral and ${n('Detracting')} detract` : ''}${items ? `; ${items} heritage item${items === 1 ? '' : 's'} of the LEP front it` : ''}.`;
 }
 
-function drawStreetscape(b: StreetscapeBundle, meta: SheetMeta, overlay: boolean): string {
+/**
+ * The sheet. `overlay` draws the buildings' lines, heights and levels over the 3D faces, filled by `fill`; `scale`
+ * forces the scale, on a page as long as the street then needs.
+ */
+export function renderStreetscape(b: StreetscapeBundle, meta: SheetMeta, opts: StreetscapeOptions = {}): string {
+  return withTemplate(DECK_TEMPLATE, () => drawStreetscape(b, meta, opts));
+}
+
+function legendSvg(x: number, y: number): string {
+  const items: [string, string, string][] = [
+    ['CONTRIBUTING', `fill:${CONTRIBUTION_INK.Contributing}`, 'contributing'], ['NEUTRAL', `fill:${CONTRIBUTION_INK.Neutral}`, 'neutral'], ['DETRACTING', `fill:${CONTRIBUTION_INK.Detracting}`, 'detracting'],
+    ['NOT RATED', 'fill:none', ''], ['HERITAGE ITEM (LEP)', `fill:none;stroke:${ITEM_INK}`, 'item'],
+  ];
+  let cx = x;
+  const out = items.map(([label, style, cls]) => {
+    const g = `<rect x="${f2(cx)}" y="${f2(y - 2)}" width="4" height="2.6" class="bl heritage${cls ? ` ${cls}` : ''}" style="${style}"/><text x="${f2(cx + 5.2)}" y="${f2(y)}" class="lb sb">${label}</text>`;
+    cx += 5.2 + label.length * CHAR_MM + 5;
+    return g;
+  });
+  return `<text x="${f2(x)}" y="${f2(y - 3.6)}" class="lb sb">CONTRIBUTION TO THE CONSERVATION AREA (SYDNEY DCP 2012)</text>${out.join('')}`;
+}
+
+function drawStreetscape(b: StreetscapeBundle, meta: SheetMeta, opts: StreetscapeOptions): string {
   const t = tpl();
-  const L = layoutFaces(b);
-  const faces = b.plan.faces.map((f, i) => faceSvg(b, f, L, i, overlay));
+  const overlay = !!opts.overlay || opts.fill === 'heritage', fill: BuildingFill = opts.fill === 'heritage' && !b.heritage ? 'veil' : (opts.fill ?? 'veil');
+  const L = layoutFaces(b, opts.scale);
+  const W = L.pageW;
+  const faces = b.plan.faces.map((f, i) => faceSvg(b, f, L, i, overlay, fill));
   const lined = overlay && !!b.elevations?.some((e) => e?.roofs?.length);
-  const lead = streetscapeSentences(b).join(' ');
+  const lead = [...streetscapeSentences(b), heritageSentence(b)].filter(Boolean).join(' ');
   const sources = [
     b.elevations?.some(Boolean) ? `Faces: orthographic elevations of Google’s Photorealistic 3D Tiles${b.elevations.some((e) => e?.draped) ? ', each Google Street View photograph laid on the meshes from where its camera stood, so a facade is the photograph’s and stands at its own depth; the street’s trees, and what no photograph saw clear (a roof, a wall behind a tree from every camera), keep the meshes’ own texture, and the meshes’ outlines, as photogrammetry, are soft' : ' (photogrammetry, so trees and fine detail are approximate)'}. Seen square from the street’s centreline with its near half cut away, and with what stands more than 35 m behind the boundary left out; the ground line is the elevation model’s at the boundary, set on the meshes${b.groundOffsetM !== undefined ? `, which stand ${b.groundOffsetM.toFixed(1)} m above AHD here` : ''}.` : b.frames.length ? 'Frames: Google Street View, each rectified onto its frontage’s boundary as a plane, so the street reads at one true scale; what stands in front of the boundary (trees, cars, awnings) reads larger, a building set back from it smaller, and the seams between frames are the frames’, not the street’s.' : (b.framesNote ?? ''),
     'Frontages and addresses: NSW property and cadastre layers (NSW Spatial Services); a frontage is where a ray square to the street from its centreline first meets a property boundary.',
-    lined ? `Buildings (the pale veils over the faces): each frontage’s building as the meshes stand at and behind its boundary (the street’s trees and the awnings over the footpath cut away, a garden’s trees left out), in steps where it changes by more than a metre; floor lines at ${METRES_PER_STOREY} m a storey of the measured height, evenly spaced, not surveyed; heights over the ground at the boundary and levels in AHD, to about a metre.` : '',
+    lined ? `Buildings (${fill === 'heritage' ? 'the tinted shapes over the faces' : fill === 'none' ? 'the outlines over the faces' : 'the pale veils over the faces'}): each frontage’s building as the meshes stand at and behind its boundary (the street’s trees and the awnings over the footpath cut away, a garden’s trees left out), in steps where it changes by more than a metre; floor lines at ${METRES_PER_STOREY} m a storey of the measured height, evenly spaced, not surveyed; heights over the ground at the boundary and levels in AHD, to about a metre.` : '',
     b.ai ? `AI-enhanced and illustrative: ${b.ai.tiles} of ${b.ai.of} tiles of the faces redrawn by ${b.ai.model} through Artlist, each scaled back into its place, so ${b.elevations?.some((e) => e?.draped) ? 'the outlines and the photographed facades stand where they did, but the trees, the seams and what neither the photographs nor the meshes showed are the model’s' : 'the outlines stand where the meshes put them, but every facade, window and tree is the model’s, drawn on the meshes’ shapes and colours, not the buildings’ own'}; the measured drawing is STREETSCAPE.pdf.` : '',
+    b.heritage ? `Heritage: conservation areas and heritage items, ${b.heritage.plan} (NSW Planning)${b.heritage.ratings ? `; contributions, ${b.heritage.ratings}` : ''}; each read 3 m behind its frontage’s boundary, a rating by the most of its length, so a corner or a deep lot can read its neighbour’s. Indicative: the plan’s own maps and schedule govern.` : '',
     `Ground: ${b.demSource ?? 'no elevation model'}, at the boundary, indicative to about a metre.`,
     `Retrieved ${b.generatedAt.slice(0, 10)}.`,
   ].filter(Boolean).join(' ');
@@ -376,7 +461,9 @@ function drawStreetscape(b: StreetscapeBundle, meta: SheetMeta, overlay: boolean
   return `<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><title>${esc(b.siteAddress)} — STREETSCAPE</title>
 <style>
-${deckCss()}
+${deckCss()}${W === SLIDE_W ? '' : `
+  @page { size: ${W}mm ${SLIDE_H}mm; margin: 0; }
+  .slide { width: ${W}mm; }`}
   .slice { overflow: hidden; }
   .slice img { position: absolute; left: 0; top: 0; width: ${FRAME_PX}px; height: ${FRAME_PX}px; transform-origin: 0 0; max-width: none; }
   .elev { overflow: hidden; background: ${SCAPE_SKY}; }
@@ -390,6 +477,15 @@ ${deckCss()}
   .lb.sb { font-weight: 500; fill: #454f4b; }
   .bl { fill: #ffffff; fill-opacity: 0.3; stroke: #2a2e2c; stroke-opacity: 0.5; stroke-width: 0.14px; stroke-linejoin: miter; }
   .bl.site { fill-opacity: 0.14; stroke-opacity: 0.85; stroke-width: 0.2px; }
+  .bl.none { fill: none; stroke-opacity: 0.75; stroke-width: 0.16px; }
+  .bl.none.site { stroke-opacity: 1; stroke-width: 0.3px; }
+  .bl.heritage { fill-opacity: 0.42; stroke-opacity: 0.6; }
+  .bl.heritage.neutral { fill-opacity: 0.5; }
+  .bl.heritage.item { stroke-opacity: 1; stroke-width: 0.32px; }
+  .bl.heritage.site { stroke-opacity: 1; stroke-width: 0.36px; }
+  .bh .hi { fill: ${ITEM_INK}; font-weight: 700; }
+  .ha { fill: none; stroke: ${AREA_INK}; stroke-width: 0.22px; }
+  .hn { font-size: 1.45px; font-weight: 600; letter-spacing: 0.06em; fill: ${AREA_INK}; }
   .fl { fill: none; stroke: #ffffff; stroke-width: 0.14px; opacity: 0.7; }
   .bh { font-size: 1.3px; font-weight: 500; letter-spacing: 0.02em; fill: #3a403d; paint-order: stroke; stroke: #ffffff; stroke-width: 0.4px; stroke-linejoin: round; }
   .bh.site { fill: ${t.site}; }
@@ -401,14 +497,14 @@ ${deckCss()}
 </style></head>
 <body>
 <section class="slide" id="streetscape">
-  <div class="abs rh" style="left:${MARGIN}mm;top:10mm;width:${SLIDE_W - 2 * MARGIN}mm"><span>Streetscape</span><span>${esc(b.siteAddress)}</span></div>
+  <div class="abs rh" style="left:${MARGIN}mm;top:10mm;width:${W - 2 * MARGIN}mm"><span>Streetscape</span><span>${esc(b.siteAddress)}</span></div>
   <div class="abs title" style="left:${MARGIN}mm;top:17.5mm;width:200mm">Streetscape</div>
   <div class="abs subtitle" style="left:${MARGIN}mm;top:26.5mm;width:200mm">${esc(subtitle)}${b.ai ? ` · <span style="color:${t.site};font-weight:600;letter-spacing:0.08em">AI-ENHANCED · ILLUSTRATIVE</span>` : ''}</div>
-  <div class="abs lead" style="left:${SLIDE_W - MARGIN - 150}mm;top:17.5mm;width:150mm">${esc(lead)}</div>
+  <div class="abs lead" style="left:${W - MARGIN - 150}mm;top:17.5mm;width:150mm">${esc(lead)}</div>
   ${faces.map((f) => f.html).join('\n  ')}
-  <svg class="over" width="${SLIDE_W}mm" height="${SLIDE_H}mm" viewBox="0 0 ${SLIDE_W} ${SLIDE_H}">${faces.map((f) => f.svg).join('')}</svg>
-  <div class="abs src" style="left:${MARGIN}mm;top:${FOOT_TOP + 1}mm;width:${SLIDE_W - 2 * MARGIN}mm">${esc(sources)}</div>
-  <div class="abs foot" style="left:${MARGIN}mm;top:${SLIDE_H - 10}mm;width:${SLIDE_W - 2 * MARGIN}mm"><span>${esc(footerLeft)}</span><span>generated ${esc(b.generatedAt.slice(0, 10))}</span></div>
+  <svg class="over" width="${W}mm" height="${SLIDE_H}mm" viewBox="0 0 ${W} ${SLIDE_H}">${faces.map((f) => f.svg).join('')}${lined && fill === 'heritage' ? legendSvg(MARGIN, 37.5) : ''}</svg>
+  <div class="abs src" style="left:${MARGIN}mm;top:${FOOT_TOP + 1}mm;width:${W - 2 * MARGIN}mm">${esc(sources)}</div>
+  <div class="abs foot" style="left:${MARGIN}mm;top:${SLIDE_H - 10}mm;width:${W - 2 * MARGIN}mm"><span>${esc(footerLeft)}</span><span>generated ${esc(b.generatedAt.slice(0, 10))}</span></div>
 </section>
 </body></html>`;
 }

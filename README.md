@@ -1596,7 +1596,38 @@ trees and the awnings over the footpath are cut away and what stands behind
 them shows, each column's highest pixel that is not green. At Riley Street the
 lines sit on the meshes' buildings to within a metre; over the image model's
 picture (`scripts/streetscape-ai.ts import … --overlay`) they show where it
-drew lower or higher than the street stands.
+drew lower or higher than the street stands. `--fill none` draws the outlines
+alone, and `--fill heritage` tints each building by its contribution to its
+conservation area instead of the white veil.
+
+**Heritage.** Each face is read against the LEP's heritage layer (the NSW
+Planning EPI layer: conservation areas and heritage items, everywhere in NSW)
+and, in the City of Sydney, the DCP 2012 map of building contributions
+(contributing, neutral, detracting), each 3 m behind its frontage's boundary,
+where its building stands: every 2 m along the frontage (three points at
+least), a rating by the most of them, an item where any falls in one
+(`src/fetch/streetscapeHeritage.ts`). The conservation areas are bracketed and
+named over each face's band, and the sheet's lead says which the street runs
+through and how its frontages are rated. With `--fill heritage` the buildings
+are tinted sandstone (contributing), white (neutral) or slate (detracting),
+unrated ones left clear, the LEP's items outlined in deep red and numbered
+once over the run of frontages they cover, with a legend. A corner or a deep
+lot can read its neighbour's polygon, so the sheet says the plan's own maps and
+schedule govern. At Riley Street, 680 m through Woolloomooloo (C71), William
+Street South (C16), East Sydney (C13) and Oxford Street (C17): of 78 rated
+frontages 70 contribute, 3 are neutral and 5 detract, and 20 LEP items front
+the street.
+
+**A long street** (`--scale 1000`). The sheet takes the largest round scale
+at which the window fits A3; `--scale` forces one, on a sheet as long as the
+window then needs at A3's height (Riley Street's 680 m at 1:1000 is 710 ×
+297 mm), each band as tall as its tallest measured roof (the third highest
+metre of the roofs, so a mast is passed over and a narrow tower is not). Over
+a long window the street bends, so its axis is the line that best fits its
+centreline within the window, not the chord between its farthest points, which
+put Riley Street's building lines 24 m out at ±340 m. A face wider than 8,000
+pixels is rendered in pieces of whole metres, the camera moved along the axis
+for each, and stitched.
 
 Outputs: `STREETSCAPE.pdf` and `streetscape.png`, the pictures and
 `data/streetscape_bundle.json` beside them. The streetscape is not yet one of
@@ -1625,7 +1656,10 @@ npx tsx scripts/streetscape-ai.ts import out/<slug> --model "Nano Banana Pro"
 ```
 
 checks each answer against its tile, lays it back and prints
-`STREETSCAPE_AI.pdf`, labelled AI-enhanced and illustrative. An answer that
+`STREETSCAPE_AI.pdf`, labelled AI-enhanced and illustrative
+(`STREETSCAPE_AI_HERITAGE.pdf` with `--fill heritage`, `STREETSCAPE_AI_LINES.pdf`
+with `--fill none`; `--scale` as for the measured sheet). `sheet` in place of
+`import` draws the sheet again from the tiles already laid. An answer that
 built on more than a quarter of its tile's sky has redrawn the street rather
 than cleaned it (given a strip of street under a band of sky, the model
 repeated the street in the sky), so it is refused, named, and the face keeps
@@ -1637,7 +1671,13 @@ photographs on the meshes, the model keeps the real facades and redraws the
 trees and what no photograph saw; given the meshes alone (`--source mesh`), it
 invents the facades, and the sheet says so. At Riley Street the meshes alone
 went through whole once a tile holding the 24 m block beside low terraces,
-half sky in 21:9 (refused twice, prompt or no), was cut 16:9 instead. Exporting
+half sky in 21:9 (refused twice, prompt or no), was cut 16:9 instead. Along
+680 m of it (32 tiles), 3 of the first 29 answers were refused: one went
+through when asked to leave the grey under its trees open, and the other two
+stacked the street again through four answers each, a sloping run under a
+tall end and a low terrace under one tall tree; each was cut again by hand into
+shorter frames (two 16:9; a 3:2, a 1:1 for the tree, a 4:3), entries in
+`manifest.json` in place of the one, and all went through. Exporting
 again moves the earlier tiles, and any answers, to `data/ai-<when>/`; an
 answer can be copied back where its tile is unchanged.
 

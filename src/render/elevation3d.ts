@@ -369,13 +369,26 @@ window.scape = {
     const img = ctx.createImageData(W, H);
     for (let y = 0; y < H; y++) img.data.set(px.subarray((H - 1 - y) * W * 4, (H - y) * W * 4), y * W * 4);
     ctx.putImageData(img, 0, 0);
-    // onto the sheet's sky, as a JPEG
+    // onto the sheet's sky, kept for stitch() to lay beside the face's other pieces
     ctx.globalCompositeOperation = 'destination-over';
     ctx.fillStyle = f.background;
     ctx.fillRect(0, 0, W, H);
-    return { jpeg: c2.toDataURL('image/jpeg', 0.9), W, H, ppm, tops, roofs, draped, photoShare: surface ? photo / surface : 0 };
+    pieces.push(c2);
+    return { W, H, ppm, tops, roofs, draped, surface, photo };
+  },
+
+  // the pieces drawn since the last stitch, left to right, as one JPEG
+  stitch() {
+    const c = document.createElement('canvas');
+    c.width = pieces.reduce((w, p) => w + p.width, 0); c.height = pieces[0].height;
+    const ctx = c.getContext('2d');
+    let x = 0;
+    for (const p of pieces) { ctx.drawImage(p, x, 0); x += p.width; }
+    pieces.length = 0;
+    return c.toDataURL('image/jpeg', 0.9);
   },
 };
+const pieces = [];
 window.ready = true;
 </script>`;
 
@@ -429,20 +442,35 @@ export async function renderElevations(tiles: StreetTile[], enuMatrix: number[],
       const zBottom = Math.min(...zs) - BELOW_M, zTop = Math.max(...zs) + ABOVE_M;
       // the frames' cameras on the meshes' heights: the elevation model's, lifted as the ground is
       const frames = f.frames.map((fr) => ({ ...fr, z: fr.zAhd + settled.offsetM }));
-      const r = await page.evaluate((spec) => (window as any).scape.render(spec), {
-        ...f, frames, zBottom, zTop, ppm: opts.ppm, background: opts.background,
-      }) as { jpeg: string; W: number; H: number; ppm: number; tops: { m: number; z: number }[]; roofs: { m: number; z: number }[]; draped: number; photoShare: number };
+      // a face wider than the renderer's widest picture is drawn in pieces of whole metres, the camera moved along
+      // the street to each one's middle, and laid side by side; the camera's right is the street's direction for the
+      // left face, against it for the right, so the pieces go left to right in that order
+      const span = f.sMax - f.sMin, count = Math.max(1, Math.ceil((span * opts.ppm) / MAX_PX)), sMid = (f.sMin + f.sMax) / 2;
+      const edges = Array.from({ length: count + 1 }, (_, k) => f.sMin + Math.round((k * span) / count));
+      const ks = Array.from({ length: count }, (_, k) => (f.side > 0 ? k : count - 1 - k));
+      let W = 0, H = 0, ppm = opts.ppm, draped = 0, surface = 0, photo = 0;
+      const tops: { s: number; z: number }[] = [], roofs: { s: number; z: number }[] = [];
+      for (const k of ks) {
+        const a = edges[k], b = edges[k + 1], mid = (a + b) / 2;
+        const camera: [number, number] = [f.camera[0] + f.axis[0] * (mid - sMid), f.camera[1] + f.axis[1] * (mid - sMid)];
+        const r = await page.evaluate((spec) => (window as any).scape.render(spec), {
+          ...f, sMin: a, sMax: b, camera, frames: frames.filter((fr) => fr.s > a - 50 && fr.s < b + 50), zBottom, zTop, ppm: opts.ppm, background: opts.background,
+        }) as { W: number; H: number; ppm: number; tops: { m: number; z: number }[]; roofs: { m: number; z: number }[]; draped: number; surface: number; photo: number };
+        const left = f.side > 0 ? a : b, right = f.side > 0 ? b : a;
+        const sOfMetre = (m: number) => left + (right - left) * ((m + 0.5) / (r.W / r.ppm));
+        tops.push(...r.tops.map((t) => ({ s: sOfMetre(t.m), z: t.z })));
+        roofs.push(...r.roofs.map((t) => ({ s: sOfMetre(t.m), z: t.z })));
+        W += r.W; H = r.H; ppm = r.ppm; draped += r.draped; surface += r.surface; photo += r.photo;
+      }
+      const jpeg = await page.evaluate(() => (window as any).scape.stitch()) as string;
       const file = `elevation_${f.side > 0 ? 'l' : 'r'}.jpg`;
-      await writeFile(join(outDir, file), Buffer.from(r.jpeg.split(',')[1], 'base64'));
-      // the camera's right is the street's direction for the left face, against it for the right
+      await writeFile(join(outDir, file), Buffer.from(jpeg.split(',')[1], 'base64'));
       const sAtLeft = f.side > 0 ? f.sMin : f.sMax, sAtRight = f.side > 0 ? f.sMax : f.sMin;
-      const sOfMetre = (m: number) => sAtLeft + (sAtRight - sAtLeft) * ((m + 0.5) / (r.W / r.ppm));
       out.push({
-        side: f.side, file, ppm: r.ppm, width: r.W, height: r.H, sAtLeft, sAtRight, zTop, zBottom,
+        side: f.side, file, ppm, width: W, height: H, sAtLeft, sAtRight, zTop, zBottom,
         ground: settled.ground, offsetM: settled.offsetM,
-        tops: r.tops.map((t) => ({ s: sOfMetre(t.m), z: t.z })).sort((a, b) => a.s - b.s),
-        roofs: r.roofs.map((t) => ({ s: sOfMetre(t.m), z: t.z })).sort((a, b) => a.s - b.s),
-        draped: r.draped, photoShare: r.photoShare,
+        tops: tops.sort((a, b) => a.s - b.s), roofs: roofs.sort((a, b) => a.s - b.s),
+        draped, photoShare: surface ? photo / surface : 0,
       });
     }
     return out;
