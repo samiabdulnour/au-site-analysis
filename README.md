@@ -1584,6 +1584,19 @@ larger and a building set back from it smaller, as in any montage. Without a
 key, the faces are their ground and frontages alone. `STREETSCAPE_SOURCE`
 sets the source for the server, as `--source` does for the command line.
 
+**Building lines** (`--overlay`). Over the 3D faces, each frontage's building
+is drawn in line: its roofline in steps where it changes by more than a metre,
+down to the ground at the lot lines, floor lines at 3.1 m a storey of its
+measured height (evenly spaced, not surveyed), and over its tallest step its
+height over the ground and its level in AHD (`21.9 m · 7 ST`, `RL 34.0`), the
+site's in red. The tops are read from the render itself: the meshes again with
+the camera's near plane a metre short of the building line, so the street's
+trees and the awnings over the footpath are cut away and what stands behind
+them shows, each column's highest pixel that is not green. At Riley Street the
+lines sit on the meshes' buildings to within a metre; over the image model's
+picture (`scripts/streetscape-ai.ts import … --overlay`) they show where it
+drew lower or higher than the street stands.
+
 Outputs: `STREETSCAPE.pdf` and `streetscape.png`, the pictures and
 `data/streetscape_bundle.json` beside them. The streetscape is not yet one of
 the web page's drawings.

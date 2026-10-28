@@ -71,6 +71,9 @@ export interface Elevation {
   offsetM: number;
   /** The top of whatever stands on each metre of the face, where anything does. */
   tops: { s: number; z: number }[];
+  /** The top of the buildings on each metre: what stands at or behind the building line and is not green (none in
+   *  bundles drawn before they were read). */
+  roofs?: { s: number; z: number }[];
   /** The Street View frames laid on it, and the share of the face's surface they hold. */
   draped: number; photoShare: number;
 }
@@ -233,6 +236,41 @@ window.scape = {
     scene.overrideMaterial = null;
     renderer.render(scene, cam);
 
+    // the buildings' tops: the meshes again with the camera's near plane a metre short of the building line, so the
+    // street's trees and the awnings over the footpath are cut away and what stands behind them shows; in each
+    // column, the highest pixel that is not green (a garden's tree)
+    const roofRow = new Int32Array(W).fill(-1);
+    {
+      const camAcross = ((f.camera[0] - f.at0[0]) * -f.axis[1] + (f.camera[1] - f.at0[1]) * f.axis[0]) * f.side;
+      const cut = cam.clone();
+      cut.near = Math.max(0.05, f.boundary - 1 - camAcross);
+      cut.updateProjectionMatrix();
+      const rb = new THREE.WebGLRenderTarget(W, H, { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: true });
+      renderer.setRenderTarget(rb);
+      renderer.clear(true, true, true);
+      renderer.render(scene, cut);
+      const rp = new THREE.WebGLRenderTarget(W, H, { type: THREE.FloatType, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: true });
+      renderer.setRenderTarget(rp);
+      renderer.clear(true, true, true);
+      scene.overrideMaterial = posMat;
+      renderer.render(scene, cut);
+      scene.overrideMaterial = null;
+      const CH = 128, pf = new Float32Array(W * CH * 4), pb = new Uint8Array(W * CH * 4);
+      for (let y0 = 0; y0 < H; y0 += CH) {
+        const rows = Math.min(CH, H - y0);
+        renderer.readRenderTargetPixels(rp, 0, y0, W, rows, pf);
+        renderer.readRenderTargetPixels(rb, 0, y0, W, rows, pb);
+        for (let r = 0; r < rows; r++) for (let x = 0; x < W; x++) {
+          const i = (r * W + x) * 4;
+          if (pf[i + 3] === 0) continue;
+          if ((pb[i + 1] - Math.max(pb[i], pb[i + 2])) / 255 > 0.02 && pb[i + 1] / 255 < 0.75) continue;
+          if (y0 + r > roofRow[x]) roofRow[x] = y0 + r;
+        }
+      }
+      rb.dispose();
+      rp.dispose();
+    }
+
     let draped = 0;
     if (f.frames.length) {
       // the meshes' own picture again, for the drape to read what is green in it
@@ -319,6 +357,12 @@ window.scape = {
       }
       if (top >= 0) tops.push({ m, z: f.zBottom + (top + 1) / ppm });
     }
+    const roofs = [];
+    for (let m = 0; m < metres; m++) {
+      let top = -1;
+      for (let x = Math.round(m * ppm); x < Math.round((m + 1) * ppm) && x < W; x++) top = Math.max(top, roofRow[x]);
+      if (top >= 0) roofs.push({ m, z: f.zBottom + (top + 1) / ppm });
+    }
     const c2 = document.createElement('canvas');
     c2.width = W; c2.height = H;
     const ctx = c2.getContext('2d');
@@ -329,7 +373,7 @@ window.scape = {
     ctx.globalCompositeOperation = 'destination-over';
     ctx.fillStyle = f.background;
     ctx.fillRect(0, 0, W, H);
-    return { jpeg: c2.toDataURL('image/jpeg', 0.9), W, H, ppm, tops, draped, photoShare: surface ? photo / surface : 0 };
+    return { jpeg: c2.toDataURL('image/jpeg', 0.9), W, H, ppm, tops, roofs, draped, photoShare: surface ? photo / surface : 0 };
   },
 };
 window.ready = true;
@@ -387,7 +431,7 @@ export async function renderElevations(tiles: StreetTile[], enuMatrix: number[],
       const frames = f.frames.map((fr) => ({ ...fr, z: fr.zAhd + settled.offsetM }));
       const r = await page.evaluate((spec) => (window as any).scape.render(spec), {
         ...f, frames, zBottom, zTop, ppm: opts.ppm, background: opts.background,
-      }) as { jpeg: string; W: number; H: number; ppm: number; tops: { m: number; z: number }[]; draped: number; photoShare: number };
+      }) as { jpeg: string; W: number; H: number; ppm: number; tops: { m: number; z: number }[]; roofs: { m: number; z: number }[]; draped: number; photoShare: number };
       const file = `elevation_${f.side > 0 ? 'l' : 'r'}.jpg`;
       await writeFile(join(outDir, file), Buffer.from(r.jpeg.split(',')[1], 'base64'));
       // the camera's right is the street's direction for the left face, against it for the right
@@ -397,6 +441,7 @@ export async function renderElevations(tiles: StreetTile[], enuMatrix: number[],
         side: f.side, file, ppm: r.ppm, width: r.W, height: r.H, sAtLeft, sAtRight, zTop, zBottom,
         ground: settled.ground, offsetM: settled.offsetM,
         tops: r.tops.map((t) => ({ s: sOfMetre(t.m), z: t.z })).sort((a, b) => a.s - b.s),
+        roofs: r.roofs.map((t) => ({ s: sOfMetre(t.m), z: t.z })).sort((a, b) => a.s - b.s),
         draped: r.draped, photoShare: r.photoShare,
       });
     }

@@ -1,7 +1,7 @@
 // The streetscape's elevations through an image model and back (src/render/aiTiles.ts).
 //   npx tsx scripts/streetscape-ai.ts export out/<slug>        cut the faces into tiles: data/ai/*.png
 //   (each tile through the model, its answer saved beside it as <tile>.ai.png)
-//   npx tsx scripts/streetscape-ai.ts import out/<slug> [--model "Nano Banana Pro"]
+//   npx tsx scripts/streetscape-ai.ts import out/<slug> [--model "Nano Banana Pro"] [--overlay]
 //                                                              lay them back: STREETSCAPE_AI.pdf
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -15,7 +15,7 @@ import type { StreetscapeBundle } from '../src/pipeline.js';
 const [step, outDir] = process.argv.slice(2);
 const flag = (name: string) => { const i = process.argv.indexOf(`--${name}`); return i > -1 ? process.argv[i + 1] : undefined; };
 if (!outDir || (step !== 'export' && step !== 'import')) {
-  console.error('usage: npx tsx scripts/streetscape-ai.ts export|import out/<slug> [--model "Nano Banana Pro"]');
+  console.error('usage: npx tsx scripts/streetscape-ai.ts export|import out/<slug> [--model "Nano Banana Pro"] [--overlay]');
   process.exit(1);
 }
 const dataDir = join(outDir, 'data');
@@ -40,7 +40,7 @@ if (step === 'export') {
   const ai: StreetscapeBundle = { ...b, elevations, ai: { model: flag('model') ?? 'an image model', tiles, of, sides } };
   await writeFile(join(dataDir, 'streetscape_bundle_ai.json'), JSON.stringify(ai));
   const html = join(outDir, 'streetscape_ai.html');
-  await writeFile(html, renderStreetscape(ai, { jobNo: '', client: '', status: '', sheetNo: '', revision: '', checked: '', drawn: '', date: '', preliminary: false }));
+  await writeFile(html, renderStreetscape(ai, { jobNo: '', client: '', status: '', sheetNo: '', revision: '', checked: '', drawn: '', date: '', preliminary: false }, { overlay: process.argv.includes('--overlay') }));
   await printSlides(html, join(outDir, 'STREETSCAPE_AI.pdf'), join(outDir, 'ai'), { widthMm: SLIDE_W, heightMm: SLIDE_H });
   console.log(`${tiles} of ${of} tiles laid back: ${join(outDir, 'STREETSCAPE_AI.pdf')}`);
 }
