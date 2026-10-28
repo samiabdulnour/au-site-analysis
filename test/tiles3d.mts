@@ -11,7 +11,7 @@
 
 import { ecef, enuFrame, meetsCorridor, fetchStreetTiles, glbCopyright, type Corridor } from '../src/fetch/tiles3d.js';
 import { settleGround } from '../src/render/elevation3d.js';
-import { planAiTiles, AI_ASPECT, AI_OVERLAP_M } from '../src/render/aiTiles.js';
+import { planAiTiles, AI_ASPECTS, AI_OVERLAP_M } from '../src/render/aiTiles.js';
 
 const failures: string[] = [];
 const check = (name: string, ok: boolean, detail = '') => { if (!ok) failures.push(`${name}${detail ? ` — ${detail}` : ''}`); };
@@ -130,7 +130,8 @@ for (const side of [1, -1] as const) {
   const name = side > 0 ? 'the near side' : 'the far side';
   check(`${name}: the tiles run from end to end`, tiles[0].x0 === 0 && tiles[tiles.length - 1].x1 === e.width, JSON.stringify(tiles));
   check(`${name}: each tile overlaps the one before by at least the fade`, tiles.every((t, i) => !i || t.x0 <= tiles[i - 1].x1 - AI_OVERLAP_M * ppm));
-  check(`${name}: each tile is the model's shape`, tiles.every((t) => Math.abs((t.x1 - t.x0) - (t.y1 - t.y0) * AI_ASPECT) <= 1));
+  const ratio = new Map(AI_ASPECTS);
+  check(`${name}: each tile is one of the model's frames`, tiles.every((t) => ratio.has(t.aspect) && Math.abs((t.x1 - t.x0) - (t.y1 - t.y0) * ratio.get(t.aspect)!) <= 1), JSON.stringify(tiles));
   // the roofs of all but its highest 2% of metres, which may be a mast, or a tower's edge that the next tile holds
   check(`${name}: each tile holds the ground and the roofs of its run`, tiles.every((t) => {
     const run = tops.filter((p) => x(p.s) >= t.x0 && x(p.s) <= t.x1);

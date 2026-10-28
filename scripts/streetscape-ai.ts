@@ -24,8 +24,8 @@ if (!b.elevations?.some(Boolean)) { console.error('no elevations: draw the stree
 
 if (step === 'export') {
   const m = await exportAiTiles(b.elevations, dataDir);
-  for (const f of m.faces) console.log(`${f.side > 0 ? 'left' : 'right'} face: ${f.tiles.map((t) => t.file).join(', ')}`);
-  console.log(`each tile is ${m.aspect}: ask the model for that shape, with this prompt, and save its answer beside the tile as <tile>.ai.png\n\n${m.prompt}`);
+  for (const f of m.faces) console.log(`${f.side > 0 ? 'left' : 'right'} face: ${f.tiles.map((t) => `${t.file} (${t.aspect})`).join(', ')}`);
+  console.log(`ask the model for each tile in its frame, with this prompt, and save its answer beside the tile as <tile>.ai.png\n\n${m.prompt}`);
 } else {
   const manifest = JSON.parse(await readFile(join(dataDir, 'ai', 'manifest.json'), 'utf8')) as AiManifest;
   const faces = await importAiTiles(manifest, dataDir, SCAPE_SKY);

@@ -5,7 +5,7 @@
 // most), and a model given a frame with room to spare fills it: asked to
 // sharpen a strip of street under a band of sky, it repeated the street in
 // the sky, or zoomed it until it filled the frame. So the face is cut into
-// tiles of the model's own shape, each as tall as the street it holds stands
+// tiles of the model's own shapes, each as tall as the street it holds stands
 // (its ground to just over its roofs), so the street fills it, overlapping,
 // and each tile's box in the elevation's pixels is written down
 // (`ai/manifest.json`, with the prompt to ask). What comes back is checked
@@ -29,16 +29,19 @@ import { join } from 'node:path';
 import { launch } from './pdf.js';
 import type { Elevation } from './elevation3d.js';
 
-/** The model's widest frame, width over height. */
-export const AI_ASPECT = 21 / 9;
+/** The model's frames, widest first, named as it takes them: a run that leaves a wide one mostly sky gets a narrower one. */
+export const AI_ASPECTS: [string, number][] = [['21:9', 21 / 9], ['16:9', 16 / 9], ['3:2', 3 / 2], ['4:3', 4 / 3], ['1:1', 1]];
+/** The most of a tile that may be sky over its street before a narrower frame is tried: given a wide band of sky over
+ * a low run beside a tall one, the model stacked a second street in it, whatever it was told. */
+export const AI_MAX_SKY = 0.4;
 /** How much neighbouring tiles share, metres: the width the fade runs over. */
 export const AI_OVERLAP_M = 8;
 /** The most of a tile's sky an answer may build on: one that fills the sky has redrawn the street, not cleaned it. */
 export const AI_MAX_FILL = 0.25;
 /** What the model is asked, tile by tile. */
-export const AI_PROMPT = 'Make this one crisp, consistent photograph of the same street elevation. Keep the photographed facades exactly as they are, with their real windows, doors, signs and shopfronts; only clean up the seams, the colour differences between patches and the blurry, melted 3D-scan parts (roofs, trees, upper floors) into sharp realistic surfaces and natural leafy street trees. Keep the exact framing and scale: every building, roofline, window, tree and the ground line stays exactly where and as large as it is. The plain pale grey areas are open sky: leave them empty and pale grey. Do not zoom, crop, stretch, repeat, add or remove anything; keep the flat straight-on view.';
+export const AI_PROMPT = 'Make this one crisp, consistent photograph of the same street elevation. Keep the photographed facades exactly as they are, with their real windows, doors, signs and shopfronts; only clean up the seams, the colour differences between patches and the blurry, melted 3D-scan parts (roofs, trees, upper floors) into sharp realistic surfaces and natural leafy street trees. Keep the exact framing and scale: every building, roofline, window, tree and the ground line stays exactly where and as large as it is. There is only one row of buildings, standing on the single ground line along the bottom: never stack a second row or a copy of the street above it. The plain pale grey areas are open sky: leave them empty and pale grey. Do not zoom, crop, stretch, repeat, add or remove anything; keep the flat straight-on view.';
 /** What the model is asked of faces drawn from the meshes alone, which have no photographs to keep. */
-export const AI_PROMPT_MESH = 'Make this a crisp, realistic photograph of the same street elevation. It is a blurry 3D-scan render: redraw its melted, smeared surfaces as sharp, realistic facades, windows, doors, shopfronts, roofs and natural leafy street trees, following the colours, materials and the window and door positions you can see. Keep the exact framing and scale: every building outline, roofline, tree and the ground line stays exactly where and as large as it is. The plain pale grey areas are open sky: leave them empty and pale grey. Do not zoom, crop, stretch, repeat, add or remove anything; keep the flat straight-on view.';
+export const AI_PROMPT_MESH = 'Make this a crisp, realistic photograph of the same street elevation. It is a blurry 3D-scan render: redraw its melted, smeared surfaces as sharp, realistic facades, windows, doors, shopfronts, roofs and natural leafy street trees, following the colours, materials and the window and door positions you can see. Keep the exact framing and scale: every building outline, roofline, tree and the ground line stays exactly where and as large as it is. There is only one row of buildings, standing on the single ground line along the bottom: never stack a second row or a copy of the street above it. The plain pale grey areas are open sky: leave them empty and pale grey. Do not zoom, crop, stretch, repeat, add or remove anything; keep the flat straight-on view.';
 /** The ground band under the street and the room over its roofs that a tile keeps, metres. */
 const BELOW_M = 1.5, ABOVE_M = 1.5;
 /** The least a tile stands over its highest ground, metres: a run of low walls and gaps still gets a frame a model can read. */
@@ -46,10 +49,11 @@ const MIN_STREET_M = 8;
 /** How far an answer may have slipped against its tile and still be put back, as a share of the tile's width and height. */
 const SLIP = 0.03;
 
-export interface AiTile { n: number; file: string; x0: number; y0: number; x1: number; y1: number }
+/** A tile: its picture, its box in the elevation's pixels, and the model's frame it is cut to (`16:9`). */
+export interface AiTile { n: number; file: string; aspect: string; x0: number; y0: number; x1: number; y1: number }
 /** A face's tiles, and the width neighbouring ones fade into each other over (pixels). */
 export interface AiFace { side: 1 | -1; elevation: string; overlap: number; tiles: AiTile[] }
-export interface AiManifest { aspect: string; prompt: string; faces: AiFace[] }
+export interface AiManifest { prompt: string; faces: AiFace[] }
 /** A face laid back: its new picture, the tiles laid on it, those refused, and how far each laid one had slipped (pixels). */
 export interface AiLaid { side: 1 | -1; file: string; tiles: number; of: number; refused: { file: string; fill: number }[]; slips: { file: string; dx: number; dy: number }[] }
 
@@ -58,9 +62,10 @@ type TileFace = Pick<Elevation, 'width' | 'height' | 'ppm' | 'zTop' | 'ground' |
 /**
  * The tiles of a face, left to right in the elevation's pixels: each the shortest that holds its run, from just under
  * its lowest ground to just over its roofs (the 98th percentile of its metres' tops), as wide as the model's frame
- * makes that; the next starts AI_OVERLAP_M before it ends, and the last ends at the face's end.
+ * makes that, in the widest frame that leaves it no more than AI_MAX_SKY sky; the next starts AI_OVERLAP_M before it
+ * ends, and the last ends at the face's end.
  */
-export function planAiTiles(e: TileFace, aspect = AI_ASPECT): AiTile[] {
+export function planAiTiles(e: TileFace, aspects = AI_ASPECTS): AiTile[] {
   const x = (s: number) => ((s - e.sAtLeft) / (e.sAtRight - e.sAtLeft)) * e.width;
   const y = (z: number) => Math.min(e.height, Math.max(0, Math.round((e.zTop - z) * e.ppm)));
   const tops = e.tops.map((t) => ({ x: x(t.s), z: t.z })), ground = e.ground.map((g) => ({ x: x(g.s), z: g.z }));
@@ -73,7 +78,7 @@ export function planAiTiles(e: TileFace, aspect = AI_ASPECT): AiTile[] {
   };
   // a tile's width is its height in the model's shape, and the height it needs is what stands in that width; a wider
   // run never stands lower, so the first height that holds its own run is the tile that fits the street there closest
-  const fit = (edge: number, leftward: boolean, least = 0) => {
+  const fit = (edge: number, leftward: boolean, aspect: number, least = 0) => {
     const run = (w: number): [number, number] => (leftward ? [edge - w, edge] : [edge, edge + w]);
     let h = Math.max(Math.round((MIN_STREET_M + ABOVE_M + BELOW_M) * e.ppm), Math.ceil(least / aspect));
     let b = band(...run(Math.round(h * aspect)));
@@ -82,22 +87,37 @@ export function planAiTiles(e: TileFace, aspect = AI_ASPECT): AiTile[] {
     const x0 = leftward ? edge - w : edge;
     return { x0, x1: x0 + w, y0, y1: y0 + h };
   };
-  const overlap = Math.round(AI_OVERLAP_M * e.ppm);
-  const boxes = [fit(0, false)];
-  while (boxes[boxes.length - 1].x1 < e.width) {
-    const last = boxes[boxes.length - 1];
-    const from = Math.max(last.x1 - overlap, last.x0 + 1), next = fit(from, false);
-    if (next.x1 < e.width) { boxes.push(next); continue; }
-    // the last runs back from the face's end at least as far as the overlap with the one before, or, where a tile
-    // reaching back over that one too stands little taller (or that one would be all but hidden), takes its place
-    const alone = fit(e.width, true, e.width - from), before = boxes[boxes.length - 2];
-    const both = fit(e.width, true, e.width - (before ? Math.max(before.x1 - overlap, before.x0 + 1) : 0));
-    const hidden = alone.x0 - (before ? before.x1 : 0) < overlap, taller = (both.y1 - both.y0) / (alone.y1 - alone.y0);
-    if (taller <= 1.25 || (hidden && taller <= 1.5)) boxes[boxes.length - 1] = both;
-    else boxes.push(alone);
+  // how much of a tile is sky over its street: down each metre's column to its top
+  const sky = (b: { x0: number; x1: number; y0: number; y1: number }) => {
+    const cols = tops.filter((t) => t.x >= b.x0 && t.x <= b.x1);
+    return cols.length ? cols.reduce((m, t) => m + Math.min(1, Math.max(0, (y(t.z) - b.y0) / (b.y1 - b.y0))), 0) / cols.length : 1;
+  };
+  const overlap = Math.round(AI_OVERLAP_M * e.ppm), start = (b?: { x0: number; x1: number }) => (b ? Math.max(b.x1 - overlap, b.x0 + 1) : 0);
+  const boxes: ({ x0: number; x1: number; y0: number; y1: number } & { aspect: string })[] = [];
+  while (!boxes.length || boxes[boxes.length - 1].x1 < e.width) {
+    const from = start(boxes[boxes.length - 1]);
+    // in each frame, the next tile, or where it would run past the face's end, the last, back from the end at least
+    // as far as the overlap; the widest frame that is not mostly sky, else the one least so
+    const options = aspects.map(([label, a]) => {
+      const next = fit(from, false, a), end = next.x1 >= e.width;
+      return { label, a, end, box: end ? fit(e.width, true, a, e.width - from) : next };
+    });
+    const o = options.find((c) => sky(c.box) <= AI_MAX_SKY) ?? options.reduce((m, c) => (sky(c.box) < sky(m.box) ? c : m));
+    const before = boxes[boxes.length - 2];
+    if (o.end && boxes.length) {
+      // or the last takes the place of the one before it too, where one tile back over both stands little taller (or
+      // that one would be all but hidden) and is no more sky
+      const both = fit(e.width, true, o.a, e.width - start(before));
+      const hidden = o.box.x0 - (before ? before.x1 : 0) < overlap, taller = (both.y1 - both.y0) / (o.box.y1 - o.box.y0);
+      if (sky(both) <= Math.max(AI_MAX_SKY, sky(o.box)) && (taller <= 1.25 || (hidden && taller <= 1.5))) {
+        boxes[boxes.length - 1] = { ...both, aspect: o.label };
+        continue;
+      }
+    }
+    boxes.push({ ...o.box, aspect: o.label });
   }
   const face = e.side > 0 ? 'l' : 'r';
-  return boxes.map((b, i) => ({ n: i + 1, file: `ai/${face}_${i + 1}.png`, ...b }));
+  return boxes.map((b, i) => ({ n: i + 1, file: `ai/${face}_${i + 1}.png`, aspect: b.aspect, x0: b.x0, y0: b.y0, x1: b.x1, y1: b.y1 }));
 }
 
 /** A page with nothing but a canvas, its files served from `dataDir`. */
@@ -152,7 +172,7 @@ export async function exportAiTiles(elevations: (Elevation | null)[], dataDir: s
       for (const [i, t] of f.tiles.entries()) await writeFile(join(dataDir, t.file), Buffer.from(pngs[i].split(',')[1], 'base64'));
     }
   });
-  const manifest: AiManifest = { aspect: '21:9', prompt: elevations.some((e) => e?.draped) ? AI_PROMPT : AI_PROMPT_MESH, faces };
+  const manifest: AiManifest = { prompt: elevations.some((e) => e?.draped) ? AI_PROMPT : AI_PROMPT_MESH, faces };
   await writeFile(join(dir, 'manifest.json'), JSON.stringify(manifest, null, 2));
   return manifest;
 }

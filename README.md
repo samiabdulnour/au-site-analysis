@@ -1599,9 +1599,10 @@ app), not from this server, so it is three steps:
 npx tsx scripts/streetscape-ai.ts export out/<slug>
 ```
 
-cuts each face into tiles of the model's shape, each as tall as the street it
-holds stands (its ground to just over its roofs) and overlapping its neighbour
-by 8 m, into `data/ai/`, with `manifest.json` placing them and the prompt to
+cuts each face into tiles of the model's frames, each as tall as the street it
+holds stands (its ground to just over its roofs), in the widest frame (21:9,
+then 16:9, 3:2, 4:3, 1:1) that leaves it no more than two fifths sky, and
+overlapping its neighbour by 8 m, into `data/ai/`, with `manifest.json` placing them and the prompt to
 ask (to keep the photographed facades, or, for meshes alone, to redraw them). Each tile goes through the model, and its answer is saved beside it as
 `<tile>.ai.png`. Then
 
@@ -1620,8 +1621,11 @@ px, half a metre, for one Riley Street tile), scaled into its box so a metre is
 still a metre, and crossfaded with its neighbour over their overlap. Given the
 photographs on the meshes, the model keeps the real facades and redraws the
 trees and what no photograph saw; given the meshes alone (`--source mesh`), it
-invents the facades. Exporting again moves the earlier tiles, and any answers,
-to `data/ai-<when>/`.
+invents the facades, and the sheet says so. At Riley Street the meshes alone
+went through whole once a tile holding the 24 m block beside low terraces,
+half sky in 21:9 (refused twice, prompt or no), was cut 16:9 instead. Exporting
+again moves the earlier tiles, and any answers, to `data/ai-<when>/`; an
+answer can be copied back where its tile is unchanged.
 
 ## How it works
 
