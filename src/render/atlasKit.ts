@@ -277,13 +277,37 @@ export function zLine(series: { year: number; value: number }[], projection: { y
 
 /** The green of the aerial on slide 10: a pale ground dotted in the deep green. */
 export const AERIAL_GREEN_FILL: Fill = { bg: INK.green.light, kind: 'dots', ink: INK.green.deep, step: 0.5, w: 0.1 };
-/** The pre-1750 plant communities on slide 15, largest first: one pattern each in the deep green, no ground. */
-export const VEG_1750_FILLS: Fill[] = [
-  { kind: 'vlines', ink: INK.green.deep, step: 1.0, w: 0.16 },
-  { kind: 'dots', ink: INK.green.deep, step: 1.1, w: 0.14 },
-  { kind: 'hlines', ink: INK.green.deep, step: 1.0, w: 0.16 },
-  { kind: 'waves', ink: INK.green.deep, step: 1.3, w: 0.16 },
-  { kind: 'vlines', ink: INK.green.deep, step: 0.45, w: 0.14 },
-  { kind: 'dots', ink: INK.green.deep, step: 0.55, w: 0.12 },
-  { kind: 'hlines', ink: INK.green.deep, step: 0.45, w: 0.14 },
+/** Slide 15 draws this many pre-1750 plant communities: the largest by share, the rest unpainted and uncharted. */
+export const VEG_1750_MAX = 7;
+/**
+ * The pre-1750 plant communities on slide 15: one flat tint each, by vegetation formation, so a forest reads as a
+ * forest, a heath as a heath and a wetland as a wetland wherever the site is. A second community of the same
+ * formation takes a paler step of its tint, a third paler again.
+ */
+const VEG_1750_FAMILIES: { test: RegExp; tint: string }[] = [
+  { test: /rainforest/i, tint: '#3f7f5f' },
+  { test: /wet sclerophyll/i, tint: '#6aa37e' },
+  { test: /dry sclerophyll/i, tint: '#a9c48f' },
+  { test: /woodland/i, tint: '#c9c98a' },
+  { test: /grassland/i, tint: '#e6dfa8' },
+  { test: /heath/i, tint: '#d7b67a' },
+  { test: /forested wetland|swamp forest|swamp oak|swamp sclerophyll/i, tint: '#8fb5a8' },
+  { test: /freshwater wetland|freshwater|lagoon/i, tint: '#9dc3d6' },
+  { test: /saline wetland|mangrove|saltmarsh|estuarine/i, tint: '#7fa6b8' },
+  { test: /shrubland|arid|chenopod|dune/i, tint: '#d8c3a5' },
 ];
+/** The ground no charted community covers: a neutral grey-green, under the tints as well, so the shade reads alike everywhere. */
+export const VEG_1750_OTHER = '#cfd6c9';
+/** A hex colour moved `t` of the way to white. */
+const paler = (hex: string, t: number) => `#${[1, 3, 5].map((i) => Math.round(parseInt(hex.slice(i, i + 2), 16) * (1 - t) + 255 * t).toString(16).padStart(2, '0')).join('')}`;
+/** The fills for the communities as charted (largest first): a ground tint each, no pattern, so map and chart match. */
+export function veg1750Fills(classes: { pct: string; cls: string; formation: string }[]): Fill[] {
+  const seen = new Map<string, number>();
+  return classes.map((c) => {
+    const family = VEG_1750_FAMILIES.find((f) => f.test.test(c.formation)) ?? VEG_1750_FAMILIES.find((f) => f.test.test(c.cls)) ?? VEG_1750_FAMILIES.find((f) => f.test.test(c.pct));
+    const tint = family?.tint ?? VEG_1750_OTHER;
+    const n = seen.get(tint) ?? 0;
+    seen.set(tint, n + 1);
+    return { bg: n ? paler(tint, Math.min(0.6, 0.28 * n)) : tint };
+  });
+}

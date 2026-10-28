@@ -13,7 +13,7 @@ import { mergeRuns, straightEnough, arcTable, sliceAt, shortStreetName, type She
 import type { TopoRoad } from '../fetch/nswTopo.js';
 import type { GeoJSONFeature } from '../lib/arcgis.js';
 import { tpl, withTemplate, DECK_TEMPLATE } from './template.js';
-import { INK, AERIAL_GREEN_FILL, VEG_1750_FILLS, fillShape, swatchOf, barOf, zHead, zBars, zFigures, zCircles, zSpans, zPairs, zLine, niceAxis, z6, zSvg, Z_W, Z_TRACK, type Fill } from './atlasKit.js';
+import { INK, AERIAL_GREEN_FILL, VEG_1750_MAX, VEG_1750_OTHER, veg1750Fills, fillShape, swatchOf, barOf, zHead, zBars, zFigures, zCircles, zSpans, zPairs, zLine, niceAxis, z6, zSvg, Z_W, Z_TRACK, type Fill } from './atlasKit.js';
 import { esc } from './chrome.js';
 import {
   panelProjector, panelExtent, baseLayers, overLayers, panelFurniture, furnitureBox, siteMark, siteLabelPoint, stationMode, ringsPath, fcPath, ringStats, clippedStats, hatchPath, dotsPath, bboxOf, t2Text, t2Width, railSymbol,
@@ -7357,7 +7357,13 @@ export function countrySentences(_b: SlidesBundle, f: ReturnType<typeof countryF
   return out;
 }
 
-/** Country on the template: the land's shape and its pre-1750 plant communities over a full page at the strip's scale, each community its own green pattern; the open records charted beside. */
+/**
+ * Country on the template: the land before 1750 over a full page at the strip's scale — the pre-1750 plant communities,
+ * a flat tint each by formation, over the land's shape, with the water, the crests, the parks and the cultural places
+ * the open registers hold, each community named inside its biggest patch where the patch has room. Nothing of the
+ * modern city is drawn: no streets, no railways, no stations, no permits, no council boundaries; the suburb names
+ * alone stand for finding one's way. The open records are charted beside.
+ */
 export function countryAtlas(b: SlidesBundle): Slide {
   const t = tpl();
   const G = INK.green;
@@ -7365,65 +7371,121 @@ export function countryAtlas(b: SlidesBundle): Slide {
   const f = countryFacts(b);
   const p = b.countryPanel;
   const proj = panelProjector(p);
-  const gt = greyBase(t);
-  const box = { x0: 0, y0: 0, x1: p.wMm, y1: p.hMm };
-  const VEG: Fill[] = VEG_1750_FILLS;
+  const onPage = (x: number, y: number, m = 0) => x >= -m && y >= -m && x <= p.wMm + m && y <= p.hMm + m;
+  const bestSpot = (rs: number[][][]) => { let best = { area: 0, cx: 0, cy: 0 }; for (const r of rs) { const st = clippedStats(r, proj, p); if (st.area > best.area) best = st; } return best; };
+  const inMap = (bb: { x0: number; y0: number; x1: number; y1: number }) => ({ x0: Math.max(bb.x0, -2), y0: Math.max(bb.y0, -2), x1: Math.min(bb.x1, p.wMm + 2), y1: Math.min(bb.y1, p.hMm + 2) });
+  const WATER_FILL = '#d6e6ee';
+  /** A water body smaller than this on the page (2,000 m² at 1:10 000) is the city's pond or pool, not the land's. */
+  const WATER_MIN_MM2 = 20;
+  /** A crest whose run on the page spans less than this is the model's curl, not a ridge. */
+  const CREST_MIN_MM = 12;
   const parts: string[] = [`<rect x="0" y="0" width="${p.wMm}" height="${p.hMm}" fill="#ffffff"/>`];
-  if (c.dem) parts.push(demPicture(c.dem, proj, reliefDataUri(c.dem, '#8fa597', { shade: 1 })));
+  // the land's shape and a neutral ground: what shows where the communities' picture is missing
+  if (c.dem) parts.push(demPicture(c.dem, proj, reliefDataUri(c.dem, '#5f6f66', { shade: 1 })));
+  parts.push(`<rect x="0" y="0" width="${p.wMm}" height="${p.hMm}" fill="${VEG_1750_OTHER}" fill-opacity="0.55"/>`);
+  // the communities, one flat tint each, with the hillshade painted into the picture (render/paintMasks.ts), so no viewer has a blend to get wrong
   const veg = c.vegetation;
-  const classes = veg.classes.filter((cl) => cl.mask).slice(0, VEG.length);
-  if (veg.image && classes.length) {
+  const classes = veg.classes.filter((cl) => cl.mask).slice(0, VEG_1750_MAX);
+  const fills = veg1750Fills(classes);
+  if (veg.image && classes.length && veg.paint) {
     const e = veg.image.extent;
     const nw = mercatorToLonLat({ x: e.xmin, y: e.ymax }), se = mercatorToLonLat({ x: e.xmax, y: e.ymin });
     const [x0, y0] = proj(nw.lon, nw.lat), [x1, y1] = proj(se.lon, se.lat);
-    if (veg.paint) parts.push(`<image href="data/${veg.paint}" x="${x0.toFixed(2)}" y="${y0.toFixed(2)}" width="${(x1 - x0).toFixed(2)}" height="${(y1 - y0).toFixed(2)}" preserveAspectRatio="none"/>`);
+    parts.push(`<image href="data/${veg.paint}" x="${x0.toFixed(2)}" y="${y0.toFixed(2)}" width="${(x1 - x0).toFixed(2)}" height="${(y1 - y0).toFixed(2)}" preserveAspectRatio="none"/>`);
   }
-  // water: the harbour and the sea unprinted, the coast and the courses drawn
+  // water: the harbour, the sea and the lakes in a pale blue, the coast and the courses in the creek blue
   const wb = b.wide.base;
-  if (wb.water.features.length) parts.push(`<path d="${fcPath(wb.water, proj)}" fill="#ffffff" fill-rule="evenodd" stroke="${G.deep}" stroke-width="0.25"/>`);
-  if (c.water.coastline.length) parts.push(`<path d="${c.water.coastline.map((l) => ringsPath([l], proj, false)).join('')}" fill="none" stroke="${G.deep}" stroke-width="0.3"/>`);
-  for (const w of c.water.courses) parts.push(`<path d="${ringsPath([w.coords], proj, false)}" fill="none" stroke="${G.deep}" stroke-width="${w.hierarchy === 'major' ? 0.6 : 0.4}" stroke-linecap="round"${w.perenniality === 'perennial' ? '' : ' stroke-dasharray="1.4 0.8"'}/>`);
-  parts.push(withTemplate(gt, () => overLayers(wb, proj, p, 'none')));
-  if (c.ridges.length) parts.push(`<path d="${c.ridges.map((line) => `M${line.map((q, i) => { const ll = mercatorToLonLat(q); const [x, y] = proj(ll.lon, ll.lat); return `${i ? 'L' : ''}${x.toFixed(2)},${y.toFixed(2)}`; }).join('')}`).join('')}" fill="none" stroke="#000000" stroke-width="0.35" stroke-dasharray="1.8 0.9" stroke-linecap="round"/>`);
+  const water = { ...wb.water, features: wb.water.features.filter((ft) => geomRings(ft.geometry).reduce((a, r) => a + ringStats(r, proj).area, 0) >= WATER_MIN_MM2) };
+  const coursesIn = c.water.courses.filter((w) => w.coords.some(([lon, lat]) => onPage(...proj(lon, lat), 10)));
+  const hasWater = water.features.length > 0 || c.water.coastline.length > 0;
+  if (water.features.length) parts.push(`<path d="${fcPath(water, proj)}" fill="${WATER_FILL}" fill-rule="evenodd" stroke="${CREEK_COLOUR}" stroke-width="0.3"/>`);
+  if (c.water.coastline.length) parts.push(`<path d="${c.water.coastline.map((l) => ringsPath([l], proj, false)).join('')}" fill="none" stroke="${CREEK_COLOUR}" stroke-width="0.4"/>`);
+  for (const w of coursesIn) parts.push(`<path d="${ringsPath([w.coords], proj, false)}" fill="none" stroke="${CREEK_COLOUR}" stroke-width="${w.hierarchy === 'major' ? 0.7 : w.hierarchy === 'secondary' ? 0.5 : 0.4}" stroke-linecap="round" stroke-linejoin="round"${w.perenniality === 'perennial' ? '' : ' stroke-dasharray="1.4 0.8"'}/>`);
+  // the National Parks estate, dotted in the park green
+  const npwsIn = c.npws.filter((n) => bestSpot(n.rings).area > 0);
+  if (npwsIn.length) {
+    const d = npwsIn.map((n) => ringsPath(n.rings, proj)).join('');
+    parts.push(`<path d="${d}" fill="${NPWS_COLOUR}" fill-opacity="0.12" stroke="${NPWS_COLOUR}" stroke-width="0.35" fill-rule="evenodd"/>`);
+    parts.push(dotsPath(d, 'npws15', NPWS_COLOUR, inMap(bboxOf(npwsIn.flatMap((n) => n.rings), proj)), 2.1, 0.26, 0.6));
+  }
+  // the crests: those that run far enough on the page to be a ridge, smoothed twice so the model's cell-to-cell steps read as one line
+  const chaikin = (pts: [number, number][]): [number, number][] => pts.length < 3 ? pts : [pts[0], ...pts.slice(0, -1).flatMap((q, i) => { const r = pts[i + 1]; return [[0.75 * q[0] + 0.25 * r[0], 0.75 * q[1] + 0.25 * r[1]], [0.25 * q[0] + 0.75 * r[0], 0.25 * q[1] + 0.75 * r[1]]] as [number, number][]; }), pts[pts.length - 1]];
+  const crests = c.ridges
+    .map((line) => line.map((q) => { const ll = mercatorToLonLat(q); return proj(ll.lon, ll.lat) as [number, number]; }))
+    .filter((pts) => { const on = pts.filter(([x, y]) => onPage(x, y)); if (on.length < 3) return false; const xs = on.map((q) => q[0]), ys = on.map((q) => q[1]); return Math.hypot(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)) >= CREST_MIN_MM; })
+    .map((pts) => chaikin(chaikin(pts)));
+  if (crests.length) parts.push(`<path d="${crests.map((pts) => `M${pts.map(([x, y], i) => `${i ? 'L' : ''}${x.toFixed(2)},${y.toFixed(2)}`).join('')}`).join('')}" fill="none" stroke="#000000" stroke-width="0.35" stroke-dasharray="1.8 0.9" stroke-linecap="round" stroke-linejoin="round"/>`);
+  // the cultural places the open registers hold: the gazetted Aboriginal Places, and the Aboriginal items the LEP schedules
+  const placesIn = c.places.filter((q) => onPage(...proj(q.lon, q.lat)));
+  for (const q of placesIn) {
+    const [x, y] = proj(q.lon, q.lat);
+    if (q.rings.length) parts.push(`<path d="${ringsPath(q.rings, proj)}" fill="${PLACE_COLOUR}" fill-opacity="0.25" stroke="${PLACE_COLOUR}" stroke-width="0.4" fill-rule="evenodd"/>`);
+    parts.push(`<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="1.6" fill="${PLACE_COLOUR}" stroke="#ffffff" stroke-width="0.4"/>`);
+  }
+  const lepIn = (c.lepAboriginal?.items ?? []).filter((it) => onPage(...proj(it.lon, it.lat), 2));
+  if (lepIn.length) {
+    parts.push(`<path d="${lepIn.map((it) => ringsPath(it.rings, proj)).join('')}" fill="${LEP_ABORIGINAL_FILL}" fill-opacity="0.45" stroke="${LEP_ABORIGINAL_EDGE}" stroke-width="0.3" fill-rule="evenodd"/>`);
+    for (const it of lepIn) { const [x, y] = proj(it.lon, it.lat); parts.push(`<rect x="${(x - 1.1).toFixed(2)}" y="${(y - 1.1).toFixed(2)}" width="2.2" height="2.2" fill="${LEP_ABORIGINAL_FILL}" stroke="${LEP_ABORIGINAL_EDGE}" stroke-width="0.35"/>`); }
+  }
+  // the words: the places, the communities, the parks, the creeks and the bays, then the suburbs where room is left
   const spacer = new LabelSpacer(p.wMm, p.hMm, 80);
   spacer.take(40, 10, 72, 10);
+  const fb = furnitureBox(p, 'left');
+  spacer.take((fb.x0 + fb.x1) / 2, (fb.y0 + fb.y1) / 2, fb.x1 - fb.x0, fb.y1 - fb.y0);
   const cLL = mercatorToLonLat(b.panel.center);
   const [sx, sy] = proj(cLL.lon, cLL.lat);
   spacer.take(sx, sy, 6, 6);
   const labels: string[] = [];
-  if (c.lalcs.length > 1) {
-    parts.push(`<path d="${c.lalcs.map((l) => ringsPath(l.rings, proj)).join('')}" fill="none" stroke="#000000" stroke-width="0.5" stroke-dasharray="3 1 0.6 1"/>`);
-    for (const l of c.lalcs) { let best = { area: 0, cx: 0, cy: 0 }; for (const r of l.rings) { const st = clippedStats(r, proj, p); if (st.area > best.area) best = st; } const text = `${titleCase(l.local)} Land Council`.toUpperCase(); if (best.area > 200 && spacer.take(best.cx, best.cy, text.length * 1.6 + 1, 2.8)) labels.push(m6(best.cx, best.cy, text)); }
+  const word = (x: number, y: number, text: string, fill = '#000000') => m6(x, y, text).replace('fill="#000000"', `fill="${fill}"`);
+  const wordW = (text: string) => text.length * 1.6 + 1;
+  for (const q of placesIn) { const [x, y] = proj(q.lon, q.lat); const text = clipWords(q.name, 36); for (const [lx, ly] of [[x, y - 3.2], [x, y + 3.4], [x + wordW(text) / 2 + 2.4, y]] as [number, number][]) if (spacer.take(lx, ly, wordW(text), 2.8)) { labels.push(word(lx, ly, text, PLACE_COLOUR)); break; } }
+  for (const it of [...lepIn].sort((q, r) => q.name.length - r.name.length)) { const [x, y] = proj(it.lon, it.lat); const text = clipWords(it.name, 34); for (const [lx, ly] of [[x, y + 3.4], [x, y - 2.8], [x + wordW(text) / 2 + 2.2, y]] as [number, number][]) if (spacer.take(lx, ly, wordW(text), 2.6)) { labels.push(word(lx, ly, text, LEP_ABORIGINAL_EDGE)); break; } }
+  // each community's name inside its biggest patch, on up to three lines, where the patch has the room: a name may
+  // overhang its patch by about a third each side, the halo keeping it legible; one that would not fit is left to the chart
+  const LINE = 2.8;
+  const wrap = (text: string, max = 20) => text.split(' ').reduce<string[]>((ls, wd) => { const last = ls[ls.length - 1]; if (last !== undefined && `${last} ${wd}`.length <= max) ls[ls.length - 1] = `${last} ${wd}`; else ls.push(wd); return ls; }, []);
+  for (const cl of classes) {
+    if (!cl.label) continue;
+    const ll = mercatorToLonLat({ x: cl.label.x, y: cl.label.y }), [x, y] = proj(ll.lon, ll.lat);
+    if (!onPage(x, y)) continue;
+    const clearMm = (cl.label.clearM * 1000) / p.scale;
+    const lines = wrap(cl.pct.toUpperCase()), w = Math.max(...lines.map(wordW));
+    if (clearMm < w / 3.2 || clearMm < (lines.length * LINE) / 2 || !spacer.take(x, y, w, lines.length * LINE)) continue;
+    lines.forEach((ln, j) => labels.push(word(x, y - ((lines.length - 1) * LINE) / 2 + j * LINE, ln)));
   }
-  const permits = c.ahips?.permits ?? [];
-  const state = new Map(f.ahips.permits.map((q) => [q.id, q.active]));
-  for (const pm of permits) parts.push(`<path d="${ringsPath(pm.rings, proj)}" fill="#ffffff" fill-opacity="0.6" stroke="#000000" stroke-width="0.3" fill-rule="nonzero"${state.get(pm.id) ? '' : ' stroke-dasharray="1 0.6"'}/>`);
-  // A busy council area holds ninety-odd permits: named one and all they carpet
-  // the map, so only the nearest few carry their number and the legend counts the rest.
-  const namedPermits = new Set([...f.ahips.permits].sort((x2, y2) => x2.distanceM - y2.distanceM).slice(0, AHIP_NAMED).map((q) => q.id));
-  for (const pm of permits) {
-    if (!namedPermits.has(pm.id)) continue;
-    let best = { area: 0, cx: 0, cy: 0 }; for (const r of pm.rings) { const st = clippedStats(r, proj, p); if (st.area > best.area) best = st; }
-    const [x, y] = best.area > 0 ? [best.cx, best.cy] : proj(pm.lon, pm.lat);
-    if (x < 3 || y < 3 || x > p.wMm - 3 || y > p.hMm - 3) continue;
-    const text = `AHIP ${pm.id}`;
-    for (const [lx, ly] of [[x, y - 3], [x, y + 3], [x + 8, y]] as [number, number][]) if (spacer.take(lx, ly, text.length * 1.6 + 1, 2.6)) { labels.push(m6(lx, ly, text)); break; }
+  for (const n of npwsIn) { const best = bestSpot(n.rings); const text = tidyName(titleCase(n.name)).toUpperCase(); if (best.area > 40 && spacer.take(best.cx, best.cy, wordW(text), 2.8)) labels.push(word(best.cx, best.cy, text, NPWS_COLOUR)); }
+  const named = new Set<string>();
+  for (const w of [...coursesIn].filter((x) => x.name).sort((x, y) => y.coords.length - x.coords.length)) {
+    if (named.has(w.name!)) continue;
+    const pts = w.coords.map(([lon, lat]) => proj(lon, lat)).filter(([x, y]) => x > 8 && y > 6 && x < p.wMm - 8 && y < p.hMm - 6);
+    if (pts.length < 2) continue;
+    const mid = pts[Math.floor(pts.length / 2)], text = titleCase(w.name!);
+    if (spacer.take(mid[0], mid[1] - 2.4, wordW(text), 2.8)) { labels.push(word(mid[0], mid[1] - 2.4, text, CREEK_COLOUR)); named.add(w.name!); }
   }
-  // the suburbs, for finding one's way
+  // the harbour, the bays and the lakes by name, from the location layer that carries the names' kinds
+  for (const w of b.location.water) {
+    const text = w.name.trim().toUpperCase();
+    if (!text || named.has(text) || !/^(BAY|HARBOUR|COVE|RIVER|LAKE|LAGOON|OCEAN|SEA|ESTUARY|INLET|CHANNEL)$/i.test(w.kind ?? '')) continue;
+    const best = bestSpot(w.rings);
+    if (best.area > 80 && spacer.take(best.cx, best.cy, wordW(text), 2.8)) { labels.push(word(best.cx, best.cy, text, CREEK_COLOUR)); named.add(text); }
+  }
   for (const s of b.wide.suburbs.features) {
-    let best = { area: 0, cx: 0, cy: 0 }; for (const r of geomRings(s.geometry)) { const st = clippedStats(r, proj, p); if (st.area > best.area) best = st; }
+    const best = bestSpot(geomRings(s.geometry));
     const text = String(s.properties?.suburbname ?? '').toUpperCase();
-    if (text && best.area > 300 && spacer.take(best.cx, best.cy, text.length * 1.6 + 1, 2.8)) labels.push(m6(best.cx, best.cy, text).replace('fill="#000000"', 'fill="#6f6f6f"'));
+    if (text && best.area > 300 && spacer.take(best.cx, best.cy, wordW(text), 2.8)) labels.push(word(best.cx, best.cy, text, '#6f6f6f'));
   }
   parts.push(...labels, `<circle cx="${sx.toFixed(2)}" cy="${sy.toFixed(2)}" r="1.8" fill="${t.site}" stroke="#ffffff" stroke-width="0.5"/>`, panelFurniture(p, 'left'));
   const mapSvg = bleedSvg('country15', p, parts.join('\n'));
 
+  const tints = [0, 1, 2].map((i) => fills[Math.min(i, fills.length - 1)]?.bg ?? '#ffffff');
   const legend: LegendEntry[] = [
-    ...(classes.length ? [{ swatch: swatchOf({ ...VEG[0], bg: '#ffffff' }), label: 'Pre-1750 plant communities, each its own pattern, as charted' }] : []),
-    { swatch: `<path d="M0,2.4C1.5,0.6 3.5,3 5,1.2" fill="none" stroke="${G.deep}" stroke-width="0.4"/>`, label: 'Watercourses, dashed where not perennial; the land in hillshade' },
-    ...(c.ridges.length ? [{ swatch: `<path d="M0,1.8H5" stroke="#000000" stroke-width="0.35" stroke-dasharray="1.8 0.9"/>`, label: 'Crests read from the elevation model' }] : []),
-    ...(c.lalcs.length > 1 ? [{ swatch: `<path d="M0,1.8H5" stroke="#000000" stroke-width="0.5" stroke-dasharray="3 1 0.6 1"/>`, label: 'Local Aboriginal Land Council boundary' }] : []),
-    ...(permits.length ? [{ swatch: `<rect x="0.4" y="0.6" width="4.2" height="2.4" fill="#ffffff" stroke="#000000" stroke-width="0.3" stroke-dasharray="1 0.6"/>`, label: `Aboriginal Heritage Impact Permit, dashed where expired${permits.length > AHIP_NAMED ? `; ${permits.length} on the page, the nearest ${AHIP_NAMED} numbered` : ''}` }] : []),
+    ...(classes.length ? [{ swatch: `${tints.map((bg, i) => `<rect x="${(i * 5) / 3}" y="0.2" width="${5 / 3}" height="3" fill="${bg}"/>`).join('')}<rect x="0" y="0.2" width="5" height="3" fill="none" stroke="${G.deep}" stroke-width="0.2"/>`, label: 'Pre-1750 plant communities, tinted as the chart, over the land in hillshade' }] : []),
+    ...(hasWater ? [{ swatch: swatchFill(WATER_FILL, CREEK_COLOUR), label: 'The harbour, the sea and the lakes, with the coast' }] : []),
+    ...(coursesIn.length ? [{ swatch: `<path d="M0,2.4C1.5,0.6 3.5,3 5,1.2" fill="none" stroke="${CREEK_COLOUR}" stroke-width="0.5"/>`, label: `Watercourses${coursesIn.some((w) => w.perenniality !== 'perennial') ? ', dashed where not perennial' : ''}` }] : []),
+    ...(crests.length ? [{ swatch: `<path d="M0,1.8H5" stroke="#000000" stroke-width="0.35" stroke-dasharray="1.8 0.9"/>`, label: 'Crests read from the elevation model' }] : []),
+    ...(npwsIn.length ? [{ swatch: swatchDots(NPWS_COLOUR), label: 'National Parks and Wildlife Service estate' }] : []),
+    ...(placesIn.length ? [{ swatch: `<circle cx="2.5" cy="1.8" r="1.4" fill="${PLACE_COLOUR}" stroke="#ffffff" stroke-width="0.3"/>`, label: 'Gazetted Aboriginal Place' }] : []),
+    ...(lepIn.length ? [{ swatch: `<rect x="1.4" y="0.7" width="2.2" height="2.2" fill="${LEP_ABORIGINAL_FILL}" stroke="${LEP_ABORIGINAL_EDGE}" stroke-width="0.3"/>`, label: 'Aboriginal heritage item in the LEP schedule' }] : []),
     { swatch: `<circle cx="2.5" cy="1.8" r="1.3" fill="${t.site}"/>`, label: 'The site' },
   ];
   const limit = keyTop(legend.length) - 6;
@@ -7440,7 +7502,7 @@ export function countryAtlas(b: SlidesBundle): Slide {
   let y = 44 + blockH(6.3 + 3 * 9.6);
   const blocks = [zBlock('Country at the site', figs, 'The land')];
   if (classes.length) {
-    const rows = classes.map((cl, i) => ({ name: shorten(cl.pct, 42), value: cl.sharePct, label: fmtPct(cl.sharePct, cl.sharePct < 10 ? 1 : 0), fill: { ...VEG[i], bg: '#ffffff', outline: G.deep, outlineW: 0.12 } as Fill }));
+    const rows = classes.map((cl, i) => ({ name: shorten(cl.pct, 42), value: cl.sharePct, label: fmtPct(cl.sharePct, cl.sharePct < 10 ? 1 : 0), fill: { ...fills[i], outline: G.deep, outlineW: 0.12 } as Fill }));
     const ax = niceAxis(Math.max(...rows.map((r) => r.value)));
     blocks.push(zBlock('Plant communities before 1750 · share of the land, %', zBars(rows, ax.max, ax.step)));
     y += blockH(barsH(rows.length));
