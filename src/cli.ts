@@ -31,7 +31,7 @@ function arg(name: string, def?: string): string | undefined {
 
 const address = process.argv.slice(2).find((a) => !a.startsWith('--') && process.argv[process.argv.indexOf(a) - 1]?.startsWith('--') !== true);
 if (!address) {
-  console.error('usage: npm run generate -- "<address>" [--type context|site|yield|slides|streetscape|summary|both] [--scale 3000] [--slides-scale 8000] [--half-length 95] [--source photo|mesh|montage] [--overlay] [--fill veil|none|heritage] [--template flamingo|kingfisher|heron|canary] [--site-theme heron|kingfisher|flamingo|canary] [--job N] [--client X] [--status S] [--sheet "DA 003"]');
+  console.error('usage: npm run generate -- "<address>" [--type context|site|yield|slides|streetscape|summary|both] [--scale 3000] [--slides-scale 8000] [--half-length 95] [--through "Oxford Street"] [--source photo|mesh|montage] [--overlay] [--fill veil|none|heritage] [--template flamingo|kingfisher|heron|canary] [--site-theme heron|kingfisher|flamingo|canary] [--job N] [--client X] [--status S] [--sheet "DA 003"]');
   process.exit(1);
 }
 
@@ -172,10 +172,11 @@ if (sheetType === 'slides') {
 }
 
 if (sheetType === 'streetscape') {
-  // --half-length: how far the street runs either way from the site, metres
+  // --half-length: how far the street runs either way from the site, metres; --through: a cross street the window
+  // runs on to, past it, at the end nearer it
   // --source photo (Street View on the 3D tiles, the default) | mesh (the tiles' own textures) | montage (Street View alone)
   const source = arg('source') as 'photo' | 'mesh' | 'montage' | undefined;
-  const sb = await runStreetscapePipeline(address, { outDir, halfLengthM: Number(arg('half-length', '95')), source, log: (m) => console.log(m) });
+  const sb = await runStreetscapePipeline(address, { outDir, halfLengthM: Number(arg('half-length', '95')), through: arg('through'), source, log: (m) => console.log(m) });
   console.log('composing streetscape…');
   const htmlPath = join(outDir, 'streetscape.html');
   // --overlay: the buildings' lines over the faces, --fill how they are filled (heritage: by their DCP contribution);

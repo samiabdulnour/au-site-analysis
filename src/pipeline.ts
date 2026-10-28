@@ -1116,12 +1116,13 @@ export interface StreetscapeBundle {
 }
 
 /**
- * The site's street, both faces, `halfLengthM` either way from the site: the
+ * The site's street, both faces, `halfLengthM` either way from the site (and
+ * on to the cross street `through`, at the end nearer it): the
  * frontages and their addresses from the property layer, the ground from the
  * 5 m elevation model, and with GOOGLE_MAPS_API_KEY the Street View frames
  * that the drawing rectifies onto them (src/fetch/streetscape.ts).
  */
-export async function runStreetscapePipeline(address: string, opts: { outDir: string; halfLengthM?: number; source?: 'photo' | 'mesh' | 'montage'; log?: (m: string) => void }): Promise<StreetscapeBundle> {
+export async function runStreetscapePipeline(address: string, opts: { outDir: string; halfLengthM?: number; through?: string; source?: 'photo' | 'mesh' | 'montage'; log?: (m: string) => void }): Promise<StreetscapeBundle> {
   const warnings: string[] = [];
   const log = (m: string) => { opts.log?.(m); if (/WARN/.test(m)) warnings.push(m.trim()); };
   const dataDir = join(opts.outDir, 'data');
@@ -1148,12 +1149,13 @@ export async function runStreetscapePipeline(address: string, opts: { outDir: st
   const st = addressStreet(geo.matchedAddresses[0] ?? address, roads.filter((x) => !x.tunnel), centre);
   if (!st) throw new Error('No named street found beside the site.');
   const plan = planStreetscape({
-    street: st.name, segments: st.segments, centre, halfLengthM: half,
+    street: st.name, segments: st.segments, centre, halfLengthM: half, ...(opts.through ? { through: opts.through } : {}),
     siteRings: siteLots.features.flatMap((f) => geomRingsOf(f.geometry)),
     properties: properties.features.map((f) => ({ id: String(f.properties.propid), address: f.properties.address ?? '', housenumber: f.properties.housenumber ?? undefined, rings: geomRingsOf(f.geometry) })),
     roads: roads.map((x) => ({ name: x.name, coords: x.coords, tunnel: x.tunnel })),
   });
   if (!plan) throw new Error(`${st.name} is too short or too far from the site to draw.`);
+  if (opts.through) log(`  the window runs ${plan.s0}…${plan.s1} m${plan.s1 > half || plan.s0 < -half ? `, on through ${opts.through}` : `; ${opts.through} was not found crossing it`}`);
 
   const groundAt = (p: LonLat) => { if (!dem) return undefined; const m = lonLatToMercator(p); return demAt(dem, m.x, m.y); };
   for (const face of plan.faces) {

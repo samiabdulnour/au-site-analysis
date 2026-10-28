@@ -43,6 +43,8 @@ export const WGS84_A = 6_378_137, WGS84_E2 = 0.006_694_379_990_14;
 const REACH_M = 40;
 /** A boundary this much further out than its side's building line is down a cross street, not on the frontage. */
 const GAP_BEYOND_M = 12;
+/** How far a window run on to a cross street (`through`) goes past where that street crosses: its carriageway and a little of the far side. */
+const THROUGH_PAST_M = 40;
 /** Frontages narrower than this are slivers, folded into their neighbour. */
 const SLIVER_M = 1.5;
 /** A run of rays meeting nothing, narrower than this, is a gap between two boundaries, not a road. */
@@ -179,11 +181,14 @@ export interface Road { name: string; coords: [number, number][]; tunnel?: boole
  * The faces of the street: which property fronts each metre of either side,
  * the gaps where a road or a lane comes in, the building line, and the site's
  * stretch. Pure geometry on lon/lat rings, so it can be tested on made-up
- * streets. `halfLengthM` is how far the window runs either way from the site.
+ * streets. `halfLengthM` is how far the window runs either way from the site;
+ * `through` names a cross street the window runs on to, at the end nearer it,
+ * THROUGH_PAST_M past where it crosses. The axis is the street's within
+ * `halfLengthM` either way all the same, so a window run on keeps its drawing.
  */
 export function planStreetscape(input: {
   street: string; segments: [number, number][][]; centre: LonLat;
-  siteRings: number[][][]; properties: Property[]; roads: Road[]; halfLengthM: number;
+  siteRings: number[][][]; properties: Property[]; roads: Road[]; halfLengthM: number; through?: string;
 }): StreetscapePlan | null {
   const f = localFrame(input.centre);
   // points every metre along the street, with its direction there
@@ -219,11 +224,31 @@ export function planStreetscape(input: {
   const sOf = (p: P) => dot({ x: p.x - at0.x, y: p.y - at0.y }, axis);
   const dOf = (p: P) => dot({ x: p.x - at0.x, y: p.y - at0.y }, left);
   const ptAt = (s: number, d: number): P => ({ x: at0.x + axis.x * s + left.x * d, y: at0.y + axis.y * s + left.y * d });
+  function crossingS(name: string): number | null {
+    const want = name.toUpperCase().trim();
+    let best: { s: number; off: number } | null = null;
+    for (const r of input.roads.filter((x) => x.name?.toUpperCase().trim() === want && !x.tunnel)) {
+      const xy = r.coords.map(([lon, lat]) => f.toXY({ lon, lat }));
+      for (let i = 0; i < xy.length - 1; i++) {
+        const a = xy[i], b = xy[i + 1], L = Math.hypot(b.x - a.x, b.y - a.y);
+        for (let t = 0; t <= L; t += 1) {
+          const q = { x: a.x + ((b.x - a.x) * t) / (L || 1), y: a.y + ((b.y - a.y) * t) / (L || 1) };
+          const near = pts.reduce((m, p) => Math.min(m, Math.hypot(p.p.x - q.x, p.p.y - q.y)), Infinity);
+          if (near < 15 && (!best || near < best.off)) best = { s: sOf(q), off: near };
+        }
+      }
+    }
+    return best?.s ?? null;
+  }
 
   // the centreline every metre over the window, kept inside the street's own ends
   const byS = pts.map((q) => ({ s: sOf(q.p), d: dOf(q.p), dir: dot(q.dir, axis) >= 0 ? q.dir : { x: -q.dir.x, y: -q.dir.y } })).sort((a, b) => a.s - b.s);
-  const s0 = Math.max(Math.ceil(byS[0].s), -Math.round(input.halfLengthM));
-  const s1 = Math.min(Math.floor(byS[byS.length - 1].s), Math.round(input.halfLengthM));
+  // run on to a cross street: where its every metre comes nearest the street's centreline, if within a carriageway
+  let [w0, w1] = [-Math.round(input.halfLengthM), Math.round(input.halfLengthM)];
+  const cross = input.through ? crossingS(input.through) : null;
+  if (cross !== null) { if (cross > 0) w1 = Math.max(w1, Math.round(cross + THROUGH_PAST_M)); else w0 = Math.min(w0, Math.round(cross - THROUGH_PAST_M)); }
+  const s0 = Math.max(Math.ceil(byS[0].s), w0);
+  const s1 = Math.min(Math.floor(byS[byS.length - 1].s), w1);
   if (s1 - s0 < 20) return null;
   let k = 0;
   const centreline: { s: number; d: number; dir: P }[] = [];
@@ -233,7 +258,7 @@ export function planStreetscape(input: {
   }
 
   const props = input.properties.map((pr) => ({ pr, rings: pr.rings.map((r) => r.map(([lon, lat]) => f.toXY({ lon, lat }))).filter((r) => r.length >= 3) }))
-    .filter((x) => x.rings.length && x.rings.some((r) => r.some((p) => Math.abs(sOf(p)) < input.halfLengthM + REACH_M && Math.abs(dOf(p)) < REACH_M * 2)));
+    .filter((x) => x.rings.length && x.rings.some((r) => r.some((p) => sOf(p) > s0 - REACH_M && sOf(p) < s1 + REACH_M && Math.abs(dOf(p)) < REACH_M * 2)));
   const site = input.siteRings.map((r) => r.map(([lon, lat]) => f.toXY({ lon, lat }))).filter((r) => r.length >= 3);
   const roads = input.roads.filter((r) => r.name && !r.tunnel && r.name.toUpperCase() !== input.street.toUpperCase())
     .map((r) => ({ name: r.name, xy: r.coords.map(([lon, lat]) => f.toXY({ lon, lat })) }));

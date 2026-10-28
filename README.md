@@ -1627,7 +1627,15 @@ a long window the street bends, so its axis is the line that best fits its
 centreline within the window, not the chord between its farthest points, which
 put Riley Street's building lines 24 m out at ±340 m. A face wider than 8,000
 pixels is rendered in pieces of whole metres, the camera moved along the axis
-for each, and stitched.
+for each, and stitched. `--through "Oxford Street"` runs the window on, at the
+end nearer that cross street, 40 m past where it crosses (its carriageway and
+a little of the far side), so a conservation area's edge at a main road shows
+whole; the axis stays the street's within `--half-length` of the site, so the
+rest of the drawing is the same picture, moved by the new columns at one end
+and any new rows over higher ground (at Riley Street, to within the JPEG's
+noise). Its window ran on from 340 to 422 m through Oxford Street, and the 32
+image-model tiles already laid went back on, the manifest's boxes moved by as
+much, with only the new 82 m to ask for.
 
 Outputs: `STREETSCAPE.pdf` and `streetscape.png`, the pictures and
 `data/streetscape_bundle.json` beside them. The streetscape is not yet one of

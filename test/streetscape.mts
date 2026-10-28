@@ -89,6 +89,21 @@ if (plan) {
   check('the homography and its inverse make the identity', I.every((r, i) => r.every((x, j) => near(x / I[2][2], i === j ? 1 : 0, 1e-9))));
 }
 
+// run on through a cross street past the window's north end: that end alone goes on, past where it crosses, on
+// the same axis, so what was drawn before stands where it stood
+{
+  const input = {
+    street: 'TEST STREET', segments: [[ll(0, -150), ll(0, 150)]] as [number, number][][], centre: O, halfLengthM: 90,
+    siteRings: [rect(10, -10, 40, 10)], properties: props,
+    roads: [{ name: 'TEST STREET', coords: [ll(0, -150), ll(0, 150)] }, { name: 'END STREET', coords: [ll(-200, 100), ll(200, 100)] }] as { name: string; coords: [number, number][] }[],
+  };
+  const before = planStreetscape(input), after = planStreetscape({ ...input, through: 'End Street' });
+  check('a window runs on past the cross street at its nearer end', !!after && after.s0 === -90 && after.s1 === 140, `${after?.s0}…${after?.s1}`);
+  check('on the same axis', !!before && !!after && near(after.axis.x, before.axis.x, 1e-12) && near(after.axis.y, before.axis.y, 1e-12) && near(after.at0.x, before.at0.x, 1e-9) && near(after.at0.y, before.at0.y, 1e-9));
+  check('the lots past the old end are frontages too', !!after && after.faces[0].frontages.some((f) => Math.min(f.s0, f.s1) > 100));
+  check('a cross street that is not there leaves the window', planStreetscape({ ...input, through: 'NOWHERE ROAD' })?.s1 === 90);
+}
+
 // strips: halfway between neighbours, no wider than a frame holds, inside the window
 const strips = assignStrips([{ s: 0, halfM: 8 }, { s: 10, halfM: 8 }, { s: 40, halfM: 8 }], -5, 45);
 check('neighbouring strips meet halfway', near(strips[0].b, 5, 1e-9) && near(strips[1].a, 5, 1e-9));
