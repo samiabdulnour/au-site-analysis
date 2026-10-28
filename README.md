@@ -1602,7 +1602,7 @@ npx tsx scripts/streetscape-ai.ts export out/<slug>
 cuts each face into tiles of the model's shape, each as tall as the street it
 holds stands (its ground to just over its roofs) and overlapping its neighbour
 by 8 m, into `data/ai/`, with `manifest.json` placing them and the prompt to
-ask. Each tile goes through the model, and its answer is saved beside it as
+ask (to keep the photographed facades, or, for meshes alone, to redraw them). Each tile goes through the model, and its answer is saved beside it as
 `<tile>.ai.png`. Then
 
 ```bash

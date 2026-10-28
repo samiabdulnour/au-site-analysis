@@ -37,6 +37,8 @@ export const AI_OVERLAP_M = 8;
 export const AI_MAX_FILL = 0.25;
 /** What the model is asked, tile by tile. */
 export const AI_PROMPT = 'Make this one crisp, consistent photograph of the same street elevation. Keep the photographed facades exactly as they are, with their real windows, doors, signs and shopfronts; only clean up the seams, the colour differences between patches and the blurry, melted 3D-scan parts (roofs, trees, upper floors) into sharp realistic surfaces and natural leafy street trees. Keep the exact framing and scale: every building, roofline, window, tree and the ground line stays exactly where and as large as it is. The plain pale grey areas are open sky: leave them empty and pale grey. Do not zoom, crop, stretch, repeat, add or remove anything; keep the flat straight-on view.';
+/** What the model is asked of faces drawn from the meshes alone, which have no photographs to keep. */
+export const AI_PROMPT_MESH = 'Make this a crisp, realistic photograph of the same street elevation. It is a blurry 3D-scan render: redraw its melted, smeared surfaces as sharp, realistic facades, windows, doors, shopfronts, roofs and natural leafy street trees, following the colours, materials and the window and door positions you can see. Keep the exact framing and scale: every building outline, roofline, tree and the ground line stays exactly where and as large as it is. The plain pale grey areas are open sky: leave them empty and pale grey. Do not zoom, crop, stretch, repeat, add or remove anything; keep the flat straight-on view.';
 /** The ground band under the street and the room over its roofs that a tile keeps, metres. */
 const BELOW_M = 1.5, ABOVE_M = 1.5;
 /** The least a tile stands over its highest ground, metres: a run of low walls and gaps still gets a frame a model can read. */
@@ -150,7 +152,7 @@ export async function exportAiTiles(elevations: (Elevation | null)[], dataDir: s
       for (const [i, t] of f.tiles.entries()) await writeFile(join(dataDir, t.file), Buffer.from(pngs[i].split(',')[1], 'base64'));
     }
   });
-  const manifest: AiManifest = { aspect: '21:9', prompt: AI_PROMPT, faces };
+  const manifest: AiManifest = { aspect: '21:9', prompt: elevations.some((e) => e?.draped) ? AI_PROMPT : AI_PROMPT_MESH, faces };
   await writeFile(join(dir, 'manifest.json'), JSON.stringify(manifest, null, 2));
   return manifest;
 }
