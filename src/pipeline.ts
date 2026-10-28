@@ -7,7 +7,9 @@ import { fetchSiteLots, fetchRailCorridors, fetchZoning, fetchHeightOfBuilding, 
 import { fetchRoads, fetchRailLines, fetchTrainStations, fetchParkPoints, fetchComplexPoints, fetchNamedAreas, fetchAllLots, fetchPropertiesAt, fetchProperties, type TopoRoad, type NamedPoint, type RailLines, type NamedArea } from './fetch/nswTopo.js';
 import { fetchAerial, fetchVegetationMask, type AerialResult } from './fetch/imagery.js';
 import { addressStreet, fetchStreetSeries } from './fetch/streetView.js';
-import { planStreetscape, planPoint, fetchStreetscapeFrames, FRAME_PX, type StreetscapePlan, type ScapeFrame, type Face } from './fetch/streetscape.js';
+import { planStreetscape, planPoint, fetchStreetscapeFrames, FRAME_PX, FRAME_REACH_M, type StreetscapePlan, type ScapeFrame, type Face } from './fetch/streetscape.js';
+import { historyService } from './fetch/svHistory.js';
+import { composeMontages, type Montage } from './render/montage.js';
 import { fetchStreetTiles, enuFrame } from './fetch/tiles3d.js';
 import { renderElevations, SCAPE_SKY, type Elevation, type FaceView } from './render/elevation3d.js';
 import { fetchBusData, type BusData } from './fetch/osm.js';
@@ -1104,6 +1106,8 @@ export interface StreetscapeBundle {
   groundOffsetM?: number;
   /** Set when the elevations have been through an image model (src/render/aiTiles.ts): which, how many of the tiles were laid back, and on which faces. */
   ai?: { model: string; tiles: number; of: number; sides: (1 | -1)[] };
+  /** Without the 3D tiles: each face composed from its Street View frames, column by column (src/render/montage.ts), in the plan's face order; null for a face no frame reached; absent when the montage was not drawn. */
+  montages?: (Montage | null)[];
   /** Without the 3D tiles: the Street View frames, their pictures in `data/` beside the drawing; none without GOOGLE_MAPS_API_KEY. */
   frames: ScapeFrame[];
   /** Why there are no frames, when there are none. */
@@ -1118,7 +1122,7 @@ export interface StreetscapeBundle {
  * 5 m elevation model, and with GOOGLE_MAPS_API_KEY the Street View frames
  * that the drawing rectifies onto them (src/fetch/streetscape.ts).
  */
-export async function runStreetscapePipeline(address: string, opts: { outDir: string; halfLengthM?: number; source?: 'photo' | 'mesh' | 'montage'; log?: (m: string) => void }): Promise<StreetscapeBundle> {
+export async function runStreetscapePipeline(address: string, opts: { outDir: string; halfLengthM?: number; source?: 'photo' | 'mesh' | 'montage'; /** Captures to leave out of the montage, by month or year (a footpath walk). */ skipDrives?: string[]; log?: (m: string) => void }): Promise<StreetscapeBundle> {
   const warnings: string[] = [];
   const log = (m: string) => { opts.log?.(m); if (/WARN/.test(m)) warnings.push(m.trim()); };
   const dataDir = join(opts.outDir, 'data');
@@ -1171,7 +1175,10 @@ export async function runStreetscapePipeline(address: string, opts: { outDir: st
   const source = opts.source ?? process.env.STREETSCAPE_SOURCE ?? 'photo';
   const tunnels = roads.filter((x) => x.tunnel).map((x) => x.coords);
   const secret = process.env.GOOGLE_MAPS_SIGNING_SECRET?.trim() || undefined;
-  const fetchFrames = () => fetchStreetscapeFrames(plan, groundAt, dataDir, gkey!, secret, log, tunnels)
+  // the montage asks for every year's drives, so a tree the street was driven past bare can be seen through; the
+  // 3D faces take the latest drive alone, the meshes giving the depth the montage lacks
+  const skipDrives = opts.skipDrives ?? process.env.STREETSCAPE_SKIP_DRIVES?.split(',').map((d) => d.trim()).filter(Boolean) ?? [];
+  const fetchFrames = (history: boolean) => fetchStreetscapeFrames(plan, groundAt, dataDir, gkey!, secret, log, { tunnels, reachM: FRAME_REACH_M, history: history ? historyService(gkey!, log) : undefined, skipDrives })
     .catch((e: any) => { log(`  WARN streetscape frames failed: ${e?.message ?? e}`); return [] as ScapeFrame[]; });
   if (gkey && source !== 'montage') {
     try {
@@ -1179,7 +1186,7 @@ export async function runStreetscapePipeline(address: string, opts: { outDir: st
       const at0: [number, number] = [plan.at0.x, plan.at0.y], axis: [number, number] = [plan.axis.x, plan.axis.y];
       const got = await fetchStreetTiles(gkey, centre, { at0, axis, s: [plan.s0 - 5, plan.s1 + 5], d: [Math.min(0, ...sides), Math.max(0, ...sides)], z: [-100, 700] }, SCAPE_TILE_ERROR_M, log);
       log(`  3D tiles: ${(got.tiles.reduce((t, x) => t + x.bytes.length, 0) / 1e6).toFixed(1)} MB, finest error ${got.finestErrorM.toFixed(2)} m`);
-      if (source === 'photo' && dem) frames = await fetchFrames();
+      if (source === 'photo' && dem) frames = await fetchFrames(false);
       log(`  drawing the faces${frames.length ? `, ${frames.length} Street View frames laid on the meshes` : ''}…`);
       elevations = await renderElevations(got.tiles, enuFrame(centre).matrix, plan.faces.map((f) => faceView(plan, f, frames)), dataDir, { ppm: SCAPE_PPM, background: SCAPE_SKY, log });
       for (const [i, e] of elevations.entries()) {
@@ -1194,14 +1201,25 @@ export async function runStreetscapePipeline(address: string, opts: { outDir: st
       elevations = undefined;
     }
   }
+  let montages: (Montage | null)[] | undefined;
   if (elevations) { /* the faces are drawn */ }
   else if (!gkey) framesNote = 'Street View frames need GOOGLE_MAPS_API_KEY; the faces are drawn as their ground and frontages alone.';
   else if (!dem) framesNote = 'The elevation model did not answer, so the frames could not be set on the ground.';
-  else if (!frames.length) frames = await fetchFrames();
+  else {
+    if (!frames.length) frames = await fetchFrames(true);
+    if (frames.length) {
+      log('  composing the faces from the frames…');
+      montages = (await composeMontages(plan, frames, dataDir, { reachM: FRAME_REACH_M, skipDrives, log })) ?? undefined;
+      for (const [i, m] of (montages ?? []).entries()) {
+        if (!m) { log(`  ${bearingWord(plan.faces[i].facing)} face: no frame reached it`); continue; }
+        log(`  ${bearingWord(plan.faces[i].facing)} face: ${m.panoramas} of ${m.candidates} panoramas used (${m.drive ? `the ${m.drive} drive first; ` : ''}${m.dates.join(', ')}), ${Math.round(m.columnsCovered * 100)} % of the window reached, foliage ${Math.round(m.foliageShare * 100)} %, sky ${Math.round(m.skyShare * 100)} % of the band`);
+      }
+    }
+  }
 
   const bundle: StreetscapeBundle = {
     address, siteAddress: geo.matchedAddresses[0] ?? address, generatedAt: new Date().toISOString(),
-    plan, elevations, tileCredits, groundOffsetM, frames, framesNote, demSource: dem?.source, warnings,
+    plan, elevations, tileCredits, groundOffsetM, montages, frames, framesNote, demSource: dem?.source, warnings,
   };
   await writeFile(join(dataDir, 'streetscape_bundle.json'), JSON.stringify(bundle));
   return bundle;
