@@ -1407,11 +1407,13 @@ definite answer — at the site with its class, nearest in the window, none in
 the window, or not mapped by this LEP at all, checked plan-wide so an
 absence is stated rather than implied — with the arterial roads and
 railways beside the site as noise sources and the soil landscape at the
-site. Then *Country*: the open layers of Country over the wide strip — the
-pre-1750 plant communities of the State Vegetation Type Map over the land's
-shape, with the watercourses, the coast, the crests read from the elevation
-model, the National Parks estate and the gazetted Aboriginal Places — with
-the Aboriginal heritage the open registers map over the strip: the LEPs'
+site. Then *Country*: a full page of the land before 1750, with nothing of
+the modern city drawn over it — the pre-1750 plant communities of the State
+Vegetation Type Map, one flat tint each by vegetation formation, over the
+land's shape, with the watercourses, the harbour and the coast, the crests
+read from the elevation model, the National Parks estate and the gazetted
+Aboriginal Places, the suburbs named for finding one's way — and in the
+table beside it the Aboriginal heritage the open registers map over the strip: the LEPs'
 scheduled Aboriginal items and the two plans' maps of Aboriginal cultural
 landscapes (Lake Macquarie's sensitive Aboriginal landscapes, Moree Plains'
 places of Aboriginal cultural significance), Heritage NSW's Aboriginal

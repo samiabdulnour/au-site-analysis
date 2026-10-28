@@ -962,10 +962,21 @@ along two or more of the four axes, it stands above the ground on both
 sides at one of three reaches — a metre over two cells, two metres over
 five, four metres over ten, so the broad ridges count as well as the sharp
 ones — in a window with three metres of relief; the crest cells are chained
-into polylines). The map is the wide strip at 1:16000: hillshade, the
-pre-1750 communities, water, courses named, crests, parks, the gazetted
-places (an edge arrow for one beyond the strip), the land council boundary
-where two meet, the suburbs lightly. The table gives each layer's answer at
+into polylines). The map is the right-hand page at 1:10 000, the land
+before 1750 and nothing of the city over it: no streets, railways, stations
+or permit boundaries, which stay in the table. The pre-1750 communities are
+one flat tint each by vegetation formation (forests in greens, woodlands and
+grasslands olive, heaths sand, wetlands blue-grey; a second community of a
+formation a paler step), painted into one picture with the hillshade of the
+elevation model multiplied in — the model smoothed first, so the valleys and
+ridges stay and the cuttings of the modern city go, and no PDF viewer has a
+blend to get wrong (`src/render/paintMasks.ts`). Over it the harbour, the
+sea and the lakes in blue (a pond or a pool under 2,000 m² left out), the
+coast, the courses named and dashed where not perennial, the crests that run
+120 m or more on the page, smoothed, the parks, the gazetted places and the
+LEP's scheduled items, the land council boundary where two meet, and the
+harbour's and the suburbs' names for finding one's way. The chart on the
+left page is the key to the tints. The table gives each layer's answer at
 the site; the note states that AHIMS is not open and is not read, that a
 search and where advised a due-diligence assessment precede works, and that
 the name of Country, the language, the place names and the narrative are
