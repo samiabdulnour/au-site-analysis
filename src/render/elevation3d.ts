@@ -41,7 +41,7 @@ export interface Elevation {
   ppm: number; width: number; height: number;
   /** What the picture spans: s at its left and right edges, height (ellipsoidal metres) at its top and bottom. */
   sAtLeft: number; sAtRight: number; zTop: number; zBottom: number;
-  /** The ground at the boundary every metre, where a ray found it. */
+  /** The ground at the boundary every metre: where a ray found the mesh, until `settleGround` puts the elevation model there. */
   ground: { s: number; z: number }[];
   /** The top of whatever stands on each metre of the face, where anything does. */
   tops: { s: number; z: number }[];
@@ -146,6 +146,22 @@ try {
   window.__error = String(e && e.stack || e);
 }
 </script>`;
+
+/**
+ * The ground under an elevation. The meshes are photogrammetry, a single surface draped over everything: under a
+ * tree's canopy or an awning there is no ground in them, so a ray down there meets the canopy and nothing below.
+ * The elevation model has the ground everywhere, but in AHD, where the meshes stand on the ellipsoid; the two
+ * differ by the geoid (about 22 m at Sydney) and the meshes' own error. That difference is read where the rays met
+ * the ground, the low fifth of them (a canopy only ever lifts a ray), and the elevation model, lifted by it, is the
+ * line. Returns the line and the offset, or null where too few rays met anything to read it.
+ */
+export function settleGround(hits: { s: number; z: number }[], dem: { s: number; z: number }[]): { ground: { s: number; z: number }[]; offsetM: number } | null {
+  const at = new Map(dem.map((g) => [Math.round(g.s), g.z]));
+  const diffs = hits.map((h) => (at.has(Math.round(h.s)) ? h.z - at.get(Math.round(h.s))! : NaN)).filter(Number.isFinite).sort((a, b) => a - b);
+  if (diffs.length < 10) return null;
+  const offsetM = diffs[Math.floor(diffs.length * 0.2)];
+  return { ground: dem.map((g) => ({ s: g.s, z: g.z + offsetM })), offsetM };
+}
 
 /**
  * Each face's elevation, as `elevation_<l|r>.jpg` in `outDir`, on `background`; null for a face whose ground no

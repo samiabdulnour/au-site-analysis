@@ -9,6 +9,7 @@
  */
 
 import { ecef, enuFrame, meetsCorridor, fetchStreetTiles, glbCopyright, type Corridor } from '../src/fetch/tiles3d.js';
+import { settleGround } from '../src/render/elevation3d.js';
 
 const failures: string[] = [];
 const check = (name: string, ok: boolean, detail = '') => { if (!ok) failures.push(`${name}${detail ? ` — ${detail}` : ''}`); };
@@ -103,6 +104,17 @@ try {
   check('the refusal never carries the key', !thrown.includes(KEY), thrown);
 } finally {
   globalThis.fetch = realFetch;
+}
+
+// the ground under an elevation: the elevation model lifted by what the rays read where they met the ground, a
+// canopy's tops (which only ever lift a ray) left out
+{
+  const dem = Array.from({ length: 60 }, (_, s) => ({ s, z: 14 - s * 0.02 }));
+  const hits = dem.map((g) => ({ s: g.s, z: g.z + 21.9 + (g.s % 5 === 0 ? 9 : 0) + (g.s % 7 === 0 ? 0.05 : 0) }));
+  const settled = settleGround(hits, dem);
+  check('the meshes\' height over the ground model is read past the canopies', !!settled && near(settled.offsetM, 21.9, 0.06), String(settled?.offsetM));
+  check('the line is the ground model, lifted', !!settled && settled.ground.length === 60 && settled.ground.every((g, i) => near(g.z, dem[i].z + settled.offsetM, 1e-9)));
+  check('too few rays read nothing', settleGround(hits.slice(0, 5), dem) === null);
 }
 
 if (failures.length) {

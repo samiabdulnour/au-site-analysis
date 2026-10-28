@@ -276,7 +276,7 @@ function drawStreetscape(b: StreetscapeBundle, meta: SheetMeta): string {
   const faces = b.plan.faces.map((f, i) => faceSvg(b, f, L, i));
   const lead = streetscapeSentences(b).join(' ');
   const sources = [
-    b.elevations?.some(Boolean) ? 'Faces: orthographic elevations of Google’s Photorealistic 3D Tiles (photogrammetry, so trees and fine detail are approximate), seen square from the street’s centreline with its near half cut away, and with what stands more than 35 m behind the boundary left out; the ground is the meshes’ own, under the footpath at the boundary.' : b.frames.length ? 'Frames: Google Street View, each rectified onto its frontage’s boundary as a plane, so the street reads at one true scale; what stands in front of the boundary (trees, cars, awnings) reads larger, a building set back from it smaller, and the seams between frames are the frames’, not the street’s.' : (b.framesNote ?? ''),
+    b.elevations?.some(Boolean) ? `Faces: orthographic elevations of Google’s Photorealistic 3D Tiles (photogrammetry, so trees and fine detail are approximate), seen square from the street’s centreline with its near half cut away, and with what stands more than 35 m behind the boundary left out; the ground line is the elevation model’s at the boundary, set on the meshes${b.groundOffsetM !== undefined ? `, which stand ${b.groundOffsetM.toFixed(1)} m above AHD here` : ''}.` : b.frames.length ? 'Frames: Google Street View, each rectified onto its frontage’s boundary as a plane, so the street reads at one true scale; what stands in front of the boundary (trees, cars, awnings) reads larger, a building set back from it smaller, and the seams between frames are the frames’, not the street’s.' : (b.framesNote ?? ''),
     'Frontages and addresses: NSW property and cadastre layers (NSW Spatial Services); a frontage is where a ray square to the street from its centreline first meets a property boundary.',
     `Ground: ${b.demSource ?? 'no elevation model'}, at the boundary, indicative to about a metre.`,
     `Retrieved ${b.generatedAt.slice(0, 10)}.`,
@@ -291,7 +291,7 @@ ${deckCss()}
   .slice img { position: absolute; left: 0; top: 0; width: ${FRAME_PX}px; height: ${FRAME_PX}px; transform-origin: 0 0; max-width: none; }
   .elev { overflow: hidden; background: ${SCAPE_SKY}; }
   .elev img { position: absolute; max-width: none; }
-  .rd { font-size: 2.3px; font-weight: 500; letter-spacing: 0.02em; fill: #2a2e2c; }
+  .rd { font-size: 2.3px; font-weight: 500; letter-spacing: 0.02em; fill: #2a2e2c; paint-order: stroke; stroke: ${SCAPE_SKY}; stroke-width: 0.7px; stroke-linejoin: round; }
   svg.over { position: absolute; left: 0; top: 0; overflow: visible; }
   .lb { font-size: ${LABEL_MM}px; font-weight: 600; letter-spacing: 0.04em; fill: #2a2e2c; }
   .lb.road { fill: #6a7572; font-weight: 500; letter-spacing: 0.08em; }

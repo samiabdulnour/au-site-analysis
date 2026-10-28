@@ -1537,15 +1537,25 @@ and one root request is the session Google bills, 1,000 a month free. In a
 headless Chromium with WebGL in software, three.js carries them from
 Earth-centred coordinates into the site's east-north-up frame in double
 precision and shows them unlit, as photographed (`src/render/elevation3d.ts`).
-For each face the ground is found first by rays cast down on the footpath at
-the boundary, the lowest thing each meets; then an orthographic camera stands
+For each face rays are cast down on the footpath at the boundary first. The
+meshes are one surface draped over everything, with no ground under a canopy
+or an awning, so the ground line is the 5 m elevation model's, lifted by the
+low fifth of what the rays read over it (21.9 m at Riley Street: the geoid,
+the meshes standing on the ellipsoid where the model stands in AHD). Then an
+orthographic camera stands
 on the centreline square to the face, its near plane on the centreline, so the
 other side's buildings and trees are cut away, and its far plane 35 m behind
 the boundary, so the next street's towers are left out. The picture is 24
 pixels a metre (300 dpi at 1:500), on a pale sky, over a band of ground, and
-runs as high as the face's tallest buildings. The meshes are photogrammetry:
-trees are lumps and fine detail is soft, but nothing leans and everything
+runs as high as the face's tallest buildings. Nothing leans and everything
 stands where it stands.
+
+Google serves these tiles only to Cloud projects billed outside the European
+Economic Area (since 8 July 2025 an EEA project gets 403, "not available for
+your account and region"), and its finest meshes over Darlinghurst carry 2 m of
+error, so trees are lumps and fine detail is soft, though the textures are
+sharper than the meshes. At 70-76 Riley Street in October 2026: 47 meshes, 5.6
+MB, the whole drawing in under half a minute.
 
 **Without the Map Tiles API**, the faces are Google Street View frames: a
 panorama every 7 m along the centreline (not one over a road the Transport

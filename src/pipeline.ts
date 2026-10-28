@@ -9,7 +9,7 @@ import { fetchAerial, fetchVegetationMask, type AerialResult } from './fetch/ima
 import { addressStreet, fetchStreetSeries } from './fetch/streetView.js';
 import { planStreetscape, planPoint, fetchStreetscapeFrames, type StreetscapePlan, type ScapeFrame, type Face } from './fetch/streetscape.js';
 import { fetchStreetTiles, enuFrame } from './fetch/tiles3d.js';
-import { renderElevations, SCAPE_SKY, type Elevation, type FaceView } from './render/elevation3d.js';
+import { renderElevations, settleGround, SCAPE_SKY, type Elevation, type FaceView } from './render/elevation3d.js';
 import { fetchBusData, type BusData } from './fetch/osm.js';
 import { fetchBusStopsTfnsw } from './fetch/tfnsw.js';
 import { fetchIsochrones, type Isochrone } from './fetch/isochrones.js';
@@ -1100,6 +1100,8 @@ export interface StreetscapeBundle {
   elevations?: (Elevation | null)[];
   /** The providers the 3D tiles credit, most meshes first. */
   tileCredits?: string[];
+  /** How far the meshes stand above AHD at the boundary: the geoid and the meshes' own error (about 22 m at Sydney). */
+  groundOffsetM?: number;
   /** Without the 3D tiles: the Street View frames, their pictures in `data/` beside the drawing; none without GOOGLE_MAPS_API_KEY. */
   frames: ScapeFrame[];
   /** Why there are no frames, when there are none. */
@@ -1160,7 +1162,7 @@ export async function runStreetscapePipeline(address: string, opts: { outDir: st
 
   const gkey = process.env.GOOGLE_MAPS_API_KEY?.trim();
   let frames: ScapeFrame[] = [], framesNote: string | undefined;
-  let elevations: (Elevation | null)[] | undefined, tileCredits: string[] | undefined;
+  let elevations: (Elevation | null)[] | undefined, tileCredits: string[] | undefined, groundOffsetM: number | undefined;
   // the 3D tiles first: true elevations; a key without the Map Tiles API falls back to the Street View frames
   if (gkey && process.env.STREETSCAPE_SOURCE !== 'streetview') {
     try {
@@ -1169,6 +1171,14 @@ export async function runStreetscapePipeline(address: string, opts: { outDir: st
       const got = await fetchStreetTiles(gkey, centre, { at0, axis, s: [plan.s0 - 5, plan.s1 + 5], d: [Math.min(0, ...sides), Math.max(0, ...sides)], z: [-100, 700] }, SCAPE_TILE_ERROR_M, log);
       log(`  3D tiles: ${(got.tiles.reduce((t, x) => t + x.bytes.length, 0) / 1e6).toFixed(1)} MB, finest error ${got.finestErrorM.toFixed(2)} m; drawing the faces…`);
       elevations = await renderElevations(got.tiles, enuFrame(centre).matrix, plan.faces.map((f) => faceView(plan, f)), dataDir, { ppm: SCAPE_PPM, background: SCAPE_SKY, log });
+      // the ground: the elevation model's, lifted onto the meshes' heights where the rays met them
+      for (const [i, e] of elevations.entries()) {
+        const settled = e && settleGround(e.ground, plan.faces[i].ground);
+        if (!e || !settled) continue;
+        e.ground = settled.ground;
+        groundOffsetM ??= settled.offsetM;
+        log(`  ${bearingWord(plan.faces[i].facing)} face: the meshes stand ${settled.offsetM.toFixed(1)} m above AHD at the boundary`);
+      }
       tileCredits = got.credits;
       if (!elevations.some(Boolean)) { elevations = undefined; log('  3D tiles: no face found its ground in the meshes'); }
     } catch (e: any) {
@@ -1184,7 +1194,7 @@ export async function runStreetscapePipeline(address: string, opts: { outDir: st
 
   const bundle: StreetscapeBundle = {
     address, siteAddress: geo.matchedAddresses[0] ?? address, generatedAt: new Date().toISOString(),
-    plan, elevations, tileCredits, frames, framesNote, demSource: dem?.source, warnings,
+    plan, elevations, tileCredits, groundOffsetM, frames, framesNote, demSource: dem?.source, warnings,
   };
   await writeFile(join(dataDir, 'streetscape_bundle.json'), JSON.stringify(bundle));
   return bundle;
