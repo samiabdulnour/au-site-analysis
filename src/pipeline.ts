@@ -7,9 +7,9 @@ import { fetchSiteLots, fetchRailCorridors, fetchZoning, fetchHeightOfBuilding, 
 import { fetchRoads, fetchRailLines, fetchTrainStations, fetchParkPoints, fetchComplexPoints, fetchNamedAreas, fetchAllLots, fetchPropertiesAt, fetchProperties, type TopoRoad, type NamedPoint, type RailLines, type NamedArea } from './fetch/nswTopo.js';
 import { fetchAerial, fetchVegetationMask, type AerialResult } from './fetch/imagery.js';
 import { addressStreet, fetchStreetSeries } from './fetch/streetView.js';
-import { planStreetscape, planPoint, fetchStreetscapeFrames, type StreetscapePlan, type ScapeFrame, type Face } from './fetch/streetscape.js';
+import { planStreetscape, planPoint, fetchStreetscapeFrames, FRAME_PX, type StreetscapePlan, type ScapeFrame, type Face } from './fetch/streetscape.js';
 import { fetchStreetTiles, enuFrame } from './fetch/tiles3d.js';
-import { renderElevations, settleGround, SCAPE_SKY, type Elevation, type FaceView } from './render/elevation3d.js';
+import { renderElevations, SCAPE_SKY, type Elevation, type FaceView } from './render/elevation3d.js';
 import { fetchBusData, type BusData } from './fetch/osm.js';
 import { fetchBusStopsTfnsw } from './fetch/tfnsw.js';
 import { fetchIsochrones, type Isochrone } from './fetch/isochrones.js';
@@ -1116,7 +1116,7 @@ export interface StreetscapeBundle {
  * 5 m elevation model, and with GOOGLE_MAPS_API_KEY the Street View frames
  * that the drawing rectifies onto them (src/fetch/streetscape.ts).
  */
-export async function runStreetscapePipeline(address: string, opts: { outDir: string; halfLengthM?: number; log?: (m: string) => void }): Promise<StreetscapeBundle> {
+export async function runStreetscapePipeline(address: string, opts: { outDir: string; halfLengthM?: number; source?: 'photo' | 'mesh' | 'montage'; log?: (m: string) => void }): Promise<StreetscapeBundle> {
   const warnings: string[] = [];
   const log = (m: string) => { opts.log?.(m); if (/WARN/.test(m)) warnings.push(m.trim()); };
   const dataDir = join(opts.outDir, 'data');
@@ -1163,34 +1163,39 @@ export async function runStreetscapePipeline(address: string, opts: { outDir: st
   const gkey = process.env.GOOGLE_MAPS_API_KEY?.trim();
   let frames: ScapeFrame[] = [], framesNote: string | undefined;
   let elevations: (Elevation | null)[] | undefined, tileCredits: string[] | undefined, groundOffsetM: number | undefined;
-  // the 3D tiles first: true elevations; a key without the Map Tiles API falls back to the Street View frames
-  if (gkey && process.env.STREETSCAPE_SOURCE !== 'streetview') {
+  // `photo` (the default): Street View frames laid on the 3D tiles' meshes, true elevations with the photographs'
+  // detail; `mesh`: the meshes' own textures; `montage`: the frames rectified onto each side's boundary, which is
+  // also what a key without the Map Tiles API (one billed in the EEA) gets
+  const source = opts.source ?? process.env.STREETSCAPE_SOURCE ?? 'photo';
+  const tunnels = roads.filter((x) => x.tunnel).map((x) => x.coords);
+  const secret = process.env.GOOGLE_MAPS_SIGNING_SECRET?.trim() || undefined;
+  const fetchFrames = () => fetchStreetscapeFrames(plan, groundAt, dataDir, gkey!, secret, log, tunnels)
+    .catch((e: any) => { log(`  WARN streetscape frames failed: ${e?.message ?? e}`); return [] as ScapeFrame[]; });
+  if (gkey && source !== 'montage') {
     try {
       const sides = plan.faces.map((f) => f.side * (f.offsetM + SCAPE_DEPTH_M + 5));
       const at0: [number, number] = [plan.at0.x, plan.at0.y], axis: [number, number] = [plan.axis.x, plan.axis.y];
       const got = await fetchStreetTiles(gkey, centre, { at0, axis, s: [plan.s0 - 5, plan.s1 + 5], d: [Math.min(0, ...sides), Math.max(0, ...sides)], z: [-100, 700] }, SCAPE_TILE_ERROR_M, log);
-      log(`  3D tiles: ${(got.tiles.reduce((t, x) => t + x.bytes.length, 0) / 1e6).toFixed(1)} MB, finest error ${got.finestErrorM.toFixed(2)} m; drawing the faces…`);
-      elevations = await renderElevations(got.tiles, enuFrame(centre).matrix, plan.faces.map((f) => faceView(plan, f)), dataDir, { ppm: SCAPE_PPM, background: SCAPE_SKY, log });
-      // the ground: the elevation model's, lifted onto the meshes' heights where the rays met them
+      log(`  3D tiles: ${(got.tiles.reduce((t, x) => t + x.bytes.length, 0) / 1e6).toFixed(1)} MB, finest error ${got.finestErrorM.toFixed(2)} m`);
+      if (source === 'photo' && dem) frames = await fetchFrames();
+      log(`  drawing the faces${frames.length ? `, ${frames.length} Street View frames laid on the meshes` : ''}…`);
+      elevations = await renderElevations(got.tiles, enuFrame(centre).matrix, plan.faces.map((f) => faceView(plan, f, frames)), dataDir, { ppm: SCAPE_PPM, background: SCAPE_SKY, log });
       for (const [i, e] of elevations.entries()) {
-        const settled = e && settleGround(e.ground, plan.faces[i].ground);
-        if (!e || !settled) continue;
-        e.ground = settled.ground;
-        groundOffsetM ??= settled.offsetM;
-        log(`  ${bearingWord(plan.faces[i].facing)} face: the meshes stand ${settled.offsetM.toFixed(1)} m above AHD at the boundary`);
+        if (!e) continue;
+        groundOffsetM ??= e.offsetM;
+        log(`  ${bearingWord(plan.faces[i].facing)} face: the meshes stand ${e.offsetM.toFixed(1)} m above AHD at the boundary${e.draped ? `; photographs hold ${Math.round(e.photoShare * 100)} % of it` : ''}`);
       }
       tileCredits = got.credits;
       if (!elevations.some(Boolean)) { elevations = undefined; log('  3D tiles: no face found its ground in the meshes'); }
     } catch (e: any) {
-      log(`  3D tiles not drawn (${e?.message ?? e}); Street View frames instead`);
+      log(`  3D tiles not drawn (${e?.message ?? e}); Street View frames rectified onto the boundaries instead`);
       elevations = undefined;
     }
   }
   if (elevations) { /* the faces are drawn */ }
   else if (!gkey) framesNote = 'Street View frames need GOOGLE_MAPS_API_KEY; the faces are drawn as their ground and frontages alone.';
   else if (!dem) framesNote = 'The elevation model did not answer, so the frames could not be set on the ground.';
-  else frames = await fetchStreetscapeFrames(plan, groundAt, dataDir, gkey, process.env.GOOGLE_MAPS_SIGNING_SECRET?.trim() || undefined, log, roads.filter((x) => x.tunnel).map((x) => x.coords))
-    .catch((e: any) => { log(`  WARN streetscape frames failed: ${e?.message ?? e}`); return []; });
+  else if (!frames.length) frames = await fetchFrames();
 
   const bundle: StreetscapeBundle = {
     address, siteAddress: geo.matchedAddresses[0] ?? address, generatedAt: new Date().toISOString(),
@@ -1210,7 +1215,7 @@ const SCAPE_TILE_ERROR_M = 0.6;
 const SCAPE_PPM = 24;
 
 /** A face's camera: on the centreline opposite the window's middle, square to the face, the ground sought on its footpath. */
-function faceView(plan: StreetscapePlan, face: Face): FaceView {
+function faceView(plan: StreetscapePlan, face: Face, frames: ScapeFrame[]): FaceView {
   const left = { x: -plan.axis.y, y: plan.axis.x };
   const at = (s: number, d: number): [number, number] => [plan.at0.x + plan.axis.x * s + left.x * d, plan.at0.y + plan.axis.y * s + left.y * d];
   const ds = plan.centreline.map((c) => c.d).sort((a, b) => a - b);
@@ -1225,6 +1230,11 @@ function faceView(plan: StreetscapePlan, face: Face): FaceView {
   return {
     side: face.side, sMin: plan.s0, sMax: plan.s1,
     camera: at(sMid, clip), dir: [left.x * face.side, left.y * face.side],
-    far: face.offsetM - face.side * clip + SCAPE_DEPTH_M, rays,
+    far: face.offsetM - face.side * clip + SCAPE_DEPTH_M, rays, dem: face.ground, boundary: face.offsetM,
+    at0: [plan.at0.x, plan.at0.y], axis: [plan.axis.x, plan.axis.y],
+    frames: frames.filter((fr) => fr.side === face.side).map((fr) => {
+      const [x, y] = at(fr.s, fr.d);
+      return { file: fr.file, x, y, zAhd: fr.z, s: fr.s, heading: fr.heading, pitch: fr.pitch, fov: fr.fov, px: FRAME_PX };
+    }),
   };
 }

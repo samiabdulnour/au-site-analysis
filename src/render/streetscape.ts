@@ -113,8 +113,10 @@ function faceSvg(b: StreetscapeBundle, face: Face, L: Layout, i: number): { html
     for (let q = 1; q < g.length; q++) if (Math.abs(g[q].s - s) < Math.abs(g[j].s - s)) j = q;
     return g[j].z;
   };
-  const frames = elev ? [] : b.frames.filter((fr) => fr.side === face.side);
-  const views = frames.filter((fr) => fr.tier === 0);
+  // the frames: rectified slices without an elevation; with one, laid on it already, and only credited here
+  const own = b.frames.filter((fr) => fr.side === face.side);
+  const frames = elev ? [] : own;
+  const views = own.filter((fr) => fr.tier === 0);
 
   // the frames, each its homography from the picture to the sheet, clipped to its strip and the footpath
   // the upper frames first, so the lower ones, which hold the street, lie over them where the two overlap
@@ -194,10 +196,12 @@ function faceSvg(b: StreetscapeBundle, face: Face, L: Layout, i: number): { html
   // the face's caption, its imagery's credit and the scale bar
   const capY = labelTop + LABELS_H;
   const dates = views.map((fr) => fr.date).filter((d): d is string => !!d).sort();
+  const months = dates.length ? (monthName(dates[0]) === monthName(dates[dates.length - 1]) ? monthName(dates[0]) : `${monthName(dates[0])} – ${monthName(dates[dates.length - 1])}`) : 'undated';
+  const tiles = `Google Photorealistic 3D Tiles · ${(b.tileCredits ?? []).slice(0, 4).join(', ')}`;
   const credit = elev
-    ? `Google Photorealistic 3D Tiles · ${(b.tileCredits ?? []).slice(0, 4).join(', ')}`
+    ? (elev.draped ? `Street View © Google · ${views.length} panoramas · ${months}, laid on ${tiles}` : tiles)
     : views.length
-      ? `Street View © Google · ${views.length} panoramas · ${dates.length ? (monthName(dates[0]) === monthName(dates[dates.length - 1]) ? monthName(dates[0]) : `${monthName(dates[0])} – ${monthName(dates[dates.length - 1])}`) : 'undated'}`
+      ? `Street View © Google · ${views.length} panoramas · ${months}`
       : (b.framesNote ? 'No Street View frames' : '');
   // a face is the side of the street the viewer turns to: its name and the way the viewer looks are one
   const title = `${titleCase(p.street)}, the ${bearingWord(face.facing)} side, looking ${bearingWord(face.facing)}${face.hasSite ? ' · the site’s side' : ''}`;
@@ -276,7 +280,7 @@ function drawStreetscape(b: StreetscapeBundle, meta: SheetMeta): string {
   const faces = b.plan.faces.map((f, i) => faceSvg(b, f, L, i));
   const lead = streetscapeSentences(b).join(' ');
   const sources = [
-    b.elevations?.some(Boolean) ? `Faces: orthographic elevations of Google’s Photorealistic 3D Tiles (photogrammetry, so trees and fine detail are approximate), seen square from the street’s centreline with its near half cut away, and with what stands more than 35 m behind the boundary left out; the ground line is the elevation model’s at the boundary, set on the meshes${b.groundOffsetM !== undefined ? `, which stand ${b.groundOffsetM.toFixed(1)} m above AHD here` : ''}.` : b.frames.length ? 'Frames: Google Street View, each rectified onto its frontage’s boundary as a plane, so the street reads at one true scale; what stands in front of the boundary (trees, cars, awnings) reads larger, a building set back from it smaller, and the seams between frames are the frames’, not the street’s.' : (b.framesNote ?? ''),
+    b.elevations?.some(Boolean) ? `Faces: orthographic elevations of Google’s Photorealistic 3D Tiles${b.elevations.some((e) => e?.draped) ? ', each Google Street View photograph laid on the meshes from where its camera stood, so a facade is the photograph’s and stands at its own depth; the street’s trees, and what no photograph saw clear (a roof, a wall behind a tree from every camera), keep the meshes’ own texture, and the meshes’ outlines, as photogrammetry, are soft' : ' (photogrammetry, so trees and fine detail are approximate)'}. Seen square from the street’s centreline with its near half cut away, and with what stands more than 35 m behind the boundary left out; the ground line is the elevation model’s at the boundary, set on the meshes${b.groundOffsetM !== undefined ? `, which stand ${b.groundOffsetM.toFixed(1)} m above AHD here` : ''}.` : b.frames.length ? 'Frames: Google Street View, each rectified onto its frontage’s boundary as a plane, so the street reads at one true scale; what stands in front of the boundary (trees, cars, awnings) reads larger, a building set back from it smaller, and the seams between frames are the frames’, not the street’s.' : (b.framesNote ?? ''),
     'Frontages and addresses: NSW property and cadastre layers (NSW Spatial Services); a frontage is where a ray square to the street from its centreline first meets a property boundary.',
     `Ground: ${b.demSource ?? 'no elevation model'}, at the boundary, indicative to about a metre.`,
     `Retrieved ${b.generatedAt.slice(0, 10)}.`,

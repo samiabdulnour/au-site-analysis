@@ -1528,45 +1528,61 @@ of the NSW property layer it meets is that metre's frontage, with the
 property's own address (a corner lot keeps its other street's), and a ray that
 meets nothing near the side's building line is a gap.
 
-**The faces from Google's Photorealistic 3D Tiles** (the Map Tiles API, on the
-same `GOOGLE_MAPS_API_KEY`, which must have that API enabled). The tileset is
-walked from its root, opening only the boxes that meet the street's corridor
-and refining each to the finest mesh with under 0.6 m of error
-(`src/fetch/tiles3d.ts`); the meshes stay in memory, as Google's terms ask,
-and one root request is the session Google bills, 1,000 a month free. In a
-headless Chromium with WebGL in software, three.js carries them from
-Earth-centred coordinates into the site's east-north-up frame in double
-precision and shows them unlit, as photographed (`src/render/elevation3d.ts`).
+**The faces: Street View photographs on Google's 3D city model**
+(`--source photo`, the default). The geometry is Google's Photorealistic 3D
+Tiles (the Map Tiles API, on the same `GOOGLE_MAPS_API_KEY`, which must have it
+and the Street View Static API enabled). The tileset is walked from its root,
+opening only the boxes that meet the street's corridor and refining each to the
+finest mesh with under 0.6 m of error (`src/fetch/tiles3d.ts`); the meshes stay
+in memory, as Google's terms ask, and one root request is the session Google
+bills, 1,000 a month free. In a headless Chromium with WebGL in software,
+three.js carries them from Earth-centred coordinates into the site's
+east-north-up frame in double precision (`src/render/elevation3d.ts`).
+
 For each face rays are cast down on the footpath at the boundary first. The
 meshes are one surface draped over everything, with no ground under a canopy
 or an awning, so the ground line is the 5 m elevation model's, lifted by the
 low fifth of what the rays read over it (21.9 m at Riley Street: the geoid,
 the meshes standing on the ellipsoid where the model stands in AHD). Then an
-orthographic camera stands
-on the centreline square to the face, its near plane on the centreline, so the
-other side's buildings and trees are cut away, and its far plane 35 m behind
-the boundary, so the next street's towers are left out. The picture is 24
-pixels a metre (300 dpi at 1:500), on a pale sky, over a band of ground, and
-runs as high as the face's tallest buildings. Nothing leans and everything
-stands where it stands.
+orthographic camera stands on the centreline square to the face, its near
+plane on the centreline, so the other side's buildings and trees are cut away,
+and its far plane 35 m behind the boundary, so the next street's towers are
+left out. The meshes' own textures are the base; over them each Street View
+frame (a panorama every 7 m, turned square to the face, low for the footpath
+and high for the storeys over it) is projected from where its camera stood,
+on the meshes' heights, as a slide projector would. A point takes a frame's
+colour where the frame saw it clear: a depth map rendered from the camera says
+whether anything stood between (nothing within 4 m of it counts, since the
+meshes draw a street tree as a lump the camera on a car's roof is often
+inside), and a surface the frame saw nearly edge-on, its normal read from the
+position picture's own slopes, is left to another frame. Where several frames
+saw a point, the one that saw it largest and most square, nearest along the
+street, wins. The street's trees (what stands in the reserve more than 2.5 m
+in front of the boundary, and the meshes' green nearer it) keep the meshes'
+texture, one material for every tree, and so does what no frame saw clear: a
+roof, or the upper floors behind a canopy from every camera. At Riley Street
+the photographs hold about two fifths of each face, the rest trees and roofs.
+The picture is 24 pixels a metre (300 dpi at 1:500), on a pale sky, over a
+band of ground, and runs as high as the face's tallest buildings: nothing
+leans, the facades are the photographs, each at its own depth, and the trees
+stand where they stand.
 
-Google serves these tiles only to Cloud projects billed outside the European
-Economic Area (since 8 July 2025 an EEA project gets 403, "not available for
-your account and region"), and its finest meshes over Darlinghurst carry 2 m of
-error, so trees are lumps and fine detail is soft, though the textures are
-sharper than the meshes. At 70-76 Riley Street in October 2026: 47 meshes, 5.6
-MB, the whole drawing in under half a minute.
+`--source mesh` draws the meshes' own textures alone. Google serves these
+tiles only to Cloud projects billed outside the European Economic Area (since
+8 July 2025 an EEA project gets 403, "not available for your account and
+region"), and its finest meshes over Darlinghurst carry 2 m of error, so the
+trees are lumps and the outlines are soft, though the textures are sharper
+than the meshes. At 70-76 Riley Street in October 2026: 47 meshes, 5.6 MB, 18
+panoramas, the whole drawing in under a minute.
 
-**Without the Map Tiles API**, the faces are Google Street View frames: a
-panorama every 7 m along the centreline (not one over a road the Transport
-Theme puts in a tunnel: the Cross City Tunnel's are filed as outdoor), turned
-square to either side, asked for low for the footpath and high for the storeys
-over it, and each rectified onto its side's boundary by its homography, a CSS
-`matrix3d`, so the frames meet where the street does. What stands in front of
-the boundary reads larger and a building set back from it smaller, as in any
-montage. `STREETSCAPE_SOURCE=streetview` asks for the frames even where the
-tiles are to be had; without a key, the faces are their ground and frontages
-alone.
+**Without the Map Tiles API** (or `--source montage`), the faces are the
+Street View frames alone, each rectified onto its side's boundary by its
+homography, a CSS `matrix3d`, so the frames meet where the street does, and
+not one over a road the Transport Theme puts in a tunnel (the Cross City
+Tunnel's are filed as outdoor). What stands in front of the boundary reads
+larger and a building set back from it smaller, as in any montage. Without a
+key, the faces are their ground and frontages alone. `STREETSCAPE_SOURCE`
+sets the source for the server, as `--source` does for the command line.
 
 Outputs: `STREETSCAPE.pdf` and `streetscape.png`, the pictures and
 `data/streetscape_bundle.json` beside them. The streetscape is not yet one of
