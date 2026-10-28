@@ -31,7 +31,7 @@ function arg(name: string, def?: string): string | undefined {
 
 const address = process.argv.slice(2).find((a) => !a.startsWith('--') && process.argv[process.argv.indexOf(a) - 1]?.startsWith('--') !== true);
 if (!address) {
-  console.error('usage: npm run generate -- "<address>" [--type context|site|yield|slides|streetscape|summary|both] [--scale 3000] [--slides-scale 8000] [--half-length 95] [--source photo|mesh|montage] [--template flamingo|kingfisher|heron|canary] [--site-theme heron|kingfisher|flamingo|canary] [--job N] [--client X] [--status S] [--sheet "DA 003"]');
+  console.error('usage: npm run generate -- "<address>" [--type context|site|yield|slides|streetscape|summary|both] [--scale 3000] [--slides-scale 8000] [--half-length 95] [--source photo|mesh|montage] [--skip-drives 2024-10] [--template flamingo|kingfisher|heron|canary] [--site-theme heron|kingfisher|flamingo|canary] [--job N] [--client X] [--status S] [--sheet "DA 003"]');
   process.exit(1);
 }
 
@@ -174,8 +174,10 @@ if (sheetType === 'slides') {
 if (sheetType === 'streetscape') {
   // --half-length: how far the street runs either way from the site, metres
   // --source photo (Street View on the 3D tiles, the default) | mesh (the tiles' own textures) | montage (Street View alone)
+  // --skip-drives 2024-10: captures to leave out of the montage, by month or year (a footpath walk, which Google places in the road)
   const source = arg('source') as 'photo' | 'mesh' | 'montage' | undefined;
-  const sb = await runStreetscapePipeline(address, { outDir, halfLengthM: Number(arg('half-length', '95')), source, log: (m) => console.log(m) });
+  const skipDrives = arg('skip-drives')?.split(',').map((d) => d.trim()).filter(Boolean);
+  const sb = await runStreetscapePipeline(address, { outDir, halfLengthM: Number(arg('half-length', '95')), source, skipDrives, log: (m) => console.log(m) });
   console.log('composing streetscape…');
   const htmlPath = join(outDir, 'streetscape.html');
   await writeFile(htmlPath, renderStreetscape(sb, meta));

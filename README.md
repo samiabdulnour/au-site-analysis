@@ -1171,7 +1171,8 @@ auto, or left out, takes the tightest of 1:200, 1:250, 1:300, 1:400, 1:500, 1:60
 `--site-theme heron|kingfisher|flamingo|canary` (the site sheet's theme),
 `--slides-scale 8000` (the deck's map panels), `--da-years 5` (the deck's
 development window), `--half-length 95` (how far the streetscape runs either
-way from the site, metres), `--job 2539`, `--client "Name"`,
+way from the site, metres), `--source photo|mesh|montage` and `--skip-drives 2024-10`
+(the streetscape's faces, see below), `--job 2539`, `--client "Name"`,
 `--status "DEVELOPMENT APPLICATION"`, `--sheet "DA 003"`.
 
 ### The planning yield
@@ -1575,14 +1576,64 @@ trees are lumps and the outlines are soft, though the textures are sharper
 than the meshes. At 70-76 Riley Street in October 2026: 47 meshes, 5.6 MB, 18
 panoramas, the whole drawing in under a minute.
 
-**Without the Map Tiles API** (or `--source montage`), the faces are the
-Street View frames alone, each rectified onto its side's boundary by its
-homography, a CSS `matrix3d`, so the frames meet where the street does, and
-not one over a road the Transport Theme puts in a tunnel (the Cross City
-Tunnel's are filed as outdoor). What stands in front of the boundary reads
-larger and a building set back from it smaller, as in any montage. Without a
-key, the faces are their ground and frontages alone. `STREETSCAPE_SOURCE`
-sets the source for the server, as `--source` does for the command line.
+**The faces from Street View alone** (`--source montage`, and what a key
+without the Map Tiles API gets): each face one picture composed from every
+Street View frame that saw it (`src/render/montage.ts`,
+`src/py/streetscape_montage.py`, Pillow and NumPy). The panoramas are
+harvested every 3 m along the centreline, so each drive's cameras answer, and
+with the Maps JavaScript API's history (`src/fetch/svHistory.ts`, which runs
+the API in the headless Chromium and needs it enabled on the key) the
+panoramas taken at the same spots in other years as well: at Riley Street,
+223 panoramas from twelve years. Of them, by bins of 6 m, every panorama of
+the newest year's drives is kept and one of each of the two best other drives,
+the bare months first (June to August, then May and September), since a
+street tree the car passed bare in July hides nothing; 150 at most. Each
+camera is turned square to both faces and asked for one frame, or a low and a
+high one where the face is tall or the street narrow, from the footpath
+below the boundary to 30 m over the face's highest ground; the camera stands
+2.5 m over the elevation model's ground, smoothed along the street.
+
+A frame is a pinhole picture and a frontage is near enough a vertical plane,
+so each frame is rectified onto its frontage's boundary by one homography,
+over the columns it reaches; then every column of the face takes one
+panorama: the one that saw it squarest, with the least foliage, nothing
+missing and nothing the other cameras did not see there (the median of what
+they saw, so a camera Google has out of place, or a building since rebuilt,
+loses), of the primary drive where those are equal (the newest that covers
+the window) and an older drive only to see through foliage; and the picture
+changes panorama only where the two agree, over a short crossfade (a Viterbi
+pass over the columns, as in a multi-viewpoint panorama). Neighbouring runs
+are slid to meet and brought to one exposure. The sky is what looks like sky
+(blue, or pale and smooth, and no darker than the sky at the top of its
+column) and joins the top of the picture that way, across a wire or a bare
+branch but never across a roofline that runs on: it is made transparent, so
+the sheet's own sky shows and the roofline is the picture's; what no longer
+stands on the ground through the picture (a scrap of canopy, a wire) goes
+with it. The footpath below the ground line is kept and what is below that
+cut. What stands in front of the boundary (a tree, an awning, a bus) still
+reads larger than life and a building set back from it smaller, as in any
+montage.
+
+The cameras must have driven the carriageway. Google also walks some
+streets with a camera on foot (Riley Street, Darlinghurst, in October 2024),
+and a camera a metre or two from a facade, which Google then places in the
+road, shows a few metres of wall magnified several times. The log names the
+captures found, and such a capture is set aside by its month or year with
+`--skip-drives 2024-10` (`STREETSCAPE_SKIP_DRIVES` for the server), at the
+harvest and the montage both. An attempt to find each camera's true distance
+from the pictures themselves (a plane sweep against its neighbours,
+`calibrate` in the script, off by default) kept the true depth on the test's
+made-up street but was not reliable on Riley Street's, where it moved car
+cameras and left walking ones; the sheet says what it did. At 70-76 Riley
+Street in October 2026, with the 2024 walk set aside: 67 panoramas from 13
+drives, the faces drawn from the July 2017 drive with 2 and 4 other drives
+filling in, 91 % of the window reached (the ends, past the last camera in the
+street, are left bare rather than cut on a slant), foliage 8 % of each face.
+`scripts/streetscape-recompose.ts out/<slug> [--skip-drives …]` composes
+the faces again from the frames already fetched and draws the sheet, for a
+change to the script. Without a key, the faces are their ground and
+frontages alone. `STREETSCAPE_SOURCE` sets the source for the server, as
+`--source` does for the command line.
 
 Outputs: `STREETSCAPE.pdf` and `streetscape.png`, the pictures and
 `data/streetscape_bundle.json` beside them. The streetscape is not yet one of

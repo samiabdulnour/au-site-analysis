@@ -12,28 +12,34 @@
 // the side's building line is a gap, named after the road that crosses there
 // when one does. The ground is the 5 m elevation model at the boundary.
 //
-// The frames are Google's own panoramas, found every 7 m along the centreline
-// by the free metadata service (not those over a road in a tunnel, which
-// Google files as outdoor too), each turned square to either side and asked
-// for twice: tipped so its foot takes in the footpath, and tipped up for the
-// storeys over it. A frame is a pinhole picture, and a frontage is near enough
-// a vertical plane, so the picture maps onto the plane by one homography (`planeToImage`)
-// and the sheet shows it rectified: a metre along the street is the same width
-// at every frame, and the frames meet where the street does. Each frame keeps
-// the strip from halfway to its neighbours on either side. What stands in
-// front of the plane (trees, cars, awnings) reads a little large, and a
-// building set back from its boundary a little small, as in any montage.
+// The frames are Google's own panoramas: every one along the centreline (the
+// free metadata service asked every 3 m for the nearest, so each drive's
+// cameras answer; not those over a road in a tunnel, which Google files as
+// outdoor too), and, with the Maps JavaScript API's history (src/fetch/svHistory.ts),
+// those taken at the same spots in other years; of them the newest drive's
+// and the best other drives' are kept, bare months first, since a street tree
+// the car passed bare in July hides nothing (`choosePanoramas`). Each is
+// turned square to either face and asked for low and high as the face's
+// height needs (`tiersFor`). A frame is a pinhole picture, and a frontage is
+// near enough a vertical plane, so the picture maps onto the plane by one
+// homography (`planeToImage`); src/render/montage.ts lays every frame on the
+// face that way and picks, column by column, the panorama that saw it best.
+// Without that, the sheet lays the frames on one by one, each over the strip
+// from halfway to its neighbours (`assignStrips`). What stands in front of
+// the plane (trees, cars, awnings) reads a little large, and a building set
+// back from its boundary a little small, as in any montage.
 //
 // Google's terms bar storing Street View content outside its services, and
 // its brand rules bar print; as on slide 12 the frames go into the drawing's
-// own folder, never the shared cache, the sheet credits each strip "© Google"
+// own folder, never the shared cache, the sheet credits each face "© Google"
 // with the months of capture, and the key never appears in a saved URL.
 
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { retryFetch } from '../lib/http.js';
 import type { LonLat } from '../lib/geo.js';
-import { metadataService, signUrl, type SvMeta } from './streetView.js';
+import { metadataService, panoMetadataService, signUrl, type SvMeta } from './streetView.js';
+import type { HistoryLookup } from './svHistory.js';
 
 type P = { x: number; y: number };
 
@@ -47,8 +53,6 @@ const GAP_BEYOND_M = 12;
 const SLIVER_M = 1.5;
 /** A run of rays meeting nothing, narrower than this, is a gap between two boundaries, not a road. */
 const MIN_GAP_M = 2.5;
-/** The centreline is probed for a panorama this often. */
-const CAMERA_STEP_M = 7;
 /** A panorama further than this off the centreline stands in another street or a forecourt. */
 const OFF_CENTRE_M = 8;
 /**
@@ -56,8 +60,6 @@ const OFF_CENTRE_M = 8;
  * tunnel stand on the tunnel's line, where one in the street above, past the portal, stands further off.
  */
 const TUNNEL_M = 5;
-/** The upper frame looks no higher than this above the horizon: near the zenith a plane's picture runs to infinity. */
-const UP_MAX_DEG = 80;
 /** The Street View camera above the road, metres. */
 export const CAMERA_HEIGHT_M = 2.5;
 /** Square frames, the largest the API serves without a premium plan. */
@@ -120,6 +122,8 @@ export interface ScapeFrame {
   a: number; b: number;
   /** 0 the frame that takes in the footpath and the lower storeys, 1 the one tipped up for the storeys over them. */
   tier: 0 | 1;
+  /** The picture's side, pixels (FRAME_PX). */
+  px?: number;
 }
 
 /**
@@ -388,23 +392,7 @@ export const apply3 = (m: number[][], x: number, y: number): [number, number] =>
   return [(m[0][0] * x + m[0][1] * y + m[0][2]) / w, (m[1][0] * x + m[1][1] * y + m[1][2]) / w];
 };
 
-/**
- * The camera for a face: square to it, the field of view and the tip chosen so
- * the bottom of the picture takes in the footpath below the boundary and the
- * rest goes to the buildings; a camera close to its face (a narrow street)
- * looks wider. Returns null when the camera is too near the face to frame it.
- */
-export function aimAt(face: Pick<Face, 'facing'>, distM: number): { heading: number; pitch: number; fov: number; halfM: number } | null {
-  if (distM < 3) return null;
-  const fov = distM < 8 ? 110 : 90;
-  const groundDeg = (Math.atan2(CAMERA_HEIGHT_M + BELOW_GROUND_M + 0.3, distM) * 180) / Math.PI;
-  const pitch = Math.max(0, Math.round((fov / 2 - groundDeg - 2) * 10) / 10);
-  // the strip a frame may give, either side of square, short of the picture's edge
-  const halfM = distM * Math.tan(((fov / 2 - 6) * Math.PI) / 180);
-  return { heading: Math.round(face.facing * 10) / 10, pitch, fov, halfM };
-}
-
-/** Each frame's strip: halfway to its neighbours along the face, no wider than the picture holds, inside the window. */
+/** Each frame's strip, for the sheet's one-by-one fallback: halfway to its neighbours along the face, no wider than the picture holds, inside the window. */
 export function assignStrips<T extends { s: number; halfM: number }>(cams: T[], s0: number, s1: number): (T & { a: number; b: number })[] {
   const sorted = [...cams].sort((x, y) => x.s - y.s);
   return sorted.map((c, i) => {
@@ -415,74 +403,204 @@ export function assignStrips<T extends { s: number; halfM: number }>(cams: T[], 
   }).filter((c) => c.b - c.a > 0.5);
 }
 
+// ---- the harvest --------------------------------------------------------------------
+
+/** How far past the window's ends the harvest runs, metres: a camera past an end still sees the end nearly square. */
+const HARVEST_PAST_M = 25;
+/** The centreline is probed this often, and this far about each probe, so whichever drive's camera is nearest answers. */
+const PROBE_STEP_M = 3, PROBE_RADIUS_M = 4;
+/** How high over a face's highest ground the frames look, metres: nine storeys at the boundary. */
+export const FRAME_REACH_M = 30;
+/** Panoramas are kept by bins this long along the street: the newest drive's in each, and other drives' beside them. */
+const BIN_M = 6;
+/** How many drives a bin keeps, the newest counted, and how many panoramas the street at most. */
+const DRIVES_PER_BIN = 3, MAX_PANOS = 150;
+/** The cameras' ground is the elevation model's at them, smoothed over this far either way along the street. */
+const SMOOTH_M = 12;
+/** Degrees of margin below the footpath (Google's marks run along the picture's foot) and over the band. */
+const FOOT_MARGIN_DEG = 5, TOP_MARGIN_DEG = 2;
+/** A span of the face wider than this takes two frames, a low and a high one, each this wide. */
+const ONE_FRAME_SPAN_DEG = 112, TWO_FRAME_FOV = 94;
+/** How many pictures are fetched at once. */
+const IN_FLIGHT = 4;
+
+export interface Tier { tier: 0 | 1; pitch: number; fov: number }
+
 /**
- * The frames: a panorama found every CAMERA_STEP_M along the centreline, each
- * turned square to both faces and rectified onto the face's building line
- * near it. Google's own panoramas only, the camera in this street; a picture
- * that does not come is a gap in the strip. Saved as `scape_<face>_<n>.jpg`.
+ * How a camera `distM` from a face looks at it: the picture must take in the face from the footpath below the
+ * boundary (`zBotM`) to the top of the band (`zTopM`). One frame where a field of view of 120° or less holds
+ * that, never narrower than 100° so it reaches well along the face; else two, a low one and a high one, each
+ * 94° wide (two sharper pictures rather than one stretched). Null when the camera is too near the face to frame it.
+ */
+export function tiersFor(distM: number, zCamM: number, zBotM: number, zTopM: number): Tier[] | null {
+  if (distM < 2.5) return null;
+  const deg = (z: number) => (Math.atan2(z - zCamM, distM) * 180) / Math.PI;
+  const lo = deg(zBotM) - FOOT_MARGIN_DEG, hi = Math.min(88, deg(zTopM) + TOP_MARGIN_DEG);
+  const span = hi - lo;
+  const r1 = (v: number) => Math.round(v * 10) / 10;
+  if (span <= ONE_FRAME_SPAN_DEG) return [{ tier: 0, pitch: r1((lo + hi) / 2), fov: Math.round(Math.max(100, Math.min(120, span + 4))) }];
+  return [{ tier: 0, pitch: r1(lo + TWO_FRAME_FOV / 2 - 2), fov: TWO_FRAME_FOV }, { tier: 1, pitch: r1(hi - TWO_FRAME_FOV / 2 + 2), fov: TWO_FRAME_FOV }];
+}
+
+/** How bare a street's deciduous trees are in a month, southern hemisphere: midwinter 2, its shoulders 1, else 0. */
+export const leafOff = (date?: string) => { const m = Number(date?.slice(5, 7)); return m >= 6 && m <= 8 ? 2 : m === 5 || m === 9 ? 1 : 0; };
+
+/**
+ * Which panoramas to keep of all found along the street: by bins of BIN_M, every panorama of the newest year's
+ * drives there (the street as it is), and beside them one of each of the best other drives, bare months first and
+ * then the newest, DRIVES_PER_BIN drives in all; over `max`, the other drives' go first.
+ */
+export function choosePanoramas<T extends { s: number; date?: string }>(found: T[], s0: number, max = MAX_PANOS): T[] {
+  const bins = new Map<number, T[]>();
+  for (const p of found) { const b = Math.floor((p.s - s0) / BIN_M); const l = bins.get(b); if (l) l.push(p); else bins.set(b, [p]); }
+  const ranked: { p: T; rank: number }[] = [];
+  for (const list of bins.values()) {
+    const newestYear = (list.map((p) => p.date ?? '').sort().pop() ?? '').slice(0, 4);
+    const own = list.filter((p) => (p.date ?? '').startsWith(newestYear));
+    for (const p of own) ranked.push({ p, rank: 0 });
+    const rest = list.filter((p) => !own.includes(p)).sort((a, b) => leafOff(b.date) - leafOff(a.date) || (b.date ?? '').localeCompare(a.date ?? ''));
+    const drives = new Set<string>();
+    for (const p of rest) {
+      if (drives.has(p.date ?? '') || drives.size >= DRIVES_PER_BIN - 1) continue;
+      drives.add(p.date ?? '');
+      ranked.push({ p, rank: drives.size });
+    }
+  }
+  return ranked.sort((a, b) => a.rank - b.rank || a.p.s - b.p.s).slice(0, max).map((r) => r.p).sort((a, b) => a.s - b.s);
+}
+
+async function pool<T, R>(items: T[], n: number, fn: (t: T) => Promise<R>): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let i = 0;
+  await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => { while (i < items.length) { const k = i++; out[k] = await fn(items[k]); } }));
+  return out;
+}
+
+export interface HarvestOpts {
+  /** How high over a face’s highest ground the frames look, metres (FRAME_REACH_M). */
+  reachM?: number;
+  /** Captures to leave out, by month ("2024-10") or year: a footpath walk, whose cameras Google places in the road. */
+  skipDrives?: string[];
+  /** The panoramas taken at the same spots in other years, when a service for them is given (src/fetch/svHistory.ts). */
+  history?: HistoryLookup;
+  maxPanos?: number;
+  /** Roads in tunnels: a panorama over one is in it. */
+  tunnels?: [number, number][][];
+}
+
+/**
+ * The frames: every Google panorama along the centreline (the nearest to a probe every PROBE_STEP_M, so each
+ * drive's cameras answer) and, with a history service, those taken at the same spots in other years; of them the
+ * newest drive's and the best other drives' (`choosePanoramas`), each turned square to both faces and asked for
+ * low and high as the face's height needs (`tiersFor`), IN_FLIGHT at a time. The camera stands CAMERA_HEIGHT_M
+ * over the elevation model's ground, smoothed along the street so neighbouring frames agree. A picture that does
+ * not come is a gap in the record. Saved as `scape_<face>_<n>[_up].jpg`.
  */
 export async function fetchStreetscapeFrames(
   plan: StreetscapePlan, groundAt: (p: LonLat) => number | undefined,
-  outDir: string, key: string, secret?: string, log: (m: string) => void = () => {}, tunnels: [number, number][][] = [],
+  outDir: string, key: string, secret?: string, log: (m: string) => void = () => {}, opts: HarvestOpts = {},
 ): Promise<ScapeFrame[]> {
-  const meta = metadataService(key, secret);
+  const meta = metadataService(key, secret), byId = panoMetadataService(key, secret);
   const f = localFrame(plan.origin);
-  const under = tunnels.map((t) => t.map(([lon, lat]) => f.toXY({ lon, lat })));
+  const under = (opts.tunnels ?? []).map((t) => t.map(([lon, lat]) => f.toXY({ lon, lat })));
   const nearTunnel = (p: LonLat) => {
     const q = f.toXY(p);
     return under.some((t) => t.some((a, i) => i > 0 && segDist(q, t[i - 1], a) < TUNNEL_M));
   };
-  let inTunnel = 0;
-  const seen = new Set<string>();
-  const panos: (SvMeta & { s: number; d: number; z: number })[] = [];
   const lineAt = (s: number) => plan.centreline[Math.max(0, Math.min(plan.centreline.length - 1, Math.round(s - plan.s0)))];
-  for (let s = plan.s0 - 6; s <= plan.s1 + 6; s += CAMERA_STEP_M) {
-    const c = lineAt(s);
-    let m: SvMeta | null = null;
-    try { m = await meta(planPoint(plan, s, c.d), 10); }
-    catch (e: any) { log(`  WARN Street View metadata: ${e?.message ?? e}`); break; }
-    if (!m || seen.has(m.panoId) || !/google/i.test(m.copyright ?? '')) continue;
-    seen.add(m.panoId);
-    if (nearTunnel(m)) { inTunnel++; continue; }
+  type Pano = SvMeta & { s: number; d: number; ground: number };
+  const found = new Map<string, Pano>();
+  let inTunnel = 0, offLine = 0;
+  const place = (m: SvMeta): boolean => {
+    if (found.has(m.panoId) || !/google/i.test(m.copyright ?? '')) return false;
+    if (nearTunnel(m)) { inTunnel++; return false; }
     const at = planCoords(plan, m);
-    if (Math.abs(at.d - lineAt(at.s).d) > OFF_CENTRE_M) continue;
+    if (at.s < plan.s0 - HARVEST_PAST_M - 3 || at.s > plan.s1 + HARVEST_PAST_M + 3) return false;
+    if (Math.abs(at.d - lineAt(at.s).d) > OFF_CENTRE_M) { offLine++; return false; }
     const g = groundAt(m);
-    if (g === undefined) continue;
-    panos.push({ ...m, s: at.s, d: at.d, z: g + CAMERA_HEIGHT_M });
+    if (g === undefined) return false;
+    found.set(m.panoId, { ...m, s: at.s, d: at.d, ground: g });
+    return true;
+  };
+  for (let s = plan.s0 - HARVEST_PAST_M; s <= plan.s1 + HARVEST_PAST_M; s += PROBE_STEP_M) {
+    let m: SvMeta | null = null;
+    try { m = await meta(planPoint(plan, s, lineAt(s).d), PROBE_RADIUS_M); }
+    catch (e: any) { log(`  WARN Street View metadata: ${e?.message ?? e}`); break; }
+    if (m) place(m);
   }
-  // two panoramas a step apart from different drives: the one nearer its probe stays, the other is a near duplicate
-  panos.sort((a, b) => a.s - b.s);
-  const kept = panos.filter((p, i) => i === 0 || p.s - panos[i - 1].s > 2);
-  log(`  streetscape: ${kept.length} panoramas along ${plan.street}${inTunnel ? `, ${inTunnel} over a tunnel left out` : ''}`);
+  const latest = found.size;
+  let older = 0;
+  const years = new Set<string>();
+  if (opts.history && found.size) {
+    try {
+      const hist = await opts.history([...found.keys()]);
+      const ids = new Set<string>();
+      for (const list of hist.values()) for (const t of list) if (!found.has(t.panoId)) ids.add(t.panoId);
+      const metas = await pool([...ids], 6, (id) => byId(id).catch(() => null));
+      for (const m of metas) if (m && place(m)) { older++; years.add((m.date ?? '').slice(0, 4)); }
+    } catch (e: any) { log(`  Street View history not read: ${e?.message ?? e}`); }
+  }
+  const skip = (opts.skipDrives ?? []).map((d) => d.trim()).filter(Boolean);
+  const eligible = [...found.values()].filter((p) => !skip.some((d) => (p.date ?? '').startsWith(d)));
+  const kept = choosePanoramas(eligible, plan.s0, opts.maxPanos);
+  const drives = new Set(kept.map((p) => p.date ?? ''));
+  const months = new Map<string, number>();
+  for (const p of found.values()) months.set(p.date ?? '?', (months.get(p.date ?? '?') ?? 0) + 1);
+  log(`  streetscape: ${kept.length} panoramas along ${plan.street} of ${found.size} found (${latest} from the latest capture${older ? `, ${older} from ${years.size} other years` : ''}), ${drives.size} drives kept${skip.length ? `, the ${skip.join(', ')} capture set aside` : ''}${inTunnel ? `, ${inTunnel} over a tunnel left out` : ''}${offLine ? `, ${offLine} off the street` : ''}`);
+  log(`  captures found: ${[...months].sort(([a], [b]) => b.localeCompare(a)).map(([d, n]) => `${d} (${n})`).join(', ')}`);
+  if (!kept.length) return [];
 
+  // the cameras' heights: the elevation model's ground about each, smoothed along the street, and the camera over it
+  const all = [...found.values()];
+  const zOf = (p: Pano) => median(all.filter((q) => Math.abs(q.s - p.s) <= SMOOTH_M).map((q) => q.ground)) + CAMERA_HEIGHT_M;
+  const reach = opts.reachM ?? FRAME_REACH_M;
   const frames: ScapeFrame[] = [];
   for (const face of plan.faces) {
-    const cams = kept.map((p) => {
+    const zs = face.ground.map((g) => g.z);
+    const zTop = (zs.length ? Math.max(...zs) : 0) + reach;
+    const groundNear = (s: number, fallback: number) => {
+      let best: { s: number; z: number } | null = null;
+      for (const g of face.ground) if (!best || Math.abs(g.s - s) < Math.abs(best.s - s)) best = g;
+      return best && Math.abs(best.s - s) < 30 ? best.z : fallback;
+    };
+    const jobs = kept.flatMap((p) => {
       // the building line near the camera, from the frontages within 10 m either side
       const near = face.frontages.filter((x) => x.s1 > p.s - 10 && x.s0 < p.s + 10).map((x) => x.offsetM);
       const planeM = near.length ? median(near) : face.offsetM;
       const dist = planeM - p.d * face.side;
-      const aim = aimAt(face, dist);
-      return aim ? { p, planeM, ...aim, s: p.s } : null;
-    }).filter((x): x is NonNullable<typeof x> => x !== null);
-    const strips = assignStrips(cams, plan.s0, plan.s1);
-    let n = 0;
-    for (const c of strips) {
-      n++;
-      // the frame that takes in the footpath, and over it one tipped up as far as a plane's picture holds
-      const up = Math.round((UP_MAX_DEG - c.fov / 2) * 10) / 10;
-      const tiers = up > c.pitch + 8 ? [[0, c.pitch], [1, up]] as const : [[0, c.pitch]] as const;
-      for (const [tier, pitch] of tiers) {
-        const q = new URLSearchParams({ size: `${FRAME_PX}x${FRAME_PX}`, pano: c.p.panoId, heading: c.heading.toFixed(1), pitch: pitch.toFixed(1), fov: String(c.fov), return_error_code: 'true', key });
-        try {
-          const res = await retryFetch(signUrl(`https://maps.googleapis.com/maps/api/streetview?${q}`, secret), {}, { attempts: 2, timeoutMs: 30_000, label: 'Street View image' });
-          if (!res.ok) { log(`  Street View image: HTTP ${res.status}`); continue; }
-          const file = `scape_${face.side > 0 ? 'l' : 'r'}_${n}${tier ? '_up' : ''}.jpg`;
-          await writeFile(join(outDir, file), Buffer.from(await res.arrayBuffer()));
-          frames.push({ side: face.side, file, panoId: c.p.panoId, date: c.p.date, copyright: c.p.copyright, s: c.p.s, d: c.p.d, z: c.p.z, heading: c.heading, pitch, fov: c.fov, planeM: c.planeM, a: c.a, b: c.b, tier });
-        } catch (e: any) { log(`  Street View image: ${e?.message ?? e}`); }
-      }
+      const zCam = zOf(p);
+      return (tiersFor(dist, zCam, groundNear(p.s, p.ground) - BELOW_GROUND_M, zTop) ?? []).map((t) => ({ p, planeM, dist, zCam, ...t }));
+    });
+    const heading = Math.round(face.facing * 10) / 10;
+    const got = await pool(jobs, IN_FLIGHT, async (j) => {
+      const q = new URLSearchParams({ size: `${FRAME_PX}x${FRAME_PX}`, pano: j.p.panoId, heading: heading.toFixed(1), pitch: j.pitch.toFixed(1), fov: String(j.fov), return_error_code: 'true', key });
+      try {
+        const res = await retryFetch(signUrl(`https://maps.googleapis.com/maps/api/streetview?${q}`, secret), {}, { attempts: 2, timeoutMs: 30_000, label: 'Street View image' });
+        if (!res.ok) { log(`  Street View image: HTTP ${res.status}`); return null; }
+        return Buffer.from(await res.arrayBuffer());
+      } catch (e: any) { log(`  Street View image: ${e?.message ?? e}`); return null; }
+    });
+    const own: (ScapeFrame & { halfM: number })[] = [];
+    for (const [k, j] of jobs.entries()) {
+      const buf = got[k];
+      if (!buf) continue;
+      const file = `scape_${face.side > 0 ? 'l' : 'r'}_${kept.indexOf(j.p) + 1}${j.tier ? '_up' : ''}.jpg`;
+      await writeFile(join(outDir, file), buf);
+      own.push({
+        side: face.side, file, panoId: j.p.panoId, date: j.p.date, copyright: j.p.copyright,
+        s: j.p.s, d: j.p.d, z: j.zCam, heading, pitch: j.pitch, fov: j.fov, planeM: j.planeM, a: 0, b: 0, tier: j.tier, px: FRAME_PX,
+        halfM: j.dist * Math.tan(((j.fov / 2 - 6) * Math.PI) / 180),
+      });
     }
+    // the one-by-one fallback's strips: halfway to the neighbours among the low frames, the high frame over each the same
+    const strips = new Map(assignStrips(own.filter((fr) => fr.tier === 0), plan.s0, plan.s1).map((st) => [st.panoId, st] as const));
+    for (const fr of own) {
+      const st = strips.get(fr.panoId);
+      if (st) { fr.a = st.a; fr.b = st.b; }
+      const { halfM: _h, ...frame } = fr;
+      frames.push(frame);
+    }
+    log(`  ${face.side > 0 ? 'left' : 'right'} face: ${own.length} frames of ${jobs.length} asked${own.some((x) => x.tier) ? ', some in two tiers' : ''}`);
   }
   return frames;
 }

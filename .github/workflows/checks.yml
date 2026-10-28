@@ -160,6 +160,16 @@ jobs:
       - name: the streetscape finds the frontages and rectifies a frame onto them
         run: npx tsx test/streetscape.mts
 
+      # The streetscape's montage on a made-up street, its frames drawn as the
+      # pinhole pictures Street View gives and composed by the Python script
+      # (Pillow and NumPy, as the image has them): the facade at true scale,
+      # the sky off the roofs, a tree seen through from a bare year's drive.
+      # CI never calls Google.
+      - name: montage modules
+        run: python3 -m pip install --quiet pillow numpy
+      - name: the streetscape montage composes the frames into the facade
+        run: npx tsx test/streetscape-montage.mts
+
       # The streetscape's 3D tiles on a made-up tileset with the Map Tiles API
       # stood in for: the east-north-up frame, the boxes that meet the street,
       # the walk to the meshes fine enough and no finer, the key and session on

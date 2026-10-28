@@ -291,18 +291,27 @@ export function imageUrl(v: SvView, key: string, secret?: string): string {
 /** The panorama in Google Maps, facing the same way: no key, safe to print. */
 export const mapsUrl = (v: SvView) => `https://www.google.com/maps/@?api=1&map_action=pano&pano=${encodeURIComponent(v.panoId)}&heading=${Math.round(v.heading)}&pitch=${Math.round(v.pitch)}&fov=${v.fov}`;
 
+async function askMetadata(url: string): Promise<SvMeta | null> {
+  const res = await retryFetch(url, {}, { attempts: 3, timeoutMs: 20_000, label: 'Street View metadata' });
+  if (!res.ok) throw new Error(`Street View metadata returned HTTP ${res.status}`);
+  const j = (await res.json()) as { status?: string; error_message?: string; pano_id?: string; location?: { lat: number; lng: number }; date?: string; copyright?: string };
+  if (j.status === 'OK' && j.pano_id && j.location) return { panoId: j.pano_id, lon: j.location.lng, lat: j.location.lat, date: j.date, copyright: j.copyright };
+  if (j.status === 'ZERO_RESULTS' || j.status === 'NOT_FOUND') return null;
+  // REQUEST_DENIED, OVER_QUERY_LIMIT…: the key or the project is wrong, so the whole source stops
+  throw new Error(`Street View metadata answered ${j.status ?? 'nothing'}${j.error_message ? `: ${j.error_message}` : ''}`);
+}
+
 /** The metadata service, which is free: the outdoor panorama nearest a point within a radius, or null. */
 export function metadataService(key: string, secret?: string) {
-  return async (p: LonLat, radiusM: number): Promise<SvMeta | null> => {
+  return (p: LonLat, radiusM: number): Promise<SvMeta | null> => {
     const q = new URLSearchParams({ location: `${p.lat.toFixed(6)},${p.lon.toFixed(6)}`, radius: String(radiusM), source: 'outdoor', key });
-    const res = await retryFetch(signUrl(`${METADATA}?${q}`, secret), {}, { attempts: 3, timeoutMs: 20_000, label: 'Street View metadata' });
-    if (!res.ok) throw new Error(`Street View metadata returned HTTP ${res.status}`);
-    const j = (await res.json()) as { status?: string; error_message?: string; pano_id?: string; location?: { lat: number; lng: number }; date?: string; copyright?: string };
-    if (j.status === 'OK' && j.pano_id && j.location) return { panoId: j.pano_id, lon: j.location.lng, lat: j.location.lat, date: j.date, copyright: j.copyright };
-    if (j.status === 'ZERO_RESULTS' || j.status === 'NOT_FOUND') return null;
-    // REQUEST_DENIED, OVER_QUERY_LIMIT…: the key or the project is wrong, so the whole source stops
-    throw new Error(`Street View metadata answered ${j.status ?? 'nothing'}${j.error_message ? `: ${j.error_message}` : ''}`);
+    return askMetadata(signUrl(`${METADATA}?${q}`, secret));
   };
+}
+
+/** The same service by panorama ID, as free: where that panorama stands and the month it was taken, or null for an ID it no longer serves. */
+export function panoMetadataService(key: string, secret?: string) {
+  return (panoId: string): Promise<SvMeta | null> => askMetadata(signUrl(`${METADATA}?${new URLSearchParams({ pano: panoId, key })}`, secret));
 }
 
 /** A place seen from the street: the panorama nearest it, turned to face it. */

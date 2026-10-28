@@ -31,12 +31,12 @@ function findChromium(): string | undefined {
  * that the machine has to hold. The slot goes back when the browser closes or
  * dies, whichever comes first.
  */
-export async function launch(extraArgs: string[] = []): Promise<Browser> {
+export async function launch(extraArgs: string[] = [], opts: { proxy?: { server: string } } = {}): Promise<Browser> {
   const release = await acquire('chromium');
   try {
     const executablePath = findChromium();
     const args = [...(process.env.CHROMIUM_NO_SANDBOX === '1' ? ['--no-sandbox'] : []), ...extraArgs];
-    const browser = await chromium.launch({ executablePath, headless: true, args });
+    const browser = await chromium.launch({ executablePath, headless: true, args, ...opts });
     browser.on('disconnected', release);
     return browser;
   } catch (e) {

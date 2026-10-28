@@ -7,7 +7,7 @@
  *   npx tsx test/streetscape.mts
  */
 
-import { planStreetscape, planeToImage, inv3, mul3, apply3, aimAt, assignStrips, splitAddress, CAMERA_HEIGHT_M, BELOW_GROUND_M, FRAME_PX, type Property } from '../src/fetch/streetscape.js';
+import { planStreetscape, planeToImage, inv3, mul3, apply3, tiersFor, choosePanoramas, leafOff, assignStrips, splitAddress, CAMERA_HEIGHT_M, BELOW_GROUND_M, FRAME_PX, type Property } from '../src/fetch/streetscape.js';
 import type { LonLat } from '../src/lib/geo.js';
 
 const failures: string[] = [];
@@ -60,12 +60,20 @@ if (plan) {
   check('the corner lot fronts the street, addressed to its own', west.frontages.some((f) => f.address === '1-3 CROSS STREET'));
   check('the ground is left for the elevation model', east.ground.length === 0);
 
-  // a camera in the middle of the road at s = 4, looking square at the east face
-  const aim = aimAt(east, 10)!;
-  check('a camera 10 m off its face looks square at it', near(aim.heading, 90, 0.1) && aim.fov === 90, JSON.stringify(aim));
-  check('the picture\'s foot takes in the footpath below the ground at the boundary',
-    aim.pitch - aim.fov / 2 < -(Math.atan2(CAMERA_HEIGHT_M + BELOW_GROUND_M, 10) * 180) / Math.PI, String(aim.pitch));
-  check('a narrow street looks wider', aimAt(east, 5)!.fov > aim.fov && aimAt(east, 2) === null);
+  // a camera in the middle of the road, 10 m off the east face, must see from the footpath below the boundary to 30 m over it
+  const zc = 20 + CAMERA_HEIGHT_M;
+  const tiers = tiersFor(10, zc, 20 - BELOW_GROUND_M, 20 + 30)!;
+  const deg = (v: number) => (v * Math.PI) / 180;
+  check('a camera 10 m off its face takes it in one frame', tiers.length === 1 && tiers[0].fov >= 100 && tiers[0].fov <= 120, JSON.stringify(tiers));
+  check('the picture\'s foot takes in the footpath below the ground at the boundary, with room for the marks along it',
+    tiers[0].pitch - tiers[0].fov / 2 < -(Math.atan2(CAMERA_HEIGHT_M + BELOW_GROUND_M, 10) * 180) / Math.PI - 4, String(tiers[0].pitch));
+  check('and its top reaches the band\'s top', 10 * Math.tan(deg(tiers[0].pitch + tiers[0].fov / 2)) + zc >= 20 + 30, String(tiers[0].pitch + tiers[0].fov / 2));
+  const narrow = tiersFor(4, zc, 20 - BELOW_GROUND_M, 20 + 30)!;
+  check('a narrow lane takes two frames, the low one at the footpath and the high one at the band\'s top', narrow.length === 2 && narrow[0].tier === 0 && narrow[1].tier === 1
+    && narrow[0].pitch - narrow[0].fov / 2 < -(Math.atan2(CAMERA_HEIGHT_M + BELOW_GROUND_M, 4) * 180) / Math.PI && 4 * Math.tan(deg(Math.min(88, narrow[1].pitch + narrow[1].fov / 2))) + zc >= 20 + 30, JSON.stringify(narrow));
+  check('the two frames overlap', narrow[0].pitch + narrow[0].fov / 2 > narrow[1].pitch - narrow[1].fov / 2);
+  check('a camera on the footpath cannot frame its face', tiersFor(2, zc, 18.8, 50) === null);
+  const aim = { heading: east.facing, pitch: tiers[0].pitch, fov: tiers[0].fov };
   const fr = { s: 4, d: 0, z: 20 + CAMERA_HEIGHT_M, heading: aim.heading, pitch: aim.pitch, fov: aim.fov, planeM: 10, side: -1 as const };
   const H = planeToImage(plan, fr);
   // the point of the face straight ahead at the camera's height is on the picture's middle column, f·tan(pitch) below its middle
@@ -91,6 +99,16 @@ const strips = assignStrips([{ s: 0, halfM: 8 }, { s: 10, halfM: 8 }, { s: 40, h
 check('neighbouring strips meet halfway', near(strips[0].b, 5, 1e-9) && near(strips[1].a, 5, 1e-9));
 check('a strip ends where its frame does, past a gap in the cameras', near(strips[1].b, 18, 1e-9) && near(strips[2].a, 32, 1e-9));
 check('strips stay inside the window', near(strips[0].a, -5, 1e-9) && near(strips[2].b, 45, 1e-9));
+
+// which panoramas are kept: by 6 m bins, the newest year's and the barest other drives, one each
+check('July is bare, May and September half so, October not', leafOff('2015-07') === 2 && leafOff('2014-05') === 1 && leafOff('2019-09') === 1 && leafOff('2024-10') === 0);
+const drives = [['2024-10', 0], ['2024-10', 3], ['2021-03', 1], ['2015-07', 2], ['2013-10', 1], ['2009-11', 2], ['2024-10', 7], ['2015-07', 8]].map(([date, s], i) => ({ id: i, date: date as string, s: s as number }));
+const chosen = choosePanoramas(drives, 0);
+check('the newest year\'s panoramas are all kept', chosen.filter((p) => p.date === '2024-10').length === 3, JSON.stringify(chosen));
+check('the bare July drive is kept beside them, once a bin', chosen.filter((p) => p.date === '2015-07' && p.s < 6).length === 1 && chosen.some((p) => p.date === '2015-07' && p.s >= 6));
+check('then the newest of the rest, and no more than three drives a bin', chosen.some((p) => p.date === '2021-03') && !chosen.some((p) => p.date === '2013-10' || p.date === '2009-11'), JSON.stringify(chosen));
+check('over the cap the other drives go first', choosePanoramas(drives, 0, 3).every((p) => p.date === '2024-10'));
+check('the kept panoramas come back in order along the street', chosen.every((p, i) => !i || p.s >= chosen[i - 1].s));
 
 check('an address splits into its number and street', JSON.stringify(splitAddress('70-76 RILEY STREET DARLINGHURST', '70-76')) === JSON.stringify({ number: '70-76', street: 'RILEY STREET' }));
 check('a suffixed number keeps its letter', splitAddress('111A RILEY STREET DARLINGHURST').number === '111A');

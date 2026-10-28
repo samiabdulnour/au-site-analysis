@@ -8,7 +8,7 @@ RUN apt-get update \
  && curl -fsSL -o /tmp/arial32.exe https://downloads.sourceforge.net/corefonts/arial32.exe \
  && mkdir -p /usr/share/fonts/truetype/msttcorefonts && cabextract -q -L -F '*.ttf' -d /usr/share/fonts/truetype/msttcorefonts /tmp/arial32.exe \
  && rm /tmp/arial32.exe && fc-cache -f \
- && pip3 install --break-system-packages --no-cache-dir ezdxf pyproj duckdb \
+ && pip3 install --break-system-packages --no-cache-dir ezdxf pyproj duckdb pillow numpy \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
