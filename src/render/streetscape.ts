@@ -198,8 +198,9 @@ function faceSvg(b: StreetscapeBundle, face: Face, L: Layout, i: number): { html
   const dates = views.map((fr) => fr.date).filter((d): d is string => !!d).sort();
   const months = dates.length ? (monthName(dates[0]) === monthName(dates[dates.length - 1]) ? monthName(dates[0]) : `${monthName(dates[0])} – ${monthName(dates[dates.length - 1])}`) : 'undated';
   const tiles = `Google Photorealistic 3D Tiles · ${(b.tileCredits ?? []).slice(0, 4).join(', ')}`;
+  const ai = elev && b.ai?.sides.includes(elev.side) ? ` · AI-enhanced with Artlist, ${b.ai.model}` : '';
   const credit = elev
-    ? (elev.draped ? `Street View © Google · ${views.length} panoramas · ${months}, laid on ${tiles}` : tiles)
+    ? (elev.draped ? `Street View © Google · ${views.length} panoramas · ${months}, laid on ${tiles}${ai}` : `${tiles}${ai}`)
     : views.length
       ? `Street View © Google · ${views.length} panoramas · ${months}`
       : (b.framesNote ? 'No Street View frames' : '');
@@ -282,6 +283,7 @@ function drawStreetscape(b: StreetscapeBundle, meta: SheetMeta): string {
   const sources = [
     b.elevations?.some(Boolean) ? `Faces: orthographic elevations of Google’s Photorealistic 3D Tiles${b.elevations.some((e) => e?.draped) ? ', each Google Street View photograph laid on the meshes from where its camera stood, so a facade is the photograph’s and stands at its own depth; the street’s trees, and what no photograph saw clear (a roof, a wall behind a tree from every camera), keep the meshes’ own texture, and the meshes’ outlines, as photogrammetry, are soft' : ' (photogrammetry, so trees and fine detail are approximate)'}. Seen square from the street’s centreline with its near half cut away, and with what stands more than 35 m behind the boundary left out; the ground line is the elevation model’s at the boundary, set on the meshes${b.groundOffsetM !== undefined ? `, which stand ${b.groundOffsetM.toFixed(1)} m above AHD here` : ''}.` : b.frames.length ? 'Frames: Google Street View, each rectified onto its frontage’s boundary as a plane, so the street reads at one true scale; what stands in front of the boundary (trees, cars, awnings) reads larger, a building set back from it smaller, and the seams between frames are the frames’, not the street’s.' : (b.framesNote ?? ''),
     'Frontages and addresses: NSW property and cadastre layers (NSW Spatial Services); a frontage is where a ray square to the street from its centreline first meets a property boundary.',
+    b.ai ? `AI-enhanced and illustrative: ${b.ai.tiles} of ${b.ai.of} tiles of the faces redrawn by ${b.ai.model} through Artlist, each scaled back into its place, so the outlines and the photographed facades stand where they did, but the trees, the seams and what neither the photographs nor the meshes showed are the model’s; the measured drawing is STREETSCAPE.pdf.` : '',
     `Ground: ${b.demSource ?? 'no elevation model'}, at the boundary, indicative to about a metre.`,
     `Retrieved ${b.generatedAt.slice(0, 10)}.`,
   ].filter(Boolean).join(' ');
@@ -312,7 +314,7 @@ ${deckCss()}
 <section class="slide" id="streetscape">
   <div class="abs rh" style="left:${MARGIN}mm;top:10mm;width:${SLIDE_W - 2 * MARGIN}mm"><span>Streetscape</span><span>${esc(b.siteAddress)}</span></div>
   <div class="abs title" style="left:${MARGIN}mm;top:17.5mm;width:200mm">Streetscape</div>
-  <div class="abs subtitle" style="left:${MARGIN}mm;top:26.5mm;width:200mm">${esc(subtitle)}</div>
+  <div class="abs subtitle" style="left:${MARGIN}mm;top:26.5mm;width:200mm">${esc(subtitle)}${b.ai ? ` · <span style="color:${t.site};font-weight:600;letter-spacing:0.08em">AI-ENHANCED · ILLUSTRATIVE</span>` : ''}</div>
   <div class="abs lead" style="left:${SLIDE_W - MARGIN - 150}mm;top:17.5mm;width:150mm">${esc(lead)}</div>
   ${faces.map((f) => f.html).join('\n  ')}
   <svg class="over" width="${SLIDE_W}mm" height="${SLIDE_H}mm" viewBox="0 0 ${SLIDE_W} ${SLIDE_H}">${faces.map((f) => f.svg).join('')}</svg>

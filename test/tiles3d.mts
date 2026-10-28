@@ -3,13 +3,15 @@
  * corridor, the walk down to the meshes fine enough and no finer, the key and
  * the session on every request after the root, the providers each mesh
  * credits, and a project without the API refused with Google's reason and
- * never the key. No network: CI never calls Google.
+ * never the key; then the elevation's ground, and the tiles it is cut into
+ * for an image model. No network: CI never calls Google or Artlist.
  *
  *   npx tsx test/tiles3d.mts
  */
 
 import { ecef, enuFrame, meetsCorridor, fetchStreetTiles, glbCopyright, type Corridor } from '../src/fetch/tiles3d.js';
 import { settleGround } from '../src/render/elevation3d.js';
+import { planAiTiles, AI_ASPECT, AI_OVERLAP_M } from '../src/render/aiTiles.js';
 
 const failures: string[] = [];
 const check = (name: string, ok: boolean, detail = '') => { if (!ok) failures.push(`${name}${detail ? ` — ${detail}` : ''}`); };
@@ -115,6 +117,29 @@ try {
   check('the meshes\' height over the ground model is read past the canopies', !!settled && near(settled.offsetM, 21.9, 0.06), String(settled?.offsetM));
   check('the line is the ground model, lifted', !!settled && settled.ground.length === 60 && settled.ground.every((g, i) => near(g.z, dem[i].z + settled.offsetM, 1e-9)));
   check('too few rays read nothing', settleGround(hits.slice(0, 5), dem) === null);
+}
+
+// the tiles for an image model, on a face 190 m long at 24 px a metre: flat ground, a row of 8 m terraces with an
+// 30 m tower from 40 m to 70 m along, drawn both ways round (the far side reads the street backwards)
+for (const side of [1, -1] as const) {
+  const ppm = 24, zTop = 30 + 34, ground = Array.from({ length: 191 }, (_, i) => ({ s: i - 95, z: 30 }));
+  const tops = Array.from({ length: 190 }, (_, i) => ({ s: i - 94.5, z: 30 + (i - 94.5 >= 40 && i - 94.5 < 70 ? 30 : 8) }));
+  const e = { side, ppm, zTop, ground, tops, width: 190 * ppm, height: (zTop - 26) * ppm, sAtLeft: side > 0 ? -95 : 95, sAtRight: side > 0 ? 95 : -95 };
+  const tiles = planAiTiles(e);
+  const x = (s: number) => ((s - e.sAtLeft) / (e.sAtRight - e.sAtLeft)) * e.width, y = (z: number) => (zTop - z) * ppm;
+  const name = side > 0 ? 'the near side' : 'the far side';
+  check(`${name}: the tiles run from end to end`, tiles[0].x0 === 0 && tiles[tiles.length - 1].x1 === e.width, JSON.stringify(tiles));
+  check(`${name}: each tile overlaps the one before by at least the fade`, tiles.every((t, i) => !i || t.x0 <= tiles[i - 1].x1 - AI_OVERLAP_M * ppm));
+  check(`${name}: each tile is the model's shape`, tiles.every((t) => Math.abs((t.x1 - t.x0) - (t.y1 - t.y0) * AI_ASPECT) <= 1));
+  // the roofs of all but its highest 2% of metres, which may be a mast, or a tower's edge that the next tile holds
+  check(`${name}: each tile holds the ground and the roofs of its run`, tiles.every((t) => {
+    const run = tops.filter((p) => x(p.s) >= t.x0 && x(p.s) <= t.x1);
+    return t.y1 >= y(30) && run.filter((p) => y(p.z) < t.y0).length <= run.length - 1 - Math.floor((run.length - 1) * 0.98);
+  }), JSON.stringify(tiles));
+  check(`${name}: no tile is all but hidden by its neighbours`, tiles.every((t, i) => i === 0 || i === tiles.length - 1 || tiles[i + 1].x0 - tiles[i - 1].x1 >= AI_OVERLAP_M * ppm / 2), JSON.stringify(tiles));
+  const tall = Math.max(...tiles.map((t) => t.y1 - t.y0)), low = tiles.filter((t) => tops.every((p) => x(p.s) < t.x0 || x(p.s) > t.x1 || p.z < 50));
+  check(`${name}: the terraces get tiles of their own, under half the tower's height`, low.length >= 2 && low.every((t) => t.y1 - t.y0 < tall / 2), JSON.stringify(tiles));
+  check(`${name}: tiles are named for their side`, tiles.every((t, i) => t.file === `ai/${side > 0 ? 'l' : 'r'}_${i + 1}.png`));
 }
 
 if (failures.length) {

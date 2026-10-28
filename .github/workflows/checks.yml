@@ -163,7 +163,9 @@ jobs:
       # The streetscape's 3D tiles on a made-up tileset with the Map Tiles API
       # stood in for: the east-north-up frame, the boxes that meet the street,
       # the walk to the meshes fine enough and no finer, the key and session on
-      # every request, and a project without the API refused without the key.
+      # every request, and a project without the API refused without the key;
+      # the elevation's ground, and its tiles for an image model fitting the
+      # street they hold, overlapping, in the model's shape.
       - name: the 3D tiles walk takes the street's meshes and no others
         run: npx tsx test/tiles3d.mts
 

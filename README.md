@@ -1588,6 +1588,41 @@ Outputs: `STREETSCAPE.pdf` and `streetscape.png`, the pictures and
 `data/streetscape_bundle.json` beside them. The streetscape is not yet one of
 the web page's drawings.
 
+**Through an image model.** The 3D faces can go through an image model that
+edits a picture in place (Artlist's Nano Banana Pro, at 21:9 and 4K), which
+redraws the meshes' lumps as trees and their melted roofs as roofs, and cleans
+the seams between photographs, as an illustrative sheet beside the measured
+one. Artlist is reached through its connector in a Claude session (or its own
+app), not from this server, so it is three steps:
+
+```bash
+npx tsx scripts/streetscape-ai.ts export out/<slug>
+```
+
+cuts each face into tiles of the model's shape, each as tall as the street it
+holds stands (its ground to just over its roofs) and overlapping its neighbour
+by 8 m, into `data/ai/`, with `manifest.json` placing them and the prompt to
+ask. Each tile goes through the model, and its answer is saved beside it as
+`<tile>.ai.png`. Then
+
+```bash
+npx tsx scripts/streetscape-ai.ts import out/<slug> --model "Nano Banana Pro"
+```
+
+checks each answer against its tile, lays it back and prints
+`STREETSCAPE_AI.pdf`, labelled AI-enhanced and illustrative. An answer that
+built on more than a quarter of its tile's sky has redrawn the street rather
+than cleaned it (given a strip of street under a band of sky, the model
+repeated the street in the sky), so it is refused, named, and the face keeps
+its own picture there until it is asked again. One that kept the street is put
+back where it slipped to (the shift that best lays its edges on the tile's: 13
+px, half a metre, for one Riley Street tile), scaled into its box so a metre is
+still a metre, and crossfaded with its neighbour over their overlap. Given the
+photographs on the meshes, the model keeps the real facades and redraws the
+trees and what no photograph saw; given the meshes alone (`--source mesh`), it
+invents the facades. Exporting again moves the earlier tiles, and any answers,
+to `data/ai-<when>/`.
+
 ## How it works
 
 ```
