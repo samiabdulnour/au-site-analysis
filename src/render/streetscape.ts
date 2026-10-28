@@ -1,12 +1,14 @@
 // The streetscape sheet: the site's street as two elevations on one A3
 // landscape page, the site's face above and the face across the road below,
 // each drawn as a viewer standing in the street sees it (so the two run
-// opposite ways). Every Street View frame is rectified onto its face's
-// boundary plane in the browser, by a CSS matrix3d that is the frame's
-// homography (src/fetch/streetscape.ts), and clipped to its strip and to the
-// footpath below the ground line; the frontages are dashed off under the
-// ground and named by their addresses, the roads that come in are named in
-// their gaps, and the site is marked in the deck's red.
+// opposite ways). A face is its orthographic elevation from Google's 3D tiles
+// (src/render/elevation3d.ts) on a band of sky over a band of ground; without
+// the tiles, its Street View frames, each rectified onto the face's boundary
+// plane in the browser by a CSS matrix3d that is the frame's homography
+// (src/fetch/streetscape.ts) and clipped to its strip and to the footpath
+// below the ground line. Either way the frontages are dashed off under the
+// ground and named by their addresses, the roads that come in are named
+// upright in their gaps, and the site is marked in the deck's red.
 
 import type { StreetscapeBundle } from '../pipeline.js';
 import { planeToImage, frameTop, mul3, inv3, BELOW_GROUND_M, FRAME_PX, type Face, type ScapeFrame } from '../fetch/streetscape.js';
@@ -14,6 +16,7 @@ import { deckCss, SLIDE_W, SLIDE_H } from './slides.js';
 import { tpl, withTemplate, DECK_TEMPLATE } from './template.js';
 import { shortStreetName, type SheetMeta } from './sheet.js';
 import { esc } from './chrome.js';
+import { SCAPE_SKY, type Elevation } from './elevation3d.js';
 
 const MARGIN = 15;
 const BAND_TOP = 44;
@@ -21,6 +24,11 @@ const BAND_TOP = 44;
 const SKY_M = 30;
 /** Never lower than this over the highest ground, whatever the frames reach: four storeys. */
 const MIN_SKY_M = 13;
+/** An elevation's band runs to its tallest building (the 98th percentile of its metres' tops), at most this over the ground. */
+const SKY_3D_M = 60;
+/** The band of ground under an elevation, metres. */
+const GROUND_BAND_M = 2.4;
+const GROUND_FILL = '#5f6466';
 const LABEL_ROWS = 3;
 const ROW_MM = 4.6;
 /** From the foot of a band to its labels' first row, the rows, and the caption under them with its scale bar. */
@@ -45,7 +53,15 @@ interface Layout { scale: number; k: number; x0: number; bands: { top: number; z
 /** The largest round scale at which the window fits the sheet's width and both bands its height. */
 export function layoutFaces(b: StreetscapeBundle): Layout {
   const p = b.plan, len = p.s1 - p.s0, width = SLIDE_W - 2 * MARGIN;
-  const wanted = p.faces.map((f) => {
+  const wanted = p.faces.map((f, i) => {
+    const e = b.elevations?.[i];
+    if (e) {
+      // as high as the face's buildings stand, and a little sky over them
+      const zs = e.ground.map((g) => g.z), lo = Math.min(...zs), hi = Math.max(...zs);
+      const tops = e.tops.map((x) => x.z).sort((x, y) => x - y);
+      const reach = (tops[Math.floor(tops.length * 0.98)] ?? hi + SKY_M) + 2;
+      return { zTop: Math.max(hi + MIN_SKY_M, Math.min(hi + SKY_3D_M, reach)), zMin: hi + MIN_SKY_M, zBot: lo - GROUND_BAND_M };
+    }
     const zs = f.ground.map((g) => g.z);
     const lo = zs.length ? Math.min(...zs) : 0, hi = zs.length ? Math.max(...zs) : 0;
     // the frames are cut along one line, as high as three in four of the highest of them reach, so the face's top is straight
@@ -87,24 +103,39 @@ function faceSvg(b: StreetscapeBundle, face: Face, L: Layout, i: number): { html
   const p = b.plan, band = L.bands[i], k = L.k;
   const X = (s: number) => (face.sRightward ? L.x0 + (s - p.s0) * k : L.x0 + (p.s1 - s) * k);
   const Y = (z: number) => band.top + (band.zTop - z) * k;
+  const elev = b.elevations?.[i] ?? null;
+  // the ground: the elevation's own, found in its meshes (ellipsoidal heights, as its picture is), else the elevation model's
+  const groundLine = elev ? elev.ground : face.ground;
   const groundAt = (s: number) => {
-    const g = face.ground;
+    const g = groundLine;
     if (!g.length) return band.zBot + 0.6 + BELOW_GROUND_M;
-    const j = Math.max(0, Math.min(g.length - 1, Math.round(s - g[0].s)));
+    let j = 0;
+    for (let q = 1; q < g.length; q++) if (Math.abs(g[q].s - s) < Math.abs(g[j].s - s)) j = q;
     return g[j].z;
   };
-  const frames = b.frames.filter((fr) => fr.side === face.side);
+  const frames = elev ? [] : b.frames.filter((fr) => fr.side === face.side);
   const views = frames.filter((fr) => fr.tier === 0);
 
   // the frames, each its homography from the picture to the sheet, clipped to its strip and the footpath
   // the upper frames first, so the lower ones, which hold the street, lie over them where the two overlap
-  const slices = [...frames].sort((x, y) => y.tier - x.tier).map((fr) => sliceHtml(b, face, fr, X, band.top, band.zTop, groundAt, k)).join('');
+  const slices = elev ? elevationHtml(elev, X, Y, band, k) : [...frames].sort((x, y) => y.tier - x.tier).map((fr) => sliceHtml(b, face, fr, X, band.top, band.zTop, groundAt, k)).join('');
 
   const svg: string[] = [];
-  // the ground at the boundary
-  const ground = face.ground.map((g) => `${f2(X(g.s))},${f2(Y(g.z))}`).join(' ');
+  // the ground at the boundary; under an elevation, a band of ground below it
+  const ground = groundLine.map((g) => `${f2(X(g.s))},${f2(Y(g.z))}`).join(' ');
+  if (elev && ground) {
+    const xs = groundLine.map((g) => X(g.s));
+    svg.push(`<polygon points="${ground} ${f2(xs[xs.length - 1])},${f2(band.top + band.h)} ${f2(xs[0])},${f2(band.top + band.h)}" fill="${GROUND_FILL}"/>`);
+  }
   if (ground) svg.push(`<polyline points="${ground}" fill="none" stroke="${t.ink}" stroke-width="0.3" stroke-linejoin="round"/>`);
-  const footY = (s: number) => Y(groundAt(s) - BELOW_GROUND_M);
+  const footY = (s: number) => (elev ? band.top + band.h : Y(groundAt(s) - BELOW_GROUND_M));
+
+  // the roads that come in, named upright in their gaps over the ground, as the street's own signs would be
+  for (const g of face.gaps) {
+    if (!g.road || Math.abs(X(g.s1) - X(g.s0)) < 3) continue;
+    const x = (X(g.s0) + X(g.s1)) / 2 + 0.9, y = Y(Math.max(groundAt(g.s0), groundAt(g.s1))) - 2.5;
+    svg.push(`<text x="${f2(x)}" y="${f2(y)}" transform="rotate(-90 ${f2(x)} ${f2(y)})" class="rd">${esc(titleCase(g.road))}</text>`);
+  }
   const labelTop = band.top + band.h + LABEL_GAP;
   const rows = new Rows();
   const labels: string[] = [];
@@ -118,7 +149,6 @@ function faceSvg(b: StreetscapeBundle, face: Face, L: Layout, i: number): { html
   for (const g of face.gaps) { bounds.add(Math.round(g.s0 * 2) / 2); bounds.add(Math.round(g.s1 * 2) / 2); }
   const items = [
     ...face.frontages.map((fr) => ({ s0: fr.s0, s1: fr.s1, lines: fr.number ? [fr.number, `${shortStreetName(fr.street)}.`] : [], site: fr.site, road: false })),
-    ...face.gaps.filter((g) => g.road).map((g) => ({ s0: g.s0, s1: g.s1, lines: [shortStreetName(g.road!)], site: false, road: true })),
   ].sort((a, c) => Math.min(X(a.s0), X(a.s1)) - Math.min(X(c.s0), X(c.s1)));
   const leaderTo = new Map<number, number>();
   for (const it of items) {
@@ -164,9 +194,11 @@ function faceSvg(b: StreetscapeBundle, face: Face, L: Layout, i: number): { html
   // the face's caption, its imagery's credit and the scale bar
   const capY = labelTop + LABELS_H;
   const dates = views.map((fr) => fr.date).filter((d): d is string => !!d).sort();
-  const credit = views.length
-    ? `Street View © Google · ${views.length} panoramas · ${dates.length ? (monthName(dates[0]) === monthName(dates[dates.length - 1]) ? monthName(dates[0]) : `${monthName(dates[0])} – ${monthName(dates[dates.length - 1])}`) : 'undated'}`
-    : (b.framesNote ? 'No Street View frames' : '');
+  const credit = elev
+    ? `Google Photorealistic 3D Tiles · ${(b.tileCredits ?? []).slice(0, 4).join(', ')}`
+    : views.length
+      ? `Street View © Google · ${views.length} panoramas · ${dates.length ? (monthName(dates[0]) === monthName(dates[dates.length - 1]) ? monthName(dates[0]) : `${monthName(dates[0])} – ${monthName(dates[dates.length - 1])}`) : 'undated'}`
+      : (b.framesNote ? 'No Street View frames' : '');
   // a face is the side of the street the viewer turns to: its name and the way the viewer looks are one
   const title = `${titleCase(p.street)}, the ${bearingWord(face.facing)} side, looking ${bearingWord(face.facing)}${face.hasSite ? ' · the site’s side' : ''}`;
   const bar = scaleBar(L, SLIDE_W - MARGIN, capY + 2.4);
@@ -174,6 +206,12 @@ function faceSvg(b: StreetscapeBundle, face: Face, L: Layout, i: number): { html
     html: `${slices}<div class="abs cap" style="left:${MARGIN}mm;top:${f2(capY)}mm;width:${SLIDE_W - 2 * MARGIN - 70}mm"><span class="ct">${esc(title)}</span><span class="cr">${esc(credit)}</span></div>`,
     svg: `${svg.join('')}${labels.join('')}${bar}`,
   };
+}
+
+/** An elevation in its band: the picture placed by what it spans, the band cutting it to the face's sky and ground. */
+function elevationHtml(e: Elevation, X: (s: number) => number, Y: (z: number) => number, band: Layout['bands'][number], k: number): string {
+  const xa = Math.min(X(e.sAtLeft), X(e.sAtRight)), w = Math.abs(X(e.sAtRight) - X(e.sAtLeft));
+  return `<div class="abs elev" style="left:${f2(xa)}mm;top:${f2(band.top)}mm;width:${f2(w)}mm;height:${f2(band.h)}mm"><img src="data/${esc(e.file)}" style="left:0;top:${f2(Y(e.zTop) - band.top)}mm;width:${f2(w)}mm;height:${f2((e.zTop - e.zBottom) * k)}mm" alt=""></div>`;
 }
 
 function sliceHtml(b: StreetscapeBundle, face: Face, fr: ScapeFrame, X: (s: number) => number, top: number, zTop: number, groundAt: (s: number) => number, k: number): string {
@@ -238,7 +276,7 @@ function drawStreetscape(b: StreetscapeBundle, meta: SheetMeta): string {
   const faces = b.plan.faces.map((f, i) => faceSvg(b, f, L, i));
   const lead = streetscapeSentences(b).join(' ');
   const sources = [
-    b.frames.length ? 'Frames: Google Street View, each rectified onto its frontage’s boundary as a plane, so the street reads at one true scale; what stands in front of the boundary (trees, cars, awnings) reads larger, a building set back from it smaller, and the seams between frames are the frames’, not the street’s.' : (b.framesNote ?? ''),
+    b.elevations?.some(Boolean) ? 'Faces: orthographic elevations of Google’s Photorealistic 3D Tiles (photogrammetry, so trees and fine detail are approximate), seen square from the street’s centreline with its near half cut away, and with what stands more than 35 m behind the boundary left out; the ground is the meshes’ own, under the footpath at the boundary.' : b.frames.length ? 'Frames: Google Street View, each rectified onto its frontage’s boundary as a plane, so the street reads at one true scale; what stands in front of the boundary (trees, cars, awnings) reads larger, a building set back from it smaller, and the seams between frames are the frames’, not the street’s.' : (b.framesNote ?? ''),
     'Frontages and addresses: NSW property and cadastre layers (NSW Spatial Services); a frontage is where a ray square to the street from its centreline first meets a property boundary.',
     `Ground: ${b.demSource ?? 'no elevation model'}, at the boundary, indicative to about a metre.`,
     `Retrieved ${b.generatedAt.slice(0, 10)}.`,
@@ -251,6 +289,9 @@ function drawStreetscape(b: StreetscapeBundle, meta: SheetMeta): string {
 ${deckCss()}
   .slice { overflow: hidden; }
   .slice img { position: absolute; left: 0; top: 0; width: ${FRAME_PX}px; height: ${FRAME_PX}px; transform-origin: 0 0; max-width: none; }
+  .elev { overflow: hidden; background: ${SCAPE_SKY}; }
+  .elev img { position: absolute; max-width: none; }
+  .rd { font-size: 2.3px; font-weight: 500; letter-spacing: 0.02em; fill: #2a2e2c; }
   svg.over { position: absolute; left: 0; top: 0; overflow: visible; }
   .lb { font-size: ${LABEL_MM}px; font-weight: 600; letter-spacing: 0.04em; fill: #2a2e2c; }
   .lb.road { fill: #6a7572; font-weight: 500; letter-spacing: 0.08em; }

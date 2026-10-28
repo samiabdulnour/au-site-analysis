@@ -160,6 +160,13 @@ jobs:
       - name: the streetscape finds the frontages and rectifies a frame onto them
         run: npx tsx test/streetscape.mts
 
+      # The streetscape's 3D tiles on a made-up tileset with the Map Tiles API
+      # stood in for: the east-north-up frame, the boxes that meet the street,
+      # the walk to the meshes fine enough and no finer, the key and session on
+      # every request, and a project without the API refused without the key.
+      - name: the 3D tiles walk takes the street's meshes and no others
+        run: npx tsx test/tiles3d.mts
+
       # Slide 12's open frames with KartaView stood in for: a frame gone from
       # its file store drops out with a note and the rest close up, while the
       # listing not answering is a WARN, which the samples workflow refuses

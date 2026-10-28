@@ -37,6 +37,8 @@ import { metadataService, signUrl, type SvMeta } from './streetView.js';
 
 type P = { x: number; y: number };
 
+export const WGS84_A = 6_378_137, WGS84_E2 = 0.006_694_379_990_14;
+
 /** How far out from the centreline a ray looks for a boundary. */
 const REACH_M = 40;
 /** A boundary this much further out than its side's building line is down a cross street, not on the frontage. */
@@ -120,9 +122,14 @@ export interface ScapeFrame {
   tier: 0 | 1;
 }
 
-/** A local metre frame about a point, both ways. */
+/**
+ * A local metre frame about a point, both ways: east and north on the WGS84 ellipsoid's own radii there, so it
+ * agrees with the 3D tiles' east-north-up frame to millimetres across the window.
+ */
 export function localFrame(o: LonLat) {
-  const kx = 111_320 * Math.cos((o.lat * Math.PI) / 180), ky = 110_574;
+  const phi = (o.lat * Math.PI) / 180, w = 1 - WGS84_E2 * Math.sin(phi) ** 2;
+  const kx = ((Math.PI / 180) * WGS84_A * Math.cos(phi)) / Math.sqrt(w);
+  const ky = ((Math.PI / 180) * WGS84_A * (1 - WGS84_E2)) / w ** 1.5;
   return {
     toXY: (p: LonLat): P => ({ x: (p.lon - o.lon) * kx, y: (p.lat - o.lat) * ky }),
     toLL: (p: P): LonLat => ({ lon: o.lon + p.x / kx, lat: o.lat + p.y / ky }),

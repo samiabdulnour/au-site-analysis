@@ -1515,41 +1515,52 @@ height in storeys, street frontage heights, active frontages, setbacks.
 `--type streetscape` draws STREETSCAPE: the site's street as two elevations on
 one A3 landscape sheet, the site's side above and the side across the road
 below, each as a viewer standing in the street sees it, so the two run
-opposite ways. Each is a run of Google Street View frames laid edge to edge at
-one true scale (1:500 for the default 190 m) over the ground, every property's
-frontage dashed off under it and named by its address, the roads and lanes
-that come in named in their gaps, and the site marked in red between dashed
-lines, with the stretch across the road from it marked too.
+opposite ways, at one true scale (1:500 for the default 190 m,
+`--half-length 95` either way from the site). Under each face every
+property's frontage is dashed off and named by its address, the roads and
+lanes that come in are named upright in their gaps, and the site is marked in
+red between dashed lines, with the stretch across the road from it marked too.
 
 The street is the address's own, its centreline from the NSW Transport
 Theme, and `s` is the distance along it, zero opposite the site. From the
 centreline every metre a ray goes out square to each side; the first boundary
 of the NSW property layer it meets is that metre's frontage, with the
 property's own address (a corner lot keeps its other street's), and a ray that
-meets nothing near the side's building line is a gap. The ground is the 5 m
-elevation model at the boundary.
+meets nothing near the side's building line is a gap.
 
-A panorama is found every 7 m along the centreline by the free metadata
-service (Google's own, in this street, and not over a road the Transport Theme
-puts in a tunnel: the Cross City Tunnel's panoramas under Riley Street are
-filed as outdoor), and turned square to either side twice: once tipped so
-its foot takes in the footpath, once tipped up as far as a vertical plane's
-picture holds, for the storeys over it. A frame is a pinhole picture and a
-frontage near enough a plane, so the sheet rectifies each frame onto its
-side's boundary by its homography, a CSS `matrix3d` the browser prints: a
-metre along the street is the same width in every frame, and the frames meet
-where the street does. Each keeps the strip from halfway to its neighbours
-either side, cut along the ground a little below the boundary and along one
-top line, as high as most of the frames reach. What stands in front of the
-boundary (trees, cars, awnings) reads larger and a building set back from it
-smaller, as in any montage, and the fine print says so. Without
-`GOOGLE_MAPS_API_KEY` the faces are drawn as their ground and frontages alone.
-At 70-76 Riley Street Darlinghurst in October 2026: 18 panoramas from March
-2021 to October 2024, one more in the tunnel's portal left out, and about 60
-images, well inside the free 10,000 a month. Outputs: `STREETSCAPE.pdf` and
-`streetscape.png`, the frames and `data/streetscape_bundle.json` beside them.
+**The faces from Google's Photorealistic 3D Tiles** (the Map Tiles API, on the
+same `GOOGLE_MAPS_API_KEY`, which must have that API enabled). The tileset is
+walked from its root, opening only the boxes that meet the street's corridor
+and refining each to the finest mesh with under 0.6 m of error
+(`src/fetch/tiles3d.ts`); the meshes stay in memory, as Google's terms ask,
+and one root request is the session Google bills, 1,000 a month free. In a
+headless Chromium with WebGL in software, three.js carries them from
+Earth-centred coordinates into the site's east-north-up frame in double
+precision and shows them unlit, as photographed (`src/render/elevation3d.ts`).
+For each face the ground is found first by rays cast down on the footpath at
+the boundary, the lowest thing each meets; then an orthographic camera stands
+on the centreline square to the face, its near plane on the centreline, so the
+other side's buildings and trees are cut away, and its far plane 35 m behind
+the boundary, so the next street's towers are left out. The picture is 24
+pixels a metre (300 dpi at 1:500), on a pale sky, over a band of ground, and
+runs as high as the face's tallest buildings. The meshes are photogrammetry:
+trees are lumps and fine detail is soft, but nothing leans and everything
+stands where it stands.
 
-The streetscape is not yet one of the web page's drawings.
+**Without the Map Tiles API**, the faces are Google Street View frames: a
+panorama every 7 m along the centreline (not one over a road the Transport
+Theme puts in a tunnel: the Cross City Tunnel's are filed as outdoor), turned
+square to either side, asked for low for the footpath and high for the storeys
+over it, and each rectified onto its side's boundary by its homography, a CSS
+`matrix3d`, so the frames meet where the street does. What stands in front of
+the boundary reads larger and a building set back from it smaller, as in any
+montage. `STREETSCAPE_SOURCE=streetview` asks for the frames even where the
+tiles are to be had; without a key, the faces are their ground and frontages
+alone.
+
+Outputs: `STREETSCAPE.pdf` and `streetscape.png`, the pictures and
+`data/streetscape_bundle.json` beside them. The streetscape is not yet one of
+the web page's drawings.
 
 ## How it works
 

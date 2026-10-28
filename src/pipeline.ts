@@ -7,7 +7,9 @@ import { fetchSiteLots, fetchRailCorridors, fetchZoning, fetchHeightOfBuilding, 
 import { fetchRoads, fetchRailLines, fetchTrainStations, fetchParkPoints, fetchComplexPoints, fetchNamedAreas, fetchAllLots, fetchPropertiesAt, fetchProperties, type TopoRoad, type NamedPoint, type RailLines, type NamedArea } from './fetch/nswTopo.js';
 import { fetchAerial, fetchVegetationMask, type AerialResult } from './fetch/imagery.js';
 import { addressStreet, fetchStreetSeries } from './fetch/streetView.js';
-import { planStreetscape, planPoint, fetchStreetscapeFrames, type StreetscapePlan, type ScapeFrame } from './fetch/streetscape.js';
+import { planStreetscape, planPoint, fetchStreetscapeFrames, type StreetscapePlan, type ScapeFrame, type Face } from './fetch/streetscape.js';
+import { fetchStreetTiles, enuFrame } from './fetch/tiles3d.js';
+import { renderElevations, SCAPE_SKY, type Elevation, type FaceView } from './render/elevation3d.js';
 import { fetchBusData, type BusData } from './fetch/osm.js';
 import { fetchBusStopsTfnsw } from './fetch/tfnsw.js';
 import { fetchIsochrones, type Isochrone } from './fetch/isochrones.js';
@@ -1094,7 +1096,11 @@ export interface StreetscapeBundle {
   siteAddress: string;
   generatedAt: string;
   plan: StreetscapePlan;
-  /** The Street View frames, their pictures in `data/` beside the drawing; none without GOOGLE_MAPS_API_KEY. */
+  /** Each face's orthographic elevation from Google's 3D tiles, in the plan's face order (null where none was drawn); absent when the tiles were not to be had. */
+  elevations?: (Elevation | null)[];
+  /** The providers the 3D tiles credit, most meshes first. */
+  tileCredits?: string[];
+  /** Without the 3D tiles: the Street View frames, their pictures in `data/` beside the drawing; none without GOOGLE_MAPS_API_KEY. */
   frames: ScapeFrame[];
   /** Why there are no frames, when there are none. */
   framesNote?: string;
@@ -1154,17 +1160,61 @@ export async function runStreetscapePipeline(address: string, opts: { outDir: st
 
   const gkey = process.env.GOOGLE_MAPS_API_KEY?.trim();
   let frames: ScapeFrame[] = [], framesNote: string | undefined;
-  if (!gkey) framesNote = 'Street View frames need GOOGLE_MAPS_API_KEY; the faces are drawn as their ground and frontages alone.';
+  let elevations: (Elevation | null)[] | undefined, tileCredits: string[] | undefined;
+  // the 3D tiles first: true elevations; a key without the Map Tiles API falls back to the Street View frames
+  if (gkey && process.env.STREETSCAPE_SOURCE !== 'streetview') {
+    try {
+      const sides = plan.faces.map((f) => f.side * (f.offsetM + SCAPE_DEPTH_M + 5));
+      const at0: [number, number] = [plan.at0.x, plan.at0.y], axis: [number, number] = [plan.axis.x, plan.axis.y];
+      const got = await fetchStreetTiles(gkey, centre, { at0, axis, s: [plan.s0 - 5, plan.s1 + 5], d: [Math.min(0, ...sides), Math.max(0, ...sides)], z: [-100, 700] }, SCAPE_TILE_ERROR_M, log);
+      log(`  3D tiles: ${(got.tiles.reduce((t, x) => t + x.bytes.length, 0) / 1e6).toFixed(1)} MB, finest error ${got.finestErrorM.toFixed(2)} m; drawing the faces…`);
+      elevations = await renderElevations(got.tiles, enuFrame(centre).matrix, plan.faces.map((f) => faceView(plan, f)), dataDir, { ppm: SCAPE_PPM, background: SCAPE_SKY, log });
+      tileCredits = got.credits;
+      if (!elevations.some(Boolean)) { elevations = undefined; log('  3D tiles: no face found its ground in the meshes'); }
+    } catch (e: any) {
+      log(`  3D tiles not drawn (${e?.message ?? e}); Street View frames instead`);
+      elevations = undefined;
+    }
+  }
+  if (elevations) { /* the faces are drawn */ }
+  else if (!gkey) framesNote = 'Street View frames need GOOGLE_MAPS_API_KEY; the faces are drawn as their ground and frontages alone.';
   else if (!dem) framesNote = 'The elevation model did not answer, so the frames could not be set on the ground.';
   else frames = await fetchStreetscapeFrames(plan, groundAt, dataDir, gkey, process.env.GOOGLE_MAPS_SIGNING_SECRET?.trim() || undefined, log, roads.filter((x) => x.tunnel).map((x) => x.coords))
     .catch((e: any) => { log(`  WARN streetscape frames failed: ${e?.message ?? e}`); return []; });
 
   const bundle: StreetscapeBundle = {
     address, siteAddress: geo.matchedAddresses[0] ?? address, generatedAt: new Date().toISOString(),
-    plan, frames, framesNote, demSource: dem?.source, warnings,
+    plan, elevations, tileCredits, frames, framesNote, demSource: dem?.source, warnings,
   };
   await writeFile(join(dataDir, 'streetscape_bundle.json'), JSON.stringify(bundle));
   return bundle;
 }
 
 const bearingWord = (deg: number) => ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'][Math.round(deg / 45) % 8];
+
+/** How far behind its boundary a face's elevation sees: the street's own buildings, not the next street's. */
+const SCAPE_DEPTH_M = 35;
+/** The coarsest mesh the elevations take, metres of error: Google's finest over a city street. */
+const SCAPE_TILE_ERROR_M = 0.6;
+/** Pixels a metre: 300 dpi at 1:500. */
+const SCAPE_PPM = 24;
+
+/** A face's camera: on the centreline opposite the window's middle, square to the face, the ground sought on its footpath. */
+function faceView(plan: StreetscapePlan, face: Face): FaceView {
+  const left = { x: -plan.axis.y, y: plan.axis.x };
+  const at = (s: number, d: number): [number, number] => [plan.at0.x + plan.axis.x * s + left.x * d, plan.at0.y + plan.axis.y * s + left.y * d];
+  const ds = plan.centreline.map((c) => c.d).sort((a, b) => a - b);
+  const clip = ds[Math.floor(ds.length / 2)] ?? 0;
+  const sMid = (plan.s0 + plan.s1) / 2;
+  const rays: FaceView['rays'] = [];
+  for (let s = plan.s0; s <= plan.s1; s++) {
+    const fr = face.frontages.find((x) => s >= x.s0 && s <= x.s1);
+    const [x, y] = at(s, face.side * Math.max(1, (fr?.offsetM ?? face.offsetM) - 1.5));
+    rays.push({ s, x, y });
+  }
+  return {
+    side: face.side, sMin: plan.s0, sMax: plan.s1,
+    camera: at(sMid, clip), dir: [left.x * face.side, left.y * face.side],
+    far: face.offsetM - face.side * clip + SCAPE_DEPTH_M, rays,
+  };
+}
