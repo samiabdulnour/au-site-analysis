@@ -11,6 +11,7 @@ import { decodePng, encodeRgbaPng } from '../lib/png.js';
 import { AERIAL_GREEN_FILL, VEG_1750_MAX, VEG_1750_OTHER, veg1750Fills, PATTERN_SCALE, PATTERN_WEIGHT, type Fill } from './atlasKit.js';
 import { mercatorScaleFactor, mercatorToLonLat, type Extent } from '../lib/geo.js';
 import { hillshadeGrey } from './terrainMap.js';
+import { panelExtent } from './minimap.js';
 import type { DemGrid } from '../fetch/terrain.js';
 
 const UP = 3;
@@ -112,7 +113,36 @@ function demShade(dem: DemGrid, extent: Extent): (u: number, v: number) => numbe
   };
 }
 
-/** The painted pictures the slides place: the aerial's green on slide 10, the pre-1750 communities on slide 15 with the land's shape in them. Kept on the bundle. */
+/** The masks are read at this step (pixels) for the label spots: a community's edge to the metre is not the question, its room is. */
+const SPOT_STEP = 4;
+
+/**
+ * Where a community's name can go: the cell of its mask, inside `window`, farthest from the community's edge (a
+ * chamfer distance over the mask at a step, the window's edge counting as an edge), and that distance in metres.
+ * Null when the community is off the window.
+ */
+function labelSpot(m: { width: number; height: number; data: Uint8Array }, extent: Extent, window: Extent, metresPerUnit: number): { x: number; y: number; clearM: number } | null {
+  const D = SPOT_STEP, w = Math.ceil(m.width / D), h = Math.ceil(m.height / D);
+  const ux = (extent.xmax - extent.xmin) / m.width, uy = (extent.ymax - extent.ymin) / m.height;
+  const at = (c: number, r: number) => (c < 0 || r < 0 || c >= w || r >= h ? 0 : d[r * w + c]);
+  const d = new Float64Array(w * h);
+  for (let r = 0; r < h; r++) for (let c = 0; c < w; c++) {
+    const px = Math.min(m.width - 1, c * D + (D >> 1)), py = Math.min(m.height - 1, r * D + (D >> 1));
+    const x = extent.xmin + (px + 0.5) * ux, y = extent.ymax - (py + 0.5) * uy;
+    const inWindow = x >= window.xmin && x <= window.xmax && y >= window.ymin && y <= window.ymax;
+    d[r * w + c] = inWindow && m.data[(py * m.width + px) * 4] >= 128 ? Infinity : 0;
+  }
+  // two passes of the 3-4 chamfer: the distance to the nearest cell outside, in thirds of a cell
+  for (let r = 0; r < h; r++) for (let c = 0; c < w; c++) if (d[r * w + c]) d[r * w + c] = Math.min(d[r * w + c], at(c - 1, r) + 3, at(c, r - 1) + 3, at(c - 1, r - 1) + 4, at(c + 1, r - 1) + 4);
+  for (let r = h - 1; r >= 0; r--) for (let c = w - 1; c >= 0; c--) if (d[r * w + c]) d[r * w + c] = Math.min(d[r * w + c], at(c + 1, r) + 3, at(c, r + 1) + 3, at(c + 1, r + 1) + 4, at(c - 1, r + 1) + 4);
+  let best = 0, bi = -1;
+  for (let i = 0; i < d.length; i++) if (d[i] > best) { best = d[i]; bi = i; }
+  if (bi < 0) return null;
+  const c = bi % w, r = Math.floor(bi / w);
+  return { x: extent.xmin + (c * D + D / 2) * ux, y: extent.ymax - (r * D + D / 2) * uy, clearM: (best / 3) * D * ux * metresPerUnit };
+}
+
+/** The painted pictures the slides place: the aerial's green on slide 10, the pre-1750 communities on slide 15 with the land's shape in them, and where each community's name can go. Kept on the bundle. */
 export async function prepareRasters(sb: any, dataDir: string, bleedScale: number, countryScale: number): Promise<void> {
   const k = mercatorScaleFactor(mercatorToLonLat(sb.geocode.center).lat);
   const mmAcross = (e: { xmin: number; xmax: number }, scale: number) => (((e.xmax - e.xmin) / k) * 1000) / scale;
@@ -129,5 +159,11 @@ export async function prepareRasters(sb: any, dataDir: string, bleedScale: numbe
     const r = await paintMasks(dataDir, classes.map((c: { mask: string }, i: number) => ({ mask: c.mask, fill: fills[i] })), mmAcross(veg.image.extent, countryScale) / veg.image.pxWidth, 'veg1750_paint.png',
       { ground: VEG_1750_OTHER, shade: dem ? demShade(dem, veg.image.extent) : undefined }).catch(() => null);
     veg.paint = r?.file;
+    // where each name goes: the page's window, or the whole picture for a bundle kept before the page had its own panel
+    const window: Extent = sb.countryPanel ? panelExtent({ ...sb.countryPanel, scale: countryScale }) : veg.image.extent;
+    for (const c of classes as { mask: string; label?: { x: number; y: number; clearM: number } }[]) {
+      const m = await readFile(join(dataDir, c.mask)).then((buf) => decodePng(new Uint8Array(buf))).catch(() => null);
+      c.label = m ? labelSpot(m, veg.image.extent, window, 1 / k) ?? undefined : undefined;
+    }
   }
 }

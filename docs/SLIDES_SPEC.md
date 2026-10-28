@@ -974,9 +974,11 @@ blend to get wrong (`src/render/paintMasks.ts`). Over it the harbour, the
 sea and the lakes in blue (a pond or a pool under 2,000 m² left out), the
 coast, the courses named and dashed where not perennial, the crests that run
 120 m or more on the page, smoothed, the parks, the gazetted places and the
-LEP's scheduled items, the land council boundary where two meet, and the
-harbour's and the suburbs' names for finding one's way. The chart on the
-left page is the key to the tints. The table gives each layer's answer at
+LEP's scheduled items, each community's name inside its biggest patch on
+the page where the patch has room for it (the spot farthest from the
+patch's edge, found on the mask), and the harbour's and the suburbs' names
+for finding one's way; the land council is in the table, not on the map.
+The chart on the left page is the key to the tints. The table gives each layer's answer at
 the site; the note states that AHIMS is not open and is not read, that a
 search and where advised a due-diligence assessment precede works, and that
 the name of Country, the language, the place names and the narrative are

@@ -41,7 +41,15 @@ export interface AboriginalPlace {
   restricted: boolean;
   lalc?: string; lga?: string; lon: number; lat: number; rings: number[][][]; distanceM: number; bearing: number;
 }
-export interface VegClass { pctId: string; pct: string; cls: string; formation: string; colour: string; sharePct: number; /** Every colour the State's map draws it in. */ colours?: string[]; /** A greyscale mask of where it stands on the map, white over the community. */ mask?: string }
+export interface VegClass {
+  pctId: string; pct: string; cls: string; formation: string; colour: string; sharePct: number;
+  /** Every colour the State's map draws it in. */
+  colours?: string[];
+  /** A greyscale mask of where it stands on the map, white over the community. */
+  mask?: string;
+  /** Where its name goes on slide 15: the point of its biggest patch on the page farthest from the patch's edge, in Mercator, and that distance in metres (render/paintMasks.ts). */
+  label?: { x: number; y: number; clearM: number };
+}
 export interface Watercourse { name?: string; perenniality: 'perennial' | 'non-perennial' | 'mainly dry' | 'unknown'; hierarchy: 'major' | 'secondary' | 'minor' | 'undefined'; coords: [number, number][] }
 export interface LalcArea { local: string; regional: string; rings: number[][][] }
 

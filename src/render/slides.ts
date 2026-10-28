@@ -7360,8 +7360,9 @@ export function countrySentences(_b: SlidesBundle, f: ReturnType<typeof countryF
 /**
  * Country on the template: the land before 1750 over a full page at the strip's scale — the pre-1750 plant communities,
  * a flat tint each by formation, over the land's shape, with the water, the crests, the parks and the cultural places
- * the open registers hold. Nothing of the modern city is drawn: no streets, no railways, no stations, no permits; the
- * suburb names alone stand for finding one's way. The open records are charted beside.
+ * the open registers hold, each community named inside its biggest patch where the patch has room. Nothing of the
+ * modern city is drawn: no streets, no railways, no stations, no permits, no council boundaries; the suburb names
+ * alone stand for finding one's way. The open records are charted beside.
  */
 export function countryAtlas(b: SlidesBundle): Slide {
   const t = tpl();
@@ -7414,8 +7415,6 @@ export function countryAtlas(b: SlidesBundle): Slide {
     .filter((pts) => { const on = pts.filter(([x, y]) => onPage(x, y)); if (on.length < 3) return false; const xs = on.map((q) => q[0]), ys = on.map((q) => q[1]); return Math.hypot(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)) >= CREST_MIN_MM; })
     .map((pts) => chaikin(chaikin(pts)));
   if (crests.length) parts.push(`<path d="${crests.map((pts) => `M${pts.map(([x, y], i) => `${i ? 'L' : ''}${x.toFixed(2)},${y.toFixed(2)}`).join('')}`).join('')}" fill="none" stroke="#000000" stroke-width="0.35" stroke-dasharray="1.8 0.9" stroke-linecap="round" stroke-linejoin="round"/>`);
-  // the land council boundary, where two councils meet on the page
-  if (c.lalcs.length > 1) parts.push(`<path d="${c.lalcs.map((l) => ringsPath(l.rings, proj)).join('')}" fill="none" stroke="#000000" stroke-width="0.5" stroke-dasharray="3 1 0.6 1"/>`);
   // the cultural places the open registers hold: the gazetted Aboriginal Places, and the Aboriginal items the LEP schedules
   const placesIn = c.places.filter((q) => onPage(...proj(q.lon, q.lat)));
   for (const q of placesIn) {
@@ -7428,7 +7427,7 @@ export function countryAtlas(b: SlidesBundle): Slide {
     parts.push(`<path d="${lepIn.map((it) => ringsPath(it.rings, proj)).join('')}" fill="${LEP_ABORIGINAL_FILL}" fill-opacity="0.45" stroke="${LEP_ABORIGINAL_EDGE}" stroke-width="0.3" fill-rule="evenodd"/>`);
     for (const it of lepIn) { const [x, y] = proj(it.lon, it.lat); parts.push(`<rect x="${(x - 1.1).toFixed(2)}" y="${(y - 1.1).toFixed(2)}" width="2.2" height="2.2" fill="${LEP_ABORIGINAL_FILL}" stroke="${LEP_ABORIGINAL_EDGE}" stroke-width="0.35"/>`); }
   }
-  // the words: the councils, the places, the parks, the creeks and the bays, then the suburbs where room is left
+  // the words: the places, the communities, the parks, the creeks and the bays, then the suburbs where room is left
   const spacer = new LabelSpacer(p.wMm, p.hMm, 80);
   spacer.take(40, 10, 72, 10);
   const fb = furnitureBox(p, 'left');
@@ -7439,9 +7438,21 @@ export function countryAtlas(b: SlidesBundle): Slide {
   const labels: string[] = [];
   const word = (x: number, y: number, text: string, fill = '#000000') => m6(x, y, text).replace('fill="#000000"', `fill="${fill}"`);
   const wordW = (text: string) => text.length * 1.6 + 1;
-  if (c.lalcs.length > 1) for (const l of c.lalcs) { const best = bestSpot(l.rings); const text = `${titleCase(l.local)} Land Council`.toUpperCase(); if (best.area > 200 && spacer.take(best.cx, best.cy, wordW(text), 2.8)) labels.push(word(best.cx, best.cy, text)); }
   for (const q of placesIn) { const [x, y] = proj(q.lon, q.lat); const text = clipWords(q.name, 36); for (const [lx, ly] of [[x, y - 3.2], [x, y + 3.4], [x + wordW(text) / 2 + 2.4, y]] as [number, number][]) if (spacer.take(lx, ly, wordW(text), 2.8)) { labels.push(word(lx, ly, text, PLACE_COLOUR)); break; } }
   for (const it of [...lepIn].sort((q, r) => q.name.length - r.name.length)) { const [x, y] = proj(it.lon, it.lat); const text = clipWords(it.name, 34); for (const [lx, ly] of [[x, y + 3.4], [x, y - 2.8], [x + wordW(text) / 2 + 2.2, y]] as [number, number][]) if (spacer.take(lx, ly, wordW(text), 2.6)) { labels.push(word(lx, ly, text, LEP_ABORIGINAL_EDGE)); break; } }
+  // each community's name inside its biggest patch, on up to three lines, where the patch has the room: a name may
+  // overhang its patch by about a third each side, the halo keeping it legible; one that would not fit is left to the chart
+  const LINE = 2.8;
+  const wrap = (text: string, max = 20) => text.split(' ').reduce<string[]>((ls, wd) => { const last = ls[ls.length - 1]; if (last !== undefined && `${last} ${wd}`.length <= max) ls[ls.length - 1] = `${last} ${wd}`; else ls.push(wd); return ls; }, []);
+  for (const cl of classes) {
+    if (!cl.label) continue;
+    const ll = mercatorToLonLat({ x: cl.label.x, y: cl.label.y }), [x, y] = proj(ll.lon, ll.lat);
+    if (!onPage(x, y)) continue;
+    const clearMm = (cl.label.clearM * 1000) / p.scale;
+    const lines = wrap(cl.pct.toUpperCase()), w = Math.max(...lines.map(wordW));
+    if (clearMm < w / 3.2 || clearMm < (lines.length * LINE) / 2 || !spacer.take(x, y, w, lines.length * LINE)) continue;
+    lines.forEach((ln, j) => labels.push(word(x, y - ((lines.length - 1) * LINE) / 2 + j * LINE, ln)));
+  }
   for (const n of npwsIn) { const best = bestSpot(n.rings); const text = tidyName(titleCase(n.name)).toUpperCase(); if (best.area > 40 && spacer.take(best.cx, best.cy, wordW(text), 2.8)) labels.push(word(best.cx, best.cy, text, NPWS_COLOUR)); }
   const named = new Set<string>();
   for (const w of [...coursesIn].filter((x) => x.name).sort((x, y) => y.coords.length - x.coords.length)) {
@@ -7472,7 +7483,6 @@ export function countryAtlas(b: SlidesBundle): Slide {
     ...(hasWater ? [{ swatch: swatchFill(WATER_FILL, CREEK_COLOUR), label: 'The harbour, the sea and the lakes, with the coast' }] : []),
     ...(coursesIn.length ? [{ swatch: `<path d="M0,2.4C1.5,0.6 3.5,3 5,1.2" fill="none" stroke="${CREEK_COLOUR}" stroke-width="0.5"/>`, label: `Watercourses${coursesIn.some((w) => w.perenniality !== 'perennial') ? ', dashed where not perennial' : ''}` }] : []),
     ...(crests.length ? [{ swatch: `<path d="M0,1.8H5" stroke="#000000" stroke-width="0.35" stroke-dasharray="1.8 0.9"/>`, label: 'Crests read from the elevation model' }] : []),
-    ...(c.lalcs.length > 1 ? [{ swatch: `<path d="M0,1.8H5" stroke="#000000" stroke-width="0.5" stroke-dasharray="3 1 0.6 1"/>`, label: 'Local Aboriginal Land Council boundary' }] : []),
     ...(npwsIn.length ? [{ swatch: swatchDots(NPWS_COLOUR), label: 'National Parks and Wildlife Service estate' }] : []),
     ...(placesIn.length ? [{ swatch: `<circle cx="2.5" cy="1.8" r="1.4" fill="${PLACE_COLOUR}" stroke="#ffffff" stroke-width="0.3"/>`, label: 'Gazetted Aboriginal Place' }] : []),
     ...(lepIn.length ? [{ swatch: `<rect x="1.4" y="0.7" width="2.2" height="2.2" fill="${LEP_ABORIGINAL_FILL}" stroke="${LEP_ABORIGINAL_EDGE}" stroke-width="0.3"/>`, label: 'Aboriginal heritage item in the LEP schedule' }] : []),
