@@ -224,6 +224,7 @@ live_das = [dict(r, pt=merc(r['lon'], r['lat'])) for r in da['near']
 STRATA_MAX = b.get('strataMax', 30)       # a scheme above this is taken as too fragmented to assemble
 RECENT_YEARS = b.get('recentYears', 20)   # a site significantly developed within these years is not coming down
 SMALL_SCHEME = b.get('smallScheme', 5)    # a strata scheme under this many lots is not, by itself, a significant development
+SMALL_SITE = b.get('smallSite', 250)      # a site under this many square metres has little ability to develop above its current status
 THIS_YEAR = int((b.get('fetchedAt') or datetime.datetime.now(datetime.UTC).isoformat())[:4])
 SINCE = THIS_YEAR - RECENT_YEARS
 site_pt = (b['centre']['x'], b['centre']['y'])
@@ -299,7 +300,7 @@ site['neighbours'] = [n for n in site['neighbours'] if n['sharedM'] >= 3]
 
 out = {
     'k': K, 'extent': b['extent'], 'centre': b['centre'], 'aerial': b['aerial'], 'imagery': b.get('imagery'), 'controls': b.get('controls'),
-    'meta': b.get('meta', {}), 'fetchedAt': b.get('fetchedAt'), 'strataMax': STRATA_MAX, 'recentYears': RECENT_YEARS, 'since': SINCE, 'smallScheme': SMALL_SCHEME,
+    'meta': b.get('meta', {}), 'fetchedAt': b.get('fetchedAt'), 'strataMax': STRATA_MAX, 'recentYears': RECENT_YEARS, 'since': SINCE, 'smallScheme': SMALL_SCHEME, 'smallSite': SMALL_SITE,
     'props': {str(k): v for k, v in props.items()}, 'lots': lots,
     'heritageItems': [{'name': h[0].get('H_NAME'), 'sig': h[0].get('SIG'), 'rings': h[1]} for h in heritage_items],
     'hca': [{'name': h[0].get('H_NAME'), 'rings': h[1]} for h in hca],

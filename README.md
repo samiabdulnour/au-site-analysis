@@ -1565,8 +1565,9 @@ What the sheet reads, all open data (`scripts/capacity_study.ts` fetches,
   approval, construction or live application for a new building; a cross (low
   development potential) on every mature development, on strata ownership
   (the lot count printed under it on a scheme of more than 30 lots), on a
-  heritage item and on public land; a tick (development potential) on every
-  other property. Lane stubs and slivers under 40 m² carry no mark.
+  heritage item, on public land and on a small site under 250 m², which has
+  little ability to develop above its current status; a tick (development
+  potential) on every other property. Lane stubs and slivers under 40 m² carry no mark.
 
 ## How it works
 

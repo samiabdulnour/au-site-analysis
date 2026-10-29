@@ -19,7 +19,7 @@ AW, AH = a['aerial']['pxWidth'], a['aerial']['pxHeight']
 props = a['props']
 site = next(r for r in props.values() if r.get('isSite'))
 meta = a.get('meta', {})
-STRATA_MAX, RECENT_YEARS, SINCE, SMALL_SCHEME = a.get('strataMax', 30), a.get('recentYears', 20), a.get('since', 2006), a.get('smallScheme', 5)
+STRATA_MAX, RECENT_YEARS, SINCE, SMALL_SCHEME, SMALL_SITE = a.get('strataMax', 30), a.get('recentYears', 20), a.get('since', 2006), a.get('smallScheme', 5), a.get('smallSite', 250)
 
 # ---- the sheet: A3 landscape at 300 dpi, the legend panel on the left, the map at 1:2000 to the three other edges
 DPI = 300
@@ -102,6 +102,8 @@ def symbol(r):
     if o == 'potential':
         return 'potential'
     if o in ('none', 'mature') or mature(r) or r['kind'] in ('council', 'state') or r.get('heritageItem') or r['strata']:
+        return 'none'
+    if (r['areaM2'] or 0) < SMALL_SITE:  # a small site has little ability to develop above its current status
         return 'none'
     return 'potential'
 
@@ -237,7 +239,7 @@ legend = [
     (swatch(f'<rect x="3" y="3" width="72" height="26" fill="#d9d9d9" stroke="{WHITE}" stroke-width="4"/>'), 'Single Ownership'),
     (swatch(f'<rect x="4" y="4" width="70" height="24" fill="{DOT}" fill-opacity="0.42" stroke="{DOT}" stroke-width="2"/>'), f'Mature development [unlikely to develop]<br><span class="fine">a site significantly developed in the past {RECENT_YEARS} years, or one with a current approval or construction; crossed as well</span>'),
     (swatch(tick(39, 16, 30, 4.5).replace(f'{4.5 + 4 * U:.1f}', '8')), 'Development Potential'),
-    (swatch(cross(39, 16, 30, 4.5).replace(f'{4.5 + 4 * U:.1f}', '8')), f'Low Development Potential<br><span class="fine">strata ownership (the lot count printed on schemes of more than {STRATA_MAX}), a heritage item, public land, or a mature development</span>'),
+    (swatch(cross(39, 16, 30, 4.5).replace(f'{4.5 + 4 * U:.1f}', '8')), f'Low Development Potential<br><span class="fine">strata ownership (the lot count printed on schemes of more than {STRATA_MAX}), a heritage item, public land, a mature development, or a small site under {SMALL_SITE} m², with little ability to develop above its current status</span>'),
     (swatch(f'<rect x="4" y="4" width="70" height="24" fill="none" stroke="{RED}" stroke-width="8"/>'), f'Site<br><span class="fine">{H.escape(caption)}, {fmt(site["areaM2"])} m², {H.escape(lot_desc)}</span>'),
 ]
 img = a.get('imagery') or {}
