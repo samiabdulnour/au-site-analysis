@@ -1,11 +1,13 @@
-// The capacity and opportunity site study: the sheet an urban designer draws
-// to show which lots around a site are likely, or unlikely, to redevelop in
-// the short to medium term. One urban block and its neighbours over the
-// aerial and the cadastre, every property coloured by ownership (a single
-// title, a strata scheme, council or State land), a cross on the mature
-// development (a strata scheme of more than 30 lots, a heritage item, a
-// building lately completed) and a tick on the rest, the sites under
-// development filled, the site itself in pink.
+// The capacity and opportunity site study: the context plan an urban designer
+// draws to show which lots around a site are likely, or unlikely, to
+// redevelop in the short to medium term. An A3 landscape sheet at 1:2000:
+// the blocks around the site over the faded aerial and the cadastre, every
+// property outlined by ownership (a single title in white, a strata scheme
+// filled, a heritage building in orange), a tick on the lots with
+// development potential, a cross on those with none (heritage items, public
+// land) and a dot on mature development (a strata scheme of more than 30
+// lots, a site significantly developed in the past 20 years, or one with a
+// current approval or construction), the site in red; a legend on the left.
 //
 //   npm run capacity -- "70-76 Riley Street, Darlinghurst NSW 2010"
 //   npm run capacity -- "<address>" --notes my-notes.html --out out/capacity/riley
@@ -13,7 +15,8 @@
 //
 // Everything comes from the open data the deck already reads (geocoder,
 // cadastre, imagery, ePlanning, the Online DA API) plus the cadastre's
-// property register, whose unit addresses size each strata scheme, and the
+// property register, whose unit addresses size each strata scheme, the
+// cadastre's record dates, which date a strata plan's registration, and the
 // council's development monitoring and parks layers where it publishes them
 // (the City of Sydney does). The reading and the drawing are two small Python
 // scripts beside this file; the page is printed with the deck's Chromium.
@@ -42,8 +45,8 @@ const M3 = 'https://mapprod3.environment.nsw.gov.au/arcgis/rest/services/ePlanni
 const IMAGERY_DATES = 'https://maps.six.nsw.gov.au/arcgis/rest/services/public/NSW_Imagery_Dates/MapServer/0';
 /** The City of Sydney's open data; other councils' registers are not on a service this script knows. */
 const COS = 'https://services1.arcgis.com/cNVyNtjGVZybOQWZ/arcgis/rest/services';
-/** Ground metres fetched around the site: the drawing takes 350 x 290 m of it, the site a little below centre. */
-const FETCH_W = 420, FETCH_H = 520;
+/** Ground metres fetched around the site: the A3 sheet at 1:2000 shows 620 x 594 m of it, the site at centre. */
+const FETCH_W = 700, FETCH_H = 680;
 
 const args = process.argv.slice(2);
 const flag = (name: string) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : undefined; };
@@ -80,7 +83,7 @@ const imageryDate = async () => {
 };
 const [siteLots, lots, props, roadNames, heritage, stateLand, crownLand, parks, facilities, devMon, controls, imagery, aerial] = await Promise.all([
   soft('site lots', fetchSiteLots(geo.points), empty),
-  soft('lots', queryByExtent(`${CADASTRE}/8`, extent, 'lotidstring,planlabel,plannumber,lotnumber,sectionnumber,planlotarea,planlotareaunits,stratumlevel,hasstratum,classsubtype'), empty),
+  soft('lots', queryByExtent(`${CADASTRE}/8`, extent, 'lotidstring,planlabel,plannumber,lotnumber,sectionnumber,planlotarea,planlotareaunits,stratumlevel,hasstratum,classsubtype,createdate'), empty),
   soft('property register', queryByExtent(`${CADASTRE}/12`, extent, 'propid,address,housenumber,propertytype,valnetpropertytype,valnetpropertystatus,valnetlotcount,dissolveparcelcount,superlot'), empty),
   soft('road names', queryByExtent(`${CADASTRE}/1`, extent, 'roadnamelabel'), empty),
   soft('heritage', queryByExtent(`${EPI}/0`, extent, 'LAY_CLASS,H_NAME,SIG,EPI_NAME'), empty),
@@ -91,7 +94,7 @@ const [siteLots, lots, props, roadNames, heritage, stateLand, crownLand, parks, 
   soft('development monitoring', queryByExtent(`${COS}/Development_Monitoring/FeatureServer/0`, extent, 'StNumber,StName,Suburb,MajorUse,DA_Number,DevelopmentType,Lodged,Determined,Completion,Status_1,Priv_Dwgs,LevelsAbove,GFA,DateExtracted'), empty),
   soft('controls at the site', fetchSiteControls(centre), null),
   soft('imagery date', imageryDate(), null),
-  soft('aerial', fetchAerial(extent, 2800, join(out, 'data'), 'aerial'), null),
+  soft('aerial', fetchAerial(extent, 4400, join(out, 'data'), 'aerial'), null),
 ]);
 if (!aerial) throw new Error('no aerial for this window');
 // the council's applications on the Planning Portal, clipped to the window

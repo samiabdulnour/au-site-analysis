@@ -1,6 +1,7 @@
 """The capacity and opportunity site study's reading of the window: every property around the site
 classified by ownership (single title, strata scheme and its size, council, State), by heritage listing,
-and by what is approved, under construction or lately completed on it; then a tick or a cross on each.
+by when it was last significantly developed, and by what is approved or under construction on it; then
+a tick or a cross on each.
 
     python3 -I scripts/capacity_study/analyse.py out/capacity/<slug>
 
@@ -149,15 +150,22 @@ for f in b['lots']['features']:
     rings = rings_m(f['geometry'])
     if not rings:
         continue
+    # the cadastre's record date is the plan's registration date for plans after the digital cadastre was built
+    # (September 1993); every older plan carries that build date, which is left as unknown
+    created = iso(p.get('createdate'))
     lots.append({'id': p['lotidstring'], 'plan': p['planlabel'], 'lotnumber': p['lotnumber'], 'sub': p['classsubtype'],
                  'planArea': p['planlotarea'], 'planAreaUnits': p['planlotareaunits'], 'rings': rings,
-                 'areaM2': round(ground_m2(rings)), 'centroid': centroid(outer(rings))})
+                 'areaM2': round(ground_m2(rings)), 'centroid': centroid(outer(rings)),
+                 'registered': created if created and created >= '1994-01-01' else None})
 for l in lots:
     l['propid'] = next((pid for pid, r in props.items() if r['geom'] and in_poly(l['centroid'], r['geom'])), None)
 sp_under = collections.defaultdict(list)
+sp_registered = {}
 for l in lots:
     if l['propid'] is not None and (l['plan'] or '').startswith('SP'):
         sp_under[l['propid']].append(l['id'])
+        if l['registered']:
+            sp_registered[l['propid']] = max(sp_registered.get(l['propid'], ''), l['registered'])
 
 # ---- the overlays ----------------------------------------------------------------------------------
 heritage_items = [(f['properties'], rings_m(f['geometry'])) for f in b['heritage']['features'] if str(f['properties'].get('LAY_CLASS', '')).startswith('Item')]
@@ -205,8 +213,11 @@ live_das = [dict(r, pt=merc(r['lon'], r['lat'])) for r in da['near']
             and not (any(ALTER.search(t) for t in r['developmentTypes']) and (r.get('dwellings') or 0) < 10 and (r.get('storeys') or 0) < 4)]
 
 # ---- the classification ------------------------------------------------------------------------------
-STRATA_MAX = b.get('strataMax', 30)   # a scheme above this is taken as too fragmented to assemble
-RECENT_YEAR = b.get('recentYear', 2018)  # a new building completed since is not coming down
+STRATA_MAX = b.get('strataMax', 30)       # a scheme above this is taken as too fragmented to assemble
+RECENT_YEARS = b.get('recentYears', 20)   # a site significantly developed within these years is not coming down
+SMALL_SCHEME = b.get('smallScheme', 5)    # a strata scheme under this many lots is not, by itself, a significant development
+THIS_YEAR = int((b.get('fetchedAt') or datetime.datetime.now(datetime.UTC).isoformat())[:4])
+SINCE = THIS_YEAR - RECENT_YEARS
 site_pt = (b['centre']['x'], b['centre']['y'])
 for r in props.values():
     if not r['geom']:
@@ -230,7 +241,17 @@ for r in props.values():
     r['devmon'] = [d for d in devmon if in_poly(c, d['rings']) or in_poly(centroid(outer(d['rings'])), r['geom'])]
     r['liveDa'] = [dict(pan=d['pan'], status=d['status'], lodged=d['lodged'], address=d['address'], cost=d.get('cost'), storeys=d.get('storeys'), dwellings=d.get('dwellings')) for d in live_das if in_poly(d['pt'], r['geom'])]
     r['active'] = [d for d in r['devmon'] if d['status'] in ('Lodged', 'Approved', 'Construction Commenced') and major(d)]
-    r['recent'] = [d for d in r['devmon'] if d['status'] == 'Completed' and d['completion'] and int(d['completion'][:4]) >= RECENT_YEAR and major(d)]
+    r['recent'] = [d for d in r['devmon'] if d['status'] == 'Completed' and d['completion'] and int(d['completion'][:4]) >= SINCE and major(d)]
+    # when the property was last significantly developed: a major development the council's register saw completed,
+    # or the registration of a strata scheme of SMALL_SCHEME or more lots, which follows a new building or a
+    # substantial conversion (the register reaches back a few years; a strata plan's date reaches back to 1993)
+    r['strataRegistered'] = sp_registered.get(r['propid'])
+    developed = []
+    for d in r['recent']:
+        developed.append({'year': int(d['completion'][:4]), 'how': 'built', 'detail': f"{d['type'].lower()} completed {d['completion'][:4]}, {d['da']}"})
+    if r['strataRegistered'] and int(r['strataRegistered'][:4]) >= SINCE and r['units'] >= SMALL_SCHEME:
+        developed.append({'year': int(r['strataRegistered'][:4]), 'how': 'strata', 'detail': f"strata scheme of {r['units']} lots registered {r['strataRegistered'][:4]}"})
+    r['developed'] = max(developed, key=lambda d: d['year']) if developed else None
     r['isSite'] = in_poly(site_pt, r['geom'])
     if r['isSite']:
         r['kind'] = 'site'
@@ -250,8 +271,8 @@ for r in props.values():
             reasons.append(f'strata scheme of {r["units"]} lots')
         if r['heritageItem']:
             reasons.append('heritage item')
-        if r['recent']:
-            reasons.append(f'new building completed {r["recent"][0]["completion"][:4]}')
+        if r['developed']:
+            reasons.append(f"developed {r['developed']['year']}")
         r['mark'] = 'x' if reasons else 'tick'
     else:
         r['mark'] = None
@@ -269,7 +290,7 @@ site['neighbours'] = [n for n in site['neighbours'] if n['sharedM'] >= 3]
 
 out = {
     'k': K, 'extent': b['extent'], 'centre': b['centre'], 'aerial': b['aerial'], 'imagery': b.get('imagery'), 'controls': b.get('controls'),
-    'meta': b.get('meta', {}), 'fetchedAt': b.get('fetchedAt'), 'strataMax': STRATA_MAX, 'recentYear': RECENT_YEAR,
+    'meta': b.get('meta', {}), 'fetchedAt': b.get('fetchedAt'), 'strataMax': STRATA_MAX, 'recentYears': RECENT_YEARS, 'since': SINCE, 'smallScheme': SMALL_SCHEME,
     'props': {str(k): v for k, v in props.items()}, 'lots': lots,
     'heritageItems': [{'name': h[0].get('H_NAME'), 'sig': h[0].get('SIG'), 'rings': h[1]} for h in heritage_items],
     'hca': [{'name': h[0].get('H_NAME'), 'rings': h[1]} for h in hca],

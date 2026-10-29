@@ -1511,18 +1511,20 @@ height in storeys, street frontage heights, active frontages, setbacks.
 
 ### The capacity and opportunity site study
 
-`npm run capacity -- "<address>"` draws the sheet an urban designer prepares
-to show which lots around a site are likely, or unlikely, to redevelop in the
-short to medium term: one urban block and its neighbours (350 × 290 m) over the
-aerial and the cadastre, every property coloured by ownership, a cross on the
-mature development and a tick on the rest, the sites under development
-filled, the site itself in pink with its area, then the legend, a narrative
-written from what the window holds, and the sources. Outputs
-`out/capacity/<slug>/diagram.png` and `diagram.pdf` (2480 px wide, an A4
-portrait at 300 dpi); `--notes my-notes.html` puts the author's own paragraphs
-in place of the generated narrative, `--out` names the folder and `--redraw`
-draws again from what was already fetched. `examples/capacity_study/` holds
-the sheet for 70-76 Riley Street, Darlinghurst.
+`npm run capacity -- "<address>"` draws the context plan an urban designer
+prepares to show which lots around a site are likely, or unlikely, to
+redevelop in the short to medium term: an A3 landscape sheet at 1:2000, the
+blocks around the site (620 × 594 m) over the faded aerial and the cadastre,
+every property outlined by ownership (a single title in white, a strata
+scheme filled yellow, a heritage building in orange with a fine hatch), a
+tick on the lots with development potential, a cross on those with none and
+a dot on mature development, the site in red; a white panel on the left with
+the legend, the sources, the plan's title and scale, and north. Outputs
+`out/capacity/<slug>/diagram.png` and `diagram.pdf` (4961 × 3508 px, A3 at
+300 dpi); `--notes my-notes.html` puts the author's own paragraphs at the top
+of the panel, `--out` names the folder and `--redraw` draws again from what
+was already fetched. `examples/capacity_study/` holds the sheet for 70-76
+Riley Street, Darlinghurst.
 
 What the sheet reads, all open data (`scripts/capacity_study.ts` fetches,
 `scripts/capacity_study/analyse.py` classifies, `render.py` draws):
@@ -1535,22 +1537,28 @@ What the sheet reads, all open data (`scripts/capacity_study.ts` fetches,
   single ownership. Council land is the council's parks and facilities layers
   (the City of Sydney publishes them), State land the ePlanning State
   government land layer. None of this is a title search, and the sheet says so.
-- *Heritage items* from the LEP heritage layer (a thin maroon line).
+- *Heritage items* from the LEP heritage layer.
 - *Development* from the council's development monitoring register where it
   publishes one (City of Sydney: applications lodged, approved, under
-  construction and completed, with storeys, dwellings and floor space) and the
-  Planning Portal's Online DA API for live applications of a scale that
-  shapes context, alterations to what stands left out.
-- *The marks*: a cross on a strata scheme of more than 30 lots, a heritage
-  item, or a new building (or an addition or conversion of four storeys, five
-  dwellings or 1,000 m²) completed since 2018 — unlikely to be redeveloped in
-  the short and medium term; a tick on every other property; a ring on a site
-  with a current approval, construction or live application for a new
-  building. Lane stubs and slivers under 40 m² carry no mark.
-
-The Gordon sheet the format follows draws an amalgamated site of lettered
-parcels; this one letters the site alone (C) unless the author's notes say
-otherwise.
+  construction and completed, with storeys, dwellings and floor space, which
+  reaches back only to 2021) and the Planning Portal's Online DA API for live
+  applications of a scale that shapes context, alterations to what stands
+  left out.
+- *When a site was last significantly developed*: the register's completions,
+  and the registration of a strata scheme of five or more lots, which follows
+  a new building or a substantial conversion. The cadastre's record date for a
+  lot is its plan's registration date for every plan after the digital
+  cadastre was built in September 1993 (older plans all carry that date, and
+  are left undated), so a strata plan dates a building back to then.
+- *The marks*: a cross (no development potential) on a heritage item and on
+  public land; a dot (mature development, unlikely to develop) on a strata
+  scheme of more than 30 lots, on a site significantly developed in the past
+  20 years (a strata scheme of five or more lots registered, or a new
+  building, or an addition or conversion of four storeys, five dwellings or
+  1,000 m², completed on the register), with the lot count or the year under
+  it, and on a site with a current approval, construction or live application
+  for a new building; a tick (development potential) on every other property.
+  Lane stubs and slivers under 40 m² carry no mark.
 
 ## How it works
 
