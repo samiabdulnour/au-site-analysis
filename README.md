@@ -1529,7 +1529,9 @@ begins, read off the aerial: `{"121-129 CROWN STREET": {"symbol": "mature",
 "note": "new"}}`, keyed by the start of the address as the register writes
 it, and the sheet's fine print counts them), `--out` names the folder and `--redraw` draws again
 from what was already fetched. `examples/capacity_study/` holds the sheet for
-70-76 Riley Street, Darlinghurst, with its overrides file.
+70-76 Riley Street, Darlinghurst, with its overrides file and the notes that
+fill the panel (the site's State significant application and the likelihood
+of redevelopment around it).
 
 What the sheet reads, all open data (`scripts/capacity_study.ts` fetches,
 `scripts/capacity_study/analyse.py` classifies, `render.py` draws):

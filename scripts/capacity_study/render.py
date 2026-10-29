@@ -73,7 +73,7 @@ ORANGE, WHITE, STRATA, RED, GREEN, CROSS, DOT, INK, GREY = '#e8912a', '#ffffff',
 svg = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{f(VX)} {f(VY)} {f(VW)} {f(VH)}" width="{MAP_W}" height="{MAP_H}" font-family="Inter, Helvetica, Arial, sans-serif">']
 svg.append(f'''<defs>
 <pattern id="heritage" patternUnits="userSpaceOnUse" width="{w(14)}" height="{w(14)}" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="{w(14)}" stroke="{ORANGE}" stroke-width="{w(1.6)}" stroke-opacity="0.55"/></pattern>
-<pattern id="mature" patternUnits="userSpaceOnUse" width="{w(9)}" height="{w(9)}"><rect width="{w(9)}" height="{w(9)}" fill="{DOT}" fill-opacity="0.22"/><circle cx="{w(4.5)}" cy="{w(4.5)}" r="{w(1.7)}" fill="{DOT}" fill-opacity="0.9"/></pattern>
+<pattern id="mature" patternUnits="userSpaceOnUse" width="{w(10)}" height="{w(10)}"><rect width="{w(10)}" height="{w(10)}" fill="{DOT}" fill-opacity="0.22"/><path d="M0,{w(5)} H{w(10)} M{w(5)},0 V{w(10)}" stroke="{DOT}" stroke-width="{w(1.4)}" stroke-opacity="0.85"/></pattern>
 <clipPath id="win"><rect x="{f(VX)}" y="{f(VY)}" width="{f(VW)}" height="{f(VH)}"/></clipPath>
 </defs>''')
 svg.append('<g clip-path="url(#win)">')
@@ -118,7 +118,7 @@ for pid, r in sorted(props.items(), key=lambda kv: kv[1]['kind'] != 'strata'):
 # mature development: a grey patch over the lot
 for pid, r in props.items():
     if r['geom'] and visible(r) and not r.get('isSite') and mature(r):
-        svg.append(f'<path d="{path(r["geom"])}" fill="url(#mature)" stroke="{DOT}" stroke-width="{w(2)}" stroke-opacity="0.7" stroke-linejoin="round"/>')
+        svg.append(f'<path d="{path(r["geom"])}" fill="{DOT}" fill-opacity="0.42" stroke="{DOT}" stroke-width="{w(2)}" stroke-opacity="0.8" stroke-linejoin="round"/>')
 # heritage buildings: an orange line with a fine orange hatch inside it
 for h in a['heritageItems']:
     svg.append(f'<path d="{path(h["rings"])}" fill="url(#heritage)" stroke="{ORANGE}" stroke-width="{w(6.5)}" stroke-linejoin="round"/>')
@@ -163,7 +163,7 @@ for pid, r in props.items():
         note = str(r['override']['note'])
     if note and not any(math.hypot(x - nx, y - ny) < 70 * U for nx, ny in noted):  # two marks a few millimetres apart share one note
         noted.append((x, y))
-        svg.append(f'<text x="{f(x)}" y="{f(y + s * 0.3 + 16 * U)}" font-size="{w(15)}" font-weight="700" text-anchor="middle" fill="{DOT if mature(r) else CROSS}" stroke="#fff" stroke-width="{w(3)}" paint-order="stroke">{note}</text>')
+        svg.append(f'<text x="{f(x)}" y="{f(y + s * 0.3 + 16 * U)}" font-size="{w(15)}" font-weight="700" text-anchor="middle" fill="{GREEN if kind == "potential" else DOT if mature(r) else CROSS}" stroke="#fff" stroke-width="{w(3)}" paint-order="stroke">{note}</text>')
 
 
 # ---- the streets, named along their centrelines -----------------------------------------------------------------
@@ -235,7 +235,7 @@ legend = [
     (swatch(f'<rect x="4" y="4" width="70" height="24" fill="none" stroke="{ORANGE}" stroke-width="6"/>'), 'Heritage Building'),
     (swatch(f'<rect x="3" y="3" width="72" height="26" fill="{STRATA}" fill-opacity="0.6" stroke="#bbb" stroke-width="2"/>'), 'Strata Ownership'),
     (swatch(f'<rect x="3" y="3" width="72" height="26" fill="#d9d9d9" stroke="{WHITE}" stroke-width="4"/>'), 'Single Ownership'),
-    (swatch(f'<defs><pattern id="lmature" patternUnits="userSpaceOnUse" width="9" height="9"><rect width="9" height="9" fill="{DOT}" fill-opacity="0.22"/><circle cx="4.5" cy="4.5" r="1.7" fill="{DOT}" fill-opacity="0.9"/></pattern></defs><rect x="4" y="4" width="70" height="24" fill="url(#lmature)" stroke="{DOT}" stroke-width="2"/>'), f'Mature development [unlikely to develop]<br><span class="fine">a site significantly developed in the past {RECENT_YEARS} years, or one with a current approval or construction; crossed as well</span>'),
+    (swatch(f'<rect x="4" y="4" width="70" height="24" fill="{DOT}" fill-opacity="0.42" stroke="{DOT}" stroke-width="2"/>'), f'Mature development [unlikely to develop]<br><span class="fine">a site significantly developed in the past {RECENT_YEARS} years, or one with a current approval or construction; crossed as well</span>'),
     (swatch(tick(39, 16, 30, 4.5).replace(f'{4.5 + 4 * U:.1f}', '8')), 'Development Potential'),
     (swatch(cross(39, 16, 30, 4.5).replace(f'{4.5 + 4 * U:.1f}', '8')), f'No Development Potential<br><span class="fine">strata ownership (the lot count printed on schemes of more than {STRATA_MAX}), a heritage item, public land, or a mature development</span>'),
     (swatch(f'<rect x="4" y="4" width="70" height="24" fill="none" stroke="{RED}" stroke-width="8"/>'), f'Site<br><span class="fine">{H.escape(caption)}, {fmt(site["areaM2"])} m², {H.escape(lot_desc)}</span>'),
