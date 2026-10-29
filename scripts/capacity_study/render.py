@@ -97,7 +97,7 @@ def mature(r):
 
 
 def symbol(r):
-    """The mark: potential (a tick) or none (a cross); the author's overrides.json first."""
+    """The mark: potential (a tick) or none, that is low potential (a cross); the author's overrides.json first."""
     o = (r.get('override') or {}).get('symbol')
     if o == 'potential':
         return 'potential'
@@ -237,7 +237,7 @@ legend = [
     (swatch(f'<rect x="3" y="3" width="72" height="26" fill="#d9d9d9" stroke="{WHITE}" stroke-width="4"/>'), 'Single Ownership'),
     (swatch(f'<rect x="4" y="4" width="70" height="24" fill="{DOT}" fill-opacity="0.42" stroke="{DOT}" stroke-width="2"/>'), f'Mature development [unlikely to develop]<br><span class="fine">a site significantly developed in the past {RECENT_YEARS} years, or one with a current approval or construction; crossed as well</span>'),
     (swatch(tick(39, 16, 30, 4.5).replace(f'{4.5 + 4 * U:.1f}', '8')), 'Development Potential'),
-    (swatch(cross(39, 16, 30, 4.5).replace(f'{4.5 + 4 * U:.1f}', '8')), f'No Development Potential<br><span class="fine">strata ownership (the lot count printed on schemes of more than {STRATA_MAX}), a heritage item, public land, or a mature development</span>'),
+    (swatch(cross(39, 16, 30, 4.5).replace(f'{4.5 + 4 * U:.1f}', '8')), f'Low Development Potential<br><span class="fine">strata ownership (the lot count printed on schemes of more than {STRATA_MAX}), a heritage item, public land, or a mature development</span>'),
     (swatch(f'<rect x="4" y="4" width="70" height="24" fill="none" stroke="{RED}" stroke-width="8"/>'), f'Site<br><span class="fine">{H.escape(caption)}, {fmt(site["areaM2"])} m², {H.escape(lot_desc)}</span>'),
 ]
 img = a.get('imagery') or {}
@@ -257,7 +257,7 @@ sources = (f"Aerial: NSW Imagery via SIX Maps{(' (' + ' '.join(x.capitalize() fo
            f"Heritage items from the {c.get('epiName', 'LEP')} layer. Development from the council's development monitoring register"
            + (f" (extract of {day(extract)})" if extract else '') + f" and the NSW Planning Portal. Significantly developed since {SINCE}: a strata scheme of {SMALL_SCHEME} or more lots registered, "
            "or a new building (or an addition or conversion of four storeys, five dwellings or 1,000 m²) completed. "
-           f"Areas from the digital cadastre. In the window: {counts['potential']} lots with development potential, {counts['none']} with none, {counts['mature']} of them mature development"
+           f"Areas from the digital cadastre. In the window: {counts['potential']} lots with development potential, {counts['none']} with low potential, {counts['mature']} of them mature development"
            + (f" ({overridden} marked from the author's reading of the aerial)" if overridden else '') + f". Retrieved {day(a.get('fetchedAt') or '')}.")
 notes = open(NOTES).read() if NOTES else ''
 north = f'<svg width="150" height="190" viewBox="0 0 150 190"><text x="75" y="30" font-size="34" font-weight="700" text-anchor="middle" fill="{INK}" font-family="Inter, Helvetica, Arial, sans-serif">N</text><circle cx="75" cy="115" r="60" fill="none" stroke="{INK}" stroke-width="5"/><path d="M75,62 L89,124 L75,112 L61,124 Z" fill="{INK}"/><rect x="71" y="112" width="8" height="54" fill="{INK}"/></svg>'

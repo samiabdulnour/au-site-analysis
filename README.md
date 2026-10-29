@@ -1518,8 +1518,8 @@ blocks around the site (620 × 594 m) over the faded aerial and the cadastre,
 every property outlined by ownership (a single title in white, a strata
 scheme filled yellow, a heritage building in orange with a fine hatch, a
 mature development patched grey), a tick on the lots with development
-potential and a cross on those with none (strata, heritage, public land,
-mature development), the site in red; a white panel on the left with
+potential and a cross on those with low potential (strata, heritage, public
+land, mature development), the site in red; a white panel on the left with
 the legend, the sources, the plan's title and scale, and north. Outputs
 `out/capacity/<slug>/diagram.png` and `diagram.pdf` (4961 × 3508 px, A3 at
 300 dpi); `--notes my-notes.html` puts the author's own paragraphs at the top
@@ -1562,7 +1562,7 @@ What the sheet reads, all open data (`scripts/capacity_study.ts` fetches,
   or more lots registered, or a new building, or an addition or conversion of
   four storeys, five dwellings or 1,000 m², completed on the register, or the
   author's overrides), with the year under it, and on a site with a current
-  approval, construction or live application for a new building; a cross (no
+  approval, construction or live application for a new building; a cross (low
   development potential) on every mature development, on strata ownership
   (the lot count printed under it on a scheme of more than 30 lots), on a
   heritage item and on public land; a tick (development potential) on every
