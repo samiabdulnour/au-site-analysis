@@ -13,6 +13,14 @@ import collections, datetime, json, math, re, sys
 OUT = sys.argv[1]
 b = json.load(open(f'{OUT}/bundle.json'))
 da = json.load(open(f'{OUT}/da.json'))
+# What the author knows that the data does not: an overrides.json beside the bundle, keyed by the start of a
+# property's address as the register writes it ("121-129 CROWN STREET"), each {"symbol": "mature" | "none" |
+# "potential", "note": "built 2019"}. A building put up on a single title before the council's register begins
+# (2021) has no open-data date, and this is where the author says so.
+try:
+    overrides = {k.upper().strip(): v for k, v in json.load(open(f'{OUT}/overrides.json')).items()}
+except FileNotFoundError:
+    overrides = {}
 
 # ---- geometry, in Web Mercator metres ------------------------------------------------------------
 R = 20037508.342789244
@@ -252,6 +260,7 @@ for r in props.values():
     if r['strataRegistered'] and int(r['strataRegistered'][:4]) >= SINCE and r['units'] >= SMALL_SCHEME:
         developed.append({'year': int(r['strataRegistered'][:4]), 'how': 'strata', 'detail': f"strata scheme of {r['units']} lots registered {r['strataRegistered'][:4]}"})
     r['developed'] = max(developed, key=lambda d: d['year']) if developed else None
+    r['override'] = next((v for k, v in overrides.items() if r['base'].startswith(k)), None)
     r['isSite'] = in_poly(site_pt, r['geom'])
     if r['isSite']:
         r['kind'] = 'site'
@@ -304,5 +313,5 @@ out = {
 json.dump(out, open(f'{OUT}/analysis.json', 'w'))
 kinds = collections.Counter(r['kind'] for r in props.values())
 marks = collections.Counter(r['mark'] for r in props.values() if r['mark'])
-print(f"{len(props)} properties: {dict(kinds)}; marks {dict(marks)}; site {site['base']} {site['areaM2']} m² {site['lots']}; "
+print(f"{len(props)} properties: {dict(kinds)}; marks {dict(marks)}; overrides {sum(1 for r in props.values() if r.get('override'))}; site {site['base']} {site['areaM2']} m² {site['lots']}; "
       f"neighbours {[(n['base'], n['sharedM']) for n in site['neighbours']]}; lots unlinked {sum(1 for l in lots if l['propid'] is None)}")

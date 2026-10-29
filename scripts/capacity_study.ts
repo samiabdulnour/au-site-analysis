@@ -4,13 +4,15 @@
 // the blocks around the site over the faded aerial and the cadastre, every
 // property outlined by ownership (a single title in white, a strata scheme
 // filled, a heritage building in orange), a tick on the lots with
-// development potential, a cross on those with none (heritage items, public
-// land) and a dot on mature development (a strata scheme of more than 30
-// lots, a site significantly developed in the past 20 years, or one with a
-// current approval or construction), the site in red; a legend on the left.
+// development potential, a cross on those with none (strata ownership,
+// heritage items, public land) and a dot on mature development (a site
+// significantly developed in the past 20 years, or one with a current
+// approval or construction), the site in red; a legend on the left.
 //
 //   npm run capacity -- "70-76 Riley Street, Darlinghurst NSW 2010"
 //   npm run capacity -- "<address>" --notes my-notes.html --out out/capacity/riley
+//   npm run capacity -- "<address>" --overrides marks.json   (the author's marks where the data cannot see: a new
+//                                                             building on a single title before the register begins)
 //   npm run capacity -- "<address>" --redraw      (draw again from what was fetched, after an edit to the scripts)
 //
 // Everything comes from the open data the deck already reads (geocoder,
@@ -25,7 +27,7 @@
 
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
@@ -63,6 +65,9 @@ const soft = async <T,>(name: string, p: Promise<T>, fallback: T): Promise<T> =>
 };
 
 await mkdir(join(out, 'data'), { recursive: true });
+// the author's overrides.json, keyed by the start of a property's address as the register writes it
+// ("121-129 CROWN STREET"), each { symbol: 'mature' | 'none' | 'potential', note?: 'built 2019' }
+if (flag('--overrides')) await copyFile(resolve(flag('--overrides')!), join(out, 'overrides.json'));
 if (!redraw) await fetchWindow();
 
 async function fetchWindow(): Promise<void> {
