@@ -1509,6 +1509,49 @@ Where a council publishes its own DCP mapping as open data — the City of
 Sydney does — the deck reads it too, for the sites in that LGA: building
 height in storeys, street frontage heights, active frontages, setbacks.
 
+### The capacity and opportunity site study
+
+`npm run capacity -- "<address>"` draws the sheet an urban designer prepares
+to show which lots around a site are likely, or unlikely, to redevelop in the
+short to medium term: one urban block and its neighbours (350 × 290 m) over the
+aerial and the cadastre, every property coloured by ownership, a cross on the
+mature development and a tick on the rest, the sites under development
+filled, the site itself in pink with its area, then the legend, a narrative
+written from what the window holds, and the sources. Outputs
+`out/capacity/<slug>/diagram.png` and `diagram.pdf` (2480 px wide, an A4
+portrait at 300 dpi); `--notes my-notes.html` puts the author's own paragraphs
+in place of the generated narrative, `--out` names the folder and `--redraw`
+draws again from what was already fetched. `examples/capacity_study/` holds
+the sheet for 70-76 Riley Street, Darlinghurst.
+
+What the sheet reads, all open data (`scripts/capacity_study.ts` fetches,
+`scripts/capacity_study/analyse.py` classifies, `render.py` draws):
+
+- *Ownership* from the NSW cadastre and its property register: a property is
+  a strata scheme where a strata plan sits under it, where the register files
+  its addresses as under a strata plan (schemes on stratum lots), or where
+  three or more unit addresses share the title; the unit addresses registered
+  against the scheme are its lot count. Everything else on a deposited plan is
+  single ownership. Council land is the council's parks and facilities layers
+  (the City of Sydney publishes them), State land the ePlanning State
+  government land layer. None of this is a title search, and the sheet says so.
+- *Heritage items* from the LEP heritage layer (a thin maroon line).
+- *Development* from the council's development monitoring register where it
+  publishes one (City of Sydney: applications lodged, approved, under
+  construction and completed, with storeys, dwellings and floor space) and the
+  Planning Portal's Online DA API for live applications of a scale that
+  shapes context, alterations to what stands left out.
+- *The marks*: a cross on a strata scheme of more than 30 lots, a heritage
+  item, or a new building (or an addition or conversion of four storeys, five
+  dwellings or 1,000 m²) completed since 2018 — unlikely to be redeveloped in
+  the short and medium term; a tick on every other property; a ring on a site
+  with a current approval, construction or live application for a new
+  building. Lane stubs and slivers under 40 m² carry no mark.
+
+The Gordon sheet the format follows draws an amalgamated site of lettered
+parcels; this one letters the site alone (C) unless the author's notes say
+otherwise.
+
 ## How it works
 
 ```
