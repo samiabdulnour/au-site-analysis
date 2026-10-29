@@ -1,6 +1,7 @@
 """Draw the context plan from analysis.json: an A3 landscape sheet at 1:2000, the faded aerial under the cadastre,
-every property outlined by ownership, a heritage building in orange, a tick, a cross or a dot on each (a cross on
-strata ownership, a heritage item and public land), the site in red, the streets named; a white legend panel on the left with the plan's title, scale and north.
+every property outlined by ownership, a heritage building in orange, a mature development patched grey, a tick or
+a cross on each (a cross on strata ownership, a heritage item, public land and a mature development), the site in
+red, the streets named; a white legend panel on the left with the plan's title, scale and north.
 
     python3 -I scripts/capacity_study/render.py out/capacity/<slug> [notes.html]
 
@@ -72,6 +73,7 @@ ORANGE, WHITE, STRATA, RED, GREEN, CROSS, DOT, INK, GREY = '#e8912a', '#ffffff',
 svg = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{f(VX)} {f(VY)} {f(VW)} {f(VH)}" width="{MAP_W}" height="{MAP_H}" font-family="Inter, Helvetica, Arial, sans-serif">']
 svg.append(f'''<defs>
 <pattern id="heritage" patternUnits="userSpaceOnUse" width="{w(14)}" height="{w(14)}" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="{w(14)}" stroke="{ORANGE}" stroke-width="{w(1.6)}" stroke-opacity="0.55"/></pattern>
+<pattern id="mature" patternUnits="userSpaceOnUse" width="{w(9)}" height="{w(9)}"><rect width="{w(9)}" height="{w(9)}" fill="{DOT}" fill-opacity="0.22"/><circle cx="{w(4.5)}" cy="{w(4.5)}" r="{w(1.7)}" fill="{DOT}" fill-opacity="0.9"/></pattern>
 <clipPath id="win"><rect x="{f(VX)}" y="{f(VY)}" width="{f(VW)}" height="{f(VH)}"/></clipPath>
 </defs>''')
 svg.append('<g clip-path="url(#win)">')
@@ -83,6 +85,27 @@ svg.append(f'<rect x="0" y="0" width="{AW}" height="{AH}" fill="#fff" fill-opaci
 # the cadastre: every lot, faintly
 for l in a['lots']:
     svg.append(f'<path d="{path(l["rings"])}" fill="none" stroke="#777" stroke-width="{w(0.9)}" stroke-opacity="0.55"/>')
+def mature(r):
+    """A mature development: significantly developed in the past RECENT_YEARS years (the register, a strata plan's date,
+    or the author's overrides.json), or with a current approval or construction. Patched, and crossed as well."""
+    o = (r.get('override') or {}).get('symbol')
+    if o == 'mature':
+        return True
+    if o in ('potential', 'none'):
+        return False
+    return r['kind'] == 'developing' or bool(r.get('developed'))
+
+
+def symbol(r):
+    """The mark: potential (a tick) or none (a cross); the author's overrides.json first."""
+    o = (r.get('override') or {}).get('symbol')
+    if o == 'potential':
+        return 'potential'
+    if o in ('none', 'mature') or mature(r) or r['kind'] in ('council', 'state') or r.get('heritageItem') or r['strata']:
+        return 'none'
+    return 'potential'
+
+
 # ownership: strata filled, a single title outlined in white, public land left to its mark
 for pid, r in sorted(props.items(), key=lambda kv: kv[1]['kind'] != 'strata'):
     if not r['geom'] or not visible(r) or r['kind'] in ('council', 'state', 'site'):
@@ -92,6 +115,10 @@ for pid, r in sorted(props.items(), key=lambda kv: kv[1]['kind'] != 'strata'):
         svg.append(f'<path d="{d}" fill="{STRATA}" fill-opacity="0.5" stroke="{WHITE}" stroke-width="{w(3)}" stroke-linejoin="round"/>')
     else:
         svg.append(f'<path d="{d}" fill="none" stroke="{WHITE}" stroke-width="{w(3.5)}" stroke-linejoin="round"/>')
+# mature development: a grey patch over the lot
+for pid, r in props.items():
+    if r['geom'] and visible(r) and not r.get('isSite') and mature(r):
+        svg.append(f'<path d="{path(r["geom"])}" fill="url(#mature)" stroke="{DOT}" stroke-width="{w(2)}" stroke-opacity="0.7" stroke-linejoin="round"/>')
 # heritage buildings: an orange line with a fine orange hatch inside it
 for h in a['heritageItems']:
     svg.append(f'<path d="{path(h["rings"])}" fill="url(#heritage)" stroke="{ORANGE}" stroke-width="{w(6.5)}" stroke-linejoin="round"/>')
@@ -113,23 +140,6 @@ def cross(x, y, s, lw):
             f'<path d="{d}" fill="none" stroke="{CROSS}" stroke-width="{f(lw)}" stroke-linecap="round"/>')
 
 
-def dot(x, y, s):
-    return f'<circle cx="{f(x)}" cy="{f(y)}" r="{f(s * 0.3)}" fill="{DOT}" stroke="#fff" stroke-width="{f(3 * U)}"/>'
-
-
-def symbol(r):
-    """What the legend says of the property: potential, none, or mature; the author's overrides.json first."""
-    if (r.get('override') or {}).get('symbol') in ('potential', 'none', 'mature'):
-        return r['override']['symbol']
-    if r['kind'] == 'developing':
-        return 'mature'
-    if r['kind'] in ('council', 'state') or r.get('heritageItem') or r['strata']:
-        return 'none'
-    if r.get('developed'):
-        return 'mature'
-    return 'potential'
-
-
 noted, marked = [], []
 for pid, r in props.items():
     if not r['geom'] or not in_window(r['centroid']) or (r['areaM2'] or 0) < 40 or r.get('isSite'):  # lane stubs and slivers carry no mark
@@ -144,17 +154,16 @@ for pid, r in props.items():
     if kind == 'potential':
         svg.append(tick(x, y, s, lw))
         note = ''
-    elif kind == 'none':
-        svg.append(cross(x, y, s, lw))
-        note = f'{r["units"]} lots' if r['strata'] and r['units'] > STRATA_MAX else ''  # the large schemes, sized
     else:
-        svg.append(dot(x, y, s))
-        note = f"{r['developed']['how']} {r['developed']['year']}" if r.get('developed') else 'approved' if r['kind'] == 'developing' else ''
+        svg.append(cross(x, y, s, lw))
+        # what dates a mature development, else the size of a large strata scheme
+        note = (f"{r['developed']['how']} {r['developed']['year']}" if r.get('developed') else 'approved' if r['kind'] == 'developing' else '') if mature(r) else ''
+        note = note or (f'{r["units"]} lots' if r['strata'] and r['units'] > STRATA_MAX else '')
     if (r.get('override') or {}).get('note'):
         note = str(r['override']['note'])
     if note and not any(math.hypot(x - nx, y - ny) < 70 * U for nx, ny in noted):  # two marks a few millimetres apart share one note
         noted.append((x, y))
-        svg.append(f'<text x="{f(x)}" y="{f(y + s * 0.3 + 16 * U)}" font-size="{w(15)}" font-weight="700" text-anchor="middle" fill="{CROSS if kind == "none" else DOT}" stroke="#fff" stroke-width="{w(3)}" paint-order="stroke">{note}</text>')
+        svg.append(f'<text x="{f(x)}" y="{f(y + s * 0.3 + 16 * U)}" font-size="{w(15)}" font-weight="700" text-anchor="middle" fill="{DOT if mature(r) else CROSS}" stroke="#fff" stroke-width="{w(3)}" paint-order="stroke">{note}</text>')
 
 
 # ---- the streets, named along their centrelines -----------------------------------------------------------------
@@ -209,7 +218,8 @@ for r in props.values():
         continue
     seen.append(r['centroid'])
     vis.append(r)
-counts = {k: sum(1 for r in vis if symbol(r) == k) for k in ('potential', 'none', 'mature')}
+counts = {k: sum(1 for r in vis if symbol(r) == k) for k in ('potential', 'none')}
+counts['mature'] = sum(1 for r in vis if mature(r))
 overridden = sum(1 for r in vis if r.get('override'))
 c = a.get('controls') or {}
 fmt = lambda n: f'{n:,}'
@@ -225,9 +235,9 @@ legend = [
     (swatch(f'<rect x="4" y="4" width="70" height="24" fill="none" stroke="{ORANGE}" stroke-width="6"/>'), 'Heritage Building'),
     (swatch(f'<rect x="3" y="3" width="72" height="26" fill="{STRATA}" fill-opacity="0.6" stroke="#bbb" stroke-width="2"/>'), 'Strata Ownership'),
     (swatch(f'<rect x="3" y="3" width="72" height="26" fill="#d9d9d9" stroke="{WHITE}" stroke-width="4"/>'), 'Single Ownership'),
-    (swatch(f'<circle cx="39" cy="16" r="9" fill="{DOT}"/>'), f'Mature development [unlikely to develop]<br><span class="fine">a site significantly developed in the past {RECENT_YEARS} years, or one with a current approval or construction</span>'),
+    (swatch(f'<defs><pattern id="lmature" patternUnits="userSpaceOnUse" width="9" height="9"><rect width="9" height="9" fill="{DOT}" fill-opacity="0.22"/><circle cx="4.5" cy="4.5" r="1.7" fill="{DOT}" fill-opacity="0.9"/></pattern></defs><rect x="4" y="4" width="70" height="24" fill="url(#lmature)" stroke="{DOT}" stroke-width="2"/>'), f'Mature development [unlikely to develop]<br><span class="fine">a site significantly developed in the past {RECENT_YEARS} years, or one with a current approval or construction; crossed as well</span>'),
     (swatch(tick(39, 16, 30, 4.5).replace(f'{4.5 + 4 * U:.1f}', '8')), 'Development Potential'),
-    (swatch(cross(39, 16, 30, 4.5).replace(f'{4.5 + 4 * U:.1f}', '8')), f'No Development Potential<br><span class="fine">strata ownership (the lot count printed on schemes of more than {STRATA_MAX}), a heritage item, or public land</span>'),
+    (swatch(cross(39, 16, 30, 4.5).replace(f'{4.5 + 4 * U:.1f}', '8')), f'No Development Potential<br><span class="fine">strata ownership (the lot count printed on schemes of more than {STRATA_MAX}), a heritage item, public land, or a mature development</span>'),
     (swatch(f'<rect x="4" y="4" width="70" height="24" fill="none" stroke="{RED}" stroke-width="8"/>'), f'Site<br><span class="fine">{H.escape(caption)}, {fmt(site["areaM2"])} m², {H.escape(lot_desc)}</span>'),
 ]
 img = a.get('imagery') or {}
@@ -247,8 +257,8 @@ sources = (f"Aerial: NSW Imagery via SIX Maps{(' (' + ' '.join(x.capitalize() fo
            f"Heritage items from the {c.get('epiName', 'LEP')} layer. Development from the council's development monitoring register"
            + (f" (extract of {day(extract)})" if extract else '') + f" and the NSW Planning Portal. Significantly developed since {SINCE}: a strata scheme of {SMALL_SCHEME} or more lots registered, "
            "or a new building (or an addition or conversion of four storeys, five dwellings or 1,000 m²) completed. "
-           f"Areas from the digital cadastre. In the window: {counts['potential']} lots with development potential, {counts['none']} with none, {counts['mature']} mature"
-           + (f", {overridden} of them marked from the author's own knowledge" if overridden else '') + f". Retrieved {day(a.get('fetchedAt') or '')}.")
+           f"Areas from the digital cadastre. In the window: {counts['potential']} lots with development potential, {counts['none']} with none, {counts['mature']} of them mature development"
+           + (f" ({overridden} marked from the author's reading of the aerial)" if overridden else '') + f". Retrieved {day(a.get('fetchedAt') or '')}.")
 notes = open(NOTES).read() if NOTES else ''
 north = f'<svg width="150" height="190" viewBox="0 0 150 190"><text x="75" y="30" font-size="34" font-weight="700" text-anchor="middle" fill="{INK}" font-family="Inter, Helvetica, Arial, sans-serif">N</text><circle cx="75" cy="115" r="60" fill="none" stroke="{INK}" stroke-width="5"/><path d="M75,62 L89,124 L75,112 L61,124 Z" fill="{INK}"/><rect x="71" y="112" width="8" height="54" fill="{INK}"/></svg>'
 page = f'''<!doctype html><html><head><meta charset="utf-8"><title>{H.escape(caption)}: context plan</title>

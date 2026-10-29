@@ -1,5 +1,13 @@
 {
-  "107-113 CROWN STREET": { "symbol": "mature", "note": "new" },
-  "115-119 CROWN STREET": { "symbol": "mature", "note": "new" },
-  "121-129 CROWN STREET": { "symbol": "mature", "note": "new" }
+  "107-113 CROWN STREET DARLINGHURST": { "symbol": "mature", "note": "new" },
+  "115-119 CROWN STREET DARLINGHURST": { "symbol": "mature", "note": "new" },
+  "121-129 CROWN STREET DARLINGHURST": { "symbol": "mature", "note": "new" },
+  "98-106 RILEY STREET DARLINGHURST": { "symbol": "mature", "note": "new" },
+  "152-162 RILEY STREET DARLINGHURST": { "symbol": "mature", "note": "new" },
+  "80-94 PALMER STREET WOOLLOOMOOLOO": { "symbol": "mature", "note": "new" },
+  "131 CATHEDRAL STREET WOOLLOOMOOLOO": { "symbol": "mature", "note": "new" },
+  "137-157 BOURKE STREET WOOLLOOMOOLOO": { "symbol": "mature", "note": "new" },
+  "140-148 WILLIAM STREET WOOLLOOMOOLOO": { "symbol": "mature", "note": "new" },
+  "205-211 BOURKE STREET DARLINGHURST": { "symbol": "mature", "note": "new" },
+  "213-217 BOURKE STREET DARLINGHURST": { "symbol": "mature", "note": "new" }
 }

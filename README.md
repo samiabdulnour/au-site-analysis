@@ -1516,18 +1516,18 @@ prepares to show which lots around a site are likely, or unlikely, to
 redevelop in the short to medium term: an A3 landscape sheet at 1:2000, the
 blocks around the site (620 × 594 m) over the faded aerial and the cadastre,
 every property outlined by ownership (a single title in white, a strata
-scheme filled yellow, a heritage building in orange with a fine hatch), a
-tick on the lots with development potential, a cross on those with none
-(strata, heritage, public land) and a dot on mature development, the site in
-red; a white panel on the left with
+scheme filled yellow, a heritage building in orange with a fine hatch, a
+mature development patched grey), a tick on the lots with development
+potential and a cross on those with none (strata, heritage, public land,
+mature development), the site in red; a white panel on the left with
 the legend, the sources, the plan's title and scale, and north. Outputs
 `out/capacity/<slug>/diagram.png` and `diagram.pdf` (4961 × 3508 px, A3 at
 300 dpi); `--notes my-notes.html` puts the author's own paragraphs at the top
 of the panel, `--overrides marks.json` sets the marks the data cannot see
 (a new building on a single title from before the council's register
-begins: `{"121-129 CROWN STREET": {"symbol": "mature", "note": "new"}}`,
-keyed by the start of the address as the register writes it, and the sheet's
-fine print counts them), `--out` names the folder and `--redraw` draws again
+begins, read off the aerial: `{"121-129 CROWN STREET": {"symbol": "mature",
+"note": "new"}}`, keyed by the start of the address as the register writes
+it, and the sheet's fine print counts them), `--out` names the folder and `--redraw` draws again
 from what was already fetched. `examples/capacity_study/` holds the sheet for
 70-76 Riley Street, Darlinghurst, with its overrides file.
 
@@ -1555,16 +1555,16 @@ What the sheet reads, all open data (`scripts/capacity_study.ts` fetches,
   lot is its plan's registration date for every plan after the digital
   cadastre was built in September 1993 (older plans all carry that date, and
   are left undated), so a strata plan dates a building back to then.
-- *The marks*: a cross (no development potential) on strata ownership (the
-  lot count printed under it on a scheme of more than 30 lots), on a heritage
-  item and on public land; a dot (mature development, unlikely to develop) on
-  a site significantly developed in the past 20 years (a strata scheme of
-  five or more lots registered, or a new building, or an addition or
-  conversion of four storeys, five dwellings or 1,000 m², completed on the
-  register), with the year under it, and on a site with a current approval,
-  construction or live application for a new building; a tick (development
-  potential) on every other property. Lane stubs and slivers under 40 m²
-  carry no mark.
+- *The marks*: a grey patch (mature development, unlikely to develop) on a
+  site significantly developed in the past 20 years (a strata scheme of five
+  or more lots registered, or a new building, or an addition or conversion of
+  four storeys, five dwellings or 1,000 m², completed on the register, or the
+  author's overrides), with the year under it, and on a site with a current
+  approval, construction or live application for a new building; a cross (no
+  development potential) on every mature development, on strata ownership
+  (the lot count printed under it on a scheme of more than 30 lots), on a
+  heritage item and on public land; a tick (development potential) on every
+  other property. Lane stubs and slivers under 40 m² carry no mark.
 
 ## How it works
 
