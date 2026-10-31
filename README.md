@@ -1171,11 +1171,13 @@ of them tell its data apart: colour carries the data on every page, from
 across the palette, and no page is held to one family. Ordered data (the
 storeys, the metres, the hours of shadow) runs up the palette's ramp, cool
 to warm (`paletteRamp`, `heatFills`), and the key shows the ramp as a strip.
-Heron and
-Canary keep the office's own swatch sheet for their decks, the five
-families the decks were drawn in before the styles, with the land-use
-categories laid out in those families (`KIT_INK`, `KIT_CATEGORIES`): the
-office's sheet in the office's palette. How a style renders the
+Heron keeps
+the office's own swatch sheet for its decks, the five families the decks
+were drawn in before the styles, with the land-use categories laid out in
+those families (`KIT_INK`, `KIT_CATEGORIES`): the office's sheet in the
+office's palette. Canary, like Flamingo and Kingfisher, derives its families
+from its own context template, so the two aerial styles differ in their
+colours, not only in the site's ink. How a style renders the
 data differs as its ground does (`technique` on the deck look): Flamingo
 and Kingfisher work in hatches, lines and patches on paper (the landform
 hatched tighter up the slope, the storeys as a hatch that tightens up the
@@ -1421,7 +1423,12 @@ State Land Use Plan, the regional plan at the point (The Sydney Plan since
 13 August 2026, which replaced the 2018 Region Plan and the five district
 plans; the 2041 regional plans elsewhere), the council's local strategic
 planning statement from the Planning Portal's index, the plan, the DCP, the
-contributions and the housing target — with the extracts left to the author.
+contributions and the housing target — with the extracts left to the author;
+the map holds the housing-policy areas and precincts, each kind in a colour
+of its own with a pictogram at its heart (a train for a TOD area, a square
+for a town centre, a star for a State significant site, a pennant for a
+precinct), and when none lies on the block's page it widens, as far as
+1:25 000, until the nearest two do, over the region's roads and rail.
 Then *topography*: the landform
 at 1:5000 as the ground in 5 m bands, hatched tighter up the slope in
 Flamingo and Kingfisher or toned along the palette's ramp in Heron and

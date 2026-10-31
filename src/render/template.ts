@@ -188,6 +188,8 @@ const F2 = {
   violet: '#b6b2d3', violetGround: '#e5e3f4',
   grey: '#c2c2bc', stoneGround: '#e8e8d8',
   water: '#81e0f9', magenta: '#c2367c', purple: '#753583', dots: '#1c1c1c',
+  /** The cyan deepened to carry a line of bold type and the site's mark on the decks. */
+  cyanDeep: '#1a8da0',
 };
 
 const KINGFISHER_CATEGORIES: Category[] = [
@@ -256,7 +258,8 @@ export const TEMPLATES: Template[] = [
     // keep the leaf green.
     streetInk: '#e39a6f', discInk: '#e39a6f', discParkInk: '#8faf6a',
     rule: '#8a8a8a',
-    site: F2.magenta, dimension: '#56616b', wind: '#87959d', sun: '#efe8d4', road: F2.grey, water: F2.water,
+    // The deck's site and narrative in a deep cyan of the palette's own, not the context sheet's magenta.
+    site: F2.cyanDeep, dimension: '#56616b', wind: '#87959d', sun: '#efe8d4', road: F2.grey, water: F2.water,
     transit: '#365696', rail: '#e8835e', walk5: '#1f8a5a', walk10: '#6fb88c', busRoute: '#5b8fd6', heritage: F2.purple,
     isochrone: 'dotted', roundel: 'solid', busLine: 'dotted', railLine: 'dotted',
     // The cadastre and every building in a heavy white line.
@@ -654,9 +657,10 @@ export type InkFamilyName = 'red' | 'orange' | 'sage' | 'green' | 'blue';
 
 // The office's swatch sheet, which the decks were drawn in before they took
 // the styles: five families of three tints, two pattern inks and a text ink
-// dark enough for the bold narrative. The aerial styles, Heron and Canary,
-// keep these for their decks rather than Heron's tans: the office's own
-// sheet is the office's own palette.
+// dark enough for the bold narrative. Heron keeps these for its decks rather
+// than its tans: the office's own sheet is the office's own palette. Canary
+// derives its families from its own context template, as Flamingo and
+// Kingfisher do, so the two aerial styles differ in more than the site's ink.
 export const KIT_INK: Record<InkFamilyName, InkFamily> = {
   red:    { solid: '#d54747', mid: '#e69ea1', light: '#f4d8d9', line: '#d54747', deep: '#b20000', text: '#d54747' },
   orange: { solid: '#e9a879', mid: '#f3d2ba', light: '#faeee3', line: '#efbf99', deep: '#df726a', text: '#f5a470' },
@@ -693,7 +697,7 @@ const KIT_CATEGORIES: Category[] = (() => {
   ];
 })();
 /** The styles whose decks keep the swatch sheet. */
-const KIT_STYLES = new Set(['heron', 'canary']);
+const KIT_STYLES = new Set(['heron']);
 
 /** A family drawn from one land-use category of the active template: its tint at three strengths, its texture ink for the lines. */
 function familyOf(c: Category | undefined, fallback: InkFamily): InkFamily {

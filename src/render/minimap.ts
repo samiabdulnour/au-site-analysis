@@ -86,7 +86,7 @@ export const TYPE = {
 export function t2Text(x: number, y: number, text: string, anchor: 'start' | 'middle' | 'end' = 'start', k = 1): string {
   const t = tpl();
   const size = TYPE.t2.size / k;
-  return `<text x="${x.toFixed(1)}" y="${(y + size * 0.36).toFixed(1)}" text-anchor="${anchor}" font-size="${size.toFixed(2)}" font-weight="${TYPE.t2.weight}" letter-spacing="${(TYPE.t2.spacing / k).toFixed(2)}" fill="${t.ink}" stroke="#ffffff" stroke-width="${(0.55 / k).toFixed(2)}" stroke-linejoin="round" paint-order="stroke">${esc(text.toUpperCase())}</text>`;
+  return `<text x="${x.toFixed(1)}" y="${(y + size * 0.36).toFixed(1)}" text-anchor="${anchor}" font-size="${size.toFixed(2)}" font-weight="${TYPE.t2.weight}" letter-spacing="${(TYPE.t2.spacing / k).toFixed(2)}" fill="${t.ink}">${esc(text.toUpperCase())}</text>`;
 }
 
 /** Width of a T2 label in map millimetres, for the label spacer. */
