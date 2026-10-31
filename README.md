@@ -1509,6 +1509,16 @@ Where a council publishes its own DCP mapping as open data — the City of
 Sydney does — the deck reads it too, for the sites in that LGA: building
 height in storeys, street frontage heights, active frontages, setbacks.
 
+Spread 07b is the capacity and opportunity study (see *The capacity and
+opportunity site study* above) as a page of the deck: the same rules from
+`src/lib/capacity.ts`, drawn on the template over one A4 page at 1:2000, the
+author's marks from `capacity_overrides.json` beside the output. The yield
+study reads the same study over its neighbours: a neighbour's future form is
+raised only where the study finds development potential, and a strata
+scheme, a heritage item, a mature development or a site under 250 m² stands
+as it is; its last spread says how many were held, and `PLANNING_YIELD.json`
+lists each neighbour's reading.
+
 ### The capacity and opportunity site study
 
 `npm run capacity -- "<address>"` draws the context plan an urban designer
@@ -1534,7 +1544,7 @@ fill the panel (the site's State significant application and the likelihood
 of redevelopment around it).
 
 What the sheet reads, all open data (`scripts/capacity_study.ts` fetches,
-`scripts/capacity_study/analyse.py` classifies, `render.py` draws):
+`src/lib/capacity.ts` classifies, as it does for the deck's spread 07b, `render.py` draws):
 
 - *Ownership* from the NSW cadastre and its property register: a property is
   a strata scheme where a strata plan sits under it, where the register files

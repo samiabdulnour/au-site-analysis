@@ -38,6 +38,7 @@ import { fetchAerial } from '../src/fetch/imagery.js';
 import { fetchSiteControls, fetchSiteLots } from '../src/fetch/nsw.js';
 import { apiCouncilName, clipToExtent, fetchCouncilApplications, PORTAL_MANDATED } from '../src/fetch/da.js';
 import { printPage } from '../src/render/pdf.js';
+import { classifyCapacity, registerRecords, inWindow, capacityCounts, type CapacityOverrides } from '../src/lib/capacity.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PORTAL = 'https://portal.spatial.nsw.gov.au/server/rest/services';
@@ -127,9 +128,11 @@ await writeFile(join(out, 'bundle.json'), JSON.stringify({
 }));
 }
 
-// read, draw, print
+// read: the same rules as the deck's spread 07b (src/lib/capacity.ts), written in the shape the drawing reads
+await writeAnalysis(out, log);
+// draw, print
 const run = promisify(execFile);
-for (const step of [['analyse.py', out], ['render.py', out, ...(notes ? [notes] : [])]]) {
+for (const step of [['render.py', out, ...(notes ? [notes] : [])]]) {
   const { stdout, stderr } = await run('python3', ['-I', join(HERE, 'capacity_study', step[0]), ...step.slice(1)], { maxBuffer: 64 * 1024 * 1024 });
   if (stderr.trim()) log(stderr.trim());
   log(`  ${step[0]}: ${stdout.trim()}`);
@@ -137,3 +140,47 @@ for (const step of [['analyse.py', out], ['render.py', out, ...(notes ? [notes] 
 const { width, height } = JSON.parse(await readFile(join(out, 'page.json'), 'utf8')) as { width: number; height: number };
 await printPage(join(out, 'diagram.html'), { width, height }, { png: join(out, 'diagram.png'), pdf: join(out, 'diagram.pdf') });
 console.log(`${join(out, 'diagram.png')}\n${join(out, 'diagram.pdf')}`);
+
+
+/**
+ * The reading of bundle.json and da.json with src/lib/capacity.ts, written as analysis.json for render.py: every
+ * property with its geometry in Web Mercator, its kind, its marks and what dates it; the lots, the heritage items,
+ * the parks, the council's register and the roads, in the same metres. The drawing's own rules (the site alone, the
+ * symbol on each parcel) read these fields.
+ */
+async function writeAnalysis(dir: string, say: (m: string) => void): Promise<void> {
+  const bundle = JSON.parse(await readFile(join(dir, 'bundle.json'), 'utf8'));
+  const da = JSON.parse(await readFile(join(dir, 'da.json'), 'utf8')) as { near: any[] };
+  const overrides = await readFile(join(dir, 'overrides.json'), 'utf8').then((t) => JSON.parse(t) as CapacityOverrides).catch(() => ({} as CapacityOverrides));
+  const toM = (rings: number[][][]) => rings.map((r) => r.map(([lon, lat]) => { const m = lonLatToMercator({ lon, lat }); return [m.x, m.y]; }));
+  const ringsOf = (g: any): number[][][] => (!g ? [] : g.type === 'Polygon' ? g.coordinates : g.type === 'MultiPolygon' ? g.coordinates.flat() : []);
+  const parks = (bundle.parks?.features ?? []).map((f: any) => ({ kind: 'council' as const, name: f.properties?.Name, rings: ringsOf(f.geometry) })).filter((l: any) => l.rings.length);
+  const stateLand = (bundle.stateLand?.features ?? []).map((f: any) => ({ kind: 'state' as const, name: f.properties?.LOTREF, rings: ringsOf(f.geometry) })).filter((l: any) => l.rings.length);
+  const facilities = (bundle.facilities?.features ?? []).filter((f: any) => f.geometry?.type === 'Point').map((f: any) => ({ name: String(f.properties?.Name ?? ''), lon: f.geometry.coordinates[0], lat: f.geometry.coordinates[1] }));
+  const register = registerRecords(bundle.devMon ?? { type: 'FeatureCollection', features: [] });
+  const result = classifyCapacity({ centre: bundle.centre, properties: bundle.props, lots: bundle.lots, heritage: bundle.heritage, publicLand: [...stateLand, ...parks], facilities, register, applications: da.near, overrides, options: { thisYear: Number(String(bundle.fetchedAt ?? '').slice(0, 4)) || new Date().getFullYear() } });
+  const site = result.site;
+  const props: Record<string, any> = {};
+  for (const q of result.properties) {
+    props[String(q.propid)] = {
+      propid: q.propid, base: q.base, geom: q.ringsM, centroid: [q.centroidM.x, q.centroidM.y], areaM2: q.areaM2, kind: q.kind, strata: q.strata, units: q.units,
+      strataPlans: q.strataPlans, heritageItem: q.heritageItem ?? null, inHCA: q.inHca ?? null, developed: q.developed, active: q.active.map((d) => ({ da: d.da, status: d.status, type: d.type, levels: d.levels, dwellings: d.dwellings })),
+      liveDa: q.liveDa.map((d) => ({ pan: d.pan, status: d.status })), override: q.override ?? null, isSite: q.isSite, mark: q.mark === 'cross' ? 'x' : 'tick', note: q.note,
+      lots: q.lots, ...(q.isSite ? { neighbours: result.neighbours } : {}),
+    };
+  }
+  const roads = (bundle.roadNames?.features ?? []).map((f: any) => ({ name: f.properties?.roadnamelabel, paths: (f.geometry?.type === 'MultiLineString' ? f.geometry.coordinates : f.geometry ? [f.geometry.coordinates] : []).map((path: number[][]) => path.map(([lon, lat]) => { const m = lonLatToMercator({ lon, lat }); return [m.x, m.y]; })) }));
+  const analysis = {
+    k: bundle.k, extent: bundle.extent, centre: bundle.centre, aerial: bundle.aerial, imagery: bundle.imagery, controls: bundle.controls, meta: bundle.meta, fetchedAt: bundle.fetchedAt,
+    strataMax: result.options.strataMax, recentYears: result.options.recentYears, since: result.since, smallScheme: result.options.smallScheme, smallSite: result.options.smallSite,
+    props, lots: result.lots.map((l) => ({ id: l.id, plan: l.plan, rings: toM(l.rings), areaM2: l.areaM2, registered: l.registered, propid: l.propid })),
+    heritageItems: (bundle.heritage?.features ?? []).filter((f: any) => String(f.properties?.LAY_CLASS ?? '').startsWith('Item')).map((f: any) => ({ name: f.properties?.H_NAME, rings: toM(ringsOf(f.geometry)) })),
+    parks: parks.map((l: any) => ({ name: l.name, rings: toM(l.rings) })),
+    devmon: register.map((d) => ({ address: d.address, da: d.da, type: d.type, status: d.status, completion: d.completion, extracted: d.extracted })),
+    roads,
+  };
+  await writeFile(join(dir, 'analysis.json'), JSON.stringify(analysis));
+  const visible = inWindow(result, bundle.extent);
+  const counts = capacityCounts(visible, result.options);
+  say(`  read: ${result.properties.length} parcels (${result.duplicates} duplicate rows), ${counts.potential} with potential, ${counts.low} low, ${counts.mature} mature; site ${site?.base ?? 'not found'} ${site?.areaM2 ?? ''} m²; neighbours ${result.neighbours.map((n) => `${n.base} (${n.sharedM} m)`).join('; ') || 'none'}`);
+}
