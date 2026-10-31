@@ -1465,8 +1465,10 @@ streetscape` draws it (190 m at 1:500, the buildings' lines, heights and
 levels over the faces, the conservation areas bracketed; see *The
 streetscape* below), on its own page after built form, and left out of the
 deck where it fails, or with `DECK_STREETSCAPE=0`. Then *movement*: roads by function, rail and
-stations, the walking isochrones from the site (Valhalla, 5, 10 and 15
-minutes), bus stops (Transport for NSW with the key, else OpenStreetMap),
+stations, the walking reach from the site (Valhalla, 5, 10 and 15 minutes)
+as nested bands, the deeper the nearer, with the streets within it in the
+transit blue and straight lines to the nearest stations carrying the walk
+in minutes, bus stops (Transport for NSW with the key, else OpenStreetMap),
 bus routes, cycleways, footways and one-way streets (OpenStreetMap through
 Overpass) and the LEP's active street frontages, with a table of the
 nearest stations and a wide walking-reach strip at 1:16000 naming the

@@ -4115,11 +4115,21 @@ export function movementSlide(b: SlidesBundle): Slide {
   const p = b.bleedPanel;
   const proj = panelProjector(p);
   const parts: string[] = [withTemplate(mt, () => baseLayers(b.base, proj, p))];
-  for (const iso of [...mv.isochrones].sort((x, y) => y.minutes - x.minutes)) {
-    parts.push(`<path d="${ringsPath(iso.rings, proj)}" fill="${MOVE.iso[iso.minutes] ?? '#b7c1e3'}" fill-opacity="0.08" stroke="${MOVE.iso[iso.minutes] ?? '#b7c1e3'}" stroke-width="0.45" stroke-dasharray="1.6,1" fill-rule="evenodd"/>`);
+  // The walking reach as nested bands from the site, the deeper the nearer: translucent tones that stack toward
+  // the site over the photograph, dots that thicken toward it on paper; each band's edge dashed.
+  const box = { x0: 0, y0: 0, x1: p.wMm, y1: p.hMm };
+  const isoSorted = [...mv.isochrones].sort((x, y) => y.minutes - x.minutes);
+  const tone = look.technique === 'tone';
+  for (const iso of isoSorted) {
+    const ink = MOVE.iso[iso.minutes] ?? '#b7c1e3';
+    const d = ringsPath(iso.rings, proj);
+    const band: Fill = tone ? { bg: ink, opacity: 0.16, rule: 'evenodd' } : { kind: 'dots', ink, step: iso.minutes <= 5 ? 0.7 : iso.minutes <= 10 ? 1.0 : 1.4, w: 0.26, rule: 'evenodd' };
+    parts.push(fillShape(d, box, band), `<path d="${d}" fill="none" stroke="${ink}" stroke-width="0.5" stroke-dasharray="1.6,1" fill-rule="evenodd"/>`);
   }
   if (mv.activeFrontages.features.length) parts.push(`<path d="${fcPath(mv.activeFrontages, proj)}" fill="${MOVE.frontage}" fill-opacity="0.55" stroke="${MOVE.frontage}" stroke-width="0.25" fill-rule="evenodd"/>`);
   parts.push(withTemplate(mt, () => overLayers(b.base, proj, p, 'wash')));
+  // the streets the walk reaches, in the blue, clipped to the widest band: the network one can walk, not only how far
+  if (isoSorted[0]) parts.push(`<clipPath id="walk-reach"><path d="${ringsPath(isoSorted[0].rings, proj)}" clip-rule="evenodd"/></clipPath><g clip-path="url(#walk-reach)"><path d="${b.base.roads.map((r) => ringsPath([r.coords], proj, false)).join('')}" fill="none" stroke="${MOVE.iso[10]}" stroke-width="0.3" stroke-linecap="round" stroke-linejoin="round"/></g>`);
   if (mv.busRoutes.length) parts.push(`<path d="${mv.busRoutes.map((l) => ringsPath([l], proj, false)).join('')}" fill="none" stroke="${t.busRoute}" stroke-width="0.5" stroke-dasharray="1.2,0.9" stroke-linecap="round"/>`);
   if (mv.footways.length) parts.push(`<path d="${mv.footways.map((l) => ringsPath([l], proj, false)).join('')}" fill="none" stroke="${MOVE.foot}" stroke-width="0.25" stroke-dasharray="0.5,0.5"/>`);
   for (const kind of ['shared', 'lane', 'separated'] as CyclewayKind[]) {
@@ -4182,6 +4192,20 @@ export function movementSlide(b: SlidesBundle): Slide {
       if (isoSpacer.take(lx, ly, w, 2.6)) { parts.push(label(lx, ly, text, 2, MOVE.mark)); break; }
     }
   }
+  // straight lines from the site to the nearest stations, the walk in minutes along each: the map says how far, not only where
+  {
+    const cLL = mercatorToLonLat(p.center);
+    const [cx0, cy0] = proj(cLL.lon, cLL.lat);
+    for (const st of f.stations.slice(0, 3)) {
+      const [ex, ey] = pointByBearing(p, proj, st.distanceM, st.bearing);
+      const len = Math.hypot(ex - cx0, ey - cy0);
+      if (len < 12 || ex < 2 || ey < 2 || ex > p.wMm - 2 || ey > p.hMm - 2) continue;
+      const ux = (ex - cx0) / len, uy = (ey - cy0) / len;
+      const a: Pt = [cx0 + ux * 4, cy0 + uy * 4], z: Pt = [ex - ux * 3.2, ey - uy * 3.2];
+      parts.push(`<line x1="${a[0].toFixed(2)}" y1="${a[1].toFixed(2)}" x2="${z[0].toFixed(2)}" y2="${z[1].toFixed(2)}" stroke="${MOVE.mark}" stroke-width="0.35" stroke-dasharray="0.9,0.9" stroke-linecap="round"/>`);
+      parts.push(alongLabel([a, z], `${st.walkMin} MIN · ${fmtNum(st.distanceM)} M`, 2, MOVE.mark, isoSpacer, p, 0.5, { weight: 700, spacing: 0.16 }));
+    }
+  }
   for (const iso of mv.isochrones) {
     const text = `${iso.minutes} min`, w = t2Width(text);
     const pts = (iso.rings[0]?.map(([lon, lat]) => proj(lon, lat)) ?? []).filter((q) => q[0] > 8 && q[0] < p.wMm - 8 && q[1] > 14 && q[1] < p.hMm - 16);
@@ -4214,7 +4238,11 @@ export function movementSlide(b: SlidesBundle): Slide {
   const legendRows: [string, string][] = [
     [sw(`<line x1="0" y1="1.8" x2="5" y2="1.8" stroke="${MOVE.road}" stroke-width="0.9"/><line x1="0" y1="1.8" x2="5" y2="1.8" stroke="#ffffff" stroke-width="0.6"/>`), 'Roads by function: motorways and arterials heaviest, local streets finest'],
     [sw(`<line x1="0" y1="1.8" x2="5" y2="1.8" stroke="${MOVE.rail}" stroke-width="0.2"/><line x1="0" y1="1.8" x2="5" y2="1.8" stroke="${MOVE.rail}" stroke-width="1.05" stroke-dasharray="0.16,1.3"/>`), 'Rail; stations as T, M (metro) or L (light rail)'],
-    [sw(`<path d="M0,1.8 H5" stroke="${MOVE.iso[5]}" stroke-width="0.45" stroke-dasharray="1.6,1"/>`), 'Walking isochrones from the site: 5, 10 and 15 minutes'],
+    [sw(tone
+      ? `<rect x="0" y="0.3" width="5" height="3" fill="${MOVE.iso[15]}" fill-opacity="0.16"/><rect x="1.2" y="0.3" width="3.8" height="3" fill="${MOVE.iso[10]}" fill-opacity="0.16"/><rect x="2.6" y="0.3" width="2.4" height="3" fill="${MOVE.iso[5]}" fill-opacity="0.16"/>`
+      : fillShape('M0,0.3H1.7V3.3H0Z', { x0: 0, y0: 0.3, x1: 1.7, y1: 3.3 }, { kind: 'dots', ink: MOVE.iso[15], step: 1.4, w: 0.26 }, 1.3) + fillShape('M1.7,0.3H3.4V3.3H1.7Z', { x0: 1.7, y0: 0.3, x1: 3.4, y1: 3.3 }, { kind: 'dots', ink: MOVE.iso[10], step: 1.0, w: 0.26 }, 1.3) + fillShape('M3.4,0.3H5V3.3H3.4Z', { x0: 3.4, y0: 0.3, x1: 5, y1: 3.3 }, { kind: 'dots', ink: MOVE.iso[5], step: 0.7, w: 0.26 }, 1.3)),
+    'Walking reach from the site: 15, 10 and 5 minutes, the deeper the nearer; the streets within it in blue'],
+    [sw(`<line x1="0" y1="1.8" x2="5" y2="1.8" stroke="${MOVE.mark}" stroke-width="0.35" stroke-dasharray="0.9,0.9"/>`), 'Straight lines to the nearest stations, the walk in minutes along each'],
   ];
   if (walkDestinations(b, f).length) legendRows.push([sw(`<circle cx="2.5" cy="1.8" r="1.4" fill="#ffffff" stroke="${MOVE.mark}" stroke-width="0.3"/><text x="2.5" y="2.4" text-anchor="middle" font-size="1.7" font-weight="700" fill="${MOVE.mark}">1</text>`), 'Stations, schools, health, community places and parks within the walk, keyed on the map']);
   if (mv.busStops.length || mv.busRoutes.length) legendRows.push([sw(`<line x1="0" y1="1.8" x2="5" y2="1.8" stroke="${t.busRoute}" stroke-width="0.5" stroke-dasharray="1.2,0.9"/><circle cx="2.5" cy="1.8" r="0.9" fill="${t.busRoute}" stroke="#ffffff" stroke-width="0.3"/>`), `Bus ${mv.busRoutes.length ? 'routes and ' : ''}stops (${f.bus.source === 'tfnsw' ? 'Transport for NSW' : 'OpenStreetMap'})`]);

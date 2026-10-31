@@ -560,8 +560,9 @@ export async function runYieldPipeline(
   log('reading planning controls, streets, levels, stations and the neighbours…');
   const emptyFc: GeoJSONFC = { type: 'FeatureCollection', features: [] };
   const noBuildings: BuildingsData = { source: 'none', buildings: [], fetchedAt: new Date().toISOString() };
-  // The photograph over the plan's window, for the styles that draw the yield on the aerial.
-  const aerialExtent = around(130);
+  // The photograph under the plan and the axonometric, for the styles that draw the yield on the aerial: wide
+  // enough that, skewed into the axonometric's ground plane, it reaches the frame's every edge.
+  const aerialExtent = around(420);
   const [controls, roads, lots, contourSet, stations, policy, buildings, zoning, hob, fsr, addresses, footways, aerial] = await Promise.all([
     fetchSiteControls(geo.center),
     soft(fetchRoads(around(110)), [], 'roads'),
@@ -575,7 +576,7 @@ export async function runYieldPipeline(
     soft(fetchFloorSpaceRatio(around(110)), emptyFc, 'floor space ratio'),
     soft(fetchNeighbourAddresses(around(110)), [] as NeighbourAddress[], 'addresses'),
     soft(fetchFootways(around(110), log), { source: 'none', lines: [], fetchedAt: new Date().toISOString() } as FootwaysData, 'footways'),
-    soft(fetchAerial(aerialExtent, 2600, dataDir, 'yield-aerial'), null as AerialResult | null, 'aerial'),
+    soft(fetchAerial(aerialExtent, 3200, dataDir, 'yield-aerial'), null as AerialResult | null, 'aerial'),
   ]);
   log(`  aerial: ${aerial ? `${aerial.tiles.length} tile${aerial.tiles.length === 1 ? '' : 's'}, ${aerial.pxWidth} px over ${Math.round(2 * (reach + 130))} m` : 'none'}`);
   log(`  ${[controls.epiName, controls.zoneCode, controls.maxHeightM ? `HOB ${controls.maxHeightM} ${controls.heightUnits ?? 'm'}` : '', controls.fsr ? `FSR ${controls.fsr}:1` : ''].filter(Boolean).join(' · ') || 'no LEP mapped'}`);
