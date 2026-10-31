@@ -13,6 +13,8 @@ import { panelExtent, type Panel } from '../render/minimap.js';
 import { fetchTrainStations, type NamedPoint, type RailLines } from './nswTopo.js';
 import { fetchDemGrid, type DemGrid } from './terrain.js';
 import { fetchNpws, type NpwsReserve } from './greenSpace.js';
+import type { AerialResult } from './imagery.js';
+import type { Extent } from '../lib/geo.js';
 
 const PORTAL = 'https://portal.spatial.nsw.gov.au/server/rest/services';
 const ADMIN = `${PORTAL}/NSW_Administrative_Boundaries_Theme/FeatureServer`;
@@ -42,6 +44,8 @@ export interface LocationData {
   dem?: DemGrid | null;
   /** The National Parks and Wildlife Service estate in the window: the bushland round the city; absent likewise. */
   npws?: NpwsReserve[];
+  /** The region from above, for the styles that stand their maps on the photograph; absent from decks read before it, and null where the imagery did not answer. */
+  aerial?: (AerialResult & { extent: Extent }) | null;
   fetchedAt: string;
 }
 

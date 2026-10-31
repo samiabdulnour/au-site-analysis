@@ -1002,7 +1002,7 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
   // The lots and the footprints are read once and wait for both the maps and Street View, which uses them to tell a camera in the street from one in a shop or behind a neighbour.
   const lotsRead = soft(fetchAllLots(fetchExtent), emptyFC, 'cadastral lots');
   const footprintsRead = soft(fetchBuildings(pageExtent, log), { source: 'none' as const, buildings: [], fetchedAt: new Date().toISOString() }, 'buildings');
-  const [zoning, hob, heritage, shr, policy, water, lots, roads, railLines, stations, context, property, controls, proposals, feed, people, dem, contourSet, buildingsRead, movement, green, constraints, site, wideRoads, wideRail, wideStations, wideWater, wideSuburbs, country, photos, location, majorProjects, wind, policyNear] = await Promise.all([
+  const [zoning, hob, heritage, shr, policy, water, lots, roads, railLines, stations, context, property, controls, proposals, feed, people, dem, contourSet, buildingsRead, movement, green, constraints, site, wideRoads, wideRail, wideStations, wideWater, wideSuburbs, country, photos, location, majorProjects, wind, policyNear, locationAerial] = await Promise.all([
     soft(fetchZoningDetailed(fetchExtent), emptyFC, 'zoning'),
     soft(fetchHobDetailed(fetchExtent), emptyFC, 'height of building'),
     soft(fetchHeritageDetailed(fetchExtent), emptyFC, 'heritage'),
@@ -1040,7 +1040,10 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
     soft(fetchWind(mercatorToLonLat(geo.center), log), emptyWind('NASA POWER did not answer'), 'wind'),
     // The housing-policy maps 3 km round the site, so a page with none on it can say where the nearest are.
     soft(fetchPolicyAreas({ xmin: geo.center.x - 3000 * countryK, ymin: geo.center.y - 3000 * countryK, xmax: geo.center.x + 3000 * countryK, ymax: geo.center.y + 3000 * countryK }, log), [] as PolicyArea[], 'housing policy maps round the site'),
+    // The region from above, one picture at about 9 m a pixel, for the styles that stand the Location map on the photograph.
+    soft(fetchAerial(panelExtent(locationPanel), 2800, dataDir, 'location-aerial'), null as AerialResult | null, 'location aerial'),
   ]);
+  location.aerial = locationAerial ? { ...locationAerial, extent: panelExtent(locationPanel) } : null;
   const [housingTarget, cos, , views, character, strategies] = await Promise.all([
     context.lga?.name ? fetchHousingTarget(context.lga.name) : Promise.resolve(null),
     // The one council with its DCP as open data so far; the hook is per LGA.

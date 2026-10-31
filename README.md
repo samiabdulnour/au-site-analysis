@@ -1161,8 +1161,12 @@ the sheet (`themeFor()`). The CLI takes `--site-theme`.
 The yield and the site report take the four styles of the two maps, under
 the same names, and read each style's palette from its context template
 (`deckLook()` and `deckFamilies()` in `src/render/template.ts`). The site
-colour sets the site and the narrative, deepened where it is too light for
-a line of bold type. The zones take the
+colour sets the site; the narrative on the left of each spread is set in
+the map's own most significant colour (the biggest community's on Country,
+the motorways' on Location, the site's contour on Topography, the
+determined lots' green on Development activity, the catchments' blue on
+Movement, the shadows' on Grid, sun and views), and in the site's colour
+where no one colour leads the map. The zones take the
 land-use categories, with their textures, as the context sheet of that style
 tints the land, or in Canary each zone code in its NSW ePlanning colour; the
 yield's plan tints each neighbour's lot the same way. The atlas kit's five
@@ -1184,8 +1188,8 @@ contours alone, coloured up the ramp by height, the storeys as a hatch that
 tightens up the ramp, the pre-1750 communities dotted, the development
 lots hatched),
 Heron and Canary in tones over the photograph (the landform in a heat
-ramp, the storeys and the communities flat). Each style's winter shadows
-take an ink of their own. The marks of the development page carry
+ramp, the storeys and the communities flat). The winter shadows are in the
+transit family's blue, deepened, which differs by style. The marks of the development page carry
 pictograms, a tick, an hourglass, the scales' beam, a cross, and a star for
 a State significant application, so a status reads without the key. The
 ground follows the style too, paper for Flamingo and Kingfisher and the
@@ -1396,8 +1400,9 @@ content part of a feasibility study or design report, specified in
 `docs/SLIDES_SPEC.md`. All eighteen slides of the spec exist. The deck
 opens on *Country*, as an acknowledgement of the Traditional Custodians (the
 page is described below with the layers it holds); then *location*: the
-site in its region at 1:100,000 — the land's shape banded every 40 m from
-the elevation model, hatched or toned by the style under its hillshade,
+site in its region at 1:100,000 — in Heron and Canary over the region's
+photograph in grey under the veil; in Flamingo and Kingfisher the land's
+shape banded every 40 m from the elevation model, hatched under its hillshade,
 with contours every 20 m traced from the model and a kilometre grid from
 the site, the national parks and reserves, the water named, the
 council areas outlined and named with the site's own tinted, the motorways
@@ -1433,8 +1438,9 @@ precinct), and when none lies on the block's page it widens, as far as
 Then *topography*: the landform
 at 1:5000: in Heron and Canary the ground in 5 m bands toned along the
 palette's ramp under the hillshade from the State's 5 m elevation model; in
-Flamingo and Kingfisher no fill at all, the contours alone, each coloured
-up the same ramp by its height; with the 2 m contours numbered along the index
+Flamingo and Kingfisher no fill at all, the contours alone, traced from the
+model every metre (the fives heavier and numbered), each coloured up the
+same ramp by its height; with the 2 m contours numbered along the index
 ones, the water named, the high and low points of the page and the site's
 level marked, roads and rail over it and two section lines through the site,
 A–A′ down the steepest fall and B–B′ across it, each drawn as a section
