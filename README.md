@@ -72,8 +72,10 @@ what they may ask of each public data service is counted across all of them,
 so simultaneous users don't hammer it — see *Many at once* below. Put `TFNSW_API_KEY=…` in `.env`
 for authoritative bus stops. The deck's existing-condition slide takes Google
 Street View frames of each street frontage with `GOOGLE_MAPS_API_KEY=…` (a
-Google Cloud key whose project has the Street View Static API enabled; add
-`GOOGLE_MAPS_SIGNING_SECRET=…` if the project signs its URLs), and
+Google Cloud key whose project has the Street View Static API enabled, and the
+Map Tiles API for the streetscape page's 3D tiles; add
+`GOOGLE_MAPS_SIGNING_SECRET=…` if the project signs its URLs, and take it out
+with a key from another project, since a signature is the project's), and
 Mapillary's frames with `MAPILLARY_TOKEN=…` (a free client token); without
 either it reads KartaView alone. On the server they go in
 `/etc/site-analyst.env`, which the deployer passes to the container.
