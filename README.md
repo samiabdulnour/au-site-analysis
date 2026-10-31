@@ -1175,9 +1175,9 @@ Heron keeps
 the office's own swatch sheet for its decks, the five families the decks
 were drawn in before the styles, with the land-use categories laid out in
 those families (`KIT_INK`, `KIT_CATEGORIES`): the office's sheet in the
-office's palette. Canary, like Flamingo and Kingfisher, derives its families
-from its own context template, so the two aerial styles differ in their
-colours, not only in the site's ink. How a style renders the
+office's palette. Canary has a punchy sheet of its own (`CANARY_INK`): its
+red, its yellow, its lime and its lilac-blue, so the two aerial styles
+differ in their colours, not only in the site's ink. How a style renders the
 data differs as its ground does (`technique` on the deck look): Flamingo
 and Kingfisher work in hatches, lines and patches on paper (the landform
 hatched tighter up the slope, the storeys as a hatch that tightens up the
@@ -1500,7 +1500,11 @@ level against the nearest crest, the gazetted places within 10 km and the
 public ASDST likelihood model; the slide states that AHIMS is not open and
 that a search precedes any works, and that the name of Country, the language
 and the cultural narrative are the office's to develop with Knowledge
-Holders, not generated. Then *the site*: the site plan on the aerial at a round scale that
+Holders, not generated. The land council areas are named large across the
+ground they hold. A motif for an area's ground is its people's to give: the
+map draws one over a land council area only where a tile has been placed at
+`assets/motifs/<land-council-name>.svg` (or `.png`) with their permission,
+and borrows no art style of its own. Then *the site*: the site plan on the aerial at a round scale that
 fits the lot, with the boundary lengths from the digital cadastre, the
 corner levels from the elevation model, the existing footprint and its
 height, the neighbours' numbers and the street names, the easement

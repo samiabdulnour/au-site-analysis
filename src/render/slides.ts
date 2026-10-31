@@ -46,6 +46,8 @@ import { PROBE_OUT_M as SV_PROBE_OUT_M } from '../fetch/streetView.js';
 import { windLobes, sectorTotals, WIND_CLASSES_KMH, type WindRose } from '../fetch/wind.js';
 import { inRings, nearestOnRings, overlapArea, ringsGap } from '../lib/rings.js';
 import { CENTRES, SYDNEY_CBD, CENTRE_KIND_WORD } from '../data/centres.js';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { MajorProject } from '../fetch/majorProjects.js';
 import { streetscapeSlide } from './streetscape.js';
 
@@ -7591,16 +7593,19 @@ export function sourcesSlide(b: SlidesBundle, planning: PlanningFacts): Slide {
 /** The deck opens on Country, and with this; the name of the people whose Country it is is theirs to give, so the line does not guess it. */
 const COUNTRY_ACKNOWLEDGEMENT = 'We acknowledge the Traditional Custodians of the Country on which the site stands and pay our respects to Elders past and present.';
 /**
- * The Aboriginal flag beside the acknowledgement: black over red, the sun in the middle, as Harold Thomas designed
- * it in 1971. Free for all to reproduce since the Commonwealth acquired its copyright in 2022. The Torres Strait
- * Islander flag is not drawn: its reproduction needs the Torres Strait Island Regional Council's permission. No
- * other symbol or art style is borrowed: the page's own note leaves the name of Country, its language and its
- * stories to Knowledge Holders, and the same goes for its art.
+ * A motif for a land council area's ground, supplied by its people: an SVG or PNG tile at assets/motifs/<name>.svg
+ * or .png, the land council's name in lower case with hyphens for spaces (assets/motifs/deerubbin.svg). None ships
+ * with the code: a motif is the custodians' to give and to license, so the map draws one only where one has been
+ * placed there with their permission, and borrows no art style of its own.
  */
-const aboriginalFlag = (x: number, y: number, w: number) => {
-  const h = w / 1.5;
-  return `<div class="abs" style="left:${x}mm;top:${y}mm"><svg width="${w}mm" height="${h}mm" viewBox="0 0 3 2" xmlns="http://www.w3.org/2000/svg" style="display:block"><rect width="3" height="1" fill="#000000"/><rect y="1" width="3" height="1" fill="#cc0000"/><circle cx="1.5" cy="1" r="0.5" fill="#ffff00"/></svg></div>`;
-};
+function countryMotif(local: string): string | null {
+  const slug = local.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  for (const ext of ['svg', 'png']) {
+    const file = join(process.cwd(), 'assets', 'motifs', `${slug}.${ext}`);
+    if (existsSync(file)) return `data:image/${ext === 'svg' ? 'svg+xml' : 'png'};base64,${readFileSync(file).toString('base64')}`;
+  }
+  return null;
+}
 
 const RIDGE_COLOUR = '#8a6a3c';
 const PLACE_COLOUR = '#b5703a';
@@ -7845,9 +7850,27 @@ export function countryAtlas(b: SlidesBundle): Slide {
   const fb = furnitureBox(p, 'left');
   spacer.block((fb.x0 + fb.x1) / 2, (fb.y0 + fb.y1) / 2, fb.x1 - fb.x0 + 2, fb.y1 - fb.y0 + 2);
   const labels: string[] = [];
-  if (c.lalcs.length > 1) {
-    parts.push(`<path d="${c.lalcs.map((l) => ringsPath(l.rings, proj)).join('')}" fill="none" stroke="${INK.blue.deep}" stroke-width="0.5" stroke-dasharray="3 1 0.6 1"/>`);
-    for (const l of c.lalcs) { let best = { area: 0, cx: 0, cy: 0 }; for (const r of l.rings) { const st = clippedStats(r, proj, p); if (st.area > best.area) best = st; } const text = `${titleCase(l.local)} Land Council`.toUpperCase(); if (best.area > 200 && spacer.take(best.cx, best.cy, text.length * 1.6 + 1, 2.8)) labels.push(m6(best.cx, best.cy, text)); }
+  // The land council areas: each named large across the ground it holds, so whose Country the page lies in reads
+  // first; their boundary where more than one lies on the page; a motif over an area where its people have given one.
+  const motifs: string[] = [];
+  c.lalcs.forEach((l, i) => {
+    const uri = countryMotif(l.local);
+    if (!uri) return;
+    motifs.push(`<pattern id="motif-${i}" patternUnits="userSpaceOnUse" width="16" height="16"><image href="${uri}" width="16" height="16"/></pattern>`, `<path d="${ringsPath(l.rings, proj)}" fill="url(#motif-${i})" fill-opacity="0.45" fill-rule="evenodd"/>`);
+  });
+  if (motifs.length) parts.push(`<defs>${motifs.filter((m) => m.startsWith('<pattern')).join('')}</defs>`, ...motifs.filter((m) => !m.startsWith('<pattern')));
+  if (c.lalcs.length > 1) parts.push(`<path d="${c.lalcs.map((l) => ringsPath(l.rings, proj)).join('')}" fill="none" stroke="${INK.blue.deep}" stroke-width="0.5" stroke-dasharray="3 1 0.6 1"/>`);
+  for (const l of c.lalcs) {
+    let best = { area: 0, cx: 0, cy: 0 };
+    for (const r of l.rings) { const st = clippedStats(r, proj, p); if (st.area > best.area) best = st; }
+    if (best.area < 150) continue;
+    const name = titleCase(l.local).toUpperCase(), sub = 'LOCAL ABORIGINAL LAND COUNCIL AREA';
+    const w = Math.max(labelW(name, 4.2) * 1.3, labelW(sub, 2) * 1.2);
+    for (const [lx, ly] of [[best.cx, best.cy], [best.cx, best.cy - 14], [best.cx, best.cy + 14], [best.cx - 24, best.cy], [best.cx + 24, best.cy], [best.cx, best.cy - 28], [best.cx, best.cy + 28]] as [number, number][]) {
+      if (!spacer.take(lx, ly, w, 8.5)) continue;
+      labels.push(`<text x="${lx.toFixed(2)}" y="${(ly - 0.6).toFixed(2)}" text-anchor="middle" font-size="4.2" font-weight="700" letter-spacing="0.3em" fill="${INK.blue.deep}">${esc(name)}</text><text x="${lx.toFixed(2)}" y="${(ly + 3.2).toFixed(2)}" text-anchor="middle" font-size="2" letter-spacing="0.22em" fill="${INK.blue.deep}">${sub}</text>`);
+      break;
+    }
   }
   // The permits: thin outlines, the active ones firmer, the expired dashed and fainter, with no number on them
   // but the site's own: a busy council area holds ninety-odd, and their register numbers say nothing about Country.
@@ -7878,7 +7901,7 @@ export function countryAtlas(b: SlidesBundle): Slide {
     ...(classes.length ? [{ swatch: vegSwatch, label: `Pre-1750 plant communities, each its own colour, keyed by the chart${deckLook().technique === 'tone' ? '; woodland lighter than forest' : '; forest hatched, woodland lined, the rest dotted or waved'}` }] : []),
     { swatch: `<rect x="0" y="0.5" width="5" height="2.6" fill="${t.water}"/><path d="M0,2.2C1.5,0.8 3.5,2.8 5,1.2" fill="none" stroke="${WATER_INK}" stroke-width="0.4"/>`, label: 'Rivers and creeks, named; creeks dashed where not perennial; the land in hillshade' },
     ...(c.ridges.length ? [{ swatch: `<path d="M0,1.8H5" stroke="${S.deep}" stroke-width="0.4" stroke-dasharray="1.8 0.9"/>`, label: 'Crests read from the elevation model' }] : []),
-    ...(c.lalcs.length > 1 ? [{ swatch: `<path d="M0,1.8H5" stroke="${INK.blue.deep}" stroke-width="0.5" stroke-dasharray="3 1 0.6 1"/>`, label: 'Local Aboriginal Land Council boundary' }] : []),
+    ...(c.lalcs.length > 1 ? [{ swatch: `<path d="M0,1.8H5" stroke="${INK.blue.deep}" stroke-width="0.5" stroke-dasharray="3 1 0.6 1"/>`, label: 'Local Aboriginal Land Council areas, named across the ground they hold, and their boundary' }] : []),
     ...(permits.length ? [{ swatch: `<rect x="0.4" y="0.6" width="4.2" height="2.4" fill="none" stroke="${S.deep}" stroke-width="0.3"/><rect x="1.4" y="1.2" width="3.2" height="1.8" fill="none" stroke="${S.deep}" stroke-width="0.25" stroke-dasharray="0.6 0.4" opacity="0.6"/>`, label: `Aboriginal Heritage Impact Permits, ${permits.length} on the page, dashed where expired${own.length ? '; the site\'s own numbered' : ''}` }] : []),
     { swatch: `<circle cx="2.5" cy="1.8" r="1.3" fill="${t.site}"/>`, label: 'The site' },
   ];
@@ -7911,7 +7934,7 @@ export function countryAtlas(b: SlidesBundle): Slide {
   if (y + blockH(recs.length * 7.5) < limit + 10) blocks.push(zBlock('The open records', zTable(recs)));
   const sources = `Sources: NSW Spatial Services administrative boundaries; the National Native Title Tribunal's registers; the NSW State Vegetation Type Map, pre-1750 plant community types (DCCEEW); NSW soil landscapes; Heritage NSW Aboriginal Places and impact permits; the national heritage lists and the archived Register of the National Estate; the ASDST model (DCCEEW); the 5 m elevation model at 8 m. AHIMS is not open data. The name of Country, its language and stories are developed with Knowledge Holders, not generated. Retrieved ${b.generatedAt.slice(0, 10)}.`;
   const sub = atlasSub(b, f.lalc ? `${titleCase(f.lalc.local)} LALC` : '', vAt ? vAt.pct : '', 'AHIMS search required');
-  return { id: '01_country', title: 'Country', subtitle: sub, textHtml: '', figureHtml: atlasFigure(mapSvg, 'The land before 1750', p, zFlow(blocks)) + aboriginalFlag(12, 24.6, 15), bleed: true, sources, accent: deckLook().accent, legend,
+  return { id: '01_country', title: 'Country', subtitle: sub, textHtml: '', figureHtml: atlasFigure(mapSvg, 'The land before 1750', p, zFlow(blocks)), bleed: true, sources, accent: deckLook().accent, legend,
     narrative: brief([COUNTRY_ACKNOWLEDGEMENT, f.lalc ? `The site lies in the ${titleCase(f.lalc.local)} Local Aboriginal Land Council area.` : '', vAt ? `Before 1750 the ground here carried ${vAt.pct}${classes[1] ? `, between ${classes.slice(0, 3).filter((cl) => cl.pct !== vAt.pct).slice(0, 2).map((cl) => cl.pct).join(' and ')}` : ''}.` : '', 'An AHIMS search is required before any works; the name of Country and its stories are for Knowledge Holders to give.'], 560) };
 }
 
@@ -7978,7 +8001,7 @@ export function countrySlide(b: SlidesBundle): Slide {
   if (f.lalcsInStrip.length > 1) {
     parts.push(`<path d="${c.lalcs.map((l) => ringsPath(l.rings, wproj)).join('')}" fill="none" stroke="#5a4426" stroke-width="0.6" stroke-dasharray="3,1.4"/>`);
     for (const l of c.lalcs) { let best = { area: 0, cx: 0, cy: 0 }; for (const r of l.rings) { const s = clippedStats(r, wproj, wp); if (s.area > best.area) best = s; } const text = `${titleCase(l.local)} LALC`; if (best.area > 100 && spacer.take(best.cx, best.cy, labelW(text, 2.3), 3)) parts.push(label(best.cx, best.cy, text, 2.3, '#5a4426')); }
-    legend.push({ swatch: swatchLine('#5a4426', 0.6, '3,1.4'), label: 'Local Aboriginal Land Council boundary' });
+    legend.push({ swatch: swatchLine('#5a4426', 0.6, '3,1.4'), label: 'Local Aboriginal Land Council areas, named across the ground they hold, and their boundary' });
   }
   // the LEPs' maps of Aboriginal cultural landscapes, hatched in the map's colour; one that takes in the whole strip is said in the legend, not drawn over everything
   const defs: string[] = [];

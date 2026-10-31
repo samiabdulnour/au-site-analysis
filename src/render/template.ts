@@ -188,12 +188,12 @@ const F2 = {
   violet: '#b6b2d3', violetGround: '#e5e3f4',
   grey: '#c2c2bc', stoneGround: '#e8e8d8',
   water: '#81e0f9', magenta: '#c2367c', purple: '#753583', dots: '#1c1c1c',
-  /** The cyan deepened to carry a line of bold type and the site's mark on the decks. */
-  cyanDeep: '#1a8da0',
+  /** The reference's peach, deepened a step to carry a dash, a figure and a line of bold type: the site's colour on Kingfisher's sheets and decks. */
+  peachDeep: '#e58a62',
 };
 
 const KINGFISHER_CATEGORIES: Category[] = [
-  { id: 'site',           label: 'SITE',                                     fill: F2.magenta, opacity: 0.3 },
+  { id: 'site',           label: 'SITE',                                     fill: F2.peachDeep, opacity: 0.3 },
   { id: 'medical',        label: 'MEDICAL',                                  fill: F2.violetGround, opacity: 1, stroke: F2.violet, figure: F2.violet },
   { id: 'education',      label: 'EDUCATION',                                fill: F2.violetGround, opacity: 1, texture: 'lines', textureColor: F2.violet, figure: F2.violet },
   { id: 'childCare',      label: 'CHILD CARE / AGED CARE',                   fill: F2.violetGround, opacity: 1, texture: 'dots', textureColor: F2.violet, figure: F2.violet },
@@ -258,8 +258,8 @@ export const TEMPLATES: Template[] = [
     // keep the leaf green.
     streetInk: '#e39a6f', discInk: '#e39a6f', discParkInk: '#8faf6a',
     rule: '#8a8a8a',
-    // The deck's site and narrative in a deep cyan of the palette's own, not the context sheet's magenta.
-    site: F2.cyanDeep, dimension: '#56616b', wind: '#87959d', sun: '#efe8d4', road: F2.grey, water: F2.water,
+    // The deck's site and narrative in the reference's peach-orange, deepened, not the context sheet's magenta.
+    site: F2.peachDeep, dimension: '#56616b', wind: '#87959d', sun: '#efe8d4', road: F2.grey, water: F2.water,
     transit: '#365696', rail: '#e8835e', walk5: '#1f8a5a', walk10: '#6fb88c', busRoute: '#5b8fd6', heritage: F2.purple,
     isochrone: 'dotted', roundel: 'solid', busLine: 'dotted', railLine: 'dotted',
     // The cadastre and every building in a heavy white line.
@@ -509,7 +509,7 @@ const CANARY_LOOK: SiteLook = {
 // photograph to show them. It was called Kookaburra; a request naming it is
 // drawn in Kingfisher.
 const KINGFISHER_LOOK: SiteLook = {
-  font: GROTESK, ground: 'paper', veil: 0, aerial: 'colour', site: F2.magenta, siteDash: '7,2,1.6,2', dimensionInk: '#56616b', fall: '#56616b', fallWords: 'plain', fallInk: '#56616b', textScale: 1,
+  font: GROTESK, ground: 'paper', veil: 0, aerial: 'colour', site: F2.peachDeep, siteDash: '7,2,1.6,2', dimensionInk: '#56616b', fall: '#56616b', fallWords: 'plain', fallInk: '#56616b', textScale: 1,
   buildingEdge: 0.4, buildings: 'colour', neighbours: 'white', neighbourHeightInk: '#ffffff', zones: 'fill', zoneTint: 0,
   heritage: false, heritageInk: { item: '#e39a3b', area: '#c8372d' }, contours: true, contourInk: '#a9adb1',
   streetInk: '#e39a6f',
@@ -659,8 +659,8 @@ export type InkFamilyName = 'red' | 'orange' | 'sage' | 'green' | 'blue';
 // the styles: five families of three tints, two pattern inks and a text ink
 // dark enough for the bold narrative. Heron keeps these for its decks rather
 // than its tans: the office's own sheet is the office's own palette. Canary
-// derives its families from its own context template, as Flamingo and
-// Kingfisher do, so the two aerial styles differ in more than the site's ink.
+// has a punchy sheet of its own (CANARY_INK), so the two aerial styles differ
+// in more than the site's ink.
 export const KIT_INK: Record<InkFamilyName, InkFamily> = {
   red:    { solid: '#d54747', mid: '#e69ea1', light: '#f4d8d9', line: '#d54747', deep: '#b20000', text: '#d54747' },
   orange: { solid: '#e9a879', mid: '#f3d2ba', light: '#faeee3', line: '#efbf99', deep: '#df726a', text: '#f5a470' },
@@ -699,6 +699,16 @@ const KIT_CATEGORIES: Category[] = (() => {
 /** The styles whose decks keep the swatch sheet. */
 const KIT_STYLES = new Set(['heron']);
 
+// Canary's own sheet, punchy as its context sheet is: its red, its yellow, its lime and its lilac-blue, with a warm
+// grey for the neutral. Its decks read these rather than families derived from its muted categories.
+export const CANARY_INK: Record<InkFamilyName, InkFamily> = {
+  red:    { solid: '#ff483b', mid: '#ffa39c', light: '#ffdcd8', line: '#ff483b', deep: '#c8231a', text: '#d9372c' },
+  orange: { solid: '#ffd400', mid: '#ffe766', light: '#fff6bf', line: '#e0b800', deep: '#b38600', text: '#9a7300' },
+  sage:   { solid: '#d8d8d0', mid: '#e8e8e2', light: '#f4f4f0', line: '#a0a098', deep: '#6e6e66', text: '#7a7a72' },
+  green:  { solid: '#55e000', mid: '#a6f066', light: '#dcfac4', line: '#3fb300', deep: '#2a8000', text: '#2f8a00' },
+  blue:   { solid: '#7f9fd9', mid: '#b4c6e7', light: '#e3ebf8', line: '#7f9fd9', deep: '#2b4fb0', text: '#2b4fb0' },
+};
+
 /** A family drawn from one land-use category of the active template: its tint at three strengths, its texture ink for the lines. */
 function familyOf(c: Category | undefined, fallback: InkFamily): InkFamily {
   if (!c) return fallback;
@@ -727,6 +737,7 @@ export function deckFamilies(): Record<InkFamilyName, InkFamily> {
   const hit = familiesByTemplate.get(t.id);
   if (hit) return hit;
   if (KIT_STYLES.has(t.id)) { familiesByTemplate.set(t.id, KIT_INK); return KIT_INK; }
+  if (t.id === 'canary') { familiesByTemplate.set(t.id, CANARY_INK); return CANARY_INK; }
   const look = deckLook();
   const cat = (id: string) => t.categories.find((c) => c.id === id);
   const navy = t.transit;
