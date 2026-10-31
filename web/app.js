@@ -286,7 +286,6 @@ resultImg.parentElement.addEventListener('mouseleave', () => { if (deck) { deck.
 function renderResult() {
   // Whatever finished drawing held the frame, an option picked or a new run
   // started means the frame is the expected sample again.
-  $('resultDrawn').hidden = true;
   if (PAGED[state.sheet]) {
     // renderAll runs on every pick; a deck already turning keeps its place.
     if (deck && deck.sheet === state.sheet) return;
@@ -317,13 +316,10 @@ function renderResult() {
     swapTo(src);
   }
 }
-/** A finished drawing takes the result frame, captioned with its address. */
+/** A finished drawing takes the result frame, alone: the address field names it. */
 function showDrawn(id, address) {
   stopDeck();
   resultMissing.hidden = true;
-  const cap = $('resultDrawn');
-  cap.textContent = 'Drawn for ' + address + '. The downloads are for this drawing.';
-  cap.hidden = false;
   resultImg.hidden = false;
   resultImg.alt = 'The finished drawing for ' + address + '.';
   swapTo('/api/jobs/' + id + '/preview');
@@ -444,8 +440,8 @@ function httpMessage(r, j) {
 
 const addrInput = $('address');
 const suggestBox = $('suggest');
-// The mock-up's words in the empty field, cut to the column's width.
-addrInput.placeholder = 'Search a NSW address';
+// The empty field names the address the samples in the frame were drawn for.
+addrInput.placeholder = EXAMPLE_ADDRESS;
 let suggestTimer = null, activeIdx = -1, lastQuery = '';
 
 function closeSuggest() { suggestBox.classList.remove('open'); activeIdx = -1; }
@@ -897,7 +893,9 @@ function noteReused(mins) {
 
 async function submit(fresh) {
   const address = addrInput.value.trim();
-  if (!address) return;
+  // The samples' address in the empty field is only its placeholder: the
+  // caret there says an address of one's own is wanted.
+  if (!address) return addrInput.focus();
   clearTimeout(suggestTimer);
   closeSuggest();
   startOutput('sending');
@@ -1031,6 +1029,9 @@ async function poll(id, misses) {
       // hundred kilobytes shows at once where the PDF can be tens of
       // megabytes, so the PDF is downloaded rather than opened.
       if (j.hasPreview) showDrawn(id, j.address);
+      // Back from paying or from a link, the field is empty: it names the
+      // drawing in the frame all the same.
+      if (!addrInput.value.trim() && j.address) addrInput.value = j.address;
       // Without an account the drawing is its picture above; the PDF starts
       // with a free account, and the form brings the visitor back to it.
       if (!grants.pdf) {

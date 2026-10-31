@@ -137,7 +137,9 @@
              frame's. -->
         <div class="bar">
           <span class="entry">
-            <!-- The placeholder is set in app.js. -->
+            <!-- The placeholder is the samples' address, set from EXAMPLE_ADDRESS
+                 in app.js, so the field names the address the pictures beside
+                 it were drawn for. -->
             <input id="address" type="text" aria-label="NSW street address"
                    autocomplete="off" autocapitalize="off" spellcheck="false">
             <ul id="suggest"></ul>
@@ -179,10 +181,9 @@
         <!-- What the options chosen on the left produce, drawn for an example
              address — it follows the choice, not the pointer, so it holds still
              while the options are read — and, once a drawing finishes, that
-             drawing itself, with the caption naming its address. -->
+             drawing itself, alone: the address field beside it names it. -->
         <figure class="result">
           <img id="resultImg" alt="" width="1193" height="843">
-          <figcaption id="resultDrawn" hidden></figcaption>
           <figcaption id="resultMissing" hidden>No example has been drawn for this combination yet.</figcaption>
         </figure>
       </div>
