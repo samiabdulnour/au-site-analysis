@@ -45,6 +45,7 @@ import { windLobes, sectorTotals, WIND_CLASSES_KMH, type WindRose } from '../fet
 import { inRings, nearestOnRings, overlapArea, ringsGap } from '../lib/rings.js';
 import { CENTRES, SYDNEY_CBD, CENTRE_KIND_WORD } from '../data/centres.js';
 import type { MajorProject } from '../fetch/majorProjects.js';
+import { streetscapeSlide } from './streetscape.js';
 
 export const SLIDE_W = 420;
 export const SLIDE_H = 297;
@@ -91,6 +92,8 @@ export interface Slide {
   legend?: LegendEntry[];
   /** Where the narrative column starts, when a figure sits above it on the left page. */
   textY?: number;
+  /** Style rules the slide's figure needs beyond the deck's own, scoped to it. */
+  css?: string;
 }
 
 // ---- shared bits ------------------------------------------------------------
@@ -7881,7 +7884,7 @@ export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; 
 
 function drawSlides(b: SlidesBundle, meta: SheetMeta): { html: string; slides: Slide[] } {
   const facts = planningFacts(b);
-  const slides = [locationSlide(b), characterAtlas(b), planningAtlas(b), controlsAtlas(b, facts), strategicAtlas(b, facts), topographyAtlas(b), developmentAtlas(b, facts), builtFormAtlas(b, facts), movementSlide(b), greenAtlas(b), siteAtlas(b), conditionAtlas(b), sunAtlas(b), constraintsAtlas(b), countryAtlas(b), peopleAtlas(b), ocAtlas(b, facts), sourcesAtlas(b, facts)];
+  const slides = [locationSlide(b), characterAtlas(b), planningAtlas(b), controlsAtlas(b, facts), strategicAtlas(b, facts), topographyAtlas(b), developmentAtlas(b, facts), builtFormAtlas(b, facts), ...(b.streetscape ? [streetscapeSlide(b.streetscape, { overlay: true })] : []), movementSlide(b), greenAtlas(b), siteAtlas(b), conditionAtlas(b), sunAtlas(b), constraintsAtlas(b), countryAtlas(b), peopleAtlas(b), ocAtlas(b, facts), sourcesAtlas(b, facts)];
   const t = tpl();
   const footerLeft = ['SITE ANALYST — OVERALL ANALYSIS', b.siteAddress, meta.client ? `for ${meta.client}` : '', meta.jobNo ? `job ${meta.jobNo}` : ''].filter(Boolean).join(' · ');
   const pages = slides.map((s, i) => s.bleed || s.full ? atlasPage(s, i) : `
@@ -7901,7 +7904,7 @@ function drawSlides(b: SlidesBundle, meta: SheetMeta): { html: string; slides: S
   const html = `<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><title>${esc(b.siteAddress)} — OVERALL ANALYSIS</title>
 <style>
-${deckCss()}</style></head>
+${deckCss()}${[...new Set(slides.map((s) => s.css).filter(Boolean))].join('\n')}</style></head>
 <body>${pages}</body></html>`;
   return { html, slides };
 }

@@ -143,6 +143,13 @@ neither has a height, hatched), the LEP height envelope at the site extruded fro
 the parcel (RL maps converted with the DEM), neighbours' heights, and the
 section from slide 06 with the envelopes on it. *Manual:* 3D model views.
 
+**08b Streetscape.** Where Street View is keyed, the site's street as two
+orthographic elevations across the spread (the `--type streetscape` drawing:
+Street View on Google's 3D tiles, else the frames rectified; 190 m at 1:500;
+each frontage's building in a veil with its height and AHD level; the
+conservation areas bracketed), so the built form is seen from the street as
+well as from above. Left out where it fails. No image model.
+
 **09 Movement.** The context-sheet content at slide scale: stations incl.
 Metro, bus stops (TfNSW key) and routes, walking isochrones, cycleways
 (TfNSW dataset or OSM), pedestrian links, active frontages (LEP layer),
@@ -524,7 +531,8 @@ NASA POWER hourly point API: `https://power.larc.nasa.gov/api/temporal/hourly/po
 
 Implemented: all eighteen slides — 01 (location), 02 (character), 03
 (planning overview), 04 (planning controls), 05 (strategic context), 06
-(topography), 07 (development activity), 08 (built form), 09 (movement), 10
+(topography), 07 (development activity), 08 (built form) with 08b (the
+streetscape, where Street View is keyed), 09 (movement), 10
 (green and public domain), 11 (the site), 12 (existing site condition), 13 (grid, sun and views), 14
 (environmental constraints), 15 (Country), 16 (people and market), 17
 (opportunities and constraints) and 18 (sources) —
