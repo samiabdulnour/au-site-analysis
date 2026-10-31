@@ -9,7 +9,8 @@
 // blurrily in the printed PDF.
 
 import { esc } from './chrome.js';
-import { tint, mix, shadeHex, deckFamilies, type Category, type InkFamily, type InkFamilyName } from './template.js';
+import { tint, mix, shadeHex, inkFor, deckFamilies, deckLook, type Category, type InkFamily, type InkFamilyName } from './template.js';
+import { rampColours } from './terrainMap.js';
 
 export type Family = InkFamilyName;
 
@@ -323,26 +324,44 @@ export const VEG_CLASSES_MAX = 9;
  * steps lighter again. The chart on the left keys them by name. Thinned a
  * little, so the hillshade shows the land through them.
  */
-export function veg1750Fills(classes: { pct: string }[]): Fill[] {
-  const G = INK.green, O = INK.orange, B = INK.blue;
-  const hueOf = (n: string) =>
-    /mangrove|saltmarsh|swamp|wetland|riverflat|river-flat|river flat|floodplain|alluvial|estuar|lagoon/.test(n) ? mix(G.deep, B.deep, 0.45)
-      : /rainforest/.test(n) ? shadeHex(G.deep, 0.72)
-        : /heath|scrub|mallee/.test(n) ? O.deep
-          : /grassland|grassy plain/.test(n) ? mix(G.deep, O.deep, 0.6)
-            : /sandstone|foreshore|coastal|gully|ridgetop|hawkesbury/.test(n) ? mix(G.deep, O.deep, 0.42)
-              : G.deep;
-  const openness = (n: string) => (/woodland|grassy|open/.test(n) ? 0.42 : /forest|rainforest/.test(n) ? 0.72 : 0.56);
-  const taken = new Map<string, number>();
-  return classes.map((c) => {
+export function veg1750Fills(classes: { pct: string }[], technique = deckLook().technique): Fill[] {
+  const G = INK.green, O = INK.orange, B = INK.blue, R = INK.red;
+  // each community its own colour, from across the palette, as an ethnographic map colours its peoples; the pattern, on paper, says how open it is
+  const hues = [G.deep, inkFor(O.solid, 0.35), inkFor(B.deep, 0.2), R.deep, inkFor(G.solid, 0.3), inkFor(R.solid, 0.3), inkFor(B.solid, 0.35), inkFor(O.deep, 0.3), shadeHex(G.deep, 0.6)];
+  const openness = (n: string) => (/woodland|grassy|open|grassland/.test(n) ? 0.42 : /forest|rainforest/.test(n) ? 0.68 : 0.55);
+  return classes.map((c, i) => {
     const n = c.pct.toLowerCase();
-    const hue = hueOf(n);
-    let k = openness(n);
-    // a second community on the same ground at the same openness: a step lighter, then lighter again
-    const key = `${hue}|${k}`;
-    const before = taken.get(key) ?? 0;
-    taken.set(key, before + 1);
-    k = Math.max(0.2, k - 0.16 * before);
-    return { bg: tint(hue, k), opacity: 0.8 };
+    const hue = hues[i % hues.length];
+    if (technique === 'tone') return { bg: tint(hue, openness(n)), opacity: 0.85 };
+    const kind: Fill['kind'] = /rainforest/.test(n) ? 'cross' : /forest/.test(n) ? 'hatch' : /woodland|grassy|open|grassland/.test(n) ? (i % 2 ? 'hlines' : 'vlines') : i % 2 ? 'waves' : 'dots';
+    return { bg: tint(hue, 0.14), opacity: 0.88, kind, ink: hue, step: kind === 'dots' ? 0.8 : 0.7, w: kind === 'dots' ? 0.28 : 0.17 };
   });
+}
+
+/** The palette as a heat ramp, cool to warm: the transit blue, the living green, the activity gold, the accent and its deep; for anything ordered: storeys, metres, hours. */
+export function paletteRamp(): string[] {
+  const B = INK.blue, G = INK.green, O = INK.orange, R = INK.red;
+  return [inkFor(B.solid, 0.5), inkFor(G.solid, 0.4), inkFor(O.solid, 0.42), R.solid, R.deep];
+}
+
+/**
+ * `n` ordered fills, low to high, as the style draws them: tones along the palette ramp, or (on paper) hatches
+ * that tighten up the ramp, each in its ramp colour, the lowest a light patch and the highest cross-hatched.
+ */
+export function heatFills(n: number, technique = deckLook().technique): Fill[] {
+  const cols = rampColours(n, paletteRamp());
+  if (technique === 'tone') return cols.map((c) => ({ bg: c, outline: '#ffffff', outlineW: 0.08 }));
+  return cols.map((c, i) => {
+    const ink = inkFor(c, 0.3);
+    if (i === 0) return { bg: tint(c, 0.28), outline: ink, outlineW: 0.1 };
+    return { bg: '#ffffff', kind: i === n - 1 ? 'cross' : 'hatch', ink, step: 1.5 - (1.0 * (i - 1)) / Math.max(1, n - 2), w: 0.2, outline: ink, outlineW: 0.1 };
+  });
+}
+
+/** Up to `max` fills side by side in the key's 5 × 3.6 mm box, a strip: the ordered fills of a map read in one swatch. */
+export function stripOf(fills: Fill[], max = 7): string {
+  const fs = fills.length > max ? Array.from({ length: max }, (_, i) => fills[Math.round((i * (fills.length - 1)) / (max - 1))]) : fills;
+  const w = 5 / Math.max(1, fs.length);
+  return fs.map((f, i) => fillShape(`M${(i * w).toFixed(2)},0.3h${(w + 0.02).toFixed(2)}v3h${(-(w + 0.02)).toFixed(2)}Z`, { x0: i * w, y0: 0.3, x1: (i + 1) * w, y1: 3.3 }, { ...f, outline: undefined, opacity: 1 }, 1.6)).join('') +
+    `<rect x="0" y="0.3" width="5" height="3" fill="none" stroke="${INK.sage.deep}" stroke-width="0.1"/>`;
 }

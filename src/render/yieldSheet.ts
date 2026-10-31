@@ -17,10 +17,10 @@
 // beside the output.
 
 import { esc } from './chrome.js';
-import { tpl, withTemplate, templateFor, deckLook, tint, type DeckLook } from './template.js';
+import { tpl, withTemplate, templateFor, deckLook, tint, inkFor, type DeckLook } from './template.js';
 import { shortStreetName, type SheetMeta } from './sheet.js';
 import { atlasPage, deckCss, zFlow, zBlock, zTable, brief, type Slide, type DeckRenderOptions } from './slides.js';
-import { zFigures, zBars, niceAxis, fillShape, categoryFill, type Fill } from './atlasKit.js';
+import { INK, zFigures, zBars, niceAxis, fillShape, categoryFill, type Fill } from './atlasKit.js';
 import { zoneToCategory } from './model.js';
 import { zoneFill } from './lepPalette.js';
 import { LEP_OPACITY } from './sheet.js';
@@ -299,7 +299,7 @@ export function yieldRows(b: YieldBundle, s: YieldStudy = yieldStudy(b)): YieldR
 
 /** A tier's number in its ring: the plan's mark, and the schedule's key to it. */
 function tierBadge(x: number, y: number, n: number, r = 2): string {
-  return `<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="${r}" fill="#ffffff" stroke="${ENVELOPE}" stroke-width="0.25"/>` +
+  return `<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="${r}" fill="#ffffff" stroke="${yieldInks().envelope}" stroke-width="0.25"/>` +
     `<text x="${x.toFixed(2)}" y="${(y + r * 0.47).toFixed(2)}" text-anchor="middle" font-size="${(r * 1.3).toFixed(2)}" font-weight="700" fill="${ENVELOPE}">${n}</text>`;
 }
 
@@ -312,7 +312,15 @@ function useFill(u: Use): string {
   const c = deckLook().categories.find((x) => x.id === USE_CATEGORY[u]);
   return c ? tint(c.fill, Math.min(1, c.opacity + 0.2)) : USE_FILL[u];
 }
-const CONTEXT_FILL = '#e9e9e6', CONTEXT_EDGE = '#a3a39e';
+/**
+ * The yield's quieter inks, from the palette rather than greys: the neighbours in the transit family's tint, their
+ * futures a lighter glass of it, what stands on the site in the activity family's, the envelopes and kerbs in the
+ * transit ink.
+ */
+function yieldInks() {
+  const B = INK.blue, O = INK.orange;
+  return { context: tint(B.solid, 0.5), contextEdge: inkFor(B.solid, 0.42), future: B.light, futureEdge: B.line, standing: tint(O.deep, 0.42), envelope: inkFor(B.deep, 0.25), kerb: inkFor(B.solid, 0.4) };
+}
 /** The site's pen: the style's accent. */
 const siteInk = () => deckLook().accent;
 /** The photograph under the plan and the massing: where the style draws on the aerial and the deck read one over this site. */
@@ -326,10 +334,10 @@ function lotFill(zone: string | undefined, look: DeckLook): { key: string; fill:
   return c ? { key: c.id, fill: categoryFill(c, look.ground, look.tintScale) } : null;
 }
 /** A neighbour's future, over what stands: a pale glass, dashed, light enough to see the proposal through. */
-const FUTURE_FILL = '#e4ebf3', FUTURE_EDGE = '#8495a8', FUTURE_OPACITY = 0.3, FUTURE_DASH = '1.4,0.8';
+const FUTURE_OPACITY = 0.3, FUTURE_DASH = '1.4,0.8';
+/** The tier badges' ink in the deck's tables, set once for the sheet's CSS. */
 const ENVELOPE = '#5b6670';
 /** What stands on the site today, where a scenario keeps it. */
-const STANDING_FILL = '#c9c7c0';
 
 /** What a page draws on the site: a scheme of the study's, or what stands there today, or neither (the site alone). */
 interface Scheme { y?: YieldResult; standing?: { rings: XY[][]; heightM?: number; storeys?: number }[] }
@@ -358,6 +366,7 @@ interface Prism { rings: XY[][]; z0: number; z1: number; fill: string; edge: str
  */
 function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w: number; h: number }, scheme: Scheme, id: string): string {
   const y = scheme.y;
+  const Y = yieldInks();
   const kinds = edgeKinds(s.ring, s.fronts);
   // The main frontage's outward normal; the camera stands out along it, turned 40° to take in a side.
   let signed = 0;
@@ -385,10 +394,10 @@ function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number;
     const cen = rings[0].reduce((t, p) => ({ x: t.x + p.x / rings[0].length, y: t.y + p.y / rings[0].length }), { x: 0, y: 0 });
     if (Math.hypot(cen.x, cen.y) > reach) return;
     const z1 = cb.known ? cb.heightM : 6.2;
-    const group: Prism[] = [{ rings, z0: 0, z1, fill: CONTEXT_FILL, edge: CONTEXT_EDGE, edgeW: 0.12, dashed: !cb.known }];
+    const group: Prism[] = [{ rings, z0: 0, z1, fill: Y.context, edge: Y.contextEdge, edgeW: 0.12, dashed: !cb.known }];
     // What it may rise to under its own controls, over what stands.
     const future = s.futures[i];
-    if (future && future > z1) group.push({ rings, z0: z1, z1: future, fill: FUTURE_FILL, edge: FUTURE_EDGE, edgeW: 0.12, dashed: true, dash: FUTURE_DASH, opacity: FUTURE_OPACITY });
+    if (future && future > z1) group.push({ rings, z0: z1, z1: future, fill: Y.future, edge: Y.futureEdge, edgeW: 0.12, dashed: true, dash: FUTURE_DASH, opacity: FUTURE_OPACITY });
     prisms.push({ key: depth(cen), group });
   });
   const z = y ? storeyZ(y) : undefined;
@@ -403,7 +412,7 @@ function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number;
     const known = !!(e.heightM || e.storeys);
     const top = e.heightM ?? (e.storeys ? e.storeys * 3.1 : 6.2);
     const n = e.storeys ?? Math.max(1, Math.round(top / 3.1));
-    built.push({ rings: e.rings, z0: 0, z1: top, fill: STANDING_FILL, edge: '#3a3a3a', edgeW: 0.16, dashed: !known, storeys: Array.from({ length: n - 1 }, (_, i) => ((i + 1) * top) / n) });
+    built.push({ rings: e.rings, z0: 0, z1: top, fill: Y.standing, edge: '#3a3a3a', edgeW: 0.16, dashed: !known, storeys: Array.from({ length: n - 1 }, (_, i) => ((i + 1) * top) / n) });
   }
   prisms.push({ key: 0, group: built });
   prisms.sort((p, q) => q.key - p.key);
@@ -484,7 +493,7 @@ function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number;
   const over: string[] = [];
   if (y && z) for (const t of y.tiers) {
     const zt = z.top(t.to);
-    for (const rg of t.envelope) over.push(`<path d="${poly(rg.map((p) => P(p, zt)))}" fill="none" stroke="${ENVELOPE}" stroke-width="0.22" stroke-dasharray="1.6,1"/>`);
+    for (const rg of t.envelope) over.push(`<path d="${poly(rg.map((p) => P(p, zt)))}" fill="none" stroke="${Y.envelope}" stroke-width="0.22" stroke-dasharray="1.6,1"/>`);
   }
   if (s.hob?.metres) {
     const hz = s.hob.metres;
@@ -499,12 +508,12 @@ function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number;
   // shrink the proposal to a speck, and the frame says how high they go.
   const pts: [number, number][] = [];
   let tallest = 0;
-  for (const { group } of prisms) for (const pr of group) if (pr.fill !== FUTURE_FILL) tallest = Math.max(tallest, pr.z1);
+  for (const { group } of prisms) for (const pr of group) if (pr.fill !== Y.future) tallest = Math.max(tallest, pr.z1);
   const cap = Math.max(tallest, 12) * 1.6;
   let futureTop = 0;
   for (const { group } of prisms) for (const pr of group) {
-    const z1 = pr.fill === FUTURE_FILL ? Math.min(pr.z1, cap) : pr.z1;
-    if (pr.fill === FUTURE_FILL) futureTop = Math.max(futureTop, pr.z1);
+    const z1 = pr.fill === Y.future ? Math.min(pr.z1, cap) : pr.z1;
+    if (pr.fill === Y.future) futureTop = Math.max(futureTop, pr.z1);
     for (const rg of pr.rings) for (const p of rg) pts.push(P(p, pr.z0), P(p, z1));
   }
   const planeZ = s.hob?.metres ?? 0;
@@ -519,14 +528,13 @@ function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number;
     `<text x="${(box.x + box.w / 2).toFixed(1)}" y="${(box.y + 4 + line * 4).toFixed(1)}" text-anchor="middle" font-size="2.8" fill="${ink}" stroke="#ffffff" stroke-width="1.4" paint-order="stroke">${esc(text)}</text>`;
   const notes: string[] = [];
   if (s.hob?.metres && !planeFits) notes.push(note(notes.length, SITE, `HEIGHT OF BUILDING PLANE ${s.hob.rl ? `RL ${fmt(s.hob.value, 1)}, ` : ''}${fmt(Math.round(planeZ))}m ABOVE THE GROUND, ABOVE THE FRAME`));
-  if (futureTop > cap) notes.push(note(notes.length, FUTURE_EDGE, `NEIGHBOURS' FUTURE HEIGHTS RUN ABOVE THE FRAME, TO ${fmt(Math.round(futureTop))}m`));
+  if (futureTop > cap) notes.push(note(notes.length, Y.futureEdge, `NEIGHBOURS' FUTURE HEIGHTS RUN ABOVE THE FRAME, TO ${fmt(Math.round(futureTop))}m`));
   const above = notes.join('');
   return `<defs><clipPath id="axo-${id}"><rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}"/></clipPath></defs>
     <g clip-path="url(#axo-${id})"><g transform="translate(${tx.toFixed(2)},${ty.toFixed(2)}) scale(${k.toFixed(4)})">
     <g style="vector-effect:non-scaling-stroke">${ground.join('')}${parts.join('')}${over.join('')}</g></g></g>${above}`;
 }
 
-const KERB_INK = '#8a8a8a';
 
 /** "26", or "26–30" for a lot with a run of numbers, ranged or one by one. */
 function numberLine(nums: string[]): string {
@@ -589,6 +597,7 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
     return { ...pc, local: rings, shown, site: inRing(centre(rings[0] ?? []), s.ring) };
   });
   const look = deckLook(), t = tpl();
+  const Y = yieldInks();
   const within = (p: XY, rs: XY[][]) => rs.filter((rg) => inRing(p, rg)).length % 2 === 1;
   // The photograph first, in grey under the style's veil, where the style draws on the aerial and the deck read one.
   const photo = photoOf(b, look);
@@ -620,7 +629,7 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
   if (!kerbs) {
     try { kerbs = estimateKerbs(parcels.flatMap((pc) => pc.rings), b.roads, [], []); } catch { kerbs = []; }
   }
-  if (kerbs.length) out.push(`<path d="${kerbs.map((kl) => line(local(kl.coords))).join('')}" fill="none" stroke="${KERB_INK}" stroke-width="0.3" stroke-linecap="round" stroke-linejoin="round"/>`);
+  if (kerbs.length) out.push(`<path d="${kerbs.map((kl) => line(local(kl.coords))).join('')}" fill="none" stroke="${Y.kerb}" stroke-width="0.3" stroke-linecap="round" stroke-linejoin="round"/>`);
   const blds = b.context.map((cb) => local(cb.rings[0] ?? [])).filter((rg) => rg.length >= 3);
   // The buildings as the style draws them: white in a hairline of their
   // zone family's ink, filled in the family's colour with a white edge, a
@@ -630,20 +639,20 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
     const zone = look.buildings === 'grey' ? undefined : parcels.find((pc) => !pc.site && within(centre(rg), pc.local))?.zone;
     const cat = zone ? zoneToCategory(zone) : null, c = cat ? look.categories.find((x) => x.id === cat) : undefined;
     const ink = c?.figure ?? c?.stroke ?? (look.buildings === 'white' ? t.road : '#d9d9d6');
-    out.push(look.buildings === 'grey' ? (photo ? `<path d="${path(rg)}" fill="none" stroke="#ffffff" stroke-width="0.3" stroke-linejoin="round"/>` : `<path d="${path(rg)}" fill="${CONTEXT_FILL}" stroke="${CONTEXT_EDGE}" stroke-width="0.12"/>`)
+    out.push(look.buildings === 'grey' ? (photo ? `<path d="${path(rg)}" fill="none" stroke="#ffffff" stroke-width="0.3" stroke-linejoin="round"/>` : `<path d="${path(rg)}" fill="${Y.context}" stroke="${Y.contextEdge}" stroke-width="0.12"/>`)
       : look.buildings === 'white' ? `<path d="${path(rg)}" fill="#ffffff" stroke="${ink}" stroke-width="0.3" stroke-linejoin="round"/>`
         : `<path d="${path(rg)}" fill="${ink}" stroke="#ffffff" stroke-width="0.3" stroke-linejoin="round"/>`);
   }
 
   // What stands on the site, where the scheme is what stands.
-  for (const e of scheme.standing ?? []) out.push(`<path d="${e.rings.map(path).join('')}" fill="${STANDING_FILL}" fill-rule="evenodd" stroke="#3a3a3a" stroke-width="0.2"/>`);
+  for (const e of scheme.standing ?? []) out.push(`<path d="${e.rings.map(path).join('')}" fill="${Y.standing}" fill-rule="evenodd" stroke="#3a3a3a" stroke-width="0.2"/>`);
   // The study: the plates, widest tier first so the narrower ones over it stay visible; each tier's envelope; the site.
   const tiers = y ? [...y.tiers].sort((p, q) => q.envelopeSqm - p.envelopeSqm) : [];
   for (const t of tiers) {
     const built = t.from <= y!.storeys;
     if (t.plate.length) out.push(`<path d="${t.plate.map(path).join('')}" fill="${useFill(t.use)}" fill-opacity="${built ? 0.55 : 0.18}" fill-rule="evenodd" stroke="none"/>`);
   }
-  y?.tiers.forEach((t, i) => { for (const rg of t.envelope) out.push(`<path d="${path(rg)}" fill="none" stroke="${ENVELOPE}" stroke-width="0.3" stroke-dasharray="${['2,1', '1.2,1.2', '3,1,0.8,1', '0.6,0.9'][i % 4]}"/>`); });
+  y?.tiers.forEach((t, i) => { for (const rg of t.envelope) out.push(`<path d="${path(rg)}" fill="none" stroke="${Y.envelope}" stroke-width="0.3" stroke-dasharray="${['2,1', '1.2,1.2', '3,1,0.8,1', '0.6,0.9'][i % 4]}"/>`); });
   out.push(`<path d="${path(s.ring)}" fill="none" stroke="${siteInk()}" stroke-width="0.6" stroke-dasharray="3,1.2"/>`);
 
   // North, and a bar of round metres, first: what is written later keeps off them.
@@ -1018,18 +1027,19 @@ function inks() {
 function keySwatches() {
   const { look, site } = inks();
   const t = tpl();
-  const neighbours = look.buildings === 'grey' ? `fill="${CONTEXT_FILL}" stroke="${CONTEXT_EDGE}" stroke-width="0.15"`
+  const Y = yieldInks();
+  const neighbours = look.buildings === 'grey' ? `fill="${Y.context}" stroke="${Y.contextEdge}" stroke-width="0.15"`
     : look.buildings === 'white' ? `fill="#ffffff" stroke="${t.road}" stroke-width="0.3"` : `fill="#c2c2bc" stroke="#ffffff" stroke-width="0.3"`;
   const lot = look.lots === 'white' ? `fill="#eeeeea" stroke="#ffffff" stroke-width="0.3"` : `stroke="${t.road}" stroke-width="0.15" opacity="0.6"`;
   return {
     site: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="${site}" fill-opacity="0.08" stroke="${site}" stroke-width="0.3" stroke-dasharray="1,0.4"/>`,
     use: (u: Use) => `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="${useFill(u)}" stroke="#3a3a3a" stroke-width="0.15"/>`,
-    standing: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="${STANDING_FILL}" stroke="#3a3a3a" stroke-width="0.15"/>`,
-    envelope: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="none" stroke="${ENVELOPE}" stroke-width="0.25" stroke-dasharray="0.8,0.5"/>`,
+    standing: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="${Y.standing}" stroke="#3a3a3a" stroke-width="0.15"/>`,
+    envelope: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="none" stroke="${Y.envelope}" stroke-width="0.25" stroke-dasharray="0.8,0.5"/>`,
     plane: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="${site}" fill-opacity="0.05" stroke="${site}" stroke-width="0.25" stroke-dasharray="1.2,0.6"/>`,
     neighbours: `<path d="M0.4,0.5H4.6V3.1H0.4Z" ${neighbours}/>`,
-    future: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="${FUTURE_FILL}" fill-opacity="0.6" stroke="${FUTURE_EDGE}" stroke-width="0.2" stroke-dasharray="0.7,0.4"/>`,
-    kerb: `<line x1="0.3" y1="1.8" x2="4.7" y2="1.8" stroke="${KERB_INK}" stroke-width="0.3"/>`,
+    future: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="${Y.future}" fill-opacity="0.6" stroke="${Y.futureEdge}" stroke-width="0.2" stroke-dasharray="0.7,0.4"/>`,
+    kerb: `<line x1="0.3" y1="1.8" x2="4.7" y2="1.8" stroke="${Y.kerb}" stroke-width="0.3"/>`,
     lot: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="none" ${lot}/>`,
   };
 }

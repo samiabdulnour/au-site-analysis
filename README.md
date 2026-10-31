@@ -1161,23 +1161,32 @@ the sheet (`themeFor()`). The CLI takes `--site-theme`.
 The yield and the site report take the four styles of the two maps, under
 the same names, and read each style's palette from its context template
 (`deckLook()` and `deckFamilies()` in `src/render/template.ts`). The site
-colour sets the narrative and the site (Flamingo's coral deepened a step,
-since a map tint is too light for a line of bold type). The zones take the
+colour sets the site and the narrative, deepened where it is too light for
+a line of bold type. The zones take the
 land-use categories, with their textures, as the context sheet of that style
 tints the land, or in Canary each zone code in its NSW ePlanning colour; the
 yield's plan tints each neighbour's lot the same way. The atlas kit's five
-ink families, one a topic (the accent's for the site, the controls and what
-constrains; the centres' for activity, character and the market; the
-industrial category's neutral for the ground, the built form and the site's
-own page; open space's for the living layers; the transit ink's for
-movement), are drawn from the same categories, so the report's eighteen
-pages and the yield's spreads are all in the style's colours. Heron and
+ink families are drawn from the same categories, and a map takes whichever
+of them tell its data apart: colour carries the data on every page, from
+across the palette, and no page is held to one family. Ordered data (the
+storeys, the metres, the hours of shadow) runs up the palette's ramp, cool
+to warm (`paletteRamp`, `heatFills`), and the key shows the ramp as a strip.
+Heron and
 Canary keep the office's own swatch sheet for their decks, the five
 families the decks were drawn in before the styles, with the land-use
 categories laid out in those families (`KIT_INK`, `KIT_CATEGORIES`): the
-office's sheet in the office's palette. The ground follows the style too,
-paper for Flamingo and Kingfisher and the greyed aerial under the style's
-veil for Heron and Canary, where the deck read one (the planning page has
+office's sheet in the office's palette. How a style renders the
+data differs as its ground does (`technique` on the deck look): Flamingo
+and Kingfisher work in hatches, lines and patches on paper (the landform
+hatched tighter up the slope, the storeys as a hatch that tightens up the
+ramp, the pre-1750 communities patterned, the development marks hatched),
+Heron and Canary in tones over the photograph (the landform in a heat
+ramp, the storeys and the communities flat). Each style's winter shadows
+take an ink of their own. The marks of the development page carry
+pictograms, a tick, an hourglass, the scales' beam, a cross, and a star for
+a State significant application, so a status reads without the key. The
+ground follows the style too, paper for Flamingo and Kingfisher and the
+greyed aerial under the style's veil for Heron and Canary (the planning page has
 the Character page's photograph; the yield reads one over the site's
 surroundings, lays it under its plan and skews it into the axonometric's
 ground plane, whose projection is affine, so the plan's picture goes in as
@@ -1384,8 +1393,10 @@ content part of a feasibility study or design report, specified in
 `docs/SLIDES_SPEC.md`. All eighteen slides of the spec exist. The deck
 opens on *Country*, as an acknowledgement of the Traditional Custodians (the
 page is described below with the layers it holds); then *location*: the
-site in its region at 1:100,000 — the land's shape shaded and banded from
-the elevation model, the national parks and reserves, the water named, the
+site in its region at 1:100,000 — the land's shape banded every 40 m from
+the elevation model, hatched or toned by the style under its hillshade,
+with contours every 20 m traced from the model and a kilometre grid from
+the site, the national parks and reserves, the water named, the
 council areas outlined and named with the site's own tinted, the motorways
 cased over the arterial roads, the railways and their stations, the suburbs
 named, 2, 5 and 10 km rings round the site, and the centres of The Sydney
@@ -1412,9 +1423,9 @@ plans; the 2041 regional plans elsewhere), the council's local strategic
 planning statement from the Planning Portal's index, the plan, the DCP, the
 contributions and the housing target — with the extracts left to the author.
 Then *topography*: the landform
-at 1:5000 as the ground in 5 m bands of a heat ramp, blue on the low ground
-through green and yellow to red on the high, under the hillshade from the
-State's 5 m elevation model, with the 2 m contours numbered along the index
+at 1:5000 as the ground in 5 m bands, hatched tighter up the slope in
+Flamingo and Kingfisher or toned along the palette's ramp in Heron and
+Canary, under the hillshade from the State's 5 m elevation model, with the 2 m contours numbered along the index
 ones, the water named, the high and low points of the page and the site's
 level marked, roads and rail over it and two section lines through the site,
 A–A′ down the steepest fall and B–B′ across it, each drawn as a section

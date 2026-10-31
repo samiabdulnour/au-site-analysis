@@ -608,6 +608,8 @@ export interface DeckLook {
   /** The heritage items' ink, and the conservation areas'. */
   heritage: string;
   heritageArea: string;
+  /** How the style renders data on a map: hatches, lines and patches on paper, or tones and heat ramps over the photograph. */
+  technique: 'line' | 'tone';
 }
 
 /** `hex` mixed toward white: k of the colour, the rest white. */
@@ -740,7 +742,8 @@ export function deckLook(): DeckLook {
   const t = tpl();
   const kit = KIT_STYLES.has(t.id);
   // Flamingo's coral is a map tint, too light for a line of bold type; the others hold.
-  const accent = kit ? KIT_INK.red.text : t.id === 'flamingo' ? shadeHex(t.site, 0.88) : t.site;
+  // The narrative's ink is the site's own, deepened where it is too light for bold type on white: the style's red on every page.
+  const accent = inkFor(t.site, 0.3);
   const family: InkFamily = kit ? KIT_INK.red : { solid: accent, mid: tint(accent, 0.45), light: tint(accent, 0.18), line: accent, deep: shadeHex(accent, 0.78), text: accent };
   const aerial = t.ground === 'aerial';
   return {
@@ -752,6 +755,7 @@ export function deckLook(): DeckLook {
     // Heron and Canary name their streets white on the photograph; on paper every style's names take its ink, or the sheet's.
     streetInk: t.streetInk === '#ffffff' ? t.ink : t.streetInk, streetInkAerial: t.streetInk,
     heritage: t.heritage, heritageArea: t.id === 'canary' ? '#ff0000' : t.heritage,
+    technique: aerial ? 'tone' : 'line',
   };
 }
 
