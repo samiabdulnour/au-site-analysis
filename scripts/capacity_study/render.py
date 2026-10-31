@@ -168,6 +168,11 @@ for pid, r in props.items():
         svg.append(f'<text x="{f(x)}" y="{f(y + s * 0.3 + 16 * U)}" font-size="{w(15)}" font-weight="700" text-anchor="middle" fill="{GREEN if kind == "potential" else DOT if mature(r) else CROSS}" stroke="#fff" stroke-width="{w(3)}" paint-order="stroke">{note}</text>')
 
 
+# the site itself: a large tick, the one parcel most likely to develop
+sx_, sy_ = px(site['centroid'])
+svg.append(tick(sx_, sy_, 110 * U, 16 * U))
+
+
 # ---- the streets, named along their centrelines -----------------------------------------------------------------
 def seg_len(pth):
     return sum(math.hypot(pth[i + 1][0] - pth[i][0], pth[i + 1][1] - pth[i][1]) for i in range(len(pth) - 1)) / K

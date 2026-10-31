@@ -2236,7 +2236,10 @@ export function capacityAtlas(b: SlidesBundle, facts: PlanningFacts): Slide | nu
     if (spacer.take(m.x, m.y + m.s + 1.5, w, 2.3)) notes.push(m6(m.x, m.y + m.s + 1.5, m.q.note));
   }
   parts.push(names, ...marks, ...notes);
-  parts.push(siteMark(b.base, proj, 'both'), siteEdge(b, proj), panelFurniture(p, 'left'));
+  parts.push(siteMark(b.base, proj, 'both'), siteEdge(b, proj));
+  // the site itself: a large tick, the one parcel most likely to develop
+  if (result.site) { const [sx, sy] = proj(result.site.centroid.lon, result.site.centroid.lat); parts.push(capMark('tick', sx, sy, 5)); }
+  parts.push(panelFurniture(p, 'left'));
   const mapSvg = bleedSvg('cap07b', p, parts.join('\n'));
 
   // ---- the text page
