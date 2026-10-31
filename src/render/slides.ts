@@ -712,7 +712,7 @@ export function locationSlide(b: SlidesBundle): Slide {
     // the ramp from the green, not the blue: a plain in blue would read as the sea
     // the land's shape stays a quiet ground, so the roads, the rail and the centres lead: light tones, or a light sparse hatch
     const cols = rampColours(bands, paletteRamp().slice(1)).map((c) => tint(c, 0.26));
-    const hatch: ReliefHatch = { mmPerCell: (loc.dem.cellX * loc.dem.groundPerUnit * 1000) / p.scale, inks: cols.map((c) => inkFor(c, 0.55)), lineMm: 0.1, maxPeriodMm: 2.4, minPeriodMm: 0.9 };
+    const hatch: ReliefHatch = { mmPerCell: (loc.dem.cellX * loc.dem.groundPerUnit * 1000) / p.scale, inks: cols.map((c) => inkFor(c, 0.5)), lineMm: 0.1, maxPeriodMm: 2.4, minPeriodMm: 0.9 };
     parts.push(demPicture(loc.dem, proj, look.technique === 'tone'
       ? reliefDataUri(loc.dem, RELIEF_INK, { stepM: REGION_RELIEF_STEP, lo: 0, hi, shade: 0.28, colours: cols })
       : reliefDataUri(loc.dem, RELIEF_INK, { stepM: REGION_RELIEF_STEP, lo: 0, hi, shade: 0.2, hatch })));
@@ -3205,7 +3205,7 @@ export function topographyAtlas(b0: SlidesBundle): Slide {
   const bands = Math.max(1, Math.ceil((hi - lo) / STEP));
   // the bands: tones along the palette's ramp over the photograph; on paper, hatched in the ramp's inks, tighter up the slope
   const bandCols = rampColours(bands, paletteRamp());
-  const hatch: ReliefHatch = { mmPerCell: g ? (g.cellX * g.groundPerUnit * 1000) / p.scale : 1, inks: bandCols.map((c) => inkFor(c, 0.42)), lineMm: 0.16, maxPeriodMm: 2.4, minPeriodMm: 0.85 };
+  const hatch: ReliefHatch = { mmPerCell: g ? (g.cellX * g.groundPerUnit * 1000) / p.scale : 1, inks: bandCols, lineMm: 0.18, maxPeriodMm: 2.2, minPeriodMm: 0.8, bgTint: 0.2 };
   const bandKey: Fill[] = look.technique === 'tone' ? bandCols.map((c) => ({ bg: c })) : reliefBandHatches(bands, hatch);
   if (g && f) parts.push(demPicture(g, proj, look.technique === 'tone'
     ? reliefDataUri(g, RELIEF_INK, { stepM: STEP, lo, hi, shade: 0.4, colours: bandCols })
@@ -7840,14 +7840,7 @@ export function countryAtlas(b: SlidesBundle): Slide {
   if (wb.water.features.length) parts.push(`<path d="${fcPath(wb.water, proj)}" fill="${t.water}" fill-rule="evenodd" stroke="${WATER_INK}" stroke-width="0.25"/>`);
   if (c.water.coastline.length) parts.push(`<path d="${c.water.coastline.map((l) => ringsPath([l], proj, false)).join('')}" fill="none" stroke="${WATER_INK}" stroke-width="0.35"/>`);
   for (const w of c.water.courses) parts.push(`<path d="${ringsPath([w.coords], proj, false)}" fill="none" stroke="${WATER_INK}" stroke-width="${w.hierarchy === 'major' || /river/i.test(w.name ?? '') ? 0.6 : 0.4}" stroke-linecap="round"${w.perenniality === 'perennial' ? '' : ' stroke-dasharray="1.4 0.8"'}/>`);
-  // the streets as black hairlines, not white strips: the Country's ground stays whole under them; the rail as track
-  {
-    const byW = new Map<number, string[]>();
-    for (const r of wb.roads) { const w = r.hierarchy <= 2 ? 0.35 : r.hierarchy <= 4 ? 0.25 : r.hierarchy <= 6 ? 0.16 : 0.1; (byW.get(w) ?? byW.set(w, []).get(w)!).push(ringsPath([r.coords], proj, false)); }
-    for (const [w, ds] of [...byW.entries()].sort((a, b2) => b2[0] - a[0])) parts.push(`<path d="${ds.join('')}" fill="none" stroke="#1c1c1c" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"/>`);
-    if (wb.rail.train.length) parts.push(railSymbol(wb.rail.train.map((l) => ringsPath([l], proj, false)).join(''), '#1c1c1c'));
-    if (wb.rail.tram.length) parts.push(`<path d="${wb.rail.tram.map((l) => ringsPath([l], proj, false)).join('')}" fill="none" stroke="#1c1c1c" stroke-width="0.3" stroke-dasharray="1.2,0.8"/>`);
-  }
+  // No road, rail or cadastre: the land as it lay, with nothing built over it.
   if (c.ridges.length) parts.push(`<path d="${c.ridges.map((line) => `M${line.map((q, i) => { const ll = mercatorToLonLat(q); const [x, y] = proj(ll.lon, ll.lat); return `${i ? 'L' : ''}${x.toFixed(2)},${y.toFixed(2)}`; }).join('')}`).join('')}" fill="none" stroke="${S.deep}" stroke-width="0.4" stroke-dasharray="1.8 0.9" stroke-linecap="round"/>`);
   const spacer = new LabelSpacer(p.wMm, p.hMm, 80);
   spacer.take(40, 10, 72, 10);

@@ -9,7 +9,7 @@
 // blurrily in the printed PDF.
 
 import { esc } from './chrome.js';
-import { tint, mix, shadeHex, inkFor, deckFamilies, deckLook, type Category, type InkFamily, type InkFamilyName } from './template.js';
+import { tint, mix, shadeHex, inkFor, vivid, deckFamilies, deckLook, type Category, type InkFamily, type InkFamilyName } from './template.js';
 import { rampColours } from './terrainMap.js';
 
 export type Family = InkFamilyName;
@@ -341,7 +341,10 @@ export function veg1750Fills(classes: { pct: string }[], technique = deckLook().
 /** The palette as a heat ramp, cool to warm: the transit blue, the living green, the activity gold, the accent and its deep; for anything ordered: storeys, metres, hours. */
 export function paletteRamp(): string[] {
   const B = INK.blue, G = INK.green, O = INK.orange, R = INK.red;
-  return [inkFor(B.solid, 0.5), inkFor(G.solid, 0.4), inkFor(O.solid, 0.42), R.solid, R.deep];
+  // each step made vivid, so a pastel family (Kingfisher's) still yields a ramp that reads at hatch width; the warm step the family's most saturated tint
+  const sat = (hex: string) => { const n = parseInt(hex.slice(1), 16), c = [(n >> 16) & 255, (n >> 8) & 255, n & 255]; const mx = Math.max(...c); return mx ? (mx - Math.min(...c)) / mx : 0; };
+  const warm = [O.solid, O.line, O.deep].sort((a, b) => sat(b) - sat(a))[0];
+  return [vivid(B.solid, 0.5, 0.48), vivid(G.solid, 0.5, 0.42), vivid(warm, 0.65, 0.5), vivid(R.solid, 0.55, 0.45), vivid(R.deep, 0.6, 0.32)];
 }
 
 /**
@@ -352,9 +355,8 @@ export function heatFills(n: number, technique = deckLook().technique): Fill[] {
   const cols = rampColours(n, paletteRamp());
   if (technique === 'tone') return cols.map((c) => ({ bg: c, outline: '#ffffff', outlineW: 0.08 }));
   return cols.map((c, i) => {
-    const ink = inkFor(c, 0.3);
-    if (i === 0) return { bg: tint(c, 0.28), outline: ink, outlineW: 0.1 };
-    return { bg: '#ffffff', kind: i === n - 1 ? 'cross' : 'hatch', ink, step: 1.5 - (1.0 * (i - 1)) / Math.max(1, n - 2), w: 0.2, outline: ink, outlineW: 0.1 };
+    if (i === 0) return { bg: tint(c, 0.3), outline: c, outlineW: 0.1 };
+    return { bg: tint(c, 0.16), kind: i === n - 1 ? 'cross' : 'hatch', ink: c, step: 1.5 - (1.0 * (i - 1)) / Math.max(1, n - 2), w: 0.22, outline: c, outlineW: 0.1 };
   });
 }
 

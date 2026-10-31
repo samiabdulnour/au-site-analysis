@@ -18,7 +18,7 @@ import { encodeRgbaPng } from '../lib/png.js';
  * them at `shade`, the result run from white to `dark`. One opaque RGB image, so no viewer has a filter or a blend to get wrong.
  */
 /** How the bands are hatched: the cells' size on the paper, a line ink a band (the lowest band stays plain), the line's weight and the spacing from the lowest hatched band to the highest. */
-export interface ReliefHatch { mmPerCell: number; inks: string[]; lineMm?: number; maxPeriodMm?: number; minPeriodMm?: number }
+export interface ReliefHatch { mmPerCell: number; inks: string[]; lineMm?: number; maxPeriodMm?: number; minPeriodMm?: number; /** The ground between a band's lines: paper (0) or a tint of the band's ink, this much of it. */ bgTint?: number }
 
 /** The grid at `u` times its resolution, bilinear, so a pattern painted on it has the pixels to be crisp. */
 export function upsampleGrid(g: DemGrid, u: number): DemGrid {
@@ -64,10 +64,13 @@ export function reliefDataUri(g0: DemGrid, dark: string, opts: { stepM?: number;
       const sh = 1 - shade * (1 - hs[i] / 255);
       const period = periods[band];
       const x = i % g.cols, y = Math.floor(i / g.cols);
+      const ink = hatchInks[Math.min(hatchInks.length - 1, band)];
       if (period && (x + y) % period < lineW) {
-        const ink = hatchInks[Math.min(hatchInks.length - 1, band)];
         for (let c = 0; c < 3; c++) rgba[i * 4 + c] = ink[c];
-      } else for (let c = 0; c < 3; c++) rgba[i * 4 + c] = Math.round(255 * sh);
+      } else {
+        const bt = period ? (hatch!.bgTint ?? 0) : 0;
+        for (let c = 0; c < 3; c++) rgba[i * 4 + c] = Math.round((255 - (255 - ink[c]) * bt) * sh);
+      }
       rgba[i * 4 + 3] = 255;
       continue;
     }
@@ -104,7 +107,8 @@ export function rampColours(bands: number, ramp = HEAT_RAMP): string[] {
 }
 /** The hatched bands as fills for the map's key: the lowest plain, the rest lined in their inks at the spacing the picture uses. */
 export function reliefBandHatches(bands: number, h: ReliefHatch): { bg?: string; kind?: 'hatch'; ink?: string; step?: number; w?: number }[] {
-  return Array.from({ length: bands }, (_, k) => (k === 0 ? { bg: '#ffffff' } : { bg: '#ffffff', kind: 'hatch' as const, ink: h.inks[Math.min(h.inks.length - 1, k)], step: hatchPeriodMm(k, bands, h), w: h.lineMm ?? 0.16 }));
+  const tintOf = (hex: string, k: number) => { const n = parseInt(hex.slice(1), 16); return `#${[16, 8, 0].map((sh) => Math.round(255 - (255 - ((n >> sh) & 255)) * k).toString(16).padStart(2, '0')).join('')}`; };
+  return Array.from({ length: bands }, (_, k) => { const ink = h.inks[Math.min(h.inks.length - 1, k)]; return k === 0 ? { bg: '#ffffff' } : { bg: tintOf(ink, h.bgTint ?? 0), kind: 'hatch' as const, ink, step: hatchPeriodMm(k, bands, h), w: h.lineMm ?? 0.16 }; });
 }
 
 /**

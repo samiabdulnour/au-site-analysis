@@ -193,7 +193,7 @@ const F2 = {
 };
 
 const KINGFISHER_CATEGORIES: Category[] = [
-  { id: 'site',           label: 'SITE',                                     fill: F2.salmon, opacity: 0.45 },
+  { id: 'site',           label: 'SITE',                                     fill: F2.magenta, opacity: 0.3 },
   { id: 'medical',        label: 'MEDICAL',                                  fill: F2.violetGround, opacity: 1, stroke: F2.violet, figure: F2.violet },
   { id: 'education',      label: 'EDUCATION',                                fill: F2.violetGround, opacity: 1, texture: 'lines', textureColor: F2.violet, figure: F2.violet },
   { id: 'childCare',      label: 'CHILD CARE / AGED CARE',                   fill: F2.violetGround, opacity: 1, texture: 'dots', textureColor: F2.violet, figure: F2.violet },
@@ -509,7 +509,7 @@ const CANARY_LOOK: SiteLook = {
 // photograph to show them. It was called Kookaburra; a request naming it is
 // drawn in Kingfisher.
 const KINGFISHER_LOOK: SiteLook = {
-  font: GROTESK, ground: 'paper', veil: 0, aerial: 'colour', site: F2.salmon, siteDash: '7,2,1.6,2', dimensionInk: '#56616b', fall: '#56616b', fallWords: 'plain', fallInk: '#56616b', textScale: 1,
+  font: GROTESK, ground: 'paper', veil: 0, aerial: 'colour', site: F2.magenta, siteDash: '7,2,1.6,2', dimensionInk: '#56616b', fall: '#56616b', fallWords: 'plain', fallInk: '#56616b', textScale: 1,
   buildingEdge: 0.4, buildings: 'colour', neighbours: 'white', neighbourHeightInk: '#ffffff', zones: 'fill', zoneTint: 0,
   heritage: false, heritageInk: { item: '#e39a3b', area: '#c8372d' }, contours: true, contourInk: '#a9adb1',
   streetInk: '#e39a6f',
@@ -632,6 +632,22 @@ export function mix(a: string, b: string, k: number): string {
   const na = parseInt(a.slice(1), 16), nb = parseInt(b.slice(1), 16);
   const ch = (sh: number) => Math.round(((na >> sh) & 255) * (1 - k) + ((nb >> sh) & 255) * k).toString(16).padStart(2, '0');
   return `#${ch(16)}${ch(8)}${ch(0)}`;
+}
+/** `hex` made vivid: its hue kept, its saturation raised to at least `minSat` and its lightness capped at `maxLight` (HSL), so a pastel family yields an ink that carries a hatch line or a band. */
+export function vivid(hex: string, minSat = 0.55, maxLight = 0.45): string {
+  const n = parseInt(hex.slice(1), 16);
+  const r = ((n >> 16) & 255) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2, d = max - min;
+  let h = 0, sat = 0;
+  if (d > 1e-6) {
+    sat = d / (1 - Math.abs(2 * l - 1));
+    h = max === r ? ((g - b) / d + (g < b ? 6 : 0)) : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    h /= 6;
+  }
+  const S = Math.max(sat, minSat), L = Math.min(l, maxLight);
+  const q = L < 0.5 ? L * (1 + S) : L + S - L * S, p = 2 * L - q;
+  const ch = (t: number) => { if (t < 0) t += 1; if (t > 1) t -= 1; const v = t < 1 / 6 ? p + (q - p) * 6 * t : t < 1 / 2 ? q : t < 2 / 3 ? p + (q - p) * (2 / 3 - t) * 6 : p; return Math.round(v * 255).toString(16).padStart(2, '0'); };
+  return `#${ch(h + 1 / 3)}${ch(h)}${ch(h - 1 / 3)}`;
 }
 /** The relative luminance of `hex`, 0 (black) to 1 (white). */
 export function luminance(hex: string): number {
