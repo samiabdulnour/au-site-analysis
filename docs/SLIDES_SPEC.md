@@ -70,7 +70,8 @@ means a placeholder.
 
 ## 3. The slide set
 
-Eighteen slides in two parts, in the order the reference uses. For each:
+Eighteen slides in two parts, in the order the reference uses, and 07b between
+them. For each:
 what is drawn, where it comes from (§4 has the endpoints), what stays manual.
 
 ### Part A — Context
@@ -136,6 +137,34 @@ map. State significant applications from the Department's Major Projects
 register join them as S-numbered diamonds (its listing and each project's
 page, §7). A schematic future skyline is optional: storeys × 3.1 m at each
 DA. *Manual:* renders.
+
+**07b Capacity and opportunity.** The office's context plan on the
+template: one A4 page at 1:2000 (420 × 594 m) over the grey base, every
+property outlined by ownership — a single title in grey, a strata scheme
+filled sand, a heritage building in a terracotta hatch, a mature development
+patched grey with dots — a tick on the parcels with development potential and
+a cross on those with low potential, the site in red. Read from the
+cadastre's property register (one row per address: a strata scheme where a
+strata plan sits under the title, where the register files its addresses as
+under one, or where three or more unit addresses share it; the unit
+addresses are its lot count), the lots' record dates (the plan's
+registration date for every plan after the digital cadastre was built in
+September 1993, so a strata plan dates the building it followed), the LEP
+heritage layer, State land and the council's parks and facilities, the
+council's development register where it publishes one (the City of Sydney's,
+which reaches back to 2021) and the Portal's live applications. Low
+potential: strata ownership, a heritage item, public land, a mature
+development (significantly developed in the past twenty years, or with a
+current approval or construction) or a site under 250 m², with little
+ability to develop above its current status. Every threshold is in
+`lib/capacity.ts`. The left page counts the parcels, states the rules and
+bars the parcels with potential by area. *Manual:* a building put up on a
+single title before 2021 has no open-data date, and the Online DA API
+carries no approval outcome, so `capacity_overrides.json` beside the output
+carries the author's marks, keyed by the start of an address as the register
+writes it (`{"121-129 CROWN STREET": {"symbol": "mature", "note": "new"}}`);
+the sheet counts them. The deck has nineteen spreads with it; the slide
+names keep the spec's numbers and the folios count on.
 
 **08 Built form and height planes.** Figure-ground with buildings classed by
 height (Overture / OSM; the storeys of a determined DA on the lot where
@@ -529,9 +558,10 @@ NASA POWER hourly point API: `https://power.larc.nasa.gov/api/temporal/hourly/po
 
 ## 7. Status
 
-Implemented: all eighteen slides — 01 (location), 02 (character), 03
+Implemented: all eighteen slides, 07b and 08b — 01 (location), 02 (character), 03
 (planning overview), 04 (planning controls), 05 (strategic context), 06
-(topography), 07 (development activity), 08 (built form) with 08b (the
+(topography), 07 (development activity), 07b (capacity and opportunity:
+`src/lib/capacity.ts`, `src/fetch/capacity.ts`), 08 (built form) with 08b (the
 streetscape, where Street View is keyed), 09 (movement), 10
 (green and public domain), 11 (the site), 12 (existing site condition), 13 (grid, sun and views), 14
 (environmental constraints), 15 (Country), 16 (people and market), 17

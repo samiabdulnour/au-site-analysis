@@ -45,6 +45,7 @@ import { windLobes, sectorTotals, WIND_CLASSES_KMH, type WindRose } from '../fet
 import { inRings, nearestOnRings, overlapArea, ringsGap } from '../lib/rings.js';
 import { CENTRES, SYDNEY_CBD, CENTRE_KIND_WORD } from '../data/centres.js';
 import type { MajorProject } from '../fetch/majorProjects.js';
+import { classifyCapacity, inWindow, capacityCounts, type CapacityProperty } from '../lib/capacity.js';
 import { streetscapeSlide } from './streetscape.js';
 
 export const SLIDE_W = 420;
@@ -2146,6 +2147,156 @@ export function developmentAtlas(b0: SlidesBundle, facts: PlanningFacts): Slide 
   void facts;
   return { id: '07_development_activity', title: 'Development activity', subtitle: sub, textHtml: '', figureHtml, bleed: true, sources, accent: R.text, legend,
     narrative: brief([`Since ${fmtMonthYear(d.from)}, ${fmtNum(d.applications)} applications were lodged on the land this map covers, about ${fmtNum(Math.round(d.applications / Math.max(1, d.perYear.length - 1)))} a year.`, `${fmtNum(d.significant)} of them, on ${fmtNum(d.sites.length)} sites, are of a scale that shapes the place — four storeys, ten dwellings or $5 M and more — and propose ${fmtNum(d.dwellings)} dwellings${d.cost ? ` at a stated ${money(d.cost)}` : ''}.`]) };
+}
+
+// ---- 07b Capacity and opportunity: the office's context plan on the template ------------------------------------
+
+/** The capacity study's fills: ownership in sand, heritage in a terracotta hatch, the mature development a grey dotted patch. */
+const CAP_FILL = {
+  strata: { bg: '#f3debc', outline: '#b5873b', outlineW: 0.12 } as Fill,
+  heritage: { kind: 'vlines', ink: '#d9a094', step: 0.95, w: 0.07, outline: '#ba4530', outlineW: 0.2 } as Fill,
+  mature: { bg: '#e4e5e1', kind: 'dots', ink: '#4a5250', step: 0.5, w: 0.14, outline: '#4a5250', outlineW: 0.18 } as Fill,
+};
+const CAP_TICK = '#2f8f55', CAP_CROSS = '#ba4530', CAP_SINGLE = '#9a9a9a';
+/** A tick or a cross as a path about (x, y), s its half size, haloed in white. */
+const capMark = (kind: 'tick' | 'cross', x: number, y: number, s: number) => {
+  const w = Math.max(0.3, s * 0.28);
+  const d = kind === 'tick'
+    ? `M${(x - s * 0.9).toFixed(2)},${(y + s * 0.05).toFixed(2)}L${(x - s * 0.2).toFixed(2)},${(y + s * 0.75).toFixed(2)}L${(x + s).toFixed(2)},${(y - s * 0.8).toFixed(2)}`
+    : `M${(x - s * 0.75).toFixed(2)},${(y - s * 0.75).toFixed(2)}L${(x + s * 0.75).toFixed(2)},${(y + s * 0.75).toFixed(2)}M${(x + s * 0.75).toFixed(2)},${(y - s * 0.75).toFixed(2)}L${(x - s * 0.75).toFixed(2)},${(y + s * 0.75).toFixed(2)}`;
+  return `<path d="${d}" fill="none" stroke="#ffffff" stroke-width="${(w + 0.4).toFixed(2)}" stroke-linecap="round" stroke-linejoin="round" opacity="0.9"/><path d="${d}" fill="none" stroke="${kind === 'tick' ? CAP_TICK : CAP_CROSS}" stroke-width="${w.toFixed(2)}" stroke-linecap="round" stroke-linejoin="round"/>`;
+};
+
+/** The study's reading of the deck's layers: the register rows and dated lots over the page, the LEP heritage, public land from the State's layer, the council's parks and facilities and the open-space zones, the council's register and the Portal's live applications. */
+function capacityResult(b: SlidesBundle) {
+  const cap = b.capacity?.data;
+  if (!cap) return null;
+  const publicLand = [...cap.stateLand, ...cap.councilLand, ...b.green.openSpace.filter((z) => /^RE1/.test(z.code)).map((z) => ({ kind: 'council' as const, name: z.name, rings: z.rings }))];
+  const facilities = [...cap.facilities, ...b.green.facilities.filter((f) => f.kind === 'library' || f.kind === 'community' || f.kind === 'pool').map((f) => ({ name: f.name, lon: f.lon, lat: f.lat }))];
+  const result = classifyCapacity({ centre: b.geocode.center, properties: cap.properties, lots: cap.lots, heritage: b.heritage, publicLand, facilities, register: cap.register, applications: b.applications, overrides: b.capacity?.overrides, options: { thisYear: Number(b.generatedAt.slice(0, 4)) || new Date().getFullYear() } });
+  const visible = inWindow(result, panelExtent(cap.panel));
+  return { cap, result, visible, counts: capacityCounts(visible, result.options) };
+}
+
+/** The slide's facts for overall.json: the counts, the site's neighbours and every parcel on the page with its reading. */
+function capacityFacts(b: SlidesBundle) {
+  const r = capacityResult(b);
+  if (!r) return { available: false as const };
+  const { result, visible, counts } = r;
+  return {
+    available: true as const, scale: r.cap.panel.scale, since: result.since, options: result.options, counts, duplicates: result.duplicates,
+    neighbours: result.neighbours,
+    parcels: visible.map((p) => ({ address: p.base, areaM2: p.areaM2, kind: p.kind, strata: p.strata, units: p.units, heritageItem: p.heritageItem, developed: p.developed, mature: p.mature, mark: p.mark, note: p.note, override: p.override })),
+    registerSource: r.cap.registerSource, registerExtract: r.cap.registerExtract,
+  };
+}
+
+/** Capacity and opportunity: ownership, heritage and the mature development round the site, a tick or a cross on every parcel, over one A4 page at 1:2000. */
+export function capacityAtlas(b: SlidesBundle, facts: PlanningFacts): Slide | null {
+  const r = capacityResult(b);
+  if (!r) return null;
+  const { cap, result, visible, counts } = r;
+  const t = tpl();
+  const p = cap.panel;
+  const proj = panelProjector(p);
+  const k = mercatorScaleFactor(mercatorToLonLat(p.center).lat);
+  const suburb = (b.context.suburb?.name ?? '').toUpperCase();
+  const tidy = (base: string) => titleCase(suburb && base.endsWith(` ${suburb}`) ? base.slice(0, -suburb.length - 1) : base);
+  const onPage = (q: { ringsM: number[][][] }) => { const bb = bboxOf(q.ringsM.map((ring) => ring.map(([x, y]) => { const ll = mercatorToLonLat({ x, y }); return [ll.lon, ll.lat]; })), proj); return bb.x1 >= 0 && bb.y1 >= 0 && bb.x0 <= p.wMm && bb.y0 <= p.hMm; };
+  const shapeOf = (q: CapacityProperty) => { const d = ringsPath(q.rings, proj); return { d, bb: bboxOf(q.rings, proj) }; };
+
+  // ---- the map: the grey base, then ownership, heritage, the mature patches, the marks, the site
+  const gt = greyBase(t);
+  const parts: string[] = [withTemplate(gt, () => baseLayers(b.base, proj, p)), withTemplate(gt, () => overLayers(b.base, proj, p, 'none'))];
+  const drawn = result.properties.filter((q) => !q.isSite && onPage(q));
+  for (const q of drawn) {
+    const { d, bb } = shapeOf(q);
+    if (q.kind === 'council' || q.kind === 'state') continue;
+    parts.push(q.strata ? fillShape(d, bb, CAP_FILL.strata) : `<path d="${d}" fill="none" stroke="${CAP_SINGLE}" stroke-width="0.15" stroke-linejoin="round"/>`);
+  }
+  for (const q of drawn) if (q.mature) { const { d, bb } = shapeOf(q); parts.push(fillShape(d, bb, CAP_FILL.mature)); }
+  for (const q of drawn) if (q.heritageItem) { const { d, bb } = shapeOf(q); parts.push(fillShape(d, bb, CAP_FILL.heritage)); }
+  // the street names first, so they find their room among the parcels; then a mark on each parcel, sized to it,
+  // and under the mature ones a note where the page has room for it (the left page lists them all)
+  const spacer = new LabelSpacer(p.wMm, p.hMm, 80);
+  spacer.take(36, 10, 64, 10);
+  keepSiteClear(b, proj, spacer);
+  const names = streetNameLayer(b.base.roads, proj, p, spacer, 'cap07b');
+  const marks: string[] = [], notes: string[] = [];
+  const marked: { q: CapacityProperty; x: number; y: number; s: number }[] = [];
+  for (const q of drawn) {
+    if (q.areaM2 < 40) continue; // lane stubs and slivers carry no mark
+    const [x, y] = proj(q.centroid.lon, q.centroid.lat);
+    if (x < 0 || y < 0 || x > p.wMm || y > p.hMm) continue;
+    const s = Math.max(0.9, Math.min(2.6, 0.6 + Math.sqrt(q.areaM2) * 0.05));
+    marks.push(capMark(q.mark, x, y, s));
+    marked.push({ q, x, y, s });
+  }
+  for (const m of marked) spacer.take(m.x, m.y, m.s * 2, m.s * 2);
+  for (const m of marked) {
+    if (!m.q.note) continue;
+    const w = m.q.note.length * 1.35 + 1;
+    if (spacer.take(m.x, m.y + m.s + 1.5, w, 2.3)) notes.push(m6(m.x, m.y + m.s + 1.5, m.q.note));
+  }
+  parts.push(names, ...marks, ...notes);
+  parts.push(siteMark(b.base, proj, 'both'), siteEdge(b, proj));
+  // the site itself: a large tick, the one parcel most likely to develop
+  if (result.site) { const [sx, sy] = proj(result.site.centroid.lon, result.site.centroid.lat); parts.push(capMark('tick', sx, sy, 5)); }
+  parts.push(panelFurniture(p, 'left'));
+  const mapSvg = bleedSvg('cap07b', p, parts.join('\n'));
+
+  // ---- the text page
+  const o = result.options;
+  const figs = zFigures([
+    ['parcels on this page', fmtNum(counts.properties)],
+    ['with development potential', fmtNum(counts.potential)],
+  ], [
+    ['low development potential', fmtNum(counts.low)],
+    ['of them mature development', fmtNum(counts.mature)],
+  ], 9.6);
+  const method = zTable([
+    { label: 'Strata', value: `A strata plan under the title, the register's addresses filed as under one, or three or more unit addresses on it: ${fmtNum(counts.strata)} schemes.` },
+    { label: 'Low potential', value: `Strata ownership, a heritage item (${fmtNum(counts.heritage)}), public land (${fmtNum(counts.publicLand)}), a mature development, or a site under ${fmtNum(o.smallSite)} m² (${fmtNum(counts.small)}), with little ability to develop above its current status.` },
+    { label: 'Mature', value: `Developed since ${result.since}: a strata scheme of ${o.smallScheme} or more lots registered, a new building (or a four-storey, five-dwelling or 1,000 m² addition or conversion) completed on the council's register, or a current approval.${counts.overridden ? ` ${fmtNum(counts.overridden)} marks are the author's.` : ''}` },
+  ]);
+  const matureRows = visible.filter((q) => q.mature).sort((a, c) => c.areaM2 - a.areaM2).map((q) => ({ label: shorten(tidy(q.base), 34), value: `${q.note ?? (q.developed ? `${q.developed.how} ${q.developed.year}` : 'approved')} · ${fmtNum(q.areaM2)} m²${q.override ? ' · the author\'s mark' : q.active[0]?.da ? ` · ${q.active[0].da}` : ''}` }));
+  const legend: LegendEntry[] = [
+    { swatch: swatchOf(CAP_FILL.heritage), label: 'Heritage building' },
+    { swatch: swatchOf(CAP_FILL.strata), label: 'Strata ownership' },
+    { swatch: `<rect x="0.5" y="0.5" width="4" height="2.6" fill="none" stroke="${CAP_SINGLE}" stroke-width="0.22"/>`, label: 'Single ownership' },
+    { swatch: swatchOf(CAP_FILL.mature), label: `Mature development, unlikely to develop: built since ${result.since}, or approved` },
+    { swatch: capMark('tick', 2.5, 1.8, 1.3), label: 'Development potential' },
+    { swatch: capMark('cross', 2.5, 1.8, 1.3), label: `Low development potential: strata, heritage, public land, mature, or under ${fmtNum(o.smallSite)} m²` },
+    SITE_KEY(t),
+  ];
+  // the parcels with potential, largest first, then the mature developments, as many of each as the page holds above the key
+  // the method's three rows run to four or five lines each at the template's measure: about 16 mm a row
+  const free = keyTop(legend.length) - 6 - (44 + blockH(6.3 + 2 * 9.6) + blockH(3 * 16));
+  const ticks = visible.filter((q) => q.mark === 'tick').sort((a, c) => c.areaM2 - a.areaM2);
+  const nBars = Math.max(0, Math.min(5, ticks.length, Math.floor((free * 0.5 - 10) / 3.95)));
+  const top = ticks.slice(0, nBars);
+  const ax = niceAxis(Math.max(100, ...top.map((q) => q.areaM2)));
+  const rows = top.map((q) => ({ name: shorten(tidy(q.base), 36), value: q.areaM2, label: `${fmtNum(q.areaM2)} m²${q.note ? ` · ${q.note}` : ''}`, fill: { bg: INK.green.mid } as Fill }));
+  const barsBlock = top.length >= 2 ? blockH(barsH(top.length)) : 0;
+  // a one-line row of the kit is 5.6 mm; a long value wraps to two, so allow six
+  const nMature = Math.max(0, Math.min(matureRows.length, Math.floor((free - barsBlock - 6.21 - 7.5) / 6.2)));
+  const flow = `<div class="zflow" style="top:44mm">
+    <div class="zblk">${zHead('Capacity and opportunity', 'On this page')}${figs}</div>
+    <div class="zblk">${zHead('How it is read')}${method}</div>
+    ${top.length >= 2 ? `<div class="zblk">${zHead('Parcels with potential · area, m²', ticks.length > top.length ? `${fmtNum(top.length)} of ${fmtNum(ticks.length)}` : '')}${zBars(rows, ax.max, ax.step)}</div>` : ''}
+    ${nMature > 0 ? `<div class="zblk">${zHead('Mature development', matureRows.length > nMature ? `${fmtNum(nMature)} of ${fmtNum(matureRows.length)}` : '')}${zTable(matureRows.slice(0, nMature))}</div>` : ''}
+  </div>`;
+  const nb = result.neighbours;
+  const nbPhrase = (q: typeof nb[number]) => `${tidy(q.base)}, ${q.strata ? `a strata scheme of about ${q.units} lots` : q.kind === 'council' || q.kind === 'state' ? 'public land' : `a single title${q.heritageItem ? ' and a heritage item' : ''}`}`;
+  const narrative = brief([
+    `${fmtNum(counts.properties)} parcels lie on this page, ${((p.wMm * p.scale) / 1000).toFixed(0)} by ${((p.hMm * p.scale) / 1000).toFixed(0)} metres round the site.`,
+    `${fmtNum(counts.potential)} have development potential; ${fmtNum(counts.low)} have little, among them ${fmtNum(counts.heritage)} heritage items, ${fmtNum(counts.strata)} strata schemes and ${fmtNum(counts.mature)} mature developments.`,
+    nb.length === 0 ? 'No other title adjoins the site.' : nb.length === 1 ? `The site adjoins one other title: ${nbPhrase(nb[0])}.` : `The site adjoins ${nb.length} other titles: ${nb.slice(0, 3).map(nbPhrase).join('; ')}.`,
+  ]);
+  const sources = `Sources: NSW cadastre and property register (lots, plan types, unit addresses and the plans' record dates, which date a strata plan's registration); the LEP heritage layer; State government land from the Planning Portal; ${cap.registerSource ? `${cap.registerSource}${cap.registerExtract ? ` (extract of ${cap.registerExtract})` : ''} and its parks and facilities; ` : ''}the Planning Portal's Online DA API. Ownership is read from plan types and public-land layers, not title searches${counts.overridden ? `; ${fmtNum(counts.overridden)} marks are the author's, from capacity_overrides.json` : ''}. Areas from the digital cadastre. Retrieved ${b.generatedAt.slice(0, 10)}.`;
+  void facts; void k;
+  return { id: '07b_capacity_opportunity', title: 'Capacity and opportunity', subtitle: atlasSub(b, `${fmtNum(counts.potential)} of ${fmtNum(counts.properties)} parcels with potential`, `1:${fmtNum(p.scale).replace(',', ' ')}`), textHtml: '',
+    figureHtml: atlasFigure(mapSvg, 'Capacity and opportunity', p, flow), bleed: true, sources, accent: INK.green.text, legend, narrative };
 }
 
 export function developmentSlide(b: SlidesBundle, facts: PlanningFacts): Slide {
@@ -6905,6 +7056,7 @@ const ATTR = {
   overture: '© Overture Maps Foundation · ODbL and CDLA Permissive 2.0',
   osm: '© OpenStreetMap contributors · ODbL',
   valhalla: 'FOSSGIS Valhalla instance on OpenStreetMap data · ODbL',
+  cos: '© City of Sydney · CC BY 4.0',
   kartaview: '© KartaView contributors · CC BY-SA 4.0',
   wikipedia: 'Wikipedia contributors · text CC BY-SA 4.0',
   commons: 'Wikimedia Commons contributors · each file under its own licence, credited on the slide',
@@ -6986,6 +7138,8 @@ export function sourcesFacts(b: SlidesBundle, planning: PlanningFacts) {
   const B: SourceRow[] = [];
   B.push({ dataset: 'Geocoded addressing theme (the site point)', used: 'all', currency: `matched ${b.geocode.matchedAddresses.slice(0, 2).map((a) => titleCase(a)).join('; ')}${b.geocode.points.length > 1 ? ` (${b.geocode.points.length} address points)` : ''}`, retrieved: deckDay, attribution: ATTR.spatial });
   B.push({ dataset: 'Land parcel and property theme: lots, plan lot areas, easement geometry', used: 'all maps · 11', currency: `${b.lotDescription}; ${n(b.base.lots.features.length, 'lot')} in the window; ${n(b.site.easements.length, 'easement')} in the site plan\'s window; current at retrieval`, retrieved: deckDay, attribution: ATTR.spatial });
+  if (b.capacity?.data) B.push({ dataset: 'Land parcel and property theme: the property register (one row per address, its unit addresses and lot counts) and the lots\' record dates, which date a plan\'s registration', used: '07b', currency: `${n(b.capacity.data.properties.features.length, 'register row')} and ${n(b.capacity.data.lots.features.length, 'lot')} over the page; current at retrieval`, retrieved: deckDay, attribution: ATTR.spatial });
+  if (b.capacity?.data?.registerSource) B.push({ dataset: `${b.capacity.data.registerSource}, with the council\'s parks and facilities`, used: '07b', currency: `${n(b.capacity.data.register.length, 'development')} over the page${b.capacity.data.registerExtract ? `; extract of ${b.capacity.data.registerExtract}` : ''}`, retrieved: deckDay, attribution: ATTR.cos });
   B.push({ dataset: 'Transport theme: roads by function, railways, stations', used: 'all maps · 01 · 09 · 13 · 17', currency: `${n(b.base.roads.length, 'road segment')}, ${n(b.base.rail.train.length + b.base.rail.tram.length, 'rail line')}, ${n(b.base.stations.length, 'station')} in the window; current at retrieval`, retrieved: deckDay, attribution: ATTR.spatial });
   B.push({ dataset: 'Water theme: water bodies, coastline, watercourses, hydro names', used: 'all maps · 01 · 13 · 15', currency: `${n(b.base.water.features.length, 'water feature')} in the window; ${n(b.country.water.courses.length, 'watercourse line')} over the strip; current at retrieval`, retrieved: deckDay, attribution: ATTR.spatial });
   B.push({ dataset: 'Administrative boundaries: LGA, suburb, Local Aboriginal Land Council areas, district', used: '01 · 04 · 09 · 15 · 16', currency: [b.context.lga?.name ? titleCase(b.context.lga.name) : '', b.context.suburb?.name ? titleCase(b.context.suburb.name) : '', b.context.lalc?.local ? `${titleCase(b.context.lalc.local)} LALC` : '', b.context.district ? `${b.context.district} district` : ''].filter(Boolean).join(', ') || 'not resolved', retrieved: deckDay, attribution: ATTR.spatial });
@@ -7884,7 +8038,9 @@ export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; 
 
 function drawSlides(b: SlidesBundle, meta: SheetMeta): { html: string; slides: Slide[] } {
   const facts = planningFacts(b);
-  const slides = [locationSlide(b), characterAtlas(b), planningAtlas(b), controlsAtlas(b, facts), strategicAtlas(b, facts), topographyAtlas(b), developmentAtlas(b, facts), builtFormAtlas(b, facts), ...(b.streetscape ? [streetscapeSlide(b.streetscape, { overlay: true })] : []), movementSlide(b), greenAtlas(b), siteAtlas(b), conditionAtlas(b), sunAtlas(b), constraintsAtlas(b), countryAtlas(b), peopleAtlas(b), ocAtlas(b, facts), sourcesAtlas(b, facts)];
+  // the capacity study follows the development activity it reads; a deck built before its layers has none
+  const capacity = capacityAtlas(b, facts);
+  const slides = [locationSlide(b), characterAtlas(b), planningAtlas(b), controlsAtlas(b, facts), strategicAtlas(b, facts), topographyAtlas(b), developmentAtlas(b, facts), ...(capacity ? [capacity] : []), builtFormAtlas(b, facts), ...(b.streetscape ? [streetscapeSlide(b.streetscape, { overlay: true })] : []), movementSlide(b), greenAtlas(b), siteAtlas(b), conditionAtlas(b), sunAtlas(b), constraintsAtlas(b), countryAtlas(b), peopleAtlas(b), ocAtlas(b, facts), sourcesAtlas(b, facts)];
   const t = tpl();
   const footerLeft = ['SITE ANALYST — OVERALL ANALYSIS', b.siteAddress, meta.client ? `for ${meta.client}` : '', meta.jobNo ? `job ${meta.jobNo}` : ''].filter(Boolean).join(' · ');
   const pages = slides.map((s, i) => s.bleed || s.full ? atlasPage(s, i) : `
@@ -7924,6 +8080,7 @@ export function slidesFacts(b: SlidesBundle) {
     housingTarget: b.housingTarget,
     councilDcp: b.cos,
     development: (() => { const d = developmentFacts(b); return { ...d, sentences: developmentSentences(b, d, facts) }; })(),
+    capacity: capacityFacts(b),
     people: peopleFacts(b),
     movement: (() => { const f = movementFacts(b); return { ...f, sentences: movementSentences(b, f) }; })(),
     theSite: (() => { const f = siteFacts(b); return { ...f, sentences: siteSentences(b, f) }; })(),
