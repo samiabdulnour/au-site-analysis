@@ -28,10 +28,11 @@ import type { LegendEntry } from './minimap.js';
 import { estimateKerbs, type KerbLine } from '../lib/kerbs.js';
 import type { SummaryData } from './summarySheet.js';
 import type { TopoRoad } from '../fetch/nswTopo.js';
+import type { AerialResult } from '../fetch/imagery.js';
 import type { PolicyKind } from '../fetch/planning.js';
 import turfUnion from '@turf/union';
 import { featureCollection, polygon } from '@turf/helpers';
-import { lonLatToMercator, mercatorScaleFactor, mercatorToLonLat } from '../lib/geo.js';
+import { lonLatToMercator, mercatorScaleFactor, mercatorToLonLat, type Extent } from '../lib/geo.js';
 import {
   computeYield, computeRetained, edgeKinds, ringArea, withFour, futureHeight, existingSummary, PARKING_RATES, DEFAULT_ASSUMPTIONS, UNIT_KINDS, ADG_MINIMUM,
   type XY, type YieldAssumptions, type YieldResult, type Use, type Tier, type UnitKind, type FutureControls, type ExistingBuilding,
@@ -67,6 +68,8 @@ export interface YieldBundle extends SummaryData {
    */
   context: { rings: number[][][]; heightM: number; known: boolean; controls?: FutureControls; futureM?: number }[];
   buildingsSource: string;
+  /** The photograph over the plan's window, for the styles that draw on the aerial; a bundle from before it has none. */
+  aerial?: AerialResult | null;
   /** What stands on the site today: each building whose centroid is inside the boundary. A bundle from before them has none. */
   existing?: ExistingBuilding[];
   /** From `yield_assumptions.json` beside the output, when there is one. */
@@ -312,12 +315,15 @@ function useFill(u: Use): string {
 const CONTEXT_FILL = '#e9e9e6', CONTEXT_EDGE = '#a3a39e';
 /** The site's pen: the style's accent. */
 const siteInk = () => deckLook().accent;
+/** The photograph under the plan and the massing: where the style draws on the aerial and the deck read one over this site. */
+const photoOf = (b: YieldBundle, look: DeckLook): (AerialResult & { extent: Extent }) | null =>
+  look.ground === 'aerial' && b.aerial?.tiles.length && b.aerial.extent ? (b.aerial as AerialResult & { extent: Extent }) : null;
 /** The lot in a zone, as the style's context sheet tints the land: its category's fill and texture, or its ePlanning colour. */
 function lotFill(zone: string | undefined, look: DeckLook): { key: string; fill: Fill } | null {
   if (!zone) return null;
   if (look.zones === 'lep') return { key: zone.toUpperCase(), fill: { bg: tint(zoneFill(zone), LEP_OPACITY) } };
   const cat = zoneToCategory(zone), c = cat ? look.categories.find((x) => x.id === cat) : undefined;
-  return c ? { key: c.id, fill: categoryFill(c, 'paper') } : null;
+  return c ? { key: c.id, fill: categoryFill(c, look.ground, look.tintScale) } : null;
 }
 /** A neighbour's future, over what stands: a pale glass, dashed, light enough to see the proposal through. */
 const FUTURE_FILL = '#e4ebf3', FUTURE_EDGE = '#8495a8', FUTURE_OPACITY = 0.3, FUTURE_DASH = '1.4,0.8';
@@ -406,12 +412,23 @@ function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number;
   const light = { x: -0.55, y: 0.83 };
   const parts: string[] = [];
   const poly = (pts: [number, number][]) => `M${pts.map(([px, py]) => `${px.toFixed(2)},${py.toFixed(2)}`).join('L')}Z`;
-  // The ground: the lots round about and the site.
+  // The ground: the photograph, where the style draws on the aerial, laid into the ground plane (the plane's
+  // projection is affine, so the plan's picture skews into it as one matrix); then the lots round about and the site.
   const ground: string[] = [];
+  const look = deckLook();
+  const photo = photoOf(b, look);
+  if (photo) {
+    const e = photo.extent;
+    const corner = (x: number, yy: number) => { const ll = mercatorToLonLat({ x, y: yy }); return P(s.toLocal(ll.lon, ll.lat), 0); };
+    const NW = corner(e.xmin, e.ymax), NE = corner(e.xmax, e.ymax), SW = corner(e.xmin, e.ymin), SE = corner(e.xmax, e.ymin);
+    const m = [NE[0] - NW[0], NE[1] - NW[1], SW[0] - NW[0], SW[1] - NW[1], NW[0], NW[1]].map((v) => v.toFixed(4)).join(' ');
+    const sheet = poly([NW, NE, SE, SW]);
+    ground.push(`<g style="isolation:isolate"><g transform="matrix(${m})">${photo.tiles.map((tile) => `<image href="data/${tile.file}" x="${tile.left}" y="${tile.top}" width="${tile.width}" height="${tile.height}" preserveAspectRatio="none"/>`).join('')}</g><path d="${sheet}" fill="#808080" style="mix-blend-mode:saturation"/></g><path d="${sheet}" fill="#ffffff" fill-opacity="${look.veil}"/>`);
+  }
   for (const lot of parcelsOf(b)) for (const rg of lot.rings) {
     const pts = rg.map(([lon, lat]) => s.toLocal(lon, lat));
     if (pts.some((p) => Math.hypot(p.x, p.y) > reach + 20)) continue;
-    ground.push(`<path d="${poly(pts.map((p) => P(p, 0)))}" fill="none" stroke="#c9c9c4" stroke-width="0.12"/>`);
+    ground.push(`<path d="${poly(pts.map((p) => P(p, 0)))}" fill="none" stroke="${photo ? '#ffffff' : '#c9c9c4'}" stroke-width="${photo ? 0.2 : 0.12}"/>`);
   }
   const SITE = siteInk();
   ground.push(`<path d="${poly(s.ring.map((p) => P(p, 0)))}" fill="${SITE}" fill-opacity="0.08" stroke="${SITE}" stroke-width="0.35"/>`);
@@ -573,6 +590,16 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
   });
   const look = deckLook(), t = tpl();
   const within = (p: XY, rs: XY[][]) => rs.filter((rg) => inRing(p, rg)).length % 2 === 1;
+  // The photograph first, in grey under the style's veil, where the style draws on the aerial and the deck read one.
+  const photo = photoOf(b, look);
+  if (photo) {
+    const e = photo.extent;
+    const nw = mercatorToLonLat({ x: e.xmin, y: e.ymax }), se = mercatorToLonLat({ x: e.xmax, y: e.ymin });
+    const [X0, Y0] = at(s.toLocal(nw.lon, nw.lat)), [X1, Y1] = at(s.toLocal(se.lon, se.lat));
+    const W = X1 - X0, H = Y1 - Y0;
+    const frame = `x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}"`;
+    out.push(`<defs><clipPath id="plan-photo-${id}"><rect ${frame}/></clipPath></defs><g clip-path="url(#plan-photo-${id})"><g style="isolation:isolate">${photo.tiles.map((tile) => `<image href="data/${tile.file}" x="${(X0 + tile.left * W - 0.02).toFixed(2)}" y="${(Y0 + tile.top * H - 0.02).toFixed(2)}" width="${(tile.width * W + 0.04).toFixed(2)}" height="${(tile.height * H + 0.04).toFixed(2)}" preserveAspectRatio="none"/>`).join('')}<rect ${frame} fill="#808080" style="mix-blend-mode:saturation"/></g><rect ${frame} fill="#ffffff" opacity="${look.veil}"/></g>`);
+  }
   // Each lot in its zone's tint, as the style's context sheet tints the
   // land, the lots alone so the streets stay white; the site is left to its
   // own marks.
@@ -596,13 +623,14 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
   if (kerbs.length) out.push(`<path d="${kerbs.map((kl) => line(local(kl.coords))).join('')}" fill="none" stroke="${KERB_INK}" stroke-width="0.3" stroke-linecap="round" stroke-linejoin="round"/>`);
   const blds = b.context.map((cb) => local(cb.rings[0] ?? [])).filter((rg) => rg.length >= 3);
   // The buildings as the style draws them: white in a hairline of their
-  // zone family's ink, filled in the family's colour with a white edge, or
-  // a quiet grey (the aerial styles, with no photograph here).
+  // zone family's ink, filled in the family's colour with a white edge, a
+  // white line round the photograph's roofs, or a quiet grey where the
+  // aerial style has no photograph.
   for (const rg of blds) {
     const zone = look.buildings === 'grey' ? undefined : parcels.find((pc) => !pc.site && within(centre(rg), pc.local))?.zone;
     const cat = zone ? zoneToCategory(zone) : null, c = cat ? look.categories.find((x) => x.id === cat) : undefined;
     const ink = c?.figure ?? c?.stroke ?? (look.buildings === 'white' ? t.road : '#d9d9d6');
-    out.push(look.buildings === 'grey' ? `<path d="${path(rg)}" fill="${CONTEXT_FILL}" stroke="${CONTEXT_EDGE}" stroke-width="0.12"/>`
+    out.push(look.buildings === 'grey' ? (photo ? `<path d="${path(rg)}" fill="none" stroke="#ffffff" stroke-width="0.3" stroke-linejoin="round"/>` : `<path d="${path(rg)}" fill="${CONTEXT_FILL}" stroke="${CONTEXT_EDGE}" stroke-width="0.12"/>`)
       : look.buildings === 'white' ? `<path d="${path(rg)}" fill="#ffffff" stroke="${ink}" stroke-width="0.3" stroke-linejoin="round"/>`
         : `<path d="${path(rg)}" fill="${ink}" stroke="#ffffff" stroke-width="0.3" stroke-linejoin="round"/>`);
   }

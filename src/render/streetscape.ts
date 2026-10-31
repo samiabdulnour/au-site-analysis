@@ -536,5 +536,5 @@ export function streetscapeSlide(b: StreetscapeBundle, opts: Omit<StreetscapeOpt
 ${body}
   <div class="abs src" style="left:${MARGIN}mm;bottom:10mm;width:${SLIDE_W - 2 * MARGIN}mm">${esc(sources)}</div>
 </div>`;
-  return { id: '08b_streetscape', title: 'Streetscape', subtitle, textHtml: '', figureHtml, full: true, accent: t.site, css: scapeCss() };
+  return { id: '09b_streetscape', title: 'Streetscape', subtitle, textHtml: '', figureHtml, full: true, accent: t.site, css: scapeCss() };
 }

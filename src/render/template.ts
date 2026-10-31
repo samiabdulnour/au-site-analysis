@@ -622,6 +622,12 @@ export function shadeHex(hex: string, k: number): string {
   const ch = (v: number) => Math.round(v * k).toString(16).padStart(2, '0');
   return `#${ch((n >> 16) & 255)}${ch((n >> 8) & 255)}${ch(n & 255)}`;
 }
+/** `a` mixed with `b`: k of `b`, the rest `a`. */
+export function mix(a: string, b: string, k: number): string {
+  const na = parseInt(a.slice(1), 16), nb = parseInt(b.slice(1), 16);
+  const ch = (sh: number) => Math.round(((na >> sh) & 255) * (1 - k) + ((nb >> sh) & 255) * k).toString(16).padStart(2, '0');
+  return `#${ch(16)}${ch(8)}${ch(0)}`;
+}
 /** The relative luminance of `hex`, 0 (black) to 1 (white). */
 export function luminance(hex: string): number {
   const n = parseInt(hex.slice(1), 16);

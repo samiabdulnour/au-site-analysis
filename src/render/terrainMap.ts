@@ -17,14 +17,24 @@ import { encodeRgbaPng } from '../lib/png.js';
  * A toned relief picture, ready to print: the ground in bands of `stepM` (or none), the hillshade multiplied over
  * them at `shade`, the result run from white to `dark`. One opaque RGB image, so no viewer has a filter or a blend to get wrong.
  */
-export function reliefDataUri(g: DemGrid, dark: string, opts: { stepM?: number; lo?: number; hi?: number; bandWeight?: number; shade?: number } = {}): string {
+export function reliefDataUri(g: DemGrid, dark: string, opts: { stepM?: number; lo?: number; hi?: number; bandWeight?: number; shade?: number; /** A colour a band, low to high, in place of the ramp toward `dark`. */ colours?: string[] } = {}): string {
   const hs = hillshadeGrey(g);
   const d = [1, 3, 5].map((i) => parseInt(dark.slice(i, i + 2), 16));
   const step = opts.stepM, lo = opts.lo ?? g.min, hi = opts.hi ?? g.max, bw = opts.bandWeight ?? 0.62, shade = opts.shade ?? 0.45;
   const bands = step ? Math.max(1, Math.ceil((hi - lo) / step)) : 1;
+  const cols = step && opts.colours?.length ? opts.colours.map((c) => [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16))) : null;
   const rgba = new Uint8Array(g.cols * g.rows * 4);
   for (let i = 0; i < g.cols * g.rows; i++) {
     const v = g.values[i];
+    if (cols && Number.isFinite(v)) {
+      // the band's own colour, the hillshade over it
+      const band = Math.min(bands - 1, Math.max(0, Math.floor((v - lo) / step!)));
+      const base = cols[Math.min(cols.length - 1, Math.round((band / Math.max(1, bands - 1)) * (cols.length - 1)))];
+      const sh = 1 - shade * (1 - hs[i] / 255);
+      for (let c = 0; c < 3; c++) rgba[i * 4 + c] = Math.round(base[c] * sh);
+      rgba[i * 4 + 3] = 255;
+      continue;
+    }
     let t = 1; // 1 is paper, 0 is the dark ink
     if (Number.isFinite(v)) {
       if (step) t -= (Math.min(bands - 1, Math.max(0, Math.floor((v - lo) / step))) / Math.max(1, bands - 1)) * bw;
@@ -34,6 +44,26 @@ export function reliefDataUri(g: DemGrid, dark: string, opts: { stepM?: number; 
     rgba[i * 4 + 3] = 255;
   }
   return `data:image/png;base64,${encodeRgbaPng(g.cols, g.rows, rgba).toString('base64')}`;
+}
+
+/** The heat ramp the landform is banded in: blue on the low ground, through green and yellow, to red on the high. */
+export const HEAT_RAMP = ['#4a5fc1', '#2f9bd6', '#36b48e', '#8ccf49', '#e6d83a', '#f4a52a', '#e65d2c', '#b4222c'];
+/** `bands` colours read evenly along a ramp, low to high: the relief's bands and the key's swatches share them. */
+export function rampColours(bands: number, ramp = HEAT_RAMP): string[] {
+  const rgb = ramp.map((c) => [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16)));
+  return Array.from({ length: bands }, (_, k) => {
+    const u = bands > 1 ? (k / (bands - 1)) * (ramp.length - 1) : 0;
+    const a = Math.floor(u), b = Math.min(ramp.length - 1, a + 1), f = u - a;
+    return `#${rgb[a].map((v, c) => Math.round(v + (rgb[b][c] - v) * f).toString(16).padStart(2, '0')).join('')}`;
+  });
+}
+/** The band colours reliefDataUri prints on flat ground: `bands` steps from the paper toward `dark`, for the map's key. */
+export function reliefBandColours(dark: string, bands: number, bandWeight = 0.62): string[] {
+  const d = [1, 3, 5].map((i) => parseInt(dark.slice(i, i + 2), 16));
+  return Array.from({ length: bands }, (_, k) => {
+    const t = 1 - (k / Math.max(1, bands - 1)) * bandWeight;
+    return `#${d.map((v) => Math.round(v + (255 - v) * t).toString(16).padStart(2, '0')).join('')}`;
+  });
 }
 
 /** The hillshade, one byte a cell, lit from `azimuth` at `altitude`. */

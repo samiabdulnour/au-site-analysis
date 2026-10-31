@@ -80,9 +80,9 @@ Mapillary's frames with `MAPILLARY_TOKEN=…` (a free client token); without
 either it reads KartaView alone. On the server they go in
 `/etc/site-analyst.env`, which the deployer passes to the container.
 
-With the key, slide 02 shows each numbered place from the street (the
+With the key, slide 03 shows each numbered place from the street (the
 camera aimed at the place's building, a view blocked by another building
-refused) and slide 12 walks the site's street end to end in eight frames.
+refused) and slide 13 walks the site's street end to end in eight frames.
 To control a picture by hand, put `photo_overrides.json` in the address's
 output folder and run again:
 
@@ -1178,11 +1178,14 @@ categories laid out in those families (`KIT_INK`, `KIT_CATEGORIES`): the
 office's sheet in the office's palette. The ground follows the style too,
 paper for Flamingo and Kingfisher and the greyed aerial under the style's
 veil for Heron and Canary, where the deck read one (the planning page has
-the Character page's photograph; the yield has none yet, so its aerial
-styles stand on paper). The buildings on a plan follow it as well: white in
-a hairline of their zone family's ink (Flamingo), filled in the family's
-colour with a white edge (Kingfisher), or a quiet grey where the style would
-show the photograph. The page's type stays the report's Arial in every
+the Character page's photograph; the yield reads one over the site's
+surroundings, lays it under its plan and skews it into the axonometric's
+ground plane, whose projection is affine, so the plan's picture goes in as
+one matrix). The buildings on a plan follow it as well: white in a hairline
+of their zone family's ink (Flamingo), filled in the family's colour with a
+white edge (Kingfisher), a white line round the photograph's roofs (Heron
+and Canary), or a quiet grey where an older yield bundle has no
+photograph. The page's type stays the report's Arial in every
 style; the style is in the colour, not the face.
 
 `scripts/recompose.ts` redraws a kept bundle (`KEEP_BUNDLE=1`, for the yield
@@ -1378,13 +1381,17 @@ gives its figures without drawing it.
 
 `--type slides` draws the OVERALL ANALYSIS deck: A3 landscape spreads (each folding into two A4 pages) for the
 content part of a feasibility study or design report, specified in
-`docs/SLIDES_SPEC.md`. All eighteen slides of the spec exist. First *location*: the
-site in its region at 1:75,000 — the local government areas as the land
-(the harbour and the sea left blue), the water, the railways and arterial
-roads, the stations, the suburbs named, 2 and 5 km rings round the site, and
-the centres of The Sydney Plan (2026) by type — with the distance to the
-Sydney CBD, the nearest centres and stations, and the region, the former
-district and the council. Then *character*: Wikipedia's summary of the suburb
+`docs/SLIDES_SPEC.md`. All eighteen slides of the spec exist. The deck
+opens on *Country*, as an acknowledgement of the Traditional Custodians (the
+page is described below with the layers it holds); then *location*: the
+site in its region at 1:100,000 — the land's shape shaded and banded from
+the elevation model, the national parks and reserves, the water named, the
+council areas outlined and named with the site's own tinted, the motorways
+cased over the arterial roads, the railways and their stations, the suburbs
+named, 2, 5 and 10 km rings round the site, and the centres of The Sydney
+Plan (2026) by type — with the distance to the Sydney CBD, the nearest
+centres, stations and reserves, and the region, the former district and the
+council. Then *character*: Wikipedia's summary of the suburb
 as the seed text, the places within 1.5 km with articles of their own,
 numbered on an aerial of the planning window, and a strip of open-licence
 photographs within 800 m from Wikimedia Commons, each credited as its licence
@@ -1405,8 +1412,11 @@ plans; the 2041 regional plans elsewhere), the council's local strategic
 planning statement from the Planning Portal's index, the plan, the DCP, the
 contributions and the housing target — with the extracts left to the author.
 Then *topography*: the landform
-at 1:8000 as a hillshade from the State's 5 m elevation model with the 2 m
-contours, roads and rail over it and two section lines through the site,
+at 1:5000 as the ground in 5 m bands of a heat ramp, blue on the low ground
+through green and yellow to red on the high, under the hillshade from the
+State's 5 m elevation model, with the 2 m contours numbered along the index
+ones, the water named, the high and low points of the page and the site's
+level marked, roads and rail over it and two section lines through the site,
 A–A′ down the steepest fall and B–B′ across it, each drawn as a section
 with the site and its levels marked; the text gives the site's RL range,
 fall, grade and aspect and where the high ground and the water are. Then
@@ -1452,7 +1462,7 @@ definite answer — at the site with its class, nearest in the window, none in
 the window, or not mapped by this LEP at all, checked plan-wide so an
 absence is stated rather than implied — with the arterial roads and
 railways beside the site as noise sources and the soil landscape at the
-site. Then *Country*: the open layers of Country over the wide strip — the
+site. *Country*, the first page: the open layers of Country over the wide strip — the
 pre-1750 plant communities of the State Vegetation Type Map over the land's
 shape, with the watercourses, the coast, the crests read from the elevation
 model, the National Parks estate and the gazetted Aboriginal Places — with
@@ -1498,9 +1508,11 @@ street grid (the roads in the window, length-weighted, in 5° bins, drawn as
 a rose) and the site's long axis against them; the sun path computed for the
 site (21 June in standard time, 21 December and the equinox in daylight
 time, the hours marked) with sunrise, the noon altitude and sunset; the
-neighbours' shadows over the site on 21 June at 9 am, noon and 3 pm, cast
-from the footprints and their recorded heights at the site plan's scale,
-with the share of the site each hour leaves in shadow; and the sight lines
+neighbours' shadows over the site on 21 June, every hour from 9 am to 3 pm,
+each hour one translucent layer over the last so that the depth of the
+tint is the hours in shadow, cast from the footprints and their recorded
+heights at 1:1000, with the share of the site each hour leaves in shadow
+and the share that keeps the sun all day; and the sight lines
 from an eye just under the height limit, over the 5 m elevation model, to
 the skylines within range, the named water and the coast and the park next
 door — a cone where the ground leaves the line clear, a dashed line to the

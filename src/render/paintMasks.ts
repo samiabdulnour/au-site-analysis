@@ -7,7 +7,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { decodePng, encodeRgbaPng } from '../lib/png.js';
-import { aerialGreenFill, veg1750Fills, PATTERN_SCALE, PATTERN_WEIGHT, type Fill } from './atlasKit.js';
+import { aerialGreenFill, veg1750Fills, VEG_CLASSES_MAX, PATTERN_SCALE, PATTERN_WEIGHT, type Fill } from './atlasKit.js';
 import { mercatorScaleFactor, mercatorToLonLat } from '../lib/geo.js';
 
 const UP = 3;
@@ -41,6 +41,8 @@ export async function paintMasks(dataDir: string, layers: { mask: string; fill: 
   const px = new Uint8Array(W * H * 4);
   for (const { m, fill } of masks) {
     const bg = fill.bg ? rgb(fill.bg) : null, ink = fill.ink ? rgb(fill.ink) : null;
+    // a ground with an opacity is painted thin, so what lies under the picture (a hillshade) shows through
+    const alpha = Math.round(255 * Math.min(1, Math.max(0, fill.opacity ?? 1)));
     for (let y = 0; y < H; y++) {
       const sy = Math.floor(y / UP);
       for (let x = 0; x < W; x++) {
@@ -48,7 +50,7 @@ export async function paintMasks(dataDir: string, layers: { mask: string; fill: 
         const k = (y * W + x) * 4;
         const c = ink && onStroke(fill, x * mm, y * mm) ? ink : bg;
         if (!c) continue;
-        px[k] = c[0]; px[k + 1] = c[1]; px[k + 2] = c[2]; px[k + 3] = 255;
+        px[k] = c[0]; px[k + 1] = c[1]; px[k + 2] = c[2]; px[k + 3] = c === ink ? 255 : alpha;
       }
     }
   }
@@ -67,8 +69,8 @@ export async function prepareRasters(sb: any, dataDir: string, bleedScale: numbe
   }
   const veg = sb.country?.vegetation;
   if (veg?.image) {
-    const fills = veg1750Fills();
-    const classes = (veg.classes ?? []).filter((c: { mask?: string }) => c.mask).slice(0, fills.length);
+    const classes = (veg.classes ?? []).filter((c: { mask?: string }) => c.mask).slice(0, VEG_CLASSES_MAX);
+    const fills = veg1750Fills(classes);
     const r = await paintMasks(dataDir, classes.map((c: { mask: string }, i: number) => ({ mask: c.mask, fill: fills[i] })), mmAcross(veg.image.extent, countryScale) / veg.image.pxWidth, 'veg1750_paint.png').catch(() => null);
     veg.paint = r?.file;
   }

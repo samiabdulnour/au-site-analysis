@@ -9,7 +9,7 @@
 // blurrily in the printed PDF.
 
 import { esc } from './chrome.js';
-import { tint, deckFamilies, type Category, type InkFamily, type InkFamilyName } from './template.js';
+import { tint, mix, shadeHex, deckFamilies, type Category, type InkFamily, type InkFamilyName } from './template.js';
 
 export type Family = InkFamilyName;
 
@@ -310,13 +310,39 @@ export function zLine(series: { year: number; value: number }[], projection: { y
 
 /** The green of the aerial on slide 10: a pale ground dotted in the deep green. */
 export const aerialGreenFill = (): Fill => ({ bg: INK.green.light, kind: 'dots', ink: INK.green.deep, step: 0.5, w: 0.1 });
-/** The pre-1750 plant communities on slide 15, largest first: one pattern each in the deep green, no ground. */
-export const veg1750Fills = (): Fill[] => [
-  { kind: 'vlines', ink: INK.green.deep, step: 1.0, w: 0.16 },
-  { kind: 'dots', ink: INK.green.deep, step: 1.1, w: 0.14 },
-  { kind: 'hlines', ink: INK.green.deep, step: 1.0, w: 0.16 },
-  { kind: 'waves', ink: INK.green.deep, step: 1.3, w: 0.16 },
-  { kind: 'vlines', ink: INK.green.deep, step: 0.45, w: 0.14 },
-  { kind: 'dots', ink: INK.green.deep, step: 0.55, w: 0.12 },
-  { kind: 'hlines', ink: INK.green.deep, step: 0.45, w: 0.14 },
-];
+/** The most plant communities the Country page tells apart; the rest of a rich strip stays in the hillshade. */
+export const VEG_CLASSES_MAX = 9;
+
+/**
+ * The pre-1750 plant communities on slide 15, each a flat tint that says
+ * something about its country: the deep green of the living family on the
+ * shale (the Cumberland Plain's ironbark and turpentine forests), an olive on
+ * the sandstone, a teal on the river flats, in the mangroves and the swamps,
+ * an ochre on heath and scrub; a woodland a step lighter than a forest on
+ * the same ground, and where two communities would share a tint the second
+ * steps lighter again. The chart on the left keys them by name. Thinned a
+ * little, so the hillshade shows the land through them.
+ */
+export function veg1750Fills(classes: { pct: string }[]): Fill[] {
+  const G = INK.green, O = INK.orange, B = INK.blue;
+  const hueOf = (n: string) =>
+    /mangrove|saltmarsh|swamp|wetland|riverflat|river-flat|river flat|floodplain|alluvial|estuar|lagoon/.test(n) ? mix(G.deep, B.deep, 0.45)
+      : /rainforest/.test(n) ? shadeHex(G.deep, 0.72)
+        : /heath|scrub|mallee/.test(n) ? O.deep
+          : /grassland|grassy plain/.test(n) ? mix(G.deep, O.deep, 0.6)
+            : /sandstone|foreshore|coastal|gully|ridgetop|hawkesbury/.test(n) ? mix(G.deep, O.deep, 0.42)
+              : G.deep;
+  const openness = (n: string) => (/woodland|grassy|open/.test(n) ? 0.42 : /forest|rainforest/.test(n) ? 0.72 : 0.56);
+  const taken = new Map<string, number>();
+  return classes.map((c) => {
+    const n = c.pct.toLowerCase();
+    const hue = hueOf(n);
+    let k = openness(n);
+    // a second community on the same ground at the same openness: a step lighter, then lighter again
+    const key = `${hue}|${k}`;
+    const before = taken.get(key) ?? 0;
+    taken.set(key, before + 1);
+    k = Math.max(0.2, k - 0.16 * before);
+    return { bg: tint(hue, k), opacity: 0.8 };
+  });
+}
