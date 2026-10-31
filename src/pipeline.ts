@@ -861,6 +861,8 @@ export interface SlidesBundle {
   character: CharacterData;
   /** The regional plan at the point and the council's local strategic planning statement from the Portal's index. */
   strategies: StrategiesData;
+  /** The site's street as two elevations (runStreetscapePipeline), the page after built form; absent without Street View, or when it failed. */
+  streetscape?: StreetscapeBundle;
   warnings: string[];
 }
 
@@ -1054,6 +1056,14 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
     const st = addressStreet(geo.matchedAddresses[0] ?? address, roads, mercatorToLonLat(geo.center));
     if (st) photos.series = await fetchStreetSeries(st.name, st.segments, mercatorToLonLat(geo.center), dataDir, gkey, process.env.GOOGLE_MAPS_SIGNING_SECRET?.trim() || undefined, 8, log).catch((e: any) => { log(`  WARN street series failed: ${e?.message ?? e}`); return []; });
   }
+  // the site's street as two elevations, as `--type streetscape` draws it: only where Street View is keyed (without it
+  // the faces would be their ground alone), and DECK_STREETSCAPE=0 leaves it out; a failure leaves the deck without it
+  let streetscape: StreetscapeBundle | undefined;
+  if (gkey && process.env.DECK_STREETSCAPE !== '0') {
+    log('the streetscape…');
+    const sb = await soft(runStreetscapePipeline(address, { outDir: opts.outDir, log }), null, 'streetscape');
+    if (sb && (sb.elevations?.some(Boolean) || sb.frames.length)) streetscape = sb;
+  }
   const applications = feed ? clipToExtent(feed.records, pageExtent) : [];
   const daMeta = feed ? { council: feed.council, from: feed.from, to: feed.to, total: feed.total, complete: feed.complete, fetchedAt: feed.fetchedAt } : null;
   // A footprint with neither a height nor a storey count takes the storeys of a determined application on its lot, and the slides say so.
@@ -1084,6 +1094,7 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
     location,
     character,
     strategies,
+    ...(streetscape ? { streetscape } : {}),
     warnings,
   };
   await writeFile(join(dataDir, 'slides_bundle.json'), JSON.stringify(bundle));

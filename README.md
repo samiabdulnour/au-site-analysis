@@ -1381,7 +1381,12 @@ determined development application on the lot, hatched and said so), the
 storeys of the buildings within 250 m as a
 histogram with the LEP height plane marked on it, and section A–A′ again
 with the buildings it meets drawn at their heights and the height plane
-dashed over the site. Then *movement*: roads by function, rail and
+dashed over the site. Then the *streetscape*, where Street View is keyed:
+the site's street as two elevations across the spread, as `--type
+streetscape` draws it (190 m at 1:500, the buildings' lines, heights and
+levels over the faces, the conservation areas bracketed; see *The
+streetscape* below), on its own page after built form, and left out of the
+deck where it fails, or with `DECK_STREETSCAPE=0`. Then *movement*: roads by function, rail and
 stations, the walking isochrones from the site (Valhalla, 5, 10 and 15
 minutes), bus stops (Transport for NSW with the key, else OpenStreetMap),
 bus routes, cycleways, footways and one-way streets (OpenStreetMap through
@@ -1638,8 +1643,11 @@ image-model tiles already laid went back on, the manifest's boxes moved by as
 much, with only the new 82 m to ask for.
 
 Outputs: `STREETSCAPE.pdf` and `streetscape.png`, the pictures and
-`data/streetscape_bundle.json` beside them. The streetscape is not yet one of
-the web page's drawings.
+`data/streetscape_bundle.json` beside them. The overall analysis draws it
+too, as the page after built form, with the building lines; the image-model
+pass below is never part of it. It runs in the image's own Chromium
+(Debian's, WebGL in SwiftShader): Riley Street's photographs on the 3D tiles
+took 50 s there.
 
 **Through an image model.** The 3D faces can go through an image model that
 edits a picture in place (Artlist's Nano Banana Pro, at 21:9 and 4K), which

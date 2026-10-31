@@ -12,7 +12,7 @@
 
 import type { StreetscapeBundle } from '../pipeline.js';
 import { planeToImage, frameTop, mul3, inv3, BELOW_GROUND_M, FRAME_PX, type Face, type ScapeFrame } from '../fetch/streetscape.js';
-import { deckCss, SLIDE_W, SLIDE_H } from './slides.js';
+import { deckCss, SLIDE_W, SLIDE_H, type Slide } from './slides.js';
 import { tpl, withTemplate, DECK_TEMPLATE } from './template.js';
 import { shortStreetName, type SheetMeta } from './sheet.js';
 import { esc } from './chrome.js';
@@ -38,7 +38,8 @@ const LABEL_GAP = 2.2;
 const LABELS_H = LABEL_ROWS * ROW_MM + 2;
 const CAPTION_H = 7.6;
 const FACE_GAP = 7;
-const FOOT_TOP = SLIDE_H - 22;
+/** From the page's foot up to where the faces' room ends: the fine print's five lines and the footer, mm. */
+const FOOT_ROOM_MM = 27;
 const PX_PER_MM = 96 / 25.4;
 const SEAM_MM = 0.05;
 const SCALES = [200, 250, 500, 750, 1000, 1250, 1500, 2000, 2500];
@@ -82,7 +83,7 @@ export function layoutFaces(b: StreetscapeBundle, scale?: number): Layout {
     const reach = tops.length ? tops[Math.floor(tops.length / 4)] : hi + SKY_M;
     return { zTop: Math.max(hi + MIN_SKY_M, Math.min(hi + SKY_M, reach)), zMin: hi + MIN_SKY_M, zBot: lo - BELOW_GROUND_M - 0.6 };
   });
-  const room = FOOT_TOP - BAND_TOP - p.faces.length * (LABEL_GAP + LABELS_H + CAPTION_H) - (p.faces.length - 1) * FACE_GAP;
+  const room = SLIDE_H - FOOT_ROOM_MM - BAND_TOP - p.faces.length * (LABEL_GAP + LABELS_H + CAPTION_H) - (p.faces.length - 1) * FACE_GAP;
   // the scale the street's length allows, at which the faces fit at their lowest; then as much of their height as fits
   const fit = scale ?? SCALES.find((s) => (len * 1000) / s <= width && wanted.reduce((t, r) => t + ((r.zMin - r.zBot) * 1000) / s, 0) <= room) ?? SCALES[SCALES.length - 1];
   const k = 1000 / fit;
@@ -439,8 +440,8 @@ function legendSvg(x: number, y: number): string {
   return `<text x="${f2(x)}" y="${f2(y - 3.6)}" class="lb sb">CONTRIBUTION TO THE CONSERVATION AREA (SYDNEY DCP 2012)</text>${out.join('')}`;
 }
 
-function drawStreetscape(b: StreetscapeBundle, meta: SheetMeta, opts: StreetscapeOptions): string {
-  const t = tpl();
+/** What a streetscape draws, whether on its own page or as a page of the deck. */
+function streetscapeParts(b: StreetscapeBundle, opts: StreetscapeOptions) {
   const overlay = !!opts.overlay || opts.fill === 'heritage', fill: BuildingFill = opts.fill === 'heritage' && !b.heritage ? 'veil' : (opts.fill ?? 'veil');
   const L = layoutFaces(b, opts.scale);
   const W = L.pageW;
@@ -456,55 +457,83 @@ function drawStreetscape(b: StreetscapeBundle, meta: SheetMeta, opts: Streetscap
     `Ground: ${b.demSource ?? 'no elevation model'}, at the boundary, indicative to about a metre.`,
     `Retrieved ${b.generatedAt.slice(0, 10)}.`,
   ].filter(Boolean).join(' ');
-  const footerLeft = ['SITE ANALYST — STREETSCAPE', b.siteAddress, meta.client ? `for ${meta.client}` : '', meta.jobNo ? `job ${meta.jobNo}` : ''].filter(Boolean).join(' · ');
   const subtitle = `${b.siteAddress} · ${titleCase(b.plan.street)}, both sides, ${Math.round(b.plan.s1 - b.plan.s0)} m · 1:${L.scale}`;
+  const body = `  ${faces.map((f) => f.html).join('\n  ')}
+  <svg class="over" width="${W}mm" height="${SLIDE_H}mm" viewBox="0 0 ${W} ${SLIDE_H}">${faces.map((f) => f.svg).join('')}${lined && fill === 'heritage' ? legendSvg(MARGIN, 37.5) : ''}</svg>`;
+  return { W, lead, sources, subtitle, body };
+}
+
+/** The streetscape's own rules, scoped to the page or slide that carries the class `scape`, so the deck's other pages keep theirs. */
+function scapeCss(): string {
+  const t = tpl();
+  return `
+  .scape .slice { overflow: hidden; }
+  .scape .slice img { position: absolute; left: 0; top: 0; width: ${FRAME_PX}px; height: ${FRAME_PX}px; transform-origin: 0 0; max-width: none; }
+  .scape .elev { overflow: hidden; background: ${SCAPE_SKY}; }
+  .scape .elev img { position: absolute; max-width: none; }
+  .scape .rd { font-size: 2.3px; font-weight: 500; letter-spacing: 0.02em; fill: #2a2e2c; paint-order: stroke; stroke: ${SCAPE_SKY}; stroke-width: 0.7px; stroke-linejoin: round; }
+  .scape svg.over { position: absolute; left: 0; top: 0; overflow: visible; }
+  .scape .lb { font-size: ${LABEL_MM}px; font-weight: 600; letter-spacing: 0.04em; fill: #2a2e2c; }
+  .scape .lb.road { fill: #6a7572; font-weight: 500; letter-spacing: 0.08em; }
+  .scape .lb.site { fill: ${t.site}; }
+  .scape .lb.opp { fill: ${t.site}; font-weight: 500; letter-spacing: 0.1em; paint-order: stroke; stroke: #ffffff; stroke-width: 0.5px; stroke-linejoin: round; }
+  .scape .lb.sb { font-weight: 500; fill: #454f4b; }
+  .scape .bl { fill: #ffffff; fill-opacity: 0.3; stroke: #2a2e2c; stroke-opacity: 0.5; stroke-width: 0.14px; stroke-linejoin: miter; }
+  .scape .bl.site { fill-opacity: 0.14; stroke-opacity: 0.85; stroke-width: 0.2px; }
+  .scape .bl.none { fill: none; stroke-opacity: 0.75; stroke-width: 0.16px; }
+  .scape .bl.none.site { stroke-opacity: 1; stroke-width: 0.3px; }
+  .scape .bl.heritage { fill-opacity: 0.42; stroke-opacity: 0.6; }
+  .scape .bl.heritage.neutral { fill-opacity: 0.5; }
+  .scape .bl.heritage.item { stroke-opacity: 1; stroke-width: 0.32px; }
+  .scape .bl.heritage.site { stroke-opacity: 1; stroke-width: 0.36px; }
+  .scape .bh .hi { fill: ${ITEM_INK}; font-weight: 700; }
+  .scape .ha { fill: none; stroke: ${AREA_INK}; stroke-width: 0.22px; }
+  .scape .hn { font-size: 1.45px; font-weight: 600; letter-spacing: 0.06em; fill: ${AREA_INK}; }
+  .scape .fl { fill: none; stroke: #ffffff; stroke-width: 0.14px; opacity: 0.7; }
+  .scape .bh { font-size: 1.3px; font-weight: 500; letter-spacing: 0.02em; fill: #3a403d; paint-order: stroke; stroke: #ffffff; stroke-width: 0.4px; stroke-linejoin: round; }
+  .scape .bh.site { fill: ${t.site}; }
+  .scape .cap { display: flex; gap: 4mm; align-items: baseline; font-size: 2.5mm; }
+  .scape .cap .ct { font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+  .scape .cap .cr { color: #6a7572; font-size: 2.1mm; }
+  .scape .lead { font-size: 3.05mm; line-height: 1.38; font-weight: 600; color: ${t.site}; }
+  .scape .src { font-size: 2.1mm; line-height: 1.3; color: #6a7572; }`;
+}
+
+function drawStreetscape(b: StreetscapeBundle, meta: SheetMeta, opts: StreetscapeOptions): string {
+  const t = tpl();
+  const { W, lead, sources, subtitle, body } = streetscapeParts(b, opts);
+  const footerLeft = ['SITE ANALYST — STREETSCAPE', b.siteAddress, meta.client ? `for ${meta.client}` : '', meta.jobNo ? `job ${meta.jobNo}` : ''].filter(Boolean).join(' · ');
   return `<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><title>${esc(b.siteAddress)} — STREETSCAPE</title>
 <style>
 ${deckCss()}${W === SLIDE_W ? '' : `
   @page { size: ${W}mm ${SLIDE_H}mm; margin: 0; }
-  .slide { width: ${W}mm; }`}
-  .slice { overflow: hidden; }
-  .slice img { position: absolute; left: 0; top: 0; width: ${FRAME_PX}px; height: ${FRAME_PX}px; transform-origin: 0 0; max-width: none; }
-  .elev { overflow: hidden; background: ${SCAPE_SKY}; }
-  .elev img { position: absolute; max-width: none; }
-  .rd { font-size: 2.3px; font-weight: 500; letter-spacing: 0.02em; fill: #2a2e2c; paint-order: stroke; stroke: ${SCAPE_SKY}; stroke-width: 0.7px; stroke-linejoin: round; }
-  svg.over { position: absolute; left: 0; top: 0; overflow: visible; }
-  .lb { font-size: ${LABEL_MM}px; font-weight: 600; letter-spacing: 0.04em; fill: #2a2e2c; }
-  .lb.road { fill: #6a7572; font-weight: 500; letter-spacing: 0.08em; }
-  .lb.site { fill: ${t.site}; }
-  .lb.opp { fill: ${t.site}; font-weight: 500; letter-spacing: 0.1em; paint-order: stroke; stroke: #ffffff; stroke-width: 0.5px; stroke-linejoin: round; }
-  .lb.sb { font-weight: 500; fill: #454f4b; }
-  .bl { fill: #ffffff; fill-opacity: 0.3; stroke: #2a2e2c; stroke-opacity: 0.5; stroke-width: 0.14px; stroke-linejoin: miter; }
-  .bl.site { fill-opacity: 0.14; stroke-opacity: 0.85; stroke-width: 0.2px; }
-  .bl.none { fill: none; stroke-opacity: 0.75; stroke-width: 0.16px; }
-  .bl.none.site { stroke-opacity: 1; stroke-width: 0.3px; }
-  .bl.heritage { fill-opacity: 0.42; stroke-opacity: 0.6; }
-  .bl.heritage.neutral { fill-opacity: 0.5; }
-  .bl.heritage.item { stroke-opacity: 1; stroke-width: 0.32px; }
-  .bl.heritage.site { stroke-opacity: 1; stroke-width: 0.36px; }
-  .bh .hi { fill: ${ITEM_INK}; font-weight: 700; }
-  .ha { fill: none; stroke: ${AREA_INK}; stroke-width: 0.22px; }
-  .hn { font-size: 1.45px; font-weight: 600; letter-spacing: 0.06em; fill: ${AREA_INK}; }
-  .fl { fill: none; stroke: #ffffff; stroke-width: 0.14px; opacity: 0.7; }
-  .bh { font-size: 1.3px; font-weight: 500; letter-spacing: 0.02em; fill: #3a403d; paint-order: stroke; stroke: #ffffff; stroke-width: 0.4px; stroke-linejoin: round; }
-  .bh.site { fill: ${t.site}; }
-  .cap { display: flex; gap: 4mm; align-items: baseline; font-size: 2.5mm; }
-  .cap .ct { font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
-  .cap .cr { color: #6a7572; font-size: 2.1mm; }
-  .lead { font-size: 3.05mm; line-height: 1.38; font-weight: 600; color: ${t.site}; }
-  .src { font-size: 2.1mm; line-height: 1.3; color: #6a7572; }
+  .slide { width: ${W}mm; }`}${scapeCss()}
 </style></head>
 <body>
-<section class="slide" id="streetscape">
+<section class="slide scape" id="streetscape">
   <div class="abs rh" style="left:${MARGIN}mm;top:10mm;width:${W - 2 * MARGIN}mm"><span>Streetscape</span><span>${esc(b.siteAddress)}</span></div>
   <div class="abs title" style="left:${MARGIN}mm;top:17.5mm;width:200mm">Streetscape</div>
   <div class="abs subtitle" style="left:${MARGIN}mm;top:26.5mm;width:200mm">${esc(subtitle)}${b.ai ? ` · <span style="color:${t.site};font-weight:600;letter-spacing:0.08em">AI-ENHANCED · ILLUSTRATIVE</span>` : ''}</div>
   <div class="abs lead" style="left:${W - MARGIN - 150}mm;top:17.5mm;width:150mm">${esc(lead)}</div>
-  ${faces.map((f) => f.html).join('\n  ')}
-  <svg class="over" width="${W}mm" height="${SLIDE_H}mm" viewBox="0 0 ${W} ${SLIDE_H}">${faces.map((f) => f.svg).join('')}${lined && fill === 'heritage' ? legendSvg(MARGIN, 37.5) : ''}</svg>
-  <div class="abs src" style="left:${MARGIN}mm;top:${FOOT_TOP + 1}mm;width:${W - 2 * MARGIN}mm">${esc(sources)}</div>
+${body}
+  <div class="abs src" style="left:${MARGIN}mm;bottom:12mm;width:${W - 2 * MARGIN}mm">${esc(sources)}</div>
   <div class="abs foot" style="left:${MARGIN}mm;top:${SLIDE_H - 10}mm;width:${W - 2 * MARGIN}mm"><span>${esc(footerLeft)}</span><span>generated ${esc(b.generatedAt.slice(0, 10))}</span></div>
 </section>
 </body></html>`;
+}
+
+/**
+ * The streetscape as a page of the overall analysis, after built form: the faces across the spread under the deck's
+ * own heading, the lead over the right-hand page, the sources across the foot. On A3 at the scale that fits.
+ */
+export function streetscapeSlide(b: StreetscapeBundle, opts: Omit<StreetscapeOptions, 'scale'> = {}): Slide {
+  const t = tpl();
+  const { lead, sources, subtitle, body } = streetscapeParts(b, opts);
+  const figureHtml = `<div class="scape">
+  <div class="abs lead" style="left:${SLIDE_W - MARGIN - 150}mm;top:17.5mm;width:150mm">${esc(lead)}</div>
+${body}
+  <div class="abs src" style="left:${MARGIN}mm;bottom:10mm;width:${SLIDE_W - 2 * MARGIN}mm">${esc(sources)}</div>
+</div>`;
+  return { id: '08b_streetscape', title: 'Streetscape', subtitle, textHtml: '', figureHtml, full: true, accent: t.site, css: scapeCss() };
 }

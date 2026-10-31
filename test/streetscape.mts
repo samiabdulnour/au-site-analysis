@@ -9,7 +9,7 @@
 
 import { planStreetscape, planeToImage, inv3, mul3, apply3, aimAt, assignStrips, splitAddress, CAMERA_HEIGHT_M, BELOW_GROUND_M, FRAME_PX, type Property } from '../src/fetch/streetscape.js';
 import type { LonLat } from '../src/lib/geo.js';
-import { roofSteps, layoutFaces, renderStreetscape, streetscapePage, CONTRIBUTION_INK, ITEM_INK } from '../src/render/streetscape.js';
+import { roofSteps, layoutFaces, renderStreetscape, streetscapePage, streetscapeSlide, CONTRIBUTION_INK, ITEM_INK } from '../src/render/streetscape.js';
 import { SLIDE_W } from '../src/render/slides.js';
 import type { StreetscapeBundle } from '../src/pipeline.js';
 
@@ -161,6 +161,13 @@ if (plan) {
   const none = renderStreetscape(b, meta, { overlay: true, fill: 'none', scale: 200 });
   check('outlines alone fill nothing', none.includes('class="bl none') && !none.includes(`fill:${CONTRIBUTION_INK.Contributing}`) && !none.includes('CONTRIBUTION TO THE CONSERVATION AREA'));
   check('the A3 sheet keeps its page', !renderStreetscape(b, meta).includes('@page { size: 930mm'));
+  // and as a page of the deck: across the spread under the deck's heading, its rules kept to itself
+  const slide = streetscapeSlide(b, { overlay: true });
+  check('the deck page is a spread after built form', slide.id === '08b_streetscape' && !!slide.full && slide.title === 'Streetscape' && slide.subtitle.includes('1:'));
+  check('its figure carries the faces, the lead and the sources, not a page of its own', slide.figureHtml.startsWith('<div class="scape">') && slide.figureHtml.includes('class="abs elev"') && slide.figureHtml.includes('class="abs lead"') && slide.figureHtml.includes('class="abs src"') && !slide.figureHtml.includes('<section') && !slide.figureHtml.includes('class="abs foot"'));
+  const rules = (slide.css ?? '').split('\n').map((l) => l.trim()).filter(Boolean);
+  check('its rules touch nothing but its own figure', rules.length > 10 && rules.every((l) => l.startsWith('.scape ')), rules.find((l) => !l.startsWith('.scape ')));
+  check('the sheet on its own takes the same rules', renderStreetscape(b, meta).includes('<section class="slide scape" id="streetscape">'));
 }
 
 if (failures.length) {
