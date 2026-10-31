@@ -11,7 +11,7 @@ const FOI = `${PORTAL}/NSW_Features_of_Interest_Category/FeatureServer`;
 const FOI_TRANSPORT = `${PORTAL}/NSW_FOI_Transport_Facilities/FeatureServer`;
 const CADASTRE = `${PORTAL}/NSW_Land_Parcel_Property_Theme/FeatureServer`;
 
-export interface TopoRoad { name: string; hierarchy: number; lanes?: number; coords: [number, number][] }
+export interface TopoRoad { name: string; hierarchy: number; lanes?: number; coords: [number, number][]; /** In a tunnel (the layer's roadontype 3): under the ground, not beside it. */ tunnel?: boolean }
 export interface NamedPoint { name: string; lon: number; lat: number }
 
 function lineCoords(fc: GeoJSONFC): { paths: [number, number][][]; props: Record<string, any>[] } {
@@ -27,13 +27,14 @@ function lineCoords(fc: GeoJSONFC): { paths: [number, number][][]; props: Record
 
 export async function fetchRoads(extent: Extent, where = 'roadnamebase IS NOT NULL'): Promise<TopoRoad[]> {
   const fc = await queryByExtent(`${TRANSPORT}/5`, extent,
-    'roadnamebase,roadnametype,functionhierarchy,lanecount', where);
+    'roadnamebase,roadnametype,functionhierarchy,lanecount,roadontype', where);
   const { paths, props } = lineCoords(fc);
   return paths.map((coords, i) => ({
     name: [props[i].roadnamebase, props[i].roadnametype].filter(Boolean).join(' '),
     hierarchy: props[i].functionhierarchy ?? 6,
     lanes: props[i].lanecount ?? undefined,
     coords,
+    ...(props[i].roadontype === 3 ? { tunnel: true } : {}),
   }));
 }
 
@@ -122,6 +123,11 @@ export async function fetchComplexPoints(extent: Extent): Promise<NamedPoint[]> 
 /** All lot boundaries in the extent — drawn as a thin cadastral overlay. */
 export async function fetchAllLots(extent: Extent): Promise<GeoJSONFC> {
   return queryByExtent(`${CADASTRE}/8`, extent, 'objectid');
+}
+
+/** Every property in the extent with its principal address ("70-76 RILEY STREET DARLINGHURST") and house number. */
+export async function fetchProperties(extent: Extent): Promise<GeoJSONFC> {
+  return queryByExtent(`${CADASTRE}/12`, extent, 'propid,address,housenumber');
 }
 
 /** Property polygons containing the given points (one multipoint query). */

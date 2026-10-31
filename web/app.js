@@ -76,9 +76,9 @@ $('signOut').addEventListener('click', async () => {
   location.replace('/');
 });
 const f = $('f'), loginForm = $('login'), welcome = $('welcome');
-const out = $('out'), queueEl = $('queue');
+const out = $('out');
 const linksEl = $('links'), errEl = $('error'), go = $('go'), noteEl = $('note');
-const progressEl = $('progress'), fillEl = $('progressFill');
+const goWord = $('goWord'), goFill = $('goFill');
 const unlockWhat = $('unlockWhat');
 const resultImg = $('resultImg'), resultMissing = $('resultMissing');
 
@@ -138,7 +138,25 @@ function renderAll() {
   const styles = STYLES[state.sheet];
   $('styleRow').hidden = styles.length === 0;
   if (styles.length) tokens($('styleOpts'), styles, state.template, (v) => { state.template = v; renderAll(); });
+  syncGo();
   renderResult();
+}
+
+// The address and options a finished drawing's links stand for: they hold
+// GENERATE's place while neither changes.
+let drawnFor = null;
+const asked = () => JSON.stringify([addrInput.value.trim(), state]);
+
+/** A finished drawing's links give GENERATE its place back once the address
+    or an option changes: what they would download is no longer what is asked. */
+function syncGo() {
+  if (drawnFor === null || drawnFor === asked()) return;
+  drawnFor = null;
+  linksEl.innerHTML = '';
+  unlockWhat.hidden = true;
+  noteEl.textContent = ''; errEl.textContent = '';
+  syncOut();
+  goIdle();
 }
 
 // What the server last said about this session: who is signed in, which side
@@ -267,7 +285,6 @@ resultImg.parentElement.addEventListener('mouseleave', () => { if (deck) { deck.
 function renderResult() {
   // Whatever finished drawing held the frame, an option picked or a new run
   // started means the frame is the expected sample again.
-  $('resultDrawn').hidden = true;
   if (PAGED[state.sheet]) {
     // renderAll runs on every pick; a deck already turning keeps its place.
     if (deck && deck.sheet === state.sheet) return;
@@ -298,13 +315,10 @@ function renderResult() {
     swapTo(src);
   }
 }
-/** A finished drawing takes the result frame, captioned with its address. */
+/** A finished drawing takes the result frame, alone: the address field names it. */
 function showDrawn(id, address) {
   stopDeck();
   resultMissing.hidden = true;
-  const cap = $('resultDrawn');
-  cap.textContent = 'Drawn for ' + address + '. The downloads are for this drawing.';
-  cap.hidden = false;
   resultImg.hidden = false;
   resultImg.alt = 'The finished drawing for ' + address + '.';
   swapTo('/api/jobs/' + id + '/preview');
@@ -360,11 +374,12 @@ resultImg.addEventListener('error', () => {
   resultMissing.hidden = false;
 });
 
-/* On a phone the progress box opens below the options, so GENERATE can look
-   as if it did nothing. Bring the box into view. */
+/* Started from the address field on a phone, GENERATE — the progress now —
+   can be below the screen, and the field look as if it did nothing. Bring it
+   into view. */
 function revealOutput() {
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  out.scrollIntoView({ block: 'nearest', behavior: reduce ? 'auto' : 'smooth' });
+  go.scrollIntoView({ block: 'nearest', behavior: reduce ? 'auto' : 'smooth' });
 }
 
 // ---- the welcome page ------------------------------------------------------
@@ -424,8 +439,8 @@ function httpMessage(r, j) {
 
 const addrInput = $('address');
 const suggestBox = $('suggest');
-// The mock-up's words in the empty field.
-addrInput.placeholder = 'Search a NSW address to generate its site analysis.';
+// The empty field names the address the samples in the frame were drawn for.
+addrInput.placeholder = EXAMPLE_ADDRESS;
 let suggestTimer = null, activeIdx = -1, lastQuery = '';
 
 function closeSuggest() { suggestBox.classList.remove('open'); activeIdx = -1; }
@@ -458,6 +473,7 @@ function highlight() {
 }
 
 addrInput.addEventListener('input', () => {
+  syncGo();
   const q = addrInput.value.trim();
   clearTimeout(suggestTimer);
   if (q.length < 4) return closeSuggest();
@@ -735,7 +751,7 @@ function enter(j) {
   else if (j.authed) {
     const id = takeDownload();
     if (id) {
-      startOutput('');
+      startOutput('loading');
       poll(id);
     }
   }
@@ -876,11 +892,12 @@ function noteReused(mins) {
 
 async function submit(fresh) {
   const address = addrInput.value.trim();
-  if (!address) return;
+  // The samples' address in the empty field is only its placeholder: the
+  // caret there says an address of one's own is wanted.
+  if (!address) return addrInput.focus();
   clearTimeout(suggestTimer);
   closeSuggest();
   startOutput('sending');
-  go.disabled = true;
   revealOutput();
   try {
     await genReady();
@@ -899,6 +916,7 @@ async function submit(fresh) {
     // Someone else asked for this drawing first and it is still running;
     // following their job is why this one does not join the queue behind it.
     else if (j.joined) noteEl.textContent = 'already being drawn for this address, following that run';
+    syncOut();
     poll(j.id);
   } catch (err) { fail(err.message); }
 }
@@ -912,9 +930,9 @@ f.addEventListener('submit', (e) => {
 
 /* The server says where a job is (queued, drawing, done), not how far along it
    is: nothing inside the pipeline knows its own fraction, and a sheet takes one
-   to three minutes, the site report longer. So the bar is filled by time, fast
-   at first and ever more slowly: it never stands still, and it never reaches
-   the end before the server says the drawing is done. */
+   to three minutes, the site report longer. So GENERATE's yellow fills by
+   time, fast at first and ever more slowly: it never stands still, and it
+   never reaches the end before the server says the drawing is done. */
 let runningSince = 0;
 
 function timeFraction(seconds, sheet) {
@@ -923,18 +941,34 @@ function timeFraction(seconds, sheet) {
 }
 
 function setProgress(fraction) {
-  fillEl.style.width = (fraction * 100).toFixed(1) + '%';
+  goFill.style.width = (fraction * 100).toFixed(1) + '%';
 }
 
-/** A fresh output box: the bar empty, nothing of the last drawing left in it. */
-function startOutput(word) {
-  out.hidden = false;
-  errEl.textContent = ''; linksEl.innerHTML = ''; noteEl.textContent = '';
-  queueEl.textContent = word;
-  runningSince = 0;
-  progressEl.hidden = false;
+/** The box under GENERATE, only when there is something in it to say. */
+function syncOut() {
+  out.hidden = !noteEl.textContent && !errEl.textContent;
+}
+
+/** GENERATE at rest: yellow, the way to a drawing. */
+function goIdle() {
+  go.hidden = false;
+  go.disabled = false;
+  goWord.textContent = 'GENERATE';
   setProgress(0);
+}
+
+/** GENERATE becomes the drawing's progress, its fill empty, its word `word`;
+    nothing of the last drawing is left under it. */
+function startOutput(word) {
+  drawnFor = null;
+  errEl.textContent = ''; linksEl.innerHTML = ''; noteEl.textContent = '';
+  syncOut();
   unlockWhat.hidden = true;
+  go.hidden = false;
+  go.disabled = true;
+  goWord.textContent = word;
+  runningSince = 0;
+  setProgress(0);
   // The result frame goes back to the expected sample while this one draws.
   renderResult();
 }
@@ -948,7 +982,7 @@ async function poll(id, misses) {
     const r = await fetch('/api/jobs/' + id);
     if (r.status >= 500) {
       if (misses < 20) {
-        queueEl.textContent = 'reconnecting';
+        goWord.textContent = 'reconnecting';
         return setTimeout(() => poll(id, misses + 1), 3000);
       }
       throw new Error('service restarting, try again shortly');
@@ -958,22 +992,20 @@ async function poll(id, misses) {
     if (!r.ok) throw new Error(httpMessage(r, j));
 
     if (j.status === 'queued' && j.queuePosition > 0) {
-      queueEl.textContent = j.queuePosition === 1
+      goWord.textContent = j.queuePosition === 1
         ? 'queued · next in line'
         : 'queued · ' + (j.queuePosition - 1) + ' ahead · about ' + j.etaMinutes + ' minutes';
       runningSince = 0;
       setProgress(0);
     } else if (j.status === 'running') {
-      queueEl.textContent = 'drawing';
+      goWord.textContent = 'drawing';
       if (!runningSince) runningSince = Date.now();
       setProgress(timeFraction((Date.now() - runningSince) / 1000, j.sheet));
     }
 
     if (j.status === 'done') {
-      // Done says itself: the drawing takes the frame and its downloads come
-      // under the options, so the box is left with no word of its own.
-      queueEl.textContent = '';
-      progressEl.hidden = true;
+      // Done says itself: the drawing takes the frame and its downloads take
+      // GENERATE's place under the options.
       linksEl.innerHTML = '';
       // What this viewer may take away of this drawing, as the server says:
       // the plan's, or everything once its site is bought. The server decides
@@ -984,6 +1016,7 @@ async function poll(id, misses) {
       if (awaitingPayment > 0 && !grants.cleanPdf) {
         awaitingPayment -= 1;
         noteEl.textContent = 'payment received, unlocking the site…';
+        syncOut();
         return setTimeout(() => poll(id, 0), 2000);
       }
       if (returnedFromPayment) {
@@ -995,6 +1028,9 @@ async function poll(id, misses) {
       // hundred kilobytes shows at once where the PDF can be tens of
       // megabytes, so the PDF is downloaded rather than opened.
       if (j.hasPreview) showDrawn(id, j.address);
+      // Back from paying or from a link, the field is empty: it names the
+      // drawing in the frame all the same.
+      if (!addrInput.value.trim() && j.address) addrInput.value = j.address;
       // Without an account the drawing is its picture above; the PDF starts
       // with a free account, and the form brings the visitor back to it.
       if (!grants.pdf) {
@@ -1004,28 +1040,31 @@ async function poll(id, misses) {
         });
       }
       if (j.unlock) {
-        // What is bought, said in full: the address, not just this drawing of it.
+        // What is bought, said in full: the address, not just this drawing of
+        // it. The caveat on a line of its own.
         unlockWhat.textContent = 'Every drawing of this address, clean, with CAD and data, ' +
-          'for 30 days. Made from open data with no guarantee it is complete (see /terms).';
+          'for 30 days.\nMade from open data with no guarantee it is complete (see /terms).';
         unlockWhat.hidden = false;
         addButton('unlock this address · ' + j.unlock, () => unlock(id));
       }
       if (grants.pdf)
         addLink(grants.cleanPdf ? 'download pdf' : 'download pdf · watermarked',
           '/api/jobs/' + id + '/pdf?download', { download: true });
-      const dataLabel = j.sheet === 'slides' ? 'download json' : 'download csv';
+      // The CAD and the data only where they may be taken: the unlock above
+      // says what paying adds.
       if (grants.openData) {
         if (j.hasCad) addLink('download cad', '/api/jobs/' + id + '/cad');
-        if (j.hasData) addLink(dataLabel, '/api/jobs/' + id + '/data');
-      } else {
-        // Shown, not hidden: what paying adds is the reason to pay.
-        if (j.hasCad) addLink('cad · locked', '/pricing', { locked: true });
-        if (j.hasData) addLink(dataLabel.replace('download ', '') + ' · locked', '/pricing', { locked: true });
+        if (j.hasData) addLink(j.sheet === 'slides' ? 'download json' : 'download csv', '/api/jobs/' + id + '/data');
       }
       // The box stays only for something to say: a drawing reused, with the
       // way to a fresh one, or what came of a payment.
-      out.hidden = !noteEl.textContent && !errEl.textContent;
-      go.disabled = false;
+      syncOut();
+      goIdle();
+      // The links take GENERATE's place until the address or an option changes.
+      if (linksEl.childNodes.length) {
+        go.hidden = true;
+        drawnFor = asked();
+      }
       return;
     }
     if (j.status === 'error') throw new Error(j.error || 'generation failed');
@@ -1033,20 +1072,19 @@ async function poll(id, misses) {
   } catch (err) {
     // fetch() rejects outright when the connection drops — same transient case.
     if (err instanceof TypeError && misses < 20) {
-      queueEl.textContent = 'reconnecting';
+      goWord.textContent = 'reconnecting';
       return setTimeout(() => poll(id, misses + 1), 3000);
     }
     fail(err.message);
   }
 }
 
-function addLink(label, href, { newTab, locked, download } = {}) {
+function addLink(label, href, { newTab, download } = {}) {
   const a = document.createElement('a');
   a.href = href;
   a.textContent = label;
   // The first result is the one to press; the rest sit beside it sharing a rule.
   a.className = linksEl.childNodes.length ? 'btn' : 'btn primary';
-  if (locked) a.classList.add('locked');
   if (newTab) a.target = '_blank';
   // Saved rather than followed, so an error in place of the file never takes
   // the page, and the job on it, away. The server's filename wins over this one.
@@ -1101,6 +1139,7 @@ async function unlock(id) {
     return;
   }
   errEl.textContent = '';
+  syncOut();
   try {
     const r = await fetch('/api/billing/unlock', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1112,6 +1151,7 @@ async function unlock(id) {
   } catch {
     errEl.textContent = 'no answer from the server, try again';
   }
+  syncOut();
 }
 
 /** Back from Stripe (or from a link to a drawing): show that drawing again. */
@@ -1122,15 +1162,15 @@ function resumeJob() {
   if (params.has('paid')) { awaitingPayment = 15; returnedFromPayment = true; }
   // Once, not on every reload.
   history.replaceState(null, '', '/');
-  startOutput('');
+  startOutput('loading');
   poll(id);
 }
 
+/** GENERATE back at rest, and what went wrong under it. */
 function fail(msg) {
-  queueEl.textContent = '';
-  progressEl.hidden = true;
+  goIdle();
   errEl.textContent = msg;
-  go.disabled = false;
+  syncOut();
 }
 
 // ---- the sun over a busy GENERATE ------------------------------------------

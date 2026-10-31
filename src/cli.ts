@@ -11,7 +11,8 @@ if (existsSync('.env')) {
     if (m && !process.env[m[1]]) process.env[m[1]] = m[2].trim();
   }
 }
-import { runPipeline, runSitePipeline, runSummaryPipeline, runYieldPipeline, runSlidesPipeline } from './pipeline.js';
+import { runPipeline, runSitePipeline, runSummaryPipeline, runYieldPipeline, runSlidesPipeline, runStreetscapePipeline } from './pipeline.js';
+import { renderStreetscape, streetscapePage, type BuildingFill, type StreetscapeOptions } from './render/streetscape.js';
 import { renderSheet, MAP_W, MAP_H, type SheetMeta } from './render/sheet.js';
 import { setTemplate, DEFAULT_TEMPLATE, isTemplateId } from './render/template.js';
 import { renderSiteSheet } from './render/siteSheet.js';
@@ -30,7 +31,7 @@ function arg(name: string, def?: string): string | undefined {
 
 const address = process.argv.slice(2).find((a) => !a.startsWith('--') && process.argv[process.argv.indexOf(a) - 1]?.startsWith('--') !== true);
 if (!address) {
-  console.error('usage: npm run generate -- "<address>" [--type context|site|yield|slides|summary|both] [--scale 3000] [--slides-scale 8000] [--template flamingo|kingfisher|heron|canary] [--site-theme heron|kingfisher|flamingo|canary] [--job N] [--client X] [--status S] [--sheet "DA 003"]');
+  console.error('usage: npm run generate -- "<address>" [--type context|site|yield|slides|streetscape|summary|both] [--scale 3000] [--slides-scale 8000] [--half-length 95] [--through "Oxford Street"] [--source photo|mesh|montage] [--overlay] [--fill veil|none|heritage] [--template flamingo|kingfisher|heron|canary] [--site-theme heron|kingfisher|flamingo|canary] [--job N] [--client X] [--status S] [--sheet "DA 003"]');
   process.exit(1);
 }
 
@@ -54,7 +55,7 @@ const meta: SheetMeta = {
 
 // A services source still on trial (fetch/services.ts) is drawn only when a run names it.
 if (arg('trial-services')) process.env.SERVICES_TRIAL = arg('trial-services');
-const sheetType = arg('type', 'context')!; // context | site | yield | slides | summary | both (context, site, summary)
+const sheetType = arg('type', 'context')!; // context | site | yield | slides | streetscape | summary | both (context, site, summary)
 const rotate = arg('rotate', 'north') === 'auto' ? 'auto' as const : 'north' as const;
 // The context sheet's graphic template, process-wide for the CLI (it renders one
 // address and exits); the yield and the site report take the same four names.
@@ -173,6 +174,24 @@ if (sheetType === 'slides') {
   const factsPath = join(outDir, 'overall.json');
   await writeFile(factsPath, JSON.stringify(slidesFacts(sb), null, 2));
   outputs.push(deckPath, ...pngs, factsPath);
+}
+
+if (sheetType === 'streetscape') {
+  // --half-length: how far the street runs either way from the site, metres; --through: a cross street the window
+  // runs on to, past it, at the end nearer it
+  // --source photo (Street View on the 3D tiles, the default) | mesh (the tiles' own textures) | montage (Street View alone)
+  const source = arg('source') as 'photo' | 'mesh' | 'montage' | undefined;
+  const sb = await runStreetscapePipeline(address, { outDir, halfLengthM: Number(arg('half-length', '95')), through: arg('through'), source, log: (m) => console.log(m) });
+  console.log('composing streetscape…');
+  const htmlPath = join(outDir, 'streetscape.html');
+  // --overlay: the buildings' lines over the faces, --fill how they are filled (heritage: by their DCP contribution);
+  // --scale: the streetscape's own scale, on a sheet as long as the street then needs (else the largest that fits A3)
+  const fill = arg('fill') as BuildingFill | undefined;
+  const opts: StreetscapeOptions = { overlay: process.argv.includes('--overlay') || !!fill, ...(fill ? { fill } : {}), ...(process.argv.includes('--scale') ? { scale: Number(arg('scale')) } : {}) };
+  await writeFile(htmlPath, renderStreetscape(sb, meta, opts));
+  const pdfPath = join(outDir, 'STREETSCAPE.pdf');
+  const pngs = await printSlides(htmlPath, pdfPath, outDir, streetscapePage(sb, opts));
+  outputs.push(pdfPath, ...pngs);
 }
 
 console.log(`done:\n  ${outputs.join('\n  ')}`);

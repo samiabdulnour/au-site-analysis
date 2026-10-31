@@ -72,8 +72,10 @@ what they may ask of each public data service is counted across all of them,
 so simultaneous users don't hammer it — see *Many at once* below. Put `TFNSW_API_KEY=…` in `.env`
 for authoritative bus stops. The deck's existing-condition slide takes Google
 Street View frames of each street frontage with `GOOGLE_MAPS_API_KEY=…` (a
-Google Cloud key whose project has the Street View Static API enabled; add
-`GOOGLE_MAPS_SIGNING_SECRET=…` if the project signs its URLs), and
+Google Cloud key whose project has the Street View Static API enabled, and the
+Map Tiles API for the streetscape page's 3D tiles; add
+`GOOGLE_MAPS_SIGNING_SECRET=…` if the project signs its URLs, and take it out
+with a key from another project, since a signature is the project's), and
 Mapillary's frames with `MAPILLARY_TOKEN=…` (a free client token); without
 either it reads KartaView alone. On the server they go in
 `/etc/site-analyst.env`, which the deployer passes to the container.
@@ -1200,14 +1202,15 @@ street names — and DejaVu).
 Naming an absent font does not fail; it silently falls back and the sheet
 comes out in the wrong face, so add the package to the `Dockerfile` first.
 
-Options (after `--`): `--type context|site|yield|slides|summary|both`, `--scale 3000` (default 3000;
+Options (after `--`): `--type context|site|yield|slides|streetscape|summary|both`, `--scale 3000` (default 3000;
 the web picker offers 1:2000, 1:3000, 1:4000 and 1:5000, the server accepts 1000 to 6000),
 `--site-scale 500` (the site sheet's; the web picker offers auto, 1:250, 1:500 and 1:1000, starting on auto;
 auto, or left out, takes the tightest of 1:200, 1:250, 1:300, 1:400, 1:500, 1:600, 1:750 and 1:1000 that fits the lot),
 `--template flamingo|kingfisher|heron|canary` (the context sheet's template, see Templates below),
 `--site-theme heron|kingfisher|flamingo|canary` (the site sheet's theme),
 `--slides-scale 8000` (the deck's map panels), `--da-years 5` (the deck's
-development window), `--job 2539`, `--client "Name"`,
+development window), `--half-length 95` (how far the streetscape runs either
+way from the site, metres), `--job 2539`, `--client "Name"`,
 `--status "DEVELOPMENT APPLICATION"`, `--sheet "DA 003"`.
 
 ### The planning yield
@@ -1417,7 +1420,12 @@ determined development application on the lot, hatched and said so), the
 storeys of the buildings within 250 m as a
 histogram with the LEP height plane marked on it, and section A–A′ again
 with the buildings it meets drawn at their heights and the height plane
-dashed over the site. Then *movement*: roads by function, rail and
+dashed over the site. Then the *streetscape*, where Street View is keyed:
+the site's street as two elevations across the spread, as `--type
+streetscape` draws it (190 m at 1:500, the buildings' lines, heights and
+levels over the faces, the conservation areas bracketed; see *The
+streetscape* below), on its own page after built form, and left out of the
+deck where it fails, or with `DECK_STREETSCAPE=0`. Then *movement*: roads by function, rail and
 stations, the walking isochrones from the site (Valhalla, 5, 10 and 15
 minutes), bus stops (Transport for NSW with the key, else OpenStreetMap),
 bus routes, cycleways, footways and one-way streets (OpenStreetMap through
@@ -1545,6 +1553,188 @@ placeholder for the author's narrative. Outputs: `OVERALL_ANALYSIS.pdf`, `slides
 Where a council publishes its own DCP mapping as open data — the City of
 Sydney does — the deck reads it too, for the sites in that LGA: building
 height in storeys, street frontage heights, active frontages, setbacks.
+
+### The streetscape
+
+`--type streetscape` draws STREETSCAPE: the site's street as two elevations on
+one A3 landscape sheet, the site's side above and the side across the road
+below, each as a viewer standing in the street sees it, so the two run
+opposite ways, at one true scale (1:500 for the default 190 m,
+`--half-length 95` either way from the site). Under each face every
+property's frontage is dashed off and named by its address, the roads and
+lanes that come in are named upright in their gaps, and the site is marked in
+red between dashed lines, with the stretch across the road from it marked too.
+
+The street is the address's own, its centreline from the NSW Transport
+Theme, and `s` is the distance along it, zero opposite the site. From the
+centreline every metre a ray goes out square to each side; the first boundary
+of the NSW property layer it meets is that metre's frontage, with the
+property's own address (a corner lot keeps its other street's), and a ray that
+meets nothing near the side's building line is a gap.
+
+**The faces: Street View photographs on Google's 3D city model**
+(`--source photo`, the default). The geometry is Google's Photorealistic 3D
+Tiles (the Map Tiles API, on the same `GOOGLE_MAPS_API_KEY`, which must have it
+and the Street View Static API enabled). The tileset is walked from its root,
+opening only the boxes that meet the street's corridor and refining each to the
+finest mesh with under 0.6 m of error (`src/fetch/tiles3d.ts`); the meshes stay
+in memory, as Google's terms ask, and one root request is the session Google
+bills, 1,000 a month free. In a headless Chromium with WebGL in software,
+three.js carries them from Earth-centred coordinates into the site's
+east-north-up frame in double precision (`src/render/elevation3d.ts`).
+
+For each face rays are cast down on the footpath at the boundary first. The
+meshes are one surface draped over everything, with no ground under a canopy
+or an awning, so the ground line is the 5 m elevation model's, lifted by the
+low fifth of what the rays read over it (21.9 m at Riley Street: the geoid,
+the meshes standing on the ellipsoid where the model stands in AHD). Then an
+orthographic camera stands on the centreline square to the face, its near
+plane on the centreline, so the other side's buildings and trees are cut away,
+and its far plane 35 m behind the boundary, so the next street's towers are
+left out. The meshes' own textures are the base; over them each Street View
+frame (a panorama every 7 m, turned square to the face, low for the footpath
+and high for the storeys over it) is projected from where its camera stood,
+on the meshes' heights, as a slide projector would. A point takes a frame's
+colour where the frame saw it clear: a depth map rendered from the camera says
+whether anything stood between (nothing within 4 m of it counts, since the
+meshes draw a street tree as a lump the camera on a car's roof is often
+inside), and a surface the frame saw nearly edge-on, its normal read from the
+position picture's own slopes, is left to another frame. Where several frames
+saw a point, the one that saw it largest and most square, nearest along the
+street, wins. The street's trees (what stands in the reserve more than 2.5 m
+in front of the boundary, and the meshes' green nearer it) keep the meshes'
+texture, one material for every tree, and so does what no frame saw clear: a
+roof, or the upper floors behind a canopy from every camera. At Riley Street
+the photographs hold about two fifths of each face, the rest trees and roofs.
+The picture is 24 pixels a metre (300 dpi at 1:500), on a pale sky, over a
+band of ground, and runs as high as the face's tallest buildings: nothing
+leans, the facades are the photographs, each at its own depth, and the trees
+stand where they stand.
+
+`--source mesh` draws the meshes' own textures alone. Google serves these
+tiles only to Cloud projects billed outside the European Economic Area (since
+8 July 2025 an EEA project gets 403, "not available for your account and
+region"), and its finest meshes over Darlinghurst carry 2 m of error, so the
+trees are lumps and the outlines are soft, though the textures are sharper
+than the meshes. At 70-76 Riley Street in October 2026: 47 meshes, 5.6 MB, 18
+panoramas, the whole drawing in under a minute.
+
+**Without the Map Tiles API** (or `--source montage`), the faces are the
+Street View frames alone, each rectified onto its side's boundary by its
+homography, a CSS `matrix3d`, so the frames meet where the street does, and
+not one over a road the Transport Theme puts in a tunnel (the Cross City
+Tunnel's are filed as outdoor). What stands in front of the boundary reads
+larger and a building set back from it smaller, as in any montage. Without a
+key, the faces are their ground and frontages alone. `STREETSCAPE_SOURCE`
+sets the source for the server, as `--source` does for the command line.
+
+**Building lines** (`--overlay`). Over the 3D faces, each frontage's building
+is drawn gently, a veil of white over the picture with a hairline edge: its
+roofline in steps where it changes by more than a metre, down to the ground at
+the lot lines, floor lines in white at 3.1 m a storey of its measured height
+(evenly spaced, not surveyed), and over its tallest step its height over the
+ground and its level in AHD (`21.9 m · 7 ST`, `RL 34.0`), the site's in a pale
+red. The tops are read from the render itself: the meshes again with
+the camera's near plane a metre short of the building line, so the street's
+trees and the awnings over the footpath are cut away and what stands behind
+them shows, each column's highest pixel that is not green. At Riley Street the
+lines sit on the meshes' buildings to within a metre; over the image model's
+picture (`scripts/streetscape-ai.ts import … --overlay`) they show where it
+drew lower or higher than the street stands. `--fill none` draws the outlines
+alone, and `--fill heritage` tints each building by its contribution to its
+conservation area instead of the white veil.
+
+**Heritage.** Each face is read against the LEP's heritage layer (the NSW
+Planning EPI layer: conservation areas and heritage items, everywhere in NSW)
+and, in the City of Sydney, the DCP 2012 map of building contributions
+(contributing, neutral, detracting), each 3 m behind its frontage's boundary,
+where its building stands: every 2 m along the frontage (three points at
+least), a rating by the most of them, an item where any falls in one
+(`src/fetch/streetscapeHeritage.ts`). The conservation areas are bracketed and
+named over each face's band, and the sheet's lead says which the street runs
+through and how its frontages are rated. With `--fill heritage` the buildings
+are tinted sandstone (contributing), white (neutral) or slate (detracting),
+unrated ones left clear, the LEP's items outlined in deep red and numbered
+once over the run of frontages they cover, with a legend. A corner or a deep
+lot can read its neighbour's polygon, so the sheet says the plan's own maps and
+schedule govern. At Riley Street, 680 m through Woolloomooloo (C71), William
+Street South (C16), East Sydney (C13) and Oxford Street (C17): of 78 rated
+frontages 70 contribute, 3 are neutral and 5 detract, and 20 LEP items front
+the street.
+
+**A long street** (`--scale 1000`). The sheet takes the largest round scale
+at which the window fits A3; `--scale` forces one, on a sheet as long as the
+window then needs at A3's height (Riley Street's 680 m at 1:1000 is 710 ×
+297 mm), each band as tall as its tallest measured roof (the third highest
+metre of the roofs, so a mast is passed over and a narrow tower is not). Over
+a long window the street bends, so its axis is the line that best fits its
+centreline within the window, not the chord between its farthest points, which
+put Riley Street's building lines 24 m out at ±340 m. A face wider than 8,000
+pixels is rendered in pieces of whole metres, the camera moved along the axis
+for each, and stitched. `--through "Oxford Street"` runs the window on, at the
+end nearer that cross street, 40 m past where it crosses (its carriageway and
+a little of the far side), so a conservation area's edge at a main road shows
+whole; the axis stays the street's within `--half-length` of the site, so the
+rest of the drawing is the same picture, moved by the new columns at one end
+and any new rows over higher ground (at Riley Street, to within the JPEG's
+noise). Its window ran on from 340 to 422 m through Oxford Street, and the 32
+image-model tiles already laid went back on, the manifest's boxes moved by as
+much, with only the new 82 m to ask for.
+
+Outputs: `STREETSCAPE.pdf` and `streetscape.png`, the pictures and
+`data/streetscape_bundle.json` beside them. The overall analysis draws it
+too, as the page after built form, with the building lines; the image-model
+pass below is never part of it. It runs in the image's own Chromium
+(Debian's, WebGL in SwiftShader): Riley Street's photographs on the 3D tiles
+took 50 s there.
+
+**Through an image model.** The 3D faces can go through an image model that
+edits a picture in place (Artlist's Nano Banana Pro, at 21:9 and 4K), which
+redraws the meshes' lumps as trees and their melted roofs as roofs, and cleans
+the seams between photographs, as an illustrative sheet beside the measured
+one. Artlist is reached through its connector in a Claude session (or its own
+app), not from this server, so it is three steps:
+
+```bash
+npx tsx scripts/streetscape-ai.ts export out/<slug>
+```
+
+cuts each face into tiles of the model's frames, each as tall as the street it
+holds stands (its ground to just over its roofs), in the widest frame (21:9,
+then 16:9, 3:2, 4:3, 1:1) that leaves it no more than two fifths sky, and
+overlapping its neighbour by 8 m, into `data/ai/`, with `manifest.json` placing them and the prompt to
+ask (to keep the photographed facades, or, for meshes alone, to redraw them). Each tile goes through the model, and its answer is saved beside it as
+`<tile>.ai.png`. Then
+
+```bash
+npx tsx scripts/streetscape-ai.ts import out/<slug> --model "Nano Banana Pro"
+```
+
+checks each answer against its tile, lays it back and prints
+`STREETSCAPE_AI.pdf`, labelled AI-enhanced and illustrative
+(`STREETSCAPE_AI_HERITAGE.pdf` with `--fill heritage`, `STREETSCAPE_AI_LINES.pdf`
+with `--fill none`; `--scale` as for the measured sheet). `sheet` in place of
+`import` draws the sheet again from the tiles already laid. An answer that
+built on more than a quarter of its tile's sky has redrawn the street rather
+than cleaned it (given a strip of street under a band of sky, the model
+repeated the street in the sky), so it is refused, named, and the face keeps
+its own picture there until it is asked again. One that kept the street is put
+back where it slipped to (the shift that best lays its edges on the tile's: 13
+px, half a metre, for one Riley Street tile), scaled into its box so a metre is
+still a metre, and crossfaded with its neighbour over their overlap. Given the
+photographs on the meshes, the model keeps the real facades and redraws the
+trees and what no photograph saw; given the meshes alone (`--source mesh`), it
+invents the facades, and the sheet says so. At Riley Street the meshes alone
+went through whole once a tile holding the 24 m block beside low terraces,
+half sky in 21:9 (refused twice, prompt or no), was cut 16:9 instead. Along
+680 m of it (32 tiles), 3 of the first 29 answers were refused: one went
+through when asked to leave the grey under its trees open, and the other two
+stacked the street again through four answers each, a sloping run under a
+tall end and a low terrace under one tall tree; each was cut again by hand into
+shorter frames (two 16:9; a 3:2, a 1:1 for the tree, a 4:3), entries in
+`manifest.json` in place of the one, and all went through. Exporting
+again moves the earlier tiles, and any answers, to `data/ai-<when>/`; an
+answer can be copied back where its tile is unchanged.
 
 ## How it works
 
