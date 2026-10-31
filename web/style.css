@@ -174,38 +174,49 @@ a { color: inherit; }
 .try:hover { background: var(--hi); }
 
 /* ---- the tool ------------------------------------------------------------ */
-/* Signed in (or past TRY): the options down the left like a sheet's key, the
-   address bar and the drawing taking the rest. On a phone the bar leads, then
-   the options, then the drawing. */
-/* The mock-up's split: a 483px sidebar and an 827px drawing, 31px apart,
-   kept in that proportion on other screens. */
-.tool { display: grid; grid-template-columns: minmax(300px, 483fr) minmax(0, 827fr);
-        grid-template-rows: auto 1fr; gap: 0 31px;
-        grid-template-areas: ". bar" "side view"; align-items: start; }
-.toolbar  { grid-area: bar; min-width: 0; }
-/* As on the mock-up: the address bar stands alone at the top, and the first
-   option box's top rule continues the drawing frame's — so the sidebar starts
-   level with the frame and its first label (20.7px and 10.7px to its box) is
-   lifted into the gap above. */
-.toolside { grid-area: side; min-width: 0; margin-top: -31px; }
+/* Signed in (or past TRY): down the left like a sheet's key the address, the
+   options and GENERATE; the drawing takes the rest. On a phone the column
+   comes first, then the drawing. */
+/* The mock-up's split: a 425px column and an 886px drawing, 31px apart, kept
+   in that proportion on other screens. On its screen the column, from the
+   address's top rule to GENERATE's foot, is as tall as the frame beside it. */
+.tool { display: grid; grid-template-columns: minmax(300px, 425fr) minmax(0, 886fr);
+        gap: 0 31px; grid-template-areas: "side view"; align-items: start; }
+.toolside { grid-area: side; min-width: 0; }
 /* The mock-up's cells: 18px type, 36px high, the word 14px in. */
 .toolside .cell, .toolside .cell-empty {
   font-size: 18px; line-height: normal; padding: 7.25px 14px;
 }
-/* Whole pixels, so the label and its gap are exactly the 31px the sidebar
-   is lifted by, and the table's top rule lands on the frame's. */
+/* Whole pixels: the label and its gap are 31px over the table's top rule. */
 .toolside .rowhead { line-height: 21px; padding-bottom: 10px; }
 .toolside .row { margin-bottom: 28px; }
-/* The mock-up's bar: 35px high, its words 22px in, GENERATE 170px wide with
-   its word 12px in, 29px above the drawing. */
-.toolbar .bar { font-size: 18px; margin-bottom: 29px; }
-.toolbar .bar input { line-height: normal; padding: 6.25px 22px; letter-spacing: .025em; }
-.toolbar .bar input::placeholder { color: var(--ink); }
-.toolbar .go { line-height: normal; padding: 6.25px 12px; flex: 0 0 170px;
-               min-width: 0; text-align: left; }
-/* The mock-up's way out, under the options: a yellow box 39px high with its
-   words left, 29px in. */
-.toolside #links .btn { text-align: left; line-height: normal; padding: 8.5px 29px; }
+/* The mock-up's bar: 35px high, its words as far in as the cells' words
+   under it, and as far above the first label as the tables are apart. */
+.toolside .bar { font-size: 18px; margin-bottom: 28px; }
+.toolside .bar input { line-height: normal; padding: 6.25px 14px; letter-spacing: .025em; }
+.toolside .bar input::placeholder { color: var(--ink); }
+/* GENERATE: the column's whole width under the options, yellow, two of the
+   cells' lines high, its word as far in as theirs. While a drawing is made it
+   is white, and the yellow fills it from the left as the time goes. */
+.toolside .go {
+  position: relative; display: block; width: 100%; min-width: 0;
+  border: 1px solid var(--line);
+  line-height: normal; padding: 25.35px 14px; text-align: left;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.toolside .go[hidden] { display: none; }
+.toolside .go:disabled { background: transparent; color: var(--ink); filter: none; }
+.go .fill { position: absolute; top: 0; bottom: 0; left: 0; width: 0; background: var(--hi); }
+/* The fill moves in steps as the page asks the server, so it slides over each
+   step rather than jumping. Only while busy: back at rest it is gone at once. */
+.go:disabled .fill { transition: width 2.5s linear; }
+.go .word { position: relative; }
+/* The way out, in GENERATE's place once the drawing is done: boxes as high as
+   the cells, the first yellow, their words as far in as the cells'. */
+.toolside #links .btn { text-align: left; line-height: normal; padding: 7.25px 14px; }
+/* The small print under them, in the footer's size. */
+.toolside #unlockWhat { font-size: var(--small); line-height: 1.4; margin-top: 24px;
+                        white-space: pre-line; }
 .toolview { grid-area: view; min-width: 0; }
 
 /* ---- address bar --------------------------------------------------------- */
@@ -309,22 +320,14 @@ a { color: inherit; }
 #suggest li.hint:hover { background: transparent; color: var(--muted); }
 
 /* ---- output -------------------------------------------------------------- */
-/* A word for where the drawing is, and a bar that moves while it is drawn; once
-   it is done, the drawing itself. No log: what the pipeline is fetching is the
-   operator's business, not the visitor's. It stands under the options' tables,
-   the same distance below them as they are apart. */
-#out { margin-bottom: 28px; border: 1px solid var(--line); padding: 1rem 1.2rem; }
-#queue { text-transform: uppercase; font-weight: 400; }
+/* Where the drawing is, GENERATE itself says; once it is done, the drawing
+   itself. No log: what the pipeline is fetching is the operator's business,
+   not the visitor's. This box is for the rest — a note, an error — under
+   GENERATE or the links in its place. */
+#out { margin-top: 1rem; border: 1px solid var(--line); padding: 1rem 1.2rem; }
 .errline { color: var(--err); }
-
-/* A hairline track the yellow fills. The fill moves in steps as the page asks
-   the server, so it slides over each step rather than jumping. */
-.progress { height: .7rem; border: 1px solid var(--line); margin-top: .6rem; }
-.progress[hidden] { display: none; }
-.progress > span { display: block; height: 100%; width: 0; background: var(--hi);
-                   transition: width 2.5s linear; }
 @media (prefers-reduced-motion: reduce) {
-  .progress > span { transition: none; }
+  .go:disabled .fill { transition: none; }
 }
 
 #unlockWhat { margin-top: .8rem; }
@@ -350,9 +353,9 @@ a { color: inherit; }
 #verify button:disabled { text-decoration: none; cursor: default; }
 
 /* ---- a finished sheet's links -------------------------------------------- */
-/* In the sidebar under the options, where the mock-up keeps PAY, OPEN PDF and
-   the watermarked download: the first is yellow, the rest share its rules and
-   wrap two to a line like the options above them. */
+/* In the sidebar under the options, in GENERATE's place once the drawing is
+   done: the first is yellow, the rest share its rules and wrap two to a line
+   like the options above them. */
 .actions { margin-top: .2rem; }
 #links { display: flex; flex-wrap: wrap; }
 #links:empty { display: none; }
@@ -373,7 +376,9 @@ a { color: inherit; }
    is drawn twice whichever box a line starts with. The row's padding gives
    back the pixel the first box steps out of it. */
 #links { padding: 1px 0 0 1px; }
-#links .btn { margin: -1px 0 0 -1px; }
+/* The pixel stepped out is given back to the width too, so a line's right
+   rule lands on the options' above it. */
+#links .btn { margin: -1px 0 0 -1px; max-width: calc(100% + 1px); }
 .btn:hover { background: rgba(0,0,0,.05); }
 .btn.primary { background: var(--hi); color: var(--on-hi); }
 .btn.primary:hover { background: var(--hi); filter: brightness(.95); }
@@ -393,12 +398,12 @@ footer a { color: inherit; }
 /* ---- expected result ----------------------------------------------------- */
 /* A frame of its own beside the options, holding the picture alone,
    edge to edge between its rules. */
-/* The frame is the column's full width, its edges continuing the address
-   bar's above it. The sheet is whole inside it: as wide as the frame, or,
-   where the screen is short, as tall as the screen allows, centred. */
+/* The frame is the column's full width, its top rule level with the
+   address's beside it. The sheet is whole inside it: as wide as the frame,
+   or, where the screen is short, as tall as the screen allows, centred. */
 .result { border: 1px solid var(--line); }
 .result img { display: block; width: 100%; height: auto;
-              max-height: calc(100svh - 253px); object-fit: contain; }
+              max-height: calc(100svh - 189px); object-fit: contain; }
 .result img[hidden] { display: none; }
 .result img.loading { opacity: .35; }
 /* The site report's pages turn on a click as well as on their own. */
@@ -582,7 +587,7 @@ h2 { font-size: 18px; font-weight: 400; text-transform: uppercase; line-height: 
    shows nothing: then there is no frame either, and no space kept for one. */
 .humanframe.quiet { width: 0; height: 0; border: 0; margin: 0; }
 .humanframe.quiet > div { margin: 0; }
-/* Under the address bar, when Cloudflare asks before a drawing. */
+/* Over GENERATE, when Cloudflare asks before a drawing. */
 .humanframe.gen:not(.quiet) { margin: 0 0 1rem; }
 /* Off the page, not hidden: a field that is display:none is one bots skip. */
 .trap { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
@@ -636,23 +641,19 @@ h2 { font-size: 18px; font-weight: 400; text-transform: uppercase; line-height: 
 
 /* ---- narrower screens ----------------------------------------------------- */
 /* One column: the welcome panels stack, the two sheets stack, and the tool
-   goes bar first, then the options, then the drawing. */
+   goes address, options and GENERATE first, then the drawing. */
 @media (max-width: 900px) {
   body { font-size: 17px; }
   .name { font-size: 2rem; }
   .band { height: auto; padding: 1.2rem 0 1rem; margin-bottom: 1.4rem; }
   .nav { margin-top: 0; }
-  .toolbar .go { flex-basis: auto; padding-left: 1rem; padding-right: 1rem; }
-  .toolbar .bar { margin-bottom: 1rem; }
   .hero, .splash, .twocol { grid-template-columns: minmax(0, 1fr); }
   .twocol.plans2 { gap: 1.6rem; }
   .lead.intro { max-width: none; }
   .hero { gap: 1.2rem; }
   .tool { grid-template-columns: 1fr; gap: 0;
-          grid-template-areas: "bar" "side" "view"; }
-  .toolside { margin-top: 0; }
-  .toolside .row:first-child { margin-top: .4rem; }
-  .toolview { margin-top: .4rem; }
+          grid-template-areas: "side" "view"; }
+  .toolview { margin-top: 28px; }
   /* One panel on a narrow screen, so TRY is still in view on arrival; the
      drawing sits under the options here, so it needs no height cap. */
   .hero .hero-panel:nth-child(2) { display: none; }

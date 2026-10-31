@@ -120,10 +120,10 @@
   </form>
 
   <!-- ---- the tool ------------------------------------------------------- -->
-  <!-- The options down the left like a sheet's key; the address bar and the
-       drawing take the rest. Where the drawing is, and then a finished sheet's
-       links — pay, open, download — land under the options, where the eye
-       already is. -->
+  <!-- Down the left like a sheet's key: the address, the options, and GENERATE
+       under them; the drawing takes the rest. GENERATE is where the drawing
+       is while it is made, and then gives its place to a finished sheet's
+       links — pay, download — where the eye already is. -->
   <form id="f" hidden>
     <!-- Said only to an account that has not clicked its verification link.
          Drawing does not wait on it; the password reset goes to that inbox. -->
@@ -133,6 +133,16 @@
 
     <div class="tool">
       <aside class="toolside">
+        <!-- The address heads the column, its top rule level with the drawing
+             frame's. -->
+        <div class="bar">
+          <span class="entry">
+            <!-- The placeholder is set in app.js. -->
+            <input id="address" type="text" aria-label="NSW street address"
+                   autocomplete="off" autocapitalize="off" spellcheck="false">
+            <ul id="suggest"></ul>
+          </span>
+        </div>
         <div class="opts">
           <div class="row" id="sheetGroup"><span class="rowhead">DRAWING</span>
             <span class="cells" id="sheetOpts"></span></div>
@@ -143,39 +153,27 @@
           <div class="row" id="styleRow"><span class="rowhead">STYLE</span>
             <span class="cells" id="styleOpts"></span></div>
         </div>
-        <!-- While it draws: a word for where it is, and a bar that moves, under
-             the options' tables. When it is done, the drawing itself takes the
-             result frame beside them. -->
-        <div id="out" hidden>
-          <div id="queue"></div>
-          <div class="progress" id="progress"><span id="progressFill"></span></div>
-          <div id="note"></div>
-          <div class="errline" id="error"></div>
-        </div>
-        <!-- A finished sheet's links: open, download, and the files beside it. -->
-        <div class="actions">
-          <div id="links"></div>
-        </div>
-        <p class="muted" id="unlockWhat" hidden></p>
-      </aside>
-
-      <div class="toolbar">
-        <div class="bar">
-          <span class="entry">
-            <!-- The placeholder is the samples' address, set from EXAMPLE_ADDRESS
-                 in app.js, so the field suggests the address the pictures below
-                 were drawn for. -->
-            <input id="address" type="text" aria-label="NSW street address"
-                   autocomplete="off" autocapitalize="off" spellcheck="false">
-            <ul id="suggest"></ul>
-          </span>
-          <button class="go" id="go" type="submit">GENERATE</button>
-        </div>
         <!-- The human check again, for a visitor without a session: a new sheet is
              what a bot without an account would ask for. Invisible unless
              Cloudflare needs a click, as on the account form. -->
         <div class="humanframe quiet gen" id="genHumanBar" hidden><div id="genHuman"></div></div>
-      </div>
+        <!-- GENERATE, big, under the options. Pressed, it is the drawing's
+             progress: its word says where the drawing is and the yellow fills
+             it as it goes. Done, the drawing takes the result frame beside it
+             and its links take this place, until the address or an option
+             changes. -->
+        <button class="go" id="go" type="submit"><span class="fill" id="goFill"></span><span
+          class="word" id="goWord">GENERATE</span></button>
+        <!-- A finished sheet's links: pay, download, and the files beside it. -->
+        <div id="links"></div>
+        <p class="muted" id="unlockWhat" hidden></p>
+        <!-- Only when there is something to say: a drawing reused, with the way
+             to a fresh one, what came of a payment, or what went wrong. -->
+        <div id="out" hidden>
+          <div id="note"></div>
+          <div class="errline" id="error"></div>
+        </div>
+      </aside>
 
       <div class="toolview">
         <!-- What the options chosen on the left produce, drawn for an example
