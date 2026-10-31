@@ -7,6 +7,7 @@
     "generate": "tsx src/cli.ts",
     "serve": "tsx src/server.ts",
     "samples": "tsx src/samples.ts",
+    "capacity": "tsx scripts/capacity_study.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

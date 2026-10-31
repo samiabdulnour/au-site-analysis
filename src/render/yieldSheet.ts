@@ -66,7 +66,11 @@ export interface YieldBundle extends SummaryData {
    * before the floor space ratio carries the future itself instead
    * (`futureM`, by the height alone); one from before the futures, neither.
    */
-  context: { rings: number[][][]; heightM: number; known: boolean; controls?: FutureControls; futureM?: number }[];
+  context: { rings: number[][][]; heightM: number; known: boolean; controls?: FutureControls; futureM?: number;
+    /** The capacity study's reading of the parcel it stands on (lib/capacity.ts): a future is raised only where the mark is a tick. A bundle from before the study has none. */
+    capacity?: { address: string; mark: 'tick' | 'cross'; mature: boolean; reason?: string } }[];
+  /** The capacity study's window, where it was read: the first year a development counts as mature, its thresholds, the author's overrides and the council register read. */
+  capacity?: { since: number; smallSite: number; strataMax: number; overridden: number; registerSource?: string };
   buildingsSource: string;
   /** The photograph over the plan's window, for the styles that draw on the aerial; a bundle from before it has none. */
   aerial?: AerialResult | null;
@@ -106,6 +110,8 @@ export interface YieldStudy {
   frontageLengths: { name: string; lengthM: number }[];
   /** Each neighbour's future height where it would rise, in the order of the bundle's context. */
   futures: (number | undefined)[];
+  /** The neighbours whose controls would let them rise but whose development potential the capacity study reads as low: they stand as they are. */
+  futuresHeld: number;
 }
 
 export function yieldStudy(b: YieldBundle): YieldStudy {
@@ -146,7 +152,11 @@ export function yieldStudy(b: YieldBundle): YieldStudy {
     byName.set(name, (byName.get(name) ?? 0) + Math.hypot(q.x - p.x, q.y - p.y));
   });
   const frontageLengths = [...byName].map(([name, lengthM]) => ({ name, lengthM })).sort((p, q) => q.lengthM - p.lengthM);
+  let futuresHeld = 0;
   const futures = b.context.map((cb) => {
+    const rises = cb.controls ? futureHeight(cb.controls, (cb.rings[0]?.length ?? 0) >= 3 ? ringArea(cb.rings[0].map(([lon, lat]) => toLocal(lon, lat))) : 0, cb.known ? cb.heightM : undefined, base.assumptions) : cb.futureM;
+    // a parcel of low development potential (a strata scheme, a heritage item, a mature or a small site) keeps its present form
+    if (cb.capacity?.mark === 'cross') { if (rises) futuresHeld++; return undefined; }
     if (!cb.controls) return cb.futureM;
     const rg = (cb.rings[0] ?? []).map(([lon, lat]) => toLocal(lon, lat));
     return futureHeight(cb.controls, rg.length >= 3 ? ringArea(rg) : 0, cb.known ? cb.heightM : undefined, base.assumptions);
@@ -158,7 +168,7 @@ export function yieldStudy(b: YieldBundle): YieldStudy {
   })).filter((e) => e.rings.length && e.heightM > 0);
   const kept = standing.length ? computeRetained({ ring, fronts, siteAreaSqm: area, zone: c.zoneCode, assumptions, standing }) : undefined;
   const retained = kept && kept.gfa > base.gfa + 1 ? kept : undefined;
-  return { base, bonus, max, retained, ring, fronts, toLocal, hob, parkingSet, frontageLengths, futures };
+  return { base, bonus, max, retained, ring, fronts, toLocal, hob, parkingSet, frontageLengths, futures, futuresHeld };
 }
 
 // ---- the table's rows ---------------------------------------------------------
@@ -1096,7 +1106,7 @@ function schemeLegend(b: YieldBundle, s: YieldStudy, y: YieldResult | undefined,
   if (y?.tiers.length) out.push({ swatch: KEY.envelope, label: 'Envelope of each tier' });
   if (s.hob?.metres) out.push({ swatch: KEY.plane, label: 'The LEP\'s height of building plane' });
   out.push({ swatch: KEY.neighbours, label: `Neighbours at their heights (${b.buildingsSource === 'overture' ? 'Overture' : 'OSM'}; dashed: not recorded)` });
-  if (s.futures.some(Boolean)) out.push({ swatch: KEY.future, label: 'Neighbours\' future, to their LEP height and FSR' });
+  if (s.futures.some(Boolean)) out.push({ swatch: KEY.future, label: b.capacity ? 'Neighbours\' future, to their LEP height and FSR, where the capacity study finds development potential' : 'Neighbours\' future, to their LEP height and FSR' });
   if (kerbs) out.push({ swatch: KEY.kerb, label: 'Kerb line, indicative' });
   return out;
 }
@@ -1301,6 +1311,7 @@ function controlsSlide(b: YieldBundle, s: YieldStudy, n: number): Slide {
     { label: 'parking rates', value: s.parkingSet === 'custom' ? 'from yield_assumptions.json' : PARKING_RATES[s.parkingSet].basis },
     { label: 'nearest station', value: b.station ? `${titleWords(b.station.name)}, ${fmt(b.station.distanceM)} m` : 'none within 1.2 km' },
     { label: 'affordable housing bonus', value: `${Math.round(a.affordableBonus * 100)}% more height and FSR for 15% affordable housing` },
+    ...(b.capacity ? [{ label: 'neighbours\' futures', value: `raised where the capacity study finds development potential: ${fmt(s.futures.filter(Boolean).length)} of ${fmt(b.context.length)} neighbours; a strata scheme, a heritage item, a site developed since ${b.capacity.since} or one under ${fmt(b.capacity.smallSite)} m² stands as it is${s.futuresHeld ? ` (${fmt(s.futuresHeld)} held)` : ''}`, note: b.capacity.overridden ? `${fmt(b.capacity.overridden)} marks from capacity_overrides.json` : undefined }] : []),
   ];
   // The table, its site and summary sections left to the first spread.
   const table: string[] = [];
@@ -1397,5 +1408,7 @@ export function yieldJson(b: YieldBundle): string {
     study: strip(s.base), affordableHousingBonus: strip(s.bonus), envelopeToHeight: strip(s.max), rebuiltAsStands: strip(s.retained),
     scenarios: scenarioRows(b, s),
     table: yieldRows(b, s).filter((r) => !r.section && !r.head),
+    neighbours: b.context.map((c, i) => ({ heightM: c.heightM, known: c.known, controls: c.controls, futureM: s.futures[i], capacity: c.capacity })),
+    capacityStudy: b.capacity ? { ...b.capacity, futuresHeld: s.futuresHeld } : undefined,
   }, null, 2);
 }

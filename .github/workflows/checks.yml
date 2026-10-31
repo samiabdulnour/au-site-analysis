@@ -187,6 +187,21 @@ jobs:
       - name: north-align lays the site's long side horizontal
         run: npx tsx test/site-rotation.mts
 
+      # Slide 07b's capacity study on made-up lots: a strata scheme and its
+      # size, a heritage item, public land, a building developed within twenty
+      # years by the register or by its strata plan's date, a site too small to
+      # develop on its own, and the author's overrides; then the tick, the
+      # cross and the patch on each. CI never calls the cadastre.
+      - name: the capacity study reads the lots right
+        run: npx tsx test/capacity.mts
+
+      # The yield study's neighbours against the capacity study, on a made-up
+      # site: a neighbour rises to its controls only where the study reads
+      # development potential; a strata scheme or a mature development stands
+      # as it is and is counted as held. Nothing is fetched.
+      - name: the yield raises a neighbour only where it may develop
+        run: npx tsx test/yield-futures.mts
+
       # Slide 15's heritage layers on made-up features: outlines clipped to the
       # strip, a permit over the lot told from one that grazes its kerb, AHIP
       # records merged by permit, the RNE's rejected places left out, and what

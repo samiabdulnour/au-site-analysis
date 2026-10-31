@@ -12,13 +12,15 @@ function findChromium(): string | undefined {
   if (process.env.CHROMIUM_PATH && existsSync(process.env.CHROMIUM_PATH)) return process.env.CHROMIUM_PATH;
   const roots = [process.env.PLAYWRIGHT_BROWSERS_PATH ?? '/opt/pw-browsers'];
   for (const root of roots) {
-    // Playwright's newer builds unpack to chrome-linux64; the older ones to chrome-linux.
+    // a root where `chromium` is a file, not a folder (one Playwright layout), makes the glob throw rather than miss;
+    // Playwright's newer builds unpack to chrome-linux64, the older ones to chrome-linux
+    const find = (pattern: string) => { try { return globSync(pattern); } catch { return [] as string[]; } };
     for (const pattern of [`${root}/chromium-*/chrome-linux/chrome`, `${root}/chromium-*/chrome-linux64/chrome`, `${root}/chromium/chrome-linux/chrome`, `${root}/chromium/chrome-linux64/chrome`]) {
-      const hits = globSync(pattern);
+      const hits = find(pattern);
       if (hits.length) return hits[0];
     }
     if (existsSync(`${root}/chromium`)) {
-      const hits = globSync(`${root}/chromium/**/chrome`);
+      const hits = find(`${root}/chromium/**/chrome`);
       if (hits.length) return hits[0];
     }
   }
@@ -79,6 +81,27 @@ export async function htmlToPdf(htmlPath: string, pdfPath: string, previewPath?:
         await shot.screenshot({ path: previewPath, type: 'jpeg', quality: 80 });
       } catch { /* no picture this time */ }
     }
+  } finally {
+    await browser.close();
+  }
+}
+
+/**
+ * A page of one fixed pixel size (the capacity study's sheet) as a PNG at that
+ * size and, when asked, a one-page PDF of the same size, from one browser.
+ */
+export async function printPage(
+  htmlPath: string,
+  size: { width: number; height: number },
+  out: { png?: string; pdf?: string },
+): Promise<void> {
+  const browser = await launch();
+  try {
+    const page = await browser.newPage({ viewport: size });
+    await page.goto(pathToFileURL(htmlPath).href, { waitUntil: 'networkidle', timeout: 120_000 });
+    await page.evaluate(() => (document as any).fonts?.ready);
+    if (out.png) await page.screenshot({ path: out.png, type: 'png' });
+    if (out.pdf) await page.pdf({ path: out.pdf, width: `${size.width}px`, height: `${size.height}px`, printBackground: true, pageRanges: '1' });
   } finally {
     await browser.close();
   }
