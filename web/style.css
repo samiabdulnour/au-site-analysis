@@ -56,8 +56,10 @@ body {
    full-bleed element — signed in it turns yellow edge to edge — so the page's
    margins live on .page, not on body. */
 /* Sized from the mock-up, a 1512 by 832 sheet drawn at a laptop browser's
-   size: its margins are 85px there, and scale with the screen around it. */
-.page { max-width: 1920px; margin: 0 auto; padding: 0 clamp(16px, 5.625vw, 108px); }
+   size: its margins are 85px there, and scale with the screen around it on
+   any screen, a wide monitor's too — the page never stops widening and
+   leaves blank sides. */
+.page { margin: 0 auto; padding: 0 max(16px, 5.625vw); }
 /* The page's column takes the height the band leaves, so the footer's
    margin-top: auto can carry it down; the mock-up keeps about 80px between
    the footer's last line and the foot of the window. */
@@ -218,9 +220,12 @@ a { color: inherit; }
    step rather than jumping. Only while busy: back at rest it is gone at once. */
 .go:disabled .fill { transition: width 2.5s linear; }
 .go .word { position: relative; }
-/* The way out, in GENERATE's place once the drawing is done: boxes as high as
-   the cells, the first yellow, their words as far in as the cells'. */
-.toolside #links .btn { text-align: left; line-height: normal; padding: 7.25px 14px; }
+/* The way out, in GENERATE's place once the drawing is done: a line each, as
+   wide as GENERATE and as high as the cells, the first yellow, their words as
+   far in as the cells'. Two sharing a line on a wide screen would split it
+   where the tables above do not. */
+.toolside #links .btn { flex-basis: 100%; text-align: left; line-height: normal;
+                        padding: 7.25px 14px; }
 /* The small print under them, in the footer's size. */
 .toolafter #unlockWhat { font-size: var(--small); line-height: 1.4; margin-top: 24px;
                          white-space: pre-line; }
