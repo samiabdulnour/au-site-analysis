@@ -1436,13 +1436,16 @@ for a town centre, a star for a State significant site, a pennant for a
 precinct), and when none lies on the block's page it widens, as far as
 1:25 000, until the nearest two do, over the region's roads and rail.
 Then *topography*: the landform
-at 1:5000: in Heron and Canary the ground in 5 m bands toned along the
-palette's ramp under the hillshade from the State's 5 m elevation model; in
+at 1:5000: in Heron and Canary the ground in 5 m bands toned under the
+hillshade from the State's 5 m elevation model (Canary along the palette's
+ramp, Heron between two colours of its sheet, the blue low and the red
+high); in
 Flamingo and Kingfisher no fill at all, the contours alone, traced from the
 model every metre (the fives heavier and numbered), each coloured up the
 same ramp by its height; with the 2 m contours numbered along the index
 ones, the water named, the high and low points of the page and the site's
-level marked, roads and rail over it and two section lines through the site,
+level marked, roads and rail over it and two section lines through the site
+(the sections' poché in the page's own ink, black in Canary),
 A–A′ down the steepest fall and B–B′ across it, each drawn as a section
 with the site and its levels marked; the text gives the site's RL range,
 fall, grade and aspect and where the high ground and the water are. Then

@@ -3228,9 +3228,12 @@ export function topographyAtlas(b0: SlidesBundle): Slide {
   const bands = Math.max(1, Math.ceil((hi - lo) / STEP));
   // The landform over the photograph: bands toned along the palette's ramp under the hillshade. On paper: no fill at
   // all, the contours alone, each in its band's colour up the same ramp, so the height reads in the lines' colour.
-  const bandCols = rampColours(bands, paletteRamp());
-  const toneCols = bandCols.map((c) => tint(c, 0.7));
+  // Heron's bands run between two colours of its sheet, the blue low and the red high; the others up the palette's ramp
+  const bandCols = rampColours(bands, look.id === 'heron' ? [INK.blue.solid, INK.red.deep] : paletteRamp());
+  const toneCols = bandCols.map((c) => tint(c, look.id === 'heron' ? 0.85 : 0.7));
   const tone = look.technique === 'tone';
+  // the page's own ink: the colour of the site's contour, for the narrative and the sections' poché
+  const PAGE_INK = f?.site ? inkFor(bandCols[Math.min(bands - 1, Math.max(0, Math.floor(((f.site.min + f.site.max) / 2 - lo) / STEP)))], 0.3) : deckLook().accent;
   const bandKey: Fill[] = toneCols.map((c) => ({ bg: c }));
   if (g && f && tone) parts.push(demPicture(g, proj, reliefDataUri(g, RELIEF_INK, { stepM: STEP, lo, hi, shade: 0.4, colours: toneCols })));
   const bandOfRl = (rl: number) => Math.min(bands - 1, Math.max(0, Math.floor((rl - lo) / STEP)));
@@ -3319,7 +3322,7 @@ export function topographyAtlas(b0: SlidesBundle): Slide {
   const n = Math.min(7, bands), pick = (i: number) => bandCols[Math.round((i * (bands - 1)) / Math.max(1, n - 1))];
   const lineStrip = Array.from({ length: n }, (_, i) => `<line x1="${((i * 5) / n).toFixed(2)}" y1="1.2" x2="${(((i + 1) * 5) / n).toFixed(2)}" y2="1.2" stroke="${pick(i)}" stroke-width="0.45"/><line x1="${((i * 5) / n).toFixed(2)}" y1="2.5" x2="${(((i + 1) * 5) / n).toFixed(2)}" y2="2.5" stroke="${pick(i)}" stroke-width="0.2"/>`).join('');
   const legend: LegendEntry[] = tone ? [
-    { swatch: stripOf(bandKey), label: `The ground in bands of ${STEP} m from RL ${lo} to RL ${hi}, blue on the low ground through green to red on the high; hillshade from the north-west` },
+    { swatch: stripOf(bandKey), label: `The ground in bands of ${STEP} m from RL ${lo} to RL ${hi}, ${look.id === 'heron' ? 'blue on the low ground to red on the high' : 'blue on the low ground through green to red on the high'}; hillshade from the north-west` },
     { swatch: `<line x1="0" y1="2.6" x2="5" y2="2.6" stroke="${CONTOUR_INK}" stroke-width="0.15"/><line x1="0" y1="1.1" x2="5" y2="1.1" stroke="${CONTOUR_INK}" stroke-width="0.4"/>`, label: `Contours every ${interval} m, every ${indexEvery} m heavier and numbered along their run` },
   ] : [
     { swatch: lineStrip, label: `Contours every ${interval} m, coloured up the slope from RL ${lo} to RL ${hi}, blue on the low ground through green to red on the high; every ${indexEvery} m heavier and numbered along their run` },
@@ -3349,7 +3352,7 @@ export function topographyAtlas(b0: SlidesBundle): Slide {
     const commonVe = [1, 2, 5, 10, 20, 25, 50].filter((v) => sections.every((s) => { const r = s.samples.map((q) => q.rl); return Math.max(1, Math.max(...r) - Math.min(...r)) * sxC * v <= Math.min(26, roomEach - 16); })).pop() ?? 1;
     for (const [i, s] of sections.entries()) {
       const room = (limit - y) / (sections.length - i) - 6.21 - 7.5;
-      const sec = groundSection(s, s.id, `${s.id}′`, S.deep, room, commonVe);
+      const sec = groundSection(s, s.id, `${s.id}′`, look.id === 'canary' ? '#000000' : PAGE_INK, room, commonVe);
       if (!sec) continue;
       const head = `Section ${s.id}–${s.id}′ · ${bearingName((s.bearing + 180) % 360)} to ${bearingName(s.bearing)} · 1:${fmtNum(sec.scale).replace(',', ' ')}${sec.ve > 1 ? ` · heights ×${sec.ve}` : ''}`;
       blocks.push(zBlock(head, sec.svg));
@@ -3357,7 +3360,7 @@ export function topographyAtlas(b0: SlidesBundle): Slide {
     }
   }
   const sources = `Sources: NSW 5 m elevation model (stereo imagery, DFSI 2019) via SIX Maps; contours from ${f?.contours.source ?? 'NSW Spatial Services'}${f?.contours.attribution ? ` (${f.contours.attribution})` : ''}; roads, rail, water and cadastre from NSW Spatial Services. Levels in metres AHD, indicative to about a metre. Retrieved ${b.generatedAt.slice(0, 10)}.`;
-  return { id: '07_topography', title: 'Topography', subtitle: sub, textHtml: '', figureHtml: atlasFigure(mapSvg, 'Landform', p, zFlow(blocks)), bleed: true, sources, accent: f?.site ? inkFor(bandCols[bandOfRl((f.site.min + f.site.max) / 2)], 0.3) : deckLook().accent, legend,
+  return { id: '07_topography', title: 'Topography', subtitle: sub, textHtml: '', figureHtml: atlasFigure(mapSvg, 'Landform', p, zFlow(blocks)), bleed: true, sources, accent: PAGE_INK, legend,
     narrative: brief(f ? [terrainSentences(b, f)[0], `On the map the ground runs from RL ${Math.round(f.window.minRl)} to RL ${Math.round(f.window.maxRl)}; the high point is ${fmtNum(Math.round(f.window.high.distanceM / 10) * 10)} m to the ${bearingName(f.window.high.bearing)}.`] : ['The elevation model did not answer for this run.']) };
 }
 
