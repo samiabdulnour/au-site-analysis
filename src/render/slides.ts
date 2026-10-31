@@ -12,15 +12,15 @@ import type { SlidesBundle } from '../pipeline.js';
 import { mergeRuns, straightEnough, arcTable, sliceAt, shortStreetName, type SheetMeta, type Pt } from './sheet.js';
 import type { TopoRoad } from '../fetch/nswTopo.js';
 import type { GeoJSONFeature } from '../lib/arcgis.js';
-import { tpl, withTemplate, templateFor, deckLook, withDeckOptions, tint, shadeHex, type DeckLook, type DeckOptions } from './template.js';
-import { INK, AERIAL_GREEN_FILL, VEG_1750_FILLS, fillShape, swatchOf, barOf, categoryFill, zHead, zBars, zFigures, zCircles, zSpans, zPairs, zLine, niceAxis, z6, zSvg, Z_W, Z_TRACK, type Fill } from './atlasKit.js';
+import { tpl, withTemplate, templateFor, deckLook, tint, shadeHex, type DeckLook } from './template.js';
+import { INK, aerialGreenFill, veg1750Fills, fillShape, swatchOf, barOf, categoryFill, zHead, zBars, zFigures, zCircles, zSpans, zPairs, zLine, niceAxis, z6, zSvg, Z_W, Z_TRACK, type Fill } from './atlasKit.js';
 import { esc } from './chrome.js';
 import {
   panelProjector, panelExtent, baseLayers, overLayers, panelFurniture, furnitureBox, siteMark, siteLabelPoint, stationMode, ringsPath, fcPath, ringStats, clippedStats, hatchPath, dotsPath, bboxOf, t2Text, t2Width, railSymbol,
   legendSvg, swatchFill, swatchHatch, swatchLine, swatchDots, LabelSpacer, type Proj, type Panel, type LegendEntry, type FurnitureCorner,
 } from './minimap.js';
 import { zoneFill, zoneOrder, heritageStyle, hobRamp, POLICY_STYLE } from './lepPalette.js';
-import { catById, categories, zoneToCategory } from './model.js';
+import { zoneToCategory } from './model.js';
 import { LEP_OPACITY } from './sheet.js';
 import { geomRings, isRealPolicyArea, pointInRing, titleCase, type PolicyArea, type PolicyKind } from '../fetch/planning.js';
 import { lonLatToMercator, mercatorToLonLat, mercatorScaleFactor } from '../lib/geo.js';
@@ -454,8 +454,6 @@ export const sentenceList = (s: PlanningSentences): string[] =>
 
 // ---- slide 01: location -----------------------------------------------------------
 
-const LAND_FILL = '#f6e3d7';
-const LGA_LINE = '#dcb6a0';
 const RING_KM = [2, 5];
 /** How many centres the table and the map name at most. */
 const CENTRES_LISTED = 8;
@@ -621,8 +619,12 @@ export function locationSlide(b: SlidesBundle): Slide {
   const centreLL = mercatorToLonLat(b.panel.center);
   const [sx, sy] = proj(centreLL.lon, centreLL.lat);
   const mmPerM = 1000 / p.scale;
-  // The location map is monochrome: the terracotta family over an unprinted sea, cut to a disc 13 km round the site.
-  const LOC = { deep: '#6e331d', rail: '#5d3327', road: '#a98d76', road2: '#bba188', road3: '#d9c8b8', name: '#7c4a33', soft: '#b59685' };
+  // The location map in the style's centres family over its water, cut to a disc 13 km round the site: the land its
+  // light tint, the site's council area a step firmer, the roads in the neutral family, the rail in the transit ink,
+  // the plan's centres in the style's marker ink.
+  const O = INK.orange, S = INK.sage, B = INK.blue;
+  const LAND_FILL = O.light, LGA_LINE = O.line;
+  const LOC = { deep: t.discInk ?? t.ink, rail: B.deep, road: S.deep, road2: S.line, road3: S.mid, name: S.text, soft: S.line };
   const DISC_R = 130;
   const parts: string[] = [`<rect x="0" y="0" width="${p.wMm}" height="${p.hMm}" fill="#ffffff"/>`];
   const legend: LegendEntry[] = [];
@@ -631,15 +633,15 @@ export function locationSlide(b: SlidesBundle): Slide {
     parts.push(`<path d="${land.map((l) => ringsPath(l.rings, proj)).join('')}" fill="${LAND_FILL}" fill-rule="evenodd" stroke="none"/>`);
     // farm dams and ponds under about half a hectare are specks at this scale, so they stay off
     const drawn = loc.water.filter((w) => w.rings.reduce((a, r) => a + clippedStats(r, proj, p).area, 0) >= 0.8);
-    if (drawn.length) parts.push(`<path d="${drawn.map((w) => ringsPath(w.rings, proj)).join('')}" fill="#ffffff" fill-rule="evenodd" stroke="none"/>`);
+    if (drawn.length) parts.push(`<path d="${drawn.map((w) => ringsPath(w.rings, proj)).join('')}" fill="${t.water}" fill-rule="evenodd" stroke="none"/>`);
     parts.push(`<path d="${land.map((l) => ringsPath(l.rings, proj)).join('')}" fill="none" stroke="${LGA_LINE}" stroke-width="0.3" stroke-linejoin="round"/>`);
-    legend.push({ swatch: swatchFill(LAND_FILL, LGA_LINE), label: 'Local government areas; the harbour and the sea unprinted' });
+    legend.push({ swatch: swatchFill(LAND_FILL, LGA_LINE), label: 'Local government areas; the harbour, the lakes and the sea in the water tint' });
   } else parts.push(emptyNote(['The boundary layers did not answer for this window.']));
   const lgaName = b.context.lga?.name?.toUpperCase();
   const mine = loc.lgas.filter((l) => lgaName && l.name.toUpperCase() === lgaName);
   if (mine.length) {
-    parts.push(`<path d="${mine.map((l) => ringsPath(l.rings, proj)).join('')}" fill="${LOC.road3}" fill-opacity="0.5" stroke="${LOC.deep}" stroke-width="0.45" fill-rule="evenodd" stroke-linejoin="round"/>`);
-    legend.push({ swatch: `<rect x="0" y="0.2" width="5" height="3" fill="${LOC.road3}" fill-opacity="0.5" stroke="${LOC.deep}" stroke-width="0.3"/>`, label: `${titleCase(b.context.lga!.name)} local government area` });
+    parts.push(`<path d="${mine.map((l) => ringsPath(l.rings, proj)).join('')}" fill="${O.mid}" fill-opacity="0.7" stroke="${O.deep}" stroke-width="0.45" fill-rule="evenodd" stroke-linejoin="round"/>`);
+    legend.push({ swatch: `<rect x="0" y="0.2" width="5" height="3" fill="${O.mid}" fill-opacity="0.7" stroke="${O.deep}" stroke-width="0.3"/>`, label: `${titleCase(b.context.lga!.name)} local government area` });
   }
   // roads by hierarchy, then rail with its dashes
   const byH = new Map<number, string[]>();
@@ -656,10 +658,10 @@ export function locationSlide(b: SlidesBundle): Slide {
   // the rings
   for (const kmR of RING_KM) {
     const r = kmR * 1000 * mmPerM;
-    parts.push(`<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="${r.toFixed(1)}" fill="none" stroke="${LOC.deep}" stroke-width="0.35" stroke-dasharray="2.2,1.3"/>`);
+    parts.push(`<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="${r.toFixed(1)}" fill="none" stroke="${t.dimension}" stroke-width="0.35" stroke-dasharray="2.2,1.3"/>`);
     parts.push(t2Text(sx + r * 0.7071 + 2.2, sy + r * 0.7071 + 2.6, `${kmR} km`));
   }
-  legend.push({ swatch: swatchLine(LOC.deep, 0.35, '2.2,1.3'), label: '2 and 5 km from the site' });
+  legend.push({ swatch: swatchLine(t.dimension, 0.35, '2.2,1.3'), label: '2 and 5 km from the site' });
   const spacer = new LabelSpacer(p.wMm, p.hMm, 120);
   spacer.take(sx, sy, 6, 6);
   spacer.take(sx + 3.2 + labelW('SITE', 2.6) / 2, sy, labelW('SITE', 2.6), 3.2);
@@ -734,7 +736,7 @@ export function locationSlide(b: SlidesBundle): Slide {
   const narrative = sentences[0];
   void tiles; void table; void legendHtml;
   const sub = [[b.siteAddress, f.lga ? f.lga.name : ''].filter(Boolean).join(' '), `${km(f.cbd.distanceM)} from the Sydney CBD`, near ? `${near.name} ${km(near.distanceM)}` : ''].filter(Boolean).join(' · ');
-  return { id: '01_location', title: 'Location', subtitle: sub, textHtml, figureHtml: figure, bleed: true, sources, narrative, accent: '#f5a470', legend };
+  return { id: '01_location', title: 'Location', subtitle: sub, textHtml, figureHtml: figure, bleed: true, sources, narrative, accent: O.text, legend };
 }
 
 // ---- slide 02: character ----------------------------------------------------------
@@ -1329,50 +1331,28 @@ export function planningOverviewSlide(b: SlidesBundle, facts: PlanningFacts): Sl
 }
 
 /** The zones of the window in groups, each group one pattern of the red family; the code is written on the map. */
-interface ZoneGroup { key: string; label: string; test: (code: string, name: string) => boolean; fill: Fill }
-/** The zones in six groups told apart by pattern in one family: the legacy deck's way (the red family), and the mono palette's, in the style's own; over a photograph the grounds are thinned so it shows through. */
-const zoneGroupsIn = (F: { solid: string; mid: string; light: string; line: string; deep: string }, ground: 'paper' | 'aerial' = 'paper'): ZoneGroup[] => {
-  const op = ground === 'aerial' ? 0.55 : undefined;
-  return [
-    { key: 'res', label: 'Residential zones', test: (c, n) => /residential/i.test(n) || /^R\d/.test(c), fill: { bg: F.light, opacity: op, outline: F.mid, outlineW: 0.12 } },
-    { key: 'centre', label: 'Centres, mixed use, business and commercial zones', test: (c, n) => /mixed|business|commercial|centre|enterprise|productivity/i.test(n) || /^(MU|B\d|E[123]$)/.test(c), fill: { bg: '#ffffff', opacity: op, kind: 'vlines', ink: F.line, step: 0.75, w: 0.16, outline: F.mid, outlineW: 0.12 } },
-    { key: 'ind', label: 'Industrial and employment zones', test: (c, n) => /industr|employment/i.test(n) || /^(IN\d|E[45]$)/.test(c), fill: { bg: '#ffffff', opacity: op, kind: 'hlines', ink: F.line, step: 0.75, w: 0.16, outline: F.mid, outlineW: 0.12 } },
-    { key: 'sp', label: 'Special purposes, infrastructure and railways', test: (c, n) => /special|infrastructure|railway/i.test(n) || /^(SP\d|RLWY)/.test(c), fill: { bg: '#ffffff', opacity: op, kind: 'dots', ink: F.deep, step: 0.9, w: 0.12, outline: F.mid, outlineW: 0.12 } },
-    { key: 'rec', label: 'Recreation and conservation zones', test: (c, n) => /recreation|conservation|environmental|national park|nature/i.test(n) || /^(RE\d|C\d)/.test(c), fill: { bg: '#ffffff', opacity: op, kind: 'waves', ink: F.mid, step: 1.1, w: 0.16, outline: F.mid, outlineW: 0.12 } },
-    { key: 'other', label: 'Waterways, unzoned and other zones', test: () => true, fill: { bg: '#ffffff', opacity: op, outline: F.mid, outlineW: 0.2 } },
-  ];
-};
-const ZONE_GROUPS = zoneGroupsIn(INK.red);
-const zoneGroup = (code: string, name: string) => ZONE_GROUPS.find((g) => g.test(code, name))!;
-
 /** A class of zones on the planning page: its name in the key, its fill on the map, the same fill opaque for the key and the bars, and its place in the key. */
 interface ZoneClass { key: string; label: string; fill: Fill; swatch: Fill; order: number }
 
 /**
- * How the planning page classes and fills its zones, by the deck look: six
- * groups in one family's patterns (the legacy deck, and a style's mono
- * palette); the style's land-use categories with their textures, as its
- * context sheet draws them; or each zone code in its NSW ePlanning colour
- * (Canary). `of` classes a zoning feature; `all` lists the classes met, in
- * the key's order.
+ * How the planning page classes and fills its zones, by the deck look: the
+ * style's land-use categories with their textures, as its context sheet
+ * draws them, or each zone code in its NSW ePlanning colour (Canary). `of`
+ * classes a zoning feature; `all` lists the classes met, in the key's order.
  */
 function zoneClasses(look: DeckLook): { of: (code: string, name: string) => ZoneClass; all: () => ZoneClass[] } {
   const seen = new Map<string, ZoneClass>();
-  const groups = look.legacy || look.palette === 'mono' ? zoneGroupsIn(look.legacy ? INK.red : look.family, look.legacy ? 'paper' : look.ground) : null;
   const opaque = (f: Fill): Fill => (f.opacity !== undefined && f.bg ? { ...f, bg: tint(f.bg, f.opacity), opacity: undefined } : f);
   const of = (code: string, name: string): ZoneClass => {
     let key: string, make: () => ZoneClass;
-    if (groups) {
-      const i = groups.findIndex((g) => g.test(code, name)), g = groups[i];
-      key = g.key; make = () => ({ key, label: g.label, fill: g.fill, swatch: opaque(g.fill), order: i });
-    } else if (look.zones === 'lep') {
+    if (look.zones === 'lep') {
       key = code.toUpperCase();
       const fill: Fill = look.ground === 'paper' ? { bg: tint(zoneFill(code), LEP_OPACITY) } : { bg: zoneFill(code), opacity: LEP_OPACITY * look.tintScale };
       make = () => ({ key, label: `${code} ${name.replace(new RegExp(`^${code}\\s*`, 'i'), '')}`.trim(), fill, swatch: opaque(fill), order: zoneOrder(code) });
     } else {
-      const cat = zoneToCategory(code), c = cat ? catById()[cat] : undefined;
+      const cat = zoneToCategory(code), c = cat ? look.categories.find((x) => x.id === cat) : undefined;
       if (!c) { key = 'other'; make = () => ({ key, label: 'Waterways, unzoned and other zones', fill: { bg: '#ffffff', opacity: look.ground === 'paper' ? 1 : 0, outline: '#b9ae99', outlineW: 0.15 }, swatch: { bg: '#ffffff', outline: '#b9ae99', outlineW: 0.15 }, order: 99 }); }
-      else { key = c.id; const fill = categoryFill(c, look.ground, look.tintScale); make = () => ({ key, label: c.label, fill, swatch: opaque(fill), order: categories().indexOf(c) }); }
+      else { key = c.id; const fill = categoryFill(c, look.ground, look.tintScale); make = () => ({ key, label: c.label, fill, swatch: opaque(fill), order: look.categories.indexOf(c) }); }
     }
     return seen.get(key) ?? seen.set(key, make()).get(key)!;
   };
@@ -1388,25 +1368,23 @@ function aerialGround(b: SlidesBundle, p: Panel, look: DeckLook): string {
 }
 
 /**
- * Planning overview on the template. The legacy deck sets the zones in the
- * red family's patterns; a style sets them in its own palette (or, for the
- * comparison, its accent's family alone), on its paper or on the greyed
- * photograph, with its heritage, street and lot inks; the heritage drawn over
- * them, the heights charted.
+ * Planning overview on the template: the zones in the style's own palette,
+ * on its paper or on the greyed photograph, with its heritage, street and
+ * lot inks; the heritage drawn over them, the heights charted.
  */
 export function planningAtlas(b0: SlidesBundle): Slide {
   const p = b0.bleedPanel;
   const b: SlidesBundle = { ...b0, panel: p, daPanel: p };
   const t = tpl();
   const look = deckLook();
-  const F = look.legacy ? INK.red : look.family;
-  const accent = look.legacy ? INK.red.text : look.accent;
+  const F = look.family;
+  const accent = look.accent;
   const f = planningFacts(b);
   const proj = panelProjector(p);
   const ground = aerialGround(b, p, look);
   const onAerial = ground !== '';
-  // the base in greys under the legacy deck; under a style, its water and a light casing to the roads
-  const gt = look.legacy ? greyBase(t) : { ...t, road: '#c9c9c9', paper: onAerial ? '#e9e9e9' : t.paper ?? '#ffffff' };
+  // the style's water under a light casing to the roads
+  const gt = { ...t, road: '#c9c9c9', paper: onAerial ? '#e9e9e9' : t.paper ?? '#ffffff' };
   const box = { x0: 0, y0: 0, x1: p.wMm, y1: p.hMm };
   const parts: string[] = [withTemplate(gt, () => baseLayers(b.base, proj, p, { lots: false })), ground];
   const zc = zoneClasses(look);
@@ -1424,17 +1402,17 @@ export function planningAtlas(b0: SlidesBundle): Slide {
   // the cadastre: white hairlines over the tints, or the style's faint grey
   if (b.base.lots.features.length) {
     const d = b.base.lots.features.map((ft) => ringsPath(geomRings(ft.geometry), proj)).join('');
-    parts.push(look.legacy || look.lots === 'white'
-      ? `<path d="${d}" fill="none" stroke="#ffffff" stroke-width="${look.legacy ? 0.1 : 0.16}" opacity="${look.legacy ? 0.8 : 0.9}"/>`
+    parts.push(look.lots === 'white'
+      ? `<path d="${d}" fill="none" stroke="#ffffff" stroke-width="0.16" opacity="0.9"/>`
       : `<path d="${d}" fill="none" stroke="${t.road}" stroke-width="0.1" opacity="0.5"/>`);
   }
-  // heritage over the zones: items filled in the heritage ink (the legacy's white, outlined), conservation areas dashed, the State register's curtilages heavy
-  const HI = look.legacy ? F.deep : look.heritage, HA = look.legacy ? F.deep : look.heritageArea, HS = look.legacy ? F.deep : shadeHex(look.heritage, 0.7);
+  // heritage over the zones: items hatched in the heritage ink, conservation areas dashed, the State register's curtilages heavy
+  const HI = look.heritage, HA = look.heritageArea, HS = shadeHex(look.heritage, 0.7);
   const cas = b.heritage.features.filter((ft) => /Conservation Area/i.test(String(ft.properties.LAY_CLASS ?? '')));
   const items = b.heritage.features.filter((ft) => !/Conservation Area/i.test(String(ft.properties.LAY_CLASS ?? '')));
-  // the items: the legacy's white, outlined; a style's hatch in its heritage ink, as its context sheet hatches them (falling the other way to the zones' textures, so the two still read apart)
+  // the items hatched in the heritage ink, as the style's context sheet hatches them (falling the other way to the zones' textures, so the two still read apart)
   const itemsD = items.map((ft) => ringsPath(geomRings(ft.geometry), proj)).join('');
-  if (items.length) parts.push(look.legacy ? `<path d="${itemsD}" fill="#ffffff" fill-opacity="0.55" stroke="${HI}" stroke-width="0.22" fill-rule="evenodd"/>` : hatchPath(itemsD, 'plan03-items', HI, box, 1.4));
+  if (items.length) parts.push(hatchPath(itemsD, 'plan03-items', HI, box, 1.4));
   if (cas.length) parts.push(`<path d="${cas.map((ft) => ringsPath(geomRings(ft.geometry), proj)).join('')}" fill="none" stroke="${HA}" stroke-width="0.45" stroke-dasharray="1.4 0.7" fill-rule="evenodd"/>`);
   if (b.shr.features.length) parts.push(`<path d="${b.shr.features.map((ft) => ringsPath(geomRings(ft.geometry), proj)).join('')}" fill="none" stroke="${HS}" stroke-width="0.8" fill-rule="evenodd"/>`);
   parts.push(withTemplate(gt, () => overLayers(b.base, proj, p, 'none')));
@@ -1447,7 +1425,7 @@ export function planningAtlas(b0: SlidesBundle): Slide {
   const labels: string[] = [];
   const word = onAerial ? a6 : m6;
   for (const c of cands.sort((x, y) => y.area - x.area)) if (spacer.take(c.cx, c.cy, c.text.length * 1.6 + 1, 2.8)) labels.push(word(c.cx, c.cy, c.text, 'middle'));
-  labels.push(streetNameLayer(b.base.roads, proj, p, spacer, 'plan03', look.legacy ? '#3c3c3c' : onAerial ? look.streetInkAerial : look.streetInk, 2.0, onAerial ? '#1c1c1c' : '#ffffff'));
+  labels.push(streetNameLayer(b.base.roads, proj, p, spacer, 'plan03', onAerial ? look.streetInkAerial : look.streetInk, 2.0, onAerial ? '#1c1c1c' : '#ffffff'));
   parts.push(...labels, siteMark(b.base, proj, 'both'), siteEdge(b, proj), panelFurniture(p, 'left'));
   const mapSvg = bleedSvg('plan03', p, parts.join('\n'));
 
@@ -1455,7 +1433,7 @@ export function planningAtlas(b0: SlidesBundle): Slide {
   const present = zc.all().filter((c) => byClass.has(c.key));
   const legend: LegendEntry[] = [
     ...present.map((c) => ({ swatch: swatchOf(c.swatch), label: c.label })),
-    ...(items.length ? [{ swatch: look.legacy ? `<rect x="0.2" y="0.6" width="4.6" height="2.4" fill="#ffffff" stroke="${HI}" stroke-width="0.22"/>` : swatchHatch(HI), label: 'Heritage item, local plan' }] : []),
+    ...(items.length ? [{ swatch: swatchHatch(HI), label: 'Heritage item, local plan' }] : []),
     ...(cas.length ? [{ swatch: `<rect x="0.3" y="0.6" width="4.4" height="2.4" fill="none" stroke="${HA}" stroke-width="0.4" stroke-dasharray="1.4 0.7"/>`, label: 'Heritage conservation area' }] : []),
     ...(b.shr.features.length ? [{ swatch: `<rect x="0.4" y="0.7" width="4.2" height="2.2" fill="none" stroke="${HS}" stroke-width="0.7"/>`, label: 'State Heritage Register curtilage' }] : []),
     SITE_KEY(t),
@@ -1476,8 +1454,8 @@ export function planningAtlas(b0: SlidesBundle): Slide {
   ], 9.6);
   let y = 44 + blockH(6.3 + 3 * 9.6);
   const blocks = [zBlock('The controls', figs, 'Heritage')];
-  // each zone's share in its own fill, the site's zone solid in the legacy's red and outlined in the style's accent
-  const siteBar = (fill: Fill): Fill => (look.legacy ? { bg: F.solid } : { ...fill, outline: accent, outlineW: 0.35 });
+  // each zone's share in its own fill, the site's zone outlined in the accent
+  const siteBar = (fill: Fill): Fill => ({ ...fill, outline: accent, outlineW: 0.35 });
   const zoneRows = f.zonesInWindow.filter((zz) => zz.areaShare >= 0.01).slice(0, 8).map((zz) => { const cls = zc.of(zz.code, zz.name); return { name: shorten(`${zz.code}  ${zz.name}`, 42), value: zz.areaShare * 100, label: fmtPct(zz.areaShare * 100), fill: zz.code === z?.code ? siteBar(cls.swatch) : cls.swatch }; });
   if (zoneRows.length) {
     const ax = niceAxis(Math.max(...zoneRows.map((r) => r.value)));
@@ -2020,7 +1998,7 @@ const m6 = (x: number, y: number, text: string, anchor: 'start' | 'middle' | 'en
   `<text x="${x.toFixed(2)}" y="${(y + 0.75).toFixed(2)}" text-anchor="${anchor}" font-size="2.117" letter-spacing="0.19" font-family="Arial, 'Liberation Sans', sans-serif" fill="#000000" stroke="#ffffff" stroke-width="0.5" stroke-linejoin="round" paint-order="stroke">${esc(text)}</text>`;
 
 /** The base every template map stands on: white ground, the cadastre and the roads in greys, rail as track. */
-const greyBase = (t: ReturnType<typeof tpl>) => ({ ...t, water: '#eef3f6', road: '#c9c9c9', rail: '#8a8a8a', transit: '#6f6f6f', busRoute: '#9a9a9a' });
+const greyBase = (t: ReturnType<typeof tpl>) => ({ ...t, water: tint(t.water, 0.55), road: '#c9c9c9', rail: '#8a8a8a', transit: '#6f6f6f', busRoute: '#9a9a9a' });
 
 
 /** The narrative: the slide's own facts in two or three sentences, cut where the next would run past `max`. */
@@ -3272,18 +3250,23 @@ export function builtFormSlide(b: SlidesBundle, planning: PlanningFacts): Slide 
 
 /** The storey bands on the template: one sage ink, the height told by pattern — open, sparse lines, dense lines, tint, tint and lines. */
 const SAGE = INK.sage;
-const BAND_FILL: Fill[] = [
-  { bg: '#ffffff', outline: SAGE.deep, outlineW: 0.12 },
-  { bg: '#ffffff', kind: 'vlines', ink: SAGE.deep, step: 0.95, w: 0.13, outline: SAGE.deep, outlineW: 0.12 },
-  { bg: '#ffffff', kind: 'vlines', ink: SAGE.deep, step: 0.45, w: 0.13, outline: SAGE.deep, outlineW: 0.12 },
-  { bg: SAGE.solid, outline: SAGE.deep, outlineW: 0.12 },
-  { bg: SAGE.solid, kind: 'vlines', ink: SAGE.deep, step: 0.45, w: 0.16, outline: SAGE.deep, outlineW: 0.15 },
-];
-// outlined, so a footprint with no recorded height still reads as a building and not as open ground
-const NO_HEIGHT: Fill = { bg: SAGE.mid, kind: 'dots', ink: SAGE.deep, step: 1.1, w: 0.09, outline: SAGE.deep, outlineW: 0.08 };
-/** A lot the open footprints miss (lotsWithoutFootprint): sparse level lines in a dashed edge, plainly not a building. */
-const LOT_GAP: Fill = { bg: '#ffffff', kind: 'hlines', ink: SAGE.deep, step: 0.9, w: 0.08, outline: SAGE.deep, outlineW: 0.12, dash: '0.6 0.4' };
-const bandFill = (h?: number): Fill => { const bd = bandOf(h); return bd ? BAND_FILL[HEIGHT_BANDS.indexOf(bd)] : NO_HEIGHT; };
+/** The height bands' fills, the no-height dots and the footprint-gap hatch, in the style's neutral family: made per page, since a fill holds the inks it was made with. */
+function bandFills(): { bands: Fill[]; noHeight: Fill; lotGap: Fill } {
+  return {
+    bands: [
+      { bg: '#ffffff', outline: SAGE.deep, outlineW: 0.12 },
+      { bg: '#ffffff', kind: 'vlines', ink: SAGE.deep, step: 0.95, w: 0.13, outline: SAGE.deep, outlineW: 0.12 },
+      { bg: '#ffffff', kind: 'vlines', ink: SAGE.deep, step: 0.45, w: 0.13, outline: SAGE.deep, outlineW: 0.12 },
+      { bg: SAGE.solid, outline: SAGE.deep, outlineW: 0.12 },
+      { bg: SAGE.solid, kind: 'vlines', ink: SAGE.deep, step: 0.45, w: 0.16, outline: SAGE.deep, outlineW: 0.15 },
+    ],
+    // outlined, so a footprint with no recorded height still reads as a building and not as open ground
+    noHeight: { bg: SAGE.mid, kind: 'dots', ink: SAGE.deep, step: 1.1, w: 0.09, outline: SAGE.deep, outlineW: 0.08 },
+    // a lot the open footprints miss (lotsWithoutFootprint): sparse level lines in a dashed edge, plainly not a building
+    lotGap: { bg: '#ffffff', kind: 'hlines', ink: SAGE.deep, step: 0.9, w: 0.08, outline: SAGE.deep, outlineW: 0.12, dash: '0.6 0.4' },
+  };
+}
+const bandFill = (h: number | undefined, bf: ReturnType<typeof bandFills>): Fill => { const bd = bandOf(h); return bd ? bf.bands[HEIGHT_BANDS.indexOf(bd)] : bf.noHeight; };
 /** Below the free space a flow may take, the key rises from the foot of the page: 8.52 mm a row, 12.2 mm up. */
 const keyTop = (entries: number) => 297 - 12.2 - (entries > LEGEND_ONE_COLUMN ? Math.ceil(entries / 2) : entries) * 8.52;
 /** The height a block of the kit takes in the flow: head, body, gap. */
@@ -3306,7 +3289,7 @@ function cropSection(sec: SectionLine, scale: number, widthMm = Z_W): SectionLin
 const fillScale = (lengthM: number, widthMm: number) => [500, 1000, 1250, 2000, 2500, 5000, 7500, 10000, 12500, 15000, 20000, 25000, 50000].filter((x) => (lengthM * 1000) / x >= widthMm - 1e-6).pop() ?? 500;
 
 /** Section A–A′ after the template: true scale where it reads, the ground in poché, buildings in their storey pattern, the height plane dashed. */
-function atlasSection(b: SlidesBundle, sec: SectionLine, envelope: ReturnType<typeof builtFormFacts>['envelope'], maxH: number): { svg: string; scale: number; ve: number; h: number } | null {
+function atlasSection(b: SlidesBundle, sec: SectionLine, envelope: ReturnType<typeof builtFormFacts>['envelope'], maxH: number, bf: ReturnType<typeof bandFills>): { svg: string; scale: number; ve: number; h: number } | null {
   const samples = sec.samples;
   if (samples.length < 2) return null;
   const L = sec.lengthM;
@@ -3359,7 +3342,7 @@ function atlasSection(b: SlidesBundle, sec: SectionLine, envelope: ReturnType<ty
     const top = bk.ground + (bk.h ?? METRES_PER_STOREY);
     const x0 = X(bk.d0), x1 = X(bk.d1), y0 = Y(top), y1 = Y(bk.ground);
     // every building outlined, so the neighbours read; each runs a little below the ground, which is drawn over it
-    const f: Fill = { ...(bk.site ? { bg: tpl().site } : bandFill(bk.h)), outline: bk.site ? tpl().site : '#000000', outlineW: 0.15 };
+    const f: Fill = { ...(bk.site ? { bg: tpl().site } : bandFill(bk.h, bf)), outline: bk.site ? tpl().site : '#000000', outlineW: 0.15 };
     const yb = y1 + 1.2;
     g.push(fillShape(`M${x0.toFixed(2)},${y0.toFixed(2)}H${x1.toFixed(2)}V${yb.toFixed(2)}H${x0.toFixed(2)}Z`, { x0, y0, x1, y1: yb }, f));
     if (top > hi + 0.5 && bk.h) cut.push(z6((x0 + x1) / 2, TOP - 2.9, `↑${Math.round(bk.h / METRES_PER_STOREY)}`, 'middle'));
@@ -3413,14 +3396,15 @@ export function builtFormAtlas(b0: SlidesBundle, planning: PlanningFacts): Slide
   const gt = greyBase(t);
   const parts: string[] = [withTemplate(gt, () => baseLayers(b.base, proj, p, { lots: false }))];
   const box = { x0: 0, y0: 0, x1: p.wMm, y1: p.hMm };
+  const bf = bandFills();
   const groups = new Map<Fill, string[]>();
-  for (const bd of b.buildings.buildings) { const fl = bandFill(bd.estimatedHeightM); (groups.get(fl) ?? groups.set(fl, []).get(fl)!).push(ringsPath(bd.rings, proj)); }
-  for (const fl of [NO_HEIGHT, ...BAND_FILL]) { const ds = groups.get(fl); if (ds) parts.push(fillShape(ds.join(''), box, fl)); }
+  for (const bd of b.buildings.buildings) { const fl = bandFill(bd.estimatedHeightM, bf); (groups.get(fl) ?? groups.set(fl, []).get(fl)!).push(ringsPath(bd.rings, proj)); }
+  for (const fl of [bf.noHeight, ...bf.bands]) { const ds = groups.get(fl); if (ds) parts.push(fillShape(ds.join(''), box, fl)); }
   const fromDa = b.buildings.buildings.filter((bd) => bd.heightFrom === 'da');
   if (fromDa.length) parts.push(`<path d="${fromDa.map((bd) => ringsPath(bd.rings, proj)).join('')}" fill="none" stroke="${SAGE.line}" stroke-width="0.4" fill-rule="evenodd"/>`);
   // the lots no open source has a footprint on: a gap in the data, hatched so it does not read as open ground
   const gap = lotsWithoutFootprint(b, p);
-  if (gap.count) parts.push(fillShape(gap.gaps.map((rs) => ringsPath(rs, proj)).join(''), box, LOT_GAP));
+  if (gap.count) parts.push(fillShape(gap.gaps.map((rs) => ringsPath(rs, proj)).join(''), box, bf.lotGap));
   parts.push(withTemplate(gt, () => overLayers(b.base, proj, p, 'none')));
   // the section line, as on the topography slide
   const terrain = terrainFacts(b0);
@@ -3455,9 +3439,9 @@ export function builtFormAtlas(b0: SlidesBundle, planning: PlanningFacts): Slide
 
   // ---- the key first, so the flow knows where it must stop
   const legend: LegendEntry[] = [
-    ...HEIGHT_BANDS.map((bd, i) => ({ swatch: swatchOf(BAND_FILL[i]), label: `${i ? bd.label : '1–2'} storeys · ${fmtNum(f.bands[i].count)}`.replace('and more storeys', 'storeys and more') })),
-    { swatch: swatchOf(NO_HEIGHT), label: `No height recorded · ${fmtNum(f.bands[5].count)}` },
-    ...(gap.count ? [{ swatch: swatchOf(LOT_GAP), label: `Lot with no footprint in the open data, likely built · ${fmtNum(gap.count)}` }] : []),
+    ...HEIGHT_BANDS.map((bd, i) => ({ swatch: swatchOf(bf.bands[i]), label: `${i ? bd.label : '1–2'} storeys · ${fmtNum(f.bands[i].count)}`.replace('and more storeys', 'storeys and more') })),
+    { swatch: swatchOf(bf.noHeight), label: `No height recorded · ${fmtNum(f.bands[5].count)}` },
+    ...(gap.count ? [{ swatch: swatchOf(bf.lotGap), label: `Lot with no footprint in the open data, likely built · ${fmtNum(gap.count)}` }] : []),
     ...(fromDa.length ? [{ swatch: `<rect x="0.2" y="0.6" width="4.6" height="2.4" fill="#ffffff" stroke="${SAGE.line}" stroke-width="0.4"/>`, label: `Storeys from a determined DA on the lot · ${fmtNum(fromDa.length)}` }] : []),
     ...(secA ? [{ swatch: `<path d="M0,1.8H5" stroke="#000000" stroke-width="0.25" stroke-dasharray="2.4 0.8 0.4 0.8"/>`, label: 'Section line A–A′; numbers on the map are storeys' }] : []),
     ...(secA ? [{ swatch: `<path d="M0,1.8H5" stroke="#000000" stroke-width="0.2" stroke-dasharray="0.6 0.5"/>`, label: 'LEP height of building along the section, in metres' }] : []),
@@ -3491,9 +3475,9 @@ export function builtFormAtlas(b0: SlidesBundle, planning: PlanningFacts): Slide
     .map((bd) => ({ bd, ...geo(bd) })).filter((q) => q.d <= f.near.radiusM);
   const st = (bd: Building) => bd.floors ?? storeysOf(bd.estimatedHeightM!);
   const tall250 = [...nearKnown].sort((q, r) => r.bd.estimatedHeightM! - q.bd.estimatedHeightM!)[0];
-  if (tall250) rows.push({ name: `Tallest within ${f.near.radiusM} m · ${fmtNum(Math.round(tall250.d))} m ${bearingName(tall250.brg)}`, value: st(tall250.bd), label: `${st(tall250.bd)} st · ${Math.round(tall250.bd.estimatedHeightM!)} m`, fill: bandFill(tall250.bd.estimatedHeightM) });
-  if (f.near.medianStoreys) rows.push({ name: `Median within ${f.near.radiusM} m`, value: f.near.medianStoreys, label: `${f.near.medianStoreys} st`, fill: bandFill(f.near.medianM) });
-  for (const q of [...nearKnown].sort((x, z) => x.d - z.d).slice(0, 4)) rows.push({ name: `Nearest known · ${fmtNum(Math.round(q.d))} m ${bearingName(q.brg)}`, value: st(q.bd), label: `${st(q.bd)} st · ${Math.round(q.bd.estimatedHeightM!)} m`, fill: bandFill(q.bd.estimatedHeightM) });
+  if (tall250) rows.push({ name: `Tallest within ${f.near.radiusM} m · ${fmtNum(Math.round(tall250.d))} m ${bearingName(tall250.brg)}`, value: st(tall250.bd), label: `${st(tall250.bd)} st · ${Math.round(tall250.bd.estimatedHeightM!)} m`, fill: bandFill(tall250.bd.estimatedHeightM, bf) });
+  if (f.near.medianStoreys) rows.push({ name: `Median within ${f.near.radiusM} m`, value: f.near.medianStoreys, label: `${f.near.medianStoreys} st`, fill: bandFill(f.near.medianM, bf) });
+  for (const q of [...nearKnown].sort((x, z) => x.d - z.d).slice(0, 4)) rows.push({ name: `Nearest known · ${fmtNum(Math.round(q.d))} m ${bearingName(q.brg)}`, value: st(q.bd), label: `${st(q.bd)} st · ${Math.round(q.bd.estimatedHeightM!)} m`, fill: bandFill(q.bd.estimatedHeightM, bf) });
   const siteKnown = f.onSite.filter((x) => x.storeys);
   rows.push(siteKnown.length
     ? { name: 'On the site today', value: Math.max(...siteKnown.map((x) => x.storeys!)), label: `${Math.max(...siteKnown.map((x) => x.storeys!))} st`, fill: { bg: t.site } }
@@ -3504,7 +3488,7 @@ export function builtFormAtlas(b0: SlidesBundle, planning: PlanningFacts): Slide
     y += blockH(barsH(rows.length, !!e?.storeys));
   }
   if (secA) {
-    const sec = atlasSection(b0, secA, e, limit - y - 6.21);
+    const sec = atlasSection(b0, secA, e, limit - y - 6.21, bf);
     if (sec) blocks.push(`<div class="zblk">${zHead(`Section A–A′ · 1:${fmtNum(sec.scale).replace(',', ' ')}${sec.ve > 1 ? ` · heights ×${sec.ve}` : ''}`)}${sec.svg}</div>`);
   }
   const flow = `<div class="zflow" style="top:44mm">${blocks.join('')}</div>`;
@@ -3721,8 +3705,10 @@ export function movementSlide(b: SlidesBundle): Slide {
     `<div class="fine">Sources: NSW Spatial Services roads (function hierarchy), rail and stations; walking isochrones from Valhalla on OpenStreetMap; bus stops from ${f.bus.source === 'tfnsw' ? 'Transport for NSW' : f.bus.source === 'osm' ? 'OpenStreetMap' : 'Transport for NSW or OpenStreetMap (neither answered)'}; bus routes, cycleways, footways and one-way streets from OpenStreetMap contributors (ODbL); active street frontages from the ePlanning development-control layers. Retrieved ${b.generatedAt.slice(0, 10)}.</div>`;
   const sub = [b.siteAddress, f.stations[0] ? `${f.stations[0].name} ${fmtNum(f.stations[0].distanceM)} m` : '', f.frontage.length ? `fronts ${f.frontage.slice(0, 2).map((r) => r.name).join(' and ')}${f.frontage.length > 2 ? ` and ${f.frontage.length - 2} more` : ''}` : ''].filter(Boolean).join(' · ');
 
-  // The movement map bleeds over the whole figure page, monochrome in the navy family.
-  const MOVE = { iso: { 5: '#2c4c9c', 10: '#7b90c9', 15: '#b7c1e3' } as Record<number, string>, cycle: '#16244f', foot: '#9aa5c4', frontage: '#16244f', water: '#e8edf5', road: '#a9b2c6', rail: '#232e4c' };
+  // The movement map bleeds over the whole figure page in the style's transport family: the catchments in its
+  // walking inks (the 5-minute ring deepest), the rail in its rail ink, cycleways and the station marks in its navy.
+  const B = INK.blue, S = INK.sage, look = deckLook();
+  const MOVE = { iso: { 5: t.walk5, 10: t.walk10, 15: tint(t.walk10, 0.55) } as Record<number, string>, cycle: B.deep, foot: B.line, frontage: INK.red.line, water: tint(t.water, 0.7), road: S.line, rail: t.rail, mark: B.deep };
   const mt = { ...t, water: MOVE.water, road: MOVE.road, rail: MOVE.rail };
   const p = b.bleedPanel;
   const proj = panelProjector(p);
@@ -3754,8 +3740,8 @@ export function movementSlide(b: SlidesBundle): Slide {
     const kh = PAD * 2 + 3.6 + (dests.length + bands.length) * ROW;
     const kx = p.wMm - 6 - KW, ky = p.hMm - 6 - kh;
     isoSpacer.block(kx + KW / 2, ky + kh / 2, KW + 2, kh + 2);
-    const key: string[] = [`<rect x="${kx}" y="${ky.toFixed(2)}" width="${KW}" height="${kh.toFixed(2)}" fill="#ffffff" fill-opacity="0.94" stroke="${MOVE.rail}" stroke-width="0.2"/>`,
-      `<text x="${kx + PAD}" y="${(ky + PAD + 2.2).toFixed(2)}" font-size="2.1" font-weight="700" letter-spacing="0.1" fill="${MOVE.rail}">WITHIN A 15-MINUTE WALK</text>`];
+    const key: string[] = [`<rect x="${kx}" y="${ky.toFixed(2)}" width="${KW}" height="${kh.toFixed(2)}" fill="#ffffff" fill-opacity="0.94" stroke="${MOVE.mark}" stroke-width="0.2"/>`,
+      `<text x="${kx + PAD}" y="${(ky + PAD + 2.2).toFixed(2)}" font-size="2.1" font-weight="700" letter-spacing="0.1" fill="${MOVE.mark}">WITHIN A 15-MINUTE WALK</text>`];
     let ry = ky + PAD + 3.6;
     for (const m of bands) {
       ry += ROW;
@@ -3763,9 +3749,9 @@ export function movementSlide(b: SlidesBundle): Slide {
       for (const d of dests.filter((q) => q.band === m)) {
         ry += ROW;
         const nm = shorten(`${d.name} · ${d.kind}`, 46);
-        key.push(`<circle cx="${(kx + PAD + 1.3).toFixed(2)}" cy="${(ry - 1.3).toFixed(2)}" r="1.25" fill="#ffffff" stroke="${MOVE.rail}" stroke-width="0.2"/><text x="${(kx + PAD + 1.3).toFixed(2)}" y="${(ry - 0.75).toFixed(2)}" text-anchor="middle" font-size="1.55" font-weight="700" fill="${MOVE.rail}">${d.n}</text>`,
-          `<text x="${(kx + PAD + 3.6).toFixed(2)}" y="${(ry - 0.7).toFixed(2)}" font-size="1.8" fill="#1b2340">${esc(nm)}</text>`,
-          `<text x="${(kx + KW - PAD).toFixed(2)}" y="${(ry - 0.7).toFixed(2)}" text-anchor="end" font-size="1.8" fill="#4a5470">${d.distanceM >= 1000 ? `${(d.distanceM / 1000).toFixed(1)} km` : `${fmtNum(Math.round(d.distanceM / 10) * 10)} m`}</text>`);
+        key.push(`<circle cx="${(kx + PAD + 1.3).toFixed(2)}" cy="${(ry - 1.3).toFixed(2)}" r="1.25" fill="#ffffff" stroke="${MOVE.mark}" stroke-width="0.2"/><text x="${(kx + PAD + 1.3).toFixed(2)}" y="${(ry - 0.75).toFixed(2)}" text-anchor="middle" font-size="1.55" font-weight="700" fill="${MOVE.mark}">${d.n}</text>`,
+          `<text x="${(kx + PAD + 3.6).toFixed(2)}" y="${(ry - 0.7).toFixed(2)}" font-size="1.8" fill="${B.deep}">${esc(nm)}</text>`,
+          `<text x="${(kx + KW - PAD).toFixed(2)}" y="${(ry - 0.7).toFixed(2)}" text-anchor="end" font-size="1.8" fill="${B.text}">${d.distanceM >= 1000 ? `${(d.distanceM / 1000).toFixed(1)} km` : `${fmtNum(Math.round(d.distanceM / 10) * 10)} m`}</text>`);
       }
     }
     // the numbers on the map, each where its place is, if the page reaches it
@@ -3773,7 +3759,7 @@ export function movementSlide(b: SlidesBundle): Slide {
       const [x, y] = proj(d.lon, d.lat);
       if (x < 3 || y < 3 || x > p.wMm - 3 || y > p.hMm - 3 || (x > kx - 2 && y > ky - 2)) continue;
       isoSpacer.block(x, y, 3.6, 3.6);
-      parts.push(`<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="1.55" fill="#ffffff" stroke="${MOVE.rail}" stroke-width="0.3"/><text x="${x.toFixed(2)}" y="${(y + 0.62).toFixed(2)}" text-anchor="middle" font-size="1.75" font-weight="700" fill="${MOVE.rail}">${d.n}</text>`);
+      parts.push(`<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="1.55" fill="#ffffff" stroke="${MOVE.mark}" stroke-width="0.3"/><text x="${x.toFixed(2)}" y="${(y + 0.62).toFixed(2)}" text-anchor="middle" font-size="1.75" font-weight="700" fill="${MOVE.mark}">${d.n}</text>`);
     }
     parts.push(`<g>${key.join('')}</g>`);
   }
@@ -3791,7 +3777,7 @@ export function movementSlide(b: SlidesBundle): Slide {
     const w = labelW(text, 2);
     // each candidate clears the 6 × 6 mm box reserved on the roundel itself, past the spacer's own margins
     for (const [lx, ly] of [[x + 4.0 + w / 2, y], [x - 4.0 - w / 2, y], [x, y - 5.2], [x, y + 5.4]] as [number, number][]) {
-      if (isoSpacer.take(lx, ly, w, 2.6)) { parts.push(label(lx, ly, text, 2, MOVE.rail)); break; }
+      if (isoSpacer.take(lx, ly, w, 2.6)) { parts.push(label(lx, ly, text, 2, MOVE.mark)); break; }
     }
   }
   for (const iso of mv.isochrones) {
@@ -3806,7 +3792,7 @@ export function movementSlide(b: SlidesBundle): Slide {
     }
   }
   keepSiteClear(b, proj, isoSpacer);
-  parts.push(streetNameLayer(b.base.roads, proj, p, isoSpacer, 'move09', '#2a3350'));
+  parts.push(streetNameLayer(b.base.roads, proj, p, isoSpacer, 'move09', look.streetInk));
   parts.push(siteMark(b.base, proj, 'outline'), panelFurniture(p, 'left'));
   const mapSvg = `<svg width="${p.wMm}mm" height="${p.hMm}mm" viewBox="0 0 ${p.wMm} ${p.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
     <defs><clipPath id="clip-move"><rect x="0" y="0" width="${p.wMm}" height="${p.hMm}"/></clipPath></defs>
@@ -3828,7 +3814,7 @@ export function movementSlide(b: SlidesBundle): Slide {
     [sw(`<line x1="0" y1="1.8" x2="5" y2="1.8" stroke="${MOVE.rail}" stroke-width="0.2"/><line x1="0" y1="1.8" x2="5" y2="1.8" stroke="${MOVE.rail}" stroke-width="1.05" stroke-dasharray="0.16,1.3"/>`), 'Rail; stations as T, M (metro) or L (light rail)'],
     [sw(`<path d="M0,1.8 H5" stroke="${MOVE.iso[5]}" stroke-width="0.45" stroke-dasharray="1.6,1"/>`), 'Walking isochrones from the site: 5, 10 and 15 minutes'],
   ];
-  if (walkDestinations(b, f).length) legendRows.push([sw(`<circle cx="2.5" cy="1.8" r="1.4" fill="#ffffff" stroke="${MOVE.rail}" stroke-width="0.3"/><text x="2.5" y="2.4" text-anchor="middle" font-size="1.7" font-weight="700" fill="${MOVE.rail}">1</text>`), 'Stations, schools, health, community places and parks within the walk, keyed on the map']);
+  if (walkDestinations(b, f).length) legendRows.push([sw(`<circle cx="2.5" cy="1.8" r="1.4" fill="#ffffff" stroke="${MOVE.mark}" stroke-width="0.3"/><text x="2.5" y="2.4" text-anchor="middle" font-size="1.7" font-weight="700" fill="${MOVE.mark}">1</text>`), 'Stations, schools, health, community places and parks within the walk, keyed on the map']);
   if (mv.busStops.length || mv.busRoutes.length) legendRows.push([sw(`<line x1="0" y1="1.8" x2="5" y2="1.8" stroke="${t.busRoute}" stroke-width="0.5" stroke-dasharray="1.2,0.9"/><circle cx="2.5" cy="1.8" r="0.9" fill="${t.busRoute}" stroke="#ffffff" stroke-width="0.3"/>`), `Bus ${mv.busRoutes.length ? 'routes and ' : ''}stops (${f.bus.source === 'tfnsw' ? 'Transport for NSW' : 'OpenStreetMap'})`]);
   if (mv.cycleways.length) legendRows.push([sw(`<line x1="0" y1="1.2" x2="5" y2="1.2" stroke="${MOVE.cycle}" stroke-width="0.6"/><line x1="0" y1="2.6" x2="5" y2="2.6" stroke="${MOVE.cycle}" stroke-width="0.4" stroke-dasharray="1.4,0.8"/>`), 'Cycleways: separated solid, on-road lanes and shared paths dashed']);
   if (mv.footways.length) legendRows.push([sw(`<line x1="0" y1="1.8" x2="5" y2="1.8" stroke="${MOVE.foot}" stroke-width="0.25" stroke-dasharray="0.5,0.5"/>`), 'Footways, paths and steps off the streets']);
@@ -3854,9 +3840,9 @@ export function movementSlide(b: SlidesBundle): Slide {
   const isoA = [...f.isochrones].sort((x, y) => y.areaHa - x.areaHa).slice(0, 3);
   const R0 = 29.52, CX = 104.97, BOTTOM = 116.85, STEP = 5.5;
   const RING = [
-    { fill: '#f9fafd', stroke: '#86a9da', w: 0.35, dash: 1.45 },
-    { fill: '#eff1f9', stroke: '#0068b3', w: 0.41, dash: 1.69 },
-    { fill: '#dfe4f1', stroke: '#312783', w: 0.44, dash: 1.63 },
+    { fill: B.light, stroke: B.line, w: 0.35, dash: 1.45 },
+    { fill: B.mid, stroke: B.text, w: 0.41, dash: 1.69 },
+    { fill: B.solid, stroke: B.deep, w: 0.44, dash: 1.63 },
   ];
   const maxHa = Math.max(1, ...isoA.map((i) => i.areaHa));
   const circ = isoA.map((iso, k) => { const r = R0 * Math.sqrt(iso.areaHa / maxHa); const cy = BOTTOM - k * STEP - r; return { ...iso, r, cy, top: cy - r }; });
@@ -3899,7 +3885,7 @@ export function movementSlide(b: SlidesBundle): Slide {
     rows.forEach((r, i) => {
       const top = rowsTop + i * ROWH, yb = top + 0.6 + BAR / 2, end = X(Math.min(r.value, max));
       g.push(txt(X0, top, r.name));
-      g.push(`<line x1="${(TRACK0 - 0.09).toFixed(2)}" y1="${yb.toFixed(2)}" x2="${end.toFixed(2)}" y2="${yb.toFixed(2)}" stroke="#a7dcf8" stroke-width="${BAR}"${r.dash ? ` stroke-dasharray="${r.dash}"` : ''}/>`);
+      g.push(`<line x1="${(TRACK0 - 0.09).toFixed(2)}" y1="${yb.toFixed(2)}" x2="${end.toFixed(2)}" y2="${yb.toFixed(2)}" stroke="${B.solid}" stroke-width="${BAR}"${r.dash ? ` stroke-dasharray="${r.dash}"` : ''}/>`);
       g.push(txt(end + 1.0, top, r.label));
     });
   };
@@ -3936,7 +3922,7 @@ export function movementSlide(b: SlidesBundle): Slide {
   const sens = movementSentences(b, f);
   const reachSentence = sens.find((s2) => s2.startsWith('On foot from the site'));
   const narrative = brief([sens[0], reachSentence, sens[1]]);
-  return { id: '09_movement', title: 'Movement', subtitle: subT, textHtml: '', figureHtml, bleed: true, sources, narrative, accent: '#0068b3', legend: keyRows };
+  return { id: '09_movement', title: 'Movement', subtitle: subT, textHtml: '', figureHtml, bleed: true, sources, narrative, accent: B.text, legend: keyRows };
 }
 
 // ---- slide 10: green and public domain -------------------------------------
@@ -4326,7 +4312,7 @@ export function greenAtlas(b0: SlidesBundle): Slide {
     C: { bg: '#ffffff', kind: 'dots', ink: G.deep, step: 0.9, w: 0.12, outline: G.solid, outlineW: 0.2 },
   };
   const NPWS_FILL: Fill = { bg: '#ffffff', kind: 'hlines', ink: G.deep, step: 0.7, w: 0.14, outline: G.deep, outlineW: 0.2 };
-  const VEG_FILL: Fill = AERIAL_GREEN_FILL;
+  const VEG_FILL: Fill = aerialGreenFill();
   const GRID_DASH = '1.2 0.7';
   const p = b.bleedPanel;
   const proj = panelProjector(p);
@@ -7444,9 +7430,9 @@ export function countryAtlas(b: SlidesBundle): Slide {
   const proj = panelProjector(p);
   const gt = greyBase(t);
   const box = { x0: 0, y0: 0, x1: p.wMm, y1: p.hMm };
-  const VEG: Fill[] = VEG_1750_FILLS;
+  const VEG: Fill[] = veg1750Fills();
   const parts: string[] = [`<rect x="0" y="0" width="${p.wMm}" height="${p.hMm}" fill="#ffffff"/>`];
-  if (c.dem) parts.push(demPicture(c.dem, proj, reliefDataUri(c.dem, '#8fa597', { shade: 1 })));
+  if (c.dem) parts.push(demPicture(c.dem, proj, reliefDataUri(c.dem, G.line, { shade: 1 })));
   const veg = c.vegetation;
   const classes = veg.classes.filter((cl) => cl.mask).slice(0, VEG.length);
   if (veg.image && classes.length) {
@@ -7952,11 +7938,11 @@ ${s.sources ? `<div class="abs zsrc" style="left:12mm;bottom:11.6mm;width:58.5mm
 </section>`;
 }
 
-/** How a deck is drawn: in which of the maps' styles (the active template's where unnamed), and in its full palette or its accent's family alone. */
-export interface DeckRenderOptions extends DeckOptions { theme?: string }
+/** How a deck is drawn: in which of the maps' styles (the active template's where unnamed). */
+export interface DeckRenderOptions { theme?: string }
 
 export function renderSlides(b: SlidesBundle, meta: SheetMeta, opts: DeckRenderOptions = {}): { html: string; slides: Slide[] } {
-  return withTemplate(templateFor('slides', opts.theme ?? tpl().id), () => withDeckOptions(opts, () => drawSlides(b, meta)));
+  return withTemplate(templateFor('slides', opts.theme ?? tpl().id), () => drawSlides(b, meta));
 }
 
 function drawSlides(b: SlidesBundle, meta: SheetMeta): { html: string; slides: Slide[] } {

@@ -80,8 +80,7 @@ const styleChecks: [string, boolean][] = [
   ['summary has no theme', themeFor('summary', 'conure') === ''],
   ['yield and slides take the four styles', themeFor('yield', 'heron') === 'heron' && themeFor('slides', 'canary') === 'canary' && templateFor('slides', 'kingfisher') === 'kingfisher'],
   ['yield and slides: unknown or none → the default', themeFor('yield', '') === 'flamingo' && themeFor('slides', 'dove') === 'flamingo'],
-  ['yield and slides: the legacy deck by name', themeFor('slides', 'deck') === 'deck' && templateFor('yield', 'deck') === 'deck'],
-  ['context: the legacy deck is no template of its own', themeFor('context', 'deck') === 'flamingo'],
+  ['yield and slides: a former name resolves as the context sheet\'s', themeFor('slides', 'conure') === 'canary'],
   ['slides drawn in the style named', templateFor('slides', 'kingfisher') === 'kingfisher'],
 ];
 const badStyle = styleChecks.filter(([, ok]) => !ok);

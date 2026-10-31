@@ -9,18 +9,20 @@
 // blurrily in the printed PDF.
 
 import { esc } from './chrome.js';
-import { tint, type Category } from './template.js';
+import { tint, deckFamilies, type Category, type InkFamily, type InkFamilyName } from './template.js';
 
-export type Family = 'red' | 'orange' | 'sage' | 'green' | 'blue';
+export type Family = InkFamilyName;
 
-/** Sampled from the office's swatch sheet: three tints, the two pattern inks, and a text ink dark enough for the bold narrative. */
-export const INK: Record<Family, { solid: string; mid: string; light: string; line: string; deep: string; text: string }> = {
-  red:    { solid: '#d54747', mid: '#e69ea1', light: '#f4d8d9', line: '#d54747', deep: '#b20000', text: '#d54747' },
-  orange: { solid: '#e9a879', mid: '#f3d2ba', light: '#faeee3', line: '#efbf99', deep: '#df726a', text: '#f5a470' },
-  sage:   { solid: '#cbcbb9', mid: '#e5e5dc', light: '#f5f5f1', line: '#d9c49c', deep: '#9c9c88', text: '#8f8f78' },
-  green:  { solid: '#7bb990', mid: '#bbdcc7', light: '#e4f0e9', line: '#7bb990', deep: '#2f8f55', text: '#4e9a69' },
-  blue:   { solid: '#b2daf5', mid: '#d8ecf9', light: '#eff8fd', line: '#9fcbea', deep: '#4b55a0', text: '#0068b3' },
-};
+/**
+ * The five families, in the active style (template.ts deckFamilies()): read
+ * through a proxy, so `INK.red.line` is the line of the style the page is
+ * being drawn in, however early the reading was written down. A fill that
+ * copies the values out (`{ ink: INK.red.line }`) holds them, so such fills
+ * are made inside the page, not at the top of the module.
+ */
+export const INK: Record<Family, InkFamily> = new Proxy({} as Record<Family, InkFamily>, {
+  get: (_t, fam: string) => new Proxy({} as InkFamily, { get: (_f, key: string) => deckFamilies()[fam as Family][key as keyof InkFamily] }),
+});
 
 /** A fill: a ground tint, an optional pattern of strokes over it, an optional outline. Sizes in map millimetres. */
 export interface Fill {
@@ -307,9 +309,9 @@ export function zLine(series: { year: number; value: number }[], projection: { y
 }
 
 /** The green of the aerial on slide 10: a pale ground dotted in the deep green. */
-export const AERIAL_GREEN_FILL: Fill = { bg: INK.green.light, kind: 'dots', ink: INK.green.deep, step: 0.5, w: 0.1 };
+export const aerialGreenFill = (): Fill => ({ bg: INK.green.light, kind: 'dots', ink: INK.green.deep, step: 0.5, w: 0.1 });
 /** The pre-1750 plant communities on slide 15, largest first: one pattern each in the deep green, no ground. */
-export const VEG_1750_FILLS: Fill[] = [
+export const veg1750Fills = (): Fill[] => [
   { kind: 'vlines', ink: INK.green.deep, step: 1.0, w: 0.16 },
   { kind: 'dots', ink: INK.green.deep, step: 1.1, w: 0.14 },
   { kind: 'hlines', ink: INK.green.deep, step: 1.0, w: 0.16 },

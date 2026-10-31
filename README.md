@@ -1158,32 +1158,33 @@ the sheet (`themeFor()`). The CLI takes `--site-theme`.
 
 The yield and the site report take the four styles of the two maps, under
 the same names, and read each style's palette from its context template
-(`deckLook()` in `src/render/template.ts`): the site colour for the narrative
-and the site (Flamingo's coral deepened a step, since a map tint is too light
-for a line of bold type); the land-use categories, with their textures, for
-the zones, as the context sheet of that style tints the land, or in Canary
-each zone code in its NSW ePlanning colour; the heritage, street-name and
-cadastre inks; and the ground, paper for Flamingo and Kingfisher and the
-greyed aerial under the style's veil for Heron and Canary, where the deck
-read one over the page (the planning page has the Character page's
-photograph; the yield has none yet, so its aerial styles stand on paper). The
-buildings on a plan follow the style too: white in a hairline of their zone
-family's ink (Flamingo), filled in the family's colour with a white edge
-(Kingfisher), or a quiet grey where the style would show the photograph. The
-page's type stays the report's Arial in every style; the style is in the
-colour, not the face.
+(`deckLook()` and `deckFamilies()` in `src/render/template.ts`). The site
+colour sets the narrative and the site (Flamingo's coral deepened a step,
+since a map tint is too light for a line of bold type). The zones take the
+land-use categories, with their textures, as the context sheet of that style
+tints the land, or in Canary each zone code in its NSW ePlanning colour; the
+yield's plan tints each neighbour's lot the same way. The atlas kit's five
+ink families, one a topic (the accent's for the site, the controls and what
+constrains; the centres' for activity, character and the market; the
+industrial category's neutral for the ground, the built form and the site's
+own page; open space's for the living layers; the transit ink's for
+movement), are drawn from the same categories, so the report's eighteen
+pages and the yield's spreads are all in the style's colours. Heron and
+Canary keep the office's own swatch sheet for their decks, the five
+families the decks were drawn in before the styles, with the land-use
+categories laid out in those families (`KIT_INK`, `KIT_CATEGORIES`): the
+office's sheet in the office's palette. The ground follows the style too,
+paper for Flamingo and Kingfisher and the greyed aerial under the style's
+veil for Heron and Canary, where the deck read one (the planning page has
+the Character page's photograph; the yield has none yet, so its aerial
+styles stand on paper). The buildings on a plan follow it as well: white in
+a hairline of their zone family's ink (Flamingo), filled in the family's
+colour with a white edge (Kingfisher), or a quiet grey where the style would
+show the photograph. The page's type stays the report's Arial in every
+style; the style is in the colour, not the face.
 
-The look the decks had before the styles — Arial on white, the atlas kit's
-five families, one family a page — is still drawn when a request names
-`deck`, so the two can stand side by side. A render can also take a style's
-palette in one family alone (`palette: 'mono'`, the accent's tints told apart
-by pattern, as the legacy deck tells its categories): the comparison the
-design is being settled by. So far the planning overview (page 03 of the
-report) and the yield's first spread read the look in full; the other pages
-take the style's site colour, water and inks where they already read the
-template, and keep their kit families elsewhere, until each is restyled in
-turn. `scripts/recompose.ts` redraws a kept bundle (`KEEP_BUNDLE=1`) in any
-style, mono or not, a page at a time, without fetching.
+`scripts/recompose.ts` redraws a kept bundle (`KEEP_BUNDLE=1`, for the yield
+as for the site report) in any style, a page at a time, without fetching.
 
 The frame on the landing page shows the yield's and the site report's pages
 in the default style whichever is picked: their pages are many, and one set

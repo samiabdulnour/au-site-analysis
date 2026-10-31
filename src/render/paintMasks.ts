@@ -7,7 +7,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { decodePng, encodeRgbaPng } from '../lib/png.js';
-import { AERIAL_GREEN_FILL, VEG_1750_FILLS, PATTERN_SCALE, PATTERN_WEIGHT, type Fill } from './atlasKit.js';
+import { aerialGreenFill, veg1750Fills, PATTERN_SCALE, PATTERN_WEIGHT, type Fill } from './atlasKit.js';
 import { mercatorScaleFactor, mercatorToLonLat } from '../lib/geo.js';
 
 const UP = 3;
@@ -56,19 +56,20 @@ export async function paintMasks(dataDir: string, layers: { mask: string; fill: 
   return { file: out, width: W, height: H };
 }
 
-/** The painted pictures the slides place: the aerial's green on slide 10, the pre-1750 communities on slide 15. Kept on the bundle. */
+/** The painted pictures the slides place: the aerial's green on slide 10, the pre-1750 communities on slide 15, in the active style's green. Kept on the bundle. */
 export async function prepareRasters(sb: any, dataDir: string, bleedScale: number, countryScale: number): Promise<void> {
   const k = mercatorScaleFactor(mercatorToLonLat(sb.geocode.center).lat);
   const mmAcross = (e: { xmin: number; xmax: number }, scale: number) => (((e.xmax - e.xmin) / k) * 1000) / scale;
   const vm = sb.green?.vegetation;
   if (vm) {
-    const r = await paintMasks(dataDir, [{ mask: vm.file, fill: AERIAL_GREEN_FILL }], mmAcross(vm.extent, bleedScale) / vm.pxWidth, 'vegetation_paint.png').catch(() => null);
+    const r = await paintMasks(dataDir, [{ mask: vm.file, fill: aerialGreenFill() }], mmAcross(vm.extent, bleedScale) / vm.pxWidth, 'vegetation_paint.png').catch(() => null);
     vm.paint = r?.file;
   }
   const veg = sb.country?.vegetation;
   if (veg?.image) {
-    const classes = (veg.classes ?? []).filter((c: { mask?: string }) => c.mask).slice(0, VEG_1750_FILLS.length);
-    const r = await paintMasks(dataDir, classes.map((c: { mask: string }, i: number) => ({ mask: c.mask, fill: VEG_1750_FILLS[i] })), mmAcross(veg.image.extent, countryScale) / veg.image.pxWidth, 'veg1750_paint.png').catch(() => null);
+    const fills = veg1750Fills();
+    const classes = (veg.classes ?? []).filter((c: { mask?: string }) => c.mask).slice(0, fills.length);
+    const r = await paintMasks(dataDir, classes.map((c: { mask: string }, i: number) => ({ mask: c.mask, fill: fills[i] })), mmAcross(veg.image.extent, countryScale) / veg.image.pxWidth, 'veg1750_paint.png').catch(() => null);
     veg.paint = r?.file;
   }
 }
