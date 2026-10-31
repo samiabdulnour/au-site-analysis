@@ -685,7 +685,9 @@ export function locationSlide(b: SlidesBundle): Slide {
   // the plan's centres marked and named; the suburbs named in a quiet grey; the site haloed in the accent.
   const O = INK.orange, S = INK.sage, B = INK.blue, G = INK.green;
   const look = deckLook();
-  const LOC = { deep: t.discInk ?? t.ink, rail: B.deep, motorway: O.deep, road2: inkFor(S.deep, 0.3), road3: S.deep, name: S.text, soft: S.text };
+  // the names' ink: the neutral family's text on paper, deepened over the toned bands so it holds against the colour
+  const NAME = look.technique === 'tone' ? inkFor(S.deep, 0.18) : S.text;
+  const LOC = { deep: t.discInk ?? t.ink, rail: B.deep, motorway: O.deep, road2: inkFor(S.deep, 0.3), road3: S.deep, name: NAME, soft: NAME };
   const WATER_INK = inkFor(t.water, 0.45);
   const RELIEF_INK = inkFor(S.deep, 0.12);
   const parts: string[] = [`<rect x="0" y="0" width="${p.wMm}" height="${p.hMm}" fill="#ffffff"/>`];
