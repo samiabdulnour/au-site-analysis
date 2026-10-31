@@ -13,7 +13,7 @@ import { mergeRuns, straightEnough, arcTable, sliceAt, shortStreetName, type She
 import type { TopoRoad } from '../fetch/nswTopo.js';
 import type { GeoJSONFeature } from '../lib/arcgis.js';
 import { tpl, withTemplate, templateFor, deckLook, tint, shadeHex, inkFor, vivid, type DeckLook } from './template.js';
-import { INK, aerialGreenFill, veg1750Fills, VEG_CLASSES_MAX, fillShape, swatchOf, barOf, categoryFill, heatFills, paletteRamp, stripOf, zHead, zBars, zFigures, zCircles, zSpans, zPairs, zLine, niceAxis, z6, zSvg, Z_W, Z_TRACK, type Fill } from './atlasKit.js';
+import { INK, aerialGreenFill, veg1750Fills, VEG_CLASSES_MAX, fillShape, swatchOf, barOf, categoryFill, heatFills, paletteRamp, styleRamp, stripOf, zHead, zBars, zFigures, zCircles, zSpans, zPairs, zLine, niceAxis, z6, zSvg, Z_W, Z_TRACK, type Fill } from './atlasKit.js';
 import { esc } from './chrome.js';
 import {
   panelProjector, panelExtent, baseLayers, overLayers, panelFurniture, furnitureBox, siteMark, siteLabelPoint, stationMode, ringsPath, fcPath, ringStats, clippedStats, hatchPath, dotsPath, bboxOf, t2Text, t2Width, railSymbol,
@@ -3229,7 +3229,7 @@ export function topographyAtlas(b0: SlidesBundle): Slide {
   // The landform over the photograph: bands toned along the palette's ramp under the hillshade. On paper: no fill at
   // all, the contours alone, each in its band's colour up the same ramp, so the height reads in the lines' colour.
   // Heron's bands run between two colours of its sheet, the blue low and the red high; the others up the palette's ramp
-  const bandCols = rampColours(bands, look.id === 'heron' ? [INK.blue.solid, INK.red.deep] : paletteRamp());
+  const bandCols = rampColours(bands, styleRamp());
   const toneCols = bandCols.map((c) => tint(c, look.id === 'heron' ? 0.85 : 0.7));
   const tone = look.technique === 'tone';
   // the page's own ink: the colour of the site's contour, for the narrative and the sections' poché

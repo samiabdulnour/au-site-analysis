@@ -1439,7 +1439,7 @@ Then *topography*: the landform
 at 1:5000: in Heron and Canary the ground in 5 m bands toned under the
 hillshade from the State's 5 m elevation model (Canary along the palette's
 ramp, Heron between two colours of its sheet, the blue low and the red
-high); in
+high, as every ordered ramp in Heron runs, the storeys' included); in
 Flamingo and Kingfisher no fill at all, the contours alone, traced from the
 model every metre (the fives heavier and numbered), each coloured up the
 same ramp by its height; with the 2 m contours numbered along the index

@@ -348,12 +348,17 @@ export function paletteRamp(): string[] {
   return [vivid(B.solid, 0.5, 0.48), vivid(G.solid, 0.5, 0.42), vivid(warm, 0.65, 0.5), vivid(R.solid, 0.55, 0.45), vivid(R.deep, 0.6, 0.32)];
 }
 
+/** The ramp ordered data runs up in this style: Heron's between two colours of its sheet, the blue low and the red high, mixed; the others across the palette. */
+export function styleRamp(): string[] {
+  return deckLook().id === 'heron' ? [INK.blue.solid, INK.red.deep] : paletteRamp();
+}
+
 /**
- * `n` ordered fills, low to high, as the style draws them: tones along the palette ramp, or (on paper) hatches
+ * `n` ordered fills, low to high, as the style draws them: tones along the style's ramp, or (on paper) hatches
  * that tighten up the ramp, each in its ramp colour, the lowest a light patch and the highest cross-hatched.
  */
 export function heatFills(n: number, technique = deckLook().technique): Fill[] {
-  const cols = rampColours(n, paletteRamp());
+  const cols = rampColours(n, styleRamp());
   if (technique === 'tone') return cols.map((c) => ({ bg: tint(c, 0.78), outline: '#ffffff', outlineW: 0.08 }));
   return cols.map((c, i) => {
     if (i === 0) return { bg: tint(c, 0.3), outline: c, outlineW: 0.1 };
