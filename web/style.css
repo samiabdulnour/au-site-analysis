@@ -56,8 +56,10 @@ body {
    full-bleed element — signed in it turns yellow edge to edge — so the page's
    margins live on .page, not on body. */
 /* Sized from the mock-up, a 1512 by 832 sheet drawn at a laptop browser's
-   size: its margins are 85px there, and scale with the screen around it. */
-.page { max-width: 1920px; margin: 0 auto; padding: 0 clamp(16px, 5.625vw, 108px); }
+   size: its margins are 85px there, and scale with the screen around it on
+   any screen, a wide monitor's too — the page never stops widening and
+   leaves blank sides. */
+.page { margin: 0 auto; padding: 0 max(16px, 5.625vw); }
 /* The page's column takes the height the band leaves, so the footer's
    margin-top: auto can carry it down; the mock-up keeps about 80px between
    the footer's last line and the foot of the window. */
@@ -87,9 +89,10 @@ a { color: inherit; }
 /* Plain words, not boxes: the nav is the sheet's running head, in the small
    size, the tops of its capitals level with the title's. The page the
    visitor is on carries the accent underline. Both underlines are a line of
-   their own under the word, where the accent's 3px have always sat — never
-   the word's background, which a browser could paint whole — and grow from
-   the left: a hairline on hover, the accent as the page comes in. */
+   their own under the word, in the 3px kept under it for them — never the
+   word's background, which a browser could paint whole — and grow from the
+   left: a hairline on hover, the accent's 2px as the page comes in, its top
+   where the hairline's is. */
 .nav { display: flex; flex-wrap: wrap; gap: .4rem 58px; align-items: baseline;
        font-size: var(--small); margin-top: 3.5px; }
 .nav .btn {
@@ -108,7 +111,7 @@ a { color: inherit; }
   transition: transform var(--med) var(--ease);
 }
 .nav .btn:hover::after { transform: scaleX(1); }
-.nav .btn.active::after { bottom: 0; height: 3px; background: var(--accent); transform: scaleX(1); }
+.nav .btn.active::after { bottom: 1px; height: 2px; background: var(--accent); transform: scaleX(1); }
 
 .lead { margin-bottom: 1rem; max-width: 76ch; }
 
@@ -178,10 +181,17 @@ a { color: inherit; }
    options and GENERATE; the drawing takes the rest. On a phone the column
    comes first, then the drawing. */
 /* The mock-up's split: a 425px column and an 886px drawing, 31px apart, kept
-   in that proportion on other screens. */
+   in that proportion on other screens. The column and the frame share their
+   top and bottom rules: the frame is as tall as the column when the column is
+   the taller, the sheet standing at its top, and GENERATE (or the links in
+   its place) sits at the column's foot. The small print and a note go under
+   both. */
 .tool { display: grid; grid-template-columns: minmax(300px, 425fr) minmax(0, 886fr);
-        gap: 0 31px; grid-template-areas: "side view"; align-items: start; }
-.toolside { grid-area: side; min-width: 0; }
+        gap: 0 31px; grid-template-areas: "side view" "after ."; align-items: start; }
+.toolside { grid-area: side; min-width: 0; align-self: stretch;
+            display: flex; flex-direction: column; }
+.toolfoot { margin-top: auto; }
+.toolafter { grid-area: after; min-width: 0; }
 /* The mock-up's cells: 18px type, 36px high, the word 14px in. */
 .toolside .cell, .toolside .cell-empty {
   font-size: 18px; line-height: normal; padding: 7.25px 14px;
@@ -210,13 +220,17 @@ a { color: inherit; }
    step rather than jumping. Only while busy: back at rest it is gone at once. */
 .go:disabled .fill { transition: width 2.5s linear; }
 .go .word { position: relative; }
-/* The way out, in GENERATE's place once the drawing is done: boxes as high as
-   the cells, the first yellow, their words as far in as the cells'. */
-.toolside #links .btn { text-align: left; line-height: normal; padding: 7.25px 14px; }
+/* The way out, in GENERATE's place once the drawing is done: a line each, as
+   wide as GENERATE and as high as the cells, the first yellow, their words as
+   far in as the cells'. Two sharing a line on a wide screen would split it
+   where the tables above do not. */
+.toolside #links .btn { flex-basis: 100%; text-align: left; line-height: normal;
+                        padding: 7.25px 14px; }
 /* The small print under them, in the footer's size. */
-.toolside #unlockWhat { font-size: var(--small); line-height: 1.4; margin-top: 24px;
-                        white-space: pre-line; }
-.toolview { grid-area: view; min-width: 0; }
+.toolafter #unlockWhat { font-size: var(--small); line-height: 1.4; margin-top: 24px;
+                         white-space: pre-line; }
+.toolview { grid-area: view; min-width: 0; align-self: stretch; display: flex; }
+.toolview .result { flex: 1; min-width: 0; }
 
 /* ---- address bar --------------------------------------------------------- */
 /* Input and button are one rectangle split in two: the button carries the
@@ -381,10 +395,6 @@ a { color: inherit; }
 .btn:hover { background: rgba(0,0,0,.05); }
 .btn.primary { background: var(--hi); color: var(--on-hi); }
 .btn.primary:hover { background: var(--hi); filter: brightness(.95); }
-
-/* What the subscription would add, shown to a free account as the way to it:
-   still a box to press, but muted, since what it opens is the plans page. */
-.btn.locked { color: var(--muted); }
 
 /* Small print in the nav's small size, two notes abreast like the spreads'
    two columns: what the drawings are on the left, the copyright on the right.
@@ -651,7 +661,7 @@ h2 { font-size: 18px; font-weight: 400; text-transform: uppercase; line-height: 
   .lead.intro { max-width: none; }
   .hero { gap: 1.2rem; }
   .tool { grid-template-columns: 1fr; gap: 0;
-          grid-template-areas: "side" "view"; }
+          grid-template-areas: "side" "after" "view"; }
   .toolview { margin-top: 28px; }
   /* One panel on a narrow screen, so TRY is still in view on arrival; the
      drawing sits under the options here, so it needs no height cap. */
