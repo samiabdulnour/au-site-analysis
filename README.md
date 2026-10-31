@@ -1179,9 +1179,10 @@ office's palette. Canary has a punchy sheet of its own (`CANARY_INK`): its
 red, its yellow, its lime and its lilac-blue, so the two aerial styles
 differ in their colours, not only in the site's ink. How a style renders the
 data differs as its ground does (`technique` on the deck look): Flamingo
-and Kingfisher work in hatches, lines and patches on paper (the landform
-hatched tighter up the slope, the storeys as a hatch that tightens up the
-ramp, the pre-1750 communities patterned, the development marks hatched),
+and Kingfisher work in hatches, lines and patches on paper (the landform as
+contours alone, coloured up the ramp by height, the storeys as a hatch that
+tightens up the ramp, the pre-1750 communities dotted, the development
+lots hatched),
 Heron and Canary in tones over the photograph (the landform in a heat
 ramp, the storeys and the communities flat). Each style's winter shadows
 take an ink of their own. The marks of the development page carry
@@ -1430,9 +1431,10 @@ for a town centre, a star for a State significant site, a pennant for a
 precinct), and when none lies on the block's page it widens, as far as
 1:25 000, until the nearest two do, over the region's roads and rail.
 Then *topography*: the landform
-at 1:5000 as the ground in 5 m bands, hatched tighter up the slope in
-Flamingo and Kingfisher or toned along the palette's ramp in Heron and
-Canary, under the hillshade from the State's 5 m elevation model, with the 2 m contours numbered along the index
+at 1:5000: in Heron and Canary the ground in 5 m bands toned along the
+palette's ramp under the hillshade from the State's 5 m elevation model; in
+Flamingo and Kingfisher no fill at all, the contours alone, each coloured
+up the same ramp by its height; with the 2 m contours numbered along the index
 ones, the water named, the high and low points of the page and the site's
 level marked, roads and rail over it and two section lines through the site,
 A–A′ down the steepest fall and B–B′ across it, each drawn as a section

@@ -333,8 +333,9 @@ export function veg1750Fills(classes: { pct: string }[], technique = deckLook().
     const n = c.pct.toLowerCase();
     const hue = hues[i % hues.length];
     if (technique === 'tone') return { bg: tint(hue, openness(n)), opacity: 0.85 };
-    const kind: Fill['kind'] = /rainforest/.test(n) ? 'cross' : /forest/.test(n) ? 'hatch' : /woodland|grassy|open|grassland/.test(n) ? (i % 2 ? 'hlines' : 'vlines') : i % 2 ? 'waves' : 'dots';
-    return { bg: tint(hue, 0.14), opacity: 0.88, kind, ink: hue, step: kind === 'dots' ? 0.8 : 0.7, w: kind === 'dots' ? 0.28 : 0.17 };
+    // on paper, dots in the community's colour, the denser the closer its canopy: rainforest tightest, forest, woodland, the rest open
+    const dots = /rainforest/.test(n) ? { step: 0.55, w: 0.3 } : /forest/.test(n) ? { step: 0.7, w: 0.3 } : /woodland|grassy|open|grassland/.test(n) ? { step: 0.95, w: 0.28 } : { step: 1.25, w: 0.26 };
+    return { bg: tint(hue, 0.14), opacity: 0.88, kind: 'dots', ink: hue, ...dots };
   });
 }
 

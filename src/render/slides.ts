@@ -12,7 +12,7 @@ import type { SlidesBundle } from '../pipeline.js';
 import { mergeRuns, straightEnough, arcTable, sliceAt, shortStreetName, type SheetMeta, type Pt } from './sheet.js';
 import type { TopoRoad } from '../fetch/nswTopo.js';
 import type { GeoJSONFeature } from '../lib/arcgis.js';
-import { tpl, withTemplate, templateFor, deckLook, tint, shadeHex, inkFor, type DeckLook } from './template.js';
+import { tpl, withTemplate, templateFor, deckLook, tint, shadeHex, inkFor, vivid, type DeckLook } from './template.js';
 import { INK, aerialGreenFill, veg1750Fills, VEG_CLASSES_MAX, fillShape, swatchOf, barOf, categoryFill, heatFills, paletteRamp, stripOf, zHead, zBars, zFigures, zCircles, zSpans, zPairs, zLine, niceAxis, z6, zSvg, Z_W, Z_TRACK, type Fill } from './atlasKit.js';
 import { esc } from './chrome.js';
 import {
@@ -2331,20 +2331,22 @@ export function developmentAtlas(b0: SlidesBundle, facts: PlanningFacts): Slide 
   const b: SlidesBundle = { ...b0, daPanel: b0.bleedPanel, applications: b0.applications.filter(onPage) };
   const t = tpl();
   const d = developmentFacts(b);
-  const G = INK.green, S = INK.sage;
+  const G = INK.green, S = INK.sage, R = INK.red, O = INK.orange;
   const look = deckLook();
   const line = look.technique === 'line';
-  // The likelihood of development, by status, up the palette's ramp: withdrawn the coolest, before the court, under
-  // assessment, determined the hottest. The whole lot of each site takes the fill, hatched on paper and toned over
-  // the photograph, so the block reads as a heat of change; a pictogram at the lot's heart says the status.
-  const LIKELY = heatFills(4);
-  const STATUS_FILL: Record<DaStatusClass, Fill> = { withdrawn: LIKELY[0], appeal: LIKELY[1], active: LIKELY[2], determined: LIKELY[3] };
-  const STATUS_INK: Record<DaStatusClass, string> = { withdrawn: LIKELY[0].outline ?? '#000000', appeal: LIKELY[1].ink ?? LIKELY[1].bg ?? '#000000', active: LIKELY[2].ink ?? LIKELY[2].bg ?? '#000000', determined: LIKELY[3].ink ?? LIKELY[3].bg ?? '#000000' };
+  // The potential of each site, by status, green to red: determined a deep green, under assessment a lighter green,
+  // before the court amber, withdrawn red. The whole lot of each site takes the fill, hatched on paper and toned over
+  // the photograph, so the block reads as where the change is and is not; a pictogram at the lot's heart says the status.
+  const STATUS_INK: Record<DaStatusClass, string> = { determined: vivid(G.deep, 0.5, 0.32), active: vivid(G.solid, 0.55, 0.45), appeal: vivid(O.solid, 0.7, 0.5), withdrawn: vivid(R.deep, 0.6, 0.38) };
+  const fillOfInk = (ink: string, i: number): Fill => line
+    ? { bg: tint(ink, 0.18), kind: i === 0 ? 'cross' : i === 3 ? 'dots' : 'hatch', ink, step: i === 0 ? 0.6 : i === 3 ? 0.9 : 0.75, w: i === 3 ? 0.26 : 0.2, outline: ink, outlineW: 0.25 }
+    : { bg: tint(ink, 0.82), opacity: 0.88, outline: ink, outlineW: 0.25 };
+  const STATUS_FILL: Record<DaStatusClass, Fill> = { determined: fillOfInk(STATUS_INK.determined, 0), active: fillOfInk(STATUS_INK.active, 1), appeal: fillOfInk(STATUS_INK.appeal, 2), withdrawn: fillOfInk(STATUS_INK.withdrawn, 3) };
   const STATUS_WORD: Record<DaStatusClass, string> = {
-    determined: 'Determined (the feed does not say approved or refused): the likeliest to be built',
-    active: 'Under assessment, on exhibition or awaiting information: likely',
+    determined: 'Determined (the feed does not say approved or refused): the potential is here',
+    active: 'Under assessment, on exhibition or awaiting information: potential',
     appeal: 'Before the Land and Environment Court: uncertain',
-    withdrawn: 'Withdrawn, rejected or cancelled: unlikely',
+    withdrawn: 'Withdrawn, rejected or cancelled: no potential for now',
   };
   const glyph = (k: DaStatusClass, x: number, y: number, r: number): string => {
     if (r < 1.3) return '';
@@ -3216,14 +3218,14 @@ export function topographyAtlas(b0: SlidesBundle): Slide {
   const RELIEF_INK = inkFor(S.deep, 0.1);
   const lo = f ? Math.floor(Math.max(0, f.window.minRl) / STEP) * STEP : 0, hi = f ? Math.ceil(f.window.maxRl / STEP) * STEP : STEP;
   const bands = Math.max(1, Math.ceil((hi - lo) / STEP));
-  // the bands: tones along the palette's ramp over the photograph; on paper, hatched in the ramp's inks, tighter up the slope
+  // The landform over the photograph: bands toned along the palette's ramp under the hillshade. On paper: no fill at
+  // all, the contours alone, each in its band's colour up the same ramp, so the height reads in the lines' colour.
   const bandCols = rampColours(bands, paletteRamp());
-  const hatch: ReliefHatch = { mmPerCell: g ? (g.cellX * g.groundPerUnit * 1000) / p.scale : 1, inks: bandCols, lineMm: 0.18, maxPeriodMm: 2.2, minPeriodMm: 0.8, bgTint: 0.2 };
   const toneCols = bandCols.map((c) => tint(c, 0.7));
-  const bandKey: Fill[] = look.technique === 'tone' ? toneCols.map((c) => ({ bg: c })) : reliefBandHatches(bands, hatch);
-  if (g && f) parts.push(demPicture(g, proj, look.technique === 'tone'
-    ? reliefDataUri(g, RELIEF_INK, { stepM: STEP, lo, hi, shade: 0.4, colours: toneCols })
-    : reliefDataUri(g, RELIEF_INK, { stepM: STEP, lo, hi, shade: 0.22, hatch })));
+  const tone = look.technique === 'tone';
+  const bandKey: Fill[] = toneCols.map((c) => ({ bg: c }));
+  if (g && f && tone) parts.push(demPicture(g, proj, reliefDataUri(g, RELIEF_INK, { stepM: STEP, lo, hi, shade: 0.4, colours: toneCols })));
+  const bandOfRl = (rl: number) => Math.min(bands - 1, Math.max(0, Math.floor((rl - lo) / STEP)));
   if (b.base.water.features.length) parts.push(`<path d="${fcPath(b.base.water, proj)}" fill="${t.water}" stroke="${WATER_INK}" stroke-width="0.25" fill-rule="evenodd"/>`);
   const interval = f?.contours.intervalM ?? 2;
   const indexEvery = interval >= 10 ? 5 * interval : interval * 5;
@@ -3232,11 +3234,25 @@ export function topographyAtlas(b0: SlidesBundle): Slide {
   const fb = furnitureBox(p, 'left');
   spacer.block((fb.x0 + fb.x1) / 2, (fb.y0 + fb.y1) / 2, fb.x1 - fb.x0 + 2, fb.y1 - fb.y0 + 2);
   keepSiteClear(b, proj, spacer);
-  const minor: string[] = [], major: string[] = [], labels: string[] = [];
+  const labels: string[] = [];
   const indexContours = b.terrain.contours.filter((c) => Math.abs(c.elevation / indexEvery - Math.round(c.elevation / indexEvery)) < 1e-6);
-  for (const c of b.terrain.contours) (indexContours.includes(c) ? major : minor).push(ringsPath([c.coords as number[][]], proj, false));
-  parts.push(`<path d="${minor.join('')}" fill="none" stroke="${CONTOUR_INK}" stroke-width="0.1" stroke-opacity="0.7" stroke-linejoin="round"/>`);
-  parts.push(`<path d="${major.join('')}" fill="none" stroke="${CONTOUR_INK}" stroke-width="0.3" stroke-linejoin="round"/>`);
+  if (tone) {
+    const minor: string[] = [], major: string[] = [];
+    for (const c of b.terrain.contours) (indexContours.includes(c) ? major : minor).push(ringsPath([c.coords as number[][]], proj, false));
+    parts.push(`<path d="${minor.join('')}" fill="none" stroke="${CONTOUR_INK}" stroke-width="0.1" stroke-opacity="0.7" stroke-linejoin="round"/>`);
+    parts.push(`<path d="${major.join('')}" fill="none" stroke="${CONTOUR_INK}" stroke-width="0.3" stroke-linejoin="round"/>`);
+  } else {
+    // each contour in its band's colour, the index ones heavier
+    const byBand = new Map<number, { minor: string[]; major: string[] }>();
+    for (const c of b.terrain.contours) {
+      const e = byBand.get(bandOfRl(c.elevation)) ?? byBand.set(bandOfRl(c.elevation), { minor: [], major: [] }).get(bandOfRl(c.elevation))!;
+      (indexContours.includes(c) ? e.major : e.minor).push(ringsPath([c.coords as number[][]], proj, false));
+    }
+    for (const [k, e] of [...byBand.entries()].sort((u, v) => u[0] - v[0])) {
+      if (e.minor.length) parts.push(`<path d="${e.minor.join('')}" fill="none" stroke="${bandCols[k]}" stroke-width="0.18" stroke-linejoin="round"/>`);
+      if (e.major.length) parts.push(`<path d="${e.major.join('')}" fill="none" stroke="${bandCols[k]}" stroke-width="0.42" stroke-linejoin="round"/>`);
+    }
+  }
   // the streets and the rail as a topographic map draws them: faint, one ink
   parts.push(withTemplate({ ...gt, road: '#b9b9a6', rail: '#8f8f7c', transit: '#8f8f7c', busRoute: '#b9b9a6' }, () => overLayers(b.base, proj, p, 'none')));
   const mproj = (m: XY) => { const l = mercatorToLonLat(m); return proj(l.lon, l.lat); };
@@ -3286,10 +3302,14 @@ export function topographyAtlas(b0: SlidesBundle): Slide {
   parts.push(...extremes, siteMark(b.base, proj, 'both'), ...labels, panelFurniture(p, 'left'));
   const mapSvg = bleedSvg('topo06', p, parts.join('\n'));
 
-  const strip = stripOf(bandKey);
-  const legend: LegendEntry[] = [
-    { swatch: strip, label: `The ground in bands of ${STEP} m from RL ${lo} to RL ${hi}, ${look.technique === 'tone' ? 'blue on the low ground through green to red on the high' : 'hatched tighter and warmer up the slope, the lowest plain'}; hillshade from the north-west` },
+  // the key: the toned bands as a strip over the photograph; on paper the contours' colours as a strip of lines
+  const n = Math.min(7, bands), pick = (i: number) => bandCols[Math.round((i * (bands - 1)) / Math.max(1, n - 1))];
+  const lineStrip = Array.from({ length: n }, (_, i) => `<line x1="${((i * 5) / n).toFixed(2)}" y1="1.2" x2="${(((i + 1) * 5) / n).toFixed(2)}" y2="1.2" stroke="${pick(i)}" stroke-width="0.45"/><line x1="${((i * 5) / n).toFixed(2)}" y1="2.5" x2="${(((i + 1) * 5) / n).toFixed(2)}" y2="2.5" stroke="${pick(i)}" stroke-width="0.2"/>`).join('');
+  const legend: LegendEntry[] = tone ? [
+    { swatch: stripOf(bandKey), label: `The ground in bands of ${STEP} m from RL ${lo} to RL ${hi}, blue on the low ground through green to red on the high; hillshade from the north-west` },
     { swatch: `<line x1="0" y1="2.6" x2="5" y2="2.6" stroke="${CONTOUR_INK}" stroke-width="0.15"/><line x1="0" y1="1.1" x2="5" y2="1.1" stroke="${CONTOUR_INK}" stroke-width="0.4"/>`, label: `Contours every ${interval} m, every ${indexEvery} m heavier and numbered along their run` },
+  ] : [
+    { swatch: lineStrip, label: `Contours every ${interval} m, coloured up the slope from RL ${lo} to RL ${hi}, blue on the low ground through green to red on the high; every ${indexEvery} m heavier and numbered along their run` },
     { swatch: `<rect x="0" y="0.5" width="5" height="2.6" fill="${t.water}" stroke="${WATER_INK}" stroke-width="0.25"/>`, label: 'Water, named where the map holds the name' },
     { swatch: `<path d="M1.3,0.4L2.7,3H-0.1Z" fill="#000000"/><path d="M3.9,3.2L5.3,0.6H2.5Z" fill="#ffffff" stroke="#000000" stroke-width="0.25"/>`, label: 'The high and the low point of the page, RL in m AHD' },
     { swatch: `<path d="M0,1.8H5" stroke="#000000" stroke-width="0.25" stroke-dasharray="2.4 0.8 0.4 0.8"/>`, label: 'Section lines: A–A′ down the fall, B–B′ across it' },
@@ -7923,7 +7943,7 @@ export function countryAtlas(b: SlidesBundle): Slide {
 
   const vegSwatch = stripOf(VEG, 4);
   const legend: LegendEntry[] = [
-    ...(classes.length ? [{ swatch: vegSwatch, label: `Pre-1750 plant communities, each its own colour, keyed by the chart${deckLook().technique === 'tone' ? '; woodland lighter than forest' : '; forest hatched, woodland lined, the rest dotted or waved'}` }] : []),
+    ...(classes.length ? [{ swatch: vegSwatch, label: `Pre-1750 plant communities, each its own colour, keyed by the chart${deckLook().technique === 'tone' ? '; woodland lighter than forest' : '; dotted, the denser the closer the canopy'}` }] : []),
     { swatch: `<rect x="0" y="0.5" width="5" height="2.6" fill="${t.water}"/><path d="M0,2.2C1.5,0.8 3.5,2.8 5,1.2" fill="none" stroke="${WATER_INK}" stroke-width="0.4"/>`, label: 'Rivers and creeks, named; creeks dashed where not perennial; the land in hillshade' },
     ...(c.ridges.length ? [{ swatch: `<path d="M0,1.8H5" stroke="${S.deep}" stroke-width="0.4" stroke-dasharray="1.8 0.9"/>`, label: 'Crests read from the elevation model' }] : []),
     ...(c.dem ? [{ swatch: `<line x1="0" y1="2.6" x2="5" y2="2.6" stroke="${inkFor(INK.orange.deep, 0.18)}" stroke-width="0.12"/><line x1="0" y1="1.2" x2="5" y2="1.2" stroke="${inkFor(INK.orange.deep, 0.18)}" stroke-width="0.3"/>`, label: 'Contours every 10 m, the fifties heavier: a hint of the land\'s shape' }] : []),
