@@ -78,7 +78,11 @@ const styleChecks: [string, boolean][] = [
   ['site: Kookaburra, its former name, → Kingfisher', themeFor('site', 'kookaburra') === 'kingfisher'],
   ['site: Kingfisher draws on Kingfisher, Flamingo on Flamingo', templateFor('site', 'kingfisher') === 'kingfisher' && templateFor('site', 'flamingo') === 'flamingo'],
   ['summary has no theme', themeFor('summary', 'conure') === ''],
-  ['slides drawn in the default template', templateFor('slides', 'kingfisher') === 'flamingo'],
+  ['yield and slides take the four styles', themeFor('yield', 'heron') === 'heron' && themeFor('slides', 'canary') === 'canary' && templateFor('slides', 'kingfisher') === 'kingfisher'],
+  ['yield and slides: unknown or none → the default', themeFor('yield', '') === 'flamingo' && themeFor('slides', 'dove') === 'flamingo'],
+  ['yield and slides: the legacy deck by name', themeFor('slides', 'deck') === 'deck' && templateFor('yield', 'deck') === 'deck'],
+  ['context: the legacy deck is no template of its own', themeFor('context', 'deck') === 'flamingo'],
+  ['slides drawn in the style named', templateFor('slides', 'kingfisher') === 'kingfisher'],
 ];
 const badStyle = styleChecks.filter(([, ok]) => !ok);
 if (badStyle.length) {

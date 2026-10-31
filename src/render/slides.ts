@@ -12,14 +12,16 @@ import type { SlidesBundle } from '../pipeline.js';
 import { mergeRuns, straightEnough, arcTable, sliceAt, shortStreetName, type SheetMeta, type Pt } from './sheet.js';
 import type { TopoRoad } from '../fetch/nswTopo.js';
 import type { GeoJSONFeature } from '../lib/arcgis.js';
-import { tpl, withTemplate, DECK_TEMPLATE } from './template.js';
-import { INK, AERIAL_GREEN_FILL, VEG_1750_FILLS, fillShape, swatchOf, barOf, zHead, zBars, zFigures, zCircles, zSpans, zPairs, zLine, niceAxis, z6, zSvg, Z_W, Z_TRACK, type Fill } from './atlasKit.js';
+import { tpl, withTemplate, templateFor, deckLook, withDeckOptions, tint, shadeHex, type DeckLook, type DeckOptions } from './template.js';
+import { INK, AERIAL_GREEN_FILL, VEG_1750_FILLS, fillShape, swatchOf, barOf, categoryFill, zHead, zBars, zFigures, zCircles, zSpans, zPairs, zLine, niceAxis, z6, zSvg, Z_W, Z_TRACK, type Fill } from './atlasKit.js';
 import { esc } from './chrome.js';
 import {
   panelProjector, panelExtent, baseLayers, overLayers, panelFurniture, furnitureBox, siteMark, siteLabelPoint, stationMode, ringsPath, fcPath, ringStats, clippedStats, hatchPath, dotsPath, bboxOf, t2Text, t2Width, railSymbol,
   legendSvg, swatchFill, swatchHatch, swatchLine, swatchDots, LabelSpacer, type Proj, type Panel, type LegendEntry, type FurnitureCorner,
 } from './minimap.js';
-import { zoneFill, heritageStyle, hobRamp, POLICY_STYLE } from './lepPalette.js';
+import { zoneFill, zoneOrder, heritageStyle, hobRamp, POLICY_STYLE } from './lepPalette.js';
+import { catById, categories, zoneToCategory } from './model.js';
+import { LEP_OPACITY } from './sheet.js';
 import { geomRings, isRealPolicyArea, pointInRing, titleCase, type PolicyArea, type PolicyKind } from '../fetch/planning.js';
 import { lonLatToMercator, mercatorToLonLat, mercatorScaleFactor } from '../lib/geo.js';
 import { isSignificant, siteKey, parseSiteAddress, sameLot, money, type DaRecord, type DaStatusClass, type SiteAddress } from '../fetch/da.js';
@@ -520,7 +522,7 @@ export function locationSentences(b: SlidesBundle, f: ReturnType<typeof location
  * each name once (twice along a long road), slid along its road to a straight stretch clear of every label
  * the map has already set, else left off. `id` keeps the text paths of one map apart from another's.
  */
-export function streetNameLayer(roads: TopoRoad[], proj: Proj, p: Panel, spacer: LabelSpacer, id: string, ink = '#3c3c3c', size = 2.0): string {
+export function streetNameLayer(roads: TopoRoad[], proj: Proj, p: Panel, spacer: LabelSpacer, id: string, ink = '#3c3c3c', size = 2.0, halo = '#ffffff'): string {
   const byName = new Map<string, { segs: Pt[][]; hierarchy: number; lenMm: number }>();
   for (const r of roads) {
     if (!r.name || r.hierarchy >= 8) continue;
@@ -559,7 +561,7 @@ export function streetNameLayer(roads: TopoRoad[], proj: Proj, p: Panel, spacer:
           if (a[0] > z[0]) [a, z] = [z, a];
           const pid = `${id}-st${n++}`;
           defs.push(`<path id="${pid}" d="M${a[0].toFixed(2)},${a[1].toFixed(2)}L${z[0].toFixed(2)},${z[1].toFixed(2)}" fill="none"/>`);
-          texts.push(`<text font-size="${size}" font-weight="700" letter-spacing="0.12" dy="${(size * 0.36).toFixed(2)}" fill="${ink}" stroke="#ffffff" stroke-width="0.5" stroke-linejoin="round" paint-order="stroke"><textPath href="#${pid}" startOffset="50%" text-anchor="middle">${esc(label)}</textPath></text>`);
+          texts.push(`<text font-size="${size}" font-weight="700" letter-spacing="0.12" dy="${(size * 0.36).toFixed(2)}" fill="${ink}" stroke="${halo}" stroke-width="0.5" stroke-linejoin="round" paint-order="stroke"><textPath href="#${pid}" startOffset="50%" text-anchor="middle">${esc(label)}</textPath></text>`);
           placed++;
           break;
         }
@@ -1327,62 +1329,135 @@ export function planningOverviewSlide(b: SlidesBundle, facts: PlanningFacts): Sl
 }
 
 /** The zones of the window in groups, each group one pattern of the red family; the code is written on the map. */
-const ZONE_GROUPS: { key: string; label: string; test: (code: string, name: string) => boolean; fill: Fill }[] = [
-  { key: 'res', label: 'Residential zones', test: (c, n) => /residential/i.test(n) || /^R\d/.test(c), fill: { bg: INK.red.light, outline: INK.red.mid, outlineW: 0.12 } },
-  { key: 'centre', label: 'Centres, mixed use, business and commercial zones', test: (c, n) => /mixed|business|commercial|centre|enterprise|productivity/i.test(n) || /^(MU|B\d|E[123]$)/.test(c), fill: { bg: '#ffffff', kind: 'vlines', ink: INK.red.line, step: 0.75, w: 0.16, outline: INK.red.mid, outlineW: 0.12 } },
-  { key: 'ind', label: 'Industrial and employment zones', test: (c, n) => /industr|employment/i.test(n) || /^(IN\d|E[45]$)/.test(c), fill: { bg: '#ffffff', kind: 'hlines', ink: INK.red.line, step: 0.75, w: 0.16, outline: INK.red.mid, outlineW: 0.12 } },
-  { key: 'sp', label: 'Special purposes, infrastructure and railways', test: (c, n) => /special|infrastructure|railway/i.test(n) || /^(SP\d|RLWY)/.test(c), fill: { bg: '#ffffff', kind: 'dots', ink: INK.red.deep, step: 0.9, w: 0.12, outline: INK.red.mid, outlineW: 0.12 } },
-  { key: 'rec', label: 'Recreation and conservation zones', test: (c, n) => /recreation|conservation|environmental|national park|nature/i.test(n) || /^(RE\d|C\d)/.test(c), fill: { bg: '#ffffff', kind: 'waves', ink: INK.red.mid, step: 1.1, w: 0.16, outline: INK.red.mid, outlineW: 0.12 } },
-  { key: 'other', label: 'Waterways, unzoned and other zones', test: () => true, fill: { bg: '#ffffff', outline: INK.red.mid, outlineW: 0.2 } },
-];
+interface ZoneGroup { key: string; label: string; test: (code: string, name: string) => boolean; fill: Fill }
+/** The zones in six groups told apart by pattern in one family: the legacy deck's way (the red family), and the mono palette's, in the style's own; over a photograph the grounds are thinned so it shows through. */
+const zoneGroupsIn = (F: { solid: string; mid: string; light: string; line: string; deep: string }, ground: 'paper' | 'aerial' = 'paper'): ZoneGroup[] => {
+  const op = ground === 'aerial' ? 0.55 : undefined;
+  return [
+    { key: 'res', label: 'Residential zones', test: (c, n) => /residential/i.test(n) || /^R\d/.test(c), fill: { bg: F.light, opacity: op, outline: F.mid, outlineW: 0.12 } },
+    { key: 'centre', label: 'Centres, mixed use, business and commercial zones', test: (c, n) => /mixed|business|commercial|centre|enterprise|productivity/i.test(n) || /^(MU|B\d|E[123]$)/.test(c), fill: { bg: '#ffffff', opacity: op, kind: 'vlines', ink: F.line, step: 0.75, w: 0.16, outline: F.mid, outlineW: 0.12 } },
+    { key: 'ind', label: 'Industrial and employment zones', test: (c, n) => /industr|employment/i.test(n) || /^(IN\d|E[45]$)/.test(c), fill: { bg: '#ffffff', opacity: op, kind: 'hlines', ink: F.line, step: 0.75, w: 0.16, outline: F.mid, outlineW: 0.12 } },
+    { key: 'sp', label: 'Special purposes, infrastructure and railways', test: (c, n) => /special|infrastructure|railway/i.test(n) || /^(SP\d|RLWY)/.test(c), fill: { bg: '#ffffff', opacity: op, kind: 'dots', ink: F.deep, step: 0.9, w: 0.12, outline: F.mid, outlineW: 0.12 } },
+    { key: 'rec', label: 'Recreation and conservation zones', test: (c, n) => /recreation|conservation|environmental|national park|nature/i.test(n) || /^(RE\d|C\d)/.test(c), fill: { bg: '#ffffff', opacity: op, kind: 'waves', ink: F.mid, step: 1.1, w: 0.16, outline: F.mid, outlineW: 0.12 } },
+    { key: 'other', label: 'Waterways, unzoned and other zones', test: () => true, fill: { bg: '#ffffff', opacity: op, outline: F.mid, outlineW: 0.2 } },
+  ];
+};
+const ZONE_GROUPS = zoneGroupsIn(INK.red);
 const zoneGroup = (code: string, name: string) => ZONE_GROUPS.find((g) => g.test(code, name))!;
 
-/** Planning overview on the template: zones in the red family's patterns, heritage drawn over them, the heights charted. */
+/** A class of zones on the planning page: its name in the key, its fill on the map, the same fill opaque for the key and the bars, and its place in the key. */
+interface ZoneClass { key: string; label: string; fill: Fill; swatch: Fill; order: number }
+
+/**
+ * How the planning page classes and fills its zones, by the deck look: six
+ * groups in one family's patterns (the legacy deck, and a style's mono
+ * palette); the style's land-use categories with their textures, as its
+ * context sheet draws them; or each zone code in its NSW ePlanning colour
+ * (Canary). `of` classes a zoning feature; `all` lists the classes met, in
+ * the key's order.
+ */
+function zoneClasses(look: DeckLook): { of: (code: string, name: string) => ZoneClass; all: () => ZoneClass[] } {
+  const seen = new Map<string, ZoneClass>();
+  const groups = look.legacy || look.palette === 'mono' ? zoneGroupsIn(look.legacy ? INK.red : look.family, look.legacy ? 'paper' : look.ground) : null;
+  const opaque = (f: Fill): Fill => (f.opacity !== undefined && f.bg ? { ...f, bg: tint(f.bg, f.opacity), opacity: undefined } : f);
+  const of = (code: string, name: string): ZoneClass => {
+    let key: string, make: () => ZoneClass;
+    if (groups) {
+      const i = groups.findIndex((g) => g.test(code, name)), g = groups[i];
+      key = g.key; make = () => ({ key, label: g.label, fill: g.fill, swatch: opaque(g.fill), order: i });
+    } else if (look.zones === 'lep') {
+      key = code.toUpperCase();
+      const fill: Fill = look.ground === 'paper' ? { bg: tint(zoneFill(code), LEP_OPACITY) } : { bg: zoneFill(code), opacity: LEP_OPACITY * look.tintScale };
+      make = () => ({ key, label: `${code} ${name.replace(new RegExp(`^${code}\\s*`, 'i'), '')}`.trim(), fill, swatch: opaque(fill), order: zoneOrder(code) });
+    } else {
+      const cat = zoneToCategory(code), c = cat ? catById()[cat] : undefined;
+      if (!c) { key = 'other'; make = () => ({ key, label: 'Waterways, unzoned and other zones', fill: { bg: '#ffffff', opacity: look.ground === 'paper' ? 1 : 0, outline: '#b9ae99', outlineW: 0.15 }, swatch: { bg: '#ffffff', outline: '#b9ae99', outlineW: 0.15 }, order: 99 }); }
+      else { key = c.id; const fill = categoryFill(c, look.ground, look.tintScale); make = () => ({ key, label: c.label, fill, swatch: opaque(fill), order: categories().indexOf(c) }); }
+    }
+    return seen.get(key) ?? seen.set(key, make()).get(key)!;
+  };
+  return { of, all: () => [...seen.values()].sort((a, b2) => a.order - b2.order) };
+}
+
+/** The photograph in grey under the style's veil, where the deck read one over this window; nothing where it did not. */
+function aerialGround(b: SlidesBundle, p: Panel, look: DeckLook): string {
+  const a = look.ground === 'aerial' ? b.character?.aerial : null;
+  if (!a?.tiles.length) return '';
+  return `<g style="isolation:isolate">${aerialTiles(a.tiles, p, a.extent)}<rect x="0" y="0" width="${p.wMm}" height="${p.hMm}" fill="#808080" style="mix-blend-mode:saturation"/></g>` +
+    `<rect x="0" y="0" width="${p.wMm}" height="${p.hMm}" fill="#ffffff" opacity="${look.veil}"/>`;
+}
+
+/**
+ * Planning overview on the template. The legacy deck sets the zones in the
+ * red family's patterns; a style sets them in its own palette (or, for the
+ * comparison, its accent's family alone), on its paper or on the greyed
+ * photograph, with its heritage, street and lot inks; the heritage drawn over
+ * them, the heights charted.
+ */
 export function planningAtlas(b0: SlidesBundle): Slide {
   const p = b0.bleedPanel;
   const b: SlidesBundle = { ...b0, panel: p, daPanel: p };
   const t = tpl();
-  const R = INK.red;
+  const look = deckLook();
+  const F = look.legacy ? INK.red : look.family;
+  const accent = look.legacy ? INK.red.text : look.accent;
   const f = planningFacts(b);
   const proj = panelProjector(p);
-  const gt = greyBase(t);
+  const ground = aerialGround(b, p, look);
+  const onAerial = ground !== '';
+  // the base in greys under the legacy deck; under a style, its water and a light casing to the roads
+  const gt = look.legacy ? greyBase(t) : { ...t, road: '#c9c9c9', paper: onAerial ? '#e9e9e9' : t.paper ?? '#ffffff' };
   const box = { x0: 0, y0: 0, x1: p.wMm, y1: p.hMm };
-  const parts: string[] = [withTemplate(gt, () => baseLayers(b.base, proj, p, { lots: false }))];
-  const byGroup = new Map<string, string[]>();
+  const parts: string[] = [withTemplate(gt, () => baseLayers(b.base, proj, p, { lots: false })), ground];
+  const zc = zoneClasses(look);
+  const byClass = new Map<string, string[]>();
   const cands: { area: number; cx: number; cy: number; text: string }[] = [];
   for (const ft of b.zoning.features) {
     const code = String(ft.properties.SYM_CODE ?? '?'), name = String(ft.properties.LAY_CLASS ?? '');
     const rings = geomRings(ft.geometry);
     if (!rings.length) continue;
-    const g = zoneGroup(code, name);
-    (byGroup.get(g.key) ?? byGroup.set(g.key, []).get(g.key)!).push(ringsPath(rings, proj));
+    const cls = zc.of(code, name);
+    (byClass.get(cls.key) ?? byClass.set(cls.key, []).get(cls.key)!).push(ringsPath(rings, proj));
     for (const r of rings) { const st = clippedStats(r, proj, p); if (st.area > 60) cands.push({ ...st, text: code }); }
   }
-  for (const g of ZONE_GROUPS) { const ds = byGroup.get(g.key); if (ds) parts.push(fillShape(ds.join(''), box, g.fill)); }
-  if (b.base.lots.features.length) parts.push(`<path d="${b.base.lots.features.map((ft) => ringsPath(geomRings(ft.geometry), proj)).join('')}" fill="none" stroke="#ffffff" stroke-width="0.1" opacity="0.8"/>`);
-  // heritage over the zones: conservation areas dashed, items outlined, the State register's curtilages heavy
+  for (const cls of zc.all()) { const ds = byClass.get(cls.key); if (ds) parts.push(fillShape(ds.join(''), box, cls.fill)); }
+  // the cadastre: white hairlines over the tints, or the style's faint grey
+  if (b.base.lots.features.length) {
+    const d = b.base.lots.features.map((ft) => ringsPath(geomRings(ft.geometry), proj)).join('');
+    parts.push(look.legacy || look.lots === 'white'
+      ? `<path d="${d}" fill="none" stroke="#ffffff" stroke-width="${look.legacy ? 0.1 : 0.16}" opacity="${look.legacy ? 0.8 : 0.9}"/>`
+      : `<path d="${d}" fill="none" stroke="${t.road}" stroke-width="0.1" opacity="0.5"/>`);
+  }
+  // heritage over the zones: items filled in the heritage ink (the legacy's white, outlined), conservation areas dashed, the State register's curtilages heavy
+  const HI = look.legacy ? F.deep : look.heritage, HA = look.legacy ? F.deep : look.heritageArea, HS = look.legacy ? F.deep : shadeHex(look.heritage, 0.7);
   const cas = b.heritage.features.filter((ft) => /Conservation Area/i.test(String(ft.properties.LAY_CLASS ?? '')));
   const items = b.heritage.features.filter((ft) => !/Conservation Area/i.test(String(ft.properties.LAY_CLASS ?? '')));
-  if (items.length) parts.push(`<path d="${items.map((ft) => ringsPath(geomRings(ft.geometry), proj)).join('')}" fill="#ffffff" fill-opacity="0.55" stroke="${R.deep}" stroke-width="0.22" fill-rule="evenodd"/>`);
-  if (cas.length) parts.push(`<path d="${cas.map((ft) => ringsPath(geomRings(ft.geometry), proj)).join('')}" fill="none" stroke="${R.deep}" stroke-width="0.45" stroke-dasharray="1.4 0.7" fill-rule="evenodd"/>`);
-  if (b.shr.features.length) parts.push(`<path d="${b.shr.features.map((ft) => ringsPath(geomRings(ft.geometry), proj)).join('')}" fill="none" stroke="${R.deep}" stroke-width="0.8" fill-rule="evenodd"/>`);
+  // the items: the legacy's white, outlined; a style's hatch in its heritage ink, as its context sheet hatches them (falling the other way to the zones' textures, so the two still read apart)
+  const itemsD = items.map((ft) => ringsPath(geomRings(ft.geometry), proj)).join('');
+  if (items.length) parts.push(look.legacy ? `<path d="${itemsD}" fill="#ffffff" fill-opacity="0.55" stroke="${HI}" stroke-width="0.22" fill-rule="evenodd"/>` : hatchPath(itemsD, 'plan03-items', HI, box, 1.4));
+  if (cas.length) parts.push(`<path d="${cas.map((ft) => ringsPath(geomRings(ft.geometry), proj)).join('')}" fill="none" stroke="${HA}" stroke-width="0.45" stroke-dasharray="1.4 0.7" fill-rule="evenodd"/>`);
+  if (b.shr.features.length) parts.push(`<path d="${b.shr.features.map((ft) => ringsPath(geomRings(ft.geometry), proj)).join('')}" fill="none" stroke="${HS}" stroke-width="0.8" fill-rule="evenodd"/>`);
   parts.push(withTemplate(gt, () => overLayers(b.base, proj, p, 'none')));
   const spacer = new LabelSpacer(p.wMm, p.hMm, 120);
   spacer.take(40, 10, 72, 10);
   keepSiteClear(b, proj, spacer);
+  // the scale bar's box, so no zone code shows through it
+  const fb = furnitureBox(p, 'left');
+  spacer.block((fb.x0 + fb.x1) / 2, (fb.y0 + fb.y1) / 2, fb.x1 - fb.x0 + 2, fb.y1 - fb.y0 + 2);
   const labels: string[] = [];
-  for (const c of cands.sort((x, y) => y.area - x.area)) if (spacer.take(c.cx, c.cy, c.text.length * 1.6 + 1, 2.8)) labels.push(m6(c.cx, c.cy, c.text));
-  labels.push(streetNameLayer(b.base.roads, proj, p, spacer, 'plan03'));
+  const word = onAerial ? a6 : m6;
+  for (const c of cands.sort((x, y) => y.area - x.area)) if (spacer.take(c.cx, c.cy, c.text.length * 1.6 + 1, 2.8)) labels.push(word(c.cx, c.cy, c.text, 'middle'));
+  labels.push(streetNameLayer(b.base.roads, proj, p, spacer, 'plan03', look.legacy ? '#3c3c3c' : onAerial ? look.streetInkAerial : look.streetInk, 2.0, onAerial ? '#1c1c1c' : '#ffffff'));
   parts.push(...labels, siteMark(b.base, proj, 'both'), siteEdge(b, proj), panelFurniture(p, 'left'));
   const mapSvg = bleedSvg('plan03', p, parts.join('\n'));
 
   // ---- the key
-  const present = ZONE_GROUPS.filter((g) => byGroup.has(g.key));
+  const present = zc.all().filter((c) => byClass.has(c.key));
   const legend: LegendEntry[] = [
-    ...present.map((g) => ({ swatch: swatchOf(g.fill), label: g.label })),
-    ...(items.length ? [{ swatch: `<rect x="0.2" y="0.6" width="4.6" height="2.4" fill="#ffffff" stroke="${R.deep}" stroke-width="0.22"/>`, label: 'Heritage item, local plan' }] : []),
-    ...(cas.length ? [{ swatch: `<rect x="0.3" y="0.6" width="4.4" height="2.4" fill="none" stroke="${R.deep}" stroke-width="0.4" stroke-dasharray="1.4 0.7"/>`, label: 'Heritage conservation area' }] : []),
-    ...(b.shr.features.length ? [{ swatch: `<rect x="0.4" y="0.7" width="4.2" height="2.2" fill="none" stroke="${R.deep}" stroke-width="0.7"/>`, label: 'State Heritage Register curtilage' }] : []),
+    ...present.map((c) => ({ swatch: swatchOf(c.swatch), label: c.label })),
+    ...(items.length ? [{ swatch: look.legacy ? `<rect x="0.2" y="0.6" width="4.6" height="2.4" fill="#ffffff" stroke="${HI}" stroke-width="0.22"/>` : swatchHatch(HI), label: 'Heritage item, local plan' }] : []),
+    ...(cas.length ? [{ swatch: `<rect x="0.3" y="0.6" width="4.4" height="2.4" fill="none" stroke="${HA}" stroke-width="0.4" stroke-dasharray="1.4 0.7"/>`, label: 'Heritage conservation area' }] : []),
+    ...(b.shr.features.length ? [{ swatch: `<rect x="0.4" y="0.7" width="4.2" height="2.2" fill="none" stroke="${HS}" stroke-width="0.7"/>`, label: 'State Heritage Register curtilage' }] : []),
     SITE_KEY(t),
   ];
   const limit = keyTop(legend.length) - 6;
@@ -1401,7 +1476,9 @@ export function planningAtlas(b0: SlidesBundle): Slide {
   ], 9.6);
   let y = 44 + blockH(6.3 + 3 * 9.6);
   const blocks = [zBlock('The controls', figs, 'Heritage')];
-  const zoneRows = f.zonesInWindow.filter((zz) => zz.areaShare >= 0.01).slice(0, 8).map((zz) => ({ name: shorten(`${zz.code}  ${zz.name}`, 42), value: zz.areaShare * 100, label: fmtPct(zz.areaShare * 100), fill: zz.code === z?.code ? { bg: R.solid } as Fill : zoneGroup(zz.code, zz.name).fill }));
+  // each zone's share in its own fill, the site's zone solid in the legacy's red and outlined in the style's accent
+  const siteBar = (fill: Fill): Fill => (look.legacy ? { bg: F.solid } : { ...fill, outline: accent, outlineW: 0.35 });
+  const zoneRows = f.zonesInWindow.filter((zz) => zz.areaShare >= 0.01).slice(0, 8).map((zz) => { const cls = zc.of(zz.code, zz.name); return { name: shorten(`${zz.code}  ${zz.name}`, 42), value: zz.areaShare * 100, label: fmtPct(zz.areaShare * 100), fill: zz.code === z?.code ? siteBar(cls.swatch) : cls.swatch }; });
   if (zoneRows.length) {
     const ax = niceAxis(Math.max(...zoneRows.map((r) => r.value)));
     blocks.push(zBlock('Zones on the page · share of the land, %', zBars(zoneRows, ax.max, ax.step)));
@@ -1418,14 +1495,14 @@ export function planningAtlas(b0: SlidesBundle): Slide {
   }
   const room = Math.max(0, Math.floor((limit - y - blockH(10)) / 3.95));
   const hobRows = [...hobShare.values()].filter((h) => h.share >= 0.005).sort((x, y2) => y2.share - x.share).slice(0, Math.min(9, room)).sort((x, y2) => x.key - y2.key)
-    .map((h) => ({ name: h.label === f.hobAtSite?.label ? `${h.label} · the site` : h.label, value: h.share * 100, label: fmtPct(h.share * 100), fill: h.label === f.hobAtSite?.label ? { bg: R.solid } as Fill : { bg: '#ffffff', kind: 'vlines', ink: R.line, step: 0.55, w: 0.16, outline: R.line, outlineW: 0.12 } as Fill }));
+    .map((h) => ({ name: h.label === f.hobAtSite?.label ? `${h.label} · the site` : h.label, value: h.share * 100, label: fmtPct(h.share * 100), fill: h.label === f.hobAtSite?.label ? { bg: F.solid } as Fill : { bg: '#ffffff', kind: 'vlines', ink: F.line, step: 0.55, w: 0.16, outline: F.line, outlineW: 0.12 } as Fill }));
   if (hobRows.length) {
     const ax = niceAxis(Math.max(...hobRows.map((r) => r.value)));
     blocks.push(zBlock('Height limits on the page · share of the land, %', zBars(hobRows, ax.max, ax.step)));
   }
-  const sources = `Sources: zoning, height of building and heritage from NSW ePlanning (EPI primary planning layers); the State Heritage Register from Heritage NSW; roads, rail, water and cadastre from NSW Spatial Services. Mapped controls, not a planning certificate. Retrieved ${b.generatedAt.slice(0, 10)}.`;
+  const sources = `Sources: zoning, height of building and heritage from NSW ePlanning (EPI primary planning layers); the State Heritage Register from Heritage NSW; roads, rail, water and cadastre from NSW Spatial Services${onAerial ? '; NSW Imagery via SIX Maps for the aerial' : ''}. Mapped controls, not a planning certificate. Retrieved ${b.generatedAt.slice(0, 10)}.`;
   const sub = atlasSub(b0, z ? `${z.code} ${z.name}` : '', f.hobAtSite ? `HOB ${f.hobAtSite.label}` : '', b0.context.district ? `${b0.context.district} District` : '');
-  return { id: '03_planning_overview', title: 'Planning overview', subtitle: sub, textHtml: '', figureHtml: atlasFigure(mapSvg, 'Zoning and heritage', p, zFlow(blocks)), bleed: true, sources, accent: R.text, legend,
+  return { id: '03_planning_overview', title: 'Planning overview', subtitle: sub, textHtml: '', figureHtml: atlasFigure(mapSvg, 'Zoning and heritage', p, zFlow(blocks)), bleed: true, sources, accent, legend,
     narrative: brief([z ? `The site is zoned ${z.code} ${z.name}, with a height of building of ${f.hobAtSite?.label ?? 'no mapped limit'} and a floor space ratio of ${f.fsrAtSite ? `${f.fsrAtSite.toFixed(2)}:1` : 'none mapped'}.` : '', hs.length ? `It is ${listWords(hs.map((h) => h.kind === 'conservationArea' ? `in the ${h.name} conservation area` : h.kind === 'shr' ? `on the State Heritage Register as ${h.name}` : `a listed heritage item, ${h.name}`))}.` : 'It is not a heritage item and not in a conservation area.', f.zonesInWindow[0] ? `${f.zonesInWindow[0].code} ${f.zonesInWindow[0].name} covers ${fmtPct(f.zonesInWindow[0].areaShare * 100)} of the land on the map.` : '']) };
 }
 
@@ -7875,8 +7952,11 @@ ${s.sources ? `<div class="abs zsrc" style="left:12mm;bottom:11.6mm;width:58.5mm
 </section>`;
 }
 
-export function renderSlides(b: SlidesBundle, meta: SheetMeta): { html: string; slides: Slide[] } {
-  return withTemplate(DECK_TEMPLATE, () => drawSlides(b, meta));
+/** How a deck is drawn: in which of the maps' styles (the active template's where unnamed), and in its full palette or its accent's family alone. */
+export interface DeckRenderOptions extends DeckOptions { theme?: string }
+
+export function renderSlides(b: SlidesBundle, meta: SheetMeta, opts: DeckRenderOptions = {}): { html: string; slides: Slide[] } {
+  return withTemplate(templateFor('slides', opts.theme ?? tpl().id), () => withDeckOptions(opts, () => drawSlides(b, meta)));
 }
 
 function drawSlides(b: SlidesBundle, meta: SheetMeta): { html: string; slides: Slide[] } {

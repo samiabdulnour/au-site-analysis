@@ -30,7 +30,7 @@ function arg(name: string, def?: string): string | undefined {
 
 const address = process.argv.slice(2).find((a) => !a.startsWith('--') && process.argv[process.argv.indexOf(a) - 1]?.startsWith('--') !== true);
 if (!address) {
-  console.error('usage: npm run generate -- "<address>" [--type context|site|yield|slides|summary|both] [--scale 3000] [--slides-scale 8000] [--template flamingo|kingfisher|heron|canary] [--site-theme heron|kingfisher|flamingo|canary] [--job N] [--client X] [--status S] [--sheet "DA 003"]');
+  console.error('usage: npm run generate -- "<address>" [--type context|site|yield|slides|summary|both] [--scale 3000] [--slides-scale 8000] [--template flamingo|kingfisher|heron|canary|deck] [--site-theme heron|kingfisher|flamingo|canary] [--job N] [--client X] [--status S] [--sheet "DA 003"]');
   process.exit(1);
 }
 
@@ -57,8 +57,9 @@ if (arg('trial-services')) process.env.SERVICES_TRIAL = arg('trial-services');
 const sheetType = arg('type', 'context')!; // context | site | yield | slides | summary | both (context, site, summary)
 const rotate = arg('rotate', 'north') === 'auto' ? 'auto' as const : 'north' as const;
 // The context sheet's graphic template, process-wide for the CLI (it renders one
-// address and exits). The site sheet takes --site-theme instead; the summary
-// and the deck have no themes.
+// address and exits); the yield and the site report take the same four names
+// (and `deck` for the look they had before the styles). The site sheet takes
+// --site-theme instead; the summary has no themes.
 {
   const want = arg('template', DEFAULT_TEMPLATE)!;
   if (!isTemplateId(want)) { console.error(`unknown template "${want}"; using ${DEFAULT_TEMPLATE}`); }
@@ -131,6 +132,11 @@ if (sheetType === 'summary' || sheetType === 'both') {
 
 if (sheetType === 'yield') {
   const yb = await runYieldPipeline(address, { outDir, log: (m) => console.log(m) });
+  // A development aid, as for the deck: keep the bundle, so the yield can be re-composed without fetching (scripts/recompose.ts).
+  if (process.env.KEEP_BUNDLE) {
+    const { serialize } = await import('node:v8');
+    await writeFile(join(outDir, 'yield.bundle'), serialize({ yb, meta }));
+  }
   console.log('composing planning yield…');
   // A3 spreads, as the site report prints: a page a path, each its own PNG too.
   const yieldHtmlPath = join(outDir, 'yield_deck.html');

@@ -25,6 +25,7 @@ function onStroke(f: Fill, x: number, y: number): boolean {
     return Math.hypot(x - cx, y - cy) < w;
   }
   if (f.kind === 'waves') { const amp = step / 3, yy = y - amp * Math.sin((x / (2 * step)) * 2 * Math.PI); return Math.abs(m(yy) - step / 2) < w / 2; }
+  if (f.kind === 'hatch' || f.kind === 'cross') return Math.abs(m(x - y) - step / 2) < w / 2 || (f.kind === 'cross' && Math.abs(m(x + y) - step / 2) < w / 2);
   return false;
 }
 

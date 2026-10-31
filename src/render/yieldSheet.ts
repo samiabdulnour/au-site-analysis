@@ -17,10 +17,13 @@
 // beside the output.
 
 import { esc } from './chrome.js';
-import { tpl, withTemplate, DECK_TEMPLATE } from './template.js';
+import { tpl, withTemplate, templateFor, deckLook, withDeckOptions, tint, type DeckLook } from './template.js';
 import { shortStreetName, type SheetMeta } from './sheet.js';
-import { atlasPage, deckCss, zFlow, zBlock, zTable, brief, type Slide } from './slides.js';
-import { INK, zFigures, zBars, niceAxis, type Fill } from './atlasKit.js';
+import { atlasPage, deckCss, zFlow, zBlock, zTable, brief, type Slide, type DeckRenderOptions } from './slides.js';
+import { INK, zFigures, zBars, niceAxis, fillShape, categoryFill, type Fill } from './atlasKit.js';
+import { catById, zoneToCategory } from './model.js';
+import { zoneFill } from './lepPalette.js';
+import { LEP_OPACITY } from './sheet.js';
 import type { LegendEntry } from './minimap.js';
 import { estimateKerbs, type KerbLine } from '../lib/kerbs.js';
 import type { SummaryData } from './summarySheet.js';
@@ -299,9 +302,25 @@ function tierBadge(x: number, y: number, n: number, r = 2): string {
 
 // ---- the drawings ------------------------------------------------------------------
 
-/** Each use's colour in the massing and the plan. */
+/** Each use's colour in the massing and the plan: the legacy deck's three, or the style's own tints for the residential, retail and commercial land. */
 const USE_FILL: Record<Use, string> = { residential: '#f0c9a6', retail: '#e69ea1', commercial: '#a9cfe9' };
+const USE_CATEGORY: Record<Use, string> = { residential: 'r4', retail: 'retail', commercial: 'commercial' };
+function useFill(u: Use): string {
+  const look = deckLook();
+  if (look.legacy) return USE_FILL[u];
+  const c = catById()[USE_CATEGORY[u]];
+  return c ? tint(c.fill, Math.min(1, c.opacity + 0.2)) : USE_FILL[u];
+}
 const CONTEXT_FILL = '#e9e9e6', CONTEXT_EDGE = '#a3a39e';
+/** The site's pen: the legacy's red, or the style's accent. */
+const siteInk = () => { const look = deckLook(); return look.legacy ? SITE_RED : look.accent; };
+/** The lot in a zone, as the style's context sheet tints the land: its category's fill and texture, or its ePlanning colour; nothing under the legacy deck, whose plan is black and grey. */
+function lotFill(zone: string | undefined, look: DeckLook): { key: string; fill: Fill } | null {
+  if (look.legacy || !zone) return null;
+  if (look.zones === 'lep') return { key: zone.toUpperCase(), fill: { bg: tint(zoneFill(zone), LEP_OPACITY) } };
+  const cat = zoneToCategory(zone), c = cat ? catById()[cat] : undefined;
+  return c ? { key: c.id, fill: categoryFill(c, 'paper') } : null;
+}
 /** A neighbour's future, over what stands: a pale glass, dashed, light enough to see the proposal through. */
 const FUTURE_FILL = '#e4ebf3', FUTURE_EDGE = '#8495a8', FUTURE_OPACITY = 0.3, FUTURE_DASH = '1.4,0.8';
 const SITE_RED = '#c8372d', ENVELOPE = '#5b6670';
@@ -373,7 +392,7 @@ function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number;
   if (y && z) for (const t of y.tiers) {
     const top = Math.min(t.to, y.storeys);
     if (top < t.from || !t.plate.length) continue;
-    built.push({ rings: t.plate, z0: z.bottom(t.from), z1: z.top(top), fill: USE_FILL[t.use], edge: '#3a3a3a', edgeW: 0.16, storeys: Array.from({ length: top - t.from }, (_, i) => z.top(t.from + i)) });
+    built.push({ rings: t.plate, z0: z.bottom(t.from), z1: z.top(top), fill: useFill(t.use), edge: '#3a3a3a', edgeW: 0.16, storeys: Array.from({ length: top - t.from }, (_, i) => z.top(t.from + i)) });
   }
   // What stands, at its recorded height, its storeys ruled; one with none recorded at a nominal two, dashed.
   for (const e of scheme.standing ?? []) {
@@ -396,7 +415,8 @@ function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number;
     if (pts.some((p) => Math.hypot(p.x, p.y) > reach + 20)) continue;
     ground.push(`<path d="${poly(pts.map((p) => P(p, 0)))}" fill="none" stroke="#c9c9c4" stroke-width="0.12"/>`);
   }
-  ground.push(`<path d="${poly(s.ring.map((p) => P(p, 0)))}" fill="${SITE_RED}" fill-opacity="0.08" stroke="${SITE_RED}" stroke-width="0.35"/>`);
+  const SITE = siteInk();
+  ground.push(`<path d="${poly(s.ring.map((p) => P(p, 0)))}" fill="${SITE}" fill-opacity="0.08" stroke="${SITE}" stroke-width="0.35"/>`);
   const prismSvg = (pr: Prism) => {
     const out: string[] = [];
     const dash = pr.dashed ? ` stroke-dasharray="${pr.dash ?? '0.8,0.6'}"` : '';
@@ -453,8 +473,8 @@ function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number;
   }
   if (s.hob?.metres) {
     const hz = s.hob.metres;
-    over.push(`<path d="${poly(s.ring.map((p) => P(p, hz)))}" fill="${SITE_RED}" fill-opacity="0.05" stroke="${SITE_RED}" stroke-width="0.3" stroke-dasharray="2.4,1.2"/>`);
-    for (const p of s.ring) { const [x1, y1] = P(p, 0), [x2, y2] = P(p, hz); over.push(`<line x1="${x1.toFixed(2)}" y1="${y1.toFixed(2)}" x2="${x2.toFixed(2)}" y2="${y2.toFixed(2)}" stroke="${SITE_RED}" stroke-width="0.12" stroke-dasharray="1,1"/>`); }
+    over.push(`<path d="${poly(s.ring.map((p) => P(p, hz)))}" fill="${SITE}" fill-opacity="0.05" stroke="${SITE}" stroke-width="0.3" stroke-dasharray="2.4,1.2"/>`);
+    for (const p of s.ring) { const [x1, y1] = P(p, 0), [x2, y2] = P(p, hz); over.push(`<line x1="${x1.toFixed(2)}" y1="${y1.toFixed(2)}" x2="${x2.toFixed(2)}" y2="${y2.toFixed(2)}" stroke="${SITE}" stroke-width="0.12" stroke-dasharray="1,1"/>`); }
   }
 
   // Fit it all to the box. A height plane far above everything built (an
@@ -483,7 +503,7 @@ function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number;
   const note = (line: number, ink: string, text: string) =>
     `<text x="${(box.x + box.w / 2).toFixed(1)}" y="${(box.y + 4 + line * 4).toFixed(1)}" text-anchor="middle" font-size="2.8" fill="${ink}" stroke="#ffffff" stroke-width="1.4" paint-order="stroke">${esc(text)}</text>`;
   const notes: string[] = [];
-  if (s.hob?.metres && !planeFits) notes.push(note(notes.length, SITE_RED, `HEIGHT OF BUILDING PLANE ${s.hob.rl ? `RL ${fmt(s.hob.value, 1)}, ` : ''}${fmt(Math.round(planeZ))}m ABOVE THE GROUND, ABOVE THE FRAME`));
+  if (s.hob?.metres && !planeFits) notes.push(note(notes.length, SITE, `HEIGHT OF BUILDING PLANE ${s.hob.rl ? `RL ${fmt(s.hob.value, 1)}, ` : ''}${fmt(Math.round(planeZ))}m ABOVE THE GROUND, ABOVE THE FRAME`));
   if (futureTop > cap) notes.push(note(notes.length, FUTURE_EDGE, `NEIGHBOURS' FUTURE HEIGHTS RUN ABOVE THE FRAME, TO ${fmt(Math.round(futureTop))}m`));
   const above = notes.join('');
   return `<defs><clipPath id="axo-${id}"><rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}"/></clipPath></defs>
@@ -553,14 +573,41 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
     const shown = rings.map(inFrame).filter((rg) => rg.length >= 3);
     return { ...pc, local: rings, shown, site: inRing(centre(rings[0] ?? []), s.ring) };
   });
-  out.push(`<path d="${parcels.flatMap((pc) => pc.local.map(path)).join('')}" fill="none" stroke="${LOT_INK}" stroke-width="0.15"/>`);
+  const look = deckLook(), t = tpl();
+  const within = (p: XY, rs: XY[][]) => rs.filter((rg) => inRing(p, rg)).length % 2 === 1;
+  // Under a style, each lot in its zone's tint, as the style's context sheet
+  // tints the land, the lots alone so the streets stay white; the site is
+  // left to its own marks. The legacy plan is black and grey.
+  if (!look.legacy) {
+    const byKey = new Map<string, { fill: Fill; ds: string[] }>();
+    for (const pc of parcels) {
+      if (pc.site) continue;
+      const lf = lotFill(pc.zone, look);
+      if (!lf) continue;
+      (byKey.get(lf.key) ?? byKey.set(lf.key, { fill: lf.fill, ds: [] }).get(lf.key)!).ds.push(...pc.local.map(path));
+    }
+    const bb = { x0: box.x, y0: box.y, x1: box.x + box.w, y1: box.y + box.h };
+    for (const { fill, ds } of byKey.values()) out.push(fillShape(ds.join(''), bb, fill));
+  }
+  const lotLine = look.legacy ? `stroke="${LOT_INK}" stroke-width="0.15"` : look.lots === 'white' ? 'stroke="#ffffff" stroke-width="0.3"' : `stroke="${t.road}" stroke-width="0.15" opacity="0.6"`;
+  out.push(`<path d="${parcels.flatMap((pc) => pc.local.map(path)).join('')}" fill="none" ${lotLine}/>`);
   let kerbs = b.kerbs;
   if (!kerbs) {
     try { kerbs = estimateKerbs(parcels.flatMap((pc) => pc.rings), b.roads, [], []); } catch { kerbs = []; }
   }
   if (kerbs.length) out.push(`<path d="${kerbs.map((kl) => line(local(kl.coords))).join('')}" fill="none" stroke="${KERB_INK}" stroke-width="0.3" stroke-linecap="round" stroke-linejoin="round"/>`);
   const blds = b.context.map((cb) => local(cb.rings[0] ?? [])).filter((rg) => rg.length >= 3);
-  for (const rg of blds) out.push(`<path d="${path(rg)}" fill="${CONTEXT_FILL}" stroke="${CONTEXT_EDGE}" stroke-width="0.12"/>`);
+  // The buildings as the style draws them: white in a hairline of their
+  // zone family's ink, filled in the family's colour with a white edge, or
+  // a quiet grey (the legacy, and the aerial styles with no photograph here).
+  for (const rg of blds) {
+    const zone = look.legacy || look.buildings === 'grey' ? undefined : parcels.find((pc) => !pc.site && within(centre(rg), pc.local))?.zone;
+    const cat = zone ? zoneToCategory(zone) : null, c = cat ? catById()[cat] : undefined;
+    const ink = c?.figure ?? c?.stroke ?? (look.buildings === 'white' ? t.road : '#d9d9d6');
+    out.push(look.legacy || look.buildings === 'grey' ? `<path d="${path(rg)}" fill="${CONTEXT_FILL}" stroke="${CONTEXT_EDGE}" stroke-width="0.12"/>`
+      : look.buildings === 'white' ? `<path d="${path(rg)}" fill="#ffffff" stroke="${ink}" stroke-width="0.3" stroke-linejoin="round"/>`
+        : `<path d="${path(rg)}" fill="${ink}" stroke="#ffffff" stroke-width="0.3" stroke-linejoin="round"/>`);
+  }
 
   // What stands on the site, where the scheme is what stands.
   for (const e of scheme.standing ?? []) out.push(`<path d="${e.rings.map(path).join('')}" fill="${STANDING_FILL}" fill-rule="evenodd" stroke="#3a3a3a" stroke-width="0.2"/>`);
@@ -568,10 +615,10 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
   const tiers = y ? [...y.tiers].sort((p, q) => q.envelopeSqm - p.envelopeSqm) : [];
   for (const t of tiers) {
     const built = t.from <= y!.storeys;
-    if (t.plate.length) out.push(`<path d="${t.plate.map(path).join('')}" fill="${USE_FILL[t.use]}" fill-opacity="${built ? 0.55 : 0.18}" fill-rule="evenodd" stroke="none"/>`);
+    if (t.plate.length) out.push(`<path d="${t.plate.map(path).join('')}" fill="${useFill(t.use)}" fill-opacity="${built ? 0.55 : 0.18}" fill-rule="evenodd" stroke="none"/>`);
   }
   y?.tiers.forEach((t, i) => { for (const rg of t.envelope) out.push(`<path d="${path(rg)}" fill="none" stroke="${ENVELOPE}" stroke-width="0.3" stroke-dasharray="${['2,1', '1.2,1.2', '3,1,0.8,1', '0.6,0.9'][i % 4]}"/>`); });
-  out.push(`<path d="${path(s.ring)}" fill="none" stroke="${SITE_RED}" stroke-width="0.6" stroke-dasharray="3,1.2"/>`);
+  out.push(`<path d="${path(s.ring)}" fill="none" stroke="${siteInk()}" stroke-width="0.6" stroke-dasharray="3,1.2"/>`);
 
   // North, and a bar of round metres, first: what is written later keeps off them.
   const nx = box.x + box.w - 7 - inset, ny = box.y + 8 + inset;
@@ -640,7 +687,7 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
       taken.push(bx2);
       const rid = `${id}-rd${defs.length}`;
       defs.push(`<path id="${rid}" d="M${p0[0].toFixed(2)},${p0[1].toFixed(2)}L${p1[0].toFixed(2)},${p1[1].toFixed(2)}" fill="none"/>`);
-      out.push(`<text font-size="${FS}" font-weight="700" letter-spacing="0.5" dy="${(FS * 0.36).toFixed(2)}" fill="${STREET_INK}"><textPath href="#${rid}" startOffset="50%" text-anchor="middle">${esc(label)}</textPath></text>`);
+      out.push(`<text font-size="${FS}" font-weight="700" letter-spacing="0.5" dy="${(FS * 0.36).toFixed(2)}" fill="${look.legacy ? STREET_INK : look.streetInk}"><textPath href="#${rid}" startOffset="50%" text-anchor="middle">${esc(label)}</textPath></text>`);
       named.add(name);
       break;
     }
@@ -661,7 +708,7 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
     let ang = (-Math.atan2(q.y - p.y, q.x - p.x) * 180) / Math.PI;
     if (ang > 90) ang -= 180;
     if (ang < -90) ang += 180;
-    out.push(`<text transform="translate(${lx.toFixed(2)},${ly.toFixed(2)}) rotate(${ang.toFixed(1)})" y="1" text-anchor="middle" font-size="${FS}" font-weight="700" letter-spacing="0.5" fill="${STREET_INK}">${esc(shortStreetName(name).toUpperCase())}</text>`);
+    out.push(`<text transform="translate(${lx.toFixed(2)},${ly.toFixed(2)}) rotate(${ang.toFixed(1)})" y="1" text-anchor="middle" font-size="${FS}" font-weight="700" letter-spacing="0.5" fill="${look.legacy ? STREET_INK : look.streetInk}">${esc(shortStreetName(name).toUpperCase())}</text>`);
   });
 
   // On each numbered neighbour: its number, then its zone and height of
@@ -671,7 +718,6 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
   const labelled = parcels.filter((pc) => !pc.site && pc.numbers?.length && pc.shown.length)
     .map((pc) => ({ pc, d: Math.min(...(pc.local[0] ?? []).map((p) => Math.min(...s.ring.map((q) => Math.hypot(p.x - q.x, p.y - q.y))))) }))
     .sort((p, q) => p.d - q.d);
-  const within = (p: XY, rs: XY[][]) => rs.filter((rg) => inRing(p, rg)).length % 2 === 1;
   for (const { pc } of labelled) {
     const lines = [`NO. ${numberLine(pc.numbers!)}`, [pc.zone, pc.hob ? hobLine(pc.hob) : ''].filter(Boolean).join(' · ')].filter(Boolean);
     const wMm = Math.max(lines[0].length * F1 * 0.66, (lines[1]?.length ?? 0) * F2 * 0.6) + 2.4, hMm = lines.length * LH + 0.8;
@@ -936,28 +982,44 @@ const labelBox = (parts: string[]): [number, number, number, number] =>
 const bleedFigure = (top: number, h: number, inner: string) =>
   `<svg class="abs" style="left:${PAGE_X}mm;top:${top}mm" width="${PAGE_W}mm" height="${h}mm" viewBox="0 0 ${PAGE_W} ${h}" xmlns="http://www.w3.org/2000/svg" font-family="${tpl().font}" fill="${tpl().ink}">${inner}</svg>`;
 
+/** The deck's inks for this render: the family its figures are drawn in (the legacy's red, or the style's accent's), its narrative's ink, its site's pen. */
+function inks() {
+  const look = deckLook();
+  const F = look.legacy ? INK.red : look.family;
+  return { look, F, accent: look.legacy ? INK.red.text : look.accent, site: look.legacy ? SITE_RED : look.accent };
+}
+
 /** The key's swatches, in its 5 × 3.6 box. */
-const KEY = {
-  site: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="${SITE_RED}" fill-opacity="0.08" stroke="${SITE_RED}" stroke-width="0.3" stroke-dasharray="1,0.4"/>`,
-  use: (u: Use) => `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="${USE_FILL[u]}" stroke="#3a3a3a" stroke-width="0.15"/>`,
-  standing: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="${STANDING_FILL}" stroke="#3a3a3a" stroke-width="0.15"/>`,
-  envelope: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="none" stroke="${ENVELOPE}" stroke-width="0.25" stroke-dasharray="0.8,0.5"/>`,
-  plane: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="${SITE_RED}" fill-opacity="0.05" stroke="${SITE_RED}" stroke-width="0.25" stroke-dasharray="1.2,0.6"/>`,
-  neighbours: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="${CONTEXT_FILL}" stroke="${CONTEXT_EDGE}" stroke-width="0.15"/>`,
-  future: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="${FUTURE_FILL}" fill-opacity="0.6" stroke="${FUTURE_EDGE}" stroke-width="0.2" stroke-dasharray="0.7,0.4"/>`,
-  kerb: `<line x1="0.3" y1="1.8" x2="4.7" y2="1.8" stroke="${KERB_INK}" stroke-width="0.3"/>`,
-  lot: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="none" stroke="${LOT_INK}" stroke-width="0.15"/>`,
-};
+function keySwatches() {
+  const { look, site } = inks();
+  const t = tpl();
+  const neighbours = look.legacy || look.buildings === 'grey' ? `fill="${CONTEXT_FILL}" stroke="${CONTEXT_EDGE}" stroke-width="0.15"`
+    : look.buildings === 'white' ? `fill="#ffffff" stroke="${t.road}" stroke-width="0.3"` : `fill="#c2c2bc" stroke="#ffffff" stroke-width="0.3"`;
+  const lot = look.legacy ? `stroke="${LOT_INK}" stroke-width="0.15"` : look.lots === 'white' ? `fill="#eeeeea" stroke="#ffffff" stroke-width="0.3"` : `stroke="${t.road}" stroke-width="0.15" opacity="0.6"`;
+  return {
+    site: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="${site}" fill-opacity="0.08" stroke="${site}" stroke-width="0.3" stroke-dasharray="1,0.4"/>`,
+    use: (u: Use) => `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="${useFill(u)}" stroke="#3a3a3a" stroke-width="0.15"/>`,
+    standing: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="${STANDING_FILL}" stroke="#3a3a3a" stroke-width="0.15"/>`,
+    envelope: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="none" stroke="${ENVELOPE}" stroke-width="0.25" stroke-dasharray="0.8,0.5"/>`,
+    plane: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="${site}" fill-opacity="0.05" stroke="${site}" stroke-width="0.25" stroke-dasharray="1.2,0.6"/>`,
+    neighbours: `<path d="M0.4,0.5H4.6V3.1H0.4Z" ${neighbours}/>`,
+    future: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="${FUTURE_FILL}" fill-opacity="0.6" stroke="${FUTURE_EDGE}" stroke-width="0.2" stroke-dasharray="0.7,0.4"/>`,
+    kerb: `<line x1="0.3" y1="1.8" x2="4.7" y2="1.8" stroke="${KERB_INK}" stroke-width="0.3"/>`,
+    lot: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="none" ${lot}/>`,
+  };
+}
 
 /** The scenarios' fills in the bar charts: one family, told apart by pattern. */
-const R = INK.red;
-const BAR_FILL: Record<Scenario['id'], Fill> = {
-  standsToday: { bg: '#ffffff', kind: 'vlines', ink: R.line, step: 0.55, w: 0.16, outline: R.line, outlineW: 0.12 },
-  rebuiltAsStands: { bg: '#ffffff', kind: 'waves', ink: R.deep, step: 0.8, w: 0.14, outline: R.line, outlineW: 0.12 },
-  withinControls: { bg: R.mid },
-  affordableBonus: { bg: '#ffffff', kind: 'dots', ink: R.deep, step: 0.8, w: 0.12, outline: R.line, outlineW: 0.12 },
-  envelopeToHeight: { bg: '#ffffff', kind: 'hlines', ink: R.line, step: 0.55, w: 0.16, outline: R.line, outlineW: 0.12 },
-};
+function barFills(): Record<Scenario['id'], Fill> {
+  const { F } = inks();
+  return {
+    standsToday: { bg: '#ffffff', kind: 'vlines', ink: F.line, step: 0.55, w: 0.16, outline: F.line, outlineW: 0.12 },
+    rebuiltAsStands: { bg: '#ffffff', kind: 'waves', ink: F.deep, step: 0.8, w: 0.14, outline: F.line, outlineW: 0.12 },
+    withinControls: { bg: F.mid },
+    affordableBonus: { bg: '#ffffff', kind: 'dots', ink: F.deep, step: 0.8, w: 0.12, outline: F.line, outlineW: 0.12 },
+    envelopeToHeight: { bg: '#ffffff', kind: 'hlines', ink: F.line, step: 0.55, w: 0.16, outline: F.line, outlineW: 0.12 },
+  };
+}
 
 interface Path { sc: Scenario; y?: YieldResult }
 
@@ -992,6 +1054,7 @@ const NOT_A_DESIGN = 'A feasibility study, not a design: the envelope follows th
 
 /** The key to the massing and the plan of a path's spread. */
 function schemeLegend(b: YieldBundle, s: YieldStudy, y: YieldResult | undefined, standing: boolean, kerbs: boolean): LegendEntry[] {
+  const KEY = keySwatches();
   const out: LegendEntry[] = [{ swatch: KEY.site, label: 'The site' }];
   if (standing) out.push({ swatch: KEY.standing, label: 'What stands on the site, recorded height' });
   for (const u of ['residential', 'retail', 'commercial'] as Use[]) if (y?.tiers.some((t) => t.use === u)) out.push({ swatch: KEY.use(u), label: `Indicative massing, ${USE_WORD[u]}` });
@@ -1019,6 +1082,7 @@ function schemeFigures(b: YieldBundle, s: YieldStudy, scheme: Scheme, id: string
 /** Floor area and height, path by path, against what the controls give. */
 function pathBars(b: YieldBundle, s: YieldStudy, paths: Path[]): string[] {
   const A = b.siteAreaSqm ?? 0, c = b.controls;
+  const BAR_FILL = barFills(), R = inks().F;
   const ex = existingSummary(b.existing ?? []);
   const gfaRows = paths.map((p) => ({ id: p.sc.id, v: p.y ? p.y.gfa : ex?.gbaSqm ?? 0, approx: !p.y })).filter((r) => r.v > 0)
     .map((r) => ({ name: SCENARIO_TITLE[r.id], value: r.v, label: `${r.approx ? '≈ ' : ''}${fmt(Math.round(r.v))} m²${r.approx ? ' GBA' : ''}`, fill: BAR_FILL[r.id] }));
@@ -1057,7 +1121,8 @@ function overviewSlide(b: YieldBundle, s: YieldStudy, paths: Path[]): Slide {
   const name = (scale: number) => ['The site and its neighbours', `1:${fmt(scale).replace(',', ' ')}`, 'their numbers, zones and heights'];
   const plan = planView(b, s, { x: 0, y: 0, w: PAGE_W, h: PAGE_H }, {}, 'site', { room: 2.4, inset: 6, keepOut: [labelBox(name(5000))] });
   const right = bleedFigure(0, PAGE_H, plan.svg) + mapLabel(0, name(plan.scale));
-  const legend: LegendEntry[] = [{ swatch: KEY.site, label: 'The site' }, { swatch: KEY.neighbours, label: 'Buildings round about' }, { swatch: KEY.lot, label: 'Lot boundaries, NSW cadastre' }];
+  const KEY = keySwatches();
+  const legend: LegendEntry[] = [{ swatch: KEY.site, label: 'The site' }, { swatch: KEY.neighbours, label: 'Buildings round about' }, { swatch: KEY.lot, label: inks().look.legacy ? 'Lot boundaries, NSW cadastre' : 'Lot boundaries, NSW cadastre, each lot in its zone\'s colour' }];
   if (plan.kerbs.length) legend.push({ swatch: KEY.kerb, label: 'Kerb line, indicative' });
   const exceeds = ex?.gbaSqm && ex.gbaSqm > Math.max(...paths.filter((p) => p.y && p.sc.id !== 'rebuiltAsStands').map((p) => p.y!.gba), 0);
   const narrative = brief([
@@ -1071,7 +1136,7 @@ function overviewSlide(b: YieldBundle, s: YieldStudy, paths: Path[]): Slide {
     s.max ? `Filled to the height, the envelope holds ${area(s.max.gfa)}, the case for a clause 4.6 variation or a planning proposal.` : '',
   ]);
   return { id: '01_planning_yield', title: 'Planning yield', subtitle: subtitleOf(b, s), textHtml: '', figureHtml: zFlow(blocks) + right, full: true,
-    narrative, accent: R.text, legend, sources: `${NOT_A_DESIGN} Site area from the NSW cadastre: confirm against survey. Retrieved ${b.generatedAt.slice(0, 10)}.` };
+    narrative, accent: inks().accent, legend, sources: `${NOT_A_DESIGN} Site area from the NSW cadastre: confirm against survey. Retrieved ${b.generatedAt.slice(0, 10)}.` };
 }
 
 /** A path's spread: its figures, its controls, its schedule and its mix; its massing over its plan. */
@@ -1146,7 +1211,7 @@ function schemeSlide(b: YieldBundle, s: YieldStudy, p: Path, n: number, last: nu
       : brief([`Filled to the height plane within the setbacks, the envelope holds ${what}.`,
         c.fsr ? `That is ${area(y.gfa - s.base.gfa)} over the LEP's ${c.fsr.toFixed(2)}:1: the case a clause 4.6 variation or a planning proposal has to carry.` : '']);
   return { id: `${String(n).padStart(2, '0')}_${id.replace(/[A-Z]/g, (ch) => `_${ch.toLowerCase()}`)}`, title: SCENARIO_TITLE[id], subtitle: subtitleOf(b, s), textHtml: '',
-    figureHtml: zFlow(blocks) + figures.html, full: true, narrative, accent: id === 'envelopeToHeight' ? SITE_RED : R.text,
+    figureHtml: zFlow(blocks) + figures.html, full: true, narrative, accent: id === 'envelopeToHeight' ? inks().F.deep : inks().accent,
     legend: schemeLegend(b, s, y, false, figures.kerbs), sources: `${NOT_A_DESIGN} ${PATH_BASIS[id]} Every assumption is on page ${String(last).padStart(2, '0')}.` };
 }
 
@@ -1176,7 +1241,7 @@ function standingSlide(b: YieldBundle, s: YieldStudy, paths: Path[], n: number):
       : ex.gbaSqm ? `Redevelopment within the controls would hold ${area(s.base.gfa)}, ${(s.base.gfa / ex.gbaSqm).toFixed(1)} times what stands.` : '',
   ]);
   return { id: `${String(n).padStart(2, '0')}_stands_today`, title: 'Stands today', subtitle: subtitleOf(b, s), textHtml: '', figureHtml: zFlow(blocks) + figures.html, full: true,
-    narrative, accent: R.text, legend: schemeLegend(b, s, undefined, standing.length > 0, figures.kerbs),
+    narrative, accent: inks().accent, legend: schemeLegend(b, s, undefined, standing.length > 0, figures.kerbs),
     sources: `What stands is read from the recorded footprints and heights (${b.buildingsSource === 'overture' ? 'Overture, OSM where it has none' : 'OSM'}), its floor area each footprint by its storeys: indicative, not a survey.` };
 }
 
@@ -1214,14 +1279,14 @@ function controlsSlide(b: YieldBundle, s: YieldStudy, n: number): Slide {
   }
   const right = `<div class="abs" data-fit style="left:${RX}mm;top:${RTOP}mm;width:${RW}mm;height:${RFOOT - RTOP}mm;overflow:hidden"><div class="ytw"><table class="yt yc"><colgroup><col style="width:42mm"><col><col><col style="width:5mm"></colgroup><tbody>${table.join('')}</tbody></table></div></div>`;
   return { id: `${String(n).padStart(2, '0')}_controls_and_assumptions`, title: 'Controls and assumptions', subtitle: subtitleOf(b, s), textHtml: '',
-    figureHtml: zFlow([zBlock('The assumptions', zTable(rows))]) + right, full: true, accent: R.text,
+    figureHtml: zFlow([zBlock('The assumptions', zTable(rows))]) + right, full: true, accent: inks().accent,
     narrative: 'Every figure rests on these assumptions. Each can be changed in yield_assumptions.json beside the output, and the study drawn again. The table sets the scheme within the controls against each control.',
     sources: `Controls from the NSW ePlanning layers at the site; the Apartment Design Guide; the Housing SEPP 2021. ${NOT_A_DESIGN.replace(/^A feasibility study, not a design: [^;]+; /, '')}` };
 }
 
-/** The planning yield as a deck: the A3 spreads of the site report. */
-export function renderYieldDeck(b: YieldBundle, meta: SheetMeta): { html: string; slides: Slide[] } {
-  return withTemplate(DECK_TEMPLATE, () => drawYieldDeck(b, meta));
+/** The planning yield as a deck: the A3 spreads of the site report, in one of the maps' styles (the active template's where unnamed). */
+export function renderYieldDeck(b: YieldBundle, meta: SheetMeta, opts: DeckRenderOptions = {}): { html: string; slides: Slide[] } {
+  return withTemplate(templateFor('yield', opts.theme ?? tpl().id), () => withDeckOptions(opts, () => drawYieldDeck(b, meta)));
 }
 
 function drawYieldDeck(b: YieldBundle, _meta: SheetMeta): { html: string; slides: Slide[] } {

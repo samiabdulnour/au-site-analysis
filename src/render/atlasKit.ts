@@ -9,6 +9,7 @@
 // blurrily in the printed PDF.
 
 import { esc } from './chrome.js';
+import { tint, type Category } from './template.js';
 
 export type Family = 'red' | 'orange' | 'sage' | 'green' | 'blue';
 
@@ -24,7 +25,10 @@ export const INK: Record<Family, { solid: string; mid: string; light: string; li
 /** A fill: a ground tint, an optional pattern of strokes over it, an optional outline. Sizes in map millimetres. */
 export interface Fill {
   bg?: string;
-  kind?: 'vlines' | 'hlines' | 'dots' | 'waves';
+  /** The ground's opacity, where it lies over a photograph; opaque where unset. */
+  opacity?: number;
+  /** Vertical lines, horizontal lines, dots, waves; or the context sheet's textures, a diagonal hatch and a cross-hatch. */
+  kind?: 'vlines' | 'hlines' | 'dots' | 'waves' | 'hatch' | 'cross';
   ink?: string;
   step?: number;
   w?: number;
@@ -53,6 +57,13 @@ function strokes(f: Fill, bb: Box, k = 1): string {
     for (let y = bb.y0 + step / 2; y <= bb.y1; y += step) out.push(`M${bb.x0.toFixed(2)},${y.toFixed(2)}H${bb.x1.toFixed(2)}`);
     return `<path d="${out.join('')}" stroke="${f.ink}" stroke-width="${w.toFixed(3)}" fill="none"/>`;
   }
+  if (f.kind === 'hatch' || f.kind === 'cross') {
+    // the context sheet's textures: a hatch falling to the right, crossed for the cross-hatch
+    const h = bb.y1 - bb.y0;
+    for (let o = bb.x0 - h; o <= bb.x1; o += step) out.push(`M${o.toFixed(2)},${bb.y0.toFixed(2)}L${(o + h).toFixed(2)},${bb.y1.toFixed(2)}`);
+    if (f.kind === 'cross') for (let o = bb.x0 - h; o <= bb.x1; o += step) out.push(`M${o.toFixed(2)},${bb.y1.toFixed(2)}L${(o + h).toFixed(2)},${bb.y0.toFixed(2)}`);
+    return `<path d="${out.join('')}" stroke="${f.ink}" stroke-width="${w.toFixed(3)}" fill="none"/>`;
+  }
   if (f.kind === 'dots') {
     let row = 0;
     for (let y = bb.y0 + step / 2; y <= bb.y1; y += step, row++)
@@ -76,9 +87,29 @@ export function fillShape(d: string, bb: Box, f: Fill, k = 1): string {
   const pad = 1;
   const box = { x0: bb.x0 - pad, y0: bb.y0 - pad, x1: bb.x1 + pad, y1: bb.y1 + pad };
   const rule = f.rule ?? 'evenodd';
-  return (f.bg ? `<path d="${d}" fill="${f.bg}" fill-rule="${rule}"/>` : '') +
+  return (f.bg ? `<path d="${d}" fill="${f.bg}"${f.opacity !== undefined && f.opacity < 1 ? ` fill-opacity="${f.opacity.toFixed(2)}"` : ''} fill-rule="${rule}"/>` : '') +
     (f.kind ? `<clipPath id="${id}"><path d="${d}" clip-rule="${rule}"/></clipPath><g clip-path="url(#${id})">${strokes(f, box, k)}</g>` : '') +
     (f.outline ? `<path d="${d}" fill="none" stroke="${f.outline}" stroke-width="${((f.outlineW ?? 0.25) / k).toFixed(3)}"${f.dash ? ` stroke-dasharray="${f.dash}"` : ''} fill-rule="${rule}"/>` : '');
+}
+
+/**
+ * A land-use category of the active template as a fill of the kit: its tint
+ * over the paper (or, over a photograph, at its own opacity), its texture in
+ * its texture ink, its contour. The deck's maps, bars and swatches then show a
+ * zone as the context sheet of the same style shows it.
+ */
+export function categoryFill(c: Category, ground: 'paper' | 'aerial' = 'paper', tintScale = 1): Fill {
+  const op = Math.min(1, c.opacity * tintScale);
+  const f: Fill = ground === 'paper' ? { bg: tint(c.fill, op) } : { bg: c.fill, opacity: op };
+  if (c.texture) {
+    f.kind = c.texture === 'dots' ? 'dots' : c.texture === 'cross' ? 'cross' : 'hatch';
+    f.ink = c.textureColor ?? c.stroke ?? c.fill;
+    // the context sheet's steps (1.7 mm dots, 1.6 mm hatch, 2.0 mm cross-hatch) and its 0.22 mm line, through the kit's scaling
+    f.step = c.texture === 'dots' ? 0.75 : c.texture === 'cross' ? 1.18 : 0.94;
+    f.w = c.texture === 'dots' ? 0.22 : 0.16;
+  }
+  if (c.stroke) { f.outline = c.stroke; f.outlineW = 0.3; }
+  return f;
 }
 
 /** The key's swatch for a fill, in the legend's 5 × 3.6 box, drawn at the map's density (the box prints 1.54× larger). */

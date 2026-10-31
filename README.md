@@ -913,8 +913,9 @@ the look changes. They live in `src/render/template.ts`, so a new house style is
 a data change.
 
 Templates are the context sheet's. The site analysis has its own themes (see
-Site analysis themes below), and the yield, the development summary and the
-deck have none: they are always drawn in the default template.
+Site analysis themes below). The yield and the site report take the same four
+names and are drawn in that style's palette (see *The decks' styles* below);
+the development summary has none and is always drawn in the default template.
 
 There are four: Flamingo, the default, Kingfisher, Heron and Canary.
 
@@ -1149,9 +1150,44 @@ for it (`heights`, `heritage`); a bundle from before them draws its neighbours
 without the height line.
 
 The web picker shows the site sheet's themes in the STYLE row when the site
-sheet is chosen, and no STYLE row for the yield or the site report; the job request
+sheet is chosen, and the same four names for the yield and the site report; the job request
 carries the theme in `template`, and the server keeps only a theme valid for
 the sheet (`themeFor()`). The CLI takes `--site-theme`.
+
+### The decks' styles
+
+The yield and the site report take the four styles of the two maps, under
+the same names, and read each style's palette from its context template
+(`deckLook()` in `src/render/template.ts`): the site colour for the narrative
+and the site (Flamingo's coral deepened a step, since a map tint is too light
+for a line of bold type); the land-use categories, with their textures, for
+the zones, as the context sheet of that style tints the land, or in Canary
+each zone code in its NSW ePlanning colour; the heritage, street-name and
+cadastre inks; and the ground, paper for Flamingo and Kingfisher and the
+greyed aerial under the style's veil for Heron and Canary, where the deck
+read one over the page (the planning page has the Character page's
+photograph; the yield has none yet, so its aerial styles stand on paper). The
+buildings on a plan follow the style too: white in a hairline of their zone
+family's ink (Flamingo), filled in the family's colour with a white edge
+(Kingfisher), or a quiet grey where the style would show the photograph. The
+page's type stays the report's Arial in every style; the style is in the
+colour, not the face.
+
+The look the decks had before the styles — Arial on white, the atlas kit's
+five families, one family a page — is still drawn when a request names
+`deck`, so the two can stand side by side. A render can also take a style's
+palette in one family alone (`palette: 'mono'`, the accent's tints told apart
+by pattern, as the legacy deck tells its categories): the comparison the
+design is being settled by. So far the planning overview (page 03 of the
+report) and the yield's first spread read the look in full; the other pages
+take the style's site colour, water and inks where they already read the
+template, and keep their kit families elsewhere, until each is restyled in
+turn. `scripts/recompose.ts` redraws a kept bundle (`KEEP_BUNDLE=1`) in any
+style, mono or not, a page at a time, without fetching.
+
+The frame on the landing page shows the yield's and the site report's pages
+in the default style whichever is picked: their pages are many, and one set
+stands for them all.
 
 The renderers read the active template from an async context rather than a
 parameter, so `withTemplate()` also takes a `Template` outright — which is what

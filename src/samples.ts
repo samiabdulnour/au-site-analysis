@@ -6,9 +6,9 @@
 //   npm run samples -- "150 George Street, Parramatta NSW 2150" [--only context|site|yield|summary|slides]
 //
 // and writes web/samples/result-<sheet>[-<scale>-<rotate>][-<theme>].jpg
-// (context in each template, site in each site theme, the yield and summary
-// once) and the site report's every page as result-slides-1.jpg, -2…, which
-// the frame turns through,
+// (context in each template, site in each site theme, the yield and the summary
+// once, the yield in the default style) and the site report's every page as
+// result-slides-1.jpg, -2…, in the default style, which the frame turns through,
 // the names web/app.js asks for. The data is fetched once per scale and
 // orientation and drawn in each style from the same bundle, since a style
 // changes how a sheet looks and never what it fetches. `--only` splits the
@@ -170,7 +170,7 @@ if (want('yield')) {
   const outDir = join(root, 'yield');
   log('yield');
   const bundle = await runYieldPipeline(address, { outDir, log });
-  // No themes either, but pages, as the site report has: result-yield-1.jpg, -2…
+  // Pages, as the site report has: result-yield-1.jpg, -2…, in the default style (the yield takes the four, but one set of pages stands for them in the frame).
   const html = join(outDir, 'yield_deck.html');
   await writeFile(html, renderYieldDeck(bundle, meta).html);
   const pages = await printSlides(html, join(outDir, 'PLANNING_YIELD.pdf'), join(outDir, 'pages'), { widthMm: SLIDE_W, heightMm: SLIDE_H });
@@ -199,9 +199,9 @@ if (want('slides')) {
   const bundle = await runSlidesPipeline(address, {
     outDir, panelWmm: PANEL_W, panelHmm: PANEL_H, daPanelHmm: DA_PANEL_H, log,
   });
-  // Nor does the deck, but it has pages: every one in order, numbered from 1,
-  // and the old numbers past the new last page taken away, since the frame
-  // turns through them until one is missing.
+  // The site report's pages, in the default style: every one in order, numbered
+  // from 1, and the old numbers past the new last page taken away, since the
+  // frame turns through them until one is missing.
   {
     const html = join(outDir, 'slides.html');
     const pngDir = join(outDir, 'slides');

@@ -301,7 +301,9 @@ export const DEFAULT_TEMPLATE = 'flamingo';
 
 /** The registered id an id or alias names, or the default for anything unknown. */
 export function resolveTemplateId(id: string | undefined): string {
-  return byId[id ?? '']?.id ?? DEFAULT_TEMPLATE;
+  const t = byId[id ?? ''];
+  // the legacy deck look is a deck style, not a template a map can take
+  return t && t.id !== LEGACY_DECK_THEME ? t.id : DEFAULT_TEMPLATE;
 }
 
 // The renderers read the active template rather than threading it through
@@ -346,9 +348,10 @@ export function tpl(): Template {
 }
 
 // ---- the overall analysis deck -----------------------------------------------
-// The deck has no themes and is not offered in the picker: it is drawn in its own
-// template, Arial throughout on white paper, the family inks of its atlas kit
-// (render/atlasKit.ts) over grey base maps, one red for the site.
+// The look the deck and the yield had before they took the maps' styles (see
+// the decks' styles, below): Arial throughout on white paper, the family inks
+// of the atlas kit (render/atlasKit.ts) over grey base maps, one red for the
+// site. Still drawn when a request names `deck`.
 
 const DECK_CATEGORIES: Category[] = [
   { id: 'site',           label: 'SITE',                                     fill: '#c8472e', opacity: 0.5 },
@@ -617,16 +620,112 @@ export function siteTheme(id: string | undefined): SiteTheme {
   return SITE_THEMES.find((t) => t.id === want) ?? SITE_THEMES.find((t) => t.id === DEFAULT_SITE_THEME)!;
 }
 
+// ---- the decks' styles --------------------------------------------------------
+// The yield and the site report take the two maps' four styles. Each is drawn
+// under the context template of that name and reads its palette from it: the
+// site colour for the narrative and the site, the categories (or, in Canary,
+// the NSW ePlanning colours) for the zones, the heritage, street and lot inks,
+// the ground. `deck` is the look the decks had before the styles — Arial on
+// white, the atlas kit's five families, one family a page — kept so the two
+// can be set side by side.
+
+/** The decks' styles, in the picker's order. */
+export const DECK_THEMES = ['flamingo', 'kingfisher', 'heron', 'canary'] as const;
+export const LEGACY_DECK_THEME = 'deck';
+byId[LEGACY_DECK_THEME] = DECK_TEMPLATE;
+
+/** The style a deck request names: one of the four, the legacy deck, or the default for anything unknown. */
+export function deckThemeId(id: string | undefined): string {
+  return id === LEGACY_DECK_THEME ? LEGACY_DECK_THEME : resolveTemplateId(id);
+}
+
+/**
+ * What a deck page draws differently from style to style, read from the
+ * active template: which palette its zones take, what the maps stand on, how
+ * the buildings, the lots and the street names are drawn, and the one colour
+ * its narrative is set in. The `palette` is a choice of the render, not of the
+ * style: the page's thematic layers in the style's full palette, or in one
+ * family of it (its accent's), the categories told apart by pattern as the
+ * legacy deck tells them — the two the design is being tested between.
+ */
+export interface DeckLook {
+  /** The style's id: one of DECK_THEMES, or `deck`. */
+  id: string;
+  /** Whether this is the legacy look, which draws its own way. */
+  legacy: boolean;
+  /** The narrative's ink and the site's: the style's site colour, deepened where it is too light for bold type on white. */
+  accent: string;
+  /** The page's thematic layers in the style's full palette, or in the accent's family alone. */
+  palette: 'full' | 'mono';
+  /** The accent's family, for the mono palette and for the figures that are not zones (the yield's paths, the heights). */
+  family: { solid: string; mid: string; light: string; line: string; deep: string };
+  /** The zones: the template's categories with their textures, or each code in its NSW ePlanning colour. */
+  zones: 'categories' | 'lep';
+  /** What a map stands on: paper, or the aerial in grey under the template's veil, where the bundle carries one. */
+  ground: 'paper' | 'aerial';
+  /** The aerial's veil, and how far the tints are thinned over it. */
+  veil: number;
+  tintScale: number;
+  /** The buildings on a plan: white in a hairline of the family's ink, filled in the family's colour with a white edge, or a quiet grey (the aerial styles, where no photograph is to hand). */
+  buildings: 'white' | 'colour' | 'grey';
+  /** The cadastre: a faint hairline in the road ink, or a white line. */
+  lots: 'faint' | 'white';
+  /** The street names' ink on paper, and on the aerial. */
+  streetInk: string;
+  streetInkAerial: string;
+  /** The heritage items' ink, and the conservation areas'. */
+  heritage: string;
+  heritageArea: string;
+}
+
+export interface DeckOptions { palette?: 'full' | 'mono' }
+const deckOpts = new AsyncLocalStorage<DeckOptions>();
+/** Run `fn` with these deck options for it and everything it awaits. */
+export function withDeckOptions<T>(o: DeckOptions, fn: () => T): T { return deckOpts.run(o, fn); }
+
+/** `hex` mixed toward white: k of the colour, the rest white. */
+export function tint(hex: string, k: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  const ch = (v: number) => Math.round(255 - (255 - v) * k).toString(16).padStart(2, '0');
+  return `#${ch((n >> 16) & 255)}${ch((n >> 8) & 255)}${ch(n & 255)}`;
+}
+/** `hex` darkened: each channel at k of itself. */
+export function shadeHex(hex: string, k: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  const ch = (v: number) => Math.round(v * k).toString(16).padStart(2, '0');
+  return `#${ch((n >> 16) & 255)}${ch((n >> 8) & 255)}${ch(n & 255)}`;
+}
+
+/** The deck look of the active template (see DeckLook). */
+export function deckLook(): DeckLook {
+  const t = tpl();
+  const palette = deckOpts.getStore()?.palette ?? 'full';
+  // Flamingo's coral is a map tint, too light for a line of bold type; the others hold.
+  const accent = t.id === 'flamingo' ? shadeHex(t.site, 0.88) : t.site;
+  const family = { solid: accent, mid: tint(accent, 0.45), light: tint(accent, 0.18), line: accent, deep: shadeHex(accent, 0.78) };
+  const aerial = t.ground === 'aerial';
+  return {
+    id: t.id, legacy: t.id === LEGACY_DECK_THEME, accent, palette, family,
+    zones: t.zoning === 'lep' ? 'lep' : 'categories',
+    ground: aerial ? 'aerial' : 'paper', veil: t.veil ?? 0.36, tintScale: aerial ? (t.tintScale ?? 0.55) : 1,
+    buildings: t.footprints === 'colour' ? 'colour' : t.footprints === 'white' ? 'white' : 'grey',
+    lots: t.lots === 'white' ? 'white' : 'faint',
+    // Heron and Canary name their streets white on the photograph; on paper every style's names take its ink, or the sheet's.
+    streetInk: t.streetInk === '#ffffff' ? t.ink : t.streetInk, streetInkAerial: t.streetInk,
+    heritage: t.heritage, heritageArea: t.id === 'canary' ? '#ff0000' : t.heritage,
+  };
+}
+
 export type SheetKind = 'context' | 'site' | 'summary' | 'yield' | 'slides';
 
-/** The theme a sheet of this kind is drawn in: a template for the context sheet, a site theme for the site sheet, none ('') for the summary, the yield and the deck. */
+/** The theme a sheet of this kind is drawn in: a template for the context sheet, a site theme for the site sheet, a deck style for the yield and the site report, none ('') for the summary. */
 export function themeFor(sheet: SheetKind, id: string | undefined): string {
-  return sheet === 'context' ? resolveTemplateId(id) : sheet === 'site' ? siteTheme(id).id : '';
+  return sheet === 'context' ? resolveTemplateId(id) : sheet === 'site' ? siteTheme(id).id : sheet === 'yield' || sheet === 'slides' ? deckThemeId(id) : '';
 }
 
 /** The template a sheet of this kind is rendered under, given its theme. */
 export function templateFor(sheet: SheetKind, theme: string | undefined): string {
-  return sheet === 'context' ? resolveTemplateId(theme) : sheet === 'site' ? siteTheme(theme).base : DEFAULT_TEMPLATE;
+  return sheet === 'context' ? resolveTemplateId(theme) : sheet === 'site' ? siteTheme(theme).base : sheet === 'yield' || sheet === 'slides' ? deckThemeId(theme) : DEFAULT_TEMPLATE;
 }
 
 export function isTemplateId(id: string): boolean {
