@@ -6,17 +6,17 @@
 // is a recessive grey, a projection the same hue a few steps lighter.
 
 import { esc } from './chrome.js';
+import { tpl, deckFamilies } from './template.js';
 
-export const CHART = {
-  accent: '#2f7d6d',
-  projection: '#9ec9bc',
-  benchmark: '#d3c8b4',
-  ink: '#2a3534',
-  secondary: '#5a635e',
-  muted: '#8a918c',
-  grid: '#ece4d4',
-  axis: '#d8cfc0',
+// The accent is the centres' family of the active style (the people page's
+// family), the projection its lighter line, the benchmark the neutral family's
+// mid tint; read through a proxy, so a chart takes the style it is drawn in.
+interface ChartInks { accent: string; projection: string; benchmark: string; ink: string; secondary: string; muted: string; grid: string; axis: string }
+const chartInks = (): ChartInks => {
+  const f = deckFamilies();
+  return { accent: f.orange.deep, projection: f.orange.line, benchmark: f.sage.mid, ink: tpl().ink, secondary: '#5a635e', muted: '#8a918c', grid: f.sage.light, axis: f.sage.mid };
 };
+export const CHART: ChartInks = new Proxy({} as ChartInks, { get: (_t, key: string) => chartInks()[key as keyof ChartInks] });
 
 export interface YearValue { year: number; value: number }
 

@@ -80,9 +80,9 @@ Mapillary's frames with `MAPILLARY_TOKEN=…` (a free client token); without
 either it reads KartaView alone. On the server they go in
 `/etc/site-analyst.env`, which the deployer passes to the container.
 
-With the key, slide 02 shows each numbered place from the street (the
+With the key, slide 03 shows each numbered place from the street (the
 camera aimed at the place's building, a view blocked by another building
-refused) and slide 12 walks the site's street end to end in eight frames.
+refused) and slide 13 walks the site's street end to end in eight frames.
 To control a picture by hand, put `photo_overrides.json` in the address's
 output folder and run again:
 
@@ -915,8 +915,9 @@ the look changes. They live in `src/render/template.ts`, so a new house style is
 a data change.
 
 Templates are the context sheet's. The site analysis has its own themes (see
-Site analysis themes below), and the yield, the development summary and the
-deck have none: they are always drawn in the default template.
+Site analysis themes below). The yield and the site report take the same four
+names and are drawn in that style's palette (see *The decks' styles* below);
+the development summary has none and is always drawn in the default template.
 
 There are four: Flamingo, the default, Kingfisher, Heron and Canary.
 
@@ -1151,9 +1152,64 @@ for it (`heights`, `heritage`); a bundle from before them draws its neighbours
 without the height line.
 
 The web picker shows the site sheet's themes in the STYLE row when the site
-sheet is chosen, and no STYLE row for the yield or the site report; the job request
+sheet is chosen, and the same four names for the yield and the site report; the job request
 carries the theme in `template`, and the server keeps only a theme valid for
 the sheet (`themeFor()`). The CLI takes `--site-theme`.
+
+### The decks' styles
+
+The yield and the site report take the four styles of the two maps, under
+the same names, and read each style's palette from its context template
+(`deckLook()` and `deckFamilies()` in `src/render/template.ts`). The site
+colour sets the site; the narrative on the left of each spread is set in
+the map's own most significant colour (the biggest community's on Country,
+the motorways' on Location, the site's contour on Topography, the
+determined lots' green on Development activity, the catchments' blue on
+Movement, the shadows' on Grid, sun and views), and in the site's colour
+where no one colour leads the map. The zones take the
+land-use categories, with their textures, as the context sheet of that style
+tints the land, or in Canary each zone code in its NSW ePlanning colour; the
+yield's plan tints each neighbour's lot the same way. The atlas kit's five
+ink families are drawn from the same categories, and a map takes whichever
+of them tell its data apart: colour carries the data on every page, from
+across the palette, and no page is held to one family. Ordered data (the
+storeys, the metres, the hours of shadow) runs up the palette's ramp, cool
+to warm (`paletteRamp`, `heatFills`), and the key shows the ramp as a strip.
+Heron keeps
+the office's own swatch sheet for its decks, the five families the decks
+were drawn in before the styles, with the land-use categories laid out in
+those families (`KIT_INK`, `KIT_CATEGORIES`): the office's sheet in the
+office's palette. Canary has a punchy sheet of its own (`CANARY_INK`): its
+red, its yellow, its lime and its lilac-blue, so the two aerial styles
+differ in their colours, not only in the site's ink. How a style renders the
+data differs as its ground does (`technique` on the deck look): Flamingo
+and Kingfisher work in hatches, lines and patches on paper (the landform as
+contours alone, coloured up the ramp by height, the storeys as a hatch that
+tightens up the ramp, the pre-1750 communities dotted, the development
+lots hatched),
+Heron and Canary in tones over the photograph (the landform in a heat
+ramp, the storeys and the communities flat). The winter shadows are in the
+transit family's blue, deepened, which differs by style. The marks of the development page carry
+pictograms, a tick, an hourglass, the scales' beam, a cross, and a star for
+a State significant application, so a status reads without the key. The
+ground follows the style too, paper for Flamingo and Kingfisher and the
+greyed aerial under the style's veil for Heron and Canary (the planning page has
+the Character page's photograph; the yield reads one over the site's
+surroundings, lays it under its plan and skews it into the axonometric's
+ground plane, whose projection is affine, so the plan's picture goes in as
+one matrix). The buildings on a plan follow it as well: white in a hairline
+of their zone family's ink (Flamingo), filled in the family's colour with a
+white edge (Kingfisher), a white line round the photograph's roofs (Heron
+and Canary), or a quiet grey where an older yield bundle has no
+photograph. The page's type stays the report's Arial in every
+style; the style is in the colour, not the face.
+
+`scripts/recompose.ts` redraws a kept bundle (`KEEP_BUNDLE=1`, for the yield
+as for the site report) in any style, a page at a time, without fetching.
+
+The frame on the landing page shows the yield's and the site report's pages
+in the default style whichever is picked: their pages are many, and one set
+stands for them all.
 
 The renderers read the active template from an async context rather than a
 parameter, so `withTemplate()` also takes a `Template` outright — which is what
@@ -1341,13 +1397,20 @@ gives its figures without drawing it.
 
 `--type slides` draws the OVERALL ANALYSIS deck: A3 landscape spreads (each folding into two A4 pages) for the
 content part of a feasibility study or design report, specified in
-`docs/SLIDES_SPEC.md`. All eighteen slides of the spec exist. First *location*: the
-site in its region at 1:75,000 — the local government areas as the land
-(the harbour and the sea left blue), the water, the railways and arterial
-roads, the stations, the suburbs named, 2 and 5 km rings round the site, and
-the centres of The Sydney Plan (2026) by type — with the distance to the
-Sydney CBD, the nearest centres and stations, and the region, the former
-district and the council. Then *character*: Wikipedia's summary of the suburb
+`docs/SLIDES_SPEC.md`. All eighteen slides of the spec exist. The deck
+opens on *Country*, as an acknowledgement of the Traditional Custodians (the
+page is described below with the layers it holds); then *location*: the
+site in its region at 1:100,000 — in Heron and Canary over the region's
+photograph in grey under the veil; in Flamingo and Kingfisher the land's
+shape banded every 40 m from the elevation model, hatched under its hillshade,
+with contours every 20 m traced from the model and a kilometre grid from
+the site, the national parks and reserves, the water named, the
+council areas outlined and named with the site's own tinted, the motorways
+cased over the arterial roads, the railways and their stations, the suburbs
+named, 2, 5 and 10 km rings round the site, and the centres of The Sydney
+Plan (2026) by type — with the distance to the Sydney CBD, the nearest
+centres, stations and reserves, and the region, the former district and the
+council. Then *character*: Wikipedia's summary of the suburb
 as the seed text, the places within 1.5 km with articles of their own,
 numbered on an aerial of the planning window, and a strip of open-licence
 photographs within 800 m from Wikimedia Commons, each credited as its licence
@@ -1366,10 +1429,24 @@ State Land Use Plan, the regional plan at the point (The Sydney Plan since
 13 August 2026, which replaced the 2018 Region Plan and the five district
 plans; the 2041 regional plans elsewhere), the council's local strategic
 planning statement from the Planning Portal's index, the plan, the DCP, the
-contributions and the housing target — with the extracts left to the author.
+contributions and the housing target — with the extracts left to the author;
+the map holds the housing-policy areas and precincts, each kind in a colour
+of its own with a pictogram at its heart (a train for a TOD area, a square
+for a town centre, a star for a State significant site, a pennant for a
+precinct), and when none lies on the block's page it widens, as far as
+1:25 000, until the nearest two do, over the region's roads and rail.
 Then *topography*: the landform
-at 1:8000 as a hillshade from the State's 5 m elevation model with the 2 m
-contours, roads and rail over it and two section lines through the site,
+at 1:5000: in Heron and Canary the ground in 5 m bands toned under the
+hillshade from the State's 5 m elevation model (Canary along the palette's
+ramp, Heron between two colours of its sheet, the blue low and the red
+high, as every ordered ramp in Heron runs, the storeys' included); in
+Flamingo and Kingfisher no fill at all, the contours alone, traced from the
+model every metre (the fives heavier and numbered), each coloured up the
+same ramp by its height; with the 2 m contours numbered along the index
+ones, the water named, the high and low points of the page and the site's
+level marked, roads and rail over it and two section lines through the site
+(the ground under each section in the map's bands, the water shown
+where the line crosses it at the level the model reads),
 A–A′ down the steepest fall and B–B′ across it, each drawn as a section
 with the site and its levels marked; the text gives the site's RL range,
 fall, grade and aspect and where the high ground and the water are. Then
@@ -1389,8 +1466,14 @@ streetscape` draws it (190 m at 1:500, the buildings' lines, heights and
 levels over the faces, the conservation areas bracketed; see *The
 streetscape* below), on its own page after built form, and left out of the
 deck where it fails, or with `DECK_STREETSCAPE=0`. Then *movement*: roads by function, rail and
-stations, the walking isochrones from the site (Valhalla, 5, 10 and 15
-minutes), bus stops (Transport for NSW with the key, else OpenStreetMap),
+stations, the walking reach from the site (Valhalla) in bands of three
+minutes to fifteen, each its own colour up the style's ramp, the warmest
+nearest, with the streets within it in the transit blue and straight lines
+to the nearest stations carrying the walk in minutes; the journeys to the
+Sydney CBD and the nearest major centre by car and by bicycle from the
+public router, as bars of minutes; the car parks OpenStreetMap maps, on the
+map as P marks sized by their tagged capacity and as bars of the walk to
+the nearest, with their spaces, bus stops (Transport for NSW with the key, else OpenStreetMap),
 bus routes, cycleways, footways and one-way streets (OpenStreetMap through
 Overpass) and the LEP's active street frontages, with a table of the
 nearest stations and a wide walking-reach strip at 1:16000 naming the
@@ -1415,7 +1498,7 @@ definite answer — at the site with its class, nearest in the window, none in
 the window, or not mapped by this LEP at all, checked plan-wide so an
 absence is stated rather than implied — with the arterial roads and
 railways beside the site as noise sources and the soil landscape at the
-site. Then *Country*: the open layers of Country over the wide strip — the
+site. *Country*, the first page: the open layers of Country over the wide strip — the
 pre-1750 plant communities of the State Vegetation Type Map over the land's
 shape, with the watercourses, the coast, the crests read from the elevation
 model, the National Parks estate and the gazetted Aboriginal Places — with
@@ -1435,7 +1518,12 @@ level against the nearest crest, the gazetted places within 10 km and the
 public ASDST likelihood model; the slide states that AHIMS is not open and
 that a search precedes any works, and that the name of Country, the language
 and the cultural narrative are the office's to develop with Knowledge
-Holders, not generated. Then *the site*: the site plan on the aerial at a round scale that
+Holders, not generated. The land council areas are named large across the
+ground they hold, and no road, rail or cadastre is drawn: the land as it lay,
+with contours every 10 m from the model over the communities as a hint of its shape. A motif for an area's ground is its people's to give: the
+map draws one over a land council area only where a tile has been placed at
+`assets/motifs/<land-council-name>.svg` (or `.png`) with their permission,
+and borrows no art style of its own. Then *the site*: the site plan on the aerial at a round scale that
 fits the lot, with the boundary lengths from the digital cadastre, the
 corner levels from the elevation model, the existing footprint and its
 height, the neighbours' numbers and the street names, the easement
@@ -1461,9 +1549,11 @@ street grid (the roads in the window, length-weighted, in 5° bins, drawn as
 a rose) and the site's long axis against them; the sun path computed for the
 site (21 June in standard time, 21 December and the equinox in daylight
 time, the hours marked) with sunrise, the noon altitude and sunset; the
-neighbours' shadows over the site on 21 June at 9 am, noon and 3 pm, cast
-from the footprints and their recorded heights at the site plan's scale,
-with the share of the site each hour leaves in shadow; and the sight lines
+neighbours' shadows over the site on 21 June, every hour from 9 am to 3 pm,
+each hour one translucent layer over the last so that the depth of the
+tint is the hours in shadow, cast from the footprints and their recorded
+heights at 1:1000, with the share of the site each hour leaves in shadow
+and the share that keeps the sun all day; and the sight lines
 from an eye just under the height limit, over the 5 m elevation model, to
 the skylines within range, the named water and the coast and the park next
 door — a cone where the ground leaves the line clear, a dashed line to the
@@ -1517,7 +1607,7 @@ Where a council publishes its own DCP mapping as open data — the City of
 Sydney does — the deck reads it too, for the sites in that LGA: building
 height in storeys, street frontage heights, active frontages, setbacks.
 
-Spread 07b is the capacity and opportunity study (see *The capacity and
+Spread 08b is the capacity and opportunity study (see *The capacity and
 opportunity site study* above) as a page of the deck: the same rules from
 `src/lib/capacity.ts`, drawn on the template over one A4 page at 1:2000, the
 author's marks from `capacity_overrides.json` beside the output. The yield
@@ -1552,7 +1642,7 @@ fill the panel (the site's State significant application and the likelihood
 of redevelopment around it).
 
 What the sheet reads, all open data (`scripts/capacity_study.ts` fetches,
-`src/lib/capacity.ts` classifies, as it does for the deck's spread 07b, `render.py` draws):
+`src/lib/capacity.ts` classifies, as it does for the deck's spread 08b, `render.py` draws):
 
 - *Ownership* from the NSW cadastre and its property register: a property is
   a strata scheme where a strata plan sits under it, where the register files

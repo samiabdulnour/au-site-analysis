@@ -188,6 +188,8 @@ const F2 = {
   violet: '#b6b2d3', violetGround: '#e5e3f4',
   grey: '#c2c2bc', stoneGround: '#e8e8d8',
   water: '#81e0f9', magenta: '#c2367c', purple: '#753583', dots: '#1c1c1c',
+  /** The reference's salmon, the site's colour on Kingfisher's sheets and decks, and the same hue deepened to carry a line of bold type. */
+  salmon: '#f0bcac', salmonDeep: '#d27b63',
 };
 
 const KINGFISHER_CATEGORIES: Category[] = [
@@ -256,7 +258,8 @@ export const TEMPLATES: Template[] = [
     // keep the leaf green.
     streetInk: '#e39a6f', discInk: '#e39a6f', discParkInk: '#8faf6a',
     rule: '#8a8a8a',
-    site: F2.magenta, dimension: '#56616b', wind: '#87959d', sun: '#efe8d4', road: F2.grey, water: F2.water,
+    // The deck's site in the reference's salmon, not the context sheet's magenta; the narrative in the same hue deepened.
+    site: F2.salmon, dimension: '#56616b', wind: '#87959d', sun: '#efe8d4', road: F2.grey, water: F2.water,
     transit: '#365696', rail: '#e8835e', walk5: '#1f8a5a', walk10: '#6fb88c', busRoute: '#5b8fd6', heritage: F2.purple,
     isochrone: 'dotted', roundel: 'solid', busLine: 'dotted', railLine: 'dotted',
     // The cadastre and every building in a heavy white line.
@@ -345,71 +348,13 @@ export function tpl(): Template {
   return als.getStore() ?? active;
 }
 
-// ---- the overall analysis deck -----------------------------------------------
-// The deck has no themes and is not offered in the picker: it is drawn in its own
-// template, Arial throughout on white paper, the family inks of its atlas kit
-// (render/atlasKit.ts) over grey base maps, one red for the site.
-
-const DECK_CATEGORIES: Category[] = [
-  { id: 'site',           label: 'SITE',                                     fill: '#c8472e', opacity: 0.5 },
-  { id: 'medical',        label: 'MEDICAL',                                  fill: '#d3dee2', opacity: 0.6, stroke: '#5d7079' },
-  { id: 'education',      label: 'EDUCATION',                                fill: '#bfd3d9', opacity: 0.6, stroke: '#4a5f68' },
-  { id: 'childCare',      label: 'CHILD CARE / AGED CARE',                   fill: '#e3eceE', opacity: 0.6, stroke: '#7d8a91' },
-  { id: 'mixedUse',       label: 'MIXED USE CLUSTER RESIDENTIAL/COMMERCIAL', fill: '#e8c494', opacity: 0.55 },
-  { id: 'retail',         label: 'ACTIVE RETAIL',                            fill: '#f0d7b4', opacity: 0.55 },
-  { id: 'openSpace',      label: 'OPEN SPACE',                               fill: '#cfe4d0', opacity: 0.6 },
-  { id: 'community',      label: 'COMMUNITY HUB',                            fill: '#cbe0db', opacity: 0.6, stroke: '#7fa39c' },
-  { id: 'r2',             label: 'R2 LOW DENSITY RESIDENTIAL',               fill: '#f8e3d6', opacity: 0.5 },
-  { id: 'r3',             label: 'R3 MEDIUM DENSITY RESIDENTIAL',            fill: '#f3cdb8', opacity: 0.55 },
-  { id: 'r4',             label: 'R4 HIGH DENSITY RESIDENTIAL',              fill: '#edb69a', opacity: 0.55 },
-  { id: 'localCentre',    label: 'LOCAL CENTRE',                             fill: '#e4be8e', opacity: 0.55 },
-  { id: 'commercial',     label: 'COMMERCIAL CENTRE',                        fill: '#c9cbe3', opacity: 0.55 },
-  { id: 'industrial',     label: 'GENERAL INDUSTRIAL',                       fill: '#c4bfd6', opacity: 0.55 },
-  { id: 'infrastructure', label: 'INFRASTRUCTURE FACILITY',                  fill: '#efe7da', opacity: 0.6, stroke: '#8a8078' },
-  { id: 'water',          label: 'WATERWAY',                                 fill: '#afd2df', opacity: 0.65 },
-  { id: 'railway',        label: 'RAILWAY TRACKS',                           fill: '#e2d9c8', opacity: 0.7, stroke: '#8a8078' },
-  { id: 'heritage',       label: 'GENERAL HERITAGE SITE',                    fill: '#d9c49a', opacity: 0.55 },
-];
-
-export const DECK_TEMPLATE: Template = {
-  id: 'deck', label: 'Deck', note: 'the overall analysis deck: Arial on white, the atlas kit\'s five ink families',
-  font: SANS, streetFont: SANS, textScale: 0.96,
-  ink: '#2a3534', inkSoft: '#6a7572', paper: '#ffffff', streetInk: '#2a3534',
-  rule: '#d8cfc0', site: '#c8472e', dimension: '#3d5a94', wind: '#7fa3ad', sun: '#dca62e', road: '#8a8378', water: '#afd2df',
-  transit: '#2c4c9c', rail: '#3a4446', walk5: '#2f7d6d', walk10: '#6ba998', busRoute: '#7b90c9', heritage: '#a98a5b',
-  isochrone: 'line', roundel: 'ring', busLine: 'dashed', railLine: 'sleepers', ground: 'paper', footprints: 'white',
-  categories: DECK_CATEGORIES,
-};
-
-/**
- * The book's working palette beyond the template fields: the pastel families
- * the deck's thematic layers draw from, named by hue and weight. One family
- * per meaning — teal for reach and opportunity, green for the living layers,
- * blush and sand for activity and warmth, navy for transport and keyed marks,
- * terracotta for constraint — so eighteen slides read as one book.
- */
-export const BOOK = {
-  paper: '#ffffff',
-  panel: '#f5eee0',     // a step deeper than the paper, for backdrops and photo mounts
-  ink: '#2a3534',
-  inkSoft: '#6a7572',
-  rule: '#d8cfc0',
-  site: '#c8472e',
-  teal: '#2f7d6d', tealMid: '#6ba998', tealLight: '#a8cdc2', tealFaint: '#dcebe2',
-  green: '#4c8a68', greenDeep: '#2f6b50', greenLight: '#a8cdb4', greenFaint: '#e6efe3',
-  blush: '#d9825b', blushMid: '#efa98f', blushLight: '#f6cdbb', blushFaint: '#fae4d8',
-  sand: '#e8c494', sandDeep: '#b5873b', sandLight: '#f3debc',
-  navy: '#2c4c9c', navyLight: '#8fa3d4',
-  terracotta: '#ba4530',
-  waterDeep: '#3e7e9c',
-  gold: '#dca62e',
-} as const;
 // ---- site analysis themes ---------------------------------------------------
 // The templates above are the context sheet's. The site analysis has themes of
 // its own; each draws on one of the templates for what it does not set itself
 // (fonts, the zones' palette), and the sheet sets the rest. The development
 // summary has no theme and is drawn in the default template; the deck has none
-// either and is drawn in its own (DECK_TEMPLATE, above).
+// either; the yield and the site report take the four styles (the decks'
+// styles, below).
 
 /**
  * How a site theme draws what the site sheet shows. What the sheet says is the
@@ -617,16 +562,244 @@ export function siteTheme(id: string | undefined): SiteTheme {
   return SITE_THEMES.find((t) => t.id === want) ?? SITE_THEMES.find((t) => t.id === DEFAULT_SITE_THEME)!;
 }
 
+// ---- the decks' styles --------------------------------------------------------
+// The yield and the site report take the two maps' four styles. Each is drawn
+// under the context template of that name and reads its palette from it: the
+// site colour for the narrative and the site, the categories (or, in Canary,
+// the NSW ePlanning colours) for the zones, the heritage, street and lot inks,
+// the ground; and the five ink families of the atlas kit (render/atlasKit.ts),
+// one a topic, are drawn from the same categories, so every page of a deck
+// is in its style's colours.
+
+/** The decks' styles, in the picker's order. */
+export const DECK_THEMES = ['flamingo', 'kingfisher', 'heron', 'canary'] as const;
+
+/** The style a deck request names: one of the four, or the default for anything unknown. */
+export function deckThemeId(id: string | undefined): string {
+  return resolveTemplateId(id);
+}
+
+/**
+ * What a deck page draws differently from style to style, read from the
+ * active template: which palette its zones take, what the maps stand on, how
+ * the buildings, the lots and the street names are drawn, and the one colour
+ * its narrative is set in.
+ */
+export interface DeckLook {
+  /** The style's id: one of DECK_THEMES. */
+  id: string;
+  /** The narrative's ink and the site's: the style's site colour, deepened where it is too light for bold type on white. */
+  accent: string;
+  /** The accent's family, for the figures that are not zones (the yield's paths, the heights). */
+  family: InkFamily;
+  /** The zones: the deck's land-use categories with their textures, or each code in its NSW ePlanning colour. */
+  zones: 'categories' | 'lep';
+  /** The land-use categories the deck's zones and lots take: the template's, or the swatch sheet's for the styles that keep it. */
+  categories: Category[];
+  /** What a map stands on: paper, or the aerial in grey under the template's veil, where the bundle carries one. */
+  ground: 'paper' | 'aerial';
+  /** The aerial's veil, and how far the tints are thinned over it. */
+  veil: number;
+  tintScale: number;
+  /** The buildings on a plan: white in a hairline of the family's ink, filled in the family's colour with a white edge, or a quiet grey (the aerial styles, where no photograph is to hand). */
+  buildings: 'white' | 'colour' | 'grey';
+  /** The cadastre: a faint hairline in the road ink, or a white line. */
+  lots: 'faint' | 'white';
+  /** The street names' ink on paper, and on the aerial. */
+  streetInk: string;
+  streetInkAerial: string;
+  /** The heritage items' ink, and the conservation areas'. */
+  heritage: string;
+  heritageArea: string;
+  /** How the style renders data on a map: hatches, lines and patches on paper, or tones and heat ramps over the photograph. */
+  technique: 'line' | 'tone';
+}
+
+/** `hex` mixed toward white: k of the colour, the rest white. */
+export function tint(hex: string, k: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  const ch = (v: number) => Math.round(255 - (255 - v) * k).toString(16).padStart(2, '0');
+  return `#${ch((n >> 16) & 255)}${ch((n >> 8) & 255)}${ch(n & 255)}`;
+}
+/** `hex` darkened: each channel at k of itself. */
+export function shadeHex(hex: string, k: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  const ch = (v: number) => Math.round(v * k).toString(16).padStart(2, '0');
+  return `#${ch((n >> 16) & 255)}${ch((n >> 8) & 255)}${ch(n & 255)}`;
+}
+/** `a` mixed with `b`: k of `b`, the rest `a`. */
+export function mix(a: string, b: string, k: number): string {
+  const na = parseInt(a.slice(1), 16), nb = parseInt(b.slice(1), 16);
+  const ch = (sh: number) => Math.round(((na >> sh) & 255) * (1 - k) + ((nb >> sh) & 255) * k).toString(16).padStart(2, '0');
+  return `#${ch(16)}${ch(8)}${ch(0)}`;
+}
+/** `hex` made vivid: its hue kept, its saturation raised to at least `minSat` and its lightness capped at `maxLight` (HSL), so a pastel family yields an ink that carries a hatch line or a band. */
+export function vivid(hex: string, minSat = 0.55, maxLight = 0.45): string {
+  const n = parseInt(hex.slice(1), 16);
+  const r = ((n >> 16) & 255) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2, d = max - min;
+  let h = 0, sat = 0;
+  if (d > 1e-6) {
+    sat = d / (1 - Math.abs(2 * l - 1));
+    h = max === r ? ((g - b) / d + (g < b ? 6 : 0)) : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    h /= 6;
+  }
+  const S = Math.max(sat, minSat), L = Math.min(l, maxLight);
+  const q = L < 0.5 ? L * (1 + S) : L + S - L * S, p = 2 * L - q;
+  const ch = (t: number) => { if (t < 0) t += 1; if (t > 1) t -= 1; const v = t < 1 / 6 ? p + (q - p) * 6 * t : t < 1 / 2 ? q : t < 2 / 3 ? p + (q - p) * (2 / 3 - t) * 6 : p; return Math.round(v * 255).toString(16).padStart(2, '0'); };
+  return `#${ch(h + 1 / 3)}${ch(h)}${ch(h - 1 / 3)}`;
+}
+/** The relative luminance of `hex`, 0 (black) to 1 (white). */
+export function luminance(hex: string): number {
+  const n = parseInt(hex.slice(1), 16);
+  const lin = (v: number) => { const c = v / 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
+  return 0.2126 * lin((n >> 16) & 255) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255);
+}
+/** `hex` darkened, a step at a time, until its luminance is at most `maxL`: a tint made into an ink that carries a line or a word on white. */
+export function inkFor(hex: string, maxL = 0.25): string {
+  let c = hex;
+  for (let i = 0; i < 24 && luminance(c) > maxL; i++) c = shadeHex(c, 0.9);
+  return c;
+}
+
+/**
+ * One ink family of the atlas kit: a tint for a ground (`light`, `mid`,
+ * `solid`, light to firm), a `line` for the patterns that tell categories
+ * apart inside the family, a `deep` for their dots and outlines, and a
+ * `text` dark enough for the bold narrative.
+ */
+export interface InkFamily { solid: string; mid: string; light: string; line: string; deep: string; text: string }
+export type InkFamilyName = 'red' | 'orange' | 'sage' | 'green' | 'blue';
+
+// The office's swatch sheet, which the decks were drawn in before they took
+// the styles: five families of three tints, two pattern inks and a text ink
+// dark enough for the bold narrative. Heron keeps these for its decks rather
+// than its tans: the office's own sheet is the office's own palette. Canary
+// has a punchy sheet of its own (CANARY_INK), so the two aerial styles differ
+// in more than the site's ink.
+export const KIT_INK: Record<InkFamilyName, InkFamily> = {
+  red:    { solid: '#d54747', mid: '#e69ea1', light: '#f4d8d9', line: '#d54747', deep: '#b20000', text: '#d54747' },
+  orange: { solid: '#e9a879', mid: '#f3d2ba', light: '#faeee3', line: '#efbf99', deep: '#df726a', text: '#f5a470' },
+  sage:   { solid: '#cbcbb9', mid: '#e5e5dc', light: '#f5f5f1', line: '#d9c49c', deep: '#9c9c88', text: '#8f8f78' },
+  green:  { solid: '#7bb990', mid: '#bbdcc7', light: '#e4f0e9', line: '#7bb990', deep: '#2f8f55', text: '#4e9a69' },
+  blue:   { solid: '#b2daf5', mid: '#d8ecf9', light: '#eff8fd', line: '#9fcbea', deep: '#4b55a0', text: '#0068b3' },
+};
+// The land-use categories in the swatch sheet's families, for those decks'
+// zones: the residential tiers up the red family, the centres in the orange,
+// open space in the green, the institutions in the blue, industry and
+// infrastructure in the sage; told apart inside a family by texture, as the
+// context sheet tells them. Thinned where they lie over the photograph.
+const KIT_CATEGORIES: Category[] = (() => {
+  const K = KIT_INK;
+  return [
+    { id: 'site',           label: 'SITE',                                     fill: K.red.deep, opacity: 0.5 },
+    { id: 'medical',        label: 'MEDICAL',                                  fill: K.blue.mid, opacity: 0.7, stroke: K.blue.deep, figure: K.blue.deep },
+    { id: 'education',      label: 'EDUCATION',                                fill: K.blue.solid, opacity: 0.7, stroke: K.blue.deep, texture: 'lines', textureColor: PAPER, figure: K.blue.deep },
+    { id: 'childCare',      label: 'CHILD CARE / AGED CARE',                   fill: K.blue.light, opacity: 0.7, stroke: K.blue.deep, figure: K.blue.deep },
+    { id: 'mixedUse',       label: 'MIXED USE CLUSTER RESIDENTIAL/COMMERCIAL', fill: K.orange.solid, opacity: 0.65, texture: 'dots', textureColor: K.orange.deep, figure: K.orange.deep },
+    { id: 'retail',         label: 'ACTIVE RETAIL',                            fill: K.orange.mid, opacity: 0.7, texture: 'cross', textureColor: K.orange.deep, figure: K.orange.deep },
+    { id: 'openSpace',      label: 'OPEN SPACE',                               fill: K.green.mid, opacity: 0.7, texture: 'dots', textureColor: K.green.deep, figure: K.green.deep },
+    { id: 'community',      label: 'COMMUNITY HUB',                            fill: K.blue.mid, opacity: 0.7, stroke: K.blue.deep, texture: 'cross', textureColor: PAPER, figure: K.blue.deep },
+    { id: 'r2',             label: 'R2 LOW DENSITY RESIDENTIAL',               fill: K.red.light, opacity: 0.75, figure: K.red.line },
+    { id: 'r3',             label: 'R3 MEDIUM DENSITY RESIDENTIAL',            fill: K.red.mid, opacity: 0.65, figure: K.red.line },
+    { id: 'r4',             label: 'R4 HIGH DENSITY RESIDENTIAL',              fill: K.red.solid, opacity: 0.55, texture: 'lines', textureColor: K.red.deep, figure: K.red.deep },
+    { id: 'localCentre',    label: 'LOCAL CENTRE',                             fill: K.orange.solid, opacity: 0.65, figure: K.orange.deep },
+    { id: 'commercial',     label: 'COMMERCIAL CENTRE',                        fill: K.orange.solid, opacity: 0.65, texture: 'lines', textureColor: K.orange.deep, figure: K.orange.deep },
+    { id: 'industrial',     label: 'GENERAL INDUSTRIAL',                       fill: K.sage.solid, opacity: 0.7, texture: 'lines', textureColor: K.sage.deep, figure: K.sage.deep },
+    { id: 'infrastructure', label: 'INFRASTRUCTURE FACILITY',                  fill: K.sage.mid, opacity: 0.75, stroke: K.sage.deep, figure: K.sage.deep },
+    { id: 'water',          label: 'WATERWAY',                                 fill: K.blue.solid, opacity: 0.7 },
+    { id: 'railway',        label: 'RAILWAY TRACKS',                           fill: K.sage.mid, opacity: 0.75, stroke: K.sage.deep, figure: K.sage.deep },
+    { id: 'heritage',       label: 'GENERAL HERITAGE SITE',                    fill: K.sage.line, opacity: 0.6 },
+  ];
+})();
+/** The styles whose decks keep the swatch sheet. */
+const KIT_STYLES = new Set(['heron']);
+
+// Canary's own sheet, punchy as its context sheet is: its red, its yellow, its lime and its lilac-blue, with a warm
+// grey for the neutral. Its decks read these rather than families derived from its muted categories.
+export const CANARY_INK: Record<InkFamilyName, InkFamily> = {
+  red:    { solid: '#ff483b', mid: '#ffa39c', light: '#ffdcd8', line: '#ff483b', deep: '#c8231a', text: '#d9372c' },
+  orange: { solid: '#ffd400', mid: '#ffe766', light: '#fff6bf', line: '#e0b800', deep: '#b38600', text: '#9a7300' },
+  sage:   { solid: '#d8d8d0', mid: '#e8e8e2', light: '#f4f4f0', line: '#a0a098', deep: '#6e6e66', text: '#7a7a72' },
+  green:  { solid: '#55e000', mid: '#a6f066', light: '#dcfac4', line: '#3fb300', deep: '#2a8000', text: '#2f8a00' },
+  blue:   { solid: '#7f9fd9', mid: '#b4c6e7', light: '#e3ebf8', line: '#7f9fd9', deep: '#2b4fb0', text: '#2b4fb0' },
+};
+
+/** A family drawn from one land-use category of the active template: its tint at three strengths, its texture ink for the lines. */
+function familyOf(c: Category | undefined, fallback: InkFamily): InkFamily {
+  if (!c) return fallback;
+  const plain = (h: string | undefined) => (h && h !== '#ffffff' && luminance(h) > 0.03 ? h : undefined);
+  const line = c.stroke ?? plain(c.textureColor) ?? (c.figure && c.figure !== c.fill ? c.figure : undefined) ?? inkFor(c.fill, 0.35);
+  return {
+    solid: tint(c.fill, Math.min(1, c.opacity + 0.25)),
+    mid: tint(c.fill, Math.min(1, c.opacity * 0.65)),
+    light: tint(c.fill, Math.min(1, c.opacity * 0.3)),
+    line, deep: inkFor(line, 0.16), text: inkFor(line, 0.25),
+  };
+}
+
+const familiesByTemplate = new Map<string, Record<InkFamilyName, InkFamily>>();
+
+/**
+ * The atlas kit's five ink families, one a topic, in the active style: red
+ * is the accent's (the site, the controls, what constrains); orange the
+ * centres' (the mixed-use category: activity, character, market); sage the
+ * neutral (the industrial category's grey or stone: ground, built form, the
+ * site's own page); green the living layers' (open space); blue transport's
+ * (the transit ink, with the water).
+ */
+export function deckFamilies(): Record<InkFamilyName, InkFamily> {
+  const t = tpl();
+  const hit = familiesByTemplate.get(t.id);
+  if (hit) return hit;
+  if (KIT_STYLES.has(t.id)) { familiesByTemplate.set(t.id, KIT_INK); return KIT_INK; }
+  if (t.id === 'canary') { familiesByTemplate.set(t.id, CANARY_INK); return CANARY_INK; }
+  const look = deckLook();
+  const cat = (id: string) => t.categories.find((c) => c.id === id);
+  const navy = t.transit;
+  const fam: Record<InkFamilyName, InkFamily> = {
+    red: look.family,
+    orange: familyOf(cat('mixedUse'), look.family),
+    sage: familyOf(cat('industrial'), { solid: '#d4d4d0', mid: '#e6e6e2', light: '#f4f4f1', line: '#9a9a94', deep: '#6d6d68', text: '#6d6d68' }),
+    green: familyOf(cat('openSpace'), look.family),
+    blue: { solid: tint(navy, 0.4), mid: tint(navy, 0.25), light: tint(navy, 0.1), line: tint(navy, 0.6), deep: navy, text: inkFor(navy, 0.25) },
+  };
+  familiesByTemplate.set(t.id, fam);
+  return fam;
+}
+
+/** The deck look of the active template (see DeckLook). */
+export function deckLook(): DeckLook {
+  const t = tpl();
+  const kit = KIT_STYLES.has(t.id);
+  // Flamingo's coral is a map tint, too light for a line of bold type; the others hold.
+  // The narrative's ink is the site's own, deepened where it is too light for bold type on white: the style's red on every page.
+  const accent = t.id === 'kingfisher' ? F2.salmonDeep : inkFor(t.site, 0.3);
+  const family: InkFamily = kit ? KIT_INK.red : { solid: accent, mid: tint(accent, 0.45), light: tint(accent, 0.18), line: accent, deep: shadeHex(accent, 0.78), text: accent };
+  const aerial = t.ground === 'aerial';
+  return {
+    id: t.id, accent, family,
+    zones: t.zoning === 'lep' ? 'lep' : 'categories', categories: kit ? KIT_CATEGORIES : t.categories,
+    ground: aerial ? 'aerial' : 'paper', veil: t.veil ?? 0.36, tintScale: aerial ? (t.tintScale ?? 0.55) : 1,
+    buildings: t.footprints === 'colour' ? 'colour' : t.footprints === 'white' ? 'white' : 'grey',
+    lots: t.lots === 'white' ? 'white' : 'faint',
+    // Heron and Canary name their streets white on the photograph; on paper every style's names take its ink, or the sheet's.
+    streetInk: t.streetInk === '#ffffff' ? t.ink : t.streetInk, streetInkAerial: t.streetInk,
+    heritage: t.heritage, heritageArea: t.id === 'canary' ? '#ff0000' : t.heritage,
+    technique: aerial ? 'tone' : 'line',
+  };
+}
+
 export type SheetKind = 'context' | 'site' | 'summary' | 'yield' | 'slides';
 
-/** The theme a sheet of this kind is drawn in: a template for the context sheet, a site theme for the site sheet, none ('') for the summary, the yield and the deck. */
+/** The theme a sheet of this kind is drawn in: a template for the context sheet, a site theme for the site sheet, a deck style for the yield and the site report, none ('') for the summary. */
 export function themeFor(sheet: SheetKind, id: string | undefined): string {
-  return sheet === 'context' ? resolveTemplateId(id) : sheet === 'site' ? siteTheme(id).id : '';
+  return sheet === 'context' ? resolveTemplateId(id) : sheet === 'site' ? siteTheme(id).id : sheet === 'yield' || sheet === 'slides' ? deckThemeId(id) : '';
 }
 
 /** The template a sheet of this kind is rendered under, given its theme. */
 export function templateFor(sheet: SheetKind, theme: string | undefined): string {
-  return sheet === 'context' ? resolveTemplateId(theme) : sheet === 'site' ? siteTheme(theme).base : DEFAULT_TEMPLATE;
+  return sheet === 'context' ? resolveTemplateId(theme) : sheet === 'site' ? siteTheme(theme).base : sheet === 'yield' || sheet === 'slides' ? deckThemeId(theme) : DEFAULT_TEMPLATE;
 }
 
 export function isTemplateId(id: string): boolean {

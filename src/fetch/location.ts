@@ -11,6 +11,10 @@ import { queryByExtent, type GeoJSONFC } from '../lib/arcgis.js';
 import { cachedJson, DAY_MS } from '../lib/cache.js';
 import { panelExtent, type Panel } from '../render/minimap.js';
 import { fetchTrainStations, type NamedPoint, type RailLines } from './nswTopo.js';
+import { fetchDemGrid, type DemGrid } from './terrain.js';
+import { fetchNpws, type NpwsReserve } from './greenSpace.js';
+import type { AerialResult } from './imagery.js';
+import type { Extent } from '../lib/geo.js';
 
 const PORTAL = 'https://portal.spatial.nsw.gov.au/server/rest/services';
 const ADMIN = `${PORTAL}/NSW_Administrative_Boundaries_Theme/FeatureServer`;
@@ -36,10 +40,16 @@ export interface LocationData {
   roads: LocationRoad[];
   stations: NamedPoint[];
   suburbs: LocationArea[];
+  /** The region's relief, the elevation model at about 60 m a cell; absent from decks read before it. */
+  dem?: DemGrid | null;
+  /** The National Parks and Wildlife Service estate in the window: the bushland round the city; absent likewise. */
+  npws?: NpwsReserve[];
+  /** The region from above, for the styles that stand their maps on the photograph; absent from decks read before it, and null where the imagery did not answer. */
+  aerial?: (AerialResult & { extent: Extent }) | null;
   fetchedAt: string;
 }
 
-export const emptyLocation = (panel: Panel): LocationData => ({ panel, lgas: [], water: [], rail: { train: [], tram: [] }, roads: [], stations: [], suburbs: [], fetchedAt: new Date().toISOString() });
+export const emptyLocation = (panel: Panel): LocationData => ({ panel, lgas: [], water: [], rail: { train: [], tram: [] }, roads: [], stations: [], suburbs: [], dem: null, npws: [], fetchedAt: new Date().toISOString() });
 
 const ringsOf = (g: any): number[][][] => (!g ? [] : g.type === 'Polygon' ? g.coordinates : g.type === 'MultiPolygon' ? g.coordinates.flat() : []);
 const linesOf = (g: any): number[][][] => (!g ? [] : g.type === 'LineString' ? [g.coordinates] : g.type === 'MultiLineString' ? g.coordinates : []);
@@ -56,18 +66,21 @@ function areas(fc: GeoJSONFC, nameOf: (p: Record<string, any>) => string): Locat
 /** The window's layers, generalised for 1:75,000; cached a month per window, since none of them moves. */
 export async function fetchLocation(panel: Panel, log: (m: string) => void = () => {}): Promise<LocationData> {
   const extent = panelExtent(panel);
-  const key = `${panel.center.x.toFixed(0)}_${panel.center.y.toFixed(0)}_${panel.scale}_${panel.wMm}x${panel.hMm}_rel`;
+  const key = `${panel.center.x.toFixed(0)}_${panel.center.y.toFixed(0)}_${panel.scale}_${panel.wMm}x${panel.hMm}_rel2`;
   const soft = <T,>(p: Promise<T>, fallback: T, name: string): Promise<T> => p.catch((e) => { log(`  WARN location ${name} failed: ${e?.message ?? e}`); return fallback; });
   const emptyFc: GeoJSONFC = { type: 'FeatureCollection', features: [] };
   const t0 = Date.now();
   const data = await cachedJson<Omit<LocationData, 'panel'>>('location', key, 30 * DAY_MS, async () => {
-    const [lgaFc, waterFc, railFc, roadFc, stations, suburbFc] = await Promise.all([
+    const [lgaFc, waterFc, railFc, roadFc, stations, suburbFc, dem, npws] = await Promise.all([
       soft(queryByExtent(`${ADMIN}/8`, extent, 'lganame,councilname', '1=1', { maxAllowableOffset: OFFSET_COARSE }), emptyFc, 'local government areas'),
       soft(queryByExtent(`${WATER}/6`, extent, 'hydroname,hydronametype,hydrotype', '1=1', { maxAllowableOffset: OFFSET_FINE }), emptyFc, 'water areas'),
       soft(queryByExtent(`${TRANSPORT}/7`, extent, 'classsubtype,relevance', '1=1', { maxAllowableOffset: OFFSET_FINE }), emptyFc, 'railways'),
       soft(queryByExtent(`${TRANSPORT}/5`, extent, 'functionhierarchy', `functionhierarchy <= ${ROAD_HIERARCHY_MAX}`, { maxAllowableOffset: OFFSET_FINE }), emptyFc, 'roads'),
       soft(fetchTrainStations(extent), [] as NamedPoint[], 'stations'),
       soft(queryByExtent(`${ADMIN}/2`, extent, 'suburbname', '1=1', { maxAllowableOffset: OFFSET_COARSE }), emptyFc, 'suburbs'),
+      // the relief at about 60 m a cell: a few hundred cells across, enough for the plateaus and the valleys at 1:100 000
+      soft(fetchDemGrid(extent, 60), null as DemGrid | null, 'relief'),
+      soft(fetchNpws(extent), [] as NpwsReserve[], 'parks estate'),
     ]);
     const lgas: LocationLga[] = areas(lgaFc, (p) => String(p.lganame ?? '')).map((a, i) => ({ ...a, council: String(lgaFc.features[i]?.properties?.councilname ?? ''), unincorporated: /UNINCORPORATED/i.test(a.name) }));
     // the areas() helper keeps the feature order, but a feature without rings is dropped, so the council names are re-read by name
@@ -88,8 +101,8 @@ export async function fetchLocation(panel: Panel, log: (m: string) => void = () 
     const roads: LocationRoad[] = [];
     for (const f of roadFc.features) for (const line of linesOf(f.geometry)) roads.push({ hierarchy: Number(f.properties?.functionhierarchy ?? ROAD_HIERARCHY_MAX), coords: line });
     const suburbs = areas(suburbFc, (p) => String(p.suburbname ?? ''));
-    return { lgas, water, rail, roads, stations, suburbs, fetchedAt: new Date().toISOString() };
+    return { lgas, water, rail, roads, stations, suburbs, dem, npws, fetchedAt: new Date().toISOString() };
   });
-  log(`  location: 1:${panel.scale} lgas:${data.lgas.length} water:${data.water.length} rail:${data.rail.train.length + data.rail.tram.length} roads:${data.roads.length} stations:${data.stations.length} suburbs:${data.suburbs.length} (${Math.round((Date.now() - t0) / 1000)} s)`);
+  log(`  location: 1:${panel.scale} lgas:${data.lgas.length} water:${data.water.length} rail:${data.rail.train.length + data.rail.tram.length} roads:${data.roads.length} stations:${data.stations.length} suburbs:${data.suburbs.length} relief:${data.dem ? `${data.dem.cols}×${data.dem.rows}` : 'no'} parks:${data.npws?.length ?? 0} (${Math.round((Date.now() - t0) / 1000)} s)`);
   return { panel, ...data };
 }

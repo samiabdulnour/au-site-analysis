@@ -8,12 +8,12 @@
 // (src/fetch/streetscape.ts) and clipped to its strip and to the footpath
 // below the ground line. Either way the frontages are dashed off under the
 // ground and named by their addresses, the roads that come in are named
-// upright in their gaps, and the site is marked in the deck's red.
+// upright in their gaps, and the site is marked in the deck's style's red.
 
 import type { StreetscapeBundle } from '../pipeline.js';
 import { planeToImage, frameTop, mul3, inv3, BELOW_GROUND_M, FRAME_PX, type Face, type ScapeFrame } from '../fetch/streetscape.js';
 import { deckCss, SLIDE_W, SLIDE_H, type Slide } from './slides.js';
-import { tpl, withTemplate, DECK_TEMPLATE } from './template.js';
+import { tpl, withTemplate, templateFor } from './template.js';
 import { shortStreetName, type SheetMeta } from './sheet.js';
 import { esc } from './chrome.js';
 import { SCAPE_SKY, type Elevation } from './elevation3d.js';
@@ -423,7 +423,8 @@ export function heritageSentence(b: StreetscapeBundle): string {
  * forces the scale, on a page as long as the street then needs.
  */
 export function renderStreetscape(b: StreetscapeBundle, meta: SheetMeta, opts: StreetscapeOptions = {}): string {
-  return withTemplate(DECK_TEMPLATE, () => drawStreetscape(b, meta, opts));
+  // in the deck's style: the active template, one of the maps' four (the CLI's --template)
+  return withTemplate(templateFor('slides', tpl().id), () => drawStreetscape(b, meta, opts));
 }
 
 function legendSvg(x: number, y: number): string {
@@ -535,5 +536,5 @@ export function streetscapeSlide(b: StreetscapeBundle, opts: Omit<StreetscapeOpt
 ${body}
   <div class="abs src" style="left:${MARGIN}mm;bottom:10mm;width:${SLIDE_W - 2 * MARGIN}mm">${esc(sources)}</div>
 </div>`;
-  return { id: '08b_streetscape', title: 'Streetscape', subtitle, textHtml: '', figureHtml, full: true, accent: t.site, css: scapeCss() };
+  return { id: '09b_streetscape', title: 'Streetscape', subtitle, textHtml: '', figureHtml, full: true, accent: t.site, css: scapeCss() };
 }

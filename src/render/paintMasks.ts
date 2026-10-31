@@ -7,7 +7,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { decodePng, encodeRgbaPng } from '../lib/png.js';
-import { AERIAL_GREEN_FILL, VEG_1750_FILLS, PATTERN_SCALE, PATTERN_WEIGHT, type Fill } from './atlasKit.js';
+import { aerialGreenFill, veg1750Fills, VEG_CLASSES_MAX, PATTERN_SCALE, PATTERN_WEIGHT, type Fill } from './atlasKit.js';
 import { mercatorScaleFactor, mercatorToLonLat } from '../lib/geo.js';
 
 const UP = 3;
@@ -25,6 +25,7 @@ function onStroke(f: Fill, x: number, y: number): boolean {
     return Math.hypot(x - cx, y - cy) < w;
   }
   if (f.kind === 'waves') { const amp = step / 3, yy = y - amp * Math.sin((x / (2 * step)) * 2 * Math.PI); return Math.abs(m(yy) - step / 2) < w / 2; }
+  if (f.kind === 'hatch' || f.kind === 'cross') return Math.abs(m(x - y) - step / 2) < w / 2 || (f.kind === 'cross' && Math.abs(m(x + y) - step / 2) < w / 2);
   return false;
 }
 
@@ -40,6 +41,8 @@ export async function paintMasks(dataDir: string, layers: { mask: string; fill: 
   const px = new Uint8Array(W * H * 4);
   for (const { m, fill } of masks) {
     const bg = fill.bg ? rgb(fill.bg) : null, ink = fill.ink ? rgb(fill.ink) : null;
+    // a ground with an opacity is painted thin, so what lies under the picture (a hillshade) shows through
+    const alpha = Math.round(255 * Math.min(1, Math.max(0, fill.opacity ?? 1)));
     for (let y = 0; y < H; y++) {
       const sy = Math.floor(y / UP);
       for (let x = 0; x < W; x++) {
@@ -47,7 +50,7 @@ export async function paintMasks(dataDir: string, layers: { mask: string; fill: 
         const k = (y * W + x) * 4;
         const c = ink && onStroke(fill, x * mm, y * mm) ? ink : bg;
         if (!c) continue;
-        px[k] = c[0]; px[k + 1] = c[1]; px[k + 2] = c[2]; px[k + 3] = 255;
+        px[k] = c[0]; px[k + 1] = c[1]; px[k + 2] = c[2]; px[k + 3] = c === ink ? 255 : alpha;
       }
     }
   }
@@ -55,19 +58,20 @@ export async function paintMasks(dataDir: string, layers: { mask: string; fill: 
   return { file: out, width: W, height: H };
 }
 
-/** The painted pictures the slides place: the aerial's green on slide 10, the pre-1750 communities on slide 15. Kept on the bundle. */
+/** The painted pictures the slides place: the aerial's green on slide 10, the pre-1750 communities on slide 15, in the active style's green. Kept on the bundle. */
 export async function prepareRasters(sb: any, dataDir: string, bleedScale: number, countryScale: number): Promise<void> {
   const k = mercatorScaleFactor(mercatorToLonLat(sb.geocode.center).lat);
   const mmAcross = (e: { xmin: number; xmax: number }, scale: number) => (((e.xmax - e.xmin) / k) * 1000) / scale;
   const vm = sb.green?.vegetation;
   if (vm) {
-    const r = await paintMasks(dataDir, [{ mask: vm.file, fill: AERIAL_GREEN_FILL }], mmAcross(vm.extent, bleedScale) / vm.pxWidth, 'vegetation_paint.png').catch(() => null);
+    const r = await paintMasks(dataDir, [{ mask: vm.file, fill: aerialGreenFill() }], mmAcross(vm.extent, bleedScale) / vm.pxWidth, 'vegetation_paint.png').catch(() => null);
     vm.paint = r?.file;
   }
   const veg = sb.country?.vegetation;
   if (veg?.image) {
-    const classes = (veg.classes ?? []).filter((c: { mask?: string }) => c.mask).slice(0, VEG_1750_FILLS.length);
-    const r = await paintMasks(dataDir, classes.map((c: { mask: string }, i: number) => ({ mask: c.mask, fill: VEG_1750_FILLS[i] })), mmAcross(veg.image.extent, countryScale) / veg.image.pxWidth, 'veg1750_paint.png').catch(() => null);
+    const classes = (veg.classes ?? []).filter((c: { mask?: string }) => c.mask).slice(0, VEG_CLASSES_MAX);
+    const fills = veg1750Fills(classes);
+    const r = await paintMasks(dataDir, classes.map((c: { mask: string }, i: number) => ({ mask: c.mask, fill: fills[i] })), mmAcross(veg.image.extent, countryScale) / veg.image.pxWidth, 'veg1750_paint.png').catch(() => null);
     veg.paint = r?.file;
   }
 }

@@ -12,9 +12,10 @@ function findChromium(): string | undefined {
   if (process.env.CHROMIUM_PATH && existsSync(process.env.CHROMIUM_PATH)) return process.env.CHROMIUM_PATH;
   const roots = [process.env.PLAYWRIGHT_BROWSERS_PATH ?? '/opt/pw-browsers'];
   for (const root of roots) {
-    // a root where `chromium` is a file, not a folder (one Playwright layout), makes the glob throw rather than miss
+    // a root where `chromium` is a file, not a folder (one Playwright layout), makes the glob throw rather than miss;
+    // Playwright's newer builds unpack to chrome-linux64, the older ones to chrome-linux
     const find = (pattern: string) => { try { return globSync(pattern); } catch { return [] as string[]; } };
-    for (const pattern of [`${root}/chromium-*/chrome-linux/chrome`, `${root}/chromium/chrome-linux/chrome`]) {
+    for (const pattern of [`${root}/chromium-*/chrome-linux/chrome`, `${root}/chromium-*/chrome-linux64/chrome`, `${root}/chromium/chrome-linux/chrome`, `${root}/chromium/chrome-linux64/chrome`]) {
       const hits = find(pattern);
       if (hits.length) return hits[0];
     }

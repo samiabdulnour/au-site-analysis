@@ -30,24 +30,23 @@ const SCALES = {
   slides: [],
 };
 // The styles each drawing takes: the context sheet has its templates, the site
-// analysis its own themes, and the yield and the site report none. An unknown one
-// falls back to the drawing's default on the server. The two maps share their
-// style names, so the site's are in the context's order: a style keeps its column.
+// analysis its own themes, and the yield and the site report take the same four
+// names, drawn in that style's palette. An unknown one falls back to the
+// drawing's default on the server. The four drawings share their style names,
+// so every row is in the context's order: a style keeps its column. The frame's
+// pictures of the yield and the site report are drawn in the default style
+// whichever is picked: their pages are many, and one set stands for them all.
+const FOUR_STYLES = [
+  ['flamingo',   'flamingo',   'in Flamingo'],
+  ['kingfisher', 'kingfisher', 'in Kingfisher'],
+  ['heron',      'heron',      'in Heron'],
+  ['canary',     'canary',     'in Canary'],
+];
 const STYLES = {
-  context: [
-    ['flamingo',   'flamingo',   'in Flamingo'],
-    ['kingfisher', 'kingfisher', 'in Kingfisher'],
-    ['heron',      'heron',      'in Heron'],
-    ['canary',     'canary',     'in Canary'],
-  ],
-  site: [
-    ['flamingo',   'flamingo',   'in Flamingo'],
-    ['kingfisher', 'kingfisher', 'in Kingfisher'],
-    ['heron',      'heron',      'in Heron'],
-    ['canary',     'canary',     'in Canary'],
-  ],
-  yield: [],
-  slides: [],
+  context: FOUR_STYLES,
+  site: FOUR_STYLES,
+  yield: FOUR_STYLES,
+  slides: FOUR_STYLES,
 };
 const NORTH = [
   ['north', 'up',    'north up'],

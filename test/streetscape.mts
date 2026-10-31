@@ -163,7 +163,7 @@ if (plan) {
   check('the A3 sheet keeps its page', !renderStreetscape(b, meta).includes('@page { size: 930mm'));
   // and as a page of the deck: across the spread under the deck's heading, its rules kept to itself
   const slide = streetscapeSlide(b, { overlay: true });
-  check('the deck page is a spread after built form', slide.id === '08b_streetscape' && !!slide.full && slide.title === 'Streetscape' && slide.subtitle.includes('1:'));
+  check('the deck page is a spread after built form', slide.id === '09b_streetscape' && !!slide.full && slide.title === 'Streetscape' && slide.subtitle.includes('1:'));
   check('its figure carries the faces, the lead and the sources, not a page of its own', slide.figureHtml.startsWith('<div class="scape">') && slide.figureHtml.includes('class="abs elev"') && slide.figureHtml.includes('class="abs lead"') && slide.figureHtml.includes('class="abs src"') && !slide.figureHtml.includes('<section') && !slide.figureHtml.includes('class="abs foot"'));
   const rules = (slide.css ?? '').split('\n').map((l) => l.trim()).filter(Boolean);
   check('its rules touch nothing but its own figure', rules.length > 10 && rules.every((l) => l.startsWith('.scape ')), rules.find((l) => !l.startsWith('.scape ')));

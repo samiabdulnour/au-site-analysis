@@ -562,7 +562,10 @@ export async function runYieldPipeline(
   log('reading planning controls, streets, levels, stations and the neighbours…');
   const emptyFc: GeoJSONFC = { type: 'FeatureCollection', features: [] };
   const noBuildings: BuildingsData = { source: 'none', buildings: [], fetchedAt: new Date().toISOString() };
-  const [controls, roads, lots, contourSet, stations, policy, buildings, zoning, hob, fsr, addresses, footways, heritage] = await Promise.all([
+  // The photograph under the plan and the axonometric, for the styles that draw the yield on the aerial: wide
+  // enough that, skewed into the axonometric's ground plane, it reaches the frame's every edge.
+  const aerialExtent = around(420);
+  const [controls, roads, lots, contourSet, stations, policy, buildings, zoning, hob, fsr, addresses, footways, heritage, aerial] = await Promise.all([
     fetchSiteControls(geo.center),
     soft(fetchRoads(around(110)), [], 'roads'),
     soft(fetchAllLots(around(110)), emptyFc, 'lots'),
@@ -576,7 +579,9 @@ export async function runYieldPipeline(
     soft(fetchNeighbourAddresses(around(110)), [] as NeighbourAddress[], 'addresses'),
     soft(fetchFootways(around(110), log), { source: 'none', lines: [], fetchedAt: new Date().toISOString() } as FootwaysData, 'footways'),
     soft(fetchHeritage(around(110)), emptyFc, 'heritage'),
+    soft(fetchAerial(aerialExtent, 3200, dataDir, 'yield-aerial'), null as AerialResult | null, 'aerial'),
   ]);
+  log(`  aerial: ${aerial ? `${aerial.tiles.length} tile${aerial.tiles.length === 1 ? '' : 's'}, ${aerial.pxWidth} px over ${Math.round(2 * (reach + 130))} m` : 'none'}`);
   log(`  ${[controls.epiName, controls.zoneCode, controls.maxHeightM ? `HOB ${controls.maxHeightM} ${controls.heightUnits ?? 'm'}` : '', controls.fsr ? `FSR ${controls.fsr}:1` : ''].filter(Boolean).join(' · ') || 'no LEP mapped'}`);
   // The capacity study over the neighbours (lib/capacity.ts): which of them has development potential, so the massing
   // raises a future only where one is likely. The council's register needs the LGA, which the controls just gave.
@@ -724,6 +729,7 @@ export async function runYieldPipeline(
     context: context.map(({ footprint: _f, ...c }) => c),
     existing,
     buildingsSource: buildings.source,
+    aerial: aerial ? { ...aerial, extent: aerialExtent } : null,
     assumptions,
     ...(capacity ? { capacity: { since: capacity.since, smallSite: capacity.options.smallSite, strataMax: capacity.options.strataMax, overridden: Object.keys(capacityOverrides).length, registerSource: capacityData?.registerSource } } : {}),
   };
@@ -1017,7 +1023,7 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
   // The lots and the footprints are read once and wait for both the maps and Street View, which uses them to tell a camera in the street from one in a shop or behind a neighbour.
   const lotsRead = soft(fetchAllLots(fetchExtent), emptyFC, 'cadastral lots');
   const footprintsRead = soft(fetchBuildings(pageExtent, log), { source: 'none' as const, buildings: [], fetchedAt: new Date().toISOString() }, 'buildings');
-  const [zoning, hob, heritage, shr, policy, water, lots, roads, railLines, stations, context, property, controls, proposals, feed, people, dem, contourSet, buildingsRead, movement, green, constraints, site, wideRoads, wideRail, wideStations, wideWater, wideSuburbs, country, photos, location, majorProjects, wind, policyNear, capacityData] = await Promise.all([
+  const [zoning, hob, heritage, shr, policy, water, lots, roads, railLines, stations, context, property, controls, proposals, feed, people, dem, contourSet, buildingsRead, movement, green, constraints, site, wideRoads, wideRail, wideStations, wideWater, wideSuburbs, country, photos, location, majorProjects, wind, policyNear, capacityData, locationAerial] = await Promise.all([
     soft(fetchZoningDetailed(fetchExtent), emptyFC, 'zoning'),
     soft(fetchHobDetailed(fetchExtent), emptyFC, 'height of building'),
     soft(fetchHeritageDetailed(fetchExtent), emptyFC, 'heritage'),
@@ -1057,7 +1063,10 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
     soft(fetchPolicyAreas({ xmin: geo.center.x - 3000 * countryK, ymin: geo.center.y - 3000 * countryK, xmax: geo.center.x + 3000 * countryK, ymax: geo.center.y + 3000 * countryK }, log), [] as PolicyArea[], 'housing policy maps round the site'),
     // The capacity study's register rows, dated lots, State land and the council's own register where it publishes one.
     soft(fetchCapacityData(capacityPanel, lgaCouncil?.lganame, log), null, 'capacity study layers'),
+    // The region from above, one picture at about 9 m a pixel, for the styles that stand the Location map on the photograph.
+    soft(fetchAerial(panelExtent(locationPanel), 2800, dataDir, 'location-aerial'), null as AerialResult | null, 'location aerial'),
   ]);
+  location.aerial = locationAerial ? { ...locationAerial, extent: panelExtent(locationPanel) } : null;
   // What the author knows that the data does not: `capacity_overrides.json` in the output folder, keyed by the start of an address.
   const capacityOverrides = await readFile(join(opts.outDir, 'capacity_overrides.json'), 'utf8').then((t) => JSON.parse(t) as CapacityOverrides).catch(() => ({} as CapacityOverrides));
   const [housingTarget, cos, , views, character, strategies] = await Promise.all([

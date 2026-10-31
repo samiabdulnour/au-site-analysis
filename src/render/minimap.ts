@@ -86,7 +86,7 @@ export const TYPE = {
 export function t2Text(x: number, y: number, text: string, anchor: 'start' | 'middle' | 'end' = 'start', k = 1): string {
   const t = tpl();
   const size = TYPE.t2.size / k;
-  return `<text x="${x.toFixed(1)}" y="${(y + size * 0.36).toFixed(1)}" text-anchor="${anchor}" font-size="${size.toFixed(2)}" font-weight="${TYPE.t2.weight}" letter-spacing="${(TYPE.t2.spacing / k).toFixed(2)}" fill="${t.ink}" stroke="#ffffff" stroke-width="${(0.55 / k).toFixed(2)}" stroke-linejoin="round" paint-order="stroke">${esc(text.toUpperCase())}</text>`;
+  return `<text x="${x.toFixed(1)}" y="${(y + size * 0.36).toFixed(1)}" text-anchor="${anchor}" font-size="${size.toFixed(2)}" font-weight="${TYPE.t2.weight}" letter-spacing="${(TYPE.t2.spacing / k).toFixed(2)}" fill="${t.ink}">${esc(text.toUpperCase())}</text>`;
 }
 
 /** Width of a T2 label in map millimetres, for the label spacer. */
@@ -116,7 +116,7 @@ export const stationMode = (name: string): StationMode =>
   /LIGHT RAIL|TRAM|\bSLR\b|\bSTOP$/i.test(name) ? 'light rail' : /METRO/i.test(name) || METRO_ONLY.test(name) ? 'metro' : 'train';
 
 /** Roads, rail, stations and the site — drawn over the theme so it stays legible. */
-export function overLayers(b: BaseData, proj: Proj, p: Panel, site: SiteLayer = 'both'): string {
+export function overLayers(b: BaseData, proj: Proj, p: Panel, site: SiteLayer = 'both', opts: { stations?: boolean } = {}): string {
   const t = tpl();
   const parts: string[] = [];
   // At least the carriageway's own width at the panel's scale, so at 1:5000 the streets read as streets and
@@ -139,7 +139,7 @@ export function overLayers(b: BaseData, proj: Proj, p: Panel, site: SiteLayer = 
     const d = b.rail.tram.map((l) => ringsPath([l], proj, false)).join('');
     parts.push(`<path d="${d}" fill="none" stroke="${t.busRoute}" stroke-width="0.55" stroke-dasharray="2,1.2"/>`);
   }
-  for (const s of b.stations) {
+  for (const s of opts.stations === false ? [] : b.stations) {
     const [x, y] = proj(s.lon, s.lat);
     if (x < 2 || y < 2 || x > p.wMm - 2 || y > p.hMm - 2) continue;
     const mode = stationMode(s.name);

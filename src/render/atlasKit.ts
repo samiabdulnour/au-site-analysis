@@ -9,22 +9,29 @@
 // blurrily in the printed PDF.
 
 import { esc } from './chrome.js';
+import { tint, mix, shadeHex, inkFor, vivid, deckFamilies, deckLook, type Category, type InkFamily, type InkFamilyName } from './template.js';
+import { rampColours } from './terrainMap.js';
 
-export type Family = 'red' | 'orange' | 'sage' | 'green' | 'blue';
+export type Family = InkFamilyName;
 
-/** Sampled from the office's swatch sheet: three tints, the two pattern inks, and a text ink dark enough for the bold narrative. */
-export const INK: Record<Family, { solid: string; mid: string; light: string; line: string; deep: string; text: string }> = {
-  red:    { solid: '#d54747', mid: '#e69ea1', light: '#f4d8d9', line: '#d54747', deep: '#b20000', text: '#d54747' },
-  orange: { solid: '#e9a879', mid: '#f3d2ba', light: '#faeee3', line: '#efbf99', deep: '#df726a', text: '#f5a470' },
-  sage:   { solid: '#cbcbb9', mid: '#e5e5dc', light: '#f5f5f1', line: '#d9c49c', deep: '#9c9c88', text: '#8f8f78' },
-  green:  { solid: '#7bb990', mid: '#bbdcc7', light: '#e4f0e9', line: '#7bb990', deep: '#2f8f55', text: '#4e9a69' },
-  blue:   { solid: '#b2daf5', mid: '#d8ecf9', light: '#eff8fd', line: '#9fcbea', deep: '#4b55a0', text: '#0068b3' },
-};
+/**
+ * The five families, in the active style (template.ts deckFamilies()): read
+ * through a proxy, so `INK.red.line` is the line of the style the page is
+ * being drawn in, however early the reading was written down. A fill that
+ * copies the values out (`{ ink: INK.red.line }`) holds them, so such fills
+ * are made inside the page, not at the top of the module.
+ */
+export const INK: Record<Family, InkFamily> = new Proxy({} as Record<Family, InkFamily>, {
+  get: (_t, fam: string) => new Proxy({} as InkFamily, { get: (_f, key: string) => deckFamilies()[fam as Family][key as keyof InkFamily] }),
+});
 
 /** A fill: a ground tint, an optional pattern of strokes over it, an optional outline. Sizes in map millimetres. */
 export interface Fill {
   bg?: string;
-  kind?: 'vlines' | 'hlines' | 'dots' | 'waves';
+  /** The ground's opacity, where it lies over a photograph; opaque where unset. */
+  opacity?: number;
+  /** Vertical lines, horizontal lines, dots, waves; or the context sheet's textures, a diagonal hatch and a cross-hatch. */
+  kind?: 'vlines' | 'hlines' | 'dots' | 'waves' | 'hatch' | 'cross';
   ink?: string;
   step?: number;
   w?: number;
@@ -53,6 +60,13 @@ function strokes(f: Fill, bb: Box, k = 1): string {
     for (let y = bb.y0 + step / 2; y <= bb.y1; y += step) out.push(`M${bb.x0.toFixed(2)},${y.toFixed(2)}H${bb.x1.toFixed(2)}`);
     return `<path d="${out.join('')}" stroke="${f.ink}" stroke-width="${w.toFixed(3)}" fill="none"/>`;
   }
+  if (f.kind === 'hatch' || f.kind === 'cross') {
+    // the context sheet's textures: a hatch falling to the right, crossed for the cross-hatch
+    const h = bb.y1 - bb.y0;
+    for (let o = bb.x0 - h; o <= bb.x1; o += step) out.push(`M${o.toFixed(2)},${bb.y0.toFixed(2)}L${(o + h).toFixed(2)},${bb.y1.toFixed(2)}`);
+    if (f.kind === 'cross') for (let o = bb.x0 - h; o <= bb.x1; o += step) out.push(`M${o.toFixed(2)},${bb.y1.toFixed(2)}L${(o + h).toFixed(2)},${bb.y0.toFixed(2)}`);
+    return `<path d="${out.join('')}" stroke="${f.ink}" stroke-width="${w.toFixed(3)}" fill="none"/>`;
+  }
   if (f.kind === 'dots') {
     let row = 0;
     for (let y = bb.y0 + step / 2; y <= bb.y1; y += step, row++)
@@ -76,9 +90,29 @@ export function fillShape(d: string, bb: Box, f: Fill, k = 1): string {
   const pad = 1;
   const box = { x0: bb.x0 - pad, y0: bb.y0 - pad, x1: bb.x1 + pad, y1: bb.y1 + pad };
   const rule = f.rule ?? 'evenodd';
-  return (f.bg ? `<path d="${d}" fill="${f.bg}" fill-rule="${rule}"/>` : '') +
+  return (f.bg ? `<path d="${d}" fill="${f.bg}"${f.opacity !== undefined && f.opacity < 1 ? ` fill-opacity="${f.opacity.toFixed(2)}"` : ''} fill-rule="${rule}"/>` : '') +
     (f.kind ? `<clipPath id="${id}"><path d="${d}" clip-rule="${rule}"/></clipPath><g clip-path="url(#${id})">${strokes(f, box, k)}</g>` : '') +
     (f.outline ? `<path d="${d}" fill="none" stroke="${f.outline}" stroke-width="${((f.outlineW ?? 0.25) / k).toFixed(3)}"${f.dash ? ` stroke-dasharray="${f.dash}"` : ''} fill-rule="${rule}"/>` : '');
+}
+
+/**
+ * A land-use category of the active template as a fill of the kit: its tint
+ * over the paper (or, over a photograph, at its own opacity), its texture in
+ * its texture ink, its contour. The deck's maps, bars and swatches then show a
+ * zone as the context sheet of the same style shows it.
+ */
+export function categoryFill(c: Category, ground: 'paper' | 'aerial' = 'paper', tintScale = 1): Fill {
+  const op = Math.min(1, c.opacity * tintScale);
+  const f: Fill = ground === 'paper' ? { bg: tint(c.fill, op) } : { bg: c.fill, opacity: op };
+  if (c.texture) {
+    f.kind = c.texture === 'dots' ? 'dots' : c.texture === 'cross' ? 'cross' : 'hatch';
+    f.ink = c.textureColor ?? c.stroke ?? c.fill;
+    // the context sheet's steps (1.7 mm dots, 1.6 mm hatch, 2.0 mm cross-hatch) and its 0.22 mm line, through the kit's scaling
+    f.step = c.texture === 'dots' ? 0.75 : c.texture === 'cross' ? 1.18 : 0.94;
+    f.w = c.texture === 'dots' ? 0.22 : 0.16;
+  }
+  if (c.stroke) { f.outline = c.stroke; f.outlineW = 0.3; }
+  return f;
 }
 
 /** The key's swatch for a fill, in the legend's 5 × 3.6 box, drawn at the map's density (the box prints 1.54× larger). */
@@ -276,14 +310,66 @@ export function zLine(series: { year: number; value: number }[], projection: { y
 }
 
 /** The green of the aerial on slide 10: a pale ground dotted in the deep green. */
-export const AERIAL_GREEN_FILL: Fill = { bg: INK.green.light, kind: 'dots', ink: INK.green.deep, step: 0.5, w: 0.1 };
-/** The pre-1750 plant communities on slide 15, largest first: one pattern each in the deep green, no ground. */
-export const VEG_1750_FILLS: Fill[] = [
-  { kind: 'vlines', ink: INK.green.deep, step: 1.0, w: 0.16 },
-  { kind: 'dots', ink: INK.green.deep, step: 1.1, w: 0.14 },
-  { kind: 'hlines', ink: INK.green.deep, step: 1.0, w: 0.16 },
-  { kind: 'waves', ink: INK.green.deep, step: 1.3, w: 0.16 },
-  { kind: 'vlines', ink: INK.green.deep, step: 0.45, w: 0.14 },
-  { kind: 'dots', ink: INK.green.deep, step: 0.55, w: 0.12 },
-  { kind: 'hlines', ink: INK.green.deep, step: 0.45, w: 0.14 },
-];
+export const aerialGreenFill = (): Fill => ({ bg: INK.green.light, kind: 'dots', ink: INK.green.deep, step: 0.5, w: 0.1 });
+/** The most plant communities the Country page tells apart; the rest of a rich strip stays in the hillshade. */
+export const VEG_CLASSES_MAX = 9;
+
+/**
+ * The pre-1750 plant communities on slide 15, each a flat tint that says
+ * something about its country: the deep green of the living family on the
+ * shale (the Cumberland Plain's ironbark and turpentine forests), an olive on
+ * the sandstone, a teal on the river flats, in the mangroves and the swamps,
+ * an ochre on heath and scrub; a woodland a step lighter than a forest on
+ * the same ground, and where two communities would share a tint the second
+ * steps lighter again. The chart on the left keys them by name. Thinned a
+ * little, so the hillshade shows the land through them.
+ */
+export function veg1750Fills(classes: { pct: string }[], technique = deckLook().technique): Fill[] {
+  const G = INK.green, O = INK.orange, B = INK.blue, R = INK.red;
+  // each community its own colour, from across the palette, as an ethnographic map colours its peoples; the pattern, on paper, says how open it is
+  const hues = [G.deep, inkFor(O.solid, 0.35), inkFor(B.deep, 0.2), R.deep, inkFor(G.solid, 0.3), inkFor(R.solid, 0.3), inkFor(B.solid, 0.35), inkFor(O.deep, 0.3), shadeHex(G.deep, 0.6)];
+  const openness = (n: string) => (/woodland|grassy|open|grassland/.test(n) ? 0.42 : /forest|rainforest/.test(n) ? 0.68 : 0.55);
+  return classes.map((c, i) => {
+    const n = c.pct.toLowerCase();
+    const hue = hues[i % hues.length];
+    if (technique === 'tone') return { bg: tint(hue, openness(n)), opacity: 0.85 };
+    // on paper, dots in the community's colour, the denser the closer its canopy: rainforest tightest, forest, woodland, the rest open
+    const dots = /rainforest/.test(n) ? { step: 0.55, w: 0.3 } : /forest/.test(n) ? { step: 0.7, w: 0.3 } : /woodland|grassy|open|grassland/.test(n) ? { step: 0.95, w: 0.28 } : { step: 1.25, w: 0.26 };
+    return { bg: tint(hue, 0.14), opacity: 0.88, kind: 'dots', ink: hue, ...dots };
+  });
+}
+
+/** The palette as a heat ramp, cool to warm: the transit blue, the living green, the activity gold, the accent and its deep; for anything ordered: storeys, metres, hours. */
+export function paletteRamp(): string[] {
+  const B = INK.blue, G = INK.green, O = INK.orange, R = INK.red;
+  // each step made vivid, so a pastel family (Kingfisher's) still yields a ramp that reads at hatch width; the warm step the family's most saturated tint
+  const sat = (hex: string) => { const n = parseInt(hex.slice(1), 16), c = [(n >> 16) & 255, (n >> 8) & 255, n & 255]; const mx = Math.max(...c); return mx ? (mx - Math.min(...c)) / mx : 0; };
+  const warm = [O.solid, O.line, O.deep].sort((a, b) => sat(b) - sat(a))[0];
+  return [vivid(B.solid, 0.5, 0.48), vivid(G.solid, 0.5, 0.42), vivid(warm, 0.65, 0.5), vivid(R.solid, 0.55, 0.45), vivid(R.deep, 0.6, 0.32)];
+}
+
+/** The ramp ordered data runs up in this style: Heron's between two colours of its sheet, the blue low and the red high, mixed; the others across the palette. */
+export function styleRamp(): string[] {
+  return deckLook().id === 'heron' ? [INK.blue.solid, INK.red.deep] : paletteRamp();
+}
+
+/**
+ * `n` ordered fills, low to high, as the style draws them: tones along the style's ramp, or (on paper) hatches
+ * that tighten up the ramp, each in its ramp colour, the lowest a light patch and the highest cross-hatched.
+ */
+export function heatFills(n: number, technique = deckLook().technique): Fill[] {
+  const cols = rampColours(n, styleRamp());
+  if (technique === 'tone') return cols.map((c) => ({ bg: tint(c, 0.78), outline: '#ffffff', outlineW: 0.08 }));
+  return cols.map((c, i) => {
+    if (i === 0) return { bg: tint(c, 0.3), outline: c, outlineW: 0.1 };
+    return { bg: tint(c, 0.16), kind: i === n - 1 ? 'cross' : 'hatch', ink: c, step: 1.5 - (1.0 * (i - 1)) / Math.max(1, n - 2), w: 0.22, outline: c, outlineW: 0.1 };
+  });
+}
+
+/** Up to `max` fills side by side in the key's 5 × 3.6 mm box, a strip: the ordered fills of a map read in one swatch. */
+export function stripOf(fills: Fill[], max = 7): string {
+  const fs = fills.length > max ? Array.from({ length: max }, (_, i) => fills[Math.round((i * (fills.length - 1)) / (max - 1))]) : fills;
+  const w = 5 / Math.max(1, fs.length);
+  return fs.map((f, i) => fillShape(`M${(i * w).toFixed(2)},0.3h${(w + 0.02).toFixed(2)}v3h${(-(w + 0.02)).toFixed(2)}Z`, { x0: i * w, y0: 0.3, x1: (i + 1) * w, y1: 3.3 }, { ...f, outline: undefined, opacity: 1 }, 1.6)).join('') +
+    `<rect x="0" y="0.3" width="5" height="3" fill="none" stroke="${INK.sage.deep}" stroke-width="0.1"/>`;
+}
