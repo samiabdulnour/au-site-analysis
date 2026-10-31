@@ -353,7 +353,7 @@ export function paletteRamp(): string[] {
  */
 export function heatFills(n: number, technique = deckLook().technique): Fill[] {
   const cols = rampColours(n, paletteRamp());
-  if (technique === 'tone') return cols.map((c) => ({ bg: c, outline: '#ffffff', outlineW: 0.08 }));
+  if (technique === 'tone') return cols.map((c) => ({ bg: tint(c, 0.78), outline: '#ffffff', outlineW: 0.08 }));
   return cols.map((c, i) => {
     if (i === 0) return { bg: tint(c, 0.3), outline: c, outlineW: 0.1 };
     return { bg: tint(c, 0.16), kind: i === n - 1 ? 'cross' : 'hatch', ink: c, step: 1.5 - (1.0 * (i - 1)) / Math.max(1, n - 2), w: 0.22, outline: c, outlineW: 0.1 };

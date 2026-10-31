@@ -1501,7 +1501,8 @@ public ASDST likelihood model; the slide states that AHIMS is not open and
 that a search precedes any works, and that the name of Country, the language
 and the cultural narrative are the office's to develop with Knowledge
 Holders, not generated. The land council areas are named large across the
-ground they hold, and no road, rail or cadastre is drawn: the land as it lay. A motif for an area's ground is its people's to give: the
+ground they hold, and no road, rail or cadastre is drawn: the land as it lay,
+with contours every 10 m from the model over the communities as a hint of its shape. A motif for an area's ground is its people's to give: the
 map draws one over a land council area only where a tile has been placed at
 `assets/motifs/<land-council-name>.svg` (or `.png`) with their permission,
 and borrows no art style of its own. Then *the site*: the site plan on the aerial at a round scale that

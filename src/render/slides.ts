@@ -2331,23 +2331,25 @@ export function developmentAtlas(b0: SlidesBundle, facts: PlanningFacts): Slide 
   const b: SlidesBundle = { ...b0, daPanel: b0.bleedPanel, applications: b0.applications.filter(onPage) };
   const t = tpl();
   const d = developmentFacts(b);
-  const R = INK.red, G = INK.green, O = INK.orange, B = INK.blue;
-  const line = deckLook().technique === 'line';
-  // Each status its own colour, from across the palette: green determined, gold under assessment, blue before the
-  // court, the accent's deep withdrawn; on paper the colours hatch, over the photograph they fill. Each mark carries
-  // a pictogram, so the status reads without the key: a tick, an hourglass, the scales' beam, a cross.
-  const GOLD = inkFor(O.solid, 0.42);
-  const STATUS_INK: Record<DaStatusClass, string> = { determined: G.deep, active: GOLD, appeal: B.deep, withdrawn: R.deep };
-  const STATUS_FILL: Record<DaStatusClass, Fill> = {
-    determined: line ? { bg: tint(G.solid, 0.35), kind: 'hatch', ink: G.deep, step: 0.55, w: 0.18, outline: G.deep, outlineW: 0.25 } : { bg: G.solid, outline: G.deep, outlineW: 0.2 },
-    active: line ? { bg: '#ffffff', kind: 'vlines', ink: GOLD, step: 0.6, w: 0.2, outline: GOLD, outlineW: 0.3 } : { bg: GOLD, outline: inkFor(GOLD, 0.25), outlineW: 0.2 },
-    appeal: line ? { bg: '#ffffff', kind: 'cross', ink: B.deep, step: 0.6, w: 0.2, outline: B.deep, outlineW: 0.3 } : { bg: B.solid, outline: B.deep, outlineW: 0.2 },
-    withdrawn: { bg: '#ffffff', outline: R.deep, outlineW: 0.3, dash: '0.8 0.5' },
+  const G = INK.green, S = INK.sage;
+  const look = deckLook();
+  const line = look.technique === 'line';
+  // The likelihood of development, by status, up the palette's ramp: withdrawn the coolest, before the court, under
+  // assessment, determined the hottest. The whole lot of each site takes the fill, hatched on paper and toned over
+  // the photograph, so the block reads as a heat of change; a pictogram at the lot's heart says the status.
+  const LIKELY = heatFills(4);
+  const STATUS_FILL: Record<DaStatusClass, Fill> = { withdrawn: LIKELY[0], appeal: LIKELY[1], active: LIKELY[2], determined: LIKELY[3] };
+  const STATUS_INK: Record<DaStatusClass, string> = { withdrawn: LIKELY[0].outline ?? '#000000', appeal: LIKELY[1].ink ?? LIKELY[1].bg ?? '#000000', active: LIKELY[2].ink ?? LIKELY[2].bg ?? '#000000', determined: LIKELY[3].ink ?? LIKELY[3].bg ?? '#000000' };
+  const STATUS_WORD: Record<DaStatusClass, string> = {
+    determined: 'Determined (the feed does not say approved or refused): the likeliest to be built',
+    active: 'Under assessment, on exhibition or awaiting information: likely',
+    appeal: 'Before the Land and Environment Court: uncertain',
+    withdrawn: 'Withdrawn, rejected or cancelled: unlikely',
   };
   const glyph = (k: DaStatusClass, x: number, y: number, r: number): string => {
     if (r < 1.3) return '';
     const u = Math.max(0.8, r * 0.5);
-    const ink = line || k === 'withdrawn' ? STATUS_INK[k] : '#ffffff';
+    const ink = line ? STATUS_INK[k] : '#ffffff';
     const P2 = (px: number, py: number) => `${(x + px * u).toFixed(2)},${(y + py * u).toFixed(2)}`;
     const d = k === 'determined' ? `M${P2(-0.85, 0.05)}L${P2(-0.25, 0.65)}L${P2(0.9, -0.65)}`
       : k === 'active' ? `M${P2(-0.6, -0.8)}H${P2(0.6, -0.8).split(',')[0]}L${P2(-0.6, 0.8)}H${P2(0.6, 0.8).split(',')[0]}Z`
@@ -2357,61 +2359,73 @@ export function developmentAtlas(b0: SlidesBundle, facts: PlanningFacts): Slide 
     return (line ? `<path d="${d}" fill="none" stroke="#ffffff" stroke-width="${(u * 0.75).toFixed(2)}" stroke-linecap="round" stroke-linejoin="round"/>` : '') +
       `<path d="${d}" fill="none" stroke="${ink}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"/>`;
   };
-  // State significance as a star, coloured by the stage
   const star = starPath;
-  const STATUS_WORD: Record<DaStatusClass, string> = {
-    determined: 'Determined (the feed does not say approved or refused)',
-    active: 'Under assessment, on exhibition or awaiting information',
-    appeal: 'Before the Land and Environment Court',
-    withdrawn: 'Withdrawn, rejected or cancelled',
-  };
+  // every other application's lot, in the neutral family: the block's quieter churn
+  const OTHER: Fill = line ? { bg: tint(S.deep, 0.16), outline: S.deep, outlineW: 0.12 } : { bg: S.solid, opacity: 0.6, outline: S.deep, outlineW: 0.12 };
 
-  // ---- the map, over the whole figure page
+  // ---- the map, over the whole figure page: the photograph under the aerial styles, paper under the others
   const p = b.bleedPanel;
   const proj = panelProjector(p);
   const gt = greyBase(t);
-  const parts: string[] = [withTemplate(gt, () => baseLayers(b.base, proj, p)), withTemplate(gt, () => overLayers(b.base, proj, p, 'none'))];
+  const box = { x0: 0, y0: 0, x1: p.wMm, y1: p.hMm };
+  const photo = look.ground === 'aerial' && b.character?.aerial?.tiles.length ? aerialGround(b, p, look) : '';
+  const parts: string[] = [photo ? `<rect x="0" y="0" width="${p.wMm}" height="${p.hMm}" fill="#ffffff"/>${photo}` : withTemplate(gt, () => baseLayers(b.base, proj, p))];
+  const circle = (x: number, y: number, r: number) => `M${(x - r).toFixed(2)},${y.toFixed(2)}a${r.toFixed(2)},${r.toFixed(2)} 0 1,0 ${(2 * r).toFixed(2)},0a${r.toFixed(2)},${r.toFixed(2)} 0 1,0 ${(-2 * r).toFixed(2)},0Z`;
+  // each application's lot: the lot of the cadastre that holds its point; its heart the clipped centroid of its largest ring
+  const lots = b.base.lots.features.map((ft) => geomRings(ft.geometry)).filter((rs) => rs.length);
+  const lotAt = (lon: number, lat: number) => lots.find((rs) => rs.some((r) => pointInRing(lon, lat, r)));
+  const heartOf = (lot: number[][][] | undefined, x: number, y: number): [number, number] => {
+    if (!lot) return [x, y];
+    let best = { area: 0, cx: 0, cy: 0 };
+    for (const r of lot) { const st = clippedStats(r, proj, p); if (st.area > best.area) best = st; }
+    return best.area > 0 ? [best.cx, best.cy] : [x, y];
+  };
   const seen = new Set<string>();
-  const minor: string[] = [];
+  const otherLots = new Set<number[][][]>();
+  const otherD: string[] = [];
   for (const r of b.applications) {
     if (isSignificant(r) || r.lon === undefined || r.lat === undefined) continue;
     const key = `${r.lon.toFixed(5)},${r.lat.toFixed(5)}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    const [x, y] = proj(r.lon, r.lat);
-    minor.push(`M${x.toFixed(2)},${y.toFixed(2)}h0`);
+    const lot = lotAt(r.lon, r.lat);
+    if (lot) { if (!otherLots.has(lot)) { otherLots.add(lot); otherD.push(ringsPath(lot, proj)); } }
+    else { const [x, y] = proj(r.lon, r.lat); otherD.push(circle(x, y, 0.8)); }
   }
-  parts.push(`<path d="${minor.join('')}" stroke="${B.line}" stroke-width="1.1" stroke-linecap="round" fill="none"/>`);
+  if (otherD.length) parts.push(fillShape(otherD.join(''), box, OTHER));
   const byCost = [...d.sites].sort((x, y) => (y.cost ?? 0) - (x.cost ?? 0));
   const charted = new Set(byCost.slice(0, 7).map((st) => st.n));
-  const placed = d.sites.map((st) => { const [x, y] = proj(st.lon, st.lat); return { st, x, y, r: dotRadius(st.cost) }; })
-    .filter((q) => q.x >= 0 && q.y >= 0 && q.x <= p.wMm && q.y <= p.hMm).sort((a, b2) => b2.r - a.r);
+  const placed = d.sites.map((st) => { const [px, py] = proj(st.lon, st.lat); const lot = lotAt(st.lon, st.lat); const [x, y] = heartOf(lot, px, py); return { st, x, y, lot, r: dotRadius(st.cost) }; })
+    .filter((q) => q.x >= 0 && q.y >= 0 && q.x <= p.wMm && q.y <= p.hMm);
+  // the sites' lots, the coolest first so the hotter lie over any lot two share; a site whose point no lot holds keeps a disc
+  for (const k of ['withdrawn', 'appeal', 'active', 'determined'] as DaStatusClass[]) {
+    const ds = placed.filter((q) => q.st.statusClass === k).map((q) => q.lot ? ringsPath(q.lot, proj) : circle(q.x, q.y, q.r)).join('');
+    if (ds) parts.push(fillShape(ds, box, STATUS_FILL[k]));
+  }
+  // the State significant sites: their lots in the stage's fill, a star at the heart
+  const stageOf = (st: { stageClass: string }): DaStatusClass => (st.stageClass in STATUS_FILL ? st.stageClass as DaStatusClass : 'active');
+  const ssd = d.stateSignificant.sites.map((st) => { const [px, py] = proj(st.lon!, st.lat!); const lot = lotAt(st.lon!, st.lat!); const [x, y] = heartOf(lot, px, py); return { st, x, y, lot }; }).filter((q) => q.x >= 0 && q.y >= 0 && q.x <= p.wMm && q.y <= p.hMm);
+  for (const q of ssd) parts.push(fillShape(q.lot ? ringsPath(q.lot, proj) : star(q.x, q.y, 2.7), box, STATUS_FILL[stageOf(q.st)]));
+  parts.push(withTemplate(gt, () => overLayers(b.base, proj, p, 'none')));
   const spacer = new LabelSpacer(p.wMm, p.hMm, 80);
   spacer.take(36, 10, 64, 10);
-  const circle = (x: number, y: number, r: number) => `M${(x - r).toFixed(2)},${y.toFixed(2)}a${r.toFixed(2)},${r.toFixed(2)} 0 1,0 ${(2 * r).toFixed(2)},0a${r.toFixed(2)},${r.toFixed(2)} 0 1,0 ${(-2 * r).toFixed(2)},0Z`;
-  for (const q of placed) parts.push(`<circle cx="${q.x.toFixed(2)}" cy="${q.y.toFixed(2)}" r="${(q.r + 0.4).toFixed(2)}" fill="#ffffff"/>` + fillShape(circle(q.x, q.y, q.r), { x0: q.x - q.r, y0: q.y - q.r, x1: q.x + q.r, y1: q.y + q.r }, STATUS_FILL[q.st.statusClass]) + glyph(q.st.statusClass, q.x, q.y, q.r));
-  const DR = 2.7;
-  const ssd = d.stateSignificant.sites.map((st) => { const [x, y] = proj(st.lon!, st.lat!); return { st, x, y }; }).filter((q) => q.x >= 0 && q.y >= 0 && q.x <= p.wMm && q.y <= p.hMm);
-  for (const q of ssd) {
-    parts.push(`<path d="${star(q.x, q.y, DR + 0.5)}" fill="#ffffff"/>` + fillShape(star(q.x, q.y, DR), { x0: q.x - DR, y0: q.y - DR, x1: q.x + DR, y1: q.y + DR }, STATUS_FILL[q.st.stageClass as DaStatusClass] ?? STATUS_FILL.active));
-    spacer.take(q.x, q.y, DR * 2, DR * 2);
-  }
+  const marks: string[] = [];
+  for (const q of placed) { marks.push(glyph(q.st.statusClass, q.x, q.y, 2.2)); spacer.block(q.x, q.y, 4.6, 4.6); }
+  for (const q of ssd) { marks.push(`<path d="${star(q.x, q.y, 2.6)}" fill="#ffffff" stroke="${STATUS_INK[stageOf(q.st)]}" stroke-width="0.4"/>`); spacer.block(q.x, q.y, 5.4, 5.4); }
   const labels: string[] = [];
   for (const q of placed) {
     if (!charted.has(q.st.n)) continue;
     const text = String(q.st.n), w = text.length * 1.6 + 0.8;
-    const spots: [number, number][] = [[q.x + q.r + 1.2 + w / 2, q.y], [q.x - q.r - 1.2 - w / 2, q.y], [q.x, q.y - q.r - 1.8], [q.x, q.y + q.r + 1.8]];
+    const spots: [number, number][] = [[q.x + 3.6 + w / 2, q.y], [q.x - 3.6 - w / 2, q.y], [q.x, q.y - 4], [q.x, q.y + 4]];
     for (const [lx, ly] of spots) if (spacer.take(lx, ly, w, 2.6)) { labels.push(m6(lx, ly, text)); break; }
   }
   for (const q of ssd) {
     const text = q.st.n, w = text.length * 1.6 + 0.8;
-    for (const [lx, ly] of [[q.x + DR + 1.2 + w / 2, q.y], [q.x - DR - 1.2 - w / 2, q.y], [q.x, q.y - DR - 1.8]] as [number, number][]) if (spacer.take(lx, ly, w, 2.6)) { labels.push(m6(lx, ly, text)); break; }
+    for (const [lx, ly] of [[q.x + 4 + w / 2, q.y], [q.x - 4 - w / 2, q.y], [q.x, q.y - 4.4]] as [number, number][]) if (spacer.take(lx, ly, w, 2.6)) { labels.push(m6(lx, ly, text)); break; }
   }
-  // the street names after every mark, round the circles of the sites of scale
-  for (const q of placed) spacer.block(q.x, q.y, q.r * 2, q.r * 2);
   keepSiteClear(b, proj, spacer);
   labels.push(streetNameLayer(b.base.roads, proj, p, spacer, 'dev07'));
-  parts.push(...labels, siteMark(b.base, proj, 'both'), panelFurniture(p, 'left'));
+  parts.push(...marks, ...labels, siteMark(b.base, proj, 'both'), panelFurniture(p, 'left'));
   const mapSvg = `<svg width="${p.wMm}mm" height="${p.hMm}mm" viewBox="0 0 ${p.wMm} ${p.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
     <defs><clipPath id="clip-dev"><rect x="0" y="0" width="${p.wMm}" height="${p.hMm}"/></clipPath></defs>
     <g clip-path="url(#clip-dev)" font-family="${t.font}">${parts.join('\n')}</g></svg>`;
@@ -2467,10 +2481,9 @@ export function developmentAtlas(b0: SlidesBundle, facts: PlanningFacts): Slide 
     fill: y.partial ? STATUS_FILL.active : { bg: G.solid },
   }));
   const legend: LegendEntry[] = [
-    ...(['determined', 'active', 'appeal', 'withdrawn'] as DaStatusClass[]).filter((k) => d.byStatus[k] || d.stateSignificant.sites.some((q) => q.stageClass === k)).map((k) => ({ swatch: circleSwatch(STATUS_FILL[k]) + glyph(k, 2.5, 1.8, 1.45), label: STATUS_WORD[k] })),
-    { swatch: `<circle cx="1.1" cy="2.4" r="0.7" fill="${G.solid}"/><circle cx="3.4" cy="1.8" r="1.4" fill="${G.solid}"/>`, label: 'Circle area follows the stated cost; numbers match the chart' },
-    { swatch: `<circle cx="2.5" cy="1.8" r="0.45" fill="${B.line}"/>`, label: 'Every other application lodged in the period' },
-    ...(d.stateSignificant.sites.length ? [{ swatch: `<path d="${star(2.5, 1.8, 1.7)}" fill="${G.solid}" stroke="${G.deep}" stroke-width="0.15"/>`, label: "State significant application, the Department's register, S-numbered, a star coloured by its stage" }] : []),
+    ...(['determined', 'active', 'appeal', 'withdrawn'] as DaStatusClass[]).filter((k) => d.byStatus[k] || d.stateSignificant.sites.some((q) => q.stageClass === k)).map((k) => ({ swatch: swatchOf(STATUS_FILL[k]) + glyph(k, 2.5, 1.8, 1.3), label: STATUS_WORD[k] })),
+    { swatch: swatchOf(OTHER), label: 'Every other application lodged in the period: its lot' },
+    ...(d.stateSignificant.sites.length ? [{ swatch: `<path d="${star(2.5, 1.8, 1.7)}" fill="#ffffff" stroke="${STATUS_INK.active}" stroke-width="0.3"/>`, label: "State significant application, the Department's register, S-numbered: its lot in its stage's fill, a star at its heart" }] : []),
     { swatch: `<path d="M1.2,0.6H3.8V3H1.2Z" fill="${t.site}"/>`, label: 'The site' },
   ];
   const legendN = legend.length;
@@ -3206,9 +3219,10 @@ export function topographyAtlas(b0: SlidesBundle): Slide {
   // the bands: tones along the palette's ramp over the photograph; on paper, hatched in the ramp's inks, tighter up the slope
   const bandCols = rampColours(bands, paletteRamp());
   const hatch: ReliefHatch = { mmPerCell: g ? (g.cellX * g.groundPerUnit * 1000) / p.scale : 1, inks: bandCols, lineMm: 0.18, maxPeriodMm: 2.2, minPeriodMm: 0.8, bgTint: 0.2 };
-  const bandKey: Fill[] = look.technique === 'tone' ? bandCols.map((c) => ({ bg: c })) : reliefBandHatches(bands, hatch);
+  const toneCols = bandCols.map((c) => tint(c, 0.7));
+  const bandKey: Fill[] = look.technique === 'tone' ? toneCols.map((c) => ({ bg: c })) : reliefBandHatches(bands, hatch);
   if (g && f) parts.push(demPicture(g, proj, look.technique === 'tone'
-    ? reliefDataUri(g, RELIEF_INK, { stepM: STEP, lo, hi, shade: 0.4, colours: bandCols })
+    ? reliefDataUri(g, RELIEF_INK, { stepM: STEP, lo, hi, shade: 0.4, colours: toneCols })
     : reliefDataUri(g, RELIEF_INK, { stepM: STEP, lo, hi, shade: 0.22, hatch })));
   if (b.base.water.features.length) parts.push(`<path d="${fcPath(b.base.water, proj)}" fill="${t.water}" stroke="${WATER_INK}" stroke-width="0.25" fill-rule="evenodd"/>`);
   const interval = f?.contours.intervalM ?? 2;
@@ -4059,7 +4073,8 @@ export function movementSlide(b: SlidesBundle): Slide {
   // The movement map bleeds over the whole figure page in the style's transport family: the catchments in its
   // walking inks (the 5-minute ring deepest), the rail in its rail ink, cycleways and the station marks in its navy.
   const B = INK.blue, S = INK.sage, look = deckLook();
-  const MOVE = { iso: { 5: t.walk5, 10: t.walk10, 15: tint(t.walk10, 0.55) } as Record<number, string>, cycle: B.deep, foot: B.line, frontage: INK.red.line, water: tint(t.water, 0.7), road: S.line, rail: t.rail, mark: B.deep };
+  // the walking catchments in the transit family, deepest nearest: the map, the reach diagram and the station bars share these inks
+  const MOVE = { iso: { 5: inkFor(B.deep, 0.18), 10: inkFor(B.solid, 0.4), 15: B.line } as Record<number, string>, cycle: B.deep, foot: B.line, frontage: INK.red.line, water: tint(t.water, 0.7), road: S.line, rail: t.rail, mark: B.deep };
   const mt = { ...t, water: MOVE.water, road: MOVE.road, rail: MOVE.rail };
   const p = b.bleedPanel;
   const proj = panelProjector(p);
@@ -4237,7 +4252,7 @@ export function movementSlide(b: SlidesBundle): Slide {
     rows.forEach((r, i) => {
       const top = rowsTop + i * ROWH, yb = top + 0.6 + BAR / 2, end = X(Math.min(r.value, max));
       g.push(txt(X0, top, r.name));
-      g.push(`<line x1="${(TRACK0 - 0.09).toFixed(2)}" y1="${yb.toFixed(2)}" x2="${end.toFixed(2)}" y2="${yb.toFixed(2)}" stroke="${B.solid}" stroke-width="${BAR}"${r.dash ? ` stroke-dasharray="${r.dash}"` : ''}/>`);
+      g.push(`<line x1="${(TRACK0 - 0.09).toFixed(2)}" y1="${yb.toFixed(2)}" x2="${end.toFixed(2)}" y2="${yb.toFixed(2)}" stroke="${MOVE.iso[10]}" stroke-width="${BAR}"${r.dash ? ` stroke-dasharray="${r.dash}"` : ''}/>`);
       g.push(txt(end + 1.0, top, r.label));
     });
   };
@@ -7840,7 +7855,17 @@ export function countryAtlas(b: SlidesBundle): Slide {
   if (wb.water.features.length) parts.push(`<path d="${fcPath(wb.water, proj)}" fill="${t.water}" fill-rule="evenodd" stroke="${WATER_INK}" stroke-width="0.25"/>`);
   if (c.water.coastline.length) parts.push(`<path d="${c.water.coastline.map((l) => ringsPath([l], proj, false)).join('')}" fill="none" stroke="${WATER_INK}" stroke-width="0.35"/>`);
   for (const w of c.water.courses) parts.push(`<path d="${ringsPath([w.coords], proj, false)}" fill="none" stroke="${WATER_INK}" stroke-width="${w.hierarchy === 'major' || /river/i.test(w.name ?? '') ? 0.6 : 0.4}" stroke-linecap="round"${w.perenniality === 'perennial' ? '' : ' stroke-dasharray="1.4 0.8"'}/>`);
-  // No road, rail or cadastre: the land as it lay, with nothing built over it.
+  // No road, rail or cadastre: the land as it lay, with nothing built over it. A hint of its shape: contours every
+  // 10 m traced from the model over the communities, the fifties heavier, as the Location map carries them.
+  if (c.dem) {
+    const CONTOUR = inkFor(INK.orange.deep, 0.18);
+    const levels: number[] = [];
+    for (let z = 10; z < c.dem.max; z += 10) levels.push(z);
+    const traced = isolines(c.dem, levels);
+    const pathOf = (lines: XY[][]) => lines.map((ln) => `M${ln.map((q, i) => { const ll = mercatorToLonLat(q); const [x, y] = proj(ll.lon, ll.lat); return `${i ? 'L' : ''}${x.toFixed(2)},${y.toFixed(2)}`; }).join('')}`).join('');
+    const minor = traced.filter((q) => q.level % 50).flatMap((q) => q.lines), major = traced.filter((q) => !(q.level % 50)).flatMap((q) => q.lines);
+    parts.push(`<path d="${pathOf(minor)}" fill="none" stroke="${CONTOUR}" stroke-width="0.1" opacity="0.5" stroke-linejoin="round"/><path d="${pathOf(major)}" fill="none" stroke="${CONTOUR}" stroke-width="0.22" opacity="0.7" stroke-linejoin="round"/>`);
+  }
   if (c.ridges.length) parts.push(`<path d="${c.ridges.map((line) => `M${line.map((q, i) => { const ll = mercatorToLonLat(q); const [x, y] = proj(ll.lon, ll.lat); return `${i ? 'L' : ''}${x.toFixed(2)},${y.toFixed(2)}`; }).join('')}`).join('')}" fill="none" stroke="${S.deep}" stroke-width="0.4" stroke-dasharray="1.8 0.9" stroke-linecap="round"/>`);
   const spacer = new LabelSpacer(p.wMm, p.hMm, 80);
   spacer.take(40, 10, 72, 10);
@@ -7901,6 +7926,7 @@ export function countryAtlas(b: SlidesBundle): Slide {
     ...(classes.length ? [{ swatch: vegSwatch, label: `Pre-1750 plant communities, each its own colour, keyed by the chart${deckLook().technique === 'tone' ? '; woodland lighter than forest' : '; forest hatched, woodland lined, the rest dotted or waved'}` }] : []),
     { swatch: `<rect x="0" y="0.5" width="5" height="2.6" fill="${t.water}"/><path d="M0,2.2C1.5,0.8 3.5,2.8 5,1.2" fill="none" stroke="${WATER_INK}" stroke-width="0.4"/>`, label: 'Rivers and creeks, named; creeks dashed where not perennial; the land in hillshade' },
     ...(c.ridges.length ? [{ swatch: `<path d="M0,1.8H5" stroke="${S.deep}" stroke-width="0.4" stroke-dasharray="1.8 0.9"/>`, label: 'Crests read from the elevation model' }] : []),
+    ...(c.dem ? [{ swatch: `<line x1="0" y1="2.6" x2="5" y2="2.6" stroke="${inkFor(INK.orange.deep, 0.18)}" stroke-width="0.12"/><line x1="0" y1="1.2" x2="5" y2="1.2" stroke="${inkFor(INK.orange.deep, 0.18)}" stroke-width="0.3"/>`, label: 'Contours every 10 m, the fifties heavier: a hint of the land\'s shape' }] : []),
     ...(c.lalcs.length > 1 ? [{ swatch: `<path d="M0,1.8H5" stroke="${INK.blue.deep}" stroke-width="0.5" stroke-dasharray="3 1 0.6 1"/>`, label: 'Local Aboriginal Land Council areas, named across the ground they hold, and their boundary' }] : []),
     ...(permits.length ? [{ swatch: `<rect x="0.4" y="0.6" width="4.2" height="2.4" fill="none" stroke="${S.deep}" stroke-width="0.3"/><rect x="1.4" y="1.2" width="3.2" height="1.8" fill="none" stroke="${S.deep}" stroke-width="0.25" stroke-dasharray="0.6 0.4" opacity="0.6"/>`, label: `Aboriginal Heritage Impact Permits, ${permits.length} on the page, dashed where expired${own.length ? '; the site\'s own numbered' : ''}` }] : []),
     { swatch: `<circle cx="2.5" cy="1.8" r="1.3" fill="${t.site}"/>`, label: 'The site' },
