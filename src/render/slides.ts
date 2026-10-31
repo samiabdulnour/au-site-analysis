@@ -709,7 +709,10 @@ export function locationSlide(b: SlidesBundle): Slide {
   // the aerial styles stand the region on its photograph, in grey under the veil, where the deck read one
   const photo = look.ground === 'aerial' && loc.aerial?.tiles.length ? loc.aerial : null;
   if (photo) {
-    parts.push(`<g style="isolation:isolate">${aerialTiles(photo.tiles, p, photo.extent)}<rect x="0" y="0" width="${p.wMm}" height="${p.hMm}" fill="#808080" style="mix-blend-mode:saturation"/></g><rect x="0" y="0" width="${p.wMm}" height="${p.hMm}" fill="#ffffff" opacity="${look.veil}"/>`);
+    // The mosaic's captures differ in brightness, so a seam runs through the region: the picture is flattened,
+    // in grey, to its local detail over a mid tone (each pixel less its blurred surround), and the seam goes.
+    parts.push(`<defs><filter id="loc-flat" x="0" y="0" width="1" height="1" color-interpolation-filters="sRGB"><feColorMatrix type="saturate" values="0" result="g"/><feGaussianBlur in="g" stdDeviation="7" result="b"/><feComposite in="g" in2="b" operator="arithmetic" k1="0" k2="1" k3="-1" k4="0.55" result="hp"/><feComponentTransfer in="hp"><feFuncR type="linear" slope="1.5" intercept="-0.27"/><feFuncG type="linear" slope="1.5" intercept="-0.27"/><feFuncB type="linear" slope="1.5" intercept="-0.27"/></feComponentTransfer></filter></defs>` +
+      `<g filter="url(#loc-flat)">${aerialTiles(photo.tiles, p, photo.extent)}</g><rect x="0" y="0" width="${p.wMm}" height="${p.hMm}" fill="#ffffff" opacity="${look.veil}"/>`);
     legend.push({ swatch: `<rect x="0" y="0.2" width="5" height="3" fill="#8f8f8f"/><rect x="0" y="0.2" width="5" height="3" fill="#ffffff" opacity="${look.veil}"/>`, label: 'The region from above, in grey under a veil' });
   }
   if (loc.dem) {
@@ -3168,7 +3171,8 @@ function demPicture(g: DemGrid, proj: Proj, href: string): string {
 
 const SECTION_AX = 11;
 /** A section of the ground after the template: the scale chosen to fill the column, the heights stretched where the relief is slight, the ground in poché, the site's run in red. */
-function groundSection(sec: SectionLine, from: string, to: string, ink: string, maxH = 44, fixedVe?: number): { svg: string; scale: number; ve: number } | null {
+function groundSection(sec: SectionLine, from: string, to: string, ink: string, maxH = 44, fixedVe?: number,
+  opts: { /** The map's height bands, so the ground under the line takes the map's colours. */ bands?: { lo: number; step: number; cols: string[] }; water?: string; tone?: boolean } = {}): { svg: string; scale: number; ve: number } | null {
   const s = sec.samples;
   if (s.length < 2) return null;
   const L = sec.lengthM, AX = SECTION_AX;
@@ -3186,7 +3190,40 @@ function groundSection(sec: SectionLine, from: string, to: string, ink: string, 
     g.push(z6(0, Y(v) - 1.1, `RL ${v}`));
   }
   const line = s.map((q, i) => `${i ? 'L' : 'M'}${X(q.d).toFixed(2)},${Y(q.rl).toFixed(2)}`).join('');
-  g.push(fillShape(`${line}L${X(L).toFixed(2)},${base.toFixed(2)}L${X(0).toFixed(2)},${base.toFixed(2)}Z`, { x0: X(0), y0: TOP, x1: X(L), y1: base }, { bg: '#ffffff', kind: 'hlines', ink, step: 0.5, w: 0.1 }));
+  const poche = `${line}L${X(L).toFixed(2)},${base.toFixed(2)}L${X(0).toFixed(2)},${base.toFixed(2)}Z`;
+  const box = { x0: X(0), y0: TOP, x1: X(L), y1: base };
+  if (opts.bands) {
+    // the ground under the line in the map's bands: a strip a band, each in its colour, cut to the ground
+    const { lo: blo, step: bstep, cols } = opts.bands;
+    const cid = `sec-${from.replace(/[^A-Za-z0-9]/g, '')}-${Math.round(L)}`;
+    const strips: string[] = [];
+    for (let k = 0; k < cols.length; k++) {
+      const top = Math.min(base, Math.max(TOP, Y(blo + (k + 1) * bstep))), bottom = Math.min(base, Math.max(TOP, Y(blo + k * bstep)));
+      if (bottom - top < 0.05) continue;
+      const d = `M${X(0).toFixed(2)},${top.toFixed(2)}H${X(L).toFixed(2)}V${bottom.toFixed(2)}H${X(0).toFixed(2)}Z`;
+      strips.push(fillShape(d, box, opts.tone ? { bg: cols[k] } : { bg: tint(cols[k], 0.12), kind: 'hlines', ink: cols[k], step: 0.5, w: 0.12 }));
+    }
+    // the ground below the lowest band, in the lowest band's colour
+    const under = Math.min(base, Math.max(TOP, Y(blo)));
+    if (base - under > 0.05) strips.unshift(fillShape(`M${X(0).toFixed(2)},${under.toFixed(2)}H${X(L).toFixed(2)}V${base.toFixed(2)}H${X(0).toFixed(2)}Z`, box, opts.tone ? { bg: cols[0] } : { bg: tint(cols[0], 0.12), kind: 'hlines', ink: cols[0], step: 0.5, w: 0.12 }));
+    g.push(`<clipPath id="${cid}"><path d="${poche}"/></clipPath><g clip-path="url(#${cid})">${strips.join('')}</g>`);
+  } else g.push(fillShape(poche, box, { bg: '#ffffff', kind: 'hlines', ink, step: 0.5, w: 0.1 }));
+  // the water where the line crosses it: its surface as the model reads it, flat at the run's level, a blue body under it to the base
+  if (opts.water) {
+    let i = 0;
+    while (i < s.length) {
+      if (!s[i].water) { i++; continue; }
+      let j = i; while (j + 1 < s.length && s[j + 1].water) j++;
+      const run = s.slice(i, j + 1), level = Math.max(...run.map((q) => q.rl));
+      const x0 = X(run[0].d), x1 = X(run[run.length - 1].d), yl = Y(level);
+      if (x1 - x0 > 1.5) {
+        g.push(`<path d="M${x0.toFixed(2)},${yl.toFixed(2)}H${x1.toFixed(2)}V${base.toFixed(2)}H${x0.toFixed(2)}Z" fill="${opts.water}" fill-opacity="0.85"/><line x1="${x0.toFixed(2)}" y1="${yl.toFixed(2)}" x2="${x1.toFixed(2)}" y2="${yl.toFixed(2)}" stroke="${inkFor(opts.water, 0.45)}" stroke-width="0.3"/>`);
+        const mx = (x0 + x1) / 2;
+        g.push(`<path d="M${(mx - 1).toFixed(2)},${(yl - 2.6).toFixed(2)}h2l-1,1.6z" fill="${inkFor(opts.water, 0.45)}"/>`, z6(mx + 1.6, yl - 3.6, `water · RL ${level.toFixed(1)}`));
+      }
+      i = j + 1;
+    }
+  }
   g.push(`<path d="${line}" fill="none" stroke="#000000" stroke-width="0.25" stroke-linejoin="round"/>`);
   const run = s.filter((q) => q.site);
   if (run.length) {
@@ -3352,7 +3389,7 @@ export function topographyAtlas(b0: SlidesBundle): Slide {
     const commonVe = [1, 2, 5, 10, 20, 25, 50].filter((v) => sections.every((s) => { const r = s.samples.map((q) => q.rl); return Math.max(1, Math.max(...r) - Math.min(...r)) * sxC * v <= Math.min(26, roomEach - 16); })).pop() ?? 1;
     for (const [i, s] of sections.entries()) {
       const room = (limit - y) / (sections.length - i) - 6.21 - 7.5;
-      const sec = groundSection(s, s.id, `${s.id}′`, look.id === 'canary' ? '#000000' : PAGE_INK, room, commonVe);
+      const sec = groundSection(s, s.id, `${s.id}′`, PAGE_INK, room, commonVe, { bands: { lo, step: STEP, cols: tone ? toneCols : bandCols }, water: t.water, tone });
       if (!sec) continue;
       const head = `Section ${s.id}–${s.id}′ · ${bearingName((s.bearing + 180) % 360)} to ${bearingName(s.bearing)} · 1:${fmtNum(sec.scale).replace(',', ' ')}${sec.ve > 1 ? ` · heights ×${sec.ve}` : ''}`;
       blocks.push(zBlock(head, sec.svg));
@@ -3993,8 +4030,13 @@ export function movementFacts(b: SlidesBundle) {
   const centreLL = mercatorToLonLat(centre);
   const activeAtSite = afRings.some((r) => pointInRing(centreLL.lon, centreLL.lat, r)) || afRings.some((r) => siteRings.some((sr) => sr.some(([lon, lat]) => pointInRing(lon, lat, r))));
   const isoAreas = mv.isochrones.map((iso) => ({ minutes: iso.minutes, areaHa: Math.round(iso.rings.reduce((a, r) => { let s = 0; const pts = r.map(([lon, lat]) => toM(lon, lat)); for (let i = 0; i < pts.length - 1; i++) s += pts[i].x * pts[i + 1].y - pts[i + 1].x * pts[i].y; return a + Math.abs(s / 2); }, 0) / (k * k) / 1e4) }));
+  // the car parks OpenStreetMap maps, nearest first, with the walk to each
+  const parks = (mv.parking ?? []).map((pk) => ({ ...pk, distanceM: Math.round(distM(pk.lon, pk.lat)), walkMin: walkMinutes(distM(pk.lon, pk.lat)) })).sort((p, q) => p.distanceM - q.distanceM);
+  const within = (m: number) => parks.filter((pk) => pk.distanceM <= m);
   return {
     stations,
+    journeys: mv.journeys ?? [],
+    parking: { osm: mv.osm, all: parks, within400: within(400).length, within800: within(800).length, spacesWithin800: within(800).reduce((n, pk) => n + (pk.capacity ?? 0), 0), taggedWithin800: within(800).filter((pk) => pk.capacity).length },
     bus: { source: mv.busStopSource, within400: stops.filter((s) => s.distanceM <= 400).length, within800: stops.filter((s) => s.distanceM <= 800).length, total: stops.length, routes: mv.busRouteCount, nearest: stops.sort((p, q) => p.distanceM - q.distanceM)[0] ? { name: stops[0].name, distanceM: Math.round(stops[0].distanceM) } : null },
     cycle: { osm: mv.osm, separatedM: cycleLength('separated'), laneM: cycleLength('lane'), sharedM: cycleLength('shared'), nearest: nearestCycle ? { ...nearestCycle, distanceM: Math.round(nearestCycle.distanceM) } : null },
     foot: { osm: mv.osm, links: mv.footways.length, lengthM: Math.round(mv.footways.reduce((n, c) => n + lineLengthM(c), 0)) },
@@ -4109,8 +4151,14 @@ export function movementSlide(b: SlidesBundle): Slide {
   // The movement map bleeds over the whole figure page in the style's transport family: the catchments in its
   // walking inks (the 5-minute ring deepest), the rail in its rail ink, cycleways and the station marks in its navy.
   const B = INK.blue, S = INK.sage, look = deckLook();
-  // the walking catchments in the transit family, deepest nearest: the map, the reach diagram and the station bars share these inks
-  const MOVE = { iso: { 5: inkFor(B.deep, 0.18), 10: inkFor(B.solid, 0.4), 15: B.line } as Record<number, string>, cycle: B.deep, foot: B.line, frontage: INK.red.line, water: tint(t.water, 0.7), road: S.line, rail: t.rail, mark: B.deep };
+  // The walking reach in bands of three minutes to fifteen where the deck read them (five bands, each its own colour
+  // up the style's ramp, the warmest nearest), else the 5, 10 and 15 minute catchments; the reach diagram and the
+  // station bars take the same inks.
+  const fineIso = mv.isochronesFine?.length ? [...mv.isochronesFine].sort((x, y) => x.minutes - y.minutes) : null;
+  const bandIso = fineIso ?? [...mv.isochrones].sort((x, y) => x.minutes - y.minutes);
+  const BAND_COLS = rampColours(Math.max(2, bandIso.length), styleRamp()).reverse();
+  const colOf = (minutes: number) => { let best = 0; bandIso.forEach((iso, i) => { if (Math.abs(iso.minutes - minutes) < Math.abs(bandIso[best].minutes - minutes)) best = i; }); return BAND_COLS[best] ?? B.deep; };
+  const MOVE = { iso: { 5: colOf(5), 10: colOf(10), 15: colOf(15) } as Record<number, string>, cycle: B.deep, foot: B.line, frontage: INK.red.line, water: tint(t.water, 0.7), road: S.line, rail: t.rail, mark: B.deep };
   const mt = { ...t, water: MOVE.water, road: MOVE.road, rail: MOVE.rail };
   const p = b.bleedPanel;
   const proj = panelProjector(p);
@@ -4118,14 +4166,16 @@ export function movementSlide(b: SlidesBundle): Slide {
   // The walking reach as nested bands from the site, the deeper the nearer: translucent tones that stack toward
   // the site over the photograph, dots that thicken toward it on paper; each band's edge dashed.
   const box = { x0: 0, y0: 0, x1: p.wMm, y1: p.hMm };
-  const isoSorted = [...mv.isochrones].sort((x, y) => y.minutes - x.minutes);
+  const isoSorted = [...bandIso].reverse();
   const tone = look.technique === 'tone';
-  for (const iso of isoSorted) {
-    const ink = MOVE.iso[iso.minutes] ?? '#b7c1e3';
-    const d = ringsPath(iso.rings, proj);
-    const band: Fill = tone ? { bg: ink, opacity: 0.16, rule: 'evenodd' } : { kind: 'dots', ink, step: iso.minutes <= 5 ? 0.7 : iso.minutes <= 10 ? 1.0 : 1.4, w: 0.26, rule: 'evenodd' };
-    parts.push(fillShape(d, box, band), `<path d="${d}" fill="none" stroke="${ink}" stroke-width="0.5" stroke-dasharray="1.6,1" fill-rule="evenodd"/>`);
-  }
+  // each band the ring between its catchment and the next in, in its own colour: tones over the photograph, dots on paper
+  bandIso.forEach((iso, i) => {
+    const ink = BAND_COLS[i];
+    const inner = i ? ringsPath(bandIso[i - 1].rings, proj) : '';
+    const d = ringsPath(iso.rings, proj) + inner;
+    const band: Fill = tone ? { bg: ink, opacity: 0.3, rule: 'evenodd' } : { kind: 'dots', ink, step: 0.85, w: 0.3, rule: 'evenodd' };
+    parts.push(fillShape(d, box, band), `<path d="${ringsPath(iso.rings, proj)}" fill="none" stroke="${ink}" stroke-width="0.45" stroke-dasharray="1.6,1" fill-rule="evenodd"/>`);
+  });
   if (mv.activeFrontages.features.length) parts.push(`<path d="${fcPath(mv.activeFrontages, proj)}" fill="${MOVE.frontage}" fill-opacity="0.55" stroke="${MOVE.frontage}" stroke-width="0.25" fill-rule="evenodd"/>`);
   parts.push(withTemplate(mt, () => overLayers(b.base, proj, p, 'wash')));
   // the streets the walk reaches, in the blue, clipped to the widest band: the network one can walk, not only how far
@@ -4192,6 +4242,14 @@ export function movementSlide(b: SlidesBundle): Slide {
       if (isoSpacer.take(lx, ly, w, 2.6)) { parts.push(label(lx, ly, text, 2, MOVE.mark)); break; }
     }
   }
+  // the car parks as P marks, the square sized by the tagged capacity
+  for (const q of f.parking.all) {
+    const [x, y] = proj(q.lon, q.lat);
+    if (x < 3 || y < 3 || x > p.wMm - 3 || y > p.hMm - 3) continue;
+    const half = Math.min(2.3, 1.1 + 0.9 * Math.sqrt((q.capacity ?? 40) / 300));
+    parts.push(`<rect x="${(x - half).toFixed(2)}" y="${(y - half).toFixed(2)}" width="${(2 * half).toFixed(2)}" height="${(2 * half).toFixed(2)}" fill="#ffffff" stroke="${MOVE.mark}" stroke-width="0.35"/><text x="${x.toFixed(2)}" y="${(y + half * 0.5).toFixed(2)}" text-anchor="middle" font-size="${(half * 1.35).toFixed(2)}" font-weight="700" fill="${MOVE.mark}">P</text>`);
+    isoSpacer.block(x, y, 2 * half + 1, 2 * half + 1);
+  }
   // straight lines from the site to the nearest stations, the walk in minutes along each: the map says how far, not only where
   {
     const cLL = mercatorToLonLat(p.center);
@@ -4206,7 +4264,7 @@ export function movementSlide(b: SlidesBundle): Slide {
       parts.push(alongLabel([a, z], `${st.walkMin} MIN · ${fmtNum(st.distanceM)} M`, 2, MOVE.mark, isoSpacer, p, 0.5, { weight: 700, spacing: 0.16 }));
     }
   }
-  for (const iso of mv.isochrones) {
+  for (const iso of bandIso) {
     const text = `${iso.minutes} min`, w = t2Width(text);
     const pts = (iso.rings[0]?.map(([lon, lat]) => proj(lon, lat)) ?? []).filter((q) => q[0] > 8 && q[0] < p.wMm - 8 && q[1] > 14 && q[1] < p.hMm - 16);
     const order = [...pts].sort((q, r) => q[1] - r[1]);
@@ -4238,11 +4296,10 @@ export function movementSlide(b: SlidesBundle): Slide {
   const legendRows: [string, string][] = [
     [sw(`<line x1="0" y1="1.8" x2="5" y2="1.8" stroke="${MOVE.road}" stroke-width="0.9"/><line x1="0" y1="1.8" x2="5" y2="1.8" stroke="#ffffff" stroke-width="0.6"/>`), 'Roads by function: motorways and arterials heaviest, local streets finest'],
     [sw(`<line x1="0" y1="1.8" x2="5" y2="1.8" stroke="${MOVE.rail}" stroke-width="0.2"/><line x1="0" y1="1.8" x2="5" y2="1.8" stroke="${MOVE.rail}" stroke-width="1.05" stroke-dasharray="0.16,1.3"/>`), 'Rail; stations as T, M (metro) or L (light rail)'],
-    [sw(tone
-      ? `<rect x="0" y="0.3" width="5" height="3" fill="${MOVE.iso[15]}" fill-opacity="0.16"/><rect x="1.2" y="0.3" width="3.8" height="3" fill="${MOVE.iso[10]}" fill-opacity="0.16"/><rect x="2.6" y="0.3" width="2.4" height="3" fill="${MOVE.iso[5]}" fill-opacity="0.16"/>`
-      : fillShape('M0,0.3H1.7V3.3H0Z', { x0: 0, y0: 0.3, x1: 1.7, y1: 3.3 }, { kind: 'dots', ink: MOVE.iso[15], step: 1.4, w: 0.26 }, 1.3) + fillShape('M1.7,0.3H3.4V3.3H1.7Z', { x0: 1.7, y0: 0.3, x1: 3.4, y1: 3.3 }, { kind: 'dots', ink: MOVE.iso[10], step: 1.0, w: 0.26 }, 1.3) + fillShape('M3.4,0.3H5V3.3H3.4Z', { x0: 3.4, y0: 0.3, x1: 5, y1: 3.3 }, { kind: 'dots', ink: MOVE.iso[5], step: 0.7, w: 0.26 }, 1.3)),
-    'Walking reach from the site: 15, 10 and 5 minutes, the deeper the nearer; the streets within it in blue'],
+    [sw(BAND_COLS.map((c, i, all) => { const w = 5 / all.length, x = i * w; return tone ? `<rect x="${x.toFixed(2)}" y="0.3" width="${(w + 0.02).toFixed(2)}" height="3" fill="${c}" fill-opacity="0.3"/>` : fillShape(`M${x.toFixed(2)},0.3h${w.toFixed(2)}v3h${(-w).toFixed(2)}Z`, { x0: x, y0: 0.3, x1: x + w, y1: 3.3 }, { kind: 'dots', ink: c, step: 0.85, w: 0.3 }, 1.4); }).join('')),
+    `Walking reach from the site in bands of ${bandIso.map((q) => q.minutes).join(', ')} minutes, the warmest nearest; the streets within it in blue`],
     [sw(`<line x1="0" y1="1.8" x2="5" y2="1.8" stroke="${MOVE.mark}" stroke-width="0.35" stroke-dasharray="0.9,0.9"/>`), 'Straight lines to the nearest stations, the walk in minutes along each'],
+    ...(f.parking.all.length ? [[sw(`<rect x="1" y="0.3" width="3" height="3" fill="#ffffff" stroke="${MOVE.mark}" stroke-width="0.3"/><text x="2.5" y="2.9" text-anchor="middle" font-size="2.2" font-weight="700" fill="${MOVE.mark}">P</text>`), 'Car parks OpenStreetMap maps, the square sized by the tagged capacity'] as [string, string]] : []),
   ];
   if (walkDestinations(b, f).length) legendRows.push([sw(`<circle cx="2.5" cy="1.8" r="1.4" fill="#ffffff" stroke="${MOVE.mark}" stroke-width="0.3"/><text x="2.5" y="2.4" text-anchor="middle" font-size="1.7" font-weight="700" fill="${MOVE.mark}">1</text>`), 'Stations, schools, health, community places and parks within the walk, keyed on the map']);
   if (mv.busStops.length || mv.busRoutes.length) legendRows.push([sw(`<line x1="0" y1="1.8" x2="5" y2="1.8" stroke="${t.busRoute}" stroke-width="0.5" stroke-dasharray="1.2,0.9"/><circle cx="2.5" cy="1.8" r="0.9" fill="${t.busRoute}" stroke="#ffffff" stroke-width="0.3"/>`), `Bus ${mv.busRoutes.length ? 'routes and ' : ''}stops (${f.bus.source === 'tfnsw' ? 'Transport for NSW' : 'OpenStreetMap'})`]);
@@ -4265,42 +4322,7 @@ export function movementSlide(b: SlidesBundle): Slide {
   const X0 = 75.33, X1 = 198, C2 = 138.67;
   const g: string[] = [];
 
-  // Reach on foot · Bus
-  g.push(txt(X0, 44.0, 'Reach on foot', S10, 'start', 0), txt(C2, 44.0, 'Bus', S10, 'start', 0), hair(X0, X1, 50.23));
-  const isoA = [...f.isochrones].sort((x, y) => y.areaHa - x.areaHa).slice(0, 3);
-  const R0 = 29.52, CX = 104.97, BOTTOM = 116.85, STEP = 5.5;
-  // the circles in the map's own catchment inks: the 15, 10 and 5 minute rings as the map draws them, light fills under dashed edges
-  const RING = [
-    { fill: tint(MOVE.iso[15], 0.22), stroke: MOVE.iso[15], w: 0.35, dash: 1.45 },
-    { fill: tint(MOVE.iso[10], 0.32), stroke: MOVE.iso[10], w: 0.41, dash: 1.69 },
-    { fill: tint(MOVE.iso[5], 0.4), stroke: MOVE.iso[5], w: 0.44, dash: 1.63 },
-  ];
-  const maxHa = Math.max(1, ...isoA.map((i) => i.areaHa));
-  const circ = isoA.map((iso, k) => { const r = R0 * Math.sqrt(iso.areaHa / maxHa); const cy = BOTTOM - k * STEP - r; return { ...iso, r, cy, top: cy - r }; });
-  circ.forEach((c, k) => g.push(`<circle cx="${CX}" cy="${c.cy.toFixed(2)}" r="${c.r.toFixed(2)}" fill="${RING[k].fill}" stroke="${RING[k].stroke}" stroke-width="${RING[k].w}" stroke-dasharray="${RING[k].dash} ${RING[k].dash}"/>`));
-  // each label centred in the band between its circle's top and the next one in; the last in its circle.
-  // The second line says what the band holds — stations, parks, bus stops — not its hectares, which nobody reads.
-  const reach = walkReachFacts(b, f);
-  const bandLine = (minutes: number, areaHa: number) => {
-    const r = reach.find((q) => q.minutes === minutes);
-    if (!r) return `${fmtNum(areaHa)} ha`;
-    const stWord = r.stations.length === 1 ? (r.stations[0].kind === 'light rail' ? 'stop' : 'station') : (r.stations.every((s) => s.kind === 'light rail') ? 'stops' : 'stations');
-    const parts2 = [
-      r.stations.length ? `${r.stations.length} ${stWord}` : '',
-      r.parks ? `${r.parks} park${r.parks === 1 ? '' : 's'}` : '',
-      !r.stations.length || !r.parks ? (r.busStops ? `${r.busStops} bus stop${r.busStops === 1 ? '' : 's'}` : (r.schools ? `${r.schools} school${r.schools === 1 ? '' : 's'}` : '')) : '',
-    ].filter(Boolean).slice(0, 2);
-    return parts2.length ? parts2.join(' · ') : `${fmtNum(areaHa)} ha`;
-  };
-  const labelTop = circ.map((c, k) => (k < circ.length - 1 ? (c.top + circ[k + 1].top) / 2 : c.cy) - 2.3);
-  circ.forEach((c, k) => g.push(txt(CX, labelTop[k], `${c.minutes} min`, S6, 'middle'), txt(CX, labelTop[k] + 2.5, bandLine(c.minutes, c.areaHa), S6, 'middle')));
-  const busTop = labelTop.length === 3 ? labelTop : [62.3, 79.1, 95.2];
-  const bus: [string, string][] = [
-    ['bus stops within 400 m', f.bus.total ? String(f.bus.within400) : '—'],
-    ['within 800 m', f.bus.total ? String(f.bus.within800) : '—'],
-    ['routes on the map', f.bus.routes ? String(f.bus.routes) : '—'],
-  ];
-  bus.forEach(([l, v], k) => g.push(txt(C2, busTop[k], l), txt(C2, busTop[k] + 2.5, v)));
+  void C2;
 
   // a bar chart as the template draws it: names down the left, a scale over the right column, dotted gridlines, pale bars
   const ROWH = 3.95, BAR = 1.65, TRACK0 = 138.67;
@@ -4321,12 +4343,35 @@ export function movementSlide(b: SlidesBundle): Slide {
     });
   };
 
+  // The charts stack from the top: the journeys to the centres, the stations on foot, the car parks on foot, the network if it fits.
+  let top = 44.0;
+  const chartH = (rows: number, axisOff = 12.5, rowsOff = 3.7) => axisOff + rowsOff + rows * ROWH + 9.5;
+  // To the centres: by car and by bicycle, from the public router, as minutes
+  const jr = f.journeys.flatMap((j) => [
+    j.auto ? { name: `${j.to} · by car`, value: j.auto.minutes, label: `${j.auto.minutes} min · ${j.auto.km} km` } : null,
+    j.bicycle ? { name: `${j.to} · by bicycle`, value: j.bicycle.minutes, label: `${j.bicycle.minutes} min`, dash: '2.26 1.21' } : null,
+  ]).filter((r): r is NonNullable<typeof r> => Boolean(r));
+  if (jr.length) {
+    const jmax = Math.max(30, Math.ceil(Math.max(...jr.map((r) => r.value)) / 30) * 30), jstep = jmax <= 60 ? 15 : jmax <= 120 ? 30 : 60;
+    chart('To the centres · minutes', top, jr, jmax, jstep, 59.24);
+    top += chartH(jr.length);
+  }
   // Stations on foot: minutes at 80 m a minute
   const minsOf = (m: number) => m / 80;
   const seen = new Set<string>();
   const shown = f.stations.filter((st) => { const k2 = `${st.name.replace(/ (Slr|Light Rail) Stop$/i, '')}|${st.kind}`; if (seen.has(k2)) return false; seen.add(k2); return true; }).slice(0, 5);
   const maxMin = Math.max(15, Math.ceil(Math.max(0, ...shown.map((st) => minsOf(st.distanceM))) / 5) * 5);
-  if (shown.length) chart('Stations on foot', 126.2, shown.map((st) => ({ name: `${st.name.replace(/ (Slr|Light Rail) Stop$/i, '')} ${st.kind}`, value: minsOf(st.distanceM), label: `${walkMinutes(st.distanceM)} min` })), maxMin, 5, 59.24);
+  if (shown.length) { chart('Stations on foot', top, shown.map((st) => ({ name: `${st.name.replace(/ (Slr|Light Rail) Stop$/i, '')} ${st.kind}`, value: minsOf(st.distanceM), label: `${walkMinutes(st.distanceM)} min` })), maxMin, 5, 59.24); top += chartH(shown.length); }
+  // Car parks on foot: the nearest, with their spaces where tagged
+  const pk = f.parking.all.slice(0, 5);
+  if (pk.length) {
+    const pmax = Math.max(10, Math.ceil(Math.max(...pk.map((q) => minsOf(q.distanceM))) / 5) * 5);
+    chart('Car parks on foot', top, pk.map((q) => ({ name: shorten(q.name ?? `${q.kind.replace(/_/g, ' ')} car park`, 30), value: minsOf(q.distanceM), label: `${q.walkMin} min · ${q.capacity ? `${fmtNum(q.capacity)} spaces` : 'spaces not tagged'}` })), pmax, 5, 59.24);
+    top += chartH(pk.length);
+  } else if (!f.parking.osm) {
+    g.push(txt(X0, top, 'Car parks', S10, 'start', 0), hair(X0, X1, top + 6.21), txt(X0, top + 9.5, 'OpenStreetMap did not answer this run: the car parks are not read'));
+    top += 20;
+  }
 
   // The network in the window: kilometres, each kind in its own texture
   const net = [
@@ -4337,7 +4382,7 @@ export function movementSlide(b: SlidesBundle): Slide {
   ];
   const maxKm = Math.max(10, Math.ceil(Math.max(...net.map((n) => n.m / 1000)) / 10) * 10);
   const kmStep = maxKm <= 50 ? 10 : maxKm <= 100 ? 20 : 50;
-  if (f.cycle.osm) chart('The network on the map', 169.6, net.map((n) => ({ name: n.name, value: n.m / 1000, label: `${(n.m / 1000).toFixed(1)} km`, dash: n.dash })), Math.ceil(maxKm / kmStep) * kmStep, kmStep, 58.78, 11.0, 4.0);
+  if (f.cycle.osm && top + chartH(net.length, 11, 4) < 238) chart('The network on the map', top, net.map((n) => ({ name: n.name, value: n.m / 1000, label: `${(n.m / 1000).toFixed(1)} km`, dash: n.dash })), Math.ceil(maxKm / kmStep) * kmStep, kmStep, 58.78, 11.0, 4.0);
 
   const graphs = `<svg class="abs" style="left:0;top:0" width="${FOLD}mm" height="${SLIDE_H}mm" viewBox="0 0 ${FOLD} ${SLIDE_H}" xmlns="http://www.w3.org/2000/svg" font-family="Arial, 'Liberation Sans', sans-serif">${g.join('')}</svg>`;
   const keyRows: LegendEntry[] = legendRows.map(([sv, label]) => ({ swatch: sv.replace(/^<svg[^>]*>/, '').replace(/<\/svg>$/, ''), label }));
@@ -4352,7 +4397,11 @@ export function movementSlide(b: SlidesBundle): Slide {
   // The narrative: the stations, then what the walking bands hold, then the bus line.
   const sens = movementSentences(b, f);
   const reachSentence = sens.find((s2) => s2.startsWith('On foot from the site'));
-  const narrative = brief([sens[0], reachSentence, sens[1]]);
+  const jSent = f.journeys.length ? `To the centres: ${listWords(f.journeys.filter((j) => j.auto).map((j) => `${j.to} ${j.auto!.minutes} min by car (${j.auto!.km} km)${j.bicycle ? `, ${j.bicycle.minutes} by bicycle` : ''}`))}.` : '';
+  const pSent = f.parking.osm
+    ? (f.parking.all.length ? `${f.parking.within400 ? `${numWord(f.parking.within400)} car park${f.parking.within400 === 1 ? '' : 's'} within 400 m` : 'No car park within 400 m'}${f.parking.within800 ? `, ${f.parking.within800} within 800 m${f.parking.spacesWithin800 ? ` holding ${fmtNum(f.parking.spacesWithin800)} spaces where tagged` : ''}` : ''}; the nearest, ${f.parking.all[0].name ?? `a ${f.parking.all[0].kind.replace(/_/g, ' ')} car park`}, is ${fmtNum(f.parking.all[0].distanceM)} m away.` : 'OpenStreetMap maps no car park on the page.')
+    : 'The car parks were not read: OpenStreetMap did not answer this run.';
+  const narrative = brief([sens[0], jSent, pSent, reachSentence], 520);
   return { id: '10_movement', title: 'Movement', subtitle: subT, textHtml: '', figureHtml, bleed: true, sources, narrative, accent: MOVE.iso[5], legend: keyRows };
 }
 

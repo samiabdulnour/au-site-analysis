@@ -1445,7 +1445,8 @@ model every metre (the fives heavier and numbered), each coloured up the
 same ramp by its height; with the 2 m contours numbered along the index
 ones, the water named, the high and low points of the page and the site's
 level marked, roads and rail over it and two section lines through the site
-(the sections' poché in the page's own ink, black in Canary),
+(the ground under each section in the map's bands, the water shown
+where the line crosses it at the level the model reads),
 A–A′ down the steepest fall and B–B′ across it, each drawn as a section
 with the site and its levels marked; the text gives the site's RL range,
 fall, grade and aspect and where the high ground and the water are. Then
@@ -1465,10 +1466,14 @@ streetscape` draws it (190 m at 1:500, the buildings' lines, heights and
 levels over the faces, the conservation areas bracketed; see *The
 streetscape* below), on its own page after built form, and left out of the
 deck where it fails, or with `DECK_STREETSCAPE=0`. Then *movement*: roads by function, rail and
-stations, the walking reach from the site (Valhalla, 5, 10 and 15 minutes)
-as nested bands, the deeper the nearer, with the streets within it in the
-transit blue and straight lines to the nearest stations carrying the walk
-in minutes, bus stops (Transport for NSW with the key, else OpenStreetMap),
+stations, the walking reach from the site (Valhalla) in bands of three
+minutes to fifteen, each its own colour up the style's ramp, the warmest
+nearest, with the streets within it in the transit blue and straight lines
+to the nearest stations carrying the walk in minutes; the journeys to the
+Sydney CBD and the nearest major centre by car and by bicycle from the
+public router, as bars of minutes; the car parks OpenStreetMap maps, on the
+map as P marks sized by their tagged capacity and as bars of the walk to
+the nearest, with their spaces, bus stops (Transport for NSW with the key, else OpenStreetMap),
 bus routes, cycleways, footways and one-way streets (OpenStreetMap through
 Overpass) and the LEP's active street frontages, with a table of the
 nearest stations and a wide walking-reach strip at 1:16000 naming the

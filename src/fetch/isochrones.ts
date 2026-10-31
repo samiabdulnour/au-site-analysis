@@ -28,3 +28,14 @@ export async function fetchIsochrones(center: LonLat, minutes: number[] = [5, 10
   }
   return out.sort((a, b) => a.minutes - b.minutes);
 }
+
+/** A journey's time and length by one costing (auto, bicycle, pedestrian), from the public router; null where it does not answer. */
+export interface RouteSummary { minutes: number; km: number }
+export async function fetchRoute(from: LonLat, to: LonLat, costing: 'auto' | 'bicycle' | 'pedestrian'): Promise<RouteSummary | null> {
+  const req = { locations: [{ lat: from.lat, lon: from.lon }, { lat: to.lat, lon: to.lon }], costing, units: 'kilometers' };
+  const res = await retryFetch(`${VALHALLA.replace(/isochrone$/, 'route')}?json=${encodeURIComponent(JSON.stringify(req))}`, {}, { attempts: 3, timeoutMs: 60_000, label: `route ${costing}` });
+  if (!res.ok) return null;
+  const data = await res.json();
+  const sum = data?.trip?.summary;
+  return sum ? { minutes: Math.round(sum.time / 60), km: Math.round(sum.length * 10) / 10 } : null;
+}
