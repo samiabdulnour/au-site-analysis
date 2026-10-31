@@ -155,19 +155,27 @@
           <div class="row" id="styleRow"><span class="rowhead">STYLE</span>
             <span class="cells" id="styleOpts"></span></div>
         </div>
-        <!-- The human check again, for a visitor without a session: a new sheet is
-             what a bot without an account would ask for. Invisible unless
-             Cloudflare needs a click, as on the account form. -->
-        <div class="humanframe quiet gen" id="genHumanBar" hidden><div id="genHuman"></div></div>
-        <!-- GENERATE, big, under the options. Pressed, it is the drawing's
-             progress: its word says where the drawing is and the yellow fills
-             it as it goes. Done, the drawing takes the result frame beside it
-             and its links take this place, until the address or an option
-             changes. -->
-        <button class="go" id="go" type="submit"><span class="fill" id="goFill"></span><span
-          class="word" id="goWord">GENERATE</span></button>
-        <!-- A finished sheet's links: pay, download, and the files beside it. -->
-        <div id="links"></div>
+        <!-- The foot of the column, its bottom rule on the drawing frame's. -->
+        <div class="toolfoot">
+          <!-- The human check again, for a visitor without a session: a new sheet
+               is what a bot without an account would ask for. Invisible unless
+               Cloudflare needs a click, as on the account form. -->
+          <div class="humanframe quiet gen" id="genHumanBar" hidden><div id="genHuman"></div></div>
+          <!-- GENERATE, under the options. Pressed, it is the drawing's
+               progress: its word says where the drawing is and the yellow fills
+               it as it goes. Done, the drawing takes the result frame beside it
+               and its links take this place, until the address or an option
+               changes. -->
+          <button class="go" id="go" type="submit"><span class="fill" id="goFill"></span><span
+            class="word" id="goWord">GENERATE</span></button>
+          <!-- A finished sheet's links: pay, download, and the files beside it. -->
+          <div id="links"></div>
+        </div>
+      </aside>
+
+      <!-- Under the column, below the frame's foot: the unlock's small print,
+           and a note or an error when there is one. -->
+      <div class="toolafter">
         <p class="muted" id="unlockWhat" hidden></p>
         <!-- Only when there is something to say: a drawing reused, with the way
              to a fresh one, what came of a payment, or what went wrong. -->
@@ -175,7 +183,7 @@
           <div id="note"></div>
           <div class="errline" id="error"></div>
         </div>
-      </aside>
+      </div>
 
       <div class="toolview">
         <!-- What the options chosen on the left produce, drawn for an example
