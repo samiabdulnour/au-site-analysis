@@ -7840,7 +7840,14 @@ export function countryAtlas(b: SlidesBundle): Slide {
   if (wb.water.features.length) parts.push(`<path d="${fcPath(wb.water, proj)}" fill="${t.water}" fill-rule="evenodd" stroke="${WATER_INK}" stroke-width="0.25"/>`);
   if (c.water.coastline.length) parts.push(`<path d="${c.water.coastline.map((l) => ringsPath([l], proj, false)).join('')}" fill="none" stroke="${WATER_INK}" stroke-width="0.35"/>`);
   for (const w of c.water.courses) parts.push(`<path d="${ringsPath([w.coords], proj, false)}" fill="none" stroke="${WATER_INK}" stroke-width="${w.hierarchy === 'major' || /river/i.test(w.name ?? '') ? 0.6 : 0.4}" stroke-linecap="round"${w.perenniality === 'perennial' ? '' : ' stroke-dasharray="1.4 0.8"'}/>`);
-  parts.push(withTemplate({ ...gt, rail: S.line, busRoute: S.line }, () => overLayers(wb, proj, p, 'none', { stations: false })));
+  // the streets as black hairlines, not white strips: the Country's ground stays whole under them; the rail as track
+  {
+    const byW = new Map<number, string[]>();
+    for (const r of wb.roads) { const w = r.hierarchy <= 2 ? 0.35 : r.hierarchy <= 4 ? 0.25 : r.hierarchy <= 6 ? 0.16 : 0.1; (byW.get(w) ?? byW.set(w, []).get(w)!).push(ringsPath([r.coords], proj, false)); }
+    for (const [w, ds] of [...byW.entries()].sort((a, b2) => b2[0] - a[0])) parts.push(`<path d="${ds.join('')}" fill="none" stroke="#1c1c1c" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"/>`);
+    if (wb.rail.train.length) parts.push(railSymbol(wb.rail.train.map((l) => ringsPath([l], proj, false)).join(''), '#1c1c1c'));
+    if (wb.rail.tram.length) parts.push(`<path d="${wb.rail.tram.map((l) => ringsPath([l], proj, false)).join('')}" fill="none" stroke="#1c1c1c" stroke-width="0.3" stroke-dasharray="1.2,0.8"/>`);
+  }
   if (c.ridges.length) parts.push(`<path d="${c.ridges.map((line) => `M${line.map((q, i) => { const ll = mercatorToLonLat(q); const [x, y] = proj(ll.lon, ll.lat); return `${i ? 'L' : ''}${x.toFixed(2)},${y.toFixed(2)}`; }).join('')}`).join('')}" fill="none" stroke="${S.deep}" stroke-width="0.4" stroke-dasharray="1.8 0.9" stroke-linecap="round"/>`);
   const spacer = new LabelSpacer(p.wMm, p.hMm, 80);
   spacer.take(40, 10, 72, 10);
