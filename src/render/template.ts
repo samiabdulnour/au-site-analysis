@@ -188,12 +188,12 @@ const F2 = {
   violet: '#b6b2d3', violetGround: '#e5e3f4',
   grey: '#c2c2bc', stoneGround: '#e8e8d8',
   water: '#81e0f9', magenta: '#c2367c', purple: '#753583', dots: '#1c1c1c',
-  /** The reference's peach, deepened a step to carry a dash, a figure and a line of bold type: the site's colour on Kingfisher's sheets and decks. */
-  peachDeep: '#e58a62',
+  /** The reference's salmon, the site's colour on Kingfisher's sheets and decks, and the same hue deepened to carry a line of bold type. */
+  salmon: '#f0bcac', salmonDeep: '#d27b63',
 };
 
 const KINGFISHER_CATEGORIES: Category[] = [
-  { id: 'site',           label: 'SITE',                                     fill: F2.peachDeep, opacity: 0.3 },
+  { id: 'site',           label: 'SITE',                                     fill: F2.salmon, opacity: 0.45 },
   { id: 'medical',        label: 'MEDICAL',                                  fill: F2.violetGround, opacity: 1, stroke: F2.violet, figure: F2.violet },
   { id: 'education',      label: 'EDUCATION',                                fill: F2.violetGround, opacity: 1, texture: 'lines', textureColor: F2.violet, figure: F2.violet },
   { id: 'childCare',      label: 'CHILD CARE / AGED CARE',                   fill: F2.violetGround, opacity: 1, texture: 'dots', textureColor: F2.violet, figure: F2.violet },
@@ -258,8 +258,8 @@ export const TEMPLATES: Template[] = [
     // keep the leaf green.
     streetInk: '#e39a6f', discInk: '#e39a6f', discParkInk: '#8faf6a',
     rule: '#8a8a8a',
-    // The deck's site and narrative in the reference's peach-orange, deepened, not the context sheet's magenta.
-    site: F2.peachDeep, dimension: '#56616b', wind: '#87959d', sun: '#efe8d4', road: F2.grey, water: F2.water,
+    // The deck's site in the reference's salmon, not the context sheet's magenta; the narrative in the same hue deepened.
+    site: F2.salmon, dimension: '#56616b', wind: '#87959d', sun: '#efe8d4', road: F2.grey, water: F2.water,
     transit: '#365696', rail: '#e8835e', walk5: '#1f8a5a', walk10: '#6fb88c', busRoute: '#5b8fd6', heritage: F2.purple,
     isochrone: 'dotted', roundel: 'solid', busLine: 'dotted', railLine: 'dotted',
     // The cadastre and every building in a heavy white line.
@@ -509,7 +509,7 @@ const CANARY_LOOK: SiteLook = {
 // photograph to show them. It was called Kookaburra; a request naming it is
 // drawn in Kingfisher.
 const KINGFISHER_LOOK: SiteLook = {
-  font: GROTESK, ground: 'paper', veil: 0, aerial: 'colour', site: F2.peachDeep, siteDash: '7,2,1.6,2', dimensionInk: '#56616b', fall: '#56616b', fallWords: 'plain', fallInk: '#56616b', textScale: 1,
+  font: GROTESK, ground: 'paper', veil: 0, aerial: 'colour', site: F2.salmon, siteDash: '7,2,1.6,2', dimensionInk: '#56616b', fall: '#56616b', fallWords: 'plain', fallInk: '#56616b', textScale: 1,
   buildingEdge: 0.4, buildings: 'colour', neighbours: 'white', neighbourHeightInk: '#ffffff', zones: 'fill', zoneTint: 0,
   heritage: false, heritageInk: { item: '#e39a3b', area: '#c8372d' }, contours: true, contourInk: '#a9adb1',
   streetInk: '#e39a6f',
@@ -758,7 +758,7 @@ export function deckLook(): DeckLook {
   const kit = KIT_STYLES.has(t.id);
   // Flamingo's coral is a map tint, too light for a line of bold type; the others hold.
   // The narrative's ink is the site's own, deepened where it is too light for bold type on white: the style's red on every page.
-  const accent = inkFor(t.site, 0.3);
+  const accent = t.id === 'kingfisher' ? F2.salmonDeep : inkFor(t.site, 0.3);
   const family: InkFamily = kit ? KIT_INK.red : { solid: accent, mid: tint(accent, 0.45), light: tint(accent, 0.18), line: accent, deep: shadeHex(accent, 0.78), text: accent };
   const aerial = t.ground === 'aerial';
   return {
