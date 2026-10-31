@@ -391,10 +391,6 @@ a { color: inherit; }
 .btn.primary { background: var(--hi); color: var(--on-hi); }
 .btn.primary:hover { background: var(--hi); filter: brightness(.95); }
 
-/* What the subscription would add, shown to a free account as the way to it:
-   still a box to press, but muted, since what it opens is the plans page. */
-.btn.locked { color: var(--muted); }
-
 /* Small print in the nav's small size, two notes abreast like the spreads'
    two columns: what the drawings are on the left, the copyright on the right.
    margin-top: auto carries it to the foot of a short page. */

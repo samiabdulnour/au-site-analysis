@@ -1051,14 +1051,11 @@ async function poll(id, misses) {
       if (grants.pdf)
         addLink(grants.cleanPdf ? 'download pdf' : 'download pdf · watermarked',
           '/api/jobs/' + id + '/pdf?download', { download: true });
-      const dataLabel = j.sheet === 'slides' ? 'download json' : 'download csv';
+      // The CAD and the data only where they may be taken: the unlock above
+      // says what paying adds.
       if (grants.openData) {
         if (j.hasCad) addLink('download cad', '/api/jobs/' + id + '/cad');
-        if (j.hasData) addLink(dataLabel, '/api/jobs/' + id + '/data');
-      } else {
-        // Shown, not hidden: what paying adds is the reason to pay.
-        if (j.hasCad) addLink('cad · locked', '/pricing', { locked: true });
-        if (j.hasData) addLink(dataLabel.replace('download ', '') + ' · locked', '/pricing', { locked: true });
+        if (j.hasData) addLink(j.sheet === 'slides' ? 'download json' : 'download csv', '/api/jobs/' + id + '/data');
       }
       // The box stays only for something to say: a drawing reused, with the
       // way to a fresh one, or what came of a payment.
@@ -1083,13 +1080,12 @@ async function poll(id, misses) {
   }
 }
 
-function addLink(label, href, { newTab, locked, download } = {}) {
+function addLink(label, href, { newTab, download } = {}) {
   const a = document.createElement('a');
   a.href = href;
   a.textContent = label;
   // The first result is the one to press; the rest sit beside it sharing a rule.
   a.className = linksEl.childNodes.length ? 'btn' : 'btn primary';
-  if (locked) a.classList.add('locked');
   if (newTab) a.target = '_blank';
   // Saved rather than followed, so an error in place of the file never takes
   // the page, and the job on it, away. The server's filename wins over this one.
