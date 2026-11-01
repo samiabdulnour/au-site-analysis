@@ -15,7 +15,7 @@ import type { GeoJSONFeature } from '../lib/arcgis.js';
 import { tpl, withTemplate, templateFor, deckLook, tint, shadeHex, inkFor, vivid, type DeckLook } from './template.js';
 import { INK, aerialGreenFill, veg1750Fills, VEG_CLASSES_MAX, fillShape, swatchOf, barOf, categoryFill, heatFills, paletteRamp, styleRamp, terrainRamp, stripOf, HEIGHT_BANDS, heightBandOf, massingInks, heightRamp, zHead, zBars, zFigures, zCircles, zSpans, zPairs, zLine, niceAxis, z6, zSvg, Z_W, Z_TRACK, type Fill } from './atlasKit.js';
 import { esc } from './chrome.js';
-import { drawAxonometric, type AxoScene, type Prism } from './axonometric.js';
+import { drawAxonometric, shade, type AxoScene, type Prism } from './axonometric.js';
 import { estimateKerbs } from '../lib/kerbs.js';
 import {
   panelProjector, panelExtent, baseLayers, overLayers, panelFurniture, furnitureBox, siteMark, siteLabelPoint, stationMode, ringsPath, fcPath, ringStats, clippedStats, hatchPath, dotsPath, bboxOf, t2Text, t2Width, railSymbol,
@@ -2605,8 +2605,36 @@ export function formAtlas(b: SlidesBundle, planning: PlanningFacts): Slide {
   ].filter(Boolean).join(' ');
   const src = f.source === 'overture' ? `Overture Maps Foundation buildings${f.release ? ` (release ${f.release})` : ''}, footprints and heights from OpenStreetMap, Microsoft, Esri Community Maps and Google Open Buildings` : f.source === 'osm' ? 'OpenStreetMap buildings' : 'no building source';
   const sources = `Sources: ${src}; heights measured, or ${METRES_PER_STOREY} m a storey, else the storeys of a determined application on the lot; every building in the colour of its storeys as the height of buildings page keys them (${HEIGHT_BANDS.map((bd) => bd.label).join(' · ')}), dashed where none is recorded; what stands on the site in the site's ink; streets from NSW Spatial Services, the kerbs worked out from the cadastre; parks from the open-space zones; the trees read off NSW Imagery as crowns, their size indicative. Drawn from the ${bearingName(camBearing)}, looking down 35°. Retrieved ${b.buildings.fetchedAt.slice(0, 10)}.`;
+  // The key, framed on the drawing in its bottom-right corner as the movement map keys its places: a little block in
+  // each storeys' colour, lit as the drawing lights its buildings, the dashed block of no recorded height, the site's.
+  const formKey = (() => {
+    const KW = 50, ROW = 3.05, PAD = 2.2, INKT = '#2a2e2c';
+    const block = (x: number, y: number, fill: string, edge: string, dashed = false) => {
+      const lit = M.gloss ? 0.95 : 0.85, side = M.gloss ? 0.9 : 0.68, roof = M.gloss ? 1.3 : 1.12, dash = dashed ? ' stroke-dasharray="0.5,0.35"' : '';
+      const pt = (pts: number[][]) => pts.map(([px, py]) => `${(x + px).toFixed(2)},${(y + py).toFixed(2)}`).join(' ');
+      return `<polygon points="${pt([[0, 0], [2.2, 0], [2.2, -2.2], [0, -2.2]])}" fill="${shade(fill, lit)}" stroke="${edge}" stroke-width="0.1"${dash}/>` +
+        `<polygon points="${pt([[2.2, 0], [3.2, -0.6], [3.2, -2.8], [2.2, -2.2]])}" fill="${shade(fill, side)}" stroke="${edge}" stroke-width="0.1"${dash}/>` +
+        `<polygon points="${pt([[0, -2.2], [2.2, -2.2], [3.2, -2.8], [1, -2.8]])}" fill="${shade(fill, roof)}" stroke="${edge}" stroke-width="0.1"${dash}/>`;
+    };
+    const storeys = HEIGHT_BANDS.map((bd, i) => ({ swatch: (x: number, y: number) => block(x, y, M.bands[i], shade(M.bands[i], M.gloss ? 0.78 : 0.55)), text: i === 0 ? bd.label : i === HEIGHT_BANDS.length - 1 ? '16 storeys and more' : `${bd.label} storeys` }));
+    const rows: { swatch: (x: number, y: number) => string; text: string }[] = [
+      ...storeys,
+      { swatch: (x, y) => block(x, y, M.noHeight, shade(M.noHeight, 0.55), true), text: 'No height recorded, dashed' },
+      { swatch: (x, y) => block(x, y, tint(t.site, 0.55), '#1c1c1c'), text: 'What stands on the site today' },
+    ];
+    const kh = PAD * 2 + 3.6 + rows.length * ROW;
+    const kx = SHEET_W - MARGIN - KW, ky = SHEET_H - FOOT - 3 - kh;
+    const out = [`<rect x="${kx}" y="${ky.toFixed(2)}" width="${KW}" height="${kh.toFixed(2)}" fill="#ffffff" fill-opacity="0.94" stroke="${accent}" stroke-width="0.2"/>`,
+      `<text x="${kx + PAD}" y="${(ky + PAD + 2.2).toFixed(2)}" font-size="2.1" font-weight="700" letter-spacing="0.1" fill="${accent}">BUILDINGS BY THEIR STOREYS</text>`];
+    let ry = ky + PAD + 3.6;
+    for (const r of rows) {
+      ry += ROW;
+      out.push(r.swatch(kx + PAD, ry - 0.4), `<text x="${(kx + PAD + 5).toFixed(2)}" y="${(ry - 0.7).toFixed(2)}" font-size="1.8" fill="${INKT}">${esc(r.text)}</text>`);
+    }
+    return `<g>${out.join('')}</g>`;
+  })();
   const figureHtml = `<div class="form3d">
-  <div class="abs" style="left:0;top:0"><svg width="${SHEET_W}mm" height="${SHEET_H}mm" viewBox="0 0 ${SHEET_W} ${SHEET_H}" xmlns="http://www.w3.org/2000/svg" style="display:block" font-family="Arial, 'Liberation Sans', sans-serif">${drawAxonometric(scene, { x: 0, y: TOP, w: SHEET_W, h: SHEET_H - TOP - FOOT }, 'form09b')}</svg></div>
+  <div class="abs" style="left:0;top:0"><svg width="${SHEET_W}mm" height="${SHEET_H}mm" viewBox="0 0 ${SHEET_W} ${SHEET_H}" xmlns="http://www.w3.org/2000/svg" style="display:block" font-family="Arial, 'Liberation Sans', sans-serif">${drawAxonometric(scene, { x: 0, y: TOP, w: SHEET_W, h: SHEET_H - TOP - FOOT }, 'form09b')}${formKey}</svg></div>
   <div class="abs lead" style="left:${SHEET_W - MARGIN - 150}mm;top:17.5mm;width:150mm">${esc(lead)}</div>
   <div class="abs src" style="left:${MARGIN}mm;bottom:10mm;width:${SHEET_W - 2 * MARGIN}mm">${esc(sources)}</div>
 </div>`;

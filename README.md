@@ -1540,7 +1540,11 @@ right-hand page, the sources across the foot. It is the city 300 m
 round the site as the yield's massing draws it (`src/render/axonometric.ts`),
 the camera off the nearest street looking down 35°, every building in the
 colour of its height band as the height of buildings page keys them, windowed, dashed
-where no height is recorded; the site's own building in the site's ink; the
+where no height is recorded; the site's own building in the site's ink, all
+keyed in a framed box in the drawing's bottom-right corner, as the movement
+map keys its places (a little block in each storeys' colour, lit as the
+drawing lights its buildings, the dashed block of no recorded height and the
+site's own); the
 streets white kerb to kerb (the kerbs worked out from the cadastre), the
 parks green, the trees read off the aerial as crowns (`green.crowns`, 330 m
 round the site, `lib/crowns.ts`), a little traffic, people on the footpaths
