@@ -1308,7 +1308,26 @@ ratio and land, and the future is worked out when the deck is drawn, so an
 efficiency changed in `yield_assumptions.json` carries to it. The proposal's
 outline is drawn over everything, so a future neighbour in front of it does
 not hide it, and a future far above what stands runs out of the frame, as the
-height plane does, the frame saying how high it goes. Under the massing, the
+height plane does, the frame saying how high it goes. The ground the massing
+stands on is drawn too: the streets as surfaces, kerb to kerb
+(`src/lib/carriageway.ts`: each centreline swept out to the kerb lines where
+the sheet has them, to its class's typical width where it has none, the
+sweeps joined so a junction is one surface), in a tone of the transport
+family with the kerb as its edge and a dashed line down the middle — the
+road itself on paper, a glass over the road the photograph shows on the
+aerial; the trees, each a crown on a trunk, which the projection draws as a
+circle (a sphere's outline), read off the aerial's green
+(`src/lib/crowns.ts`: the photograph's green where it has a canopy's light
+and shade, peeled into discs, the widest first, so a line of street trees is
+a chain of crowns and a lawn is no tree) and merged with the trees
+OpenStreetMap or an open council inventory records, which stand in for the
+crowns read at them — none on a footprint, and none on the site where a
+scheme stands on it; and the traffic, a car every so often down each street
+on the left of its axis, a body with a cabin, in the deck's inks in turn.
+On paper the crowns are pale, dotted with leaf in the living family's ink;
+over the photograph they are a tone with the lit side to the north-west.
+The bundle carries the trees (`trees`), read when the yield is fetched;
+a bundle from before them draws the streets and no trees. Under the massing, the
 envelope in plan at a round scale, on the ground the site analysis draws, kept to black and
 grey: the lot lines, the kerbs (`src/lib/kerbs.ts`, indicative), the
 neighbours' buildings, and on each numbered neighbour its street number, zone
@@ -1437,13 +1456,15 @@ for a town centre, a star for a State significant site, a pennant for a
 precinct), and when none lies on the block's page it widens, as far as
 1:25 000, until the nearest two do, over the region's roads and rail.
 Then *topography*: the landform
-at 1:5000: in Heron and Canary the ground in 5 m bands toned under the
-hillshade from the State's 5 m elevation model (Canary along the palette's
-ramp, Heron between two colours of its sheet, the blue low and the red
-high, as every ordered ramp in Heron runs, the storeys' included); in
-Flamingo and Kingfisher no fill at all, the contours alone, traced from the
-model every metre (the fives heavier and numbered), each coloured up the
-same ramp by its height; with the 2 m contours numbered along the index
+at 1:5000: the ground's ramp after the old survey sheets (`terrainRamp()`
+in `src/render/atlasKit.ts`: sand on the flats, pink then salmon up the
+slopes, violet and the deep blue on the heights, each step the style's own
+family, so Heron's is terracotta and indigo and Canary's sharper); in
+Heron and Canary the ground in 5 m bands washed along it under a strong
+hillshade from the State's 5 m elevation model; in Flamingo and Kingfisher
+no fill at all, the contours alone, traced from the model every metre (the
+fives heavier and numbered), each coloured by its height up the same ramp,
+darkened to read as a line; with the 2 m contours numbered along the index
 ones, the water named, the high and low points of the page and the site's
 level marked, roads and rail over it and two section lines through the site
 (the ground under each section in the map's bands, the water shown
@@ -1468,8 +1489,17 @@ levels over the faces, the conservation areas bracketed; see *The
 streetscape* below), on its own page after built form, and left out of the
 deck where it fails, or with `DECK_STREETSCAPE=0`. Then *movement*: roads by function, rail and
 stations, the walking reach from the site (Valhalla) in bands of three
-minutes to fifteen, each its own colour up the style's ramp, the warmest
-nearest, with the streets within it in the transit blue and straight lines
+minutes to fifteen, each band's edge a dashed line in its own colour up the
+style's ramp, the warmest nearest, over the buildings as a quiet
+figure-ground in the family's palest tint, so the blocks read and the
+streets between them stay white; the walks themselves from the site to each
+place the page lists within fifteen minutes (its parks, schools, halls,
+stops and stations), routed on foot on the network by the public router
+when the deck is read (`routes` in the movement data), each a thin
+translucent line in the family's deepest ink, so a street many walks share
+darkens, with an arrowhead where each arrives, the place's dot in its
+family (the living green for a park, the activity orange for a school or a
+hall, the transit blue for a stop) and numbered to the key; straight lines
 to the nearest stations carrying the walk in minutes; the journeys to the
 Sydney CBD and the nearest major centre by car and by bicycle from the
 public router, as bars of minutes; the car parks OpenStreetMap maps, on the
@@ -1553,7 +1583,9 @@ time, the hours marked) with sunrise, the noon altitude and sunset; the
 neighbours' shadows over the site on 21 June, every hour from 9 am to 3 pm,
 each hour one translucent layer over the last so that the depth of the
 tint is the hours in shadow, cast from the footprints and their recorded
-heights at 1:1000, with the share of the site each hour leaves in shadow
+heights at 1:1000 (the sun path, the street-bearings rose and the wind
+roses are drawn in the same ink as the shadows, its lighter cuts for the
+lesser arcs and the lighter winds, so the page is one colour), with the share of the site each hour leaves in shadow
 and the share that keeps the sun all day; and the sight lines
 from an eye just under the height limit, over the 5 m elevation model, to
 the skylines within range, the named water and the coast and the park next

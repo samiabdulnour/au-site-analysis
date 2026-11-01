@@ -13,7 +13,7 @@ import { mergeRuns, straightEnough, arcTable, sliceAt, shortStreetName, type She
 import type { TopoRoad } from '../fetch/nswTopo.js';
 import type { GeoJSONFeature } from '../lib/arcgis.js';
 import { tpl, withTemplate, templateFor, deckLook, tint, shadeHex, inkFor, vivid, type DeckLook } from './template.js';
-import { INK, aerialGreenFill, veg1750Fills, VEG_CLASSES_MAX, fillShape, swatchOf, barOf, categoryFill, heatFills, paletteRamp, styleRamp, stripOf, zHead, zBars, zFigures, zCircles, zSpans, zPairs, zLine, niceAxis, z6, zSvg, Z_W, Z_TRACK, type Fill } from './atlasKit.js';
+import { INK, aerialGreenFill, veg1750Fills, VEG_CLASSES_MAX, fillShape, swatchOf, barOf, categoryFill, heatFills, paletteRamp, styleRamp, terrainRamp, stripOf, zHead, zBars, zFigures, zCircles, zSpans, zPairs, zLine, niceAxis, z6, zSvg, Z_W, Z_TRACK, type Fill } from './atlasKit.js';
 import { esc } from './chrome.js';
 import {
   panelProjector, panelExtent, baseLayers, overLayers, panelFurniture, furnitureBox, siteMark, siteLabelPoint, stationMode, ringsPath, fcPath, ringStats, clippedStats, hatchPath, dotsPath, bboxOf, t2Text, t2Width, railSymbol,
@@ -3422,13 +3422,16 @@ export function topographyAtlas(b0: SlidesBundle): Slide {
   // The landform over the photograph: bands toned along the palette's ramp under the hillshade. On paper: no fill at
   // all, the contours alone, each in its band's colour up the same ramp, so the height reads in the lines' colour.
   // Heron's bands run between two colours of its sheet, the blue low and the red high; the others up the palette's ramp
-  const bandCols = rampColours(bands, styleRamp());
-  const toneCols = bandCols.map((c) => tint(c, look.id === 'heron' ? 0.85 : 0.7));
+  // the ground's ramp (atlasKit terrainRamp): sand, pink, salmon, violet, deep blue — a wash under the hillshade over
+  // the photograph, the contours' own colours darkened from it on paper
   const tone = look.technique === 'tone';
+  const rampCols = rampColours(bands, terrainRamp());
+  const bandCols = tone ? rampCols : rampCols.map((c) => inkFor(c, 0.4));
+  const toneCols = rampCols.map((c) => tint(c, look.id === 'heron' ? 0.42 : 0.36));
   // the page's own ink: the colour of the site's contour, for the narrative and the sections' poché
   const PAGE_INK = f?.site ? inkFor(bandCols[Math.min(bands - 1, Math.max(0, Math.floor(((f.site.min + f.site.max) / 2 - lo) / STEP)))], 0.3) : deckLook().accent;
   const bandKey: Fill[] = toneCols.map((c) => ({ bg: c }));
-  if (g && f && tone) parts.push(demPicture(g, proj, reliefDataUri(g, RELIEF_INK, { stepM: STEP, lo, hi, shade: 0.4, colours: toneCols })));
+  if (g && f && tone) parts.push(demPicture(g, proj, reliefDataUri(g, RELIEF_INK, { stepM: STEP, lo, hi, shade: 0.55, colours: toneCols })));
   const bandOfRl = (rl: number) => Math.min(bands - 1, Math.max(0, Math.floor((rl - lo) / STEP)));
   if (b.base.water.features.length) parts.push(`<path d="${fcPath(b.base.water, proj)}" fill="${t.water}" stroke="${WATER_INK}" stroke-width="0.25" fill-rule="evenodd"/>`);
   // On paper the contours are traced from the model every metre, the fives heavier and numbered: the State's 2 m
@@ -4314,28 +4317,41 @@ export function movementSlide(b: SlidesBundle): Slide {
   const bandIso = fineIso ?? [...mv.isochrones].sort((x, y) => x.minutes - y.minutes);
   const BAND_COLS = rampColours(Math.max(2, bandIso.length), styleRamp()).reverse();
   const colOf = (minutes: number) => { let best = 0; bandIso.forEach((iso, i) => { if (Math.abs(iso.minutes - minutes) < Math.abs(bandIso[best].minutes - minutes)) best = i; }); return BAND_COLS[best] ?? B.deep; };
-  const MOVE = { iso: { 5: colOf(5), 10: colOf(10), 15: colOf(15) } as Record<number, string>, cycle: B.deep, foot: B.line, frontage: INK.red.line, water: tint(t.water, 0.7), road: S.line, rail: t.rail, mark: B.deep };
+  const MOVE = { iso: { 5: colOf(5), 10: colOf(10), 15: colOf(15) } as Record<number, string>, cycle: B.deep, foot: B.line, frontage: INK.red.line, water: tint(t.water, 0.7), road: inkFor(B.solid, 0.4), rail: t.rail, mark: B.deep, flow: inkFor(B.deep, 0.08), block: tint(B.solid, 0.2) };
   const mt = { ...t, water: MOVE.water, road: MOVE.road, rail: MOVE.rail };
   const p = b.bleedPanel;
   const proj = panelProjector(p);
   const parts: string[] = [withTemplate(mt, () => baseLayers(b.base, proj, p))];
-  // The walking reach as nested bands from the site, the deeper the nearer: translucent tones that stack toward
-  // the site over the photograph, dots that thicken toward it on paper; each band's edge dashed.
-  const box = { x0: 0, y0: 0, x1: p.wMm, y1: p.hMm };
+  // The map is a flow map: the buildings a quiet figure-ground in the family's palest tint, so the blocks read and
+  // the streets between them stay white; the walking reach as lines of time, each band's edge in its own colour,
+  // dashed; then the walks themselves, the site to each place the page lists, on the network, in the family's
+  // deepest ink laid thin and translucent so a street many walks share darkens — the reader sees the way, not only
+  // how far it runs.
   const isoSorted = [...bandIso].reverse();
   const tone = look.technique === 'tone';
-  // each band the ring between its catchment and the next in, in its own colour: tones over the photograph, dots on paper
-  bandIso.forEach((iso, i) => {
-    const ink = BAND_COLS[i];
-    const inner = i ? ringsPath(bandIso[i - 1].rings, proj) : '';
-    const d = ringsPath(iso.rings, proj) + inner;
-    const band: Fill = tone ? { bg: ink, opacity: 0.3, rule: 'evenodd' } : { kind: 'dots', ink, step: 0.85, w: 0.3, rule: 'evenodd' };
-    parts.push(fillShape(d, box, band), `<path d="${ringsPath(iso.rings, proj)}" fill="none" stroke="${ink}" stroke-width="0.45" stroke-dasharray="1.6,1" fill-rule="evenodd"/>`);
-  });
+  if (b.buildings.buildings.length) parts.push(`<path d="${b.buildings.buildings.map((bd) => ringsPath(bd.rings, proj)).join('')}" fill="${MOVE.block}" fill-rule="evenodd"/>`);
+  bandIso.forEach((iso, i) => parts.push(`<path d="${ringsPath(iso.rings, proj)}" fill="none" stroke="${BAND_COLS[i]}" stroke-width="0.35" stroke-dasharray="1.2,0.9" fill-rule="evenodd"/>`));
   if (mv.activeFrontages.features.length) parts.push(`<path d="${fcPath(mv.activeFrontages, proj)}" fill="${MOVE.frontage}" fill-opacity="0.55" stroke="${MOVE.frontage}" stroke-width="0.25" fill-rule="evenodd"/>`);
   parts.push(withTemplate(mt, () => overLayers(b.base, proj, p, 'wash')));
-  // the streets the walk reaches, in the blue, clipped to the widest band: the network one can walk, not only how far
-  if (isoSorted[0]) parts.push(`<clipPath id="walk-reach"><path d="${ringsPath(isoSorted[0].rings, proj)}" clip-rule="evenodd"/></clipPath><g clip-path="url(#walk-reach)"><path d="${b.base.roads.map((r) => ringsPath([r.coords], proj, false)).join('')}" fill="none" stroke="${MOVE.iso[10]}" stroke-width="0.3" stroke-linecap="round" stroke-linejoin="round"/></g>`);
+  // The walks: each route a line in the flow ink, thin and translucent, so where walks share a street the line
+  // builds; an arrowhead where each arrives. A walk past the widest band is cut to the page, as the band is.
+  const routes = mv.routes ?? [];
+  if (routes.length) {
+    parts.push(`<g fill="none" stroke="${MOVE.flow}" stroke-width="0.95" stroke-opacity="${tone ? 0.26 : 0.22}" stroke-linecap="round" stroke-linejoin="round">${routes.map((r) => `<path d="${ringsPath([r.coords], proj, false)}"/>`).join('')}</g>`);
+    for (const r of routes) {
+      const pts = r.coords.map(([lon, lat]) => proj(lon, lat));
+      const end = pts[pts.length - 1];
+      if (!end || end[0] < 2 || end[1] < 2 || end[0] > p.wMm - 2 || end[1] > p.hMm - 2) continue;
+      // the direction of arrival, read from the point at least two millimetres back along the walk
+      let k = pts.length - 2;
+      while (k > 0 && Math.hypot(pts[k][0] - end[0], pts[k][1] - end[1]) < 2) k--;
+      const from = pts[k] ?? end, a = Math.atan2(end[1] - from[1], end[0] - from[0]);
+      const L = 2.1, W = 1.15;
+      const tip: Pt = [end[0] - Math.cos(a) * 1.9, end[1] - Math.sin(a) * 1.9];
+      parts.push(`<path d="M${tip[0].toFixed(2)},${tip[1].toFixed(2)} L${(tip[0] - L * Math.cos(a) + W * Math.sin(a)).toFixed(2)},${(tip[1] - L * Math.sin(a) - W * Math.cos(a)).toFixed(2)} L${(tip[0] - L * Math.cos(a) - W * Math.sin(a)).toFixed(2)},${(tip[1] - L * Math.sin(a) + W * Math.cos(a)).toFixed(2)} Z" fill="${MOVE.flow}" fill-opacity="0.9"/>`);
+    }
+  }
+  void isoSorted;
   if (mv.busRoutes.length) parts.push(`<path d="${mv.busRoutes.map((l) => ringsPath([l], proj, false)).join('')}" fill="none" stroke="${t.busRoute}" stroke-width="0.5" stroke-dasharray="1.2,0.9" stroke-linecap="round"/>`);
   if (mv.footways.length) parts.push(`<path d="${mv.footways.map((l) => ringsPath([l], proj, false)).join('')}" fill="none" stroke="${MOVE.foot}" stroke-width="0.25" stroke-dasharray="0.5,0.5"/>`);
   for (const kind of ['shared', 'lane', 'separated'] as CyclewayKind[]) {
@@ -4352,6 +4368,9 @@ export function movementSlide(b: SlidesBundle): Slide {
   // What the walk reaches, numbered on the map and keyed in a box in its bottom-right corner, by the band the
   // walking network reaches each in: the reader sees where they can get to, not only how far the lines run.
   const dests = walkDestinations(b, f);
+  // each place's dot in its family: the living green for a park or bushland, the activity orange for a school,
+  // library or hall, the transit blue for a stop or station
+  const destInk = (kind: string) => /park|bush|reserve|open space|garden|playground|sport/i.test(kind) ? INK.green.solid : /stop|station/i.test(kind) ? MOVE.mark : INK.orange.solid;
   if (dests.length) {
     const KW = 76, ROW = 3.05, PAD = 2.2;
     const bands = ISO_MINUTES.filter((m) => dests.some((d) => d.band === m));
@@ -4367,7 +4386,7 @@ export function movementSlide(b: SlidesBundle): Slide {
       for (const d of dests.filter((q) => q.band === m)) {
         ry += ROW;
         const nm = shorten(`${d.name} · ${d.kind}`, 46);
-        key.push(`<circle cx="${(kx + PAD + 1.3).toFixed(2)}" cy="${(ry - 1.3).toFixed(2)}" r="1.25" fill="#ffffff" stroke="${MOVE.mark}" stroke-width="0.2"/><text x="${(kx + PAD + 1.3).toFixed(2)}" y="${(ry - 0.75).toFixed(2)}" text-anchor="middle" font-size="1.55" font-weight="700" fill="${MOVE.mark}">${d.n}</text>`,
+        key.push(`<circle cx="${(kx + PAD + 1.3).toFixed(2)}" cy="${(ry - 1.3).toFixed(2)}" r="1.3" fill="${destInk(d.kind)}"/><text x="${(kx + PAD + 1.3).toFixed(2)}" y="${(ry - 0.75).toFixed(2)}" text-anchor="middle" font-size="1.55" font-weight="700" fill="#ffffff">${d.n}</text>`,
           `<text x="${(kx + PAD + 3.6).toFixed(2)}" y="${(ry - 0.7).toFixed(2)}" font-size="1.8" fill="${B.deep}">${esc(nm)}</text>`,
           `<text x="${(kx + KW - PAD).toFixed(2)}" y="${(ry - 0.7).toFixed(2)}" text-anchor="end" font-size="1.8" fill="${B.text}">${d.distanceM >= 1000 ? `${(d.distanceM / 1000).toFixed(1)} km` : `${fmtNum(Math.round(d.distanceM / 10) * 10)} m`}</text>`);
       }
@@ -4377,7 +4396,7 @@ export function movementSlide(b: SlidesBundle): Slide {
       const [x, y] = proj(d.lon, d.lat);
       if (x < 3 || y < 3 || x > p.wMm - 3 || y > p.hMm - 3 || (x > kx - 2 && y > ky - 2)) continue;
       isoSpacer.block(x, y, 3.6, 3.6);
-      parts.push(`<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="1.55" fill="#ffffff" stroke="${MOVE.mark}" stroke-width="0.3"/><text x="${x.toFixed(2)}" y="${(y + 0.62).toFixed(2)}" text-anchor="middle" font-size="1.75" font-weight="700" fill="${MOVE.mark}">${d.n}</text>`);
+      parts.push(`<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="1.7" fill="${destInk(d.kind)}" stroke="#ffffff" stroke-width="0.3"/><text x="${x.toFixed(2)}" y="${(y + 0.62).toFixed(2)}" text-anchor="middle" font-size="1.75" font-weight="700" fill="#ffffff">${d.n}</text>`);
     }
     parts.push(`<g>${key.join('')}</g>`);
   }
@@ -4452,8 +4471,9 @@ export function movementSlide(b: SlidesBundle): Slide {
   const legendRows: [string, string][] = [
     [sw(`<line x1="0" y1="1.8" x2="5" y2="1.8" stroke="${MOVE.road}" stroke-width="0.9"/><line x1="0" y1="1.8" x2="5" y2="1.8" stroke="#ffffff" stroke-width="0.6"/>`), 'Roads by function: motorways and arterials heaviest, local streets finest'],
     [sw(`<line x1="0" y1="1.8" x2="5" y2="1.8" stroke="${MOVE.rail}" stroke-width="0.2"/><line x1="0" y1="1.8" x2="5" y2="1.8" stroke="${MOVE.rail}" stroke-width="1.05" stroke-dasharray="0.16,1.3"/>`), 'Rail; stations as T, M (metro) or L (light rail)'],
-    [sw(BAND_COLS.map((c, i, all) => { const w = 5 / all.length, x = i * w; return tone ? `<rect x="${x.toFixed(2)}" y="0.3" width="${(w + 0.02).toFixed(2)}" height="3" fill="${c}" fill-opacity="0.3"/>` : fillShape(`M${x.toFixed(2)},0.3h${w.toFixed(2)}v3h${(-w).toFixed(2)}Z`, { x0: x, y0: 0.3, x1: x + w, y1: 3.3 }, { kind: 'dots', ink: c, step: 0.85, w: 0.3 }, 1.4); }).join('')),
-    `Walking reach from the site in bands of ${bandIso.map((q) => q.minutes).join(', ')} minutes, the warmest nearest; the streets within it in blue`],
+    [sw(BAND_COLS.map((c, i, all) => { const w = 5 / all.length, x = i * w; return `<line x1="${(x + w / 2).toFixed(2)}" y1="0.3" x2="${(x + w / 2).toFixed(2)}" y2="3.3" stroke="${c}" stroke-width="0.5" stroke-dasharray="0.8,0.5"/>`; }).join('')), `Walking reach from the site: the line of ${bandIso.map((q) => q.minutes).join(', ')} minutes, the warmest nearest`],
+    [sw(`<path d="M0.2,2.6 C1.5,2.6 1.5,1 3,1 L4.4,1" fill="none" stroke="${MOVE.flow}" stroke-width="0.95" stroke-opacity="0.45"/><path d="M0.2,2.9 C1.5,2.9 1.8,1.3 3,1.3 L4.4,1.3" fill="none" stroke="${MOVE.flow}" stroke-width="0.95" stroke-opacity="0.45"/><path d="M4.9,1.15 L3.9,0.6 L3.9,1.7 Z" fill="${MOVE.flow}"/>`), 'The walks from the site to each place listed, on the network: a street many walks share darkens'],
+    [sw(`<rect x="0.3" y="0.5" width="2" height="2.6" fill="${MOVE.block}"/><rect x="2.8" y="0.5" width="1.9" height="1.1" fill="${MOVE.block}"/><rect x="2.8" y="2" width="1.9" height="1.1" fill="${MOVE.block}"/>`), 'Buildings, for the grain of the blocks'],
     [sw(`<line x1="0" y1="1.8" x2="5" y2="1.8" stroke="${MOVE.mark}" stroke-width="0.35" stroke-dasharray="0.9,0.9"/>`), 'Straight lines to the nearest stations, the walk in minutes along each'],
     ...(f.parking.all.length ? [[sw(`<rect x="1" y="0.3" width="3" height="3" fill="#ffffff" stroke="${MOVE.mark}" stroke-width="0.3"/><text x="2.5" y="2.9" text-anchor="middle" font-size="2.2" font-weight="700" fill="${MOVE.mark}">P</text>`), 'Car parks OpenStreetMap maps, the square sized by the tagged capacity'] as [string, string]] : []),
   ];
@@ -4494,7 +4514,7 @@ export function movementSlide(b: SlidesBundle): Slide {
     rows.forEach((r, i) => {
       const top = rowsTop + i * ROWH, yb = top + 0.6 + BAR / 2, end = X(Math.min(r.value, max));
       g.push(txt(X0, top, r.name));
-      g.push(`<line x1="${(TRACK0 - 0.09).toFixed(2)}" y1="${yb.toFixed(2)}" x2="${end.toFixed(2)}" y2="${yb.toFixed(2)}" stroke="${MOVE.iso[10]}" stroke-width="${BAR}"${r.dash ? ` stroke-dasharray="${r.dash}"` : ''}/>`);
+      g.push(`<line x1="${(TRACK0 - 0.09).toFixed(2)}" y1="${yb.toFixed(2)}" x2="${end.toFixed(2)}" y2="${yb.toFixed(2)}" stroke="${MOVE.flow}" stroke-width="${BAR}"${r.dash ? ` stroke-dasharray="${r.dash}"` : ''}/>`);
       g.push(txt(end + 1.0, top, r.label));
     });
   };
@@ -4558,7 +4578,7 @@ export function movementSlide(b: SlidesBundle): Slide {
     ? (f.parking.all.length ? `${f.parking.within400 ? `${numWord(f.parking.within400)} car park${f.parking.within400 === 1 ? '' : 's'} within 400 m` : 'No car park within 400 m'}${f.parking.within800 ? `, ${f.parking.within800} within 800 m${f.parking.spacesWithin800 ? ` holding ${fmtNum(f.parking.spacesWithin800)} spaces where tagged` : ''}` : ''}; the nearest, ${f.parking.all[0].name ?? `a ${f.parking.all[0].kind.replace(/_/g, ' ')} car park`}, is ${fmtNum(f.parking.all[0].distanceM)} m away.` : 'OpenStreetMap maps no car park on the page.')
     : 'The car parks were not read: OpenStreetMap did not answer this run.';
   const narrative = brief([sens[0], jSent, pSent, reachSentence], 520);
-  return { id: '10_movement', title: 'Movement', subtitle: subT, textHtml: '', figureHtml, bleed: true, sources, narrative, accent: MOVE.iso[10], legend: keyRows };
+  return { id: '10_movement', title: 'Movement', subtitle: subT, textHtml: '', figureHtml, bleed: true, sources, narrative, accent: MOVE.flow, legend: keyRows };
 }
 
 // ---- slide 11: green and public domain -------------------------------------
@@ -6818,8 +6838,10 @@ function zSunPath(f: ReturnType<typeof sunViewFacts>, lat: number, lon: number, 
   for (const [label, m, d, off, w, dash] of arcs) {
     const path = sunPath(lat, lon, SOLAR_YEAR, m, d, off, 5).filter((q) => q.altitudeDeg >= 0);
     if (!path.length) continue;
-    g.push(`<path d="${path.map((q, i) => { const [x, y] = pt(q.altitudeDeg, q.azimuthDeg); return `${i ? 'L' : 'M'}${x.toFixed(2)},${y.toFixed(2)}`; }).join('')}" fill="none" stroke="${label === '21 Jun' ? '#000000' : ink}" stroke-width="${w}"${dash ? ` stroke-dasharray="${dash}"` : ''}/>`);
-    for (const q of path.filter((z) => z.clockMin % 60 === 0)) { const [x, y] = pt(q.altitudeDeg, q.azimuthDeg); g.push(`<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="0.35" fill="${label === '21 Jun' ? '#000000' : ink}"/>`); }
+    // the winter arc in the ink itself, the others in a lighter cut of it: one colour, the page's, the hours read by weight
+    const arcInk = label === '21 Jun' ? ink : tint(ink, 0.55);
+    g.push(`<path d="${path.map((q, i) => { const [x, y] = pt(q.altitudeDeg, q.azimuthDeg); return `${i ? 'L' : 'M'}${x.toFixed(2)},${y.toFixed(2)}`; }).join('')}" fill="none" stroke="${arcInk}" stroke-width="${w}"${dash ? ` stroke-dasharray="${dash}"` : ''}/>`);
+    for (const q of path.filter((z) => z.clockMin % 60 === 0)) { const [x, y] = pt(q.altitudeDeg, q.azimuthDeg); g.push(`<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="0.35" fill="${arcInk}"/>`); }
     const top = path.reduce((a, q) => (q.altitudeDeg > a.altitudeDeg ? q : a));
     const [lx, ly] = pt(top.altitudeDeg, top.azimuthDeg);
     g.push(z6(lx, ly - 3.2, `${label} · ${top.altitudeDeg.toFixed(0)}°`, 'middle'));
@@ -6876,8 +6898,7 @@ function zWindRose(rose: WindRose, x0: number, size: number, top: number, step: 
 export function sunAtlas(b: SlidesBundle): Slide {
   const f = sunViewFacts(b);
   const t = tpl();
-  // the diagrams in the transit family, as the shadows are: the page is one blue, the narrative with it
-  const S = INK.blue;
+  // the diagrams in the shadows' own ink, below: the page is one blue, the narrative with it
   const centreLL = mercatorToLonLat(b.panel.center);
   const p: Panel = { center: b.site.sitePanel.center, scale: 1000, wMm: 210, hMm: 297 };
   const proj = panelProjector(p);
@@ -6888,6 +6909,8 @@ export function sunAtlas(b: SlidesBundle): Slide {
   // tint is the hours of winter shadow. The site's wash goes under them, so the tint over it reads true.
   // the shadow's ink, one a style: the transit navy on Flamingo, Kingfisher's plum, the kit's indigo on Heron and its terracotta on Canary
   const SHADOW_INK = inkFor(INK.blue.deep, 0.1);
+  // the sun path, the street bearings and the wind roses in the same ink as the shadows, its lighter cuts for the lesser classes
+  const S = { deep: SHADOW_INK, solid: tint(SHADOW_INK, 0.62), light: tint(SHADOW_INK, 0.32) };
   const HOUR_ALPHA = 0.16;
   const stacked = (n: number) => 1 - (1 - HOUR_ALPHA) ** n;
   const parts: string[] = [withTemplate(gt, () => baseLayers(b.base, proj, p)), siteMark(b.base, proj, 'wash')];
@@ -6942,7 +6965,7 @@ export function sunAtlas(b: SlidesBundle): Slide {
       { bg: S.light, outline: S.deep, outlineW: 0.1 },
       { bg: '#ffffff', kind: 'vlines', ink: S.deep, step: 0.7, w: 0.14, outline: S.deep, outlineW: 0.1 },
       { bg: '#ffffff', kind: 'vlines', ink: S.deep, step: 0.35, w: 0.14, outline: S.deep, outlineW: 0.1 },
-      { bg: '#000000' },
+      { bg: S.deep },
     ];
     const caption = (rose: WindRose, x: number) => z6(x, D + 6.3 + 1, `mean ${Math.round(rose.meanKmh)} km/h · calm ${rose.calmPct < 1 ? rose.calmPct.toFixed(1) : Math.round(rose.calmPct)} %`);
     const classes = WIND_CLASSES_KMH.map((lo, i) => (i + 1 < WIND_CLASSES_KMH.length ? `${lo}–${WIND_CLASSES_KMH[i + 1]}` : `${lo}+ km/h`));

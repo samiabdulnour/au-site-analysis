@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import type { Extent } from '../lib/geo.js';
 import { retryFetch } from '../lib/http.js';
 import { decodePng, encodeGreyPng } from '../lib/png.js';
+import { localContrast, morph } from '../lib/crowns.js';
 
 const EXPORT = 'https://maps.six.nsw.gov.au/arcgis/rest/services/public/NSW_Imagery/MapServer/export';
 const MAX_PX = 4000; // stay under the service's export cap
@@ -84,13 +85,26 @@ export async function fetchAerial(
 /** Where the aerial is green: trees, gardens and grass read from NSW Imagery itself, which no inventory misses. */
 export interface VegetationMask { file: string; extent: Extent; pxWidth: number; pxHeight: number; sharePct: number; /** The mask painted with the slide's pattern (render/paintMasks.ts). */ paint?: string }
 
+/** The aerial's green and its light and shade, pixel by pixel, for reading crowns off it (lib/crowns.ts). */
+export interface VegetationPixels {
+  width: number;
+  height: number;
+  extent: Extent;
+  /** Ground metres a pixel. */
+  mPerPx: number;
+  /** 1 where the pixel is green: trees, gardens and grass. Opened and closed once, so single pixels drop and canopies close. */
+  green: Uint8Array;
+  /** The local contrast of the photograph, 0–255: a canopy's light and shade is high, a lawn's or a roof's is low. */
+  contrast: Uint8Array;
+  sharePct: number;
+}
+
 /**
- * The aerial over `extent` at about `mPerPx` a pixel, as PNG, and a greyscale mask of its green: a pixel is
- * vegetation where green leads red and blue and the pixel is not bright (roofs, paving and water are not).
- * The mask is opened and closed once so single pixels drop and canopies close.
+ * The aerial over `extent` at about `mPerPx` a pixel, read for its green: a pixel is vegetation where green leads
+ * red and blue and the pixel is not bright (roofs, paving and water are not). The mask is opened and closed once so
+ * single pixels drop and canopies close. With it, the photograph's local contrast, which tells a canopy from a lawn.
  */
-export async function fetchVegetationMask(extent: Extent, outDir: string, mPerPx = 0.8, groundPerUnit = 1): Promise<VegetationMask> {
-  await mkdir(outDir, { recursive: true });
+export async function fetchVegetationPixels(extent: Extent, mPerPx = 0.8, groundPerUnit = 1): Promise<VegetationPixels> {
   const wM = (extent.xmax - extent.xmin) * groundPerUnit, hM = (extent.ymax - extent.ymin) * groundPerUnit;
   const pxW = Math.min(MAX_PX, Math.round(wM / mPerPx)), pxH = Math.min(MAX_PX, Math.round(hM / mPerPx));
   const params = new URLSearchParams({ bbox: `${extent.xmin},${extent.ymin},${extent.xmax},${extent.ymax}`, bboxSR: '3857', imageSR: '3857', size: `${pxW},${pxH}`, format: 'png24', f: 'image' });
@@ -99,26 +113,27 @@ export async function fetchVegetationMask(extent: Extent, outDir: string, mPerPx
   const img = decodePng(new Uint8Array(await res.arrayBuffer()));
   if (!img) throw new Error('vegetation mask export did not decode');
   const { width: W, height: H, data } = img;
-  let m = new Uint8Array(W * H);
+  let m: Uint8Array = new Uint8Array(W * H);
+  const lum = new Uint8Array(W * H);
   for (let i = 0; i < W * H; i++) {
     const r = data[i * 4], g = data[i * 4 + 1], b = data[i * 4 + 2];
     const exg = 2 * g - r - b;
     m[i] = exg > 14 && g < 175 && g > r && g >= b ? 1 : 0;
+    lum[i] = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
   }
-  const morph = (src: Uint8Array, keep: (n: number) => boolean) => {
-    const out = new Uint8Array(W * H);
-    for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
-      let n = 0;
-      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) n += src[(y + dy) * W + x + dx];
-      out[y * W + x] = keep(n) ? 1 : 0;
-    }
-    return out;
-  };
-  m = morph(morph(m, (n) => n >= 4), (n) => n >= 3);
-  const grey = new Uint8Array(W * H);
+  m = morph(morph(m, W, H, 4), W, H, 3);
   let count = 0;
-  for (let i = 0; i < W * H; i++) { grey[i] = m[i] ? 255 : 0; count += m[i]; }
-  const file = 'vegetation_mask.png';
+  for (let i = 0; i < W * H; i++) count += m[i];
+  return { width: W, height: H, extent, mPerPx: wM / W, green: m, contrast: localContrast(lum, W, H), sharePct: Math.round((count / (W * H)) * 1000) / 10 };
+}
+
+/** The aerial's green over `extent` as a greyscale PNG mask in `outDir` (see fetchVegetationPixels), for the slides' painted canopy. */
+export async function fetchVegetationMask(extent: Extent, outDir: string, mPerPx = 0.8, groundPerUnit = 1, file = 'vegetation_mask.png'): Promise<VegetationMask> {
+  await mkdir(outDir, { recursive: true });
+  const px = await fetchVegetationPixels(extent, mPerPx, groundPerUnit);
+  const { width: W, height: H } = px;
+  const grey = new Uint8Array(W * H);
+  for (let i = 0; i < W * H; i++) grey[i] = px.green[i] ? 255 : 0;
   await writeFile(join(outDir, file), encodeGreyPng(W, H, grey));
-  return { file, extent, pxWidth: W, pxHeight: H, sharePct: Math.round((count / (W * H)) * 1000) / 10 };
+  return { file, extent, pxWidth: W, pxHeight: H, sharePct: px.sharePct };
 }
