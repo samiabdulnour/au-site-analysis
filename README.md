@@ -1449,7 +1449,22 @@ council. Then *character*: Wikipedia's summary of the suburb
 as the seed text, the places within 1.5 km with articles of their own,
 numbered on an aerial of the planning window, and a strip of open-licence
 photographs within 800 m from Wikimedia Commons, each credited as its licence
-asks, all of which the office's own reading and photographs replace. Then
+asks, all of which the office's own reading and photographs replace. Next to
+it the *streetscape*, the street seen before the plans are read:
+the site's street as two elevations across the spread, as `--type
+streetscape` draws it (190 m at 1:500, the buildings' lines, heights and
+levels over the faces, the conservation areas bracketed; see *The
+streetscape* below), laid out as the three-dimensional page after built form
+is (the drawing across the whole spread under the deck's heading, no rule
+under the subtitle, a lead over the right-hand page, the sources in two
+columns across the foot): the photographs on Google's meshes where Street
+View is keyed, else each building as a block at its recorded height behind
+its frontage (`faceSkyline` in `src/fetch/streetscape.ts`: the footprints on
+the face's side within 35 m of its building line, at their heights over the
+ground, the tallest where they overlap), its floor lines at 3.1 m a storey,
+coloured by its storeys as the built form page keys them, the site's in the
+site's ink; left out of the deck where it fails or the street holds nothing
+to draw, or with `DECK_STREETSCAPE=0`. Then
 the planning pair: a
 *planning overview* of four maps at 1:8000 around the site (land zoning in the
 statutory colours, height of building, heritage with the State Heritage
@@ -1497,19 +1512,7 @@ determined development application on the lot, hatched and said so), the
 storeys of the buildings within 250 m as a
 histogram with the LEP height plane marked on it, and section A–A′ again
 with the buildings it meets drawn at their heights and the height plane
-dashed over the site. Then the *streetscape*, where Street View is keyed:
-the site's street as two elevations across the spread, as `--type
-streetscape` draws it (190 m at 1:500, the buildings' lines, heights and
-levels over the faces, the conservation areas bracketed; see *The
-streetscape* below), on its own page after built form: the photographs on
-Google's meshes where Street View is keyed, else each building as a block at
-its recorded height behind its frontage (`faceSkyline` in
-`src/fetch/streetscape.ts`: the footprints on the face's side within 35 m
-of its building line, at their heights over the ground, the tallest where
-they overlap), its floor lines at 3.1 m a storey, coloured by its storeys as
-the built form page keys them, the site's in the site's ink; left out of the
-deck where it fails or the street holds nothing to draw, or with
-`DECK_STREETSCAPE=0`. Before it, *the city in
+dashed over the site. Then *the city in
 three dimensions* (`formAtlas`), laid out as the streetscape page is: the
 drawing across the whole spread under the deck's heading, a lead over the
 right-hand page, the sources across the foot. It is the built form 300 m

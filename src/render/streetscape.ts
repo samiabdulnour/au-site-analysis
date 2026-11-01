@@ -513,7 +513,7 @@ function scapeCss(): string {
   .scape .cap .ct { font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
   .scape .cap .cr { color: #6a7572; font-size: 2.1mm; }
   .scape .lead { font-size: 3.05mm; line-height: 1.38; font-weight: 600; color: ${t.site}; }
-  .scape .src { font-size: 2.1mm; line-height: 1.3; color: #6a7572; }`;
+  .scape .src { font-size: 2.1mm; line-height: 1.3; color: #6a7572; column-count: 2; column-gap: 10mm; }`;
 }
 
 function drawStreetscape(b: StreetscapeBundle, meta: SheetMeta, opts: StreetscapeOptions): string {
@@ -541,8 +541,9 @@ ${body}
 }
 
 /**
- * The streetscape as a page of the overall analysis, after built form: the faces across the spread under the deck's
- * own heading, the lead over the right-hand page, the sources across the foot. On A3 at the scale that fits.
+ * The streetscape as a page of the overall analysis, after the character page: the faces across the spread under the
+ * deck's own heading, no rule under the subtitle, the lead over the right-hand page, the sources in two columns across
+ * the foot. On A3 at the scale that fits.
  */
 export function streetscapeSlide(b: StreetscapeBundle, opts: Omit<StreetscapeOptions, 'scale'> = {}): Slide {
   const t = tpl();
@@ -552,5 +553,5 @@ export function streetscapeSlide(b: StreetscapeBundle, opts: Omit<StreetscapeOpt
 ${body}
   <div class="abs src" style="left:${MARGIN}mm;bottom:10mm;width:${SLIDE_W - 2 * MARGIN}mm">${esc(sources)}</div>
 </div>`;
-  return { id: '09b_streetscape', title: 'Streetscape', subtitle, textHtml: '', figureHtml, full: true, accent: t.site, css: scapeCss() };
+  return { id: '03b_streetscape', title: 'Streetscape', subtitle, textHtml: '', figureHtml, full: true, plain: true, accent: t.site, css: scapeCss() };
 }
