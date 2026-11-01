@@ -2540,7 +2540,7 @@ export function developmentAtlas(b0: SlidesBundle, facts: PlanningFacts): Slide 
  * red, a single title's outline in the transit family. Read as they are drawn, so each style's families apply.
  */
 const CAP_FILL = {
-  get strata(): Fill { return { bg: tint(INK.orange.solid, 0.38), outline: inkFor(INK.orange.deep, 0.42), outlineW: 0.12 }; },
+  get strata(): Fill { return { bg: tint(vivid(INK.orange.solid, 0.55, 0.55), 0.4), outline: inkFor(INK.orange.deep, 0.42), outlineW: 0.12 }; },
   get heritage(): Fill { return { kind: 'vlines', ink: tint(INK.red.solid, 0.55), step: 0.95, w: 0.07, outline: inkFor(INK.red.deep, 0.35), outlineW: 0.2 }; },
   get mature(): Fill { return { bg: tint(INK.blue.solid, 0.18), kind: 'dots', ink: inkFor(INK.blue.deep, 0.3), step: 0.5, w: 0.14, outline: inkFor(INK.blue.deep, 0.3), outlineW: 0.18 }; },
 };
