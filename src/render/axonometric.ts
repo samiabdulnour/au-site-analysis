@@ -111,7 +111,7 @@ export function drawAxonometric(scene: AxoScene, box: { x: number; y: number; w:
     if (Math.hypot(cen.x, cen.y) > reach) continue;
     const known = nb.heightM != null && nb.heightM > 0;
     const z1 = known ? nb.heightM! : 6.2;
-    const group: Prism[] = [{ rings, z0: 0, z1, fill: nb.fill, edge: shade(nb.fill, 0.55), edgeW: 0.12, dashed: !known, windows: known }];
+    const group: Prism[] = [{ rings, z0: 0, z1, fill: nb.fill, edge: shade(nb.fill, M.gloss ? 0.78 : 0.55), edgeW: 0.12, dashed: !known, windows: known }];
     if (nb.future && nb.future > z1) group.push({ rings, z0: z1, z1: nb.future, fill: inks.future, edge: inks.futureEdge, edgeW: 0.12, dashed: true, dash: FUTURE_DASH, opacity: FUTURE_OPACITY });
     prisms.push({ key: depth(cen), group });
   }
@@ -142,6 +142,22 @@ export function drawAxonometric(scene: AxoScene, box: { x: number; y: number; w:
   }
   const SITE = inks.site;
   ground.push(`<path d="${poly(ring.map((p) => P(p, 0)))}" fill="${SITE}" fill-opacity="0.08" stroke="${SITE}" stroke-width="0.35"/>`);
+  // Glossy: each building casts a soft shadow on the ground, away from the light, as far as its height is tall by
+  // the sun's slant; the footprint swept along it, one translucent group so overlaps do not darken twice.
+  if (M.gloss) {
+    const sh = { x: -light.x * 0.42, y: -light.y * 0.42 };
+    const pieces: string[] = [];
+    for (const { group } of prisms) for (const pr of group) {
+      if (pr.opacity != null) continue;   // a future's glass casts none
+      const dz = pr.z1 - pr.z0;
+      for (const rg of pr.rings) {
+        const off = (p: XY) => ({ x: p.x + sh.x * dz, y: p.y + sh.y * dz });
+        pieces.push(poly(rg.map((p) => P(off(p), 0))));
+        rg.forEach((p, i) => { const q = rg[(i + 1) % rg.length]; pieces.push(poly([P(p, 0), P(q, 0), P(off(q), 0), P(off(p), 0)])); });
+      }
+    }
+    ground.push(`<g opacity="0.1" fill="${INK.blue.deep}"><path d="${pieces.join('')}" fill-rule="nonzero"/></g>`);
+  }
 
   const prismSvg = (pr: Prism) => {
     const out: string[] = [];
@@ -156,7 +172,8 @@ export function drawAxonometric(scene: AxoScene, box: { x: number; y: number; w:
         return { p, q, m, mid: depth({ x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 }) };
       }).filter((f) => f.m.x * d.x + f.m.y * d.y < 0).sort((f, g) => g.mid - f.mid);
       for (const f of faces) {
-        const lit = 0.72 + 0.28 * Math.max(0, f.m.x * light.x + f.m.y * light.y);
+        // glossy: the faces barely shaded, the shadows cast on the ground instead
+        const lit = (M.gloss ? 0.9 : 0.72) + (M.gloss ? 0.1 : 0.28) * Math.max(0, f.m.x * light.x + f.m.y * light.y);
         const face = poly([P(f.p, pr.z0), P(f.q, pr.z0), P(f.q, pr.z1), P(f.p, pr.z1)]);
         out.push(`<path d="${face}" fill="${shade(pr.fill, lit)}"${alpha} stroke="${pr.edge}" stroke-width="${pr.edgeW}" stroke-linejoin="round"${dash}/>`);
         if (pr.windows) out.push(`<path d="${face}" fill="url(#axo-win-${id})"/>`);
@@ -166,7 +183,7 @@ export function drawAxonometric(scene: AxoScene, box: { x: number; y: number; w:
         }
       }
     }
-    out.push(`<path d="${pr.rings.map((rg) => poly(rg.map((p) => P(p, pr.z1)))).join('')}" fill="${shade(pr.fill, 1.12)}"${alpha} fill-rule="evenodd" stroke="${pr.edge}" stroke-width="${pr.edgeW}" stroke-linejoin="round"${dash}/>`);
+    out.push(`<path d="${pr.rings.map((rg) => poly(rg.map((p) => P(p, pr.z1)))).join('')}" fill="${shade(pr.fill, M.gloss ? 1.3 : 1.12)}"${alpha} fill-rule="evenodd" stroke="${pr.edge}" stroke-width="${pr.edgeW}" stroke-linejoin="round"${dash}/>`);
     return out.join('');
   };
   // The outer edge of what the prisms cover on paper: every face, joined.
@@ -271,7 +288,7 @@ export function drawAxonometric(scene: AxoScene, box: { x: number; y: number; w:
   if (scene.hob?.metres && !planeFits) notes.push(note(notes.length, SITE, scene.hob.note));
   if (futureTop > cap) notes.push(note(notes.length, inks.futureEdge, `NEIGHBOURS' FUTURE HEIGHTS RUN ABOVE THE FRAME, TO ${nf(futureTop)}m`));
   // Strokes are set in sheet millimetres and do not scale with the scene.
-  return `<defs><clipPath id="axo-${id}"><rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}"/></clipPath><pattern id="axo-win-${id}" patternUnits="userSpaceOnUse" width="2.6" height="3.1"><rect x="0.75" y="0.8" width="1.1" height="1.5" fill="#000000" fill-opacity="0.17"/></pattern></defs>
+  return `<defs><clipPath id="axo-${id}"><rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}"/></clipPath><pattern id="axo-win-${id}" patternUnits="userSpaceOnUse" width="2.6" height="3.1"><rect x="0.75" y="0.8" width="1.1" height="1.5" fill="#000000" fill-opacity="${M.gloss ? 0.09 : 0.17}"/></pattern></defs>
     <g clip-path="url(#axo-${id})"><g transform="translate(${tx.toFixed(2)},${ty.toFixed(2)}) scale(${k.toFixed(4)})">
     <g style="vector-effect:non-scaling-stroke">${ground.join('')}${parts.join('')}${over.join('')}</g></g></g>${notes.join('')}`;
 }

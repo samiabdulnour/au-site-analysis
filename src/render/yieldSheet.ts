@@ -341,9 +341,11 @@ const siteInk = () => deckLook().accent;
 /** A neighbour's colour in the massing: its zone's, bold, as the plan tints its lot — the ePlanning colour where the style keeps it, the category's elsewhere. */
 function zoneInk(zone: string | undefined, look: DeckLook): string | null {
   if (!zone) return null;
-  if (look.zones === 'lep') return vivid(zoneFill(zone), 0.45, 0.5);
+  // Kingfisher light and glossy: a pastel cut of the zone's colour
+  const soft = (c: string) => (look.id === 'kingfisher' ? tint(c, 0.6) : c);
+  if (look.zones === 'lep') return soft(vivid(zoneFill(zone), 0.45, 0.5));
   const cat = zoneToCategory(zone), c = cat ? look.categories.find((x) => x.id === cat) : undefined;
-  return c ? vivid(c.fill, 0.5, 0.5) : null;
+  return c ? soft(vivid(c.fill, 0.5, 0.5)) : null;
 }
 /** The trees' inks for the key. */
 function treeInks() { const M = massingInks(); return { fill: M.tree, edge: shade(M.tree, 0.7) }; }

@@ -378,16 +378,19 @@ export const heightBandOf = (h: number) => Math.max(0, HEIGHT_BANDS.findIndex((b
  */
 export function massingInks() {
   const O = INK.orange, G = INK.green, B = INK.blue;
-  const green = vivid(G.solid, 0.5, 0.45);
+  // Kingfisher is light and glossy: pastel cuts of the same colours on a near-white ground, the faces lit brighter
+  const gloss = deckLook().id === 'kingfisher';
+  const green = gloss ? tint(vivid(G.solid, 0.5, 0.5), 0.7) : vivid(G.solid, 0.5, 0.45);
   return {
-    bands: rampColours(HEIGHT_BANDS.length, heightRamp()),
-    noHeight: tint(B.solid, 0.22),
-    ground: tint(O.solid, 0.1),
-    lot: tint(inkFor(O.deep, 0.4), 0.45),
-    park: tint(green, 0.4),
+    bands: rampColours(HEIGHT_BANDS.length, heightRamp()).map((c) => (gloss ? tint(c, 0.58) : c)),
+    noHeight: tint(B.solid, gloss ? 0.14 : 0.22),
+    ground: tint(O.solid, gloss ? 0.04 : 0.1),
+    lot: tint(inkFor(O.deep, 0.4), gloss ? 0.3 : 0.45),
+    park: tint(green, gloss ? 0.45 : 0.4),
     road: '#ffffff',
-    axis: tint(B.solid, 0.55),
-    tree: green, treeLight: tint(green, 0.6), trunk: inkFor(G.deep, 0.12),
+    axis: tint(B.solid, gloss ? 0.4 : 0.55),
+    tree: green, treeLight: tint(green, 0.6), trunk: inkFor(G.deep, gloss ? 0.3 : 0.12),
+    gloss,
   };
 }
 
