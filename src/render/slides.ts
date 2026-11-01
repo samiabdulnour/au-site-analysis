@@ -2606,7 +2606,7 @@ export function formAtlas(b: SlidesBundle, planning: PlanningFacts): Slide {
   const src = f.source === 'overture' ? `Overture Maps Foundation buildings${f.release ? ` (release ${f.release})` : ''}, footprints and heights from OpenStreetMap, Microsoft, Esri Community Maps and Google Open Buildings` : f.source === 'osm' ? 'OpenStreetMap buildings' : 'no building source';
   const sources = `Sources: ${src}; heights measured, or ${METRES_PER_STOREY} m a storey, else the storeys of a determined application on the lot; every building in the colour of its storeys as the height of buildings page keys them (${HEIGHT_BANDS.map((bd) => bd.label).join(' · ')}), dashed where none is recorded; what stands on the site in the site's ink; streets from NSW Spatial Services, the kerbs worked out from the cadastre; parks from the open-space zones; the trees read off NSW Imagery as crowns, their size indicative. Drawn from the ${bearingName(camBearing)}, looking down 35°. Retrieved ${b.buildings.fetchedAt.slice(0, 10)}.`;
   // The key, framed on the drawing in its bottom-right corner as the movement map keys its places: a little block in
-  // each storeys' colour, lit as the drawing lights its buildings, and the ground round them.
+  // each storeys' colour, lit as the drawing lights its buildings, the dashed block of no recorded height, the site's.
   const formKey = (() => {
     const KW = 50, ROW = 3.05, PAD = 2.2, INKT = '#2a2e2c';
     const block = (x: number, y: number, fill: string, edge: string, dashed = false) => {
@@ -2617,16 +2617,10 @@ export function formAtlas(b: SlidesBundle, planning: PlanningFacts): Slide {
         `<polygon points="${pt([[0, -2.2], [2.2, -2.2], [3.2, -2.8], [1, -2.8]])}" fill="${shade(fill, roof)}" stroke="${edge}" stroke-width="0.1"${dash}/>`;
     };
     const storeys = HEIGHT_BANDS.map((bd, i) => ({ swatch: (x: number, y: number) => block(x, y, M.bands[i], shade(M.bands[i], M.gloss ? 0.78 : 0.55)), text: i === 0 ? bd.label : i === HEIGHT_BANDS.length - 1 ? '16 storeys and more' : `${bd.label} storeys` }));
-    const kerb = inkFor(INK.blue.solid, 0.4), car = vivid(INK.red.solid, 0.55, 0.45);
-    const rows: ({ head: string } | { swatch: (x: number, y: number) => string; text: string })[] = [
+    const rows: { swatch: (x: number, y: number) => string; text: string }[] = [
       ...storeys,
       { swatch: (x, y) => block(x, y, M.noHeight, shade(M.noHeight, 0.55), true), text: 'No height recorded, dashed' },
       { swatch: (x, y) => block(x, y, tint(t.site, 0.55), '#1c1c1c'), text: 'What stands on the site today' },
-      { head: 'AROUND THEM' },
-      { swatch: (x, y) => `<rect x="${x.toFixed(2)}" y="${(y - 2.4).toFixed(2)}" width="3.2" height="2.2" fill="${M.road}" stroke="${kerb}" stroke-width="0.15"/><line x1="${x.toFixed(2)}" y1="${(y - 1.3).toFixed(2)}" x2="${(x + 3.2).toFixed(2)}" y2="${(y - 1.3).toFixed(2)}" stroke="${M.axis}" stroke-width="0.12" stroke-dasharray="0.7,0.5"/>`, text: 'Streets, kerb to kerb' },
-      { swatch: (x, y) => `<rect x="${x.toFixed(2)}" y="${(y - 2.4).toFixed(2)}" width="3.2" height="2.2" fill="${M.park}" stroke="${M.lot}" stroke-width="0.1"/>`, text: 'Parks and open space' },
-      { swatch: (x, y) => `<line x1="${(x + 1.6).toFixed(2)}" y1="${y.toFixed(2)}" x2="${(x + 1.6).toFixed(2)}" y2="${(y - 1.2).toFixed(2)}" stroke="${M.trunk}" stroke-width="0.2"/><circle cx="${(x + 1.6).toFixed(2)}" cy="${(y - 2).toFixed(2)}" r="1.1" fill="${M.tree}"/><circle cx="${(x + 1.35).toFixed(2)}" cy="${(y - 2.2).toFixed(2)}" r="0.7" fill="${M.treeLight}"/>`, text: 'Trees, read off the aerial' },
-      { swatch: (x, y) => `<rect x="${x.toFixed(2)}" y="${(y - 1.3).toFixed(2)}" width="2" height="1" fill="${car}" stroke="#3a3a3a" stroke-width="0.08"/><rect x="${(x + 0.45).toFixed(2)}" y="${(y - 1.9).toFixed(2)}" width="1.1" height="0.6" fill="${tint(INK.blue.solid, 0.78)}" stroke="#3a3a3a" stroke-width="0.08"/><rect x="${(x + 2.55).toFixed(2)}" y="${(y - 2).toFixed(2)}" width="0.45" height="1.5" fill="#3a3a3a"/><circle cx="${(x + 2.78).toFixed(2)}" cy="${(y - 2.3).toFixed(2)}" r="0.3" fill="#3a3a3a"/>`, text: 'Cars, people and bicycles, indicative' },
     ];
     const kh = PAD * 2 + 3.6 + rows.length * ROW;
     const kx = SHEET_W - MARGIN - KW, ky = SHEET_H - FOOT - 3 - kh;
@@ -2635,7 +2629,6 @@ export function formAtlas(b: SlidesBundle, planning: PlanningFacts): Slide {
     let ry = ky + PAD + 3.6;
     for (const r of rows) {
       ry += ROW;
-      if ('head' in r) { out.push(`<text x="${kx + PAD}" y="${(ry - 0.7).toFixed(2)}" font-size="1.8" font-weight="700" letter-spacing="0.1" fill="${accent}">${r.head}</text>`); continue; }
       out.push(r.swatch(kx + PAD, ry - 0.4), `<text x="${(kx + PAD + 5).toFixed(2)}" y="${(ry - 0.7).toFixed(2)}" font-size="1.8" fill="${INKT}">${esc(r.text)}</text>`);
     }
     return `<g>${out.join('')}</g>`;

@@ -1543,7 +1543,8 @@ colour of its height band as the height of buildings page keys them, windowed, d
 where no height is recorded; the site's own building in the site's ink, all
 keyed in a framed box in the drawing's bottom-right corner, as the movement
 map keys its places (a little block in each storeys' colour, lit as the
-drawing lights its buildings, and the ground round them); the
+drawing lights its buildings, the dashed block of no recorded height and the
+site's own); the
 streets white kerb to kerb (the kerbs worked out from the cadastre), the
 parks green, the trees read off the aerial as crowns (`green.crowns`, 330 m
 round the site, `lib/crowns.ts`), a little traffic, people on the footpaths
