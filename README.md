@@ -19,7 +19,7 @@ names it (`--type summary`, `sheet: "summary"`), so older batches keep working.
 
 The site report, `slides`, is the content part of a feasibility study or
 design report: an overall-analysis deck (context, planning, development
-activity, topography, built form, movement, site, sun and views, constraints,
+activity, topography, height of buildings, built form, movement, site, sun and views, constraints,
 Country, people and market, opportunities). Each A3 landscape sheet is laid
 out as a book spread that folds at its vertical centre into two A4 pages —
 the left page the title, narrative and side column, the right page the
@@ -1180,13 +1180,14 @@ The text on a map wears no outline: not a white halo on paper, and not a
 black one on the white words over the aerial (zone codes, street names,
 the places' names), which stand on the photograph as they are.
 The storeys' ramp runs across the palette in every style, Heron's included
-(`heightRamp`): the built form page, the massing and the three-dimensional
-page take it, so a city reads in many colours. Kingfisher draws the massing
-and the three-dimensional page light and glossy (`massingInks().gloss`):
-pastel cuts of the same colours on a near-white ground, the faces lit
-bright and barely shaded, the roofs lighter, the edges and the window dots
-softer, and each building casting a soft blue shadow on the ground instead,
-its footprint swept away from the light by its height. Heron keeps
+(`heightRamp`): the height of buildings page, the massing and the built form page take it, so a city reads in many colours. Kingfisher and Flamingo draw
+the massing and the built form page light and glossy
+(`massingInks().gloss` and `.pastel`): pastel cuts of the same colours on a
+near-white ground, the faces lit bright and barely shaded, the roofs
+lighter, the edges and the window dots softer, and each building casting a
+soft blue shadow on the ground instead, its footprint swept away from the
+light by its height; Heron and Canary shade the faces themselves, in the
+full colours. Heron keeps
 the office's own swatch sheet for its decks, the five families the decks
 were drawn in before the styles, with the land-use categories laid out in
 those families (`KIT_INK`, `KIT_CATEGORIES`): the office's sheet in the
@@ -1320,12 +1321,18 @@ outline is drawn over everything, so a future neighbour in front of it does
 not hide it, and a future far above what stands runs out of the frame, as the
 height plane does, the frame saying how high it goes. The massing is drawn
 after the poster maps of a city (`src/render/axonometric.ts`, the drawing
-the site report's three-dimensional page shares): every neighbour in its
+the site report's built form page shares): every neighbour in its
 zone's colour, bold, as the plan beneath tints its lot (the ePlanning colour
 where the style keeps it, the category's elsewhere), so the plan and the
 massing agree, with a grid of windows over its faces, on a cream ground of
 the activity family — paper in every style. The photograph goes under the
-first page's plan in every style, and under no other page.
+first page's plan in every style, and under no other page. The town runs to
+the frame's every edge: the frame is fitted to the site and 40 m of town
+round it (`FOCUS_M` in `src/render/yieldSheet.ts`, at the height of what
+stands or is built on the site, or of the plane over it where it is near),
+and the town is drawn 230 m out from the site, cut at the frame's edges, so
+the pipeline reads the streets, lots, zones, controls, trees and neighbours
+260 m round the site (`MASSING_M` in `src/pipeline.ts`).
 The ground the massing stands on is drawn too: the streets as surfaces, kerb to kerb
 (`src/lib/carriageway.ts`: each centreline swept out to the kerb lines where
 the sheet has them, to its class's typical width where it has none, the
@@ -1341,7 +1348,11 @@ crowns read at them — none on a footprint, and none on the site where a
 scheme stands on it, each a bold green with its light to the north-west;
 and the traffic, a car every so often down each street
 on the left of its axis, a body with a cabin, in the families' solid
-colours in turn. The bundle carries the trees (`trees`), read when the yield is fetched;
+colours in turn; and the people: a walker every so often along each
+street's footpath, a body on the ground with a head over it, and a rider
+every so often down the kerb side of the lane, two wheels and a frame with
+the body over them, in the traffic's colours and a dark grey in turn, none
+where a building stands and none on the site. The bundle carries the trees (`trees`), read when the yield is fetched;
 a bundle from before them draws the streets and no trees. Under the massing, the
 envelope in plan at a round scale, on the ground the site analysis draws, kept to black and
 grey: the lot lines, the kerbs (`src/lib/kerbs.ts`, indicative), the
@@ -1453,8 +1464,9 @@ asks, all of which the office's own reading and photographs replace. Next to
 it the *streetscape*, the street seen before the plans are read:
 the site's street as two elevations across the spread, as `--type
 streetscape` draws it (190 m at 1:500, the buildings' lines, heights and
-levels over the faces, the conservation areas bracketed; see *The
-streetscape* below), laid out as the three-dimensional page after built form
+levels over the faces, the conservation areas bracketed, a tower that runs
+past its band's top cut there as the meshes are, its tag kept inside the
+band; see *The streetscape* below), laid out as the built form page (after height of buildings)
 is (the drawing across the whole spread under the deck's heading, no rule
 under the subtitle, a lead over the right-hand page, the sources in two
 columns across the foot): the photographs on Google's meshes where Street
@@ -1462,7 +1474,7 @@ View is keyed, else each building as a block at its recorded height behind
 its frontage (`faceSkyline` in `src/fetch/streetscape.ts`: the footprints on
 the face's side within 35 m of its building line, at their heights over the
 ground, the tallest where they overlap), its floor lines at 3.1 m a storey,
-coloured by its storeys as the built form page keys them, the site's in the
+coloured by its storeys as the height of buildings page keys them, the site's in the
 site's ink; left out of the deck where it fails or the street holds nothing
 to draw, or with `DECK_STREETSCAPE=0`. Then
 the planning pair: a
@@ -1502,7 +1514,7 @@ where the line crosses it at the level the model reads),
 A–A′ down the steepest fall and B–B′ across it, each drawn as a section
 with the site and its levels marked; the text gives the site's RL range,
 fall, grade and aspect and where the high ground and the water are. Then
-*built form*: every building footprint in the window coloured by height
+*height of buildings*: every building footprint in the window coloured by height
 band (Overture Maps, read from its public bucket by DuckDB through
 `src/py/overture_buildings.py`, its gaps filled from OpenStreetMap through
 Overpass — a footprint Overture misses joins, and a footprint it holds with
@@ -1512,17 +1524,18 @@ determined development application on the lot, hatched and said so), the
 storeys of the buildings within 250 m as a
 histogram with the LEP height plane marked on it, and section A–A′ again
 with the buildings it meets drawn at their heights and the height plane
-dashed over the site. Then *the city in
-three dimensions* (`formAtlas`), laid out as the streetscape page is: the
+dashed over the site. Then *built form*
+(`formAtlas`), laid out as the streetscape page is: the
 drawing across the whole spread under the deck's heading, a lead over the
-right-hand page, the sources across the foot. It is the built form 300 m
+right-hand page, the sources across the foot. It is the city 300 m
 round the site as the yield's massing draws it (`src/render/axonometric.ts`),
 the camera off the nearest street looking down 35°, every building in the
-colour of its height band as the built form page keys them, windowed, dashed
+colour of its height band as the height of buildings page keys them, windowed, dashed
 where no height is recorded; the site's own building in the site's ink; the
 streets white kerb to kerb (the kerbs worked out from the cadastre), the
 parks green, the trees read off the aerial as crowns (`green.crowns`, 330 m
-round the site, `lib/crowns.ts`) and a little traffic. Then *movement*: roads by function, rail and
+round the site, `lib/crowns.ts`), a little traffic, people on the footpaths
+and bicycles at the kerbs. Then *movement*: roads by function, rail and
 stations, the walking reach from the site (Valhalla) in bands of three
 minutes to fifteen, each band's edge a dashed line in its own colour up the
 style's ramp, the warmest nearest, over the buildings as a quiet
@@ -1881,7 +1894,7 @@ much, with only the new 82 m to ask for.
 
 Outputs: `STREETSCAPE.pdf` and `streetscape.png`, the pictures and
 `data/streetscape_bundle.json` beside them. The overall analysis draws it
-too, as the page after built form, with the building lines; the image-model
+too, as the page after character, with the building lines; the image-model
 pass below is never part of it. It runs in the image's own Chromium
 (Debian's, WebGL in SwiftShader): Riley Street's photographs on the 3D tiles
 took 50 s there.

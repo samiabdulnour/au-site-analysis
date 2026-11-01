@@ -341,8 +341,8 @@ const siteInk = () => deckLook().accent;
 /** A neighbour's colour in the massing: its zone's, bold, as the plan tints its lot — the ePlanning colour where the style keeps it, the category's elsewhere. */
 function zoneInk(zone: string | undefined, look: DeckLook): string | null {
   if (!zone) return null;
-  // Kingfisher light and glossy: a pastel cut of the zone's colour
-  const soft = (c: string) => (look.id === 'kingfisher' ? tint(c, 0.6) : c);
+  // Kingfisher and Flamingo light and glossy: a pastel cut of the zone's colour
+  const soft = (c: string) => (massingInks().pastel ? tint(c, 0.6) : c);
   if (look.zones === 'lep') return soft(vivid(zoneFill(zone), 0.45, 0.5));
   const cat = zoneToCategory(zone), c = cat ? look.categories.find((x) => x.id === cat) : undefined;
   return c ? soft(vivid(c.fill, 0.5, 0.5)) : null;
@@ -386,6 +386,8 @@ function storeyZ(y: YieldResult): { bottom: (s: number) => number; top: (s: numb
  * each in its zone's colour, as the plan tints its lot, with its future over it; the proposal's tiers, or what
  * stands, in the site's own inks; the streets, the lots, the trees and the height plane.
  */
+/** How much town round the site the massing's frame is fitted to, in metres beyond the site's bounds; the town runs on past the frame. */
+const FOCUS_M = 40;
 function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w: number; h: number }, scheme: Scheme, id: string): string {
   const y = scheme.y;
   const Y = yieldInks();
@@ -401,7 +403,9 @@ function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number;
     const q = s.ring[(i + 1) % s.ring.length], dx = q.x - p.x, dy = q.y - p.y, l = Math.hypot(dx, dy);
     if (l > best) { best = l; nx = signed > 0 ? dy / l : -dy / l; ny = signed > 0 ? -dx / l : dx / l; }
   });
-  const reach = Math.max(...s.ring.map((p) => Math.hypot(p.x, p.y))) + 70;
+  // The town round the site as far as the frame can show, and past it: the frame is fitted to the site and FOCUS_M of
+  // town round it, and what is drawn runs out to its every edge (the pipeline reads the town this far).
+  const reach = Math.max(...s.ring.map((p) => Math.hypot(p.x, p.y))) + 230;
   const local = (rg: number[][]) => rg.map(([lon, lat]) => s.toLocal(lon, lat));
   const neighbours = b.context.map((cb, i) => ({
     rings: [local(cb.rings[0] ?? [])].filter((rg) => rg.length >= 3),
@@ -434,6 +438,7 @@ function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number;
     inks: { site: siteInk(), future: Y.future, futureEdge: Y.futureEdge, envelope: Y.envelope, kerb: Y.kerb },
     silhouette: s.futures.some(Boolean),
     treesOnSite: !scheme.y,
+    focusM: FOCUS_M,
   };
   return drawAxonometric(scene, box, id);
 }

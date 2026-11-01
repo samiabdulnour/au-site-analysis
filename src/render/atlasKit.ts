@@ -361,7 +361,7 @@ export function terrainRamp(): string[] {
   return [tint(vivid(sand, 0.6, 0.62), 0.3), tint(red, 0.5), red, vivid(mix(red, B.solid, 0.55), 0.45, 0.42), vivid(B.deep, 0.5, 0.3)];
 }
 
-/** The built form's height bands, keyed on its page and coloured up the style's ramp; the massing takes the same bands. */
+/** The height bands, keyed on the height of buildings page and coloured up the style's ramp; the massing takes the same bands. */
 export const HEIGHT_BANDS: { label: string; maxM: number; fill: string }[] = [
   { label: '1–2 storeys', maxM: 7.5, fill: '#d6e7e0' },
   { label: '3–4', maxM: 14, fill: '#a8cdc2' },
@@ -373,28 +373,34 @@ export const HEIGHT_BANDS: { label: string; maxM: number; fill: string }[] = [
 export const heightBandOf = (h: number) => Math.max(0, HEIGHT_BANDS.findIndex((bd) => h <= bd.maxM));
 
 /**
- * The massing's colours, after the poster maps of a city: the height bands up the style's ramp (the built form
+ * The massing's colours, after the poster maps of a city: the height bands up the style's ramp (the height of buildings
  * page's), a cream ground of the activity family, white streets, the parks and the trees in the living green.
  */
 export function massingInks() {
   const O = INK.orange, G = INK.green, B = INK.blue;
-  // Kingfisher is light and glossy: pastel cuts of the same colours on a near-white ground, the faces lit brighter
-  const gloss = deckLook().id === 'kingfisher';
-  const green = gloss ? tint(vivid(G.solid, 0.5, 0.5), 0.7) : vivid(G.solid, 0.5, 0.45);
+  // Two shadow models. Glossy (Kingfisher and Flamingo): the faces lit bright and barely shaded, the roofs lighter,
+  // the edges soft, and each building casting a soft shadow on the ground instead; and light with it, pastel cuts
+  // of the same colours on a near-white ground. Else (Heron, Canary) the faces carry the shade, the colours full.
+  const id = deckLook().id;
+  const gloss = id === 'kingfisher' || id === 'flamingo', pastel = gloss;
+  const green = pastel ? tint(vivid(G.solid, 0.5, 0.5), 0.7) : vivid(G.solid, 0.5, 0.45);
   return {
-    bands: rampColours(HEIGHT_BANDS.length, heightRamp()).map((c) => (gloss ? tint(c, 0.58) : c)),
-    noHeight: tint(B.solid, gloss ? 0.14 : 0.22),
-    ground: tint(O.solid, gloss ? 0.04 : 0.1),
-    lot: tint(inkFor(O.deep, 0.4), gloss ? 0.3 : 0.45),
-    park: tint(green, gloss ? 0.45 : 0.4),
+    bands: rampColours(HEIGHT_BANDS.length, heightRamp()).map((c) => (pastel ? tint(c, 0.58) : c)),
+    noHeight: tint(B.solid, pastel ? 0.14 : 0.22),
+    ground: tint(O.solid, pastel ? 0.04 : 0.1),
+    lot: tint(inkFor(O.deep, 0.4), pastel ? 0.3 : 0.45),
+    park: tint(green, pastel ? 0.45 : 0.4),
     road: '#ffffff',
-    axis: tint(B.solid, gloss ? 0.4 : 0.55),
-    tree: green, treeLight: tint(green, 0.6), trunk: inkFor(G.deep, gloss ? 0.3 : 0.12),
+    axis: tint(B.solid, pastel ? 0.4 : 0.55),
+    tree: green, treeLight: tint(green, 0.6), trunk: inkFor(G.deep, pastel ? 0.3 : 0.12),
+    /** The glossy shadow model: lit faces, soft edges, the shadows on the ground. */
     gloss,
+    /** Pastel cuts of the colours on a near-white ground. */
+    pastel,
   };
 }
 
-/** The storeys' ramp, across the palette in every style, Heron's included: the built form page, the massing and the three-dimensional page take it, so a city reads in many colours. */
+/** The storeys' ramp, across the palette in every style, Heron's included: the height of buildings page, the massing and the built form page take it, so a city reads in many colours. */
 export function heightRamp(): string[] {
   return paletteRamp();
 }

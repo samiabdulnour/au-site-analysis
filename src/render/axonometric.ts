@@ -1,5 +1,5 @@
 // The axonometric of a city block, shared by the yield's massing and the
-// site report's three-dimensional page.
+// site report's built form page.
 //
 // The camera stands off the site along a normal the caller gives (the main
 // frontage's, or the nearest street's), turned 40° to take in a side, looking
@@ -11,7 +11,7 @@
 //
 // The colours are the caller's: each neighbour comes with its fill (the
 // yield gives each its zone's, so its plan and its massing agree; the report
-// gives each its height band's, as its built form page does). The ground is
+// gives each its height band's, as its height of buildings page does). The ground is
 // a cream of the activity family, the streets white on it kerb to kerb, the
 // parks and the trees in the living green, after the poster maps of a city.
 
@@ -68,6 +68,8 @@ export interface AxoScene {
   inks: { site: string; future: string; futureEdge: string; envelope: string; kerb: string };
   /** The built's outline over everything, so a future in front of it does not lose it. */
   silhouette?: boolean;
+  /** Set, the frame is fitted to the site and this many metres of town round it, and the town drawn to `reach` runs out past the frame's every edge; unset, everything within reach is fitted in. */
+  focusM?: number;
   /** Keep the trees that stand on the site (what stands today); a scheme clears them. */
   treesOnSite?: boolean;
 }
@@ -142,7 +144,7 @@ export function drawAxonometric(scene: AxoScene, box: { x: number; y: number; w:
   }
   const SITE = inks.site;
   ground.push(`<path d="${poly(ring.map((p) => P(p, 0)))}" fill="${SITE}" fill-opacity="0.08" stroke="${SITE}" stroke-width="0.35"/>`);
-  // Glossy: each building casts a soft shadow on the ground, away from the light, as far as its height is tall by
+  // Glossy (Kingfisher, Flamingo): each building casts a soft shadow on the ground, away from the light, as far as its height is tall by
   // the sun's slant; the footprint swept along it, one translucent group so overlaps do not darken twice.
   if (M.gloss) {
     const sh = { x: -light.x * 0.42, y: -light.y * 0.42 };
@@ -244,11 +246,56 @@ export function drawAxonometric(scene: AxoScene, box: { x: number; y: number; w:
       }
     }
   }
-  // Everything that stands, farthest first: the neighbours and the built, the trees and the traffic among them.
+  // People on the footpaths and bicycles at the kerb: a walker every so often along each street's footpath, a body
+  // standing on the ground with a head over it; a rider every so often down the kerb side of the lane, two wheels
+  // and a frame with the body over them; in the traffic's colours and a dark grey in turn. None down a lane, no
+  // bicycle on a highway, none where a building stands, and none on the site.
+  const FIGURE_INKS = [...CAR_INKS.slice(0, 3), '#3a3a3a'];
+  const figures: { key: number; svg: () => string }[] = [];
+  let pi = 0;
+  const free = (c: XY) => Math.hypot(c.x, c.y) <= reach && !footprints.some((rg) => inRing(c, rg)) && !inRing(c, ring);
+  // a body: a slip of the figure's colour, 0.5 m wide across the view, from z0 up to z1, and its head over it
+  const body = (c: XY, z0: number, z1: number, fill: string) => {
+    const a = { x: c.x - r.x * 0.26, y: c.y - r.y * 0.26 }, b = { x: c.x + r.x * 0.26, y: c.y + r.y * 0.26 };
+    const [hx, hy] = P(c, z1 + 0.3);
+    return `<path d="${poly([P(a, z0), P(b, z0), P(b, z1), P(a, z1)])}" fill="${fill}"/><circle cx="${hx.toFixed(2)}" cy="${hy.toFixed(2)}" r="0.3" fill="${fill}"/>`;
+  };
+  const bikeSvg = (c: XY, u: XY, fill: string) => {
+    const hub = (s: number) => P({ x: c.x + u.x * s, y: c.y + u.y * s }, 0.34);
+    const [ax, ay] = hub(-0.55), [bx, by] = hub(0.55);
+    return `<circle cx="${ax.toFixed(2)}" cy="${ay.toFixed(2)}" r="0.34" fill="none" stroke="#3a3a3a" stroke-width="0.12"/><circle cx="${bx.toFixed(2)}" cy="${by.toFixed(2)}" r="0.34" fill="none" stroke="#3a3a3a" stroke-width="0.12"/><line x1="${ax.toFixed(2)}" y1="${ay.toFixed(2)}" x2="${bx.toFixed(2)}" y2="${by.toFixed(2)}" stroke="#3a3a3a" stroke-width="0.12"/>${body(c, 0.8, 1.75, fill)}`;
+  };
+  for (const { axis, left, right, road } of cw.axes) {
+    if (road.hierarchy >= 7) continue;
+    for (const side of [1, -1]) {
+      const path = (side > 0 ? left : right) + 1.6;   // the footpath, past the kerb
+      for (const { p, t } of alongLine(axis, 9 + road.hierarchy * 2, 4 + (pi % 5) * 2.3)) {
+        const n = { x: -t.y * side, y: t.x * side };
+        const c = { x: p.x + n.x * path, y: p.y + n.y * path };
+        if (!free(c)) continue;
+        const fill = FIGURE_INKS[pi++ % FIGURE_INKS.length];
+        figures.push({ key: depth(c), svg: () => body(c, 0, 1.45, fill) });
+      }
+    }
+    if (road.hierarchy <= 2) continue;   // no bicycle on a highway
+    for (const dir of [1, -1]) {
+      for (const { p, t } of alongLine(axis, 30 + road.hierarchy * 4, dir > 0 ? 11 + (pi % 3) * 7 : 25 + (pi % 4) * 5)) {
+        const n = { x: -t.y * dir, y: t.x * dir };   // the left of the direction of travel: the kerb side
+        const kerb = dir > 0 ? left : right;
+        const c = { x: p.x + n.x * (kerb - 1.1), y: p.y + n.y * (kerb - 1.1) };
+        if (!free(c)) continue;
+        const u = { x: t.x * dir, y: t.y * dir };
+        const fill = FIGURE_INKS[pi++ % FIGURE_INKS.length];
+        figures.push({ key: depth(c), svg: () => bikeSvg(c, u, fill) });
+      }
+    }
+  }
+  // Everything that stands, farthest first: the neighbours and the built, the trees, the traffic and the people among them.
   const standing: { key: number; svg: () => string }[] = [
     ...prisms.map(({ key, group }) => ({ key, svg: () => group.map(prismSvg).join('') })),
     ...trees.map((tr) => ({ key: depth(tr.p), svg: () => treeSvg(tr) })),
     ...cars.map((car) => ({ key: car.key, svg: () => prismSvg(car.body) + prismSvg(car.cabin) })),
+    ...figures,
   ].sort((a, b2) => b2.key - a.key);
   for (const item of standing) parts.push(item.svg());
   if (scene.silhouette) parts.push(silhouette(built));
@@ -276,8 +323,21 @@ export function drawAxonometric(scene: AxoScene, box: { x: number; y: number; w:
     for (const rg of pr.rings) for (const p of rg) pts.push(P(p, pr.z0), P(p, z1));
   }
   const planeZ = scene.hob?.metres ?? 0;
-  const planeFits = planeZ <= cap;
+  let planeFits = planeZ <= cap;
   for (const p of ring) pts.push(P(p, 0), P(p, planeFits ? planeZ : Math.max(tallest, 12) * 1.25));
+  if (scene.focusM != null) {
+    // Fitted to the site and the town just round it, at the height of what stands or is built on the site (or the
+    // plane over it, where it is near that height; a tower across town does not bring it in): the rest of the town
+    // runs out past the frame, cut at its edges.
+    pts.length = 0;
+    const siteTop = Math.max(12, ...built.map((pr) => pr.z1));
+    planeFits = planeZ <= siteTop * 1.6;
+    const zF = planeFits ? planeZ : siteTop * 1.25;
+    const xs0 = ring.map((p) => p.x), ys0 = ring.map((p) => p.y), m = scene.focusM;
+    const sq = [{ x: Math.min(...xs0) - m, y: Math.min(...ys0) - m }, { x: Math.max(...xs0) + m, y: Math.min(...ys0) - m }, { x: Math.max(...xs0) + m, y: Math.max(...ys0) + m }, { x: Math.min(...xs0) - m, y: Math.max(...ys0) + m }];
+    for (const p of sq) pts.push(P(p, 0));
+    for (const p of ring) pts.push(P(p, 0), P(p, zF));
+  }
   const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
   const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
   const k = Math.min(box.w / (x1 - x0 || 1), box.h / (y1 - y0 || 1));

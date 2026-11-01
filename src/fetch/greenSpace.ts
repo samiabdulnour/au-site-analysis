@@ -59,7 +59,7 @@ export interface GreenData {
   /** The green of the aerial over the page: optional, decks read before it have none. */
   vegetation?: VegetationMask | null;
   trees: { points: StreetTree[]; source?: { name: string; attribution: string } };
-  /** The trees round the site read off the aerial's green as crowns (lib/crowns.ts), for the three-dimensional page; absent from decks read before it. */
+  /** The trees round the site read off the aerial's green as crowns (lib/crowns.ts), for the built form page; absent from decks read before it. */
   crowns?: YieldTree[];
   fetchedAt: string;
 }

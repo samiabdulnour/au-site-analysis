@@ -567,23 +567,26 @@ export async function runYieldPipeline(
   // The photograph under the plan and the axonometric, for the styles that draw the yield on the aerial: wide
   // enough that, skewed into the axonometric's ground plane, it reaches the frame's every edge.
   const aerialExtent = around(420);
+  // The town round the site, as far as the massing draws it: the massing runs to its frame's every edge, so the
+  // streets, lots, zones, controls and neighbours are read this far beyond the site (yieldSheet's reach is less).
+  const MASSING_M = 260;
   // The trees for the massing: the photograph's green over the massing's reach, read as crowns (lib/crowns.ts), and
   // the trees a council inventory or OpenStreetMap records, which stand in for the crowns read at them.
-  const treeExtent = around(130);
+  const treeExtent = around(MASSING_M);
   const [controls, roads, lots, contourSet, stations, policy, buildings, zoning, hob, fsr, addresses, footways, heritage, aerial, vegetation, councilTrees, osmTrees] = await Promise.all([
     fetchSiteControls(geo.center),
-    soft(fetchRoads(around(110)), [], 'roads'),
-    soft(fetchAllLots(around(110)), emptyFc, 'lots'),
-    soft(fetchContours(around(40), log), { lines: [], intervalM: 2, source: 'NSW Spatial Services' } as ContourSet, 'contours'),
+    soft(fetchRoads(around(MASSING_M)), [], 'roads'),
+    soft(fetchAllLots(around(MASSING_M)), emptyFc, 'lots'),
+    soft(fetchContours(around(MASSING_M), log), { lines: [], intervalM: 2, source: 'NSW Spatial Services' } as ContourSet, 'contours'),
     soft(fetchTrainStations(around(1200)), [], 'stations'),
     soft(fetchPolicyAreas(around(5), log), [], 'housing policy maps'),
-    soft(fetchBuildings(around(110), log), noBuildings, 'buildings'),
-    soft(fetchZoning(around(110)), emptyFc, 'zoning'),
-    soft(fetchHeightOfBuilding(around(110)), emptyFc, 'height of building'),
-    soft(fetchFloorSpaceRatio(around(110)), emptyFc, 'floor space ratio'),
-    soft(fetchNeighbourAddresses(around(110)), [] as NeighbourAddress[], 'addresses'),
-    soft(fetchFootways(around(110), log), { source: 'none', lines: [], fetchedAt: new Date().toISOString() } as FootwaysData, 'footways'),
-    soft(fetchHeritage(around(110)), emptyFc, 'heritage'),
+    soft(fetchBuildings(around(MASSING_M), log), noBuildings, 'buildings'),
+    soft(fetchZoning(around(MASSING_M)), emptyFc, 'zoning'),
+    soft(fetchHeightOfBuilding(around(MASSING_M)), emptyFc, 'height of building'),
+    soft(fetchFloorSpaceRatio(around(MASSING_M)), emptyFc, 'floor space ratio'),
+    soft(fetchNeighbourAddresses(around(MASSING_M)), [] as NeighbourAddress[], 'addresses'),
+    soft(fetchFootways(around(MASSING_M), log), { source: 'none', lines: [], fetchedAt: new Date().toISOString() } as FootwaysData, 'footways'),
+    soft(fetchHeritage(around(MASSING_M)), emptyFc, 'heritage'),
     soft(fetchAerial(aerialExtent, 3200, dataDir, 'yield-aerial'), null as AerialResult | null, 'aerial'),
     soft(fetchVegetationPixels(treeExtent, 0.5, 1 / k), null as VegetationPixels | null, 'the aerial\'s green'),
     soft(fetchCouncilTrees(treeExtent, log), [] as SiteTree[], 'council trees'),
@@ -596,7 +599,7 @@ export async function runYieldPipeline(
   log(`  ${[controls.epiName, controls.zoneCode, controls.maxHeightM ? `HOB ${controls.maxHeightM} ${controls.heightUnits ?? 'm'}` : '', controls.fsr ? `FSR ${controls.fsr}:1` : ''].filter(Boolean).join(' · ') || 'no LEP mapped'}`);
   // The capacity study over the neighbours (lib/capacity.ts): which of them has development potential, so the massing
   // raises a future only where one is likely. The council's register needs the LGA, which the controls just gave.
-  const capacityData = await soft(fetchCapacityData(extentPanel(around(110)), controls.lgaName, log), null, 'capacity study layers');
+  const capacityData = await soft(fetchCapacityData(extentPanel(around(MASSING_M)), controls.lgaName, log), null, 'capacity study layers');
   const capacityOverrides = await readFile(join(opts.outDir, 'capacity_overrides.json'), 'utf8').then((t) => JSON.parse(t) as CapacityOverrides).catch(() => ({} as CapacityOverrides));
   const capacity = capacityData ? classifyCapacity({
     centre: geo.center, properties: capacityData.properties, lots: capacityData.lots, heritage,
@@ -695,7 +698,7 @@ export async function runYieldPipeline(
 
   // Each lot with what the plan writes on it: its street numbers (the address
   // points inside it), and the zone and height of building at a point inside it.
-  const near = (lon: number, lat: number) => metres(lon, lat) < reach + 110;
+  const near = (lon: number, lat: number) => metres(lon, lat) < reach + MASSING_M;
   const parcels = lots.features.map((f) => {
     const rings = ringsOf(f.geometry);
     const inside = (lon: number, lat: number) => rings.filter((rg) => pointInRingLL(lon, lat, rg)).length % 2 === 1;
@@ -897,7 +900,7 @@ export interface SlidesBundle {
   strategies: StrategiesData;
   /** The capacity and opportunity study's layers over one A4 page at 1:2000, and the author's marks from `capacity_overrides.json`; absent from decks built before it. */
   capacity?: { data: CapacityData | null; overrides: CapacityOverrides };
-  /** The site's street as two elevations (runStreetscapePipeline), the page after built form; absent without Street View, or when it failed. */
+  /** The site's street as two elevations (runStreetscapePipeline), the page after character; absent without Street View, or when it failed. */
   streetscape?: StreetscapeBundle;
   warnings: string[];
 }
@@ -1095,7 +1098,7 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
   ]);
   // the green of the aerial over the page, for the trees no inventory holds
   green.vegetation = await fetchVegetationMask(bleedExtent, dataDir, 0.8, 1 / mercatorScaleFactor(mercatorToLonLat(geo.center).lat)).catch((e: any) => { log(`  WARN vegetation mask failed: ${e?.message ?? e}`); return null; });
-  // The trees for the three-dimensional page: the aerial's green over 330 m round the site read as crowns (lib/crowns.ts),
+  // The trees for the built form page: the aerial's green over 330 m round the site read as crowns (lib/crowns.ts),
   // the recorded trees standing in for the crowns read at them.
   try {
     const kc = mercatorScaleFactor(mercatorToLonLat(geo.center).lat);

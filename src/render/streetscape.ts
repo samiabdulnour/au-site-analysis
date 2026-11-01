@@ -154,12 +154,16 @@ function faceSvg(b: StreetscapeBundle, face: Face, L: Layout, i: number, overlay
   }
   if (ground) svg.push(`<polyline points="${ground}" fill="none" stroke="${t.ink}" stroke-width="0.3" stroke-linejoin="round"/>`);
   const her = b.heritage?.faces.find((h) => h.side === face.side);
-  if (overlay && elev?.roofs?.length) svg.push(buildingLines(elev.offsetM, elev.roofs, face, X, Y, groundAt, t.site, fill, her));
+  // the buildings' lines over the meshes, cut at the band's top where a tower runs past it, as the meshes are
+  if (overlay && elev?.roofs?.length) {
+    const xa = Math.min(X(p.s0), X(p.s1)), xb = Math.max(X(p.s0), X(p.s1));
+    svg.push(`<clipPath id="band-${i}"><rect x="${f2(xa - 1)}" y="${f2(band.top)}" width="${f2(xb - xa + 2)}" height="${f2(band.h + BELOW_GROUND_M * k)}"/></clipPath><g clip-path="url(#band-${i})">${buildingLines(elev.offsetM, elev.roofs, face, X, Y, groundAt, t.site, fill, her, band.top)}</g>`);
+  }
   // no mesh and no frames: the buildings at their recorded heights, in the colours of their storeys, cut at the band's
   // top where a tower runs past it (the tag says how high it goes)
   else if (!elev && !own.length && face.skyline?.length) {
     const xa = Math.min(X(p.s0), X(p.s1)), xb = Math.max(X(p.s0), X(p.s1));
-    svg.push(`<clipPath id="band-${i}"><rect x="${f2(xa - 1)}" y="${f2(band.top)}" width="${f2(xb - xa + 2)}" height="${f2(band.h + BELOW_GROUND_M * k)}"/></clipPath><g clip-path="url(#band-${i})">${buildingLines(0, face.skyline, face, X, Y, groundAt, t.site, 'bands', her)}</g>`);
+    svg.push(`<clipPath id="band-${i}"><rect x="${f2(xa - 1)}" y="${f2(band.top)}" width="${f2(xb - xa + 2)}" height="${f2(band.h + BELOW_GROUND_M * k)}"/></clipPath><g clip-path="url(#band-${i})">${buildingLines(0, face.skyline, face, X, Y, groundAt, t.site, 'bands', her, band.top)}</g>`);
   }
   // the conservation areas the face stands in, bracketed over its band
   if (her?.areas.length) svg.push(areaBrackets(her, X, band.top, p.s0, p.s1));
@@ -294,7 +298,7 @@ const AREA_INK = '#5a4a3a';
  * floor lines at its storeys (its measured height at METRES_PER_STOREY a storey, evenly spaced) in white, and over
  * its tallest step its height over the ground and its level in AHD. The site's building in the site's red.
  */
-function buildingLines(offsetM: number, roofs: { s: number; z: number }[], face: Face, X: (s: number) => number, Y: (z: number) => number, groundAt: (s: number) => number, siteInk: string, fill: BuildingFill = 'veil', her?: FaceHeritage): string {
+function buildingLines(offsetM: number, roofs: { s: number; z: number }[], face: Face, X: (s: number) => number, Y: (z: number) => number, groundAt: (s: number) => number, siteInk: string, fill: BuildingFill = 'veil', her?: FaceHeritage, bandTop?: number): string {
   const lines: string[] = [], floors: string[] = [], tags: { x: number; y: number; h: number; text: string[]; site: boolean; item?: string }[] = [];
   // each heritage item named once over the run of frontages it covers
   let lastItem = '';
@@ -319,7 +323,7 @@ function buildingLines(offsetM: number, roofs: { s: number; z: number }[], face:
       d.push(`L${f2(X(s0))},${f2(Y(groundAt(s0)))}Z`);
       const top = steps.reduce((m, st) => (st.z - st.g > m.z - m.g ? st : m));
       const h = top.z - top.g;
-      // drawn from the recorded heights: each building a block in the colour of its storeys, as the built form page and the massing colour them
+      // drawn from the recorded heights: each building a block in the colour of its storeys, as the height of buildings page and the massing colour them
       const band = fill === 'bands' ? massingInks().bands[heightBandOf(h)] : '';
       const style = fill === 'heritage'
         ? [h8?.rating ? `fill:${CONTRIBUTION_INK[h8.rating]}` : 'fill:none', fr.site ? `stroke:${siteInk}` : itemId ? `stroke:${ITEM_INK}` : ''].filter(Boolean).join(';')
@@ -338,6 +342,8 @@ function buildingLines(offsetM: number, roofs: { s: number; z: number }[], face:
   const out: string[] = [];
   for (const tg of tags.sort((p, q) => Number(!!q.item) - Number(!!p.item) || q.h - p.h)) {
     const text = tg.item ? [tg.item, ...tg.text] : tg.text;
+    // a building cut at the band's top keeps its tag, just inside the band
+    if (bandTop != null && tg.y - 1.75 * text.length - 0.1 < bandTop + 0.6) tg.y = bandTop + 1.75 * text.length + 0.7;
     const w = Math.max(...text.map((l) => l.length)) * 0.82 + 0.6, box: [number, number, number, number] = [tg.x - w / 2, tg.y - 1.75 * text.length - 0.1, tg.x + w / 2, tg.y + 0.4];
     if (set.some((o) => box[0] < o[2] && o[0] < box[2] && box[1] < o[3] && o[1] < box[3])) continue;
     set.push(box);
@@ -465,7 +471,7 @@ function streetscapeParts(b: StreetscapeBundle, opts: StreetscapeOptions) {
   const lead = [...streetscapeSentences(b), heritageSentence(b)].filter(Boolean).join(' ');
   const sources = [
     b.elevations?.some(Boolean) ? `Faces: orthographic elevations of Google’s Photorealistic 3D Tiles${b.elevations.some((e) => e?.draped) ? ', each Google Street View photograph laid on the meshes from where its camera stood, so a facade is the photograph’s and stands at its own depth; the street’s trees, and what no photograph saw clear (a roof, a wall behind a tree from every camera), keep the meshes’ own texture, and the meshes’ outlines, as photogrammetry, are soft' : ' (photogrammetry, so trees and fine detail are approximate)'}. Seen square from the street’s centreline with its near half cut away, and with what stands more than 35 m behind the boundary left out; the ground line is the elevation model’s at the boundary, set on the meshes${b.groundOffsetM !== undefined ? `, which stand ${b.groundOffsetM.toFixed(1)} m above AHD here` : ''}.` : b.frames.length ? 'Frames: Google Street View, each rectified onto its frontage’s boundary as a plane, so the street reads at one true scale; what stands in front of the boundary (trees, cars, awnings) reads larger, a building set back from it smaller, and the seams between frames are the frames’, not the street’s.' : (b.framesNote ?? ''),
-    !b.elevations?.some(Boolean) && !b.frames.length && b.plan.faces.some((f) => f.skyline?.length) ? 'Faces: each building as a block at its recorded height behind its frontage (footprints and heights from Overture Maps Foundation, or 3.1 m a storey), its floor lines at 3.1 m a storey, coloured by its storeys as the built form page keys them, the site’s in the site’s ink; no photographs, since Street View frames need GOOGLE_MAPS_API_KEY.' : '',
+    !b.elevations?.some(Boolean) && !b.frames.length && b.plan.faces.some((f) => f.skyline?.length) ? 'Faces: each building as a block at its recorded height behind its frontage (footprints and heights from Overture Maps Foundation, or 3.1 m a storey), its floor lines at 3.1 m a storey, coloured by its storeys as the height of buildings page keys them, the site’s in the site’s ink; no photographs, since Street View frames need GOOGLE_MAPS_API_KEY.' : '',
     'Frontages and addresses: NSW property and cadastre layers (NSW Spatial Services); a frontage is where a ray square to the street from its centreline first meets a property boundary.',
     lined ? `Buildings (${fill === 'heritage' ? 'the tinted shapes over the faces' : fill === 'none' ? 'the outlines over the faces' : 'the pale veils over the faces'}): each frontage’s building as the meshes stand at and behind its boundary (the street’s trees and the awnings over the footpath cut away, a garden’s trees left out), in steps where it changes by more than a metre; floor lines at ${METRES_PER_STOREY} m a storey of the measured height, evenly spaced, not surveyed; heights over the ground at the boundary and levels in AHD, to about a metre.` : '',
     b.ai ? `AI-enhanced and illustrative: ${b.ai.tiles} of ${b.ai.of} tiles of the faces redrawn by ${b.ai.model} through Artlist, each scaled back into its place, so ${b.elevations?.some((e) => e?.draped) ? 'the outlines and the photographed facades stand where they did, but the trees, the seams and what neither the photographs nor the meshes showed are the model’s' : 'the outlines stand where the meshes put them, but every facade, window and tree is the model’s, drawn on the meshes’ shapes and colours, not the buildings’ own'}; the measured drawing is STREETSCAPE.pdf.` : '',

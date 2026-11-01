@@ -2536,10 +2536,10 @@ export function developmentAtlas(b0: SlidesBundle, facts: PlanningFacts): Slide 
     narrative: brief([`Since ${fmtMonthYear(d.from)}, ${fmtNum(d.applications)} applications were lodged on the land this map covers, about ${fmtNum(Math.round(d.applications / Math.max(1, d.perYear.length - 1)))} a year.`, `${fmtNum(d.significant)} of them, on ${fmtNum(d.sites.length)} sites, are of a scale that shapes the place — four storeys, ten dwellings or $5 M and more — and propose ${fmtNum(d.dwellings)} dwellings${d.cost ? ` at a stated ${money(d.cost)}` : ''}.`]) };
 }
 
-// ---- 09b The city in three dimensions: the built form as the massing draws it, after the poster maps ----------------
+// ---- 09b Built form: the city as the massing draws it, after the poster maps ----------------
 
 /**
- * The site report's three-dimensional page: the built form round the site as an axonometric
+ * The site report's built form page: the city round the site as an axonometric
  * (render/axonometric.ts), 300 m about the site, every building in the colour of its height band as the built
  * form page keys them, with a grid of windows over its faces; the streets white kerb to kerb, the parks green,
  * the trees read off the aerial as crowns, the site's own building in the site's ink under the LEP's height plane.
@@ -2604,7 +2604,7 @@ export function formAtlas(b: SlidesBundle, planning: PlanningFacts): Slide {
     f.onSite.length ? `On the site today ${f.onSite.length === 1 ? 'stands a building' : `stand ${['', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'][f.onSite.length] ?? f.onSite.length} buildings`} of ${f.onSite.map((x) => (x.storeys ? `${x.storeys} storeys` : 'no recorded height')).join(' and ')}.` : 'Nothing stands on the site today.',
   ].filter(Boolean).join(' ');
   const src = f.source === 'overture' ? `Overture Maps Foundation buildings${f.release ? ` (release ${f.release})` : ''}, footprints and heights from OpenStreetMap, Microsoft, Esri Community Maps and Google Open Buildings` : f.source === 'osm' ? 'OpenStreetMap buildings' : 'no building source';
-  const sources = `Sources: ${src}; heights measured, or ${METRES_PER_STOREY} m a storey, else the storeys of a determined application on the lot; every building in the colour of its storeys as the built form page keys them (${HEIGHT_BANDS.map((bd) => bd.label).join(' · ')}), dashed where none is recorded; what stands on the site in the site's ink; streets from NSW Spatial Services, the kerbs worked out from the cadastre; parks from the open-space zones; the trees read off NSW Imagery as crowns, their size indicative. Drawn from the ${bearingName(camBearing)}, looking down 35°. Retrieved ${b.buildings.fetchedAt.slice(0, 10)}.`;
+  const sources = `Sources: ${src}; heights measured, or ${METRES_PER_STOREY} m a storey, else the storeys of a determined application on the lot; every building in the colour of its storeys as the height of buildings page keys them (${HEIGHT_BANDS.map((bd) => bd.label).join(' · ')}), dashed where none is recorded; what stands on the site in the site's ink; streets from NSW Spatial Services, the kerbs worked out from the cadastre; parks from the open-space zones; the trees read off NSW Imagery as crowns, their size indicative. Drawn from the ${bearingName(camBearing)}, looking down 35°. Retrieved ${b.buildings.fetchedAt.slice(0, 10)}.`;
   const figureHtml = `<div class="form3d">
   <div class="abs" style="left:0;top:0"><svg width="${SHEET_W}mm" height="${SHEET_H}mm" viewBox="0 0 ${SHEET_W} ${SHEET_H}" xmlns="http://www.w3.org/2000/svg" style="display:block" font-family="Arial, 'Liberation Sans', sans-serif">${drawAxonometric(scene, { x: 0, y: TOP, w: SHEET_W, h: SHEET_H - TOP - FOOT }, 'form09b')}</svg></div>
   <div class="abs lead" style="left:${SHEET_W - MARGIN - 150}mm;top:17.5mm;width:150mm">${esc(lead)}</div>
@@ -2612,7 +2612,7 @@ export function formAtlas(b: SlidesBundle, planning: PlanningFacts): Slide {
 </div>`;
   const css = `.form3d .lead { font-size: 3.05mm; line-height: 1.38; font-weight: 600; color: ${accent}; }
   .form3d .src { font-size: 2.1mm; line-height: 1.3; color: #6a7572; column-count: 2; column-gap: 10mm; }`;
-  return { id: '09b_city_in_three_dimensions', title: 'The city in three dimensions', subtitle: atlasSub(b), textHtml: '', figureHtml, full: true, plain: true, accent, css };
+  return { id: '09b_built_form', title: 'Built form', subtitle: atlasSub(b), textHtml: '', figureHtml, full: true, plain: true, accent, css };
 }
 
 // ---- 08b Capacity and opportunity: the office's context plan on the template ------------------------------------
@@ -3647,7 +3647,7 @@ export function topographyAtlas(b0: SlidesBundle): Slide {
     narrative: brief(f ? [terrainSentences(b, f)[0], `On the map the ground runs from RL ${Math.round(f.window.minRl)} to RL ${Math.round(f.window.maxRl)}; the high point is ${fmtNum(Math.round(f.window.high.distanceM / 10) * 10)} m to the ${bearingName(f.window.high.bearing)}.`] : ['The elevation model did not answer for this run.']) };
 }
 
-// ---- slide 09: built form ----------------------------------------------------
+// ---- slide 09: height of buildings ----------------------------------------------------
 
 /** Height bands by storeys, on the sequential blue ramp; no height is a neutral grey. */
 const NO_HEIGHT_FILL = '#ddd5c6';
@@ -3916,14 +3916,14 @@ export function builtFormSlide(b: SlidesBundle, planning: PlanningFacts): Slide 
   }
   const yHist = FIELD_Y + PANEL_TITLE_H + 76;
   const figureHtml = `
-    <div class="abs ptitle" style="left:${FIELD_X}mm;top:${FIELD_Y}mm;width:${PANEL_W}mm">Built form<span class="pnote">1:${fmtNum(p.scale)} · footprints by height</span></div>
+    <div class="abs ptitle" style="left:${FIELD_X}mm;top:${FIELD_Y}mm;width:${PANEL_W}mm">Height of buildings<span class="pnote">1:${fmtNum(p.scale)} · footprints by height</span></div>
     <div class="abs" style="left:${FIELD_X}mm;top:${FIELD_Y + PANEL_TITLE_H}mm">${mapSvg}</div>
     <div class="abs tiles two" style="left:${rightX}mm;top:${FIELD_Y + PANEL_TITLE_H}mm;width:${rightW}mm">${tiles}</div>
     <div class="abs legend" style="left:${rightX}mm;top:${FIELD_Y + PANEL_TITLE_H + 30}mm;width:${rightW}mm">${legend}</div>
     <div class="abs ptitle" style="left:${rightX}mm;top:${yHist}mm;width:${rightW}mm">Storeys within ${f.near.radiusM} m<span class="pnote">${fmtNum(f.near.withHeight)} buildings with a height</span></div>
     <div class="abs" style="left:${rightX}mm;top:${yHist + PANEL_TITLE_H}mm">${histSvg}</div>
     ${sectionHtml}`;
-  return { id: '09_built_form', title: 'Built form and height planes', subtitle: sub, textHtml, figureHtml };
+  return { id: '09_height_of_buildings', title: 'Height of buildings', subtitle: sub, textHtml, figureHtml };
 }
 
 /** The storey bands on the template: one sage ink, the height told by pattern — open, sparse lines, dense lines, tint, tint and lines. */
@@ -4063,7 +4063,7 @@ function atlasSection(b: SlidesBundle, sec: SectionLine, envelope: ReturnType<ty
   return { svg: zSvg(h, g.join('')), scale, ve, h };
 }
 
-/** Built form on the template: the sage family, the storeys told by pattern. */
+/** Height of buildings on the template: the sage family, the storeys told by pattern. */
 export function builtFormAtlas(b0: SlidesBundle, planning: PlanningFacts): Slide {
   const b: SlidesBundle = { ...b0, daPanel: b0.bleedPanel };
   const t = tpl();
@@ -4174,9 +4174,9 @@ export function builtFormAtlas(b0: SlidesBundle, planning: PlanningFacts): Slide
   const lga = b.context.lga?.name ? titleCase(b.context.lga.name) : '';
   const sub = [`${b.siteAddress}${lga ? ` ${lga}` : ''}`, e ? `HOB ${e.label}` : 'no HOB mapped', f.near.medianStoreys ? `median ${f.near.medianStoreys} storeys within ${f.near.radiusM} m` : ''].filter(Boolean).join(' · ');
   const figureHtml = `<div class="abs" style="left:${FOLD}mm;top:0">${mapSvg}</div>
-    <div class="abs maplabel" style="left:${FOLD + 8}mm;top:8mm">Built form · 1:${fmtNum(p.scale).replace(',', ' ')}</div>
+    <div class="abs maplabel" style="left:${FOLD + 8}mm;top:8mm">Height of buildings · 1:${fmtNum(p.scale).replace(',', ' ')}</div>
     ${flow}`;
-  return { id: '09_built_form', title: 'Built form', subtitle: sub, textHtml: '', figureHtml, bleed: true, sources, accent: inkFor(bf.bands[3].ink ?? bf.bands[3].bg ?? '#000000', 0.3), legend,
+  return { id: '09_height_of_buildings', title: 'Height of buildings', subtitle: sub, textHtml: '', figureHtml, bleed: true, sources, accent: inkFor(bf.bands[3].ink ?? bf.bands[3].bg ?? '#000000', 0.3), legend,
     narrative: brief([f.near.medianStoreys ? `Within ${f.near.radiusM} m of the site the typical building is ${f.near.medianStoreys} storeys.` : '',
       gap.lots && gap.count / gap.lots >= 0.15 ? `${fmtNum(gap.count)} of the ${fmtNum(gap.lots)} lots on the map that should hold a building have no footprint in the open data; they are hatched, not empty.` : '', e?.storeys ? `The ${e.label} height of building allows about ${e.storeys} at the site${f.near.medianStoreys ? `, ${e.storeys >= 2 * f.near.medianStoreys ? 'twice' : 'more than'} the neighbourhood's` : ''}.` : '', t0 ? `The tallest with a recorded height on the map, ${t0.name ?? 'a tower'}, is ${Math.round(t0.heightM)} m (${t0.storeys} storeys), ${fmtNum(t0.distanceM)} m away to the ${bearingName(t0.bearing)}.` : '']) };
 }
