@@ -361,6 +361,36 @@ export function terrainRamp(): string[] {
   return [tint(vivid(sand, 0.6, 0.62), 0.3), tint(red, 0.5), red, vivid(mix(red, B.solid, 0.55), 0.45, 0.42), vivid(B.deep, 0.5, 0.3)];
 }
 
+/** The built form's height bands, keyed on its page and coloured up the style's ramp; the massing takes the same bands. */
+export const HEIGHT_BANDS: { label: string; maxM: number; fill: string }[] = [
+  { label: '1–2 storeys', maxM: 7.5, fill: '#d6e7e0' },
+  { label: '3–4', maxM: 14, fill: '#a8cdc2' },
+  { label: '5–8', maxM: 27, fill: '#6ba998' },
+  { label: '9–15', maxM: 50, fill: '#35766a' },
+  { label: '16 and more', maxM: Infinity, fill: '#1f4a40' },
+];
+/** The band a height falls in, by index. */
+export const heightBandOf = (h: number) => Math.max(0, HEIGHT_BANDS.findIndex((bd) => h <= bd.maxM));
+
+/**
+ * The massing's colours, after the poster maps of a city: the height bands up the style's ramp (the built form
+ * page's), a cream ground of the activity family, white streets, the parks and the trees in the living green.
+ */
+export function massingInks() {
+  const O = INK.orange, G = INK.green, B = INK.blue;
+  const green = vivid(G.solid, 0.5, 0.45);
+  return {
+    bands: rampColours(HEIGHT_BANDS.length, styleRamp()),
+    noHeight: tint(B.solid, 0.22),
+    ground: tint(O.solid, 0.1),
+    lot: tint(inkFor(O.deep, 0.4), 0.45),
+    park: tint(green, 0.4),
+    road: '#ffffff',
+    axis: tint(B.solid, 0.55),
+    tree: green, treeLight: tint(green, 0.6), trunk: inkFor(G.deep, 0.12),
+  };
+}
+
 /** The ramp ordered data runs up in this style: Heron's between two colours of its sheet, the blue low and the red high, mixed; the others across the palette. */
 export function styleRamp(): string[] {
   return deckLook().id === 'heron' ? [INK.blue.solid, INK.red.deep] : paletteRamp();

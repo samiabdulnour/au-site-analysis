@@ -1095,6 +1095,15 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
   ]);
   // the green of the aerial over the page, for the trees no inventory holds
   green.vegetation = await fetchVegetationMask(bleedExtent, dataDir, 0.8, 1 / mercatorScaleFactor(mercatorToLonLat(geo.center).lat)).catch((e: any) => { log(`  WARN vegetation mask failed: ${e?.message ?? e}`); return null; });
+  // The trees for the three-dimensional page: the aerial's green over 330 m round the site read as crowns (lib/crowns.ts),
+  // the recorded trees standing in for the crowns read at them.
+  try {
+    const kc = mercatorScaleFactor(mercatorToLonLat(geo.center).lat);
+    const crownExtent = { xmin: geo.center.x - 330 * kc, ymin: geo.center.y - 330 * kc, xmax: geo.center.x + 330 * kc, ymax: geo.center.y + 330 * kc };
+    const px = await fetchVegetationPixels(crownExtent, 0.5, 1 / kc);
+    green.crowns = treesFromAerial(px, green.trees.points.map((t) => ({ lon: t.lon, lat: t.lat, canopyM: t.canopyM, source: t.osm ? 'osm' : 'council' })));
+    log(`  crowns: ${green.crowns.filter((t) => t.source === 'aerial').length} read off the aerial round the site (${px.sharePct} % green)`);
+  } catch (e: any) { log(`  WARN crowns failed: ${e?.message ?? e}`); }
   // the site's street end to end, where Street View is keyed
   const gkey = process.env.GOOGLE_MAPS_API_KEY?.trim();
   if (gkey) {

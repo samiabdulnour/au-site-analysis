@@ -1312,11 +1312,13 @@ efficiency changed in `yield_assumptions.json` carries to it. The proposal's
 outline is drawn over everything, so a future neighbour in front of it does
 not hide it, and a future far above what stands runs out of the frame, as the
 height plane does, the frame saying how high it goes. The massing is drawn
-after the poster maps of a city and the deck's own built form page: every
-neighbour in the colour of its height band up the style's ramp (the built
-form page's bands, so the two pages agree), with a grid of windows over its
-faces, on a cream ground of the activity family — paper in every style; the
-photograph stays under the plan, where it tells, and here the colours do.
+after the poster maps of a city (`src/render/axonometric.ts`, the drawing
+the site report's three-dimensional page shares): every neighbour in its
+zone's colour, bold, as the plan beneath tints its lot (the ePlanning colour
+where the style keeps it, the category's elsewhere), so the plan and the
+massing agree, with a grid of windows over its faces, on a cream ground of
+the activity family — paper in every style. The photograph goes under the
+first page's plan in every style, and under no other page.
 The ground the massing stands on is drawn too: the streets as surfaces, kerb to kerb
 (`src/lib/carriageway.ts`: each centreline swept out to the kerb lines where
 the sheet has them, to its class's typical width where it has none, the
@@ -1493,7 +1495,17 @@ the site's street as two elevations across the spread, as `--type
 streetscape` draws it (190 m at 1:500, the buildings' lines, heights and
 levels over the faces, the conservation areas bracketed; see *The
 streetscape* below), on its own page after built form, and left out of the
-deck where it fails, or with `DECK_STREETSCAPE=0`. Then *movement*: roads by function, rail and
+deck where it fails, or with `DECK_STREETSCAPE=0`. Before it, *the city in
+three dimensions* (`formAtlas`): the built form 300 m round the site as the
+yield's massing draws it (`src/render/axonometric.ts`), the camera off the
+nearest street looking down 35°, every building in the colour of its height
+band as the built form page keys them, windowed, dashed where no height is
+recorded; the site's own building in the site's ink under the LEP's height
+plane; the streets white kerb to kerb (the kerbs worked out from the
+cadastre), the parks green, the trees read off the aerial as crowns
+(`green.crowns`, 330 m round the site, `lib/crowns.ts`) and a little
+traffic; the left page counts the buildings by storeys and names the
+tallest. Then *movement*: roads by function, rail and
 stations, the walking reach from the site (Valhalla) in bands of three
 minutes to fifteen, each band's edge a dashed line in its own colour up the
 style's ramp, the warmest nearest, over the buildings as a quiet
