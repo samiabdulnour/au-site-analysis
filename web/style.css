@@ -203,7 +203,7 @@ a { color: inherit; }
    under it, and as far above the first label as the tables are apart. */
 .toolside .bar { font-size: 18px; margin-bottom: 28px; }
 .toolside .bar input { line-height: normal; padding: 6.25px 14px; letter-spacing: .025em; }
-.toolside .bar input::placeholder { color: var(--ink); }
+.toolside .bar input::placeholder { color: var(--muted); }   /* the samples' address, grey: a hint, not an entry */
 /* GENERATE: the column's whole width under the options, yellow, as high as
    the cells and its word as far in as theirs. While a drawing is made it is
    white, and the yellow fills it from the left as the time goes. */

@@ -96,9 +96,10 @@ A camera point takes the nearest panorama to it; `heading`, `pitch` and
 
 The frame's pictures are `web/samples/result-<sheet>-<scale>-<rotate>-<style>.jpg`
 for the two maps (the context sheet in each of its four templates, the site
-sheet in each of its themes), `result-yield-1.jpg`, `-2`… for the yield's
-pages and `result-slides-1.jpg`, `-2`… for the site report's, which have no
-styles — one for every
+sheet in each of its themes), `result-yield-1-<style>.jpg`, `-2-<style>`… for the yield's
+pages in each of the four styles (the frame turns through them in the style
+picked), and `result-slides-1.jpg`, `-2`… for the site report's, in the
+default style — one for every
 combination the table offers, the names `web/app.js` asks for. A combination without one says so in the frame
 rather than showing a broken image. They are drawn for 150 George Street,
 Parramatta; to redraw them, or to move them to another address (and change
@@ -1463,10 +1464,11 @@ photographs within 800 m from Wikimedia Commons, each credited as its licence
 asks, all of which the office's own reading and photographs replace. Next to
 it the *streetscape*, the street seen before the plans are read:
 the site's street as two elevations across the spread, as `--type
-streetscape` draws it (280 m either way from the site in the deck,
-`DECK_STREET_HALF_M`, at the largest round scale that fits the street's
-length and the site's own building whole in its band, so the scale follows
-the size of the project; the buildings' lines, heights and
+streetscape` draws it (190 m in the deck, `DECK_STREET_HALF_M` = 95 m
+either way from the site, each face on a page of its own, the site's side
+first, at the largest round scale that fits the street's length and the
+site's own building whole, so the scale follows the size of the project:
+1:500 at 150 George Street with its 23-storey tower; the buildings' lines, heights and
 levels over the faces, the conservation areas bracketed, a tower that runs
 past its band's top cut there as the meshes are, its tag kept inside the
 band; see *The streetscape* below), laid out as the built form page (after height of buildings)
@@ -1777,10 +1779,13 @@ opposite ways, at one true scale (the largest round scale at which the
 street's length fits the sheet's width and the site's own building fits its
 band whole, with a little sky over it: 1:500 for the default 190 m,
 `--half-length 95` either way from the site, where nothing on the site
-stands taller than its band; the deck runs 140 m either way and takes
-1:750 where a tower on the site needs it). Each band takes what it must
-have, and the two share what the page has left in proportion to what they
-want, so the site's band can stand taller than the other's. Under each face every
+stands taller than its band). Each band takes what it must have, and the
+two share what the page has left in proportion to what they want, so the
+site's band can stand taller than the other's. The deck gives each face a
+page of its own (`streetscapeSlides`, `03b` the site's side and `03c` the
+opposite), each with the page's whole room, so the scale is what the taller
+face allows: 1:500 at 150 George Street, where the sheet's two bands would
+need 1:750. Under each face every
 property's frontage is dashed off and named by its address, the roads and
 lanes that come in are named upright in their gaps, and the site is marked in
 red between dashed lines, with the stretch across the road from it marked too.

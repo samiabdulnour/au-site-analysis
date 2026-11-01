@@ -233,19 +233,23 @@ function caption(items, value) {
 }
 
 // The site report and the yield have pages, so their frame turns through them:
-// one every second and a half, from result-slides-1.jpg (result-yield-1.jpg) on
-// until a number has no picture, then back to the first. The pointer over the frame holds the page, a click turns it,
+// one every second and a half, from result-slides-1.jpg (result-yield-1-<style>.jpg:
+// the yield's pages are drawn in each style, the site report's in the default) on
+// until a number has no picture, then back to the first; a style picked while the
+// yield turns shows the same page in that style. The pointer over the frame holds the page, a click turns it,
 // and with reduced motion asked for it only turns on a click.
 const PAGE_MS = 1500;
-let deck = null;   // { sheet, page, last, timer, held }
+let deck = null;   // { sheet, template, page, last, timer, held }
 
 // The samples once went out with a day's max-age, and a browser holding one of
 // those copies would not ask again until the day was out. The query names them
 // afresh, so those copies are never asked for; the server now revalidates every
 // picture by its ETag, so this never needs bumping for a redraw.
 const SAMPLE_Q = '?r=2';
-const pageSrc = (n) => '/samples/result-' + (deck ? deck.sheet : 'slides') + '-' + n + '.jpg' + SAMPLE_Q;
+const pageSrc = (n) => '/samples/result-' + (deck ? deck.sheet : 'slides') + '-' + n + (deck && deck.template ? '-' + deck.template : '') + '.jpg' + SAMPLE_Q;
 const PAGED = { slides: 'Site report', yield: 'Planning yield' };
+// Whose pages are drawn in every style, so the picture's name carries the style picked.
+const STYLED_PAGES = { yield: true };
 
 function stopDeck() {
   if (deck) clearTimeout(deck.timer);
@@ -256,6 +260,7 @@ function showPage(n) {
   deck.page = n;
   swapTo(pageSrc(n));
   resultImg.alt = PAGED[deck.sheet] + ' on A3, page ' + n + (deck.last ? ' of ' + deck.last : '') +
+    (deck.template ? ', ' + caption(STYLES[deck.sheet], deck.template) : '') +
     '. An example drawn for ' + EXAMPLE_ADDRESS + '.';
 }
 
@@ -286,10 +291,14 @@ function renderResult() {
   // Whatever finished drawing held the frame, an option picked or a new run
   // started means the frame is the expected sample again.
   if (PAGED[state.sheet]) {
-    // renderAll runs on every pick; a deck already turning keeps its place.
-    if (deck && deck.sheet === state.sheet) return;
+    const template = STYLED_PAGES[state.sheet] ? state.template : '';
+    // renderAll runs on every pick; a deck already turning keeps its place, and a style picked shows its page in it.
+    if (deck && deck.sheet === state.sheet) {
+      if (deck.template !== template) { deck.template = template; deck.last = 0; showPage(deck.page); schedulePage(); }
+      return;
+    }
     stopDeck();
-    deck = { sheet: state.sheet, page: 1, last: 0, timer: 0, held: resultImg.parentElement.matches(':hover') };
+    deck = { sheet: state.sheet, template, page: 1, last: 0, timer: 0, held: resultImg.parentElement.matches(':hover') };
     resultImg.hidden = false;
     resultMissing.hidden = true;
     showPage(1);

@@ -6,8 +6,9 @@
 //   npm run samples -- "150 George Street, Parramatta NSW 2150" [--only context|site|yield|summary|slides]
 //
 // and writes web/samples/result-<sheet>[-<scale>-<rotate>][-<theme>].jpg
-// (context in each template, site in each site theme, the yield and the summary
-// once, the yield in the default style) and the site report's every page as
+// (context in each template, site in each site theme, the summary once, the
+// yield's every page in each of the four styles as result-yield-1-<style>.jpg,
+// -2-<style>…) and the site report's every page as
 // result-slides-1.jpg, -2…, in the default style, which the frame turns through,
 // the names web/app.js asks for. The data is fetched once per scale and
 // orientation and drawn in each style from the same bundle, since a style
@@ -48,6 +49,8 @@ import { TEMPLATES, SITE_THEMES, withTemplate } from './render/template.js';
 const CONTEXT_SCALES = [2000, 3000, 4000, 5000];
 const SITE_SCALES = [0, 250, 500, 1000];   // 0 is auto, the tightest that fits the lot
 const ROTATIONS = ['north', 'auto'] as const;
+/** The decks' four styles, as web/app.js offers them for the yield. */
+const DECK_STYLES = ['flamingo', 'kingfisher', 'heron', 'canary'] as const;
 // About 1190 px across an A1 sheet: sharp at the frame's width on a 2× screen,
 // and around 150 kB a picture, one per combination of the table.
 const DPI = 36;
@@ -170,12 +173,16 @@ if (want('yield')) {
   const outDir = join(root, 'yield');
   log('yield');
   const bundle = await runYieldPipeline(address, { outDir, log });
-  // Pages, as the site report has: result-yield-1.jpg, -2…, in the default style (the yield takes the four, but one set of pages stands for them in the frame).
-  const html = join(outDir, 'yield_deck.html');
-  await writeFile(html, renderYieldDeck(bundle, meta).html);
-  const pages = await printSlides(html, join(outDir, 'PLANNING_YIELD.pdf'), join(outDir, 'pages'), { widthMm: SLIDE_W, heightMm: SLIDE_H });
-  pages.forEach((png, i) => toJpeg(png, `yield-${i + 1}`));
-  for (let n = pages.length + 1; existsSync(join(samples, `result-yield-${n}.jpg`)); n++) rmSync(join(samples, `result-yield-${n}.jpg`));
+  // Pages in each of the four styles, as the frame turns through them in the style picked: result-yield-1-<style>.jpg,
+  // -2-<style>…, drawn from the one bundle, and the old numbers past the new last page taken away.
+  for (const theme of DECK_STYLES) {
+    const html = join(outDir, `yield_deck_${theme}.html`);
+    await writeFile(html, renderYieldDeck(bundle, meta, { theme }).html);
+    const pages = await printSlides(html, join(outDir, `PLANNING_YIELD_${theme}.pdf`), join(outDir, `pages_${theme}`), { widthMm: SLIDE_W, heightMm: SLIDE_H });
+    pages.forEach((png, i) => toJpeg(png, `yield-${i + 1}-${theme}`));
+    for (let n = pages.length + 1; existsSync(join(samples, `result-yield-${n}-${theme}.jpg`)); n++) rmSync(join(samples, `result-yield-${n}-${theme}.jpg`));
+  }
+  for (let n = 1; existsSync(join(samples, `result-yield-${n}.jpg`)); n++) rmSync(join(samples, `result-yield-${n}.jpg`));
   rmSync(join(samples, 'result-yield.jpg'), { force: true });
 }
 

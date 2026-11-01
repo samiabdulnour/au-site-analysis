@@ -57,13 +57,14 @@ interface Layout { scale: number; k: number; x0: number; pageW: number; bands: {
 
 /** How the buildings over the faces are filled: a white veil, not at all, or by their contribution to their conservation area. */
 export type BuildingFill = 'veil' | 'none' | 'heritage' | 'bands';
-export interface StreetscapeOptions { overlay?: boolean; fill?: BuildingFill; scale?: number }
+export interface StreetscapeOptions { overlay?: boolean; fill?: BuildingFill; scale?: number; /** Draw this face alone, on a page of its own, with the page's whole room (the deck gives each face a page). */ face?: number }
 
 /**
  * The largest round scale at which the window fits the sheet's width and both bands its height; or, given `scale`, that
- * scale, on a sheet as long as the window then needs (and never shorter than A3), at A3's height.
+ * scale, on a sheet as long as the window then needs (and never shorter than A3), at A3's height. With `perFace`, each
+ * face has a page of its own and the page's whole room, so the scale is what the taller face allows.
  */
-export function layoutFaces(b: StreetscapeBundle, scale?: number): Layout {
+export function layoutFaces(b: StreetscapeBundle, scale?: number, perFace = false): Layout {
   const p = b.plan, len = p.s1 - p.s0;
   const pageW = scale ? Math.max(SLIDE_W, Math.ceil((len * 1000) / scale) + 2 * MARGIN) : SLIDE_W, width = pageW - 2 * MARGIN;
   // The site's own building on a face must fit its band whole, with a little sky over it: the scale follows the size
@@ -100,16 +101,27 @@ export function layoutFaces(b: StreetscapeBundle, scale?: number): Layout {
     const zMin = Math.max(hi + MIN_SKY_M, own.length ? -Infinity : site);
     return { zTop: Math.max(zMin, Math.min(hi + cap, reach)), zMin, zBot: lo - BELOW_GROUND_M - 0.6 };
   });
-  const room = SLIDE_H - FOOT_ROOM_MM - BAND_TOP - p.faces.length * (LABEL_GAP + LABELS_H + CAPTION_H) - (p.faces.length - 1) * FACE_GAP;
-  // the scale the street's length allows, at which the faces fit at their lowest (the site's building whole); then
-  // each band what it must have and its share of what is left, up to what it wants
-  const fit = scale ?? SCALES.find((s) => (len * 1000) / s <= width && wanted.reduce((t, r) => t + ((r.zMin - r.zBot) * 1000) / s, 0) <= room) ?? SCALES[SCALES.length - 1];
+  const onPage = perFace ? 1 : p.faces.length;
+  const room = SLIDE_H - FOOT_ROOM_MM - BAND_TOP - onPage * (LABEL_GAP + LABELS_H + CAPTION_H) - (onPage - 1) * FACE_GAP;
+  // the scale the street's length allows, at which the faces fit at their lowest (the site's building whole): the
+  // bands together on one page, or each on its own; then each band what it must have and its share of what is left,
+  // up to what it wants
+  const needAt = (s: number) => perFace ? Math.max(...wanted.map((r) => ((r.zMin - r.zBot) * 1000) / s)) : wanted.reduce((t, r) => t + ((r.zMin - r.zBot) * 1000) / s, 0);
+  const fit = scale ?? SCALES.find((s) => (len * 1000) / s <= width && needAt(s) <= room) ?? SCALES[SCALES.length - 1];
   const k = 1000 / fit;
   const need = wanted.map((r) => (r.zMin - r.zBot) * k), more = wanted.map((r, i) => Math.max(0, (r.zTop - r.zBot) * k - need[i]));
-  const spareMm = Math.max(0, room - need.reduce((t, v) => t + v, 0)), moreSum = more.reduce((t, v) => t + v, 0);
-  const share = moreSum <= spareMm ? 1 : spareMm / (moreSum || 1);
-  const ranges = wanted.map((r, i) => ({ zTop: r.zBot + (need[i] + more[i] * share) / k, zBot: r.zBot }));
+  const ranges = perFace
+    ? wanted.map((r, i) => ({ zTop: r.zBot + (need[i] + Math.min(more[i], Math.max(0, room - need[i]))) / k, zBot: r.zBot }))
+    : (() => {
+      const spareMm = Math.max(0, room - need.reduce((t, v) => t + v, 0)), moreSum = more.reduce((t, v) => t + v, 0);
+      const share = moreSum <= spareMm ? 1 : spareMm / (moreSum || 1);
+      return wanted.map((r, i) => ({ zTop: r.zBot + (need[i] + more[i] * share) / k, zBot: r.zBot }));
+    })();
   const x0 = MARGIN + (width - len * k) / 2;
+  if (perFace) {
+    // each face on its own page: what it leaves of the page's height goes a third above it
+    return { scale: fit, k, x0, pageW, bands: ranges.map((r) => { const h = (r.zTop - r.zBot) * k; return { top: BAND_TOP + Math.max(0, room - h) / 3, zTop: r.zTop, zBot: r.zBot, h }; }) };
+  }
   // what the faces leave of the page's height goes a third above them and a third between them
   const spare = Math.max(0, room - ranges.reduce((t, r) => t + (r.zTop - r.zBot) * k, 0)) / 3;
   let top = BAND_TOP + spare;
@@ -480,9 +492,9 @@ function legendSvg(x: number, y: number): string {
 /** What a streetscape draws, whether on its own page or as a page of the deck. */
 function streetscapeParts(b: StreetscapeBundle, opts: StreetscapeOptions) {
   const overlay = !!opts.overlay || opts.fill === 'heritage', fill: BuildingFill = opts.fill === 'heritage' && !b.heritage ? 'veil' : (opts.fill ?? 'veil');
-  const L = layoutFaces(b, opts.scale);
+  const L = layoutFaces(b, opts.scale, opts.face != null);
   const W = L.pageW;
-  const faces = b.plan.faces.map((f, i) => faceSvg(b, f, L, i, overlay, fill));
+  const faces = b.plan.faces.map((f, i) => (opts.face == null || opts.face === i ? faceSvg(b, f, L, i, overlay, fill) : null)).filter((f): f is { html: string; svg: string } => !!f);
   const lined = overlay && !!b.elevations?.some((e) => e?.roofs?.length);
   const lead = [...streetscapeSentences(b), heritageSentence(b)].filter(Boolean).join(' ');
   const sources = [
@@ -495,7 +507,8 @@ function streetscapeParts(b: StreetscapeBundle, opts: StreetscapeOptions) {
     `Ground: ${b.demSource ?? 'no elevation model'}, at the boundary, indicative to about a metre.`,
     `Retrieved ${b.generatedAt.slice(0, 10)}.`,
   ].filter(Boolean).join(' ');
-  const subtitle = `${b.siteAddress} · ${titleCase(b.plan.street)}, both sides, ${Math.round(b.plan.s1 - b.plan.s0)} m · 1:${L.scale}`;
+  const one = opts.face != null ? b.plan.faces[opts.face] : undefined;
+  const subtitle = `${b.siteAddress} · ${titleCase(b.plan.street)}, ${one ? `the ${bearingWord(one.facing)} side, ${one.hasSite ? 'the site\'s side' : 'opposite the site'}` : 'both sides'}, ${Math.round(b.plan.s1 - b.plan.s0)} m · 1:${L.scale}`;
   const body = `  ${faces.map((f) => f.html).join('\n  ')}
   <svg class="over" width="${W}mm" height="${SLIDE_H}mm" viewBox="0 0 ${W} ${SLIDE_H}">${faces.map((f) => f.svg).join('')}${lined && fill === 'heritage' ? legendSvg(MARGIN, 37.5) : ''}</svg>`;
   return { W, lead, sources, subtitle, body };
@@ -563,17 +576,22 @@ ${body}
 }
 
 /**
- * The streetscape as a page of the overall analysis, after the character page: the faces across the spread under the
- * deck's own heading, no rule under the subtitle, the lead over the right-hand page, the sources in two columns across
- * the foot. On A3 at the scale that fits.
+ * The streetscape as pages of the overall analysis, after the character page: each face across a spread of its own,
+ * the site's side first, under the deck's own heading, no rule under the subtitle, the lead over the right-hand page,
+ * the sources in two columns across the foot. On A3 at the largest scale the street's length and the site's building
+ * allow, each face given the page's whole room, so the drawing is as large as the page lets it be.
  */
-export function streetscapeSlide(b: StreetscapeBundle, opts: Omit<StreetscapeOptions, 'scale'> = {}): Slide {
+export function streetscapeSlides(b: StreetscapeBundle, opts: Omit<StreetscapeOptions, 'scale' | 'face'> = {}): Slide[] {
   const t = tpl();
-  const { lead, sources, subtitle, body } = streetscapeParts(b, opts);
-  const figureHtml = `<div class="scape">
+  const order = b.plan.faces.map((f, i) => i).sort((i, j) => Number(!!b.plan.faces[j].hasSite) - Number(!!b.plan.faces[i].hasSite) || i - j);
+  return order.map((face, n) => {
+    const { lead, sources, subtitle, body } = streetscapeParts(b, { ...opts, face });
+    const figureHtml = `<div class="scape">
   <div class="abs lead" style="left:${SLIDE_W - MARGIN - 150}mm;top:17.5mm;width:150mm">${esc(lead)}</div>
 ${body}
   <div class="abs src" style="left:${MARGIN}mm;bottom:10mm;width:${SLIDE_W - 2 * MARGIN}mm">${esc(sources)}</div>
 </div>`;
-  return { id: '03b_streetscape', title: 'Streetscape', subtitle, textHtml: '', figureHtml, full: true, plain: true, accent: t.site, css: scapeCss() };
+    const opposite = !b.plan.faces[face].hasSite;
+    return { id: n === 0 ? '03b_streetscape' : '03c_streetscape_opposite', title: opposite ? 'Streetscape, opposite the site' : 'Streetscape', subtitle, textHtml: '', figureHtml, full: true, plain: true, accent: t.site, css: scapeCss() };
+  });
 }
