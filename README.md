@@ -1162,11 +1162,12 @@ The yield and the site report take the four styles of the two maps, under
 the same names, and read each style's palette from its context template
 (`deckLook()` and `deckFamilies()` in `src/render/template.ts`). The site
 colour sets the site; the narrative on the left of each spread is set in
-the map's own most significant colour (the biggest community's on Country,
-the motorways' on Location, the site's contour on Topography, the
-determined lots' green on Development activity, the catchments' blue on
-Movement, the shadows' on Grid, sun and views), and in the site's colour
-where no one colour leads the map. The zones take the
+the colour its map and its diagrams share (the biggest community's on
+Country, the motorways' on Location, the policy area's on Strategic
+context, the site's contour on Topography, the determined lots' green on
+Development activity, the bands' blue on Movement, the shadows' on Grid,
+sun and views, the market's orange on People and market), and in black
+where no one colour leads the page. The zones take the
 land-use categories, with their textures, as the context sheet of that style
 tints the land, or in Canary each zone code in its NSW ePlanning colour; the
 yield's plan tints each neighbour's lot the same way. The atlas kit's five

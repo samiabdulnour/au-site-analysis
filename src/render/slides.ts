@@ -1368,11 +1368,14 @@ export function strategicAtlas(b0: SlidesBundle, planning: PlanningFacts): Slide
     const st = yearsIn(r.status), doc = yearsIn(r.document), line = yearsIn(r.line);
     const from = r.level === 'Statutory' || r.level === 'District' ? (doc[0] ?? st[0]) : (st[0] ?? doc[doc.length - 1] ?? line[0]);
     const to = /superseded|replaced|repealed/i.test(r.status) ? st[st.length - 1] : undefined;
-    const fill: Fill = to !== undefined ? { bg: '#ffffff', outline: R.line, outlineW: 0.25, dash: '0.8 0.5' }
-      : r.level === 'State' || r.level === 'Region' ? { bg: R.mid }
-      : r.level === 'Contributions' ? { bg: '#ffffff', kind: 'dots', ink: R.deep, step: 0.7, w: 0.12, outline: R.line, outlineW: 0.12 }
-      : r.level === 'Statutory' ? { bg: R.solid }
-      : { bg: '#ffffff', kind: 'vlines', ink: R.line, step: 0.55, w: 0.16, outline: R.line, outlineW: 0.12 };
+    // the spans in the page's ink (the policy area's), its tints for the levels; the accent's family where no area leads
+    const PI = present[0] ? POLICY_INK[present[0]] : null;
+    const F = PI ? { solid: tint(PI, 0.75), mid: tint(PI, 0.45), line: tint(PI, 0.6), deep: PI } : R;
+    const fill: Fill = to !== undefined ? { bg: '#ffffff', outline: F.line, outlineW: 0.25, dash: '0.8 0.5' }
+      : r.level === 'State' || r.level === 'Region' ? { bg: F.mid }
+      : r.level === 'Contributions' ? { bg: '#ffffff', kind: 'dots', ink: F.deep, step: 0.7, w: 0.12, outline: F.line, outlineW: 0.12 }
+      : r.level === 'Statutory' ? { bg: F.solid }
+      : { bg: '#ffffff', kind: 'vlines', ink: F.line, step: 0.55, w: 0.16, outline: F.line, outlineW: 0.12 };
     return from ? { name: shorten(r.document.replace(/\s*\(.*?\)\s*/g, ' ').trim(), 40), from, to, fill } : null;
   }).filter((x): x is NonNullable<typeof x> => Boolean(x));
   const blocks: string[] = [];
@@ -2927,9 +2930,11 @@ export function peopleAtlas(b: SlidesBundle): Slide {
   const gt = greyBase(t);
   const box = { x0: 0, y0: 0, x1: p.wMm, y1: p.hMm };
   // whole-property sales in the accent, strata sales in the transit blue; hatched on paper, filled over the photograph; every sale priced beside its mark
-  const R = INK.red, B = INK.blue;
+  const B = INK.blue;
   const line = deckLook().technique === 'line';
-  const WHOLE: Fill = line ? { bg: tint(R.solid, 0.3), kind: 'hatch', ink: R.deep, step: 0.5, w: 0.18, outline: R.deep, outlineW: 0.3 } : { bg: R.solid, outline: R.deep, outlineW: 0.25 };
+  // whole-property sales in the market's family, the charts' orange; strata in the transit blue; the narrative in the orange
+  const MARKET = inkFor(O.solid, 0.32);
+  const WHOLE: Fill = line ? { bg: tint(MARKET, 0.2), kind: 'hatch', ink: MARKET, step: 0.5, w: 0.18, outline: MARKET, outlineW: 0.3 } : { bg: tint(MARKET, 0.7), outline: MARKET, outlineW: 0.25 };
   const STRATA: Fill = line ? { bg: '#ffffff', kind: 'vlines', ink: B.deep, step: 0.5, w: 0.16, outline: B.deep, outlineW: 0.3 } : { bg: B.solid, outline: B.deep, outlineW: 0.25 };
   const saleR = (price: number, maxP: number) => 1.3 + 4 * Math.sqrt(price / maxP);
   const parts: string[] = [withTemplate(gt, () => baseLayers(b.base, proj, p))];
@@ -3014,7 +3019,7 @@ export function peopleAtlas(b: SlidesBundle): Slide {
   } else blocks.push(zBlock('People', `<div class="zr" style="padding-left:0"><div class="v">${esc(f.sentences[0] ?? 'The census and the register did not answer for this run.')}</div></div>`));
   const sources = `Sources: ABS Census 2021 (G01, G02, G36, G37, G62) for the SA2 and Greater Sydney; ABS estimated resident population at 30 June; TfNSW Travel Zone Projections 2024; NSW Valuer General land values and sales register via SIX Maps. Census night, 10 August 2021, fell in the COVID-19 lockdowns. Retrieved ${b.generatedAt.slice(0, 10)}.`;
   const sub = atlasSub(b, f.available && f.sa2 ? `${f.sa2.name} (SA2)` : '', 'against Greater Sydney');
-  return { id: '16_people_and_market', title: 'People and market', subtitle: sub, textHtml: '', figureHtml: atlasFigure(mapSvg, `Sales within ${radiusM} m`, p, zFlow(blocks)), bleed: true, sources, accent: '#000000', legend,
+  return { id: '16_people_and_market', title: 'People and market', subtitle: sub, textHtml: '', figureHtml: atlasFigure(mapSvg, `Sales within ${radiusM} m`, p, zFlow(blocks)), bleed: true, sources, accent: MARKET, legend,
     narrative: brief(f.available ? [peopleSentences(b)[0], f.sa2?.tenure ? `${fmtPct(f.sa2.tenure.renting)} of households rent, against ${fmtPct(f.benchmark?.tenure?.renting ?? NaN)} across Greater Sydney.` : ''] : [peopleSentences(b)[0]]) };
 }
 
@@ -4553,7 +4558,7 @@ export function movementSlide(b: SlidesBundle): Slide {
     ? (f.parking.all.length ? `${f.parking.within400 ? `${numWord(f.parking.within400)} car park${f.parking.within400 === 1 ? '' : 's'} within 400 m` : 'No car park within 400 m'}${f.parking.within800 ? `, ${f.parking.within800} within 800 m${f.parking.spacesWithin800 ? ` holding ${fmtNum(f.parking.spacesWithin800)} spaces where tagged` : ''}` : ''}; the nearest, ${f.parking.all[0].name ?? `a ${f.parking.all[0].kind.replace(/_/g, ' ')} car park`}, is ${fmtNum(f.parking.all[0].distanceM)} m away.` : 'OpenStreetMap maps no car park on the page.')
     : 'The car parks were not read: OpenStreetMap did not answer this run.';
   const narrative = brief([sens[0], jSent, pSent, reachSentence], 520);
-  return { id: '10_movement', title: 'Movement', subtitle: subT, textHtml: '', figureHtml, bleed: true, sources, narrative, accent: MOVE.iso[5], legend: keyRows };
+  return { id: '10_movement', title: 'Movement', subtitle: subT, textHtml: '', figureHtml, bleed: true, sources, narrative, accent: MOVE.iso[10], legend: keyRows };
 }
 
 // ---- slide 11: green and public domain -------------------------------------
@@ -6871,7 +6876,8 @@ function zWindRose(rose: WindRose, x0: number, size: number, top: number, step: 
 export function sunAtlas(b: SlidesBundle): Slide {
   const f = sunViewFacts(b);
   const t = tpl();
-  const S = INK.sage;
+  // the diagrams in the transit family, as the shadows are: the page is one blue, the narrative with it
+  const S = INK.blue;
   const centreLL = mercatorToLonLat(b.panel.center);
   const p: Panel = { center: b.site.sitePanel.center, scale: 1000, wMm: 210, hMm: 297 };
   const proj = panelProjector(p);
