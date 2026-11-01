@@ -155,8 +155,12 @@ function faceSvg(b: StreetscapeBundle, face: Face, L: Layout, i: number, overlay
   if (ground) svg.push(`<polyline points="${ground}" fill="none" stroke="${t.ink}" stroke-width="0.3" stroke-linejoin="round"/>`);
   const her = b.heritage?.faces.find((h) => h.side === face.side);
   if (overlay && elev?.roofs?.length) svg.push(buildingLines(elev.offsetM, elev.roofs, face, X, Y, groundAt, t.site, fill, her));
-  // no mesh and no frames: the buildings at their recorded heights, in the colours of their storeys
-  else if (!elev && !own.length && face.skyline?.length) svg.push(buildingLines(0, face.skyline, face, X, Y, groundAt, t.site, 'bands', her));
+  // no mesh and no frames: the buildings at their recorded heights, in the colours of their storeys, cut at the band's
+  // top where a tower runs past it (the tag says how high it goes)
+  else if (!elev && !own.length && face.skyline?.length) {
+    const xa = Math.min(X(p.s0), X(p.s1)), xb = Math.max(X(p.s0), X(p.s1));
+    svg.push(`<clipPath id="band-${i}"><rect x="${f2(xa - 1)}" y="${f2(band.top)}" width="${f2(xb - xa + 2)}" height="${f2(band.h + BELOW_GROUND_M * k)}"/></clipPath><g clip-path="url(#band-${i})">${buildingLines(0, face.skyline, face, X, Y, groundAt, t.site, 'bands', her)}</g>`);
+  }
   // the conservation areas the face stands in, bracketed over its band
   if (her?.areas.length) svg.push(areaBrackets(her, X, band.top, p.s0, p.s1));
   const footY = (s: number) => (elev ? band.top + band.h : Y(groundAt(s) - BELOW_GROUND_M));
