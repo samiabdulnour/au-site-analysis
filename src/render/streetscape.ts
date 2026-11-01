@@ -18,6 +18,8 @@ import { shortStreetName, type SheetMeta } from './sheet.js';
 import { esc } from './chrome.js';
 import { SCAPE_SKY, type Elevation } from './elevation3d.js';
 import { METRES_PER_STOREY } from '../fetch/buildings.js';
+import { massingInks, heightBandOf } from './atlasKit.js';
+import { shade } from './axonometric.js';
 import type { Contribution, FaceHeritage } from '../fetch/streetscapeHeritage.js';
 
 const MARGIN = 15;
@@ -54,7 +56,7 @@ const monthName = (ym?: string) => { const m = ym?.match(/^(\d{4})-(\d{2})/); re
 interface Layout { scale: number; k: number; x0: number; pageW: number; bands: { top: number; zTop: number; zBot: number; h: number }[] }
 
 /** How the buildings over the faces are filled: a white veil, not at all, or by their contribution to their conservation area. */
-export type BuildingFill = 'veil' | 'none' | 'heritage';
+export type BuildingFill = 'veil' | 'none' | 'heritage' | 'bands';
 export interface StreetscapeOptions { overlay?: boolean; fill?: BuildingFill; scale?: number }
 
 /**
@@ -64,8 +66,18 @@ export interface StreetscapeOptions { overlay?: boolean; fill?: BuildingFill; sc
 export function layoutFaces(b: StreetscapeBundle, scale?: number): Layout {
   const p = b.plan, len = p.s1 - p.s0;
   const pageW = scale ? Math.max(SLIDE_W, Math.ceil((len * 1000) / scale) + 2 * MARGIN) : SLIDE_W, width = pageW - 2 * MARGIN;
+  // The site's own building on a face must fit its band whole, with a little sky over it: the scale follows the size
+  // of the project. Its top, from the meshes' roofs or the recorded skyline over the site's frontages.
+  const siteTop = (f: Face, i: number): number => {
+    const spans = f.frontages.filter((fr) => fr.site).map((fr) => [Math.min(fr.s0, fr.s1), Math.max(fr.s0, fr.s1)] as const);
+    if (!spans.length) return -Infinity;
+    const over = (s: number) => spans.some(([a, c]) => s >= a && s <= c);
+    const zs = [...(b.elevations?.[i]?.roofs ?? []), ...(b.elevations?.[i] ? [] : f.skyline ?? [])].filter((x) => over(x.s)).map((x) => x.z);
+    return zs.length ? Math.max(...zs) + 2 : -Infinity;
+  };
   const wanted = p.faces.map((f, i) => {
     const e = b.elevations?.[i];
+    const site = siteTop(f, i);
     if (e) {
       // as high as the face's buildings stand, and a little sky over them
       const zs = e.ground.map((g) => g.z), lo = Math.min(...zs), hi = Math.max(...zs);
@@ -73,21 +85,30 @@ export function layoutFaces(b: StreetscapeBundle, scale?: number): Layout {
       // and over its tallest building, where its roofs are measured: a narrow tower is under 2% of a long face's metres
       const roofs = (e.roofs ?? []).map((x) => x.z).sort((x, y) => y - x);
       const reach = Math.max(tops[Math.floor(tops.length * 0.98)] ?? hi + SKY_M, roofs[2] ?? -Infinity) + 2;
-      return { zTop: Math.max(hi + MIN_SKY_M, Math.min(hi + SKY_3D_M, reach)), zMin: hi + MIN_SKY_M, zBot: lo - GROUND_BAND_M };
+      const zMin = Math.max(hi + MIN_SKY_M, site);
+      return { zTop: Math.max(zMin, Math.min(hi + SKY_3D_M, reach)), zMin, zBot: lo - GROUND_BAND_M };
     }
     const zs = f.ground.map((g) => g.z);
     const lo = zs.length ? Math.min(...zs) : 0, hi = zs.length ? Math.max(...zs) : 0;
     // the frames are cut along one line, as high as three in four of the highest of them reach, so the face's top is straight
     const own = b.frames.filter((fr) => fr.side === f.side), top = Math.max(0, ...own.map((fr) => fr.tier ?? 0));
     const tops = own.filter((fr) => (fr.tier ?? 0) === top).map((fr) => frameTop(p, fr)).filter(Number.isFinite).sort((x, y) => x - y);
-    const reach = tops.length ? tops[Math.floor(tops.length / 4)] : hi + SKY_M;
-    return { zTop: Math.max(hi + MIN_SKY_M, Math.min(hi + SKY_M, reach)), zMin: hi + MIN_SKY_M, zBot: lo - BELOW_GROUND_M - 0.6 };
+    // drawn from the recorded heights: as high as the roofline, within the room the meshes get
+    const sky = f.skyline?.length && !own.length ? Math.max(...f.skyline.map((x) => x.z)) + 3 : -Infinity;
+    const reach = tops.length ? tops[Math.floor(tops.length / 4)] : Math.max(hi + SKY_M, sky);
+    const cap = Number.isFinite(sky) ? SKY_3D_M : SKY_M;
+    const zMin = Math.max(hi + MIN_SKY_M, own.length ? -Infinity : site);
+    return { zTop: Math.max(zMin, Math.min(hi + cap, reach)), zMin, zBot: lo - BELOW_GROUND_M - 0.6 };
   });
   const room = SLIDE_H - FOOT_ROOM_MM - BAND_TOP - p.faces.length * (LABEL_GAP + LABELS_H + CAPTION_H) - (p.faces.length - 1) * FACE_GAP;
-  // the scale the street's length allows, at which the faces fit at their lowest; then as much of their height as fits
+  // the scale the street's length allows, at which the faces fit at their lowest (the site's building whole); then
+  // each band what it must have and its share of what is left, up to what it wants
   const fit = scale ?? SCALES.find((s) => (len * 1000) / s <= width && wanted.reduce((t, r) => t + ((r.zMin - r.zBot) * 1000) / s, 0) <= room) ?? SCALES[SCALES.length - 1];
   const k = 1000 / fit;
-  const ranges = wanted.map((r) => ({ zTop: Math.max(r.zMin, Math.min(r.zTop, r.zBot + room / wanted.length / k)), zBot: r.zBot }));
+  const need = wanted.map((r) => (r.zMin - r.zBot) * k), more = wanted.map((r, i) => Math.max(0, (r.zTop - r.zBot) * k - need[i]));
+  const spareMm = Math.max(0, room - need.reduce((t, v) => t + v, 0)), moreSum = more.reduce((t, v) => t + v, 0);
+  const share = moreSum <= spareMm ? 1 : spareMm / (moreSum || 1);
+  const ranges = wanted.map((r, i) => ({ zTop: r.zBot + (need[i] + more[i] * share) / k, zBot: r.zBot }));
   const x0 = MARGIN + (width - len * k) / 2;
   // what the faces leave of the page's height goes a third above them and a third between them
   const spare = Math.max(0, room - ranges.reduce((t, r) => t + (r.zTop - r.zBot) * k, 0)) / 3;
@@ -149,7 +170,17 @@ function faceSvg(b: StreetscapeBundle, face: Face, L: Layout, i: number, overlay
   }
   if (ground) svg.push(`<polyline points="${ground}" fill="none" stroke="${t.ink}" stroke-width="0.3" stroke-linejoin="round"/>`);
   const her = b.heritage?.faces.find((h) => h.side === face.side);
-  if (overlay && elev?.roofs?.length) svg.push(buildingLines(elev, elev.roofs, face, X, Y, groundAt, t.site, fill, her));
+  // the buildings' lines over the meshes, cut at the band's top where a tower runs past it, as the meshes are
+  if (overlay && elev?.roofs?.length) {
+    const xa = Math.min(X(p.s0), X(p.s1)), xb = Math.max(X(p.s0), X(p.s1));
+    svg.push(`<clipPath id="band-${i}"><rect x="${f2(xa - 1)}" y="${f2(band.top)}" width="${f2(xb - xa + 2)}" height="${f2(band.h + BELOW_GROUND_M * k)}"/></clipPath><g clip-path="url(#band-${i})">${buildingLines(elev.offsetM, elev.roofs, face, X, Y, groundAt, t.site, fill, her, band.top)}</g>`);
+  }
+  // no mesh and no frames: the buildings at their recorded heights, in the colours of their storeys, cut at the band's
+  // top where a tower runs past it (the tag says how high it goes)
+  else if (!elev && !own.length && face.skyline?.length) {
+    const xa = Math.min(X(p.s0), X(p.s1)), xb = Math.max(X(p.s0), X(p.s1));
+    svg.push(`<clipPath id="band-${i}"><rect x="${f2(xa - 1)}" y="${f2(band.top)}" width="${f2(xb - xa + 2)}" height="${f2(band.h + BELOW_GROUND_M * k)}"/></clipPath><g clip-path="url(#band-${i})">${buildingLines(0, face.skyline, face, X, Y, groundAt, t.site, 'bands', her, band.top)}</g>`);
+  }
   // the conservation areas the face stands in, bracketed over its band
   if (her?.areas.length) svg.push(areaBrackets(her, X, band.top, p.s0, p.s1));
   const footY = (s: number) => (elev ? band.top + band.h : Y(groundAt(s) - BELOW_GROUND_M));
@@ -225,7 +256,7 @@ function faceSvg(b: StreetscapeBundle, face: Face, L: Layout, i: number, overlay
     ? (elev.draped ? `Street View © Google · ${views.length} panoramas · ${months}, laid on ${tiles}${ai}` : `${tiles}${ai}`)
     : views.length
       ? `Street View © Google · ${views.length} panoramas · ${months}`
-      : (b.framesNote ? 'No Street View frames' : '');
+      : (b.framesNote ? (face.skyline?.length ? 'Buildings at their recorded heights · no Street View frames' : 'No Street View frames') : '');
   // a face is the side of the street the viewer turns to: its name and the way the viewer looks are one
   const title = `${titleCase(p.street)}, the ${bearingWord(face.facing)} side, looking ${bearingWord(face.facing)}${face.hasSite ? ' · the site’s side' : ''}`;
   const bar = scaleBar(L, L.pageW - MARGIN, capY + 2.4);
@@ -283,7 +314,7 @@ const AREA_INK = '#5a4a3a';
  * floor lines at its storeys (its measured height at METRES_PER_STOREY a storey, evenly spaced) in white, and over
  * its tallest step its height over the ground and its level in AHD. The site's building in the site's red.
  */
-function buildingLines(e: Elevation, roofs: { s: number; z: number }[], face: Face, X: (s: number) => number, Y: (z: number) => number, groundAt: (s: number) => number, siteInk: string, fill: BuildingFill = 'veil', her?: FaceHeritage): string {
+function buildingLines(offsetM: number, roofs: { s: number; z: number }[], face: Face, X: (s: number) => number, Y: (z: number) => number, groundAt: (s: number) => number, siteInk: string, fill: BuildingFill = 'veil', her?: FaceHeritage, bandTop?: number): string {
   const lines: string[] = [], floors: string[] = [], tags: { x: number; y: number; h: number; text: string[]; site: boolean; item?: string }[] = [];
   // each heritage item named once over the run of frontages it covers
   let lastItem = '';
@@ -306,15 +337,18 @@ function buildingLines(e: Elevation, roofs: { s: number; z: number }[], face: Fa
       // and back along the ground, so the building is a shape to fill
       for (let q = Math.floor(s1); q > s0; q--) d.push(`L${f2(X(q))},${f2(Y(groundAt(q)))}`);
       d.push(`L${f2(X(s0))},${f2(Y(groundAt(s0)))}Z`);
+      const top = steps.reduce((m, st) => (st.z - st.g > m.z - m.g ? st : m));
+      const h = top.z - top.g;
+      // drawn from the recorded heights: each building a block in the colour of its storeys, as the height of buildings page and the massing colour them
+      const band = fill === 'bands' ? massingInks().bands[heightBandOf(h)] : '';
       const style = fill === 'heritage'
         ? [h8?.rating ? `fill:${CONTRIBUTION_INK[h8.rating]}` : 'fill:none', fr.site ? `stroke:${siteInk}` : itemId ? `stroke:${ITEM_INK}` : ''].filter(Boolean).join(';')
+        : fill === 'bands' ? (fr.site ? `fill:${siteInk};stroke:${shade(siteInk, 0.55)}` : `fill:${band};stroke:${shade(band, 0.55)}`)
         : fr.site ? `${fill === 'none' ? '' : `fill:${siteInk};`}stroke:${siteInk}` : '';
       const cls = ['bl', fill === 'veil' ? '' : fill, h8?.rating ? h8.rating.toLowerCase() : '', itemId ? 'item' : '', fr.site ? 'site' : ''].filter(Boolean).join(' ');
       lines.push(`<path d="${d.join('')}" class="${cls}"${style ? ` style="${style}"` : ''}/>`);
-      const top = steps.reduce((m, st) => (st.z - st.g > m.z - m.g ? st : m));
-      const h = top.z - top.g;
       tags.push({ x: (X(Math.max(s0, top.s0)) + X(Math.min(s1, top.s1))) / 2, y: Y(top.z) - 0.9, h, site: !!fr.site, ...(named && !drawn ? { item: itemId } : {}),
-        text: [`${h.toFixed(1)} m · ${Math.max(1, Math.round(h / METRES_PER_STOREY))} ST`, `RL ${(top.z - e.offsetM).toFixed(1)}`] });
+        text: [`${h.toFixed(1)} m · ${Math.max(1, Math.round(h / METRES_PER_STOREY))} ST`, `RL ${(top.z - offsetM).toFixed(1)}`] });
       drawn = true;
     }
     if (drawn || !itemId) lastItem = itemId;
@@ -324,6 +358,8 @@ function buildingLines(e: Elevation, roofs: { s: number; z: number }[], face: Fa
   const out: string[] = [];
   for (const tg of tags.sort((p, q) => Number(!!q.item) - Number(!!p.item) || q.h - p.h)) {
     const text = tg.item ? [tg.item, ...tg.text] : tg.text;
+    // a building cut at the band's top keeps its tag, just inside the band
+    if (bandTop != null && tg.y - 1.75 * text.length - 0.1 < bandTop + 0.6) tg.y = bandTop + 1.75 * text.length + 0.7;
     const w = Math.max(...text.map((l) => l.length)) * 0.82 + 0.6, box: [number, number, number, number] = [tg.x - w / 2, tg.y - 1.75 * text.length - 0.1, tg.x + w / 2, tg.y + 0.4];
     if (set.some((o) => box[0] < o[2] && o[0] < box[2] && box[1] < o[3] && o[1] < box[3])) continue;
     set.push(box);
@@ -451,6 +487,7 @@ function streetscapeParts(b: StreetscapeBundle, opts: StreetscapeOptions) {
   const lead = [...streetscapeSentences(b), heritageSentence(b)].filter(Boolean).join(' ');
   const sources = [
     b.elevations?.some(Boolean) ? `Faces: orthographic elevations of Google’s Photorealistic 3D Tiles${b.elevations.some((e) => e?.draped) ? ', each Google Street View photograph laid on the meshes from where its camera stood, so a facade is the photograph’s and stands at its own depth; the street’s trees, and what no photograph saw clear (a roof, a wall behind a tree from every camera), keep the meshes’ own texture, and the meshes’ outlines, as photogrammetry, are soft' : ' (photogrammetry, so trees and fine detail are approximate)'}. Seen square from the street’s centreline with its near half cut away, and with what stands more than 35 m behind the boundary left out; the ground line is the elevation model’s at the boundary, set on the meshes${b.groundOffsetM !== undefined ? `, which stand ${b.groundOffsetM.toFixed(1)} m above AHD here` : ''}.` : b.frames.length ? 'Frames: Google Street View, each rectified onto its frontage’s boundary as a plane, so the street reads at one true scale; what stands in front of the boundary (trees, cars, awnings) reads larger, a building set back from it smaller, and the seams between frames are the frames’, not the street’s.' : (b.framesNote ?? ''),
+    !b.elevations?.some(Boolean) && !b.frames.length && b.plan.faces.some((f) => f.skyline?.length) ? 'Faces: each building as a block at its recorded height behind its frontage (footprints and heights from Overture Maps Foundation, or 3.1 m a storey), its floor lines at 3.1 m a storey, coloured by its storeys as the height of buildings page keys them, the site’s in the site’s ink; no photographs, since Street View frames need GOOGLE_MAPS_API_KEY.' : '',
     'Frontages and addresses: NSW property and cadastre layers (NSW Spatial Services); a frontage is where a ray square to the street from its centreline first meets a property boundary.',
     lined ? `Buildings (${fill === 'heritage' ? 'the tinted shapes over the faces' : fill === 'none' ? 'the outlines over the faces' : 'the pale veils over the faces'}): each frontage’s building as the meshes stand at and behind its boundary (the street’s trees and the awnings over the footpath cut away, a garden’s trees left out), in steps where it changes by more than a metre; floor lines at ${METRES_PER_STOREY} m a storey of the measured height, evenly spaced, not surveyed; heights over the ground at the boundary and levels in AHD, to about a metre.` : '',
     b.ai ? `AI-enhanced and illustrative: ${b.ai.tiles} of ${b.ai.of} tiles of the faces redrawn by ${b.ai.model} through Artlist, each scaled back into its place, so ${b.elevations?.some((e) => e?.draped) ? 'the outlines and the photographed facades stand where they did, but the trees, the seams and what neither the photographs nor the meshes showed are the model’s' : 'the outlines stand where the meshes put them, but every facade, window and tree is the model’s, drawn on the meshes’ shapes and colours, not the buildings’ own'}; the measured drawing is STREETSCAPE.pdf.` : '',
@@ -482,6 +519,7 @@ function scapeCss(): string {
   .scape .bl { fill: #ffffff; fill-opacity: 0.3; stroke: #2a2e2c; stroke-opacity: 0.5; stroke-width: 0.14px; stroke-linejoin: miter; }
   .scape .bl.site { fill-opacity: 0.14; stroke-opacity: 0.85; stroke-width: 0.2px; }
   .scape .bl.none { fill: none; stroke-opacity: 0.75; stroke-width: 0.16px; }
+  .scape .bl.bands { fill-opacity: 1; stroke-opacity: 1; stroke-width: 0.18px; stroke-linejoin: round; }
   .scape .bl.none.site { stroke-opacity: 1; stroke-width: 0.3px; }
   .scape .bl.heritage { fill-opacity: 0.42; stroke-opacity: 0.6; }
   .scape .bl.heritage.neutral { fill-opacity: 0.5; }
@@ -497,7 +535,7 @@ function scapeCss(): string {
   .scape .cap .ct { font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
   .scape .cap .cr { color: #6a7572; font-size: 2.1mm; }
   .scape .lead { font-size: 3.05mm; line-height: 1.38; font-weight: 600; color: ${t.site}; }
-  .scape .src { font-size: 2.1mm; line-height: 1.3; color: #6a7572; }`;
+  .scape .src { font-size: 2.1mm; line-height: 1.3; color: #6a7572; column-count: 2; column-gap: 10mm; }`;
 }
 
 function drawStreetscape(b: StreetscapeBundle, meta: SheetMeta, opts: StreetscapeOptions): string {
@@ -525,8 +563,9 @@ ${body}
 }
 
 /**
- * The streetscape as a page of the overall analysis, after built form: the faces across the spread under the deck's
- * own heading, the lead over the right-hand page, the sources across the foot. On A3 at the scale that fits.
+ * The streetscape as a page of the overall analysis, after the character page: the faces across the spread under the
+ * deck's own heading, no rule under the subtitle, the lead over the right-hand page, the sources in two columns across
+ * the foot. On A3 at the scale that fits.
  */
 export function streetscapeSlide(b: StreetscapeBundle, opts: Omit<StreetscapeOptions, 'scale'> = {}): Slide {
   const t = tpl();
@@ -536,5 +575,5 @@ export function streetscapeSlide(b: StreetscapeBundle, opts: Omit<StreetscapeOpt
 ${body}
   <div class="abs src" style="left:${MARGIN}mm;bottom:10mm;width:${SLIDE_W - 2 * MARGIN}mm">${esc(sources)}</div>
 </div>`;
-  return { id: '09b_streetscape', title: 'Streetscape', subtitle, textHtml: '', figureHtml, full: true, accent: t.site, css: scapeCss() };
+  return { id: '03b_streetscape', title: 'Streetscape', subtitle, textHtml: '', figureHtml, full: true, plain: true, accent: t.site, css: scapeCss() };
 }

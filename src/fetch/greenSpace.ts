@@ -13,6 +13,7 @@ import { overpassQuery } from '../lib/http.js';
 import { fetchVegetationMask, type VegetationMask } from './imagery.js';
 import { titleCase } from './planning.js';
 import { fetchCouncilTrees, mergeTrees, sourcesFor, treeFromOsm, type SiteTree } from './trees.js';
+import type { YieldTree } from '../lib/crowns.js';
 
 const M3 = 'https://mapprod3.environment.nsw.gov.au/arcgis/rest/services';
 const CANOPY = `${M3}/ePlanning/Planning_Portal_Tree_Canopy/MapServer/1`;
@@ -58,6 +59,8 @@ export interface GreenData {
   /** The green of the aerial over the page: optional, decks read before it have none. */
   vegetation?: VegetationMask | null;
   trees: { points: StreetTree[]; source?: { name: string; attribution: string } };
+  /** The trees round the site read off the aerial's green as crowns (lib/crowns.ts), for the built form page; absent from decks read before it. */
+  crowns?: YieldTree[];
   fetchedAt: string;
 }
 
