@@ -1496,16 +1496,16 @@ streetscape` draws it (190 m at 1:500, the buildings' lines, heights and
 levels over the faces, the conservation areas bracketed; see *The
 streetscape* below), on its own page after built form, and left out of the
 deck where it fails, or with `DECK_STREETSCAPE=0`. Before it, *the city in
-three dimensions* (`formAtlas`): the built form 300 m round the site as the
-yield's massing draws it (`src/render/axonometric.ts`), the camera off the
-nearest street looking down 35°, every building in the colour of its height
-band as the built form page keys them, windowed, dashed where no height is
-recorded; the site's own building in the site's ink under the LEP's height
-plane; the streets white kerb to kerb (the kerbs worked out from the
-cadastre), the parks green, the trees read off the aerial as crowns
-(`green.crowns`, 330 m round the site, `lib/crowns.ts`) and a little
-traffic; the left page counts the buildings by storeys and names the
-tallest. Then *movement*: roads by function, rail and
+three dimensions* (`formAtlas`), laid out as the streetscape page is: the
+drawing across the whole spread under the deck's heading, a lead over the
+right-hand page, the sources across the foot. It is the built form 300 m
+round the site as the yield's massing draws it (`src/render/axonometric.ts`),
+the camera off the nearest street looking down 35°, every building in the
+colour of its height band as the built form page keys them, windowed, dashed
+where no height is recorded; the site's own building in the site's ink; the
+streets white kerb to kerb (the kerbs worked out from the cadastre), the
+parks green, the trees read off the aerial as crowns (`green.crowns`, 330 m
+round the site, `lib/crowns.ts`) and a little traffic. Then *movement*: roads by function, rail and
 stations, the walking reach from the site (Valhalla) in bands of three
 minutes to fifteen, each band's edge a dashed line in its own colour up the
 style's ramp, the warmest nearest, over the buildings as a quiet

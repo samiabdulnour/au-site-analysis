@@ -2589,45 +2589,29 @@ export function formAtlas(b: SlidesBundle, planning: PlanningFacts): Slide {
     inks: { site: t.site, future: '#ffffff', futureEdge: '#ffffff', envelope: '#ffffff', kerb: inkFor(INK.blue.solid, 0.4) },
     silhouette: false, treesOnSite: true,
   };
-  const p = b.bleedPanel;
-  const mapSvg = bleedSvg('form09b', p, drawAxonometric(scene, { x: 0, y: 16, w: p.wMm, h: p.hMm - 16 }, 'form09b'));
-
-  // The left page: the figures, the buildings by storeys, the key.
+  // The whole spread, as the streetscape page is laid out: the drawing across the sheet under the deck's own
+  // heading, a lead over the right-hand page in the page's ink, the sources across the foot.
+  const SHEET_W = 420, SHEET_H = 297, TOP = 34, MARGIN = 15;
   const withH = drawn.filter((bd) => bd.estimatedHeightM);
   const tall = f.tallest[0];
   const camBearing = ((Math.atan2(front.x, front.y) * 180) / Math.PI + 360) % 360;
-  const figs = zFigures([
-    [`buildings within ${REACH} m`, `${fmtNum(drawn.length)} · ${fmtNum(withH.length)} with a height`],
-    ['the tallest', tall ? `${tall.storeys} storeys · ${Math.round(tall.heightM)} m · ${fmtNum(tall.distanceM)} m ${bearingName(tall.bearing)}` : '—'],
-    ['typical within 250 m', f.near.medianStoreys ? `${f.near.medianStoreys} storeys` : '—'],
-  ], [
-    ['on the site today', f.onSite.length ? f.onSite.map((x) => (x.storeys ? `${x.storeys} storeys` : 'height not recorded')).join(' · ') : 'no building'],
-    ['trees drawn', `${fmtNum(trees.length)} crowns${b.green.crowns ? ' read off the aerial' : ' recorded'}`],
-    ['the view', `from the ${bearingName(camBearing)}, looking down 35°`],
-  ], 9.6);
-  const blocks = [zBlock('Built form in three dimensions', figs, `Within ${REACH} m of the site`)];
-  const bandRows = HEIGHT_BANDS.map((bd, i) => { const n = withH.filter((x) => bandOf(x.estimatedHeightM) === bd).length; return { name: bd.label, value: n, label: `${fmtNum(n)}`, fill: bf.bands[i] }; });
-  const hAx = niceAxis(Math.max(1, ...bandRows.map((r) => r.value)));
-  blocks.push(`<div class="zblk">${zHead(`Buildings by storeys · within ${REACH} m`)}${zBars(bandRows, hAx.max, hAx.step)}</div>`);
-  const strip = (cols: string[]) => cols.map((c, i, all) => { const w = 5 / all.length; return `<rect x="${(i * w).toFixed(2)}" y="0.3" width="${(w + 0.02).toFixed(2)}" height="3" fill="${c}"/>`; }).join('');
-  const legend: LegendEntry[] = [
-    { swatch: strip(M.bands), label: `Buildings by storeys, as the built form page keys them: ${HEIGHT_BANDS.map((bd) => bd.label).join(' · ')}; dashed: no height recorded` },
-    { swatch: `<path d="M1.2,0.6H3.8V3H1.2Z" fill="${tint(t.site, 0.55)}" stroke="#1c1c1c" stroke-width="0.2"/>`, label: 'What stands on the site today' },
-    { swatch: `<circle cx="2.5" cy="1.8" r="1.3" fill="${M.tree}"/>`, label: b.green.crowns ? 'Trees: crowns read off the aerial, the recorded trees among them' : 'Trees recorded by the council or OpenStreetMap' },
-    { swatch: `<rect x="0" y="0.3" width="5" height="3" fill="${M.park}"/>`, label: 'Parks and reserves' },
-    { swatch: `<rect x="0" y="0.3" width="5" height="3" fill="${M.ground}" stroke="${M.lot}" stroke-width="0.15"/><rect x="1.8" y="0.3" width="1.4" height="3" fill="#ffffff" stroke="${inkFor(INK.blue.solid, 0.4)}" stroke-width="0.15"/>`, label: 'Streets kerb to kerb, the lots about them' },
-    SITE_KEY(t),
-  ];
-  const src = f.source === 'overture' ? `Overture Maps Foundation buildings${f.release ? ` (release ${f.release})` : ''}, footprints and heights from OpenStreetMap, Microsoft, Esri Community Maps and Google Open Buildings` : f.source === 'osm' ? 'OpenStreetMap buildings' : 'no building source';
-  const sources = `Sources: ${src}; heights measured, or ${METRES_PER_STOREY} m a storey, else the storeys of a determined application on the lot; the LEP height of building from the ePlanning layer over the 5 m elevation model; streets from NSW Spatial Services, the kerbs worked out from the cadastre; parks from the open-space zones; the trees read off NSW Imagery as crowns, their size indicative. Drawn from the ${bearingName(camBearing)}, looking down 35°. Retrieved ${b.buildings.fetchedAt.slice(0, 10)}.`;
-  const narrative = brief([
+  const accent = inkFor(bf.bands[3].ink ?? bf.bands[3].bg ?? '#000000', 0.3);
+  const lead = [
     `Within ${REACH} m of the site stand ${fmtNum(withH.length)} buildings with a recorded height${tall ? `, the tallest ${tall.storeys} storeys at ${tall.name}, ${fmtNum(tall.distanceM)} m to the ${bearingName(tall.bearing)}` : ''}.`,
     f.near.medianStoreys ? `The typical building within 250 m is ${f.near.medianStoreys} storeys.` : '',
     f.onSite.length ? `On the site today ${f.onSite.length === 1 ? 'stands a building' : `stand ${['', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'][f.onSite.length] ?? f.onSite.length} buildings`} of ${f.onSite.map((x) => (x.storeys ? `${x.storeys} storeys` : 'no recorded height')).join(' and ')}.` : 'Nothing stands on the site today.',
-    hob ? `The LEP's height plane stands ${fmtNum(Math.round(hob.metres))} m over the ground.` : '',
-  ]);
-  const sub = atlasSub(b, `${fmtNum(withH.length)} buildings with a height within ${REACH} m`, tall ? `tallest ${tall.storeys} storeys` : '');
-  return { id: '09b_city_in_three_dimensions', title: 'The city in three dimensions', subtitle: sub, textHtml: '', figureHtml: atlasFigure(mapSvg, `Built form in three dimensions · ${REACH} m round the site`, null, zFlow(blocks)), bleed: true, sources, accent: inkFor(bf.bands[3].ink ?? bf.bands[3].bg ?? '#000000', 0.3), legend, narrative };
+  ].filter(Boolean).join(' ');
+  const src = f.source === 'overture' ? `Overture Maps Foundation buildings${f.release ? ` (release ${f.release})` : ''}, footprints and heights from OpenStreetMap, Microsoft, Esri Community Maps and Google Open Buildings` : f.source === 'osm' ? 'OpenStreetMap buildings' : 'no building source';
+  const sources = `Sources: ${src}; heights measured, or ${METRES_PER_STOREY} m a storey, else the storeys of a determined application on the lot; every building in the colour of its storeys as the built form page keys them (${HEIGHT_BANDS.map((bd) => bd.label).join(' · ')}), dashed where none is recorded; what stands on the site in the site's ink; streets from NSW Spatial Services, the kerbs worked out from the cadastre; parks from the open-space zones; the trees read off NSW Imagery as crowns, their size indicative. Drawn from the ${bearingName(camBearing)}, looking down 35°. Retrieved ${b.buildings.fetchedAt.slice(0, 10)}.`;
+  const figureHtml = `<div class="form3d">
+  <div class="abs" style="left:0;top:0"><svg width="${SHEET_W}mm" height="${SHEET_H}mm" viewBox="0 0 ${SHEET_W} ${SHEET_H}" xmlns="http://www.w3.org/2000/svg" style="display:block" font-family="Arial, 'Liberation Sans', sans-serif">${drawAxonometric(scene, { x: 0, y: TOP, w: SHEET_W, h: SHEET_H - TOP }, 'form09b')}</svg></div>
+  <div class="abs lead" style="left:${SHEET_W - MARGIN - 150}mm;top:17.5mm;width:150mm">${esc(lead)}</div>
+  <div class="abs src" style="left:${MARGIN}mm;bottom:10mm;width:${SHEET_W - 2 * MARGIN}mm">${esc(sources)}</div>
+</div>`;
+  const css = `.form3d .lead { font-size: 3.05mm; line-height: 1.38; font-weight: 600; color: ${accent}; }
+  .form3d .src { font-size: 2.1mm; line-height: 1.3; color: #6a7572; }`;
+  const sub = atlasSub(b, `${fmtNum(withH.length)} buildings with a height within ${REACH} m`, tall ? `tallest ${tall.storeys} storeys · ${fmtNum(tall.distanceM)} m ${bearingName(tall.bearing)}` : '', `${fmtNum(trees.length)} trees`);
+  return { id: '09b_city_in_three_dimensions', title: 'The city in three dimensions', subtitle: sub, textHtml: '', figureHtml, full: true, accent, css };
 }
 
 // ---- 08b Capacity and opportunity: the office's context plan on the template ------------------------------------
