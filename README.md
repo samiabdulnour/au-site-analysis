@@ -96,9 +96,10 @@ A camera point takes the nearest panorama to it; `heading`, `pitch` and
 
 The frame's pictures are `web/samples/result-<sheet>-<scale>-<rotate>-<style>.jpg`
 for the two maps (the context sheet in each of its four templates, the site
-sheet in each of its themes), `result-yield-1.jpg`, `-2`… for the yield's
-pages and `result-slides-1.jpg`, `-2`… for the site report's, which have no
-styles — one for every
+sheet in each of its themes), `result-yield-1-<style>.jpg`, `-2-<style>`… for the yield's
+pages in each of the four styles (the frame turns through them in the style
+picked), and `result-slides-1.jpg`, `-2`… for the site report's, in the
+default style — one for every
 combination the table offers, the names `web/app.js` asks for. A combination without one says so in the frame
 rather than showing a broken image. They are drawn for 150 George Street,
 Parramatta; to redraw them, or to move them to another address (and change
@@ -1463,10 +1464,15 @@ photographs within 800 m from Wikimedia Commons, each credited as its licence
 asks, all of which the office's own reading and photographs replace. Next to
 it the *streetscape*, the street seen before the plans are read:
 the site's street as two elevations across the spread, as `--type
-streetscape` draws it (280 m either way from the site in the deck,
-`DECK_STREET_HALF_M`, at the largest round scale that fits the street's
-length and the site's own building whole in its band, so the scale follows
-the size of the project; the buildings' lines, heights and
+streetscape` draws it (both faces on the one spread, every building whole,
+the tallest included: the deck's window is the first of 1:1000, 1:1250,
+1:1500 and 1:2000 at which the street long enough to fill the spread has its
+tallest buildings whole by their recorded heights, `runStreetscapePipeline`
+with `fit: 'deck'` and `deckWindows()`, so a low street is drawn 390 m long
+at 1:1000 and a street of towers longer and smaller; the meshes are rendered
+as high as the tallest building stands and some sky, as fine as the scale
+needs; the page then measures the meshes' roofs again and takes the largest
+scale that holds them, `layoutFaces` with `whole`; the buildings' lines, heights and
 levels over the faces, the conservation areas bracketed, a tower that runs
 past its band's top cut there as the meshes are, its tag kept inside the
 band; see *The streetscape* below), laid out as the built form page (after height of buildings)
@@ -1512,8 +1518,8 @@ fives heavier and numbered), each coloured by its height up the same ramp,
 darkened to read as a line; with the 2 m contours numbered along the index
 ones, the water named, the high and low points of the page and the site's
 level marked, roads and rail over it and two section lines through the site
-(the ground under each section in the map's bands, the water shown
-where the line crosses it at the level the model reads),
+(the ground under each section in the map's bands; no water is marked on
+them, since the model's level where a line crosses a river read wrong),
 A–A′ down the steepest fall and B–B′ across it, each drawn as a section
 with the site and its levels marked; the text gives the site's RL range,
 fall, grade and aspect and where the high ground and the water are. Then
@@ -1777,10 +1783,12 @@ opposite ways, at one true scale (the largest round scale at which the
 street's length fits the sheet's width and the site's own building fits its
 band whole, with a little sky over it: 1:500 for the default 190 m,
 `--half-length 95` either way from the site, where nothing on the site
-stands taller than its band; the deck runs 140 m either way and takes
-1:750 where a tower on the site needs it). Each band takes what it must
-have, and the two share what the page has left in proportion to what they
-want, so the site's band can stand taller than the other's. Under each face every
+stands taller than its band). Each band takes what it must have, and the
+two share what the page has left in proportion to what they want, so the
+site's band can stand taller than the other's. The sheet caps a band at
+60 m over the ground, cutting a narrow tower; the deck's page does not (see
+above): there the window's length and scale follow the street's tallest
+buildings, 388 m at 1:1000 at 150 George Street. Under each face every
 property's frontage is dashed off and named by its address, the roads and
 lanes that come in are named upright in their gaps, and the site is marked in
 red between dashed lines, with the stretch across the road from it marked too.

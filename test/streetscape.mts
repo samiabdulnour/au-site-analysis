@@ -9,7 +9,7 @@
 
 import { planStreetscape, planeToImage, inv3, mul3, apply3, aimAt, assignStrips, splitAddress, CAMERA_HEIGHT_M, BELOW_GROUND_M, FRAME_PX, type Property } from '../src/fetch/streetscape.js';
 import type { LonLat } from '../src/lib/geo.js';
-import { roofSteps, layoutFaces, renderStreetscape, streetscapePage, streetscapeSlide, CONTRIBUTION_INK, ITEM_INK } from '../src/render/streetscape.js';
+import { roofSteps, layoutFaces, deckWindows, renderStreetscape, streetscapePage, streetscapeSlide, CONTRIBUTION_INK, ITEM_INK } from '../src/render/streetscape.js';
 import { SLIDE_W } from '../src/render/slides.js';
 import type { StreetscapeBundle } from '../src/pipeline.js';
 
@@ -152,6 +152,12 @@ if (plan) {
   const L = layoutFaces(b, 200);
   check('a forced scale makes the sheet as long as the street', L.scale === 200 && L.pageW === 180 * 5 + 30 && near(L.x0, 15, 1e-9), JSON.stringify({ scale: L.scale, pageW: L.pageW, x0: L.x0 }));
   check('a band rises over a narrow tower its tops would pass over', near(layoutFaces(b).bands[0].zTop, 72, 1e-9), String(layoutFaces(b).bands[0].zTop));
+  // the deck's page: every building whole, the tallest included, the scale whatever that needs
+  const roofsTop = (i: number) => [...(b.elevations![i]!.roofs ?? [])].map((x) => x.z).sort((x, y) => y - x)[2];
+  const W = layoutFaces(b, undefined, true);
+  check('with whole, each band holds its face\'s tallest building', W.bands.every((bd, i) => bd.zTop >= roofsTop(i) + 2 - 1e-9), JSON.stringify(W.bands.map((bd) => bd.zTop)));
+  check('with whole, the scale is never larger than without', W.scale >= layoutFaces(b).scale);
+  check('the deck\'s windows start at 1:1000 and fill the spread', deckWindows()[0].scale === 1000 && deckWindows()[0].halfM === 194 && deckWindows().every((w, i, a) => !i || w.halfM > a[i - 1].halfM));
   const her = renderStreetscape(b, meta, { fill: 'heritage', scale: 200 });
   check('the long sheet sets its own page', her.includes('@page { size: 930mm 297mm') && streetscapePage(b, { scale: 200 }).widthMm === 930);
   check('buildings are tinted by their contribution', her.includes(`fill:${CONTRIBUTION_INK.Contributing}`) && her.includes(`fill:${CONTRIBUTION_INK.Detracting}`));

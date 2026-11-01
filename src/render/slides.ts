@@ -3635,7 +3635,8 @@ export function topographyAtlas(b0: SlidesBundle): Slide {
     const commonVe = [1, 2, 5, 10, 20, 25, 50].filter((v) => sections.every((s) => { const r = s.samples.map((q) => q.rl); return Math.max(1, Math.max(...r) - Math.min(...r)) * sxC * v <= Math.min(26, roomEach - 16); })).pop() ?? 1;
     for (const [i, s] of sections.entries()) {
       const room = (limit - y) / (sections.length - i) - 6.21 - 7.5;
-      const sec = groundSection(s, s.id, `${s.id}′`, PAGE_INK, room, commonVe, { bands: { lo, step: STEP, cols: tone ? toneCols : bandCols }, water: t.water, tone });
+      // no water on the sections: the model's level where a line crosses the river read wrong, so the ground alone is drawn
+      const sec = groundSection(s, s.id, `${s.id}′`, PAGE_INK, room, commonVe, { bands: { lo, step: STEP, cols: tone ? toneCols : bandCols }, tone });
       if (!sec) continue;
       const head = `Section ${s.id}–${s.id}′ · ${bearingName((s.bearing + 180) % 360)} to ${bearingName(s.bearing)} · 1:${fmtNum(sec.scale).replace(',', ' ')}${sec.ve > 1 ? ` · heights ×${sec.ve}` : ''}`;
       blocks.push(zBlock(head, sec.svg));

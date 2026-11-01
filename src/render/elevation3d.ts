@@ -397,7 +397,7 @@ window.ready = true;
  * ray found (no mesh there). `ppm` is the pixels a metre asked for, lowered where the picture would pass the
  * renderer's largest. A face's Street View frames are read from `outDir` by their file names.
  */
-export async function renderElevations(tiles: StreetTile[], enuMatrix: number[], faces: FaceView[], outDir: string, opts: { ppm: number; background: string; log?: (m: string) => void }): Promise<(Elevation | null)[]> {
+export async function renderElevations(tiles: StreetTile[], enuMatrix: number[], faces: FaceView[], outDir: string, opts: { ppm: number; background: string; log?: (m: string) => void; /** How far over the highest ground each picture runs, metres (default 70): the street's tallest building and some sky. */ aboveM?: number }): Promise<(Elevation | null)[]> {
   // the package's own folder, from its main entry (its exports leave out package.json): build/three.cjs
   const three = dirname(dirname(createRequire(import.meta.url).resolve('three')));
   const byId = new Map(tiles.map((t) => [t.id, t]));
@@ -439,7 +439,7 @@ export async function renderElevations(tiles: StreetTile[], enuMatrix: number[],
       const settled = settleGround(hits, f.dem);
       if (!settled) { out.push(null); continue; }
       const zs = settled.ground.map((g) => g.z);
-      const zBottom = Math.min(...zs) - BELOW_M, zTop = Math.max(...zs) + ABOVE_M;
+      const zBottom = Math.min(...zs) - BELOW_M, zTop = Math.max(...zs) + Math.max(ABOVE_M, opts.aboveM ?? 0);
       // the frames' cameras on the meshes' heights: the elevation model's, lifted as the ground is
       const frames = f.frames.map((fr) => ({ ...fr, z: fr.zAhd + settled.offsetM }));
       // a face wider than the renderer's widest picture is drawn in pieces of whole metres, the camera moved along
