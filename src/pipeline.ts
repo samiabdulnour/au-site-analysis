@@ -5,7 +5,8 @@ import { join } from 'node:path';
 import { geocode, type GeocodeResult } from './fetch/geocode.js';
 import { fetchSiteLots, fetchRailCorridors, fetchZoning, fetchHeightOfBuilding, fetchFloorSpaceRatio, fetchHeritage, fetchSiteControls } from './fetch/nsw.js';
 import { fetchRoads, fetchRailLines, fetchTrainStations, fetchParkPoints, fetchComplexPoints, fetchNamedAreas, fetchAllLots, fetchPropertiesAt, fetchProperties, type TopoRoad, type NamedPoint, type RailLines, type NamedArea } from './fetch/nswTopo.js';
-import { fetchAerial, fetchVegetationMask, type AerialResult } from './fetch/imagery.js';
+import { fetchAerial, fetchVegetationMask, fetchVegetationPixels, type AerialResult, type VegetationPixels } from './fetch/imagery.js';
+import { treesFromAerial } from './lib/crowns.js';
 import { addressStreet, fetchStreetSeries } from './fetch/streetView.js';
 import { planStreetscape, planPoint, fetchStreetscapeFrames, FRAME_PX, type StreetscapePlan, type ScapeFrame, type Face } from './fetch/streetscape.js';
 import { fetchStreetTiles, enuFrame } from './fetch/tiles3d.js';
@@ -40,8 +41,9 @@ import { fetchStreetscapeHeritage, type StreetscapeHeritage } from './fetch/stre
 import { fetchFootways, type FootwaysData } from './fetch/footways.js';
 import { fetchMajorProjects, emptyMajorProjects, type MajorProjectsData } from './fetch/majorProjects.js';
 import { fetchWind, emptyWind, type WindData } from './fetch/wind.js';
-import { fetchMovement, type MovementData } from './fetch/movement.js';
-import { fetchGreenSpace, type GreenData } from './fetch/greenSpace.js';
+import { fetchMovement, fetchWalkRoutes, type MovementData } from './fetch/movement.js';
+import { movementFacts, walkDestinations } from './render/slides.js';
+import { fetchGreenSpace, fetchOsmTrees, type GreenData } from './fetch/greenSpace.js';
 import { fetchConstraints, checkLepCoverage, type ConstraintsData } from './fetch/constraints.js';
 import { fetchSiteData, type SiteData } from './fetch/site.js';
 import type { SiteControls } from './fetch/nsw.js';
@@ -262,7 +264,7 @@ function pointInRing(x: number, y: number, ring: number[][]): boolean {
 // furniture. Shares the geocode/lots/rotation logic with the context sheet.
 
 import { fetchContours, fetchNeighbourAddresses, fetchSiteFurniture, emptyFurniture, type ContourLine, type ContourSet, type NeighbourAddress, type SiteFurniture } from './fetch/siteData.js';
-import { fetchCouncilTrees, mergeTrees, TREE_SOURCES } from './fetch/trees.js';
+import { fetchCouncilTrees, mergeTrees, TREE_SOURCES, type SiteTree } from './fetch/trees.js';
 import { fetchServices, emptyServices, type ServicesData } from './fetch/services.js';
 import { assessViews, eyeAboveGround, type ViewTarget } from './fetch/views.js';
 import { fetchCountry, EMPTY_COUNTRY, type CountryData } from './fetch/country.js';
@@ -565,7 +567,10 @@ export async function runYieldPipeline(
   // The photograph under the plan and the axonometric, for the styles that draw the yield on the aerial: wide
   // enough that, skewed into the axonometric's ground plane, it reaches the frame's every edge.
   const aerialExtent = around(420);
-  const [controls, roads, lots, contourSet, stations, policy, buildings, zoning, hob, fsr, addresses, footways, heritage, aerial] = await Promise.all([
+  // The trees for the massing: the photograph's green over the massing's reach, read as crowns (lib/crowns.ts), and
+  // the trees a council inventory or OpenStreetMap records, which stand in for the crowns read at them.
+  const treeExtent = around(130);
+  const [controls, roads, lots, contourSet, stations, policy, buildings, zoning, hob, fsr, addresses, footways, heritage, aerial, vegetation, councilTrees, osmTrees] = await Promise.all([
     fetchSiteControls(geo.center),
     soft(fetchRoads(around(110)), [], 'roads'),
     soft(fetchAllLots(around(110)), emptyFc, 'lots'),
@@ -580,8 +585,14 @@ export async function runYieldPipeline(
     soft(fetchFootways(around(110), log), { source: 'none', lines: [], fetchedAt: new Date().toISOString() } as FootwaysData, 'footways'),
     soft(fetchHeritage(around(110)), emptyFc, 'heritage'),
     soft(fetchAerial(aerialExtent, 3200, dataDir, 'yield-aerial'), null as AerialResult | null, 'aerial'),
+    soft(fetchVegetationPixels(treeExtent, 0.5, 1 / k), null as VegetationPixels | null, 'the aerial\'s green'),
+    soft(fetchCouncilTrees(treeExtent, log), [] as SiteTree[], 'council trees'),
+    soft(fetchOsmTrees(treeExtent), [] as SiteTree[], 'OpenStreetMap trees'),
   ]);
   log(`  aerial: ${aerial ? `${aerial.tiles.length} tile${aerial.tiles.length === 1 ? '' : 's'}, ${aerial.pxWidth} px over ${Math.round(2 * (reach + 130))} m` : 'none'}`);
+  const recordedTrees = mergeTrees(councilTrees, osmTrees).map((t) => ({ lon: t.lon, lat: t.lat, canopyM: t.canopyM, source: t.source }));
+  const trees = vegetation ? treesFromAerial(vegetation, recordedTrees) : recordedTrees;
+  log(`  trees: ${trees.filter((t) => t.source === 'aerial').length} crowns read off the aerial${vegetation ? ` (${vegetation.sharePct} % green)` : ' (no aerial read)'}, ${recordedTrees.length} recorded`);
   log(`  ${[controls.epiName, controls.zoneCode, controls.maxHeightM ? `HOB ${controls.maxHeightM} ${controls.heightUnits ?? 'm'}` : '', controls.fsr ? `FSR ${controls.fsr}:1` : ''].filter(Boolean).join(' · ') || 'no LEP mapped'}`);
   // The capacity study over the neighbours (lib/capacity.ts): which of them has development potential, so the massing
   // raises a future only where one is likely. The council's register needs the LGA, which the controls just gave.
@@ -729,6 +740,7 @@ export async function runYieldPipeline(
     context: context.map(({ footprint: _f, ...c }) => c),
     existing,
     buildingsSource: buildings.source,
+    trees,
     aerial: aerial ? { ...aerial, extent: aerialExtent } : null,
     assumptions,
     ...(capacity ? { capacity: { since: capacity.since, smallSite: capacity.options.smallSite, strataMax: capacity.options.strataMax, overridden: Object.keys(capacityOverrides).length, registerSource: capacityData?.registerSource } } : {}),
@@ -1131,6 +1143,22 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
     ...(streetscape ? { streetscape } : {}),
     warnings,
   };
+  // The walks on the network from the site to what the movement page lists within fifteen minutes (its parks, schools,
+  // stops and stations, read off the bundle once it stands), for the map's flow lines: one request a place, a few at
+  // a time, and the page draws what the router answered.
+  try {
+    const facts = movementFacts(bundle);
+    const dests = walkDestinations(bundle, facts);
+    // every station within the reach as well, listed or not: the walk to a station is the one the page draws heaviest
+    const named = new Set(dests.map((d) => d.name.toUpperCase()));
+    const stations = facts.stations.filter((st) => st.walkBand !== null && !named.has(st.name.toUpperCase()))
+      .map((st) => ({ name: st.name, kind: st.kind === 'light rail' ? 'light rail stop' : `${st.kind} station`, lon: st.lon, lat: st.lat }));
+    const targets = [...dests, ...stations];
+    if (targets.length) {
+      bundle.movement.routes = await fetchWalkRoutes(mercatorToLonLat(geo.center), targets);
+      log(`  walks: ${bundle.movement.routes.length} of ${targets.length} places routed on foot`);
+    }
+  } catch (e: any) { log(`  WARN walking routes failed: ${e?.message ?? e}`); }
   await writeFile(join(dataDir, 'slides_bundle.json'), JSON.stringify(bundle));
   return bundle;
 }

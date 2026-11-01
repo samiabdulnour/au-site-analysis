@@ -7,7 +7,7 @@
 import { queryByExtent, type GeoJSONFC } from '../lib/arcgis.js';
 import { overpassQuery } from '../lib/http.js';
 import { extentToLonLatBbox, mercatorToLonLat, type Extent, type XY } from '../lib/geo.js';
-import { fetchIsochrones, fetchRoute, type Isochrone, type RouteSummary } from './isochrones.js';
+import { fetchIsochrones, fetchRoute, fetchRouteLine, type Isochrone, type RouteSummary } from './isochrones.js';
 import { CENTRES, SYDNEY_CBD, CENTRE_KIND_WORD } from '../data/centres.js';
 import { fetchBusStopsTfnsw } from './tfnsw.js';
 
@@ -36,6 +36,8 @@ export interface MovementData {
   parking?: CarParkPoint[];
   /** Journeys from the site to the centres by car and by bicycle, from the public router; absent from decks read before them. */
   journeys?: Journey[];
+  /** The walks on the network from the site to what the movement page lists within fifteen minutes, for its map's flow lines; absent from decks read before them. */
+  routes?: WalkRoute[];
   /** LEP active street frontage polygons (ePlanning layer 224). */
   activeFrontages: GeoJSONFC;
   fetchedAt: string;
@@ -45,6 +47,20 @@ const EMPTY_FC: GeoJSONFC = { type: 'FeatureCollection', features: [] };
 
 export interface CarParkPoint { lon: number; lat: number; name?: string; kind: string; capacity?: number; fee?: boolean; access?: string }
 export interface Journey { to: string; kind: string; lon: number; lat: number; auto: RouteSummary | null; bicycle: RouteSummary | null }
+/** A walk from the site to one place the page lists, as the router walks it. */
+export interface WalkRoute { to: string; kind: string; lon: number; lat: number; minutes: number; km: number; coords: [number, number][] }
+
+/** The walks from the site to each target, on the network, in the targets' order; a target the router cannot reach is left out. */
+export async function fetchWalkRoutes(centre: { lon: number; lat: number }, targets: { name: string; kind: string; lon: number; lat: number }[]): Promise<WalkRoute[]> {
+  const out: WalkRoute[] = [];
+  // a few at a time: the public router answers one request quickly and a flood not at all
+  for (let i = 0; i < targets.length; i += 3) {
+    const batch = targets.slice(i, i + 3);
+    const lines = await Promise.all(batch.map((tg) => fetchRouteLine(centre, tg, 'pedestrian').catch(() => null)));
+    batch.forEach((tg, j) => { const r = lines[j]; if (r) out.push({ to: tg.name, kind: tg.kind, lon: tg.lon, lat: tg.lat, minutes: r.minutes, km: r.km, coords: r.coords }); });
+  }
+  return out;
+}
 
 /** The centres a site's journeys are timed to: the Sydney CBD, and the nearest CBD or major centre of the plan beyond 1.5 km that is not it. */
 export function journeyTargets(centre: { lon: number; lat: number }): { name: string; kind: string; lon: number; lat: number }[] {

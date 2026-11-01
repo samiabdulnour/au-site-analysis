@@ -141,6 +141,14 @@ jobs:
       - name: the kerb lines sit where a footpath would end
         run: npx tsx test/kerbs.mts
 
+      # The massing's trees and streets, on made-up pixels and lines: two
+      # round canopies on a mask come out as two crowns at their centres with
+      # their radii, a lawn (green but flat) is no tree, a recorded tree stands
+      # in for the crown read at it, and a street is swept to its kerbs where
+      # the sheet has them, to its class's width where it has none.
+      - name: the canopy peels into crowns and the streets sweep to their kerbs
+        run: npx tsx test/crowns.mts
+
       # The Major Projects register is HTML, parsed: its listing cards, a
       # project page's details and point, and the council-area matching, on
       # trimmed copies of the markup. CI never calls the Planning Portal.

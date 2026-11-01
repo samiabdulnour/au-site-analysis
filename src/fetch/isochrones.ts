@@ -31,6 +31,26 @@ export async function fetchIsochrones(center: LonLat, minutes: number[] = [5, 10
 
 /** A journey's time and length by one costing (auto, bicycle, pedestrian), from the public router; null where it does not answer. */
 export interface RouteSummary { minutes: number; km: number }
+/** A route's line: the router's encoded polyline (precision 6) as lon/lat. */
+export function decodePolyline6(str: string): [number, number][] {
+  const out: [number, number][] = [];
+  let i = 0, lat = 0, lon = 0;
+  const next = () => { let result = 0, shift = 0, b: number; do { b = str.charCodeAt(i++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20); return result & 1 ? ~(result >> 1) : result >> 1; };
+  while (i < str.length) { lat += next(); lon += next(); out.push([lon / 1e6, lat / 1e6]); }
+  return out;
+}
+
+/** The route itself, with its line, for drawing: null where the router finds none. */
+export async function fetchRouteLine(from: LonLat, to: LonLat, costing: 'auto' | 'bicycle' | 'pedestrian'): Promise<(RouteSummary & { coords: [number, number][] }) | null> {
+  const req = { locations: [{ lat: from.lat, lon: from.lon }, { lat: to.lat, lon: to.lon }], costing, units: 'kilometers' };
+  const res = await retryFetch(`${VALHALLA.replace(/isochrone$/, 'route')}?json=${encodeURIComponent(JSON.stringify(req))}`, {}, { attempts: 3, timeoutMs: 60_000, label: `route ${costing}` });
+  if (!res.ok) return null;
+  const data = await res.json();
+  const sum = data?.trip?.summary, shape = data?.trip?.legs?.[0]?.shape;
+  if (!sum || typeof shape !== 'string') return null;
+  return { minutes: Math.round(sum.time / 60), km: Math.round(sum.length * 10) / 10, coords: decodePolyline6(shape) };
+}
+
 export async function fetchRoute(from: LonLat, to: LonLat, costing: 'auto' | 'bicycle' | 'pedestrian'): Promise<RouteSummary | null> {
   const req = { locations: [{ lat: from.lat, lon: from.lon }, { lat: to.lat, lon: to.lon }], costing, units: 'kilometers' };
   const res = await retryFetch(`${VALHALLA.replace(/isochrone$/, 'route')}?json=${encodeURIComponent(JSON.stringify(req))}`, {}, { attempts: 3, timeoutMs: 60_000, label: `route ${costing}` });

@@ -348,6 +348,19 @@ export function paletteRamp(): string[] {
   return [vivid(B.solid, 0.5, 0.48), vivid(G.solid, 0.5, 0.42), vivid(warm, 0.65, 0.5), vivid(R.solid, 0.55, 0.45), vivid(R.deep, 0.6, 0.32)];
 }
 
+/**
+ * The ground's ramp, low to high, after the old survey sheets: sand on the flats, pink then salmon up the slopes,
+ * violet and the deep blue on the heights — the style's own families at each step, so Heron's is terracotta and
+ * indigo and Canary's is sharper. Tinted for a wash over the hillshade, darkened for contours on paper.
+ */
+export function terrainRamp(): string[] {
+  const B = INK.blue, O = INK.orange, R = INK.red;
+  const sat = (hex: string) => { const n = parseInt(hex.slice(1), 16), c = [(n >> 16) & 255, (n >> 8) & 255, n & 255]; const mx = Math.max(...c); return mx ? (mx - Math.min(...c)) / mx : 0; };
+  const sand = [O.solid, O.line, O.deep].sort((a, b) => sat(b) - sat(a))[0];
+  const red = vivid(R.solid, 0.55, 0.5);
+  return [tint(vivid(sand, 0.6, 0.62), 0.3), tint(red, 0.5), red, vivid(mix(red, B.solid, 0.55), 0.45, 0.42), vivid(B.deep, 0.5, 0.3)];
+}
+
 /** The ramp ordered data runs up in this style: Heron's between two colours of its sheet, the blue low and the red high, mixed; the others across the palette. */
 export function styleRamp(): string[] {
   return deckLook().id === 'heron' ? [INK.blue.solid, INK.red.deep] : paletteRamp();
