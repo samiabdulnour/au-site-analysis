@@ -11,6 +11,7 @@ import { addressStreet, fetchStreetSeries } from './fetch/streetView.js';
 import { planStreetscape, planPoint, faceSkyline, fetchStreetscapeFrames, FRAME_PX, type StreetscapePlan, type ScapeFrame, type Face } from './fetch/streetscape.js';
 import { fetchStreetTiles, enuFrame } from './fetch/tiles3d.js';
 import { renderElevations, SCAPE_SKY, type Elevation, type FaceView } from './render/elevation3d.js';
+import { deckWindows, layoutFaces } from './render/streetscape.js';
 import { fetchBusData, type BusData } from './fetch/osm.js';
 import { fetchBusStopsTfnsw } from './fetch/tfnsw.js';
 import { fetchIsochrones, type Isochrone } from './fetch/isochrones.js';
@@ -1119,7 +1120,7 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
   let streetscape: StreetscapeBundle | undefined;
   if (process.env.DECK_STREETSCAPE !== '0') {
     log('the streetscape…');
-    const sb = await soft(runStreetscapePipeline(address, { outDir: opts.outDir, halfLengthM: DECK_STREET_HALF_M, log, buildings: buildingsRead.buildings }), null, 'streetscape');
+    const sb = await soft(runStreetscapePipeline(address, { outDir: opts.outDir, fit: 'deck', log, buildings: buildingsRead.buildings }), null, 'streetscape');
     if (sb && (sb.elevations?.some(Boolean) || sb.frames.length || sb.plan.faces.some((f) => f.skyline?.length))) streetscape = sb;
   }
   const applications = feed ? clipToExtent(feed.records, pageExtent) : [];
@@ -1178,8 +1179,6 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
 
 // ---- the streetscape ------------------------------------------------------------------
 
-/** How far the deck's streetscape runs either way from the site: 380 m of street in all, both faces on one spread, at the largest round scale that fits it and the site's building (1:1000 on A3). */
-export const DECK_STREET_HALF_M = 190;
 
 export interface StreetscapeBundle {
   address: string;
@@ -1211,7 +1210,7 @@ export interface StreetscapeBundle {
  * 5 m elevation model, and with GOOGLE_MAPS_API_KEY the Street View frames
  * that the drawing rectifies onto them (src/fetch/streetscape.ts).
  */
-export async function runStreetscapePipeline(address: string, opts: { outDir: string; halfLengthM?: number; through?: string; source?: 'photo' | 'mesh' | 'montage'; /** The buildings already read, so the faces' rooflines need no second fetch. */ buildings?: BuildingsData['buildings']; log?: (m: string) => void }): Promise<StreetscapeBundle> {
+export async function runStreetscapePipeline(address: string, opts: { outDir: string; halfLengthM?: number; /** The deck's window: the street as long as fills the spread at the largest scale its tallest buildings allow whole (deckWindows), the half-length then ignored. */ fit?: 'deck'; through?: string; source?: 'photo' | 'mesh' | 'montage'; /** The buildings already read, so the faces' rooflines need no second fetch. */ buildings?: BuildingsData['buildings']; log?: (m: string) => void }): Promise<StreetscapeBundle> {
   const warnings: string[] = [];
   const log = (m: string) => { opts.log?.(m); if (/WARN/.test(m)) warnings.push(m.trim()); };
   const dataDir = join(opts.outDir, 'data');
@@ -1225,7 +1224,8 @@ export async function runStreetscapePipeline(address: string, opts: { outDir: st
   if (!siteLots.features.length) throw new Error('No cadastral lots found for the site.');
   const centre = mercatorToLonLat(geo.center);
   const k = mercatorScaleFactor(centre.lat);
-  const r = (half + 90) * k;
+  const windows = deckWindows();
+  const r = ((opts.fit === 'deck' ? windows[windows.length - 1].halfM : half) + 90) * k;
   const extent: Extent = { xmin: geo.center.x - r, ymin: geo.center.y - r, xmax: geo.center.x + r, ymax: geo.center.y + r };
 
   const soft = <T,>(p: Promise<T>, fallback: T, name: string): Promise<T> =>
@@ -1237,32 +1237,53 @@ export async function runStreetscapePipeline(address: string, opts: { outDir: st
   ]);
   const st = addressStreet(geo.matchedAddresses[0] ?? address, roads.filter((x) => !x.tunnel), centre);
   if (!st) throw new Error('No named street found beside the site.');
-  const plan = planStreetscape({
-    street: st.name, segments: st.segments, centre, halfLengthM: half, ...(opts.through ? { through: opts.through } : {}),
-    siteRings: siteLots.features.flatMap((f) => geomRingsOf(f.geometry)),
-    properties: properties.features.map((f) => ({ id: String(f.properties.propid), address: f.properties.address ?? '', housenumber: f.properties.housenumber ?? undefined, rings: geomRingsOf(f.geometry) })),
-    roads: roads.map((x) => ({ name: x.name, coords: x.coords, tunnel: x.tunnel })),
-  });
+  const groundAt = (p: LonLat) => { if (!dem) return undefined; const m = lonLatToMercator(p); return demAt(dem, m.x, m.y); };
+  // The rooflines from the buildings' recorded heights, each face's, for the faces no mesh or frame reaches and for
+  // the deck's choice of window: the buildings already read where the deck runs this, else Overture's for the window.
+  const blds = opts.buildings ?? (await soft(fetchBuildings(extent, log), { source: 'none', buildings: [], fetchedAt: new Date().toISOString() } as BuildingsData, 'buildings')).buildings;
+  // The street `h` either way from the site, its faces' ground from the elevation model and their rooflines.
+  const planFor = (h: number) => {
+    const pl = planStreetscape({
+      street: st.name, segments: st.segments, centre, halfLengthM: h, ...(opts.through ? { through: opts.through } : {}),
+      siteRings: siteLots.features.flatMap((f) => geomRingsOf(f.geometry)),
+      properties: properties.features.map((f) => ({ id: String(f.properties.propid), address: f.properties.address ?? '', housenumber: f.properties.housenumber ?? undefined, rings: geomRingsOf(f.geometry) })),
+      roads: roads.map((x) => ({ name: x.name, coords: x.coords, tunnel: x.tunnel })),
+    });
+    if (!pl) return null;
+    for (const face of pl.faces) {
+      for (let s = pl.s0; s <= pl.s1; s++) {
+        const fr = face.frontages.find((x) => s >= x.s0 && s <= x.s1);
+        const z = groundAt(planPoint(pl, s, (fr?.offsetM ?? face.offsetM) * face.side));
+        if (z !== undefined) face.ground.push({ s, z: Math.round(z * 100) / 100 });
+      }
+      const gAt = (s: number) => { let best: { s: number; z: number } | undefined; for (const g of face.ground) if (!best || Math.abs(g.s - s) < Math.abs(best.s - s)) best = g; return best?.z; };
+      face.skyline = faceSkyline(pl, face, blds.map((bd) => ({ rings: bd.rings, heightM: bd.estimatedHeightM })), gAt);
+    }
+    return pl;
+  };
+  // The deck's window: the first of its scales, from 1:1000, at which the street filling the spread has its tallest
+  // buildings whole, by their recorded heights (the meshes, read later, measure them again when the page is drawn).
+  let plan: StreetscapePlan | null = null, drawScale = 500;
+  if (opts.fit === 'deck') {
+    for (const w of windows) {
+      const pl = planFor(w.halfM);
+      if (!pl) continue;
+      plan = pl; drawScale = w.scale;
+      if (layoutFaces({ plan: pl, frames: [] } as unknown as StreetscapeBundle, undefined, true).scale <= w.scale) break;
+    }
+    if (plan) log(`  the deck's window: ${Math.round(plan.s1 - plan.s0)} m of ${st.name} at 1:${drawScale}, the tallest buildings whole`);
+  } else plan = planFor(half);
   if (!plan) throw new Error(`${st.name} is too short or too far from the site to draw.`);
   if (opts.through) log(`  the window runs ${plan.s0}…${plan.s1} m${plan.s1 > half || plan.s0 < -half ? `, on through ${opts.through}` : `; ${opts.through} was not found crossing it`}`);
-
-  const groundAt = (p: LonLat) => { if (!dem) return undefined; const m = lonLatToMercator(p); return demAt(dem, m.x, m.y); };
   for (const face of plan.faces) {
-    for (let s = plan.s0; s <= plan.s1; s++) {
-      const fr = face.frontages.find((x) => s >= x.s0 && s <= x.s1);
-      const z = groundAt(planPoint(plan, s, (fr?.offsetM ?? face.offsetM) * face.side));
-      if (z !== undefined) face.ground.push({ s, z: Math.round(z * 100) / 100 });
-    }
     log(`  ${bearingWord(face.facing)} face: ${face.frontages.length} frontages, ${face.gaps.length} gaps${face.gaps.some((g) => g.road) ? ` (${face.gaps.filter((g) => g.road).map((g) => g.road).join(', ')})` : ''}, building line ${face.offsetM.toFixed(1)} m off the axis${face.hasSite ? ', the site' : ''}`);
+    if (face.skyline?.length) log(`  ${bearingWord(face.facing)} face: a roofline over ${face.skyline.length} m of it from ${blds.length} buildings' recorded heights`);
   }
-  // The rooflines from the buildings' recorded heights, each face's, for the faces no mesh or frame reaches: the
-  // buildings already read where the deck runs this, else Overture's for the window.
-  const blds = opts.buildings ?? (await soft(fetchBuildings(extent, log), { source: 'none', buildings: [], fetchedAt: new Date().toISOString() } as BuildingsData, 'buildings')).buildings;
-  for (const face of plan.faces) {
-    const gAt = (s: number) => { let best: { s: number; z: number } | undefined; for (const g of face.ground) if (!best || Math.abs(g.s - s) < Math.abs(best.s - s)) best = g; return best?.z; };
-    face.skyline = faceSkyline(plan, face, blds.map((bd) => ({ rings: bd.rings, heightM: bd.estimatedHeightM })), gAt);
-    if (face.skyline.length) log(`  ${bearingWord(face.facing)} face: a roofline over ${face.skyline.length} m of it from ${blds.length} buildings' recorded heights`);
-  }
+  // The elevations as high as the street's tallest building stands over its ground, and some sky; as fine as the
+  // drawing's scale needs (24 px a metre at 1:500, 300 dpi), the meshes as coarse as it allows.
+  const tallestM = Math.max(0, ...plan.faces.map((f) => { const zs = f.ground.map((g) => g.z); return zs.length && f.skyline?.length ? Math.max(...f.skyline.map((x) => x.z)) - Math.min(...zs) : 0; }));
+  const aboveM = Math.ceil(tallestM + 15);
+  const ppm = Math.max(8, Math.round((SCAPE_PPM * 500) / drawScale)), tileErrorM = (SCAPE_TILE_ERROR_M * drawScale) / 500;
 
   const gkey = process.env.GOOGLE_MAPS_API_KEY?.trim();
   let frames: ScapeFrame[] = [], framesNote: string | undefined;
@@ -1279,11 +1300,12 @@ export async function runStreetscapePipeline(address: string, opts: { outDir: st
     try {
       const sides = plan.faces.map((f) => f.side * (f.offsetM + SCAPE_DEPTH_M + 5));
       const at0: [number, number] = [plan.at0.x, plan.at0.y], axis: [number, number] = [plan.axis.x, plan.axis.y];
-      const got = await fetchStreetTiles(gkey, centre, { at0, axis, s: [plan.s0 - 5, plan.s1 + 5], d: [Math.min(0, ...sides), Math.max(0, ...sides)], z: [-100, 700] }, SCAPE_TILE_ERROR_M, log);
+      const got = await fetchStreetTiles(gkey, centre, { at0, axis, s: [plan.s0 - 5, plan.s1 + 5], d: [Math.min(0, ...sides), Math.max(0, ...sides)], z: [-100, 700] }, tileErrorM, log);
       log(`  3D tiles: ${(got.tiles.reduce((t, x) => t + x.bytes.length, 0) / 1e6).toFixed(1)} MB, finest error ${got.finestErrorM.toFixed(2)} m`);
       if (source === 'photo' && dem) frames = await fetchFrames();
       log(`  drawing the faces${frames.length ? `, ${frames.length} Street View frames laid on the meshes` : ''}…`);
-      elevations = await renderElevations(got.tiles, enuFrame(centre).matrix, plan.faces.map((f) => faceView(plan, f, frames)), dataDir, { ppm: SCAPE_PPM, background: SCAPE_SKY, log });
+      const pl = plan;
+      elevations = await renderElevations(got.tiles, enuFrame(centre).matrix, pl.faces.map((f) => faceView(pl, f, frames)), dataDir, { ppm, background: SCAPE_SKY, log, aboveM });
       for (const [i, e] of elevations.entries()) {
         if (!e) continue;
         groundOffsetM ??= e.offsetM;

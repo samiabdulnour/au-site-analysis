@@ -57,13 +57,24 @@ interface Layout { scale: number; k: number; x0: number; pageW: number; bands: {
 
 /** How the buildings over the faces are filled: a white veil, not at all, or by their contribution to their conservation area. */
 export type BuildingFill = 'veil' | 'none' | 'heritage' | 'bands';
-export interface StreetscapeOptions { overlay?: boolean; fill?: BuildingFill; scale?: number }
+export interface StreetscapeOptions { overlay?: boolean; fill?: BuildingFill; scale?: number; /** Every building whole in its band, the tallest included, and the scale whatever that needs (the deck's page). */ whole?: boolean }
+
+/**
+ * The deck's windows, smallest scale first: at each round scale from 1:1000, how far the street runs either way from the
+ * site to fill the spread's width. The pipeline takes the first at which the street's tallest buildings stand whole
+ * (`layoutFaces` with `whole`), so a low street is drawn 390 m long at 1:1000 and a street of towers longer, smaller.
+ */
+export function deckWindows(): { scale: number; halfM: number }[] {
+  return [1000, 1250, 1500, 2000].map((scale) => ({ scale, halfM: Math.floor(((SLIDE_W - 2 * MARGIN) * scale) / 2000) - 1 }));
+}
 
 /**
  * The largest round scale at which the window fits the sheet's width and both bands its height; or, given `scale`, that
- * scale, on a sheet as long as the window then needs (and never shorter than A3), at A3's height.
+ * scale, on a sheet as long as the window then needs (and never shorter than A3), at A3's height. With `whole`, each band
+ * must hold its face's tallest building whole (its third-tallest metre of roof, so a mast or a crane is not one), with a
+ * little sky over it, whatever scale that needs.
  */
-export function layoutFaces(b: StreetscapeBundle, scale?: number): Layout {
+export function layoutFaces(b: StreetscapeBundle, scale?: number, whole = false): Layout {
   const p = b.plan, len = p.s1 - p.s0;
   const pageW = scale ? Math.max(SLIDE_W, Math.ceil((len * 1000) / scale) + 2 * MARGIN) : SLIDE_W, width = pageW - 2 * MARGIN;
   // The site's own building on a face must fit its band whole, with a little sky over it: the scale follows the size
@@ -85,7 +96,7 @@ export function layoutFaces(b: StreetscapeBundle, scale?: number): Layout {
       // and over its tallest building, where its roofs are measured: a narrow tower is under 2% of a long face's metres
       const roofs = (e.roofs ?? []).map((x) => x.z).sort((x, y) => y - x);
       const reach = Math.max(tops[Math.floor(tops.length * 0.98)] ?? hi + SKY_M, roofs[2] ?? -Infinity) + 2;
-      const zMin = Math.max(hi + MIN_SKY_M, site);
+      const zMin = Math.max(hi + MIN_SKY_M, site, whole ? (roofs[2] ?? roofs[0] ?? -Infinity) + 2 : -Infinity);
       return { zTop: Math.max(zMin, Math.min(hi + SKY_3D_M, reach)), zMin, zBot: lo - GROUND_BAND_M };
     }
     const zs = f.ground.map((g) => g.z);
@@ -97,7 +108,7 @@ export function layoutFaces(b: StreetscapeBundle, scale?: number): Layout {
     const sky = f.skyline?.length && !own.length ? Math.max(...f.skyline.map((x) => x.z)) + 3 : -Infinity;
     const reach = tops.length ? tops[Math.floor(tops.length / 4)] : Math.max(hi + SKY_M, sky);
     const cap = Number.isFinite(sky) ? SKY_3D_M : SKY_M;
-    const zMin = Math.max(hi + MIN_SKY_M, own.length ? -Infinity : site);
+    const zMin = Math.max(hi + MIN_SKY_M, own.length ? -Infinity : site, whole && !own.length ? sky : -Infinity);
     return { zTop: Math.max(zMin, Math.min(hi + cap, reach)), zMin, zBot: lo - BELOW_GROUND_M - 0.6 };
   });
   const room = SLIDE_H - FOOT_ROOM_MM - BAND_TOP - p.faces.length * (LABEL_GAP + LABELS_H + CAPTION_H) - (p.faces.length - 1) * FACE_GAP;
@@ -480,7 +491,7 @@ function legendSvg(x: number, y: number): string {
 /** What a streetscape draws, whether on its own page or as a page of the deck. */
 function streetscapeParts(b: StreetscapeBundle, opts: StreetscapeOptions) {
   const overlay = !!opts.overlay || opts.fill === 'heritage', fill: BuildingFill = opts.fill === 'heritage' && !b.heritage ? 'veil' : (opts.fill ?? 'veil');
-  const L = layoutFaces(b, opts.scale);
+  const L = layoutFaces(b, opts.scale, !!opts.whole);
   const W = L.pageW;
   const faces = b.plan.faces.map((f, i) => faceSvg(b, f, L, i, overlay, fill));
   const lined = overlay && !!b.elevations?.some((e) => e?.roofs?.length);
@@ -569,7 +580,8 @@ ${body}
  */
 export function streetscapeSlide(b: StreetscapeBundle, opts: Omit<StreetscapeOptions, 'scale'> = {}): Slide {
   const t = tpl();
-  const { lead, sources, subtitle, body } = streetscapeParts(b, opts);
+  // the deck's page: every building whole, the tallest included, at whatever scale that needs
+  const { lead, sources, subtitle, body } = streetscapeParts(b, { whole: true, ...opts });
   const figureHtml = `<div class="scape">
   <div class="abs lead" style="left:${SLIDE_W - MARGIN - 150}mm;top:17.5mm;width:150mm">${esc(lead)}</div>
 ${body}
