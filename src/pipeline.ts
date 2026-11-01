@@ -1114,14 +1114,16 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
     const st = addressStreet(geo.matchedAddresses[0] ?? address, roads, mercatorToLonLat(geo.center));
     if (st) photos.series = await fetchStreetSeries(st.name, st.segments, mercatorToLonLat(geo.center), dataDir, gkey, process.env.GOOGLE_MAPS_SIGNING_SECRET?.trim() || undefined, 8, log).catch((e: any) => { log(`  WARN street series failed: ${e?.message ?? e}`); return []; });
   }
-  // the site's street as two elevations, as `--type streetscape` draws it: the photographs on Google's meshes where
-  // Street View is keyed, else the buildings at their recorded heights; DECK_STREETSCAPE=0 leaves it out, and so does
-  // a failure, or a street with nothing to draw
+  // the site's street as two elevations on Google's 3D tiles, the Street View photographs laid on the meshes, as
+  // `--type streetscape` draws it: only where the tiles reach the street (a collage of flat frames reads as a mess, and
+  // blocks at their recorded heights are no streetscape), so a regional street the tiles miss, a run without
+  // GOOGLE_MAPS_API_KEY, a failure, or DECK_STREETSCAPE=0 leaves the page out
   let streetscape: StreetscapeBundle | undefined;
   if (process.env.DECK_STREETSCAPE !== '0') {
     log('the streetscape…');
     const sb = await soft(runStreetscapePipeline(address, { outDir: opts.outDir, fit: 'deck', log, buildings: buildingsRead.buildings }), null, 'streetscape');
-    if (sb && (sb.elevations?.some(Boolean) || sb.frames.length || sb.plan.faces.some((f) => f.skyline?.length))) streetscape = sb;
+    if (sb?.elevations?.some(Boolean)) streetscape = sb;
+    else if (sb) log('  the streetscape is left out: Google\'s 3D tiles do not reach this street');
   }
   const applications = feed ? clipToExtent(feed.records, pageExtent) : [];
   const daMeta = feed ? { council: feed.council, from: feed.from, to: feed.to, total: feed.total, complete: feed.complete, fetchedAt: feed.fetchedAt } : null;
@@ -1302,6 +1304,8 @@ export async function runStreetscapePipeline(address: string, opts: { outDir: st
       const at0: [number, number] = [plan.at0.x, plan.at0.y], axis: [number, number] = [plan.axis.x, plan.axis.y];
       const got = await fetchStreetTiles(gkey, centre, { at0, axis, s: [plan.s0 - 5, plan.s1 + 5], d: [Math.min(0, ...sides), Math.max(0, ...sides)], z: [-100, 700] }, tileErrorM, log);
       log(`  3D tiles: ${(got.tiles.reduce((t, x) => t + x.bytes.length, 0) / 1e6).toFixed(1)} MB, finest error ${got.finestErrorM.toFixed(2)} m`);
+      // no meshes over the street (the photorealistic tiles cover the cities, not every town): no frames to lay on them
+      if (!got.tiles.length) throw new Error('the 3D tiles hold no meshes over this street');
       if (source === 'photo' && dem) frames = await fetchFrames();
       log(`  drawing the faces${frames.length ? `, ${frames.length} Street View frames laid on the meshes` : ''}…`);
       const pl = plan;
@@ -1314,13 +1318,15 @@ export async function runStreetscapePipeline(address: string, opts: { outDir: st
       tileCredits = got.credits;
       if (!elevations.some(Boolean)) { elevations = undefined; log('  3D tiles: no face found its ground in the meshes'); }
     } catch (e: any) {
-      log(`  3D tiles not drawn (${e?.message ?? e}); Street View frames rectified onto the boundaries instead`);
+      log(`  3D tiles not drawn (${e?.message ?? e})${opts.fit === 'deck' ? '' : '; Street View frames rectified onto the boundaries instead'}`);
       elevations = undefined;
     }
   }
   if (elevations) { /* the faces are drawn */ }
   else if (!gkey) framesNote = 'Street View frames need GOOGLE_MAPS_API_KEY; the faces are drawn as their ground and frontages alone.';
   else if (!dem) framesNote = 'The elevation model did not answer, so the frames could not be set on the ground.';
+  // the deck takes the 3D tiles or nothing: it fetches no frames to rectify
+  else if (opts.fit === 'deck') framesNote = 'Google\'s 3D tiles do not reach this street.';
   else if (!frames.length) frames = await fetchFrames();
 
   const heritage = await soft(fetchStreetscapeHeritage(plan, log), null, 'heritage');

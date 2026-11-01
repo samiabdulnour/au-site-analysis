@@ -578,6 +578,11 @@ ${body}
  * deck's own heading, no rule under the subtitle, the lead over the right-hand page, the sources in two columns across
  * the foot. On A3 at the scale that fits.
  */
+/** The deck's streetscape page, or none: the deck takes it only where Google's 3D tiles drew a face, never as Street View frames or blocks. */
+export function deckStreetscapeSlide(b: StreetscapeBundle | undefined, opts: Omit<StreetscapeOptions, 'scale'> = {}): Slide | null {
+  return b?.elevations?.some(Boolean) ? streetscapeSlide(b, opts) : null;
+}
+
 export function streetscapeSlide(b: StreetscapeBundle, opts: Omit<StreetscapeOptions, 'scale'> = {}): Slide {
   const t = tpl();
   // the deck's page: every building whole, the tallest included, at whatever scale that needs

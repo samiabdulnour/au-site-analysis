@@ -7,8 +7,9 @@
    (`npm run generate`, rasterised like the samples), so the welcome never
    shows the example the generator's result frame uses: the maps 1 to 14; the
    yield's pages 15 to 18 (Manly, Wollongong, Newcastle) and the site report's
-   19 to 27 (Katoomba, Orange), in the four styles mixed; the illustrations are
-   art-*, the studio's graphics.
+   19 to 27 (Katoomba, Orange, and Newcastle's streetscape on Google's 3D
+   tiles), in the four styles mixed; the illustrations are art-*, the
+   studio's graphics.
 
    The sheets are shuffled on every visit and dealt between the windows,
    so each turns through its own and never shows the same one as another;

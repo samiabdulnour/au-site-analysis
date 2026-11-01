@@ -52,7 +52,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { MajorProject } from '../fetch/majorProjects.js';
 import { classifyCapacity, inWindow, capacityCounts, type CapacityProperty } from '../lib/capacity.js';
-import { streetscapeSlide } from './streetscape.js';
+import { deckStreetscapeSlide } from './streetscape.js';
 
 export const SLIDE_W = 420;
 export const SLIDE_H = 297;
@@ -8795,7 +8795,8 @@ function drawSlides(b: SlidesBundle, meta: SheetMeta): { html: string; slides: S
   // the streetscape follows the character page, the street seen before the plans are read; the capacity study
   // follows the development activity it reads; a deck built before its layers has none
   const capacity = capacityAtlas(b, facts);
-  const slides = [countryAtlas(b), locationSlide(b), characterAtlas(b), ...(b.streetscape ? [streetscapeSlide(b.streetscape, { overlay: true })] : []), planningAtlas(b), controlsAtlas(b, facts), strategicAtlas(b, facts), topographyAtlas(b), developmentAtlas(b, facts), ...(capacity ? [capacity] : []), builtFormAtlas(b, facts), formAtlas(b, facts), movementSlide(b), greenAtlas(b), siteAtlas(b), conditionAtlas(b), sunAtlas(b), constraintsAtlas(b), peopleAtlas(b), ocAtlas(b, facts), sourcesAtlas(b, facts)];
+  const scape = deckStreetscapeSlide(b.streetscape, { overlay: true });
+  const slides = [countryAtlas(b), locationSlide(b), characterAtlas(b), ...(scape ? [scape] : []), planningAtlas(b), controlsAtlas(b, facts), strategicAtlas(b, facts), topographyAtlas(b), developmentAtlas(b, facts), ...(capacity ? [capacity] : []), builtFormAtlas(b, facts), formAtlas(b, facts), movementSlide(b), greenAtlas(b), siteAtlas(b), conditionAtlas(b), sunAtlas(b), constraintsAtlas(b), peopleAtlas(b), ocAtlas(b, facts), sourcesAtlas(b, facts)];
   const t = tpl();
   const footerLeft = ['SITE ANALYST — OVERALL ANALYSIS', b.siteAddress, meta.client ? `for ${meta.client}` : '', meta.jobNo ? `job ${meta.jobNo}` : ''].filter(Boolean).join(' · ');
   const pages = slides.map((s, i) => s.bleed || s.full ? atlasPage(s, i) : `
