@@ -2534,20 +2534,24 @@ export function developmentAtlas(b0: SlidesBundle, facts: PlanningFacts): Slide 
 
 // ---- 08b Capacity and opportunity: the office's context plan on the template ------------------------------------
 
-/** The capacity study's fills: ownership in sand, heritage in a terracotta hatch, the mature development a grey dotted patch. */
+/**
+ * The capacity study's fills, in the palette: strata ownership a wash of the activity family, heritage a hatch of
+ * the red, the mature development a dotted patch of the transit blue; a tick in the living green, a cross in the
+ * red, a single title's outline in the transit family. Read as they are drawn, so each style's families apply.
+ */
 const CAP_FILL = {
-  strata: { bg: '#f3debc', outline: '#b5873b', outlineW: 0.12 } as Fill,
-  heritage: { kind: 'vlines', ink: '#d9a094', step: 0.95, w: 0.07, outline: '#ba4530', outlineW: 0.2 } as Fill,
-  mature: { bg: '#e4e5e1', kind: 'dots', ink: '#4a5250', step: 0.5, w: 0.14, outline: '#4a5250', outlineW: 0.18 } as Fill,
+  get strata(): Fill { return { bg: tint(INK.orange.solid, 0.38), outline: inkFor(INK.orange.deep, 0.42), outlineW: 0.12 }; },
+  get heritage(): Fill { return { kind: 'vlines', ink: tint(INK.red.solid, 0.55), step: 0.95, w: 0.07, outline: inkFor(INK.red.deep, 0.35), outlineW: 0.2 }; },
+  get mature(): Fill { return { bg: tint(INK.blue.solid, 0.18), kind: 'dots', ink: inkFor(INK.blue.deep, 0.3), step: 0.5, w: 0.14, outline: inkFor(INK.blue.deep, 0.3), outlineW: 0.18 }; },
 };
-const CAP_TICK = '#2f8f55', CAP_CROSS = '#ba4530', CAP_SINGLE = '#9a9a9a';
+const capTick = () => inkFor(vivid(INK.green.solid, 0.5, 0.42), 0.36), capCross = () => inkFor(INK.red.deep, 0.35), capSingle = () => tint(inkFor(INK.blue.solid, 0.45), 0.55);
 /** A tick or a cross as a path about (x, y), s its half size, haloed in white. */
 const capMark = (kind: 'tick' | 'cross', x: number, y: number, s: number) => {
   const w = Math.max(0.3, s * 0.28);
   const d = kind === 'tick'
     ? `M${(x - s * 0.9).toFixed(2)},${(y + s * 0.05).toFixed(2)}L${(x - s * 0.2).toFixed(2)},${(y + s * 0.75).toFixed(2)}L${(x + s).toFixed(2)},${(y - s * 0.8).toFixed(2)}`
     : `M${(x - s * 0.75).toFixed(2)},${(y - s * 0.75).toFixed(2)}L${(x + s * 0.75).toFixed(2)},${(y + s * 0.75).toFixed(2)}M${(x + s * 0.75).toFixed(2)},${(y - s * 0.75).toFixed(2)}L${(x - s * 0.75).toFixed(2)},${(y + s * 0.75).toFixed(2)}`;
-  return `<path d="${d}" fill="none" stroke="#ffffff" stroke-width="${(w + 0.4).toFixed(2)}" stroke-linecap="round" stroke-linejoin="round" opacity="0.9"/><path d="${d}" fill="none" stroke="${kind === 'tick' ? CAP_TICK : CAP_CROSS}" stroke-width="${w.toFixed(2)}" stroke-linecap="round" stroke-linejoin="round"/>`;
+  return `<path d="${d}" fill="none" stroke="#ffffff" stroke-width="${(w + 0.4).toFixed(2)}" stroke-linecap="round" stroke-linejoin="round" opacity="0.9"/><path d="${d}" fill="none" stroke="${kind === 'tick' ? capTick() : capCross()}" stroke-width="${w.toFixed(2)}" stroke-linecap="round" stroke-linejoin="round"/>`;
 };
 
 /** The study's reading of the deck's layers: the register rows and dated lots over the page, the LEP heritage, public land from the State's layer, the council's parks and facilities and the open-space zones, the council's register and the Portal's live applications. */
@@ -2595,7 +2599,7 @@ export function capacityAtlas(b: SlidesBundle, facts: PlanningFacts): Slide | nu
   for (const q of drawn) {
     const { d, bb } = shapeOf(q);
     if (q.kind === 'council' || q.kind === 'state') continue;
-    parts.push(q.strata ? fillShape(d, bb, CAP_FILL.strata) : `<path d="${d}" fill="none" stroke="${CAP_SINGLE}" stroke-width="0.15" stroke-linejoin="round"/>`);
+    parts.push(q.strata ? fillShape(d, bb, CAP_FILL.strata) : `<path d="${d}" fill="none" stroke="${capSingle()}" stroke-width="0.15" stroke-linejoin="round"/>`);
   }
   for (const q of drawn) if (q.mature) { const { d, bb } = shapeOf(q); parts.push(fillShape(d, bb, CAP_FILL.mature)); }
   for (const q of drawn) if (q.heritageItem) { const { d, bb } = shapeOf(q); parts.push(fillShape(d, bb, CAP_FILL.heritage)); }
@@ -2646,7 +2650,7 @@ export function capacityAtlas(b: SlidesBundle, facts: PlanningFacts): Slide | nu
   const legend: LegendEntry[] = [
     { swatch: swatchOf(CAP_FILL.heritage), label: 'Heritage building' },
     { swatch: swatchOf(CAP_FILL.strata), label: 'Strata ownership' },
-    { swatch: `<rect x="0.5" y="0.5" width="4" height="2.6" fill="none" stroke="${CAP_SINGLE}" stroke-width="0.22"/>`, label: 'Single ownership' },
+    { swatch: `<rect x="0.5" y="0.5" width="4" height="2.6" fill="none" stroke="${capSingle()}" stroke-width="0.22"/>`, label: 'Single ownership' },
     { swatch: swatchOf(CAP_FILL.mature), label: `Mature development, unlikely to develop: built since ${result.since}, or approved` },
     { swatch: capMark('tick', 2.5, 1.8, 1.3), label: 'Development potential' },
     { swatch: capMark('cross', 2.5, 1.8, 1.3), label: `Low development potential: strata, heritage, public land, mature, or under ${fmtNum(o.smallSite)} m²` },
@@ -3563,7 +3567,7 @@ export function topographyAtlas(b0: SlidesBundle): Slide {
 // ---- slide 09: built form ----------------------------------------------------
 
 /** Height bands by storeys, on the sequential blue ramp; no height is a neutral grey. */
-const HEIGHT_BANDS: { label: string; maxM: number; fill: string }[] = [
+export const HEIGHT_BANDS: { label: string; maxM: number; fill: string }[] = [
   { label: '1–2 storeys', maxM: 7.5, fill: '#d6e7e0' },
   { label: '3–4', maxM: 14, fill: '#a8cdc2' },
   { label: '5–8', maxM: 27, fill: '#6ba998' },
@@ -3572,6 +3576,8 @@ const HEIGHT_BANDS: { label: string; maxM: number; fill: string }[] = [
 ];
 const NO_HEIGHT_FILL = '#ddd5c6';
 const bandOf = (h?: number) => (h ? HEIGHT_BANDS.find((b) => h <= b.maxM)! : null);
+/** The band a height falls in, by index, for the massing's colours. */
+export const heightBandOf = (h: number) => Math.max(0, HEIGHT_BANDS.findIndex((bd) => h <= bd.maxM));
 const storeysOf = (h: number) => Math.max(1, Math.round(h / METRES_PER_STOREY));
 
 /**

@@ -1311,25 +1311,28 @@ ratio and land, and the future is worked out when the deck is drawn, so an
 efficiency changed in `yield_assumptions.json` carries to it. The proposal's
 outline is drawn over everything, so a future neighbour in front of it does
 not hide it, and a future far above what stands runs out of the frame, as the
-height plane does, the frame saying how high it goes. The ground the massing
-stands on is drawn too: the streets as surfaces, kerb to kerb
+height plane does, the frame saying how high it goes. The massing is drawn
+after the poster maps of a city and the deck's own built form page: every
+neighbour in the colour of its height band up the style's ramp (the built
+form page's bands, so the two pages agree), with a grid of windows over its
+faces, on a cream ground of the activity family — paper in every style; the
+photograph stays under the plan, where it tells, and here the colours do.
+The ground the massing stands on is drawn too: the streets as surfaces, kerb to kerb
 (`src/lib/carriageway.ts`: each centreline swept out to the kerb lines where
 the sheet has them, to its class's typical width where it has none, the
-sweeps joined so a junction is one surface), in a tone of the transport
-family with the kerb as its edge and a dashed line down the middle — the
-road itself on paper, a glass over the road the photograph shows on the
-aerial; the trees, each a crown on a trunk, which the projection draws as a
+sweeps joined so a junction is one surface), white with the kerb as their
+edge and a dashed line down the middle; the parks in the living green; the
+trees, each a crown on a trunk, which the projection draws as a
 circle (a sphere's outline), read off the aerial's green
 (`src/lib/crowns.ts`: the photograph's green where it has a canopy's light
 and shade, peeled into discs, the widest first, so a line of street trees is
 a chain of crowns and a lawn is no tree) and merged with the trees
 OpenStreetMap or an open council inventory records, which stand in for the
 crowns read at them — none on a footprint, and none on the site where a
-scheme stands on it; and the traffic, a car every so often down each street
-on the left of its axis, a body with a cabin, in the deck's inks in turn.
-On paper the crowns are pale, dotted with leaf in the living family's ink;
-over the photograph they are a tone with the lit side to the north-west.
-The bundle carries the trees (`trees`), read when the yield is fetched;
+scheme stands on it, each a bold green with its light to the north-west;
+and the traffic, a car every so often down each street
+on the left of its axis, a body with a cabin, in the families' solid
+colours in turn. The bundle carries the trees (`trees`), read when the yield is fetched;
 a bundle from before them draws the streets and no trees. Under the massing, the
 envelope in plan at a round scale, on the ground the site analysis draws, kept to black and
 grey: the lot lines, the kerbs (`src/lib/kerbs.ts`, indicative), the
@@ -1705,7 +1708,10 @@ What the sheet reads, all open data (`scripts/capacity_study.ts` fetches,
   lot is its plan's registration date for every plan after the digital
   cadastre was built in September 1993 (older plans all carry that date, and
   are left undated), so a strata plan dates a building back to then.
-- *The marks*: a grey patch (mature development, unlikely to develop) on a
+- *The marks*, in the style's palette (strata ownership a wash of the
+  activity family, a heritage item a hatch of the red, the mature development
+  a dotted patch of the transit blue, a tick in the living green, a cross in
+  the red): a dotted patch (mature development, unlikely to develop) on a
   site significantly developed in the past 20 years (a strata scheme of five
   or more lots registered, or a new building, or an addition or conversion of
   four storeys, five dwellings or 1,000 m², completed on the register, or the

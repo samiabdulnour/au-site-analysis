@@ -17,10 +17,11 @@
 // beside the output.
 
 import { esc } from './chrome.js';
-import { tpl, withTemplate, templateFor, deckLook, tint, inkFor, type DeckLook } from './template.js';
+import { tpl, withTemplate, templateFor, deckLook, tint, inkFor, vivid, type DeckLook } from './template.js';
 import { shortStreetName, type SheetMeta } from './sheet.js';
-import { atlasPage, deckCss, zFlow, zBlock, zTable, brief, type Slide, type DeckRenderOptions } from './slides.js';
-import { INK, zFigures, zBars, niceAxis, fillShape, categoryFill, type Fill } from './atlasKit.js';
+import { atlasPage, deckCss, zFlow, zBlock, zTable, brief, HEIGHT_BANDS, heightBandOf, type Slide, type DeckRenderOptions } from './slides.js';
+import { rampColours } from './terrainMap.js';
+import { INK, zFigures, zBars, niceAxis, fillShape, categoryFill, styleRamp, type Fill } from './atlasKit.js';
 import { zoneToCategory } from './model.js';
 import { zoneFill } from './lepPalette.js';
 import { LEP_OPACITY } from './sheet.js';
@@ -324,7 +325,7 @@ const USE_FILL: Record<Use, string> = { residential: '#f0c9a6', retail: '#e69ea1
 const USE_CATEGORY: Record<Use, string> = { residential: 'r4', retail: 'retail', commercial: 'commercial' };
 function useFill(u: Use): string {
   const c = deckLook().categories.find((x) => x.id === USE_CATEGORY[u]);
-  return c ? tint(c.fill, Math.min(1, c.opacity + 0.2)) : USE_FILL[u];
+  return c ? tint(c.fill, Math.min(1, c.opacity + 0.35)) : USE_FILL[u];
 }
 /**
  * The yield's quieter inks, from the palette rather than greys: the neighbours in the transit family's tint, their
@@ -337,16 +338,28 @@ function yieldInks() {
 }
 /** The site's pen: the style's accent. */
 const siteInk = () => deckLook().accent;
-/** The trees' inks in the massing: the living family, a tone over the photograph and a pale leaf-dotted crown on paper, the trunk its deep. */
-function treeInks() {
-  const G = INK.green, tone = deckLook().technique === 'tone';
-  return { fill: tone ? tint(G.solid, 0.55) : tint(G.solid, 0.24), edge: inkFor(G.solid, 0.35), leaf: inkFor(G.solid, 0.3), trunk: inkFor(G.deep, 0.12), tone };
+/**
+ * The massing's colours, after the poster maps of a city and the deck's own built form page: every neighbour in
+ * the colour of its height band up the style's ramp (the built form page's bands, so the two pages agree), with a
+ * grid of windows over its faces; the ground a cream of the activity family, the streets white on it, the parks and
+ * the trees in the living green. Paper in every style: the photograph stays under the plan.
+ */
+function massingInks() {
+  const O = INK.orange, G = INK.green, B = INK.blue;
+  const green = vivid(G.solid, 0.5, 0.45);
+  return {
+    bands: rampColours(HEIGHT_BANDS.length, styleRamp()),
+    noHeight: tint(B.solid, 0.22),
+    ground: tint(O.solid, 0.1),
+    lot: tint(inkFor(O.deep, 0.4), 0.45),
+    park: tint(green, 0.4),
+    road: '#ffffff',
+    axis: tint(B.solid, 0.55),
+    tree: green, treeLight: tint(green, 0.6), trunk: inkFor(G.deep, 0.12),
+  };
 }
-/** The streets' inks in the massing: the transport family, a glass over the road the photograph shows, the road itself on paper. */
-function roadInks() {
-  const B = INK.blue, tone = deckLook().technique === 'tone';
-  return { fill: tone ? tint(B.solid, 0.45) : tint(B.solid, 0.14), alpha: tone ? 0.45 : 1, kerb: yieldInks().kerb, axis: tone ? '#ffffff' : inkFor(B.solid, 0.5), tone };
-}
+/** The trees' inks for the key. */
+function treeInks() { const M = massingInks(); return { fill: M.tree, edge: shade(M.tree, 0.7) }; }
 /** What the massing's note says of its trees and streets, for the page's sources line. */
 const treesNote = (b: YieldBundle) => b.trees?.length
   ? ` The massing's trees are crowns read off the aerial photograph (NSW Imagery), their size indicative${b.trees.some((t) => t.source !== 'aerial') ? ', and the trees OpenStreetMap or the council records' : ''}; its streets run kerb to kerb.`
@@ -362,7 +375,7 @@ function lotFill(zone: string | undefined, look: DeckLook): { key: string; fill:
   return c ? { key: c.id, fill: categoryFill(c, look.ground, look.tintScale) } : null;
 }
 /** A neighbour's future, over what stands: a pale glass, dashed, light enough to see the proposal through. */
-const FUTURE_OPACITY = 0.3, FUTURE_DASH = '1.4,0.8';
+const FUTURE_OPACITY = 0.18, FUTURE_DASH = '1.4,0.8';
 /** The tier badges' ink in the deck's tables, set once for the sheet's CSS. */
 const ENVELOPE = '#5b6670';
 /** What stands on the site today, where a scenario keeps it. */
@@ -384,7 +397,7 @@ function storeyZ(y: YieldResult): { bottom: (s: number) => number; top: (s: numb
   return { bottom: (s) => (s <= 1 ? 0 : g + (s - 2) * t), top: (s) => g + (s - 1) * t };
 }
 
-interface Prism { rings: XY[][]; z0: number; z1: number; fill: string; edge: string; edgeW: number; storeys?: number[]; dashed?: boolean; dash?: string; opacity?: number }
+interface Prism { rings: XY[][]; z0: number; z1: number; fill: string; edge: string; edgeW: number; storeys?: number[]; dashed?: boolean; dash?: string; opacity?: number; /** A grid of windows over the faces, as the poster maps draw a city. */ windows?: boolean }
 
 /**
  * The axonometric: the camera stands off the main frontage's corner, looking
@@ -395,6 +408,7 @@ interface Prism { rings: XY[][]; z0: number; z1: number; fill: string; edge: str
 function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w: number; h: number }, scheme: Scheme, id: string): string {
   const y = scheme.y;
   const Y = yieldInks();
+  const M = massingInks();
   const kinds = edgeKinds(s.ring, s.fronts);
   // The main frontage's outward normal; the camera stands out along it, turned 40° to take in a side.
   let signed = 0;
@@ -422,7 +436,8 @@ function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number;
     const cen = rings[0].reduce((t, p) => ({ x: t.x + p.x / rings[0].length, y: t.y + p.y / rings[0].length }), { x: 0, y: 0 });
     if (Math.hypot(cen.x, cen.y) > reach) return;
     const z1 = cb.known ? cb.heightM : 6.2;
-    const group: Prism[] = [{ rings, z0: 0, z1, fill: Y.context, edge: Y.contextEdge, edgeW: 0.12, dashed: !cb.known }];
+    const fill = cb.known ? M.bands[heightBandOf(z1)] : M.noHeight;
+    const group: Prism[] = [{ rings, z0: 0, z1, fill, edge: shade(fill, 0.55), edgeW: 0.12, dashed: !cb.known, windows: cb.known }];
     // What it may rise to under its own controls, over what stands.
     const future = s.futures[i];
     if (future && future > z1) group.push({ rings, z0: z1, z1: future, fill: Y.future, edge: Y.futureEdge, edgeW: 0.12, dashed: true, dash: FUTURE_DASH, opacity: FUTURE_OPACITY });
@@ -433,14 +448,14 @@ function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number;
   if (y && z) for (const t of y.tiers) {
     const top = Math.min(t.to, y.storeys);
     if (top < t.from || !t.plate.length) continue;
-    built.push({ rings: t.plate, z0: z.bottom(t.from), z1: z.top(top), fill: useFill(t.use), edge: '#3a3a3a', edgeW: 0.16, storeys: Array.from({ length: top - t.from }, (_, i) => z.top(t.from + i)) });
+    built.push({ rings: t.plate, z0: z.bottom(t.from), z1: z.top(top), fill: useFill(t.use), edge: '#1c1c1c', edgeW: 0.2, windows: true, storeys: Array.from({ length: top - t.from }, (_, i) => z.top(t.from + i)) });
   }
   // What stands, at its recorded height, its storeys ruled; one with none recorded at a nominal two, dashed.
   for (const e of scheme.standing ?? []) {
     const known = !!(e.heightM || e.storeys);
     const top = e.heightM ?? (e.storeys ? e.storeys * 3.1 : 6.2);
     const n = e.storeys ?? Math.max(1, Math.round(top / 3.1));
-    built.push({ rings: e.rings, z0: 0, z1: top, fill: Y.standing, edge: '#3a3a3a', edgeW: 0.16, dashed: !known, storeys: Array.from({ length: n - 1 }, (_, i) => ((i + 1) * top) / n) });
+    built.push({ rings: e.rings, z0: 0, z1: top, fill: Y.standing, edge: '#1c1c1c', edgeW: 0.2, dashed: !known, windows: known, storeys: Array.from({ length: n - 1 }, (_, i) => ((i + 1) * top) / n) });
   }
   prisms.push({ key: 0, group: built });
   prisms.sort((p, q) => q.key - p.key);
@@ -449,34 +464,28 @@ function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number;
   const light = { x: -0.55, y: 0.83 };
   const parts: string[] = [];
   const poly = (pts: [number, number][]) => `M${pts.map(([px, py]) => `${px.toFixed(2)},${py.toFixed(2)}`).join('L')}Z`;
-  // The ground: the photograph, where the style draws on the aerial, laid into the ground plane (the plane's
-  // projection is affine, so the plan's picture skews into it as one matrix); then the lots round about and the site.
+  // The ground: a cream across the whole frame, the lots as hairlines on it with the parks in green, the streets
+  // as surfaces kerb to kerb (lib/carriageway.ts: each centreline swept out to the kerb lines where the sheet has
+  // them, to its class's typical width where it has none, the sweeps joined so a junction is one surface), white
+  // with the kerb as their edge and a dashed line down the middle. Paper in every style: the photograph stays under
+  // the plan, where it tells; here the colours do.
   const ground: string[] = [];
   const look = deckLook();
-  const photo = photoOf(b, look);
-  if (photo) {
-    const e = photo.extent;
-    const corner = (x: number, yy: number) => { const ll = mercatorToLonLat({ x, y: yy }); return P(s.toLocal(ll.lon, ll.lat), 0); };
-    const NW = corner(e.xmin, e.ymax), NE = corner(e.xmax, e.ymax), SW = corner(e.xmin, e.ymin), SE = corner(e.xmax, e.ymin);
-    const m = [NE[0] - NW[0], NE[1] - NW[1], SW[0] - NW[0], SW[1] - NW[1], NW[0], NW[1]].map((v) => v.toFixed(4)).join(' ');
-    const sheet = poly([NW, NE, SE, SW]);
-    ground.push(`<g style="isolation:isolate"><g transform="matrix(${m})">${photo.tiles.map((tile) => `<image href="data/${tile.file}" x="${tile.left}" y="${tile.top}" width="${tile.width}" height="${tile.height}" preserveAspectRatio="none"/>`).join('')}</g><path d="${sheet}" fill="#808080" style="mix-blend-mode:saturation"/></g><path d="${sheet}" fill="#ffffff" fill-opacity="${look.veil}"/>`);
-  }
+  void look;
+  const far = reach + 600;
+  ground.push(`<path d="${poly([P({ x: -far, y: -far }, 0), P({ x: far, y: -far }, 0), P({ x: far, y: far }, 0), P({ x: -far, y: far }, 0)])}" fill="${M.ground}"/>`);
   for (const lot of parcelsOf(b)) for (const rg of lot.rings) {
     const pts = rg.map(([lon, lat]) => s.toLocal(lon, lat));
     if (pts.some((p) => Math.hypot(p.x, p.y) > reach + 20)) continue;
-    ground.push(`<path d="${poly(pts.map((p) => P(p, 0)))}" fill="none" stroke="${photo ? '#ffffff' : '#c9c9c4'}" stroke-width="${photo ? 0.2 : 0.12}"/>`);
+    const park = lot.zone ? zoneToCategory(lot.zone) === 'openSpace' : false;
+    ground.push(`<path d="${poly(pts.map((p) => P(p, 0)))}" fill="${park ? M.park : 'none'}" stroke="${M.lot}" stroke-width="0.12"/>`);
   }
-  // The streets as surfaces, kerb to kerb (lib/carriageway.ts), laid into the ground plane: a tone of the transport
-  // family with the kerb as its edge and a dashed line down its middle — on paper the road itself, over the
-  // photograph a glass on the road it shows.
   const open = (pts: [number, number][]) => `M${pts.map(([px, py]) => `${px.toFixed(2)},${py.toFixed(2)}`).join('L')}`;
-  const ROAD = roadInks();
   const roadsLocal: RoadLine[] = b.roads.filter((r) => !r.tunnel).map((r) => ({ coords: r.coords.map(([lon, lat]) => s.toLocal(lon, lat)), hierarchy: r.hierarchy, name: r.name }));
   const cw = carriageways(roadsLocal, (b.kerbs ?? []).map((kl) => kl.coords.map(([lon, lat]) => s.toLocal(lon, lat))));
   if (cw.polygons.length) {
-    ground.push(`<path d="${cw.polygons.map((rings) => rings.map((rg) => poly(rg.map((p) => P(p, 0)))).join('')).join('')}" fill="${ROAD.fill}" fill-opacity="${ROAD.alpha}" fill-rule="evenodd" stroke="${ROAD.kerb}" stroke-width="0.2" stroke-linejoin="round"/>`);
-    ground.push(`<path d="${cw.axes.map(({ axis }) => open(axis.map((p) => P(p, 0)))).join('')}" fill="none" stroke="${ROAD.axis}" stroke-width="0.12" stroke-dasharray="1.4,1.1" opacity="0.85"/>`);
+    ground.push(`<path d="${cw.polygons.map((rings) => rings.map((rg) => poly(rg.map((p) => P(p, 0)))).join('')).join('')}" fill="${M.road}" fill-rule="evenodd" stroke="${Y.kerb}" stroke-width="0.2" stroke-linejoin="round"/>`);
+    ground.push(`<path d="${cw.axes.map(({ axis }) => open(axis.map((p) => P(p, 0)))).join('')}" fill="none" stroke="${M.axis}" stroke-width="0.12" stroke-dasharray="1.4,1.1" opacity="0.85"/>`);
   }
   const SITE = siteInk();
   ground.push(`<path d="${poly(s.ring.map((p) => P(p, 0)))}" fill="${SITE}" fill-opacity="0.08" stroke="${SITE}" stroke-width="0.35"/>`);
@@ -494,7 +503,9 @@ function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number;
       }).filter((f) => f.m.x * d.x + f.m.y * d.y < 0).sort((f, g) => g.mid - f.mid);
       for (const f of faces) {
         const lit = 0.72 + 0.28 * Math.max(0, f.m.x * light.x + f.m.y * light.y);
-        out.push(`<path d="${poly([P(f.p, pr.z0), P(f.q, pr.z0), P(f.q, pr.z1), P(f.p, pr.z1)])}" fill="${shade(pr.fill, lit)}"${alpha} stroke="${pr.edge}" stroke-width="${pr.edgeW}" stroke-linejoin="round"${dash}/>`);
+        const face = poly([P(f.p, pr.z0), P(f.q, pr.z0), P(f.q, pr.z1), P(f.p, pr.z1)]);
+        out.push(`<path d="${face}" fill="${shade(pr.fill, lit)}"${alpha} stroke="${pr.edge}" stroke-width="${pr.edgeW}" stroke-linejoin="round"${dash}/>`);
+        if (pr.windows) out.push(`<path d="${face}" fill="url(#axo-win-${id})"/>`);
         for (const zz of pr.storeys ?? []) {
           const [x1, y1] = P(f.p, zz), [x2, y2] = P(f.q, zz);
           out.push(`<line x1="${x1.toFixed(2)}" y1="${y1.toFixed(2)}" x2="${x2.toFixed(2)}" y2="${y2.toFixed(2)}" stroke="${shade(pr.fill, 0.62)}" stroke-width="0.08"/>`);
@@ -528,7 +539,6 @@ function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number;
   // draws as a circle, a sphere's outline. None where a footprint stands, and none on the site where a scheme does:
   // what a scheme plants is not read off what stands there today. Over the photograph the crown is a tone with
   // its lit side to the north-west; on paper a pale crown dotted with leaf in the living family's ink.
-  const TREE = treeInks();
   const footprints: XY[][] = [...b.context.flatMap((cb) => cb.rings.map((rg) => rg.map(([lon, lat]) => s.toLocal(lon, lat)))), ...built.flatMap((pr) => pr.rings)];
   const trees = (b.trees ?? [])
     .map((tr) => ({ p: s.toLocal(tr.lon, tr.lat), r: Math.max(1.2, Math.min(8, tr.canopyM / 2)) }))
@@ -536,19 +546,13 @@ function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number;
   const treeSvg = (tr: { p: XY; r: number }) => {
     const zc = 2.2 + tr.r;   // the crown's centre: a trunk of about two metres, then the crown
     const [cx, cy] = P(tr.p, zc), [bx, by] = P(tr.p, 0);
-    const out = [`<line x1="${bx.toFixed(2)}" y1="${by.toFixed(2)}" x2="${cx.toFixed(2)}" y2="${cy.toFixed(2)}" stroke="${TREE.trunk}" stroke-width="0.25"/>`];
-    if (TREE.tone) {
-      out.push(`<circle cx="${cx.toFixed(2)}" cy="${cy.toFixed(2)}" r="${tr.r.toFixed(2)}" fill="${shade(TREE.fill, 0.84)}" fill-opacity="0.94"/>`);
-      out.push(`<circle cx="${(cx - 0.22 * tr.r).toFixed(2)}" cy="${(cy - 0.2 * tr.r).toFixed(2)}" r="${(0.7 * tr.r).toFixed(2)}" fill="${TREE.fill}" fill-opacity="0.94"/>`);
-    } else {
-      out.push(`<circle cx="${cx.toFixed(2)}" cy="${cy.toFixed(2)}" r="${tr.r.toFixed(2)}" fill="${TREE.fill}" stroke="${TREE.edge}" stroke-width="0.16"/>`);
-      out.push(`<circle cx="${cx.toFixed(2)}" cy="${cy.toFixed(2)}" r="${tr.r.toFixed(2)}" fill="url(#axo-leaf-${id})"/>`);
-    }
-    return out.join('');
+    return `<line x1="${bx.toFixed(2)}" y1="${by.toFixed(2)}" x2="${cx.toFixed(2)}" y2="${cy.toFixed(2)}" stroke="${M.trunk}" stroke-width="0.25"/>` +
+      `<circle cx="${cx.toFixed(2)}" cy="${cy.toFixed(2)}" r="${tr.r.toFixed(2)}" fill="${M.tree}"/>` +
+      `<circle cx="${(cx - 0.22 * tr.r).toFixed(2)}" cy="${(cy - 0.2 * tr.r).toFixed(2)}" r="${(0.66 * tr.r).toFixed(2)}" fill="${M.treeLight}"/>`;
   };
   // Traffic: a car every so often down each street, on the left of its axis as the road rules have it, each a body with
   // a cabin, in the deck's inks in turn; none down a lane, none in reach of nothing.
-  const CAR_INKS = [tint(INK.red.solid, 0.5), tint(INK.blue.solid, 0.55), tint(INK.orange.solid, 0.55), '#f4f4f0'];
+  const CAR_INKS = [vivid(INK.red.solid, 0.55, 0.45), vivid(INK.blue.solid, 0.5, 0.42), vivid(INK.orange.solid, 0.7, 0.5), '#f4f4f0'];
   const GLASS = tint(INK.blue.solid, 0.78);
   const cars: { key: number; body: Prism; cabin: Prism }[] = [];
   let ci = 0;
@@ -624,7 +628,7 @@ function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number;
   if (s.hob?.metres && !planeFits) notes.push(note(notes.length, SITE, `HEIGHT OF BUILDING PLANE ${s.hob.rl ? `RL ${fmt(s.hob.value, 1)}, ` : ''}${fmt(Math.round(planeZ))}m ABOVE THE GROUND, ABOVE THE FRAME`));
   if (futureTop > cap) notes.push(note(notes.length, Y.futureEdge, `NEIGHBOURS' FUTURE HEIGHTS RUN ABOVE THE FRAME, TO ${fmt(Math.round(futureTop))}m`));
   const above = notes.join('');
-  return `<defs><clipPath id="axo-${id}"><rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}"/></clipPath><pattern id="axo-leaf-${id}" patternUnits="userSpaceOnUse" width="1.3" height="1.3"><circle cx="0.65" cy="0.65" r="0.2" fill="${TREE.leaf}"/></pattern></defs>
+  return `<defs><clipPath id="axo-${id}"><rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}"/></clipPath><pattern id="axo-win-${id}" patternUnits="userSpaceOnUse" width="2.6" height="3.1"><rect x="0.75" y="0.8" width="1.1" height="1.5" fill="#000000" fill-opacity="0.17"/></pattern></defs>
     <g clip-path="url(#axo-${id})"><g transform="translate(${tx.toFixed(2)},${ty.toFixed(2)}) scale(${k.toFixed(4)})">
     <g style="vector-effect:non-scaling-stroke">${ground.join('')}${parts.join('')}${over.join('')}</g></g></g>${above}`;
 }
@@ -1135,6 +1139,7 @@ function keySwatches() {
     future: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="${Y.future}" fill-opacity="0.6" stroke="${Y.futureEdge}" stroke-width="0.2" stroke-dasharray="0.7,0.4"/>`,
     kerb: `<line x1="0.3" y1="1.8" x2="4.7" y2="1.8" stroke="${Y.kerb}" stroke-width="0.3"/>`,
     tree: `<circle cx="2.5" cy="1.8" r="1.3" fill="${treeInks().fill}" stroke="${treeInks().edge}" stroke-width="0.2"/>`,
+    heights: massingInks().bands.map((c, i, all) => { const w = 5 / all.length; return `<rect x="${(i * w).toFixed(2)}" y="0.3" width="${(w + 0.02).toFixed(2)}" height="3" fill="${c}"/>`; }).join(''),
     lot: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="none" ${lot}/>`,
   };
 }
@@ -1190,7 +1195,7 @@ function schemeLegend(b: YieldBundle, s: YieldStudy, y: YieldResult | undefined,
   for (const u of ['residential', 'retail', 'commercial'] as Use[]) if (y?.tiers.some((t) => t.use === u)) out.push({ swatch: KEY.use(u), label: `Indicative massing, ${USE_WORD[u]}` });
   if (y?.tiers.length) out.push({ swatch: KEY.envelope, label: 'Envelope of each tier' });
   if (s.hob?.metres) out.push({ swatch: KEY.plane, label: 'The LEP\'s height of building plane' });
-  out.push({ swatch: KEY.neighbours, label: `Neighbours at their heights (${b.buildingsSource === 'overture' ? 'Overture' : 'OSM'}; dashed: not recorded)` });
+  out.push({ swatch: KEY.heights, label: `Neighbours at their heights (${b.buildingsSource === 'overture' ? 'Overture' : 'OSM'}), coloured by storeys as the built form page is: ${HEIGHT_BANDS.map((bd) => bd.label).join(' · ')}; dashed: not recorded` });
   if (s.futures.some(Boolean)) out.push({ swatch: KEY.future, label: b.capacity ? 'Neighbours\' future, to their LEP height and FSR, where the capacity study finds development potential' : 'Neighbours\' future, to their LEP height and FSR' });
   if (kerbs) out.push({ swatch: KEY.kerb, label: 'Kerb line, indicative' });
   if (b.trees?.length) out.push({ swatch: KEY.tree, label: b.trees.some((t) => t.source !== 'aerial') ? 'Trees: crowns read off the aerial, recorded where OpenStreetMap or the council has them' : 'Trees, crowns read off the aerial' });
