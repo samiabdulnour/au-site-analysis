@@ -1464,11 +1464,11 @@ photographs within 800 m from Wikimedia Commons, each credited as its licence
 asks, all of which the office's own reading and photographs replace. Next to
 it the *streetscape*, the street seen before the plans are read:
 the site's street as two elevations across the spread, as `--type
-streetscape` draws it (190 m in the deck, `DECK_STREET_HALF_M` = 95 m
-either way from the site, each face on a page of its own, the site's side
-first, at the largest round scale that fits the street's length and the
-site's own building whole, so the scale follows the size of the project:
-1:500 at 150 George Street with its 23-storey tower; the buildings' lines, heights and
+streetscape` draws it (380 m of street in the deck, `DECK_STREET_HALF_M`
+= 190 m either way from the site, both faces on the one spread, at the
+largest round scale that fits the street's length and the site's own
+building whole, so the scale follows the size of the project: 1:1000 at
+150 George Street; the buildings' lines, heights and
 levels over the faces, the conservation areas bracketed, a tower that runs
 past its band's top cut there as the meshes are, its tag kept inside the
 band; see *The streetscape* below), laid out as the built form page (after height of buildings)
@@ -1514,8 +1514,8 @@ fives heavier and numbered), each coloured by its height up the same ramp,
 darkened to read as a line; with the 2 m contours numbered along the index
 ones, the water named, the high and low points of the page and the site's
 level marked, roads and rail over it and two section lines through the site
-(the ground under each section in the map's bands, the water shown
-where the line crosses it at the level the model reads),
+(the ground under each section in the map's bands; no water is marked on
+them, since the model's level where a line crosses a river read wrong),
 A–A′ down the steepest fall and B–B′ across it, each drawn as a section
 with the site and its levels marked; the text gives the site's RL range,
 fall, grade and aspect and where the high ground and the water are. Then
@@ -1781,11 +1781,9 @@ band whole, with a little sky over it: 1:500 for the default 190 m,
 `--half-length 95` either way from the site, where nothing on the site
 stands taller than its band). Each band takes what it must have, and the
 two share what the page has left in proportion to what they want, so the
-site's band can stand taller than the other's. The deck gives each face a
-page of its own (`streetscapeSlides`, `03b` the site's side and `03c` the
-opposite), each with the page's whole room, so the scale is what the taller
-face allows: 1:500 at 150 George Street, where the sheet's two bands would
-need 1:750. Under each face every
+site's band can stand taller than the other's. The deck's street is longer,
+380 m (`DECK_STREET_HALF_M`), so its spread shows the site in more of its
+street, at 1:1000 on A3. Under each face every
 property's frontage is dashed off and named by its address, the roads and
 lanes that come in are named upright in their gaps, and the site is marked in
 red between dashed lines, with the stretch across the road from it marked too.

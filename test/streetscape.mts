@@ -9,7 +9,7 @@
 
 import { planStreetscape, planeToImage, inv3, mul3, apply3, aimAt, assignStrips, splitAddress, CAMERA_HEIGHT_M, BELOW_GROUND_M, FRAME_PX, type Property } from '../src/fetch/streetscape.js';
 import type { LonLat } from '../src/lib/geo.js';
-import { roofSteps, layoutFaces, renderStreetscape, streetscapePage, streetscapeSlides, CONTRIBUTION_INK, ITEM_INK } from '../src/render/streetscape.js';
+import { roofSteps, layoutFaces, renderStreetscape, streetscapePage, streetscapeSlide, CONTRIBUTION_INK, ITEM_INK } from '../src/render/streetscape.js';
 import { SLIDE_W } from '../src/render/slides.js';
 import type { StreetscapeBundle } from '../src/pipeline.js';
 
@@ -162,11 +162,8 @@ if (plan) {
   check('outlines alone fill nothing', none.includes('class="bl none') && !none.includes(`fill:${CONTRIBUTION_INK.Contributing}`) && !none.includes('CONTRIBUTION TO THE CONSERVATION AREA'));
   check('the A3 sheet keeps its page', !renderStreetscape(b, meta).includes('@page { size: 930mm'));
   // and as a page of the deck: across the spread under the deck's heading, its rules kept to itself
-  const slides = streetscapeSlides(b, { overlay: true });
-  const slide = slides[0];
-  check('the deck pages are a spread a face after the character page, the site\'s side first, no rule under the subtitle', slides.length === 2 && slide.id === '03b_streetscape' && slides[1].id === '03c_streetscape_opposite' && !!slide.full && !!slide.plain && slide.title === 'Streetscape' && slides[1].title === 'Streetscape, opposite the site' && slide.subtitle.includes('1:') && slide.subtitle.includes('the site\'s side') && slides[1].subtitle.includes('opposite the site'));
-  check('each page carries one face', (slide.figureHtml.match(/class="abs elev"/g) ?? []).length === 1 && (slides[1].figureHtml.match(/class="abs elev"/g) ?? []).length === 1);
-  check('a face alone on its page takes the page\'s whole room', layoutFaces(b, undefined, true).bands.every((bd) => bd.top >= 44) && layoutFaces(b, undefined, true).scale <= layoutFaces(b).scale);
+  const slide = streetscapeSlide(b, { overlay: true });
+  check('the deck page is a spread after the character page, no rule under its subtitle', slide.id === '03b_streetscape' && !!slide.full && !!slide.plain && slide.title === 'Streetscape' && slide.subtitle.includes('1:'));
   check('its sources run in two columns', (slide.css ?? '').includes('.scape .src') && /\.scape \.src \{[^}]*column-count: 2/.test(slide.css ?? ''));
   check('its figure carries the faces, the lead and the sources, not a page of its own', slide.figureHtml.startsWith('<div class="scape">') && slide.figureHtml.includes('class="abs elev"') && slide.figureHtml.includes('class="abs lead"') && slide.figureHtml.includes('class="abs src"') && !slide.figureHtml.includes('<section') && !slide.figureHtml.includes('class="abs foot"'));
   const rules = (slide.css ?? '').split('\n').map((l) => l.trim()).filter(Boolean);

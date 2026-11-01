@@ -1178,8 +1178,8 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
 
 // ---- the streetscape ------------------------------------------------------------------
 
-/** How far the deck's streetscape runs either way from the site: 190 m in all, the most the spread holds at 1:500, each face on a page of its own at the scale the site's building allows. */
-export const DECK_STREET_HALF_M = 95;
+/** How far the deck's streetscape runs either way from the site: 380 m of street in all, both faces on one spread, at the largest round scale that fits it and the site's building (1:1000 on A3). */
+export const DECK_STREET_HALF_M = 190;
 
 export interface StreetscapeBundle {
   address: string;
