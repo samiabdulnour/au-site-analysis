@@ -66,8 +66,18 @@ export interface StreetscapeOptions { overlay?: boolean; fill?: BuildingFill; sc
 export function layoutFaces(b: StreetscapeBundle, scale?: number): Layout {
   const p = b.plan, len = p.s1 - p.s0;
   const pageW = scale ? Math.max(SLIDE_W, Math.ceil((len * 1000) / scale) + 2 * MARGIN) : SLIDE_W, width = pageW - 2 * MARGIN;
+  // The site's own building on a face must fit its band whole, with a little sky over it: the scale follows the size
+  // of the project. Its top, from the meshes' roofs or the recorded skyline over the site's frontages.
+  const siteTop = (f: Face, i: number): number => {
+    const spans = f.frontages.filter((fr) => fr.site).map((fr) => [Math.min(fr.s0, fr.s1), Math.max(fr.s0, fr.s1)] as const);
+    if (!spans.length) return -Infinity;
+    const over = (s: number) => spans.some(([a, c]) => s >= a && s <= c);
+    const zs = [...(b.elevations?.[i]?.roofs ?? []), ...(b.elevations?.[i] ? [] : f.skyline ?? [])].filter((x) => over(x.s)).map((x) => x.z);
+    return zs.length ? Math.max(...zs) + 2 : -Infinity;
+  };
   const wanted = p.faces.map((f, i) => {
     const e = b.elevations?.[i];
+    const site = siteTop(f, i);
     if (e) {
       // as high as the face's buildings stand, and a little sky over them
       const zs = e.ground.map((g) => g.z), lo = Math.min(...zs), hi = Math.max(...zs);
@@ -75,7 +85,8 @@ export function layoutFaces(b: StreetscapeBundle, scale?: number): Layout {
       // and over its tallest building, where its roofs are measured: a narrow tower is under 2% of a long face's metres
       const roofs = (e.roofs ?? []).map((x) => x.z).sort((x, y) => y - x);
       const reach = Math.max(tops[Math.floor(tops.length * 0.98)] ?? hi + SKY_M, roofs[2] ?? -Infinity) + 2;
-      return { zTop: Math.max(hi + MIN_SKY_M, Math.min(hi + SKY_3D_M, reach)), zMin: hi + MIN_SKY_M, zBot: lo - GROUND_BAND_M };
+      const zMin = Math.max(hi + MIN_SKY_M, site);
+      return { zTop: Math.max(zMin, Math.min(hi + SKY_3D_M, reach)), zMin, zBot: lo - GROUND_BAND_M };
     }
     const zs = f.ground.map((g) => g.z);
     const lo = zs.length ? Math.min(...zs) : 0, hi = zs.length ? Math.max(...zs) : 0;
@@ -86,13 +97,18 @@ export function layoutFaces(b: StreetscapeBundle, scale?: number): Layout {
     const sky = f.skyline?.length && !own.length ? Math.max(...f.skyline.map((x) => x.z)) + 3 : -Infinity;
     const reach = tops.length ? tops[Math.floor(tops.length / 4)] : Math.max(hi + SKY_M, sky);
     const cap = Number.isFinite(sky) ? SKY_3D_M : SKY_M;
-    return { zTop: Math.max(hi + MIN_SKY_M, Math.min(hi + cap, reach)), zMin: hi + MIN_SKY_M, zBot: lo - BELOW_GROUND_M - 0.6 };
+    const zMin = Math.max(hi + MIN_SKY_M, own.length ? -Infinity : site);
+    return { zTop: Math.max(zMin, Math.min(hi + cap, reach)), zMin, zBot: lo - BELOW_GROUND_M - 0.6 };
   });
   const room = SLIDE_H - FOOT_ROOM_MM - BAND_TOP - p.faces.length * (LABEL_GAP + LABELS_H + CAPTION_H) - (p.faces.length - 1) * FACE_GAP;
-  // the scale the street's length allows, at which the faces fit at their lowest; then as much of their height as fits
+  // the scale the street's length allows, at which the faces fit at their lowest (the site's building whole); then
+  // each band what it must have and its share of what is left, up to what it wants
   const fit = scale ?? SCALES.find((s) => (len * 1000) / s <= width && wanted.reduce((t, r) => t + ((r.zMin - r.zBot) * 1000) / s, 0) <= room) ?? SCALES[SCALES.length - 1];
   const k = 1000 / fit;
-  const ranges = wanted.map((r) => ({ zTop: Math.max(r.zMin, Math.min(r.zTop, r.zBot + room / wanted.length / k)), zBot: r.zBot }));
+  const need = wanted.map((r) => (r.zMin - r.zBot) * k), more = wanted.map((r, i) => Math.max(0, (r.zTop - r.zBot) * k - need[i]));
+  const spareMm = Math.max(0, room - need.reduce((t, v) => t + v, 0)), moreSum = more.reduce((t, v) => t + v, 0);
+  const share = moreSum <= spareMm ? 1 : spareMm / (moreSum || 1);
+  const ranges = wanted.map((r, i) => ({ zTop: r.zBot + (need[i] + more[i] * share) / k, zBot: r.zBot }));
   const x0 = MARGIN + (width - len * k) / 2;
   // what the faces leave of the page's height goes a third above them and a third between them
   const spare = Math.max(0, room - ranges.reduce((t, r) => t + (r.zTop - r.zBot) * k, 0)) / 3;

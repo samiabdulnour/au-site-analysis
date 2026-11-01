@@ -1119,7 +1119,7 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
   let streetscape: StreetscapeBundle | undefined;
   if (process.env.DECK_STREETSCAPE !== '0') {
     log('the streetscape…');
-    const sb = await soft(runStreetscapePipeline(address, { outDir: opts.outDir, log, buildings: buildingsRead.buildings }), null, 'streetscape');
+    const sb = await soft(runStreetscapePipeline(address, { outDir: opts.outDir, halfLengthM: DECK_STREET_HALF_M, log, buildings: buildingsRead.buildings }), null, 'streetscape');
     if (sb && (sb.elevations?.some(Boolean) || sb.frames.length || sb.plan.faces.some((f) => f.skyline?.length))) streetscape = sb;
   }
   const applications = feed ? clipToExtent(feed.records, pageExtent) : [];
@@ -1177,6 +1177,9 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
 }
 
 // ---- the streetscape ------------------------------------------------------------------
+
+/** How far the deck's streetscape runs either way from the site: a longer street than the sheet's own default, at the scale that fits it and the site's building. */
+export const DECK_STREET_HALF_M = 140;
 
 export interface StreetscapeBundle {
   address: string;

@@ -1463,7 +1463,10 @@ photographs within 800 m from Wikimedia Commons, each credited as its licence
 asks, all of which the office's own reading and photographs replace. Next to
 it the *streetscape*, the street seen before the plans are read:
 the site's street as two elevations across the spread, as `--type
-streetscape` draws it (190 m at 1:500, the buildings' lines, heights and
+streetscape` draws it (280 m either way from the site in the deck,
+`DECK_STREET_HALF_M`, at the largest round scale that fits the street's
+length and the site's own building whole in its band, so the scale follows
+the size of the project; the buildings' lines, heights and
 levels over the faces, the conservation areas bracketed, a tower that runs
 past its band's top cut there as the meshes are, its tag kept inside the
 band; see *The streetscape* below), laid out as the built form page (after height of buildings)
@@ -1770,8 +1773,14 @@ What the sheet reads, all open data (`scripts/capacity_study.ts` fetches,
 `--type streetscape` draws STREETSCAPE: the site's street as two elevations on
 one A3 landscape sheet, the site's side above and the side across the road
 below, each as a viewer standing in the street sees it, so the two run
-opposite ways, at one true scale (1:500 for the default 190 m,
-`--half-length 95` either way from the site). Under each face every
+opposite ways, at one true scale (the largest round scale at which the
+street's length fits the sheet's width and the site's own building fits its
+band whole, with a little sky over it: 1:500 for the default 190 m,
+`--half-length 95` either way from the site, where nothing on the site
+stands taller than its band; the deck runs 140 m either way and takes
+1:750 where a tower on the site needs it). Each band takes what it must
+have, and the two share what the page has left in proportion to what they
+want, so the site's band can stand taller than the other's. Under each face every
 property's frontage is dashed off and named by its address, the roads and
 lanes that come in are named upright in their gaps, and the site is marked in
 red between dashed lines, with the stretch across the road from it marked too.
