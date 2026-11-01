@@ -1188,9 +1188,9 @@ red, its yellow, its lime and its lilac-blue, so the two aerial styles
 differ in their colours, not only in the site's ink. How a style renders the
 data differs as its ground does (`technique` on the deck look): Flamingo
 and Kingfisher work in hatches, lines and patches on paper (the landform as
-contours alone, coloured up the ramp by height, the storeys as a hatch that
-tightens up the ramp, the pre-1750 communities dotted, the development
-lots hatched),
+contours alone, coloured up the ramp by height, the pre-1750 communities
+dotted, the development lots hatched; the storeys are tones up the ramp in
+every style, a hatch reading badly at a footprint's size),
 Heron and Canary in tones over the photograph (the landform in a heat
 ramp, the storeys and the communities flat). The winter shadows are in the
 transit family's blue, deepened, which differs by style. The marks of the development page carry
