@@ -1478,14 +1478,17 @@ past its band's top cut there as the meshes are, its tag kept inside the
 band; see *The streetscape* below), laid out as the built form page (after height of buildings)
 is (the drawing across the whole spread under the deck's heading, no rule
 under the subtitle, a lead over the right-hand page, the sources in two
-columns across the foot): the photographs on Google's meshes where Street
-View is keyed, else each building as a block at its recorded height behind
-its frontage (`faceSkyline` in `src/fetch/streetscape.ts`: the footprints on
-the face's side within 35 m of its building line, at their heights over the
-ground, the tallest where they overlap), its floor lines at 3.1 m a storey,
-coloured by its storeys as the height of buildings page keys them, the site's in the
-site's ink; left out of the deck where it fails or the street holds nothing
-to draw, or with `DECK_STREETSCAPE=0`. Then
+columns across the foot): Street View's photographs laid on Google's
+Photorealistic 3D Tiles, and nothing else. The deck takes the page only
+where the tiles reach the street, which they do in the cities and not in
+every town (Orange and Katoomba have none): a collage of flat Street View
+frames reads as a mess, and blocks at their recorded heights are no
+streetscape, so a street the tiles miss, a run without
+`GOOGLE_MAPS_API_KEY`, a failure, or `DECK_STREETSCAPE=0` leaves the page
+out, and the deck fetches no frames to rectify. The recorded heights
+(`faceSkyline` in `src/fetch/streetscape.ts`: the footprints on the face's
+side within 35 m of its building line, at their heights over the ground,
+the tallest where they overlap) choose the deck's window. Then
 the planning pair: a
 *planning overview* of four maps at 1:8000 around the site (land zoning in the
 statutory colours, height of building, heritage with the State Heritage
