@@ -1176,6 +1176,9 @@ of them tell its data apart: colour carries the data on every page, from
 across the palette, and no page is held to one family. Ordered data (the
 storeys, the metres, the hours of shadow) runs up the palette's ramp, cool
 to warm (`paletteRamp`, `heatFills`), and the key shows the ramp as a strip.
+The text on a map wears no outline: not a white halo on paper, and not a
+black one on the white words over the aerial (zone codes, street names,
+the places' names), which stand on the photograph as they are.
 Heron keeps
 the office's own swatch sheet for its decks, the five families the decks
 were drawn in before the styles, with the land-use categories laid out in
@@ -1499,8 +1502,12 @@ when the deck is read (`routes` in the movement data), each a thin
 translucent line in the family's deepest ink, so a street many walks share
 darkens, with an arrowhead where each arrives, the place's dot in its
 family (the living green for a park, the activity orange for a school or a
-hall, the transit blue for a stop) and numbered to the key; straight lines
-to the nearest stations carrying the walk in minutes; the journeys to the
+hall, the transit blue for a stop) and numbered to the key; every station
+within the reach is routed too, listed or not, and its walk drawn heaviest
+with its minutes and metres along it, the corridors of the place; under all
+of them every street the reach holds, as a faint mesh in the same ink, the
+paths of the place that the walks pick out (no straight lines to the
+stations: the walk is the way, not the bearing); the journeys to the
 Sydney CBD and the nearest major centre by car and by bicycle from the
 public router, as bars of minutes; the car parks OpenStreetMap maps, on the
 map as P marks sized by their tagged capacity and as bars of the walk to

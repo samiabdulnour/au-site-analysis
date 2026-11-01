@@ -1147,10 +1147,16 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
   // stops and stations, read off the bundle once it stands), for the map's flow lines: one request a place, a few at
   // a time, and the page draws what the router answered.
   try {
-    const dests = walkDestinations(bundle, movementFacts(bundle));
-    if (dests.length) {
-      bundle.movement.routes = await fetchWalkRoutes(mercatorToLonLat(geo.center), dests);
-      log(`  walks: ${bundle.movement.routes.length} of ${dests.length} places routed on foot`);
+    const facts = movementFacts(bundle);
+    const dests = walkDestinations(bundle, facts);
+    // every station within the reach as well, listed or not: the walk to a station is the one the page draws heaviest
+    const named = new Set(dests.map((d) => d.name.toUpperCase()));
+    const stations = facts.stations.filter((st) => st.walkBand !== null && !named.has(st.name.toUpperCase()))
+      .map((st) => ({ name: st.name, kind: st.kind === 'light rail' ? 'light rail stop' : `${st.kind} station`, lon: st.lon, lat: st.lat }));
+    const targets = [...dests, ...stations];
+    if (targets.length) {
+      bundle.movement.routes = await fetchWalkRoutes(mercatorToLonLat(geo.center), targets);
+      log(`  walks: ${bundle.movement.routes.length} of ${targets.length} places routed on foot`);
     }
   } catch (e: any) { log(`  WARN walking routes failed: ${e?.message ?? e}`); }
   await writeFile(join(dataDir, 'slides_bundle.json'), JSON.stringify(bundle));

@@ -985,7 +985,7 @@ export function characterSlide(b: SlidesBundle): Slide {
     const [x, y] = proj(pl.lon, pl.lat);
     const text = pl.title;
     const w = labelW(text, 2.1);
-    if (spacer.take(x + 3.2 + w / 2, y, w, 2.8)) parts.push(`<text x="${(x + 3.2).toFixed(1)}" y="${(y + 0.75).toFixed(1)}" font-size="2.1" font-weight="600" fill="#ffffff" stroke="#000000" stroke-width="0.35" paint-order="stroke">${esc(text)}</text>`);
+    if (spacer.take(x + 3.2 + w / 2, y, w, 2.8)) parts.push(`<text x="${(x + 3.2).toFixed(1)}" y="${(y + 0.75).toFixed(1)}" font-size="2.1" font-weight="600" fill="#ffffff">${esc(text)}</text>`);
   }
   parts.push(panelFurniture(p, 'right'));
   const mapSvg = `<svg width="${p.wMm}mm" height="${p.hMm}mm" viewBox="0 0 ${p.wMm} ${p.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
@@ -1023,9 +1023,9 @@ export function characterSlide(b: SlidesBundle): Slide {
 /** A numbered marker on an aerial: white disc, black hairline, the number in 6 pt. */
 const aerialKey = (x: number, y: number, n: number | string, r = 1.9) =>
   `<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="${r}" fill="#ffffff" stroke="#000000" stroke-width="0.25"/><text x="${x.toFixed(2)}" y="${(y + 0.74).toFixed(2)}" text-anchor="middle" font-size="2.117" font-family="Arial, 'Liberation Sans', sans-serif" fill="#000000">${esc(String(n))}</text>`;
-/** A 6 pt word on an aerial: white, haloed in black. */
+/** A 6 pt word on an aerial: white, no outline. */
 const a6 = (x: number, y: number, text: string, anchor: 'start' | 'middle' | 'end' = 'start') =>
-  `<text x="${x.toFixed(2)}" y="${(y + 0.75).toFixed(2)}" text-anchor="${anchor}" font-size="2.117" letter-spacing="0.19" font-family="Arial, 'Liberation Sans', sans-serif" fill="#ffffff" stroke="#000000" stroke-width="0.55" stroke-linejoin="round" paint-order="stroke">${esc(text)}</text>`;
+  `<text x="${x.toFixed(2)}" y="${(y + 0.75).toFixed(2)}" text-anchor="${anchor}" font-size="2.117" letter-spacing="0.19" font-family="Arial, 'Liberation Sans', sans-serif" fill="#ffffff">${esc(text)}</text>`;
 /** Aerial tiles laid over a panel: by the window they cover where the fetch kept it, else as fractions of the panel. */
 const aerialTiles = (tiles: { file: string; left: number; top: number; width: number; height: number }[], p: Panel, extent?: Extent) => {
   let X0 = 0, Y0 = 0, W = p.wMm, H = p.hMm;
@@ -4336,8 +4336,16 @@ export function movementSlide(b: SlidesBundle): Slide {
   // The walks: each route a line in the flow ink, thin and translucent, so where walks share a street the line
   // builds; an arrowhead where each arrives. A walk past the widest band is cut to the page, as the band is.
   const routes = mv.routes ?? [];
+  // every street the reach holds, as a faint mesh in the flow ink: the paths of the place, which the walks pick out
+  if (isoSorted[0]) parts.push(`<clipPath id="walk-reach"><path d="${ringsPath(isoSorted[0].rings, proj)}" clip-rule="evenodd"/></clipPath><g clip-path="url(#walk-reach)"><path d="${b.base.roads.map((r) => ringsPath([r.coords], proj, false)).join('')}" fill="none" stroke="${MOVE.flow}" stroke-width="0.22" stroke-opacity="0.28" stroke-linecap="round" stroke-linejoin="round"/></g>`);
+  const toStation = (r: { kind: string }) => /station|stop/i.test(r.kind);
+  const stationWalks: typeof routes = [];
   if (routes.length) {
-    parts.push(`<g fill="none" stroke="${MOVE.flow}" stroke-width="0.95" stroke-opacity="${tone ? 0.26 : 0.22}" stroke-linecap="round" stroke-linejoin="round">${routes.map((r) => `<path d="${ringsPath([r.coords], proj, false)}"/>`).join('')}</g>`);
+    parts.push(`<g fill="none" stroke="${MOVE.flow}" stroke-width="0.95" stroke-opacity="${tone ? 0.26 : 0.22}" stroke-linecap="round" stroke-linejoin="round">${routes.filter((r) => !toStation(r)).map((r) => `<path d="${ringsPath([r.coords], proj, false)}"/>`).join('')}</g>`);
+    // the walks to the stations heaviest, the corridors of the place, each with its minutes along it
+    const toStations = routes.filter(toStation);
+    parts.push(`<g fill="none" stroke="${MOVE.flow}" stroke-width="1.5" stroke-opacity="0.38" stroke-linecap="round" stroke-linejoin="round">${toStations.map((r) => `<path d="${ringsPath([r.coords], proj, false)}"/>`).join('')}</g>`);
+    stationWalks.push(...toStations);
     for (const r of routes) {
       const pts = r.coords.map(([lon, lat]) => proj(lon, lat));
       const end = pts[pts.length - 1];
@@ -4351,7 +4359,6 @@ export function movementSlide(b: SlidesBundle): Slide {
       parts.push(`<path d="M${tip[0].toFixed(2)},${tip[1].toFixed(2)} L${(tip[0] - L * Math.cos(a) + W * Math.sin(a)).toFixed(2)},${(tip[1] - L * Math.sin(a) - W * Math.cos(a)).toFixed(2)} L${(tip[0] - L * Math.cos(a) - W * Math.sin(a)).toFixed(2)},${(tip[1] - L * Math.sin(a) + W * Math.cos(a)).toFixed(2)} Z" fill="${MOVE.flow}" fill-opacity="0.9"/>`);
     }
   }
-  void isoSorted;
   if (mv.busRoutes.length) parts.push(`<path d="${mv.busRoutes.map((l) => ringsPath([l], proj, false)).join('')}" fill="none" stroke="${t.busRoute}" stroke-width="0.5" stroke-dasharray="1.2,0.9" stroke-linecap="round"/>`);
   if (mv.footways.length) parts.push(`<path d="${mv.footways.map((l) => ringsPath([l], proj, false)).join('')}" fill="none" stroke="${MOVE.foot}" stroke-width="0.25" stroke-dasharray="0.5,0.5"/>`);
   for (const kind of ['shared', 'lane', 'separated'] as CyclewayKind[]) {
@@ -4365,6 +4372,11 @@ export function movementSlide(b: SlidesBundle): Slide {
   const isoSpacer = new LabelSpacer(p.wMm, p.hMm, 90);
   { const [cx0, cy0] = proj(mercatorToLonLat(p.center).lon, mercatorToLonLat(p.center).lat); isoSpacer.take(cx0, cy0, 10, 10); }
   isoSpacer.take(30, 10, 56, 10);
+  // the minutes along each walk to a station, where the line is clear
+  for (const r of stationWalks) {
+    const pts = r.coords.map(([lon, lat]) => proj(lon, lat) as Pt);
+    if (pts.length >= 2) parts.push(alongLabel(pts, `${r.minutes} MIN · ${fmtNum(Math.round(r.km * 1000))} M`, 2, MOVE.flow, isoSpacer, p, 0.5, { weight: 700, spacing: 0.16 }));
+  }
   // What the walk reaches, numbered on the map and keyed in a box in its bottom-right corner, by the band the
   // walking network reaches each in: the reader sees where they can get to, not only how far the lines run.
   const dests = walkDestinations(b, f);
@@ -4425,20 +4437,6 @@ export function movementSlide(b: SlidesBundle): Slide {
     parts.push(`<rect x="${(x - half).toFixed(2)}" y="${(y - half).toFixed(2)}" width="${(2 * half).toFixed(2)}" height="${(2 * half).toFixed(2)}" fill="#ffffff" stroke="${MOVE.mark}" stroke-width="0.35"/><text x="${x.toFixed(2)}" y="${(y + half * 0.5).toFixed(2)}" text-anchor="middle" font-size="${(half * 1.35).toFixed(2)}" font-weight="700" fill="${MOVE.mark}">P</text>`);
     isoSpacer.block(x, y, 2 * half + 1, 2 * half + 1);
   }
-  // straight lines from the site to the nearest stations, the walk in minutes along each: the map says how far, not only where
-  {
-    const cLL = mercatorToLonLat(p.center);
-    const [cx0, cy0] = proj(cLL.lon, cLL.lat);
-    for (const st of f.stations.slice(0, 3)) {
-      const [ex, ey] = pointByBearing(p, proj, st.distanceM, st.bearing);
-      const len = Math.hypot(ex - cx0, ey - cy0);
-      if (len < 12 || ex < 2 || ey < 2 || ex > p.wMm - 2 || ey > p.hMm - 2) continue;
-      const ux = (ex - cx0) / len, uy = (ey - cy0) / len;
-      const a: Pt = [cx0 + ux * 4, cy0 + uy * 4], z: Pt = [ex - ux * 3.2, ey - uy * 3.2];
-      parts.push(`<line x1="${a[0].toFixed(2)}" y1="${a[1].toFixed(2)}" x2="${z[0].toFixed(2)}" y2="${z[1].toFixed(2)}" stroke="${MOVE.mark}" stroke-width="0.35" stroke-dasharray="0.9,0.9" stroke-linecap="round"/>`);
-      parts.push(alongLabel([a, z], `${st.walkMin} MIN · ${fmtNum(st.distanceM)} M`, 2, MOVE.mark, isoSpacer, p, 0.5, { weight: 700, spacing: 0.16 }));
-    }
-  }
   for (const iso of bandIso) {
     const text = `${iso.minutes} min`, w = t2Width(text);
     const pts = (iso.rings[0]?.map(([lon, lat]) => proj(lon, lat)) ?? []).filter((q) => q[0] > 8 && q[0] < p.wMm - 8 && q[1] > 14 && q[1] < p.hMm - 16);
@@ -4472,9 +4470,8 @@ export function movementSlide(b: SlidesBundle): Slide {
     [sw(`<line x1="0" y1="1.8" x2="5" y2="1.8" stroke="${MOVE.road}" stroke-width="0.9"/><line x1="0" y1="1.8" x2="5" y2="1.8" stroke="#ffffff" stroke-width="0.6"/>`), 'Roads by function: motorways and arterials heaviest, local streets finest'],
     [sw(`<line x1="0" y1="1.8" x2="5" y2="1.8" stroke="${MOVE.rail}" stroke-width="0.2"/><line x1="0" y1="1.8" x2="5" y2="1.8" stroke="${MOVE.rail}" stroke-width="1.05" stroke-dasharray="0.16,1.3"/>`), 'Rail; stations as T, M (metro) or L (light rail)'],
     [sw(BAND_COLS.map((c, i, all) => { const w = 5 / all.length, x = i * w; return `<line x1="${(x + w / 2).toFixed(2)}" y1="0.3" x2="${(x + w / 2).toFixed(2)}" y2="3.3" stroke="${c}" stroke-width="0.5" stroke-dasharray="0.8,0.5"/>`; }).join('')), `Walking reach from the site: the line of ${bandIso.map((q) => q.minutes).join(', ')} minutes, the warmest nearest`],
-    [sw(`<path d="M0.2,2.6 C1.5,2.6 1.5,1 3,1 L4.4,1" fill="none" stroke="${MOVE.flow}" stroke-width="0.95" stroke-opacity="0.45"/><path d="M0.2,2.9 C1.5,2.9 1.8,1.3 3,1.3 L4.4,1.3" fill="none" stroke="${MOVE.flow}" stroke-width="0.95" stroke-opacity="0.45"/><path d="M4.9,1.15 L3.9,0.6 L3.9,1.7 Z" fill="${MOVE.flow}"/>`), 'The walks from the site to each place listed, on the network: a street many walks share darkens'],
+    [sw(`<path d="M0.2,2.6 C1.5,2.6 1.5,1 3,1 L4.4,1" fill="none" stroke="${MOVE.flow}" stroke-width="0.95" stroke-opacity="0.45"/><path d="M0.2,2.9 C1.5,2.9 1.8,1.3 3,1.3 L4.4,1.3" fill="none" stroke="${MOVE.flow}" stroke-width="0.95" stroke-opacity="0.45"/><path d="M4.9,1.15 L3.9,0.6 L3.9,1.7 Z" fill="${MOVE.flow}"/>`), 'The walks from the site to each place listed, on the network, a street many walks share darkening; heaviest, with its minutes, the walk to each station; faintest, every street the reach holds'],
     [sw(`<rect x="0.3" y="0.5" width="2" height="2.6" fill="${MOVE.block}"/><rect x="2.8" y="0.5" width="1.9" height="1.1" fill="${MOVE.block}"/><rect x="2.8" y="2" width="1.9" height="1.1" fill="${MOVE.block}"/>`), 'Buildings, for the grain of the blocks'],
-    [sw(`<line x1="0" y1="1.8" x2="5" y2="1.8" stroke="${MOVE.mark}" stroke-width="0.35" stroke-dasharray="0.9,0.9"/>`), 'Straight lines to the nearest stations, the walk in minutes along each'],
     ...(f.parking.all.length ? [[sw(`<rect x="1" y="0.3" width="3" height="3" fill="#ffffff" stroke="${MOVE.mark}" stroke-width="0.3"/><text x="2.5" y="2.9" text-anchor="middle" font-size="2.2" font-weight="700" fill="${MOVE.mark}">P</text>`), 'Car parks OpenStreetMap maps, the square sized by the tagged capacity'] as [string, string]] : []),
   ];
   if (walkDestinations(b, f).length) legendRows.push([sw(`<circle cx="2.5" cy="1.8" r="1.4" fill="#ffffff" stroke="${MOVE.mark}" stroke-width="0.3"/><text x="2.5" y="2.4" text-anchor="middle" font-size="1.7" font-weight="700" fill="${MOVE.mark}">1</text>`), 'Stations, schools, health, community places and parks within the walk, keyed on the map']);
@@ -5708,7 +5705,7 @@ export function siteSlide(b: SlidesBundle): Slide {
         let rot = (Math.atan2(cy - ay, cx - ax) * 180) / Math.PI;
         if (rot > 90 || rot < -90) rot += 180;
         const text = `${lengthM.toFixed(2)}`;
-        if (spacer.take(lx, ly, labelW(text, 2.1), 2.6)) out.push(`<text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" transform="rotate(${rot.toFixed(1)} ${lx.toFixed(1)} ${ly.toFixed(1)})" text-anchor="middle" dominant-baseline="middle" font-size="2.1" font-weight="600" fill="#ffffff" stroke="#000000" stroke-width="0.35" paint-order="stroke">${text}</text>`);
+        if (spacer.take(lx, ly, labelW(text, 2.1), 2.6)) out.push(`<text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" transform="rotate(${rot.toFixed(1)} ${lx.toFixed(1)} ${ly.toFixed(1)})" text-anchor="middle" dominant-baseline="middle" font-size="2.1" font-weight="600" fill="#ffffff">${text}</text>`);
       }
     });
     return out;
@@ -5733,14 +5730,14 @@ export function siteSlide(b: SlidesBundle): Slide {
       const dxc = x - p.wMm / 2, dyc = y - p.hMm / 2, dl = Math.hypot(dxc, dyc) || 1;
       const lx = x + (dxc / dl) * 4.5, ly = y + (dyc / dl) * 4.5;
       const text = `RL ${rl.toFixed(1)}`;
-      if (spacer.take(lx, ly, labelW(text, 1.9), 2.5)) labels.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="0.55" fill="#ffffff" stroke="${t.site}" stroke-width="0.3"/>` + `<text x="${lx.toFixed(1)}" y="${(ly + 0.65).toFixed(1)}" text-anchor="middle" font-size="1.9" fill="#ffffff" stroke="#000000" stroke-width="0.32" paint-order="stroke">${text}</text>`);
+      if (spacer.take(lx, ly, labelW(text, 1.9), 2.5)) labels.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="0.55" fill="#ffffff" stroke="${t.site}" stroke-width="0.3"/>` + `<text x="${lx.toFixed(1)}" y="${(ly + 0.65).toFixed(1)}" text-anchor="middle" font-size="1.9" fill="#ffffff">${text}</text>`);
     }
   }
   // the building's height on the lot
   for (const bd of onSiteFootprints) {
     const [x, y] = proj(bd.centroid[0], bd.centroid[1]);
     const text = bd.floors ? `${bd.floors} st${bd.heightM ? ` · ${fmtNum(bd.heightM)} m` : ''}` : bd.heightM ? `${fmtNum(bd.heightM)} m` : 'existing';
-    if (spacer.take(x, y, labelW(text, 2), 2.6)) labels.push(`<text x="${x.toFixed(1)}" y="${(y + 0.7).toFixed(1)}" text-anchor="middle" font-size="2" font-weight="600" fill="#ffffff" stroke="#000000" stroke-width="0.35" paint-order="stroke">${esc(text)}</text>`);
+    if (spacer.take(x, y, labelW(text, 2), 2.6)) labels.push(`<text x="${x.toFixed(1)}" y="${(y + 0.7).toFixed(1)}" text-anchor="middle" font-size="2" font-weight="600" fill="#ffffff">${esc(text)}</text>`);
   }
   // road names along their centrelines, and the neighbours' numbers
   for (const r of b.base.roads) {
@@ -5757,12 +5754,12 @@ export function siteSlide(b: SlidesBundle): Slide {
     let rot = (Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI; if (rot > 90 || rot < -90) rot += 180;
     const text = titleCase(r.name);
     const [x, y] = pts[i];
-    if (spacer.take(x, y, labelW(text, 2.3), 3)) labels.push(`<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" transform="rotate(${rot.toFixed(1)} ${x.toFixed(1)} ${y.toFixed(1)})" text-anchor="middle" dominant-baseline="middle" font-size="2.3" letter-spacing="0.06em" fill="#ffffff" stroke="#000000" stroke-width="0.4" paint-order="stroke">${esc(text.toUpperCase())}</text>`);
+    if (spacer.take(x, y, labelW(text, 2.3), 3)) labels.push(`<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" transform="rotate(${rot.toFixed(1)} ${x.toFixed(1)} ${y.toFixed(1)})" text-anchor="middle" dominant-baseline="middle" font-size="2.3" letter-spacing="0.06em" fill="#ffffff">${esc(text.toUpperCase())}</text>`);
   }
   for (const n of s.neighbours) {
     const [x, y] = proj(n.lon, n.lat);
     if (x < 2 || y < 2 || x > p.wMm - 2 || y > p.hMm - 2) continue;
-    if (spacer.take(x, y, labelW(n.housenumber, 1.9), 2.4)) labels.push(`<text x="${x.toFixed(1)}" y="${(y + 0.65).toFixed(1)}" text-anchor="middle" font-size="1.9" fill="#ffffff" stroke="#000000" stroke-width="0.3" paint-order="stroke">${esc(n.housenumber)}</text>`);
+    if (spacer.take(x, y, labelW(n.housenumber, 1.9), 2.4)) labels.push(`<text x="${x.toFixed(1)}" y="${(y + 0.65).toFixed(1)}" text-anchor="middle" font-size="1.9" fill="#ffffff">${esc(n.housenumber)}</text>`);
   }
   parts.push(...labels, panelFurniture(p, 'right'));
   const mapSvg = `<svg width="${p.wMm}mm" height="${p.hMm}mm" viewBox="0 0 ${p.wMm} ${p.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
@@ -5915,7 +5912,7 @@ export function siteAtlas(b: SlidesBundle): Slide {
         let rot = (Math.atan2(cy - ay, cx - ax) * 180) / Math.PI;
         if (rot > 90 || rot < -90) rot += 180;
         const text = `${lengthM.toFixed(2)}`;
-        if (spacer.take(lx, ly, labelW(text, 2.5), 2.6)) out.push(`<text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" transform="rotate(${rot.toFixed(1)} ${lx.toFixed(1)} ${ly.toFixed(1)})" text-anchor="middle" dominant-baseline="middle" font-size="2.117" letter-spacing="0.19" fill="#ffffff" stroke="#000000" stroke-width="0.35" paint-order="stroke">${text}</text>`);
+        if (spacer.take(lx, ly, labelW(text, 2.5), 2.6)) out.push(`<text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" transform="rotate(${rot.toFixed(1)} ${lx.toFixed(1)} ${ly.toFixed(1)})" text-anchor="middle" dominant-baseline="middle" font-size="2.117" letter-spacing="0.19" fill="#ffffff">${text}</text>`);
       }
     });
     return out;
@@ -5940,14 +5937,14 @@ export function siteAtlas(b: SlidesBundle): Slide {
       const dxc = x - p.wMm / 2, dyc = y - p.hMm / 2, dl = Math.hypot(dxc, dyc) || 1;
       const lx = x + (dxc / dl) * 4.5, ly = y + (dyc / dl) * 4.5;
       const text = `RL ${rl.toFixed(1)}`;
-      if (spacer.take(lx, ly, labelW(text, 2.5), 2.5)) labels.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="0.55" fill="#ffffff" stroke="${t.site}" stroke-width="0.3"/>` + `<text x="${lx.toFixed(1)}" y="${(ly + 0.65).toFixed(1)}" text-anchor="middle" font-size="2.117" letter-spacing="0.19" fill="#ffffff" stroke="#000000" stroke-width="0.35" paint-order="stroke">${text}</text>`);
+      if (spacer.take(lx, ly, labelW(text, 2.5), 2.5)) labels.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="0.55" fill="#ffffff" stroke="${t.site}" stroke-width="0.3"/>` + `<text x="${lx.toFixed(1)}" y="${(ly + 0.65).toFixed(1)}" text-anchor="middle" font-size="2.117" letter-spacing="0.19" fill="#ffffff">${text}</text>`);
     }
   }
   // the building's height on the lot
   for (const bd of onSiteFootprints) {
     const [x, y] = proj(bd.centroid[0], bd.centroid[1]);
     const text = bd.floors ? `${bd.floors} st${bd.heightM ? ` · ${fmtNum(bd.heightM)} m` : ''}` : bd.heightM ? `${fmtNum(bd.heightM)} m` : 'existing';
-    if (spacer.take(x, y, labelW(text, 2.5), 2.6)) labels.push(`<text x="${x.toFixed(1)}" y="${(y + 0.7).toFixed(1)}" text-anchor="middle" font-size="2.117" letter-spacing="0.19" fill="#ffffff" stroke="#000000" stroke-width="0.35" paint-order="stroke">${esc(text)}</text>`);
+    if (spacer.take(x, y, labelW(text, 2.5), 2.6)) labels.push(`<text x="${x.toFixed(1)}" y="${(y + 0.7).toFixed(1)}" text-anchor="middle" font-size="2.117" letter-spacing="0.19" fill="#ffffff">${esc(text)}</text>`);
   }
   // road names along their centrelines, and the neighbours' numbers
   for (const r of b.base.roads) {
@@ -5964,12 +5961,12 @@ export function siteAtlas(b: SlidesBundle): Slide {
     let rot = (Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI; if (rot > 90 || rot < -90) rot += 180;
     const text = titleCase(r.name);
     const [x, y] = pts[i];
-    if (spacer.take(x, y, labelW(text, 2.5), 3)) labels.push(`<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" transform="rotate(${rot.toFixed(1)} ${x.toFixed(1)} ${y.toFixed(1)})" text-anchor="middle" dominant-baseline="middle" font-size="2.117" letter-spacing="0.19" fill="#ffffff" stroke="#000000" stroke-width="0.4" paint-order="stroke">${esc(text.toUpperCase())}</text>`);
+    if (spacer.take(x, y, labelW(text, 2.5), 3)) labels.push(`<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" transform="rotate(${rot.toFixed(1)} ${x.toFixed(1)} ${y.toFixed(1)})" text-anchor="middle" dominant-baseline="middle" font-size="2.117" letter-spacing="0.19" fill="#ffffff">${esc(text.toUpperCase())}</text>`);
   }
   for (const n of s.neighbours) {
     const [x, y] = proj(n.lon, n.lat);
     if (x < 2 || y < 2 || x > p.wMm - 2 || y > p.hMm - 2) continue;
-    if (spacer.take(x, y, labelW(n.housenumber, 2.5), 2.4)) labels.push(`<text x="${x.toFixed(1)}" y="${(y + 0.65).toFixed(1)}" text-anchor="middle" font-size="2.117" letter-spacing="0.19" fill="#ffffff" stroke="#000000" stroke-width="0.35" paint-order="stroke">${esc(n.housenumber)}</text>`);
+    if (spacer.take(x, y, labelW(n.housenumber, 2.5), 2.4)) labels.push(`<text x="${x.toFixed(1)}" y="${(y + 0.65).toFixed(1)}" text-anchor="middle" font-size="2.117" letter-spacing="0.19" fill="#ffffff">${esc(n.housenumber)}</text>`);
   }
   parts.push(...labels, panelFurniture(p, 'left'));
   const mapSvg = bleedSvg('site11', p, parts.join('\n'));
