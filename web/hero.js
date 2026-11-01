@@ -5,7 +5,9 @@
    its windows from app.js as the visitor comes and goes. The
    sheets are hero-*.jpg, drawn for addresses around NSW just for this panel
    (`npm run generate`, rasterised like the samples), so the welcome never
-   shows the example the generator's result frame uses; the illustrations are
+   shows the example the generator's result frame uses: the maps 1 to 14; the
+   yield's pages 15 to 18 (Manly, Wollongong, Newcastle) and the site report's
+   19 to 27 (Katoomba, Orange), in the four styles mixed; the illustrations are
    art-*, the studio's graphics.
 
    The sheets are shuffled on every visit and dealt between the windows,
@@ -35,7 +37,7 @@
    otherwise show it cut to the next one's shape for a moment. */
 // The samples' cache-busting query, as app.js names them.
 const sample = (name) => '/samples/' + name + '?r=2';
-const HERO_COUNT = 25;   // web/samples/hero-1.jpg … hero-<n>.jpg
+const HERO_COUNT = 27;   // web/samples/hero-1.jpg … hero-<n>.jpg
 const HERO_SHEETS = Array.from({ length: HERO_COUNT }, (_, i) => sample('hero-' + (i + 1) + '.jpg'));
 // web/samples/art-1 … art-8, each in whichever of PNG or JPEG kept it lighter.
 const HERO_ART = ['art-1.png', 'art-2.jpg', 'art-3.jpg', 'art-4.jpg',
