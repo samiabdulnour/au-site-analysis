@@ -3935,10 +3935,10 @@ const SAGE = INK.sage;
  * Made per page, since a fill holds the inks it was made with.
  */
 function bandFills(): { bands: Fill[]; noHeight: Fill; lotGap: Fill } {
-  // the storeys up the palette's ramp: tones over the photograph, hatches tightening on paper; a footprint without a height stays white
+  // the storeys up the palette's ramp as tones in every style (the hatches read badly at a footprint's size); a footprint without a height stays white
   const edge = inkFor(INK.blue.solid, 0.45);
   return {
-    bands: heatFills(HEIGHT_BANDS.length),
+    bands: heatFills(HEIGHT_BANDS.length, 'tone'),
     noHeight: { bg: '#ffffff', outline: edge, outlineW: 0.14 },
     lotGap: { bg: '#ffffff', kind: 'hlines', ink: edge, step: 0.9, w: 0.08, outline: edge, outlineW: 0.12, dash: '0.6 0.4' },
   };
