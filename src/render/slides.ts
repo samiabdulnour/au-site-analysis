@@ -13,7 +13,7 @@ import { mergeRuns, straightEnough, arcTable, sliceAt, shortStreetName, type She
 import type { TopoRoad } from '../fetch/nswTopo.js';
 import type { GeoJSONFeature } from '../lib/arcgis.js';
 import { tpl, withTemplate, templateFor, deckLook, tint, shadeHex, inkFor, vivid, type DeckLook } from './template.js';
-import { INK, aerialGreenFill, veg1750Fills, VEG_CLASSES_MAX, fillShape, swatchOf, barOf, categoryFill, heatFills, paletteRamp, styleRamp, terrainRamp, stripOf, HEIGHT_BANDS, heightBandOf, massingInks, zHead, zBars, zFigures, zCircles, zSpans, zPairs, zLine, niceAxis, z6, zSvg, Z_W, Z_TRACK, type Fill } from './atlasKit.js';
+import { INK, aerialGreenFill, veg1750Fills, VEG_CLASSES_MAX, fillShape, swatchOf, barOf, categoryFill, heatFills, paletteRamp, styleRamp, terrainRamp, stripOf, HEIGHT_BANDS, heightBandOf, massingInks, heightRamp, zHead, zBars, zFigures, zCircles, zSpans, zPairs, zLine, niceAxis, z6, zSvg, Z_W, Z_TRACK, type Fill } from './atlasKit.js';
 import { esc } from './chrome.js';
 import { drawAxonometric, type AxoScene, type Prism } from './axonometric.js';
 import { estimateKerbs } from '../lib/kerbs.js';
@@ -3938,7 +3938,7 @@ function bandFills(): { bands: Fill[]; noHeight: Fill; lotGap: Fill } {
   // the storeys up the palette's ramp as tones in every style (the hatches read badly at a footprint's size); a footprint without a height stays white
   const edge = inkFor(INK.blue.solid, 0.45);
   return {
-    bands: heatFills(HEIGHT_BANDS.length, 'tone'),
+    bands: heatFills(HEIGHT_BANDS.length, 'tone', heightRamp()),
     noHeight: { bg: '#ffffff', outline: edge, outlineW: 0.14 },
     lotGap: { bg: '#ffffff', kind: 'hlines', ink: edge, step: 0.9, w: 0.08, outline: edge, outlineW: 0.12, dash: '0.6 0.4' },
   };

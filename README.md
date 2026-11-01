@@ -1179,7 +1179,9 @@ to warm (`paletteRamp`, `heatFills`), and the key shows the ramp as a strip.
 The text on a map wears no outline: not a white halo on paper, and not a
 black one on the white words over the aerial (zone codes, street names,
 the places' names), which stand on the photograph as they are.
-Heron keeps
+The storeys' ramp runs across the palette in every style, Heron's included
+(`heightRamp`): the built form page, the massing and the three-dimensional
+page take it, so a city reads in many colours. Heron keeps
 the office's own swatch sheet for its decks, the five families the decks
 were drawn in before the styles, with the land-use categories laid out in
 those families (`KIT_INK`, `KIT_CATEGORIES`): the office's sheet in the

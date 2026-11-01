@@ -380,7 +380,7 @@ export function massingInks() {
   const O = INK.orange, G = INK.green, B = INK.blue;
   const green = vivid(G.solid, 0.5, 0.45);
   return {
-    bands: rampColours(HEIGHT_BANDS.length, styleRamp()),
+    bands: rampColours(HEIGHT_BANDS.length, heightRamp()),
     noHeight: tint(B.solid, 0.22),
     ground: tint(O.solid, 0.1),
     lot: tint(inkFor(O.deep, 0.4), 0.45),
@@ -389,6 +389,11 @@ export function massingInks() {
     axis: tint(B.solid, 0.55),
     tree: green, treeLight: tint(green, 0.6), trunk: inkFor(G.deep, 0.12),
   };
+}
+
+/** The storeys' ramp, across the palette in every style, Heron's included: the built form page, the massing and the three-dimensional page take it, so a city reads in many colours. */
+export function heightRamp(): string[] {
+  return paletteRamp();
 }
 
 /** The ramp ordered data runs up in this style: Heron's between two colours of its sheet, the blue low and the red high, mixed; the others across the palette. */
@@ -400,8 +405,8 @@ export function styleRamp(): string[] {
  * `n` ordered fills, low to high, as the style draws them: tones along the style's ramp, or (on paper) hatches
  * that tighten up the ramp, each in its ramp colour, the lowest a light patch and the highest cross-hatched.
  */
-export function heatFills(n: number, technique = deckLook().technique): Fill[] {
-  const cols = rampColours(n, styleRamp());
+export function heatFills(n: number, technique = deckLook().technique, ramp = styleRamp()): Fill[] {
+  const cols = rampColours(n, ramp);
   if (technique === 'tone') return cols.map((c) => ({ bg: tint(c, 0.78), outline: '#ffffff', outlineW: 0.08 }));
   return cols.map((c, i) => {
     if (i === 0) return { bg: tint(c, 0.3), outline: c, outlineW: 0.1 };
