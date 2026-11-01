@@ -2591,7 +2591,7 @@ export function formAtlas(b: SlidesBundle, planning: PlanningFacts): Slide {
   };
   // The whole spread, as the streetscape page is laid out: the drawing across the sheet under the deck's own
   // heading, a lead over the right-hand page in the page's ink, the sources across the foot.
-  const SHEET_W = 420, SHEET_H = 297, TOP = 34, MARGIN = 15;
+  const SHEET_W = 420, SHEET_H = 297, TOP = 36, FOOT = 16, MARGIN = 15;
   const withH = drawn.filter((bd) => bd.estimatedHeightM);
   const tall = f.tallest[0];
   const camBearing = ((Math.atan2(front.x, front.y) * 180) / Math.PI + 360) % 360;
@@ -2604,13 +2604,13 @@ export function formAtlas(b: SlidesBundle, planning: PlanningFacts): Slide {
   const src = f.source === 'overture' ? `Overture Maps Foundation buildings${f.release ? ` (release ${f.release})` : ''}, footprints and heights from OpenStreetMap, Microsoft, Esri Community Maps and Google Open Buildings` : f.source === 'osm' ? 'OpenStreetMap buildings' : 'no building source';
   const sources = `Sources: ${src}; heights measured, or ${METRES_PER_STOREY} m a storey, else the storeys of a determined application on the lot; every building in the colour of its storeys as the built form page keys them (${HEIGHT_BANDS.map((bd) => bd.label).join(' · ')}), dashed where none is recorded; what stands on the site in the site's ink; streets from NSW Spatial Services, the kerbs worked out from the cadastre; parks from the open-space zones; the trees read off NSW Imagery as crowns, their size indicative. Drawn from the ${bearingName(camBearing)}, looking down 35°. Retrieved ${b.buildings.fetchedAt.slice(0, 10)}.`;
   const figureHtml = `<div class="form3d">
-  <div class="abs" style="left:0;top:0"><svg width="${SHEET_W}mm" height="${SHEET_H}mm" viewBox="0 0 ${SHEET_W} ${SHEET_H}" xmlns="http://www.w3.org/2000/svg" style="display:block" font-family="Arial, 'Liberation Sans', sans-serif">${drawAxonometric(scene, { x: 0, y: TOP, w: SHEET_W, h: SHEET_H - TOP }, 'form09b')}</svg></div>
+  <div class="abs" style="left:0;top:0"><svg width="${SHEET_W}mm" height="${SHEET_H}mm" viewBox="0 0 ${SHEET_W} ${SHEET_H}" xmlns="http://www.w3.org/2000/svg" style="display:block" font-family="Arial, 'Liberation Sans', sans-serif">${drawAxonometric(scene, { x: 0, y: TOP, w: SHEET_W, h: SHEET_H - TOP - FOOT }, 'form09b')}</svg></div>
   <div class="abs lead" style="left:${SHEET_W - MARGIN - 150}mm;top:17.5mm;width:150mm">${esc(lead)}</div>
   <div class="abs src" style="left:${MARGIN}mm;bottom:10mm;width:${SHEET_W - 2 * MARGIN}mm">${esc(sources)}</div>
 </div>`;
   const css = `.form3d .lead { font-size: 3.05mm; line-height: 1.38; font-weight: 600; color: ${accent}; }
   .form3d .src { font-size: 2.1mm; line-height: 1.3; color: #6a7572; }`;
-  const sub = atlasSub(b, `${fmtNum(withH.length)} buildings with a height within ${REACH} m`, tall ? `tallest ${tall.storeys} storeys · ${fmtNum(tall.distanceM)} m ${bearingName(tall.bearing)}` : '', `${fmtNum(trees.length)} trees`);
+  const sub = atlasSub(b, `${fmtNum(withH.length)} buildings with a height within ${REACH} m`, tall ? `tallest ${tall.storeys} storeys` : '');
   return { id: '09b_city_in_three_dimensions', title: 'The city in three dimensions', subtitle: sub, textHtml: '', figureHtml, full: true, accent, css };
 }
 
