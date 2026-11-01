@@ -1113,7 +1113,7 @@ export function characterAtlas(b0: SlidesBundle): Slide {
   }
   const sources = `Sources: Wikipedia${f.wikipedia ? `, "${f.wikipedia.title}", ${f.wikipedia.url.replace(/^https?:\/\//, '')}, text CC BY-SA 4.0,` : ''} and its geosearch for the places with articles within ${(f.placesRadiusM / 1000).toFixed(1)} km; NSW Imagery via SIX Maps for the aerial${f.aerial?.date ? `, captured ${fmtIso(f.aerial.date)}` : ''}${(c.placeStreetViews ?? []).length ? '; Google Street View Static API for the places from the street, each from the panorama nearest it, © Google' : ''}. Retrieved ${b.generatedAt.slice(0, 10)}.`;
   const sub = atlasSub(b0, f.places.length ? `${f.places.length} place${f.places.length === 1 ? '' : 's'} with articles within ${(f.placesRadiusM / 1000).toFixed(1)} km` : '');
-  return { id: '03_character', title: 'Character', subtitle: sub, textHtml: '', figureHtml: atlasFigure(mapSvg, `The place from above${f.aerial?.date ? ` · ${fmtIso(f.aerial.date)}` : ''}`, p, zFlow(blocks)), bleed: true, sources, accent: deckLook().accent, legend,
+  return { id: '03_character', title: 'Character', subtitle: sub, textHtml: '', figureHtml: atlasFigure(mapSvg, `The place from above${f.aerial?.date ? ` · ${fmtIso(f.aerial.date)}` : ''}`, p, zFlow(blocks)), bleed: true, sources, accent: '#000000', legend,
     narrative: brief([f.places.length ? `${capFirst(numWord(f.places.length))} place${f.places.length === 1 ? '' : 's'} within ${(f.placesRadiusM / 1000).toFixed(1)} km ${f.places.length === 1 ? 'has an article' : 'have articles'} of ${f.places.length === 1 ? 'its' : 'their'} own; the nearest are ${listWords(f.places.slice(0, 3).map((pl) => `${pl.title} ${fmtNum(pl.distanceM)} m ${pl.side}`))}.` : '']) };
 }
 
@@ -1389,7 +1389,7 @@ export function strategicAtlas(b0: SlidesBundle, planning: PlanningFacts): Slide
   ];
   const sources = `Sources: the Department's planning-regions layer and plans-by-region pages; the Planning Portal's index of local strategic planning statements; the local plan, the DCP and the contributions from ePlanning and the property report; TOD, town-centre, State significant site and precinct maps from the Housing and Planning Systems SEPP layers and DPHI. The documents themselves are not read. Retrieved ${b.generatedAt.slice(0, 10)}.`;
   const sub = atlasSub(b0, f.region.plan?.name ?? '', f.lsps ? 'local strategic planning statement linked' : 'local strategic planning statement to find', b0.housingTarget ? `target ${fmtNum(b0.housingTarget.homes)} homes by ${b0.housingTarget.by}` : '');
-  return { id: '06_strategic_context', title: 'Strategic context', subtitle: sub, textHtml: '', figureHtml: atlasFigure(mapSvg, 'Housing policy and precincts', p, zFlow(blocks)), bleed: true, sources, accent: present[0] ? POLICY_INK[present[0]] : deckLook().accent, legend,
+  return { id: '06_strategic_context', title: 'Strategic context', subtitle: sub, textHtml: '', figureHtml: atlasFigure(mapSvg, 'Housing policy and precincts', p, zFlow(blocks)), bleed: true, sources, accent: present[0] ? POLICY_INK[present[0]] : '#000000', legend,
     narrative: brief([strategicSentences(b0, f)[0], planning.policyAtSite.length ? `The site is inside ${planning.policyAtSite.map((q) => `the ${q.name} ${POLICY_WORD[q.kind]}`).join(' and ')}.` : `The site is outside every mapped housing policy area and precinct${beyondPolicy ? `; the nearest is the ${beyondPolicy.label}, ${beyondPolicy.distanceM >= 1000 ? `${(beyondPolicy.distanceM / 1000).toFixed(1)} km` : `${fmtNum(Math.round(beyondPolicy.distanceM / 10) * 10)} m`} ${bearingName(beyondPolicy.bearing)}` : (b0.policyNear ? ', and none lies within 3 km' : '')}.`, b0.housingTarget ? `The City's housing target is ${fmtNum(b0.housingTarget.homes)} new homes by ${b0.housingTarget.by}.` : ''], 560) };
 }
 
@@ -1841,7 +1841,7 @@ export function controlsAtlas(b: SlidesBundle, facts: PlanningFacts): Slide {
   const sources = `Every row is the mapped control at the geocoded point, read from the NSW ePlanning layers and the Planning Portal property API; floor area on the cadastral area, storeys at ${METRES_PER_STOREY} m. Mapped controls are not a s10.7 planning certificate. Retrieved ${b.generatedAt.slice(0, 10)}.`;
   const sub = atlasSub(b, facts.zoneAtSite ? `${facts.zoneAtSite.code} ${facts.zoneAtSite.name}` : '', facts.hobAtSite ? `HOB ${facts.hobAtSite.label}` : '', facts.fsrAtSite ? `FSR ${facts.fsrAtSite.toFixed(2)}:1` : '');
   void legend;
-  return { id: '05_planning_controls', title: 'Planning controls', subtitle: sub, textHtml: '', figureHtml: zFlow(blocks) + right, full: true, sources, accent: deckLook().accent,
+  return { id: '05_planning_controls', title: 'Planning controls', subtitle: sub, textHtml: '', figureHtml: zFlow(blocks) + right, full: true, sources, accent: '#000000',
     narrative: brief([gfa ? `At ${facts.fsrAtSite!.toFixed(2)}:1 the floor space ratio gives ${fmtNum(gfa)} m² of floor area on the ${fmtNum(area!)} m² site.` : '', facts.hobAtSite ? `The ${facts.hobAtSite.label} height of building holds about ${hobStoreys} storeys${b.cos?.storeysAtSite ? `, as the council's DCP maps (${b.cos.storeysAtSite} storeys)` : ''}${bf.near.medianStoreys ? `, against a median of ${bf.near.medianStoreys} within ${bf.near.radiusM} m` : ''}.` : '', facts.heritageAtSite.length ? 'The heritage listing and the conservation area bring their own controls and a heritage impact statement.' : '']) };
 }
 
@@ -3014,7 +3014,7 @@ export function peopleAtlas(b: SlidesBundle): Slide {
   } else blocks.push(zBlock('People', `<div class="zr" style="padding-left:0"><div class="v">${esc(f.sentences[0] ?? 'The census and the register did not answer for this run.')}</div></div>`));
   const sources = `Sources: ABS Census 2021 (G01, G02, G36, G37, G62) for the SA2 and Greater Sydney; ABS estimated resident population at 30 June; TfNSW Travel Zone Projections 2024; NSW Valuer General land values and sales register via SIX Maps. Census night, 10 August 2021, fell in the COVID-19 lockdowns. Retrieved ${b.generatedAt.slice(0, 10)}.`;
   const sub = atlasSub(b, f.available && f.sa2 ? `${f.sa2.name} (SA2)` : '', 'against Greater Sydney');
-  return { id: '16_people_and_market', title: 'People and market', subtitle: sub, textHtml: '', figureHtml: atlasFigure(mapSvg, `Sales within ${radiusM} m`, p, zFlow(blocks)), bleed: true, sources, accent: deckLook().accent, legend,
+  return { id: '16_people_and_market', title: 'People and market', subtitle: sub, textHtml: '', figureHtml: atlasFigure(mapSvg, `Sales within ${radiusM} m`, p, zFlow(blocks)), bleed: true, sources, accent: '#000000', legend,
     narrative: brief(f.available ? [peopleSentences(b)[0], f.sa2?.tenure ? `${fmtPct(f.sa2.tenure.renting)} of households rent, against ${fmtPct(f.benchmark?.tenure?.renting ?? NaN)} across Greater Sydney.` : ''] : [peopleSentences(b)[0]]) };
 }
 
@@ -4088,7 +4088,7 @@ export function builtFormAtlas(b0: SlidesBundle, planning: PlanningFacts): Slide
   const figureHtml = `<div class="abs" style="left:${FOLD}mm;top:0">${mapSvg}</div>
     <div class="abs maplabel" style="left:${FOLD + 8}mm;top:8mm">Built form · 1:${fmtNum(p.scale).replace(',', ' ')}</div>
     ${flow}`;
-  return { id: '09_built_form', title: 'Built form', subtitle: sub, textHtml: '', figureHtml, bleed: true, sources, accent: inkFor(bf.bands[3].ink ?? bf.bands[3].bg ?? deckLook().accent, 0.3), legend,
+  return { id: '09_built_form', title: 'Built form', subtitle: sub, textHtml: '', figureHtml, bleed: true, sources, accent: inkFor(bf.bands[3].ink ?? bf.bands[3].bg ?? '#000000', 0.3), legend,
     narrative: brief([f.near.medianStoreys ? `Within ${f.near.radiusM} m of the site the typical building is ${f.near.medianStoreys} storeys.` : '',
       gap.lots && gap.count / gap.lots >= 0.15 ? `${fmtNum(gap.count)} of the ${fmtNum(gap.lots)} lots on the map that should hold a building have no footprint in the open data; they are hatched, not empty.` : '', e?.storeys ? `The ${e.label} height of building allows about ${e.storeys} at the site${f.near.medianStoreys ? `, ${e.storeys >= 2 * f.near.medianStoreys ? 'twice' : 'more than'} the neighbourhood's` : ''}.` : '', t0 ? `The tallest with a recorded height on the map, ${t0.name ?? 'a tower'}, is ${Math.round(t0.heightM)} m (${t0.storeys} storeys), ${fmtNum(t0.distanceM)} m away to the ${bearingName(t0.bearing)}.` : '']) };
 }
@@ -5365,7 +5365,7 @@ export function constraintsAtlas(b0: SlidesBundle): Slide {
   blocks.push(zBlock('Layers', matrix, `${rows.length} mapped for this place`));
   const sources = `Mapped constraints from the State's layers, not a site investigation: NSW ePlanning hazard and protection layers (the plan's own maps, checked plan-wide where the page is empty); NSW RFS bushfire prone land; SEPP (Resilience and Hazards) coastal maps; SEPP (Transport and Infrastructure) corridors; Subsidence Advisory NSW; NSW soil landscapes. Contamination, geotechnical, flood and acoustic studies are separate. Retrieved ${b.generatedAt.slice(0, 10)}.`;
   const sub = atlasSub(b0, f.atSite.length ? `${f.atSite.length} mapped at the site` : 'none mapped at the site', f.lepShort ?? '');
-  return { id: '15_environmental_constraints', title: 'Environmental constraints', subtitle: sub, textHtml: '', figureHtml: atlasFigure(mapSvg, 'Hazards and protections', p, zFlow(blocks)), bleed: true, sources, accent: [...fillOf.values()][0]?.outline ?? deckLook().accent, legend,
+  return { id: '15_environmental_constraints', title: 'Environmental constraints', subtitle: sub, textHtml: '', figureHtml: atlasFigure(mapSvg, 'Hazards and protections', p, zFlow(blocks)), bleed: true, sources, accent: [...fillOf.values()][0]?.outline ?? '#000000', legend,
     narrative: brief([f.atSite.length ? `Mapped at the site: ${listWords(f.atSite.map((c) => `${c.title.toLowerCase()}${c.atSite.length ? ` (${c.atSite.join(', ')})` : ''}`))}.` : 'No hazard or protection layer is mapped at the site.', f.noise.roads.length ? `${listWords(f.noise.roads.map((r) => r.name))} ${f.noise.roads.length === 1 ? 'is' : 'are'} the noise source${f.noise.roads.length === 1 ? '' : 's'} to design for.` : '', f.nearby[0]?.nearest ? `The nearest other constraint, ${f.nearby[0].title.toLowerCase()}, begins ${fmtNum(f.nearby[0].nearest.distanceM)} m to the ${bearingName(f.nearby[0].nearest.bearing)}.` : '']) };
 }
 
@@ -5982,7 +5982,7 @@ export function siteAtlas(b: SlidesBundle): Slide {
   }
   const sources = `Sources: NSW cadastre; NSW Imagery via SIX Maps${img ? ` (${titleCase(img.block)} block${img.date ? `, captured ${fmtIso(img.date)}` : ''}${img.resolutionCm ? `, ${img.resolutionCm} cm` : ''})` : ''}; controls from ePlanning; footprints from ${b.buildings.source === 'overture' ? 'Overture Maps' : 'OpenStreetMap'}; levels from the 5 m elevation model; land values and sales from the Valuer General (solid whole properties, lined strata). Dimensions from the digital cadastre, not the survey. Retrieved ${b.generatedAt.slice(0, 10)}.`;
   const sub = atlasSub(b, f.lots.description && f.lots.description !== '—' ? f.lots.description : '', `${fmtNum(f.lots.cadastreAreaSqm)} m²`, f.frontages[0] ? `fronts ${f.frontages[0].name}` : '');
-  return { id: '12_the_site', title: 'The site', subtitle: sub, textHtml: '', figureHtml: atlasFigure(mapSvg, 'The site', p, zFlow(blocks)), bleed: true, sources, accent: deckLook().accent, legend,
+  return { id: '12_the_site', title: 'The site', subtitle: sub, textHtml: '', figureHtml: atlasFigure(mapSvg, 'The site', p, zFlow(blocks)), bleed: true, sources, accent: '#000000', legend,
     narrative: brief([`The site is ${fmtNum(f.lots.cadastreAreaSqm)} m²${f.frontages.length ? `, fronting ${listWords(f.frontages.map((fr) => `${fr.name} for ${fmtNum(fr.lengthM, 1)} m`))}` : ''}.`, f.levels ? `Its corners fall ${f.levels.fallM.toFixed(1)} m, from RL ${f.levels.max.toFixed(1)} to RL ${f.levels.min.toFixed(1)}.` : '', lv ? `The land value is ${money(lv.latest)} at ${fmtIso(lv.latestDate)}${lv.changePct !== null && lv.latestYear !== lv.firstYear ? `, ${lv.changePct >= 0 ? 'up' : 'down'} ${fmtPct(Math.abs(lv.changePct))} since ${lv.firstYear}` : ''}.` : '']) };
 }
 
@@ -6334,7 +6334,7 @@ export function conditionAtlas(b: SlidesBundle): Slide {
     sf.buildings.onSite.length ? `Today ${sf.buildings.onSite.length === 1 ? 'one building covers' : `${sf.buildings.onSite.length} buildings cover`} ${fmtPct(sf.buildings.coveragePct)} of the lot.` : '',
     series.length ? `${capFirst(numWord(series.length))} Street View frames walk ${streetName} past the site, square to each side in turn.` : frames.length ? `${capFirst(numWord(frames.length))} street-level frame${frames.length === 1 ? ' looks' : 's look'} at the site from its frontages.` : `The frames show the site's edges from above at 1:600.`,
   ]);
-  return { id: '13_existing_site_condition', title: 'Existing site condition', subtitle: sub, textHtml: '', figureHtml: figure + zFlow(blocks), bleed: true, sources, accent: deckLook().accent,
+  return { id: '13_existing_site_condition', title: 'Existing site condition', subtitle: sub, textHtml: '', figureHtml: figure + zFlow(blocks), bleed: true, sources, accent: '#000000',
     narrative };
 }
 
@@ -7323,7 +7323,7 @@ export function ocAtlas(b: SlidesBundle, planning: PlanningFacts): Slide {
     <div style="display:grid;grid-template-columns:59.33mm 59.33mm;column-gap:4mm;margin-top:3mm">${list(f.opportunities, G.deep)}${list(f.constraints, R.deep)}</div></div>`;
   const sources = `Assembled from the layers the other slides read, at 1:${fmtNum(p.scale).replace(',', ' ')} round the site: stations and walking reach (10), policy maps (06), open space (11), sight lines and the winter sun (14), heritage (04), constraint layers (15), heights (09), the cadastre (12) and the applications (08). Retrieved ${b.generatedAt.slice(0, 10)}.`;
   const sub = atlasSub(b, `${f.opportunities.length} opportunities`, `${f.constraints.length} constraints`);
-  return { id: '17_opportunities_constraints', title: 'Opportunities and constraints', subtitle: sub, textHtml: '', figureHtml: atlasFigure(mapSvg, 'Opportunities and constraints', p, flow), bleed: true, sources, accent: deckLook().accent, legend,
+  return { id: '17_opportunities_constraints', title: 'Opportunities and constraints', subtitle: sub, textHtml: '', figureHtml: atlasFigure(mapSvg, 'Opportunities and constraints', p, flow), bleed: true, sources, accent: '#000000', legend,
     narrative: brief([`${capFirst(numWord(f.opportunities.length))} opportunities and ${numWord(f.constraints.length)} constraints follow from the deck's data, numbered on the plan.`, 'A constraint is a matter the design must answer, an opportunity a matter it can use; the same fact — a tall neighbour, a busy road, a fall across the site — can be either.']) };
 }
 
@@ -8227,7 +8227,7 @@ export function countryAtlas(b: SlidesBundle): Slide {
   if (y + blockH(recs.length * 7.5) < limit + 10) blocks.push(zBlock('The open records', zTable(recs)));
   const sources = `Sources: NSW Spatial Services administrative boundaries; the National Native Title Tribunal's registers; the NSW State Vegetation Type Map, pre-1750 plant community types (DCCEEW); NSW soil landscapes; Heritage NSW Aboriginal Places and impact permits; the national heritage lists and the archived Register of the National Estate; the ASDST model (DCCEEW); the 5 m elevation model at 8 m. AHIMS is not open data. The name of Country, its language and stories are developed with Knowledge Holders, not generated. Retrieved ${b.generatedAt.slice(0, 10)}.`;
   const sub = atlasSub(b, f.lalc ? `${titleCase(f.lalc.local)} LALC` : '', vAt ? vAt.pct : '', 'AHIMS search required');
-  return { id: '01_country', title: 'Country', subtitle: sub, textHtml: '', figureHtml: atlasFigure(mapSvg, 'The land before 1750', p, zFlow(blocks)), bleed: true, sources, accent: classes.length ? inkFor(VEG[0].ink ?? VEG[0].bg ?? deckLook().accent, 0.3) : INK.blue.deep, legend,
+  return { id: '01_country', title: 'Country', subtitle: sub, textHtml: '', figureHtml: atlasFigure(mapSvg, 'The land before 1750', p, zFlow(blocks)), bleed: true, sources, accent: classes.length ? inkFor(VEG[0].ink ?? VEG[0].bg ?? '#000000', 0.3) : INK.blue.deep, legend,
     narrative: brief([COUNTRY_ACKNOWLEDGEMENT, f.lalc ? `The site lies in the ${titleCase(f.lalc.local)} Local Aboriginal Land Council area.` : '', vAt ? `Before 1750 the ground here carried ${vAt.pct}${classes[1] ? `, between ${classes.slice(0, 3).filter((cl) => cl.pct !== vAt.pct).slice(0, 2).map((cl) => cl.pct).join(' and ')}` : ''}.` : '', 'An AHIMS search is required before any works; the name of Country and its stories are for Knowledge Holders to give.'], 560) };
 }
 
