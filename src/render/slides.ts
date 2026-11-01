@@ -2584,7 +2584,8 @@ export function formAtlas(b: SlidesBundle, planning: PlanningFacts): Slide {
   const scene: AxoScene = {
     ring, frontNormal: front, reach: REACH, neighbours, built,
     roads: b.base.roads.filter((r) => !r.tunnel).map((r) => ({ coords: local(r.coords), hierarchy: r.hierarchy, name: r.name })),
-    kerbs, lots, trees, hob, envelopes: [],
+    // the height plane stays on the massing page: here it would float far above the city and shrink it to fit
+    kerbs, lots, trees, hob: undefined, envelopes: [],
     inks: { site: t.site, future: '#ffffff', futureEdge: '#ffffff', envelope: '#ffffff', kerb: inkFor(INK.blue.solid, 0.4) },
     silhouette: false, treesOnSite: true,
   };
