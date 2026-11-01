@@ -93,6 +93,8 @@ export interface Face {
   /** The side's building line: the median boundary distance from the axis, metres. */
   offsetM: number;
   hasSite: boolean;
+  /** The roofline from the buildings' recorded heights, m AHD, every metre a footprint stands behind the boundary: the faces where no mesh or frame is to be had are drawn from it. */
+  skyline?: { s: number; z: number }[];
 }
 export interface StreetscapePlan {
   street: string;
@@ -373,6 +375,32 @@ export function planCoords(plan: StreetscapePlan, p: LonLat): { s: number; d: nu
   const q = localFrame(plan.origin).toXY(p), left = { x: -plan.axis.y, y: plan.axis.x };
   const r = { x: q.x - plan.at0.x, y: q.y - plan.at0.y };
   return { s: dot(r, plan.axis), d: dot(r, left) };
+}
+
+/**
+ * A face's roofline from the buildings' recorded heights: every footprint on the face's side within `depthM` of its
+ * building line, the metres of the street it spans at its height over the ground there, the tallest where they
+ * overlap. What the faces are drawn from where Google's meshes and Street View are not to be had.
+ */
+export function faceSkyline(plan: StreetscapePlan, face: Face, buildings: { rings: number[][][]; heightM?: number }[], groundAt: (s: number) => number | undefined, depthM = 35): { s: number; z: number }[] {
+  const tops = new Map<number, number>();
+  for (const bd of buildings) {
+    const ring = bd.rings[0];
+    if (!bd.heightM || !ring || ring.length < 3) continue;
+    const pts = ring.map(([lon, lat]) => planCoords(plan, { lon, lat }));
+    const dMean = pts.reduce((t, q) => t + q.d, 0) / pts.length;
+    if (Math.sign(dMean) !== face.side) continue;
+    const dAbs = Math.abs(dMean);
+    if (dAbs < face.offsetM - 6 || dAbs > face.offsetM + depthM) continue;
+    const s0 = Math.max(plan.s0, Math.ceil(Math.min(...pts.map((q) => q.s)))), s1 = Math.min(plan.s1, Math.floor(Math.max(...pts.map((q) => q.s))));
+    for (let s = s0; s <= s1; s++) {
+      const g = groundAt(s);
+      if (g === undefined) continue;
+      const z = g + bd.heightM;
+      if ((tops.get(s) ?? -Infinity) < z) tops.set(s, z);
+    }
+  }
+  return [...tops.entries()].sort((a, b) => a[0] - b[0]).map(([s, z]) => ({ s, z: Math.round(z * 100) / 100 }));
 }
 
 /**

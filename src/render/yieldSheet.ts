@@ -537,10 +537,12 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
   // white line round the photograph's roofs, or a quiet grey where the
   // aerial style has no photograph.
   for (const rg of blds) {
-    const zone = look.buildings === 'grey' ? undefined : parcels.find((pc) => !pc.site && within(centre(rg), pc.local))?.zone;
+    const zone = parcels.find((pc) => !pc.site && within(centre(rg), pc.local))?.zone;
+    // on paper in the aerial styles, each building a light cut of its zone's colour, as the massing above colours it
+    const zi = zoneInk(zone, look);
     const cat = zone ? zoneToCategory(zone) : null, c = cat ? look.categories.find((x) => x.id === cat) : undefined;
     const ink = c?.figure ?? c?.stroke ?? (look.buildings === 'white' ? t.road : '#d9d9d6');
-    out.push(photo ? `<path d="${path(rg)}" fill="none" stroke="#ffffff" stroke-width="0.3" stroke-linejoin="round"/>` : look.buildings === 'grey' ? `<path d="${path(rg)}" fill="${Y.context}" stroke="${Y.contextEdge}" stroke-width="0.12"/>`
+    out.push(photo ? `<path d="${path(rg)}" fill="none" stroke="#ffffff" stroke-width="0.3" stroke-linejoin="round"/>` : look.buildings === 'grey' ? `<path d="${path(rg)}" fill="${zi ? tint(zi, 0.7) : Y.context}" stroke="#ffffff" stroke-width="0.3" stroke-linejoin="round"/>`
       : look.buildings === 'white' ? `<path d="${path(rg)}" fill="#ffffff" stroke="${ink}" stroke-width="0.3" stroke-linejoin="round"/>`
         : `<path d="${path(rg)}" fill="${ink}" stroke="#ffffff" stroke-width="0.3" stroke-linejoin="round"/>`);
   }

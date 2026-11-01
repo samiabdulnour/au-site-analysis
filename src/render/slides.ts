@@ -89,6 +89,8 @@ export interface Slide {
   bleed?: boolean;
   /** One map across the whole spread, the text set in its white ground. */
   full?: boolean;
+  /** No rule under the subtitle: a page whose drawing meets the heading. */
+  plain?: boolean;
   /** An atlas page's sources, set small and grey at the foot of the narrative column. */
   sources?: string;
   /** The author's prompt, bold, in the slide's colour, in the narrative column. */
@@ -2591,7 +2593,7 @@ export function formAtlas(b: SlidesBundle, planning: PlanningFacts): Slide {
   };
   // The whole spread, as the streetscape page is laid out: the drawing across the sheet under the deck's own
   // heading, a lead over the right-hand page in the page's ink, the sources across the foot.
-  const SHEET_W = 420, SHEET_H = 297, TOP = 36, FOOT = 16, MARGIN = 15;
+  const SHEET_W = 420, SHEET_H = 297, TOP = 30, FOOT = 16, MARGIN = 15;
   const withH = drawn.filter((bd) => bd.estimatedHeightM);
   const tall = f.tallest[0];
   const camBearing = ((Math.atan2(front.x, front.y) * 180) / Math.PI + 360) % 360;
@@ -2609,9 +2611,8 @@ export function formAtlas(b: SlidesBundle, planning: PlanningFacts): Slide {
   <div class="abs src" style="left:${MARGIN}mm;bottom:10mm;width:${SHEET_W - 2 * MARGIN}mm">${esc(sources)}</div>
 </div>`;
   const css = `.form3d .lead { font-size: 3.05mm; line-height: 1.38; font-weight: 600; color: ${accent}; }
-  .form3d .src { font-size: 2.1mm; line-height: 1.3; color: #6a7572; }`;
-  const sub = atlasSub(b, `${fmtNum(withH.length)} buildings with a height within ${REACH} m`, tall ? `tallest ${tall.storeys} storeys` : '');
-  return { id: '09b_city_in_three_dimensions', title: 'The city in three dimensions', subtitle: sub, textHtml: '', figureHtml, full: true, accent, css };
+  .form3d .src { font-size: 2.1mm; line-height: 1.3; color: #6a7572; column-count: 2; column-gap: 10mm; }`;
+  return { id: '09b_city_in_three_dimensions', title: 'The city in three dimensions', subtitle: atlasSub(b), textHtml: '', figureHtml, full: true, plain: true, accent, css };
 }
 
 // ---- 08b Capacity and opportunity: the office's context plan on the template ------------------------------------
@@ -8744,7 +8745,7 @@ export function atlasPage(s: Slide, i: number): string {
 <div class="abs znum" style="left:75.3mm;top:10.6mm">${esc(s.title)}</div>
 <div class="abs zrule" style="left:12mm;top:20mm;width:186mm"></div>
 <div class="abs zsub" style="left:75.3mm;top:23.8mm;width:122.7mm">${esc(line1)}${rest.length ? `<br>${rest.map(esc).join('<span class="zbar">|</span>')}` : ''}</div>
-<div class="abs zrule" style="left:75.33mm;top:35mm;width:122.67mm"></div>
+${s.plain ? '' : '<div class="abs zrule" style="left:75.33mm;top:35mm;width:122.67mm"></div>'}
 ${s.narrative ? `<div class="abs znarr" style="left:12mm;top:43.9mm;width:58.5mm;color:${s.accent ?? '#000000'}">${esc(s.narrative)}</div>` : ''}
 ${s.textHtml ? `<div class="abs zbody" style="left:75.3mm;top:44mm;width:122.7mm">${s.textHtml}</div>` : ''}
 ${s.figureHtml}

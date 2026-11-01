@@ -1494,8 +1494,15 @@ dashed over the site. Then the *streetscape*, where Street View is keyed:
 the site's street as two elevations across the spread, as `--type
 streetscape` draws it (190 m at 1:500, the buildings' lines, heights and
 levels over the faces, the conservation areas bracketed; see *The
-streetscape* below), on its own page after built form, and left out of the
-deck where it fails, or with `DECK_STREETSCAPE=0`. Before it, *the city in
+streetscape* below), on its own page after built form: the photographs on
+Google's meshes where Street View is keyed, else each building as a block at
+its recorded height behind its frontage (`faceSkyline` in
+`src/fetch/streetscape.ts`: the footprints on the face's side within 35 m
+of its building line, at their heights over the ground, the tallest where
+they overlap), its floor lines at 3.1 m a storey, coloured by its storeys as
+the built form page keys them, the site's in the site's ink; left out of the
+deck where it fails or the street holds nothing to draw, or with
+`DECK_STREETSCAPE=0`. Before it, *the city in
 three dimensions* (`formAtlas`), laid out as the streetscape page is: the
 drawing across the whole spread under the deck's heading, a lead over the
 right-hand page, the sources across the foot. It is the built form 300 m

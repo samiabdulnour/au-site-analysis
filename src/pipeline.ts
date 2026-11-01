@@ -8,7 +8,7 @@ import { fetchRoads, fetchRailLines, fetchTrainStations, fetchParkPoints, fetchC
 import { fetchAerial, fetchVegetationMask, fetchVegetationPixels, type AerialResult, type VegetationPixels } from './fetch/imagery.js';
 import { treesFromAerial } from './lib/crowns.js';
 import { addressStreet, fetchStreetSeries } from './fetch/streetView.js';
-import { planStreetscape, planPoint, fetchStreetscapeFrames, FRAME_PX, type StreetscapePlan, type ScapeFrame, type Face } from './fetch/streetscape.js';
+import { planStreetscape, planPoint, faceSkyline, fetchStreetscapeFrames, FRAME_PX, type StreetscapePlan, type ScapeFrame, type Face } from './fetch/streetscape.js';
 import { fetchStreetTiles, enuFrame } from './fetch/tiles3d.js';
 import { renderElevations, SCAPE_SKY, type Elevation, type FaceView } from './render/elevation3d.js';
 import { fetchBusData, type BusData } from './fetch/osm.js';
@@ -1110,13 +1110,14 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
     const st = addressStreet(geo.matchedAddresses[0] ?? address, roads, mercatorToLonLat(geo.center));
     if (st) photos.series = await fetchStreetSeries(st.name, st.segments, mercatorToLonLat(geo.center), dataDir, gkey, process.env.GOOGLE_MAPS_SIGNING_SECRET?.trim() || undefined, 8, log).catch((e: any) => { log(`  WARN street series failed: ${e?.message ?? e}`); return []; });
   }
-  // the site's street as two elevations, as `--type streetscape` draws it: only where Street View is keyed (without it
-  // the faces would be their ground alone), and DECK_STREETSCAPE=0 leaves it out; a failure leaves the deck without it
+  // the site's street as two elevations, as `--type streetscape` draws it: the photographs on Google's meshes where
+  // Street View is keyed, else the buildings at their recorded heights; DECK_STREETSCAPE=0 leaves it out, and so does
+  // a failure, or a street with nothing to draw
   let streetscape: StreetscapeBundle | undefined;
-  if (gkey && process.env.DECK_STREETSCAPE !== '0') {
+  if (process.env.DECK_STREETSCAPE !== '0') {
     log('the streetscape…');
-    const sb = await soft(runStreetscapePipeline(address, { outDir: opts.outDir, log }), null, 'streetscape');
-    if (sb && (sb.elevations?.some(Boolean) || sb.frames.length)) streetscape = sb;
+    const sb = await soft(runStreetscapePipeline(address, { outDir: opts.outDir, log, buildings: buildingsRead.buildings }), null, 'streetscape');
+    if (sb && (sb.elevations?.some(Boolean) || sb.frames.length || sb.plan.faces.some((f) => f.skyline?.length))) streetscape = sb;
   }
   const applications = feed ? clipToExtent(feed.records, pageExtent) : [];
   const daMeta = feed ? { council: feed.council, from: feed.from, to: feed.to, total: feed.total, complete: feed.complete, fetchedAt: feed.fetchedAt } : null;
@@ -1204,7 +1205,7 @@ export interface StreetscapeBundle {
  * 5 m elevation model, and with GOOGLE_MAPS_API_KEY the Street View frames
  * that the drawing rectifies onto them (src/fetch/streetscape.ts).
  */
-export async function runStreetscapePipeline(address: string, opts: { outDir: string; halfLengthM?: number; through?: string; source?: 'photo' | 'mesh' | 'montage'; log?: (m: string) => void }): Promise<StreetscapeBundle> {
+export async function runStreetscapePipeline(address: string, opts: { outDir: string; halfLengthM?: number; through?: string; source?: 'photo' | 'mesh' | 'montage'; /** The buildings already read, so the faces' rooflines need no second fetch. */ buildings?: BuildingsData['buildings']; log?: (m: string) => void }): Promise<StreetscapeBundle> {
   const warnings: string[] = [];
   const log = (m: string) => { opts.log?.(m); if (/WARN/.test(m)) warnings.push(m.trim()); };
   const dataDir = join(opts.outDir, 'data');
@@ -1247,6 +1248,14 @@ export async function runStreetscapePipeline(address: string, opts: { outDir: st
       if (z !== undefined) face.ground.push({ s, z: Math.round(z * 100) / 100 });
     }
     log(`  ${bearingWord(face.facing)} face: ${face.frontages.length} frontages, ${face.gaps.length} gaps${face.gaps.some((g) => g.road) ? ` (${face.gaps.filter((g) => g.road).map((g) => g.road).join(', ')})` : ''}, building line ${face.offsetM.toFixed(1)} m off the axis${face.hasSite ? ', the site' : ''}`);
+  }
+  // The rooflines from the buildings' recorded heights, each face's, for the faces no mesh or frame reaches: the
+  // buildings already read where the deck runs this, else Overture's for the window.
+  const blds = opts.buildings ?? (await soft(fetchBuildings(extent, log), { source: 'none', buildings: [], fetchedAt: new Date().toISOString() } as BuildingsData, 'buildings')).buildings;
+  for (const face of plan.faces) {
+    const gAt = (s: number) => { let best: { s: number; z: number } | undefined; for (const g of face.ground) if (!best || Math.abs(g.s - s) < Math.abs(best.s - s)) best = g; return best?.z; };
+    face.skyline = faceSkyline(plan, face, blds.map((bd) => ({ rings: bd.rings, heightM: bd.estimatedHeightM })), gAt);
+    if (face.skyline.length) log(`  ${bearingWord(face.facing)} face: a roofline over ${face.skyline.length} m of it from ${blds.length} buildings' recorded heights`);
   }
 
   const gkey = process.env.GOOGLE_MAPS_API_KEY?.trim();
