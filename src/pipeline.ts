@@ -955,16 +955,6 @@ function fitSitePanel(siteLots: GeoJSONFC, wMm: number, hMm: number): Panel {
 }
 const geomRingsOf = (g: any): number[][][] => (!g ? [] : g.type === 'Polygon' ? g.coordinates : g.type === 'MultiPolygon' ? g.coordinates.flat() : []);
 
-/** The site's biggest ring, for the tests that want one outline (a multi-lot site's union is the site sheet's business). */
-function largestRing(siteLots: GeoJSONFC): [number, number][] {
-  let best: number[][] = [], bestA = -1;
-  for (const f of siteLots.features) for (const r of geomRingsOf(f.geometry)) {
-    let a = 0; for (let i = 0; i < r.length - 1; i++) a += r[i][0] * r[i + 1][1] - r[i + 1][0] * r[i][1];
-    if (Math.abs(a) > bestA) { bestA = Math.abs(a); best = r; }
-  }
-  return best as [number, number][];
-}
-
 /** The local environmental plans in the window, most common first: the zoning layer's plan names, then the property report's. */
 function principalLeps(zoning: GeoJSONFC, property: PropertyReport | null): string[] {
   const counts = new Map<string, number>();
@@ -1106,7 +1096,7 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
     // Which of the plan's hazard and protection maps exist at all, for the constraints slide: checked against the local plan in the window (the zone at the site may come from a SEPP) and the plan at the site.
     constraints.layers.length ? soft(checkLepCoverage(constraints, [...principalLeps(zoning, property), ...(controls.epiName ? [controls.epiName] : [])], log), undefined, 'constraint coverage check') : Promise.resolve(undefined),
     // Sight lines to the skyline, the water and the park next door, from the eye just under the height limit, over the 5 m elevation surface.
-    soft(assessViews({ site: mercatorToLonLat(geo.center), siteRing: largestRing(siteLots), hobM: controls.maxHeightM, zoning, parkPoints: green.parkPoints, log }), { views: [] as ViewTarget[], eyeAboveM: eyeAboveGround(controls.maxHeightM) }, 'views'),
+    soft(assessViews({ site: mercatorToLonLat(geo.center), siteRing: siteOuterRing(siteLots, log), hobM: controls.maxHeightM, zoning, parkPoints: green.parkPoints, log }), { views: [] as ViewTarget[], eyeAboveM: eyeAboveGround(controls.maxHeightM) }, 'views'),
     // The suburb's name comes from the context, so Wikipedia and Commons wait for it; the aerial over the planning window comes with them.
     soft(fetchCharacter({ centre: mercatorToLonLat(geo.center), suburb: context.suburb?.name ?? '', aerialExtent: bleedExtent, outDir: dataDir, log, buildings: buildingsRead.buildings.map((x) => x.rings) }), emptyCharacter(), 'character (Wikipedia, Commons)'),
     soft(fetchStrategies(geo.center, context.lga?.name, context.lga?.council, log), emptyStrategies(), 'strategic documents'),
