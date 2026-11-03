@@ -174,7 +174,10 @@ if (plan) {
   check('without the 3D tiles the deck leaves the page out', deckStreetscapeSlide({ ...b, elevations: undefined, frames: [{} as never] }) === null && deckStreetscapeSlide({ ...b, elevations: [null, null] }) === null && deckStreetscapeSlide(undefined) === null);
   check('the deck page is a spread after the character page, no rule under its subtitle', slide.id === '03b_streetscape' && !!slide.full && !!slide.plain && slide.title === 'Streetscape' && slide.subtitle.includes('1:'));
   check('its sources run in two columns', (slide.css ?? '').includes('.scape .src') && /\.scape \.src \{[^}]*column-count: 2/.test(slide.css ?? ''));
-  check('its figure carries the faces, the lead and the sources, not a page of its own', slide.figureHtml.startsWith('<div class="scape">') && slide.figureHtml.includes('class="abs elev"') && slide.figureHtml.includes('class="abs lead"') && slide.figureHtml.includes('class="abs src"') && !slide.figureHtml.includes('<section') && !slide.figureHtml.includes('class="abs foot"'));
+  check('its figure carries the faces, the lead and the sources, not a page of its own', slide.figureHtml.startsWith('<div class="scape">') && slide.figureHtml.includes('class="abs elev"') && slide.figureHtml.includes('class="abs lead"') && slide.figureHtml.includes('class="zfsrc"') && !slide.figureHtml.includes('<section') && !slide.figureHtml.includes('class="abs foot"'));
+  // the sources as the template's foot (Z. 2026-11): two columns, each its page's text frame, ending on the page's last line
+  check('its sources stand in the spread\'s foot, 12 to 408 mm, on the last line', /class="abs zfoot" data-settle style="left:12mm;width:396mm;bottom:/.test(slide.figureHtml));
+  check('its captions put the credit under the face\'s name', /\.scape \.cap \.cr \{[^}]*display: block/.test(slide.css ?? ''));
   const rules = (slide.css ?? '').split('\n').map((l) => l.trim()).filter(Boolean);
   check('its rules touch nothing but its own figure', rules.length > 10 && rules.every((l) => l.startsWith('.scape ')), rules.find((l) => !l.startsWith('.scape ')));
   check('the sheet on its own takes the same rules', renderStreetscape(b, meta).includes('<section class="slide scape" id="streetscape">'));

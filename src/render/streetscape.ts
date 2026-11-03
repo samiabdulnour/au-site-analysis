@@ -12,7 +12,7 @@
 
 import type { StreetscapeBundle } from '../pipeline.js';
 import { planeToImage, frameTop, mul3, inv3, BELOW_GROUND_M, FRAME_PX, type Face, type ScapeFrame } from '../fetch/streetscape.js';
-import { deckCss, SLIDE_W, SLIDE_H, type Slide } from './slides.js';
+import { deckCss, spreadFoot, SLIDE_W, SLIDE_H, type Slide } from './slides.js';
 import { tpl, withTemplate, templateFor } from './template.js';
 import { shortStreetName, type SheetMeta } from './sheet.js';
 import { esc } from './chrome.js';
@@ -512,7 +512,10 @@ function streetscapeParts(b: StreetscapeBundle, opts: StreetscapeOptions) {
   return { W, lead, sources, subtitle, body };
 }
 
-/** The streetscape's own rules, scoped to the page or slide that carries the class `scape`, so the deck's other pages keep theirs. */
+/**
+ * The streetscape's own rules, scoped to the page or slide that carries the class `scape`, so the deck's other pages
+ * keep theirs. A face's caption sets its name on one line and its imagery's credit on the next, under it (Z. 2026-11).
+ */
 function scapeCss(): string {
   const t = tpl();
   return `
@@ -542,9 +545,9 @@ function scapeCss(): string {
   .scape .fl { fill: none; stroke: #ffffff; stroke-width: 0.14px; opacity: 0.7; }
   .scape .bh { font-size: 1.3px; font-weight: 500; letter-spacing: 0.02em; fill: #3a403d; paint-order: stroke; stroke: #ffffff; stroke-width: 0.4px; stroke-linejoin: round; }
   .scape .bh.site { fill: ${t.site}; }
-  .scape .cap { display: flex; gap: 4mm; align-items: baseline; font-size: 2.5mm; }
-  .scape .cap .ct { font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
-  .scape .cap .cr { color: #6a7572; font-size: 2.1mm; }
+  .scape .cap { font-size: 2.5mm; }
+  .scape .cap .ct { display: block; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+  .scape .cap .cr { display: block; margin-top: 0.5mm; color: #6a7572; font-size: 2.1mm; }
   .scape .lead { font-size: 3.05mm; line-height: 1.38; font-weight: 600; color: ${t.site}; }
   .scape .src { font-size: 2.1mm; line-height: 1.3; color: #6a7572; column-count: 2; column-gap: 10mm; }`;
 }
@@ -590,7 +593,7 @@ export function streetscapeSlide(b: StreetscapeBundle, opts: Omit<StreetscapeOpt
   const figureHtml = `<div class="scape">
   <div class="abs lead" style="left:${SLIDE_W - MARGIN - 150}mm;top:17.5mm;width:150mm">${esc(lead)}</div>
 ${body}
-  <div class="abs src" style="left:${MARGIN}mm;bottom:10mm;width:${SLIDE_W - 2 * MARGIN}mm">${esc(sources)}</div>
+  ${spreadFoot(sources)}
 </div>`;
   return { id: '03b_streetscape', title: 'Streetscape', subtitle, textHtml: '', figureHtml, full: true, plain: true, accent: t.site, css: scapeCss() };
 }
