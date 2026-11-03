@@ -78,8 +78,8 @@ export interface Elevation {
   draped: number; photoShare: number;
 }
 
-/** The elevations' sky, which the sheet's bands share. */
-export const SCAPE_SKY = '#dfe4e6';
+/** The elevations' sky, which the sheet's bands share: white, the page's own paper. */
+export const SCAPE_SKY = '#ffffff';
 const BELOW_M = 4, ABOVE_M = 70;
 /** What stands this near a frame's camera hides nothing in it: see the depth maps. */
 const NEAR_IGNORE_M = 4;

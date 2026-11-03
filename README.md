@@ -1841,7 +1841,7 @@ in front of the boundary, and the meshes' green nearer it) keep the meshes'
 texture, one material for every tree, and so does what no frame saw clear: a
 roof, or the upper floors behind a canopy from every camera. At Riley Street
 the photographs hold about two fifths of each face, the rest trees and roofs.
-The picture is 24 pixels a metre (300 dpi at 1:500), on a pale sky, over a
+The picture is 24 pixels a metre (300 dpi at 1:500), on a white sky (the page's own paper), over a
 band of ground, and runs as high as the face's tallest buildings: nothing
 leans, the facades are the photographs, each at its own depth, and the trees
 stand where they stand.
