@@ -117,14 +117,22 @@ type Value = number | boolean | null | Uint8Array | { name: string } | Value[] |
 const isName = (v: any): v is { name: string } => v && typeof v === 'object' && 'name' in v;
 const isDict = (v: any): v is { dict: Map<string, Value> } => v && typeof v === 'object' && 'dict' in v;
 
-const WS = new Set([0, 9, 10, 12, 13, 32]);
-const DELIM = new Set([0x28, 0x29, 0x3c, 0x3e, 0x5b, 0x5d, 0x7b, 0x7d, 0x2f, 0x25]);
+// Each byte's class: 1 whitespace, 2 a delimiter, 0 anything else.
+const CLS = new Uint8Array(256);
+for (const c of [0, 9, 10, 12, 13, 32]) CLS[c] = 1;
+for (const c of [0x28, 0x29, 0x3c, 0x3e, 0x5b, 0x5d, 0x7b, 0x7d, 0x2f, 0x25]) CLS[c] = 2;
+const ESCAPES: Record<number, number> = { 0x6e: 10, 0x72: 13, 0x74: 9, 0x62: 8, 0x66: 12, 0x28: 0x28, 0x29: 0x29, 0x5c: 0x5c };
 
 /**
  * The tokens of a content stream (or a CMap, which is written the same way),
- * one operator at a time with the operands before it.
+ * one operator at a time with the operands before it: every operator, or
+ * only those in `wanted`. Most of a drawing is paths, numbers and the
+ * operators that draw them, which the check never reads: a number's value is
+ * not kept (it stands as 0), and an operator not wanted is passed over
+ * without a word to the caller, which reads a large deck several times as
+ * fast.
  */
-function* operations(src: Uint8Array): Generator<{ op: string; args: Value[] }> {
+function* operations(src: Uint8Array, wanted?: Set<string>): Generator<{ op: string; args: Value[] }> {
   let i = 0;
   const n = src.length;
   const stack: Value[][] = [[]];          // arrays and dicts being built
@@ -133,11 +141,37 @@ function* operations(src: Uint8Array): Generator<{ op: string; args: Value[] }> 
 
   while (i < n) {
     const c = src[i];
-    if (WS.has(c)) { i++; continue; }
+    const cls = CLS[c];
+    if (cls === 1) { i++; continue; }
+    if (cls === 0) {
+      // a number or an operator
+      let j = i + 1;
+      while (j < n && CLS[src[j]] === 0) j++;
+      if ((c >= 0x30 && c <= 0x39) || c === 0x2b || c === 0x2d || c === 0x2e) { push(0); i = j; continue; }
+      let word = '';
+      for (let k = i; k < j; k++) word += String.fromCharCode(src[k]);
+      i = j;
+      if (word === 'true' || word === 'false') { push(word === 'true'); continue; }
+      if (word === 'null') { push(null); continue; }
+      if (stack.length > 1) { push({ op: word }); continue; }   // a keyword inside an array or dict: not an operator
+      if (word === 'ID') {
+        // inline image data runs to EI, between whitespace
+        stack[0] = [];
+        i++;
+        while (i < n && !(src[i] === 0x45 && src[i + 1] === 0x49 && CLS[src[i - 1]] === 1 && (i + 2 >= n || CLS[src[i + 2]] === 1))) i++;
+        i += 2;
+        continue;
+      }
+      if (wanted && !wanted.has(word)) { stack[0].length = 0; continue; }
+      const args = stack[0];
+      stack[0] = [];
+      yield { op: word, args };
+      continue;
+    }
     if (c === 0x25) { while (i < n && src[i] !== 10 && src[i] !== 13) i++; continue; }      // % comment
     if (c === 0x2f) {                                                                         // /Name
       let j = i + 1;
-      while (j < n && !WS.has(src[j]) && !DELIM.has(src[j])) j++;
+      while (j < n && CLS[src[j]] === 0) j++;
       let name = '';
       for (let k = i + 1; k < j; k++) {
         if (src[k] === 0x23 && k + 2 < j && hex(src[k + 1]) >= 0 && hex(src[k + 2]) >= 0) { name += String.fromCharCode(hex(src[k + 1]) * 16 + hex(src[k + 2])); k += 2; }
@@ -155,8 +189,7 @@ function* operations(src: Uint8Array): Generator<{ op: string; args: Value[] }> 
         const b = src[i];
         if (b === 0x5c) {
           const e = src[i + 1];
-          const esc: Record<number, number> = { 0x6e: 10, 0x72: 13, 0x74: 9, 0x62: 8, 0x66: 12, 0x28: 0x28, 0x29: 0x29, 0x5c: 0x5c };
-          if (e in esc) { out.push(esc[e]); i += 2; }
+          if (e in ESCAPES) { out.push(ESCAPES[e]); i += 2; }
           else if (e >= 0x30 && e <= 0x37) {
             let v = 0, k = 0;
             while (k < 3 && src[i + 1 + k] >= 0x30 && src[i + 1 + k] <= 0x37) { v = v * 8 + src[i + 1 + k] - 0x30; k++; }
@@ -200,29 +233,14 @@ function* operations(src: Uint8Array): Generator<{ op: string; args: Value[] }> 
     }
     if (c === 0x5b) { stack.push([]); i++; continue; }
     if (c === 0x5d) { const items = stack.length > 1 ? stack.pop()! : []; push(items); i++; continue; }
-    if (c === 0x7b || c === 0x7d) { i++; continue; }                                          // PostScript braces in a CMap
-    // a number or an operator
-    let j = i;
-    while (j < n && !WS.has(src[j]) && !DELIM.has(src[j])) j++;
-    if (j === i) { i++; continue; }
-    const word = String.fromCharCode(...src.subarray(i, j));
-    i = j;
-    if (/^[+-]?(\d+\.?\d*|\.\d+)$/.test(word)) { push(Number(word)); continue; }
-    if (word === 'true' || word === 'false') { push(word === 'true'); continue; }
-    if (word === 'null') { push(null); continue; }
-    if (stack.length > 1) { push({ op: word }); continue; }   // a keyword inside an array or dict: not an operator
-    const args = stack[0];
-    stack[0] = [];
-    yield { op: word, args };
-    if (word === 'ID') {
-      // inline image data runs to EI, between whitespace
-      i++;
-      while (i < n && !(src[i] === 0x45 && src[i + 1] === 0x49 && WS.has(src[i - 1]) && (i + 2 >= n || WS.has(src[i + 2])))) i++;
-      i += 2;
-      yield { op: 'EI', args: [] };
-    }
+    i++;                                                                                      // ) > { } out of place, or PostScript braces in a CMap
   }
 }
+
+/** The operators the text and the drawn forms are read from. */
+const TEXT_OPS = new Set(['Tf', 'Tj', "'", '"', 'TJ', 'BMC', 'BDC', 'EMC', 'Do']);
+/** The CMap operators a ToUnicode map is read from. */
+const CMAP_OPS = new Set(['endcodespacerange', 'endbfchar', 'endbfrange']);
 
 /** UTF-16BE, as a ToUnicode map and /ActualText (behind its BOM) write it. */
 function utf16be(b: Uint8Array): string {
@@ -246,7 +264,7 @@ interface FontReader { width: number; map: Map<number, string>; simple: boolean 
 function readCMap(src: Uint8Array): { width: number; map: Map<number, string> } {
   const map = new Map<number, string>();
   let width = 0;
-  for (const { op, args } of operations(src)) {
+  for (const { op, args } of operations(src, CMAP_OPS)) {
     if (op === 'endcodespacerange') {
       for (const a of args) if (a instanceof Uint8Array && a.length) { width = width || a.length; }
     } else if (op === 'endbfchar') {
@@ -342,7 +360,7 @@ export async function readPdf(src: string | Uint8Array): Promise<PdfContents> {
       const marks: boolean[] = [];
       let actual = 0;
       const emit = (s: string) => { if (!actual) text += s; };
-      for (const { op, args } of operations(content)) {
+      for (const { op, args } of operations(content, TEXT_OPS)) {
         switch (op) {
           case 'Tf': {
             const name = args[0];
