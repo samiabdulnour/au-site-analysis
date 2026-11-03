@@ -2,7 +2,7 @@
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { geocode, type GeocodeResult } from './fetch/geocode.js';
+import { geocode, siteAddressOf, type GeocodeResult } from './fetch/geocode.js';
 import { fetchSiteLots, fetchRailCorridors, fetchZoning, fetchHeightOfBuilding, fetchFloorSpaceRatio, fetchHeritage, fetchSiteControls } from './fetch/nsw.js';
 import { fetchRoads, fetchRailLines, fetchTrainStations, fetchParkPoints, fetchComplexPoints, fetchNamedAreas, fetchAllLots, fetchPropertiesAt, fetchProperties, type TopoRoad, type NamedPoint, type RailLines, type NamedArea } from './fetch/nswTopo.js';
 import { fetchAerial, fetchVegetationMask, fetchVegetationPixels, type AerialResult, type VegetationPixels } from './fetch/imagery.js';
@@ -343,7 +343,7 @@ export async function runSitePipeline(address: string, opts: SitePipelineOpts): 
   const siteLots = await fetchSiteLots(geo.points);
   if (!siteLots.features.length) throw new Error('No cadastral lots found for the site.');
 
-  const ring = siteOuterRing(siteLots);
+  const ring = siteOuterRing(siteLots, log);
 
   // rotation from the union's longest edge
   let rotationDeg = 0;
@@ -463,12 +463,22 @@ export async function runSitePipeline(address: string, opts: SitePipelineOpts): 
   return bundle;
 }
 
-/** The outer boundary of the site's lots, unioned: one ring, lon/lat. */
-function siteOuterRing(siteLots: GeoJSONFC): [number, number][] {
+/**
+ * The outer boundary of the site's lots, unioned: one ring, lon/lat. Lots that
+ * do not join (a lane, or a lot no address named, between them) leave the
+ * union in pieces. The sheet is drawn about the largest, and the log says so
+ * rather than dropping the others unnoticed: the site's area still counts
+ * every lot, so the drawing and the figures would otherwise disagree silently.
+ */
+function siteOuterRing(siteLots: GeoJSONFC, log?: (m: string) => void): [number, number][] {
   const polys = siteLots.features.filter((f) => f.geometry);
   if (polys.length === 1) return geomOuter(polys[0].geometry);
   const merged = turfUnion(featureCollection(polys as any)) as any;
-  return geomOuter(merged?.geometry ?? polys[0].geometry);
+  const geometry = merged?.geometry ?? polys[0].geometry;
+  if (geometry.type === 'MultiPolygon' && geometry.coordinates.length > 1)
+    log?.(`  WARN the site's ${polys.length} lots do not join: ${geometry.coordinates.length} pieces, drawn about the largest. ` +
+      'Name every address between them, or check for a lane or another owner\'s lot in the way.');
+  return geomOuter(geometry);
 }
 
 function ringsOf(geometry: any): number[][][] {
@@ -481,11 +491,15 @@ function ringsOf(geometry: any): number[][][] {
 function geomOuter(geometry: any): [number, number][] {
   if (geometry.type === 'Polygon') return geometry.coordinates[0];
   if (geometry.type === 'MultiPolygon') {
+    // The largest piece by area. Counting vertices instead picked whichever
+    // piece had the more ragged outline, however small.
+    const area = (r: number[][]) => {
+      let s = 0;
+      for (let a = 0, b = r.length - 1; a < r.length; b = a++) s += (r[b][0] + r[a][0]) * (r[b][1] - r[a][1]);
+      return Math.abs(s);
+    };
     let best: [number, number][] = geometry.coordinates[0][0];
-    let bestN = 0;
-    for (const poly of geometry.coordinates) {
-      if (poly[0].length > bestN) { bestN = poly[0].length; best = poly[0]; }
-    }
+    for (const poly of geometry.coordinates) if (area(poly[0]) > area(best)) best = poly[0];
     return best;
   }
   throw new Error(`unexpected site geometry: ${geometry.type}`);
@@ -515,7 +529,7 @@ export async function runSummaryPipeline(
 
   const bundle: SummaryBundle = {
     address,
-    siteAddress: geo.matchedAddresses[0] ?? address,
+    siteAddress: siteAddressOf(geo.matchedAddresses) ?? address,
     generatedAt: new Date().toISOString(),
     lotDescription: describeLots(siteLots),
     siteAreaSqm: lotsAreaSqm(siteLots, geo.center),
@@ -550,7 +564,7 @@ export async function runYieldPipeline(
   log(`  matched: ${geo.matchedAddresses.join('; ')}`);
   const siteLots = await fetchSiteLots(geo.points);
   if (!siteLots.features.length) throw new Error('No cadastral lots found for the site.');
-  const ring = siteOuterRing(siteLots);
+  const ring = siteOuterRing(siteLots, log);
 
   // Windows around the site: the streets, lots and levels close by, the
   // neighbours' footprints a little further, the stations within reach.
@@ -726,7 +740,7 @@ export async function runYieldPipeline(
 
   const bundle: YieldBundle = {
     address,
-    siteAddress: geo.matchedAddresses[0] ?? address,
+    siteAddress: siteAddressOf(geo.matchedAddresses) ?? address,
     generatedAt: new Date().toISOString(),
     lotDescription: describeLots(siteLots),
     siteAreaSqm: lotsAreaSqm(siteLots, geo.center),
@@ -1136,7 +1150,7 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
 
   const bundle: SlidesBundle = {
     address,
-    siteAddress: geo.matchedAddresses[0] ?? address,
+    siteAddress: siteAddressOf(geo.matchedAddresses) ?? address,
     generatedAt: new Date().toISOString(),
     geocode: geo,
     panel,
@@ -1331,7 +1345,7 @@ export async function runStreetscapePipeline(address: string, opts: { outDir: st
 
   const heritage = await soft(fetchStreetscapeHeritage(plan, log), null, 'heritage');
   const bundle: StreetscapeBundle = {
-    address, siteAddress: geo.matchedAddresses[0] ?? address, generatedAt: new Date().toISOString(),
+    address, siteAddress: siteAddressOf(geo.matchedAddresses) ?? address, generatedAt: new Date().toISOString(),
     plan, elevations, tileCredits, groundOffsetM, ...(heritage ? { heritage } : {}), frames, framesNote, demSource: dem?.source, warnings,
   };
   await writeFile(join(dataDir, 'streetscape_bundle.json'), JSON.stringify(bundle));
