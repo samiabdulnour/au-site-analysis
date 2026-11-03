@@ -100,7 +100,7 @@ export async function printSheetOnce(htmlPath: string, pdfPath: string, previewP
     const page = await browser.newPage();
     await open(page, htmlPath);
     // Only the first page is printed, so only what is on it is expected.
-    const expected: PrintExpectation = await page.evaluate(`${EXPECTATION}(${(SHEET_H / 25.4) * 96})`);
+    const expected: PrintExpectation = await page.evaluate(`${EXPECTATION}(${(SHEET_H / 25.4) * 96}, 1)`);
     await page.pdf({
       path: pdfPath,
       width: `${SHEET_W}mm`,
@@ -226,6 +226,10 @@ const FIT_BOXES = `(() => {
  * A deck: every `.slide` section becomes one page of the PDF, and — in the
  * same browser session — one PNG, named after the section's id, for the
  * office's InDesign or PowerPoint. Returns the PNG paths written.
+ *
+ * The PDF is read back as a sheet's is (src/render/printCheck.ts): every page
+ * there, each with its marked number and title or footer, and every picture.
+ * A short print is printed again, PNGs and all, once, and then fails the job.
  */
 export async function printSlides(
   htmlPath: string,
@@ -233,19 +237,41 @@ export async function printSlides(
   pngDir: string,
   size: { widthMm: number; heightMm: number },
   previewPath?: string,
+  log: (m: string) => void = console.warn,
 ): Promise<string[]> {
+  let pngs: string[] = [];
+  await printWhole(pdfPath, async () => {
+    const once = await printSlidesOnce(htmlPath, pdfPath, pngDir, size, previewPath);
+    pngs = once.pngs;
+    return once.missing;
+  }, log);
+  return pngs;
+}
+
+/** One print of a deck, read back: its PNGs, and what its PDF lacks (the PNGs are only made of a whole print). */
+async function printSlidesOnce(
+  htmlPath: string,
+  pdfPath: string,
+  pngDir: string,
+  size: { widthMm: number; heightMm: number },
+  previewPath?: string,
+): Promise<{ pngs: string[]; missing: string[] }> {
   const browser = await launch();
   const pngs: string[] = [];
   try {
     const page = await browser.newPage({ deviceScaleFactor: 2 });
     await open(page, htmlPath);
     await page.evaluate(FIT_BOXES);
+    // After the boxes are fitted: a row they hid is not expected.
+    const expected: PrintExpectation = await page.evaluate(`${EXPECTATION}(${(size.heightMm / 25.4) * 96}, Infinity)`);
     await page.pdf({
       path: pdfPath,
       width: `${size.widthMm}mm`,
       height: `${size.heightMm}mm`,
       printBackground: true,
     });
+    const missing = await checkPrint(pdfPath, expected);
+    if (missing.length) return { pngs, missing };
     mkdirSync(pngDir, { recursive: true });
     const sections = page.locator('section.slide');
     const n = await sections.count();
@@ -271,5 +297,5 @@ export async function printSlides(
   } finally {
     await browser.close();
   }
-  return pngs;
+  return { pngs, missing: [] };
 }

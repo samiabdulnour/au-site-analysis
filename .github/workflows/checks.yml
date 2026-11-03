@@ -159,10 +159,12 @@ jobs:
 
       # A sheet printed before its HTML had finished parsing came out as a
       # valid PDF with half its map and a blank title block. The pages now
-      # wait for their load, and the PDF is read back for its title block and
-      # its pictures: a short print is printed again, then fails the job. This
-      # prints a made-up sheet whole, cut short and without its aerial, in the
-      # runner's own Chrome. Nothing is fetched.
+      # wait for their load, and the PDF is read back: a sheet for its title
+      # block and pictures, a deck for every page and each page's mark. A
+      # short print is printed again, then fails the job. This prints a
+      # made-up sheet whole, cut short and without its aerial, and a
+      # three-page deck whole and cut short, in the runner's own Chrome.
+      # Nothing is fetched.
       - name: a print that came out short is caught and never served
         run: npx tsx test/print-check.mts
         env:

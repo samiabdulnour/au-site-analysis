@@ -8782,12 +8782,16 @@ export function deckCss(): string {
 }
 
 // The atlas page, after the office's template (Z. 2026-10): measurements in mm from her A3 spread.
+//
+// The page number and title head the page but come last in it: placed
+// absolutely, they sit where they always did, and are drawn after everything
+// else on the page. Together they are the page's mark for the check that the
+// printed PDF is whole (src/render/printCheck.ts), and a page that printed
+// short loses what it draws last first.
 export function atlasPage(s: Slide, i: number): string {
   const [line1, ...rest] = s.subtitle.split(' · ');
   return `
 <section class="slide atlas" id="${esc(s.id)}">
-<div class="abs znum" style="left:12mm;top:10.6mm">${String(i + 1).padStart(2, '0')}</div>
-<div class="abs znum" style="left:75.3mm;top:10.6mm">${esc(s.title)}</div>
 <div class="abs zrule" style="left:12mm;top:20mm;width:186mm"></div>
 <div class="abs zsub" style="left:75.3mm;top:23.8mm;width:122.7mm">${esc(line1)}${rest.length ? `<br>${rest.map(esc).join('<span class="zbar">|</span>')}` : ''}</div>
 ${s.plain ? '' : '<div class="abs zrule" style="left:75.33mm;top:35mm;width:122.67mm"></div>'}
@@ -8796,6 +8800,8 @@ ${s.textHtml ? `<div class="abs zbody" style="left:75.3mm;top:44mm;width:122.7mm
 ${s.figureHtml}
 ${s.legend?.length ? zLegend(s.legend) : ''}
 ${s.sources ? `<div class="abs zsrc" style="left:12mm;bottom:11.6mm;width:58.5mm">${esc(s.sources)}</div>` : ''}
+<div data-print-check><div class="abs znum" style="left:12mm;top:10.6mm">${String(i + 1).padStart(2, '0')}</div>
+<div class="abs znum" style="left:75.3mm;top:10.6mm">${esc(s.title)}</div></div>
 </section>`;
 }
 
@@ -8815,6 +8821,7 @@ function drawSlides(b: SlidesBundle, meta: SheetMeta): { html: string; slides: S
   const slides = [countryAtlas(b), locationSlide(b), characterAtlas(b), ...(scape ? [scape] : []), planningAtlas(b), controlsAtlas(b, facts), strategicAtlas(b, facts), topographyAtlas(b), developmentAtlas(b, facts), ...(capacity ? [capacity] : []), builtFormAtlas(b, facts), formAtlas(b, facts), movementSlide(b), greenAtlas(b), siteAtlas(b), conditionAtlas(b), sunAtlas(b), constraintsAtlas(b), peopleAtlas(b), ocAtlas(b, facts), sourcesAtlas(b, facts)];
   const t = tpl();
   const footerLeft = ['SITE ANALYST — OVERALL ANALYSIS', b.siteAddress, meta.client ? `for ${meta.client}` : '', meta.jobNo ? `job ${meta.jobNo}` : ''].filter(Boolean).join(' · ');
+  // A page's last footer is its mark for the print check (src/render/printCheck.ts): the last thing it draws.
   const pages = slides.map((s, i) => s.bleed || s.full ? atlasPage(s, i) : `
 <section class="slide${s.bleed || s.full ? ' atlas' : ''}" id="${esc(s.id)}">
   <div class="abs rh" style="left:${L_X}mm;top:10mm;width:${s.full ? 115 : L_W}mm"><span>Overall analysis</span>${s.full ? '' : `<span>${esc(b.siteAddress)}</span>`}</div>
@@ -8826,7 +8833,7 @@ function drawSlides(b: SlidesBundle, meta: SheetMeta): { html: string; slides: S
   <div class="abs text" style="left:${L_X}mm;top:${s.textY ?? FIELD_Y}mm;width:${TEXT_W}mm;height:${SLIDE_H - (s.textY ?? FIELD_Y) - 16}mm">${s.textHtml}</div>
   ${s.figureHtml}
   <div class="abs foot" style="left:${L_X}mm;top:${FOOT_Y}mm;width:${s.full ? 115 : L_W}mm"><span>${s.bleed || s.full ? '' : esc(footerLeft)}</span><span>${s.full ? '' : i * 2 + 1}</span></div>
-  ${s.bleed || s.full ? `<div class="abs foot" style="left:${FIELD_X}mm;top:${FOOT_Y}mm;width:${FIELD_W}mm"><span></span><span style="background:#ffffff;padding:0 1.6mm">${s.full ? `${i * 2 + 1}–${i * 2 + 2}` : i * 2 + 2}</span></div>` : `<div class="abs foot" style="left:${FIELD_X}mm;top:${FOOT_Y}mm;width:${FIELD_W}mm"><span>generated ${esc(b.generatedAt.slice(0, 10))}</span><span>${i * 2 + 2}</span></div>`}
+  ${s.bleed || s.full ? `<div class="abs foot" data-print-check style="left:${FIELD_X}mm;top:${FOOT_Y}mm;width:${FIELD_W}mm"><span></span><span style="background:#ffffff;padding:0 1.6mm">${s.full ? `${i * 2 + 1}–${i * 2 + 2}` : i * 2 + 2}</span></div>` : `<div class="abs foot" data-print-check style="left:${FIELD_X}mm;top:${FOOT_Y}mm;width:${FIELD_W}mm"><span>generated ${esc(b.generatedAt.slice(0, 10))}</span><span>${i * 2 + 2}</span></div>`}
 </section>`).join('\n');
 
   const html = `<!DOCTYPE html>

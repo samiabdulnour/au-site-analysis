@@ -20,7 +20,12 @@
  *   - printWhole prints a second time after one short print, and after two
  *     throws, with the PDF moved aside;
  *   - htmlToPdf on a page whose title block never reaches the print throws,
- *     and leaves nothing under the PDF's name.
+ *     and leaves nothing under the PDF's name;
+ *   - a deck of three atlas pages (src/render/slides.ts) prints whole, each
+ *     page ending with its marked number and title; cut off partway through
+ *     page two it is caught for its last page and for page two's mark, which
+ *     no other page's can stand in for; and printSlides fails a deck that
+ *     prints short twice, with no PNGs left behind.
  *
  * Needs Chromium: CHROMIUM_PATH, or the Playwright browsers.
  *
@@ -33,7 +38,8 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { sheetHtml, MAP_W, MAP_H } from '../src/render/chrome.js';
 import { encodeRgbaPng } from '../src/lib/png.js';
-import { htmlToPdf, printSheetOnce, launch } from '../src/render/pdf.js';
+import { htmlToPdf, printSheetOnce, printSlides, launch } from '../src/render/pdf.js';
+import { atlasPage, deckCss, SLIDE_W, SLIDE_H, type Slide } from '../src/render/slides.js';
 import {
   EXPECTATION, checkPrint, readPdf, missingFromPdf, letters, printWhole, titleColumnInk,
   incompletePath, IncompletePrintError, type PrintExpectation,
@@ -91,22 +97,23 @@ const html = sheetHtml({
 const write = (name: string, body: string) => { const p = join(dir, name); writeFileSync(p, body); return p; };
 const wholeHtml = write('sheet.html', html);
 
-/** What a page promises, read as the printer reads it, once it has loaded. */
-async function expectationOf(htmlPath: string): Promise<PrintExpectation> {
+/** What a page promises, read as the printer reads it, once it has loaded: a sheet's first page, or every page of a deck. */
+async function expectationOf(htmlPath: string, pageHeightMm = SHEET_H, maxPages = 1): Promise<PrintExpectation> {
   const browser = await launch();
   try {
     const page = await browser.newPage();
     await page.goto(pathToFileURL(htmlPath).href, { waitUntil: 'load' });
-    return await page.evaluate(`${EXPECTATION}(${(SHEET_H / 25.4) * 96})`) as PrintExpectation;
+    return await page.evaluate(`${EXPECTATION}(${(pageHeightMm / 25.4) * 96}, ${maxPages})`) as PrintExpectation;
   } finally {
     await browser.close();
   }
 }
 
 const expected = await expectationOf(wholeHtml);
-check('the page marks its address and its drawing title', expected.text.length === 2 &&
-  expected.text.some((t) => letters(t).includes(letters(ADDRESS))) && expected.text.some((t) => letters(t).includes('drawingtitle')),
-  JSON.stringify(expected.text));
+check('the page marks its address and its drawing title', expected.marks.length === 2 && expected.pages === 1 &&
+  expected.marks.every((m) => m.page === 0) &&
+  expected.marks.some((m) => letters(m.text).includes(letters(ADDRESS))) && expected.marks.some((m) => letters(m.text).includes('drawingtitle')),
+  JSON.stringify(expected.marks));
 check('the page names its aerial', expected.images.length === 1 && expected.images[0].endsWith('/data/aerial.png'), JSON.stringify(expected.images));
 check('the page had loaded', expected.complete);
 
@@ -183,6 +190,62 @@ check('a page read before it finished loading fails, whatever its PDF holds',
     (thrown as Error).message.includes('incomplete twice') && (thrown as Error).message.includes(ADDRESS), String(thrown));
   check('after one warning and a second print', said.length === 1 && said[0].includes('printing it again'), said.join(' | '));
   check('with no PDF and no picture left to serve', !existsSync(pdf) && existsSync(incompletePath(pdf)) && !existsSync(join(dir, 'never.jpg')));
+}
+
+// ---- a deck ------------------------------------------------------------------------------
+
+{
+  // Three atlas pages, as the site report and the yield draw them, the second with the aerial on its right-hand page.
+  const slide = (n: number, title: string, figure = ''): Slide => ({
+    id: `0${n}_${title.toLowerCase()}`, title, subtitle: `${title} · Campsie · 1:4000`,
+    narrative: 'What the street asks of the site.', textHtml: `<p>${title} of the site and its street, page ${n}.</p>`,
+    figureHtml: figure, sources: 'Sources: made up for this test.',
+  });
+  const slides = [
+    slide(1, 'Location'),
+    slide(2, 'Character', `<div class="abs" style="left:222mm;top:20mm;width:186mm;height:250mm"><img src="data/aerial.png" style="width:100%;height:100%;object-fit:cover"></div>`),
+    slide(3, 'Movement'),
+  ];
+  const deck = `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><style>${deckCss()}</style></head><body>${slides.map((s, i) => atlasPage(s, i)).join('\n')}</body></html>`;
+  const deckHtml = write('deck.html', deck);
+  const size = { widthMm: SLIDE_W, heightMm: SLIDE_H };
+  const deckExpected = await expectationOf(deckHtml, SLIDE_H, Infinity);
+  check('a deck marks each page\'s number and title, on its own page', deckExpected.pages === 3 &&
+    deckExpected.marks.map((m) => `${m.page}:${letters(m.text)}`).join(' ') === '0:01location 1:02character 2:03movement',
+    JSON.stringify(deckExpected.marks));
+  check('and names its one picture', deckExpected.images.length === 1, JSON.stringify(deckExpected.images));
+
+  const said: string[] = [];
+  const deckPdf = join(dir, 'DECK.pdf');
+  const pngs = await printSlides(deckHtml, deckPdf, join(dir, 'deck'), size, join(dir, 'deck.jpg'), (m) => said.push(m));
+  check('a whole deck prints the first time, a PNG a page', said.length === 0 && pngs.length === 3 && pngs.every((p) => existsSync(p)), said.join(' | '));
+  const read = await readPdf(deckPdf);
+  check('each page ends with its mark: drawn after everything else on it',
+    read.pages.length === 3 && read.pages.every((p, i) => letters(p).endsWith(letters(deckExpected.marks[i].text))),
+    read.pages.map((p) => JSON.stringify(p.slice(-30))).join(' '));
+  check('nothing is missing from it', missingFromPdf(read, deckExpected).length === 0, missingFromPdf(read, deckExpected).join('; '));
+  check('one page\'s mark is not found on another', missingFromPdf(read, { ...deckExpected, marks: [{ ...deckExpected.marks[0], page: 1 }] }).length === 1);
+
+  // Cut off partway through page two, after its drawing and before its number and title, as a half-parsed deck printed.
+  const second = deck.indexOf('<section', deck.indexOf('<section') + 1);
+  const cutDeckHtml = write('deck_cut.html', deck.slice(0, deck.indexOf('<div data-print-check>', second)));
+  const cutDeckPdf = join(dir, 'DECK_cut.pdf');
+  await printSlides(cutDeckHtml, cutDeckPdf, join(dir, 'deck_cut'), size);
+  const cutDeck = await checkPrint(cutDeckPdf, deckExpected);
+  check('a deck cut off partway through page two is caught: the last page, and page two\'s mark',
+    cutDeck.length === 3 && cutDeck[0] === '1 of 3 pages' && cutDeck.some((m) => m.includes('CHARACTER') || m.includes('Character')) && cutDeck.some((m) => m.endsWith('on page 2')) && cutDeck.some((m) => m.endsWith('on page 3')),
+    cutDeck.join('; '));
+
+  // Shown on screen, hidden in print: every page promises a mark its PDF can never hold.
+  const neverDeck = write('deck_never.html', deck.replace('</style>', '@media print { [data-print-check] { visibility: hidden } }\n</style>'));
+  const pdf = join(dir, 'DECK_never.pdf');
+  const warned: string[] = [];
+  let thrown: unknown;
+  try { await printSlides(neverDeck, pdf, join(dir, 'deck_never'), size, join(dir, 'deck_never.jpg'), (m) => warned.push(m)); } catch (e) { thrown = e; }
+  check('printSlides fails a deck that prints short twice, after one warning', thrown instanceof IncompletePrintError && warned.length === 1 &&
+    (thrown as Error).message.includes('on page 3'), String(thrown));
+  check('with no PDF, no PNGs and no picture left to serve', !existsSync(pdf) && existsSync(incompletePath(pdf)) &&
+    !existsSync(join(dir, 'deck_never')) && !existsSync(join(dir, 'deck_never.jpg')));
 }
 
 rmSync(dir, { recursive: true, force: true });

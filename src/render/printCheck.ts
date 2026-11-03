@@ -11,9 +11,12 @@
 //
 //   loaded   the page had been parsed to its end, since a half-parsed page
 //            promises only what it has reached;
-//   text     every element marked `data-print-check` (the title block's
-//            address and drawing title, which the sheet draws last of all),
-//            by its letters and digits, as often as the page shows it;
+//   pages    a deck's every slide, each a page of its own;
+//   text     every element marked `data-print-check`, by its letters and
+//            digits, on the page it prints on and as often as it shows
+//            there: a sheet's title-block address and drawing title, a deck
+//            page's number and title or its footer, which each page draws
+//            last of all;
 //   images   at least as many distinct pictures as the page draws, so a sheet
 //            on an aerial that came out without its photograph is caught too.
 //
@@ -37,10 +40,12 @@ import {
 
 /** What a page says its PDF must hold. */
 export interface PrintExpectation {
-  /** The text of each `data-print-check` element on the printed pages, once per element. */
-  text: string[];
+  /** The text of each `data-print-check` element that prints, once per element, with the page (from 0) it prints on. */
+  marks: { text: string; page: number }[];
   /** The URLs of the raster images drawn on the printed pages. */
   images: string[];
+  /** How many pages the PDF must have: a deck's `section.slide`s, each a page, or the one page of a sheet. */
+  pages: number;
   /**
    * Whether the document had been parsed to its end. A page read half parsed
    * names no more than it has reached, so its marks are no promise at all.
@@ -49,25 +54,43 @@ export interface PrintExpectation {
 }
 
 /**
- * Run in the page, before it is printed: the marked text and the pictures, as
- * far down as `pageHeightPx` (a sheet prints its first page alone). A picture
- * counts when it is a raster, shown, and on the page; one in <defs>, a
- * pattern or a mask may never be drawn, so it does not.
+ * Run in the page, before it is printed: the marked text and the pictures on
+ * the first `maxPages` pages, each `pageHeightPx` tall (a sheet prints its
+ * first page alone, a deck all of them). In a deck every `section.slide` is a
+ * page of its own, so what is inside one is on that page. A mark counts when
+ * it is shown, measured by its contents, so a mark around absolutely placed
+ * children counts too. A picture counts when it is a raster, shown, and on a
+ * printed page; one in <defs>, a pattern or a mask may never be drawn, so it
+ * does not.
  */
-export const EXPECTATION = `((pageHeightPx) => {
-  const shown = (el) => {
+export const EXPECTATION = `((pageHeightPx, maxPages) => {
+  const sections = Array.from(document.querySelectorAll('section.slide'));
+  const box = (el, contents) => {
+    if (!contents) return el.getBoundingClientRect();
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    return range.getBoundingClientRect();
+  };
+  const pageOf = (el, r) => {
+    const s = el.closest('section.slide');
+    return s ? sections.indexOf(s) : Math.max(0, Math.floor((r.top + scrollY) / pageHeightPx));
+  };
+  const shown = (el, contents) => {
     for (let e = el; e && e.nodeType === 1; e = e.parentElement) {
       const cs = getComputedStyle(e);
-      if (cs.display === 'none' || cs.visibility === 'hidden' || cs.visibility === 'collapse' || Number(cs.opacity) === 0) return false;
-      if (e.hidden) return false;
+      if (cs.display === 'none' || cs.visibility === 'hidden' || cs.visibility === 'collapse' || Number(cs.opacity) === 0) return -1;
+      if (e.hidden) return -1;
     }
-    const r = el.getBoundingClientRect();
-    return r.width > 0 && r.height > 0 && r.bottom > 0 && r.right > 0 && r.top + scrollY < pageHeightPx;
+    const r = box(el, contents);
+    if (!(r.width > 0 && r.height > 0 && r.bottom + scrollY > 0 && r.right > 0)) return -1;
+    const page = pageOf(el, r);
+    return page < maxPages ? page : -1;
   };
-  const text = [];
+  const marks = [];
   for (const el of document.querySelectorAll('[data-print-check]')) {
-    const t = (el.textContent || '').trim();
-    if (t && shown(el)) text.push(t);
+    const text = (el.textContent || '').trim();
+    const page = text ? shown(el, true) : -1;
+    if (page >= 0) marks.push({ text, page });
   }
   const images = new Set();
   const raster = /^data:image\\/(png|jpe?g|webp|gif)[;,]|\\.(png|jpe?g|webp|gif)([?#].*)?$/i;
@@ -76,9 +99,10 @@ export const EXPECTATION = `((pageHeightPx) => {
     const href = el.tagName.toLowerCase() === 'img'
       ? (el.complete && el.naturalWidth > 0 ? el.currentSrc || el.src : '')
       : (el.href && el.href.baseVal ? new URL(el.href.baseVal, document.baseURI).href : '');
-    if (href && raster.test(href) && shown(el)) images.add(href);
+    if (href && raster.test(href) && shown(el, false) >= 0) images.add(href);
   }
-  return { text, images: [...images], complete: document.readyState === 'complete' };
+  const pages = Math.max(1, Math.min(sections.length || 1, maxPages));
+  return { marks, images: [...images], pages, complete: document.readyState === 'complete' };
 })`;
 
 // ---- what the PDF holds -------------------------------------------------------
@@ -435,21 +459,28 @@ function distinctPictures(urls: string[]): number {
   return hashes.size;
 }
 
-/** What the page promised and the PDF does not hold, in words; empty when the print is whole. */
+/**
+ * What the page promised and the PDF does not hold, in words; empty when the
+ * print is whole. Each mark is looked for on its own page, so one page's
+ * footer cannot answer for another's.
+ */
 export function missingFromPdf(pdf: PdfContents, expect: PrintExpectation): string[] {
   const missing: string[] = [];
   if (!expect.complete) missing.push('whatever the page had not loaded yet when it printed');
-  const hay = letters(pdf.pages.join('\n'));
-  const wanted = new Map<string, { text: string; n: number }>();
-  for (const t of expect.text) {
-    const key = letters(t);
+  if (pdf.pages.length < expect.pages) missing.push(`${expect.pages - pdf.pages.length} of ${expect.pages} pages`);
+  const hays = pdf.pages.map(letters);
+  const wanted = new Map<string, { key: string; text: string; page: number; n: number }>();
+  for (const m of expect.marks) {
+    const key = letters(m.text);
     if (!key) continue;
-    const w = wanted.get(key);
-    if (w) w.n++; else wanted.set(key, { text: t.replace(/\s+/g, ' ').trim(), n: 1 });
+    const w = wanted.get(`${m.page}:${key}`);
+    if (w) w.n++; else wanted.set(`${m.page}:${key}`, { key, text: m.text.replace(/\s+/g, ' ').trim(), page: m.page, n: 1 });
   }
-  for (const [key, { text, n }] of wanted) {
-    const found = occurrences(hay, key);
-    if (found < n) missing.push(n === 1 ? `the text "${text}"` : `the text "${text}" (${found} of ${n})`);
+  for (const { key, text, page, n } of wanted.values()) {
+    const found = occurrences(hays[page] ?? '', key);
+    if (found >= n) continue;
+    const where = expect.pages > 1 ? ` on page ${page + 1}` : '';
+    missing.push(n === 1 ? `the text "${text}"${where}` : `the text "${text}"${where} (${found} of ${n})`);
   }
   const pictures = distinctPictures(expect.images);
   if (pdf.images < pictures) missing.push(`${pictures - pdf.images} of ${pictures} picture${pictures === 1 ? '' : 's'}`);

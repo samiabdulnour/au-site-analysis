@@ -85,7 +85,7 @@ async function drawBody(spec: SheetSpec, outDir: string, log: (m: string) => voi
     await writeFile(htmlPath, renderYieldDeck(yb, meta).html);
     log('printing PDF…');
     const pdfPath = join(outDir, 'PLANNING_YIELD.pdf');
-    await printSlides(htmlPath, pdfPath, join(outDir, 'yield'), { widthMm: SLIDE_W, heightMm: SLIDE_H }, previewOf(outDir));
+    await printSlides(htmlPath, pdfPath, join(outDir, 'yield'), { widthMm: SLIDE_W, heightMm: SLIDE_H }, previewOf(outDir), log);
     // Like the summary it replaces, a table: CSV for Excel, JSON for the numbers behind it.
     const csvPath = join(outDir, 'PLANNING_YIELD.csv');
     await writeFile(csvPath, yieldCsv(yb));
@@ -143,7 +143,7 @@ async function drawBody(spec: SheetSpec, outDir: string, log: (m: string) => voi
     await writeFile(htmlPath, renderSlides(sb, meta).html);
     log('printing PDF and slide images…');
     const pdfPath = join(outDir, 'OVERALL_ANALYSIS.pdf');
-    await printSlides(htmlPath, pdfPath, join(outDir, 'slides'), { widthMm: SLIDE_W, heightMm: SLIDE_H }, previewOf(outDir));
+    await printSlides(htmlPath, pdfPath, join(outDir, 'slides'), { widthMm: SLIDE_W, heightMm: SLIDE_H }, previewOf(outDir), log);
     // The deck's open format is its facts: everything it says, as JSON.
     const factsPath = join(outDir, 'overall.json');
     await writeFile(factsPath, JSON.stringify(slidesFacts(sb), null, 2));

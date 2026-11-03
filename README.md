@@ -565,10 +565,12 @@ parsing the sheet's HTML: about one print in a dozen, with four or eight at
 once, was a valid PDF with the map up to its zoning and a blank title block.
 Memory was not the cause; eight A1 context sheets printing together held
 under 3 GB more than the machine at rest, about 350 MB a browser. The pages now
-wait for their `load` (`src/render/pdf.ts`), and each sheet's PDF is read back
-for its title block and its pictures (`src/render/printCheck.ts`): a short
-print is printed once more and then fails the job, with the PDF moved aside, so
-a sheet that is served is whole. `scripts/print-stress.ts` prints sheets side by
+wait for their `load` (`src/render/pdf.ts`), and every PDF is read back
+(`src/render/printCheck.ts`): a sheet for its title block and its pictures, a
+deck for every page, each with its number and title or its footer, which the
+page draws last, and its pictures. A short print is printed once more and then
+fails the job, with the PDF moved aside, so a sheet or deck that is served is
+whole. `scripts/print-stress.ts` prints sheets side by
 side, in processes of their own, and reports what each PDF lacks.
 
 `JOB_TIMEOUT_MS` (default 20 minutes) stops a job that has hung on a service
