@@ -4,6 +4,7 @@
 
 import type { Bundle } from '../pipeline.js';
 import { lonLatToMercator, ringCentroid, type Extent, type MapView } from '../lib/geo.js';
+import { clipDashed, dashPeriod, type Rect } from '../lib/dashes.js';
 import { siteAddressOf } from '../fetch/geocode.js';
 import { categories, catById, zoneToCategory } from './model.js';
 import { tpl, type Texture } from './template.js';
@@ -57,6 +58,28 @@ export function pathFromRings(rings: number[][][], proj: (lon: number, lat: numb
       d += `${i === 0 ? 'M' : 'L'}${x.toFixed(2)},${y.toFixed(2)}`;
     });
     if (close) d += 'Z';
+  }
+  return d;
+}
+
+/**
+ * Lines as one path for a dashed or dotted stroke, `style` being the stroke's
+ * attributes: each line cut to the box before it is written, every dash where
+ * the whole line had it (src/lib/dashes.ts). Chromium prints every dash into
+ * the PDF, those the map's clip hides as much as those it shows. A ring that
+ * stays whole stays closed.
+ */
+export function dashedPath(lines: number[][][], proj: (lon: number, lat: number) => Pt, style: string,
+                           box: Rect = { x: 0, y: 0, w: MAP_W, h: MAP_H }, close = false): string {
+  const period = dashPeriod(style.match(/stroke-dasharray="([^"]*)"/)?.[1]);
+  const width = Number(style.match(/stroke-width="([^"]*)"/)?.[1] ?? 1);
+  let d = '';
+  for (const line of lines) {
+    const pts = line.map(([lon, lat]) => proj(lon, lat));
+    for (const piece of clipDashed(pts, box, period, width + 1)) {
+      piece.forEach(([x, y], i) => { d += `${i === 0 ? 'M' : 'L'}${x.toFixed(2)},${y.toFixed(2)}`; });
+      if (close && piece === pts) d += 'Z';
+    }
   }
   return d;
 }
@@ -198,11 +221,55 @@ function ringMarkers(pts: Pt[], count: number, phase: number): Pt[] {
   return out;
 }
 
+/** The rings of a path written in absolute M/L/Z commands, as pathFromRings writes them; null for any other. */
+function absolutePathRings(d: string): Pt[][] | null {
+  if (/[^MLZ\d\s.,eE+-]/.test(d)) return null;
+  const rings: Pt[][] = [];
+  for (const part of d.split('M')) {
+    const pts: Pt[] = [];
+    for (const m of part.matchAll(/(-?[\d.]+(?:e[+-]?\d+)?)[\s,]+(-?[\d.]+(?:e[+-]?\d+)?)/gi)) pts.push([Number(m[1]), Number(m[2])]);
+    if (pts.length >= 2) rings.push(pts);
+  }
+  return rings;
+}
+
+/**
+ * Where along the row at height `yy` a shape (its rings, even-odd) can show
+ * within `r` of the row: inside it on the row itself, or wherever one of its
+ * edges passes within `r` above or below. A point of the shape near the row
+ * either stands over a point of the row inside the shape or has an edge
+ * between them, so a dot of radius `r` that would show is always in a span.
+ */
+function rowSpans(rings: Pt[][], yy: number, r: number): [number, number][] {
+  const xs: number[] = [];
+  const spans: [number, number][] = [];
+  for (const ring of rings) {
+    for (let i = 0; i < ring.length; i++) {
+      const p = ring[i], q = ring[(i + 1) % ring.length];
+      const lo = Math.max(Math.min(p[1], q[1]), yy - r), hi = Math.min(Math.max(p[1], q[1]), yy + r);
+      if (lo > hi) continue;
+      if ((p[1] > yy) !== (q[1] > yy)) xs.push(p[0] + ((yy - p[1]) * (q[0] - p[0])) / (q[1] - p[1]));
+      if (p[1] === q[1]) { spans.push([Math.min(p[0], q[0]), Math.max(p[0], q[0])]); continue; }
+      const xa = p[0] + ((lo - p[1]) * (q[0] - p[0])) / (q[1] - p[1]);
+      const xb = p[0] + ((hi - p[1]) * (q[0] - p[0])) / (q[1] - p[1]);
+      spans.push([Math.min(xa, xb), Math.max(xa, xb)]);
+    }
+  }
+  xs.sort((a, b) => a - b);
+  for (let i = 0; i + 1 < xs.length; i += 2) spans.push([xs[i], xs[i + 1]]);
+  return spans.sort((a, b) => a[0] - b[0]);
+}
+
 /**
  * A vector texture (dots, diagonal hatch, cross-hatch) clipped to a shape.
  * Real lines rather than an SVG pattern: patterns rasterize blurrily when
  * Chromium prints to PDF. Dots are a round-capped line with a hairline dash,
- * so a textured suburb costs a few hundred elements, not a hundred thousand.
+ * a few hundred elements in the page; but Chromium prints every dot as a
+ * shape of its own, those the clip hides as well, and rows across the whole
+ * map put a hundred and forty thousand dots in the PDF for a few zones. So
+ * each row runs only where it crosses the shape, every piece starting a whole
+ * number of dots along from where the full row starts: the dots stand where
+ * they always stood, and only the hidden ones are gone.
  * `box` is the area the texture must cover (the map, or a legend swatch).
  */
 export function textureSvg(clipId: string, clipPathD: string, kind: Texture, color: string,
@@ -210,13 +277,27 @@ export function textureSvg(clipId: string, clipPathD: string, kind: Texture, col
   const { x, y, w, h } = box;
   let lines = '';
   if (kind === 'dots') {
-    const step = 1.7;
+    const step = 1.7, gap = 1.7, period = 0.01 + gap;
+    // a dot's round cap reaches 0.3 from its centre, in every direction
+    const r = 0.35;
+    const rings = absolutePathRings(clipPathD);
     for (let i = 0, yy = y + step / 2; yy <= y + h; yy += step, i++) {
       const off = i % 2 ? step / 2 : 0;
-      lines += `<line x1="${(x - off).toFixed(1)}" y1="${yy.toFixed(1)}" x2="${(x + w).toFixed(1)}" y2="${yy.toFixed(1)}"/>`;
+      const start = Number((x - off).toFixed(1)), end = x + w;
+      let last: [number, number] | undefined;
+      const pieces: [number, number][] = [];
+      for (const [a, b] of rings ? rowSpans(rings, yy, r) : [[start, end] as [number, number]]) {
+        const x1 = start + Math.max(0, Math.floor((a - r - start) / period)) * period;
+        const x2 = Math.min(end, b + r);
+        if (x1 > x2) continue;
+        if (last && x1 <= last[1] + period) last[1] = Math.max(last[1], x2);
+        else pieces.push(last = [x1, x2]);
+      }
+      for (const [x1, x2] of pieces)
+        lines += `<line x1="${x1.toFixed(2)}" y1="${yy.toFixed(1)}" x2="${x2.toFixed(2)}" y2="${yy.toFixed(1)}"/>`;
     }
     return `<clipPath id="${clipId}"><path d="${clipPathD}" clip-rule="evenodd"/></clipPath>
-      <g clip-path="url(#${clipId})" stroke="${color}" stroke-width="0.6" stroke-linecap="round" stroke-dasharray="0.01,${1.7}" opacity="${opacity}">${lines}</g>`;
+      <g clip-path="url(#${clipId})" stroke="${color}" stroke-width="0.6" stroke-linecap="round" stroke-dasharray="0.01,${gap}" opacity="${opacity}">${lines}</g>`;
   }
   // The hatch falls to the right, the opposite way to the heritage hatch
   // drawn elsewhere, so a heritage item inside a commercial centre still
@@ -357,6 +438,8 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   // Finer than the catchment dots: the railway data has a line per track,
   // so a corridor of three or four tracks stacks them into a band.
   const RAIL_DOTS = 'stroke-width="1.15" stroke-dasharray="0.01,2.0" stroke-linecap="round" opacity="0.9"';
+  const SLEEPERS = 'stroke-width="0.55" stroke-dasharray="2.4,2.4"';
+  const TRAM_LINE = 'stroke-width="0.9" stroke-dasharray="3.4,1.8"';
   const busLineStyle = tpl().busLine === 'dotted'
     ? 'stroke-width="1.1" stroke-dasharray="0.01,1.9" opacity="0.5"'
     : 'stroke-width="0.9" stroke-dasharray="3,1.9" opacity="0.9"';
@@ -593,25 +676,25 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   }
 
   // ---- transit route lines (train / tram / bus) --------------------------
+  // The dashed and dotted lines go through dashedPath: they run far past the
+  // map, and every dash the clip hides would still be printed.
   if (bundle.railLines.train.length) {
-    const d = bundle.railLines.train.map((l) => pathFromRings([l as any], proj, false)).join('');
     if (tpl().railLine === 'dotted') {
       // A line of round dots in the rail colour, close-set so it reads as a
       // track and not as another route.
-      layers.push(`<path d="${d}" fill="none" stroke="${tpl().rail}" ${RAIL_DOTS}/>`);
+      layers.push(`<path d="${dashedPath(bundle.railLines.train as any, proj, RAIL_DOTS)}" fill="none" stroke="${tpl().rail}" ${RAIL_DOTS}/>`);
     } else {
       // classic railway line: dark stroke with white sleeper dashes on top
+      const d = bundle.railLines.train.map((l) => pathFromRings([l as any], proj, false)).join('');
       layers.push(`<path d="${d}" fill="none" stroke="${tpl().rail}" stroke-width="1.1"/>`);
-      layers.push(`<path d="${d}" fill="none" stroke="#ffffff" stroke-width="0.55" stroke-dasharray="2.4,2.4"/>`);
+      layers.push(`<path d="${dashedPath(bundle.railLines.train as any, proj, SLEEPERS)}" fill="none" stroke="#ffffff" ${SLEEPERS}/>`);
     }
   }
   if (bundle.railLines.tram.length) {
-    const d = bundle.railLines.tram.map((l) => pathFromRings([l as any], proj, false)).join('');
-    layers.push(`<path d="${d}" fill="none" stroke="${tpl().busRoute}" stroke-width="0.9" stroke-dasharray="3.4,1.8"/>`);
+    layers.push(`<path d="${dashedPath(bundle.railLines.tram as any, proj, TRAM_LINE)}" fill="none" stroke="${tpl().busRoute}" ${TRAM_LINE}/>`);
   }
   if (bundle.bus.tramRouteSegments.length && !bundle.railLines.tram.length) {
-    const d = bundle.bus.tramRouteSegments.map((l) => pathFromRings([l as any], proj, false)).join('');
-    layers.push(`<path d="${d}" fill="none" stroke="${tpl().busRoute}" stroke-width="0.9" stroke-dasharray="3.4,1.8"/>`);
+    layers.push(`<path d="${dashedPath(bundle.bus.tramRouteSegments as any, proj, TRAM_LINE)}" fill="none" stroke="${tpl().busRoute}" ${TRAM_LINE}/>`);
   }
   // Bus routes from OSM when available; otherwise derive corridors from the
   // road network — any street with a bus stop within 30m carries a route.
@@ -712,7 +795,7 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
       .map((r) => r.coords);
   }
   if (busSegments.length) {
-    const d = busSegments.map((l) => pathFromRings([l as any], proj, false)).join('');
+    const d = dashedPath(busSegments as any, proj, busLineStyle);
     layers.push(`<path d="${d}" fill="none" stroke="${tpl().transit}" ${busLineStyle} stroke-linecap="round"/>`);
   }
 
@@ -732,7 +815,7 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     const st = isoStyle[iso.minutes] ?? { color: tpl().walk5, label: `${iso.minutes} MIN WALK` };
     const d = iso.rings.map((r) => pathFromRings([r as any], proj)).join('');
     if (dottedIso) {
-      layers.push(`<path d="${d}" fill="none" stroke="${st.color}" ${ISO_DOTS} opacity="0.85" stroke-linejoin="round"/>`);
+      layers.push(`<path d="${dashedPath(iso.rings as any, proj, ISO_DOTS, undefined, true)}" fill="none" stroke="${st.color}" ${ISO_DOTS} opacity="0.85" stroke-linejoin="round"/>`);
     } else if (walkerIso) {
       // The office style: a continuous line, a little transparent, with
       // walker medallions spaced along the ring's own length, staggered
@@ -1315,9 +1398,9 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   if (bundle.railLines.train.length)
     legendRow(tpl().railLine === 'dotted'
       ? `<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${tpl().rail}" ${RAIL_DOTS}/>`
-      : `<g><line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${tpl().rail}" stroke-width="1.1"/><line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="#fff" stroke-width="0.55" stroke-dasharray="2.4,2.4"/></g>`, ['TRAIN LINE']);
+      : `<g><line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${tpl().rail}" stroke-width="1.1"/><line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="#fff" ${SLEEPERS}/></g>`, ['TRAIN LINE']);
   if (bundle.railLines.tram.length || bundle.bus.tramRouteSegments.length)
-    legendRow(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${tpl().busRoute}" stroke-width="0.9" stroke-dasharray="3.4,1.8"/>`, ['TRAM ROUTE']);
+    legendRow(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${tpl().busRoute}" ${TRAM_LINE}/>`, ['TRAM ROUTE']);
   legendRow(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${tpl().transit}" ${busLineStyle} stroke-linecap="round"/>`, ['BUS ROUTE']);
   const legendIso = (color: string, minutes: number) => dottedIso
     ? `<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${color}" ${ISO_DOTS} opacity="0.85"/>`

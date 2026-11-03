@@ -9,7 +9,7 @@
 import type { DemGrid } from '../fetch/terrain.js';
 import type { Extent } from '../lib/geo.js';
 import type { SlidesBundle } from '../pipeline.js';
-import { mergeRuns, straightEnough, arcTable, sliceAt, shortStreetName, type SheetMeta, type Pt } from './sheet.js';
+import { mergeRuns, straightEnough, arcTable, sliceAt, shortStreetName, dashedPath, type SheetMeta, type Pt } from './sheet.js';
 import type { TopoRoad } from '../fetch/nswTopo.js';
 import type { GeoJSONFeature } from '../lib/arcgis.js';
 import { tpl, withTemplate, templateFor, deckLook, tint, shadeHex, inkFor, vivid, type DeckLook } from './template.js';
@@ -4471,11 +4471,17 @@ export function movementSlide(b: SlidesBundle): Slide {
       parts.push(`<path d="M${tip[0].toFixed(2)},${tip[1].toFixed(2)} L${(tip[0] - L * Math.cos(a) + W * Math.sin(a)).toFixed(2)},${(tip[1] - L * Math.sin(a) - W * Math.cos(a)).toFixed(2)} L${(tip[0] - L * Math.cos(a) - W * Math.sin(a)).toFixed(2)},${(tip[1] - L * Math.sin(a) + W * Math.cos(a)).toFixed(2)} Z" fill="${MOVE.flow}" fill-opacity="0.9"/>`);
     }
   }
-  if (mv.busRoutes.length) parts.push(`<path d="${mv.busRoutes.map((l) => ringsPath([l], proj, false)).join('')}" fill="none" stroke="${t.busRoute}" stroke-width="0.5" stroke-dasharray="1.2,0.9" stroke-linecap="round"/>`);
-  if (mv.footways.length) parts.push(`<path d="${mv.footways.map((l) => ringsPath([l], proj, false)).join('')}" fill="none" stroke="${MOVE.foot}" stroke-width="0.25" stroke-dasharray="0.5,0.5"/>`);
+  // The bus routes, footways and cycleways run far past the panel, and Chromium prints every dash of a dashed
+  // line, the ones the panel hides as well (the routes alone came to 69,000 dashes, 16 MB of a 41 MB deck):
+  // they are cut to the panel first, each dash where it was (dashedPath).
+  const panelBox = { x: 0, y: 0, w: p.wMm, h: p.hMm };
+  const BUS_LINE = 'stroke-width="0.5" stroke-dasharray="1.2,0.9"', FOOT_LINE = 'stroke-width="0.25" stroke-dasharray="0.5,0.5"';
+  if (mv.busRoutes.length) parts.push(`<path d="${dashedPath(mv.busRoutes, proj, BUS_LINE, panelBox)}" fill="none" stroke="${t.busRoute}" ${BUS_LINE} stroke-linecap="round"/>`);
+  if (mv.footways.length) parts.push(`<path d="${dashedPath(mv.footways, proj, FOOT_LINE, panelBox)}" fill="none" stroke="${MOVE.foot}" ${FOOT_LINE}/>`);
   for (const kind of ['shared', 'lane', 'separated'] as CyclewayKind[]) {
     const ls = mv.cycleways.filter((c) => c.kind === kind);
-    if (ls.length) parts.push(`<path d="${ls.map((l) => ringsPath([l.coords], proj, false)).join('')}" fill="none" stroke="${MOVE.cycle}" stroke-width="${kind === 'separated' ? 0.6 : 0.4}"${kind === 'separated' ? '' : ' stroke-dasharray="1.4,0.8"'} stroke-linecap="round"/>`);
+    const style = `stroke-width="${kind === 'separated' ? 0.6 : 0.4}"${kind === 'separated' ? '' : ' stroke-dasharray="1.4,0.8"'}`;
+    if (ls.length) parts.push(`<path d="${dashedPath(ls.map((l) => l.coords), proj, style, panelBox)}" fill="none" stroke="${MOVE.cycle}" ${style} stroke-linecap="round"/>`);
   }
   if (mv.busStops.length) parts.push(`<g>${mv.busStops.map((s) => { const [x, y] = proj(s.lon, s.lat); return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="0.9" fill="${t.busRoute}" stroke="#ffffff" stroke-width="0.3"/>`; }).join('')}</g>`);
   // isochrone labels where each ring crosses the panel's centre line
@@ -8259,7 +8265,13 @@ export function countryAtlas(b: SlidesBundle): Slide {
   const wb = b.wide.base;
   if (wb.water.features.length) parts.push(`<path d="${fcPath(wb.water, proj)}" fill="${t.water}" fill-rule="evenodd" stroke="${WATER_INK}" stroke-width="0.25"/>`);
   if (c.water.coastline.length) parts.push(`<path d="${c.water.coastline.map((l) => ringsPath([l], proj, false)).join('')}" fill="none" stroke="${WATER_INK}" stroke-width="0.35"/>`);
-  for (const w of c.water.courses) parts.push(`<path d="${ringsPath([w.coords], proj, false)}" fill="none" stroke="${WATER_INK}" stroke-width="${w.hierarchy === 'major' || /river/i.test(w.name ?? '') ? 0.6 : 0.4}" stroke-linecap="round"${w.perenniality === 'perennial' ? '' : ' stroke-dasharray="1.4 0.8"'}/>`);
+  // the dashed lines on this map (the creeks that dry, the land councils' bounds) are cut to the panel first:
+  // Chromium prints every dash, the ones the panel hides as well (dashedPath)
+  const panelBox = { x: 0, y: 0, w: p.wMm, h: p.hMm };
+  for (const w of c.water.courses) {
+    const style = `stroke-width="${w.hierarchy === 'major' || /river/i.test(w.name ?? '') ? 0.6 : 0.4}"${w.perenniality === 'perennial' ? '' : ' stroke-dasharray="1.4 0.8"'}`;
+    parts.push(`<path d="${dashedPath([w.coords], proj, style, panelBox)}" fill="none" stroke="${WATER_INK}" ${style} stroke-linecap="round"/>`);
+  }
   // No road, rail or cadastre: the land as it lay, with nothing built over it. A hint of its shape: contours every
   // 10 m traced from the model over the communities, the fifties heavier, as the Location map carries them.
   if (c.dem) {
@@ -8289,7 +8301,8 @@ export function countryAtlas(b: SlidesBundle): Slide {
     motifs.push(`<pattern id="motif-${i}" patternUnits="userSpaceOnUse" width="16" height="16"><image href="${uri}" width="16" height="16"/></pattern>`, `<path d="${ringsPath(l.rings, proj)}" fill="url(#motif-${i})" fill-opacity="0.45" fill-rule="evenodd"/>`);
   });
   if (motifs.length) parts.push(`<defs>${motifs.filter((m) => m.startsWith('<pattern')).join('')}</defs>`, ...motifs.filter((m) => !m.startsWith('<pattern')));
-  if (c.lalcs.length > 1) parts.push(`<path d="${c.lalcs.map((l) => ringsPath(l.rings, proj)).join('')}" fill="none" stroke="${INK.blue.deep}" stroke-width="0.5" stroke-dasharray="3 1 0.6 1"/>`);
+  const LALC_BOUND = 'stroke-width="0.5" stroke-dasharray="3 1 0.6 1"';
+  if (c.lalcs.length > 1) parts.push(`<path d="${dashedPath(c.lalcs.flatMap((l) => l.rings), proj, LALC_BOUND, panelBox, true)}" fill="none" stroke="${INK.blue.deep}" ${LALC_BOUND}/>`);
   for (const l of c.lalcs) {
     let best = { area: 0, cx: 0, cy: 0 };
     for (const r of l.rings) { const st = clippedStats(r, proj, p); if (st.area > best.area) best = st; }

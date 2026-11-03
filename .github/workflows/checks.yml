@@ -149,6 +149,14 @@ jobs:
       - name: the canopy peels into crowns and the streets sweep to their kerbs
         run: npx tsx test/crowns.mts
 
+      # Chromium prints every dash of a dashed line into the PDF, the ones a
+      # clip hides too: bus routes running off the map and dotted textures
+      # across the whole of it made context sheets of 85 MB that viewers
+      # could not open. The sheet cuts them to what can show, and the cut
+      # must leave every dash and dot that shows where it was.
+      - name: dashed lines and dotted textures are cut without moving a dot
+        run: npx tsx test/dashes.mts
+
       # The Major Projects register is HTML, parsed: its listing cards, a
       # project page's details and point, and the council-area matching, on
       # trimmed copies of the markup. CI never calls the Planning Portal.
