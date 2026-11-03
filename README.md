@@ -67,12 +67,12 @@ Once done, the page shows the drawing itself as a picture about 1200 px wide
 hundred kilobytes against an A1 PDF's several megabytes) with the downloads
 under it — the PDF is downloaded rather than opened in the browser, which
 could take a long while at that size. Dashed and dotted lines are cut to the
-map before they are printed (`src/lib/dashes.ts`): Chromium writes every dash
-into the PDF as a shape of its own, the ones the map's clip hides as well, and
-bus routes running kilometres past the map's edge and dotted textures drawn
-across the whole of it once made context sheets of 85 MB, which PDF.js, the
-viewer in most browsers and chat apps, could not draw in two minutes. The
-picture is the same for every plan,
+map or panel they are drawn in before they are printed (`src/lib/dashes.ts`):
+Chromium writes every dash into the PDF as a shape of its own, the ones a clip
+hides as well, and bus routes running kilometres past the map's edge and dotted
+textures drawn across the whole of it once made context sheets of 85 MB and
+site report decks of 41 MB, which PDF.js, the viewer in most browsers and chat
+apps, could not draw in two minutes. The picture is the same for every plan,
 like the examples. Jobs run in a pool of `WORKERS` (one by default), and
 what they may ask of each public data service is counted across all of them,
 so simultaneous users don't hammer it — see *Many at once* below. Put `TFNSW_API_KEY=…` in `.env`
