@@ -349,10 +349,10 @@ function zoneInk(zone: string | undefined, look: DeckLook): string | null {
 }
 /** The trees' inks for the key. */
 function treeInks() { const M = massingInks(); return { fill: M.tree, edge: shade(M.tree, 0.7) }; }
-/** What the massing's note says of its trees and streets, for the page's sources line. */
-const treesNote = (b: YieldBundle) => b.trees?.length
+/** What the massing's note says of its trees, its streets and its traffic, for the page's sources line. */
+const treesNote = (b: YieldBundle) => (b.trees?.length
   ? ` The massing's trees are crowns read off the aerial photograph (NSW Imagery), their size indicative${b.trees.some((t) => t.source !== 'aerial') ? ', and the trees OpenStreetMap or the council records' : ''}; its streets run kerb to kerb.`
-  : '';
+  : '') + ' The cars, vans, trucks, buses, cyclists and walkers on its streets are there for scale, not counted.';
 /** The photograph under the plan and the massing: where the style draws on the aerial and the deck read one over this site. */
 const photoOf = (b: YieldBundle): (AerialResult & { extent: Extent }) | null =>
   b.aerial?.tiles.length && b.aerial.extent ? (b.aerial as AerialResult & { extent: Extent }) : null;

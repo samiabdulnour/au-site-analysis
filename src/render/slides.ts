@@ -2581,6 +2581,7 @@ export function formAtlas(b: SlidesBundle, planning: PlanningFacts): Slide {
   try { kerbs = estimateKerbs(lotRingsLL, b.base.roads, [], []).map((kl) => local(kl.coords)); } catch { kerbs = []; }
   const crown = (tr: { lon: number; lat: number; canopyM: number }) => ({ p: toLocal(tr.lon, tr.lat), r: Math.max(1.2, Math.min(8, tr.canopyM / 2)) });
   const trees = (b.green.crowns ?? b.green.trees.points).map(crown);
+  const busRoutes = b.movement?.osm ? (b.movement.busRoutes ?? []).filter((l) => l.some(([lon, lat]) => dist(lon, lat) <= REACH + 60)).map(local) : undefined;
   const e = f.envelope;
   const hob = e?.aboveGroundM && e.aboveGroundM > 0 ? { metres: e.aboveGroundM, note: `HEIGHT OF BUILDING PLANE ${e.label.toUpperCase()}, ${fmtNum(Math.round(e.aboveGroundM))}m ABOVE THE GROUND, ABOVE THE FRAME` } : undefined;
   const scene: AxoScene = {
@@ -2588,6 +2589,8 @@ export function formAtlas(b: SlidesBundle, planning: PlanningFacts): Slide {
     roads: b.base.roads.filter((r) => !r.tunnel).map((r) => ({ coords: local(r.coords), hierarchy: r.hierarchy, name: r.name })),
     // the height plane stays on the massing page: here it would float far above the city and shrink it to fit
     kerbs, lots, trees, hob: undefined, envelopes: [],
+    // the buses keep to OpenStreetMap's bus routes where it answered; where it did not, they take the collector streets and above
+    busRoutes,
     inks: { site: t.site, future: '#ffffff', futureEdge: '#ffffff', envelope: '#ffffff', kerb: inkFor(INK.blue.solid, 0.4) },
     silhouette: false, treesOnSite: true,
   };
@@ -2604,7 +2607,7 @@ export function formAtlas(b: SlidesBundle, planning: PlanningFacts): Slide {
     f.onSite.length ? `On the site today ${f.onSite.length === 1 ? 'stands a building' : `stand ${['', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'][f.onSite.length] ?? f.onSite.length} buildings`} of ${f.onSite.map((x) => (x.storeys ? `${x.storeys} storeys` : 'no recorded height')).join(' and ')}.` : 'Nothing stands on the site today.',
   ].filter(Boolean).join(' ');
   const src = f.source === 'overture' ? `Overture Maps Foundation buildings${f.release ? ` (release ${f.release})` : ''}, footprints and heights from OpenStreetMap, Microsoft, Esri Community Maps and Google Open Buildings` : f.source === 'osm' ? 'OpenStreetMap buildings' : 'no building source';
-  const sources = `Sources: ${src}; heights measured, or ${METRES_PER_STOREY} m a storey, else the storeys of a determined application on the lot; every building in the colour of its storeys as the height of buildings page keys them (${HEIGHT_BANDS.map((bd) => bd.label).join(' · ')}), dashed where none is recorded; what stands on the site in the site's ink; streets from NSW Spatial Services, the kerbs worked out from the cadastre; parks from the open-space zones; the trees read off NSW Imagery as crowns, their size indicative. Drawn from the ${bearingName(camBearing)}, looking down 35°. Retrieved ${b.buildings.fetchedAt.slice(0, 10)}.`;
+  const sources = `Sources: ${src}; heights measured, or ${METRES_PER_STOREY} m a storey, else the storeys of a determined application on the lot; every building in the colour of its storeys as the height of buildings page keys them (${HEIGHT_BANDS.map((bd) => bd.label).join(' · ')}), dashed where none is recorded; what stands on the site in the site's ink; streets from NSW Spatial Services, the kerbs worked out from the cadastre; parks from the open-space zones; the trees read off NSW Imagery as crowns, their size indicative; the cars, vans, trucks, buses, cyclists and walkers there for scale, not counted${busRoutes ? ', the buses on the bus routes OpenStreetMap maps' : ''}. Drawn from the ${bearingName(camBearing)}, looking down 35°. Retrieved ${b.buildings.fetchedAt.slice(0, 10)}.`;
   // The key, framed on the drawing in its bottom-right corner as the movement map keys its places: a little block in
   // each storeys' colour, lit as the drawing lights its buildings, the dashed block of no recorded height, the site's.
   const formKey = (() => {

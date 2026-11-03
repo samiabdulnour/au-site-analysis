@@ -1347,13 +1347,27 @@ a chain of crowns and a lawn is no tree) and merged with the trees
 OpenStreetMap or an open council inventory records, which stand in for the
 crowns read at them — none on a footprint, and none on the site where a
 scheme stands on it, each a bold green with its light to the north-west;
-and the traffic, a car every so often down each street
-on the left of its axis, a body with a cabin, in the families' solid
-colours in turn; and the people: a walker every so often along each
-street's footpath, a body on the ground with a head over it, and a rider
-every so often down the kerb side of the lane, two wheels and a frame with
-the body over them, in the traffic's colours and a dark grey in turn, none
-where a building stands and none on the site. The bundle carries the trees (`trees`), read when the yield is fetched;
+and the traffic, a vehicle every so often down each street
+on the left of its axis, none down a lane (`placeTraffic()` in
+`src/render/axonometric.ts`, tested in `test/traffic.mts`). Most are cars,
+a body with a cabin, in the families' solid colours in turn; among them
+delivery vans, white mostly, a box behind a cab and a bonnet; rigid trucks,
+a pale box on its chassis behind a cab; on the arterials and above,
+articulated trucks, a trailer behind a long-nosed prime mover; and buses, a
+skirt in the blue family under a band of glass and a white roof. The mix
+goes by the street's class (a rigid truck now and then even down a local
+street, a bus on the collector streets and above), the slots nearest the
+site taking it first so the frame shows a bit of each. The site report's
+built form page keeps its buses to the bus routes OpenStreetMap maps (a
+local street a route runs down takes a collector's mix; where Overpass did
+not answer, the class decides); the yield has no routes and goes by the
+class. A vehicle that would stand over a kerb, a building or another vehicle
+gives way to the next smaller that fits. And the people: a walker every so
+often along each street's footpath, a body on the ground with a head over
+it, and a rider every so often down the kerb side of the lane, two wheels
+and a frame with the body over them, in the traffic's colours and a dark
+grey in turn, none where a building or a vehicle stands and none on the
+site. The sources line says they are there for scale, not counted. The bundle carries the trees (`trees`), read when the yield is fetched;
 a bundle from before them draws the streets and no trees. Under the massing, the
 envelope in plan at a round scale, on the ground the site analysis draws, kept to black and
 grey: the lot lines, the kerbs (`src/lib/kerbs.ts`, indicative), the
