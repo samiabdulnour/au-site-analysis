@@ -558,6 +558,19 @@ with, and a dead worker's slots go back when it exits.
   Chromium, so it is the number printing at once, not the number of jobs, that
   the machine has to hold.
 
+Printing side by side once cost a sheet half its drawing. A page opened on
+Playwright's `networkidle` alone was printed when no request had been in flight
+for half a second, which on a busy machine came before Chromium had finished
+parsing the sheet's HTML: about one print in a dozen, with four or eight at
+once, was a valid PDF with the map up to its zoning and a blank title block.
+Memory was not the cause; eight A1 context sheets printing together held
+under 3 GB more than the machine at rest, about 350 MB a browser. The pages now
+wait for their `load` (`src/render/pdf.ts`), and each sheet's PDF is read back
+for its title block and its pictures (`src/render/printCheck.ts`): a short
+print is printed once more and then fails the job, with the PDF moved aside, so
+a sheet that is served is whole. `scripts/print-stress.ts` prints sheets side by
+side, in processes of their own, and reports what each PDF lacks.
+
 `JOB_TIMEOUT_MS` (default 20 minutes) stops a job that has hung on a service
 that never answers, so it cannot hold a worker for good. The queue position and
 the wait the page shows count rounds of the pool, and `/status` shows the

@@ -99,7 +99,7 @@ async function drawBody(spec: SheetSpec, outDir: string, log: (m: string) => voi
     await writeFile(htmlPath, renderSummarySheet(sub, meta));
     log('printing PDF…');
     const pdfPath = join(outDir, 'DEVELOPMENT_SUMMARY.pdf');
-    await htmlToPdf(htmlPath, pdfPath, previewOf(outDir));
+    await htmlToPdf(htmlPath, pdfPath, previewOf(outDir), log);
     // A table's open format is data, not CAD: CSV opens in Excel, JSON is
     // there for anything reading the controls programmatically.
     const csvPath = join(outDir, 'DEVELOPMENT_SUMMARY.csv');
@@ -121,7 +121,7 @@ async function drawBody(spec: SheetSpec, outDir: string, log: (m: string) => voi
     await writeFile(htmlPath, renderSiteSheet(sb, meta, spec.template));
     log('printing PDF…');
     const pdfPath = join(outDir, 'SITE_ANALYSIS.pdf');
-    await htmlToPdf(htmlPath, pdfPath, previewOf(outDir));
+    await htmlToPdf(htmlPath, pdfPath, previewOf(outDir), log);
     log('exporting CAD (DXF/DWG)…');
     const zip = join(outDir, 'SITE_ANALYSIS_CAD.zip');
     if (await runCadExport('site_dxf_export.py', outDir) && existsSync(zip)) return { pdfPath, cadPath: zip };
@@ -162,7 +162,7 @@ async function drawBody(spec: SheetSpec, outDir: string, log: (m: string) => voi
   await writeFile(htmlPath, renderSheet(bundle, meta));
   log('printing PDF…');
   const pdfPath = join(outDir, 'CONTEXT_ANALYSIS.pdf');
-  await htmlToPdf(htmlPath, pdfPath, previewOf(outDir));
+  await htmlToPdf(htmlPath, pdfPath, previewOf(outDir), log);
   log('exporting CAD (DXF/DWG)…');
   const zip = join(outDir, 'CONTEXT_ANALYSIS_CAD.zip');
   if (await runCadExport('dxf_export.py', outDir) && existsSync(zip)) return { pdfPath, cadPath: zip };
