@@ -18,7 +18,7 @@
 import turfUnion from '@turf/union';
 import { featureCollection, polygon } from '@turf/helpers';
 import type { XY } from '../lib/geo.js';
-import { alongLine, carriageways, type RoadLine } from '../lib/carriageway.js';
+import { alongLine, carriageways, type Carriageway, type RoadLine } from '../lib/carriageway.js';
 import { INK, massingInks } from './atlasKit.js';
 import { tint, vivid } from './template.js';
 import { esc } from './chrome.js';
@@ -72,6 +72,116 @@ export interface AxoScene {
   focusM?: number;
   /** Keep the trees that stand on the site (what stands today); a scheme clears them. */
   treesOnSite?: boolean;
+  /** The bus routes, local metres, where the caller has them: the buses keep to them. Unset, a bus runs on the collector streets and above; empty, there is none. */
+  busRoutes?: XY[][];
+}
+
+export type VehicleKind = 'car' | 'van' | 'truck' | 'semi' | 'bus';
+
+/** A vehicle in the traffic: its middle, the way it travels (u) and its left (n), half its length and half its width, metres. */
+export interface Vehicle { kind: VehicleKind; c: XY; u: XY; n: XY; half: number; hw: number }
+
+/** Each kind's size, half its length and half its width: a car, a delivery van, a rigid truck, an articulated truck, a bus. */
+export const VEHICLE_SIZE: Record<VehicleKind, { half: number; hw: number }> = {
+  car: { half: 2.2, hw: 0.9 }, van: { half: 2.95, hw: 1.0 }, truck: { half: 4.3, hw: 1.25 }, semi: { half: 8.25, hw: 1.25 }, bus: { half: 6.25, hw: 1.25 },
+};
+
+// The mix down a street by its class (NSW topographic hierarchy: 1 motorway … 6 local), taken in turn: the
+// articulated trucks on the arterials and above, the buses on the collectors and above, a rigid truck now and then
+// even down a local street (a removalist, the bins), delivery vans everywhere.
+const MIX: Record<'arterial' | 'subArterial' | 'collector' | 'local', VehicleKind[]> = {
+  arterial: ['car', 'bus', 'car', 'truck', 'car', 'van', 'car', 'semi', 'car', 'car', 'van', 'bus', 'car', 'truck'],
+  subArterial: ['car', 'van', 'car', 'bus', 'car', 'truck', 'car', 'car', 'van', 'car'],
+  collector: ['car', 'van', 'car', 'bus', 'car', 'car', 'truck', 'car', 'van', 'car'],
+  local: ['car', 'van', 'car', 'car', 'car', 'truck', 'car', 'car', 'van', 'car', 'car', 'car'],
+};
+/** What a vehicle that does not fit its slot gives way to, the next smaller. */
+const SMALLER: Record<VehicleKind, VehicleKind | null> = { semi: 'truck', truck: 'van', bus: 'car', van: 'car', car: null };
+
+/** Whether two vehicles' outlines come within `gap` metres of each other: the separating axis test on two oriented rectangles. */
+export function vehiclesClash(a: Vehicle, b: Vehicle, gap = 0): boolean {
+  const dx = b.c.x - a.c.x, dy = b.c.y - a.c.y;
+  if (Math.hypot(dx, dy) > a.half + b.half + 2 * gap + 3) return false;
+  for (const ax of [a.u, a.n, b.u, b.n]) {
+    const reach = (v: Vehicle) => v.half * Math.abs(v.u.x * ax.x + v.u.y * ax.y) + v.hw * Math.abs(v.n.x * ax.x + v.n.y * ax.y);
+    if (Math.abs(dx * ax.x + dy * ax.y) > reach(a) + reach(b) + gap) return false;
+  }
+  return true;
+}
+
+/** Whether a point stands within `pad` metres of a vehicle's outline. */
+export function underVehicle(p: XY, v: Vehicle, pad = 0): boolean {
+  const dx = p.x - v.c.x, dy = p.y - v.c.y;
+  return Math.abs(dx * v.u.x + dy * v.u.y) <= v.half + pad && Math.abs(dx * v.n.x + dy * v.n.y) <= v.hw + pad;
+}
+
+/** A vehicle's four corners, drawn in by `inset` metres. */
+const corners = (v: Vehicle, inset = 0): XY[] => {
+  const h = v.half - inset, w = v.hw - inset;
+  return [[h, w], [h, -w], [-h, -w], [-h, w]].map(([s, q]) => ({ x: v.c.x + v.u.x * s + v.n.x * q, y: v.c.y + v.u.y * s + v.n.y * q }));
+};
+
+/**
+ * The traffic down the streets: a slot every so often down each street in each direction, on the left of its axis as
+ * the road rules have it, none down a lane. The slots nearest the site take their street class's mix first, so the
+ * frame shows a bit of each; a bus keeps to the bus routes where they are given. A vehicle that would stand over a
+ * kerb, a building or another vehicle gives way to the next smaller that fits, a car at the least, or to nothing.
+ */
+export function placeTraffic(cw: Carriageway, opts: { reach: number; footprints: XY[][]; busRoutes?: XY[][] }): Vehicle[] {
+  const { reach, footprints, busRoutes } = opts;
+  // each ring with its bounds, so a point far off is let go before the ring is walked
+  const boxed = (rg: XY[]) => ({ rg, x0: Math.min(...rg.map((p) => p.x)), x1: Math.max(...rg.map((p) => p.x)), y0: Math.min(...rg.map((p) => p.y)), y1: Math.max(...rg.map((p) => p.y)) });
+  const within = (p: XY, b: ReturnType<typeof boxed>) => p.x >= b.x0 && p.x <= b.x1 && p.y >= b.y0 && p.y <= b.y1 && inRing(p, b.rg);
+  const surfaces = cw.polygons.filter((rings) => rings[0]?.length >= 3).map(([outer, ...holes]) => ({ outer: boxed(outer), holes: holes.filter((h) => h.length >= 3).map(boxed) }));
+  const buildings = footprints.filter((rg) => rg.length >= 3).map(boxed);
+  const onRoad = (p: XY) => surfaces.some(({ outer, holes }) => within(p, outer) && !holes.some((h) => within(p, h)));
+  // a vehicle's outline, drawn in a little: its middle, and points down both its sides no more than 1.5 m apart, so a
+  // long one cannot straddle a kerb's corner or a building between its ends
+  const outline = (v: Vehicle): XY[] => {
+    const h = v.half - 0.15, w = v.hw - 0.15, k = Math.max(1, Math.ceil((2 * h) / 1.5));
+    const pts = [v.c];
+    for (let i = 0; i <= k; i++) for (const q of [w, -w]) { const s = -h + (2 * h * i) / k; pts.push({ x: v.c.x + v.u.x * s + v.n.x * q, y: v.c.y + v.u.y * s + v.n.y * q }); }
+    return pts;
+  };
+  // a route runs along a slot where one of its segments passes within 8 m of it, running the same way
+  const onRoute = (c: XY, u: XY) => (busRoutes ?? []).some((line) => line.some((a, i) => {
+    if (!i) return false;
+    const b = line[i - 1], dx = a.x - b.x, dy = a.y - b.y, l2 = dx * dx + dy * dy;
+    if (!l2 || Math.abs(dx * u.x + dy * u.y) / Math.sqrt(l2) < 0.85) return false;
+    const t = Math.max(0, Math.min(1, ((c.x - b.x) * dx + (c.y - b.y) * dy) / l2));
+    return Math.hypot(c.x - b.x - t * dx, c.y - b.y - t * dy) <= 8;
+  }));
+  const slots: { c: XY; u: XY; n: XY; hierarchy: number }[] = [];
+  cw.axes.forEach(({ axis, left, right, road }, ri) => {
+    if (road.hierarchy >= 7) return;
+    const lane = Math.min(2.6, (left + right) / 4);
+    const step = 24 + road.hierarchy * 3;
+    for (const dir of [1, -1]) {
+      for (const { p, t } of alongLine(axis, step, dir > 0 ? 6 + (ri % 4) * 5 : 17 + (ri % 3) * 6)) {
+        const u = { x: t.x * dir, y: t.y * dir }, n = { x: -u.y, y: u.x };   // the left of the direction of travel
+        slots.push({ c: { x: p.x + n.x * lane, y: p.y + n.y * lane }, u, n, hierarchy: road.hierarchy });
+      }
+    }
+  });
+  slots.sort((a, b) => Math.hypot(a.c.x, a.c.y) - Math.hypot(b.c.x, b.c.y));
+  const placed: Vehicle[] = [];
+  const turn: Record<keyof typeof MIX, number> = { arterial: 0, subArterial: 0, collector: 0, local: 0 };
+  const fits = (v: Vehicle) => outline(v).every((p) => Math.hypot(p.x, p.y) <= reach && onRoad(p) && !buildings.some((b) => within(p, b)))
+    && !placed.some((o) => vehiclesClash(v, o, 0.4));
+  for (const s of slots) {
+    if (Math.hypot(s.c.x, s.c.y) > reach) continue;
+    const routed = busRoutes ? onRoute(s.c, s.u) : s.hierarchy <= 5;
+    // a local street a bus route runs down takes a collector's mix
+    const cls: keyof typeof MIX = s.hierarchy <= 3 ? 'arterial' : s.hierarchy === 4 ? 'subArterial' : s.hierarchy === 5 || (busRoutes && routed) ? 'collector' : 'local';
+    const mix = MIX[cls];
+    let kind: VehicleKind | null = mix[turn[cls]++ % mix.length];
+    if (kind === 'bus' && !routed) kind = 'car';
+    for (; kind; kind = SMALLER[kind]) {
+      const v: Vehicle = { kind, c: s.c, u: s.u, n: s.n, ...VEHICLE_SIZE[kind] };
+      if (fits(v)) { placed.push(v); break; }
+    }
+  }
+  return placed;
 }
 
 /** A colour darkened (f < 1) or lightened toward white (f > 1). */
@@ -219,41 +329,49 @@ export function drawAxonometric(scene: AxoScene, box: { x: number; y: number; w:
       `<circle cx="${cx.toFixed(2)}" cy="${cy.toFixed(2)}" r="${tr.r.toFixed(2)}" fill="${M.tree}"/>` +
       `<circle cx="${(cx - 0.22 * tr.r).toFixed(2)}" cy="${(cy - 0.2 * tr.r).toFixed(2)}" r="${(0.66 * tr.r).toFixed(2)}" fill="${M.treeLight}"/>`;
   };
-  // Traffic: a car every so often down each street, on the left of its axis as the road rules have it, each a body with
-  // a cabin, in the families' solid colours in turn; none down a lane.
+  // Traffic (placeTraffic): each vehicle a few blocks along its length, in stacks one behind the other, each stack a
+  // column of blocks bottom to top, drawn far to near. A car, a body with a cabin, in the families' solid colours in
+  // turn; a delivery van, white mostly, its box behind a cab with a windscreen and a bonnet; a rigid truck, a pale box
+  // on its chassis behind a cab in the cars' colours; an articulated truck, its trailer behind a prime mover with a
+  // bonnet, as the long-nosed ones on Australian roads; a bus, a skirt in the blue family under a band of glass and a
+  // white roof.
   const CAR_INKS = [vivid(INK.red.solid, 0.55, 0.45), vivid(INK.blue.solid, 0.5, 0.42), vivid(INK.orange.solid, 0.7, 0.5), '#f4f4f0'];
-  const GLASS = tint(INK.blue.solid, 0.78);
-  const cars: { key: number; body: Prism; cabin: Prism }[] = [];
-  let ci = 0;
-  for (const { axis, left, right, road } of cw.axes) {
-    if (road.hierarchy >= 7) continue;
-    const lane = Math.min(2.6, (left + right) / 4);
-    for (const dir of [1, -1]) {
-      const step = 24 + road.hierarchy * 3;
-      for (const { p, t } of alongLine(axis, step, dir > 0 ? 6 + (ci % 4) * 5 : 17 + (ci % 3) * 6)) {
-        const n = { x: -t.y * dir, y: t.x * dir };   // the left of the direction of travel
-        const c = { x: p.x + n.x * lane, y: p.y + n.y * lane };
-        if (Math.hypot(c.x, c.y) > reach || footprints.some((rg) => inRing(c, rg))) continue;
-        const u = { x: t.x * dir, y: t.y * dir };
-        const bx = (hl: number, hw: number, back: number): XY[] => [
-          { x: c.x + u.x * (hl - back) + n.x * hw, y: c.y + u.y * (hl - back) + n.y * hw }, { x: c.x + u.x * (hl - back) - n.x * hw, y: c.y + u.y * (hl - back) - n.y * hw },
-          { x: c.x - u.x * (hl + back) - n.x * hw, y: c.y - u.y * (hl + back) - n.y * hw }, { x: c.x - u.x * (hl + back) + n.x * hw, y: c.y - u.y * (hl + back) + n.y * hw },
-        ];
-        const fill = CAR_INKS[ci++ % CAR_INKS.length];
-        cars.push({ key: depth(c),
-          body: { rings: [bx(2.2, 0.9, 0)], z0: 0.25, z1: 1.3, fill, edge: '#3a3a3a', edgeW: 0.1 },
-          cabin: { rings: [bx(1.1, 0.8, 0.25)], z0: 1.3, z1: 1.95, fill: GLASS, edge: '#3a3a3a', edgeW: 0.1 } });
-      }
+  const WHITE = '#f4f4f0', GLASS = tint(INK.blue.solid, 0.78), PALE = '#e6e5df', CHASSIS = '#4a4a4a';
+  const VAN_INKS = [WHITE, WHITE, CAR_INKS[2], WHITE, CAR_INKS[1]];
+  type Block = { s0: number; s1: number; hw: number; z0: number; z1: number; fill: string };
+  const block = (s0: number, s1: number, hw: number, z0: number, z1: number, fill: string): Block => ({ s0, s1, hw, z0, z1, fill });
+  // a cab: its doors, its windscreen and side glass, its roof
+  const cab = (s0: number, s1: number, hw: number, z0: number, zg: number, zr: number, z1: number, ink: string) =>
+    [block(s0, s1, hw, z0, zg, ink), block(s0, s1, hw, zg, zr, GLASS), block(s0, s1, hw, zr, z1, ink)];
+  const inkTurn: Record<VehicleKind, number> = { car: 0, van: 0, truck: 0, semi: 0, bus: 0 };
+  const stacksOf = (kind: VehicleKind): Block[][] => {
+    const i = inkTurn[kind]++;
+    const ink = kind === 'van' ? VAN_INKS[i % VAN_INKS.length] : CAR_INKS[i % CAR_INKS.length];
+    switch (kind) {
+      case 'car': return [[block(-2.2, 2.2, 0.9, 0.25, 1.3, ink), block(-1.35, 0.85, 0.8, 1.3, 1.95, GLASS)]];
+      case 'van': return [[block(-2.95, 1.25, 1.0, 0.35, 2.55, ink)], cab(1.25, 2.2, 1.0, 0.35, 1.3, 2.25, 2.5, ink), [block(2.2, 2.95, 0.98, 0.35, 1.15, ink)]];
+      case 'truck': return [[block(-4.3, 2.15, 1.0, 0.45, 1.0, CHASSIS), block(-4.3, 2.15, 1.25, 1.0, 3.6, PALE)], cab(2.3, 4.3, 1.22, 0.45, 1.75, 2.65, 3.0, ink)];
+      case 'semi': return [[block(-8.25, 5.0, 1.0, 0.5, 1.2, CHASSIS), block(-8.25, 5.0, 1.25, 1.2, 4.1, PALE)], [block(5.0, 5.6, 1.0, 0.5, 1.1, CHASSIS)],
+        cab(5.6, 7.3, 1.25, 0.5, 2.0, 2.8, 3.4, ink), [block(7.3, 8.25, 1.1, 0.5, 1.85, ink)]];
+      case 'bus': return [[block(-6.25, 6.25, 1.25, 0.35, 1.3, CAR_INKS[1]), block(-6.25, 6.25, 1.25, 1.3, 2.6, GLASS), block(-6.25, 6.25, 1.25, 2.6, 3.15, WHITE)]];
     }
-  }
+  };
+  const vehicleSvg = (v: Vehicle, stacks: Block[][]): string => {
+    const along = v.u.x * d.x + v.u.y * d.y;   // how much farther each metre forward stands
+    const at = (b: Block): Prism => ({ rings: [corners({ ...v, c: { x: v.c.x + v.u.x * (b.s0 + b.s1) / 2, y: v.c.y + v.u.y * (b.s0 + b.s1) / 2 }, half: (b.s1 - b.s0) / 2, hw: b.hw })], z0: b.z0, z1: b.z1, fill: b.fill, edge: '#3a3a3a', edgeW: 0.1 });
+    const order = [...stacks].sort((p, q) => (q[0].s0 + q[0].s1) * along - (p[0].s0 + p[0].s1) * along);
+    return `<g data-vehicle="${v.kind}">${order.map((st) => st.map((b) => prismSvg(at(b))).join('')).join('')}</g>`;
+  };
+  // the colours go round in the order the vehicles were placed, nearest the site first
+  const traffic = placeTraffic(cw, { reach, footprints, busRoutes: scene.busRoutes }).map((v) => ({ ...v, stacks: stacksOf(v.kind) }));
   // People on the footpaths and bicycles at the kerb: a walker every so often along each street's footpath, a body
   // standing on the ground with a head over it; a rider every so often down the kerb side of the lane, two wheels
   // and a frame with the body over them; in the traffic's colours and a dark grey in turn. None down a lane, no
-  // bicycle on a highway, none where a building stands, and none on the site.
+  // bicycle on a highway, none where a building or a vehicle stands, and none on the site.
   const FIGURE_INKS = [...CAR_INKS.slice(0, 3), '#3a3a3a'];
   const figures: { key: number; svg: () => string }[] = [];
   let pi = 0;
-  const free = (c: XY) => Math.hypot(c.x, c.y) <= reach && !footprints.some((rg) => inRing(c, rg)) && !inRing(c, ring);
+  const free = (c: XY) => Math.hypot(c.x, c.y) <= reach && !footprints.some((rg) => inRing(c, rg)) && !inRing(c, ring) && !traffic.some((v) => underVehicle(c, v, 0.6));
   // a body: a slip of the figure's colour, 0.5 m wide across the view, from z0 up to z1, and its head over it
   const body = (c: XY, z0: number, z1: number, fill: string) => {
     const a = { x: c.x - r.x * 0.26, y: c.y - r.y * 0.26 }, b = { x: c.x + r.x * 0.26, y: c.y + r.y * 0.26 };
@@ -294,7 +412,7 @@ export function drawAxonometric(scene: AxoScene, box: { x: number; y: number; w:
   const standing: { key: number; svg: () => string }[] = [
     ...prisms.map(({ key, group }) => ({ key, svg: () => group.map(prismSvg).join('') })),
     ...trees.map((tr) => ({ key: depth(tr.p), svg: () => treeSvg(tr) })),
-    ...cars.map((car) => ({ key: car.key, svg: () => prismSvg(car.body) + prismSvg(car.cabin) })),
+    ...traffic.map((v) => ({ key: depth(v.c), svg: () => vehicleSvg(v, v.stacks) })),
     ...figures,
   ].sort((a, b2) => b2.key - a.key);
   for (const item of standing) parts.push(item.svg());
