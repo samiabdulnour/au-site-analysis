@@ -141,7 +141,7 @@ export async function runPipeline(address: string, opts: PipelineOpts): Promise<
   await mkdir(dataDir, { recursive: true });
 
   log(`geocoding "${address}"…`);
-  const geo = await geocode(address);
+  const geo = await geocode(address, log);
   log(`  matched: ${geo.matchedAddresses.join('; ')}`);
 
   // Site lots come first: the rotation option needs the boundary geometry.
@@ -338,7 +338,7 @@ export async function runSitePipeline(address: string, opts: SitePipelineOpts): 
   await mkdir(dataDir, { recursive: true });
 
   log(`geocoding "${address}"…`);
-  const geo = await geocode(address);
+  const geo = await geocode(address, log);
   log(`  matched: ${geo.matchedAddresses.join('; ')}`);
   const siteLots = await fetchSiteLots(geo.points);
   if (!siteLots.features.length) throw new Error('No cadastral lots found for the site.');
@@ -517,7 +517,7 @@ export async function runSummaryPipeline(
   await mkdir(join(opts.outDir, 'data'), { recursive: true });
 
   log(`geocoding "${address}"…`);
-  const geo = await geocode(address);
+  const geo = await geocode(address, log);
   log(`  matched: ${geo.matchedAddresses.join('; ')}`);
 
   const siteLots = await fetchSiteLots(geo.points);
@@ -560,7 +560,7 @@ export async function runYieldPipeline(
   await mkdir(dataDir, { recursive: true });
 
   log(`geocoding "${address}"…`);
-  const geo = await geocode(address);
+  const geo = await geocode(address, log);
   log(`  matched: ${geo.matchedAddresses.join('; ')}`);
   const siteLots = await fetchSiteLots(geo.points);
   if (!siteLots.features.length) throw new Error('No cadastral lots found for the site.');
@@ -970,7 +970,7 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
   await mkdir(dataDir, { recursive: true });
 
   log(`geocoding "${address}"…`);
-  const geo = await geocode(address);
+  const geo = await geocode(address, log);
   log(`  matched: ${geo.matchedAddresses.join('; ')}`);
   const siteLots = await fetchSiteLots(geo.points);
   if (!siteLots.features.length) throw new Error('No cadastral lots found for the site.');
@@ -1125,7 +1125,7 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
   let streetscape: StreetscapeBundle | undefined;
   if (process.env.DECK_STREETSCAPE !== '0') {
     log('the streetscape…');
-    const sb = await soft(runStreetscapePipeline(address, { outDir: opts.outDir, fit: 'deck', log, buildings: buildingsRead.buildings }), null, 'streetscape');
+    const sb = await soft(runStreetscapePipeline(address, { outDir: opts.outDir, fit: 'deck', log, buildings: buildingsRead.buildings, site: { geo, siteLots } }), null, 'streetscape');
     if (sb?.elevations?.some(Boolean)) streetscape = sb;
     else if (sb) log('  the streetscape is left out: Google\'s 3D tiles do not reach this street');
   }
@@ -1216,18 +1216,22 @@ export interface StreetscapeBundle {
  * 5 m elevation model, and with GOOGLE_MAPS_API_KEY the Street View frames
  * that the drawing rectifies onto them (src/fetch/streetscape.ts).
  */
-export async function runStreetscapePipeline(address: string, opts: { outDir: string; halfLengthM?: number; /** The deck's window: the street as long as fills the spread at the largest scale its tallest buildings allow whole (deckWindows), the half-length then ignored. */ fit?: 'deck'; through?: string; source?: 'photo' | 'mesh' | 'montage'; /** The buildings already read, so the faces' rooflines need no second fetch. */ buildings?: BuildingsData['buildings']; log?: (m: string) => void }): Promise<StreetscapeBundle> {
+export async function runStreetscapePipeline(address: string, opts: { outDir: string; halfLengthM?: number; /** The deck's window: the street as long as fills the spread at the largest scale its tallest buildings allow whole (deckWindows), the half-length then ignored. */ fit?: 'deck'; through?: string; source?: 'photo' | 'mesh' | 'montage'; /** The buildings already read, so the faces' rooflines need no second fetch. */ buildings?: BuildingsData['buildings']; /** The site already found, so the deck's streetscape does not ask the address register a second time. */ site?: { geo: GeocodeResult; siteLots: GeoJSONFC }; log?: (m: string) => void }): Promise<StreetscapeBundle> {
   const warnings: string[] = [];
   const log = (m: string) => { opts.log?.(m); if (/WARN/.test(m)) warnings.push(m.trim()); };
   const dataDir = join(opts.outDir, 'data');
   await mkdir(dataDir, { recursive: true });
   const half = opts.halfLengthM ?? 95;
 
-  log(`geocoding "${address}"…`);
-  const geo = await geocode(address);
-  log(`  matched: ${geo.matchedAddresses.join('; ')}`);
-  const siteLots = await fetchSiteLots(geo.points);
-  if (!siteLots.features.length) throw new Error('No cadastral lots found for the site.');
+  let geo: GeocodeResult, siteLots: GeoJSONFC;
+  if (opts.site) ({ geo, siteLots } = opts.site);
+  else {
+    log(`geocoding "${address}"…`);
+    geo = await geocode(address, log);
+    log(`  matched: ${geo.matchedAddresses.join('; ')}`);
+    siteLots = await fetchSiteLots(geo.points);
+    if (!siteLots.features.length) throw new Error('No cadastral lots found for the site.');
+  }
   const centre = mercatorToLonLat(geo.center);
   const k = mercatorScaleFactor(centre.lat);
   const windows = deckWindows();

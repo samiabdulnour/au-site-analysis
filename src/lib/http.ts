@@ -59,21 +59,30 @@ export async function retryFetch(
     headers.set('From', contact);
   }
   const request: RequestInit = { ...init, headers };
+  // The caller's own signal, when it has one, stops the request and the
+  // retries: a lookup raced against others is called off once one answers.
+  const cancel = init.signal ?? undefined;
 
   for (let i = 0; i < attempts; i++) {
     if (i) {
       // exponential backoff with jitter, capped so a run cannot stall forever
       const delay = Math.min(base * 2 ** (i - 1), 30_000) * (0.7 + Math.random() * 0.6);
       opts.onRetry?.(i, String(lastErr ?? 'retry'));
-      await new Promise((r) => setTimeout(r, delay));
+      await new Promise<void>((r) => {
+        const t = setTimeout(r, delay);
+        cancel?.addEventListener('abort', () => { clearTimeout(t); r(); }, { once: true });
+      });
     }
+    cancel?.throwIfAborted();
     // One slot of the host's, held to the end of the body rather than to the
     // headers: a 20 MB imagery export is still a request in flight while it
     // downloads. The backoff above waits outside it, so a host that is shedding
     // load is not also holding the slot another job is waiting for.
     const release = await acquire(hostKey(url));
     try {
-      const res = await fetch(url, { ...request, signal: AbortSignal.timeout(timeoutMs) });
+      cancel?.throwIfAborted();
+      const timeout = AbortSignal.timeout(timeoutMs);
+      const res = await fetch(url, { ...request, signal: cancel ? AbortSignal.any([cancel, timeout]) : timeout });
       if (TRANSIENT.has(res.status)) {
         release();
         lastErr = new Error(`${opts.label ?? url} -> HTTP ${res.status}`);
@@ -82,8 +91,15 @@ export async function retryFetch(
       return holdUntilRead(res, release, timeoutMs);
     } catch (e) {
       release();
+      if (cancel?.aborted) throw e;
       lastErr = e;   // network error / timeout — retry
     }
+  }
+  // fetch's own word for a timeout is "The operation was aborted due to
+  // timeout", which names neither the service nor how long it was given; that
+  // sentence is what reached the page when a sheet failed on one.
+  if ((lastErr as any)?.name === 'TimeoutError') {
+    throw new Error(`${opts.label ?? new URL(url).host} did not answer within ${timeoutMs / 1000} s (${attempts} ${attempts === 1 ? 'try' : 'tries'})`, { cause: lastErr });
   }
   throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
 }
