@@ -12,10 +12,17 @@ export interface GeoJSONFeature {
 }
 export interface GeoJSONFC { type: 'FeatureCollection'; features: GeoJSONFeature[] }
 
-async function getJson(url: string, params: Record<string, string>): Promise<any> {
+/**
+ * How patient one query is: how long each try may take, how many tries, and a
+ * signal that calls it off (the geocoder races lookups and stops the rest once
+ * one has answered). Sixty seconds and five tries unless said otherwise.
+ */
+export interface QueryOpts { timeoutMs?: number; attempts?: number; signal?: AbortSignal }
+
+async function getJson(url: string, params: Record<string, string>, q: QueryOpts = {}): Promise<any> {
   const qs = new URLSearchParams(params).toString();
-  const res = await retryFetch(`${url}?${qs}`, {}, {
-    attempts: 5, timeoutMs: 60_000, label: url,
+  const res = await retryFetch(`${url}?${qs}`, q.signal ? { signal: q.signal } : {}, {
+    attempts: q.attempts ?? 5, timeoutMs: q.timeoutMs ?? 60_000, label: url,
   });
   if (!res.ok) throw new Error(`${url} -> HTTP ${res.status}`);
   const data = await res.json();
@@ -48,6 +55,7 @@ export async function queryByExtent(
   where = '1=1',
   /** Further query parameters, e.g. maxAllowableOffset to generalise geometry. */
   extra: Record<string, string> = {},
+  q: QueryOpts = {},
 ): Promise<GeoJSONFC> {
   const features: GeoJSONFeature[] = [];
   let offset = 0;
@@ -62,7 +70,7 @@ export async function queryByExtent(
       outFields,
       resultOffset: String(offset),
       ...extra,
-    });
+    }, q);
     const fc = esriToGeoJson(data);
     features.push(...fc.features);
     if (!data.exceededTransferLimit || !fc.features.length) break;
@@ -118,8 +126,9 @@ export async function queryWhere(
   where: string,
   outFields = '*',
   resultRecordCount?: number,
+  q: QueryOpts = {},
 ): Promise<GeoJSONFC> {
   const params: Record<string, string> = { ...BASE_PARAMS, where, outFields };
   if (resultRecordCount) params.resultRecordCount = String(resultRecordCount);
-  return esriToGeoJson(await getJson(`${layerUrl}/query`, params));
+  return esriToGeoJson(await getJson(`${layerUrl}/query`, params, q));
 }

@@ -2014,6 +2014,22 @@ outline, one area, every lot in the site's description, and the yield worked
 on the whole. The sheets name the site by all its addresses in street order,
 `91-93, 95-97, 99-107, 109 RILEY STREET DARLINGHURST`.
 
+The register answers some questions in a second and others in a minute and a
+half, so the geocoder (`src/fetch/geocode.ts`) asks the quick ones first. Each
+number is looked up exactly; once one of the site's addresses is found, the
+rest of the street within 250 m of it is read in one query and every number it
+covers is taken from that. Where no number is an address of its own (none of
+91, 93 … 107 is), the Planning Portal's address search names the properties
+there, and they anchor the same query. Only what is still missing is looked up
+by number prefix (`address LIKE '91-%'`), the query that cold can take 45 to
+over 100 s: a few at a time, each given two minutes, and called off once the
+site is complete. Before this a range spent most of the job's twenty minutes on
+prefix lookups that were given sixty seconds each, never finished, and failed
+the sheet with `The operation was aborted due to timeout`. A number the
+register still does not answer for leaves a `WARN` that the site may be
+missing its lots, and a register that answers nothing fails with a message
+saying so rather than "not found".
+
 A site is the properties its addresses name, not only the lots their points
 sit on. 99-107 Riley Street is three lots under one address, its point on the
 southern one; each address's property is read from the cadastre's property
