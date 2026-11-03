@@ -137,6 +137,24 @@ const SPAN = 59.24;        // its width
 /** The width of a 6 pt tracked label, near enough to keep it inside the column. */
 const labelW = (text: string) => text.length * 1.36 + 0.4;
 
+/** A tick's figure: the first from its gridline, the last back from it, so neither leaves the column; the rest centred. */
+const tickAnchor = (v: number, max: number): 'start' | 'middle' | 'end' => (v === 0 ? 'start' : Math.abs(v - max) < 1e-9 ? 'end' : 'middle');
+
+/**
+ * The axis a bar chart needs so that every value stands after its bar and inside the column (Z. 2026-11): the given
+ * one where all fit, else the round axis that leaves each its room. A value too long for even half the bars' column
+ * is left out of the reckoning; it goes inside its bar.
+ */
+function roomForValues(rows: { value: number; label: string }[], max: number, step: number, unit = ''): { max: number; step: number } {
+  let need = max;
+  for (const r of rows) {
+    const room = W - TRACK - 1 - labelW(`${r.label}${unit}`);
+    if (room < SPAN * 0.5 || r.value <= 0) continue;
+    need = Math.max(need, (r.value * SPAN) / room);
+  }
+  return need > max + 1e-9 ? niceAxis(need) : { max, step };
+}
+
 const txt = (x: number, top: number, text: string, anchor: 'start' | 'middle' | 'end' = 'start') =>
   `<text x="${x.toFixed(2)}" y="${(top + 0.905 * S6).toFixed(2)}" text-anchor="${anchor}" font-size="${S6.toFixed(3)}" letter-spacing="${(0.09 * S6).toFixed(3)}" fill="#000000">${esc(text)}</text>`;
 
@@ -150,14 +168,15 @@ export const zHead = (left: string, right?: string) =>
 export interface BarRow { name: string; value: number; label: string; fill: Fill }
 
 /** The template's bar chart: names down the left, a scale over the right column, dotted gridlines, the value after each bar. */
-export function zBars(rows: BarRow[], max: number, step: number, opts: { ref?: { value: number; label: string; ink: string } } = {}): string {
+export function zBars(rows: BarRow[], max0: number, step0: number, opts: { ref?: { value: number; label: string; ink: string } } = {}): string {
   const AXIS = 6.3, ROWS = AXIS + 3.7, ROWH = 3.95, BAR = 1.65;
+  const { max, step } = roomForValues(rows, max0, step0);
   const X = (v: number) => TRACK + (Math.min(v, max) / max) * SPAN;
   const h = ROWS + rows.length * ROWH;
   const g: string[] = [];
   const gy0 = ROWS - 0.6, gy1 = ROWS + rows.length * ROWH - 0.15;
   for (let v = 0; v <= max + 1e-9; v += step) {
-    g.push(txt(X(v), AXIS, String(Math.round(v * 10) / 10), v === 0 ? 'start' : 'middle'));
+    g.push(txt(X(v), AXIS, String(Math.round(v * 10) / 10), tickAnchor(v, max)));
     g.push(`<line x1="${X(v).toFixed(2)}" y1="${gy0.toFixed(2)}" x2="${X(v).toFixed(2)}" y2="${gy1.toFixed(2)}" stroke="#878787" stroke-width="0.18" stroke-linecap="round" stroke-dasharray="0 0.36"/>`);
   }
   if (opts.ref) {
@@ -168,8 +187,8 @@ export function zBars(rows: BarRow[], max: number, step: number, opts: { ref?: {
     const top = ROWS + i * ROWH, end = X(r.value);
     g.push(txt(0, top, r.name));
     g.push(barOf(TRACK - 0.09, top + 0.6, Math.max(0, end - TRACK + 0.09), BAR, r.fill));
-    // past the fold's margin the value goes inside the bar's end, haloed
-    const inside = end + 1 + labelW(r.label) > W + 11;
+    // the value after its bar, inside the column; only one too long to fit there at all goes inside the bar's end, haloed
+    const inside = end + 1 + labelW(r.label) > W + 0.01;
     g.push(txt(inside ? end - 1 : end + 1.0, top, r.label, inside ? 'end' : 'start').replace('<text ', '<text stroke="#ffffff" stroke-width="0.7" stroke-linejoin="round" paint-order="stroke" '));
   });
   if (opts.ref) {
@@ -228,12 +247,13 @@ export const Z_TRACK = TRACK;
 /** Spans on a time axis: a document from the year it began to the year it ends (or the axis' end, open), a dashed line at today. */
 export function zSpans(rows: { name: string; from: number; to?: number; fill: Fill }[], y0: number, y1: number, now?: number): string {
   const AXIS = 6.3, ROWS = AXIS + 3.7, ROWH = 3.95, BAR = 1.65;
-  const X = (y: number) => TRACK + ((Math.max(y0, Math.min(y1, y)) - y0) / (y1 - y0)) * SPAN;
+  // the open end's arrow (1.5 mm) stays inside the column
+  const X = (y: number) => TRACK + ((Math.max(y0, Math.min(y1, y)) - y0) / (y1 - y0)) * (SPAN - 1.6);
   const g: string[] = [];
   const gy0 = ROWS - 0.6, gy1 = ROWS + rows.length * ROWH - 0.15;
   const step = y1 - y0 > 30 ? 10 : 5;
   for (let y = Math.ceil(y0 / step) * step; y <= y1; y += step) {
-    g.push(txt(X(y), AXIS, String(y), 'middle'));
+    g.push(txt(X(y), AXIS, String(y), X(y) + labelW(String(y)) / 2 > W ? 'end' : 'middle'));
     g.push(`<line x1="${X(y).toFixed(2)}" y1="${gy0.toFixed(2)}" x2="${X(y).toFixed(2)}" y2="${gy1.toFixed(2)}" stroke="#878787" stroke-width="0.18" stroke-linecap="round" stroke-dasharray="0 0.36"/>`);
   }
   rows.forEach((r, i) => {
@@ -252,13 +272,14 @@ export function zSpans(rows: { name: string; from: number; to?: number; fill: Fi
 }
 
 /** Paired bars: the place against its benchmark on each row, the place's fill above the benchmark's, a key in the axis row. */
-export function zPairs(rows: { name: string; a: number; b: number }[], max: number, step: number, keys: [string, string], fa: Fill, fb: Fill, unit = ' %'): string {
+export function zPairs(rows: { name: string; a: number; b: number }[], max0: number, step0: number, keys: [string, string], fa: Fill, fb: Fill, unit = ' %'): string {
   const AXIS = 6.3, ROWS = AXIS + 4.6, BAR = 1.5, GAP = 0.9, ROWH = 2 * BAR + GAP + 2.6;
+  const { max, step } = roomForValues(rows.flatMap((r) => [r.a, r.b]).map((v) => ({ value: v, label: fmtShort(v) })), max0, step0, unit);
   const X = (v: number) => TRACK + (Math.min(v, max) / max) * SPAN;
   const g: string[] = [];
   const gy0 = ROWS - 0.6, gy1 = ROWS + rows.length * ROWH - 2.2;
   for (let v = 0; v <= max + 1e-9; v += step) {
-    g.push(txt(X(v), AXIS, String(Math.round(v * 10) / 10), v === 0 ? 'start' : 'middle'));
+    g.push(txt(X(v), AXIS, String(Math.round(v * 10) / 10), tickAnchor(v, max)));
     g.push(`<line x1="${X(v).toFixed(2)}" y1="${gy0.toFixed(2)}" x2="${X(v).toFixed(2)}" y2="${gy1.toFixed(2)}" stroke="#878787" stroke-width="0.18" stroke-linecap="round" stroke-dasharray="0 0.36"/>`);
   }
   // the key, in the axis row of the names' column

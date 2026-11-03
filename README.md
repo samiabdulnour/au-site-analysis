@@ -1564,10 +1564,10 @@ round the site as the yield's massing draws it (`src/render/axonometric.ts`),
 the camera off the nearest street looking down 35°, every building in the
 colour of its height band as the height of buildings page keys them, windowed, dashed
 where no height is recorded; the site's own building in the site's ink, all
-keyed in a framed box in the drawing's bottom-right corner, as the movement
-map keys its places (a little block in each storeys' colour, lit as the
-drawing lights its buildings, the dashed block of no recorded height and the
-site's own); the
+keyed as every page's key is, on a white ground over the drawing's
+bottom-right corner, above the sources' second column (a little block in
+each storeys' colour, lit as the drawing lights its buildings, the dashed
+block of no recorded height and the site's own); the
 streets white kerb to kerb (the kerbs worked out from the cadastre), the
 parks green, the trees read off the aerial as crowns (`green.crowns`, 330 m
 round the site, `lib/crowns.ts`), a little traffic, people on the footpaths
@@ -1737,6 +1737,45 @@ raised only where the study finds development potential, and a strata
 scheme, a heritage item, a mature development or a site under 250 m² stands
 as it is; its last spread says how many were held, and `PLANNING_YIELD.json`
 lists each neighbour's reading.
+
+### The decks' type and alignment
+
+The site report and the yield are set to the office's template (Z. 2026-10)
+and to its designer's proof corrections of 2026-11, which every page of both
+decks keeps:
+
+- **One last line.** Every page has a last line, 284.7 mm from the sheet's top
+  (`Z_BASE`, `ATLAS_BASE` in `src/render/minimap.ts`). The sources' last
+  baseline, the key's last line of words or the foot of its last symbol
+  (whichever is lower), a right page's closing note and the foot of every
+  map's scale bar end on it. The printer (`SETTLE_BASE` in
+  `src/render/pdf.ts`) measures each as Chromium set it and moves it onto the
+  line, so it holds whatever the number of lines or the shape of a symbol.
+- **The scale bar** stands in the map name's column, 8 mm in from the fold,
+  its words under the name's, in a box as white and opaque as the name's —
+  on every right-page map of the report and every full-width plan of the
+  yield. The map's name sits centred in its box.
+- **Keys** are rows under hairlines, the symbol at the left, 6 pt caps beside
+  it; no symbol taller than its row. A key on a drawing that fills the
+  spread (built form) is set the same way on a white ground; a list keyed
+  on a map (the movement page's places) is set as the left page's charts
+  are, 6 pt and tracked, a hairline between rows.
+- **Tables** end on their last row's words, with no rule under it; symbols
+  in a row are centred on its capitals.
+- **Charts** keep every value after its bar inside the column: where one
+  would run past it, the axis runs on to the next round figure.
+- **Text** never breaks between a figure and its unit (`375 km`, `27 %`,
+  `$297 K`, `4 storeys`), inside a date (`1 Oct 2015`, `2026-11-02`) or a
+  scale (`1:10 000`) — `keepTogether()` in `src/render/slides.ts` glues them.
+- **The narrative** takes the page's colour: its chart's, or the site's where
+  the page draws the site in its ink; grey on the sources page.
+- **A spread-wide page** (streetscape, built form) sets its sources in two
+  columns, each as wide as its page's text frame (12–198 mm under the
+  title's rule, 222–408 mm on the right), both ending on the last line; the
+  printer splits the paragraph where its lines halve (`SPLIT_COLUMNS`). A
+  streetscape face's credit sits on the line under its name.
+- **Ticks and crosses** are drawn with square ends and sharp corners, without
+  a white outline.
 
 ### The capacity and opportunity site study
 

@@ -180,14 +180,33 @@ export function siteMark(b: BaseData, proj: Proj, layer: SiteLayer = 'both'): st
 /** Where the scale bar sits: a bottom corner by default, a top one when the map's marks need the bottom. */
 export type FurnitureCorner = 'left' | 'right' | 'topLeft' | 'topRight';
 
+/**
+ * The atlas's last line, mm from the A3 sheet's top (Z. 2026-11): a right page's scale bar stands on it, as the left
+ * page's sources and key end on it. The deck re-exports it as Z_BASE.
+ */
+export const ATLAS_BASE = 284.7;
+/** A right page of the atlas: the map name's white box 8 mm in from the fold, its words 2.4 mm inside that. */
+const ATLAS_PAGE_W = 210, ATLAS_IN = 8, ATLAS_PAD_X = 2.4, ATLAS_PAD_Y = 1.3;
+/** The north point's radius, beside the bar. */
+const NORTH_R = 2.6;
+
 function furnitureGeom(p: Panel, corner: FurnitureCorner) {
   const mmPerM = 1000 / p.scale;
   // the longest round length that keeps the bar under 40 mm: 10 m at 1:400, 200 m at 1:8000, 500 m at 1:16000
   const barM = [5000, 2000, 1000, 500, 250, 200, 100, 50, 25, 20, 10, 5, 2].find((m) => m * mmPerM <= 40) ?? 1;
   const barMm = barM * mmPerM;
+  const w = barMm + 4 + 2 * NORTH_R;
+  // a right page of the atlas (a full page, or the lower of two halves): every map's scale in the same place, under the
+  // map name's words and in a box as white as the name's, its foot on the page's last line
+  if (Math.abs(p.wMm - ATLAS_PAGE_W) < 1e-6) {
+    const x0 = ATLAS_IN + ATLAS_PAD_X, y0 = p.hMm - (297 - ATLAS_BASE);
+    const ground = { x0: ATLAS_IN, y0: y0 - 2 * NORTH_R - ATLAS_PAD_Y, x1: x0 + w + ATLAS_PAD_X, y1: y0 + ATLAS_PAD_Y };
+    return { barM, barMm, x0, y0, ground, box: { x0: ground.x0 - 0.5, y0: ground.y0 - 0.5, x1: ground.x1 + 0.5, y1: ground.y1 + 0.5 } };
+  }
   const x0 = corner === 'left' || corner === 'topLeft' ? 3 : p.wMm - barMm - 9.6;
   const y0 = corner === 'topLeft' || corner === 'topRight' ? 11.8 : p.hMm - 3.2;
-  return { barM, barMm, x0, y0, box: { x0: x0 - 1.2, y0: y0 - 8.6, x1: x0 - 1.2 + barMm + 9, y1: y0 + 1.8 } };
+  const ground = { x0: x0 - 1.6, y0: y0 - 2 * NORTH_R - 2.4, x1: x0 - 1.6 + w + 3.6, y1: y0 + 1.2 };
+  return { barM, barMm, x0, y0, ground, box: { x0: x0 - 1.2, y0: y0 - 8.6, x1: x0 - 1.2 + barMm + 9, y1: y0 + 1.8 } };
 }
 
 /** The panel-space box the scale bar and north arrow occupy in a corner, so a map can keep its marks out of it. */
@@ -197,7 +216,7 @@ export function furnitureBox(p: Panel, corner: FurnitureCorner = 'left'): { x0: 
 
 /** Scale bar and north arrow, bottom-left unless the map asks for another corner. */
 export function panelFurniture(p: Panel, corner: FurnitureCorner = 'left'): string {
-  const { barM, barMm, x0, y0 } = furnitureGeom(p, corner);
+  const { barM, barMm, x0, y0, ground: box } = furnitureGeom(p, corner);
   // line only, as on a drawing: the bar's first half in five alternating tenths, the rest a plain line, a tick at each end;
   // the north point a circle with one stroke from its centre to north
   const f6 = `font-size="2.117" letter-spacing="0.19" font-family="Arial, 'Liberation Sans', sans-serif" fill="#000000"`;
@@ -211,9 +230,10 @@ export function panelFurniture(p: Panel, corner: FurnitureCorner = 'left'): stri
   }
   d += `V${yb.toFixed(2)}H${(x0 + barMm).toFixed(2)}V${yt.toFixed(2)}`;
   const unit = barM >= 1000 ? `${barM / 1000} KM` : `${barM} M`;
-  const R = 2.6, cx = x0 + barMm + 4 + R, cy = y0 - R;
+  const R = NORTH_R, cx = x0 + barMm + 4 + R, cy = y0 - R;
+  // the ground under it white and opaque, as under the map's name
   return `<g>
-    <rect x="${(x0 - 1.6).toFixed(2)}" y="${(y0 - 2 * R - 2.4).toFixed(2)}" width="${(barMm + 2 * R + 7.6).toFixed(2)}" height="${(2 * R + 3.6).toFixed(2)}" fill="#ffffff" fill-opacity="0.88"/>
+    <rect x="${box.x0.toFixed(2)}" y="${box.y0.toFixed(2)}" width="${(box.x1 - box.x0).toFixed(2)}" height="${(box.y1 - box.y0).toFixed(2)}" fill="#ffffff"/>
     <path d="${d}" fill="none" stroke="#000000" stroke-width="0.18" stroke-linejoin="miter"/>
     <text x="${x0.toFixed(2)}" y="${(yt - 1.1).toFixed(2)}" ${f6}>0</text>
     <text x="${(x0 + barMm).toFixed(2)}" y="${(yt - 1.1).toFixed(2)}" text-anchor="end" ${f6}>${unit}</text>

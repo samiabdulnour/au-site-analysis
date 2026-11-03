@@ -25,7 +25,7 @@ import { INK, zFigures, zBars, niceAxis, fillShape, categoryFill, massingInks, t
 import { zoneToCategory } from './model.js';
 import { zoneFill } from './lepPalette.js';
 import { LEP_OPACITY } from './sheet.js';
-import type { LegendEntry } from './minimap.js';
+import { panelFurniture, furnitureBox, type LegendEntry } from './minimap.js';
 import { estimateKerbs, type KerbLine } from '../lib/kerbs.js';
 import type { RoadLine } from '../lib/carriageway.js';
 import type { YieldTree } from '../lib/crowns.js';
@@ -565,14 +565,22 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
   y?.tiers.forEach((t, i) => { for (const rg of t.envelope) out.push(`<path d="${path(rg)}" fill="none" stroke="${Y.envelope}" stroke-width="0.3" stroke-dasharray="${['2,1', '1.2,1.2', '3,1,0.8,1', '0.6,0.9'][i % 4]}"/>`); });
   out.push(`<path d="${path(s.ring)}" fill="none" stroke="${siteInk()}" stroke-width="0.6" stroke-dasharray="3,1.2"/>`);
 
-  // North, and a bar of round metres, first: what is written later keeps off them.
-  const nx = box.x + box.w - 7 - inset, ny = box.y + 8 + inset;
-  out.push(`<g transform="translate(${nx},${ny})"><path d="M0,-4.4 L1.6,3.6 L0,2 L-1.6,3.6 Z" fill="#1c1c1c"/><text y="-5.6" text-anchor="middle" font-size="2.8" font-weight="700">N</text></g>`);
-  taken.push([nx - 4, ny - 9, nx + 4, ny + 5]);
-  const bar = [5, 10, 20, 50, 100].find((m) => m * mm >= 18) ?? 100;
-  const bx = box.x + 2 + inset, by = box.y + box.h - 3 - inset;
-  out.push(`<path d="M${bx},${by - 1.4} V${by} H${bx + bar * mm} V${by - 1.4} M${bx + (bar * mm) / 2},${by} V${by - 0.8}" fill="none" stroke="#1c1c1c" stroke-width="0.25"/><text x="${bx}" y="${by - 2.2}" font-size="2.4">0</text><text x="${(bx + bar * mm).toFixed(2)}" y="${by - 2.2}" text-anchor="middle" font-size="2.4">${bar}m</text>`);
-  taken.push([bx - 1, by - 5, bx + bar * mm + 4, by + 1]);
+  // The scale bar and the north point, first: what is written later keeps off them. A plan as wide as the right page
+  // takes the report's, where every map of the decks has it: under the drawing's name, on the page's last line, white.
+  if (Math.abs(box.w - PAGE_W) < 1e-6 && box.x === 0) {
+    const fp = { center: { x: 0, y: 0 }, scale, wMm: box.w, hMm: box.h };
+    const fb = furnitureBox(fp);
+    out.push(`<g transform="translate(0,${box.y})">${panelFurniture(fp)}</g>`);
+    taken.push([fb.x0, box.y + fb.y0, fb.x1, box.y + fb.y1]);
+  } else {
+    const nx = box.x + box.w - 7 - inset, ny = box.y + 8 + inset;
+    out.push(`<g transform="translate(${nx},${ny})"><path d="M0,-4.4 L1.6,3.6 L0,2 L-1.6,3.6 Z" fill="#1c1c1c"/><text y="-5.6" text-anchor="middle" font-size="2.8" font-weight="700">N</text></g>`);
+    taken.push([nx - 4, ny - 9, nx + 4, ny + 5]);
+    const bar = [5, 10, 20, 50, 100].find((m) => m * mm >= 18) ?? 100;
+    const bx = box.x + 2 + inset, by = box.y + box.h - 3 - inset;
+    out.push(`<path d="M${bx},${by - 1.4} V${by} H${bx + bar * mm} V${by - 1.4} M${bx + (bar * mm) / 2},${by} V${by - 0.8}" fill="none" stroke="#1c1c1c" stroke-width="0.25"/><text x="${bx}" y="${by - 2.2}" font-size="2.4">0</text><text x="${(bx + bar * mm).toFixed(2)}" y="${by - 2.2}" text-anchor="middle" font-size="2.4">${bar}m</text>`);
+    taken.push([bx - 1, by - 5, bx + bar * mm + 4, by + 1]);
+  }
 
   // Each tier's number in the band of the envelope that is its own, keyed to
   // the schedule, drawn toward the middle of the main street frontage so the
@@ -895,8 +903,8 @@ const SCENARIO_TITLE: Record<Scenario['id'], string> = {
 function okMark(ok: boolean | null | undefined): string {
   if (ok === undefined) return '';
   const body = ok === null ? '<line x1="1" y1="2" x2="4" y2="2" stroke="#878787" stroke-width="0.45"/>'
-    : ok ? '<path d="M0.6,2.1 L1.9,3.3 L4.4,0.6" fill="none" stroke="#2f8f55" stroke-width="0.55" stroke-linecap="round" stroke-linejoin="round"/>'
-      : '<path d="M1,0.6 L4,3.4 M4,0.6 L1,3.4" stroke="#c8372d" stroke-width="0.55" stroke-linecap="round"/>';
+    : ok ? '<path d="M0.6,2.1 L1.9,3.3 L4.4,0.6" fill="none" stroke="#2f8f55" stroke-width="0.55" stroke-linecap="butt" stroke-linejoin="miter"/>'
+      : '<path d="M1,0.6 L4,3.4 M4,0.6 L1,3.4" stroke="#c8372d" stroke-width="0.55" stroke-linecap="butt"/>';
   return `<svg class="mk" viewBox="0 0 5 4" width="3.4mm" height="2.7mm" xmlns="http://www.w3.org/2000/svg">${body}</svg>`;
 }
 
@@ -1262,6 +1270,7 @@ const YIELD_CSS = `
   .slide.atlas .ytw table.yt { font-size: 1em; }
   .slide.atlas table.yt th { font-size: 0.8em; line-height: 1.4; letter-spacing: 0.09em; text-transform: uppercase; font-weight: 400; color: #878787; text-align: left; padding: 1.2mm 1.4mm 0.7mm 0; vertical-align: bottom; white-space: nowrap; }
   .slide.atlas table.yt td { line-height: 1.3; padding: 0.75mm 1.4mm 0.85mm 0; border-bottom: 0.18mm solid #878787; vertical-align: top; }
+  .slide.atlas table.yt tbody tr:last-child td { border-bottom-color: transparent; }
   .slide.atlas table.yt .r { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
   .slide.atlas table.yt th:last-child, .slide.atlas table.yt td:last-child { padding-right: 0; }
   .slide.atlas table.yt tr.tot td { font-weight: 700; }
