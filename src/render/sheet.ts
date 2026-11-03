@@ -4,6 +4,7 @@
 
 import type { Bundle } from '../pipeline.js';
 import { lonLatToMercator, ringCentroid, type Extent, type MapView } from '../lib/geo.js';
+import { siteAddressOf } from '../fetch/geocode.js';
 import { categories, catById, zoneToCategory } from './model.js';
 import { tpl, type Texture } from './template.js';
 import { zoneFill, zoneOrder } from './lepPalette.js';
@@ -1357,7 +1358,7 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     meta,
     address: bundle.address,
     generatedAt: bundle.generatedAt,
-    siteAddress: bundle.geocode.matchedAddresses[0] ?? bundle.address,
+    siteAddress: siteAddressOf(bundle.geocode.matchedAddresses) ?? bundle.address,
     scale: bundle.scale,
     rotationDeg: view.rotationDeg,
     drawingTitle: 'CONTEXT ANALYSIS',
