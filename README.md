@@ -1976,7 +1976,7 @@ answer can be copied back where its tile is unchanged.
 ```
 address
   → geocode (NSW Spatial addressing)
-  → site lot polygon (NSW cadastre)
+  → site lot polygons: every lot of each property an address names (NSW cadastre)
   → in parallel, for the sheet extent around the site:
       zoning + height-of-building + heritage   (NSW ePlanning)
       rail corridors                           (NSW cadastre)
@@ -1988,6 +1988,30 @@ address
   → compose A1 sheet (SVG/HTML in the active graphic template)
   → print to PDF (headless Chromium)
 ```
+
+### Several addresses as one site
+
+An amalgamation is typed as one address with its numbers as a range or a
+list on the one street: `91-109 Riley Street, Darlinghurst` or
+`134, 136, 136A, 138 Showground Rd, Castle Hill`. The geocoder finds each
+number however the register files it (91-93, 95-97, 99-107 and 109 for the
+first), and every drawing takes the lots of all of them as one site: one
+outline, one area, every lot in the site's description, and the yield worked
+on the whole. The sheets name the site by all its addresses in street order,
+`91-93, 95-97, 99-107, 109 RILEY STREET DARLINGHURST`.
+
+A site is the properties its addresses name, not only the lots their points
+sit on. 99-107 Riley Street is three lots under one address, its point on the
+southern one; each address's property is read from the cadastre's property
+layer and every lot inside it is taken (`fetchSiteLots()` in
+`src/fetch/nsw.ts`). A property of more than 40 lots or 5 ha, a campus or a
+corridor rather than a site, keeps only the lot under the address.
+
+Lots that still do not join, a lane or a lot no address names between them,
+are drawn about the largest piece, and the log says so with a `WARN` line.
+A range from an odd number to an odd one, or even to even, keeps to that
+side of the street, as the register does. A corner or through site whose
+lots front two streets cannot yet be typed as one address.
 
 ### Street names
 

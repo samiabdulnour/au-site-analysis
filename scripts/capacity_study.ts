@@ -33,7 +33,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { queryByExtent, queryByPoint, type GeoJSONFC } from '../src/lib/arcgis.js';
 import { lonLatToMercator, mercatorScaleFactor, mercatorToLonLat, type Extent } from '../src/lib/geo.js';
-import { geocode, parseAddress } from '../src/fetch/geocode.js';
+import { geocode, parseAddress, siteAddressOf } from '../src/fetch/geocode.js';
 import { fetchAerial } from '../src/fetch/imagery.js';
 import { fetchSiteControls, fetchSiteLots } from '../src/fetch/nsw.js';
 import { apiCouncilName, clipToExtent, fetchCouncilApplications, PORTAL_MANDATED } from '../src/fetch/da.js';
@@ -113,7 +113,7 @@ if (council) {
 await writeFile(join(out, 'da.json'), JSON.stringify({ council, near }));
 
 // what the sheet says the site is
-const matched = geo.matchedAddresses[0] ?? address;
+const matched = siteAddressOf(geo.matchedAddresses) ?? address;
 const parsed = parseAddress(matched);
 const tc = (s: string) => s.toLowerCase().replace(/\b[a-z]/g, (c) => c.toUpperCase());
 const number = matched.replace(new RegExp(`\\s+${parsed.street}.*$`), '');

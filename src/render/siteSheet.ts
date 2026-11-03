@@ -11,6 +11,7 @@ import {
 import { catById, zoneToCategory } from './model.js';
 import { zoneFill, zoneOrder } from './lepPalette.js';
 import { METRES_PER_STOREY } from '../fetch/buildings.js';
+import { siteAddressOf } from '../fetch/geocode.js';
 import { sheetHtml, esc, T, SWATCH_X, SWATCH_W, LABEL_X, MAP_W, MAP_H } from './chrome.js';
 import { tpl, withTemplate, siteTheme, PARK_GREEN, PARK_GREEN_INK, type SiteLook } from './template.js';
 import { SUN, WIND, VIEW, RAY_SUN, ARROW, EYE } from './climateSymbols.js';
@@ -1914,7 +1915,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
     meta,
     address: sb.address,
     generatedAt: sb.generatedAt,
-    siteAddress: sb.geocode.matchedAddresses[0] ?? sb.address,
+    siteAddress: siteAddressOf(sb.geocode.matchedAddresses) ?? sb.address,
     scale: sb.scale,
     rotationDeg: view.rotationDeg,
     drawingTitle: 'SITE ANALYSIS',

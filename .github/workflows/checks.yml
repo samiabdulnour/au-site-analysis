@@ -195,6 +195,12 @@ jobs:
       - name: north-align lays the site's long side horizontal
         run: npx tsx test/site-rotation.mts
 
+      # An amalgamation: a property's lots are the ones with a point inside its
+      # outline (the neighbour on its edge is not), and the site is named by
+      # every address it joins, in street order. Made-up shapes, no network.
+      - name: an amalgamated site takes every lot of its properties
+        run: npx tsx test/site-lots.mts
+
       # Slide 07b's capacity study on made-up lots: a strata scheme and its
       # size, a heritage item, public land, a building developed within twenty
       # years by the register or by its strata plan's date, a site too small to

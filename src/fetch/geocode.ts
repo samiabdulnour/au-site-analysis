@@ -153,7 +153,14 @@ export async function geocode(input: string): Promise<GeocodeResult> {
   // index applies — the unanchored form below costs ~31s against this layer.
   // One query per outstanding number rather than a single OR: an OR of two
   // prefixes makes the optimizer abandon the index (0.7s -> 49s measured).
-  for (const n of outstanding().slice(0, 8)) {
+  // A number a range found earlier already covers is not asked again: "91-107
+  // Riley St" is filed as 91-93, 95-97 and 99-107, so three numbers find all
+  // nine, and the eight a lookup may ask reach further along a long range.
+  let asked = 0;
+  for (const n of wanted) {
+    if (asked >= 8) break;
+    if (!outstanding().includes(n)) continue;
+    asked++;
     // Same selectivity rule as the type-ahead: a short bare prefix is not one.
     for (const anchor of n.length >= 3 ? [`${n}%`] : [`${n} %`, `${n}-%`]) {
       const pool = await fetchCandidates(
@@ -230,6 +237,34 @@ export async function geocode(input: string): Promise<GeocodeResult> {
     matchedAddresses: [...found.keys()],
     query: input,
   };
+}
+
+/**
+ * The site's address as a sheet names it. One address is itself. Several on
+ * one street, an amalgamation, are their numbers in street order before the
+ * street they share ("91-93, 95-97, 99-107, 109 RILEY STREET DARLINGHURST"),
+ * not whichever the register returned first; on different streets, each in
+ * full. Undefined when nothing matched.
+ */
+export function siteAddressOf(matched: string[]): string | undefined {
+  const all = [...new Set(matched.filter(Boolean))];
+  if (all.length <= 1) return all[0];
+  const split = (a: string) => {
+    const tokens = a.split(' ');
+    // The register writes a list with commas ("134, 136, 136A, 138 …"), so a
+    // number is the last of its list where no comma follows: "7 7 HILLS ROAD"
+    // is number 7 of 7 Hills Road, not numbers 7 and 7.
+    let i = 0;
+    while (i < tokens.length - 1 && /^\d+[A-Z]?(?:-\d+[A-Z]?)?,$/.test(tokens[i])) i++;
+    if (i < tokens.length - 1 && /^\d+[A-Z]?(?:-\d+[A-Z]?)?$/.test(tokens[i])) i++;
+    return { numbers: tokens.slice(0, i).map((t) => t.replace(/,$/, '')), rest: tokens.slice(i).join(' ') };
+  };
+  const parts = all.map(split);
+  const first = (p: { numbers: string[] }) => parseInt(p.numbers[0] ?? '') || 0;
+  parts.sort((a, b) => first(a) - first(b) || a.numbers.join().localeCompare(b.numbers.join()));
+  if (parts.every((p) => p.numbers.length && p.rest === parts[0].rest))
+    return `${[...new Set(parts.flatMap((p) => p.numbers))].join(', ')} ${parts[0].rest}`;
+  return all.sort((a, b) => (parseInt(a) || 0) - (parseInt(b) || 0)).join('; ');
 }
 
 /**
