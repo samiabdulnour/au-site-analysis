@@ -10,7 +10,7 @@
  */
 
 import { computeYield, storeysUnder, archetypeFor, edgeKinds, ringArea, futureHeight, withFour, existingSummary, DEFAULT_ASSUMPTIONS, PARKING_RATES, UNIT_KINDS, ADG_MINIMUM, type XY } from '../src/lib/yield.js';
-import { tierSpot, frontageMiddle, yieldStudy, scenarioRows, renderYieldDeck, type YieldBundle } from '../src/render/yieldSheet.js';
+import { tierSpot, frontageMiddle, yieldStudy, scenarioRows, yieldRows, noSchemeSentence, renderYieldDeck, type YieldBundle } from '../src/render/yieldSheet.js';
 
 const failures: string[] = [];
 const check = (name: string, ok: boolean, detail = '') => {
@@ -272,6 +272,27 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
   check('deck: fewer paths, fewer pages', deck(openB).slides.length === 4 && deck(sliver).slides.length === 3,
     `${deck(openB).slides.length}, ${deck(sliver).slides.length}`);
   check('deck: the overview names each path\'s page', /Envelope to the height<\/td>(?:.(?!<\/tr>))*>05<\/td>/.test(all.html));
+
+  // ---- no envelope mapped: a mixed use lot with neither a height of building nor a floor space ratio ----
+  // (212 Boorowa Street, Young: Hilltops LEP 2022 maps neither) — the study says so, and draws and ticks nothing.
+  const bare: YieldBundle = { ...bundle, controls: { zoneCode: 'MU1', zonePurpose: 'Mixed Use', epiName: 'Test Local Environmental Plan', heritage: [] }, existing: [] };
+  const sb = yieldStudy(bare);
+  check('no envelope: the study knows why there is no scheme', sb.noScheme === 'noHeight' && sb.base.storeys === 0 && sb.bonus === undefined && sb.max === undefined, JSON.stringify({ why: sb.noScheme, bonus: !!sb.bonus }));
+  const bareRows = scenarioRows(bare, sb);
+  check('no envelope: the controls\' path is not drawn and takes no mark', bareRows.length === 1 && bareRows[0].id === 'withinControls' && bareRows[0].ok === undefined
+    && bareRows[0].storeys === undefined && /NOT DRAWN/.test(bareRows[0].label) && /no height of building and no floor space ratio/.test(bareRows[0].note), JSON.stringify(bareRows));
+  const bareDeck = deck(bare);
+  check('no envelope: the overview and the controls, no spread of nothing', bareDeck.slides.map((sl) => sl.id).join(',') === '01_planning_yield,02_controls_and_assumptions', bareDeck.slides.map((sl) => sl.id).join(','));
+  check('no envelope: nothing reads "0 storeys" or "0 m²"', !/\b0 storeys|\b0 m²|\b0 sqm/.test(bareDeck.html));
+  check('no envelope: the narrative says why', /maps no height of building and no floor space ratio at the site/.test(bareDeck.slides[0].narrative ?? ''));
+  check('no envelope: no parking or ADG rows ticked against nothing', !yieldRows(bare, sb).some((r) => r.label === 'PARKING' || r.label === 'APARTMENT DESIGN GUIDE'));
+  check('no envelope: the overview gives the path no page', /Within the controls<\/td>(?:.(?!<\/tr>))*>—<\/td><\/tr>/.test(bareDeck.html));
+  // An RL height over ground of no known level: the height cannot be read in storeys.
+  const rlB: YieldBundle = { ...bare, controls: { ...bare.controls, maxHeightM: 52, heightUnits: 'RL', fsr: 2 } };
+  const sr = yieldStudy(rlB);
+  check('no envelope: an RL over unknown ground is said so, with the ratio\'s floor area', sr.noScheme === 'rlUnknown' && /RL 52/.test(noSchemeSentence(rlB, sr)) && /4,000 m² of floor area/.test(noSchemeSentence(rlB, sr)), noSchemeSentence(rlB, sr));
+  // The scheme the lot had keeps its spread and its tick.
+  check('no envelope: a mapped height still draws its scheme', yieldStudy(openB).noScheme === undefined && scenarioRows(openB)[0].ok === true);
 }
 
 if (failures.length) {

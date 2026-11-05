@@ -44,6 +44,7 @@ import { sunPosition, sunTimes, sunPath, civilToUtc, fmtClock } from '../lib/sol
 import { shadowHull, inHull } from '../lib/shadows.js';
 import type { ViewKind } from '../fetch/views.js';
 import { MAX_PHOTOS, type StreetPhoto } from '../fetch/photos.js';
+import type { PlacePhoto } from '../fetch/character.js';
 import { PROBE_OUT_M as SV_PROBE_OUT_M } from '../fetch/streetView.js';
 import { windLobes, sectorTotals, WIND_CLASSES_KMH, type WindRose } from '../fetch/wind.js';
 import { inRings, nearestOnRings, overlapArea, ringsGap } from '../lib/rings.js';
@@ -1056,8 +1057,9 @@ const aerialTiles = (tiles: { file: string; left: number; top: number; width: nu
   return tiles.map((tile) => `<image href="data/${tile.file}" x="${(X0 + tile.left * W - 0.02).toFixed(2)}" y="${(Y0 + tile.top * H - 0.02).toFixed(2)}" width="${(tile.width * W + 0.04).toFixed(2)}" height="${(tile.height * H + 0.04).toFixed(2)}" preserveAspectRatio="none"/>`).join('');
 };
 /** The template's photographs: two to a row, each 59 mm wide, a number on the frame and a 6 pt credit under it. */
-const zPhotos = (cells: { file?: string; svg?: string; n: number | string; caption: string; whole?: boolean }[]) =>
-  `<div class="zphoto">${cells.map((c) => `<div class="f"><div class="im">${c.svg ?? (c.file ? `<img src="data/${esc(c.file)}" alt=""${c.whole ? ' style="object-fit:contain;background:#000"' : ''}>` : '')}</div><div class="c">${esc(c.caption)}</div></div>`).join('')}</div>`;
+/** `tall` crops a portrait photograph from near its top, where a statue's head or a tower's crown stands, not its middle. */
+const zPhotos = (cells: { file?: string; svg?: string; n: number | string; caption: string; whole?: boolean; tall?: boolean }[]) =>
+  `<div class="zphoto">${cells.map((c) => `<div class="f"><div class="im">${c.svg ?? (c.file ? `<img src="data/${esc(c.file)}" alt=""${c.whole ? ' style="object-fit:contain;background:#000"' : c.tall ? ' style="object-position:50% 15%"' : ''}>` : '')}</div><div class="c">${esc(c.caption)}</div></div>`).join('')}</div>`;
 /** A frame of aerial: the tiles of a fetch drawn into the template's 59.33 × 39.5 mm photograph, an optional overlay in its millimetres. */
 const aerialFrame = (aerial: { tiles: { file: string; left: number; top: number; width: number; height: number }[] }, overlay = '', w = 59.33, h = 39.5) =>
   `<svg width="${w}mm" height="${h}mm" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg" style="display:block">${aerial.tiles.map((tile) => `<image href="data/${tile.file}" x="${(tile.left * w - 0.02).toFixed(2)}" y="${(tile.top * h - 0.02).toFixed(2)}" width="${(tile.width * w + 0.04).toFixed(2)}" height="${(tile.height * h + 0.04).toFixed(2)}" preserveAspectRatio="none"/>`).join('')}${overlay}</svg>`;
@@ -1117,19 +1119,26 @@ export function characterAtlas(b0: SlidesBundle): Slide {
     blocks.push(zBlock(`Places nearby · from the site, m`, zBars(rows, ax.max, ax.step), `${f.places.length} within ${(f.placesRadiusM / 1000).toFixed(1)} km`));
   }
   if (nViews) {
-    // from the street where Street View stands near the place, else from above
-    const svs = c.placeStreetViews ?? [];
+    // each place in its own photograph, the one its article's editors chose, where Commons holds it freely; else from
+    // the street where Street View stands near it; else from above
+    const svs = c.placeStreetViews ?? [], own = c.placePhotos ?? [];
     const monthYear = (d?: string) => (d ? new Date(`${d}-01T00:00:00Z`).toLocaleDateString('en-AU', { month: 'short', year: 'numeric', timeZone: 'UTC' }) : '');
+    const credit = (ph: PlacePhoto) => `photo ${shorten(ph.author ?? 'Wikimedia Commons', 34)}, ${ph.licence}`;
+    const kinds = new Set<string>();
     const cells = views.slice(0, nViews).map((v) => {
       const pl = f.places.find((q) => q.n === v.n);
+      const ph = own.find((q) => q.n === v.n);
       const sv = svs.find((q) => q.n === v.n);
       const where = `${v.n} ${v.title}${pl ? ` · ${fmtNum(pl.distanceM)} m ${pl.side}` : ''}`;
-      return sv ? { file: sv.file, n: v.n, caption: `${where} · Street View${sv.date ? `, ${monthYear(sv.date)}` : ''} © Google` } : { svg: aerialFrame(v.aerial), n: v.n, caption: `${where} · from above` };
+      if (ph) { kinds.add('Wikimedia Commons'); return { file: ph.file, n: v.n, caption: `${where} · ${credit(ph)}`, tall: ph.heightPx > ph.widthPx }; }
+      if (sv) { kinds.add('Google Street View'); return { file: sv.file, n: v.n, caption: `${where} · Street View${sv.date ? `, ${monthYear(sv.date)}` : ''} © Google` }; }
+      kinds.add('NSW Imagery');
+      return { svg: aerialFrame(v.aerial), n: v.n, caption: `${where} · from above` };
     });
-    const street = cells.filter((cl) => 'file' in cl && cl.file).length;
-    blocks.push(zBlock(street ? 'The places from the street' : 'The places from above', zPhotos(cells), street ? 'Google Street View' : `NSW Imagery${f.aerial?.date ? ` · ${fmtIso(f.aerial.date)}` : ''}`));
+    const head = kinds.has('Wikimedia Commons') ? 'The places' : kinds.has('Google Street View') ? 'The places from the street' : 'The places from above';
+    blocks.push(zBlock(head, zPhotos(cells), kinds.size === 1 && kinds.has('NSW Imagery') ? `NSW Imagery${f.aerial?.date ? ` · ${fmtIso(f.aerial.date)}` : ''}` : [...kinds].filter((k) => k !== 'NSW Imagery').join(' · ')));
   }
-  const sources = `Sources: Wikipedia${f.wikipedia ? `, "${f.wikipedia.title}", ${f.wikipedia.url.replace(/^https?:\/\//, '')}, text CC BY-SA 4.0,` : ''} and its geosearch for the places with articles within ${(f.placesRadiusM / 1000).toFixed(1)} km; NSW Imagery via SIX Maps for the aerial${f.aerial?.date ? `, captured ${fmtIso(f.aerial.date)}` : ''}${(c.placeStreetViews ?? []).length ? '; Google Street View Static API for the places from the street, each from the panorama nearest it, © Google' : ''}. Retrieved ${b.generatedAt.slice(0, 10)}.`;
+  const sources = `Sources: Wikipedia${f.wikipedia ? `, "${f.wikipedia.title}", ${f.wikipedia.url.replace(/^https?:\/\//, '')}, text CC BY-SA 4.0,` : ''} and its geosearch for the places with articles within ${(f.placesRadiusM / 1000).toFixed(1)} km; NSW Imagery via SIX Maps for the aerial${f.aerial?.date ? `, captured ${fmtIso(f.aerial.date)}` : ''}${(c.placePhotos ?? []).length ? '; Wikimedia Commons for the places\' own photographs, each the image Wikidata or the article gives the place, its author and licence under it' : ''}${(c.placeStreetViews ?? []).length ? `; Google Street View Static API for ${(c.placePhotos ?? []).length ? 'the others' : 'the places'} from the street, each from the panorama nearest it, © Google` : ''}. Retrieved ${b.generatedAt.slice(0, 10)}.`;
   const sub = atlasSub(b0, f.places.length ? `${f.places.length} place${f.places.length === 1 ? '' : 's'} with articles within ${(f.placesRadiusM / 1000).toFixed(1)} km` : '');
   return { id: '03_character', title: 'Character', subtitle: sub, textHtml: '', figureHtml: atlasFigure(mapSvg, `The place from above${f.aerial?.date ? ` · ${fmtIso(f.aerial.date)}` : ''}`, p, zFlow(blocks)), bleed: true, sources, accent: '#000000', legend,
     narrative: brief([f.places.length ? `${capFirst(numWord(f.places.length))} place${f.places.length === 1 ? '' : 's'} within ${(f.placesRadiusM / 1000).toFixed(1)} km ${f.places.length === 1 ? 'has an article' : 'have articles'} of ${f.places.length === 1 ? 'its' : 'their'} own; the nearest are ${listWords(f.places.slice(0, 3).map((pl) => `${pl.title} ${fmtNum(pl.distanceM)} m ${pl.side}`))}.` : '']) };
@@ -6444,34 +6453,48 @@ export function conditionAtlas(b: SlidesBundle): Slide {
   const then: string[] = [`<rect x="0" y="0" width="${pp.wMm}" height="${pp.hMm}" fill="#e6e6e6"/>`];
   for (const tl of ph.pair.then.tiles) then.push(`<image href="data/${tl.file}" x="${((tl.xmin - pe.xmin) * sx - 0.03).toFixed(2)}" y="${((pe.ymax - tl.ymax) * sy - 0.03).toFixed(2)}" width="${((tl.xmax - tl.xmin) * sx + 0.06).toFixed(2)}" height="${((tl.ymax - tl.ymin) * sy + 0.06).toFixed(2)}" preserveAspectRatio="none"/>`);
   then.push(siteMark(b.base, pproj, 'outline'));
-  const now: string[] = [`<rect x="0" y="0" width="${pp.wMm}" height="${pp.hMm}" fill="#e6e6e6"/>`];
-  if (ph.pair.now) now.push(aerialTiles(ph.pair.now.tiles, pp));
-  now.push(siteMark(b.base, pproj, 'outline'));
+  // The 1943 survey covers the Sydney region only. Where it has no tile here, today's aerial takes the whole right
+  // page at the pair's scale, drawn from the character page's wider capture where that covers it (sharper than the
+  // pair's half-page export), so no half page stands empty.
+  const hasThen = ph.pair.then.tiles.length > 0;
+  const np: Panel = hasThen ? pp : { ...pp, hMm: SLIDE_H };
+  const nproj = hasThen ? pproj : panelProjector(np);
+  const ne = panelExtent(np);
+  const wide = b.character.aerial?.extent;
+  const wideCovers = !!wide && wide.xmin <= ne.xmin && wide.xmax >= ne.xmax && wide.ymin <= ne.ymin && wide.ymax >= ne.ymax;
+  const now: string[] = [`<rect x="0" y="0" width="${np.wMm}" height="${np.hMm}" fill="#e6e6e6"/>`];
+  if (!hasThen && wideCovers) now.push(aerialTiles(b.character.aerial!.tiles, np, wide));
+  else if (ph.pair.now) now.push(aerialTiles(ph.pair.now.tiles, np, hasThen ? undefined : pe));
+  now.push(siteMark(b.base, nproj, 'outline'));
   // the frames that look at the site from its own frontages; frames from further streets do not show it
   const series = ph.series ?? [];
   const frames = series.length ? [] : f.photos.filter((cam) => cam.source === 'google' || cam.distanceM <= FRONTAGE_REACH_M);
   const coneR = 12;
   // the street end to end: a short cone each, square to the side it shows, so they sit side by side along the street
   for (const fr of series) {
-    const [x, y] = pproj(fr.lon, fr.lat);
+    const [x, y] = nproj(fr.lon, fr.lat);
     const r = 9, h2 = fr.fov / 2;
     const a0 = ((fr.heading - h2) * Math.PI) / 180, a1 = ((fr.heading + h2) * Math.PI) / 180;
     now.push(fillShape(`M${x.toFixed(2)},${y.toFixed(2)}L${(x + r * Math.sin(a0)).toFixed(2)},${(y - r * Math.cos(a0)).toFixed(2)}A${r},${r} 0 0 1 ${(x + r * Math.sin(a1)).toFixed(2)},${(y - r * Math.cos(a1)).toFixed(2)}Z`, { x0: x - r, y0: y - r, x1: x + r, y1: y + r }, { bg: '#ffffff', kind: 'vlines', ink: O.deep, step: 0.5, w: 0.18, outline: O.deep, outlineW: 0.3 }));
   }
-  for (const fr of series) { const [x, y] = pproj(fr.lon, fr.lat); now.push(aerialKey(x, y, fr.n, 1.7)); }
+  for (const fr of series) { const [x, y] = nproj(fr.lon, fr.lat); now.push(aerialKey(x, y, fr.n, 1.7)); }
   for (const cam of frames) {
-    const [x, y] = pproj(cam.lon, cam.lat);
+    const [x, y] = nproj(cam.lon, cam.lat);
     const h2 = cam.fov ? cam.fov / 2 : 22;
     const a0 = ((cam.heading - h2) * Math.PI) / 180, a1 = ((cam.heading + h2) * Math.PI) / 180;
     now.push(fillShape(`M${x.toFixed(2)},${y.toFixed(2)}L${(x + coneR * Math.sin(a0)).toFixed(2)},${(y - coneR * Math.cos(a0)).toFixed(2)}A${coneR},${coneR} 0 0 1 ${(x + coneR * Math.sin(a1)).toFixed(2)},${(y - coneR * Math.cos(a1)).toFixed(2)}Z`, { x0: x - coneR, y0: y - coneR, x1: x + coneR, y1: y + coneR }, { bg: '#ffffff', kind: 'vlines', ink: O.deep, step: 0.5, w: 0.18, outline: O.deep, outlineW: 0.3 }));
   }
-  frames.forEach((cam, i) => { const [x, y] = pproj(cam.lon, cam.lat); now.push(aerialKey(x, y, i + 1)); });
-  now.push(panelFurniture(pp, 'left'));
-  const figure = `<div class="abs" style="left:${FOLD}mm;top:0">${half('cond-then', then.join(''))}</div>
+  frames.forEach((cam, i) => { const [x, y] = nproj(cam.lon, cam.lat); now.push(aerialKey(x, y, i + 1)); });
+  now.push(panelFurniture(np, 'left'));
+  const nowName = `${img?.date ? img.date.slice(0, 4) : 'Today'} · NSW Imagery`;
+  const figure = hasThen
+    ? `<div class="abs" style="left:${FOLD}mm;top:0">${half('cond-then', then.join(''))}</div>
     <div class="abs" style="left:${FOLD}mm;top:${pp.hMm}mm">${half('cond-now', now.join(''))}</div>
     <div class="abs zrule" style="left:${FOLD}mm;top:${pp.hMm}mm;width:${pp.wMm}mm;border-top:0.35mm solid #ffffff"></div>
     <div class="abs maplabel" style="left:${FOLD + 8}mm;top:8mm">1943 · the aerial survey · 1:${fmtNum(pp.scale).replace(',', ' ')}</div>
-    <div class="abs maplabel" style="left:${FOLD + 8}mm;top:${pp.hMm + 8}mm">${img?.date ? img.date.slice(0, 4) : 'Today'} · NSW Imagery</div>`;
+    <div class="abs maplabel" style="left:${FOLD + 8}mm;top:${pp.hMm + 8}mm">${nowName}</div>`
+    : `<div class="abs" style="left:${FOLD}mm;top:0">${bleedSvg('cond-now', np, now.join(''))}</div>
+    <div class="abs maplabel" style="left:${FOLD + 8}mm;top:8mm">${nowName} · 1:${fmtNum(np.scale).replace(',', ' ')}</div>`;
 
   // eight frames: the street-level ones from the frontages first, then the site's edges from above at 7 cm, clockwise from north
   const sf = siteFacts(b);
@@ -6505,11 +6528,13 @@ export function conditionAtlas(b: SlidesBundle): Slide {
   const streetName = series[0] ? tidyName(titleCase(series[0].street)) : '';
   const blocks = series.length ? [zBlock(`${streetName}, end to end`, zPhotos(cells), 'Google Street View')] : [zBlock(frames.length ? 'Street level and from above' : 'The site from above', zPhotos(cells), `NSW Imagery${img?.resolutionCm ? ` ${img.resolutionCm} cm` : ''}${img?.date ? ` · ${fmtIso(img.date)}` : ''}`)];
   if (series.length) blocks.length = 1;
-  const sources = `Sources: ${series.length ? `Google Street View Static API, ${streetName} in ${series.length} frames about ${Math.round(Math.abs(series[series.length - 1].alongM - series[0].alongM) / Math.max(1, series.length - 1))} m apart, © Google; ` : ''}${frames.length ? `street-level frames from ${listWords([...new Set(frames.map((cam) => cam.source === 'google' ? 'Google Street View' : 'KartaView'))])}, credited under each; ` : ''}the 1943 aerial survey from NSW Spatial Services' Historical Imagery; today's aerial NSW Imagery via SIX Maps${img?.date ? `, captured ${fmtIso(img.date)}` : ''}${img?.resolutionCm ? `, ${img.resolutionCm} cm` : ''}${frames.length < 8 ? '; where no camera stands in front of a side, that side is shown from above' : ''}. Retrieved ${b.generatedAt.slice(0, 10)}.`;
+  const sources = `Sources: ${series.length ? `Google Street View Static API, ${streetName} in ${series.length} frames about ${Math.round(Math.abs(series[series.length - 1].alongM - series[0].alongM) / Math.max(1, series.length - 1))} m apart, © Google; ` : ''}${frames.length ? `street-level frames from ${listWords([...new Set(frames.map((cam) => cam.source === 'google' ? 'Google Street View' : 'KartaView'))])}, credited under each; ` : ''}${hasThen ? 'the 1943 aerial survey from NSW Spatial Services\' Historical Imagery; ' : ''}today's aerial NSW Imagery via SIX Maps${img?.date ? `, captured ${fmtIso(img.date)}` : ''}${img?.resolutionCm ? `, ${img.resolutionCm} cm` : ''}${frames.length < 8 ? '; where no camera stands in front of a side, that side is shown from above' : ''}. Retrieved ${b.generatedAt.slice(0, 10)}.`;
   const sub = atlasSub(b, f.pair.then !== 'none' ? '1943 and today' : "today's aerial", series.length ? `${streetName} in ${series.length} frames` : frames.length ? `${frames.length} street-level frame${frames.length === 1 ? '' : 's'}` : 'the edges from above');
   const pe2 = panelExtent(pp), k2 = mercatorScaleFactor(mercatorToLonLat(pp.center).lat);
   const narrative = brief([
-    `The 1943 aerial survey sits over today's capture${img?.date ? ` of ${fmtIso(img.date)}` : ''}: the same ${fmtNum(Math.round((pe2.xmax - pe2.xmin) / k2))} × ${fmtNum(Math.round((pe2.ymax - pe2.ymin) / k2))} m at 1:${fmtNum(pp.scale)}, north up, for the grain of the block then and now.`,
+    hasThen
+      ? `The 1943 aerial survey sits over today's capture${img?.date ? ` of ${fmtIso(img.date)}` : ''}: the same ${fmtNum(Math.round((pe2.xmax - pe2.xmin) / k2))} × ${fmtNum(Math.round((pe2.ymax - pe2.ymin) / k2))} m at 1:${fmtNum(pp.scale)}, north up, for the grain of the block then and now.`
+      : `Today's capture${img?.date ? ` of ${fmtIso(img.date)}` : ''} shows the block at 1:${fmtNum(np.scale)}, north up; the 1943 aerial survey covers the Sydney region only, not this site.`,
     sf.buildings.onSite.length ? `Today ${sf.buildings.onSite.length === 1 ? 'one building covers' : `${sf.buildings.onSite.length} buildings cover`} ${fmtPct(sf.buildings.coveragePct)} of the lot.` : '',
     series.length ? `${capFirst(numWord(series.length))} Street View frames walk ${streetName} past the site, square to each side in turn.` : frames.length ? `${capFirst(numWord(frames.length))} street-level frame${frames.length === 1 ? ' looks' : 's look'} at the site from its frontages.` : `The frames show the site's edges from above at 1:600.`,
   ]);
@@ -7949,6 +7974,7 @@ export function sourcesFacts(b: SlidesBundle, planning: PlanningFacts) {
   const ch = b.character;
   F.push({ dataset: 'Wikipedia: the suburb\'s article and the articles placed within 1.5 km', used: '03', currency: ch.wikipedia.ok ? `"${ch.wikipedia.summary!.title}"; ${n(ch.places.items.length, 'place')} with articles within ${ch.places.radiusM / 1000} km` : `no article read${ch.wikipedia.note ? ` (${ch.wikipedia.note})` : ''}`, retrieved: retrieved(ch.fetchedAt), attribution: ATTR.wikipedia });
   F.push({ dataset: 'Wikimedia Commons: geotagged photographs within 800 m, with author and licence', used: '03', currency: ch.photos.ok ? `${n(ch.photos.candidates, 'usable photograph')}, ${n(ch.photos.items.length, 'photograph')} shown` : `did not answer${ch.photos.note ? ` (${ch.photos.note})` : ''}`, retrieved: retrieved(ch.fetchedAt), attribution: ATTR.commons });
+  if (ch.placePhotos?.length) F.push({ dataset: 'Wikimedia Commons via Wikidata: each place\'s own photograph, with author and licence', used: '03', currency: `${n(ch.placePhotos.length, 'photograph')} of the places shown: ${ch.placePhotos.map((ph) => ph.commonsTitle.replace(/^File:/, '')).join('; ')}`, retrieved: retrieved(ch.fetchedAt), attribution: ATTR.commons });
   const kv = b.photos.kartaview, mly = b.photos.mapillary;
   const kvPhotos = b.photos.photos.filter((p) => p.source === 'kartaview'), mlyPhotos = b.photos.photos.filter((p) => p.source === 'mapillary');
   // Street View dates its panoramas to the month, which prints as the month

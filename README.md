@@ -1479,9 +1479,15 @@ Plan (2026) by type — with the distance to the Sydney CBD, the nearest
 centres, stations and reserves, and the region, the former district and the
 council. Then *character*: Wikipedia's summary of the suburb
 as the seed text, the places within 1.5 km with articles of their own,
-numbered on an aerial of the planning window, and a strip of open-licence
-photographs within 800 m from Wikimedia Commons, each credited as its licence
-asks, all of which the office's own reading and photographs replace. Next to
+numbered on an aerial of the planning window, and the first eight of them
+pictured: each in its own photograph where Commons holds one freely — the
+image Wikidata gives the article's item (P18, chosen by its editors to show
+the thing), else the article's lead image — credited with its author and
+licence; else from the street where Google Street View is keyed (the nearest
+panorama, which can stand in a tunnel, a car park or a museum's hall, so it
+comes second); else from above. A photograph of a plan, a logo, a room or a
+sign is passed over, and a portrait one is cropped from near its top. All of
+it is what the office's own reading and photographs replace. Next to
 it the *streetscape*, the street seen before the plans are read:
 the site's street as two elevations across the spread, as `--type
 streetscape` draws it (both faces on the one spread, every building whole,
