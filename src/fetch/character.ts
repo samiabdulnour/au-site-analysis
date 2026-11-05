@@ -78,10 +78,23 @@ export interface CharacterData {
   placeViews?: PlaceView[];
   /** Each numbered place from the street, where Google Street View is keyed and has a panorama near it. */
   placeStreetViews?: PlaceStreetView[];
+  /**
+   * Each numbered place in its own photograph: the image Wikidata gives its article (P18), else the article's lead
+   * image, where it is on Commons under an open licence and shows the place rather than a plan, a logo or a room.
+   * Preferred to Street View, whose nearest panorama can stand in a tunnel, a car park or a museum's hall.
+   */
+  placePhotos?: PlacePhoto[];
   fetchedAt: string;
 }
 
 export interface PlaceView { n: number; title: string; lon: number; lat: number; aerial: AerialResult }
+/** A place's own photograph, from Commons, with what its licence asks to be printed beside it. */
+export interface PlacePhoto {
+  n: number; title: string; file: string;
+  /** Where the photograph was found: Wikidata's image of the article's item, or the article's lead image. */
+  source: 'wikidata' | 'article';
+  commonsTitle: string; author?: string; licence: string; licenceUrl?: string; pageUrl: string; date?: string; widthPx: number; heightPx: number;
+}
 /** The window of a place view: 150 × 100 m, the frame's 3:2. */
 const PLACE_VIEW_M = { w: 150, h: 100 };
 
@@ -130,6 +143,16 @@ async function wikiJson<T>(url: string, label: string, attempts = 4): Promise<T>
   return (await res.json()) as T;
 }
 
+/**
+ * The Commons file an image URL serves, by its name ("Averybuilding.jpg"), or nothing for a file hosted on Wikipedia
+ * alone (fair use, not free). The URL's query string (Wikipedia adds tracking parameters) and a thumbnail's size are
+ * no part of the name.
+ */
+export function commonsFileOf(url?: string): string | undefined {
+  const m = url?.match(/\/wikipedia\/commons\/(?:thumb\/)?[0-9a-f]\/[0-9a-f]{2}\/([^/?#]+)/);
+  return m ? decodeURIComponent(m[1]).replace(/_/g, ' ') : undefined;
+}
+
 const titleCaseWords = (s: string) => s.toLowerCase().replace(/\b[a-z]/g, (c) => c.toUpperCase());
 
 // ---- Wikipedia ---------------------------------------------------------------------
@@ -146,9 +169,8 @@ async function wikipediaSummary(suburb: string): Promise<WikiSummary | null> {
     if (j.type === 'disambiguation' || !j.extract) continue;
     // the bare name must at least be about a place in New South Wales, not a namesake elsewhere
     if (!/New South Wales|Sydney/i.test(`${j.description ?? ''} ${j.extract}`)) continue;
-    const src = j.originalimage?.source;
-    const m = src?.match(/\/commons\/(?:thumb\/)?[0-9a-f]\/[0-9a-f]{2}\/([^/]+)/);
-    return { title: j.title ?? title, description: j.description, extract: j.extract, url: j.content_urls?.desktop?.page ?? `https://en.wikipedia.org/wiki/${encodeURIComponent(title.replace(/ /g, '_'))}`, imageTitle: m ? `File:${decodeURIComponent(m[1]).replace(/_/g, ' ')}` : undefined };
+    const file = commonsFileOf(j.originalimage?.source);
+    return { title: j.title ?? title, description: j.description, extract: j.extract, url: j.content_urls?.desktop?.page ?? `https://en.wikipedia.org/wiki/${encodeURIComponent(title.replace(/ /g, '_'))}`, imageTitle: file ? `File:${file}` : undefined };
   }
   return null;
 }
@@ -255,6 +277,87 @@ async function saveThumb(url: string, file: string, outDir: string): Promise<boo
   } catch { return false; }
 }
 
+// ---- the places' own photographs ----------------------------------------------------------
+
+const WIKIDATA_API = 'https://www.wikidata.org/w/api.php';
+/** What a place's photograph must not be: a plan, a map, a logo or a crest, a portrait, a room, a sign. */
+const NOT_A_VIEW = /\b(logo|map|plan|diagram|coat of arms|crest|emblem|seal|flag|portrait|screenshot|poster|signature|interior|inside|foyer|lobby|plaque|sign|signage|drawing|engraving|painting|postcard)\b/i;
+
+interface WikidataEntities { entities?: Record<string, { sitelinks?: { enwiki?: { title: string } }; claims?: { P18?: { rank?: string; mainsnak?: { datavalue?: { value?: string } } }[] } }> }
+
+/**
+ * Each place's own photograph, as `place_photo_<n>.jpg`: Wikidata's image of the article's item (P18, chosen by its
+ * editors to show the thing), else the article's lead image where it is a Commons file; kept where Commons holds it
+ * under an open licence, large enough to print, and it shows the place — not a plan, a logo or a room. The listing
+ * is kept a month; a source that refuses leaves its places to the next one.
+ */
+export async function fetchPlacePhotos(places: { n: number; title: string }[], outDir: string, cacheKey: string, log: (m: string) => void = () => {}): Promise<PlacePhoto[]> {
+  if (!places.length) return [];
+  type Found = { n: number; title: string; file: string; source: PlacePhoto['source']; info: ImageInfo };
+  // a listing some source refused (Wikimedia limits shared addresses) serves this run but is not kept, so the next
+  // run asks again rather than going a month without the photographs it missed
+  let refused = false, partial: Found[] | null = null;
+  const found = await cachedJson<Found[]>('wikipedia', `${cacheKey}_placephotos`, 30 * DAY_MS, async () => {
+    const res = await lookup();
+    if (refused) { partial = res; throw new Error('partial listing'); }
+    return res;
+  }).catch((e: Error) => { if (partial) return partial; throw e; });
+  async function lookup(): Promise<Found[]> {
+    const files = new Map<number, { file: string; source: PlacePhoto['source'] }>();
+    // Wikidata's image, the preferred claim first, for every article at once
+    try {
+      const wd = await wikiJson<WikidataEntities>(`${WIKIDATA_API}?${new URLSearchParams({ action: 'wbgetentities', sites: 'enwiki', titles: places.map((p) => p.title).join('|'), props: 'claims|sitelinks', sitefilter: 'enwiki', format: 'json' })}`, 'Wikidata images', 3);
+      for (const e of Object.values(wd.entities ?? {})) {
+        const pl = places.find((p) => p.title === e.sitelinks?.enwiki?.title);
+        const claims = (e.claims?.P18 ?? []).filter((c) => c.rank !== 'deprecated' && c.mainsnak?.datavalue?.value);
+        const best = claims.find((c) => c.rank === 'preferred') ?? claims[0];
+        if (pl && best) files.set(pl.n, { file: best.mainsnak!.datavalue!.value!, source: 'wikidata' });
+      }
+    } catch (e: any) { refused = true; log(`  WARN Wikidata images: ${e?.message ?? e}`); }
+    // the article's lead image for the rest, where Wikipedia shows one from Commons
+    for (const pl of places.filter((p) => !files.has(p.n))) {
+      try {
+        const j = await wikiJson<RestSummary>(`${WP_REST}/page/summary/${encodeURIComponent(pl.title.replace(/ /g, '_'))}`, 'Wikipedia summary', 2);
+        const file = commonsFileOf(j.originalimage?.source);
+        if (file) files.set(pl.n, { file, source: 'article' });
+      } catch (e: any) { if (!/HTTP 404/.test(String(e?.message))) refused = true; /* left to Street View */ }
+    }
+    if (!files.size) return [];
+    const titles = [...new Set([...files.values()].map((f) => `File:${f.file}`))];
+    const info = await wikiJson<CommonsPages>(`${COMMONS_API}?${new URLSearchParams({ action: 'query', prop: 'imageinfo', iiprop: 'url|extmetadata|size|mime', iiurlwidth: '1280', iiextmetadatafilter: 'Artist|LicenseShortName|LicenseUrl|ImageDescription|DateTimeOriginal|ObjectName', titles: titles.join('|'), format: 'json' })}`, 'Commons imageinfo', 3);
+    const byFile = new Map<string, ImageInfo>();
+    for (const pg of Object.values(info.query?.pages ?? {})) if (pg.imageinfo?.[0]) byFile.set(pg.title.replace(/^File:/, '').replace(/_/g, ' '), pg.imageinfo[0]);
+    const out: Found[] = [];
+    for (const pl of places) {
+      const f = files.get(pl.n);
+      const ii = f ? byFile.get(f.file.replace(/_/g, ' ')) : undefined;
+      if (!f || !ii) continue;
+      out.push({ n: pl.n, title: pl.title, file: f.file, source: f.source, info: ii });
+    }
+    return out;
+  }
+  const photos: PlacePhoto[] = [];
+  for (const c of found) {
+    const ii = c.info, meta = ii.extmetadata ?? {};
+    const licence = stripHtml(meta.LicenseShortName?.value ?? '');
+    const text = `${c.file} ${stripHtml(meta.ImageDescription?.value ?? '')} ${stripHtml(meta.ObjectName?.value ?? '')}`;
+    if (!ii.thumburl || !/^image\/(jpeg|png)$/.test(ii.mime ?? '')) continue;
+    if ((ii.width ?? 0) < 640 || (ii.height ?? 0) < 400) { log(`  place photo ${c.title}: too small to print`); continue; }
+    if (!licence || !OPEN_LICENCE.test(licence)) { log(`  place photo ${c.title}: not under an open licence (${licence || 'none'})`); continue; }
+    if (NOT_A_VIEW.test(text)) { log(`  place photo ${c.title}: not a view of the place`); continue; }
+    const file = `place_photo_${c.n}.jpg`;
+    if (!(await saveThumb(ii.thumburl, file, outDir))) { log(`  WARN place photo ${c.title} did not download`); continue; }
+    photos.push({
+      n: c.n, title: c.title, file, source: c.source, commonsTitle: `File:${c.file}`,
+      author: stripHtml(meta.Artist?.value ?? '') || undefined, licence, licenceUrl: meta.LicenseUrl?.value || undefined,
+      pageUrl: `https://commons.wikimedia.org/wiki/${encodeURIComponent(`File:${c.file}`.replace(/ /g, '_'))}`,
+      date: stripHtml(meta.DateTimeOriginal?.value ?? '').match(/\d{4}(-\d{2}(-\d{2})?)?/)?.[0],
+      widthPx: ii.thumbwidth ?? ii.width ?? 0, heightPx: ii.thumbheight ?? ii.height ?? 0,
+    });
+  }
+  return photos;
+}
+
 // ---- the whole ------------------------------------------------------------------------
 
 /** Wikipedia's account of the suburb and its places, Commons' photographs saved as `commons_<n>.jpg`, and the aerial over `aerialExtent` saved with the `context` prefix. */
@@ -294,9 +397,12 @@ export async function fetchCharacter(opts: { centre: LonLat; suburb: string; aer
   const aerial = await aerialP;
   const places = placesRes.items.filter((pl) => looksLikePlace(pl.title, pl.description)).slice(0, MAX_PLACES);
   const placeViews = await fetchPlaceViews(places, outDir, 8, log);
+  const numbered = places.slice(0, 8).map((pl, i) => ({ n: i + 1, title: pl.title, lon: pl.lon, lat: pl.lat }));
+  // each place in its own photograph where Commons has one; Street View for the rest, where it is keyed
+  const placePhotos = await fetchPlacePhotos(numbered, outDir, key, log).catch((e: Error) => { log(`  WARN place photographs failed: ${e.message}`); return [] as PlacePhoto[]; });
   const gkey = process.env.GOOGLE_MAPS_API_KEY?.trim();
-  const placeStreetViews = gkey ? await fetchPlaceStreetViews(places.slice(0, 8).map((pl, i) => ({ n: i + 1, title: pl.title, lon: pl.lon, lat: pl.lat })), outDir, gkey, process.env.GOOGLE_MAPS_SIGNING_SECRET?.trim() || undefined, log, opts.buildings ?? []) : [];
-  log(`  character: wikipedia ${wiki.summary ? `"${wiki.summary.title}"` : `none (${wiki.note ?? 'no article'})`}; places ${placesRes.note ? `failed (${placesRes.note})` : `${placesRes.items.length} within ${PLACES_RADIUS_M} m`}; commons ${photosRes.note ? `failed (${photosRes.note})` : `${photosRes.candidates} usable, ${photos.length} saved`}; aerial ${aerial ? 'yes' : 'no'}; ${Math.round((Date.now() - t0) / 1000)} s`);
+  const placeStreetViews = gkey ? await fetchPlaceStreetViews(numbered.filter((pl) => !placePhotos.some((ph) => ph.n === pl.n)), outDir, gkey, process.env.GOOGLE_MAPS_SIGNING_SECRET?.trim() || undefined, log, opts.buildings ?? []) : [];
+  log(`  character: wikipedia ${wiki.summary ? `"${wiki.summary.title}"` : `none (${wiki.note ?? 'no article'})`}; places ${placesRes.note ? `failed (${placesRes.note})` : `${placesRes.items.length} within ${PLACES_RADIUS_M} m`}; commons ${photosRes.note ? `failed (${photosRes.note})` : `${photosRes.candidates} usable, ${photos.length} saved`}; places' own photographs ${placePhotos.length} of ${numbered.length}; aerial ${aerial ? 'yes' : 'no'}; ${Math.round((Date.now() - t0) / 1000)} s`);
   return {
     wikipedia: { ok: wiki.summary !== null, summary: wiki.summary, note: wiki.note },
     places: { ok: !placesRes.note, radiusM: PLACES_RADIUS_M, items: places, note: placesRes.note },
@@ -304,6 +410,7 @@ export async function fetchCharacter(opts: { centre: LonLat; suburb: string; aer
     aerial,
     placeViews,
     placeStreetViews,
+    placePhotos,
     fetchedAt: new Date().toISOString(),
   };
 }
