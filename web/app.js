@@ -2,7 +2,9 @@
    State lives in one object; the options are plain buttons that write into it,
    which avoids native <select> chrome in a page that is otherwise all text. */
 
-const state = { sheet: 'context', scale: '3000', rotate: 'north', template: 'flamingo' };
+// The report, first in the table, is the drawing the page opens on. It has no
+// scale ('0', as picking it sets); picking context brings 1:3000 back.
+const state = { sheet: 'slides', scale: '0', rotate: 'north', template: 'flamingo' };
 
 // [value, label, caption] — the caption is that option's words in the
 // sentence that describes the expected result to a screen reader.
