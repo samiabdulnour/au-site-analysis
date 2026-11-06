@@ -1182,38 +1182,39 @@ function fail(msg) {
   syncOut();
 }
 
-// ---- the sun over a busy GENERATE ------------------------------------------
+// ---- the sun while a drawing is made ---------------------------------------
 
 /* GENERATE is disabled while a drawing is made, and the system's wait cursor
-   (macOS's spinning ball) sat over it. A cursor cannot be animated, so over
-   the busy button the system's is hidden and a sun in the page's yellow turns
-   at the pointer instead. Only where there is a mouse to follow: on a touch
-   screen, or without this script, the wait cursor stays as it was. */
+   (macOS's spinning ball) sat over it. A cursor cannot be animated, so while a
+   drawing is made the system's is hidden over the whole page, not just over
+   GENERATE, and a sun turns at the pointer instead: wherever the pointer goes,
+   it says the drawing is still coming. The sun is the one the Flamingo sheets
+   draw at each sunrise and sunset, eight tapered rays round a disc, in its
+   amber. Only where there is a mouse to follow: on a touch screen, or without
+   this script, the wait cursor stays over GENERATE as it was. */
+
+/* SUN in src/render/climateSymbols.ts, copied: the page cannot import the
+   renderer. Centred on 0,0, its rays reaching a radius of 1. */
+const FLAMINGO_SUN = 'M0.226,1.000L-0.193,1.000L-0.096,0.463L0.096,0.463L0.226,1.000M-0.567,0.847L-0.867,0.548L-0.395,0.259L-0.259,0.395L-0.567,0.847M0.571,0.844L0.259,0.395L0.395,0.259L0.867,0.548L0.571,0.844M0.002,0.301C-0.015,0.301 -0.031,0.300 -0.048,0.297C-0.174,0.277 -0.277,0.174 -0.297,0.048C-0.326,-0.140 -0.184,-0.301 0.002,-0.301C0.005,-0.301 0.009,-0.301 0.012,-0.301C0.166,-0.295 0.295,-0.166 0.301,-0.012C0.306,0.162 0.171,0.301 0.002,0.301M1.000,0.197L0.463,0.096L0.463,-0.096L1.000,-0.226L1.000,0.197M-1.000,0.197L-1.000,-0.226L-0.463,-0.096L-0.463,0.096L-1.000,0.197M0.395,-0.259L0.259,-0.395L0.548,-0.867L0.847,-0.567L0.395,-0.259M-0.395,-0.259L-0.844,-0.571L-0.548,-0.867L-0.259,-0.395L-0.395,-0.259M0.096,-0.463L-0.096,-0.463L-0.193,-1.000L0.226,-1.000ZM0.096,-0.463';
+
 const sunCursor = document.createElement('div');
 sunCursor.id = 'sunCursor';
 sunCursor.setAttribute('aria-hidden', 'true');
-{
-  const rays = Array.from({ length: 8 }, (_, i) => {
-    const a = (i * Math.PI) / 4, c = Math.cos(a), s = Math.sin(a);
-    return `M${(16 + 9.5 * c).toFixed(2)} ${(16 + 9.5 * s).toFixed(2)}L${(16 + 13.5 * c).toFixed(2)} ${(16 + 13.5 * s).toFixed(2)}`;
-  }).join('');
-  sunCursor.innerHTML = `<svg viewBox="0 0 32 32"><path class="edge" d="${rays}"/>` +
-    `<path class="ray" d="${rays}"/><circle class="disc" cx="16" cy="16" r="6.2"/></svg>`;
-}
+sunCursor.innerHTML = `<svg viewBox="-1.05 -1.05 2.1 2.1"><path d="${FLAMINGO_SUN}"/></svg>`;
 let pointerAt = null;
 
-/** The sun shows at the pointer while it is over GENERATE and GENERATE is busy. */
+/** The sun shows at the pointer, and the system's cursor goes, while a drawing
+    is made and the pointer is on the page. */
 function placeSun() {
-  const r = go.getBoundingClientRect();
   const p = pointerAt;
-  const over = go.disabled && p && p.x >= r.left && p.x <= r.right && p.y >= r.top && p.y <= r.bottom;
-  sunCursor.classList.toggle('on', Boolean(over));
-  if (over) sunCursor.style.transform = `translate(${p.x}px, ${p.y}px)`;
+  const on = go.disabled && !go.hidden && Boolean(p);
+  sunCursor.classList.toggle('on', on);
+  document.documentElement.classList.toggle('sunbusy', on);
+  if (on) sunCursor.style.transform = `translate(${p.x}px, ${p.y}px)`;
 }
 
 if (matchMedia('(hover: hover) and (pointer: fine)').matches) {
   document.body.append(sunCursor);
-  go.classList.add('sun');
   const track = (e) => { pointerAt = { x: e.clientX, y: e.clientY }; };
   document.addEventListener('pointermove', (e) => {
     track(e);
@@ -1221,11 +1222,10 @@ if (matchMedia('(hover: hover) and (pointer: fine)').matches) {
   }, { passive: true });
   document.addEventListener('pointerdown', track, { passive: true });
   document.documentElement.addEventListener('mouseleave', () => { pointerAt = null; placeSun(); });
-  addEventListener('scroll', placeSun, { passive: true });
-  // Pressed with the pointer resting on it, the button goes busy with no move
-  // to report: the sun is placed the moment it is disabled, and taken away the
+  // Pressed with the pointer resting on it, GENERATE goes busy with no move to
+  // report: the sun is placed the moment it is disabled, and taken away the
   // moment it is not.
-  new MutationObserver(placeSun).observe(go, { attributes: true, attributeFilter: ['disabled'] });
+  new MutationObserver(placeSun).observe(go, { attributes: true, attributeFilter: ['disabled', 'hidden'] });
 }
 
 renderAll();
