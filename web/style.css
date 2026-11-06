@@ -264,15 +264,17 @@ a { color: inherit; }
 html.sunbusy, html.sunbusy * { cursor: none !important; }
 
 /* The sun at the pointer while a drawing is made: Flamingo's sun, eight
-   tapered rays round a disc, filled and outlined in the amber the sheets draw
-   it in, centred on the pointer and turning slowly. A cursor itself cannot be
+   tapered rays round a disc, in the page's yellow with the hairline every
+   yellow box has (without it the yellow is lost on the white, and on
+   GENERATE's yellow fill), centred on the pointer and turning slowly. A cursor itself cannot be
    animated, so this is an element that follows. */
 #sunCursor { position: fixed; left: 0; top: 0; z-index: 1000; width: 30px; height: 30px;
              margin: -15px 0 0 -15px; pointer-events: none; display: none; }
 #sunCursor.on { display: block; }
 #sunCursor svg { display: block; width: 100%; height: 100%; overflow: visible;
                  animation: spin 2.4s linear infinite; }
-#sunCursor path { fill: #d48f00; stroke: #d48f00; stroke-width: .03; stroke-linejoin: round; }
+#sunCursor path { fill: var(--hi); stroke: var(--ink); stroke-width: 1px; stroke-linejoin: round;
+                  vector-effect: non-scaling-stroke; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { #sunCursor svg { animation: none; } }
 

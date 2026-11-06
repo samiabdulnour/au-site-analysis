@@ -1189,8 +1189,8 @@ function fail(msg) {
    drawing is made the system's is hidden over the whole page, not just over
    GENERATE, and a sun turns at the pointer instead: wherever the pointer goes,
    it says the drawing is still coming. The sun is the one the Flamingo sheets
-   draw at each sunrise and sunset, eight tapered rays round a disc, in its
-   amber. Only where there is a mouse to follow: on a touch screen, or without
+   draw at each sunrise and sunset, eight tapered rays round a disc, in the
+   page's yellow. Only where there is a mouse to follow: on a touch screen, or without
    this script, the wait cursor stays over GENERATE as it was. */
 
 /* SUN in src/render/climateSymbols.ts, copied: the page cannot import the

@@ -64,7 +64,8 @@ at first and ever more slowly, and only reaches the end when the server says
 done; what the pipeline is fetching stays in the server's log, not the page. Where
 there is a mouse, the pointer is a turning sun the whole time, over the button
 and anywhere else on the page: Flamingo's sun, eight tapered rays round a disc
-in its amber, as the site sheets draw it at sunrise and sunset.
+as the site sheets draw it at sunrise and sunset, in the page's yellow with a
+black hairline.
 Once done, the page shows the drawing itself as a picture about 1200 px wide
 (`preview.jpg`, taken in the same Chromium session that prints the PDF: a few
 hundred kilobytes against an A1 PDF's several megabytes) with the downloads
