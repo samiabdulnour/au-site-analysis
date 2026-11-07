@@ -2,16 +2,20 @@
    State lives in one object; the options are plain buttons that write into it,
    which avoids native <select> chrome in a page that is otherwise all text. */
 
-const state = { sheet: 'context', scale: '3000', rotate: 'north', template: 'flamingo' };
+// The report, first in the table, is the drawing the page opens on. It has no
+// scale ('0', as picking it sets); picking context brings 1:3000 back.
+const state = { sheet: 'slides', scale: '0', rotate: 'north', template: 'flamingo' };
 
 // [value, label, caption] — the caption is that option's words in the
 // sentence that describes the expected result to a screen reader.
-// The yield took the summary's place; the deck is offered as the site report.
+// The yield took the summary's place; the deck is offered as the site report,
+// its button just REPORT. Two to a row, so the report and the yield head the
+// table and the two maps sit under them.
 const SHEETS = [
-  ['context', 'context',     'Context analysis on A1'],
-  ['site',    'site',        'Site analysis on A1'],
-  ['yield',   'yield',       'Planning yield on A3, a page a path, shown in turn: the controls, the massing, the floor area, apartments and parking'],
-  ['slides',  'site report', 'Site report on A3, its pages shown in turn'],
+  ['slides',  'report',  'Site report on A3, its pages shown in turn'],
+  ['yield',   'yield',   'Planning yield on A3, a page a path, shown in turn: the controls, the massing, the floor area, apartments and parking'],
+  ['context', 'context', 'Context analysis on A1'],
+  ['site',    'site',    'Site analysis on A1'],
 ];
 const SCALES = {
   context: [
