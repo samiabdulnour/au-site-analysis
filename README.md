@@ -1234,7 +1234,9 @@ is drawn, so no page can hatch a chart), since the patterns do not read at
 a bar's size — the height limits in the accent, the site's solid and the
 rest lighter; the controls page in black alone, what the plan allows
 deepest, what stands lighter, the neighbourhood lightest; the plans' time
-line one ink at four tones. The winter shadows are in the
+line one ink at four tones. The deck's type is Arial in every style, on
+its maps and diagrams as on its pages (`MAP_FONT`), whatever face the
+style's own sheets are set in: the style is in the colour, not the face. The winter shadows are in the
 transit family's blue, deepened, which differs by style. The marks of the development page carry
 pictograms, a tick, an hourglass, the scales' beam, a cross, and a star for
 a State significant application, so a status reads without the key. The
@@ -1498,7 +1500,8 @@ site in its region at 1:100,000 — in Heron and Canary over the region's
 photograph in grey under the veil; in Flamingo and Kingfisher the land's
 shape banded every 40 m from the elevation model, hatched under its hillshade,
 with contours every 20 m traced from the model and a kilometre grid from
-the site, the national parks and reserves, the water named, the
+the site, the national parks and reserves, the sea in the water's tint and
+the harbour, the rivers and the lakes named, the
 council areas outlined and named with the site's own tinted, the motorways
 cased over the arterial roads, the railways a plain yellow line cased in
 white as the motorways are, not a track symbol, and their stations, the suburbs
@@ -1569,7 +1572,8 @@ precinct), and when none lies on the block's page it widens, as far as
 1:25 000, until the nearest two do, over the region's roads and rail, the
 sea under the land (the council areas are the land; the harbour and the bays
 are the boundary layer's unincorporated areas and the open sea the gaps
-between them) and the railways in the key. On the region maps — this one and
+between them) and the railways in the key; the site's ink made vivid and
+cased in white, so a speck at 1:25 000 is seen. On the region maps — this one and
 the location's — the railways are a plain line like the motorways', in
 yellow and cased in white, not a track symbol, with the stations as discs.
 Then *topography*: the landform
@@ -1609,10 +1613,11 @@ round the site as the yield's massing draws it (`src/render/axonometric.ts`),
 the camera off the nearest street looking down 35°, every building in the
 colour of its height band as the height of buildings page keys them, windowed, dashed
 where no height is recorded; the site's own building in the site's ink, all
-keyed as every page's key is, on a white ground over the drawing's
-bottom-right corner, above the sources' second column (a little block in
-each storeys' colour, lit as the drawing lights its buildings, the dashed
-block of no recorded height and the site's own); the
+keyed as every page's key is, in one column on a white ground padded
+alike all round, over the drawing's bottom-right corner, above the
+sources' second column (the foot's two columns aligned at their top; a
+little block in each storeys' colour, lit as the drawing lights its
+buildings, the dashed block of no recorded height and the site's own); the
 streets white kerb to kerb (the kerbs worked out from the cadastre), the
 parks green, the trees read off the aerial as crowns (`green.crowns`, 330 m
 round the site, `lib/crowns.ts`), a little traffic, people on the footpaths
