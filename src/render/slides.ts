@@ -7920,8 +7920,9 @@ export function sourcesFacts(b: SlidesBundle, planning: PlanningFacts) {
   if (!/City of Sydney/i.test(b.terrain.contourSource ?? '')) B.push({ dataset: 'Contours', used: '07', currency: b.terrain.contours.length ? `${b.terrain.contourSource ?? 'NSW contours'}${b.terrain.contourIntervalM ? `, ${b.terrain.contourIntervalM} m interval` : ''}; ${n(b.terrain.contours.length, 'line')} in the window` : 'none in the window', retrieved: deckDay, attribution: ATTR.spatial });
   const img = b.site.imagery;
   B.push({ dataset: 'NSW Imagery (aerial) and the imagery-dates layer (SIX Maps)', used: '03 · 12 · 13', currency: img ? `${titleCase(img.block)} block${img.date ? `, captured ${fmtIso(img.date)}` : ''}${img.resolutionCm ? `, ${img.resolutionCm} cm` : ''}` : b.site.aerial ? 'capture date not published for this block' : 'no aerial for this run', retrieved: retrieved(b.site.fetchedAt), attribution: ATTR.spatial });
+  // the 1943 survey covers the Sydney region only; with no tile here page 13 does not use it, so it is not listed
   const then = b.photos.pair.then;
-  B.push({ dataset: 'Historical Imagery 1943: the Sydney aerial survey as a tile service', used: '13', currency: then.tiles.length ? `1943 survey; ${n(then.tiles.length, 'tile')} at level ${then.zoom} over the pair's panel${then.missing ? `, ${n(then.missing, 'tile')} missing` : ''}` : 'no tile at this site (the survey covers the Sydney region)', retrieved: retrieved(b.photos.fetchedAt), attribution: ATTR.spatial });
+  if (then.tiles.length) B.push({ dataset: 'Historical Imagery 1943: the Sydney aerial survey as a tile service', used: '13', currency: `1943 survey; ${n(then.tiles.length, 'tile')} at level ${then.zoom} over the pair's panel${then.missing ? `, ${n(then.missing, 'tile')} missing` : ''}`, retrieved: retrieved(b.photos.fetchedAt), attribution: ATTR.spatial });
   groups.push({ publisher: 'NSW Spatial Services (Department of Customer Service) — Spatial Collaboration Portal and SIX Maps', rows: B });
 
   // Other State agencies.
