@@ -460,8 +460,14 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     // Greyscale by a saturation blend (a neutral grey drawn over the photo in
     // the 'saturation' mode, isolated to the photo), not an SVG filter: PDF
     // carries blend modes natively, whereas Chromium rasterizes a filter over
-    // the whole aerial at print time, and under memory pressure that dropped
-    // every layer drawn after it.
+    // the whole aerial at print time. On the Campsie sheet the filter made
+    // the PDF 22.6 MB rather than 3.7, its print 8.4 s rather than 2.2, and
+    // each browser printing it about a gigabyte rather than 350 MB.
+    // The layers once lost after a filtered aerial, put down to memory
+    // pressure, were more likely the race src/render/pdf.ts now waits out: a
+    // page printed before its HTML had finished parsing loses everything past
+    // where the parser had got. With that wait, eight filtered sheets printing
+    // at once came out whole 24 times in 24.
     const grey = tpl().aerialTone === 'grey';
     layers.push(`<g style="isolation:isolate"><g transform="rotate(${view.rotationDeg.toFixed(2)}, ${MAP_W / 2}, ${MAP_H / 2})">${tiles}</g>` +
       (grey ? `<rect x="0" y="0" width="${MAP_W}" height="${MAP_H}" fill="#808080" style="mix-blend-mode:saturation"/>` : '') + `</g>`);
