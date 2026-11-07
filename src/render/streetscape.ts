@@ -571,7 +571,7 @@ ${deckCss()}${W === SLIDE_W ? '' : `
   <div class="abs lead" style="left:${W - MARGIN - 150}mm;top:17.5mm;width:150mm">${esc(lead)}</div>
 ${body}
   <div class="abs src" style="left:${MARGIN}mm;bottom:12mm;width:${W - 2 * MARGIN}mm">${esc(sources)}</div>
-  <div class="abs foot" style="left:${MARGIN}mm;top:${SLIDE_H - 10}mm;width:${W - 2 * MARGIN}mm"><span>${esc(footerLeft)}</span><span>generated ${esc(b.generatedAt.slice(0, 10))}</span></div>
+  <div class="abs foot" data-print-check style="left:${MARGIN}mm;top:${SLIDE_H - 10}mm;width:${W - 2 * MARGIN}mm"><span>${esc(footerLeft)}</span><span>generated ${esc(b.generatedAt.slice(0, 10))}</span></div>
 </section>
 </body></html>`;
 }

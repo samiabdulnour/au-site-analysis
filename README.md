@@ -562,6 +562,21 @@ with, and a dead worker's slots go back when it exits.
   Chromium, so it is the number printing at once, not the number of jobs, that
   the machine has to hold.
 
+Printing side by side once cost a sheet half its drawing. A page opened on
+Playwright's `networkidle` alone was printed when no request had been in flight
+for half a second, which on a busy machine came before Chromium had finished
+parsing the sheet's HTML: about one print in a dozen, with four or eight at
+once, was a valid PDF with the map up to its zoning and a blank title block.
+Memory was not the cause; eight A1 context sheets printing together held
+under 3 GB more than the machine at rest, about 350 MB a browser. The pages now
+wait for their `load` (`src/render/pdf.ts`), and every PDF is read back
+(`src/render/printCheck.ts`): a sheet for its title block and its pictures, a
+deck for every page, each with its number and title or its footer, which the
+page draws last, and its pictures. A short print is printed once more and then
+fails the job, with the PDF moved aside, so a sheet or deck that is served is
+whole. `scripts/print-stress.ts` prints sheets side by
+side, in processes of their own, and reports what each PDF lacks.
+
 `JOB_TIMEOUT_MS` (default 20 minutes) stops a job that has hung on a service
 that never answers, so it cannot hold a worker for good. The queue position and
 the wait the page shows count rounds of the pool, and `/status` shows the
@@ -2098,13 +2113,8 @@ height of buildings page, the built form, the shadows and the sources page
 say how many heights and footprints came from the meshes, and credit Google
 and the providers the meshes name. `DECK_MESH_HEIGHTS=0` leaves the meshes
 out of the deck; `MESH_HEIGHTS_ERROR_M` sets the error the tree of tiles is
-walked down to (4 m by default); `MESH_HEIGHTS_MINUTES` (6) is how long the
-meshes may take to come and be read before the deck goes on without them.
-A fault in the reading is logged and the footprints stay as the sources gave
-them: a deck is never lost to it. One root request to the Map Tiles API a
+walked down to (4 m by default). One root request to the Map Tiles API a
 deck, as the streetscape costs, in a session of its own.
-`GOOGLE_MAPS_API_KEY=header` says a proxy in front of the process adds the
-key to the tile requests as `X-Goog-Api-Key`, and none goes in the query.
 
 ## How it works
 

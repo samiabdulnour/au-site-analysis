@@ -157,6 +157,20 @@ jobs:
       - name: dashed lines and dotted textures are cut without moving a dot
         run: npx tsx test/dashes.mts
 
+      # A sheet printed before its HTML had finished parsing came out as a
+      # valid PDF with half its map and a blank title block. The pages now
+      # wait for their load, and the PDF is read back: a sheet for its title
+      # block and pictures, a deck for every page and each page's mark. A
+      # short print is printed again, then fails the job. This prints a
+      # made-up sheet whole, cut short and without its aerial, and a
+      # three-page deck whole and cut short, in the runner's own Chrome.
+      # Nothing is fetched.
+      - name: a print that came out short is caught and never served
+        run: npx tsx test/print-check.mts
+        env:
+          CHROMIUM_PATH: /usr/bin/google-chrome
+          CHROMIUM_NO_SANDBOX: '1'
+
       # The Major Projects register is HTML, parsed: its listing cards, a
       # project page's details and point, and the council-area matching, on
       # trimmed copies of the markup. CI never calls the Planning Portal.
