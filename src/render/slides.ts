@@ -221,7 +221,7 @@ const t3Text = (x: number, y: number, text: string, anchor: 'start' | 'middle' |
 function panelSvg(inner: string, id: string, w = PANEL_W, h = PANEL_H): string {
   return `<svg width="${w}mm" height="${h}mm" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg" style="display:block">
     <defs><clipPath id="clip-${id}"><rect x="0" y="0" width="${w}" height="${h}"/></clipPath></defs>
-    <g clip-path="url(#clip-${id})" font-family="${tpl().font}">${inner}</g>
+    <g clip-path="url(#clip-${id})" font-family="${MAP_FONT}">${inner}</g>
     <rect x="0.1" y="0.1" width="${(w - 0.2).toFixed(1)}" height="${(h - 0.2).toFixed(1)}" fill="none" stroke="${tpl().rule}" stroke-width="0.2"/>
   </svg>`;
 }
@@ -779,6 +779,9 @@ export function locationSlide(b: SlidesBundle): Slide {
   } else parts.push(emptyNote(['The boundary layers did not answer for this window.']));
   // the site's council area as a patch on paper; over the toned bands its outline alone, so the bands keep their colour
   if (mine.length && look.technique === 'line') parts.push(`<path d="${mine.map((l) => ringsPath(l.rings, proj)).join('')}" fill="${O.light}" fill-opacity="0.55" fill-rule="evenodd" stroke="none"/>`);
+  // the sea: everything that is not land (the council areas; the harbour and the bays are the layer's unincorporated
+  // areas and the open sea the gaps between them), in the water's tint over the ground, so the coast reads (Z. 2026-11)
+  if (land.length) parts.push(`<path d="M0,0H${p.wMm}V${p.hMm}H0Z${land.map((l) => ringsPath(l.rings, proj)).join('')}" fill="${t.water}" fill-rule="evenodd"/>`);
   // the parks estate
   const npws = loc.npws ?? [];
   if (npws.length) {
@@ -789,10 +792,8 @@ export function locationSlide(b: SlidesBundle): Slide {
   }
   // the water; farm dams and ponds under about half a hectare are specks at this scale, so they stay off
   const drawn = loc.water.filter((w) => w.rings.reduce((a, r) => a + clippedStats(r, proj, p).area, 0) >= 0.8);
-  if (drawn.length) {
-    parts.push(`<path d="${drawn.map((w) => ringsPath(w.rings, proj)).join('')}" fill="${t.water}" fill-rule="evenodd" stroke="${WATER_INK}" stroke-width="0.12" stroke-linejoin="round"/>`);
-    legend.push({ swatch: swatchFill(t.water, WATER_INK), label: 'The harbour, the rivers, the lakes and the reservoirs, named' });
-  }
+  if (drawn.length) parts.push(`<path d="${drawn.map((w) => ringsPath(w.rings, proj)).join('')}" fill="${t.water}" fill-rule="evenodd" stroke="${WATER_INK}" stroke-width="0.12" stroke-linejoin="round"/>`);
+  if (drawn.length || land.length) legend.push({ swatch: swatchFill(t.water, WATER_INK), label: `${land.length ? 'The sea, the harbour' : 'The harbour'}, the rivers, the lakes and the reservoirs, named` });
   // the council areas: every boundary dashed and named, the site's own outlined firm over its tint
   if (land.length) {
     parts.push(`<path d="${land.map((l) => ringsPath(l.rings, proj)).join('')}" fill="none" stroke="${LOC.soft}" stroke-width="0.28" stroke-dasharray="1.8,0.9" stroke-linejoin="round"/>`);
@@ -1010,7 +1011,7 @@ export function characterSlide(b: SlidesBundle): Slide {
   parts.push(panelFurniture(p, 'right'));
   const mapSvg = `<svg width="${p.wMm}mm" height="${p.hMm}mm" viewBox="0 0 ${p.wMm} ${p.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
     <defs><clipPath id="clip-character"><rect x="0" y="0" width="${p.wMm}" height="${p.hMm}"/></clipPath></defs>
-    <g clip-path="url(#clip-character)" font-family="${t.font}">${parts.join('\n')}</g>
+    <g clip-path="url(#clip-character)" font-family="${MAP_FONT}">${parts.join('\n')}</g>
     <rect x="0.1" y="0.1" width="${p.wMm - 0.2}" height="${p.hMm - 0.2}" fill="none" stroke="${t.rule}" stroke-width="0.2"/>
   </svg>`;
 
@@ -1401,7 +1402,10 @@ export function strategicAtlas(b0: SlidesBundle, planning: PlanningFacts): Slide
   else labels.push(streetNameLayer(b.base.roads, proj, p, spacer, 'strat05'));
   const cLL = mercatorToLonLat(b0.panel.center);
   const [sx, sy] = proj(cLL.lon, cLL.lat);
-  parts.push(...labels, siteMark(b.base, proj, 'both'), ...(wide ? [`<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="4.6" fill="none" stroke="${t.site}" stroke-width="0.45"/>`] : []), panelFurniture(p, 'left'));
+  // on the wide map the site is a speck: its ink made vivid and cased in white, its ring the same (Z. 2026-11), so it is seen
+  const SITE_WIDE = vivid(t.site, 0.75, 0.45);
+  parts.push(...labels, wide ? siteMark(b.base, proj, 'both').split(t.site).join(SITE_WIDE).replace('stroke="none"', `stroke="#ffffff" stroke-width="0.6"`) : siteMark(b.base, proj, 'both'),
+    ...(wide ? [`<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="4.6" fill="none" stroke="#ffffff" stroke-width="1.1"/><circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="4.6" fill="none" stroke="${SITE_WIDE}" stroke-width="0.6"/>`] : []), panelFurniture(p, 'left'));
   const mapSvg = bleedSvg('strat05', p, parts.join('\n'));
 
   // ---- the plans on a time line: from the year each began to the year it ends, open where it runs on
@@ -2229,7 +2233,7 @@ function developmentMap(b: SlidesBundle, d: DevelopmentFacts, numbered: number, 
   parts.push(dots.join(''), diamonds.join(''), labels.join(''), siteMark(b.base, proj, 'outline'), panelFurniture(p, corner));
   return `<svg width="${p.wMm}mm" height="${p.hMm}mm" viewBox="0 0 ${p.wMm} ${p.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
     <defs><clipPath id="clip-da"><rect x="0" y="0" width="${p.wMm}" height="${p.hMm}"/></clipPath></defs>
-    <g clip-path="url(#clip-da)" font-family="${tpl().font}">${parts.join('\n')}</g>
+    <g clip-path="url(#clip-da)" font-family="${MAP_FONT}">${parts.join('\n')}</g>
     <rect x="0.1" y="0.1" width="${p.wMm - 0.2}" height="${p.hMm - 0.2}" fill="none" stroke="${tpl().rule}" stroke-width="0.2"/>
   </svg>`;
 }
@@ -2264,7 +2268,7 @@ function yearChart(d: DevelopmentFacts, wMm: number, hMm: number): string {
     parts.push(`<text x="${(x + barW / 2).toFixed(2)}" y="${(yTop - 1).toFixed(2)}" text-anchor="middle" font-size="2.1" fill="${t.ink}">${y.count}</text>`);
     parts.push(`<text x="${(x + barW / 2).toFixed(2)}" y="${(base + 3.2).toFixed(2)}" text-anchor="middle" font-size="2.1" fill="#6a7572">${y.year}</text>`);
   });
-  return `<svg width="${wMm}mm" height="${hMm}mm" viewBox="0 0 ${wMm} ${hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block" font-family="${t.font}">${parts.join('')}</svg>`;
+  return `<svg width="${wMm}mm" height="${hMm}mm" viewBox="0 0 ${wMm} ${hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block" font-family="${MAP_FONT}">${parts.join('')}</svg>`;
 }
 
 /** A circle swatch for the key, filled after the kit. */
@@ -2365,13 +2369,18 @@ const firstSentence = (text: string) => { const m = text.replace(/\s+/g, ' ').ma
  * last line; anything given over it (a key) stands over the second column, flush right. The printer splits the
  * paragraph between the columns where its lines halve (`data-split`); unprinted, the first column holds it all.
  */
+/**
+ * The deck's maps and diagrams are set in Arial, whatever face the style's own sheets use (Z. 2026-11: the grotesk
+ * of the paper styles does not belong on the report's maps); the pages are set in it already.
+ */
+const MAP_FONT = "Arial, 'Liberation Sans', 'Helvetica Neue', Helvetica, sans-serif";
+
 export const spreadFoot = (sources: string, over = '') =>
   `<div class="abs zfoot" data-settle style="left:12mm;width:396mm;bottom:${(297 - Z_BASE - 0.6).toFixed(2)}mm">${over}<div class="zfsrc" data-split><div>${esc(sources)}</div><div hidden></div></div></div>`;
-/** A key on a drawing, set as the pages' own keys are, two columns on a white ground. */
+/** A key on a drawing, set as the pages' own keys are: one column on a white ground, padded alike all round (Z. 2026-11). */
 export function zKeyBox(entries: LegendEntry[]): string {
-  const half = Math.ceil(entries.length / 2);
-  const row = (e: LegendEntry, i: number) => `<div class="zrow${i === half - 1 || i === 2 * half - 1 ? ' last' : ''}"><svg class="zsw" viewBox="0 0 5 3.6" preserveAspectRatio="xMinYMid meet" xmlns="http://www.w3.org/2000/svg">${e.swatch}</svg><span>${esc(e.label)}</span></div>`;
-  return `<div class="zkey" style="grid-template-rows:repeat(${half},auto)">${entries.map(row).join('')}</div>`;
+  const row = (e: LegendEntry, i: number) => `<div class="zrow${i === entries.length - 1 ? ' last' : ''}"><svg class="zsw" viewBox="0 0 5 3.6" preserveAspectRatio="xMinYMid meet" xmlns="http://www.w3.org/2000/svg">${e.swatch}</svg><span>${esc(e.label)}</span></div>`;
+  return `<div class="zkey">${entries.map(row).join('')}</div>`;
 }
 
 /** A full-page map's SVG: one A4 page, clipped to it. */
@@ -2513,7 +2522,7 @@ export function developmentAtlas(b0: SlidesBundle, facts: PlanningFacts): Slide 
   parts.push(...marks, ...labels, siteMark(b.base, proj, 'both'), panelFurniture(p, 'left'));
   const mapSvg = `<svg width="${p.wMm}mm" height="${p.hMm}mm" viewBox="0 0 ${p.wMm} ${p.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
     <defs><clipPath id="clip-dev"><rect x="0" y="0" width="${p.wMm}" height="${p.hMm}"/></clipPath></defs>
-    <g clip-path="url(#clip-dev)" font-family="${t.font}">${parts.join('\n')}</g></svg>`;
+    <g clip-path="url(#clip-dev)" font-family="${MAP_FONT}">${parts.join('\n')}</g></svg>`;
 
   // ---- the text page
   const figs = zFigures([
@@ -3233,7 +3242,7 @@ export function peopleSlide(b: SlidesBundle): Slide {
   const rowB = FIELD_Y, chartH = 52;
   const hist = p.erpSa2, proj = p.tzp24?.sa2 ?? [];
   const popChart = lineWithProjection({
-    w: halfW, h: chartH, font: t.font, history: hist, projection: proj,
+    w: halfW, h: chartH, font: MAP_FONT, history: hist, projection: proj,
     historyLabel: `ABS estimated resident population ${hist[0]?.year ?? ''}–${hist[hist.length - 1]?.year ?? ''}`,
     projectionLabel: proj.length ? `TZP24 projection ${proj[0].year}–${proj[proj.length - 1].year}` : '',
   });
@@ -3266,7 +3275,7 @@ export function peopleSlide(b: SlidesBundle): Slide {
   const rowC = rowB + PANEL_TITLE_H + Math.max(chartH, 70) + 3, smallH = 48;
   const qW = halfW;
   const pair = (rowsIn: { label: string; a: number; b?: number }[], labelW?: number) =>
-    pairedBars({ w: qW, h: smallH, font: t.font, rows: rowsIn, aLabel: subjectLabel, bLabel: bench ? benchName : undefined, unit: ' %', labelW });
+    pairedBars({ w: qW, h: smallH, font: MAP_FONT, rows: rowsIn, aLabel: subjectLabel, bLabel: bench ? benchName : undefined, unit: ' %', labelW });
   const charts: { title: string; svg: string }[] = [
     { title: 'Age', svg: ag ? pair(ag.map((a, i) => ({ label: a.label, a: a.share, b: bag?.[i]?.share })), 12) : '' },
     { title: 'Dwelling structure', svg: ds ? pair([
@@ -3296,7 +3305,7 @@ export function peopleSlide(b: SlidesBundle): Slide {
   const lvTitle = lv ? `Land value · ${titleCase(streetOnly(lv.address))}` : 'Land value';
   const lvNote = lv ? [lv.zone ? lv.zone.split(' - ')[0] : '', lv.stratum ? 'stratum' : '', lv.areaSqm ? `${fmtNum(lv.areaSqm)} m²` : ''].filter(Boolean).join(' · ') : 'no property at the point';
   const lvChart = lv && lv.values.length
-    ? columns({ w: lvW, h: marketH, font: t.font, values: lv.values.map((v) => ({ label: String(v.year), value: v.value, text: money(v.value) })) })
+    ? columns({ w: lvW, h: marketH, font: MAP_FONT, values: lv.values.map((v) => ({ label: String(v.year), value: v.value, text: money(v.value) })) })
     : emptyBox(lvW, marketH, 'the Valuation service has no land value for this property');
   const ss = salesSummary(p.sales);
   const statBits: string[] = [];
@@ -3453,7 +3462,7 @@ export function terrainSlide(b: SlidesBundle): Slide {
   parts.push(panelFurniture(p, 'right'));
   const mapSvg = `<svg width="${p.wMm}mm" height="${p.hMm}mm" viewBox="0 0 ${p.wMm} ${p.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
     <defs><clipPath id="clip-topo"><rect x="0" y="0" width="${p.wMm}" height="${p.hMm}"/></clipPath></defs>
-    <g clip-path="url(#clip-topo)" font-family="${t.font}">${parts.join('\n')}</g>
+    <g clip-path="url(#clip-topo)" font-family="${MAP_FONT}">${parts.join('\n')}</g>
     <rect x="0.1" y="0.1" width="${p.wMm - 0.2}" height="${p.hMm - 0.2}" fill="none" stroke="${t.rule}" stroke-width="0.2"/>
   </svg>`;
 
@@ -3471,8 +3480,8 @@ export function terrainSlide(b: SlidesBundle): Slide {
     [`<svg width="5mm" height="3.6mm" viewBox="0 0 5 3.6"><line x1="0" y1="1.8" x2="5" y2="1.8" stroke="${t.dimension}" stroke-width="0.4" stroke-dasharray="1.4,0.7"/></svg>`, 'Section lines A–A′ (down the fall) and B–B′ (across it)'],
     [`<svg width="5mm" height="3.6mm" viewBox="0 0 5 3.6"><rect x="0" y="0.3" width="5" height="3" fill="${t.water}"/></svg>`, 'Water'],
   ].map(([sw, txt]) => `<div class="lg">${sw}<span>${esc(txt)}</span></div>`).join('');
-  const secB = f.sections[1] ? sectionSvg({ w: rightW, h: 60, font: t.font, samples: f.sections[1].samples, from: 'B', to: 'B′', siteColour: t.site, waterColour: t.water }) : { svg: '', ve: 1 };
-  const secA = f.sections[0] ? sectionSvg({ w: FIELD_W, h: 96, font: t.font, samples: f.sections[0].samples, from: 'A', to: 'A′', siteColour: t.site, waterColour: t.water }) : { svg: '', ve: 1 };
+  const secB = f.sections[1] ? sectionSvg({ w: rightW, h: 60, font: MAP_FONT, samples: f.sections[1].samples, from: 'B', to: 'B′', siteColour: t.site, waterColour: t.water }) : { svg: '', ve: 1 };
+  const secA = f.sections[0] ? sectionSvg({ w: FIELD_W, h: 96, font: MAP_FONT, samples: f.sections[0].samples, from: 'A', to: 'A′', siteColour: t.site, waterColour: t.water }) : { svg: '', ve: 1 };
   const secTitle = (s: (typeof f.sections)[number], ve: number) => `Section ${s.id}–${s.id}′<span class="pnote">${bearingName((s.bearing + 180) % 360)} to ${bearingName(s.bearing)} · ${fmtNum(Math.round(s.lengthM))} m · RL ${s.rlMin.toFixed(0)} to ${s.rlMax.toFixed(0)} · vertical exaggeration ${ve % 1 ? ve.toFixed(1) : ve}×</span>`;
   const yB = FIELD_Y + PANEL_TITLE_H + 52;
   const yA = FIELD_Y + PANEL_TITLE_H + DA_PANEL_H + GUTTER;
@@ -3902,7 +3911,7 @@ export function builtFormSlide(b: SlidesBundle, planning: PlanningFacts): Slide 
   parts.push(panelFurniture(p, 'right'));
   const mapSvg = `<svg width="${p.wMm}mm" height="${p.hMm}mm" viewBox="0 0 ${p.wMm} ${p.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
     <defs><clipPath id="clip-built"><rect x="0" y="0" width="${p.wMm}" height="${p.hMm}"/></clipPath><pattern id="da-hatch" patternUnits="userSpaceOnUse" width="1" height="1" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="1" stroke="#ffffff" stroke-width="0.3"/></pattern></defs>
-    <g clip-path="url(#clip-built)" font-family="${t.font}">${parts.join('\n')}</g>
+    <g clip-path="url(#clip-built)" font-family="${MAP_FONT}">${parts.join('\n')}</g>
     <rect x="0.1" y="0.1" width="${p.wMm - 0.2}" height="${p.hMm - 0.2}" fill="none" stroke="${t.rule}" stroke-width="0.2"/>
   </svg>`;
 
@@ -3921,7 +3930,7 @@ export function builtFormSlide(b: SlidesBundle, planning: PlanningFacts): Slide 
     `<div class="lg"><svg width="5mm" height="3.6mm" viewBox="0 0 5 3.6"><rect x="0" y="0.3" width="5" height="3" fill="${NO_HEIGHT_FILL}"/></svg><span>no height known · ${fmtNum(f.bands[5].count)}</span></div>`;
   const maxSt = Math.max(1, ...f.near.storeys.map((s) => s.storeys), f.envelope?.storeys ?? 0);
   const hist = Array.from({ length: Math.min(20, maxSt) }, (_, i) => { const st = i + 1; const n = f.near.storeys.find((s) => s.storeys === st)?.count ?? 0; return { label: st === 20 ? '20+' : String(st), value: n, text: n ? String(n) : '' }; });
-  const histSvg = f.near.withHeight ? columns({ w: rightW, h: 46, font: t.font, values: hist,
+  const histSvg = f.near.withHeight ? columns({ w: rightW, h: 46, font: MAP_FONT, values: hist,
     marker: f.envelope?.storeys ? { index: Math.min(19, f.envelope.storeys - 1), label: `LEP ${f.envelope.label}`, colour: t.site } : undefined }) : emptyBox(rightW, 46, 'no building heights within 250 m');
 
   // Bottom: section A–A′ with the buildings it meets and the height plane over the site.
@@ -3957,7 +3966,7 @@ export function builtFormSlide(b: SlidesBundle, planning: PlanningFacts): Slide 
     const siteRun = samples.filter((s) => s.site);
     const envelope = f.envelope && f.envelope.topRl !== undefined && siteRun.length
       ? { d0: siteRun[0].d, d1: siteRun[siteRun.length - 1].d, top: f.envelope.topRl, label: `HOB ${f.envelope.label}` } : undefined;
-    const sec = sectionSvg({ w: FIELD_W, h: 96, font: t.font, samples, from: 'A', to: 'A′', siteColour: t.site, waterColour: t.water, blocks, envelope });
+    const sec = sectionSvg({ w: FIELD_W, h: 96, font: MAP_FONT, samples, from: 'A', to: 'A′', siteColour: t.site, waterColour: t.water, blocks, envelope });
     const yA = FIELD_Y + PANEL_TITLE_H + DA_PANEL_H + GUTTER;
     sectionHtml = `<div class="abs ptitle" style="left:${FIELD_X}mm;top:${yA}mm;width:${FIELD_W}mm">Section A–A′ with the buildings it meets<span class="pnote">${bearingName((secA.bearing + 180) % 360)} to ${bearingName(secA.bearing)} · ${fmtNum(Math.round(L))} m · heights measured or ${METRES_PER_STOREY} m a storey, dashed where the storeys are a DA's, faint and one storey where unknown · vertical exaggeration ${sec.ve % 1 ? sec.ve.toFixed(1) : sec.ve}×</span></div>
       <div class="abs" style="left:${FIELD_X}mm;top:${yA + PANEL_TITLE_H}mm">${sec.svg}</div>`;
@@ -4014,7 +4023,10 @@ function cropSection(sec: SectionLine, scale: number, widthMm = Z_W): SectionLin
 const fillScale = (lengthM: number, widthMm: number) => [500, 1000, 1250, 2000, 2500, 5000, 7500, 10000, 12500, 15000, 20000, 25000, 50000].filter((x) => (lengthM * 1000) / x >= widthMm - 1e-6).pop() ?? 500;
 
 /** Section A–A′ after the template: true scale where it reads, the ground in poché, buildings in their storey pattern, the height plane dashed. */
-function atlasSection(b: SlidesBundle, sec: SectionLine, envelope: ReturnType<typeof builtFormFacts>['envelope'], maxH: number, bf: ReturnType<typeof bandFills>): { svg: string; scale: number; ve: number; h: number } | null {
+/** What the section drawing leaves under its head: the charts' axis row. */
+const SECTION_GAP = 6.3;
+function atlasSection(b: SlidesBundle, sec: SectionLine, envelope: ReturnType<typeof builtFormFacts>['envelope'], maxH0: number, bf: ReturnType<typeof bandFills>): { svg: string; scale: number; ve: number; h: number } | null {
+  const maxH = maxH0 - SECTION_GAP;
   const samples = sec.samples;
   if (samples.length < 2) return null;
   const L = sec.lengthM;
@@ -4108,7 +4120,8 @@ function atlasSection(b: SlidesBundle, sec: SectionLine, envelope: ReturnType<ty
   const step = L > 1200 ? 200 : L > 600 ? 100 : 50;
   for (let d = step; d < L - step / 3; d += step) g.push(z6(X(d), base + 1.2, `${d} m`, 'middle'));
   h = base + 4.2;
-  return { svg: zSvg(h, g.join('')), scale, ve, h };
+  // under its head at the distance the charts keep (their axis row, Z. 2026-11), not hard against the rule
+  return { svg: zSvg(h + SECTION_GAP, `<g transform="translate(0,${SECTION_GAP})">${g.join('')}</g>`), scale, ve, h: h + SECTION_GAP };
 }
 
 /** Height of buildings on the template: the sage family, the storeys told by pattern. */
@@ -4160,7 +4173,7 @@ export function builtFormAtlas(b0: SlidesBundle, planning: PlanningFacts): Slide
   parts.push(siteMark(b.base, proj, 'both'), ...labels, panelFurniture(p, 'left'));
   const mapSvg = `<svg width="${p.wMm}mm" height="${p.hMm}mm" viewBox="0 0 ${p.wMm} ${p.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
     <defs><clipPath id="clip-built-atlas"><rect x="0" y="0" width="${p.wMm}" height="${p.hMm}"/></clipPath></defs>
-    <g clip-path="url(#clip-built-atlas)" font-family="${t.font}">${parts.join('\n')}</g></svg>`;
+    <g clip-path="url(#clip-built-atlas)" font-family="${MAP_FONT}">${parts.join('\n')}</g></svg>`;
 
   // ---- the key first, so the flow knows where it must stop
   const legend: LegendEntry[] = [
@@ -4603,7 +4616,7 @@ export function movementSlide(b: SlidesBundle): Slide {
   parts.push(siteMark(b.base, proj, 'outline'), panelFurniture(p, 'left'));
   const mapSvg = `<svg width="${p.wMm}mm" height="${p.hMm}mm" viewBox="0 0 ${p.wMm} ${p.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
     <defs><clipPath id="clip-move"><rect x="0" y="0" width="${p.wMm}" height="${p.hMm}"/></clipPath></defs>
-    <g clip-path="url(#clip-move)" font-family="${t.font}">${parts.join('\n')}</g>
+    <g clip-path="url(#clip-move)" font-family="${MAP_FONT}">${parts.join('\n')}</g>
   </svg>`;
 
   // Right: figures, legend, stations table.
@@ -5023,7 +5036,7 @@ export function greenSlide(b: SlidesBundle): Slide {
   parts.push(...facilityMarks, ...labels, siteMark(b.base, proj, 'outline'), panelFurniture(p, 'right'));
   const mapSvg = `<svg width="${p.wMm}mm" height="${p.hMm}mm" viewBox="0 0 ${p.wMm} ${p.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
     <defs><clipPath id="clip-green"><rect x="0" y="0" width="${p.wMm}" height="${p.hMm}"/></clipPath></defs>
-    <g clip-path="url(#clip-green)" font-family="${t.font}">${parts.join('\n')}</g>
+    <g clip-path="url(#clip-green)" font-family="${MAP_FONT}">${parts.join('\n')}</g>
     <rect x="0.1" y="0.1" width="${p.wMm - 0.2}" height="${p.hMm - 0.2}" fill="none" stroke="${t.rule}" stroke-width="0.2"/>
   </svg>`;
 
@@ -5093,7 +5106,7 @@ export function greenSlide(b: SlidesBundle): Slide {
   } else wparts.push(emptyNote([`The Greater Sydney tree canopy dataset does not reach this window${wideZones.length ? ': the recreation and conservation zones instead' : ''}.`]));
   const wideSvg = `<svg width="${wp.wMm}mm" height="${wp.hMm}mm" viewBox="0 0 ${wp.wMm} ${wp.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
     <defs><clipPath id="clip-canopy"><rect x="0" y="0" width="${wp.wMm}" height="${wp.hMm}"/></clipPath></defs>
-    <g clip-path="url(#clip-canopy)" font-family="${t.font}">${wparts.join('\n')}</g>
+    <g clip-path="url(#clip-canopy)" font-family="${MAP_FONT}">${wparts.join('\n')}</g>
     <rect x="0.1" y="0.1" width="${wp.wMm - 0.2}" height="${wp.hMm - 0.2}" fill="none" stroke="${t.rule}" stroke-width="0.2"/>
   </svg>`;
 
@@ -5173,7 +5186,7 @@ export function greenAtlas(b0: SlidesBundle): Slide {
   parts.push(...marks, siteMark(b.base, proj, 'both'), ...labels, panelFurniture(p, 'left'));
   const mapSvg = `<svg width="${p.wMm}mm" height="${p.hMm}mm" viewBox="0 0 ${p.wMm} ${p.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
     <defs><clipPath id="clip-green-atlas"><rect x="0" y="0" width="${p.wMm}" height="${p.hMm}"/></clipPath></defs>
-    <g clip-path="url(#clip-green-atlas)" font-family="${t.font}">${parts.join('\n')}</g></svg>`;
+    <g clip-path="url(#clip-green-atlas)" font-family="${MAP_FONT}">${parts.join('\n')}</g></svg>`;
 
   // ---- the key
   const zones = f.openSpace.zonesPresent;
@@ -5929,7 +5942,7 @@ export function siteSlide(b: SlidesBundle): Slide {
   parts.push(...labels, panelFurniture(p, 'right'));
   const mapSvg = `<svg width="${p.wMm}mm" height="${p.hMm}mm" viewBox="0 0 ${p.wMm} ${p.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
     <defs><clipPath id="clip-site"><rect x="0" y="0" width="${p.wMm}" height="${p.hMm}"/></clipPath></defs>
-    <g clip-path="url(#clip-site)" font-family="${t.font}">${parts.join('\n')}</g>
+    <g clip-path="url(#clip-site)" font-family="${MAP_FONT}">${parts.join('\n')}</g>
     <rect x="0.1" y="0.1" width="${p.wMm - 0.2}" height="${p.hMm - 0.2}" fill="none" stroke="${t.rule}" stroke-width="0.2"/>
   </svg>`;
 
@@ -5988,7 +6001,7 @@ export function siteSlide(b: SlidesBundle): Slide {
   bparts.push(siteMark(b.base, bproj, 'outline'), panelFurniture(bp, 'right'));
   const blockSvg = `<svg width="${bp.wMm}mm" height="${bp.hMm}mm" viewBox="0 0 ${bp.wMm} ${bp.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
     <defs><clipPath id="clip-block"><rect x="0" y="0" width="${bp.wMm}" height="${bp.hMm}"/></clipPath></defs>
-    <g clip-path="url(#clip-block)" font-family="${t.font}">${bparts.join('\n')}</g>
+    <g clip-path="url(#clip-block)" font-family="${MAP_FONT}">${bparts.join('\n')}</g>
     <rect x="0.1" y="0.1" width="${bp.wMm - 0.2}" height="${bp.hMm - 0.2}" fill="none" stroke="${t.rule}" stroke-width="0.2"/>
   </svg>`;
   // Bottom right: the legend and the sales table.
@@ -6385,7 +6398,7 @@ export function photosSlide(b: SlidesBundle): Slide {
   parts.push(panelFurniture(p, 'left'));
   const planSvg = `<svg width="${p.wMm}mm" height="${p.hMm}mm" viewBox="0 0 ${p.wMm} ${p.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
     <defs><clipPath id="clip-cams"><rect x="0" y="0" width="${p.wMm}" height="${p.hMm}"/></clipPath></defs>
-    <g clip-path="url(#clip-cams)" font-family="${t.font}">${parts.join('\n')}</g>
+    <g clip-path="url(#clip-cams)" font-family="${MAP_FONT}">${parts.join('\n')}</g>
     <rect x="0.1" y="0.1" width="${p.wMm - 0.2}" height="${p.hMm - 0.2}" fill="none" stroke="${t.rule}" stroke-width="0.2"/>
   </svg>`;
 
@@ -6397,7 +6410,7 @@ export function photosSlide(b: SlidesBundle): Slide {
   const tag = (text: string) => `<g><rect x="1.5" y="1.5" width="${(labelW(text, 2.6) + 1.6).toFixed(1)}" height="4.6" fill="#ffffff" fill-opacity="0.92"/><text x="2.3" y="4.9" font-size="2.6" font-weight="600" fill="${t.ink}">${esc(text)}</text></g>`;
   const pairSvg = (id: string, inner: string[]) => `<svg width="${pp.wMm}mm" height="${pp.hMm}mm" viewBox="0 0 ${pp.wMm} ${pp.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
     <defs><clipPath id="${id}"><rect x="0" y="0" width="${pp.wMm}" height="${pp.hMm}"/></clipPath></defs>
-    <g clip-path="url(#${id})" font-family="${t.font}">${inner.join('\n')}</g>
+    <g clip-path="url(#${id})" font-family="${MAP_FONT}">${inner.join('\n')}</g>
     <rect x="0.1" y="0.1" width="${pp.wMm - 0.2}" height="${pp.hMm - 0.2}" fill="none" stroke="${t.rule}" stroke-width="0.2"/>
   </svg>`;
   const thenParts: string[] = [`<rect x="0" y="0" width="${pp.wMm}" height="${pp.hMm}" fill="#e9e6df"/>`];
@@ -6892,7 +6905,7 @@ export function sunViewSlide(b: SlidesBundle): Slide {
   else if (f.near.total && !f.near.withHeight) parts.push(emptyNote([`None of the ${f.near.total} buildings within 60 m has a known height; the shadows drawn are the further buildings' only.`]));
   const shadowSvg = `<svg width="${sp.wMm}mm" height="${sp.hMm}mm" viewBox="0 0 ${sp.wMm} ${sp.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
     <defs><clipPath id="clip-shadow"><rect x="0" y="0" width="${sp.wMm}" height="${sp.hMm}"/></clipPath></defs>
-    <g clip-path="url(#clip-shadow)" font-family="${t.font}">${parts.join('\n')}</g>
+    <g clip-path="url(#clip-shadow)" font-family="${MAP_FONT}">${parts.join('\n')}</g>
     <rect x="0.1" y="0.1" width="${sp.wMm - 0.2}" height="${sp.hMm - 0.2}" fill="none" stroke="${t.rule}" stroke-width="0.2"/>
   </svg>`;
 
@@ -6953,7 +6966,7 @@ export function sunViewSlide(b: SlidesBundle): Slide {
   if (!f.views.length) vparts.push(emptyNote(['No skyline, water or park within view range, or the check did not run.']));
   const viewsSvg = `<svg width="${vp.wMm}mm" height="${vp.hMm}mm" viewBox="0 0 ${vp.wMm} ${vp.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
     <defs><clipPath id="clip-views"><rect x="0" y="0" width="${vp.wMm}" height="${vp.hMm}"/></clipPath></defs>
-    <g clip-path="url(#clip-views)" font-family="${t.font}">${vparts.join('\n')}</g>
+    <g clip-path="url(#clip-views)" font-family="${MAP_FONT}">${vparts.join('\n')}</g>
     <rect x="0.1" y="0.1" width="${vp.wMm - 0.2}" height="${vp.hMm - 0.2}" fill="none" stroke="${t.rule}" stroke-width="0.2"/>
   </svg>`;
   // The wind, bottom-aligned with the views map; the views table keeps the rows that fit above it.
@@ -6980,8 +6993,8 @@ export function sunViewSlide(b: SlidesBundle): Slide {
       `<div class="lg" style="margin-top:1.2mm"><span>Petals: the share of the hours the wind blows from each point; rings every ${Math.round(step * 100) / 100} %. Calm is under ${WIND_CLASSES_KMH[0]} km/h.</span></div>`;
     windHtml = `
     <div class="abs ptitle" style="left:${rightX}mm;top:${windTop}mm;width:${rightW}mm">Wind<span class="pnote">hourly at 10 m, ${w.years[0]}–${w.years[1]} · NASA POWER, the MERRA-2 reanalysis cell over the site · the region's wind, not the site's</span></div>
-    <div class="abs" style="left:${rightX}mm;top:${windTop + PANEL_TITLE_H}mm">${windRoseSvg(w.summer, WIND_ROSE_MM, t.font, top, step)}<div class="wcap">${esc(cap('Summer, Dec–Feb', w.summer))}</div></div>
-    <div class="abs" style="left:${rightX + WIND_ROSE_MM + GUTTER}mm;top:${windTop + PANEL_TITLE_H}mm">${windRoseSvg(w.winter, WIND_ROSE_MM, t.font, top, step)}<div class="wcap">${esc(cap('Winter, Jun–Aug', w.winter))}</div></div>
+    <div class="abs" style="left:${rightX}mm;top:${windTop + PANEL_TITLE_H}mm">${windRoseSvg(w.summer, WIND_ROSE_MM, MAP_FONT, top, step)}<div class="wcap">${esc(cap('Summer, Dec–Feb', w.summer))}</div></div>
+    <div class="abs" style="left:${rightX + WIND_ROSE_MM + GUTTER}mm;top:${windTop + PANEL_TITLE_H}mm">${windRoseSvg(w.winter, WIND_ROSE_MM, MAP_FONT, top, step)}<div class="wcap">${esc(cap('Winter, Jun–Aug', w.winter))}</div></div>
     <div class="abs legend" style="left:${legendX}mm;top:${windTop + PANEL_TITLE_H + WIND_ROSE_MM + 10.5}mm;width:${rightW}mm">${wlegend}</div>`;
   }
 
@@ -6991,9 +7004,9 @@ export function sunViewSlide(b: SlidesBundle): Slide {
     <div class="abs" style="left:${FIELD_X}mm;top:${FIELD_Y + PANEL_TITLE_H}mm">${shadowSvg}</div>
     <div class="abs tiles two" style="left:${rightX}mm;top:${FIELD_Y + PANEL_TITLE_H}mm;width:${rightW}mm">${tiles}</div>
     <div class="abs ptitle" style="left:${rightX}mm;top:${FIELD_Y + PANEL_TITLE_H + 33}mm;width:${diagW}mm">Sun path<span class="pnote">altitude and azimuth at the site</span></div>
-    <div class="abs" style="left:${rightX}mm;top:${FIELD_Y + PANEL_TITLE_H + 33 + PANEL_TITLE_H}mm">${sunPathSvg(f, centreLL.lat, centreLL.lon, diagW, t.font)}</div>
+    <div class="abs" style="left:${rightX}mm;top:${FIELD_Y + PANEL_TITLE_H + 33 + PANEL_TITLE_H}mm">${sunPathSvg(f, centreLL.lat, centreLL.lon, diagW, MAP_FONT)}</div>
     <div class="abs ptitle" style="left:${rightX + diagW + GUTTER}mm;top:${FIELD_Y + PANEL_TITLE_H + 33}mm;width:${diagW}mm">Street grid<span class="pnote">bearings of the roads in the window</span></div>
-    <div class="abs" style="left:${rightX + diagW + GUTTER}mm;top:${FIELD_Y + PANEL_TITLE_H + 33 + PANEL_TITLE_H}mm">${gridRoseSvg(f, diagW, t.font)}</div>
+    <div class="abs" style="left:${rightX + diagW + GUTTER}mm;top:${FIELD_Y + PANEL_TITLE_H + 33 + PANEL_TITLE_H}mm">${gridRoseSvg(f, diagW, MAP_FONT)}</div>
     <div class="abs legend" style="left:${rightX}mm;top:${FIELD_Y + PANEL_TITLE_H + 33 + PANEL_TITLE_H + diagW + 2}mm;width:${rightW}mm">${legend}</div>
     <div class="abs ptitle" style="left:${FIELD_X}mm;top:${yViews}mm;width:${PANEL_W}mm">Views<span class="pnote">1:${fmtNum(vp.scale)} · sight lines from the eye at the height limit; cones where the ground leaves them clear</span></div>
     <div class="abs" style="left:${FIELD_X}mm;top:${yViews + PANEL_TITLE_H}mm">${viewsSvg}</div>
@@ -7584,7 +7597,7 @@ export function ocSlide(b: SlidesBundle, planning: PlanningFacts): Slide {
   const touches = (rings: number[][][]) => { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (const r of rings) for (const [lon, lat] of r) { const [x, y] = proj(lon, lat); x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); } return x1 >= 0 && y1 >= 0 && x0 <= p.wMm && y0 <= p.hMm; };
   const frame = (inner: string[], id: string) => `<svg width="${p.wMm}mm" height="${p.hMm}mm" viewBox="0 0 ${p.wMm} ${p.hMm}" xmlns="http://www.w3.org/2000/svg" style="display:block">
     <defs><clipPath id="clip-${id}"><rect x="0" y="0" width="${p.wMm}" height="${p.hMm}"/></clipPath></defs>
-    <g clip-path="url(#clip-${id})" font-family="${t.font}">${inner.join('\n')}</g>
+    <g clip-path="url(#clip-${id})" font-family="${MAP_FONT}">${inner.join('\n')}</g>
     <rect x="0.1" y="0.1" width="${p.wMm - 0.2}" height="${p.hMm - 0.2}" fill="none" stroke="${t.rule}" stroke-width="0.2"/>
   </svg>`;
 
@@ -8630,7 +8643,7 @@ export function countrySlide(b: SlidesBundle): Slide {
   if (!c.dem && !c.vegetation.image && !c.water.courses.length) parts.push(emptyNote(['The Country layers did not answer for this run.']));
   const mapSvg = `<svg width="${wp.wMm}mm" height="${wp.hMm}mm" viewBox="0 0 ${wp.wMm} ${wp.hMm}" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="display:block">
     <defs><clipPath id="clip-country"><rect x="0" y="0" width="${wp.wMm}" height="${wp.hMm}"/></clipPath>${defs.join('')}</defs>
-    <g clip-path="url(#clip-country)" font-family="${t.font}">${parts.join('\n')}</g>
+    <g clip-path="url(#clip-country)" font-family="${MAP_FONT}">${parts.join('\n')}</g>
     <rect x="0.1" y="0.1" width="${wp.wMm - 0.2}" height="${wp.hMm - 0.2}" fill="none" stroke="${t.rule}" stroke-width="0.2"/>
   </svg>`;
   const leg = legendSvg(legend, FIELD_W, Math.min(6, Math.max(4, Math.ceil(legend.length / 2))), 2.05);
@@ -8673,7 +8686,7 @@ export function countrySlide(b: SlidesBundle): Slide {
   // the communities in the strip, in the map's colours
   const classes = f.vegetation.classes;
   const barW = 18, barX = AUX_W - barW - 9, rowH = 7.6, vegH = classes.length ? classes.length * rowH + 6 : 0;
-  const vegSvg = classes.length ? `<svg width="${AUX_W}mm" height="${vegH}mm" viewBox="0 0 ${AUX_W} ${vegH}" xmlns="http://www.w3.org/2000/svg" font-family="${t.font}">
+  const vegSvg = classes.length ? `<svg width="${AUX_W}mm" height="${vegH}mm" viewBox="0 0 ${AUX_W} ${vegH}" xmlns="http://www.w3.org/2000/svg" font-family="${MAP_FONT}">
     <text x="0" y="3" font-size="2.3" font-weight="600" fill="${t.ink}">Pre-1750 plant communities across the strip<tspan font-weight="400" fill="#737c77"> · share of its area (State Vegetation Type Map)</tspan></text>
     ${classes.map((k, i) => { const y = 6 + i * rowH; const w = Math.max(0.6, (k.sharePct / Math.max(1, classes[0].sharePct)) * barW); return `<rect x="0" y="${(y + 0.6).toFixed(1)}" width="4" height="4" fill="${k.colour}" stroke="#777" stroke-width="0.15"/>` +
       `<text x="6" y="${(y + 2.4).toFixed(1)}" font-size="2.25" font-weight="600" fill="${t.ink}">${esc(clip(k.pct, 36))}${k.pctId && k.pctId !== '0' ? `<tspan font-weight="400" fill="#737c77"> · PCT ${esc(k.pctId)}</tspan>` : ''}</text>` +
@@ -8711,7 +8724,7 @@ export function deckCss(): string {
   const t = tpl();
   return `  @page { size: ${SLIDE_W}mm ${SLIDE_H}mm; margin: 0; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body { font-family: ${t.font}; background: ${t.paper}; color: ${t.ink}; }
+  html, body { font-family: ${MAP_FONT}; background: ${t.paper}; color: ${t.ink}; }
   .slide { position: relative; width: ${SLIDE_W}mm; height: ${SLIDE_H}mm; overflow: hidden; background: ${t.paper}; page-break-after: always; break-after: page; }
   .slide:last-child { page-break-after: auto; break-after: auto; }
   .abs { position: absolute; }
@@ -8823,9 +8836,9 @@ export function deckCss(): string {
   .slide.atlas .zrow { position: relative; border-top: 0.18mm solid #878787; min-height: ${KEY_ROW}mm; padding: 0.7mm 0 1mm 11.43mm; }
   .slide.atlas .zrow.last { min-height: ${KEY_LAST.toFixed(2)}mm; padding-bottom: 0; }
   .slide.atlas .zfoot { display: flex; flex-direction: column; align-items: flex-end; gap: 4mm; }
-  .slide.atlas .zfsrc { align-self: stretch; display: flex; align-items: flex-end; gap: 24mm; font-size: 2.1mm; line-height: 1.3; color: #6a7572; hyphens: auto; }
+  .slide.atlas .zfsrc { align-self: stretch; display: flex; align-items: flex-start; gap: 24mm; font-size: 2.1mm; line-height: 1.3; color: #6a7572; hyphens: auto; }
   .slide.atlas .zfsrc > div { flex: 0 0 186mm; background: #ffffff; padding-top: 1mm; }
-  .slide.atlas .zkey { display: grid; grid-auto-flow: column; grid-template-columns: 59.33mm 59.33mm; column-gap: 4mm; background: #ffffff; padding: 1.3mm 2.4mm; }
+  .slide.atlas .zkey { display: grid; grid-template-columns: 59.33mm; background: #ffffff; padding: 2.4mm; }
   .slide.atlas .zrow span { display: block; font-size: 6pt; line-height: 2.55mm; letter-spacing: 0.09em; text-transform: uppercase; hyphens: auto; }
   .slide.atlas .zsw { position: absolute; left: 0; top: 1.05mm; width: 7.7mm; height: 5.54mm; overflow: visible; }
   .slide.atlas .zflow { position: absolute; left: 75.33mm; width: 122.67mm; }
