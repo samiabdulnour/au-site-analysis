@@ -32,8 +32,10 @@
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { readFile, writeFile } from 'node:fs/promises';
+import type { Page } from 'playwright-core';
 import { launch } from './pdf.js';
 import type { StreetTile } from '../fetch/tiles3d.js';
+import type { HeightField } from '../lib/meshHeights.js';
 
 /** A Street View frame to lay on a face: its camera in the east-north-up frame (height in AHD), and how it looked. */
 export interface DrapeFrame { file: string; x: number; y: number; zAhd: number; s: number; heading: number; pitch: number; fov: number; px: number }
@@ -377,6 +379,52 @@ window.scape = {
     return { W, H, ppm, tops, roofs, draped, surface, photo };
   },
 
+  // the surface from straight above, over a box of the frame: every cell's height (the frame's metres) where the
+  // meshes hold anything, and whether the meshes' own picture is green there (a tree, a lawn), as the elevations
+  // read green; rows from the south, as the renderer reads them
+  surface(f) {
+    const W = Math.round((f.x1 - f.x0) / f.cell), H = Math.round((f.y1 - f.y0) / f.cell);
+    const cx = (f.x0 + f.x1) / 2, cy = (f.y0 + f.y1) / 2;
+    const cam = new THREE.OrthographicCamera(f.x0 - cx, f.x1 - cx, f.y1 - cy, f.y0 - cy, 1, 9000);
+    cam.up.set(0, 1, 0);
+    cam.position.set(cx, cy, 5000);
+    cam.lookAt(cx, cy, 0);
+    cam.updateMatrixWorld(true);
+    cam.updateProjectionMatrix();
+    const rp = new THREE.WebGLRenderTarget(W, H, { type: THREE.FloatType, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: true });
+    renderer.setRenderTarget(rp);
+    renderer.setClearColor(0x000000, 0);
+    renderer.clear(true, true, true);
+    scene.overrideMaterial = posMat;
+    renderer.render(scene, cam);
+    scene.overrideMaterial = null;
+    const rb = new THREE.WebGLRenderTarget(W, H, { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: true });
+    renderer.setRenderTarget(rb);
+    renderer.clear(true, true, true);
+    renderer.render(scene, cam);
+    const z = new Float32Array(W * H), green = new Uint8Array(W * H);
+    const CH = 128, pf = new Float32Array(W * CH * 4), pb = new Uint8Array(W * CH * 4);
+    let held = 0;
+    for (let y0 = 0; y0 < H; y0 += CH) {
+      const rows = Math.min(CH, H - y0);
+      renderer.readRenderTargetPixels(rp, 0, y0, W, rows, pf);
+      renderer.readRenderTargetPixels(rb, 0, y0, W, rows, pb);
+      for (let r = 0; r < rows; r++) for (let x = 0; x < W; x++) {
+        const i = (r * W + x) * 4, j = (y0 + r) * W + x;
+        if (pf[i + 3] === 0) { z[j] = NaN; continue; }
+        z[j] = pf[i + 2];
+        held++;
+        if ((pb[i + 1] - Math.max(pb[i], pb[i + 2])) / 255 > 0.02 && pb[i + 1] / 255 < 0.75) green[j] = 1;
+      }
+    }
+    rp.dispose();
+    rb.dispose();
+    renderer.setRenderTarget(null);
+    // the floats' bytes and the flags as base64: one string each back to the process
+    const b64 = (u8) => { let str = ''; for (let i = 0; i < u8.length; i += 0x8000) str += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(str); };
+    return { W, H, held, z: b64(new Uint8Array(z.buffer)), green: b64(green) };
+  },
+
   // the pieces drawn since the last stitch, left to right, as one JPEG
   stitch() {
     const c = document.createElement('canvas');
@@ -397,7 +445,11 @@ window.ready = true;
  * ray found (no mesh there). `ppm` is the pixels a metre asked for, lowered where the picture would pass the
  * renderer's largest. A face's Street View frames are read from `outDir` by their file names.
  */
-export async function renderElevations(tiles: StreetTile[], enuMatrix: number[], faces: FaceView[], outDir: string, opts: { ppm: number; background: string; log?: (m: string) => void; /** How far over the highest ground each picture runs, metres (default 70): the street's tallest building and some sky. */ aboveM?: number }): Promise<(Elevation | null)[]> {
+/**
+ * The page with the meshes loaded into three.js, everything served to it from this process (the key and the meshes
+ * never touch the disk); a face's Street View frames are read from `outDir` by their file names. `close` when done.
+ */
+async function openMeshPage(tiles: StreetTile[], enuMatrix: number[], outDir: string | undefined, log?: (m: string) => void): Promise<{ page: Page; close: () => Promise<void> }> {
   // the package's own folder, from its main entry (its exports leave out package.json): build/three.cjs
   const three = dirname(dirname(createRequire(import.meta.url).resolve('three')));
   const byId = new Map(tiles.map((t) => [t.id, t]));
@@ -414,7 +466,7 @@ export async function renderElevations(tiles: StreetTile[], enuMatrix: number[],
       }
       const frame = path.match(/^\/frame\/([\w.-]+\.jpg)$/);
       if (frame) {
-        try { return route.fulfill({ contentType: 'image/jpeg', body: await readFile(join(outDir, frame[1])) }); }
+        try { return route.fulfill({ contentType: 'image/jpeg', body: await readFile(join(outDir ?? '', frame[1])) }); }
         catch { return route.fulfill({ status: 404 }); }
       }
       if (path.startsWith('/three/') && !path.includes('..')) {
@@ -431,8 +483,17 @@ export async function renderElevations(tiles: StreetTile[], enuMatrix: number[],
     await page.goto('http://render.local/', { waitUntil: 'load' });
     await page.waitForFunction(() => (window as any).ready, null, { timeout: 60_000 }).catch(() => { throw new Error(`elevation page: ${errors[0] ?? 'did not load'}`); });
     const n = await page.evaluate((job) => (window as any).scape.load(job), { enu: enuMatrix, tiles: tiles.map((t) => ({ id: t.id, transform: t.transform })) });
-    opts.log?.(`  3D tiles: ${n} meshes loaded`);
+    log?.(`  3D tiles: ${n} meshes loaded`);
+    return { page, close: () => browser.close() };
+  } catch (e) {
+    await browser.close();
+    throw e;
+  }
+}
 
+export async function renderElevations(tiles: StreetTile[], enuMatrix: number[], faces: FaceView[], outDir: string, opts: { ppm: number; background: string; log?: (m: string) => void; /** How far over the highest ground each picture runs, metres (default 70): the street's tallest building and some sky. */ aboveM?: number }): Promise<(Elevation | null)[]> {
+  const { page, close } = await openMeshPage(tiles, enuMatrix, outDir, opts.log);
+  try {
     const out: (Elevation | null)[] = [];
     for (const f of faces) {
       const hits = await page.evaluate((rays) => (window as any).scape.ground(rays), f.rays) as { s: number; z: number }[];
@@ -475,6 +536,27 @@ export async function renderElevations(tiles: StreetTile[], enuMatrix: number[],
     }
     return out;
   } finally {
-    await browser.close();
+    await close();
+  }
+}
+
+/**
+ * The surface the meshes make, seen from straight above over a box of the east-north-up frame (metres), as a grid
+ * `cellM` metres a cell (lib/meshHeights.ts HeightField): the height where the meshes hold anything, NaN where
+ * not, and whether their picture is green there. The box is kept whole: a page at a metre is under two thousand
+ * cells a side.
+ */
+export async function renderSurface(tiles: StreetTile[], enuMatrix: number[], box: { x0: number; y0: number; x1: number; y1: number }, cellM: number, log?: (m: string) => void): Promise<HeightField> {
+  if ((box.x1 - box.x0) / cellM > MAX_PX || (box.y1 - box.y0) / cellM > MAX_PX) throw new Error(`surface: ${Math.round((box.x1 - box.x0) / cellM)} × ${Math.round((box.y1 - box.y0) / cellM)} cells is more than the renderer draws`);
+  const { page, close } = await openMeshPage(tiles, enuMatrix, undefined, log);
+  try {
+    const r = await page.evaluate((spec) => (window as any).scape.surface(spec), { ...box, cell: cellM }) as { W: number; H: number; held: number; z: string; green: string };
+    const zb = Buffer.from(r.z, 'base64');
+    const z = new Float32Array(zb.length / 4);
+    new Uint8Array(z.buffer).set(zb);
+    const green = new Uint8Array(Buffer.from(r.green, 'base64'));
+    return { x0: box.x0 + cellM / 2, y0: box.y0 + cellM / 2, cell: cellM, cols: r.W, rows: r.H, z, green };
+  } finally {
+    await close();
   }
 }

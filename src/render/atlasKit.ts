@@ -120,10 +120,23 @@ export function swatchOf(f: Fill): string {
   return fillShape('M0,0.4H5V3.2H0Z', { x0: 0, y0: 0.4, x1: 5, y1: 3.2 }, f, 1.54);
 }
 
-/** A bar in a chart, filled after the kit. */
+/**
+ * A fill as a chart draws it: a flat tone, never a pattern (Z. 2026-11: the
+ * patterns do not read at a bar's size; every chart is full fills, told apart
+ * by tone). A patterned fill becomes its pattern's ink at an opacity that
+ * stands for the pattern's weight, over the paper; its outline stays.
+ */
+export function chartFill(f: Fill): Fill {
+  if (!f.kind) return f;
+  const { kind, ink, step: _step, w: _w, opacity: _opacity, ...rest } = f;
+  // the pattern's weight as the tone, whatever the ground's own opacity was (a category of dots alone has none)
+  return { ...rest, bg: ink ?? f.bg, opacity: kind === 'cross' ? 0.75 : kind === 'dots' ? 0.35 : 0.5 };
+}
+
+/** A bar in a chart, filled after the kit: as a flat tone (chartFill). */
 export function barOf(x: number, y: number, w: number, h: number, f: Fill): string {
   if (w <= 0) return '';
-  return fillShape(`M${x.toFixed(2)},${y.toFixed(2)}h${w.toFixed(2)}v${h.toFixed(2)}h${(-w).toFixed(2)}Z`, { x0: x, y0: y, x1: x + w, y1: y + h }, f);
+  return fillShape(`M${x.toFixed(2)},${y.toFixed(2)}h${w.toFixed(2)}v${h.toFixed(2)}h${(-w).toFixed(2)}Z`, { x0: x, y0: y, x1: x + w, y1: y + h }, chartFill(f));
 }
 
 // ---- the template's chart blocks, flowed down the right column (75.33 → 198 mm) ----
@@ -283,9 +296,9 @@ export function zPairs(rows: { name: string; a: number; b: number }[], max0: num
     g.push(`<line x1="${X(v).toFixed(2)}" y1="${gy0.toFixed(2)}" x2="${X(v).toFixed(2)}" y2="${gy1.toFixed(2)}" stroke="#878787" stroke-width="0.18" stroke-linecap="round" stroke-dasharray="0 0.36"/>`);
   }
   // the key, in the axis row of the names' column
-  g.push(`<g transform="translate(0,${(AXIS - 0.2).toFixed(2)})">${fillShape('M0,0.4H4V2.2H0Z', { x0: 0, y0: 0.4, x1: 4, y1: 2.2 }, fa, 1.4)}</g>`, txt(5, AXIS, keys[0]));
+  g.push(`<g transform="translate(0,${(AXIS - 0.2).toFixed(2)})">${fillShape('M0,0.4H4V2.2H0Z', { x0: 0, y0: 0.4, x1: 4, y1: 2.2 }, chartFill(fa), 1.4)}</g>`, txt(5, AXIS, keys[0]));
   const kx = 7 + labelW(keys[0]);
-  g.push(`<g transform="translate(${kx.toFixed(2)},${(AXIS - 0.2).toFixed(2)})">${fillShape('M0,0.4H4V2.2H0Z', { x0: 0, y0: 0.4, x1: 4, y1: 2.2 }, fb, 1.4)}</g>`, txt(kx + 5, AXIS, keys[1]));
+  g.push(`<g transform="translate(${kx.toFixed(2)},${(AXIS - 0.2).toFixed(2)})">${fillShape('M0,0.4H4V2.2H0Z', { x0: 0, y0: 0.4, x1: 4, y1: 2.2 }, chartFill(fb), 1.4)}</g>`, txt(kx + 5, AXIS, keys[1]));
   const halo = (str: string) => str.replace('<text ', '<text stroke="#ffffff" stroke-width="0.7" stroke-linejoin="round" paint-order="stroke" ');
   // a value sits beside its own bar, centred on it
   const val = (x: number, cy: number, v: number) => halo(txt(x + 1, cy - 0.905 * S6 / 2 - 0.15, `${fmtShort(v)}${unit}`));

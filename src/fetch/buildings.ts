@@ -25,15 +25,17 @@ export const METRES_PER_STOREY = 3.1;
 
 export interface Building {
   id: string;
-  source: 'overture' | 'osm';
+  /** Where the footprint came from: a mapped source, or `mesh`, traced from Google's 3D meshes on a lot the sources left empty (lib/meshHeights.ts). */
+  source: 'overture' | 'osm' | 'mesh';
   /** Outer rings (and holes) in lon/lat. */
   rings: number[][][];
   heightM?: number;
   /** Storeys: the source's count, or a determined application's where the source has neither height nor storeys (`da`). */
   floors?: number;
-  /** The height the deck draws: measured, or storeys × 3.1 m, or nothing. */
+  /** The height the deck draws: measured, or storeys × 3.1 m, or read from the 3D meshes, or nothing. */
   estimatedHeightM?: number;
-  heightFrom: 'measured' | 'floors' | 'da' | 'none';
+  /** Where the height is from: the source's measure, its storeys, Google's 3D meshes (`mesh`), a determined application's storeys (`da`), or nothing. */
+  heightFrom: 'measured' | 'floors' | 'mesh' | 'da' | 'none';
   /** The application on the footprint's lot whose storeys stand in for a height, when one does (slide 07's feed). */
   da?: { pan: string; storeys: number; status: string; determined?: string; lodged?: string; address: string; types: string[] };
   name?: string;
@@ -47,6 +49,8 @@ export interface BuildingsData {
   buildings: Building[];
   fetchedAt: string;
   note?: string;
+  /** What Google's 3D meshes added (lib/meshHeights.ts), where they were read: the heights and footprints taken from them, the meshes read and their error, and the providers they credit. */
+  mesh?: { heights: number; footprints: number; meshes: number; errorM: number; credits: string[] };
 }
 
 const run = (cmd: string, args: string[], timeoutMs: number): Promise<{ stdout: string; code: number | null }> =>

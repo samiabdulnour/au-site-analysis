@@ -18,13 +18,14 @@ import { esc } from './chrome.js';
 import { drawAxonometric, shade, type AxoScene, type Prism } from './axonometric.js';
 import { estimateKerbs } from '../lib/kerbs.js';
 import {
-  panelProjector, panelExtent, baseLayers, overLayers, panelFurniture, furnitureBox, siteMark, siteLabelPoint, stationMode, ringsPath, fcPath, ringStats, clippedStats, hatchPath, dotsPath, bboxOf, t2Text, t2Width, railSymbol,
+  panelProjector, panelExtent, baseLayers, overLayers, panelFurniture, furnitureBox, siteMark, siteLabelPoint, stationMode, ringsPath, fcPath, ringStats, clippedStats, hatchPath, dotsPath, bboxOf, t2Text, t2Width,
   legendSvg, swatchFill, swatchHatch, swatchLine, swatchDots, LabelSpacer, ATLAS_BASE, type Proj, type Panel, type LegendEntry, type FurnitureCorner,
 } from './minimap.js';
 import { zoneFill, zoneOrder, heritageStyle, hobRamp, POLICY_STYLE } from './lepPalette.js';
 import { zoneToCategory } from './model.js';
 import { LEP_OPACITY } from './sheet.js';
 import { geomRings, isRealPolicyArea, pointInRing, titleCase, type PolicyArea, type PolicyKind } from '../fetch/planning.js';
+import { lotsWithoutFootprint as gapLotsOf } from '../lib/gapLots.js';
 import { lonLatToMercator, mercatorToLonLat, mercatorScaleFactor } from '../lib/geo.js';
 import { isSignificant, siteKey, parseSiteAddress, sameLot, money, type DaRecord, type DaStatusClass, type SiteAddress } from '../fetch/da.js';
 import type { PeopleData } from '../fetch/people.js';
@@ -32,7 +33,7 @@ import type { CensusProfile, DwellingMix, TenureMix, TravelMix, PersonsProfile, 
 import type { Sale } from '../fetch/valuation.js';
 import { lineWithProjection, pairedBars, columns, sectionSvg } from './charts.js';
 import { hillshadeDataUri, reliefDataUri, reliefBandHatches, rampColours, isolines, type ReliefHatch, planSections, sampleSection, siteLevels, gridExtremes, nearestWater, bearingName } from './terrainMap.js';
-import { METRES_PER_STOREY, type Building } from '../fetch/buildings.js';
+import { METRES_PER_STOREY, type Building, type BuildingsData } from '../fetch/buildings.js';
 import type { CyclewayKind } from '../fetch/movement.js';
 import type { FacilityKind } from '../fetch/greenSpace.js';
 import { CONSTRAINT_DEFS, type ConstraintGroup } from '../fetch/constraints.js';
@@ -811,9 +812,9 @@ export function locationSlide(b: SlidesBundle): Slide {
   if (h1) parts.push(`<path d="${h1}" fill="none" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="${h1}" fill="none" stroke="${LOC.motorway}" stroke-width="0.9" stroke-linecap="round" stroke-linejoin="round"/>`);
   if (h1) legend.push({ swatch: `<line x1="0" y1="1.7" x2="5" y2="1.7" stroke="#ffffff" stroke-width="1.5"/><line x1="0" y1="1.7" x2="5" y2="1.7" stroke="${LOC.motorway}" stroke-width="0.9"/>`, label: 'Motorways and highways' });
   if (h2 || h3) legend.push({ swatch: `<line x1="0" y1="1.1" x2="5" y2="1.1" stroke="${LOC.road2}" stroke-width="0.5"/><line x1="0" y1="2.5" x2="5" y2="2.5" stroke="${LOC.road3}" stroke-width="0.26"/>`, label: 'Arterial and sub-arterial roads' });
-  // the rail as track, a corridor's parallel tracks and its yards drawn as one line: 0.9 mm on the paper is 90 m at 1:100 000
-  if (loc.rail.train.length) parts.push(railSymbol(thinParallelLines(loc.rail.train, proj, 0.9).map((l) => ringsPath([l], proj, false)).join(''), LOC.rail, 0.8));
-  if (loc.rail.tram.length) parts.push(`<path d="${thinParallelLines(loc.rail.tram, proj, 0.9).map((l) => ringsPath([l], proj, false)).join('')}" fill="none" stroke="${LOC.rail}" stroke-width="0.35" stroke-dasharray="0.8,0.8"/>`);
+  // the rail as a plain yellow line like the motorways' (railLine), a corridor's parallel tracks and its yards drawn as one line: 0.9 mm on the paper is 90 m at 1:100 000; the light rail dashed
+  if (loc.rail.train.length) parts.push(railLine(thinParallelLines(loc.rail.train, proj, 0.9).map((l) => ringsPath([l], proj, false)).join(''), 0.9));
+  if (loc.rail.tram.length) parts.push(`<path d="${thinParallelLines(loc.rail.tram, proj, 0.9).map((l) => ringsPath([l], proj, false)).join('')}" fill="none" stroke="${RAIL_YELLOW}" stroke-width="0.5" stroke-dasharray="0.8,0.8"/>`);
   // the rings
   const rings = [...RING_KM, 10];
   for (const kmR of rings) {
@@ -826,7 +827,7 @@ export function locationSlide(b: SlidesBundle): Slide {
   // the stations, the train and metro ones dotted, the nearest three named
   const stationDots: string[] = [];
   for (const s of loc.stations) { if (stationMode(s.name) === 'light rail') continue; const [x, y] = proj(s.lon, s.lat); stationDots.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="1" fill="#ffffff" stroke="${LOC.rail}" stroke-width="0.45"/>`); }
-  if (loc.rail.train.length || stationDots.length) legend.push({ swatch: `<line x1="0" y1="1.8" x2="5" y2="1.8" stroke="${LOC.rail}" stroke-width="0.2"/><line x1="0" y1="1.8" x2="5" y2="1.8" stroke="${LOC.rail}" stroke-width="1.05" stroke-dasharray="0.16,1.3"/><circle cx="2.5" cy="1.8" r="0.9" fill="#ffffff" stroke="${LOC.rail}" stroke-width="0.35"/>`, label: 'Railways; the train and metro stations' });
+  if (loc.rail.train.length || stationDots.length) legend.push({ swatch: railKey(0.9, LOC.rail), label: 'Railways; the train and metro stations' });
   // the plan's centres first, by type, each named where a spot is free
   const centreMarks: string[] = [];
   const centreNamed = new Set<string>();
@@ -1043,6 +1044,16 @@ export function characterSlide(b: SlidesBundle): Slide {
 const aerialKey = (x: number, y: number, n: number | string, r = 1.9) =>
   `<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="${r}" fill="#ffffff" stroke="#000000" stroke-width="0.25"/><text x="${x.toFixed(2)}" y="${(y + 0.74).toFixed(2)}" text-anchor="middle" font-size="2.117" font-family="Arial, 'Liberation Sans', sans-serif" fill="#000000">${esc(String(n))}</text>`;
 /** A 6 pt word on an aerial: white, no outline. */
+/**
+ * The railways on the region maps (Z. 2026-11): a plain line like the motorways', in yellow, cased in white,
+ * with no track symbol. The train and metro stations stay white discs in the map's rail ink.
+ */
+const RAIL_YELLOW = '#f2c200';
+const railLine = (d: string, w: number) =>
+  `<path d="${d}" fill="none" stroke="#ffffff" stroke-width="${(w + 0.6).toFixed(2)}" stroke-linecap="round" stroke-linejoin="round"/><path d="${d}" fill="none" stroke="${RAIL_YELLOW}" stroke-width="${w.toFixed(2)}" stroke-linecap="round" stroke-linejoin="round"/>`;
+const railKey = (w: number, station: string) =>
+  `<line x1="0" y1="1.8" x2="5" y2="1.8" stroke="#ffffff" stroke-width="${(w + 0.6).toFixed(2)}"/><line x1="0" y1="1.8" x2="5" y2="1.8" stroke="${RAIL_YELLOW}" stroke-width="${w.toFixed(2)}"/><circle cx="2.5" cy="1.8" r="0.9" fill="#ffffff" stroke="${station}" stroke-width="0.35"/>`;
+
 const a6 = (x: number, y: number, text: string, anchor: 'start' | 'middle' | 'end' = 'start') =>
   `<text x="${x.toFixed(2)}" y="${(y + 0.75).toFixed(2)}" text-anchor="${anchor}" font-size="2.117" letter-spacing="0.19" font-family="Arial, 'Liberation Sans', sans-serif" fill="#ffffff">${esc(text)}</text>`;
 /** Aerial tiles laid over a panel: by the window they cover where the fetch kept it, else as fractions of the panel. */
@@ -1333,7 +1344,12 @@ export function strategicAtlas(b0: SlidesBundle, planning: PlanningFacts): Slide
   const labels: string[] = [];
   if (wide) {
     const loc = b0.location;
-    parts.push(`<rect x="0" y="0" width="${p.wMm}" height="${p.hMm}" fill="#ffffff"/>`);
+    // the sea first and the land over it, then the water bodies: the council areas are the land, the harbour and the
+    // bays the layer's unincorporated areas and the open sea the gaps between them (as the Location map reads the
+    // layer), so the ocean shows where the coast runs (Z. 2026-11)
+    const land = loc.lgas.filter((l) => !l.unincorporated);
+    parts.push(`<rect x="0" y="0" width="${p.wMm}" height="${p.hMm}" fill="${land.length ? t.water : '#ffffff'}"/>`);
+    if (land.length) parts.push(`<path d="${land.map((l) => ringsPath(l.rings, proj)).join('')}" fill="#ffffff" fill-rule="evenodd"/>`);
     const water = loc.water.filter((w) => w.rings.reduce((acc, r) => acc + clippedStats(r, proj, p).area, 0) >= 0.5);
     if (water.length) parts.push(`<path d="${water.map((w) => ringsPath(w.rings, proj)).join('')}" fill="${t.water}" fill-rule="evenodd"/>`);
   } else parts.push(withTemplate(gt, () => baseLayers(b.base, proj, p)));
@@ -1357,7 +1373,7 @@ export function strategicAtlas(b0: SlidesBundle, planning: PlanningFacts): Slide
     if (h3) parts.push(`<path d="${h3}" fill="none" stroke="${S.deep}" stroke-width="0.3" stroke-linecap="round" stroke-linejoin="round"/>`);
     if (h2) parts.push(`<path d="${h2}" fill="none" stroke="#ffffff" stroke-width="1" stroke-linecap="round"/><path d="${h2}" fill="none" stroke="${inkFor(S.deep, 0.22)}" stroke-width="0.55" stroke-linecap="round" stroke-linejoin="round"/>`);
     if (h1) parts.push(`<path d="${h1}" fill="none" stroke="#ffffff" stroke-width="1.6" stroke-linecap="round"/><path d="${h1}" fill="none" stroke="${inkFor(O.deep, 0.26)}" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>`);
-    if (loc.rail.train.length) parts.push(railSymbol(thinParallelLines(loc.rail.train, proj, 0.6).map((l) => ringsPath([l], proj, false)).join(''), inkFor(B.deep, 0.14), 0.8));
+    if (loc.rail.train.length) parts.push(railLine(thinParallelLines(loc.rail.train, proj, 0.6).map((l) => ringsPath([l], proj, false)).join(''), 0.8));
     for (const st of loc.stations) { if (stationMode(st.name) === 'light rail') continue; const [x, y] = proj(st.lon, st.lat); if (x < 2 || y < 2 || x > p.wMm - 2 || y > p.hMm - 2) continue; parts.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="1.1" fill="#ffffff" stroke="${inkFor(B.deep, 0.14)}" stroke-width="0.45"/>`); }
     // the plan's centres in the window, named
     for (const c of CENTRES) {
@@ -1398,11 +1414,13 @@ export function strategicAtlas(b0: SlidesBundle, planning: PlanningFacts): Slide
     // the spans in the page's ink (the policy area's), its tints for the levels; the accent's family where no area leads
     const PI = present[0] ? POLICY_INK[present[0]] : null;
     const F = PI ? { solid: tint(PI, 0.75), mid: tint(PI, 0.45), line: tint(PI, 0.6), deep: PI } : R;
-    const fill: Fill = to !== undefined ? { bg: '#ffffff', outline: F.line, outlineW: 0.25, dash: '0.8 0.5' }
-      : r.level === 'State' || r.level === 'Region' ? { bg: F.mid }
-      : r.level === 'Contributions' ? { bg: '#ffffff', kind: 'dots', ink: F.deep, step: 0.7, w: 0.12, outline: F.line, outlineW: 0.12 }
-      : r.level === 'Statutory' ? { bg: F.solid }
-      : { bg: '#ffffff', kind: 'vlines', ink: F.line, step: 0.55, w: 0.16, outline: F.line, outlineW: 0.12 };
+    // the levels as one ink at four tones (full fills, no patterns): the statutory plans deepest, the State's and the
+    // region's next, the local strategy lighter, the contributions lightest; a superseded plan faint in a dashed outline
+    const fill: Fill = to !== undefined ? { bg: F.deep, opacity: 0.14, outline: F.line, outlineW: 0.25, dash: '0.8 0.5' }
+      : r.level === 'Statutory' ? { bg: F.deep, opacity: 0.85 }
+      : r.level === 'State' || r.level === 'Region' ? { bg: F.deep, opacity: 0.6 }
+      : r.level === 'Contributions' ? { bg: F.deep, opacity: 0.24 }
+      : { bg: F.deep, opacity: 0.4 };
     return from ? { name: shorten(r.document.replace(/\s*\(.*?\)\s*/g, ' ').trim(), 40), from, to, fill } : null;
   }).filter((x): x is NonNullable<typeof x> => Boolean(x));
   const blocks: string[] = [];
@@ -1413,7 +1431,11 @@ export function strategicAtlas(b0: SlidesBundle, planning: PlanningFacts): Slide
   const legend: LegendEntry[] = [
     ...present.map((k) => ({ swatch: swatchOf(POLICY_FILL[k]) + glyph(k, 2.5, 1.8, 1.3), label: POLICY_STYLE[k].label })),
     ...(present.length ? [] : [{ swatch: '', label: 'No TOD area, town centre, State significant site or precinct within 3 km of the site' }]),
-    ...(wide ? [{ swatch: `<circle cx="2.5" cy="1.9" r="1.6" fill="${t.discInk ?? t.ink}"/>`, label: "The Sydney Plan's centres in the window; the railways and their stations" }] : []),
+    ...(wide ? [
+      { swatch: `<circle cx="2.5" cy="1.9" r="1.6" fill="${t.discInk ?? t.ink}"/>`, label: "The Sydney Plan's centres in the window" },
+      { swatch: railKey(0.8, inkFor(B.deep, 0.14)), label: 'The railways and their stations' },
+      { swatch: swatchFill(t.water), label: 'The harbour, the sea and the rivers' },
+    ] : []),
     ...(beyond.length ? [{ swatch: `<path d="M3.6,1.8L1.4,0.5L1.4,3.1Z" fill="${R.deep}"/>`, label: 'The nearest policy areas and centre beyond the page, with their distance from the site' }] : []),
     SITE_KEY(t),
   ];
@@ -1713,7 +1735,7 @@ export function planningAtlas(b0: SlidesBundle): Slide {
     blocks.push(zBlock('Zones on the page · share of the land, %', zBars(zoneRows, ax.max, ax.step)));
     y += blockH(barsH(zoneRows.length));
   }
-  // the height limits by the share of the page they cover; the site's own solid
+  // the height limits by the share of the page they cover; the site's own solid, the rest the same ink at a lower opacity
   const hobShare = new Map<string, { label: string; value: number; key: number; share: number }>();
   for (const ft of b.hob.features) {
     const l = heightLabel(ft.properties.MAX_B_H, ft.properties.UNITS);
@@ -1724,7 +1746,7 @@ export function planningAtlas(b0: SlidesBundle): Slide {
   }
   const room = Math.max(0, Math.floor((limit - y - blockH(10)) / 3.95));
   const hobRows = [...hobShare.values()].filter((h) => h.share >= 0.005).sort((x, y2) => y2.share - x.share).slice(0, Math.min(9, room)).sort((x, y2) => x.key - y2.key)
-    .map((h) => ({ name: h.label === f.hobAtSite?.label ? `${h.label} · the site` : h.label, value: h.share * 100, label: fmtPct(h.share * 100), fill: h.label === f.hobAtSite?.label ? { bg: F.solid } as Fill : { bg: '#ffffff', kind: 'vlines', ink: F.line, step: 0.55, w: 0.16, outline: F.line, outlineW: 0.12 } as Fill }));
+    .map((h) => ({ name: h.label === f.hobAtSite?.label ? `${h.label} · the site` : h.label, value: h.share * 100, label: fmtPct(h.share * 100), fill: h.label === f.hobAtSite?.label ? { bg: F.solid } as Fill : { bg: F.solid, opacity: 0.45 } as Fill }));
   if (hobRows.length) {
     const ax = niceAxis(Math.max(...hobRows.map((r) => r.value)));
     blocks.push(zBlock('Height limits on the page · share of the land, %', zBars(hobRows, ax.max, ax.step)));
@@ -1850,22 +1872,26 @@ export function controlsAtlas(b: SlidesBundle, facts: PlanningFacts): Slide {
     ['height of building', facts.hobAtSite ? `${facts.hobAtSite.label}${hobStoreys ? ` · about ${hobStoreys} storeys` : ''}` : 'not mapped'],
   ], 9.6);
   const blocks = [zBlock('The site', figs, 'What the controls allow')];
+  // the charts in black and white (Z. 2026-11), black at three tones: what the plan allows the deepest, what stands or
+  // what the DCP adds lighter, the neighbourhood lightest; the site's area an open box
+  const K = (k: number): Fill => ({ bg: '#000000', opacity: k });
+  const ALLOWS = K(0.8), STANDS = K(0.35), NEIGHBOURS = K(0.18);
   const areaRows = [
     ...(area ? [{ name: 'Site area, cadastre', value: area, label: `${fmtNum(area)} m²`, fill: { bg: '#ffffff', outline: '#000000', outlineW: 0.18 } as Fill }] : []),
-    ...(footprint > 1 ? [{ name: 'Existing footprint, Overture', value: footprint, label: `${fmtNum(footprint)} m² · ${fmtPct(pct(footprint, area || footprint))}`, fill: { bg: '#ffffff', kind: 'vlines', ink: R.line, step: 0.55, w: 0.16, outline: R.line, outlineW: 0.12 } as Fill }] : []),
-    ...(gfa ? [{ name: `Floor area at ${facts.fsrAtSite!.toFixed(2)}:1`, value: gfa, label: `${fmtNum(gfa)} m²`, fill: { bg: R.mid } as Fill }] : []),
+    ...(footprint > 1 ? [{ name: 'Existing footprint, Overture', value: footprint, label: `${fmtNum(footprint)} m² · ${fmtPct(pct(footprint, area || footprint))}`, fill: STANDS }] : []),
+    ...(gfa ? [{ name: `Floor area at ${facts.fsrAtSite!.toFixed(2)}:1`, value: gfa, label: `${fmtNum(gfa)} m²`, fill: ALLOWS }] : []),
   ];
   if (areaRows.length) { const ax = niceAxis(Math.max(...areaRows.map((r) => r.value))); blocks.push(zBlock('Floor area · m²', zBars(areaRows, ax.max, ax.step))); }
   const stRows = [
-    ...(hobStoreys ? [{ name: `LEP height ${facts.hobAtSite?.label ?? ''}`, value: hobStoreys, label: `${hobStoreys} st`, fill: { bg: R.mid } as Fill }] : []),
-    ...(b.cos?.storeysAtSite ? [{ name: 'Council DCP, height in storeys', value: Number(b.cos.storeysAtSite), label: `${b.cos.storeysAtSite} st`, fill: { bg: '#ffffff', kind: 'vlines', ink: R.line, step: 0.55, w: 0.16, outline: R.line, outlineW: 0.12 } as Fill }] : []),
-    ...(bf.near.medianStoreys ? [{ name: `Median within ${bf.near.radiusM} m`, value: bf.near.medianStoreys, label: `${bf.near.medianStoreys} st`, fill: { bg: '#ffffff', kind: 'dots', ink: R.deep, step: 0.8, w: 0.12, outline: R.line, outlineW: 0.12 } as Fill }] : []),
+    ...(hobStoreys ? [{ name: `LEP height ${facts.hobAtSite?.label ?? ''}`, value: hobStoreys, label: `${hobStoreys} st`, fill: ALLOWS }] : []),
+    ...(b.cos?.storeysAtSite ? [{ name: 'Council DCP, height in storeys', value: Number(b.cos.storeysAtSite), label: `${b.cos.storeysAtSite} st`, fill: STANDS }] : []),
+    ...(bf.near.medianStoreys ? [{ name: `Median within ${bf.near.radiusM} m`, value: bf.near.medianStoreys, label: `${bf.near.medianStoreys} st`, fill: NEIGHBOURS }] : []),
   ];
   if (stRows.length) { const ax = niceAxis(Math.max(...stRows.map((r) => r.value))); blocks.push(zBlock('Height · storeys', zBars(stRows, ax.max, ax.step))); }
   const legend: LegendEntry[] = [
-    { swatch: swatchOf({ bg: R.mid }), label: 'What the local plan allows' },
-    { swatch: swatchOf({ bg: '#ffffff', kind: 'vlines', ink: R.line, step: 0.55, w: 0.16, outline: R.line, outlineW: 0.12 }), label: 'What stands or what the DCP adds' },
-    { swatch: swatchOf({ bg: '#ffffff', kind: 'dots', ink: R.deep, step: 0.8, w: 0.12, outline: R.line, outlineW: 0.12 }), label: 'The neighbourhood, slide 09' },
+    { swatch: swatchOf(ALLOWS), label: 'What the local plan allows' },
+    { swatch: swatchOf(STANDS), label: 'What stands or what the DCP adds' },
+    { swatch: swatchOf(NEIGHBOURS), label: 'The neighbourhood, slide 09' },
   ];
   void t;
   const sources = `Every row is the mapped control at the geocoded point, read from the NSW ePlanning layers and the Planning Portal property API; floor area on the cadastral area, storeys at ${METRES_PER_STOREY} m. Mapped controls are not a s10.7 planning certificate. Retrieved ${b.generatedAt.slice(0, 10)}.`;
@@ -2644,7 +2670,7 @@ export function formAtlas(b: SlidesBundle, planning: PlanningFacts): Slide {
     f.near.medianStoreys ? `The typical building within 250 m is ${f.near.medianStoreys} ${f.near.medianStoreys === 1 ? 'storey' : 'storeys'}.` : '',
     f.onSite.length ? `On the site today ${f.onSite.length === 1 ? 'stands a building' : `stand ${['', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'][f.onSite.length] ?? f.onSite.length} buildings`} of ${f.onSite.every((x) => !x.storeys) ? 'no recorded height' : f.onSite.map((x) => (x.storeys ? `${x.storeys} ${x.storeys === 1 ? 'storey' : 'storeys'}` : 'no recorded height')).join(' and ')}.` : 'Nothing stands on the site today.',
   ].filter(Boolean).join(' ');
-  const src = f.source === 'overture' ? `Overture Maps Foundation buildings${f.release ? ` (release ${f.release})` : ''}, footprints and heights from OpenStreetMap, Microsoft, Esri Community Maps and Google Open Buildings` : f.source === 'osm' ? 'OpenStreetMap buildings' : 'no building source';
+  const src = (f.source === 'overture' ? `Overture Maps Foundation buildings${f.release ? ` (release ${f.release})` : ''}, footprints and heights from OpenStreetMap, Microsoft, Esri Community Maps and Google Open Buildings` : f.source === 'osm' ? 'OpenStreetMap buildings' : 'no building source') + meshCredit(f.mesh);
   const sources = `Sources: ${src}; heights measured, or ${METRES_PER_STOREY} m a storey, else the storeys of a determined application on the lot; every building in the colour of its storeys as the height of buildings page keys them (${HEIGHT_BANDS.map((bd) => bd.label).join(' · ')}), dashed where none is recorded; what stands on the site in the site's ink; streets from NSW Spatial Services, the kerbs worked out from the cadastre; parks from the open-space zones; the trees read off NSW Imagery as crowns, their size indicative; the cars, vans, trucks, buses, cyclists and walkers there for scale, not counted${busRoutes ? ', the buses on the bus routes OpenStreetMap maps' : ''}. Drawn from the ${bearingName(camBearing)}, looking down 35°. Retrieved ${b.buildings.fetchedAt.slice(0, 10)}.`;
   // The key, set as every page's key is (Z. 2026-11): a hairline over each row, the symbol at the left, 6 pt caps beside
   // it, two columns; on a white ground over the drawing's bottom-right corner, over the sources' second column. Each
@@ -3146,7 +3172,7 @@ export function peopleAtlas(b: SlidesBundle): Slide {
     const proj24 = f.projections?.sa2 ?? [];
     const line = zLine(f.population.sa2.map((v) => ({ year: v.year, value: v.value })), proj24.filter((v) => v.year > (f.population.sa2[f.population.sa2.length - 1]?.year ?? 0)).map((v) => ({ year: v.year, value: v.value })), 22, (v) => fmtNum(v));
     if (line && y + blockH(30) < limit) { blocks.push(zBlock(`Population · ${s2.name} (SA2)`, line, 'TZP24 projection dashed')); y += blockH(30); }
-    const SA: Fill = { bg: O.solid }, GS: Fill = { bg: '#ffffff', kind: 'vlines', ink: O.deep, step: 0.45, w: 0.14, outline: O.deep, outlineW: 0.1 };
+    const SA: Fill = { bg: O.solid }, GS: Fill = { bg: O.solid, opacity: 0.45 };
     const keys: [string, string] = [`${s2.name}`, 'Greater Sydney'];
     const d = s2.dwellings, db = bm?.dwellings;
     if (d && db) {
@@ -3712,53 +3738,13 @@ const NO_HEIGHT_FILL = '#ddd5c6';
 const bandOf = (h?: number) => (h ? HEIGHT_BANDS.find((b) => h <= b.maxM)! : null);
 const storeysOf = (h: number) => Math.max(1, Math.round(h / METRES_PER_STOREY));
 
-/**
- * The lots on the panel that no footprint touches, outside the zones that are meant to stand empty (recreation,
- * conservation, infrastructure and waterways). Neither open source maps every building — Overture and
- * OpenStreetMap both miss most of Bondi Road's shopping strip — so these are drawn and counted as a gap in the
- * data, not as open land. Slivers under 40 m² and lots over 5,000 m² are left out of the count.
- */
+/** The lots on the panel that no footprint touches (lib/gapLots.ts): drawn and counted as a gap in the data, not as open land. */
 export function lotsWithoutFootprint(b: SlidesBundle, panel: Panel) {
-  const ext = panelExtent(panel);
-  const CELL = 0.0005;
-  const grid = new Map<string, Building[]>();
-  for (const bd of b.buildings.buildings) {
-    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-    for (const [lon, lat] of bd.rings[0] ?? []) { x0 = Math.min(x0, lon); y0 = Math.min(y0, lat); x1 = Math.max(x1, lon); y1 = Math.max(y1, lat); }
-    for (let i = Math.floor(x0 / CELL); i <= Math.floor(x1 / CELL); i++) for (let j = Math.floor(y0 / CELL); j <= Math.floor(y1 / CELL); j++) {
-      const key = `${i},${j}`; (grid.get(key) ?? grid.set(key, []).get(key)!).push(bd);
-    }
-  }
-  const near = (lon: number, lat: number) => grid.get(`${Math.floor(lon / CELL)},${Math.floor(lat / CELL)}`) ?? [];
-  const zones = b.zoning.features.map((f) => ({ code: String(f.properties.SYM_CODE ?? ''), rings: geomRings(f.geometry) }));
-  const EMPTY_ZONE = /^(RE\d|C\d|SP2|W\d)$/;
-  const siteRings = b.base.siteLots.features.flatMap((f) => geomRings(f.geometry));
-  const gaps: number[][][][] = [];
-  let built = 0;
-  for (const f of b.base.lots.features) {
-    const rings = geomRings(f.geometry);
-    const outer = rings[0];
-    if (!outer || outer.length < 4) continue;
-    const [clon, clat] = centroidLL(outer);
-    const m = lonLatToMercator({ lon: clon, lat: clat });
-    if (m.x < ext.xmin || m.x > ext.xmax || m.y < ext.ymin || m.y > ext.ymax) continue;
-    if (siteRings.some((r) => pointInRing(clon, clat, r))) continue;
-    const zone = zones.find((z) => z.rings.some((r) => pointInRing(clon, clat, r)));
-    if (!zone || EMPTY_ZONE.test(zone.code)) continue;
-    const k = mercatorScaleFactor(clat);
-    let s = 0; const pts = outer.map(([lon, lat]) => lonLatToMercator({ lon, lat }));
-    for (let i = 0; i < pts.length - 1; i++) s += pts[i].x * pts[i + 1].y - pts[i + 1].x * pts[i].y;
-    const areaM2 = Math.abs(s / 2) / (k * k);
-    if (areaM2 < 40 || areaM2 > 5000) continue;
-    // a footprint stands on the lot when its centroid or a vertex is inside it, or the lot's centroid is inside it
-    const cands = new Set<Building>();
-    for (const [lon, lat] of outer) for (const bd of near(lon, lat)) cands.add(bd);
-    for (const bd of near(clon, clat)) cands.add(bd);
-    const hit = [...cands].some((bd) => pointInRing(bd.centroid[0], bd.centroid[1], outer) || pointInRing(clon, clat, bd.rings[0]) || bd.rings[0].some(([lon, lat]) => pointInRing(lon, lat, outer)));
-    if (hit) built++; else gaps.push(rings);
-  }
-  return { gaps, count: gaps.length, lots: built + gaps.length };
+  return gapLotsOf(b.buildings.buildings, b.base.lots, b.zoning, b.base.siteLots, panelExtent(panel));
 }
+
+/** The 3D tiles' credit where the meshes gave heights: Google's, and its providers' as the meshes name them. */
+const meshCredit = (mesh: BuildingsData['mesh']) => mesh ? `; ${fmtNum(mesh.heights)} heights and ${fmtNum(mesh.footprints)} footprints read from Google's Photorealistic 3D Tiles (© Google${mesh.credits.filter((c) => !/google/i.test(c)).length ? `, ${mesh.credits.filter((c) => !/google/i.test(c)).join(', ')}` : ''})` : '';
 
 export function builtFormFacts(b: SlidesBundle, planning: PlanningFacts) {
   const data = b.buildings;
@@ -3816,6 +3802,9 @@ export function builtFormFacts(b: SlidesBundle, planning: PlanningFacts) {
     measured: all.filter((x) => x.heightFrom === 'measured').length,
     fromStoreys: all.filter((x) => x.heightFrom === 'floors').length,
     fromDa: all.filter((x) => x.heightFrom === 'da').length,
+    fromMesh: all.filter((x) => x.heightFrom === 'mesh').length,
+    meshFootprints: all.filter((x) => x.source === 'mesh').length,
+    mesh: data.mesh,
     bands: HEIGHT_BANDS.map((bd) => ({ label: bd.label, count: withHeight.filter((x) => bandOf(x.estimatedHeightM) === bd).length })).concat([{ label: 'no height', count: all.length - withHeight.length }]),
     unknowns,
     near: { radiusM: 250, count: near.length, withHeight: nearHeights.length, medianM: medianNearM, medianStoreys: medianNearM ? storeysOf(medianNearM) : undefined,
@@ -3882,7 +3871,7 @@ export function builtFormSlide(b: SlidesBundle, planning: PlanningFacts): Slide 
   const sentences = builtFormSentences(b, f);
   const textHtml = sentences.map(para).join('') +
     placeholder('Narrative — for the author: what the surrounding scale is and where it is changing, how the height plane at the site compares with the neighbours and the approvals of slide 08, which frontages and setbacks the fabric suggests, and where the 3D model views should look from.') +
-    `<div class="fine">Sources: ${f.source === 'overture' ? 'Overture Maps Foundation buildings (footprints and heights from OpenStreetMap, Microsoft, Esri Community Maps and Google Open Buildings; ODbL and CDLA Permissive 2.0)' : f.source === 'osm' ? 'OpenStreetMap contributors (ODbL)' : 'no building source answered'}; heights measured or ${METRES_PER_STOREY} m a storey, else the storeys of a determined application on the lot from the NSW Planning Portal's Online DA API; the LEP height of building from the ePlanning layer, converted with the 5 m elevation model where it is a reduced level. Retrieved ${b.generatedAt.slice(0, 10)}.</div>`;
+    `<div class="fine">Sources: ${f.source === 'overture' ? 'Overture Maps Foundation buildings (footprints and heights from OpenStreetMap, Microsoft, Esri Community Maps and Google Open Buildings; ODbL and CDLA Permissive 2.0)' : f.source === 'osm' ? 'OpenStreetMap contributors (ODbL)' : 'no building source answered'}; heights measured or ${METRES_PER_STOREY} m a storey, else read from Google's Photorealistic 3D Tiles where the deck had them${meshCredit(f.mesh)}, else the storeys of a determined application on the lot from the NSW Planning Portal's Online DA API; the LEP height of building from the ePlanning layer, converted with the 5 m elevation model where it is a reduced level. Retrieved ${b.generatedAt.slice(0, 10)}.</div>`;
   const sub = [b.siteAddress, f.envelope ? `HOB ${f.envelope.label}` : 'no HOB mapped', f.near.medianStoreys ? `neighbourhood median ${f.near.medianStoreys} storeys` : ''].filter(Boolean).join(' · ');
   const p = b.daPanel;
   const proj = panelProjector(p);
@@ -3928,6 +3917,7 @@ export function builtFormSlide(b: SlidesBundle, planning: PlanningFacts): Slide 
   ].map((tl) => `<div class="tile"><div class="tv${tl.v.length > 9 ? ' long' : ''}">${esc(tl.v)}</div><div class="tl">${esc(tl.l)}</div></div>`).join('');
   const legend = HEIGHT_BANDS.map((bd, i) => `<div class="lg"><svg width="5mm" height="3.6mm" viewBox="0 0 5 3.6"><rect x="0" y="0.3" width="5" height="3" fill="${bd.fill}"/></svg><span>${esc(bd.label)} · ${fmtNum(f.bands[i].count)}</span></div>`).join('') +
     (f.fromDa ? `<div class="lg"><svg width="5mm" height="3.6mm" viewBox="0 0 5 3.6"><defs><pattern id="da-hatch-lg" patternUnits="userSpaceOnUse" width="1" height="1" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="1" stroke="#ffffff" stroke-width="0.3"/></pattern></defs><rect x="0" y="0.3" width="5" height="3" fill="${HEIGHT_BANDS[1].fill}"/><rect x="0" y="0.3" width="5" height="3" fill="url(#da-hatch-lg)"/></svg><span>hatched: storeys from a determined DA on the lot · ${fmtNum(f.fromDa)}</span></div>` : '') +
+    (f.fromMesh || f.meshFootprints ? `<div class="lg"><svg width="5mm" height="3.6mm" viewBox="0 0 5 3.6"><rect x="0" y="0.3" width="5" height="3" fill="${HEIGHT_BANDS[1].fill}"/></svg><span>heights read from Google's 3D meshes · ${fmtNum(f.fromMesh)}${f.meshFootprints ? `; footprints traced from them · ${fmtNum(f.meshFootprints)}` : ''}</span></div>` : '') +
     `<div class="lg"><svg width="5mm" height="3.6mm" viewBox="0 0 5 3.6"><rect x="0" y="0.3" width="5" height="3" fill="${NO_HEIGHT_FILL}"/></svg><span>no height known · ${fmtNum(f.bands[5].count)}</span></div>`;
   const maxSt = Math.max(1, ...f.near.storeys.map((s) => s.storeys), f.envelope?.storeys ?? 0);
   const hist = Array.from({ length: Math.min(20, maxSt) }, (_, i) => { const st = i + 1; const n = f.near.storeys.find((s) => s.storeys === st)?.count ?? 0; return { label: st === 20 ? '20+' : String(st), value: n, text: n ? String(n) : '' }; });
@@ -4178,6 +4168,7 @@ export function builtFormAtlas(b0: SlidesBundle, planning: PlanningFacts): Slide
     { swatch: swatchOf(bf.noHeight), label: `No height recorded · ${fmtNum(f.bands[5].count)}` },
     ...(gap.count ? [{ swatch: swatchOf(bf.lotGap), label: `Lot with no footprint in the open data, likely built · ${fmtNum(gap.count)}` }] : []),
     ...(fromDa.length ? [{ swatch: `<rect x="0.2" y="0.6" width="4.6" height="2.4" fill="#ffffff" stroke="${SAGE.line}" stroke-width="0.4"/>`, label: `Storeys from a determined DA on the lot · ${fmtNum(fromDa.length)}` }] : []),
+    ...(f.fromMesh || f.meshFootprints ? [{ swatch: '', label: `Heights read from Google's 3D meshes · ${fmtNum(f.fromMesh)}${f.meshFootprints ? `; footprints traced from them where the sources had none · ${fmtNum(f.meshFootprints)}` : ''}` }] : []),
     ...(secA ? [{ swatch: `<path d="M0,1.8H5" stroke="#000000" stroke-width="0.25" stroke-dasharray="2.4 0.8 0.4 0.8"/>`, label: 'Section line A–A′; numbers on the map are storeys' }] : []),
     ...(secA ? [{ swatch: `<path d="M0,1.8H5" stroke="#000000" stroke-width="0.2" stroke-dasharray="0.6 0.5"/>`, label: 'LEP height of building along the section, in metres' }] : []),
     { swatch: `<path d="M1.2,0.6H3.8V3H1.2Z" fill="${t.site}"/>`, label: 'The site' },
@@ -4227,7 +4218,7 @@ export function builtFormAtlas(b0: SlidesBundle, planning: PlanningFacts): Slide
     if (sec) blocks.push(`<div class="zblk">${zHead(`Section A–A′ · 1:${fmtNum(sec.scale).replace(',', ' ')}${sec.ve > 1 ? ` · heights ×${sec.ve}` : ''}`)}${sec.svg}</div>`);
   }
   const flow = `<div class="zflow" style="top:44mm">${blocks.join('')}</div>`;
-  const src = f.source === 'overture' ? `Overture Maps Foundation buildings${f.release ? ` (release ${f.release})` : ''}, footprints and heights from OpenStreetMap, Microsoft, Esri Community Maps and Google Open Buildings (ODbL, CDLA Permissive 2.0)` : f.source === 'osm' ? 'OpenStreetMap contributors (ODbL)' : 'no building source answered';
+  const src = (f.source === 'overture' ? `Overture Maps Foundation buildings${f.release ? ` (release ${f.release})` : ''}, footprints and heights from OpenStreetMap, Microsoft, Esri Community Maps and Google Open Buildings (ODbL, CDLA Permissive 2.0)` : f.source === 'osm' ? 'OpenStreetMap contributors (ODbL)' : 'no building source answered') + meshCredit(f.mesh);
   const sources = `Sources: ${src}; heights measured, or ${METRES_PER_STOREY} m a storey, else the storeys of a determined application on the lot (NSW Planning Portal); the LEP height of building from the ePlanning layer; ground from the 5 m elevation model. Retrieved ${b.generatedAt.slice(0, 10)}.`;
   const lga = b.context.lga?.name ? titleCase(b.context.lga.name) : '';
   const sub = [`${b.siteAddress}${lga ? ` ${lga}` : ''}`, e ? `HOB ${e.label}` : 'no HOB mapped', f.near.medianStoreys ? `median ${f.near.medianStoreys} storeys within ${f.near.radiusM} m` : ''].filter(Boolean).join(' · ');
@@ -4236,7 +4227,8 @@ export function builtFormAtlas(b0: SlidesBundle, planning: PlanningFacts): Slide
     ${flow}`;
   return { id: '09_height_of_buildings', title: 'Height of buildings', subtitle: sub, textHtml: '', figureHtml, bleed: true, sources, accent: inkFor(bf.bands[3].ink ?? bf.bands[3].bg ?? '#000000', 0.3), legend,
     narrative: brief([f.near.medianStoreys ? `Within ${f.near.radiusM} m of the site the typical building is ${f.near.medianStoreys} storeys.` : '',
-      gap.lots && gap.count / gap.lots >= 0.15 ? `${fmtNum(gap.count)} of the ${fmtNum(gap.lots)} lots on the map that should hold a building have no footprint in the open data; they are hatched, not empty.` : '', e?.storeys ? `The ${e.label} height of building allows about ${e.storeys} at the site${f.near.medianStoreys ? `, ${e.storeys >= 2 * f.near.medianStoreys ? 'twice' : 'more than'} the neighbourhood's` : ''}.` : '', t0 ? `The tallest with a recorded height on the map, ${t0.name ?? 'a tower'}, is ${Math.round(t0.heightM)} m (${t0.storeys} storeys), ${fmtNum(t0.distanceM)} m away to the ${bearingName(t0.bearing)}.` : '']) };
+      gap.lots && gap.count / gap.lots >= 0.15 ? `${fmtNum(gap.count)} of the ${fmtNum(gap.lots)} lots on the map that should hold a building have no footprint in the open data; they are hatched, not empty.` : '',
+      f.fromMesh ? `${fmtNum(f.fromMesh)} heights${f.meshFootprints ? ` and ${fmtNum(f.meshFootprints)} footprints` : ''} are read from Google's 3D meshes.` : '', e?.storeys ? `The ${e.label} height of building allows about ${e.storeys} at the site${f.near.medianStoreys ? `, ${e.storeys >= 2 * f.near.medianStoreys ? 'twice' : 'more than'} the neighbourhood's` : ''}.` : '', t0 ? `The tallest with a recorded height on the map, ${t0.name ?? 'a tower'}, is ${Math.round(t0.heightM)} m (${t0.storeys} storeys), ${fmtNum(t0.distanceM)} m away to the ${bearingName(t0.bearing)}.` : '']) };
 }
 
 // ---- slide 10: movement ------------------------------------------------------
@@ -4594,14 +4586,15 @@ export function movementSlide(b: SlidesBundle): Slide {
     parts.push(`<rect x="${(x - half).toFixed(2)}" y="${(y - half).toFixed(2)}" width="${(2 * half).toFixed(2)}" height="${(2 * half).toFixed(2)}" fill="#ffffff" stroke="${MOVE.mark}" stroke-width="0.35"/><text x="${x.toFixed(2)}" y="${(y + half * 0.5).toFixed(2)}" text-anchor="middle" font-size="${(half * 1.35).toFixed(2)}" font-weight="700" fill="${MOVE.mark}">P</text>`);
     isoSpacer.block(x, y, 2 * half + 1, 2 * half + 1);
   }
+  // each ring's minutes in the ring's own colour (Z. 2026-11), where the ring is clear
   for (const iso of bandIso) {
-    const text = `${iso.minutes} min`, w = t2Width(text);
+    const text = `${iso.minutes} min`, w = t2Width(text), ink = BAND_COLS[bandIso.indexOf(iso)] ?? B.deep;
     const pts = (iso.rings[0]?.map(([lon, lat]) => proj(lon, lat)) ?? []).filter((q) => q[0] > 8 && q[0] < p.wMm - 8 && q[1] > 14 && q[1] < p.hMm - 16);
     const order = [...pts].sort((q, r) => q[1] - r[1]);
     const tries = [...order.slice(0, 12), ...[...pts].sort((q, r) => q[0] - r[0]).slice(0, 8), ...[...pts].sort((q, r) => r[0] - q[0]).slice(0, 8)];
     for (const [x, y] of tries) {
       if (!isoSpacer.take(x, y - 2.2, w + 2, 4)) continue;
-      parts.push(t2Text(x, y - 2.2, text, 'middle'));
+      parts.push(t2Text(x, y - 2.2, text, 'middle').replace(/fill="[^"]*"/, `fill="${ink}"`));
       break;
     }
   }
@@ -5212,7 +5205,7 @@ export function greenAtlas(b0: SlidesBundle): Slide {
   let y = 44 + blockH(6.3 + 3 * 9.6);
   const blocks: string[] = [`<div class="zblk">${zHead('Canopy', 'Open space')}${figs}</div>`];
   if (c.covered && (c.siteBlock || c.window)) {
-    const AGG: Fill = { bg: G.mid }, CAT: Fill = { bg: '#ffffff', kind: 'vlines', ink: G.line, step: 0.55, w: 0.16, outline: G.line, outlineW: 0.12 };
+    const AGG: Fill = { bg: G.mid }, CAT: Fill = { bg: G.mid, opacity: 0.5 };
     const rows = [
       ...(c.siteBlock ? [{ name: "The site's mesh block", value: c.siteBlock.pct, label: fmtPct(c.siteBlock.pct), fill: { bg: G.solid } as Fill }] : []),
       ...(c.window ? [{ name: 'Across the page', value: c.window.pct, label: fmtPct(c.window.pct), fill: AGG }] : []),
@@ -5241,7 +5234,7 @@ export function greenAtlas(b0: SlidesBundle): Slide {
   if (nFac) {
     const rows = [...f.facilityCounts].sort((x, z) => z.n - x.n).slice(0, nFac).map(({ kind, n }) => {
       const nearest = f.facilities.find((x) => x.kind === kind)!;
-      return { name: `${FACILITY_LETTER[kind]}  ${capFirst(FACILITY_WORD[kind][1])}`, value: n, label: `${n} · nearest ${fmtNum(nearest.distanceM)} m`, fill: { bg: '#ffffff', kind: 'hlines', ink: '#000000', step: 0.5, w: 0.12, outline: '#000000', outlineW: 0.12 } as Fill };
+      return { name: `${FACILITY_LETTER[kind]}  ${capFirst(FACILITY_WORD[kind][1])}`, value: n, label: `${n} · nearest ${fmtNum(nearest.distanceM)} m`, fill: { bg: '#000000', opacity: 0.45 } as Fill };
     });
     const ax = niceAxis(Math.max(4, ...rows.map((r) => r.value)));
     blocks.push(`<div class="zblk">${zHead('Public facilities on the page')}${zBars(rows, ax.max, ax.step)}</div>`);
@@ -5456,12 +5449,13 @@ function constraintPanel(b: SlidesBundle, proj: Proj, f: ReturnType<typeof const
  * palette, and on paper its own pattern as well, so a layer reads as itself at a glance; over the photograph
  * the colours tone. A layer that covers most of the page takes a sparse dotted fill (see the page).
  */
-const CONSTRAINT_SEQ = (): Fill[] => {
+const CONSTRAINT_SEQ = (onAerial = false): Fill[] => {
   const R = INK.red, B = INK.blue, G = INK.green, O = INK.orange;
   const inks = [R.deep, B.deep, inkFor(O.solid, 0.35), G.deep, inkFor(B.solid, 0.3), inkFor(R.solid, 0.3), inkFor(G.solid, 0.3), inkFor(O.deep, 0.25)];
   const kinds: Fill['kind'][] = ['hatch', 'dots', 'vlines', 'waves', 'cross', 'hlines', 'hatch', 'dots'];
   if (deckLook().technique === 'tone') return inks.map((c) => ({ bg: tint(c, 0.42), opacity: 0.78, outline: c, outlineW: 0.25 }));
-  return inks.map((c, i) => ({ bg: tint(c, 0.1), kind: kinds[i], ink: c, step: kinds[i] === 'dots' ? 0.9 : kinds[i] === 'waves' ? 1.1 : 0.7, w: kinds[i] === 'dots' ? 0.22 : 0.16, outline: c, outlineW: 0.25 }));
+  // over the photograph the ground is the ink at an opacity, so the photograph shows through the layer as it does through the zones
+  return inks.map((c, i) => ({ ...(onAerial ? { bg: c, opacity: 0.12 } : { bg: tint(c, 0.1) }), kind: kinds[i], ink: c, step: kinds[i] === 'dots' ? 0.9 : kinds[i] === 'waves' ? 1.1 : 0.7, w: kinds[i] === 'dots' ? 0.22 : 0.16, outline: c, outlineW: 0.25 }));
 };
 
 /** Environmental constraints on the template: every mapped constraint on the page in the green family's patterns; the full list as a matrix of answers. */
@@ -5469,13 +5463,18 @@ export function constraintsAtlas(b0: SlidesBundle): Slide {
   const p = b0.bleedPanel;
   const b: SlidesBundle = { ...b0, panel: p, daPanel: p };
   const t = tpl();
+  const look = deckLook();
   const f = constraintsFacts(b);
   const proj = panelProjector(p);
-  const gt = greyBase(t);
+  // the aerial under the map where the style stands on one, greyed and veiled as the planning overview has it
+  // (Z. 2026-11: on paper alone this map is a blank), the paper under the roads a light grey over it
+  const ground = aerialGround(b, p, look);
+  const onAerial = ground !== '';
+  const gt = { ...greyBase(t), ...(onAerial ? { paper: '#e9e9e9' } : {}) };
   const box = { x0: 0, y0: 0, x1: p.wMm, y1: p.hMm };
-  const seq = CONSTRAINT_SEQ();
+  const seq = CONSTRAINT_SEQ(onAerial);
   const NOISE = inkFor(INK.orange.deep, 0.3);
-  const parts: string[] = [withTemplate(gt, () => baseLayers(b.base, proj, p))];
+  const parts: string[] = [withTemplate(gt, () => baseLayers(b.base, proj, p)), ground];
   const legend: LegendEntry[] = [];
   const fillOf = new Map<string, Fill>();
   const cands: { area: number; cx: number; cy: number; text: string }[] = [];
@@ -5506,8 +5505,8 @@ export function constraintsAtlas(b0: SlidesBundle): Slide {
   spacer.take(40, 10, 72, 10);
   keepSiteClear(b, proj, spacer);
   const labels: string[] = [];
-  for (const c of cands.sort((x, y) => y.area - x.area)) if (spacer.take(c.cx, c.cy, c.text.length * 1.6 + 1, 2.8)) labels.push(m6(c.cx, c.cy, c.text));
-  labels.push(streetNameLayer(b.base.roads, proj, p, spacer, 'cons14'));
+  for (const c of cands.sort((x, y) => y.area - x.area)) if (spacer.take(c.cx, c.cy, c.text.length * 1.6 + 1, 2.8)) labels.push((onAerial ? a6 : m6)(c.cx, c.cy, c.text, 'middle'));
+  labels.push(onAerial ? streetNameLayer(b.base.roads, proj, p, spacer, 'cons14', look.streetInkAerial, 2.0, '#1c1c1c') : streetNameLayer(b.base.roads, proj, p, spacer, 'cons14'));
   parts.push(...labels, siteMark(b.base, proj, 'both'), panelFurniture(p, 'left'));
   if (!fillOf.size) parts.push(m6(p.wMm / 2, p.hMm / 2, 'No hazard or protection layer is mapped on this page'));
   const mapSvg = bleedSvg('cons14', p, parts.join('\n'));
@@ -5551,7 +5550,7 @@ export function constraintsAtlas(b0: SlidesBundle): Slide {
   const y = 44 + blockH(6.3 + 2 * 9.6);
   void y;
   blocks.push(zBlock('Layers', matrix, `${rows.length} mapped for this place`));
-  const sources = `Mapped constraints from the State's layers, not a site investigation: NSW ePlanning hazard and protection layers (the plan's own maps, checked plan-wide where the page is empty); NSW RFS bushfire prone land; SEPP (Resilience and Hazards) coastal maps; SEPP (Transport and Infrastructure) corridors; Subsidence Advisory NSW; NSW soil landscapes. Contamination, geotechnical, flood and acoustic studies are separate. Retrieved ${b.generatedAt.slice(0, 10)}.`;
+  const sources = `Mapped constraints from the State's layers, not a site investigation: NSW ePlanning hazard and protection layers (the plan's own maps, checked plan-wide where the page is empty); NSW RFS bushfire prone land; SEPP (Resilience and Hazards) coastal maps; SEPP (Transport and Infrastructure) corridors; Subsidence Advisory NSW; NSW soil landscapes${onAerial ? '; NSW Imagery via SIX Maps for the aerial' : ''}. Contamination, geotechnical, flood and acoustic studies are separate. Retrieved ${b.generatedAt.slice(0, 10)}.`;
   const sub = atlasSub(b0, f.atSite.length ? `${f.atSite.length} mapped at the site` : 'none mapped at the site', f.lepShort ?? '');
   return { id: '15_environmental_constraints', title: 'Environmental constraints', subtitle: sub, textHtml: '', figureHtml: atlasFigure(mapSvg, 'Hazards and protections', p, zFlow(blocks)), bleed: true, sources, accent: [...fillOf.values()][0]?.outline ?? '#000000', legend,
     narrative: brief([f.atSite.length ? `Mapped at the site: ${listWords(f.atSite.map((c) => `${c.title.toLowerCase()}${c.atSite.length ? ` (${c.atSite.join(', ')})` : ''}`))}.` : 'No hazard or protection layer is mapped at the site.', f.noise.roads.length ? `${listWords(f.noise.roads.map((r) => r.name))} ${f.noise.roads.length === 1 ? 'is' : 'are'} the noise source${f.noise.roads.length === 1 ? '' : 's'} to design for.` : '', f.nearby[0]?.nearest ? `The nearest other constraint, ${f.nearby[0].title.toLowerCase()}, begins ${fmtNum(f.nearby[0].nearest.distanceM)} m to the ${bearingName(f.nearby[0].nearest.bearing)}.` : '']) };
@@ -6157,14 +6156,14 @@ export function siteAtlas(b: SlidesBundle): Slide {
   let y = 44 + blockH(6.3 + 3 * 9.6);
   const blocks = [zBlock('The lot', figs, 'The controls and the value')];
   if (lv && lv.values.length > 1) {
-    const rows = lv.values.map((v, i) => ({ name: String(v.year), value: v.value / 1e6, label: money(v.value), fill: i === lv.values.length - 1 ? { bg: S.solid } as Fill : { bg: '#ffffff', kind: 'vlines', ink: S.deep, step: 0.55, w: 0.14, outline: S.deep, outlineW: 0.12 } as Fill }));
+    const rows = lv.values.map((v, i) => ({ name: String(v.year), value: v.value / 1e6, label: money(v.value), fill: i === lv.values.length - 1 ? { bg: S.solid } as Fill : { bg: S.solid, opacity: 0.45 } as Fill }));
     const ax = niceAxis(Math.max(...rows.map((r) => r.value)));
     blocks.push(zBlock(`Land value · $ M${lv.changePct !== null ? ` · ${lv.changePct >= 0 ? '+' : '−'}${fmtPct(Math.abs(lv.changePct))} since ${lv.firstYear}` : ''}`, zBars(rows, ax.max, ax.step)));
     y += blockH(barsH(rows.length));
   }
   const nSales = Math.max(0, Math.min(f.sales.recent.length, Math.floor((limit - y - blockH(10)) / 3.95)));
   if (nSales) {
-    const rows = f.sales.recent.slice(0, nSales).map((x) => ({ name: shorten(`${tidyName(titleCase(streetOnly(x.address)))} · ${fmtNum(x.distanceM)} m`, 40), value: x.price / 1e6, label: `${money(x.price)} · ${fmtMonthYear(x.date)}`, fill: x.strata ? { bg: '#ffffff', kind: 'vlines', ink: S.deep, step: 0.55, w: 0.14, outline: S.deep, outlineW: 0.12 } as Fill : { bg: S.solid } as Fill }));
+    const rows = f.sales.recent.slice(0, nSales).map((x) => ({ name: shorten(`${tidyName(titleCase(streetOnly(x.address)))} · ${fmtNum(x.distanceM)} m`, 40), value: x.price / 1e6, label: `${money(x.price)} · ${fmtMonthYear(x.date)}`, fill: x.strata ? { bg: S.solid, opacity: 0.45 } as Fill : { bg: S.solid } as Fill }));
     const ax = niceAxis(Math.max(...rows.map((r) => r.value)));
     blocks.push(zBlock(`Sales within ${f.sales.radiusM} m · $ M`, zBars(rows, ax.max, ax.step), `${f.sales.count} in ${f.sales.months} months · median ${f.sales.median ? money(f.sales.median) : '—'}`));
   }
@@ -6847,7 +6846,7 @@ export function sunViewSlide(b: SlidesBundle): Slide {
   const sentences = sunViewSentences(b, f);
   const textHtml = sentences.map(para).join('') +
     placeholder('Narrative — for the author: where the living rooms and the private open space should face, which frontage gets the morning and which the afternoon, what the neighbours\' winter shadows leave for the ground floor and the courtyard, and which views are worth a window, a terrace or a roof.') +
-    `<div class="fine">Sun positions computed for the site (NOAA solar geometry) for 21 June in AEST and 21 December and the equinox in AEDT; shadows from ${b.buildings.source === 'overture' ? 'Overture Maps' : 'OpenStreetMap'} footprints and their heights (measured, from storeys, or the storeys of a determined DA on the lot, as slide 09 marks them), the site's own buildings left out; street bearings from NSW Spatial Services roads in the window; sight lines from the eye just under the height limit over the NSW 5 m elevation surface to the skylines, the named water and coast and the park next door. Buildings are not tested against the sight lines.${f.wind?.ok ? ` Wind: hourly at 10 m in the MERRA-2 reanalysis cell over the site, ${f.wind.years[0]}–${f.wind.years[1]}, from the NASA Langley Research Center POWER Project, funded through the NASA Earth Science/Applied Science Program.` : ''} Retrieved ${b.generatedAt.slice(0, 10)}.</div>`;
+    `<div class="fine">Sun positions computed for the site (NOAA solar geometry) for 21 June in AEST and 21 December and the equinox in AEDT; shadows from ${b.buildings.source === 'overture' ? 'Overture Maps' : 'OpenStreetMap'} footprints and their heights (measured, from storeys, read from Google's 3D Tiles, or the storeys of a determined DA on the lot, as slide 09 marks them), the site's own buildings left out; street bearings from NSW Spatial Services roads in the window; sight lines from the eye just under the height limit over the NSW 5 m elevation surface to the skylines, the named water and coast and the park next door. Buildings are not tested against the sight lines.${f.wind?.ok ? ` Wind: hourly at 10 m in the MERRA-2 reanalysis cell over the site, ${f.wind.years[0]}–${f.wind.years[1]}, from the NASA Langley Research Center POWER Project, funded through the NASA Earth Science/Applied Science Program.` : ''} Retrieved ${b.generatedAt.slice(0, 10)}.</div>`;
   const worstShadow = [...f.shadows].sort((x, y) => y.shadedPct - x.shadedPct)[0];
   const clearViews = f.views.filter((v) => v.clear === true);
   const sub = [b.siteAddress, `grid ${f.grid.primaryDeg}°`, f.grid.frontages[0] ? `frontage faces ${f.grid.frontages[0].facingWord}` : '', clearViews.length ? `${clearViews.length} clear view${clearViews.length === 1 ? '' : 's'}` : ''].filter(Boolean).join(' · ');
@@ -7140,10 +7139,11 @@ export function sunAtlas(b: SlidesBundle): Slide {
   if (f.wind?.ok && f.wind.summer.hours && f.wind.winter.hours) {
     const w = f.wind;
     const { step, top } = niceScale(Math.max(...sectorTotals(w.summer), ...sectorTotals(w.winter)), 3);
+    // the four classes as four tones of one ink, the strongest wind the deepest (full fills, no patterns)
     const fills: Fill[] = [
-      { bg: S.light, outline: S.deep, outlineW: 0.1 },
-      { bg: '#ffffff', kind: 'vlines', ink: S.deep, step: 0.7, w: 0.14, outline: S.deep, outlineW: 0.1 },
-      { bg: '#ffffff', kind: 'vlines', ink: S.deep, step: 0.35, w: 0.14, outline: S.deep, outlineW: 0.1 },
+      { bg: S.deep, opacity: 0.16, outline: S.deep, outlineW: 0.1 },
+      { bg: S.deep, opacity: 0.38 },
+      { bg: S.deep, opacity: 0.65 },
       { bg: S.deep },
     ];
     const caption = (rose: WindRose, x: number) => z6(x, D + 6.3 + 1, `mean ${Math.round(rose.meanKmh)} km/h · calm ${rose.calmPct < 1 ? rose.calmPct.toFixed(1) : Math.round(rose.calmPct)} %`);
@@ -7151,7 +7151,7 @@ export function sunAtlas(b: SlidesBundle): Slide {
     const key = classes.map((c, i) => `<g transform="translate(${(Z_TRACK + i * 15).toFixed(2)},${(D + 6.3 + 4.6).toFixed(2)})">${fillShape('M0,0.4H5V3.2H0Z', { x0: 0, y0: 0.4, x1: 5, y1: 3.2 }, fills[i], 1.54)}</g>${z6(Z_TRACK + i * 15 + 5.8, D + 6.3 + 4.85, c)}`).join('');
     blocks.push(zBlock(`Wind, summer · ${w.years[0]}–${w.years[1]}`, zSvg(D + 6.3 + 9, zWindRose(w.summer, 0, D, top, step, fills) + zWindRose(w.winter, Z_TRACK, D, top, step, fills) + caption(w.summer, 0) + caption(w.winter, Z_TRACK) + key), 'Wind, winter'));
   }
-  const sources = `Sources: sun positions computed for the site (NOAA solar geometry), 21 June in AEST; shadows from ${b.buildings.source === 'overture' ? 'Overture Maps' : 'OpenStreetMap'} footprints and their heights, the site's own left out; street bearings from NSW Spatial Services roads; sight lines from the eye at the height limit over the 5 m elevation model, buildings not tested.${f.wind?.ok ? ` Wind: hourly at 10 m, MERRA-2 via the NASA Langley Research Center POWER Project — the region's wind, not the site's.` : ''} Retrieved ${b.generatedAt.slice(0, 10)}.`;
+  const sources = `Sources: sun positions computed for the site (NOAA solar geometry), 21 June in AEST; shadows from ${b.buildings.source === 'overture' ? 'Overture Maps' : 'OpenStreetMap'} footprints and their heights${b.buildings.mesh ? ', those the sources lack read from Google\'s 3D Tiles' : ''}, the site's own left out; street bearings from NSW Spatial Services roads; sight lines from the eye at the height limit over the 5 m elevation model, buildings not tested.${f.wind?.ok ? ` Wind: hourly at 10 m, MERRA-2 via the NASA Langley Research Center POWER Project — the region's wind, not the site's.` : ''} Retrieved ${b.generatedAt.slice(0, 10)}.`;
   const sub = atlasSub(b, `grid ${f.grid.primaryDeg}°`, f.grid.frontages[0] ? `${f.grid.frontages[0].name} faces ${f.grid.frontages[0].facingName}` : '', clear.length ? `${clear.length} clear view${clear.length === 1 ? '' : 's'}` : '');
   return { id: '14_grid_sun_views', title: 'Grid, sun and views', subtitle: sub, textHtml: '', figureHtml: atlasFigure(mapSvg, 'Winter shadows, 21 June', p, zFlow(blocks)), bleed: true, sources, accent: SHADOW_INK, legend,
     narrative: brief([f.grid.frontages.length ? `The site's frontages face ${listWords(f.grid.frontages.map((fr) => `${fr.facingName} to ${fr.name}`))}, on a street grid at ${f.grid.primaryDeg}°.` : '', `On 21 June the sun reaches ${f.sun.winter.noonAltitudeDeg.toFixed(0)}° at noon${f.castersInReach && worst ? `, and the neighbours' shadows cover at most ${fmtPct(worst.shadedPct)} of the site` : ''}.`, clear.length ? `From the height limit the ground leaves clear views to ${listWords(clear.slice(0, 3).map((v) => viewPhrase(v)))}.` : '']) };
@@ -7968,7 +7968,7 @@ export function sourcesFacts(b: SlidesBundle, planning: PlanningFacts) {
 
   // Open and community data.
   const F: SourceRow[] = [];
-  F.push({ dataset: b.buildings.source === 'overture' ? 'Overture Maps Foundation buildings (footprints, heights and storeys)' : b.buildings.source === 'osm' ? 'OpenStreetMap buildings via Overpass (Overture was not available)' : 'Building footprints', used: '03b · 09 · 09b · 12 · 13 · 14 · 17', currency: b.buildings.source === 'none' ? (b.buildings.note ?? 'none read') : `${b.buildings.source === 'overture' ? `release ${b.buildings.release ?? 'unknown'}; ` : ''}${n(b.buildings.buildings.length, 'footprint')} in the window, ${n(b.buildings.buildings.filter((x) => x.estimatedHeightM).length, 'height')}${b.buildings.buildings.some((x) => x.heightFrom === 'da') ? `, ${b.buildings.buildings.filter((x) => x.heightFrom === 'da').length} of them the storeys of a determined DA on the lot (Online DA API)` : ''}`, retrieved: retrieved(b.buildings.fetchedAt), attribution: b.buildings.source === 'overture' ? ATTR.overture : b.buildings.source === 'osm' ? ATTR.osm : ATTR.none });
+  F.push({ dataset: b.buildings.source === 'overture' ? 'Overture Maps Foundation buildings (footprints, heights and storeys)' : b.buildings.source === 'osm' ? 'OpenStreetMap buildings via Overpass (Overture was not available)' : 'Building footprints', used: '03b · 09 · 09b · 12 · 13 · 14 · 17', currency: b.buildings.source === 'none' ? (b.buildings.note ?? 'none read') : `${b.buildings.source === 'overture' ? `release ${b.buildings.release ?? 'unknown'}; ` : ''}${n(b.buildings.buildings.length, 'footprint')} in the window, ${n(b.buildings.buildings.filter((x) => x.estimatedHeightM).length, 'height')}${b.buildings.mesh ? `, ${n(b.buildings.mesh.heights, 'height')} and ${n(b.buildings.mesh.footprints, 'footprint')} read from Google's 3D Tiles (${b.buildings.mesh.meshes} meshes at ${b.buildings.mesh.errorM.toFixed(1)} m)` : ''}${b.buildings.buildings.some((x) => x.heightFrom === 'da') ? `, ${b.buildings.buildings.filter((x) => x.heightFrom === 'da').length} of them the storeys of a determined DA on the lot (Online DA API)` : ''}`, retrieved: retrieved(b.buildings.fetchedAt), attribution: b.buildings.source === 'overture' ? ATTR.overture : b.buildings.source === 'osm' ? ATTR.osm : ATTR.none });
   F.push({ dataset: 'OpenStreetMap via Overpass: bus routes, cycleways, footways, one-way streets', used: '10 · 11', currency: b.movement.osm ? `read; ${n(b.movement.cycleways.length, 'cycleway')}, ${n(b.movement.footways.length, 'footway')}, ${n(b.movement.busRoutes.length, 'bus route')} in the window` : 'not available at retrieval (the Overpass mirror did not answer), so slide 10 shows the State layers only', retrieved: retrieved(b.movement.fetchedAt), attribution: ATTR.osm });
   F.push({ dataset: 'Valhalla walking isochrones on the OpenStreetMap network', used: '10 · 11 · 17', currency: b.movement.isochrones.length ? `${b.movement.isochrones.map((i) => i.minutes).sort((x, y) => x - y).join(', ')} minutes from the site; the network as the instance holds it` : 'not answered for this run', retrieved: retrieved(b.movement.fetchedAt), attribution: ATTR.valhalla });
   const ch = b.character;
@@ -8310,7 +8310,7 @@ export function countrySentences(_b: SlidesBundle, f: ReturnType<typeof countryF
   return out;
 }
 
-/** Country on the template: the land's shape and its pre-1750 plant communities over a full page at the strip's scale, each community its own green pattern; the open records charted beside. */
+/** Country on the template: the land's shape and its pre-1750 plant communities over a full page at the strip's scale, each community its own colour and named in the key; the open records beside. */
 export function countryAtlas(b: SlidesBundle): Slide {
   const t = tpl();
   const S = INK.sage;
@@ -8411,9 +8411,9 @@ export function countryAtlas(b: SlidesBundle): Slide {
   parts.push(...labels, `<circle cx="${sx.toFixed(2)}" cy="${sy.toFixed(2)}" r="1.8" fill="${t.site}" stroke="#ffffff" stroke-width="0.5"/>`, panelFurniture(p, 'left'));
   const mapSvg = bleedSvg('country15', p, parts.join('\n'));
 
-  const vegSwatch = stripOf(VEG, 4);
+  // each community named beside its own swatch (Z. 2026-11: the names in the key, not a chart of their shares), the site's own said so
   const legend: LegendEntry[] = [
-    ...(classes.length ? [{ swatch: vegSwatch, label: `Pre-1750 plant communities, each its own colour, keyed by the chart${deckLook().technique === 'tone' ? '; woodland lighter than forest' : '; dotted, the denser the closer the canopy'}` }] : []),
+    ...classes.map((cl, i) => ({ swatch: swatchOf(VEG[i]), label: `${cl.pct}${cl.pct === f.vegetation.atSite?.pct ? ' · at the site' : ''}` })),
     { swatch: `<rect x="0" y="0.5" width="5" height="2.6" fill="${t.water}"/><path d="M0,2.2C1.5,0.8 3.5,2.8 5,1.2" fill="none" stroke="${WATER_INK}" stroke-width="0.4"/>`, label: 'Rivers and creeks, named; creeks dashed where not perennial; the land in hillshade' },
     ...(c.ridges.length ? [{ swatch: `<path d="M0,1.8H5" stroke="${S.deep}" stroke-width="0.4" stroke-dasharray="1.8 0.9"/>`, label: 'Crests read from the elevation model' }] : []),
     ...(c.dem ? [{ swatch: `<line x1="0" y1="2.6" x2="5" y2="2.6" stroke="${inkFor(INK.orange.deep, 0.18)}" stroke-width="0.12"/><line x1="0" y1="1.2" x2="5" y2="1.2" stroke="${inkFor(INK.orange.deep, 0.18)}" stroke-width="0.3"/>`, label: 'Contours every 10 m, the fifties heavier: a hint of the land\'s shape' }] : []),
@@ -8432,15 +8432,8 @@ export function countryAtlas(b: SlidesBundle): Slide {
     ['the ground', f.landform.siteRl !== null ? `RL ${f.landform.siteRl}${f.landform.nearestRidge ? ` · crest ${fmtNum(f.landform.nearestRidge.distanceM)} m ${bearingName(f.landform.nearestRidge.bearing)}` : ''}` : '—'],
     ['ASDST likelihood · AHIMS', `${f.asdst.likelihood !== null ? `${f.asdst.likelihood} of ${f.asdst.scaleMax}` : '—'} · a search before any works`],
   ], 9.6);
-  let y = 44 + blockH(6.3 + 3 * 9.6);
+  const y = 44 + blockH(6.3 + 3 * 9.6);
   const blocks = [zBlock('Country at the site', figs, 'The land')];
-  if (classes.length) {
-    // the chart is the key to the map: each community's tint, its name and its share
-    const rows = classes.map((cl, i) => ({ name: shorten(cl.pct, 42), value: cl.sharePct, label: fmtPct(cl.sharePct, cl.sharePct < 10 ? 1 : 0), fill: { ...VEG[i], opacity: 1, outline: inkFor(VEG[i].ink ?? VEG[i].bg!, 0.3), outlineW: 0.1 } as Fill }));
-    const ax = niceAxis(Math.max(...rows.map((r) => r.value)));
-    blocks.push(zBlock('Plant communities before 1750 · share of the land, %', zBars(rows, ax.max, ax.step)));
-    y += blockH(barsH(rows.length));
-  }
   const recs = [
     { label: 'Impact permits', value: f.ahips.permits.length ? `${f.ahips.permits.length} on the page · ${f.ahips.active} active` : 'none on the page', note: f.ahips.permits[0] ? `nearest AHIP ${f.ahips.permits[0].id}, ${fmtNum(f.ahips.permits[0].distanceM)} m ${bearingName(f.ahips.permits[0].bearing)}` : undefined },
     { label: 'Aboriginal Places', value: f.placeCount ? `${f.placeCount} within ${fmtNum(f.placesRadiusM / 1000)} km` : `none gazetted within ${fmtNum(f.placesRadiusM / 1000)} km` },
