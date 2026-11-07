@@ -110,7 +110,8 @@ export async function fetchStreetTiles(key: string, centre: LonLat, c: Corridor,
     const s = u.searchParams.get('session');
     if (s) session = s;
     else if (session) u.searchParams.set('session', session);
-    u.searchParams.set('key', key);
+    // `header`: a proxy in front of this process adds the key as X-Goog-Api-Key, and none goes in the query
+    if (key !== 'header') u.searchParams.set('key', key);
     return u.toString();
   };
   // the key goes in the query, as Google asks; it never reaches a log, an error or a file
