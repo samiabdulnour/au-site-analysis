@@ -10,7 +10,7 @@
  */
 
 import { computeYield, storeysUnder, archetypeFor, edgeKinds, ringArea, futureHeight, withFour, existingSummary, DEFAULT_ASSUMPTIONS, PARKING_RATES, UNIT_KINDS, ADG_MINIMUM, type XY } from '../src/lib/yield.js';
-import { tierSpot, frontageMiddle, yieldStudy, scenarioRows, yieldRows, noSchemeSentence, renderYieldDeck, type YieldBundle } from '../src/render/yieldSheet.js';
+import { tierSpot, frontageMiddle, yieldStudy, scenarioRows, yieldRows, noSchemeSentence, renderYieldDeck, yieldCsv, type YieldBundle } from '../src/render/yieldSheet.js';
 
 const failures: string[] = [];
 const check = (name: string, ok: boolean, detail = '') => {
@@ -293,6 +293,39 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
   check('no envelope: an RL over unknown ground is said so, with the ratio\'s floor area', sr.noScheme === 'rlUnknown' && /RL 52/.test(noSchemeSentence(rlB, sr)) && /4,000 m² of floor area/.test(noSchemeSentence(rlB, sr)), noSchemeSentence(rlB, sr));
   // The scheme the lot had keeps its spread and its tick.
   check('no envelope: a mapped height still draws its scheme', yieldStudy(openB).noScheme === undefined && scenarioRows(openB)[0].ok === true);
+
+  // ---- a zone and nothing else: no height, no ratio, no plan's name ----
+  // The path within the controls gives no storeys or floor area, and takes no tick in its scenario row, the overview or the CSV.
+  const TICK = 'M0.6,2.1 L1.9,3.3 L4.4,0.6';   // the ✓ okMark draws
+  const ZERO = /\b0 storeys|\b0 ?m²|\b0 sqm|\b0 ?m to the roof/;
+  const pathRow = (html: string) => html.match(/<td>Within the controls<\/td>.*?<\/tr>/)?.[0] ?? '';
+  const zoneOnly: YieldBundle = { ...bundle, controls: { zoneCode: 'MU1', heritage: [] }, existing: [] };
+  const sz = yieldStudy(zoneOnly);
+  const zRows = scenarioRows(zoneOnly, sz);
+  const zDeck = deck(zoneOnly), zCsv = yieldCsv(zoneOnly);
+  check('zone only: no scheme, and the path within the controls gives no figures and takes no mark', sz.noScheme === 'noHeight' && zRows.length === 1
+    && zRows[0].ok === undefined && zRows[0].storeys === undefined && zRows[0].gfa === undefined && sz.bonus === undefined && sz.max === undefined, JSON.stringify(zRows));
+  check('zone only: nothing reads "0 storeys" or "0 m²", in the deck or the CSV', !ZERO.test(zDeck.html) && !ZERO.test(zCsv), (zDeck.html + zCsv).match(ZERO)?.[0]);
+  check('zone only: the overview\'s row takes no tick', !!pathRow(zDeck.html) && !pathRow(zDeck.html).includes(TICK), pathRow(zDeck.html));
+  check('zone only: no path is compliant in the CSV', !/^SCENARIOS,.*,yes\r?$/m.test(zCsv), zCsv.split('\r\n').filter((l) => l.startsWith('SCENARIOS')).join(' | '));
+  check('zone only: the narrative says the LEP sets no height or ratio, and leaves the envelope to the DCP',
+    /The LEP maps no height of building and no floor space ratio at the site/.test(zDeck.slides[0].narrative ?? '') && /DCP/.test(zDeck.slides[0].narrative ?? ''), zDeck.slides[0].narrative);
+
+  // ---- a zone that takes no building type: the study builds nothing, so the path is not a ticked scheme of 0 m² ----
+  const noType: [string, YieldBundle['controls']][] = [
+    ['R2 with a height and a ratio', { zoneCode: 'R2', maxHeightM: 8.5, fsr: 0.5, heritage: [] }],
+    ['R2 with neither', { zoneCode: 'R2', heritage: [] }],
+  ];
+  for (const [name, controls] of noType) {
+    const nb: YieldBundle = { ...bundle, controls, existing: [] };
+    const ns = yieldStudy(nb);
+    const nr = scenarioRows(nb, ns).find((r) => r.id === 'withinControls')!;
+    const nDeck = deck(nb), row = pathRow(nDeck.html);
+    check(`no building type (${name}): the path gives no figures and takes no mark`, ns.base.archetype === 'none' && nr.ok === undefined && nr.storeys === undefined && nr.gfa === undefined
+      && !/show this one/.test(nr.note), JSON.stringify(nr));
+    check(`no building type (${name}): the overview's row has no tick and no zero`, !!row && !row.includes(TICK) && !/>0<\/td>/.test(row), row);
+    check(`no building type (${name}): nothing reads "0 storeys" or "0 m²"`, !ZERO.test(nDeck.html) && !ZERO.test(yieldCsv(nb)), (nDeck.html + yieldCsv(nb)).match(ZERO)?.[0]);
+  }
 }
 
 if (failures.length) {

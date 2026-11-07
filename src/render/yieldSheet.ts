@@ -864,23 +864,28 @@ export function scenarioRows(b: YieldBundle, s: YieldStudy = yieldStudy(b)): Sce
     gfa: ex.gbaSqm ? `≈ ${sqm(ex.gbaSqm)} GBA` : undefined,
     fsr: ex.gbaSqm && A ? `≈ ${(ex.gbaSqm / A).toFixed(1)}:1` : undefined,
   });
-  const fill = (y: YieldResult) => ({
+  // a path that holds no floor area has no figures to give: no "0 storeys", no "0 sqm"
+  const fill = (y: YieldResult) => (y.gfa > 0 ? {
     storeys: fmt(y.storeys), heightM: Math.round(y.heightM * 10) / 10, gfa: sqm(y.gfa),
-    fsr: A && y.gfa ? `${(y.gfa / A).toFixed(2)}:1` : undefined,
+    fsr: A ? `${(y.gfa / A).toFixed(2)}:1` : undefined,
     units: y.units.total ? fmt(y.units.total) : undefined,
     parking: y.parking.total ? fmt(y.parking.total) : undefined,
-  });
+  } : {});
   if (s.retained) out.push({
     id: 'rebuiltAsStands', label: 'REBUILT TO WHAT STANDS',
     note: 'what stands, kept and refurbished or rebuilt on its footprint to its height: over the LEP\'s controls, a clause 4.6 variation argued on the bulk that stands (existing use rights for a use the zone has dropped); to confirm with a planner',
     ...fill(s.retained), ok: null,
   });
+  // A zone that takes no building type studies none: its path is drawn (the height plane) but holds no floor area, so it is not ticked.
+  const c = b.controls;
   out.push(s.noScheme
     ? { id: 'withinControls', label: 'WITHIN THE CONTROLS — NOT DRAWN', note: noSchemeSentence(b, s) }
     : {
       id: 'withinControls', label: 'WITHIN THE CONTROLS — DRAWN',
-      note: 'the LEP\'s height and floor space ratio and the ADG\'s separations: the massing, the plan and the schedule show this one',
-      ...fill(s.base), ok: true,
+      note: s.base.archetype === 'none'
+        ? `${c.zoneCode ?? 'the zone'} takes no residential flat building, shop-top housing or office building, so no building is studied${c.fsr && A ? `: the floor space ratio gives ${sqm(c.fsr * A)} alone` : ''}`
+        : 'the LEP\'s height and floor space ratio and the ADG\'s separations: the massing, the plan and the schedule show this one',
+      ...fill(s.base), ok: s.base.gfa > 0 ? true : undefined,
     });
   // A bonus the envelope eats (no more floor area or units than the base) is no path at all.
   if (s.bonus && (s.bonus.gfa > s.base.gfa + 1 || s.bonus.units.total > s.base.units.total)) out.push({
@@ -1106,7 +1111,7 @@ function overviewSlide(b: YieldBundle, s: YieldStudy, paths: Path[]): Slide {
     paths.map((p) => ({
       cls: p.sc.id === 'withinControls' && p.y ? 'hi' : undefined,
       cells: [esc(SCENARIO_TITLE[p.sc.id]), esc(p.sc.storeys ?? '—'), p.sc.heightM ? esc(m1(p.sc.heightM)) : '—',
-        esc(p.y ? fmt(Math.round(p.y.gfa)) : p.sc.id === 'standsToday' && ex?.gbaSqm ? `≈ ${fmt(Math.round(ex.gbaSqm))}` : '—'), esc(p.sc.fsr ?? '—'), esc(p.sc.units ?? '—'), esc(p.sc.parking ?? '—'), okMark(p.sc.ok),
+        esc(p.y?.gfa ? fmt(Math.round(p.y.gfa)) : p.sc.id === 'standsToday' && ex?.gbaSqm ? `≈ ${fmt(Math.round(ex.gbaSqm))}` : '—'), esc(p.sc.fsr ?? '—'), esc(p.sc.units ?? '—'), esc(p.sc.parking ?? '—'), okMark(p.sc.ok),
         pageOf(paths, p) ? String(pageOf(paths, p)).padStart(2, '0') : '—'],
     })));
   const blocks = [zBlock('The site', figs, 'The controls'), zBlock('The paths', table), ...pathBars(b, s, paths)];
