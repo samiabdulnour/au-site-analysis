@@ -1,12 +1,13 @@
 // Print the composed sheet to PDF with the pre-installed Chromium.
 
-import { chromium, type Browser } from 'playwright-core';
+import { chromium, type Browser, type Page } from 'playwright-core';
 import { existsSync, mkdirSync } from 'node:fs';
 import { globSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { SHEET_W, SHEET_H } from './sheet.js';
 import { acquire } from '../lib/slots.js';
+import { EXPECTATION, checkPrint, printWhole, type PrintExpectation } from './printCheck.js';
 
 function findChromium(): string | undefined {
   if (process.env.CHROMIUM_PATH && existsSync(process.env.CHROMIUM_PATH)) return process.env.CHROMIUM_PATH;
@@ -49,6 +50,28 @@ export async function launch(extraArgs: string[] = []): Promise<Browser> {
 }
 
 /**
+ * A page's HTML, opened and waited for until all of it is there: parsed, its
+ * pictures in, nothing more being fetched, its fonts ready.
+ *
+ * Not on Playwright's 'networkidle' alone, which these pages were opened on
+ * and which counts from the last request in flight, not from the document's
+ * load. A sheet is one local file with its pictures beside it: the file is
+ * read in one request, and on a machine busy with other prints its 1.5 MB of
+ * SVG can still be parsing when 500 ms have passed with nothing in flight.
+ * The print then took the document as far as it had been parsed: a context
+ * sheet with its map up to the zoning and a blank title block, a valid PDF,
+ * about one print in a dozen with four or eight printing at once
+ * (scripts/print-stress.ts). 'load' waits for the parser and for every
+ * picture, which delay it; the network then settles for anything asked for
+ * after it.
+ */
+async function open(page: Page, htmlPath: string): Promise<void> {
+  await page.goto(pathToFileURL(htmlPath).href, { waitUntil: 'load', timeout: 120_000 });
+  await page.waitForLoadState('networkidle', { timeout: 120_000 });
+  await page.evaluate(() => (document as any).fonts?.ready.then(() => true));
+}
+
+/**
  * How wide, in pixels, the picture of a finished drawing is that the page shows
  * once it is done: the drawing at a glance, about the size of the examples, and
  * nowhere near enough to print. An A1 PDF can be tens of megabytes; this is a
@@ -56,11 +79,28 @@ export async function launch(extraArgs: string[] = []): Promise<Browser> {
  */
 export const PREVIEW_WIDTH = 1200;
 
-export async function htmlToPdf(htmlPath: string, pdfPath: string, previewPath?: string): Promise<void> {
+/**
+ * A sheet, printed and then read back (src/render/printCheck.ts): a PDF can
+ * come out short and still be a valid file, so the page names what must be in
+ * it, and a print without it is printed again, once, and then fails the job
+ * rather than being handed over.
+ */
+export async function htmlToPdf(htmlPath: string, pdfPath: string, previewPath?: string, log: (m: string) => void = console.warn): Promise<void> {
+  await printWhole(pdfPath, () => printSheetOnce(htmlPath, pdfPath, previewPath), log);
+}
+
+/**
+ * One print of a sheet, read back: what its PDF lacks, empty when it is
+ * whole. The picture is taken only of a whole print, in the same browser.
+ * htmlToPdf's single attempt, and what scripts/print-stress.ts runs side by side.
+ */
+export async function printSheetOnce(htmlPath: string, pdfPath: string, previewPath?: string): Promise<string[]> {
   const browser = await launch();
   try {
     const page = await browser.newPage();
-    await page.goto(pathToFileURL(htmlPath).href, { waitUntil: 'networkidle', timeout: 120_000 });
+    await open(page, htmlPath);
+    // Only the first page is printed, so only what is on it is expected.
+    const expected: PrintExpectation = await page.evaluate(`${EXPECTATION}(${(SHEET_H / 25.4) * 96}, 1)`);
     await page.pdf({
       path: pdfPath,
       width: `${SHEET_W}mm`,
@@ -68,6 +108,8 @@ export async function htmlToPdf(htmlPath: string, pdfPath: string, previewPath?:
       printBackground: true,
       pageRanges: '1',
     });
+    const missing = await checkPrint(pdfPath, expected);
+    if (missing.length) return missing;
     if (previewPath) {
       // The sheet again in a page of its printed size, laid out for print as
       // the PDF was, and scaled down as it is drawn rather than afterwards.
@@ -77,10 +119,11 @@ export async function htmlToPdf(htmlPath: string, pdfPath: string, previewPath?:
         const width = Math.ceil((SHEET_W / 25.4) * 96), height = Math.ceil((SHEET_H / 25.4) * 96);
         const shot = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: PREVIEW_WIDTH / width });
         await shot.emulateMedia({ media: 'print' });
-        await shot.goto(pathToFileURL(htmlPath).href, { waitUntil: 'networkidle', timeout: 120_000 });
+        await open(shot, htmlPath);
         await shot.screenshot({ path: previewPath, type: 'jpeg', quality: 80 });
       } catch { /* no picture this time */ }
     }
+    return [];
   } finally {
     await browser.close();
   }
@@ -98,8 +141,7 @@ export async function printPage(
   const browser = await launch();
   try {
     const page = await browser.newPage({ viewport: size });
-    await page.goto(pathToFileURL(htmlPath).href, { waitUntil: 'networkidle', timeout: 120_000 });
-    await page.evaluate(() => (document as any).fonts?.ready);
+    await open(page, htmlPath);
     if (out.png) await page.screenshot({ path: out.png, type: 'png' });
     if (out.pdf) await page.pdf({ path: out.pdf, width: `${size.width}px`, height: `${size.height}px`, printBackground: true, pageRanges: '1' });
   } finally {
@@ -117,7 +159,7 @@ export async function htmlToJpeg(
   const browser = await launch();
   try {
     const page = await browser.newPage({ viewport: size });
-    await page.goto(pathToFileURL(htmlPath).href, { waitUntil: 'networkidle', timeout: 120_000 });
+    await open(page, htmlPath);
     await page.screenshot({ path: jpgPath, type: 'jpeg', quality });
   } finally {
     await browser.close();
@@ -271,6 +313,10 @@ const SETTLE_BASE = `(() => {
  * A deck: every `.slide` section becomes one page of the PDF, and — in the
  * same browser session — one PNG, named after the section's id, for the
  * office's InDesign or PowerPoint. Returns the PNG paths written.
+ *
+ * The PDF is read back as a sheet's is (src/render/printCheck.ts): every page
+ * there, each with its marked number and title or footer, and every picture.
+ * A short print is printed again, PNGs and all, once, and then fails the job.
  */
 export async function printSlides(
   htmlPath: string,
@@ -278,21 +324,43 @@ export async function printSlides(
   pngDir: string,
   size: { widthMm: number; heightMm: number },
   previewPath?: string,
+  log: (m: string) => void = console.warn,
 ): Promise<string[]> {
+  let pngs: string[] = [];
+  await printWhole(pdfPath, async () => {
+    const once = await printSlidesOnce(htmlPath, pdfPath, pngDir, size, previewPath);
+    pngs = once.pngs;
+    return once.missing;
+  }, log);
+  return pngs;
+}
+
+/** One print of a deck, read back: its PNGs, and what its PDF lacks (the PNGs are only made of a whole print). */
+async function printSlidesOnce(
+  htmlPath: string,
+  pdfPath: string,
+  pngDir: string,
+  size: { widthMm: number; heightMm: number },
+  previewPath?: string,
+): Promise<{ pngs: string[]; missing: string[] }> {
   const browser = await launch();
   const pngs: string[] = [];
   try {
     const page = await browser.newPage({ deviceScaleFactor: 2 });
-    await page.goto(pathToFileURL(htmlPath).href, { waitUntil: 'networkidle', timeout: 120_000 });
+    await open(page, htmlPath);
     await page.evaluate(FIT_BOXES);
     await page.evaluate(SPLIT_COLUMNS);
     await page.evaluate(SETTLE_BASE);
+    // After the boxes are fitted and the lines settled: a row they hid is not expected.
+    const expected: PrintExpectation = await page.evaluate(`${EXPECTATION}(${(size.heightMm / 25.4) * 96}, Infinity)`);
     await page.pdf({
       path: pdfPath,
       width: `${size.widthMm}mm`,
       height: `${size.heightMm}mm`,
       printBackground: true,
     });
+    const missing = await checkPrint(pdfPath, expected);
+    if (missing.length) return { pngs, missing };
     mkdirSync(pngDir, { recursive: true });
     const sections = page.locator('section.slide');
     const n = await sections.count();
@@ -318,5 +386,5 @@ export async function printSlides(
   } finally {
     await browser.close();
   }
-  return pngs;
+  return { pngs, missing: [] };
 }

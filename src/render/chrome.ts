@@ -124,8 +124,12 @@ export function sheetHtml(o: SheetHtmlOpts): string {
       <path d="M0,-5.4 L1.9,4.6 L0,2.6 L-1.9,4.6 Z"/>
     </g>`;
 
-  const field = (top: number, label: string, valueHtml: string) => `
-    <div class="abs" style="top:${top}mm;left:4.8mm;right:0">
+  // A field marked `check` is one the printed PDF is read back for
+  // (src/render/printCheck.ts): its label and value together, which no other
+  // text on the sheet repeats. The address and the drawing title are the last
+  // things the sheet draws, so a print that stopped short loses them first.
+  const field = (top: number, label: string, valueHtml: string, check = false) => `
+    <div class="abs" style="top:${top}mm;left:4.8mm;right:0"${check ? ' data-print-check' : ''}>
       <div class="k">${esc(label)}</div>${valueHtml}
     </div>`;
   const rule = (y: number) => `<div class="abs rule" style="top:${y}mm"></div>`;
@@ -152,7 +156,7 @@ export function sheetHtml(o: SheetHtmlOpts): string {
       <svg class="abs" style="top:${t}mm;left:3.5mm" width="18mm" height="18mm" viewBox="0 0 18 18">${northSvg}</svg>
       <svg class="abs" style="top:${t + 17}mm;left:0" width="${TW}mm" height="8mm" viewBox="0 0 ${TW} 8">${scaleBarSvg}</svg>` });
   }
-  blocks.push({ h: BLOCK_H.address, html: (t) => `${rule(t)}${field(t + 0.8, 'SITE ADDRESS', `<div class="v-addr">${esc(o.siteAddress)}</div>`)}` });
+  blocks.push({ h: BLOCK_H.address, html: (t) => `${rule(t)}${field(t + 0.8, 'SITE ADDRESS', `<div class="v-addr">${esc(o.siteAddress)}</div>`, true)}` });
   if (meta.jobNo) {
     blocks.push({ h: BLOCK_H.job, html: (t) => `${rule(t)}${field(t + 0.8, 'JOB NO', `<div class="v">${esc(meta.jobNo)}</div>`)}` });
   }
@@ -177,7 +181,7 @@ export function sheetHtml(o: SheetHtmlOpts): string {
   if (meta.status) {
     blocks.push({ h: BLOCK_H.status, html: (t) => `${rule(t)}${field(t + 0.8, 'PROJECT STATUS', `<div class="v">${esc(meta.status)}</div>`)}` });
   }
-  blocks.push({ h: BLOCK_H.title, html: (t) => `${rule(t)}${field(t + 0.8, 'DRAWING TITLE', `<div class="v">${esc(o.drawingTitle)}</div>`)}` });
+  blocks.push({ h: BLOCK_H.title, html: (t) => `${rule(t)}${field(t + 0.8, 'DRAWING TITLE', `<div class="v">${esc(o.drawingTitle)}</div>`, true)}` });
   if (meta.sheetNo || meta.revision) {
     blocks.push({ h: BLOCK_H.sheet, html: (t) => `
       ${rule(t)}
