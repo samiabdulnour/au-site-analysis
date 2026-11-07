@@ -38,6 +38,9 @@ import { fetchPlanningProposals, type PlanningProposal } from './fetch/planning.
 import { fetchPeopleData, type PeopleData } from './fetch/people.js';
 import { fetchDemGrid, demAt, type DemGrid } from './fetch/terrain.js';
 import { fetchBuildings, withDaStoreys, METRES_PER_STOREY, type BuildingsData } from './fetch/buildings.js';
+import { meshSurfaceOver } from './fetch/meshHeights.js';
+import { withMeshHeights } from './lib/meshHeights.js';
+import { lotsWithoutFootprint } from './lib/gapLots.js';
 import { fetchStreetscapeHeritage, type StreetscapeHeritage } from './fetch/streetscapeHeritage.js';
 import { fetchFootways, type FootwaysData } from './fetch/footways.js';
 import { fetchMajorProjects, emptyMajorProjects, type MajorProjectsData } from './fetch/majorProjects.js';
@@ -1112,8 +1115,22 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
     green.crowns = treesFromAerial(px, green.trees.points.map((t) => ({ lon: t.lon, lat: t.lat, canopyM: t.canopyM, source: t.osm ? 'osm' : 'council' })));
     log(`  crowns: ${green.crowns.filter((t) => t.source === 'aerial').length} read off the aerial round the site (${px.sharePct} % green)`);
   } catch (e: any) { log(`  WARN crowns failed: ${e?.message ?? e}`); }
-  // the site's street end to end, where Street View is keyed
+  // The heights the open sources lack, read from Google's 3D meshes over the page (fetch/meshHeights.ts): every
+  // footprint with no height, or only a consent's storeys, takes the surface's height over its roof above the ground
+  // round it, and every built lot with no footprint in the open data gets one traced from the surface. The meshes
+  // are not kept; the heights are, and the slides say where they came from. DECK_MESH_HEIGHTS=0 leaves it out.
   const gkey = process.env.GOOGLE_MAPS_API_KEY?.trim();
+  let footprints = buildingsRead;
+  if (gkey && process.env.DECK_MESH_HEIGHTS !== '0' && buildingsRead.buildings.length) {
+    log('the heights from the 3D meshes…');
+    const surface = await soft(meshSurfaceOver(gkey, pageExtent, log), null, '3D-tile heights');
+    if (surface) {
+      const gaps = lotsWithoutFootprint(buildingsRead.buildings, lots, zoning, siteLots, pageExtent);
+      footprints = withMeshHeights(buildingsRead, surface.field, surface.frame, gaps.gaps, { meshes: surface.meshes, errorM: surface.errorM, credits: surface.credits });
+      log(`  3D tiles: ${footprints.mesh?.heights ?? 0} heights read from the meshes, ${footprints.mesh?.footprints ?? 0} footprints traced on ${gaps.count} lots the sources left empty`);
+    }
+  }
+  // the site's street end to end, where Street View is keyed
   if (gkey) {
     const st = addressStreet(geo.matchedAddresses[0] ?? address, roads, mercatorToLonLat(geo.center));
     if (st) photos.series = await fetchStreetSeries(st.name, st.segments, mercatorToLonLat(geo.center), dataDir, gkey, process.env.GOOGLE_MAPS_SIGNING_SECRET?.trim() || undefined, 8, log).catch((e: any) => { log(`  WARN street series failed: ${e?.message ?? e}`); return []; });
@@ -1125,14 +1142,14 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
   let streetscape: StreetscapeBundle | undefined;
   if (process.env.DECK_STREETSCAPE !== '0') {
     log('the streetscape…');
-    const sb = await soft(runStreetscapePipeline(address, { outDir: opts.outDir, fit: 'deck', log, buildings: buildingsRead.buildings, site: { geo, siteLots } }), null, 'streetscape');
+    const sb = await soft(runStreetscapePipeline(address, { outDir: opts.outDir, fit: 'deck', log, buildings: footprints.buildings, site: { geo, siteLots } }), null, 'streetscape');
     if (sb?.elevations?.some(Boolean)) streetscape = sb;
     else if (sb) log('  the streetscape is left out: Google\'s 3D tiles do not reach this street');
   }
   const applications = feed ? clipToExtent(feed.records, pageExtent) : [];
   const daMeta = feed ? { council: feed.council, from: feed.from, to: feed.to, total: feed.total, complete: feed.complete, fetchedAt: feed.fetchedAt } : null;
-  // A footprint with neither a height nor a storey count takes the storeys of a determined application on its lot, and the slides say so.
-  const buildings = withDaStoreys(buildingsRead, lots, applications);
+  // A footprint with neither a height nor a storey count (nor one from the meshes) takes the storeys of a determined application on its lot, and the slides say so.
+  const buildings = withDaStoreys(footprints, lots, applications);
 
   log(`  zoning:${zoning.features.length} hob:${hob.features.length} heritage:${heritage.features.length} shr:${shr.features.length} ` +
       `policy:${policy.length} roads:${roads.length} property:${property ? 'yes' : 'no'} dcp:${context.dcp ? 'yes' : 'no'} target:${housingTarget ? housingTarget.homes : '—'}${cos ? ' council-dcp:yes' : ''} ` +

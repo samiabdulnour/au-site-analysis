@@ -1211,7 +1211,15 @@ contours alone, coloured up the ramp by height, the pre-1750 communities
 dotted, the development lots hatched; the storeys are tones up the ramp in
 every style, a hatch reading badly at a footprint's size),
 Heron and Canary in tones over the photograph (the landform in a heat
-ramp, the storeys and the communities flat). The winter shadows are in the
+ramp, the storeys and the communities flat). The charts are flat tones in
+every style: a bar, a span of a time line, a wedge of a wind rose is its ink
+at an opacity, never a pattern (`chartFill` in `src/render/atlasKit.ts`
+turns any patterned fill into its ink at the pattern's weight before a bar
+is drawn, so no page can hatch a chart), since the patterns do not read at
+a bar's size — the height limits in the accent, the site's solid and the
+rest lighter; the controls page in black alone, what the plan allows
+deepest, what stands lighter, the neighbourhood lightest; the plans' time
+line one ink at four tones. The winter shadows are in the
 transit family's blue, deepened, which differs by style. The marks of the development page carry
 pictograms, a tick, an hourglass, the scales' beam, a cross, and a star for
 a State significant application, so a status reads without the key. The
@@ -1477,7 +1485,8 @@ shape banded every 40 m from the elevation model, hatched under its hillshade,
 with contours every 20 m traced from the model and a kilometre grid from
 the site, the national parks and reserves, the water named, the
 council areas outlined and named with the site's own tinted, the motorways
-cased over the arterial roads, the railways and their stations, the suburbs
+cased over the arterial roads, the railways a plain yellow line cased in
+white as the motorways are, not a track symbol, and their stations, the suburbs
 named, 2, 5 and 10 km rings round the site, and the centres of The Sydney
 Plan (2026) by type — with the distance to the Sydney CBD, the nearest
 centres, stations and reserves, and the region, the former district and the
@@ -1485,9 +1494,13 @@ council. Then *character*: Wikipedia's summary of the suburb
 as the seed text, the places within 1.5 km with articles of their own,
 numbered on an aerial of the planning window, and the first eight of them
 pictured: each in its own photograph where Commons holds one freely — the
-image Wikidata gives the article's item (P18, chosen by its editors to show
-the thing), else the article's lead image — credited with its author and
-licence; else from the street where Google Street View is keyed (the nearest
+image Wikidata gives the article's item (P18) or the article's lead image,
+whichever Commons' own record of the file (its name, description,
+categories and where it was taken) says is the place, Wikidata's first; a
+montage or a skyline that names no place is not it (the Central Synagogue's
+P18 was a montage of Sydney), nor a photograph geotagged more than 1.5 km
+away (`judgePlacePhoto` in `src/fetch/character.ts`) — credited with its
+author and licence; else from the street where Google Street View is keyed (the nearest
 panorama, which can stand in a tunnel, a car park or a museum's hall, so it
 comes second); else from above. A photograph of a plan, a logo, a room or a
 sign is passed over, and a portrait one is cropped from near its top. All of
@@ -1538,7 +1551,12 @@ the map holds the housing-policy areas and precincts, each kind in a colour
 of its own with a pictogram at its heart (a train for a TOD area, a square
 for a town centre, a star for a State significant site, a pennant for a
 precinct), and when none lies on the block's page it widens, as far as
-1:25 000, until the nearest two do, over the region's roads and rail.
+1:25 000, until the nearest two do, over the region's roads and rail, the
+sea under the land (the council areas are the land; the harbour and the bays
+are the boundary layer's unincorporated areas and the open sea the gaps
+between them) and the railways in the key. On the region maps — this one and
+the location's — the railways are a plain line like the motorways', in
+yellow and cased in white, not a track symbol, with the stations as discs.
 Then *topography*: the landform
 at 1:5000: the ground's ramp after the old survey sheets (`terrainRamp()`
 in `src/render/atlasKit.ts`: sand on the flats, pink then salmon up the
@@ -1561,8 +1579,10 @@ band (Overture Maps, read from its public bucket by DuckDB through
 `src/py/overture_buildings.py`, its gaps filled from OpenStreetMap through
 Overpass — a footprint Overture misses joins, and a footprint it holds with
 no height takes OSM's height or storeys; OpenStreetMap alone when DuckDB
-or Overture is not there; where no source gives a height, the storeys of a
-determined development application on the lot, hatched and said so), the
+or Overture is not there; where no source gives a height, Google's 3D
+meshes where the deck has them — see *Heights from the meshes* below — else
+the storeys of a determined development application on the lot, hatched
+and said so), the
 storeys of the buildings within 250 m as a
 histogram with the LEP height plane marked on it, and section A–A′ again
 with the buildings it meets drawn at their heights and the height plane
@@ -1584,7 +1604,8 @@ round the site, `lib/crowns.ts`), a little traffic, people on the footpaths
 and bicycles at the kerbs. Then *movement*: roads by function, rail and
 stations, the walking reach from the site (Valhalla) in bands of three
 minutes to fifteen, each band's edge a dashed line in its own colour up the
-style's ramp, the warmest nearest, over the buildings as a quiet
+style's ramp, the warmest nearest, its minutes written on it in the same
+colour, over the buildings as a quiet
 figure-ground in the family's palest tint, so the blocks read and the
 streets between them stay white; the walks themselves from the site to each
 place the page lists within fifteen minutes (its parks, schools, halls,
@@ -1627,9 +1648,12 @@ definite answer — at the site with its class, nearest in the window, none in
 the window, or not mapped by this LEP at all, checked plan-wide so an
 absence is stated rather than implied — with the arterial roads and
 railways beside the site as noise sources and the soil landscape at the
-site. *Country*, the first page: the open layers of Country over the wide strip — the
+site. The map stands on the aerial, greyed and veiled as the planning
+overview's is, in the styles that stand on one: on paper alone it was a
+blank with a few washes on it. *Country*, the first page: the open layers of Country over the wide strip — the
 pre-1750 plant communities of the State Vegetation Type Map over the land's
-shape, with the watercourses, the coast, the crests read from the elevation
+shape, each named in the key beside its own swatch (the site's said so), with
+no chart of their shares, with the watercourses, the coast, the crests read from the elevation
 model, the National Parks estate and the gazetted Aboriginal Places — with
 the Aboriginal heritage the open registers map over the strip: the LEPs'
 scheduled Aboriginal items and the two plans' maps of Aboriginal cultural
@@ -2039,6 +2063,43 @@ shorter frames (two 16:9; a 3:2, a 1:1 for the tree, a 4:3), entries in
 `manifest.json` in place of the one, and all went through. Exporting
 again moves the earlier tiles, and any answers, to `data/ai-<when>/`; an
 answer can be copied back where its tile is unchanged.
+
+### Heights from the meshes
+
+The open footprint sources carry a height on a quarter of their buildings
+and a storey count on half; around a Bondi Road site neither had a height
+on any neighbour, and both missed most of the shopping strip's lots. The
+streetscape reads its elevations off Google's Photorealistic 3D Tiles, and
+the deck now reads the same meshes for the rest of the page: with
+`GOOGLE_MAPS_API_KEY` set, the meshes over the 1:5 000 window are fetched as
+the streetscape fetches them over its street (`src/fetch/tiles3d.ts`), at a
+geometric error of 4 m rather than the streetscape's half-metre, so a page
+is a few score meshes rather than a few hundred; the page the elevations are
+drawn on (`src/render/elevation3d.ts`) renders them once from straight
+above, into a grid of heights a metre apart with a flag where the meshes'
+own picture is green; and the meshes are let go. Google's terms bar keeping
+them, and nothing of them is written anywhere: what is kept is a number a
+building. From the grid (`src/lib/meshHeights.ts`, which has no network and
+is tested on grids drawn for it, and on a box in a glTF built for the test
+and rendered the same way): a footprint with no height, or only a consent's
+storeys, takes its roof — the 80th percentile of the surface inside it, read
+where the picture is not green, since a tree over a roof is the tree — over
+its ground, the 15th percentile of the surface within 8 m round it leaving
+out what other footprints hold, which is the street and the yards; under
+2.5 m nothing stands. A built lot with no footprint at all
+(`src/lib/gapLots.ts`, the lots the height of buildings page hatched as
+gaps in the data) gets one traced from the surface: every cell of it that
+rises 3 m over the lot's ground and is not green is built, each patch of
+those of 25 m² or more is a footprint, its edges traced round the cells and
+the stair-steps smoothed to the wall lines, its height the patch's roof over
+the ground. The source's measured heights and storey counts stand; a
+determined application's storeys fill only what the meshes could not. The
+height of buildings page, the built form, the shadows and the sources page
+say how many heights and footprints came from the meshes, and credit Google
+and the providers the meshes name. `DECK_MESH_HEIGHTS=0` leaves the meshes
+out of the deck; `MESH_HEIGHTS_ERROR_M` sets the error the tree of tiles is
+walked down to (4 m by default). One root request to the Map Tiles API a
+deck, as the streetscape costs, in a session of its own.
 
 ## How it works
 

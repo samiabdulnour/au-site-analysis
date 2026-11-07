@@ -79,8 +79,9 @@ export interface CharacterData {
   /** Each numbered place from the street, where Google Street View is keyed and has a panorama near it. */
   placeStreetViews?: PlaceStreetView[];
   /**
-   * Each numbered place in its own photograph: the image Wikidata gives its article (P18), else the article's lead
-   * image, where it is on Commons under an open licence and shows the place rather than a plan, a logo or a room.
+   * Each numbered place in its own photograph: the image Wikidata gives its article (P18) or the article's lead
+   * image, whichever Commons' record of the file says is the place (a montage of the city is not), where it is on
+   * Commons under an open licence and shows the place rather than a plan, a logo or a room.
    * Preferred to Street View, whose nearest panorama can stand in a tunnel, a car park or a museum's hall.
    */
   placePhotos?: PlacePhoto[];
@@ -205,7 +206,7 @@ export const looksLikePlace = (title: string, description?: string): boolean => 
 // ---- Wikimedia Commons ----------------------------------------------------------
 
 interface ImageInfo { url?: string; thumburl?: string; thumbwidth?: number; thumbheight?: number; width?: number; height?: number; mime?: string; extmetadata?: Record<string, { value?: string }> }
-interface CommonsPages { query?: { geosearch?: GeoSearchResult[]; pages?: Record<string, { title: string; imageinfo?: ImageInfo[]; coordinates?: { lat: number; lon: number }[] }> } }
+interface CommonsPages { query?: { geosearch?: GeoSearchResult[]; pages?: Record<string, { title: string; imageinfo?: ImageInfo[]; coordinates?: { lat: number; lon: number }[]; categories?: { title: string }[] }> } }
 
 const OPEN_LICENCE = /^(CC[ -]BY(?:[ -]SA)?(?:[ -]\d(\.\d)?)?(?:[ -][a-z]{2})?|CC0(?: 1\.0)?|Public domain|PD.*|Attribution|FAL|GFDL)$/i;
 /** Photographs Commons holds near any dealership, studio or event, which are not the place. */
@@ -291,19 +292,64 @@ interface WikidataEntities { entities?: Record<string, { sitelinks?: { enwiki?: 
  * under an open licence, large enough to print, and it shows the place — not a plan, a logo or a room. The listing
  * is kept a month; a source that refuses leaves its places to the next one.
  */
-export async function fetchPlacePhotos(places: { n: number; title: string }[], outDir: string, cacheKey: string, log: (m: string) => void = () => {}): Promise<PlacePhoto[]> {
+/**
+ * A picture of the city, not of the place: a montage, a skyline or a panorama stands in for a place's own picture
+ * on Wikidata now and then (the Central Synagogue's was a montage of Sydney), and is only the place when it names it.
+ */
+const A_PICTURE_OF_THE_CITY = /\b(montage|collage|skyline|panorama|cityscape|cbd)\b/i;
+/** A photograph geotagged further than this from the place was taken of something else. */
+const PLACE_PHOTO_REACH_M = 1500;
+/** The words of a place's title that say nothing of which place it is: the suburb's, the city's, the kind's. */
+const GENERIC_WORD = /^(the|and|of|at|in|on|new|south|wales|nsw|sydney|street|st|road|rd|avenue|ave|lane|park|reserve|beach|bay|point|hotel|club|school|church|station|centre|center|no|north|east|west|public|old|house|hall|building|former|site|area)$/;
+
+/** The words of a place's title that name it ("Central Synagogue (Sydney)" → central, synagogue; "Electricity Substation No. 269" → electricity, substation, 269), lower-case; every word but the stop words where none is left. */
+export function placeWords(title: string): string[] {
+  const all = title.toLowerCase().split(/[^a-z0-9']+/).filter((w) => /^\d{2,}$/.test(w) || w.replace(/'/g, '').length >= 3);
+  const own = all.filter((w) => !GENERIC_WORD.test(w));
+  return own.length ? own : all.filter((w) => !/^(the|and|of|at|in|on)$/.test(w));
+}
+
+/**
+ * Whether a Commons file is a photograph of its place, from what Commons says of it: its name, its description, its
+ * object name, its categories, and where it was taken. `about` where one of them names the place; `not` where it is
+ * a plan, a logo, a room or the like (NOT_A_VIEW), a montage or a skyline that does not name the place, or a
+ * photograph taken more than PLACE_PHOTO_REACH_M from it; `unsure` for a view that names nothing.
+ */
+export function judgePlacePhoto(place: { title: string; lon?: number; lat?: number }, file: string, about: { description?: string; objectName?: string; categories?: string[]; lat?: number; lon?: number }): 'about' | 'unsure' | 'not' {
+  const text = [file, about.description, about.objectName, ...(about.categories ?? [])].filter(Boolean).join(' ');
+  if (NOT_A_VIEW.test(text)) return 'not';
+  if (place.lat !== undefined && place.lon !== undefined && about.lat !== undefined && about.lon !== undefined &&
+      distBearing({ lon: place.lon, lat: place.lat }, { lon: about.lon, lat: about.lat }).distanceM > PLACE_PHOTO_REACH_M) return 'not';
+  const lower = text.toLowerCase();
+  const named = placeWords(place.title).some((w) => lower.includes(w));
+  if (named) return 'about';
+  return A_PICTURE_OF_THE_CITY.test(text) ? 'not' : 'unsure';
+}
+
+interface PageImages { query?: { normalized?: { from: string; to: string }[]; redirects?: { from: string; to: string }[]; pages?: Record<string, { title: string; original?: { source?: string } }> } }
+
+/**
+ * Each place's own photograph, as `place_photo_<n>.jpg`: Wikidata's image of the article's item (P18, chosen by its
+ * editors to show the thing) or the article's lead image, whichever Commons' record of the file says is the place
+ * (judgePlacePhoto) — Wikidata's first, the article's where Wikidata's is a montage of the city or shows nothing of
+ * the place; kept where Commons holds it under an open licence, large enough to print, and it shows the place — not
+ * a plan, a logo or a room. The listing is kept a month; a source that refuses leaves its places to the next one.
+ */
+export async function fetchPlacePhotos(places: { n: number; title: string; lon?: number; lat?: number }[], outDir: string, cacheKey: string, log: (m: string) => void = () => {}): Promise<PlacePhoto[]> {
   if (!places.length) return [];
   type Found = { n: number; title: string; file: string; source: PlacePhoto['source']; info: ImageInfo };
   // a listing some source refused (Wikimedia limits shared addresses) serves this run but is not kept, so the next
   // run asks again rather than going a month without the photographs it missed
   let refused = false, partial: Found[] | null = null;
-  const found = await cachedJson<Found[]>('wikipedia', `${cacheKey}_placephotos`, 30 * DAY_MS, async () => {
+  const found = await cachedJson<Found[]>('wikipedia', `${cacheKey}_placephotos2`, 30 * DAY_MS, async () => {
     const res = await lookup();
     if (refused) { partial = res; throw new Error('partial listing'); }
     return res;
   }).catch((e: Error) => { if (partial) return partial; throw e; });
   async function lookup(): Promise<Found[]> {
-    const files = new Map<number, { file: string; source: PlacePhoto['source'] }>();
+    type Cand = { file: string; source: PlacePhoto['source'] };
+    const cands = new Map<number, Cand[]>();
+    const add = (n: number, c: Cand) => { const list = cands.get(n) ?? cands.set(n, []).get(n)!; if (!list.some((x) => x.file === c.file)) list.push(c); };
     // Wikidata's image, the preferred claim first, for every article at once
     try {
       const wd = await wikiJson<WikidataEntities>(`${WIKIDATA_API}?${new URLSearchParams({ action: 'wbgetentities', sites: 'enwiki', titles: places.map((p) => p.title).join('|'), props: 'claims|sitelinks', sitefilter: 'enwiki', format: 'json' })}`, 'Wikidata images', 3);
@@ -311,28 +357,43 @@ export async function fetchPlacePhotos(places: { n: number; title: string }[], o
         const pl = places.find((p) => p.title === e.sitelinks?.enwiki?.title);
         const claims = (e.claims?.P18 ?? []).filter((c) => c.rank !== 'deprecated' && c.mainsnak?.datavalue?.value);
         const best = claims.find((c) => c.rank === 'preferred') ?? claims[0];
-        if (pl && best) files.set(pl.n, { file: best.mainsnak!.datavalue!.value!, source: 'wikidata' });
+        if (pl && best) add(pl.n, { file: best.mainsnak!.datavalue!.value!, source: 'wikidata' });
       }
     } catch (e: any) { refused = true; log(`  WARN Wikidata images: ${e?.message ?? e}`); }
-    // the article's lead image for the rest, where Wikipedia shows one from Commons
-    for (const pl of places.filter((p) => !files.has(p.n))) {
-      try {
-        const j = await wikiJson<RestSummary>(`${WP_REST}/page/summary/${encodeURIComponent(pl.title.replace(/ /g, '_'))}`, 'Wikipedia summary', 2);
-        const file = commonsFileOf(j.originalimage?.source);
-        if (file) files.set(pl.n, { file, source: 'article' });
-      } catch (e: any) { if (!/HTTP 404/.test(String(e?.message))) refused = true; /* left to Street View */ }
+    // the articles' lead images, for every article at once, where Wikipedia shows one from Commons
+    try {
+      const pi = await wikiJson<PageImages>(`${WP_API}?${new URLSearchParams({ action: 'query', prop: 'pageimages', piprop: 'original', titles: places.map((p) => p.title).join('|'), redirects: '1', format: 'json' })}`, 'Wikipedia lead images', 2);
+      const to = new Map<string, string>();
+      for (const m of [...(pi.query?.normalized ?? []), ...(pi.query?.redirects ?? [])]) to.set(m.from, m.to);
+      const asked = (title: string) => { let t = title; for (let i = 0; i < 3 && to.has(t); i++) t = to.get(t)!; return t; };
+      for (const pl of places) {
+        const page = Object.values(pi.query?.pages ?? {}).find((pg) => pg.title === asked(pl.title));
+        const file = commonsFileOf(page?.original?.source);
+        if (file) add(pl.n, { file, source: 'article' });
+      }
+    } catch (e: any) { refused = true; log(`  WARN Wikipedia lead images: ${e?.message ?? e}`); }
+    if (!cands.size) return [];
+    // what Commons says of every candidate at once: its licence and size, its description, its categories, where it was taken
+    const titles = [...new Set([...cands.values()].flat().map((f) => `File:${f.file}`))];
+    const info = await wikiJson<CommonsPages>(`${COMMONS_API}?${new URLSearchParams({ action: 'query', prop: 'imageinfo|coordinates|categories', iiprop: 'url|extmetadata|size|mime', iiurlwidth: '1280', iiextmetadatafilter: 'Artist|LicenseShortName|LicenseUrl|ImageDescription|DateTimeOriginal|ObjectName', clshow: '!hidden', cllimit: 'max', titles: titles.join('|'), format: 'json' })}`, 'Commons imageinfo', 3);
+    const byFile = new Map<string, { info: ImageInfo; categories: string[]; lat?: number; lon?: number }>();
+    for (const pg of Object.values(info.query?.pages ?? {})) {
+      if (!pg.imageinfo?.[0]) continue;
+      byFile.set(pg.title.replace(/^File:/, '').replace(/_/g, ' '), { info: pg.imageinfo[0], categories: (pg.categories ?? []).map((c) => c.title.replace(/^Category:/, '')), lat: pg.coordinates?.[0]?.lat, lon: pg.coordinates?.[0]?.lon });
     }
-    if (!files.size) return [];
-    const titles = [...new Set([...files.values()].map((f) => `File:${f.file}`))];
-    const info = await wikiJson<CommonsPages>(`${COMMONS_API}?${new URLSearchParams({ action: 'query', prop: 'imageinfo', iiprop: 'url|extmetadata|size|mime', iiurlwidth: '1280', iiextmetadatafilter: 'Artist|LicenseShortName|LicenseUrl|ImageDescription|DateTimeOriginal|ObjectName', titles: titles.join('|'), format: 'json' })}`, 'Commons imageinfo', 3);
-    const byFile = new Map<string, ImageInfo>();
-    for (const pg of Object.values(info.query?.pages ?? {})) if (pg.imageinfo?.[0]) byFile.set(pg.title.replace(/^File:/, '').replace(/_/g, ' '), pg.imageinfo[0]);
     const out: Found[] = [];
     for (const pl of places) {
-      const f = files.get(pl.n);
-      const ii = f ? byFile.get(f.file.replace(/_/g, ' ')) : undefined;
-      if (!f || !ii) continue;
-      out.push({ n: pl.n, title: pl.title, file: f.file, source: f.source, info: ii });
+      // the first candidate Commons' record says is the place; failing one, the first it does not rule out
+      const judged = (cands.get(pl.n) ?? []).map((c) => {
+        const rec = byFile.get(c.file.replace(/_/g, ' '));
+        const meta = rec?.info.extmetadata ?? {};
+        const verdict = rec ? judgePlacePhoto(pl, c.file, { description: stripHtml(meta.ImageDescription?.value ?? ''), objectName: stripHtml(meta.ObjectName?.value ?? ''), categories: rec.categories, lat: rec.lat, lon: rec.lon }) : 'not';
+        return { c, rec, verdict };
+      });
+      const pick = judged.find((j) => j.verdict === 'about') ?? judged.find((j) => j.verdict === 'unsure');
+      for (const j of judged) if (j.verdict === 'not') log(`  place photo ${pl.title}: ${j.c.source === 'wikidata' ? "Wikidata's image" : "the article's image"} ${j.c.file} is not the place${pick ? `; ${pick.c.source === 'wikidata' ? "Wikidata's" : "the article's"} taken` : ''}`);
+      if (!pick?.rec) continue;
+      out.push({ n: pl.n, title: pl.title, file: pick.c.file, source: pick.c.source, info: pick.rec.info });
     }
     return out;
   }
