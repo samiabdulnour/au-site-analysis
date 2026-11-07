@@ -10,7 +10,7 @@
  */
 
 import { computeYield, storeysUnder, archetypeFor, edgeKinds, ringArea, futureHeight, withFour, existingSummary, DEFAULT_ASSUMPTIONS, PARKING_RATES, UNIT_KINDS, ADG_MINIMUM, type XY } from '../src/lib/yield.js';
-import { tierSpot, frontageMiddle, yieldStudy, scenarioRows, yieldRows, noSchemeSentence, renderYieldDeck, type YieldBundle } from '../src/render/yieldSheet.js';
+import { tierSpot, frontageMiddle, yieldStudy, scenarioRows, yieldRows, noSchemeSentence, renderYieldDeck, yieldCsv, type YieldBundle } from '../src/render/yieldSheet.js';
 
 const failures: string[] = [];
 const check = (name: string, ok: boolean, detail = '') => {
@@ -293,6 +293,63 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
   check('no envelope: an RL over unknown ground is said so, with the ratio\'s floor area', sr.noScheme === 'rlUnknown' && /RL 52/.test(noSchemeSentence(rlB, sr)) && /4,000 m² of floor area/.test(noSchemeSentence(rlB, sr)), noSchemeSentence(rlB, sr));
   // The scheme the lot had keeps its spread and its tick.
   check('no envelope: a mapped height still draws its scheme', yieldStudy(openB).noScheme === undefined && scenarioRows(openB)[0].ok === true);
+
+  // ---- a zone and nothing else: no height, no ratio, no plan's name ----
+  // The path within the controls gives no storeys or floor area, and takes no tick in its scenario row, the overview or the CSV.
+  const TICK = 'M0.6,2.1 L1.9,3.3 L4.4,0.6';   // the ✓ okMark draws
+  const ZERO = /\b0 storeys|\b0 ?m²|\b0 sqm|\b0 ?m to the roof/;
+  const pathRow = (html: string) => html.match(/<td>Within the controls<\/td>.*?<\/tr>/)?.[0] ?? '';
+  const zoneOnly: YieldBundle = { ...bundle, controls: { zoneCode: 'MU1', heritage: [] }, existing: [] };
+  const sz = yieldStudy(zoneOnly);
+  const zRows = scenarioRows(zoneOnly, sz);
+  const zDeck = deck(zoneOnly), zCsv = yieldCsv(zoneOnly);
+  check('zone only: no scheme, and the path within the controls gives no figures and takes no mark', sz.noScheme === 'noHeight' && zRows.length === 1
+    && zRows[0].ok === undefined && zRows[0].storeys === undefined && zRows[0].gfa === undefined && sz.bonus === undefined && sz.max === undefined, JSON.stringify(zRows));
+  check('zone only: nothing reads "0 storeys" or "0 m²", in the deck or the CSV', !ZERO.test(zDeck.html) && !ZERO.test(zCsv), (zDeck.html + zCsv).match(ZERO)?.[0]);
+  check('zone only: the overview\'s row takes no tick', !!pathRow(zDeck.html) && !pathRow(zDeck.html).includes(TICK), pathRow(zDeck.html));
+  check('zone only: no path is compliant in the CSV', !/^SCENARIOS,.*,yes\r?$/m.test(zCsv), zCsv.split('\r\n').filter((l) => l.startsWith('SCENARIOS')).join(' | '));
+  check('zone only: the narrative says the LEP sets no height or ratio, and leaves the envelope to the DCP',
+    /The LEP maps no height of building and no floor space ratio at the site/.test(zDeck.slides[0].narrative ?? '') && /DCP/.test(zDeck.slides[0].narrative ?? ''), zDeck.slides[0].narrative);
+
+  // ---- a zone that takes no building type: the study builds nothing, so the path is not a ticked scheme of 0 m² ----
+  const noType: [string, YieldBundle['controls']][] = [
+    ['R2 with a height and a ratio', { zoneCode: 'R2', maxHeightM: 8.5, fsr: 0.5, heritage: [] }],
+    ['R2 with neither', { zoneCode: 'R2', heritage: [] }],
+  ];
+  for (const [name, controls] of noType) {
+    const nb: YieldBundle = { ...bundle, controls, existing: [] };
+    const ns = yieldStudy(nb);
+    const nr = scenarioRows(nb, ns).find((r) => r.id === 'withinControls')!;
+    const nDeck = deck(nb), row = pathRow(nDeck.html);
+    check(`no building type (${name}): the path gives no figures and takes no mark`, ns.base.archetype === 'none' && nr.ok === undefined && nr.storeys === undefined && nr.gfa === undefined
+      && !/show this one/.test(nr.note), JSON.stringify(nr));
+    check(`no building type (${name}): the overview's row has no tick and no zero`, !!row && !row.includes(TICK) && !/>0<\/td>/.test(row), row);
+    check(`no building type (${name}): nothing reads "0 storeys" or "0 m²"`, !ZERO.test(nDeck.html) && !ZERO.test(yieldCsv(nb)), (nDeck.html + yieldCsv(nb)).match(ZERO)?.[0]);
+  }
+
+  // ---- a lot too narrow for the setbacks: the height holds storeys, the setbacks leave no plate ----
+  // 10 m wide, 30 m deep, 12 m (three storeys): 6 m off each side leaves nothing. The reason is the setbacks, not the height.
+  const nLon = 10 / (111320 * Math.cos((-33.9 * Math.PI) / 180)), nLat = 30 / 110574;
+  const narrow: YieldBundle = {
+    ...bundle, existing: [], siteAreaSqm: 300,
+    controls: { zoneCode: 'R4', maxHeightM: 12, heritage: [] },
+    siteRing: [[151.21, -33.9], [151.21 + nLon, -33.9], [151.21 + nLon, -33.9 + nLat], [151.21, -33.9 + nLat], [151.21, -33.9]],
+  };
+  const sn = yieldStudy(narrow), nSay = noSchemeSentence(narrow, sn);
+  check('narrow lot: the setbacks, not the height, leave no scheme', sn.noScheme === 'noPlate' && sn.base.storeysByHeight === 3 && sn.base.storeys === 0, JSON.stringify({ why: sn.noScheme, byHeight: sn.base.storeysByHeight }));
+  check('narrow lot: the sentence names the storeys the height holds and the setbacks that leave no plate',
+    /holds 3 storeys/.test(nSay) && /6 m from the side/.test(nSay) && /no floor plate/.test(nSay) && !/no room for a storey/.test(nSay), nSay);
+  const nDeck = deck(narrow);
+  check('narrow lot: no spread of nothing, no "0 storeys", no tick on the path', nDeck.slides.map((sl) => sl.id).join(',') === '01_planning_yield,02_controls_and_assumptions'
+    && !ZERO.test(nDeck.html) && !pathRow(nDeck.html).includes(TICK), nDeck.slides.map((sl) => sl.id).join(','));
+  // What stands on it is not told the LEP maps no envelope: a height is mapped.
+  const narrowStanding = deck({ ...narrow, existing: [{ footprintSqm: 120, heightM: 6.2 }] });
+  const standsNarr = narrowStanding.slides.find((sl) => /stands_today/.test(sl.id))?.narrative ?? '';
+  check('narrow lot: what stands is not told the LEP maps no envelope', !!standsNarr && !/maps no envelope/.test(standsNarr), standsNarr);
+  // A height under one storey is still the height's doing.
+  const lowB: YieldBundle = { ...bundle, existing: [], controls: { zoneCode: 'R4', maxHeightM: 4, heritage: [] } };
+  const lowS = yieldStudy(lowB);
+  check('too low: a height under one storey says so', lowS.noScheme === 'tooLow' && /no room for a storey/.test(noSchemeSentence(lowB, lowS)), String(lowS.noScheme));
 }
 
 if (failures.length) {
