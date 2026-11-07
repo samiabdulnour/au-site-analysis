@@ -223,6 +223,93 @@ const FIT_BOXES = `(() => {
 })()`;
 
 /**
+ * A paragraph set in two columns that must both end on one line (Z. 2026-11): CSS columns fill top down and leave
+ * the second a line short. A box marked `data-split` holds two columns, the paragraph in the first; the lines are
+ * counted as the browser set them, and from the first word of the line after the larger half on, the words move to
+ * the second column, which the box then stands on the same foot as the first. A line that begins inside a word the
+ * browser hyphenated starts the second column at that whole word.
+ */
+const SPLIT_COLUMNS = `(() => {
+  for (const box of document.querySelectorAll('[data-split]')) {
+    const [a, b] = box.children;
+    const text = a && a.firstChild;
+    if (!b || !text || text.nodeType !== 3 || a.childNodes.length !== 1) continue;
+    const range = document.createRange();
+    range.selectNodeContents(a);
+    const lines = Array.from(range.getClientRects()).filter((q) => q.width > 0);
+    if (lines.length < 2) continue;
+    const cutTop = lines[Math.ceil(lines.length / 2)].top;
+    const s = text.data;
+    let lo = 0, hi = s.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      range.setStart(text, mid); range.setEnd(text, mid + 1);
+      if (range.getBoundingClientRect().top >= cutTop - 0.5) hi = mid; else lo = mid + 1;
+    }
+    let cut = lo;
+    if (cut > 0 && s[cut - 1] !== ' ') { const sp = s.lastIndexOf(' ', cut - 1); if (sp > 0) cut = sp + 1; }
+    if (cut <= 0 || cut >= s.length) continue;
+    a.textContent = s.slice(0, cut).replace(/ +$/, '');
+    b.textContent = s.slice(cut);
+    b.hidden = false;
+  }
+})()`;
+
+/**
+ * The atlas's last line (Z. 2026-11). A page marks it in `data-base`, in mm from its top, and marks what must end on
+ * it with `data-settle`: the sources, the key, a right page's closing note. Each is measured as the browser set it —
+ * the baseline of its lowest words, or the foot of its lowest symbol, whichever is lower — and moved by the difference,
+ * so the words and the symbols end on one line whatever their number of lines and whatever the symbol's shape. It
+ * moves by its `bottom`, or by its `top` where it is marked `data-settle="top"`.
+ */
+const SETTLE_BASE = `(() => {
+  const PX_PER_MM = 96 / 25.4;
+  // Arial and its metric twins hang 0.212 em below the baseline, which the browser lays out rounded to the pixel
+  const DESCENT = 0.212;
+  const lowestInk = (root) => {
+    let low = -Infinity;
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      const host = n.parentElement;
+      if (!host || !n.textContent.trim() || host.closest('svg')) continue;
+      const st = getComputedStyle(host);
+      if (st.visibility === 'hidden') continue;
+      const range = document.createRange();
+      range.selectNodeContents(n);
+      for (const q of range.getClientRects()) if (q.width > 0) low = Math.max(low, q.bottom - Math.round(DESCENT * parseFloat(st.fontSize)));
+    }
+    for (const svg of root.querySelectorAll('svg')) {
+      const sr = svg.getBoundingClientRect(), vb = svg.viewBox && svg.viewBox.baseVal;
+      const k = vb && vb.width ? Math.min(sr.width / vb.width, sr.height / vb.height) : 1;
+      for (const el of svg.querySelectorAll('rect, circle, ellipse, path, line, polyline, polygon')) {
+        // a pattern's strokes stay inside the clip of the shape they fill, whose ground or outline is drawn too
+        if (el.closest('clipPath, defs, pattern, mask, [clip-path]')) continue;
+        const st = getComputedStyle(el);
+        if (st.visibility === 'hidden' || st.display === 'none') continue;
+        const stroked = st.stroke !== 'none' && parseFloat(st.strokeWidth) > 0;
+        const filled = st.fill !== 'none' && el.tagName !== 'line' && el.tagName !== 'polyline';
+        if (!stroked && !filled) continue;
+        const b = el.getBoundingClientRect();
+        low = Math.max(low, b.bottom + (stroked ? (parseFloat(st.strokeWidth) * k) / 2 : 0));
+      }
+    }
+    return low;
+  };
+  for (const slide of document.querySelectorAll('section.slide[data-base]')) {
+    const line = slide.getBoundingClientRect().top + parseFloat(slide.dataset.base) * PX_PER_MM;
+    for (const el of slide.querySelectorAll('[data-settle]')) {
+      const low = lowestInk(el);
+      if (!Number.isFinite(low)) continue;
+      const shift = line - low;
+      if (Math.abs(shift) < 0.02 || Math.abs(shift) > 8 * PX_PER_MM) continue;
+      const st = getComputedStyle(el);
+      if (el.dataset.settle === 'top') el.style.top = (parseFloat(st.top) + shift).toFixed(3) + 'px';
+      else el.style.bottom = (parseFloat(st.bottom) - shift).toFixed(3) + 'px';
+    }
+  }
+})()`;
+
+/**
  * A deck: every `.slide` section becomes one page of the PDF, and — in the
  * same browser session — one PNG, named after the section's id, for the
  * office's InDesign or PowerPoint. Returns the PNG paths written.
@@ -262,7 +349,9 @@ async function printSlidesOnce(
     const page = await browser.newPage({ deviceScaleFactor: 2 });
     await open(page, htmlPath);
     await page.evaluate(FIT_BOXES);
-    // After the boxes are fitted: a row they hid is not expected.
+    await page.evaluate(SPLIT_COLUMNS);
+    await page.evaluate(SETTLE_BASE);
+    // After the boxes are fitted and the lines settled: a row they hid is not expected.
     const expected: PrintExpectation = await page.evaluate(`${EXPECTATION}(${(size.heightMm / 25.4) * 96}, Infinity)`);
     await page.pdf({
       path: pdfPath,

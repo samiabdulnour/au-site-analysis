@@ -37,7 +37,7 @@ if (sheet === 'yield') {
   await withTemplate(templateFor('slides', theme), () => prepareRasters(sb, join(outDir, 'data'), BLEED_SCALE, COUNTRY_SCALE));
   html = renderSlides(sb, meta, opts).html;
 }
-if (only?.length) html = html.replace(/<section class="slide[^"]*" id="([^"]+)">[\s\S]*?<\/section>/g, (m, id: string) => (only.some((o) => id.startsWith(o)) ? m : ''));
+if (only?.length) html = html.replace(/<section class="slide[^"]*" id="([^"]+)"[^>]*>[\s\S]*?<\/section>/g, (m, id: string) => (only.some((o) => id.startsWith(o)) ? m : ''));
 const stem = theme ? `${sheet}-${theme}${only?.length ? '-only' : ''}` : sheet === 'yield' ? (only?.length ? 'yield_only' : 'yield_deck') : only?.length ? 'slides_only' : 'slides';
 const pdfName = theme ? `${stem}.pdf` : sheet === 'yield' ? (only?.length ? 'YIELD_ONLY.pdf' : 'PLANNING_YIELD.pdf') : only?.length ? 'SLIDES_ONLY.pdf' : 'OVERALL_ANALYSIS.pdf';
 const htmlPath = join(outDir, `${stem}.html`);

@@ -25,7 +25,7 @@ import { INK, zFigures, zBars, niceAxis, fillShape, categoryFill, massingInks, t
 import { zoneToCategory } from './model.js';
 import { zoneFill } from './lepPalette.js';
 import { LEP_OPACITY } from './sheet.js';
-import type { LegendEntry } from './minimap.js';
+import { panelFurniture, furnitureBox, type LegendEntry } from './minimap.js';
 import { estimateKerbs, type KerbLine } from '../lib/kerbs.js';
 import type { RoadLine } from '../lib/carriageway.js';
 import type { YieldTree } from '../lib/crowns.js';
@@ -117,6 +117,25 @@ export interface YieldStudy {
   futures: (number | undefined)[];
   /** The neighbours whose controls would let them rise but whose development potential the capacity study reads as low: they stand as they are. */
   futuresHeld: number;
+  /**
+   * Why the controls give no scheme to draw, where the zone takes a building type but the study holds no storey: the
+   * LEP maps no height of building, maps it as an RL over ground whose level is not known, or maps one too low for a
+   * storey under the roof allowance. Unset where there is a scheme (or the zone takes no building type at all).
+   */
+  noScheme?: 'noHeight' | 'rlUnknown' | 'tooLow';
+}
+
+/** What the study says where the controls give it no scheme: one sentence, for the narrative, the paths and the table. */
+export function noSchemeSentence(b: YieldBundle, s: YieldStudy): string {
+  const c = b.controls;
+  const lep = c.epiName ?? 'The LEP';
+  const fsr = c.fsr ? ` Its floor space ratio of ${c.fsr.toFixed(2)}:1 gives ${b.siteAreaSqm ? `${fmt(Math.round(c.fsr * b.siteAreaSqm))} m² of floor area` : 'the floor area'}, which the DCP's envelope must hold.` : '';
+  switch (s.noScheme) {
+    case 'noHeight': return `${lep} maps no height of building${c.fsr ? '' : ' and no floor space ratio'} at the site, so the controls give no envelope to study: the height and setbacks are the council's DCP's to set, and no scheme is drawn.${fsr}`;
+    case 'rlUnknown': return `${lep} maps the height as RL ${fmt(s.hob?.value ?? 0, 1)}, and the ground level at the site is not known, so the height cannot be read in storeys: no scheme is drawn.${fsr}`;
+    case 'tooLow': return `${lep}'s height of building, ${s.hob?.metres ? `${fmt(s.hob.metres, s.hob.metres % 1 ? 1 : 0)} m` : 'as mapped'}, leaves no room for a storey under the roof allowance: no scheme is drawn.${fsr}`;
+    default: return '';
+  }
 }
 
 export function yieldStudy(b: YieldBundle): YieldStudy {
@@ -141,7 +160,10 @@ export function yieldStudy(b: YieldBundle): YieldStudy {
   const area = b.siteAreaSqm ?? 0;
   const base = computeYield({ ring, fronts, siteAreaSqm: area, zone: c.zoneCode, hobM: hob?.metres, fsr: c.fsr, assumptions });
   const bonusK = 1 + (assumptions.affordableBonus ?? DEFAULT_ASSUMPTIONS.affordableBonus);
-  const bonus = base.archetype === 'residential' || base.archetype === 'mixed'
+  // the controls give no scheme where the zone takes a building type and the height holds no storey under it
+  const noScheme: YieldStudy['noScheme'] = base.archetype === 'none' || base.storeys > 0 ? undefined
+    : !hob ? 'noHeight' : hob.metres === undefined ? 'rlUnknown' : 'tooLow';
+  const bonus = (base.archetype === 'residential' || base.archetype === 'mixed') && !noScheme
     ? computeYield({ ring, fronts, siteAreaSqm: area, zone: c.zoneCode, hobM: hob?.metres ? hob.metres * bonusK : undefined, fsr: c.fsr ? c.fsr * bonusK : undefined, assumptions })
     : undefined;
   // The same envelope with no ratio over it, where the ratio is what stops the base.
@@ -173,7 +195,7 @@ export function yieldStudy(b: YieldBundle): YieldStudy {
   })).filter((e) => e.rings.length && e.heightM > 0);
   const kept = standing.length ? computeRetained({ ring, fronts, siteAreaSqm: area, zone: c.zoneCode, assumptions, standing }) : undefined;
   const retained = kept && kept.gfa > base.gfa + 1 ? kept : undefined;
-  return { base, bonus, max, retained, ring, fronts, toLocal, hob, parkingSet, frontageLengths, futures, futuresHeld };
+  return { base, bonus, max, retained, ring, fronts, toLocal, hob, parkingSet, frontageLengths, futures, futuresHeld, noScheme };
 }
 
 // ---- the table's rows ---------------------------------------------------------
@@ -227,6 +249,9 @@ export function yieldRows(b: YieldBundle, s: YieldStudy = yieldStudy(b)): YieldR
   rows.push({ label: 'PROJECT SUMMARY', section: true });
   if (y.archetype === 'none') {
     rows.push({ label: 'BUILDING TYPE', controls: [`${c.zoneCode ?? 'The zone'} ${c.zonePurpose ?? ''} takes no residential flat building,`.replace(/\s+/g, ' '), 'shop-top housing or office building: the study gives the', 'floor space ratio\'s floor area alone.'] });
+  } else if (s.noScheme) {
+    rows.push({ label: 'BUILDING TYPE', controls: [ARCH_WORDS[y.archetype]] });
+    rows.push({ label: 'NO SCHEME', controls: [noSchemeSentence(b, s)] });
   } else {
     rows.push({ label: 'BUILDING TYPE', controls: [ARCH_WORDS[y.archetype]] });
     if (apartments) rows.push({
@@ -250,7 +275,7 @@ export function yieldRows(b: YieldBundle, s: YieldStudy = yieldStudy(b)): YieldR
   const lep = (c.epiName ?? 'LOCAL ENVIRONMENTAL PLAN').toUpperCase().replace('LOCAL ENVIRONMENTAL PLAN', 'LEP');
   rows.push({ label: lep, section: true });
   rows.push({ head: true });
-  rows.push({ label: 'LAND USE', controls: [[c.zoneCode, c.zonePurpose].filter(Boolean).join(' - ') || '—'], proposed: y.archetype === 'none' ? ['—'] : [ARCH_WORDS[y.archetype], 'permissibility to confirm in the land use table'], ok: y.archetype === 'none' ? null : true });
+  rows.push({ label: 'LAND USE', controls: [[c.zoneCode, c.zonePurpose].filter(Boolean).join(' - ') || '—'], proposed: y.archetype === 'none' ? ['—'] : [ARCH_WORDS[y.archetype], 'permissibility to confirm in the land use table'], ok: y.archetype === 'none' || s.noScheme ? null : true });
   if (s.hob) {
     const ctl = s.hob.rl ? [`RL ${fmt(s.hob.value, 1)}`, s.hob.metres ? `about ${m1(Math.round(s.hob.metres))} above the ground` : 'ground level unknown'] : [m1(s.hob.value)];
     const top = y.heightM ? (s.hob.rl && b.groundRL ? [`RL ${fmt(b.groundRL.mean + y.heightM, 1)}`, `${m1(Math.round(y.heightM * 10) / 10)}, ${storeyWord(y.storeys)}`] : [`${m1(Math.round(y.heightM * 10) / 10)}, ${storeyWord(y.storeys)}`]) : ['—'];
@@ -261,7 +286,8 @@ export function yieldRows(b: YieldBundle, s: YieldStudy = yieldStudy(b)): YieldR
   rows.push({ label: 'MIN. LOT SIZE', controls: [c.minLotSizeSqm ? sqm(c.minLotSizeSqm) : 'No minimum lot size mapped'], proposed: [A ? sqm(A) : '—'], ok: c.minLotSizeSqm && A ? A >= c.minLotSizeSqm : null });
   rows.push({ label: 'HERITAGE', controls: c.heritage.length ? c.heritage.map((h) => `${h.name}${h.significance ? ` (${h.significance})` : ''}`) : ['No heritage item mapped on the site'], proposed: c.heritage.length ? ['A heritage impact statement is needed'] : ['—'], ok: c.heritage.length ? null : undefined });
 
-  if (y.archetype !== 'none') {
+  // with no scheme there is nothing to count against the parking rates or the ADG: the table stops at the LEP
+  if (y.archetype !== 'none' && !s.noScheme) {
     const basis = s.parkingSet === 'custom' ? 'from yield_assumptions.json' : PARKING_RATES[s.parkingSet].basis;
     rows.push({ label: 'PARKING', section: true });
     rows.push({ head: true });
@@ -280,7 +306,7 @@ export function yieldRows(b: YieldBundle, s: YieldStudy = yieldStudy(b)): YieldR
     rows.push({ label: 'BASEMENT', controls: [`${a.basementSqmPerSpace} sqm a car space with its aisles,`, `${Math.round(a.basementCoverage * 100)}% of the site a level`], proposed: [`${y.parking.total} spaces: ${y.parking.basementLevels} ${y.parking.basementLevels === 1 ? 'level' : 'levels'}`] });
   }
 
-  if (apartments) {
+  if (apartments && !s.noScheme) {
     rows.push({ label: 'APARTMENT DESIGN GUIDE', section: true });
     rows.push({ head: true });
     const held = y.tiers.some((t) => t.held === 'depth');
@@ -565,14 +591,22 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
   y?.tiers.forEach((t, i) => { for (const rg of t.envelope) out.push(`<path d="${path(rg)}" fill="none" stroke="${Y.envelope}" stroke-width="0.3" stroke-dasharray="${['2,1', '1.2,1.2', '3,1,0.8,1', '0.6,0.9'][i % 4]}"/>`); });
   out.push(`<path d="${path(s.ring)}" fill="none" stroke="${siteInk()}" stroke-width="0.6" stroke-dasharray="3,1.2"/>`);
 
-  // North, and a bar of round metres, first: what is written later keeps off them.
-  const nx = box.x + box.w - 7 - inset, ny = box.y + 8 + inset;
-  out.push(`<g transform="translate(${nx},${ny})"><path d="M0,-4.4 L1.6,3.6 L0,2 L-1.6,3.6 Z" fill="#1c1c1c"/><text y="-5.6" text-anchor="middle" font-size="2.8" font-weight="700">N</text></g>`);
-  taken.push([nx - 4, ny - 9, nx + 4, ny + 5]);
-  const bar = [5, 10, 20, 50, 100].find((m) => m * mm >= 18) ?? 100;
-  const bx = box.x + 2 + inset, by = box.y + box.h - 3 - inset;
-  out.push(`<path d="M${bx},${by - 1.4} V${by} H${bx + bar * mm} V${by - 1.4} M${bx + (bar * mm) / 2},${by} V${by - 0.8}" fill="none" stroke="#1c1c1c" stroke-width="0.25"/><text x="${bx}" y="${by - 2.2}" font-size="2.4">0</text><text x="${(bx + bar * mm).toFixed(2)}" y="${by - 2.2}" text-anchor="middle" font-size="2.4">${bar}m</text>`);
-  taken.push([bx - 1, by - 5, bx + bar * mm + 4, by + 1]);
+  // The scale bar and the north point, first: what is written later keeps off them. A plan as wide as the right page
+  // takes the report's, where every map of the decks has it: under the drawing's name, on the page's last line, white.
+  if (Math.abs(box.w - PAGE_W) < 1e-6 && box.x === 0) {
+    const fp = { center: { x: 0, y: 0 }, scale, wMm: box.w, hMm: box.h };
+    const fb = furnitureBox(fp);
+    out.push(`<g transform="translate(0,${box.y})">${panelFurniture(fp)}</g>`);
+    taken.push([fb.x0, box.y + fb.y0, fb.x1, box.y + fb.y1]);
+  } else {
+    const nx = box.x + box.w - 7 - inset, ny = box.y + 8 + inset;
+    out.push(`<g transform="translate(${nx},${ny})"><path d="M0,-4.4 L1.6,3.6 L0,2 L-1.6,3.6 Z" fill="#1c1c1c"/><text y="-5.6" text-anchor="middle" font-size="2.8" font-weight="700">N</text></g>`);
+    taken.push([nx - 4, ny - 9, nx + 4, ny + 5]);
+    const bar = [5, 10, 20, 50, 100].find((m) => m * mm >= 18) ?? 100;
+    const bx = box.x + 2 + inset, by = box.y + box.h - 3 - inset;
+    out.push(`<path d="M${bx},${by - 1.4} V${by} H${bx + bar * mm} V${by - 1.4} M${bx + (bar * mm) / 2},${by} V${by - 0.8}" fill="none" stroke="#1c1c1c" stroke-width="0.25"/><text x="${bx}" y="${by - 2.2}" font-size="2.4">0</text><text x="${(bx + bar * mm).toFixed(2)}" y="${by - 2.2}" text-anchor="middle" font-size="2.4">${bar}m</text>`);
+    taken.push([bx - 1, by - 5, bx + bar * mm + 4, by + 1]);
+  }
 
   // Each tier's number in the band of the envelope that is its own, keyed to
   // the schedule, drawn toward the middle of the main street frontage so the
@@ -841,11 +875,13 @@ export function scenarioRows(b: YieldBundle, s: YieldStudy = yieldStudy(b)): Sce
     note: 'what stands, kept and refurbished or rebuilt on its footprint to its height: over the LEP\'s controls, a clause 4.6 variation argued on the bulk that stands (existing use rights for a use the zone has dropped); to confirm with a planner',
     ...fill(s.retained), ok: null,
   });
-  out.push({
-    id: 'withinControls', label: 'WITHIN THE CONTROLS — DRAWN',
-    note: 'the LEP\'s height and floor space ratio and the ADG\'s separations: the massing, the plan and the schedule show this one',
-    ...fill(s.base), ok: true,
-  });
+  out.push(s.noScheme
+    ? { id: 'withinControls', label: 'WITHIN THE CONTROLS — NOT DRAWN', note: noSchemeSentence(b, s) }
+    : {
+      id: 'withinControls', label: 'WITHIN THE CONTROLS — DRAWN',
+      note: 'the LEP\'s height and floor space ratio and the ADG\'s separations: the massing, the plan and the schedule show this one',
+      ...fill(s.base), ok: true,
+    });
   // A bonus the envelope eats (no more floor area or units than the base) is no path at all.
   if (s.bonus && (s.bonus.gfa > s.base.gfa + 1 || s.bonus.units.total > s.base.units.total)) out.push({
     id: 'affordableBonus', label: 'AFFORDABLE HOUSING BONUS',
@@ -895,8 +931,8 @@ const SCENARIO_TITLE: Record<Scenario['id'], string> = {
 function okMark(ok: boolean | null | undefined): string {
   if (ok === undefined) return '';
   const body = ok === null ? '<line x1="1" y1="2" x2="4" y2="2" stroke="#878787" stroke-width="0.45"/>'
-    : ok ? '<path d="M0.6,2.1 L1.9,3.3 L4.4,0.6" fill="none" stroke="#2f8f55" stroke-width="0.55" stroke-linecap="round" stroke-linejoin="round"/>'
-      : '<path d="M1,0.6 L4,3.4 M4,0.6 L1,3.4" stroke="#c8372d" stroke-width="0.55" stroke-linecap="round"/>';
+    : ok ? '<path d="M0.6,2.1 L1.9,3.3 L4.4,0.6" fill="none" stroke="#2f8f55" stroke-width="0.55" stroke-linecap="butt" stroke-linejoin="miter"/>'
+      : '<path d="M1,0.6 L4,3.4 M4,0.6 L1,3.4" stroke="#c8372d" stroke-width="0.55" stroke-linecap="butt"/>';
   return `<svg class="mk" viewBox="0 0 5 4" width="3.4mm" height="2.7mm" xmlns="http://www.w3.org/2000/svg">${body}</svg>`;
 }
 
@@ -982,8 +1018,13 @@ const PATH_BASIS: Record<Scenario['id'], string> = {
 /** The paths, each with the study's result behind it (none for what stands). */
 function pathsOf(b: YieldBundle, s: YieldStudy): Path[] {
   const of: Record<Scenario['id'], YieldResult | undefined> = { standsToday: undefined, rebuiltAsStands: s.retained, withinControls: s.base, affordableBonus: s.bonus, envelopeToHeight: s.max };
-  return scenarioRows(b, s).map((sc) => ({ sc, y: of[sc.id] }));
+  return scenarioRows(b, s).map((sc) => ({ sc, y: sc.id === 'withinControls' && s.noScheme ? undefined : of[sc.id] }));
 }
+
+/** Whether a path has a spread of its own: what stands, and every path the study drew. */
+const drawnPath = (p: Path) => p.sc.id === 'standsToday' || !!p.y;
+/** The page a path's spread takes (the overview is page 1), or none where it has no spread. */
+const pageOf = (paths: Path[], p: Path) => (drawnPath(p) ? paths.filter(drawnPath).indexOf(p) + 2 : 0);
 
 /** What stands, in the study's metres. */
 const standingOf = (b: YieldBundle, s: YieldStudy) => (b.existing ?? []).filter((e) => e.rings?.length)
@@ -1034,9 +1075,9 @@ function pathBars(b: YieldBundle, s: YieldStudy, paths: Path[]): string[] {
   const A = b.siteAreaSqm ?? 0, c = b.controls;
   const BAR_FILL = barFills(), R = inks().F;
   const ex = existingSummary(b.existing ?? []);
-  const gfaRows = paths.map((p) => ({ id: p.sc.id, v: p.y ? p.y.gfa : ex?.gbaSqm ?? 0, approx: !p.y })).filter((r) => r.v > 0)
+  const gfaRows = paths.map((p) => ({ id: p.sc.id, v: p.y ? p.y.gfa : p.sc.id === 'standsToday' ? ex?.gbaSqm ?? 0 : 0, approx: !p.y })).filter((r) => r.v > 0)
     .map((r) => ({ name: SCENARIO_TITLE[r.id], value: r.v, label: `${r.approx ? '≈ ' : ''}${fmt(Math.round(r.v))} m²${r.approx ? ' GBA' : ''}`, fill: BAR_FILL[r.id] }));
-  const hRows = paths.map((p) => ({ id: p.sc.id, v: p.y ? p.y.heightM : ex?.heightM ?? 0 })).filter((r) => r.v > 0)
+  const hRows = paths.map((p) => ({ id: p.sc.id, v: p.y ? p.y.heightM : p.sc.id === 'standsToday' ? ex?.heightM ?? 0 : 0 })).filter((r) => r.v > 0)
     .map((r) => ({ name: SCENARIO_TITLE[r.id], value: r.v, label: m1(Math.round(r.v * 10) / 10), fill: BAR_FILL[r.id] }));
   const out: string[] = [];
   const ref = c.fsr && A ? { value: c.fsr * A, label: `FSR ${c.fsr.toFixed(2)}:1`, ink: R.deep } : undefined;
@@ -1062,10 +1103,11 @@ function overviewSlide(b: YieldBundle, s: YieldStudy, paths: Path[]): Slide {
   ], 9.6);
   const table = ytable(
     [{ head: 'Path', w: '36mm' }, { head: 'Storeys', r: true }, { head: 'Height', r: true }, { head: 'Floor area', r: true }, { head: 'FSR', r: true }, { head: 'Units', r: true }, { head: 'Cars', r: true }, { head: '', w: '5mm' }, { head: 'Page', r: true }],
-    paths.map((p, i) => ({
-      cls: p.sc.id === 'withinControls' ? 'hi' : undefined,
+    paths.map((p) => ({
+      cls: p.sc.id === 'withinControls' && p.y ? 'hi' : undefined,
       cells: [esc(SCENARIO_TITLE[p.sc.id]), esc(p.sc.storeys ?? '—'), p.sc.heightM ? esc(m1(p.sc.heightM)) : '—',
-        esc(p.y ? fmt(Math.round(p.y.gfa)) : ex?.gbaSqm ? `≈ ${fmt(Math.round(ex.gbaSqm))}` : '—'), esc(p.sc.fsr ?? '—'), esc(p.sc.units ?? '—'), esc(p.sc.parking ?? '—'), okMark(p.sc.ok), String(i + 2).padStart(2, '0')],
+        esc(p.y ? fmt(Math.round(p.y.gfa)) : p.sc.id === 'standsToday' && ex?.gbaSqm ? `≈ ${fmt(Math.round(ex.gbaSqm))}` : '—'), esc(p.sc.fsr ?? '—'), esc(p.sc.units ?? '—'), esc(p.sc.parking ?? '—'), okMark(p.sc.ok),
+        pageOf(paths, p) ? String(pageOf(paths, p)).padStart(2, '0') : '—'],
     })));
   const blocks = [zBlock('The site', figs, 'The controls'), zBlock('The paths', table), ...pathBars(b, s, paths)];
   const name = (scale: number) => ['The site and its neighbours', `1:${fmt(scale).replace(',', ' ')}`, 'their numbers, zones and heights'];
@@ -1075,7 +1117,7 @@ function overviewSlide(b: YieldBundle, s: YieldStudy, paths: Path[]): Slide {
   const legend: LegendEntry[] = [{ swatch: KEY.site, label: 'The site' }, { swatch: KEY.neighbours, label: 'Buildings round about' }, { swatch: KEY.lot, label: 'Lot boundaries, NSW cadastre, each lot in its zone\'s colour' }];
   if (plan.kerbs.length) legend.push({ swatch: KEY.kerb, label: 'Kerb line, indicative' });
   const exceeds = ex?.gbaSqm && ex.gbaSqm > Math.max(...paths.filter((p) => p.y && p.sc.id !== 'rebuiltAsStands').map((p) => p.y!.gba), 0);
-  const narrative = brief([
+  const narrative = s.noScheme ? brief([noSchemeSentence(b, s), ex?.gbaSqm ? `What stands today holds about ${area(ex.gbaSqm)}.` : ''], 560) : brief([
     y.archetype === 'none'
       ? `${c.zoneCode ?? 'The zone'} takes no residential flat building, shop-top housing or office building: the floor space ratio gives ${A && c.fsr ? area(c.fsr * A) : 'the floor area'} alone.`
       : `Within the controls the site holds ${y.archetype === 'mixed' ? 'shop-top housing' : y.archetype === 'commercial' ? 'a commercial building' : 'a residential flat building'} of ${storeyWord(y.storeys)}: ${area(y.gfa)} of floor area${y.units.total ? `, ${fmt(y.units.total)} apartments` : ''}${y.parking.total ? ` and ${fmt(y.parking.total)} parking spaces` : ''}.`,
@@ -1186,7 +1228,8 @@ function standingSlide(b: YieldBundle, s: YieldStudy, paths: Path[], n: number):
   const best = Math.max(...paths.filter((p) => p.y && p.sc.id !== 'rebuiltAsStands').map((p) => p.y!.gba), 0);
   const narrative = brief([
     `${ex.count === 1 ? 'A building' : `${COUNT_WORD[ex.count] ?? ex.count} buildings`} of ${ex.storeys ? `about ${ex.storeys} storeys` : 'unrecorded height'} ${ex.count === 1 ? 'stands' : 'stand'} on the site today, ${area(ex.footprintSqm)} on the ground${ex.gbaSqm ? ` and about ${area(ex.gbaSqm)} of floor${A ? `, ${about(ex.gbaSqm, A)}` : ''}` : ''}${c.fsr ? ` against the LEP's ${c.fsr.toFixed(2)}:1` : ''}.`,
-    ex.gbaSqm && ex.gbaSqm > best
+    s.noScheme ? 'The controls give no scheme to set it against: the LEP maps no envelope here.'
+    : ex.gbaSqm && ex.gbaSqm > best
       ? `It is over today's controls: they have tightened since it was built, and redevelopment within them would cut the floor area.${s.retained ? ' The bulk need not be given up: kept, or rebuilt to its own envelope, it is the next spread\'s path.' : ' Its value is in what stands.'}`
       : ex.gbaSqm ? `Redevelopment within the controls would hold ${area(s.base.gfa)}, ${(s.base.gfa / ex.gbaSqm).toFixed(1)} times what stands.` : '',
   ]);
@@ -1231,7 +1274,9 @@ function controlsSlide(b: YieldBundle, s: YieldStudy, n: number): Slide {
   const right = `<div class="abs" data-fit style="left:${RX}mm;top:${RTOP}mm;width:${RW}mm;height:${RFOOT - RTOP}mm;overflow:hidden"><div class="ytw"><table class="yt yc"><colgroup><col style="width:42mm"><col><col><col style="width:5mm"></colgroup><tbody>${table.join('')}</tbody></table></div></div>`;
   return { id: `${String(n).padStart(2, '0')}_controls_and_assumptions`, title: 'Controls and assumptions', subtitle: subtitleOf(b, s), textHtml: '',
     figureHtml: zFlow([zBlock('The assumptions', zTable(rows))]) + right, full: true, accent: inks().accent,
-    narrative: 'Every figure rests on these assumptions. Each can be changed in yield_assumptions.json beside the output, and the study drawn again. The table sets the scheme within the controls against each control.',
+    narrative: s.noScheme
+      ? 'Every figure rests on these assumptions. Each can be changed in yield_assumptions.json beside the output, and the study drawn again. The table sets out the controls at the site; with no scheme drawn, none is set against them.'
+      : 'Every figure rests on these assumptions. Each can be changed in yield_assumptions.json beside the output, and the study drawn again. The table sets the scheme within the controls against each control.',
     sources: `Controls from the NSW ePlanning layers at the site; the Apartment Design Guide; the Housing SEPP 2021. ${NOT_A_DESIGN.replace(/^A feasibility study, not a design: [^;]+; /, '')}` };
 }
 
@@ -1244,7 +1289,8 @@ function drawYieldDeck(b: YieldBundle, _meta: SheetMeta): { html: string; slides
   const s = yieldStudy(b);
   const paths = pathsOf(b, s);
   const slides: Slide[] = [overviewSlide(b, s, paths)];
-  paths.forEach((p) => slides.push(p.y ? schemeSlide(b, s, p, slides.length + 1, paths.length + 2) : standingSlide(b, s, paths, slides.length + 1)));
+  const drawn = paths.filter(drawnPath);
+  drawn.forEach((p) => slides.push(p.y ? schemeSlide(b, s, p, slides.length + 1, drawn.length + 2) : standingSlide(b, s, paths, slides.length + 1)));
   slides.push(controlsSlide(b, s, slides.length + 1));
   const html = `<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><title>${esc(b.siteAddress)} — PLANNING YIELD</title>
@@ -1262,6 +1308,7 @@ const YIELD_CSS = `
   .slide.atlas .ytw table.yt { font-size: 1em; }
   .slide.atlas table.yt th { font-size: 0.8em; line-height: 1.4; letter-spacing: 0.09em; text-transform: uppercase; font-weight: 400; color: #878787; text-align: left; padding: 1.2mm 1.4mm 0.7mm 0; vertical-align: bottom; white-space: nowrap; }
   .slide.atlas table.yt td { line-height: 1.3; padding: 0.75mm 1.4mm 0.85mm 0; border-bottom: 0.18mm solid #878787; vertical-align: top; }
+  .slide.atlas table.yt tbody tr:last-child td { border-bottom-color: transparent; }
   .slide.atlas table.yt .r { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
   .slide.atlas table.yt th:last-child, .slide.atlas table.yt td:last-child { padding-right: 0; }
   .slide.atlas table.yt tr.tot td { font-weight: 700; }
