@@ -6454,8 +6454,8 @@ export function conditionAtlas(b: SlidesBundle): Slide {
   then.push(siteMark(b.base, pproj, 'outline'));
   // The 1943 survey covers the Sydney region only. Where it has no tile here, today's aerial takes the whole right
   // page at the pair's scale, drawn from the character page's wider capture where that covers it (sharper than the
-  // pair's half-page export), so no half page stands empty.
-  const hasThen = ph.pair.then.tiles.length > 0;
+  // pair's half-page export), so no half page stands empty; the subtitle, narrative and sources take the same test.
+  const hasThen = f.pair.then !== 'none';
   const np: Panel = hasThen ? pp : { ...pp, hMm: SLIDE_H };
   const nproj = hasThen ? pproj : panelProjector(np);
   const ne = panelExtent(np);
@@ -6528,12 +6528,13 @@ export function conditionAtlas(b: SlidesBundle): Slide {
   const blocks = series.length ? [zBlock(`${streetName}, end to end`, zPhotos(cells), 'Google Street View')] : [zBlock(frames.length ? 'Street level and from above' : 'The site from above', zPhotos(cells), `NSW Imagery${img?.resolutionCm ? ` ${img.resolutionCm} cm` : ''}${img?.date ? ` · ${fmtIso(img.date)}` : ''}`)];
   if (series.length) blocks.length = 1;
   const sources = `Sources: ${series.length ? `Google Street View Static API, ${streetName} in ${series.length} frames about ${Math.round(Math.abs(series[series.length - 1].alongM - series[0].alongM) / Math.max(1, series.length - 1))} m apart, © Google; ` : ''}${frames.length ? `street-level frames from ${listWords([...new Set(frames.map((cam) => cam.source === 'google' ? 'Google Street View' : 'KartaView'))])}, credited under each; ` : ''}${hasThen ? 'the 1943 aerial survey from NSW Spatial Services\' Historical Imagery; ' : ''}today's aerial NSW Imagery via SIX Maps${img?.date ? `, captured ${fmtIso(img.date)}` : ''}${img?.resolutionCm ? `, ${img.resolutionCm} cm` : ''}${frames.length < 8 ? '; where no camera stands in front of a side, that side is shown from above' : ''}. Retrieved ${b.generatedAt.slice(0, 10)}.`;
-  const sub = atlasSub(b, f.pair.then !== 'none' ? '1943 and today' : "today's aerial", series.length ? `${streetName} in ${series.length} frames` : frames.length ? `${frames.length} street-level frame${frames.length === 1 ? '' : 's'}` : 'the edges from above');
-  const pe2 = panelExtent(pp), k2 = mercatorScaleFactor(mercatorToLonLat(pp.center).lat);
+  const sub = atlasSub(b, hasThen ? '1943 and today' : "today's aerial", series.length ? `${streetName} in ${series.length} frames` : frames.length ? `${frames.length} street-level frame${frames.length === 1 ? '' : 's'}` : 'the edges from above');
+  const k2 = mercatorScaleFactor(mercatorToLonLat(pp.center).lat);
+  const ground = (e: ReturnType<typeof panelExtent>) => `${fmtNum(Math.round((e.xmax - e.xmin) / k2))} × ${fmtNum(Math.round((e.ymax - e.ymin) / k2))} m`;
   const narrative = brief([
     hasThen
-      ? `The 1943 aerial survey sits over today's capture${img?.date ? ` of ${fmtIso(img.date)}` : ''}: the same ${fmtNum(Math.round((pe2.xmax - pe2.xmin) / k2))} × ${fmtNum(Math.round((pe2.ymax - pe2.ymin) / k2))} m at 1:${fmtNum(pp.scale)}, north up, for the grain of the block then and now.`
-      : `Today's capture${img?.date ? ` of ${fmtIso(img.date)}` : ''} shows the block at 1:${fmtNum(np.scale)}, north up; the 1943 aerial survey covers the Sydney region only, not this site.`,
+      ? `The 1943 aerial survey sits over today's capture${img?.date ? ` of ${fmtIso(img.date)}` : ''}: the same ${ground(pe)} at 1:${fmtNum(pp.scale)}, north up, for the grain of the block then and now.`
+      : `Today's capture${img?.date ? ` of ${fmtIso(img.date)}` : ''} shows ${ground(ne)} round the site at 1:${fmtNum(np.scale)}, north up, for the grain of the block.`,
     sf.buildings.onSite.length ? `Today ${sf.buildings.onSite.length === 1 ? 'one building covers' : `${sf.buildings.onSite.length} buildings cover`} ${fmtPct(sf.buildings.coveragePct)} of the lot.` : '',
     series.length ? `${capFirst(numWord(series.length))} Street View frames walk ${streetName} past the site, square to each side in turn.` : frames.length ? `${capFirst(numWord(frames.length))} street-level frame${frames.length === 1 ? ' looks' : 's look'} at the site from its frontages.` : `The frames show the site's edges from above at 1:600.`,
   ]);
@@ -7919,8 +7920,9 @@ export function sourcesFacts(b: SlidesBundle, planning: PlanningFacts) {
   if (!/City of Sydney/i.test(b.terrain.contourSource ?? '')) B.push({ dataset: 'Contours', used: '07', currency: b.terrain.contours.length ? `${b.terrain.contourSource ?? 'NSW contours'}${b.terrain.contourIntervalM ? `, ${b.terrain.contourIntervalM} m interval` : ''}; ${n(b.terrain.contours.length, 'line')} in the window` : 'none in the window', retrieved: deckDay, attribution: ATTR.spatial });
   const img = b.site.imagery;
   B.push({ dataset: 'NSW Imagery (aerial) and the imagery-dates layer (SIX Maps)', used: '03 · 12 · 13', currency: img ? `${titleCase(img.block)} block${img.date ? `, captured ${fmtIso(img.date)}` : ''}${img.resolutionCm ? `, ${img.resolutionCm} cm` : ''}` : b.site.aerial ? 'capture date not published for this block' : 'no aerial for this run', retrieved: retrieved(b.site.fetchedAt), attribution: ATTR.spatial });
+  // the 1943 survey covers the Sydney region only; with no tile here page 13 does not use it, so it is not listed
   const then = b.photos.pair.then;
-  B.push({ dataset: 'Historical Imagery 1943: the Sydney aerial survey as a tile service', used: '13', currency: then.tiles.length ? `1943 survey; ${n(then.tiles.length, 'tile')} at level ${then.zoom} over the pair's panel${then.missing ? `, ${n(then.missing, 'tile')} missing` : ''}` : 'no tile at this site (the survey covers the Sydney region)', retrieved: retrieved(b.photos.fetchedAt), attribution: ATTR.spatial });
+  if (then.tiles.length) B.push({ dataset: 'Historical Imagery 1943: the Sydney aerial survey as a tile service', used: '13', currency: `1943 survey; ${n(then.tiles.length, 'tile')} at level ${then.zoom} over the pair's panel${then.missing ? `, ${n(then.missing, 'tile')} missing` : ''}`, retrieved: retrieved(b.photos.fetchedAt), attribution: ATTR.spatial });
   groups.push({ publisher: 'NSW Spatial Services (Department of Customer Service) — Spatial Collaboration Portal and SIX Maps', rows: B });
 
   // Other State agencies.
