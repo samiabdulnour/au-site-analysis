@@ -2098,8 +2098,13 @@ height of buildings page, the built form, the shadows and the sources page
 say how many heights and footprints came from the meshes, and credit Google
 and the providers the meshes name. `DECK_MESH_HEIGHTS=0` leaves the meshes
 out of the deck; `MESH_HEIGHTS_ERROR_M` sets the error the tree of tiles is
-walked down to (4 m by default). One root request to the Map Tiles API a
+walked down to (4 m by default); `MESH_HEIGHTS_MINUTES` (6) is how long the
+meshes may take to come and be read before the deck goes on without them.
+A fault in the reading is logged and the footprints stay as the sources gave
+them: a deck is never lost to it. One root request to the Map Tiles API a
 deck, as the streetscape costs, in a session of its own.
+`GOOGLE_MAPS_API_KEY=header` says a proxy in front of the process adds the
+key to the tile requests as `X-Goog-Api-Key`, and none goes in the query.
 
 ## How it works
 

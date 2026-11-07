@@ -1124,10 +1124,17 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
   if (gkey && process.env.DECK_MESH_HEIGHTS !== '0' && buildingsRead.buildings.length) {
     log('the heights from the 3D meshes…');
     const surface = await soft(meshSurfaceOver(gkey, pageExtent, log), null, '3D-tile heights');
+    // the reading is arithmetic on the grid, but a deck is never lost to it: a fault here is logged and the
+    // footprints stay as the sources gave them
     if (surface) {
-      const gaps = lotsWithoutFootprint(buildingsRead.buildings, lots, zoning, siteLots, pageExtent);
-      footprints = withMeshHeights(buildingsRead, surface.field, surface.frame, gaps.gaps, { meshes: surface.meshes, errorM: surface.errorM, credits: surface.credits });
-      log(`  3D tiles: ${footprints.mesh?.heights ?? 0} heights read from the meshes, ${footprints.mesh?.footprints ?? 0} footprints traced on ${gaps.count} lots the sources left empty`);
+      try {
+        const gaps = lotsWithoutFootprint(buildingsRead.buildings, lots, zoning, siteLots, pageExtent);
+        footprints = withMeshHeights(buildingsRead, surface.field, surface.frame, gaps.gaps, { meshes: surface.meshes, errorM: surface.errorM, credits: surface.credits });
+        log(`  3D tiles: ${footprints.mesh?.heights ?? 0} heights read from the meshes, ${footprints.mesh?.footprints ?? 0} footprints traced on ${gaps.count} lots the sources left empty`);
+      } catch (e: any) {
+        log(`  WARN 3D-tile heights failed: ${e?.message ?? e}; the footprints stay as the sources gave them`);
+        footprints = buildingsRead;
+      }
     }
   }
   // the site's street end to end, where Street View is keyed

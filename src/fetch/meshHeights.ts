@@ -19,11 +19,27 @@ import { mercatorScaleFactor, mercatorToLonLat, type Extent } from '../lib/geo.j
 export const MESH_SURFACE_ERROR_M = Number(process.env.MESH_HEIGHTS_ERROR_M) || 4;
 /** A cell of the surface, metres. */
 export const MESH_SURFACE_CELL_M = 1;
+/**
+ * How long the meshes may take to come and be read, minutes: past it the deck goes on without them (the tiles
+ * still in flight finish on their own and are dropped). A page's few score meshes come in well under a minute;
+ * this is for a tree of tiles that turns out deeper than the error promised.
+ */
+export const MESH_SURFACE_MINUTES = Number(process.env.MESH_HEIGHTS_MINUTES) || 6;
 
 export interface MeshSurface { field: HeightField; frame: LocalFrame; meshes: number; errorM: number; credits: string[] }
 
 /** The surface over `extent` (Web Mercator), or null where the tiles hold no meshes there. */
 export async function meshSurfaceOver(key: string, extent: Extent, log: (m: string) => void = () => {}): Promise<MeshSurface | null> {
+  let timer: NodeJS.Timeout | undefined;
+  const budget = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error(`the meshes took more than ${MESH_SURFACE_MINUTES} minutes`)), MESH_SURFACE_MINUTES * 60_000); });
+  try {
+    return await Promise.race([readSurface(key, extent, log), budget]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function readSurface(key: string, extent: Extent, log: (m: string) => void): Promise<MeshSurface | null> {
   const centre = mercatorToLonLat({ x: (extent.xmin + extent.xmax) / 2, y: (extent.ymin + extent.ymax) / 2 });
   const k = mercatorScaleFactor(centre.lat);
   const halfW = (extent.xmax - extent.xmin) / 2 / k, halfH = (extent.ymax - extent.ymin) / 2 / k;
