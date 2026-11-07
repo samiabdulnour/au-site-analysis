@@ -120,9 +120,10 @@ export interface YieldStudy {
   /**
    * Why the controls give no scheme to draw, where the zone takes a building type but the study holds no storey: the
    * LEP maps no height of building, maps it as an RL over ground whose level is not known, or maps one too low for a
-   * storey under the roof allowance. Unset where there is a scheme (or the zone takes no building type at all).
+   * storey under the roof allowance; or the height holds storeys but the setbacks leave no floor plate on a lot this
+   * narrow. Unset where there is a scheme (or the zone takes no building type at all).
    */
-  noScheme?: 'noHeight' | 'rlUnknown' | 'tooLow';
+  noScheme?: 'noHeight' | 'rlUnknown' | 'tooLow' | 'noPlate';
 }
 
 /** What the study says where the controls give it no scheme: one sentence, for the narrative, the paths and the table. */
@@ -130,10 +131,19 @@ export function noSchemeSentence(b: YieldBundle, s: YieldStudy): string {
   const c = b.controls;
   const lep = c.epiName ?? 'The LEP';
   const fsr = c.fsr ? ` Its floor space ratio of ${c.fsr.toFixed(2)}:1 gives ${b.siteAreaSqm ? `${fmt(Math.round(c.fsr * b.siteAreaSqm))} m² of floor area` : 'the floor area'}, which the DCP's envelope must hold.` : '';
+  const set = (v: number) => fmt(v, v % 1 ? 1 : 0);
+  const height = s.hob?.metres === undefined ? 'as mapped'
+    : s.hob.rl ? `RL ${fmt(s.hob.value, 1)}, about ${fmt(Math.round(s.hob.metres))} m above the ground` : `${set(s.hob.metres)} m`;
   switch (s.noScheme) {
     case 'noHeight': return `${lep} maps no height of building${c.fsr ? '' : ' and no floor space ratio'} at the site, so the controls give no envelope to study: the height and setbacks are the council's DCP's to set, and no scheme is drawn.${fsr}`;
     case 'rlUnknown': return `${lep} maps the height as RL ${fmt(s.hob?.value ?? 0, 1)}, and the ground level at the site is not known, so the height cannot be read in storeys: no scheme is drawn.${fsr}`;
-    case 'tooLow': return `${lep}'s height of building, ${s.hob?.metres ? `${fmt(s.hob.metres, s.hob.metres % 1 ? 1 : 0)} m` : 'as mapped'}, leaves no room for a storey under the roof allowance: no scheme is drawn.${fsr}`;
+    case 'tooLow': return `${lep}'s height of building, ${height}, leaves no room for a storey under the roof allowance: no scheme is drawn.${fsr}`;
+    case 'noPlate': {
+      // the lowest tier keeps the least setback: where it has no plate, none above it has
+      const t = s.base.tiers[0], adg = s.base.archetype === 'residential' || s.base.archetype === 'mixed';
+      const setbacks = t ? ` (${set(t.front)} m from the street; ${set(t.side)} m from the side and ${set(t.rear)} m from the rear boundaries${adg ? ', the ADG\'s separations' : ''})` : '';
+      return `${lep}'s height of building, ${height}, holds ${storeyWord(s.base.storeysByHeight)}, but the setbacks${setbacks} leave no floor plate on a lot this narrow: no scheme is drawn. A narrower building, or the lot amalgamated with a neighbour, is for the DCP and the design to test.${fsr}`;
+    }
     default: return '';
   }
 }
@@ -160,9 +170,10 @@ export function yieldStudy(b: YieldBundle): YieldStudy {
   const area = b.siteAreaSqm ?? 0;
   const base = computeYield({ ring, fronts, siteAreaSqm: area, zone: c.zoneCode, hobM: hob?.metres, fsr: c.fsr, assumptions });
   const bonusK = 1 + (assumptions.affordableBonus ?? DEFAULT_ASSUMPTIONS.affordableBonus);
-  // the controls give no scheme where the zone takes a building type and the height holds no storey under it
+  // the controls give no scheme where the zone takes a building type and the study builds no storey: the height holds
+  // none (unmapped, an RL over unknown ground, or under one storey), or it holds some and the setbacks leave no plate
   const noScheme: YieldStudy['noScheme'] = base.archetype === 'none' || base.storeys > 0 ? undefined
-    : !hob ? 'noHeight' : hob.metres === undefined ? 'rlUnknown' : 'tooLow';
+    : !hob ? 'noHeight' : hob.metres === undefined ? 'rlUnknown' : base.storeysByHeight > 0 ? 'noPlate' : 'tooLow';
   const bonus = (base.archetype === 'residential' || base.archetype === 'mixed') && !noScheme
     ? computeYield({ ring, fronts, siteAreaSqm: area, zone: c.zoneCode, hobM: hob?.metres ? hob.metres * bonusK : undefined, fsr: c.fsr ? c.fsr * bonusK : undefined, assumptions })
     : undefined;
@@ -1233,7 +1244,7 @@ function standingSlide(b: YieldBundle, s: YieldStudy, paths: Path[], n: number):
   const best = Math.max(...paths.filter((p) => p.y && p.sc.id !== 'rebuiltAsStands').map((p) => p.y!.gba), 0);
   const narrative = brief([
     `${ex.count === 1 ? 'A building' : `${COUNT_WORD[ex.count] ?? ex.count} buildings`} of ${ex.storeys ? `about ${ex.storeys} storeys` : 'unrecorded height'} ${ex.count === 1 ? 'stands' : 'stand'} on the site today, ${area(ex.footprintSqm)} on the ground${ex.gbaSqm ? ` and about ${area(ex.gbaSqm)} of floor${A ? `, ${about(ex.gbaSqm, A)}` : ''}` : ''}${c.fsr ? ` against the LEP's ${c.fsr.toFixed(2)}:1` : ''}.`,
-    s.noScheme ? 'The controls give no scheme to set it against: the LEP maps no envelope here.'
+    s.noScheme ? `The controls give no scheme to set it against${s.noScheme === 'noHeight' ? ': the LEP maps no envelope here' : ''}.`
     : ex.gbaSqm && ex.gbaSqm > best
       ? `It is over today's controls: they have tightened since it was built, and redevelopment within them would cut the floor area.${s.retained ? ' The bulk need not be given up: kept, or rebuilt to its own envelope, it is the next spread\'s path.' : ' Its value is in what stands.'}`
       : ex.gbaSqm ? `Redevelopment within the controls would hold ${area(s.base.gfa)}, ${(s.base.gfa / ex.gbaSqm).toFixed(1)} times what stands.` : '',
