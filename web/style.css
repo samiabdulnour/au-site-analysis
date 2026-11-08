@@ -414,7 +414,12 @@ footer a { color: inherit; }
    or, where the screen is short, as tall as the screen allows, centred. */
 .result { border: 1px solid var(--line); }
 .result img { display: block; width: 100%; height: auto;
-              max-height: calc(100svh - 189px); object-fit: contain; }
+              max-height: calc(100svh - 189px); object-fit: contain;
+              -webkit-user-drag: none; user-select: none; }
+/* While a drawing is made the picture takes no pointer at all: a press on it
+   began a native image drag, and the system's arrow came back over the sun.
+   Its pages keep turning on their own; the click that turns them waits. */
+html.sunbusy .result img { pointer-events: none; }
 .result img[hidden] { display: none; }
 .result img.loading { opacity: .35; }
 /* The site report's pages turn on a click as well as on their own. */

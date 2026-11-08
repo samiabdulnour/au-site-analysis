@@ -65,7 +65,9 @@ done; what the pipeline is fetching stays in the server's log, not the page. Whe
 there is a mouse, the pointer is a turning sun the whole time, over the button
 and anywhere else on the page: Flamingo's sun, eight tapered rays round a disc
 as the site sheets draw it at sunrise and sunset, in the page's yellow with a
-black hairline.
+black hairline. The result's picture cannot be dragged and takes no pointer
+while a drawing is made: a press on it began a native image drag, and the
+system's arrow came back beside the sun.
 Once done, the page shows the drawing itself as a picture about 1200 px wide
 (`preview.jpg`, taken in the same Chromium session that prints the PDF: a few
 hundred kilobytes against an A1 PDF's several megabytes) with the downloads
@@ -2126,7 +2128,11 @@ out of the deck; `MESH_HEIGHTS_ERROR_M` sets the error the tree of tiles is
 walked down to (6 m by default); `MESH_HEIGHTS_MINUTES` (6) is how long the
 meshes may take to come and be read before the deck goes on without them.
 A fault in the reading is logged and the footprints stay as the sources gave
-them: a deck is never lost to it. One root request to the Map Tiles API a
+them: a deck is never lost to it. The log says how many heights were read
+and how many footprints traced when the meshes are read, and again in the
+summary line the fetches end on (`mesh-heights:` and `traced:`), which is
+the line still in the page's tail of the log when the drawing is done. One
+root request to the Map Tiles API a
 deck, as the streetscape costs, in a session of its own (one more for each
 coarser level tried). Read over the Bondi page with Overture's 2,573
 footprints: 431 meshes in 16 s, a height on 1,323 of the footprints that

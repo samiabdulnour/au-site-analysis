@@ -1160,7 +1160,7 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
 
   log(`  zoning:${zoning.features.length} hob:${hob.features.length} heritage:${heritage.features.length} shr:${shr.features.length} ` +
       `policy:${policy.length} roads:${roads.length} property:${property ? 'yes' : 'no'} dcp:${context.dcp ? 'yes' : 'no'} target:${housingTarget ? housingTarget.homes : '—'}${cos ? ' council-dcp:yes' : ''} ` +
-      `applications:${applications.length}${feed ? `/${feed.records.length}` : ''} proposals:${proposals.length} dem:${dem ? `${dem.cols}×${dem.rows}` : 'no'} contours:${contourSet.lines.length} (${contourSet.intervalM} m) buildings:${buildings.buildings.length}/${buildings.source} da-storeys:${buildings.buildings.filter((x) => x.heightFrom === 'da').length}`);
+      `applications:${applications.length}${feed ? `/${feed.records.length}` : ''} proposals:${proposals.length} dem:${dem ? `${dem.cols}×${dem.rows}` : 'no'} contours:${contourSet.lines.length} (${contourSet.intervalM} m) buildings:${buildings.buildings.length}/${buildings.source} da-storeys:${buildings.buildings.filter((x) => x.heightFrom === 'da').length} mesh-heights:${buildings.mesh?.heights ?? 0} traced:${buildings.mesh?.footprints ?? 0}`);
 
   const bundle: SlidesBundle = {
     address,
