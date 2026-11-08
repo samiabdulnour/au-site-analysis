@@ -21,9 +21,9 @@ on:
   workflow_dispatch:
     inputs:
       only:
-        description: Which drawing's pictures to redraw
+        description: Which drawing's pictures to redraw (hero is the welcome animation's sheets, drawn for their own addresses)
         type: choice
-        options: [site, context, yield, slides, card, all]
+        options: [site, context, yield, slides, card, all, hero]
         default: site
       address:
         description: The example address (web/app.js names it in EXAMPLE_ADDRESS)
@@ -125,6 +125,7 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           msg="Web previews: redrawn for $ADDRESS ($ONLY)"
+          [ "$ONLY" = hero ] && msg="Welcome animation: its sheets redrawn for their addresses around NSW"
           run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
           if [ "$GITHUB_REF_NAME" = "$DEFAULT_BRANCH" ]; then
             branch="samples/run-$GITHUB_RUN_NUMBER"

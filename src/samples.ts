@@ -28,7 +28,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { join } from 'node:path';
+import { join, basename } from 'node:path';
 
 if (existsSync('.env')) {
   for (const line of readFileSync('.env', 'utf8').split('\n')) {
@@ -88,23 +88,24 @@ if (only === 'card') {
   process.exit(0);
 }
 
-const address = process.argv.slice(2).find((a, i, all) => !a.startsWith('--') && !all[i - 1]?.startsWith('--'));
-if (!address) {
+const addressArg = process.argv.slice(2).find((a, i, all) => !a.startsWith('--') && !all[i - 1]?.startsWith('--'));
+// The welcome's sheets have their addresses in HERO below; the frame's samples take the one given.
+if (!addressArg && only !== 'hero') {
   console.error('usage: npm run samples -- "<address>" [--only context|site|yield|summary|slides]');
   console.error('       npm run samples -- --only card');
+  console.error('       npm run samples -- --only hero');
   process.exit(1);
 }
 
-const slug = address.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-const root = join('out', 'samples', slug);
+const slugOf = (a: string) => a.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+const root = join('out', 'samples', addressArg ? slugOf(addressArg) : 'hero');
 const meta: SheetMeta = {
   jobNo: '', client: '', status: '', sheetNo: '', revision: '',
   checked: '', drawn: '', date: '', preliminary: false,
 };
 
-/** Page one of a PDF, or a PNG, as the frame's JPEG. */
-function toJpeg(src: string, name: string) {
-  const out = join(samples, `result-${name}.jpg`);
+/** Page one of a PDF, or a PNG, as a JPEG at the frame's size, written to `out`. */
+function rasterise(src: string, out: string) {
   const py = `
 import sys, pymupdf
 from PIL import Image
@@ -120,6 +121,125 @@ else:
   if (r.status !== 0) throw new Error(`rasterising ${src}: ${r.stderr.slice(-400)}`);
   console.log(`  wrote ${out}`);
 }
+/** Page one of a PDF, or a PNG, as the frame's JPEG, result-<name>.jpg. */
+const toJpeg = (src: string, name: string) => rasterise(src, join(samples, `result-${name}.jpg`));
+
+// ---- the welcome's animated windows -------------------------------------------
+//
+// web/hero.js turns through sheets drawn for addresses around NSW, hero-1.jpg
+// … hero-27.jpg, so the welcome never shows the frame's example: the maps 1
+// to 14, a context or site sheet each in one of the four styles; the yield's
+// pages 15 to 18, in the four styles mixed; and the site report's pages 19 to
+// 27, in its default style, Newcastle's streetscape on Google's 3D tiles among
+// them. Each frame names its address, drawing, scale, orientation, style and
+// page here, so the set is redrawn in the current look at the frame's size,
+// one pipeline a map and one an address for the decks:
+//
+//   npm run samples -- --only hero
+//
+// A deck page an address no longer takes (a yield's rebuilt path where what
+// stands no longer exceeds the controls, a streetscape the tiles miss) leaves
+// its picture as it was, and the log says so without the pipelines' WARN word.
+type HeroFrame = { n: number; address: string } & (
+  | { sheet: 'context' | 'site'; scale: number; rotate: 'north' | 'auto'; style: string }
+  | { sheet: 'yield'; page: string; style: string }
+  | { sheet: 'slides'; page: string });
+const SYDNEY = '56 Pitt Street, Sydney NSW 2000', WOLLONGONG = '88-90 Crown Street, Wollongong NSW 2500',
+  KATOOMBA = '17-45 Katoomba Street, Katoomba NSW 2780', WOOLLAHRA = '102 Queen Street, Woollahra NSW 2025',
+  NEWCASTLE = '45 Hunter Street, Newcastle NSW 2300', BLACKTOWN = '7 Marion Street, Blacktown NSW 2148',
+  MANLY = '30 The Corso, Manly NSW 2095', ORANGE = '120-122 Summer Street, Orange NSW 2800',
+  COFFS = '22 Harbour Drive, Coffs Harbour NSW 2450', WAGGA = '8 Baylis Street, Wagga Wagga NSW 2650',
+  BYRON = '59 Jonson Street, Byron Bay NSW 2481', TAREE = '45 High Street, Taree NSW 2430',
+  ARMIDALE = '189 Beardy Street, Armidale NSW 2350', KIAMA = '36 Bong Bong Street, Kiama NSW 2533';
+const HERO: HeroFrame[] = [
+  { n: 1, address: SYDNEY, sheet: 'context', scale: 3000, rotate: 'north', style: 'kingfisher' },
+  { n: 2, address: WOLLONGONG, sheet: 'site', scale: 0, rotate: 'north', style: 'heron' },
+  { n: 3, address: KATOOMBA, sheet: 'context', scale: 2000, rotate: 'north', style: 'canary' },
+  { n: 4, address: WOOLLAHRA, sheet: 'site', scale: 0, rotate: 'auto', style: 'flamingo' },
+  { n: 5, address: NEWCASTLE, sheet: 'context', scale: 4000, rotate: 'north', style: 'flamingo' },
+  { n: 6, address: BLACKTOWN, sheet: 'context', scale: 3000, rotate: 'north', style: 'heron' },
+  { n: 7, address: MANLY, sheet: 'context', scale: 2000, rotate: 'north', style: 'kingfisher' },
+  { n: 8, address: ORANGE, sheet: 'context', scale: 4000, rotate: 'north', style: 'heron' },
+  { n: 9, address: COFFS, sheet: 'site', scale: 0, rotate: 'north', style: 'kingfisher' },
+  { n: 10, address: WAGGA, sheet: 'context', scale: 5000, rotate: 'north', style: 'canary' },
+  { n: 11, address: BYRON, sheet: 'site', scale: 250, rotate: 'north', style: 'canary' },
+  { n: 12, address: TAREE, sheet: 'context', scale: 3000, rotate: 'north', style: 'flamingo' },
+  { n: 13, address: ARMIDALE, sheet: 'context', scale: 2000, rotate: 'north', style: 'flamingo' },
+  { n: 14, address: KIAMA, sheet: 'site', scale: 250, rotate: 'north', style: 'heron' },
+  { n: 15, address: MANLY, sheet: 'yield', page: 'within_controls', style: 'heron' },
+  { n: 16, address: WOLLONGONG, sheet: 'yield', page: 'envelope_to_height', style: 'canary' },
+  { n: 17, address: NEWCASTLE, sheet: 'yield', page: 'rebuilt_as_stands', style: 'kingfisher' },
+  { n: 18, address: WOLLONGONG, sheet: 'yield', page: 'stands_today', style: 'flamingo' },
+  { n: 19, address: KATOOMBA, sheet: 'slides', page: '03_character' },
+  { n: 20, address: KATOOMBA, sheet: 'slides', page: '07_topography' },
+  { n: 21, address: KATOOMBA, sheet: 'slides', page: '10_movement' },
+  { n: 22, address: KATOOMBA, sheet: 'slides', page: '17_opportunities_constraints' },
+  { n: 23, address: ORANGE, sheet: 'slides', page: '04_planning_overview' },
+  { n: 24, address: ORANGE, sheet: 'slides', page: '11_green_public_domain' },
+  { n: 25, address: ORANGE, sheet: 'slides', page: '16_people_and_market' },
+  { n: 26, address: KATOOMBA, sheet: 'slides', page: '09b_built_form' },
+  { n: 27, address: NEWCASTLE, sheet: 'slides', page: '03b_streetscape' },
+];
+
+if (only === 'hero') {
+  await mkdir(samples, { recursive: true });
+  // HERO_FRAMES=16,27 redraws those frames alone (a page that changed, a trial of one address).
+  const asked = process.env.HERO_FRAMES?.split(',').map(Number).filter(Boolean);
+  const frames = asked?.length ? HERO.filter((f) => asked.includes(f.n)) : HERO;
+  const heroOut = (n: number) => join(samples, `hero-${n}.jpg`);
+  /** The deck page a frame asks for, from a print's PNGs, as its picture; none, and the picture stands. */
+  const pickPage = (pngs: string[], f: { n: number; page: string; address: string }) => {
+    const png = pngs.find((p) => basename(p).includes(f.page));
+    if (png) rasterise(png, heroOut(f.n));
+    else log(`  hero-${f.n}: ${f.address} takes no ${f.page} page now; its picture is kept as it was`);
+  };
+  // the maps, one pipeline each
+  for (const f of frames) {
+    if (f.sheet !== 'context' && f.sheet !== 'site') continue;
+    const outDir = join(root, `${slugOf(f.address)}-${f.sheet}-${f.scale}-${f.rotate}`);
+    log(`hero-${f.n}: ${f.sheet} ${f.scale ? `1:${f.scale}` : 'auto'}, ${f.rotate}, ${f.style} — ${f.address}`);
+    if (f.sheet === 'context') {
+      const bundle = await runPipeline(f.address, { scale: f.scale, mapWidthMm: MAP_W, mapHeightMm: MAP_H, outDir, rotate: f.rotate, log });
+      const html = join(outDir, `sheet-${f.style}.html`), pdf = join(outDir, `CONTEXT_ANALYSIS-${f.style}.pdf`);
+      await withTemplate(f.style, async () => { await writeFile(html, renderSheet(bundle, meta)); await htmlToPdf(html, pdf); });
+      rasterise(pdf, heroOut(f.n));
+    } else {
+      const bundle = await runSitePipeline(f.address, { mapWidthMm: MAP_W, mapHeightMm: MAP_H, outDir, scale: f.scale || undefined, rotate: f.rotate, log });
+      const html = join(outDir, `site_sheet-${f.style}.html`), pdf = join(outDir, `SITE_ANALYSIS-${f.style}.pdf`);
+      await writeFile(html, renderSiteSheet(bundle, meta, f.style));
+      await htmlToPdf(html, pdf);
+      rasterise(pdf, heroOut(f.n));
+    }
+  }
+  // the yield's pages: one pipeline an address, the deck drawn in each style its frames ask for
+  const byAddress = <T extends HeroFrame>(frames: T[]) => [...frames.reduce((m, f) => m.set(f.address, [...(m.get(f.address) ?? []), f]), new Map<string, T[]>())];
+  for (const [addr, ff] of byAddress(frames.filter((f): f is HeroFrame & { sheet: 'yield' } => f.sheet === 'yield'))) {
+    const outDir = join(root, `${slugOf(addr)}-yield`);
+    log(`hero-${ff.map((f) => f.n).join(',')}: yield — ${addr}`);
+    const bundle = await runYieldPipeline(addr, { outDir, log });
+    for (const f of ff) {
+      const html = join(outDir, `yield_deck_${f.style}.html`);
+      await writeFile(html, renderYieldDeck(bundle, meta, { theme: f.style }).html);
+      const pages = await printSlides(html, join(outDir, `PLANNING_YIELD_${f.style}.pdf`), join(outDir, `pages_${f.style}`), { widthMm: SLIDE_W, heightMm: SLIDE_H });
+      pickPage(pages, f);
+    }
+  }
+  // the site report's pages: one pipeline an address, in the default style
+  for (const [addr, ff] of byAddress(frames.filter((f): f is HeroFrame & { sheet: 'slides' } => f.sheet === 'slides'))) {
+    const outDir = join(root, `${slugOf(addr)}-slides`);
+    log(`hero-${ff.map((f) => f.n).join(',')}: site report — ${addr}`);
+    const bundle = await runSlidesPipeline(addr, { outDir, panelWmm: PANEL_W, panelHmm: PANEL_H, daPanelHmm: DA_PANEL_H, log });
+    await prepareRasters(bundle, join(outDir, 'data'), BLEED_SCALE, COUNTRY_SCALE);
+    const html = join(outDir, 'slides.html');
+    await writeFile(html, renderSlides(bundle, meta).html);
+    const pages = await printSlides(html, join(outDir, 'OVERALL_ANALYSIS.pdf'), join(outDir, 'slides'), { widthMm: SLIDE_W, heightMm: SLIDE_H });
+    for (const f of ff) pickPage(pages, f);
+  }
+  console.log('done');
+  process.exit(0);
+}
+// the hero run has left above; every other run was given an address
+const address = addressArg!;
 
 /** One context bundle drawn in every template: `draw` returns the PDF for one. */
 async function eachTemplate(name: string, draw: (template: string) => Promise<string>) {
