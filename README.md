@@ -2131,7 +2131,10 @@ A fault in the reading is logged and the footprints stay as the sources gave
 them: a deck is never lost to it. The log says how many heights were read
 and how many footprints traced when the meshes are read, and again in the
 summary line the fetches end on (`mesh-heights:` and `traced:`), which is
-the line still in the page's tail of the log when the drawing is done. One
+the line still in the page's tail of the log when the drawing is done.
+`npx tsx scripts/patch_bundle.ts out/<slug> mesh` reads the meshes into a
+kept bundle, so a deck drawn before can be recomposed with the heights
+without fetching the rest again. One
 root request to the Map Tiles API a
 deck, as the streetscape costs, in a session of its own (one more for each
 coarser level tried). Read over the Bondi page with Overture's 2,573

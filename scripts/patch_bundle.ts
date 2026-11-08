@@ -1,5 +1,5 @@
 // Re-read parts of a kept bundle after a fetch changed (a development aid, as recompose.ts).
-//   npx tsx scripts/patch_bundle.ts out/<slug> [country] [character]
+//   npx tsx scripts/patch_bundle.ts out/<slug> [country] [character] [trees] [vegetation] [photos] [placesv] [series] [mesh]
 import { readFile, writeFile } from 'node:fs/promises';
 import { deserialize, serialize } from 'node:v8';
 import { join } from 'node:path';
@@ -14,6 +14,10 @@ import { mergeTrees } from '../src/fetch/trees.js';
 import { panelExtent } from '../src/render/minimap.js';
 import { mercatorScaleFactor, mercatorToLonLat } from '../src/lib/geo.js';
 import { BLEED_SCALE, COUNTRY_SCALE } from '../src/pipeline.js';
+import { meshSurfaceOver } from '../src/fetch/meshHeights.js';
+import { withMeshHeights } from '../src/lib/meshHeights.js';
+import { lotsWithoutFootprint } from '../src/lib/gapLots.js';
+import { withDaStoreys, type Building } from '../src/fetch/buildings.js';
 
 const outDir = process.argv[2];
 const what = new Set(process.argv.slice(3));
@@ -64,6 +68,25 @@ if (what.has('series')) {
   const st = addressStreet(sb.siteAddress, sb.base.roads, mercatorToLonLat(sb.geocode.center));
   console.log('street:', st?.name, st?.segments.length);
   if (st) sb.photos.series = await fetchStreetSeries(st.name, st.segments, mercatorToLonLat(sb.geocode.center), dataDir, key, undefined, 8, log);
+}
+if (what.has('mesh')) {
+  // the heights from Google's 3D meshes over the page, as the pipeline reads them (GOOGLE_MAPS_API_KEY, or
+  // `header` with a proxy that adds the key); what an earlier reading left is taken back first, so this repeats
+  const key = process.env.GOOGLE_MAPS_API_KEY?.trim();
+  if (!key) throw new Error('GOOGLE_MAPS_API_KEY is not set');
+  const d = panelExtent(sb.daPanel), b = panelExtent(sb.bleedPanel);
+  const pageExtent = { xmin: Math.min(d.xmin, b.xmin), ymin: Math.min(d.ymin, b.ymin), xmax: Math.max(d.xmax, b.xmax), ymax: Math.max(d.ymax, b.ymax) };
+  const read = { ...sb.buildings, mesh: undefined, buildings: (sb.buildings.buildings as Building[]).filter((x) => x.source !== 'mesh').map((x) => (
+    x.heightFrom === 'mesh' || x.heightFrom === 'da'
+      ? { ...x, heightM: undefined, estimatedHeightM: x.floors ? x.floors * 3.1 : undefined, heightFrom: x.floors ? 'floors' as const : 'none' as const, da: undefined }
+      : x)) };
+  const t0 = Date.now();
+  const surface = await meshSurfaceOver(key, pageExtent, log);
+  if (!surface) throw new Error('the tiles hold no meshes over the page');
+  const gaps = lotsWithoutFootprint(read.buildings, sb.base.lots, sb.zoning, sb.base.siteLots, pageExtent);
+  const withMesh = withMeshHeights(read, surface.field, surface.frame, gaps.gaps, { meshes: surface.meshes, errorM: surface.errorM, credits: surface.credits });
+  sb.buildings = withDaStoreys(withMesh, sb.base.lots, sb.applications);
+  console.log(`mesh: ${withMesh.mesh?.heights ?? 0} heights read from ${surface.meshes} meshes at ${surface.errorM} m, ${withMesh.mesh?.footprints ?? 0} footprints traced on ${gaps.count} lots the sources left empty, in ${Math.round((Date.now() - t0) / 1000)} s`);
 }
 await writeFile(join(outDir, 'slides.bundle'), serialize(kept));
 console.log('bundle patched:', [...what].join(', '));

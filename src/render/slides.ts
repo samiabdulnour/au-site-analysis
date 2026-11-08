@@ -3811,7 +3811,8 @@ export function builtFormFacts(b: SlidesBundle, planning: PlanningFacts) {
     measured: all.filter((x) => x.heightFrom === 'measured').length,
     fromStoreys: all.filter((x) => x.heightFrom === 'floors').length,
     fromDa: all.filter((x) => x.heightFrom === 'da').length,
-    fromMesh: all.filter((x) => x.heightFrom === 'mesh').length,
+    // the heights read on the sources' own footprints, as the sources page counts them; the traced footprints are counted apart
+    fromMesh: all.filter((x) => x.heightFrom === 'mesh' && x.source !== 'mesh').length,
     meshFootprints: all.filter((x) => x.source === 'mesh').length,
     mesh: data.mesh,
     bands: HEIGHT_BANDS.map((bd) => ({ label: bd.label, count: withHeight.filter((x) => bandOf(x.estimatedHeightM) === bd).length })).concat([{ label: 'no height', count: all.length - withHeight.length }]),
