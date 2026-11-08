@@ -67,7 +67,12 @@ and anywhere else on the page: Flamingo's sun, eight tapered rays round a disc
 as the site sheets draw it at sunrise and sunset, in the page's yellow with a
 black hairline. The result's picture cannot be dragged and takes no pointer
 while a drawing is made: a press on it began a native image drag, and the
-system's arrow came back beside the sun.
+system's arrow came back beside the sun. The system can also show its cursor
+again without the page asking (macOS does after a press on some things), and
+a browser sets a cursor afresh only when it changes, so while a drawing is
+made the page alternates, at every pointer move or press, between `none` and
+a transparent 2 × 2 cursor image of its own, each as invisible as the other:
+an arrow that came back goes with the next move or press.
 Once done, the page shows the drawing itself as a picture about 1200 px wide
 (`preview.jpg`, taken in the same Chromium session that prints the PDF: a few
 hundred kilobytes against an A1 PDF's several megabytes) with the downloads
