@@ -2128,7 +2128,11 @@ out of the deck; `MESH_HEIGHTS_ERROR_M` sets the error the tree of tiles is
 walked down to (6 m by default); `MESH_HEIGHTS_MINUTES` (6) is how long the
 meshes may take to come and be read before the deck goes on without them.
 A fault in the reading is logged and the footprints stay as the sources gave
-them: a deck is never lost to it. One root request to the Map Tiles API a
+them: a deck is never lost to it. The log says how many heights were read
+and how many footprints traced when the meshes are read, and again in the
+summary line the fetches end on (`mesh-heights:` and `traced:`), which is
+the line still in the page's tail of the log when the drawing is done. One
+root request to the Map Tiles API a
 deck, as the streetscape costs, in a session of its own (one more for each
 coarser level tried). Read over the Bondi page with Overture's 2,573
 footprints: 431 meshes in 16 s, a height on 1,323 of the footprints that
