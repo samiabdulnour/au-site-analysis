@@ -1206,14 +1206,20 @@ sunCursor.id = 'sunCursor';
 sunCursor.setAttribute('aria-hidden', 'true');
 sunCursor.innerHTML = `<svg viewBox="-1.05 -1.05 2.1 2.1"><path d="${FLAMINGO_SUN}"/></svg>`;
 let pointerAt = null;
+// The first busy call lands on `none`, which the browser applies at once; the
+// image cursor is applied at once only once it is decoded, so it comes second.
+let blink = true;
 
 /** The sun shows at the pointer, and the system's cursor goes, while a drawing
-    is made and the pointer is on the page. */
+    is made and the pointer is on the page. Each call while busy alternates the
+    invisible cursor between two (style.css, .sunblink), so the browser sets it
+    afresh and a system cursor that came back goes again. */
 function placeSun() {
   const p = pointerAt;
   const on = go.disabled && !go.hidden && Boolean(p);
   sunCursor.classList.toggle('on', on);
   document.documentElement.classList.toggle('sunbusy', on);
+  document.documentElement.classList.toggle('sunblink', on && (blink = !blink));
   if (on) sunCursor.style.transform = `translate(${p.x}px, ${p.y}px)`;
 }
 
@@ -1224,7 +1230,10 @@ if (matchMedia('(hover: hover) and (pointer: fine)').matches) {
     track(e);
     if (go.disabled || sunCursor.classList.contains('on')) placeSun();
   }, { passive: true });
-  document.addEventListener('pointerdown', track, { passive: true });
+  // A press or release is when the system is likeliest to show its cursor again: the sun is placed on both.
+  const press = (e) => { track(e); if (go.disabled || sunCursor.classList.contains('on')) placeSun(); };
+  document.addEventListener('pointerdown', press, { passive: true });
+  document.addEventListener('pointerup', press, { passive: true });
   document.documentElement.addEventListener('mouseleave', () => { pointerAt = null; placeSun(); });
   // Pressed with the pointer resting on it, GENERATE goes busy with no move to
   // report: the sun is placed the moment it is disabled, and taken away the

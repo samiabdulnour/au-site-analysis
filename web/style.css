@@ -262,6 +262,14 @@ a { color: inherit; }
    cursor over the whole page, over GENERATE, the options and the result alike,
    and a turning sun takes its place (#sunCursor, below). */
 html.sunbusy, html.sunbusy * { cursor: none !important; }
+/* The system can show its cursor again without the page asking (macOS brings it back after a press on some
+   things), and a browser sets a cursor afresh only when it changes. So while a drawing is made the page
+   alternates, at every pointer move or press, between `none` and a transparent cursor of its own (a 2 × 2
+   image with nothing in it), each as invisible as the other: an arrow that came back goes with the next
+   move. Where the image is refused the fallback is `none`, as before. */
+html.sunbusy.sunblink, html.sunbusy.sunblink * {
+  cursor: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAC0lEQVR4nGNgQAcAABIAAXfx+gAAAAAASUVORK5CYII=") 0 0, none !important;
+}
 
 /* The sun at the pointer while a drawing is made: Flamingo's sun, eight
    tapered rays round a disc, in the page's yellow with the hairline every
