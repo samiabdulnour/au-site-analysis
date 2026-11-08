@@ -65,7 +65,9 @@ done; what the pipeline is fetching stays in the server's log, not the page. Whe
 there is a mouse, the pointer is a turning sun the whole time, over the button
 and anywhere else on the page: Flamingo's sun, eight tapered rays round a disc
 as the site sheets draw it at sunrise and sunset, in the page's yellow with a
-black hairline.
+black hairline. The result's picture cannot be dragged and takes no pointer
+while a drawing is made: a press on it began a native image drag, and the
+system's arrow came back beside the sun.
 Once done, the page shows the drawing itself as a picture about 1200 px wide
 (`preview.jpg`, taken in the same Chromium session that prints the PDF: a few
 hundred kilobytes against an A1 PDF's several megabytes) with the downloads
