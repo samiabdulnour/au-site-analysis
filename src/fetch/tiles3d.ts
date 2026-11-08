@@ -102,7 +102,8 @@ export function glbCopyright(bytes: Uint8Array): string[] {
  * tileset's frame to ECEF; and the providers they credit, most meshes first. Throws when the key's project does
  * not have the Map Tiles API (Google answers 403 SERVICE_DISABLED), so the caller can fall back.
  */
-export async function fetchStreetTiles(key: string, centre: LonLat, c: Corridor, maxErrorM: number, log: (m: string) => void = () => {}): Promise<{ tiles: StreetTile[]; credits: string[]; finestErrorM: number }> {
+export async function fetchStreetTiles(key: string, centre: LonLat, c: Corridor, maxErrorM: number, log: (m: string) => void = () => {}, opts: { /** The most meshes the walk may list before it gives up (MAX_TILES). */ maxTiles?: number; /** Walk the tree and count, fetch no mesh: `tiles` comes back empty, `count` says how many there would be. */ listOnly?: boolean } = {}): Promise<{ tiles: StreetTile[]; credits: string[]; finestErrorM: number; count: number }> {
+  const maxTiles = opts.maxTiles ?? MAX_TILES;
   const frame = enuFrame(centre);
   let session: string | undefined;
   const sign = (uri: string, base: string) => {
@@ -143,13 +144,14 @@ export async function fetchStreetTiles(key: string, centre: LonLat, c: Corridor,
       glbs.push({ url: sign(uri, base), transform, geometricError: t.geometricError });
       return;
     }
-    if (glbs.length > MAX_TILES) throw new Error(`Map Tiles: more than ${MAX_TILES} meshes over the corridor`);
+    if (glbs.length > maxTiles) throw new Error(`Map Tiles: more than ${maxTiles} meshes over the corridor`);
     await Promise.all((t.children ?? []).map((ch) => walk(ch, transform, base)));
   };
-  const rootUrl = `${ROOT}?key=${encodeURIComponent(key)}`;
+  const rootUrl = key === 'header' ? ROOT : `${ROOT}?key=${encodeURIComponent(key)}`;
   const root = (await (await get(rootUrl, 'Map Tiles root')).json()) as { root: TileJson };
   await walk(root.root, IDENTITY, rootUrl);
   log(`  3D tiles: ${glbs.length} meshes over the street from ${opened} subtrees, errors ${[...new Set(glbs.map((g) => g.geometricError))].sort((a, b) => a - b).slice(0, 4).map((e) => e.toFixed(2)).join(', ')} m…`);
+  if (opts.listOnly) return { tiles: [], credits: [], finestErrorM: glbs.length ? Math.min(...glbs.map((g) => g.geometricError)) : Infinity, count: glbs.length };
 
   const tiles: StreetTile[] = [];
   const count = new Map<string, number>();
@@ -164,5 +166,5 @@ export async function fetchStreetTiles(key: string, centre: LonLat, c: Corridor,
   }));
   tiles.sort((a, b) => a.id - b.id);
   const credits = [...count.entries()].sort((a, b) => b[1] - a[1]).map(([who]) => who);
-  return { tiles, credits, finestErrorM: Math.min(...glbs.map((g) => g.geometricError)) };
+  return { tiles, credits, finestErrorM: Math.min(...glbs.map((g) => g.geometricError)), count: glbs.length };
 }

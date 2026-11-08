@@ -2093,8 +2093,13 @@ streetscape reads its elevations off Google's Photorealistic 3D Tiles, and
 the deck now reads the same meshes for the rest of the page: with
 `GOOGLE_MAPS_API_KEY` set, the meshes over the 1:5 000 window are fetched as
 the streetscape fetches them over its street (`src/fetch/tiles3d.ts`), at a
-geometric error of 4 m rather than the streetscape's half-metre, so a page
-is a few score meshes rather than a few hundred; the page the elevations are
+geometric error of 6 m rather than the streetscape's half-metre: over a
+Bondi page (1,050 × 1,485 m) Google's tree gives more than 1,500 meshes at
+4 m, which is past the cap and was why the first live run read none, 431
+at 6 m (tiles of 2 and 4 m) and 133 at 10 m; a page that holds more than
+`MESH_HEIGHTS_MAX_TILES` (900) at the error asked is tried again at 10 m,
+then 16 m, since the walk gives up before it fetches a mesh. The page the
+elevations are
 drawn on (`src/render/elevation3d.ts`) renders them once from straight
 above, into a grid of heights a metre apart with a flag where the meshes'
 own picture is green; and the meshes are let go. Google's terms bar keeping
@@ -2118,13 +2123,19 @@ height of buildings page, the built form, the shadows and the sources page
 say how many heights and footprints came from the meshes, and credit Google
 and the providers the meshes name. `DECK_MESH_HEIGHTS=0` leaves the meshes
 out of the deck; `MESH_HEIGHTS_ERROR_M` sets the error the tree of tiles is
-walked down to (4 m by default); `MESH_HEIGHTS_MINUTES` (6) is how long the
+walked down to (6 m by default); `MESH_HEIGHTS_MINUTES` (6) is how long the
 meshes may take to come and be read before the deck goes on without them.
 A fault in the reading is logged and the footprints stay as the sources gave
 them: a deck is never lost to it. One root request to the Map Tiles API a
-deck, as the streetscape costs, in a session of its own.
-`GOOGLE_MAPS_API_KEY=header` says a proxy in front of the process adds the
-key to the tile requests as `X-Goog-Api-Key`, and none goes in the query.
+deck, as the streetscape costs, in a session of its own (one more for each
+coarser level tried). Read over the Bondi page with Overture's 2,573
+footprints: 431 meshes in 16 s, a height on 1,323 of the footprints that
+had none, the rest sheds under 2.5 m or specks under 4 m², and against the
+37 the source gave storeys for, the meshes read a median 1.2 m higher (a
+pitched roof's 80th percentile against storeys × 3.1), 78 % within a
+storey. `GOOGLE_MAPS_API_KEY=header` says a proxy in front of the process
+adds the key to the tile requests as `X-Goog-Api-Key`, and none goes in the
+query.
 
 ## How it works
 
