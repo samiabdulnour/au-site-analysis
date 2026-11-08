@@ -19,8 +19,17 @@ import { type LonLat, type XY, type Extent } from '../lib/geo.js';
 import { panelExtent, type Panel } from '../render/minimap.js';
 import { fetchAerial, type AerialResult } from './imagery.js';
 
-const KARTAVIEW_NEARBY = 'https://api.openstreetcam.org/1.0/list/nearby-photos/';
-const KARTAVIEW_FILES = 'https://api.openstreetcam.org/';
+// KartaView's API answers at kartaview.org (the openstreetcam.org host it had stopped answering in
+// November 2026); its listing names a frame's files by the storage host they are on, `storage11/files/…`,
+// which still serves at openstreetcam.org, as the v2 API's own file addresses say.
+const KARTAVIEW_NEARBY = 'https://api.kartaview.org/1.0/list/nearby-photos/';
+const KARTAVIEW_FILES = 'https://api.kartaview.org/';
+/** The address of a frame's file from the listing's path: `storage11/files/photo/…` is on storage11.openstreetcam.org. */
+function kartaviewFile(path: string): string {
+  const p = path.replace(/^\//, '');
+  const m = p.match(/^(storage\d+)\/(.+)$/);
+  return m ? `https://${m[1]}.openstreetcam.org/${m[2]}` : `${KARTAVIEW_FILES}${p}`;
+}
 const MAPILLARY_IMAGES = 'https://graph.mapillary.com/images';
 const TILES_1943 = 'https://portal.spatial.nsw.gov.au/tileservices/Hosted/HistoricalImagery1943/MapServer/tile';
 const SOURCE_1943 = 'Historical Imagery 1943 (NSW Spatial Services tile service)';
@@ -199,7 +208,7 @@ async function kartaviewNearby(centre: LonLat, radiusM: number): Promise<RawFram
       source: 'kartaview', id: String(it.id), sequenceId: seq, sequenceIndex: num(it.sequence_index),
       author: it.username ? String(it.username) : undefined, date: isoDay(it.shot_date) ?? isoDay(it.date_added),
       lon, lat, heading: num(it.heading),
-      thumbUrl: /^https?:/.test(path) ? path : `${KARTAVIEW_FILES}${path.replace(/^\//, '')}`,
+      thumbUrl: /^https?:/.test(path) ? path : kartaviewFile(path),
       pageUrl: seq && Number.isFinite(num(it.sequence_index)) ? `https://kartaview.org/details/${seq}/${num(it.sequence_index)}` : 'https://kartaview.org/',
     });
   }
