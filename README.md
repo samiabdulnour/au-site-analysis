@@ -73,9 +73,10 @@ a browser sets a cursor afresh only when it changes, so while a drawing is
 made the page alternates, at every pointer move or press, between `none` and
 a transparent 2 × 2 cursor image of its own, each as invisible as the other:
 an arrow that came back goes with the next move or press.
-Once done, the page shows the drawing itself as a picture about 1200 px wide
-(`preview.jpg`, taken in the same Chromium session that prints the PDF: a few
-hundred kilobytes against an A1 PDF's several megabytes) with the downloads
+Once done, the page shows the drawing itself as a picture about 2400 px wide
+(`preview.jpg`, taken in the same Chromium session that prints the PDF: under
+a megabyte against an A1 PDF's several megabytes; a deck's is its first page
+at about 3200 px) with the downloads
 under it — the PDF is downloaded rather than opened in the browser, which
 could take a long while at that size. Dashed and dotted lines are cut to the
 map or panel they are drawn in before they are printed (`src/lib/dashes.ts`):
