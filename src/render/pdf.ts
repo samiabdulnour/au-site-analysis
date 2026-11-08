@@ -73,11 +73,12 @@ async function open(page: Page, htmlPath: string): Promise<void> {
 
 /**
  * How wide, in pixels, the picture of a finished drawing is that the page shows
- * once it is done: the drawing at a glance, about the size of the examples, and
- * nowhere near enough to print. An A1 PDF can be tens of megabytes; this is a
- * few hundred kilobytes, so the result shows at once.
+ * once it is done: the drawing at a glance, the size of the examples (the
+ * frame's width on a 2× screen, sharp there), and nowhere near enough to
+ * print. An A1 PDF can be tens of megabytes; this is under a megabyte, so the
+ * result shows at once.
  */
-export const PREVIEW_WIDTH = 1200;
+export const PREVIEW_WIDTH = 2400;
 
 /**
  * A sheet, printed and then read back (src/render/printCheck.ts): a PDF can
@@ -377,10 +378,11 @@ async function printSlidesOnce(
       } else await el.screenshot({ path: file, type: 'png' });
       pngs.push(file);
     }
-    // The deck's picture is its first page, at one pixel to the CSS pixel
-    // rather than the PNGs' two.
+    // The deck's picture is its first page at the PNGs' two pixels to the CSS
+    // pixel: about 3200 px across an A3 page, the frame's width on a 2× screen
+    // with room to spare, as the sheets' previews are (PREVIEW_WIDTH).
     if (previewPath && n) {
-      await sections.first().screenshot({ path: previewPath, type: 'jpeg', quality: 80, scale: 'css' })
+      await sections.first().screenshot({ path: previewPath, type: 'jpeg', quality: 80, scale: 'device' })
         .catch(() => { /* no picture this time */ });
     }
   } finally {

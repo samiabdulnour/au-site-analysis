@@ -668,6 +668,29 @@ export async function runYieldPipeline(
   // contours give at the building — its floor space ratio, and the land it
   // stands on, its lot shared between the buildings on it by footprint.
   const siteRingLL = ring;
+  // The heights the open sources lack, read from Google's 3D meshes over the massing's window, as the site report
+  // reads them over its page (lib/meshHeights.ts): what stands on the site and the neighbours alike take the
+  // surface's height over their roofs above the ground round them, and every built lot with no footprint in the
+  // open data, the site's own among them, gets one traced from the surface. The meshes are not kept; the heights
+  // are, and the sheet says where they came from. DECK_MESH_HEIGHTS=0 leaves them out, as it does for the deck.
+  const gkey = process.env.GOOGLE_MAPS_API_KEY?.trim();
+  let footprints = buildings;
+  if (gkey && process.env.DECK_MESH_HEIGHTS !== '0' && buildings.buildings.length) {
+    log('the heights from the 3D meshes…');
+    const surface = await soft(meshSurfaceOver(gkey, around(MASSING_M), log), null, '3D-tile heights');
+    // the reading is arithmetic on the grid, but a study is never lost to it: a fault here is logged and the
+    // footprints stay as the sources gave them
+    if (surface) {
+      try {
+        const gaps = lotsWithoutFootprint(buildings.buildings, lots, zoning, emptyFc, around(MASSING_M));
+        footprints = withMeshHeights(buildings, surface.field, surface.frame, gaps.gaps, { meshes: surface.meshes, errorM: surface.errorM, credits: surface.credits });
+        log(`  3D tiles: ${footprints.mesh?.heights ?? 0} heights read from the meshes, ${footprints.mesh?.footprints ?? 0} footprints traced on ${gaps.count} lots the sources left empty`);
+      } catch (e: any) {
+        log(`  WARN 3D-tile heights failed: ${e?.message ?? e}; the footprints stay as the sources gave them`);
+        footprints = buildings;
+      }
+    }
+  }
   // Even-odd over every ring, so a point in a polygon's hole is outside it.
   const at = (fc: GeoJSONFC, lon: number, lat: number) =>
     fc.features.find((f) => ringsOf(f.geometry).filter((rg) => pointInRingLL(lon, lat, rg)).length % 2 === 1)?.properties;
@@ -676,16 +699,19 @@ export async function runYieldPipeline(
   const lotOf = (lon: number, lat: number) => lotRingsAll.findIndex((rings) => rings.filter((rg) => pointInRingLL(lon, lat, rg)).length % 2 === 1);
   // What stands on the site today is kept, not dropped: the sheet states it
   // and the scenarios stand against it.
-  const existing: ExistingBuilding[] = buildings.buildings
+  const existing: ExistingBuilding[] = footprints.buildings
     .filter((bd) => pointInRingLL(bd.centroid[0], bd.centroid[1], siteRingLL))
     .map((bd) => ({
       footprintSqm: Math.round(areaM(bd.rings.slice(0, 1))),
       ...(bd.heightM || bd.estimatedHeightM ? { heightM: Math.round((bd.heightM ?? bd.estimatedHeightM!) * 10) / 10 } : {}),
       ...(bd.floors ? { storeys: bd.floors } : {}),
+      ...(bd.heightFrom === 'measured' || bd.heightFrom === 'floors' || bd.heightFrom === 'mesh' ? { heightFrom: bd.heightFrom } : {}),
+      ...(bd.source === 'mesh' ? { traced: true } : {}),
+      ...(bd.kind ? { kind: bd.kind } : {}),
       rings: bd.rings.slice(0, 1),
     }))
     .filter((e) => e.footprintSqm >= 25);   // a shed says nothing about the site's use
-  const standing = buildings.buildings.filter((bd) => !pointInRingLL(bd.centroid[0], bd.centroid[1], siteRingLL))
+  const standing = footprints.buildings.filter((bd) => !pointInRingLL(bd.centroid[0], bd.centroid[1], siteRingLL))
     .map((bd) => ({ bd, footprint: areaM(bd.rings.slice(0, 1)), lot: lotOf(bd.centroid[0], bd.centroid[1]) }));
   const footprintOnLot = new Map<number, number>();
   for (const s of standing) if (s.lot >= 0) footprintOnLot.set(s.lot, (footprintOnLot.get(s.lot) ?? 0) + s.footprint);
@@ -712,7 +738,13 @@ export async function runYieldPipeline(
   });
   const rising = context.filter((c) => futureHeight(c.controls, c.footprint, c.known ? c.heightM : undefined));
   log(`  neighbours: ${context.length}, ${rising.length} with a future height over today's${capacity ? `, ${rising.filter((c) => c.capacity?.mark !== 'cross').length} of them with development potential` : ''}`);
-  if (existing.length) log(`  stands today: ${existing.length} building${existing.length > 1 ? 's' : ''} on the site${existing.some((e) => e.storeys || e.heightM) ? '' : ', no height recorded'}`);
+  if (existing.length) log(`  stands today: ${existing.length} building${existing.length > 1 ? 's' : ''} on the site${existing.some((e) => e.storeys || e.heightM) ? (existing.some((e) => e.heightFrom === 'mesh') ? ', the height from the 3D meshes' : '') : ', no height recorded'}${existing.some((e) => e.traced) ? ', the footprint traced from the meshes' : ''}`);
+  // The zones on the plan, by code, with the names the plan gives them, for the key.
+  const zones = [...zoning.features.reduce((m, f) => {
+    const code = String(f.properties.SYM_CODE ?? '').trim();
+    if (code && !m.has(code)) m.set(code, String(f.properties.LAY_CLASS ?? '').trim());
+    return m;
+  }, new Map<string, string>())].map(([code, name]) => ({ code, name }));
 
   // Each lot with what the plan writes on it: its street numbers (the address
   // points inside it), and the zone and height of building at a point inside it.
@@ -761,6 +793,8 @@ export async function runYieldPipeline(
     context: context.map(({ footprint: _f, ...c }) => c),
     existing,
     buildingsSource: buildings.source,
+    ...(footprints.mesh ? { mesh: footprints.mesh } : {}),
+    zones,
     trees,
     aerial: aerial ? { ...aerial, extent: aerialExtent } : null,
     assumptions,

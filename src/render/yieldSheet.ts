@@ -23,7 +23,7 @@ import { atlasPage, deckCss, zFlow, zBlock, zTable, brief, type Slide, type Deck
 import { drawAxonometric, shade, type AxoScene, type Prism } from './axonometric.js';
 import { INK, zFigures, zBars, niceAxis, fillShape, categoryFill, massingInks, type Fill } from './atlasKit.js';
 import { zoneToCategory } from './model.js';
-import { zoneFill } from './lepPalette.js';
+import { zoneFill, zoneOrder } from './lepPalette.js';
 import { LEP_OPACITY } from './sheet.js';
 import { panelFurniture, furnitureBox, type LegendEntry } from './minimap.js';
 import { estimateKerbs, type KerbLine } from '../lib/kerbs.js';
@@ -32,6 +32,7 @@ import type { YieldTree } from '../lib/crowns.js';
 import type { SummaryData } from './summarySheet.js';
 import type { TopoRoad } from '../fetch/nswTopo.js';
 import type { AerialResult } from '../fetch/imagery.js';
+import type { BuildingsData } from '../fetch/buildings.js';
 import type { PolicyKind } from '../fetch/planning.js';
 import turfUnion from '@turf/union';
 import { featureCollection, polygon } from '@turf/helpers';
@@ -75,6 +76,10 @@ export interface YieldBundle extends SummaryData {
   /** The capacity study's window, where it was read: the first year a development counts as mature, its thresholds, the author's overrides and the council register read. */
   capacity?: { since: number; smallSite: number; strataMax: number; overridden: number; registerSource?: string };
   buildingsSource: string;
+  /** What Google's 3D meshes added where the sources had no height (lib/meshHeights.ts): the heights read and the footprints traced, the meshes and their error, and the providers to credit. Absent where no key was set or the meshes gave nothing. */
+  mesh?: BuildingsData['mesh'];
+  /** The zones on the plan, by code, with the names the plan gives them, for the key; a bundle from before them has none and the key shows the codes alone. */
+  zones?: { code: string; name: string }[];
   /** The photograph over the plan's window, for the styles that draw on the aerial; a bundle from before it has none. */
   aerial?: AerialResult | null;
   /** The trees round about, for the massing: crowns read off the aerial's green (lib/crowns.ts), and the trees a council or OpenStreetMap records. A bundle from before them has none. */
@@ -496,7 +501,8 @@ const hobLine = (h: { value: number; units: string }) => {
   return /rl|ahd/i.test(h.units) ? `HOB = RL ${fig}` : `HOB = ${fig}m`;
 };
 
-interface PlanResult { svg: string; scale: number; kerbs: KerbLine[] }
+/** A plan drawn: its SVG, the round scale it took, the kerbs it drew, and the zones its frame shows a lot of (codes, upper case). */
+interface PlanResult { svg: string; scale: number; kerbs: KerbLine[]; zones: string[] }
 
 /**
  * The envelope in plan, north up, at a round scale, on the ground the site
@@ -733,6 +739,8 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
   return {
     svg: `<defs><clipPath id="plan-${id}"><rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}"/></clipPath>${defs.join('')}</defs><g clip-path="url(#plan-${id})">${out.join('')}</g>`,
     scale, kerbs,
+    // the zones the frame shows a lot of, for the key: the site's lot is left untinted, so its zone is not among them
+    zones: [...new Set(parcels.filter((pc) => !pc.site && pc.zone && pc.shown.length).map((pc) => pc.zone!.trim().toUpperCase()))],
   };
 }
 
@@ -869,7 +877,7 @@ export function scenarioRows(b: YieldBundle, s: YieldStudy = yieldStudy(b)): Sce
   const ex = existingSummary(b.existing ?? []);
   if (ex) out.push({
     id: 'standsToday', label: 'STANDS TODAY',
-    note: `${ex.count === 1 ? 'the building that stands' : `the ${ex.count} buildings that stand`}, from the recorded footprint${ex.known ? ' and height' : ' alone: no height is recorded'}; not a survey`,
+    note: `${ex.count === 1 ? 'the building that stands' : `the ${ex.count} buildings that stand`}, from the ${standingFromMeshes(b).traced ? 'footprint traced from Google\'s 3D meshes' : 'recorded footprint'}${ex.known ? (standingFromMeshes(b).height ? ' and the height read from the meshes' : ' and height') : ' alone: no height is recorded'}; not a survey`,
     storeys: ex.storeys ? `~${ex.storeys}` : undefined,
     heightM: ex.heightM ? Math.round(ex.heightM * 10) / 10 : undefined,
     gfa: ex.gbaSqm ? `≈ ${sqm(ex.gbaSqm)} GBA` : undefined,
@@ -1056,17 +1064,58 @@ function subtitleOf(b: YieldBundle, s: YieldStudy): string {
 
 const NOT_A_DESIGN = 'A feasibility study, not a design: the envelope follows the mapped LEP controls and the ADG\'s separations; DCP setbacks, street wall heights, solar access and overshadowing are for the design to test. Mapped controls are not a s10.7 planning certificate.';
 
+/** Whether what stands on the site has its height from the 3D meshes, and whether its footprint was traced from them. */
+const standingFromMeshes = (b: YieldBundle) => ({ height: (b.existing ?? []).some((e) => e.heightFrom === 'mesh'), traced: (b.existing ?? []).some((e) => e.traced) });
+/** The providers the meshes credit, Google first, as the sources line writes them. */
+const meshCredits = (b: YieldBundle) => `© Google${(b.mesh?.credits ?? []).filter((c) => !/google/i.test(c)).length ? `, ${b.mesh!.credits.filter((c) => !/google/i.test(c)).join(', ')}` : ''}`;
+/**
+ * The meshes' credit for a page's sources line, where heights were read from them: Google's terms ask for it
+ * wherever their data is drawn, and every spread draws the neighbours at those heights.
+ */
+const meshNote = (b: YieldBundle) => b.mesh
+  ? ` The ${fmt(b.mesh.heights)} height${b.mesh.heights === 1 ? '' : 's'}${b.mesh.footprints ? ` and ${fmt(b.mesh.footprints)} footprint${b.mesh.footprints === 1 ? '' : 's'}` : ''} the sources lacked ${b.mesh.heights + b.mesh.footprints === 1 ? 'is' : 'are'} read from Google's Photorealistic 3D Tiles (${meshCredits(b)}).`
+  : '';
+/** The footprint sources, as the key and the sources lines name them. */
+const footprintSources = (b: YieldBundle) => (b.buildingsSource === 'overture' ? 'Overture, OSM where it has none' : 'OSM');
+
+/**
+ * The zones on the plan, each named in the key with its colour: the lot's tint, as the plan tints the land, and,
+ * on the spreads that draw the neighbours in their zones' inks, a block of that ink on it, as a building stands on
+ * its lot. The zones in the LEP legend's order, the six most frequent where a plan holds more; their names the
+ * plan's own, and a bundle from before the names shows the codes alone. `shown` narrows them to the zones a
+ * frame shows (the first page's plan at 1:500 holds two of the window's five); without it, the whole window's,
+ * which the massing draws to its frame's every edge.
+ */
+function zoneEntries(b: YieldBundle, look: DeckLook, massing: boolean, shown?: string[]): LegendEntry[] {
+  const count = new Map<string, number>();
+  const tally = (zone?: string) => { if (zone) { const c = zone.trim().toUpperCase(); if (!shown || shown.includes(c)) count.set(c, (count.get(c) ?? 0) + 1); } };
+  for (const pc of parcelsOf(b)) tally(pc.zone);
+  for (const cb of b.context) tally(cb.controls?.zone);
+  const names = new Map((b.zones ?? []).map((z) => [z.code.trim().toUpperCase(), z.name]));
+  const box = 'M0.4,0.5H4.6V3.1H0.4Z', bb = { x0: 0, y0: 0, x1: 5, y1: 3.6 };
+  return [...count.entries()].sort((p, q) => q[1] - p[1]).slice(0, 6).map(([code]) => code).sort((p, q) => zoneOrder(p) - zoneOrder(q))
+    .flatMap((code) => {
+      const lf = lotFill(code, look), ink = massing ? zoneInk(code, look) : null;
+      if (!lf && !ink) return [];
+      const swatch = (lf ? fillShape(box, bb, lf.fill) : '') + (ink ? `<path d="M1.6,1.1H3.4V2.5H1.6Z" fill="${ink}"/>` : '') +
+        `<path d="${box}" fill="none" stroke="#8a8378" stroke-width="0.15"/>`;
+      const name = names.get(code);
+      return [{ swatch, label: name ? `${code} ${name}` : code }];
+    });
+}
+
 /** The key to the massing and the plan of a path's spread. */
 function schemeLegend(b: YieldBundle, s: YieldStudy, y: YieldResult | undefined, standing: boolean, kerbs: boolean): LegendEntry[] {
   const KEY = keySwatches();
   const out: LegendEntry[] = [{ swatch: KEY.site, label: 'The site' }];
-  if (standing) out.push({ swatch: KEY.standing, label: 'What stands on the site, recorded height' });
+  if (standing) out.push({ swatch: KEY.standing, label: standingFromMeshes(b).height ? 'What stands on the site, its height read from the 3D meshes' : 'What stands on the site, recorded height' });
   for (const u of ['residential', 'retail', 'commercial'] as Use[]) if (y?.tiers.some((t) => t.use === u)) out.push({ swatch: KEY.use(u), label: `Indicative massing, ${USE_WORD[u]}` });
   if (y?.tiers.length) out.push({ swatch: KEY.envelope, label: 'Envelope of each tier' });
   if (s.hob?.metres) out.push({ swatch: KEY.plane, label: 'The LEP\'s height of building plane' });
   const look = deckLook();
   const zoneInks = [...new Set(b.context.map((cb) => zoneInk(cb.controls?.zone, look)).filter((c): c is string => !!c))].slice(0, 5);
-  out.push({ swatch: KEY.zones(zoneInks.length ? zoneInks : [massingInks().noHeight]), label: `Neighbours at their heights (${b.buildingsSource === 'overture' ? 'Overture' : 'OSM'}), each in its zone's colour as the plan tints its lot; dashed: not recorded` });
+  out.push({ swatch: KEY.zones(zoneInks.length ? zoneInks : [massingInks().noHeight]), label: `Neighbours at their heights (${footprintSources(b)}${b.mesh?.heights ? ', the 3D meshes where neither has one' : ''}), each in its zone's colour; dashed: not recorded` });
+  out.push(...zoneEntries(b, look, true));
   if (s.futures.some(Boolean)) out.push({ swatch: KEY.future, label: b.capacity ? 'Neighbours\' future, to their LEP height and FSR, where the capacity study finds development potential' : 'Neighbours\' future, to their LEP height and FSR' });
   if (kerbs) out.push({ swatch: KEY.kerb, label: 'Kerb line, indicative' });
   if (b.trees?.length) out.push({ swatch: KEY.tree, label: b.trees.some((t) => t.source !== 'aerial') ? 'Trees: crowns read off the aerial, recorded where OpenStreetMap or the council has them' : 'Trees, crowns read off the aerial' });
@@ -1130,7 +1179,7 @@ function overviewSlide(b: YieldBundle, s: YieldStudy, paths: Path[]): Slide {
   const plan = planView(b, s, { x: 0, y: 0, w: PAGE_W, h: PAGE_H }, {}, 'site', { room: 2.4, inset: 6, keepOut: [labelBox(name(5000))], aerial: true });
   const right = bleedFigure(0, PAGE_H, plan.svg) + mapLabel(0, name(plan.scale));
   const KEY = keySwatches();
-  const legend: LegendEntry[] = [{ swatch: KEY.site, label: 'The site' }, { swatch: KEY.neighbours, label: 'Buildings round about' }, { swatch: KEY.lot, label: 'Lot boundaries, NSW cadastre, each lot in its zone\'s colour' }];
+  const legend: LegendEntry[] = [{ swatch: KEY.site, label: 'The site' }, { swatch: KEY.neighbours, label: 'Buildings round about' }, { swatch: KEY.lot, label: 'Lot boundaries, NSW cadastre, each lot tinted by its zone' }, ...zoneEntries(b, deckLook(), false, plan.zones)];
   if (plan.kerbs.length) legend.push({ swatch: KEY.kerb, label: 'Kerb line, indicative' });
   const exceeds = ex?.gbaSqm && ex.gbaSqm > Math.max(...paths.filter((p) => p.y && p.sc.id !== 'rebuiltAsStands').map((p) => p.y!.gba), 0);
   const narrative = s.noScheme ? brief([noSchemeSentence(b, s), ex?.gbaSqm ? `What stands today holds about ${area(ex.gbaSqm)}.` : ''], 560) : brief([
@@ -1144,7 +1193,7 @@ function overviewSlide(b: YieldBundle, s: YieldStudy, paths: Path[]): Slide {
     s.max ? `Filled to the height, the envelope holds ${area(s.max.gfa)}, the case for a clause 4.6 variation or a planning proposal.` : '',
   ]);
   return { id: '01_planning_yield', title: 'Planning yield', subtitle: subtitleOf(b, s), textHtml: '', figureHtml: zFlow(blocks) + right, full: true,
-    narrative, accent: inks().accent, legend, sources: `${NOT_A_DESIGN} Site area from the NSW cadastre: confirm against survey. Retrieved ${b.generatedAt.slice(0, 10)}.` };
+    narrative, accent: inks().accent, legend, sources: `${NOT_A_DESIGN} Site area from the NSW cadastre: confirm against survey.${standingFromMeshes(b).height ? ` What stands has its height from Google's Photorealistic 3D Tiles (${meshCredits(b)}).` : ''} Retrieved ${b.generatedAt.slice(0, 10)}.` };
 }
 
 /** A path's spread: its figures, its controls, its schedule and its mix; its massing over its plan. */
@@ -1220,7 +1269,7 @@ function schemeSlide(b: YieldBundle, s: YieldStudy, p: Path, n: number, last: nu
         c.fsr ? `That is ${area(y.gfa - s.base.gfa)} over the LEP's ${c.fsr.toFixed(2)}:1: the case a clause 4.6 variation or a planning proposal has to carry.` : '']);
   return { id: `${String(n).padStart(2, '0')}_${id.replace(/[A-Z]/g, (ch) => `_${ch.toLowerCase()}`)}`, title: SCENARIO_TITLE[id], subtitle: subtitleOf(b, s), textHtml: '',
     figureHtml: zFlow(blocks) + figures.html, full: true, narrative, accent: id === 'envelopeToHeight' ? inks().F.deep : inks().accent,
-    legend: schemeLegend(b, s, y, false, figures.kerbs), sources: `${NOT_A_DESIGN} ${PATH_BASIS[id]} Every assumption is on page ${String(last).padStart(2, '0')}.${treesNote(b)}` };
+    legend: schemeLegend(b, s, y, false, figures.kerbs), sources: `${NOT_A_DESIGN} ${PATH_BASIS[id]} Every assumption is on page ${String(last).padStart(2, '0')}.${meshNote(b)}${treesNote(b)}` };
 }
 
 const COUNT_WORD = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
@@ -1240,7 +1289,8 @@ function standingSlide(b: YieldBundle, s: YieldStudy, paths: Path[], n: number):
     ['the LEP permits', c.fsr ? `${c.fsr.toFixed(2)}:1${A ? ` · ${area(c.fsr * A)}` : ''}` : 'no FSR mapped'],
   ], 9.6);
   const blocks = [zBlock('What stands', figs), ...pathBars(b, s, paths)];
-  const figures = schemeFigures(b, s, { standing }, 'standing', standing.length ? 'at its recorded height, among the neighbours' : 'no outline of what stands in this bundle', 'What stands');
+  const fromMeshes = standingFromMeshes(b);
+  const figures = schemeFigures(b, s, { standing }, 'standing', standing.length ? `at its ${fromMeshes.height ? 'height read from the 3D meshes' : 'recorded height'}, among the neighbours` : 'no outline of what stands in this bundle', 'What stands');
   const best = Math.max(...paths.filter((p) => p.y && p.sc.id !== 'rebuiltAsStands').map((p) => p.y!.gba), 0);
   const narrative = brief([
     `${ex.count === 1 ? 'A building' : `${COUNT_WORD[ex.count] ?? ex.count} buildings`} of ${ex.storeys ? `about ${ex.storeys} storeys` : 'unrecorded height'} ${ex.count === 1 ? 'stands' : 'stand'} on the site today, ${area(ex.footprintSqm)} on the ground${ex.gbaSqm ? ` and about ${area(ex.gbaSqm)} of floor${A ? `, ${about(ex.gbaSqm, A)}` : ''}` : ''}${c.fsr ? ` against the LEP's ${c.fsr.toFixed(2)}:1` : ''}.`,
@@ -1251,7 +1301,9 @@ function standingSlide(b: YieldBundle, s: YieldStudy, paths: Path[], n: number):
   ]);
   return { id: `${String(n).padStart(2, '0')}_stands_today`, title: 'Stands today', subtitle: subtitleOf(b, s), textHtml: '', figureHtml: zFlow(blocks) + figures.html, full: true,
     narrative, accent: inks().accent, legend: schemeLegend(b, s, undefined, standing.length > 0, figures.kerbs),
-    sources: `What stands is read from the recorded footprints and heights (${b.buildingsSource === 'overture' ? 'Overture, OSM where it has none' : 'OSM'}), its floor area each footprint by its storeys: indicative, not a survey.` };
+    sources: `What stands is read from ${fromMeshes.traced
+      ? `Google's Photorealistic 3D Tiles (${meshCredits(b)}), its footprint traced and its height read from the meshes where the footprint sources (${footprintSources(b)}) had no building on the lot`
+      : `the recorded footprint${ex.count === 1 ? '' : 's'} (${footprintSources(b)})${fromMeshes.height ? ` and, the sources having no height, its height from Google's Photorealistic 3D Tiles (${meshCredits(b)})` : ' and heights'}`}, its floor area each footprint by its storeys${fromMeshes.height && !(b.existing ?? []).some((e) => e.storeys) ? `, the height at ${m1(ex.storeyM)} a storey${(b.existing ?? []).some((e) => e.kind) ? ` (the source calls it ${(b.existing ?? []).map((e) => e.kind).filter(Boolean).join(', ')})` : ', an apartment\'s, the source not saying what it is'}` : ''}: indicative, not a survey.${b.mesh?.heights ? ` The neighbours' heights the sources lacked are from the same meshes.` : ''}` };
 }
 
 /** The last spread: the assumptions on the left, the controls table in full on the right. */
@@ -1372,7 +1424,8 @@ export function yieldJson(b: YieldBundle): string {
     address: b.address, siteAddress: b.siteAddress, lotDescription: b.lotDescription, siteAreaSqm: b.siteAreaSqm,
     siteAreaSource: 'NSW cadastre (confirm against survey)', planningControls: b.controls, groundRL: b.groundRL,
     station: b.station, cbd: b.cbd, policyAtSite: b.policyAtSite, frontages: s.frontageLengths, heightLimit: s.hob,
-    parkingRates: s.parkingSet, standsToday: existingSummary(b.existing ?? []),
+    parkingRates: s.parkingSet, standsToday: existingSummary(b.existing ?? []) && { ...existingSummary(b.existing ?? []), ...standingFromMeshes(b).height ? { heightFrom: 'Google Photorealistic 3D Tiles' } : {} },
+    zones: b.zones, heightsFromMeshes: b.mesh,
     study: strip(s.base), affordableHousingBonus: strip(s.bonus), envelopeToHeight: strip(s.max), rebuiltAsStands: strip(s.retained),
     scenarios: scenarioRows(b, s),
     table: yieldRows(b, s).filter((r) => !r.section && !r.head),

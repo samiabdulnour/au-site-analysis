@@ -51,10 +51,11 @@ const SITE_SCALES = [0, 250, 500, 1000];   // 0 is auto, the tightest that fits 
 const ROTATIONS = ['north', 'auto'] as const;
 /** The decks' four styles, as web/app.js offers them for the yield. */
 const DECK_STYLES = ['flamingo', 'kingfisher', 'heron', 'canary'] as const;
-// About 1190 px across an A1 sheet: sharp at the frame's width on a 2× screen,
-// and around 150 kB a picture, one per combination of the table.
-const DPI = 36;
-const QUALITY = 72;
+// About 2380 px across an A1 sheet: the frame is up to about 900 px wide on the
+// page, so this is its width on a 2× screen, sharp there, and around half a
+// megabyte a picture, one per combination of the table.
+const DPI = 72;
+const QUALITY = 74;
 
 const only = (() => { const i = process.argv.indexOf('--only'); return i > -1 ? process.argv[i + 1] : undefined; })();
 const want = (sheet: string) => !only || only === sheet;

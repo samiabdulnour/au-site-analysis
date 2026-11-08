@@ -73,9 +73,10 @@ a browser sets a cursor afresh only when it changes, so while a drawing is
 made the page alternates, at every pointer move or press, between `none` and
 a transparent 2 × 2 cursor image of its own, each as invisible as the other:
 an arrow that came back goes with the next move or press.
-Once done, the page shows the drawing itself as a picture about 1200 px wide
-(`preview.jpg`, taken in the same Chromium session that prints the PDF: a few
-hundred kilobytes against an A1 PDF's several megabytes) with the downloads
+Once done, the page shows the drawing itself as a picture about 2400 px wide
+(`preview.jpg`, taken in the same Chromium session that prints the PDF: under
+a megabyte against an A1 PDF's several megabytes; a deck's is its first page
+at about 3200 px) with the downloads
 under it — the PDF is downloaded rather than opened in the browser, which
 could take a long while at that size. Dashed and dotted lines are cut to the
 map or panel they are drawn in before they are printed (`src/lib/dashes.ts`):
@@ -1310,7 +1311,15 @@ site may take, so a site with more paths has more pages:
    — its storeys, height, footprint and indicative gross building area (each
    footprint by its storeys), the ratio that makes on the site against the
    LEP's, and the same bars. The right page draws it at its recorded height
-   among the neighbours, over its plan.
+   among the neighbours, over its plan. Where the sources have the footprint
+   but no height, the height is read from Google's 3D meshes and the storeys
+   are that height at 3.1 m each, or at the study's 3.8 m office floor where
+   the source calls the building an office, a shop or another workplace
+   (Overture's class, or OpenStreetMap's building tag, which the merge now
+   carries onto an Overture footprint that has none: a four-storey office
+   reads about 16 m, five storeys of 3.1 m and four of 3.8); where they have
+   no footprint on the lot at all, footprint and height alike are traced from
+   the meshes; the page says which, and credits the meshes.
 3. **Rebuilt to what stands**, where what stands holds more than the controls
    give: a building over today's controls need not come down to them. Kept and
    refurbished, or rebuilt on its own footprint to its own height under a
@@ -1345,8 +1354,10 @@ site may take, so a site with more paths has more pages:
 
 Each drawn path's right page is its indicative massing as an axonometric,
 seen from the main street's corner, among the neighbours at their recorded
-heights (Overture, its gaps filled from OpenStreetMap; dashed where neither
-records one), with each tier's envelope
+heights (Overture, its gaps filled from OpenStreetMap, and where neither
+records a height Google's 3D meshes over the massing's window, read as the
+site report reads them — see *Heights from the meshes*; dashed where none
+of them has one), with each tier's envelope
 dashed and the LEP's height of building plane over the site. Over each neighbour,
 in pale dashed glass, its future: its own footprint raised to the whole 3.1 m
 storeys its LEP height of building holds, where its zone permits flats (R1,
@@ -1368,7 +1379,11 @@ the site report's built form page shares): every neighbour in its
 zone's colour, bold, as the plan beneath tints its lot (the ePlanning colour
 where the style keeps it, the category's elsewhere), so the plan and the
 massing agree, with a grid of windows over its faces, on a cream ground of
-the activity family — paper in every style. The photograph goes under the
+the activity family — paper in every style. The key names every zone on
+the plan, code and name (`R1 General Residential`, `MU1 Mixed Use`), each
+with its colour: the lot's tint and, on the spreads that draw the
+neighbours in their zones' inks, a block of that ink on it, so the page
+says which colour is which zone rather than only that each is its zone's. The photograph goes under the
 first page's plan in every style, and under no other page. The town runs to
 the frame's every edge: the frame is fitted to the site and 40 m of town
 round it (`FOCUS_M` in `src/render/yieldSheet.ts`, at the height of what
@@ -2137,6 +2152,11 @@ them: a deck is never lost to it. The log says how many heights were read
 and how many footprints traced when the meshes are read, and again in the
 summary line the fetches end on (`mesh-heights:` and `traced:`), which is
 the line still in the page's tail of the log when the drawing is done.
+The planning yield reads the same meshes over its massing's window (about
+600 m across, a few dozen meshes at 6 m), for the neighbours and for what
+stands on the site alike, whose lot is traced too when the sources have no
+footprint on it; its key, its sources lines and its JSON say so and carry
+the credit.
 `npx tsx scripts/patch_bundle.ts out/<slug> mesh` reads the meshes into a
 kept bundle, so a deck drawn before can be recomposed with the heights
 without fetching the rest again. One
