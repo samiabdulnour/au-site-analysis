@@ -206,8 +206,10 @@ export function withDaStoreys(data: BuildingsData, lots: GeoJSONFC, applications
  * primary is silent: a supplement building whose centroid stands inside no
  * primary footprint joins, and a primary footprint with no height at all
  * takes the height or storeys of a supplement building whose centroid it
- * holds. Nothing of the primary's own is replaced. Pure, so the filling is
- * tested without a network.
+ * holds, and one with no kind takes the kind (OpenStreetMap's building tag:
+ * office, apartments, retail…) of a supplement building it holds, which
+ * says what floor height a height read later is divided by. Nothing of the
+ * primary's own is replaced. Pure, so the filling is tested without a network.
  */
 export function mergeBuildings(primary: BuildingsData, supplement: BuildingsData): BuildingsData {
   if (!supplement.buildings.length || !primary.buildings.length) return primary.buildings.length ? primary : supplement;
@@ -216,16 +218,19 @@ export function mergeBuildings(primary: BuildingsData, supplement: BuildingsData
     prim.find(({ b, bb }) => x >= bb[0] && x <= bb[2] && y >= bb[1] && y <= bb[3] && pointInRing(x, y, b.rings[0]))?.b;
   const added: Building[] = [];
   const donors = new Map<string, Building>();
+  const kinds = new Map<string, string>();
   for (const sb of supplement.buildings) {
     const host = hostOf(sb.centroid[0], sb.centroid[1]);
     if (!host) { added.push(sb); continue; }
     if (!host.estimatedHeightM && sb.estimatedHeightM && !donors.has(host.id)) donors.set(host.id, sb);
+    if (!host.kind && sb.kind && !kinds.has(host.id)) kinds.set(host.id, sb.kind);
   }
-  if (!added.length && !donors.size) return primary;
+  if (!added.length && !donors.size && !kinds.size) return primary;
   const buildings = primary.buildings
     .map((b): Building => {
-      const d = donors.get(b.id);
-      return d ? { ...b, heightM: d.heightM, floors: d.floors, estimatedHeightM: d.estimatedHeightM, heightFrom: d.heightFrom } : b;
+      const d = donors.get(b.id), k = kinds.get(b.id);
+      const withKind = k ? { ...b, kind: k } : b;
+      return d ? { ...withKind, heightM: d.heightM, floors: d.floors, estimatedHeightM: d.estimatedHeightM, heightFrom: d.heightFrom } : withKind;
     })
     .concat(added);
   const word = supplement.source === 'osm' ? 'OpenStreetMap' : supplement.source;

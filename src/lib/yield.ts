@@ -169,23 +169,46 @@ export function futureHeight(
   return allowed > standing ? allowed * storeyM : undefined;
 }
 
-/** A building standing on the site today: its footprint, and what is recorded of its height. */
-/** A building on the site: its ground cover, what is recorded of its height, and its outline (lon/lat, outer ring first) for the drawings; a bundle from before the outlines has none. */
-export interface ExistingBuilding { footprintSqm: number; heightM?: number; storeys?: number; rings?: number[][][] }
+/**
+ * A building standing on the site today: its ground cover, what is known of its height and where that came from
+ * (the source's measure, its storey count, or Google's 3D meshes, read where the sources had neither), and its
+ * outline (lon/lat, outer ring first) for the drawings, traced from the meshes where the open sources had no
+ * footprint on the lot (`traced`); a bundle from before the outlines has none.
+ */
+export interface ExistingBuilding { footprintSqm: number; heightM?: number; storeys?: number; heightFrom?: 'measured' | 'floors' | 'mesh'; traced?: boolean; rings?: number[][][];
+  /** What the source says the building is (Overture's class and subtype, OpenStreetMap's building tag: office, apartments, retail…), where it says; it sets the floor height a height alone is divided into storeys by. */
+  kind?: string }
+
+/** The kinds a source gives a building that is not housing: its floors are an office's, not an apartment's. */
+const WORKPLACE_KIND = /office|commercial|retail|shop|industrial|warehouse|hotel|school|university|college|education|hospital|medical|civic|public|church|religious|government|service|supermarket|mall|kiosk|parking|garage|transportation/i;
+/**
+ * The storey a height alone is divided by, metres: an office's floor for a building the source calls a workplace
+ * (`WORKPLACE_KIND`), the study's apartment floor for the rest. A four-storey office reads about 16 m to its
+ * roof from the meshes, which is five storeys of 3.1 m and four of 3.8.
+ */
+export function storeyHeightFor(kind: string | undefined, a: Pick<YieldAssumptions, 'residentialF2F' | 'commercialF2F'> = DEFAULT_ASSUMPTIONS): number {
+  return kind && WORKPLACE_KIND.test(kind) ? a.commercialF2F : a.residentialF2F;
+}
 
 /**
  * What stands on the site today, in one line: the buildings' count and
  * ground cover, the tallest one's storeys and height, and an indicative
  * gross building area — each footprint by its storeys — for the scenarios
  * to stand against. `known` says a height was recorded for at least one;
- * without any, no floor area is guessed. None of it is a survey.
+ * without any, no floor area is guessed. A building with a height and no
+ * storey count has the height divided by its kind's floor (storeyHeightFor:
+ * an office's where the source calls it one, `storeyM` otherwise), and
+ * `storeyM` is that floor when every such building is housing. None of it
+ * is a survey.
  */
 export function existingSummary(list: ExistingBuilding[], storeyM = 3.1):
-  { count: number; footprintSqm: number; storeys?: number; heightM?: number; gbaSqm?: number; known: boolean } | undefined {
+  { count: number; footprintSqm: number; storeys?: number; heightM?: number; gbaSqm?: number; known: boolean; storeyM: number } | undefined {
   if (!list.length) return undefined;
-  const storeys = list.map((b) => b.storeys ?? (b.heightM && b.heightM > 0 ? Math.max(1, Math.round(b.heightM / storeyM)) : undefined));
+  const floorOf = (b: ExistingBuilding) => (b.kind ? storeyHeightFor(b.kind) : storeyM);
+  const storeys = list.map((b) => b.storeys ?? (b.heightM && b.heightM > 0 ? Math.max(1, Math.round(b.heightM / floorOf(b))) : undefined));
   const known = storeys.some((v) => v !== undefined);
   const heights = list.map((b) => b.heightM ?? (b.storeys ? b.storeys * storeyM : 0));
+  const divided = list.filter((b) => !b.storeys && b.heightM && b.heightM > 0);
   return {
     count: list.length,
     footprintSqm: list.reduce((t, b) => t + b.footprintSqm, 0),
@@ -193,6 +216,7 @@ export function existingSummary(list: ExistingBuilding[], storeyM = 3.1):
     heightM: known ? Math.max(...heights) : undefined,
     gbaSqm: known ? list.reduce((t, b, i) => t + b.footprintSqm * (storeys[i] ?? 1), 0) : undefined,
     known,
+    storeyM: divided.length ? Math.max(...divided.map(floorOf)) : storeyM,
   };
 }
 
