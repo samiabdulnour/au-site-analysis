@@ -13,10 +13,16 @@ import { localFrame, type HeightField, type LocalFrame } from '../lib/meshHeight
 import { mercatorScaleFactor, mercatorToLonLat, type Extent } from '../lib/geo.js';
 
 /**
- * The coarsest mesh the surface is read from, metres of error: a roof's height to a storey, from a tree of tiles
- * a few score deep over a page rather than the few hundred the streetscape takes over one street at its finest.
+ * The coarsest mesh the surface is read from, metres of error: a roof's height to a storey. Over a Bondi page
+ * (1,050 × 1,485 m) Google's tree gives more than 1,500 meshes at 4 m, 431 at 6 m (2 and 4 m tiles) and 133 at
+ * 10 m; 6 m reads every footprint's roof in half a minute. Where a page holds more than MESH_SURFACE_MAX_TILES at
+ * the error asked, the next coarser levels are tried (MESH_SURFACE_FALLBACK_M), so a dense page still gets heights.
  */
-export const MESH_SURFACE_ERROR_M = Number(process.env.MESH_HEIGHTS_ERROR_M) || 4;
+export const MESH_SURFACE_ERROR_M = Number(process.env.MESH_HEIGHTS_ERROR_M) || 6;
+/** The most meshes a page may take; the streetscape's own cap is for a street at its finest. */
+export const MESH_SURFACE_MAX_TILES = Number(process.env.MESH_HEIGHTS_MAX_TILES) || 900;
+/** The coarser errors tried in turn when the page overflows the cap. */
+const MESH_SURFACE_FALLBACK_M = [10, 16];
 /** A cell of the surface, metres. */
 export const MESH_SURFACE_CELL_M = 1;
 /**
@@ -45,7 +51,17 @@ async function readSurface(key: string, extent: Extent, log: (m: string) => void
   const halfW = (extent.xmax - extent.xmin) / 2 / k, halfH = (extent.ymax - extent.ymin) / 2 / k;
   // the window as a corridor along east: `d` runs to the axis's left, which is north
   const corridor: Corridor = { at0: [0, 0], axis: [1, 0], s: [-halfW, halfW], d: [-halfH, halfH], z: [-100, 700] };
-  const got = await fetchStreetTiles(key, centre, corridor, MESH_SURFACE_ERROR_M, log);
+  // the error asked first, then coarser where the page holds more meshes than the cap (the walk gives up before
+  // it fetches one, so a level that overflows costs a root request and nothing more)
+  let got: Awaited<ReturnType<typeof fetchStreetTiles>> | null = null;
+  for (const errorM of [MESH_SURFACE_ERROR_M, ...MESH_SURFACE_FALLBACK_M.filter((e) => e > MESH_SURFACE_ERROR_M)]) {
+    try { got = await fetchStreetTiles(key, centre, corridor, errorM, log, { maxTiles: MESH_SURFACE_MAX_TILES }); break; }
+    catch (e: any) {
+      if (!/more than \d+ meshes/.test(String(e?.message))) throw e;
+      log(`  3D tiles: more than ${MESH_SURFACE_MAX_TILES} meshes over the page at ${errorM} m; trying coarser`);
+    }
+  }
+  if (!got) throw new Error(`the page holds more than ${MESH_SURFACE_MAX_TILES} meshes even at ${MESH_SURFACE_FALLBACK_M[MESH_SURFACE_FALLBACK_M.length - 1]} m`);
   if (!got.tiles.length) return null;
   const field = await renderSurface(got.tiles, enuFrame(centre).matrix, { x0: -halfW, y0: -halfH, x1: halfW, y1: halfH }, MESH_SURFACE_CELL_M, log);
   const held = field.z.reduce((n, z) => n + (Number.isFinite(z) ? 1 : 0), 0);
