@@ -4,7 +4,9 @@
    data-hero-autostart starts on its own, and the welcome starts and stops
    its windows from app.js as the visitor comes and goes. The
    sheets are hero-*.jpg, drawn for addresses around NSW just for this panel
-   (`npm run generate`, rasterised like the samples), so the welcome never
+   (`npm run samples -- --only hero`: HERO in src/samples.ts names each one's
+   address, drawing, scale, style and page, rasterised as the samples are, at
+   the same size), so the welcome never
    shows the example the generator's result frame uses: the maps 1 to 14; the
    yield's pages 15 to 18 (Manly, Wollongong, Newcastle) and the site report's
    19 to 27 (Katoomba, Orange, and Newcastle's streetscape on Google's 3D

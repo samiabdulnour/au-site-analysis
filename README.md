@@ -128,7 +128,25 @@ pip install pymupdf      # rasterises the PDFs
 npm run samples -- "150 George Street, Parramatta NSW 2150"
 # or a part at a time: --only context | site | yield | slides (| summary, which the table no longer offers)
 # or only the link-preview card, from the context sheet already drawn: npm run samples -- --only card
+# or the welcome animation's sheets, for their own addresses: npm run samples -- --only hero
 ```
+
+The welcome's two animated windows and *How it works*' one (`web/hero.js`)
+turn through `hero-1.jpg` … `hero-27.jpg`, sheets drawn for addresses around
+NSW rather than the frame's example: the maps 1 to 14, a context or site
+sheet each in one of the four styles (Sydney, Wollongong, Katoomba,
+Woollahra, Newcastle, Blacktown, Manly, Orange, Coffs Harbour, Wagga Wagga,
+Byron Bay, Taree, Armidale, Kiama); the yield's pages 15 to 18 (Manly,
+Wollongong, Newcastle), in the four styles mixed; and the site report's 19 to
+27 (Katoomba, Orange, and Newcastle's streetscape on Google's 3D tiles), in
+its default style. `HERO` in `src/samples.ts` names each frame's address,
+drawing, scale, orientation, style and page, and `--only hero` (a `hero` run of
+the workflow) redraws the set at the frame's size, one pipeline a map and
+one an address for the decks; `HERO_FRAMES=16,27` redraws those frames alone.
+A page an address no longer takes leaves its picture as it was. The
+illustrations cut in among them, `art-1` … `art-8`, are the studio's
+graphics, resized once from their 4961 × 3508 originals, and are not drawn
+here.
 
 Or let GitHub draw them: **Actions → samples → Run workflow**
 (`.github/workflows/samples.yml`) runs the same script on GitHub's runner,
