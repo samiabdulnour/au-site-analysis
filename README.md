@@ -1934,6 +1934,48 @@ What the sheet reads, all open data (`scripts/capacity_study.ts` fetches,
   little ability to develop above its current status; a tick (development
   potential) on every other property. Lane stubs and slivers under 40 m² carry no mark.
 
+### The future context
+
+`npm run future -- out/capacity/<slug> --scenarios scenarios.json` draws, over
+a capacity study already fetched for the address, how the blocks round the
+site might redevelop: three A3 landscape sheets, one a scenario, each a plan
+at 1:500 on the clean aerial (no marks, no labels, the colour drawn down)
+beside an axonometric massing looking east over the site's street, with the
+scenario's story in the left column and an indicative yield under it.
+Outputs `future-1.png`, `-2`, `-3` and `future.pdf` (the three bound) beside
+`analysis.json`; `--redraw` draws again from what was fetched.
+`examples/capacity_study/` holds the three sheets for 70-76 Riley Street with
+their scenarios file.
+
+The scenarios are the author's, in JSON: each parcel named by the start of
+its addresses as the register writes them (`"54-56 RILEY STREET"`), each
+building by its footprint type, its storeys, and the line its long axis
+follows — `along` a street, or the party wall of a `neighbour` — with its
+`setback` off that line, its ends `sides` off the parcel's, its `length` and
+the street end it is kept `from`. The footprint is fitted to the real
+cadastre from that: the three feasible types (single loaded 12 m deep,
+double loaded 18 m for 8 units a floor, double loaded up to 22 m for 10 units
+facing east and west), no slab over 45 m, a podium or a consent over the
+whole parcel. The prose may quote what the fit found (`{A.area}`,
+`{A.plate}`, `{A.gap}`, `{A.parity}`, `{units}`), so the numbers on the sheet
+are the data's. Heights are set by density parity with the site (its units
+at 85 m² of GFA each over its area, about 6:1 at Riley Street): the table says
+at how many storeys each parcel reaches it, GFA at 75 % of the envelope,
+storeys at 3.2 m over a 4.5 m ground floor.
+
+What the sheets read beyond the capacity study (`scripts/future_context.ts`
+fetches, `scripts/capacity_study/future_context.py` fits and draws; it needs
+shapely and Pillow): the aerial at its native resolution over the study
+window; the LEP's height of buildings and floor space ratio layers, printed
+for each parcel, and the heritage conservation area and items the context plan
+already holds; and the height of every property in the window off Google's
+3D tiles (`GOOGLE_MAPS_API_KEY`, or `GOOGLE_MAPS_KEY_IN_HEADER=1` where a proxy
+adds the key), the roof's 80th percentile over the ground round it, so what
+is retained or left standing is drawn at its measured storeys and starred
+only where the tiles hold nothing. What stays assumed is said on the sheet:
+the site's own storeys, units and GFA as the author states them, and the
+storeys of a consent the council's register has no record of.
+
 ### The streetscape
 
 `--type streetscape` draws STREETSCAPE: the site's street as two elevations on
