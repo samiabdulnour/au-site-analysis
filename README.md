@@ -1963,6 +1963,20 @@ at 85 m² of GFA each over its area, about 6:1 at Riley Street): the table says
 at how many storeys each parcel reaches it, GFA at 75 % of the envelope,
 storeys at 3.2 m over a 4.5 m ground floor.
 
+The site's own scheme is drawn from `site.tower`: a podium of so many
+storeys over the lot and a tower inset from it by the setbacks named per
+street or neighbour (`"CROWN LANE": 3`), so the sheet can read the
+separation between that tower and every building within 30 m of it, as it
+stands or as the scenario builds it, against the Apartment Design Guide
+(3F-1: 24 m between habitable rooms or balconies at levels 9 and over, 18 m
+where one face is blank, 18 and 12 m at levels 5 to 8, 12 and 9 below, read
+at the levels the two buildings share, each building owing its side or rear
+boundary half the first figure). A scenario's own `retained` list overrides
+the study's, so a fourth sheet can develop what the others keep: Riley
+Street's has the three new Crown Street buildings east of the lane and the
+2011 strata go too, and the table says what each tower must then keep from
+ours.
+
 What the sheets read beyond the capacity study (`scripts/future_context.ts`
 fetches, `scripts/capacity_study/future_context.py` fits and draws; it needs
 shapely and Pillow): the aerial at its native resolution over the study

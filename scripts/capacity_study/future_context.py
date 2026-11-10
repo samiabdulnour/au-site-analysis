@@ -163,18 +163,20 @@ def road_lines(name):
 def reference(parcel, spec):
     """The line a building's long axis follows: its direction u, the inward normal n, and a vertex of the parcel on it."""
     if 'along' in spec:
-        best = None
-        for ls in road_lines(spec['along']):
-            cs = list(ls.coords)
-            for p, q in zip(cs[:-1], cs[1:]):
-                seg = LineString([p, q])
-                d = seg.distance(parcel)
-                if best is None or d < best[0]:
-                    best = (d, p, q)
-        _, p, q = best
-        u = unit((q[0] - p[0], q[1] - p[1]))
+        # the frontage: the parcel's edges near the street that run with its longest one (a boundary is often several
+        # collinear edges in the cadastre); its direction is theirs, not the centreline's, which may jog at a corner
         road = unary_union(road_lines(spec['along']))
-        origin = min(parcel.exterior.coords[:-1], key=lambda v: road.distance(Point(v)))
+        cs = list(parcel.exterior.coords)
+        edges = [(p, q) for p, q in zip(cs[:-1], cs[1:]) if math.dist(p, q) >= 1 and road.distance(Point((p[0] + q[0]) / 2, (p[1] + q[1]) / 2)) <= 14]
+        if not edges:
+            sys.exit(f'no edge of the parcel fronts {spec["along"]}')
+        seed = max(edges, key=lambda e: math.dist(*e))
+        ang = lambda e: math.atan2(e[1][1] - e[0][1], e[1][0] - e[0][0])
+        turn = lambda e: abs((ang(e) - ang(seed) + math.pi / 2) % math.pi - math.pi / 2)
+        pts = [c for e in edges if turn(e) < math.radians(12) for c in e]
+        p, q = max(((p, q) for p in pts for q in pts), key=lambda pq: math.dist(*pq))
+        u = unit((q[0] - p[0], q[1] - p[1]))
+        origin = min(pts, key=lambda v: road.distance(Point(v)))
     else:
         nb = prop(spec['neighbour'])['poly']
         shared = parcel.exterior.intersection(nb.buffer(0.25))
@@ -239,6 +241,13 @@ CONSENT = {str(prop(k)['propid']): v for k, v in sc.get('consentStoreys', {}).it
 OTHERS = [r for b in BLOCKS for r in b if not r.get('isSite')]
 
 
+def retained_for(scn):
+    """What a scenario keeps: its own `retained` list where it has one (empty: nothing), else the study's."""
+    if 'retained' not in scn:
+        return RETAINED
+    return {str(prop(r['address'] if isinstance(r, dict) else r)['propid']): (r if isinstance(r, dict) else {'address': r, 'why': ''}) for r in scn['retained']}
+
+
 def existing_height(r):
     """What stands today: the tiles' height, else storeys assumed."""
     h = measured(r)
@@ -271,12 +280,12 @@ def resolve(scn):
             podium = sum(r['poly'].area * (r['n'] - r['base']) for r in rows if r['typ'] == 'podium')
             parity = main['base'] + max(1, math.ceil((FSR_PAR * area / EFFICIENCY - podium) / main['poly'].area))
         parcels.append(dict(key=p['key'], name=p['name'], poly=parcel, area=area, typ=TYPE[main['typ']], storeys=max(r['n'] for r in rows), height=H_of(max(r['n'] for r in rows)),
-                            gfa=gfa, fsr=gfa / area, parity=parity, plate=main['plate'], gap=main['gap'], consent=main['typ'] == 'consent',
+                            gfa=gfa, fsr=gfa / area, parity=parity, plate=main['plate'], gap=main['gap'], consent=main['typ'] == 'consent', main_poly=main['poly'],
                             hob=control(HOB, parcel, 'MAX_B_H'), lep_fsr=control(FSR, parcel, 'FSR'), titles=len(p['addresses'])))
         blds += rows
     existing = []
     for r in OTHERS:
-        if str(r['propid']) in used or str(r['propid']) in RETAINED:
+        if str(r['propid']) in used or str(r['propid']) in retained_for(scn):
             continue
         h, n, how = existing_height(r)
         existing.append(dict(poly=r['poly'], h=h, n=n, how=how, base_addr=r['base']))
@@ -294,6 +303,13 @@ def fill_in(text, parcels, units):
         vals[f'{k}.fsr'] = f'{p["fsr"]:.1f}:1'
         vals[f'{k}.parity'] = f'{p["parity"]} storeys' if p['parity'] else '—'
         vals[f'{k}.gap'] = f'{p["gap"]:.0f}' if p['gap'] is not None else '—'
+        vals[f'{k}.sep'] = f'{SITE_TOWER.distance(p["main_poly"]):.0f}'
+        vals[f'{k}.needs'] = f'{ADG[adg_band(max(p["storeys"], S["storeys"]))][0] - p["poly"].distance(SITE_TOWER):.0f}'
+    if TOWER:
+        for name in TOWER['setbacks']:
+            vals[f'site.{name.split()[0].lower()}'] = f'{site_setback(name):.0f}'
+        vals['site.east'] = f'{site_setback("CROWN LANE"):.0f}' if 'CROWN LANE' in TOWER['setbacks'] else vals.get('site.east', '—')
+        vals['site.north'] = next((f'{site_setback(n):.0f}' for n in TOWER['setbacks'] if norm_road(n) not in ROADS), '—')
     return re.sub(r'\{([A-Za-z]+(?:\.\w+)?)\}', lambda m: vals.get(m.group(1), m.group(0)), text)
 
 
@@ -310,6 +326,57 @@ bx0, by0, bx1, by1 = study.bounds
 WX0, WY0 = (bx0 + bx1) / 2 - PLAN_W_M / 2, (by0 + by1) / 2 - PLAN_H_M / 2
 WX1, WY1 = WX0 + PLAN_W_M, WY0 + PLAN_H_M
 WINDOW = Polygon([(WX0, WY0), (WX1, WY0), (WX1, WY1), (WX0, WY1)])
+
+# ---- our own scheme: a podium over the lot and a tower inset from it by the setbacks the scenarios file names ----
+TOWER = S.get('tower')
+
+
+def spec_for(name):
+    return {'along': name} if norm_road(name) in ROADS else {'neighbour': name}
+
+
+def inset(parcel, setbacks):
+    g = parcel
+    for name, sb in setbacks.items():
+        u, n, o = reference(parcel, spec_for(name))
+        g = g.intersection(band(o, n, sb, 400))
+    return largest(g)
+
+
+SITE_TOWER = inset(SITE_POLY, TOWER['setbacks']) if TOWER else SITE_POLY.buffer(-1.0, join_style=2)
+SITE_PODIUM = TOWER['podium'] if TOWER else 0
+
+
+def site_setback(name):
+    """How far our tower's nearest face stands off the named street's or neighbour's boundary line."""
+    u, n, o = reference(SITE_POLY, spec_for(name))
+    return min((p[0] - o[0]) * n[0] + (p[1] - o[1]) * n[1] for p in SITE_TOWER.exterior.coords)
+
+
+# ADG 3F-1: between habitable rooms or balconies, habitable to a blank face, blank to blank; at levels 9 and over,
+# 5 to 8, up to 4. The setback each building owes its side or rear boundary is half the first figure.
+ADG = {'tall': (24, 18, 12), 'mid': (18, 12, 9), 'low': (12, 9, 6)}
+
+
+def adg_band(n):
+    return 'tall' if n >= 9 else 'mid' if n >= 5 else 'low'
+
+
+def separation(blds, existing, RET):
+    """Every building within 30 m of our tower: how far apart the two stand and what the ADG asks between them at the
+    levels they share (the lower one's band: what the rooms face)."""
+    cands = [(f'{b["key"]} · {TYPE[b["typ"]].split(",")[0].lower()}, {b["n"]} st', b['poly'], b['n']) for b in blds if b['typ'] != 'podium']
+    cands += [(f'{e["base_addr"].title().replace(" Darlinghurst", "")} as it stands, {e["n"]} st', e['poly'], e['n']) for e in existing]
+    cands += [(f'{PROPS[pid]["base"].title().replace(" Darlinghurst", "")} retained, {existing_height(PROPS[pid])[1]} st', PROPS[pid]['poly'], existing_height(PROPS[pid])[1]) for pid in RET]
+    rows = []
+    for name, poly, n in cands:
+        d = SITE_TOWER.distance(poly)
+        if d > 30:
+            continue
+        hab, blank, _ = ADG[adg_band(min(n, S['storeys']))]
+        verdict = 'clear' if d >= hab else 'only with one face blank' if d >= blank else 'short even to a blank face'
+        rows.append((name, d, hab, blank, verdict))
+    return rows
 
 
 def f(v):
@@ -364,7 +431,7 @@ def label_roads():
     return out
 
 
-def plan(scn, parcels, blds, existing):
+def plan(scn, parcels, blds, existing, RET):
     o = [f'<svg class="plan" viewBox="{f(WX0)} {f(-WY1)} {f(PLAN_W_M)} {f(PLAN_H_M)}" xmlns="http://www.w3.org/2000/svg">',
          '<defs><pattern id="hat" width="1.2" height="1.2" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="1.2" stroke="#555" stroke-width="0.28"/></pattern>'
          f'<clipPath id="win"><rect x="{f(WX0)}" y="{f(-WY1)}" width="{f(PLAN_W_M)}" height="{f(PLAN_H_M)}"/></clipPath></defs>',
@@ -375,7 +442,7 @@ def plan(scn, parcels, blds, existing):
     for b in BLOCKS:
         for r in b:
             o.append(f'<path d="{path(r["poly"])}" fill="none" stroke="#fff" stroke-width="0.35"/>')
-    for pid, why in RETAINED.items():
+    for pid, why in RET.items():
         r = PROPS[pid]
         g = r['poly']
         o.append(f'<path d="{path(g)}" fill="{C["retained"]}" stroke="#3a3a3a" stroke-width="0.25"/><path d="{path(g)}" fill="url(#hat)" fill-opacity=".3"/>')
@@ -391,6 +458,14 @@ def plan(scn, parcels, blds, existing):
     g = SITE_POLY
     o.append(f'<path d="{path(g)}" fill="{C["site"]}" fill-opacity=".92" stroke="#e11b22" stroke-width="0.9" stroke-linejoin="round"/>')
     c = g.centroid
+    if TOWER:
+        o.append(f'<path d="{path(SITE_TOWER)}" fill="#e6b0b0" fill-opacity=".9" stroke="#c0161c" stroke-width="0.3"/>')
+        c = SITE_TOWER.centroid
+        # the label in the podium's broadest side: the strips under 3 m wide eroded away first, since an L-shaped
+        # remainder's interior point lands in its thin leg
+        rest = SITE_POLY.difference(SITE_TOWER.buffer(5)).buffer(-1.5)
+        pc = largest(rest).centroid if not rest.is_empty else SITE_POLY.centroid
+        o.append(f'<text x="{f(pc.x)}" y="{-pc.y + 0.5:.2f}" class="sub" fill="#c0161c">podium · {SITE_PODIUM} st</text>')
     o.append(f'<text x="{f(c.x)}" y="{-c.y - 0.6:.2f}" class="num" fill="#c0161c">{S["storeys"]}</text><text x="{f(c.x)}" y="{-c.y + 2.0:.2f}" class="sub" fill="#c0161c">{H.escape(S.get("label", "our site"))}</text>')
     for p in parcels:
         o.append(f'<path d="{path(p["poly"])}" fill="#fff" fill-opacity=".82"/>')
@@ -447,15 +522,19 @@ def shade(hexc, k):
     return f'#{r:02x}{g:02x}{b:02x}'
 
 
-def axo(scn, parcels, blds, existing):
+def axo(scn, parcels, blds, existing, RET):
     items = []
-    for pid, why in RETAINED.items():
+    for pid, why in RET.items():
         r = PROPS[pid]
         h, n, how = existing_height(r)
         items.append((r['poly'], 0, h, dict(typ='retained', n=n, label=f'{n}{"" if how == "mesh" else "*"}')))
     for e in existing:
         items.append((e['poly'], 0, e['h'], dict(typ='low', n=e['n'], label=None)))
-    items.append((SITE_POLY.buffer(-1.0, join_style=2), 0, H_of(S['storeys']), dict(typ='site', n=S['storeys'], label=str(S['storeys']))))
+    if TOWER:
+        items.append((SITE_POLY, 0, H_of(SITE_PODIUM), dict(typ='site', n=SITE_PODIUM, base=0, label=None)))
+        items.append((SITE_TOWER, H_of(SITE_PODIUM), H_of(S['storeys']), dict(typ='site', n=S['storeys'], base=SITE_PODIUM, label=str(S['storeys']))))
+    else:
+        items.append((SITE_TOWER, 0, H_of(S['storeys']), dict(typ='site', n=S['storeys'], base=0, label=str(S['storeys']))))
     for b in blds:
         items.append((b['poly'], H_of(b['base']) if b['base'] else 0, H_of(b['n']), dict(typ=b['typ'], n=b['n'], base=b['base'], label=None if b['typ'] == 'podium' else str(b['n']))))
     flat = [(p, z0, z1, b) for g, z0, z1, b in items for p in polys(g)]
@@ -535,13 +614,13 @@ CSS = f'''
 *{{box-sizing:border-box}}
 html,body{{margin:0;background:#fff}}
 body{{width:{PAGE_W}px;height:{PAGE_H}px;font-family:Inter,Helvetica,Arial,sans-serif;color:#111;position:relative;overflow:hidden;-webkit-print-color-adjust:exact;print-color-adjust:exact}}
-.txt{{position:absolute;left:{mm(10)};top:{mm(10)};width:{mm(76)};font-size:{pt(7.4)};line-height:1.42}}
+.txt{{position:absolute;left:{mm(10)};top:{mm(9)};width:{mm(79)};font-size:{pt(7.2)};line-height:1.4}}
 .kick{{font-size:{pt(6.6)};font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#5a2ea6}}
 h1{{font-size:{pt(17)};line-height:1.1;margin:{mm(1.5)} 0 {mm(1)};font-weight:700;letter-spacing:-.01em}}
 .hor{{font-size:{pt(7.4)};color:#555;margin-bottom:{mm(3.5)}}}
 .lead{{font-size:{pt(8.2)};line-height:1.4;margin:0 0 {mm(3)}}}
-ul{{margin:0;padding-left:{mm(3.4)}}} li{{margin-bottom:{mm(1.6)}}}
-h2{{font-size:{pt(6.6)};letter-spacing:.06em;text-transform:uppercase;margin:{mm(5)} 0 {mm(1.5)};font-weight:700}}
+ul{{margin:0;padding-left:{mm(3.4)}}} li{{margin-bottom:{mm(1.3)}}}
+h2{{font-size:{pt(6.6)};letter-spacing:.06em;text-transform:uppercase;margin:{mm(4)} 0 {mm(1.2)};font-weight:700}}
 table{{border-collapse:collapse;width:100%;font-size:{pt(6.3)};font-variant-numeric:tabular-nums}}
 th{{text-align:left;font-weight:600;border-bottom:{mm(.3)} solid #111;padding:{mm(.8)} {mm(.5)};vertical-align:bottom}}
 td{{border-bottom:{mm(.15)} solid #ccc;padding:{mm(.9)} {mm(.5)};vertical-align:top}}
@@ -573,7 +652,8 @@ hcas = sorted({r.get('inHCA') for b in BLOCKS for r in b if r.get('inHCA')})
 items = sorted({r['heritageItem'] for b in BLOCKS for r in b if r.get('heritageItem')})
 site_h = measured(SITE)
 flags = []
-flags.append(f'<b>Our site.</b> {S["storeys"]} storeys as the author states it, not read from the model; {SITE_UNITS} apartments and {SITE_GFA:,.0f} m² GFA {"as given" if S.get("gfaM2") else f"assumed at {UNIT_GFA} m² each"}, so parity is {FSR_PAR:.1f}:1 over {SITE_AREA:,.0f} m². The model\'s own GFA and unit count should replace them.')
+flags.append(f'<b>Our site.</b> {S["storeys"]} storeys as the author states it, not read from the model; {SITE_UNITS} apartments and {SITE_GFA:,.0f} m² GFA {"as given" if S.get("gfaM2") else f"assumed at {UNIT_GFA} m² each"}, so parity is {FSR_PAR:.1f}:1 over {SITE_AREA:,.0f} m². The model\'s own GFA and unit count should replace them.'
+             + (f' The tower is drawn on a {SITE_PODIUM}-storey podium, {SITE_TOWER.area:,.0f} m² a floor, its faces ' + ', '.join(f'{site_setback(n):.0f} m off {n.title()}' for n in TOWER['setbacks']) + ': setbacks read off the model\'s screenshot, to be replaced by the model\'s own.' if TOWER else ''))
 mesh_props = [r for b in BLOCKS for r in b if measured(r)]
 if MESH.get('meshes'):
     flags.append(f'<b>What stands.</b> Heights read off Google\'s 3D tiles ({MESH["meshes"]} meshes at {MESH.get("errorM", 0):.0f} m, the roof\'s 80th percentile over the ground round it), {len(mesh_props)} of the {sum(len(b) for b in BLOCKS)} study properties read; storeys at {STOREY_M} m. A starred count is assumed where the tiles hold nothing.')
@@ -582,6 +662,7 @@ else:
 consent = ', '.join(f'{PROPS[pid]["base"].title().replace(" Darlinghurst", "")} at {n}' for pid, n in CONSENT.items())
 if consent:
     flags.append(f'<b>Consents.</b> Storeys assumed, the register holds no record: {consent}.')
+flags.append('<b>Separation.</b> ADG 3F-1: 24 m between habitable rooms or balconies at levels 9 and over, 18 m where one face is blank; 18 and 12 m at levels 5 to 8; 12 and 9 below. Each building owes its side or rear boundary half the first figure, 12, 9 or 6 m, a lane\'s width counting as councils measure it. The table on the left reads each neighbour at the levels the two buildings share.')
 flags.append(f'<b>Controls.</b> {H.escape(lep.get("epiName") or "LEP")}: the height and floor space ratio over each parcel in the table, from the plan\'s layers; '
              + (f'every study lot sits in the {" and ".join(hcas)} heritage conservation area' if hcas else 'no conservation area over the study lots') + (f'; items: {", ".join(items)}' if items else ', and none is a heritage item') + '.')
 
@@ -591,13 +672,17 @@ LEGEND = [
     (C['d22'], '', '<b>Double loaded footprint (10 units)</b>, up to 22 m deep, units facing east and west'),
     (C['podium'], '', 'Podium / street wall, 2 to 3 storeys'),
     (C['consent'], '', 'Built under an existing consent'),
-    (C['retained'], '', 'Retained in every scenario: ' + ', '.join(PROPS[pid]['base'].title().replace(' Darlinghurst', '') + f' ({why["why"]})' for pid, why in RETAINED.items())),
+    (C['retained'], '', 'Retained unless a scenario develops it: ' + ', '.join(PROPS[pid]['base'].title().replace(' Darlinghurst', '') + f' ({why["why"]})' for pid, why in RETAINED.items())),
     (C['site'], ';border-color:#e11b22', f'{SITE["base"].title().replace(" Darlinghurst", "")}, our site: {S["storeys"]} storeys, {SITE_UNITS} units'),
 ]
 
 
 def page(no, scn):
     parcels, blds, existing = resolve(scn)
+    RET = retained_for(scn)
+    sep = separation(blds, existing, RET)
+    sep_rows = ''.join(f'<tr><td>{H.escape(nm)}</td><td class="r">{d:.0f}</td><td class="r">{hab} / {blank}</td><td>{v}</td></tr>' for nm, d, hab, blank, v in sep)
+    faces = ''
     newg = sum(p['gfa'] for p in parcels if not p['consent'])
     units = round(newg / UNIT_GFA / 5) * 5
     rows = []
@@ -617,11 +702,13 @@ def page(no, scn):
 <h2>Indicative yield</h2>
 <table><tr><th></th><th>Site</th><th class="r">Site m²</th><th class="r">Storeys</th><th class="r">Height m</th><th class="r">GFA m²</th><th class="r">FSR</th><th class="r">Parity</th></tr>{tr}</table>
 <p style="margin-top:{mm(2)}">About <b>{units} new apartments</b>{" beside the existing consent" if consents else ""}, on top of the {SITE_UNITS} on our site. Parity: the storeys at which the parcel reaches our density of {FSR_PAR:.1f}:1.</p>
+<h2>Separation from our tower</h2>
+<table><tr><th>Building</th><th class="r">m apart</th><th class="r">ADG m, habitable / one blank</th><th>At the levels shared</th></tr>{sep_rows}</table>
 </div>
-{plan(scn, parcels, blds, existing)}
+{plan(scn, parcels, blds, existing, RET)}
 <div class="cap" style="left:{mm(PLAN_MM[0])};top:{mm(PLAN_MM[1] + PLAN_MM[3] + 2.5)}">Plan · 1:{SCALE} @ A3 · storeys on each footprint · the study blocks dashed</div>
-<div class="cap" style="left:{mm(282)};top:{mm(10)}">Massing · looking east over Riley Street · our site's envelope as a glass</div>
-{axo(scn, parcels, blds, existing)}
+<div class="cap" style="left:{mm(282)};top:{mm(10)}">Massing · looking east over Riley Street · our scheme as a glass</div>
+{axo(scn, parcels, blds, existing, RET)}
 <div class="leg">{leg}</div>
 <div class="ass"><p><b>Assumptions.</b> Lots from the NSW digital cadastre and property register, as the context plan reads them. Footprints follow the three feasible types, fitted to each parcel from the line they are told to follow, no slab over {MAX_LEN} m. Heights are set by density parity with our site: a site of 1,000 m² or more is assumed to reach that FSR through the same pathway, a smaller one only what one slab between party walls can carry; the table says where parity lands. GFA is {EFFICIENCY:.0%} of the envelope, apartments at {UNIT_GFA} m² GFA each; storeys at 3.2 m over a 4.5 m ground floor. Aerial: NSW Imagery via SIX Maps{(" (" + a["imagery"]["date"][:4] + ")") if (a.get("imagery") or {}).get("date") else ""}, the colour drawn down.</p>
 {''.join(f'<p>{x}</p>' for x in flags)}</div>
