@@ -1,5 +1,5 @@
 {
-  "_": "The future-context scenarios for 70-76 Riley Street: scripts/future_context.ts draws them over the capacity study's data. Properties are named by the start of their address as the NSW property register writes it. A building is a footprint type (single: single loaded, 12 m deep; d18: double loaded, 18 m, 8 units a floor; d22: double loaded, up to 22 m, 10 units a floor, east and west facing; consent: as approved; podium: the street wall over the whole parcel), its storeys, and the line its long axis follows: `along` a street or the party wall of a `neighbour`, `setback` metres off that line, `depth` metres deep from it (the type's depth unless smaller), `sides` off each end, `length` at most (45 m whatever is asked), kept `from` a named street's end with `endSetback` off it, or `centre`. `footprint: lot` fills the parcel. Prose may use {A.area}, {A.plate}, {A.fsr}, {A.parity}, {A.gap} and {units}. `site.tower` draws our own scheme as a podium and a tower inset from the lot by the setbacks named per street or neighbour; `site.tower.habitable` says which of its faces carry habitable rooms or balconies. A scenario's own `retained` list overrides the study's.",
+  "_": "The future-context scenarios for 70-76 Riley Street: scripts/future_context.ts draws them over the capacity study's data. Properties are named by the start of their address as the NSW property register writes it. A building is a footprint type (single: single loaded, 12 m deep; d18: double loaded, 18 m, 8 units a floor; d22: double loaded, up to 22 m, 10 units a floor, east and west facing; consent: as approved; podium: the street wall over the whole parcel), its storeys, and the line its long axis follows: `along` a street or the party wall of a `neighbour`, `setback` metres off that line, `depth` metres deep from it (the type's depth unless smaller), `sides` off each end, `length` at most (45 m whatever is asked), kept `from` a named street's end with `endSetback` off it, or `centre`. `footprint: lot` fills the parcel. Prose may use {A.area}, {A.plate}, {A.fsr}, {A.parity}, {A.gap} and {units}. `site.tower` draws our own scheme as a podium and a tower inset from the lot by the setbacks named per street or neighbour; `site.tower.habitable` says which of its faces carry habitable rooms or balconies. A scenario's own `retained` list overrides the study's. A scenario's own `site.tower` moves our tower for that sheet.",
   "site": {
     "storeys": 14,
     "units": 100,
@@ -354,6 +354,220 @@
             },
             {
               "type": "d18",
+              "storeys": 14,
+              "base": 3,
+              "along": "CROWN STREET",
+              "setback": 2,
+              "sides": 3,
+              "length": 45,
+              "from": "centre"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Separation kept, our side",
+      "horizon": "Everything develops; our tower keeps the ADG's half itself",
+      "site": {
+        "tower": {
+          "setbacks": {
+            "RILEY STREET": 2,
+            "STANLEY LANE": 10,
+            "CROWN LANE": 9,
+            "66-68 RILEY STREET": 9
+          }
+        }
+      },
+      "retained": [],
+      "lead": "Everything develops as in Scenario 4, and our tower owes nothing to its neighbours' goodwill: 9 m off Crown Lane and 9 m off 66-68 Riley St, its west face brought out to the Riley St podium edge so a 19 m plate survives. The neighbours then build the towers their sites can carry.",
+      "notes": [
+        "Our tower becomes {site.plate}, {site.area} m² a floor against the {site.drawn} m² drawn, standing {site.east} m off the lane and {site.north} m off 66-68 Riley St: 12 m to the lane's centreline, the ADG's half at levels 9 and over.",
+        "Crown St south as in Scenario 4, its tower 12 m off the lane: {D.sep} m between the towers, clear of the 24 m with windows and balconies on both faces.",
+        "54-68 Riley St as in Scenario 4, its tower at the Yurong Lane end: {A.sep} m from ours, clear.",
+        "The cost is ours, a fifth of the plate; the gain is a scheme that holds whatever the Commission assumes for the neighbours."
+      ],
+      "parcels": [
+        {
+          "key": "A",
+          "name": "54-68 Riley St + 1 Crown Lane",
+          "addresses": [
+            "54-56 RILEY STREET",
+            "1 CROWN LANE",
+            "58 RILEY STREET",
+            "60 RILEY STREET",
+            "62-64 RILEY STREET",
+            "66-68 RILEY STREET"
+          ],
+          "buildings": [
+            {
+              "type": "podium",
+              "storeys": 2,
+              "footprint": "lot"
+            },
+            {
+              "type": "d22",
+              "storeys": 14,
+              "base": 2,
+              "along": "RILEY STREET",
+              "setback": 5,
+              "sides": 3,
+              "length": 30,
+              "from": "YURONG LANE",
+              "endSetback": 3
+            }
+          ]
+        },
+        {
+          "key": "B",
+          "name": "Crown St north, 89-105 + 4 and 10 Crown Lane",
+          "addresses": [
+            "89 CROWN STREET",
+            "4 CROWN LANE",
+            "93 CROWN STREET",
+            "95 CROWN STREET",
+            "97 CROWN STREET",
+            "10 CROWN LANE",
+            "99 CROWN STREET",
+            "105 CROWN STREET"
+          ],
+          "buildings": [
+            {
+              "type": "podium",
+              "storeys": 3,
+              "footprint": "lot"
+            },
+            {
+              "type": "d18",
+              "storeys": 14,
+              "base": 3,
+              "along": "YURONG LANE",
+              "setback": 3,
+              "sides": 0,
+              "length": 25,
+              "from": "CROWN STREET",
+              "endSetback": 4
+            }
+          ]
+        },
+        {
+          "key": "D",
+          "name": "Crown St south, 107-129",
+          "addresses": [
+            "107-113 CROWN STREET",
+            "115-119 CROWN STREET",
+            "121-129 CROWN STREET"
+          ],
+          "buildings": [
+            {
+              "type": "podium",
+              "storeys": 3,
+              "footprint": "lot"
+            },
+            {
+              "type": "d18",
+              "storeys": 14,
+              "base": 3,
+              "along": "CROWN STREET",
+              "setback": 2,
+              "sides": 3,
+              "length": 45,
+              "from": "centre"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Separation kept, their side",
+      "horizon": "Everything develops; our tower stays as drawn",
+      "retained": [],
+      "lead": "Our tower stays where the model puts it, {site.east} m off Crown Lane and {site.north} m off 66-68 Riley St, so the 24 m the ADG asks between towers has to be found on the neighbours' land. Each can still build, at a cost.",
+      "notes": [
+        "Crown St south: with our balconies {site.east} m off the lane, a double-loaded plate cannot keep the 24 m, so the tower turns into a single-loaded 12 m slab facing Crown St, {D.plate}, {D.gap} m off the lane, its lane side a gallery. {D.sep} m between the towers, clear; but {D.storeys} storeys give {D.fsr} where parity needs {D.parity}: a quarter of the site's yield gone to our setback.",
+        "54-68 Riley St: the tower shortened to {A.plate} and held to the Yurong Lane end, its south end {A.sep} m from ours, clear, at parity of {A.parity}.",
+        "Crown St north as in Scenario 3.",
+        "This is the position the Commission is unlikely to accept: our scheme takes its separation from the neighbours' sites, and the ADG's half-to-the-boundary rule exists so that it cannot."
+      ],
+      "parcels": [
+        {
+          "key": "A",
+          "name": "54-68 Riley St + 1 Crown Lane",
+          "addresses": [
+            "54-56 RILEY STREET",
+            "1 CROWN LANE",
+            "58 RILEY STREET",
+            "60 RILEY STREET",
+            "62-64 RILEY STREET",
+            "66-68 RILEY STREET"
+          ],
+          "buildings": [
+            {
+              "type": "podium",
+              "storeys": 2,
+              "footprint": "lot"
+            },
+            {
+              "type": "d22",
+              "storeys": 14,
+              "base": 2,
+              "along": "RILEY STREET",
+              "setback": 5,
+              "sides": 3,
+              "length": 22,
+              "from": "YURONG LANE",
+              "endSetback": 3
+            }
+          ]
+        },
+        {
+          "key": "B",
+          "name": "Crown St north, 89-105 + 4 and 10 Crown Lane",
+          "addresses": [
+            "89 CROWN STREET",
+            "4 CROWN LANE",
+            "93 CROWN STREET",
+            "95 CROWN STREET",
+            "97 CROWN STREET",
+            "10 CROWN LANE",
+            "99 CROWN STREET",
+            "105 CROWN STREET"
+          ],
+          "buildings": [
+            {
+              "type": "podium",
+              "storeys": 3,
+              "footprint": "lot"
+            },
+            {
+              "type": "d18",
+              "storeys": 14,
+              "base": 3,
+              "along": "YURONG LANE",
+              "setback": 3,
+              "sides": 0,
+              "length": 25,
+              "from": "CROWN STREET",
+              "endSetback": 4
+            }
+          ]
+        },
+        {
+          "key": "D",
+          "name": "Crown St south, 107-129",
+          "addresses": [
+            "107-113 CROWN STREET",
+            "115-119 CROWN STREET",
+            "121-129 CROWN STREET"
+          ],
+          "buildings": [
+            {
+              "type": "podium",
+              "storeys": 3,
+              "footprint": "lot"
+            },
+            {
+              "type": "single",
               "storeys": 14,
               "base": 3,
               "along": "CROWN STREET",

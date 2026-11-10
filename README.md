@@ -1972,10 +1972,17 @@ stands or as the scenario builds it, against the Apartment Design Guide
 where one face is blank, 18 and 12 m at levels 5 to 8, 12 and 9 below, read
 at the levels the two buildings share, each building owing its side or rear
 boundary half the first figure). A scenario's own `retained` list overrides
-the study's, so a fourth sheet can develop what the others keep: Riley
-Street's has the three new Crown Street buildings east of the lane and the
-2011 strata go too, and the table says what each tower must then keep from
-ours.
+the study's, and a scenario's own `site.tower` moves the site's tower for
+that sheet, so the later sheets can develop what the earlier ones keep and
+try the separation from either side: Riley Street's fourth has the three
+new Crown Street buildings east of the lane and the 2011 strata go too, its
+fifth pulls our tower to the ADG's half (9 m off the lane and the northern
+neighbour) so the neighbours build freely, its sixth leaves our tower as
+drawn so the neighbours find the whole separation on their land, and loses
+them a quarter of their yield. Each separation is drawn on the plan as a
+dimension line between the two buildings' nearest points, green where it is
+clear, amber where it holds only with one face blank, red where it is short
+even of that.
 
 What the sheets read beyond the capacity study (`scripts/future_context.ts`
 fetches, `scripts/capacity_study/future_context.py` fits and draws; it needs
