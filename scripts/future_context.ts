@@ -115,9 +115,10 @@ if (loriini && !args.includes('--no-sun')) {
     await draw();
   } catch (e: any) { log(`  WARN the sun study did not run: ${e?.message ?? e}`); }
 } else log('  no Loriini beside this repository (LORIINI unset): the sheets carry no sun study');
-const { width, height, pages, summary, options } = JSON.parse(await readFile(join(out, 'future-page.json'), 'utf8')) as { width: number; height: number; pages: number; summary?: boolean; options?: boolean };
-// future.pdf: the summary over every scenario, then a sheet for each in the summary's form; future-detail.pdf: the
-// sheets in full (the plan at 1:500, the massing, the yield, the assumptions)
+const { width, height, pages, summary, options, sun: sunPages = 0 } = JSON.parse(await readFile(join(out, 'future-page.json'), 'utf8')) as { width: number; height: number; pages: number; summary?: boolean | number; options?: boolean; sun?: number };
+// future.pdf: the overview over every scenario, then a sheet for each in the overview's form; future-detail.pdf: the
+// sheets in full (the plan at 1:500, the massing, the yield, the assumptions); future-sun.pdf: the sun's proof for
+// our own apartments, a sheet a scenario
 const print = async (name: string, into: PDFDocument) => {
   await printPage(join(out, `${name}.html`), { width, height }, { png: join(out, `${name}.png`), pdf: join(out, `${name}.pdf`) });
   const one = await PDFDocument.load(await readFile(join(out, `${name}.pdf`)));
@@ -125,12 +126,19 @@ const print = async (name: string, into: PDFDocument) => {
   log(`  printed ${name}`);
 };
 const each = Array.from({ length: pages }, (_, i) => i + 1);
-const main = [...(summary ? ['future-summary'] : []), ...(options ? each.map((i) => `future-option-${i}`) : [])];
+// the overview runs over as many sheets as the scenarios need (eight a sheet at most)
+const overview = typeof summary === 'number' ? Array.from({ length: summary }, (_, i) => `future-summary-${i + 1}`) : summary ? ['future-summary'] : [];
+const main = [...overview, ...(options ? each.map((i) => `future-option-${i}`) : [])];
 const detail = each.map((i) => `future-${i}`);
 const bound = await PDFDocument.create();
 for (const name of main) await print(name, bound);
 const full = await PDFDocument.create();
 for (const name of detail) await print(name, full);
+// future-sun.pdf: the sun's proof for the site's own apartments, a sheet a scenario, where the plans gave them
+const proof = Array.from({ length: sunPages }, (_, i) => `future-sun-${i + 1}`);
+const sunDoc = await PDFDocument.create();
+for (const name of proof) await print(name, sunDoc);
 await writeFile(join(out, main.length ? 'future.pdf' : 'future-detail.pdf'), await (main.length ? bound : full).save());
 if (main.length) await writeFile(join(out, 'future-detail.pdf'), await full.save());
-console.log([...main, ...detail].map((n) => join(out, `${n}.png`)).concat(join(out, 'future.pdf'), ...(main.length ? [join(out, 'future-detail.pdf')] : [])).join('\n'));
+if (proof.length) await writeFile(join(out, 'future-sun.pdf'), await sunDoc.save());
+console.log([...main, ...detail, ...proof].map((n) => join(out, `${n}.png`)).concat(join(out, 'future.pdf'), ...(main.length ? [join(out, 'future-detail.pdf')] : []), ...(proof.length ? [join(out, 'future-sun.pdf')] : [])).join('\n'));

@@ -12,6 +12,7 @@ real parcel. Needs shapely and Pillow (pip3 install shapely pillow). Writes futu
 future-page.json beside analysis.json; scripts/future_context.ts prints them.
 """
 import html as H, json, math, re, sys
+import numpy as np
 from PIL import Image, ImageEnhance
 from shapely.geometry import LineString, MultiPolygon, Point, Polygon
 from shapely.ops import nearest_points, unary_union
@@ -135,8 +136,8 @@ def H_of(n):
 # ---- footprints -------------------------------------------------------------------------------------------------
 MAX_LEN = 45
 DEPTH = dict(single=12, d18=18, d22=22)
-TYPE = dict(single='Single loaded, 12 m', d18='Double loaded, 18 m', d22='Double loaded, 22 m', consent='As approved', podium='Podium')
-C = dict(single='#9c7273', d18='#e3d6cb', d22='#a995ad', podium='#cdc6c0', retained='#8d8d8d', low='#dedede', consent='#b7c3a2', site='#f3d9d9')
+TYPE = dict(single='Single loaded, 12 m', d18='Double loaded, 18 m', d22='Double loaded, 22 m', block='Full-lot block', consent='As approved', podium='Podium')
+C = dict(single='#9c7273', d18='#e3d6cb', d22='#a995ad', block='#8fa3b5', podium='#cdc6c0', retained='#8d8d8d', low='#dedede', consent='#b7c3a2', site='#f3d9d9')
 
 
 def unit(v):
@@ -198,7 +199,9 @@ def fit(parcel, spec):
     from the reference line, setback off it, its ends `sides` off the parcel's and no longer than `length` (45 m at
     most), kept from the end nearest `from` (a street) or centred."""
     if spec.get('footprint') == 'lot' or spec['type'] in ('podium', 'consent'):
-        return parcel, dict(plate=None, gap=None)
+        # a block over the lot takes the lot's outline with the points along its straight sides dropped, so each of
+        # its walls is one wall to the sun study and not the run of the old titles' ends
+        return (parcel.simplify(0.3, preserve_topology=True) if spec['type'] == 'block' else parcel), dict(plate=None, gap=None)
     u, n, o = reference(parcel, spec)
     depth = min(spec.get('depth') or DEPTH[spec['type']], DEPTH.get(spec['type'], 99))
     setback = spec.get('setback', 0)
@@ -694,7 +697,7 @@ def axo(scn, parcels, blds, existing, RET):
             k = 0.62 if nxr < 0 else 0.8
             d = (proj(x1, y1, 0)[2] + proj(x2, y2, 0)[2]) / 2
             walls.append((d, f'<polygon points="{Pt(x1, y1, z0)} {Pt(x2, y2, z0)} {Pt(x2, y2, z1)} {Pt(x1, y1, z1)}" fill="{shade(col, k)}"{glass} stroke="{stroke}" stroke-width="{sw}" stroke-linejoin="round"/>'))
-            if b['typ'] in ('single', 'd18', 'd22', 'site'):
+            if b['typ'] in ('single', 'd18', 'd22', 'block', 'site'):
                 for s in range(max(b.get('base', 0), 1), b['n']):
                     z = H_of(s)
                     a1, a2 = Pt(x1, y1, z).split(','), Pt(x2, y2, z).split(',')
@@ -789,6 +792,7 @@ LEGEND = [
     (C['single'], '', '<b>Single loaded footprint</b>, 12 m deep, either orientation'),
     (C['d18'], '', '<b>Double loaded footprint (8 units)</b>, 18 m deep'),
     (C['d22'], '', '<b>Double loaded footprint (10 units)</b>, up to 22 m deep, units facing east and west'),
+    (C['block'], '', '<b>Full-lot block</b>, the whole parcel, apartments on every face that is not a party wall'),
     (C['podium'], '', 'Podium / street wall, 2 to 3 storeys'),
     (C['consent'], '', 'Built under an existing consent'),
     (C['retained'], '', 'Retained unless a scenario develops it: ' + ', '.join(PROPS[pid]['base'].title().replace(' Darlinghurst', '') + f' ({why["why"]})' for pid, why in RETAINED.items())),
@@ -885,20 +889,38 @@ def apts_verdict(r):
     return ('✓ complies' if ok else '~ close' if close else '✗ no'), ('clear' if ok else 'one face blank' if close else 'short of a blank face')
 
 
-def sun_cell(r, today=False):
-    """One building's sun for the summary: the share of bays with two hours as planned, its mark, and the single-loaded
-    figure where that is what passes; (text, colour key)."""
+def of(share, n):
+    """So many of so many apartments."""
+    return f'{round(share * n)} of {n}'
+
+
+def sun_cell(r, today=False, units=None):
+    """One building's sun for the summary: how many of its apartments have their two continuous hours as planned
+    (its own count for ours, the yield's count for a neighbour), the mark, the plan the figure is for, and the
+    single-loaded figure where that is what passes; (text, colour key)."""
     if not r or not r.get('apts'):
         return None
     ap = r['apts']
     mark, vcol = apts_verdict(ap['planned'])
     smark, _ = apts_verdict(ap['single'])
-    text = f'{ap["planned"]["share"]:.0%} {mark}'
-    if mark[0] != '✓' and smark[0] == '✓' and r.get('type') not in ('single',) and not r.get('units'):
-        text += f' · single-loaded {ap["single"]["share"]:.0%} ✓'
+    n = ap['planned']['bays'] if r.get('units') else units
+    text = (f'{of(ap["planned"]["share"], n)} ' if n else '') + f'({ap["planned"]["share"]:.0%}) {mark}'
+    if not r.get('units'):
+        facing = f', facing {ap["single_face"]}' if ap.get('single_face') else ''
+        sides = ap.get('sides', 2)
+        if r.get('type') in ('single',):
+            text += ' · single-loaded' + facing
+        elif sides < 2:
+            text += ' · one long wall on a boundary, so single-loaded' + facing
+        elif sides == 2 and r.get('party_m', 0) > 1.5 * ap.get('principal_m', 99):
+            text += ' · its long walls on boundaries, apartments at the two ends only'
+        else:
+            text += ' · double-loaded' if sides == 2 else f' · apartments on {sides} faces'
+            if mark[0] != '✓' and smark[0] == '✓':
+                text += f', single-loaded{facing} {ap["single"]["share"]:.0%} ✓'
     by = r.get('apts_by') or {}
     if today and 'tower' in by and 'podium' in by:
-        text += f' · tower {by["tower"]["planned"]["share"]:.0%} · podium {by["podium"]["planned"]["share"]:.0%}'
+        text += f' · tower {of(by["tower"]["planned"]["share"], by["tower"]["planned"]["bays"])} · podium {of(by["podium"]["planned"]["share"], by["podium"]["planned"]["bays"])}'
     other = r.get('apts_today') if today else r.get('apts_without_site')
     if today and other:
         text += f' (before them {other["planned"]["share"]:.0%})'
@@ -1016,25 +1038,189 @@ def option_page(r):
            f'.ocol{{position:absolute;left:{mm(252)};top:{mm(26)};width:{mm(158)};font-size:{pt(7.2)};line-height:1.4}}'
            f'.ocol .u{{font-size:{pt(8)};margin-bottom:{mm(2)}}} .ocol .lead{{color:#444;margin:0 0 {mm(3)}}}'
            f'.ocol table{{font-size:{pt(6.4)}}} .ocol td{{padding:{mm(.6)} {mm(.5)}}} .ocol th{{padding:{mm(.6)} {mm(.5)}}}'
-           f'.ocol .ass{{position:static;width:auto;margin-top:{mm(4)};font-size:{pt(6)};color:#555}}')
+           f'.ocol .ass{{position:static;width:auto;margin-top:{mm(3)};font-size:{pt(6)};color:#555}}'
+           f'.oaxo{{width:{mm(158)};height:{mm(95)};margin-top:{mm(4)}}} .oaxo svg{{position:static;width:100%;height:100%}}')
     head = (f'<div class="oh"><div class="kick">Future context · Scenario {r["no"]} of {LAST}</div><h1>{H.escape(r["title"])}</h1>'
             f'<div class="hor">{H.escape(r["horizon"])}</div></div>')
     col = (f'<div class="ocol"><div class="u">{gain}neighbours can develop: <b style="color:{r["allow_colour"]}">{r["allow"]}</b></div>'
            f'<p class="lead">{r["lead"]}</p>'
-           f'<table><tr><th>Building</th><th>Separation from our tower</th><th>Apartments with 2 continuous hours of winter sun</th></tr>{trs}</table>'
+           f'<table><tr><th>Building</th><th>Separation from our tower</th><th>Apartments with 2 continuous hours of winter sun, of all its apartments</th></tr>{trs}</table>'
+           f'<div class="oaxo">{r["axo"]}</div>'
            f'<div class="ass">{OPTION_NOTE}</div></div>')
     return (f'<!doctype html><html><head><meta charset="utf-8"><title>Future context · Scenario {r["no"]}</title><style>{CSS}{css}</style></head><body>'
             f'{head}<div class="oplan">{r["big"]}</div>{col}</body></html>')
 
 
-def summary_page():
-    """One sheet over all the scenarios: a plan each, the apartments gained, and for every new building its separation
-    from our tower and its mid-winter sun, read as the ADG reads them; a line on whether our massing lets the neighbours
-    develop."""
+SUN_LIT, SUN_SHADE = '#f4c242', '#a9a9a9'
+
+
+def sun_views(no, sun, hours=(9, 10, 11, 12, 13, 14, 15), reach=32):
+    """The scene seen from the sun at each hour, our apartments lit or in shadow as it sees them: an orthographic
+    projection along the sun's ray, every sun-facing wall and roof drawn far to near, our units' spans on their walls
+    coloured by the engine's reading at that instant."""
+    scene = json.load(open(f'{OUT}/future-scene-{no}.json'))
+    site_rec = sun['buildings'].get('site') or {}
+    series = {}
+    for grp, res in (site_rec.get('apts_by') or {}).items():
+        for uid, fl, ok, dark, ser in (res.get('each') or []):
+            series[(grp, uid, fl)] = ser
+    kinds = {b['id']: b['kind'] for b in scene['buildings']}
+    fills = {'site': '#f3d9d9', 'new': '#cdc6c0', 'standing': '#dadada', 'context': '#e7e7e7'}
+    step = sun.get('step', 10)
+    views = []
+    for hour in hours:
+        idx = int((hour - 9) * 60 / step)
+        s = np.array(sun['sun'][idx], dtype=float)
+        if s[2] <= 0:
+            continue
+        fwd = -s
+        right = np.cross(fwd, np.array([0.0, 0.0, 1.0]))
+        right /= np.linalg.norm(right)
+        up = np.cross(right, fwd)
+        P = lambda x, y, z: (np.dot((x, y, z), right), np.dot((x, y, z), up), np.dot((x, y, z), fwd))
+        items = []
+        ours = []
+        for b in scene['buildings']:
+            fill = fills.get(b['kind'], '#e7e7e7')
+            stroke = '#c0161c' if b['kind'] == 'site' else '#8a8a8a'
+            for part in b['parts']:
+                ring = part['ring']
+                z0, z1 = part['z0'], part['z1']
+                faces = []
+                for p, q in zip(ring, ring[1:] + ring[:1]):
+                    nx, ny = q[1] - p[1], -(q[0] - p[0])
+                    L = math.hypot(nx, ny)
+                    if L < 1e-6:
+                        continue
+                    nx, ny = nx / L, ny / L
+                    if nx * s[0] + ny * s[1] <= 0:
+                        continue                                    # a wall the sun does not reach is not in its view
+                    quad = [P(p[0], p[1], z0), P(q[0], q[1], z0), P(q[0], q[1], z1), P(p[0], p[1], z1)]
+                    faces.append((sum(c[2] for c in quad) / 4, quad, fill, stroke))
+                top = [P(x, y, z1) for x, y in ring]
+                faces.append((sum(c[2] for c in top) / len(top), top, fill, stroke))
+                items += faces
+                if b['kind'] == 'site' and part.get('units'):
+                    for side, lst in (('east', part['units'].get('east', [])), ('west', part['units'].get('west', []))):
+                        want = 1 if side == 'east' else -1
+                        best = None
+                        for p, q in zip(ring, ring[1:] + ring[:1]):
+                            nx, ny = q[1] - p[1], -(q[0] - p[0])
+                            L = math.hypot(nx, ny)
+                            if L and nx / L * want > 0.7 and (best is None or L > best[0]):
+                                best = (L, p, q, nx / L, ny / L)
+                        if not best:
+                            continue
+                        L, p, q, nx, ny = best
+                        north, south = (p, q) if p[1] > q[1] else (q, p)
+                        ux, uy = (south[0] - north[0]) / L, (south[1] - north[1]) / L
+                        lit_wall = nx * s[0] + ny * s[1] > 0
+                        nf = max(1, int(round((z1 - z0) / 3.2)))
+                        at = 0.0
+                        for unit in lst:
+                            a, bb = at, at + float(unit[1])
+                            at = bb
+                            for fl in range(nf):
+                                ser = series.get((part['homes'], str(unit[0]), fl), '')
+                                lit = lit_wall and idx < len(ser) and ser[idx] == '1'
+                                za, zb = z0 + fl * 3.2, z0 + (fl + 1) * 3.2
+                                c0 = (north[0] + ux * a, north[1] + uy * a)
+                                c1 = (north[0] + ux * bb, north[1] + uy * bb)
+                                quad = [P(c0[0], c0[1], za), P(c1[0], c1[1], za), P(c1[0], c1[1], zb), P(c0[0], c0[1], zb)]
+                                if lit_wall:
+                                    items.append((sum(c[2] for c in quad) / 4 - 0.05, quad, SUN_LIT if lit else SUN_SHADE, '#7a6a2a' if lit else '#777'))
+                                if b['kind'] == 'site':
+                                    ours += quad
+        items.sort(key=lambda it: -it[0])                            # far first
+        xs = [c[0] for c in ours] or [0]
+        ys = [c[1] for c in ours] or [0]
+        x0, x1, y0, y1 = min(xs) - reach, max(xs) + reach, min(ys) - reach * 0.6, max(ys) + reach * 0.6
+        svg = [f'<svg viewBox="{x0:.1f} {-y1:.1f} {x1 - x0:.1f} {y1 - y0:.1f}" xmlns="http://www.w3.org/2000/svg"><rect x="{x0:.1f}" y="{-y1:.1f}" width="{x1 - x0:.1f}" height="{y1 - y0:.1f}" fill="#f7f6f3"/>']
+        for depth, poly, fill, stroke in items:
+            svg.append(f'<polygon points="{" ".join(f"{c[0]:.2f},{-c[1]:.2f}" for c in poly)}" fill="{fill}" stroke="{stroke}" stroke-width="0.25" stroke-linejoin="round"/>')
+        svg.append('</svg>')
+        alt = math.degrees(math.asin(s[2]))
+        az = (math.degrees(math.atan2(s[0], s[1])) + 360) % 360
+        views.append((f'{hour}:00', f'sun at {az:.0f}°, {alt:.0f}° up', ''.join(svg)))
+    return views
+
+
+def sun_chart(sun, levels):
+    """One line an apartment: its sunlit instants against the clock from 9 to 3, the two continuous hours it needs
+    marked where it has them; (rows of html, count ok, count all)."""
+    site_rec = sun['buildings'].get('site') or {}
+    times = sun['times']
+    n = len(times)
+    rows, ok_n, all_n = [], 0, 0
+    for grp, first, side_of in levels:
+        res = (site_rec.get('apts_by') or {}).get(grp) or {}
+        for uid, fl, ok, dark, ser in sorted(res.get('each') or [], key=lambda e: (e[1], e[0])):
+            all_n += 1
+            ok_n += int(ok)
+            segs = ''
+            run, best, start, bstart = 0, 0, 0, 0
+            for i, ch in enumerate(ser):
+                if ch == '1':
+                    run = run + 1 if run else 1
+                    start = i if run == 1 else start
+                    segs += f'<rect x="{(i / (n - 1)) * 100:.2f}%" y="22%" width="{100 / (n - 1):.2f}%" height="56%" fill="{SUN_LIT}"/>'
+                    if run > best:
+                        best, bstart = run, start
+                else:
+                    run = 0
+            if best and (best - 1) * sun.get('step', 10) >= 120:
+                segs += f'<rect x="{(bstart / (n - 1)) * 100:.2f}%" y="12%" width="{((best - 1) / (n - 1)) * 100:.2f}%" height="76%" fill="none" stroke="#1f8f3a" stroke-width="1.2"/>'
+            mark = '✓' if ok else '✗'
+            col = '#1f8f3a' if ok else '#c0161c'
+            rows.append(f'<div class="srow"><div class="sl">L{first + fl} · {uid} {side_of.get(uid, "")}</div><div class="sb"><svg width="100%" height="100%">{"".join(f"<line x1=\"{h / 6 * 100:.1f}%\" y1=\"0\" x2=\"{h / 6 * 100:.1f}%\" y2=\"100%\" stroke=\"#ddd\" stroke-width=\"0.6\"/>" for h in range(7))}{segs}</svg></div><div class="sm" style="color:{col}">{mark}</div></div>')
+    return rows, ok_n, all_n
+
+
+def sun_page(no, scn, sun, r):
+    """The sun's proof for our apartments in one scenario: the sun's-eye views hour by hour, and the hour chart."""
+    if not sun or not (sun['buildings'].get('site') or {}).get('units'):
+        return None
+    tw = TOWER or {}
+    side_of = {}
+    for grp in ('podium', 'tower'):
+        for side, lst in (tw.get('units') or {}).get(grp, {}).items():
+            for unit in lst:
+                side_of[str(unit[0])] = {'east': 'Crown Lane', 'west': 'Riley St'}.get(side, side)
+    rows, ok_n, all_n = sun_chart(sun, [('podium', tw.get('homesFrom', 1), side_of), ('tower', SITE_PODIUM + 1, side_of)])
+    views = sun_views(no, sun)
+    half = (len(rows) + 1) // 2
+    vw = 400 / max(1, len(views))
+    view_html = ''.join(f'<div class="sv" style="width:{mm(vw - 2)}"><div class="svt">{H.escape(t)} <span>{H.escape(d)}</span></div>{svg}</div>' for t, d, svg in views)
+    css = (f'.sh{{position:absolute;left:{mm(10)};top:{mm(9)};width:{mm(400)}}} .sh h1{{margin:0}}'
+           f'.views{{position:absolute;left:{mm(10)};top:{mm(24)};width:{mm(400)};display:flex;gap:{mm(2)}}}'
+           f'.sv{{flex:none;height:{mm(88)}}} .sv svg{{width:100%;height:{mm(82)}}} .svt{{font-size:{pt(7)};font-weight:700;margin-bottom:{mm(.5)}}} .svt span{{font-weight:400;color:#666}}'
+           f'.chart{{position:absolute;left:{mm(10)};top:{mm(118)};width:{mm(400)};display:grid;grid-template-columns:1fr 1fr;column-gap:{mm(8)}}}'
+           f'.ch{{font-size:{pt(6.6)};font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-bottom:{mm(1)}}}'
+           f'.srow{{display:flex;align-items:center;height:{mm(3.05)};font-size:{pt(5.6)};border-bottom:{mm(.1)} solid #eee}}'
+           f'.sl{{width:{mm(34)};flex:none;white-space:nowrap;overflow:hidden}} .sb{{flex:1;height:{mm(2.6)}}} .sb svg{{display:block}} .sm{{width:{mm(6)};text-align:right;font-weight:700}}'
+           f'.hours{{display:flex;justify-content:space-between;margin-left:{mm(34)};margin-right:{mm(6)};font-size:{pt(5.4)};color:#666}}'
+           f'.sn{{position:absolute;left:{mm(10)};bottom:{mm(7)};width:{mm(400)};font-size:{pt(6)};color:#555}}')
+    hours = '<div class="hours">' + ''.join(f'<span>{h}:00</span>' for h in range(9, 16)) + '</div>'
+    head = (f'<div class="sh"><div class="kick">Future context · Scenario {r["no"]} of {LAST} · the sun on our apartments</div><h1>{H.escape(r["title"])}: '
+            f'{ok_n} of {all_n} apartments have their two continuous hours</h1>'
+            f'<div class="hor">21 June, 9 to 3. Above, the scene as the sun sees it each hour, our apartments lit where it reaches their wall; below, each apartment’s sun against the clock, its two continuous hours framed where it has them.</div></div>')
+    chart = (f'<div class="chart"><div><div class="ch">Podium and tower, levels {tw.get("homesFrom", 1)} to {S["storeys"]}</div>{hours}{"".join(rows[:half])}</div>'
+             f'<div><div class="ch">&nbsp;</div>{hours}{"".join(rows[half:])}</div></div>')
+    note = ('<div class="sn">Cast with Loriini’s engine at a metre, every building on its own ground, the scenario standing. An apartment is lit at an instant where at least half of its wall '
+            'span at that storey is in sun; the corner apartments on either of their walls. The sun’s-eye view is an orthographic projection along the sun’s ray, so whatever it shows is in sun '
+            'and whatever it hides is in shadow. A yellow span is its sun, the green frame the longest unbroken run of two hours or more.</div>')
+    return (f'<!doctype html><html><head><meta charset="utf-8"><title>Future context · Scenario {r["no"]} · sun</title><style>{CSS}{css}</style></head><body>'
+            f'{head}<div class="views">{view_html}</div>{chart}{note}</body></html>')
+
+
+def summary_page(part, page_no, pages):
+    """The overview, over as many sheets as the scenarios need: each with its plan and its massing, the apartments
+    gained, and for every new building its separation from our tower and its mid-winter sun, read as the ADG reads
+    them; a line on whether our massing lets the neighbours develop."""
     def cell(text, verdict):
         return f'<td style="color:{VERDICT_COLOUR.get(verdict, "#111")};font-weight:600">{text}</td>'
     rows = []
-    for r in SUMMARY:
+    for r in part:
         trs = ''
         for b in r['buildings']:
             sun_t, sun_c = b['sun'] if b['sun'] else ('—', '')
@@ -1044,22 +1230,25 @@ def summary_page():
         if ours:
             trs += f'<tr><td><b>Our building</b></td><td style="color:#888">—</td>{cell(ours[0], ours[1])}</tr>'
         gain = f'About <b>{r["units"]} new apartments</b> on top of ours · ' if r['buildings'] else ''
-        rows.append(f'''<div class="row"><div class="mini">{r['mini']}</div><div class="info">
+        rows.append(f'''<div class="row"><div class="mini">{r['mini']}</div><div class="maxo">{r['axo']}</div><div class="info">
 <div class="t">{r['no']} · {H.escape(r['title'])}</div>
 <div class="u">{gain}neighbours can develop: <b style="color:{r['allow_colour']}">{r['allow']}</b></div>
-<table><tr><th>Building</th><th>Separation from our tower</th><th>Apartments with 2 continuous hours of winter sun</th></tr>{trs}</table></div></div>''')
+<table><tr><th>Building</th><th>Separation from our tower</th><th>Apartments with 2 continuous hours of winter sun, of all its apartments</th></tr>{trs}</table></div></div>''')
+    lead = (f'<p class="lead">Each scenario: its plan with the blocks round it as they stand (storeys off the 3D tiles) and its massing, the apartments it adds, and for every new building how far it stands from our tower against the ADG\'s separation (24 m between habitable rooms at nine storeys and over, 18 m where one face is blank, 18 and 12 at five to eight), and how many of its apartments (the yield\'s count at 85 m² each; ours as the plans have them) get two continuous hours of sun on 21 June, read as ADG 4A-1 reads it: apartments in 8 m bays along the walls, both long faces of a double-loaded plan or the better face of a single-loaded one, corner units taking both walls; 70 % with two hours and no more than 15 % with none is a tick, 60 % is close, and the single-loaded figure says what the plan could still reach, facing the way it names. Green holds, amber holds with a condition, red does not. Our tower as the model draws it, {H.escape(plate_of(BASE_TOWER))}, {", ".join(f"{site_setback(n):.0f} m off {n.title()}" for n in (S.get("tower") or {}).get("setbacks", {}))}.</p>'
+            if page_no == 1 else f'<p class="lead">Scenarios {part[0]["no"]} to {part[-1]["no"]}, read as on the first sheet.</p>')
     return f'''<!doctype html><html><head><meta charset="utf-8"><title>Future context · summary</title><style>{CSS}
 .sum{{position:absolute;left:{mm(10)};top:{mm(9)};width:{mm(400)}}}
 .sum h1{{margin:0 0 {mm(1)}}} .sum .lead{{margin:0 0 {mm(3)};color:#444;font-size:{pt(7.4)}}}
 .grid{{display:grid;grid-template-columns:1fr 1fr;column-gap:{mm(10)};row-gap:{mm(2)}}}
 .row{{display:flex;gap:{mm(3)};border-top:{mm(.2)} solid #ccc;padding-top:{mm(1.5)};min-height:{mm(50)}}}
 .mini{{width:{mm(40)};height:{mm(47)};flex:none}} .mini svg{{width:100%;height:100%}}
+.maxo{{width:{mm(44)};height:{mm(47)};flex:none}} .maxo svg{{position:static;width:100%;height:100%}}
 .info{{flex:1;min-width:0;font-size:{pt(6.4)};line-height:1.3}}
 .t{{font-size:{pt(8.5)};font-weight:700;margin-bottom:{mm(.6)}}} .u{{margin-bottom:{mm(1.2)}}}
 .info table{{font-size:{pt(6)}}} .info td{{padding:{mm(.4)} {mm(.5)}}} .info th{{padding:{mm(.4)} {mm(.5)}}}
 </style></head><body>
-<div class="sum"><div class="kick">Future context · summary</div><h1>Does our massing let the neighbours develop?</h1>
-<p class="lead">Each scenario: its plan with the blocks round it as they stand (storeys off the 3D tiles), the apartments it adds, and for every new building how far it stands from our tower against the ADG's separation (24 m between habitable rooms at nine storeys and over, 18 m where one face is blank, 18 and 12 at five to eight), and the share of its apartments with two continuous hours of sun on 21 June, read as ADG 4A-1 reads it: apartments in 8 m bays along the walls, both long faces of a double-loaded plan or the better face of a single-loaded one, corner units taking both walls; 70 % with two hours and no more than 15 % with none is a tick, 60 % is close, and the single-loaded figure says what the plan could still reach. Green holds, amber holds with a condition, red does not. Our tower as the model draws it, {H.escape(plate_of(BASE_TOWER))}, {', '.join(f'{site_setback(n):.0f} m off {n.title()}' for n in (S.get('tower') or {}).get('setbacks', {}))}.</p>
+<div class="sum"><div class="kick">Future context · overview{f" · sheet {page_no} of {pages}" if pages > 1 else ""}</div><h1>Does our massing let the neighbours develop?</h1>
+{lead}
 <div class="grid">{''.join(rows)}</div></div>
 </body></html>'''
 
@@ -1114,7 +1303,7 @@ def page(no, scn):
                 rows.append(line(f'   its podium, levels {(TOWER or {}).get("homesFrom", 1)} to {SITE_PODIUM}{per("podium")}', by['podium'], other_by.get('podium')))
                 failing = {}
                 for grp, first in (('podium', (TOWER or {}).get('homesFrom', 1)), ('tower', SITE_PODIUM + 1)):
-                    for uid, fl, ok_, dark_ in (by[grp].get('each') or []):
+                    for uid, fl, ok_, dark_, *_ in (by[grp].get('each') or []):
                         if not ok_:
                             failing.setdefault(first + fl, []).append(uid + ('*' if dark_ else ''))
                 sun_failing.update(failing)
@@ -1151,7 +1340,8 @@ def page(no, scn):
         main = [b for b in blds if b['key'] == key and b['typ'] != 'podium'][-1]
         nm, d, v = by_row.get(key, (f'{key} · {TYPE[main["typ"]].split(",")[0].lower()}, {main["n"]} st', SITE_TOWER.distance(main['poly']), 'clear'))
         sr = sunb.get(f'new-{key}')
-        buildings.append(dict(name=nm, d=d, v=v, sun=sun_cell(sr)))
+        gfa_key = next((q['gfa'] for q in parcels if q['key'] == key), 0)
+        buildings.append(dict(name=nm, d=d, v=v, sun=sun_cell(sr, units=round(gfa_key / UNIT_GFA)), units=round(gfa_key / UNIT_GFA)))
     ours = sun_cell(sunb.get('site'), today=True) if sunb.get('site') else None
     worst = max((['clear', 'one face blank', 'short of a blank face'].index(b['v']) for b in buildings), default=0)
     allow = ['yes', 'yes, with one face blank where amber', 'no, the red building cannot keep the separation'][worst] if buildings else 'nothing new to allow'
@@ -1163,7 +1353,8 @@ def page(no, scn):
             b['parts'] = '+'.join(f'{x:.0f}' for x in ((a_, gap_, c_) if gap_ >= 0.3 else (a_, c_)))
     SUMMARY.append(dict(no=no, title=scn['title'], horizon=scn.get('horizon', ''), lead=fill_in(scn['lead'], parcels, units), units=units, buildings=buildings, ours=ours,
                         allow=allow, allow_colour=list(VERDICT_COLOUR.values())[worst], failing=sun_failing, shaded=sun_shaded,
-                        mini=mini_plan(parcels, blds, existing, RET, sep), big=mini_plan(parcels, blds, existing, RET, sep, k=0.45, big=True)))
+                        mini=mini_plan(parcels, blds, existing, RET, sep), big=mini_plan(parcels, blds, existing, RET, sep, k=0.45, big=True),
+                        axo=axo(scn, parcels, blds, existing, RET), sun=sun, scn=scn))
     return f'''<!doctype html><html><head><meta charset="utf-8"><title>Future context · Scenario {no}</title><style>{CSS}</style></head><body>
 <div class="txt"><div class="kick">Future context · Scenario {no} of {LAST}</div><h1>{H.escape(scn["title"])}</h1><div class="hor">{H.escape(scn["horizon"])}</div>
 <p class="lead">{fill_in(scn["lead"], parcels, units)}</p><ul>{lis}</ul>
@@ -1188,10 +1379,19 @@ FIRST = sc['scenarios'][0].get('number', 1)
 LAST = FIRST + len(sc['scenarios']) - 1
 for i, scn in enumerate(sc['scenarios'], 1):
     open(f'{OUT}/future-{i}.html', 'w').write(page(FIRST + i - 1, scn))
-open(f'{OUT}/future-summary.html', 'w').write(summary_page())
+per = math.ceil(len(SUMMARY) / math.ceil(len(SUMMARY) / 8))              # at most eight scenarios a sheet, spread evenly
+chunks = [SUMMARY[i:i + per] for i in range(0, len(SUMMARY), per)]
+for i, part in enumerate(chunks, 1):
+    open(f'{OUT}/future-summary-{i}.html', 'w').write(summary_page(part, i, len(chunks)))
+sun_pages = 0
 for i, r in enumerate(SUMMARY, 1):
     open(f'{OUT}/future-option-{i}.html', 'w').write(option_page(r))
-json.dump({'width': PAGE_W, 'height': PAGE_H, 'pages': len(sc['scenarios']), 'summary': True, 'options': True}, open(f'{OUT}/future-page.json', 'w'))
+    set_tower(r['scn'])
+    html = sun_page(r['no'], r['scn'], r['sun'], r)
+    if html:
+        open(f'{OUT}/future-sun-{i}.html', 'w').write(html)
+        sun_pages += 1
+json.dump({'width': PAGE_W, 'height': PAGE_H, 'pages': len(sc['scenarios']), 'summary': len(chunks), 'options': True, 'sun': sun_pages}, open(f'{OUT}/future-page.json', 'w'))
 for i, scn in enumerate(sc['scenarios'], 1):
     set_tower(scn)
     parcels, blds, existing = resolve(scn)

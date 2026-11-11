@@ -1942,18 +1942,21 @@ site might redevelop: three A3 landscape sheets, one a scenario, each a plan
 at 1:500 on the clean aerial (no marks, no labels, the colour drawn down)
 beside an axonometric massing looking east over the site's street, with the
 scenario's story in the left column and an indicative yield under it.
-Outputs, beside `analysis.json`: `future.pdf`, a one-page summary
-(`future-summary.png`: each scenario's plan as colour blocks with the blocks
-round it and their storeys, the apartments it adds, and for every new
-building its separation from the site's tower and its mid-winter sun, read as
-the ADG reads them, with a line on whether the site's massing lets the
-neighbours develop) followed by a sheet for each scenario in the same form
-(`future-option-<n>.png`: the plan large, the table, the apartments of ours
-without their sun and the neighbours our tower shades); and
+Outputs, beside `analysis.json`: `future.pdf`, an overview
+(`future-summary-<n>.png`, eight scenarios a sheet at most: each scenario's
+plan as colour blocks with the blocks round it and their storeys, its
+massing, the apartments it adds, and for every new building its separation
+from the site's tower and its mid-winter sun, read as the ADG reads them,
+with a line on whether the site's massing lets the neighbours develop)
+followed by a sheet for each scenario in the same form
+(`future-option-<n>.png`: the plan large, the table, the massing, the
+apartments of ours without their sun and the neighbours our tower shades);
 `future-detail.pdf`, the sheets in full (`future-<n>.png`: the plan at 1:500
-on the aerial, the massing, the yield, the assumptions). `--redraw` draws
-again from what was fetched.
-`examples/capacity_study/` holds the three sheets for 70-76 Riley Street with
+on the aerial, the massing, the yield, the assumptions); and, where the
+scenarios file lays the site's apartments out, `future-sun.pdf`, the sun's
+proof for them (`future-sun-<n>.png`, below). `--redraw` draws again from
+what was fetched.
+`examples/capacity_study/` holds the sheets for 70-76 Riley Street with
 their scenarios file.
 
 The scenarios are the author's, in JSON: each parcel named by the start of
@@ -1964,8 +1967,9 @@ follows — `along` a street, or the party wall of a `neighbour` — with its
 the street end it is kept `from`. The footprint is fitted to the real
 cadastre from that: the three feasible types (single loaded 12 m deep,
 double loaded 18 m for 8 units a floor, double loaded up to 22 m for 10 units
-facing east and west), no slab over 45 m, a podium or a consent over the
-whole parcel. The prose may quote what the fit found (`{A.area}`,
+facing east and west), no slab over 45 m, a `block` over the whole parcel
+with apartments on every face that is not a party wall, a podium or a
+consent over the whole parcel. The prose may quote what the fit found (`{A.area}`,
 `{A.plate}`, `{A.gap}`, `{A.parity}`, `{units}`), so the numbers on the sheet
 are the data's. Heights are set by density parity with the site (its units
 at 85 m² of GFA each over its area, about 6:1 at Riley Street): the table says
@@ -1983,12 +1987,17 @@ at the levels the two buildings share, each building owing its side or rear
 boundary half the first figure). A scenario's own `retained` list overrides
 the study's, and a scenario's own `site.tower` moves the site's tower for
 that sheet, so the later sheets can develop what the earlier ones keep and
-try the separation from either side: Riley Street's fourth has the three
-new Crown Street buildings east of the lane and the 2011 strata go too, its
-fifth pulls our tower to the ADG's half (9 m off the lane and the northern
-neighbour) so the neighbours build freely, its sixth leaves our tower as
-drawn so the neighbours find the whole separation on their land, and loses
-them a quarter of their yield. Each separation is drawn on the plan as a
+try the separation from either side: Riley Street's scenarios run from
+today (0) through lot by lot and five paired amalgamations (the north
+pairs, the corners, the middle, north and south, and three more ways of
+the last: 99-105 Crown Street built as a block over its whole lot, the
+Crown Street lots south of the lane lot as one site with a podium and a
+slab on the street, and the Riley Street strata joining its site) to the
+full amalgamation; then everything develops, the three new Crown Street
+buildings east of the lane and the 2011 strata too; then our tower pulled
+to the ADG's half (9 m off the lane and the northern neighbour) so the
+neighbours build freely; then our tower as drawn, so the neighbours find
+the whole separation on their land, and lose a quarter of their yield. Each separation is drawn on the plan as a
 dimension line between the two buildings' nearest points, green where it is
 clear, amber where it holds only with one face blank, red where it is short
 even of that.
@@ -2011,9 +2020,16 @@ tiles read it, so a higher neighbour's roof cuts the low sun as it does.
 Where the scenarios file lays the site's apartments out as its plans do
 (`site.tower.units`, each face from the north end, each apartment its
 width and a corner flag), each is tested at its own wall and storey and
-the sheet names the ones without their two hours, level by level.
-Each building is read as planned and as it would be single-loaded, with the
-scenario standing, and without our tower (ours: with today's buildings
+the sheet names the ones without their two hours, level by level, and
+`future-sun.pdf` proves it a scenario a sheet: the scene as the sun sees it
+each hour from 9 to 3 (an orthographic view along the sun's ray, so what it
+shows is in sun and what it hides is in shadow, our apartments' walls
+coloured by the engine's reading at that instant), and under it an hour
+chart with a line an apartment, its sun against the clock and the longest
+unbroken run of two hours or more framed where it has one.
+Each building is read as planned and as it would be single-loaded, facing
+the way its better face looks (north, for a slab that runs east-west), with
+the scenario standing, and without our tower (ours: with today's buildings
 alone), so the sheet says who complies, with what plan, and whom our tower
 shades (3B-2: a standing building it costs ten points or more gets a row).
 A wall on a shared boundary is a party wall and holds no apartment; a

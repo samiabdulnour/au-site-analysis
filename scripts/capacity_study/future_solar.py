@@ -18,6 +18,7 @@ metre (SUN_SPACING_M), the step ten minutes, the bay BAY_M, the storey 3.2 m.
 import datetime as dt
 import glob
 import json
+import math
 import os
 import sys
 
@@ -36,7 +37,7 @@ BAY_M = float(os.environ.get('BAY_M', '8.0'))
 STOREY_M = 3.2
 STEP = 10
 THRESHOLD = 120.0
-LONG_FACE_M = 16.0          # a wall shorter than this is an end, owned by the corner units of the long faces
+LONG_FACE_M = 14.0          # a wall shorter than this is an end, owned by the corner units of the long faces
 SINGLE = ('single',)        # the types whose apartments face one way
 PARTY_M = 0.6               # a wall whose two feet stand this close to a party edge is that party wall
 
@@ -76,7 +77,7 @@ def apartment_test(pairs, kind):
                 if cell.any():
                     ok[b, fl] = np.mean(mins[cell] >= THRESHOLD) >= 0.5
                     dark[b, fl] = np.all(mins[cell] <= 0.0)
-        faces.append(dict(width=width, ok=ok, dark=dark, p0=np.asarray(p.origin), p1=np.asarray(p.origin) + np.asarray(p.axis_u) * width))
+        faces.append(dict(width=width, ok=ok, dark=dark, p0=np.asarray(p.origin), p1=np.asarray(p.origin) + np.asarray(p.axis_u) * width, normal=np.asarray(p.normal)[:2]))
     if not faces:
         return None
     longs = [i for i, f in enumerate(faces) if f['width'] >= LONG_FACE_M] or sorted(range(len(faces)), key=lambda i: -faces[i]['width'])[:2]
@@ -112,14 +113,27 @@ def apartment_test(pairs, kind):
         return dict(share=ok / total if total else 0.0, dark=dark / total if total else 0.0, bays=total)
 
     double = share(longs)
-    single = max((share([i]) for i in longs), key=lambda r: r['share'])
-    return dict(double=double, single=single, planned=single if kind in SINGLE else double)
+    # the faces that carry an apartment of their own, not only the corner ones shared with the faces beside them: an
+    # 18 m end wall holds two corner bays and nothing else, so a slab stays double-loaded; a 15 m end wall on a block
+    # built to its boundary holds one of its own. How many such faces there are says what the plan is (one where the
+    # other long wall is a party wall, which makes a double-loaded plan single), and the best of them is the
+    # single-loaded figure, with the way it looks, which for a single-loaded plan is the way its apartments face
+    principal = [i for i in longs if any((i, b) not in corner_bays for b in range(faces[i]['ok'].shape[0]))] or longs
+    best = max(principal, key=lambda i: share([i])['share'])
+    single = share([best])
+    return dict(double=double, single=single, planned=single if kind in SINGLE else double, sides=len(principal), single_face=compass(faces[best]['normal']),
+                principal_m=round(max(faces[i]['width'] for i in principal), 1))
+
+
+def compass(normal):
+    az = (math.degrees(math.atan2(float(normal[0]), float(normal[1]))) + 360) % 360
+    return ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'][int((az + 22.5) // 45) % 8]
 
 
 CORNER_M = 8.0              # how far along the end wall a corner apartment's windows reach
 
 
-def unit_test(pairs, units):
+def unit_test(pairs, units, lit_by_panel=None):
     """The plans' own apartments on one part's walls: each unit a span of a face (east or west, from the north end)
     at every storey, with the end wall's first CORNER_M metres where it is a corner unit; it has its two hours where
     half the wall of its span at that storey does, on either of its walls, and is dark only where both are."""
@@ -135,13 +149,13 @@ def unit_test(pairs, units):
         far = origin + np.asarray(p.axis_u) * width
         # the coordinate along the wall from its north end (an east or west wall) or its east end (a north or south one)
         s_ = u if (origin[1] > far[1] if d in 'EW' else origin[0] > far[0]) else width - u
-        faces.setdefault(d, []).append(dict(s=s_, v=v, mins=mins, width=width))
+        faces.setdefault(d, []).append(dict(s=s_, v=v, mins=mins, width=width, lit=lit_by_panel.get(id(p)) if lit_by_panel else None))
     if not faces:
         return None
     nf = max(1, int(round(max(f['v'].max() for fs in faces.values() for f in fs) / STOREY_M)))
 
-    def cells(d, a, b, fl):
-        return [f['mins'][(f['s'] >= a) & (f['s'] < b) & ((f['v'] // STOREY_M).astype(int) == fl)] for f in faces.get(d, [])]
+    def cells(d, a, b, fl, what='mins'):
+        return [f[what][(f['s'] >= a) & (f['s'] < b) & ((f['v'] // STOREY_M).astype(int) == fl)] for f in faces.get(d, []) if f[what] is not None]
 
     total = ok = dark = 0
     each = []
@@ -165,7 +179,14 @@ def unit_test(pairs, units):
                 none = bool((main.size == 0 or np.all(main <= 0)) and (end.size == 0 or np.all(end <= 0)))
                 ok += int(lit)
                 dark += int(none)
-                each.append((str(unit[0]), fl, lit, none))
+                series = ''
+                if lit_by_panel:
+                    rows_ = cells(d, a, b, fl, 'lit') + (cells(corner, 0.0, CORNER_M, fl, 'lit') if d == 'E' and corner else cells(corner, max(0.0, ew - CORNER_M), ew, fl, 'lit') if corner else [])
+                    rows_ = [x for x in rows_ if x.size]
+                    if rows_:
+                        stack = np.concatenate(rows_, axis=0)                      # (cells, instants)
+                        series = ''.join('1' if x else '0' for x in (stack.mean(axis=0) >= 0.5))
+                each.append((str(unit[0]), fl, lit, none, series))
     r = dict(share=ok / total if total else 0.0, dark=dark / total if total else 0.0, bays=total)
     return dict(double=r, single=r, planned=r, units=True, per_floor=sum(len(v) for v in units.values()), each=each)
 
@@ -202,6 +223,7 @@ for path in sorted(glob.glob(f'{OUT}/future-scene-*.json')):
             continue
         tagged = []                                                   # (group, panel), the party walls left out
         plans = {}                                                    # the plans' apartments on a group's walls, where given
+        party_m = 0.0                                                 # the longest wall left out as a party wall
         for g, m, party, units in walls[b['id']]:
             if units:
                 plans[g] = units
@@ -209,24 +231,27 @@ for path in sorted(glob.glob(f'{OUT}/future-scene-*.json')):
                 width = float(p.cell_uv[:, 0].max()) + p.spacing_m / 2
                 if not on_party(p, width, party):
                     tagged.append((g, p))
+                else:
+                    party_m = max(party_m, width)
         if not tagged:
             continue
         pts = SamplePoints.concatenate([p.samples for _, p in tagged])
         other = 'today' if b['kind'] == 'site' else 'without_site'
-        rec = dict(name=b['name'], kind=b['kind'], type=b.get('type', ''), facade_m2=pts.total_area_m2)
+        rec = dict(name=b['name'], kind=b['kind'], type=b.get('type', ''), facade_m2=pts.total_area_m2, party_m=round(party_m, 1))
         for key, o in (('with', occ['with']), (other, occ[other])):
             # the ADG's two hours are continuous, as three hourly sun's-eye views show them: the longest unbroken run
             # of sun on each cell, not its minutes added up over the day
             lit = sunlit_matrix(pts, o, sun)
             minutes = longest_continuous_minutes(lit, STEP)
-            per = []
+            per, lit_by_panel = [], {}
             at = 0
             for g, p in tagged:
                 per.append((g, p, minutes[at:at + len(p.samples)]))
+                lit_by_panel[id(p)] = lit[at:at + len(p.samples)]
                 at += len(p.samples)
             def test(grp):
                 pairs = [(p, mins) for g, p, mins in per if g == grp]
-                return unit_test(pairs, plans[grp]) if grp in plans else apartment_test(pairs, b.get('type', ''))
+                return unit_test(pairs, plans[grp], lit_by_panel if key == 'with' else None) if grp in plans else apartment_test(pairs, b.get('type', ''))
             by = {grp: test(grp) for grp in sorted({g for g, _, _ in per})}
             if plans and all(g in plans for g in by):                 # the whole from the groups' own counts
                 n = sum(v['planned']['bays'] for v in by.values() if v)
@@ -246,7 +271,8 @@ for path in sorted(glob.glob(f'{OUT}/future-scene-*.json')):
                 rec[f'apts_{other}'], rec['apts_other_by'] = whole, by
         out[b['id']] = rec
     target = path.replace('future-scene-', 'future-solar-')
-    json.dump(dict(buildings=out, instants=len(times), spacing_m=SPACING, bay_m=BAY_M, date=f'{scene["year"]}-06-21', threshold_minutes=THRESHOLD), open(target, 'w'))
+    json.dump(dict(buildings=out, instants=len(times), times=[t.strftime('%H:%M') for t in times], sun=[[float(x) for x in v] for v in sun], step=STEP,
+                   spacing_m=SPACING, bay_m=BAY_M, date=f'{scene["year"]}-06-21', threshold_minutes=THRESHOLD), open(target, 'w'))
     print(f'{os.path.basename(target)}: ' + '; '.join(f'{r["name"]} {r["apts"]["planned"]["share"]:.0%} of bays'
                                                       + (''.join(f', {g} {v["planned"]["share"]:.0%}' for g, v in r['apts_by'].items()) if len(r['apts_by']) > 1 else '')
                                                       + f' (single {r["apts"]["single"]["share"]:.0%})' for r in out.values() if r.get('apts')))
