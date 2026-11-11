@@ -1990,18 +1990,24 @@ even of that.
 
 Where the Loriini repository sits beside this one (or `LORIINI` names it),
 each sheet also carries the mid-winter sun over its massing, cast with
-Loriini's `core` (numpy alone, so it runs in the drawer's own environment):
-`scripts/capacity_study/future_solar.py` reads the prisms the drawer writes
-for each scenario (`future-scene-<n>.json`: ours, the scenario's, what stands,
-and the window's other measured buildings as context) and, for every
-building, the share of its upright facade that gets two hours of direct sun
-between 9 and 3 on 21 June, at a metre, with the scenario standing, for ours
-with today's buildings alone, for the others without our tower. That is the
-massing-stage proxy Loriini's own massing mode reports, not the ADG's
-per-apartment test, which needs apartments: 4A asks two hours for 70 % of
-apartments, so 70 % of facade reads as likely, half as marginal; 3B-2 asks
-that a neighbour's sun is kept, so a standing building our tower costs ten
-points or more of facade gets a row. `--no-sun` leaves it out.
+Loriini's `core` (numpy alone, so it runs in the drawer's own environment)
+and read as the ADG reads it: `scripts/capacity_study/future_solar.py`
+takes the prisms the drawer writes for each scenario (`future-scene-<n>.json`:
+ours, the scenario's, what stands, and the window's other measured buildings
+as context, each with its type), casts 21 June from 9 to 3 at a metre, and
+lines every building's residential walls with apartments in 8 m bays, one a
+storey, on both long faces of a double-loaded plan or the better face of a
+single-loaded one, a corner apartment counted once on both its walls; a bay
+has its two hours where half its wall at that storey does, and a building
+complies where 70 % of its bays do and no more than 15 % get none (4A-1).
+Each building is read as planned and as it would be single-loaded, with the
+scenario standing, and without our tower (ours: with today's buildings
+alone), so the sheet says who complies, with what plan, and whom our tower
+shades (3B-2: a standing building it costs ten points or more gets a row).
+A podium's walls carry no apartments. It is a reading on an assumed plan,
+not the scheme's own. `--no-sun` leaves it out. A scenario with
+`"sun": "all"` lists every neighbour; one with `"number": 0` and no parcels
+is today, every building at its measured height.
 
 What the sheets read beyond the capacity study (`scripts/future_context.ts`
 fetches, `scripts/capacity_study/future_context.py` fits and draws; it needs

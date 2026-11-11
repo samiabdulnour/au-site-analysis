@@ -48,7 +48,7 @@ const redraw = args.includes('--redraw') && existsSync(join(out, 'future.json'))
 
 /** The plan's window: the sheet's plan at 1:500 is 184 × 216 mm, 92 × 108 ground metres, centred on the study blocks. */
 const PLAN_M = { w: 92, h: 108 };
-const MARGIN_M = 8;
+const MARGIN_M = 40;
 
 if (!redraw) await fetchStudy();
 

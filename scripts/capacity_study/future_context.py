@@ -643,6 +643,7 @@ def axo(scn, parcels, blds, existing, RET):
         items.append((b['poly'], H_of(b['base']) if b['base'] else 0, H_of(b['n']), dict(typ=b['typ'], n=b['n'], base=b['base'], label=None if b['typ'] == 'podium' else str(b['n']))))
     flat = [(p, z0, z1, b) for g, z0, z1, b in items for p in polys(g)]
     xs, ys, out = [], [], []
+    C.setdefault('context', '#e2e2e2')
 
     def Pt(x, y, z):
         u, v, _ = proj(x, y, z)
@@ -653,6 +654,9 @@ def axo(scn, parcels, blds, existing, RET):
         g = unary_union([r['poly'] for r in b]).buffer(0.3, join_style=2)
         for p in polys(g):
             out.append(f'<polygon points="{" ".join(Pt(x, y, 0) for x, y in p.exterior.coords[:-1])}" fill="#efefef" stroke="#bdbdbd" stroke-width=".25"/>')
+    for g, n, h in context_buildings(30):                             # the blocks round the study, as they stand, in a lighter grey
+        for p in polys(g):
+            flat.append((p, 0, h, dict(typ='context', n=n, label=None)))
     # each street named at the point of it nearest the blocks, over everything with a halo, so the name sits beside
     # them whatever stands in the way
     centre = study.centroid
@@ -672,7 +676,7 @@ def axo(scn, parcels, blds, existing, RET):
 
     for p, z0, z1, b in sorted(flat, key=depth):
         col = C[b['typ']]
-        stroke = '#e11b22' if b['typ'] == 'site' else '#3a3a3a'
+        stroke = '#e11b22' if b['typ'] == 'site' else '#9a9a9a' if b['typ'] == 'context' else '#3a3a3a'
         sw = .45 if b['typ'] == 'site' else .22
         # our site's envelope is a glass, so what is retained behind it stays in view
         glass = ' fill-opacity=".6"' if b['typ'] == 'site' else ''
@@ -801,21 +805,21 @@ def export_scene(no, blds, existing, RET, sep):
     the scenario's (one per parcel key), what stands, and the window's other measured buildings as context."""
     lon, lat = (CX / R_MERC) * 180, math.degrees(math.atan(math.exp(CY / R_MERC * math.pi)) * 2 - math.pi / 2)
     names = {nm.split(' · ')[0]: nm for nm, *_ in sep}
-    out = [dict(id='site', kind='site', name='Our tower', parts=[dict(ring=ring_of(p), z0=0, z1=H_of(SITE_PODIUM)) for p in polys(SITE_POLY)] * (1 if TOWER else 0)
+    out = [dict(id='site', kind='site', type='d22', name='Our tower', parts=[dict(ring=ring_of(p), z0=0, z1=H_of(SITE_PODIUM)) for p in polys(SITE_POLY)] * (1 if TOWER else 0)
                 + [dict(ring=ring_of(p), z0=H_of(SITE_PODIUM) if TOWER else 0, z1=H_of(S['storeys'])) for p in polys(SITE_TOWER)])]
     by_key = {}
     for b in blds:
         by_key.setdefault(b['key'], []).append(b)
     for key, bs in by_key.items():
         main = [b for b in bs if b['typ'] != 'podium'][-1]
-        out.append(dict(id=f'new-{key}', kind='new', name=names.get(key, f'{key} · {TYPE[main["typ"]].split(",")[0].lower()}, {main["n"]} st'),
+        out.append(dict(id=f'new-{key}', kind='new', type=main['typ'], name=names.get(key, f'{key} · {TYPE[main["typ"]].split(",")[0].lower()}, {main["n"]} st'),
                         parts=[dict(ring=ring_of(p), z0=H_of(b['base']) if b['base'] else 0, z1=H_of(b['n'])) for b in bs for p in polys(b['poly'])]))
     for e in existing:
-        out.append(dict(id=f'standing-{e["base_addr"]}', kind='standing', name=f'{short(e["base_addr"])}, stands, {e["n"]} st', parts=[dict(ring=ring_of(p), z0=0, z1=e['h']) for p in polys(e['poly'])]))
+        out.append(dict(id=f'standing-{e["base_addr"]}', kind='standing', type='standing', name=f'{short(e["base_addr"])}, stands, {e["n"]} st', parts=[dict(ring=ring_of(p), z0=0, z1=e['h']) for p in polys(e['poly'])]))
     for pid in RET:
         r = PROPS[pid]
         h, n, how = existing_height(r)
-        out.append(dict(id=f'standing-{r["base"]}', kind='standing', name=f'{short(r["base"])}, retained, {n} st', parts=[dict(ring=ring_of(p), z0=0, z1=h) for p in polys(r['poly'])]))
+        out.append(dict(id=f'standing-{r["base"]}', kind='standing', type='standing', name=f'{short(r["base"])}, retained, {n} st', parts=[dict(ring=ring_of(p), z0=0, z1=h) for p in polys(r['poly'])]))
     named = {b['id'] for b in out}
     for pid, r in PROPS.items():
         if r.get('isSite') or f'standing-{r["base"]}' in named or not measured(r) or not r['poly'].intersects(WINDOW.buffer(10)):
@@ -832,6 +836,32 @@ def read_sun(no):
         return None
 
 
+def apts_verdict(r):
+    """The ADG's 4A-1 on a building's bays: 70 % with two hours and no more than 15 % with none is a tick."""
+    if not r:
+        return '', ''
+    ok = r['share'] >= 0.7 and r['dark'] <= 0.15
+    close = r['share'] >= 0.6 and r['dark'] <= 0.2
+    return ('✓ complies' if ok else '~ close' if close else '✗ no'), ('clear' if ok else 'one face blank' if close else 'short of a blank face')
+
+
+def sun_cell(r, today=False):
+    """One building's sun for the summary: the share of bays with two hours as planned, its mark, and the single-loaded
+    figure where that is what passes; (text, colour key)."""
+    if not r or not r.get('apts'):
+        return None
+    ap = r['apts']
+    mark, vcol = apts_verdict(ap['planned'])
+    smark, _ = apts_verdict(ap['single'])
+    text = f'{ap["planned"]["share"]:.0%} {mark}'
+    if mark[0] != '✓' and smark[0] == '✓' and r.get('type') not in ('single',):
+        text += f' · single-loaded {ap["single"]["share"]:.0%} ✓'
+    other = r.get('apts_today') if today else r.get('apts_without_site')
+    if today and other:
+        text += f' (today {other["planned"]["share"]:.0%})'
+    return text, vcol
+
+
 def sun_verdict(share):
     return 'likely' if share >= 0.7 else 'marginal, the plan must work for it' if share >= 0.5 else 'unlikely'
 
@@ -840,9 +870,25 @@ SUMMARY = []
 VERDICT_COLOUR = {'clear': '#1f8f3a', 'one face blank': '#c77d00', 'short of a blank face': '#c0161c', 'likely': '#1f8f3a', 'marginal': '#c77d00', 'unlikely': '#c0161c'}
 
 
+MINI_PAD = 26          # metres of context round the study on the summary's plans
+
+
+def context_buildings(reach):
+    """The window's other measured buildings within `reach` metres of the study: what stands round it today."""
+    skip = {str(r['propid']) for b in BLOCKS for r in b} | {str(SITE['propid'])}
+    return [(r['poly'], storeys_of(r), measured(r)) for pid, r in PROPS.items() if pid not in skip and measured(r) and r['poly'].intersects(study.buffer(reach))]
+
+
 def mini_plan(parcels, blds, existing, RET, sep):
-    """The scenario's plan as colour blocks alone, for the summary: no aerial, no names, the separations drawn with their metres."""
-    o = [f'<svg viewBox="{f(WX0)} {f(-WY1)} {f(PLAN_W_M)} {f(PLAN_H_M)}" xmlns="http://www.w3.org/2000/svg"><rect x="{f(WX0)}" y="{f(-WY1)}" width="{f(PLAN_W_M)}" height="{f(PLAN_H_M)}" fill="#f4f2ef"/>']
+    """The scenario's plan as colour blocks alone, for the summary, with the blocks round it: no aerial, no names,
+    the separations drawn with their metres, every standing building with its storeys."""
+    x0, y0, x1, y1 = WX0 - MINI_PAD, WY0 - MINI_PAD, WX1 + MINI_PAD, WY1 + MINI_PAD
+    o = [f'<svg viewBox="{f(x0)} {f(-y1)} {f(x1 - x0)} {f(y1 - y0)}" xmlns="http://www.w3.org/2000/svg"><rect x="{f(x0)}" y="{f(-y1)}" width="{f(x1 - x0)}" height="{f(y1 - y0)}" fill="#f4f2ef"/>']
+    for g, n, h in context_buildings(MINI_PAD + 20):
+        o.append(f'<path d="{path(g)}" fill="#dcdcdc" stroke="#bbb" stroke-width="0.3"/>')
+        if g.area >= 120:
+            c = g.representative_point()
+            o.append(f'<text x="{f(c.x)}" y="{-c.y + 1.7:.2f}" font-size="5" font-weight="600" text-anchor="middle" fill="#777">{n}</text>')
     for b in BLOCKS:
         for r in b:
             o.append(f'<path d="{path(r["poly"])}" fill="#fff" stroke="#ccc" stroke-width="0.3"/>')
@@ -892,16 +938,17 @@ def summary_page():
     for r in SUMMARY:
         trs = ''
         for b in r['buildings']:
-            sun = f'{b["sun"]:.0%} · {b["sun_verdict"]}' if b['sun'] is not None else '—'
+            sun_t, sun_c = b['sun'] if b['sun'] else ('—', '')
             apart = f'{b["d"]:.0f} m · {b["v"]}'
-            trs += f'<tr><td>{H.escape(b["name"])}</td>{cell(apart, b["v"])}{cell(sun, b.get("sun_verdict", ""))}</tr>'
+            trs += f'<tr><td>{H.escape(b["name"])}</td>{cell(apart, b["v"])}{cell(sun_t, sun_c)}</tr>'
         ours = r['ours']
         if ours:
-            trs += f'<tr><td><b>Our tower</b></td><td style="color:#888">—</td>{cell(f"{ours[0]:.0%} · {ours[1]}" + (f" (today {ours[2]:.0%})" if ours[2] is not None else ""), ours[1])}</tr>'
+            trs += f'<tr><td><b>Our tower</b></td><td style="color:#888">—</td>{cell(ours[0], ours[1])}</tr>'
+        gain = f'About <b>{r["units"]} new apartments</b> on top of ours · ' if r['buildings'] else ''
         rows.append(f'''<div class="row"><div class="mini">{r['mini']}</div><div class="info">
 <div class="t">{r['no']} · {H.escape(r['title'])}</div>
-<div class="u">About <b>{r['units']} new apartments</b> on top of ours · neighbours can develop: <b style="color:{r['allow_colour']}">{r['allow']}</b></div>
-<table><tr><th>Building</th><th>Separation from our tower</th><th>Facade with 2 h of winter sun</th></tr>{trs}</table></div></div>''')
+<div class="u">{gain}neighbours can develop: <b style="color:{r['allow_colour']}">{r['allow']}</b></div>
+<table><tr><th>Building</th><th>Separation from our tower</th><th>Apartments with 2 h of winter sun</th></tr>{trs}</table></div></div>''')
     return f'''<!doctype html><html><head><meta charset="utf-8"><title>Future context · summary</title><style>{CSS}
 .sum{{position:absolute;left:{mm(10)};top:{mm(9)};width:{mm(400)}}}
 .sum h1{{margin:0 0 {mm(1)}}} .sum .lead{{margin:0 0 {mm(3)};color:#444;font-size:{pt(7.4)}}}
@@ -914,7 +961,7 @@ def summary_page():
 .foot{{left:{mm(220)}}}
 </style></head><body>
 <div class="sum"><div class="kick">Future context · summary</div><h1>Does our massing let the neighbours develop?</h1>
-<p class="lead">Each scenario: its plan, the apartments it adds, and for every new building how far it stands from our tower against the ADG's separation (24 m between habitable rooms at nine storeys and over, 18 m where one face is blank, 18 and 12 at five to eight), and the share of its facade that gets two hours of sun on 21 June, read against ADG 4A (70 % of apartments: 70 % of facade likely, half marginal). Green holds, amber holds with a condition, red does not. Our tower as the model draws it, {H.escape(plate_of(BASE_TOWER))}, {', '.join(f'{site_setback(n):.0f} m off {n.title()}' for n in (S.get('tower') or {}).get('setbacks', {}))}.</p>
+<p class="lead">Each scenario: its plan with the blocks round it as they stand (storeys off the 3D tiles), the apartments it adds, and for every new building how far it stands from our tower against the ADG's separation (24 m between habitable rooms at nine storeys and over, 18 m where one face is blank, 18 and 12 at five to eight), and the share of its apartments with two hours of sun on 21 June, read as ADG 4A-1 reads it: apartments in 8 m bays along the walls, both long faces of a double-loaded plan or the better face of a single-loaded one, corner units taking both walls; 70 % with two hours and no more than 15 % with none is a tick, 60 % is close, and the single-loaded figure says what the plan could still reach. Green holds, amber holds with a condition, red does not. Our tower as the model draws it, {H.escape(plate_of(BASE_TOWER))}, {', '.join(f'{site_setback(n):.0f} m off {n.title()}' for n in (S.get('tower') or {}).get('setbacks', {}))}.</p>
 <div class="grid">{''.join(rows)}</div></div>
 <div class="foot">{H.escape(SITE["base"].title().replace(" Darlinghurst", "").upper())}, DARLINGHURST · FUTURE CONTEXT SCENARIOS<span>Predictive only, not a proposal for any neighbouring site. The sheets that follow carry each scenario in full.</span></div>
 </body></html>'''
@@ -935,20 +982,30 @@ def page(no, scn):
     sep_rows = ''.join(f'<tr><td>{H.escape(nm)}</td><td class="r">{d:.0f}{parts(geo)}</td><td class="r">{hab} / {blank}</td><td>{v}</td></tr>' for nm, d, hab, blank, v, geo in sep if not (v == 'clear' and d > 24 and not geo['new']))
     sun_html = ''
     if sun:
-        rows = []
+        rows, unchanged = [], []
         for bid, r in sun['buildings'].items():
-            if r['share'] is None:
+            ap = r.get('apts')
+            if not ap:
                 continue
-            other = r.get('today') if r['kind'] == 'site' else r.get('without_site')
-            loss = (other - r['share']) if (other is not None and r['kind'] != 'site') else 0
-            if r['kind'] == 'standing' and loss < 0.1:
-                continue                                          # a standing building our tower barely touches needs no row
-            note = sun_verdict(r['share']) if r['kind'] != 'standing' else ''
+            other = r.get('apts_today') if r['kind'] == 'site' else r.get('apts_without_site')
+            planned, single = ap['planned'], ap['single']
+            loss = (other['planned']['share'] - planned['share']) if (other and r['kind'] != 'site') else 0
+            if r['kind'] == 'standing' and loss < (0.05 if scn.get('sun') == 'all' else 0.1):
+                unchanged.append(r['name'])                       # a standing building our tower barely touches needs no row
+                continue
+            mark, vcol = apts_verdict(planned)
+            smark, scol = apts_verdict(single)
+            reads = mark + (' · single-loaded ' + smark.split()[0] if mark[0] != '✓' and smark[0] == '✓' and r['type'] not in ('single',) else '')
             if r['kind'] != 'site' and loss >= 0.1:
-                note = (note + '; ' if note else '') + f'our tower takes {loss * 100:.0f} points'
-            rows.append(f'<tr><td>{H.escape(r["name"])}</td><td class="r">{r["share"]:.0%}</td><td class="r">{"" if other is None else f"{other:.0%}"}</td><td>{note}</td></tr>')
-        sun_html = f'<h2>Mid-winter sun · 21 June, 9 to 3</h2><table><tr><th style="width:38%">Building</th><th class="r" style="width:16%">Facade with 2 h</th><th class="r" style="width:18%">Today · without ours</th><th>Reads</th></tr>' + ''.join(rows) + '</table>'
-        flags.append('<b>Sun.</b> Cast over the massing with Loriini\'s engine at a metre: the share of each building\'s upright facade that gets 2 hours of direct sun on 21 June between 9 and 3, with the scenario standing; for ours also with today\'s buildings alone, for the others without our tower. ADG 4A asks 2 hours for 70 % of apartments, so 70 % of facade reads as likely and half as marginal; 3B-2 asks that a neighbour\'s sun is kept, so a standing building our tower costs ten points or more gets a row. A massing proxy, not the per-apartment test.')
+                reads += f' · our tower takes {loss * 100:.0f} points'
+            other_txt = '' if other is None else f'{other["planned"]["share"]:.0%}'
+            rows.append(f'<tr><td>{H.escape(r["name"])}</td><td class="r" style="color:{VERDICT_COLOUR[vcol]};font-weight:600">{planned["share"]:.0%}</td>'
+                        f'<td class="r">{single["share"]:.0%}</td><td class="r">{other_txt}</td><td style="color:{VERDICT_COLOUR[vcol]}">{reads}</td></tr>')
+        if scn.get('sun') == 'all' and unchanged:
+            rows.append(f'<tr><td colspan="5" style="color:#666">{len(unchanged)} other neighbours our tower changes by under 5 points: {H.escape(", ".join(n.split(",")[0] for n in unchanged))}.</td></tr>')
+        sun_html = (f'<h2>Mid-winter sun · apartments with 2 h on 21 June</h2><table><tr><th style="width:34%">Building</th><th class="r" style="width:13%">As planned</th><th class="r" style="width:14%">Single-loaded</th>'
+                    f'<th class="r" style="width:15%">Today · without ours</th><th>Reads</th></tr>' + ''.join(rows) + '</table>')
+        flags.append(f'<b>Sun.</b> Cast over the massing with Loriini\'s engine at a metre, 21 June from 9 to 3, and read as the ADG reads it (4A-1): apartments line each building\'s walls in bays of {sun.get("bay_m", 8):g} m, one a storey, on both long faces of a double-loaded plan or the better face of a single-loaded one, the end bays owning the end wall as corner units; a bay has its two hours where half its wall at that storey does; 70 % of bays with two hours and no more than 15 % with none is a tick, 60 % is close. Each building is read as planned and as it would be single-loaded, with the scenario standing, and without our tower (ours: with today\'s buildings alone). A podium\'s walls carry no apartments. A massing reading on an assumed plan, not the scheme\'s own.')
     faces = (f'<p style="margin-top:{mm(1.5)};color:#444">Our tower, {plate_of(SITE_TOWER)}: ' + ', '.join(f'{site_setback(n):.0f} m off {n.title()}' for n in TOWER['setbacks']) + '. The lines on the plan are its separations, the tables under the plan read them and the sun.</p>') if TOWER else ''
     newg = sum(p['gfa'] for p in parcels if not p['consent'])
     units = round(newg / UNIT_GFA / 5) * 5
@@ -963,6 +1020,8 @@ def page(no, scn):
     lis = ''.join(f'<li>{fill_in(n, parcels, units)}</li>' for n in scn['notes'])
     leg = ''.join(f'<div class="row"><div class="sw" style="background:{c}{x}"></div><div>{t}</div></div>' for c, x, t in LEGEND)
     consents = sum(1 for p in parcels if p['consent'])
+    yield_html = (f'<h2>Indicative yield</h2><table><tr><th></th><th>Site</th><th class="r">Site m²</th><th class="r">Storeys</th><th class="r">Height m</th><th class="r">GFA m²</th><th class="r">FSR</th><th class="r">Parity</th></tr>{tr}</table>'
+                  f'<p style="margin-top:{mm(2)}">About <b>{units} new apartments</b>{" beside the existing consent" if consents else ""}, on top of the {SITE_UNITS} on our site. Parity: the storeys at which the parcel reaches our density of {FSR_PAR:.1f}:1.</p>') if parcels else '<p style="margin-top:{mm(2)}">Nothing new round the site: every building at the height the tiles read for it.</p>'
     # every new building, by parcel key: its separation row where it stands within 30 m, else the distance alone
     by_row = {nm.split(' · ')[0]: (nm, d, v) for nm, d, hab, blank, v, geo in sep if geo['new']}
     sunb = (sun or {}).get('buildings', {})
@@ -971,21 +1030,16 @@ def page(no, scn):
         main = [b for b in blds if b['key'] == key and b['typ'] != 'podium'][-1]
         nm, d, v = by_row.get(key, (f'{key} · {TYPE[main["typ"]].split(",")[0].lower()}, {main["n"]} st', SITE_TOWER.distance(main['poly']), 'clear'))
         sr = sunb.get(f'new-{key}')
-        share = sr['share'] if sr else None
-        buildings.append(dict(name=nm, d=d, v=v, sun=share, sun_verdict=sun_verdict(share).split(',')[0] if share is not None else ''))
-    ours = None
-    if sunb.get('site') and sunb['site']['share'] is not None:
-        ours = (sunb['site']['share'], sun_verdict(sunb['site']['share']).split(',')[0], sunb['site'].get('today'))
+        buildings.append(dict(name=nm, d=d, v=v, sun=sun_cell(sr)))
+    ours = sun_cell(sunb.get('site'), today=True) if sunb.get('site') else None
     worst = max((['clear', 'one face blank', 'short of a blank face'].index(b['v']) for b in buildings), default=0)
-    allow = ['yes', 'yes, with one face blank where amber', 'no, the red building cannot keep the separation'][worst]
+    allow = ['yes', 'yes, with one face blank where amber', 'no, the red building cannot keep the separation'][worst] if buildings else 'nothing new to allow'
     SUMMARY.append(dict(no=no, title=scn['title'], units=units, buildings=buildings, ours=ours, allow=allow, allow_colour=list(VERDICT_COLOUR.values())[worst],
                         mini=mini_plan(parcels, blds, existing, RET, sep)))
     return f'''<!doctype html><html><head><meta charset="utf-8"><title>Future context · Scenario {no}</title><style>{CSS}</style></head><body>
-<div class="txt"><div class="kick">Future context · Scenario {no} of {len(sc["scenarios"])}</div><h1>{H.escape(scn["title"])}</h1><div class="hor">{H.escape(scn["horizon"])}</div>
+<div class="txt"><div class="kick">Future context · Scenario {no} of {LAST}</div><h1>{H.escape(scn["title"])}</h1><div class="hor">{H.escape(scn["horizon"])}</div>
 <p class="lead">{fill_in(scn["lead"], parcels, units)}</p><ul>{lis}</ul>
-<h2>Indicative yield</h2>
-<table><tr><th></th><th>Site</th><th class="r">Site m²</th><th class="r">Storeys</th><th class="r">Height m</th><th class="r">GFA m²</th><th class="r">FSR</th><th class="r">Parity</th></tr>{tr}</table>
-<p style="margin-top:{mm(2)}">About <b>{units} new apartments</b>{" beside the existing consent" if consents else ""}, on top of the {SITE_UNITS} on our site. Parity: the storeys at which the parcel reaches our density of {FSR_PAR:.1f}:1.</p>
+{yield_html}
 {faces}
 </div>
 {plan(scn, parcels, blds, existing, RET, sep)}
@@ -1002,8 +1056,10 @@ def page(no, scn):
 </body></html>'''
 
 
+FIRST = sc['scenarios'][0].get('number', 1)
+LAST = FIRST + len(sc['scenarios']) - 1
 for i, scn in enumerate(sc['scenarios'], 1):
-    open(f'{OUT}/future-{i}.html', 'w').write(page(i, scn))
+    open(f'{OUT}/future-{i}.html', 'w').write(page(FIRST + i - 1, scn))
 open(f'{OUT}/future-summary.html', 'w').write(summary_page())
 json.dump({'width': PAGE_W, 'height': PAGE_H, 'pages': len(sc['scenarios']), 'summary': True}, open(f'{OUT}/future-page.json', 'w'))
 for i, scn in enumerate(sc['scenarios'], 1):

@@ -70,6 +70,19 @@
   },
   "scenarios": [
     {
+      "number": 0,
+      "title": "Today",
+      "horizon": "What stands now, with our tower in it",
+      "retained": [],
+      "sun": "all",
+      "lead": "Every building at the height the 3D tiles read for it, our tower as the model draws it: the separations and the sun the neighbours have today, and what our tower takes from them.",
+      "notes": [
+        "Nothing new round the site; the storeys are the tiles' heights at 3.1 m a storey.",
+        "The sun table lists every neighbour: its apartments with two hours as it stands, and without our tower."
+      ],
+      "parcels": []
+    },
+    {
       "title": "Lot by lot",
       "horizon": "Short term, 5 to 10 years",
       "lead": "Nobody amalgamates. The two sites that already hold a consent or a lodged scheme get built, and the one clean single title on Crown Street follows as a party-wall infill.",
