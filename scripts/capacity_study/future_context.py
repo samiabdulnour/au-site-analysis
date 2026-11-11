@@ -1138,17 +1138,33 @@ def sun_views(no, sun, hours=(9, 10, 11, 12, 13, 14, 15), reach=32):
                 items += faces
                 if b['kind'] == 'site' and part.get('units'):
                     for side, lst in (('east', part['units'].get('east', [])), ('west', part['units'].get('west', []))):
+                        # the wall the units line: the longest straight run of edges facing that way, as one wall from
+                        # its north end to its south, since the cadastre cuts a lot's side into several collinear edges
                         want = 1 if side == 'east' else -1
-                        best = None
+                        runs = []
                         for p, q in zip(ring, ring[1:] + ring[:1]):
                             nx, ny = q[1] - p[1], -(q[0] - p[0])
                             L = math.hypot(nx, ny)
-                            if L and nx / L * want > 0.7 and (best is None or L > best[0]):
-                                best = (L, p, q, nx / L, ny / L)
-                        if not best:
+                            if not L or nx / L * want <= 0.7:
+                                continue
+                            for run in runs:
+                                (fx, fy), (gx, gy) = run[0][0], run[0][1]
+                                fl = math.hypot(gx - fx, gy - fy)
+                                along = abs(((q[0] - p[0]) * (gx - fx) + (q[1] - p[1]) * (gy - fy)) / (L * fl))
+                                off = abs(((p[0] + q[0]) / 2 - fx) * (gy - fy) - ((p[1] + q[1]) / 2 - fy) * (gx - fx)) / fl
+                                if along > math.cos(math.radians(12)) and off < 1.5:
+                                    run.append((p, q))
+                                    break
+                            else:
+                                runs.append([(p, q)])
+                        if not runs:
                             continue
-                        L, p, q, nx, ny = best
-                        north, south = (p, q) if p[1] > q[1] else (q, p)
+                        run = max(runs, key=lambda r: sum(math.hypot(q[0] - p[0], q[1] - p[1]) for p, q in r))
+                        pts = [c for e in run for c in e]
+                        north, south = max(pts, key=lambda c: c[1]), min(pts, key=lambda c: c[1])
+                        L = math.hypot(south[0] - north[0], south[1] - north[1])
+                        nx, ny = (south[1] - north[1]) / L, -(south[0] - north[0]) / L
+                        nx, ny = (nx, ny) if nx * want > 0 else (-nx, -ny)
                         ux, uy = (south[0] - north[0]) / L, (south[1] - north[1]) / L
                         lit_wall = nx * s[0] + ny * s[1] > 0
                         nf = max(1, int(round((z1 - z0) / 3.2)))

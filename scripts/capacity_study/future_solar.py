@@ -167,14 +167,21 @@ def unit_test(pairs, units, lit_by_panel=None):
         if d is None:
             continue
         u, v = p.cell_uv[:, 0], p.cell_uv[:, 1]
-        width = float(u.max()) + p.spacing_m / 2
-        origin = np.asarray(p.origin)
-        far = origin + np.asarray(p.axis_u) * width
-        # the coordinate along the wall from its north end (an east or west wall) or its east end (a north or south one)
-        s_ = u if (origin[1] > far[1] if d in 'EW' else origin[0] > far[0]) else width - u
-        faces.setdefault(d, []).append(dict(s=s_, v=v, mins=mins, width=width, lit=lit_by_panel.get(id(p)) if lit_by_panel else None))
+        xy = np.asarray(p.origin)[:2] + np.outer(u, np.asarray(p.axis_u)[:2])
+        faces.setdefault(d, []).append(dict(xy=xy, v=v, mins=mins, lit=lit_by_panel.get(id(p)) if lit_by_panel else None))
     if not faces:
         return None
+    # the coordinate along each side of the building, from its north end (east and west) or its east end (north and
+    # south), over all the panels on that side together: a lot's side is often several cadastral edges, and a unit's
+    # span is measured along the whole side, as the plans lay it out
+    for d, fs in faces.items():
+        pts = np.concatenate([f['xy'] for f in fs])
+        k = 1 if d in 'EW' else 0
+        start, end = pts[np.argmax(pts[:, k])], pts[np.argmin(pts[:, k])]
+        axis = (end - start) / (np.linalg.norm(end - start) or 1.0)
+        for f in fs:
+            f['s'] = (f['xy'] - start) @ axis
+            f['width'] = float(f['s'].max()) + SPACING / 2
     nf = max(1, int(round(max(f['v'].max() for fs in faces.values() for f in fs) / STOREY_M)))
 
     def cells(d, a, b, fl, what='mins'):
