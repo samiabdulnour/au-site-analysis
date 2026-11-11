@@ -884,7 +884,7 @@ def sun_cell(r, today=False):
         text += f' · tower {by["tower"]["planned"]["share"]:.0%} · podium {by["podium"]["planned"]["share"]:.0%}'
     other = r.get('apts_today') if today else r.get('apts_without_site')
     if today and other:
-        text += f' (today {other["planned"]["share"]:.0%})'
+        text += f' (before them {other["planned"]["share"]:.0%})'
     return text, vcol
 
 
@@ -1041,7 +1041,7 @@ def page(no, scn):
         if scn.get('sun') == 'all' and unchanged:
             rows.append(f'<tr><td colspan="5" style="color:#666">{len(unchanged)} other neighbours our tower changes by under 5 points: {H.escape(", ".join(n.split(",")[0] for n in unchanged))}.</td></tr>')
         sun_html = (f'<h2>Mid-winter sun · apartments with 2 h on 21 June</h2><table><tr><th style="width:34%">Building</th><th class="r" style="width:13%">As planned</th><th class="r" style="width:14%">Single-loaded</th>'
-                    f'<th class="r" style="width:15%">Today · without ours</th><th>Reads</th></tr>' + ''.join(rows) + '</table>')
+                    f'<th class="r" style="width:15%">Before them · without ours</th><th>Reads</th></tr>' + ''.join(rows) + '</table>')
         flags.append(f'<b>Sun.</b> Cast over the massing with Loriini\'s engine at a metre, 21 June from 9 to 3, and read as the ADG reads it (4A-1): apartments line each building\'s walls in bays of {sun.get("bay_m", 8):g} m, one a storey, on both long faces of a double-loaded plan or the better face of a single-loaded one, a corner apartment counted once on both its walls; a bay has its two hours where half its wall at that storey does; 70 % of bays with two hours and no more than 15 % with none is a tick, 60 % is close. Each building is read as planned and as it would be single-loaded, with the scenario standing, and without our tower (ours: with today\'s buildings alone). A wall on a shared boundary is a party wall and holds no apartment; a neighbour\'s podium holds none. Our building is read on the SSDA plans themselves: each apartment at its own wall and storey, the corner ones on both their walls, the tower\'s 7 a floor (3 on Crown Lane, 4 on Riley Street) and the podium\'s 10 (5 and 5) from level {(TOWER or {}).get("homesFrom", "—")}, its ground floor commercial; its podium, its tower and the whole each read. The neighbours are a massing reading on an assumed plan.')
     faces = (f'<p style="margin-top:{mm(1.5)};color:#444">Our tower, {plate_of(SITE_TOWER)}: ' + ', '.join(f'{site_setback(n):.0f} m off {n.title()}' for n in TOWER['setbacks']) + '. The lines on the plan are its separations, the tables under the plan read them and the sun.</p>') if TOWER else ''
     newg = sum(p['gfa'] for p in parcels if not p['consent'])
