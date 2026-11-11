@@ -1168,6 +1168,9 @@ def sun_views(no, sun, hours=(9, 10, 11, 12, 13, 14, 15), reach=32):
                         ux, uy = (south[0] - north[0]) / L, (south[1] - north[1]) / L
                         lit_wall = nx * s[0] + ny * s[1] > 0
                         nf = max(1, int(round((z1 - z0) / 3.2)))
+                        # every unit paints just in front of the wall it sits on, whatever its own storey's depth
+                        wall_quad = [P(north[0], north[1], z0), P(south[0], south[1], z0), P(south[0], south[1], z1), P(north[0], north[1], z1)]
+                        wall_depth = min(c[2] for c in wall_quad) - 0.05
                         at = 0.0
                         for unit in lst:
                             a, bb = at, at + float(unit[1])
@@ -1180,7 +1183,7 @@ def sun_views(no, sun, hours=(9, 10, 11, 12, 13, 14, 15), reach=32):
                                 c1 = (north[0] + ux * bb, north[1] + uy * bb)
                                 quad = [P(c0[0], c0[1], za), P(c1[0], c1[1], za), P(c1[0], c1[1], zb), P(c0[0], c0[1], zb)]
                                 if lit_wall:
-                                    items.append((sum(c[2] for c in quad) / 4 - 0.05, quad, SUN_LIT if lit else SUN_SHADE, '#7a6a2a' if lit else '#777'))
+                                    items.append((wall_depth, quad, SUN_LIT if lit else SUN_SHADE, '#7a6a2a' if lit else '#777'))
                                 if b['kind'] == 'site':
                                     ours += quad
         items.sort(key=lambda it: -it[0])                            # far first
