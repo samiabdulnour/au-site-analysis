@@ -211,11 +211,19 @@ def unit_test(pairs, units, lit_by_panel=None):
                 dark += int(none)
                 series = ''
                 if lit_by_panel:
-                    rows_ = cells(d, a, b, fl, 'lit') + (cells(corner, 0.0, CORNER_M, fl, 'lit') if d == 'E' and corner else cells(corner, max(0.0, ew - CORNER_M), ew, fl, 'lit') if corner else [])
-                    rows_ = [x for x in rows_ if x.size]
-                    if rows_:
-                        stack = np.concatenate(rows_, axis=0)                      # (cells, instants)
-                        series = ''.join('1' if x else '0' for x in (stack.mean(axis=0) >= 0.5))
+                    # lit at an instant where half of either of its walls is, as the test reads a corner unit: its own
+                    # wall's span, and for a corner unit the end wall's first metres, each on its own
+                    walls_ = [cells(d, a, b, fl, 'lit')]
+                    if corner:
+                        walls_.append(cells(corner, 0.0, CORNER_M, fl, 'lit') if d == 'E' else cells(corner, max(0.0, ew - CORNER_M), ew, fl, 'lit'))
+                    lit_at = None
+                    for rows_ in walls_:
+                        rows_ = [x for x in rows_ if x.size]
+                        if rows_:
+                            w_ = np.concatenate(rows_, axis=0).mean(axis=0) >= 0.5      # (instants,)
+                            lit_at = w_ if lit_at is None else (lit_at | w_)
+                    if lit_at is not None:
+                        series = ''.join('1' if x else '0' for x in lit_at)
                 each.append((str(unit[0]), fl, lit, none, series))
     r = dict(share=ok / total if total else 0.0, dark=dark / total if total else 0.0, bays=total)
     return dict(double=r, single=r, planned=r, units=True, per_floor=sum(len(v) for v in units.values()), each=each)
