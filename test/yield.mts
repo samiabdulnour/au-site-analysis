@@ -10,7 +10,7 @@
  */
 
 import { computeYield, storeysUnder, archetypeFor, edgeKinds, ringArea, futureHeight, withFour, existingSummary, DEFAULT_ASSUMPTIONS, PARKING_RATES, UNIT_KINDS, ADG_MINIMUM, type XY } from '../src/lib/yield.js';
-import { tierSpot, frontageMiddle, yieldStudy, scenarioRows, yieldRows, noSchemeSentence, renderYieldDeck, yieldCsv, type YieldBundle } from '../src/render/yieldSheet.js';
+import { tierSpot, frontageMiddle, yieldStudy, scenarioRows, yieldRows, noSchemeSentence, renderYieldDeck, yieldCsv, yieldJson, type YieldBundle, type Parcel } from '../src/render/yieldSheet.js';
 
 const failures: string[] = [];
 const check = (name: string, ok: boolean, detail = '') => {
@@ -272,6 +272,34 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
   check('deck: fewer paths, fewer pages', deck(openB).slides.length === 4 && deck(sliver).slides.length === 3,
     `${deck(openB).slides.length}, ${deck(sliver).slides.length}`);
   check('deck: the overview names each path\'s page', /Envelope to the height<\/td>(?:.(?!<\/tr>))*>05<\/td>/.test(all.html));
+
+  // ---- sun and shadow at mid winter, on the same lots ----
+  const sunRows = yieldRows(bundle, s);
+  const r4a = sunRows.find((r) => r.label === '4A. SOLAR AND DAYLIGHT ACCESS');
+  check('sun: the controls table gives the share with two hours, and marks it', !!r4a && /^\d+% \(\d+ of \d+\)/.test(r4a.proposed?.[0] ?? '') && typeof r4a.ok === 'boolean', JSON.stringify(r4a));
+  check('sun: the council not known, two hours are said to be assumed', /two hours assumed/.test(r4a?.controls?.join(' ') ?? ''), JSON.stringify(r4a?.controls));
+  check('sun: no direct sunlight has its row', sunRows.some((r) => r.label === '4A. NO DIRECT SUNLIGHT'));
+  check('sun: the overview has a sun column, each drawn path its share', />Sun 2\sh</.test(all.html) && scenarioRows(bundle, s).filter((r) => r.id !== 'standsToday').every((r) => /^\d+%$/.test(r.sun ?? '')),
+    JSON.stringify(scenarioRows(bundle, s).map((r) => r.sun)));
+  check('sun: the massing colours the apartments with the hours, and the key says what the yellow is', all.html.includes('#efb820') && /yellow, an apartment with 2\sh of sun/.test(all.html));
+  check('sun: what stands is given no sun', scenarioRows(bundle, s)[0].sun === undefined);
+  const orange: YieldBundle = { ...bundle, controls: { ...bundle.controls, lgaName: 'ORANGE' } };
+  check('sun: three hours asked outside Sydney, Newcastle and Wollongong', /receive 3 hours direct/.test(JSON.stringify(yieldRows(orange))) && />Sun 3\sh</.test(deck(orange).html));
+  const told: YieldBundle = { ...bundle, assumptions: { sun: { hours: 3 } } };
+  check('sun: yield_assumptions.json sets the hours', /receive 3 hours direct/.test(JSON.stringify(yieldRows(told))) && /from yield_assumptions\.json/.test(JSON.stringify(yieldRows(told))));
+  // a residential lot just south of the site takes its shadow; the parks take none; heritage items, with no outlines, are not measured
+  const southLot: Parcel = { rings: [[[151.2, -33.9003], [151.20043, -33.9003], [151.20043, -33.90002], [151.2, -33.90002], [151.2, -33.9003]]], zone: 'R2' };
+  const withHome: YieldBundle = { ...bundle, parcels: [southLot] };
+  const r3b = yieldRows(withHome).find((r) => r.label === '3B. OVERSHADOWING');
+  const said3b = r3b?.proposed?.join(' | ') ?? '';
+  check('shadow: a residential lot to the south is shaded, and said so', !!r3b && /homes: [\d,]+ m² at \d/.test(said3b) && /1 lot shaded/.test(said3b) && r3b.ok === null, said3b);
+  check('shadow: the parks take none; heritage items not measured without their outlines', /parks: none/.test(said3b) && /heritage items: not measured/.test(said3b), said3b);
+  const r3bNone = yieldRows({ ...bundle, parcels: [{ ...southLot, rings: [southLot.rings[0].map(([x, yy]) => [x, yy + 0.0012])] }], heritageItems: [] }).find((r) => r.label === '3B. OVERSHADOWING');
+  check('shadow: a lot to the north takes none, and the row is ticked', !!r3bNone && r3bNone.ok === true && /homes: none/.test(r3bNone.proposed?.join(' ') ?? ''), JSON.stringify(r3bNone));
+  const json = JSON.parse(yieldJson(bundle));
+  check('sun: the JSON carries each drawn path\'s sun', json.sun?.paths?.withinControls?.apartments?.total === s.base.units.total && Array.isArray(json.sun.paths.withinControls.apartments.hours)
+    && !!json.sun.paths.envelopeToHeight, JSON.stringify(Object.keys(json.sun?.paths ?? {})));
+  check('sun: the CSV states it', /4A\. SOLAR AND DAYLIGHT ACCESS/.test(yieldCsv(bundle)) && /of units with 2 h mid-winter sun/.test(yieldCsv(bundle)));
 
   // ---- no envelope mapped: a mixed use lot with neither a height of building nor a floor space ratio ----
   // (212 Boorowa Street, Young: Hilltops LEP 2022 maps neither) — the study says so, and draws and ticks nothing.

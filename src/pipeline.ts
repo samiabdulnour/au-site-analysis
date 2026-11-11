@@ -770,6 +770,12 @@ export async function runYieldPipeline(
   kerbs = kerbs.filter((kl) => kl.coords.some(([lon, lat]) => near(lon, lat)));
   log(`  plan: ${parcels.length} lots, ${parcels.filter((pc) => pc.numbers).length} numbered, ${kerbs.length} kerb lines`);
 
+  // The heritage items round about (the LEP's items, not its conservation areas), for the shadow the scheme adds to them.
+  const heritageItems = heritage.features
+    .filter((f) => /item/i.test(String(f.properties?.LAY_CLASS ?? '')) && !/conservation/i.test(String(f.properties?.LAY_CLASS ?? '')))
+    .map((f) => ({ rings: ringsOf(f.geometry), ...(f.properties?.H_NAME ? { name: String(f.properties.H_NAME) } : {}) }))
+    .filter((h) => h.rings.length && h.rings[0].some(([lon, lat]) => near(lon, lat)));
+
   let assumptions: YieldBundle['assumptions'];
   try { assumptions = JSON.parse(await readFile(join(opts.outDir, 'yield_assumptions.json'), 'utf8')); log('  assumptions from yield_assumptions.json'); } catch { /* the defaults */ }
 
@@ -792,6 +798,7 @@ export async function runYieldPipeline(
     kerbs,
     context: context.map(({ footprint: _f, ...c }) => c),
     existing,
+    heritageItems,
     buildingsSource: buildings.source,
     ...(footprints.mesh ? { mesh: footprints.mesh } : {}),
     zones,

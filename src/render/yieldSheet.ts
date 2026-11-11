@@ -38,9 +38,10 @@ import turfUnion from '@turf/union';
 import { featureCollection, polygon } from '@turf/helpers';
 import { lonLatToMercator, mercatorScaleFactor, mercatorToLonLat, type Extent } from '../lib/geo.js';
 import {
-  computeYield, computeRetained, edgeKinds, ringArea, withFour, futureHeight, existingSummary, PARKING_RATES, DEFAULT_ASSUMPTIONS, UNIT_KINDS, ADG_MINIMUM,
+  computeYield, computeRetained, edgeKinds, ringArea, withFour, futureHeight, existingSummary, storeyLevels, PARKING_RATES, DEFAULT_ASSUMPTIONS, UNIT_KINDS, ADG_MINIMUM,
   type XY, type YieldAssumptions, type YieldResult, type Use, type Tier, type UnitKind, type FutureControls, type ExistingBuilding,
 } from '../lib/yield.js';
+import { apartmentSun, addedShadow, adgSunHours, schemeBlocks, SHADE_KINDS, type ApartmentSun, type AddedShadow, type Block, type ShadeKind, type ShadeTarget } from '../lib/solarAccess.js';
 
 export interface YieldBundle extends SummaryData {
   generatedAt: string;
@@ -86,8 +87,13 @@ export interface YieldBundle extends SummaryData {
   trees?: YieldTree[];
   /** What stands on the site today: each building whose centroid is inside the boundary. A bundle from before them has none. */
   existing?: ExistingBuilding[];
-  /** From `yield_assumptions.json` beside the output, when there is one. */
-  assumptions?: Partial<YieldAssumptions>;
+  /** The LEP's heritage items round about (not its conservation areas), for the shadow the scheme adds: their outlines (lon/lat) and names. A bundle from before them has none, and the shadow on them is not measured. */
+  heritageItems?: { rings: number[][][]; name?: string }[];
+  /**
+   * From `yield_assumptions.json` beside the output, when there is one; `sun` sets the hours of mid-winter sun the
+   * apartments are held to (ADG 4A-1's for the council where unset) and those the neighbours' open ground is.
+   */
+  assumptions?: Partial<YieldAssumptions> & { sun?: { hours?: number; neighbourHours?: number } };
 }
 
 /** A lot round about: its rings (lon/lat), its street numbers, and the zone and height of building at it. */
@@ -214,6 +220,123 @@ export function yieldStudy(b: YieldBundle): YieldStudy {
   return { base, bonus, max, retained, ring, fronts, toLocal, hob, parkingSet, frontageLengths, futures, futuresHeld, noScheme };
 }
 
+// ---- sun and shadow -------------------------------------------------------------
+//
+// Each drawn path's sun at mid winter (lib/solarAccess.ts): the hours each of
+// its apartments gets, with the neighbours as they stand and as their controls
+// let them rise, and the shadow it adds to the parks, the heritage items and
+// the residential land round about. Worked out once a bundle and path, since
+// the overview, the spread, the table and the open formats all ask.
+
+/** The hours of mid-winter sun the apartments are held to (ADG 4A-1's for the council, or yield_assumptions.json's), and the neighbours' open ground. */
+export function sunRule(b: YieldBundle): { hours: number; where: string; known: boolean; custom: boolean; neighbourHours: number } {
+  const adg = adgSunHours(b.controls.lgaName);
+  const set = b.assumptions?.sun;
+  const hours = set?.hours ?? adg.hours;
+  return { hours, where: set?.hours ? 'from yield_assumptions.json' : adg.where, known: adg.known, custom: set?.hours !== undefined || set?.neighbourHours !== undefined, neighbourHours: set?.neighbourHours ?? hours };
+}
+
+/** A path's sun: its apartments' hours, and the shadow it adds, with what of the land round about could be measured. */
+export interface PathSun {
+  apartments?: ApartmentSun;
+  shadow?: AddedShadow;
+  /** Which kinds of land the bundle let the shadow be measured on: zones on the lots (parks, homes), the heritage items' outlines. */
+  measured: Record<ShadeKind, boolean>;
+}
+
+/** The study's result behind a path, where the path has a scheme. */
+const pathResult = (s: YieldStudy, id: Scenario['id']): YieldResult | undefined =>
+  id === 'withinControls' ? (s.noScheme ? undefined : s.base) : id === 'affordableBonus' ? s.bonus : id === 'envelopeToHeight' ? s.max : id === 'rebuiltAsStands' ? s.retained : undefined;
+
+const SUN_DONE = new WeakMap<YieldBundle, Map<Scenario['id'], PathSun | null>>();
+/** A metre and a storey's floor, for the nominal two storeys the massing draws a neighbour of no recorded height at. */
+const UNKNOWN_HEIGHT_M = 6.2;
+
+/** The sun and shadow of a path, or undefined where it builds nothing. */
+export function pathSun(b: YieldBundle, s: YieldStudy, id: Scenario['id']): PathSun | undefined {
+  const done = SUN_DONE.get(b) ?? SUN_DONE.set(b, new Map()).get(b)!;
+  if (done.has(id)) return done.get(id) ?? undefined;
+  const y = pathResult(s, id);
+  if (!y || !y.storeys) { done.set(id, null); return undefined; }
+  const pts = b.siteRing.slice(0, -1);
+  const lon = pts.reduce((t, p) => t + p[0], 0) / pts.length, lat = pts.reduce((t, p) => t + p[1], 0) / pts.length;
+  const local = (rg: number[][]) => rg.map(([x, yy]) => s.toLocal(x, yy));
+  // the neighbours as the massing draws them: at their recorded heights, a nominal two storeys where none is recorded
+  const context: Block[] = [], future: Block[] = [];
+  b.context.forEach((cb, i) => {
+    const rg = local(cb.rings[0] ?? []);
+    if (rg.length < 3) return;
+    const z1 = cb.known && cb.heightM > 0 ? cb.heightM : UNKNOWN_HEIGHT_M;
+    context.push({ rings: [rg], z0: 0, z1 });
+    future.push({ rings: [rg], z0: 0, z1: Math.max(z1, s.futures[i] ?? 0) });
+  });
+  const rule = sunRule(b);
+  const apartments = apartmentSun(y, {
+    boundary: s.ring, blank: edgeKinds(s.ring, s.fronts).map((k) => k !== 'front'), lat, lon, context,
+    future: s.futures.some(Boolean) ? future : undefined, hoursRequired: rule.hours,
+  });
+  // the land the shadow is measured on: the parks (public recreation, national parks), the residential lots, the heritage items; none on the site
+  const centre = (rg: XY[]) => rg.reduce((t, p) => ({ x: t.x + p.x / rg.length, y: t.y + p.y / rg.length }), { x: 0, y: 0 });
+  const targets: ShadeTarget[] = [];
+  const parcels = parcelsOf(b);
+  for (const pc of parcels) {
+    const rings = pc.rings.map(local).filter((rg) => rg.length >= 3);
+    const zone = (pc.zone ?? '').trim().toUpperCase();
+    if (!rings.length || inRing(centre(rings[0]), s.ring)) continue;
+    if (/^(RE1|C1)$/.test(zone)) targets.push({ kind: 'park', rings });
+    else if (/^R[1-5]$/.test(zone)) targets.push({ kind: 'home', rings });
+  }
+  for (const h of b.heritageItems ?? []) {
+    const rings = h.rings.map(local).filter((rg) => rg.length >= 3);
+    if (rings.length && !inRing(centre(rings[0]), s.ring)) targets.push({ kind: 'heritage', rings });
+  }
+  const standing: Block[] = standingOf(b, s).map((e) => ({ rings: e.rings, z0: 0, z1: e.heightM ?? (e.storeys ? e.storeys * y.assumptions.residentialF2F : 0) })).filter((e) => e.z1 > 0);
+  const shadow = addedShadow({
+    scheme: schemeBlocks(y), standing, context, roofs: context.map((c) => c.rings[0]), site: s.ring, targets, lat, lon, hoursRequired: rule.neighbourHours,
+  });
+  const zoned = parcels.some((pc) => pc.zone);
+  const out: PathSun = { apartments, shadow, measured: { park: zoned, home: zoned, heritage: b.heritageItems !== undefined } };
+  done.set(id, out);
+  return out;
+}
+
+/** n of total as a whole percentage. */
+const pctOf = (n: number, total: number) => `${total ? Math.round((100 * n) / total) : 0}%`;
+/** ADG 4A-1: ✓ where 70% meet the hours with today's neighbours and with their futures, the dash where only today's do, ✗ where today's do not. */
+function sunOk(a: ApartmentSun | undefined): boolean | null {
+  if (!a?.total) return null;
+  const meets = (n: number) => n >= 0.7 * a.total - 1e-9;
+  return !meets(a.meeting) ? false : a.future && !meets(a.future.meeting) ? null : true;
+}
+/** ADG 4A-2: no more than 15% with no sun at all, as sunOk reads it. */
+function noSunOk(a: ApartmentSun | undefined): boolean | null {
+  if (!a?.total) return null;
+  const meets = (n: number) => n <= 0.15 * a.total + 1e-9;
+  return !meets(a.none) ? false : a.future && !meets(a.future.none) ? null : true;
+}
+/** ADG 3B-2 asks overshadowing minimised, which is a judgement: ✓ where the scheme adds none to the land measured, the dash otherwise. */
+function shadowOk(p: PathSun | undefined): boolean | null {
+  if (!p?.shadow) return null;
+  const any = SHADE_KINDS.some((k) => p.shadow!.peak[k]);
+  return any ? null : SHADE_KINDS.some((k) => p.measured[k]) ? true : null;
+}
+const clock = (min: number) => { const h = Math.floor(min / 60), m = Math.round(min % 60); return `${h > 12 ? h - 12 : h}${m ? `:${String(m).padStart(2, '0')}` : ''} ${h >= 12 ? 'pm' : 'am'}`; };
+const KIND_WORD: Record<ShadeKind, string> = { park: 'parks', heritage: 'heritage items', home: 'homes' };
+/** The kinds as a path's table counts what it shades: "lots 4 · heritage 1". */
+const KIND_SHORT: Record<ShadeKind, string> = { park: 'parks', heritage: 'heritage', home: 'lots' };
+/** What the shadow does to one kind of land, in a few words: "none", "120 m² at 9 am", "not measured". */
+function shadeWords(p: PathSun, k: ShadeKind): string {
+  if (!p.measured[k]) return 'not measured';
+  const pk = p.shadow?.peak[k];
+  return pk ? `${fmt(Math.round(pk.sqm / 10) * 10 || Math.round(pk.sqm))} m² at ${clock(pk.clockMin)}` : 'none';
+}
+/** The residential lots the scheme shades, and those it takes below the hours, in a few words. */
+function homesWords(p: PathSun): string {
+  const h = p.shadow?.homes;
+  if (!h?.touched) return '';
+  return `${h.touched} ${h.touched === 1 ? 'lot' : 'lots'} shaded${h.fallBelow ? `, ${h.fallBelow} below ${h.hoursRequired} h` : ''}${h.cutFurther ? `, ${h.cutFurther} already below cut further` : ''}`;
+}
+
 // ---- the table's rows ---------------------------------------------------------
 
 export interface YieldRow {
@@ -327,11 +450,19 @@ export function yieldRows(b: YieldBundle, s: YieldStudy = yieldStudy(b)): YieldR
     rows.push({ head: true });
     const held = y.tiers.some((t) => t.held === 'depth');
     rows.push({ label: '2E. BUILDING DEPTH', controls: ['12–18m glass line to glass line'], proposed: [held ? `plates held to ${m1(a.maxDepth)} deep` : 'the envelope is within the depth'], ok: true });
+    const sun = pathSun(b, s, 'withinControls'), rule = sunRule(b);
+    if (sun?.shadow) rows.push({ label: '3B. OVERSHADOWING', controls: ['Overshadowing of neighbouring properties', 'minimised during mid winter (3B-2)', 'shadow added, 21 June 9 am – 3 pm, at its most'],
+      proposed: [...SHADE_KINDS.map((k) => `${KIND_WORD[k]}: ${shadeWords(sun, k)}`), homesWords(sun) ? `${homesWords(sun)} (half the open ground in sun ${rule.neighbourHours} h)` : ''], ok: shadowOk(sun) });
     rows.push({ label: '3D. COMMUNAL OPEN SPACE', controls: ['Minimum 25% of the site', `= ${sqm(y.adg.communalOpenSpaceSqm)}`], proposed: ['on the podium roof or the ground: to design'], ok: null });
     const ds = y.adg.deepSoil;
     rows.push({ label: '3E. DEEP SOIL ZONE', controls: [`7% of the site${ds.minDimension ? `, ${ds.minDimension}m minimum dimension` : ''}`, `= ${sqm(ds.requiredSqm)}`], proposed: ds.possible ? [`${sqm(ds.groundFreeSqm)} of the site is clear of the ground floor`, 'the basement must stay out of it'] : ['not within this envelope:', 'ADG 3E allows alternatives in centres'], ok: ds.possible });
     rows.push({ label: '3F. VISUAL PRIVACY', controls: [`${a.adgSide4}m to side and rear boundaries to 4 storeys,`, `${a.adgSide8}m to 8 storeys, ${a.adgSide9}m above`], proposed: ['built into the envelope'], ok: true });
-    rows.push({ label: '4A. SOLAR AND DAYLIGHT ACCESS', controls: ['70% of apartments receive 2 hours direct', 'sunlight 9 am – 3 pm at mid winter'], proposed: ['to be tested in design'], ok: null });
+    const ap = sun?.apartments;
+    rows.push({ label: '4A. SOLAR AND DAYLIGHT ACCESS', controls: [`70% of apartments receive ${rule.hours} hours direct`, 'sunlight 9 am – 3 pm at mid winter', `(${rule.where})`],
+      proposed: ap ? [`${pctOf(ap.meeting, ap.total)} (${ap.meeting} of ${ap.total}) with the neighbours as they stand`, ap.future ? `${ap.future.meeting === ap.meeting ? 'the same' : pctOf(ap.future.meeting, ap.total)} with the neighbours built to their controls` : '', 'indicative: the apartments laid along the facades']
+        : ['to be tested in design'], ok: ap ? sunOk(ap) : null });
+    if (ap) rows.push({ label: '4A. NO DIRECT SUNLIGHT', controls: ['At most 15% of apartments receive no direct', 'sunlight 9 am – 3 pm at mid winter'],
+      proposed: [`${pctOf(ap.none, ap.total)} (${ap.none} of ${ap.total})`, ap.future ? `${ap.future.none === ap.none ? 'the same' : pctOf(ap.future.none, ap.total)} with the neighbours built to their controls` : ''], ok: noSunOk(ap) });
     rows.push({ label: '4B. NATURAL VENTILATION', controls: ['60% of apartments cross ventilated', 'in the first nine storeys'], proposed: ['to be tested in design'], ok: null });
     const kinds = inMix(y);
     rows.push({ label: '4D. APARTMENT SIZE', controls: ['Studio 35, 1 bed 50, 2 bed 70, 3 bed 90 sqm,', '12 sqm more a bedroom over three (+5 sqm for a second bathroom)'],
@@ -411,17 +542,15 @@ const FUTURE_OPACITY = 0.18, FUTURE_DASH = '1.4,0.8';
 const ENVELOPE = '#5b6670';
 /** What stands on the site today, where a scenario keeps it. */
 
-/** What a page draws on the site: a scheme of the study's, or what stands there today, or neither (the site alone). */
-interface Scheme { y?: YieldResult; standing?: { rings: XY[][]; heightM?: number; storeys?: number }[] }
+/** What a page draws on the site: a scheme of the study's (with its apartments' sun, where it was studied), or what stands there today, or neither (the site alone). */
+interface Scheme { y?: YieldResult; sun?: ApartmentSun; standing?: { rings: XY[][]; heightM?: number; storeys?: number }[] }
+
+/** The facade of an apartment with the hours of sun asked, in the yellow a sun study marks it in. */
+const SUN_INK = { full: '#efb820' };
 
 
 /** The storey heights the study builds to: the bottom and the top of storey s. */
-function storeyZ(y: YieldResult): { bottom: (s: number) => number; top: (s: number) => number } {
-  const a = y.assumptions;
-  const g = y.archetype === 'mixed' ? a.groundRetailF2F : y.archetype === 'commercial' ? a.commercialF2F : a.residentialF2F;
-  const t = y.archetype === 'commercial' ? a.commercialF2F : a.residentialF2F;
-  return { bottom: (s) => (s <= 1 ? 0 : g + (s - 2) * t), top: (s) => g + (s - 1) * t };
-}
+const storeyZ = storeyLevels;
 
 /**
  * The massing's axonometric (render/axonometric.ts): the camera off the main frontage's corner; the neighbours
@@ -457,11 +586,15 @@ function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number;
   }));
   const z = y ? storeyZ(y) : undefined;
   const built: Prism[] = [];
-  if (y && z) for (const t of y.tiers) {
+  if (y && z) y.tiers.forEach((t, ti) => {
     const top = Math.min(t.to, y.storeys);
-    if (top < t.from || !t.plate.length) continue;
-    built.push({ rings: t.plate, z0: z.bottom(t.from), z1: z.top(top), fill: useFill(t.use), edge: '#1c1c1c', edgeW: 0.2, windows: true, storeys: Array.from({ length: top - t.from }, (_, i) => z.top(t.from + i)) });
-  }
+    if (top < t.from || !t.plate.length) return;
+    // each apartment's stretch of facade on its storey, yellow where it has the hours asked
+    const cells = (scheme.sun?.units ?? []).filter((u) => u.tier === ti && u.hours >= scheme.sun!.hoursRequired - 1e-9).flatMap((u) => u.pieces.map((pc) => ({
+      ...pc, z0: z.bottom(u.storey), z1: z.top(u.storey), fill: SUN_INK.full,
+    })));
+    built.push({ rings: t.plate, z0: z.bottom(t.from), z1: z.top(top), fill: useFill(t.use), edge: '#1c1c1c', edgeW: 0.2, windows: true, storeys: Array.from({ length: top - t.from }, (_, i) => z.top(t.from + i)), ...(cells.length ? { cells } : {}) });
+  });
   // What stands, at its recorded height, its storeys ruled; one with none recorded at a nominal two, dashed.
   for (const e of scheme.standing ?? []) {
     const known = !!(e.heightM || e.storeys);
@@ -856,6 +989,8 @@ export interface Scenario {
   fsr?: string;
   units?: string;
   parking?: string;
+  /** The share of its apartments with the hours of mid-winter sun ADG 4A-1 asks, with the neighbours as they stand. */
+  sun?: string;
   /** true complies, false does not, null needs a gate passed (eligibility), undefined takes no mark (what stands). */
   ok?: boolean | null;
 }
@@ -919,6 +1054,10 @@ export function scenarioRows(b: YieldBundle, s: YieldStudy = yieldStudy(b)): Sce
       note: `the setbacks filled to the height plane${permitted ? `: over the LEP's FSR ${permitted}` : ''} — the case a clause 4.6 variation or a planning proposal has to carry`,
       ...fill(s.max), ok: false,
     });
+  }
+  for (const sc of out) {
+    const ap = pathSun(b, s, sc.id)?.apartments;
+    if (ap?.total) sc.sun = pctOf(ap.meeting, ap.total);
   }
   return out;
 }
@@ -1062,7 +1201,12 @@ function subtitleOf(b: YieldBundle, s: YieldStudy): string {
     .filter(Boolean).join(' · ');
 }
 
-const NOT_A_DESIGN = 'A feasibility study, not a design: the envelope follows the mapped LEP controls and the ADG\'s separations; DCP setbacks, street wall heights, solar access and overshadowing are for the design to test. Mapped controls are not a s10.7 planning certificate.';
+const NOT_A_DESIGN = 'A feasibility study, not a design: the envelope follows the mapped LEP controls and the ADG\'s separations; DCP setbacks and street wall heights are for the design to test, and the sun and shadow figures are indicative, for a solar access study to confirm. Mapped controls are not a s10.7 planning certificate.';
+
+/** How the sun was read, for a path's sources line. */
+function sunNote(b: YieldBundle, s: YieldStudy): string {
+  return `Sun at mid winter (21 June, 9 am – 3 pm AEST, by the quarter hour): each storey's facade shared among its apartments in equal lengths, an apartment counting the time a metre of its facade has sun 1 m above its floor; the neighbours at their recorded heights${s.futures.some(Boolean) ? ', and for the second figure at their futures' : ''}, the ground flat, no trees. The shadow is the ground in sun today that the scheme puts in shade${b.heritageItems ? '' : '; heritage items not measured (this bundle has no outlines of them)'}.`;
+}
 
 /** Whether what stands on the site has its height from the 3D meshes, and whether its footprint was traced from them. */
 const standingFromMeshes = (b: YieldBundle) => ({ height: (b.existing ?? []).some((e) => e.heightFrom === 'mesh'), traced: (b.existing ?? []).some((e) => e.traced) });
@@ -1105,11 +1249,16 @@ function zoneEntries(b: YieldBundle, look: DeckLook, massing: boolean, shown?: s
 }
 
 /** The key to the massing and the plan of a path's spread. */
-function schemeLegend(b: YieldBundle, s: YieldStudy, y: YieldResult | undefined, standing: boolean, kerbs: boolean): LegendEntry[] {
+function schemeLegend(b: YieldBundle, s: YieldStudy, y: YieldResult | undefined, standing: boolean, kerbs: boolean, sun?: ApartmentSun): LegendEntry[] {
   const KEY = keySwatches();
   const out: LegendEntry[] = [{ swatch: KEY.site, label: 'The site' }];
   if (standing) out.push({ swatch: KEY.standing, label: standingFromMeshes(b).height ? 'What stands on the site, its height read from the 3D meshes' : 'What stands on the site, recorded height' });
-  for (const u of ['residential', 'retail', 'commercial'] as Use[]) if (y?.tiers.some((t) => t.use === u)) out.push({ swatch: KEY.use(u), label: `Indicative massing, ${USE_WORD[u]}` });
+  // the residential massing's entry says what its yellow is, where the sun was studied: a key row of its own is room the page has not got
+  const sunny = sun?.units.some((u) => u.hours >= sun.hoursRequired - 1e-9);
+  for (const u of ['residential', 'retail', 'commercial'] as Use[]) if (y?.tiers.some((t) => t.use === u)) out.push(u === 'residential' && sunny
+    ? { swatch: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="${useFill(u)}" stroke="#3a3a3a" stroke-width="0.15"/><path d="M2.5,0.5H4.6V3.1H2.5Z" fill="${SUN_INK.full}" stroke="#3a3a3a" stroke-width="0.15"/>`,
+      label: `Indicative massing, residential; yellow, an apartment with ${sun!.hoursRequired} h of sun 9–3 on 21 June` }
+    : { swatch: KEY.use(u), label: `Indicative massing, ${USE_WORD[u]}` });
   if (y?.tiers.length) out.push({ swatch: KEY.envelope, label: 'Envelope of each tier' });
   if (s.hob?.metres) out.push({ swatch: KEY.plane, label: 'The LEP\'s height of building plane' });
   const look = deckLook();
@@ -1166,12 +1315,16 @@ function overviewSlide(b: YieldBundle, s: YieldStudy, paths: Path[]): Slide {
     ['height of building', s.hob ? `${s.hob.rl ? `RL ${fmt(s.hob.value, 1)}${s.hob.metres ? ` · about ${m1(Math.round(s.hob.metres))}` : ''}` : m1(s.hob.value)}` : 'not mapped'],
     ['floor space ratio', c.fsr ? `${c.fsr.toFixed(2)}:1${A ? ` · ${area(c.fsr * A)}` : ''}` : 'not mapped'],
   ], 9.6);
+  // the sun column, where a path has apartments: the share with the hours ADG 4A-1 asks
+  const sunCol = paths.some((p) => p.sc.sun);
   const table = ytable(
-    [{ head: 'Path', w: '36mm' }, { head: 'Storeys', r: true }, { head: 'Height', r: true }, { head: 'Floor area', r: true }, { head: 'FSR', r: true }, { head: 'Units', r: true }, { head: 'Cars', r: true }, { head: '', w: '5mm' }, { head: 'Page', r: true }],
+    [{ head: 'Path', w: '36mm' }, { head: 'Storeys', r: true }, { head: 'Height', r: true }, { head: 'Floor area', r: true }, { head: 'FSR', r: true }, { head: 'Units', r: true }, { head: 'Cars', r: true },
+      ...(sunCol ? [{ head: `Sun ${sunRule(b).hours} h`, r: true }] : []), { head: '', w: '5mm' }, { head: 'Page', r: true }],
     paths.map((p) => ({
       cls: p.sc.id === 'withinControls' && p.y ? 'hi' : undefined,
       cells: [esc(SCENARIO_TITLE[p.sc.id]), esc(p.sc.storeys ?? '—'), p.sc.heightM ? esc(m1(p.sc.heightM)) : '—',
-        esc(p.y?.gfa ? fmt(Math.round(p.y.gfa)) : p.sc.id === 'standsToday' && ex?.gbaSqm ? `≈ ${fmt(Math.round(ex.gbaSqm))}` : '—'), esc(p.sc.fsr ?? '—'), esc(p.sc.units ?? '—'), esc(p.sc.parking ?? '—'), okMark(p.sc.ok),
+        esc(p.y?.gfa ? fmt(Math.round(p.y.gfa)) : p.sc.id === 'standsToday' && ex?.gbaSqm ? `≈ ${fmt(Math.round(ex.gbaSqm))}` : '—'), esc(p.sc.fsr ?? '—'), esc(p.sc.units ?? '—'), esc(p.sc.parking ?? '—'),
+        ...(sunCol ? [esc(p.sc.sun ?? '—')] : []), okMark(p.sc.ok),
         pageOf(paths, p) ? String(pageOf(paths, p)).padStart(2, '0') : '—'],
     })));
   const blocks = [zBlock('The site', figs, 'The controls'), zBlock('The paths', table), ...pathBars(b, s, paths)];
@@ -1182,10 +1335,17 @@ function overviewSlide(b: YieldBundle, s: YieldStudy, paths: Path[]): Slide {
   const legend: LegendEntry[] = [{ swatch: KEY.site, label: 'The site' }, { swatch: KEY.neighbours, label: 'Buildings round about' }, { swatch: KEY.lot, label: 'Lot boundaries, NSW cadastre, each lot tinted by its zone' }, ...zoneEntries(b, deckLook(), false, plan.zones)];
   if (plan.kerbs.length) legend.push({ swatch: KEY.kerb, label: 'Kerb line, indicative' });
   const exceeds = ex?.gbaSqm && ex.gbaSqm > Math.max(...paths.filter((p) => p.y && p.sc.id !== 'rebuiltAsStands').map((p) => p.y!.gba), 0);
+  const sunAp = pathSun(b, s, 'withinControls')?.apartments;
   const narrative = s.noScheme ? brief([noSchemeSentence(b, s), ex?.gbaSqm ? `What stands today holds about ${area(ex.gbaSqm)}.` : ''], 560) : brief([
     y.archetype === 'none'
       ? `${c.zoneCode ?? 'The zone'} takes no residential flat building, shop-top housing or office building: the floor space ratio gives ${A && c.fsr ? area(c.fsr * A) : 'the floor area'} alone.`
       : `Within the controls the site holds ${y.archetype === 'mixed' ? 'shop-top housing' : y.archetype === 'commercial' ? 'a commercial building' : 'a residential flat building'} of ${storeyWord(y.storeys)}: ${area(y.gfa)} of floor area${y.units.total ? `, ${fmt(y.units.total)} apartments` : ''}${y.parking.total ? ` and ${fmt(y.parking.total)} parking spaces` : ''}.`,
+    // whether that massing keeps the ADG's sun, which the floor area alone does not say
+    sunAp?.total ? `${pctOf(sunAp.meeting, sunAp.total)} of its apartments get ${sunRule(b).hours} hours of sun at mid winter${{
+      false: ', short of the ADG\'s 70%: the floor area holds only if the massing can be reshaped to meet it',
+      null: ', the ADG\'s 70%, but not once the neighbours build to their controls',
+      true: ', the ADG\'s 70% met',
+    }[String(sunOk(sunAp)) as 'false' | 'null' | 'true']}.` : '',
     exceeds && s.retained ? `What stands today, about ${ex!.storeys ?? '?'} storeys and ${about(ex!.gbaSqm!, A)}, is over the controls, and need not come down to them: kept, or rebuilt to its own envelope under a clause 4.6 variation, it holds about ${area(s.retained.gfa)}${s.retained.units.total ? ` and ${fmt(s.retained.units.total)} apartments` : ''}.`
       : exceeds ? `What stands today, about ${ex!.storeys ?? '?'} storeys and ${about(ex!.gbaSqm!, A)}, exceeds every path: redevelopment within the controls would cut the floor area.`
       : ex?.gbaSqm && y.gfa ? `What stands today holds about ${area(ex.gbaSqm)}${y.gfa > ex.gbaSqm ? `: redevelopment within the controls adds about ${area(y.gfa - ex.gbaSqm)}` : ''}.` : '',
@@ -1230,6 +1390,22 @@ function schemeSlide(b: YieldBundle, s: YieldStudy, p: Path, n: number, last: nu
     const ds = y.adg.deepSoil;
     ctl.push({ cells: ['ADG 3E deep soil', esc(area(ds.requiredSqm)), esc(ds.possible ? `${area(ds.groundFreeSqm)} clear` : 'not in this envelope'), okMark(ds.possible)] });
   }
+  // The sun at mid winter: the apartments' (ADG 4A), with the neighbours as they stand and as their controls let them rise; the shadow added (3B-2).
+  const ps = pathSun(b, s, id), ap = ps?.apartments, rule = sunRule(b);
+  // A row each, a line each where it can be: the page has no room to spare; the controls page gives the detail.
+  if (ap) {
+    const said = (meeting: number, none: number) => `${pctOf(meeting, ap.total)} · ${pctOf(none, ap.total)} none`;
+    const later = ap.future && (ap.future.meeting !== ap.meeting || ap.future.none !== ap.none) ? `<br>${esc(`built out: ${said(ap.future.meeting, ap.future.none)}`)}` : '';
+    const ok = [sunOk(ap), noSunOk(ap)];
+    ctl.push({ cells: ['ADG 4A sunlight', esc(`70% with ${rule.hours} h at mid winter · 15% none`), esc(said(ap.meeting, ap.none)) + later, okMark(ok.includes(false) ? false : ok.includes(null) ? null : true)] });
+  }
+  if (ps?.shadow && apartments) {
+    const sh = ps.shadow;
+    const kinds = SHADE_KINDS.filter((k) => sh.shaded[k]);
+    const below = sh.homes.fallBelow ? ` (${sh.homes.fallBelow} under ${sh.homes.hoursRequired} h)` : '';
+    const said = kinds.length ? kinds.map((k) => `${KIND_SHORT[k]} ${sh.shaded[k]}${k === 'home' ? below : ''}`).join(' · ') : 'none added';
+    ctl.push({ cells: ['ADG 3B overshadowing', 'minimised at mid winter', esc(said), okMark(shadowOk(ps))] });
+  }
   // Each path's tables keep the same columns, page after page: the widths are the widest any path needs.
   const ctlTable = ytable([{ head: 'Control', w: '38mm' }, { head: id === 'affordableBonus' ? 'Permitted, with the bonus' : 'Permitted', w: '50mm' }, { head: 'This path' }, { head: '', w: '5mm' }], ctl, true);
   // The schedule, tier by tier, keyed to the plan's numbers.
@@ -1244,7 +1420,8 @@ function schemeSlide(b: YieldBundle, s: YieldStudy, p: Path, n: number, last: nu
   });
   if (y.tiers.length) sched.push({ cls: 'tot', cells: ['Total', esc(storeyWord(y.storeys)), '', '', esc(area(y.gba)), esc(area(y.gfa))] });
   const schedTable = y.tiers.length
-    ? ytable([{ head: 'Tier', w: '9mm' }, { head: 'Storeys', w: '22mm' }, { head: 'Use', w: '24mm' }, { head: 'Setbacks F / S / R', w: '28mm' }, { head: 'Plate GBA', r: true }, { head: 'GFA', r: true, w: '18mm' }], sched, true)
+    // the use held to a line ("residential, 18m deep"), the room taken from the storeys and the setbacks, which need less
+    ? ytable([{ head: 'Tier', w: '9mm' }, { head: 'Storeys', w: '18mm' }, { head: 'Use', w: '33mm' }, { head: 'Setbacks F / S / R', w: '23mm' }, { head: 'Plate GBA', r: true }, { head: 'GFA', r: true, w: '18mm' }], sched, true)
     : '<div class="ynote">No building type is studied for this zone: the floor space ratio\'s floor area alone.</div>';
   const blocks = [zBlock('The scheme', figs), zBlock('Against the controls', ctlTable), zBlock('Schedule', schedTable)];
   if (apartments) {
@@ -1254,22 +1431,24 @@ function schemeSlide(b: YieldBundle, s: YieldStudy, p: Path, n: number, last: nu
     mixRows.push({ cls: 'tot', cells: ['Total', '', '', esc(`avg ${fmt(y.averageUnitSqm, 1)} m²`), esc(fmt(y.units.total)), esc(area(kinds.reduce((t, kd) => t + y.units[kd] * a.sizes[kd], 0)))] });
     blocks.push(zBlock('Apartments', ytable([{ head: 'Unit', w: '24mm' }, { head: 'Share', r: true, w: '16mm' }, { head: 'ADG 4D min.', r: true, w: '28mm' }, { head: 'Area each', r: true, w: '24mm' }, { head: 'Units', r: true, w: '14mm' }, { head: 'Area', r: true }], mixRows, true)));
   }
-  const figures = schemeFigures(b, s, { y }, id, y.storeys ? `${storeyWord(y.storeys)} · ${area(y.gfa)} GFA${y.units.total ? ` · ${fmt(y.units.total)} units` : ''}` : 'the height plane over the site');
+  const figures = schemeFigures(b, s, { y, sun: ap }, id, y.storeys ? `${storeyWord(y.storeys)} · ${area(y.gfa)} GFA${y.units.total ? ` · ${fmt(y.units.total)} units` : ''}${ap ? ` · ${pctOf(ap.meeting, ap.total)} with ${rule.hours} h sun` : ''}` : 'the height plane over the site');
+  const sunSaid = ap ? `${pctOf(ap.meeting, ap.total)} of its apartments get ${rule.hours} hours of sun at mid winter, against the ADG's 70%${ap.future && ap.future.meeting !== ap.meeting ? `, and ${pctOf(ap.future.meeting, ap.total)} once the neighbours build to their controls` : ''}.` : '';
   const governs = y.governs === 'fsr' ? `The floor space ratio governs: the height would allow ${y.storeysByHeight} storeys.` : y.governs === 'envelope' ? 'The setbacks and the height govern: the floor space ratio is not reached.' : 'No floor space ratio is mapped: the height governs.';
   const what = `${storeyWord(y.storeys)}, ${m1(Math.round(y.heightM * 10) / 10)} to the roof: ${area(y.gfa)} of floor area (${ratio(y.gfa, A)})${y.units.total ? `, ${fmt(y.units.total)} apartments` : ''}${y.parking.total ? ` and ${fmt(y.parking.total)} parking spaces` : ''}`;
+  // the sun's sentence last: where the page has no room for it, the table beside says it
   const narrative = id === 'withinControls'
-    ? brief([y.archetype === 'none' ? `${c.zoneCode ?? 'The zone'} takes no residential flat building, shop-top housing or office building.` : `Within the LEP's height and floor space ratio and the ADG's separations, the site holds ${what}.`, y.archetype === 'none' ? '' : governs])
+    ? brief([y.archetype === 'none' ? `${c.zoneCode ?? 'The zone'} takes no residential flat building, shop-top housing or office building.` : `Within the LEP's height and floor space ratio and the ADG's separations, the site holds ${what}.`, y.archetype === 'none' ? '' : governs, sunSaid], 560)
     : id === 'affordableBonus'
       ? brief([`With ${pct}% more height and floor space ratio for 15% affordable housing, held for 15 years, the Housing SEPP's in-fill bonus gives ${what}.`,
-        `That is ${area(y.gfa - s.base.gfa)}${y.units.total > s.base.units.total ? ` and ${fmt(y.units.total - s.base.units.total)} apartments` : ''} more than within the controls, about ${fmt(Math.round(y.units.total * 0.15))} of them affordable. Eligibility to confirm.`])
+        `That is ${area(y.gfa - s.base.gfa)}${y.units.total > s.base.units.total ? ` and ${fmt(y.units.total - s.base.units.total)} apartments` : ''} more than within the controls, about ${fmt(Math.round(y.units.total * 0.15))} of them affordable. Eligibility to confirm.`, sunSaid], 560)
       : id === 'rebuiltAsStands'
         ? brief([`Kept and refurbished, or rebuilt on its footprint to the height it stands at, what stands holds ${what}.`,
-          `That is ${area(y.gfa - s.base.gfa)}${y.units.total > s.base.units.total ? ` and ${fmt(y.units.total - s.base.units.total)} apartments` : ''} more than within the controls. Over the LEP's height and floor space ratio, it needs a clause 4.6 variation, argued on adding no bulk to what stands${y.archetype === 'residential' && s.base.archetype === 'none' ? ', and existing use rights for apartments the zone no longer permits' : ''}; to confirm with a planner.`])
+          `That is ${area(y.gfa - s.base.gfa)}${y.units.total > s.base.units.total ? ` and ${fmt(y.units.total - s.base.units.total)} apartments` : ''} more than within the controls. Over the LEP's height and floor space ratio, it needs a clause 4.6 variation, argued on adding no bulk to what stands${y.archetype === 'residential' && s.base.archetype === 'none' ? ', and existing use rights for apartments the zone no longer permits' : ''}; to confirm with a planner.`, sunSaid], 560)
       : brief([`Filled to the height plane within the setbacks, the envelope holds ${what}.`,
-        c.fsr ? `That is ${area(y.gfa - s.base.gfa)} over the LEP's ${c.fsr.toFixed(2)}:1: the case a clause 4.6 variation or a planning proposal has to carry.` : '']);
+        c.fsr ? `That is ${area(y.gfa - s.base.gfa)} over the LEP's ${c.fsr.toFixed(2)}:1: the case a clause 4.6 variation or a planning proposal has to carry.` : '', sunSaid], 560);
   return { id: `${String(n).padStart(2, '0')}_${id.replace(/[A-Z]/g, (ch) => `_${ch.toLowerCase()}`)}`, title: SCENARIO_TITLE[id], subtitle: subtitleOf(b, s), textHtml: '',
     figureHtml: zFlow(blocks) + figures.html, full: true, narrative, accent: id === 'envelopeToHeight' ? inks().F.deep : inks().accent,
-    legend: schemeLegend(b, s, y, false, figures.kerbs), sources: `${NOT_A_DESIGN} ${PATH_BASIS[id]} Every assumption is on page ${String(last).padStart(2, '0')}.${meshNote(b)}${treesNote(b)}` };
+    legend: schemeLegend(b, s, y, false, figures.kerbs, ap), sources: `${NOT_A_DESIGN} ${PATH_BASIS[id]}${ps ? ` ${sunNote(b, s)}` : ''} Every assumption is on page ${String(last).padStart(2, '0')}.${meshNote(b)}${treesNote(b)}` };
 }
 
 const COUNT_WORD = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
@@ -1325,6 +1504,7 @@ function controlsSlide(b: YieldBundle, s: YieldStudy, n: number): Slide {
       { label: 'plates', value: `held to ${m1(a.maxDepth)} deep; towers to ${area(a.towerPlateMax)} GBA` },
     ] : []),
     { label: 'parking rates', value: s.parkingSet === 'custom' ? 'from yield_assumptions.json' : PARKING_RATES[s.parkingSet].basis },
+    ...(apartments && !s.noScheme ? [{ label: 'sun', value: `21 June, 9 am – 3 pm, by the quarter hour; ${sunRule(b).hours} hours asked of 70% (${sunRule(b).where}); an apartment's sun on a metre of its facade 1 m above its floor, the apartments shared along each storey's facade; the neighbours' open ground held to half in sun for ${sunRule(b).neighbourHours} hours`, note: sunRule(b).custom ? 'from yield_assumptions.json' : 'ADG 4A-1' }] : []),
     { label: 'nearest station', value: b.station ? `${titleWords(b.station.name)}, ${fmt(b.station.distanceM)} m` : 'none within 1.2 km' },
     { label: 'affordable housing bonus', value: `${Math.round(a.affordableBonus * 100)}% more height and FSR for 15% affordable housing` },
     ...(b.capacity ? [{ label: 'neighbours\' futures', value: `raised where the capacity study finds development potential: ${fmt(s.futures.filter(Boolean).length)} of ${fmt(b.context.length)} neighbours; a strata scheme, a heritage item, a site developed since ${b.capacity.since} or one under ${fmt(b.capacity.smallSite)} m² stands as it is${s.futuresHeld ? ` (${fmt(s.futuresHeld)} held)` : ''}`, note: b.capacity.overridden ? `${fmt(b.capacity.overridden)} marks from capacity_overrides.json` : undefined }] : []),
@@ -1409,7 +1589,7 @@ export function yieldCsv(b: YieldBundle): string {
   }
   for (const sc of scenarioRows(b, s)) {
     const figures = [sc.storeys && `${sc.storeys} storeys`, sc.heightM && m1(sc.heightM), sc.gfa, sc.fsr && `FSR ${sc.fsr}`,
-      sc.units && `${sc.units} units`, sc.parking && `${sc.parking} spaces`].filter(Boolean).join(', ');
+      sc.units && `${sc.units} units`, sc.parking && `${sc.parking} spaces`, sc.sun && `${sc.sun} of units with ${sunRule(b).hours} h mid-winter sun`].filter(Boolean).join(', ');
     lines.push(['SCENARIOS', sc.label, sc.note, figures,
       sc.ok === true ? 'yes' : sc.ok === false ? 'no' : sc.ok === null ? 'to confirm' : ''].map(csvCell).join(','));
   }
@@ -1428,6 +1608,14 @@ export function yieldJson(b: YieldBundle): string {
     zones: b.zones, heightsFromMeshes: b.mesh,
     study: strip(s.base), affordableHousingBonus: strip(s.bonus), envelopeToHeight: strip(s.max), rebuiltAsStands: strip(s.retained),
     scenarios: scenarioRows(b, s),
+    // each path's sun: its apartments' hours, one by one, and the shadow it adds, hour by hour (no outlines)
+    sun: { rule: sunRule(b), paths: Object.fromEntries((['rebuiltAsStands', 'withinControls', 'affordableBonus', 'envelopeToHeight'] as Scenario['id'][]).flatMap((id) => {
+      const p = pathSun(b, s, id);
+      return p ? [[id, {
+        apartments: p.apartments && { total: p.apartments.total, meeting: p.apartments.meeting, none: p.apartments.none, future: p.apartments.future, hours: p.apartments.units.map((u) => ({ storey: u.storey, hours: u.hours, hoursFuture: u.hoursFuture })) },
+        shadow: p.shadow, measured: p.measured,
+      }]] : [];
+    })) },
     table: yieldRows(b, s).filter((r) => !r.section && !r.head),
     neighbours: b.context.map((c, i) => ({ heightM: c.heightM, known: c.known, controls: c.controls, futureM: s.futures[i], capacity: c.capacity })),
     capacityStudy: b.capacity ? { ...b.capacity, futuresHeld: s.futuresHeld } : undefined,

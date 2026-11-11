@@ -1320,8 +1320,9 @@ site may take, so a site with more paths has more pages:
 1. **Planning yield** — the site (area, lot, frontage) and its controls (zone,
    height of building, floor space ratio and the floor area it gives), then
    the paths side by side (`scenarioRows()`, also in the CSV and the JSON):
-   each one's storeys, height, floor area, FSR, units, parking, compliance and
-   the page it is drawn on, and the floor area and height of each as bars
+   each one's storeys, height, floor area, FSR, units, parking, the share of
+   its apartments with the ADG's mid-winter sun, compliance and the page it
+   is drawn on, and the floor area and height of each as bars
    against the FSR's floor area and the height of building. The right page is
    the site among its neighbours in plan, each numbered neighbour's street
    number, zone and height written in its building.
@@ -1352,7 +1353,8 @@ site may take, so a site with more paths has more pages:
 4. **Within the controls** — the scheme inside the LEP's height and FSR and
    the ADG's separations: its building type, storeys, floor area, apartments,
    saleable area and parking; the controls it is held to (height, FSR, floor
-   area, minimum lot size, ADG 2E depth and 3E deep soil) with a mark each;
+   area, minimum lot size, ADG 2E depth, 3E deep soil, 4A sunlight and 3B
+   overshadowing) with a mark each;
    the schedule of tiers — storeys, use, setbacks, plate and floor area, each
    tier's number in the ring the plan draws it in — and the apartments, a row
    for each kind in the mix with its share, ADG 4D-1's least area for it, its
@@ -1503,8 +1505,41 @@ local metres:
   need at 30 m² each over 90% of the site.
 - **The ADG checks.** Communal open space (25%), deep soil (7%, with its
   minimum dimension by site area, against the ground the ground floor leaves),
-  the separations, apartment sizes against 4D-1's minima; solar access and
-  cross-ventilation are marked for the design to test.
+  the separations, apartment sizes against 4D-1's minima; cross-ventilation is
+  marked for the design to test. Solar access and overshadowing are tested on
+  the massing, as the next two points say.
+- **Sun to the apartments (ADG 4A-1, 4A-2).** `src/lib/solarAccess.ts`, tested
+  in `test/solar-access.mts`, gives each drawn path's apartments their hours
+  of sun on 21 June between 9 am and 3 pm AEST, by the quarter hour. The study
+  knows how many apartments each storey holds, not where, so each storey's
+  facade is shared among them in equal lengths: the plate's outline, a
+  courtyard's too, less any wall built to a side or rear boundary, where no
+  window can go. An apartment has the sun when at least a metre of its
+  facade, a metre above its floor, does (the ADG's 1 m² on the living room's
+  glass, the living room taken to be on its sunniest face). The line to the
+  sun is tested against the neighbours at their recorded heights (a nominal
+  two storeys where none is recorded) and the scheme's own tiers. The share
+  with the hours asked (two in the Greater Sydney Region's councils and in
+  Newcastle and Wollongong, three elsewhere, `adgSunHours()`) is set against
+  4A-1's 70%, and the share with none against 4A-2's 15%. Both are given again
+  with the neighbours built to their futures, where any rises; a path that
+  passes today and fails then takes the dash, not the tick. The massing
+  colours each apartment's facade yellow where it has the hours, the way an
+  office's sun study does, and the overview gives each path's share in a
+  column of its own.
+- **The shadow it adds (ADG 3B-2).** The ground the scheme puts in shadow at
+  each hour from 9 am to 3 pm that is in sun today (the neighbours and what
+  stands on the site casting theirs), sampled every 1.5 m over the open
+  ground of the parks (RE1, C1), the LEP's heritage items and the residential
+  lots (R1–R5) it can reach; the ground under a roof is left out. The table
+  gives each kind's most and its hour, and the residential lots it shades,
+  with those it takes below a common DCP test (half the lot's open ground in
+  sun for the same hours), which pass it today. The ADG asks overshadowing
+  minimised, a judgement, so a path that adds shadow takes the dash, and one
+  that adds none the tick. The bundle carries the heritage items' outlines
+  (`heritageItems`); one from before them says the items were not measured.
+  The ground is flat and the trees cast no shadow: the figures are a test of
+  the massing, for a solar access study to confirm.
 - **The Housing SEPP.** The in-fill affordable housing bonus — up to 30% more
   FSR and height for 15% affordable housing — as a second run of the study,
   and a note where the site is in a TOD area, whose controls may apply instead.
@@ -1516,12 +1551,18 @@ from `yield_assumptions.json` in the address's output folder (the CLI's
 ```json
 { "mix": { "studio": 0.05, "one": 0.25, "two": 0.55, "three": 0.15, "four": 0 },
   "sizes": { "two": 85 }, "podiumStoreys": 3, "towerPlateMax": 850,
-  "parking": { "one": 0.5, "two": 1, "three": 1.5, "visitor": 0.2, "basis": "the council's DCP" } }
+  "parking": { "one": 0.5, "two": 1, "three": 1.5, "visitor": 0.2, "basis": "the council's DCP" },
+  "sun": { "hours": 3, "neighbourHours": 3 } }
 ```
 
+(`sun.hours` sets the hours of mid-winter sun the apartments are held to in
+place of ADG 4A-1's for the council, and `sun.neighbourHours` those the
+neighbours' open ground is; unset, the second follows the first.)
+
 The deck prints the ones a run used. It is a feasibility figure, not a design:
-DCP setbacks, street wall heights, solar access and overshadowing are the
-design's to test, and mapped controls are not a planning certificate. Outputs:
+DCP setbacks and street wall heights are the design's to test, the sun and
+shadow figures are indicative, and mapped controls are not a planning
+certificate. Outputs:
 `PLANNING_YIELD.pdf`, a PNG a spread in `yield/`, `.csv`, `.json`, and
 `data/yield.json` (the bundle, which redraws with no refetch). A bundle from
 before the future heights, the lots' zones and numbers and the kerbs still

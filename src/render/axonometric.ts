@@ -36,6 +36,12 @@ export interface Prism {
   opacity?: number;
   /** A grid of windows over the faces, as the poster maps draw a city. */
   windows?: boolean;
+  /**
+   * Panels laid on the faces (an apartment's stretch of facade on a storey, coloured by its sun): each on the edge
+   * from rings[ring][edge] to the next corner, from t0 to t1 of its length, between two levels. Drawn with their
+   * face, so a nearer face hides them as it hides the face.
+   */
+  cells?: { ring: number; edge: number; t0: number; t1: number; z0: number; z1: number; fill: string }[];
 }
 
 export interface AxoNeighbour {
@@ -275,13 +281,13 @@ export function drawAxonometric(scene: AxoScene, box: { x: number; y: number; w:
     const out: string[] = [];
     const dash = pr.dashed ? ` stroke-dasharray="${pr.dash ?? '0.8,0.6'}"` : '';
     const alpha = pr.opacity != null ? ` fill-opacity="${pr.opacity}"` : '';
-    for (const rg of pr.rings) {
+    pr.rings.forEach((rg, ri) => {
       let sa = 0;
       for (let i = 0; i < rg.length; i++) { const u = rg[i], v = rg[(i + 1) % rg.length]; sa += u.x * v.y - v.x * u.y; }
       const faces = rg.map((p, i) => {
         const q = rg[(i + 1) % rg.length], dx = q.x - p.x, dy = q.y - p.y, l = Math.hypot(dx, dy) || 1;
         const m = sa > 0 ? { x: dy / l, y: -dx / l } : { x: -dy / l, y: dx / l };
-        return { p, q, m, mid: depth({ x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 }) };
+        return { i, p, q, m, mid: depth({ x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 }) };
       }).filter((f) => f.m.x * d.x + f.m.y * d.y < 0).sort((f, g) => g.mid - f.mid);
       for (const f of faces) {
         // glossy: the faces barely shaded, the shadows cast on the ground instead
@@ -289,12 +295,21 @@ export function drawAxonometric(scene: AxoScene, box: { x: number; y: number; w:
         const face = poly([P(f.p, pr.z0), P(f.q, pr.z0), P(f.q, pr.z1), P(f.p, pr.z1)]);
         out.push(`<path d="${face}" fill="${shade(pr.fill, lit)}"${alpha} stroke="${pr.edge}" stroke-width="${pr.edgeW}" stroke-linejoin="round"${dash}/>`);
         if (pr.windows) out.push(`<path d="${face}" fill="url(#axo-win-${id})"/>`);
+        // the panels on this face, lit as it is, each outlined and windowed
+        for (const c of pr.cells ?? []) {
+          if (c.ring !== ri || c.edge !== f.i) continue;
+          const at = (t: number): XY => ({ x: f.p.x + (f.q.x - f.p.x) * t, y: f.p.y + (f.q.y - f.p.y) * t });
+          const a = at(Math.max(0, c.t0)), b = at(Math.min(1, c.t1));
+          const cell = poly([P(a, c.z0), P(b, c.z0), P(b, c.z1), P(a, c.z1)]);
+          out.push(`<path d="${cell}" fill="${shade(c.fill, lit)}" stroke="${shade(c.fill, 0.55)}" stroke-width="0.07" stroke-linejoin="round"/>`);
+          if (pr.windows) out.push(`<path d="${cell}" fill="url(#axo-win-${id})"/>`);
+        }
         for (const zz of pr.storeys ?? []) {
           const [x1, y1] = P(f.p, zz), [x2, y2] = P(f.q, zz);
           out.push(`<line x1="${x1.toFixed(2)}" y1="${y1.toFixed(2)}" x2="${x2.toFixed(2)}" y2="${y2.toFixed(2)}" stroke="${shade(pr.fill, 0.62)}" stroke-width="0.08"/>`);
         }
       }
-    }
+    });
     out.push(`<path d="${pr.rings.map((rg) => poly(rg.map((p) => P(p, pr.z1)))).join('')}" fill="${shade(pr.fill, M.gloss ? 1.3 : 1.12)}"${alpha} fill-rule="evenodd" stroke="${pr.edge}" stroke-width="${pr.edgeW}" stroke-linejoin="round"${dash}/>`);
     return out.join('');
   };
