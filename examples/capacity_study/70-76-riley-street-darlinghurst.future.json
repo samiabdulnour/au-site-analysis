@@ -6,13 +6,13 @@
     "gfaM2": null,
     "label": "our site, SSD proposal",
     "tower": {
-      "_": "Setbacks read off the model's floor plan (the tower outline against the lot boundary, scaled by the lot's 48 x 29 m): 37 x 25 m on a 4-storey podium. To be confirmed in the model. Apartments from level 2 of the podium (homesFrom), the ground floor commercial.",
+      "_": "The SSDA plans (Fuse Architects, Aug 2026): a 4-storey podium over the lot, the tower 3 m off Riley Street and Crown Lane, 3.7 m off Stanley Lane and 9 m off 66-68 Riley Street; apartments from level 2 of the podium (the ground floor commercial). `units` lays them out as the plans do, face by face from the north end, each as [number, width in metres, corner flag where the unit also has windows on that end wall]: the tower (levels 05-13 plan) 7 a floor, 3 on Crown Lane and 4 on Riley Street; the podium (level 03 plan) 10 a floor, 5 and 5, its north wall a party wall.",
       "podium": 4,
       "setbacks": {
-        "RILEY STREET": 2,
-        "STANLEY LANE": 4,
-        "CROWN LANE": 2,
-        "66-68 RILEY STREET": 7
+        "RILEY STREET": 3,
+        "STANLEY LANE": 3.7,
+        "CROWN LANE": 3,
+        "66-68 RILEY STREET": 9
       },
       "habitable": [
         "CROWN LANE",
@@ -20,7 +20,93 @@
         "RILEY STREET",
         "STANLEY LANE"
       ],
-      "homesFrom": 2
+      "homesFrom": 2,
+      "units": {
+        "tower": {
+          "east": [
+            [
+              "503",
+              13.5,
+              "N"
+            ],
+            [
+              "504",
+              7
+            ],
+            [
+              "505",
+              12.5,
+              "S"
+            ]
+          ],
+          "west": [
+            [
+              "502",
+              11.5,
+              "N"
+            ],
+            [
+              "501",
+              7
+            ],
+            [
+              "507",
+              7.5
+            ],
+            [
+              "506",
+              7,
+              "S"
+            ]
+          ]
+        },
+        "podium": {
+          "east": [
+            [
+              "304",
+              4.5
+            ],
+            [
+              "305",
+              6.5
+            ],
+            [
+              "306",
+              9.5
+            ],
+            [
+              "307",
+              7
+            ],
+            [
+              "308",
+              9.5
+            ]
+          ],
+          "west": [
+            [
+              "303",
+              10
+            ],
+            [
+              "302",
+              7.5
+            ],
+            [
+              "301",
+              7
+            ],
+            [
+              "310",
+              10
+            ],
+            [
+              "309",
+              8
+            ]
+          ]
+        }
+      }
     }
   },
   "blocks": [
@@ -566,8 +652,8 @@
       "site": {
         "tower": {
           "setbacks": {
-            "RILEY STREET": 2,
-            "STANLEY LANE": 4,
+            "RILEY STREET": 3,
+            "STANLEY LANE": 3.7,
             "CROWN LANE": 9,
             "66-68 RILEY STREET": 9
           }

@@ -116,6 +116,57 @@ def apartment_test(pairs, kind):
     return dict(double=double, single=single, planned=single if kind in SINGLE else double)
 
 
+CORNER_M = 8.0              # how far along the end wall a corner apartment's windows reach
+
+
+def unit_test(pairs, units):
+    """The plans' own apartments on one part's walls: each unit a span of a face (east or west, from the north end)
+    at every storey, with the end wall's first CORNER_M metres where it is a corner unit; it has its two hours where
+    half the wall of its span at that storey does, on either of its walls, and is dark only where both are."""
+    faces = {}
+    for p, mins in pairs:
+        n = np.asarray(p.normal)
+        d = 'E' if n[0] > 0.7 else 'W' if n[0] < -0.7 else 'N' if n[1] > 0.7 else 'S' if n[1] < -0.7 else None
+        if d is None:
+            continue
+        u, v = p.cell_uv[:, 0], p.cell_uv[:, 1]
+        width = float(u.max()) + p.spacing_m / 2
+        origin = np.asarray(p.origin)
+        far = origin + np.asarray(p.axis_u) * width
+        # the coordinate along the wall from its north end (an east or west wall) or its east end (a north or south one)
+        s_ = u if (origin[1] > far[1] if d in 'EW' else origin[0] > far[0]) else width - u
+        faces.setdefault(d, []).append(dict(s=s_, v=v, mins=mins, width=width))
+    if not faces:
+        return None
+    nf = max(1, int(round(max(f['v'].max() for fs in faces.values() for f in fs) / STOREY_M)))
+
+    def cells(d, a, b, fl):
+        return [f['mins'][(f['s'] >= a) & (f['s'] < b) & ((f['v'] // STOREY_M).astype(int) == fl)] for f in faces.get(d, [])]
+
+    total = ok = dark = 0
+    for side, lst in (('east', units.get('east', [])), ('west', units.get('west', []))):
+        d = 'E' if side == 'east' else 'W'
+        at = 0.0
+        for unit in lst:
+            width, corner = float(unit[1]), (unit[2] if len(unit) > 2 else None)
+            a, b = at, at + width
+            at = b
+            for fl in range(nf):
+                main = np.concatenate(cells(d, a, b, fl) or [np.zeros(0)])
+                end = np.zeros(0)
+                if corner:
+                    ew = max((f['width'] for f in faces.get(corner, [])), default=0.0)
+                    end = np.concatenate(cells(corner, 0.0, CORNER_M, fl) if d == 'E' else cells(corner, max(0.0, ew - CORNER_M), ew, fl) or [np.zeros(0)])
+                if main.size == 0 and end.size == 0:
+                    continue
+                total += 1
+                lit = (main.size and np.mean(main >= THRESHOLD) >= 0.5) or (end.size and np.mean(end >= THRESHOLD) >= 0.5)
+                ok += int(bool(lit))
+                dark += int((main.size == 0 or np.all(main <= 0)) and (end.size == 0 or np.all(end <= 0)))
+    r = dict(share=ok / total if total else 0.0, dark=dark / total if total else 0.0, bays=total)
+    return dict(double=r, single=r, planned=r, units=True, per_floor=sum(len(v) for v in units.values()))
+
+
 for path in sorted(glob.glob(f'{OUT}/future-scene-*.json')):
     scene = json.load(open(path))
     times = assessment_times(dt.date(scene['year'], 6, 21), scene['timezone'], dt.time(9), dt.time(15), STEP)
@@ -132,7 +183,7 @@ for path in sorted(glob.glob(f'{OUT}/future-scene-*.json')):
         for part, m in parts:
             g = part.get('homes') or ('tower' if part['z0'] > 0 and any(q['z0'] == 0 for q in b['parts']) else 'all')
             if g != 'none':
-                groups.append((g, m, part.get('party', [])))
+                groups.append((g, m, part.get('party', []), part.get('units')))
         walls[b['id']] = groups
     kinds = {b['id']: b['kind'] for b in scene['buildings']}
     ids = list(meshes)
@@ -147,7 +198,10 @@ for path in sorted(glob.glob(f'{OUT}/future-scene-*.json')):
         if b['kind'] == 'context' or b['id'] not in meshes:
             continue
         tagged = []                                                   # (group, panel), the party walls left out
-        for g, m, party in walls[b['id']]:
+        plans = {}                                                    # the plans' apartments on a group's walls, where given
+        for g, m, party, units in walls[b['id']]:
+            if units:
+                plans[g] = units
             for p in vertical_face_panels(m, b['id'], spacing_m=SPACING):
                 width = float(p.cell_uv[:, 0].max()) + p.spacing_m / 2
                 if not on_party(p, width, party):
@@ -164,11 +218,23 @@ for path in sorted(glob.glob(f'{OUT}/future-scene-*.json')):
             for g, p in tagged:
                 per.append((g, p, minutes[at:at + len(p.samples)]))
                 at += len(p.samples)
-            by = {grp: apartment_test([(p, mins) for g, p, mins in per if g == grp], b.get('type', '')) for grp in sorted({g for g, _, _ in per})}
-            whole = apartment_test([(p, mins) for g, p, mins in per], b.get('type', ''))
+            def test(grp):
+                pairs = [(p, mins) for g, p, mins in per if g == grp]
+                return unit_test(pairs, plans[grp]) if grp in plans else apartment_test(pairs, b.get('type', ''))
+            by = {grp: test(grp) for grp in sorted({g for g, _, _ in per})}
+            if plans and all(g in plans for g in by):                 # the whole from the groups' own counts
+                n = sum(v['planned']['bays'] for v in by.values() if v)
+                whole_r = dict(share=sum(v['planned']['share'] * v['planned']['bays'] for v in by.values() if v) / n if n else 0.0,
+                               dark=sum(v['planned']['dark'] * v['planned']['bays'] for v in by.values() if v) / n if n else 0.0, bays=n)
+                whole = dict(double=whole_r, single=whole_r, planned=whole_r, units=True)
+            else:
+                whole = apartment_test([(p, mins) for g, p, mins in per], b.get('type', ''))
             if key == 'with':
                 rec['share'] = band_by_area(pts, minutes, threshold_minutes=THRESHOLD).at_or_above_threshold_share
                 rec['apts'], rec['apts_by'] = whole, by
+                if plans:
+                    rec['units'] = True
+                    rec['per_floor'] = {g: v.get('per_floor') for g, v in by.items() if v}
             else:
                 rec[other] = band_by_area(pts, minutes, threshold_minutes=THRESHOLD).at_or_above_threshold_share
                 rec[f'apts_{other}'], rec['apts_other_by'] = whole, by
