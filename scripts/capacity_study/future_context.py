@@ -958,12 +958,10 @@ def summary_page():
 .info{{flex:1;min-width:0;font-size:{pt(6.4)};line-height:1.3}}
 .t{{font-size:{pt(8.5)};font-weight:700;margin-bottom:{mm(.6)}}} .u{{margin-bottom:{mm(1.2)}}}
 .info table{{font-size:{pt(6)}}} .info td{{padding:{mm(.4)} {mm(.5)}}} .info th{{padding:{mm(.4)} {mm(.5)}}}
-.foot{{left:{mm(220)}}}
 </style></head><body>
 <div class="sum"><div class="kick">Future context · summary</div><h1>Does our massing let the neighbours develop?</h1>
 <p class="lead">Each scenario: its plan with the blocks round it as they stand (storeys off the 3D tiles), the apartments it adds, and for every new building how far it stands from our tower against the ADG's separation (24 m between habitable rooms at nine storeys and over, 18 m where one face is blank, 18 and 12 at five to eight), and the share of its apartments with two hours of sun on 21 June, read as ADG 4A-1 reads it: apartments in 8 m bays along the walls, both long faces of a double-loaded plan or the better face of a single-loaded one, corner units taking both walls; 70 % with two hours and no more than 15 % with none is a tick, 60 % is close, and the single-loaded figure says what the plan could still reach. Green holds, amber holds with a condition, red does not. Our tower as the model draws it, {H.escape(plate_of(BASE_TOWER))}, {', '.join(f'{site_setback(n):.0f} m off {n.title()}' for n in (S.get('tower') or {}).get('setbacks', {}))}.</p>
 <div class="grid">{''.join(rows)}</div></div>
-<div class="foot">{H.escape(SITE["base"].title().replace(" Darlinghurst", "").upper())}, DARLINGHURST · FUTURE CONTEXT SCENARIOS<span>Predictive only, not a proposal for any neighbouring site. The sheets that follow carry each scenario in full.</span></div>
 </body></html>'''
 
 
