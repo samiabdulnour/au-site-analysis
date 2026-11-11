@@ -191,11 +191,17 @@
      ],
      "buildings": [
       {
+       "type": "podium",
+       "storeys": 3,
+       "footprint": "lot"
+      },
+      {
        "type": "d18",
        "storeys": 10,
        "along": "YURONG LANE",
        "setback": 2,
-       "sides": 1.5
+       "sides": 1.5,
+       "base": 3
       }
      ]
     },
@@ -210,11 +216,17 @@
      ],
      "buildings": [
       {
+       "type": "podium",
+       "storeys": 3,
+       "footprint": "lot"
+      },
+      {
        "type": "single",
        "storeys": 9,
        "neighbour": "107-113 CROWN STREET",
        "setback": 0,
-       "sides": 0
+       "sides": 0,
+       "base": 3
       }
      ]
     },
@@ -255,11 +267,17 @@
      ],
      "buildings": [
       {
+       "type": "podium",
+       "storeys": 3,
+       "footprint": "lot"
+      },
+      {
        "type": "d18",
        "storeys": 9,
        "along": "YURONG LANE",
        "setback": 0,
-       "sides": 1.5
+       "sides": 1.5,
+       "base": 3
       }
      ]
     },
@@ -272,11 +290,17 @@
      ],
      "buildings": [
       {
+       "type": "podium",
+       "storeys": 3,
+       "footprint": "lot"
+      },
+      {
        "type": "single",
        "storeys": 8,
        "along": "YURONG LANE",
        "setback": 0,
-       "sides": 0
+       "sides": 0,
+       "base": 3
       }
      ]
     },
@@ -316,11 +340,17 @@
      ],
      "buildings": [
       {
+       "type": "podium",
+       "storeys": 3,
+       "footprint": "lot"
+      },
+      {
        "type": "d18",
        "storeys": 10,
        "neighbour": "66-68 RILEY STREET",
        "setback": 0,
-       "sides": 1.5
+       "sides": 1.5,
+       "base": 3
       }
      ]
     },
@@ -336,11 +366,17 @@
      ],
      "buildings": [
       {
+       "type": "podium",
+       "storeys": 3,
+       "footprint": "lot"
+      },
+      {
        "type": "d18",
        "storeys": 10,
        "neighbour": "4 CROWN LANE",
        "setback": 0,
-       "sides": 0
+       "sides": 0,
+       "base": 3
       }
      ]
     }
@@ -368,11 +404,17 @@
      ],
      "buildings": [
       {
+       "type": "podium",
+       "storeys": 3,
+       "footprint": "lot"
+      },
+      {
        "type": "d18",
        "storeys": 10,
        "along": "YURONG LANE",
        "setback": 2,
-       "sides": 1.5
+       "sides": 1.5,
+       "base": 3
       }
      ]
     },
@@ -387,11 +429,17 @@
      ],
      "buildings": [
       {
+       "type": "podium",
+       "storeys": 3,
+       "footprint": "lot"
+      },
+      {
        "type": "d18",
        "storeys": 10,
        "along": "YURONG LANE",
        "setback": 0,
-       "sides": 0
+       "sides": 0,
+       "base": 3
       }
      ]
     },
@@ -404,11 +452,17 @@
      ],
      "buildings": [
       {
+       "type": "podium",
+       "storeys": 3,
+       "footprint": "lot"
+      },
+      {
        "type": "single",
        "storeys": 9,
        "neighbour": "107-113 CROWN STREET",
        "setback": 0,
-       "sides": 0
+       "sides": 0,
+       "base": 3
       }
      ]
     }
@@ -435,11 +489,17 @@
      ],
      "buildings": [
       {
+       "type": "podium",
+       "storeys": 3,
+       "footprint": "lot"
+      },
+      {
        "type": "d18",
        "storeys": 10,
        "along": "YURONG LANE",
        "setback": 2,
-       "sides": 1.5
+       "sides": 1.5,
+       "base": 3
       }
      ]
     },
@@ -454,11 +514,17 @@
      ],
      "buildings": [
       {
+       "type": "podium",
+       "storeys": 3,
+       "footprint": "lot"
+      },
+      {
        "type": "d18",
        "storeys": 10,
        "along": "YURONG LANE",
        "setback": 0,
-       "sides": 0
+       "sides": 0,
+       "base": 3
       }
      ]
     },
@@ -504,11 +570,17 @@
      ],
      "buildings": [
       {
+       "type": "podium",
+       "storeys": 3,
+       "footprint": "lot"
+      },
+      {
        "type": "d18",
        "storeys": 10,
        "along": "YURONG LANE",
        "setback": 2,
-       "sides": 1.5
+       "sides": 1.5,
+       "base": 3
       }
      ]
     },
@@ -523,11 +595,17 @@
      ],
      "buildings": [
       {
+       "type": "podium",
+       "storeys": 3,
+       "footprint": "lot"
+      },
+      {
        "type": "d18",
        "storeys": 10,
        "along": "YURONG LANE",
        "setback": 0,
-       "sides": 0
+       "sides": 0,
+       "base": 3
       }
      ]
     },
@@ -609,11 +687,17 @@
      ],
      "buildings": [
       {
+       "type": "podium",
+       "storeys": 3,
+       "footprint": "lot"
+      },
+      {
        "type": "d18",
        "storeys": 10,
        "along": "YURONG LANE",
        "setback": 0,
-       "sides": 0
+       "sides": 0,
+       "base": 3
       }
      ]
     },
@@ -626,11 +710,17 @@
      ],
      "buildings": [
       {
+       "type": "podium",
+       "storeys": 3,
+       "footprint": "lot"
+      },
+      {
        "type": "single",
        "storeys": 9,
        "neighbour": "107-113 CROWN STREET",
        "setback": 0,
-       "sides": 0
+       "sides": 0,
+       "base": 3
       }
      ]
     }

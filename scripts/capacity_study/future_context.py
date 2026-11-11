@@ -664,12 +664,12 @@ def axo(scn, parcels, blds, existing, RET):
     for e in existing:
         items.append((e['poly'], 0, e['h'], dict(typ='low', n=e['n'], label=None)))
     if TOWER:
-        items.append((SITE_POLY, 0, H_of(SITE_PODIUM), dict(typ='site', n=SITE_PODIUM, base=0, label=None)))
-        items.append((SITE_TOWER, H_of(SITE_PODIUM), H_of(S['storeys']), dict(typ='site', n=S['storeys'], base=SITE_PODIUM, label=str(S['storeys']))))
+        items.append((SITE_POLY, 0, H_of(SITE_PODIUM), dict(typ='site', n=SITE_PODIUM, base=0, label=None, grp='site')))
+        items.append((SITE_TOWER, H_of(SITE_PODIUM), H_of(S['storeys']), dict(typ='site', n=S['storeys'], base=SITE_PODIUM, label=str(S['storeys']), grp='site')))
     else:
-        items.append((SITE_TOWER, 0, H_of(S['storeys']), dict(typ='site', n=S['storeys'], base=0, label=str(S['storeys']))))
+        items.append((SITE_TOWER, 0, H_of(S['storeys']), dict(typ='site', n=S['storeys'], base=0, label=str(S['storeys']), grp='site')))
     for b in blds:
-        items.append((b['poly'], H_of(b['base']) if b['base'] else 0, H_of(b['n']), dict(typ=b['typ'], n=b['n'], base=b['base'], label=None if b['typ'] == 'podium' else str(b['n']))))
+        items.append((b['poly'], H_of(b['base']) if b['base'] else 0, H_of(b['n']), dict(typ=b['typ'], n=b['n'], base=b['base'], label=None if b['typ'] == 'podium' else str(b['n']), grp=b['key'])))
     flat = [(p, z0, z1, b) for g, z0, z1, b in items for p in polys(g)]
     xs, ys, out = [], [], []
     C.setdefault('context', '#e2e2e2')
@@ -699,9 +699,21 @@ def axo(scn, parcels, blds, existing, RET):
         xs += [u - 6, u + 6]; ys.append(v + 2)
         names.append(f'<text x="{u:.2f}" y="{v + 1:.2f}" class="ast">{H.escape(name.title())}</text>')
 
+    # painter's order, far to near; the parts of one building (a podium and the tower on it) go together at the
+    # podium's depth, the lowest first, so a roof is never painted over the tower that stands on it
+    def own(p):
+        c = p.centroid
+        return round(proj(c.x, c.y, 0)[2] / 1.5)
+    groups = {}
+    for p, z0, z1, b in flat:
+        g = b.get('grp')
+        if g is not None and (g not in groups or z0 < groups[g][1]):
+            groups[g] = (own(p), z0)
+
     def depth(it):
-        c = it[0].centroid
-        return (round(proj(c.x, c.y, 0)[2] / 1.5), it[1])
+        p, z0, z1, b = it
+        g = b.get('grp')
+        return (groups[g][0] if g is not None else own(p), z0, own(p))
 
     for p, z0, z1, b in sorted(flat, key=depth):
         col = C[b['typ']]

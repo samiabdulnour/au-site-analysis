@@ -119,7 +119,9 @@ def apartment_test(pairs, kind):
     # other long wall is a party wall, which makes a double-loaded plan single), and the best of them is the
     # single-loaded figure, with the way it looks, which for a single-loaded plan is the way its apartments face
     principal = [i for i in longs if any((i, b) not in corner_bays for b in range(faces[i]['ok'].shape[0]))] or longs
-    best = max(principal, key=lambda i: share([i])['share'])
+    # the better face; where two tie, the one that looks north, then east (the street face of a slab on an eastern
+    # street), so a single-loaded plan is read on the face it would be built for
+    best = max(principal, key=lambda i: (round(share([i])['share'], 3), float(faces[i]['normal'][1]), float(faces[i]['normal'][0])))
     single = share([best])
     return dict(double=double, single=single, planned=single if kind in SINGLE else double, sides=len(principal), single_face=compass(faces[best]['normal']),
                 principal_m=round(max(faces[i]['width'] for i in principal), 1))

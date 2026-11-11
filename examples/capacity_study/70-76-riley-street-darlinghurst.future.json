@@ -1,5 +1,5 @@
 {
- "_": "The future-context scenarios for 70-76 Riley Street: scripts/future_context.ts draws them over the capacity study's data. Properties are named by the start of their address as the NSW property register writes it. A building is a footprint type (single: single loaded, 12 m deep; d18: double loaded, 18 m, 8 units a floor; d22: double loaded, up to 22 m, 10 units a floor, east and west facing; block: the whole parcel, apartments on every face that is not a party wall; consent: as approved; podium: the street wall over the whole parcel), its storeys, and the line its long axis follows: `along` a street (`side` north, south, east or west picks the frontage where the street wraps the parcel) or the party wall of a `neighbour`, `setback` metres off that line, `depth` metres deep from it (the type's depth unless smaller), `sides` off each end, `length` at most (45 m whatever is asked), kept `from` a named street's end with `endSetback` off it, or `centre`. `footprint: lot` fills the parcel. Prose may use {A.area}, {A.plate}, {A.fsr}, {A.parity}, {A.gap} and {units}. `site.tower` draws our own scheme as a podium and a tower inset from the lot by the setbacks named per street or neighbour; `site.tower.habitable` says which of its faces carry habitable rooms or balconies. A scenario's own `retained` list overrides the study's. A scenario's own `site.tower` moves our tower for that sheet.",
+ "_": "The future-context scenarios for 70-76 Riley Street: scripts/future_context.ts draws them over the capacity study's data. Properties are named by the start of their address as the NSW property register writes it. A building is a footprint type (single: single loaded, 12 m deep; d18: double loaded, 18 m, 8 units a floor; d22: double loaded, up to 22 m, 10 units a floor, east and west facing; block: the whole parcel, apartments on every face that is not a party wall; consent: as approved; podium: the street wall over the whole parcel), its storeys, and the line its long axis follows: `along` a street (`side` north, south, east or west picks the frontage where the street wraps the parcel) or the party wall of a `neighbour`, `setback` metres off that line, `depth` metres deep from it (the type's depth unless smaller), `sides` off each end, `length` at most (45 m whatever is asked), kept `from` a named street's end with `endSetback` off it, or `centre`. `footprint: lot` fills the parcel. Every neighbour's building stands on a podium over its whole lot (the street wall), the slab or tower from `base` up. Prose may use {A.area}, {A.plate}, {A.fsr}, {A.parity}, {A.gap} and {units}. `site.tower` draws our own scheme as a podium and a tower inset from the lot by the setbacks named per street or neighbour; `site.tower.habitable` says which of its faces carry habitable rooms or balconies. A scenario's own `retained` list overrides the study's. A scenario's own `site.tower` moves our tower for that sheet.",
  "site": {
   "storeys": 14,
   "units": 100,
@@ -301,9 +301,9 @@
   {
    "title": "Crown St south · lot by lot",
    "horizon": "Long term, the Crown Street site south of the lane lot; the blocks north of it as they stand",
-   "lead": "The three new buildings across the lane from us go one by one, each as a single-loaded slab on Crown Street with its yard to the lane, the only plan a lot {B.area} m² wide can carry: every apartment facing the street, the lane side blank.",
+   "lead": "The three new buildings across the lane from us go one by one, each a three-storey podium over its lot with a single-loaded slab on Crown Street over it and the rest of the roof to the lane, the only plan a lot {B.area} m² wide can carry: every apartment on the one face of the slab the sun favours, the other blank.",
    "notes": [
-    "107-113 Crown St: {A.area} m², a single-loaded slab on Crown Street, {A.plate}, {A.storeys} storeys, its lane face {A.sep} m from our tower.",
+    "107-113 Crown St: {A.area} m², a single-loaded slab on Crown Street over the podium, {A.plate}, {A.storeys} storeys, its lane face {A.sep} m from our tower.",
     "115-119 Crown St: {B.area} m², {B.plate}, {B.storeys} storeys, a slab of one or two apartments a floor between two party walls.",
     "121-129 Crown St: {C.area} m², {C.plate}, {C.storeys} storeys, on the corner of Stanley Lane.",
     "The blocks north of 107 Crown St stand as they are on this sheet; 66-68 Riley St stays."
@@ -320,13 +320,19 @@
      ],
      "buildings": [
       {
+       "type": "podium",
+       "storeys": 3,
+       "footprint": "lot"
+      },
+      {
        "type": "single",
        "storeys": 8,
        "along": "CROWN STREET",
        "setback": 0,
        "sides": 0,
        "length": 45,
-       "from": "centre"
+       "from": "centre",
+       "base": 3
       }
      ]
     },
@@ -338,13 +344,19 @@
      ],
      "buildings": [
       {
+       "type": "podium",
+       "storeys": 3,
+       "footprint": "lot"
+      },
+      {
        "type": "single",
        "storeys": 8,
        "along": "CROWN STREET",
        "setback": 0,
        "sides": 0,
        "length": 45,
-       "from": "centre"
+       "from": "centre",
+       "base": 3
       }
      ]
     },
@@ -356,13 +368,19 @@
      ],
      "buildings": [
       {
+       "type": "podium",
+       "storeys": 3,
+       "footprint": "lot"
+      },
+      {
        "type": "single",
        "storeys": 8,
        "along": "CROWN STREET",
        "setback": 0,
        "sides": 0,
        "length": 45,
-       "from": "centre"
+       "from": "centre",
+       "base": 3
       }
      ]
     }
@@ -371,10 +389,10 @@
   {
    "title": "Crown St south · a pair and a lot",
    "horizon": "Long term, the Crown Street site south of the lane lot; the blocks north of it as they stand",
-   "lead": "107-113 and 115-119 Crown St sell together, enough for a podium and a double-loaded slab on the street; 121-129 on the corner builds alone.",
+   "lead": "107-113 and 115-119 Crown St sell together, enough for a podium and a double-loaded slab on the street; 121-129 on the corner builds alone, a podium with a single-loaded slab over it.",
    "notes": [
     "107-119 Crown St: {A.area} m², a three-storey podium over the lot with an 18 m double-loaded slab along Crown Street over it, {A.plate}, {A.storeys} storeys, parity at {A.parity}. Its lane face stands {A.gap} m inside the lot: {A.sep} m from our tower.",
-    "121-129 Crown St: {B.area} m², a single-loaded slab on Crown Street, {B.plate}, {B.storeys} storeys, {B.sep} m from our tower.",
+    "121-129 Crown St: {B.area} m², a single-loaded slab on Crown Street over a three-storey podium, {B.plate}, {B.storeys} storeys, {B.sep} m from our tower.",
     "The blocks north of 107 Crown St stand as they are on this sheet; 66-68 Riley St stays."
    ],
    "retained": [
@@ -414,13 +432,19 @@
      ],
      "buildings": [
       {
+       "type": "podium",
+       "storeys": 3,
+       "footprint": "lot"
+      },
+      {
        "type": "single",
        "storeys": 8,
        "along": "CROWN STREET",
        "setback": 0,
        "sides": 0,
        "length": 45,
-       "from": "centre"
+       "from": "centre",
+       "base": 3
       }
      ]
     }
@@ -429,10 +453,10 @@
   {
    "title": "Crown St south as one · a single-loaded slab on the street",
    "horizon": "Long term, the Crown Street site south of the lane lot; the blocks north of it as they stand",
-   "lead": "The three lots become one site of {D.area} m² and take the plan that owes our tower nothing: a 12 m single-loaded slab along Crown Street, every apartment facing the street, the lane side a gallery, {D.gap} m of the lot left to the lane.",
+   "lead": "The three lots become one site of {D.area} m² and take the plan that owes our tower nothing: a three-storey podium over the lot with a 12 m single-loaded slab along Crown Street over it, every apartment on the one face the sun favours, the other a gallery, {D.gap} m of the podium roof left to the lane.",
    "notes": [
-    "107-129 Crown St: {D.area} m², {D.plate}, {D.storeys} storeys, parity at {D.parity}. {D.sep} m from our tower face to face, clear of the 24 m.",
-    "What it costs them: a 12 m slab on a 32 m lot leaves two thirds of the site as yard and gives about half the floor space a double-loaded plan would.",
+    "107-129 Crown St: {D.area} m², {D.plate}, {D.storeys} storeys, parity at {D.parity}. {D.sep} m from our tower face to face, clear of the 24 m even with its apartments on the lane side.",
+    "What it costs them: a 12 m slab on a 32 m lot leaves two thirds of the roof as terrace and gives about half the floor space a double-loaded plan would.",
     "The blocks north of 107 Crown St stand as they are on this sheet; 66-68 Riley St stays."
    ],
    "retained": [
@@ -449,13 +473,19 @@
      ],
      "buildings": [
       {
+       "type": "podium",
+       "storeys": 3,
+       "footprint": "lot"
+      },
+      {
        "type": "single",
        "storeys": 14,
        "along": "CROWN STREET",
        "setback": 0,
        "sides": 0,
        "length": 45,
-       "from": "centre"
+       "from": "centre",
+       "base": 3
       }
      ]
     }
@@ -687,7 +717,7 @@
   {
    "title": "Crown St south as one · two short slabs facing north",
    "horizon": "Long term, the Crown Street site south of the lane lot; the blocks north of it as they stand",
-   "lead": "The site turned across: two 18 m double-loaded slabs running from Crown Street towards the lane, one on the 105 Crown St boundary and one on the lane's south leg, 24 m apart, each held 9 m off the lane so its end wall keeps the ADG's half from our tower. Our tower as drawn.",
+   "lead": "The site turned across: a three-storey podium over the lot, and on it two 18 m double-loaded slabs running from Crown Street towards the lane, one on the 105 Crown St boundary and one on the lane's south leg, 24 m apart, each held 9 m off the lane so its end wall keeps the ADG's half from our tower. Our tower as drawn.",
    "notes": [
     "107-129 Crown St: {D.area} m², two slabs of {D.plate}, {D.storeys} storeys. Their lane ends are blank walls {D.sep} m from our tower, the 18 m the ADG allows a blank face.",
     "What it costs them: short slabs of three or four apartments a floor, and the southern slab's north face in the northern slab's winter shadow.",
@@ -707,6 +737,11 @@
      ],
      "buildings": [
       {
+       "type": "podium",
+       "storeys": 3,
+       "footprint": "lot"
+      },
+      {
        "type": "d18",
        "storeys": 12,
        "neighbour": "105 CROWN STREET",
@@ -714,7 +749,8 @@
        "sides": 0,
        "length": 23,
        "from": "CROWN STREET",
-       "endSetback": 0
+       "endSetback": 0,
+       "base": 3
       },
       {
        "type": "d18",
@@ -725,7 +761,8 @@
        "length": 23,
        "from": "CROWN STREET",
        "endSetback": 0,
-       "side": "south"
+       "side": "south",
+       "base": 3
       }
      ]
     }

@@ -1965,8 +1965,9 @@ building by its footprint type, its storeys, and the line its long axis
 follows — `along` a street (with a `side` where the street wraps the parcel),
 or the party wall of a `neighbour` — with its
 `setback` off that line, its ends `sides` off the parcel's, its `length` and
-the street end it is kept `from`. The footprint is fitted to the real
-cadastre from that: the three feasible types (single loaded 12 m deep,
+the street end it is kept `from`. Every neighbour's building stands on a podium over its whole lot, the
+street wall, with the slab or tower from `base` up. The footprint is fitted
+to the real cadastre from that: the three feasible types (single loaded 12 m deep,
 double loaded 18 m for 8 units a floor, double loaded up to 22 m for 10 units
 facing east and west), no slab over 45 m, a `block` over the whole parcel
 with apartments on every face that is not a party wall, a podium or a
@@ -1991,9 +1992,10 @@ that sheet, so the later sheets can develop what the earlier ones keep and
 try the separation from either side. Riley Street's scenarios are today
 (0), the blocks north of the site lot by lot and in full amalgamation, and
 then the site the Commission asked about, the three new buildings on Crown
-Street across the lane from our tower, nine ways: lot by lot (single-loaded
-slabs on the street), a pair and a lot, and the three lots as one site with
-a single-loaded slab on the street, a double-loaded slab on the street with
+Street across the lane from our tower, nine ways, every building on a
+podium over its whole lot: lot by lot (single-loaded slabs on the street), a
+pair and a lot, and the three lots as one site with a single-loaded slab on
+the street, a double-loaded slab on the street with
 our tower as drawn and with it pulled to the ADG's half (9 m off the lane
 and the northern neighbour), a tower on a podium, a mirror of ours 3 m off
 the lane (neither side then keeps the separation), both towers at the
