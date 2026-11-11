@@ -126,14 +126,14 @@
       ]
     },
     {
-      "title": "Paired amalgamations",
+      "title": "Paired amalgamations · north pairs",
       "horizon": "Medium term, 10 to 15 years",
       "lead": "Owners of the small single titles sell together, but the strata at 62-64 Riley St and the corner terraces hold out. Two mid-size sites appear, each big enough for one slab but not for a tower.",
       "notes": [
         "54-60 Riley St with 1 Crown Lane become one site of {A.area} m². It takes a double-loaded 18 m slab along Yurong Lane, {A.plate}, {A.storeys} storeys, {A.gap} m off the strata to its south.",
         "The three Crown St lots south of 93-95, with 10 Crown Lane behind them, become one site of {B.area} m². A single-loaded 12 m slab sits against the party wall of the new building at 107-113, {B.plate}, {B.storeys} storeys, every unit facing north over a {B.gap} m court.",
         "93-95 Crown St builds its approved boarding house.",
-        "62-64 Riley St is left between two taller neighbours, which is what eventually pushes it into Scenario 3."
+        "62-64 Riley St is left between two taller neighbours, which is what eventually pushes it into the full amalgamation."
       ],
       "parcels": [
         {
@@ -185,6 +185,186 @@
             {
               "type": "consent",
               "footprint": "lot"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Paired amalgamations · the corners",
+      "horizon": "Medium term, 10 to 15 years",
+      "lead": "The two Yurong Lane corners go first: on Riley St the DA site takes 58 with it, on Crown St the corner terrace and the lane lot behind it pair up. Everything south of them, the strata included, stays.",
+      "notes": [
+        "54-58 Riley St with 1 Crown Lane: {A.area} m², a double-loaded slab along Yurong Lane that fills the three lots, {A.plate}, {A.storeys} storeys, parity at {A.parity}.",
+        "89 Crown St with 4 Crown Lane behind it: {B.area} m², a single-loaded slab along Yurong Lane, {B.plate}, {B.storeys} storeys, every unit facing north over the lane.",
+        "93-95 Crown St builds its approved boarding house.",
+        "The new slabs stand at the far end of each block, {A.sep} and {B.sep} m from our tower: the mid-term option that touches us least."
+      ],
+      "parcels": [
+        {
+          "key": "A",
+          "name": "54-58 Riley St + 1 Crown Lane",
+          "addresses": [
+            "54-56 RILEY STREET",
+            "1 CROWN LANE",
+            "58 RILEY STREET"
+          ],
+          "buildings": [
+            {
+              "type": "d18",
+              "storeys": 9,
+              "along": "YURONG LANE",
+              "setback": 0,
+              "sides": 1.5
+            }
+          ]
+        },
+        {
+          "key": "B",
+          "name": "89 Crown St + 4 Crown Lane",
+          "addresses": [
+            "89 CROWN STREET",
+            "4 CROWN LANE"
+          ],
+          "buildings": [
+            {
+              "type": "single",
+              "storeys": 8,
+              "along": "YURONG LANE",
+              "setback": 0,
+              "sides": 0
+            }
+          ]
+        },
+        {
+          "key": "C",
+          "name": "93-95 Crown St (approved)",
+          "addresses": [
+            "93 CROWN STREET",
+            "95 CROWN STREET"
+          ],
+          "buildings": [
+            {
+              "type": "consent",
+              "footprint": "lot"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Paired amalgamations · the middle",
+      "horizon": "Medium term, 10 to 15 years",
+      "lead": "The commercial strata at 62-64 Riley St sells with the two small titles north of it, and on Crown St the consent at 93-95 is folded into one site with the three lots south of it. These are the mid-term slabs that stand nearest our tower.",
+      "notes": [
+        "58-64 Riley St: {A.area} m², a double-loaded slab against the 66-68 party wall, {A.plate}, {A.storeys} storeys, parity at {A.parity}. Its south face stands {A.sep} m from our tower, across the retained strata: at {A.storeys} storeys the ADG asks 24 m between habitable rooms, so that face, or ours, must be blank.",
+        "93-99 Crown St with 10 Crown Lane: {B.area} m², a double-loaded slab against the 4 Crown Lane boundary, {B.plate}, {B.storeys} storeys, {B.gap} m off 105 Crown St; parity at {B.parity}.",
+        "54-56 Riley St with 1 Crown Lane, 89 Crown St with 4 Crown Lane, and 105 Crown St stay as they are."
+      ],
+      "parcels": [
+        {
+          "key": "A",
+          "name": "58-64 Riley St",
+          "addresses": [
+            "58 RILEY STREET",
+            "60 RILEY STREET",
+            "62-64 RILEY STREET"
+          ],
+          "buildings": [
+            {
+              "type": "d18",
+              "storeys": 10,
+              "neighbour": "66-68 RILEY STREET",
+              "setback": 0,
+              "sides": 1.5
+            }
+          ]
+        },
+        {
+          "key": "B",
+          "name": "93-99 Crown St + 10 Crown Lane",
+          "addresses": [
+            "93 CROWN STREET",
+            "95 CROWN STREET",
+            "97 CROWN STREET",
+            "10 CROWN LANE",
+            "99 CROWN STREET"
+          ],
+          "buildings": [
+            {
+              "type": "d18",
+              "storeys": 10,
+              "neighbour": "4 CROWN LANE",
+              "setback": 0,
+              "sides": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Paired amalgamations · north and south",
+      "horizon": "Medium term, 10 to 15 years",
+      "lead": "On Riley St the four single titles north of the strata pair as before. On Crown St the block splits into two sites either side of the lane lot: the northern four with the consent bought out, the southern two against the new building at 107-113.",
+      "notes": [
+        "54-60 Riley St with 1 Crown Lane: {A.area} m², the 18 m slab along Yurong Lane, {A.plate}, {A.storeys} storeys, {A.gap} m off the strata.",
+        "89-95 Crown St with 4 Crown Lane: {B.area} m², a double-loaded slab along Yurong Lane in place of the boarding-house consent, {B.plate}, {B.storeys} storeys, parity at {B.parity}.",
+        "99-105 Crown St: {C.area} m², a single-loaded slab against the party wall of 107-113, {C.plate}, {C.storeys} storeys, every unit facing north.",
+        "62-64 Riley St, 97 Crown St and 10 Crown Lane stay: the strata between two taller neighbours, the two smallest lots between two slabs."
+      ],
+      "parcels": [
+        {
+          "key": "A",
+          "name": "54-60 Riley St + 1 Crown Lane",
+          "addresses": [
+            "54-56 RILEY STREET",
+            "1 CROWN LANE",
+            "58 RILEY STREET",
+            "60 RILEY STREET"
+          ],
+          "buildings": [
+            {
+              "type": "d18",
+              "storeys": 10,
+              "along": "YURONG LANE",
+              "setback": 2,
+              "sides": 1.5
+            }
+          ]
+        },
+        {
+          "key": "B",
+          "name": "89-95 Crown St + 4 Crown Lane",
+          "addresses": [
+            "89 CROWN STREET",
+            "4 CROWN LANE",
+            "93 CROWN STREET",
+            "95 CROWN STREET"
+          ],
+          "buildings": [
+            {
+              "type": "d18",
+              "storeys": 10,
+              "along": "YURONG LANE",
+              "setback": 0,
+              "sides": 0
+            }
+          ]
+        },
+        {
+          "key": "C",
+          "name": "99-105 Crown St",
+          "addresses": [
+            "99 CROWN STREET",
+            "105 CROWN STREET"
+          ],
+          "buildings": [
+            {
+              "type": "single",
+              "storeys": 9,
+              "neighbour": "107-113 CROWN STREET",
+              "setback": 0,
+              "sides": 0
             }
           ]
         }
@@ -269,8 +449,8 @@
       "retained": [],
       "lead": "The buildings the study holds as retained go too: 66-68 Riley St joins the Riley St site, and the three new buildings on Crown St east of our lane, single titles all, make a third tower site. What matters then is the separation each tower keeps from ours, which the ADG asks of both sides.",
       "notes": [
-        "54-68 Riley St with 1 Crown Lane: {A.area} m², the podium and 22 m tower of Scenario 3 held to the Yurong Lane end; {A.storeys} storeys, parity at {A.parity}. Its south end still stands only {A.sep} m from our tower.",
-        "Crown St north as in Scenario 3: {B.area} m², {B.storeys} storeys.",
+        "54-68 Riley St with 1 Crown Lane: {A.area} m², the podium and 22 m tower of the full amalgamation held to the Yurong Lane end; {A.storeys} storeys, parity at {A.parity}. Its south end still stands only {A.sep} m from our tower.",
+        "Crown St north as in the full amalgamation: {B.area} m², {B.storeys} storeys.",
         "Crown St south, 107-129: {D.area} m², 32 m deep, under the same 18 m and 2.5:1 as our site. A three-storey street wall with a double-loaded 18 m tower over it, {D.plate}, {D.gap} m off Crown Lane: {D.storeys} storeys, parity at {D.parity}. A 12 m slab facing Crown St alone would need about 21 for parity.",
         "Across the 5.9 m lane the towers stand {D.sep} m apart. At nine storeys and over the ADG asks 24 m between habitable rooms, 18 m where one face is blank: with our east face {site.east} m off the lane their lane side must be blank, or sit {D.needs} m off the lane, which a double-loaded plate cannot afford. At 9 m each side, both face the lane freely.",
         "Our test is the same whatever they build: 12 m off a side boundary at levels 9 and over (9 m to a lane's centreline), 9 m at 5 to 8, 6 m below. Our faces sit {site.east} m off the lane and {site.north} m off 66-68 Riley St."
@@ -380,11 +560,11 @@
         }
       },
       "retained": [],
-      "lead": "Everything develops as in Scenario 4, and our tower owes nothing to its neighbours' goodwill: 9 m off Crown Lane and 9 m off 66-68 Riley St, the ADG's half at levels 9 and over. The neighbours then build the towers their sites can carry.",
+      "lead": "Everything develops as there, and our tower owes nothing to its neighbours' goodwill: 9 m off Crown Lane and 9 m off 66-68 Riley St, the ADG's half at levels 9 and over. The neighbours then build the towers their sites can carry.",
       "notes": [
         "Our tower becomes {site.plate}, {site.area} m² a floor against the {site.drawn} m² drawn, standing {site.east} m off the lane (12 m to its centreline) and {site.north} m off 66-68 Riley St.",
-        "Crown St south as in Scenario 4, its tower 12 m off the lane: {D.sep} m face to face, clear of the 24 m with windows and balconies on both.",
-        "54-68 Riley St as in Scenario 4, its tower at the Yurong Lane end: {A.sep} m from ours, clear.",
+        "Crown St south as in Everything develops, its tower 12 m off the lane: {D.sep} m face to face, clear of the 24 m with windows and balconies on both.",
+        "54-68 Riley St as in Everything develops, its tower at the Yurong Lane end: {A.sep} m from ours, clear.",
         "The cost is ours, about a third of the plate; the gain is a scheme that holds whatever the Commission assumes for the neighbours."
       ],
       "parcels": [
@@ -486,7 +666,7 @@
       "notes": [
         "Crown St south: with our balconies {site.east} m off the lane, a double-loaded plate cannot keep the 24 m, so the tower turns into a single-loaded 12 m slab facing Crown St, {D.plate}, {D.gap} m off the lane, its lane side a gallery. {D.sep} m face to face, clear; but {D.storeys} storeys give {D.fsr} where parity needs {D.parity}: a quarter of the site's yield gone to our setback.",
         "54-68 Riley St: the tower {A.plate}, held to the Yurong Lane end, its south end {A.sep} m from ours, clear, at parity of {A.parity}.",
-        "Crown St north as in Scenario 3.",
+        "Crown St north as in the full amalgamation.",
         "This is the position the Commission is unlikely to accept: our scheme takes its separation from the neighbours' sites, and the ADG's half-to-the-boundary rule exists so that it cannot."
       ],
       "parcels": [

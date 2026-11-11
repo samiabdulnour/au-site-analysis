@@ -46,8 +46,8 @@ if (!existsSync(join(out, 'analysis.json'))) { console.error(`${out}/analysis.js
 const log = (m: string) => console.error(m);
 const redraw = args.includes('--redraw') && existsSync(join(out, 'future.json'));
 
-/** The plan's window: the sheet's plan at 1:500 is 184 × 236 mm, 92 × 118 ground metres, centred on the study blocks. */
-const PLAN_M = { w: 92, h: 118 };
+/** The plan's window: the sheet's plan at 1:500 is 184 × 216 mm, 92 × 108 ground metres, centred on the study blocks. */
+const PLAN_M = { w: 92, h: 108 };
 const MARGIN_M = 8;
 
 if (!redraw) await fetchStudy();
@@ -97,12 +97,24 @@ async function fetchStudy(): Promise<void> {
   await writeFile(join(out, 'future.json'), JSON.stringify({ window: win, aerial, hob, fsr, heights, mesh, fetchedAt: new Date().toISOString() }));
 }
 
-// draw, print, bind
+// draw, then the mid-winter sun over the drawing's massing where Loriini is beside this repository (or LORIINI names
+// it), then draw again with the sun on the sheets; print, bind
 const run = promisify(execFile);
 const python = process.env.PYTHON || 'python3';
-const { stdout, stderr } = await run(python, ['-I', join(HERE, 'capacity_study', 'future_context.py'), out, resolve(scenarios)], { maxBuffer: 64 * 1024 * 1024 });
-if (stderr.trim()) log(stderr.trim());
-log(`  future_context.py: ${stdout.trim()}`);
+const draw = async () => {
+  const { stdout, stderr } = await run(python, ['-I', join(HERE, 'capacity_study', 'future_context.py'), out, resolve(scenarios!)], { maxBuffer: 64 * 1024 * 1024 });
+  if (stderr.trim()) log(stderr.trim());
+  log(`  future_context.py: ${stdout.trim()}`);
+};
+await draw();
+const loriini = process.env.LORIINI || (existsSync(join(HERE, '..', '..', 'loriini', 'src')) ? join(HERE, '..', '..', 'loriini') : undefined);
+if (loriini && !args.includes('--no-sun')) {
+  try {
+    const { stdout } = await run(python, ['-I', join(HERE, 'capacity_study', 'future_solar.py'), out], { env: { ...process.env, LORIINI: loriini }, maxBuffer: 64 * 1024 * 1024 });
+    log(`  future_solar.py: ${stdout.trim()}`);
+    await draw();
+  } catch (e: any) { log(`  WARN the sun study did not run: ${e?.message ?? e}`); }
+} else log('  no Loriini beside this repository (LORIINI unset): the sheets carry no sun study');
 const { width, height, pages } = JSON.parse(await readFile(join(out, 'future-page.json'), 'utf8')) as { width: number; height: number; pages: number };
 const bound = await PDFDocument.create();
 for (let i = 1; i <= pages; i++) {

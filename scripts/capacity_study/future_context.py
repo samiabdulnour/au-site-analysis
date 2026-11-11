@@ -322,7 +322,7 @@ MM = DPI / 25.4
 PT = DPI / 72
 PAGE_W, PAGE_H = round(420 * MM), round(297 * MM)
 SCALE = 500
-PLAN_MM = (92, 10, 184, 236)        # left, top, width, height on the sheet
+PLAN_MM = (92, 10, 184, 216)        # left, top, width, height on the sheet
 PLAN_W_M, PLAN_H_M = PLAN_MM[2] * SCALE / 1000, PLAN_MM[3] * SCALE / 1000
 study = unary_union([r['poly'] for b in BLOCKS for r in b] + [SITE_POLY := PROPS[next(k for k, r in PROPS.items() if r.get('isSite'))]['poly']])
 bx0, by0, bx1, by1 = study.bounds
@@ -422,14 +422,19 @@ def face_gap(poly, parcel):
     return dict(total=d3 - d0, parts=(d1 - d0, d2 - d1, d3 - d2), p0=at(d0), p1=at(d3), ticks=[at(d1), at(d2)])
 
 
+def short(base):
+    """An address as the tables print it: no suburb, St and Ln."""
+    return base.title().replace(' Darlinghurst', '').replace(' Street', ' St').replace(' Lane', ' Ln')
+
+
 def separation(blds, existing, RET, parcels):
     """Every building within 30 m of our tower: how far apart the two stand, square to our face where they overlap
     along it and between their nearest points where they do not, and what the ADG asks between them at the levels
     they share (the lower one's band: what the rooms face)."""
     lot = {q['key']: q['poly'] for q in parcels}
     cands = [(f'{b["key"]} · {TYPE[b["typ"]].split(",")[0].lower()}, {b["n"]} st', b['poly'], b['n'], lot[b['key']], True) for b in blds if b['typ'] != 'podium']
-    cands += [(f'{e["base_addr"].title().replace(" Darlinghurst", "")} as it stands, {e["n"]} st', e['poly'], e['n'], e['poly'], False) for e in existing]
-    cands += [(f'{PROPS[pid]["base"].title().replace(" Darlinghurst", "")} retained, {existing_height(PROPS[pid])[1]} st', PROPS[pid]['poly'], existing_height(PROPS[pid])[1], PROPS[pid]['poly'], False) for pid in RET]
+    cands += [(f'{short(e["base_addr"])}, stands, {e["n"]} st', e['poly'], e['n'], e['poly'], False) for e in existing]
+    cands += [(f'{short(PROPS[pid]["base"])}, retained, {existing_height(PROPS[pid])[1]} st', PROPS[pid]['poly'], existing_height(PROPS[pid])[1], PROPS[pid]['poly'], False) for pid in RET]
     rows = []
     for name, poly, n, parcel, new in cands:
         if SITE_TOWER.distance(poly) > 30:
@@ -444,7 +449,7 @@ def separation(blds, existing, RET, parcels):
         geo['new'] = new
         hab, blank, _ = ADG[adg_band(min(n, S['storeys']))]
         dd = round(d)        # the verdict on the metre the sheet prints
-        verdict = 'clear' if dd >= hab else 'only with one face blank' if dd >= blank else 'short even to a blank face'
+        verdict = 'clear' if dd >= hab else 'one face blank' if dd >= blank else 'short of a blank face'
         rows.append((name, d, hab, blank, verdict, geo))
     return rows
 
@@ -582,7 +587,7 @@ def plan(scn, parcels, blds, existing, RET, sep):
     for nm, d, hab, blank, v, geo in sep:
         if d < 0.5 or (v == 'clear' and d > 24 and not geo['new']):     # a standing building clear at any band and past the largest figure needs no line
             continue
-        col = '#1f8f3a' if v == 'clear' else '#c77d00' if v.startswith('only') else '#c0161c'
+        col = '#1f8f3a' if v == 'clear' else '#c77d00' if v.startswith('one') else '#c0161c'
         if 'total' in geo:
             a, g, b = geo['parts']
             sub = ' + '.join(f'{x:.0f}' for x in ((a, g, b) if g >= 0.3 else (a, b)))
@@ -720,20 +725,22 @@ h1{{font-size:{pt(17)};line-height:1.1;margin:{mm(1.5)} 0 {mm(1)};font-weight:70
 .lead{{font-size:{pt(8.2)};line-height:1.4;margin:0 0 {mm(3)}}}
 ul{{margin:0;padding-left:{mm(3.4)}}} li{{margin-bottom:{mm(1.3)}}}
 h2{{font-size:{pt(6.6)};letter-spacing:.06em;text-transform:uppercase;margin:{mm(4)} 0 {mm(1.2)};font-weight:700}}
-table{{border-collapse:collapse;width:100%;font-size:{pt(6.3)};font-variant-numeric:tabular-nums}}
+table{{border-collapse:collapse;width:100%;font-size:{pt(6)};font-variant-numeric:tabular-nums}}
 th{{text-align:left;font-weight:600;border-bottom:{mm(.3)} solid #111;padding:{mm(.8)} {mm(.5)};vertical-align:bottom}}
-td{{border-bottom:{mm(.15)} solid #ccc;padding:{mm(.9)} {mm(.5)};vertical-align:top}}
+td{{border-bottom:{mm(.15)} solid #ccc;padding:{mm(.7)} {mm(.5)};vertical-align:top}}
 td.r,th.r{{text-align:right}}
 .k{{display:inline-block;width:{mm(3.6)};height:{mm(3.6)};border-radius:50%;background:#111;color:#fff;text-align:center;font-weight:700;font-size:{pt(6)};line-height:{mm(3.6)}}}
 .plan{{position:absolute;left:{mm(PLAN_MM[0])};top:{mm(PLAN_MM[1])};width:{mm(PLAN_MM[2])};height:{mm(PLAN_MM[3])}}}
 .cap{{position:absolute;font-size:{pt(6.6)};font-weight:700;letter-spacing:.06em;text-transform:uppercase}}
+.tabs{{position:absolute;left:{mm(PLAN_MM[0])};top:{mm(PLAN_MM[1] + PLAN_MM[3] + 7)};width:{mm(PLAN_MM[2])};display:flex;gap:{mm(6)};font-size:{pt(6)};line-height:1.35}}
+.tab{{flex:1;min-width:0}} .tab h2{{margin:0 0 {mm(1)}}} .tab table{{font-size:{pt(5.8)}}} .tab td{{padding:{mm(.45)} {mm(.5)}}} .tab th{{padding:{mm(.5)} {mm(.5)}}}
 .axo{{position:absolute;left:{mm(280)};top:{mm(16)};width:{mm(130)};height:{mm(150)}}}
 .leg{{position:absolute;left:{mm(282)};top:{mm(172)};width:{mm(126)};font-size:{pt(6.8)};line-height:1.35}}
 .leg .row{{display:flex;gap:{mm(2.5)};align-items:center;margin-bottom:{mm(1.4)}}}
 .sw{{width:{mm(9)};height:{mm(4.2)};border:{mm(.25)} solid #222;flex:none}}
 .ass{{position:absolute;left:{mm(282)};top:{mm(222)};width:{mm(126)};font-size:{pt(5.9)};line-height:1.4;color:#444}}
 .ass p{{margin:0 0 {mm(1.2)}}}
-.foot{{position:absolute;left:{mm(10)};bottom:{mm(8)};font-size:{pt(8.5)};font-weight:700;letter-spacing:.04em}}
+.foot{{position:absolute;left:{mm(10)};bottom:{mm(8)};width:{mm(78)};font-size:{pt(8.5)};font-weight:700;letter-spacing:.04em;line-height:1.2}}
 .foot span{{display:block;font-weight:400;font-size:{pt(6.4)};letter-spacing:0;color:#555;margin-top:{mm(.8)}}}
 svg text{{font-family:Inter,Helvetica,Arial,sans-serif}}
 .num{{font-size:3.6px;font-weight:700;text-anchor:middle}}
@@ -783,19 +790,82 @@ LEGEND = [
 ]
 
 
+def ring_of(g):
+    """A polygon's outline wound anticlockwise, which is the way up a prism's walls face out."""
+    cs = [list(p) for p in g.exterior.coords[:-1]]
+    return cs if g.exterior.is_ccw else cs[::-1]
+
+
+def export_scene(no, blds, existing, RET, sep):
+    """Every building of the scenario as prisms, metres east and north of the site, for future_solar.py: ours,
+    the scenario's (one per parcel key), what stands, and the window's other measured buildings as context."""
+    lon, lat = (CX / R_MERC) * 180, math.degrees(math.atan(math.exp(CY / R_MERC * math.pi)) * 2 - math.pi / 2)
+    names = {nm.split(' · ')[0]: nm for nm, *_ in sep}
+    out = [dict(id='site', kind='site', name='Our tower', parts=[dict(ring=ring_of(p), z0=0, z1=H_of(SITE_PODIUM)) for p in polys(SITE_POLY)] * (1 if TOWER else 0)
+                + [dict(ring=ring_of(p), z0=H_of(SITE_PODIUM) if TOWER else 0, z1=H_of(S['storeys'])) for p in polys(SITE_TOWER)])]
+    by_key = {}
+    for b in blds:
+        by_key.setdefault(b['key'], []).append(b)
+    for key, bs in by_key.items():
+        main = [b for b in bs if b['typ'] != 'podium'][-1]
+        out.append(dict(id=f'new-{key}', kind='new', name=names.get(key, f'{key} · {TYPE[main["typ"]].split(",")[0].lower()}, {main["n"]} st'),
+                        parts=[dict(ring=ring_of(p), z0=H_of(b['base']) if b['base'] else 0, z1=H_of(b['n'])) for b in bs for p in polys(b['poly'])]))
+    for e in existing:
+        out.append(dict(id=f'standing-{e["base_addr"]}', kind='standing', name=f'{short(e["base_addr"])}, stands, {e["n"]} st', parts=[dict(ring=ring_of(p), z0=0, z1=e['h']) for p in polys(e['poly'])]))
+    for pid in RET:
+        r = PROPS[pid]
+        h, n, how = existing_height(r)
+        out.append(dict(id=f'standing-{r["base"]}', kind='standing', name=f'{short(r["base"])}, retained, {n} st', parts=[dict(ring=ring_of(p), z0=0, z1=h) for p in polys(r['poly'])]))
+    named = {b['id'] for b in out}
+    for pid, r in PROPS.items():
+        if r.get('isSite') or f'standing-{r["base"]}' in named or not measured(r) or not r['poly'].intersects(WINDOW.buffer(10)):
+            continue
+        out.append(dict(id=f'context-{pid}', kind='context', name=r['base'], parts=[dict(ring=ring_of(p), z0=0, z1=measured(r)) for p in polys(r['poly'])]))
+    json.dump(dict(lat=lat, lon=lon, timezone='Australia/Sydney', year=int((a.get('fetchedAt') or '2026')[:4]), buildings=out), open(f'{OUT}/future-scene-{no}.json', 'w'))
+    return out
+
+
+def read_sun(no):
+    try:
+        return json.load(open(f'{OUT}/future-solar-{no}.json'))
+    except FileNotFoundError:
+        return None
+
+
+def sun_verdict(share):
+    return 'likely' if share >= 0.7 else 'marginal, the plan must work for it' if share >= 0.5 else 'unlikely'
+
+
 def page(no, scn):
     set_tower(scn)
     parcels, blds, existing = resolve(scn)
     RET = retained_for(scn)
     sep = separation(blds, existing, RET, parcels)
     flags = flags_for()
+    sun_rows, sun = export_scene(no, blds, existing, RET, sep), read_sun(no)
     def parts(geo):
         if 'total' not in geo:
-            return '<br><span style="color:#888">diagonal</span>'
+            return ' <span style="color:#888">diagonal</span>'
         a, g, b = geo['parts']
-        return '<br><span style="color:#888">' + ' + '.join(f'{x:.0f}' for x in ((a, g, b) if g >= 0.3 else (a, b))) + '</span>'
-    sep_rows = ''.join(f'<tr><td>{H.escape(nm)}</td><td class="r">{d:.0f}{parts(geo)}</td><td class="r">{hab} / {blank}</td><td>{v}</td></tr>' for nm, d, hab, blank, v, geo in sep)
-    faces = (f'<p style="margin-top:{mm(1.2)};color:#444">Our tower, {plate_of(SITE_TOWER)}: ' + ', '.join(f'{site_setback(n):.0f} m off {n.title()}' for n in TOWER['setbacks']) + '. The lines on the plan are these separations.</p>') if TOWER else ''
+        return ' <span style="color:#888">' + '+'.join(f'{x:.0f}' for x in ((a, g, b) if g >= 0.3 else (a, b))) + '</span>'
+    sep_rows = ''.join(f'<tr><td>{H.escape(nm)}</td><td class="r">{d:.0f}{parts(geo)}</td><td class="r">{hab} / {blank}</td><td>{v}</td></tr>' for nm, d, hab, blank, v, geo in sep if not (v == 'clear' and d > 24 and not geo['new']))
+    sun_html = ''
+    if sun:
+        rows = []
+        for bid, r in sun['buildings'].items():
+            if r['share'] is None:
+                continue
+            other = r.get('today') if r['kind'] == 'site' else r.get('without_site')
+            loss = (other - r['share']) if (other is not None and r['kind'] != 'site') else 0
+            if r['kind'] == 'standing' and loss < 0.1:
+                continue                                          # a standing building our tower barely touches needs no row
+            note = sun_verdict(r['share']) if r['kind'] != 'standing' else ''
+            if r['kind'] != 'site' and loss >= 0.1:
+                note = (note + '; ' if note else '') + f'our tower takes {loss * 100:.0f} points'
+            rows.append(f'<tr><td>{H.escape(r["name"])}</td><td class="r">{r["share"]:.0%}</td><td class="r">{"" if other is None else f"{other:.0%}"}</td><td>{note}</td></tr>')
+        sun_html = f'<h2>Mid-winter sun · 21 June, 9 to 3</h2><table><tr><th style="width:38%">Building</th><th class="r" style="width:16%">Facade with 2 h</th><th class="r" style="width:18%">Today · without ours</th><th>Reads</th></tr>' + ''.join(rows) + '</table>'
+        flags.append('<b>Sun.</b> Cast over the massing with Loriini\'s engine at a metre: the share of each building\'s upright facade that gets 2 hours of direct sun on 21 June between 9 and 3, with the scenario standing; for ours also with today\'s buildings alone, for the others without our tower. ADG 4A asks 2 hours for 70 % of apartments, so 70 % of facade reads as likely and half as marginal; 3B-2 asks that a neighbour\'s sun is kept, so a standing building our tower costs ten points or more gets a row. A massing proxy, not the per-apartment test.')
+    faces = (f'<p style="margin-top:{mm(1.5)};color:#444">Our tower, {plate_of(SITE_TOWER)}: ' + ', '.join(f'{site_setback(n):.0f} m off {n.title()}' for n in TOWER['setbacks']) + '. The lines on the plan are its separations, the tables under the plan read them and the sun.</p>') if TOWER else ''
     newg = sum(p['gfa'] for p in parcels if not p['consent'])
     units = round(newg / UNIT_GFA / 5) * 5
     rows = []
@@ -815,11 +885,13 @@ def page(no, scn):
 <h2>Indicative yield</h2>
 <table><tr><th></th><th>Site</th><th class="r">Site m²</th><th class="r">Storeys</th><th class="r">Height m</th><th class="r">GFA m²</th><th class="r">FSR</th><th class="r">Parity</th></tr>{tr}</table>
 <p style="margin-top:{mm(2)}">About <b>{units} new apartments</b>{" beside the existing consent" if consents else ""}, on top of the {SITE_UNITS} on our site. Parity: the storeys at which the parcel reaches our density of {FSR_PAR:.1f}:1.</p>
-<h2>Separation from our tower</h2>
-<table><tr><th>Building</th><th class="r">m apart<br><span style="font-weight:400;color:#888">ours + gap + theirs</span></th><th class="r">ADG m, habitable / one blank</th><th>At the levels shared</th></tr>{sep_rows}</table>{faces}
+{faces}
 </div>
 {plan(scn, parcels, blds, existing, RET, sep)}
-<div class="cap" style="left:{mm(PLAN_MM[0])};top:{mm(PLAN_MM[1] + PLAN_MM[3] + 2.5)}">Plan · 1:{SCALE} @ A3 · storeys on each footprint · the study blocks dashed</div>
+<div class="cap" style="left:{mm(PLAN_MM[0])};top:{mm(PLAN_MM[1] + PLAN_MM[3] + 2)}">Plan · 1:{SCALE} @ A3 · storeys on each footprint · the study blocks dashed · the separations from our tower drawn</div>
+<div class="tabs"><div class="tab"><h2>Separation from our tower</h2>
+<table><tr><th style="width:38%">Building</th><th class="r" style="width:22%">m apart <span style="font-weight:400;color:#888">ours+gap+theirs</span></th><th class="r" style="width:16%">ADG, habitable / blank</th><th>At the levels shared</th></tr>{sep_rows}</table></div>
+<div class="tab">{sun_html}</div></div>
 <div class="cap" style="left:{mm(282)};top:{mm(10)}">Massing · looking east over Riley Street · our scheme as a glass</div>
 {axo(scn, parcels, blds, existing, RET)}
 <div class="leg">{leg}</div>

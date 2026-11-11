@@ -1984,6 +1984,21 @@ dimension line between the two buildings' nearest points, green where it is
 clear, amber where it holds only with one face blank, red where it is short
 even of that.
 
+Where the Loriini repository sits beside this one (or `LORIINI` names it),
+each sheet also carries the mid-winter sun over its massing, cast with
+Loriini's `core` (numpy alone, so it runs in the drawer's own environment):
+`scripts/capacity_study/future_solar.py` reads the prisms the drawer writes
+for each scenario (`future-scene-<n>.json`: ours, the scenario's, what stands,
+and the window's other measured buildings as context) and, for every
+building, the share of its upright facade that gets two hours of direct sun
+between 9 and 3 on 21 June, at a metre, with the scenario standing, for ours
+with today's buildings alone, for the others without our tower. That is the
+massing-stage proxy Loriini's own massing mode reports, not the ADG's
+per-apartment test, which needs apartments: 4A asks two hours for 70 % of
+apartments, so 70 % of facade reads as likely, half as marginal; 3B-2 asks
+that a neighbour's sun is kept, so a standing building our tower costs ten
+points or more of facade gets a row. `--no-sun` leaves it out.
+
 What the sheets read beyond the capacity study (`scripts/future_context.ts`
 fetches, `scripts/capacity_study/future_context.py` fits and draws; it needs
 shapely and Pillow): the aerial at its native resolution over the study
