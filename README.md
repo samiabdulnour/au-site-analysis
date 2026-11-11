@@ -1390,19 +1390,31 @@ heights (Overture, its gaps filled from OpenStreetMap, and where neither
 records a height Google's 3D meshes over the massing's window, read as the
 site report reads them — see *Heights from the meshes*; dashed where none
 of them has one), with each tier's envelope
-dashed and the LEP's height of building plane over the site. Over each neighbour,
-in pale dashed glass, its future: its own footprint raised to the whole 3.1 m
-storeys its LEP height of building holds, where its zone permits flats (R1,
-R3, R4, MU1, E1, E2, B1–B4), never lowered — the way sun-study's future
-context reads it — and no higher than its floor space ratio allows: the land
-it stands on by the ratio (its lot, shared between the buildings on it by
-footprint, and never less than its own footprint), spread over its footprint
-at the study's efficiency, offices in a commercial zone and apartments
-elsewhere (`futureHeight()` in `src/lib/yield.ts`). So where the height is an
-airspace RL, as in Parramatta's CBD, the ratio sets the neighbours' futures
-as it sets the proposal. The bundle carries each neighbour's zone, height,
-ratio and land, and the future is worked out when the deck is drawn, so an
-efficiency changed in `yield_assumptions.json` carries to it. The proposal's
+dashed and the LEP's height of building plane over the site. Round it, in pale dashed glass,
+the future context (`src/lib/futureContext.ts`, tested in
+`test/future-context.mts` and `test/yield-futures.mts`): what the neighbours may
+build, as the office's building envelope assumptions have it. On each lot
+within 120 m that may redevelop (zoned for flats, R1, R3, R4, MU1, E1, E2,
+B1–B4, with a height of building of three storeys or more, and not held by the
+capacity study), the largest feasible footprint its envelope holds: 22 m deep
+where its long faces look east and west (ten apartments a floor), 18 m
+double-loaded along an east–west axis (eight), 12 m single-loaded either way,
+at most 45 m long and at least 15 m; the envelope the lot set back 6 m from a
+street and, from its other boundaries, by the ADG's half separation for the
+storeys it rises to (6, 9 and 12 m), the footprint along the street, nearest
+it. It rises to the lot's height of building at 3.1 m a storey, and where the
+floor space ratio would stop it short, the footprint shortens so the floor
+area the ratio gives still reaches the height. A lot too narrow for any
+footprint alone, or held below its height by the setbacks, is joined with the
+next lot along in the same zone, as owners amalgamate, up to three lots, kept
+where the joined lots use the land better, the lots nearest the site first.
+A lot still too small, or one the capacity study holds (a strata scheme, a
+heritage item, a mature or a small site), stands as it is. The neighbours on
+a lot that redevelops stand today and give way to it built out: the
+compliance sheet tests the sun and the separations against both. A height
+mapped as an RL is not read for a lot (its ground is not known), and the
+bundle carries each lot's zone, height and ratio (a bundle from before the
+lots' ratios reads a building's on the lot). The proposal's
 outline is drawn over everything, so a future neighbour in front of it does
 not hide it, and a future far above what stands runs out of the frame, as the
 height plane does, the frame saying how high it goes. The massing is drawn

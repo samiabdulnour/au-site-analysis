@@ -64,6 +64,8 @@ export interface AxoScene {
   neighbours: AxoNeighbour[];
   /** What stands or is proposed on the site. */
   built: Prism[];
+  /** Buildings that may stand round the site on footprints of their own (the yield's future context), drawn as the futures' glass. */
+  futures?: { rings: XY[][]; heightM: number }[];
   roads: RoadLine[];
   kerbs: XY[][];
   lots: { rings: XY[][]; park: boolean }[];
@@ -232,6 +234,13 @@ export function drawAxonometric(scene: AxoScene, box: { x: number; y: number; w:
     const group: Prism[] = [{ rings, z0: 0, z1, fill: nb.fill, edge: shade(nb.fill, M.gloss ? 0.78 : 0.55), edgeW: 0.12, dashed: !known, windows: known }];
     if (nb.future && nb.future > z1) group.push({ rings, z0: z1, z1: nb.future, fill: inks.future, edge: inks.futureEdge, edgeW: 0.12, dashed: true, dash: FUTURE_DASH, opacity: FUTURE_OPACITY });
     prisms.push({ key: depth(cen), group });
+  }
+  for (const f of scene.futures ?? []) {
+    const rings = f.rings.filter((rg) => rg.length >= 3);
+    if (!rings.length || !(f.heightM > 0)) continue;
+    const cen = rings[0].reduce((t, p) => ({ x: t.x + p.x / rings[0].length, y: t.y + p.y / rings[0].length }), { x: 0, y: 0 });
+    if (Math.hypot(cen.x, cen.y) > reach) continue;
+    prisms.push({ key: depth(cen), group: [{ rings, z0: 0, z1: f.heightM, fill: inks.future, edge: inks.futureEdge, edgeW: 0.12, dashed: true, dash: FUTURE_DASH, opacity: FUTURE_OPACITY }] });
   }
   const built = scene.built;
   prisms.push({ key: 0, group: built });

@@ -754,12 +754,14 @@ export async function runYieldPipeline(
     const inside = (lon: number, lat: number) => rings.filter((rg) => pointInRingLL(lon, lat, rg)).length % 2 === 1;
     const numbers = [...new Set(addresses.filter((a) => inside(a.lon, a.lat)).map((a) => a.housenumber.toUpperCase()))];
     const [lon, lat] = interiorLL(rings);
-    const z = at(zoning, lon, lat), h = at(hob, lon, lat), v = Number(h?.MAX_B_H);
+    const z = at(zoning, lon, lat), h = at(hob, lon, lat), v = Number(h?.MAX_B_H), r = Number(at(fsr, lon, lat)?.FSR);
     return {
       rings,
       ...(numbers.length ? { numbers } : {}),
       ...(z?.SYM_CODE ? { zone: String(z.SYM_CODE).trim() } : {}),
       ...(Number.isFinite(v) && v > 0 ? { hob: { value: v, units: String(h?.UNITS ?? 'm') } } : {}),
+      // the ratio too, for the future context's buildings
+      ...(Number.isFinite(r) && r > 0 ? { fsr: r } : {}),
     };
   }).filter((pc) => pc.rings.length && pc.rings[0].some(([lon, lat]) => near(lon, lat)));
 
