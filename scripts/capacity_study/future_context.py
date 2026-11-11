@@ -171,10 +171,34 @@ def reference(parcel, spec):
         edges = [(p, q) for p, q in zip(cs[:-1], cs[1:]) if math.dist(p, q) >= 1 and road.distance(Point((p[0] + q[0]) / 2, (p[1] + q[1]) / 2)) <= 14]
         if not edges:
             sys.exit(f'no edge of the parcel fronts {spec["along"]}')
-        seed = max(edges, key=lambda e: math.dist(*e))
+        # the frontage is the run of edges that together make the longest straight boundary near the street, not the
+        # longest single edge: a lane that turns a corner is near two boundaries, and the one it follows is the one
+        # the cadastre cuts into the most pieces
         ang = lambda e: math.atan2(e[1][1] - e[0][1], e[1][0] - e[0][0])
-        turn = lambda e: abs((ang(e) - ang(seed) + math.pi / 2) % math.pi - math.pi / 2)
-        pts = [c for e in edges if turn(e) < math.radians(12) for c in e]
+        turn = lambda e, f: abs((ang(e) - ang(f) + math.pi / 2) % math.pi - math.pi / 2)
+        def offset(e, f):                                             # how far e's middle lies off the line of f
+            mx, my = (e[0][0] + e[1][0]) / 2 - f[0][0], (e[0][1] + e[1][1]) / 2 - f[0][1]
+            fx, fy = f[1][0] - f[0][0], f[1][1] - f[0][1]
+            return abs(mx * fy - my * fx) / math.hypot(fx, fy)
+        runs = []
+        for e in edges:
+            for run in runs:                                              # collinear: with it, and on its line
+                if turn(e, run[0]) < math.radians(12) and offset(e, run[0]) < 3:
+                    run.append(e)
+                    break
+            else:
+                runs.append([e])
+        if spec.get('side'):                                          # a street that wraps the parcel: the frontage on the side named
+            c = parcel.representative_point()
+            want = dict(north=(0, 1), south=(0, -1), east=(1, 0), west=(-1, 0))[spec['side']]
+            def outward(run):
+                mx = sum(e[0][0] + e[1][0] for e in run) / (2 * len(run)) - c.x
+                my = sum(e[0][1] + e[1][1] for e in run) / (2 * len(run)) - c.y
+                return (mx * want[0] + my * want[1]) / (math.hypot(mx, my) or 1)
+            best = max(runs, key=outward)
+        else:
+            best = max(runs, key=lambda run: sum(math.dist(*e) for e in run))
+        pts = [c for e in best for c in e]
         p, q = max(((p, q) for p in pts for q in pts), key=lambda pq: math.dist(*pq))
         u = unit((q[0] - p[0], q[1] - p[1]))
         origin = min(pts, key=lambda v: road.distance(Point(v)))
@@ -1234,7 +1258,7 @@ def summary_page(part, page_no, pages):
 <div class="t">{r['no']} · {H.escape(r['title'])}</div>
 <div class="u">{gain}neighbours can develop: <b style="color:{r['allow_colour']}">{r['allow']}</b></div>
 <table><tr><th>Building</th><th>Separation from our tower</th><th>Apartments with 2 continuous hours of winter sun, of all its apartments</th></tr>{trs}</table></div></div>''')
-    lead = (f'<p class="lead">Each scenario: its plan with the blocks round it as they stand (storeys off the 3D tiles) and its massing, the apartments it adds, and for every new building how far it stands from our tower against the ADG\'s separation (24 m between habitable rooms at nine storeys and over, 18 m where one face is blank, 18 and 12 at five to eight), and how many of its apartments (the yield\'s count at 85 m² each; ours as the plans have them) get two continuous hours of sun on 21 June, read as ADG 4A-1 reads it: apartments in 8 m bays along the walls, both long faces of a double-loaded plan or the better face of a single-loaded one, corner units taking both walls; 70 % with two hours and no more than 15 % with none is a tick, 60 % is close, and the single-loaded figure says what the plan could still reach, facing the way it names. Green holds, amber holds with a condition, red does not. Our tower as the model draws it, {H.escape(plate_of(BASE_TOWER))}, {", ".join(f"{site_setback(n):.0f} m off {n.title()}" for n in (S.get("tower") or {}).get("setbacks", {}))}.</p>'
+    lead = (f'<p class="lead">Each scenario: its plan with the blocks round it as they stand (storeys off the 3D tiles) and its massing, the apartments it adds, and for every new building how far it stands from our tower against the ADG\'s separation (24 m between habitable rooms at nine storeys and over, 18 m where one face is blank, 18 and 12 at five to eight), and how many of its apartments (the yield\'s count at 85 m² each; ours as the plans have them) get two continuous hours of sun on 21 June, read as ADG 4A-1 reads it: apartments in 8 m bays along the walls, both long faces of a double-loaded plan or the better face of a single-loaded one, corner units taking both walls; 70 % with two hours and no more than 15 % with none is a tick, 60 % is close, and the single-loaded figure says what the plan could still reach, facing the way it names. Green holds, amber holds with a condition, red does not. Our tower as the model draws it, {H.escape(plate_of(BASE_TOWER))}, {", ".join(f"{v:g} m off {n.title()}" for n, v in (S.get("tower") or {}).get("setbacks", {}).items())}; a scenario that moves it says so.</p>'
             if page_no == 1 else f'<p class="lead">Scenarios {part[0]["no"]} to {part[-1]["no"]}, read as on the first sheet.</p>')
     return f'''<!doctype html><html><head><meta charset="utf-8"><title>Future context · summary</title><style>{CSS}
 .sum{{position:absolute;left:{mm(10)};top:{mm(9)};width:{mm(400)}}}

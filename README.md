@@ -1962,7 +1962,8 @@ their scenarios file.
 The scenarios are the author's, in JSON: each parcel named by the start of
 its addresses as the register writes them (`"54-56 RILEY STREET"`), each
 building by its footprint type, its storeys, and the line its long axis
-follows — `along` a street, or the party wall of a `neighbour` — with its
+follows — `along` a street (with a `side` where the street wraps the parcel),
+or the party wall of a `neighbour` — with its
 `setback` off that line, its ends `sides` off the parcel's, its `length` and
 the street end it is kept `from`. The footprint is fitted to the real
 cadastre from that: the three feasible types (single loaded 12 m deep,
@@ -1987,17 +1988,21 @@ at the levels the two buildings share, each building owing its side or rear
 boundary half the first figure). A scenario's own `retained` list overrides
 the study's, and a scenario's own `site.tower` moves the site's tower for
 that sheet, so the later sheets can develop what the earlier ones keep and
-try the separation from either side: Riley Street's scenarios run from
-today (0) through lot by lot and five paired amalgamations (the north
-pairs, the corners, the middle, north and south, and three more ways of
-the last: 99-105 Crown Street built as a block over its whole lot, the
-Crown Street lots south of the lane lot as one site with a podium and a
-slab on the street, and the Riley Street strata joining its site) to the
-full amalgamation; then everything develops, the three new Crown Street
-buildings east of the lane and the 2011 strata too; then our tower pulled
-to the ADG's half (9 m off the lane and the northern neighbour) so the
-neighbours build freely; then our tower as drawn, so the neighbours find
-the whole separation on their land, and lose a quarter of their yield. Each separation is drawn on the plan as a
+try the separation from either side. Riley Street's scenarios are today
+(0), the blocks north of the site lot by lot and in full amalgamation, and
+then the site the Commission asked about, the three new buildings on Crown
+Street across the lane from our tower, nine ways: lot by lot (single-loaded
+slabs on the street), a pair and a lot, and the three lots as one site with
+a single-loaded slab on the street, a double-loaded slab on the street with
+our tower as drawn and with it pulled to the ADG's half (9 m off the lane
+and the northern neighbour), a tower on a podium, a mirror of ours 3 m off
+the lane (neither side then keeps the separation), both towers at the
+ADG's half, and two short slabs turned to face north; last, everything
+develops with both halves kept. The blocks north of the site stand as they
+are on those sheets. The paired amalgamations of the northern blocks
+(north pairs, corners, middle, north and south, and three more ways of the
+last) are a second file, `…future-pairs.json`, drawn with the same
+command. Each separation is drawn on the plan as a
 dimension line between the two buildings' nearest points, green where it is
 clear, amber where it holds only with one face blank, red where it is short
 even of that.
