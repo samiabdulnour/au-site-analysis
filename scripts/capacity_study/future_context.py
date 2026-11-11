@@ -386,22 +386,66 @@ def adg_band(n):
     return 'tall' if n >= 9 else 'mid' if n >= 5 else 'low'
 
 
-def separation(blds, existing, RET):
-    """Every building within 30 m of our tower: how far apart the two stand and what the ADG asks between them at the
-    levels they share (the lower one's band: what the rooms face)."""
-    cands = [(f'{b["key"]} · {TYPE[b["typ"]].split(",")[0].lower()}, {b["n"]} st', b['poly'], b['n']) for b in blds if b['typ'] != 'podium']
-    cands += [(f'{e["base_addr"].title().replace(" Darlinghurst", "")} as it stands, {e["n"]} st', e['poly'], e['n']) for e in existing]
-    cands += [(f'{PROPS[pid]["base"].title().replace(" Darlinghurst", "")} retained, {existing_height(PROPS[pid])[1]} st', PROPS[pid]['poly'], existing_height(PROPS[pid])[1]) for pid in RET]
+def face_gap(poly, parcel):
+    """The gap from our tower's nearest face to a neighbour, square to that face, where the two overlap along it: the
+    total and its parts (our face to our boundary, boundary to boundary, their boundary to their face), with the
+    points to draw it between. None where they do not overlap along the face, and the diagonal between the nearest
+    points is the honest measure."""
+    q1, _ = nearest_points(SITE_TOWER, poly)
+    cs = list(SITE_TOWER.exterior.coords)
+    _, p, q = min(((LineString([p, q]).distance(q1), p, q) for p, q in zip(cs[:-1], cs[1:]) if math.dist(p, q) >= 1), key=lambda t: t[0])
+    u = unit((q[0] - p[0], q[1] - p[1]))
+    n = (-u[1], u[0])
+    c = SITE_TOWER.representative_point()
+    if (c.x - p[0]) * n[0] + (c.y - p[1]) * n[1] > 0:
+        n = (-n[0], -n[1])                                            # outward from our face
+    along = lambda v: (v[0] - p[0]) * u[0] + (v[1] - p[1]) * u[1]
+    out = lambda v: (v[0] - p[0]) * n[0] + (v[1] - p[1]) * n[1]
+    ours = [along(v) for v in cs]
+    theirs = [along(v) for v in poly.exterior.coords]
+    lo, hi = max(min(ours), min(theirs)), min(max(ours), max(theirs))
+    if hi - lo < 2:
+        return None
+    strip = band(p, u, lo, hi)
+    def dmin(g):
+        vs = [out(v) for pp in polys(g.intersection(strip)) for v in pp.exterior.coords]
+        return min(vs) if vs else None
+    def dmax(g):
+        vs = [out(v) for pp in polys(g.intersection(strip)) for v in pp.exterior.coords]
+        return max(vs) if vs else None
+    d0, d1, d2, d3 = dmax(SITE_TOWER), dmax(SITE_POLY), dmin(parcel), dmin(poly)
+    if None in (d0, d1, d2, d3):
+        return None
+    d2 = min(max(d2, d1), d3)                                         # their boundary lies between ours and their face
+    sm = (lo + hi) / 2
+    at = lambda dv: (p[0] + u[0] * sm + n[0] * dv, p[1] + u[1] * sm + n[1] * dv)
+    return dict(total=d3 - d0, parts=(d1 - d0, d2 - d1, d3 - d2), p0=at(d0), p1=at(d3), ticks=[at(d1), at(d2)])
+
+
+def separation(blds, existing, RET, parcels):
+    """Every building within 30 m of our tower: how far apart the two stand, square to our face where they overlap
+    along it and between their nearest points where they do not, and what the ADG asks between them at the levels
+    they share (the lower one's band: what the rooms face)."""
+    lot = {q['key']: q['poly'] for q in parcels}
+    cands = [(f'{b["key"]} · {TYPE[b["typ"]].split(",")[0].lower()}, {b["n"]} st', b['poly'], b['n'], lot[b['key']], True) for b in blds if b['typ'] != 'podium']
+    cands += [(f'{e["base_addr"].title().replace(" Darlinghurst", "")} as it stands, {e["n"]} st', e['poly'], e['n'], e['poly'], False) for e in existing]
+    cands += [(f'{PROPS[pid]["base"].title().replace(" Darlinghurst", "")} retained, {existing_height(PROPS[pid])[1]} st', PROPS[pid]['poly'], existing_height(PROPS[pid])[1], PROPS[pid]['poly'], False) for pid in RET]
     rows = []
-    for name, poly, n in cands:
-        d = SITE_TOWER.distance(poly)
-        if d > 30:
+    for name, poly, n, parcel, new in cands:
+        if SITE_TOWER.distance(poly) > 30:
             continue
+        geo = face_gap(poly, parcel)
+        if geo is None:
+            q1, q2 = nearest_points(SITE_TOWER, poly)
+            geo = dict(diag=(q1, q2))
+            d = SITE_TOWER.distance(poly)
+        else:
+            d = geo['total']
+        geo['new'] = new
         hab, blank, _ = ADG[adg_band(min(n, S['storeys']))]
         dd = round(d)        # the verdict on the metre the sheet prints
         verdict = 'clear' if dd >= hab else 'only with one face blank' if dd >= blank else 'short even to a blank face'
-        q1, q2 = nearest_points(SITE_TOWER, poly)
-        rows.append((name, d, hab, blank, verdict, q1, q2))
+        rows.append((name, d, hab, blank, verdict, geo))
     return rows
 
 
@@ -490,9 +534,11 @@ def plan(scn, parcels, blds, existing, RET, sep):
         # the label in the podium's broadest side: the strips under 3 m wide eroded away first, since an L-shaped
         # remainder's interior point lands in its thin leg
         rest = SITE_POLY.difference(SITE_TOWER.buffer(5)).buffer(-1.5)
-        pc = largest(rest).centroid if not rest.is_empty else SITE_POLY.centroid
-        o.append(f'<text x="{f(pc.x)}" y="{-pc.y + 0.5:.2f}" class="sub" fill="#c0161c">podium · {SITE_PODIUM} st</text>')
-    o.append(f'<text x="{f(c.x)}" y="{-c.y - 0.6:.2f}" class="num" fill="#c0161c">{S["storeys"]}</text><text x="{f(c.x)}" y="{-c.y + 2.0:.2f}" class="sub" fill="#c0161c">{H.escape(S.get("label", "our site"))}</text>')
+        if not rest.is_empty:
+            pc = largest(rest).centroid
+            o.append(f'<text x="{f(pc.x)}" y="{-pc.y + 0.5:.2f}" class="sub" fill="#c0161c">podium · {SITE_PODIUM} st</text>')
+    sub = H.escape(S.get('label', 'our site')) + (f' · {SITE_PODIUM}-storey podium' if TOWER and rest.is_empty else '')
+    o.append(f'<text x="{f(c.x)}" y="{-c.y - 0.6:.2f}" class="num" fill="#c0161c">{S["storeys"]}</text><text x="{f(c.x)}" y="{-c.y + 2.0:.2f}" class="sub" fill="#c0161c">{sub}</text>')
     for p in parcels:
         o.append(f'<path d="{path(p["poly"])}" fill="#fff" fill-opacity=".82"/>')
     for b in blds:
@@ -519,19 +565,31 @@ def plan(scn, parcels, blds, existing, RET, sep):
         o.append(f'<circle cx="{f(x + 0.4)}" cy="{f(-(y + 0.4))}" r="1.7" fill="#111"/><text x="{f(x + 0.4)}" y="{-(y + 0.4) + 0.65:.2f}" class="key">{p["key"]}</text>')
     # the separation from our tower to each neighbour: a dimension line between their nearest points, in the
     # verdict's colour
-    for nm, d, hab, blank, v, q1, q2 in sep:
-        if d < 0.5 or (v == 'clear' and d > 24):     # a building clear at any band and past the largest figure needs no line
-            continue
-        col = '#1f8f3a' if v == 'clear' else '#c77d00' if v.startswith('only') else '#c0161c'
-        ux, uy = (q2.x - q1.x) / d, (q2.y - q1.y) / d
+    def dim(x0, y0, x1, y1, col, label, sub=None, ticks=()):
+        L = math.hypot(x1 - x0, y1 - y0)
+        ux, uy = (x1 - x0) / L, (y1 - y0) / L
         nx, ny = -uy, ux
-        mx, my = (q1.x + q2.x) / 2, (q1.y + q2.y) / 2
-        o.append(f'<line x1="{f(q1.x)}" y1="{f(-q1.y)}" x2="{f(q2.x)}" y2="{f(-q2.y)}" stroke="{col}" stroke-width="0.35"/>')
-        for q in (q1, q2):
-            o.append(f'<line x1="{f(q.x + nx * 0.9)}" y1="{f(-(q.y + ny * 0.9))}" x2="{f(q.x - nx * 0.9)}" y2="{f(-(q.y - ny * 0.9))}" stroke="{col}" stroke-width="0.35"/>')
+        mx, my = (x0 + x1) / 2, (y0 + y1) / 2
+        o.append(f'<line x1="{f(x0)}" y1="{f(-y0)}" x2="{f(x1)}" y2="{f(-y1)}" stroke="{col}" stroke-width="0.35"/>')
+        for (qx, qy), h in [((x0, y0), 0.9), ((x1, y1), 0.9)] + [(t, 0.6) for t in ticks]:
+            o.append(f'<line x1="{f(qx + nx * h)}" y1="{f(-(qy + ny * h))}" x2="{f(qx - nx * h)}" y2="{f(-(qy - ny * h))}" stroke="{col}" stroke-width="0.35"/>')
         ang = -math.degrees(math.atan2(uy, ux))
         ang = ang - 180 if ang > 90 else ang + 180 if ang < -90 else ang
-        o.append(f'<text transform="translate({f(mx + nx * 1.4)},{f(-(my + ny * 1.4))}) rotate({f(ang)})" class="dim" fill="{col}">{d:.0f} m</text>')
+        o.append(f'<text transform="translate({f(mx + nx * 1.4)},{f(-(my + ny * 1.4))}) rotate({f(ang)})" class="dim" fill="{col}">{label}</text>')
+        if sub:
+            o.append(f'<text transform="translate({f(mx - nx * 1.6)},{f(-(my - ny * 1.6))}) rotate({f(ang)})" class="dim" font-size="1.1" fill="#555">{sub}</text>')
+
+    for nm, d, hab, blank, v, geo in sep:
+        if d < 0.5 or (v == 'clear' and d > 24 and not geo['new']):     # a standing building clear at any band and past the largest figure needs no line
+            continue
+        col = '#1f8f3a' if v == 'clear' else '#c77d00' if v.startswith('only') else '#c0161c'
+        if 'total' in geo:
+            a, g, b = geo['parts']
+            sub = ' + '.join(f'{x:.0f}' for x in ((a, g, b) if g >= 0.3 else (a, b)))
+            dim(*geo['p0'], *geo['p1'], col, f'{d:.0f} m', sub, [t for t, x in zip(geo['ticks'], (a, g)) if x >= 0.3])
+        else:
+            q1, q2 = geo['diag']
+            dim(q1.x, q1.y, q2.x, q2.y, col, f'{d:.0f} m')
     o += label_roads()
     o.append('</g>')
     # scale bar and north
@@ -699,7 +757,8 @@ mesh_props = [r for b in BLOCKS for r in b if measured(r)]
 def flags_for():
     flags = []
     flags.append(f'<b>Our site.</b> {S["storeys"]} storeys as the author states it, not read from the model; {SITE_UNITS} apartments and {SITE_GFA:,.0f} m² GFA {"as given" if S.get("gfaM2") else f"assumed at {UNIT_GFA} m² each"}, so parity is {FSR_PAR:.1f}:1 over {SITE_AREA:,.0f} m². The model\'s own GFA and unit count should replace them.'
-                 + (f' The tower is drawn on a {SITE_PODIUM}-storey podium, {SITE_TOWER.area:,.0f} m² a floor, its faces ' + ', '.join(f'{site_setback(n):.0f} m off {n.title()}' for n in TOWER['setbacks']) + ': ' + ('setbacks the scenario sets.' if TOWER_OWN else 'setbacks read off the model\'s screenshot, to be replaced by the model\'s own.') if TOWER else ''))
+                 + (f' The tower is drawn on a {SITE_PODIUM}-storey podium, {SITE_TOWER.area:,.0f} m² a floor, its faces ' + ', '.join(f'{site_setback(n):.0f} m off {n.title()}' for n in TOWER['setbacks']) + ': ' + ('setbacks the scenario sets.' if TOWER_OWN else 'setbacks read off the model\'s plan, to be confirmed in it.') if TOWER else '')
+                 + (f' The envelope drawn holds {EFFICIENCY * (SITE_AREA * SITE_PODIUM + SITE_TOWER.area * (S["storeys"] - SITE_PODIUM)):,.0f} m² GFA at {EFFICIENCY:.0%}, about {EFFICIENCY * (SITE_AREA * SITE_PODIUM + SITE_TOWER.area * (S["storeys"] - SITE_PODIUM)) / UNIT_GFA:.0f} apartments at {UNIT_GFA} m²; the stated {SITE_UNITS} set the parity figure until the model\'s count replaces them.' if TOWER else ''))
     if MESH.get('meshes'):
         flags.append(f'<b>What stands.</b> Heights read off Google\'s 3D tiles ({MESH["meshes"]} meshes at {MESH.get("errorM", 0):.0f} m, the roof\'s 80th percentile over the ground round it), {len(mesh_props)} of the {sum(len(b) for b in BLOCKS)} study properties read; storeys at {STOREY_M} m. A starred count is assumed where the tiles hold nothing.')
     else:
@@ -728,9 +787,14 @@ def page(no, scn):
     set_tower(scn)
     parcels, blds, existing = resolve(scn)
     RET = retained_for(scn)
-    sep = separation(blds, existing, RET)
+    sep = separation(blds, existing, RET, parcels)
     flags = flags_for()
-    sep_rows = ''.join(f'<tr><td>{H.escape(nm)}</td><td class="r">{d:.0f}</td><td class="r">{hab} / {blank}</td><td>{v}</td></tr>' for nm, d, hab, blank, v, *_ in sep)
+    def parts(geo):
+        if 'total' not in geo:
+            return '<br><span style="color:#888">diagonal</span>'
+        a, g, b = geo['parts']
+        return '<br><span style="color:#888">' + ' + '.join(f'{x:.0f}' for x in ((a, g, b) if g >= 0.3 else (a, b))) + '</span>'
+    sep_rows = ''.join(f'<tr><td>{H.escape(nm)}</td><td class="r">{d:.0f}{parts(geo)}</td><td class="r">{hab} / {blank}</td><td>{v}</td></tr>' for nm, d, hab, blank, v, geo in sep)
     faces = (f'<p style="margin-top:{mm(1.2)};color:#444">Our tower, {plate_of(SITE_TOWER)}: ' + ', '.join(f'{site_setback(n):.0f} m off {n.title()}' for n in TOWER['setbacks']) + '. The lines on the plan are these separations.</p>') if TOWER else ''
     newg = sum(p['gfa'] for p in parcels if not p['consent'])
     units = round(newg / UNIT_GFA / 5) * 5
@@ -752,7 +816,7 @@ def page(no, scn):
 <table><tr><th></th><th>Site</th><th class="r">Site m²</th><th class="r">Storeys</th><th class="r">Height m</th><th class="r">GFA m²</th><th class="r">FSR</th><th class="r">Parity</th></tr>{tr}</table>
 <p style="margin-top:{mm(2)}">About <b>{units} new apartments</b>{" beside the existing consent" if consents else ""}, on top of the {SITE_UNITS} on our site. Parity: the storeys at which the parcel reaches our density of {FSR_PAR:.1f}:1.</p>
 <h2>Separation from our tower</h2>
-<table><tr><th>Building</th><th class="r">m apart</th><th class="r">ADG m, habitable / one blank</th><th>At the levels shared</th></tr>{sep_rows}</table>{faces}
+<table><tr><th>Building</th><th class="r">m apart<br><span style="font-weight:400;color:#888">ours + gap + theirs</span></th><th class="r">ADG m, habitable / one blank</th><th>At the levels shared</th></tr>{sep_rows}</table>{faces}
 </div>
 {plan(scn, parcels, blds, existing, RET, sep)}
 <div class="cap" style="left:{mm(PLAN_MM[0])};top:{mm(PLAN_MM[1] + PLAN_MM[3] + 2.5)}">Plan · 1:{SCALE} @ A3 · storeys on each footprint · the study blocks dashed</div>

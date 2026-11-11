@@ -6,13 +6,13 @@
     "gfaM2": null,
     "label": "our site, SSD proposal",
     "tower": {
-      "_": "Setbacks estimated from the model's screenshot, to be replaced by the model's own: the tower sits on a 4-storey podium toward the north-east of the lot.",
+      "_": "Setbacks read off the model's floor plan (the tower outline against the lot boundary, scaled by the lot's 48 x 29 m): 37 x 25 m on a 4-storey podium. To be confirmed in the model.",
       "podium": 4,
       "setbacks": {
-        "RILEY STREET": 9,
-        "STANLEY LANE": 16,
-        "CROWN LANE": 3,
-        "66-68 RILEY STREET": 3
+        "RILEY STREET": 2,
+        "STANLEY LANE": 4,
+        "CROWN LANE": 2,
+        "66-68 RILEY STREET": 7
       },
       "habitable": [
         "CROWN LANE",
@@ -373,19 +373,19 @@
         "tower": {
           "setbacks": {
             "RILEY STREET": 2,
-            "STANLEY LANE": 10,
+            "STANLEY LANE": 4,
             "CROWN LANE": 9,
             "66-68 RILEY STREET": 9
           }
         }
       },
       "retained": [],
-      "lead": "Everything develops as in Scenario 4, and our tower owes nothing to its neighbours' goodwill: 9 m off Crown Lane and 9 m off 66-68 Riley St, its west face brought out to the Riley St podium edge so a 19 m plate survives. The neighbours then build the towers their sites can carry.",
+      "lead": "Everything develops as in Scenario 4, and our tower owes nothing to its neighbours' goodwill: 9 m off Crown Lane and 9 m off 66-68 Riley St, the ADG's half at levels 9 and over. The neighbours then build the towers their sites can carry.",
       "notes": [
-        "Our tower becomes {site.plate}, {site.area} m² a floor against the {site.drawn} m² drawn, standing {site.east} m off the lane and {site.north} m off 66-68 Riley St: 12 m to the lane's centreline, the ADG's half at levels 9 and over.",
-        "Crown St south as in Scenario 4, its tower 12 m off the lane: {D.sep} m between the towers, clear of the 24 m with windows and balconies on both faces.",
+        "Our tower becomes {site.plate}, {site.area} m² a floor against the {site.drawn} m² drawn, standing {site.east} m off the lane (12 m to its centreline) and {site.north} m off 66-68 Riley St.",
+        "Crown St south as in Scenario 4, its tower 12 m off the lane: {D.sep} m face to face, clear of the 24 m with windows and balconies on both.",
         "54-68 Riley St as in Scenario 4, its tower at the Yurong Lane end: {A.sep} m from ours, clear.",
-        "The cost is ours, a fifth of the plate; the gain is a scheme that holds whatever the Commission assumes for the neighbours."
+        "The cost is ours, about a third of the plate; the gain is a scheme that holds whatever the Commission assumes for the neighbours."
       ],
       "parcels": [
         {
@@ -484,8 +484,8 @@
       "retained": [],
       "lead": "Our tower stays where the model puts it, {site.east} m off Crown Lane and {site.north} m off 66-68 Riley St, so the 24 m the ADG asks between towers has to be found on the neighbours' land. Each can still build, at a cost.",
       "notes": [
-        "Crown St south: with our balconies {site.east} m off the lane, a double-loaded plate cannot keep the 24 m, so the tower turns into a single-loaded 12 m slab facing Crown St, {D.plate}, {D.gap} m off the lane, its lane side a gallery. {D.sep} m between the towers, clear; but {D.storeys} storeys give {D.fsr} where parity needs {D.parity}: a quarter of the site's yield gone to our setback.",
-        "54-68 Riley St: the tower shortened to {A.plate} and held to the Yurong Lane end, its south end {A.sep} m from ours, clear, at parity of {A.parity}.",
+        "Crown St south: with our balconies {site.east} m off the lane, a double-loaded plate cannot keep the 24 m, so the tower turns into a single-loaded 12 m slab facing Crown St, {D.plate}, {D.gap} m off the lane, its lane side a gallery. {D.sep} m face to face, clear; but {D.storeys} storeys give {D.fsr} where parity needs {D.parity}: a quarter of the site's yield gone to our setback.",
+        "54-68 Riley St: the tower {A.plate}, held to the Yurong Lane end, its south end {A.sep} m from ours, clear, at parity of {A.parity}.",
         "Crown St north as in Scenario 3.",
         "This is the position the Commission is unlikely to accept: our scheme takes its separation from the neighbours' sites, and the ADG's half-to-the-boundary rule exists so that it cannot."
       ],
@@ -514,7 +514,7 @@
               "along": "RILEY STREET",
               "setback": 5,
               "sides": 3,
-              "length": 22,
+              "length": 26,
               "from": "YURONG LANE",
               "endSetback": 3
             }
