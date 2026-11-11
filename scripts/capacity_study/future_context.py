@@ -846,10 +846,13 @@ def mini_plan(parcels, blds, existing, RET, sep):
     for b in BLOCKS:
         for r in b:
             o.append(f'<path d="{path(r["poly"])}" fill="#fff" stroke="#ccc" stroke-width="0.3"/>')
-    for pid in RET:
-        o.append(f'<path d="{path(PROPS[pid]["poly"])}" fill="{C["retained"]}" stroke="#555" stroke-width="0.3"/>')
-    for e in existing:
-        o.append(f'<path d="{path(e["poly"])}" fill="#e6e6e6" stroke="#aaa" stroke-width="0.3"/>')
+    standing = [(PROPS[pid]['poly'], existing_height(PROPS[pid])[1], C['retained'], '#fff') for pid in RET] + [(e['poly'], e['n'], '#e6e6e6', '#444') for e in existing]
+    for g, n, fill, ink in standing:
+        o.append(f'<path d="{path(g)}" fill="{fill}" stroke="#777" stroke-width="0.3"/>')
+    for g, n, fill, ink in standing:                               # what stands today, by its storeys
+        if g.area >= 100:
+            c = g.representative_point()
+            o.append(f'<text x="{f(c.x)}" y="{-c.y + 1.7:.2f}" font-size="5" font-weight="600" text-anchor="middle" fill="{ink}">{n}</text>')
     o.append(f'<path d="{path(SITE_POLY)}" fill="{C["site"]}" stroke="#e11b22" stroke-width="1.2"/>')
     if TOWER:
         o.append(f'<path d="{path(SITE_TOWER)}" fill="#e6b0b0" stroke="#c0161c" stroke-width="0.5"/>')
@@ -862,6 +865,9 @@ def mini_plan(parcels, blds, existing, RET, sep):
         if b['typ'] != 'podium':
             c = b['poly'].representative_point()
             o.append(f'<text x="{f(c.x)}" y="{-c.y + 2.2:.2f}" font-size="6.5" font-weight="700" text-anchor="middle" fill="#111">{b["n"]}</text>')
+    for p in parcels:                                                 # the key letter at the parcel's corner, as the sheet has it
+        x, y = max(p['poly'].exterior.coords, key=lambda q: q[0] + q[1])
+        o.append(f'<circle cx="{f(x)}" cy="{f(-y)}" r="3.6" fill="#111"/><text x="{f(x)}" y="{-y + 1.7:.2f}" font-size="5" font-weight="700" text-anchor="middle" fill="#fff">{p["key"]}</text>')
     c = SITE_TOWER.centroid
     o.append(f'<text x="{f(c.x)}" y="{-c.y + 2.2:.2f}" font-size="6.5" font-weight="700" text-anchor="middle" fill="#c0161c">{S["storeys"]}</text>')
     for nm, d, hab, blank, v, geo in sep:
