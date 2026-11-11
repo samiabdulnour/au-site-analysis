@@ -1997,9 +1997,16 @@ ours, the scenario's, what stands, and the window's other measured buildings
 as context, each with its type), casts 21 June from 9 to 3 at a metre, and
 lines every building's residential walls with apartments in 8 m bays, one a
 storey, on both long faces of a double-loaded plan or the better face of a
-single-loaded one, a corner apartment counted once on both its walls; a bay
-has its two hours where half its wall at that storey does, and a building
-complies where 70 % of its bays do and no more than 15 % get none (4A-1).
+single-loaded one, a corner apartment counted once on both its walls; the two
+hours are continuous, the longest unbroken run of sun as three hourly
+sun's-eye views show it; a bay has them where half its wall at that storey
+does, and a building complies where 70 % of its bays do and no more than
+15 % get none (4A-1). Every building stands on its own lot's ground as the
+tiles read it, so a higher neighbour's roof cuts the low sun as it does.
+Where the scenarios file lays the site's apartments out as its plans do
+(`site.tower.units`, each face from the north end, each apartment its
+width and a corner flag), each is tested at its own wall and storey and
+the sheet names the ones without their two hours, level by level.
 Each building is read as planned and as it would be single-loaded, with the
 scenario standing, and without our tower (ours: with today's buildings
 alone), so the sheet says who complies, with what plan, and whom our tower

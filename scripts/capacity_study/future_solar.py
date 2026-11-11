@@ -1,8 +1,8 @@
 """Mid-winter sun over each scenario's massing, cast with Loriini's core (numpy alone), and the ADG's apartment test
 read off it: for every building, apartments line its residential walls in bays of about 8 m, one a storey, on both
 long faces of a double-loaded plan or the better face of a single-loaded one, a corner apartment counted once on both
-its walls; a bay complies where at least half its wall at that storey gets two hours of direct sun between 9 and 3 on
-21 June, and a building complies where 70 % of its bays do and no more than 15 % get none (ADG 4A-1). Each building
+its walls; a bay complies where at least half its wall at that storey gets two continuous hours of direct sun between
+9 and 3 on 21 June (the longest unbroken run, as three hourly sun's-eye views show it), and a building complies where 70 % of its bays do and no more than 15 % get none (ADG 4A-1). Each building
 is read as planned and as it would be single-loaded, with the scenario standing, and again without our tower (for
 ours, with today's buildings alone), so the sheet can say who complies, with what plan, and whom our tower shades.
 Where a building's prisms say which walls hold apartments (its podium's, its tower's), each group is read on its own
@@ -23,7 +23,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.environ.get('LORIINI') or os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'loriini'), 'src'))
 import numpy as np  # noqa: E402
-from sun_study.core.analysis import band_by_area, cumulative_minutes, instant_weights, sunlit_matrix  # noqa: E402
+from sun_study.core.analysis import band_by_area, cumulative_minutes, instant_weights, longest_continuous_minutes, sunlit_matrix  # noqa: E402
 from sun_study.core.facade import vertical_face_panels  # noqa: E402
 from sun_study.core.geometry import TriangleMesh, prism  # noqa: E402
 from sun_study.core.occlusion import Occluder  # noqa: E402
@@ -144,6 +144,7 @@ def unit_test(pairs, units):
         return [f['mins'][(f['s'] >= a) & (f['s'] < b) & ((f['v'] // STOREY_M).astype(int) == fl)] for f in faces.get(d, [])]
 
     total = ok = dark = 0
+    each = []
     for side, lst in (('east', units.get('east', [])), ('west', units.get('west', []))):
         d = 'E' if side == 'east' else 'W'
         at = 0.0
@@ -160,11 +161,13 @@ def unit_test(pairs, units):
                 if main.size == 0 and end.size == 0:
                     continue
                 total += 1
-                lit = (main.size and np.mean(main >= THRESHOLD) >= 0.5) or (end.size and np.mean(end >= THRESHOLD) >= 0.5)
-                ok += int(bool(lit))
-                dark += int((main.size == 0 or np.all(main <= 0)) and (end.size == 0 or np.all(end <= 0)))
+                lit = bool((main.size and np.mean(main >= THRESHOLD) >= 0.5) or (end.size and np.mean(end >= THRESHOLD) >= 0.5))
+                none = bool((main.size == 0 or np.all(main <= 0)) and (end.size == 0 or np.all(end <= 0)))
+                ok += int(lit)
+                dark += int(none)
+                each.append((str(unit[0]), fl, lit, none))
     r = dict(share=ok / total if total else 0.0, dark=dark / total if total else 0.0, bays=total)
-    return dict(double=r, single=r, planned=r, units=True, per_floor=sum(len(v) for v in units.values()))
+    return dict(double=r, single=r, planned=r, units=True, per_floor=sum(len(v) for v in units.values()), each=each)
 
 
 for path in sorted(glob.glob(f'{OUT}/future-scene-*.json')):
@@ -212,7 +215,10 @@ for path in sorted(glob.glob(f'{OUT}/future-scene-*.json')):
         other = 'today' if b['kind'] == 'site' else 'without_site'
         rec = dict(name=b['name'], kind=b['kind'], type=b.get('type', ''), facade_m2=pts.total_area_m2)
         for key, o in (('with', occ['with']), (other, occ[other])):
-            minutes = cumulative_minutes(sunlit_matrix(pts, o, sun), weights)
+            # the ADG's two hours are continuous, as three hourly sun's-eye views show them: the longest unbroken run
+            # of sun on each cell, not its minutes added up over the day
+            lit = sunlit_matrix(pts, o, sun)
+            minutes = longest_continuous_minutes(lit, STEP)
             per = []
             at = 0
             for g, p in tagged:

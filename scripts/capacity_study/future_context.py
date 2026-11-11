@@ -800,9 +800,18 @@ def ring_of(g):
     return cs if g.exterior.is_ccw else cs[::-1]
 
 
-def export_scene(no, blds, existing, RET, sep):
+def ground_of(props):
+    """How far above our site's ground a lot's ground stands, as the tiles read it (metres); nothing where unread."""
+    here = HEIGHTS.get(str(SITE['propid'])) or {}
+    g0 = here.get('groundZ')
+    gs = [HEIGHTS[str(r['propid'])]['groundZ'] for r in props if HEIGHTS.get(str(r['propid'])) and HEIGHTS[str(r['propid'])].get('groundZ') is not None]
+    return (sum(gs) / len(gs) - g0) if gs and g0 is not None else 0.0
+
+
+def export_scene(no, blds, existing, RET, sep, parcels=(), scn_parcels=()):
     """Every building of the scenario as prisms, metres east and north of the site, for future_solar.py: ours,
-    the scenario's (one per parcel key), what stands, and the window's other measured buildings as context."""
+    the scenario's (one per parcel key), what stands, and the window's other measured buildings as context, each on
+    its own lot's ground as the tiles read it."""
     lon, lat = (CX / R_MERC) * 180, math.degrees(math.atan(math.exp(CY / R_MERC * math.pi)) * 2 - math.pi / 2)
     names = {nm.split(' · ')[0]: nm for nm, *_ in sep}
     # every prism says which of its walls carry apartments: the ground floor none, a podium's from the storey the
@@ -823,23 +832,29 @@ def export_scene(no, blds, existing, RET, sep):
     by_key = {}
     for b in blds:
         by_key.setdefault(b['key'], []).append(b)
+    parcel_props = {q['key']: [prop(x) for x in next(pp for pp in scn_parcels if pp['key'] == q['key'])['addresses']] for q in parcels} if parcels else {}
     for key, bs in by_key.items():
         main = [b for b in bs if b['typ'] != 'podium'][-1]
         has_podium = any(b['typ'] == 'podium' for b in bs)
+        g = ground_of(parcel_props.get(key, []))                       # the new building stands on its own lot's ground
         out.append(dict(id=f'new-{key}', kind='new', type=main['typ'], name=names.get(key, f'{key} · {TYPE[main["typ"]].split(",")[0].lower()}, {main["n"]} st'),
-                        parts=[dict(ring=ring_of(p), z0=H_of(b['base']) if b['base'] else 0, z1=H_of(b['n']), homes='none' if b['typ'] == 'podium' else 'tower' if has_podium else 'all') for b in bs for p in polys(b['poly'])]))
+                        parts=[dict(ring=ring_of(p), z0=g + (H_of(b['base']) if b['base'] else 0), z1=g + H_of(b['n']), homes='none' if b['typ'] == 'podium' else 'tower' if has_podium else 'all') for b in bs for p in polys(b['poly'])]))
     for e in existing:
-        out.append(dict(id=f'standing-{e["base_addr"]}', kind='standing', type='standing', name=f'{short(e["base_addr"])}, stands, {e["n"]} st', parts=[dict(ring=ring_of(p), z0=0, z1=e['h'], homes='all') for p in polys(e['poly'])]))
+        r = next(q for q in PROPS.values() if q['base'] == e['base_addr'])
+        g = ground_of([r])
+        out.append(dict(id=f'standing-{e["base_addr"]}', kind='standing', type='standing', name=f'{short(e["base_addr"])}, stands, {e["n"]} st', parts=[dict(ring=ring_of(p), z0=g, z1=g + e['h'], homes='all') for p in polys(e['poly'])]))
     for pid in RET:
         r = PROPS[pid]
         h, n, how = existing_height(r)
-        out.append(dict(id=f'standing-{r["base"]}', kind='standing', type='standing', name=f'{short(r["base"])}, retained, {n} st', parts=[dict(ring=ring_of(p), z0=0, z1=h, homes='all') for p in polys(r['poly'])]))
+        g = ground_of([r])
+        out.append(dict(id=f'standing-{r["base"]}', kind='standing', type='standing', name=f'{short(r["base"])}, retained, {n} st', parts=[dict(ring=ring_of(p), z0=g, z1=g + h, homes='all') for p in polys(r['poly'])]))
     # the blocks round the study as they stand; a lot of the study blocks is never context, it is developed or listed
     in_blocks = {str(r['propid']) for b in BLOCKS for r in b}
     for pid, r in PROPS.items():
         if r.get('isSite') or pid in in_blocks or not measured(r) or not r['poly'].intersects(WINDOW.buffer(10)):
             continue
-        out.append(dict(id=f'context-{pid}', kind='context', name=r['base'], parts=[dict(ring=ring_of(p), z0=0, z1=measured(r), homes='all') for p in polys(r['poly'])]))
+        g = ground_of([r])
+        out.append(dict(id=f'context-{pid}', kind='context', name=r['base'], parts=[dict(ring=ring_of(p), z0=g, z1=g + measured(r), homes='all') for p in polys(r['poly'])]))
     # a wall on a shared boundary is a party wall and holds no apartment: each part's edges within half a metre of
     # another building are marked for the sun study to pass over
     footprints = {b['id']: unary_union([Polygon(part['ring']) for part in b['parts']]) for b in out}
@@ -974,7 +989,7 @@ def summary_page():
         rows.append(f'''<div class="row"><div class="mini">{r['mini']}</div><div class="info">
 <div class="t">{r['no']} · {H.escape(r['title'])}</div>
 <div class="u">{gain}neighbours can develop: <b style="color:{r['allow_colour']}">{r['allow']}</b></div>
-<table><tr><th>Building</th><th>Separation from our tower</th><th>Apartments with 2 h of winter sun</th></tr>{trs}</table></div></div>''')
+<table><tr><th>Building</th><th>Separation from our tower</th><th>Apartments with 2 continuous hours of winter sun</th></tr>{trs}</table></div></div>''')
     return f'''<!doctype html><html><head><meta charset="utf-8"><title>Future context · summary</title><style>{CSS}
 .sum{{position:absolute;left:{mm(10)};top:{mm(9)};width:{mm(400)}}}
 .sum h1{{margin:0 0 {mm(1)}}} .sum .lead{{margin:0 0 {mm(3)};color:#444;font-size:{pt(7.4)}}}
@@ -986,7 +1001,7 @@ def summary_page():
 .info table{{font-size:{pt(6)}}} .info td{{padding:{mm(.4)} {mm(.5)}}} .info th{{padding:{mm(.4)} {mm(.5)}}}
 </style></head><body>
 <div class="sum"><div class="kick">Future context · summary</div><h1>Does our massing let the neighbours develop?</h1>
-<p class="lead">Each scenario: its plan with the blocks round it as they stand (storeys off the 3D tiles), the apartments it adds, and for every new building how far it stands from our tower against the ADG's separation (24 m between habitable rooms at nine storeys and over, 18 m where one face is blank, 18 and 12 at five to eight), and the share of its apartments with two hours of sun on 21 June, read as ADG 4A-1 reads it: apartments in 8 m bays along the walls, both long faces of a double-loaded plan or the better face of a single-loaded one, corner units taking both walls; 70 % with two hours and no more than 15 % with none is a tick, 60 % is close, and the single-loaded figure says what the plan could still reach. Green holds, amber holds with a condition, red does not. Our tower as the model draws it, {H.escape(plate_of(BASE_TOWER))}, {', '.join(f'{site_setback(n):.0f} m off {n.title()}' for n in (S.get('tower') or {}).get('setbacks', {}))}.</p>
+<p class="lead">Each scenario: its plan with the blocks round it as they stand (storeys off the 3D tiles), the apartments it adds, and for every new building how far it stands from our tower against the ADG's separation (24 m between habitable rooms at nine storeys and over, 18 m where one face is blank, 18 and 12 at five to eight), and the share of its apartments with two continuous hours of sun on 21 June, read as ADG 4A-1 reads it: apartments in 8 m bays along the walls, both long faces of a double-loaded plan or the better face of a single-loaded one, corner units taking both walls; 70 % with two hours and no more than 15 % with none is a tick, 60 % is close, and the single-loaded figure says what the plan could still reach. Green holds, amber holds with a condition, red does not. Our tower as the model draws it, {H.escape(plate_of(BASE_TOWER))}, {', '.join(f'{site_setback(n):.0f} m off {n.title()}' for n in (S.get('tower') or {}).get('setbacks', {}))}.</p>
 <div class="grid">{''.join(rows)}</div></div>
 </body></html>'''
 
@@ -997,7 +1012,7 @@ def page(no, scn):
     RET = retained_for(scn)
     sep = separation(blds, existing, RET, parcels)
     flags = flags_for()
-    sun_rows, sun = export_scene(no, blds, existing, RET, sep), read_sun(no)
+    sun_rows, sun = export_scene(no, blds, existing, RET, sep, parcels, scn['parcels']), read_sun(no)
     def parts(geo):
         if 'total' not in geo:
             return ' <span style="color:#888">diagonal</span>'
@@ -1036,13 +1051,20 @@ def page(no, scn):
                 rows.append(line(f'Our building, all its apartments{plan_note}', ap, other, bold=True))
                 rows.append(line(f'   its tower, levels {SITE_PODIUM + 1} to {S["storeys"]}{per("tower")}', by['tower'], other_by.get('tower')))
                 rows.append(line(f'   its podium, levels {(TOWER or {}).get("homesFrom", 1)} to {SITE_PODIUM}{per("podium")}', by['podium'], other_by.get('podium')))
+                failing = {}
+                for grp, first in (('podium', (TOWER or {}).get('homesFrom', 1)), ('tower', SITE_PODIUM + 1)):
+                    for uid, fl, ok_, dark_ in (by[grp].get('each') or []):
+                        if not ok_:
+                            failing.setdefault(first + fl, []).append(uid + ('*' if dark_ else ''))
+                if failing:
+                    rows.append(f'<tr><td colspan="5" style="color:#c0161c">Without their two hours: ' + ' · '.join(f'level {lv}: {", ".join(ids)}' for lv, ids in sorted(failing.items())) + ' (* no sun at all).</td></tr>')
             else:
                 rows.append(line(r['name'], ap, other))
         if scn.get('sun') == 'all' and unchanged:
             rows.append(f'<tr><td colspan="5" style="color:#666">{len(unchanged)} other neighbours our tower changes by under 5 points: {H.escape(", ".join(n.split(",")[0] for n in unchanged))}.</td></tr>')
-        sun_html = (f'<h2>Mid-winter sun · apartments with 2 h on 21 June</h2><table><tr><th style="width:34%">Building</th><th class="r" style="width:13%">As planned</th><th class="r" style="width:14%">Single-loaded</th>'
+        sun_html = (f'<h2>Mid-winter sun · apartments with 2 continuous hours on 21 June</h2><table><tr><th style="width:34%">Building</th><th class="r" style="width:13%">As planned</th><th class="r" style="width:14%">Single-loaded</th>'
                     f'<th class="r" style="width:15%">Before them · without ours</th><th>Reads</th></tr>' + ''.join(rows) + '</table>')
-        flags.append(f'<b>Sun.</b> Cast over the massing with Loriini\'s engine at a metre, 21 June from 9 to 3, and read as the ADG reads it (4A-1): apartments line each building\'s walls in bays of {sun.get("bay_m", 8):g} m, one a storey, on both long faces of a double-loaded plan or the better face of a single-loaded one, a corner apartment counted once on both its walls; a bay has its two hours where half its wall at that storey does; 70 % of bays with two hours and no more than 15 % with none is a tick, 60 % is close. Each building is read as planned and as it would be single-loaded, with the scenario standing, and without our tower (ours: with today\'s buildings alone). A wall on a shared boundary is a party wall and holds no apartment; a neighbour\'s podium holds none. Our building is read on the SSDA plans themselves: each apartment at its own wall and storey, the corner ones on both their walls, the tower\'s 7 a floor (3 on Crown Lane, 4 on Riley Street) and the podium\'s 10 (5 and 5) from level {(TOWER or {}).get("homesFrom", "—")}, its ground floor commercial; its podium, its tower and the whole each read. The neighbours are a massing reading on an assumed plan.')
+        flags.append(f'<b>Sun.</b> Cast over the massing with Loriini\'s engine at a metre, 21 June from 9 to 3, and read as the ADG reads it (4A-1): apartments line each building\'s walls in bays of {sun.get("bay_m", 8):g} m, one a storey, on both long faces of a double-loaded plan or the better face of a single-loaded one, a corner apartment counted once on both its walls; the two hours are continuous, the longest unbroken run of sun as three hourly sun\'s-eye views would show it; a bay has them where half its wall at that storey does; 70 % of bays with two hours and no more than 15 % with none is a tick, 60 % is close. Each building is read as planned and as it would be single-loaded, with the scenario standing, and without our tower (ours: with today\'s buildings alone). A wall on a shared boundary is a party wall and holds no apartment; a neighbour\'s podium holds none. Our building is read on the SSDA plans themselves: each apartment at its own wall and storey, the corner ones on both their walls, the tower\'s 7 a floor (3 on Crown Lane, 4 on Riley Street) and the podium\'s 10 (5 and 5) from level {(TOWER or {}).get("homesFrom", "—")}, its ground floor commercial; its podium, its tower and the whole each read. The neighbours are a massing reading on an assumed plan.')
     faces = (f'<p style="margin-top:{mm(1.5)};color:#444">Our tower, {plate_of(SITE_TOWER)}: ' + ', '.join(f'{site_setback(n):.0f} m off {n.title()}' for n in TOWER['setbacks']) + '. The lines on the plan are its separations, the tables under the plan read them and the sun.</p>') if TOWER else ''
     newg = sum(p['gfa'] for p in parcels if not p['consent'])
     units = round(newg / UNIT_GFA / 5) * 5
