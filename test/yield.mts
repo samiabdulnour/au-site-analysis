@@ -281,7 +281,7 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
   check('sun: no direct sunlight has its row', sunRows.some((r) => r.label === '4A. NO DIRECT SUNLIGHT'));
   check('sun: the overview has a sun column, each drawn path its share', />Sun 2\sh</.test(all.html) && scenarioRows(bundle, s).filter((r) => r.id !== 'standsToday').every((r) => /^\d+%$/.test(r.sun ?? '')),
     JSON.stringify(scenarioRows(bundle, s).map((r) => r.sun)));
-  check('sun: the massing colours the apartments with the hours, and the key says what the yellow is', all.html.includes('#efb820') && /yellow, an apartment with 2\sh of sun/.test(all.html));
+  check('sun: the massing colours the apartments with the hours, and the key says what the yellow is', all.html.includes('#efb820') && /residential; yellow: 2\sh of sun at mid winter/.test(all.html));
   check('sun: what stands is given no sun', scenarioRows(bundle, s)[0].sun === undefined);
   const orange: YieldBundle = { ...bundle, controls: { ...bundle.controls, lgaName: 'ORANGE' } };
   check('sun: three hours asked outside Sydney, Newcastle and Wollongong', /receive 3 hours direct/.test(JSON.stringify(yieldRows(orange))) && />Sun 3\sh</.test(deck(orange).html));

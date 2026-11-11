@@ -181,7 +181,8 @@ export async function htmlToJpeg(
  *
  * A text column whose paragraphs would run into its fine print steps its
  * type down too, to seven eighths of its size: the fine print stays where
- * it is and whole.
+ * it is and whole. So do the planning yield's tables where they would run
+ * into the page's key, to four fifths of theirs.
  */
 const FIT_BOXES = `(() => {
   for (const box of document.querySelectorAll('[data-fit]')) {
@@ -208,6 +209,19 @@ const FIT_BOXES = `(() => {
     const top = last ? last.getBoundingClientRect().bottom : box.getBoundingClientRect().top;
     note.textContent = (note.dataset.text || '{n} more').replace('{n}', String(left));
     note.style.top = (top - note.offsetParent.getBoundingClientRect().top + 2).toFixed(1) + 'px';
+  }
+  // a yield spread whose tables run into its key (three tiers, a long key, the sun's rows) closes them up a little,
+  // to four fifths of their size, keeping 1.5 mm clear of the key
+  for (const flow of document.querySelectorAll('.zflow')) {
+    const key = flow.closest('.slide') && flow.closest('.slide').querySelector('.zleg');
+    const tables = Array.from(flow.querySelectorAll('table.yt'));
+    if (!key || !tables.length) continue;
+    const over = () => flow.getBoundingClientRect().bottom > key.getBoundingClientRect().top - 5.7;
+    const base = tables.map((t) => parseFloat(getComputedStyle(t).fontSize));
+    for (let k = 1; over() && k > 0.81; ) {
+      k -= 0.025;
+      tables.forEach((t, i) => { t.style.fontSize = (base[i] * k).toFixed(3) + 'px'; });
+    }
   }
   // a slide's text column whose paragraphs run into its fine print (a long list of views, a busy council) closes up a little
   for (const col of document.querySelectorAll('.text')) {

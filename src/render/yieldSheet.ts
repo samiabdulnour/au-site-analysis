@@ -1257,7 +1257,7 @@ function schemeLegend(b: YieldBundle, s: YieldStudy, y: YieldResult | undefined,
   const sunny = sun?.units.some((u) => u.hours >= sun.hoursRequired - 1e-9);
   for (const u of ['residential', 'retail', 'commercial'] as Use[]) if (y?.tiers.some((t) => t.use === u)) out.push(u === 'residential' && sunny
     ? { swatch: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="${useFill(u)}" stroke="#3a3a3a" stroke-width="0.15"/><path d="M2.5,0.5H4.6V3.1H2.5Z" fill="${SUN_INK.full}" stroke="#3a3a3a" stroke-width="0.15"/>`,
-      label: `Indicative massing, residential; yellow, an apartment with ${sun!.hoursRequired} h of sun 9–3 on 21 June` }
+      label: `Indicative massing, residential; yellow: ${sun!.hoursRequired} h of sun at mid winter` }
     : { swatch: KEY.use(u), label: `Indicative massing, ${USE_WORD[u]}` });
   if (y?.tiers.length) out.push({ swatch: KEY.envelope, label: 'Envelope of each tier' });
   if (s.hob?.metres) out.push({ swatch: KEY.plane, label: 'The LEP\'s height of building plane' });
