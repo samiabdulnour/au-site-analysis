@@ -115,13 +115,15 @@ if (loriini && !args.includes('--no-sun')) {
     await draw();
   } catch (e: any) { log(`  WARN the sun study did not run: ${e?.message ?? e}`); }
 } else log('  no Loriini beside this repository (LORIINI unset): the sheets carry no sun study');
-const { width, height, pages } = JSON.parse(await readFile(join(out, 'future-page.json'), 'utf8')) as { width: number; height: number; pages: number };
+const { width, height, pages, summary } = JSON.parse(await readFile(join(out, 'future-page.json'), 'utf8')) as { width: number; height: number; pages: number; summary?: boolean };
 const bound = await PDFDocument.create();
-for (let i = 1; i <= pages; i++) {
-  await printPage(join(out, `future-${i}.html`), { width, height }, { png: join(out, `future-${i}.png`), pdf: join(out, `future-${i}.pdf`) });
-  const one = await PDFDocument.load(await readFile(join(out, `future-${i}.pdf`)));
+// the summary over every scenario first, then the sheets
+const names = [...(summary ? ['future-summary'] : []), ...Array.from({ length: pages }, (_, i) => `future-${i + 1}`)];
+for (const name of names) {
+  await printPage(join(out, `${name}.html`), { width, height }, { png: join(out, `${name}.png`), pdf: join(out, `${name}.pdf`) });
+  const one = await PDFDocument.load(await readFile(join(out, `${name}.pdf`)));
   for (const p of await bound.copyPages(one, one.getPageIndices())) bound.addPage(p);
-  log(`  printed future-${i}`);
+  log(`  printed ${name}`);
 }
 await writeFile(join(out, 'future.pdf'), await bound.save());
-console.log(Array.from({ length: pages }, (_, i) => join(out, `future-${i + 1}.png`)).concat(join(out, 'future.pdf')).join('\n'));
+console.log(names.map((n) => join(out, `${n}.png`)).concat(join(out, 'future.pdf')).join('\n'));
