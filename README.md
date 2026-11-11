@@ -2019,10 +2019,13 @@ as context, each with its type), casts 21 June from 9 to 3 at a metre, and
 lines every building's residential walls with apartments in 8 m bays, one a
 storey, on both long faces of a double-loaded plan or the better face of a
 single-loaded one, a corner apartment counted once on both its walls; the two
-hours are continuous, the longest unbroken run of sun as three hourly
-sun's-eye views show it; a bay has them where half its wall at that storey
-does, and a building complies where 70 % of its bays do and no more than
-15 % get none (4A-1). Every building stands on its own lot's ground as the
+hours are continuous and read as the convention counts them, sun at three
+whole hours in a row as three hourly sun's-eye views show it (9, 10 and 11,
+or 10, 11 and 12, and so on; a run from half past nine to half past eleven
+does not count; `SUN_RULE=minutes` reads any 120 unbroken minutes at the
+study's ten-minute step instead); a bay has them where half its wall at
+that storey does, and a building complies where 70 % of its bays do and no
+more than 15 % get none (4A-1). Every building stands on its own lot's ground as the
 tiles read it, so a higher neighbour's roof cuts the low sun as it does.
 Where the scenarios file lays the site's apartments out as its plans do
 (`site.tower.units`, each face from the north end, each apartment its
@@ -2032,8 +2035,9 @@ the sheet names the ones without their two hours, level by level, and
 each hour from 9 to 3 (an orthographic view along the sun's ray, so what it
 shows is in sun and what it hides is in shadow, our apartments' walls
 coloured by the engine's reading at that instant), and under it an hour
-chart with a line an apartment, its sun against the clock and the longest
-unbroken run of two hours or more framed where it has one.
+chart with a line an apartment, its sun against the clock, the whole hours
+the rule reads marked, and its three hours in a row framed where it has
+them.
 Each building is read as planned and as it would be single-loaded, facing
 the way its better face looks (north, for a slab that runs east-west), with
 the scenario standing, and without our tower (ours: with today's buildings

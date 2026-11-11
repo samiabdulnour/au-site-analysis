@@ -37,6 +37,27 @@ BAY_M = float(os.environ.get('BAY_M', '8.0'))
 STOREY_M = 3.2
 STEP = 10
 THRESHOLD = 120.0
+# how the two hours are read: 'hours', the convention, sun at three consecutive whole hours (9, 10 and 11, or 10, 11
+# and 12, ...) as three hourly sun's-eye views show it, so a run from half past nine to half past eleven does not
+# count; or 'minutes', any 120 unbroken minutes at the study's step. SUN_RULE picks.
+RULE = os.environ.get('SUN_RULE', 'hours')
+
+
+def whole_hour_minutes(lit, step):
+    """For each sample, the minutes between the first and last of its longest run of consecutive whole hours in sun:
+    three hours in a row are 120, two are 60, one is 0."""
+    per = max(1, 60 // step)
+    sub = np.asarray(lit)[:, ::per].astype(bool)
+    best = np.zeros(sub.shape[0], dtype=int)
+    run = np.zeros(sub.shape[0], dtype=int)
+    for j in range(sub.shape[1]):
+        run = np.where(sub[:, j], run + 1, 0)
+        best = np.maximum(best, run)
+    return np.maximum(best - 1, 0) * 60.0
+
+
+def continuous_minutes(lit, step):
+    return whole_hour_minutes(lit, step) if RULE == 'hours' else longest_continuous_minutes(lit, step)
 LONG_FACE_M = 14.0          # a wall shorter than this is an end, owned by the corner units of the long faces
 SINGLE = ('single',)        # the types whose apartments face one way
 PARTY_M = 0.6               # a wall whose two feet stand this close to a party edge is that party wall
@@ -244,7 +265,7 @@ for path in sorted(glob.glob(f'{OUT}/future-scene-*.json')):
             # the ADG's two hours are continuous, as three hourly sun's-eye views show them: the longest unbroken run
             # of sun on each cell, not its minutes added up over the day
             lit = sunlit_matrix(pts, o, sun)
-            minutes = longest_continuous_minutes(lit, STEP)
+            minutes = continuous_minutes(lit, STEP)
             per, lit_by_panel = [], {}
             at = 0
             for g, p in tagged:
@@ -274,7 +295,7 @@ for path in sorted(glob.glob(f'{OUT}/future-scene-*.json')):
         out[b['id']] = rec
     target = path.replace('future-scene-', 'future-solar-')
     json.dump(dict(buildings=out, instants=len(times), times=[t.strftime('%H:%M') for t in times], sun=[[float(x) for x in v] for v in sun], step=STEP,
-                   spacing_m=SPACING, bay_m=BAY_M, date=f'{scene["year"]}-06-21', threshold_minutes=THRESHOLD), open(target, 'w'))
+                   spacing_m=SPACING, bay_m=BAY_M, date=f'{scene["year"]}-06-21', threshold_minutes=THRESHOLD, rule=RULE), open(target, 'w'))
     print(f'{os.path.basename(target)}: ' + '; '.join(f'{r["name"]} {r["apts"]["planned"]["share"]:.0%} of bays'
                                                       + (''.join(f', {g} {v["planned"]["share"]:.0%}' for g, v in r['apts_by'].items()) if len(r['apts_by']) > 1 else '')
                                                       + f' (single {r["apts"]["single"]["share"]:.0%})' for r in out.values() if r.get('apts')))

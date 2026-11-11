@@ -1045,7 +1045,7 @@ def mini_plan(parcels, blds, existing, RET, sep, k=1.0, big=False):
 
 OPTION_NOTE = ("Separation per ADG 3F-1: 24 m between habitable rooms at nine storeys and over, 18 m where one face is blank, 18 and 12 at five to eight, "
                "read at the levels the two buildings share; the parts are our face to our boundary, the gap, their boundary to their face. Sun per ADG 4A-1 "
-               "on 21 June, 9 to 3, cast with Loriini's engine with every building on its own ground: two continuous hours as hourly sun's-eye views show them; "
+               "on 21 June, 9 to 3, cast with Loriini's engine with every building on its own ground: two continuous hours as three hourly sun's-eye views in a row show them, 9, 10 and 11 or later, a run from half past not counting; "
                "our apartments as the plans lay them out, each at its own wall and storey, a neighbour's in 8 m bays on the faces its plan gives them; 70 % with "
                "their two hours and no more than 15 % with none is a tick, 60 % close; the single-loaded figure is what a neighbour's plan could still reach. "
                "Storeys in grey are the 3D tiles' reading of what stands. Predictive only, not a proposal for any neighbouring site.")
@@ -1194,18 +1194,25 @@ def sun_chart(sun, levels):
             all_n += 1
             ok_n += int(ok)
             segs = ''
+            step = sun.get('step', 10)
+            per = max(1, 60 // step) if sun.get('rule', 'hours') == 'hours' else 1   # the instants the rule reads
             run, best, start, bstart = 0, 0, 0, 0
             for i, ch in enumerate(ser):
                 if ch == '1':
+                    segs += f'<rect x="{((i - 0.5) / (n - 1)) * 100:.2f}%" y="22%" width="{100 / (n - 1):.2f}%" height="56%" fill="{SUN_LIT}"/>'
+                if i % per:
+                    continue
+                if ch == '1':
                     run = run + 1 if run else 1
                     start = i if run == 1 else start
-                    segs += f'<rect x="{(i / (n - 1)) * 100:.2f}%" y="22%" width="{100 / (n - 1):.2f}%" height="56%" fill="{SUN_LIT}"/>'
                     if run > best:
                         best, bstart = run, start
                 else:
                     run = 0
-            if best and (best - 1) * sun.get('step', 10) >= 120:
-                segs += f'<rect x="{(bstart / (n - 1)) * 100:.2f}%" y="12%" width="{((best - 1) / (n - 1)) * 100:.2f}%" height="76%" fill="none" stroke="#1f8f3a" stroke-width="1.2"/>'
+            if best and (best - 1) * per * step >= 120:
+                segs += f'<rect x="{(bstart / (n - 1)) * 100:.2f}%" y="12%" width="{((best - 1) * per / (n - 1)) * 100:.2f}%" height="76%" fill="none" stroke="#1f8f3a" stroke-width="1.2"/>'
+            if per > 1:                                                   # the whole hours the rule reads, marked
+                segs += ''.join(f'<rect x="{((i - 0.5) / (n - 1)) * 100:.2f}%" y="0" width="{100 / (n - 1):.2f}%" height="100%" fill="{"#1f8f3a" if ser[i:i + 1] == "1" else "#999"}" fill-opacity=".35"/>' for i in range(0, n, per))
             mark = '✓' if ok else '✗'
             col = '#1f8f3a' if ok else '#c0161c'
             rows.append(f'<div class="srow"><div class="sl">L{first + fl} · {uid} {side_of.get(uid, "")}</div><div class="sb"><svg width="100%" height="100%">{"".join(f"<line x1=\"{h / 6 * 100:.1f}%\" y1=\"0\" x2=\"{h / 6 * 100:.1f}%\" y2=\"100%\" stroke=\"#ddd\" stroke-width=\"0.6\"/>" for h in range(7))}{segs}</svg></div><div class="sm" style="color:{col}">{mark}</div></div>')
@@ -1239,12 +1246,14 @@ def sun_page(no, scn, sun, r):
     hours = '<div class="hours">' + ''.join(f'<span>{h}:00</span>' for h in range(9, 16)) + '</div>'
     head = (f'<div class="sh"><div class="kick">Future context · Scenario {r["no"]} of {LAST} · the sun on our apartments</div><h1>{H.escape(r["title"])}: '
             f'{ok_n} of {all_n} apartments have their two continuous hours</h1>'
-            f'<div class="hor">21 June, 9 to 3. Above, the scene as the sun sees it each hour, our apartments lit where it reaches their wall; below, each apartment’s sun against the clock, its two continuous hours framed where it has them.</div></div>')
+            f'<div class="hor">21 June, 9 to 3. Above, the scene as the sun sees it each hour, our apartments lit where it reaches their wall; below, each apartment’s sun against the clock, the whole hours the rule reads marked, and its two hours framed where it has them: sun at three whole hours in a row, as three hourly views show it.</div></div>')
     chart = (f'<div class="chart"><div><div class="ch">Podium and tower, levels {tw.get("homesFrom", 1)} to {S["storeys"]}</div>{hours}{"".join(rows[:half])}</div>'
              f'<div><div class="ch">&nbsp;</div>{hours}{"".join(rows[half:])}</div></div>')
     note = ('<div class="sn">Cast with Loriini’s engine at a metre, every building on its own ground, the scenario standing. An apartment is lit at an instant where at least half of its wall '
             'span at that storey is in sun; the corner apartments on either of their walls. The sun’s-eye view is an orthographic projection along the sun’s ray, so whatever it shows is in sun '
-            'and whatever it hides is in shadow. A yellow span is its sun, the green frame the longest unbroken run of two hours or more.</div>')
+            'and whatever it hides is in shadow. A yellow span is its sun; the marks are the whole hours, green where it is in sun; the green frame is three of them in a row. The ADG asks two hours of direct sunlight '
+            'between 9 and 3 (4A-1) and has them shown by the view from the sun; assessors read that at the whole hours, three views in a row, which is how they are counted here, so a run from half past nine '
+            'to half past eleven does not count.</div>')
     return (f'<!doctype html><html><head><meta charset="utf-8"><title>Future context · Scenario {r["no"]} · sun</title><style>{CSS}{css}</style></head><body>'
             f'{head}<div class="views">{view_html}</div>{chart}{note}</body></html>')
 
@@ -1270,7 +1279,7 @@ def summary_page(part, page_no, pages):
 <div class="t">{r['no']} · {H.escape(r['title'])}</div>
 <div class="u">{gain}neighbours can develop: <b style="color:{r['allow_colour']}">{r['allow']}</b></div>
 <table><tr><th>Building</th><th>Separation from our tower</th><th>Apartments with 2 continuous hours of winter sun, of all its apartments</th></tr>{trs}</table></div></div>''')
-    lead = (f'<p class="lead">Each scenario: its plan with the blocks round it as they stand (storeys off the 3D tiles) and its massing, the apartments it adds, and for every new building how far it stands from our tower against the ADG\'s separation (24 m between habitable rooms at nine storeys and over, 18 m where one face is blank, 18 and 12 at five to eight), and how many of its apartments (the yield\'s count at 85 m² each; ours as the plans have them) get two continuous hours of sun on 21 June, read as ADG 4A-1 reads it: apartments in 8 m bays along the walls, both long faces of a double-loaded plan or the better face of a single-loaded one, corner units taking both walls; 70 % with two hours and no more than 15 % with none is a tick, 60 % is close, and the single-loaded figure says what the plan could still reach, facing the way it names. Green holds, amber holds with a condition, red does not. Our tower as the model draws it, {H.escape(plate_of(BASE_TOWER))}, {", ".join(f"{v:g} m off {n.title()}" for n, v in (S.get("tower") or {}).get("setbacks", {}).items())}; a scenario that moves it says so.</p>'
+    lead = (f'<p class="lead">Each scenario: its plan with the blocks round it as they stand (storeys off the 3D tiles) and its massing, the apartments it adds, and for every new building how far it stands from our tower against the ADG\'s separation (24 m between habitable rooms at nine storeys and over, 18 m where one face is blank, 18 and 12 at five to eight), and how many of its apartments (the yield\'s count at 85 m² each; ours as the plans have them) get two continuous hours of sun on 21 June, read as ADG 4A-1 reads it and as the convention counts it, sun at three whole hours in a row: apartments in 8 m bays along the walls, both long faces of a double-loaded plan or the better face of a single-loaded one, corner units taking both walls; 70 % with two hours and no more than 15 % with none is a tick, 60 % is close, and the single-loaded figure says what the plan could still reach, facing the way it names. Green holds, amber holds with a condition, red does not. Our tower as the model draws it, {H.escape(plate_of(BASE_TOWER))}, {", ".join(f"{v:g} m off {n.title()}" for n, v in (S.get("tower") or {}).get("setbacks", {}).items())}; a scenario that moves it says so.</p>'
             if page_no == 1 else f'<p class="lead">Scenarios {part[0]["no"]} to {part[-1]["no"]}, read as on the first sheet.</p>')
     return f'''<!doctype html><html><head><meta charset="utf-8"><title>Future context · summary</title><style>{CSS}
 .sum{{position:absolute;left:{mm(10)};top:{mm(9)};width:{mm(400)}}}
@@ -1351,7 +1360,7 @@ def page(no, scn):
             rows.append(f'<tr><td colspan="5" style="color:#666">{len(unchanged)} other neighbours our tower changes by under 5 points: {H.escape(", ".join(n.split(",")[0] for n in unchanged))}.</td></tr>')
         sun_html = (f'<h2>Mid-winter sun · apartments with 2 continuous hours on 21 June</h2><table><tr><th style="width:34%">Building</th><th class="r" style="width:13%">As planned</th><th class="r" style="width:14%">Single-loaded</th>'
                     f'<th class="r" style="width:15%">Before them · without ours</th><th>Reads</th></tr>' + ''.join(rows) + '</table>')
-        flags.append(f'<b>Sun.</b> Cast over the massing with Loriini\'s engine at a metre, 21 June from 9 to 3, and read as the ADG reads it (4A-1): apartments line each building\'s walls in bays of {sun.get("bay_m", 8):g} m, one a storey, on both long faces of a double-loaded plan or the better face of a single-loaded one, a corner apartment counted once on both its walls; the two hours are continuous, the longest unbroken run of sun as three hourly sun\'s-eye views would show it; a bay has them where half its wall at that storey does; 70 % of bays with two hours and no more than 15 % with none is a tick, 60 % is close. Each building is read as planned and as it would be single-loaded, with the scenario standing, and without our tower (ours: with today\'s buildings alone). A wall on a shared boundary is a party wall and holds no apartment; a neighbour\'s podium holds none. Our building is read on the SSDA plans themselves: each apartment at its own wall and storey, the corner ones on both their walls, the tower\'s 7 a floor (3 on Crown Lane, 4 on Riley Street) and the podium\'s 10 (5 and 5) from level {(TOWER or {}).get("homesFrom", "—")}, its ground floor commercial; its podium, its tower and the whole each read. The neighbours are a massing reading on an assumed plan.')
+        flags.append(f'<b>Sun.</b> Cast over the massing with Loriini\'s engine at a metre, 21 June from 9 to 3, and read as the ADG reads it (4A-1): apartments line each building\'s walls in bays of {sun.get("bay_m", 8):g} m, one a storey, on both long faces of a double-loaded plan or the better face of a single-loaded one, a corner apartment counted once on both its walls; the two hours are continuous and read at whole hours, sun at three in a row as three hourly sun\'s-eye views show it (9, 10 and 11, or 10, 11 and 12, and so on; a run from half past does not count); a bay has them where half its wall at that storey does; 70 % of bays with two hours and no more than 15 % with none is a tick, 60 % is close. Each building is read as planned and as it would be single-loaded, with the scenario standing, and without our tower (ours: with today\'s buildings alone). A wall on a shared boundary is a party wall and holds no apartment; a neighbour\'s podium holds none. Our building is read on the SSDA plans themselves: each apartment at its own wall and storey, the corner ones on both their walls, the tower\'s 7 a floor (3 on Crown Lane, 4 on Riley Street) and the podium\'s 10 (5 and 5) from level {(TOWER or {}).get("homesFrom", "—")}, its ground floor commercial; its podium, its tower and the whole each read. The neighbours are a massing reading on an assumed plan.')
     faces = (f'<p style="margin-top:{mm(1.5)};color:#444">Our tower, {plate_of(SITE_TOWER)}: ' + ', '.join(f'{site_setback(n):.0f} m off {n.title()}' for n in TOWER['setbacks']) + '. The lines on the plan are its separations, the tables under the plan read them and the sun.</p>') if TOWER else ''
     newg = sum(p['gfa'] for p in parcels if not p['consent'])
     units = round(newg / UNIT_GFA / 5) * 5
