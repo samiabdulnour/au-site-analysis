@@ -1,21 +1,23 @@
 """Mid-winter sun over each scenario's massing, cast with Loriini's core (numpy alone), and the ADG's apartment test
-read off it: for every building, apartments line its walls in bays of about 8 m, one a storey, on both long faces of a
-double-loaded plan or the better face of a single-loaded one, the bays at the ends owning the end wall too (corner
-units); a bay complies where at least half its wall at that storey gets two hours of direct sun between 9 and 3 on
+read off it: for every building, apartments line its residential walls in bays of about 8 m, one a storey, on both
+long faces of a double-loaded plan or the better face of a single-loaded one, a corner apartment counted once on both
+its walls; a bay complies where at least half its wall at that storey gets two hours of direct sun between 9 and 3 on
 21 June, and a building complies where 70 % of its bays do and no more than 15 % get none (ADG 4A-1). Each building
 is read as planned and as it would be single-loaded, with the scenario standing, and again without our tower (for
 ours, with today's buildings alone), so the sheet can say who complies, with what plan, and whom our tower shades.
+Where a building's prisms say which walls hold apartments (its podium's, its tower's), each group is read on its own
+as well as the whole.
 
     LORIINI=/path/to/loriini python3 -I scripts/capacity_study/future_solar.py out/capacity/<slug>
 
 Reads the future-scene-<n>.json files future_context.py writes (every building as prisms in metres east and north of
-the site, its type, the site's latitude and longitude) and writes future-solar-<n>.json beside each. The grid is a
-metre (SUN_SPACING_M), the step ten minutes, the bay BAY_M, the storey 3.2 m; a podium's walls carry no apartments.
+the site, each prism saying which of its walls carry apartments, `homes`: none, podium, tower or all, and which of
+its edges are party walls, `party`, which hold none) and writes future-solar-<n>.json beside each. The grid is a
+metre (SUN_SPACING_M), the step ten minutes, the bay BAY_M, the storey 3.2 m.
 """
 import datetime as dt
 import glob
 import json
-import math
 import os
 import sys
 
@@ -36,18 +38,30 @@ STEP = 10
 THRESHOLD = 120.0
 LONG_FACE_M = 16.0          # a wall shorter than this is an end, owned by the corner units of the long faces
 SINGLE = ('single',)        # the types whose apartments face one way
+PARTY_M = 0.6               # a wall whose two feet stand this close to a party edge is that party wall
 
 
-def apartment_test(panels, minutes, kind):
-    """The bays of a building's residential walls, each a storey tall, and whether each gets its two hours: the share
-    that does and the share that gets none, on both long faces (a double-loaded plan) and on the better face alone
-    (single-loaded), with the end walls credited to the corner bays."""
+def seg_distance(pt, a, b):
+    """A point's distance to the segment a-b, in plan."""
+    pt, a, b = np.asarray(pt[:2]), np.asarray(a), np.asarray(b)
+    ab = b - a
+    t = 0.0 if not ab.any() else float(np.clip(np.dot(pt - a, ab) / np.dot(ab, ab), 0.0, 1.0))
+    return float(np.linalg.norm(pt - (a + t * ab)))
+
+
+def on_party(panel, width, party):
+    """Whether a panel stands on one of the part's party edges: both its feet within PARTY_M of the same edge."""
+    foot0 = np.asarray(panel.origin)
+    foot1 = foot0 + np.asarray(panel.axis_u) * width
+    return any(seg_distance(foot0, e[:2], e[2:]) < PARTY_M and seg_distance(foot1, e[:2], e[2:]) < PARTY_M for e in party)
+
+
+def apartment_test(pairs, kind):
+    """The bays of the given walls (each a panel with its samples' minutes), each a storey tall, and whether each gets
+    its two hours: the share that does and the share that gets none, on both long faces (a double-loaded plan) and
+    on the better face alone (single-loaded), a corner apartment counted once on both its walls."""
     faces = []
-    at = 0
-    for p in panels:
-        n = len(p.samples)
-        mins = minutes[at:at + n]
-        at += n
+    for p, mins in pairs:
         u, v = p.cell_uv[:, 0], p.cell_uv[:, 1]
         width, height = float(u.max()) + p.spacing_m / 2, float(v.max()) + p.spacing_m / 2
         nb = max(1, int(width // BAY_M + (1 if width % BAY_M >= BAY_M / 2 else 0)))
@@ -80,7 +94,6 @@ def apartment_test(panels, minutes, kind):
     corner_bays = {(i, b) for i, b, j, c in corners} | {(j, c) for i, b, j, c in corners}
 
     def share(sel):
-        """The units on the selected walls: their plain bays, and the corner units they take part in."""
         total = ok = dark = 0
         for i in sel:
             f = faces[i]
@@ -108,14 +121,19 @@ for path in sorted(glob.glob(f'{OUT}/future-scene-*.json')):
     times = assessment_times(dt.date(scene['year'], 6, 21), scene['timezone'], dt.time(9), dt.time(15), STEP)
     sun = solar_position(times, scene['lat'], scene['lon']).unit_vectors_enu()        # the scene is east, north, up
     weights = instant_weights(len(times), STEP)
-    meshes, homes = {}, {}
+    meshes, walls = {}, {}
     for b in scene['buildings']:
         parts = [(part, prism(part['ring'], part['z0'], part['z1'])) for part in b['parts'] if len(part['ring']) >= 3]
         if not parts:
             continue
         meshes[b['id']] = TriangleMesh.concatenate([m for _, m in parts])
-        # the walls apartments live on: the parts that stand on a podium, else every part
-        homes[b['id']] = [m for part, m in parts if part['z0'] > 0] or [m for _, m in parts]
+        # the walls apartments live on, by group; a part without the field: on a podium 'tower', else 'all'
+        groups = []
+        for part, m in parts:
+            g = part.get('homes') or ('tower' if part['z0'] > 0 and any(q['z0'] == 0 for q in b['parts']) else 'all')
+            if g != 'none':
+                groups.append((g, m, part.get('party', [])))
+        walls[b['id']] = groups
     kinds = {b['id']: b['kind'] for b in scene['buildings']}
     ids = list(meshes)
 
@@ -128,17 +146,35 @@ for path in sorted(glob.glob(f'{OUT}/future-scene-*.json')):
     for b in scene['buildings']:
         if b['kind'] == 'context' or b['id'] not in meshes:
             continue
-        panels = [p for m in homes[b['id']] for p in vertical_face_panels(m, b['id'], spacing_m=SPACING)]
-        pts = SamplePoints.concatenate([p.samples for p in panels]) if panels else SamplePoints.empty()
-        if len(pts) == 0:
+        tagged = []                                                   # (group, panel), the party walls left out
+        for g, m, party in walls[b['id']]:
+            for p in vertical_face_panels(m, b['id'], spacing_m=SPACING):
+                width = float(p.cell_uv[:, 0].max()) + p.spacing_m / 2
+                if not on_party(p, width, party):
+                    tagged.append((g, p))
+        if not tagged:
             continue
+        pts = SamplePoints.concatenate([p.samples for _, p in tagged])
         other = 'today' if b['kind'] == 'site' else 'without_site'
         rec = dict(name=b['name'], kind=b['kind'], type=b.get('type', ''), facade_m2=pts.total_area_m2)
         for key, o in (('with', occ['with']), (other, occ[other])):
             minutes = cumulative_minutes(sunlit_matrix(pts, o, sun), weights)
-            rec['share' if key == 'with' else key] = band_by_area(pts, minutes, threshold_minutes=THRESHOLD).at_or_above_threshold_share
-            rec['apts' if key == 'with' else f'apts_{other}'] = apartment_test(panels, minutes, b.get('type', ''))
+            per = []
+            at = 0
+            for g, p in tagged:
+                per.append((g, p, minutes[at:at + len(p.samples)]))
+                at += len(p.samples)
+            by = {grp: apartment_test([(p, mins) for g, p, mins in per if g == grp], b.get('type', '')) for grp in sorted({g for g, _, _ in per})}
+            whole = apartment_test([(p, mins) for g, p, mins in per], b.get('type', ''))
+            if key == 'with':
+                rec['share'] = band_by_area(pts, minutes, threshold_minutes=THRESHOLD).at_or_above_threshold_share
+                rec['apts'], rec['apts_by'] = whole, by
+            else:
+                rec[other] = band_by_area(pts, minutes, threshold_minutes=THRESHOLD).at_or_above_threshold_share
+                rec[f'apts_{other}'], rec['apts_other_by'] = whole, by
         out[b['id']] = rec
     target = path.replace('future-scene-', 'future-solar-')
     json.dump(dict(buildings=out, instants=len(times), spacing_m=SPACING, bay_m=BAY_M, date=f'{scene["year"]}-06-21', threshold_minutes=THRESHOLD), open(target, 'w'))
-    print(f'{os.path.basename(target)}: ' + '; '.join(f'{r["name"]} {r["apts"]["planned"]["share"]:.0%} of bays (single {r["apts"]["single"]["share"]:.0%})' for r in out.values() if r.get('apts')))
+    print(f'{os.path.basename(target)}: ' + '; '.join(f'{r["name"]} {r["apts"]["planned"]["share"]:.0%} of bays'
+                                                      + (''.join(f', {g} {v["planned"]["share"]:.0%}' for g, v in r['apts_by'].items()) if len(r['apts_by']) > 1 else '')
+                                                      + f' (single {r["apts"]["single"]["share"]:.0%})' for r in out.values() if r.get('apts')))

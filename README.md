@@ -2004,8 +2004,11 @@ Each building is read as planned and as it would be single-loaded, with the
 scenario standing, and without our tower (ours: with today's buildings
 alone), so the sheet says who complies, with what plan, and whom our tower
 shades (3B-2: a standing building it costs ten points or more gets a row).
-A podium's walls carry no apartments. It is a reading on an assumed plan,
-not the scheme's own. `--no-sun` leaves it out. A scenario with
+A wall on a shared boundary is a party wall and holds no apartment; a
+neighbour's podium holds none; the site's holds them from the storey
+`site.tower.homesFrom` names, and the site is read three ways, its podium,
+its tower and the building whole. It is a reading on an assumed plan, not
+the scheme's own. `--no-sun` leaves it out. A scenario with
 `"sun": "all"` lists every neighbour; one with `"number": 0` and no parcels
 is today, every building at its measured height.
 

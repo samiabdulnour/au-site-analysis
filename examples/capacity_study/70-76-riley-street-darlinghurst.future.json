@@ -6,7 +6,7 @@
     "gfaM2": null,
     "label": "our site, SSD proposal",
     "tower": {
-      "_": "Setbacks read off the model's floor plan (the tower outline against the lot boundary, scaled by the lot's 48 x 29 m): 37 x 25 m on a 4-storey podium. To be confirmed in the model.",
+      "_": "Setbacks read off the model's floor plan (the tower outline against the lot boundary, scaled by the lot's 48 x 29 m): 37 x 25 m on a 4-storey podium. To be confirmed in the model. Apartments from level 2 of the podium (homesFrom), the ground floor commercial.",
       "podium": 4,
       "setbacks": {
         "RILEY STREET": 2,
@@ -19,7 +19,8 @@
         "66-68 RILEY STREET",
         "RILEY STREET",
         "STANLEY LANE"
-      ]
+      ],
+      "homesFrom": 2
     }
   },
   "blocks": [
