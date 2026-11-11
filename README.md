@@ -1321,7 +1321,7 @@ site may take, so a site with more paths has more pages:
    height of building, floor space ratio and the floor area it gives), then
    the paths side by side (`scenarioRows()`, also in the CSV and the JSON):
    each one's storeys, height, floor area, FSR, units, parking, compliance and
-   the pages it is drawn on (its spread, and its compliance spread after it), and the floor area and height of each as bars
+   the page it is drawn on, and the floor area and height of each as bars
    against the FSR's floor area and the height of building. The right page is
    the site among its neighbours in plan, each numbered neighbour's street
    number, zone and height written in its building.
@@ -1364,17 +1364,20 @@ site may take, so a site with more paths has more pages:
    the FSR set aside, the case a clause 4.6 variation or a planning proposal
    has to carry, marked non-compliant; drawn only where the FSR stops the
    scheme below the height.
-7. **Compliance**, after each path's spread where it holds apartments: the
-   path's scheme against the ADG on sun, shadow and separation, kept off the
-   yield's own pages. On the left the four tests with a mark each (4A-1
-   sunlight, again with the neighbours built out; 4A-2 no sun; 3B-2
-   overshadowing; 3F-1 separation), the apartments' sun tier by tier, each
-   building near and its separation, and the shadow added to each kind of
-   land at its most. On the right the massing with each apartment that has
-   the hours in yellow, over the plan of the scheme's shadow at 9 am, noon
-   and 3 pm, the land it adds shadow to outlined and each separation drawn as
-   a dimension, green where it is clear, amber where it holds only if one
-   face is blank, red where it is short.
+7. **Compliance** — does the envelope comply? One sheet for every path that
+   holds apartments, kept off the yield's own pages, set out as a
+   future-context study sets out its scenarios. On the left the paths side
+   by side against the assessment criteria, in their order, a mark for each:
+   overshadow impact (3B-2), solar access (4A-1 with the hours, 4A-2 with
+   none, and again with the neighbours built out), building separation
+   (3F-1) and yield (the path's floor area as a share of the most the
+   controls allow it); each building near and its separation from each path;
+   and the criteria as the sheet reads them. On the right a card for each
+   path: its plan, the envelope's shadow at 9 am, noon and 3 pm, the land it
+   shades outlined and each separation drawn as a dimension (green clear,
+   amber where it holds only habitable to non-habitable, red short), beside
+   its massing with each apartment that has the hours in yellow. A path
+   alone gets the whole page, its massing over its plan.
 8. **Controls and assumptions** — the assumptions the study rests on (floor
    to floor, efficiencies, the mix, the plates, the parking rates, the nearest
    station) on the left; on the right, the full table the office's
