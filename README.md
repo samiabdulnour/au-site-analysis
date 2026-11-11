@@ -1320,9 +1320,8 @@ site may take, so a site with more paths has more pages:
 1. **Planning yield** — the site (area, lot, frontage) and its controls (zone,
    height of building, floor space ratio and the floor area it gives), then
    the paths side by side (`scenarioRows()`, also in the CSV and the JSON):
-   each one's storeys, height, floor area, FSR, units, parking, the share of
-   its apartments with the ADG's mid-winter sun, compliance and the page it
-   is drawn on, and the floor area and height of each as bars
+   each one's storeys, height, floor area, FSR, units, parking, compliance and
+   the pages it is drawn on (its spread, and its compliance spread after it), and the floor area and height of each as bars
    against the FSR's floor area and the height of building. The right page is
    the site among its neighbours in plan, each numbered neighbour's street
    number, zone and height written in its building.
@@ -1353,8 +1352,7 @@ site may take, so a site with more paths has more pages:
 4. **Within the controls** — the scheme inside the LEP's height and FSR and
    the ADG's separations: its building type, storeys, floor area, apartments,
    saleable area and parking; the controls it is held to (height, FSR, floor
-   area, minimum lot size, ADG 2E depth, 3E deep soil, 4A sunlight and 3B
-   overshadowing) with a mark each;
+   area, minimum lot size, ADG 2E depth and 3E deep soil) with a mark each;
    the schedule of tiers — storeys, use, setbacks, plate and floor area, each
    tier's number in the ring the plan draws it in — and the apartments, a row
    for each kind in the mix with its share, ADG 4D-1's least area for it, its
@@ -1366,7 +1364,18 @@ site may take, so a site with more paths has more pages:
    the FSR set aside, the case a clause 4.6 variation or a planning proposal
    has to carry, marked non-compliant; drawn only where the FSR stops the
    scheme below the height.
-7. **Controls and assumptions** — the assumptions the study rests on (floor
+7. **Compliance**, after each path's spread where it holds apartments: the
+   path's scheme against the ADG on sun, shadow and separation, kept off the
+   yield's own pages. On the left the four tests with a mark each (4A-1
+   sunlight, again with the neighbours built out; 4A-2 no sun; 3B-2
+   overshadowing; 3F-1 separation), the apartments' sun tier by tier, each
+   building near and its separation, and the shadow added to each kind of
+   land at its most. On the right the massing with each apartment that has
+   the hours in yellow, over the plan of the scheme's shadow at 9 am, noon
+   and 3 pm, the land it adds shadow to outlined and each separation drawn as
+   a dimension, green where it is clear, amber where it holds only if one
+   face is blank, red where it is short.
+8. **Controls and assumptions** — the assumptions the study rests on (floor
    to floor, efficiencies, the mix, the plates, the parking rates, the nearest
    station) on the left; on the right, the full table the office's
    development summary (DA 002) keeps — CONTROLS, PROPOSED and COMPLIANCE for
@@ -1522,11 +1531,11 @@ local metres:
   with the hours asked (two in the Greater Sydney Region's councils and in
   Newcastle and Wollongong, three elsewhere, `adgSunHours()`) is set against
   4A-1's 70%, and the share with none against 4A-2's 15%. Both are given again
-  with the neighbours built to their futures, where any rises; a path that
-  passes today and fails then takes the dash, not the tick. The massing
-  colours each apartment's facade yellow where it has the hours, the way an
-  office's sun study does, and the overview gives each path's share in a
-  column of its own.
+  with the neighbours built to their futures, where any rises. The hours are
+  counted in all, as the ADG's criteria read; `"sun": { "continuous": true }`
+  counts the longest unbroken run instead, for a council that reads them so,
+  and the pages say which. The compliance spread's massing colours each
+  apartment's facade yellow where it has the hours.
 - **The shadow it adds (ADG 3B-2).** The ground the scheme puts in shadow at
   each hour from 9 am to 3 pm that is in sun today (the neighbours and what
   stands on the site casting theirs), sampled every 1.5 m over the open
@@ -1540,6 +1549,19 @@ local metres:
   (`heritageItems`); one from before them says the items were not measured.
   The ground is flat and the trees cast no shadow: the figures are a test of
   the massing, for a solar access study to confirm.
+- **Separation (ADG 3F-1).** `src/lib/separation.ts`, tested in
+  `test/separation.mts`: the least distance in plan from each built tier to
+  each building within 24 m, in the band of storeys the two share, against
+  the separation the ADG asks between buildings: 12 m between habitable
+  rooms up to four storeys, 18 m from five to eight, 24 m from nine, and 9,
+  13.5 and 18 m where one face is blank. Which faces have windows is the
+  design's, so a distance between the two figures holds only if one is
+  blank. A neighbour's storeys are its height at 3.1 m (two where none is
+  recorded), today and as its controls let it rise; a building across a
+  street is left to the street and the DCP, and a tier built to its side
+  boundaries (a podium, the shops) has blank walls there and is not
+  measured. The envelope already keeps half of each separation to every
+  boundary, so a shortfall is a neighbour's nearness to its own.
 - **The Housing SEPP.** The in-fill affordable housing bonus — up to 30% more
   FSR and height for 15% affordable housing — as a second run of the study,
   and a note where the site is in a TOD area, whose controls may apply instead.
@@ -1552,12 +1574,13 @@ from `yield_assumptions.json` in the address's output folder (the CLI's
 { "mix": { "studio": 0.05, "one": 0.25, "two": 0.55, "three": 0.15, "four": 0 },
   "sizes": { "two": 85 }, "podiumStoreys": 3, "towerPlateMax": 850,
   "parking": { "one": 0.5, "two": 1, "three": 1.5, "visitor": 0.2, "basis": "the council's DCP" },
-  "sun": { "hours": 3, "neighbourHours": 3 } }
+  "sun": { "hours": 3, "neighbourHours": 3, "continuous": true } }
 ```
 
 (`sun.hours` sets the hours of mid-winter sun the apartments are held to in
-place of ADG 4A-1's for the council, and `sun.neighbourHours` those the
-neighbours' open ground is; unset, the second follows the first.)
+place of ADG 4A-1's for the council, `sun.neighbourHours` those the
+neighbours' open ground is (unset, the first), and `sun.continuous` asks
+them unbroken.)
 
 The deck prints the ones a run used. It is a feasibility figure, not a design:
 DCP setbacks and street wall heights are the design's to test, the sun and

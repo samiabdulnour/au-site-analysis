@@ -19,11 +19,15 @@
 // sun on the living room's glass, measured 1 m above the floor, and the
 // living room is taken to be on the apartment's sunniest face, where a
 // designer would put it. Its hours are the quarter hours between 9 am and
-// 3 pm AEST it has the sun in, counted whether or not they run together.
+// 3 pm AEST it has the sun in, counted whether or not they run together;
+// its longest unbroken run is kept too, for a council that reads the hours as
+// continuous (`continuous`), and the figures say which reading they take.
 //
 // The ground is flat and trees cast no shadow: what the figures say is
 // indicative, a test of the massing, not a solar access report.
 
+import turfUnion from '@turf/union';
+import { featureCollection, polygon } from '@turf/helpers';
 import { civilToUtc, sunPosition } from './solar.js';
 import { convexHull, inHull } from './shadows.js';
 import { storeyLevels, type XY, type YieldResult } from './yield.js';
@@ -168,15 +172,18 @@ export interface SunUnit {
   tier: number;
   storey: number;
   pieces: FacadePiece[];
-  /** Hours of sun at mid winter with the neighbours as they stand. */
+  /** Hours of sun at mid winter with the neighbours as they stand, and the longest of them unbroken. */
   hours: number;
+  run: number;
   /** And with the neighbours built to their controls, where a future was given. */
   hoursFuture?: number;
+  runFuture?: number;
 }
 
 export interface ApartmentSun {
-  /** The hours ADG 4A-1 asks of 70% of the apartments here. */
+  /** The hours ADG 4A-1 asks of 70% of the apartments here, and whether they must run unbroken. */
   hoursRequired: number;
+  continuous: boolean;
   units: SunUnit[];
   /** The apartments the study counts, those with the hours asked, those with no sun at all; and the same with the neighbours built out. */
   total: number;
@@ -262,6 +269,8 @@ export interface ApartmentSunInput {
   context: Block[];
   future?: Block[];
   hoursRequired: number;
+  /** Whether the hours asked must run unbroken (a council's reading); counted in all where unset, as the ADG's criteria read. */
+  continuous?: boolean;
   /** Where the sun is looked for: this far above the floor, on at least this much facade; the facade sampled this finely. Metres. */
   sillM?: number;
   litM?: number;
@@ -281,7 +290,8 @@ export function apartmentSun(y: YieldResult, o: ApartmentSunInput): ApartmentSun
   // the apartments each storey holds: its share of the residential floor area
   const counts = shareOut(y.units.total, residential.map((f) => f.gfa));
   const samplesOf = new Map<number, Sample[]>();
-  const units: (SunUnit & { samples: Sample[]; z: number })[] = [];
+  // each apartment as it is worked: its samples, the level the sun is looked for at, and the runs it is in now
+  const units: (SunUnit & { samples: Sample[]; z: number; now: number; nowFuture: number })[] = [];
   residential.forEach((f, i) => {
     const n = counts[i];
     if (!n) return;
@@ -313,7 +323,7 @@ export function apartmentSun(y: YieldResult, o: ApartmentSunInput): ApartmentSun
           if (last && last.ring === sm.ring && last.edge === sm.edge) last.t1 = sm.t + half;
           else pieces.push({ ring: sm.ring, edge: sm.edge, t0: sm.t - half, t1: sm.t + half });
         }
-        units.push({ tier: f.tier, storey: f.storey, pieces, hours: 0, samples: g, z: z.bottom(f.storey) + sill });
+        units.push({ tier: f.tier, storey: f.storey, pieces, hours: 0, run: 0, samples: g, z: z.bottom(f.storey) + sill, now: 0, nowFuture: 0 });
       }
     });
   });
@@ -343,18 +353,27 @@ export function apartmentSun(y: YieldResult, o: ApartmentSunInput): ApartmentSun
     const nowToday = sunward(today, box, zMin, s);
     const nowLater = later ? sunward(later, box, zMin, s) : undefined;
     for (const u of units) {
-      if (hoursIn(nowToday, s, u)) u.hours += 0.25;
-      if (nowLater) { if (hoursIn(nowLater, s, u)) u.hoursFuture = (u.hoursFuture ?? 0) + 0.25; else u.hoursFuture ??= 0; }
+      if (hoursIn(nowToday, s, u)) { u.hours += 0.25; u.now += 0.25; u.run = Math.max(u.run, u.now); } else u.now = 0;
+      if (nowLater) {
+        u.hoursFuture ??= 0; u.runFuture ??= 0;
+        if (hoursIn(nowLater, s, u)) { u.hoursFuture += 0.25; u.nowFuture += 0.25; u.runFuture = Math.max(u.runFuture, u.nowFuture); } else u.nowFuture = 0;
+      }
     }
   }
-  const req = o.hoursRequired - 1e-9;
-  const out: SunUnit[] = units.map(({ samples: _s, z: _z, ...u }) => u);
+  const req = o.hoursRequired - 1e-9, continuous = !!o.continuous;
+  const out: SunUnit[] = units.map(({ samples: _s, z: _z, now: _n, nowFuture: _f, ...u }) => u);
   return {
-    hoursRequired: o.hoursRequired, units: out, total: out.length,
-    meeting: out.filter((u) => u.hours >= req).length,
+    hoursRequired: o.hoursRequired, continuous, units: out, total: out.length,
+    meeting: out.filter((u) => meetsSun(u, req, continuous)).length,
     none: out.filter((u) => u.hours === 0).length,
-    ...(later ? { future: { meeting: out.filter((u) => (u.hoursFuture ?? 0) >= req).length, none: out.filter((u) => !u.hoursFuture).length } } : {}),
+    ...(later ? { future: { meeting: out.filter((u) => meetsSun(u, req, continuous, true)).length, none: out.filter((u) => !u.hoursFuture).length } } : {}),
   };
+}
+
+/** Whether an apartment has the hours asked: in all, or in one unbroken run; with today's neighbours or their futures. */
+export function meetsSun(u: SunUnit, hours: number, continuous: boolean, future = false): boolean {
+  const got = future ? (continuous ? u.runFuture : u.hoursFuture) ?? 0 : continuous ? u.run : u.hours;
+  return got >= hours - 1e-9;
 }
 
 function edgeLength(plate: XY[][], sm: { ring: number; edge: number }): number {
@@ -378,8 +397,9 @@ export interface AddedShadow {
   peak: Record<ShadeKind, { sqm: number; clockMin: number } | null>;
   /** How many of each kind lie where the scheme's shadow can reach at some hour (none of a kind: nothing to measure). */
   reached: Record<ShadeKind, number>;
-  /** How many of each kind the scheme adds shadow to. */
+  /** How many of each kind the scheme adds shadow to, and which (their indices among the targets given). */
   shaded: Record<ShadeKind, number>;
+  shadedTargets: number[];
   /**
    * The residential lots: those the scheme adds shadow to, and, by a common DCP test (half the lot's open ground in
    * sun for `hoursRequired` hours), those it takes below the test that pass it today, and those below it today that
@@ -421,6 +441,7 @@ export function addedShadow(o: AddedShadowInput): AddedShadow {
     peak: { park: null, heritage: null, home: null },
     reached: zeroKinds(),
     shaded: zeroKinds(),
+    shadedTargets: [],
     homes: { touched: 0, fallBelow: 0, cutFurther: 0, hoursRequired: o.hoursRequired },
   };
   const scheme = o.scheme.map(ready).filter((r): r is Ready => !!r);
@@ -436,7 +457,7 @@ export function addedShadow(o: AddedShadowInput): AddedShadow {
   const roofs = o.roofs.filter((rg) => rg.length >= 3).map((rg) => ({ rg, x0: Math.min(...rg.map((p) => p.x)), x1: Math.max(...rg.map((p) => p.x)), y0: Math.min(...rg.map((p) => p.y)), y1: Math.max(...rg.map((p) => p.y)) }));
   const roofed = (x: number, y: number) => roofs.some((r) => x >= r.x0 && x <= r.x1 && y >= r.y0 && y <= r.y1 && evenOdd([r.rg], x, y));
 
-  for (const target of o.targets) {
+  for (const [targetIndex, target] of o.targets.entries()) {
     const rings = target.rings.filter((rg) => rg.length >= 3);
     if (!rings.length) continue;
     const xs = rings.flat().map((p) => p.x), ys = rings.flat().map((p) => p.y);
@@ -472,7 +493,7 @@ export function addedShadow(o: AddedShadowInput): AddedShadow {
       const n = after.filter((v, i) => v && !before[i]).length;
       if (n) { out.hours[h].added[target.kind] += n * cell; added = true; }
     });
-    if (target.kind !== 'home') { if (added) out.shaded[target.kind]++; continue; }
+    if (target.kind !== 'home') { if (added) { out.shaded[target.kind]++; out.shadedTargets.push(targetIndex); } continue; }
     // the lot's hours with half its open ground in sun, today and with the scheme
     let hBefore = 0, hAfter = 0;
     quarter.forEach((s, q) => {
@@ -484,6 +505,7 @@ export function addedShadow(o: AddedShadowInput): AddedShadow {
     if (!added) continue;
     out.homes.touched++;
     out.shaded.home++;
+    out.shadedTargets.push(targetIndex);
     const req = o.hoursRequired - 1e-9;
     if (hBefore >= req && hAfter < req) out.homes.fallBelow++;
     else if (hBefore < req && hAfter < hBefore - 1e-9) out.homes.cutFurther++;
@@ -494,4 +516,35 @@ export function addedShadow(o: AddedShadowInput): AddedShadow {
     out.peak[kind] = best;
   }
   return out;
+}
+
+/**
+ * The shadow prisms cast on flat ground with the sun where it is: each ring's outline carried away from the sun as
+ * far as its foot and its top throw it, and swept between the two, all joined. Its rings (outer and holes, even-odd).
+ */
+export function groundShadow(blocks: Block[], s: Sun): XY[][] {
+  const away = { x: -s.hx, y: -s.hy };
+  const pieces: number[][][][] = [];
+  const add = (pts: XY[]) => {
+    let a = 0;
+    for (let i = 0; i < pts.length; i++) { const u = pts[i], v = pts[(i + 1) % pts.length]; a += u.x * v.y - v.x * u.y; }
+    if (Math.abs(a) > 1e-6) pieces.push([[...pts, pts[0]].map((p) => [p.x, p.y])]);
+  };
+  for (const b of blocks) {
+    const d0 = b.z0 / s.tan, d1 = b.z1 / s.tan;
+    const at = (p: XY, d: number): XY => ({ x: p.x + away.x * d, y: p.y + away.y * d });
+    for (const rg of b.rings) {
+      if (rg.length < 3) continue;
+      add(rg.map((p) => at(p, d1)));
+      add(rg.map((p) => at(p, d0)));
+      rg.forEach((p, i) => { const q = rg[(i + 1) % rg.length]; add([at(p, d0), at(q, d0), at(q, d1), at(p, d1)]); });
+    }
+  }
+  if (!pieces.length) return [];
+  try {
+    const joined = turfUnion(featureCollection(pieces.map((c) => polygon(c)))) as any;
+    const g = joined?.geometry;
+    const rings: number[][][] = g?.type === 'Polygon' ? g.coordinates : g?.type === 'MultiPolygon' ? g.coordinates.flat() : [];
+    return rings.map((rg) => rg.slice(0, -1).map(([x, y]) => ({ x, y })));
+  } catch { return []; }
 }
