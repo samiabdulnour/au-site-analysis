@@ -1942,12 +1942,17 @@ site might redevelop: three A3 landscape sheets, one a scenario, each a plan
 at 1:500 on the clean aerial (no marks, no labels, the colour drawn down)
 beside an axonometric massing looking east over the site's street, with the
 scenario's story in the left column and an indicative yield under it.
-Outputs `future-1.png`, `-2`, … and `future.pdf` (the sheets bound, behind a
-one-page summary, `future-summary.png`: each scenario's plan as colour blocks,
-the apartments it adds, and for every new building its separation from the
-site's tower and its mid-winter sun, read as the ADG reads them, with a line
-on whether the site's massing lets the neighbours develop) beside
-`analysis.json`; `--redraw` draws again from what was fetched.
+Outputs, beside `analysis.json`: `future.pdf`, a one-page summary
+(`future-summary.png`: each scenario's plan as colour blocks with the blocks
+round it and their storeys, the apartments it adds, and for every new
+building its separation from the site's tower and its mid-winter sun, read as
+the ADG reads them, with a line on whether the site's massing lets the
+neighbours develop) followed by a sheet for each scenario in the same form
+(`future-option-<n>.png`: the plan large, the table, the apartments of ours
+without their sun and the neighbours our tower shades); and
+`future-detail.pdf`, the sheets in full (`future-<n>.png`: the plan at 1:500
+on the aerial, the massing, the yield, the assumptions). `--redraw` draws
+again from what was fetched.
 `examples/capacity_study/` holds the three sheets for 70-76 Riley Street with
 their scenarios file.
 
