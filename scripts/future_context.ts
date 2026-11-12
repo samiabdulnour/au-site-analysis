@@ -32,7 +32,7 @@ import { PDFDocument } from 'pdf-lib';
 import { fetchAerial } from '../src/fetch/imagery.js';
 import { fetchFloorSpaceRatio, fetchHeightOfBuilding } from '../src/fetch/nsw.js';
 import { meshSurfaceOver } from '../src/fetch/meshHeights.js';
-import { footprintHeight, toXY, type XY } from '../src/lib/meshHeights.js';
+import { cellsIn, footprintHeight, simplifyRing, toLonLat, toXY, traceOutlines, type XY } from '../src/lib/meshHeights.js';
 import { mercatorToLonLat, type Extent } from '../src/lib/geo.js';
 import { printPage } from '../src/render/pdf.js';
 
@@ -55,6 +55,10 @@ const MARGIN_M = 40;
  *  mid-winter morning, when the sun is 19° up; north, east and west of it, and a little south. */
 const SUN_REACH_M = 300;
 
+/** A building this tall is read in its steps: a tower on a podium, two towers of two heights on one lot. */
+const TIERS_FROM_M = 20;
+const TIER_M = 3;
+
 if (!redraw) await fetchStudy();
 if (!redraw || args.includes('--sun-context')) await fetchSunContext();
 
@@ -73,15 +77,45 @@ async function fetchSunContext(): Promise<void> {
   let surface: Awaited<ReturnType<typeof meshSurfaceOver>> | null = null;
   try { surface = await meshSurfaceOver(key, win, log); } catch (e: any) { log(`  WARN the sun's reach: ${e?.message ?? e}`); return; }
   const rings = (geom: number[][][]): XY[][] => geom.map((r) => r.map(([x, y]) => { const ll = mercatorToLonLat({ x, y }); return toXY(surface!.frame, ll.lon, ll.lat); }));
-  let read = 0;
+  let read = 0, stepped = 0;
+  f.tiers = f.tiers ?? {};
   for (const p of props) {
-    if (!p.geom?.length || f.heights[String(p.propid)] || p.centroid[0] < win.xmin || p.centroid[0] > win.xmax || p.centroid[1] < win.ymin || p.centroid[1] > win.ymax) continue;
-    const h = footprintHeight(surface.field, rings(p.geom));
-    if (h) { f.heights[String(p.propid)] = h; read++; }
+    if (!p.geom?.length || p.centroid[0] < win.xmin || p.centroid[0] > win.xmax || p.centroid[1] < win.ymin || p.centroid[1] > win.ymax) continue;
+    const pid = String(p.propid);
+    const r = rings(p.geom);
+    if (!f.heights[pid]) {
+      const h = footprintHeight(surface.field, r);
+      if (h) { f.heights[pid] = h; read++; }
+    }
+    const h = f.heights[pid];
+    if (h && h.heightM >= TIERS_FROM_M) {
+      const t = tiersOf(surface.field, surface.frame, r, h);
+      if (t.length > 1) { f.tiers[pid] = t; stepped++; }
+    }
   }
-  f.sunContext = { reachM: SUN_REACH_M, meshes: surface.meshes, read };
+  f.sunContext = { reachM: SUN_REACH_M, meshes: surface.meshes, read, stepped };
   await writeFile(join(out, 'future.json'), JSON.stringify(f));
-  log(`  the sun's reach: ${read} more properties read off ${surface.meshes} meshes`);
+  log(`  the sun's reach: ${read} more properties read off ${surface.meshes} meshes, ${stepped} tall ones in their steps`);
+}
+
+
+/** What stands on a lot as a stack of outlines, a tier every TIER_M metres: each tier the cells whose roof reaches its
+ *  top (a metre's give), traced and simplified, the slivers dropped; rings in lon/lat. */
+function tiersOf(field: Parameters<typeof cellsIn>[0], frame: Parameters<typeof toLonLat>[0], rings: XY[][], h: { heightM: number; groundZ: number }) {
+  const cells = cellsIn(field, rings).filter((i) => Number.isFinite(field.z[i]) && !field.green[i]);
+  const tops = cells.map((i) => field.z[i] - h.groundZ);
+  const area = (ring: XY[]) => { let a = 0; for (let i = 0; i < ring.length; i++) { const [x0, y0] = ring[i], [x1, y1] = ring[(i + 1) % ring.length]; a += x0 * y1 - x1 * y0; } return a / 2; };
+  const out: { z0: number; z1: number; rings: [number, number][][] }[] = [];
+  let lo = 0;
+  for (let t = TIER_M; lo < h.heightM; t += TIER_M) {
+    const hi = Math.min(t, h.heightM);
+    const mask = cells.filter((_, j) => tops[j] >= hi - 1);
+    const loops = traceOutlines(field, mask).filter((ring) => area(ring) >= 40).map((ring) => simplifyRing(ring, 1));
+    if (!loops.length) break;
+    out.push({ z0: lo, z1: hi, rings: loops.map((ring) => ring.map(([x, y]) => toLonLat(frame, x, y))) });
+    lo = hi;
+  }
+  return out;
 }
 
 async function fetchStudy(): Promise<void> {

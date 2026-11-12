@@ -105,6 +105,7 @@ def control(layer, g, field):
 # the heights the 3D tiles read for each property: storeys at the repo's 3.1 m
 STOREY_M = 3.1
 HEIGHTS = fu.get('heights') or {}
+TIERS = fu.get('tiers') or {}                                     # a tall building's steps, as the tiles read them
 MESH = fu.get('mesh') or {}
 ASSUMED_STOREYS = 6
 
@@ -1064,7 +1065,19 @@ def export_scene(no, blds, existing, RET, sep, parcels=(), scn_parcels=()):
             if top <= 0 or r['poly'].distance(SITE_POLY) > top / low or r['poly'].centroid.y < SITE_POLY.bounds[1] - 20:
                 continue
         g = ground_of([r])
-        out.append(dict(id=f'context-{pid}', kind='context', name=r['base'], parts=[dict(ring=ring_of(p), z0=g, z1=g + measured(r), homes='all') for p in polys(r['poly'])]))
+        if TIERS.get(pid):                                             # stepped: a tower on a podium, two towers, as they stand
+            # the steps whose outline does not change are one prism
+            steps = []
+            for t in TIERS[pid]:
+                g_ = poly_of(t['rings'], ll=True)
+                if steps and abs(g_.area - steps[-1][0].area) <= 0.04 * steps[-1][0].area and g_.symmetric_difference(steps[-1][0]).area <= 0.06 * g_.area:
+                    steps[-1][2] = t['z1']
+                else:
+                    steps.append([g_, t['z0'], t['z1']])
+            parts = [dict(ring=ring_of(p), z0=g + z0, z1=g + z1, homes='all') for g_, z0, z1 in steps for p in polys(g_) if p.area >= 20]
+        else:
+            parts = [dict(ring=ring_of(p), z0=g, z1=g + measured(r), homes='all') for p in polys(r['poly'])]
+        out.append(dict(id=f'context-{pid}', kind='context', name=r['base'], parts=parts))
     # a wall on a shared boundary is a party wall and holds no apartment: each part's edges within half a metre of
     # another building are marked for the sun study to pass over
     footprints = {b['id']: unary_union([Polygon(part['ring']) for part in b['parts']]) for b in out}
@@ -1294,7 +1307,7 @@ def sun_views(no, sun, hours=(9, 10, 11, 12, 13, 14, 15), reach=32):
                 ring0 = b['parts'][0]['ring']
                 cxy = (sum(q[0] for q in ring0) / len(ring0), sum(q[1] for q in ring0) / len(ring0))
                 if math.hypot(*cxy) > 60:
-                    far.append((b['name'], max(pt['z1'] - pt['z0'] for pt in b['parts']), [P(x, y, z) for pt in b['parts'] for x, y in pt['ring'] for z in (pt['z0'], pt['z1'])]))
+                    far.append((b['name'], max(pt['z1'] for pt in b['parts']) - min(pt['z0'] for pt in b['parts']), [P(x, y, z) for pt in b['parts'] for x, y in pt['ring'] for z in (pt['z0'], pt['z1'])]))
             stroke = '#c0161c' if b['kind'] == 'site' else '#8a8a8a'
             for part in b['parts']:
                 ring = part['ring']
