@@ -10,6 +10,7 @@
 //   npm run capacity -- "70-76 Riley Street, Darlinghurst NSW 2010" --out out/capacity/riley
 //   npm run future -- out/capacity/riley --scenarios examples/capacity_study/70-76-riley-street-darlinghurst.future.json
 //   npm run future -- out/capacity/riley --scenarios … --redraw      (draw again from what was fetched)
+//   npm run future -- out/capacity/riley --scenarios … --redraw --sun-context   (read the 300 m the sun reaches)
 //
 // Over the context plan's reading (analysis.json: every property's polygon,
 // the lots, the roads) it fetches, once, what the sheets need beyond it: the
@@ -50,7 +51,38 @@ const redraw = args.includes('--redraw') && existsSync(join(out, 'future.json'))
 const PLAN_M = { w: 92, h: 108 };
 const MARGIN_M = 40;
 
+/** How far round the site the sun study reads what stands: a tower this far off can still shade the site on the
+ *  mid-winter morning, when the sun is 19° up; north, east and west of it, and a little south. */
+const SUN_REACH_M = 300;
+
 if (!redraw) await fetchStudy();
+if (!redraw || args.includes('--sun-context')) await fetchSunContext();
+
+
+async function fetchSunContext(): Promise<void> {
+  const key = process.env.GOOGLE_MAPS_API_KEY?.trim() || (process.env.GOOGLE_MAPS_KEY_IN_HEADER === '1' ? 'header' : undefined);
+  if (!key) { log('  no GOOGLE_MAPS_API_KEY: the sun study keeps the study window\'s buildings alone'); return; }
+  const a = JSON.parse(await readFile(join(out, 'analysis.json'), 'utf8'));
+  const f = JSON.parse(await readFile(join(out, 'future.json'), 'utf8'));
+  const k: number = a.k;
+  const props = Object.values(a.props) as { propid: number; geom: number[][][]; centroid: [number, number]; isSite?: boolean }[];
+  const site = props.find((p) => p.isSite)!;
+  const [cx, cy] = site.centroid;
+  const win: Extent = { xmin: cx - SUN_REACH_M * k, xmax: cx + SUN_REACH_M * k, ymin: cy - 80 * k, ymax: cy + SUN_REACH_M * k };
+  log(`the sun's reach: ${2 * SUN_REACH_M} × ${SUN_REACH_M + 80} m round the site, what stands there off the 3D tiles`);
+  let surface: Awaited<ReturnType<typeof meshSurfaceOver>> | null = null;
+  try { surface = await meshSurfaceOver(key, win, log); } catch (e: any) { log(`  WARN the sun's reach: ${e?.message ?? e}`); return; }
+  const rings = (geom: number[][][]): XY[][] => geom.map((r) => r.map(([x, y]) => { const ll = mercatorToLonLat({ x, y }); return toXY(surface!.frame, ll.lon, ll.lat); }));
+  let read = 0;
+  for (const p of props) {
+    if (!p.geom?.length || f.heights[String(p.propid)] || p.centroid[0] < win.xmin || p.centroid[0] > win.xmax || p.centroid[1] < win.ymin || p.centroid[1] > win.ymax) continue;
+    const h = footprintHeight(surface.field, rings(p.geom));
+    if (h) { f.heights[String(p.propid)] = h; read++; }
+  }
+  f.sunContext = { reachM: SUN_REACH_M, meshes: surface.meshes, read };
+  await writeFile(join(out, 'future.json'), JSON.stringify(f));
+  log(`  the sun's reach: ${read} more properties read off ${surface.meshes} meshes`);
+}
 
 async function fetchStudy(): Promise<void> {
   const a = JSON.parse(await readFile(join(out, 'analysis.json'), 'utf8'));

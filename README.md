@@ -2037,7 +2037,13 @@ does not count; `SUN_RULE=minutes` reads any 120 unbroken minutes at the
 study's ten-minute step instead); a bay has them where half its wall at
 that storey does, and a building complies where 70 % of its bays do and no
 more than 15 % get none (4A-1). Every building stands on its own lot's ground as the
-tiles read it, so a higher neighbour's roof cuts the low sun as it does.
+tiles read it, so a higher neighbour's roof cuts the low sun as it does. What
+stands is cast as far as its shadow can reach: the runner reads the tiles
+300 m round the site (north, east and west, 80 m south; `--sun-context`
+reads it again over an earlier fetch), and every building tall enough to
+throw a shadow onto the site with the sun 17° up is cast, so the towers on
+William Street shade the mid-winter morning as they do. The sun's-eye views
+name a far building where it stands between the sun and ours.
 Where the scenarios file lays the site's apartments out as its plans do
 (`site.tower.units`, each face from the north end, each apartment its
 width and a corner flag), each is tested at its own wall and storey and

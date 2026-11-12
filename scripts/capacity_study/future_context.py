@@ -1053,9 +1053,16 @@ def export_scene(no, blds, existing, RET, sep, parcels=(), scn_parcels=()):
         out.append(dict(id=f'standing-{r["base"]}', kind='standing', type='standing', name=f'{short(r["base"])}, retained, {n} st', parts=[dict(ring=ring_of(p), z0=g, z1=g + h, homes='all') for p in polys(r['poly'])]))
     # the blocks round the study as they stand; a lot of the study blocks is never context, it is developed or listed
     in_blocks = {str(r['propid']) for b in BLOCKS for r in b}
+    low = math.tan(math.radians(17))                                  # the mid-winter sun at nine, with a margin
     for pid, r in PROPS.items():
-        if r.get('isSite') or pid in in_blocks or not measured(r) or not r['poly'].intersects(WINDOW.buffer(10)):
+        if r.get('isSite') or pid in in_blocks or not measured(r):
             continue
+        # the study window's buildings, and beyond it every one tall enough to reach the site with its shadow on
+        # the mid-winter morning or afternoon (the tiles read what stands up to 300 m off, north, east and west)
+        if not r['poly'].intersects(WINDOW.buffer(10)):
+            top = ground_of([r]) + measured(r)
+            if top <= 0 or r['poly'].distance(SITE_POLY) > top / low or r['poly'].centroid.y < SITE_POLY.bounds[1] - 20:
+                continue
         g = ground_of([r])
         out.append(dict(id=f'context-{pid}', kind='context', name=r['base'], parts=[dict(ring=ring_of(p), z0=g, z1=g + measured(r), homes='all') for p in polys(r['poly'])]))
     # a wall on a shared boundary is a party wall and holds no apartment: each part's edges within half a metre of
@@ -1280,8 +1287,14 @@ def sun_views(no, sun, hours=(9, 10, 11, 12, 13, 14, 15), reach=32):
         P = lambda x, y, z: (np.dot((x, y, z), right), np.dot((x, y, z), up), np.dot((x, y, z), fwd))
         items = []
         ours = []
+        far = []                                                       # (name, height, projected points) of the context
         for b in scene['buildings']:
             fill = fills.get(b['kind'], '#e7e7e7')
+            if b['kind'] == 'context':
+                ring0 = b['parts'][0]['ring']
+                cxy = (sum(q[0] for q in ring0) / len(ring0), sum(q[1] for q in ring0) / len(ring0))
+                if math.hypot(*cxy) > 60:
+                    far.append((b['name'], max(pt['z1'] - pt['z0'] for pt in b['parts']), [P(x, y, z) for pt in b['parts'] for x, y in pt['ring'] for z in (pt['z0'], pt['z1'])]))
             stroke = '#c0161c' if b['kind'] == 'site' else '#8a8a8a'
             for part in b['parts']:
                 ring = part['ring']
@@ -1357,6 +1370,21 @@ def sun_views(no, sun, hours=(9, 10, 11, 12, 13, 14, 15), reach=32):
         svg = [f'<svg viewBox="{x0:.1f} {-y1:.1f} {x1 - x0:.1f} {y1 - y0:.1f}" xmlns="http://www.w3.org/2000/svg"><rect x="{x0:.1f}" y="{-y1:.1f}" width="{x1 - x0:.1f}" height="{y1 - y0:.1f}" fill="#f7f6f3"/>']
         for depth, poly, fill, stroke in items:
             svg.append(f'<polygon points="{" ".join(f"{c[0]:.2f},{-c[1]:.2f}" for c in poly)}" fill="{fill}" stroke="{stroke}" stroke-width="0.25" stroke-linejoin="round"/>')
+        # a building far off that stands between the sun and ours is named where it covers us
+        ox0, ox1, oy0, oy1 = min(xs), max(xs), min(ys), max(ys)
+        for name, height, pts in far:
+            if not pts:
+                continue
+            bx0, bx1 = min(c[0] for c in pts), max(c[0] for c in pts)
+            by0, by1 = min(c[1] for c in pts), max(c[1] for c in pts)
+            ix, iy = min(ox1, bx1) - max(ox0, bx0), min(oy1, by1) - max(oy0, by0)
+            ours_d = sum(c[2] for c in ours) / max(1, len(ours))
+            if ix <= 0 or iy <= 0 or ix * iy < 0.15 * (ox1 - ox0) * (oy1 - oy0) or min(c[2] for c in pts) > ours_d:
+                continue
+            lx = (max(ox0, bx0) + min(ox1, bx1)) / 2
+            ly = max(y0 + 6, min(y1 - 4, (max(oy0, by0) + min(oy1, by1)) / 2))
+            label = H.escape(f'{short(name)}, {height:.0f} m')
+            svg.append(f'<text x="{lx:.1f}" y="{-ly:.1f}" font-size="3.4" font-weight="700" text-anchor="middle" fill="#c0161c" paint-order="stroke" stroke="#fff" stroke-width="1.1">{label}</text>')
         svg.append('</svg>')
         alt = math.degrees(math.asin(s[2]))
         az = (math.degrees(math.atan2(s[0], s[1])) + 360) % 360
