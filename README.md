@@ -1984,7 +1984,7 @@ street or neighbour (`"CROWN LANE": 3`), so the sheet can read the
 separation between that tower and every building within 30 m of it, as it
 stands or as the scenario builds it, against the Apartment Design Guide
 (3F-1: 24 m between habitable rooms or balconies at levels 9 and over, 18 m
-where one face is blank, 18 and 12 m at levels 5 to 8, 12 and 9 below, read
+where one face is blank, 18 and 13.5 m at levels 5 to 8, 12 and 9 below, read
 at the levels the two buildings share, each building owing its side or rear
 boundary half the first figure). A scenario's own `retained` list overrides
 the study's, and a scenario's own `site.tower` moves the site's tower for
@@ -2007,7 +2007,15 @@ last) are a second file, `…future-pairs.json`, drawn with the same
 command. Each separation is drawn on the plan as a
 dimension line between the two buildings' nearest points, green where it is
 clear, amber where it holds only with one face blank, red where it is short
-even of that.
+even of that. Every new building is also read against its own lot: half the
+separation off each side or rear boundary with another lot (12 m to
+habitable rooms and 6 m to a blank wall at nine storeys and over, 9 and 4.5
+at five to eight, 6 and 3 below), a wall on the boundary a blank party wall;
+a street or lane frontage is measured and drawn, its setback the council's.
+`neighbourSetback: adg` in the scenarios file fits every slab or tower above
+its podium that far off its neighbouring lots where the lot is wide enough,
+and builds it to the boundary as a blank party wall where it is not; a
+building's own `boundary` sets other metres.
 
 Where the Loriini repository sits beside this one (or `LORIINI` names it),
 each sheet also carries the mid-winter sun over its massing, cast with

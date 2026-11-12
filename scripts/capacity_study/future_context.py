@@ -229,7 +229,15 @@ def fit(parcel, spec):
     u, n, o = reference(parcel, spec)
     depth = min(spec.get('depth') or DEPTH[spec['type']], DEPTH.get(spec['type'], 99))
     setback = spec.get('setback', 0)
+    keep = spec.get('boundary') or 0                                  # metres off every neighbouring lot's boundary
+    if keep and 'neighbour' in spec:
+        setback = max(setback, keep)
     fp = parcel.intersection(band(o, n, setback, setback + depth))
+    if keep:
+        lots = [r['line'] for r in boundary_runs(parcel) if r['kind'] == 'lot']
+        if lots:
+            # square ends, so the corner where the boundary meets a street is cleared too, and no hairline left along it
+            fp = largest(fp.difference(unary_union(lots).buffer(keep, cap_style=3, join_style=2)).buffer(-0.2, join_style=2).buffer(0.2, join_style=2))
     s = lambda p: (p[0] - o[0]) * u[0] + (p[1] - o[1]) * u[1]
     d = lambda p: (p[0] - o[0]) * n[0] + (p[1] - o[1]) * n[1]
     ss = [s(p) for p in largest(fp).exterior.coords]
@@ -250,7 +258,7 @@ def fit(parcel, spec):
                 s0, s1 = s1 - es - length, s1 - es
     fp = largest(fp.intersection(band(o, u, s0, s1)))
     if fp.is_empty or fp.area < 20:
-        sys.exit(f'the {spec["type"]} footprint does not fit the parcel')
+        sys.exit(f'the {spec["type"]} footprint does not fit the parcel' + (f' {spec["boundary"]:g} m off its neighbouring lots: give it a `boundary` it can keep, 0 for blank party walls' if spec.get('boundary') else ''))
     ds = [d(p) for p in fp.exterior.coords]
     ss = [s(p) for p in fp.exterior.coords]
     gap = max(d(p) for p in parcel.exterior.coords) - max(ds)
@@ -294,7 +302,15 @@ def resolve(scn):
         area = parcel.area
         rows = []
         for b in p['buildings']:
-            fp, info = fit(parcel, b)
+            if sc.get('neighbourSetback') == 'adg' and b['type'] not in ('podium', 'consent') and b.get('footprint') != 'lot' and 'boundary' not in b:
+                # the ADG's half off every neighbouring lot where the lot is wide enough to keep it; where it is not,
+                # the slab is built to its side boundaries as blank party walls, and the setback check says so
+                try:
+                    fp, info = fit(parcel, dict(b, boundary=HALF[adg_band(b.get('storeys') or ASSUMED_STOREYS)][0]))
+                except SystemExit:
+                    fp, info = fit(parcel, b)
+            else:
+                fp, info = fit(parcel, b)
             n = b.get('storeys') or CONSENT.get(str(prop(p['addresses'][0])['propid'])) or ASSUMED_STOREYS
             base = b.get('base', 0)
             rows.append(dict(poly=fp, n=n, base=base, typ=b['type'], key=p['key'], **info))
@@ -406,12 +422,133 @@ def site_setback(name):
 
 # ADG 3F-1: between habitable rooms or balconies, habitable to a blank face, blank to blank; at levels 9 and over,
 # 5 to 8, up to 4. The setback each building owes its side or rear boundary is half the first figure.
-ADG = {'tall': (24, 18, 12), 'mid': (18, 12, 9), 'low': (12, 9, 6)}
+ADG = {'tall': (24, 18, 12), 'mid': (18, 13.5, 9), 'low': (12, 9, 6)}
 
 
 def adg_band(n):
     return 'tall' if n >= 9 else 'mid' if n >= 5 else 'low'
 
+
+
+# ---- the setbacks each new building keeps from its own lot's boundaries ------------------------------------------
+# ADG 3F-1 asks each building for half the separation to a side or rear boundary with another lot: 6 m to
+# habitable rooms and 3 m to a blank wall up to four storeys, 9 and 4.5 at five to eight, 12 and 6 at nine and over.
+# A wall built on the boundary is a party wall and must be blank; a street or lane frontage is the council's setback
+# (its DCP), so it is measured and shown, not judged here.
+HALF = {'tall': (12, 6), 'mid': (9, 4.5), 'low': (6, 3)}
+
+
+def boundary_runs(parcel):
+    """The parcel's boundary in runs: each a straight-ish stretch facing one neighbouring lot or one street; dicts of
+    kind ('lot' or 'street'), name and line."""
+    if not parcel.exterior.is_ccw:
+        parcel = Polygon(list(parcel.exterior.coords)[::-1])
+    others = [r for r in PROPS.values() if r['poly'].distance(parcel) < 3 and r['poly'].intersection(parcel).area < 1]
+    cs = list(parcel.exterior.coords)
+    edges = []
+    for p, q in zip(cs[:-1], cs[1:]):
+        L = math.dist(p, q)
+        if L < 0.3:
+            continue
+        nx, ny = (q[1] - p[1]) / L, -(q[0] - p[0]) / L                # outward, the ring anticlockwise
+        m = Point((p[0] + q[0]) / 2 + nx * 1.5, (p[1] + q[1]) / 2 + ny * 1.5)
+        hit = next((r for r in others if r['poly'].contains(m)), None)
+        if hit:
+            kind, name = 'lot', short(hit['base'])
+        else:
+            road = min(ROADS, key=lambda n: min(l.distance(m) for l in ROADS[n])) if ROADS else 'street'
+            kind, name = 'street', road.title()
+        edges.append(dict(kind=kind, name=name, p=p, q=q, ang=math.atan2(q[1] - p[1], q[0] - p[0])))
+    runs = []
+    for e in edges:
+        last = runs[-1] if runs else None
+        if last and last['kind'] == e['kind'] and last['name'] == e['name'] and abs((e['ang'] - last['ang'] + math.pi) % (2 * math.pi) - math.pi) < math.radians(25):
+            last['pts'].append(e['q'])
+        else:
+            runs.append(dict(kind=e['kind'], name=e['name'], ang=e['ang'], pts=[e['p'], e['q']]))
+    if len(runs) > 1 and runs[0]['kind'] == runs[-1]['kind'] and runs[0]['name'] == runs[-1]['name'] and abs((runs[0]['ang'] - runs[-1]['ang'] + math.pi) % (2 * math.pi) - math.pi) < math.radians(25):
+        runs[0]['pts'] = runs[-1]['pts'][:-1] + runs[0]['pts']
+        runs.pop()
+    return [dict(kind=r['kind'], name=r['name'], line=LineString(r['pts'])) for r in runs]
+
+
+def compass4(dx, dy):
+    a = (math.degrees(math.atan2(dx, dy)) + 360) % 360
+    return ['north', 'east', 'south', 'west'][int((a + 45) // 90) % 4]
+
+
+def boundary_setbacks(parcels, blds):
+    """For every new building above its podium, the distance from its footprint to each run of its own lot's
+    boundary, judged against the ADG's half where the run faces another lot: {key: [row]}, each row a dict of
+    kind, name, side, d, hab, blank, verdict and the two points of its dimension line."""
+    out = {}
+    for pc in parcels:
+        mains = [b for b in blds if b['key'] == pc['key'] and b['typ'] not in ('podium', 'consent')]
+        if not mains:
+            continue
+        runs = boundary_runs(pc['poly'])
+        rows = []
+        for b in mains:
+            hab, blank = HALF[adg_band(b['n'])]
+            for run in runs:
+                if run['line'].length < 6:                             # a corner splay is not a frontage
+                    continue
+                g = b['poly']
+                d = g.distance(run['line'])
+                q1, q2 = nearest_points(g, run['line'])
+                c = g.centroid
+                side = compass4(q2.x - c.x, q2.y - c.y) if d >= 0.5 else compass4(run['line'].centroid.x - c.x, run['line'].centroid.y - c.y)
+                if run['kind'] == 'street':
+                    v = 'street'
+                elif d < 0.5:
+                    v = 'party wall'
+                else:
+                    v = 'clear' if d >= hab - 0.05 else 'one face blank' if d >= blank - 0.05 else 'short of a blank face'
+                rows.append(dict(kind=run['kind'], name=run['name'], side=side, d=d, hab=hab, blank=blank, verdict=v, p0=(q1.x, q1.y), p1=(q2.x, q2.y), key=b['key']))
+        out[pc['key']] = rows
+    return out
+
+
+BOUND_COLOUR = {'clear': '#1f8f3a', 'one face blank': '#c77d00', 'party wall': '#c77d00', 'short of a blank face': '#c0161c', 'street': '#666'}
+
+
+def bounds_text(rows):
+    """One line for a table: the lot boundaries judged, the streets measured."""
+    if not rows:
+        return '', None
+    bits, worst = [], 0
+    near = {}                                                         # a street met on several runs: its nearest
+    for r in rows:
+        if r['kind'] == 'street' and ((r['name'], r['side']) not in near or r['d'] < near[(r['name'], r['side'])]['d']):
+            near[(r['name'], r['side'])] = r
+    rows = [r for r in rows if r['kind'] == 'lot'] + list(near.values())
+    for r in rows:
+        if r['kind'] == 'lot':
+            mark = {'clear': '✓', 'one face blank': 'blank face', 'party wall': 'party wall, blank', 'short of a blank face': f'✗ needs {r["blank"]:g}'}[r['verdict']]
+            worst = max(worst, {'clear': 0, 'one face blank': 1, 'party wall': 1, 'short of a blank face': 2}[r['verdict']])
+            bits.append(f'<span style="color:{BOUND_COLOUR[r["verdict"]]}">{r["side"]} {r["d"]:.0f} m {mark}</span>')
+        else:
+            bits.append(f'<span style="color:#888">{r["name"]} {r["d"]:.0f} m</span>')
+    return ' · '.join(bits), worst
+
+
+def bound_dims(rows, k, big):
+    """The dimension lines for the plans: every lot boundary's setback, and a street's where it is not zero."""
+    o = []
+    near = {}
+    for r in rows:
+        if r['kind'] == 'street' and ((r['name'], r['side']) not in near or r['d'] < near[(r['name'], r['side'])]['d']):
+            near[(r['name'], r['side'])] = r
+    rows = [r for r in rows if r['kind'] == 'lot'] + list(near.values())
+    for r in rows:
+        if r['d'] < 0.5:
+            continue
+        col = BOUND_COLOUR[r['verdict']]
+        (ax, ay), (bx, by) = r['p0'], r['p1']
+        dash = ' stroke-dasharray="1.2 0.8"' if r['kind'] == 'street' else ''
+        o.append(f'<line x1="{f(ax)}" y1="{f(-ay)}" x2="{f(bx)}" y2="{f(-by)}" stroke="{col}" stroke-width="{0.9 * k:.2f}"{dash}/>')
+        o.append(f'<text x="{f((ax + bx) / 2)}" y="{-(ay + by) / 2 + 1.6 * k:.2f}" font-size="{(5.2 if big else 4.6) * k:.2f}" font-weight="700" text-anchor="middle" fill="{col}" paint-order="stroke" stroke="#fff" stroke-width="{1.5 * k:.2f}">{r["d"]:.0f} m</text>')
+    return o
 
 def face_gap(poly, parcel):
     """The gap from our tower's nearest face to a neighbour, square to that face, where the two overlap along it: the
@@ -535,7 +672,7 @@ def label_roads(window=None, k=1.0):
     return out
 
 
-def plan(scn, parcels, blds, existing, RET, sep):
+def plan(scn, parcels, blds, existing, RET, sep, bset=None):
     o = [f'<svg class="plan" viewBox="{f(WX0)} {f(-WY1)} {f(PLAN_W_M)} {f(PLAN_H_M)}" xmlns="http://www.w3.org/2000/svg">',
          '<defs><pattern id="hat" width="1.2" height="1.2" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="1.2" stroke="#555" stroke-width="0.28"/></pattern>'
          f'<clipPath id="win"><rect x="{f(WX0)}" y="{f(-WY1)}" width="{f(PLAN_W_M)}" height="{f(PLAN_H_M)}"/></clipPath></defs>',
@@ -624,6 +761,14 @@ def plan(scn, parcels, blds, existing, RET, sep):
         else:
             q1, q2 = geo['diag']
             dim(q1.x, q1.y, q2.x, q2.y, col, f'{d:.0f} m')
+    for rows in (bset or {}).values():                                # each new building's setbacks from its own lot
+        near = {}
+        for r in rows:
+            if r['kind'] == 'street' and ((r['name'], r['side']) not in near or r['d'] < near[(r['name'], r['side'])]['d']):
+                near[(r['name'], r['side'])] = r
+        for r in [r for r in rows if r['kind'] == 'lot'] + list(near.values()):
+            if r['d'] >= 0.5:
+                dim(*r['p0'], *r['p1'], BOUND_COLOUR[r['verdict']], f'{r["d"]:.0f} m')
     o += label_roads()
     o.append('</g>')
     # scale bar and north
@@ -818,7 +963,7 @@ def flags_for():
     consent = ', '.join(f'{PROPS[pid]["base"].title().replace(" Darlinghurst", "")} at {n}' for pid, n in CONSENT.items())
     if consent:
         flags.append(f'<b>Consents.</b> Storeys assumed, the register holds no record: {consent}.')
-    flags.append('<b>Separation.</b> ADG 3F-1: 24 m between habitable rooms or balconies at levels 9 and over, 18 m where one face is blank; 18 and 12 m at levels 5 to 8; 12 and 9 below. Each building owes its side or rear boundary half the first figure, 12, 9 or 6 m, a lane\'s width counting as councils measure it. The table on the left reads each neighbour at the levels the two buildings share.')
+    flags.append('<b>Separation.</b> ADG 3F-1: 24 m between habitable rooms or balconies at levels 9 and over, 18 m where one face is blank; 18 and 13.5 m at levels 5 to 8; 12 and 9 below. Each building owes its side or rear boundary with another lot half of them, 12 or 6 m at nine storeys and over, 9 or 4.5 at five to eight, 6 or 3 below, and a wall on the boundary must be blank; a street or lane frontage is the council\'s setback, measured and shown. The table on the left reads each neighbour at the levels the two buildings share.')
     flags.append(f'<b>Controls.</b> {H.escape(lep.get("epiName") or "LEP")}: the height and floor space ratio over each parcel in the table, from the plan\'s layers; '
                  + (f'every study lot sits in the {" and ".join(hcas)} heritage conservation area' if hcas else 'no conservation area over the study lots') + (f'; items: {", ".join(items)}' if items else ', and none is a heritage item') + '.')
 
@@ -980,7 +1125,7 @@ def context_buildings(reach):
     return [(r['poly'], storeys_of(r), measured(r)) for pid, r in PROPS.items() if pid not in skip and measured(r) and r['poly'].intersects(study.buffer(reach))]
 
 
-def mini_plan(parcels, blds, existing, RET, sep, k=1.0, big=False):
+def mini_plan(parcels, blds, existing, RET, sep, k=1.0, big=False, bset=None):
     """The scenario's plan as colour blocks alone, with the blocks round it: no aerial, no names, the separations
     drawn with their metres, every standing building with its storeys. `k` scales the text and lines (1 for the
     summary's small plans, less for a sheet's); `big` adds the street names, the plates, a scale bar and north."""
@@ -1031,6 +1176,9 @@ def mini_plan(parcels, blds, existing, RET, sep, k=1.0, big=False):
         o.append(f'<line x1="{f(ax)}" y1="{f(-ay)}" x2="{f(bx)}" y2="{f(-by)}" stroke="{col}" stroke-width="{1.1 * k:.2f}"/>')
         if geo['new'] or big:
             o.append(f'<text x="{f((ax + bx) / 2)}" y="{-(ay + by) / 2 - 1.5 * k:.2f}" font-size="{5.5 * k:.2f}" font-weight="700" text-anchor="middle" fill="{col}" paint-order="stroke" stroke="#fff" stroke-width="{1.6 * k:.2f}">{d:.0f} m</text>')
+    if big and bset:
+        for rows in bset.values():
+            o += bound_dims(rows, k * 1.6, True)
     if big:
         o += label_roads(box, k * 1.6)
         L = 20
@@ -1043,7 +1191,7 @@ def mini_plan(parcels, blds, existing, RET, sep, k=1.0, big=False):
     return ''.join(o)
 
 
-OPTION_NOTE = ("Separation per ADG 3F-1: 24 m between habitable rooms at nine storeys and over, 18 m where one face is blank, 18 and 12 at five to eight, "
+OPTION_NOTE = ("Separation per ADG 3F-1: 24 m between habitable rooms at nine storeys and over, 18 m where one face is blank, 18 and 13.5 at five to eight; each building half of that from its own side and rear boundaries (12 or 6 m at nine storeys and over), a party wall blank; "
                "read at the levels the two buildings share; the parts are our face to our boundary, the gap, their boundary to their face. Sun per ADG 4A-1 "
                "on 21 June, 9 to 3, cast with Loriini's engine with every building on its own ground: two continuous hours as three hourly sun's-eye views in a row show them, 9, 10 and 11 or later, a run from half past not counting; "
                "our apartments as the plans lay them out, each at its own wall and storey, a neighbour's in 8 m bays on the faces its plan gives them; 70 % with "
@@ -1059,7 +1207,7 @@ def option_page(r):
     trs = ''
     for b in r['buildings']:
         sun_t, sun_c = b['sun'] if b['sun'] else ('—', '')
-        apart = f'{b["d"]:.0f} m · {b["v"]}' + (f' <span style="font-weight:400;color:#888">{b["parts"]}</span>' if b.get('parts') else '')
+        apart = f'{b["d"]:.0f} m · {b["v"]}' + (f' <span style="font-weight:400;color:#888">{b["parts"]}</span>' if b.get('parts') else '') + (f'<div style="font-weight:400;margin-top:{mm(.3)}">own boundaries: {b["bounds"]}</div>' if b.get('bounds') else '')
         trs += f'<tr><td>{H.escape(b["name"])}</td>{cell(apart, b["v"])}{cell(sun_t, sun_c)}</tr>'
     if r['ours']:
         trs += f'<tr><td><b>Our building</b></td><td style="color:#888">—</td>{cell(r["ours"][0], r["ours"][1])}</tr>'
@@ -1080,7 +1228,7 @@ def option_page(r):
             f'<div class="hor">{H.escape(r["horizon"])}</div></div>')
     col = (f'<div class="ocol"><div class="u">{gain}neighbours can develop: <b style="color:{r["allow_colour"]}">{r["allow"]}</b></div>'
            f'<p class="lead">{r["lead"]}</p>'
-           f'<table><tr><th>Building</th><th>Separation from our tower</th><th>Apartments with 2 continuous hours of winter sun, of all its apartments</th></tr>{trs}</table>'
+           f'<table><tr><th>Building</th><th>Separation from our tower; setbacks from its own boundaries</th><th>Apartments with 2 continuous hours of winter sun, of all its apartments</th></tr>{trs}</table>'
            f'<div class="oaxo">{r["axo"]}</div>'
            f'<div class="ass">{OPTION_NOTE}</div></div>')
     return (f'<!doctype html><html><head><meta charset="utf-8"><title>Future context · Scenario {r["no"]}</title><style>{CSS}{css}</style></head><body>'
@@ -1288,7 +1436,7 @@ def summary_page(part, page_no, pages):
         trs = ''
         for b in r['buildings']:
             sun_t, sun_c = b['sun'] if b['sun'] else ('—', '')
-            apart = f'{b["d"]:.0f} m · {b["v"]}'
+            apart = f'{b["d"]:.0f} m · {b["v"]}' + (f'<div style="font-weight:400;font-size:.92em;margin-top:{mm(.3)}">own boundaries: {b["bounds"]}</div>' if b.get('bounds') else '')
             trs += f'<tr><td>{H.escape(b["name"])}</td>{cell(apart, b["v"])}{cell(sun_t, sun_c)}</tr>'
         ours = r['ours']
         if ours:
@@ -1297,8 +1445,8 @@ def summary_page(part, page_no, pages):
         rows.append(f'''<div class="row"><div class="mini">{r['mini']}</div><div class="maxo">{r['axo']}</div><div class="info">
 <div class="t">{r['no']} · {H.escape(r['title'])}</div>
 <div class="u">{gain}neighbours can develop: <b style="color:{r['allow_colour']}">{r['allow']}</b></div>
-<table><tr><th>Building</th><th>Separation from our tower</th><th>Apartments with 2 continuous hours of winter sun, of all its apartments</th></tr>{trs}</table></div></div>''')
-    lead = (f'<p class="lead">Each scenario: its plan with the blocks round it as they stand (storeys off the 3D tiles) and its massing, the apartments it adds, and for every new building how far it stands from our tower against the ADG\'s separation (24 m between habitable rooms at nine storeys and over, 18 m where one face is blank, 18 and 12 at five to eight), and how many of its apartments (the yield\'s count at 85 m² each; ours as the plans have them) get two continuous hours of sun on 21 June, read as ADG 4A-1 reads it and as the convention counts it, sun at three whole hours in a row: apartments in 8 m bays along the walls, both long faces of a double-loaded plan or the better face of a single-loaded one, corner units taking both walls; 70 % with two hours and no more than 15 % with none is a tick, 60 % is close, and the single-loaded figure says what the plan could still reach, facing the way it names. Green holds, amber holds with a condition, red does not. Our tower as the model draws it, {H.escape(plate_of(BASE_TOWER))}, {", ".join(f"{v:g} m off {n.title()}" for n, v in (S.get("tower") or {}).get("setbacks", {}).items())}; a scenario that moves it says so.</p>'
+<table><tr><th>Building</th><th>Separation from our tower; setbacks from its own boundaries</th><th>Apartments with 2 continuous hours of winter sun, of all its apartments</th></tr>{trs}</table></div></div>''')
+    lead = (f'<p class="lead">Each scenario: its plan with the blocks round it as they stand (storeys off the 3D tiles) and its massing, the apartments it adds, and for every new building how far it stands from our tower against the ADG\'s separation (24 m between habitable rooms at nine storeys and over, 18 m where one face is blank, 18 and 13.5 at five to eight) and from its own side and rear boundaries (half of those, 12 or 6 m at nine storeys and over, a party wall blank), and how many of its apartments (the yield\'s count at 85 m² each; ours as the plans have them) get two continuous hours of sun on 21 June, read as ADG 4A-1 reads it and as the convention counts it, sun at three whole hours in a row: apartments in 8 m bays along the walls, both long faces of a double-loaded plan or the better face of a single-loaded one, corner units taking both walls; 70 % with two hours and no more than 15 % with none is a tick, 60 % is close, and the single-loaded figure says what the plan could still reach, facing the way it names. Green holds, amber holds with a condition, red does not. Our tower as the model draws it, {H.escape(plate_of(BASE_TOWER))}, {", ".join(f"{v:g} m off {n.title()}" for n, v in (S.get("tower") or {}).get("setbacks", {}).items())}; a scenario that moves it says so.</p>'
             if page_no == 1 else f'<p class="lead">Scenarios {part[0]["no"]} to {part[-1]["no"]}, read as on the first sheet.</p>')
     return f'''<!doctype html><html><head><meta charset="utf-8"><title>Future context · summary</title><style>{CSS}
 .sum{{position:absolute;left:{mm(10)};top:{mm(9)};width:{mm(400)}}}
@@ -1322,6 +1470,7 @@ def page(no, scn):
     parcels, blds, existing = resolve(scn)
     RET = retained_for(scn)
     sep = separation(blds, existing, RET, parcels)
+    bset = boundary_setbacks(parcels, blds)
     flags = flags_for()
     sun_rows, sun = export_scene(no, blds, existing, RET, sep, parcels, scn['parcels']), read_sun(no)
     def parts(geo):
@@ -1405,10 +1554,11 @@ def page(no, scn):
         nm, d, v = by_row.get(key, (f'{key} · {TYPE[main["typ"]].split(",")[0].lower()}, {main["n"]} st', SITE_TOWER.distance(main['poly']), 'clear'))
         sr = sunb.get(f'new-{key}')
         gfa_key = next((q['gfa'] for q in parcels if q['key'] == key), 0)
-        buildings.append(dict(name=nm, d=d, v=v, sun=sun_cell(sr, units=round(gfa_key / UNIT_GFA)), units=round(gfa_key / UNIT_GFA)))
+        btxt, bworst = bounds_text(bset.get(key, []))
+        buildings.append(dict(name=nm, d=d, v=v, sun=sun_cell(sr, units=round(gfa_key / UNIT_GFA)), units=round(gfa_key / UNIT_GFA), bounds=btxt, bworst=bworst or 0))
     ours = sun_cell(sunb.get('site'), today=True) if sunb.get('site') else None
-    worst = max((['clear', 'one face blank', 'short of a blank face'].index(b['v']) for b in buildings), default=0)
-    allow = ['yes', 'yes, with one face blank where amber', 'no, the red building cannot keep the separation'][worst] if buildings else 'nothing new to allow'
+    worst = max((max(['clear', 'one face blank', 'short of a blank face'].index(b['v']), b['bworst']) for b in buildings), default=0)
+    allow = ['yes', 'yes, with a blank face where amber', 'no, the red building cannot keep the separation or its setbacks'][worst] if buildings else 'nothing new to allow'
     parts_of = {nm.split(' · ')[0]: geo for nm, d, hab, blank, v, geo in sep if geo['new']}
     for b in buildings:
         g = parts_of.get(b['name'].split(' · ')[0])
@@ -1417,7 +1567,7 @@ def page(no, scn):
             b['parts'] = '+'.join(f'{x:.0f}' for x in ((a_, gap_, c_) if gap_ >= 0.3 else (a_, c_)))
     SUMMARY.append(dict(no=no, title=scn['title'], horizon=scn.get('horizon', ''), lead=fill_in(scn['lead'], parcels, units), units=units, buildings=buildings, ours=ours,
                         allow=allow, allow_colour=list(VERDICT_COLOUR.values())[worst], failing=sun_failing, shaded=sun_shaded,
-                        mini=mini_plan(parcels, blds, existing, RET, sep), big=mini_plan(parcels, blds, existing, RET, sep, k=0.45, big=True),
+                        mini=mini_plan(parcels, blds, existing, RET, sep), big=mini_plan(parcels, blds, existing, RET, sep, k=0.45, big=True, bset=bset),
                         axo=axo(scn, parcels, blds, existing, RET), sun=sun, scn=scn))
     return f'''<!doctype html><html><head><meta charset="utf-8"><title>Future context · Scenario {no}</title><style>{CSS}</style></head><body>
 <div class="txt"><div class="kick">Future context · Scenario {no} of {LAST}</div><h1>{H.escape(scn["title"])}</h1><div class="hor">{H.escape(scn["horizon"])}</div>
@@ -1425,7 +1575,7 @@ def page(no, scn):
 {yield_html}
 {faces}
 </div>
-{plan(scn, parcels, blds, existing, RET, sep)}
+{plan(scn, parcels, blds, existing, RET, sep, bset)}
 <div class="cap" style="left:{mm(PLAN_MM[0])};top:{mm(PLAN_MM[1] + PLAN_MM[3] + 2)}">Plan · 1:{SCALE} @ A3 · storeys on each footprint · the study blocks dashed · the separations from our tower drawn</div>
 <div class="tabs"><div class="tab"><h2>Separation from our tower</h2>
 <table><tr><th style="width:38%">Building</th><th class="r" style="width:22%">m apart <span style="font-weight:400;color:#888">ours+gap+theirs</span></th><th class="r" style="width:16%">ADG, habitable / blank</th><th>At the levels shared</th></tr>{sep_rows}</table></div>
