@@ -1551,6 +1551,13 @@ local metres:
   counts the longest unbroken run instead, for a council that reads them so,
   and the pages say which. The compliance spread's massing colours each
   apartment's facade yellow where it has the hours.
+- **Sun on each facade.** `facadeSun()` in `src/lib/solarAccess.ts` gives every
+  face of a scheme its hours, storey by storey in cells about 3 m wide, read
+  1 m above each floor, today and built out; `src/render/facadeElevation.ts`
+  unfolds the faces into strips (the outside from the face nearest north, a
+  stepped tier's faces over the faces below them, each courtyard apart), each
+  cell coloured by its band of hours, cool under two, warm from two. Not yet
+  printed in a deck.
 - **The shadow it adds (ADG 3B-2).** The ground the scheme puts in shadow at
   each hour from 9 am to 3 pm that is in sun today (the neighbours and what
   stands on the site casting theirs), sampled every 1.5 m over the open

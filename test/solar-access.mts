@@ -8,7 +8,7 @@
  *   npx tsx test/solar-access.mts
  */
 
-import { winterSun, inSun, adgSunHours, apartmentSun, addedShadow, schemeBlocks, QUARTER_HOURS, ON_THE_HOUR, type Block } from '../src/lib/solarAccess.js';
+import { winterSun, inSun, adgSunHours, apartmentSun, addedShadow, schemeBlocks, facadeSun, QUARTER_HOURS, ON_THE_HOUR, type Block } from '../src/lib/solarAccess.js';
 import { computeYield, ringArea, edgeKinds, type XY } from '../src/lib/yield.js';
 
 const failures: string[] = [];
@@ -105,6 +105,25 @@ const SYD = { lat: -33.87, lon: 151.21 };
   const three = apartmentSun(y, { ...base, hoursRequired: 3, context: [] })!;
   check('bar: three hours asked, fewer meet', three.meeting < open.meeting, `${three.meeting} vs ${open.meeting}`);
   check('bar: no apartments, no study', apartmentSun({ ...y, units: { ...y.units, total: 0 } }, { ...base, context: [] }) === undefined);
+}
+
+// ---- the sun on each face of the bar, cell by cell ---------------------------------------------
+{
+  const ring = rect(0, 0, 60, 30);
+  const fronts = [true, false, false, false];
+  const y = computeYield({ ring, fronts, siteAreaSqm: ringArea(ring), zone: 'R4', hobM: 14.4 });
+  const faces = facadeSun(y, { context: [], ...SYD, boundary: ring, blank: edgeKinds(ring, fronts).map((k) => k !== 'front') });
+  const facing = (b: number) => faces.filter((f) => Math.abs(((f.bearing - b + 540) % 360) - 180) < 10);
+  check('faces: four, each a storey high cell by cell, about 3 m wide', faces.length === 4 && faces.every((f) => f.cells.length === 4 * Math.max(1, Math.round(f.lengthM / 3))), String(faces.length));
+  check('faces: the north face has the sun all six hours, every cell', facing(0).length === 1 && facing(0)[0].cells.every((c) => c.hours === 6));
+  check('faces: the south face none', facing(180).length === 1 && facing(180)[0].cells.every((c) => c.hours === 0));
+  check('faces: the east face the morning', facing(90).length === 1 && facing(90)[0].cells.every((c) => c.hours >= 2 && c.hours < 4), JSON.stringify(facing(90)[0]?.cells.map((c) => c.hours)));
+  check('faces: seen from outside, the building is on the left of a to b', faces.every((f) => (f.b.y - f.a.y) * f.normal.x - (f.b.x - f.a.x) * f.normal.y > 0));
+  // a 12 m building 8 m to the north: the north face loses its lower storeys' sun, the top keeps some
+  const shadedFaces = facadeSun(y, { context: [{ rings: [rect(0, 32, 60, 40)], z0: 0, z1: 12 }], ...SYD, boundary: ring, blank: edgeKinds(ring, fronts).map((k) => k !== 'front') });
+  const north = shadedFaces.find((f) => Math.abs(((f.bearing + 540) % 360) - 180) < 10)!;
+  const byStorey = (st: number) => north.cells.filter((c) => c.storey === st).reduce((t, c) => t + c.hours, 0);
+  check('faces: a tower to the north shades the lower storeys more', byStorey(1) < byStorey(4), `${byStorey(1)} vs ${byStorey(4)}`);
 }
 
 // ---- shop-top housing: no window on a wall built to a side boundary -------------------------

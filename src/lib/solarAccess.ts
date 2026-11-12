@@ -370,6 +370,84 @@ export function apartmentSun(y: YieldResult, o: ApartmentSunInput): ApartmentSun
   };
 }
 
+// ---- the sun on each facade ----------------------------------------------------------
+
+/** A face of the scheme: one edge of a tier's plate, the storeys it rises through, and its hours of sun, cell by cell. */
+export interface FacadeFace {
+  tier: number;
+  ring: number;
+  edge: number;
+  /** Its ends, ordered so the building is on the left going from a to b: seen from outside, a is on the left. */
+  a: XY;
+  b: XY;
+  /** The way it faces (outward, a unit vector) and its compass bearing. */
+  normal: XY;
+  bearing: number;
+  lengthM: number;
+  /** A courtyard's wall rather than an outside one. */
+  courtyard: boolean;
+  /** Built to a side or rear boundary: a blank wall, no windows to have sun. */
+  blank: boolean;
+  from: number;
+  to: number;
+  /** A cell a storey high and about `cellM` wide: its storey, its span along the face (0 at a, 1 at b), its hours today and built out. */
+  cells: { storey: number; t0: number; t1: number; hours: number; hoursFuture?: number }[];
+}
+
+/**
+ * The hours of mid-winter sun on every face of a scheme, storey by storey in cells about `cellM` wide, each read at its
+ * middle `sillM` above its floor, against the neighbours (and their futures, where given) and the scheme's own tiers.
+ */
+export function facadeSun(y: YieldResult, o: { context: Block[]; future?: Block[]; lat: number; lon: number; boundary: XY[]; blank: boolean[]; cellM?: number; sillM?: number }): FacadeFace[] {
+  const cellM = o.cellM ?? 3, sill = o.sillM ?? 1;
+  const z = storeyLevels(y);
+  const faces: FacadeFace[] = [];
+  y.tiers.forEach((t, tier) => {
+    const top = Math.min(t.to, y.storeys);
+    if (top < t.from || !t.plate.length) return;
+    t.plate.forEach((rg, ring) => {
+      if (rg.length < 3) return;
+      // a ring inside another of the plate's is a courtyard's
+      const courtyard = t.plate.some((other, k) => k !== ring && other.length >= 3 && evenOdd([other], rg[0].x, rg[0].y));
+      for (let edge = 0; edge < rg.length; edge++) {
+        const p = rg[edge], q = rg[(edge + 1) % rg.length];
+        const dx = q.x - p.x, dy = q.y - p.y, L = Math.hypot(dx, dy);
+        if (L < 1) continue;
+        const mx = (p.x + q.x) / 2, my = (p.y + q.y) / 2, lx = -dy / L, ly = dx / L;
+        const left = evenOdd(t.plate, mx + lx * 0.3, my + ly * 0.3), right = evenOdd(t.plate, mx - lx * 0.3, my - ly * 0.3);
+        if (left === right) continue;
+        // outward is the side the plate is not; the building on the left going from a to b
+        const normal = left ? { x: -lx, y: -ly } : { x: lx, y: ly };
+        const [a, b] = left ? [p, q] : [q, p];
+        const blankWall = o.boundary.some((u, e) => o.blank[e] && segDist(mx, my, u, o.boundary[(e + 1) % o.boundary.length]) < 0.6);
+        const n = Math.max(1, Math.round(L / cellM));
+        const cells: FacadeFace['cells'] = [];
+        for (let st = t.from; st <= top; st++) for (let k = 0; k < n; k++) cells.push({ storey: st, t0: k / n, t1: (k + 1) / n, hours: 0 });
+        faces.push({ tier, ring, edge, a, b, normal, bearing: ((Math.atan2(normal.x, normal.y) * 180) / Math.PI + 360) % 360, lengthM: L, courtyard, blank: blankWall, from: t.from, to: top, cells });
+      }
+    });
+  });
+  if (!faces.length) return faces;
+  const own = schemeBlocks(y).map(ready).filter((r): r is Ready => !!r);
+  const today = [...o.context.map(ready).filter((r): r is Ready => !!r), ...own];
+  const later = o.future ? [...o.future.map(ready).filter((r): r is Ready => !!r), ...own] : undefined;
+  const all = faces.flatMap((f) => [f.a, f.b]);
+  const box = { x0: Math.min(...all.map((p) => p.x)), y0: Math.min(...all.map((p) => p.y)), x1: Math.max(...all.map((p) => p.x)), y1: Math.max(...all.map((p) => p.y)) };
+  const FACING = Math.sin((5 * Math.PI) / 180), OFF = 0.05;
+  for (const s of winterSun(o.lat, o.lon)) {
+    const nowToday = sunward(today, box, sill, s), nowLater = later ? sunward(later, box, sill, s) : undefined;
+    for (const f of faces) {
+      if (f.blank || s.hx * f.normal.x + s.hy * f.normal.y <= FACING) { if (later) for (const c of f.cells) c.hoursFuture ??= 0; continue; }
+      for (const c of f.cells) {
+        const t = (c.t0 + c.t1) / 2, x = f.a.x + (f.b.x - f.a.x) * t + f.normal.x * OFF, yy = f.a.y + (f.b.y - f.a.y) * t + f.normal.y * OFF, zz = z.bottom(c.storey) + sill;
+        if (!shaded(nowToday, x, yy, zz, s)) c.hours += 0.25;
+        if (nowLater) c.hoursFuture = (c.hoursFuture ?? 0) + (shaded(nowLater, x, yy, zz, s) ? 0 : 0.25);
+      }
+    }
+  }
+  return faces;
+}
+
 /** Whether an apartment has the hours asked: in all, or in one unbroken run; with today's neighbours or their futures. */
 export function meetsSun(u: SunUnit, hours: number, continuous: boolean, future = false): boolean {
   const got = future ? (continuous ? u.runFuture : u.hoursFuture) ?? 0 : continuous ? u.run : u.hours;
