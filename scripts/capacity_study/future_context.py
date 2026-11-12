@@ -230,14 +230,20 @@ def fit(parcel, spec):
     depth = min(spec.get('depth') or DEPTH[spec['type']], DEPTH.get(spec['type'], 99))
     setback = spec.get('setback', 0)
     keep = spec.get('boundary') or 0                                  # metres off every neighbouring lot's boundary
+    street = spec.get('streetBoundary') or 0                          # and off every street and lane, above the podium
     if keep and 'neighbour' in spec:
         setback = max(setback, keep)
+    if street and 'along' in spec:
+        setback = max(setback, street)
     fp = parcel.intersection(band(o, n, setback, setback + depth))
-    if keep:
-        lots = [r['line'] for r in boundary_runs(parcel) if r['kind'] == 'lot']
-        if lots:
-            # square ends, so the corner where the boundary meets a street is cleared too, and no hairline left along it
-            fp = largest(fp.difference(unary_union(lots).buffer(keep, cap_style=3, join_style=2)).buffer(-0.2, join_style=2).buffer(0.2, join_style=2))
+    runs = boundary_runs(parcel) if keep or street else []
+    cut = [r['line'].buffer(keep, cap_style=3, join_style=2) for r in runs if r['kind'] == 'lot' and keep]
+    cut += [r['line'].buffer(street, cap_style=3, join_style=2) for r in runs if r['kind'] == 'street' and street]
+    if cut:
+        # square ends, so a corner is cleared too, and no hairline left along a boundary
+        fp = largest(fp.difference(unary_union(cut)).buffer(-0.2, join_style=2).buffer(0.2, join_style=2))
+        if fp.is_empty or fp.area < 20:
+            sys.exit(f'the {spec["type"]} footprint does not fit the parcel {keep:g} m off its neighbouring lots and {street:g} m off its streets')
     s = lambda p: (p[0] - o[0]) * u[0] + (p[1] - o[1]) * u[1]
     d = lambda p: (p[0] - o[0]) * n[0] + (p[1] - o[1]) * n[1]
     ss = [s(p) for p in largest(fp).exterior.coords]
@@ -302,15 +308,19 @@ def resolve(scn):
         area = parcel.area
         rows = []
         for b in p['buildings']:
-            if sc.get('neighbourSetback') == 'adg' and b['type'] not in ('podium', 'consent') and b.get('footprint') != 'lot' and 'boundary' not in b:
-                # the ADG's half off every neighbouring lot where the lot is wide enough to keep it; where it is not,
-                # the slab is built to its side boundaries as blank party walls, and the setback check says so
+            above = b['type'] not in ('podium', 'consent') and b.get('footprint') != 'lot'
+            lot_keep = b.get('boundary', HALF[adg_band(b.get('storeys') or ASSUMED_STOREYS)][0] if sc.get('neighbourSetback') == 'adg' else 0) if above else 0
+            street_keep = b.get('streetBoundary', sc.get('streetSetback', 0) if (b.get('base') or 0) > 0 else 0) if above else 0
+            # the ADG's half off every neighbouring lot and the upper-level setback off every street where the lot is
+            # wide enough to keep them; where it is not, the slab is built to its side boundaries as blank party
+            # walls (and, failing that, to its streets too), and the setback check says so
+            for lk, sk in ((lot_keep, street_keep), (0, street_keep), (0, 0)):
                 try:
-                    fp, info = fit(parcel, dict(b, boundary=HALF[adg_band(b.get('storeys') or ASSUMED_STOREYS)][0]))
+                    fp, info = fit(parcel, dict(b, boundary=lk, streetBoundary=sk))
+                    break
                 except SystemExit:
-                    fp, info = fit(parcel, b)
-            else:
-                fp, info = fit(parcel, b)
+                    if (lk, sk) == (0, 0):
+                        raise
             n = b.get('storeys') or CONSENT.get(str(prop(p['addresses'][0])['propid'])) or ASSUMED_STOREYS
             base = b.get('base', 0)
             rows.append(dict(poly=fp, n=n, base=base, typ=b['type'], key=p['key'], **info))
@@ -498,18 +508,19 @@ def boundary_setbacks(parcels, blds):
                 q1, q2 = nearest_points(g, run['line'])
                 c = g.centroid
                 side = compass4(q2.x - c.x, q2.y - c.y) if d >= 0.5 else compass4(run['line'].centroid.x - c.x, run['line'].centroid.y - c.y)
+                up = sc.get('streetSetback', 0) if (b.get('base') or 0) > 0 else 0
                 if run['kind'] == 'street':
-                    v = 'street'
+                    v = 'street' if not up else 'street ok' if d >= up - 0.05 else 'street flush'
                 elif d < 0.5:
                     v = 'party wall'
                 else:
                     v = 'clear' if d >= hab - 0.05 else 'one face blank' if d >= blank - 0.05 else 'short of a blank face'
-                rows.append(dict(kind=run['kind'], name=run['name'], side=side, d=d, hab=hab, blank=blank, verdict=v, p0=(q1.x, q1.y), p1=(q2.x, q2.y), key=b['key']))
+                rows.append(dict(kind=run['kind'], name=run['name'], side=side, d=d, hab=hab, blank=blank, up=up, verdict=v, p0=(q1.x, q1.y), p1=(q2.x, q2.y), key=b['key']))
         out[pc['key']] = rows
     return out
 
 
-BOUND_COLOUR = {'clear': '#1f8f3a', 'one face blank': '#c77d00', 'party wall': '#c77d00', 'short of a blank face': '#c0161c', 'street': '#666'}
+BOUND_COLOUR = {'clear': '#1f8f3a', 'one face blank': '#c77d00', 'party wall': '#c77d00', 'short of a blank face': '#c0161c', 'street': '#666', 'street ok': '#1f8f3a', 'street flush': '#c77d00'}
 
 
 def bounds_text(rows):
@@ -527,6 +538,11 @@ def bounds_text(rows):
             mark = {'clear': '✓', 'one face blank': 'blank face', 'party wall': 'party wall, blank', 'short of a blank face': f'✗ needs {r["blank"]:g}'}[r['verdict']]
             worst = max(worst, {'clear': 0, 'one face blank': 1, 'party wall': 1, 'short of a blank face': 2}[r['verdict']])
             bits.append(f'<span style="color:{BOUND_COLOUR[r["verdict"]]}">{r["side"]} {r["d"]:.0f} m {mark}</span>')
+        elif r['verdict'] == 'street flush':
+            worst = max(worst, 1)
+            bits.append(f'<span style="color:{BOUND_COLOUR["street flush"]}">{r["name"]} {r["d"]:.0f} m, short of {r["up"]:g}</span>')
+        elif r['verdict'] == 'street ok':
+            bits.append(f'<span style="color:{BOUND_COLOUR["street ok"]}">{r["name"]} {r["d"]:.0f} m ✓</span>')
         else:
             bits.append(f'<span style="color:#888">{r["name"]} {r["d"]:.0f} m</span>')
     return ' · '.join(bits), worst
@@ -545,7 +561,7 @@ def bound_dims(rows, k, big):
             continue
         col = BOUND_COLOUR[r['verdict']]
         (ax, ay), (bx, by) = r['p0'], r['p1']
-        dash = ' stroke-dasharray="1.2 0.8"' if r['kind'] == 'street' else ''
+        dash = ' stroke-dasharray="1.2 0.8"' if r['verdict'] == 'street' else ''
         o.append(f'<line x1="{f(ax)}" y1="{f(-ay)}" x2="{f(bx)}" y2="{f(-by)}" stroke="{col}" stroke-width="{0.9 * k:.2f}"{dash}/>')
         o.append(f'<text x="{f((ax + bx) / 2)}" y="{-(ay + by) / 2 + 1.6 * k:.2f}" font-size="{(5.2 if big else 4.6) * k:.2f}" font-weight="700" text-anchor="middle" fill="{col}" paint-order="stroke" stroke="#fff" stroke-width="{1.5 * k:.2f}">{r["d"]:.0f} m</text>')
     return o
@@ -963,7 +979,7 @@ def flags_for():
     consent = ', '.join(f'{PROPS[pid]["base"].title().replace(" Darlinghurst", "")} at {n}' for pid, n in CONSENT.items())
     if consent:
         flags.append(f'<b>Consents.</b> Storeys assumed, the register holds no record: {consent}.')
-    flags.append('<b>Separation.</b> ADG 3F-1: 24 m between habitable rooms or balconies at levels 9 and over, 18 m where one face is blank; 18 and 13.5 m at levels 5 to 8; 12 and 9 below. Each building owes its side or rear boundary with another lot half of them, 12 or 6 m at nine storeys and over, 9 or 4.5 at five to eight, 6 or 3 below, and a wall on the boundary must be blank; a street or lane frontage is the council\'s setback, measured and shown. The table on the left reads each neighbour at the levels the two buildings share.')
+    flags.append('<b>Separation.</b> ADG 3F-1: 24 m between habitable rooms or balconies at levels 9 and over, 18 m where one face is blank; 18 and 13.5 m at levels 5 to 8; 12 and 9 below. Each building owes its side or rear boundary with another lot half of them, 12 or 6 m at nine storeys and over, 9 or 4.5 at five to eight, 6 or 3 below, and a wall on the boundary must be blank. Above its podium every tower or slab steps back at least ' + f'{sc.get("streetSetback", 0):g}' + ' m from each street and lane, as our tower does; the council\'s DCP sets the figure. The table on the left reads each neighbour at the levels the two buildings share.')
     flags.append(f'<b>Controls.</b> {H.escape(lep.get("epiName") or "LEP")}: the height and floor space ratio over each parcel in the table, from the plan\'s layers; '
                  + (f'every study lot sits in the {" and ".join(hcas)} heritage conservation area' if hcas else 'no conservation area over the study lots') + (f'; items: {", ".join(items)}' if items else ', and none is a heritage item') + '.')
 
@@ -1191,7 +1207,7 @@ def mini_plan(parcels, blds, existing, RET, sep, k=1.0, big=False, bset=None):
     return ''.join(o)
 
 
-OPTION_NOTE = ("Separation per ADG 3F-1: 24 m between habitable rooms at nine storeys and over, 18 m where one face is blank, 18 and 13.5 at five to eight; each building half of that from its own side and rear boundaries (12 or 6 m at nine storeys and over), a party wall blank; "
+OPTION_NOTE = ("Separation per ADG 3F-1: 24 m between habitable rooms at nine storeys and over, 18 m where one face is blank, 18 and 13.5 at five to eight; each building half of that from its own side and rear boundaries (12 or 6 m at nine storeys and over), a party wall blank, and above its podium at least 3 m off each street and lane, as our tower; "
                "read at the levels the two buildings share; the parts are our face to our boundary, the gap, their boundary to their face. Sun per ADG 4A-1 "
                "on 21 June, 9 to 3, cast with Loriini's engine with every building on its own ground: two continuous hours as three hourly sun's-eye views in a row show them, 9, 10 and 11 or later, a run from half past not counting; "
                "our apartments as the plans lay them out, each at its own wall and storey, a neighbour's in 8 m bays on the faces its plan gives them; 70 % with "
@@ -1558,7 +1574,7 @@ def page(no, scn):
         buildings.append(dict(name=nm, d=d, v=v, sun=sun_cell(sr, units=round(gfa_key / UNIT_GFA)), units=round(gfa_key / UNIT_GFA), bounds=btxt, bworst=bworst or 0))
     ours = sun_cell(sunb.get('site'), today=True) if sunb.get('site') else None
     worst = max((max(['clear', 'one face blank', 'short of a blank face'].index(b['v']), b['bworst']) for b in buildings), default=0)
-    allow = ['yes', 'yes, with a blank face where amber', 'no, the red building cannot keep the separation or its setbacks'][worst] if buildings else 'nothing new to allow'
+    allow = ['yes', 'yes, on the conditions in amber', 'no, the red building cannot keep the separation or its setbacks'][worst] if buildings else 'nothing new to allow'
     parts_of = {nm.split(' · ')[0]: geo for nm, d, hab, blank, v, geo in sep if geo['new']}
     for b in buildings:
         g = parts_of.get(b['name'].split(' · ')[0])

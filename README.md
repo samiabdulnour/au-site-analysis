@@ -1992,10 +1992,9 @@ that sheet, so the later sheets can develop what the earlier ones keep and
 try the separation from either side. Riley Street's scenarios are today
 (0), the blocks north of the site lot by lot and in full amalgamation, and
 then the site the Commission asked about, the three new buildings on Crown
-Street across the lane from our tower, nine ways, every building on a
-podium over its whole lot: lot by lot (single-loaded slabs on the street), a
-pair and a lot, and the three lots as one site with a single-loaded slab on
-the street, a double-loaded slab on the street with
+Street across the lane from our tower, eight ways, every building on a
+podium over its whole lot: lot by lot (single-loaded slabs on the street),
+and the three lots as one site with a single-loaded slab on the street, a double-loaded slab on the street with
 our tower as drawn and with it pulled to the ADG's half (9 m off the lane
 and the northern neighbour), a tower on a podium, a mirror of ours 3 m off
 the lane (neither side then keeps the separation), both towers at the
@@ -2015,7 +2014,11 @@ a street or lane frontage is measured and drawn, its setback the council's.
 `neighbourSetback: adg` in the scenarios file fits every slab or tower above
 its podium that far off its neighbouring lots where the lot is wide enough,
 and builds it to the boundary as a blank party wall where it is not; a
-building's own `boundary` sets other metres.
+building's own `boundary` sets other metres. `streetSetback: 3` keeps every
+slab or tower above its podium at least 3 m off each street and lane, as the
+site's own tower keeps, where the lot allows it; the check marks a tower
+flush with its podium amber, and a building's own `streetBoundary` sets
+other metres.
 
 Where the Loriini repository sits beside this one (or `LORIINI` names it),
 each sheet also carries the mid-winter sun over its massing, cast with
