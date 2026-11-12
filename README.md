@@ -1377,10 +1377,14 @@ site may take, so a site with more paths has more pages:
    building, from the street corner and from the opposite one, so every face
    is seen: each facade cell (a storey high, about 3 m wide) and each roof
    cell (about 3 m square, on what the tiers above leave open) in its band of
-   hours, cool under two, warm from two; under them the plan of the
-   envelope's shadow at 9 am, noon and 3 pm, the land it shades outlined and
-   each separation drawn as a dimension (green clear, amber where it holds
-   only habitable to non-habitable, red short).
+   hours, the style's blues under two, its oranges and reds from two; under
+   them the plan as the report's sun page draws it, in Arial: no zone tints,
+   every building white with its storeys (grey where no height is recorded and
+   two are assumed), the future footprints dashed with theirs, and every
+   building's shadow each hour from 9 am to 3 pm laid one translucent layer
+   over the last, the envelope's own at 9 am, noon and 3 pm outlined; the land
+   it shades outlined and each separation drawn as a dimension (green clear,
+   amber where it holds only habitable to non-habitable, red short).
 8. **Controls and assumptions** — the assumptions the study rests on (floor
    to floor, efficiencies, the mix, the plates, the parking rates, the nearest
    station) on the left; on the right, the full table the office's
@@ -1560,8 +1564,10 @@ local metres:
   each tier's roof is less the tiers above it, in cells about 3 m square
   (clipped by `polyclip-ts`), both today and built out; the compliance
   sheets colour the massing's cells by their band of hours
-  (`SUN_BANDS` in `src/render/facadeElevation.ts`, cool under two, warm from
-  two). The same module can unfold the faces into strips (`unfoldedFacades`),
+  (`sunBands()` in `src/render/facadeElevation.ts`: six bands, none, under 1,
+  1–2, 2–3, 3–4 and 4 hours and over, each the style's own blue, orange or red
+  stepped to a set lightness in OKLab, so neighbouring bands stay apart in
+  every style and under colour-blind vision). The same module can unfold the faces into strips (`unfoldedFacades`),
   which no sheet prints yet.
 - **The shadow it adds (ADG 3B-2).** The ground the scheme puts in shadow at
   each hour from 9 am to 3 pm that is in sun today (the neighbours and what

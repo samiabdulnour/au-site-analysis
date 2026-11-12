@@ -10,6 +10,8 @@
  */
 
 import { computeYield, storeysUnder, archetypeFor, edgeKinds, ringArea, futureHeight, withFour, existingSummary, DEFAULT_ASSUMPTIONS, PARKING_RATES, UNIT_KINDS, ADG_MINIMUM, type XY } from '../src/lib/yield.js';
+import { sunBands, bandOf } from '../src/render/facadeElevation.js';
+import { withTemplate, deckFamilies } from '../src/render/template.js';
 import { tierSpot, frontageMiddle, yieldStudy, scenarioRows, yieldRows, noSchemeSentence, renderYieldDeck, yieldCsv, yieldJson, type YieldBundle, type Parcel } from '../src/render/yieldSheet.js';
 
 const failures: string[] = [];
@@ -299,6 +301,21 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
     && (comp.figureHtml.match(/stroke="#ffffff" stroke-width="0\.07"/g) ?? []).length > 50 && (comp.legend ?? []).some((e) => /Facades and roofs, hours of sun/.test(e.label)));
   check('compliance: the plan draws the shadow at 9, 12 and 3', /9 AM/.test(comp.figureHtml) && /12 PM/.test(comp.figureHtml) && /3 PM/.test(comp.figureHtml), (comp.figureHtml.match(/\d+ [AP]M/g) ?? []).join(','));
   check('compliance: the plan is plain: no lot numbers, no tier badges', !/>NO\. /.test(comp.figureHtml) && !/class="ytier"/.test(comp.figureHtml));
+  // the bands of sun hours in each style's own palette: six, blue short of two hours and warm from two, the neighbours apart
+  const rgb = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  const styles = ['flamingo', 'heron', 'kingfisher', 'canary'].map((st) => withTemplate(st, () => ({ bands: sunBands(), f: deckFamilies(), none: bandOf(0).fill, four: bandOf(5.5).fill })));
+  check('sun bands: six in each style, cool short of two hours, warm from two, each apart from the next', styles.every(({ bands }) => bands.length === 6
+    && bands.slice(0, 3).every((x) => { const [r, , b2] = rgb(x.fill); return b2 > r; }) && bands.slice(3).every((x) => { const [r, , b2] = rgb(x.fill); return r > b2; })
+    && bands.slice(1).every((x, i) => { const p2 = rgb(bands[i].fill), q2 = rgb(x.fill); return Math.hypot(p2[0] - q2[0], p2[1] - q2[1], p2[2] - q2[2]) > 40; })),
+    JSON.stringify(styles.map((x) => x.bands.map((y) => y.fill))));
+  check('sun bands: drawn from the style\'s palette, so each style has its own', new Set(styles.map((x) => x.none)).size === 4 && new Set(styles.map((x) => x.four)).size === 4);
+  // the plan as the report's sun page draws it: every hour 9 to 3 a translucent layer, the buildings white with their storeys,
+  // set in Arial with no white halo, and no zone tints under them
+  const planSvg = comp.figureHtml.slice(comp.figureHtml.indexOf('<clipPath id="plan-within'));
+  check('compliance: every building\'s shadow, an hour a layer, 9 to 3', (planSvg.match(/<g opacity="0\.16">/g) ?? []).length === 7, String((planSvg.match(/<g opacity="0\.16">/g) ?? []).length));
+  check('compliance: the plan in Arial, its words with no white halo', /font-family="Arial/.test(planSvg) && !/paint-order="stroke"/.test(planSvg));
+  check('compliance: the scheme\'s tiers with their storeys in plan', /font-size="2\.117" letter-spacing="0\.19" fill="#1c1c1c">\d+<\/text>/.test(planSvg));
+  check('compliance: the key shows the hours\' tint stacking and the buildings\' storeys', (comp.legend ?? []).some((e) => /each hour 9 am – 3 pm laid over the last/.test(e.label)) && (comp.legend ?? []).some((e) => /numbers are storeys/.test(e.label)));
   check('compliance: a lone option gets its sheet', deck(sliver).slides.some((sl) => sl.id === '03_within_controls_compliance'));
   check('sun: what stands is given no sun', scenarioRows(bundle, s)[0].sun === undefined);
   const orange: YieldBundle = { ...bundle, controls: { ...bundle.controls, lgaName: 'ORANGE' } };
@@ -310,6 +327,9 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
   const east = [[151.20043 + 2 * m, -33.8999], [151.20043 + 12 * m, -33.8999], [151.20043 + 12 * m, -33.89965], [151.20043 + 2 * m, -33.89965], [151.20043 + 2 * m, -33.8999]];
   const close: YieldBundle = { ...bundle, context: [{ rings: [east], heightM: 6.2, known: true }] };
   const r3f = yieldRows(close).find((r) => r.label === '3F. VISUAL PRIVACY');
+  const closePlan = deck(close).slides.find((sl) => /compliance/.test(sl.id))!.figureHtml;
+  check('compliance: a neighbour white in a grey hairline, with its storeys and its shadow', /fill="#ffffff" stroke="#6f6f6f" stroke-width="0\.18"/.test(closePlan)
+    && /font-size="2\.117" letter-spacing="0\.19" fill="#000000">2<\/text>/.test(closePlan) && /<g opacity="0\.16"><path d="[^"]+" fill="[^"]+" fill-rule="nonzero"\/>/.test(closePlan));
   check('separation: a building nearer than the separation is short, and the table says so', !!r3f && r3f.ok === false && /1 building within 24 m: 1 short/.test(r3f.proposed?.join(' ') ?? ''), JSON.stringify(r3f));
   const closeComp = deck(close).slides.find((sl) => sl.id === '06_within_controls_compliance')!;
   check('separation: the compliance sheet lists it, its distance against the 12 m asked', /building to the east<\/td>/.test(closeComp.figureHtml) && /8\.0 \/ 12\sm/.test(closeComp.figureHtml), closeComp.figureHtml.match(/<td>building to the east<\/td>.*?<\/tr>/)?.[0]);

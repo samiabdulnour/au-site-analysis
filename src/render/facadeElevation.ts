@@ -10,23 +10,67 @@
 // below it that looks the same way, where it is in plan; a courtyard's walls
 // unfold in a strip of their own under the outside's. The colours step at the
 // hours that matter: under two hours the cool end, two and over the warm,
-// where ADG 4A-1's hours begin.
+// where ADG 4A-1's hours begin, both in the deck's palette (sunBands).
 
 import { esc } from './chrome.js';
+import { deckFamilies } from './template.js';
 import type { FacadeFace } from '../lib/solarAccess.js';
 import type { XY } from '../lib/yield.js';
 
-/** The bands of hours a cell is coloured by: the cool end short of two hours, the warm from two. */
-export const SUN_BANDS: { upTo: number; fill: string; ink: string; label: string }[] = [
-  { upTo: 0, fill: '#3b4a6b', ink: '#ffffff', label: 'none' },
-  { upTo: 1, fill: '#6b6f9a', ink: '#ffffff', label: 'under 1 h' },
-  { upTo: 2, fill: '#b18fb0', ink: '#1c1c1c', label: '1–2 h' },
-  { upTo: 3, fill: '#f2c14e', ink: '#1c1c1c', label: '2–3 h' },
-  { upTo: 4, fill: '#f5a742', ink: '#1c1c1c', label: '3–4 h' },
-  { upTo: 5, fill: '#ef7f2d', ink: '#1c1c1c', label: '4–5 h' },
-  { upTo: Infinity, fill: '#e0531f', ink: '#ffffff', label: '5–6 h' },
-];
-export const bandOf = (h: number) => SUN_BANDS.find((b) => h <= b.upTo + 1e-9 && (b.upTo === 0 ? h === 0 : true))!;
+/** A band of hours: up to where it runs, its fill, the ink a figure on it is set in, its word in the key. */
+export interface SunBand { upTo: number; fill: string; ink: string; label: string }
+
+// OKLab (Ottosson), for stepping a palette tone to a set lightness while it keeps its hue
+const lin = (v: number) => { const c = v / 255; return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
+const gam = (c: number) => Math.round(255 * (c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055));
+function toLab(hex: string): [number, number, number] {
+  const n = parseInt(hex.slice(1), 16), r = lin((n >> 16) & 255), g = lin((n >> 8) & 255), b = lin(n & 255);
+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+  const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+  const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+  return [0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s, 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s, 0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s];
+}
+function fromLab(L: number, a: number, b: number): number[] {
+  const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3, m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3, s = (L - 0.0894841775 * a - 1.291485548 * b) ** 3;
+  return [4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s, -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s, -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s];
+}
+/** The tone at lightness L, its hue kept, its chroma at least minC, drawn in until it can be printed. */
+function atLightness(hex: string, L: number, minC = 0.07): string {
+  const [, a, b] = toLab(hex), h = Math.atan2(b, a);
+  let C = Math.max(minC, Math.hypot(a, b));
+  for (let i = 0; i < 80; i++, C *= 0.96) {
+    const rgb = fromLab(L, C * Math.cos(h), C * Math.sin(h));
+    if (rgb.every((v) => v >= -1e-4 && v <= 1 + 1e-4)) return `#${rgb.map((v) => gam(Math.min(1, Math.max(0, v))).toString(16).padStart(2, '0')).join('')}`;
+  }
+  return hex;
+}
+
+const BANDS_BY_PALETTE = new WeakMap<object, SunBand[]>();
+/**
+ * The bands of hours a cell is coloured by, in the deck's own palette: the
+ * blue family short of two hours, darkest where there is none; the orange
+ * and red from two, darkest at four and over. Each is its family's tone
+ * stepped to a set lightness, so neighbouring bands stay apart in every
+ * style and under colour-blind vision (checked with the dataviz validator:
+ * every adjacent pair ΔE ≥ 15 normal, ≥ 10 deutan/protan/tritan).
+ */
+export function sunBands(): SunBand[] {
+  const f = deckFamilies();
+  const hit = BANDS_BY_PALETTE.get(f);
+  if (hit) return hit;
+  const light = '#1c1c1c', dark = '#ffffff';
+  const bands: SunBand[] = [
+    { upTo: 0, fill: atLightness(f.blue.deep, 0.38), ink: dark, label: 'none' },
+    { upTo: 1, fill: atLightness(f.blue.deep, 0.56), ink: dark, label: 'under 1 h' },
+    { upTo: 2, fill: atLightness(f.blue.line, 0.77), ink: light, label: '1–2 h' },
+    { upTo: 3, fill: atLightness(f.orange.solid, 0.84, 0.09), ink: light, label: '2–3 h' },
+    { upTo: 4, fill: atLightness(f.red.solid, 0.63), ink: light, label: '3–4 h' },
+    { upTo: Infinity, fill: atLightness(f.red.deep, 0.42), ink: dark, label: '4 h and over' },
+  ];
+  BANDS_BY_PALETTE.set(f, bands);
+  return bands;
+}
+export const bandOf = (h: number): SunBand => sunBands().find((b) => (b.upTo === 0 ? h <= 1e-9 : h <= b.upTo + 1e-9))!;
 
 const COMPASS = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
 export const compass = (bearing: number) => COMPASS[Math.round(bearing / 22.5) % 16];
@@ -140,5 +184,5 @@ export function unfoldedFacades(faces: FacadeFace[], levels: { bottom: (s: numbe
 
 /** The key to the bands, a row of swatches, for a page's key or a drawing's foot. */
 export function sunBandKey(x: number, y: number): string {
-  return SUN_BANDS.map((b, i) => `<rect x="${(x + i * 17).toFixed(2)}" y="${y.toFixed(2)}" width="4" height="3" fill="${b.fill}"/><text x="${(x + i * 17 + 5).toFixed(2)}" y="${(y + 2.4).toFixed(2)}" font-size="2.2">${esc(b.label)}</text>`).join('');
+  return sunBands().map((b, i) => `<rect x="${(x + i * 17).toFixed(2)}" y="${y.toFixed(2)}" width="4" height="3" fill="${b.fill}"/><text x="${(x + i * 17 + 5).toFixed(2)}" y="${(y + 2.4).toFixed(2)}" font-size="2.2">${esc(b.label)}</text>`).join('');
 }
