@@ -8,7 +8,7 @@
  *   npx tsx test/solar-access.mts
  */
 
-import { winterSun, inSun, adgSunHours, apartmentSun, addedShadow, schemeBlocks, facadeSun, QUARTER_HOURS, ON_THE_HOUR, type Block } from '../src/lib/solarAccess.js';
+import { winterSun, inSun, adgSunHours, apartmentSun, addedShadow, schemeBlocks, facadeSun, roofSun, QUARTER_HOURS, ON_THE_HOUR, type Block } from '../src/lib/solarAccess.js';
 import { computeYield, ringArea, edgeKinds, type XY } from '../src/lib/yield.js';
 
 const failures: string[] = [];
@@ -124,6 +124,22 @@ const SYD = { lat: -33.87, lon: 151.21 };
   const north = shadedFaces.find((f) => Math.abs(((f.bearing + 540) % 360) - 180) < 10)!;
   const byStorey = (st: number) => north.cells.filter((c) => c.storey === st).reduce((t, c) => t + c.hours, 0);
   check('faces: a tower to the north shades the lower storeys more', byStorey(1) < byStorey(4), `${byStorey(1)} vs ${byStorey(4)}`);
+}
+
+// ---- the sun on the roofs ---------------------------------------------------------------------
+{
+  // the 40 × 50 m R4 lot at 22 m and 1.5:1 steps back over its fourth storey: the lower roof is the setback's ring
+  const ring = rect(0, 0, 40, 50);
+  const y = computeYield({ ring, fronts: [true, false, false, false], siteAreaSqm: ringArea(ring), zone: 'R4', hobM: 22 });
+  const roofs = roofSun(y, { context: [], ...SYD });
+  const builtTiers = y.tiers.filter((tt) => Math.min(tt.to, y.storeys) >= tt.from);
+  const topPlate = builtTiers[builtTiers.length - 1].plateSqm, lowPlate = builtTiers[0].plateSqm;
+  const area = (k: number) => roofs.filter((r) => r.tier === k).reduce((s, r) => s + r.areaSqm, 0);
+  check('roofs: the top tier\'s whole plate is roof', near(area(builtTiers.length - 1), topPlate, topPlate * 0.03), `${area(builtTiers.length - 1)} vs ${topPlate}`);
+  // what the tier above leaves open: less than the plate, no less than the plate less the tier above's (which may reach over a courtyard)
+  check('roofs: a lower tier\'s roof is what the tier above leaves open', builtTiers.length > 1 && area(0) < lowPlate - 1 && area(0) >= lowPlate - y.tiers[1].plateSqm - 1, `${area(0)} of ${lowPlate}, the tier above ${y.tiers[1].plateSqm}`);
+  check('roofs: with nothing round, the top roof has the sun all six hours', roofs.filter((r) => r.tier === builtTiers.length - 1).every((r) => r.hours === 6));
+  check('roofs: the setback\'s roof by the tier above has less', roofs.filter((r) => r.tier === 0).some((r) => r.hours < 6));
 }
 
 // ---- shop-top housing: no window on a wall built to a side boundary -------------------------

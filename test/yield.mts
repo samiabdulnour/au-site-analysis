@@ -262,14 +262,14 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
   const deck = (b: YieldBundle) => renderYieldDeck(b, meta);
   const all = deck(bundle);
   const pages = all.slides.map((sl) => sl.id).join(',');
-  check('deck: the paths side by side, a spread each, the compliance sheet after them, the controls last', pages === '01_planning_yield,02_stands_today,03_within_controls,04_affordable_bonus,05_envelope_to_height,06_compliance,07_controls_and_assumptions', pages);
-  check('deck: every page an A3 atlas spread', (all.html.match(/<section class="slide atlas"/g) ?? []).length === 7);
+  check('deck: the paths side by side, a spread each, a compliance sheet for each option after them, the controls last', pages === '01_planning_yield,02_stands_today,03_within_controls,04_affordable_bonus,05_envelope_to_height,06_within_controls_compliance,07_affordable_bonus_compliance,08_envelope_to_height_compliance,09_controls_and_assumptions', pages);
+  check('deck: every page an A3 atlas spread', (all.html.match(/<section class="slide atlas"/g) ?? []).length === 9);
   // Several drawings in one document: an id used twice would clip one with another's frame.
   const used = [...all.html.matchAll(/\bid="([^"]+)"/g)].map((m) => m[1]);
   const twice = used.filter((v, i) => used.indexOf(v) !== i);
   check('deck: no id is used twice', twice.length === 0, [...new Set(twice)].slice(0, 5).join(', '));
   check('deck: the kept bulk gets its spread', deck(tall).slides[2]?.id === '03_rebuilt_as_stands', deck(tall).slides.map((sl) => sl.id).join(','));
-  check('deck: fewer paths, fewer pages', deck(openB).slides.length === 5 && deck(sliver).slides.length === 4,
+  check('deck: fewer paths, fewer pages', deck(openB).slides.length === 6 && deck(sliver).slides.length === 4,
     `${deck(openB).slides.length}, ${deck(sliver).slides.length}`);
   check('deck: the overview names each path\'s page', /Envelope to the height<\/td>(?:.(?!<\/tr>))*>05<\/td>/.test(all.html));
 
@@ -285,25 +285,24 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
     && !/stroke-width="0\.07"/.test(page('03_within_controls').figureHtml) && !/sun/i.test(page('03_within_controls').narrative ?? ''));
   check('sun: the scenarios still carry each drawn path\'s share for the open formats', scenarioRows(bundle, s).filter((r) => r.id !== 'standsToday').every((r) => /^\d+%$/.test(r.sun ?? '')),
     JSON.stringify(scenarioRows(bundle, s).map((r) => r.sun)));
-  const comp = page('06_compliance');
+  const comp = page('06_within_controls_compliance');
   // the apartments' panels on the massing (axonometric cells, outlined at 0.07), and the key's yellow
-  check('compliance: the massing colours the apartments with the hours, and the key says what the yellow is', /stroke-width="0\.07"/.test(comp.figureHtml)
-    && (comp.legend ?? []).some((e) => /An apartment with 2 hours of sun or more/.test(e.label) && e.swatch.includes('#efb820')));
-  check('compliance: one sheet, every path with apartments in its table and a card of its own', comp.title === 'Compliance'
-    && ['Within the controls', 'Affordable housing bonus', 'Envelope to the height'].every((t) => comp.figureHtml.includes(`<td>${t}</td>`)) && !comp.figureHtml.includes('<td>Stands today</td>')
-    && (comp.figureHtml.match(/class="abs maplabel"/g) ?? []).length === 6, String((comp.figureHtml.match(/class="abs maplabel"/g) ?? []).length));
-  check('compliance: the four criteria in the assessment\'s order, each marked', ['Overshadow', 'Sun 2', 'No sun', 'Separation', 'Yield'].every((t) => comp.figureHtml.includes(`>${t}`))
-    && comp.figureHtml.indexOf('>Overshadow') < comp.figureHtml.indexOf('>Sun 2') && comp.figureHtml.indexOf('>Separation') < comp.figureHtml.indexOf('>Yield')
-    && (comp.figureHtml.match(/class="mk in"/g) ?? []).length >= 15);
-  // yield: the path's share of the most the controls allow it, its mark the path's own
-  check('compliance: yield within the controls is 100% and ticked; filled to the height, over and crossed', /Within the controls<\/td>.*?>100%<svg class="mk in"[^>]*><path d="M0\.6,2\.1/.test(comp.figureHtml)
-    && /Envelope to the height<\/td>(?:.(?!<\/tr>))*>1\d\d%<svg class="mk in"[^>]*><path d="M1,0\.6/.test(comp.figureHtml));
-  check('compliance: each plan draws the shadow at 9, 12 and 3', (comp.figureHtml.match(/>9 AM</g) ?? []).length === 3 && (comp.figureHtml.match(/>3 PM</g) ?? []).length === 3, (comp.figureHtml.match(/\d+ [AP]M/g) ?? []).join(','));
-  check('compliance: the plans are plain: no lot numbers, no tier badges', !/>NO\. /.test(comp.figureHtml) && !/class="ytier"/.test(comp.figureHtml));
-  check('compliance: a lone path gets the whole page, massing over plan', (deck(sliver).slides.find((sl) => sl.id === '03_compliance')?.figureHtml.match(/class="abs maplabel"/g) ?? []).length === 2);
+  check('compliance: one sheet an option, titled for it, the criteria only on the first', comp.title === 'Within the controls: compliance' && page('07_affordable_bonus_compliance').title === 'Affordable bonus: compliance'
+    && /Assessment criteria/.test(comp.figureHtml) && !/Assessment criteria/.test(page('07_affordable_bonus_compliance').figureHtml));
+  check('compliance: the criteria in the assessment\'s order, each marked', ['Overshadow impact', 'Solar access, 2 h', 'Solar access, none', 'Building separation', 'Yield'].every((t) => comp.figureHtml.includes(`<td>${t}</td>`))
+    && comp.figureHtml.indexOf('Overshadow impact') < comp.figureHtml.indexOf('Solar access, 2 h') && comp.figureHtml.indexOf('Building separation') < comp.figureHtml.indexOf('<td>Yield</td>'));
+  check('compliance: yield within the controls is 100% and ticked; filled to the height, over and crossed', /<td>Yield<\/td>(?:.(?!<\/tr>))*100%(?:.(?!<\/tr>))*M0\.6,2\.1/.test(comp.figureHtml)
+    && /<td>Yield<\/td>(?:.(?!<\/tr>))*1\d\d%(?:.(?!<\/tr>))*M1,0\.6/.test(page('08_envelope_to_height_compliance').figureHtml));
+  check('compliance: the sun on each facade and the roof, by the way it looks', /Sun on each facade and the roof/.test(comp.figureHtml) && /<td>roof, all tiers<\/td>/.test(comp.figureHtml) && /<td>N<\/td>/.test(comp.figureHtml));
+  // two massings side by side, every facade and the roof coloured by its band of hours (flat cells, white-edged), and the plan under them
+  check('compliance: the massing from the street corner and from the opposite one, over the plan', ['From the street corner', 'From the opposite corner', 'Shadow and separation'].every((t) => comp.figureHtml.includes(t))
+    && (comp.figureHtml.match(/stroke="#ffffff" stroke-width="0\.07"/g) ?? []).length > 50 && (comp.legend ?? []).some((e) => /Facades and roofs, hours of sun/.test(e.label)));
+  check('compliance: the plan draws the shadow at 9, 12 and 3', /9 AM/.test(comp.figureHtml) && /12 PM/.test(comp.figureHtml) && /3 PM/.test(comp.figureHtml), (comp.figureHtml.match(/\d+ [AP]M/g) ?? []).join(','));
+  check('compliance: the plan is plain: no lot numbers, no tier badges', !/>NO\. /.test(comp.figureHtml) && !/class="ytier"/.test(comp.figureHtml));
+  check('compliance: a lone option gets its sheet', deck(sliver).slides.some((sl) => sl.id === '03_within_controls_compliance'));
   check('sun: what stands is given no sun', scenarioRows(bundle, s)[0].sun === undefined);
   const orange: YieldBundle = { ...bundle, controls: { ...bundle.controls, lgaName: 'ORANGE' } };
-  check('sun: three hours asked outside Sydney, Newcastle and Wollongong', /receive 3 hours direct/.test(JSON.stringify(yieldRows(orange))) && />Sun 3\sh</.test(deck(orange).slides.find((sl) => /compliance/.test(sl.id))!.figureHtml));
+  check('sun: three hours asked outside Sydney, Newcastle and Wollongong', /receive 3 hours direct/.test(JSON.stringify(yieldRows(orange))) && /<td>Solar access, 3\sh<\/td>/.test(deck(orange).slides.find((sl) => /compliance/.test(sl.id))!.figureHtml));
   const unbroken: YieldBundle = { ...bundle, assumptions: { sun: { continuous: true } } };
   check('sun: yield_assumptions.json can ask the hours unbroken, and the pages say so', /unbroken/.test(JSON.stringify(yieldRows(unbroken))) && /in one unbroken run/.test(deck(unbroken).slides.find((sl) => /compliance/.test(sl.id))!.sources ?? ''));
   // a two-storey building 2 m off the site's east boundary: 8 m from the scheme's first tier, short of the 12 m and the 9 m
@@ -312,8 +311,8 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
   const close: YieldBundle = { ...bundle, context: [{ rings: [east], heightM: 6.2, known: true }] };
   const r3f = yieldRows(close).find((r) => r.label === '3F. VISUAL PRIVACY');
   check('separation: a building nearer than the separation is short, and the table says so', !!r3f && r3f.ok === false && /1 building within 24 m: 1 short/.test(r3f.proposed?.join(' ') ?? ''), JSON.stringify(r3f));
-  const closeComp = deck(close).slides.find((sl) => sl.id === '06_compliance')!;
-  check('separation: the compliance sheet lists it, its distance against the 12 m asked, from each path', /building to the east<\/td>/.test(closeComp.figureHtml) && (closeComp.figureHtml.match(/8\.0 \/ 12\sm/g) ?? []).length === 3, closeComp.figureHtml.match(/<td>building to the east<\/td>.*?<\/tr>/)?.[0]);
+  const closeComp = deck(close).slides.find((sl) => sl.id === '06_within_controls_compliance')!;
+  check('separation: the compliance sheet lists it, its distance against the 12 m asked', /building to the east<\/td>/.test(closeComp.figureHtml) && /8\.0 \/ 12\sm/.test(closeComp.figureHtml), closeComp.figureHtml.match(/<td>building to the east<\/td>.*?<\/tr>/)?.[0]);
   check('separation: no building near, nothing short', yieldRows(bundle).find((r) => r.label === '3F. VISUAL PRIVACY')?.ok === true);
   const told: YieldBundle = { ...bundle, assumptions: { sun: { hours: 3 } } };
   check('sun: yield_assumptions.json sets the hours', /receive 3 hours direct/.test(JSON.stringify(yieldRows(told))) && /from yield_assumptions\.json/.test(JSON.stringify(yieldRows(told))));

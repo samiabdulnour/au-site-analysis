@@ -41,7 +41,9 @@ export interface Prism {
    * from rings[ring][edge] to the next corner, from t0 to t1 of its length, between two levels. Drawn with their
    * face, so a nearer face hides them as it hides the face.
    */
-  cells?: { ring: number; edge: number; t0: number; t1: number; z0: number; z1: number; fill: string }[];
+  cells?: { ring: number; edge: number; t0: number; t1: number; z0: number; z1: number; fill: string; /** In its own colour, unlit, so it reads against a key. */ flat?: boolean }[];
+  /** Pieces laid on its roof (a roof's cells, coloured by their sun), drawn in their own colours over its top. */
+  roof?: { pts: XY[]; fill: string }[];
 }
 
 export interface AxoNeighbour {
@@ -310,7 +312,7 @@ export function drawAxonometric(scene: AxoScene, box: { x: number; y: number; w:
           const at = (t: number): XY => ({ x: f.p.x + (f.q.x - f.p.x) * t, y: f.p.y + (f.q.y - f.p.y) * t });
           const a = at(Math.max(0, c.t0)), b = at(Math.min(1, c.t1));
           const cell = poly([P(a, c.z0), P(b, c.z0), P(b, c.z1), P(a, c.z1)]);
-          out.push(`<path d="${cell}" fill="${shade(c.fill, lit)}" stroke="${shade(c.fill, 0.55)}" stroke-width="0.07" stroke-linejoin="round"/>`);
+          out.push(`<path d="${cell}" fill="${c.flat ? c.fill : shade(c.fill, lit)}" stroke="${c.flat ? '#ffffff' : shade(c.fill, 0.55)}" stroke-width="0.07" stroke-linejoin="round"/>`);
           if (pr.windows) out.push(`<path d="${cell}" fill="url(#axo-win-${id})"/>`);
         }
         for (const zz of pr.storeys ?? []) {
@@ -320,6 +322,7 @@ export function drawAxonometric(scene: AxoScene, box: { x: number; y: number; w:
       }
     });
     out.push(`<path d="${pr.rings.map((rg) => poly(rg.map((p) => P(p, pr.z1)))).join('')}" fill="${shade(pr.fill, M.gloss ? 1.3 : 1.12)}"${alpha} fill-rule="evenodd" stroke="${pr.edge}" stroke-width="${pr.edgeW}" stroke-linejoin="round"${dash}/>`);
+    for (const c of pr.roof ?? []) out.push(`<path d="${poly(c.pts.map((p) => P(p, pr.z1)))}" fill="${c.fill}" stroke="#ffffff" stroke-width="0.07" stroke-linejoin="round"/>`);
     return out.join('');
   };
   // The outer edge of what the prisms cover on paper: every face, joined.

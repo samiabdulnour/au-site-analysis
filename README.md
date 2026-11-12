@@ -1364,20 +1364,23 @@ site may take, so a site with more paths has more pages:
    the FSR set aside, the case a clause 4.6 variation or a planning proposal
    has to carry, marked non-compliant; drawn only where the FSR stops the
    scheme below the height.
-7. **Compliance** — does the envelope comply? One sheet for every path that
-   holds apartments, kept off the yield's own pages, set out as a
-   future-context study sets out its scenarios. On the left the paths side
-   by side against the assessment criteria, in their order, a mark for each:
-   overshadow impact (3B-2), solar access (4A-1 with the hours, 4A-2 with
-   none, and again with the neighbours built out), building separation
-   (3F-1) and yield (the path's floor area as a share of the most the
-   controls allow it); each building near and its separation from each path;
-   and the criteria as the sheet reads them. On the right a card for each
-   path: its plan, the envelope's shadow at 9 am, noon and 3 pm, the land it
-   shades outlined and each separation drawn as a dimension (green clear,
-   amber where it holds only habitable to non-habitable, red short), beside
-   its massing with each apartment that has the hours in yellow. A path
-   alone gets the whole page, its massing over its plan.
+7. **Compliance**, a sheet for each option that holds apartments, after the
+   yield's own spreads: does its envelope comply? On the left the
+   assessment criteria in their order, a mark each: overshadow impact
+   (3B-2), solar access (4A-1 with the hours, again built out, and 4A-2 with
+   none), building separation (3F-1) and yield (its floor area against the
+   most the controls allow it); the sun on each facade and the roof, by the
+   way each looks, its area, its average hours and the share with the hours
+   asked, today and built out; each building near and its separation, today
+   and built out; and, on the first sheet, the criteria as the sheet reads
+   them. On the right the massing twice, side by side and close on the
+   building, from the street corner and from the opposite one, so every face
+   is seen: each facade cell (a storey high, about 3 m wide) and each roof
+   cell (about 3 m square, on what the tiers above leave open) in its band of
+   hours, cool under two, warm from two; under them the plan of the
+   envelope's shadow at 9 am, noon and 3 pm, the land it shades outlined and
+   each separation drawn as a dimension (green clear, amber where it holds
+   only habitable to non-habitable, red short).
 8. **Controls and assumptions** — the assumptions the study rests on (floor
    to floor, efficiencies, the mix, the plates, the parking rates, the nearest
    station) on the left; on the right, the full table the office's
@@ -1551,13 +1554,15 @@ local metres:
   counts the longest unbroken run instead, for a council that reads them so,
   and the pages say which. The compliance spread's massing colours each
   apartment's facade yellow where it has the hours.
-- **Sun on each facade.** `facadeSun()` in `src/lib/solarAccess.ts` gives every
-  face of a scheme its hours, storey by storey in cells about 3 m wide, read
-  1 m above each floor, today and built out; `src/render/facadeElevation.ts`
-  unfolds the faces into strips (the outside from the face nearest north, a
-  stepped tier's faces over the faces below them, each courtyard apart), each
-  cell coloured by its band of hours, cool under two, warm from two. Not yet
-  printed in a deck.
+- **Sun on each facade and roof.** `facadeSun()` in `src/lib/solarAccess.ts`
+  gives every face of a scheme its hours, storey by storey in cells about
+  3 m wide, read 1 m above each floor, and `roofSun()` every roof, the plate
+  each tier's roof is less the tiers above it, in cells about 3 m square
+  (clipped by `polyclip-ts`), both today and built out; the compliance
+  sheets colour the massing's cells by their band of hours
+  (`SUN_BANDS` in `src/render/facadeElevation.ts`, cool under two, warm from
+  two). The same module can unfold the faces into strips (`unfoldedFacades`),
+  which no sheet prints yet.
 - **The shadow it adds (ADG 3B-2).** The ground the scheme puts in shadow at
   each hour from 9 am to 3 pm that is in sun today (the neighbours and what
   stands on the site casting theirs), sampled every 1.5 m over the open

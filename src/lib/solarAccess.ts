@@ -28,9 +28,10 @@
 
 import turfUnion from '@turf/union';
 import { featureCollection, polygon } from '@turf/helpers';
+import * as polyclip from 'polyclip-ts';
 import { civilToUtc, sunPosition } from './solar.js';
 import { convexHull, inHull } from './shadows.js';
-import { storeyLevels, type XY, type YieldResult } from './yield.js';
+import { storeyLevels, ringArea, type XY, type YieldResult } from './yield.js';
 
 /** A prism: a footprint's rings (even-odd) between two levels, metres above the ground. */
 export interface Block { rings: XY[][]; z0: number; z1: number }
@@ -446,6 +447,70 @@ export function facadeSun(y: YieldResult, o: { context: Block[]; future?: Block[
     }
   }
   return faces;
+}
+
+/** A piece of a tier's roof, about `cellM` square, clipped to the roof the tiers above leave open, and its hours of sun. */
+export interface RoofCell { tier: number; pts: XY[]; areaSqm: number; hours: number; hoursFuture?: number }
+
+/**
+ * The hours of mid-winter sun on the roofs of a scheme: each tier's plate less the plates of the tiers above it,
+ * cut into cells about `cellM` square along its longest edge, each read at its middle just over the roof.
+ */
+export function roofSun(y: YieldResult, o: { context: Block[]; future?: Block[]; lat: number; lon: number; cellM?: number }): RoofCell[] {
+  const cellM = o.cellM ?? 3;
+  const z = storeyLevels(y);
+  const close = (rg: XY[]): [number, number][] => [...rg, rg[0]].map((p) => [p.x, p.y]);
+  const cells: (RoofCell & { z: number; c: XY })[] = [];
+  y.tiers.forEach((t, tier) => {
+    const top = Math.min(t.to, y.storeys);
+    if (top < t.from || !t.plate.length) return;
+    // the roof: the plate, less every plate built above its top storey
+    const above = y.tiers.filter((u, k) => k !== tier && u.plate.length && u.from > top && Math.min(u.to, y.storeys) >= u.from);
+    let roof: any;
+    try {
+      roof = polyclip.union(t.plate.filter((rg) => rg.length >= 3).map((rg) => [close(rg)]) as any);
+      // the plate's rings are even-odd: a courtyard ring is a hole, so the outer less the inner
+      const rings = t.plate.filter((rg) => rg.length >= 3);
+      if (rings.length > 1) roof = rings.slice(1).reduce((acc, rg) => polyclip.xor(acc, [close(rg)] as any), [close(rings[0])] as any);
+      if (above.length) roof = polyclip.difference(roof, ...above.flatMap((u) => u.plate.filter((rg) => rg.length >= 3).map((rg) => [close(rg)])) as any);
+    } catch { return; }
+    if (!roof?.length) return;
+    // the grid along the plate's longest edge
+    const outer = t.plate.reduce((m, rg) => (rg.length > m.length ? rg : m), t.plate[0]);
+    let ang = 0, best = 0;
+    outer.forEach((p, i) => { const q = outer[(i + 1) % outer.length], L = Math.hypot(q.x - p.x, q.y - p.y); if (L > best) { best = L; ang = Math.atan2(q.y - p.y, q.x - p.x); } });
+    const cos = Math.cos(ang), sin = Math.sin(ang);
+    const toR = (p: XY) => ({ x: p.x * cos + p.y * sin, y: -p.x * sin + p.y * cos }), fromR = (p: XY) => ({ x: p.x * cos - p.y * sin, y: p.x * sin + p.y * cos });
+    const rpts = t.plate.flat().map(toR);
+    const x0 = Math.floor(Math.min(...rpts.map((p) => p.x)) / cellM) * cellM, y0 = Math.floor(Math.min(...rpts.map((p) => p.y)) / cellM) * cellM;
+    const x1 = Math.max(...rpts.map((p) => p.x)), y1 = Math.max(...rpts.map((p) => p.y));
+    for (let gx = x0; gx < x1; gx += cellM) for (let gy = y0; gy < y1; gy += cellM) {
+      const sq = [{ x: gx, y: gy }, { x: gx + cellM, y: gy }, { x: gx + cellM, y: gy + cellM }, { x: gx, y: gy + cellM }].map(fromR);
+      let pieces: any;
+      try { pieces = polyclip.intersection(roof, [close(sq)] as any); } catch { continue; }
+      for (const poly of pieces ?? []) {
+        const ring: XY[] = (poly[0] as [number, number][]).slice(0, -1).map(([x, yy]) => ({ x, y: yy }));
+        const area = ringArea(ring) - poly.slice(1).reduce((tt: number, h: [number, number][]) => tt + ringArea(h.slice(0, -1).map(([x, yy]) => ({ x, y: yy }))), 0);
+        if (area < 0.5) continue;
+        const c = ring.reduce((m, p) => ({ x: m.x + p.x / ring.length, y: m.y + p.y / ring.length }), { x: 0, y: 0 });
+        cells.push({ tier, pts: ring, areaSqm: area, hours: 0, z: z.top(top), c: evenOdd([ring], c.x, c.y) ? c : ring[0] });
+      }
+    }
+  });
+  if (!cells.length) return [];
+  const own = schemeBlocks(y).map(ready).filter((r): r is Ready => !!r);
+  const today = [...o.context.map(ready).filter((r): r is Ready => !!r), ...own];
+  const later = o.future ? [...o.future.map(ready).filter((r): r is Ready => !!r), ...own] : undefined;
+  const box = { x0: Math.min(...cells.map((c) => c.c.x)), y0: Math.min(...cells.map((c) => c.c.y)), x1: Math.max(...cells.map((c) => c.c.x)), y1: Math.max(...cells.map((c) => c.c.y)) };
+  const zMin = Math.min(...cells.map((c) => c.z));
+  for (const s of winterSun(o.lat, o.lon)) {
+    const nowToday = sunward(today, box, zMin, s), nowLater = later ? sunward(later, box, zMin, s) : undefined;
+    for (const c of cells) {
+      if (!shaded(nowToday, c.c.x, c.c.y, c.z + 0.1, s)) c.hours += 0.25;
+      if (nowLater) c.hoursFuture = (c.hoursFuture ?? 0) + (shaded(nowLater, c.c.x, c.c.y, c.z + 0.1, s) ? 0 : 0.25);
+    }
+  }
+  return cells.map(({ z: _z, c: _c, ...r }) => r);
 }
 
 /** Whether an apartment has the hours asked: in all, or in one unbroken run; with today's neighbours or their futures. */
