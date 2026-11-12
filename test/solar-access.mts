@@ -8,7 +8,7 @@
  *   npx tsx test/solar-access.mts
  */
 
-import { winterSun, inSun, adgSunHours, apartmentSun, addedShadow, schemeBlocks, facadeSun, roofSun, QUARTER_HOURS, ON_THE_HOUR, type Block } from '../src/lib/solarAccess.js';
+import { winterSun, inSun, adgSunHours, apartmentSun, addedShadow, addedGround, schemeBlocks, facadeSun, roofSun, QUARTER_HOURS, ON_THE_HOUR, type Block } from '../src/lib/solarAccess.js';
 import { computeYield, ringArea, edgeKinds, type XY } from '../src/lib/yield.js';
 
 const failures: string[] = [];
@@ -190,6 +190,18 @@ const SYD = { lat: -33.87, lon: 151.21 };
   const blocks = schemeBlocks(y);
   check('prisms: one a built tier, stacked without a gap', blocks.length >= 1 && blocks.every((b, i) => i === 0 ? b.z0 === 0 : near(b.z0, blocks[i - 1].z1, 1e-9)), JSON.stringify(blocks.map((b) => [b.z0, b.z1])));
   check('prisms: no higher than the storeys built', near(blocks[blocks.length - 1].z1, 3.1 * y.storeys, 1e-9), `${blocks[blocks.length - 1].z1} vs ${y.storeys}`);
+}
+
+// what only our shadow covers: a 20 x 10 m shadow, a neighbour's 10 x 10 over its east half one hour and nothing the
+// next; the hours joined give the whole, and the site (its west 5 m) taken out leaves 150 m²
+{
+  const sq = (x0: number, y0: number, x1: number, y1: number): XY[] => [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }];
+  const area = (rings: XY[][]) => rings.reduce((t, rg) => { let a = 0; for (let i = 0; i < rg.length; i++) { const u = rg[i], v = rg[(i + 1) % rg.length]; a += u.x * v.y - v.x * u.y; } return t + a / 2; }, 0);
+  const one = addedGround([[sq(0, 0, 20, 10)]], [[sq(10, 0, 20, 10)]]);
+  check('added ground: our shadow less theirs that hour', Math.abs(Math.abs(area(one)) - 100) < 1e-6, String(area(one)));
+  const two = addedGround([[sq(0, 0, 20, 10)], [sq(0, 0, 20, 10)]], [[sq(10, 0, 20, 10)], []], [sq(0, 0, 5, 10)]);
+  check('added ground: the hours joined, the site left out', Math.abs(Math.abs(area(two)) - 150) < 1e-6, String(area(two)));
+  check('added ground: nothing where theirs covers ours', addedGround([[sq(0, 0, 10, 10)]], [[sq(-1, -1, 11, 11)]]).length === 0);
 }
 
 if (failures.length) {

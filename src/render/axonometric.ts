@@ -84,7 +84,13 @@ export interface AxoScene {
   treesOnSite?: boolean;
   /** The bus routes, local metres, where the caller has them: the buses keep to them. Unset, a bus runs on the collector streets and above; empty, there is none. */
   busRoutes?: XY[][];
+  /** A white model: the town round the site (the ground, the lots, the streets, the neighbours, the trees, the traffic,
+   * the people) in white and greys, so the colours on what is built read alone. The built keeps its own fills. */
+  mono?: boolean;
 }
+
+/** The white model's greys: its edges, its ground lines, its people. */
+const MONO = { edge: '#8f8f8f', line: '#d2d2d2', figure: '#b4b4b4', glass: '#ececec', chassis: '#c4c4c4' };
 
 export type VehicleKind = 'car' | 'van' | 'truck' | 'semi' | 'bus';
 
@@ -213,7 +219,8 @@ function inRing(p: XY, rg: XY[]): boolean {
 }
 
 export function drawAxonometric(scene: AxoScene, box: { x: number; y: number; w: number; h: number }, id: string): string {
-  const M = massingInks();
+  const mono = !!scene.mono;
+  const M = mono ? { ...massingInks(), ground: '#ffffff', lot: MONO.line, park: '#ffffff', road: '#ffffff', axis: MONO.line, tree: '#ffffff', treeLight: '#ffffff', trunk: MONO.edge } : massingInks();
   const { ring, reach, inks } = scene;
   const turn = (40 * Math.PI) / 180;
   const nx = scene.frontNormal.x, ny = scene.frontNormal.y;
@@ -233,7 +240,8 @@ export function drawAxonometric(scene: AxoScene, box: { x: number; y: number; w:
     if (Math.hypot(cen.x, cen.y) > reach) continue;
     const known = nb.heightM != null && nb.heightM > 0;
     const z1 = known ? nb.heightM! : 6.2;
-    const group: Prism[] = [{ rings, z0: 0, z1, fill: nb.fill, edge: shade(nb.fill, M.gloss ? 0.78 : 0.55), edgeW: 0.12, dashed: !known, windows: known }];
+    const group: Prism[] = [mono ? { rings, z0: 0, z1, fill: '#ffffff', edge: MONO.edge, edgeW: 0.12, dashed: !known }
+      : { rings, z0: 0, z1, fill: nb.fill, edge: shade(nb.fill, M.gloss ? 0.78 : 0.55), edgeW: 0.12, dashed: !known, windows: known }];
     if (nb.future && nb.future > z1) group.push({ rings, z0: z1, z1: nb.future, fill: inks.future, edge: inks.futureEdge, edgeW: 0.12, dashed: true, dash: FUTURE_DASH, opacity: FUTURE_OPACITY });
     prisms.push({ key: depth(cen), group });
   }
@@ -266,7 +274,7 @@ export function drawAxonometric(scene: AxoScene, box: { x: number; y: number; w:
   }
   const cw = carriageways(scene.roads, scene.kerbs);
   if (cw.polygons.length) {
-    ground.push(`<path d="${cw.polygons.map((rings) => rings.map((rg) => poly(rg.map((p) => P(p, 0)))).join('')).join('')}" fill="${M.road}" fill-rule="evenodd" stroke="${inks.kerb}" stroke-width="0.2" stroke-linejoin="round"/>`);
+    ground.push(`<path d="${cw.polygons.map((rings) => rings.map((rg) => poly(rg.map((p) => P(p, 0)))).join('')).join('')}" fill="${M.road}" fill-rule="evenodd" stroke="${mono ? MONO.edge : inks.kerb}" stroke-width="${mono ? 0.15 : 0.2}" stroke-linejoin="round"/>`);
     ground.push(`<path d="${cw.axes.map(({ axis }) => open(axis.map((p) => P(p, 0)))).join('')}" fill="none" stroke="${M.axis}" stroke-width="0.12" stroke-dasharray="1.4,1.1" opacity="0.85"/>`);
   }
   const SITE = inks.site;
@@ -285,7 +293,7 @@ export function drawAxonometric(scene: AxoScene, box: { x: number; y: number; w:
         rg.forEach((p, i) => { const q = rg[(i + 1) % rg.length]; pieces.push(poly([P(p, 0), P(q, 0), P(off(q), 0), P(off(p), 0)])); });
       }
     }
-    ground.push(`<g opacity="0.1" fill="${INK.blue.deep}"><path d="${pieces.join('')}" fill-rule="nonzero"/></g>`);
+    ground.push(`<g opacity="${mono ? 0.07 : 0.1}" fill="${mono ? '#2b2b2b' : INK.blue.deep}"><path d="${pieces.join('')}" fill-rule="nonzero"/></g>`);
   }
 
   const prismSvg = (pr: Prism) => {
@@ -353,8 +361,9 @@ export function drawAxonometric(scene: AxoScene, box: { x: number; y: number; w:
     const zc = 2.2 + tr.r;   // the crown's centre: a trunk of about two metres, then the crown
     const [cx, cy] = P(tr.p, zc), [bx, by] = P(tr.p, 0);
     return `<line x1="${bx.toFixed(2)}" y1="${by.toFixed(2)}" x2="${cx.toFixed(2)}" y2="${cy.toFixed(2)}" stroke="${M.trunk}" stroke-width="0.25"/>` +
-      `<circle cx="${cx.toFixed(2)}" cy="${cy.toFixed(2)}" r="${tr.r.toFixed(2)}" fill="${M.tree}"/>` +
-      `<circle cx="${(cx - 0.22 * tr.r).toFixed(2)}" cy="${(cy - 0.2 * tr.r).toFixed(2)}" r="${(0.66 * tr.r).toFixed(2)}" fill="${M.treeLight}"/>`;
+      (mono ? `<circle cx="${cx.toFixed(2)}" cy="${cy.toFixed(2)}" r="${tr.r.toFixed(2)}" fill="#ffffff" stroke="${MONO.edge}" stroke-width="0.1"/>`
+        : `<circle cx="${cx.toFixed(2)}" cy="${cy.toFixed(2)}" r="${tr.r.toFixed(2)}" fill="${M.tree}"/>` +
+        `<circle cx="${(cx - 0.22 * tr.r).toFixed(2)}" cy="${(cy - 0.2 * tr.r).toFixed(2)}" r="${(0.66 * tr.r).toFixed(2)}" fill="${M.treeLight}"/>`);
   };
   // Traffic (placeTraffic): each vehicle a few blocks along its length, in stacks one behind the other, each stack a
   // column of blocks bottom to top, drawn far to near. A car, a body with a cabin, in the families' solid colours in
@@ -362,9 +371,9 @@ export function drawAxonometric(scene: AxoScene, box: { x: number; y: number; w:
   // on its chassis behind a cab in the cars' colours; an articulated truck, its trailer behind a prime mover with a
   // bonnet, as the long-nosed ones on Australian roads; a bus, a skirt in the blue family under a band of glass and a
   // white roof.
-  const CAR_INKS = [vivid(INK.red.solid, 0.55, 0.45), vivid(INK.blue.solid, 0.5, 0.42), vivid(INK.orange.solid, 0.7, 0.5), '#f4f4f0'];
-  const WHITE = '#f4f4f0', GLASS = tint(INK.blue.solid, 0.78), PALE = '#e6e5df', CHASSIS = '#4a4a4a';
-  const VAN_INKS = [WHITE, WHITE, CAR_INKS[2], WHITE, CAR_INKS[1]];
+  const CAR_INKS = mono ? ['#ffffff'] : [vivid(INK.red.solid, 0.55, 0.45), vivid(INK.blue.solid, 0.5, 0.42), vivid(INK.orange.solid, 0.7, 0.5), '#f4f4f0'];
+  const WHITE = mono ? '#ffffff' : '#f4f4f0', GLASS = mono ? MONO.glass : tint(INK.blue.solid, 0.78), PALE = mono ? '#ffffff' : '#e6e5df', CHASSIS = mono ? MONO.chassis : '#4a4a4a';
+  const VAN_INKS = [WHITE, WHITE, CAR_INKS[2 % CAR_INKS.length], WHITE, CAR_INKS[1 % CAR_INKS.length]];
   type Block = { s0: number; s1: number; hw: number; z0: number; z1: number; fill: string };
   const block = (s0: number, s1: number, hw: number, z0: number, z1: number, fill: string): Block => ({ s0, s1, hw, z0, z1, fill });
   // a cab: its doors, its windscreen and side glass, its roof
@@ -380,12 +389,12 @@ export function drawAxonometric(scene: AxoScene, box: { x: number; y: number; w:
       case 'truck': return [[block(-4.3, 2.15, 1.0, 0.45, 1.0, CHASSIS), block(-4.3, 2.15, 1.25, 1.0, 3.6, PALE)], cab(2.3, 4.3, 1.22, 0.45, 1.75, 2.65, 3.0, ink)];
       case 'semi': return [[block(-8.25, 5.0, 1.0, 0.5, 1.2, CHASSIS), block(-8.25, 5.0, 1.25, 1.2, 4.1, PALE)], [block(5.0, 5.6, 1.0, 0.5, 1.1, CHASSIS)],
         cab(5.6, 7.3, 1.25, 0.5, 2.0, 2.8, 3.4, ink), [block(7.3, 8.25, 1.1, 0.5, 1.85, ink)]];
-      case 'bus': return [[block(-6.25, 6.25, 1.25, 0.35, 1.3, CAR_INKS[1]), block(-6.25, 6.25, 1.25, 1.3, 2.6, GLASS), block(-6.25, 6.25, 1.25, 2.6, 3.15, WHITE)]];
+      case 'bus': return [[block(-6.25, 6.25, 1.25, 0.35, 1.3, CAR_INKS[1 % CAR_INKS.length]), block(-6.25, 6.25, 1.25, 1.3, 2.6, GLASS), block(-6.25, 6.25, 1.25, 2.6, 3.15, WHITE)]];
     }
   };
   const vehicleSvg = (v: Vehicle, stacks: Block[][]): string => {
     const along = v.u.x * d.x + v.u.y * d.y;   // how much farther each metre forward stands
-    const at = (b: Block): Prism => ({ rings: [corners({ ...v, c: { x: v.c.x + v.u.x * (b.s0 + b.s1) / 2, y: v.c.y + v.u.y * (b.s0 + b.s1) / 2 }, half: (b.s1 - b.s0) / 2, hw: b.hw })], z0: b.z0, z1: b.z1, fill: b.fill, edge: '#3a3a3a', edgeW: 0.1 });
+    const at = (b: Block): Prism => ({ rings: [corners({ ...v, c: { x: v.c.x + v.u.x * (b.s0 + b.s1) / 2, y: v.c.y + v.u.y * (b.s0 + b.s1) / 2 }, half: (b.s1 - b.s0) / 2, hw: b.hw })], z0: b.z0, z1: b.z1, fill: b.fill, edge: mono ? MONO.edge : '#3a3a3a', edgeW: 0.1 });
     const order = [...stacks].sort((p, q) => (q[0].s0 + q[0].s1) * along - (p[0].s0 + p[0].s1) * along);
     return `<g data-vehicle="${v.kind}">${order.map((st) => st.map((b) => prismSvg(at(b))).join('')).join('')}</g>`;
   };
@@ -395,7 +404,8 @@ export function drawAxonometric(scene: AxoScene, box: { x: number; y: number; w:
   // standing on the ground with a head over it; a rider every so often down the kerb side of the lane, two wheels
   // and a frame with the body over them; in the traffic's colours and a dark grey in turn. None down a lane, no
   // bicycle on a highway, none where a building or a vehicle stands, and none on the site.
-  const FIGURE_INKS = [...CAR_INKS.slice(0, 3), '#3a3a3a'];
+  const FIGURE_INKS = mono ? [MONO.figure] : [...CAR_INKS.slice(0, 3), '#3a3a3a'];
+  const SPOKE = mono ? MONO.edge : '#3a3a3a';
   const figures: { key: number; svg: () => string }[] = [];
   let pi = 0;
   const free = (c: XY) => Math.hypot(c.x, c.y) <= reach && !footprints.some((rg) => inRing(c, rg)) && !inRing(c, ring) && !traffic.some((v) => underVehicle(c, v, 0.6));
@@ -408,7 +418,7 @@ export function drawAxonometric(scene: AxoScene, box: { x: number; y: number; w:
   const bikeSvg = (c: XY, u: XY, fill: string) => {
     const hub = (s: number) => P({ x: c.x + u.x * s, y: c.y + u.y * s }, 0.34);
     const [ax, ay] = hub(-0.55), [bx, by] = hub(0.55);
-    return `<circle cx="${ax.toFixed(2)}" cy="${ay.toFixed(2)}" r="0.34" fill="none" stroke="#3a3a3a" stroke-width="0.12"/><circle cx="${bx.toFixed(2)}" cy="${by.toFixed(2)}" r="0.34" fill="none" stroke="#3a3a3a" stroke-width="0.12"/><line x1="${ax.toFixed(2)}" y1="${ay.toFixed(2)}" x2="${bx.toFixed(2)}" y2="${by.toFixed(2)}" stroke="#3a3a3a" stroke-width="0.12"/>${body(c, 0.8, 1.75, fill)}`;
+    return `<circle cx="${ax.toFixed(2)}" cy="${ay.toFixed(2)}" r="0.34" fill="none" stroke="${SPOKE}" stroke-width="0.12"/><circle cx="${bx.toFixed(2)}" cy="${by.toFixed(2)}" r="0.34" fill="none" stroke="${SPOKE}" stroke-width="0.12"/><line x1="${ax.toFixed(2)}" y1="${ay.toFixed(2)}" x2="${bx.toFixed(2)}" y2="${by.toFixed(2)}" stroke="${SPOKE}" stroke-width="0.12"/>${body(c, 0.8, 1.75, fill)}`;
   };
   for (const { axis, left, right, road } of cw.axes) {
     if (road.hierarchy >= 7) continue;
@@ -459,12 +469,13 @@ export function drawAxonometric(scene: AxoScene, box: { x: number; y: number; w:
   // is cut at the same height, so a CBD's towers-to-be do not shrink the built to a speck.
   const pts: [number, number][] = [];
   let tallest = 0;
-  for (const { group } of prisms) for (const pr of group) if (pr.fill !== inks.future) tallest = Math.max(tallest, pr.z1);
+  const isFuture = (pr: Prism) => pr.opacity === FUTURE_OPACITY;
+  for (const { group } of prisms) for (const pr of group) if (!isFuture(pr)) tallest = Math.max(tallest, pr.z1);
   const cap = Math.max(tallest, 12) * 1.6;
   let futureTop = 0;
   for (const { group } of prisms) for (const pr of group) {
-    const z1 = pr.fill === inks.future ? Math.min(pr.z1, cap) : pr.z1;
-    if (pr.fill === inks.future) futureTop = Math.max(futureTop, pr.z1);
+    const z1 = isFuture(pr) ? Math.min(pr.z1, cap) : pr.z1;
+    if (isFuture(pr)) futureTop = Math.max(futureTop, pr.z1);
     for (const rg of pr.rings) for (const p of rg) pts.push(P(p, pr.z0), P(p, z1));
   }
   const planeZ = scene.hob?.metres ?? 0;

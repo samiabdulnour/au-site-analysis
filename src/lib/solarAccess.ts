@@ -691,3 +691,32 @@ export function groundShadow(blocks: Block[], s: Sun): XY[][] {
     return rings.map((rg) => rg.slice(0, -1).map(([x, y]) => ({ x, y })));
   } catch { return []; }
 }
+
+/**
+ * The ground only one set of buildings shades: at each hour its shadow (rings, even-odd, as groundShadow gives
+ * them) less every other building's shadow that hour (their hulls), the hours joined, less `exclude` (the site
+ * itself). What a scheme's own shadow adds, where nothing standing already shades the ground; rings, even-odd.
+ */
+export function addedGround(ours: XY[][][], theirs: XY[][][], exclude: XY[][] = []): XY[][] {
+  type Geom = any;
+  const close = (rg: XY[]) => [...rg.map((p) => [p.x, p.y]), [rg[0].x, rg[0].y]];
+  const region = (rings: XY[][]): Geom | null => rings.filter((rg) => rg.length >= 3)
+    .reduce<Geom | null>((acc, rg) => (acc ? polyclip.xor(acc, [close(rg)] as Geom) : [[close(rg)]]), null);
+  const bbox = (rings: XY[][]) => { const ps = rings.flat(); return { x0: Math.min(...ps.map((p) => p.x)), y0: Math.min(...ps.map((p) => p.y)), x1: Math.max(...ps.map((p) => p.x)), y1: Math.max(...ps.map((p) => p.y)) }; };
+  const meets = (a: ReturnType<typeof bbox>, b: ReturnType<typeof bbox>) => a.x0 <= b.x1 && b.x0 <= a.x1 && a.y0 <= b.y1 && b.y0 <= a.y1;
+  let total: Geom | null = null;
+  ours.forEach((rings, h) => {
+    const own = region(rings);
+    if (!own) return;
+    const box = bbox(rings);
+    const near = (theirs[h] ?? []).filter((hl) => hl.length >= 3 && meets(bbox([hl]), box)).map((hl) => [close(hl)]);
+    let added: Geom;
+    try { added = near.length ? polyclip.difference(own, ...(near as Geom[])) : own; } catch { added = own; }
+    if (!added?.length) return;
+    try { total = total ? polyclip.union(total, added) : added; } catch { /* keep what is joined */ }
+  });
+  if (!total) return [];
+  const out = region(exclude);
+  if (out) { try { total = polyclip.difference(total, out); } catch { /* the site left in */ } }
+  return (total as Geom as number[][][][]).flatMap((poly) => poly.map((rg) => rg.slice(0, -1).map(([x, y]) => ({ x, y }))));
+}

@@ -1375,15 +1375,20 @@ site may take, so a site with more paths has more pages:
    and built out; and, on the first sheet, the criteria as the sheet reads
    them. On the right the massing twice, side by side and close on the
    building, from the street corner and from the opposite one, so every face
-   is seen: each facade cell (a storey high, about 3 m wide) and each roof
+   is seen, the town round it a white model (neighbours, futures, trees,
+   traffic and ground in white and greys) so only the scheme's colours read:
+   each facade cell (a storey high, about 3 m wide) and each roof
    cell (about 3 m square, on what the tiers above leave open) in its band of
    hours, the style's blues under two, its oranges and reds from two; under
    them the plan as the report's sun page draws it, in Arial: no zone tints,
    every building white with its storeys (grey where no height is recorded and
    two are assumed), the future footprints dashed with theirs, and every
-   building's shadow each hour from 9 am to 3 pm laid one translucent layer
-   over the last, the envelope's own at 9 am, noon and 3 pm outlined; the land
-   it shades outlined and each separation drawn as a dimension (green clear,
+   neighbour's shadow each hour from 9 am to 3 pm laid one translucent layer
+   over the last, and the envelope's own over them in the site's accent, at
+   9 am, noon and 3 pm outlined; hatched, the ground only the envelope shades
+   at one hour or more, where no building standing shades it that hour
+   (`addedGround()` in `src/lib/solarAccess.ts`: what it would overshadow);
+   the land it shades outlined and each separation drawn as a dimension (green clear,
    amber where it holds only habitable to non-habitable, red short).
 8. **Controls and assumptions** — the assumptions the study rests on (floor
    to floor, efficiencies, the mix, the plates, the parking rates, the nearest
