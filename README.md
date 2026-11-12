@@ -1934,6 +1934,156 @@ What the sheet reads, all open data (`scripts/capacity_study.ts` fetches,
   little ability to develop above its current status; a tick (development
   potential) on every other property. Lane stubs and slivers under 40 m² carry no mark.
 
+### The future context
+
+`npm run future -- out/capacity/<slug> --scenarios scenarios.json` draws, over
+a capacity study already fetched for the address, how the blocks round the
+site might redevelop: three A3 landscape sheets, one a scenario, each a plan
+at 1:500 on the clean aerial (no marks, no labels, the colour drawn down)
+beside an axonometric massing looking east over the site's street, with the
+scenario's story in the left column and an indicative yield under it.
+Outputs, beside `analysis.json`: `future.pdf`, an overview
+(`future-summary-<n>.png`, eight scenarios a sheet at most: each scenario's
+plan as colour blocks with the blocks round it and their storeys, its
+massing, the apartments it adds, and for every new building its separation
+from the site's tower and its mid-winter sun, read as the ADG reads them,
+with a line on whether the site's massing lets the neighbours develop)
+followed by a sheet for each scenario in the same form
+(`future-option-<n>.png`: the plan large, the table, the massing, the
+apartments of ours without their sun and the neighbours our tower shades);
+`future-detail.pdf`, the sheets in full (`future-<n>.png`: the plan at 1:500
+on the aerial, the massing, the yield, the assumptions); and, where the
+scenarios file lays the site's apartments out, `future-sun.pdf`, the sun's
+proof for them (`future-sun-<n>.png`, below). `--redraw` draws again from
+what was fetched.
+`examples/capacity_study/` holds the sheets for 70-76 Riley Street with
+their scenarios file.
+
+The scenarios are the author's, in JSON: each parcel named by the start of
+its addresses as the register writes them (`"54-56 RILEY STREET"`), each
+building by its footprint type, its storeys, and the line its long axis
+follows — `along` a street (with a `side` where the street wraps the parcel),
+or the party wall of a `neighbour` — with its
+`setback` off that line, its ends `sides` off the parcel's, its `length` and
+the street end it is kept `from`. Every neighbour's building stands on a podium over its whole lot, the
+street wall, with the slab or tower from `base` up. The footprint is fitted
+to the real cadastre from that: the three feasible types (single loaded 12 m deep,
+double loaded 18 m for 8 units a floor, double loaded up to 22 m for 10 units
+facing east and west), no slab over 45 m, a `block` over the whole parcel
+with apartments on every face that is not a party wall, a podium or a
+consent over the whole parcel. The prose may quote what the fit found (`{A.area}`,
+`{A.plate}`, `{A.gap}`, `{A.parity}`, `{units}`), so the numbers on the sheet
+are the data's. Heights are set by density parity with the site (its units
+at 85 m² of GFA each over its area, about 6:1 at Riley Street): the table says
+at how many storeys each parcel reaches it, GFA at 75 % of the envelope,
+storeys at 3.2 m over a 4.5 m ground floor.
+
+The site's own scheme is drawn from `site.tower`: a podium of so many
+storeys over the lot and a tower inset from it by the setbacks named per
+street or neighbour (`"CROWN LANE": 3`), so the sheet can read the
+separation between that tower and every building within 30 m of it, as it
+stands or as the scenario builds it, against the Apartment Design Guide
+(3F-1: 24 m between habitable rooms or balconies at levels 9 and over, 18 m
+where one face is blank, 18 and 13.5 m at levels 5 to 8, 12 and 9 below, read
+at the levels the two buildings share, each building owing its side or rear
+boundary half the first figure). A scenario's own `retained` list overrides
+the study's, and a scenario's own `site.tower` moves the site's tower for
+that sheet, so the later sheets can develop what the earlier ones keep and
+try the separation from either side. Riley Street's scenarios are today
+(0), the blocks north of the site lot by lot and in full amalgamation, and
+then the site the Commission asked about, the three new buildings on Crown
+Street across the lane from our tower, eight ways, every building on a
+podium over its whole lot: lot by lot (single-loaded slabs on the street),
+and the three lots as one site with a single-loaded slab on the street, a double-loaded slab on the street with
+our tower as drawn and with it pulled to the ADG's half (9 m off the lane
+and the northern neighbour), a tower on a podium, a mirror of ours 3 m off
+the lane (neither side then keeps the separation), both towers at the
+ADG's half, and two short slabs turned to face north; last, everything
+develops with both halves kept. The blocks north of the site stand as they
+are on those sheets. The paired amalgamations of the northern blocks
+(north pairs, corners, middle, north and south, and three more ways of the
+last) are a second file, `…future-pairs.json`, drawn with the same
+command. Each separation is drawn on the plan as a
+dimension line between the two buildings' nearest points, green where it is
+clear, amber where it holds only with one face blank, red where it is short
+even of that. Every new building is also read against its own lot: half the
+separation off each side or rear boundary with another lot (12 m to
+habitable rooms and 6 m to a blank wall at nine storeys and over, 9 and 4.5
+at five to eight, 6 and 3 below), a wall on the boundary a blank party wall;
+a street or lane frontage is measured and drawn, its setback the council's.
+`neighbourSetback: adg` in the scenarios file fits every slab or tower above
+its podium that far off its neighbouring lots where the lot is wide enough,
+and builds it to the boundary as a blank party wall where it is not; a
+building's own `boundary` sets other metres. `streetSetback: 3` keeps every
+slab or tower above its podium at least 3 m off each street and lane, as the
+site's own tower keeps, where the lot allows it; the check marks a tower
+flush with its podium amber, and a building's own `streetBoundary` sets
+other metres.
+
+Where the Loriini repository sits beside this one (or `LORIINI` names it),
+each sheet also carries the mid-winter sun over its massing, cast with
+Loriini's `core` (numpy alone, so it runs in the drawer's own environment)
+and read as the ADG reads it: `scripts/capacity_study/future_solar.py`
+takes the prisms the drawer writes for each scenario (`future-scene-<n>.json`:
+ours, the scenario's, what stands, and the window's other measured buildings
+as context, each with its type), casts 21 June from 9 to 3 at a metre, and
+lines every building's residential walls with apartments in 8 m bays, one a
+storey, on both long faces of a double-loaded plan or the better face of a
+single-loaded one, a corner apartment counted once on both its walls; the two
+hours are continuous and read as the convention counts them, sun at three
+whole hours in a row as three hourly sun's-eye views show it (9, 10 and 11,
+or 10, 11 and 12, and so on; a run from half past nine to half past eleven
+does not count; `SUN_RULE=minutes` reads any 120 unbroken minutes at the
+study's ten-minute step instead); a bay has them where half its wall at
+that storey does, and a building complies where 70 % of its bays do and no
+more than 15 % get none (4A-1). Every building stands on its own lot's ground as the
+tiles read it, so a higher neighbour's roof cuts the low sun as it does. What
+stands is cast as far as its shadow can reach: the runner reads the tiles
+300 m round the site (north, east and west, 80 m south; `--sun-context`
+reads it again over an earlier fetch), and every building tall enough to
+throw a shadow onto the site with the sun 17° up is cast, so the towers on
+William Street shade the mid-winter morning as they do. A building 20 m or
+taller there is read in its steps, its outline traced off the tiles every
+3 m of height, so a tower on a podium, or two towers of two heights on one
+lot, casts the shadow each part does rather than one block at the tallest. The sun's-eye views
+name a far building where it stands between the sun and ours.
+Where the scenarios file lays the site's apartments out as its plans do
+(`site.tower.units`, each face from the north end, each apartment its
+width and a corner flag), each is tested at its own wall and storey and
+the sheet names the ones without their two hours, level by level, and
+`future-sun.pdf` proves it a scenario a sheet: the scene as the sun sees it
+each hour from 9 to 3 (an orthographic view along the sun's ray, so what it
+shows is in sun and what it hides is in shadow, our apartments' walls
+coloured by the engine's reading at that instant), and under it an hour
+chart with a line an apartment, its sun against the clock, the whole hours
+the rule reads marked, and its three hours in a row framed where it has
+them.
+Each building is read as planned and as it would be single-loaded, facing
+the way its better face looks (north, for a slab that runs east-west), with
+the scenario standing, and without our tower (ours: with today's buildings
+alone), so the sheet says who complies, with what plan, and whom our tower
+shades (3B-2: a standing building it costs ten points or more gets a row).
+A wall on a shared boundary is a party wall and holds no apartment; a
+neighbour's podium holds none; the site's holds them from the storey
+`site.tower.homesFrom` names, and the site is read three ways, its podium,
+its tower and the building whole. It is a reading on an assumed plan, not
+the scheme's own. `--no-sun` leaves it out. A scenario with
+`"sun": "all"` lists every neighbour; one with `"number": 0` and no parcels
+is today, every building at its measured height.
+
+What the sheets read beyond the capacity study (`scripts/future_context.ts`
+fetches, `scripts/capacity_study/future_context.py` fits and draws; it needs
+shapely and Pillow): the aerial at its native resolution over the study
+window; the LEP's height of buildings and floor space ratio layers, printed
+for each parcel, and the heritage conservation area and items the context plan
+already holds; and the height of every property in the window off Google's
+3D tiles (`GOOGLE_MAPS_API_KEY`, or `GOOGLE_MAPS_KEY_IN_HEADER=1` where a proxy
+adds the key), the roof's 80th percentile over the ground round it, so what
+is retained or left standing is drawn at its measured storeys and starred
+only where the tiles hold nothing. What stays assumed is said on the sheet:
+the site's own storeys, units and GFA as the author states them, and the
+storeys of a consent the council's register has no record of.
+
 ### The streetscape
 
 `--type streetscape` draws STREETSCAPE: the site's street as two elevations on
