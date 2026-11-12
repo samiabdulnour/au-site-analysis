@@ -1379,7 +1379,7 @@ site may take, so a site with more paths has more pages:
    traffic and ground in white and greys) so only the scheme's colours read:
    each facade cell (a storey high, about 3 m wide) and each roof
    cell (about 3 m square, on what the tiers above leave open) in its band of
-   hours, the style's blues under two, its oranges and reds from two; under
+   hours, the style's blues under two, its warm tones from two; under
    them the plan as the report's sun page draws it, in Arial: no zone tints,
    every building white with its storeys (grey where no height is recorded and
    two are assumed), the future footprints dashed with theirs, and every
@@ -1570,9 +1570,9 @@ local metres:
   (clipped by `polyclip-ts`), both today and built out; the compliance
   sheets colour the massing's cells by their band of hours
   (`sunBands()` in `src/render/facadeElevation.ts`: six bands, none, under 1,
-  1–2, 2–3, 3–4 and 4 hours and over, each the style's own blue, orange or red
-  stepped to a set lightness in OKLab, so neighbouring bands stay apart in
-  every style and under colour-blind vision). The same module can unfold the faces into strips (`unfoldedFacades`),
+  1–2, 2–3, 3–4 and 4 hours and over, each a tone straight from the style's
+  palette, its blues short of two hours and its warm tones from two, the most
+  vivid at four hours and over so the sunniest faces glow rather than darken). The same module can unfold the faces into strips (`unfoldedFacades`),
   which no sheet prints yet.
 - **The shadow it adds (ADG 3B-2).** The ground the scheme puts in shadow at
   each hour from 9 am to 3 pm that is in sun today (the neighbours and what

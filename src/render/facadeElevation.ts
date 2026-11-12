@@ -13,60 +13,40 @@
 // where ADG 4A-1's hours begin, both in the deck's palette (sunBands).
 
 import { esc } from './chrome.js';
-import { deckFamilies } from './template.js';
+import { deckFamilies, deckLook, luminance } from './template.js';
+import { paletteRamp } from './atlasKit.js';
 import type { FacadeFace } from '../lib/solarAccess.js';
 import type { XY } from '../lib/yield.js';
 
 /** A band of hours: up to where it runs, its fill, the ink a figure on it is set in, its word in the key. */
 export interface SunBand { upTo: number; fill: string; ink: string; label: string }
 
-// OKLab (Ottosson), for stepping a palette tone to a set lightness while it keeps its hue
-const lin = (v: number) => { const c = v / 255; return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
-const gam = (c: number) => Math.round(255 * (c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055));
-function toLab(hex: string): [number, number, number] {
-  const n = parseInt(hex.slice(1), 16), r = lin((n >> 16) & 255), g = lin((n >> 8) & 255), b = lin(n & 255);
-  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
-  const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
-  const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
-  return [0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s, 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s, 0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s];
-}
-function fromLab(L: number, a: number, b: number): number[] {
-  const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3, m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3, s = (L - 0.0894841775 * a - 1.291485548 * b) ** 3;
-  return [4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s, -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s, -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s];
-}
-/** The tone at lightness L, its hue kept, its chroma at least minC, drawn in until it can be printed. */
-function atLightness(hex: string, L: number, minC = 0.07): string {
-  const [, a, b] = toLab(hex), h = Math.atan2(b, a);
-  let C = Math.max(minC, Math.hypot(a, b));
-  for (let i = 0; i < 80; i++, C *= 0.96) {
-    const rgb = fromLab(L, C * Math.cos(h), C * Math.sin(h));
-    if (rgb.every((v) => v >= -1e-4 && v <= 1 + 1e-4)) return `#${rgb.map((v) => gam(Math.min(1, Math.max(0, v))).toString(16).padStart(2, '0')).join('')}`;
-  }
-  return hex;
-}
+type Families = ReturnType<typeof deckFamilies>;
+/**
+ * Each style's six tones, taken straight from its palette (its families and the ramp its heights page runs
+ * across): its blues short of two hours, darkest where there is none; from two hours its warm tones, the most
+ * vivid at four hours and over, so the faces with the most sun glow rather than darken. Checked with the dataviz
+ * validator: blue against warm at the two-hour line clear in every style (ΔE ≥ 10, ≥ 7 for colour-blind readers);
+ * neighbouring blues ΔE ≥ 11; the warm bands apart at full colour vision (ΔE ≥ 10), though Flamingo's amber and
+ * coral (3–4 h, 4 h and over), both passes, come close for a deutan reader.
+ */
+const SUN_PICKS: Record<string, (f: Families, ramp: string[]) => string[]> = {
+  flamingo: (f, r) => [f.blue.deep, f.blue.line, f.blue.solid, f.orange.solid, r[2], f.red.solid],
+  heron: (f, r) => [f.blue.deep, r[0], f.blue.solid, f.orange.mid, f.orange.text, f.orange.deep],
+  kingfisher: (f, r) => [f.blue.deep, f.blue.line, f.blue.solid, f.orange.line, f.red.solid, r[2]],
+  canary: (f) => [f.blue.deep, f.blue.line, f.blue.mid, f.orange.mid, f.red.mid, f.red.solid],
+};
+const LABELS = ['none', 'under 1 h', '1–2 h', '2–3 h', '3–4 h', '4 h and over'];
+const UP_TO = [0, 1, 2, 3, 4, Infinity];
 
 const BANDS_BY_PALETTE = new WeakMap<object, SunBand[]>();
-/**
- * The bands of hours a cell is coloured by, in the deck's own palette: the
- * blue family short of two hours, darkest where there is none; the orange
- * and red from two, darkest at four and over. Each is its family's tone
- * stepped to a set lightness, so neighbouring bands stay apart in every
- * style and under colour-blind vision (checked with the dataviz validator:
- * every adjacent pair ΔE ≥ 15 normal, ≥ 10 deutan/protan/tritan).
- */
+/** The bands of hours a cell is coloured by, in the deck's own palette (SUN_PICKS); a style without picks takes Flamingo's rule. */
 export function sunBands(): SunBand[] {
   const f = deckFamilies();
   const hit = BANDS_BY_PALETTE.get(f);
   if (hit) return hit;
-  const light = '#1c1c1c', dark = '#ffffff';
-  const bands: SunBand[] = [
-    { upTo: 0, fill: atLightness(f.blue.deep, 0.38), ink: dark, label: 'none' },
-    { upTo: 1, fill: atLightness(f.blue.deep, 0.56), ink: dark, label: 'under 1 h' },
-    { upTo: 2, fill: atLightness(f.blue.line, 0.77), ink: light, label: '1–2 h' },
-    { upTo: 3, fill: atLightness(f.orange.solid, 0.84, 0.09), ink: light, label: '2–3 h' },
-    { upTo: 4, fill: atLightness(f.red.solid, 0.63), ink: light, label: '3–4 h' },
-    { upTo: Infinity, fill: atLightness(f.red.deep, 0.42), ink: dark, label: '4 h and over' },
-  ];
+  const pick = SUN_PICKS[deckLook().id] ?? SUN_PICKS.flamingo;
+  const bands = pick(f, paletteRamp()).map((fill, i) => ({ upTo: UP_TO[i], fill, ink: luminance(fill) > 0.32 ? '#1c1c1c' : '#ffffff', label: LABELS[i] }));
   BANDS_BY_PALETTE.set(f, bands);
   return bands;
 }
