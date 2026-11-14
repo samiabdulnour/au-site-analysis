@@ -1364,7 +1364,33 @@ site may take, so a site with more paths has more pages:
    the FSR set aside, the case a clause 4.6 variation or a planning proposal
    has to carry, marked non-compliant; drawn only where the FSR stops the
    scheme below the height.
-7. **Controls and assumptions** — the assumptions the study rests on (floor
+7. **Compliance**, a sheet for each option that holds apartments, after the
+   yield's own spreads: does its envelope comply? On the left the
+   assessment criteria in their order, a mark each: overshadow impact
+   (3B-2), solar access (4A-1 with the hours, again built out, and 4A-2 with
+   none), building separation (3F-1) and yield (its floor area against the
+   most the controls allow it); the sun on each facade and the roof, by the
+   way each looks, its area, its average hours and the share with the hours
+   asked, today and built out; each building near and its separation, today
+   and built out; and, on the first sheet, the criteria as the sheet reads
+   them. On the right the massing twice, side by side and close on the
+   building, from the street corner and from the opposite one, so every face
+   is seen, the town round it a white model (neighbours, futures, trees,
+   traffic and ground in white and greys) so only the scheme's colours read:
+   each facade cell (a storey high, about 3 m wide) and each roof
+   cell (about 3 m square, on what the tiers above leave open) in its band of
+   hours, blues under two, the lorikeet's green, yellow, orange and red from two; under
+   them the plan as the report's sun page draws it, in Arial: no zone tints,
+   every building white with its storeys (grey where no height is recorded and
+   two are assumed), the future footprints dashed with theirs, and every
+   neighbour's shadow each hour from 9 am to 3 pm laid one translucent layer
+   over the last, and the envelope's own over them in the site's accent, at
+   9 am, noon and 3 pm outlined; hatched, the ground only the envelope shades
+   at one hour or more, where no building standing shades it that hour
+   (`addedGround()` in `src/lib/solarAccess.ts`: what it would overshadow);
+   the land it shades outlined and each separation drawn as a dimension (green clear,
+   amber where it holds only habitable to non-habitable, red short).
+8. **Controls and assumptions** — the assumptions the study rests on (floor
    to floor, efficiencies, the mix, the plates, the parking rates, the nearest
    station) on the left; on the right, the full table the office's
    development summary (DA 002) keeps — CONTROLS, PROPOSED and COMPLIANCE for
@@ -1376,19 +1402,31 @@ heights (Overture, its gaps filled from OpenStreetMap, and where neither
 records a height Google's 3D meshes over the massing's window, read as the
 site report reads them — see *Heights from the meshes*; dashed where none
 of them has one), with each tier's envelope
-dashed and the LEP's height of building plane over the site. Over each neighbour,
-in pale dashed glass, its future: its own footprint raised to the whole 3.1 m
-storeys its LEP height of building holds, where its zone permits flats (R1,
-R3, R4, MU1, E1, E2, B1–B4), never lowered — the way sun-study's future
-context reads it — and no higher than its floor space ratio allows: the land
-it stands on by the ratio (its lot, shared between the buildings on it by
-footprint, and never less than its own footprint), spread over its footprint
-at the study's efficiency, offices in a commercial zone and apartments
-elsewhere (`futureHeight()` in `src/lib/yield.ts`). So where the height is an
-airspace RL, as in Parramatta's CBD, the ratio sets the neighbours' futures
-as it sets the proposal. The bundle carries each neighbour's zone, height,
-ratio and land, and the future is worked out when the deck is drawn, so an
-efficiency changed in `yield_assumptions.json` carries to it. The proposal's
+dashed and the LEP's height of building plane over the site. Round it, in pale dashed glass,
+the future context (`src/lib/futureContext.ts`, tested in
+`test/future-context.mts` and `test/yield-futures.mts`): what the neighbours may
+build, as the office's building envelope assumptions have it. On each lot
+within 120 m that may redevelop (zoned for flats, R1, R3, R4, MU1, E1, E2,
+B1–B4, with a height of building of three storeys or more, and not held by the
+capacity study), the largest feasible footprint its envelope holds: 22 m deep
+where its long faces look east and west (ten apartments a floor), 18 m
+double-loaded along an east–west axis (eight), 12 m single-loaded either way,
+at most 45 m long and at least 15 m; the envelope the lot set back 6 m from a
+street and, from its other boundaries, by the ADG's half separation for the
+storeys it rises to (6, 9 and 12 m), the footprint along the street, nearest
+it. It rises to the lot's height of building at 3.1 m a storey, and where the
+floor space ratio would stop it short, the footprint shortens so the floor
+area the ratio gives still reaches the height. A lot too narrow for any
+footprint alone, or held below its height by the setbacks, is joined with the
+next lot along in the same zone, as owners amalgamate, up to three lots, kept
+where the joined lots use the land better, the lots nearest the site first.
+A lot still too small, or one the capacity study holds (a strata scheme, a
+heritage item, a mature or a small site), stands as it is. The neighbours on
+a lot that redevelops stand today and give way to it built out: the
+compliance sheet tests the sun and the separations against both. A height
+mapped as an RL is not read for a lot (its ground is not known), and the
+bundle carries each lot's zone, height and ratio (a bundle from before the
+lots' ratios reads a building's on the lot). The proposal's
 outline is drawn over everything, so a future neighbour in front of it does
 not hide it, and a future far above what stands runs out of the frame, as the
 height plane does, the frame saying how high it goes. The massing is drawn
@@ -1503,8 +1541,66 @@ local metres:
   need at 30 m² each over 90% of the site.
 - **The ADG checks.** Communal open space (25%), deep soil (7%, with its
   minimum dimension by site area, against the ground the ground floor leaves),
-  the separations, apartment sizes against 4D-1's minima; solar access and
-  cross-ventilation are marked for the design to test.
+  the separations, apartment sizes against 4D-1's minima; cross-ventilation is
+  marked for the design to test. Solar access and overshadowing are tested on
+  the massing, as the next two points say.
+- **Sun to the apartments (ADG 4A-1, 4A-2).** `src/lib/solarAccess.ts`, tested
+  in `test/solar-access.mts`, gives each drawn path's apartments their hours
+  of sun on 21 June between 9 am and 3 pm AEST, by the quarter hour. The study
+  knows how many apartments each storey holds, not where, so each storey's
+  facade is shared among them in equal lengths: the plate's outline, a
+  courtyard's too, less any wall built to a side or rear boundary, where no
+  window can go. An apartment has the sun when at least a metre of its
+  facade, a metre above its floor, does (the ADG's 1 m² on the living room's
+  glass, the living room taken to be on its sunniest face). The line to the
+  sun is tested against the neighbours at their recorded heights (a nominal
+  two storeys where none is recorded) and the scheme's own tiers. The share
+  with the hours asked (two in the Greater Sydney Region's councils and in
+  Newcastle and Wollongong, three elsewhere, `adgSunHours()`) is set against
+  4A-1's 70%, and the share with none against 4A-2's 15%. Both are given again
+  with the neighbours built to their futures, where any rises. The hours are
+  counted in all, as the ADG's criteria read; `"sun": { "continuous": true }`
+  counts the longest unbroken run instead, for a council that reads them so,
+  and the pages say which. The compliance spread's massing colours each
+  apartment's facade yellow where it has the hours.
+- **Sun on each facade and roof.** `facadeSun()` in `src/lib/solarAccess.ts`
+  gives every face of a scheme its hours, storey by storey in cells about
+  3 m wide, read 1 m above each floor, and `roofSun()` every roof, the plate
+  each tier's roof is less the tiers above it, in cells about 3 m square
+  (clipped by `polyclip-ts`), both today and built out; the compliance
+  sheets colour the massing's cells by their band of hours
+  (`sunBands()` in `src/render/facadeElevation.ts`: seven bands, loriini's,
+  none, under 1, 1–2, 2–3, 3–4, 4–5 and 5 hours and over, after the rainbow
+  lorikeet: three blues short of two hours, a green where a face just makes
+  them, then yellow, orange and #FF5A3D for the most sun; each style takes
+  its own blues and greens). The same module can unfold the faces into
+  strips (`unfoldedFacades`), which no sheet prints yet.
+- **The shadow it adds (ADG 3B-2).** The ground the scheme puts in shadow at
+  each hour from 9 am to 3 pm that is in sun today (the neighbours and what
+  stands on the site casting theirs), sampled every 1.5 m over the open
+  ground of the parks (RE1, C1), the LEP's heritage items and the residential
+  lots (R1–R5) it can reach; the ground under a roof is left out. The table
+  gives each kind's most and its hour, and the residential lots it shades,
+  with those it takes below a common DCP test (half the lot's open ground in
+  sun for the same hours), which pass it today. The ADG asks overshadowing
+  minimised, a judgement, so a path that adds shadow takes the dash, and one
+  that adds none the tick. The bundle carries the heritage items' outlines
+  (`heritageItems`); one from before them says the items were not measured.
+  The ground is flat and the trees cast no shadow: the figures are a test of
+  the massing, for a solar access study to confirm.
+- **Separation (ADG 3F-1).** `src/lib/separation.ts`, tested in
+  `test/separation.mts`: the least distance in plan from each built tier to
+  each building within 24 m, in the band of storeys the two share, against
+  the separation the ADG asks between buildings: 12 m between habitable
+  rooms up to four storeys, 18 m from five to eight, 24 m from nine, and 9,
+  13.5 and 18 m where one face is blank. Which faces have windows is the
+  design's, so a distance between the two figures holds only if one is
+  blank. A neighbour's storeys are its height at 3.1 m (two where none is
+  recorded), today and as its controls let it rise; a building across a
+  street is left to the street and the DCP, and a tier built to its side
+  boundaries (a podium, the shops) has blank walls there and is not
+  measured. The envelope already keeps half of each separation to every
+  boundary, so a shortfall is a neighbour's nearness to its own.
 - **The Housing SEPP.** The in-fill affordable housing bonus — up to 30% more
   FSR and height for 15% affordable housing — as a second run of the study,
   and a note where the site is in a TOD area, whose controls may apply instead.
@@ -1516,12 +1612,19 @@ from `yield_assumptions.json` in the address's output folder (the CLI's
 ```json
 { "mix": { "studio": 0.05, "one": 0.25, "two": 0.55, "three": 0.15, "four": 0 },
   "sizes": { "two": 85 }, "podiumStoreys": 3, "towerPlateMax": 850,
-  "parking": { "one": 0.5, "two": 1, "three": 1.5, "visitor": 0.2, "basis": "the council's DCP" } }
+  "parking": { "one": 0.5, "two": 1, "three": 1.5, "visitor": 0.2, "basis": "the council's DCP" },
+  "sun": { "hours": 3, "neighbourHours": 3, "continuous": true } }
 ```
 
+(`sun.hours` sets the hours of mid-winter sun the apartments are held to in
+place of ADG 4A-1's for the council, `sun.neighbourHours` those the
+neighbours' open ground is (unset, the first), and `sun.continuous` asks
+them unbroken.)
+
 The deck prints the ones a run used. It is a feasibility figure, not a design:
-DCP setbacks, street wall heights, solar access and overshadowing are the
-design's to test, and mapped controls are not a planning certificate. Outputs:
+DCP setbacks and street wall heights are the design's to test, the sun and
+shadow figures are indicative, and mapped controls are not a planning
+certificate. Outputs:
 `PLANNING_YIELD.pdf`, a PNG a spread in `yield/`, `.csv`, `.json`, and
 `data/yield.json` (the bundle, which redraws with no refetch). A bundle from
 before the future heights, the lots' zones and numbers and the kerbs still

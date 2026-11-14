@@ -2373,7 +2373,7 @@ const firstSentence = (text: string) => { const m = text.replace(/\s+/g, ' ').ma
  * The deck's maps and diagrams are set in Arial, whatever face the style's own sheets use (Z. 2026-11: the grotesk
  * of the paper styles does not belong on the report's maps); the pages are set in it already.
  */
-const MAP_FONT = "Arial, 'Liberation Sans', 'Helvetica Neue', Helvetica, sans-serif";
+export const MAP_FONT = "Arial, 'Liberation Sans', 'Helvetica Neue', Helvetica, sans-serif";
 
 export const spreadFoot = (sources: string, over = '') =>
   `<div class="abs zfoot" data-settle style="left:12mm;width:396mm;bottom:${(297 - Z_BASE - 0.6).toFixed(2)}mm">${over}<div class="zfsrc" data-split><div>${esc(sources)}</div><div hidden></div></div></div>`;

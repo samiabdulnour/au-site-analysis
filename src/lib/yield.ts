@@ -278,8 +278,8 @@ export interface YieldResult {
   governs: 'fsr' | 'envelope' | 'height';
   gfaByUse: Record<Use, number>;
   gba: number;
-  /** Storey by storey: its use, its plate and its floor area. */
-  floors: { storey: number; use: Use; gba: number; gfa: number }[];
+  /** Storey by storey: its use, its plate and its floor area, and the tier (its index in `tiers`) it is built in. */
+  floors: { storey: number; use: Use; gba: number; gfa: number; tier: number }[];
   nsa: number;
   units: UnitCount;
   averageUnitSqm: number;
@@ -413,6 +413,14 @@ function simplify(pts: XY[], tol: number): XY[] {
 export function storeysUnder(hobM: number, ground: number, typical: number, roof: number): number {
   const free = hobM - roof - ground;
   return free < 0 ? 0 : 1 + Math.floor(free / typical + 1e-9);
+}
+
+/** The levels a study builds its storeys at, metres above the ground: the bottom and the top of storey s (counted from 1). */
+export function storeyLevels(y: Pick<YieldResult, 'archetype' | 'assumptions'>): { bottom: (s: number) => number; top: (s: number) => number } {
+  const a = y.assumptions;
+  const g = y.archetype === 'mixed' ? a.groundRetailF2F : y.archetype === 'commercial' ? a.commercialF2F : a.residentialF2F;
+  const t = y.archetype === 'commercial' ? a.commercialF2F : a.residentialF2F;
+  return { bottom: (s) => (s <= 1 ? 0 : g + (s - 2) * t), top: (s) => g + (s - 1) * t };
 }
 
 /** The ADG's separation to a side or rear boundary for the storeys of a tier: the tallest storey decides. */
@@ -577,14 +585,16 @@ function fill(input: YieldInput, a: YieldAssumptions, arch: Archetype, tiers: Ti
   const cap = input.fsr ? input.fsr * A : Infinity;
   const floors: YieldResult['floors'] = [];
   let capacity = 0, total = 0;
-  for (const t of tiers) for (let s = t.from; s <= t.to; s++) {
-    const full = t.plateSqm * eff(t.use);
-    capacity += full;
-    if (total >= cap - 1e-6 || t.plateSqm < 1) continue;
-    const take = Math.min(full, cap - total);
-    floors.push({ storey: s, use: t.use, gba: t.plateSqm * (take / full), gfa: take });
-    total += take;
-  }
+  tiers.forEach((t, tier) => {
+    for (let s = t.from; s <= t.to; s++) {
+      const full = t.plateSqm * eff(t.use);
+      capacity += full;
+      if (total >= cap - 1e-6 || t.plateSqm < 1) continue;
+      const take = Math.min(full, cap - total);
+      floors.push({ storey: s, use: t.use, gba: t.plateSqm * (take / full), gfa: take, tier });
+      total += take;
+    }
+  });
   // The tallest building's storeys: tiers side by side (buildings kept on their footprints) share storey numbers.
   const storeys = floors.reduce((m, f) => Math.max(m, f.storey), 0);
   const gfaByUse: Record<Use, number> = { retail: 0, residential: 0, commercial: 0 };

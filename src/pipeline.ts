@@ -754,12 +754,14 @@ export async function runYieldPipeline(
     const inside = (lon: number, lat: number) => rings.filter((rg) => pointInRingLL(lon, lat, rg)).length % 2 === 1;
     const numbers = [...new Set(addresses.filter((a) => inside(a.lon, a.lat)).map((a) => a.housenumber.toUpperCase()))];
     const [lon, lat] = interiorLL(rings);
-    const z = at(zoning, lon, lat), h = at(hob, lon, lat), v = Number(h?.MAX_B_H);
+    const z = at(zoning, lon, lat), h = at(hob, lon, lat), v = Number(h?.MAX_B_H), r = Number(at(fsr, lon, lat)?.FSR);
     return {
       rings,
       ...(numbers.length ? { numbers } : {}),
       ...(z?.SYM_CODE ? { zone: String(z.SYM_CODE).trim() } : {}),
       ...(Number.isFinite(v) && v > 0 ? { hob: { value: v, units: String(h?.UNITS ?? 'm') } } : {}),
+      // the ratio too, for the future context's buildings
+      ...(Number.isFinite(r) && r > 0 ? { fsr: r } : {}),
     };
   }).filter((pc) => pc.rings.length && pc.rings[0].some(([lon, lat]) => near(lon, lat)));
 
@@ -769,6 +771,12 @@ export async function runYieldPipeline(
   catch (e) { log(`  kerbs: not worked out (${(e as Error).message})`); }
   kerbs = kerbs.filter((kl) => kl.coords.some(([lon, lat]) => near(lon, lat)));
   log(`  plan: ${parcels.length} lots, ${parcels.filter((pc) => pc.numbers).length} numbered, ${kerbs.length} kerb lines`);
+
+  // The heritage items round about (the LEP's items, not its conservation areas), for the shadow the scheme adds to them.
+  const heritageItems = heritage.features
+    .filter((f) => /item/i.test(String(f.properties?.LAY_CLASS ?? '')) && !/conservation/i.test(String(f.properties?.LAY_CLASS ?? '')))
+    .map((f) => ({ rings: ringsOf(f.geometry), ...(f.properties?.H_NAME ? { name: String(f.properties.H_NAME) } : {}) }))
+    .filter((h) => h.rings.length && h.rings[0].some(([lon, lat]) => near(lon, lat)));
 
   let assumptions: YieldBundle['assumptions'];
   try { assumptions = JSON.parse(await readFile(join(opts.outDir, 'yield_assumptions.json'), 'utf8')); log('  assumptions from yield_assumptions.json'); } catch { /* the defaults */ }
@@ -792,6 +800,7 @@ export async function runYieldPipeline(
     kerbs,
     context: context.map(({ footprint: _f, ...c }) => c),
     existing,
+    heritageItems,
     buildingsSource: buildings.source,
     ...(footprints.mesh ? { mesh: footprints.mesh } : {}),
     zones,
