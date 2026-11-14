@@ -1780,7 +1780,7 @@ function complianceSheet(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: Pa
   const sepSwatch = `<path d="M0.4,0.9H4.6" stroke="${SEPARATION_INK.clear}" stroke-width="0.35"/><path d="M0.4,1.8H4.6" stroke="${SEPARATION_INK.blank}" stroke-width="0.35"/><path d="M0.4,2.7H4.6" stroke="${SEPARATION_INK.short}" stroke-width="0.35"/>`;
   const legend: LegendEntry[] = [
     { swatch: KEY.site, label: 'The site' },
-    { swatch: KEY.zones(sunBands().map((x) => x.fill)), label: `Facades and roofs, hours of sun 9 am – 3 pm on 21 June: none, under 1, 1–2, 2–3, 3–4, 4 and over` },
+    { swatch: KEY.zones(sunBands().map((x) => x.fill)), label: `Facades and roofs, hours of sun 9 am – 3 pm on 21 June: none, under 1, 1–2, 2–3, 3–4, 4–5, 5 and over` },
     { swatch: KEY.use('residential'), label: 'Indicative massing: blank walls' },
     { swatch: `<path d="M0.4,0.7H2.3V3H0.4Z" fill="#ffffff" stroke="#8f8f8f" stroke-width="0.2"/><path d="M2.7,0.7H4.6V3H2.7Z" fill="#ffffff" stroke="#8f8f8f" stroke-width="0.2" stroke-dasharray="0.5,0.3"/>`,
       label: s.future.buildings.length ? 'Neighbours in white at their heights; dashed, their future on feasible footprints to their LEP height and FSR' : 'Neighbours in white at their heights' },

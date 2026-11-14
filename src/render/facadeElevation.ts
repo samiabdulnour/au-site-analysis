@@ -9,48 +9,57 @@
 // corner a fold. A face of an upper tier, stepped back, stands over the face
 // below it that looks the same way, where it is in plan; a courtyard's walls
 // unfold in a strip of their own under the outside's. The colours step at the
-// hours that matter: under two hours the cool end, two and over the warm,
-// where ADG 4A-1's hours begin, both in the deck's palette (sunBands).
+// hours that matter: under two hours the blues, from two the lorikeet's green
+// and its warm colours, where ADG 4A-1's hours begin (sunBands).
 
 import { esc } from './chrome.js';
-import { deckFamilies, deckLook, luminance } from './template.js';
-import { paletteRamp } from './atlasKit.js';
+import { deckLook, luminance } from './template.js';
 import type { FacadeFace } from '../lib/solarAccess.js';
 import type { XY } from '../lib/yield.js';
 
 /** A band of hours: up to where it runs, its fill, the ink a figure on it is set in, its word in the key. */
 export interface SunBand { upTo: number; fill: string; ink: string; label: string }
 
-type Families = ReturnType<typeof deckFamilies>;
 /**
- * Each style's six tones, taken straight from its palette (its families and the ramp its heights page runs
- * across): its blues short of two hours, darkest where there is none; from two hours its warm tones, the most
- * vivid at four hours and over, so the faces with the most sun glow rather than darken. Checked with the dataviz
- * validator: blue against warm at the two-hour line clear in every style (ΔE ≥ 10, ≥ 7 for colour-blind readers);
- * neighbouring blues ΔE ≥ 11; the warm bands apart at full colour vision (ΔE ≥ 10), though Flamingo's amber and
- * coral (3–4 h, 4 h and over), both passes, come close for a deutan reader.
+ * Seven bands of mid-winter sun, after the rainbow lorikeet (Trichoglossus moluccanus): three blues where a face
+ * misses the ADG's two hours (its belly, its head, its head's sheen), a green where it just makes them (its
+ * wing), then its golden lower chest, orange chest and red-orange beak, #FF5A3D, for the most sun. The bands are
+ * loriini's: 0, 0–1, 1–2, 2–3, 3–4, 4–5 and 5 hours and over.
+ *
+ * Each deck style follows the lorikeet in its own blues and greens: Flamingo's navy, cornflower and sea green;
+ * Heron's indigo, map blue, sky and leaf green; Kingfisher's navy, steel blue and sea green with a creamier gold;
+ * Canary's ePlanning blues, planning green and lemon. All keep the same saturation and the same top. Checked with
+ * the dataviz validator: every pair of neighbouring bands ΔE ≥ 15 at full colour vision and ≥ 10 for deutan,
+ * protan and tritan readers, in every style.
  */
-const SUN_PICKS: Record<string, (f: Families, ramp: string[]) => string[]> = {
-  flamingo: (f, r) => [f.blue.deep, f.blue.line, f.blue.solid, f.orange.solid, r[2], f.red.solid],
-  heron: (f, r) => [f.blue.deep, r[0], f.blue.solid, f.orange.mid, f.orange.text, f.orange.deep],
-  kingfisher: (f, r) => [f.blue.deep, f.blue.line, f.blue.solid, f.orange.line, f.red.solid, r[2]],
-  canary: (f) => [f.blue.deep, f.blue.line, f.blue.mid, f.orange.mid, f.red.mid, f.red.solid],
+export const LORIKEET = ['#141B70', '#3440BC', '#8590EE', '#4F9A1E', '#FFE04A', '#FFA01E', '#FF5A3D'];
+const SUN_STYLE: Record<string, string[]> = {
+  flamingo: ['#18256E', '#3554C0', '#8DA2F0', '#12946A', '#FFE55A', '#FFA126', '#FF5A3D'],
+  heron: ['#1C2A80', '#1E6FD0', '#7FC4F2', '#2F9A4F', '#FFE04A', '#FFA01E', '#FF5A3D'],
+  kingfisher: ['#15306E', '#2F62C4', '#86A6EA', '#2E8F6A', '#FFE466', '#FFA23A', '#FF5A3D'],
+  canary: ['#0F2A9C', '#2B5FE0', '#7FA8FF', '#2FA300', '#FFE51A', '#FFA200', '#FF5A3D'],
 };
-const LABELS = ['none', 'under 1 h', '1–2 h', '2–3 h', '3–4 h', '4 h and over'];
-const UP_TO = [0, 1, 2, 3, 4, Infinity];
+const LABELS = ['none', 'under 1 h', '1–2 h', '2–3 h', '3–4 h', '4–5 h', '5 h and over'];
+const UP_TO = [0, 1, 2, 3, 4, 5, Infinity];
 
-const BANDS_BY_PALETTE = new WeakMap<object, SunBand[]>();
-/** The bands of hours a cell is coloured by, in the deck's own palette (SUN_PICKS); a style without picks takes Flamingo's rule. */
+const BANDS_BY_STYLE = new Map<string, SunBand[]>();
+/** The bands of hours a cell is coloured by, in the deck style's version of the lorikeet; a style without one takes the lorikeet's own. */
 export function sunBands(): SunBand[] {
-  const f = deckFamilies();
-  const hit = BANDS_BY_PALETTE.get(f);
+  const id = deckLook().id;
+  const hit = BANDS_BY_STYLE.get(id);
   if (hit) return hit;
-  const pick = SUN_PICKS[deckLook().id] ?? SUN_PICKS.flamingo;
-  const bands = pick(f, paletteRamp()).map((fill, i) => ({ upTo: UP_TO[i], fill, ink: luminance(fill) > 0.32 ? '#1c1c1c' : '#ffffff', label: LABELS[i] }));
-  BANDS_BY_PALETTE.set(f, bands);
+  const bands = (SUN_STYLE[id] ?? LORIKEET).map((fill, i) => ({ upTo: UP_TO[i], fill, ink: luminance(fill) > 0.32 ? '#1c1c1c' : '#ffffff', label: LABELS[i] }));
+  BANDS_BY_STYLE.set(id, bands);
   return bands;
 }
-export const bandOf = (h: number): SunBand => sunBands().find((b) => (b.upTo === 0 ? h <= 1e-9 : h <= b.upTo + 1e-9))!;
+/**
+ * The band an hour count falls in. Bands are half-open and the boundary belongs to the band above, as loriini has
+ * them: exactly two hours is 2–3 h, since the ADG asks for at least two; none is exactly none.
+ */
+export const bandOf = (h: number): SunBand => {
+  const bands = sunBands();
+  return h <= 1e-9 ? bands[0] : bands.slice(1).find((b) => h < b.upTo - 1e-9) ?? bands[bands.length - 1];
+};
 
 const COMPASS = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
 export const compass = (bearing: number) => COMPASS[Math.round(bearing / 22.5) % 16];

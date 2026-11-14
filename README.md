@@ -1379,7 +1379,7 @@ site may take, so a site with more paths has more pages:
    traffic and ground in white and greys) so only the scheme's colours read:
    each facade cell (a storey high, about 3 m wide) and each roof
    cell (about 3 m square, on what the tiers above leave open) in its band of
-   hours, the style's blues under two, its warm tones from two; under
+   hours, blues under two, the lorikeet's green, yellow, orange and red from two; under
    them the plan as the report's sun page draws it, in Arial: no zone tints,
    every building white with its storeys (grey where no height is recorded and
    two are assumed), the future footprints dashed with theirs, and every
@@ -1569,11 +1569,12 @@ local metres:
   each tier's roof is less the tiers above it, in cells about 3 m square
   (clipped by `polyclip-ts`), both today and built out; the compliance
   sheets colour the massing's cells by their band of hours
-  (`sunBands()` in `src/render/facadeElevation.ts`: six bands, none, under 1,
-  1–2, 2–3, 3–4 and 4 hours and over, each a tone straight from the style's
-  palette, its blues short of two hours and its warm tones from two, the most
-  vivid at four hours and over so the sunniest faces glow rather than darken). The same module can unfold the faces into strips (`unfoldedFacades`),
-  which no sheet prints yet.
+  (`sunBands()` in `src/render/facadeElevation.ts`: seven bands, loriini's,
+  none, under 1, 1–2, 2–3, 3–4, 4–5 and 5 hours and over, after the rainbow
+  lorikeet: three blues short of two hours, a green where a face just makes
+  them, then yellow, orange and #FF5A3D for the most sun; each style takes
+  its own blues and greens). The same module can unfold the faces into
+  strips (`unfoldedFacades`), which no sheet prints yet.
 - **The shadow it adds (ADG 3B-2).** The ground the scheme puts in shadow at
   each hour from 9 am to 3 pm that is in sun today (the neighbours and what
   stands on the site casting theirs), sampled every 1.5 m over the open
