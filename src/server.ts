@@ -28,6 +28,7 @@ import { themeFor, type SheetKind } from './render/template.js';
 import { previewOf, type SheetSpec, type DrawnSheet } from './draw.js';
 import { serveSlots, slotState } from './lib/slots.js';
 import { stampPdf, watermarkId } from './render/watermark.js';
+import { imposeBooklet, bookletPathOf } from './render/booklet.js';
 import { GRANTS, PRICE_LABEL, SITE_PRICE_LABEL, planOf, paidFor, siteKey, type Plan, type Grants } from './plans.js';
 import { TERMS_VERSION } from './terms.js';
 import {
@@ -808,8 +809,8 @@ const escapeHtml = (s: string) =>
 // ---- the free side's PDFs ------------------------------------------------
 //
 // Stamped on the first download and kept beside the clean one, named for the
-// watermark they carry. In flight here, so two free visitors opening one sheet
-// at once stamp it once.
+// watermark they carry; a deck's booklet likewise, imposed and stamped. In
+// flight here, so two free visitors opening one sheet at once stamp it once.
 const stamping = new Map<string, Promise<string>>();
 
 /**
@@ -819,23 +820,49 @@ const stamping = new Map<string, Promise<string>>();
  */
 const PRIVATE = { 'Cache-Control': 'private, no-store' };
 
-function watermarked(job: Job): Promise<string> {
-  const dest = job.pdfPath!.replace(/\.pdf$/, `.wm-${watermarkId()}.pdf`);
+/**
+ * `dest` made once from `make`, however many ask for it at once, written into
+ * the job's directory without moving its mtime: the sweep ages a sheet by it,
+ * so a sheet opened on its last day still goes on time.
+ */
+function keptBeside(dest: string, make: () => Promise<unknown>): Promise<string> {
   if (existsSync(dest)) return Promise.resolve(dest);
   let pending = stamping.get(dest);
   if (!pending) {
     pending = (async () => {
-      // Writing into the job's directory moves its mtime, which the sweep ages
-      // it by; put it back, so a sheet opened on its last day still goes on time.
       const dir = dirname(dest);
       const before = await stat(dir);
-      await stampPdf(job.pdfPath!, dest);
+      await make();
       await utimes(dir, before.atime, before.mtime).catch(() => {});
       return dest;
     })().finally(() => stamping.delete(dest));
     stamping.set(dest, pending);
   }
   return pending;
+}
+
+/** The stamped copy of a PDF of the job's (the sheet, or its booklet), beside it. */
+function watermarked(src: string): Promise<string> {
+  const dest = src.replace(/\.pdf$/, `.wm-${watermarkId()}.pdf`);
+  return keptBeside(dest, () => stampPdf(src, dest));
+}
+
+/**
+ * How a deck is printed (the PRINT choice on the page): as its A3 spreads, or
+ * as a booklet, the spreads imposed to fold into A4 (src/render/booklet.ts).
+ * Only the decks have spreads to fold; every other sheet is printed as drawn.
+ */
+type Print = 'slides' | 'booklet';
+const foldable = (job: Job) => job.sheet === 'slides' || job.sheet === 'yield';
+
+/**
+ * The deck as a booklet: imposed when it was drawn, or here, once, for a deck
+ * drawn before booklets were (which has no cover either: its PNGs say so).
+ */
+function bookletOf(job: Job): Promise<string> {
+  const src = job.pdfPath!, dest = bookletPathOf(src);
+  const cover = existsSync(join(dirname(src), job.sheet === 'yield' ? 'yield' : 'slides', '00_cover.png'));
+  return keptBeside(dest, () => imposeBooklet(src, dest, { cover }));
 }
 
 /**
@@ -846,8 +873,10 @@ function watermarked(job: Job): Promise<string> {
 const PDF_NEEDS_ACCOUNT = { error: 'Make a free account to download the PDF.', signup: true };
 
 /** The PDF this viewer is given: the sheet as drawn, or the stamped copy. Never the first on a failure of the second. */
-const pdfFor = (job: Job, v: Viewer) =>
-  grantsFor(v, job).cleanPdf ? Promise.resolve(job.pdfPath!) : watermarked(job);
+async function pdfFor(job: Job, v: Viewer, print: Print = 'slides'): Promise<string> {
+  const src = print === 'booklet' && foldable(job) ? await bookletOf(job) : job.pdfPath!;
+  return grantsFor(v, job).cleanPdf ? src : watermarked(src);
+}
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', 'http://localhost');
@@ -1712,13 +1741,15 @@ Canonical: ${base}/.well-known/security.txt
     if (!job?.pdfPath) return json(res, 404, { error: 'Not ready.' });
     const v = viewerOf(req);
     if (!grantsFor(v, job).pdf) return json(res, 401, PDF_NEEDS_ACCOUNT);
+    // ?print=booklet: the deck imposed to fold; anything else, or a sheet with no spreads, as drawn
+    const print: Print = url.searchParams.get('print') === 'booklet' && foldable(job) ? 'booklet' : 'slides';
     let path: string;
     try {
-      path = await pdfFor(job, v);
+      path = await pdfFor(job, v, print);
     } catch (e: any) {
       // Refused rather than served clean: a failed stamp must not become a
       // free way to the subscriber's PDF.
-      console.log(`watermark: ${job.id} failed — ${e?.message ?? e}`);
+      console.log(`${print === 'booklet' ? 'booklet or watermark' : 'watermark'}: ${job.id} failed — ${e?.message ?? e}`);
       return json(res, 500, { error: 'Could not prepare the PDF. Try again shortly.' });
     }
     readFile(path, (err, data) => {
@@ -1729,7 +1760,7 @@ Canonical: ${base}/.well-known/security.txt
       const disposition = url.searchParams.has('download') ? 'attachment' : 'inline';
       res.writeHead(200, {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `${disposition}; filename="${kind}_${slug}.pdf"`,
+        'Content-Disposition': `${disposition}; filename="${kind}_${slug}${print === 'booklet' ? '_BOOKLET' : ''}.pdf"`,
         ...PRIVATE,
       });
       res.end(data);

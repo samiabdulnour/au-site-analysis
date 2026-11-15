@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { renderSlides, SLIDE_W, SLIDE_H } from '../src/render/slides.js';
 import { renderYieldDeck } from '../src/render/yieldSheet.js';
 import { printSlides } from '../src/render/pdf.js';
+import { imposeBooklet, bookletPathOf } from '../src/render/booklet.js';
 import { prepareRasters } from '../src/render/paintMasks.js';
 import { BLEED_SCALE, COUNTRY_SCALE } from '../src/pipeline.js';
 import { withTemplate, templateFor } from '../src/render/template.js';
@@ -43,4 +44,6 @@ const pdfName = theme ? `${stem}.pdf` : sheet === 'yield' ? (only?.length ? 'YIE
 const htmlPath = join(outDir, `${stem}.html`);
 await writeFile(htmlPath, html);
 const pngs = await printSlides(htmlPath, join(outDir, pdfName), join(outDir, theme ? stem : sheet === 'yield' ? (only?.length ? 'yield_only' : 'yield') : only?.length ? 'slides_only' : 'slides'), { widthMm: SLIDE_W, heightMm: SLIDE_H });
+// the booklet beside the deck, where the whole deck was printed (a deck of some pages has no cover to fold round)
+if (!only?.length) await imposeBooklet(join(outDir, pdfName), bookletPathOf(join(outDir, pdfName)));
 console.log(`recomposed ${pngs.length} ${sheet} page${pngs.length === 1 ? '' : 's'}${theme ? ` in ${theme}` : ''}: ${pngs.join(', ')}`);

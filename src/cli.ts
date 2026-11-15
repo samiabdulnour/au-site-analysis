@@ -21,6 +21,7 @@ import { summaryCsv, summaryJson } from './export/summaryExport.js';
 import { renderYieldDeck, yieldCsv, yieldJson } from './render/yieldSheet.js';
 import { renderSlides, slidesFacts, PANEL_W, PANEL_H, DA_PANEL_H, SLIDE_W, SLIDE_H } from './render/slides.js';
 import { htmlToPdf, printSlides } from './render/pdf.js';
+import { imposeBooklet, bookletPathOf } from './render/booklet.js';
 import { prepareRasters } from './render/paintMasks.js';
 import { BLEED_SCALE, COUNTRY_SCALE } from './pipeline.js';
 
@@ -146,7 +147,9 @@ if (sheetType === 'yield') {
   const csvPath = join(outDir, 'PLANNING_YIELD.csv'), jsonPath = join(outDir, 'PLANNING_YIELD.json');
   await writeFile(csvPath, yieldCsv(yb));
   await writeFile(jsonPath, yieldJson(yb));
-  outputs.push(yieldPdfPath, ...yieldPngs, csvPath, jsonPath);
+  // the booklet beside it, for printing double-sided on A3 and folding into an A4 booklet (src/render/booklet.ts)
+  await imposeBooklet(yieldPdfPath, bookletPathOf(yieldPdfPath));
+  outputs.push(yieldPdfPath, bookletPathOf(yieldPdfPath), ...yieldPngs, csvPath, jsonPath);
 }
 
 if (sheetType === 'slides') {
@@ -173,7 +176,8 @@ if (sheetType === 'slides') {
   const pngs = await printSlides(slidesHtmlPath, deckPath, join(outDir, 'slides'), { widthMm: SLIDE_W, heightMm: SLIDE_H });
   const factsPath = join(outDir, 'overall.json');
   await writeFile(factsPath, JSON.stringify(slidesFacts(sb), null, 2));
-  outputs.push(deckPath, ...pngs, factsPath);
+  await imposeBooklet(deckPath, bookletPathOf(deckPath));
+  outputs.push(deckPath, bookletPathOf(deckPath), ...pngs, factsPath);
 }
 
 if (sheetType === 'streetscape') {

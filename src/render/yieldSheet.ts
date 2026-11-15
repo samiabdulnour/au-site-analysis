@@ -19,7 +19,7 @@
 import { esc } from './chrome.js';
 import { tpl, withTemplate, templateFor, deckLook, tint, inkFor, vivid, type DeckLook } from './template.js';
 import { shortStreetName, type SheetMeta } from './sheet.js';
-import { atlasPage, deckCss, zFlow, zBlock, zTable, brief, MAP_FONT, type Slide, type DeckRenderOptions } from './slides.js';
+import { atlasPage, coverPage, coverDate, COVER_CREDIT, deckCss, zFlow, zBlock, zTable, brief, MAP_FONT, type Slide, type DeckRenderOptions } from './slides.js';
 import { drawAxonometric, shade, type AxoScene, type Prism } from './axonometric.js';
 import { INK, zFigures, zBars, niceAxis, fillShape, categoryFill, massingInks, type Fill } from './atlasKit.js';
 import { zoneToCategory } from './model.js';
@@ -2021,8 +2021,30 @@ function drawYieldDeck(b: YieldBundle, _meta: SheetMeta): { html: string; slides
 <html lang="en"><head><meta charset="utf-8"><title>${esc(b.siteAddress)} — PLANNING YIELD</title>
 <style>
 ${deckCss()}${YIELD_CSS}</style></head>
-<body>${slides.map((sl, i) => atlasPage(sl, i)).join('\n')}</body></html>`;
+<body>${yieldCover(b, s, slides)}
+${slides.map((sl, i) => atlasPage(sl, i)).join('\n')}</body></html>`;
   return { html, slides };
+}
+
+/** The yield's cover: the massing within the controls on the front, under the name; the contents and colophon on the back. */
+function yieldCover(b: YieldBundle, s: YieldStudy, slides: Slide[]): string {
+  const y = s.noScheme ? undefined : s.base, A = b.siteAreaSqm ?? 0, c = b.controls;
+  const axo = axonometric(b, s, { x: 0, y: 100, w: PAGE_W, h: PAGE_H - 100 }, { y }, 'cover');
+  const hero = `<svg width="${PAGE_W}mm" height="${PAGE_H}mm" viewBox="0 0 ${PAGE_W} ${PAGE_H}" xmlns="http://www.w3.org/2000/svg" font-family="${tpl().font}" fill="${tpl().ink}">${axo}</svg>`;
+  return coverPage({
+    deck: 'Planning yield',
+    name: b.siteAddress,
+    details: [
+      [b.lotDescription && b.lotDescription !== '—' ? b.lotDescription : '', A ? area(A) : ''].filter(Boolean).join(' · '),
+      [c.zoneCode && `${c.zoneCode}${c.zonePurpose ? ` ${c.zonePurpose}` : ''}`, s.hob ? `HOB ${s.hob.rl ? `RL ${fmt(s.hob.value, 1)}` : m1(s.hob.value)}` : '', c.fsr ? `FSR ${c.fsr.toFixed(2)}:1` : ''].filter(Boolean).join(' · '),
+      y?.gfa ? `within the controls ${area(y.gfa)}${y.units.total ? ` · ${fmt(y.units.total)} apartments` : ''}${s.reshaped ? ` · reshaped to comply ${area(s.reshaped.y.gfa)}` : ''}` : '',
+    ].filter(Boolean),
+    date: `${coverDate(b.generatedAt)} · ${tpl().label}`,
+    hero,
+    accent: inks().accent,
+    contents: slides.map((sl, i) => ({ n: String(i + 1).padStart(2, '0'), title: sl.title })),
+    colophon: [NOT_A_DESIGN, COVER_CREDIT],
+  });
 }
 
 /** The yield's tables, in the atlas pages' type: 6 pt grey heads, 7.5 pt rows, hairlines. */

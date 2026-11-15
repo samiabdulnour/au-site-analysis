@@ -8824,6 +8824,20 @@ export function deckCss(): string {
   table.da.strat tr.manual td b { font-weight: 600; }
   .slide.atlas { font-family: Arial, 'Liberation Sans', 'Helvetica Neue', Helvetica, sans-serif; color: #000000; }
   .slide.atlas .znum { font-size: 14pt; font-weight: 700; letter-spacing: 0.08em; line-height: 1.15; text-transform: uppercase; white-space: nowrap; }
+  .slide.cover .cv-block { background: #ffffff; padding: 7mm 8mm 6.5mm; }
+  .slide.cover .cv-mark { font-size: 14pt; font-weight: 700; letter-spacing: 0.08em; line-height: 1.15; text-transform: uppercase; }
+  .slide.cover .cv-deck { font-size: 30pt; font-weight: 700; letter-spacing: 0.01em; line-height: 1.05; text-transform: uppercase; margin-top: 7mm; }
+  .slide.cover .cv-rule { height: 0; border-top: 0.18mm solid #878787; margin: 6mm 0 5mm; }
+  .slide.cover .cv-name { font-size: 16pt; font-weight: 700; letter-spacing: 0.02em; line-height: 1.15; text-transform: uppercase; }
+  .slide.cover .cv-det { font-size: 8pt; line-height: 3.6mm; letter-spacing: 0.025em; text-transform: uppercase; margin-top: 3mm; }
+  .slide.cover .cv-date { font-size: 6pt; letter-spacing: 0.09em; text-transform: uppercase; background: #ffffff; padding: 1.47mm 2.4mm 1.13mm; line-height: 1.2; }
+  .slide.cover .cv-head { font-size: 8pt; letter-spacing: 0.08em; text-transform: uppercase; color: #6f6f6f; margin-bottom: 3mm; }
+  .slide.cover .cv-contents { font-size: 9pt; line-height: 5.2mm; }
+  .slide.cover .cv-contents.two { column-count: 2; column-gap: 8mm; }
+  .slide.cover .cv-contents div { break-inside: avoid; display: flex; gap: 3mm; }
+  .slide.cover .cv-contents b { display: inline-block; width: 7mm; font-weight: 700; letter-spacing: 0.04em; }
+  .slide.cover .cv-colophon { font-size: 6.5pt; line-height: 3mm; color: #6f6f6f; }
+  .slide.cover .cv-colophon p { margin: 0 0 2mm; }
   .slide.atlas .zrule { height: 0; border-top: 0.18mm solid #878787; }
   .slide.atlas .zsub { font-size: 8pt; line-height: 3.4mm; letter-spacing: 0.025em; text-transform: uppercase; }
   .slide.atlas .zbar { font-size: 8.4pt; padding: 0 0.15mm; }
@@ -8897,6 +8911,55 @@ export function keepTogether(html: string): string {
 // else on the page. Together they are the page's mark for the check that the
 // printed PDF is whole (src/render/printCheck.ts), and a page that printed
 // short loses what it draws last first.
+/**
+ * A deck's cover: an A3 spread like its pages, whose right half is the front cover and left half the back, as a
+ * booklet's first and last pages (src/render/booklet.ts). The front: the deck's picture to the page's edges, and over
+ * it the name and the logo, the SITE ANALYST wordmark, the deck's name, the site's name and what it is, and the
+ * date. The back: the contents, a spread's number and title each, and the colophon. Unnumbered: the spreads after it
+ * keep their numbers.
+ */
+export interface Cover {
+  deck: string;
+  name: string;
+  details: string[];
+  date: string;
+  /** The front's picture, an SVG of the page's width, from `heroTop` mm down to its foot. */
+  hero: string;
+  heroTop?: number;
+  accent?: string;
+  contents: { n: string; title: string }[];
+  colophon: string[];
+}
+export function coverPage(c: Cover): string {
+  const top = c.heroTop ?? 0;
+  return `
+<section class="slide atlas cover" id="00_cover" data-base="${Z_BASE}">
+<div class="abs" style="left:${FOLD}mm;top:${top}mm">${c.hero}</div>
+<div class="abs cv-block" style="left:${FOLD + 12}mm;top:12mm;width:186mm">
+<div data-print-check><div class="cv-mark">Site Analyst</div><div class="cv-deck" style="color:${c.accent ?? '#000000'}">${esc(c.deck)}</div></div>
+<div class="cv-rule"></div>
+<div class="cv-name">${esc(c.name)}</div>
+${c.details.length ? `<div class="cv-det">${c.details.map(esc).join('<br>')}</div>` : ''}
+</div>
+<div class="abs cv-date" style="left:${FOLD + 12}mm;bottom:12mm">${esc(c.date)}</div>
+<div class="abs znum" style="left:12mm;top:10.6mm">Site Analyst</div>
+<div class="abs znum" style="left:75.3mm;top:10.6mm">${esc(c.deck)}</div>
+<div class="abs zrule" style="left:12mm;top:20mm;width:186mm"></div>
+<div class="abs" style="left:12mm;top:28mm;width:186mm"><div class="cv-head">Contents</div>
+<div class="cv-contents${c.contents.length > 14 ? ' two' : ''}">${c.contents.map((x) => `<div><b>${esc(x.n)}</b><span>${esc(x.title)}</span></div>`).join('')}</div></div>
+<div class="abs cv-colophon" style="left:12mm;bottom:12mm;width:120mm">${c.colophon.map((t) => `<p>${esc(t)}</p>`).join('')}</div>
+</section>`;
+}
+
+/** A deck's date as its cover gives it: "12 November 2026". */
+export const coverDate = (iso: string) => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? iso.slice(0, 10) : d.toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Australia/Sydney' });
+};
+
+/** The colophon every cover carries: who made the deck, and on what terms. */
+export const COVER_CREDIT = 'Generated with Site Analyst — © Sami Abdulnour and Zofia Kosova, licensed use. Made from open data with no guarantee it is complete.';
+
 export function atlasPage(s: Slide, i: number): string {
   const [line1, ...rest] = s.subtitle.split(' · ');
   return keepTogether(`
@@ -8930,6 +8993,7 @@ function drawSlides(b: SlidesBundle, meta: SheetMeta): { html: string; slides: S
   const slides = [countryAtlas(b), locationSlide(b), characterAtlas(b), ...(scape ? [scape] : []), planningAtlas(b), controlsAtlas(b, facts), strategicAtlas(b, facts), topographyAtlas(b), developmentAtlas(b, facts), ...(capacity ? [capacity] : []), builtFormAtlas(b, facts), formAtlas(b, facts), movementSlide(b), greenAtlas(b), siteAtlas(b), conditionAtlas(b), sunAtlas(b), constraintsAtlas(b), peopleAtlas(b), ocAtlas(b, facts), sourcesAtlas(b, facts)];
   const t = tpl();
   const footerLeft = ['SITE ANALYST — OVERALL ANALYSIS', b.siteAddress, meta.client ? `for ${meta.client}` : '', meta.jobNo ? `job ${meta.jobNo}` : ''].filter(Boolean).join(' · ');
+  const cover = reportCover(b, slides);
   // A page's last footer is its mark for the print check (src/render/printCheck.ts): the last thing it draws.
   const pages = slides.map((s, i) => s.bleed || s.full ? atlasPage(s, i) : `
 <section class="slide${s.bleed || s.full ? ' atlas' : ''}" id="${esc(s.id)}">
@@ -8941,16 +9005,39 @@ function drawSlides(b: SlidesBundle, meta: SheetMeta): { html: string; slides: S
   <div class="abs subtitle" style="left:${L_X}mm;top:26.5mm;width:${s.full ? 115 : L_W}mm">${esc(s.subtitle)}</div>
   <div class="abs text" style="left:${L_X}mm;top:${s.textY ?? FIELD_Y}mm;width:${TEXT_W}mm;height:${SLIDE_H - (s.textY ?? FIELD_Y) - 16}mm">${s.textHtml}</div>
   ${s.figureHtml}
-  <div class="abs foot" style="left:${L_X}mm;top:${FOOT_Y}mm;width:${s.full ? 115 : L_W}mm"><span>${s.bleed || s.full ? '' : esc(footerLeft)}</span><span>${s.full ? '' : i * 2 + 1}</span></div>
-  ${s.bleed || s.full ? `<div class="abs foot" data-print-check style="left:${FIELD_X}mm;top:${FOOT_Y}mm;width:${FIELD_W}mm"><span></span><span style="background:#ffffff;padding:0 1.6mm">${s.full ? `${i * 2 + 1}–${i * 2 + 2}` : i * 2 + 2}</span></div>` : `<div class="abs foot" data-print-check style="left:${FIELD_X}mm;top:${FOOT_Y}mm;width:${FIELD_W}mm"><span>generated ${esc(b.generatedAt.slice(0, 10))}</span><span>${i * 2 + 2}</span></div>`}
+  <div class="abs foot" style="left:${L_X}mm;top:${FOOT_Y}mm;width:${s.full ? 115 : L_W}mm"><span>${s.bleed || s.full ? '' : esc(footerLeft)}</span><span>${s.full ? '' : i * 2 + 2}</span></div>
+  ${s.bleed || s.full ? `<div class="abs foot" data-print-check style="left:${FIELD_X}mm;top:${FOOT_Y}mm;width:${FIELD_W}mm"><span></span><span style="background:#ffffff;padding:0 1.6mm">${s.full ? `${i * 2 + 2}–${i * 2 + 3}` : i * 2 + 3}</span></div>` : `<div class="abs foot" data-print-check style="left:${FIELD_X}mm;top:${FOOT_Y}mm;width:${FIELD_W}mm"><span>generated ${esc(b.generatedAt.slice(0, 10))}</span><span>${i * 2 + 3}</span></div>`}
 </section>`).join('\n');
 
   const html = `<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><title>${esc(b.siteAddress)} — OVERALL ANALYSIS</title>
 <style>
 ${deckCss()}${[...new Set(slides.map((s) => s.css).filter(Boolean))].join('\n')}</style></head>
-<body>${pages}</body></html>`;
+<body>${cover}\n${pages}</body></html>`;
   return { html, slides };
+}
+
+/** The report's cover: the place from above to the front's edges, the site outlined; the contents and colophon on the back. */
+function reportCover(b: SlidesBundle, slides: Slide[]): string {
+  const p = b.bleedPanel;
+  const proj = panelProjector(p);
+  const parts: string[] = [`<rect x="0" y="0" width="${p.wMm}" height="${p.hMm}" fill="#f2f2f2"/>`];
+  const aerial = b.character?.aerial;
+  if (aerial?.tiles.length) parts.push(aerialTiles(aerial.tiles, p, aerial.extent));
+  else parts.push(withTemplate(greyBase(tpl()), () => baseLayers(b.base, proj, p)));
+  parts.push(siteMark(b.base, proj, 'both'));
+  const lga = b.context.lga?.name ? titleCase(b.context.lga.name) : '';
+  const c = b.controls;
+  return coverPage({
+    deck: 'Site report',
+    name: b.siteAddress,
+    details: [[lga, b.lotDescription !== '—' ? b.lotDescription : ''].filter(Boolean).join(' · '), [c.zoneCode && `${c.zoneCode}${c.zonePurpose ? ` ${c.zonePurpose}` : ''}`, c.maxHeightM ? `HOB ${c.maxHeightM}${/rl|ahd/i.test(c.heightUnits ?? '') ? ' RL' : 'm'}` : '', c.fsr ? `FSR ${c.fsr.toFixed(2)}:1` : '', b.siteAreaSqm ? `${fmtNum(Math.round(b.siteAreaSqm))} m²` : ''].filter(Boolean).join(' · ')].filter(Boolean),
+    date: `${coverDate(b.generatedAt)} · ${tpl().label}`,
+    hero: bleedSvg('cover', p, parts.join('\n')),
+    accent: deckLook().accent,
+    contents: slides.map((s, i) => ({ n: String(i + 1).padStart(2, '0'), title: s.title })),
+    colophon: ['The site, its place and its controls, read from the NSW Government\'s and the council\'s open data: an analysis to start a design from, not a survey or a s10.7 planning certificate.', COVER_CREDIT],
+  });
 }
 
 /** Everything the deck says, as data: the JSON beside the PDF. */

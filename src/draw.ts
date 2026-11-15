@@ -16,6 +16,7 @@ import { renderYieldDeck, yieldCsv, yieldJson } from './render/yieldSheet.js';
 import { renderSlides, slidesFacts, PANEL_W, PANEL_H, DA_PANEL_H, SLIDE_W, SLIDE_H } from './render/slides.js';
 import { withTemplate, templateFor, type SheetKind } from './render/template.js';
 import { htmlToPdf, printSlides } from './render/pdf.js';
+import { imposeBooklet, bookletPathOf } from './render/booklet.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -73,6 +74,15 @@ export async function drawSheet(spec: SheetSpec, outDir: string, log: (m: string
   return withTemplate(templateFor(spec.sheet, spec.template), () => drawBody(spec, outDir, log));
 }
 
+/**
+ * A deck's booklet beside its PDF (src/render/booklet.ts), for PRINT BOOKLET: imposed once here, so asking for it is
+ * a download and not a wait. A failure leaves the deck as it is; the server imposes the booklet when it is asked for.
+ */
+async function booklet(pdfPath: string, log: (m: string) => void): Promise<void> {
+  log('imposing the booklet…');
+  try { await imposeBooklet(pdfPath, bookletPathOf(pdfPath)); } catch (e: any) { log(`booklet not imposed: ${e?.message ?? e}`); }
+}
+
 async function drawBody(spec: SheetSpec, outDir: string, log: (m: string) => void): Promise<DrawnSheet> {
   const meta: SheetMeta = {
     jobNo: '', client: '', status: '', sheetNo: '', revision: '',
@@ -86,6 +96,7 @@ async function drawBody(spec: SheetSpec, outDir: string, log: (m: string) => voi
     log('printing PDF…');
     const pdfPath = join(outDir, 'PLANNING_YIELD.pdf');
     await printSlides(htmlPath, pdfPath, join(outDir, 'yield'), { widthMm: SLIDE_W, heightMm: SLIDE_H }, previewOf(outDir), log);
+    await booklet(pdfPath, log);
     // Like the summary it replaces, a table: CSV for Excel, JSON for the numbers behind it.
     const csvPath = join(outDir, 'PLANNING_YIELD.csv');
     await writeFile(csvPath, yieldCsv(yb));
@@ -144,6 +155,7 @@ async function drawBody(spec: SheetSpec, outDir: string, log: (m: string) => voi
     log('printing PDF and slide images…');
     const pdfPath = join(outDir, 'OVERALL_ANALYSIS.pdf');
     await printSlides(htmlPath, pdfPath, join(outDir, 'slides'), { widthMm: SLIDE_W, heightMm: SLIDE_H }, previewOf(outDir), log);
+    await booklet(pdfPath, log);
     // The deck's open format is its facts: everything it says, as JSON.
     const factsPath = join(outDir, 'overall.json');
     await writeFile(factsPath, JSON.stringify(slidesFacts(sb), null, 2));

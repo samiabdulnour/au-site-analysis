@@ -1675,7 +1675,8 @@ The deck prints the ones a run used. It is a feasibility figure, not a design:
 DCP setbacks and street wall heights are the design's to test, the sun and
 shadow figures are indicative, and mapped controls are not a planning
 certificate. Outputs:
-`PLANNING_YIELD.pdf`, a PNG a spread in `yield/`, `.csv`, `.json`, and
+`PLANNING_YIELD.pdf` and `PLANNING_YIELD.booklet.pdf` (see *The cover and the booklet*), a PNG a spread in
+`yield/`, `.csv`, `.json`, and
 `data/yield.json` (the bundle, which redraws with no refetch). A bundle from
 before the future heights, the lots' zones and numbers and the kerbs still
 draws: without the future neighbours and the plan's labels, its kerbs worked
@@ -1968,8 +1969,8 @@ it was retrieved or when its cache was filled, and the attribution and
 licence; with the layers' own dates, what is computed rather than sourced,
 what remains to be obtained outside the open data, and the run's warnings.
 Each slide carries the sentences that follow from the data and a marked
-placeholder for the author's narrative. Outputs: `OVERALL_ANALYSIS.pdf`, `slides/<id>.png` per slide and
-`overall.json` with everything the deck says.
+placeholder for the author's narrative. Outputs: `OVERALL_ANALYSIS.pdf` (and its booklet, see *The cover and
+the booklet* below), `slides/<id>.png` per slide and `overall.json` with everything the deck says.
 
 Where a council publishes its own DCP mapping as open data — the City of
 Sydney does — the deck reads it too, for the sites in that LGA: building
@@ -1984,6 +1985,43 @@ raised only where the study finds development potential, and a strata
 scheme, a heritage item, a mature development or a site under 250 m² stands
 as it is; its last spread says how many were held, and `PLANNING_YIELD.json`
 lists each neighbour's reading.
+
+### The cover and the booklet
+
+Both decks open on a cover (`coverPage` in `src/render/slides.ts`), page 1 of
+the deck, so the spreads after it are numbered from 2. Its right half is the
+front: the wordmark and the deck's name, the address in the style's accent, the
+lot, zone, height and ratio (the yield adds what the controls give and what the
+scheme reshaped to comply gives), and the date and style, over a drawing of the
+site — the report's the character aerial with the lot marked, the yield's the
+axonometric of the envelope. Its left half is the back: the contents, a line a
+spread, and the colophon (what the data is and is not, and the credit).
+
+Each deck is also imposed as a booklet (`src/render/booklet.ts`), kept beside
+its PDF as `PLANNING_YIELD.booklet.pdf` or `OVERALL_ANALYSIS.booklet.pdf`. Each
+A3 landscape side holds two A4 pages, and the sides come in saddle-stitch
+order. Printed double-sided on A3, flipped on the short edge, the sheets
+stacked as they come out, folded down the middle and stapled twice on the fold,
+they make an A4 portrait booklet:
+- The cover's right half is the front and its left half the back.
+- Each spread keeps its two halves face to face, as drawn.
+- Blank pages go in before the back where the pages fall short of a four.
+
+A thin grey dashed line down the middle of every side marks the fold. Printed
+on A4 instead, the same file folds to an A5 booklet. Each half is the spread's
+own page, drawn once into the booklet and shown through a window, so the
+booklet is hardly larger than the deck. The CLI and `scripts/recompose.ts`
+impose it after the deck; `npx tsx test/booklet.mts` checks the order and reads
+an imposed deck back as printed.
+
+On the page, PRINT under STYLE (for REPORT and YIELD) picks which of the two the
+PDF link downloads: SLIDES, the A3 spreads with their cover, or BOOKLET. It is
+not part of what is drawn, so switching it keeps a finished drawing and only
+moves its link (`/api/jobs/<id>/pdf?download&print=booklet`, saved as
+`…_BOOKLET.pdf`). A deck drawn before booklets existed is imposed on its first
+such download and kept beside it; the deck's PNGs show whether it has a cover,
+and without one its first spread still opens on pages 2 and 3. A free account's
+booklet is stamped with the watermark like its slides.
 
 ### The decks' type and alignment
 

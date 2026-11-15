@@ -264,6 +264,12 @@ jobs:
           npx tsx test/reshape.mts
           npx tsx test/tod.mts
 
+      # The decks folded as a booklet: the pages in saddle-stitch order, each
+      # sheet's two sides, and a made-up deck imposed and read back as printed
+      # (by poppler's pdftoppm where the runner has it).
+      - name: the booklet folds in order
+        run: npx tsx test/booklet.mts
+
       # Slide 15's heritage layers on made-up features: outlines clipped to the
       # strip, a permit over the lot told from one that grazes its kerb, AHIP
       # records merged by permit, the RNE's rejected places left out, and what
