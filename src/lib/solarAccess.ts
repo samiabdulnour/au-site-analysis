@@ -215,7 +215,7 @@ function segDist(x: number, y: number, a: XY, b: XY): number {
  * not the plate), and whether a window can stand there, which it cannot within 0.6 m of a boundary edge marked
  * blank (a side or rear boundary the plate is built to).
  */
-function facadeSamples(plate: XY[][], boundary: XY[], blank: boolean[], step: number): Sample[] {
+function facadeSamples(plate: XY[][], boundary: XY[], blank: boolean[], step: number, windowless?: boolean[]): Sample[] {
   const out: Sample[] = [];
   plate.forEach((rg, ring) => {
     if (rg.length < 3) return;
@@ -231,7 +231,8 @@ function facadeSamples(plate: XY[][], boundary: XY[], blank: boolean[], step: nu
       const n = Math.max(1, Math.round(L / step));
       for (let k = 0; k < n; k++) {
         const t = (k + 0.5) / n, x = p.x + dx * t, y = p.y + dy * t;
-        let window = true;
+        // a face of the outline that holds no apartment's windows (a gallery, a double-loaded building's back)
+        let window = !(ring === 0 && windowless?.[edge]);
         for (let e = 0; e < boundary.length && window; e++) if (blank[e] && segDist(x, y, boundary[e], boundary[(e + 1) % boundary.length]) < 0.6) window = false;
         out.push({ ring, edge, t, x, y, nx, ny, len: L / n, window });
       }
@@ -276,6 +277,8 @@ export interface ApartmentSunInput {
   sillM?: number;
   litM?: number;
   stepM?: number;
+  /** How often the sun is read, times an hour (4, the quarter hours, unless set): a search screening many schemes reads it less often. */
+  perHour?: number;
 }
 
 /**
@@ -299,7 +302,7 @@ export function apartmentSun(y: YieldResult, o: ApartmentSunInput): ApartmentSun
     const t = y.tiers[f.tier];
     if (!t?.plate.length) return;
     let samples = samplesOf.get(f.tier);
-    if (!samples) { samples = facadeSamples(t.plate, o.boundary, o.blank, step); samplesOf.set(f.tier, samples); }
+    if (!samples) { samples = facadeSamples(t.plate, o.boundary, o.blank, step, t.windowless); samplesOf.set(f.tier, samples); }
     const windows = samples.filter((sm) => sm.window);
     if (!windows.length) return;
     // each ring takes apartments by the length of its windowed facade, and shares that length among them evenly
@@ -349,15 +352,17 @@ export function apartmentSun(y: YieldResult, o: ApartmentSunInput): ApartmentSun
     }
     return false;
   };
-  const suns = winterSun(o.lat, o.lon);
+  // each reading stands for its share of the hour, at the middle of it: the quarter hours unless the caller reads less often
+  const per = Math.max(1, Math.round(o.perHour ?? 4)), dt = 1 / per;
+  const suns = per === 4 ? winterSun(o.lat, o.lon) : winterSun(o.lat, o.lon, Array.from({ length: 6 * per }, (_, i) => 9 * 60 + (i + 0.5) * (60 / per)));
   for (const s of suns) {
     const nowToday = sunward(today, box, zMin, s);
     const nowLater = later ? sunward(later, box, zMin, s) : undefined;
     for (const u of units) {
-      if (hoursIn(nowToday, s, u)) { u.hours += 0.25; u.now += 0.25; u.run = Math.max(u.run, u.now); } else u.now = 0;
+      if (hoursIn(nowToday, s, u)) { u.hours += dt; u.now += dt; u.run = Math.max(u.run, u.now); } else u.now = 0;
       if (nowLater) {
         u.hoursFuture ??= 0; u.runFuture ??= 0;
-        if (hoursIn(nowLater, s, u)) { u.hoursFuture += 0.25; u.nowFuture += 0.25; u.runFuture = Math.max(u.runFuture, u.nowFuture); } else u.nowFuture = 0;
+        if (hoursIn(nowLater, s, u)) { u.hoursFuture += dt; u.nowFuture += dt; u.runFuture = Math.max(u.runFuture, u.nowFuture); } else u.nowFuture = 0;
       }
     }
   }

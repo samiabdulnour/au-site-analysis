@@ -247,6 +247,23 @@ jobs:
       - name: the yield raises a neighbour only where it may develop
         run: npx tsx test/yield-futures.mts
 
+      # The compliance sheets' sun, shadow and separation, on made-up blocks:
+      # sun positions and rays, each apartment's hours, the shadow a scheme
+      # adds, each facade's and roof's hours, and the ADG's separations.
+      - name: the sun, the shadow and the separations read true
+        run: |
+          npx tsx test/solar-access.mts
+          npx tsx test/separation.mts
+
+      # The neighbours' future on feasible footprints, the envelope reshaped
+      # into them to meet the ADG's sun, and the station-precinct controls
+      # (the Housing SEPP's TOD, and the councils' alternatives): made-up lots.
+      - name: the footprints, the compliant scheme and the TOD controls
+        run: |
+          npx tsx test/future-context.mts
+          npx tsx test/reshape.mts
+          npx tsx test/tod.mts
+
       # Slide 15's heritage layers on made-up features: outlines clipped to the
       # strip, a permit over the lot told from one that grazes its kerb, AHIP
       # records merged by permit, the RNE's rejected places left out, and what

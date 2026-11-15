@@ -1357,14 +1357,64 @@ site may take, so a site with more paths has more pages:
    tier's number in the ring the plan draws it in — and the apartments, a row
    for each kind in the mix with its share, ADG 4D-1's least area for it, its
    own area, how many there are and the area they take.
-5. **Affordable housing bonus** — the same for the Housing SEPP's in-fill
+5. **Reshaped to comply** — the envelope within the controls laid out again
+   in the office's feasible footprints so that it meets the ADG's sun
+   (`src/lib/reshape.ts`, tested in `test/reshape.mts`):
+   - **The footprints:** single-loaded 12 m deep, its gallery on the face
+     with least sun; double-loaded 18 m along an east–west axis, its
+     apartments running through to the north; double-loaded 22 m along a
+     north–south axis, facing east and west; each 15 to 45 m long, a
+     double-loaded one at least as long as it is deep.
+   - **Where they stand:** in rows within the setbacks (6 m from the street,
+     the ADG's half separation from the side and rear boundaries for their
+     storeys), the rows and the buildings in a row the ADG's full separation
+     apart (12, 18 or 24 m). The rows run along the main frontage, across
+     it, or true east–west or north–south.
+   - **How high:** to the height of building and held to the floor space
+     ratio. All the buildings take one height, or the northern row is a
+     storey or two lower, or the rows step down to the north, since a
+     building shades the one south of it.
+   - **Which layout:** they are read from the most floor area down, each
+     one's apartments for their sun (every half hour, then confirmed at the
+     quarter hours). The first that meets 4A-1 and 4A-2 is the scheme; where
+     none does, the nearest, and it says so.
+   - **Its pages:** its own spread (the schedule names each building's plan)
+     and its own compliance sheet; the floor area it gives up against the
+     envelope is the floor area the sun costs.
+6. **TOD controls** — where the site is in a TOD area of the Housing SEPP
+   (chapter 5, part 2, `src/lib/tod.ts`, tested in `test/tod.mts`):
+   - **What it allows:** residential flat buildings in the residential and
+     local centre zones to 22 m and 2.5:1, shop-top housing in the local
+     centre and commercial zones to 24 m and 2.5:1, each the LEP's where
+     more generous.
+   - **What it asks:** a lot at least 21 m wide at the street, and 2% of the
+     floor area as affordable housing in perpetuity where the scheme is
+     2,000 m² or more.
+   - **Its pages:** its own spread and compliance sheet, drawn only where it
+     lifts the LEP's height or ratio on a lot wide enough.
+   - **Where a council's alternative replaced it:** Ku-ring-gai's for
+     Gordon, Killara, Lindfield and Roseville, in its LEP from
+     14 November 2025 (State Environmental Planning Policy Amendment
+     (Ku-ring-gai Station Precincts) 2025), within about 800 m of the
+     stations; and Belmore, Canterbury, Croydon (in part), Lakemba, North
+     Wollongong, Punchbowl, St Marys Metro, Wiley Park and Cockle Creek.
+     The LEP's maps already carry the alternative's heights and ratios, so
+     there is no extra path.
+   - **What the sheets say there:** the controls table, the compliance
+     criteria and the spreads' sources name the alternative and the date it
+     began. They also say what its maps set that the study does not read
+     (affordable housing up to 10% on key sites and 2% across parts of the
+     precincts, key sites, active frontages, the low- and mid-rise
+     exclusion), and the savings for applications lodged by 13 June 2025.
+   - **Deferred and accelerated precincts** are named in the controls table.
+7. **Affordable housing bonus** — the same for the Housing SEPP's in-fill
    bonus, 30% more height and FSR for 15% affordable housing, eligibility to
    confirm; drawn only where it gains floor area or apartments.
-6. **Envelope to the height** — the setbacks filled to the height plane with
+8. **Envelope to the height** — the setbacks filled to the height plane with
    the FSR set aside, the case a clause 4.6 variation or a planning proposal
    has to carry, marked non-compliant; drawn only where the FSR stops the
    scheme below the height.
-7. **Compliance**, a sheet for each option that holds apartments, after the
+9. **Compliance**, a sheet for each option that holds apartments, after the
    yield's own spreads: does its envelope comply? On the left the
    assessment criteria in their order, a mark each: overshadow impact
    (3B-2), solar access (4A-1 with the hours, again built out, and 4A-2 with
@@ -1390,7 +1440,7 @@ site may take, so a site with more paths has more pages:
    (`addedGround()` in `src/lib/solarAccess.ts`: what it would overshadow);
    the land it shades outlined and each separation drawn as a dimension (green clear,
    amber where it holds only habitable to non-habitable, red short).
-8. **Controls and assumptions** — the assumptions the study rests on (floor
+10. **Controls and assumptions** — the assumptions the study rests on (floor
    to floor, efficiencies, the mix, the plates, the parking rates, the nearest
    station) on the left; on the right, the full table the office's
    development summary (DA 002) keeps — CONTROLS, PROPOSED and COMPLIANCE for

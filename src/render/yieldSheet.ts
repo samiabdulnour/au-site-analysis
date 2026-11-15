@@ -45,6 +45,8 @@ import { shadowHull } from '../lib/shadows.js';
 import { addedGround, apartmentSun, addedShadow, adgSunHours, schemeBlocks, groundShadow, facadeSun, roofSun, winterSun, SHADE_KINDS, type ApartmentSun, type AddedShadow, type Block, type FacadeFace, type RoofCell, type ShadeKind, type ShadeTarget } from '../lib/solarAccess.js';
 import { separations, type SeparationRow, type SeparationReading } from '../lib/separation.js';
 import { futureContext, FOOTPRINTS, type FutureBuilding, type FutureLot } from '../lib/futureContext.js';
+import { reshapeToComply, type Reshaped } from '../lib/reshape.js';
+import { readTod, todSentence, TOD_SEPP, type TodReading } from '../lib/tod.js';
 import { bandOf, compass, sunBands } from './facadeElevation.js';
 
 export interface YieldBundle extends SummaryData {
@@ -124,6 +126,18 @@ export interface YieldStudy {
   max?: YieldResult;
   /** What stands, rebuilt on its footprints to its height, where that holds more than the controls give. */
   retained?: YieldResult;
+  /**
+   * The envelope reshaped to comply (lib/reshape.ts): the office's feasible footprints within the controls and the
+   * ADG's separations, the most floor area whose apartments meet ADG 4A-1 and 4A-2, or the nearest it comes.
+   */
+  reshaped?: Reshaped;
+  /**
+   * The station-precinct controls at the site (lib/tod.ts): the Housing SEPP's TOD controls, a council's alternative
+   * that replaced them (Ku-ring-gai's, in its LEP), or a deferred or accelerated precinct; and, where the SEPP's lift
+   * the LEP's on a lot wide enough, the scheme they allow.
+   */
+  tod?: TodReading;
+  todY?: YieldResult;
   ring: XY[];
   fronts: boolean[];
   toLocal: (lon: number, lat: number) => XY;
@@ -220,7 +234,35 @@ export function yieldStudy(b: YieldBundle): YieldStudy {
   })).filter((e) => e.rings.length && e.heightM > 0);
   const kept = standing.length ? computeRetained({ ring, fronts, siteAreaSqm: area, zone: c.zoneCode, assumptions, standing }) : undefined;
   const retained = kept && kept.gfa > base.gfa + 1 ? kept : undefined;
-  return { base, bonus, max, retained, ring, fronts, toLocal, hob, parkingSet, frontageLengths, future, noScheme };
+  const reshaped = noScheme || base.archetype !== 'residential' ? undefined : reshapeOf(b, toLocal, { ring, fronts, siteAreaSqm: area, zone: c.zoneCode, hobM: hob?.metres, fsr: c.fsr, assumptions });
+  // the station-precinct controls, and the scheme the SEPP's TOD controls allow where they lift the LEP's on a lot wide enough
+  const tod = readTod({ policyAtSite: b.policyAtSite, station: b.station, lgaName: c.lgaName, zone: c.zoneCode, lepHobM: hob?.metres, lepFsr: c.fsr, lotWidthM: frontageLengths[0]?.lengthM });
+  const todY = tod?.regime === 'sepp' && tod.permits && tod.lifts && tod.wideEnough !== false && !(hob?.rl && hob.metres === undefined)
+    ? computeYield({ ring, fronts, siteAreaSqm: area, zone: c.zoneCode, hobM: tod.hobM, fsr: tod.fsr, assumptions, archetype: tod.permits === 'shopTopHousing' ? 'mixed' : 'residential' })
+    : undefined;
+  return { base, bonus, max, retained, reshaped, tod, todY: todY && todY.storeys > 0 ? todY : undefined, ring, fronts, toLocal, hob, parkingSet, frontageLengths, future, noScheme };
+}
+
+/** Where the site is: the middle of its outline, longitude and latitude. */
+function siteLonLat(b: YieldBundle): { lon: number; lat: number } {
+  const pts = b.siteRing.slice(0, -1);
+  return { lon: pts.reduce((t, p) => t + p[0], 0) / pts.length, lat: pts.reduce((t, p) => t + p[1], 0) / pts.length };
+}
+
+/** The neighbours as the sun study stands them: at their recorded heights, a nominal two storeys where none is recorded. */
+function contextBlocks(b: YieldBundle, toLocal: (lon: number, lat: number) => XY): Block[] {
+  return b.context.map((cb) => ({ rings: [(cb.rings[0] ?? []).map(([x, yy]) => toLocal(x, yy))], z0: 0, z1: cb.known && cb.heightM > 0 ? cb.heightM : UNKNOWN_HEIGHT_M }))
+    .filter((bl) => bl.rings[0].length >= 3);
+}
+
+const RESHAPE_DONE = new WeakMap<YieldBundle, Reshaped | null>();
+/** The envelope reshaped to comply, worked out once a bundle: it reads the sun of many layouts. */
+function reshapeOf(b: YieldBundle, toLocal: (lon: number, lat: number) => XY, input: { ring: XY[]; fronts: boolean[]; siteAreaSqm: number; zone?: string; hobM?: number; fsr?: number; assumptions: Partial<YieldAssumptions> }): Reshaped | undefined {
+  if (RESHAPE_DONE.has(b)) return RESHAPE_DONE.get(b) ?? undefined;
+  const rule = sunRule(b);
+  const out = reshapeToComply({ ...input, ...siteLonLat(b), context: contextBlocks(b, toLocal), hoursRequired: rule.hours, continuous: rule.continuous });
+  RESHAPE_DONE.set(b, out ?? null);
+  return out;
 }
 
 const FUTURE_DONE = new WeakMap<YieldBundle, YieldStudy['future']>();
@@ -297,7 +339,7 @@ export interface PathSun {
 
 /** The study's result behind a path, where the path has a scheme. */
 const pathResult = (s: YieldStudy, id: Scenario['id']): YieldResult | undefined =>
-  id === 'withinControls' ? (s.noScheme ? undefined : s.base) : id === 'affordableBonus' ? s.bonus : id === 'envelopeToHeight' ? s.max : id === 'rebuiltAsStands' ? s.retained : undefined;
+  id === 'withinControls' ? (s.noScheme ? undefined : s.base) : id === 'reshaped' ? s.reshaped?.y : id === 'tod' ? s.todY : id === 'affordableBonus' ? s.bonus : id === 'envelopeToHeight' ? s.max : id === 'rebuiltAsStands' ? s.retained : undefined;
 
 const SUN_DONE = new WeakMap<YieldBundle, Map<Scenario['id'], PathSun | null>>();
 /** A metre and a storey's floor, for the nominal two storeys the massing draws a neighbour of no recorded height at. */
@@ -309,8 +351,7 @@ export function pathSun(b: YieldBundle, s: YieldStudy, id: Scenario['id']): Path
   if (done.has(id)) return done.get(id) ?? undefined;
   const y = pathResult(s, id);
   if (!y || !y.storeys) { done.set(id, null); return undefined; }
-  const pts = b.siteRing.slice(0, -1);
-  const lon = pts.reduce((t, p) => t + p[0], 0) / pts.length, lat = pts.reduce((t, p) => t + p[1], 0) / pts.length;
+  const { lon, lat } = siteLonLat(b);
   const local = (rg: number[][]) => rg.map(([x, yy]) => s.toLocal(x, yy));
   // the neighbours as the massing draws them: at their recorded heights, a nominal two storeys where none is recorded;
   // built out, those on a lot the future context redevelops give way to its footprint, to its height
@@ -550,17 +591,19 @@ export function yieldRows(b: YieldBundle, s: YieldStudy = yieldStudy(b)): YieldR
       proposed: sun ? ['built into the envelope', `${separationWords(sun)}`] : ['built into the envelope'], ok: sun ? separationOk(sun) : true });
     const ap = sun?.apartments;
     rows.push({ label: '4A. SOLAR AND DAYLIGHT ACCESS', controls: [`70% of apartments receive ${rule.hours} hours direct`, `sunlight 9 am – 3 pm at mid winter${rule.continuous ? ', unbroken' : ''}`, `(${rule.where})`],
-      proposed: ap ? [`${pctOf(ap.meeting, ap.total)} (${ap.meeting} of ${ap.total}) with the neighbours as they stand`, ap.future ? `${ap.future.meeting === ap.meeting ? 'the same' : pctOf(ap.future.meeting, ap.total)} with the neighbours built to their controls` : '', 'indicative: the apartments laid along the facades']
+      proposed: ap ? [`${pctOf(ap.meeting, ap.total)} (${ap.meeting} of ${ap.total}) with the neighbours as they stand`, ap.future ? `${ap.future.meeting === ap.meeting ? 'the same' : pctOf(ap.future.meeting, ap.total)} with the neighbours built to their controls` : '', 'indicative: the apartments laid along the facades',
+        s.reshaped ? `reshaped to comply: ${pctOf(s.reshaped.sun.meeting, s.reshaped.sun.total)} (${s.reshaped.sun.meeting} of ${s.reshaped.sun.total})` : '']
         : ['to be tested in design'], ok: ap ? sunOk(ap) : null });
     if (ap) rows.push({ label: '4A. NO DIRECT SUNLIGHT', controls: ['At most 15% of apartments receive no direct', 'sunlight 9 am – 3 pm at mid winter'],
-      proposed: [`${pctOf(ap.none, ap.total)} (${ap.none} of ${ap.total})`, ap.future ? `${ap.future.none === ap.none ? 'the same' : pctOf(ap.future.none, ap.total)} with the neighbours built to their controls` : ''], ok: noSunOk(ap) });
+      proposed: [`${pctOf(ap.none, ap.total)} (${ap.none} of ${ap.total})`, ap.future ? `${ap.future.none === ap.none ? 'the same' : pctOf(ap.future.none, ap.total)} with the neighbours built to their controls` : '',
+        s.reshaped ? `reshaped to comply: ${pctOf(s.reshaped.sun.none, s.reshaped.sun.total)} (${s.reshaped.sun.none} of ${s.reshaped.sun.total})` : ''], ok: noSunOk(ap) });
     rows.push({ label: '4B. NATURAL VENTILATION', controls: ['60% of apartments cross ventilated', 'in the first nine storeys'], proposed: ['to be tested in design'], ok: null });
     const kinds = inMix(y);
     rows.push({ label: '4D. APARTMENT SIZE', controls: ['Studio 35, 1 bed 50, 2 bed 70, 3 bed 90 sqm,', '12 sqm more a bedroom over three (+5 sqm for a second bathroom)'],
       proposed: [`${kinds.map((k) => `${UNIT_SHORT[k]} ${fmt(a.sizes[k])}`).join(', ')} sqm assumed`], ok: kinds.every((k) => a.sizes[k] >= ADG_MINIMUM[k]) });
   }
 
-  const tod = b.policyAtSite.find((p) => p.kind === 'tod' || p.kind === 'todAccelerated');
+  const tod = s.tod;
   if (s.bonus || tod) {
     rows.push({ label: 'HOUSING SEPP', section: true });
     if (s.bonus) {
@@ -571,7 +614,13 @@ export function yieldRows(b: YieldBundle, s: YieldStudy = yieldStudy(b)): YieldR
           ? ['no gain here: the envelope, not the FSR or the height, governs']
           : [`${sqm(x.gfa)} GFA, ${storeyWord(x.storeys)}`, `${x.units.total} units, about ${Math.round(x.units.total * 0.15)} affordable`] });
     }
-    if (tod) rows.push({ label: 'TRANSPORT ORIENTED DEVELOPMENT', controls: [`The site is in the ${tod.name} TOD area:`, 'the SEPP\'s TOD controls may apply in place', 'of the LEP\'s (Housing SEPP chapter 5)'] });
+    if (tod) {
+      // the sentence a line a clause, as the table sets its controls
+      const lines = todSentence(tod).split(/(?<=[.:])\s+/);
+      const x = s.todY;
+      rows.push({ label: tod.regime === 'alternative' ? 'STATION PRECINCT, ALTERNATIVE TOD' : 'TRANSPORT ORIENTED DEVELOPMENT', controls: lines,
+        ...(x ? { proposed: [`${sqm(x.gfa)} GFA, ${storeyWord(x.storeys)}`, `${x.units.total} units${x.gfa >= TOD_SEPP.affordableFromSqm ? `, ≈ ${sqm(x.gfa * TOD_SEPP.affordableShare)} affordable` : ''}`] } : {}) });
+    }
   }
   return rows;
 }
@@ -1191,7 +1240,7 @@ export function tierSpot(env: XY[][], above: XY[][], placed: XY[], fit: number, 
 
 /** One path the site may take, for the SCENARIOS table, the CSV and the JSON: display figures, not geometry. */
 export interface Scenario {
-  id: 'standsToday' | 'rebuiltAsStands' | 'withinControls' | 'affordableBonus' | 'envelopeToHeight';
+  id: 'standsToday' | 'rebuiltAsStands' | 'withinControls' | 'reshaped' | 'tod' | 'affordableBonus' | 'envelopeToHeight';
   label: string;
   note: string;
   storeys?: string;
@@ -1252,6 +1301,27 @@ export function scenarioRows(b: YieldBundle, s: YieldStudy = yieldStudy(b)): Sce
         : 'the LEP\'s height and floor space ratio and the ADG\'s separations: the massing, the plan and the schedule show this one',
       ...fill(s.base), ok: s.base.gfa > 0 ? true : undefined,
     });
+  // The envelope reshaped into the office's footprints, the most floor area whose apartments meet ADG 4A.
+  const r = s.reshaped;
+  if (r) {
+    const h = sunRule(b).hours, pc = pctOf(r.sun.meeting, r.sun.total), none = pctOf(r.sun.none, r.sun.total);
+    out.push({
+      id: 'reshaped', label: 'RESHAPED TO COMPLY',
+      note: r.complies
+        ? `the office's feasible footprints within the LEP's height and FSR and the ADG's separations: ${r.layout}, the most floor area whose apartments meet ADG 4A (${pc} with ${h} h, ${none} none)`
+        : `the nearest the office's feasible footprints come to ADG 4A within the LEP's height and FSR: ${r.layout} (${pc} with ${h} h, ${none} none)`,
+      ...fill(r.y), ok: r.complies,
+    });
+  }
+  // The Housing SEPP's TOD controls, where they lift the LEP's on a lot wide enough.
+  if (s.todY && s.tod) {
+    const t = s.tod, gfa = s.todY.gfa;
+    out.push({
+      id: 'tod', label: 'TOD CONTROLS',
+      note: `the Housing SEPP's transport oriented development controls in the ${t.name} TOD area: ${t.permits === 'shopTopHousing' ? 'shop-top housing' : 'residential flat buildings'} to ${fmt(t.hobM ?? 0, 1)} m and ${fmt(t.fsr ?? 0, 2)}:1${gfa >= TOD_SEPP.affordableFromSqm ? `, 2% of the floor area (≈ ${sqm(gfa * TOD_SEPP.affordableShare)}) affordable housing in perpetuity` : ''}`,
+      ...fill(s.todY), ok: true,
+    });
+  }
   // A bonus the envelope eats (no more floor area or units than the base) is no path at all.
   if (s.bonus && (s.bonus.gfa > s.base.gfa + 1 || s.bonus.units.total > s.base.units.total)) out.push({
     id: 'affordableBonus', label: 'AFFORDABLE HOUSING BONUS',
@@ -1298,7 +1368,7 @@ const ARCH_SHORT: Record<YieldResult['archetype'], string> = {
   residential: 'Residential flat building', mixed: 'Shop-top housing', commercial: 'Commercial building', none: 'None studied for the zone',
 };
 const SCENARIO_TITLE: Record<Scenario['id'], string> = {
-  standsToday: 'Stands today', rebuiltAsStands: 'Rebuilt to what stands', withinControls: 'Within the controls', affordableBonus: 'Affordable housing bonus', envelopeToHeight: 'Envelope to the height',
+  standsToday: 'Stands today', rebuiltAsStands: 'Rebuilt to what stands', withinControls: 'Within the controls', reshaped: 'Reshaped to comply', tod: 'TOD controls', affordableBonus: 'Affordable housing bonus', envelopeToHeight: 'Envelope to the height',
 };
 
 /** The ✓, the ✗ or the dash of a compliance cell. */
@@ -1373,6 +1443,8 @@ function barFills(): Record<Scenario['id'], Fill> {
     standsToday: { bg: '#ffffff', kind: 'vlines', ink: F.line, step: 0.55, w: 0.16, outline: F.line, outlineW: 0.12 },
     rebuiltAsStands: { bg: '#ffffff', kind: 'waves', ink: F.deep, step: 0.8, w: 0.14, outline: F.line, outlineW: 0.12 },
     withinControls: { bg: F.mid },
+    reshaped: { bg: '#ffffff', kind: 'hatch', ink: F.deep, step: 0.7, w: 0.14, outline: F.line, outlineW: 0.12 },
+    tod: { bg: F.solid },
     affordableBonus: { bg: '#ffffff', kind: 'dots', ink: F.deep, step: 0.8, w: 0.12, outline: F.line, outlineW: 0.12 },
     envelopeToHeight: { bg: '#ffffff', kind: 'hlines', ink: F.line, step: 0.55, w: 0.16, outline: F.line, outlineW: 0.12 },
   };
@@ -1385,13 +1457,15 @@ const PATH_BASIS: Record<Scenario['id'], string> = {
   standsToday: '',
   rebuiltAsStands: 'This path keeps the bulk that stands: over the LEP\'s height and floor space ratio, it needs a clause 4.6 variation (or the building kept and refurbished), and existing use rights where the zone no longer permits the use; to confirm with a planner.',
   withinControls: 'This path keeps to the LEP\'s height of building and floor space ratio.',
+  reshaped: 'This path keeps to the LEP\'s height of building and floor space ratio and the ADG\'s separations, in the office\'s feasible footprints: single-loaded 12 m deep, its gallery on the face with least sun; double-loaded 18 m along an east–west axis, its apartments running through to the north; double-loaded 22 m along a north–south axis, facing east and west; each 15 to 45 m long, a double-loaded one at least as long as it is deep, the taller to the south. Of the layouts read, it is the one with the most floor area whose apartments meet ADG 4A-1 and 4A-2.',
+  tod: 'This path takes the Housing SEPP\'s transport oriented development controls (chapter 5, part 2): residential flat buildings in the residential and local centre zones to 22 m and 2.5:1, shop-top housing in the local centre and commercial zones to 24 m and 2.5:1, on a lot at least 21 m wide, the LEP\'s standard standing where it is more generous; 2% of the floor area is affordable housing in perpetuity, managed by a community housing provider, where the scheme is 2,000 m² or more.',
   affordableBonus: 'This path takes the Housing SEPP\'s in-fill affordable housing bonus (chapter 2, part 2, division 1); the site\'s eligibility is to confirm.',
   envelopeToHeight: 'This path sets the floor space ratio aside: it needs a clause 4.6 variation or a planning proposal.',
 };
 
 /** The paths, each with the study's result behind it (none for what stands). */
 function pathsOf(b: YieldBundle, s: YieldStudy): Path[] {
-  const of: Record<Scenario['id'], YieldResult | undefined> = { standsToday: undefined, rebuiltAsStands: s.retained, withinControls: s.base, affordableBonus: s.bonus, envelopeToHeight: s.max };
+  const of: Record<Scenario['id'], YieldResult | undefined> = { standsToday: undefined, rebuiltAsStands: s.retained, withinControls: s.base, reshaped: s.reshaped?.y, tod: s.todY, affordableBonus: s.bonus, envelopeToHeight: s.max };
   return scenarioRows(b, s).map((sc) => ({ sc, y: sc.id === 'withinControls' && s.noScheme ? undefined : of[sc.id] }));
 }
 
@@ -1544,6 +1618,10 @@ function overviewSlide(b: YieldBundle, s: YieldStudy, paths: Path[]): Slide {
     exceeds && s.retained ? `What stands today, about ${ex!.storeys ?? '?'} storeys and ${about(ex!.gbaSqm!, A)}, is over the controls, and need not come down to them: kept, or rebuilt to its own envelope under a clause 4.6 variation, it holds about ${area(s.retained.gfa)}${s.retained.units.total ? ` and ${fmt(s.retained.units.total)} apartments` : ''}.`
       : exceeds ? `What stands today, about ${ex!.storeys ?? '?'} storeys and ${about(ex!.gbaSqm!, A)}, exceeds every path: redevelopment within the controls would cut the floor area.`
       : ex?.gbaSqm && y.gfa ? `What stands today holds about ${area(ex.gbaSqm)}${y.gfa > ex.gbaSqm ? `: redevelopment within the controls adds about ${area(y.gfa - ex.gbaSqm)}` : ''}.` : '',
+    s.reshaped && paths.some((p) => p.sc.id === 'reshaped') ? (s.reshaped.complies
+      ? `Reshaped into the office's feasible footprints so that its apartments get their sun, it holds ${area(s.reshaped.y.gfa)}${s.reshaped.y.units.total ? ` and ${fmt(s.reshaped.y.units.total)} apartments` : ''}.`
+      : `Reshaped into the office's feasible footprints, it holds ${area(s.reshaped.y.gfa)}, but no layout of them meets the ADG's sun here.`) : '',
+    s.todY && paths.some((p) => p.sc.id === 'tod') ? `The Housing SEPP's TOD controls lift it to ${area(s.todY.gfa)}${s.todY.units.total ? ` and ${fmt(s.todY.units.total)} apartments` : ''}.` : '',
     s.bonus && paths.some((p) => p.sc.id === 'affordableBonus') ? `The affordable housing bonus adds ${area(s.bonus.gfa - y.gfa)}${s.bonus.units.total > y.units.total ? ` and ${fmt(s.bonus.units.total - y.units.total)} apartments` : ''}.` : '',
     s.max ? `Filled to the height, the envelope holds ${area(s.max.gfa)}, the case for a clause 4.6 variation or a planning proposal.` : '',
   ]);
@@ -1569,6 +1647,16 @@ function schemeSlide(b: YieldBundle, s: YieldStudy, p: Path, n: number, last: nu
   ], 9.6);
   // Against the controls: the LEP's (lifted by the bonus on its spread), and the ADG's that the drawing answers.
   const ctl: TRow[] = [];
+  const todPath = id === 'tod' && s.tod ? s.tod : undefined;
+  if (todPath) {
+    // the TOD's standards, or the LEP's where more generous
+    const lim = todPath.hobM ?? 0, ratioCap = todPath.fsr ?? 0;
+    ctl.push({ cells: ['Height of building', esc(`${m1(lim)} (TOD${s.hob?.metres && s.hob.metres >= lim - 1e-6 ? ', the LEP\'s' : ''})`), esc(y.heightM ? `${m1(Math.round(y.heightM * 10) / 10)}, ${storeyWord(y.storeys)}` : '—'), okMark(y.heightM ? y.heightM <= lim + 1e-6 : null)] });
+    ctl.push({ cells: ['Floor space ratio', esc(`${ratioCap.toFixed(2)}:1 (TOD)`), esc(ratio(y.gfa, A)), okMark(y.gfa ? y.gfa <= ratioCap * A + 1 : null)] });
+    if (A) ctl.push({ cells: ['Gross floor area', esc(area(ratioCap * A)), esc(y.gfa ? area(y.gfa) : '—'), okMark(y.gfa ? y.gfa <= ratioCap * A + 1 : null)] });
+    if (todPath.lotWidthM !== undefined) ctl.push({ cells: ['Lot width (TOD)', esc(`${TOD_SEPP.minLotWidthM} m`), esc(`${fmt(todPath.lotWidthM, 1)} m`), okMark(todPath.wideEnough ?? null)] });
+    ctl.push({ cells: ['Affordable housing (TOD)', esc('2% of GFA from 2,000 m²'), esc(y.gfa >= TOD_SEPP.affordableFromSqm ? `${area(y.gfa * TOD_SEPP.affordableShare)}, in perpetuity` : 'not asked under 2,000 m²'), okMark(true)] });
+  } else {
   if (s.hob) {
     const limitM = s.hob.metres ? s.hob.metres * k : undefined;
     const hob = s.hob.rl ? `RL ${fmt(s.hob.value, 1)}` : m1(s.hob.value);
@@ -1577,10 +1665,14 @@ function schemeSlide(b: YieldBundle, s: YieldStudy, p: Path, n: number, last: nu
   }
   if (c.fsr) ctl.push({ cells: ['Floor space ratio', esc(`${c.fsr.toFixed(2)}:1${k > 1 ? ` + ${pct}%` : ''}`), esc(ratio(y.gfa, A)), okMark(y.gfa ? y.gfa <= c.fsr * k * A + 1 : null)] });
   if (c.fsr && A) ctl.push({ cells: ['Gross floor area', esc(area(c.fsr * k * A)), esc(y.gfa ? area(y.gfa) : '—'), okMark(y.gfa ? y.gfa <= c.fsr * k * A + 1 : null)] });
+  }
   if (c.minLotSizeSqm) ctl.push({ cells: ['Minimum lot size', esc(area(c.minLotSizeSqm)), esc(A ? area(A) : '—'), okMark(A ? A >= c.minLotSizeSqm : null)] });
   if (apartments) {
+    const deepest = id === 'reshaped' && s.reshaped ? Math.max(...s.reshaped.buildings.map((bd) => bd.depthM)) : 0;
     ctl.push(id === 'rebuiltAsStands'
       ? { cells: ['ADG 2E building depth', '12–18 m', 'as it stands: to test', okMark(null)] }
+      : id === 'reshaped'
+        ? { cells: ['ADG 2E building depth', '12–18 m', esc(deepest > 18 ? `${fmt(deepest)} m, apartments facing east and west` : `${fmt(deepest)} m`), okMark(deepest > 18 ? null : true)] }
       : { cells: ['ADG 2E building depth', '12–18 m', esc(y.tiers.some((t) => t.held === 'depth') ? `plates held to ${m1(a.maxDepth)}` : 'within the depth'), okMark(true)] });
     const ds = y.adg.deepSoil;
     ctl.push({ cells: ['ADG 3E deep soil', esc(area(ds.requiredSqm)), esc(ds.possible ? `${area(ds.groundFreeSqm)} clear` : 'not in this envelope'), okMark(ds.possible)] });
@@ -1589,13 +1681,15 @@ function schemeSlide(b: YieldBundle, s: YieldStudy, p: Path, n: number, last: nu
   const ctlTable = ytable([{ head: 'Control', w: '38mm' }, { head: id === 'affordableBonus' ? 'Permitted, with the bonus' : 'Permitted', w: '50mm' }, { head: 'This path' }, { head: '', w: '5mm' }], ctl, true);
   // The schedule, tier by tier, keyed to the plan's numbers.
   const set = (v: number) => fmt(v, v % 1 ? 1 : 0);
-  const gfaOf = (t: Tier) => y.floors.filter((f) => f.storey >= t.from && f.storey <= t.to).reduce((sum, f) => sum + f.gfa, 0);
+  const gfaOf = (i: number) => y.floors.filter((f) => f.tier === i).reduce((sum, f) => sum + f.gfa, 0);
   const sched: TRow[] = y.tiers.map((t, i) => {
     const built = Math.max(0, Math.min(t.to, y.storeys) - t.from + 1);
     const st = t.from === t.to ? `${t.from}` : `${t.from}–${t.to}`;
     const held = t.held === 'tower' ? ', tower plate' : t.held === 'depth' ? `, ${m1(a.maxDepth)} deep` : '';
-    return { cls: built ? undefined : 'dim', cells: [tierKey(i + 1), esc(built && built < t.to - t.from + 1 ? `${st} (${built} built)` : st), esc(USE_WORD[t.use] + held),
-      esc(t.existing ? 'as it stands' : `${set(t.front)} / ${set(t.side)} / ${set(t.rear)} m`), esc(area(t.plateSqm)), esc(built ? area(gfaOf(t)) : 'not built')] };
+    // a reshaped scheme's building is named by its plan: "single-loaded, 12 m"
+    const use = id === 'reshaped' && t.name.includes(' · ') ? t.name.split(' · ')[1] : USE_WORD[t.use] + held;
+    return { cls: built ? undefined : 'dim', cells: [tierKey(i + 1), esc(built && built < t.to - t.from + 1 ? `${st} (${built} built)` : st), esc(use),
+      esc(t.existing ? 'as it stands' : `${set(t.front)} / ${set(t.side)} / ${set(t.rear)} m`), esc(area(t.plateSqm)), esc(built ? area(gfaOf(i)) : 'not built')] };
   });
   if (y.tiers.length) sched.push({ cls: 'tot', cells: ['Total', esc(storeyWord(y.storeys)), '', '', esc(area(y.gba)), esc(area(y.gfa))] });
   const schedTable = y.tiers.length
@@ -1617,6 +1711,14 @@ function schemeSlide(b: YieldBundle, s: YieldStudy, p: Path, n: number, last: nu
     : id === 'affordableBonus'
       ? brief([`With ${pct}% more height and floor space ratio for 15% affordable housing, held for 15 years, the Housing SEPP's in-fill bonus gives ${what}.`,
         `That is ${area(y.gfa - s.base.gfa)}${y.units.total > s.base.units.total ? ` and ${fmt(y.units.total - s.base.units.total)} apartments` : ''} more than within the controls, about ${fmt(Math.round(y.units.total * 0.15))} of them affordable. Eligibility to confirm.`])
+      : id === 'tod' && s.tod
+        ? brief([`Under the Housing SEPP's transport oriented development controls in the ${s.tod.name} TOD area, the site holds ${what}.`,
+          `That is ${area(y.gfa - s.base.gfa)}${y.units.total > s.base.units.total ? ` and ${fmt(y.units.total - s.base.units.total)} apartments` : ''} more than the LEP's controls give${y.gfa >= TOD_SEPP.affordableFromSqm ? `, ${area(y.gfa * TOD_SEPP.affordableShare)} of it affordable housing in perpetuity` : ''}.`])
+      : id === 'reshaped' && s.reshaped
+        ? brief([`Reshaped into the office's feasible footprints, ${s.reshaped.layout}, the site holds ${what}.`,
+          s.reshaped.complies
+            ? `${pctOf(s.reshaped.sun.meeting, s.reshaped.sun.total)} of the apartments get ${sunRule(b).hours} hours of sun at mid winter and ${pctOf(s.reshaped.sun.none, s.reshaped.sun.total)} none, meeting ADG 4A: ${s.base.gfa > y.gfa + 1 ? `${area(s.base.gfa - y.gfa)} less than the envelope within the controls, the floor area the sun costs` : 'as much as the envelope within the controls'}.`
+            : `No layout of them meets ADG 4A here: this one comes nearest, ${pctOf(s.reshaped.sun.meeting, s.reshaped.sun.total)} of its apartments with ${sunRule(b).hours} hours and ${pctOf(s.reshaped.sun.none, s.reshaped.sun.total)} with none.`])
       : id === 'rebuiltAsStands'
         ? brief([`Kept and refurbished, or rebuilt on its footprint to the height it stands at, what stands holds ${what}.`,
           `That is ${area(y.gfa - s.base.gfa)}${y.units.total > s.base.units.total ? ` and ${fmt(y.units.total - s.base.units.total)} apartments` : ''} more than within the controls. Over the LEP's height and floor space ratio, it needs a clause 4.6 variation, argued on adding no bulk to what stands${y.archetype === 'residential' && s.base.archetype === 'none' ? ', and existing use rights for apartments the zone no longer permits' : ''}; to confirm with a planner.`])
@@ -1624,7 +1726,7 @@ function schemeSlide(b: YieldBundle, s: YieldStudy, p: Path, n: number, last: nu
         c.fsr ? `That is ${area(y.gfa - s.base.gfa)} over the LEP's ${c.fsr.toFixed(2)}:1: the case a clause 4.6 variation or a planning proposal has to carry.` : '']);
   return { id: `${String(n).padStart(2, '0')}_${id.replace(/[A-Z]/g, (ch) => `_${ch.toLowerCase()}`)}`, title: SCENARIO_TITLE[id], subtitle: subtitleOf(b, s), textHtml: '',
     figureHtml: zFlow(blocks) + figures.html, full: true, narrative, accent: id === 'envelopeToHeight' ? inks().F.deep : inks().accent,
-    legend: schemeLegend(b, s, y, false, figures.kerbs), sources: `${NOT_A_DESIGN} ${PATH_BASIS[id]} Every assumption is on page ${String(last).padStart(2, '0')}.${meshNote(b)}${treesNote(b)}` };
+    legend: schemeLegend(b, s, y, false, figures.kerbs), sources: `${NOT_A_DESIGN} ${PATH_BASIS[id]}${s.tod?.regime === 'alternative' && (id === 'withinControls' || id === 'reshaped') ? ` The LEP's height and floor space ratio here are ${s.tod.alternative!.council}'s alternative TOD controls${s.tod.alternative!.from ? `, in force from ${s.tod.alternative!.from}` : ''}.` : ''} Every assumption is on page ${String(last).padStart(2, '0')}.${meshNote(b)}${treesNote(b)}` };
 }
 
 /** The neighbours' future, as the keys name it. */
@@ -1657,7 +1759,7 @@ const labelAt = (left: number, top: number, inset: number, parts: string[]) =>
 
 /** A compliance sheet's title: the option's name, short enough to stand on one line with the word. */
 const COMPLIANCE_TITLE: Record<Scenario['id'], string> = {
-  standsToday: '', rebuiltAsStands: 'Rebuilt as it stands: compliance', withinControls: 'Within the controls: compliance',
+  standsToday: '', rebuiltAsStands: 'Rebuilt as it stands: compliance', withinControls: 'Within the controls: compliance', reshaped: 'Reshaped to comply: compliance', tod: 'TOD controls: compliance',
   affordableBonus: 'Affordable bonus: compliance', envelopeToHeight: 'Envelope to the height: compliance',
 };
 
@@ -1706,7 +1808,7 @@ function complianceSheet(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: Pa
   const meets = (k: number) => k >= 0.7 * ap.total - 1e-9, fewNone = (k: number) => k <= 0.15 * ap.total + 1e-9;
   const count = (k: number) => `${pctOf(k, ap.total)} (${k} of ${ap.total})`;
   const c = b.controls, A = b.siteAreaSqm ?? 0, bonusK = 1 + (ps.y.assumptions.affordableBonus ?? 0.3);
-  const most = c.fsr && A ? c.fsr * A * (id === 'affordableBonus' ? bonusK : 1) : undefined;
+  const most = id === 'tod' && s.tod?.fsr && A ? s.tod.fsr * A : c.fsr && A ? c.fsr * A * (id === 'affordableBonus' ? bonusK : 1) : undefined;
 
   // against the criteria, in the order the assessment sets them out
   const sepToday = separationShort(ps), sepLater = ps.separationBuiltOut.length ? ((k) => (k ? `${k} short built out` : 'clear built out'))(ps.separationBuiltOut.filter((r) => r.today.status === 'short').length) : '';
@@ -1739,12 +1841,16 @@ function complianceSheet(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: Pa
 
   const blocks = [zBlock('Against the criteria', testTable), zBlock('Sun on each facade and the roof', faceTable), zBlock('Building separation', sepTable)];
   if (first) {
-    const tod = b.policyAtSite.find((q) => q.kind === 'tod' || q.kind === 'todAccelerated');
+    const tod = s.tod;
+    const todNote = !tod ? undefined
+      : tod.regime === 'alternative' ? `${tod.alternative!.council}'s alternative TOD controls, in the LEP${tod.alternative!.from ? ` from ${tod.alternative!.from}` : ''}`
+        : tod.regime === 'sepp' ? (s.todY ? `the TOD path takes the Housing SEPP's ${fmt(tod.fsr ?? 0, 2)}:1 in the ${tod.name} TOD area` : `in the ${tod.name} TOD area${tod.wideEnough === false ? ', the lot short of the 21 m the TOD asks' : ''}`)
+          : tod.regime === 'deferred' ? `in the ${tod.name} TOD area, its controls deferred` : `in the ${tod.name} accelerated precinct, by its own maps`;
     blocks.push(zBlock('Assessment criteria', zTable([
       { label: 'overshadow impact', value: 'minimise overshadowing of public reserves, heritage items and residential areas at mid winter', note: 'ADG 3B-2: a shadow added takes the dash' },
       { label: 'solar access', value: `70% of apartments with ${h} hours of direct sun${unbroken}, 9 am – 3 pm at mid winter; at most 15% with none`, note: `ADG 4A-1, 4A-2, ${rule.where}` },
       { label: 'building separation', value: 'habitable to habitable 12, 18, 24 m; to non-habitable 9, 13.5, 18 m (1–4, 5–8, 9+ storeys)', note: 'ADG 3F-1' },
-      { label: 'yield', value: 'the maximum allowable GFA: the LEP\'s floor space ratio by the site area', note: tod ? `in the ${tod.name} TOD area, whose controls may set it instead` : undefined },
+      { label: 'yield', value: 'the maximum allowable GFA: the LEP\'s floor space ratio by the site area', note: todNote },
       ...(s.future.buildings.length ? [{ label: 'built out', value: 'the neighbours as feasible footprints on their lots, to their LEP height and FSR', note: 'the office\'s building envelope assumptions' }] : []),
     ])));
   }
@@ -1979,9 +2085,12 @@ export function yieldJson(b: YieldBundle): string {
     parkingRates: s.parkingSet, standsToday: existingSummary(b.existing ?? []) && { ...existingSummary(b.existing ?? []), ...standingFromMeshes(b).height ? { heightFrom: 'Google Photorealistic 3D Tiles' } : {} },
     zones: b.zones, heightsFromMeshes: b.mesh,
     study: strip(s.base), affordableHousingBonus: strip(s.bonus), envelopeToHeight: strip(s.max), rebuiltAsStands: strip(s.retained),
+    reshapedToComply: s.reshaped && { ...strip(s.reshaped.y), complies: s.reshaped.complies, layout: s.reshaped.layout, layoutsRead: s.reshaped.tried, layoutsFound: s.reshaped.candidates,
+      buildings: s.reshaped.buildings.map(({ ring: _r, ...bd }) => bd) },
+    transportOrientedDevelopment: s.tod && { ...s.tod, alternative: s.tod.alternative && { ...s.tod.alternative, lga: undefined }, sentence: todSentence(s.tod), scheme: strip(s.todY) },
     scenarios: scenarioRows(b, s),
     // each path's sun: its apartments' hours, one by one, and the shadow it adds, hour by hour (no outlines)
-    sun: { rule: sunRule(b), paths: Object.fromEntries((['rebuiltAsStands', 'withinControls', 'affordableBonus', 'envelopeToHeight'] as Scenario['id'][]).flatMap((id) => {
+    sun: { rule: sunRule(b), paths: Object.fromEntries((['rebuiltAsStands', 'withinControls', 'reshaped', 'tod', 'affordableBonus', 'envelopeToHeight'] as Scenario['id'][]).flatMap((id) => {
       const p = pathSun(b, s, id);
       return p ? [[id, {
         apartments: p.apartments && { total: p.apartments.total, meeting: p.apartments.meeting, none: p.apartments.none, future: p.apartments.future, hours: p.apartments.units.map((u) => ({ storey: u.storey, hours: u.hours, hoursFuture: u.hoursFuture })) },
