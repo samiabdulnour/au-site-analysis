@@ -3,13 +3,16 @@
  * The page order (the cover's right half the front, each spread on two facing pages, the cover's left half the
  * back, blank pages to make up fours), the sides of the sheets in saddle-stitch order, and a deck of made-up spreads
  * imposed: its sides A3 landscape, as many as the sheets need, each half where it belongs (each half painted a colour
- * of its own, read back with poppler's pdftoppm where it is installed). Nothing here asks a network.
+ * of its own, read back with poppler's pdftoppm where it is installed); a page drawn in two streams; a spread the
+ * booklet prints otherwise in its place, the deck's own page left out, and a mismatched one refused. Nothing here asks
+ * a network.
  *
  *   npx tsx test/booklet.mts
  */
 
 import { PDFDocument, PDFName, rgb } from 'pdf-lib';
 import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
+import { inflateSync } from 'node:zlib';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -65,8 +68,11 @@ const out = await PDFDocument.load(readFileSync(dest));
 check('impose: a cover and four spreads, three sheets of six sides', done.pages === 12 && done.sheets === 3 && out.getPageCount() === 6, JSON.stringify(done));
 check('impose: every side A3 landscape, as the deck', out.getPages().every((pg) => Math.abs(pg.getWidth() - W) < 0.5 && Math.abs(pg.getHeight() - H) < 0.5));
 // read back as printed, where poppler is here: the colour at the middle of each side's two slots
+// the booklet's own version of a spread, its halves in colours of their own
+const ALT = { L: [250, 20, 20], R: [20, 20, 250] };
 const name = (rgbPx: number[]) => {
   if (rgbPx.every((v) => v > 235)) return '—';
+  for (const half of ['L', 'R'] as const) if (ALT[half].every((v, k) => Math.abs(v - rgbPx[k]) < 12)) return `A${half}`;
   for (let i = 0; i < 5; i++) for (const half of ['L', 'R'] as const) if (shade(i, half).every((v, k) => Math.abs(v - rgbPx[k]) < 12)) return `S${i}${half}`;
   return `?${rgbPx.join(',')}`;
 };
@@ -108,6 +114,31 @@ if (seen.length) {
   const want = ['S0L|S0R', 'S1L|—', '—|S1R', 'S2L|S4R', 'S4L|S2R', 'S3L|S3R'];
   check('impose: each half on its side and in its slot, as printed', JSON.stringify(seen) === JSON.stringify(want), JSON.stringify(seen));
 }
+
+// ---- a spread the booklet prints otherwise, in its place ----
+
+const altDoc = await PDFDocument.create();
+const ap = altDoc.addPage([W, H]);
+for (const half of ['L', 'R'] as const) { const [r, g, b] = ALT[half]; ap.drawRectangle({ x: half === 'L' ? 0 : W / 2, y: 0, width: W / 2, height: H, color: rgb(r / 255, g / 255, b / 255) }); }
+const altPath = join(dir, 'DECK.booklet-spreads.pdf');
+writeFileSync(altPath, await altDoc.save());
+const swapped = join(dir, 'SWAPPED.pdf');
+await imposeBooklet(src, swapped, { spreads: { path: altPath, pages: [2] } });
+const swappedSeen: string[] = [];
+for (let k = 1; k <= 6; k++) { const at = slots(swapped, k); if (!at) break; swappedSeen.push(at); }
+if (swappedSeen.length) {
+  const want = ['S0L|S0R', 'S1L|—', '—|S1R', 'AL|S4R', 'S4L|AR', 'S3L|S3R'];
+  check('spreads: the booklet\'s own spread in the deck\'s place, the rest as they were', JSON.stringify(swappedSeen) === JSON.stringify(want), JSON.stringify(swappedSeen));
+}
+// the page it replaces is not carried along unseen: no stream in the booklet paints spread 2's colours
+const streams = (pdf: Buffer) => [...pdf.toString('latin1').matchAll(/stream\r?\n([\s\S]*?)endstream/g)].map((m) => { try { return inflateSync(Buffer.from(m[1], 'latin1')).toString('latin1'); } catch { return m[1]; } });
+const paints = (texts: string[], [r, g, b]: number[]) => texts.some((t) => t.includes(`${r / 255} ${g / 255} ${b / 255} rg`));
+check('spreads: the test can see a spread\'s colours in a booklet', paints(streams(readFileSync(dest)), shade(2, 'L')));
+check('spreads: the deck\'s own page left out where the booklet prints its own', !paints(streams(readFileSync(swapped)), shade(2, 'L')) && !paints(streams(readFileSync(swapped)), shade(2, 'R')));
+// a spreads PDF that does not match its places is refused, not imposed wrong
+let refused = 0;
+for (const pages of [[2, 3], [9]]) await imposeBooklet(src, join(dir, 'BAD.pdf'), { spreads: { path: altPath, pages } }).catch(() => { refused += 1; });
+check('spreads: a count or a page that does not match is refused', refused === 2, String(refused));
 
 if (failures.length) {
   console.error(`${failures.length} failed:\n  ${failures.join('\n  ')}`);

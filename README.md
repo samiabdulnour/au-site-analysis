@@ -2008,7 +2008,23 @@ they make an A4 portrait booklet:
 - Blank pages go in before the back where the pages fall short of a four.
 
 A thin grey dashed line down the middle of every side marks the fold. Printed
-on A4 instead, the same file folds to an A5 booklet. Each half is the spread's
+on A4 instead, the same file folds to an A5 booklet.
+
+A spread drawn across both pages with the site in the middle would put the site
+in the fold, under the staples. The booklet prints its own version of such a
+spread, in which the drawing slides sideways within its frame until the site's
+outline is 22 mm clear of the fold (the shorter way, to the right where the two
+are even); the heading, lead, key and sources stay where they are. In the report
+that is *Built form* (09b), the city drawn round the site:
+- `renderSlides` returns these spreads as `booklet`: their HTML, and the deck
+  page each stands in for.
+- `printBooklet` (`src/render/pdf.ts`) prints them beside the deck as
+  `OVERALL_ANALYSIS.booklet-spreads.pdf` (with its HTML and PNG), then imposes
+  the booklet with them in place.
+- The deck's own page is left out of the booklet altogether.
+
+The A3 slides keep the drawing as it was. A deck imposed on demand by the
+server (one drawn before this) has none of these spreads. Each half is the spread's
 own page, drawn once into the booklet and shown through a window, so the
 booklet is hardly larger than the deck. The CLI and `scripts/recompose.ts`
 impose it after the deck; `npx tsx test/booklet.mts` checks the order and reads

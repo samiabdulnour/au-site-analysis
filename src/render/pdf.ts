@@ -8,6 +8,8 @@ import { pathToFileURL } from 'node:url';
 import { SHEET_W, SHEET_H } from './sheet.js';
 import { acquire } from '../lib/slots.js';
 import { EXPECTATION, checkPrint, printWhole, type PrintExpectation } from './printCheck.js';
+import { imposeBooklet, bookletPathOf, bookletSpreadsPathOf, type BookletSpreads } from './booklet.js';
+import { writeFile } from 'node:fs/promises';
 
 function findChromium(): string | undefined {
   if (process.env.CHROMIUM_PATH && existsSync(process.env.CHROMIUM_PATH)) return process.env.CHROMIUM_PATH;
@@ -403,4 +405,27 @@ async function printSlidesOnce(
     await browser.close();
   }
   return { pngs, missing: [] };
+}
+
+/**
+ * A deck's booklet (src/render/booklet.ts) beside its PDF. The spreads it prints otherwise (the report's built form,
+ * its site moved off the fold) are printed first, beside the deck as `.booklet-spreads` with their HTML and PNGs;
+ * then the deck is imposed with them in their places. Returns the booklet's path.
+ */
+export async function printBooklet(
+  deckPdf: string,
+  spreads: BookletSpreads | undefined,
+  size: { widthMm: number; heightMm: number },
+  log: (m: string) => void = console.warn,
+): Promise<string> {
+  const dest = bookletPathOf(deckPdf);
+  let alt: { path: string; pages: number[] } | undefined;
+  if (spreads?.spreads.length) {
+    const path = bookletSpreadsPathOf(deckPdf), stem = path.replace(/\.pdf$/i, '');
+    await writeFile(`${stem}.html`, spreads.html);
+    await printSlides(`${stem}.html`, path, stem, size, undefined, log);
+    alt = { path, pages: spreads.spreads };
+  }
+  await imposeBooklet(deckPdf, dest, { spreads: alt });
+  return dest;
 }

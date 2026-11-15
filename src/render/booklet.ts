@@ -19,6 +19,11 @@
 // the deck. A thin grey dashed line down the middle of every side marks the
 // fold.
 //
+// A spread can be printed otherwise for the booklet (BookletSpreads): the
+// report's built form, the city drawn across both pages round the site, has
+// the site moved off the fold, where the staples and the gutter would take it.
+// Those spreads are printed on their own and stand in for the deck's.
+//
 // A deck printed before it had a cover (an older drawing) has its first spread
 // as page 2 and 3 all the same, behind a blank front and before a blank back.
 
@@ -27,6 +32,12 @@ import {
   rgb, LineCapStyle, pushGraphicsState, popGraphicsState, rectangle, clip, endPath, concatTransformationMatrix, drawObject,
 } from 'pdf-lib';
 import { readFile, writeFile, rename } from 'node:fs/promises';
+
+/**
+ * The spreads a deck's booklet prints otherwise: their HTML, one section a spread in the deck's own styles, and for
+ * each the deck's PDF page (0 the cover) it stands in for.
+ */
+export interface BookletSpreads { html: string; spreads: number[] }
 
 /** A booklet page: which spread of the deck, and which half of it; null for a blank page. */
 export type BookletPage = { spread: number; half: 'left' | 'right' } | null;
@@ -73,10 +84,12 @@ type Form = { ref: PDFRef; x: number; y: number };
  * copied stream and writes a recompressed form beside it, every drawing in the deck twice. A page drawn in several
  * streams has them joined into one.
  */
-function pagesAsForms(src: PDFDocument, out: PDFDocument): Form[] {
+function pagesAsForms(src: PDFDocument, out: PDFDocument, skip: ReadonlySet<number> = new Set()): (Form | undefined)[] {
   const copier = PDFObjectCopier.for(src.context, out.context);
   const ctx = out.context;
-  return src.getPages().map((page) => {
+  return src.getPages().map((page, i) => {
+    // a page the booklet prints otherwise is not copied at all, or it would be carried along unseen
+    if (skip.has(i)) return undefined;
     const node = copier.copy(page.node) as PDFPageLeaf;
     // the copy carries what the page inherited (its box, its resources) as its own
     const box = node.MediaBox();
@@ -104,7 +117,10 @@ function pagesAsForms(src: PDFDocument, out: PDFDocument): Form[] {
  * The deck at `srcPath` imposed as a booklet at `destPath` (written whole, then moved into place). Returns its page
  * count (the booklet's) and its sheets of paper.
  */
-export async function imposeBooklet(srcPath: string, destPath: string, opts: { cover?: boolean } = {}): Promise<{ pages: number; sheets: number }> {
+export async function imposeBooklet(
+  srcPath: string, destPath: string,
+  opts: { cover?: boolean; /** a PDF of spreads printed for the booklet, and the deck page each replaces, in order */ spreads?: { path: string; pages: number[] } } = {},
+): Promise<{ pages: number; sheets: number }> {
   const src = await PDFDocument.load(await readFile(srcPath));
   const out = await PDFDocument.create();
   out.setTitle(`${src.getTitle() ?? 'Site Analyst'} — booklet`);
@@ -113,12 +129,17 @@ export async function imposeBooklet(srcPath: string, destPath: string, opts: { c
   if (!count) throw new Error('the deck has no pages');
   const { width: W, height: H } = src.getPage(0).getSize();
   // each spread drawn into the booklet once, and shown through either half
-  const forms = pagesAsForms(src, out);
+  const at = opts.spreads?.pages ?? [];
+  const alt = at.length ? await PDFDocument.load(await readFile(opts.spreads!.path)) : undefined;
+  if (alt && alt.getPageCount() !== at.length) throw new Error(`the booklet's own spreads are ${alt.getPageCount()} pages for ${at.length} places`);
+  if (at.some((k) => !(Number.isInteger(k) && k >= 0 && k < count))) throw new Error(`a booklet spread stands for a page the deck has not (${at.join(', ')} of ${count})`);
+  const forms = pagesAsForms(src, out, new Set(at));
+  if (alt) pagesAsForms(alt, out).forEach((f, j) => { forms[at[j]] = f; });
   const pages = bookletPages(count, opts.cover ?? true);
   const n = pages.length - 1;
   const place = (side: PDFPage, at: BookletPage, slot: 0 | 1) => {
     if (!at) return;
-    const x0 = slot * (W / 2), f = forms[at.spread];
+    const x0 = slot * (W / 2), f = forms[at.spread]!;
     const name = side.node.newXObject('Spread', f.ref);
     // the window: this slot's half of the side; the spread drawn so that its own half falls in it
     side.pushOperators(
@@ -141,3 +162,6 @@ export async function imposeBooklet(srcPath: string, destPath: string, opts: { c
 
 /** Where a deck's booklet is kept: beside its PDF, the same name with `.booklet`. */
 export const bookletPathOf = (pdfPath: string) => pdfPath.replace(/\.pdf$/i, '.booklet.pdf');
+
+/** Where the spreads a booklet prints otherwise are kept: beside the deck, `.booklet-spreads` (and its HTML, its PNGs). */
+export const bookletSpreadsPathOf = (pdfPath: string) => pdfPath.replace(/\.pdf$/i, '.booklet-spreads.pdf');

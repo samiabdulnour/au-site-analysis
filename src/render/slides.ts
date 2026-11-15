@@ -16,6 +16,7 @@ import { tpl, withTemplate, templateFor, deckLook, tint, shadeHex, inkFor, vivid
 import { INK, aerialGreenFill, veg1750Fills, VEG_CLASSES_MAX, fillShape, swatchOf, barOf, categoryFill, heatFills, paletteRamp, styleRamp, terrainRamp, stripOf, HEIGHT_BANDS, heightBandOf, massingInks, heightRamp, zHead, zBars, zFigures, zCircles, zSpans, zPairs, zLine, niceAxis, z6, zSvg, Z_W, Z_TRACK, type Fill } from './atlasKit.js';
 import { esc } from './chrome.js';
 import { drawAxonometric, shade, type AxoScene, type Prism } from './axonometric.js';
+import type { BookletSpreads } from './booklet.js';
 import { estimateKerbs } from '../lib/kerbs.js';
 import {
   panelProjector, panelExtent, baseLayers, overLayers, panelFurniture, furnitureBox, siteMark, siteLabelPoint, stationMode, ringsPath, fcPath, ringStats, clippedStats, hatchPath, dotsPath, bboxOf, t2Text, t2Width,
@@ -105,6 +106,11 @@ export interface Slide {
   textY?: number;
   /** Style rules the slide's figure needs beyond the deck's own, scoped to it. */
   css?: string;
+  /**
+   * The spread as the booklet prints it, where that differs from the slides: a drawing across the whole spread
+   * moved so that the site is not in the fold (src/render/booklet.ts).
+   */
+  booklet?: () => Slide;
 }
 
 // ---- shared bits ------------------------------------------------------------
@@ -2617,7 +2623,7 @@ export function developmentAtlas(b0: SlidesBundle, facts: PlanningFacts): Slide 
  * form page keys them, with a grid of windows over its faces; the streets white kerb to kerb, the parks green,
  * the trees read off the aerial as crowns, the site's own building in the site's ink under the LEP's height plane.
  */
-export function formAtlas(b: SlidesBundle, planning: PlanningFacts): Slide {
+export function formAtlas(b: SlidesBundle, planning: PlanningFacts, opts: { clearFold?: boolean } = {}): Slide {
   const t = tpl();
   const f = builtFormFacts(b, planning);
   const M = massingInks();
@@ -2699,13 +2705,21 @@ export function formAtlas(b: SlidesBundle, planning: PlanningFacts): Slide {
     { swatch: block(tint(t.site, 0.55), '#1c1c1c'), label: 'What stands on the site today' },
   ];
   const figureHtml = `<div class="form3d">
-  <div class="abs" style="left:0;top:0"><svg width="${SHEET_W}mm" height="${SHEET_H}mm" viewBox="0 0 ${SHEET_W} ${SHEET_H}" xmlns="http://www.w3.org/2000/svg" style="display:block" font-family="Arial, 'Liberation Sans', sans-serif">${drawAxonometric(scene, { x: 0, y: TOP, w: SHEET_W, h: SHEET_H - TOP - FOOT }, 'form09b')}</svg></div>
+  <div class="abs" style="left:0;top:0"><svg width="${SHEET_W}mm" height="${SHEET_H}mm" viewBox="0 0 ${SHEET_W} ${SHEET_H}" xmlns="http://www.w3.org/2000/svg" style="display:block" font-family="Arial, 'Liberation Sans', sans-serif">${drawAxonometric(scene, { x: 0, y: TOP, w: SHEET_W, h: SHEET_H - TOP - FOOT, clear: opts.clearFold ? { x: FOLD, margin: BOOKLET_FOLD_CLEAR } : undefined }, 'form09b')}</svg></div>
   <div class="abs lead" style="left:${SHEET_W - MARGIN - 150}mm;top:17.5mm;width:150mm">${esc(lead)}</div>
   ${spreadFoot(sources, zKeyBox(keyEntries))}
 </div>`;
   const css = `.form3d .lead { font-size: 3.05mm; line-height: 1.38; font-weight: 600; color: ${accent}; }`;
-  return { id: '09b_built_form', title: 'Built form', subtitle: atlasSub(b), textHtml: '', figureHtml, full: true, plain: true, accent, css };
+  return { id: '09b_built_form', title: 'Built form', subtitle: atlasSub(b), textHtml: '', figureHtml, full: true, plain: true, accent, css,
+    // the city drawn round the site puts the site on the fold; in the booklet it is moved off it
+    booklet: opts.clearFold ? undefined : () => formAtlas(b, planning, { clearFold: true }) };
 }
+
+/**
+ * How far clear of the fold, mm, a drawing across the spread keeps the site in the booklet: past the gutter a stapled
+ * booklet does not open flat at, and past the staples.
+ */
+const BOOKLET_FOLD_CLEAR = 22;
 
 // ---- 08b Capacity and opportunity: the office's context plan on the template ------------------------------------
 
@@ -8980,11 +8994,17 @@ ${s.sources ? `<div class="abs zsrc" data-settle style="left:12mm;bottom:${(297 
 /** How a deck is drawn: in which of the maps' styles (the active template's where unnamed). */
 export interface DeckRenderOptions { theme?: string }
 
-export function renderSlides(b: SlidesBundle, meta: SheetMeta, opts: DeckRenderOptions = {}): { html: string; slides: Slide[] } {
+/**
+ * A deck as HTML, and the spreads its booklet prints otherwise (`booklet`): their own HTML, one section a spread, and
+ * the deck's PDF page each one stands in for.
+ */
+export interface DeckHtml { html: string; slides: Slide[]; booklet?: BookletSpreads }
+
+export function renderSlides(b: SlidesBundle, meta: SheetMeta, opts: DeckRenderOptions = {}): DeckHtml {
   return withTemplate(templateFor('slides', opts.theme ?? tpl().id), () => drawSlides(b, meta));
 }
 
-function drawSlides(b: SlidesBundle, meta: SheetMeta): { html: string; slides: Slide[] } {
+function drawSlides(b: SlidesBundle, meta: SheetMeta): DeckHtml {
   const facts = planningFacts(b);
   // the streetscape follows the character page, the street seen before the plans are read; the capacity study
   // follows the development activity it reads; a deck built before its layers has none
@@ -9009,12 +9029,18 @@ function drawSlides(b: SlidesBundle, meta: SheetMeta): { html: string; slides: S
   ${s.bleed || s.full ? `<div class="abs foot" data-print-check style="left:${FIELD_X}mm;top:${FOOT_Y}mm;width:${FIELD_W}mm"><span></span><span style="background:#ffffff;padding:0 1.6mm">${s.full ? `${i * 2 + 2}–${i * 2 + 3}` : i * 2 + 3}</span></div>` : `<div class="abs foot" data-print-check style="left:${FIELD_X}mm;top:${FOOT_Y}mm;width:${FIELD_W}mm"><span>generated ${esc(b.generatedAt.slice(0, 10))}</span><span>${i * 2 + 3}</span></div>`}
 </section>`).join('\n');
 
-  const html = `<!DOCTYPE html>
-<html lang="en"><head><meta charset="utf-8"><title>${esc(b.siteAddress)} — OVERALL ANALYSIS</title>
+  const shell = (title: string, body: string, css: (string | undefined)[]) => `<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>${esc(b.siteAddress)} — ${title}</title>
 <style>
-${deckCss()}${[...new Set(slides.map((s) => s.css).filter(Boolean))].join('\n')}</style></head>
-<body>${cover}\n${pages}</body></html>`;
-  return { html, slides };
+${deckCss()}${[...new Set(css.filter(Boolean))].join('\n')}</style></head>
+<body>${body}</body></html>`;
+  const html = shell('OVERALL ANALYSIS', `${cover}\n${pages}`, slides.map((s) => s.css));
+  // the spreads the booklet prints otherwise, each numbered as its spread is; the deck's PDF has the cover first
+  const variants = slides.flatMap((s, i) => (s.booklet ? [{ i, s: s.booklet() }] : []));
+  const booklet = variants.length
+    ? { html: shell('OVERALL ANALYSIS BOOKLET SPREADS', variants.map(({ s, i }) => atlasPage(s, i)).join('\n'), variants.map(({ s }) => s.css)), spreads: variants.map(({ i }) => i + 1) }
+    : undefined;
+  return { html, slides, booklet };
 }
 
 /** The report's cover: the place from above to the front's edges, the site outlined; the contents and colophon on the back. */

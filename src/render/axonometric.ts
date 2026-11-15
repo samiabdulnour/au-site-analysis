@@ -218,7 +218,14 @@ function inRing(p: XY, rg: XY[]): boolean {
   return c;
 }
 
-export function drawAxonometric(scene: AxoScene, box: { x: number; y: number; w: number; h: number }, id: string): string {
+/**
+ * The box an axonometric is drawn in, sheet millimetres. With `clear`, the drawing slides sideways within its frame
+ * (the frame stays) until the site's outline is `margin` mm clear of the vertical line at `x`: a booklet's fold, which
+ * the site must not sit in. It goes whichever way is shorter, to the right where the two are even.
+ */
+export type AxoBox = { x: number; y: number; w: number; h: number; clear?: { x: number; margin: number } };
+
+export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): string {
   const mono = !!scene.mono;
   const M = mono ? { ...massingInks(), ground: '#ffffff', lot: MONO.line, park: '#ffffff', road: '#ffffff', axis: MONO.line, tree: '#ffffff', treeLight: '#ffffff', trunk: MONO.edge } : massingInks();
   const { ring, reach, inks } = scene;
@@ -497,7 +504,17 @@ export function drawAxonometric(scene: AxoScene, box: { x: number; y: number; w:
   const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
   const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
   const k = Math.min(box.w / (x1 - x0 || 1), box.h / (y1 - y0 || 1));
-  const tx = box.x + (box.w - (x1 - x0) * k) / 2 - x0 * k, ty = box.y + (box.h - (y1 - y0) * k) / 2 - y0 * k;
+  let tx = box.x + (box.w - (x1 - x0) * k) / 2 - x0 * k;
+  const ty = box.y + (box.h - (y1 - y0) * k) / 2 - y0 * k;
+  if (box.clear && ring.length) {
+    // the site across the page: a point's place across it does not hang on its height, so its outline on the ground is its reach
+    const sx = ring.map((p) => P(p, 0)[0] * k + tx);
+    const lo = Math.min(...sx), hi = Math.max(...sx), { x: fold, margin } = box.clear;
+    if (hi > fold - margin && lo < fold + margin) {
+      const right = fold + margin - lo, left = hi - (fold - margin);
+      tx += right <= left ? right : -left;
+    }
+  }
   const note = (line: number, ink: string, text: string) =>
     `<text x="${(box.x + box.w / 2).toFixed(1)}" y="${(box.y + 4 + line * 4).toFixed(1)}" text-anchor="middle" font-size="2.8" fill="${ink}" stroke="#ffffff" stroke-width="1.4" paint-order="stroke">${esc(text)}</text>`;
   const notes: string[] = [];
