@@ -793,11 +793,11 @@ interface PlanMarks {
 }
 /** A separation's ink: clear, holding only with a blank face, short. */
 const SEPARATION_INK: Record<'clear' | 'blank' | 'short', string> = { clear: '#2f8f55', blank: '#c98a12', short: '#c8372d' };
-/** The shadows' ink, as the report's sun page has it (slides.ts sunAtlas): the style's deep blue made an ink. */
-const shadowInk = () => inkFor(INK.blue.deep, 0.1);
+/** The neighbours' shadows' ink: a neutral grey, so only the envelope's own shadow, in the site's accent, carries a colour. */
+const shadowInk = () => '#3a3c41';
 /** Each hour's shadow at this opacity, the hours laid over each other, as the report lays them; n hours deep, the tint this. */
 const HOUR_ALPHA = 0.16, stackedAlpha = (n: number) => 1 - (1 - HOUR_ALPHA) ** n;
-/** The envelope's own shadow, in the site's accent so what it adds reads apart from the neighbours' blue. */
+/** The envelope's own shadow, in the site's accent so what it adds reads apart from the neighbours' grey. */
 const ourShadowInk = () => siteInk();
 /** The ground only the envelope shades: a hatch in its shadow's ink, outlined. */
 const ADDED_HATCH = (): Fill => ({ kind: 'hatch', ink: inkFor(ourShadowInk(), 0.22), step: 0.62, w: 0.13, outline: inkFor(ourShadowInk(), 0.22), outlineW: 0.18 });
@@ -897,7 +897,7 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
   const marks = opts.marks;
   // The study's shadows, under the buildings: each hour one translucent layer over the last, a group's opacity so two
   // buildings' shadows in one hour do not stack; where the hours pile up the ground darkens.
-  // The neighbours' in the shadows' blue, then the envelope's own over them in the site's accent: what it adds reads apart.
+  // The neighbours' in grey, then the envelope's own over them in the site's accent: what it adds reads apart.
   if (opts.study) {
     for (const hr of marks?.hours ?? []) if (hr.hulls.length) out.push(`<g opacity="${HOUR_ALPHA}"><path d="${hr.hulls.map(path).join('')}" fill="${shadowInk()}" fill-rule="nonzero"/></g>`);
     for (const hr of marks?.hours ?? []) if (hr.scheme.length) out.push(`<g opacity="${HOUR_ALPHA}"><path d="${hr.scheme.map(path).join('')}" fill="${ourShadowInk()}" fill-rule="evenodd"/></g>`);

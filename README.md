@@ -1433,7 +1433,7 @@ site may take, so a site with more paths has more pages:
    them the plan as the report's sun page draws it, in Arial: no zone tints,
    every building white with its storeys (grey where no height is recorded and
    two are assumed), the future footprints dashed with theirs, and every
-   neighbour's shadow each hour from 9 am to 3 pm laid one translucent layer
+   neighbour's shadow, in grey, each hour from 9 am to 3 pm laid one translucent layer
    over the last, and the envelope's own over them in the site's accent, at
    9 am, noon and 3 pm outlined; hatched, the ground only the envelope shades
    at one hour or more, where no building standing shades it that hour
