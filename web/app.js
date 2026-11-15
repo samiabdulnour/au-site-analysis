@@ -4,7 +4,7 @@
 
 // The report, first in the table, is the drawing the page opens on. It has no
 // scale ('0', as picking it sets); picking context brings 1:3000 back.
-const state = { sheet: 'slides', scale: '0', rotate: 'north', template: 'flamingo' };
+const state = { sheet: 'slides', scale: '0', rotate: 'north', template: 'flamingo', print: 'slides' };
 
 // [value, label, caption] — the caption is that option's words in the
 // sentence that describes the expected result to a screen reader.
@@ -55,6 +55,14 @@ const STYLES = {
 const NORTH = [
   ['north', 'up',    'north up'],
   ['auto',  'align', 'long side horizontal'],
+];
+// How the report and the yield are printed: as drawn, A3 spreads with a cover,
+// or as a booklet, the same pages imposed to print double-sided on A3, fold
+// down the middle and staple twice into an A4 booklet. Only the PDF downloaded
+// changes, so this is not part of what is drawn.
+const PRINT = [
+  ['slides',  'slides',  'printed as A3 slides'],
+  ['booklet', 'booklet', 'printed as a booklet, A3 sheets folded to A4'],
 ];
 
 // Every picture in the expected-result frame is a real sheet drawn for this
@@ -142,21 +150,36 @@ function renderAll() {
   const styles = STYLES[state.sheet];
   $('styleRow').hidden = styles.length === 0;
   if (styles.length) tokens($('styleOpts'), styles, state.template, (v) => { state.template = v; renderAll(); });
+  renderPrint();
   syncGo();
   renderResult();
 }
 
+/** The decks' PRINT row. A pick changes only the PDF link, so a finished drawing and its links stay. */
+function renderPrint() {
+  const foldable = state.sheet === 'yield' || state.sheet === 'slides';
+  $('printRow').hidden = !foldable;
+  tokens($('printOpts'), PRINT, state.print, (v) => { state.print = v; renderPrint(); });
+  if (pdfLink) pdfLink.href = pdfHref(pdfLink.dataset.job);
+}
+
+// The finished drawing's PDF link, which the PRINT row points at the slides or the booklet.
+let pdfLink = null;
+const pdfHref = (id) => '/api/jobs/' + id + '/pdf?download' +
+  ((state.sheet === 'yield' || state.sheet === 'slides') && state.print === 'booklet' ? '&print=booklet' : '');
+
 // The address and options a finished drawing's links stand for: they hold
 // GENERATE's place while neither changes.
 let drawnFor = null;
-const asked = () => JSON.stringify([addrInput.value.trim(), state]);
+// PRINT is left out: it picks which PDF of the drawing is downloaded, not what is drawn.
+const asked = () => { const { print, ...drawn } = state; return JSON.stringify([addrInput.value.trim(), drawn]); };
 
 /** A finished drawing's links give GENERATE its place back once the address
     or an option changes: what they would download is no longer what is asked. */
 function syncGo() {
   if (drawnFor === null || drawnFor === asked()) return;
   drawnFor = null;
-  linksEl.innerHTML = '';
+  linksEl.innerHTML = ''; pdfLink = null;
   unlockWhat.hidden = true;
   noteEl.textContent = ''; errEl.textContent = '';
   syncOut();
@@ -974,7 +997,7 @@ function goIdle() {
     nothing of the last drawing is left under it. */
 function startOutput(word) {
   drawnFor = null;
-  errEl.textContent = ''; linksEl.innerHTML = ''; noteEl.textContent = '';
+  errEl.textContent = ''; linksEl.innerHTML = ''; pdfLink = null; noteEl.textContent = '';
   syncOut();
   unlockWhat.hidden = true;
   go.hidden = false;
@@ -1019,7 +1042,7 @@ async function poll(id, misses) {
     if (j.status === 'done') {
       // Done says itself: the drawing takes the frame and its downloads take
       // GENERATE's place under the options.
-      linksEl.innerHTML = '';
+      linksEl.innerHTML = ''; pdfLink = null;
       // What this viewer may take away of this drawing, as the server says:
       // the plan's, or everything once its site is bought. The server decides
       // regardless — a free account asking for the CAD gets 402.
@@ -1060,9 +1083,10 @@ async function poll(id, misses) {
         unlockWhat.hidden = false;
         addButton('unlock this address · ' + j.unlock, () => unlock(id));
       }
-      if (grants.pdf)
-        addLink(grants.cleanPdf ? 'download pdf' : 'download pdf · watermarked',
-          '/api/jobs/' + id + '/pdf?download', { download: true });
+      if (grants.pdf) {
+        pdfLink = addLink(grants.cleanPdf ? 'download pdf' : 'download pdf · watermarked', pdfHref(id), { download: true });
+        pdfLink.dataset.job = id;
+      }
       // The CAD and the data only where they may be taken: the unlock above
       // says what paying adds.
       if (grants.openData) {
@@ -1103,6 +1127,7 @@ function addLink(label, href, { newTab, download } = {}) {
   // the page, and the job on it, away. The server's filename wins over this one.
   if (download) a.download = '';
   linksEl.append(a);
+  return a;
 }
 
 function addButton(label, onClick) {

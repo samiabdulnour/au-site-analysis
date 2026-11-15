@@ -16,6 +16,7 @@ import { tpl, withTemplate, templateFor, deckLook, tint, shadeHex, inkFor, vivid
 import { INK, aerialGreenFill, veg1750Fills, VEG_CLASSES_MAX, fillShape, swatchOf, barOf, categoryFill, heatFills, paletteRamp, styleRamp, terrainRamp, stripOf, HEIGHT_BANDS, heightBandOf, massingInks, heightRamp, zHead, zBars, zFigures, zCircles, zSpans, zPairs, zLine, niceAxis, z6, zSvg, Z_W, Z_TRACK, type Fill } from './atlasKit.js';
 import { esc } from './chrome.js';
 import { drawAxonometric, shade, type AxoScene, type Prism } from './axonometric.js';
+import type { BookletSpreads } from './booklet.js';
 import { estimateKerbs } from '../lib/kerbs.js';
 import {
   panelProjector, panelExtent, baseLayers, overLayers, panelFurniture, furnitureBox, siteMark, siteLabelPoint, stationMode, ringsPath, fcPath, ringStats, clippedStats, hatchPath, dotsPath, bboxOf, t2Text, t2Width,
@@ -105,6 +106,11 @@ export interface Slide {
   textY?: number;
   /** Style rules the slide's figure needs beyond the deck's own, scoped to it. */
   css?: string;
+  /**
+   * The spread as the booklet prints it, where that differs from the slides: a drawing across the whole spread
+   * moved so that the site is not in the fold (src/render/booklet.ts).
+   */
+  booklet?: () => Slide;
 }
 
 // ---- shared bits ------------------------------------------------------------
@@ -2617,7 +2623,7 @@ export function developmentAtlas(b0: SlidesBundle, facts: PlanningFacts): Slide 
  * form page keys them, with a grid of windows over its faces; the streets white kerb to kerb, the parks green,
  * the trees read off the aerial as crowns, the site's own building in the site's ink under the LEP's height plane.
  */
-export function formAtlas(b: SlidesBundle, planning: PlanningFacts): Slide {
+export function formAtlas(b: SlidesBundle, planning: PlanningFacts, opts: { clearFold?: boolean } = {}): Slide {
   const t = tpl();
   const f = builtFormFacts(b, planning);
   const M = massingInks();
@@ -2699,13 +2705,21 @@ export function formAtlas(b: SlidesBundle, planning: PlanningFacts): Slide {
     { swatch: block(tint(t.site, 0.55), '#1c1c1c'), label: 'What stands on the site today' },
   ];
   const figureHtml = `<div class="form3d">
-  <div class="abs" style="left:0;top:0"><svg width="${SHEET_W}mm" height="${SHEET_H}mm" viewBox="0 0 ${SHEET_W} ${SHEET_H}" xmlns="http://www.w3.org/2000/svg" style="display:block" font-family="Arial, 'Liberation Sans', sans-serif">${drawAxonometric(scene, { x: 0, y: TOP, w: SHEET_W, h: SHEET_H - TOP - FOOT }, 'form09b')}</svg></div>
+  <div class="abs" style="left:0;top:0"><svg width="${SHEET_W}mm" height="${SHEET_H}mm" viewBox="0 0 ${SHEET_W} ${SHEET_H}" xmlns="http://www.w3.org/2000/svg" style="display:block" font-family="Arial, 'Liberation Sans', sans-serif">${drawAxonometric(scene, { x: 0, y: TOP, w: SHEET_W, h: SHEET_H - TOP - FOOT, clear: opts.clearFold ? { x: FOLD, margin: BOOKLET_FOLD_CLEAR } : undefined }, 'form09b')}</svg></div>
   <div class="abs lead" style="left:${SHEET_W - MARGIN - 150}mm;top:17.5mm;width:150mm">${esc(lead)}</div>
   ${spreadFoot(sources, zKeyBox(keyEntries))}
 </div>`;
   const css = `.form3d .lead { font-size: 3.05mm; line-height: 1.38; font-weight: 600; color: ${accent}; }`;
-  return { id: '09b_built_form', title: 'Built form', subtitle: atlasSub(b), textHtml: '', figureHtml, full: true, plain: true, accent, css };
+  return { id: '09b_built_form', title: 'Built form', subtitle: atlasSub(b), textHtml: '', figureHtml, full: true, plain: true, accent, css,
+    // the city drawn round the site puts the site on the fold; in the booklet it is moved off it
+    booklet: opts.clearFold ? undefined : () => formAtlas(b, planning, { clearFold: true }) };
 }
+
+/**
+ * How far clear of the fold, mm, a drawing across the spread keeps the site in the booklet: past the gutter a stapled
+ * booklet does not open flat at, and past the staples.
+ */
+const BOOKLET_FOLD_CLEAR = 22;
 
 // ---- 08b Capacity and opportunity: the office's context plan on the template ------------------------------------
 
@@ -8824,6 +8838,20 @@ export function deckCss(): string {
   table.da.strat tr.manual td b { font-weight: 600; }
   .slide.atlas { font-family: Arial, 'Liberation Sans', 'Helvetica Neue', Helvetica, sans-serif; color: #000000; }
   .slide.atlas .znum { font-size: 14pt; font-weight: 700; letter-spacing: 0.08em; line-height: 1.15; text-transform: uppercase; white-space: nowrap; }
+  .slide.cover .cv-block { background: #ffffff; padding: 7mm 8mm 6.5mm; }
+  .slide.cover .cv-mark { font-size: 14pt; font-weight: 700; letter-spacing: 0.08em; line-height: 1.15; text-transform: uppercase; }
+  .slide.cover .cv-deck { font-size: 30pt; font-weight: 700; letter-spacing: 0.01em; line-height: 1.05; text-transform: uppercase; margin-top: 7mm; }
+  .slide.cover .cv-rule { height: 0; border-top: 0.18mm solid #878787; margin: 6mm 0 5mm; }
+  .slide.cover .cv-name { font-size: 16pt; font-weight: 700; letter-spacing: 0.02em; line-height: 1.15; text-transform: uppercase; }
+  .slide.cover .cv-det { font-size: 8pt; line-height: 3.6mm; letter-spacing: 0.025em; text-transform: uppercase; margin-top: 3mm; }
+  .slide.cover .cv-date { font-size: 6pt; letter-spacing: 0.09em; text-transform: uppercase; background: #ffffff; padding: 1.47mm 2.4mm 1.13mm; line-height: 1.2; }
+  .slide.cover .cv-head { font-size: 8pt; letter-spacing: 0.08em; text-transform: uppercase; color: #6f6f6f; margin-bottom: 3mm; }
+  .slide.cover .cv-contents { font-size: 9pt; line-height: 5.2mm; }
+  .slide.cover .cv-contents.two { column-count: 2; column-gap: 8mm; }
+  .slide.cover .cv-contents div { break-inside: avoid; display: flex; gap: 3mm; }
+  .slide.cover .cv-contents b { display: inline-block; width: 7mm; font-weight: 700; letter-spacing: 0.04em; }
+  .slide.cover .cv-colophon { font-size: 6.5pt; line-height: 3mm; color: #6f6f6f; }
+  .slide.cover .cv-colophon p { margin: 0 0 2mm; }
   .slide.atlas .zrule { height: 0; border-top: 0.18mm solid #878787; }
   .slide.atlas .zsub { font-size: 8pt; line-height: 3.4mm; letter-spacing: 0.025em; text-transform: uppercase; }
   .slide.atlas .zbar { font-size: 8.4pt; padding: 0 0.15mm; }
@@ -8897,6 +8925,55 @@ export function keepTogether(html: string): string {
 // else on the page. Together they are the page's mark for the check that the
 // printed PDF is whole (src/render/printCheck.ts), and a page that printed
 // short loses what it draws last first.
+/**
+ * A deck's cover: an A3 spread like its pages, whose right half is the front cover and left half the back, as a
+ * booklet's first and last pages (src/render/booklet.ts). The front: the deck's picture to the page's edges, and over
+ * it the name and the logo, the SITE ANALYST wordmark, the deck's name, the site's name and what it is, and the
+ * date. The back: the contents, a spread's number and title each, and the colophon. Unnumbered: the spreads after it
+ * keep their numbers.
+ */
+export interface Cover {
+  deck: string;
+  name: string;
+  details: string[];
+  date: string;
+  /** The front's picture, an SVG of the page's width, from `heroTop` mm down to its foot. */
+  hero: string;
+  heroTop?: number;
+  accent?: string;
+  contents: { n: string; title: string }[];
+  colophon: string[];
+}
+export function coverPage(c: Cover): string {
+  const top = c.heroTop ?? 0;
+  return `
+<section class="slide atlas cover" id="00_cover" data-base="${Z_BASE}">
+<div class="abs" style="left:${FOLD}mm;top:${top}mm">${c.hero}</div>
+<div class="abs cv-block" style="left:${FOLD + 12}mm;top:12mm;width:186mm">
+<div data-print-check><div class="cv-mark">Site Analyst</div><div class="cv-deck" style="color:${c.accent ?? '#000000'}">${esc(c.deck)}</div></div>
+<div class="cv-rule"></div>
+<div class="cv-name">${esc(c.name)}</div>
+${c.details.length ? `<div class="cv-det">${c.details.map(esc).join('<br>')}</div>` : ''}
+</div>
+<div class="abs cv-date" style="left:${FOLD + 12}mm;bottom:12mm">${esc(c.date)}</div>
+<div class="abs znum" style="left:12mm;top:10.6mm">Site Analyst</div>
+<div class="abs znum" style="left:75.3mm;top:10.6mm">${esc(c.deck)}</div>
+<div class="abs zrule" style="left:12mm;top:20mm;width:186mm"></div>
+<div class="abs" style="left:12mm;top:28mm;width:186mm"><div class="cv-head">Contents</div>
+<div class="cv-contents${c.contents.length > 14 ? ' two' : ''}">${c.contents.map((x) => `<div><b>${esc(x.n)}</b><span>${esc(x.title)}</span></div>`).join('')}</div></div>
+<div class="abs cv-colophon" style="left:12mm;bottom:12mm;width:120mm">${c.colophon.map((t) => `<p>${esc(t)}</p>`).join('')}</div>
+</section>`;
+}
+
+/** A deck's date as its cover gives it: "12 November 2026". */
+export const coverDate = (iso: string) => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? iso.slice(0, 10) : d.toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Australia/Sydney' });
+};
+
+/** The colophon every cover carries: who made the deck, and on what terms. */
+export const COVER_CREDIT = 'Generated with Site Analyst — © Sami Abdulnour and Zofia Kosova, licensed use. Made from open data with no guarantee it is complete.';
+
 export function atlasPage(s: Slide, i: number): string {
   const [line1, ...rest] = s.subtitle.split(' · ');
   return keepTogether(`
@@ -8917,11 +8994,17 @@ ${s.sources ? `<div class="abs zsrc" data-settle style="left:12mm;bottom:${(297 
 /** How a deck is drawn: in which of the maps' styles (the active template's where unnamed). */
 export interface DeckRenderOptions { theme?: string }
 
-export function renderSlides(b: SlidesBundle, meta: SheetMeta, opts: DeckRenderOptions = {}): { html: string; slides: Slide[] } {
+/**
+ * A deck as HTML, and the spreads its booklet prints otherwise (`booklet`): their own HTML, one section a spread, and
+ * the deck's PDF page each one stands in for.
+ */
+export interface DeckHtml { html: string; slides: Slide[]; booklet?: BookletSpreads }
+
+export function renderSlides(b: SlidesBundle, meta: SheetMeta, opts: DeckRenderOptions = {}): DeckHtml {
   return withTemplate(templateFor('slides', opts.theme ?? tpl().id), () => drawSlides(b, meta));
 }
 
-function drawSlides(b: SlidesBundle, meta: SheetMeta): { html: string; slides: Slide[] } {
+function drawSlides(b: SlidesBundle, meta: SheetMeta): DeckHtml {
   const facts = planningFacts(b);
   // the streetscape follows the character page, the street seen before the plans are read; the capacity study
   // follows the development activity it reads; a deck built before its layers has none
@@ -8930,6 +9013,7 @@ function drawSlides(b: SlidesBundle, meta: SheetMeta): { html: string; slides: S
   const slides = [countryAtlas(b), locationSlide(b), characterAtlas(b), ...(scape ? [scape] : []), planningAtlas(b), controlsAtlas(b, facts), strategicAtlas(b, facts), topographyAtlas(b), developmentAtlas(b, facts), ...(capacity ? [capacity] : []), builtFormAtlas(b, facts), formAtlas(b, facts), movementSlide(b), greenAtlas(b), siteAtlas(b), conditionAtlas(b), sunAtlas(b), constraintsAtlas(b), peopleAtlas(b), ocAtlas(b, facts), sourcesAtlas(b, facts)];
   const t = tpl();
   const footerLeft = ['SITE ANALYST — OVERALL ANALYSIS', b.siteAddress, meta.client ? `for ${meta.client}` : '', meta.jobNo ? `job ${meta.jobNo}` : ''].filter(Boolean).join(' · ');
+  const cover = reportCover(b, slides);
   // A page's last footer is its mark for the print check (src/render/printCheck.ts): the last thing it draws.
   const pages = slides.map((s, i) => s.bleed || s.full ? atlasPage(s, i) : `
 <section class="slide${s.bleed || s.full ? ' atlas' : ''}" id="${esc(s.id)}">
@@ -8941,16 +9025,45 @@ function drawSlides(b: SlidesBundle, meta: SheetMeta): { html: string; slides: S
   <div class="abs subtitle" style="left:${L_X}mm;top:26.5mm;width:${s.full ? 115 : L_W}mm">${esc(s.subtitle)}</div>
   <div class="abs text" style="left:${L_X}mm;top:${s.textY ?? FIELD_Y}mm;width:${TEXT_W}mm;height:${SLIDE_H - (s.textY ?? FIELD_Y) - 16}mm">${s.textHtml}</div>
   ${s.figureHtml}
-  <div class="abs foot" style="left:${L_X}mm;top:${FOOT_Y}mm;width:${s.full ? 115 : L_W}mm"><span>${s.bleed || s.full ? '' : esc(footerLeft)}</span><span>${s.full ? '' : i * 2 + 1}</span></div>
-  ${s.bleed || s.full ? `<div class="abs foot" data-print-check style="left:${FIELD_X}mm;top:${FOOT_Y}mm;width:${FIELD_W}mm"><span></span><span style="background:#ffffff;padding:0 1.6mm">${s.full ? `${i * 2 + 1}–${i * 2 + 2}` : i * 2 + 2}</span></div>` : `<div class="abs foot" data-print-check style="left:${FIELD_X}mm;top:${FOOT_Y}mm;width:${FIELD_W}mm"><span>generated ${esc(b.generatedAt.slice(0, 10))}</span><span>${i * 2 + 2}</span></div>`}
+  <div class="abs foot" style="left:${L_X}mm;top:${FOOT_Y}mm;width:${s.full ? 115 : L_W}mm"><span>${s.bleed || s.full ? '' : esc(footerLeft)}</span><span>${s.full ? '' : i * 2 + 2}</span></div>
+  ${s.bleed || s.full ? `<div class="abs foot" data-print-check style="left:${FIELD_X}mm;top:${FOOT_Y}mm;width:${FIELD_W}mm"><span></span><span style="background:#ffffff;padding:0 1.6mm">${s.full ? `${i * 2 + 2}–${i * 2 + 3}` : i * 2 + 3}</span></div>` : `<div class="abs foot" data-print-check style="left:${FIELD_X}mm;top:${FOOT_Y}mm;width:${FIELD_W}mm"><span>generated ${esc(b.generatedAt.slice(0, 10))}</span><span>${i * 2 + 3}</span></div>`}
 </section>`).join('\n');
 
-  const html = `<!DOCTYPE html>
-<html lang="en"><head><meta charset="utf-8"><title>${esc(b.siteAddress)} — OVERALL ANALYSIS</title>
+  const shell = (title: string, body: string, css: (string | undefined)[]) => `<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>${esc(b.siteAddress)} — ${title}</title>
 <style>
-${deckCss()}${[...new Set(slides.map((s) => s.css).filter(Boolean))].join('\n')}</style></head>
-<body>${pages}</body></html>`;
-  return { html, slides };
+${deckCss()}${[...new Set(css.filter(Boolean))].join('\n')}</style></head>
+<body>${body}</body></html>`;
+  const html = shell('OVERALL ANALYSIS', `${cover}\n${pages}`, slides.map((s) => s.css));
+  // the spreads the booklet prints otherwise, each numbered as its spread is; the deck's PDF has the cover first
+  const variants = slides.flatMap((s, i) => (s.booklet ? [{ i, s: s.booklet() }] : []));
+  const booklet = variants.length
+    ? { html: shell('OVERALL ANALYSIS BOOKLET SPREADS', variants.map(({ s, i }) => atlasPage(s, i)).join('\n'), variants.map(({ s }) => s.css)), spreads: variants.map(({ i }) => i + 1) }
+    : undefined;
+  return { html, slides, booklet };
+}
+
+/** The report's cover: the place from above to the front's edges, the site outlined; the contents and colophon on the back. */
+function reportCover(b: SlidesBundle, slides: Slide[]): string {
+  const p = b.bleedPanel;
+  const proj = panelProjector(p);
+  const parts: string[] = [`<rect x="0" y="0" width="${p.wMm}" height="${p.hMm}" fill="#f2f2f2"/>`];
+  const aerial = b.character?.aerial;
+  if (aerial?.tiles.length) parts.push(aerialTiles(aerial.tiles, p, aerial.extent));
+  else parts.push(withTemplate(greyBase(tpl()), () => baseLayers(b.base, proj, p)));
+  parts.push(siteMark(b.base, proj, 'both'));
+  const lga = b.context.lga?.name ? titleCase(b.context.lga.name) : '';
+  const c = b.controls;
+  return coverPage({
+    deck: 'Site report',
+    name: b.siteAddress,
+    details: [[lga, b.lotDescription !== '—' ? b.lotDescription : ''].filter(Boolean).join(' · '), [c.zoneCode && `${c.zoneCode}${c.zonePurpose ? ` ${c.zonePurpose}` : ''}`, c.maxHeightM ? `HOB ${c.maxHeightM}${/rl|ahd/i.test(c.heightUnits ?? '') ? ' RL' : 'm'}` : '', c.fsr ? `FSR ${c.fsr.toFixed(2)}:1` : '', b.siteAreaSqm ? `${fmtNum(Math.round(b.siteAreaSqm))} m²` : ''].filter(Boolean).join(' · ')].filter(Boolean),
+    date: `${coverDate(b.generatedAt)} · ${tpl().label}`,
+    hero: bleedSvg('cover', p, parts.join('\n')),
+    accent: deckLook().accent,
+    contents: slides.map((s, i) => ({ n: String(i + 1).padStart(2, '0'), title: s.title })),
+    colophon: ['The site, its place and its controls, read from the NSW Government\'s and the council\'s open data: an analysis to start a design from, not a survey or a s10.7 planning certificate.', COVER_CREDIT],
+  });
 }
 
 /** Everything the deck says, as data: the JSON beside the PDF. */

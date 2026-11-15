@@ -9,7 +9,8 @@ import { deserialize } from 'node:v8';
 import { join } from 'node:path';
 import { renderSlides, SLIDE_W, SLIDE_H } from '../src/render/slides.js';
 import { renderYieldDeck } from '../src/render/yieldSheet.js';
-import { printSlides } from '../src/render/pdf.js';
+import { printSlides, printBooklet } from '../src/render/pdf.js';
+import type { BookletSpreads } from '../src/render/booklet.js';
 import { prepareRasters } from '../src/render/paintMasks.js';
 import { BLEED_SCALE, COUNTRY_SCALE } from '../src/pipeline.js';
 import { withTemplate, templateFor } from '../src/render/template.js';
@@ -25,6 +26,7 @@ const only = (arg('only') ?? process.env.ONLY)?.split(',').map((x) => x.trim()).
 const opts = { theme };
 
 let html: string;
+let booklet: BookletSpreads | undefined;
 if (sheet === 'yield') {
   const { yb, meta } = deserialize(await readFile(join(outDir, 'yield.bundle')));
   html = renderYieldDeck(yb, meta, opts).html;
@@ -35,7 +37,7 @@ if (sheet === 'yield') {
   if (sb.countryPanel) sb.countryPanel = { ...sb.countryPanel, scale: COUNTRY_SCALE };
   // the painted pictures take the style's green, so they are painted under its template
   await withTemplate(templateFor('slides', theme), () => prepareRasters(sb, join(outDir, 'data'), BLEED_SCALE, COUNTRY_SCALE));
-  html = renderSlides(sb, meta, opts).html;
+  ({ html, booklet } = renderSlides(sb, meta, opts));
 }
 if (only?.length) html = html.replace(/<section class="slide[^"]*" id="([^"]+)"[^>]*>[\s\S]*?<\/section>/g, (m, id: string) => (only.some((o) => id.startsWith(o)) ? m : ''));
 const stem = theme ? `${sheet}-${theme}${only?.length ? '-only' : ''}` : sheet === 'yield' ? (only?.length ? 'yield_only' : 'yield_deck') : only?.length ? 'slides_only' : 'slides';
@@ -43,4 +45,6 @@ const pdfName = theme ? `${stem}.pdf` : sheet === 'yield' ? (only?.length ? 'YIE
 const htmlPath = join(outDir, `${stem}.html`);
 await writeFile(htmlPath, html);
 const pngs = await printSlides(htmlPath, join(outDir, pdfName), join(outDir, theme ? stem : sheet === 'yield' ? (only?.length ? 'yield_only' : 'yield') : only?.length ? 'slides_only' : 'slides'), { widthMm: SLIDE_W, heightMm: SLIDE_H });
+// the booklet beside the deck, where the whole deck was printed (a deck of some pages has no cover to fold round)
+if (!only?.length) await printBooklet(join(outDir, pdfName), booklet, { widthMm: SLIDE_W, heightMm: SLIDE_H });
 console.log(`recomposed ${pngs.length} ${sheet} page${pngs.length === 1 ? '' : 's'}${theme ? ` in ${theme}` : ''}: ${pngs.join(', ')}`);

@@ -1357,14 +1357,64 @@ site may take, so a site with more paths has more pages:
    tier's number in the ring the plan draws it in — and the apartments, a row
    for each kind in the mix with its share, ADG 4D-1's least area for it, its
    own area, how many there are and the area they take.
-5. **Affordable housing bonus** — the same for the Housing SEPP's in-fill
+5. **Reshaped to comply** — the envelope within the controls laid out again
+   in the office's feasible footprints so that it meets the ADG's sun
+   (`src/lib/reshape.ts`, tested in `test/reshape.mts`):
+   - **The footprints:** single-loaded 12 m deep, its gallery on the face
+     with least sun; double-loaded 18 m along an east–west axis, its
+     apartments running through to the north; double-loaded 22 m along a
+     north–south axis, facing east and west; each 15 to 45 m long, a
+     double-loaded one at least as long as it is deep.
+   - **Where they stand:** in rows within the setbacks (6 m from the street,
+     the ADG's half separation from the side and rear boundaries for their
+     storeys), the rows and the buildings in a row the ADG's full separation
+     apart (12, 18 or 24 m). The rows run along the main frontage, across
+     it, or true east–west or north–south.
+   - **How high:** to the height of building and held to the floor space
+     ratio. All the buildings take one height, or the northern row is a
+     storey or two lower, or the rows step down to the north, since a
+     building shades the one south of it.
+   - **Which layout:** they are read from the most floor area down, each
+     one's apartments for their sun (every half hour, then confirmed at the
+     quarter hours). The first that meets 4A-1 and 4A-2 is the scheme; where
+     none does, the nearest, and it says so.
+   - **Its pages:** its own spread (the schedule names each building's plan)
+     and its own compliance sheet; the floor area it gives up against the
+     envelope is the floor area the sun costs.
+6. **TOD controls** — where the site is in a TOD area of the Housing SEPP
+   (chapter 5, part 2, `src/lib/tod.ts`, tested in `test/tod.mts`):
+   - **What it allows:** residential flat buildings in the residential and
+     local centre zones to 22 m and 2.5:1, shop-top housing in the local
+     centre and commercial zones to 24 m and 2.5:1, each the LEP's where
+     more generous.
+   - **What it asks:** a lot at least 21 m wide at the street, and 2% of the
+     floor area as affordable housing in perpetuity where the scheme is
+     2,000 m² or more.
+   - **Its pages:** its own spread and compliance sheet, drawn only where it
+     lifts the LEP's height or ratio on a lot wide enough.
+   - **Where a council's alternative replaced it:** Ku-ring-gai's for
+     Gordon, Killara, Lindfield and Roseville, in its LEP from
+     14 November 2025 (State Environmental Planning Policy Amendment
+     (Ku-ring-gai Station Precincts) 2025), within about 800 m of the
+     stations; and Belmore, Canterbury, Croydon (in part), Lakemba, North
+     Wollongong, Punchbowl, St Marys Metro, Wiley Park and Cockle Creek.
+     The LEP's maps already carry the alternative's heights and ratios, so
+     there is no extra path.
+   - **What the sheets say there:** the controls table, the compliance
+     criteria and the spreads' sources name the alternative and the date it
+     began. They also say what its maps set that the study does not read
+     (affordable housing up to 10% on key sites and 2% across parts of the
+     precincts, key sites, active frontages, the low- and mid-rise
+     exclusion), and the savings for applications lodged by 13 June 2025.
+   - **Deferred and accelerated precincts** are named in the controls table.
+7. **Affordable housing bonus** — the same for the Housing SEPP's in-fill
    bonus, 30% more height and FSR for 15% affordable housing, eligibility to
    confirm; drawn only where it gains floor area or apartments.
-6. **Envelope to the height** — the setbacks filled to the height plane with
+8. **Envelope to the height** — the setbacks filled to the height plane with
    the FSR set aside, the case a clause 4.6 variation or a planning proposal
    has to carry, marked non-compliant; drawn only where the FSR stops the
    scheme below the height.
-7. **Compliance**, a sheet for each option that holds apartments, after the
+9. **Compliance**, a sheet for each option that holds apartments, after the
    yield's own spreads: does its envelope comply? On the left the
    assessment criteria in their order, a mark each: overshadow impact
    (3B-2), solar access (4A-1 with the hours, again built out, and 4A-2 with
@@ -1383,14 +1433,14 @@ site may take, so a site with more paths has more pages:
    them the plan as the report's sun page draws it, in Arial: no zone tints,
    every building white with its storeys (grey where no height is recorded and
    two are assumed), the future footprints dashed with theirs, and every
-   neighbour's shadow each hour from 9 am to 3 pm laid one translucent layer
+   neighbour's shadow, in grey, each hour from 9 am to 3 pm laid one translucent layer
    over the last, and the envelope's own over them in the site's accent, at
    9 am, noon and 3 pm outlined; hatched, the ground only the envelope shades
    at one hour or more, where no building standing shades it that hour
    (`addedGround()` in `src/lib/solarAccess.ts`: what it would overshadow);
    the land it shades outlined and each separation drawn as a dimension (green clear,
    amber where it holds only habitable to non-habitable, red short).
-8. **Controls and assumptions** — the assumptions the study rests on (floor
+10. **Controls and assumptions** — the assumptions the study rests on (floor
    to floor, efficiencies, the mix, the plates, the parking rates, the nearest
    station) on the left; on the right, the full table the office's
    development summary (DA 002) keeps — CONTROLS, PROPOSED and COMPLIANCE for
@@ -1625,7 +1675,8 @@ The deck prints the ones a run used. It is a feasibility figure, not a design:
 DCP setbacks and street wall heights are the design's to test, the sun and
 shadow figures are indicative, and mapped controls are not a planning
 certificate. Outputs:
-`PLANNING_YIELD.pdf`, a PNG a spread in `yield/`, `.csv`, `.json`, and
+`PLANNING_YIELD.pdf` and `PLANNING_YIELD.booklet.pdf` (see *The cover and the booklet*), a PNG a spread in
+`yield/`, `.csv`, `.json`, and
 `data/yield.json` (the bundle, which redraws with no refetch). A bundle from
 before the future heights, the lots' zones and numbers and the kerbs still
 draws: without the future neighbours and the plan's labels, its kerbs worked
@@ -1918,8 +1969,8 @@ it was retrieved or when its cache was filled, and the attribution and
 licence; with the layers' own dates, what is computed rather than sourced,
 what remains to be obtained outside the open data, and the run's warnings.
 Each slide carries the sentences that follow from the data and a marked
-placeholder for the author's narrative. Outputs: `OVERALL_ANALYSIS.pdf`, `slides/<id>.png` per slide and
-`overall.json` with everything the deck says.
+placeholder for the author's narrative. Outputs: `OVERALL_ANALYSIS.pdf` (and its booklet, see *The cover and
+the booklet* below), `slides/<id>.png` per slide and `overall.json` with everything the deck says.
 
 Where a council publishes its own DCP mapping as open data — the City of
 Sydney does — the deck reads it too, for the sites in that LGA: building
@@ -1934,6 +1985,59 @@ raised only where the study finds development potential, and a strata
 scheme, a heritage item, a mature development or a site under 250 m² stands
 as it is; its last spread says how many were held, and `PLANNING_YIELD.json`
 lists each neighbour's reading.
+
+### The cover and the booklet
+
+Both decks open on a cover (`coverPage` in `src/render/slides.ts`), page 1 of
+the deck, so the spreads after it are numbered from 2. Its right half is the
+front: the wordmark and the deck's name, the address in the style's accent, the
+lot, zone, height and ratio (the yield adds what the controls give and what the
+scheme reshaped to comply gives), and the date and style, over a drawing of the
+site — the report's the character aerial with the lot marked, the yield's the
+axonometric of the envelope. Its left half is the back: the contents, a line a
+spread, and the colophon (what the data is and is not, and the credit).
+
+Each deck is also imposed as a booklet (`src/render/booklet.ts`), kept beside
+its PDF as `PLANNING_YIELD.booklet.pdf` or `OVERALL_ANALYSIS.booklet.pdf`. Each
+A3 landscape side holds two A4 pages, and the sides come in saddle-stitch
+order. Printed double-sided on A3, flipped on the short edge, the sheets
+stacked as they come out, folded down the middle and stapled twice on the fold,
+they make an A4 portrait booklet:
+- The cover's right half is the front and its left half the back.
+- Each spread keeps its two halves face to face, as drawn.
+- Blank pages go in before the back where the pages fall short of a four.
+
+A thin grey dashed line down the middle of every side marks the fold. Printed
+on A4 instead, the same file folds to an A5 booklet.
+
+A spread drawn across both pages with the site in the middle would put the site
+in the fold, under the staples. The booklet prints its own version of such a
+spread, in which the drawing slides sideways within its frame until the site's
+outline is 22 mm clear of the fold (the shorter way, to the right where the two
+are even); the heading, lead, key and sources stay where they are. In the report
+that is *Built form* (09b), the city drawn round the site:
+- `renderSlides` returns these spreads as `booklet`: their HTML, and the deck
+  page each stands in for.
+- `printBooklet` (`src/render/pdf.ts`) prints them beside the deck as
+  `OVERALL_ANALYSIS.booklet-spreads.pdf` (with its HTML and PNG), then imposes
+  the booklet with them in place.
+- The deck's own page is left out of the booklet altogether.
+
+The A3 slides keep the drawing as it was. A deck imposed on demand by the
+server (one drawn before this) has none of these spreads. Each half is the spread's
+own page, drawn once into the booklet and shown through a window, so the
+booklet is hardly larger than the deck. The CLI and `scripts/recompose.ts`
+impose it after the deck; `npx tsx test/booklet.mts` checks the order and reads
+an imposed deck back as printed.
+
+On the page, PRINT under STYLE (for REPORT and YIELD) picks which of the two the
+PDF link downloads: SLIDES, the A3 spreads with their cover, or BOOKLET. It is
+not part of what is drawn, so switching it keeps a finished drawing and only
+moves its link (`/api/jobs/<id>/pdf?download&print=booklet`, saved as
+`…_BOOKLET.pdf`). A deck drawn before booklets existed is imposed on its first
+such download and kept beside it; the deck's PNGs show whether it has a cover,
+and without one its first spread still opens on pages 2 and 3. A free account's
+booklet is stamped with the watermark like its slides.
 
 ### The decks' type and alignment
 

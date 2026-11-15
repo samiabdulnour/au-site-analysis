@@ -20,7 +20,7 @@ import { renderSummarySheet } from './render/summarySheet.js';
 import { summaryCsv, summaryJson } from './export/summaryExport.js';
 import { renderYieldDeck, yieldCsv, yieldJson } from './render/yieldSheet.js';
 import { renderSlides, slidesFacts, PANEL_W, PANEL_H, DA_PANEL_H, SLIDE_W, SLIDE_H } from './render/slides.js';
-import { htmlToPdf, printSlides } from './render/pdf.js';
+import { htmlToPdf, printSlides, printBooklet } from './render/pdf.js';
 import { prepareRasters } from './render/paintMasks.js';
 import { BLEED_SCALE, COUNTRY_SCALE } from './pipeline.js';
 
@@ -146,7 +146,9 @@ if (sheetType === 'yield') {
   const csvPath = join(outDir, 'PLANNING_YIELD.csv'), jsonPath = join(outDir, 'PLANNING_YIELD.json');
   await writeFile(csvPath, yieldCsv(yb));
   await writeFile(jsonPath, yieldJson(yb));
-  outputs.push(yieldPdfPath, ...yieldPngs, csvPath, jsonPath);
+  // the booklet beside it, for printing double-sided on A3 and folding into an A4 booklet (src/render/booklet.ts)
+  const yieldBooklet = await printBooklet(yieldPdfPath, undefined, { widthMm: SLIDE_W, heightMm: SLIDE_H });
+  outputs.push(yieldPdfPath, yieldBooklet, ...yieldPngs, csvPath, jsonPath);
 }
 
 if (sheetType === 'slides') {
@@ -166,14 +168,15 @@ if (sheetType === 'slides') {
   }
   console.log('composing overall analysis slides…');
   await prepareRasters(sb, join(outDir, 'data'), BLEED_SCALE, COUNTRY_SCALE);
-  const { html } = renderSlides(sb, meta);
+  const { html, booklet } = renderSlides(sb, meta);
   const slidesHtmlPath = join(outDir, 'slides.html');
   await writeFile(slidesHtmlPath, html);
   const deckPath = join(outDir, 'OVERALL_ANALYSIS.pdf');
   const pngs = await printSlides(slidesHtmlPath, deckPath, join(outDir, 'slides'), { widthMm: SLIDE_W, heightMm: SLIDE_H });
   const factsPath = join(outDir, 'overall.json');
   await writeFile(factsPath, JSON.stringify(slidesFacts(sb), null, 2));
-  outputs.push(deckPath, ...pngs, factsPath);
+  const deckBooklet = await printBooklet(deckPath, booklet, { widthMm: SLIDE_W, heightMm: SLIDE_H });
+  outputs.push(deckPath, deckBooklet, ...pngs, factsPath);
 }
 
 if (sheetType === 'streetscape') {

@@ -242,6 +242,12 @@ export interface Tier {
   held?: 'depth' | 'tower';
   /** A building that stands, rebuilt on its own footprint: no setbacks of the study's. */
   existing?: boolean;
+  /**
+   * Per edge of the plate's outline, a face that holds no apartment's windows: a single-loaded building's gallery,
+   * or the back of a double-loaded one whose apartments run through to the north. The sun study lays the
+   * apartments along the other faces.
+   */
+  windowless?: boolean[];
 }
 
 export interface YieldInput {
@@ -255,6 +261,8 @@ export interface YieldInput {
   hobM?: number;
   fsr?: number;
   assumptions?: Partial<YieldAssumptions>;
+  /** The building type, where a policy permits one the zone does not (the TOD's apartments in R2); the zone's own where unset. */
+  archetype?: Archetype;
 }
 
 export type UnitCount = Record<UnitKind, number> & { total: number };
@@ -523,7 +531,7 @@ export function computeYield(input: YieldInput): YieldResult {
     parking: withFour({ ...DEFAULT_ASSUMPTIONS.parking, ...input.assumptions?.parking }, input.assumptions?.parking),
     bicycles: { ...DEFAULT_ASSUMPTIONS.bicycles, ...input.assumptions?.bicycles },
   };
-  const arch = archetypeFor(input.zone);
+  const arch = input.archetype ?? archetypeFor(input.zone);
   const ring = open(input.ring);
   const A = input.siteAreaSqm;
   const ground = arch === 'mixed' ? a.groundRetailF2F : arch === 'commercial' ? a.commercialF2F : a.residentialF2F;
@@ -572,6 +580,28 @@ export function computeYield(input: YieldInput): YieldResult {
     return { ...t, envelopeSqm, plateSqm: count(plateMask) * cellA * scale, envelope: outline(g, env), plate: outline(g, plateMask), held };
   });
 
+  return fill(input, a, arch, tiers, storeysByHeight, ground, typical);
+}
+
+/** A building of the study's own placing: its outline (local metres), its storeys, its faces without windows and its name. */
+export interface Placed { ring: XY[]; storeys: number; windowless?: boolean[]; name: string; front: number; side: number; rear: number }
+
+/**
+ * A scheme of separate buildings, each placed by the caller (lib/reshape.ts lays the office's feasible footprints
+ * out): each building a tier of its own from the ground to its storeys, apartments throughout, held to the height of
+ * building and the floor space ratio as the envelope is.
+ */
+export function computeBuildings(input: YieldInput & { buildings: Placed[] }): YieldResult {
+  const base = computeYield({ ...input, hobM: undefined });
+  const a = base.assumptions;
+  const arch: Archetype = 'residential';
+  const ground = a.residentialF2F, typical = a.residentialF2F;
+  const storeysByHeight = input.hobM ? storeysUnder(input.hobM, ground, typical, a.roofAllowance) : Math.max(0, ...input.buildings.map((bd) => bd.storeys));
+  const tiers: Tier[] = input.buildings.filter((bd) => bd.storeys > 0 && bd.ring.length >= 3).map((bd) => {
+    const plateSqm = ringArea(bd.ring);
+    return { name: bd.name, from: 1, to: Math.min(bd.storeys, storeysByHeight), use: 'residential', front: bd.front, side: bd.side, rear: bd.rear,
+      envelopeSqm: plateSqm, plateSqm, envelope: [bd.ring], plate: [bd.ring], ...(bd.windowless ? { windowless: bd.windowless } : {}) };
+  });
   return fill(input, a, arch, tiers, storeysByHeight, ground, typical);
 }
 
