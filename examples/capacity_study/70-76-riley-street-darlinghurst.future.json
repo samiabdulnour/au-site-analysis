@@ -757,10 +757,10 @@
   {
    "title": "Everything develops at our density",
    "horizon": "Beyond the plan, what the Commission asks us to assume",
-   "lead": "Every site round us develops to our density, {site.fsr}:1 as the plans of 10 November draw our building, the block across Riley Street with them: the blocks north of us in full, 66-68 Riley St with them, the Crown Street site south of the lane lot, and 91-107 Riley St opposite; 109 Riley St, the former hotel on the Stanley Lane corner, is a heritage item (I436, Sydney LEP 2012) and stays, as every hatched lot does. Each stands on a three-storey podium and rises until it reaches that density, its tower's length trimmed to land on it, the ADG's 12 m off its neighbouring lots and, measured to the middle of the road, 12 m from Riley Street's and 9 m from Crown Lane's. Our own tower is one footprint from level 3 to the top: 9 m from the lane's middle, 3 m off Riley Street, Stanley Lane and our northern boundary; levels 1 and 2 stand 6 m from the lane's middle.",
+   "lead": "Every site round us develops to our density, {site.fsr}:1 as calculated off the plans of 10 November, the block across Riley Street with them: the blocks north of us in full, 66-68 Riley St with them, the Crown Street site south of the lane lot, and 91-107 Riley St opposite; 109 Riley St, the former hotel on the Stanley Lane corner, is a heritage item (I436, Sydney LEP 2012) and stays, as every hatched lot does. To stand as low as that density lets it, each tower is a 22 m slab as long as its lot allows over a three-storey podium: 12 m from Riley Street's middle and 9 m from Crown Lane's, its end walls blank and 6 m off its neighbouring lots (the northern tower's 9 m off ours, so 12 m parts the two blank ends). Our own tower is one footprint from level 3 to the top: 9 m from the lane's middle, 3 m off Riley Street, Stanley Lane and our northern boundary.",
    "notes": [
     "Our building as the plans of 10 November have it: the ground floor over the lot, levels 1 and 2 held 3 m off Crown Lane with 11 apartments a floor, and the tower from level 3 to the top on one footprint, {site.plate}, {site.east} m off the lane, 3 m off Riley Street, Stanley Lane and the northern boundary, 8 apartments a floor.",
-    "54-68 Riley St with 1 Crown Lane: {A.area} m², {A.plate}, {A.storeys} storeys at {A.fsr}; its south end {A.sep} m from our tower.",
+    "54-68 Riley St with 1 Crown Lane: {A.area} m², {A.plate}, {A.storeys} storeys at {A.fsr}; its blank south end {A.sep} m from our tower's blank north end.",
     "Crown St north, 89 to 105 Crown St with 4 and 10 Crown Lane: {B.area} m², {B.plate}, {B.storeys} storeys.",
     "107-129 Crown St: {D.area} m², {D.plate} over a podium 9 m from the lane's middle, {D.storeys} storeys; {D.sep} m from our tower.",
     "91-107 Riley St, across Riley Street: {E.area} m², {E.plate} over a podium, {E.storeys} storeys; {E.sep} m from our tower, half each side of the road's middle. 109 Riley St south of it is heritage item I436, the former hotel 'Watters Gallery', and stays.",
@@ -790,14 +790,15 @@
        "storeys": "parity",
        "base": 3,
        "along": "RILEY STREET",
-       "setback": 5,
-       "sides": 3,
-       "length": 30,
+       "setback": 3,
+       "sides": 0,
+       "length": 45,
        "from": "YURONG LANE",
        "endSetback": 3,
        "toCentre": {
         "CROWN LANE": 9
-       }
+       },
+       "boundary": 9
       }
      ]
     },
@@ -821,18 +822,19 @@
        "footprint": "lot"
       },
       {
-       "type": "d18",
+       "type": "d22",
        "storeys": "parity",
        "base": 3,
-       "along": "YURONG LANE",
+       "along": "CROWN STREET",
        "setback": 3,
        "sides": 0,
-       "length": 25,
-       "from": "CROWN STREET",
-       "endSetback": 4,
+       "length": 45,
+       "from": "YURONG LANE",
+       "endSetback": 3,
        "toCentre": {
         "CROWN LANE": 9
-       }
+       },
+       "boundary": 6
       }
      ]
     },
@@ -851,7 +853,7 @@
        "footprint": "lot"
       },
       {
-       "type": "d18",
+       "type": "d22",
        "storeys": "parity",
        "base": 3,
        "along": "CROWN LANE",
@@ -861,7 +863,8 @@
        "from": "centre",
        "toCentre": {
         "CROWN LANE": 9
-       }
+       },
+       "boundary": 6
       }
      ]
     },
@@ -890,7 +893,8 @@
        "from": "centre",
        "toCentre": {
         "RILEY STREET": 12
-       }
+       },
+       "boundary": 6
       }
      ]
     }

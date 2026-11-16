@@ -1091,16 +1091,26 @@ def road_pairs(blds, parcels=()):
             mid = centre_between((q1.x, q1.y), (q2.x, q2.y))
             if mid is None:
                 continue
+            # only two that face each other across the road: their footprints overlap along it. Corner to corner
+            # across a junction no window looks at another, and the line is not drawn
+            ax = min((l for ls in road_axes().values() for l in ls), key=lambda l: l.distance(Point(mid)))
+            (x0, y0), (x1, y1) = ax.coords[0], ax.coords[-1]
+            L = math.hypot(x1 - x0, y1 - y0) or 1.0
+            along = lambda g: [((x - x0) * (x1 - x0) + (y - y0) * (y1 - y0)) / L for x, y in g.exterior.coords]
+            ta, tb = along(a['poly']), along(b['poly'])
+            if min(max(ta), max(tb)) - max(min(ta), min(tb)) < 3:
+                continue
             d = q1.distance(q2)
             hab, blank, _ = ADG[adg_band(min(a['n'], b['n']))]
-            v = 'clear' if round(d) >= hab else 'one face blank' if round(d) >= blank else 'short of a blank face'
+            both = ADG[adg_band(min(a['n'], b['n']))][2]
+            v = 'clear' if round(d) >= hab else 'one face blank' if round(d) >= blank else 'both faces blank' if round(d) >= both else 'short of a blank face'
             road = min(ROADS, key=lambda nm: min(l.distance(Point(mid)) for l in ROADS[nm]))
             out.setdefault(a['key'], []).append(dict(kind='pair', name=road.title(), other=b['key'], side='', d=d, a=math.dist((q1.x, q1.y), mid),
                                                      b=math.dist(mid, (q2.x, q2.y)), hab=hab, blank=blank, verdict=v, p0=(q1.x, q1.y), p1=(q2.x, q2.y), mid=mid, key=a['key']))
     return out
 
 
-BOUND_COLOUR = {'clear': '#1f8f3a', 'one face blank': '#c77d00', 'party wall': '#c77d00', 'short of a blank face': '#c0161c', 'street': '#666', 'street ok': '#1f8f3a', 'street flush': '#c77d00'}
+BOUND_COLOUR = {'clear': '#1f8f3a', 'one face blank': '#c77d00', 'both faces blank': '#c77d00', 'party wall': '#c77d00', 'short of a blank face': '#c0161c', 'street': '#666', 'street ok': '#1f8f3a', 'street flush': '#c77d00'}
 
 
 def bounds_text(rows):
@@ -1115,8 +1125,8 @@ def bounds_text(rows):
     rows = [r for r in rows if r['kind'] in ('lot', 'pair')] + list(near.values())
     for r in rows:
         if r['kind'] == 'pair':
-            mark = {'clear': '✓', 'one face blank': 'one face blank', 'short of a blank face': f'✗ needs {r["blank"]:g}'}[r['verdict']]
-            worst = max(worst, {'clear': 0, 'one face blank': 1, 'short of a blank face': 2}[r['verdict']])
+            mark = {'clear': '✓', 'one face blank': 'one face blank', 'both faces blank': 'both faces blank', 'short of a blank face': f'✗ needs {r["blank"]:g}'}[r['verdict']]
+            worst = max(worst, {'clear': 0, 'one face blank': 1, 'both faces blank': 1, 'short of a blank face': 2}[r['verdict']])
             bits.append(f'<span style="color:{BOUND_COLOUR[r["verdict"]]}">{r["other"]} across {r["name"]} {r["d"]:.0f} m ({r["a"]:.0f} + {r["b"]:.0f}) {mark}</span>')
         elif r['kind'] == 'lot':
             mark = {'clear': '✓', 'one face blank': 'blank face', 'party wall': 'party wall, blank', 'short of a blank face': f'✗ needs {r["blank"]:g}'}[r['verdict']]
@@ -1295,10 +1305,10 @@ def separation(blds, existing, RET, parcels):
                 d = ours.distance(poly)
             else:
                 d = geo['total']
-            hab, blank, _ = ADG[band_]
+            hab, blank, both = ADG[band_]
             dd = round(d)        # the verdict on the metre the sheet prints
-            verdict = 'clear' if dd >= hab else 'one face blank' if dd >= blank else 'short of a blank face'
-            rank = ('clear', 'one face blank', 'short of a blank face').index(verdict)
+            verdict = 'clear' if dd >= hab else 'one face blank' if dd >= blank else 'both faces blank' if dd >= both else 'short of a blank face'
+            rank = ('clear', 'one face blank', 'both faces blank', 'short of a blank face').index(verdict)
             if worst is None or rank >= worst[0]:
                 worst = (rank, d, hab, blank, verdict, geo)
         _, d, hab, blank, verdict, geo = worst
@@ -1814,7 +1824,7 @@ def sun_verdict(share):
 
 
 SUMMARY = []
-VERDICT_COLOUR = {'clear': '#1f8f3a', 'one face blank': '#c77d00', 'short of a blank face': '#c0161c', 'likely': '#1f8f3a', 'marginal': '#c77d00', 'unlikely': '#c0161c'}
+VERDICT_COLOUR = {'clear': '#1f8f3a', 'one face blank': '#c77d00', 'both faces blank': '#c77d00', 'short of a blank face': '#c0161c', 'likely': '#1f8f3a', 'marginal': '#c77d00', 'unlikely': '#c0161c'}
 
 
 MINI_PAD = 26          # metres of context round the study on the summary's plans
@@ -1965,7 +1975,7 @@ def mini_plan(parcels, blds, existing, RET, sep, k=1.0, big=False, bset=None):
     return ''.join(o)
 
 
-OPTION_NOTE = ("Separation per ADG 3F-1: 24 m between habitable rooms at nine storeys and over, 18 m where one face is blank, 18 and 13.5 at five to eight; each building half of that from its own side and rear boundaries (12 or 6 m at nine storeys and over), a party wall blank, and above its podium at least 3 m off each street and lane, as our tower; "
+OPTION_NOTE = ("Separation per ADG 3F-1: 24 m between habitable rooms at nine storeys and over, 18 m where one face is blank, 12 m where both are, 18 and 13.5 at five to eight; each building half of that from its own side and rear boundaries (12 or 6 m at nine storeys and over), a party wall blank, and above its podium at least 3 m off each street and lane, as our tower; "
                "read at the levels the two buildings share; the parts are our face to our boundary, the gap, their boundary to their face. Sun per ADG 4A-1 "
                "on 21 June, 9 to 3, cast with Loriini's engine with every building on its own ground: two continuous hours as three hourly sun's-eye views in a row show them, 9, 10 and 11 or later, a run from half past not counting; "
                "our apartments as the plans lay them out, each at its own wall and storey, a neighbour's in 8 m bays on the faces its plan gives them; 70 % with "
@@ -2354,7 +2364,7 @@ def page(no, scn):
         buildings.append(dict(name=nm, d=d, v=v, sun=sun_cell(sr, units=round(gfa_key / UNIT_GFA)), units=round(gfa_key / UNIT_GFA), bounds=btxt, bworst=bworst or 0,
                               yld=yield_text(pk['fsr'], pk['gfa'], round(pk['gfa'] / UNIT_GFA / 5) * 5) if pk else ''))
     ours = sun_cell(sunb.get('site'), today=True) if sunb.get('site') else None
-    worst = max((max(['clear', 'one face blank', 'short of a blank face'].index(b['v']), b['bworst']) for b in buildings), default=0)
+    worst = max((max({'clear': 0, 'one face blank': 1, 'both faces blank': 1, 'short of a blank face': 2}[b['v']], b['bworst']) for b in buildings), default=0)
     allow = ['yes', 'yes, on the conditions in amber', 'no, the red building cannot keep the separation or its setbacks'][worst] if buildings else 'nothing new to allow'
     parts_of = {nm.split(' · ')[0]: geo for nm, d, hab, blank, v, geo in sep if geo['new']}
     for b in buildings:

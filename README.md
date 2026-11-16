@@ -2045,6 +2045,12 @@ it, or `site.fsr` where the file states one), the podium's floor space
 counted and a single tower's length trimmed about its middle so the floor
 space lands on that density. Riley Street's last scenario sets every site
 round the site, the block across Riley Street with them, at our density.
+There each neighbour's tower is a 22 m slab as long as its lot allows, its
+end walls blank and 6 m off its neighbouring lots, so it stands as low as
+that density lets it (17 to 19 storeys beside our 14). A separation reads
+three ways: clear, one face blank, or both faces blank (the ADG's 12, 9 and
+6 m), and only two towers that face each other across a road are
+dimensioned across it.
 The LEP's heritage items come off the planning portal's heritage map with
 their numbers (`--heritage` reads them over an earlier fetch): the option
 sheets hatch them, name the ones beside a site, and a scenario that puts a
