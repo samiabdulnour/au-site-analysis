@@ -1002,9 +1002,14 @@ take the warm colours — yellow ground with orange buildings for R2, pink for
 R3, cyan for R4, peach for mixed use — and green is kept for green space alone,
 open space the deep mint with black dots. The local and commercial centres and
 retail are the blue family, told apart by texture, the institutions lavender,
-industry grey on stone; water the bright cyan, the site and heritage in magenta
-and purple, the railway orange. The legend swatch shows a few buildings on
-their ground. The colours are exactly those the reference prints. Streets, numbered
+industry grey on stone; water the bright cyan, heritage purple, the railway
+orange. The site is a red terracotta (`#c8553a`), drawn as its site sheet
+draws it (`siteMark` on the template, 2026-11): the lot in a pale tint of the
+red, on white so the zone under it does not muddy it, inside a dash-dot line
+of the red and a white contour that lifts it off the tints round it; what
+stands on the lot in the full red, in a white edge. It was the reference's
+pale salmon at 0.55 in a dashed line, which the decks keep as `site`. The legend swatch shows a few buildings on
+their ground. The other colours are exactly those the reference prints. Streets, numbered
 places and the dotted lines are Flamingo's, but the street names and the institutions' number discs
 are the reference's peach, the parks' discs a light leaf green, and the lots
 and every building are drawn in a heavy white line. The lots lie under the
@@ -1117,11 +1122,16 @@ so the roads stay white (water is drawn whole), every building in its zone
 family's strong colour with a white edge and its number in white (a quiet grey
 where no zone is mapped), the white cadastre, Kingfisher's
 grotesk and its peach street names. The site is in a red terracotta
-(`#c8553a`, 2026-11; it was the context sheet's magenta, which the context
-sheet keeps), chosen to sit with the palette's peach and coral: its dash-dot
+(`#c8553a`, 2026-11; it was the palette's magenta), the same as on the
+context sheet, chosen to sit with the palette's peach and coral: its dash-dot
 boundary, its corners and levels, the lot in a pale tint of it (`siteTint`)
 and what stands on the lot in the terracotta itself (`siteFigure`), where it
-was a quiet grey. Flamingo's site sheet keeps its coral site; its building on
+was a quiet grey. How that building is drawn is the look's `siteFigureStyle`.
+Kingfisher's is `fillContour`: filled in the terracotta inside a thick white
+contour, which lifts it off the lot's tint. The others are the buildings' fine
+white edge (unset), white and hatched inside the white contour (the hatch's
+line and spacing are `siteFigureHatch`), or white, plain or hatched, inside a
+thick contour of the terracotta. Flamingo's site sheet keeps its coral site; its building on
 the lot takes the coral as its outline and hatch. The climate is drawn in
 the office's marks for this palette (`src/render/climateSymbols.ts`, taken
 as drawn from its symbol sheet): each solstice's sun path a nearly solid
@@ -1365,11 +1375,22 @@ palette.
   hillshade under them.
 - **3D views: a line model**, after an architect's axonometric
   (`src/render/axonometric.ts`, `LINE`):
+  - the massing views (the yield's, its cover's, the report's built form)
+    are black and white, with no colour at all, the accent included:
+    whatever ink or fill they are given goes to the grey of its own
+    lightness (`greyOf`), the site is a black dash-dot boundary on the
+    ground with no tint, and the height plane over it a fine black dashed
+    outline;
+  - the compliance views keep their colour: the walls and roofs in their
+    bands of sun hours, the site in the accent;
   - every building is a white volume in a black outline, with no shade on
     its faces;
   - what is built on the site carries the heaviest outline, its storeys
-    ruled and its windows dotted; a shop's or an office's floors are a light
-    grey;
+    ruled across its walls and nothing else on them: a massing is a volume,
+    not a facade design, so the other styles' pattern of window panes is
+    left off (`LINE_WINDOWS`, which can also draw frames, ribbons or a
+    curtain wall's uprights on the wall as it stands); a shop's or an
+    office's floors are a light grey;
   - the trees are white canopies in their contour with their limbs drawn
     fine, the people and the traffic white in outline;
   - each ground surface has a hatch of its own (`groundHatch`), sized on
@@ -1590,8 +1611,13 @@ site may take, so a site with more paths has more pages:
    most the controls allow it); the sun on each facade and the roof, by the
    way each looks, its area, its average hours and the share with the hours
    asked, today and built out; each building near and its separation, today
-   and built out; and, on the first sheet, the criteria as the sheet reads
-   them. On the right the massing twice, side by side and close on the
+   and built out. On the first sheet each criterion says in full what it
+   asks, in a line of small print under its own row (the ADG clause and its
+   wording, how the yield's most is worked out, what "built out" means).
+   That wording was a table of its own under the others ("Assessment
+   criteria"), 77 mm of it where 24 mm were free, and it ran into the
+   page's key; under the rows it adds about 20 mm and the tables stay clear
+   of the key. On the right the massing twice, side by side and close on the
    building, from the street corner and from the opposite one, so every face
    is seen, the town round it a white model (neighbours, futures, trees,
    traffic and ground in white and greys) so only the scheme's colours read:

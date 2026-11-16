@@ -84,9 +84,13 @@ const styleChecks: [string, boolean][] = [
   ['slides drawn in the style named', templateFor('slides', 'kingfisher') === 'kingfisher'],
   // Kingfisher's site sheet has a site colour of its own, a red terracotta: the boundary, the lot's tint and what
   // stands on the lot; the context sheet keeps its magenta, and Flamingo's site sheet, built on Kingfisher's, its coral
-  ['site: Kingfisher\'s site in its terracotta, the lot tinted and its building filled in it', (() => { const k = siteTheme('kingfisher').look; return k.site === '#c8553a' && k.siteFigure === k.site && k.siteTint?.fill === k.site && (k.siteTint?.opacity ?? 1) < 0.3; })()],
-  ['site: the context sheet\'s Kingfisher keeps its magenta site', TEMPLATES.find((t) => t.id === 'kingfisher')!.categories.find((c) => c.id === 'site')!.fill === '#c2367c'],
-  ['site: Flamingo keeps its own site colour and its template\'s tint', (() => { const f = siteTheme('flamingo').look; return f.site !== '#c8553a' && f.siteFigure === undefined && f.siteTint === undefined; })()],
+  ['site: Kingfisher\'s site in its terracotta, the lot tinted and its building filled in it inside a thick white contour', (() => { const k = siteTheme('kingfisher').look; return k.site === '#c8553a' && k.siteFigure === k.site && k.siteFigureStyle === 'fillContour' && k.siteTint?.fill === k.site && (k.siteTint?.opacity ?? 1) < 0.3; })()],
+  // the context sheet marks the site in the same terracotta, as the site sheet draws it: the lot a pale tint of it in a
+  // white contour (the building on it takes the full colour); the decks keep the pale salmon, and no other template
+  // marks its site otherwise than in its own colour
+  ['context: Kingfisher marks the site in the site sheet\'s terracotta, the lot a pale tint of it in a white contour', (() => { const k = TEMPLATES.find((t) => t.id === 'kingfisher')!; return k.siteMark?.ink === siteTheme('kingfisher').look.site && k.siteMark.opacity > 0.1 && k.siteMark.opacity <= 0.4 && k.siteMark.contour > 0 && k.site === '#f0bcac'; })()],
+  ['context: the other templates mark the site in their own colour', TEMPLATES.filter((t) => t.id !== 'kingfisher').every((t) => t.siteMark === undefined)],
+  ['site: Flamingo keeps its own site colour, its template\'s tint and its own way with the building', (() => { const f = siteTheme('flamingo').look; return f.site !== '#c8553a' && f.siteFigure === undefined && f.siteFigureStyle === undefined && f.siteTint === undefined; })()],
 ];
 const badStyle = styleChecks.filter(([, ok]) => !ok);
 if (badStyle.length) {

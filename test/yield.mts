@@ -291,8 +291,13 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
     JSON.stringify(scenarioRows(bundle, s).map((r) => r.sun)));
   const comp = page('07_within_controls_compliance');
   // the apartments' panels on the massing (axonometric cells, outlined at 0.07), and the key's yellow
-  check('compliance: one sheet an option, titled for it, the criteria only on the first', comp.title === 'Within the controls: compliance' && page('09_affordable_bonus_compliance').title === 'Affordable bonus: compliance'
-    && /Assessment criteria/.test(comp.figureHtml) && !/Assessment criteria/.test(page('09_affordable_bonus_compliance').figureHtml));
+  // What each criterion asks, in full, is a line of small print under its own row on the first sheet, and on no other.
+  // It was a table of its own under the others ("Assessment criteria"), which ran into the page's key: no such block now.
+  const notes = (html: string) => [...html.matchAll(/<tr class="yn"><td colspan="4">([^<]*)<\/td><\/tr>/g)].map((m) => m[1]);
+  check('compliance: one sheet an option, titled for it, what the criteria ask written out only on the first', comp.title === 'Within the controls: compliance' && page('09_affordable_bonus_compliance').title === 'Affordable bonus: compliance'
+    && notes(comp.figureHtml).length >= 5 && notes(page('09_affordable_bonus_compliance').figureHtml).length === 0, `${notes(comp.figureHtml).length} on the first, ${notes(page('09_affordable_bonus_compliance').figureHtml).length} on the third`);
+  check('compliance: each criterion\'s note under its own row, none in a block of its own', ['ADG 3B-2', 'ADG 4A-1', 'ADG 4A-2', 'ADG 3F-1', 'The most floor area allowed'].every((t) => notes(comp.figureHtml).some((n) => n.startsWith(t)))
+    && /<tr class="noted"><td>Building separation<\/td>[\s\S]*?<\/tr><tr class="yn"><td colspan="4">ADG 3F-1/.test(comp.figureHtml) && !/Assessment criteria/.test(all.html), notes(comp.figureHtml).join(' | '));
   check('compliance: the criteria in the assessment\'s order, each marked', ['Overshadow impact', 'Solar access, 2 h', 'Solar access, none', 'Building separation', 'Yield'].every((t) => comp.figureHtml.includes(`<td>${t}</td>`))
     && comp.figureHtml.indexOf('Overshadow impact') < comp.figureHtml.indexOf('Solar access, 2 h') && comp.figureHtml.indexOf('Building separation') < comp.figureHtml.indexOf('<td>Yield</td>'));
   check('compliance: yield within the controls is 100% and ticked; filled to the height, over and crossed', /<td>Yield<\/td>(?:.(?!<\/tr>))*100%(?:.(?!<\/tr>))*M0\.6,2\.1/.test(comp.figureHtml)
