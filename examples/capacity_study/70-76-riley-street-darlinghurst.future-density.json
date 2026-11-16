@@ -689,11 +689,12 @@
   },
   {
    "title": "Crown Street as three towers, all 14 storeys",
-   "horizon": "Three towers sketched across the lane, each 14 storeys over a three-storey podium: one on 107-113 Crown St, two on 115-129 Crown St. Every other neighbour as it stands.",
-   "lead": "The Crown Street lots across the lane develop as sketched, every other neighbour as it stands, the sites as in scenario 4: on 107-113 Crown St the same tower, 3 m off each side boundary; on 115-129 Crown St two towers 12 m wide, one built to the northern boundary, 3 m from the first tower, and one at the southern end, 3 m off the lane. All three stand 9 m from the middle of Crown Lane and 3 m off Crown Street, and all are 14 storeys, as ours is.",
+   "horizon": "Three towers sketched across the lane, each 14 storeys over a three-storey podium, each Crown Street lot a site of its own. Every other neighbour as it stands.",
+   "lead": "The three Crown Street lots across the lane develop lot by lot as sketched, every other neighbour as it stands: on 107-113 Crown St the tower of scenario 4, 3 m off each side boundary; on 115-119 Crown St a tower the full width of its lot, built boundary to boundary, 3 m from the first tower; on 121-129 Crown St a tower 12 m wide at its southern end, 3 m off the lane. All three stand 9 m from the middle of Crown Lane and 3 m off Crown Street, and all are 14 storeys, as ours is.",
    "notes": [
     "107-113 Crown St: {C.area} m², {C.plate}, {C.storeys} storeys at {C.fsr}; {C.sep} m from our tower.",
-    "115-119 and 121-129 Crown St as one site: {D.area} m², two towers 12 m wide, {D.storeys} storeys at {D.fsr}; {D.sep} m from our tower.",
+    "115-119 Crown St: {D.area} m², {D.plate}, the width of its lot, {D.storeys} storeys at {D.fsr}; {D.sep} m from our tower.",
+    "121-129 Crown St: {F.area} m², {F.plate} at its southern end, {F.storeys} storeys at {F.fsr}; {F.sep} m from our tower.",
     "The northern blocks, Crown Street north of the lane lot and the block across Riley Street stand as they are."
    ],
    "retained": [
@@ -728,10 +729,9 @@
     },
     {
      "key": "D",
-     "name": "115-129 Crown St",
+     "name": "115-119 Crown St",
      "addresses": [
-      "115-119 CROWN STREET",
-      "121-129 CROWN STREET"
+      "115-119 CROWN STREET"
      ],
      "buildings": [
       {
@@ -744,12 +744,23 @@
        "storeys": 14,
        "base": 3,
        "toCentre": {
-        "CROWN LANE@west": 9
+        "CROWN LANE": 9
        },
-       "boundary": 0,
-       "wings": {
-        "107-113 CROWN STREET": 12
-       }
+       "boundary": 0
+      }
+     ]
+    },
+    {
+     "key": "F",
+     "name": "121-129 Crown St",
+     "addresses": [
+      "121-129 CROWN STREET"
+     ],
+     "buildings": [
+      {
+       "type": "podium",
+       "storeys": 3,
+       "footprint": "lot"
       },
       {
        "type": "plate",

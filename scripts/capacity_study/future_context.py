@@ -762,12 +762,22 @@ def bays_scheme(poly, typ, k, dirs=None):
         s0, s1, d0, d1 = min(along), max(along), min(across), max(across)
         at = lambda sv, dv: (p0[0] + ux * sv - uy * dv, p0[1] + uy * sv + ux * dv)
         ns = max(1, round((s1 - s0) / 9))
-        segs = [(at(s0 + (s1 - s0) * i / ns, d0), at(s0 + (s1 - s0) * i / ns, d1)) for i in range(1, ns)]
+        bay = (s1 - s0) / ns
+        segs = [(at(s0 + bay * i, d0), at(s0 + bay * i, d1)) for i in range(1, ns)]
         deep = d1 - d0
         if deep >= 14:
             ud = 9.0 if deep >= 22.5 else 0.38 * deep
             marks = [d0 + ud, d1 - ud] + ([(d0 + d1) / 2] if deep - 2 * ud > 12 else [])
-            segs += [(at(s0, dv), at(s1, dv)) for dv in marks]
+            # a plate three bays long or more turns its ends: each end a bay deep with its apartments side by side
+            # across it, facing the end, and the core and the side apartments run between the two
+            ends = ns >= 3
+            a_, b_ = (s0 + bay, s1 - bay) if ends else (s0, s1)
+            segs += [(at(a_, dv), at(b_, dv)) for dv in marks]
+            if ends:
+                across_n = max(2, round(deep / 10))
+                for j in range(1, across_n):
+                    dv = d0 + deep * j / across_n
+                    segs += [(at(s0, dv), at(s0 + bay, dv)), (at(s1 - bay, dv), at(s1, dv))]
     inner = poly.buffer(-0.05)
     for p, q in segs:
         g = LineString([p, q]).intersection(inner)
