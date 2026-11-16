@@ -856,7 +856,21 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   {
     usedCats.add('site');
     const d = bundle.siteLots.features.map((f) => pathFromRings(geomRings(f.geometry), proj)).join('');
-    layers.push(`<path d="${d}" fill="${tpl().site}" fill-opacity="0.55" stroke="${tpl().site}" stroke-width="1.4" stroke-dasharray="3.2,1.6"/>`);
+    // A template can mark the site its own way (Kingfisher, as its site sheet does): the lot in a pale tint of the
+    // mark's colour, on white so the zone under it does not muddy it, inside a white contour that lifts it off the
+    // tints round it, its boundary a dash-dot line of the colour; and what stands on the lot in the full colour, in a
+    // white edge. Else the site's colour at 0.55 in its dashed line.
+    const mark = tpl().siteMark;
+    if (mark) {
+      const siteRings = bundle.siteLots.features.flatMap((f) => geomRings(f.geometry));
+      const onSite = (lon: number, lat: number) => siteRings.reduce((k, r) => k + (pointInRing(lon, lat, r) ? 1 : 0), 0) % 2 === 1;
+      // (each building its own path: the sources can give one twice, and two rings alike cancel in one path)
+      const figures = bundle.buildings.buildings.filter((b) => onSite(b.centroid[0], b.centroid[1])).map((b) => pathFromRings(b.rings, proj));
+      layers.push(`<g data-site-mark="1"><path d="${d}" fill="#ffffff" stroke="#ffffff" stroke-width="${(2 * mark.contour).toFixed(2)}" stroke-linejoin="round"/>` +
+        `<path d="${d}" fill="${mark.ink}" fill-opacity="${mark.opacity}" stroke="${mark.ink}" stroke-width="0.9" stroke-dasharray="3.2,1.2,0.8,1.2" stroke-linejoin="round"/>` +
+        figures.map((p) => `<path d="${p}" fill="none" stroke="#ffffff" stroke-width="1.2" stroke-linejoin="round"/>`).join('') +
+        figures.map((p) => `<path data-site-figure="1" d="${p}" fill="${mark.ink}" fill-rule="evenodd"/>`).join('') + '</g>');
+    } else layers.push(`<path d="${d}" fill="${tpl().site}" fill-opacity="0.55" stroke="${tpl().site}" stroke-width="1.4" stroke-dasharray="3.2,1.6"/>`);
   }
 
   // ---- transport symbols: one roundel style for all modes -----------------
@@ -1389,7 +1403,12 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     if (c.id === 'railway') continue; // on the map, not in the legend
     const hob = hobByCat[c.id];
     if (c.id === 'site') {
-      legendRow(`<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="${tpl().site}" fill-opacity="0.55" stroke="${tpl().site}" stroke-width="0.9" stroke-dasharray="2.2,1.1"/>`, ['SITE']);
+      const mark = tpl().siteMark;
+      legendRow(mark
+        // the lot's tint in its dash-dot line, and a building on it in the full colour, as the map marks them
+        ? `<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="${mark.ink}" fill-opacity="${mark.opacity}" stroke="${mark.ink}" stroke-width="0.6" stroke-dasharray="2.2,0.9,0.6,0.9"/>` +
+          `<rect x="${SWATCH_X + SWATCH_W / 2 - 4}" y="1.5" width="8" height="3.5" fill="${mark.ink}" stroke="#ffffff" stroke-width="0.5"/>`
+        : `<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="${tpl().site}" fill-opacity="0.55" stroke="${tpl().site}" stroke-width="0.9" stroke-dasharray="2.2,1.1"/>`, ['SITE']);
       for (const z of lepLegend)
         legendRow(`<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="${zoneFill(z.code)}" stroke="#999" stroke-width="0.2"/>`, wrapLabel(z.label, 26));
     } else if (c.id === 'heritage') {

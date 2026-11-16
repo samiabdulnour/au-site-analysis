@@ -228,9 +228,7 @@ export async function htmlToJpeg(
  * A text column whose paragraphs would run into its fine print steps its
  * type down too, to seven eighths of its size: the fine print stays where
  * it is and whole. So do the planning yield's tables where they would run
- * into the page's key, to four fifths of theirs, and the rows of a column
- * marked `data-keep-base` (its last spread's, which has no key) where they
- * would run past the page's last line.
+ * into the page's key, to four fifths of theirs.
  */
 const FIT_BOXES = `(() => {
   for (const box of document.querySelectorAll('[data-fit]')) {
@@ -269,24 +267,6 @@ const FIT_BOXES = `(() => {
     for (let k = 1; over() && k > 0.81; ) {
       k -= 0.025;
       tables.forEach((t, i) => { t.style.fontSize = (base[i] * k).toFixed(3) + 'px'; });
-    }
-  }
-  // a column of the template's rows with no key under it (the yield's last spread: the assumptions, then how the
-  // criteria are read) keeps to the page's last line: where a long list would carry it past, its rows close up as the
-  // tables do, to four fifths of their size
-  for (const flow of document.querySelectorAll('.zflow[data-keep-base]')) {
-    const slide = flow.closest('.slide[data-base]');
-    const last = flow.lastElementChild;
-    if (!slide || !last) continue;
-    const line = slide.getBoundingClientRect().top + (parseFloat(slide.dataset.base) * 96) / 25.4;
-    const over = () => last.getBoundingClientRect().bottom > line;
-    const words = Array.from(flow.querySelectorAll('.zr .l, .zr .v, .zr .n')).map((el) => {
-      const st = getComputedStyle(el);
-      return { el, size: parseFloat(st.fontSize), lead: parseFloat(st.lineHeight) };
-    });
-    for (let k = 1; over() && k > 0.81; ) {
-      k -= 0.025;
-      for (const w of words) { w.el.style.fontSize = (w.size * k).toFixed(3) + 'px'; w.el.style.lineHeight = (w.lead * k).toFixed(3) + 'px'; }
     }
   }
   // a slide's text column whose paragraphs run into its fine print (a long list of views, a busy council) closes up a little
@@ -391,11 +371,10 @@ const SETTLE_BASE = `(() => {
 })()`;
 
 /**
- * Run in the page once it is fitted and settled: the columns FIT_BOXES closes up that still do not fit. A yield
- * spread's column whose last block ends under the top of its key, or a column marked `data-keep-base` that ends under
- * the page's last line; each by its page's id and the millimetres it runs over. The type closes up by a fifth and no
- * more, so a column that needs more than that has more in it than its page holds, and on a page with a key its rows
- * print through the key's (2–4 Culworth Avenue, Killara: the criteria under a compliance sheet's three tables).
+ * Run in the page once it is fitted and settled: the yield's spreads whose text column still stands on its key, each
+ * by its page's id and the millimetres its last block runs past the key's top. The tables close up by a fifth and no
+ * more (FIT_BOXES), so a column that needs more than that has more in it than its page holds, and its rows print
+ * through the key's (2–4 Culworth Avenue, Killara: a table of the criteria under a compliance sheet's three others).
  * Nothing here moves anything: the print says so, and the page's composition is what has to change.
  */
 const FLOW_OVERRUNS = `(() => {
@@ -405,26 +384,20 @@ const FLOW_OVERRUNS = `(() => {
     const slide = flow.closest('.slide');
     const key = slide && slide.querySelector('.zleg');
     const last = flow.lastElementChild;
-    if (!slide || !last) continue;
-    const foot = flow.hasAttribute('data-keep-base') && slide.dataset.base;
-    if (!(key && flow.querySelector('table.yt')) && !foot) continue;
-    const limit = key ? key.getBoundingClientRect().top : slide.getBoundingClientRect().top + parseFloat(slide.dataset.base) * PX_PER_MM;
-    const by = (last.getBoundingClientRect().bottom - limit) / PX_PER_MM;
-    if (by > 0.05) out.push({ id: slide.id, byMm: Math.round(by * 10) / 10, into: key ? 'key' : 'foot' });
+    if (!key || !last || !flow.querySelector('table.yt')) continue;
+    const by = (last.getBoundingClientRect().bottom - key.getBoundingClientRect().top) / PX_PER_MM;
+    if (by > 0.05) out.push({ id: slide.id, byMm: Math.round(by * 10) / 10 });
   }
   return out;
 })()`;
 
-/**
- * A text column that does not fit its page after the fitting: the page's id, by how many millimetres, and what it
- * runs into (its key, or the foot of the page under its last line).
- */
-export interface FlowOverrun { id: string; byMm: number; into: 'key' | 'foot' }
+/** A text column that stands on its page's key after the fitting: the page's id, and by how many millimetres. */
+export interface FlowOverrun { id: string; byMm: number }
 
 /**
  * A deck's pages fitted in the browser, as they are before they print: the boxes fitted, the split columns split,
- * the last lines settled, in that order. Returns the text columns that still do not fit (FLOW_OVERRUNS), none on a
- * deck composed within its pages.
+ * the last lines settled, in that order. Returns the text columns that still stand on their keys (FLOW_OVERRUNS),
+ * none on a deck composed within its pages.
  */
 export async function fitSlides(page: Page): Promise<FlowOverrun[]> {
   await page.evaluate(FIT_BOXES);
@@ -473,8 +446,8 @@ async function printSlidesOnce(
   try {
     const page = await browser.newPage({ deviceScaleFactor: 2 });
     await open(page, htmlPath);
-    // a column the fitting could not keep to its page still prints, and is said: on a key, its rows are under the key's
-    for (const o of await fitSlides(page)) log(`WARN page ${o.id}: its text column runs ${o.byMm} mm ${o.into === 'key' ? 'into its key' : 'past the page\'s last line'}`);
+    // a column the fitting could not keep off its key still prints, and is said: its rows are under the key's
+    for (const o of await fitSlides(page)) log(`WARN page ${o.id}: its text column runs ${o.byMm} mm into its key`);
     // After the boxes are fitted and the lines settled: a row they hid is not expected.
     const expected: PrintExpectation = await page.evaluate(`${EXPECTATION}(${(size.heightMm / 25.4) * 96}, Infinity)`);
     await page.pdf({

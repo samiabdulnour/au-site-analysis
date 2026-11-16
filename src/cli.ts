@@ -76,6 +76,11 @@ if (sheetType === 'context' || sheetType === 'both') {
     rotate,
     log: (m) => console.log(m),
   });
+  // A development aid, as for the other sheets: keep the bundle, so the sheet can be re-composed without fetching (scripts/recompose.ts).
+  if (process.env.KEEP_BUNDLE) {
+    const { serialize } = await import('node:v8');
+    await writeFile(join(outDir, 'context.bundle'), serialize({ bundle, meta }));
+  }
   console.log('composing context analysis…');
   const htmlPath = join(outDir, 'sheet.html');
   await writeFile(htmlPath, renderSheet(bundle, meta));

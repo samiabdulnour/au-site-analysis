@@ -12,7 +12,7 @@ import type { SlidesBundle } from '../pipeline.js';
 import { mergeRuns, straightEnough, arcTable, sliceAt, shortStreetName, dashedPath, type SheetMeta, type Pt } from './sheet.js';
 import type { TopoRoad } from '../fetch/nswTopo.js';
 import type { GeoJSONFeature } from '../lib/arcgis.js';
-import { tpl, withTemplate, templateFor, deckLook, tint, shadeHex, inkFor, vivid, type DeckLook } from './template.js';
+import { tpl, withTemplate, templateFor, deckLook, tint, shadeHex, inkFor, vivid, greyOf, type DeckLook } from './template.js';
 import { INK, aerialGreenFill, veg1750Fills, VEG_CLASSES_MAX, fillShape, swatchOf, barOf, categoryFill, heatFills, paletteRamp, styleRamp, terrainRamp, stripOf, HEIGHT_BANDS, heightBandOf, massingInks, heightRamp, zHead, zBars, zFigures, zCircles, zSpans, zPairs, zLine, niceAxis, z6, zSvg, Z_W, Z_TRACK, type Fill } from './atlasKit.js';
 import { esc } from './chrome.js';
 import { drawAxonometric, shade, type AxoScene, type Prism } from './axonometric.js';
@@ -2414,12 +2414,8 @@ const atlasSub = (b: SlidesBundle, ...rest: (string | undefined | false | null)[
   const lga = b.context.lga?.name ? titleCase(b.context.lga.name) : '';
   return [`${b.siteAddress}${lga ? ` ${lga}` : ''}`, ...rest].filter(Boolean).join(' · ');
 };
-/**
- * The left page's column of blocks, from under the second rule. `keepBase` marks a column with no key under it that
- * may hold more rows than its page (the yield's assumptions): the printer closes its rows up to keep it to the page's
- * last line (render/pdf.ts, FIT_BOXES).
- */
-export const zFlow = (blocks: string[], top = 44, keepBase = false) => `<div class="zflow"${keepBase ? ' data-keep-base' : ''} style="top:${top}mm">${blocks.join('')}</div>`;
+/** The left page's column of blocks, from under the second rule. */
+export const zFlow = (blocks: string[], top = 44) => `<div class="zflow" style="top:${top}mm">${blocks.join('')}</div>`;
 export const zBlock = (head: string, body: string, right?: string) => `<div class="zblk">${zHead(head, right)}${body}</div>`;
 /** The template's rows: a 6 pt label, an 8 pt value, a hairline under each; a grey 6 pt note under the value. */
 export const zTable = (rows: { label: string; value: string | string[]; note?: string; dim?: boolean }[]) =>
@@ -2722,7 +2718,8 @@ export function formAtlas(b: SlidesBundle, planning: PlanningFacts, opts: { clea
   const keyEntries: LegendEntry[] = [
     ...HEIGHT_BANDS.map((bd, i) => ({ swatch: block(M.bands[i], lineModel ? '#1a1a1a' : shade(M.bands[i], M.gloss ? 0.78 : 0.55)), label: i === 0 ? bd.label : i === HEIGHT_BANDS.length - 1 ? '16 storeys and more' : `${bd.label} storeys` })),
     { swatch: block(M.noHeight, lineModel ? '#1a1a1a' : shade(M.noHeight, 0.55), true), label: 'No height recorded, dashed' },
-    { swatch: block(tint(t.site, 0.55), '#1c1c1c'), label: 'What stands on the site today' },
+    // (Heron's line model has no colour: what stands on the site is the grey the drawing gives it, in its heavy outline)
+    { swatch: block(lineModel ? greyOf(tint(t.site, 0.55)) : tint(t.site, 0.55), '#1c1c1c'), label: 'What stands on the site today' },
   ];
   const figureHtml = `<div class="form3d">
   <div class="abs" style="left:0;top:0"><svg width="${SHEET_W}mm" height="${SHEET_H}mm" viewBox="0 0 ${SHEET_W} ${SHEET_H}" xmlns="http://www.w3.org/2000/svg" style="display:block" font-family="Arial, 'Liberation Sans', sans-serif">${drawAxonometric(scene, { x: 0, y: TOP, w: SHEET_W, h: SHEET_H - TOP - FOOT, clear: opts.clearFold ? { x: FOLD, margin: BOOKLET_FOLD_CLEAR } : undefined }, 'form09b')}</svg></div>

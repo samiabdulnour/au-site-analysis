@@ -67,6 +67,13 @@ export interface Template {
   streetInk: string;  // street names and the numbered place markers: quieter than the ink
   rule: string;       // title-block rules
   site: string;       // site boundary and emphasis
+  /**
+   * The site on the context sheet, where it is marked otherwise than in `site` at 0.55: its colour, the strength of
+   * the lot's tint of it, and the white contour round the lot, mm. The lot is tinted inside a dash-dot line of the
+   * colour and what stands on it is filled in the full colour (Kingfisher: the site sheet's terracotta, drawn as the
+   * site sheet draws it, where `site` is the decks' pale salmon).
+   */
+  siteMark?: { ink: string; opacity: number; contour: number };
   dimension: string;  // dimension lines, levels, boundary figures
   wind: string;       // wind banners
   sun: string;        // sun path disc and rays
@@ -197,6 +204,8 @@ const F2 = {
   water: '#81e0f9', magenta: '#c2367c', purple: '#753583', dots: '#1c1c1c',
   /** The reference's salmon, the site's colour on Kingfisher's sheets and decks, and the same hue deepened to carry a line of bold type. */
   salmon: '#f0bcac', salmonDeep: '#d27b63',
+  /** A red terracotta that sits with the palette's peach and coral: the site on Kingfisher's site sheet and context sheet. */
+  terracotta: '#c8553a',
 };
 
 const KINGFISHER_CATEGORIES: Category[] = [
@@ -265,8 +274,10 @@ export const TEMPLATES: Template[] = [
     // keep the leaf green.
     streetInk: '#e39a6f', discInk: '#e39a6f', discParkInk: '#8faf6a',
     rule: '#8a8a8a',
-    // The deck's site in the reference's salmon, not the context sheet's magenta; the narrative in the same hue deepened.
-    site: F2.salmon, dimension: '#56616b', wind: '#87959d', sun: '#efe8d4', road: F2.grey, water: F2.water,
+    // The deck's site in the reference's salmon; the narrative in the same hue deepened. On the context sheet the site
+    // is the site sheet's red terracotta, drawn as the site sheet draws it (2026-11): the lot in a pale tint of it
+    // inside a white contour, the building on it in the full colour. One site colour on both sheets.
+    site: F2.salmon, siteMark: { ink: F2.terracotta, opacity: 0.3, contour: 1.4 }, dimension: '#56616b', wind: '#87959d', sun: '#efe8d4', road: F2.grey, water: F2.water,
     transit: '#365696', rail: '#e8835e', walk5: '#1f8a5a', walk10: '#6fb88c', busRoute: '#5b8fd6', heritage: F2.purple,
     isochrone: 'dotted', roundel: 'solid', busLine: 'dotted', railLine: 'dotted',
     // The cadastre and every building in a heavy white line.
@@ -442,6 +453,14 @@ export interface SiteLook {
   site: string;
   /** What stands on the site, where the buildings are filled: a saturated cut of the site's pen where unset. */
   siteFigure?: string;
+  /**
+   * How what stands on the site is drawn, where the buildings are filled: filled in `siteFigure` with the buildings'
+   * fine white edge (unset); filled in it inside a thick white contour; white, hatched in it, inside a thick white
+   * contour; white inside a thick contour of it; or white, hatched in it, inside the thick contour of it.
+   */
+  siteFigureStyle?: 'fill' | 'fillContour' | 'hatchContour' | 'outline' | 'hatch';
+  /** The hatch where what stands on the site is hatched: its line and the spacing of its lines, mm (0.5 at 2.2 where unset); heavy and wide, the white and the colour read as a few bold stripes. */
+  siteFigureHatch?: { line: number; step: number };
   /** The lot's own tint on paper: its fill and strength. The template's site category where unset. */
   siteTint?: { fill: string; opacity: number };
   /** The boundary's dash. */
@@ -582,7 +601,8 @@ const CANARY_LOOK: SiteLook = {
 // in a red terracotta that sits with the palette's peach and coral (2026-11;
 // it was the context sheet's magenta): its dash-dot boundary, its corners and
 // levels, the lot in a pale tint of it and what stands on the lot in the
-// terracotta itself, where it was a quiet grey. The climate as the office drew it for this palette: each
+// terracotta itself, inside a thick white contour that lifts it off the tint,
+// where it was a quiet grey. The climate as the office drew it for this palette: each
 // solstice's path a nearly solid crescent in warm yellow, amber at its ends and
 // brightest at noon, the office's small rayed sun at each rise and set; each
 // wind a smaller translucent blue crescent over the quarter it blows from with
@@ -592,9 +612,9 @@ const CANARY_LOOK: SiteLook = {
 // photograph to show them. It was called Kookaburra; a request naming it is
 // drawn in Kingfisher.
 /** The Kingfisher site sheet's site colour: a red terracotta, for its boundary, its levels, its tint and what stands on it. */
-const SITE_TERRACOTTA = '#c8553a';
+const SITE_TERRACOTTA = F2.terracotta;
 const KINGFISHER_LOOK: SiteLook = {
-  font: GROTESK, ground: 'paper', veil: 0, aerial: 'colour', site: SITE_TERRACOTTA, siteFigure: SITE_TERRACOTTA, siteTint: { fill: SITE_TERRACOTTA, opacity: 0.22 }, siteDash: '7,2,1.6,2', dimensionInk: '#56616b', fall: '#56616b', fallWords: 'plain', fallInk: '#56616b', textScale: 1,
+  font: GROTESK, ground: 'paper', veil: 0, aerial: 'colour', site: SITE_TERRACOTTA, siteFigure: SITE_TERRACOTTA, siteFigureStyle: 'fillContour', siteTint: { fill: SITE_TERRACOTTA, opacity: 0.22 }, siteDash: '7,2,1.6,2', dimensionInk: '#56616b', fall: '#56616b', fallWords: 'plain', fallInk: '#56616b', textScale: 1,
   buildingEdge: 0.4, buildings: 'colour', neighbours: 'white', neighbourHeightInk: '#ffffff', zones: 'fill', zoneTint: 0,
   heritage: false, heritageInk: { item: '#e39a3b', area: '#c8372d' }, contours: true, contourInk: '#a9adb1',
   streetInk: '#e39a6f',
@@ -618,7 +638,7 @@ const KINGFISHER_LOOK: SiteLook = {
 // widening triangle, solid in a deeper green than the streets', as their words.
 const FLAMINGO_CONTEXT = TEMPLATES.find((t) => t.id === 'flamingo')!;
 const FLAMINGO_LOOK: SiteLook = {
-  ...KINGFISHER_LOOK, site: FLAMINGO_CONTEXT.site, siteFigure: undefined, siteTint: undefined, streetInk: FLAMINGO_CONTEXT.streetInk,
+  ...KINGFISHER_LOOK, site: FLAMINGO_CONTEXT.site, siteFigure: undefined, siteFigureStyle: undefined, siteTint: undefined, streetInk: FLAMINGO_CONTEXT.streetInk,
   buildings: 'white', buildingEdge: 1.5, buildingHatch: true, contourUnderBuildings: 0.12, lotInk: FLAMINGO_CONTEXT.road, neighbourInk: FLAMINGO_CONTEXT.streetInk,
   sun: 'drawn', sunPen: '#f5b400', sunFill: '#fcddd4', sunEdge: '#5ba8e1', sunInk: '#d48f00',
   wind: 'drawn', windPen: '#5ba8e1', climateInk: '#3d8fd1',
@@ -734,6 +754,13 @@ export function vivid(hex: string, minSat = 0.55, maxLight = 0.45): string {
   const q = L < 0.5 ? L * (1 + S) : L + S - L * S, p = 2 * L - q;
   const ch = (t: number) => { if (t < 0) t += 1; if (t > 1) t -= 1; const v = t < 1 / 6 ? p + (q - p) * 6 * t : t < 1 / 2 ? q : t < 2 / 3 ? p + (q - p) * (2 / 3 - t) * 6 : p; return Math.round(v * 255).toString(16).padStart(2, '0'); };
   return `#${ch(h + 1 / 3)}${ch(h)}${ch(h - 1 / 3)}`;
+}
+/** `hex` as the grey of its own lightness (its luma: 0.299 red, 0.587 green, 0.114 blue); a grey comes back as it is. */
+export function greyOf(hex: string): string {
+  const n = parseInt(hex.slice(1), 16), r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  if (r === g && g === b) return hex;
+  const y = Math.round(0.299 * r + 0.587 * g + 0.114 * b).toString(16).padStart(2, '0');
+  return `#${y}${y}${y}`;
 }
 /** The relative luminance of `hex`, 0 (black) to 1 (white). */
 export function luminance(hex: string): number {

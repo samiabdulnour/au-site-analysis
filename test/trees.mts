@@ -142,6 +142,31 @@ for (const [style, mono] of [['canary', false], ['flamingo', true]] as const) {
   check('heron line model: the neighbours white in a black outline, flat', faces.length > 0 && faces.every((m) => m[1] === '#ffffff' && m[2] === '#1a1a1a'), [...new Set(faces.map((m) => `${m[1]}/${m[2]}`))].join(' '));
   check('heron line model: the trees white canopies in their contour, each picture once', svg.includes('<image id="axo-tr-t') && !/<circle cx="[^"]+" cy="[^"]+" r="[^"]+" fill="#ffffff" stroke="#1a1a1a" stroke-width="0\.1"\/>/.test(svg));
   check('heron line model: the built in the heaviest outline', /stroke="#000000" stroke-width="0\.42"/.test(svg));
+  // its walls plain: a massing is a volume, not a facade design. The storeys ruled across them, and no windows on
+  // them, neither the other styles' pattern of panes nor any drawn; the same building in Kingfisher has its panes.
+  const windowed: AxoScene = { ...white, built: [{ ...white.built[0], windows: true, storeys: [3, 6, 9, 12] }] };
+  const plain = withTemplate(templateFor('slides', 'heron'), () => drawAxonometric(windowed, { x: 0, y: 0, w: 400, h: 280 }, 'tr'));
+  const panes = withTemplate(templateFor('slides', 'kingfisher'), () => drawAxonometric(windowed, { x: 0, y: 0, w: 400, h: 280 }, 'tr'));
+  check('heron line model: the walls plain, the storeys ruled, no windows', !plain.includes('fill="url(#axo-win-tr)"') && !plain.includes('data-windows')
+    && (plain.match(/<line [^>]*stroke="#1a1a1a" stroke-width="0\.06"\/>/g) ?? []).length >= 8 && panes.includes('fill="url(#axo-win-tr)"'));
+  // its massing black and white, with no colour at all: the scene as its callers give it (a red site, lilac built,
+  // peach neighbours, a plane over the site) comes out in greys alone, the site a black dash-dot boundary; the same
+  // scene in Kingfisher keeps its colours, so the check can fail
+  const hued: AxoScene = { ...scene(), hob: { metres: 20, note: 'PLANE' }, built: [{ ...scene().built[0], windows: true, storeys: [3, 6, 9, 12] }] };
+  const inksOf = (s: string) => [...new Set([...s.replace(/data:image\/png;base64,[^"]+/g, '').matchAll(/(?:fill|stroke)="(#[0-9a-fA-F]{6})"/g)].map((m) => m[1].toLowerCase()))];
+  const hasHue = (h: string) => { const c = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)); return Math.max(...c) - Math.min(...c) > 2; };
+  const inHeron = (sc: AxoScene) => inksOf(withTemplate(templateFor('slides', 'heron'), () => drawAxonometric(sc, { x: 0, y: 0, w: 400, h: 280 }, 'tr')));
+  const heronInks = inHeron(hued);
+  const kfInks = inksOf(withTemplate(templateFor('slides', 'kingfisher'), () => drawAxonometric(hued, { x: 0, y: 0, w: 400, h: 280 }, 'tr')));
+  check('heron line model: the massing has no colour at all, every ink a grey', heronInks.length > 3 && !heronInks.some(hasHue), heronInks.filter(hasHue).join(' '));
+  check('heron line model: the check can tell (Kingfisher keeps its colours)', kfInks.some(hasHue));
+  check('heron line model: the site a black dash-dot boundary, no tint', /<path data-site [^>]*fill="none" stroke="#1a1a1a" stroke-width="0\.4" stroke-dasharray="3,1,0\.6,1"\/>/.test(svg));
+  // its compliance views (the town a white model) keep their colours: the walls' and the roofs' bands of sun hours as
+  // they are given, and the site in its own colour
+  const sunny: AxoScene = { ...hued, mono: true,
+    built: [{ ...hued.built[0], cells: [{ ring: 0, edge: 0, t0: 0, t1: 0.5, z0: 0, z1: 3, fill: '#c0533f', flat: true }], roof: [{ pts: box(-10, -15, 5, 5), fill: '#d68a7a' }] }] };
+  const sunnyInks = inHeron(sunny);
+  check('heron line model: a compliance view keeps the sun hours\' colours and the site\'s', ['#c0533f', '#d68a7a', scene().inks.site].every((c) => sunnyInks.includes(c)), sunnyInks.filter(hasHue).join(' '));
   // each ground surface its own hatch: a park's lawn, a lot's garden, the carriageway, and the shade under the trees;
   // drawn as lines and dots clipped to the surface, never as a pattern fill, which prints as a picture
   const hatch = (n: string) => (svg.match(new RegExp(`<clipPath id="axo-${n}-tr">[\\s\\S]*?<g data-ground="${n}" clip-path="url\\(#axo-${n}-tr\\)"><path d="([^"]*)"[^>]*stroke="(#[0-9a-f]{6})"`)) ?? []);

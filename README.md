@@ -1002,9 +1002,14 @@ take the warm colours — yellow ground with orange buildings for R2, pink for
 R3, cyan for R4, peach for mixed use — and green is kept for green space alone,
 open space the deep mint with black dots. The local and commercial centres and
 retail are the blue family, told apart by texture, the institutions lavender,
-industry grey on stone; water the bright cyan, the site and heritage in magenta
-and purple, the railway orange. The legend swatch shows a few buildings on
-their ground. The colours are exactly those the reference prints. Streets, numbered
+industry grey on stone; water the bright cyan, heritage purple, the railway
+orange. The site is a red terracotta (`#c8553a`), drawn as its site sheet
+draws it (`siteMark` on the template, 2026-11): the lot in a pale tint of the
+red, on white so the zone under it does not muddy it, inside a dash-dot line
+of the red and a white contour that lifts it off the tints round it; what
+stands on the lot in the full red, in a white edge. It was the reference's
+pale salmon at 0.55 in a dashed line, which the decks keep as `site`. The legend swatch shows a few buildings on
+their ground. The other colours are exactly those the reference prints. Streets, numbered
 places and the dotted lines are Flamingo's, but the street names and the institutions' number discs
 are the reference's peach, the parks' discs a light leaf green, and the lots
 and every building are drawn in a heavy white line. The lots lie under the
@@ -1117,11 +1122,16 @@ so the roads stay white (water is drawn whole), every building in its zone
 family's strong colour with a white edge and its number in white (a quiet grey
 where no zone is mapped), the white cadastre, Kingfisher's
 grotesk and its peach street names. The site is in a red terracotta
-(`#c8553a`, 2026-11; it was the context sheet's magenta, which the context
-sheet keeps), chosen to sit with the palette's peach and coral: its dash-dot
+(`#c8553a`, 2026-11; it was the palette's magenta), the same as on the
+context sheet, chosen to sit with the palette's peach and coral: its dash-dot
 boundary, its corners and levels, the lot in a pale tint of it (`siteTint`)
 and what stands on the lot in the terracotta itself (`siteFigure`), where it
-was a quiet grey. Flamingo's site sheet keeps its coral site; its building on
+was a quiet grey. How that building is drawn is the look's `siteFigureStyle`.
+Kingfisher's is `fillContour`: filled in the terracotta inside a thick white
+contour, which lifts it off the lot's tint. The others are the buildings' fine
+white edge (unset), white and hatched inside the white contour (the hatch's
+line and spacing are `siteFigureHatch`), or white, plain or hatched, inside a
+thick contour of the terracotta. Flamingo's site sheet keeps its coral site; its building on
 the lot takes the coral as its outline and hatch. The climate is drawn in
 the office's marks for this palette (`src/render/climateSymbols.ts`, taken
 as drawn from its symbol sheet): each solstice's sun path a nearly solid
@@ -1365,11 +1375,22 @@ palette.
   hillshade under them.
 - **3D views: a line model**, after an architect's axonometric
   (`src/render/axonometric.ts`, `LINE`):
+  - the massing views (the yield's, its cover's, the report's built form)
+    are black and white, with no colour at all, the accent included:
+    whatever ink or fill they are given goes to the grey of its own
+    lightness (`greyOf`), the site is a black dash-dot boundary on the
+    ground with no tint, and the height plane over it a fine black dashed
+    outline;
+  - the compliance views keep their colour: the walls and roofs in their
+    bands of sun hours, the site in the accent;
   - every building is a white volume in a black outline, with no shade on
     its faces;
   - what is built on the site carries the heaviest outline, its storeys
-    ruled and its windows dotted; a shop's or an office's floors are a light
-    grey;
+    ruled across its walls and nothing else on them: a massing is a volume,
+    not a facade design, so the other styles' pattern of window panes is
+    left off (`LINE_WINDOWS`, which can also draw frames, ribbons or a
+    curtain wall's uprights on the wall as it stands); a shop's or an
+    office's floors are a light grey;
   - the trees are white canopies in their contour with their limbs drawn
     fine, the people and the traffic white in outline;
   - each ground surface has a hatch of its own (`groundHatch`), sized on
@@ -1589,11 +1610,14 @@ site may take, so a site with more paths has more pages:
    none), building separation (3F-1) and yield (its floor area against the
    most the controls allow it); the sun on each facade and the roof, by the
    way each looks, its area, its average hours and the share with the hours
-   asked, today and built out; and each building near and its separation,
-   today and built out. Three tables and no more, so the column ends above
-   the page's key: how each criterion is read stands with the assumptions on
-   the last spread, and the head of each sheet's criteria names that page.
-   On the right the massing twice, side by side and close on the
+   asked, today and built out; each building near and its separation, today
+   and built out. On the first sheet each criterion says in full what it
+   asks, in a line of small print under its own row (the ADG clause and its
+   wording, how the yield's most is worked out, what "built out" means).
+   That wording was a table of its own under the others ("Assessment
+   criteria"), 77 mm of it where 24 mm were free, and it ran into the
+   page's key; under the rows it adds about 20 mm and the tables stay clear
+   of the key. On the right the massing twice, side by side and close on the
    building, from the street corner and from the opposite one, so every face
    is seen, the town round it a white model (neighbours, futures, trees,
    traffic and ground in white and greys) so only the scheme's colours read:
@@ -1614,25 +1638,18 @@ site may take, so a site with more paths has more pages:
    foot or its right.
 10. **Controls and assumptions** — the assumptions the study rests on (floor
    to floor, efficiencies, the mix, the plates, the parking rates, the nearest
-   station) on the left and, under them where the deck has compliance
-   sheets, the assessment criteria as those sheets read them (overshadow
-   impact, solar access, building separation, yield, and the neighbours built
-   out); on the right, the full table the office's
+   station) on the left; on the right, the full table the office's
    development summary (DA 002) keeps — CONTROLS, PROPOSED and COMPLIANCE for
    the LEP, the parking, the Apartment Design Guide and the Housing SEPP.
 
-A page's text column has to end above its key. The criteria once stood under
-the first compliance sheet's three tables, where the page has no room for
-them: at 2–4 Culworth Avenue, Killara, their last rows were printed through
-the key's. The printer measures the columns once they are laid out
-(`fitSlides()` in `src/render/pdf.ts`): a yield spread's tables close up, to
-four fifths of their size at most, where they would reach the key, and the
-last spread's rows where they would pass the page's last line; a column that
-still stands on its key is named in the log (`WARN page …: its text column
-runs … mm into its key`) rather than printed without a word.
-`npx tsx test/print-check.mts` lays a made-up deck out in each style and
-checks that every column keeps to its page, and that the criteria put back
-where they stood are caught.
+A page's text column has to end above its key, and the printer measures it
+once the page is laid out (`fitSlides()` in `src/render/pdf.ts`): a yield
+spread's tables close up, to four fifths of their size at most, where they
+would reach the key, and a column that still stands on it is named in the
+log (`WARN page …: its text column runs … mm into its key`) rather than
+printed through the key without a word. `npx tsx test/print-check.mts` lays
+a made-up deck out in each style, checks that every column ends above its
+key, and that a column with more in it than its page holds is caught.
 
 Each drawn path's right page is its indicative massing as an axonometric,
 seen from the main street's corner, among the neighbours at their recorded
