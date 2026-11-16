@@ -421,16 +421,17 @@ export function massingInks() {
   return {
     bands: rampColours(HEIGHT_BANDS.length, heightRamp()).map((c) => (pastel ? tint(c, 0.58) : c)),
     noHeight: tint(B.solid, pastel ? 0.14 : 0.22),
-    // Kingfisher's town after an illustrated masterplan: a pale cream-sage ground, the streets a soft warm grey with
-    // their kerbs a shade deeper and no white line down them, the lots faint, the parks a pale sage
-    ground: kf ? '#eceedd' : tint(O.solid, pastel ? 0.04 : 0.1),
-    lot: kf ? '#d3d6c4' : tint(inkFor(O.deep, 0.4), pastel ? 0.3 : 0.45),
-    park: kf ? '#d6e0c8' : tint(green, pastel ? 0.45 : 0.4),
-    road: kf ? '#dcdcd3' : '#ffffff',
-    axis: kf ? '#e9e9e2' : tint(B.solid, pastel ? 0.4 : 0.55),
+    // Kingfisher's town after an illustrated masterplan: the ground a warm near-white, as its pavements, the streets a
+    // cool pale lilac grey with their kerbs a shade deeper and the line down them barely there, the lots faint, the
+    // parks a pale sage
+    ground: kf ? '#f1f2e8' : tint(O.solid, pastel ? 0.04 : 0.1),
+    lot: kf ? '#dcddd0' : tint(inkFor(O.deep, 0.4), pastel ? 0.3 : 0.45),
+    park: kf ? '#d9e3cb' : tint(green, pastel ? 0.45 : 0.4),
+    road: kf ? '#d9d7dc' : '#ffffff',
+    axis: kf ? '#e6e4e8' : tint(B.solid, pastel ? 0.4 : 0.55),
     tree: green, treeLight: tint(green, 0.6), trunk: inkFor(G.deep, pastel ? 0.3 : 0.12),
     /** The streets' kerbs, where the style sets them; else the caller's. */
-    kerb: kf ? '#c6c7bb' : undefined as string | undefined,
+    kerb: kf ? '#c4c1c6' : undefined as string | undefined,
     /** The glossy shadow model: lit faces, soft edges, the shadows on the ground. */
     gloss,
     /** Pastel cuts of the colours on a near-white ground. */

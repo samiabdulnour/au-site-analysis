@@ -1243,31 +1243,45 @@ full colours.
 
 The 3D views' trees and people follow the style (`lookOf` in
 `src/render/axonometric.ts`).
-- **Flamingo and Kingfisher** draw them as an illustrated isometric does:
-  people with legs, clothes and a face, a little larger than life, walking the
-  footpaths (some in twos) and gathered in the parks.
+- **People, Flamingo and Kingfisher:** flat figures after an illustrator's isometric people
+  (`src/render/people.ts`):
+  - bright tops, trousers or a dress, a face and its hair (short, long or in
+    a bun), arms that swing and legs apart when they walk, now and then a bag;
+  - a little larger than life;
+  - walking the footpaths (some in twos), facing the way they walk, and
+    gathered in the parks.
 - **Flamingo's crowns** are clouds of a few lobes:
   - each outlined, in its shade, with the lit part over it towards the light
     and a highlight;
   - each casting a soft shadow on the ground;
   - a few small trees narrow and upright.
-- **Kingfisher** follows an illustrated masterplan:
-  - its crowns are loose canopies, flat, wider than tall, many small leaf clumps
-    with flecks of light through them and the fork of the branches under them,
-    on a thin grey trunk, without an outline or a shadow;
-  - its town is on a pale cream-sage ground, the streets a soft warm grey with
-    their kerbs a shade deeper and no white line, the lots faint and the parks a
-    pale sage (`massingInks()`).
+- **Kingfisher** follows an illustrated masterplan and its elevation trees:
+  - **Crowns:** canopies, each a pale mass in the tree's green with a loose
+    edge and no outline, the marks of its leaves over it in the green and a
+    deeper cut (thickest away from the light), and its wood showing through.
+    The wood is in a terracotta cut of Kingfisher's red: the trunk parting
+    into kinked limbs and twigs.
+  - **Forms:** round, upright, spreading, three-massed and a cypress for a
+    tenth of the small trees, each with three ways of branching. The trunk is
+    bare up to the crown, longer for a larger tree, and there is no shadow.
+  - **Town:** a warm near-white ground, as its pavements; the streets a cool
+    pale lilac grey with their kerbs a shade deeper and the line down them
+    barely there; the lots faint and the parks a pale sage (`massingInks()`).
+  - **Traffic:** whites, greys, a yellow and an orange, the glass dark and the
+    edges a shade of each body rather than a black line.
 - **Colour:** each style's trees are in its own green (`massingInks().tree`):
   - Flamingo's aqua mint, deeper or lighter tree to tree;
-  - Kingfisher's mint, from a deep to a pale cut, the deep ones the most.
+  - Kingfisher's mint, mostly its own cut, with a deeper and a paler one
+    among them.
 - **Heron, Canary and the white model** keep the plain discs and slips.
 
 A drawing holds a few thousand trees, too many to print as vectors (tens of
 megabytes a drawing), so each crown is painted once as a small picture
 (`src/render/crowns.ts`) and placed at every tree that takes it:
-- one of four shapes, in its green, at one of three sizes, its outline as
-  wide in the scene as the others';
+- a shape (Flamingo's four, Kingfisher's five forms by three branchings), in
+  its green, at one of three sizes, its outline as wide in the scene as the
+  others';
+- the people likewise, thirty of them, each placed facing either way;
 - the PDF keeps each picture once, so the illustrated pages print no larger
   than the plain ones did.
 

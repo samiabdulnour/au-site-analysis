@@ -1,11 +1,11 @@
 /* The axonometric's trees and people in each deck style (render/axonometric.ts, render/crowns.ts).
  *
- * A crown painted: solid in the middle, clear at its corners, a cloud's edge darker than its fill, a canopy flat with
- * the light through its leaves and its branches' fork under it, the same picture for the same arguments, a pixel more
- * or less to the radius as asked. Flamingo draws cloud crowns casting shadows and Kingfisher flat canopies without,
- * on its masterplan's cream ground and grey streets, each in its own green, each picture once in the drawing however
- * many trees take it, people with legs, and people in a park; Heron and a white model keep the plain discs and slips.
- * Nothing here asks a network.
+ * A crown painted: solid in the middle, clear at its corners, a cloud's edge darker than its fill, a canopy a pale
+ * mass with the marks of its leaves and its wood through it, the same picture for the same arguments, a pixel more or
+ * less to the radius as asked. Flamingo draws cloud crowns casting shadows and Kingfisher canopies without, on its
+ * masterplan's ground and lilac-grey streets, each in its own green, each picture once in the drawing however many
+ * trees take it; the painted people, each picture once, and more of them than the plain look, a crowd in the park;
+ * Heron and a white model keep the plain discs and slips. Nothing here asks a network.
  *
  *   npx tsx test/trees.mts
  */
@@ -51,9 +51,9 @@ for (const kind of ['cloud', 'columnar'] as const) {
   check(`${kind}: painted once`, crownPicture(kind, 1, tones, 0.05, 80) === pic);
 }
 
-// a canopy: flat, no outline; flecks of light through its leaves; its branches below its middle
+// a canopy: a pale mass, the marks of its leaves in two greens, its wood showing through; no outline
 {
-  const t = { edge: '#9c9b90', dark: '#437462', lit: '#437462', high: '#a3c4b8' };
+  const t = { edge: '#b06853', dark: '#c9e3d8', lit: '#79d2a9', high: '#4e8f72' };
   const pic = crownPicture('canopy', 2, t, 0, 80);
   const png = decodePng(Buffer.from(pic.uri.replace(/^data:image\/png;base64,/, ''), 'base64'))!;
   // the solid pixels by colour (where two layers meet, their edge blends the two)
@@ -63,14 +63,15 @@ for (const kind of ['cloud', 'columnar'] as const) {
     if (png.data[i * 4 + 3] !== 255) continue;
     const c = [0, 1, 2].map((k) => png.data[i * 4 + k].toString(16).padStart(2, '0')).join('');
     count.set(c, (count.get(c) ?? 0) + 1);
-    if (c === '437462') { const x = i % png.width, y = Math.floor(i / png.width); lx0 = Math.min(lx0, x); lx1 = Math.max(lx1, x); ly0 = Math.min(ly0, y); ly1 = Math.max(ly1, y); }
+    if (c === 'c9e3d8') { const x = i % png.width, y = Math.floor(i / png.width); lx0 = Math.min(lx0, x); lx1 = Math.max(lx1, x); ly0 = Math.min(ly0, y); ly1 = Math.max(ly1, y); }
   }
   const top = [...count.entries()].sort((a, b) => b[1] - a[1]);
-  check('canopy: one flat colour, most of it', top[0]?.[0] === '437462' && top[0][1] > 0.6 * top.reduce((n, [, k]) => n + k, 0), top.slice(0, 3).map(([c, k]) => `${c}:${k}`).join(' '));
-  check('canopy: flecks of light through its leaves, and its branches', (count.get('a3c4b8') ?? 0) > 20 && (count.get('9c9b90') ?? 0) > 20);
+  check('canopy: its pale mass, most of it', top[0]?.[0] === 'c9e3d8', top.slice(0, 3).map(([c, k]) => `${c}:${k}`).join(' '));
+  check('canopy: the marks of its leaves in both greens, and its wood', (count.get('4e8f72') ?? 0) > 50 && (count.get('79d2a9') ?? 0) > 50 && (count.get('b06853') ?? 0) > 50,
+    `${count.get('4e8f72')} ${count.get('79d2a9')} ${count.get('b06853')}`);
   const mx = Math.round((-pic.x / pic.w) * png.width), my = Math.round((-pic.y / pic.h) * png.height);
   check('canopy: solid in the middle, clear at the corners', png.data[(my * png.width + mx) * 4 + 3] === 255 && png.data[3] === 0);
-  check('canopy: its leaves spread wider than they stand tall', lx1 - lx0 > (ly1 - ly0) * 1.2, `${lx1 - lx0} × ${ly1 - ly0} px`);
+  check('canopy (spreading): its leaves wider than they stand tall', lx1 - lx0 > (ly1 - ly0) * 1.2, `${lx1 - lx0} × ${ly1 - ly0} px`);
 }
 
 // ---- in each style ----
@@ -86,8 +87,8 @@ const scene = (mono = false): AxoScene => ({
   inks: { site: '#d43d33', future: '#ffffff', futureEdge: '#888888', envelope: '#333333', kerb: '#99aaaa' },
   mono,
 });
-/** A person's legs, two to each, as the illustrated look draws them. */
-const legs = (svg: string) => (svg.match(/stroke-width="0\.21" stroke-linecap="round"/g) ?? []).length;
+/** The people the illustrated look draws: those on their feet placed pictures, those on bicycles two legs each. */
+const people = (svg: string) => (svg.match(/<use href="#axo-tr-p\d+"/g) ?? []).length + (svg.match(/stroke-width="0\.21" stroke-linecap="round"/g) ?? []).length / 2;
 const draw = (style: string, mono = false) => withTemplate(templateFor('slides', style), () => ({ svg: drawAxonometric(scene(mono), { x: 0, y: 0, w: 400, h: 280 }, 'tr'), M: massingInks() }));
 
 for (const style of ['flamingo', 'kingfisher']) {
@@ -97,27 +98,28 @@ for (const style of ['flamingo', 'kingfisher']) {
   check(`${style}: every tree a placed crown`, placed.length === 40, String(placed.length));
   check(`${style}: each crown's picture once, fewer than the trees`, pictures.length >= 2 && pictures.length < placed.length && new Set(pictures).size === pictures.length, `${pictures.length} pictures`);
   check(`${style}: no plain discs left`, !svg.includes(`fill="${M.treeLight}"`));
-  if (style === 'kingfisher') check('kingfisher: the masterplan\'s cream ground and grey streets', svg.includes('fill="#eceedd"') && svg.includes('fill="#dcdcd3"') && svg.includes('stroke="#c6c7bb"'));
-  // every crown in the style's own green: at its middle, the lit part, the hue of massingInks().tree
+  if (style === 'kingfisher') check('kingfisher: the masterplan\'s ground and lilac-grey streets', svg.includes('fill="#f1f2e8"') && svg.includes('fill="#d9d7dc"') && svg.includes('stroke="#c4c1c6"'));
+  // every crown in the style's own green: its commonest solid colour of the hue of massingInks().tree
   const want = hue(rgbOf(M.tree)), off: string[] = [];
-  for (const m of svg.matchAll(/<image id="axo-tr-t\d+" href="data:image\/png;base64,([^"]+)" x="([^"]+)" y="([^"]+)" width="([^"]+)" height="([^"]+)"/g)) {
-    const png = decodePng(Buffer.from(m[1], 'base64'))!, [x, y, w, h] = m.slice(2).map(Number);
-    const px = Math.round((-x / w) * png.width), py = Math.round((-y / h) * png.height), o = (py * png.width + px) * 4;
-    const got = [png.data[o], png.data[o + 1], png.data[o + 2]];
+  for (const m of svg.matchAll(/<image id="axo-tr-t\d+" href="data:image\/png;base64,([^"]+)"/g)) {
+    const png = decodePng(Buffer.from(m[1], 'base64'))!, count = new Map<string, number>();
+    for (let i = 0; i < png.width * png.height; i++) if (png.data[i * 4 + 3] === 255) { const c = `${png.data[i * 4]},${png.data[i * 4 + 1]},${png.data[i * 4 + 2]}`; count.set(c, (count.get(c) ?? 0) + 1); }
+    const got = [...count.entries()].sort((a, b) => b[1] - a[1])[0][0].split(',').map(Number);
     if (Math.abs(hue(got) - want) > 10) off.push(JSON.stringify(got));
   }
   check(`${style}: every crown in the style's own green (${M.tree})`, off.length === 0, off.slice(0, 3).join(' '));
   const shadows = (svg.match(/<image data-shadows href="data:image\/png/g) ?? []).length;
   check(`${style}: ${style === 'flamingo' ? 'the trees\' shadows on the ground, one picture' : 'no shadows under the canopies'}`, shadows === (style === 'flamingo' ? 1 : 0), String(shadows));
-  check(`${style}: people with legs`, legs(svg) >= 20, String(legs(svg)));
+  const faces = svg.match(/<image id="axo-tr-p\d+" href="data:image\/png/g) ?? [];
+  check(`${style}: the painted people, each picture once`, people(svg) >= 20 && faces.length >= 3 && new Set(faces).size === faces.length, `${people(svg)} people, ${faces.length} pictures`);
   // (a picture's base64 can spell NaN, so the pictures are left out of the search)
   const drawn = svg.replace(/data:image\/png;base64,[^"]+/g, '');
   check(`${style}: no NaN`, !drawn.includes('NaN'), drawn.slice(Math.max(0, drawn.indexOf('NaN') - 200), drawn.indexOf('NaN') + 50));
 }
 // more people than the plain look's footpaths hold: some walking in twos, and groups in the park
 {
-  const people = legs(draw('flamingo').svg) / 2, plain = (draw('heron').svg.match(/r="0.3" fill=/g) ?? []).length;
-  check('flamingo: a crowd, more people than the plain look draws', people > plain * 1.5, `${people} vs ${plain}`);
+  const crowd = people(draw('flamingo').svg), plain = (draw('heron').svg.match(/r="0.3" fill=/g) ?? []).length;
+  check('flamingo: a crowd, more people than the plain look draws', crowd > plain * 1.5, `${crowd} vs ${plain}`);
 }
 for (const [style, mono] of [['heron', false], ['canary', false], ['flamingo', true]] as const) {
   const { svg } = draw(style, mono);

@@ -14,9 +14,10 @@ import { encodeRgbaPng } from '../lib/png.js';
 /** A stable number in [0, 1) for a place and a salt, so a tree or a person drawn again is drawn the same. */
 export const rand = (p: { x: number; y: number }, salt = 0) => { const v = Math.sin(p.x * 12.9898 + p.y * 78.233 + salt * 37.719) * 43758.5453; return v - Math.floor(v); };
 
-type Circle = { x: number; y: number; r: number };
-type Shape = { circles: Circle[] } | { oval: { x: number; y: number; rx: number; ry: number } } | { seg: { x0: number; y0: number; x1: number; y1: number; w: number } };
-type Layer = { shape: Shape; ink: string; grow?: number };
+export type Circle = { x: number; y: number; r: number };
+type Seg = { x0: number; y0: number; x1: number; y1: number; w: number };
+export type Shape = { circles: Circle[] } | { oval: { x: number; y: number; rx: number; ry: number } } | { seg: Seg } | { segs: Seg[] };
+export type Layer = { shape: Shape; ink: string; grow?: number; /** cut out of what is under it: a gap in the leaves */ erase?: boolean };
 
 /** A crown's lobes, radius one about its middle: a core and a ring of lobes round it, the same for the same variant. */
 export function lobesOf(variant: number, n0: number, spread: number, ring: number, lobe: number, core: number): Circle[] {
@@ -33,6 +34,7 @@ export function lobesOf(variant: number, n0: number, spread: number, ring: numbe
 
 /** How far a point is outside a shape (negative inside): the union's nearest edge, or an oval's, near enough to smooth by. */
 function distance(s: Shape, x: number, y: number): number {
+  if ('segs' in s) { let d = Infinity; for (const g of s.segs) d = Math.min(d, distance({ seg: g }, x, y)); return d; }
   if ('seg' in s) {
     const { x0, y0, x1, y1, w } = s.seg, dx = x1 - x0, dy = y1 - y0, l2 = dx * dx + dy * dy;
     const t = l2 ? Math.max(0, Math.min(1, ((x - x0) * dx + (y - y0) * dy) / l2)) : 0;
@@ -48,12 +50,20 @@ function distance(s: Shape, x: number, y: number): number {
 }
 
 function extent(s: Shape): [number, number, number, number] {
+  if ('segs' in s) {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const g of s.segs) { const [a, b, c, d] = extent({ seg: g }); x0 = Math.min(x0, a); y0 = Math.min(y0, b); x1 = Math.max(x1, c); y1 = Math.max(y1, d); }
+    return [x0, y0, x1, y1];
+  }
   if ('seg' in s) { const { x0, y0, x1, y1, w } = s.seg; return [Math.min(x0, x1) - w, Math.min(y0, y1) - w, Math.max(x0, x1) + w, Math.max(y0, y1) + w]; }
   if ('oval' in s) { const { x, y, rx, ry } = s.oval; return [x - rx, y - ry, x + rx, y + ry]; }
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   for (const c of s.circles) { x0 = Math.min(x0, c.x - c.r); y0 = Math.min(y0, c.y - c.r); x1 = Math.max(x1, c.x + c.r); y1 = Math.max(y1, c.y + c.r); }
   return [x0, y0, x1, y1];
 }
+
+/** A shape's pieces, each painted over its own pixels: a union of circles is its circles. */
+const piecesOf = (s: Shape): Shape[] => ('circles' in s ? s.circles.map((c) => ({ circles: [c] })) : 'segs' in s ? s.segs.map((g) => ({ seg: g })) : [s]);
 
 const rgbOf = (hex: string): [number, number, number] => {
   const h = hex.replace('#', ''), v = h.length === 3 ? h.split('').map((c) => c + c).join('') : h;
@@ -79,21 +89,92 @@ function layersOf(kind: CrownKind, variant: number, t: CrownTones, outline: numb
       { shape: scaled(lobes, 0.8, -0.1, -0.13), ink: t.lit },
       { shape: scaled(lobes.filter((l) => l.x + l.y < 0.1), 0.46, -0.3, -0.34), ink: t.high }];
   }
-  // a canopy: a loose spread of small leaf clumps over an oval wider than tall, smaller towards the edge, in one flat
-  // colour; the fork of its branches under it, and flecks of light through the leaves. No outline.
-  const seed = { x: variant * 5.3 + 1.1, y: variant * 2.9 + 0.4 };
-  const clumps: Circle[] = [{ x: 0, y: 0.02, r: 0.32 }, { x: -0.34, y: 0.06, r: 0.26 }, { x: 0.36, y: 0, r: 0.27 }];
-  for (let i = 0; i < 30; i++) {
-    // none so far out or so small that it floats free of the rest
-    const a = rand(seed, 100 + i) * Math.PI * 2, rr = 0.9 * Math.sqrt(rand(seed, 200 + i));
-    clumps.push({ x: Math.cos(a) * rr * 0.95, y: Math.sin(a) * rr * 0.46 - 0.04, r: 0.11 + 0.1 * rand(seed, 300 + i) });
+  return canopyLayers(variant, t);
+}
+
+/**
+ * The canopies' forms, radius one about the picture's middle (y down): round, upright, spreading (its underside
+ * flatter), three masses, and a cypress. Each is its outline wavering about an oval; `bottom` is how far below the
+ * middle its leaves end, where the trunk comes in.
+ */
+const CANOPIES = [
+  { rx: 0.95, ry: 0.92, cy: 0, under: 1 },
+  { rx: 0.76, ry: 1.1, cy: -0.04, under: 1 },
+  { rx: 1.12, ry: 0.74, cy: 0.04, under: 0.72 },
+  { rx: 0.98, ry: 0.86, cy: 0, under: 1, masses: [[-0.4, 0.1, 0.58], [0.38, 0.06, 0.6], [0.02, -0.32, 0.6]] as [number, number, number][] },
+  { rx: 0.42, ry: 1.32, cy: -0.08, under: 1 },
+];
+export const CANOPY_FORMS = CANOPIES.length;
+/** How many ways a form's limbs part: a canopy's variant is its form and its branching (form + FORMS × branching). */
+export const CANOPY_BRANCHINGS = 3;
+/** How far below a canopy's middle its leaves end, in radii. */
+export const canopyBottom = (variant: number) => { const c = CANOPIES[variant % CANOPIES.length]; return c.cy + c.ry * c.under; };
+
+/**
+ * A canopy as an illustrator draws a tree in elevation: its leaves a pale mass, its edge loose and broken by small
+ * clusters, with no outline; the wood through it, the trunk parting into limbs and the limbs into twigs, showing
+ * through the leaves; over all, the marks of the leaves, small strokes in the deeper green and the mid, thickest on
+ * the side away from the light. Tones: `dark` the pale mass, `high` the deep marks, `lit` the mid ones, `edge` the
+ * wood.
+ */
+function canopyLayers(variant: number, t: CrownTones): Layer[] {
+  const form = variant % CANOPIES.length, C = CANOPIES[form], seed = { x: variant * 5.3 + 1.1, y: variant * 2.9 + 0.4 };
+  const ph = [rand(seed, 1), rand(seed, 2), rand(seed, 3)].map((v) => v * Math.PI * 2);
+  const reach = (a: number) => 1 + 0.09 * Math.sin(3 * a + ph[0]) + 0.06 * Math.sin(5 * a + ph[1]) + 0.04 * Math.sin(8 * a + ph[2]);
+  const inside = (x: number, y: number, shrink = 1) => {
+    if (C.masses) return C.masses.some(([mx, my, mr]) => Math.hypot(x - mx, y - my) <= mr * shrink * reach(Math.atan2(y - my, x - mx)));
+    const u = x / C.rx, v0 = (y - C.cy) / C.ry, v = v0 > 0 ? v0 / C.under : v0;
+    return Math.hypot(u, v) <= shrink * reach(Math.atan2(v, u));
+  };
+  // the pale mass: larger clusters well inside, small ones strewn to the edge
+  const mass: Circle[] = [];
+  for (let gy = -1.4; gy <= 1.4; gy += 0.16) for (let gx = -1.2; gx <= 1.2; gx += 0.16) if (inside(gx, gy, 0.8)) mass.push({ x: gx, y: gy, r: 0.14 });
+  const n = form === 4 ? 260 : 380;
+  for (let i = 0, k = 0; i < n && k < n * 6; k++) {
+    const x = (rand(seed, 1000 + k) * 2 - 1) * 1.25, y = (rand(seed, 3000 + k) * 2 - 1) * 1.45;
+    if (!inside(x, y)) continue;
+    mass.push({ x, y, r: 0.03 + 0.045 * rand(seed, 5000 + k) });
+    i++;
   }
-  const fork: Layer[] = [[0, 0.56, -0.22, 0.18], [0, 0.56, 0.2, 0.22], [0, 0.56, 0.03, 0.12]].map(([x0, y0, x1, y1]) => ({ shape: { seg: { x0, y0, x1, y1, w: 0.055 } }, ink: t.edge }));
-  const flecks: Layer[] = Array.from({ length: 6 }, (_, i) => {
-    const a = rand(seed, 400 + i) * Math.PI * 2, rr = 0.25 + 0.45 * rand(seed, 500 + i);
-    return { shape: { oval: { x: Math.cos(a) * rr * 0.7, y: Math.sin(a) * rr * 0.45 - 0.04, rx: 0.07 + 0.04 * rand(seed, 600 + i), ry: 0.035 } }, ink: t.high };
-  });
-  return [...fork, { shape: { circles: clumps }, ink: t.dark }, ...flecks];
+  // the wood: the trunk up to the fork, limbs out across the upper crown, a twig or two off each
+  const bottom = canopyBottom(variant), top = C.masses ? -0.85 : C.cy - C.ry;
+  const fork = form === 4 ? top * 0.6 : bottom - (bottom - top) * (form === 2 ? 0.25 : 0.32);
+  const wood: [number, number, number, number, number][] = [[0, bottom + 0.05, 0, fork, 0.075]];
+  const limbs = form === 4 ? 1 : 3 + Math.floor(rand(seed, 11) * 2);
+  // the fork leans a little, and each tree of a form parts its limbs its own way
+  const fx = (rand(seed, 12) - 0.5) * 0.16;
+  wood[0][2] = fx;
+  for (let j = 0; j < limbs; j++) {
+    const spread = limbs === 1 ? 0 : -1 + (2 * j) / (limbs - 1) + (rand(seed, 20 + j) - 0.5) * 0.35;
+    let tx = spread * C.rx * (form === 2 ? 0.86 : 0.66) + (rand(seed, 30 + j) - 0.5) * 0.3;
+    let ty = top + (bottom - top) * (form === 2 ? 0.28 : 0.15 + 0.3 * Math.abs(spread)) + (rand(seed, 40 + j) - 0.5) * 0.25;
+    for (let g = 0; g < 6 && !inside(tx, ty, 0.82); g++) { tx *= 0.85; ty = ty * 0.85 + C.cy * 0.15; }
+    // a limb is two pieces, kinked: it leaves the fork steeper and bends out
+    const kx = fx + (tx - fx) * (0.35 + 0.2 * rand(seed, 45 + j)) + (rand(seed, 46 + j) - 0.5) * 0.12, ky = fork + (ty - fork) * (0.5 + 0.15 * rand(seed, 47 + j));
+    wood.push([fx, fork, kx, ky, 0.05], [kx, ky, tx, ty, 0.036]);
+    // a twig off the kink, and one off the end
+    const side = tx >= fx ? 1 : -1;
+    wood.push([kx, ky, kx + side * (0.12 + 0.14 * rand(seed, 48 + j)), ky - 0.14 - 0.12 * rand(seed, 50 + j), 0.022]);
+    wood.push([tx, ty, tx + side * (rand(seed, 52 + j) - 0.6) * 0.24, ty - 0.12 - 0.08 * rand(seed, 53 + j), 0.018]);
+  }
+  // the marks of the leaves: small strokes at every angle, more of them low and to the right, away from the light
+  const marks = (count: number, salt: number, r0: number): Shape => {
+    const pieces: { x0: number; y0: number; x1: number; y1: number; w: number }[] = [];
+    for (let i = 0, k = 0; i < count && k < count * 8; k++) {
+      const x = (rand(seed, salt + k) * 2 - 1) * 1.2, y = (rand(seed, salt + 20000 + k) * 2 - 1) * 1.4;
+      if (!inside(x, y, 0.98)) continue;
+      const shade = 0.35 + 0.65 * Math.min(1, Math.max(0, 0.5 + 0.45 * (x / C.rx) + 0.55 * ((y - C.cy) / C.ry)));
+      if (rand(seed, salt + 40000 + k) > shade) continue;
+      const a = rand(seed, salt + 60000 + k) * Math.PI, l = r0 * (0.7 + 0.6 * rand(seed, salt + 80000 + k));
+      pieces.push({ x0: x - Math.cos(a) * l, y0: y - Math.sin(a) * l, x1: x + Math.cos(a) * l, y1: y + Math.sin(a) * l, w: r0 * 0.75 });
+      i++;
+    }
+    return { segs: pieces };
+  };
+  return [{ shape: { circles: mass }, ink: t.dark },
+    ...wood.map(([x0, y0, x1, y1, w]) => ({ shape: { seg: { x0, y0, x1, y1, w } }, ink: t.edge })),
+    { shape: marks(form === 4 ? 220 : 320, 100000, 0.022), ink: t.lit },
+    { shape: marks(form === 4 ? 300 : 440, 200000, 0.019), ink: t.high }];
 }
 
 /** A crown painted: its picture, and the box it covers about the crown's middle, in radii. */
@@ -109,7 +190,13 @@ export function crownPicture(kind: CrownKind, variant: number, tones: CrownTones
   const key = `${kind}|${variant}|${tones.edge}|${tones.dark}|${tones.lit}|${tones.high}|${outline.toFixed(4)}|${perUnit}`;
   const hit = cache.get(key);
   if (hit) return hit;
-  const layers = layersOf(kind, variant, tones, outline);
+  const pic = paintLayers(layersOf(kind, variant, tones, outline), perUnit);
+  cache.set(key, pic);
+  return pic;
+}
+
+/** Layers painted bottom first, `perUnit` pixels to the unit: the picture, and the box it covers in units. */
+export function paintLayers(layers: Layer[], perUnit: number): CrownPicture {
   // the box: all the layers', a pixel or two over
   let ex0 = Infinity, ey0 = Infinity, ex1 = -Infinity, ey1 = -Infinity;
   for (const L of layers) {
@@ -119,22 +206,33 @@ export function crownPicture(kind: CrownKind, variant: number, tones: CrownTones
   const pad = 2 / perUnit;
   const x0 = ex0 - pad, y0 = ey0 - pad, w = Math.ceil((ex1 - ex0 + 2 * pad) * perUnit), h = Math.ceil((ey1 - ey0 + 2 * pad) * perUnit);
   const unit = 1 / perUnit;
-  // premultiplied, layer over layer
-  const acc = new Float32Array(w * h * 4);
+  // premultiplied, layer over layer; each layer's cover the most any of its pieces gives a pixel, each piece painted
+  // over its own pixels only, so a crown of a few hundred leaves paints as fast as one of a few lobes
+  const acc = new Float32Array(w * h * 4), cover = new Float32Array(w * h);
   for (const L of layers) {
     const [r, g, b] = rgbOf(L.ink), grow = L.grow ?? 0;
-    const [lx0, ly0, lx1, ly1] = extent(L.shape);
-    const px0 = Math.max(0, Math.floor((lx0 - grow - x0) * perUnit) - 1), px1 = Math.min(w - 1, Math.ceil((lx1 + grow - x0) * perUnit) + 1);
-    const py0 = Math.max(0, Math.floor((ly0 - grow - y0) * perUnit) - 1), py1 = Math.min(h - 1, Math.ceil((ly1 + grow - y0) * perUnit) + 1);
-    for (let py = py0; py <= py1; py++) {
-      const uy = y0 + (py + 0.5) * unit;
-      for (let px = px0; px <= px1; px++) {
-        const d = distance(L.shape, x0 + (px + 0.5) * unit, uy) - grow;
-        const a = Math.min(1, Math.max(0, 0.5 - d * perUnit));
-        if (a <= 0) continue;
-        const o = (py * w + px) * 4, k = 1 - a;
-        acc[o] = r * a + acc[o] * k; acc[o + 1] = g * a + acc[o + 1] * k; acc[o + 2] = b * a + acc[o + 2] * k; acc[o + 3] = a + acc[o + 3] * k;
+    cover.fill(0);
+    let bx0 = w, bx1 = -1, by0 = h, by1 = -1;
+    for (const piece of piecesOf(L.shape)) {
+      const [lx0, ly0, lx1, ly1] = extent(piece);
+      const px0 = Math.max(0, Math.floor((lx0 - grow - x0) * perUnit) - 1), px1 = Math.min(w - 1, Math.ceil((lx1 + grow - x0) * perUnit) + 1);
+      const py0 = Math.max(0, Math.floor((ly0 - grow - y0) * perUnit) - 1), py1 = Math.min(h - 1, Math.ceil((ly1 + grow - y0) * perUnit) + 1);
+      bx0 = Math.min(bx0, px0); bx1 = Math.max(bx1, px1); by0 = Math.min(by0, py0); by1 = Math.max(by1, py1);
+      for (let py = py0; py <= py1; py++) {
+        const uy = y0 + (py + 0.5) * unit;
+        for (let px = px0; px <= px1; px++) {
+          const a = Math.min(1, Math.max(0, 0.5 - (distance(piece, x0 + (px + 0.5) * unit, uy) - grow) * perUnit));
+          const i = py * w + px;
+          if (a > cover[i]) cover[i] = a;
+        }
       }
+    }
+    for (let py = by0; py <= by1; py++) for (let px = bx0; px <= bx1; px++) {
+      const i = py * w + px, a = cover[i];
+      if (a <= 0) continue;
+      const o = i * 4, k = 1 - a;
+      if (L.erase) { acc[o] *= k; acc[o + 1] *= k; acc[o + 2] *= k; acc[o + 3] *= k; continue; }
+      acc[o] = r * a + acc[o] * k; acc[o + 1] = g * a + acc[o + 1] * k; acc[o + 2] = b * a + acc[o + 2] * k; acc[o + 3] = a + acc[o + 3] * k;
     }
   }
   const rgba = new Uint8Array(w * h * 4);
@@ -144,9 +242,7 @@ export function crownPicture(kind: CrownKind, variant: number, tones: CrownTones
     rgba[i * 4] = Math.round(acc[i * 4] / a); rgba[i * 4 + 1] = Math.round(acc[i * 4 + 1] / a); rgba[i * 4 + 2] = Math.round(acc[i * 4 + 2] / a);
     rgba[i * 4 + 3] = Math.round(a * 255);
   }
-  const pic = { uri: pngDataUri(encodeRgbaPng(w, h, rgba)), x: x0, y: y0, w: w * unit, h: h * unit };
-  cache.set(key, pic);
-  return pic;
+  return { uri: pngDataUri(encodeRgbaPng(w, h, rgba)), x: x0, y: y0, w: w * unit, h: h * unit };
 }
 
 /**

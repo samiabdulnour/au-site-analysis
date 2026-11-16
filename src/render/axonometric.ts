@@ -22,7 +22,8 @@ import { alongLine, carriageways, type Carriageway, type RoadLine } from '../lib
 import { INK, massingInks } from './atlasKit.js';
 import { tint, vivid, deckLook } from './template.js';
 import { esc } from './chrome.js';
-import { crownPicture, shadowPicture, rand, type CrownKind } from './crowns.js';
+import { crownPicture, shadowPicture, rand, canopyBottom, CANOPY_FORMS, CANOPY_BRANCHINGS, type CrownKind } from './crowns.js';
+import { personPicture, PEOPLE_VARIANTS } from './people.js';
 
 export interface Prism {
   rings: XY[][];
@@ -248,8 +249,8 @@ function lookOf(M: ReturnType<typeof massingInks>, mono: boolean): AxoLook {
   const style = deckLook().id;
   if (mono) return PLAIN;
   if (style === 'flamingo') return { crown: 'cloud', people: 'figure', crowd: true, greens: [M.tree, shade(M.tree, 0.92), shade(M.tree, 0.84)], accents: [], columnar: 0.22, shadows: true };
-  // Kingfisher's canopies dark, mid and pale in its green, the dark ones the most, as the masterplan's trees
-  if (style === 'kingfisher') return { crown: 'canopy', people: 'figure', crowd: true, greens: [shade(M.tree, 0.55), shade(M.tree, 0.62), M.tree, tint(M.tree, 0.5)], accents: [], columnar: 0, shadows: false };
+  // Kingfisher's canopies in its green, mostly its own cut, a deeper and a paler one among them
+  if (style === 'kingfisher') return { crown: 'canopy', people: 'figure', crowd: true, greens: [shade(M.tree, 0.62), M.tree, M.tree, tint(M.tree, 0.45)], accents: [], columnar: 0.1, shadows: false };
   return PLAIN;
 }
 
@@ -417,10 +418,17 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
     return look.greens[Math.floor(rand(p, 3) * look.greens.length)] ?? M.tree;
   };
   const columnar = (tr: { p: XY; r: number }) => look.columnar > 0 && tr.r < 2.4 && rand(tr.p, 11) < look.columnar;
-  const crownCentre = (tr: { p: XY; r: number }) => 2.2 + tr.r * (columnar(tr) ? 1.3 : 1);   // a trunk of about two metres, then the crown
+  // a canopy's form (one of the four, or the cypress for a narrow upright tree) and the way its limbs part
+  const formOf = (tr: { p: XY; r: number }) => (columnar(tr) ? CANOPY_FORMS - 1 : Math.floor(rand(tr.p, 1) * (CANOPY_FORMS - 1)))
+    + CANOPY_FORMS * Math.floor(rand(tr.p, 31) * CANOPY_BRANCHINGS);
+  // the crown's middle: a trunk of about two metres, then the crown; a canopy's bare trunk longer with the tree, its
+  // leaves ending where its form says (on the page a height is cos 35° of itself)
+  const crownCentre = (tr: { p: XY; r: number }) => look.crown === 'canopy'
+    ? 1.8 + 0.4 * tr.r + (canopyBottom(formOf(tr)) * tr.r) / Math.cos(elev)
+    : 2.2 + tr.r * (columnar(tr) ? 1.3 : 1);
   // the crowns' pictures, each once in the drawing's defs, placed at each tree's size (render/crowns.ts)
   const stamps = new Map<string, string>(), stampDefs: string[] = [];
-  const outlineM = 0.12, TRUNK_GREY = '#9c9b90';
+  const outlineM = 0.12, WOOD = shade(INK.red.solid, 0.84);
   const stampOf = (kind: CrownKind, variant: number, g: string, r: number) => {
     const size = CROWN_SIZES.find((sz) => r < sz.upTo)!;
     const key = `${kind}|${variant}|${g}|${size.r}`;
@@ -428,10 +436,10 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
     if (!sid) {
       sid = `axo-${id}-t${stamps.size}`;
       stamps.set(key, sid);
-      // a canopy: one flat colour, its branches grey, the light through its leaves paler (or, in a pale one, deeper)
-      const light = parseInt(g.slice(1, 3), 16) * 0.3 + parseInt(g.slice(3, 5), 16) * 0.59 + parseInt(g.slice(5, 7), 16) * 0.11;
+      // a canopy: its leaves a pale cut of its green, the marks on them the green and a deeper cut, its wood the style's
+      // terracotta; a cloud: its shade, the lit part, the highlight, its outline
       const tones = kind === 'canopy'
-        ? { dark: g, lit: g, high: light < 150 ? tint(g, 0.42) : shade(g, 0.86), edge: TRUNK_GREY }
+        ? { dark: tint(g, 0.6), lit: g, high: shade(g, 0.72), edge: WOOD }
         : { dark: shade(g, 0.8), lit: g, high: tint(g, 0.45), edge: shade(g, 0.52) };
       const pic = crownPicture(kind, variant, tones, outlineM / size.r, size.perUnit);
       stampDefs.push(`<image id="${sid}" href="${pic.uri}" x="${pic.x.toFixed(4)}" y="${pic.y.toFixed(4)}" width="${pic.w.toFixed(4)}" height="${pic.h.toFixed(4)}" preserveAspectRatio="none"/>`);
@@ -448,9 +456,10 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
           `<circle cx="${(cx - 0.22 * tr.r).toFixed(2)}" cy="${(cy - 0.2 * tr.r).toFixed(2)}" r="${(0.66 * tr.r).toFixed(2)}" fill="${M.treeLight}"/>`);
     }
     const R = tr.r, tall = columnar(tr), canopy = look.crown === 'canopy';
-    const sid = stampOf(tall ? 'columnar' : look.crown as CrownKind, Math.floor(rand(tr.p, 1) * CROWN_VARIANTS), greenOf(tr.p), R);
-    // the trunk to the crown's underside; a canopy's thin and grey, up to the fork of its branches
-    return `<line x1="${bx.toFixed(2)}" y1="${by.toFixed(2)}" x2="${cx.toFixed(2)}" y2="${(cy + R * (canopy ? 0.56 : 0.5)).toFixed(2)}" stroke="${canopy ? TRUNK_GREY : '#7d6c5a'}" stroke-width="${canopy ? 0.22 : 0.3}" stroke-linecap="round"/>` +
+    const sid = canopy ? stampOf('canopy', formOf(tr), greenOf(tr.p), R)
+      : stampOf(tall ? 'columnar' : look.crown as CrownKind, Math.floor(rand(tr.p, 1) * CROWN_VARIANTS), greenOf(tr.p), R);
+    // the trunk to the crown's underside; a canopy's thin, in the wood's terracotta, up to where its leaves end
+    return `<line x1="${bx.toFixed(2)}" y1="${by.toFixed(2)}" x2="${cx.toFixed(2)}" y2="${(cy + R * (canopy ? canopyBottom(formOf(tr)) : 0.5)).toFixed(2)}" stroke="${canopy ? WOOD : '#7d6c5a'}" stroke-width="${canopy ? 0.2 : 0.3}" stroke-linecap="round"/>` +
       `<use href="#${sid}" transform="translate(${cx.toFixed(2)},${cy.toFixed(2)}) scale(${R.toFixed(3)})"/>`;
   };
   // Traffic (placeTraffic): each vehicle a few blocks along its length, in stacks one behind the other, each stack a
@@ -459,8 +468,13 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   // on its chassis behind a cab in the cars' colours; an articulated truck, its trailer behind a prime mover with a
   // bonnet, as the long-nosed ones on Australian roads; a bus, a skirt in the blue family under a band of glass and a
   // white roof.
-  const CAR_INKS = mono ? ['#ffffff'] : [vivid(INK.red.solid, 0.55, 0.45), vivid(INK.blue.solid, 0.5, 0.42), vivid(INK.orange.solid, 0.7, 0.5), '#f4f4f0'];
-  const WHITE = mono ? '#ffffff' : '#f4f4f0', GLASS = mono ? MONO.glass : tint(INK.blue.solid, 0.78), PALE = mono ? '#ffffff' : '#e6e5df', CHASSIS = mono ? MONO.chassis : '#4a4a4a';
+  // Kingfisher's traffic as an illustrator's isometric vehicles: whites, greys, a yellow and an orange, the glass dark,
+  // the edges a shade of each body rather than a black line
+  const kfCars = !mono && deckLook().id === 'kingfisher';
+  const CAR_INKS = mono ? ['#ffffff'] : kfCars ? ['#f3f1ec', '#cfccc6', '#f1c36a', '#8f9095', '#e8874f', '#f3f1ec', '#5f6570']
+    : [vivid(INK.red.solid, 0.55, 0.45), vivid(INK.blue.solid, 0.5, 0.42), vivid(INK.orange.solid, 0.7, 0.5), '#f4f4f0'];
+  const WHITE = mono ? '#ffffff' : kfCars ? '#f3f1ec' : '#f4f4f0', GLASS = mono ? MONO.glass : kfCars ? '#5d6672' : tint(INK.blue.solid, 0.78);
+  const PALE = mono ? '#ffffff' : kfCars ? '#e4e2dc' : '#e6e5df', CHASSIS = mono ? MONO.chassis : kfCars ? '#7b7d82' : '#4a4a4a';
   const VAN_INKS = [WHITE, WHITE, CAR_INKS[2 % CAR_INKS.length], WHITE, CAR_INKS[1 % CAR_INKS.length]];
   type Block = { s0: number; s1: number; hw: number; z0: number; z1: number; fill: string };
   const block = (s0: number, s1: number, hw: number, z0: number, z1: number, fill: string): Block => ({ s0, s1, hw, z0, z1, fill });
@@ -482,7 +496,7 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   };
   const vehicleSvg = (v: Vehicle, stacks: Block[][]): string => {
     const along = v.u.x * d.x + v.u.y * d.y;   // how much farther each metre forward stands
-    const at = (b: Block): Prism => ({ rings: [corners({ ...v, c: { x: v.c.x + v.u.x * (b.s0 + b.s1) / 2, y: v.c.y + v.u.y * (b.s0 + b.s1) / 2 }, half: (b.s1 - b.s0) / 2, hw: b.hw })], z0: b.z0, z1: b.z1, fill: b.fill, edge: mono ? MONO.edge : '#3a3a3a', edgeW: 0.1 });
+    const at = (b: Block): Prism => ({ rings: [corners({ ...v, c: { x: v.c.x + v.u.x * (b.s0 + b.s1) / 2, y: v.c.y + v.u.y * (b.s0 + b.s1) / 2 }, half: (b.s1 - b.s0) / 2, hw: b.hw })], z0: b.z0, z1: b.z1, fill: b.fill, edge: mono ? MONO.edge : kfCars ? shade(b.fill, 0.74) : '#3a3a3a', edgeW: kfCars ? 0.05 : 0.1 });
     const order = [...stacks].sort((p, q) => (q[0].s0 + q[0].s1) * along - (p[0].s0 + p[0].s1) * along);
     return `<g data-vehicle="${v.kind}">${order.map((st) => st.map((b) => prismSvg(at(b))).join('')).join('')}</g>`;
   };
@@ -509,7 +523,22 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   };
   // Illustrated: legs in trousers (apart along the way they walk, `stride`; a rider's to the pedals), a shirt or a coat,
   // a face; standing on the ground (z0 0) or on a saddle.
+  // Illustrated, a person on their feet is one of the painted people (render/people.ts), each once in the drawing's
+  // defs, facing the way they walk (or either way, standing), a little larger than life; on a bicycle, drawn here.
+  const peopleDefs = new Map<number, string>();
+  const WALKERS = Array.from({ length: PEOPLE_VARIANTS }, (_, i) => i).filter((i) => i % 3 !== 0);
+  const personPic = (c: XY, stride?: XY) => {
+    const k = stride && (stride.x || stride.y) ? WALKERS[Math.floor(rand(c, 21) * WALKERS.length)] : Math.floor(rand(c, 21) * PEOPLE_VARIANTS);
+    if (!peopleDefs.has(k)) {
+      const pic = personPicture(k);
+      peopleDefs.set(k, `<image id="axo-${id}-p${k}" href="${pic.uri}" x="${pic.x.toFixed(3)}" y="${pic.y.toFixed(3)}" width="${pic.w.toFixed(3)}" height="${pic.h.toFixed(3)}" preserveAspectRatio="none"/>`);
+    }
+    const facing = stride && (stride.x || stride.y) ? Math.sign(stride.x * r.x + stride.y * r.y) || 1 : rand(c, 23) < 0.5 ? 1 : -1;
+    const [x, y] = P(c, 0), size = 1.1;
+    return `<use href="#axo-${id}-p${k}" transform="translate(${x.toFixed(2)},${y.toFixed(2)}) scale(${(facing * size).toFixed(2)},${size})"/>`;
+  };
   const person = (c: XY, z0: number, shirt: string, stride?: XY) => {
+    if (z0 === 0 && look.people === 'figure') return personPic(c, stride);
     const s0 = rand(c, 5), legs = LEGS[Math.floor(s0 * LEGS.length)], skin = SKIN[Math.floor(rand(c, 6) * SKIN.length)];
     // a little larger than life, as an illustrator draws them, so they read at the scale of a town
     const hip = z0 + (z0 > 0 ? 0.3 : 0.95), top = hip + 0.68, head = top + 0.24;
@@ -664,7 +693,7 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   if (scene.hob?.metres && !planeFits) notes.push(note(notes.length, SITE, scene.hob.note));
   if (futureTop > cap) notes.push(note(notes.length, inks.futureEdge, `NEIGHBOURS' FUTURE HEIGHTS RUN ABOVE THE FRAME, TO ${nf(futureTop)}m`));
   // Strokes are set in sheet millimetres and do not scale with the scene.
-  return `<defs>${stampDefs.join('')}<clipPath id="axo-${id}"><rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}"/></clipPath><pattern id="axo-win-${id}" patternUnits="userSpaceOnUse" width="2.6" height="3.1"><rect x="0.75" y="0.8" width="1.1" height="1.5" fill="#000000" fill-opacity="${M.gloss ? 0.09 : 0.17}"/></pattern></defs>
+  return `<defs>${stampDefs.join('')}${[...peopleDefs.values()].join('')}<clipPath id="axo-${id}"><rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}"/></clipPath><pattern id="axo-win-${id}" patternUnits="userSpaceOnUse" width="2.6" height="3.1"><rect x="0.75" y="0.8" width="1.1" height="1.5" fill="#000000" fill-opacity="${M.gloss ? 0.09 : 0.17}"/></pattern></defs>
     <g clip-path="url(#axo-${id})"><g transform="translate(${tx.toFixed(2)},${ty.toFixed(2)}) scale(${k.toFixed(4)})">
     <g style="vector-effect:non-scaling-stroke">${ground.join('')}${parts.join('')}${over.join('')}</g></g></g>${notes.join('')}`;
 }
