@@ -229,17 +229,45 @@ def fit(parcel, spec):
     keep = spec.get('boundary') or 0                                  # metres off every neighbouring lot's boundary
     street = spec.get('streetBoundary') or 0                          # and off every street and lane, above the podium
     if spec['type'] == 'plate':
-        # a deep plate: the lot less its setbacks (off its neighbouring lots, its streets, `streets` naming a street's
-        # own figure, and `toCentre` a road's middle), whatever depth that leaves: no unit depth is asked of it
+        # a deep plate: the lot less its setbacks (off its neighbouring lots, `boundaries` naming a lot's own figure;
+        # off its streets, `streets` naming a street's own; `toCentre` from a road's middle), whatever depth that
+        # leaves: no unit depth is asked of it. A street that wraps the lot is named a side at a time, `NAME@south`.
+        # `wings` keeps of that plate only a band so many metres deep along each street named, so two make an L
         runs = boundary_runs(parcel)
-        own = {norm_road(k_): v for k_, v in (spec.get('streets') or {}).items()}
-        centre = {norm_road(k_): v for k_, v in (spec.get('toCentre') or {}).items()}
-        cut = [r['line'].buffer(keep, cap_style=3, join_style=2) for r in runs if r['kind'] == 'lot' and keep]
-        cut += [r['line'].buffer(own.get(norm_road(r['name']), street), cap_style=3, join_style=2) for r in runs if r['kind'] == 'street' and own.get(norm_road(r['name']), street)]
-        cut += [ax.buffer(v, cap_style=2) for k_, v in centre.items() for ax in road_axes().get(k_, []) if ax.distance(parcel) < 40]
+        c_ = parcel.centroid
+        def side_of(g):                                               # the side of the parcel a run or a road's middle lies on
+            p_ = g.interpolate(g.project(c_))
+            return compass4(p_.x - c_.x, p_.y - c_.y)
+        def figure(table, name, g, default=None):
+            for key_, v in (table or {}).items():
+                nm, _, sd = key_.partition('@')
+                if norm_road(nm) == norm_road(name) and (not sd or sd.strip().lower() == side_of(g)):
+                    return v
+            return default
+        lots_own = [(prop(a_)['poly'], v) for a_, v in (spec.get('boundaries') or {}).items()]
+        lot_keep = lambda r: next((v for g_, v in lots_own if g_.distance(r['line']) < 1), keep)
+        cut = [r['line'].buffer(lot_keep(r), cap_style=3, join_style=2) for r in runs if r['kind'] == 'lot' and lot_keep(r)]
+        for r in runs:
+            v = figure(spec.get('streets'), r['name'], r['line'], street) if r['kind'] == 'street' else 0
+            if v:
+                cut.append(r['line'].buffer(v, cap_style=3, join_style=2))
+        for name_, lines in road_axes().items():
+            for ax in lines:
+                v = figure(spec.get('toCentre'), name_, ax) if ax.distance(parcel) < 40 else 0
+                if v:
+                    cut.append(ax.buffer(v, cap_style=2))
         fp = largest(parcel.difference(unary_union(cut)).buffer(-0.5, join_style=2).buffer(0.5, join_style=2)) if cut else parcel
         if fp.is_empty or fp.area < 20:
             sys.exit(f'the plate does not fit the parcel {keep:g} m off its neighbouring lots and {street:g} m off its streets')
+        if spec.get('wings'):
+            bands = []
+            for r in runs:
+                deep = figure(spec['wings'], r['name'], r['line']) if r['kind'] == 'street' and r['line'].length >= 8 else 0
+                if deep:                                              # from the plate's own face on that street, so many metres in
+                    bands.append(r['line'].buffer(fp.distance(r['line']) + deep, cap_style=2, join_style=2))
+            if not bands:
+                sys.exit(f'no frontage of the parcel is on {", ".join(spec["wings"])}')
+            fp = largest(unary_union(bands).intersection(fp).buffer(-0.3, join_style=2).buffer(0.3, join_style=2))
         fp = fp.simplify(0.3, preserve_topology=True)
         return fp, dict(plate=plate_of(fp), gap=None)
     u, n, o = reference(parcel, spec)
@@ -674,7 +702,7 @@ def site_tier_lines(k):
     return o
 
 
-def bays_scheme(poly, typ, k):
+def bays_scheme(poly, typ, k, dirs=None):
     """A neighbour's typical floor, schematically, as the sun study reads it: 8 m bays along its long axis, either
     side of a corridor where the plan is double-loaded; a deep plate's as a square grid of apartments round a core."""
     cs = list(poly.minimum_rotated_rectangle.exterior.coords)[:4]
@@ -688,22 +716,29 @@ def bays_scheme(poly, typ, k):
         segs.append((m0, m1))                                         # the corridor, wall to wall
     o = []
     if typ == 'plate':
-        # a deep plate's floor, square to its longest side: strips along it about 8 m deep, the outer ones the
-        # apartments and what lies between them the core, and a party wall across every 10 m or so; where a side is
-        # cut at an angle the grid stays square and is clipped to it
+        # a deep plate's floor, square to the side of it that runs with a street: apartments on each street face,
+        # 9 m deep where the plate is deep enough, the core between them (halved where it is over 12 m), and a party
+        # wall across every 9 m or so; where a side is cut at an angle the grid stays square and is clipped to it
         ring = list(poly.exterior.coords)
-        p0, p1 = max(zip(ring[:-1], ring[1:]), key=lambda e: math.dist(*e))
+        edges = sorted(zip(ring[:-1], ring[1:]), key=lambda e: -math.dist(*e))
+        def with_street(e):
+            L_e = math.dist(*e)
+            ex, ey = (e[1][0] - e[0][0]) / L_e, (e[1][1] - e[0][1]) / L_e
+            return any(abs(ex * dx + ey * dy) > math.cos(math.radians(20)) for dx, dy in dirs or [])
+        p0, p1 = next((e for e in edges if math.dist(*e) > 4 and with_street(e)), edges[0])
         L_ = math.dist(p0, p1)
         ux, uy = (p1[0] - p0[0]) / L_, (p1[1] - p0[1]) / L_
         along = [(x - p0[0]) * ux + (y - p0[1]) * uy for x, y in ring]
         across = [-(x - p0[0]) * uy + (y - p0[1]) * ux for x, y in ring]
         s0, s1, d0, d1 = min(along), max(along), min(across), max(across)
         at = lambda sv, dv: (p0[0] + ux * sv - uy * dv, p0[1] + uy * sv + ux * dv)
-        long_way = (s1 - s0) >= (d1 - d0)                             # the strips run along the plate's longer dimension
-        ns = max(1, round((s1 - s0) / (10 if long_way else 8)))
-        nd = max(1, round((d1 - d0) / (8 if long_way else 10)))
+        ns = max(1, round((s1 - s0) / 9))
         segs = [(at(s0 + (s1 - s0) * i / ns, d0), at(s0 + (s1 - s0) * i / ns, d1)) for i in range(1, ns)]
-        segs += [(at(s0, d0 + (d1 - d0) * j / nd), at(s1, d0 + (d1 - d0) * j / nd)) for j in range(1, nd)]
+        deep = d1 - d0
+        if deep >= 14:
+            ud = 9.0 if deep >= 22.5 else 0.38 * deep
+            marks = [d0 + ud, d1 - ud] + ([(d0 + d1) / 2] if deep - 2 * ud > 12 else [])
+            segs += [(at(s0, dv), at(s1, dv)) for dv in marks]
     inner = poly.buffer(-0.05)
     for p, q in segs:
         g = LineString([p, q]).intersection(inner)
@@ -763,6 +798,17 @@ def steps_of(pid):
     return [tuple(st) for st in steps]
 
 
+def street_dirs(parcel):
+    """The directions the parcel's street frontages run in, as unit vectors."""
+    out = []
+    for r in boundary_runs(parcel):
+        if r['kind'] == 'street' and r['line'].length >= 8:
+            (x0_, y0_), (x1_, y1_) = r['line'].coords[0], r['line'].coords[-1]
+            L_ = math.hypot(x1_ - x0_, y1_ - y0_) or 1.0
+            out.append(((x1_ - x0_) / L_, (y1_ - y0_) / L_))
+    return out
+
+
 def resolve(scn):
     parcels, blds, used = [], [], set()
     for p in scn['parcels']:
@@ -793,7 +839,7 @@ def resolve(scn):
                         raise
             n = b.get('storeys') or CONSENT.get(str(prop(p['addresses'][0])['propid'])) or ASSUMED_STOREYS
             base = b.get('base', 0)
-            rows.append(dict(poly=fp, n=n, base=base, typ=b['type'], key=p['key'], spec=dict(b, boundary=lk, streetBoundary=sk), **info))
+            rows.append(dict(poly=fp, n=n, base=base, typ=b['type'], key=p['key'], spec=dict(b, boundary=lk, streetBoundary=sk), streets=street_dirs(parcel), **info))
         # `storeys: "parity"`: the slabs and towers rise until the parcel reaches our density, sharing the floor space
         # the podium leaves; a single tower is then made shallower from its back so the floor space lands on that density
         dense = [r for r in rows if r['n'] == 'parity']
@@ -1917,10 +1963,17 @@ OPTION_SCALE = 500      # the option sheet's plan, 1:500 on the A3 sheet, so it 
 OPLAN_MM = (10, 26, 330, 262)   # its left and top on the sheet, the widest it may be, and its height
 
 
-def scaled_window(parcels):
-    """The window of the option sheet's plan at 1:OPTION_SCALE: every lot the scenario builds on and ours, out to the
-    middle of each road beside them, as tall as the sheet allows and no wider than it allows; (x0, y0, x1, y1)."""
-    content = unary_union([q['poly'] for q in parcels] + [SITE_POLY])
+SCALED_WINDOW = None
+
+
+def scaled_window():
+    """The window of the option sheets' plans at 1:OPTION_SCALE, the same on every sheet of the deck so a sketch over
+    one lies over the others: every lot any scenario builds on and ours, out to the middle of each road beside them,
+    as tall as the sheet allows and no wider than it allows; (x0, y0, x1, y1)."""
+    global SCALED_WINDOW
+    if SCALED_WINDOW:
+        return SCALED_WINDOW
+    content = unary_union([parcel_of(q['addresses']) for scn_ in sc['scenarios'] for q in scn_['parcels']] + [SITE_POLY])
     bx0, by0, bx1, by1 = content.bounds
     axes = [ax for lines in road_axes().values() for ax in lines]
     reach = 14
@@ -1937,7 +1990,8 @@ def scaled_window(parcels):
     w = min(OPLAN_MM[2] * per_mm, max(gx[2] - gx[0] + 4, 90))
     h = OPLAN_MM[3] * per_mm
     cx, cy = (gx[0] + gx[2]) / 2, (gy[1] + gy[3]) / 2
-    return cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2
+    SCALED_WINDOW = (cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2)
+    return SCALED_WINDOW
 
 
 def mini_plan(parcels, blds, existing, RET, sep, k=1.0, big=False, bset=None, window=None):
@@ -2008,7 +2062,7 @@ def mini_plan(parcels, blds, existing, RET, sep, k=1.0, big=False, bset=None, wi
         for g in polys(b['poly']):
             o.append(f'<path d="{path(g)}" fill="{C["podium"] if b["typ"] == "podium" else C[b["typ"]]}" stroke="#222" stroke-width="{0.4 * k:.2f}"/>')
             if big and b['typ'] in ('single', 'd18', 'd22', 'plate'):
-                o += bays_scheme(g, b['typ'], k)                      # the typical floor the sun study reads, schematically
+                o += bays_scheme(g, b['typ'], k, b.get('streets'))                      # the typical floor the sun study reads, schematically
     fsr_of = {q['key']: q['fsr'] for q in parcels}
     # a label inside a building is haloed in the building's own colour, so the scheme's lines break round it
     halo = lambda col: f'paint-order="stroke" stroke="{col}" stroke-width="{1.4 * k:.2f}" stroke-linejoin="round"' if big else ''
@@ -2523,7 +2577,7 @@ def page(no, scn):
             a_, gap_, c_ = g['parts']
             b['parts'] = '+'.join(f'{x:.0f}' for x in ((a_, gap_, c_) if gap_ >= 0.3 else (a_, c_)))
     oy = site_yield()
-    win = scaled_window(parcels)
+    win = scaled_window()
     k_plan = 0.45 * OPTION_SCALE / 755                              # the text and lines as large on paper as they were
     SUMMARY.append(dict(plan_mm=((win[2] - win[0]) * 1000 / OPTION_SCALE, (win[3] - win[1]) * 1000 / OPTION_SCALE), heritage=HERITAGE_HITS.get(scn['title'], []), ours_yield=yield_text(oy[0], oy[1], oy[2], about=oy[2] != SITE_UNITS), no=no, title=scn['title'], horizon=scn.get('horizon', ''), lead=fill_in(scn['lead'], parcels, units), units=units, buildings=buildings, ours=ours,
                         allow=allow, allow_colour=['#1f8f3a', '#c77d00', '#c0161c'][worst], failing=sun_failing, shaded=sun_shaded,

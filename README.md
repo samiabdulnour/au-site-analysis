@@ -2033,7 +2033,10 @@ finds it leaves the site's apartments their two hours (a slender tower in
 the far corner of the lot to the north, slabs on the far street of the
 others); 22 m slabs as long as each lot allows, so as low as the density
 lets them; and no taller than the site's own 14 storeys with no unit
-depth asked, each floor its lot less its setbacks. That file sets
+depth asked, each floor its lot less its setbacks. A fourth is the two
+Crown Street lots across the lane as sketched on 16 November, a tower on
+107-113 Crown St and an L on 115-129 Crown St, both 14 storeys, every other
+neighbour as it stands. That file sets
 `"deck": "two-sheet"`: each scenario prints as two sheets, its geometry
 (`future-option-<n>.png`) and its view from the sun (`future-sun-<n>.png`:
 the sun's-eye view at each whole hour from 9 to 3, large, beside the share
@@ -2044,7 +2047,12 @@ tower with no unit depth asked of it, the lot less its setbacks
 `streets` naming a street's own figure, `toCentre` a road's middle), and
 `maxStoreys` holds a tower at `"parity"` to a height, the table then
 saying what density that reaches; a plate with more floor than the density
-needs is drawn in from every side alike. Each separation is drawn on the plan as a
+needs is drawn in from every side alike. A plate may give a neighbouring
+lot its own setback (`boundaries`, by address), name one side of a street
+that wraps the lot (`"CROWN LANE@south"`), and keep of itself only `wings`,
+a band so many metres deep along each street named, so two wings make an
+L. Every option sheet of a deck shares one plan window, so a sketch over
+one lies over the others. Each separation is drawn on the plan as a
 dimension line between the two buildings' nearest points, green where it is
 clear, amber where it holds only with one face blank, red where it is short
 even of that. Every new building is also read against its own lot: half the
@@ -2082,7 +2090,8 @@ The option sheets' plans dimension architecturally (a thin line, oblique
 ticks, the figure along the line), write each building's FSR inside it,
 and draw a typical floor in every tower: ours as the plans divide it
 into apartments, a neighbour's as the 8 m bays the sun study reads, a
-deep plate's as a square grid of apartments round a core.
+deep plate's as a grid square to its street faces: apartments 9 m deep on
+each, the core between, a party wall every 9 m or so.
 `neighbourSetback: adg` in the scenarios file fits every slab or tower above
 its podium that far off its neighbouring lots where the lot is wide enough,
 and builds it to the boundary as a blank party wall where it is not; a

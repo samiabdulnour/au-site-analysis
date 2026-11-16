@@ -1,7 +1,7 @@
 {
  "neighbourSetback": "adg",
  "streetSetback": 3,
- "_": "The future-context scenarios for 70-76 Riley Street: scripts/future_context.ts draws them over the capacity study's data. Properties are named by the start of their address as the NSW property register writes it. A building's `toCentre` keeps it so many metres from the middle of a named road (a straight line halfway between the lots either side); `site.tower.toCentre` holds our own tower the same way. A building's `storeys` may be \"parity\": it rises until its parcel reaches our density (our building's FSR as the scenario draws it, or `site.fsr` where the file states one), a single tower made shallower from its back to land on it. A building is a footprint type (single: single loaded, 12 m deep; d18: double loaded, 18 m, 8 units a floor; d22: double loaded, up to 22 m, 10 units a floor, east and west facing; block: the whole parcel, apartments on every face that is not a party wall; consent: as approved; podium: the street wall over the whole parcel), its storeys, and the line its long axis follows: `along` a street (`side` north, south, east or west picks the frontage where the street wraps the parcel) or the party wall of a `neighbour`, `setback` metres off that line, `depth` metres deep from it (the type's depth unless smaller), `sides` off each end, `length` at most (45 m whatever is asked), kept `from` a named street's end with `endSetback` off it, or `centre`. `footprint: lot` fills the parcel. Every neighbour's building stands on a podium over its whole lot (the street wall), the slab or tower from `base` up. `neighbourSetback: adg` keeps every slab or tower above its podium half the ADG separation off each neighbouring lot (12 m at nine storeys and over, 9 at five to eight, 6 below); a building's own `boundary` sets other metres. `streetSetback: 3` keeps every slab or tower above its podium at least that far off each street and lane, as our tower keeps 3 m off Riley Street and Crown Lane; a building's own `streetBoundary` sets other metres. Prose may use {A.area}, {A.plate}, {A.fsr}, {A.parity}, {A.gap} and {units}. `site.tower` draws our own scheme as a podium and a tower inset from the lot by the setbacks named per street or neighbour; `site.tower.habitable` says which of its faces carry habitable rooms or balconies. A scenario's own `retained` list overrides the study's. A scenario's own `site.tower` moves our tower for that sheet. This file is the three scenarios of every neighbour at our density: `deck: two-sheet` prints two sheets a scenario, its geometry and its view from the sun, and nothing else. A `plate` is a tower with no unit depth asked of it: the lot less its setbacks (`boundary` off its neighbouring lots, `streetBoundary` off its streets, `streets` naming a street's own figure, `toCentre` a road's middle); `maxStoreys` holds a tower at \"parity\" to a height, and the table then says what density that reaches.",
+ "_": "The future-context scenarios for 70-76 Riley Street: scripts/future_context.ts draws them over the capacity study's data. Properties are named by the start of their address as the NSW property register writes it. A building's `toCentre` keeps it so many metres from the middle of a named road (a straight line halfway between the lots either side); `site.tower.toCentre` holds our own tower the same way. A building's `storeys` may be \"parity\": it rises until its parcel reaches our density (our building's FSR as the scenario draws it, or `site.fsr` where the file states one), a single tower made shallower from its back to land on it. A building is a footprint type (single: single loaded, 12 m deep; d18: double loaded, 18 m, 8 units a floor; d22: double loaded, up to 22 m, 10 units a floor, east and west facing; block: the whole parcel, apartments on every face that is not a party wall; consent: as approved; podium: the street wall over the whole parcel), its storeys, and the line its long axis follows: `along` a street (`side` north, south, east or west picks the frontage where the street wraps the parcel) or the party wall of a `neighbour`, `setback` metres off that line, `depth` metres deep from it (the type's depth unless smaller), `sides` off each end, `length` at most (45 m whatever is asked), kept `from` a named street's end with `endSetback` off it, or `centre`. `footprint: lot` fills the parcel. Every neighbour's building stands on a podium over its whole lot (the street wall), the slab or tower from `base` up. `neighbourSetback: adg` keeps every slab or tower above its podium half the ADG separation off each neighbouring lot (12 m at nine storeys and over, 9 at five to eight, 6 below); a building's own `boundary` sets other metres. `streetSetback: 3` keeps every slab or tower above its podium at least that far off each street and lane, as our tower keeps 3 m off Riley Street and Crown Lane; a building's own `streetBoundary` sets other metres. Prose may use {A.area}, {A.plate}, {A.fsr}, {A.parity}, {A.gap} and {units}. `site.tower` draws our own scheme as a podium and a tower inset from the lot by the setbacks named per street or neighbour; `site.tower.habitable` says which of its faces carry habitable rooms or balconies. A scenario's own `retained` list overrides the study's. A scenario's own `site.tower` moves our tower for that sheet. This file is the three scenarios of every neighbour at our density: `deck: two-sheet` prints two sheets a scenario, its geometry and its view from the sun, and nothing else. A `plate` is a tower with no unit depth asked of it: the lot less its setbacks (`boundary` off its neighbouring lots, `streetBoundary` off its streets, `streets` naming a street's own figure, `toCentre` a road's middle); `maxStoreys` holds a tower at \"parity\" to a height, and the table then says what density that reaches. A plate may also take `boundaries` (a neighbouring lot's own figure, by its address), a street's or road's name with `@north`, `@south`, `@east` or `@west` where the street wraps the lot, and `wings`: of the plate only a band so many metres deep along each street named, so two wings make an L.",
  "site": {
   "storeys": 14,
   "units": 110,
@@ -613,6 +613,75 @@
         "RILEY STREET": 12
        },
        "boundary": 3
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Crown Street towers as sketched, all 14 storeys",
+   "horizon": "The two towers sketched across the lane, each 14 storeys over a three-storey podium on its lot. Every other neighbour as it stands.",
+   "lead": "The Crown Street lots across the lane develop as sketched on 16 November, every other neighbour as it stands: on 107-113 Crown St a tower {C.plate}, on 115-129 Crown St an L, a wing 9 m deep along Crown Street and a wing 12 m wide at its southern end. Both stand 9 m from the middle of Crown Lane, 3 m off Crown Street and 3 m off their side boundaries, 6 m between them, and both are 14 storeys, as ours is.",
+   "notes": [
+    "107-113 Crown St: {C.area} m², {C.plate}, {C.storeys} storeys at {C.fsr}; {C.sep} m from our tower.",
+    "115-119 and 121-129 Crown St as one site: {D.area} m², an L within {D.plate}, {D.storeys} storeys at {D.fsr}; {D.sep} m from our tower.",
+    "The northern blocks, Crown Street north of the lane lot and the block across Riley Street stand as they are."
+   ],
+   "retained": [
+    "66-68 RILEY STREET"
+   ],
+   "parcels": [
+    {
+     "key": "C",
+     "name": "107-113 Crown St",
+     "addresses": [
+      "107-113 CROWN STREET"
+     ],
+     "buildings": [
+      {
+       "type": "podium",
+       "storeys": 3,
+       "footprint": "lot"
+      },
+      {
+       "type": "plate",
+       "storeys": 14,
+       "base": 3,
+       "toCentre": {
+        "CROWN LANE": 9
+       },
+       "boundary": 3,
+       "boundaries": {
+        "105 CROWN STREET": 3.35
+       }
+      }
+     ]
+    },
+    {
+     "key": "D",
+     "name": "115-129 Crown St",
+     "addresses": [
+      "115-119 CROWN STREET",
+      "121-129 CROWN STREET"
+     ],
+     "buildings": [
+      {
+       "type": "podium",
+       "storeys": 3,
+       "footprint": "lot"
+      },
+      {
+       "type": "plate",
+       "storeys": 14,
+       "base": 3,
+       "toCentre": {
+        "CROWN LANE@west": 9
+       },
+       "boundary": 3,
+       "wings": {
+        "CROWN STREET": 9,
+        "CROWN LANE@south": 12
+       }
       }
      ]
     }
