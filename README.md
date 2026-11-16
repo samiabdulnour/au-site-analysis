@@ -1259,10 +1259,11 @@ The 3D views' trees and people follow the style (`lookOf` in
   with one thin contour of dark slate (`CONTOUR`) round every tree, person,
   cyclist and vehicle, so they read as one drawing:
   - **Crowns:** a plain mass of leaves in the tree's green with a broken, leafy
-    edge. The wood, in a terracotta cut of Kingfisher's red, is hidden by the
-    leaves as a tree's is: it shows only in the trunk and in an arch the
-    crown's underside opens round it, where the trunk forks and the lower limbs
-    climb into the leaves.
+    edge and a few small gaps through it at random (one to four, outlined as
+    the crown is). The wood, in a terracotta cut of Kingfisher's red, is
+    hidden by the leaves as a tree's is: it shows in the trunk, in an arch the
+    crown's underside opens round it (where the trunk forks and the lower limbs
+    climb into the leaves), and through a gap where a limb passes behind it.
   - **Forms:** round, upright, a fuller oval, three-massed and a cypress for a
     tenth of the small trees (which has no arch), none squat, each with three
     ways of branching.

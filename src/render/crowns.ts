@@ -122,8 +122,9 @@ export const canopyBottom = (variant: number) => { const c = CANOPIES[variant % 
 
 /**
  * A canopy as an illustrator draws a tree: a plain mass of leaves with a broken, leafy edge, the town's thin contour
- * round it; its wood (the trunk parting into limbs, the limbs into twigs) hidden by the leaves but for the trunk, and
- * the fork and the lower limbs in an arch the underside opens round it. Tones: `dark` the leaves, `edge`
+ * round it, a few small gaps through it; its wood (the trunk parting into limbs, the limbs into twigs) hidden by the
+ * leaves but for the trunk, the fork and the lower limbs in an arch the underside opens round it, and a limb glimpsed
+ * through a gap. Tones: `dark` the leaves, `edge`
  * the wood, `high` the contour; `outline` its width, in radii.
  */
 function canopyLayers(variant: number, t: CrownTones, outline: number): Layer[] {
@@ -172,16 +173,31 @@ function canopyLayers(variant: number, t: CrownTones, outline: number): Layer[] 
     wood.push([kx, ky, kx + side * (0.12 + 0.14 * rand(seed, 48 + j)), ky - 0.14 - 0.12 * rand(seed, 50 + j), 0.022]);
     wood.push([tx, ty, tx + side * (rand(seed, 52 + j) - 0.6) * 0.24, ty - 0.12 - 0.08 * rand(seed, 53 + j), 0.018]);
   }
-  // The wood is hidden by the leaves, as a tree is: it shows only where it is out of them, below the crown and in the
-  // arch under it.
+  // The wood is hidden by the leaves, as a tree is: it shows only where it is out of them, below the crown, in the
+  // arch under it, and through the gaps in the leaves: a few small irregular openings at random, each one to three
+  // clusters overlapping, outlined as the crown is; where a limb passes behind one, it shows.
   const inMass = (x: number, y: number) => mass.some((c) => (x - c.x) ** 2 + (y - c.y) ** 2 <= c.r * c.r);
+  const gaps: Circle[] = [], centres: { x: number; y: number }[] = [];
+  // as many as chance gives (one to four; none to two in a cypress), each anywhere well inside, of its own size, apart
+  const want = form === 4 ? Math.floor(rand(seed, 800) * 3) : 1 + Math.floor(rand(seed, 800) * 4);
+  for (let k = 0; centres.length < want && k < 60; k++) {
+    const gx = (rand(seed, 830 + k) * 2 - 1) * C.rx * 0.85, gy = C.cy + (rand(seed, 840 + k) * 2 - 1) * C.ry * 0.8;
+    if (!inside(gx, gy, 0.7) || centres.some((c) => Math.hypot(c.x - gx, c.y - gy) < 0.38)) continue;
+    centres.push({ x: gx, y: gy });
+    const parts = 1 + Math.floor(rand(seed, 850 + k) * 3), size = 0.7 + 0.7 * rand(seed, 855 + k);
+    for (let q = 0; q < parts; q++) {
+      const a = rand(seed, 860 + k * 7 + q) * Math.PI * 2, dd = q ? (0.035 + 0.04 * rand(seed, 870 + k * 7 + q)) * size : 0;
+      gaps.push({ x: gx + Math.cos(a) * dd, y: gy + Math.sin(a) * dd, r: (0.03 + 0.03 * rand(seed, 880 + k * 7 + q)) * size });
+    }
+  }
+  const inGap = (x: number, y: number) => gaps.some((c) => (x - c.x) ** 2 + (y - c.y) ** 2 <= c.r * c.r);
   // each piece of wood cut to the stretches that show
   const shown: Seg[] = [];
   for (const [x0, y0, x1, y1, w] of wood) {
     const steps = Math.max(2, Math.ceil(Math.hypot(x1 - x0, y1 - y0) / 0.01));
     let from = -1;
     for (let k = 0; k <= steps; k++) {
-      const t = k / steps, x = x0 + (x1 - x0) * t, y = y0 + (y1 - y0) * t, see = !inMass(x, y);
+      const t = k / steps, x = x0 + (x1 - x0) * t, y = y0 + (y1 - y0) * t, see = !inMass(x, y) || inGap(x, y);
       if (see && from < 0) from = t;
       if ((!see || k === steps) && from >= 0) {
         const t1 = see ? t : (k - 1) / steps;
@@ -191,6 +207,7 @@ function canopyLayers(variant: number, t: CrownTones, outline: number): Layer[] 
     }
   }
   return [{ shape: { circles: mass }, ink: t.high, grow: outline }, { shape: { circles: mass }, ink: t.dark },
+    ...(gaps.length ? [{ shape: { circles: gaps }, ink: t.high, grow: outline }, { shape: { circles: gaps }, ink: '#000000', erase: true }] : []),
     ...(shown.length ? [{ shape: { segs: shown }, ink: t.edge }] : [])];
 }
 
