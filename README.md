@@ -2042,7 +2042,7 @@ middle and parallel to it, half the separation each side, and
 `site.tower.toCentre` holds our own tower the same way; `storeys: "parity"` raises it until
 its parcel reaches our density (our building's FSR as the scenario draws
 it, or `site.fsr` where the file states one), the podium's floor space
-counted and a single tower's length trimmed about its middle so the floor
+counted and a single tower made shallower from its back so the floor
 space lands on that density. Riley Street's last scenario sets every site
 round the site, the block across Riley Street with them, at our density.
 There each neighbour's tower is a 22 m slab as long as its lot allows, its

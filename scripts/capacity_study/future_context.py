@@ -396,6 +396,30 @@ def trim_to(poly, want):
     return largest(poly.intersection(band(p, u, L / 2 - hi, L / 2 + hi)))
 
 
+def trim_depth(poly, want, parcel, spec):
+    """A footprint made shallower from its back to the area asked: the face on the street or line it follows stays
+    where it is, and so do both its ends, so no setback the scenario set is lost to the trim."""
+    if poly.area <= want:
+        return poly
+    cs = list(poly.minimum_rotated_rectangle.exterior.coords)[:4]
+    e01, e12 = math.dist(cs[0], cs[1]), math.dist(cs[1], cs[2])
+    p, q = (cs[0], cs[1]) if e01 >= e12 else (cs[1], cs[2])            # a long side
+    L, D = max(e01, e12), min(e01, e12)
+    u = ((q[0] - p[0]) / L, (q[1] - p[1]) / L)
+    n = (-u[1], u[0])
+    c = poly.centroid
+    if (c.x - p[0]) * n[0] + (c.y - p[1]) * n[1] < 0:
+        n = (-n[0], -n[1])                                            # from that side into the footprint
+    _, n_ref, _ = reference(parcel, spec)                             # from the frontage into the parcel
+    if n[0] * n_ref[0] + n[1] * n_ref[1] < 0:                         # that side is the back: start from the other
+        p, n = (p[0] + n[0] * D, p[1] + n[1] * D), (-n[0], -n[1])
+    lo, hi = 0.0, D
+    for _ in range(30):
+        m = (lo + hi) / 2
+        lo, hi = (lo, m) if largest(poly.intersection(band(p, n, -1.0, m))).area > want else (m, hi)
+    return largest(poly.intersection(band(p, n, -1.0, hi)))
+
+
 def our_fsr():
     """Our density: the file's `site.fsr` where it states one, else off our massing as the scenario draws it."""
     return site_yield()[0] if TOWER else (S.get('fsr') or SITE_GFA / SITE_AREA)
@@ -728,7 +752,7 @@ def resolve(scn):
             base = b.get('base', 0)
             rows.append(dict(poly=fp, n=n, base=base, typ=b['type'], key=p['key'], spec=dict(b, boundary=lk, streetBoundary=sk), **info))
         # `storeys: "parity"`: the slabs and towers rise until the parcel reaches our density, sharing the floor space
-        # the podium leaves; a single tower's length is then trimmed so the floor space lands on that density
+        # the podium leaves; a single tower is then made shallower from its back so the floor space lands on that density
         dense = [r for r in rows if r['n'] == 'parity']
         if dense:
             want_gba = our_fsr() * area / EFFICIENCY
@@ -738,7 +762,7 @@ def resolve(scn):
                 r['n'] = r['base'] + max(1, math.ceil((want_gba - fixed) / plate))
             if len(dense) == 1 and dense[0]['spec'].get('footprint') != 'lot':
                 r = dense[0]
-                r['poly'] = trim_to(r['poly'], (want_gba - fixed) / (r['n'] - r['base']))
+                r['poly'] = trim_depth(r['poly'], (want_gba - fixed) / (r['n'] - r['base']), parcel, r['spec'])
                 r['plate'] = plate_of(r['poly'])
         gba = sum(r['poly'].area * (r['n'] - r['base']) for r in rows)
         gfa = EFFICIENCY * gba
@@ -2365,7 +2389,14 @@ def page(no, scn):
                               yld=yield_text(pk['fsr'], pk['gfa'], round(pk['gfa'] / UNIT_GFA / 5) * 5) if pk else ''))
     ours = sun_cell(sunb.get('site'), today=True) if sunb.get('site') else None
     worst = max((max({'clear': 0, 'one face blank': 1, 'both faces blank': 1, 'short of a blank face': 2}[b['v']], b['bworst']) for b in buildings), default=0)
-    allow = ['yes', 'yes, on the conditions in amber', 'no, the red building cannot keep the separation or its setbacks'][worst] if buildings else 'nothing new to allow'
+    # where it is no, say which building and what it is short of
+    short_of = [f'{b["name"].split(" · ")[0]} stands {b["d"]:.0f} m from our tower' for b in buildings if b['v'] == 'short of a blank face']
+    for key_, rows_ in bset.items():
+        for r_ in rows_:
+            if r_['verdict'] == 'short of a blank face':
+                short_of.append(f'{key_} and {r_["other"]} stand {r_["d"]:.0f} m apart across {r_["name"]}' if r_['kind'] == 'pair'
+                                else f'{key_} stands {r_["d"]:.0f} m off {r_["name"]}, where the ADG asks {r_["blank"]:g} m of a blank wall')
+    allow = (['yes', 'yes, on the conditions in amber', 'not as drawn: ' + '; '.join(dict.fromkeys(short_of))][worst] if buildings else 'nothing new to allow')
     parts_of = {nm.split(' · ')[0]: geo for nm, d, hab, blank, v, geo in sep if geo['new']}
     for b in buildings:
         g = parts_of.get(b['name'].split(' · ')[0])
@@ -2374,7 +2405,7 @@ def page(no, scn):
             b['parts'] = '+'.join(f'{x:.0f}' for x in ((a_, gap_, c_) if gap_ >= 0.3 else (a_, c_)))
     oy = site_yield()
     SUMMARY.append(dict(heritage=HERITAGE_HITS.get(scn['title'], []), ours_yield=yield_text(oy[0], oy[1], oy[2], about=oy[2] != SITE_UNITS), no=no, title=scn['title'], horizon=scn.get('horizon', ''), lead=fill_in(scn['lead'], parcels, units), units=units, buildings=buildings, ours=ours,
-                        allow=allow, allow_colour=list(VERDICT_COLOUR.values())[worst], failing=sun_failing, shaded=sun_shaded,
+                        allow=allow, allow_colour=['#1f8f3a', '#c77d00', '#c0161c'][worst], failing=sun_failing, shaded=sun_shaded,
                         mini=mini_plan(parcels, blds, existing, RET, sep), big=mini_plan(parcels, blds, existing, RET, sep, k=0.45, big=True, bset=bset),
                         axo=axo(scn, parcels, blds, existing, RET), sun=sun, scn=scn))
     return f'''<!doctype html><html><head><meta charset="utf-8"><title>Future context · Scenario {no}</title><style>{CSS}</style></head><body>
