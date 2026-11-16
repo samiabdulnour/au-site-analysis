@@ -1,7 +1,7 @@
 /* The axonometric's trees and people in each deck style (render/axonometric.ts, render/crowns.ts).
  *
  * A crown painted: solid in the middle, clear at its corners, a cloud's edge darker than its fill, a canopy a plain
- * mass with the town's contour round it and its wood over it and no form squat, the same picture for the same
+ * mass with the town's contour round it and its wood showing under it and no form squat, the same picture for the same
  * arguments, a pixel more or less to the radius as asked. Flamingo draws cloud crowns casting shadows and Kingfisher canopies without, on its
  * masterplan's ground and lilac-grey streets, each in its own green, each picture once in the drawing however many
  * trees take it; the painted people, each picture once, and more of them than the plain look, a crowd in the park;
@@ -51,7 +51,7 @@ for (const kind of ['cloud', 'columnar'] as const) {
   check(`${kind}: painted once`, crownPicture(kind, 1, tones, 0.05, 80) === pic);
 }
 
-// a canopy: a plain mass in one colour, the town's thin contour round it, its wood over it; no form squat
+// a canopy: a plain mass in one colour, the town's thin contour round it, its wood showing under it; no form squat
 for (let form = 0; form < 5; form++) {
   const t = { edge: '#b06853', dark: '#9fdcc0', lit: '#79d2a9', high: '#4a4e57' };
   const pic = crownPicture('canopy', form, t, 0.02, 80);
@@ -67,7 +67,7 @@ for (let form = 0; form < 5; form++) {
   }
   const top = [...count.entries()].sort((a, b) => b[1] - a[1]), solid = top.reduce((k, [, v]) => k + v, 0);
   check(`canopy ${form}: one plain colour, most of it`, top[0]?.[0] === '9fdcc0' && top[0][1] > 0.6 * solid, top.slice(0, 3).map(([c, k]) => `${c}:${k}`).join(' '));
-  check(`canopy ${form}: the contour round it and its wood over it`, (count.get('4a4e57') ?? 0) > 30 && (count.get('b06853') ?? 0) > 30, `${count.get('4a4e57')} ${count.get('b06853')}`);
+  check(`canopy ${form}: the contour round it and its wood under it`, (count.get('4a4e57') ?? 0) > 30 && (count.get('b06853') ?? 0) > 30, `${count.get('4a4e57')} ${count.get('b06853')}`);
   check(`canopy ${form}: not squat, as tall as it is wide or near`, ly1 - ly0 >= 0.88 * (lx1 - lx0), `${lx1 - lx0} × ${ly1 - ly0} px`);
 }
 

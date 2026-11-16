@@ -1258,11 +1258,14 @@ The 3D views' trees and people follow the style (`lookOf` in
 - **Kingfisher** follows an illustrated masterplan and its elevation trees,
   with one thin contour of dark slate (`CONTOUR`) round every tree, person,
   cyclist and vehicle, so they read as one drawing:
-  - **Crowns:** a plain mass of leaves in the tree's green with a loose edge,
-    its wood drawn over it in a terracotta cut of Kingfisher's red: the trunk
-    parting into kinked limbs and twigs.
+  - **Crowns:** a plain mass of leaves in the tree's green with a broken, leafy
+    edge. The wood, in a terracotta cut of Kingfisher's red, is hidden by the
+    leaves as a tree's is: it shows only in the trunk and in an arch the
+    crown's underside opens round it, where the trunk forks and the lower limbs
+    climb into the leaves.
   - **Forms:** round, upright, a fuller oval, three-massed and a cypress for a
-    tenth of the small trees, none squat, each with three ways of branching.
+    tenth of the small trees (which has no arch), none squat, each with three
+    ways of branching.
     The trunk is bare up to the crown, longer for a larger tree, and there is
     no shadow.
   - **Town:** a warm near-white ground, as its pavements; the streets a cool

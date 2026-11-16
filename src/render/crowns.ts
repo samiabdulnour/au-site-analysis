@@ -106,11 +106,12 @@ function layersOf(kind: CrownKind, variant: number, t: CrownTones, outline: numb
  * a little flatter), three masses, and a cypress; none squat. Each is its outline wavering about an oval; `bottom` is how far below the
  * middle its leaves end, where the trunk comes in.
  */
+// (taller than they would be whole: the arch under each takes some of its height)
 const CANOPIES = [
-  { rx: 0.95, ry: 0.97, cy: 0, under: 1 },
-  { rx: 0.78, ry: 1.12, cy: -0.04, under: 1 },
-  { rx: 0.88, ry: 1.04, cy: -0.02, under: 0.94 },
-  { rx: 0.92, ry: 1.0, cy: 0, under: 1, masses: [[-0.36, 0.16, 0.55], [0.36, 0.1, 0.56], [0.02, -0.38, 0.62]] as [number, number, number][] },
+  { rx: 0.95, ry: 1.1, cy: 0, under: 1 },
+  { rx: 0.78, ry: 1.2, cy: -0.04, under: 1 },
+  { rx: 0.88, ry: 1.14, cy: -0.02, under: 0.94 },
+  { rx: 0.92, ry: 1.08, cy: 0, under: 1, masses: [[-0.36, 0.22, 0.55], [0.36, 0.16, 0.56], [0.02, -0.4, 0.64]] as [number, number, number][] },
   { rx: 0.42, ry: 1.32, cy: -0.08, under: 1 },
 ];
 export const CANOPY_FORMS = CANOPIES.length;
@@ -120,36 +121,43 @@ export const CANOPY_BRANCHINGS = 3;
 export const canopyBottom = (variant: number) => { const c = CANOPIES[variant % CANOPIES.length]; return c.cy + c.ry * c.under; };
 
 /**
- * A canopy as an illustrator draws a tree: a plain mass of leaves with a loose edge broken by small clusters, the
- * town's thin contour round it, and its wood drawn over it, the trunk parting into limbs and the limbs into twigs.
- * Tones: `dark` the leaves, `edge` the wood, `high` the contour; `outline` its width, in radii.
+ * A canopy as an illustrator draws a tree: a plain mass of leaves with a broken, leafy edge, the town's thin contour
+ * round it; its wood (the trunk parting into limbs, the limbs into twigs) hidden by the leaves but for the trunk, and
+ * the fork and the lower limbs in an arch the underside opens round it. Tones: `dark` the leaves, `edge`
+ * the wood, `high` the contour; `outline` its width, in radii.
  */
 function canopyLayers(variant: number, t: CrownTones, outline: number): Layer[] {
   const form = variant % CANOPIES.length, C = CANOPIES[form], seed = { x: variant * 5.3 + 1.1, y: variant * 2.9 + 0.4 };
   const ph = [rand(seed, 1), rand(seed, 2), rand(seed, 3)].map((v) => v * Math.PI * 2);
-  const reach = (a: number) => 1 + 0.08 * Math.sin(3 * a + ph[0]) + 0.05 * Math.sin(5 * a + ph[1]) + 0.03 * Math.sin(8 * a + ph[2]);
+  // the edge broken: a few big bays and lobes, and leafy notches between
+  const reach = (a: number) => 1 + 0.1 * Math.sin(3 * a + ph[0]) + 0.06 * Math.sin(5 * a + ph[1]) + 0.05 * Math.sin(11 * a + ph[2]);
+  // the underside opens in an arch round the trunk, where the fork and the lower limbs show (not in a cypress)
+  const bottom = canopyBottom(variant), fx = (rand(seed, 12) - 0.5) * 0.16;
+  const aw = 0.62 * C.rx, ah = form === 4 ? 0 : 0.58 * (bottom - C.cy);
+  // (the leaves at its rim, up to 0.07 across, kept out of it by that much)
+  const underArch = (x: number, y: number) => ah > 0 && y + 0.06 > bottom - ah * Math.max(0, 1 - Math.abs(x - fx) / aw) ** 0.6;
   const inside = (x: number, y: number, shrink = 1) => {
+    if (underArch(x, y)) return false;
     if (C.masses) return C.masses.some(([mx, my, mr]) => Math.hypot(x - mx, y - my) <= mr * shrink * reach(Math.atan2(y - my, x - mx)));
     const u = x / C.rx, v0 = (y - C.cy) / C.ry, v = v0 > 0 ? v0 / C.under : v0;
     return Math.hypot(u, v) <= shrink * reach(Math.atan2(v, u));
   };
-  // the mass: larger clusters well inside, small ones strewn to the edge
+  // the mass: larger clusters well inside, many small ones strewn to the edge, which is made of them
   const mass: Circle[] = [];
-  for (let gy = -1.4; gy <= 1.4; gy += 0.16) for (let gx = -1.2; gx <= 1.2; gx += 0.16) if (inside(gx, gy, 0.8)) mass.push({ x: gx, y: gy, r: 0.14 });
-  const n = form === 4 ? 200 : 300;
+  for (let gy = -1.4; gy <= 1.4; gy += 0.14) for (let gx = -1.2; gx <= 1.2; gx += 0.14) if (inside(gx, gy, 0.82)) mass.push({ x: gx, y: gy, r: 0.12 });
+  const n = form === 4 ? 360 : 540;
   for (let i = 0, k = 0; i < n && k < n * 6; k++) {
     const x = (rand(seed, 1000 + k) * 2 - 1) * 1.25, y = (rand(seed, 3000 + k) * 2 - 1) * 1.45;
     if (!inside(x, y)) continue;
-    mass.push({ x, y, r: 0.045 + 0.05 * rand(seed, 5000 + k) });
+    mass.push({ x, y, r: 0.025 + 0.035 * rand(seed, 5000 + k) });
     i++;
   }
-  // the wood: the trunk up to the fork, limbs out across the upper crown, a twig or two off each
-  const bottom = canopyBottom(variant), top = C.masses ? -0.85 : C.cy - C.ry;
-  const fork = form === 4 ? top * 0.6 : bottom - (bottom - top) * (form === 2 ? 0.25 : 0.32);
+  // the wood: the trunk up to the fork in the arch, limbs up and out into the crown, a twig or two off each
+  const top = C.masses ? -0.85 : C.cy - C.ry;
+  const fork = form === 4 ? bottom - 0.12 : bottom - ah * 0.18;
   const wood: [number, number, number, number, number][] = [[0, bottom + 0.05, 0, fork, 0.075]];
   const limbs = form === 4 ? 1 : 3 + Math.floor(rand(seed, 11) * 2);
   // the fork leans a little, and each tree of a form parts its limbs its own way
-  const fx = (rand(seed, 12) - 0.5) * 0.16;
   wood[0][2] = fx;
   for (let j = 0; j < limbs; j++) {
     const spread = limbs === 1 ? 0 : -1 + (2 * j) / (limbs - 1) + (rand(seed, 20 + j) - 0.5) * 0.35;
@@ -164,8 +172,26 @@ function canopyLayers(variant: number, t: CrownTones, outline: number): Layer[] 
     wood.push([kx, ky, kx + side * (0.12 + 0.14 * rand(seed, 48 + j)), ky - 0.14 - 0.12 * rand(seed, 50 + j), 0.022]);
     wood.push([tx, ty, tx + side * (rand(seed, 52 + j) - 0.6) * 0.24, ty - 0.12 - 0.08 * rand(seed, 53 + j), 0.018]);
   }
+  // The wood is hidden by the leaves, as a tree is: it shows only where it is out of them, below the crown and in the
+  // arch under it.
+  const inMass = (x: number, y: number) => mass.some((c) => (x - c.x) ** 2 + (y - c.y) ** 2 <= c.r * c.r);
+  // each piece of wood cut to the stretches that show
+  const shown: Seg[] = [];
+  for (const [x0, y0, x1, y1, w] of wood) {
+    const steps = Math.max(2, Math.ceil(Math.hypot(x1 - x0, y1 - y0) / 0.01));
+    let from = -1;
+    for (let k = 0; k <= steps; k++) {
+      const t = k / steps, x = x0 + (x1 - x0) * t, y = y0 + (y1 - y0) * t, see = !inMass(x, y);
+      if (see && from < 0) from = t;
+      if ((!see || k === steps) && from >= 0) {
+        const t1 = see ? t : (k - 1) / steps;
+        if (t1 > from) shown.push({ x0: x0 + (x1 - x0) * from, y0: y0 + (y1 - y0) * from, x1: x0 + (x1 - x0) * t1, y1: y0 + (y1 - y0) * t1, w });
+        from = -1;
+      }
+    }
+  }
   return [{ shape: { circles: mass }, ink: t.high, grow: outline }, { shape: { circles: mass }, ink: t.dark },
-    ...wood.map(([x0, y0, x1, y1, w]) => ({ shape: { seg: { x0, y0, x1, y1, w } }, ink: t.edge }))];
+    ...(shown.length ? [{ shape: { segs: shown }, ink: t.edge }] : [])];
 }
 
 /** A crown painted: its picture, and the box it covers about the crown's middle, in radii. */
