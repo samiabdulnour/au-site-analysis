@@ -2013,15 +2013,23 @@ separation off each side or rear boundary with another lot (12 m to
 habitable rooms and 6 m to a blank wall at nine storeys and over, 9 and 4.5
 at five to eight, 6 and 3 below), a wall on the boundary a blank party wall;
 a street or lane frontage is measured and drawn, its setback the council's.
-A separation across a road is split at its centreline, our face to the
-middle of the road and the middle to theirs, and so is each street setback,
-measured to the road's middle; two new buildings across a road from each
+A separation across a road is split at the road's middle, our face to
+the middle and the middle to theirs, and so is each street setback; the
+middle is halfway between the lot boundaries either side, as the cadastre
+has them, and the option sheets draw it as a thin red line along each road
+a dimension is measured to. Two new buildings across a road from each
 other are dimensioned the same way and judged as the ADG's separation. A
 building's `toCentre` (`{"CROWN LANE": 9}`) holds it that far from a road's
-centreline, half the separation each side; `storeys: "parity"` raises it
-until its parcel reaches our density, `site.fsr` (7.5:1 at Riley Street),
-the podium's floor space counted. Riley Street's last scenario sets every
-site round the site, the block across Riley Street with them, at 7.5:1.
+middle, half the separation each side; `storeys: "parity"` raises it until
+its parcel reaches our density (our building's FSR as the scenario draws
+it, or `site.fsr` where the file states one), the podium's floor space
+counted and a single tower's length trimmed about its middle so the floor
+space lands on that density. Riley Street's last scenario sets every site
+round the site, the block across Riley Street with them, at our density.
+The option sheets' plans dimension architecturally (a thin line, oblique
+ticks, the figure along the line), write each building's FSR inside it,
+and draw a typical floor in every tower: ours as the plans lay its
+apartments out, a neighbour's as the 8 m bays the sun study reads.
 `neighbourSetback: adg` in the scenarios file fits every slab or tower above
 its podium that far off its neighbouring lots where the lot is wide enough,
 and builds it to the boundary as a blank party wall where it is not; a
