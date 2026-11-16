@@ -1,8 +1,8 @@
 /* The axonometric's trees and people in each deck style (render/axonometric.ts, render/crowns.ts).
  *
- * A crown painted: solid in the middle, clear at its corners, a cloud's edge darker than its fill, a canopy a pale
- * mass with the marks of its leaves and its wood through it, the same picture for the same arguments, a pixel more or
- * less to the radius as asked. Flamingo draws cloud crowns casting shadows and Kingfisher canopies without, on its
+ * A crown painted: solid in the middle, clear at its corners, a cloud's edge darker than its fill, a canopy a plain
+ * mass with the town's contour round it and its wood over it and no form squat, the same picture for the same
+ * arguments, a pixel more or less to the radius as asked. Flamingo draws cloud crowns casting shadows and Kingfisher canopies without, on its
  * masterplan's ground and lilac-grey streets, each in its own green, each picture once in the drawing however many
  * trees take it; the painted people, each picture once, and more of them than the plain look, a crowd in the park;
  * Heron and a white model keep the plain discs and slips. Nothing here asks a network.
@@ -51,10 +51,10 @@ for (const kind of ['cloud', 'columnar'] as const) {
   check(`${kind}: painted once`, crownPicture(kind, 1, tones, 0.05, 80) === pic);
 }
 
-// a canopy: a pale mass, the marks of its leaves in two greens, its wood showing through; no outline
-{
-  const t = { edge: '#b06853', dark: '#c9e3d8', lit: '#79d2a9', high: '#4e8f72' };
-  const pic = crownPicture('canopy', 2, t, 0, 80);
+// a canopy: a plain mass in one colour, the town's thin contour round it, its wood over it; no form squat
+for (let form = 0; form < 5; form++) {
+  const t = { edge: '#b06853', dark: '#9fdcc0', lit: '#79d2a9', high: '#4a4e57' };
+  const pic = crownPicture('canopy', form, t, 0.02, 80);
   const png = decodePng(Buffer.from(pic.uri.replace(/^data:image\/png;base64,/, ''), 'base64'))!;
   // the solid pixels by colour (where two layers meet, their edge blends the two)
   const count = new Map<string, number>();
@@ -63,15 +63,12 @@ for (const kind of ['cloud', 'columnar'] as const) {
     if (png.data[i * 4 + 3] !== 255) continue;
     const c = [0, 1, 2].map((k) => png.data[i * 4 + k].toString(16).padStart(2, '0')).join('');
     count.set(c, (count.get(c) ?? 0) + 1);
-    if (c === 'c9e3d8') { const x = i % png.width, y = Math.floor(i / png.width); lx0 = Math.min(lx0, x); lx1 = Math.max(lx1, x); ly0 = Math.min(ly0, y); ly1 = Math.max(ly1, y); }
+    if (c === '9fdcc0') { const x = i % png.width, y = Math.floor(i / png.width); lx0 = Math.min(lx0, x); lx1 = Math.max(lx1, x); ly0 = Math.min(ly0, y); ly1 = Math.max(ly1, y); }
   }
-  const top = [...count.entries()].sort((a, b) => b[1] - a[1]);
-  check('canopy: its pale mass, most of it', top[0]?.[0] === 'c9e3d8', top.slice(0, 3).map(([c, k]) => `${c}:${k}`).join(' '));
-  check('canopy: the marks of its leaves in both greens, and its wood', (count.get('4e8f72') ?? 0) > 50 && (count.get('79d2a9') ?? 0) > 50 && (count.get('b06853') ?? 0) > 50,
-    `${count.get('4e8f72')} ${count.get('79d2a9')} ${count.get('b06853')}`);
-  const mx = Math.round((-pic.x / pic.w) * png.width), my = Math.round((-pic.y / pic.h) * png.height);
-  check('canopy: solid in the middle, clear at the corners', png.data[(my * png.width + mx) * 4 + 3] === 255 && png.data[3] === 0);
-  check('canopy (spreading): its leaves wider than they stand tall', lx1 - lx0 > (ly1 - ly0) * 1.2, `${lx1 - lx0} × ${ly1 - ly0} px`);
+  const top = [...count.entries()].sort((a, b) => b[1] - a[1]), solid = top.reduce((k, [, v]) => k + v, 0);
+  check(`canopy ${form}: one plain colour, most of it`, top[0]?.[0] === '9fdcc0' && top[0][1] > 0.6 * solid, top.slice(0, 3).map(([c, k]) => `${c}:${k}`).join(' '));
+  check(`canopy ${form}: the contour round it and its wood over it`, (count.get('4a4e57') ?? 0) > 30 && (count.get('b06853') ?? 0) > 30, `${count.get('4a4e57')} ${count.get('b06853')}`);
+  check(`canopy ${form}: not squat, as tall as it is wide or near`, ly1 - ly0 >= 0.88 * (lx1 - lx0), `${lx1 - lx0} × ${ly1 - ly0} px`);
 }
 
 // ---- in each style ----
@@ -87,8 +84,8 @@ const scene = (mono = false): AxoScene => ({
   inks: { site: '#d43d33', future: '#ffffff', futureEdge: '#888888', envelope: '#333333', kerb: '#99aaaa' },
   mono,
 });
-/** The people the illustrated look draws: those on their feet placed pictures, those on bicycles two legs each. */
-const people = (svg: string) => (svg.match(/<use href="#axo-tr-p\d+"/g) ?? []).length + (svg.match(/stroke-width="0\.21" stroke-linecap="round"/g) ?? []).length / 2;
+/** The people the illustrated look draws, on their feet and on bicycles: placed pictures each. */
+const people = (svg: string) => (svg.match(/<use href="#axo-tr-[pr]\d+"/g) ?? []).length;
 const draw = (style: string, mono = false) => withTemplate(templateFor('slides', style), () => ({ svg: drawAxonometric(scene(mono), { x: 0, y: 0, w: 400, h: 280 }, 'tr'), M: massingInks() }));
 
 for (const style of ['flamingo', 'kingfisher']) {
@@ -113,6 +110,8 @@ for (const style of ['flamingo', 'kingfisher']) {
   check(`${style}: every crown in the style's own green (${M.tree})`, off.length === 0, off.slice(0, 3).join(' '));
   const shadows = (svg.match(/<image data-shadows href="data:image\/png/g) ?? []).length;
   check(`${style}: ${style === 'flamingo' ? 'the trees\' shadows on the ground, one picture' : 'no shadows under the canopies'}`, shadows === (style === 'flamingo' ? 1 : 0), String(shadows));
+  const riders = (svg.match(/<use href="#axo-tr-r\d+"/g) ?? []).length;
+  check(`${style}: the cyclists painted as the people are, on their bicycles`, riders > 0 && !svg.includes('stroke-width="0.21" stroke-linecap="round"'), `${riders} riders`);
   const faces = svg.match(/<image id="axo-tr-p\d+" href="data:image\/png/g) ?? [];
   check(`${style}: the painted people, each picture once`, people(svg) >= 20 && faces.length >= 3 && new Set(faces).size === faces.length, `${people(svg)} people, ${faces.length} pictures`);
   // (a picture's base64 can spell NaN, so the pictures are left out of the search)

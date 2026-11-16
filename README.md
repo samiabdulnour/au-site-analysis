@@ -1255,15 +1255,16 @@ The 3D views' trees and people follow the style (`lookOf` in
     and a highlight;
   - each casting a soft shadow on the ground;
   - a few small trees narrow and upright.
-- **Kingfisher** follows an illustrated masterplan and its elevation trees:
-  - **Crowns:** canopies, each a pale mass in the tree's green with a loose
-    edge and no outline, the marks of its leaves over it in the green and a
-    deeper cut (thickest away from the light), and its wood showing through.
-    The wood is in a terracotta cut of Kingfisher's red: the trunk parting
-    into kinked limbs and twigs.
-  - **Forms:** round, upright, spreading, three-massed and a cypress for a
-    tenth of the small trees, each with three ways of branching. The trunk is
-    bare up to the crown, longer for a larger tree, and there is no shadow.
+- **Kingfisher** follows an illustrated masterplan and its elevation trees,
+  with one thin contour of dark slate (`CONTOUR`) round every tree, person,
+  cyclist and vehicle, so they read as one drawing:
+  - **Crowns:** a plain mass of leaves in the tree's green with a loose edge,
+    its wood drawn over it in a terracotta cut of Kingfisher's red: the trunk
+    parting into kinked limbs and twigs.
+  - **Forms:** round, upright, a fuller oval, three-massed and a cypress for a
+    tenth of the small trees, none squat, each with three ways of branching.
+    The trunk is bare up to the crown, longer for a larger tree, and there is
+    no shadow.
   - **Town:** a warm near-white ground, as its pavements; the streets a cool
     pale lilac grey with their kerbs a shade deeper and the line down them
     barely there; the lots faint and the parks a pale sage (`massingInks()`).
@@ -1277,12 +1278,15 @@ The 3D views' trees and people follow the style (`lookOf` in
 
     Each has dark glass and wheels with their hubs on the side turned to the
     camera. The colours are Kingfisher's: mostly warm whites and light greys,
-    its terracotta, mint, pale and deep blue among them. The edges are a shade
-    of each body rather than a black line.
+    its terracotta, mint, pale and deep blue among them.
+- **Cyclists**, in both styles, are painted as the people are: a figure on a
+  bicycle, facing the way they ride.
+- **Trees off the road:** in every style, a crown read off the aerial over a
+  street is moved out past the nearer kerb onto the verge, or left out where
+  there is no room there.
 - **Colour:** each style's trees are in its own green (`massingInks().tree`):
   - Flamingo's aqua mint, deeper or lighter tree to tree;
-  - Kingfisher's mint, mostly its own cut, with a deeper and a paler one
-    among them.
+  - Kingfisher's mint, in two close cuts.
 - **Heron, Canary and the white model** keep the plain discs and slips.
 
 A drawing holds a few thousand trees, too many to print as vectors (tens of

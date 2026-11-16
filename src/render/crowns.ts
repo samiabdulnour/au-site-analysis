@@ -16,7 +16,10 @@ export const rand = (p: { x: number; y: number }, salt = 0) => { const v = Math.
 
 export type Circle = { x: number; y: number; r: number };
 type Seg = { x0: number; y0: number; x1: number; y1: number; w: number };
-export type Shape = { circles: Circle[] } | { oval: { x: number; y: number; rx: number; ry: number } } | { seg: Seg } | { segs: Seg[] };
+export type Shape = { circles: Circle[] } | { oval: { x: number; y: number; rx: number; ry: number } } | { seg: Seg } | { segs: Seg[] } | { union: Shape[] };
+
+/** The one contour of the illustrated town's trees, people and vehicles: a thin line of dark slate round each. */
+export const CONTOUR = '#4a4e57';
 export type Layer = { shape: Shape; ink: string; grow?: number; /** cut out of what is under it: a gap in the leaves */ erase?: boolean };
 
 /** A crown's lobes, radius one about its middle: a core and a ring of lobes round it, the same for the same variant. */
@@ -34,6 +37,7 @@ export function lobesOf(variant: number, n0: number, spread: number, ring: numbe
 
 /** How far a point is outside a shape (negative inside): the union's nearest edge, or an oval's, near enough to smooth by. */
 function distance(s: Shape, x: number, y: number): number {
+  if ('union' in s) { let d = Infinity; for (const p of s.union) d = Math.min(d, distance(p, x, y)); return d; }
   if ('segs' in s) { let d = Infinity; for (const g of s.segs) d = Math.min(d, distance({ seg: g }, x, y)); return d; }
   if ('seg' in s) {
     const { x0, y0, x1, y1, w } = s.seg, dx = x1 - x0, dy = y1 - y0, l2 = dx * dx + dy * dy;
@@ -50,6 +54,11 @@ function distance(s: Shape, x: number, y: number): number {
 }
 
 function extent(s: Shape): [number, number, number, number] {
+  if ('union' in s) {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const p of s.union) { const [a, b, c, d] = extent(p); x0 = Math.min(x0, a); y0 = Math.min(y0, b); x1 = Math.max(x1, c); y1 = Math.max(y1, d); }
+    return [x0, y0, x1, y1];
+  }
   if ('segs' in s) {
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     for (const g of s.segs) { const [a, b, c, d] = extent({ seg: g }); x0 = Math.min(x0, a); y0 = Math.min(y0, b); x1 = Math.max(x1, c); y1 = Math.max(y1, d); }
@@ -63,7 +72,7 @@ function extent(s: Shape): [number, number, number, number] {
 }
 
 /** A shape's pieces, each painted over its own pixels: a union of circles is its circles. */
-const piecesOf = (s: Shape): Shape[] => ('circles' in s ? s.circles.map((c) => ({ circles: [c] })) : 'segs' in s ? s.segs.map((g) => ({ seg: g })) : [s]);
+const piecesOf = (s: Shape): Shape[] => ('union' in s ? s.union.flatMap(piecesOf) : 'circles' in s ? s.circles.map((c) => ({ circles: [c] })) : 'segs' in s ? s.segs.map((g) => ({ seg: g })) : [s]);
 
 const rgbOf = (hex: string): [number, number, number] => {
   const h = hex.replace('#', ''), v = h.length === 3 ? h.split('').map((c) => c + c).join('') : h;
@@ -89,19 +98,19 @@ function layersOf(kind: CrownKind, variant: number, t: CrownTones, outline: numb
       { shape: scaled(lobes, 0.8, -0.1, -0.13), ink: t.lit },
       { shape: scaled(lobes.filter((l) => l.x + l.y < 0.1), 0.46, -0.3, -0.34), ink: t.high }];
   }
-  return canopyLayers(variant, t);
+  return canopyLayers(variant, t, outline);
 }
 
 /**
- * The canopies' forms, radius one about the picture's middle (y down): round, upright, spreading (its underside
- * flatter), three masses, and a cypress. Each is its outline wavering about an oval; `bottom` is how far below the
+ * The canopies' forms, radius one about the picture's middle (y down): round, upright, a fuller oval (its underside
+ * a little flatter), three masses, and a cypress; none squat. Each is its outline wavering about an oval; `bottom` is how far below the
  * middle its leaves end, where the trunk comes in.
  */
 const CANOPIES = [
-  { rx: 0.95, ry: 0.92, cy: 0, under: 1 },
-  { rx: 0.76, ry: 1.1, cy: -0.04, under: 1 },
-  { rx: 1.12, ry: 0.74, cy: 0.04, under: 0.72 },
-  { rx: 0.98, ry: 0.86, cy: 0, under: 1, masses: [[-0.4, 0.1, 0.58], [0.38, 0.06, 0.6], [0.02, -0.32, 0.6]] as [number, number, number][] },
+  { rx: 0.95, ry: 0.97, cy: 0, under: 1 },
+  { rx: 0.78, ry: 1.12, cy: -0.04, under: 1 },
+  { rx: 0.88, ry: 1.04, cy: -0.02, under: 0.94 },
+  { rx: 0.92, ry: 1.0, cy: 0, under: 1, masses: [[-0.36, 0.16, 0.55], [0.36, 0.1, 0.56], [0.02, -0.38, 0.62]] as [number, number, number][] },
   { rx: 0.42, ry: 1.32, cy: -0.08, under: 1 },
 ];
 export const CANOPY_FORMS = CANOPIES.length;
@@ -111,29 +120,27 @@ export const CANOPY_BRANCHINGS = 3;
 export const canopyBottom = (variant: number) => { const c = CANOPIES[variant % CANOPIES.length]; return c.cy + c.ry * c.under; };
 
 /**
- * A canopy as an illustrator draws a tree in elevation: its leaves a pale mass, its edge loose and broken by small
- * clusters, with no outline; the wood through it, the trunk parting into limbs and the limbs into twigs, showing
- * through the leaves; over all, the marks of the leaves, small strokes in the deeper green and the mid, thickest on
- * the side away from the light. Tones: `dark` the pale mass, `high` the deep marks, `lit` the mid ones, `edge` the
- * wood.
+ * A canopy as an illustrator draws a tree: a plain mass of leaves with a loose edge broken by small clusters, the
+ * town's thin contour round it, and its wood drawn over it, the trunk parting into limbs and the limbs into twigs.
+ * Tones: `dark` the leaves, `edge` the wood, `high` the contour; `outline` its width, in radii.
  */
-function canopyLayers(variant: number, t: CrownTones): Layer[] {
+function canopyLayers(variant: number, t: CrownTones, outline: number): Layer[] {
   const form = variant % CANOPIES.length, C = CANOPIES[form], seed = { x: variant * 5.3 + 1.1, y: variant * 2.9 + 0.4 };
   const ph = [rand(seed, 1), rand(seed, 2), rand(seed, 3)].map((v) => v * Math.PI * 2);
-  const reach = (a: number) => 1 + 0.09 * Math.sin(3 * a + ph[0]) + 0.06 * Math.sin(5 * a + ph[1]) + 0.04 * Math.sin(8 * a + ph[2]);
+  const reach = (a: number) => 1 + 0.08 * Math.sin(3 * a + ph[0]) + 0.05 * Math.sin(5 * a + ph[1]) + 0.03 * Math.sin(8 * a + ph[2]);
   const inside = (x: number, y: number, shrink = 1) => {
     if (C.masses) return C.masses.some(([mx, my, mr]) => Math.hypot(x - mx, y - my) <= mr * shrink * reach(Math.atan2(y - my, x - mx)));
     const u = x / C.rx, v0 = (y - C.cy) / C.ry, v = v0 > 0 ? v0 / C.under : v0;
     return Math.hypot(u, v) <= shrink * reach(Math.atan2(v, u));
   };
-  // the pale mass: larger clusters well inside, small ones strewn to the edge
+  // the mass: larger clusters well inside, small ones strewn to the edge
   const mass: Circle[] = [];
   for (let gy = -1.4; gy <= 1.4; gy += 0.16) for (let gx = -1.2; gx <= 1.2; gx += 0.16) if (inside(gx, gy, 0.8)) mass.push({ x: gx, y: gy, r: 0.14 });
-  const n = form === 4 ? 260 : 380;
+  const n = form === 4 ? 200 : 300;
   for (let i = 0, k = 0; i < n && k < n * 6; k++) {
     const x = (rand(seed, 1000 + k) * 2 - 1) * 1.25, y = (rand(seed, 3000 + k) * 2 - 1) * 1.45;
     if (!inside(x, y)) continue;
-    mass.push({ x, y, r: 0.03 + 0.045 * rand(seed, 5000 + k) });
+    mass.push({ x, y, r: 0.045 + 0.05 * rand(seed, 5000 + k) });
     i++;
   }
   // the wood: the trunk up to the fork, limbs out across the upper crown, a twig or two off each
@@ -157,24 +164,8 @@ function canopyLayers(variant: number, t: CrownTones): Layer[] {
     wood.push([kx, ky, kx + side * (0.12 + 0.14 * rand(seed, 48 + j)), ky - 0.14 - 0.12 * rand(seed, 50 + j), 0.022]);
     wood.push([tx, ty, tx + side * (rand(seed, 52 + j) - 0.6) * 0.24, ty - 0.12 - 0.08 * rand(seed, 53 + j), 0.018]);
   }
-  // the marks of the leaves: small strokes at every angle, more of them low and to the right, away from the light
-  const marks = (count: number, salt: number, r0: number): Shape => {
-    const pieces: { x0: number; y0: number; x1: number; y1: number; w: number }[] = [];
-    for (let i = 0, k = 0; i < count && k < count * 8; k++) {
-      const x = (rand(seed, salt + k) * 2 - 1) * 1.2, y = (rand(seed, salt + 20000 + k) * 2 - 1) * 1.4;
-      if (!inside(x, y, 0.98)) continue;
-      const shade = 0.35 + 0.65 * Math.min(1, Math.max(0, 0.5 + 0.45 * (x / C.rx) + 0.55 * ((y - C.cy) / C.ry)));
-      if (rand(seed, salt + 40000 + k) > shade) continue;
-      const a = rand(seed, salt + 60000 + k) * Math.PI, l = r0 * (0.7 + 0.6 * rand(seed, salt + 80000 + k));
-      pieces.push({ x0: x - Math.cos(a) * l, y0: y - Math.sin(a) * l, x1: x + Math.cos(a) * l, y1: y + Math.sin(a) * l, w: r0 * 0.75 });
-      i++;
-    }
-    return { segs: pieces };
-  };
-  return [{ shape: { circles: mass }, ink: t.dark },
-    ...wood.map(([x0, y0, x1, y1, w]) => ({ shape: { seg: { x0, y0, x1, y1, w } }, ink: t.edge })),
-    { shape: marks(form === 4 ? 220 : 320, 100000, 0.022), ink: t.lit },
-    { shape: marks(form === 4 ? 300 : 440, 200000, 0.019), ink: t.high }];
+  return [{ shape: { circles: mass }, ink: t.high, grow: outline }, { shape: { circles: mass }, ink: t.dark },
+    ...wood.map(([x0, y0, x1, y1, w]) => ({ shape: { seg: { x0, y0, x1, y1, w } }, ink: t.edge }))];
 }
 
 /** A crown painted: its picture, and the box it covers about the crown's middle, in radii. */

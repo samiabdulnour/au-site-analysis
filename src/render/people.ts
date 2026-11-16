@@ -5,7 +5,7 @@
 // are, render/crowns.ts) and placed, facing either way, at every person who
 // takes it: a town of a thousand people prints as a few dozen pictures.
 
-import { paintLayers, type Layer, type CrownPicture } from './crowns.js';
+import { paintLayers, CONTOUR, type Layer, type CrownPicture } from './crowns.js';
 
 const TOPS = ['#f26a3d', '#2c3c7c', '#f2c230', '#3ba56e', '#5bb5a8', '#f4a3b6', '#ffffff', '#e5493b', '#8fc3e6'];
 const LEGS = ['#2c3c7c', '#c48b32', '#5bb5a8', '#3ba56e', '#a9b1b5', '#2f2f35'];
@@ -52,12 +52,58 @@ function personLayers(i: number): Layer[] {
   return out;
 }
 
-const cache = new Map<number, CrownPicture>();
+/**
+ * Person `i` on a bicycle, riding right: the wheels and the frame (in the colour of their top, or a dark one), seated,
+ * leaning to the bars, a foot on each pedal.
+ */
+function riderLayers(i: number): Layer[] {
+  const top = TOPS[(i * 2 + 5) % TOPS.length], legs = LEGS[(i * 3 + 2) % LEGS.length], skin = SKIN[(i * 5 + 1) % SKIN.length], hair = HAIR[(i * 7) % HAIR.length];
+  const frame = i % 3 === 0 ? '#3d4048' : TOPS[(i * 5 + 3) % TOPS.length];
+  const seg = (x0: number, y0: number, x1: number, y1: number, w: number, ink: string): Layer => ({ shape: { seg: { x0, y0, x1, y1, w } }, ink });
+  const R = 0.34, rear = { x: -0.52, y: -R }, front = { x: 0.52, y: -R }, bb = { x: 0, y: -0.3 }, seat = { x: -0.13, y: -0.86 }, head = { x: 0.42, y: -0.84 };
+  const wheel = (c: { x: number; y: number }): Layer[] => [
+    { shape: { circles: [{ x: c.x, y: c.y, r: R }] }, ink: '#3d4048' }, { shape: { circles: [{ x: c.x, y: c.y, r: R - 0.05 }] }, ink: '#000000', erase: true },
+    { shape: { circles: [{ x: c.x, y: c.y, r: 0.04 }] }, ink: '#3d4048' }];
+  const hip = { x: -0.1, y: -0.94 }, shoulder = { x: 0.14, y: -1.44 }, hand = { x: 0.36, y: -0.96 };
+  return [
+    ...wheel(rear), ...wheel(front),
+    // the far leg, down to its pedal behind
+    seg(hip.x, hip.y, 0.1, -0.66, 0.12, legs), seg(0.1, -0.66, -0.06, -0.24, 0.11, legs),
+    // the frame and the bars
+    seg(rear.x, rear.y, bb.x, bb.y, 0.04, frame), seg(bb.x, bb.y, seat.x, seat.y, 0.04, frame), seg(seat.x, seat.y, rear.x, rear.y, 0.035, frame),
+    seg(bb.x, bb.y, head.x, head.y, 0.045, frame), seg(seat.x + 0.02, seat.y + 0.04, head.x, head.y, 0.04, frame), seg(head.x, head.y, front.x, front.y, 0.04, frame),
+    seg(head.x, head.y, 0.36, -0.97, 0.035, '#3d4048'), seg(seat.x - 0.07, seat.y - 0.02, seat.x + 0.06, seat.y - 0.02, 0.05, '#3d4048'),
+    // the body leaning to the bars, the near leg, the arm, the head
+    seg(hip.x, hip.y, shoulder.x, shoulder.y, 0.3, top),
+    seg(hip.x, hip.y, 0.16, -0.62, 0.13, legs), seg(0.16, -0.62, 0.08, -0.3, 0.11, legs), { shape: { oval: { x: 0.12, y: -0.27, rx: 0.07, ry: 0.035 } }, ink: '#2b2b30' },
+    seg(shoulder.x, shoulder.y, hand.x, hand.y, 0.085, top), { shape: { circles: [{ x: hand.x, y: hand.y, r: 0.04 }] }, ink: skin },
+    seg(0.2, -1.5, 0.22, -1.56, 0.08, skin), { shape: { circles: [{ x: 0.25, y: -1.66, r: 0.115 }] }, ink: skin }, { shape: { oval: { x: 0.24, y: -1.73, rx: 0.12, ry: 0.07 } }, ink: hair },
+  ];
+}
+
+/** Layers with the town's contour round all of them first: a thin line of it round the whole figure. */
+const outlined = (layers: Layer[], width: number): Layer[] => [{ shape: { union: layers.filter((L) => !L.erase).map((L) => L.shape) }, ink: CONTOUR, grow: width }, ...layers];
+
+/** The contour round a person, metres: as thin as the trees' and the vehicles'. */
+const CONTOUR_M = 0.035;
+
+const cache = new Map<string, CrownPicture>();
 
 /** Person `i` painted (`perUnit` pixels to the metre): the picture, and the box it covers about their feet, metres. */
 export function personPicture(i: number, perUnit = 140): CrownPicture {
-  const k = i % PEOPLE_VARIANTS;
-  let pic = cache.get(k);
-  if (!pic) { pic = paintLayers(personLayers(k), perUnit); cache.set(k, pic); }
+  const key = `p${i % PEOPLE_VARIANTS}`;
+  let pic = cache.get(key);
+  if (!pic) { pic = paintLayers(outlined(personLayers(i % PEOPLE_VARIANTS), CONTOUR_M), perUnit); cache.set(key, pic); }
+  return pic;
+}
+
+/** How many cyclists a drawing draws from. */
+export const RIDER_VARIANTS = 12;
+
+/** Person `i` on a bicycle painted, riding right: the picture, and its box about the point under the bicycle's middle. */
+export function riderPicture(i: number, perUnit = 140): CrownPicture {
+  const key = `r${i % RIDER_VARIANTS}`;
+  let pic = cache.get(key);
+  if (!pic) { pic = paintLayers(outlined(riderLayers(i % RIDER_VARIANTS), CONTOUR_M), perUnit); cache.set(key, pic); }
   return pic;
 }
