@@ -524,7 +524,7 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   const kfCars = !mono && deckLook().id === 'kingfisher';
   // in Kingfisher's own colours: mostly warm whites and light greys, its terracotta, mint, pale blue, a cut of its deep
   // blue and its deep terracotta among them; the glass a dark slate of its blue; edged with the town's one contour
-  const CAR_INKS = mono ? ['#ffffff'] : kfCars
+  const CAR_INKS = mono ? ['#ffffff'] : deckLook().id === 'heron' ? ['#f2f2f2', '#bdbdbd', '#8c8c8c', '#e2e2e2', '#5e5e5e'] : kfCars
     ? ['#f5f3ef', INK.red.solid, '#d9d6d1', INK.green.solid, '#f5f3ef', INK.blue.solid, tint(INK.blue.deep, 0.25), '#d9d6d1', INK.red.deep]
     : [vivid(INK.red.solid, 0.55, 0.45), vivid(INK.blue.solid, 0.5, 0.42), vivid(INK.orange.solid, 0.7, 0.5), '#f4f4f0'];
   const WHITE = mono ? '#ffffff' : kfCars ? '#f5f3ef' : '#f4f4f0', GLASS = mono ? MONO.glass : kfCars ? shade(INK.blue.deep, 0.62) : tint(INK.blue.solid, 0.78);

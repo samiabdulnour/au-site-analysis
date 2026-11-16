@@ -791,8 +791,12 @@ interface PlanMarks {
   shaded?: XY[][][];
   dims?: { a: XY; b: XY; label: string; ink: string }[];
 }
-/** A separation's ink: clear, holding only with a blank face, short. */
-const SEPARATION_INK: Record<'clear' | 'blank' | 'short', string> = { clear: '#2f8f55', blank: '#c98a12', short: '#c8372d' };
+/**
+ * A separation's ink, and a compliance mark's: clear, holding only with a blank face, short. Green, amber and red;
+ * in Heron, black and white and one colour, a near black, a mid grey and its accent.
+ */
+const statusInks = (): Record<'clear' | 'blank' | 'short', string> =>
+  deckLook().id === 'heron' ? { clear: '#2b2b2b', blank: '#8a8a8a', short: deckLook().accent } : { clear: '#2f8f55', blank: '#c98a12', short: '#c8372d' };
 /** The neighbours' shadows' ink: a neutral grey, so only the envelope's own shadow, in the site's accent, carries a colour. */
 const shadowInk = () => '#3a3c41';
 /** Each hour's shadow at this opacity, the hours laid over each other, as the report lays them; n hours deep, the tint this. */
@@ -1375,8 +1379,8 @@ const SCENARIO_TITLE: Record<Scenario['id'], string> = {
 function okMark(ok: boolean | null | undefined, inline = false): string {
   if (ok === undefined) return '';
   const body = ok === null ? '<line x1="1" y1="2" x2="4" y2="2" stroke="#878787" stroke-width="0.45"/>'
-    : ok ? '<path d="M0.6,2.1 L1.9,3.3 L4.4,0.6" fill="none" stroke="#2f8f55" stroke-width="0.55" stroke-linecap="butt" stroke-linejoin="miter"/>'
-      : '<path d="M1,0.6 L4,3.4 M4,0.6 L1,3.4" stroke="#c8372d" stroke-width="0.55" stroke-linecap="butt"/>';
+    : ok ? `<path d="M0.6,2.1 L1.9,3.3 L4.4,0.6" fill="none" stroke="${statusInks().clear}" stroke-width="0.55" stroke-linecap="butt" stroke-linejoin="miter"/>`
+      : `<path d="M1,0.6 L4,3.4 M4,0.6 L1,3.4" stroke="${statusInks().short}" stroke-width="0.55" stroke-linecap="butt"/>`;
   return `<svg class="mk${inline ? ' in' : ''}" viewBox="0 0 5 4" width="3.4mm" height="2.7mm" xmlns="http://www.w3.org/2000/svg">${body}</svg>`;
 }
 
@@ -1873,7 +1877,7 @@ function complianceSheet(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: Pa
       added: addedGround(hourly.map((hr) => hr.scheme), hourly.map((hr) => hr.hulls), [s.ring]),
       shadows: hourSuns.filter((sun) => [9 * 60, 12 * 60, 15 * 60].includes(sun.clockMin)).map((sun) => ({ rings: groundShadow(massBlocks, sun), label: clock(sun.clockMin) })).filter((x) => x.rings.length),
       shaded: sh.shadedTargets.map((i) => ps.targets[i].rings),
-      dims: [...ps.separation, ...ps.separationBuiltOut].map((r) => { const w = worseReading(r); return { a: w.a, b: w.b, label: `${fmt(w.distanceM, 1)} m`, ink: SEPARATION_INK[w.status] }; }),
+      dims: [...ps.separation, ...ps.separationBuiltOut].map((r) => { const w = worseReading(r); return { a: w.a, b: w.b, label: `${fmt(w.distanceM, 1)} m`, ink: statusInks()[w.status] }; }),
     } });
   const axo = (behind: boolean, left: number, id2: string) => figureAt(left, 0, W, AXO_H, axonometric(b, s, { x: 2, y: IN + 9, w: W - 4, h: AXO_H - IN - 11 }, { y: ps.y, facades: ps.facades, roofs: ps.roofs, behind, focusM: 6, mono: true }, id2));
   const figures = axo(false, PAGE_X, `${fid}-f`) + labelAt(PAGE_X, 0, IN, ['From the street corner'])
@@ -1883,7 +1887,8 @@ function complianceSheet(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: Pa
 
   // the key
   const KEY = keySwatches();
-  const sepSwatch = `<path d="M0.4,0.9H4.6" stroke="${SEPARATION_INK.clear}" stroke-width="0.35"/><path d="M0.4,1.8H4.6" stroke="${SEPARATION_INK.blank}" stroke-width="0.35"/><path d="M0.4,2.7H4.6" stroke="${SEPARATION_INK.short}" stroke-width="0.35"/>`;
+  const SEP = statusInks();
+  const sepSwatch = `<path d="M0.4,0.9H4.6" stroke="${SEP.clear}" stroke-width="0.35"/><path d="M0.4,1.8H4.6" stroke="${SEP.blank}" stroke-width="0.35"/><path d="M0.4,2.7H4.6" stroke="${SEP.short}" stroke-width="0.35"/>`;
   const legend: LegendEntry[] = [
     { swatch: KEY.site, label: 'The site' },
     { swatch: KEY.zones(sunBands().map((x) => x.fill)), label: `Facades and roofs, hours of sun 9 am – 3 pm on 21 June: none, under 1, 1–2, 2–3, 3–4, 4–5, 5 and over` },

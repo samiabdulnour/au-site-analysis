@@ -100,6 +100,11 @@ if (sheetType === 'site' || sheetType === 'both') {
     rotate,
     log: (m) => console.log(m),
   });
+  // A development aid, as for the decks: keep the bundle, so the sheet can be re-composed without fetching (scripts/recompose.ts).
+  if (process.env.KEEP_BUNDLE) {
+    const { serialize } = await import('node:v8');
+    await writeFile(join(outDir, 'site.bundle'), serialize({ sb, meta }));
+  }
   console.log('composing site analysis…');
   const siteHtmlPath = join(outDir, 'site_sheet.html');
   await writeFile(siteHtmlPath, renderSiteSheet(sb, { ...meta, sheetNo: meta.sheetNo || '' }, arg('site-theme')));

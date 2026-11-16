@@ -293,6 +293,48 @@ export const TEMPLATES: Template[] = [
     categories: HERON_CATEGORIES },
 ];
 
+// ---- Heron in black and white and one colour -----------------------------------
+// Heron's site sheet, yield and site report are drawn as a conventional planning drawing: black lines and type, the
+// photograph in grey, every zone, catchment, route and figure in greys told apart by their textures, and one colour,
+// a muted brick red, for the site and what bears on it. Its context sheet keeps the office sheet's palette above.
+
+/** Heron's one colour: a muted brick red, for the site, its figures and the narrative. */
+export const HERON_ACCENT = '#c0533f';
+
+/** The greys of Heron's mono categories and inks, light to dark. */
+const MG = { 1: '#f3f3f3', 2: '#e6e6e6', 3: '#d9d9d9', 4: '#c9c9c9', 5: '#b5b5b5', 6: '#9c9c9c', 7: '#7d7d7d', 8: '#5c5c5c', 9: '#3f3f3f' } as const;
+
+/** Heron's land-use categories in greys, told apart by strength and texture; the site in its one colour. */
+const HERON_MONO_CATEGORIES: Category[] = [
+  { id: 'site',           label: 'SITE',                                     fill: HERON_ACCENT, opacity: 0.45 },
+  { id: 'medical',        label: 'MEDICAL',                                  fill: MG[2], opacity: 0.75, stroke: MG[8], figure: MG[8] },
+  { id: 'education',      label: 'EDUCATION',                                fill: MG[3], opacity: 0.75, stroke: MG[8], texture: 'lines', textureColor: '#ffffff', figure: MG[8] },
+  { id: 'childCare',      label: 'CHILD CARE / AGED CARE',                   fill: MG[1], opacity: 0.75, stroke: MG[8], figure: MG[8] },
+  { id: 'mixedUse',       label: 'MIXED USE CLUSTER RESIDENTIAL/COMMERCIAL', fill: MG[4], opacity: 0.7, texture: 'dots', textureColor: MG[8], figure: MG[8] },
+  { id: 'retail',         label: 'ACTIVE RETAIL',                            fill: MG[3], opacity: 0.7, texture: 'cross', textureColor: MG[8], figure: MG[8] },
+  { id: 'openSpace',      label: 'OPEN SPACE',                               fill: MG[2], opacity: 0.7, texture: 'dots', textureColor: MG[7], figure: MG[7] },
+  { id: 'community',      label: 'COMMUNITY HUB',                            fill: MG[2], opacity: 0.7, stroke: MG[8], texture: 'cross', textureColor: '#ffffff', figure: MG[8] },
+  { id: 'r2',             label: 'R2 LOW DENSITY RESIDENTIAL',               fill: MG[1], opacity: 0.75, figure: MG[6] },
+  { id: 'r3',             label: 'R3 MEDIUM DENSITY RESIDENTIAL',            fill: MG[3], opacity: 0.7, figure: MG[7] },
+  { id: 'r4',             label: 'R4 HIGH DENSITY RESIDENTIAL',              fill: MG[4], opacity: 0.65, texture: 'lines', textureColor: MG[8], figure: MG[8] },
+  { id: 'localCentre',    label: 'LOCAL CENTRE',                             fill: MG[5], opacity: 0.65, figure: MG[8] },
+  { id: 'commercial',     label: 'COMMERCIAL CENTRE',                        fill: MG[5], opacity: 0.65, texture: 'lines', textureColor: MG[9], figure: MG[9] },
+  { id: 'industrial',     label: 'GENERAL INDUSTRIAL',                       fill: MG[3], opacity: 0.7, texture: 'lines', textureColor: MG[7], figure: MG[7] },
+  { id: 'infrastructure', label: 'INFRASTRUCTURE FACILITY',                  fill: MG[2], opacity: 0.75, stroke: MG[7], figure: MG[7] },
+  { id: 'water',          label: 'WATERWAY',                                 fill: MG[3], opacity: 0.7 },
+  { id: 'railway',        label: 'RAILWAY TRACKS',                           fill: MG[2], opacity: 0.75, stroke: MG[7], figure: MG[7] },
+  { id: 'heritage',       label: 'GENERAL HERITAGE SITE',                    fill: MG[6], opacity: 0.55 },
+];
+
+/** Heron's ink families for its decks: the accent's family in its one colour, the four others in greys. */
+export const HERON_INK: Record<InkFamilyName, InkFamily> = {
+  red:    { solid: HERON_ACCENT, mid: tint(HERON_ACCENT, 0.5), light: tint(HERON_ACCENT, 0.2), line: HERON_ACCENT, deep: shadeHex(HERON_ACCENT, 0.78), text: HERON_ACCENT },
+  orange: { solid: MG[5], mid: MG[3], light: MG[1], line: MG[7], deep: MG[8], text: MG[8] },
+  sage:   { solid: MG[4], mid: MG[2], light: MG[1], line: MG[6], deep: MG[7], text: MG[7] },
+  green:  { solid: MG[5], mid: MG[3], light: MG[2], line: MG[7], deep: MG[9], text: MG[9] },
+  blue:   { solid: MG[6], mid: MG[4], light: MG[2], line: MG[8], deep: '#2b2b2b', text: '#2b2b2b' },
+};
+
 // Retired ids still resolve: Flamingo's white version is Flamingo, Flamingo 2 is Kingfisher, Conure is
 // Canary; the aerial Flamingo and both Redferns fall back to the default, which is Flamingo too.
 const ALIASES: Record<string, string> = { 'flamingo-white': 'flamingo', 'flamingo-2': 'kingfisher', conure: 'canary' };
@@ -300,6 +342,15 @@ const byId: Record<string, Template> = Object.fromEntries([
   ...TEMPLATES.map((t) => [t.id, t] as const),
   ...Object.entries(ALIASES).map(([alias, id]) => [alias, TEMPLATES.find((t) => t.id === id)!] as const),
 ]);
+
+/** Heron for its site sheet and decks: its template, every ink in black or grey but the site's, and its mono categories. */
+export const HERON_MONO: Template = {
+  ...byId.heron,
+  discInk: MG[8], discParkInk: MG[7],
+  site: HERON_ACCENT, dimension: MG[9], wind: MG[7], sun: MG[2], road: MG[7], water: MG[3],
+  transit: '#2b2b2b', rail: '#2b2b2b', walk5: MG[9], walk10: MG[7], busRoute: MG[7], heritage: MG[7],
+  categories: HERON_MONO_CATEGORIES,
+};
 export const DEFAULT_TEMPLATE = 'flamingo';
 
 /** The registered id an id or alias names, or the default for anything unknown. */
@@ -367,8 +418,8 @@ export interface SiteLook {
   ground: 'aerial' | 'paper';
   /** The white veil over the aerial outside the site. */
   veil: number;
-  /** The aerial outside the site in its own colours, or in greyscale; the site keeps its colours either way. */
-  aerial: 'colour' | 'grey';
+  /** The aerial outside the site in its own colours, or in greyscale, the site keeping its colours either way; or (mono) all of it in greyscale, the site's too. */
+  aerial: 'colour' | 'grey' | 'mono';
   /** The site's pen: its boundary, corners and levels. */
   site: string;
   /** The boundary's dash. */
@@ -447,28 +498,29 @@ export interface SiteLook {
 
 export interface SiteTheme { id: string; label: string; note: string; base: string; look: SiteLook }
 
-// Heron: Dove's marks in the Heron template's colours. The aerial in grey
-// outside the site, the zones in Heron's palette, the site, its levels and
-// boundary dimensions in Heron's red, the fall in its slate and the FALL/AREA
-// words in the red again, with the site's other figures; the climate
-// still drawn quietly, the sun, its path, the telescopes and the winds in one
-// grey and the contours a lighter one; the neighbours white, in a fine
-// outline. Heron's tints are pale, so each zone is tinted as well as
-// hatched, the tint multiplied into the grey photograph so its roofs and
-// trees still read; the FALL/AREA words sit plain on the photograph like
-// the levels, with no box and no white edge. Every word on the map is a
-// fifth larger than the sheet's usual lettering. It was Dove, on Flamingo's palette with the site in a deeper red, and before
-// that Cardinal, with the sun in mustard and the winds and views in the
-// site's red; a request naming either is drawn in Heron.
-const CLIMATE_GREY = '#6f7377';
+// Heron: Dove's marks, in black, white and Heron's one colour (2026-11: the
+// site analysis, the yield and the report made plain and conventional, not
+// saturated). The aerial in grey, the site's too; the site, its levels, its
+// boundary dimensions and the FALL/AREA words in the accent; the fall in a
+// near black; the zones in the greys of Heron's mono categories, hatched and
+// tinted into the grey photograph so its roofs and trees still read; the
+// climate drawn quietly, the sun, its path, the telescopes, the winds and the
+// noise in one grey and the contours a lighter one; the neighbours white, in a
+// fine outline. The FALL/AREA words sit plain on the photograph like the
+// levels, with no box and no white edge. Every word on the map is a fifth
+// larger than the sheet's usual lettering. It was Dove, on Flamingo's palette
+// with the site in a deeper red, and before that Cardinal, with the sun in
+// mustard and the winds and views in the site's red; a request naming either
+// is drawn in Heron.
+const CLIMATE_GREY = '#6f6f6f';
 const HERON_LOOK: SiteLook = {
-  font: NARROW, ground: 'aerial', veil: 0.55, aerial: 'grey', site: HERON_RED, siteDash: '7,2,1.6,2', dimensionInk: HERON_RED, fall: HERON_SLATE, fallWords: 'plain', fallInk: HERON_RED, textScale: 1.2,
+  font: NARROW, ground: 'aerial', veil: 0.55, aerial: 'mono', site: HERON_ACCENT, siteDash: '7,2,1.6,2', dimensionInk: HERON_ACCENT, fall: '#2b2b2b', fallWords: 'plain', fallInk: HERON_ACCENT, textScale: 1.2,
   buildingEdge: 0.3, buildings: 'outline', neighbours: 'white', neighbourHeightInk: '#ffffff', zones: 'hatch', zoneTint: 0.55,
-  heritage: false, heritageInk: { item: '#e39a3b', area: '#c8372d' }, contours: true, contourInk: '#a9adb1',
+  heritage: false, heritageInk: { item: '#5c5c5c', area: '#3f3f3f' }, contours: true, contourInk: '#adadad',
   streetInk: '#ffffff',
   sun: 'crown', sunPen: CLIMATE_GREY, sunFill: '#ffffff', sunEdge: CLIMATE_GREY, sunInk: CLIMATE_GREY, sunHours: true,
   wind: 'strands', windPen: CLIMATE_GREY, climateInk: CLIMATE_GREY,
-  noise: 'band', noisePen: '#3f6fc2', views: 'telescope', viewPen: CLIMATE_GREY, parking: 'bays', textHalo: true, kerbs: false,
+  noise: 'band', noisePen: CLIMATE_GREY, views: 'telescope', viewPen: CLIMATE_GREY, parking: 'bays', textHalo: true, kerbs: false,
 };
 
 // Canary: the office's classic site sheet (DA 004 at Arncliffe, Cabramatta,
@@ -594,7 +646,7 @@ export interface DeckLook {
   family: InkFamily;
   /** The zones: the deck's land-use categories with their textures, or each code in its NSW ePlanning colour. */
   zones: 'categories' | 'lep';
-  /** The land-use categories the deck's zones and lots take: the template's, or the swatch sheet's for the styles that keep it. */
+  /** The land-use categories the deck's zones and lots take: the template's, or Heron's mono categories (greys, the site in its one colour). */
   categories: Category[];
   /** What a map stands on: paper, or the aerial in grey under the template's veil, where the bundle carries one. */
   ground: 'paper' | 'aerial';
@@ -644,7 +696,8 @@ export function vivid(hex: string, minSat = 0.55, maxLight = 0.45): string {
     h = max === r ? ((g - b) / d + (g < b ? 6 : 0)) : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
     h /= 6;
   }
-  const S = Math.max(sat, minSat), L = Math.min(l, maxLight);
+  // a grey has no hue to make vivid: it stays grey, only its lightness capped (Heron's mono inks pass through here)
+  const S = sat < 0.05 ? sat : Math.max(sat, minSat), L = Math.min(l, maxLight);
   const q = L < 0.5 ? L * (1 + S) : L + S - L * S, p = 2 * L - q;
   const ch = (t: number) => { if (t < 0) t += 1; if (t > 1) t -= 1; const v = t < 1 / 6 ? p + (q - p) * 6 * t : t < 1 / 2 ? q : t < 2 / 3 ? p + (q - p) * (2 / 3 - t) * 6 : p; return Math.round(v * 255).toString(16).padStart(2, '0'); };
   return `#${ch(h + 1 / 3)}${ch(h)}${ch(h - 1 / 3)}`;
@@ -670,50 +723,6 @@ export function inkFor(hex: string, maxL = 0.25): string {
  */
 export interface InkFamily { solid: string; mid: string; light: string; line: string; deep: string; text: string }
 export type InkFamilyName = 'red' | 'orange' | 'sage' | 'green' | 'blue';
-
-// The office's swatch sheet, which the decks were drawn in before they took
-// the styles: five families of three tints, two pattern inks and a text ink
-// dark enough for the bold narrative. Heron keeps these for its decks rather
-// than its tans: the office's own sheet is the office's own palette. Canary
-// has a punchy sheet of its own (CANARY_INK), so the two aerial styles differ
-// in more than the site's ink.
-export const KIT_INK: Record<InkFamilyName, InkFamily> = {
-  red:    { solid: '#d54747', mid: '#e69ea1', light: '#f4d8d9', line: '#d54747', deep: '#b20000', text: '#d54747' },
-  orange: { solid: '#e9a879', mid: '#f3d2ba', light: '#faeee3', line: '#efbf99', deep: '#df726a', text: '#f5a470' },
-  sage:   { solid: '#cbcbb9', mid: '#e5e5dc', light: '#f5f5f1', line: '#d9c49c', deep: '#9c9c88', text: '#8f8f78' },
-  green:  { solid: '#7bb990', mid: '#bbdcc7', light: '#e4f0e9', line: '#7bb990', deep: '#2f8f55', text: '#4e9a69' },
-  blue:   { solid: '#b2daf5', mid: '#d8ecf9', light: '#eff8fd', line: '#9fcbea', deep: '#4b55a0', text: '#0068b3' },
-};
-// The land-use categories in the swatch sheet's families, for those decks'
-// zones: the residential tiers up the red family, the centres in the orange,
-// open space in the green, the institutions in the blue, industry and
-// infrastructure in the sage; told apart inside a family by texture, as the
-// context sheet tells them. Thinned where they lie over the photograph.
-const KIT_CATEGORIES: Category[] = (() => {
-  const K = KIT_INK;
-  return [
-    { id: 'site',           label: 'SITE',                                     fill: K.red.deep, opacity: 0.5 },
-    { id: 'medical',        label: 'MEDICAL',                                  fill: K.blue.mid, opacity: 0.7, stroke: K.blue.deep, figure: K.blue.deep },
-    { id: 'education',      label: 'EDUCATION',                                fill: K.blue.solid, opacity: 0.7, stroke: K.blue.deep, texture: 'lines', textureColor: PAPER, figure: K.blue.deep },
-    { id: 'childCare',      label: 'CHILD CARE / AGED CARE',                   fill: K.blue.light, opacity: 0.7, stroke: K.blue.deep, figure: K.blue.deep },
-    { id: 'mixedUse',       label: 'MIXED USE CLUSTER RESIDENTIAL/COMMERCIAL', fill: K.orange.solid, opacity: 0.65, texture: 'dots', textureColor: K.orange.deep, figure: K.orange.deep },
-    { id: 'retail',         label: 'ACTIVE RETAIL',                            fill: K.orange.mid, opacity: 0.7, texture: 'cross', textureColor: K.orange.deep, figure: K.orange.deep },
-    { id: 'openSpace',      label: 'OPEN SPACE',                               fill: K.green.mid, opacity: 0.7, texture: 'dots', textureColor: K.green.deep, figure: K.green.deep },
-    { id: 'community',      label: 'COMMUNITY HUB',                            fill: K.blue.mid, opacity: 0.7, stroke: K.blue.deep, texture: 'cross', textureColor: PAPER, figure: K.blue.deep },
-    { id: 'r2',             label: 'R2 LOW DENSITY RESIDENTIAL',               fill: K.red.light, opacity: 0.75, figure: K.red.line },
-    { id: 'r3',             label: 'R3 MEDIUM DENSITY RESIDENTIAL',            fill: K.red.mid, opacity: 0.65, figure: K.red.line },
-    { id: 'r4',             label: 'R4 HIGH DENSITY RESIDENTIAL',              fill: K.red.solid, opacity: 0.55, texture: 'lines', textureColor: K.red.deep, figure: K.red.deep },
-    { id: 'localCentre',    label: 'LOCAL CENTRE',                             fill: K.orange.solid, opacity: 0.65, figure: K.orange.deep },
-    { id: 'commercial',     label: 'COMMERCIAL CENTRE',                        fill: K.orange.solid, opacity: 0.65, texture: 'lines', textureColor: K.orange.deep, figure: K.orange.deep },
-    { id: 'industrial',     label: 'GENERAL INDUSTRIAL',                       fill: K.sage.solid, opacity: 0.7, texture: 'lines', textureColor: K.sage.deep, figure: K.sage.deep },
-    { id: 'infrastructure', label: 'INFRASTRUCTURE FACILITY',                  fill: K.sage.mid, opacity: 0.75, stroke: K.sage.deep, figure: K.sage.deep },
-    { id: 'water',          label: 'WATERWAY',                                 fill: K.blue.solid, opacity: 0.7 },
-    { id: 'railway',        label: 'RAILWAY TRACKS',                           fill: K.sage.mid, opacity: 0.75, stroke: K.sage.deep, figure: K.sage.deep },
-    { id: 'heritage',       label: 'GENERAL HERITAGE SITE',                    fill: K.sage.line, opacity: 0.6 },
-  ];
-})();
-/** The styles whose decks keep the swatch sheet. */
-const KIT_STYLES = new Set(['heron']);
 
 // Canary's own sheet, punchy as its context sheet is: its red, its yellow, its lime and its lilac-blue, with a warm
 // grey for the neutral. Its decks read these rather than families derived from its muted categories.
@@ -752,7 +761,7 @@ export function deckFamilies(): Record<InkFamilyName, InkFamily> {
   const t = tpl();
   const hit = familiesByTemplate.get(t.id);
   if (hit) return hit;
-  if (KIT_STYLES.has(t.id)) { familiesByTemplate.set(t.id, KIT_INK); return KIT_INK; }
+  if (t.id === 'heron') { familiesByTemplate.set(t.id, HERON_INK); return HERON_INK; }
   if (t.id === 'canary') { familiesByTemplate.set(t.id, CANARY_INK); return CANARY_INK; }
   const look = deckLook();
   const cat = (id: string) => t.categories.find((c) => c.id === id);
@@ -771,15 +780,16 @@ export function deckFamilies(): Record<InkFamilyName, InkFamily> {
 /** The deck look of the active template (see DeckLook). */
 export function deckLook(): DeckLook {
   const t = tpl();
-  const kit = KIT_STYLES.has(t.id);
+  const mono = t.id === 'heron';
   // Flamingo's coral is a map tint, too light for a line of bold type; the others hold.
-  // The narrative's ink is the site's own, deepened where it is too light for bold type on white: the style's red on every page.
-  const accent = t.id === 'kingfisher' ? F2.salmonDeep : inkFor(t.site, 0.3);
-  const family: InkFamily = kit ? KIT_INK.red : { solid: accent, mid: tint(accent, 0.45), light: tint(accent, 0.18), line: accent, deep: shadeHex(accent, 0.78), text: accent };
+  // The narrative's ink is the site's own, deepened where it is too light for bold type on white: the style's red on
+  // every page; Heron's its one colour.
+  const accent = t.id === 'kingfisher' ? F2.salmonDeep : mono ? HERON_ACCENT : inkFor(t.site, 0.3);
+  const family: InkFamily = mono ? HERON_INK.red : { solid: accent, mid: tint(accent, 0.45), light: tint(accent, 0.18), line: accent, deep: shadeHex(accent, 0.78), text: accent };
   const aerial = t.ground === 'aerial';
   return {
     id: t.id, accent, family,
-    zones: t.zoning === 'lep' ? 'lep' : 'categories', categories: kit ? KIT_CATEGORIES : t.categories,
+    zones: t.zoning === 'lep' ? 'lep' : 'categories', categories: mono ? HERON_MONO_CATEGORIES : t.categories,
     ground: aerial ? 'aerial' : 'paper', veil: t.veil ?? 0.36, tintScale: aerial ? (t.tintScale ?? 0.55) : 1,
     buildings: t.footprints === 'colour' ? 'colour' : t.footprints === 'white' ? 'white' : 'grey',
     lots: t.lots === 'white' ? 'white' : 'faint',
@@ -797,9 +807,13 @@ export function themeFor(sheet: SheetKind, id: string | undefined): string {
   return sheet === 'context' ? resolveTemplateId(id) : sheet === 'site' ? siteTheme(id).id : sheet === 'yield' || sheet === 'slides' ? deckThemeId(id) : '';
 }
 
-/** The template a sheet of this kind is rendered under, given its theme. */
-export function templateFor(sheet: SheetKind, theme: string | undefined): string {
-  return sheet === 'context' ? resolveTemplateId(theme) : sheet === 'site' ? siteTheme(theme).base : sheet === 'yield' || sheet === 'slides' ? deckThemeId(theme) : DEFAULT_TEMPLATE;
+/**
+ * The template a sheet of this kind is rendered under, given its theme: its id, or for Heron's site sheet and decks
+ * the mono template (HERON_MONO), black and white and one colour; Heron's context sheet keeps the office palette.
+ */
+export function templateFor(sheet: SheetKind, theme: string | undefined): string | Template {
+  const id = sheet === 'context' ? resolveTemplateId(theme) : sheet === 'site' ? siteTheme(theme).base : sheet === 'yield' || sheet === 'slides' ? deckThemeId(theme) : DEFAULT_TEMPLATE;
+  return sheet !== 'context' && id === 'heron' ? HERON_MONO : id;
 }
 
 export function isTemplateId(id: string): boolean {

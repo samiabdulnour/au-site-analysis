@@ -821,7 +821,7 @@ export function locationSlide(b: SlidesBundle): Slide {
   if (h2 || h3) legend.push({ swatch: `<line x1="0" y1="1.1" x2="5" y2="1.1" stroke="${LOC.road2}" stroke-width="0.5"/><line x1="0" y1="2.5" x2="5" y2="2.5" stroke="${LOC.road3}" stroke-width="0.26"/>`, label: 'Arterial and sub-arterial roads' });
   // the rail as a plain yellow line like the motorways' (railLine), a corridor's parallel tracks and its yards drawn as one line: 0.9 mm on the paper is 90 m at 1:100 000; the light rail dashed
   if (loc.rail.train.length) parts.push(railLine(thinParallelLines(loc.rail.train, proj, 0.9).map((l) => ringsPath([l], proj, false)).join(''), 0.9));
-  if (loc.rail.tram.length) parts.push(`<path d="${thinParallelLines(loc.rail.tram, proj, 0.9).map((l) => ringsPath([l], proj, false)).join('')}" fill="none" stroke="${RAIL_YELLOW}" stroke-width="0.5" stroke-dasharray="0.8,0.8"/>`);
+  if (loc.rail.tram.length) parts.push(`<path d="${thinParallelLines(loc.rail.tram, proj, 0.9).map((l) => ringsPath([l], proj, false)).join('')}" fill="none" stroke="${railYellow()}" stroke-width="0.5" stroke-dasharray="0.8,0.8"/>`);
   // the rings
   const rings = [...RING_KM, 10];
   for (const kmR of rings) {
@@ -1052,14 +1052,14 @@ const aerialKey = (x: number, y: number, n: number | string, r = 1.9) =>
   `<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="${r}" fill="#ffffff" stroke="#000000" stroke-width="0.25"/><text x="${x.toFixed(2)}" y="${(y + 0.74).toFixed(2)}" text-anchor="middle" font-size="2.117" font-family="Arial, 'Liberation Sans', sans-serif" fill="#000000">${esc(String(n))}</text>`;
 /** A 6 pt word on an aerial: white, no outline. */
 /**
- * The railways on the region maps (Z. 2026-11): a plain line like the motorways', in yellow, cased in white,
+ * The railways on the region maps (Z. 2026-11): a plain line like the motorways', in yellow (Heron: near black), cased in white,
  * with no track symbol. The train and metro stations stay white discs in the map's rail ink.
  */
-const RAIL_YELLOW = '#f2c200';
+const railYellow = () => (deckLook().id === 'heron' ? '#262626' : '#f2c200');
 const railLine = (d: string, w: number) =>
-  `<path d="${d}" fill="none" stroke="#ffffff" stroke-width="${(w + 0.6).toFixed(2)}" stroke-linecap="round" stroke-linejoin="round"/><path d="${d}" fill="none" stroke="${RAIL_YELLOW}" stroke-width="${w.toFixed(2)}" stroke-linecap="round" stroke-linejoin="round"/>`;
+  `<path d="${d}" fill="none" stroke="#ffffff" stroke-width="${(w + 0.6).toFixed(2)}" stroke-linecap="round" stroke-linejoin="round"/><path d="${d}" fill="none" stroke="${railYellow()}" stroke-width="${w.toFixed(2)}" stroke-linecap="round" stroke-linejoin="round"/>`;
 const railKey = (w: number, station: string) =>
-  `<line x1="0" y1="1.8" x2="5" y2="1.8" stroke="#ffffff" stroke-width="${(w + 0.6).toFixed(2)}"/><line x1="0" y1="1.8" x2="5" y2="1.8" stroke="${RAIL_YELLOW}" stroke-width="${w.toFixed(2)}"/><circle cx="2.5" cy="1.8" r="0.9" fill="#ffffff" stroke="${station}" stroke-width="0.35"/>`;
+  `<line x1="0" y1="1.8" x2="5" y2="1.8" stroke="#ffffff" stroke-width="${(w + 0.6).toFixed(2)}"/><line x1="0" y1="1.8" x2="5" y2="1.8" stroke="${railYellow()}" stroke-width="${w.toFixed(2)}"/><circle cx="2.5" cy="1.8" r="0.9" fill="#ffffff" stroke="${station}" stroke-width="0.35"/>`;
 
 const a6 = (x: number, y: number, text: string, anchor: 'start' | 'middle' | 'end' = 'start') =>
   `<text x="${x.toFixed(2)}" y="${(y + 0.75).toFixed(2)}" text-anchor="${anchor}" font-size="2.117" letter-spacing="0.19" font-family="Arial, 'Liberation Sans', sans-serif" fill="#ffffff">${esc(text)}</text>`;
@@ -8896,7 +8896,9 @@ export function deckCss(): string {
   .slide.atlas .zlist .it b { font-weight: 700; }
   /* the caps centred in the white box: the line's room for descenders, which capitals do not use, taken from under them */
   .slide.atlas .maplabel { font-size: 6pt; letter-spacing: 0.09em; text-transform: uppercase; background: #ffffff; padding: 1.47mm 2.4mm 1.13mm; line-height: 1.2; }
-`;
+${deckLook().id === 'heron' ? `  /* Heron is black, white and its one colour: every photograph (the aerials, the street, the places) printed in grey (render/pdf.ts) */
+  :root { --photos: grey; }
+` : ''}`;
 }
 
 /** A figure and its unit, a day, its month and its year: what a line may not end between (Z. 2026-11). */

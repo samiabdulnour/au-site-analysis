@@ -13,7 +13,7 @@ import { zoneFill, zoneOrder } from './lepPalette.js';
 import { METRES_PER_STOREY } from '../fetch/buildings.js';
 import { siteAddressOf } from '../fetch/geocode.js';
 import { sheetHtml, esc, T, SWATCH_X, SWATCH_W, LABEL_X, MAP_W, MAP_H } from './chrome.js';
-import { tpl, withTemplate, siteTheme, PARK_GREEN, PARK_GREEN_INK, type SiteLook } from './template.js';
+import { tpl, withTemplate, templateFor, siteTheme, PARK_GREEN, PARK_GREEN_INK, type SiteLook } from './template.js';
 import { SUN, WIND, VIEW, RAY_SUN, ARROW, EYE } from './climateSymbols.js';
 import { estimateKerbs, type KerbLine } from '../lib/kerbs.js';
 import { exitPoint } from '../fetch/views.js';
@@ -312,7 +312,7 @@ function heightLine(v: number, units: unknown): string {
 /** The site analysis sheet, in one of its own themes (Heron unless another is named); it never takes the context sheet's templates. */
 export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta, theme?: string): string {
   const t = siteTheme(theme);
-  return withTemplate(t.base, () => drawSiteSheet(sb, meta, t.look));
+  return withTemplate(templateFor('site', t.id), () => drawSiteSheet(sb, meta, t.look));
 }
 
 /** The white buildings' fine hatch: a pattern of diagonal lines in the given ink, 1.4 mm apart. */
@@ -354,12 +354,13 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
       .map((t) => `<image href="data/${t.file}" x="${(ox + t.left * extW).toFixed(2)}" y="${(oy + t.top * extH).toFixed(2)}"
           width="${(t.width * extW).toFixed(2)}" height="${(t.height * extH).toFixed(2)}" preserveAspectRatio="none"/>`)
       .join('\n');
-    // A theme with a grey aerial (Heron, Canary) takes the photograph to grey
+    // A theme with a grey aerial (Canary) takes the photograph to grey
     // outside the site, by the context sheet's saturation blend rather than a
-    // filter (see sheet.ts), so the zones' colours are the only colour round the lot.
+    // filter (see sheet.ts), so the zones' colours are the only colour round the lot;
+    // Heron, black and white and one colour, takes the site's own to grey as well.
     const photo = `<g transform="rotate(${view.rotationDeg.toFixed(2)}, ${MAP_W / 2}, ${MAP_H / 2})">${tiles}</g>`;
-    layers.push(look.aerial === 'grey'
-      ? `<g style="isolation:isolate">${photo}<path fill-rule="evenodd" fill="#808080" style="mix-blend-mode:saturation" d="${outsideSite}"/></g>`
+    layers.push(look.aerial !== 'colour'
+      ? `<g style="isolation:isolate">${photo}<path fill-rule="evenodd" fill="#808080" style="mix-blend-mode:saturation" d="${look.aerial === 'mono' ? `M0 0H${MAP_W}V${MAP_H}H0Z` : outsideSite}"/></g>`
       : photo);
   }
   // (3) White overlay everywhere EXCEPT the site: the analysed lot stays at

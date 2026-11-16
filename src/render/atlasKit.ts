@@ -9,7 +9,7 @@
 // blurrily in the printed PDF.
 
 import { esc } from './chrome.js';
-import { tint, mix, shadeHex, inkFor, vivid, deckFamilies, deckLook, type Category, type InkFamily, type InkFamilyName } from './template.js';
+import { tint, mix, shadeHex, inkFor, vivid, deckFamilies, deckLook, HERON_ACCENT, type Category, type InkFamily, type InkFamilyName } from './template.js';
 import { rampColours } from './terrainMap.js';
 
 export type Family = InkFamilyName;
@@ -360,8 +360,11 @@ export const VEG_CLASSES_MAX = 9;
  */
 export function veg1750Fills(classes: { pct: string }[], technique = deckLook().technique): Fill[] {
   const G = INK.green, O = INK.orange, B = INK.blue, R = INK.red;
-  // each community its own colour, from across the palette, as an ethnographic map colours its peoples; the pattern, on paper, says how open it is
-  const hues = [G.deep, inkFor(O.solid, 0.35), inkFor(B.deep, 0.2), R.deep, inkFor(G.solid, 0.3), inkFor(R.solid, 0.3), inkFor(B.solid, 0.35), inkFor(O.deep, 0.3), shadeHex(G.deep, 0.6)];
+  // each community its own colour, from across the palette, as an ethnographic map colours its peoples; the pattern, on
+  // paper, says how open it is. Heron's in greys, its one colour kept for the site.
+  const hues = deckLook().id === 'heron'
+    ? ['#3f3f3f', '#6a6a6a', '#8f8f8f', '#555555', '#7a7a7a', '#4a4a4a', '#9a9a9a', '#5f5f5f', '#2f2f2f']
+    : [G.deep, inkFor(O.solid, 0.35), inkFor(B.deep, 0.2), R.deep, inkFor(G.solid, 0.3), inkFor(R.solid, 0.3), inkFor(B.solid, 0.35), inkFor(O.deep, 0.3), shadeHex(G.deep, 0.6)];
   const openness = (n: string) => (/woodland|grassy|open|grassland/.test(n) ? 0.42 : /forest|rainforest/.test(n) ? 0.68 : 0.55);
   return classes.map((c, i) => {
     const n = c.pct.toLowerCase();
@@ -375,6 +378,8 @@ export function veg1750Fills(classes: { pct: string }[], technique = deckLook().
 
 /** The palette as a heat ramp, cool to warm: the transit blue, the living green, the activity gold, the accent and its deep; for anything ordered: storeys, metres, hours. */
 export function paletteRamp(): string[] {
+  // Heron's ordered data in greys, light to dark: its one colour is the site's
+  if (deckLook().id === 'heron') return HERON_GREYS;
   const B = INK.blue, G = INK.green, O = INK.orange, R = INK.red;
   // each step made vivid, so a pastel family (Kingfisher's) still yields a ramp that reads at hatch width; the warm step the family's most saturated tint
   const sat = (hex: string) => { const n = parseInt(hex.slice(1), 16), c = [(n >> 16) & 255, (n >> 8) & 255, n & 255]; const mx = Math.max(...c); return mx ? (mx - Math.min(...c)) / mx : 0; };
@@ -388,6 +393,7 @@ export function paletteRamp(): string[] {
  * indigo and Canary's is sharper. Tinted for a wash over the hillshade, darkened for contours on paper.
  */
 export function terrainRamp(): string[] {
+  if (deckLook().id === 'heron') return ['#f2f2f2', '#dcdcdc', '#c2c2c2', '#a0a0a0', '#787878'];
   const B = INK.blue, O = INK.orange, R = INK.red;
   const sat = (hex: string) => { const n = parseInt(hex.slice(1), 16), c = [(n >> 16) & 255, (n >> 8) & 255, n & 255]; const mx = Math.max(...c); return mx ? (mx - Math.min(...c)) / mx : 0; };
   const sand = [O.solid, O.line, O.deep].sort((a, b) => sat(b) - sat(a))[0];
@@ -444,10 +450,13 @@ export function heightRamp(): string[] {
   return paletteRamp();
 }
 
-/** The ramp ordered data runs up in this style: Heron's between two colours of its sheet, the blue low and the red high, mixed; the others across the palette. */
+/** The ramp ordered data runs up in this style: Heron's from a pale grey up to its one colour; the others across the palette. */
 export function styleRamp(): string[] {
-  return deckLook().id === 'heron' ? [INK.blue.solid, INK.red.deep] : paletteRamp();
+  return deckLook().id === 'heron' ? ['#e6e6e6', '#b9b2b0', HERON_ACCENT] : paletteRamp();
 }
+
+/** Heron's greys for ordered data, light to dark: the storeys, the heights. */
+const HERON_GREYS = ['#d9d9d9', '#b4b4b4', '#8d8d8d', '#646464', '#3b3b3b'];
 
 /**
  * `n` ordered fills, low to high, as the style draws them: tones along the style's ramp, or (on paper) hatches

@@ -777,11 +777,11 @@ Every word on the map is one size, which a theme can scale as a whole
 outside the site edge, aimed along the bearing, with what it found — the
 distance and "TERRAIN CLEAR" — written under it, along its line, in the site
 pen's lettering. The site itself — boundary, corners,
-dimensions and levels — is in Heron's red, and the sun, winds and views are drawn
+dimensions and levels — is in Heron's one colour, and the sun, winds and views are drawn
 in grey, so the site reads first and the analysis quietly round it.
 
 The sun, the winds and the noise are drawn in one hand, in open white-filled
-marks (in Heron the sun and the winds in grey, the noise in blue): a sun drawn as an open jagged crown
+marks (in Heron the sun, the winds and the noise in grey): a sun drawn as an open jagged crown
 of twelve teeth round a plain circle, four of them short, broad flames — at the summer and winter sunrise and sunset, on a solid
 summer arc and a dashed winter arc, each arc marked with a dot and the time at
 every solar hour; the prevailing winds as three widening arrows blowing in
@@ -1072,26 +1072,28 @@ veil and the aerial's tone, the site's pen and dash, how the zones, heritage,
 neighbours, streets, suns, winds, noise, views and kerbside parking are drawn,
 and in which inks. There are four, on the aerial or on paper:
 
-**Heron** (`heron`, the default) — the aerial with the zones hatched, in the
-Heron template's colours. The aerial goes grey outside the site (`aerial: 'grey'`, by the
-same saturation blend as the context sheet), so the lot alone keeps its
-colour; the zones are hatched and tinted in Heron's palette (tan centres and
-mixed use, peach residential, mint open space, slate institutions; the tint
-at 0.55, multiplied into the grey photograph, since Heron's tints are too pale
-to read as a hatch alone), the site, its levels and its boundary dimensions
-are in Heron's red, and the fall arrow in its slate; the FALL and AREA are
-written in the red too, plain on the photograph like the levels, with no box
+**Heron** (`heron`, the default) — the aerial with the zones hatched, in
+black, white and one colour: plain and conventional, nothing saturated
+(2026-11; the yield and the site report go the same way, see Heron mono
+below). The aerial goes grey all over, the lot's own photograph too
+(`aerial: 'mono'`, by the same saturation blend as the context sheet), and the
+white veil lifts everything round the lot. The zones are hatched and tinted
+in Heron's mono categories, greys told apart by their textures (lines, dots,
+crosses) and their strength, R2 the lightest; the site, its levels, its
+boundary dimensions and the FALL and AREA words are in Heron's one colour,
+the brick red `#c0533f` (`HERON_ACCENT`), and the fall arrow in a near black.
+The FALL and AREA sit plain on the photograph like the levels, with no box
 and no white edge (`fallWords: 'plain'`). Every word on the map is set a fifth
-larger than the other site themes' (`textScale: 1.2`). The
-neighbours' numbers and storeys and the street names are white over a fine
-white outline of each building, noise in blue, and the climate is drawn
-quietly as before: the sun, its path, its hours and words, the telescopes and
-the winds in one grey, the contours in a lighter grey. The sun is an open
-crown of twelve uneven teeth round a plain circle, the four on the diagonals
-drawn out as short, broad flames. It draws on Heron. It was called Dove (on
-Flamingo's palette, with the site in a deeper red) and before that Cardinal
-(with the sun in mustard and the winds and views in red); a request that still
-names `dove` or `cardinal` is drawn in Heron.
+larger than the other site themes' (`textScale: 1.2`). The neighbours'
+numbers and storeys and the street names are white over a fine white outline
+of each building, and the climate is drawn quietly: the sun, its path, its
+hours and words, the telescopes, the winds and the noise in one grey, the
+contours in a lighter grey. The sun is an open crown of twelve uneven teeth
+round a plain circle, the four on the diagonals drawn out as short, broad
+flames. It draws on Heron's mono template (`HERON_MONO`). It was called Dove
+(on Flamingo's palette, with the site in a deeper red) and before that
+Cardinal (with the sun in mustard and the winds and views in red); a request
+that still names `dove` or `cardinal` is drawn in Heron.
 
 In every style, the services' words (11 kV, Ø 375, DS 1616 · 969 kVA spare) are
 plain Arial with no white halo. Where no open tree data reaches the site (no
@@ -1313,14 +1315,39 @@ megabytes a drawing), so each crown is painted once as a small picture
 
 `npx tsx test/trees.mts` checks the pictures and each style's look.
 
-Heron keeps
-the office's own swatch sheet for its decks, the five families the decks
-were drawn in before the styles, with the land-use categories laid out in
-those families (`KIT_INK`, `KIT_CATEGORIES`): the office's sheet in the
-office's palette. Canary has a punchy sheet of its own (`CANARY_INK`): its
-red, its yellow, its lime and its lilac-blue, so the two aerial styles
-differ in their colours, not only in the site's ink. How a style renders the
-data differs as its ground does (`technique` on the deck look): Flamingo
+**Heron mono.** Heron's yield and site report are black, white and one colour (2026-11), as
+its site sheet is: plain and conventional, nothing saturated. Its context
+sheet keeps the office palette.
+- `templateFor` gives the decks and the site sheet Heron's mono template
+  (`HERON_MONO`, `src/render/template.ts`) rather than Heron's own, and the
+  context sheet Heron's own.
+- The mono template's land-use categories are greys told apart by their
+  textures (`HERON_MONO_CATEGORIES`); the site is in the accent, Heron's brick
+  red `#c0533f` (`HERON_ACCENT`).
+- The decks' five ink families are greys but for the red, the accent's
+  (`HERON_INK`). The narrative, the site and what constrains are in the
+  accent; every other figure is in grey.
+- The ramps follow: the palette's and the landform's run in greys, the heat
+  ramp from grey to the accent, the cars of the 3D views are white and greys.
+- The sun hours run in greys short of three hours, darkest for none, then the
+  accent, lightest at three hours to the full colour at five and over.
+- The yield's separations and compliance marks are near black where they hold,
+  mid grey where they hold only with a blank face, the accent where they fall
+  short.
+- The region map's railways are near black.
+- Every photograph prints in grey: the aerials, Street View and the places'
+  pictures. The page asks for it (`--photos: grey` on its root), and the print
+  (`src/render/pdf.ts`) makes each picture grey in the page, as a JPEG, before
+  it prints. A CSS filter would grey them on the screen, but in print Chromium
+  rasterises the page round a filtered picture, uncompressed: the report went
+  from 49 to 121 MB. As done, it stays at 49.
+- `npx tsx test/heron-mono.mts` checks that every ink the decks and the site
+  sheet take in Heron is a grey or the accent (and that Kingfisher's are not,
+  so the check can fail), and that a page asking for grey prints its
+  pictures grey and as themselves.
+
+Canary has a punchy sheet of its own (`CANARY_INK`): its red, its yellow, its
+lime and its lilac-blue. How a style renders the data differs as its ground does (`technique` on the deck look): Flamingo
 and Kingfisher work in hatches, lines and patches on paper (the landform as
 contours alone, coloured up the ramp by height, the pre-1750 communities
 dotted, the development lots hatched; the storeys are tones up the ramp in

@@ -11,7 +11,7 @@
 
 import { computeYield, storeysUnder, archetypeFor, edgeKinds, ringArea, futureHeight, withFour, existingSummary, DEFAULT_ASSUMPTIONS, PARKING_RATES, UNIT_KINDS, ADG_MINIMUM, type XY } from '../src/lib/yield.js';
 import { sunBands, bandOf } from '../src/render/facadeElevation.js';
-import { withTemplate, deckFamilies } from '../src/render/template.js';
+import { withTemplate, deckFamilies, HERON_ACCENT } from '../src/render/template.js';
 import { tierSpot, frontageMiddle, yieldStudy, scenarioRows, yieldRows, noSchemeSentence, renderYieldDeck, yieldCsv, yieldJson, type YieldBundle, type Parcel } from '../src/render/yieldSheet.js';
 
 const failures: string[] = [];
@@ -305,13 +305,19 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
   check('compliance: the plan is plain: no lot numbers, no tier badges', !/>NO\. /.test(comp.figureHtml) && !/class="ytier"/.test(comp.figureHtml));
   // the bands of sun hours in each style's own palette: six, blue short of two hours and warm from two, the neighbours apart
   const rgb = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
-  const styles = ['flamingo', 'heron', 'kingfisher', 'canary'].map((st) => withTemplate(st, () => ({ bands: sunBands(), f: deckFamilies(), none: bandOf(0).fill, four: bandOf(4.5).fill, top: bandOf(5.5).fill })));
-  check('sun bands: seven in each style after the lorikeet, blues short of two hours, green at two, warm from three, each apart from the next', styles.every(({ bands }) => bands.length === 7
+  const sunOf = (st: string) => withTemplate(st, () => ({ bands: sunBands(), f: deckFamilies(), none: bandOf(0).fill, four: bandOf(4.5).fill, top: bandOf(5.5).fill }));
+  const styles = ['flamingo', 'kingfisher', 'canary'].map(sunOf), heronSun = sunOf('heron');
+  const apart = (bands: { fill: string }[]) => bands.slice(1).every((x, i) => { const p2 = rgb(bands[i].fill), q2 = rgb(x.fill); return Math.hypot(p2[0] - q2[0], p2[1] - q2[1], p2[2] - q2[2]) > 40; });
+  // Heron is black and white and one colour: greys short of three hours, darkening to none; its accent from three
+  check('sun bands: Heron\'s seven, greys short of three hours, its accent from three to the full colour at five, each apart from the next', heronSun.bands.length === 7
+    && heronSun.bands.slice(0, 4).every((x) => new Set(rgb(x.fill)).size === 1) && heronSun.bands.slice(0, 4).every((x, i, a) => !i || rgb(x.fill)[0] > rgb(a[i - 1].fill)[0])
+    && heronSun.bands.slice(4).every((x) => { const [r, g, b2] = rgb(x.fill); return r > g && g >= b2; }) && heronSun.top === HERON_ACCENT && apart(heronSun.bands), JSON.stringify(heronSun.bands.map((y) => y.fill)));
+  check('sun bands: seven in each colour style after the lorikeet, blues short of two hours, green at two, warm from three, each apart from the next', styles.every(({ bands }) => bands.length === 7
     && bands.slice(0, 3).every((x) => { const [r, , b2] = rgb(x.fill); return b2 > r; }) && (([r, g, b2]) => g > r && g > b2)(rgb(bands[3].fill))
     && bands.slice(4).every((x) => { const [r, , b2] = rgb(x.fill); return r > b2; })
-    && bands.slice(1).every((x, i) => { const p2 = rgb(bands[i].fill), q2 = rgb(x.fill); return Math.hypot(p2[0] - q2[0], p2[1] - q2[1], p2[2] - q2[2]) > 40; })),
+    && apart(bands)),
     JSON.stringify(styles.map((x) => x.bands.map((y) => y.fill))));
-  check('sun bands: each style its own blues, every one topped by #FF5A3D at five hours and over; a boundary belongs to the band above', new Set(styles.map((x) => x.none)).size === 4
+  check('sun bands: each colour style its own blues, every one topped by #FF5A3D at five hours and over; a boundary belongs to the band above', new Set([...styles, heronSun].map((x) => x.none)).size === 4
     && styles.every((x) => x.top === '#FF5A3D' && x.four !== x.top) && bandOf(0).label === 'none' && bandOf(0.25).label === 'under 1 h' && bandOf(2).label === '2–3 h' && bandOf(1.75).label === '1–2 h' && bandOf(4.5).label === '4–5 h' && bandOf(5).label === '5 h and over');
   // the plan as the report's sun page draws it: every hour 9 to 3 a translucent layer, the buildings white with their storeys,
   // set in Arial with no white halo, and no zone tints under them

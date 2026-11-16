@@ -21,7 +21,7 @@
  *   npx tsx test/template-isolation.mts
  */
 
-import { TEMPLATES, withTemplate, tpl, themeFor, templateFor } from '../src/render/template.js';
+import { TEMPLATES, withTemplate, tpl, themeFor, templateFor, HERON_MONO } from '../src/render/template.js';
 
 const nap = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -73,7 +73,7 @@ const styleChecks: [string, boolean][] = [
   ['context: unknown → default template', themeFor('context', 'dove') === 'flamingo'],
   ['context: Conure, its former name, → Canary', themeFor('context', 'conure') === 'canary'],
   ['site: a context-only name → Heron', themeFor('site', 'flamingo-2') === 'heron'],
-  ['site: Heron draws on Heron', templateFor('site', 'heron') === 'heron'],
+  ['site: Heron draws on Heron, in black and white and its one colour', templateFor('site', 'heron') === HERON_MONO && HERON_MONO.id === 'heron'],
   ['site: Dove and Cardinal, its former names, → Heron', themeFor('site', 'dove') === 'heron' && themeFor('site', 'cardinal') === 'heron'],
   ['site: Kookaburra, its former name, → Kingfisher', themeFor('site', 'kookaburra') === 'kingfisher'],
   ['site: Kingfisher draws on Kingfisher, Flamingo on Flamingo', templateFor('site', 'kingfisher') === 'kingfisher' && templateFor('site', 'flamingo') === 'flamingo'],
