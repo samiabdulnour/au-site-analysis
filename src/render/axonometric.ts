@@ -20,8 +20,9 @@ import { featureCollection, polygon } from '@turf/helpers';
 import type { XY } from '../lib/geo.js';
 import { alongLine, carriageways, type Carriageway, type RoadLine } from '../lib/carriageway.js';
 import { INK, massingInks } from './atlasKit.js';
-import { tint, vivid } from './template.js';
+import { tint, vivid, deckLook } from './template.js';
 import { esc } from './chrome.js';
+import { crownPicture, shadowPicture, rand, type CrownKind } from './crowns.js';
 
 export interface Prism {
   rings: XY[][];
@@ -219,6 +220,45 @@ function inRing(p: XY, rg: XY[]): boolean {
 }
 
 /**
+ * How the trees and the people are drawn. Plain (Heron, Canary, a white model): a tree a flat disc in the style's
+ * green with a lighter one over it, a person a slip of colour with a head. Illustrated, as an illustrator's isometric
+ * draws a town: each crown outlined, in its shade with the lit part over it towards the light and a highlight, its
+ * shadow on the ground; a person with legs, clothes and a face, a little larger than life; more of them walking the
+ * footpaths, some in twos, and people gathered in the parks. Flamingo's crowns are clouds of a few lobes in the
+ * greens of a garden, a blossom and an autumn tree among them; Kingfisher's are drawn, a scalloped edge with the
+ * marks of the leaves in it, in Kingfisher's own greens. A few small trees stand narrow and upright.
+ */
+interface AxoLook {
+  crown: 'disc' | 'cloud' | 'drawn';
+  people: 'slip' | 'figure';
+  crowd: boolean;
+  /** The trees' greens, taken tree by tree; and the few in another colour (a blossom, an autumn tree), each with its share. */
+  greens: string[];
+  accents: [string, number][];
+  /** Narrow upright trees among the small ones, this share of them. */
+  columnar: number;
+}
+const PLAIN: AxoLook = { crown: 'disc', people: 'slip', crowd: false, greens: [], accents: [], columnar: 0 };
+
+/** The look of a drawing's trees and people, by the style; plain in a white model. */
+function lookOf(M: ReturnType<typeof massingInks>, mono: boolean): AxoLook {
+  const style = deckLook().id;
+  if (mono) return PLAIN;
+  if (style === 'flamingo') return { crown: 'cloud', people: 'figure', crowd: true, greens: ['#9fbd78', '#82aa68', '#b5c98c', '#65936a'], accents: [['#dcb85f', 0.06], ['#eeaaa6', 0.035]], columnar: 0.22 };
+  if (style === 'kingfisher') return { crown: 'drawn', people: 'figure', crowd: true, greens: [M.tree, shade(M.tree, 0.92), shade(M.tree, 0.84)], accents: [], columnar: 0.15 };
+  return PLAIN;
+}
+
+/** How many shapes of crown a drawing draws its trees from. */
+const CROWN_VARIANTS = 4;
+
+/**
+ * The trees in three sizes, each painted fine enough for the largest of them and its outline as wide in the scene
+ * as the others' (radius `r` stands for the size).
+ */
+const CROWN_SIZES = [{ upTo: 2.2, r: 1.6, perUnit: 64 }, { upTo: 3.6, r: 2.8, perUnit: 104 }, { upTo: Infinity, r: 5, perUnit: 150 }];
+
+/**
  * The box an axonometric is drawn in, sheet millimetres. With `clear`, the drawing slides sideways within its frame
  * (the frame stays) until the site's outline is `margin` mm clear of the vertical line at `x`: a booklet's fold, which
  * the site must not sit in. It goes whichever way is shorter, to the right where the two are even.
@@ -229,6 +269,7 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   const mono = !!scene.mono;
   const M = mono ? { ...massingInks(), ground: '#ffffff', lot: MONO.line, park: '#ffffff', road: '#ffffff', axis: MONO.line, tree: '#ffffff', treeLight: '#ffffff', trunk: MONO.edge } : massingInks();
   const { ring, reach, inks } = scene;
+  const look = lookOf(M, mono);
   const turn = (40 * Math.PI) / 180;
   const nx = scene.frontNormal.x, ny = scene.frontNormal.y;
   const cam = { x: nx * Math.cos(turn) - ny * Math.sin(turn), y: nx * Math.sin(turn) + ny * Math.cos(turn) };
@@ -364,13 +405,44 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   // footprint stands, and none on the site unless the caller keeps them.
   const footprints: XY[][] = [...scene.neighbours.flatMap((nb) => nb.rings), ...built.flatMap((pr) => pr.rings)];
   const trees = scene.trees.filter((tr) => Math.hypot(tr.p.x, tr.p.y) <= reach + 10 && !footprints.some((rg) => inRing(tr.p, rg)) && (scene.treesOnSite || !inRing(tr.p, ring)));
+  // Illustrated, each tree takes its green by its place, and a few small ones stand narrow and upright. Its crown is
+  // one of a few stamps, each shape in each green drawn once at a radius of one and placed at the tree's size.
+  const greenOf = (p: XY) => {
+    let u = rand(p, 7);
+    for (const [ink, share] of look.accents) { if (u < share) return ink; u -= share; }
+    return look.greens[Math.floor(rand(p, 3) * look.greens.length)] ?? M.tree;
+  };
+  const columnar = (tr: { p: XY; r: number }) => look.columnar > 0 && tr.r < 2.4 && rand(tr.p, 11) < look.columnar;
+  const crownCentre = (tr: { p: XY; r: number }) => 2.2 + tr.r * (columnar(tr) ? 1.3 : 1);   // a trunk of about two metres, then the crown
+  // the crowns' pictures, each once in the drawing's defs, placed at each tree's size (render/crowns.ts)
+  const stamps = new Map<string, string>(), stampDefs: string[] = [];
+  const outlineM = look.crown === 'drawn' ? 0.16 : 0.12;
+  const stampOf = (kind: CrownKind, variant: number, g: string, r: number) => {
+    const size = CROWN_SIZES.find((sz) => r < sz.upTo)!;
+    const key = `${kind}|${variant}|${g}|${size.r}`;
+    let sid = stamps.get(key);
+    if (!sid) {
+      sid = `axo-${id}-t${stamps.size}`;
+      stamps.set(key, sid);
+      const tones = { dark: shade(g, kind === 'drawn' ? 0.84 : 0.8), lit: g, high: tint(g, kind === 'drawn' ? 0.55 : 0.45), edge: shade(g, kind === 'drawn' ? 0.45 : 0.52) };
+      const pic = crownPicture(kind, variant, tones, outlineM / size.r, size.perUnit);
+      stampDefs.push(`<image id="${sid}" href="${pic.uri}" x="${pic.x.toFixed(4)}" y="${pic.y.toFixed(4)}" width="${pic.w.toFixed(4)}" height="${pic.h.toFixed(4)}" preserveAspectRatio="none"/>`);
+    }
+    return sid;
+  };
   const treeSvg = (tr: { p: XY; r: number }) => {
-    const zc = 2.2 + tr.r;   // the crown's centre: a trunk of about two metres, then the crown
+    const zc = crownCentre(tr);
     const [cx, cy] = P(tr.p, zc), [bx, by] = P(tr.p, 0);
-    return `<line x1="${bx.toFixed(2)}" y1="${by.toFixed(2)}" x2="${cx.toFixed(2)}" y2="${cy.toFixed(2)}" stroke="${M.trunk}" stroke-width="0.25"/>` +
-      (mono ? `<circle cx="${cx.toFixed(2)}" cy="${cy.toFixed(2)}" r="${tr.r.toFixed(2)}" fill="#ffffff" stroke="${MONO.edge}" stroke-width="0.1"/>`
-        : `<circle cx="${cx.toFixed(2)}" cy="${cy.toFixed(2)}" r="${tr.r.toFixed(2)}" fill="${M.tree}"/>` +
-        `<circle cx="${(cx - 0.22 * tr.r).toFixed(2)}" cy="${(cy - 0.2 * tr.r).toFixed(2)}" r="${(0.66 * tr.r).toFixed(2)}" fill="${M.treeLight}"/>`);
+    if (look.crown === 'disc') {
+      return `<line x1="${bx.toFixed(2)}" y1="${by.toFixed(2)}" x2="${cx.toFixed(2)}" y2="${cy.toFixed(2)}" stroke="${M.trunk}" stroke-width="0.25"/>` +
+        (mono ? `<circle cx="${cx.toFixed(2)}" cy="${cy.toFixed(2)}" r="${tr.r.toFixed(2)}" fill="#ffffff" stroke="${MONO.edge}" stroke-width="0.1"/>`
+          : `<circle cx="${cx.toFixed(2)}" cy="${cy.toFixed(2)}" r="${tr.r.toFixed(2)}" fill="${M.tree}"/>` +
+          `<circle cx="${(cx - 0.22 * tr.r).toFixed(2)}" cy="${(cy - 0.2 * tr.r).toFixed(2)}" r="${(0.66 * tr.r).toFixed(2)}" fill="${M.treeLight}"/>`);
+    }
+    const R = tr.r, tall = columnar(tr);
+    const sid = stampOf(tall ? 'columnar' : look.crown as CrownKind, Math.floor(rand(tr.p, 1) * CROWN_VARIANTS), greenOf(tr.p), R);
+    return `<line x1="${bx.toFixed(2)}" y1="${by.toFixed(2)}" x2="${cx.toFixed(2)}" y2="${(cy + R * 0.5).toFixed(2)}" stroke="#7d6c5a" stroke-width="0.3" stroke-linecap="round"/>` +
+      `<use href="#${sid}" transform="translate(${cx.toFixed(2)},${cy.toFixed(2)}) scale(${R.toFixed(3)})"/>`;
   };
   // Traffic (placeTraffic): each vehicle a few blocks along its length, in stacks one behind the other, each stack a
   // column of blocks bottom to top, drawn far to near. A car, a body with a cabin, in the families' solid colours in
@@ -411,16 +483,38 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   // standing on the ground with a head over it; a rider every so often down the kerb side of the lane, two wheels
   // and a frame with the body over them; in the traffic's colours and a dark grey in turn. None down a lane, no
   // bicycle on a highway, none where a building or a vehicle stands, and none on the site.
-  const FIGURE_INKS = mono ? [MONO.figure] : [...CAR_INKS.slice(0, 3), '#3a3a3a'];
+  const FIGURE_INKS = mono ? [MONO.figure] : look.people === 'figure'
+    ? ['#ffffff', '#2e2e33', CAR_INKS[0], CAR_INKS[1], '#e9c24b', tint(INK.red.solid, 0.45), '#ffffff', CAR_INKS[2]]
+    : [...CAR_INKS.slice(0, 3), '#3a3a3a'];
+  const SKIN = ['#f0c8a4', '#d69c74', '#a46c4a', '#6a4430'], LEGS = ['#2f3542', '#4b5d7e', '#3b3b3b', '#bfae92'];
   const SPOKE = mono ? MONO.edge : '#3a3a3a';
   const figures: { key: number; svg: () => string }[] = [];
   let pi = 0;
   const free = (c: XY) => Math.hypot(c.x, c.y) <= reach && !footprints.some((rg) => inRing(c, rg)) && !inRing(c, ring) && !traffic.some((v) => underVehicle(c, v, 0.6));
   // a body: a slip of the figure's colour, 0.5 m wide across the view, from z0 up to z1, and its head over it
   const body = (c: XY, z0: number, z1: number, fill: string) => {
+    if (look.people === 'figure') return person(c, z0, fill, z0 > 0 ? undefined : { x: 0, y: 0 });
     const a = { x: c.x - r.x * 0.26, y: c.y - r.y * 0.26 }, b = { x: c.x + r.x * 0.26, y: c.y + r.y * 0.26 };
     const [hx, hy] = P(c, z1 + 0.3);
     return `<path d="${poly([P(a, z0), P(b, z0), P(b, z1), P(a, z1)])}" fill="${fill}"/><circle cx="${hx.toFixed(2)}" cy="${hy.toFixed(2)}" r="0.3" fill="${fill}"/>`;
+  };
+  // Illustrated: legs in trousers (apart along the way they walk, `stride`; a rider's to the pedals), a shirt or a coat,
+  // a face; standing on the ground (z0 0) or on a saddle.
+  const person = (c: XY, z0: number, shirt: string, stride?: XY) => {
+    const s0 = rand(c, 5), legs = LEGS[Math.floor(s0 * LEGS.length)], skin = SKIN[Math.floor(rand(c, 6) * SKIN.length)];
+    // a little larger than life, as an illustrator draws them, so they read at the scale of a town
+    const hip = z0 + (z0 > 0 ? 0.3 : 0.95), top = hip + 0.68, head = top + 0.24;
+    const w = 0.27, a = { x: c.x - r.x * w, y: c.y - r.y * w }, b = { x: c.x + r.x * w, y: c.y + r.y * w };
+    const [hx, hy] = P(c, hip);
+    const foot = (sgn: number) => {
+      const f = stride ? { x: c.x + (stride.x * sgn) + r.x * 0.07 * sgn, y: c.y + (stride.y * sgn) + r.y * 0.07 * sgn } : c;
+      const [fx, fy] = P(f, z0 > 0 ? z0 - 0.45 : 0);
+      return `<line x1="${hx.toFixed(2)}" y1="${hy.toFixed(2)}" x2="${fx.toFixed(2)}" y2="${fy.toFixed(2)}" stroke="${legs}" stroke-width="0.21" stroke-linecap="round"/>`;
+    };
+    const [kx, ky] = P(c, head);
+    return foot(-1) + foot(1) +
+      `<path d="${poly([P(a, hip - 0.05), P(b, hip - 0.05), P(b, top), P(a, top)])}" fill="${shirt}" stroke="${shirt === '#ffffff' ? '#9a9a9a' : shirt}" stroke-width="0.05" stroke-linejoin="round"/>` +
+      `<circle cx="${kx.toFixed(2)}" cy="${ky.toFixed(2)}" r="0.2" fill="${skin}"/>`;
   };
   const bikeSvg = (c: XY, u: XY, fill: string) => {
     const hub = (s: number) => P({ x: c.x + u.x * s, y: c.y + u.y * s }, 0.34);
@@ -431,12 +525,18 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
     if (road.hierarchy >= 7) continue;
     for (const side of [1, -1]) {
       const path = (side > 0 ? left : right) + 1.6;   // the footpath, past the kerb
-      for (const { p, t } of alongLine(axis, 9 + road.hierarchy * 2, 4 + (pi % 5) * 2.3)) {
+      for (const { p, t } of alongLine(axis, (9 + road.hierarchy * 2) * (look.crowd ? 0.6 : 1), 4 + (pi % 5) * 2.3)) {
         const n = { x: -t.y * side, y: t.x * side };
         const c = { x: p.x + n.x * path, y: p.y + n.y * path };
         if (!free(c)) continue;
         const fill = FIGURE_INKS[pi++ % FIGURE_INKS.length];
-        figures.push({ key: depth(c), svg: () => body(c, 0, 1.45, fill) });
+        const way = rand(c, 9) < 0.5 ? 1 : -1, stride = { x: t.x * 0.2 * way, y: t.y * 0.2 * way };
+        figures.push({ key: depth(c), svg: () => (look.people === 'figure' ? person(c, 0, fill, stride) : body(c, 0, 1.45, fill)) });
+        // illustrated with a crowd: now and then a second walking beside
+        if (look.crowd && rand(c, 13) < 0.35) {
+          const c2 = { x: c.x + n.x * 0.7, y: c.y + n.y * 0.7 };
+          if (free(c2)) { const f2 = FIGURE_INKS[pi++ % FIGURE_INKS.length]; figures.push({ key: depth(c2), svg: () => person(c2, 0, f2, stride) }); }
+        }
       }
     }
     if (road.hierarchy <= 2) continue;   // no bicycle on a highway
@@ -451,6 +551,40 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
         figures.push({ key: depth(c), svg: () => bikeSvg(c, u, fill) });
       }
     }
+  }
+  // A crowd: people in the parks, in ones, twos and threes, about one group to every 300 m² of park.
+  if (look.crowd) for (const lot of scene.lots) {
+    if (!lot.park) continue;
+    for (const rg of lot.rings) {
+      if (rg.length < 3) continue;
+      let area = 0;
+      for (let i = 0; i < rg.length; i++) { const u = rg[i], v = rg[(i + 1) % rg.length]; area += u.x * v.y - v.x * u.y; }
+      const xs = rg.map((p) => p.x), ys = rg.map((p) => p.y), x0 = Math.min(...xs), y0 = Math.min(...ys), w = Math.max(...xs) - x0, h = Math.max(...ys) - y0;
+      const groups = Math.min(40, Math.round(Math.abs(area) / 2 / 300));
+      for (let g = 0, tries = 0; g < groups && tries < groups * 6; tries++) {
+        const c = { x: x0 + rand({ x: x0, y: y0 }, 100 + tries) * w, y: y0 + rand({ x: y0, y: x0 }, 300 + tries) * h };
+        if (!inRing(c, rg) || !free(c)) continue;
+        g++;
+        const many = 1 + Math.floor(rand(c, 4) * 3), a = rand(c, 8) * Math.PI * 2;
+        for (let m = 0; m < many; m++) {
+          const q = { x: c.x + Math.cos(a + m * 2.1) * 0.6 * m, y: c.y + Math.sin(a + m * 2.1) * 0.6 * m };
+          if (!free(q)) continue;
+          const fill = FIGURE_INKS[pi++ % FIGURE_INKS.length];
+          const walking = rand(q, 15) < 0.4, stride = walking ? { x: Math.cos(a) * 0.2, y: Math.sin(a) * 0.2 } : undefined;
+          figures.push({ key: depth(q), svg: () => person(q, 0, fill, stride) });
+        }
+      }
+    }
+  }
+  // Illustrated: the trees and the people cast their shadows on the ground, under all that stands, as the buildings do.
+  // Painted as one picture (render/crowns.ts): as vectors, a few thousand ovals came to megabytes a drawing.
+  if (look.crown !== 'disc' && M.gloss) {
+    const sh = { x: -light.x * 0.42, y: -light.y * 0.42 }, sinE0 = Math.sin(elev);
+    const pic = shadowPicture(trees.map((tr) => {
+      const zc = crownCentre(tr), [x, y] = P({ x: tr.p.x + sh.x * zc, y: tr.p.y + sh.y * zc }, 0), rr = tr.r * (columnar(tr) ? 0.7 : 0.95);
+      return { x, y, rx: rr, ry: rr * sinE0 };
+    }), INK.blue.deep, 0.12);
+    if (pic) parts.push(`<image data-shadows href="${pic.uri}" x="${pic.x.toFixed(2)}" y="${pic.y.toFixed(2)}" width="${pic.w.toFixed(2)}" height="${pic.h.toFixed(2)}" preserveAspectRatio="none"/>`);
   }
   // Everything that stands, farthest first: the neighbours and the built, the trees, the traffic and the people among them.
   const standing: { key: number; svg: () => string }[] = [
@@ -521,7 +655,7 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   if (scene.hob?.metres && !planeFits) notes.push(note(notes.length, SITE, scene.hob.note));
   if (futureTop > cap) notes.push(note(notes.length, inks.futureEdge, `NEIGHBOURS' FUTURE HEIGHTS RUN ABOVE THE FRAME, TO ${nf(futureTop)}m`));
   // Strokes are set in sheet millimetres and do not scale with the scene.
-  return `<defs><clipPath id="axo-${id}"><rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}"/></clipPath><pattern id="axo-win-${id}" patternUnits="userSpaceOnUse" width="2.6" height="3.1"><rect x="0.75" y="0.8" width="1.1" height="1.5" fill="#000000" fill-opacity="${M.gloss ? 0.09 : 0.17}"/></pattern></defs>
+  return `<defs>${stampDefs.join('')}<clipPath id="axo-${id}"><rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}"/></clipPath><pattern id="axo-win-${id}" patternUnits="userSpaceOnUse" width="2.6" height="3.1"><rect x="0.75" y="0.8" width="1.1" height="1.5" fill="#000000" fill-opacity="${M.gloss ? 0.09 : 0.17}"/></pattern></defs>
     <g clip-path="url(#axo-${id})"><g transform="translate(${tx.toFixed(2)},${ty.toFixed(2)}) scale(${k.toFixed(4)})">
     <g style="vector-effect:non-scaling-stroke">${ground.join('')}${parts.join('')}${over.join('')}</g></g></g>${notes.join('')}`;
 }

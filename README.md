@@ -1239,7 +1239,35 @@ near-white ground, the faces lit bright and barely shaded, the roofs
 lighter, the edges and the window dots softer, and each building casting a
 soft blue shadow on the ground instead, its footprint swept away from the
 light by its height; Heron and Canary shade the faces themselves, in the
-full colours. Heron keeps
+full colours.
+
+The 3D views' trees and people follow the style (`lookOf` in
+`src/render/axonometric.ts`).
+- **Flamingo and Kingfisher** draw them as an illustrated isometric does:
+  - each crown outlined, in its shade, with the lit part over it towards the
+    light and a highlight;
+  - each tree casting a soft shadow on the ground;
+  - a few small trees narrow and upright;
+  - people with legs, clothes and a face, a little larger than life, walking
+    the footpaths (some in twos) and gathered in the parks.
+- **Flamingo's crowns** are clouds of a few lobes in a garden's greens (sage,
+  olive, mid and deep), about one in sixteen an ochre autumn tree and one in
+  thirty a pink blossom.
+- **Kingfisher's crowns** are drawn: a scalloped edge with the marks of the
+  leaves in it, all in Kingfisher's own green.
+- **Heron, Canary and the white model** keep the plain discs and slips.
+
+A drawing holds a few thousand trees, too many to print as vectors (tens of
+megabytes a drawing), so each crown is painted once as a small picture
+(`src/render/crowns.ts`) and placed at every tree that takes it:
+- one of four shapes, in its green, at one of three sizes, its outline as
+  wide in the scene as the others';
+- the PDF keeps each picture once, so the illustrated pages print no larger
+  than the plain ones did.
+
+`npx tsx test/trees.mts` checks the pictures and each style's look.
+
+Heron keeps
 the office's own swatch sheet for its decks, the five families the decks
 were drawn in before the styles, with the land-use categories laid out in
 those families (`KIT_INK`, `KIT_CATEGORIES`): the office's sheet in the

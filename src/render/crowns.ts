@@ -1,0 +1,167 @@
+// The illustrated trees' crowns (render/axonometric.ts), each painted once as a
+// small picture and placed at every tree that takes it.
+//
+// A town of a few thousand trees drawn as vectors prints every lobe of every
+// crown into the PDF: tens of megabytes a drawing. The PDF keeps a picture
+// once however often it is drawn, so a crown is a picture: a shape (one of a
+// few, by the tree's place) in a green, at one of three sizes, its outline as
+// thick as the others' at that size. Painted here, each layer's edge smoothed
+// by its distance from the pixel's middle, and cached for the process.
+
+import { pngDataUri } from './png.js';
+import { encodeRgbaPng } from '../lib/png.js';
+
+/** A stable number in [0, 1) for a place and a salt, so a tree or a person drawn again is drawn the same. */
+export const rand = (p: { x: number; y: number }, salt = 0) => { const v = Math.sin(p.x * 12.9898 + p.y * 78.233 + salt * 37.719) * 43758.5453; return v - Math.floor(v); };
+
+type Circle = { x: number; y: number; r: number };
+type Shape = { circles: Circle[] } | { oval: { x: number; y: number; rx: number; ry: number } };
+type Layer = { shape: Shape; ink: string; grow?: number };
+
+/** A crown's lobes, radius one about its middle: a core and a ring of lobes round it, the same for the same variant. */
+export function lobesOf(variant: number, n0: number, spread: number, ring: number, lobe: number, core: number): Circle[] {
+  const seed = { x: variant * 3.1 + 0.7, y: variant * 1.7 + 0.3 };
+  const n = n0 + Math.floor(rand(seed, 1) * spread), a0 = rand(seed, 2) * Math.PI * 2;
+  const lobes = [{ x: 0, y: 0, r: core }];
+  for (let i = 0; i < n; i++) {
+    const a = a0 + (i * 2 * Math.PI) / n + (rand(seed, 20 + i) - 0.5) * (2.6 / n);
+    const dist = ring * (0.88 + 0.24 * rand(seed, 40 + i)), lr = lobe * (0.86 + 0.28 * rand(seed, 60 + i));
+    lobes.push({ x: Math.cos(a) * dist, y: Math.sin(a) * dist * 0.94, r: lr });
+  }
+  return lobes;
+}
+
+/** How far a point is outside a shape (negative inside): the union's nearest edge, or an oval's, near enough to smooth by. */
+function distance(s: Shape, x: number, y: number): number {
+  if ('oval' in s) {
+    const { x: ox, y: oy, rx, ry } = s.oval, u = (x - ox) / rx, v = (y - oy) / ry, k = Math.hypot(u, v);
+    return (k - 1) * Math.min(rx, ry);
+  }
+  let d = Infinity;
+  for (const c of s.circles) { const e = Math.hypot(x - c.x, y - c.y) - c.r; if (e < d) d = e; }
+  return d;
+}
+
+function extent(s: Shape): [number, number, number, number] {
+  if ('oval' in s) { const { x, y, rx, ry } = s.oval; return [x - rx, y - ry, x + rx, y + ry]; }
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const c of s.circles) { x0 = Math.min(x0, c.x - c.r); y0 = Math.min(y0, c.y - c.r); x1 = Math.max(x1, c.x + c.r); y1 = Math.max(y1, c.y + c.r); }
+  return [x0, y0, x1, y1];
+}
+
+const rgbOf = (hex: string): [number, number, number] => {
+  const h = hex.replace('#', ''), v = h.length === 3 ? h.split('').map((c) => c + c).join('') : h;
+  return [parseInt(v.slice(0, 2), 16), parseInt(v.slice(2, 4), 16), parseInt(v.slice(4, 6), 16)];
+};
+
+/** The tones of a crown: its outline, its shade, the lit part, the highlight. */
+export interface CrownTones { edge: string; dark: string; lit: string; high: string }
+
+export type CrownKind = 'cloud' | 'drawn' | 'columnar';
+
+/** The layers of a crown at radius one, bottom first. `outline` is the outline's width, in radii. */
+function layersOf(kind: CrownKind, variant: number, t: CrownTones, outline: number): Layer[] {
+  const scaled = (cs: Circle[], f: number, ox: number, oy: number): Shape => ({ circles: cs.map((c) => ({ x: ox + c.x * f, y: oy + c.y * f, r: c.r * f })) });
+  if (kind === 'columnar') {
+    const body = { oval: { x: 0, y: 0, rx: 0.62, ry: 1.3 } };
+    return [{ shape: body, ink: t.edge, grow: outline }, { shape: body, ink: t.dark },
+      { shape: { oval: { x: -0.09, y: -0.13, rx: 0.5, ry: 1.09 } }, ink: t.lit }, { shape: { oval: { x: -0.22, y: -0.44, rx: 0.21, ry: 0.47 } }, ink: t.high }];
+  }
+  if (kind === 'cloud') {
+    const lobes = lobesOf(variant, 6, 3, 0.5, 0.44, 0.6), all = { circles: lobes };
+    return [{ shape: all, ink: t.edge, grow: outline }, { shape: all, ink: t.dark },
+      { shape: scaled(lobes, 0.8, -0.1, -0.13), ink: t.lit },
+      { shape: scaled(lobes.filter((l) => l.x + l.y < 0.1), 0.46, -0.3, -0.34), ink: t.high }];
+  }
+  // drawn: a scalloped edge, the lit part, three marks of the leaves (thin crescents of the outline's ink), two highlights
+  const lobes = lobesOf(variant, 10, 3, 0.7, 0.31, 0.76), all = { circles: lobes };
+  const seed = { x: variant + 0.5, y: variant * 2.3 };
+  const marks: Layer[] = [[0.24, 0.2], [-0.2, 0.34], [0.36, -0.14]].flatMap(([x, y], i) => {
+    const cx = x + (rand(seed, i) - 0.5) * 0.12, cy = y + (rand(seed, 9 + i) - 0.5) * 0.12, r = 0.12 + rand(seed, 19 + i) * 0.04;
+    return [{ shape: { circles: [{ x: cx, y: cy, r }] }, ink: t.edge }, { shape: { circles: [{ x: cx, y: cy - r * 0.3, r: r * 0.96 }] }, ink: t.lit }];
+  });
+  return [{ shape: all, ink: t.edge, grow: outline }, { shape: all, ink: t.dark }, { shape: scaled(lobes, 0.86, -0.07, -0.09), ink: t.lit },
+    ...marks, { shape: { circles: [{ x: -0.34, y: -0.36, r: 0.2 }, { x: -0.12, y: -0.5, r: 0.12 }] }, ink: t.high }];
+}
+
+/** A crown painted: its picture, and the box it covers about the crown's middle, in radii. */
+export interface CrownPicture { uri: string; x: number; y: number; w: number; h: number }
+
+const cache = new Map<string, CrownPicture>();
+
+/**
+ * The crown of `kind` and `variant` in its tones, `outline` radii wide at its edge, painted `perUnit` pixels to the
+ * radius. The same arguments give the same picture, painted once.
+ */
+export function crownPicture(kind: CrownKind, variant: number, tones: CrownTones, outline: number, perUnit: number): CrownPicture {
+  const key = `${kind}|${variant}|${tones.edge}|${tones.dark}|${tones.lit}|${tones.high}|${outline.toFixed(4)}|${perUnit}`;
+  const hit = cache.get(key);
+  if (hit) return hit;
+  const layers = layersOf(kind, variant, tones, outline);
+  // the box: the outline's, a pixel or two over
+  const [ex0, ey0, ex1, ey1] = extent(layers[0].shape), pad = (layers[0].grow ?? 0) + 2 / perUnit;
+  const x0 = ex0 - pad, y0 = ey0 - pad, w = Math.ceil((ex1 - ex0 + 2 * pad) * perUnit), h = Math.ceil((ey1 - ey0 + 2 * pad) * perUnit);
+  const unit = 1 / perUnit;
+  // premultiplied, layer over layer
+  const acc = new Float32Array(w * h * 4);
+  for (const L of layers) {
+    const [r, g, b] = rgbOf(L.ink), grow = L.grow ?? 0;
+    const [lx0, ly0, lx1, ly1] = extent(L.shape);
+    const px0 = Math.max(0, Math.floor((lx0 - grow - x0) * perUnit) - 1), px1 = Math.min(w - 1, Math.ceil((lx1 + grow - x0) * perUnit) + 1);
+    const py0 = Math.max(0, Math.floor((ly0 - grow - y0) * perUnit) - 1), py1 = Math.min(h - 1, Math.ceil((ly1 + grow - y0) * perUnit) + 1);
+    for (let py = py0; py <= py1; py++) {
+      const uy = y0 + (py + 0.5) * unit;
+      for (let px = px0; px <= px1; px++) {
+        const d = distance(L.shape, x0 + (px + 0.5) * unit, uy) - grow;
+        const a = Math.min(1, Math.max(0, 0.5 - d * perUnit));
+        if (a <= 0) continue;
+        const o = (py * w + px) * 4, k = 1 - a;
+        acc[o] = r * a + acc[o] * k; acc[o + 1] = g * a + acc[o + 1] * k; acc[o + 2] = b * a + acc[o + 2] * k; acc[o + 3] = a + acc[o + 3] * k;
+      }
+    }
+  }
+  const rgba = new Uint8Array(w * h * 4);
+  for (let i = 0; i < w * h; i++) {
+    const a = acc[i * 4 + 3];
+    if (a <= 0) continue;
+    rgba[i * 4] = Math.round(acc[i * 4] / a); rgba[i * 4 + 1] = Math.round(acc[i * 4 + 1] / a); rgba[i * 4 + 2] = Math.round(acc[i * 4 + 2] / a);
+    rgba[i * 4 + 3] = Math.round(a * 255);
+  }
+  const pic = { uri: pngDataUri(encodeRgbaPng(w, h, rgba)), x: x0, y: y0, w: w * unit, h: h * unit };
+  cache.set(key, pic);
+  return pic;
+}
+
+/**
+ * The trees' shadows on the ground as one picture: each an oval (scene units, the drawing's own), laid in `ink` at
+ * `opacity` where any of them falls, so two that overlap do not darken twice; painted as fine as `maxPixels` allows,
+ * up to eight pixels to the unit. Undefined for none.
+ */
+export function shadowPicture(ovals: { x: number; y: number; rx: number; ry: number }[], ink: string, opacity: number, maxPixels = 2.5e6): CrownPicture | undefined {
+  if (!ovals.length) return undefined;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const o of ovals) { x0 = Math.min(x0, o.x - o.rx); y0 = Math.min(y0, o.y - o.ry); x1 = Math.max(x1, o.x + o.rx); y1 = Math.max(y1, o.y + o.ry); }
+  const perUnit = Math.min(8, Math.sqrt(maxPixels / Math.max(1e-6, (x1 - x0) * (y1 - y0))));
+  x0 -= 2 / perUnit; y0 -= 2 / perUnit;
+  const w = Math.ceil((x1 - x0) * perUnit) + 2, h = Math.ceil((y1 - y0) * perUnit) + 2, unit = 1 / perUnit;
+  const cover = new Float32Array(w * h);
+  for (const o of ovals) {
+    const px0 = Math.max(0, Math.floor((o.x - o.rx - x0) * perUnit) - 1), px1 = Math.min(w - 1, Math.ceil((o.x + o.rx - x0) * perUnit) + 1);
+    const py0 = Math.max(0, Math.floor((o.y - o.ry - y0) * perUnit) - 1), py1 = Math.min(h - 1, Math.ceil((o.y + o.ry - y0) * perUnit) + 1);
+    const shape: Shape = { oval: o };
+    for (let py = py0; py <= py1; py++) {
+      const uy = y0 + (py + 0.5) * unit;
+      for (let px = px0; px <= px1; px++) {
+        const a = Math.min(1, Math.max(0, 0.5 - distance(shape, x0 + (px + 0.5) * unit, uy) * perUnit));
+        const i = py * w + px;
+        if (a > cover[i]) cover[i] = a;
+      }
+    }
+  }
+  const [r, g, b] = rgbOf(ink), rgba = new Uint8Array(w * h * 4);
+  for (let i = 0; i < w * h; i++) {
+    if (!cover[i]) continue;
+    rgba[i * 4] = r; rgba[i * 4 + 1] = g; rgba[i * 4 + 2] = b; rgba[i * 4 + 3] = Math.round(cover[i] * opacity * 255);
+  }
+  return { uri: pngDataUri(encodeRgbaPng(w, h, rgba)), x: x0, y: y0, w: w * unit, h: h * unit };
+}
