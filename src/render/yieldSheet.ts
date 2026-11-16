@@ -1013,20 +1013,34 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
     taken.push([px - R - 0.4, py - R - 0.4, px + R + 0.4, py + R + 0.4]);
   });
 
-  // The separations: a dimension line from the scheme to each building near it, in its status's ink, the distance on it;
+  // The separations: a dimension line from the scheme to each building near it, in its status's ink, the distance along it;
   // and each shadow's hour at its far end.
   for (const dm of marks?.dims ?? []) {
     const [x1, y1] = at(dm.a), [x2, y2] = at(dm.b);
     const len = Math.hypot(x2 - x1, y2 - y1) || 1, ux = (x2 - x1) / len, uy = (y2 - y1) / len;
     const tick = (x: number, yy: number) => `M${(x - uy * 1.1).toFixed(2)},${(yy + ux * 1.1).toFixed(2)}L${(x + uy * 1.1).toFixed(2)},${(yy - ux * 1.1).toFixed(2)}`;
     out.push(`<path d="M${x1.toFixed(2)},${y1.toFixed(2)}L${x2.toFixed(2)},${y2.toFixed(2)}" fill="none" stroke="${dm.ink}" stroke-width="0.35"${dm.dash ?? ''}/><path d="${tick(x1, y1)}${tick(x2, y2)}" fill="none" stroke="${dm.ink}" stroke-width="0.35"/>`);
-    // the distance on the line, at its middle or slid along it until clear of what is written; nowhere clear, the line alone
-    const w = dm.label.length * 1.45 + 1.6;
-    for (const t of [0.5, 0.7, 0.3, 0.85, 0.15, 1.15, -0.15]) {
+    // the distance as a dimension is written: turned to its line and standing just off it, not across it, read from the
+    // sheet's foot or from its right (over a line that runs across, left of one that runs up). At the line's middle, or
+    // slid along it, then on its other side, then past its ends, until clear of what is written; nowhere clear, the line alone
+    const w = dm.label.length * 1.45 + 1.6, CAP = 1.8;
+    // (a line within half a degree of upright reads up whichever way it leans, so the rounding of its ends does not turn it over)
+    let ang = (Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI;
+    if (ang > 89.5) ang -= 180;
+    if (ang <= -90.5) ang += 180;
+    const cs = Math.cos((ang * Math.PI) / 180), sn = Math.sin((ang * Math.PI) / 180);
+    // off the line by a hair; by the ticks' reach where the line is shorter than its words, which then pass over them
+    const off = len < w ? 1.5 : 0.7;
+    const along = [0.5, 0.7, 0.3, 0.85, 0.15], past = [1.15, -0.15];
+    const tries = [...along.map((t) => [t, 1]), ...along.map((t) => [t, -1]), ...past.map((t) => [t, 1]), ...past.map((t) => [t, -1])];
+    for (const [t, side] of tries) {
       const mx = x1 + (x2 - x1) * t, my = y1 + (y2 - y1) * t;
-      const bx: Box = [mx - w / 2, my - 1.8, mx + w / 2, my + 1.6];
+      // the words' baseline in their own frame, over the line (side 1) or under it; and their box, turned with them
+      const base = side > 0 ? -off : off + CAP;
+      const corners = [[-w / 2, base - CAP - 0.3], [w / 2, base - CAP - 0.3], [w / 2, base + 0.3], [-w / 2, base + 0.3]].map(([dx, dy]) => [mx + dx * cs - dy * sn, my + dx * sn + dy * cs]);
+      const bx: Box = [Math.min(...corners.map((c) => c[0])), Math.min(...corners.map((c) => c[1])), Math.max(...corners.map((c) => c[0])), Math.max(...corners.map((c) => c[1]))];
       if (!clear(bx)) continue;
-      out.push(`<text x="${mx.toFixed(2)}" y="${(my + 0.9).toFixed(2)}" text-anchor="middle" font-size="2.5" font-weight="700" fill="${dm.ink}">${esc(dm.label)}</text>`);
+      out.push(`<text transform="translate(${mx.toFixed(2)},${my.toFixed(2)}) rotate(${ang.toFixed(1)})" y="${base.toFixed(2)}" text-anchor="middle" font-size="2.5" font-weight="700" fill="${dm.ink}" data-dim="1">${esc(dm.label)}</text>`);
       taken.push(bx);
       break;
     }

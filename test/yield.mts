@@ -365,6 +365,15 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
   const closeComp = deck(close).slides.find((sl) => sl.id === '07_within_controls_compliance')!;
   check('separation: the compliance sheet lists it, its distance against the 12 m asked', /building to the east<\/td>/.test(closeComp.figureHtml) && /8\.0 \/ 12\sm/.test(closeComp.figureHtml), closeComp.figureHtml.match(/<td>building to the east<\/td>.*?<\/tr>/)?.[0]);
   check('separation: no building near, nothing short', yieldRows(bundle).find((r) => r.label === '3F. VISUAL PRIVACY')?.ok === true);
+  // the distance is written as a dimension is: turned to its line and standing off it, not across it; over a line that runs
+  // across the sheet, and left of one that runs up it, read from the sheet's right (a building 2 m off the north boundary)
+  const mN = 1 / 110574;
+  const north = [[151.2001, -33.89955 + 2 * mN], [151.2003, -33.89955 + 2 * mN], [151.2003, -33.89955 + 12 * mN], [151.2001, -33.89955 + 12 * mN], [151.2001, -33.89955 + 2 * mN]];
+  const dimsOf = (html: string) => [...html.matchAll(/<text transform="translate\([^)]+\) rotate\((-?[\d.]+)\)" y="(-?[\d.]+)"[^>]*data-dim="1">([^<]+)<\/text>/g)].map((d) => ({ turn: Number(d[1]), y: Number(d[2]), label: d[3] }));
+  const dims = dimsOf(deck({ ...bundle, context: [{ rings: [east], heightM: 6.2, known: true }, { rings: [north], heightM: 6.2, known: true }] }).slides.find((sl) => sl.id === '07_within_controls_compliance')!.figureHtml);
+  check('separation: each distance is written along its dimension line and off it, a line up the sheet read from the right', dims.length === 2 && dims.every((d) => d.y < 0)
+    && dims.find((d) => d.label === '8.0 m')?.turn === 0 && dims.find((d) => d.label !== '8.0 m')?.turn === -90, JSON.stringify(dims));
+  check('separation: no distance is left written across its line', (closeComp.figureHtml.match(/data-dim="1"/g) ?? []).length === 1 && dimsOf(closeComp.figureHtml).length === 1);
   const told: YieldBundle = { ...bundle, assumptions: { sun: { hours: 3 } } };
   check('sun: yield_assumptions.json sets the hours', /receive 3 hours direct/.test(JSON.stringify(yieldRows(told))) && /from yield_assumptions\.json/.test(JSON.stringify(yieldRows(told))));
   // a residential lot just south of the site takes its shadow; the parks take none; heritage items, with no outlines, are not measured

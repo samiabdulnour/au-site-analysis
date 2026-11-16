@@ -1658,12 +1658,23 @@ site may take, so a site with more paths has more pages:
    at one hour or more, where no building standing shades it that hour
    (`addedGround()` in `src/lib/solarAccess.ts`: what it would overshadow);
    the land it shades outlined and each separation drawn as a dimension (green clear,
-   amber where it holds only habitable to non-habitable, red short).
+   amber where it holds only habitable to non-habitable, red short), its
+   distance written along its line and just off it, read from the sheet's
+   foot or its right.
 10. **Controls and assumptions** — the assumptions the study rests on (floor
    to floor, efficiencies, the mix, the plates, the parking rates, the nearest
    station) on the left; on the right, the full table the office's
    development summary (DA 002) keeps — CONTROLS, PROPOSED and COMPLIANCE for
    the LEP, the parking, the Apartment Design Guide and the Housing SEPP.
+
+A page's text column has to end above its key, and the printer measures it
+once the page is laid out (`fitSlides()` in `src/render/pdf.ts`): a yield
+spread's tables close up, to four fifths of their size at most, where they
+would reach the key, and a column that still stands on it is named in the
+log (`WARN page …: its text column runs … mm into its key`) rather than
+printed through the key without a word. `npx tsx test/print-check.mts` lays
+a made-up deck out in each style, checks that every column ends above its
+key, and that a column with more in it than its page holds is caught.
 
 Each drawn path's right page is its indicative massing as an axonometric,
 seen from the main street's corner, among the neighbours at their recorded

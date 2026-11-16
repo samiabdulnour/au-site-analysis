@@ -371,6 +371,42 @@ const SETTLE_BASE = `(() => {
 })()`;
 
 /**
+ * Run in the page once it is fitted and settled: the yield's spreads whose text column still stands on its key, each
+ * by its page's id and the millimetres its last block runs past the key's top. The tables close up by a fifth and no
+ * more (FIT_BOXES), so a column that needs more than that has more in it than its page holds, and its rows print
+ * through the key's (2–4 Culworth Avenue, Killara: a table of the criteria under a compliance sheet's three others).
+ * Nothing here moves anything: the print says so, and the page's composition is what has to change.
+ */
+const FLOW_OVERRUNS = `(() => {
+  const PX_PER_MM = 96 / 25.4;
+  const out = [];
+  for (const flow of document.querySelectorAll('.zflow')) {
+    const slide = flow.closest('.slide');
+    const key = slide && slide.querySelector('.zleg');
+    const last = flow.lastElementChild;
+    if (!key || !last || !flow.querySelector('table.yt')) continue;
+    const by = (last.getBoundingClientRect().bottom - key.getBoundingClientRect().top) / PX_PER_MM;
+    if (by > 0.05) out.push({ id: slide.id, byMm: Math.round(by * 10) / 10 });
+  }
+  return out;
+})()`;
+
+/** A text column that stands on its page's key after the fitting: the page's id, and by how many millimetres. */
+export interface FlowOverrun { id: string; byMm: number }
+
+/**
+ * A deck's pages fitted in the browser, as they are before they print: the boxes fitted, the split columns split,
+ * the last lines settled, in that order. Returns the text columns that still stand on their keys (FLOW_OVERRUNS),
+ * none on a deck composed within its pages.
+ */
+export async function fitSlides(page: Page): Promise<FlowOverrun[]> {
+  await page.evaluate(FIT_BOXES);
+  await page.evaluate(SPLIT_COLUMNS);
+  await page.evaluate(SETTLE_BASE);
+  return await page.evaluate(FLOW_OVERRUNS) as FlowOverrun[];
+}
+
+/**
  * A deck: every `.slide` section becomes one page of the PDF, and — in the
  * same browser session — one PNG, named after the section's id, for the
  * office's InDesign or PowerPoint. Returns the PNG paths written.
@@ -389,7 +425,7 @@ export async function printSlides(
 ): Promise<string[]> {
   let pngs: string[] = [];
   await printWhole(pdfPath, async () => {
-    const once = await printSlidesOnce(htmlPath, pdfPath, pngDir, size, previewPath);
+    const once = await printSlidesOnce(htmlPath, pdfPath, pngDir, size, previewPath, log);
     pngs = once.pngs;
     return once.missing;
   }, log);
@@ -403,15 +439,15 @@ async function printSlidesOnce(
   pngDir: string,
   size: { widthMm: number; heightMm: number },
   previewPath?: string,
+  log: (m: string) => void = console.warn,
 ): Promise<{ pngs: string[]; missing: string[] }> {
   const browser = await launch();
   const pngs: string[] = [];
   try {
     const page = await browser.newPage({ deviceScaleFactor: 2 });
     await open(page, htmlPath);
-    await page.evaluate(FIT_BOXES);
-    await page.evaluate(SPLIT_COLUMNS);
-    await page.evaluate(SETTLE_BASE);
+    // a column the fitting could not keep off its key still prints, and is said: its rows are under the key's
+    for (const o of await fitSlides(page)) log(`WARN page ${o.id}: its text column runs ${o.byMm} mm into its key`);
     // After the boxes are fitted and the lines settled: a row they hid is not expected.
     const expected: PrintExpectation = await page.evaluate(`${EXPECTATION}(${(size.heightMm / 25.4) * 96}, Infinity)`);
     await page.pdf({
