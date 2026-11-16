@@ -232,7 +232,8 @@ def fit(parcel, spec):
         # a deep plate: the lot less its setbacks (off its neighbouring lots, `boundaries` naming a lot's own figure;
         # off its streets, `streets` naming a street's own; `toCentre` from a road's middle), whatever depth that
         # leaves: no unit depth is asked of it. A street that wraps the lot is named a side at a time, `NAME@south`.
-        # `wings` keeps of that plate only a band so many metres deep along each street named, so two make an L
+        # `wings` keeps of that plate only a band so many metres deep along each street, or lot boundary, named, so
+        # two make an L and one a bar across the lot
         runs = boundary_runs(parcel)
         c_ = parcel.centroid
         def side_of(g):                                               # the side of the parcel a run or a road's middle lies on
@@ -261,12 +262,20 @@ def fit(parcel, spec):
             sys.exit(f'the plate does not fit the parcel {keep:g} m off its neighbouring lots and {street:g} m off its streets')
         if spec.get('wings'):
             bands = []
+            def lot_named(key_):                                      # a wing may also run along the boundary with a lot, named by its address
+                try:
+                    return prop(key_)['poly'] if '@' not in key_ and key_[:1].isdigit() else None
+                except SystemExit:
+                    return None
+            wing_lots = [(g_, v) for g_, v in ((lot_named(k_), v) for k_, v in spec['wings'].items()) if g_ is not None]
             for r in runs:
-                deep = figure(spec['wings'], r['name'], r['line']) if r['kind'] == 'street' and r['line'].length >= 8 else 0
-                if deep:                                              # from the plate's own face on that street, so many metres in
+                if r['line'].length < 8:
+                    continue
+                deep = figure(spec['wings'], r['name'], r['line']) if r['kind'] == 'street' else next((v for g_, v in wing_lots if g_.distance(r['line']) < 1), 0)
+                if deep:                                              # from the plate's own face on that side, so many metres in
                     bands.append(r['line'].buffer(fp.distance(r['line']) + deep, cap_style=2, join_style=2))
             if not bands:
-                sys.exit(f'no frontage of the parcel is on {", ".join(spec["wings"])}')
+                sys.exit(f'no side of the parcel is on {", ".join(spec["wings"])}')
             fp = largest(unary_union(bands).intersection(fp).buffer(-0.3, join_style=2).buffer(0.3, join_style=2))
         fp = fp.simplify(0.3, preserve_topology=True)
         return fp, dict(plate=plate_of(fp), gap=None)
@@ -1163,11 +1172,12 @@ def boundary_setbacks(parcels, blds):
             continue
         runs = boundary_runs(pc['poly'])
         rows = []
-        for b in mains:
-            hab, blank = HALF[adg_band(b['n'])]
-            for run in runs:
-                if run['line'].length < 6:                             # a corner splay is not a frontage
-                    continue
+        for run in runs:
+            if run['line'].length < 6:                                 # a corner splay is not a frontage
+                continue
+            # where a lot carries more than one tower, each of its boundaries is read from the tower nearest it
+            for b in [min(mains, key=lambda b_: b_['poly'].distance(run['line']))]:
+                hab, blank = HALF[adg_band(b['n'])]
                 g = b['poly']
                 d = g.distance(run['line'])
                 q1, q2 = nearest_points(g, run['line'])

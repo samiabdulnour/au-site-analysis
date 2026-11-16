@@ -2036,7 +2036,9 @@ lets them; and no taller than the site's own 14 storeys with no unit
 depth asked, each floor its lot less its setbacks. A fourth is the two
 Crown Street lots across the lane as sketched on 16 November, a tower on
 107-113 Crown St and an L on 115-129 Crown St, both 14 storeys, every other
-neighbour as it stands. That file sets
+neighbour as it stands; a fifth the same two sites with three towers, the
+second site carrying two 12 m wide, one on its northern boundary and one at
+its southern end. That file sets
 `"deck": "two-sheet"`: each scenario prints as two sheets, its geometry
 (`future-option-<n>.png`) and its view from the sun (`future-sun-<n>.png`:
 the sun's-eye view at each whole hour from 9 to 3, large, beside the share
@@ -2051,7 +2053,9 @@ needs is drawn in from every side alike. A plate may give a neighbouring
 lot its own setback (`boundaries`, by address), name one side of a street
 that wraps the lot (`"CROWN LANE@south"`), and keep of itself only `wings`,
 a band so many metres deep along each street named, so two wings make an
-L. Every option sheet of a deck shares one plan window, so a sketch over
+L; a wing may also run along the boundary with a lot, named by its address.
+Where a lot carries more than one tower, each of its boundaries is
+dimensioned from the tower nearest it. Every option sheet of a deck shares one plan window, so a sketch over
 one lies over the others. Each separation is drawn on the plan as a
 dimension line between the two buildings' nearest points, green where it is
 clear, amber where it holds only with one face blank, red where it is short
