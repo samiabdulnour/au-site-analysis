@@ -339,10 +339,12 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
   // Heron's line plans, after an architect's site plan: a neighbour white in a heavy black outline, a tree a circle
   // with its centre marked, what is built in the heaviest outline; the massing a line model, its faces unshaded
   {
-    const treed = { ...close, trees: [{ lon: 151.20043 + 20 * m, lat: -33.89975, canopyM: 6, source: 'aerial' }] } as YieldBundle;
+    // (a neighbour's lot beside the site, so there is a garden to stipple)
+    const lotE = [[151.20043 + 1 * m, -33.9], [151.20043 + 30 * m, -33.9], [151.20043 + 30 * m, -33.89955], [151.20043 + 1 * m, -33.89955], [151.20043 + 1 * m, -33.9]];
+    const treed = { ...close, lots: [[lotE]], trees: [{ lon: 151.20043 + 20 * m, lat: -33.89975, canopyM: 6, source: 'aerial' }] } as YieldBundle;
     const hp = renderYieldDeck(treed, meta, { theme: 'heron' }).slides.find((sl) => sl.id === '03_within_controls')!.figureHtml;
     check('heron: the plan a line plan, its buildings white in a heavy black outline, its trees circles with their centres', /fill="#ffffff" stroke="#111111" stroke-width="0\.45"/.test(hp) && /data-plan-trees/.test(hp) && /stroke="#000000" stroke-width="0\.6"/.test(hp), hp.slice(hp.indexOf('#111111') - 80, hp.indexOf('#111111') + 60));
-    check('heron: the massing a line model, the built in the heaviest outline', /stroke="#000000" stroke-width="0\.42"/.test(hp) && /id="axo-lawn-/.test(hp));
+    check('heron: the massing a line model, the built in the heaviest outline, the gardens stippled in line', /stroke="#000000" stroke-width="0\.42"/.test(hp) && /data-ground="yard"/.test(hp) && !/fill="url\(#axo-(lawn|yard|road|shade)-/.test(hp));
     const kp = renderYieldDeck(treed, meta, { theme: 'kingfisher' }).slides.find((sl) => sl.id === '03_within_controls')!.figureHtml;
     check('heron: the line plan is Heron\'s alone', !/data-plan-trees/.test(kp) && !/stroke="#111111" stroke-width="0\.45"/.test(kp));
   }

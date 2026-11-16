@@ -95,7 +95,8 @@ export interface AxoScene {
 const MONO = { edge: '#8f8f8f', line: '#d2d2d2', kerb: '#8f8f8f', figure: '#b4b4b4', glass: '#ececec', chassis: '#c4c4c4' };
 /**
  * The line model's inks (Heron): the town drawn in black line on white, as an architect's axonometric is. Every
- * building a white volume in a black outline, no shade on its faces; the ground's lines in greys, the lawns dotted;
+ * building a white volume in a black outline, no shade on its faces; the ground's lines in greys, each of its
+ * surfaces in a hatch of its own (groundHatches);
  * the trees white in their contour with their limbs drawn; the people and the traffic white in outline. What is built
  * on the site carries the heavier line. A neighbour keeps a tone where the caller gives one (the report's storeys), flat.
  */
@@ -263,6 +264,40 @@ function lookOf(M: ReturnType<typeof massingInks>, mono: boolean): AxoLook {
   return PLAIN;
 }
 
+/**
+ * The line model's ground, each surface its own hatch, as a drawn axonometric tells its surfaces apart: a park's lawn
+ * closely hatched, rising to the right; a lot's garden lightly stippled; the carriageway finely ruled across; the
+ * footpaths and verges left white; and under each tree a closer hatch laid the other way, its shadow.
+ *
+ * Drawn as lines and dots clipped to each surface, over the frame alone, not as SVG pattern fills: in print Chromium
+ * turns a pattern fill into a picture of the shape it fills (the trees' shade alone came to 2 MB a page, soft at
+ * print size). Sized on paper (millimetres) whatever the drawing's scale: `k` is its millimetres to the unit, `f`
+ * the frame in the drawing's own units.
+ */
+const GROUND_HATCH = {
+  lawn: { pitch: 0.62, w: 0.07, ink: '#8a8a8a' },
+  yard: { pitch: 2.0, w: 0.16, ink: '#7d7d7d' },
+  road: { pitch: 0.8, w: 0.06, ink: '#a6a6a6' },
+  shade: { pitch: 0.46, w: 0.08, ink: '#6f6f6f' },
+} as const;
+type Frame = { x0: number; y0: number; x1: number; y1: number };
+function groundHatch(kind: keyof typeof GROUND_HATCH, clipD: string, clipRule: 'evenodd' | 'nonzero', f: Frame, k: number, id: string): string {
+  if (!clipD) return '';
+  const g = GROUND_HATCH[kind], step = g.pitch / k, H = f.y1 - f.y0, n = (v: number) => v.toFixed(2);
+  const d: string[] = [];
+  if (kind === 'yard') {
+    // a stipple: dots in rows half a pitch apart, every other row shifted half a pitch
+    let row = 0;
+    for (let y = f.y0 + step / 4; y <= f.y1; y += step / 2, row++) for (let x = f.x0 + (row % 2 ? step * 0.75 : step * 0.25); x <= f.x1; x += step) d.push(`M${n(x)},${n(y)}h0`);
+  } else if (kind === 'road') for (let y = f.y0 + step / 2; y <= f.y1; y += step) d.push(`M${n(f.x0)},${n(y)}H${n(f.x1)}`);
+  // the lawn's lines rise to the right, the shade's fall: the two cross where a tree stands on a lawn
+  else for (let o = f.x0 - H; o <= f.x1; o += step) d.push(kind === 'lawn' ? `M${n(o)},${n(f.y1)}L${n(o + H)},${n(f.y0)}` : `M${n(o)},${n(f.y0)}L${n(o + H)},${n(f.y1)}`);
+  return `<clipPath id="axo-${kind}-${id}"><path d="${clipD}" clip-rule="${clipRule}"/></clipPath><g data-ground="${kind}" clip-path="url(#axo-${kind}-${id})">` +
+    `<path d="${d.join('')}" fill="none" stroke="${g.ink}" stroke-width="${(g.w / k).toFixed(4)}"${kind === 'yard' ? ' stroke-linecap="round"' : ''}/></g>`;
+}
+/** Where a line model's ground hatches go, filled in once the drawing's scale and frame are known. */
+const HOLE = { lots: '<!--axo:lots-->', road: '<!--axo:road-->', shade: '<!--axo:shade-->' };
+
 /** How many shapes of crown a drawing draws its trees from. */
 const CROWN_VARIANTS = 4;
 
@@ -333,13 +368,18 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   const ground: string[] = [];
   const far = reach + 600;
   ground.push(`<path d="${poly([P({ x: -far, y: -far }, 0), P({ x: far, y: -far }, 0), P({ x: far, y: far }, 0), P({ x: -far, y: far }, 0)])}" fill="${M.ground}"/>`);
+  const lawnD: string[] = [], yardD: string[] = [];
   for (const lot of scene.lots) for (const pts of lot.rings) {
     if (pts.length < 3 || pts.some((p) => Math.hypot(p.x, p.y) > reach + 20)) continue;
-    ground.push(`<path d="${poly(pts.map((p) => P(p, 0)))}" fill="${lot.park ? (line ? `url(#axo-lawn-${id})` : M.park) : 'none'}" stroke="${M.lot}" stroke-width="0.12"/>`);
+    const dLot = poly(pts.map((p) => P(p, 0)));
+    if (line) (lot.park ? lawnD : yardD).push(dLot);
+    ground.push(`<path d="${dLot}" fill="${lot.park && !line ? M.park : 'none'}" stroke="${M.lot}" stroke-width="0.12"/>`);
   }
+  if (line) ground.push(HOLE.lots);
   const cw = carriageways(scene.roads, scene.kerbs);
   if (cw.polygons.length) {
     ground.push(`<path d="${cw.polygons.map((rings) => rings.map((rg) => poly(rg.map((p) => P(p, 0)))).join('')).join('')}" fill="${M.road}" fill-rule="evenodd" stroke="${mono ? G.kerb : M.kerb ?? inks.kerb}" stroke-width="${mono ? 0.15 : 0.2}" stroke-linejoin="round"/>`);
+    if (line) ground.push(HOLE.road);
     ground.push(`<path d="${cw.axes.map(({ axis }) => open(axis.map((p) => P(p, 0)))).join('')}" fill="none" stroke="${M.axis}" stroke-width="0.12" stroke-dasharray="1.4,1.1" opacity="0.85"/>`);
   }
   const SITE = inks.site;
@@ -763,6 +803,17 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   }
   // Illustrated: the trees and the people cast their shadows on the ground, under all that stands, as the buildings do.
   // Painted as one picture (render/crowns.ts): as vectors, a few thousand ovals came to megabytes a drawing.
+  // A line model: each tree's shadow an oval on the ground away from the light, in a closer hatch laid the other way
+  // over whatever surface it falls on, as a drawn axonometric shades under its trees.
+  const shadeOvals: { x: number; y: number; rx: number; ry: number }[] = [];
+  if (line && trees.length) {
+    const sh = { x: -light.x * 0.42, y: -light.y * 0.42 }, sinE0 = Math.sin(elev);
+    for (const tr of trees) {
+      const zc = crownCentre(tr), [x, y] = P({ x: tr.p.x + sh.x * zc, y: tr.p.y + sh.y * zc }, 0), rx = tr.r * (columnar(tr) ? 0.7 : 0.95);
+      shadeOvals.push({ x, y, rx, ry: rx * sinE0 });
+    }
+    parts.push(HOLE.shade);
+  }
   if (look.shadows && M.gloss) {
     const sh = { x: -light.x * 0.42, y: -light.y * 0.42 }, sinE0 = Math.sin(elev);
     const pic = shadowPicture(trees.map((tr) => {
@@ -840,8 +891,20 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   const notes: string[] = [];
   if (scene.hob?.metres && !planeFits) notes.push(note(notes.length, SITE, scene.hob.note));
   if (futureTop > cap) notes.push(note(notes.length, inks.futureEdge, `NEIGHBOURS' FUTURE HEIGHTS RUN ABOVE THE FRAME, TO ${nf(futureTop)}m`));
+  // A line model's ground hatches, now that the scale and the frame are known: over the frame alone, each clipped to
+  // its surface; the trees' shade to the ovals that reach into the frame.
+  let groundSvg = ground.join(''), partsSvg = parts.join('');
+  if (line) {
+    const f: Frame = { x0: (box.x - tx) / k, y0: (box.y - ty) / k, x1: (box.x + box.w - tx) / k, y1: (box.y + box.h - ty) / k };
+    const roadD = cw.polygons.map((rings) => rings.map((rg) => poly(rg.map((p) => P(p, 0)))).join('')).join('');
+    const ovals = shadeOvals.filter((o) => o.x + o.rx >= f.x0 && o.x - o.rx <= f.x1 && o.y + o.ry >= f.y0 && o.y - o.ry <= f.y1)
+      .map((o) => `M${(o.x - o.rx).toFixed(2)},${o.y.toFixed(2)}a${o.rx.toFixed(2)},${o.ry.toFixed(2)} 0 1,0 ${(2 * o.rx).toFixed(2)},0a${o.rx.toFixed(2)},${o.ry.toFixed(2)} 0 1,0 ${(-2 * o.rx).toFixed(2)},0Z`).join('');
+    groundSvg = groundSvg.replace(HOLE.lots, groundHatch('lawn', lawnD.join(''), 'evenodd', f, k, id) + groundHatch('yard', yardD.join(''), 'nonzero', f, k, id))
+      .replace(HOLE.road, groundHatch('road', roadD, 'evenodd', f, k, id));
+    partsSvg = partsSvg.replace(HOLE.shade, groundHatch('shade', ovals, 'nonzero', f, k, id));
+  }
   // Strokes are set in sheet millimetres and do not scale with the scene.
-  return `<defs>${stampDefs.join('')}${[...peopleDefs.values()].join('')}${[...riderDefs.values()].join('')}<clipPath id="axo-${id}"><rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}"/></clipPath>${line ? `<pattern id="axo-lawn-${id}" patternUnits="userSpaceOnUse" width="1.6" height="1.6"><rect width="1.6" height="1.6" fill="#ffffff"/><circle cx="0.4" cy="0.4" r="0.09" fill="#8a8a8a"/><circle cx="1.2" cy="1.2" r="0.09" fill="#8a8a8a"/></pattern>` : ''}<pattern id="axo-win-${id}" patternUnits="userSpaceOnUse" width="2.6" height="3.1"><rect x="0.75" y="0.8" width="1.1" height="1.5" fill="#000000" fill-opacity="${M.gloss ? 0.09 : 0.17}"/></pattern></defs>
+  return `<defs>${stampDefs.join('')}${[...peopleDefs.values()].join('')}${[...riderDefs.values()].join('')}<clipPath id="axo-${id}"><rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}"/></clipPath><pattern id="axo-win-${id}" patternUnits="userSpaceOnUse" width="2.6" height="3.1"><rect x="0.75" y="0.8" width="1.1" height="1.5" fill="#000000" fill-opacity="${M.gloss ? 0.09 : 0.17}"/></pattern></defs>
     <g clip-path="url(#axo-${id})"><g transform="translate(${tx.toFixed(2)},${ty.toFixed(2)}) scale(${k.toFixed(4)})">
-    <g style="vector-effect:non-scaling-stroke">${ground.join('')}${parts.join('')}${over.join('')}</g></g></g>${notes.join('')}`;
+    <g style="vector-effect:non-scaling-stroke">${groundSvg}${partsSvg}${over.join('')}</g></g></g>${notes.join('')}`;
 }

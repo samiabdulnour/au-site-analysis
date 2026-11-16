@@ -1372,8 +1372,17 @@ palette.
     grey;
   - the trees are white canopies in their contour with their limbs drawn
     fine, the people and the traffic white in outline;
-  - the ground is white, the lots and kerbs fine grey lines, the lawns
-    dotted; there are no shadows;
+  - each ground surface has a hatch of its own (`groundHatch`), sized on
+    paper whatever the drawing's scale: a park's lawn closely hatched, rising
+    to the right; a lot's garden lightly stippled; the carriageway finely
+    ruled across; the footpaths and verges white;
+  - under each tree a closer hatch laid the other way, its shadow on
+    whatever surface it falls; the buildings cast none;
+  - the hatches are lines and dots clipped to each surface, over the frame
+    alone, not SVG pattern fills: in print Chromium turns a pattern fill into
+    a picture of the shape it fills, and the yield went from 27 to 63 MB with
+    them; as lines it is 30;
+  - the lots and kerbs are fine grey lines;
   - on the report's built form page the low buildings are white and only the
     taller ones take a light tone, flat, so the storeys still read.
 - **Plans: line plans**, after an architect's site plan:
