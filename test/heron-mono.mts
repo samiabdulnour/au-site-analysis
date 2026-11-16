@@ -4,6 +4,8 @@
  *
  * Every ink the decks and the site sheet take in Heron is either a grey or a
  * tint or shade of the accent; Kingfisher's are not, so the check can fail.
+ * The sun hours' heat map on the compliance views is the exception: exactly
+ * the context sheet's colours.
  * Then a page asking for its photographs in grey prints them grey, as
  * compressed pictures (render/pdf.ts).
  *
@@ -15,10 +17,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { deflateSync, crc32 } from 'node:zlib';
 import {
-  withTemplate, templateFor, deckLook, deckFamilies, siteTheme, tpl, HERON_ACCENT, HERON_MONO, type Category,
+  withTemplate, templateFor, deckLook, deckFamilies, siteTheme, tpl, TEMPLATES, HERON_ACCENT, HERON_SUN, HERON_MONO, type Category,
 } from '../src/render/template.js';
-import { paletteRamp, terrainRamp, styleRamp, heightRamp, massingInks, categoryFill, veg1750Fills } from '../src/render/atlasKit.js';
+import { paletteRamp, terrainRamp, styleRamp, heightRamp, heatFills, massingInks, categoryFill, veg1750Fills } from '../src/render/atlasKit.js';
 import { textureSvg } from '../src/render/sheet.js';
+import { sunBands } from '../src/render/facadeElevation.js';
 import { printSlides, launch } from '../src/render/pdf.js';
 import { PDFDocument, PDFRawStream, PDFName } from 'pdf-lib';
 
@@ -60,6 +63,24 @@ check('the context sheet keeps the Heron template', templateFor('context', 'hero
 for (const sheet of ['slides', 'yield'] as const) {
   const bad = withTemplate(templateFor(sheet, 'heron'), () => strays(deckInks()));
   check(`${sheet}: every ink a grey or the accent`, bad.length === 0, bad.join(' '));
+}
+// The storeys of the height of buildings page and the landform stay black and white: their ramps are greys.
+{
+  const ramps = withTemplate(templateFor('slides', 'heron'), () => ({ storeys: heightRamp(), landform: terrainRamp(), tones: heatFills(5, 'tone', heightRamp()).map((f) => f.bg!) }));
+  const grey = (h: string) => new Set(rgb(h)).size === 1;
+  check('the storeys\' and the landform\'s ramps are greys, and the storeys\' tones', [...ramps.storeys, ...ramps.landform, ...ramps.tones].every(grey), [...ramps.storeys, ...ramps.landform, ...ramps.tones].filter((c) => !grey(c)).join(' '));
+}
+// The sun hours' heat map on the compliance views is the one place the decks take colour beside the accent: exactly
+// the colours Heron's context sheet prints, cool to warm, the sheet's red for the most sun.
+{
+  const context = TEMPLATES.find((t) => t.id === 'heron')!;
+  const printed = new Set([...context.categories.flatMap((c) => [c.fill, c.stroke, c.textureColor, c.figure]), context.site, context.dimension, context.wind, context.transit, context.rail, context.walk5, context.walk10, context.busRoute, context.heritage, context.discInk, context.discParkInk]
+    .filter((c): c is string => !!c).map((c) => c.toLowerCase()));
+  const sun = withTemplate(templateFor('yield', 'heron'), () => sunBands().map((x) => x.fill.toLowerCase()));
+  check('sun hours: seven bands, each exactly a colour the context sheet prints, none twice', sun.length === 7 && sun.every((c) => printed.has(c)) && new Set(sun).size === 7, sun.filter((c) => !printed.has(c)).join(' '));
+  check('sun hours: the bands are HERON_SUN, the context sheet\'s red for the most sun', sun.join() === HERON_SUN.map((c) => c.toLowerCase()).join() && sun[6] === context.site.toLowerCase());
+  const kf = withTemplate(templateFor('yield', 'kingfisher'), () => sunBands().map((x) => x.fill.toLowerCase()));
+  check('sun hours: Kingfisher keeps its own bands', kf.join() !== sun.join());
 }
 const look = siteTheme('heron').look;
 const badSite = strays(look);

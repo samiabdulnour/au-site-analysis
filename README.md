@@ -1385,12 +1385,23 @@ palette.
     bands of sun hours, the site in the accent;
   - every building is a white volume in a black outline, with no shade on
     its faces;
+  - the buildings' outlines are sized on paper, millimetres whatever the
+    drawing's scale (`LINE_MM`): a neighbour's 0.2 mm, what is built 0.3 mm
+    inside a 0.55 mm outline, a storey's line 0.08 mm. The other styles'
+    strokes scale with the drawing, so a town drawn small, as on the built
+    form page, had hairlines;
+  - there are no grey fills in the massing views: a building given a tone
+    (a neighbour's band of storeys, what stands on the site, a shop's
+    floors) is white, its walls hatched so the tone reads as shade: the
+    closer the darker the tone (`lineHatchPitch`: 1.7 mm for the palest
+    down to 0.6 mm), closest on the wall turned from the light and opening
+    to nearly twice the spacing on one turned full to it, in a firmer line
+    for what is built on the site; the roof stays white;
   - what is built on the site carries the heaviest outline, its storeys
     ruled across its walls and nothing else on them: a massing is a volume,
     not a facade design, so the other styles' pattern of window panes is
     left off (`LINE_WINDOWS`, which can also draw frames, ribbons or a
-    curtain wall's uprights on the wall as it stands); a shop's or an
-    office's floors are a light grey;
+    curtain wall's uprights on the wall as it stands);
   - the trees are white canopies in their contour with their limbs drawn
     fine, the people and the traffic white in outline;
   - each ground surface has a hatch of its own (`groundHatch`), sized on
@@ -1404,8 +1415,10 @@ palette.
     a picture of the shape it fills, and the yield went from 27 to 63 MB with
     them; as lines it is 30;
   - the lots and kerbs are fine grey lines;
-  - on the report's built form page the low buildings are white and only the
-    taller ones take a light tone, flat, so the storeys still read.
+  - on the report's built form page the low buildings are plain white and
+    the taller ones' walls hatched, closer band by band, so the storeys
+    still read; its key draws each band as a small block with the same
+    hatch on its walls.
 - **Plans: line plans**, after an architect's site plan:
   - a building is white in a heavy black outline (`LINE_BUILDING` on the
     yield's plans; `grain()` on the report's maps, finer at their scale);
@@ -1414,11 +1427,23 @@ palette.
     centre marked, the kerbs and lot lines are fine and grey, and only the
     parks are hatched, lightly; each lot's zone is written on it, and the
     first page's plan keeps its zone hatches over the photograph.
-- **Ramps and marks.** The palette's and the landform's ramps run in greys,
-  the heat ramp from grey to the accent; the cars of the 3D views are white
-  and greys; the compliance ticks are black and the crosses in the accent.
-  The sun hours run in greys short of three hours, darkest for none, then
-  the accent, lightest at three hours to the full colour at five and over.
+- **Sun hours: the context sheet's colours.** The heat map of sun hours on
+  the compliance views (walls, roofs and the key) is the one place the decks
+  take colour beside the accent. Its seven bands are `HERON_SUN`: exactly
+  the colours Heron's context sheet prints, cool to warm as the other
+  styles' bands run:
+  - none: the slate of its dimensions (`#3c4c5a`);
+  - under 1 h: the grey-blue of its winds (`#6d8a99`);
+  - 1–2 h: its schools' pale slate (`#b8d1d7`);
+  - 2–3 h: the green of its ten-minute walk (`#6aaf88`);
+  - 3–4 h: its retail's sand (`#ecd4ac`);
+  - 4–5 h: its commercial centres' tan (`#daa66f`);
+  - 5 h and over: the site's red (`#cf4a2e`).
+- **Ramps and marks.** The storeys of the height of buildings page and the
+  landform's contours run in greys, black and white like the rest; the ramp
+  ordered lines run up (the walks' bands) goes from grey to the accent; the
+  cars of the 3D views are white; the compliance ticks are black and the
+  crosses in the accent.
 - **Photographs print in grey**: the aerials, Street View and the places'
   pictures. The page asks for it (`--photos: grey` on its root), and the print
   (`src/render/pdf.ts`) makes each picture grey in the page, as a JPEG, before

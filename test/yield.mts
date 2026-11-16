@@ -11,7 +11,7 @@
 
 import { computeYield, storeysUnder, archetypeFor, edgeKinds, ringArea, futureHeight, withFour, existingSummary, DEFAULT_ASSUMPTIONS, PARKING_RATES, UNIT_KINDS, ADG_MINIMUM, type XY } from '../src/lib/yield.js';
 import { sunBands, bandOf } from '../src/render/facadeElevation.js';
-import { withTemplate, deckFamilies, HERON_ACCENT } from '../src/render/template.js';
+import { withTemplate, deckFamilies } from '../src/render/template.js';
 import { tierSpot, frontageMiddle, yieldStudy, scenarioRows, yieldRows, noSchemeSentence, renderYieldDeck, yieldCsv, yieldJson, type YieldBundle, type Parcel } from '../src/render/yieldSheet.js';
 
 const failures: string[] = [];
@@ -313,10 +313,11 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
   const sunOf = (st: string) => withTemplate(st, () => ({ bands: sunBands(), f: deckFamilies(), none: bandOf(0).fill, four: bandOf(4.5).fill, top: bandOf(5.5).fill }));
   const styles = ['flamingo', 'kingfisher', 'canary'].map(sunOf), heronSun = sunOf('heron');
   const apart = (bands: { fill: string }[]) => bands.slice(1).every((x, i) => { const p2 = rgb(bands[i].fill), q2 = rgb(x.fill); return Math.hypot(p2[0] - q2[0], p2[1] - q2[1], p2[2] - q2[2]) > 40; });
-  // Heron is black and white and one colour: greys short of three hours, darkening to none; its accent from three
-  check('sun bands: Heron\'s seven, greys short of three hours, its accent from three to the full colour at five, each apart from the next', heronSun.bands.length === 7
-    && heronSun.bands.slice(0, 4).every((x) => new Set(rgb(x.fill)).size === 1) && heronSun.bands.slice(0, 4).every((x, i, a) => !i || rgb(x.fill)[0] > rgb(a[i - 1].fill)[0])
-    && heronSun.bands.slice(4).every((x) => { const [r, g, b2] = rgb(x.fill); return r > g && g >= b2; }) && heronSun.top === HERON_ACCENT && apart(heronSun.bands), JSON.stringify(heronSun.bands.map((y) => y.fill)));
+  // Heron's are its context sheet's colours, run as the lorikeet runs: slates short of two hours, its walks' green at
+  // two, sand and tan from three, the sheet's red (not the lorikeet's) for the most sun
+  check('sun bands: Heron\'s seven in its context sheet\'s colours, slates short of two hours, green at two, warm from three, its red on top, each apart from the next', heronSun.bands.length === 7
+    && heronSun.bands.slice(0, 3).every((x) => { const [r, , b2] = rgb(x.fill); return b2 > r; }) && (([r, g, b2]) => g > r && g > b2)(rgb(heronSun.bands[3].fill))
+    && heronSun.bands.slice(4).every((x) => { const [r, , b2] = rgb(x.fill); return r > b2; }) && heronSun.top.toLowerCase() === '#cf4a2e' && heronSun.four !== heronSun.top && apart(heronSun.bands), JSON.stringify(heronSun.bands.map((y) => y.fill)));
   check('sun bands: seven in each colour style after the lorikeet, blues short of two hours, green at two, warm from three, each apart from the next', styles.every(({ bands }) => bands.length === 7
     && bands.slice(0, 3).every((x) => { const [r, , b2] = rgb(x.fill); return b2 > r; }) && (([r, g, b2]) => g > r && g > b2)(rgb(bands[3].fill))
     && bands.slice(4).every((x) => { const [r, , b2] = rgb(x.fill); return r > b2; })
@@ -349,7 +350,7 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
     const treed = { ...close, lots: [[lotE]], trees: [{ lon: 151.20043 + 20 * m, lat: -33.89975, canopyM: 6, source: 'aerial' }] } as YieldBundle;
     const hp = renderYieldDeck(treed, meta, { theme: 'heron' }).slides.find((sl) => sl.id === '03_within_controls')!.figureHtml;
     check('heron: the plan a line plan, its buildings white in a heavy black outline, its trees circles with their centres', /fill="#ffffff" stroke="#111111" stroke-width="0\.45"/.test(hp) && /data-plan-trees/.test(hp) && /stroke="#000000" stroke-width="0\.6"/.test(hp), hp.slice(hp.indexOf('#111111') - 80, hp.indexOf('#111111') + 60));
-    check('heron: the massing a line model, the built in the heaviest outline, the gardens stippled in line', /stroke="#000000" stroke-width="0\.42"/.test(hp) && /data-ground="yard"/.test(hp) && !/fill="url\(#axo-(lawn|yard|road|shade)-/.test(hp));
+    check('heron: the massing a line model, the built in the heaviest outline, the gardens stippled in line', /fill="none" stroke="#000000" stroke-width="[\d.]+" stroke-linejoin="round"\/>/.test(hp) && !hp.includes('@@pw') && /data-ground="yard"/.test(hp) && !/fill="url\(#axo-(lawn|yard|road|shade)-/.test(hp));
     const kp = renderYieldDeck(treed, meta, { theme: 'kingfisher' }).slides.find((sl) => sl.id === '03_within_controls')!.figureHtml;
     check('heron: the line plan is Heron\'s alone', !/data-plan-trees/.test(kp) && !/stroke="#111111" stroke-width="0\.45"/.test(kp));
   }

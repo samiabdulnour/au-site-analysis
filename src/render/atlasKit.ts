@@ -476,6 +476,7 @@ export function styleRamp(): string[] {
   return deckLook().id === 'heron' ? ['#e6e6e6', '#b9b2b0', HERON_ACCENT] : paletteRamp();
 }
 
+
 /** Heron's greys for ordered data, light to dark: the storeys, the heights. */
 const HERON_GREYS = ['#d9d9d9', '#b4b4b4', '#8d8d8d', '#646464', '#3b3b3b'];
 

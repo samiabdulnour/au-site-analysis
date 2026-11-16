@@ -32,6 +32,8 @@ export interface Prism {
   fill: string;
   edge: string;
   edgeW: number;
+  /** Its outline's width on paper, mm, whatever the drawing's scale (a line model's buildings); `edgeW`, which scales with the drawing, where unset. */
+  edgeMm?: number;
   storeys?: number[];
   dashed?: boolean;
   dash?: string;
@@ -275,6 +277,25 @@ function lookOf(M: ReturnType<typeof massingInks>, mono: boolean): AxoLook {
  * the frame in the drawing's own units.
  */
 /**
+ * A line model's buildings are outlined on paper, millimetres whatever the drawing's scale (the other styles' strokes
+ * scale with the drawing, so a town drawn small has hairlines): the neighbours', the futures' glass, what is built on
+ * the site and the heavy outline round it, the storeys ruled on its walls.
+ */
+const LINE_MM = { neighbour: 0.2, future: 0.16, built: 0.3, silhouette: 0.55, storey: 0.08 };
+/** A width on paper, written into the drawing before its scale is known and resolved once it is (`resolvePaper`). */
+const PW = (mm: number) => `@@pw${mm}@@`;
+const resolvePaper = (svg: string, k: number) => svg.replace(/@@pw([\d.]+)@@/g, (_, mm: string) => (Number(mm) / k).toFixed(4));
+/**
+ * The hatch a line model draws a tone as on a building's walls, where it would have filled it: the spacing of its
+ * lines on paper, mm, on a wall turned from the light, the closer the darker the tone (1.7 mm for the palest down to
+ * 0.6 mm); null for white, which has none. A key drawing the same building takes the same spacing.
+ */
+export function lineHatchPitch(fill: string): number | null {
+  if (!/^#[0-9a-f]{6}$/i.test(fill)) return null;
+  const tone = 1 - parseInt(fill.slice(1, 3), 16) / 255;
+  return tone > 0.03 ? 1.7 - 1.1 * Math.min(1, tone / 0.32) : null;
+}
+/**
  * How a line model draws its windows: not at all (a massing is a volume, not a facade design: the storeys' lines say
  * how tall it is); or each a frame, bay by bay; a ribbon along each storey; or fine uprights between the bays, a
  * curtain wall's grid with the storeys' lines.
@@ -353,9 +374,9 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
     if (Math.hypot(cen.x, cen.y) > reach) continue;
     const known = nb.heightM != null && nb.heightM > 0;
     const z1 = known ? nb.heightM! : 6.2;
-    const group: Prism[] = [mono ? { rings, z0: 0, z1, fill: line && !scene.mono ? bw(nb.fill) : '#ffffff', edge: G.edge, edgeW: 0.12, dashed: !known }
+    const group: Prism[] = [mono ? { rings, z0: 0, z1, fill: line && !scene.mono ? bw(nb.fill) : '#ffffff', edge: G.edge, edgeW: 0.12, ...(line ? { edgeMm: LINE_MM.neighbour } : {}), dashed: !known }
       : { rings, z0: 0, z1, fill: nb.fill, edge: shade(nb.fill, M.gloss ? 0.78 : 0.55), edgeW: 0.12, dashed: !known, windows: known }];
-    if (nb.future && nb.future > z1) group.push({ rings, z0: z1, z1: nb.future, fill: inks.future, edge: inks.futureEdge, edgeW: 0.12, dashed: true, dash: FUTURE_DASH, opacity: FUTURE_OPACITY });
+    if (nb.future && nb.future > z1) group.push({ rings, z0: z1, z1: nb.future, fill: inks.future, edge: inks.futureEdge, edgeW: 0.12, ...(line ? { edgeMm: LINE_MM.future } : {}), dashed: true, dash: FUTURE_DASH, opacity: FUTURE_OPACITY });
     prisms.push({ key: depth(cen), group });
   }
   for (const f of scene.futures ?? []) {
@@ -363,11 +384,11 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
     if (!rings.length || !(f.heightM > 0)) continue;
     const cen = rings[0].reduce((t, p) => ({ x: t.x + p.x / rings[0].length, y: t.y + p.y / rings[0].length }), { x: 0, y: 0 });
     if (Math.hypot(cen.x, cen.y) > reach) continue;
-    prisms.push({ key: depth(cen), group: [{ rings, z0: 0, z1: f.heightM, fill: inks.future, edge: inks.futureEdge, edgeW: 0.12, dashed: true, dash: FUTURE_DASH, opacity: FUTURE_OPACITY }] });
+    prisms.push({ key: depth(cen), group: [{ rings, z0: 0, z1: f.heightM, fill: inks.future, edge: inks.futureEdge, edgeW: 0.12, ...(line ? { edgeMm: LINE_MM.future } : {}), dashed: true, dash: FUTURE_DASH, opacity: FUTURE_OPACITY }] });
   }
-  const built: Prism[] = plain
+  const built: Prism[] = (plain
     ? scene.built.map((pr) => ({ ...pr, fill: bw(pr.fill), edge: bw(pr.edge), ...(pr.cells ? { cells: pr.cells.map((c) => ({ ...c, fill: bw(c.fill) })) } : {}), ...(pr.roof ? { roof: pr.roof.map((c) => ({ ...c, fill: bw(c.fill) })) } : {}) }))
-    : scene.built;
+    : scene.built).map((pr) => (line ? { ...pr, edgeMm: LINE_MM.built } : pr));
   prisms.push({ key: 0, group: built });
   prisms.sort((p, q) => q.key - p.key);
 
@@ -442,10 +463,20 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
     if (LINE_WINDOWS === 'mullions') for (let i = 1; i < bays; i++) d.push(open([P(at(i / bays), pr.z0), P(at(i / bays), pr.z1)]));
     return d.length ? `<path data-windows="${LINE_WINDOWS}" d="${d.join('')}" fill="${LINE_WINDOWS === 'mullions' ? 'none' : '#ffffff'}" stroke="${LINE.edge}" stroke-width="0.05" stroke-linejoin="round"/>` : '';
   };
+  // A line model's massing has no grey fills: a prism given a tone (a neighbour's band of storeys, what stands on the
+  // site, a shop's floors) is white, its walls hatched so the tone reads as shade: the closer the darker its tone, and
+  // closest on the wall turned from the light, opening to nearly twice the spacing on one turned full to it; its roof
+  // stays white. What is built on the site in a firmer line. The hatches are drawn once the drawing's scale is known,
+  // each clipped to its face.
+  const faceHatches: { d: string; pts: [number, number][]; pitch: number; w: number }[] = [];
+  const hatchOf = (pr: Prism) => { const pitch = plain && pr.opacity == null ? lineHatchPitch(pr.fill) : null; return pitch ? { pitch, w: built.includes(pr) ? 0.09 : 0.06 } : null; };
+  const hatchFace = (pts: [number, number][], d: string, h: { pitch: number; w: number }) => { faceHatches.push({ d, pts, ...h }); return `<!--axo:fh${faceHatches.length - 1}-->`; };
   const prismSvg = (pr: Prism) => {
     const out: string[] = [];
     const dash = pr.dashed ? ` stroke-dasharray="${pr.dash ?? '0.8,0.6'}"` : '';
     const alpha = pr.opacity != null ? ` fill-opacity="${pr.opacity}"` : '';
+    const ew = pr.edgeMm != null ? PW(pr.edgeMm) : String(pr.edgeW);
+    const hatch = hatchOf(pr), flat = hatch ? '#ffffff' : pr.fill;
     pr.rings.forEach((rg, ri) => {
       let sa = 0;
       for (let i = 0; i < rg.length; i++) { const u = rg[i], v = rg[(i + 1) % rg.length]; sa += u.x * v.y - v.x * u.y; }
@@ -458,8 +489,10 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
         // glossy: the faces barely shaded, the shadows cast on the ground instead
         // (a line model: no shade at all, the volume read from its edges)
         const lit = line ? 1 : (M.gloss ? 0.9 : 0.72) + (M.gloss ? 0.1 : 0.28) * Math.max(0, f.m.x * light.x + f.m.y * light.y);
-        const face = poly([P(f.p, pr.z0), P(f.q, pr.z0), P(f.q, pr.z1), P(f.p, pr.z1)]);
-        out.push(`<path d="${face}" fill="${shade(pr.fill, lit)}"${alpha} stroke="${pr.edge}" stroke-width="${pr.edgeW}" stroke-linejoin="round"${dash}/>`);
+        const facePts = [P(f.p, pr.z0), P(f.q, pr.z0), P(f.q, pr.z1), P(f.p, pr.z1)];
+        const face = poly(facePts);
+        out.push(`<path d="${face}" fill="${hatch ? flat : shade(pr.fill, lit)}"${alpha} stroke="${pr.edge}" stroke-width="${ew}" stroke-linejoin="round"${dash}/>`);
+        if (hatch) out.push(hatchFace(facePts, face, { pitch: hatch.pitch * (1 + 0.9 * Math.max(0, f.m.x * light.x + f.m.y * light.y)), w: hatch.w }));
         const celled = (pr.cells ?? []).some((c) => c.ring === ri && c.edge === f.i);
         // (a line model: its windows drawn on the wall; none over a wall coloured by its hours of sun, which is a grid already)
         if (pr.windows) out.push(line ? (celled ? '' : lineWindows(f, pr)) : `<path d="${face}" fill="url(#axo-win-${id})"/>`);
@@ -474,11 +507,12 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
         }
         for (const zz of pr.storeys ?? []) {
           const [x1, y1] = P(f.p, zz), [x2, y2] = P(f.q, zz);
-          out.push(`<line x1="${x1.toFixed(2)}" y1="${y1.toFixed(2)}" x2="${x2.toFixed(2)}" y2="${y2.toFixed(2)}" stroke="${line ? LINE.edge : shade(pr.fill, 0.62)}" stroke-width="${line ? 0.06 : 0.08}"/>`);
+          out.push(`<line x1="${x1.toFixed(2)}" y1="${y1.toFixed(2)}" x2="${x2.toFixed(2)}" y2="${y2.toFixed(2)}" stroke="${line ? LINE.edge : shade(pr.fill, 0.62)}" stroke-width="${line ? PW(LINE_MM.storey) : 0.08}"/>`);
         }
       }
     });
-    out.push(`<path d="${pr.rings.map((rg) => poly(rg.map((p) => P(p, pr.z1)))).join('')}" fill="${line ? pr.fill : shade(pr.fill, M.gloss ? 1.3 : 1.12)}"${alpha} fill-rule="evenodd" stroke="${pr.edge}" stroke-width="${pr.edgeW}" stroke-linejoin="round"${dash}/>`);
+    const roofD = pr.rings.map((rg) => poly(rg.map((p) => P(p, pr.z1)))).join('');
+    out.push(`<path d="${roofD}" fill="${line ? flat : shade(pr.fill, M.gloss ? 1.3 : 1.12)}"${alpha} fill-rule="evenodd" stroke="${pr.edge}" stroke-width="${ew}" stroke-linejoin="round"${dash}/>`);
     for (const c of pr.roof ?? []) out.push(`<path d="${poly(c.pts.map((p) => P(p, pr.z1)))}" fill="${c.fill}" stroke="#ffffff" stroke-width="0.07" stroke-linejoin="round"/>`);
     return out.join('');
   };
@@ -499,7 +533,7 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
       const joined = turfUnion(featureCollection(faces.map((f) => polygon(f)))) as any;
       const g = joined?.geometry;
       const rings: number[][][] = g?.type === 'Polygon' ? g.coordinates : g?.type === 'MultiPolygon' ? g.coordinates.flat() : [];
-      return `<path d="${rings.map((rg) => poly(rg.slice(0, -1) as [number, number][])).join('')}" fill="none" stroke="${line ? '#000000' : '#2e2e2e'}" stroke-width="${line ? 0.42 : 0.24}" stroke-linejoin="round"/>`;
+      return `<path d="${rings.map((rg) => poly(rg.slice(0, -1) as [number, number][])).join('')}" fill="none" stroke="${line ? '#000000' : '#2e2e2e'}" stroke-width="${line ? PW(LINE_MM.silhouette) : 0.24}" stroke-linejoin="round"/>`;
     } catch { return ''; }
   };
   // The trees: each a crown on a trunk, which the projection draws as a circle, a sphere's outline; none where a
@@ -946,9 +980,21 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
     groundSvg = groundSvg.replace(HOLE.lots, groundHatch('lawn', lawnD.join(''), 'evenodd', f, k, id) + groundHatch('yard', yardD.join(''), 'nonzero', f, k, id))
       .replace(HOLE.road, groundHatch('road', roadD, 'evenodd', f, k, id));
     partsSvg = partsSvg.replace(HOLE.shade, groundHatch('shade', ovals, 'nonzero', f, k, id));
+    // the toned prisms' hatches: lines rising to the right at 45°, on one grid across the drawing so neighbouring
+    // faces' lines meet, each face's over its own box alone and clipped to it; none for a face outside the frame
+    partsSvg = partsSvg.replace(/<!--axo:fh(\d+)-->/g, (_, n: string) => {
+      const j = faceHatches[Number(n)];
+      const xs = j.pts.map((q) => q[0]), ys = j.pts.map((q) => q[1]);
+      const x0 = Math.max(f.x0, Math.min(...xs)), x1 = Math.min(f.x1, Math.max(...xs)), y0 = Math.max(f.y0, Math.min(...ys)), y1 = Math.min(f.y1, Math.max(...ys));
+      if (!(x1 > x0 && y1 > y0)) return '';
+      const step = (j.pitch / k) * Math.SQRT2, d: string[] = [];
+      for (let c = Math.ceil((x0 + y0) / step) * step; c <= x1 + y1; c += step) d.push(`M${(c - y1).toFixed(2)},${y1.toFixed(2)}L${(c - y0).toFixed(2)},${y0.toFixed(2)}`);
+      return d.length ? `<clipPath id="axo-fh${n}-${id}"><path d="${j.d}" clip-rule="evenodd"/></clipPath><g data-face-hatch clip-path="url(#axo-fh${n}-${id})"><path d="${d.join('')}" fill="none" stroke="${LINE.edge}" stroke-width="${(j.w / k).toFixed(4)}"/></g>` : '';
+    });
   }
-  // Strokes are set in sheet millimetres and do not scale with the scene.
-  return `<defs>${stampDefs.join('')}${[...peopleDefs.values()].join('')}${[...riderDefs.values()].join('')}<clipPath id="axo-${id}"><rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}"/></clipPath><pattern id="axo-win-${id}" patternUnits="userSpaceOnUse" width="2.6" height="3.1"><rect x="0.75" y="0.8" width="1.1" height="1.5" fill="#000000" fill-opacity="${M.gloss ? 0.09 : 0.17}"/></pattern></defs>
+  // The strokes scale with the scene, but for a line model's buildings, whose widths are set on paper (LINE_MM).
+  const drawn = `<defs>${stampDefs.join('')}${[...peopleDefs.values()].join('')}${[...riderDefs.values()].join('')}<clipPath id="axo-${id}"><rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}"/></clipPath><pattern id="axo-win-${id}" patternUnits="userSpaceOnUse" width="2.6" height="3.1"><rect x="0.75" y="0.8" width="1.1" height="1.5" fill="#000000" fill-opacity="${M.gloss ? 0.09 : 0.17}"/></pattern></defs>
     <g clip-path="url(#axo-${id})"><g transform="translate(${tx.toFixed(2)},${ty.toFixed(2)}) scale(${k.toFixed(4)})">
     <g style="vector-effect:non-scaling-stroke">${groundSvg}${partsSvg}${over.join('')}</g></g></g>${notes.join('')}`;
+  return line ? resolvePaper(drawn, k) : drawn;
 }
