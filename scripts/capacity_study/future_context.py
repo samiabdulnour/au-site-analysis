@@ -241,13 +241,29 @@ def fit(parcel, spec):
     facing = [r for r in runs if r['kind'] == 'street' and norm_road(r['name']) in centre and r['line'].length >= 6]
     if 'along' in spec and norm_road(spec['along']) in centre:
         mine = [r for r in facing if norm_road(r['name']) == norm_road(spec['along'])]
+        def along_u(r):                                               # how nearly a run lies along the frontage the slab follows
+            (x0_, y0_), (x1_, y1_) = r['line'].coords[0], r['line'].coords[-1]
+            return abs((x1_ - x0_) * u[0] + (y1_ - y0_) * u[1]) / (math.hypot(x1_ - x0_, y1_ - y0_) or 1.0)
+        mine = [r for r in mine if along_u(r) > 0.9]
         if mine:
-            r0 = min(mine, key=lambda r: r['line'].distance(Point(o)))
-            setback = max(setback, centre[norm_road(spec['along'])] - r0['half'])
+            r0 = max(mine, key=lambda r: r['line'].length)
+            ax0 = axis_near(spec['along'], r0['line'])
+            if ax0 is not None:                                       # measured from the road's middle, and parallel to it
+                (ax_, ay_), (bx_, by_) = ax0.coords[0], ax0.coords[-1]
+                La = math.dist((ax_, ay_), (bx_, by_))
+                setback = max(centre[norm_road(spec['along'])], setback + ax0.distance(r0['line']))
+                u = ((bx_ - ax_) / La, (by_ - ay_) / La)
+                n = (-u[1], u[0])
+                c_ = parcel.representative_point()
+                if (c_.x - ax_) * n[0] + (c_.y - ay_) * n[1] < 0:
+                    n = (-n[0], -n[1])
+                o = (ax_, ay_)
+            else:
+                setback = max(setback, centre[norm_road(spec['along'])] - r0['half'])
     fp = parcel.intersection(band(o, n, setback, setback + depth))
     cut = [r['line'].buffer(keep, cap_style=3, join_style=2) for r in runs if r['kind'] == 'lot' and keep]
     cut += [r['line'].buffer(street, cap_style=3, join_style=2) for r in runs if r['kind'] == 'street' and street]
-    cut += [r['line'].buffer(centre[norm_road(r['name'])] - r['half'], cap_style=3, join_style=2) for r in facing if centre[norm_road(r['name'])] - r['half'] > 0.05]
+    cut += [ax.buffer(v, cap_style=2) for k_, v in centre.items() for ax in road_axes().get(k_, []) if ax.distance(parcel) < 40]
     if cut:
         # square ends, so a corner is cleared too, and no hairline left along a boundary
         fp = largest(fp.difference(unary_union(cut)).buffer(-0.2, join_style=2).buffer(0.2, join_style=2))
@@ -348,48 +364,135 @@ def our_fsr():
     return S.get('fsr') or (site_yield()[0] if TOWER else SITE_GFA / SITE_AREA)
 
 
-MIDDLES = {}
+AXES = None
 
 
-def road_middles(box):
-    """Each road's middle within the box, as the cadastre has it: halfway between the lot boundaries either side of
-    it, traced along the road; [(name, line)]."""
-    key_ = tuple(round(v) for v in box.bounds)
-    if key_ in MIDDLES:
-        return MIDDLES[key_]
-    reach = box.buffer(12)
-    lots = unary_union([r['poly'] for r in PROPS.values() if r['poly'].intersects(reach.buffer(40))])
-    out = []
+def road_axes():
+    """Each road's middle as straight lines that run through its junctions: the centreline's own straight runs, each
+    gathered with the runs in line with it and moved sideways to sit halfway between the lot boundaries either side
+    (the median along it), the legs of a road that bends joined at the bend; {name: [LineString]}."""
+    global AXES
+    if AXES is not None:
+        return AXES
+    reach = study.buffer(140)
+    lots = unary_union([r['poly'] for r in PROPS.values() if r['poly'].intersects(reach.buffer(35))])
+    between = lambda d0, d1: abs(math.atan2(d0[0] * d1[1] - d0[1] * d1[0], d0[0] * d1[0] + d0[1] * d1[1]))
+    AXES = {}
     for name, lines in ROADS.items():
+        runs = []
         for l in lines:
             piece = l.intersection(reach)
             for seg in (piece.geoms if hasattr(piece, 'geoms') else [piece]):
-                if seg.geom_type != 'LineString' or seg.length < 8:
+                if seg.geom_type != 'LineString' or seg.length < 3:
                     continue
-                n = max(2, int(seg.length // 2.5))
-                rows = []
-                for i in range(n + 1):
-                    s0 = seg.interpolate(i / n, normalized=True)
-                    s1 = seg.interpolate(min(1.0, (i + 0.5) / n) if i < n else (i - 0.5) / n, normalized=True)
-                    dx, dy = (s1.x - s0.x, s1.y - s0.y) if i < n else (s0.x - s1.x, s0.y - s1.y)
-                    L = math.hypot(dx, dy)
-                    if L < 1e-6 or lots.contains(s0):
-                        continue
-                    nx, ny = -dy / L, dx / L
+                cs = list(seg.simplify(0.8).coords)
+                cur = [cs[0], cs[1]]
+                for b in cs[2:]:
+                    a0, a1 = cur[0], cur[-1]
+                    if between((a1[0] - a0[0], a1[1] - a0[1]), (b[0] - a1[0], b[1] - a1[1])) < math.radians(10):
+                        cur.append(b)
+                    else:
+                        runs.append((cur[0], cur[-1]))
+                        cur = [a1, b]
+                runs.append((cur[0], cur[-1]))
+        clusters = []
+        for r in sorted((r for r in runs if math.dist(*r) >= 3), key=lambda r: -math.dist(*r)):
+            L = math.dist(*r)
+            d = ((r[1][0] - r[0][0]) / L, (r[1][1] - r[0][1]) / L)
+            mid = ((r[0][0] + r[1][0]) / 2, (r[0][1] + r[1][1]) / 2)
+            for c in clusters:
+                ang = between(c['u'], d)
+                off = abs((mid[0] - c['p'][0]) * -c['u'][1] + (mid[1] - c['p'][1]) * c['u'][0])
+                if min(ang, math.pi - ang) < math.radians(12) and off < 9:   # in line with it: a wobble, a second carriageway
+                    c['runs'].append(r)
+                    break
+            else:
+                clusters.append(dict(p=r[0], u=d, runs=[r]))
+        legs = []
+        for c in clusters:
+            p, u = c['p'], c['u']
+            n = (-u[1], u[0])
+            ts = [(q[0] - p[0]) * u[0] + (q[1] - p[1]) * u[1] for r in c['runs'] for q in r]
+            t0, t1 = min(ts), max(ts)
+            rows, t = [], t0
+            while t <= t1 + 1e-6:
+                s0 = (p[0] + u[0] * t, p[1] + u[1] * t)
+                if not lots.contains(Point(s0)):
                     side = []
                     for sg in (1, -1):
-                        hit = LineString([(s0.x, s0.y), (s0.x + sg * nx * 30, s0.y + sg * ny * 30)]).intersection(lots)
-                        side.append(None if hit.is_empty else s0.distance(hit))
+                        hit = LineString([s0, (s0[0] + sg * n[0] * 30, s0[1] + sg * n[1] * 30)]).intersection(lots)
+                        side.append(None if hit.is_empty else Point(s0).distance(hit))
                     if None not in side:
-                        rows.append((side[0] + side[1], (s0.x + nx * (side[0] - side[1]) / 2, s0.y + ny * (side[0] - side[1]) / 2)))
-                if len(rows) < 2:
+                        rows.append((side[0] + side[1], (side[0] - side[1]) / 2, t))
+                t += 2.5
+            # the straight line through the midpoints: their offset from the run fitted against the distance along it,
+            # so the line takes the road's own direction, not the mapped centreline's
+            a_, b_ = 0.0, 0.0
+            if rows:
+                med = sorted(w for w, _, _ in rows)[len(rows) // 2]
+                keep = [(t_, o) for w, o, t_ in rows if abs(w - med) <= 3]   # a side street's opening is not the road's width
+                for _ in range(2):
+                    if len(keep) >= 4:
+                        mt, mo = sum(t_ for t_, _ in keep) / len(keep), sum(o for _, o in keep) / len(keep)
+                        den = sum((t_ - mt) ** 2 for t_, _ in keep)
+                        b_ = sum((t_ - mt) * (o - mo) for t_, o in keep) / den if den > 1e-6 else 0.0
+                        a_ = mo - b_ * mt
+                        keep = [(t_, o) for t_, o in keep if abs(o - (a_ + b_ * t_)) <= 1.2] or keep
+                    elif keep:
+                        a_, b_ = sorted(o for _, o in keep)[len(keep) // 2], 0.0
+            at = lambda t_: (p[0] + u[0] * t_ + n[0] * (a_ + b_ * t_), p[1] + u[1] * t_ + n[1] * (a_ + b_ * t_))
+            e0, e1 = at(t0), at(t1)
+            Lg = math.dist(e0, e1) or 1.0
+            legs.append([e0, e1, ((e1[0] - e0[0]) / Lg, (e1[1] - e0[1]) / Lg), sum(math.dist(*r) for r in c['runs'])])
+        # a short leg lying along a longer one is the mapped line's wobble, not a road of its own
+        keep_legs = []
+        for A in sorted(legs, key=lambda g_: -g_[3]):
+            mid = ((A[0][0] + A[1][0]) / 2, (A[0][1] + A[1][1]) / 2)
+            dup = False
+            for B in keep_legs:
+                ang = between(A[2], B[2])
+                if min(ang, math.pi - ang) < math.radians(30) and LineString([B[0], B[1]]).distance(Point(mid)) < 7:
+                    dup = True
+            if not dup:
+                keep_legs.append(A)
+        legs = keep_legs
+        for i, A in enumerate(legs):                                        # a road that turns a corner: its legs meet at the corner
+            for B in legs[i + 1:]:
+                ang = between(A[2], B[2])
+                if min(ang, math.pi - ang) < math.radians(25):
                     continue
-                med = sorted(w for w, _ in rows)[len(rows) // 2]
-                mids = [m for w, m in rows if abs(w - med) <= 3]          # a side street's opening is not the road's width
-                if len(mids) >= 2:
-                    out.append((name, LineString(mids).simplify(0.5)))
-    MIDDLES[key_] = out
-    return out
+                for ia in (0, 1):
+                    for ib in (0, 1):
+                        if math.dist(A[ia], B[ib]) < 9:
+                            den = A[2][0] * B[2][1] - A[2][1] * B[2][0]
+                            if abs(den) > 1e-6:
+                                k_ = ((B[ib][0] - A[ia][0]) * B[2][1] - (B[ib][1] - A[ia][1]) * B[2][0]) / den
+                                x = (A[ia][0] + A[2][0] * k_, A[ia][1] + A[2][1] * k_)
+                                if math.dist(x, A[ia]) < 12:
+                                    A[ia] = x
+                                    B[ib] = x
+        AXES[name] = [LineString([g_[0], g_[1]]) for g_ in legs if math.dist(g_[0], g_[1]) >= 6]
+    return AXES
+
+
+def axis_near(name, g):
+    """The straight middle of the named road beside a geometry: for a boundary line, the leg of the road that runs
+    along it (a lane that turns a corner has two); else the nearest. Nothing where the road has none."""
+    lines = road_axes().get(norm_road(name)) or []
+    if not lines:
+        return None
+    if g.geom_type == 'LineString' and g.length > 1:
+        (x0, y0), (x1, y1) = g.coords[0], g.coords[-1]
+        L = math.hypot(x1 - x0, y1 - y0) or 1.0
+
+        def along(l):
+            (a0, b0), (a1, b1) = l.coords[0], l.coords[-1]
+            return abs((a1 - a0) * (x1 - x0) + (b1 - b0) * (y1 - y0)) / (L * (math.hypot(a1 - a0, b1 - b0) or 1.0))
+
+        beside = [l for l in lines if l.distance(g) < 30 and along(l) > 0.85]
+        if beside:
+            return min(beside, key=lambda l: l.distance(g.interpolate(0.5, normalized=True)))
+    return min(lines, key=lambda l: l.distance(g))
 
 
 def arch_dim(pts, labels, col, k):
@@ -417,7 +520,7 @@ def arch_dim(pts, labels, col, k):
 
 def our_units_scheme(k):
     """Our tower's typical floor as the plans lay it out: the apartments along its Riley Street and Crown Lane faces,
-    a corridor between them, each with its number."""
+    a corridor between them."""
     plan_ = ((TOWER or {}).get('units') or {}).get('tower')
     if not plan_:
         return []
@@ -449,8 +552,6 @@ def our_units_scheme(k):
             at += float(u[1])
             if i:
                 o.append(line(lerp(fn, fs_, t0), lerp(mn, ms, t0)))
-            c_ = lerp(lerp(fn, fs_, (t0 + t1) / 2), lerp(mn, ms, (t0 + t1) / 2), 0.24)
-            o.append(f'<text x="{f(c_[0])}" y="{-c_[1] + 0.8 * k:.2f}" font-size="{2.4 * k:.2f}" font-weight="600" text-anchor="middle" fill="#c0161c" fill-opacity=".8">{H.escape(str(u[0]))}</text>')
     return o
 
 
@@ -654,6 +755,14 @@ def set_tower(scn=None):
     own = ((scn or {}).get('site') or {}).get('tower') or {}
     TOWER = {**base, **own} if base or own else None
     TOWER_OWN = bool(own)
+    if TOWER and TOWER.get('toCentre'):                               # so many metres from a road's middle, as the neighbours'
+        TOWER['setbacks'] = dict(TOWER['setbacks'])
+        for name, v in TOWER['toCentre'].items():
+            runs_ = [r for r in boundary_runs(SITE_POLY) if r['kind'] == 'street' and norm_road(r['name']) == norm_road(name)]
+            if runs_:
+                r0 = max(runs_, key=lambda r: r['line'].length)
+                ax = axis_near(name, r0['line'])
+                TOWER['setbacks'][name] = max(0.0, v - (ax.distance(r0['line'].interpolate(0.5, normalized=True)) if ax is not None else r0['half']))
     SITE_TOWER = inset(SITE_POLY, TOWER['setbacks']) if TOWER else SITE_POLY.buffer(-1.0, join_style=2)
     SITE_PODIUM = TOWER.get('podium', 0) if TOWER else 0
 
@@ -746,7 +855,10 @@ def boundary_runs(parcel):
                 hits = [m.distance(q['poly'].intersection(ray)) for q in across if q['poly'].intersects(ray)]
                 if hits:
                     widths.append(min(hits))
-            if widths:
+            ax = axis_near(r['name'], line)
+            if ax is not None and ax.distance(line) < 30:
+                half = ax.distance(line.interpolate(0.5, normalized=True))
+            elif widths:
                 half = sorted(widths)[len(widths) // 2] / 2
             else:
                 half = min((l.distance(line) for l in ROADS.get(norm_road(r['name'])) or []), default=3.0)
@@ -791,8 +903,13 @@ def boundary_setbacks(parcels, blds):
                     v = 'clear' if d >= hab - 0.05 else 'one face blank' if d >= blank - 0.05 else 'short of a blank face'
                 row = dict(kind=run['kind'], name=run['name'], side=side, d=d, hab=hab, blank=blank, up=up, verdict=v, p0=(q1.x, q1.y), p1=(q2.x, q2.y), key=b['key'])
                 if run['kind'] == 'street':                            # to the middle of the road: half its width past the boundary
-                    hw, nrm = run['half'], run['normal']
-                    row.update(dc=d + hw, p0=(q1.x, q1.y), p1=(q2.x + nrm[0] * hw, q2.y + nrm[1] * hw))
+                    ax = axis_near(run['name'], run['line'])
+                    if ax is not None and ax.distance(run['line']) < 30:
+                        c1, c2 = nearest_points(g, ax)
+                        row.update(dc=c1.distance(c2), p0=(c1.x, c1.y), p1=(c2.x, c2.y))
+                    else:
+                        hw, nrm = run['half'], run['normal']
+                        row.update(dc=d + hw, p0=(q1.x, q1.y), p1=(q2.x + nrm[0] * hw, q2.y + nrm[1] * hw))
                 rows.append(row)
         out[pc['key']] = rows
     return out
@@ -811,13 +928,6 @@ def road_pairs(blds, parcels=()):
             mid = centre_between((q1.x, q1.y), (q2.x, q2.y))
             if mid is None:
                 continue
-            lot = {q['key']: q['poly'] for q in parcels}
-            if a['key'] in lot and b['key'] in lot:                   # the road's middle: halfway between the two lots
-                gap = LineString([(q1.x, q1.y), (q2.x, q2.y)]).difference(lot[a['key']].buffer(0.02)).difference(lot[b['key']].buffer(0.02))
-                bits = [g_ for g_ in getattr(gap, 'geoms', [gap]) if g_.geom_type == 'LineString' and g_.length > 0.5]
-                if bits:
-                    m_ = max(bits, key=lambda g_: g_.length).interpolate(0.5, normalized=True)
-                    mid = (m_.x, m_.y)
             d = q1.distance(q2)
             hab, blank, _ = ADG[adg_band(min(a['n'], b['n']))]
             v = 'clear' if round(d) >= hab else 'one face blank' if round(d) >= blank else 'short of a blank face'
@@ -885,7 +995,20 @@ def face_gap(poly, parcel):
     points is the honest measure."""
     q1, _ = nearest_points(SITE_TOWER, poly)
     cs = list(SITE_TOWER.exterior.coords)
-    _, p, q = min(((LineString([p, q]).distance(q1), p, q) for p, q in zip(cs[:-1], cs[1:]) if math.dist(p, q) >= 1), key=lambda t: t[0])
+    edges = [(LineString([p, q]).distance(q1), p, q) for p, q in zip(cs[:-1], cs[1:]) if math.dist(p, q) >= 1]
+    c0, c1 = SITE_TOWER.representative_point(), poly.centroid
+
+    def looks(e):
+        _, p, q = e
+        L = math.dist(p, q)
+        nx, ny = -(q[1] - p[1]) / L, (q[0] - p[0]) / L
+        mx, my = (p[0] + q[0]) / 2, (p[1] + q[1]) / 2
+        if (c0.x - mx) * nx + (c0.y - my) * ny > 0:
+            nx, ny = -nx, -ny
+        D = math.hypot(c1.x - mx, c1.y - my) or 1.0
+        return (nx * (c1.x - mx) + ny * (c1.y - my)) / D
+
+    _, p, q = max((e for e in edges if e[0] <= min(e_[0] for e_ in edges) + 0.05), key=looks)
     u = unit((q[0] - p[0], q[1] - p[1]))
     n = (-u[1], u[0])
     c = SITE_TOWER.representative_point()
@@ -913,7 +1036,7 @@ def face_gap(poly, parcel):
     at = lambda dv: (p[0] + u[0] * sm + n[0] * dv, p[1] + u[1] * sm + n[1] * dv)
     mid = centre_between(at(d0), at(d3))
     if mid is not None:
-        dc = (d1 + d2) / 2 if d2 - d1 >= 1 else out(mid)             # the road's middle: halfway between the two boundaries
+        dc = min(max(out(mid), d1), d2) if d2 - d1 >= 1 else out(mid)   # where it crosses the road's middle
         return dict(total=d3 - d0, parts=(dc - d0, 0.0, d3 - dc), p0=at(d0), p1=at(d3), ticks=[at(dc), at(dc)], centre=True)
     return dict(total=d3 - d0, parts=(d1 - d0, d2 - d1, d3 - d2), p0=at(d0), p1=at(d3), ticks=[at(d1), at(d2)])
 
@@ -925,7 +1048,7 @@ def centre_between(a, b):
     """Where the line from a to b crosses a road's centreline, if it does: the middle of the road between them."""
     global ROAD_LINES
     if ROAD_LINES is None:
-        ROAD_LINES = unary_union([l for ls in ROADS.values() for l in ls])
+        ROAD_LINES = unary_union([l for ls in road_axes().values() for l in ls])
     x = LineString([a, b]).intersection(ROAD_LINES)
     if x.is_empty:
         return None
@@ -1582,7 +1705,7 @@ def mini_plan(parcels, blds, existing, RET, sep, k=1.0, big=False, bset=None):
         o.append(f'<text x="{f(c.x)}" y="{-c.y + fsr_dy * k:.2f}" font-size="{5.5 * k:.2f}" font-weight="700" text-anchor="middle" fill="#c0161c" {halo("#e6b0b0")}>FSR {site_yield()[0]:.1f}:1</text>')
         fronts = {norm_road(r_['name']) for q in parcels for r_ in boundary_runs(q['poly']) if r_['kind'] == 'street'}
         fronts |= {norm_road(n_) for n_ in (TOWER or {}).get('setbacks', {}) if norm_road(n_) in ROADS}
-        for name_, mid_line in road_middles(box):                     # each road's middle, where the dimensions across it meet
+        for name_, mid_line in ((nm_, l_) for nm_, ls_ in road_axes().items() for l_ in ls_):   # each road's middle, straight through its junctions
             if norm_road(name_) not in fronts:
                 continue
             g_ = mid_line.intersection(box)
