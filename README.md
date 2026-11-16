@@ -2038,7 +2038,8 @@ Crown Street lots across the lane as sketched, a tower on
 107-113 Crown St and an L on 115-129 Crown St, both 14 storeys, every other
 neighbour as it stands; a fifth the same two sites with three towers, the
 second site carrying two 12 m wide, one on its northern boundary and one at
-its southern end. That file sets
+its southern end; a sixth the first tower again with an L on 121-129 Crown
+St alone, 115-119 Crown St between them standing as it is. That file sets
 `"deck": "two-sheet"`: each scenario prints as two sheets, its geometry
 (`future-option-<n>.png`) and its view from the sun (`future-sun-<n>.png`:
 the sun's-eye view at each whole hour from 9 to 3, large, beside the share
@@ -2095,7 +2096,8 @@ ticks, the figure along the line), write each building's FSR inside it,
 and draw a typical floor in every tower: ours as the plans divide it
 into apartments, a neighbour's as the 8 m bays the sun study reads, a
 deep plate's as a grid square to its street faces: apartments 9 m deep on
-each, the core between, a party wall every 9 m or so.
+each, the core between, a party wall every 9 m or so; a plate whose outline
+is cut at an angle takes no square grid, and its apartments ring a core.
 `neighbourSetback: adg` in the scenarios file fits every slab or tower above
 its podium that far off its neighbouring lots where the lot is wide enough,
 and builds it to the boundary as a blank party wall where it is not; a

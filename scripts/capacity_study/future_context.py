@@ -725,7 +725,7 @@ def bays_scheme(poly, typ, k, dirs=None):
         segs.append((m0, m1))                                         # the corridor, wall to wall
     o = []
     if typ == 'plate':
-        # a deep plate's floor, square to the side of it that runs with a street: apartments on each street face,
+        # a deep plate's floor, where its outline is square, square to the side of it that runs with a street: apartments on each street face,
         # 9 m deep where the plate is deep enough, the core between them (halved where it is over 12 m), and a party
         # wall across every 9 m or so; where a side is cut at an angle the grid stays square and is clipped to it
         ring = list(poly.exterior.coords)
@@ -737,6 +737,26 @@ def bays_scheme(poly, typ, k, dirs=None):
         p0, p1 = next((e for e in edges if math.dist(*e) > 4 and with_street(e)), edges[0])
         L_ = math.dist(p0, p1)
         ux, uy = (p1[0] - p0[0]) / L_, (p1[1] - p0[1]) / L_
+        def square(e):                                                # an edge that runs with that side or square to it
+            L_e = math.dist(*e)
+            t = math.degrees(math.atan2((e[1][1] - e[0][1]) * ux - (e[1][0] - e[0][0]) * uy, (e[1][0] - e[0][0]) * ux + (e[1][1] - e[0][1]) * uy)) % 90
+            return L_e < 4 or min(t, 90 - t) < 10
+        if not all(square(e) for e in edges):
+            # a plate cut at an angle takes no square grid: its apartments ring a core, a party wall from the outline
+            # to the core every 9.5 m or so of it
+            deep = min(12.0, 0.36 * min(e01, e12))
+            core = poly.buffer(-deep, join_style=2)
+            if core.is_empty:
+                return o
+            core = largest(core)
+            outline = poly.exterior
+            n_ = max(4, round(outline.length / 9.5))
+            o.append(f'<path d="{path(core)}" fill="none" stroke="#333" stroke-opacity=".45" stroke-width="{0.3 * k:.2f}"/>')
+            for i in range(n_):
+                a = outline.interpolate((i + 0.5) * outline.length / n_)
+                b = core.exterior.interpolate(core.exterior.project(a))
+                o.append(f'<line x1="{f(a.x)}" y1="{f(-a.y)}" x2="{f(b.x)}" y2="{f(-b.y)}" stroke="#333" stroke-opacity=".45" stroke-width="{0.3 * k:.2f}"/>')
+            return o
         along = [(x - p0[0]) * ux + (y - p0[1]) * uy for x, y in ring]
         across = [-(x - p0[0]) * uy + (y - p0[1]) * ux for x, y in ring]
         s0, s1, d0, d1 = min(along), max(along), min(across), max(across)
