@@ -126,7 +126,7 @@ S = sc['site']
 UNIT_GFA = 85
 SITE_UNITS = S.get('units') or 100
 SITE_GFA = S.get('gfaM2') or SITE_UNITS * UNIT_GFA
-FSR_PAR = SITE_GFA / SITE_AREA
+FSR_PAR = S.get('fsr') or SITE_GFA / SITE_AREA                   # our density: as the file states it, else the units' GFA
 EFFICIENCY = 0.75
 
 
@@ -236,10 +236,16 @@ def fit(parcel, spec):
         setback = max(setback, keep)
     if street and 'along' in spec:
         setback = max(setback, street)
+    # `toCentre`: metres from a road's centreline, as a separation across it is shared, half each side
+    centre = {norm_road(k_): v for k_, v in (spec.get('toCentre') or {}).items()}
+    roads_c = {k_: unary_union(road_lines(k_)).intersection(parcel.buffer(40)) for k_ in centre}
+    if 'along' in spec and norm_road(spec['along']) in centre and not roads_c[norm_road(spec['along'])].is_empty:
+        setback = max(setback, centre[norm_road(spec['along'])] - roads_c[norm_road(spec['along'])].distance(Point(o)))
     fp = parcel.intersection(band(o, n, setback, setback + depth))
     runs = boundary_runs(parcel) if keep or street else []
     cut = [r['line'].buffer(keep, cap_style=3, join_style=2) for r in runs if r['kind'] == 'lot' and keep]
     cut += [r['line'].buffer(street, cap_style=3, join_style=2) for r in runs if r['kind'] == 'street' and street]
+    cut += [roads_c[k_].buffer(v) for k_, v in centre.items() if not roads_c[k_].is_empty]
     if cut:
         # square ends, so a corner is cleared too, and no hairline left along a boundary
         fp = largest(fp.difference(unary_union(cut)).buffer(-0.2, join_style=2).buffer(0.2, join_style=2))
@@ -300,6 +306,9 @@ def existing_height(r):
     return H_of(n), n, 'assumed'
 
 
+BUILT = set()
+
+
 def resolve(scn):
     parcels, blds, used = [], [], set()
     for p in scn['parcels']:
@@ -310,7 +319,8 @@ def resolve(scn):
         rows = []
         for b in p['buildings']:
             above = b['type'] not in ('podium', 'consent') and b.get('footprint') != 'lot'
-            lot_keep = b.get('boundary', HALF[adg_band(b.get('storeys') or ASSUMED_STOREYS)][0] if sc.get('neighbourSetback') == 'adg' else 0) if above else 0
+            band_n = 99 if b.get('storeys') == 'parity' else (b.get('storeys') or ASSUMED_STOREYS)
+            lot_keep = b.get('boundary', HALF[adg_band(band_n)][0] if sc.get('neighbourSetback') == 'adg' else 0) if above else 0
             street_keep = b.get('streetBoundary', sc.get('streetSetback', 0) if (b.get('base') or 0) > 0 else 0) if above else 0
             # the ADG's half off every neighbouring lot and the upper-level setback off every street where the lot is
             # wide enough to keep them; where it is not, the slab is built to its side boundaries as blank party
@@ -325,6 +335,14 @@ def resolve(scn):
             n = b.get('storeys') or CONSENT.get(str(prop(p['addresses'][0])['propid'])) or ASSUMED_STOREYS
             base = b.get('base', 0)
             rows.append(dict(poly=fp, n=n, base=base, typ=b['type'], key=p['key'], **info))
+        # `storeys: "parity"`: the slabs and towers rise until the parcel reaches our density, sharing the floor space
+        # the podium leaves
+        dense = [r for r in rows if r['n'] == 'parity']
+        if dense:
+            fixed = sum(r['poly'].area * (r['n'] - r['base']) for r in rows if r['n'] != 'parity')
+            plate = sum(r['poly'].area for r in dense)
+            for r in dense:
+                r['n'] = r['base'] + max(1, math.ceil((FSR_PAR * area / EFFICIENCY - fixed) / plate))
         gba = sum(r['poly'].area * (r['n'] - r['base']) for r in rows)
         gfa = EFFICIENCY * gba
         main = rows[-1]
@@ -337,6 +355,8 @@ def resolve(scn):
                             gfa=gfa, fsr=gfa / area, parity=parity, plate=main['plate'], gap=main['gap'], consent=main['typ'] == 'consent', main_poly=main['poly'],
                             hob=control(HOB, parcel, 'MAX_B_H'), lep_fsr=control(FSR, parcel, 'FSR'), titles=len(p['addresses'])))
         blds += rows
+    global BUILT
+    BUILT = used                                                      # the lots this scenario builds on: not context
     existing = []
     for r in OTHERS:
         if str(r['propid']) in used or str(r['propid']) in retained_for(scn):
@@ -516,8 +536,38 @@ def boundary_setbacks(parcels, blds):
                     v = 'party wall'
                 else:
                     v = 'clear' if d >= hab - 0.05 else 'one face blank' if d >= blank - 0.05 else 'short of a blank face'
-                rows.append(dict(kind=run['kind'], name=run['name'], side=side, d=d, hab=hab, blank=blank, up=up, verdict=v, p0=(q1.x, q1.y), p1=(q2.x, q2.y), key=b['key']))
+                row = dict(kind=run['kind'], name=run['name'], side=side, d=d, hab=hab, blank=blank, up=up, verdict=v, p0=(q1.x, q1.y), p1=(q2.x, q2.y), key=b['key'])
+                if run['kind'] == 'street':                            # to the middle of the road, as across it
+                    lines = ROADS.get(norm_road(run['name'])) or [l for ls in ROADS.values() for l in ls]
+                    road = unary_union(lines)
+                    near = road.intersection(run['line'].buffer(25))
+                    near = near if not near.is_empty else road
+                    c1, c2 = nearest_points(g, near)
+                    row.update(dc=g.distance(near), p0=(c1.x, c1.y), p1=(c2.x, c2.y))
+                rows.append(row)
         out[pc['key']] = rows
+    return out
+
+
+def road_pairs(blds):
+    """Two new buildings across a road from each other, within 32 m: the distance between them split at the road's
+    centreline, judged as the ADG's separation at the lower one's height; rows for the setback table."""
+    mains = [b for b in blds if b['typ'] not in ('podium', 'consent')]
+    out = {}
+    for i, a in enumerate(mains):
+        for b in mains[i + 1:]:
+            if a['key'] == b['key'] or a['poly'].distance(b['poly']) > 32:
+                continue
+            q1, q2 = nearest_points(a['poly'], b['poly'])
+            mid = centre_between((q1.x, q1.y), (q2.x, q2.y))
+            if mid is None:
+                continue
+            d = q1.distance(q2)
+            hab, blank, _ = ADG[adg_band(min(a['n'], b['n']))]
+            v = 'clear' if round(d) >= hab else 'one face blank' if round(d) >= blank else 'short of a blank face'
+            road = min(ROADS, key=lambda nm: min(l.distance(Point(mid)) for l in ROADS[nm]))
+            out.setdefault(a['key'], []).append(dict(kind='pair', name=road.title(), other=b['key'], side='', d=d, a=math.dist((q1.x, q1.y), mid),
+                                                     b=math.dist(mid, (q2.x, q2.y)), hab=hab, blank=blank, verdict=v, p0=(q1.x, q1.y), p1=(q2.x, q2.y), mid=mid, key=a['key']))
     return out
 
 
@@ -533,19 +583,23 @@ def bounds_text(rows):
     for r in rows:
         if r['kind'] == 'street' and ((r['name'], r['side']) not in near or r['d'] < near[(r['name'], r['side'])]['d']):
             near[(r['name'], r['side'])] = r
-    rows = [r for r in rows if r['kind'] == 'lot'] + list(near.values())
+    rows = [r for r in rows if r['kind'] in ('lot', 'pair')] + list(near.values())
     for r in rows:
-        if r['kind'] == 'lot':
+        if r['kind'] == 'pair':
+            mark = {'clear': '✓', 'one face blank': 'one face blank', 'short of a blank face': f'✗ needs {r["blank"]:g}'}[r['verdict']]
+            worst = max(worst, {'clear': 0, 'one face blank': 1, 'short of a blank face': 2}[r['verdict']])
+            bits.append(f'<span style="color:{BOUND_COLOUR[r["verdict"]]}">{r["other"]} across {r["name"]} {r["d"]:.0f} m ({r["a"]:.0f} + {r["b"]:.0f}) {mark}</span>')
+        elif r['kind'] == 'lot':
             mark = {'clear': '✓', 'one face blank': 'blank face', 'party wall': 'party wall, blank', 'short of a blank face': f'✗ needs {r["blank"]:g}'}[r['verdict']]
             worst = max(worst, {'clear': 0, 'one face blank': 1, 'party wall': 1, 'short of a blank face': 2}[r['verdict']])
             bits.append(f'<span style="color:{BOUND_COLOUR[r["verdict"]]}">{r["side"]} {r["d"]:.0f} m {mark}</span>')
         elif r['verdict'] == 'street flush':
             worst = max(worst, 1)
-            bits.append(f'<span style="color:{BOUND_COLOUR["street flush"]}">{r["name"]} {r["d"]:.0f} m, short of {r["up"]:g}</span>')
+            bits.append(f'<span style="color:{BOUND_COLOUR["street flush"]}">{r["name"]} {r.get("dc", r["d"]):.0f} m to its centre, {r["d"]:.0f} m to the boundary, short of {r["up"]:g}</span>')
         elif r['verdict'] == 'street ok':
-            bits.append(f'<span style="color:{BOUND_COLOUR["street ok"]}">{r["name"]} {r["d"]:.0f} m ✓</span>')
+            bits.append(f'<span style="color:{BOUND_COLOUR["street ok"]}">{r["name"]} {r.get("dc", r["d"]):.0f} m to its centre ✓</span>')
         else:
-            bits.append(f'<span style="color:#888">{r["name"]} {r["d"]:.0f} m</span>')
+            bits.append(f'<span style="color:#888">{r["name"]} {r.get("dc", r["d"]):.0f} m to its centre</span>')
     return ' · '.join(bits), worst
 
 
@@ -556,15 +610,23 @@ def bound_dims(rows, k, big):
     for r in rows:
         if r['kind'] == 'street' and ((r['name'], r['side']) not in near or r['d'] < near[(r['name'], r['side'])]['d']):
             near[(r['name'], r['side'])] = r
-    rows = [r for r in rows if r['kind'] == 'lot'] + list(near.values())
+    rows = [r for r in rows if r['kind'] in ('lot', 'pair')] + list(near.values())
+    fs = (5.2 if big else 4.6) * k
+    label = lambda x, y, t, col: f'<text x="{f(x)}" y="{-y + 1.6 * k:.2f}" font-size="{fs:.2f}" font-weight="700" text-anchor="middle" fill="{col}" paint-order="stroke" stroke="#fff" stroke-width="{1.5 * k:.2f}">{t}</text>'
     for r in rows:
-        if r['d'] < 0.5:
+        if r['kind'] == 'lot' and r['d'] < 0.5:
             continue
         col = BOUND_COLOUR[r['verdict']]
         (ax, ay), (bx, by) = r['p0'], r['p1']
         dash = ' stroke-dasharray="1.2 0.8"' if r['verdict'] == 'street' else ''
         o.append(f'<line x1="{f(ax)}" y1="{f(-ay)}" x2="{f(bx)}" y2="{f(-by)}" stroke="{col}" stroke-width="{0.9 * k:.2f}"{dash}/>')
-        o.append(f'<text x="{f((ax + bx) / 2)}" y="{-(ay + by) / 2 + 1.6 * k:.2f}" font-size="{(5.2 if big else 4.6) * k:.2f}" font-weight="700" text-anchor="middle" fill="{col}" paint-order="stroke" stroke="#fff" stroke-width="{1.5 * k:.2f}">{r["d"]:.0f} m</text>')
+        if r['kind'] == 'pair':                                       # each half to the middle of the road
+            mx, my = r['mid']
+            o.append(f'<circle cx="{f(mx)}" cy="{f(-my)}" r="{0.9 * k:.2f}" fill="{col}"/>')
+            o.append(label((ax + mx) / 2, (ay + my) / 2, f'{r["a"]:.0f} m', col))
+            o.append(label((mx + bx) / 2, (my + by) / 2, f'{r["b"]:.0f} m', col))
+        else:
+            o.append(label((ax + bx) / 2, (ay + by) / 2, f'{r.get("dc", r["d"]):.0f} m', col))
     return o
 
 def face_gap(poly, parcel):
@@ -600,7 +662,30 @@ def face_gap(poly, parcel):
     d2 = min(max(d2, d1), d3)                                         # their boundary lies between ours and their face
     sm = (lo + hi) / 2
     at = lambda dv: (p[0] + u[0] * sm + n[0] * dv, p[1] + u[1] * sm + n[1] * dv)
+    mid = centre_between(at(d0), at(d3))
+    if mid is not None:
+        dc = out(mid)
+        return dict(total=d3 - d0, parts=(dc - d0, 0.0, d3 - dc), p0=at(d0), p1=at(d3), ticks=[at(dc), at(dc)], centre=True)
     return dict(total=d3 - d0, parts=(d1 - d0, d2 - d1, d3 - d2), p0=at(d0), p1=at(d3), ticks=[at(d1), at(d2)])
+
+
+ROAD_LINES = None
+
+
+def centre_between(a, b):
+    """Where the line from a to b crosses a road's centreline, if it does: the middle of the road between them."""
+    global ROAD_LINES
+    if ROAD_LINES is None:
+        ROAD_LINES = unary_union([l for ls in ROADS.values() for l in ls])
+    x = LineString([a, b]).intersection(ROAD_LINES)
+    if x.is_empty:
+        return None
+    pts = [g for g in getattr(x, 'geoms', [x]) if g.geom_type == 'Point']
+    if not pts:
+        return None
+    m = Point((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)
+    q = min(pts, key=lambda g: g.distance(m))
+    return (q.x, q.y)
 
 
 def short(base):
@@ -783,8 +868,12 @@ def plan(scn, parcels, blds, existing, RET, sep, bset=None):
         for r in rows:
             if r['kind'] == 'street' and ((r['name'], r['side']) not in near or r['d'] < near[(r['name'], r['side'])]['d']):
                 near[(r['name'], r['side'])] = r
-        for r in [r for r in rows if r['kind'] == 'lot'] + list(near.values()):
-            if r['d'] >= 0.5:
+        for r in [r for r in rows if r['kind'] in ('lot', 'pair')] + list(near.values()):
+            if r['kind'] == 'pair':
+                dim(*r['p0'], *r['p1'], BOUND_COLOUR[r['verdict']], f'{r["d"]:.0f} m', f'{r["a"]:.0f} + {r["b"]:.0f}', [r['mid']])
+            elif r['kind'] == 'street':
+                dim(*r['p0'], *r['p1'], BOUND_COLOUR[r['verdict']], f'{r.get("dc", r["d"]):.0f} m')
+            elif r['d'] >= 0.5:
                 dim(*r['p0'], *r['p1'], BOUND_COLOUR[r['verdict']], f'{r["d"]:.0f} m')
     o += label_roads()
     o.append('</g>')
@@ -1056,7 +1145,7 @@ def export_scene(no, blds, existing, RET, sep, parcels=(), scn_parcels=()):
     in_blocks = {str(r['propid']) for b in BLOCKS for r in b}
     low = math.tan(math.radians(17))                                  # the mid-winter sun at nine, with a margin
     for pid, r in PROPS.items():
-        if r.get('isSite') or pid in in_blocks or not measured(r):
+        if r.get('isSite') or pid in in_blocks or pid in BUILT or not measured(r):
             continue
         # the study window's buildings, and beyond it every one tall enough to reach the site with its shadow on
         # the mid-winter morning or afternoon (the tiles read what stands up to 300 m off, north, east and west)
@@ -1157,7 +1246,7 @@ MINI_PAD = 26          # metres of context round the study on the summary's plan
 
 def context_buildings(reach):
     """The window's other measured buildings within `reach` metres of the study: what stands round it today."""
-    skip = {str(r['propid']) for b in BLOCKS for r in b} | {str(SITE['propid'])}
+    skip = {str(r['propid']) for b in BLOCKS for r in b} | {str(SITE['propid'])} | BUILT
     return [(r['poly'], storeys_of(r), measured(r)) for pid, r in PROPS.items() if pid not in skip and measured(r) and r['poly'].intersects(study.buffer(reach))]
 
 
@@ -1166,9 +1255,15 @@ def mini_plan(parcels, blds, existing, RET, sep, k=1.0, big=False, bset=None):
     drawn with their metres, every standing building with its storeys. `k` scales the text and lines (1 for the
     summary's small plans, less for a sheet's); `big` adds the street names, the plates, a scale bar and north."""
     x0, y0, x1, y1 = WX0 - MINI_PAD, WY0 - MINI_PAD, WX1 + MINI_PAD, WY1 + MINI_PAD
+    if parcels:                                                       # a scenario that builds beyond the study blocks
+        bx = unary_union([q['poly'] for q in parcels]).bounds
+        x0, y0, x1, y1 = min(x0, bx[0] - 8), min(y0, bx[1] - 8), max(x1, bx[2] + 8), max(y1, bx[3] + 8)
     box = Polygon([(x0, y0), (x1, y0), (x1, y1), (x0, y1)])
-    o = [f'<svg viewBox="{f(x0)} {f(-y1)} {f(x1 - x0)} {f(y1 - y0)}" xmlns="http://www.w3.org/2000/svg"><rect x="{f(x0)}" y="{f(-y1)}" width="{f(x1 - x0)}" height="{f(y1 - y0)}" fill="#f4f2ef"/>']
+    o = [f'<svg viewBox="{f(x0)} {f(-y1)} {f(x1 - x0)} {f(y1 - y0)}" xmlns="http://www.w3.org/2000/svg" style="overflow:hidden"><rect x="{f(x0)}" y="{f(-y1)}" width="{f(x1 - x0)}" height="{f(y1 - y0)}" fill="#f4f2ef"/>']
     for g, n, h in context_buildings(MINI_PAD + 20):
+        if not g.intersects(box):
+            continue
+        g = g.intersection(box)
         o.append(f'<path d="{path(g)}" fill="#dcdcdc" stroke="#bbb" stroke-width="{0.3 * k:.2f}"/>')
         if g.area >= 120:
             c = g.representative_point()
@@ -1210,7 +1305,13 @@ def mini_plan(parcels, blds, existing, RET, sep, k=1.0, big=False, bset=None):
         col = VERDICT_COLOUR[v]
         (ax, ay), (bx, by) = (geo['p0'], geo['p1']) if 'total' in geo else ((geo['diag'][0].x, geo['diag'][0].y), (geo['diag'][1].x, geo['diag'][1].y))
         o.append(f'<line x1="{f(ax)}" y1="{f(-ay)}" x2="{f(bx)}" y2="{f(-by)}" stroke="{col}" stroke-width="{1.1 * k:.2f}"/>')
-        if geo['new'] or big:
+        if big and geo.get('centre'):                                  # to the middle of the road, each half
+            (mx, my) = geo['ticks'][0]
+            a_, _, b_ = geo['parts']
+            o.append(f'<circle cx="{f(mx)}" cy="{f(-my)}" r="{1.0 * k:.2f}" fill="{col}"/>')
+            for (x_, y_), t_ in ((((ax + mx) / 2, (ay + my) / 2), a_), (((mx + bx) / 2, (my + by) / 2), b_)):
+                o.append(f'<text x="{f(x_)}" y="{-y_ - 1.5 * k:.2f}" font-size="{5.5 * k:.2f}" font-weight="700" text-anchor="middle" fill="{col}" paint-order="stroke" stroke="#fff" stroke-width="{1.6 * k:.2f}">{t_:.0f} m</text>')
+        elif geo['new'] or big:
             o.append(f'<text x="{f((ax + bx) / 2)}" y="{-(ay + by) / 2 - 1.5 * k:.2f}" font-size="{5.5 * k:.2f}" font-weight="700" text-anchor="middle" fill="{col}" paint-order="stroke" stroke="#fff" stroke-width="{1.6 * k:.2f}">{d:.0f} m</text>')
     if big and bset:
         for rows in bset.values():
@@ -1528,6 +1629,8 @@ def page(no, scn):
     RET = retained_for(scn)
     sep = separation(blds, existing, RET, parcels)
     bset = boundary_setbacks(parcels, blds)
+    for key_, rows_ in road_pairs(blds).items():
+        bset.setdefault(key_, []).extend(rows_)
     flags = flags_for()
     sun_rows, sun = export_scene(no, blds, existing, RET, sep, parcels, scn['parcels']), read_sun(no)
     def parts(geo):
