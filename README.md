@@ -1375,7 +1375,7 @@ palette.
   hillshade under them.
 - **3D views: a line model**, after an architect's axonometric
   (`src/render/axonometric.ts`, `LINE`):
-  - the massing views (the yield's, its cover's, the report's built form)
+  - the massing views (the yield's and the report's built form)
     are black and white, with no colour at all, the accent included:
     whatever ink or fill they are given goes to the grey of its own
     lightness (`greyOf`), the site is a black dash-dot boundary on the
@@ -2218,14 +2218,43 @@ lists each neighbour's reading.
 
 ### The cover and the booklet
 
-Both decks open on a cover (`coverPage` in `src/render/slides.ts`), page 1 of
-the deck, so the spreads after it are numbered from 2. Its right half is the
-front: the wordmark and the deck's name, the address in the style's accent, the
-lot, zone, height and ratio (the yield adds what the controls give and what the
-scheme reshaped to comply gives), and the date and style, over a drawing of the
-site — the report's the character aerial with the lot marked, the yield's the
-axonometric of the envelope. Its left half is the back: the contents, a line a
-spread, and the colophon (what the data is and is not, and the credit).
+Both decks open on a cover, page 1 of the deck, so the spreads after it are
+numbered from 2. There are two covers, for the two ways a deck is read
+(`src/render/slides.ts`, after Z.'s layouts of 2026-11):
+
+- **The slides' cover** (`coverPage`) is one composition across the A3 spread,
+  in every style: the SITE ANALYST mark over a rule, the deck's name in two
+  lines of 27 mm capitals (SITE / REPORT, PLANNING / YIELD), a rule, the site's
+  street and suburb with its lot, area and zone beside it, then the picture
+  (303 by 182 mm) with the contents down its right, a number and a title a
+  spread. The small print (what the deck is and is not, who made it and on
+  which day) sits top right.
+- **The booklet's cover** (`bookletCover`) is the spread cut in two down the
+  fold, its right half the front and its left the back. Flamingo and Kingfisher
+  have the picture on the front, under the mark, the name and the site, to the
+  page's edges; their back carries the deck's name, the site and the contents.
+  Heron and Canary have no picture (`coverHasPicture`): the contents are on the
+  front, under the name and the site, and the back carries the deck's name and
+  the site alone. Every back closes on the small print in two columns.
+
+The picture is the place's canopy (`src/lib/coverPicture.ts`): the green of the
+aerial (trees, gardens and lawns, the same reading the report's green page and
+the yield's crowns come from) cut into cells some 1.6 m across and drawn at
+1:2000, 0.8 mm a cell, the site in the middle, in a blue-grey on a pale sage.
+It is the grain of the place, not a map of it: no site mark, no streets. The
+cells are traced into one vector outline, so nothing in it is a raster for a
+viewer to smooth, and Heron, black and white and its one colour, inks it in the
+two colours' greys.
+- The report cuts the cells from its `vegetation_mask.png` each time it is
+  drawn (`prepareRasters`); the yield's pipeline cuts them from the reading it
+  takes for the crowns and keeps them in the bundle (`cover`).
+- A deck with no reading of the aerial draws the trees it does hold as their
+  crowns in the same cells; with no trees either, the picture is its ground.
+- A reading that stops short of the picture at 1:2000 is drawn closer in; one
+  read coarsely (a very wide site) is never drawn finer than it was read.
+
+`npx tsx test/covers.mts` checks the cells, the outline (its area the cells'
+own, holes and corners included) and which style's cover carries what.
 
 Each deck is also imposed as a booklet (`src/render/booklet.ts`), kept beside
 its PDF as `PLANNING_YIELD.booklet.pdf` or `OVERALL_ANALYSIS.booklet.pdf`. Each
@@ -2245,16 +2274,18 @@ in the fold, under the staples. The booklet prints its own version of such a
 spread, in which the drawing slides sideways within its frame until the site's
 outline is 22 mm clear of the fold (the shorter way, to the right where the two
 are even); the heading, lead, key and sources stay where they are. In the report
-that is *Built form* (09b), the city drawn round the site:
-- `renderSlides` returns these spreads as `booklet`: their HTML, and the deck
-  page each stands in for.
+that is *Built form* (09b), the city drawn round the site. The booklet's cover
+is printed the same way, in place of the slides' cover:
+- `renderSlides` and `renderYieldDeck` return these spreads as `booklet`: their
+  HTML, and the deck page each stands in for (0 the cover).
 - `printBooklet` (`src/render/pdf.ts`) prints them beside the deck as
-  `OVERALL_ANALYSIS.booklet-spreads.pdf` (with its HTML and PNG), then imposes
-  the booklet with them in place.
+  `OVERALL_ANALYSIS.booklet-spreads.pdf` or `PLANNING_YIELD.booklet-spreads.pdf`
+  (with its HTML and PNGs), then imposes the booklet with them in place.
 - The deck's own page is left out of the booklet altogether.
 
 The A3 slides keep the drawing as it was. A deck imposed on demand by the
-server (one drawn before this) has none of these spreads. Each half is the spread's
+server (one drawn before this) has none of these spreads: its booklet folds the
+deck's own first page round it. Each half is the spread's
 own page, drawn once into the booklet and shown through a window, so the
 booklet is hardly larger than the deck. The CLI and `scripts/recompose.ts`
 impose it after the deck; `npx tsx test/booklet.mts` checks the order and reads

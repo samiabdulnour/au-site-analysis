@@ -150,14 +150,15 @@ if (sheetType === 'yield') {
   console.log('composing planning yield…');
   // A3 spreads, as the site report prints: a page a path, each its own PNG too.
   const yieldHtmlPath = join(outDir, 'yield_deck.html');
-  await writeFile(yieldHtmlPath, renderYieldDeck(yb, meta).html);
+  const yieldDeck = renderYieldDeck(yb, meta);
+  await writeFile(yieldHtmlPath, yieldDeck.html);
   const yieldPdfPath = join(outDir, 'PLANNING_YIELD.pdf');
   const yieldPngs = await printSlides(yieldHtmlPath, yieldPdfPath, join(outDir, 'yield'), { widthMm: SLIDE_W, heightMm: SLIDE_H });
   const csvPath = join(outDir, 'PLANNING_YIELD.csv'), jsonPath = join(outDir, 'PLANNING_YIELD.json');
   await writeFile(csvPath, yieldCsv(yb));
   await writeFile(jsonPath, yieldJson(yb));
   // the booklet beside it, for printing double-sided on A3 and folding into an A4 booklet (src/render/booklet.ts)
-  const yieldBooklet = await printBooklet(yieldPdfPath, undefined, { widthMm: SLIDE_W, heightMm: SLIDE_H });
+  const yieldBooklet = await printBooklet(yieldPdfPath, yieldDeck.booklet, { widthMm: SLIDE_W, heightMm: SLIDE_H });
   outputs.push(yieldPdfPath, yieldBooklet, ...yieldPngs, csvPath, jsonPath);
 }
 

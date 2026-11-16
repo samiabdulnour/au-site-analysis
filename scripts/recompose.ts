@@ -53,7 +53,7 @@ let html: string;
 let booklet: BookletSpreads | undefined;
 if (sheet === 'yield') {
   const { yb, meta } = deserialize(await readFile(join(outDir, 'yield.bundle')));
-  html = renderYieldDeck(yb, meta, opts).html;
+  ({ html, booklet } = renderYieldDeck(yb, meta, opts));
 } else {
   const { sb, meta } = deserialize(await readFile(join(outDir, 'slides.bundle')));
   // a bundle kept before a scale change takes the current scales (its data covers the wider window)

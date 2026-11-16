@@ -19,7 +19,7 @@
 import { esc } from './chrome.js';
 import { tpl, withTemplate, templateFor, deckLook, tint, inkFor, vivid, type DeckLook } from './template.js';
 import { shortStreetName, type SheetMeta } from './sheet.js';
-import { atlasPage, coverPage, coverDate, COVER_CREDIT, deckCss, zFlow, zBlock, zTable, brief, MAP_FONT, type Slide, type DeckRenderOptions } from './slides.js';
+import { atlasPage, coverPage, bookletCover, coverSite, coverCredit, type Cover, type DeckHtml, deckCss, zFlow, zBlock, zTable, brief, MAP_FONT, type Slide, type DeckRenderOptions } from './slides.js';
 import { drawAxonometric, shade, type AxoScene, type Prism } from './axonometric.js';
 import { INK, zFigures, zBars, niceAxis, fillShape, categoryFill, massingInks, type Fill } from './atlasKit.js';
 import { zoneToCategory } from './model.js';
@@ -29,6 +29,7 @@ import { panelFurniture, furnitureBox, type LegendEntry } from './minimap.js';
 import { estimateKerbs, type KerbLine } from '../lib/kerbs.js';
 import type { RoadLine } from '../lib/carriageway.js';
 import type { YieldTree } from '../lib/crowns.js';
+import { coverCellsFromTrees, type CoverCells } from '../lib/coverPicture.js';
 import type { SummaryData } from './summarySheet.js';
 import type { TopoRoad } from '../fetch/nswTopo.js';
 import type { AerialResult } from '../fetch/imagery.js';
@@ -91,6 +92,8 @@ export interface YieldBundle extends SummaryData {
   aerial?: AerialResult | null;
   /** The trees round about, for the massing: crowns read off the aerial's green (lib/crowns.ts), and the trees a council or OpenStreetMap records. A bundle from before them has none. */
   trees?: YieldTree[];
+  /** The place's canopy in the cover's cells (lib/coverPicture.ts), from the same reading of the aerial's green as the crowns. A bundle from before it has none: its cover draws the trees. */
+  cover?: CoverCells;
   /** What stands on the site today: each building whose centroid is inside the boundary. A bundle from before them has none. */
   existing?: ExistingBuilding[];
   /** The LEP's heritage items round about (not its conservation areas), for the shadow the scheme adds: their outlines (lon/lat) and names. A bundle from before them has none, and the shadow on them is not measured. */
@@ -2062,11 +2065,11 @@ function controlsSlide(b: YieldBundle, s: YieldStudy, n: number): Slide {
 }
 
 /** The planning yield as a deck: the A3 spreads of the site report, in one of the maps' styles (the active template's where unnamed). */
-export function renderYieldDeck(b: YieldBundle, meta: SheetMeta, opts: DeckRenderOptions = {}): { html: string; slides: Slide[] } {
+export function renderYieldDeck(b: YieldBundle, meta: SheetMeta, opts: DeckRenderOptions = {}): DeckHtml {
   return withTemplate(templateFor('yield', opts.theme ?? tpl().id), () => drawYieldDeck(b, meta));
 }
 
-function drawYieldDeck(b: YieldBundle, _meta: SheetMeta): { html: string; slides: Slide[] } {
+function drawYieldDeck(b: YieldBundle, _meta: SheetMeta): DeckHtml {
   const s = yieldStudy(b);
   const paths = pathsOf(b, s);
   const slides: Slide[] = [overviewSlide(b, s, paths)];
@@ -2077,34 +2080,33 @@ function drawYieldDeck(b: YieldBundle, _meta: SheetMeta): { html: string; slides
   drawn.forEach((p) => slides.push(p.y ? schemeSlide(b, s, p, slides.length + 1, last) : standingSlide(b, s, paths, slides.length + 1)));
   tested.forEach((t, i) => slides.push(complianceSheet(b, s, t, slides.length + 1, last, i === 0)));
   slides.push(controlsSlide(b, s, slides.length + 1));
-  const html = `<!DOCTYPE html>
-<html lang="en"><head><meta charset="utf-8"><title>${esc(b.siteAddress)} — PLANNING YIELD</title>
+  const cover = yieldCover(b, slides);
+  const shell = (title: string, body: string) => `<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>${esc(b.siteAddress)} — ${title}</title>
 <style>
 ${deckCss()}${YIELD_CSS}</style></head>
-<body>${yieldCover(b, s, slides)}
-${slides.map((sl, i) => atlasPage(sl, i)).join('\n')}</body></html>`;
-  return { html, slides };
+<body>${body}</body></html>`;
+  const html = shell('PLANNING YIELD', `${coverPage(cover)}\n${slides.map((sl, i) => atlasPage(sl, i)).join('\n')}`);
+  // the booklet's own cover, cut in two down the fold: it stands in for the deck's first page (src/render/booklet.ts)
+  return { html, slides, booklet: { html: shell('PLANNING YIELD BOOKLET SPREADS', bookletCover(cover)), spreads: [0] } };
 }
 
-/** The yield's cover: the massing within the controls on the front, under the name; the contents and colophon on the back. */
-function yieldCover(b: YieldBundle, s: YieldStudy, slides: Slide[]): string {
-  const y = s.noScheme ? undefined : s.base, A = b.siteAreaSqm ?? 0, c = b.controls;
-  const axo = axonometric(b, s, { x: 0, y: 100, w: PAGE_W, h: PAGE_H - 100 }, { y }, 'cover');
-  const hero = `<svg width="${PAGE_W}mm" height="${PAGE_H}mm" viewBox="0 0 ${PAGE_W} ${PAGE_H}" xmlns="http://www.w3.org/2000/svg" font-family="${tpl().font}" fill="${tpl().ink}">${axo}</svg>`;
-  return coverPage({
+/** The yield's cover: its name, the site with its lot and zone, the place's canopy, the contents and the small print. */
+function yieldCover(b: YieldBundle, slides: Slide[]): Cover {
+  const A = b.siteAreaSqm ?? 0, c = b.controls;
+  const ring = b.siteRing, centre = { lon: ring.reduce((t, p) => t + p[0], 0) / Math.max(1, ring.length), lat: ring.reduce((t, p) => t + p[1], 0) / Math.max(1, ring.length) };
+  return {
     deck: 'Planning yield',
-    name: b.siteAddress,
+    site: coverSite(b.siteAddress),
     details: [
       [b.lotDescription && b.lotDescription !== '—' ? b.lotDescription : '', A ? area(A) : ''].filter(Boolean).join(' · '),
-      [c.zoneCode && `${c.zoneCode}${c.zonePurpose ? ` ${c.zonePurpose}` : ''}`, s.hob ? `HOB ${s.hob.rl ? `RL ${fmt(s.hob.value, 1)}` : m1(s.hob.value)}` : '', c.fsr ? `FSR ${c.fsr.toFixed(2)}:1` : ''].filter(Boolean).join(' · '),
-      y?.gfa ? `within the controls ${area(y.gfa)}${y.units.total ? ` · ${fmt(y.units.total)} apartments` : ''}${s.reshaped ? ` · reshaped to comply ${area(s.reshaped.y.gfa)}` : ''}` : '',
+      c.zoneCode ? `${c.zoneCode}${c.zonePurpose ? ` ${c.zonePurpose}` : ''}` : '',
     ].filter(Boolean),
-    date: `${coverDate(b.generatedAt)} · ${tpl().label}`,
-    hero,
-    accent: inks().accent,
     contents: slides.map((sl, i) => ({ n: String(i + 1).padStart(2, '0'), title: sl.title })),
-    colophon: [NOT_A_DESIGN, COVER_CREDIT],
-  });
+    note: NOT_A_DESIGN,
+    credit: coverCredit(b.generatedAt),
+    picture: b.cover ?? coverCellsFromTrees(b.trees ?? [], centre),
+  };
 }
 
 /** The yield's tables, in the atlas pages' type: 6 pt grey heads, 7.5 pt rows, hairlines. */

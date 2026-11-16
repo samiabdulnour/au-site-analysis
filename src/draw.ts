@@ -92,11 +92,12 @@ async function drawBody(spec: SheetSpec, outDir: string, log: (m: string) => voi
     const yb = await runYieldPipeline(spec.address, { outDir, log });
     log('composing planning yield…');
     const htmlPath = join(outDir, 'yield_deck.html');
-    await writeFile(htmlPath, renderYieldDeck(yb, meta).html);
+    const deck = renderYieldDeck(yb, meta);
+    await writeFile(htmlPath, deck.html);
     log('printing PDF…');
     const pdfPath = join(outDir, 'PLANNING_YIELD.pdf');
     await printSlides(htmlPath, pdfPath, join(outDir, 'yield'), { widthMm: SLIDE_W, heightMm: SLIDE_H }, previewOf(outDir), log);
-    await booklet(pdfPath, log);
+    await booklet(pdfPath, log, deck.booklet);
     // Like the summary it replaces, a table: CSV for Excel, JSON for the numbers behind it.
     const csvPath = join(outDir, 'PLANNING_YIELD.csv');
     await writeFile(csvPath, yieldCsv(yb));
