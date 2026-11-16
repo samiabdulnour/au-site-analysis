@@ -2414,8 +2414,12 @@ const atlasSub = (b: SlidesBundle, ...rest: (string | undefined | false | null)[
   const lga = b.context.lga?.name ? titleCase(b.context.lga.name) : '';
   return [`${b.siteAddress}${lga ? ` ${lga}` : ''}`, ...rest].filter(Boolean).join(' · ');
 };
-/** The left page's column of blocks, from under the second rule. */
-export const zFlow = (blocks: string[], top = 44) => `<div class="zflow" style="top:${top}mm">${blocks.join('')}</div>`;
+/**
+ * The left page's column of blocks, from under the second rule. `keepBase` marks a column with no key under it that
+ * may hold more rows than its page (the yield's assumptions): the printer closes its rows up to keep it to the page's
+ * last line (render/pdf.ts, FIT_BOXES).
+ */
+export const zFlow = (blocks: string[], top = 44, keepBase = false) => `<div class="zflow"${keepBase ? ' data-keep-base' : ''} style="top:${top}mm">${blocks.join('')}</div>`;
 export const zBlock = (head: string, body: string, right?: string) => `<div class="zblk">${zHead(head, right)}${body}</div>`;
 /** The template's rows: a 6 pt label, an 8 pt value, a hairline under each; a grey 6 pt note under the value. */
 export const zTable = (rows: { label: string; value: string | string[]; note?: string; dim?: boolean }[]) =>

@@ -1589,9 +1589,11 @@ site may take, so a site with more paths has more pages:
    none), building separation (3F-1) and yield (its floor area against the
    most the controls allow it); the sun on each facade and the roof, by the
    way each looks, its area, its average hours and the share with the hours
-   asked, today and built out; each building near and its separation, today
-   and built out; and, on the first sheet, the criteria as the sheet reads
-   them. On the right the massing twice, side by side and close on the
+   asked, today and built out; and each building near and its separation,
+   today and built out. Three tables and no more, so the column ends above
+   the page's key: how each criterion is read stands with the assumptions on
+   the last spread, and the head of each sheet's criteria names that page.
+   On the right the massing twice, side by side and close on the
    building, from the street corner and from the opposite one, so every face
    is seen, the town round it a white model (neighbours, futures, trees,
    traffic and ground in white and greys) so only the scheme's colours read:
@@ -1610,9 +1612,25 @@ site may take, so a site with more paths has more pages:
    amber where it holds only habitable to non-habitable, red short).
 10. **Controls and assumptions** — the assumptions the study rests on (floor
    to floor, efficiencies, the mix, the plates, the parking rates, the nearest
-   station) on the left; on the right, the full table the office's
+   station) on the left and, under them where the deck has compliance
+   sheets, the assessment criteria as those sheets read them (overshadow
+   impact, solar access, building separation, yield, and the neighbours built
+   out); on the right, the full table the office's
    development summary (DA 002) keeps — CONTROLS, PROPOSED and COMPLIANCE for
    the LEP, the parking, the Apartment Design Guide and the Housing SEPP.
+
+A page's text column has to end above its key. The criteria once stood under
+the first compliance sheet's three tables, where the page has no room for
+them: at 2–4 Culworth Avenue, Killara, their last rows were printed through
+the key's. The printer measures the columns once they are laid out
+(`fitSlides()` in `src/render/pdf.ts`): a yield spread's tables close up, to
+four fifths of their size at most, where they would reach the key, and the
+last spread's rows where they would pass the page's last line; a column that
+still stands on its key is named in the log (`WARN page …: its text column
+runs … mm into its key`) rather than printed without a word.
+`npx tsx test/print-check.mts` lays a made-up deck out in each style and
+checks that every column keeps to its page, and that the criteria put back
+where they stood are caught.
 
 Each drawn path's right page is its indicative massing as an axonometric,
 seen from the main street's corner, among the neighbours at their recorded

@@ -291,8 +291,16 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
     JSON.stringify(scenarioRows(bundle, s).map((r) => r.sun)));
   const comp = page('07_within_controls_compliance');
   // the apartments' panels on the massing (axonometric cells, outlined at 0.07), and the key's yellow
-  check('compliance: one sheet an option, titled for it, the criteria only on the first', comp.title === 'Within the controls: compliance' && page('09_affordable_bonus_compliance').title === 'Affordable bonus: compliance'
-    && /Assessment criteria/.test(comp.figureHtml) && !/Assessment criteria/.test(page('09_affordable_bonus_compliance').figureHtml));
+  check('compliance: one sheet an option, titled for it', comp.title === 'Within the controls: compliance' && page('09_affordable_bonus_compliance').title === 'Affordable bonus: compliance');
+  // How each criterion is read stands with the assumptions, on the last spread, whose column has the room: under a
+  // compliance sheet's three tables it ran into the key (2–4 Culworth Avenue, Killara). Each sheet's criteria name that page.
+  const sheets = all.slides.filter((sl) => /_compliance$/.test(sl.id)), assumed = page('11_controls_and_assumptions');
+  check('compliance: how the criteria are read is said once, after the assumptions, and on no compliance sheet', (all.html.match(/Assessment criteria/g) ?? []).length === 1
+    && /The assumptions<\/span>.*Assessment criteria<\/span>/.test(assumed.figureHtml) && sheets.length === 4 && sheets.every((sl) => !/Assessment criteria/.test(sl.figureHtml)));
+  check('compliance: every criterion is read there, whole', ['overshadow impact', 'solar access', 'building separation', 'yield'].every((t) => assumed.figureHtml.includes(`<div class="l">${t}</div>`))
+    && /ADG 3B-2: a shadow added takes the dash/.test(assumed.figureHtml) && /at most 15% with none/.test(assumed.figureHtml) && /to non-habitable 9, 13\.5, 18 m/.test(assumed.figureHtml) && /the maximum allowable GFA/.test(assumed.figureHtml));
+  check('compliance: each sheet\'s criteria name the page that reads them', sheets.every((sl) => sl.figureHtml.includes('<span>Against the criteria</span><span class="zn">how each is read: page 11</span>')));
+  check('compliance: three tables a sheet and no more, so the column ends above the key', sheets.every((sl) => (sl.figureHtml.match(/class="zblk"/g) ?? []).length === 3 && (sl.figureHtml.match(/<table class="yt/g) ?? []).length <= 3));
   check('compliance: the criteria in the assessment\'s order, each marked', ['Overshadow impact', 'Solar access, 2 h', 'Solar access, none', 'Building separation', 'Yield'].every((t) => comp.figureHtml.includes(`<td>${t}</td>`))
     && comp.figureHtml.indexOf('Overshadow impact') < comp.figureHtml.indexOf('Solar access, 2 h') && comp.figureHtml.indexOf('Building separation') < comp.figureHtml.indexOf('<td>Yield</td>'));
   check('compliance: yield within the controls is 100% and ticked; filled to the height, over and crossed', /<td>Yield<\/td>(?:.(?!<\/tr>))*100%(?:.(?!<\/tr>))*M0\.6,2\.1/.test(comp.figureHtml)
@@ -385,6 +393,7 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
     && bareRows[0].storeys === undefined && /NOT DRAWN/.test(bareRows[0].label) && /no height of building and no floor space ratio/.test(bareRows[0].note), JSON.stringify(bareRows));
   const bareDeck = deck(bare);
   check('no envelope: the overview and the controls, no spread of nothing', bareDeck.slides.map((sl) => sl.id).join(',') === '01_planning_yield,02_controls_and_assumptions', bareDeck.slides.map((sl) => sl.id).join(','));
+  check('no envelope: no compliance sheet, so no criteria to read', !/Assessment criteria/.test(bareDeck.html));
   check('no envelope: nothing reads "0 storeys" or "0 m²"', !/\b0 storeys|\b0 m²|\b0 sqm/.test(bareDeck.html));
   check('no envelope: the narrative says why', /maps no height of building and no floor space ratio at the site/.test(bareDeck.slides[0].narrative ?? ''));
   check('no envelope: no parking or ADG rows ticked against nothing', !yieldRows(bare, sb).some((r) => r.label === 'PARKING' || r.label === 'APARTMENT DESIGN GUIDE'));
@@ -477,8 +486,8 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
   const krgRow = yieldRows(krgB, krgS).find((r) => r.label === 'STATION PRECINCT, ALTERNATIVE TOD');
   check('Ku-ring-gai: the controls table names the alternative, when it began, and what it does not read', !!krgRow && /Ku-ring-gai's Killara station precinct/.test(krgRow.controls!.join(' ')) && /14 November 2025/.test(krgRow.controls!.join(' '))
     && /affordable housing/.test(krgRow.controls!.join(' ')) && /13 June 2025/.test(krgRow.controls!.join(' ')), JSON.stringify(krgRow));
-  const krgComp = krgDeck.slides.find((sl) => /compliance/.test(sl.id))!;
-  check('Ku-ring-gai: the yield criterion names the alternative TOD', /Ku-ring-gai's alternative TOD controls/.test(krgComp.figureHtml));
+  check('Ku-ring-gai: the yield criterion names the alternative TOD, with the assumptions', krgDeck.slides.at(-1)!.figureHtml.includes('<div class="n">Ku-ring-gai\'s alternative TOD controls, in the LEP from 14 November 2025</div>')
+    && krgDeck.slides.filter((sl) => /compliance/.test(sl.id)).every((sl) => !/alternative TOD controls, in the LEP/.test(sl.figureHtml)));
   check('Ku-ring-gai: the spread\'s sources say the LEP\'s are the alternative\'s', /Ku-ring-gai's alternative TOD controls, in force from 14 November 2025/.test(krgDeck.slides.find((sl) => /_within_controls$/.test(sl.id))!.sources ?? ''));
   // Beyond the precinct, or in another council, none of this.
   check('Ku-ring-gai: 900 m out, no precinct', yieldStudy({ ...krgB, station: { name: 'KILLARA RAILWAY STATION', distanceM: 900 } }).tod === undefined);

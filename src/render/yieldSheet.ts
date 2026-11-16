@@ -1836,14 +1836,36 @@ function facadeRows(ps: PathSun, hours: number): { courtyard: boolean; dir: stri
 }
 
 /**
+ * How the compliance sheets read each criterion: the block that follows the assumptions on the last spread. It stood
+ * on the first compliance sheet, under that sheet's three tables, where there is no room for it over the key: at
+ * 2–4 Culworth Avenue, Killara, its last rows were printed through the key's. The last spread has no key, and the
+ * column under its assumptions is free; each compliance sheet names that page in the head of its criteria.
+ */
+function criteriaBlock(b: YieldBundle, s: YieldStudy): string {
+  const rule = sunRule(b), tod = s.tod;
+  const todNote = !tod ? undefined
+    : tod.regime === 'alternative' ? `${tod.alternative!.council}'s alternative TOD controls, in the LEP${tod.alternative!.from ? ` from ${tod.alternative!.from}` : ''}`
+      : tod.regime === 'sepp' ? (s.todY ? `the TOD path takes the Housing SEPP's ${fmt(tod.fsr ?? 0, 2)}:1 in the ${tod.name} TOD area` : `in the ${tod.name} TOD area${tod.wideEnough === false ? ', the lot short of the 21 m the TOD asks' : ''}`)
+        : tod.regime === 'deferred' ? `in the ${tod.name} TOD area, its controls deferred` : `in the ${tod.name} accelerated precinct, by its own maps`;
+  return zBlock('Assessment criteria', zTable([
+    { label: 'overshadow impact', value: 'minimise overshadowing of public reserves, heritage items and residential areas at mid winter', note: 'ADG 3B-2: a shadow added takes the dash' },
+    { label: 'solar access', value: `70% of apartments with ${rule.hours} hours of direct sun${rule.continuous ? ' unbroken' : ''}, 9 am – 3 pm at mid winter; at most 15% with none`, note: `ADG 4A-1, 4A-2, ${rule.where}` },
+    { label: 'building separation', value: 'habitable to habitable 12, 18, 24 m; to non-habitable 9, 13.5, 18 m (1–4, 5–8, 9+ storeys)', note: 'ADG 3F-1' },
+    { label: 'yield', value: 'the maximum allowable GFA: the LEP\'s floor space ratio by the site area', note: todNote },
+    ...(s.future.buildings.length ? [{ label: 'built out', value: 'the neighbours as feasible footprints on their lots, to their LEP height and FSR', note: 'the office\'s building envelope assumptions' }] : []),
+  ]));
+}
+
+/**
  * An option's compliance sheet: its envelope against the assessment criteria, kept off the yield's own pages, one
  * sheet an option. On the left the criteria with a mark each (overshadow impact, solar access, building separation,
- * yield); the sun on each facade, by the way it looks; each building near and its separation, today and built out;
- * and, on the first sheet, how each criterion is read. On the right the massing from the street corner and from the
+ * yield), their head naming the page that says how each is read (`criteriaBlock`, with the assumptions); the sun on
+ * each facade, by the way it looks; and each building near and its separation, today and built out: three tables
+ * and no more, so the column ends above the key. On the right the massing from the street corner and from the
  * opposite one, so every face is seen, each cell of its facades coloured by its hours of sun; and the plan of its
  * shadow at 9 am, noon and 3 pm, the land it shades and each separation drawn as a dimension.
  */
-function complianceSheet(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: PathSun }, n: number, last: number, first: boolean): Slide {
+function complianceSheet(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: PathSun }, n: number, last: number): Slide {
   const { p, ps } = entry, id = p.sc.id, ap = ps.apartments!, sh = ps.shadow!, f = ap.future;
   const rule = sunRule(b), h = rule.hours, unbroken = rule.continuous ? ' unbroken' : '';
   const meets = (k: number) => k >= 0.7 * ap.total - 1e-9, fewNone = (k: number) => k <= 0.15 * ap.total + 1e-9;
@@ -1880,21 +1902,9 @@ function complianceSheet(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: Pa
     ? ytable([{ head: 'Building', w: '62mm' }, { head: 'Storeys', w: '24mm' }, { head: 'Apart / asked', r: true }, { head: '', w: '5mm' }], sepRows, true)
     : `<div class="ynote">No building the sources record stands within 24 m of it${s.future.buildings.length ? ', nor would the future context' : ''}, across a street aside.</div>`;
 
-  const blocks = [zBlock('Against the criteria', testTable), zBlock('Sun on each facade and the roof', faceTable), zBlock('Building separation', sepTable)];
-  if (first) {
-    const tod = s.tod;
-    const todNote = !tod ? undefined
-      : tod.regime === 'alternative' ? `${tod.alternative!.council}'s alternative TOD controls, in the LEP${tod.alternative!.from ? ` from ${tod.alternative!.from}` : ''}`
-        : tod.regime === 'sepp' ? (s.todY ? `the TOD path takes the Housing SEPP's ${fmt(tod.fsr ?? 0, 2)}:1 in the ${tod.name} TOD area` : `in the ${tod.name} TOD area${tod.wideEnough === false ? ', the lot short of the 21 m the TOD asks' : ''}`)
-          : tod.regime === 'deferred' ? `in the ${tod.name} TOD area, its controls deferred` : `in the ${tod.name} accelerated precinct, by its own maps`;
-    blocks.push(zBlock('Assessment criteria', zTable([
-      { label: 'overshadow impact', value: 'minimise overshadowing of public reserves, heritage items and residential areas at mid winter', note: 'ADG 3B-2: a shadow added takes the dash' },
-      { label: 'solar access', value: `70% of apartments with ${h} hours of direct sun${unbroken}, 9 am – 3 pm at mid winter; at most 15% with none`, note: `ADG 4A-1, 4A-2, ${rule.where}` },
-      { label: 'building separation', value: 'habitable to habitable 12, 18, 24 m; to non-habitable 9, 13.5, 18 m (1–4, 5–8, 9+ storeys)', note: 'ADG 3F-1' },
-      { label: 'yield', value: 'the maximum allowable GFA: the LEP\'s floor space ratio by the site area', note: todNote },
-      ...(s.future.buildings.length ? [{ label: 'built out', value: 'the neighbours as feasible footprints on their lots, to their LEP height and FSR', note: 'the office\'s building envelope assumptions' }] : []),
-    ])));
-  }
+  // how each criterion is read is with the assumptions, on the last spread: the head says where
+  const criteriaHead = `<div class="zh"><span>Against the criteria</span><span class="zn">${esc(`how each is read: page ${String(last).padStart(2, '0')}`)}</span></div>`;
+  const blocks = [`<div class="zblk">${criteriaHead}${testTable}</div>`, zBlock('Sun on each facade and the roof', faceTable), zBlock('Building separation', sepTable)];
 
   // the drawings: the massing from the street corner, from the opposite corner, and the plan of shadow and separation
   const pts = b.siteRing.slice(0, -1);
@@ -1999,8 +2009,11 @@ function standingSlide(b: YieldBundle, s: YieldStudy, paths: Path[], n: number):
       : `the recorded footprint${ex.count === 1 ? '' : 's'} (${footprintSources(b)})${fromMeshes.height ? ` and, the sources having no height, its height from Google's Photorealistic 3D Tiles (${meshCredits(b)})` : ' and heights'}`}, its floor area each footprint by its storeys${fromMeshes.height && !(b.existing ?? []).some((e) => e.storeys) ? `, the height at ${m1(ex.storeyM)} a storey${(b.existing ?? []).some((e) => e.kind) ? ` (the source calls it ${(b.existing ?? []).map((e) => e.kind).filter(Boolean).join(', ')})` : ', an apartment\'s, the source not saying what it is'}` : ''}: indicative, not a survey.${b.mesh?.heights ? ` The neighbours' heights the sources lacked are from the same meshes.` : ''}` };
 }
 
-/** The last spread: the assumptions on the left, the controls table in full on the right. */
-function controlsSlide(b: YieldBundle, s: YieldStudy, n: number): Slide {
+/**
+ * The last spread: the assumptions on the left and, where the deck has compliance sheets (`criteria`), how they read
+ * each criterion under them; the controls table in full on the right.
+ */
+function controlsSlide(b: YieldBundle, s: YieldStudy, n: number, criteria: boolean): Slide {
   const y = s.base, a = y.assumptions;
   const apartments = y.archetype === 'residential' || y.archetype === 'mixed';
   const pc = (v: number) => `${fmt(v * 100, (v * 100) % 1 ? 1 : 0)}%`;
@@ -2036,7 +2049,7 @@ function controlsSlide(b: YieldBundle, s: YieldStudy, n: number): Slide {
   }
   const right = `<div class="abs" data-fit style="left:${RX}mm;top:${RTOP}mm;width:${RW}mm;height:${RFOOT - RTOP}mm;overflow:hidden"><div class="ytw"><table class="yt yc"><colgroup><col style="width:42mm"><col><col><col style="width:5mm"></colgroup><tbody>${table.join('')}</tbody></table></div></div>`;
   return { id: `${String(n).padStart(2, '0')}_controls_and_assumptions`, title: 'Controls and assumptions', subtitle: subtitleOf(b, s), textHtml: '',
-    figureHtml: zFlow([zBlock('The assumptions', zTable(rows))]) + right, full: true, accent: inks().accent,
+    figureHtml: zFlow([zBlock('The assumptions', zTable(rows)), ...(criteria ? [criteriaBlock(b, s)] : [])], 44, true) + right, full: true, accent: inks().accent,
     narrative: s.noScheme
       ? 'Every figure rests on these assumptions. Each can be changed in yield_assumptions.json beside the output, and the study drawn again. The table sets out the controls at the site; with no scheme drawn, none is set against them.'
       : 'Every figure rests on these assumptions. Each can be changed in yield_assumptions.json beside the output, and the study drawn again. The table sets the scheme within the controls against each control.',
@@ -2057,8 +2070,8 @@ function drawYieldDeck(b: YieldBundle, _meta: SheetMeta): { html: string; slides
   const tested = testedPaths(b, s, paths);
   const last = drawn.length + 2 + tested.length;
   drawn.forEach((p) => slides.push(p.y ? schemeSlide(b, s, p, slides.length + 1, last) : standingSlide(b, s, paths, slides.length + 1)));
-  tested.forEach((t, i) => slides.push(complianceSheet(b, s, t, slides.length + 1, last, i === 0)));
-  slides.push(controlsSlide(b, s, slides.length + 1));
+  tested.forEach((t) => slides.push(complianceSheet(b, s, t, slides.length + 1, last)));
+  slides.push(controlsSlide(b, s, slides.length + 1, tested.length > 0));
   const html = `<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><title>${esc(b.siteAddress)} — PLANNING YIELD</title>
 <style>

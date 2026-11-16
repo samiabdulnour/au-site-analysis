@@ -25,7 +25,16 @@
  *     page ending with its marked number and title; cut off partway through
  *     page two it is caught for its last page and for page two's mark, which
  *     no other page's can stand in for; and printSlides fails a deck that
- *     prints short twice, with no PNGs left behind.
+ *     prints short twice, with no PNGs left behind;
+ *   - a planning yield deck of a made-up site with houses hard against its
+ *     boundaries and lots round it that redevelop, laid out in the browser in
+ *     each deck style and fitted as it is before it prints, keeps its text
+ *     columns on their pages: every compliance sheet's ends above its key, and
+ *     the last spread's (the assumptions, then how the criteria are read)
+ *     above the page's last line. The criteria put back under a compliance
+ *     sheet's tables, where they stood, are caught on its key (2–4 Culworth
+ *     Avenue, Killara, printed them through it), and the print says so; a
+ *     list of assumptions too long for its page closes up and stays on it.
  *
  * Needs Chromium: CHROMIUM_PATH, or the Playwright browsers.
  *
@@ -38,7 +47,10 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { sheetHtml, MAP_W, MAP_H } from '../src/render/chrome.js';
 import { encodeRgbaPng } from '../src/lib/png.js';
-import { htmlToPdf, printSheetOnce, printSlides, launch } from '../src/render/pdf.js';
+import { htmlToPdf, printSheetOnce, printSlides, launch, fitSlides } from '../src/render/pdf.js';
+import { renderYieldDeck, type YieldBundle } from '../src/render/yieldSheet.js';
+import { DECK_THEMES } from '../src/render/template.js';
+import { lonLatToMercator, mercatorToLonLat, mercatorScaleFactor } from '../src/lib/geo.js';
 import { atlasPage, deckCss, SLIDE_W, SLIDE_H, type Slide } from '../src/render/slides.js';
 import {
   EXPECTATION, checkPrint, readPdf, missingFromPdf, letters, printWhole, titleColumnInk,
@@ -246,6 +258,111 @@ check('a page read before it finished loading fails, whatever its PDF holds',
     (thrown as Error).message.includes('on page 3'), String(thrown));
   check('with no PDF, no PNGs and no picture left to serve', !existsSync(pdf) && existsSync(incompletePath(pdf)) &&
     !existsSync(join(dir, 'deck_never')) && !existsSync(join(dir, 'deck_never.jpg')));
+}
+
+// ---- a yield deck's text columns keep to their pages -----------------------------------------
+
+{
+  // A 40 x 50 m site in R4, a street along the south. Houses stand hard against it on the east, the west and the north,
+  // and the lots east and west may redevelop: a compliance sheet with each of its three tables full, the separations
+  // today and built out. (The site of test/yield-futures.mts, with more neighbours.)
+  const ORIGIN = lonLatToMercator({ lon: 151.215, lat: -33.875 });
+  const K = mercatorScaleFactor(-33.875);
+  const ll = (xM: number, yM: number): [number, number] => { const p = mercatorToLonLat({ x: ORIGIN.x + xM * K, y: ORIGIN.y + yM * K }); return [p.lon, p.lat]; };
+  const rect = (x: number, y: number, w: number, h: number): [number, number][] => [ll(x, y), ll(x + w, y), ll(x + w, y + h), ll(x, y + h), ll(x, y)];
+  const house = (x: number, y: number, zone = 'R4') => ({ rings: [rect(x, y, 9, 12)], heightM: 6.2, known: true, controls: zone === 'R4' ? { zone, hobM: 18.6, fsr: 1.3 } : { zone } });
+  const parcel = (x: number, w: number, numbers: string[]) => ({ rings: [rect(x, 0, w, 50)], numbers, zone: 'R4', hob: { value: 18.6, units: 'm' }, fsr: 1.3 });
+  const bundle = {
+    address: 'test', siteAddress: '1 TEST STREET TESTVILLE', generatedAt: '2026-11-16T00:00:00Z', lotDescription: 'Lot 1 DP 1', siteAreaSqm: 2000, areaIsCadastral: true,
+    controls: { zoneCode: 'R4', zonePurpose: 'High Density Residential', maxHeightM: 18.6, heightUnits: 'm', fsr: 1.3, heritage: [] },
+    siteRing: rect(0, 0, 40, 50), frontages: ['TEST ST', null, null, null], policyAtSite: [], kerbs: [], buildingsSource: 'osm', existing: [],
+    roads: [{ name: 'TEST ST', hierarchy: 6, coords: [ll(-200, -10), ll(300, -10)] }],
+    parcels: [parcel(40, 50, ['2']), parcel(-15, 15, ['1']), parcel(-30, 15, ['3']), parcel(-45, 15, ['5']),
+      { rings: [rect(0, 52, 40, 40)], numbers: ['7'], zone: 'R2', hob: { value: 9.5, units: 'm' }, fsr: 0.5 }],
+    context: [house(43, 4), house(43, 30), house(-12, 4), house(-12, 30), house(4, 55, 'R2'), house(24, 55, 'R2')],
+  } as unknown as YieldBundle;
+  const meta = { jobNo: '', client: '', status: '', sheetNo: '', revision: '', checked: '', drawn: '', date: '', preliminary: false };
+
+  /** Where each page's text column ends, its key begins and its last line stands, in mm from the page's top. */
+  const COLUMNS = `[...document.querySelectorAll('section.slide.atlas')].map(function (sl) {
+    var top = sl.getBoundingClientRect().top, flow = sl.querySelector('.zflow'), key = sl.querySelector('.zleg');
+    var mm = function (v) { return (v - top) * 25.4 / 96; };
+    var table = flow && flow.querySelector('table.yt'), row = flow && flow.querySelector('.zr .v');
+    return { id: sl.id, end: flow && flow.lastElementChild ? mm(flow.lastElementChild.getBoundingClientRect().bottom) : null,
+      key: key ? mm(key.getBoundingClientRect().top) : null, base: Number(sl.dataset.base),
+      blocks: flow ? flow.children.length : 0, rows: flow ? flow.querySelectorAll('table.yt tbody tr').length : 0,
+      tablePx: table ? parseFloat(getComputedStyle(table).fontSize) : null, rowPx: row ? parseFloat(getComputedStyle(row).fontSize) : null };
+  })`;
+  interface Column { id: string; end: number | null; key: number | null; base: number; blocks: number; rows: number; tablePx: number | null; rowPx: number | null }
+  const said = (cs: Column[]) => cs.map((c) => `${c.id.slice(0, 2)}: ${c.end?.toFixed(1)} of ${(c.key ?? c.base).toFixed(1)}`).join(', ');
+
+  const browser = await launch();
+  try {
+    for (const theme of DECK_THEMES) {
+      const htmlPath = write(`yield-${theme}.html`, renderYieldDeck(bundle, meta, { theme }).html);
+      const page = await browser.newPage();
+      await page.goto(pathToFileURL(htmlPath).href, { waitUntil: 'load' });
+      const overruns = await fitSlides(page);
+      const columns = await page.evaluate(COLUMNS) as Column[];
+      const sheets = columns.filter((c) => /_compliance$/.test(c.id)), lastPage = columns[columns.length - 1];
+      if (theme === DECK_THEMES[0]) {
+        check('the yield deck has its compliance sheets, each with three tables, the separations today and built out',
+          sheets.length >= 3 && sheets.every((c) => c.blocks === 3 && c.rows >= 14) && /_controls_and_assumptions$/.test(lastPage.id) && lastPage.blocks === 2,
+          sheets.map((c) => `${c.id}: ${c.blocks} blocks, ${c.rows} rows`).join('; '));
+      }
+      check(`${theme}: every compliance sheet's text column ends above its key`, sheets.length >= 3 && sheets.every((c) => c.end !== null && c.key !== null && c.end <= c.key - 1.5), said(sheets));
+      check(`${theme}: every other spread's does too`, columns.filter((c) => c.key !== null && c.end !== null && c.rows > 0).every((c) => c.end! <= c.key! - 1.5), said(columns.filter((c) => c.key !== null && c.end !== null && c.rows > 0)));
+      check(`${theme}: the assumptions and the criteria end above the page's last line, at their size`, lastPage.end !== null && lastPage.end <= lastPage.base && lastPage.rowPx !== null && Math.abs(lastPage.rowPx - (8 * 96) / 72) < 0.01,
+        `${said([lastPage])}, rows at ${lastPage.rowPx} px`);
+      check(`${theme}: the fitting leaves no column over its page`, overruns.length === 0, JSON.stringify(overruns));
+      await page.close();
+    }
+
+    // The criteria back where they stood, under the first compliance sheet's tables: more than the page holds over its key.
+    const htmlPath = join(dir, `yield-${DECK_THEMES[0]}.html`);
+    {
+      const page = await browser.newPage();
+      await page.goto(pathToFileURL(htmlPath).href, { waitUntil: 'load' });
+      const sheet: string = await page.evaluate(`(() => {
+        const block = [...document.querySelectorAll('.zblk')].find((bl) => bl.querySelector('.zh span').textContent === 'Assessment criteria');
+        const first = [...document.querySelectorAll('section.slide.atlas')].find((sl) => sl.id.endsWith('_compliance'));
+        first.querySelector('.zflow').appendChild(block);
+        return first.id;
+      })()`);
+      const overruns = await fitSlides(page);
+      const column = (await page.evaluate(COLUMNS) as Column[]).find((c) => c.id === sheet)!;
+      check('the criteria under a compliance sheet\'s tables are caught on its key, the tables closed up as far as they go',
+        overruns.length === 1 && overruns[0].id === sheet && overruns[0].into === 'key' && overruns[0].byMm > 5 && column.tablePx !== null && column.tablePx < 8.2,
+        `${JSON.stringify(overruns)}, tables at ${column.tablePx} px`);
+      await page.close();
+      // and the print says so
+      const wrongHtml = write('yield-wrong.html', readFileSync(htmlPath, 'utf8').replace('</body>', `<script>(() => {
+        const block = [...document.querySelectorAll('.zblk')].find((bl) => bl.querySelector('.zh span').textContent === 'Assessment criteria');
+        [...document.querySelectorAll('section.slide.atlas')].find((sl) => sl.id.endsWith('_compliance')).querySelector('.zflow').appendChild(block);
+      })()</script></body>`));
+      const warned: string[] = [];
+      await printSlides(wrongHtml, join(dir, 'YIELD_wrong.pdf'), join(dir, 'yield_wrong'), { widthMm: SLIDE_W, heightMm: SLIDE_H }, undefined, (m) => warned.push(m));
+      check('and the print says which page, and by how much', warned.length === 1 && warned[0].startsWith(`WARN page ${sheet}: its text column runs `) && warned[0].endsWith(' mm into its key'), warned.join(' | '));
+    }
+
+    // A list of assumptions too long for its page (the criteria's rows set twice over): the rows close up, and stay on it.
+    {
+      const page = await browser.newPage();
+      await page.goto(pathToFileURL(htmlPath).href, { waitUntil: 'load' });
+      await page.evaluate(`(() => {
+        const block = [...document.querySelectorAll('.zblk')].find((bl) => bl.querySelector('.zh span').textContent === 'Assessment criteria');
+        for (const row of [...block.querySelectorAll('.zr')]) block.appendChild(row.cloneNode(true));
+      })()`);
+      const overruns = await fitSlides(page);
+      const columns = await page.evaluate(COLUMNS) as Column[];
+      const lastPage = columns[columns.length - 1];
+      check('assumptions too long for their page close up and stay on it', overruns.length === 0 && lastPage.end !== null && lastPage.end <= lastPage.base
+        && lastPage.rowPx !== null && lastPage.rowPx < (8 * 96) / 72 - 0.2 && lastPage.rowPx >= 0.8 * ((8 * 96) / 72) - 0.01, `${said([lastPage])}, rows at ${lastPage.rowPx} px; ${JSON.stringify(overruns)}`);
+      await page.close();
+    }
+  } finally {
+    await browser.close();
+  }
 }
 
 rmSync(dir, { recursive: true, force: true });
