@@ -1047,6 +1047,11 @@ export function characterSlide(b: SlidesBundle): Slide {
   return { id: '03_character', title: 'Character', subtitle: sub, textHtml, figureHtml: figure };
 }
 
+/**
+ * The buildings of a map's ground, the grain of its blocks: the page's own quiet fill and edge, or in Heron, a line
+ * drawing after an architect's site plan, each building white in a black outline (`w` its width, by the map's scale).
+ */
+const grain = (own: string, w = 0.2) => (deckLook().id === 'heron' ? `fill="#ffffff" stroke="#111111" stroke-width="${w}" stroke-linejoin="round"` : own);
 /** A numbered marker on an aerial: white disc, black hairline, the number in 6 pt. */
 const aerialKey = (x: number, y: number, n: number | string, r = 1.9) =>
   `<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="${r}" fill="#ffffff" stroke="#000000" stroke-width="0.25"/><text x="${x.toFixed(2)}" y="${(y + 0.74).toFixed(2)}" text-anchor="middle" font-size="2.117" font-family="Arial, 'Liberation Sans', sans-serif" fill="#000000">${esc(String(n))}</text>`;
@@ -2700,17 +2705,19 @@ export function formAtlas(b: SlidesBundle, planning: PlanningFacts, opts: { clea
   // it, two columns; on a white ground over the drawing's bottom-right corner, over the sources' second column. Each
   // symbol a little block in its storeys' colour, lit as the drawing lights its buildings; the dashed block of no
   // recorded height; the site's.
+  const lineModel = deckLook().id === 'heron';
   const block = (fill: string, edge: string, dashed = false) => {
     const x = 0.9, y = 3.3;
-    const lit = M.gloss ? 0.95 : 0.85, side = M.gloss ? 0.9 : 0.68, roof = M.gloss ? 1.3 : 1.12, dash = dashed ? ' stroke-dasharray="0.5,0.35"' : '';
+    // (Heron's line model: no shade on a face, as the drawing has none)
+    const lit = lineModel ? 1 : M.gloss ? 0.95 : 0.85, side = lineModel ? 1 : M.gloss ? 0.9 : 0.68, roof = lineModel ? 1 : M.gloss ? 1.3 : 1.12, dash = dashed ? ' stroke-dasharray="0.5,0.35"' : '';
     const pt = (pts: number[][]) => pts.map(([px, py]) => `${(x + px).toFixed(2)},${(y + py).toFixed(2)}`).join(' ');
     return `<polygon points="${pt([[0, 0], [2.2, 0], [2.2, -2.2], [0, -2.2]])}" fill="${shade(fill, lit)}" stroke="${edge}" stroke-width="0.1"${dash}/>` +
       `<polygon points="${pt([[2.2, 0], [3.2, -0.6], [3.2, -2.8], [2.2, -2.2]])}" fill="${shade(fill, side)}" stroke="${edge}" stroke-width="0.1"${dash}/>` +
       `<polygon points="${pt([[0, -2.2], [2.2, -2.2], [3.2, -2.8], [1, -2.8]])}" fill="${shade(fill, roof)}" stroke="${edge}" stroke-width="0.1"${dash}/>`;
   };
   const keyEntries: LegendEntry[] = [
-    ...HEIGHT_BANDS.map((bd, i) => ({ swatch: block(M.bands[i], shade(M.bands[i], M.gloss ? 0.78 : 0.55)), label: i === 0 ? bd.label : i === HEIGHT_BANDS.length - 1 ? '16 storeys and more' : `${bd.label} storeys` })),
-    { swatch: block(M.noHeight, shade(M.noHeight, 0.55), true), label: 'No height recorded, dashed' },
+    ...HEIGHT_BANDS.map((bd, i) => ({ swatch: block(M.bands[i], lineModel ? '#1a1a1a' : shade(M.bands[i], M.gloss ? 0.78 : 0.55)), label: i === 0 ? bd.label : i === HEIGHT_BANDS.length - 1 ? '16 storeys and more' : `${bd.label} storeys` })),
+    { swatch: block(M.noHeight, lineModel ? '#1a1a1a' : shade(M.noHeight, 0.55), true), label: 'No height recorded, dashed' },
     { swatch: block(tint(t.site, 0.55), '#1c1c1c'), label: 'What stands on the site today' },
   ];
   const figureHtml = `<div class="form3d">
@@ -3140,7 +3147,7 @@ export function peopleAtlas(b: SlidesBundle): Slide {
   const STRATA: Fill = line ? { bg: '#ffffff', kind: 'vlines', ink: B.deep, step: 0.5, w: 0.16, outline: B.deep, outlineW: 0.3 } : { bg: B.solid, outline: B.deep, outlineW: 0.25 };
   const saleR = (price: number, maxP: number) => 1.3 + 4 * Math.sqrt(price / maxP);
   const parts: string[] = [withTemplate(gt, () => baseLayers(b.base, proj, p))];
-  if (b.buildings.buildings.length) parts.push(`<path d="${b.buildings.buildings.map((bd) => ringsPath(bd.rings, proj)).join('')}" fill="#f4f4f4" stroke="#d6d6d6" stroke-width="0.1" fill-rule="evenodd"/>`);
+  if (b.buildings.buildings.length) parts.push(`<path d="${b.buildings.buildings.map((bd) => ringsPath(bd.rings, proj)).join('')}" ${grain('fill="#f4f4f4" stroke="#d6d6d6" stroke-width="0.1"')} fill-rule="evenodd"/>`);
   parts.push(withTemplate(gt, () => overLayers(b.base, proj, p, 'none')));
   const cLL = mercatorToLonLat(p.center);
   const [cx, cy] = proj(cLL.lon, cLL.lat);
@@ -4496,7 +4503,7 @@ export function movementSlide(b: SlidesBundle): Slide {
   // how far it runs.
   const isoSorted = [...bandIso].reverse();
   const tone = look.technique === 'tone';
-  if (b.buildings.buildings.length) parts.push(`<path d="${b.buildings.buildings.map((bd) => ringsPath(bd.rings, proj)).join('')}" fill="${MOVE.block}" fill-rule="evenodd"/>`);
+  if (b.buildings.buildings.length) parts.push(`<path d="${b.buildings.buildings.map((bd) => ringsPath(bd.rings, proj)).join('')}" ${grain(`fill="${MOVE.block}"`)} fill-rule="evenodd"/>`);
   bandIso.forEach((iso, i) => parts.push(`<path d="${ringsPath(iso.rings, proj)}" fill="none" stroke="${BAND_COLS[i]}" stroke-width="0.35" stroke-dasharray="1.2,0.9" fill-rule="evenodd"/>`));
   if (mv.activeFrontages.features.length) parts.push(`<path d="${fcPath(mv.activeFrontages, proj)}" fill="${MOVE.frontage}" fill-opacity="0.55" stroke="${MOVE.frontage}" stroke-width="0.25" fill-rule="evenodd"/>`);
   parts.push(withTemplate(mt, () => overLayers(b.base, proj, p, 'wash')));
@@ -4658,7 +4665,7 @@ export function movementSlide(b: SlidesBundle): Slide {
     [sw(`<line x1="0" y1="1.8" x2="5" y2="1.8" stroke="${MOVE.rail}" stroke-width="0.2"/><line x1="0" y1="1.8" x2="5" y2="1.8" stroke="${MOVE.rail}" stroke-width="1.05" stroke-dasharray="0.16,1.3"/>`), 'Rail; stations as T, M (metro) or L (light rail)'],
     [sw(BAND_COLS.map((c, i, all) => { const w = 5 / all.length, x = i * w; return `<line x1="${(x + w / 2).toFixed(2)}" y1="0.3" x2="${(x + w / 2).toFixed(2)}" y2="3.3" stroke="${c}" stroke-width="0.5" stroke-dasharray="0.8,0.5"/>`; }).join('')), `Walking reach from the site: the line of ${bandIso.map((q) => q.minutes).join(', ')} minutes, the warmest nearest`],
     [sw(`<path d="M0.2,2.6 C1.5,2.6 1.5,1 3,1 L4.4,1" fill="none" stroke="${MOVE.flow}" stroke-width="0.95" stroke-opacity="0.45"/><path d="M0.2,2.9 C1.5,2.9 1.8,1.3 3,1.3 L4.4,1.3" fill="none" stroke="${MOVE.flow}" stroke-width="0.95" stroke-opacity="0.45"/><path d="M4.9,1.15 L3.9,0.6 L3.9,1.7 Z" fill="${MOVE.flow}"/>`), 'The walks from the site to each place listed, on the network, a street many walks share darkening; heaviest, with its minutes, the walk to each station; faintest, every street the reach holds'],
-    [sw(`<rect x="0.3" y="0.5" width="2" height="2.6" fill="${MOVE.block}"/><rect x="2.8" y="0.5" width="1.9" height="1.1" fill="${MOVE.block}"/><rect x="2.8" y="2" width="1.9" height="1.1" fill="${MOVE.block}"/>`), 'Buildings, for the grain of the blocks'],
+    [sw(`<rect x="0.3" y="0.5" width="2" height="2.6" ${grain(`fill="${MOVE.block}"`)}/><rect x="2.8" y="0.5" width="1.9" height="1.1" ${grain(`fill="${MOVE.block}"`)}/><rect x="2.8" y="2" width="1.9" height="1.1" ${grain(`fill="${MOVE.block}"`)}/>`), 'Buildings, for the grain of the blocks'],
     ...(f.parking.all.length ? [[sw(`<rect x="1" y="0.3" width="3" height="3" fill="#ffffff" stroke="${MOVE.mark}" stroke-width="0.3"/><text x="2.5" y="2.9" text-anchor="middle" font-size="2.2" font-weight="700" fill="${MOVE.mark}">P</text>`), 'Car parks OpenStreetMap maps, the square sized by the tagged capacity'] as [string, string]] : []),
   ];
   if (walkDestinations(b, f).length) legendRows.push([sw(`<circle cx="2.5" cy="1.8" r="1.4" fill="#ffffff" stroke="${MOVE.mark}" stroke-width="0.3"/><text x="2.5" y="2.4" text-anchor="middle" font-size="1.7" font-weight="700" fill="${MOVE.mark}">1</text>`), 'Stations, schools, health, community places and parks within the walk, keyed on the map']);
@@ -6365,7 +6372,7 @@ export function photosSlide(b: SlidesBundle): Slide {
   const p = f.planPanel;
   const proj = panelProjector(p);
   const parts: string[] = [baseLayers(b.base, proj, p)];
-  if (b.buildings.buildings.length) parts.push(`<path d="${b.buildings.buildings.map((bd) => ringsPath(bd.rings, proj)).join('')}" fill="#e8e5df" stroke="#cdc8bf" stroke-width="0.12" fill-rule="evenodd"/>`);
+  if (b.buildings.buildings.length) parts.push(`<path d="${b.buildings.buildings.map((bd) => ringsPath(bd.rings, proj)).join('')}" ${grain('fill="#e8e5df" stroke="#cdc8bf" stroke-width="0.12"')} fill-rule="evenodd"/>`);
   parts.push(overLayers(b.base, proj, p, 'both'));
   const spacer = new LabelSpacer(p.wMm, p.hMm, 60);
   const camXY = f.photos.map((c) => proj(c.lon, c.lat));
@@ -6904,7 +6911,7 @@ export function sunViewSlide(b: SlidesBundle): Slide {
     const d = sh.hulls.map((h) => `M${h.map((q, i) => { const [x, y] = projM(q); return `${i ? 'L' : ''}${x.toFixed(1)},${y.toFixed(1)}`; }).join('')}Z`).join('');
     parts.push(`<path d="${d}" fill="${style.fill}" fill-opacity="${style.opacity}" stroke="${style.fill}" stroke-width="0.15" stroke-opacity="0.4" fill-rule="nonzero"/>`);
   }
-  if (neighbours.length) parts.push(`<path d="${neighbours.map((bd) => ringsPath(bd.rings, proj)).join('')}" fill="#e6e3dc" stroke="#8a877f" stroke-width="0.2" fill-rule="evenodd"/>`);
+  if (neighbours.length) parts.push(`<path d="${neighbours.map((bd) => ringsPath(bd.rings, proj)).join('')}" ${grain('fill="#e6e3dc" stroke="#8a877f" stroke-width="0.2"', 0.3)} fill-rule="evenodd"/>`);
   parts.push(overLayers(b.base, proj, sp, 'both'));
   // heights on the tallest neighbours near the site
   const spacer = new LabelSpacer(sp.wMm, sp.hMm, 24);
@@ -7137,7 +7144,7 @@ export function sunAtlas(b: SlidesBundle): Slide {
   }
   const siteRings = b.base.siteLots.features.flatMap((ft) => geomRings(ft.geometry));
   const neighbours = b.buildings.buildings.filter((bd) => !siteRings.some((r) => pointInRing(bd.centroid[0], bd.centroid[1], r)));
-  if (neighbours.length) parts.push(`<path d="${neighbours.map((bd) => ringsPath(bd.rings, proj)).join('')}" fill="#ffffff" stroke="#6f6f6f" stroke-width="0.18" fill-rule="evenodd"/>`);
+  if (neighbours.length) parts.push(`<path d="${neighbours.map((bd) => ringsPath(bd.rings, proj)).join('')}" ${grain('fill="#ffffff" stroke="#6f6f6f" stroke-width="0.18"', 0.35)} fill-rule="evenodd"/>`);
   parts.push(withTemplate(gt, () => overLayers(b.base, proj, p, 'none')));
   const spacer = new LabelSpacer(p.wMm, p.hMm, 60);
   spacer.take(40, 10, 72, 10);
@@ -7497,7 +7504,7 @@ export function ocAtlas(b: SlidesBundle, planning: PlanningFacts): Slide {
   const siteRings = b.base.siteLots.features.flatMap((ft) => geomRings(ft.geometry));
   const sb = siteRings.length ? bboxOf(siteRings, proj) : { x0: cx - 3, y0: cy - 3, x1: cx + 3, y1: cy + 3 };
   const parts: string[] = [withTemplate(gt, () => baseLayers(b.base, proj, p))];
-  if (b.buildings.buildings.length) parts.push(`<path d="${b.buildings.buildings.map((bd) => ringsPath(bd.rings, proj)).join('')}" fill="#f2f2f2" stroke="#d6d6d6" stroke-width="0.1" fill-rule="evenodd"/>`);
+  if (b.buildings.buildings.length) parts.push(`<path d="${b.buildings.buildings.map((bd) => ringsPath(bd.rings, proj)).join('')}" ${grain('fill="#f2f2f2" stroke="#d6d6d6" stroke-width="0.1"')} fill-rule="evenodd"/>`);
   const legend: LegendEntry[] = [];
   // ---- what the site can use, in green
   const PARK: Fill = { bg: G.mid, outline: G.solid, outlineW: 0.2 };

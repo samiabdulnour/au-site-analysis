@@ -440,6 +440,8 @@ export interface SiteLook {
   aerial: 'colour' | 'grey' | 'mono';
   /** The site's pen: its boundary, corners and levels. */
   site: string;
+  /** What stands on the site, where the buildings are filled: a saturated cut of the site's pen where unset. */
+  siteFigure?: string;
   /** The boundary's dash. */
   siteDash: string;
   /** The boundary dimensions' ink (Heron sets them in the site's red, Canary in black). */
@@ -482,6 +484,8 @@ export interface SiteLook {
   contours: boolean;
   /** Their ink, and their levels'. */
   contourInk: string;
+  /** The contours dotted, as a site plan draws them, where set; a solid line else. */
+  contourDots?: boolean;
   /** Where set, the contour lines' strength under the buildings (0 to 1), so the buildings read clean. */
   contourUnderBuildings?: number;
   /** The street names' ink, plain along the road. */
@@ -538,7 +542,7 @@ const LINE_BLACK = MONO_BLACK;
 const HERON_LOOK: SiteLook = {
   font: NARROW, ground: 'aerial', veil: 0.74, aerial: 'mono', site: HERON_ACCENT, siteDash: '7,2,1.6,2', dimensionInk: HERON_ACCENT, fall: LINE_BLACK, fallWords: 'plain', fallInk: HERON_ACCENT, textScale: 1.2,
   buildingEdge: 0.3, buildings: 'outline', neighbours: 'white', neighbourInk: LINE_BLACK, outlineInk: LINE_BLACK, neighbourHeightInk: LINE_BLACK, zones: 'hatch', zoneTint: 0, hatchInk: LINE_BLACK,
-  heritage: false, heritageInk: { item: '#5c5c5c', area: '#3f3f3f' }, contours: true, contourInk: '#8c8c8c', lotInk: LINE_BLACK,
+  heritage: false, heritageInk: { item: '#5c5c5c', area: '#3f3f3f' }, contours: true, contourInk: '#5c5c5c', contourDots: true, lotInk: LINE_BLACK,
   streetInk: LINE_BLACK,
   sun: 'crown', sunPen: LINE_BLACK, sunFill: '#ffffff', sunEdge: LINE_BLACK, sunInk: LINE_BLACK, sunHours: true,
   wind: 'strands', windPen: LINE_BLACK, climateInk: LINE_BLACK,

@@ -443,9 +443,11 @@ export function massingInks() {
   const id = deckLook().id;
   const gloss = id === 'kingfisher' || id === 'flamingo', pastel = gloss, kf = id === 'kingfisher';
   const green = pastel ? tint(vivid(G.solid, 0.5, 0.5), 0.7) : vivid(G.solid, 0.5, 0.45);
+  // Heron's line model: the low buildings white, a light tone only as they rise, so the drawing stays a line drawing
+  const heron = id === 'heron';
   return {
-    bands: rampColours(HEIGHT_BANDS.length, heightRamp()).map((c) => (pastel ? tint(c, 0.58) : c)),
-    noHeight: tint(B.solid, pastel ? 0.14 : 0.22),
+    bands: heron ? rampColours(HEIGHT_BANDS.length, ['#ffffff', '#ededed', '#d2d2d2', '#aeaeae']) : rampColours(HEIGHT_BANDS.length, heightRamp()).map((c) => (pastel ? tint(c, 0.58) : c)),
+    noHeight: heron ? '#ffffff' : tint(B.solid, pastel ? 0.14 : 0.22),
     // Kingfisher's town after an illustrated masterplan: the ground a warm near-white, as its pavements, the streets a
     // cool pale lilac grey with their kerbs a shade deeper and the line down them barely there, the lots faint, the
     // parks a pale sage

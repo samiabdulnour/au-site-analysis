@@ -73,6 +73,10 @@ const dark = (h: string | undefined) => !!h && Math.max(...rgb(h)) <= 0x30;
 check('site sheet: the lots, the outlines, the names and the climate marks in black, none in white',
   [look.lotInk, look.outlineInk, look.neighbourInk, look.streetInk, look.sunPen, look.windPen, look.viewPen, look.noisePen, look.fall, look.hatchInk].every(dark));
 check('site sheet: the zones hatched alone, no shade under them', look.zones === 'hatch' && look.zoneTint === 0);
+check('site sheet: the contours dotted, as a site plan draws them', look.contourDots === true);
+// the 3D views a line model: the low buildings white, a light tone only as they rise
+const bands = withTemplate(templateFor('slides', 'heron'), () => massingInks().bands);
+check('the 3D views: the lowest buildings white, the tallest a light grey', bands[0] === '#ffffff' && bands.every((c) => Math.min(...rgb(c)) >= 0xa0), bands.join(' '));
 // every category a zone can take has a hatch of its own: the pattern is all that tells them apart
 const ZONE_CATS = ['r2', 'r3', 'r4', 'localCentre', 'commercial', 'mixedUse', 'industrial', 'infrastructure', 'openSpace', 'water'];
 const zoneCats = ZONE_CATS.map((id) => HERON_MONO.categories.find((c) => c.id === id));

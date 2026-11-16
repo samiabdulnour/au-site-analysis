@@ -1081,7 +1081,8 @@ the same way, see Heron mono below):
 - **The lines are black**, not white: the cadastre, the outline of each
   numbered building, the street names, the neighbours' numbers and storeys,
   the fall arrow, the sun and its path, the winds, the telescopes and the
-  noise (`lotInk`, `outlineInk`, `streetInk`, …). The contours are a mid grey.
+  noise (`lotInk`, `outlineInk`, `streetInk`, …). The contours are dotted, in
+  a mid grey (`contourDots`), as a site plan draws them.
 - **The zones are hatches, not shades** (`zoneTint: 0`, `hatchInk`): every
   zone in the same black, told apart by its pattern alone. The pattern is
   the category's `hatch` in Heron's mono categories:
@@ -1114,7 +1115,9 @@ instead of leaving the trees out without a word.
 zones as Kingfisher's pale grounds with their textures, laid on the lots only
 so the roads stay white (water is drawn whole), every building in its zone
 family's strong colour with a white edge and its number in white (a quiet grey
-on the site and where no zone is mapped), the white cadastre, Kingfisher's
+where no zone is mapped; what stands on the site in the site's own colour,
+saturated, `siteFigure` on the look, so the lot's building reads as the
+site's), the white cadastre, Kingfisher's
 grotesk, its peach street names and its magenta site. The climate is drawn in
 the office's marks for this palette (`src/render/climateSymbols.ts`, taken
 as drawn from its symbol sheet): each solstice's sun path a nearly solid
@@ -1311,7 +1314,9 @@ The 3D views' trees and people follow the style (`lookOf` in
   - Flamingo's aqua mint, deeper or lighter tree to tree;
   - Kingfisher's mint, in two close cuts, and a soft yellow-green for about one
     tree in five.
-- **Heron, Canary and the white model** keep the plain discs and slips.
+- **Canary and the white model** keep the plain discs and slips.
+- **Heron** draws a line model (see Heron mono): its trees are the canopies'
+  pictures in white, their contour and limbs black.
 
 A drawing holds a few thousand trees, too many to print as vectors (tens of
 megabytes a drawing), so each crown is painted once as a small picture
@@ -1354,6 +1359,27 @@ palette.
   communities are each a pattern of their own (dots, hatches either way,
   upright and flat lines, cross-hatch, waves) on the bare paper, the
   hillshade under them.
+- **3D views: a line model**, after an architect's axonometric
+  (`src/render/axonometric.ts`, `LINE`):
+  - every building is a white volume in a black outline, with no shade on
+    its faces;
+  - what is built on the site carries the heaviest outline, its storeys
+    ruled and its windows dotted; a shop's or an office's floors are a light
+    grey;
+  - the trees are white canopies in their contour with their limbs drawn
+    fine, the people and the traffic white in outline;
+  - the ground is white, the lots and kerbs fine grey lines, the lawns
+    dotted; there are no shadows;
+  - on the report's built form page the low buildings are white and only the
+    taller ones take a light tone, flat, so the storeys still read.
+- **Plans: line plans**, after an architect's site plan:
+  - a building is white in a heavy black outline (`LINE_BUILDING` on the
+    yield's plans; `grain()` on the report's maps, finer at their scale);
+  - what is built on the site has the heaviest outline on the sheet;
+  - on the yield's path plans a tree is a circle at its crown's size with its
+    centre marked, the kerbs and lot lines are fine and grey, and only the
+    parks are hatched, lightly; each lot's zone is written on it, and the
+    first page's plan keeps its zone hatches over the photograph.
 - **Ramps and marks.** The palette's and the landform's ramps run in greys,
   the heat ramp from grey to the accent; the cars of the 3D views are white
   and greys; the compliance ticks are black and the crosses in the accent.

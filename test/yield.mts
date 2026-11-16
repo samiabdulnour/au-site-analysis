@@ -336,6 +336,16 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
   const m = 1 / (111320 * Math.cos((33.9 * Math.PI) / 180));
   const east = [[151.20043 + 2 * m, -33.8999], [151.20043 + 12 * m, -33.8999], [151.20043 + 12 * m, -33.89965], [151.20043 + 2 * m, -33.89965], [151.20043 + 2 * m, -33.8999]];
   const close: YieldBundle = { ...bundle, context: [{ rings: [east], heightM: 6.2, known: true }] };
+  // Heron's line plans, after an architect's site plan: a neighbour white in a heavy black outline, a tree a circle
+  // with its centre marked, what is built in the heaviest outline; the massing a line model, its faces unshaded
+  {
+    const treed = { ...close, trees: [{ lon: 151.20043 + 20 * m, lat: -33.89975, canopyM: 6, source: 'aerial' }] } as YieldBundle;
+    const hp = renderYieldDeck(treed, meta, { theme: 'heron' }).slides.find((sl) => sl.id === '03_within_controls')!.figureHtml;
+    check('heron: the plan a line plan, its buildings white in a heavy black outline, its trees circles with their centres', /fill="#ffffff" stroke="#111111" stroke-width="0\.45"/.test(hp) && /data-plan-trees/.test(hp) && /stroke="#000000" stroke-width="0\.6"/.test(hp), hp.slice(hp.indexOf('#111111') - 80, hp.indexOf('#111111') + 60));
+    check('heron: the massing a line model, the built in the heaviest outline', /stroke="#000000" stroke-width="0\.42"/.test(hp) && /id="axo-lawn-/.test(hp));
+    const kp = renderYieldDeck(treed, meta, { theme: 'kingfisher' }).slides.find((sl) => sl.id === '03_within_controls')!.figureHtml;
+    check('heron: the line plan is Heron\'s alone', !/data-plan-trees/.test(kp) && !/stroke="#111111" stroke-width="0\.45"/.test(kp));
+  }
   const r3f = yieldRows(close).find((r) => r.label === '3F. VISUAL PRIVACY');
   const closePlan = deck(close).slides.find((sl) => /compliance/.test(sl.id))!.figureHtml;
   check('compliance: a neighbour white in a grey hairline, with its storeys and its shadow', /fill="#ffffff" stroke="#6f6f6f" stroke-width="0\.18"/.test(closePlan)

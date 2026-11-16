@@ -13,7 +13,7 @@ import { zoneFill, zoneOrder } from './lepPalette.js';
 import { METRES_PER_STOREY } from '../fetch/buildings.js';
 import { siteAddressOf } from '../fetch/geocode.js';
 import { sheetHtml, esc, T, SWATCH_X, SWATCH_W, LABEL_X, MAP_W, MAP_H } from './chrome.js';
-import { tpl, withTemplate, templateFor, siteTheme, PARK_GREEN, PARK_GREEN_INK, type SiteLook, type Category, type Texture } from './template.js';
+import { tpl, withTemplate, templateFor, siteTheme, tint, PARK_GREEN, PARK_GREEN_INK, type SiteLook, type Category, type Texture } from './template.js';
 import { SUN, WIND, VIEW, RAY_SUN, ARROW, EYE } from './climateSymbols.js';
 import { estimateKerbs, type KerbLine } from '../lib/kerbs.js';
 import { exitPoint } from '../fetch/views.js';
@@ -445,8 +445,9 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
 
   // ---- buildings, filled: on paper the grain is the buildings themselves ------
   // Each building in the strong colour of the zone family it stands on (the
-  // context template's figure), a quiet grey where no zone is mapped and on
-  // the site itself, with a white edge, as the context sheet draws them. Or
+  // context template's figure), a quiet grey where no zone is mapped, with a
+  // white edge, as the context sheet draws them; what stands on the site in
+  // the site's own colour, saturated. Or
   // white, edged in that family's ink, as the context Flamingo draws them,
   // and where the look asks, finely hatched in that ink so they read apart
   // from the white roads.
@@ -457,9 +458,12 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
     for (const b of sb.buildings.buildings) {
       const [x, y] = proj(b.centroid[0], b.centroid[1]);
       if (!(x > -40 && x < MAP_W + 40 && y > -40 && y < MAP_H + 40)) continue;
-      const z = pointInRing(b.centroid[0], b.centroid[1], sb.siteRing) ? null : featureAt(sb.zoning.features, b.centroid[0], b.centroid[1]);
+      const onSite = pointInRing(b.centroid[0], b.centroid[1], sb.siteRing);
+      const z = onSite ? null : featureAt(sb.zoning.features, b.centroid[0], b.centroid[1]);
       const cat = z ? zoneToCategory(z.SYM_CODE) : null;
-      const ink = (cat && catById()[cat]?.figure) || (whiteBuildings ? tpl().road : '#d9d9d6');
+      // what stands on the site in the site's own colour, saturated (it was a quiet grey): the lot's building reads
+      // as the site's, clear of the pale tint the lot lies in; a white building takes it as its outline and hatch
+      const ink = onSite ? (whiteBuildings ? look.site : look.siteFigure ?? tint(look.site, 0.75)) : (cat && catById()[cat]?.figure) || (whiteBuildings ? tpl().road : '#d9d9d6');
       (byInk.get(ink) ?? byInk.set(ink, []).get(ink)!).push(`<path d="${pathFromRings(b.rings, proj)}"/>`);
     }
     [...byInk].forEach(([ink, ds], i) => {
@@ -712,7 +716,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
         `<rect x="-50" y="-50" width="${MAP_W + 100}" height="${MAP_H + 100}" fill="#ffffff"/>` +
         `<g fill="#000000" fill-opacity="${1 - under}" fill-rule="evenodd">${buildingDs.join('')}</g></mask>`
       : '';
-    layers.push(`${mask}<path d="${d}" fill="none" stroke="${look.contourInk}" stroke-width="0.6" opacity="0.9"${mask ? ' mask="url(#contourMask)"' : ''}/>`);
+    layers.push(`${mask}<path d="${d}" fill="none" stroke="${look.contourInk}" stroke-width="${look.contourDots ? 0.7 : 0.6}" opacity="0.9"${look.contourDots ? ' stroke-dasharray="0.1,2.2" stroke-linecap="round"' : ''}${mask ? ' mask="url(#contourMask)"' : ''}/>`);
     const tagged: Pt[] = [];
     for (const c of sb.contours) {
       const pts = c.coords.map(([lon, lat2]) => proj(lon, lat2)).filter(inMapWide);
@@ -1701,7 +1705,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
   }
   row(`<text x="${SWATCH_X}" y="5.4" font-size="3.2" font-weight="700" fill="${look.dimensionInk}">SB 30.48</text>`, 'BOUNDARY DIMENSION (m)');
   row(`<text x="${SWATCH_X}" y="5.4" font-size="3.2" font-weight="700" fill="${SITE_RED}">RL 24.5</text>`, 'SURFACE LEVEL (AHD)');
-  if (look.contours && sb.contours.length) row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${look.contourInk}" stroke-width="0.6"/><text x="${SWATCH_X + 1}" y="2.2" font-size="2.2" font-weight="700" fill="${look.contourInk}">RL 20</text>`, `CONTOURS AT ${sb.contourIntervalM ?? 2} m AHD`, sb.contourSource);
+  if (look.contours && sb.contours.length) row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${look.contourInk}" stroke-width="${look.contourDots ? 0.7 : 0.6}"${look.contourDots ? ' stroke-dasharray="0.1,2.2" stroke-linecap="round"' : ''}/><text x="${SWATCH_X + 1}" y="2.2" font-size="2.2" font-weight="700" fill="${look.contourInk}">RL 20</text>`, `CONTOURS AT ${sb.contourIntervalM ?? 2} m AHD`, sb.contourSource);
   if (look.neighbours === 'black') {
     row(`<g><text x="${mid}" y="2.6" text-anchor="middle" font-size="2.1" font-weight="700" fill="#111">NO. 26 · 3 STOREYS</text><text x="${mid}" y="5.2" text-anchor="middle" font-size="2.1" fill="${look.neighbourHeightInk}">HOB = 18m</text></g>`,
       'NEIGHBOUR IDENTIFICATION',
