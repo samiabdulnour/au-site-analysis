@@ -270,6 +270,12 @@ jobs:
       - name: the booklet folds in order
         run: npx tsx test/booklet.mts
 
+      # The 3D views' trees and people in each deck style: Flamingo's cloud crowns and Kingfisher's drawn ones, each
+      # painted once as a picture and placed at every tree, with their shadows; people with legs, and a crowd in the
+      # parks; Heron, Canary and the white model plain.
+      - name: the trees and the people in each style
+        run: npx tsx test/trees.mts
+
       # Slide 15's heritage layers on made-up features: outlines clipped to the
       # strip, a permit over the lot told from one that grazes its kerb, AHIP
       # records merged by permit, the RNE's rejected places left out, and what

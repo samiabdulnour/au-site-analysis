@@ -101,7 +101,8 @@ const reach = 250;
   };
   const svg = drawAxonometric(scene, { x: 0, y: 0, w: 400, h: 280 }, 't');
   for (const kind of ['car', 'van', 'truck', 'semi', 'bus']) check(`the axonometric draws a ${kind}`, svg.includes(`data-vehicle="${kind}"`));
-  check('no NaN in the drawing', !svg.includes('NaN'));
+  // (a crown's picture, base64, can spell NaN: left out of the search)
+  check('no NaN in the drawing', !svg.replace(/data:image\/png;base64,[^"]+/g, '').includes('NaN'));
 }
 
 if (failures.length) {

@@ -1239,7 +1239,81 @@ near-white ground, the faces lit bright and barely shaded, the roofs
 lighter, the edges and the window dots softer, and each building casting a
 soft blue shadow on the ground instead, its footprint swept away from the
 light by its height; Heron and Canary shade the faces themselves, in the
-full colours. Heron keeps
+full colours.
+
+The 3D views' trees and people follow the style (`lookOf` in
+`src/render/axonometric.ts`).
+- **People, Flamingo and Kingfisher:** flat figures after an illustrator's isometric people
+  (`src/render/people.ts`):
+  - bright tops, trousers or a dress, a face and its hair (short, long or in
+    a bun), arms that swing and legs apart when they walk, now and then a bag;
+  - a little larger than life;
+  - walking the footpaths (some in twos), facing the way they walk, and
+    gathered in the parks.
+- **Flamingo's crowns** are clouds of a few lobes:
+  - each outlined, in its shade, with the lit part over it towards the light
+    and a highlight;
+  - each casting a soft shadow on the ground;
+  - a few small trees narrow and upright.
+- **Kingfisher** follows an illustrated masterplan and its elevation trees,
+  with one thin contour of dark slate (`CONTOUR`) round every tree, person,
+  cyclist and vehicle, so they read as one drawing:
+  - **Crowns:** a plain mass of leaves in the tree's green with a broken, leafy
+    edge and a few small gaps through it at random (one to four, outlined as
+    the crown is). The wood, in a terracotta cut of Kingfisher's red, is
+    hidden by the leaves as a tree's is: it shows in the trunk, in an arch the
+    crown's underside opens round it (where the trunk forks and the lower limbs
+    climb into the leaves), and through a gap where a limb passes behind it.
+  - **Forms:** round, upright, a fuller oval, three-massed, a cypress for a
+    tenth of the small trees and a conifer, a cone broad at its foot, for about
+    one tree in eight. None is squat, and each broadleaf form has three ways of
+    branching. There is no shadow.
+  - **Habit:** each tree stands its own way:
+    - half on a single trunk forking in the arch under the crown;
+    - some on a trunk forking low into two;
+    - some on two or three stems from the ground;
+    - a conifer or a cypress on a short trunk.
+
+    Its bare trunk is from a little to well over its crown's radius, so the
+    crowns sit low or high, and each crown is a little taller or broader.
+  - **Town:** a warm near-white ground, as its pavements; the streets a cool
+    pale lilac grey with their kerbs a shade deeper and the line down them
+    barely there; the lots faint and the parks a pale sage (`massingInks()`).
+  - **Traffic:** each vehicle a body drawn from its side profile and carried
+    across its width:
+    - a car's bonnet, raked windscreen, roof and rear window;
+    - a van's short nose;
+    - a truck's cab on its chassis with its box;
+    - an articulated truck's long-nosed prime mover and trailer;
+    - a bus's band of glass in panes.
+
+    Each has dark glass and wheels with their hubs on the side turned to the
+    camera. The colours are Kingfisher's: mostly warm whites and light greys,
+    its terracotta, mint, pale and deep blue among them.
+- **Cyclists**, in both styles, are painted as the people are: a figure on a
+  bicycle, facing the way they ride.
+- **Trees off the road:** in every style, a crown read off the aerial over a
+  street is moved out past the nearer kerb onto the verge, or left out where
+  there is no room there.
+- **Colour:** each style's trees are in its own green (`massingInks().tree`):
+  - Flamingo's aqua mint, deeper or lighter tree to tree;
+  - Kingfisher's mint, in two close cuts, and a soft yellow-green for about one
+    tree in five.
+- **Heron, Canary and the white model** keep the plain discs and slips.
+
+A drawing holds a few thousand trees, too many to print as vectors (tens of
+megabytes a drawing), so each crown is painted once as a small picture
+(`src/render/crowns.ts`) and placed at every tree that takes it:
+- a shape (Flamingo's four, Kingfisher's five forms by three branchings), in
+  its green, at one of three sizes, its outline as wide in the scene as the
+  others';
+- the people likewise, thirty of them, each placed facing either way;
+- the PDF keeps each picture once, so the illustrated pages print no larger
+  than the plain ones did.
+
+`npx tsx test/trees.mts` checks the pictures and each style's look.
+
+Heron keeps
 the office's own swatch sheet for its decks, the five families the decks
 were drawn in before the styles, with the land-use categories laid out in
 those families (`KIT_INK`, `KIT_CATEGORIES`): the office's sheet in the
