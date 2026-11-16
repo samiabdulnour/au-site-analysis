@@ -99,6 +99,9 @@ for (const style of ['flamingo', 'kingfisher']) {
   check(`${style}: each crown's picture once, fewer than the trees`, pictures.length >= 2 && pictures.length < placed.length && new Set(pictures).size === pictures.length, `${pictures.length} pictures`);
   check(`${style}: no plain discs left`, !svg.includes(`fill="${M.treeLight}"`));
   if (style === 'kingfisher') check('kingfisher: the masterplan\'s ground and lilac-grey streets', svg.includes('fill="#f1f2e8"') && svg.includes('fill="#d9d7dc"') && svg.includes('stroke="#c4c1c6"'));
+  // Kingfisher's vehicles have bodies and wheels (a wheel and its hub to each); Flamingo's are its blocks
+  const vehicles = (svg.match(/data-vehicle="/g) ?? []).length, wheels = (svg.match(/fill="#363940"/g) ?? []).length;
+  check(`${style}: ${style === 'kingfisher' ? 'vehicles on wheels, two or more each' : 'its block vehicles, no wheels'}`, vehicles > 0 && (style === 'kingfisher' ? wheels >= 2 * vehicles : wheels === 0), `${vehicles} vehicles, ${wheels} wheels`);
   // every crown in the style's own green: its commonest solid colour of the hue of massingInks().tree
   const want = hue(rgbOf(M.tree)), off: string[] = [];
   for (const m of svg.matchAll(/<image id="axo-tr-t\d+" href="data:image\/png;base64,([^"]+)"/g)) {

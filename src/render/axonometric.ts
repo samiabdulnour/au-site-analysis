@@ -471,10 +471,13 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   // Kingfisher's traffic as an illustrator's isometric vehicles: whites, greys, a yellow and an orange, the glass dark,
   // the edges a shade of each body rather than a black line
   const kfCars = !mono && deckLook().id === 'kingfisher';
-  const CAR_INKS = mono ? ['#ffffff'] : kfCars ? ['#f3f1ec', '#cfccc6', '#f1c36a', '#8f9095', '#e8874f', '#f3f1ec', '#5f6570']
+  // in Kingfisher's own colours: mostly warm whites and light greys, its terracotta, mint, pale blue, a cut of its deep
+  // blue and its deep terracotta among them; the glass a dark slate of its blue
+  const CAR_INKS = mono ? ['#ffffff'] : kfCars
+    ? ['#f5f3ef', INK.red.solid, '#d9d6d1', INK.green.solid, '#f5f3ef', INK.blue.solid, tint(INK.blue.deep, 0.25), '#d9d6d1', INK.red.deep]
     : [vivid(INK.red.solid, 0.55, 0.45), vivid(INK.blue.solid, 0.5, 0.42), vivid(INK.orange.solid, 0.7, 0.5), '#f4f4f0'];
-  const WHITE = mono ? '#ffffff' : kfCars ? '#f3f1ec' : '#f4f4f0', GLASS = mono ? MONO.glass : kfCars ? '#5d6672' : tint(INK.blue.solid, 0.78);
-  const PALE = mono ? '#ffffff' : kfCars ? '#e4e2dc' : '#e6e5df', CHASSIS = mono ? MONO.chassis : kfCars ? '#7b7d82' : '#4a4a4a';
+  const WHITE = mono ? '#ffffff' : kfCars ? '#f5f3ef' : '#f4f4f0', GLASS = mono ? MONO.glass : kfCars ? shade(INK.blue.deep, 0.62) : tint(INK.blue.solid, 0.78);
+  const PALE = mono ? '#ffffff' : kfCars ? '#ece9e3' : '#e6e5df', CHASSIS = mono ? MONO.chassis : kfCars ? '#6e7380' : '#4a4a4a';
   const VAN_INKS = [WHITE, WHITE, CAR_INKS[2 % CAR_INKS.length], WHITE, CAR_INKS[1 % CAR_INKS.length]];
   type Block = { s0: number; s1: number; hw: number; z0: number; z1: number; fill: string };
   const block = (s0: number, s1: number, hw: number, z0: number, z1: number, fill: string): Block => ({ s0, s1, hw, z0, z1, fill });
@@ -500,8 +503,75 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
     const order = [...stacks].sort((p, q) => (q[0].s0 + q[0].s1) * along - (p[0].s0 + p[0].s1) * along);
     return `<g data-vehicle="${v.kind}">${order.map((st) => st.map((b) => prismSvg(at(b))).join('')).join('')}</g>`;
   };
+  // Kingfisher's vehicles as an illustrator's isometric ones: each part a side profile (s along its length, the front
+  // forward; z up; counter-clockwise) carried across its width, only the faces turned to the camera drawn, far first, the
+  // side last; the glass dark (a profile edge's face, and windows on the side); wheels on the near side, a hub in each.
+  type Solid = { prof: [number, number][]; hw: number; fill: string; glass?: number[]; windows?: [number, number][][]; wheels?: { s: number; r: number }[]; panes?: number };
+  const solidsOf = (kind: VehicleKind, ink: string): Solid[] => {
+    switch (kind) {
+      case 'car': return [{ prof: [[-2.2, 0.32], [2.2, 0.32], [2.2, 0.8], [1.2, 0.94], [0.5, 1.42], [-1.2, 1.42], [-1.95, 1.0], [-2.2, 0.92]], hw: 0.88, fill: ink, glass: [3, 5],
+        windows: [[[1.08, 1.0], [0.55, 1.35], [-0.28, 1.35], [-0.28, 1.0]], [[-0.4, 1.0], [-0.4, 1.35], [-1.12, 1.35], [-1.7, 1.02]]], wheels: [{ s: 1.42, r: 0.33 }, { s: -1.42, r: 0.33 }] }];
+      case 'van': return [{ prof: [[-2.95, 0.36], [2.95, 0.36], [2.95, 1.08], [2.45, 1.28], [1.75, 2.36], [-2.95, 2.42]], hw: 1.0, fill: ink, glass: [3],
+        windows: [[[2.22, 1.4], [1.78, 2.2], [1.05, 2.2], [1.05, 1.4]]], wheels: [{ s: 2.0, r: 0.36 }, { s: -2.0, r: 0.36 }] }];
+      case 'truck': return [
+        { prof: [[-4.3, 0.45], [2.15, 0.45], [2.15, 1.0], [-4.3, 1.0]], hw: 0.95, fill: CHASSIS, wheels: [{ s: -3.2, r: 0.48 }, { s: -2.15, r: 0.48 }] },
+        { prof: [[-4.3, 1.0], [2.15, 1.0], [2.15, 3.6], [-4.3, 3.6]], hw: 1.25, fill: PALE },
+        { prof: [[2.3, 0.45], [4.3, 0.45], [4.3, 1.65], [4.12, 2.75], [3.7, 3.0], [2.3, 3.0]], hw: 1.22, fill: ink, glass: [2],
+          windows: [[[3.98, 1.85], [3.86, 2.68], [3.0, 2.68], [3.0, 1.85]]], wheels: [{ s: 3.45, r: 0.48 }] }];
+      case 'semi': return [
+        { prof: [[-8.25, 0.5], [5.0, 0.5], [5.0, 1.2], [-8.25, 1.2]], hw: 0.95, fill: CHASSIS, wheels: [{ s: -7.2, r: 0.5 }, { s: -6.1, r: 0.5 }, { s: -5.0, r: 0.5 }] },
+        { prof: [[-8.25, 1.2], [5.0, 1.2], [5.0, 4.1], [-8.25, 4.1]], hw: 1.25, fill: PALE },
+        { prof: [[5.1, 0.5], [8.25, 0.5], [8.25, 1.75], [7.35, 1.95], [7.0, 3.3], [5.1, 3.3]], hw: 1.25, fill: ink, glass: [3],
+          windows: [[[6.88, 2.1], [6.66, 3.12], [5.9, 3.12], [5.9, 2.1]]], wheels: [{ s: 5.65, r: 0.5 }, { s: 7.6, r: 0.5 }] }];
+      case 'bus': return [{ prof: [[-6.25, 0.35], [6.25, 0.35], [6.25, 2.9], [6.05, 3.15], [-6.25, 3.15]], hw: 1.25, fill: WHITE, glass: [],
+        windows: [[[6.12, 1.3], [6.12, 2.72], [-6.1, 2.72], [-6.1, 1.3]]], panes: 1.4, wheels: [{ s: 4.4, r: 0.48 }, { s: -4.4, r: 0.48 }] }];
+    }
+  };
+  const viewDown = Math.sin(elev), viewAlong = Math.cos(elev);
+  const solidSvg = (v: Vehicle, so: Solid): string => {
+    const pt = (sx: number, side: number, z: number) => P({ x: v.c.x + v.u.x * sx + v.n.x * side, y: v.c.y + v.u.y * sx + v.n.y * side }, z);
+    const along = v.u.x * d.x + v.u.y * d.y;
+    const edge = shade(so.fill, 0.74), out: string[] = [];
+    const lightOf = (hx: number, hy: number, nz: number) => 0.9 + 0.1 * Math.max(0, hx * light.x + hy * light.y) + 0.22 * Math.max(0, nz);
+    // the faces across the width, one to each edge of the profile that faces the camera, far first
+    const faces: { key: number; svg: string }[] = [];
+    so.prof.forEach(([s0, z0], i) => {
+      const [s1, z1] = so.prof[(i + 1) % so.prof.length], ds = s1 - s0, dz = z1 - z0, l = Math.hypot(ds, dz) || 1;
+      const ns = dz / l, nz = -ds / l;   // outward, the profile counter-clockwise
+      if (ns * along * viewAlong - nz * viewDown >= 0) return;
+      const fill = so.glass?.includes(i) ? GLASS : shade(so.fill, lightOf(v.u.x * ns, v.u.y * ns, nz));
+      const quad = poly([pt(s0, so.hw, z0), pt(s1, so.hw, z1), pt(s1, -so.hw, z1), pt(s0, -so.hw, z0)]);
+      faces.push({ key: ((s0 + s1) / 2) * along - ((z0 + z1) / 2) * 0.001, svg: `<path d="${quad}" fill="${fill}" stroke="${edge}" stroke-width="0.05" stroke-linejoin="round"/>` });
+    });
+    faces.sort((a, b) => b.key - a.key);
+    out.push(...faces.map((f) => f.svg));
+    // the side turned to the camera, its windows, its wheels
+    const side = v.n.x * d.x + v.n.y * d.y < 0 ? so.hw : -so.hw, sn = Math.sign(side);
+    out.push(`<path d="${poly(so.prof.map(([sx, z]) => pt(sx, side, z)))}" fill="${shade(so.fill, lightOf(v.n.x * sn, v.n.y * sn, 0))}" stroke="${edge}" stroke-width="0.05" stroke-linejoin="round"/>`);
+    for (const w of so.windows ?? []) out.push(`<path d="${poly(w.map(([sx, z]) => pt(sx, side * 1.002, z)))}" fill="${GLASS}"/>`);
+    if (so.panes && so.windows?.length) {
+      const [[a0], , [a1]] = so.windows[0], zs = so.windows[0].map(([, z]) => z), zlo = Math.min(...zs), zhi = Math.max(...zs);
+      for (let sx = Math.min(a0, a1) + so.panes; sx < Math.max(a0, a1) - 0.3; sx += so.panes) {
+        const [x1, y1] = pt(sx, side * 1.003, zlo), [x2, y2] = pt(sx, side * 1.003, zhi);
+        out.push(`<line x1="${x1.toFixed(2)}" y1="${y1.toFixed(2)}" x2="${x2.toFixed(2)}" y2="${y2.toFixed(2)}" stroke="${so.fill}" stroke-width="0.12"/>`);
+      }
+    }
+    for (const w of so.wheels ?? []) {
+      const ring = (r: number) => Array.from({ length: 14 }, (_, k) => { const a = (k / 14) * Math.PI * 2; return pt(w.s + Math.cos(a) * r, side * 1.01, w.r + Math.sin(a) * r); });
+      out.push(`<path d="${poly(ring(w.r))}" fill="#363940"/><path d="${poly(ring(w.r * 0.42))}" fill="#b7b9be"/>`);
+    }
+    return out.join('');
+  };
+  const vehicleSolidsSvg = (v: Vehicle, solids: Solid[]): string => {
+    const along = v.u.x * d.x + v.u.y * d.y;
+    const mid = (so: Solid) => so.prof.reduce((t, [sx]) => t + sx, 0) / so.prof.length;
+    return `<g data-vehicle="${v.kind}">${[...solids].sort((p, q) => mid(q) * along - mid(p) * along).map((so) => solidSvg(v, so)).join('')}</g>`;
+  };
   // the colours go round in the order the vehicles were placed, nearest the site first
-  const traffic = placeTraffic(cw, { reach, footprints, busRoutes: scene.busRoutes }).map((v) => ({ ...v, stacks: stacksOf(v.kind) }));
+  const traffic = placeTraffic(cw, { reach, footprints, busRoutes: scene.busRoutes }).map((v) => {
+    const stacks = stacksOf(v.kind);
+    return { ...v, stacks, solids: kfCars ? solidsOf(v.kind, stacks[stacks.length - 1][0].fill) : undefined };
+  });
   // People on the footpaths and bicycles at the kerb: a walker every so often along each street's footpath, a body
   // standing on the ground with a head over it; a rider every so often down the kerb side of the lane, two wheels
   // and a frame with the body over them; in the traffic's colours and a dark grey in turn. None down a lane, no
@@ -628,7 +698,7 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   const standing: { key: number; svg: () => string }[] = [
     ...prisms.map(({ key, group }) => ({ key, svg: () => group.map(prismSvg).join('') })),
     ...trees.map((tr) => ({ key: depth(tr.p), svg: () => treeSvg(tr) })),
-    ...traffic.map((v) => ({ key: depth(v.c), svg: () => vehicleSvg(v, v.stacks) })),
+    ...traffic.map((v) => ({ key: depth(v.c), svg: () => (v.solids ? vehicleSolidsSvg(v, v.solids) : vehicleSvg(v, v.stacks)) })),
     ...figures,
   ].sort((a, b2) => b2.key - a.key);
   for (const item of standing) parts.push(item.svg());

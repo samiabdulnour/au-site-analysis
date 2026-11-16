@@ -1267,8 +1267,18 @@ The 3D views' trees and people follow the style (`lookOf` in
   - **Town:** a warm near-white ground, as its pavements; the streets a cool
     pale lilac grey with their kerbs a shade deeper and the line down them
     barely there; the lots faint and the parks a pale sage (`massingInks()`).
-  - **Traffic:** whites, greys, a yellow and an orange, the glass dark and the
-    edges a shade of each body rather than a black line.
+  - **Traffic:** each vehicle a body drawn from its side profile and carried
+    across its width:
+    - a car's bonnet, raked windscreen, roof and rear window;
+    - a van's short nose;
+    - a truck's cab on its chassis with its box;
+    - an articulated truck's long-nosed prime mover and trailer;
+    - a bus's band of glass in panes.
+
+    Each has dark glass and wheels with their hubs on the side turned to the
+    camera. The colours are Kingfisher's: mostly warm whites and light greys,
+    its terracotta, mint, pale and deep blue among them. The edges are a shade
+    of each body rather than a black line.
 - **Colour:** each style's trees are in its own green (`massingInks().tree`):
   - Flamingo's aqua mint, deeper or lighter tree to tree;
   - Kingfisher's mint, mostly its own cut, with a deeper and a paler one
