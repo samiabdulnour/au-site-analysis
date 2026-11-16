@@ -80,7 +80,8 @@ const rgbOf = (hex: string): [number, number, number] => {
 };
 
 /** The tones of a crown: its outline (a canopy's: its branches), its shade, the lit part, the highlight (a canopy's: the light through its leaves). */
-export interface CrownTones { edge: string; dark: string; lit: string; high: string }
+/** A crown's tones; `wood`, where set, is how heavy a canopy's trunk and limbs are drawn against their usual width (a line drawing's are fine). */
+export interface CrownTones { edge: string; dark: string; lit: string; high: string; wood?: number }
 
 export type CrownKind = 'cloud' | 'canopy' | 'columnar';
 
@@ -209,8 +210,8 @@ function canopyLayers(variant: number, t: CrownTones, outline: number): Layer[] 
     }
   }
   const inGap = (x: number, y: number) => gaps.some((c) => (x - c.x) ** 2 + (y - c.y) ** 2 <= c.r * c.r);
-  // each piece of wood cut to the stretches that show
-  const shown: Seg[] = [];
+  // each piece of wood cut to the stretches that show (a line drawing's wood finer: the tones' `wood`)
+  const shown: Seg[] = [], woodK = t.wood ?? 1;
   for (const [x0, y0, x1, y1, w] of wood) {
     const steps = Math.max(2, Math.ceil(Math.hypot(x1 - x0, y1 - y0) / 0.01));
     let from = -1;
@@ -219,7 +220,7 @@ function canopyLayers(variant: number, t: CrownTones, outline: number): Layer[] 
       if (see && from < 0) from = t;
       if ((!see || k === steps) && from >= 0) {
         const t1 = see ? t : (k - 1) / steps;
-        if (t1 > from) shown.push({ x0: x0 + (x1 - x0) * from, y0: y0 + (y1 - y0) * from, x1: x0 + (x1 - x0) * t1, y1: y0 + (y1 - y0) * t1, w });
+        if (t1 > from) shown.push({ x0: x0 + (x1 - x0) * from, y0: y0 + (y1 - y0) * from, x1: x0 + (x1 - x0) * t1, y1: y0 + (y1 - y0) * t1, w: w * woodK });
         from = -1;
       }
     }
@@ -239,7 +240,7 @@ const cache = new Map<string, CrownPicture>();
  * radius. The same arguments give the same picture, painted once.
  */
 export function crownPicture(kind: CrownKind, variant: number, tones: CrownTones, outline: number, perUnit: number): CrownPicture {
-  const key = `${kind}|${variant}|${tones.edge}|${tones.dark}|${tones.lit}|${tones.high}|${outline.toFixed(4)}|${perUnit}`;
+  const key = `${kind}|${variant}|${tones.edge}|${tones.dark}|${tones.lit}|${tones.high}|${tones.wood ?? 1}|${outline.toFixed(4)}|${perUnit}`;
   const hit = cache.get(key);
   if (hit) return hit;
   const pic = paintLayers(layersOf(kind, variant, tones, outline), perUnit);

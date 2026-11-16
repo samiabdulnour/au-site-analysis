@@ -1,15 +1,17 @@
 // Re-compose a deck from a kept bundle, without fetching anything.
-//   KEEP_BUNDLE=1 npm run generate -- "<address>" --type slides|yield      (once)
-//   npx tsx scripts/recompose.ts out/<slug> [--sheet slides|yield] [--theme flamingo|kingfisher|heron|canary] [--only 01,03]
+//   KEEP_BUNDLE=1 npm run generate -- "<address>" --type slides|yield|site      (once)
+//   npx tsx scripts/recompose.ts out/<slug> [--sheet slides|yield|site] [--theme flamingo|kingfisher|heron|canary] [--only 01,03]
 // The pages go beside the deck as <sheet>-<theme>.html/.pdf and a folder of PNGs of the same
 // name, so several styles of one bundle can stand side by side; with no theme named, the deck's
-// own files are written, as the generator writes them.
+// own files are written, as the generator writes them. The site sheet, one A1 page, is written as
+// site-<theme>.html/.pdf with a PNG of it beside them.
 import { readFile, writeFile } from 'node:fs/promises';
 import { deserialize } from 'node:v8';
 import { join } from 'node:path';
 import { renderSlides, SLIDE_W, SLIDE_H } from '../src/render/slides.js';
 import { renderYieldDeck } from '../src/render/yieldSheet.js';
-import { printSlides, printBooklet } from '../src/render/pdf.js';
+import { printSlides, printBooklet, htmlToPdf } from '../src/render/pdf.js';
+import { renderSiteSheet } from '../src/render/siteSheet.js';
 import type { BookletSpreads } from '../src/render/booklet.js';
 import { prepareRasters } from '../src/render/paintMasks.js';
 import { BLEED_SCALE, COUNTRY_SCALE } from '../src/pipeline.js';
@@ -18,12 +20,22 @@ import { withTemplate, templateFor } from '../src/render/template.js';
 const argv = process.argv.slice(2);
 const arg = (name: string) => { const i = argv.indexOf(`--${name}`); return i > -1 ? argv[i + 1] : undefined; };
 const outDir = argv.find((a, i) => !a.startsWith('--') && !argv[i - 1]?.startsWith('--'));
-if (!outDir) { console.error('usage: npx tsx scripts/recompose.ts out/<slug> [--sheet slides|yield] [--theme id] [--only 01,03]'); process.exit(1); }
+if (!outDir) { console.error('usage: npx tsx scripts/recompose.ts out/<slug> [--sheet slides|yield|site] [--theme id] [--only 01,03]'); process.exit(1); }
 const sheet = arg('sheet') ?? 'slides';
 const theme = arg('theme');
 // ONLY=02,03 (or --only) keeps just those pages, printed beside the deck rather than over it
 const only = (arg('only') ?? process.env.ONLY)?.split(',').map((x) => x.trim()).filter(Boolean);
 const opts = { theme };
+
+if (sheet === 'site') {
+  const { sb, meta } = deserialize(await readFile(join(outDir, 'site.bundle')));
+  const stem = theme ? `site-${theme}` : 'site_sheet';
+  const htmlPath = join(outDir, `${stem}.html`), pdfPath = join(outDir, theme ? `${stem}.pdf` : 'SITE_ANALYSIS.pdf'), png = join(outDir, `${stem}.jpg`);
+  await writeFile(htmlPath, renderSiteSheet(sb, { ...meta, sheetNo: meta.sheetNo || '' }, theme));
+  await htmlToPdf(htmlPath, pdfPath, png);
+  console.log(`recomposed the site sheet${theme ? ` in ${theme}` : ''}: ${pdfPath}, ${png}`);
+  process.exit(0);
+}
 
 let html: string;
 let booklet: BookletSpreads | undefined;

@@ -21,7 +21,7 @@
  *   npx tsx test/template-isolation.mts
  */
 
-import { TEMPLATES, withTemplate, tpl, themeFor, templateFor } from '../src/render/template.js';
+import { TEMPLATES, withTemplate, tpl, themeFor, templateFor, siteTheme, HERON_MONO } from '../src/render/template.js';
 
 const nap = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -73,7 +73,7 @@ const styleChecks: [string, boolean][] = [
   ['context: unknown → default template', themeFor('context', 'dove') === 'flamingo'],
   ['context: Conure, its former name, → Canary', themeFor('context', 'conure') === 'canary'],
   ['site: a context-only name → Heron', themeFor('site', 'flamingo-2') === 'heron'],
-  ['site: Heron draws on Heron', templateFor('site', 'heron') === 'heron'],
+  ['site: Heron draws on Heron, in black and white and its one colour', templateFor('site', 'heron') === HERON_MONO && HERON_MONO.id === 'heron'],
   ['site: Dove and Cardinal, its former names, → Heron', themeFor('site', 'dove') === 'heron' && themeFor('site', 'cardinal') === 'heron'],
   ['site: Kookaburra, its former name, → Kingfisher', themeFor('site', 'kookaburra') === 'kingfisher'],
   ['site: Kingfisher draws on Kingfisher, Flamingo on Flamingo', templateFor('site', 'kingfisher') === 'kingfisher' && templateFor('site', 'flamingo') === 'flamingo'],
@@ -82,6 +82,11 @@ const styleChecks: [string, boolean][] = [
   ['yield and slides: unknown or none → the default', themeFor('yield', '') === 'flamingo' && themeFor('slides', 'dove') === 'flamingo'],
   ['yield and slides: a former name resolves as the context sheet\'s', themeFor('slides', 'conure') === 'canary'],
   ['slides drawn in the style named', templateFor('slides', 'kingfisher') === 'kingfisher'],
+  // Kingfisher's site sheet has a site colour of its own, a red terracotta: the boundary, the lot's tint and what
+  // stands on the lot; the context sheet keeps its magenta, and Flamingo's site sheet, built on Kingfisher's, its coral
+  ['site: Kingfisher\'s site in its terracotta, the lot tinted and its building filled in it', (() => { const k = siteTheme('kingfisher').look; return k.site === '#c8553a' && k.siteFigure === k.site && k.siteTint?.fill === k.site && (k.siteTint?.opacity ?? 1) < 0.3; })()],
+  ['site: the context sheet\'s Kingfisher keeps its magenta site', TEMPLATES.find((t) => t.id === 'kingfisher')!.categories.find((c) => c.id === 'site')!.fill === '#c2367c'],
+  ['site: Flamingo keeps its own site colour and its template\'s tint', (() => { const f = siteTheme('flamingo').look; return f.site !== '#c8553a' && f.siteFigure === undefined && f.siteTint === undefined; })()],
 ];
 const badStyle = styleChecks.filter(([, ok]) => !ok);
 if (badStyle.length) {

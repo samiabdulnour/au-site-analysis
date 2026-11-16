@@ -637,6 +637,8 @@ function tierBadge(x: number, y: number, n: number, r = 2): string {
 const USE_FILL: Record<Use, string> = { residential: '#f0c9a6', retail: '#e69ea1', commercial: '#a9cfe9' };
 const USE_CATEGORY: Record<Use, string> = { residential: 'r4', retail: 'retail', commercial: 'commercial' };
 function useFill(u: Use): string {
+  // Heron's line model: the homes white, the shops and the offices a light grey, the outline telling the rest
+  if (deckLook().id === 'heron') return { residential: '#ffffff', retail: '#e4e4e4', commercial: '#d2d2d2' }[u];
   const c = deckLook().categories.find((x) => x.id === USE_CATEGORY[u]);
   return c ? tint(c.fill, Math.min(1, c.opacity + 0.35)) : USE_FILL[u];
 }
@@ -647,12 +649,16 @@ function useFill(u: Use): string {
  */
 function yieldInks() {
   const B = INK.blue, O = INK.orange;
-  return { context: tint(B.solid, 0.5), contextEdge: inkFor(B.solid, 0.42), future: B.light, futureEdge: B.line, standing: tint(O.deep, 0.42), envelope: inkFor(B.deep, 0.25), kerb: inkFor(B.solid, 0.4) };
+  // Heron's line model: what stands on the site a light grey in its heavy outline
+  const standing = deckLook().id === 'heron' ? '#ececec' : tint(O.deep, 0.42);
+  return { context: tint(B.solid, 0.5), contextEdge: inkFor(B.solid, 0.42), future: B.light, futureEdge: B.line, standing, envelope: inkFor(B.deep, 0.25), kerb: inkFor(B.solid, 0.4) };
 }
 /** The site's pen: the style's accent. */
 const siteInk = () => deckLook().accent;
 /** A neighbour's colour in the massing: its zone's, bold, as the plan tints its lot — the ePlanning colour where the style keeps it, the category's elsewhere. */
 function zoneInk(zone: string | undefined, look: DeckLook): string | null {
+  // Heron's line model: every neighbour a white volume
+  if (look.id === 'heron') return '#ffffff';
   if (!zone) return null;
   // Kingfisher and Flamingo light and glossy: a pastel cut of the zone's colour
   const soft = (c: string) => (massingInks().pastel ? tint(c, 0.6) : c);
@@ -661,7 +667,7 @@ function zoneInk(zone: string | undefined, look: DeckLook): string | null {
   return c ? soft(vivid(c.fill, 0.5, 0.5)) : null;
 }
 /** The trees' inks for the key. */
-function treeInks() { const M = massingInks(); return { fill: M.tree, edge: shade(M.tree, 0.7) }; }
+function treeInks() { const M = massingInks(); return deckLook().id === 'heron' ? { fill: '#ffffff', edge: '#1a1a1a' } : { fill: M.tree, edge: shade(M.tree, 0.7) }; }
 /** What the massing's note says of its trees, its streets and its traffic, for the page's sources line. */
 const treesNote = (b: YieldBundle) => (b.trees?.length
   ? ` The massing's trees are crowns read off the aerial photograph (NSW Imagery), their size indicative${b.trees.some((t) => t.source !== 'aerial') ? ', and the trees OpenStreetMap or the council records' : ''}; its streets run kerb to kerb.`
@@ -789,10 +795,16 @@ interface PlanMarks {
   /** The ground only the scheme shades, at one hour or more: hatched over its shadow. */
   added?: XY[][];
   shaded?: XY[][][];
-  dims?: { a: XY; b: XY; label: string; ink: string }[];
+  dims?: { a: XY; b: XY; label: string; ink: string; /** a dash attribute for the line, where the status is told by it */ dash?: string }[];
 }
-/** A separation's ink: clear, holding only with a blank face, short. */
-const SEPARATION_INK: Record<'clear' | 'blank' | 'short', string> = { clear: '#2f8f55', blank: '#c98a12', short: '#c8372d' };
+/**
+ * A separation's ink, and a compliance mark's: clear, holding only with a blank face, short. Green, amber and red;
+ * in Heron, black and white and one colour, black, black dashed (blankDash) and its accent.
+ */
+const statusInks = (): Record<'clear' | 'blank' | 'short', string> =>
+  deckLook().id === 'heron' ? { clear: '#1a1a1a', blank: '#1a1a1a', short: deckLook().accent } : { clear: '#2f8f55', blank: '#c98a12', short: '#c8372d' };
+/** The dash of a separation that holds only with a blank face, where its ink is the clear one's (Heron): told apart by the line, not by a colour. */
+const blankDash = () => (deckLook().id === 'heron' ? ' stroke-dasharray="1.1 0.7"' : '');
 /** The neighbours' shadows' ink: a neutral grey, so only the envelope's own shadow, in the site's accent, carries a colour. */
 const shadowInk = () => '#3a3c41';
 /** Each hour's shadow at this opacity, the hours laid over each other, as the report lays them; n hours deep, the tint this. */
@@ -803,6 +815,10 @@ const ourShadowInk = () => siteInk();
 const ADDED_HATCH = (): Fill => ({ kind: 'hatch', ink: inkFor(ourShadowInk(), 0.22), step: 0.62, w: 0.13, outline: inkFor(ourShadowInk(), 0.22), outlineW: 0.18 });
 /** The buildings in plan as the report draws them: white, a grey hairline. */
 const PLAN_BUILDING = 'fill="#ffffff" stroke="#6f6f6f" stroke-width="0.18" stroke-linejoin="round"';
+/** A building on Heron's line plans: white in a heavy black outline, the figure of a figure-ground plan. */
+const LINE_BUILDING = 'fill="#ffffff" stroke="#111111" stroke-width="0.45" stroke-linejoin="round"';
+/** A park on Heron's line plans: a light hatch, as a site plan marks its green. */
+const LINE_PARK: Fill = { bg: '#ffffff', kind: 'hatch', ink: '#b4b4b4', step: 0.7, w: 0.08 };
 /** A storey count on a plan: 6 pt Arial, black, as the report's sun page sets them. */
 const storeyText = (x: number, y: number, text: string, fill = '#000000') =>
   `<text x="${x.toFixed(2)}" y="${(y + 0.75).toFixed(2)}" text-anchor="middle" font-size="2.117" letter-spacing="0.19" fill="${fill}">${esc(text)}</text>`;
@@ -861,6 +877,9 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
   });
   const look = deckLook(), t = tpl();
   const Y = yieldInks();
+  // Heron draws a line plan, after an architect's site plan: every building white in a heavy black outline, the
+  // trees circles with their centres marked, the kerbs and the lot lines fine and grey, the parks in a light hatch
+  const linePlan = look.id === 'heron';
   const within = (p: XY, rs: XY[][]) => rs.filter((rg) => inRing(p, rg)).length % 2 === 1;
   // The photograph first, in grey under the style's veil, where the style draws on the aerial and the deck read one.
   const photo = opts.aerial ? photoOf(b) : null;
@@ -879,8 +898,12 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
     const byKey = new Map<string, { fill: Fill; ds: string[] }>();
     for (const pc of parcels) {
       if (pc.site) continue;
-      const lf = lotFill(pc.zone, look);
+      // Heron's line plan (the paths' plans, no photograph): the land left white, the parks alone in a light hatch;
+      // each lot's zone is written on it
+      const lf = linePlan && !photo ? (pc.zone && zoneToCategory(pc.zone) === 'openSpace' ? { key: 'openSpace', fill: LINE_PARK } : null) : lotFill(pc.zone, look);
       if (!lf) continue;
+      // Heron's hatches over the first page's photograph: the paper under them a veil, so the roofs still show
+      if (photo && look.id === 'heron') lf.fill = { ...lf.fill, opacity: 0.6 };
       (byKey.get(lf.key) ?? byKey.set(lf.key, { fill: lf.fill, ds: [] }).get(lf.key)!).ds.push(...pc.local.map(path));
     }
     const bb = { x0: box.x, y0: box.y, x1: box.x + box.w, y1: box.y + box.h };
@@ -892,8 +915,21 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
   if (!kerbs) {
     try { kerbs = estimateKerbs(parcels.flatMap((pc) => pc.rings), b.roads, [], []); } catch { kerbs = []; }
   }
-  if (kerbs.length) out.push(`<path d="${kerbs.map((kl) => line(local(kl.coords))).join('')}" fill="none" stroke="${opts.study ? '#8c8c8c' : Y.kerb}" stroke-width="${opts.study ? 0.22 : 0.3}" stroke-linecap="round" stroke-linejoin="round"/>`);
+  if (kerbs.length) out.push(`<path d="${kerbs.map((kl) => line(local(kl.coords))).join('')}" fill="none" stroke="${opts.study || linePlan ? '#8c8c8c' : Y.kerb}" stroke-width="${opts.study || linePlan ? 0.22 : 0.3}" stroke-linecap="round" stroke-linejoin="round"/>`);
   const blds = b.context.map((cb) => local(cb.rings[0] ?? [])).filter((rg) => rg.length >= 3);
+  // A line plan's trees: each a circle at its crown's size with its centre marked, under the buildings; none on the
+  // site where a scheme clears it, none over the photograph (which shows them)
+  if (linePlan && !photo && !opts.study && b.trees?.length) {
+    const rings: string[] = [], dots: string[] = [];
+    for (const tr of b.trees) {
+      const p = s.toLocal(tr.lon, tr.lat), [px, py] = at(p), r = Math.max(1.2, Math.min(8, tr.canopyM / 2)) * mm;
+      if (px < box.x - r || px > box.x + box.w + r || py < box.y - r || py > box.y + box.h + r) continue;
+      if (scheme.y && inRing(p, s.ring)) continue;
+      rings.push(`M${(px - r).toFixed(2)},${py.toFixed(2)}a${r.toFixed(2)},${r.toFixed(2)} 0 1,0 ${(2 * r).toFixed(2)},0a${r.toFixed(2)},${r.toFixed(2)} 0 1,0 ${(-2 * r).toFixed(2)},0`);
+      dots.push(`M${px.toFixed(2)},${py.toFixed(2)}h0`);
+    }
+    if (rings.length) out.push(`<g data-plan-trees="1"><path d="${rings.join('')}" fill="none" stroke="#5a5a5a" stroke-width="0.12"/><path d="${dots.join('')}" fill="none" stroke="#5a5a5a" stroke-width="0.4" stroke-linecap="round"/></g>`);
+  }
   const marks = opts.marks;
   // The study's shadows, under the buildings: each hour one translucent layer over the last, a group's opacity so two
   // buildings' shadows in one hour do not stack; where the hours pile up the ground darkens.
@@ -910,7 +946,8 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
   // aerial style has no photograph.
   // the land the scheme adds shadow to, under the buildings that stand on it
   for (const rings of marks?.shaded ?? []) out.push(`<path d="${rings.map(path).join('')}" fill="${siteInk()}" fill-opacity="0.07" fill-rule="evenodd" stroke="${siteInk()}" stroke-width="0.45" stroke-dasharray="0.6,0.6"/>`);
-  if (opts.study && blds.length) out.push(`<path d="${blds.map(path).join('')}" ${PLAN_BUILDING}/>`);
+  if (opts.study && blds.length) out.push(`<path d="${blds.map(path).join('')}" ${linePlan ? LINE_BUILDING : PLAN_BUILDING}/>`);
+  else if (linePlan && !photo) { if (blds.length) out.push(`<path d="${blds.map(path).join('')}" ${LINE_BUILDING}/>`); }
   else for (const rg of blds) {
     const zone = parcels.find((pc) => !pc.site && within(centre(rg), pc.local))?.zone;
     // on paper in the aerial styles, each building a light cut of its zone's colour, as the massing above colours it
@@ -929,14 +966,16 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
   for (const sh of marks?.shadows ?? []) out.push(`<path d="${sh.rings.map(path).join('')}" fill="none" stroke="${ourShadowInk()}" stroke-width="0.25" stroke-dasharray="1.2,0.8"/>`);
 
   // What stands on the site, where the scheme is what stands.
-  for (const e of scheme.standing ?? []) out.push(`<path d="${e.rings.map(path).join('')}" fill="${Y.standing}" fill-rule="evenodd" stroke="#3a3a3a" stroke-width="0.2"/>`);
+  for (const e of scheme.standing ?? []) out.push(`<path d="${e.rings.map(path).join('')}" fill="${Y.standing}" fill-rule="evenodd" stroke="${linePlan ? '#111111' : '#3a3a3a'}" stroke-width="${linePlan ? 0.55 : 0.2}" stroke-linejoin="round"/>`);
   // The study: the plates, widest tier first so the narrower ones over it stay visible; each tier's envelope; the site.
   const tiers = y ? [...y.tiers].sort((p, q) => q.envelopeSqm - p.envelopeSqm) : [];
   for (const t of tiers) {
     const built = t.from <= y!.storeys;
     if (!t.plate.length) continue;
     out.push(opts.study ? (built ? `<path d="${t.plate.map(path).join('')}" fill="#ffffff" fill-rule="evenodd" stroke="#1c1c1c" stroke-width="0.3" stroke-linejoin="round"/>` : '')
-      : `<path d="${t.plate.map(path).join('')}" fill="${useFill(t.use)}" fill-opacity="${built ? 0.55 : 0.18}" fill-rule="evenodd" stroke="none"/>`);
+      // (a line plan: what is built the heaviest outline on the sheet)
+      : linePlan ? (built ? `<path d="${t.plate.map(path).join('')}" fill="${useFill(t.use)}" fill-rule="evenodd" stroke="#000000" stroke-width="0.6" stroke-linejoin="round"/>` : '')
+        : `<path d="${t.plate.map(path).join('')}" fill="${useFill(t.use)}" fill-opacity="${built ? 0.55 : 0.18}" fill-rule="evenodd" stroke="none"/>`);
   }
   y?.tiers.forEach((t, i) => { for (const rg of t.envelope) out.push(`<path d="${path(rg)}" fill="none" stroke="${Y.envelope}" stroke-width="0.3" stroke-dasharray="${['2,1', '1.2,1.2', '3,1,0.8,1', '0.6,0.9'][i % 4]}"/>`); });
   out.push(`<path d="${path(s.ring)}" fill="none" stroke="${siteInk()}" stroke-width="0.6" stroke-dasharray="3,1.2"/>`);
@@ -979,7 +1018,7 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
     const [x1, y1] = at(dm.a), [x2, y2] = at(dm.b);
     const len = Math.hypot(x2 - x1, y2 - y1) || 1, ux = (x2 - x1) / len, uy = (y2 - y1) / len;
     const tick = (x: number, yy: number) => `M${(x - uy * 1.1).toFixed(2)},${(yy + ux * 1.1).toFixed(2)}L${(x + uy * 1.1).toFixed(2)},${(yy - ux * 1.1).toFixed(2)}`;
-    out.push(`<path d="M${x1.toFixed(2)},${y1.toFixed(2)}L${x2.toFixed(2)},${y2.toFixed(2)}${tick(x1, y1)}${tick(x2, y2)}" fill="none" stroke="${dm.ink}" stroke-width="0.35"/>`);
+    out.push(`<path d="M${x1.toFixed(2)},${y1.toFixed(2)}L${x2.toFixed(2)},${y2.toFixed(2)}" fill="none" stroke="${dm.ink}" stroke-width="0.35"${dm.dash ?? ''}/><path d="${tick(x1, y1)}${tick(x2, y2)}" fill="none" stroke="${dm.ink}" stroke-width="0.35"/>`);
     // the distance on the line, at its middle or slid along it until clear of what is written; nowhere clear, the line alone
     const w = dm.label.length * 1.45 + 1.6;
     for (const t of [0.5, 0.7, 0.3, 0.85, 0.15, 1.15, -0.15]) {
@@ -1375,8 +1414,8 @@ const SCENARIO_TITLE: Record<Scenario['id'], string> = {
 function okMark(ok: boolean | null | undefined, inline = false): string {
   if (ok === undefined) return '';
   const body = ok === null ? '<line x1="1" y1="2" x2="4" y2="2" stroke="#878787" stroke-width="0.45"/>'
-    : ok ? '<path d="M0.6,2.1 L1.9,3.3 L4.4,0.6" fill="none" stroke="#2f8f55" stroke-width="0.55" stroke-linecap="butt" stroke-linejoin="miter"/>'
-      : '<path d="M1,0.6 L4,3.4 M4,0.6 L1,3.4" stroke="#c8372d" stroke-width="0.55" stroke-linecap="butt"/>';
+    : ok ? `<path d="M0.6,2.1 L1.9,3.3 L4.4,0.6" fill="none" stroke="${statusInks().clear}" stroke-width="0.55" stroke-linecap="butt" stroke-linejoin="miter"/>`
+      : `<path d="M1,0.6 L4,3.4 M4,0.6 L1,3.4" stroke="${statusInks().short}" stroke-width="0.55" stroke-linecap="butt"/>`;
   return `<svg class="mk${inline ? ' in' : ''}" viewBox="0 0 5 4" width="3.4mm" height="2.7mm" xmlns="http://www.w3.org/2000/svg">${body}</svg>`;
 }
 
@@ -1543,8 +1582,10 @@ function schemeLegend(b: YieldBundle, s: YieldStudy, y: YieldResult | undefined,
   if (s.hob?.metres) out.push({ swatch: KEY.plane, label: 'The LEP\'s height of building plane' });
   const look = deckLook();
   const zoneInks = [...new Set(b.context.map((cb) => zoneInk(cb.controls?.zone, look)).filter((c): c is string => !!c))].slice(0, 5);
-  out.push({ swatch: KEY.zones(zoneInks.length ? zoneInks : [massingInks().noHeight]), label: `Neighbours at their heights (${footprintSources(b)}${b.mesh?.heights ? ', the 3D meshes where neither has one' : ''}), each in its zone's colour; dashed: not recorded` });
-  out.push(...zoneEntries(b, look, true));
+  // Heron's line drawings: the neighbours white in their outline, no zone colours to key (each lot's zone is written on the plan)
+  const lineModel = look.id === 'heron';
+  out.push({ swatch: KEY.zones(zoneInks.length ? zoneInks : [massingInks().noHeight]), label: `Neighbours at their heights (${footprintSources(b)}${b.mesh?.heights ? ', the 3D meshes where neither has one' : ''}), ${lineModel ? 'white in outline' : 'each in its zone\'s colour'}; dashed: not recorded` });
+  if (!lineModel) out.push(...zoneEntries(b, look, true));
   if (s.future.buildings.length) out.push({ swatch: KEY.future, label: `${FUT_LABEL}${b.capacity ? ', where the capacity study finds development potential' : ''}` });
   if (kerbs) out.push({ swatch: KEY.kerb, label: 'Kerb line, indicative' });
   if (b.trees?.length) out.push({ swatch: KEY.tree, label: b.trees.some((t) => t.source !== 'aerial') ? 'Trees: crowns read off the aerial, recorded where OpenStreetMap or the council has them' : 'Trees, crowns read off the aerial' });
@@ -1873,7 +1914,7 @@ function complianceSheet(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: Pa
       added: addedGround(hourly.map((hr) => hr.scheme), hourly.map((hr) => hr.hulls), [s.ring]),
       shadows: hourSuns.filter((sun) => [9 * 60, 12 * 60, 15 * 60].includes(sun.clockMin)).map((sun) => ({ rings: groundShadow(massBlocks, sun), label: clock(sun.clockMin) })).filter((x) => x.rings.length),
       shaded: sh.shadedTargets.map((i) => ps.targets[i].rings),
-      dims: [...ps.separation, ...ps.separationBuiltOut].map((r) => { const w = worseReading(r); return { a: w.a, b: w.b, label: `${fmt(w.distanceM, 1)} m`, ink: SEPARATION_INK[w.status] }; }),
+      dims: [...ps.separation, ...ps.separationBuiltOut].map((r) => { const w = worseReading(r); return { a: w.a, b: w.b, label: `${fmt(w.distanceM, 1)} m`, ink: statusInks()[w.status], dash: w.status === 'blank' ? blankDash() : '' }; }),
     } });
   const axo = (behind: boolean, left: number, id2: string) => figureAt(left, 0, W, AXO_H, axonometric(b, s, { x: 2, y: IN + 9, w: W - 4, h: AXO_H - IN - 11 }, { y: ps.y, facades: ps.facades, roofs: ps.roofs, behind, focusM: 6, mono: true }, id2));
   const figures = axo(false, PAGE_X, `${fid}-f`) + labelAt(PAGE_X, 0, IN, ['From the street corner'])
@@ -1883,7 +1924,8 @@ function complianceSheet(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: Pa
 
   // the key
   const KEY = keySwatches();
-  const sepSwatch = `<path d="M0.4,0.9H4.6" stroke="${SEPARATION_INK.clear}" stroke-width="0.35"/><path d="M0.4,1.8H4.6" stroke="${SEPARATION_INK.blank}" stroke-width="0.35"/><path d="M0.4,2.7H4.6" stroke="${SEPARATION_INK.short}" stroke-width="0.35"/>`;
+  const SEP = statusInks();
+  const sepSwatch = `<path d="M0.4,0.9H4.6" stroke="${SEP.clear}" stroke-width="0.35"/><path d="M0.4,1.8H4.6" stroke="${SEP.blank}" stroke-width="0.35"${blankDash()}/><path d="M0.4,2.7H4.6" stroke="${SEP.short}" stroke-width="0.35"/>`;
   const legend: LegendEntry[] = [
     { swatch: KEY.site, label: 'The site' },
     { swatch: KEY.zones(sunBands().map((x) => x.fill)), label: `Facades and roofs, hours of sun 9 am – 3 pm on 21 June: none, under 1, 1–2, 2–3, 3–4, 4–5, 5 and over` },

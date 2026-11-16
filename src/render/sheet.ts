@@ -273,11 +273,13 @@ function rowSpans(rings: Pt[][], yy: number, r: number): [number, number][] {
  * `box` is the area the texture must cover (the map, or a legend swatch).
  */
 export function textureSvg(clipId: string, clipPathD: string, kind: Texture, color: string,
-                           box: { x: number; y: number; w: number; h: number }, opacity = 0.8): string {
+                           box: { x: number; y: number; w: number; h: number }, opacity = 0.8,
+                           /** A spacing and a lean of the pattern's own (a category's `hatch`): the usual ones where unset. */
+                           opts: { step?: number; dir?: 'fall' | 'rise' | 'flat' | 'up' } = {}): string {
   const { x, y, w, h } = box;
   let lines = '';
   if (kind === 'dots') {
-    const step = 1.7, gap = 1.7, period = 0.01 + gap;
+    const step = opts.step ?? 1.7, gap = step, period = 0.01 + gap;
     // a dot's round cap reaches 0.3 from its centre, in every direction
     const r = 0.35;
     const rings = absolutePathRings(clipPathD);
@@ -302,10 +304,16 @@ export function textureSvg(clipId: string, clipPathD: string, kind: Texture, col
   // The hatch falls to the right, the opposite way to the heritage hatch
   // drawn elsewhere, so a heritage item inside a commercial centre still
   // shows as two textures crossing rather than one thicker one.
-  const step = kind === 'cross' ? 2.0 : 1.6;
-  for (let o = x - h; o <= x + w; o += step)
-    lines += `<line x1="${o.toFixed(1)}" y1="${y.toFixed(1)}" x2="${(o + h).toFixed(1)}" y2="${(y + h).toFixed(1)}"/>`;
-  if (kind === 'cross')
+  const step = opts.step ?? (kind === 'cross' ? 2.0 : 1.6);
+  const dir = kind === 'cross' ? 'fall' : opts.dir ?? 'fall';
+  if (dir === 'flat')
+    for (let o = y + step / 2; o <= y + h; o += step) lines += `<line x1="${x.toFixed(1)}" y1="${o.toFixed(2)}" x2="${(x + w).toFixed(1)}" y2="${o.toFixed(2)}"/>`;
+  else if (dir === 'up')
+    for (let o = x + step / 2; o <= x + w; o += step) lines += `<line x1="${o.toFixed(2)}" y1="${y.toFixed(1)}" x2="${o.toFixed(2)}" y2="${(y + h).toFixed(1)}"/>`;
+  if (dir === 'fall')
+    for (let o = x - h; o <= x + w; o += step)
+      lines += `<line x1="${o.toFixed(1)}" y1="${y.toFixed(1)}" x2="${(o + h).toFixed(1)}" y2="${(y + h).toFixed(1)}"/>`;
+  if (kind === 'cross' || dir === 'rise')
     for (let o = x - h; o <= x + w; o += step)
       lines += `<line x1="${o.toFixed(1)}" y1="${(y + h).toFixed(1)}" x2="${(o + h).toFixed(1)}" y2="${y.toFixed(1)}"/>`;
   return `<clipPath id="${clipId}"><path d="${clipPathD}" clip-rule="evenodd"/></clipPath>

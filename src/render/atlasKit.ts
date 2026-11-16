@@ -9,7 +9,7 @@
 // blurrily in the printed PDF.
 
 import { esc } from './chrome.js';
-import { tint, mix, shadeHex, inkFor, vivid, deckFamilies, deckLook, type Category, type InkFamily, type InkFamilyName } from './template.js';
+import { tint, mix, shadeHex, inkFor, vivid, deckFamilies, deckLook, HERON_ACCENT, type Category, type InkFamily, type InkFamilyName } from './template.js';
 import { rampColours } from './terrainMap.js';
 
 export type Family = InkFamilyName;
@@ -30,8 +30,8 @@ export interface Fill {
   bg?: string;
   /** The ground's opacity, where it lies over a photograph; opaque where unset. */
   opacity?: number;
-  /** Vertical lines, horizontal lines, dots, waves; or the context sheet's textures, a diagonal hatch and a cross-hatch. */
-  kind?: 'vlines' | 'hlines' | 'dots' | 'waves' | 'hatch' | 'cross';
+  /** Vertical lines, horizontal lines, dots, waves; or the context sheet's textures, a diagonal hatch (falling to the right; `rise` the other way) and a cross-hatch. */
+  kind?: 'vlines' | 'hlines' | 'dots' | 'waves' | 'hatch' | 'rise' | 'cross';
   ink?: string;
   step?: number;
   w?: number;
@@ -43,6 +43,9 @@ export interface Fill {
 }
 
 type Box = { x0: number; y0: number; x1: number; y1: number };
+
+/** Heron's zone hatches in the decks: black, and this fraction of the spacing its A1 site sheet draws them at. */
+const MONO_HATCH_INK = '#1a1a1a', MONO_HATCH_SCALE = 0.85;
 
 /** Every pattern drawn this much coarser than its fill says, and its strokes this much heavier: open enough at print size to tell one pattern from the next. */
 export const PATTERN_SCALE = 1.7, PATTERN_WEIGHT = 1.35;
@@ -60,11 +63,11 @@ function strokes(f: Fill, bb: Box, k = 1): string {
     for (let y = bb.y0 + step / 2; y <= bb.y1; y += step) out.push(`M${bb.x0.toFixed(2)},${y.toFixed(2)}H${bb.x1.toFixed(2)}`);
     return `<path d="${out.join('')}" stroke="${f.ink}" stroke-width="${w.toFixed(3)}" fill="none"/>`;
   }
-  if (f.kind === 'hatch' || f.kind === 'cross') {
-    // the context sheet's textures: a hatch falling to the right, crossed for the cross-hatch
+  if (f.kind === 'hatch' || f.kind === 'cross' || f.kind === 'rise') {
+    // the context sheet's textures: a hatch falling to the right, crossed for the cross-hatch; or rising
     const h = bb.y1 - bb.y0;
-    for (let o = bb.x0 - h; o <= bb.x1; o += step) out.push(`M${o.toFixed(2)},${bb.y0.toFixed(2)}L${(o + h).toFixed(2)},${bb.y1.toFixed(2)}`);
-    if (f.kind === 'cross') for (let o = bb.x0 - h; o <= bb.x1; o += step) out.push(`M${o.toFixed(2)},${bb.y1.toFixed(2)}L${(o + h).toFixed(2)},${bb.y0.toFixed(2)}`);
+    if (f.kind !== 'rise') for (let o = bb.x0 - h; o <= bb.x1; o += step) out.push(`M${o.toFixed(2)},${bb.y0.toFixed(2)}L${(o + h).toFixed(2)},${bb.y1.toFixed(2)}`);
+    if (f.kind !== 'hatch') for (let o = bb.x0 - h; o <= bb.x1; o += step) out.push(`M${o.toFixed(2)},${bb.y1.toFixed(2)}L${(o + h).toFixed(2)},${bb.y0.toFixed(2)}`);
     return `<path d="${out.join('')}" stroke="${f.ink}" stroke-width="${w.toFixed(3)}" fill="none"/>`;
   }
   if (f.kind === 'dots') {
@@ -102,6 +105,13 @@ export function fillShape(d: string, bb: Box, f: Fill, k = 1): string {
  * zone as the context sheet of the same style shows it.
  */
 export function categoryFill(c: Category, ground: 'paper' | 'aerial' = 'paper', tintScale = 1): Fill {
+  // A category with a hatch of its own (Heron's, black and white): no shade, the pattern alone in black on the paper,
+  // as its site sheet draws the zone, at the deck's smaller scale.
+  if (c.hatch && deckLook().id === 'heron') {
+    const h = c.hatch;
+    const kind: Fill['kind'] = h.kind === 'dots' ? 'dots' : h.kind === 'cross' ? 'cross' : h.dir === 'up' ? 'vlines' : h.dir === 'flat' ? 'hlines' : h.dir === 'rise' ? 'rise' : 'hatch';
+    return { bg: '#ffffff', kind, ink: MONO_HATCH_INK, step: h.kind === 'dots' ? 0.75 : ((h.step ?? 1.6) * MONO_HATCH_SCALE) / PATTERN_SCALE, w: h.kind === 'dots' ? 0.17 : 0.09, outline: MONO_HATCH_INK, outlineW: 0.18 };
+  }
   const op = Math.min(1, c.opacity * tintScale);
   const f: Fill = ground === 'paper' ? { bg: tint(c.fill, op) } : { bg: c.fill, opacity: op };
   if (c.texture) {
@@ -343,6 +353,13 @@ export function zLine(series: { year: number; value: number }[], projection: { y
   return svg(B + 4.4, g.join(''));
 }
 
+/** Heron's pre-1750 communities: nine patterns that read apart with no colour, open enough to leave the land's shape under them. */
+const MONO_VEG: Pick<Fill, 'kind' | 'step' | 'w'>[] = [
+  { kind: 'dots', step: 0.9, w: 0.17 }, { kind: 'hatch', step: 1.2, w: 0.09 }, { kind: 'vlines', step: 1.0, w: 0.09 },
+  { kind: 'cross', step: 1.7, w: 0.09 }, { kind: 'hlines', step: 1.0, w: 0.09 }, { kind: 'rise', step: 1.2, w: 0.09 },
+  { kind: 'waves', step: 1.1, w: 0.09 }, { kind: 'dots', step: 1.7, w: 0.26 }, { kind: 'hatch', step: 2.4, w: 0.16 },
+];
+
 /** The green of the aerial on slide 10: a pale ground dotted in the deep green. */
 export const aerialGreenFill = (): Fill => ({ bg: INK.green.light, kind: 'dots', ink: INK.green.deep, step: 0.5, w: 0.1 });
 /** The most plant communities the Country page tells apart; the rest of a rich strip stays in the hillshade. */
@@ -360,12 +377,17 @@ export const VEG_CLASSES_MAX = 9;
  */
 export function veg1750Fills(classes: { pct: string }[], technique = deckLook().technique): Fill[] {
   const G = INK.green, O = INK.orange, B = INK.blue, R = INK.red;
-  // each community its own colour, from across the palette, as an ethnographic map colours its peoples; the pattern, on paper, says how open it is
-  const hues = [G.deep, inkFor(O.solid, 0.35), inkFor(B.deep, 0.2), R.deep, inkFor(G.solid, 0.3), inkFor(R.solid, 0.3), inkFor(B.solid, 0.35), inkFor(O.deep, 0.3), shadeHex(G.deep, 0.6)];
+  // each community its own colour, from across the palette, as an ethnographic map colours its peoples; the pattern, on
+  // paper, says how open it is. Heron's in greys, its one colour kept for the site.
+  const hues = deckLook().id === 'heron'
+    ? ['#3f3f3f', '#6a6a6a', '#8f8f8f', '#555555', '#7a7a7a', '#4a4a4a', '#9a9a9a', '#5f5f5f', '#2f2f2f']
+    : [G.deep, inkFor(O.solid, 0.35), inkFor(B.deep, 0.2), R.deep, inkFor(G.solid, 0.3), inkFor(R.solid, 0.3), inkFor(B.solid, 0.35), inkFor(O.deep, 0.3), shadeHex(G.deep, 0.6)];
   const openness = (n: string) => (/woodland|grassy|open|grassland/.test(n) ? 0.42 : /forest|rainforest/.test(n) ? 0.68 : 0.55);
   return classes.map((c, i) => {
     const n = c.pct.toLowerCase();
     const hue = hues[i % hues.length];
+    // Heron on paper: no colour to tell the communities by, so each a pattern of its own in one dark ink, on the bare paper
+    if (deckLook().id === 'heron' && technique !== 'tone') return { ...MONO_VEG[i % MONO_VEG.length], ink: '#2b2b2b' };
     if (technique === 'tone') return { bg: tint(hue, openness(n)), opacity: 0.85 };
     // on paper, dots in the community's colour, the denser the closer its canopy: rainforest tightest, forest, woodland, the rest open
     const dots = /rainforest/.test(n) ? { step: 0.55, w: 0.3 } : /forest/.test(n) ? { step: 0.7, w: 0.3 } : /woodland|grassy|open|grassland/.test(n) ? { step: 0.95, w: 0.28 } : { step: 1.25, w: 0.26 };
@@ -375,6 +397,8 @@ export function veg1750Fills(classes: { pct: string }[], technique = deckLook().
 
 /** The palette as a heat ramp, cool to warm: the transit blue, the living green, the activity gold, the accent and its deep; for anything ordered: storeys, metres, hours. */
 export function paletteRamp(): string[] {
+  // Heron's ordered data in greys, light to dark: its one colour is the site's
+  if (deckLook().id === 'heron') return HERON_GREYS;
   const B = INK.blue, G = INK.green, O = INK.orange, R = INK.red;
   // each step made vivid, so a pastel family (Kingfisher's) still yields a ramp that reads at hatch width; the warm step the family's most saturated tint
   const sat = (hex: string) => { const n = parseInt(hex.slice(1), 16), c = [(n >> 16) & 255, (n >> 8) & 255, n & 255]; const mx = Math.max(...c); return mx ? (mx - Math.min(...c)) / mx : 0; };
@@ -388,6 +412,7 @@ export function paletteRamp(): string[] {
  * indigo and Canary's is sharper. Tinted for a wash over the hillshade, darkened for contours on paper.
  */
 export function terrainRamp(): string[] {
+  if (deckLook().id === 'heron') return ['#f2f2f2', '#dcdcdc', '#c2c2c2', '#a0a0a0', '#787878'];
   const B = INK.blue, O = INK.orange, R = INK.red;
   const sat = (hex: string) => { const n = parseInt(hex.slice(1), 16), c = [(n >> 16) & 255, (n >> 8) & 255, n & 255]; const mx = Math.max(...c); return mx ? (mx - Math.min(...c)) / mx : 0; };
   const sand = [O.solid, O.line, O.deep].sort((a, b) => sat(b) - sat(a))[0];
@@ -418,9 +443,11 @@ export function massingInks() {
   const id = deckLook().id;
   const gloss = id === 'kingfisher' || id === 'flamingo', pastel = gloss, kf = id === 'kingfisher';
   const green = pastel ? tint(vivid(G.solid, 0.5, 0.5), 0.7) : vivid(G.solid, 0.5, 0.45);
+  // Heron's line model: the low buildings white, a light tone only as they rise, so the drawing stays a line drawing
+  const heron = id === 'heron';
   return {
-    bands: rampColours(HEIGHT_BANDS.length, heightRamp()).map((c) => (pastel ? tint(c, 0.58) : c)),
-    noHeight: tint(B.solid, pastel ? 0.14 : 0.22),
+    bands: heron ? rampColours(HEIGHT_BANDS.length, ['#ffffff', '#ededed', '#d2d2d2', '#aeaeae']) : rampColours(HEIGHT_BANDS.length, heightRamp()).map((c) => (pastel ? tint(c, 0.58) : c)),
+    noHeight: heron ? '#ffffff' : tint(B.solid, pastel ? 0.14 : 0.22),
     // Kingfisher's town after an illustrated masterplan: the ground a warm near-white, as its pavements, the streets a
     // cool pale lilac grey with their kerbs a shade deeper and the line down them barely there, the lots faint, the
     // parks a pale sage
@@ -444,10 +471,13 @@ export function heightRamp(): string[] {
   return paletteRamp();
 }
 
-/** The ramp ordered data runs up in this style: Heron's between two colours of its sheet, the blue low and the red high, mixed; the others across the palette. */
+/** The ramp ordered data runs up in this style: Heron's from a pale grey up to its one colour; the others across the palette. */
 export function styleRamp(): string[] {
-  return deckLook().id === 'heron' ? [INK.blue.solid, INK.red.deep] : paletteRamp();
+  return deckLook().id === 'heron' ? ['#e6e6e6', '#b9b2b0', HERON_ACCENT] : paletteRamp();
 }
+
+/** Heron's greys for ordered data, light to dark: the storeys, the heights. */
+const HERON_GREYS = ['#d9d9d9', '#b4b4b4', '#8d8d8d', '#646464', '#3b3b3b'];
 
 /**
  * `n` ordered fills, low to high, as the style draws them: tones along the style's ramp, or (on paper) hatches

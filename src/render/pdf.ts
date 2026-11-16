@@ -3,13 +3,13 @@
 import { chromium, type Browser, type Page } from 'playwright-core';
 import { existsSync, mkdirSync } from 'node:fs';
 import { globSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { SHEET_W, SHEET_H } from './sheet.js';
 import { acquire } from '../lib/slots.js';
 import { EXPECTATION, checkPrint, printWhole, type PrintExpectation } from './printCheck.js';
 import { imposeBooklet, bookletPathOf, bookletSpreadsPathOf, type BookletSpreads } from './booklet.js';
-import { writeFile } from 'node:fs/promises';
+import { writeFile, readFile } from 'node:fs/promises';
 
 function findChromium(): string | undefined {
   if (process.env.CHROMIUM_PATH && existsSync(process.env.CHROMIUM_PATH)) return process.env.CHROMIUM_PATH;
@@ -71,6 +71,50 @@ async function open(page: Page, htmlPath: string): Promise<void> {
   await page.goto(pathToFileURL(htmlPath).href, { waitUntil: 'load', timeout: 120_000 });
   await page.waitForLoadState('networkidle', { timeout: 120_000 });
   await page.evaluate(() => (document as any).fonts?.ready.then(() => true));
+  await greyPhotos(page, htmlPath);
+}
+
+/**
+ * A drawing that asks for its photographs in grey (Heron, black and white and one colour: `--photos: grey` on its
+ * root) has each one made grey in the page before it prints: the aerials, the street, the places, every picture it
+ * takes from beside it (`data/…`). Each is read here, its pixels made grey in a canvas and put back as a JPEG (a PNG
+ * where it may be transparent), so the PDF keeps a compressed photograph. A CSS filter on the pictures would do it
+ * on the screen, but in print Chromium rasterises the page round a filtered picture, uncompressed: the report went
+ * from 49 to 121 MB.
+ */
+async function greyPhotos(page: Page, htmlPath: string): Promise<void> {
+  const want = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--photos').trim() === 'grey');
+  if (!want) return;
+  const refs: string[] = await page.evaluate(() => [...new Set([
+    ...[...document.querySelectorAll('img')].map((el) => el.getAttribute('src')),
+    ...[...document.querySelectorAll('image')].map((el) => el.getAttribute('href')),
+  ].filter((r): r is string => !!r && r.startsWith('data/')))]);
+  const dir = dirname(htmlPath);
+  for (const ref of refs) {
+    let bytes: Buffer;
+    try { bytes = await readFile(join(dir, decodeURI(ref))); } catch { continue; }
+    const png = /\.png$/i.test(ref);
+    await page.evaluate(async ({ ref, b64, png }) => {
+      const raw = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+      const bmp = await createImageBitmap(new Blob([raw], { type: png ? 'image/png' : 'image/jpeg' }));
+      const cv = document.createElement('canvas');
+      cv.width = bmp.width; cv.height = bmp.height;
+      const cx = cv.getContext('2d')!;
+      cx.drawImage(bmp, 0, 0);
+      const img = cx.getImageData(0, 0, cv.width, cv.height), d = img.data;
+      for (let i = 0; i < d.length; i += 4) d[i] = d[i + 1] = d[i + 2] = Math.round(0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]);
+      cx.putImageData(img, 0, 0);
+      const url = png ? cv.toDataURL('image/png') : cv.toDataURL('image/jpeg', 0.9);
+      // decoded before it goes in, so the print does not catch a picture still loading
+      const probe = new Image();
+      probe.src = url;
+      await probe.decode();
+      for (const el of document.querySelectorAll('img')) if (el.getAttribute('src') === ref) el.setAttribute('src', url);
+      for (const el of document.querySelectorAll('image')) if (el.getAttribute('href') === ref) el.setAttribute('href', url);
+    }, { ref, b64: bytes.toString('base64'), png });
+  }
+  await page.evaluate(() => Promise.all([...document.images].map((im) => im.decode().catch(() => undefined))));
+  await page.evaluate(() => new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(() => ok(true)))));
 }
 
 /**
