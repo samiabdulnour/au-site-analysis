@@ -1945,9 +1945,11 @@ scenario's story in the left column and an indicative yield under it.
 Outputs, beside `analysis.json`: `future.pdf`, an overview
 (`future-summary-<n>.png`, eight scenarios a sheet at most: each scenario's
 plan as colour blocks with the blocks round it and their storeys, its
-massing, the apartments it adds, and for every new building its separation
-from the site's tower and its mid-winter sun, read as the ADG reads them,
-with a line on whether the site's massing lets the neighbours develop)
+massing, the apartments it adds, and for every new building and the site's
+own its FSR, floor space and a rough count of apartments beside the share
+of them with their mid-winter sun, the separations and setbacks drawn and
+coloured on the plan, with a line on whether the site's massing lets the
+neighbours develop; the site's FSR is written on its lot)
 followed by a sheet for each scenario in the same form
 (`future-option-<n>.png`: the plan large, the table, the massing, the
 apartments of ours without their sun and the neighbours our tower shades);

@@ -309,6 +309,21 @@ def existing_height(r):
 BUILT = set()
 
 
+def site_yield():
+    """Our building as the scenario draws it: (FSR, GFA, apartments), the floor space the massing's at the study's
+    efficiency, the apartments the plans' count where the tower is as drawn, scaled with the floor space where a
+    scenario moves it."""
+    tall = S['storeys'] - SITE_PODIUM
+    gba = (SITE_POLY.area * SITE_PODIUM + SITE_TOWER.area * tall) if TOWER else SITE_TOWER.area * S['storeys']
+    base = (SITE_POLY.area * SITE_PODIUM + BASE_TOWER.area * tall) if TOWER else gba
+    units = SITE_UNITS if abs(gba - base) < 1 else round(SITE_UNITS * gba / base / 5) * 5
+    return EFFICIENCY * gba / SITE_AREA, EFFICIENCY * gba, units
+
+
+def yield_text(fsr, gfa, units, about=True):
+    return f'FSR {fsr:.1f}:1 · GFA {round(gfa, -1):,.0f} m² · {"about " if about else ""}{units} apartments'
+
+
 FOOT = None
 FOOT_ON = {}
 
@@ -1357,6 +1372,7 @@ def mini_plan(parcels, blds, existing, RET, sep, k=1.0, big=False, bset=None):
     o.append(f'<text x="{f(c.x)}" y="{-c.y + 2.2 * k:.2f}" font-size="{6.5 * k:.2f}" font-weight="700" text-anchor="middle" fill="#c0161c">{S["storeys"]}</text>')
     if big:
         o.append(f'<text x="{f(c.x)}" y="{-c.y + 5 * k:.2f}" font-size="{2.6 * k:.2f}" font-weight="500" text-anchor="middle" fill="#c0161c">{H.escape(S.get("label", "our site"))}</text>')
+        o.append(f'<text x="{f(c.x)}" y="{-c.y + 11.5 * k:.2f}" font-size="{5.5 * k:.2f}" font-weight="700" text-anchor="middle" fill="#c0161c">FSR {site_yield()[0]:.1f}:1</text>')
     for nm, d, hab, blank, v, geo in sep:
         if d < 0.5 or (v == 'clear' and d > 24 and not geo['new']):
             continue
@@ -1402,10 +1418,9 @@ def option_page(r):
     trs = ''
     for b in r['buildings']:
         sun_t, sun_c = b['sun'] if b['sun'] else ('—', '')
-        apart = f'{b["d"]:.0f} m · {b["v"]}' + (f' <span style="font-weight:400;color:#888">{b["parts"]}</span>' if b.get('parts') else '') + (f'<div style="font-weight:400;margin-top:{mm(.3)}">own boundaries: {b["bounds"]}</div>' if b.get('bounds') else '')
-        trs += f'<tr><td>{H.escape(b["name"])}</td>{cell(apart, b["v"])}{cell(sun_t, sun_c)}</tr>'
+        trs += f'<tr><td>{H.escape(b["name"])}</td><td>{b.get("yld", "")}</td>{cell(sun_t, sun_c)}</tr>'
     if r['ours']:
-        trs += f'<tr><td><b>Our building</b></td><td style="color:#888">—</td>{cell(r["ours"][0], r["ours"][1])}</tr>'
+        trs += f'<tr><td><b>Our building</b></td><td>{r.get("ours_yield", "")}</td>{cell(r["ours"][0], r["ours"][1])}</tr>'
     for name, with_, without, loss in r.get('shaded', []):
         mark, vcol = apts_verdict(dict(share=with_, dark=0))
         trs += f'<tr><td>{H.escape(name)}</td><td style="color:#888">—</td>{cell(f"{with_:.0%} {mark}" + (f" · {without:.0%} without our tower, {loss * 100:.0f} points" if without is not None else ""), vcol)}</tr>'
@@ -1422,7 +1437,7 @@ def option_page(r):
             f'<div class="hor">{H.escape(r["horizon"])}</div></div>')
     col = (f'<div class="ocol"><div class="u">{gain}neighbours can develop: <b style="color:{r["allow_colour"]}">{r["allow"]}</b></div>'
            f'<p class="lead">{r["lead"]}</p>'
-           f'<table><tr><th>Building</th><th>Separation from our tower; setbacks from its own boundaries</th><th>Apartments with 2 continuous hours of winter sun</th></tr>{trs}</table>'
+           f'<table><tr><th>Building</th><th>FSR, floor space and apartments, a rough estimate</th><th>Apartments with 2 continuous hours of winter sun</th></tr>{trs}</table>'
            f'<div class="oaxo">{r["axo"]}</div>'
            f'<div class="ass">{OPTION_NOTE}</div></div>')
     return (f'<!doctype html><html><head><meta charset="utf-8"><title>Future context · Scenario {r["no"]}</title><style>{CSS}{css}</style></head><body>'
@@ -1651,16 +1666,15 @@ def summary_page(part, page_no, pages):
         trs = ''
         for b in r['buildings']:
             sun_t, sun_c = b['sun'] if b['sun'] else ('—', '')
-            apart = f'{b["d"]:.0f} m · {b["v"]}' + (f'<div style="font-weight:400;font-size:.92em;margin-top:{mm(.3)}">own boundaries: {b["bounds"]}</div>' if b.get('bounds') else '')
-            trs += f'<tr><td>{H.escape(b["name"])}</td>{cell(apart, b["v"])}{cell(sun_t, sun_c)}</tr>'
+            trs += f'<tr><td>{H.escape(b["name"])}</td><td>{b.get("yld", "")}</td>{cell(sun_t, sun_c)}</tr>'
         ours = r['ours']
         if ours:
-            trs += f'<tr><td><b>Our building</b></td><td style="color:#888">—</td>{cell(ours[0], ours[1])}</tr>'
+            trs += f'<tr><td><b>Our building</b></td><td>{r.get("ours_yield", "")}</td>{cell(ours[0], ours[1])}</tr>'
         gain = f'About <b>{r["units"]} new apartments</b> on top of ours · ' if r['buildings'] else ''
         rows.append(f'''<div class="row"><div class="mini">{r['mini']}</div><div class="maxo">{r['axo']}</div><div class="info">
 <div class="t">{r['no']} · {H.escape(r['title'])}</div>
 <div class="u">{gain}neighbours can develop: <b style="color:{r['allow_colour']}">{r['allow']}</b></div>
-<table><tr><th>Building</th><th>Separation from our tower; setbacks from its own boundaries</th><th>Apartments with 2 continuous hours of winter sun</th></tr>{trs}</table></div></div>''')
+<table><tr><th>Building</th><th>FSR, floor space and apartments, a rough estimate</th><th>Apartments with 2 continuous hours of winter sun</th></tr>{trs}</table></div></div>''')
     lead = (f'<p class="lead">Each scenario: its plan with the blocks round it as they stand (storeys off the 3D tiles) and its massing, the apartments it adds, and for every new building how far it stands from our tower against the ADG\'s separation (24 m between habitable rooms at nine storeys and over, 18 m where one face is blank, 18 and 13.5 at five to eight) and from its own side and rear boundaries (half of those, 12 or 6 m at nine storeys and over, a party wall blank), and how many of its apartments (the yield\'s count at 85 m² each; ours as the plans have them) get two continuous hours of sun on 21 June, read as ADG 4A-1 reads it and as the convention counts it, sun at three whole hours in a row: apartments in 8 m bays along the walls, both long faces of a double-loaded plan or the better face of a single-loaded one, corner units taking both walls; 70 % with two hours and no more than 15 % with none is a tick, 60 % is close, and the single-loaded figure says what the plan could still reach, facing the way it names. Green holds, amber holds with a condition, red does not. Our tower as the model draws it, {H.escape(plate_of(BASE_TOWER))}, {", ".join(f"{v:g} m off {n.title()}" for n, v in (S.get("tower") or {}).get("setbacks", {}).items())}; a scenario that moves it says so.</p>'
             if page_no == 1 else f'<p class="lead">Scenarios {part[0]["no"]} to {part[-1]["no"]}, read as on the first sheet.</p>')
     return f'''<!doctype html><html><head><meta charset="utf-8"><title>Future context · summary</title><style>{CSS}
@@ -1772,7 +1786,9 @@ def page(no, scn):
         sr = sunb.get(f'new-{key}')
         gfa_key = next((q['gfa'] for q in parcels if q['key'] == key), 0)
         btxt, bworst = bounds_text(bset.get(key, []))
-        buildings.append(dict(name=nm, d=d, v=v, sun=sun_cell(sr, units=round(gfa_key / UNIT_GFA)), units=round(gfa_key / UNIT_GFA), bounds=btxt, bworst=bworst or 0))
+        pk = next((q for q in parcels if q['key'] == key), None)
+        buildings.append(dict(name=nm, d=d, v=v, sun=sun_cell(sr, units=round(gfa_key / UNIT_GFA)), units=round(gfa_key / UNIT_GFA), bounds=btxt, bworst=bworst or 0,
+                              yld=yield_text(pk['fsr'], pk['gfa'], round(pk['gfa'] / UNIT_GFA / 5) * 5) if pk else ''))
     ours = sun_cell(sunb.get('site'), today=True) if sunb.get('site') else None
     worst = max((max(['clear', 'one face blank', 'short of a blank face'].index(b['v']), b['bworst']) for b in buildings), default=0)
     allow = ['yes', 'yes, on the conditions in amber', 'no, the red building cannot keep the separation or its setbacks'][worst] if buildings else 'nothing new to allow'
@@ -1782,7 +1798,8 @@ def page(no, scn):
         if g and 'total' in g:
             a_, gap_, c_ = g['parts']
             b['parts'] = '+'.join(f'{x:.0f}' for x in ((a_, gap_, c_) if gap_ >= 0.3 else (a_, c_)))
-    SUMMARY.append(dict(no=no, title=scn['title'], horizon=scn.get('horizon', ''), lead=fill_in(scn['lead'], parcels, units), units=units, buildings=buildings, ours=ours,
+    oy = site_yield()
+    SUMMARY.append(dict(ours_yield=yield_text(oy[0], oy[1], oy[2], about=oy[2] != SITE_UNITS), no=no, title=scn['title'], horizon=scn.get('horizon', ''), lead=fill_in(scn['lead'], parcels, units), units=units, buildings=buildings, ours=ours,
                         allow=allow, allow_colour=list(VERDICT_COLOUR.values())[worst], failing=sun_failing, shaded=sun_shaded,
                         mini=mini_plan(parcels, blds, existing, RET, sep), big=mini_plan(parcels, blds, existing, RET, sep, k=0.45, big=True, bset=bset),
                         axo=axo(scn, parcels, blds, existing, RET), sun=sun, scn=scn))
