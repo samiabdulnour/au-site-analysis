@@ -1,9 +1,10 @@
 /* The decks' covers (src/render/slides.ts) and their picture (src/lib/coverPicture.ts).
  *
- * The picture: a reading of the aerial's green cut into the cover's cells (a cell canopy where half its ground is
- * green; 1:2000 where the reading reaches the field's edges, closer in where it does not, never finer than the
- * reading), the trees a deck holds drawn as crowns where it has no reading, and the cells traced into one outline
- * whose area is the cells' own, holes and corners included.
+ * The picture: a speckle of the deck's trees, each a fleck of its own in half-millimetre cells (a small tree a dot of
+ * the heart of its crown, a wide one the lit side of its crown, a crescent open away from the light; trees that
+ * stand side by side left apart, not run together), at 1:2000 or closer in where the trees stop short of the field;
+ * for a deck with a reading of the aerial's green but no crowns, the crowns read off the reading; and the cells
+ * traced into one outline whose area is the cells' own, holes and corners included.
  *
  * The covers: the slides' as one composition with the picture in every style; the booklet's cut in two down the fold,
  * the picture on its front for Flamingo and Kingfisher and the contents there for Heron and Canary; Heron's picture
@@ -13,55 +14,82 @@
  *   npx tsx test/covers.mts
  */
 
-import { coverCells, coverCellsFromTrees, coverPath, coverPictureSvg, COVER_CELL_MM, COVER_FIELD, COVER_GROUND, COVER_CANOPY, type CoverCells } from '../src/lib/coverPicture.js';
+import { coverCells, coverCellsFromTrees, coverPath, coverPictureSvg, speckle, COVER_CELL_MM, COVER_FIELD, COVER_GROUND, COVER_CANOPY, COVER_CRESCENT_M, COVER_HEART, type CoverCells } from '../src/lib/coverPicture.js';
 import { coverPage, bookletCover, coverHasPicture, coverSite, coverCredit, type Cover } from '../src/render/slides.js';
 import { withTemplate, templateFor, greyOf } from '../src/render/template.js';
 
 const failures: string[] = [];
 const check = (name: string, ok: boolean, detail = '') => { if (!ok) failures.push(`${name}${detail ? ` — ${detail}` : ''}`); };
 
-// ---- the cells ----
+// ---- the speckle ----
 
 const NX = Math.ceil(COVER_FIELD.w / COVER_CELL_MM), NY = Math.ceil(COVER_FIELD.h / COVER_CELL_MM);
+const MX = NX >> 1, MY = NY >> 1;
+const count = (c: CoverCells) => c.cells.reduce((t, v) => t + v, 0);
+const on = (c: CoverCells, dx: number, dy: number) => c.cells[(MY + dy) * NX + MX + dx] === 1;
+{
+  check('grain: half a millimetre a cell, a metre of ground at 1:2000', COVER_CELL_MM === 0.5 && speckle([]).nx === NX && speckle([]).ny === NY && speckle([]).scale === 2000);
+  // a small tree: a dot of the heart of its crown, where it stands
+  const small = speckle([{ x: 0.5, y: 0.5, r: 2 }]);
+  const heart = Math.PI * (2 * COVER_HEART) ** 2;
+  check('a small tree is a dot of its heart', on(small, 0, 0) && Math.abs(count(small) - heart) <= 3 && count(small) < Math.PI * 4, `${count(small)} cells for a heart of ${heart.toFixed(1)}`);
+  check('a tree with no crown recorded still marks the ground', count(speckle([{ x: 0.5, y: 0.5, r: 0 }])) === 1);
+  // a wide tree: the lit side of its crown (the north-west, up and left), open to the south-east, its middle bare
+  const wide = speckle([{ x: 0.5, y: 0.5, r: 6 }]);
+  check('a wide tree is a crescent: its lit side drawn', on(wide, -3, -3) && on(wide, -4, 0) && on(wide, 0, -4), `${count(wide)}`);
+  check('a wide tree is a crescent: its middle and its shaded side bare', !on(wide, 0, 0) && !on(wide, 3, 3) && !on(wide, 2, 0));
+  check('a wide tree is a crescent: less than half its crown, and no cell beyond it', count(wide) < (Math.PI * 36) / 2 && count(wide) > 20 && !on(wide, -6, -6) && !on(wide, -8, 0), `${count(wide)}`);
+  check('the crescent begins at six metres across', count(speckle([{ x: 0.5, y: 0.5, r: COVER_CRESCENT_M / 2 }])) > 0 && !on(speckle([{ x: 0.5, y: 0.5, r: COVER_CRESCENT_M / 2 }]), 0, 0) && on(speckle([{ x: 0.5, y: 0.5, r: COVER_CRESCENT_M / 2 - 0.1 }]), 0, 0));
+  // a row of street trees 5 m apart, each 4 m across: flecks with the ground between them, not one bar
+  const row = speckle(Array.from({ length: 9 }, (_, i) => ({ x: (i - 4) * 5 + 0.5, y: 0.5, r: 2 })));
+  const line = Array.from({ length: 45 }, (_, i) => (on(row, i - 22, 0) ? '#' : '.')).join('');
+  check('trees side by side stay apart', (line.match(/#+/g) ?? []).length === 9, line);
+  // closer in, everything is larger on paper
+  const near = speckle([{ x: 0.5, y: 0.5, r: 6 }], 1200);
+  check('closer in, a crown is larger on paper', near.scale === 1200 && count(near) > count(wide) * 2, `${count(near)} against ${count(wide)}`);
+}
+
+// ---- the trees a deck holds ----
+{
+  const centre = { lon: 151.16, lat: -33.76 };
+  check('trees: none, no picture', coverCellsFromTrees([], centre) === undefined);
+  // 0.001 degrees of longitude at this latitude is some 92.5 m: 93 cells east at a metre a cell
+  const c = coverCellsFromTrees([{ ...centre, canopyM: 4 }, { lon: centre.lon + 0.001, lat: centre.lat, canopyM: 4 }, { lon: centre.lon, lat: centre.lat + 0.0005, canopyM: 4 }], centre)!;
+  const east = Math.round(0.001 * 111_320 * Math.cos((centre.lat * Math.PI) / 180)), north = Math.round(0.0005 * 111_320);
+  check('trees: each stands where it is, north up', on(c, 0, 0) && on(c, east, 0) && on(c, 0, -north) && !on(c, 0, north), `${east} east, ${north} north`);
+  check('trees: a handful are drawn at 1:2000', c.scale === 2000);
+  // a deck's crowns over 500 m square: short of the field's 624 m across at 1:2000, so drawn closer in
+  let seed = 3;
+  const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+  const mLon = 111_320 * Math.cos((centre.lat * Math.PI) / 180);
+  const many = (half: number) => Array.from({ length: 2000 }, () => ({ lon: centre.lon + ((rnd() * 2 - 1) * half) / mLon, lat: centre.lat + ((rnd() * 2 - 1) * half) / 111_320, canopyM: 3 + rnd() * 8 }));
+  const short = coverCellsFromTrees(many(250), centre)!;
+  check('trees: where they stop short of the field, the picture is drawn closer in', short.scale < 1700 && short.scale > 1500, String(short.scale));
+  const wide = coverCellsFromTrees(many(400), centre)!;
+  check('trees: where they reach its edges, at 1:2000', wide.scale === 2000, String(wide.scale));
+  check('trees: never closer than 1:1200', coverCellsFromTrees(many(60), centre)!.scale === 1200);
+  // a speckle: the ground stays open between the crowns
+  check('trees: a speckle, most of the ground open', wide.sharePct > 2 && wide.sharePct < 30, String(wide.sharePct));
+}
+
+// ---- a reading of the aerial's green, for a deck with no crowns ----
 {
   // a reading wider than the field at 1:2000: 2000 x 1500 px at 0.5 m, a green square 100 m across in its middle
   const W = 2000, H = 1500, green = new Uint8Array(W * H);
   for (let y = H / 2 - 100; y < H / 2 + 100; y++) for (let x = W / 2 - 100; x < W / 2 + 100; x++) green[y * W + x] = 1;
   const c = coverCells({ width: W, height: H, mPerPx: 0.5, green });
-  check('cells: the field in 0.8 mm cells', c.nx === NX && c.ny === NY && c.cellMm === 0.8, `${c.nx} x ${c.ny}`);
-  check('cells: 1:2000 where the reading reaches the field\'s edges', c.scale === 2000, String(c.scale));
-  // 100 m at 1.6 m a cell: 62 or 63 cells a side, in the field's middle
-  const n = c.cells.reduce((t, v) => t + v, 0), side = Math.sqrt(n);
-  check('cells: a 100 m square is some 62 cells a side', Math.abs(side - 62.5) < 1.5, String(side));
-  check('cells: the reading\'s middle is the field\'s', c.cells[(NY >> 1) * NX + (NX >> 1)] === 1 && c.cells[0] === 0);
-  check('cells: the share of canopy, in per cent', Math.abs(c.sharePct - (n / (NX * NY)) * 100) < 0.06, String(c.sharePct));
-
-  // a reading that stops short of the field at 1:2000 is drawn closer in, so it still fills the field
-  const small = coverCells({ width: 1100, height: 1100, mPerPx: 0.5, green: new Uint8Array(1100 * 1100).fill(1) });
-  check('cells: a smaller reading is drawn closer in', small.scale < 2000 && small.scale === Math.round((1100 * 0.5 * 1000) / COVER_FIELD.w), String(small.scale));
-  check('cells: and fills the field', small.sharePct === 100, String(small.sharePct));
+  check('reading: 1:2000 where it reaches the field\'s edges', c.scale === 2000 && c.nx === NX && c.ny === NY, String(c.scale));
+  // the square is 100 cells a side round the middle: crowns read off it, drawn as crescents, and nothing beyond it
+  let inside = 0, outside = 0;
+  for (let j = 0; j < NY; j++) for (let i = 0; i < NX; i++) if (c.cells[j * NX + i]) { if (Math.abs(i - MX) <= 51 && Math.abs(j - MY) <= 51) inside++; else outside++; }
+  check('reading: its green is read as crowns, where it is', inside > 800 && outside === 0, `${inside} inside, ${outside} outside`);
+  check('reading: speckled, not filled', inside < 100 * 100 * 0.6, String(inside));
+  // a reading that stops short of the field at 1:2000 is drawn closer in
+  const small = coverCells({ width: 1100, height: 1100, mPerPx: 0.5, green: new Uint8Array(1100 * 1100) });
+  check('reading: a smaller one is drawn closer in', small.scale === Math.round((1100 * 0.5 * 1000) / COVER_FIELD.w), String(small.scale));
   // a coarse reading (a wide site's, capped in pixels) is never drawn finer than it was read
   const coarse = coverCells({ width: 900, height: 900, mPerPx: 2.5, green: new Uint8Array(900 * 900) });
-  check('cells: a coarse reading keeps a cell to a pixel or more', coarse.scale === Math.round((2.5 * 1000) / COVER_CELL_MM), String(coarse.scale));
-  // half green and half not, pixel by pixel in stripes two wide: a cell of three pixels is canopy by its majority
-  const stripes = new Uint8Array(1800 * 1200);
-  for (let i = 0; i < stripes.length; i++) stripes[i] = (i % 1800) % 4 < 2 ? 1 : 0;
-  const s = coverCells({ width: 1800, height: 1200, mPerPx: 0.5, green: stripes });
-  check('cells: a cell is canopy where half its ground or more is green', s.sharePct > 35 && s.sharePct < 100, String(s.sharePct));
-}
-
-// ---- the trees, for a deck with no reading ----
-{
-  check('trees: none, no picture', coverCellsFromTrees([], { lon: 151.16, lat: -33.76 }) === undefined);
-  const centre = { lon: 151.16, lat: -33.76 };
-  const c = coverCellsFromTrees([{ ...centre, canopyM: 16 }, { lon: centre.lon + 0.001, lat: centre.lat, canopyM: 0 }], centre)!;
-  // a 16 m crown at 1.6 m a cell: a disc 10 cells across, some 78 cells; a tree with no crown still marks the ground
-  const n = c.cells.reduce((t, v) => t + v, 0);
-  check('trees: a crown is a disc of its width', n > 70 && n < 100 && c.cells[(NY >> 1) * NX + (NX >> 1)] === 1, String(n));
-  // 0.001 degrees of longitude at this latitude is some 92.5 m: 58 cells east
-  const east = (NX >> 1) + Math.round((0.001 * 111_320 * Math.cos((centre.lat * Math.PI) / 180)) / 1.6);
-  check('trees: each stands where it is', c.cells[(NY >> 1) * NX + east] === 1, String(east));
-  check('trees: at 1:2000', c.scale === 2000);
+  check('reading: a coarse one keeps a cell to a pixel or more', coarse.scale === Math.round((2.5 * 1000) / COVER_CELL_MM), String(coarse.scale));
 }
 
 // ---- the outline ----

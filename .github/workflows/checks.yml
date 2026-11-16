@@ -270,10 +270,10 @@ jobs:
       - name: the booklet folds in order
         run: npx tsx test/booklet.mts
 
-      # The decks' covers: the place's canopy cut into the picture's cells and traced into one outline (its area the
-      # cells' own, holes and corners included); the slides' cover with the picture in every style, the booklet's cut
-      # in two down the fold, the picture on its front for Flamingo and Kingfisher and the contents there for Heron
-      # and Canary.
+      # The decks' covers: the place's trees as the picture's speckle (a small tree a dot, a wide one the lit side of
+      # its crown, trees side by side left apart) traced into one outline (its area the cells' own, holes and corners
+      # included); the slides' cover with the picture in every style, the booklet's cut in two down the fold, the
+      # picture on its front for Flamingo and Kingfisher and the contents there for Heron and Canary.
       - name: the covers and their picture
         run: npx tsx test/covers.mts
 

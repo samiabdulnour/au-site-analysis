@@ -8962,7 +8962,7 @@ export function keepTogether(html: string): string {
  * A deck's covers, after Z.'s layouts (2026-11): two, for the two ways a deck is read.
  *
  * The slides' cover (`coverPage`) is one composition across the A3 spread: the SITE ANALYST mark, the deck's name in
- * two lines, the site with its lot and zone, the place's canopy as the picture (lib/coverPicture.ts), the contents
+ * two lines, the site with its lot and zone, the place's trees as the picture (lib/coverPicture.ts), the contents
  * beside it and the small print top right.
  *
  * The booklet's (`bookletCover`) is the spread cut in two down the fold, its right half the front and its left the
@@ -8984,7 +8984,7 @@ export interface Cover {
   /** The small print: what the deck is and is not, and who made it and when, a line each. */
   note: string;
   credit: string[];
-  /** The place's canopy in cells, for the picture; without it the picture is its ground alone. */
+  /** The place's trees in cells, for the picture; without them the picture is its ground alone. */
   picture?: CoverCells;
 }
 
@@ -9134,12 +9134,14 @@ ${deckCss()}${[...new Set(css.filter(Boolean))].join('\n')}</style></head>
   return { html, slides, booklet };
 }
 
-/** The report's cover: its name, the site with its lot and zone, the place's canopy, the contents and the small print. */
+/** The report's cover: its name, the site with its lot and zone, the place's trees as the picture, the contents and the small print. */
 function reportCover(b: SlidesBundle, slides: Slide[], facts: PlanningFacts): Cover {
   // the zone the planning pages read at the site: the polygon it stands in, else the point query
   const zone = facts.zoneAtSite;
-  // the canopy read off the aerial (render/paintMasks.ts, prepareRasters); for a deck without it, the trees it holds
-  const trees = b.green?.crowns?.length ? b.green.crowns : b.green?.trees.points ?? [];
+  // the picture's trees: the crowns read round the site, the recorded trees among them; for a deck with no crowns,
+  // the ones read off its green when it was drawn (render/paintMasks.ts), else the trees an inventory holds
+  const centre = mercatorToLonLat(b.geocode.center);
+  const crowns = b.green?.crowns ?? [];
   return {
     deck: 'Site report',
     site: coverSite(b.siteAddress),
@@ -9150,7 +9152,7 @@ function reportCover(b: SlidesBundle, slides: Slide[], facts: PlanningFacts): Co
     contents: slides.map((s, i) => ({ n: String(i + 1).padStart(2, '0'), title: s.title })),
     note: 'The site, its place and its controls, read from the NSW Government\'s and the council\'s open data: an analysis to start a design from, not a survey or a s10.7 planning certificate.',
     credit: coverCredit(b.generatedAt),
-    picture: b.cover ?? coverCellsFromTrees(trees, mercatorToLonLat(b.geocode.center)),
+    picture: crowns.length ? coverCellsFromTrees(crowns, centre) : b.cover ?? coverCellsFromTrees(b.green?.trees.points ?? [], centre),
   };
 }
 

@@ -29,7 +29,7 @@ import { panelFurniture, furnitureBox, type LegendEntry } from './minimap.js';
 import { estimateKerbs, type KerbLine } from '../lib/kerbs.js';
 import type { RoadLine } from '../lib/carriageway.js';
 import type { YieldTree } from '../lib/crowns.js';
-import { coverCellsFromTrees, type CoverCells } from '../lib/coverPicture.js';
+import { coverCellsFromTrees } from '../lib/coverPicture.js';
 import type { SummaryData } from './summarySheet.js';
 import type { TopoRoad } from '../fetch/nswTopo.js';
 import type { AerialResult } from '../fetch/imagery.js';
@@ -92,8 +92,6 @@ export interface YieldBundle extends SummaryData {
   aerial?: AerialResult | null;
   /** The trees round about, for the massing: crowns read off the aerial's green (lib/crowns.ts), and the trees a council or OpenStreetMap records. A bundle from before them has none. */
   trees?: YieldTree[];
-  /** The place's canopy in the cover's cells (lib/coverPicture.ts), from the same reading of the aerial's green as the crowns. A bundle from before it has none: its cover draws the trees. */
-  cover?: CoverCells;
   /** What stands on the site today: each building whose centroid is inside the boundary. A bundle from before them has none. */
   existing?: ExistingBuilding[];
   /** The LEP's heritage items round about (not its conservation areas), for the shadow the scheme adds: their outlines (lon/lat) and names. A bundle from before them has none, and the shadow on them is not measured. */
@@ -2091,7 +2089,7 @@ ${deckCss()}${YIELD_CSS}</style></head>
   return { html, slides, booklet: { html: shell('PLANNING YIELD BOOKLET SPREADS', bookletCover(cover)), spreads: [0] } };
 }
 
-/** The yield's cover: its name, the site with its lot and zone, the place's canopy, the contents and the small print. */
+/** The yield's cover: its name, the site with its lot and zone, the place's trees as the picture, the contents and the small print. */
 function yieldCover(b: YieldBundle, slides: Slide[]): Cover {
   const A = b.siteAreaSqm ?? 0, c = b.controls;
   const ring = b.siteRing, centre = { lon: ring.reduce((t, p) => t + p[0], 0) / Math.max(1, ring.length), lat: ring.reduce((t, p) => t + p[1], 0) / Math.max(1, ring.length) };
@@ -2105,7 +2103,7 @@ function yieldCover(b: YieldBundle, slides: Slide[]): Cover {
     contents: slides.map((sl, i) => ({ n: String(i + 1).padStart(2, '0'), title: sl.title })),
     note: NOT_A_DESIGN,
     credit: coverCredit(b.generatedAt),
-    picture: b.cover ?? coverCellsFromTrees(b.trees ?? [], centre),
+    picture: coverCellsFromTrees(b.trees ?? [], centre),
   };
 }
 

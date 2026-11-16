@@ -2237,24 +2237,29 @@ numbered from 2. There are two covers, for the two ways a deck is read
   front, under the name and the site, and the back carries the deck's name and
   the site alone. Every back closes on the small print in two columns.
 
-The picture is the place's canopy (`src/lib/coverPicture.ts`): the green of the
-aerial (trees, gardens and lawns, the same reading the report's green page and
-the yield's crowns come from) cut into cells some 1.6 m across and drawn at
-1:2000, 0.8 mm a cell, the site in the middle, in a blue-grey on a pale sage.
-It is the grain of the place, not a map of it: no site mark, no streets. The
-cells are traced into one vector outline, so nothing in it is a raster for a
-viewer to smooth, and Heron, black and white and its one colour, inks it in the
-two colours' greys.
-- The report cuts the cells from its `vegetation_mask.png` each time it is
-  drawn (`prepareRasters`); the yield's pipeline cuts them from the reading it
-  takes for the crowns and keeps them in the bundle (`cover`).
-- A deck with no reading of the aerial draws the trees it does hold as their
-  crowns in the same cells; with no trees either, the picture is its ground.
-- A reading that stops short of the picture at 1:2000 is drawn closer in; one
-  read coarsely (a very wide site) is never drawn finer than it was read.
+The picture is the place's trees as a speckle (`src/lib/coverPicture.ts`):
+every tree the deck holds is a fleck of its own, the site in the middle, drawn
+at 1:2000 in cells of half a millimetre, in a blue-grey on a pale sage.
+- A small tree is a dot of the heart of its crown (0.6 of its width); a tree
+  6 m across or more is the lit side of its crown, a crescent open away from
+  the light (the north-west). So trees side by side stay apart and the ground
+  between them stays open, where the canopy drawn whole ran into patches.
+- The trees are the crowns the decks already read off the aerial's green
+  (`src/lib/crowns.ts`: the yield's `trees`, the report's `green.crowns`), with
+  the trees a council or OpenStreetMap records among them. A street's trees
+  fall in a line, a garden's in a cluster, a reserve's in a field of crescents.
+- It is the grain of the place, not a map of it: no site mark, no streets.
+- The cells are traced into one vector outline, so nothing in it is a raster
+  for a viewer to smooth, and Heron, black and white and its one colour, inks
+  it in the two colours' greys.
+- Trees that stop short of the picture at 1:2000 are drawn closer in, as far
+  as 1:1200. A report that holds the aerial's green but no crowns has them
+  read off that green when it is drawn (`prepareRasters`); a deck with no trees
+  at all has the picture's ground alone.
 
-`npx tsx test/covers.mts` checks the cells, the outline (its area the cells'
-own, holes and corners included) and which style's cover carries what.
+`npx tsx test/covers.mts` checks the speckle (the dot, the crescent, trees side
+by side left apart), the outline (its area the cells' own, holes and corners
+included) and which style's cover carries what.
 
 Each deck is also imposed as a booklet (`src/render/booklet.ts`), kept beside
 its PDF as `PLANNING_YIELD.booklet.pdf` or `OVERALL_ANALYSIS.booklet.pdf`. Each
