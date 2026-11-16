@@ -309,6 +309,39 @@ def existing_height(r):
 BUILT = set()
 
 
+FOOT = None
+FOOT_ON = {}
+
+
+def footprints_on(pid):
+    """The buildings mapped on a lot (Overture, OpenStreetMap), each clipped to it: [(polygon, storeys, height)], the
+    storeys the map's own where it gives them, the height the tiles' over the outline. Empty where none is mapped, or
+    where they fill the lot and the lot is the building."""
+    global FOOT
+    if FOOT is None:
+        FOOT = []
+        for b in fu.get('footprints') or []:
+            try:
+                g = poly_of(b['rings'], ll=True)
+            except Exception:
+                continue
+            if not g.is_empty and g.area >= 15:
+                FOOT.append((g.buffer(0), b.get('floors'), b.get('heightM')))
+    pid = str(pid)
+    if pid not in FOOT_ON:
+        lot = PROPS[pid]['poly']
+        hit = []
+        for g, floors, h in FOOT:
+            if g.bounds[0] > lot.bounds[2] or g.bounds[2] < lot.bounds[0] or g.bounds[1] > lot.bounds[3] or g.bounds[3] < lot.bounds[1]:
+                continue
+            part = g.intersection(lot.buffer(0.5))
+            if part.area >= 15 and part.area >= 0.3 * g.area:
+                hit.append((part, int(floors) if floors else None, h))
+        cover = unary_union([x[0] for x in hit]).area if hit else 0.0
+        FOOT_ON[pid] = hit if hit and cover < 0.9 * lot.area else []
+    return FOOT_ON[pid]
+
+
 def steps_of(pid):
     """A tall building as the tiles read it, in its steps: [(polygon, z0, z1)], the steps whose outline does not
     change merged into one; None where it was not read in steps."""
@@ -951,7 +984,8 @@ def axo(scn, parcels, blds, existing, RET):
         for p in polys(g):
             out.append(f'<polygon points="{" ".join(Pt(x, y, 0) for x, y in p.exterior.coords[:-1])}" fill="#efefef" stroke="#bdbdbd" stroke-width=".25"/>')
     for g, n, h, pid in context_buildings(30):                        # the blocks round the study, as they stand, in a lighter grey
-        st = steps_of(pid)
+        fps = footprints_on(pid)
+        st = [(part, 0, hh or h) for part, floors, hh in fps] if fps else steps_of(pid)
         for g_, z0, z1 in (st or [(g, 0, h)]):
             for p in polys(g_):
                 if p.area >= 20:
@@ -1274,9 +1308,17 @@ def mini_plan(parcels, blds, existing, RET, sep, k=1.0, big=False, bset=None):
         if not g.intersects(box):
             continue
         g = g.intersection(box)
-        st = steps_of(pid)
-        o.append(f'<path d="{path(g)}" fill="{"#ebebeb" if st else "#dcdcdc"}" stroke="#bbb" stroke-width="{0.3 * k:.2f}"/>')
-        if st:                                                        # the building as it stands on its lot
+        fps = footprints_on(pid)
+        st = None if fps else steps_of(pid)
+        o.append(f'<path d="{path(g)}" fill="{"#ebebeb" if (fps or st) else "#dcdcdc"}" stroke="#bbb" stroke-width="{0.3 * k:.2f}"/>')
+        if fps:                                                       # the building as it is mapped, on its lot
+            body = unary_union([x[0] for x in fps]).intersection(box)
+            main = max(fps, key=lambda x: x[0].area)
+            n = main[1] or (max(1, round(main[2] / STOREY_M)) if main[2] else n)
+            if not body.is_empty:
+                o.append(f'<path d="{path(body)}" fill="#cfcfcf" stroke="#777" stroke-width="{0.45 * k:.2f}"/>')
+                g = max(polys(body), key=lambda q: q.area) if polys(body) else body
+        elif st:                                                      # else as the tiles trace it
             body = unary_union([g_ for g_, z0, z1 in st if z1 > 4.5]).intersection(box)
             if not body.is_empty:
                 o.append(f'<path d="{path(body)}" fill="#cfcfcf" stroke="#888" stroke-width="{0.45 * k:.2f}"/>')

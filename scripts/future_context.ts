@@ -30,6 +30,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { PDFDocument } from 'pdf-lib';
 import { fetchAerial } from '../src/fetch/imagery.js';
+import { fetchBuildings } from '../src/fetch/buildings.js';
 import { fetchFloorSpaceRatio, fetchHeightOfBuilding } from '../src/fetch/nsw.js';
 import { meshSurfaceOver } from '../src/fetch/meshHeights.js';
 import { cellsIn, footprintHeight, simplifyRing, toLonLat, toXY, traceOutlines, type XY } from '../src/lib/meshHeights.js';
@@ -93,6 +94,17 @@ async function fetchSunContext(): Promise<void> {
       if (t.length > 1) { f.tiers[pid] = t; stepped++; }
     }
   }
+  // the buildings as they are mapped (Overture, OpenStreetMap), each with the tiles' height over its own outline: a
+  // lot is not its building, and the plans draw what stands on it
+  try {
+    const mapped = await fetchBuildings(win, log);
+    f.footprints = mapped.buildings.filter((b) => b.source !== 'mesh').map((b) => {
+      const h = footprintHeight(surface!.field, b.rings.map((r) => r.map(([lon, lat]) => toXY(surface!.frame, lon, lat))));
+      return { rings: b.rings, floors: b.floors ?? null, kind: b.kind ?? null, name: b.name ?? null, heightM: h?.heightM ?? b.heightM ?? null };
+    });
+    f.footprintSource = mapped.source;
+    log(`  the sun's reach: ${f.footprints.length} mapped building outlines (${mapped.source})`);
+  } catch (e: any) { log(`  WARN the mapped buildings: ${e?.message ?? e}`); }
   f.sunContext = { reachM: SUN_REACH_M, meshes: surface.meshes, read, stepped };
   await writeFile(join(out, 'future.json'), JSON.stringify(f));
   log(`  the sun's reach: ${read} more properties read off ${surface.meshes} meshes, ${stepped} tall ones in their steps`);
