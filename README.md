@@ -1609,7 +1609,9 @@ site may take, so a site with more paths has more pages:
    at one hour or more, where no building standing shades it that hour
    (`addedGround()` in `src/lib/solarAccess.ts`: what it would overshadow);
    the land it shades outlined and each separation drawn as a dimension (green clear,
-   amber where it holds only habitable to non-habitable, red short).
+   amber where it holds only habitable to non-habitable, red short), its
+   distance written along its line and just off it, read from the sheet's
+   foot or its right.
 10. **Controls and assumptions** — the assumptions the study rests on (floor
    to floor, efficiencies, the mix, the plates, the parking rates, the nearest
    station) on the left and, under them where the deck has compliance
