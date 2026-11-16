@@ -1913,17 +1913,47 @@ def context_buildings(reach):
     return [(r['poly'], storeys_of(r), measured(r), pid) for pid, r in PROPS.items() if pid not in skip and measured(r) and r['poly'].intersects(study.buffer(reach))]
 
 
-def mini_plan(parcels, blds, existing, RET, sep, k=1.0, big=False, bset=None):
+OPTION_SCALE = 500      # the option sheet's plan, 1:500 on the A3 sheet, so it can be measured and drawn over
+OPLAN_MM = (10, 26, 330, 262)   # its left and top on the sheet, the widest it may be, and its height
+
+
+def scaled_window(parcels):
+    """The window of the option sheet's plan at 1:OPTION_SCALE: every lot the scenario builds on and ours, out to the
+    middle of each road beside them, as tall as the sheet allows and no wider than it allows; (x0, y0, x1, y1)."""
+    content = unary_union([q['poly'] for q in parcels] + [SITE_POLY])
+    bx0, by0, bx1, by1 = content.bounds
+    axes = [ax for lines in road_axes().values() for ax in lines]
+    reach = 14
+    def grown(sideways):                                              # the roads' middles beside the lots, that way only
+        frame = Polygon([(bx0 - reach, by0), (bx1 + reach, by0), (bx1 + reach, by1), (bx0 - reach, by1)]) if sideways else \
+            Polygon([(bx0, by0 - reach), (bx1, by0 - reach), (bx1, by1 + reach), (bx0, by1 + reach)])
+        def beside(ax):                                               # a road that runs along that side, not across it
+            (ax0, ay0), (ax1, ay1) = ax.coords[0], ax.coords[-1]
+            return (abs(ay1 - ay0) > abs(ax1 - ax0)) == sideways
+        bits = [ax.intersection(frame) for ax in axes if beside(ax) and ax.intersects(frame) and ax.distance(content) < reach]
+        return unary_union([content] + [b for b in bits if not b.is_empty]).bounds
+    gx, gy = grown(True), grown(False)
+    per_mm = OPTION_SCALE / 1000
+    w = min(OPLAN_MM[2] * per_mm, max(gx[2] - gx[0] + 4, 90))
+    h = OPLAN_MM[3] * per_mm
+    cx, cy = (gx[0] + gx[2]) / 2, (gy[1] + gy[3]) / 2
+    return cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2
+
+
+def mini_plan(parcels, blds, existing, RET, sep, k=1.0, big=False, bset=None, window=None):
     """The scenario's plan as colour blocks alone, with the blocks round it: no aerial, no names, the separations
     drawn with their metres, every standing building with its storeys. `k` scales the text and lines (1 for the
-    summary's small plans, less for a sheet's); `big` adds the street names, the plates, a scale bar and north."""
+    summary's small plans, less for a sheet's); `big` adds the street names, the plates, a scale bar and north;
+    `window` (x0, y0, x1, y1) draws that window and no other, for a plan set on its sheet at a scale."""
     x0, y0, x1, y1 = WX0 - MINI_PAD, WY0 - MINI_PAD, WX1 + MINI_PAD, WY1 + MINI_PAD
     if parcels:                                                       # a scenario that builds beyond the study blocks
         bx = unary_union([q['poly'] for q in parcels]).bounds
         x0, y0, x1, y1 = min(x0, bx[0] - 8), min(y0, bx[1] - 8), max(x1, bx[2] + 8), max(y1, bx[3] + 8)
+    if window:
+        x0, y0, x1, y1 = window
     box = Polygon([(x0, y0), (x1, y0), (x1, y1), (x0, y1)])
     o = [f'<svg viewBox="{f(x0)} {f(-y1)} {f(x1 - x0)} {f(y1 - y0)}" xmlns="http://www.w3.org/2000/svg" style="overflow:hidden"><rect x="{f(x0)}" y="{f(-y1)}" width="{f(x1 - x0)}" height="{f(y1 - y0)}" fill="#f4f2ef"/>']
-    for g, n, h, pid in context_buildings(MINI_PAD + 20):
+    for g, n, h, pid in context_buildings(max(MINI_PAD + 20, max(Point(c).distance(study) for c in box.exterior.coords) + 5)):
         if not g.intersects(box):
             continue
         g = g.intersection(box)
@@ -2044,9 +2074,10 @@ def mini_plan(parcels, blds, existing, RET, sep, k=1.0, big=False, bset=None):
         o += label_roads(box, k * 1.6, beside=True)
         L = 20
         bx0, by0 = x0 + 4, y0 + 5
-        o.append(f'<g transform="translate({f(bx0)} {f(-by0)})"><rect x="{-1.5 * k:.2f}" y="{-3 * k:.2f}" width="{L + 12 * k:.2f}" height="{5.5 * k:.2f}" fill="#fff" fill-opacity=".85"/>'
+        note = f'20 m · 1:{OPTION_SCALE} at A3' if window else '20 m'
+        o.append(f'<g transform="translate({f(bx0)} {f(-by0)})"><rect x="{-1.5 * k:.2f}" y="{-3 * k:.2f}" width="{L + (2 + 1.55 * len(note)) * k:.2f}" height="{5.5 * k:.2f}" fill="#fff" fill-opacity=".85"/>'
                  f'<line x1="0" y1="0" x2="{L}" y2="0" stroke="#111" stroke-width="{0.5 * k:.2f}"/><line x1="0" y1="{-1 * k:.2f}" x2="0" y2="{1 * k:.2f}" stroke="#111" stroke-width="{0.4 * k:.2f}"/>'
-                 f'<line x1="{L}" y1="{-1 * k:.2f}" x2="{L}" y2="{1 * k:.2f}" stroke="#111" stroke-width="{0.4 * k:.2f}"/><text x="{L + 2 * k:.2f}" y="{0.9 * k:.2f}" font-size="{2.6 * k:.2f}" font-weight="600" fill="#111">20 m</text></g>')
+                 f'<line x1="{L}" y1="{-1 * k:.2f}" x2="{L}" y2="{1 * k:.2f}" stroke="#111" stroke-width="{0.4 * k:.2f}"/><text x="{L + 2 * k:.2f}" y="{0.9 * k:.2f}" font-size="{2.6 * k:.2f}" font-weight="600" fill="#111">{note}</text></g>')
         o.append(f'<g transform="translate({f(x1 - 7)} {f(-(y0 + 8))})"><circle r="{4 * k:.2f}" fill="#fff" fill-opacity=".9" stroke="#111" stroke-width="{0.4 * k:.2f}"/><path d="M0 {-2.8 * k:.2f} L{1 * k:.2f} {1.5 * k:.2f} L0 {0.7 * k:.2f} L{-1 * k:.2f} {1.5 * k:.2f} Z" fill="#111"/><text y="{-5 * k:.2f}" font-size="{2.6 * k:.2f}" font-weight="600" text-anchor="middle" fill="#111">N</text></g>')
     o.append('</svg>')
     return ''.join(o)
@@ -2066,18 +2097,33 @@ def option_page(r):
     for name, with_, without, loss in r.get('shaded', []):
         mark, vcol = apts_verdict(dict(share=with_, dark=0))
         trs += f'<tr><td>{H.escape(name)}</td><td style="color:#888">—</td>{cell(f"{with_:.0%} {mark}" + (f" · {without:.0%} without our tower, {loss * 100:.0f} points" if without is not None else ""), vcol)}</tr>'
-    css = (f'.oh{{position:absolute;left:{mm(10)};top:{mm(9)};width:{mm(400)}}} .oh h1{{margin:0}}'
-           f'.oplan{{position:absolute;left:{mm(10)};top:{mm(26)};width:{mm(234)};height:{mm(260)}}} .oplan svg{{width:100%;height:100%}}'
-           f'.ocol{{position:absolute;left:{mm(252)};top:{mm(26)};width:{mm(158)};font-size:{pt(7.2)};line-height:1.4}}'
+    pw, ph = r['plan_mm']
+    cx = OPLAN_MM[0] + pw + 6                                         # the column beside the plan
+    cw = 410 - cx
+    narrow = cw < 120
+    vb = re.search(r'viewBox="([-\d. ]+)"', r['axo'])
+    aw, ah = (float(v) for v in vb.group(1).split()[2:]) if vb else (3.0, 2.0)
+    css = (f'.oh{{position:absolute;left:{mm(10)};top:{mm(9)};width:{mm(pw)}}} .oh h1{{margin:0}}'
+           f'.oplan{{position:absolute;left:{mm(OPLAN_MM[0])};top:{mm(OPLAN_MM[1])};width:{mm(pw)};height:{mm(ph)}}} .oplan svg{{display:block;width:100%;height:100%}}'
+           f'.ocol{{position:absolute;left:{mm(cx)};top:{mm(10 if narrow else OPLAN_MM[1])};width:{mm(cw)};font-size:{pt(7.2)};line-height:1.4}}'
            f'.ocol .u{{font-size:{pt(8)};margin-bottom:{mm(2)}}}'
            f'.ocol table{{font-size:{pt(6.4)}}} .ocol td{{padding:{mm(.6)} {mm(.5)}}} .ocol th{{padding:{mm(.6)} {mm(.5)}}}'
-           f'.oaxo{{width:{mm(158)};height:{mm(165)};margin-top:{mm(6)}}} .oaxo svg{{position:static;width:100%;height:100%}}')
-    head = (f'<div class="oh"><div class="kick">Future context · Scenario {r["no"]} of {LAST}</div><h1>{H.escape(r["title"])}</h1>'
+           f'.ob{{border-bottom:{mm(.15)} solid #ccc;padding:{mm(1.3)} 0;font-size:{pt(6.8)};line-height:1.35}} .ob:first-of-type{{border-top:{mm(.3)} solid #111}}'
+           f'.obn{{font-weight:700}} .oby{{color:#333}} .obs{{font-weight:600}} .obc{{font-size:{pt(6)};color:#666;margin-bottom:{mm(1.5)}}}'
+           f'.oaxo{{width:{mm(cw)};height:{mm(cw * ah / aw)};margin-top:{mm(6)}}} .oaxo svg{{position:static;display:block;width:100%;height:100%}}')
+    head = (f'<div class="oh"><div class="kick">Future context · Scenario {r["no"]} of {LAST} · plan at 1:{OPTION_SCALE} on A3</div><h1>{H.escape(r["title"])}</h1>'
             f'<div class="hor">{H.escape(r["horizon"])}</div></div>')
     warn = ''.join(f'<div class="u" style="color:#c0161c"><b>Site {H.escape(k_)} takes {H.escape(addr)}, heritage item {H.escape(item)}: it cannot be redeveloped.</b></div>' for k_, addr, item in r.get('heritage', []))
-    col = (f'<div class="ocol">{warn}'
-           f'<table><tr><th>Building</th><th>FSR, floor space and apartments, a rough estimate</th><th>Apartments with 2 continuous hours of winter sun</th></tr>{trs}</table>'
-           f'<div class="oaxo">{r["axo"]}</div></div>')
+    if narrow:
+        # beside a wide plan the table is a block a building: its name, its floor space, its sun
+        rows = [(H.escape(b['name']), b.get('yld', ''), b['sun'] if b['sun'] else ('—', '')) for b in r['buildings']]
+        if r['ours']:
+            rows.append(('Our building', r.get('ours_yield', ''), r['ours']))
+        table = ('<div class="obc">Floor space and apartments are a rough estimate. Sun: apartments with 2 continuous hours of winter sun.</div>'
+                 + ''.join(f'<div class="ob"><div class="obn">{n_}</div><div class="oby">{y_}</div><div class="obs" style="color:{VERDICT_COLOUR.get(sc_, "#111")}">Sun: {st_}</div></div>' for n_, y_, (st_, sc_) in rows))
+    else:
+        table = f'<table><tr><th>Building</th><th>FSR, floor space and apartments, a rough estimate</th><th>Apartments with 2 continuous hours of winter sun</th></tr>{trs}</table>'
+    col = f'<div class="ocol">{warn}{table}<div class="oaxo">{r["axo"]}</div></div>'
     return (f'<!doctype html><html><head><meta charset="utf-8"><title>Future context · Scenario {r["no"]}</title><style>{CSS}{css}</style></head><body>'
             f'{head}<div class="oplan">{r["big"]}</div>{col}</body></html>')
 
@@ -2477,9 +2523,11 @@ def page(no, scn):
             a_, gap_, c_ = g['parts']
             b['parts'] = '+'.join(f'{x:.0f}' for x in ((a_, gap_, c_) if gap_ >= 0.3 else (a_, c_)))
     oy = site_yield()
-    SUMMARY.append(dict(heritage=HERITAGE_HITS.get(scn['title'], []), ours_yield=yield_text(oy[0], oy[1], oy[2], about=oy[2] != SITE_UNITS), no=no, title=scn['title'], horizon=scn.get('horizon', ''), lead=fill_in(scn['lead'], parcels, units), units=units, buildings=buildings, ours=ours,
+    win = scaled_window(parcels)
+    k_plan = 0.45 * OPTION_SCALE / 755                              # the text and lines as large on paper as they were
+    SUMMARY.append(dict(plan_mm=((win[2] - win[0]) * 1000 / OPTION_SCALE, (win[3] - win[1]) * 1000 / OPTION_SCALE), heritage=HERITAGE_HITS.get(scn['title'], []), ours_yield=yield_text(oy[0], oy[1], oy[2], about=oy[2] != SITE_UNITS), no=no, title=scn['title'], horizon=scn.get('horizon', ''), lead=fill_in(scn['lead'], parcels, units), units=units, buildings=buildings, ours=ours,
                         allow=allow, allow_colour=['#1f8f3a', '#c77d00', '#c0161c'][worst], failing=sun_failing, shaded=sun_shaded,
-                        mini=mini_plan(parcels, blds, existing, RET, sep), big=mini_plan(parcels, blds, existing, RET, sep, k=0.45, big=True, bset=bset),
+                        mini=mini_plan(parcels, blds, existing, RET, sep), big=mini_plan(parcels, blds, existing, RET, sep, k=k_plan, big=True, bset=bset, window=win),
                         axo=axo(scn, parcels, blds, existing, RET), sun=sun, scn=scn))
     return f'''<!doctype html><html><head><meta charset="utf-8"><title>Future context · Scenario {no}</title><style>{CSS}</style></head><body>
 <div class="txt"><div class="kick">Future context · Scenario {no} of {LAST}</div><h1>{H.escape(scn["title"])}</h1><div class="hor">{H.escape(scn["horizon"])}</div>

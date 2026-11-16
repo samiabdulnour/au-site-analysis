@@ -223,6 +223,19 @@ if (loriini && !args.includes('--no-sun')) {
   } catch (e: any) { log(`  WARN the sun study did not run: ${e?.message ?? e}`); }
 } else log('  no Loriini beside this repository (LORIINI unset): the sheets carry no sun study');
 const { width, height, pages, summary, options, sun: sunPages = 0, only: onlyPage = null, sunPages: sunList = [], deck = null } = JSON.parse(await readFile(join(out, 'future-page.json'), 'utf8')) as { width: number; height: number; pages: number; summary?: boolean | number; options?: boolean; sun?: number; only?: number | null; sunPages?: number[]; deck?: string | null };
+// The sheets are A3. Chromium writes each PDF at the page's pixel size taken as 96 to the inch, three times too
+// large, so each is set to 420 mm wide here: a plan drawn at a scale then measures true in any viewer, on a print at
+// 100 % and in a CAD or sketching import
+const A3_WIDTH_PT = (420 / 25.4) * 72;
+const sheet = async (name: string) => {
+  await printPage(join(out, `${name}.html`), { width, height }, { png: join(out, `${name}.png`), pdf: join(out, `${name}.pdf`) });
+  const doc = await PDFDocument.load(await readFile(join(out, `${name}.pdf`)));
+  for (const p of doc.getPages()) {
+    const k = A3_WIDTH_PT / p.getWidth();
+    p.scale(k, k);
+  }
+  await writeFile(join(out, `${name}.pdf`), await doc.save());
+};
 if (deck === 'two-sheet') {
   // `"deck": "two-sheet"` in the scenarios file: each scenario is two sheets, its geometry and its view from the sun,
   // bound in that order into future.pdf, and nothing else is printed; with --only, that scenario's pair alone
@@ -230,7 +243,7 @@ if (deck === 'two-sheet') {
   const names = which.flatMap((i) => [`future-option-${i}`, ...(sunList.includes(i) ? [`future-sun-${i}`] : [])]);
   const doc = await PDFDocument.create();
   for (const name of names) {
-    await printPage(join(out, `${name}.html`), { width, height }, { png: join(out, `${name}.png`), pdf: join(out, `${name}.pdf`) });
+    await sheet(name);
     const one = await PDFDocument.load(await readFile(join(out, `${name}.pdf`)));
     for (const p of await doc.copyPages(one, one.getPageIndices())) doc.addPage(p);
     log(`  printed ${name}`);
@@ -245,7 +258,7 @@ if (onlyPage != null) {
   // bound PDFs of the whole deck are left as they were
   const names = [`future-option-${onlyPage}`, `future-${onlyPage}`, ...sunList.map((i) => `future-sun-${i}`)];
   for (const name of names) {
-    await printPage(join(out, `${name}.html`), { width, height }, { png: join(out, `${name}.png`), pdf: join(out, `${name}.pdf`) });
+    await sheet(name);
     log(`  printed ${name}`);
   }
   console.log(names.flatMap((n) => [join(out, `${n}.png`), join(out, `${n}.pdf`)]).join('\n'));
@@ -255,7 +268,7 @@ if (onlyPage != null) {
 // sheets in full (the plan at 1:500, the massing, the yield, the assumptions); future-sun.pdf: the sun's proof for
 // our own apartments, a sheet a scenario
 const print = async (name: string, into: PDFDocument) => {
-  await printPage(join(out, `${name}.html`), { width, height }, { png: join(out, `${name}.png`), pdf: join(out, `${name}.pdf`) });
+  await sheet(name);
   const one = await PDFDocument.load(await readFile(join(out, `${name}.pdf`)));
   for (const p of await into.copyPages(one, one.getPageIndices())) into.addPage(p);
   log(`  printed ${name}`);

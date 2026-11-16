@@ -1951,15 +1951,19 @@ of them with their mid-winter sun, the separations and setbacks drawn and
 coloured on the plan, with a line on whether the site's massing lets the
 neighbours develop; the site's FSR is written on its lot)
 followed by a sheet for each scenario in the same form
-(`future-option-<n>.png`: the plan large, the table and the massing, no
-running text);
+(`future-option-<n>.png`: the plan at 1:500 on the A3 sheet, so it can be
+measured and drawn over, the table and the massing, no running text; the
+plan's window holds every lot the scenario builds on and the site's, out to
+the middle of each road beside them);
 `future-detail.pdf`, the sheets in full (`future-<n>.png`: the plan at 1:500
 on the aerial, the massing, the yield, the assumptions); and, where the
 scenarios file lays the site's apartments out, `future-sun.pdf`, the sun's
 proof for them (`future-sun-<n>.png`, below). `--redraw` draws again from
 what was fetched, and `--only <n>` (a scenario's number, or `last`) draws
 that scenario's sheets alone, in seconds, leaving the bound PDFs as they
-were.
+were. Every PDF page is a true A3 (420 × 297 mm), so a plan at a scale
+measures true in a viewer, on a print at 100 % and in a CAD or sketching
+import; the PNGs are the same sheet at 300 dpi.
 `examples/capacity_study/` holds the sheets for 70-76 Riley Street with
 their scenarios file.
 
