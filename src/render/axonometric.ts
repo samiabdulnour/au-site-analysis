@@ -224,9 +224,9 @@ function inRing(p: XY, rg: XY[]): boolean {
  * green with a lighter one over it, a person a slip of colour with a head. Illustrated, as an illustrator's isometric
  * draws a town: each crown outlined, in its shade with the lit part over it towards the light and a highlight, its
  * shadow on the ground; a person with legs, clothes and a face, a little larger than life; more of them walking the
- * footpaths, some in twos, and people gathered in the parks. Flamingo's crowns are clouds of a few lobes in the
- * greens of a garden, a blossom and an autumn tree among them; Kingfisher's are drawn, a scalloped edge with the
- * marks of the leaves in it, in Kingfisher's own greens. A few small trees stand narrow and upright.
+ * footpaths, some in twos, and people gathered in the parks. Flamingo's crowns are clouds of a few lobes;
+ * Kingfisher's are drawn, a scalloped edge with the marks of the leaves in it. Each style's trees are in its own
+ * green, deeper or lighter tree to tree. A few small trees stand narrow and upright.
  */
 interface AxoLook {
   crown: 'disc' | 'cloud' | 'drawn';
@@ -244,7 +244,7 @@ const PLAIN: AxoLook = { crown: 'disc', people: 'slip', crowd: false, greens: []
 function lookOf(M: ReturnType<typeof massingInks>, mono: boolean): AxoLook {
   const style = deckLook().id;
   if (mono) return PLAIN;
-  if (style === 'flamingo') return { crown: 'cloud', people: 'figure', crowd: true, greens: ['#9fbd78', '#82aa68', '#b5c98c', '#65936a'], accents: [['#dcb85f', 0.06], ['#eeaaa6', 0.035]], columnar: 0.22 };
+  if (style === 'flamingo') return { crown: 'cloud', people: 'figure', crowd: true, greens: [M.tree, shade(M.tree, 0.92), shade(M.tree, 0.84)], accents: [], columnar: 0.22 };
   if (style === 'kingfisher') return { crown: 'drawn', people: 'figure', crowd: true, greens: [M.tree, shade(M.tree, 0.92), shade(M.tree, 0.84)], accents: [], columnar: 0.15 };
   return PLAIN;
 }

@@ -1250,11 +1250,11 @@ The 3D views' trees and people follow the style (`lookOf` in
   - a few small trees narrow and upright;
   - people with legs, clothes and a face, a little larger than life, walking
     the footpaths (some in twos) and gathered in the parks.
-- **Flamingo's crowns** are clouds of a few lobes in a garden's greens (sage,
-  olive, mid and deep), about one in sixteen an ochre autumn tree and one in
-  thirty a pink blossom.
+- **Flamingo's crowns** are clouds of a few lobes.
 - **Kingfisher's crowns** are drawn: a scalloped edge with the marks of the
-  leaves in it, all in Kingfisher's own green.
+  leaves in it.
+- **Colour:** each style's trees are in its own green (`massingInks().tree`,
+  Flamingo's aqua mint and Kingfisher's mint), deeper or lighter tree to tree.
 - **Heron, Canary and the white model** keep the plain discs and slips.
 
 A drawing holds a few thousand trees, too many to print as vectors (tens of

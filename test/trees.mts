@@ -1,8 +1,8 @@
 /* The axonometric's trees and people in each deck style (render/axonometric.ts, render/crowns.ts).
  *
  * A crown painted: solid in the middle, clear at its corners, its edge darker than its fill, the same picture for the
- * same arguments, a pixel more or less to the radius as asked. Flamingo draws cloud crowns in the garden's greens and
- * Kingfisher drawn crowns in its own green, each picture once in the drawing however many trees take it, the trees'
+ * same arguments, a pixel more or less to the radius as asked. Flamingo draws cloud crowns and Kingfisher drawn ones,
+ * each in its own green, each picture once in the drawing however many trees take it, the trees'
  * shadows on the ground, people with legs, and people in a park; Heron and a white model keep the plain discs and
  * slips. Nothing here asks a network.
  *
@@ -18,6 +18,13 @@ import type { XY } from '../src/lib/geo.js';
 
 const failures: string[] = [];
 const check = (name: string, ok: boolean, detail = '') => { if (!ok) failures.push(`${name}${detail ? ` — ${detail}` : ''}`); };
+const rgbOf = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+/** A colour's hue, degrees. */
+const hue = ([r, g, b]: number[]) => {
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn || 1;
+  const h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return (h * 60 + 360) % 360;
+};
 const box = (x: number, y: number, w: number, h: number): XY[] => [{ x, y }, { x: x + w, y }, { x: x + w, y: y + h }, { x, y: y + h }];
 
 // ---- a crown painted ----
@@ -67,6 +74,15 @@ for (const style of ['flamingo', 'kingfisher']) {
   check(`${style}: every tree a placed crown`, placed.length === 40, String(placed.length));
   check(`${style}: each crown's picture once, fewer than the trees`, pictures.length >= 2 && pictures.length < placed.length && new Set(pictures).size === pictures.length, `${pictures.length} pictures`);
   check(`${style}: no plain discs left`, !svg.includes(`fill="${M.treeLight}"`));
+  // every crown in the style's own green: at its middle, the lit part, the hue of massingInks().tree
+  const want = hue(rgbOf(M.tree)), off: string[] = [];
+  for (const m of svg.matchAll(/<image id="axo-tr-t\d+" href="data:image\/png;base64,([^"]+)" x="([^"]+)" y="([^"]+)" width="([^"]+)" height="([^"]+)"/g)) {
+    const png = decodePng(Buffer.from(m[1], 'base64'))!, [x, y, w, h] = m.slice(2).map(Number);
+    const px = Math.round((-x / w) * png.width), py = Math.round((-y / h) * png.height), o = (py * png.width + px) * 4;
+    const got = [png.data[o], png.data[o + 1], png.data[o + 2]];
+    if (Math.abs(hue(got) - want) > 10) off.push(JSON.stringify(got));
+  }
+  check(`${style}: every crown in the style's own green (${M.tree})`, off.length === 0, off.slice(0, 3).join(' '));
   check(`${style}: the trees' shadows on the ground, one picture`, (svg.match(/<image data-shadows href="data:image\/png/g) ?? []).length === 1);
   check(`${style}: people with legs`, legs(svg) >= 20, String(legs(svg)));
   // (a picture's base64 can spell NaN, so the pictures are left out of the search)
