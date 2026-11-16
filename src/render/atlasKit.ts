@@ -30,8 +30,8 @@ export interface Fill {
   bg?: string;
   /** The ground's opacity, where it lies over a photograph; opaque where unset. */
   opacity?: number;
-  /** Vertical lines, horizontal lines, dots, waves; or the context sheet's textures, a diagonal hatch and a cross-hatch. */
-  kind?: 'vlines' | 'hlines' | 'dots' | 'waves' | 'hatch' | 'cross';
+  /** Vertical lines, horizontal lines, dots, waves; or the context sheet's textures, a diagonal hatch (falling to the right; `rise` the other way) and a cross-hatch. */
+  kind?: 'vlines' | 'hlines' | 'dots' | 'waves' | 'hatch' | 'rise' | 'cross';
   ink?: string;
   step?: number;
   w?: number;
@@ -43,6 +43,9 @@ export interface Fill {
 }
 
 type Box = { x0: number; y0: number; x1: number; y1: number };
+
+/** Heron's zone hatches in the decks: black, and this fraction of the spacing its A1 site sheet draws them at. */
+const MONO_HATCH_INK = '#1a1a1a', MONO_HATCH_SCALE = 0.85;
 
 /** Every pattern drawn this much coarser than its fill says, and its strokes this much heavier: open enough at print size to tell one pattern from the next. */
 export const PATTERN_SCALE = 1.7, PATTERN_WEIGHT = 1.35;
@@ -60,11 +63,11 @@ function strokes(f: Fill, bb: Box, k = 1): string {
     for (let y = bb.y0 + step / 2; y <= bb.y1; y += step) out.push(`M${bb.x0.toFixed(2)},${y.toFixed(2)}H${bb.x1.toFixed(2)}`);
     return `<path d="${out.join('')}" stroke="${f.ink}" stroke-width="${w.toFixed(3)}" fill="none"/>`;
   }
-  if (f.kind === 'hatch' || f.kind === 'cross') {
-    // the context sheet's textures: a hatch falling to the right, crossed for the cross-hatch
+  if (f.kind === 'hatch' || f.kind === 'cross' || f.kind === 'rise') {
+    // the context sheet's textures: a hatch falling to the right, crossed for the cross-hatch; or rising
     const h = bb.y1 - bb.y0;
-    for (let o = bb.x0 - h; o <= bb.x1; o += step) out.push(`M${o.toFixed(2)},${bb.y0.toFixed(2)}L${(o + h).toFixed(2)},${bb.y1.toFixed(2)}`);
-    if (f.kind === 'cross') for (let o = bb.x0 - h; o <= bb.x1; o += step) out.push(`M${o.toFixed(2)},${bb.y1.toFixed(2)}L${(o + h).toFixed(2)},${bb.y0.toFixed(2)}`);
+    if (f.kind !== 'rise') for (let o = bb.x0 - h; o <= bb.x1; o += step) out.push(`M${o.toFixed(2)},${bb.y0.toFixed(2)}L${(o + h).toFixed(2)},${bb.y1.toFixed(2)}`);
+    if (f.kind !== 'hatch') for (let o = bb.x0 - h; o <= bb.x1; o += step) out.push(`M${o.toFixed(2)},${bb.y1.toFixed(2)}L${(o + h).toFixed(2)},${bb.y0.toFixed(2)}`);
     return `<path d="${out.join('')}" stroke="${f.ink}" stroke-width="${w.toFixed(3)}" fill="none"/>`;
   }
   if (f.kind === 'dots') {
@@ -102,6 +105,13 @@ export function fillShape(d: string, bb: Box, f: Fill, k = 1): string {
  * zone as the context sheet of the same style shows it.
  */
 export function categoryFill(c: Category, ground: 'paper' | 'aerial' = 'paper', tintScale = 1): Fill {
+  // A category with a hatch of its own (Heron's, black and white): no shade, the pattern alone in black on the paper,
+  // as its site sheet draws the zone, at the deck's smaller scale.
+  if (c.hatch && deckLook().id === 'heron') {
+    const h = c.hatch;
+    const kind: Fill['kind'] = h.kind === 'dots' ? 'dots' : h.kind === 'cross' ? 'cross' : h.dir === 'up' ? 'vlines' : h.dir === 'flat' ? 'hlines' : h.dir === 'rise' ? 'rise' : 'hatch';
+    return { bg: '#ffffff', kind, ink: MONO_HATCH_INK, step: h.kind === 'dots' ? 0.75 : ((h.step ?? 1.6) * MONO_HATCH_SCALE) / PATTERN_SCALE, w: h.kind === 'dots' ? 0.17 : 0.09, outline: MONO_HATCH_INK, outlineW: 0.18 };
+  }
   const op = Math.min(1, c.opacity * tintScale);
   const f: Fill = ground === 'paper' ? { bg: tint(c.fill, op) } : { bg: c.fill, opacity: op };
   if (c.texture) {
@@ -343,6 +353,13 @@ export function zLine(series: { year: number; value: number }[], projection: { y
   return svg(B + 4.4, g.join(''));
 }
 
+/** Heron's pre-1750 communities: nine patterns that read apart with no colour, open enough to leave the land's shape under them. */
+const MONO_VEG: Pick<Fill, 'kind' | 'step' | 'w'>[] = [
+  { kind: 'dots', step: 0.9, w: 0.17 }, { kind: 'hatch', step: 1.2, w: 0.09 }, { kind: 'vlines', step: 1.0, w: 0.09 },
+  { kind: 'cross', step: 1.7, w: 0.09 }, { kind: 'hlines', step: 1.0, w: 0.09 }, { kind: 'rise', step: 1.2, w: 0.09 },
+  { kind: 'waves', step: 1.1, w: 0.09 }, { kind: 'dots', step: 1.7, w: 0.26 }, { kind: 'hatch', step: 2.4, w: 0.16 },
+];
+
 /** The green of the aerial on slide 10: a pale ground dotted in the deep green. */
 export const aerialGreenFill = (): Fill => ({ bg: INK.green.light, kind: 'dots', ink: INK.green.deep, step: 0.5, w: 0.1 });
 /** The most plant communities the Country page tells apart; the rest of a rich strip stays in the hillshade. */
@@ -369,6 +386,8 @@ export function veg1750Fills(classes: { pct: string }[], technique = deckLook().
   return classes.map((c, i) => {
     const n = c.pct.toLowerCase();
     const hue = hues[i % hues.length];
+    // Heron on paper: no colour to tell the communities by, so each a pattern of its own in one dark ink, on the bare paper
+    if (deckLook().id === 'heron' && technique !== 'tone') return { ...MONO_VEG[i % MONO_VEG.length], ink: '#2b2b2b' };
     if (technique === 'tone') return { bg: tint(hue, openness(n)), opacity: 0.85 };
     // on paper, dots in the community's colour, the denser the closer its canopy: rainforest tightest, forest, woodland, the rest open
     const dots = /rainforest/.test(n) ? { step: 0.55, w: 0.3 } : /forest/.test(n) ? { step: 0.7, w: 0.3 } : /woodland|grassy|open|grassland/.test(n) ? { step: 0.95, w: 0.28 } : { step: 1.25, w: 0.26 };

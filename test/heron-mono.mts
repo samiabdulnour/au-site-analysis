@@ -1,6 +1,6 @@
 /* Heron is black, white and one colour (2026-11): the site analysis sheet, the
- * yield and the site report in greys and Heron's accent alone, plain and
- * conventional; its context sheet keeps the office palette.
+ * yield and the site report in black lines, hatches and Heron's accent alone,
+ * plain and conventional; its context sheet keeps the office palette.
  *
  * Every ink the decks and the site sheet take in Heron is either a grey or a
  * tint or shade of the accent; Kingfisher's are not, so the check can fail.
@@ -17,7 +17,8 @@ import { deflateSync, crc32 } from 'node:zlib';
 import {
   withTemplate, templateFor, deckLook, deckFamilies, siteTheme, tpl, HERON_ACCENT, HERON_MONO, type Category,
 } from '../src/render/template.js';
-import { paletteRamp, terrainRamp, styleRamp, heightRamp, massingInks } from '../src/render/atlasKit.js';
+import { paletteRamp, terrainRamp, styleRamp, heightRamp, massingInks, categoryFill, veg1750Fills } from '../src/render/atlasKit.js';
+import { textureSvg } from '../src/render/sheet.js';
 import { printSlides, launch } from '../src/render/pdf.js';
 import { PDFDocument, PDFRawStream, PDFName } from 'pdf-lib';
 
@@ -65,6 +66,32 @@ const badSite = strays(look);
 check('site sheet: every ink a grey or the accent', badSite.length === 0, badSite.join(' '));
 check('site sheet: the site, its dimensions and its fall words in the accent', look.site === HERON_ACCENT && look.dimensionInk === HERON_ACCENT && look.fallInk === HERON_ACCENT);
 check('the narrative in the accent', withTemplate(templateFor('slides', 'heron'), () => deckLook().accent) === HERON_ACCENT);
+// Black lines, hatches not shades, on white paper: the decks in the line technique, the site sheet's linework black.
+const dl = withTemplate(templateFor('slides', 'heron'), () => deckLook());
+check('the decks on paper, in lines and hatches', dl.ground === 'paper' && dl.technique === 'line');
+const dark = (h: string | undefined) => !!h && Math.max(...rgb(h)) <= 0x30;
+check('site sheet: the lots, the outlines, the names and the climate marks in black, none in white',
+  [look.lotInk, look.outlineInk, look.neighbourInk, look.streetInk, look.sunPen, look.windPen, look.viewPen, look.noisePen, look.fall, look.hatchInk].every(dark));
+check('site sheet: the zones hatched alone, no shade under them', look.zones === 'hatch' && look.zoneTint === 0);
+// every category a zone can take has a hatch of its own: the pattern is all that tells them apart
+const ZONE_CATS = ['r2', 'r3', 'r4', 'localCentre', 'commercial', 'mixedUse', 'industrial', 'infrastructure', 'openSpace', 'water'];
+const zoneCats = ZONE_CATS.map((id) => HERON_MONO.categories.find((c) => c.id === id));
+const sig = (h: { kind: string; step?: number; dir?: string } | undefined) => (h ? `${h.kind}/${h.dir ?? 'fall'}/${h.step ?? ''}` : '');
+check('each zone category has a hatch of its own', zoneCats.every((c) => c?.hatch) && new Set(zoneCats.map((c) => sig(c?.hatch))).size === ZONE_CATS.length, zoneCats.map((c) => `${c?.id}:${sig(c?.hatch)}`).join(' '));
+const fills = withTemplate(templateFor('slides', 'heron'), () => zoneCats.map((c) => categoryFill(c!, 'paper')));
+check('the decks draw a zone as its hatch in black on white, each its own', fills.every((f) => f.bg === '#ffffff' && !!f.kind && dark(f.ink)) && new Set(fills.map((f) => `${f.kind}/${f.step}`)).size === ZONE_CATS.length,
+  fills.map((f) => `${f.kind}/${f.step?.toFixed(2)}`).join(' '));
+// the hatch leans as asked: falling, rising, flat or upright lines
+const leans = (['fall', 'rise', 'flat', 'up'] as const).map((dir) => {
+  const first = /<line x1="([-\d.]+)" y1="([-\d.]+)" x2="([-\d.]+)" y2="([-\d.]+)"/.exec(textureSvg('t', 'M0,0H20V20H0Z', 'lines', '#000000', { x: 0, y: 0, w: 20, h: 20 }, 1, { step: 2, dir }))!.slice(1).map(Number);
+  const dx = first[2] - first[0], dy = first[3] - first[1];
+  return dir === 'fall' ? dx > 0 && dy > 0 : dir === 'rise' ? dx > 0 && dy < 0 : dir === 'flat' ? dx > 0 && dy === 0 : dx === 0 && dy > 0;
+});
+check('a hatch leans as asked: falling, rising, flat, upright', leans.every(Boolean), leans.join(' '));
+// the plant communities of the Country page: a pattern each, with no colour to tell them by
+const veg = withTemplate(templateFor('slides', 'heron'), () => veg1750Fills(Array.from({ length: 9 }, (_, i) => ({ pct: `community ${i}` }))));
+check('the nine plant communities each a pattern of their own', new Set(veg.map((f) => `${f.kind}/${f.step}`)).size === 9 && veg.every((f) => !f.bg && dark(f.ink)));
+
 // the check can tell: Kingfisher's decks are in colour
 const kf = withTemplate(templateFor('slides', 'kingfisher'), () => strays(deckInks()));
 check('the check catches a second colour (Kingfisher)', kf.length > 0);

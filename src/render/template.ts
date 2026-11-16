@@ -35,9 +35,16 @@ export interface Category {
   textureColor?: string;
   /** The building footprints on this ground: the family's ink, so a block is a dark figure on its light tint. */
   figure?: string;
+  /** The category's hatch where a sheet draws every zone in one ink (Heron's site sheet): its pattern alone tells it apart. */
+  hatch?: Hatch;
 }
 
 export type Texture = 'dots' | 'lines' | 'cross';
+/**
+ * A hatch's pattern: its kind, the spacing of its lines or dots (mm), and for lines their lean: falling to the right
+ * (the usual one), rising, flat or upright.
+ */
+export interface Hatch { kind: Texture; step?: number; dir?: 'fall' | 'rise' | 'flat' | 'up' }
 
 export interface Template {
   id: string;
@@ -301,27 +308,35 @@ export const TEMPLATES: Template[] = [
 /** Heron's one colour: a muted brick red, for the site, its figures and the narrative. */
 export const HERON_ACCENT = '#c0533f';
 
+/** Heron's black, for its lines, hatches and words. */
+const MONO_BLACK = '#1a1a1a';
 /** The greys of Heron's mono categories and inks, light to dark. */
 const MG = { 1: '#f3f3f3', 2: '#e6e6e6', 3: '#d9d9d9', 4: '#c9c9c9', 5: '#b5b5b5', 6: '#9c9c9c', 7: '#7d7d7d', 8: '#5c5c5c', 9: '#3f3f3f' } as const;
 
-/** Heron's land-use categories in greys, told apart by strength and texture; the site in its one colour. */
+/**
+ * Heron's land-use categories in greys, told apart by strength and texture; the site in its one colour. Each category
+ * a zone can take has a hatch of its own for the site sheet, which draws every zone in black: the residential tiers
+ * in lines falling to the right, tighter as the density rises; the centres crossed, the commercial tighter than the
+ * local; mixed use in upright lines; industry and infrastructure in lines rising, the industry tighter; open space
+ * dotted; water in flat lines.
+ */
 const HERON_MONO_CATEGORIES: Category[] = [
   { id: 'site',           label: 'SITE',                                     fill: HERON_ACCENT, opacity: 0.45 },
   { id: 'medical',        label: 'MEDICAL',                                  fill: MG[2], opacity: 0.75, stroke: MG[8], figure: MG[8] },
   { id: 'education',      label: 'EDUCATION',                                fill: MG[3], opacity: 0.75, stroke: MG[8], texture: 'lines', textureColor: '#ffffff', figure: MG[8] },
   { id: 'childCare',      label: 'CHILD CARE / AGED CARE',                   fill: MG[1], opacity: 0.75, stroke: MG[8], figure: MG[8] },
-  { id: 'mixedUse',       label: 'MIXED USE CLUSTER RESIDENTIAL/COMMERCIAL', fill: MG[4], opacity: 0.7, texture: 'dots', textureColor: MG[8], figure: MG[8] },
+  { id: 'mixedUse',       label: 'MIXED USE CLUSTER RESIDENTIAL/COMMERCIAL', fill: MG[4], opacity: 0.7, texture: 'dots', textureColor: MG[8], figure: MG[8], hatch: { kind: 'lines', step: 2.0, dir: 'up' } },
   { id: 'retail',         label: 'ACTIVE RETAIL',                            fill: MG[3], opacity: 0.7, texture: 'cross', textureColor: MG[8], figure: MG[8] },
-  { id: 'openSpace',      label: 'OPEN SPACE',                               fill: MG[2], opacity: 0.7, texture: 'dots', textureColor: MG[7], figure: MG[7] },
+  { id: 'openSpace',      label: 'OPEN SPACE',                               fill: MG[2], opacity: 0.7, texture: 'dots', textureColor: MG[7], figure: MG[7], hatch: { kind: 'dots' } },
   { id: 'community',      label: 'COMMUNITY HUB',                            fill: MG[2], opacity: 0.7, stroke: MG[8], texture: 'cross', textureColor: '#ffffff', figure: MG[8] },
-  { id: 'r2',             label: 'R2 LOW DENSITY RESIDENTIAL',               fill: MG[1], opacity: 0.75, figure: MG[6] },
-  { id: 'r3',             label: 'R3 MEDIUM DENSITY RESIDENTIAL',            fill: MG[3], opacity: 0.7, figure: MG[7] },
-  { id: 'r4',             label: 'R4 HIGH DENSITY RESIDENTIAL',              fill: MG[4], opacity: 0.65, texture: 'lines', textureColor: MG[8], figure: MG[8] },
-  { id: 'localCentre',    label: 'LOCAL CENTRE',                             fill: MG[5], opacity: 0.65, figure: MG[8] },
-  { id: 'commercial',     label: 'COMMERCIAL CENTRE',                        fill: MG[5], opacity: 0.65, texture: 'lines', textureColor: MG[9], figure: MG[9] },
-  { id: 'industrial',     label: 'GENERAL INDUSTRIAL',                       fill: MG[3], opacity: 0.7, texture: 'lines', textureColor: MG[7], figure: MG[7] },
-  { id: 'infrastructure', label: 'INFRASTRUCTURE FACILITY',                  fill: MG[2], opacity: 0.75, stroke: MG[7], figure: MG[7] },
-  { id: 'water',          label: 'WATERWAY',                                 fill: MG[3], opacity: 0.7 },
+  { id: 'r2',             label: 'R2 LOW DENSITY RESIDENTIAL',               fill: MG[1], opacity: 0.75, figure: MG[6], hatch: { kind: 'lines', step: 4.4 } },
+  { id: 'r3',             label: 'R3 MEDIUM DENSITY RESIDENTIAL',            fill: MG[3], opacity: 0.7, figure: MG[7], hatch: { kind: 'lines', step: 3.0 } },
+  { id: 'r4',             label: 'R4 HIGH DENSITY RESIDENTIAL',              fill: MG[4], opacity: 0.65, texture: 'lines', textureColor: MG[8], figure: MG[8], hatch: { kind: 'lines', step: 2.0 } },
+  { id: 'localCentre',    label: 'LOCAL CENTRE',                             fill: MG[5], opacity: 0.65, figure: MG[8], hatch: { kind: 'cross', step: 3.8 } },
+  { id: 'commercial',     label: 'COMMERCIAL CENTRE',                        fill: MG[5], opacity: 0.65, texture: 'lines', textureColor: MG[9], figure: MG[9], hatch: { kind: 'cross', step: 2.4 } },
+  { id: 'industrial',     label: 'GENERAL INDUSTRIAL',                       fill: MG[3], opacity: 0.7, texture: 'lines', textureColor: MG[7], figure: MG[7], hatch: { kind: 'lines', step: 2.0, dir: 'rise' } },
+  { id: 'infrastructure', label: 'INFRASTRUCTURE FACILITY',                  fill: MG[2], opacity: 0.75, stroke: MG[7], figure: MG[7], hatch: { kind: 'lines', step: 4.0, dir: 'rise' } },
+  { id: 'water',          label: 'WATERWAY',                                 fill: MG[3], opacity: 0.7, hatch: { kind: 'lines', step: 2.4, dir: 'flat' } },
   { id: 'railway',        label: 'RAILWAY TRACKS',                           fill: MG[2], opacity: 0.75, stroke: MG[7], figure: MG[7] },
   { id: 'heritage',       label: 'GENERAL HERITAGE SITE',                    fill: MG[6], opacity: 0.55 },
 ];
@@ -329,10 +344,11 @@ const HERON_MONO_CATEGORIES: Category[] = [
 /** Heron's ink families for its decks: the accent's family in its one colour, the four others in greys. */
 export const HERON_INK: Record<InkFamilyName, InkFamily> = {
   red:    { solid: HERON_ACCENT, mid: tint(HERON_ACCENT, 0.5), light: tint(HERON_ACCENT, 0.2), line: HERON_ACCENT, deep: shadeHex(HERON_ACCENT, 0.78), text: HERON_ACCENT },
-  orange: { solid: MG[5], mid: MG[3], light: MG[1], line: MG[7], deep: MG[8], text: MG[8] },
-  sage:   { solid: MG[4], mid: MG[2], light: MG[1], line: MG[6], deep: MG[7], text: MG[7] },
-  green:  { solid: MG[5], mid: MG[3], light: MG[2], line: MG[7], deep: MG[9], text: MG[9] },
-  blue:   { solid: MG[6], mid: MG[4], light: MG[2], line: MG[8], deep: '#2b2b2b', text: '#2b2b2b' },
+  // the lines, the hatches and the words black; the grounds, where a figure needs one, a light grey
+  orange: { solid: MG[5], mid: MG[3], light: MG[1], line: MG[9], deep: MONO_BLACK, text: MONO_BLACK },
+  sage:   { solid: MG[4], mid: MG[2], light: MG[1], line: MG[8], deep: MG[9], text: MG[9] },
+  green:  { solid: MG[5], mid: MG[3], light: MG[2], line: MG[9], deep: MONO_BLACK, text: MONO_BLACK },
+  blue:   { solid: MG[6], mid: MG[4], light: MG[2], line: MG[9], deep: MONO_BLACK, text: MONO_BLACK },
 };
 
 // Retired ids still resolve: Flamingo's white version is Flamingo, Flamingo 2 is Kingfisher, Conure is
@@ -346,10 +362,12 @@ const byId: Record<string, Template> = Object.fromEntries([
 /** Heron for its site sheet and decks: its template, every ink in black or grey but the site's, and its mono categories. */
 export const HERON_MONO: Template = {
   ...byId.heron,
-  discInk: MG[8], discParkInk: MG[7],
-  site: HERON_ACCENT, dimension: MG[9], wind: MG[7], sun: MG[2], road: MG[7], water: MG[3],
-  transit: '#2b2b2b', rail: '#2b2b2b', walk5: MG[9], walk10: MG[7], busRoute: MG[7], heritage: MG[7],
+  discInk: MONO_BLACK, discParkInk: MG[9],
+  site: HERON_ACCENT, dimension: MONO_BLACK, wind: MG[9], sun: MG[2], road: MG[8], water: MG[3],
+  transit: MONO_BLACK, rail: MONO_BLACK, walk5: MONO_BLACK, walk10: MG[8], busRoute: MG[9], heritage: MONO_BLACK,
   categories: HERON_MONO_CATEGORIES,
+  // the decks on white paper, in lines and hatches, not in tones over the photograph
+  ground: 'paper', footprints: 'white', lots: 'faint', streetInk: '#3c3c3c',
 };
 export const DEFAULT_TEMPLATE = 'flamingo';
 
@@ -446,12 +464,16 @@ export interface SiteLook {
   neighbours: 'white' | 'black';
   /** The number and storeys' ink where they go on the building: white where unset. */
   neighbourInk?: string;
+  /** The fine outline round each numbered building over the aerial: white where unset. */
+  outlineInk?: string;
   /** The second ink, for the height limit. */
   neighbourHeightInk: string;
   /** The zones hatched over the aerial in their family colours, filled in their NSW ePlanning colours, filled as the context template's pale grounds, or not drawn. */
   zones: 'hatch' | 'lep' | 'fill' | 'none';
   /** Under the hatch, each zone tinted in its category's fill, multiplied into the aerial: the tint's opacity (0 for the hatch alone). */
   zoneTint: number;
+  /** Where set, every zone's hatch and outline in this one ink, each told apart by its category's own pattern (`hatch`), not by its family's ink and strength. */
+  hatchInk?: string;
   /** The LEP heritage items and conservation areas, hatched. */
   heritage: boolean;
   /** Their inks. */
@@ -512,15 +534,15 @@ export interface SiteTheme { id: string; label: string; note: string; base: stri
 // with the site in a deeper red, and before that Cardinal, with the sun in
 // mustard and the winds and views in the site's red; a request naming either
 // is drawn in Heron.
-const CLIMATE_GREY = '#6f6f6f';
+const LINE_BLACK = MONO_BLACK;
 const HERON_LOOK: SiteLook = {
-  font: NARROW, ground: 'aerial', veil: 0.55, aerial: 'mono', site: HERON_ACCENT, siteDash: '7,2,1.6,2', dimensionInk: HERON_ACCENT, fall: '#2b2b2b', fallWords: 'plain', fallInk: HERON_ACCENT, textScale: 1.2,
-  buildingEdge: 0.3, buildings: 'outline', neighbours: 'white', neighbourHeightInk: '#ffffff', zones: 'hatch', zoneTint: 0.55,
-  heritage: false, heritageInk: { item: '#5c5c5c', area: '#3f3f3f' }, contours: true, contourInk: '#adadad',
-  streetInk: '#ffffff',
-  sun: 'crown', sunPen: CLIMATE_GREY, sunFill: '#ffffff', sunEdge: CLIMATE_GREY, sunInk: CLIMATE_GREY, sunHours: true,
-  wind: 'strands', windPen: CLIMATE_GREY, climateInk: CLIMATE_GREY,
-  noise: 'band', noisePen: CLIMATE_GREY, views: 'telescope', viewPen: CLIMATE_GREY, parking: 'bays', textHalo: true, kerbs: false,
+  font: NARROW, ground: 'aerial', veil: 0.74, aerial: 'mono', site: HERON_ACCENT, siteDash: '7,2,1.6,2', dimensionInk: HERON_ACCENT, fall: LINE_BLACK, fallWords: 'plain', fallInk: HERON_ACCENT, textScale: 1.2,
+  buildingEdge: 0.3, buildings: 'outline', neighbours: 'white', neighbourInk: LINE_BLACK, outlineInk: LINE_BLACK, neighbourHeightInk: LINE_BLACK, zones: 'hatch', zoneTint: 0, hatchInk: LINE_BLACK,
+  heritage: false, heritageInk: { item: '#5c5c5c', area: '#3f3f3f' }, contours: true, contourInk: '#8c8c8c', lotInk: LINE_BLACK,
+  streetInk: LINE_BLACK,
+  sun: 'crown', sunPen: LINE_BLACK, sunFill: '#ffffff', sunEdge: LINE_BLACK, sunInk: LINE_BLACK, sunHours: true,
+  wind: 'strands', windPen: LINE_BLACK, climateInk: LINE_BLACK,
+  noise: 'band', noisePen: LINE_BLACK, views: 'telescope', viewPen: LINE_BLACK, parking: 'bays', textHalo: true, kerbs: false,
 };
 
 // Canary: the office's classic site sheet (DA 004 at Arncliffe, Cabramatta,

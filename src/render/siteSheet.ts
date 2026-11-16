@@ -13,7 +13,7 @@ import { zoneFill, zoneOrder } from './lepPalette.js';
 import { METRES_PER_STOREY } from '../fetch/buildings.js';
 import { siteAddressOf } from '../fetch/geocode.js';
 import { sheetHtml, esc, T, SWATCH_X, SWATCH_W, LABEL_X, MAP_W, MAP_H } from './chrome.js';
-import { tpl, withTemplate, templateFor, siteTheme, PARK_GREEN, PARK_GREEN_INK, type SiteLook } from './template.js';
+import { tpl, withTemplate, templateFor, siteTheme, PARK_GREEN, PARK_GREEN_INK, type SiteLook, type Category, type Texture } from './template.js';
 import { SUN, WIND, VIEW, RAY_SUN, ARROW, EYE } from './climateSymbols.js';
 import { estimateKerbs, type KerbLine } from '../lib/kerbs.js';
 import { exitPoint } from '../fetch/views.js';
@@ -378,7 +378,13 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
   // them, each zone code filled in its NSW ePlanning colour. Never over the site.
   const usedZoneCats = new Set<string>();
   const zoneInk = (c: { fill: string; stroke?: string; figure?: string; textureColor?: string }) =>
-    c.figure ?? c.stroke ?? c.fill;
+    look.hatchInk ?? c.figure ?? c.stroke ?? c.fill;
+  // A zone's hatch: the category's texture in its family's ink at its strength; or, where the look draws every zone
+  // in one ink (Heron: black), the category's own pattern, which alone tells it apart.
+  const zoneHatch = (c: Category): { kind: Texture; opacity: number; opts: { step?: number; dir?: 'fall' | 'rise' | 'flat' | 'up' } } =>
+    look.hatchInk && c.hatch
+      ? { kind: c.hatch.kind, opacity: 0.85, opts: c.hatch }
+      : { kind: c.texture === 'dots' || c.texture === 'cross' ? c.texture : 'lines', opacity: Math.min(1, 0.65 + c.opacity * 0.5), opts: {} };
   const lepZones = new Map<string, { name: string; paths: string[] }>();
   {
     const byCat = new Map<string, string[]>();
@@ -407,10 +413,9 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
         if (c.texture) (cat === 'water' ? freeParts : parts).push(textureSvg(`stx${tex++}`, paths.join(''), c.texture, c.textureColor ?? c.stroke ?? c.fill, mapBox));
         continue;
       }
-      const ink = zoneInk(c);
-      const kind = c.texture === 'dots' || c.texture === 'cross' ? c.texture : 'lines';
+      const ink = zoneInk(c), ht = zoneHatch(c);
       tints.push(`<g fill="${c.fill}">${paths.map((d) => `<path d="${d}"/>`).join('')}</g>`);
-      parts.push(textureSvg(`stx${tex++}`, paths.join(''), kind, ink, mapBox, Math.min(1, 0.65 + c.opacity * 0.5)));
+      parts.push(textureSvg(`stx${tex++}`, paths.join(''), ht.kind, ink, mapBox, ht.opacity, ht.opts));
       parts.push(`<g fill="none" stroke="${ink}" stroke-width="0.6">${paths.map((d) => `<path d="${d}"/>`).join('')}</g>`);
     }
     for (const f of look.zones === 'lep' ? sb.zoning.features : []) {
@@ -1218,7 +1223,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
     }
     // A white building already carries its family's hairline; a white outline would rub it out.
     if (!whiteBuildings)
-      layers.push(`<g fill="none" stroke="#ffffff" stroke-width="${look.buildingEdge}" stroke-opacity="0.95" stroke-linejoin="round">${outlines.join('')}</g>`);
+      layers.push(`<g fill="none" stroke="${look.outlineInk ?? '#ffffff'}" stroke-width="${look.buildingEdge}" stroke-opacity="0.95" stroke-linejoin="round">${outlines.join('')}</g>`);
     layers.push(texts.join(''));
   }
 
@@ -1724,10 +1729,9 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
         row(ground + texture + figures, c.label);
         continue;
       }
-      const ink = zoneInk(c);
-      const kind = c.texture === 'dots' || c.texture === 'cross' ? c.texture : 'lines';
+      const ink = zoneInk(c), ht = zoneHatch(c);
       row((look.zoneTint ? `<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="${c.fill}" opacity="${look.zoneTint}"/>` : '') +
-        textureSvg(`sltx${stex++}`, swD, kind, ink, { x: SWATCH_X, y: 0, w: SWATCH_W, h: 6.5 }, Math.min(1, 0.65 + c.opacity * 0.5)) +
+        textureSvg(`sltx${stex++}`, swD, ht.kind, ink, { x: SWATCH_X, y: 0, w: SWATCH_W, h: 6.5 }, ht.opacity, ht.opts) +
         `<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="none" stroke="${ink}" stroke-width="0.4"/>`, c.label);
     }
   }

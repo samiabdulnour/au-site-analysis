@@ -1052,14 +1052,23 @@ const aerialKey = (x: number, y: number, n: number | string, r = 1.9) =>
   `<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="${r}" fill="#ffffff" stroke="#000000" stroke-width="0.25"/><text x="${x.toFixed(2)}" y="${(y + 0.74).toFixed(2)}" text-anchor="middle" font-size="2.117" font-family="Arial, 'Liberation Sans', sans-serif" fill="#000000">${esc(String(n))}</text>`;
 /** A 6 pt word on an aerial: white, no outline. */
 /**
- * The railways on the region maps (Z. 2026-11): a plain line like the motorways', in yellow (Heron: near black), cased in white,
- * with no track symbol. The train and metro stations stay white discs in the map's rail ink.
+ * The railways on the region maps (Z. 2026-11): a plain line like the motorways', in yellow, cased in white,
+ * with no track symbol. The train and metro stations stay white discs in the map's rail ink. Heron, with no colour
+ * to tell the rail from the roads by, draws it as the classic railway: a black line with white sleeper dashes.
  */
-const railYellow = () => (deckLook().id === 'heron' ? '#262626' : '#f2c200');
-const railLine = (d: string, w: number) =>
-  `<path d="${d}" fill="none" stroke="#ffffff" stroke-width="${(w + 0.6).toFixed(2)}" stroke-linecap="round" stroke-linejoin="round"/><path d="${d}" fill="none" stroke="${railYellow()}" stroke-width="${w.toFixed(2)}" stroke-linecap="round" stroke-linejoin="round"/>`;
-const railKey = (w: number, station: string) =>
-  `<line x1="0" y1="1.8" x2="5" y2="1.8" stroke="#ffffff" stroke-width="${(w + 0.6).toFixed(2)}"/><line x1="0" y1="1.8" x2="5" y2="1.8" stroke="${railYellow()}" stroke-width="${w.toFixed(2)}"/><circle cx="2.5" cy="1.8" r="0.9" fill="#ffffff" stroke="${station}" stroke-width="0.35"/>`;
+const railYellow = () => (deckLook().id === 'heron' ? '#1a1a1a' : '#f2c200');
+/** The white sleepers along Heron's railway, for a line `w` wide: `w` long and as far apart. */
+const sleepers = (w: number) => (deckLook().id === 'heron' ? ` stroke="#ffffff" stroke-width="${(w * 0.5).toFixed(2)}" stroke-dasharray="${(w * 1.6).toFixed(2)} ${(w * 1.6).toFixed(2)}"` : '');
+const railLine = (d: string, w: number) => {
+  const mono = deckLook().id === 'heron', W = mono ? w * 1.25 : w;
+  return `<path d="${d}" fill="none" stroke="#ffffff" stroke-width="${(W + 0.6).toFixed(2)}" stroke-linecap="round" stroke-linejoin="round"/><path d="${d}" fill="none" stroke="${railYellow()}" stroke-width="${W.toFixed(2)}" stroke-linecap="round" stroke-linejoin="round"/>` +
+    (mono ? `<path d="${d}" fill="none"${sleepers(W)}/>` : '');
+};
+const railKey = (w: number, station: string) => {
+  const mono = deckLook().id === 'heron', W = mono ? w * 1.25 : w;
+  return `<line x1="0" y1="1.8" x2="5" y2="1.8" stroke="#ffffff" stroke-width="${(W + 0.6).toFixed(2)}"/><line x1="0" y1="1.8" x2="5" y2="1.8" stroke="${railYellow()}" stroke-width="${W.toFixed(2)}"/>` +
+    (mono ? `<line x1="0" y1="1.8" x2="5" y2="1.8"${sleepers(W)}/>` : '') + `<circle cx="2.5" cy="1.8" r="0.9" fill="#ffffff" stroke="${station}" stroke-width="0.35"/>`;
+};
 
 const a6 = (x: number, y: number, text: string, anchor: 'start' | 'middle' | 'end' = 'start') =>
   `<text x="${x.toFixed(2)}" y="${(y + 0.75).toFixed(2)}" text-anchor="${anchor}" font-size="2.117" letter-spacing="0.19" font-family="Arial, 'Liberation Sans', sans-serif" fill="#ffffff">${esc(text)}</text>`;

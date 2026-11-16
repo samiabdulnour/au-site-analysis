@@ -789,14 +789,16 @@ interface PlanMarks {
   /** The ground only the scheme shades, at one hour or more: hatched over its shadow. */
   added?: XY[][];
   shaded?: XY[][][];
-  dims?: { a: XY; b: XY; label: string; ink: string }[];
+  dims?: { a: XY; b: XY; label: string; ink: string; /** a dash attribute for the line, where the status is told by it */ dash?: string }[];
 }
 /**
  * A separation's ink, and a compliance mark's: clear, holding only with a blank face, short. Green, amber and red;
- * in Heron, black and white and one colour, a near black, a mid grey and its accent.
+ * in Heron, black and white and one colour, black, black dashed (blankDash) and its accent.
  */
 const statusInks = (): Record<'clear' | 'blank' | 'short', string> =>
-  deckLook().id === 'heron' ? { clear: '#2b2b2b', blank: '#8a8a8a', short: deckLook().accent } : { clear: '#2f8f55', blank: '#c98a12', short: '#c8372d' };
+  deckLook().id === 'heron' ? { clear: '#1a1a1a', blank: '#1a1a1a', short: deckLook().accent } : { clear: '#2f8f55', blank: '#c98a12', short: '#c8372d' };
+/** The dash of a separation that holds only with a blank face, where its ink is the clear one's (Heron): told apart by the line, not by a colour. */
+const blankDash = () => (deckLook().id === 'heron' ? ' stroke-dasharray="1.1 0.7"' : '');
 /** The neighbours' shadows' ink: a neutral grey, so only the envelope's own shadow, in the site's accent, carries a colour. */
 const shadowInk = () => '#3a3c41';
 /** Each hour's shadow at this opacity, the hours laid over each other, as the report lays them; n hours deep, the tint this. */
@@ -885,6 +887,8 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
       if (pc.site) continue;
       const lf = lotFill(pc.zone, look);
       if (!lf) continue;
+      // Heron's hatches over the first page's photograph: the paper under them a veil, so the roofs still show
+      if (photo && look.id === 'heron') lf.fill = { ...lf.fill, opacity: 0.6 };
       (byKey.get(lf.key) ?? byKey.set(lf.key, { fill: lf.fill, ds: [] }).get(lf.key)!).ds.push(...pc.local.map(path));
     }
     const bb = { x0: box.x, y0: box.y, x1: box.x + box.w, y1: box.y + box.h };
@@ -983,7 +987,7 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
     const [x1, y1] = at(dm.a), [x2, y2] = at(dm.b);
     const len = Math.hypot(x2 - x1, y2 - y1) || 1, ux = (x2 - x1) / len, uy = (y2 - y1) / len;
     const tick = (x: number, yy: number) => `M${(x - uy * 1.1).toFixed(2)},${(yy + ux * 1.1).toFixed(2)}L${(x + uy * 1.1).toFixed(2)},${(yy - ux * 1.1).toFixed(2)}`;
-    out.push(`<path d="M${x1.toFixed(2)},${y1.toFixed(2)}L${x2.toFixed(2)},${y2.toFixed(2)}${tick(x1, y1)}${tick(x2, y2)}" fill="none" stroke="${dm.ink}" stroke-width="0.35"/>`);
+    out.push(`<path d="M${x1.toFixed(2)},${y1.toFixed(2)}L${x2.toFixed(2)},${y2.toFixed(2)}" fill="none" stroke="${dm.ink}" stroke-width="0.35"${dm.dash ?? ''}/><path d="${tick(x1, y1)}${tick(x2, y2)}" fill="none" stroke="${dm.ink}" stroke-width="0.35"/>`);
     // the distance on the line, at its middle or slid along it until clear of what is written; nowhere clear, the line alone
     const w = dm.label.length * 1.45 + 1.6;
     for (const t of [0.5, 0.7, 0.3, 0.85, 0.15, 1.15, -0.15]) {
@@ -1877,7 +1881,7 @@ function complianceSheet(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: Pa
       added: addedGround(hourly.map((hr) => hr.scheme), hourly.map((hr) => hr.hulls), [s.ring]),
       shadows: hourSuns.filter((sun) => [9 * 60, 12 * 60, 15 * 60].includes(sun.clockMin)).map((sun) => ({ rings: groundShadow(massBlocks, sun), label: clock(sun.clockMin) })).filter((x) => x.rings.length),
       shaded: sh.shadedTargets.map((i) => ps.targets[i].rings),
-      dims: [...ps.separation, ...ps.separationBuiltOut].map((r) => { const w = worseReading(r); return { a: w.a, b: w.b, label: `${fmt(w.distanceM, 1)} m`, ink: statusInks()[w.status] }; }),
+      dims: [...ps.separation, ...ps.separationBuiltOut].map((r) => { const w = worseReading(r); return { a: w.a, b: w.b, label: `${fmt(w.distanceM, 1)} m`, ink: statusInks()[w.status], dash: w.status === 'blank' ? blankDash() : '' }; }),
     } });
   const axo = (behind: boolean, left: number, id2: string) => figureAt(left, 0, W, AXO_H, axonometric(b, s, { x: 2, y: IN + 9, w: W - 4, h: AXO_H - IN - 11 }, { y: ps.y, facades: ps.facades, roofs: ps.roofs, behind, focusM: 6, mono: true }, id2));
   const figures = axo(false, PAGE_X, `${fid}-f`) + labelAt(PAGE_X, 0, IN, ['From the street corner'])
@@ -1888,7 +1892,7 @@ function complianceSheet(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: Pa
   // the key
   const KEY = keySwatches();
   const SEP = statusInks();
-  const sepSwatch = `<path d="M0.4,0.9H4.6" stroke="${SEP.clear}" stroke-width="0.35"/><path d="M0.4,1.8H4.6" stroke="${SEP.blank}" stroke-width="0.35"/><path d="M0.4,2.7H4.6" stroke="${SEP.short}" stroke-width="0.35"/>`;
+  const sepSwatch = `<path d="M0.4,0.9H4.6" stroke="${SEP.clear}" stroke-width="0.35"/><path d="M0.4,1.8H4.6" stroke="${SEP.blank}" stroke-width="0.35"${blankDash()}/><path d="M0.4,2.7H4.6" stroke="${SEP.short}" stroke-width="0.35"/>`;
   const legend: LegendEntry[] = [
     { swatch: KEY.site, label: 'The site' },
     { swatch: KEY.zones(sunBands().map((x) => x.fill)), label: `Facades and roofs, hours of sun 9 am – 3 pm on 21 June: none, under 1, 1–2, 2–3, 3–4, 4–5, 5 and over` },
