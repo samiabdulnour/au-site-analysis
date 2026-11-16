@@ -2099,7 +2099,9 @@ into apartments, a neighbour's as the 8 m bays the sun study reads, a
 deep plate's as a grid square to its street faces: apartments 9 m deep on
 each, the core between, a party wall every 9 m or so, and, where the plate
 is three bays long or more, each end a bay deep with its apartments side by
-side across it, facing the end; a plate whose outline
+side across it, facing the end; an L keeps its wing single-loaded, and no
+party wall is drawn within 4 m of an outer wall it runs with; a plate whose
+outline
 is cut at an angle takes no square grid, and its apartments ring a core.
 `neighbourSetback: adg` in the scenarios file fits every slab or tower above
 its podium that far off its neighbouring lots where the lot is wide enough,

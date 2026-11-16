@@ -770,7 +770,7 @@ def bays_scheme(poly, typ, k, dirs=None):
             marks = [d0 + ud, d1 - ud] + ([(d0 + d1) / 2] if deep - 2 * ud > 12 else [])
             # a plate three bays long or more turns its ends: each end a bay deep with its apartments side by side
             # across it, facing the end, and the core and the side apartments run between the two
-            ends = ns >= 3
+            ends = ns >= 3 and poly.area >= 0.9 * (s1 - s0) * deep       # a plain plate, not an L or a bar with a wing
             a_, b_ = (s0 + bay, s1 - bay) if ends else (s0, s1)
             segs += [(at(a_, dv), at(b_, dv)) for dv in marks]
             if ends:
@@ -779,12 +779,30 @@ def bays_scheme(poly, typ, k, dirs=None):
                     dv = d0 + deep * j / across_n
                     segs += [(at(s0, dv), at(s0 + bay, dv)), (at(s1 - bay, dv), at(s1, dv))]
     inner = poly.buffer(-0.05)
+    outer = list(zip(list(poly.exterior.coords)[:-1], list(poly.exterior.coords)[1:]))
     for p, q in segs:
         g = LineString([p, q]).intersection(inner)
         for part in (g.geoms if hasattr(g, 'geoms') else [g]):
             if part.geom_type == 'LineString' and part.length > 0.5:
                 (x0_, y0_), (x1_, y1_) = part.coords[0], part.coords[-1]
-                o.append(f'<line x1="{f(x0_)}" y1="{f(-y0_)}" x2="{f(x1_)}" y2="{f(-y1_)}" stroke="#333" stroke-opacity=".45" stroke-width="{0.3 * k:.2f}"/>')
+                spans = [(0.0, 1.0)]
+                if typ == 'plate':
+                    # no party wall runs within 4 m of an outer wall it is parallel to: where a grid line would, in the
+                    # corner of an L, that stretch of it is left out and the rest stands
+                    Lp = math.hypot(x1_ - x0_, y1_ - y0_)
+                    vx, vy = (x1_ - x0_) / Lp, (y1_ - y0_) / Lp
+                    for (ax_, ay_), (bx_, by_) in outer:
+                        Le = math.hypot(bx_ - ax_, by_ - ay_)
+                        if Le < 1 or abs(vx * (by_ - ay_) - vy * (bx_ - ax_)) / Le > math.sin(math.radians(10)):
+                            continue
+                        if abs((ax_ - x0_) * vy - (ay_ - y0_) * vx) >= 4.0:
+                            continue
+                        ta, tb = sorted((((ax_ - x0_) * vx + (ay_ - y0_) * vy) / Lp, ((bx_ - x0_) * vx + (by_ - y0_) * vy) / Lp))
+                        ta, tb = ta - 0.2 / Lp, tb + 0.2 / Lp
+                        spans = [piece for lo, hi in spans for piece in ((lo, min(hi, ta)), (max(lo, tb), hi)) if piece[1] - piece[0] > 0.8 / Lp]
+                for lo, hi in spans:
+                    xa, ya, xb, yb = x0_ + (x1_ - x0_) * lo, y0_ + (y1_ - y0_) * lo, x0_ + (x1_ - x0_) * hi, y0_ + (y1_ - y0_) * hi
+                    o.append(f'<line x1="{f(xa)}" y1="{f(-ya)}" x2="{f(xb)}" y2="{f(-yb)}" stroke="#333" stroke-opacity=".45" stroke-width="{0.3 * k:.2f}"/>')
     return o
 
 
