@@ -442,6 +442,8 @@ export interface SiteLook {
   site: string;
   /** What stands on the site, where the buildings are filled: a saturated cut of the site's pen where unset. */
   siteFigure?: string;
+  /** The lot's own tint on paper: its fill and strength. The template's site category where unset. */
+  siteTint?: { fill: string; opacity: number };
   /** The boundary's dash. */
   siteDash: string;
   /** The boundary dimensions' ink (Heron sets them in the site's red, Canary in black). */
@@ -576,8 +578,11 @@ const CANARY_LOOK: SiteLook = {
 // Kingfisher: the site sheet on Kingfisher's paper, no photograph: the zones
 // as its pale grounds on the lots only, so the roads stay white, every
 // building in its family's strong colour with a white edge and its number in
-// white, the white cadastre, its grotesk and its peach street names, the site
-// in its magenta. The climate as the office drew it for this palette: each
+// white, the white cadastre, its grotesk and its peach street names. The site
+// in a red terracotta that sits with the palette's peach and coral (2026-11;
+// it was the context sheet's magenta): its dash-dot boundary, its corners and
+// levels, the lot in a pale tint of it and what stands on the lot in the
+// terracotta itself, where it was a quiet grey. The climate as the office drew it for this palette: each
 // solstice's path a nearly solid crescent in warm yellow, amber at its ends and
 // brightest at noon, the office's small rayed sun at each rise and set; each
 // wind a smaller translucent blue crescent over the quarter it blows from with
@@ -586,8 +591,10 @@ const CANARY_LOOK: SiteLook = {
 // straight on the site. The kerbs are drawn, indicatively, since there is no
 // photograph to show them. It was called Kookaburra; a request naming it is
 // drawn in Kingfisher.
+/** The Kingfisher site sheet's site colour: a red terracotta, for its boundary, its levels, its tint and what stands on it. */
+const SITE_TERRACOTTA = '#c8553a';
 const KINGFISHER_LOOK: SiteLook = {
-  font: GROTESK, ground: 'paper', veil: 0, aerial: 'colour', site: F2.magenta, siteDash: '7,2,1.6,2', dimensionInk: '#56616b', fall: '#56616b', fallWords: 'plain', fallInk: '#56616b', textScale: 1,
+  font: GROTESK, ground: 'paper', veil: 0, aerial: 'colour', site: SITE_TERRACOTTA, siteFigure: SITE_TERRACOTTA, siteTint: { fill: SITE_TERRACOTTA, opacity: 0.22 }, siteDash: '7,2,1.6,2', dimensionInk: '#56616b', fall: '#56616b', fallWords: 'plain', fallInk: '#56616b', textScale: 1,
   buildingEdge: 0.4, buildings: 'colour', neighbours: 'white', neighbourHeightInk: '#ffffff', zones: 'fill', zoneTint: 0,
   heritage: false, heritageInk: { item: '#e39a3b', area: '#c8372d' }, contours: true, contourInk: '#a9adb1',
   streetInk: '#e39a6f',
@@ -611,7 +618,7 @@ const KINGFISHER_LOOK: SiteLook = {
 // widening triangle, solid in a deeper green than the streets', as their words.
 const FLAMINGO_CONTEXT = TEMPLATES.find((t) => t.id === 'flamingo')!;
 const FLAMINGO_LOOK: SiteLook = {
-  ...KINGFISHER_LOOK, site: FLAMINGO_CONTEXT.site, streetInk: FLAMINGO_CONTEXT.streetInk,
+  ...KINGFISHER_LOOK, site: FLAMINGO_CONTEXT.site, siteFigure: undefined, siteTint: undefined, streetInk: FLAMINGO_CONTEXT.streetInk,
   buildings: 'white', buildingEdge: 1.5, buildingHatch: true, contourUnderBuildings: 0.12, lotInk: FLAMINGO_CONTEXT.road, neighbourInk: FLAMINGO_CONTEXT.streetInk,
   sun: 'drawn', sunPen: '#f5b400', sunFill: '#fcddd4', sunEdge: '#5ba8e1', sunInk: '#d48f00',
   wind: 'drawn', windPen: '#5ba8e1', climateInk: '#3d8fd1',

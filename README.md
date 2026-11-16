@@ -1115,10 +1115,14 @@ instead of leaving the trees out without a word.
 zones as Kingfisher's pale grounds with their textures, laid on the lots only
 so the roads stay white (water is drawn whole), every building in its zone
 family's strong colour with a white edge and its number in white (a quiet grey
-where no zone is mapped; what stands on the site in the site's own colour,
-saturated, `siteFigure` on the look, so the lot's building reads as the
-site's), the white cadastre, Kingfisher's
-grotesk, its peach street names and its magenta site. The climate is drawn in
+where no zone is mapped), the white cadastre, Kingfisher's
+grotesk and its peach street names. The site is in a red terracotta
+(`#c8553a`, 2026-11; it was the context sheet's magenta, which the context
+sheet keeps), chosen to sit with the palette's peach and coral: its dash-dot
+boundary, its corners and levels, the lot in a pale tint of it (`siteTint`)
+and what stands on the lot in the terracotta itself (`siteFigure`), where it
+was a quiet grey. Flamingo's site sheet keeps its coral site; its building on
+the lot takes the coral as its outline and hatch. The climate is drawn in
 the office's marks for this palette (`src/render/climateSymbols.ts`, taken
 as drawn from its symbol sheet): each solstice's sun path a nearly solid
 crescent in warm yellow, deepest at noon and running from amber at its points

@@ -438,8 +438,8 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
     if (look.zoneTint && tints.length)
       layers.push(`<g clip-path="url(#notSite)" fill-rule="evenodd" opacity="${look.zoneTint}" style="mix-blend-mode:multiply">${tints.join('')}</g>`);
     layers.push(`<g clip-path="url(#notSite)">${freeParts.join('')}${zoned}</g>`);
-    // On paper the site takes the template's site tint, as on the context sheet.
-    const siteCat = catById().site;
+    // On paper the site takes the look's own tint (Kingfisher's terracotta), or the template's site tint, as on the context sheet.
+    const siteCat = look.siteTint ?? catById().site;
     if (look.ground === 'paper' && siteCat) layers.push(`<path d="${siteHole}" fill="${siteCat.fill}" opacity="${siteCat.opacity}"/>`);
   }
 
