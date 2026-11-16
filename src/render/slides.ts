@@ -17,6 +17,7 @@ import { INK, aerialGreenFill, veg1750Fills, VEG_CLASSES_MAX, fillShape, swatchO
 import { esc } from './chrome.js';
 import { drawAxonometric, shade, lineHatchPitch, type AxoScene, type Prism } from './axonometric.js';
 import type { BookletSpreads } from './booklet.js';
+import { coverPictureSvg, coverCellsFromTrees, COVER_GROUND, COVER_CANOPY, type CoverCells } from '../lib/coverPicture.js';
 import { estimateKerbs } from '../lib/kerbs.js';
 import {
   panelProjector, panelExtent, baseLayers, overLayers, panelFurniture, furnitureBox, siteMark, siteLabelPoint, stationMode, ringsPath, fcPath, ringStats, clippedStats, hatchPath, dotsPath, bboxOf, t2Text, t2Width,
@@ -8873,20 +8874,15 @@ export function deckCss(): string {
   table.da.strat tr.manual td b { font-weight: 600; }
   .slide.atlas { font-family: Arial, 'Liberation Sans', 'Helvetica Neue', Helvetica, sans-serif; color: #000000; }
   .slide.atlas .znum { font-size: 14pt; font-weight: 700; letter-spacing: 0.08em; line-height: 1.15; text-transform: uppercase; white-space: nowrap; }
-  .slide.cover .cv-block { background: #ffffff; padding: 7mm 8mm 6.5mm; }
-  .slide.cover .cv-mark { font-size: 14pt; font-weight: 700; letter-spacing: 0.08em; line-height: 1.15; text-transform: uppercase; }
-  .slide.cover .cv-deck { font-size: 30pt; font-weight: 700; letter-spacing: 0.01em; line-height: 1.05; text-transform: uppercase; margin-top: 7mm; }
-  .slide.cover .cv-rule { height: 0; border-top: 0.18mm solid #878787; margin: 6mm 0 5mm; }
-  .slide.cover .cv-name { font-size: 16pt; font-weight: 700; letter-spacing: 0.02em; line-height: 1.15; text-transform: uppercase; }
-  .slide.cover .cv-det { font-size: 8pt; line-height: 3.6mm; letter-spacing: 0.025em; text-transform: uppercase; margin-top: 3mm; }
-  .slide.cover .cv-date { font-size: 6pt; letter-spacing: 0.09em; text-transform: uppercase; background: #ffffff; padding: 1.47mm 2.4mm 1.13mm; line-height: 1.2; }
-  .slide.cover .cv-head { font-size: 8pt; letter-spacing: 0.08em; text-transform: uppercase; color: #6f6f6f; margin-bottom: 3mm; }
-  .slide.cover .cv-contents { font-size: 9pt; line-height: 5.2mm; }
-  .slide.cover .cv-contents.two { column-count: 2; column-gap: 8mm; }
-  .slide.cover .cv-contents div { break-inside: avoid; display: flex; gap: 3mm; }
-  .slide.cover .cv-contents b { display: inline-block; width: 7mm; font-weight: 700; letter-spacing: 0.04em; }
-  .slide.cover .cv-colophon { font-size: 6.5pt; line-height: 3mm; color: #6f6f6f; }
-  .slide.cover .cv-colophon p { margin: 0 0 2mm; }
+  /* the covers, after Z.'s layouts of 2026-11 (mm from her A3 spreads): the mark, the deck's name in two lines, the site, the contents */
+  .slide.cover .cv-h { font-size: 15pt; font-weight: 700; letter-spacing: 0.05em; line-height: 1; text-transform: uppercase; white-space: nowrap; }
+  .slide.cover .cv-title { font-size: 27mm; font-weight: 700; letter-spacing: 0.03em; line-height: 25mm; text-transform: uppercase; white-space: nowrap; }
+  .slide.cover .cv-site { font-size: 10pt; font-weight: 700; letter-spacing: 0.1em; line-height: 4.2mm; text-transform: uppercase; color: #555555; overflow-wrap: anywhere; }
+  .slide.cover .cv-contents { font-size: 15pt; font-weight: 700; letter-spacing: 0.05em; line-height: 5.88mm; text-transform: uppercase; }
+  .slide.cover .cv-contents div { display: grid; break-inside: avoid; }
+  .slide.cover .cv-contents span { overflow-wrap: anywhere; }
+  .slide.cover .cv-fine { font-size: 7.25pt; line-height: 3.37mm; color: #878787; hyphens: auto; }
+  .slide.cover .cv-fine p { margin: 0; }
   .slide.atlas .zrule { height: 0; border-top: 0.18mm solid #878787; }
   .slide.atlas .zsub { font-size: 8pt; line-height: 3.4mm; letter-spacing: 0.025em; text-transform: uppercase; }
   .slide.atlas .zbar { font-size: 8.4pt; padding: 0 0.15mm; }
@@ -8963,42 +8959,101 @@ export function keepTogether(html: string): string {
 // printed PDF is whole (src/render/printCheck.ts), and a page that printed
 // short loses what it draws last first.
 /**
- * A deck's cover: an A3 spread like its pages, whose right half is the front cover and left half the back, as a
- * booklet's first and last pages (src/render/booklet.ts). The front: the deck's picture to the page's edges, and over
- * it the name and the logo, the SITE ANALYST wordmark, the deck's name, the site's name and what it is, and the
- * date. The back: the contents, a spread's number and title each, and the colophon. Unnumbered: the spreads after it
- * keep their numbers.
+ * A deck's covers, after Z.'s layouts (2026-11): two, for the two ways a deck is read.
+ *
+ * The slides' cover (`coverPage`) is one composition across the A3 spread: the SITE ANALYST mark, the deck's name in
+ * two lines, the site with its lot and zone, the place's canopy as the picture (lib/coverPicture.ts), the contents
+ * beside it and the small print top right.
+ *
+ * The booklet's (`bookletCover`) is the spread cut in two down the fold, its right half the front and its left the
+ * back (src/render/booklet.ts). The front carries the mark, the name and the site, and under them the picture to the
+ * page's edges (Flamingo, Kingfisher) or the contents (Heron, Canary: `coverHasPicture`); the back the deck's name
+ * over the site and the contents, or over the site alone, and the small print at its foot.
+ *
+ * Unnumbered: the spreads after the cover keep their numbers. The mark and the name are drawn last, the page's mark
+ * for the print check (src/render/printCheck.ts).
  */
 export interface Cover {
+  /** The deck's name, each word a line of the title: SITE / REPORT. */
   deck: string;
-  name: string;
+  /** The site as the cover names it: its street and suburb. */
+  site: string;
+  /** Beside it: the lot and its area, then the zone. */
   details: string[];
-  date: string;
-  /** The front's picture, an SVG of the page's width, from `heroTop` mm down to its foot. */
-  hero: string;
-  heroTop?: number;
-  accent?: string;
   contents: { n: string; title: string }[];
-  colophon: string[];
+  /** The small print: what the deck is and is not, and who made it and when, a line each. */
+  note: string;
+  credit: string[];
+  /** The place's canopy in cells, for the picture; without it the picture is its ground alone. */
+  picture?: CoverCells;
 }
+
+/** Whether a style's booklet has the picture on its front: Flamingo and Kingfisher do; Heron and Canary set the contents there. */
+export const coverHasPicture = (styleId: string): boolean => styleId !== 'heron' && styleId !== 'canary';
+
+/** The picture's inks: the sage and the blue-grey, or their greys for Heron, which prints in black, white and its one colour. */
+const coverInks = () => (deckLook().id === 'heron' ? { ground: greyOf(COVER_GROUND), canopy: greyOf(COVER_CANOPY) } : { ground: COVER_GROUND, canopy: COVER_CANOPY });
+
+/** A site's address as the cover sets it: the street and the suburb, without the State and the postcode the pages give. */
+export const coverSite = (address: string): string => address.replace(/,?\s+(NSW|ACT|VIC|QLD|SA|WA|TAS|NT)(\s+\d{4})?\s*$/i, '').replace(/\s*,\s*/g, ' ').trim();
+
+const cvHead = (x: number, text: string) => `<div class="abs cv-h" style="left:${x}mm;top:12.32mm">${esc(text)}</div>`;
+const cvRule = (x: number, y: number, w: number) => `<div class="abs zrule" style="left:${x}mm;top:${y}mm;width:${w}mm"></div>`;
+const cvTitle = (x: number, deck: string) => `<div class="abs cv-title" style="left:${x}mm;top:26.84mm">${deck.trim().split(/\s+/).map(esc).join('<br>')}</div>`;
+/** The site and, a column on, its lot and zone: `y` the first line's baseline. */
+const cvSite = (c: Cover, x: number, x2: number, y: number, right: number) => `<div class="abs cv-site" style="left:${x}mm;top:${(y - 3.32).toFixed(2)}mm;width:${x2 - x - 4}mm">${esc(c.site)}</div>
+${c.details.length ? `<div class="abs cv-site" style="left:${x2}mm;top:${(y - 3.32).toFixed(2)}mm;width:${right - x2}mm">${c.details.map(esc).join('<br>')}</div>` : ''}`;
+/** The contents, a spread's number and its title a row: `y` the first row's baseline, the titles `num` mm in from the numbers. */
+const cvContents = (c: Cover, x: number, num: number, y: number, right: number) => `<div class="abs cv-contents" style="left:${x}mm;top:${(y - 4.77).toFixed(2)}mm;width:${right - x}mm">${c.contents.map((r) => `<div style="grid-template-columns:${num}mm 1fr"><b>${esc(r.n)}</b><span>${esc(r.title)}</span></div>`).join('')}</div>`;
+const cvPicture = (c: Cover, x: number, y: number, w: number, h: number) => `<div class="abs" style="left:${x}mm;top:${y}mm;width:${w}mm;height:${h}mm;overflow:hidden">${coverPictureSvg(c.picture, w, h, coverInks())}</div>`;
+
+/** The slides' cover: one composition across the spread, the picture under the name and the contents beside it. */
 export function coverPage(c: Cover): string {
-  const top = c.heroTop ?? 0;
   return `
-<section class="slide atlas cover" id="00_cover" data-base="${Z_BASE}">
-<div class="abs" style="left:${FOLD}mm;top:${top}mm">${c.hero}</div>
-<div class="abs cv-block" style="left:${FOLD + 12}mm;top:12mm;width:186mm">
-<div data-print-check><div class="cv-mark">Site Analyst</div><div class="cv-deck" style="color:${c.accent ?? '#000000'}">${esc(c.deck)}</div></div>
-<div class="cv-rule"></div>
-<div class="cv-name">${esc(c.name)}</div>
-${c.details.length ? `<div class="cv-det">${c.details.map(esc).join('<br>')}</div>` : ''}
-</div>
-<div class="abs cv-date" style="left:${FOLD + 12}mm;bottom:12mm">${esc(c.date)}</div>
-<div class="abs znum" style="left:12mm;top:10.6mm">Site Analyst</div>
-<div class="abs znum" style="left:75.3mm;top:10.6mm">${esc(c.deck)}</div>
-<div class="abs zrule" style="left:12mm;top:20mm;width:186mm"></div>
-<div class="abs" style="left:12mm;top:28mm;width:186mm"><div class="cv-head">Contents</div>
-<div class="cv-contents${c.contents.length > 14 ? ' two' : ''}">${c.contents.map((x) => `<div><b>${esc(x.n)}</b><span>${esc(x.title)}</span></div>`).join('')}</div></div>
-<div class="abs cv-colophon" style="left:12mm;bottom:12mm;width:120mm">${c.colophon.map((t) => `<p>${esc(t)}</p>`).join('')}</div>
+<section class="slide atlas cover" id="00_cover" data-base="${Z_BASE}" data-cover="slides">
+${cvPicture(c, 12, 103.3, 303, 181.7)}
+${cvRule(12, 20, 395)}
+${cvRule(12, 85, 395)}
+${cvSite(c, 13, 106, 90.9, 315)}
+${cvContents(c, 321, 16, 107.1, 407)}
+<div class="abs cv-fine" style="left:321mm;top:24.23mm;width:86mm"><p>${esc(c.note)}</p><p>${c.credit.map(esc).join(' ')}</p></div>
+<div data-print-check>${cvHead(13, 'Site Analyst')}
+${cvTitle(13, c.deck)}</div>
+</section>`;
+}
+
+/**
+ * The booklet's cover: the front on the right half, the back on the left. With the picture, the front is the name
+ * over the picture and the back holds the site and the contents; without it, the front holds the contents under the
+ * name and the back the site alone.
+ */
+export function bookletCover(c: Cover, picture = coverHasPicture(deckLook().id)): string {
+  const F = FOLD + 13, B = 13, W = 184;
+  const fine = `${cvRule(B, 264, W)}
+<div class="abs cv-fine" style="left:${B}mm;top:267.68mm;width:80mm"><p>${esc(c.note)}</p></div>
+<div class="abs cv-fine" style="left:100mm;top:267.68mm;width:${B + W - 100}mm">${c.credit.map((t) => `<p>${esc(t)}</p>`).join('')}</div>`;
+  const back = picture
+    ? `${cvSite(c, B, 100, 31.5, B + W)}
+${cvRule(B, 83, W)}
+${cvContents(c, B, 87, 91.8, B + W)}`
+    : `${cvRule(B, 83, W)}
+${cvSite(c, B, 100, 90.1, B + W)}`;
+  const front = picture
+    ? cvPicture(c, FOLD, 103.3, SLIDE_W - FOLD, SLIDE_H - 103.3)
+    : `${cvRule(F, 126.4, W)}
+${cvContents(c, F, 98, 135.2, F + W)}`;
+  return `
+<section class="slide atlas cover" id="00_cover" data-base="${Z_BASE}" data-cover="${picture ? 'booklet-picture' : 'booklet'}">
+${front}
+${cvRule(B, 20, W)}
+${back}
+${fine}
+${cvHead(B, c.deck)}
+${cvRule(F, 20, W)}
+${cvRule(F, 83, W)}
+${cvSite(c, F, F + 98, 90.1, F + W)}
+<div data-print-check>${cvHead(F, 'Site Analyst')}
+${cvTitle(F, c.deck)}</div>
 </section>`;
 }
 
@@ -9008,8 +9063,8 @@ export const coverDate = (iso: string) => {
   return Number.isNaN(d.getTime()) ? iso.slice(0, 10) : d.toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Australia/Sydney' });
 };
 
-/** The colophon every cover carries: who made the deck, and on what terms. */
-export const COVER_CREDIT = 'Generated with Site Analyst — © Sami Abdulnour and Zofia Kosova, licensed use. Made from open data with no guarantee it is complete.';
+/** The credit every cover carries, a line each: who made the deck and when, and on what terms. */
+export const coverCredit = (generatedAt: string): string[] => [`Generated with Site Analyst, ${coverDate(generatedAt)}`, '© Sami Abdulnour and Zofia Kosova, licensed use.', 'Made from open data with no guarantee it is complete.'];
 
 export function atlasPage(s: Slide, i: number): string {
   const [line1, ...rest] = s.subtitle.split(' · ');
@@ -9050,7 +9105,7 @@ function drawSlides(b: SlidesBundle, meta: SheetMeta): DeckHtml {
   const slides = [countryAtlas(b), locationSlide(b), characterAtlas(b), ...(scape ? [scape] : []), planningAtlas(b), controlsAtlas(b, facts), strategicAtlas(b, facts), topographyAtlas(b), developmentAtlas(b, facts), ...(capacity ? [capacity] : []), builtFormAtlas(b, facts), formAtlas(b, facts), movementSlide(b), greenAtlas(b), siteAtlas(b), conditionAtlas(b), sunAtlas(b), constraintsAtlas(b), peopleAtlas(b), ocAtlas(b, facts), sourcesAtlas(b, facts)];
   const t = tpl();
   const footerLeft = ['SITE ANALYST — OVERALL ANALYSIS', b.siteAddress, meta.client ? `for ${meta.client}` : '', meta.jobNo ? `job ${meta.jobNo}` : ''].filter(Boolean).join(' · ');
-  const cover = reportCover(b, slides);
+  const cover = reportCover(b, slides, facts);
   // A page's last footer is its mark for the print check (src/render/printCheck.ts): the last thing it draws.
   const pages = slides.map((s, i) => s.bleed || s.full ? atlasPage(s, i) : `
 <section class="slide${s.bleed || s.full ? ' atlas' : ''}" id="${esc(s.id)}">
@@ -9071,36 +9126,32 @@ function drawSlides(b: SlidesBundle, meta: SheetMeta): DeckHtml {
 <style>
 ${deckCss()}${[...new Set(css.filter(Boolean))].join('\n')}</style></head>
 <body>${body}</body></html>`;
-  const html = shell('OVERALL ANALYSIS', `${cover}\n${pages}`, slides.map((s) => s.css));
-  // the spreads the booklet prints otherwise, each numbered as its spread is; the deck's PDF has the cover first
+  const html = shell('OVERALL ANALYSIS', `${coverPage(cover)}\n${pages}`, slides.map((s) => s.css));
+  // the spreads the booklet prints otherwise: its own cover, cut in two down the fold, and the pages drawn off the
+  // fold, each numbered as its spread is; the deck's PDF has the cover first
   const variants = slides.flatMap((s, i) => (s.booklet ? [{ i, s: s.booklet() }] : []));
-  const booklet = variants.length
-    ? { html: shell('OVERALL ANALYSIS BOOKLET SPREADS', variants.map(({ s, i }) => atlasPage(s, i)).join('\n'), variants.map(({ s }) => s.css)), spreads: variants.map(({ i }) => i + 1) }
-    : undefined;
+  const booklet = { html: shell('OVERALL ANALYSIS BOOKLET SPREADS', [bookletCover(cover), ...variants.map(({ s, i }) => atlasPage(s, i))].join('\n'), variants.map(({ s }) => s.css)), spreads: [0, ...variants.map(({ i }) => i + 1)] };
   return { html, slides, booklet };
 }
 
-/** The report's cover: the place from above to the front's edges, the site outlined; the contents and colophon on the back. */
-function reportCover(b: SlidesBundle, slides: Slide[]): string {
-  const p = b.bleedPanel;
-  const proj = panelProjector(p);
-  const parts: string[] = [`<rect x="0" y="0" width="${p.wMm}" height="${p.hMm}" fill="#f2f2f2"/>`];
-  const aerial = b.character?.aerial;
-  if (aerial?.tiles.length) parts.push(aerialTiles(aerial.tiles, p, aerial.extent));
-  else parts.push(withTemplate(greyBase(tpl()), () => baseLayers(b.base, proj, p)));
-  parts.push(siteMark(b.base, proj, 'both'));
-  const lga = b.context.lga?.name ? titleCase(b.context.lga.name) : '';
-  const c = b.controls;
-  return coverPage({
+/** The report's cover: its name, the site with its lot and zone, the place's canopy, the contents and the small print. */
+function reportCover(b: SlidesBundle, slides: Slide[], facts: PlanningFacts): Cover {
+  // the zone the planning pages read at the site: the polygon it stands in, else the point query
+  const zone = facts.zoneAtSite;
+  // the canopy read off the aerial (render/paintMasks.ts, prepareRasters); for a deck without it, the trees it holds
+  const trees = b.green?.crowns?.length ? b.green.crowns : b.green?.trees.points ?? [];
+  return {
     deck: 'Site report',
-    name: b.siteAddress,
-    details: [[lga, b.lotDescription !== '—' ? b.lotDescription : ''].filter(Boolean).join(' · '), [c.zoneCode && `${c.zoneCode}${c.zonePurpose ? ` ${c.zonePurpose}` : ''}`, c.maxHeightM ? `HOB ${c.maxHeightM}${/rl|ahd/i.test(c.heightUnits ?? '') ? ' RL' : 'm'}` : '', c.fsr ? `FSR ${c.fsr.toFixed(2)}:1` : '', b.siteAreaSqm ? `${fmtNum(Math.round(b.siteAreaSqm))} m²` : ''].filter(Boolean).join(' · ')].filter(Boolean),
-    date: `${coverDate(b.generatedAt)} · ${tpl().label}`,
-    hero: bleedSvg('cover', p, parts.join('\n')),
-    accent: deckLook().accent,
+    site: coverSite(b.siteAddress),
+    details: [
+      [b.lotDescription !== '—' ? b.lotDescription : '', b.siteAreaSqm ? `${fmtNum(Math.round(b.siteAreaSqm))} m²` : ''].filter(Boolean).join(' · '),
+      zone?.code ? `${zone.code}${zone.name ? ` ${zone.name}` : ''}` : '',
+    ].filter(Boolean),
     contents: slides.map((s, i) => ({ n: String(i + 1).padStart(2, '0'), title: s.title })),
-    colophon: ['The site, its place and its controls, read from the NSW Government\'s and the council\'s open data: an analysis to start a design from, not a survey or a s10.7 planning certificate.', COVER_CREDIT],
-  });
+    note: 'The site, its place and its controls, read from the NSW Government\'s and the council\'s open data: an analysis to start a design from, not a survey or a s10.7 planning certificate.',
+    credit: coverCredit(b.generatedAt),
+    picture: b.cover ?? coverCellsFromTrees(trees, mercatorToLonLat(b.geocode.center)),
+  };
 }
 
 /** Everything the deck says, as data: the JSON beside the PDF. */

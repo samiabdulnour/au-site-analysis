@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import { decodePng, encodeRgbaPng } from '../lib/png.js';
 import { aerialGreenFill, veg1750Fills, VEG_CLASSES_MAX, PATTERN_SCALE, PATTERN_WEIGHT, type Fill } from './atlasKit.js';
 import { mercatorScaleFactor, mercatorToLonLat } from '../lib/geo.js';
+import { coverCells } from '../lib/coverPicture.js';
 
 const UP = 3;
 const rgb = (h: string) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
@@ -67,6 +68,13 @@ export async function prepareRasters(sb: any, dataDir: string, bleedScale: numbe
   if (vm) {
     const r = await paintMasks(dataDir, [{ mask: vm.file, fill: aerialGreenFill() }], mmAcross(vm.extent, bleedScale) / vm.pxWidth, 'vegetation_paint.png').catch(() => null);
     vm.paint = r?.file;
+    // the same green in the cover's cells (lib/coverPicture.ts): the cover's picture
+    const mask = await readFile(join(dataDir, vm.file)).then((buf) => decodePng(new Uint8Array(buf))).catch(() => null);
+    if (mask) {
+      const green = new Uint8Array(mask.width * mask.height);
+      for (let i = 0; i < green.length; i++) green[i] = mask.data[i * 4] >= 128 ? 1 : 0;
+      sb.cover = coverCells({ width: mask.width, height: mask.height, mPerPx: (vm.extent.xmax - vm.extent.xmin) / k / mask.width, green });
+    }
   }
   const veg = sb.country?.vegetation;
   if (veg?.image) {
