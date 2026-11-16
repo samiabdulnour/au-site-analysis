@@ -542,7 +542,7 @@ def our_units_scheme(k):
     mn, ms = ((en[0] + wn[0]) / 2, (en[1] + wn[1]) / 2), ((es[0] + ws[0]) / 2, (es[1] + ws[1]) / 2)
     lerp = lambda a, b, t: (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t)
     line = lambda a, b: f'<line x1="{f(a[0])}" y1="{f(-a[1])}" x2="{f(b[0])}" y2="{f(-b[1])}" stroke="#c0161c" stroke-opacity=".6" stroke-width="{0.3 * k:.2f}"/>'
-    o = [line(lerp(mn, ms, 0.05), lerp(mn, ms, 0.95))]
+    o = [line(mn, ms)]                                                # the corridor, wall to wall
     for side, fn, fs_ in (('east', en, es), ('west', wn, ws)):
         lst = plan_.get(side, [])
         tot = sum(float(u[1]) for u in lst) or 1.0
@@ -566,7 +566,7 @@ def bays_scheme(poly, typ, k):
     segs = [(lerp(a0, a1, i / nb), lerp(b0, b1, i / nb)) for i in range(1, nb)]
     if typ in ('d18', 'd22'):
         m0, m1 = lerp(a0, b0, 0.5), lerp(a1, b1, 0.5)
-        segs.append((lerp(m0, m1, 0.04), lerp(m0, m1, 0.96)))
+        segs.append((m0, m1))                                         # the corridor, wall to wall
     o = []
     inner = poly.buffer(-0.05)
     for p, q in segs:
@@ -2165,22 +2165,34 @@ def page(no, scn):
 
 FIRST = sc['scenarios'][0].get('number', 1)
 LAST = FIRST + len(sc['scenarios']) - 1
-for i, scn in enumerate(sc['scenarios'], 1):
+# `--only N` (a scenario's number, or `last`) draws that scenario's sheets alone: its option sheet, its full sheet
+# and its sun proof, no overview, the other scenarios untouched
+ONLY = None
+if '--only' in sys.argv:
+    v = sys.argv[sys.argv.index('--only') + 1]
+    ONLY = len(sc['scenarios']) if v == 'last' else int(v) - FIRST + 1
+    if not 1 <= ONLY <= len(sc['scenarios']):
+        sys.exit(f'--only {v}: the scenarios run from {FIRST} to {LAST}')
+todo = [(i, scn) for i, scn in enumerate(sc['scenarios'], 1) if ONLY in (None, i)]
+for i, scn in todo:
     open(f'{OUT}/future-{i}.html', 'w').write(page(FIRST + i - 1, scn))
-per = math.ceil(len(SUMMARY) / math.ceil(len(SUMMARY) / 8))              # at most eight scenarios a sheet, spread evenly
-chunks = [SUMMARY[i:i + per] for i in range(0, len(SUMMARY), per)]
-for i, part in enumerate(chunks, 1):
-    open(f'{OUT}/future-summary-{i}.html', 'w').write(summary_page(part, i, len(chunks)))
-sun_pages = 0
-for i, r in enumerate(SUMMARY, 1):
+chunks = []
+if ONLY is None:
+    per = math.ceil(len(SUMMARY) / math.ceil(len(SUMMARY) / 8))          # at most eight scenarios a sheet, spread evenly
+    chunks = [SUMMARY[i:i + per] for i in range(0, len(SUMMARY), per)]
+    for i, part in enumerate(chunks, 1):
+        open(f'{OUT}/future-summary-{i}.html', 'w').write(summary_page(part, i, len(chunks)))
+sun_pages = []
+for (i, _), r in zip(todo, SUMMARY):
     open(f'{OUT}/future-option-{i}.html', 'w').write(option_page(r))
     set_tower(r['scn'])
     html = sun_page(r['no'], r['scn'], r['sun'], r)
     if html:
         open(f'{OUT}/future-sun-{i}.html', 'w').write(html)
-        sun_pages += 1
-json.dump({'width': PAGE_W, 'height': PAGE_H, 'pages': len(sc['scenarios']), 'summary': len(chunks), 'options': True, 'sun': sun_pages}, open(f'{OUT}/future-page.json', 'w'))
-for i, scn in enumerate(sc['scenarios'], 1):
+        sun_pages.append(i)
+json.dump({'width': PAGE_W, 'height': PAGE_H, 'pages': len(sc['scenarios']), 'summary': len(chunks), 'options': True, 'sun': len(sun_pages),
+           'only': ONLY, 'onlyScene': None if ONLY is None else FIRST + ONLY - 1, 'sunPages': sun_pages}, open(f'{OUT}/future-page.json', 'w'))
+for i, scn in todo:
     set_tower(scn)
     parcels, blds, existing = resolve(scn)
     print(f'scenario {i}: ' + '; '.join(f'{p["key"]} {p["area"]:.0f} m² {p["storeys"]} st GFA {p["gfa"]:.0f} FSR {p["fsr"]:.1f} parity {p["parity"]} plate {p["plate"]} gap {None if p["gap"] is None else round(p["gap"], 1)}' for p in parcels)

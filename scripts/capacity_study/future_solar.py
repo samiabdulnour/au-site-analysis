@@ -229,7 +229,8 @@ def unit_test(pairs, units, lit_by_panel=None):
     return dict(double=r, single=r, planned=r, units=True, per_floor=sum(len(v) for v in units.values()), each=each)
 
 
-for path in sorted(glob.glob(f'{OUT}/future-scene-*.json')):
+ONLY_SCENE = sys.argv[sys.argv.index('--scene') + 1] if '--scene' in sys.argv else None   # one scenario's scene alone
+for path in sorted(glob.glob(f'{OUT}/future-scene-{ONLY_SCENE if ONLY_SCENE is not None else "*"}.json')):
     scene = json.load(open(path))
     times = assessment_times(dt.date(scene['year'], 6, 21), scene['timezone'], dt.time(9), dt.time(15), STEP)
     sun = solar_position(times, scene['lat'], scene['lon']).unit_vectors_enu()        # the scene is east, north, up

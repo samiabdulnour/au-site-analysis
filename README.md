@@ -1957,7 +1957,9 @@ apartments of ours without their sun and the neighbours our tower shades);
 on the aerial, the massing, the yield, the assumptions); and, where the
 scenarios file lays the site's apartments out, `future-sun.pdf`, the sun's
 proof for them (`future-sun-<n>.png`, below). `--redraw` draws again from
-what was fetched.
+what was fetched, and `--only <n>` (a scenario's number, or `last`) draws
+that scenario's sheets alone, in seconds, leaving the bound PDFs as they
+were.
 `examples/capacity_study/` holds the sheets for 70-76 Riley Street with
 their scenarios file.
 

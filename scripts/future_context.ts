@@ -10,6 +10,7 @@
 //   npm run capacity -- "70-76 Riley Street, Darlinghurst NSW 2010" --out out/capacity/riley
 //   npm run future -- out/capacity/riley --scenarios examples/capacity_study/70-76-riley-street-darlinghurst.future.json
 //   npm run future -- out/capacity/riley --scenarios … --redraw      (draw again from what was fetched)
+//   npm run future -- out/capacity/riley --scenarios … --redraw --only last   (one scenario's sheets alone: its number, or `last`)
 //   npm run future -- out/capacity/riley --scenarios … --redraw --sun-context   (read the 300 m the sun reaches)
 //
 // Over the context plan's reading (analysis.json: every property's polygon,
@@ -179,8 +180,9 @@ async function fetchStudy(): Promise<void> {
 // it), then draw again with the sun on the sheets; print, bind
 const run = promisify(execFile);
 const python = process.env.PYTHON || 'python3';
+const only = flag('--only');
 const draw = async () => {
-  const { stdout, stderr } = await run(python, ['-I', join(HERE, 'capacity_study', 'future_context.py'), out, resolve(scenarios!)], { maxBuffer: 64 * 1024 * 1024 });
+  const { stdout, stderr } = await run(python, ['-I', join(HERE, 'capacity_study', 'future_context.py'), out, resolve(scenarios!), ...(only ? ['--only', only] : [])], { maxBuffer: 64 * 1024 * 1024 });
   if (stderr.trim()) log(stderr.trim());
   log(`  future_context.py: ${stdout.trim()}`);
 };
@@ -188,12 +190,25 @@ await draw();
 const loriini = process.env.LORIINI || (existsSync(join(HERE, '..', '..', 'loriini', 'src')) ? join(HERE, '..', '..', 'loriini') : undefined);
 if (loriini && !args.includes('--no-sun')) {
   try {
-    const { stdout } = await run(python, ['-I', join(HERE, 'capacity_study', 'future_solar.py'), out], { env: { ...process.env, LORIINI: loriini }, maxBuffer: 64 * 1024 * 1024 });
+    // with --only, the sun is cast over that scenario's scene alone
+    const scene = only ? (JSON.parse(await readFile(join(out, 'future-page.json'), 'utf8')) as { onlyScene?: number | null }).onlyScene : null;
+    const { stdout } = await run(python, ['-I', join(HERE, 'capacity_study', 'future_solar.py'), out, ...(scene != null ? ['--scene', String(scene)] : [])], { env: { ...process.env, LORIINI: loriini }, maxBuffer: 64 * 1024 * 1024 });
     log(`  future_solar.py: ${stdout.trim()}`);
     await draw();
   } catch (e: any) { log(`  WARN the sun study did not run: ${e?.message ?? e}`); }
 } else log('  no Loriini beside this repository (LORIINI unset): the sheets carry no sun study');
-const { width, height, pages, summary, options, sun: sunPages = 0 } = JSON.parse(await readFile(join(out, 'future-page.json'), 'utf8')) as { width: number; height: number; pages: number; summary?: boolean | number; options?: boolean; sun?: number };
+const { width, height, pages, summary, options, sun: sunPages = 0, only: onlyPage = null, sunPages: sunList = [] } = JSON.parse(await readFile(join(out, 'future-page.json'), 'utf8')) as { width: number; height: number; pages: number; summary?: boolean | number; options?: boolean; sun?: number; only?: number | null; sunPages?: number[] };
+if (onlyPage != null) {
+  // one scenario alone: its option sheet, its full sheet and its sun proof, each printed to its own PNG and PDF; the
+  // bound PDFs of the whole deck are left as they were
+  const names = [`future-option-${onlyPage}`, `future-${onlyPage}`, ...sunList.map((i) => `future-sun-${i}`)];
+  for (const name of names) {
+    await printPage(join(out, `${name}.html`), { width, height }, { png: join(out, `${name}.png`), pdf: join(out, `${name}.pdf`) });
+    log(`  printed ${name}`);
+  }
+  console.log(names.flatMap((n) => [join(out, `${n}.png`), join(out, `${n}.pdf`)]).join('\n'));
+  process.exit(0);
+}
 // future.pdf: the overview over every scenario, then a sheet for each in the overview's form; future-detail.pdf: the
 // sheets in full (the plan at 1:500, the massing, the yield, the assumptions); future-sun.pdf: the sun's proof for
 // our own apartments, a sheet a scenario
