@@ -12,7 +12,7 @@ import type { SlidesBundle } from '../pipeline.js';
 import { mergeRuns, straightEnough, arcTable, sliceAt, shortStreetName, dashedPath, type SheetMeta, type Pt } from './sheet.js';
 import type { TopoRoad } from '../fetch/nswTopo.js';
 import type { GeoJSONFeature } from '../lib/arcgis.js';
-import { tpl, withTemplate, templateFor, deckLook, tint, shadeHex, inkFor, vivid, type DeckLook } from './template.js';
+import { tpl, withTemplate, templateFor, deckLook, tint, shadeHex, inkFor, vivid, greyOf, type DeckLook } from './template.js';
 import { INK, aerialGreenFill, veg1750Fills, VEG_CLASSES_MAX, fillShape, swatchOf, barOf, categoryFill, heatFills, paletteRamp, styleRamp, terrainRamp, stripOf, HEIGHT_BANDS, heightBandOf, massingInks, heightRamp, zHead, zBars, zFigures, zCircles, zSpans, zPairs, zLine, niceAxis, z6, zSvg, Z_W, Z_TRACK, type Fill } from './atlasKit.js';
 import { esc } from './chrome.js';
 import { drawAxonometric, shade, type AxoScene, type Prism } from './axonometric.js';
@@ -2718,7 +2718,8 @@ export function formAtlas(b: SlidesBundle, planning: PlanningFacts, opts: { clea
   const keyEntries: LegendEntry[] = [
     ...HEIGHT_BANDS.map((bd, i) => ({ swatch: block(M.bands[i], lineModel ? '#1a1a1a' : shade(M.bands[i], M.gloss ? 0.78 : 0.55)), label: i === 0 ? bd.label : i === HEIGHT_BANDS.length - 1 ? '16 storeys and more' : `${bd.label} storeys` })),
     { swatch: block(M.noHeight, lineModel ? '#1a1a1a' : shade(M.noHeight, 0.55), true), label: 'No height recorded, dashed' },
-    { swatch: block(tint(t.site, 0.55), '#1c1c1c'), label: 'What stands on the site today' },
+    // (Heron's line model has no colour: what stands on the site is the grey the drawing gives it, in its heavy outline)
+    { swatch: block(lineModel ? greyOf(tint(t.site, 0.55)) : tint(t.site, 0.55), '#1c1c1c'), label: 'What stands on the site today' },
   ];
   const figureHtml = `<div class="form3d">
   <div class="abs" style="left:0;top:0"><svg width="${SHEET_W}mm" height="${SHEET_H}mm" viewBox="0 0 ${SHEET_W} ${SHEET_H}" xmlns="http://www.w3.org/2000/svg" style="display:block" font-family="Arial, 'Liberation Sans', sans-serif">${drawAxonometric(scene, { x: 0, y: TOP, w: SHEET_W, h: SHEET_H - TOP - FOOT, clear: opts.clearFold ? { x: FOLD, margin: BOOKLET_FOLD_CLEAR } : undefined }, 'form09b')}</svg></div>

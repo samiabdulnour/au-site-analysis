@@ -1002,9 +1002,14 @@ take the warm colours — yellow ground with orange buildings for R2, pink for
 R3, cyan for R4, peach for mixed use — and green is kept for green space alone,
 open space the deep mint with black dots. The local and commercial centres and
 retail are the blue family, told apart by texture, the institutions lavender,
-industry grey on stone; water the bright cyan, the site and heritage in magenta
-and purple, the railway orange. The legend swatch shows a few buildings on
-their ground. The colours are exactly those the reference prints. Streets, numbered
+industry grey on stone; water the bright cyan, heritage purple, the railway
+orange. The site is a red terracotta (`#c8553a`), drawn as its site sheet
+draws it (`siteMark` on the template, 2026-11): the lot in a pale tint of the
+red, on white so the zone under it does not muddy it, inside a dash-dot line
+of the red and a white contour that lifts it off the tints round it; what
+stands on the lot in the full red, in a white edge. It was the reference's
+pale salmon at 0.55 in a dashed line, which the decks keep as `site`. The legend swatch shows a few buildings on
+their ground. The other colours are exactly those the reference prints. Streets, numbered
 places and the dotted lines are Flamingo's, but the street names and the institutions' number discs
 are the reference's peach, the parks' discs a light leaf green, and the lots
 and every building are drawn in a heavy white line. The lots lie under the
@@ -1117,13 +1122,14 @@ so the roads stay white (water is drawn whole), every building in its zone
 family's strong colour with a white edge and its number in white (a quiet grey
 where no zone is mapped), the white cadastre, Kingfisher's
 grotesk and its peach street names. The site is in a red terracotta
-(`#c8553a`, 2026-11; it was the context sheet's magenta, which the context
-sheet keeps), chosen to sit with the palette's peach and coral: its dash-dot
+(`#c8553a`, 2026-11; it was the palette's magenta), the same as on the
+context sheet, chosen to sit with the palette's peach and coral: its dash-dot
 boundary, its corners and levels, the lot in a pale tint of it (`siteTint`)
 and what stands on the lot in the terracotta itself (`siteFigure`), where it
-was a quiet grey. How that building is drawn is the look's `siteFigureStyle`:
-filled with the buildings' fine white edge (the default), filled inside a
-thick white contour, white and hatched inside the white contour (the hatch's
+was a quiet grey. How that building is drawn is the look's `siteFigureStyle`.
+Kingfisher's is `fillContour`: filled in the terracotta inside a thick white
+contour, which lifts it off the lot's tint. The others are the buildings' fine
+white edge (unset), white and hatched inside the white contour (the hatch's
 line and spacing are `siteFigureHatch`), or white, plain or hatched, inside a
 thick contour of the terracotta. Flamingo's site sheet keeps its coral site; its building on
 the lot takes the coral as its outline and hatch. The climate is drawn in
@@ -1369,6 +1375,14 @@ palette.
   hillshade under them.
 - **3D views: a line model**, after an architect's axonometric
   (`src/render/axonometric.ts`, `LINE`):
+  - the massing views (the yield's, its cover's, the report's built form)
+    are black and white, with no colour at all, the accent included:
+    whatever ink or fill they are given goes to the grey of its own
+    lightness (`greyOf`), the site is a black dash-dot boundary on the
+    ground with no tint, and the height plane over it a fine black dashed
+    outline;
+  - the compliance views keep their colour: the walls and roofs in their
+    bands of sun hours, the site in the accent;
   - every building is a white volume in a black outline, with no shade on
     its faces;
   - what is built on the site carries the heaviest outline, its storeys

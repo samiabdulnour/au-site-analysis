@@ -20,7 +20,7 @@ import { featureCollection, polygon } from '@turf/helpers';
 import type { XY } from '../lib/geo.js';
 import { alongLine, carriageways, type Carriageway, type RoadLine } from '../lib/carriageway.js';
 import { INK, massingInks } from './atlasKit.js';
-import { tint, vivid, deckLook } from './template.js';
+import { tint, vivid, deckLook, greyOf } from './template.js';
 import { esc } from './chrome.js';
 import { crownPicture, shadowPicture, rand, canopyBottom, canopyVariant, CANOPY, CANOPY_BRANCHINGS, CONTOUR, type CrownKind } from './crowns.js';
 import { personPicture, riderPicture, PEOPLE_VARIANTS, RIDER_VARIANTS } from './people.js';
@@ -326,7 +326,14 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   const mono = !!scene.mono || line;
   const G = line ? LINE : MONO;
   const M = mono ? { ...massingInks(), ground: '#ffffff', lot: G.line, park: '#ffffff', road: '#ffffff', axis: G.line, tree: '#ffffff', treeLight: '#ffffff', trunk: G.edge } : massingInks();
-  const { ring, reach, inks } = scene;
+  const { ring, reach } = scene;
+  // A line model's massing (the yield's massing views, the report's built form) is black and white, with no colour
+  // at all: every ink and every fill it is given goes to the grey of its own lightness (a neighbour's tone, what
+  // stands on the site), and the site's pen is black. Its compliance views (`scene.mono`: the town a white model so
+  // the scheme's colours read alone) keep their colours: the walls' bands of sun hours and the site's accent.
+  const plain = line && !scene.mono;
+  const bw = (c: string) => (plain ? greyOf(c) : c);
+  const inks = plain ? { site: LINE.edge, future: bw(scene.inks.future), futureEdge: bw(scene.inks.futureEdge), envelope: bw(scene.inks.envelope), kerb: bw(scene.inks.kerb) } : scene.inks;
   const look = lookOf(M, mono);
   const turn = (40 * Math.PI) / 180;
   const nx = scene.frontNormal.x, ny = scene.frontNormal.y;
@@ -346,7 +353,7 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
     if (Math.hypot(cen.x, cen.y) > reach) continue;
     const known = nb.heightM != null && nb.heightM > 0;
     const z1 = known ? nb.heightM! : 6.2;
-    const group: Prism[] = [mono ? { rings, z0: 0, z1, fill: line && !scene.mono ? nb.fill : '#ffffff', edge: G.edge, edgeW: 0.12, dashed: !known }
+    const group: Prism[] = [mono ? { rings, z0: 0, z1, fill: line && !scene.mono ? bw(nb.fill) : '#ffffff', edge: G.edge, edgeW: 0.12, dashed: !known }
       : { rings, z0: 0, z1, fill: nb.fill, edge: shade(nb.fill, M.gloss ? 0.78 : 0.55), edgeW: 0.12, dashed: !known, windows: known }];
     if (nb.future && nb.future > z1) group.push({ rings, z0: z1, z1: nb.future, fill: inks.future, edge: inks.futureEdge, edgeW: 0.12, dashed: true, dash: FUTURE_DASH, opacity: FUTURE_OPACITY });
     prisms.push({ key: depth(cen), group });
@@ -358,7 +365,9 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
     if (Math.hypot(cen.x, cen.y) > reach) continue;
     prisms.push({ key: depth(cen), group: [{ rings, z0: 0, z1: f.heightM, fill: inks.future, edge: inks.futureEdge, edgeW: 0.12, dashed: true, dash: FUTURE_DASH, opacity: FUTURE_OPACITY }] });
   }
-  const built = scene.built;
+  const built: Prism[] = plain
+    ? scene.built.map((pr) => ({ ...pr, fill: bw(pr.fill), edge: bw(pr.edge), ...(pr.cells ? { cells: pr.cells.map((c) => ({ ...c, fill: bw(c.fill) })) } : {}), ...(pr.roof ? { roof: pr.roof.map((c) => ({ ...c, fill: bw(c.fill) })) } : {}) }))
+    : scene.built;
   prisms.push({ key: 0, group: built });
   prisms.sort((p, q) => q.key - p.key);
 
@@ -389,7 +398,10 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
     ground.push(`<path d="${cw.axes.map(({ axis }) => open(axis.map((p) => P(p, 0)))).join('')}" fill="none" stroke="${M.axis}" stroke-width="0.12" stroke-dasharray="1.4,1.1" opacity="0.85"/>`);
   }
   const SITE = inks.site;
-  ground.push(`<path d="${poly(ring.map((p) => P(p, 0)))}" fill="${SITE}" fill-opacity="0.08" stroke="${SITE}" stroke-width="0.35"/>`);
+  // (a line model's massing: the site a black dash-dot boundary on the ground, with no tint)
+  ground.push(plain
+    ? `<path data-site d="${poly(ring.map((p) => P(p, 0)))}" fill="none" stroke="${SITE}" stroke-width="0.4" stroke-dasharray="3,1,0.6,1"/>`
+    : `<path d="${poly(ring.map((p) => P(p, 0)))}" fill="${SITE}" fill-opacity="0.08" stroke="${SITE}" stroke-width="0.35"/>`);
   // Glossy (Kingfisher, Flamingo): each building casts a soft shadow on the ground, away from the light, as far as its height is tall by
   // the sun's slant; the footprint swept along it, one translucent group so overlaps do not darken twice.
   if (M.gloss) {
@@ -869,7 +881,8 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   for (const e of scene.envelopes ?? []) for (const rg of e.rings) over.push(`<path d="${poly(rg.map((p) => P(p, e.z)))}" fill="none" stroke="${inks.envelope}" stroke-width="0.22" stroke-dasharray="1.6,1"/>`);
   if (scene.hob?.metres) {
     const hz = scene.hob.metres;
-    over.push(`<path d="${poly(ring.map((p) => P(p, hz)))}" fill="${SITE}" fill-opacity="0.05" stroke="${SITE}" stroke-width="0.3" stroke-dasharray="2.4,1.2"/>`);
+    // (a line model's massing: the plane a fine black dashed outline, nothing in it)
+    over.push(`<path d="${poly(ring.map((p) => P(p, hz)))}" fill="${plain ? 'none' : SITE}" fill-opacity="0.05" stroke="${SITE}" stroke-width="${plain ? 0.22 : 0.3}" stroke-dasharray="2.4,1.2"/>`);
     for (const p of ring) { const [x1, y1] = P(p, 0), [x2, y2] = P(p, hz); over.push(`<line x1="${x1.toFixed(2)}" y1="${y1.toFixed(2)}" x2="${x2.toFixed(2)}" y2="${y2.toFixed(2)}" stroke="${SITE}" stroke-width="0.12" stroke-dasharray="1,1"/>`); }
   }
 
