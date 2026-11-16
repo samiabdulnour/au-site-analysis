@@ -276,6 +276,15 @@ jobs:
       - name: the trees and the people in each style
         run: npx tsx test/trees.mts
 
+      # Heron's site sheet, yield and report in black, white and one colour: every ink a grey or the accent (and
+      # Kingfisher's not, so the check can fail), and a page asking for its photographs in grey printing them grey,
+      # each as itself rather than rasterised with its page, in the runner's own Chrome. Nothing is fetched.
+      - name: Heron is black, white and one colour
+        run: npx tsx test/heron-mono.mts
+        env:
+          CHROMIUM_PATH: /usr/bin/google-chrome
+          CHROMIUM_NO_SANDBOX: '1'
+
       # Slide 15's heritage layers on made-up features: outlines clipped to the
       # strip, a permit over the lot told from one that grazes its kerb, AHIP
       # records merged by permit, the RNE's rejected places left out, and what
