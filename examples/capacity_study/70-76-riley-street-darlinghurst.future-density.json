@@ -766,6 +766,75 @@
      ]
     }
    ]
+  },
+  {
+   "title": "Crown Street towers, the middle lot kept, all 14 storeys",
+   "horizon": "Two towers sketched across the lane, each 14 storeys over a three-storey podium: one on 107-113 Crown St, an L on 121-129 Crown St. 115-119 Crown St between them and every other neighbour as they stand.",
+   "lead": "Two of the Crown Street lots across the lane develop as sketched, each on its own, 115-119 Crown St between them and every other neighbour as they stand: on 107-113 Crown St the tower of scenario 4; on 121-129 Crown St an L, a tower 12 m wide at its southern end and a wing 9 m deep along Crown Street to 3 m off its northern boundary. Both stand 9 m from the middle of Crown Lane, 3 m off Crown Street and 3 m off their side boundaries, and both are 14 storeys, as ours is.",
+   "notes": [
+    "107-113 Crown St: {C.area} m², {C.plate}, {C.storeys} storeys at {C.fsr}; {C.sep} m from our tower.",
+    "121-129 Crown St: {D.area} m², an L within {D.plate}, {D.storeys} storeys at {D.fsr}; {D.sep} m from our tower.",
+    "115-119 Crown St, the northern blocks, Crown Street north of the lane lot and the block across Riley Street stand as they are."
+   ],
+   "retained": [
+    "66-68 RILEY STREET",
+    "115-119 CROWN STREET"
+   ],
+   "parcels": [
+    {
+     "key": "C",
+     "name": "107-113 Crown St",
+     "addresses": [
+      "107-113 CROWN STREET"
+     ],
+     "buildings": [
+      {
+       "type": "podium",
+       "storeys": 3,
+       "footprint": "lot"
+      },
+      {
+       "type": "plate",
+       "storeys": 14,
+       "base": 3,
+       "toCentre": {
+        "CROWN LANE": 9
+       },
+       "boundary": 3,
+       "boundaries": {
+        "105 CROWN STREET": 3.35
+       }
+      }
+     ]
+    },
+    {
+     "key": "D",
+     "name": "121-129 Crown St",
+     "addresses": [
+      "121-129 CROWN STREET"
+     ],
+     "buildings": [
+      {
+       "type": "podium",
+       "storeys": 3,
+       "footprint": "lot"
+      },
+      {
+       "type": "plate",
+       "storeys": 14,
+       "base": 3,
+       "toCentre": {
+        "CROWN LANE@west": 9
+       },
+       "boundary": 3,
+       "wings": {
+        "CROWN STREET": 9,
+        "CROWN LANE@south": 12
+       }
+      }
+     ]
+    }
+   ]
   }
  ]
 }
