@@ -2034,7 +2034,7 @@ the far corner of the lot to the north, slabs on the far street of the
 others); 22 m slabs as long as each lot allows, so as low as the density
 lets them; and no taller than the site's own 14 storeys with no unit
 depth asked, each floor its lot less its setbacks. A fourth is the two
-Crown Street lots across the lane as sketched on 16 November, a tower on
+Crown Street lots across the lane as sketched, a tower on
 107-113 Crown St and an L on 115-129 Crown St, both 14 storeys, every other
 neighbour as it stands; a fifth the same two sites with three towers, the
 second site carrying two 12 m wide, one on its northern boundary and one at
