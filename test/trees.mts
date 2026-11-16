@@ -52,7 +52,7 @@ for (const kind of ['cloud', 'columnar'] as const) {
 }
 
 // a canopy: a plain mass in one colour, the town's thin contour round it, its wood showing under it; no form squat
-for (let form = 0; form < 5; form++) {
+for (let form = 0; form < 6; form++) {
   const t = { edge: '#b06853', dark: '#9fdcc0', lit: '#79d2a9', high: '#4a4e57' };
   const pic = crownPicture('canopy', form, t, 0.02, 80);
   const png = decodePng(Buffer.from(pic.uri.replace(/^data:image\/png;base64,/, ''), 'base64'))!;
@@ -67,7 +67,8 @@ for (let form = 0; form < 5; form++) {
   }
   const top = [...count.entries()].sort((a, b) => b[1] - a[1]), solid = top.reduce((k, [, v]) => k + v, 0);
   check(`canopy ${form}: one plain colour, most of it`, top[0]?.[0] === '9fdcc0' && top[0][1] > 0.6 * solid, top.slice(0, 3).map(([c, k]) => `${c}:${k}`).join(' '));
-  check(`canopy ${form}: the contour round it and its wood under it`, (count.get('4a4e57') ?? 0) > 30 && (count.get('b06853') ?? 0) > 30, `${count.get('4a4e57')} ${count.get('b06853')}`);
+  // (a cypress's or a conifer's wood only the stub of its short trunk)
+  check(`canopy ${form}: the contour round it and its wood under it`, (count.get('4a4e57') ?? 0) > 30 && (count.get('b06853') ?? 0) > (form >= 4 ? 5 : 30), `${count.get('4a4e57')} ${count.get('b06853')}`);
   check(`canopy ${form}: not squat, as tall as it is wide or near`, ly1 - ly0 >= 0.88 * (lx1 - lx0), `${lx1 - lx0} × ${ly1 - ly0} px`);
 }
 
@@ -100,14 +101,15 @@ for (const style of ['flamingo', 'kingfisher']) {
   const vehicles = (svg.match(/data-vehicle="/g) ?? []).length, wheels = (svg.match(/fill="#363940"/g) ?? []).length;
   check(`${style}: ${style === 'kingfisher' ? 'vehicles on wheels, two or more each' : 'its block vehicles, no wheels'}`, vehicles > 0 && (style === 'kingfisher' ? wheels >= 2 * vehicles : wheels === 0), `${vehicles} vehicles, ${wheels} wheels`);
   // every crown in the style's own green: its commonest solid colour of the hue of massingInks().tree
-  const want = hue(rgbOf(M.tree)), off: string[] = [];
+  // (Kingfisher's soft yellow-green, for about one tree in five, as well)
+  const wants = [hue(rgbOf(M.tree)), ...(style === 'kingfisher' ? [hue(rgbOf('#bccd84'))] : [])], off: string[] = [];
   for (const m of svg.matchAll(/<image id="axo-tr-t\d+" href="data:image\/png;base64,([^"]+)"/g)) {
     const png = decodePng(Buffer.from(m[1], 'base64'))!, count = new Map<string, number>();
     for (let i = 0; i < png.width * png.height; i++) if (png.data[i * 4 + 3] === 255) { const c = `${png.data[i * 4]},${png.data[i * 4 + 1]},${png.data[i * 4 + 2]}`; count.set(c, (count.get(c) ?? 0) + 1); }
     const got = [...count.entries()].sort((a, b) => b[1] - a[1])[0][0].split(',').map(Number);
-    if (Math.abs(hue(got) - want) > 10) off.push(JSON.stringify(got));
+    if (!wants.some((want) => Math.abs(hue(got) - want) <= 10)) off.push(JSON.stringify(got));
   }
-  check(`${style}: every crown in the style's own green (${M.tree})`, off.length === 0, off.slice(0, 3).join(' '));
+  check(`${style}: every crown in the style's own green (${M.tree}${style === 'kingfisher' ? ', or its yellow-green' : ''})`, off.length === 0, off.slice(0, 3).join(' '));
   const shadows = (svg.match(/<image data-shadows href="data:image\/png/g) ?? []).length;
   check(`${style}: ${style === 'flamingo' ? 'the trees\' shadows on the ground, one picture' : 'no shadows under the canopies'}`, shadows === (style === 'flamingo' ? 1 : 0), String(shadows));
   const riders = (svg.match(/<use href="#axo-tr-r\d+"/g) ?? []).length;

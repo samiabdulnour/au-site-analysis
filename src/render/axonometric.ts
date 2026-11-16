@@ -22,7 +22,7 @@ import { alongLine, carriageways, type Carriageway, type RoadLine } from '../lib
 import { INK, massingInks } from './atlasKit.js';
 import { tint, vivid, deckLook } from './template.js';
 import { esc } from './chrome.js';
-import { crownPicture, shadowPicture, rand, canopyBottom, CANOPY_FORMS, CANOPY_BRANCHINGS, CONTOUR, type CrownKind } from './crowns.js';
+import { crownPicture, shadowPicture, rand, canopyBottom, canopyVariant, CANOPY, CANOPY_BRANCHINGS, CONTOUR, type CrownKind } from './crowns.js';
 import { personPicture, riderPicture, PEOPLE_VARIANTS, RIDER_VARIANTS } from './people.js';
 
 export interface Prism {
@@ -249,8 +249,8 @@ function lookOf(M: ReturnType<typeof massingInks>, mono: boolean): AxoLook {
   const style = deckLook().id;
   if (mono) return PLAIN;
   if (style === 'flamingo') return { crown: 'cloud', people: 'figure', crowd: true, greens: [M.tree, shade(M.tree, 0.92), shade(M.tree, 0.84)], accents: [], columnar: 0.22, shadows: true };
-  // Kingfisher's canopies in two close cuts of its green
-  if (style === 'kingfisher') return { crown: 'canopy', people: 'figure', crowd: true, greens: [M.tree, shade(M.tree, 0.9)], accents: [], columnar: 0.1, shadows: false };
+  // Kingfisher's canopies in two close cuts of its green and, for about one in five, a soft yellow-green
+  if (style === 'kingfisher') return { crown: 'canopy', people: 'figure', crowd: true, greens: [M.tree, M.tree, shade(M.tree, 0.9), shade(M.tree, 0.9), '#bccd84'], accents: [], columnar: 0.1, shadows: false };
   return PLAIN;
 }
 
@@ -435,14 +435,31 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
     return look.greens[Math.floor(rand(p, 3) * look.greens.length)] ?? M.tree;
   };
   const columnar = (tr: { p: XY; r: number }) => look.columnar > 0 && tr.r < 2.4 && rand(tr.p, 11) < look.columnar;
-  // a canopy's form (one of the four, or the cypress for a narrow upright tree) and the way its limbs part
-  const formOf = (tr: { p: XY; r: number }) => (columnar(tr) ? CANOPY_FORMS - 1 : Math.floor(rand(tr.p, 1) * (CANOPY_FORMS - 1)))
-    + CANOPY_FORMS * Math.floor(rand(tr.p, 31) * CANOPY_BRANCHINGS);
-  // the crown's middle: a trunk of about two metres, then the crown; a canopy's bare trunk longer with the tree, its
-  // leaves ending where its form says (on the page a height is cos 35° of itself)
-  const crownCentre = (tr: { p: XY; r: number }) => look.crown === 'canopy'
-    ? 1.8 + 0.4 * tr.r + (canopyBottom(formOf(tr)) * tr.r) / Math.cos(elev)
-    : 2.2 + tr.r * (columnar(tr) ? 1.3 : 1);
+  // A canopy tree, each its own: a form (one of the four broadleaf ones; a cypress for a narrow upright tree; now and
+  // then a conifer), a way of standing (a single trunk forking in the arch under its crown; a trunk forking low into
+  // two; two or three stems from the ground), its bare trunk short or tall, its crown a little taller or broader.
+  type Habit = { form: number; stems: 'single' | 'fork' | 'multi'; variant: number; bole: number; stretch: number };
+  const habits = new Map<XY, Habit>();
+  const habitOf = (tr: { p: XY; r: number }): Habit => {
+    let h = habits.get(tr.p);
+    if (h) return h;
+    const u = rand(tr.p, 1), conifer = !columnar(tr) && rand(tr.p, 41) < 0.12;
+    const form = columnar(tr) ? CANOPY.cypress : conifer ? CANOPY.conifer : Math.floor(u * 4);
+    const sv = rand(tr.p, 43), stems = form >= CANOPY.cypress ? 'single' : sv < 0.5 ? 'single' : sv < 0.8 ? 'fork' : 'multi';
+    const variant = canopyVariant(form, Math.floor(rand(tr.p, 31) * CANOPY_BRANCHINGS), stems === 'single');
+    // the bare trunk, metres: a conifer's or a cypress's short; a broadleaf's from a little to well over the crown's radius
+    const bole = form >= CANOPY.cypress ? 0.3 + 0.6 * rand(tr.p, 45) : 0.5 + tr.r * (0.15 + 1.05 * rand(tr.p, 45) ** 1.3);
+    h = { form, stems, variant, bole, stretch: 0.86 + 0.32 * rand(tr.p, 47) };
+    habits.set(tr.p, h);
+    return h;
+  };
+  // the crown's middle: a canopy's above its bare trunk, its leaves ending where its form says (on the page a height is
+  // cos 35° of itself); a cloud's on a trunk of about two metres
+  const crownCentre = (tr: { p: XY; r: number }) => {
+    if (look.crown !== 'canopy') return 2.2 + tr.r * (columnar(tr) ? 1.3 : 1);
+    const h = habitOf(tr);
+    return h.bole + (canopyBottom(h.variant) * tr.r * h.stretch) / Math.cos(elev);
+  };
   // the crowns' pictures, each once in the drawing's defs, placed at each tree's size (render/crowns.ts)
   const stamps = new Map<string, string>(), stampDefs: string[] = [];
   const outlineM = 0.12, WOOD = shade(INK.red.solid, 0.84);
@@ -473,12 +490,28 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
           : `<circle cx="${cx.toFixed(2)}" cy="${cy.toFixed(2)}" r="${tr.r.toFixed(2)}" fill="${M.tree}"/>` +
           `<circle cx="${(cx - 0.22 * tr.r).toFixed(2)}" cy="${(cy - 0.2 * tr.r).toFixed(2)}" r="${(0.66 * tr.r).toFixed(2)}" fill="${M.treeLight}"/>`);
     }
-    const R = tr.r, tall = columnar(tr), canopy = look.crown === 'canopy';
-    const sid = canopy ? stampOf('canopy', formOf(tr), greenOf(tr.p), R)
-      : stampOf(tall ? 'columnar' : look.crown as CrownKind, Math.floor(rand(tr.p, 1) * CROWN_VARIANTS), greenOf(tr.p), R);
-    // the trunk to the crown's underside; a canopy's thin, in the wood's terracotta, up to where its leaves end
-    return `<line x1="${bx.toFixed(2)}" y1="${by.toFixed(2)}" x2="${cx.toFixed(2)}" y2="${(cy + R * (canopy ? canopyBottom(formOf(tr)) : 0.5)).toFixed(2)}" stroke="${canopy ? WOOD : '#7d6c5a'}" stroke-width="${canopy ? 0.2 : 0.3}" stroke-linecap="round"/>` +
-      `<use href="#${sid}" transform="translate(${cx.toFixed(2)},${cy.toFixed(2)}) scale(${R.toFixed(3)})"/>`;
+    const R = tr.r, tall = columnar(tr);
+    if (look.crown !== 'canopy') {
+      const sid = stampOf(tall ? 'columnar' : look.crown as CrownKind, Math.floor(rand(tr.p, 1) * CROWN_VARIANTS), greenOf(tr.p), R);
+      return `<line x1="${bx.toFixed(2)}" y1="${by.toFixed(2)}" x2="${cx.toFixed(2)}" y2="${(cy + R * 0.5).toFixed(2)}" stroke="#7d6c5a" stroke-width="0.3" stroke-linecap="round"/>` +
+        `<use href="#${sid}" transform="translate(${cx.toFixed(2)},${cy.toFixed(2)}) scale(${R.toFixed(3)})"/>`;
+    }
+    // a canopy: its stems from the ground to under its crown, in the wood's terracotta, and the crown over them
+    const h = habitOf(tr), sid = stampOf('canopy', h.variant, greenOf(tr.p), R);
+    const under = cy + R * h.stretch * canopyBottom(h.variant), into = under - R * h.stretch * 0.22;
+    const stem = (x1: number, y1: number, x2: number, y2: number, w: number) =>
+      `<line x1="${x1.toFixed(2)}" y1="${y1.toFixed(2)}" x2="${x2.toFixed(2)}" y2="${y2.toFixed(2)}" stroke="${WOOD}" stroke-width="${w}" stroke-linecap="round"/>`;
+    let wood: string;
+    if (h.stems === 'fork') {
+      // one trunk forking low, its two limbs leaning out into the crown
+      const fy = by + (under - by) * (0.35 + 0.25 * rand(tr.p, 49)), lean = (rand(tr.p, 51) - 0.5) * 0.3 * R;
+      wood = stem(bx, by, cx + lean * 0.3, fy, 0.24) + stem(cx + lean * 0.3, fy, cx - 0.32 * R + lean, into, 0.17) + stem(cx + lean * 0.3, fy, cx + 0.3 * R + lean, into, 0.17);
+    } else if (h.stems === 'multi') {
+      // two or three stems from one foot, spreading into the crown
+      const n = 2 + Math.floor(rand(tr.p, 53) * 2);
+      wood = Array.from({ length: n }, (_, i) => { const t = n === 1 ? 0 : -1 + (2 * i) / (n - 1); return stem(bx + t * 0.12, by, cx + t * 0.34 * R, into, 0.15); }).join('');
+    } else wood = stem(bx, by, cx, under, 0.2);
+    return wood + `<use href="#${sid}" transform="translate(${cx.toFixed(2)},${cy.toFixed(2)}) scale(${R.toFixed(3)},${(R * h.stretch).toFixed(3)})"/>`;
   };
   // Traffic (placeTraffic): each vehicle a few blocks along its length, in stacks one behind the other, each stack a
   // column of blocks bottom to top, drawn far to near. A car, a body with a cabin, in the families' solid colours in

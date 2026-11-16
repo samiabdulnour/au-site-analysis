@@ -1264,11 +1264,18 @@ The 3D views' trees and people follow the style (`lookOf` in
     hidden by the leaves as a tree's is: it shows in the trunk, in an arch the
     crown's underside opens round it (where the trunk forks and the lower limbs
     climb into the leaves), and through a gap where a limb passes behind it.
-  - **Forms:** round, upright, a fuller oval, three-massed and a cypress for a
-    tenth of the small trees (which has no arch), none squat, each with three
-    ways of branching.
-    The trunk is bare up to the crown, longer for a larger tree, and there is
-    no shadow.
+  - **Forms:** round, upright, a fuller oval, three-massed, a cypress for a
+    tenth of the small trees and a conifer, a cone broad at its foot, for about
+    one tree in eight. None is squat, and each broadleaf form has three ways of
+    branching. There is no shadow.
+  - **Habit:** each tree stands its own way:
+    - half on a single trunk forking in the arch under the crown;
+    - some on a trunk forking low into two;
+    - some on two or three stems from the ground;
+    - a conifer or a cypress on a short trunk.
+
+    Its bare trunk is from a little to well over its crown's radius, so the
+    crowns sit low or high, and each crown is a little taller or broader.
   - **Town:** a warm near-white ground, as its pavements; the streets a cool
     pale lilac grey with their kerbs a shade deeper and the line down them
     barely there; the lots faint and the parks a pale sage (`massingInks()`).
@@ -1290,7 +1297,8 @@ The 3D views' trees and people follow the style (`lookOf` in
   there is no room there.
 - **Colour:** each style's trees are in its own green (`massingInks().tree`):
   - Flamingo's aqua mint, deeper or lighter tree to tree;
-  - Kingfisher's mint, in two close cuts.
+  - Kingfisher's mint, in two close cuts, and a soft yellow-green for about one
+    tree in five.
 - **Heron, Canary and the white model** keep the plain discs and slips.
 
 A drawing holds a few thousand trees, too many to print as vectors (tens of

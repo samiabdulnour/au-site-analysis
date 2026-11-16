@@ -113,10 +113,19 @@ const CANOPIES = [
   { rx: 0.88, ry: 1.14, cy: -0.02, under: 0.94 },
   { rx: 0.92, ry: 1.08, cy: 0, under: 1, masses: [[-0.36, 0.22, 0.55], [0.36, 0.16, 0.56], [0.02, -0.4, 0.64]] as [number, number, number][] },
   { rx: 0.42, ry: 1.32, cy: -0.08, under: 1 },
+  // a conifer: a cone, broad at its foot, reaching low on a short trunk
+  { rx: 0.86, ry: 1.3, cy: -0.1, under: 1, cone: true },
 ];
 export const CANOPY_FORMS = CANOPIES.length;
-/** How many ways a form's limbs part: a canopy's variant is its form and its branching (form + FORMS × branching). */
+/** The forms by name, for the axonometric choosing them. */
+export const CANOPY = { cypress: 4, conifer: 5 } as const;
+/** How many ways a form's limbs part. */
 export const CANOPY_BRANCHINGS = 3;
+/**
+ * A canopy's variant: its form, the way its limbs part, and whether its underside opens in an arch showing them (a
+ * tree with a single trunk) or not (one whose stems, forked low or several from the ground, the drawing gives).
+ */
+export const canopyVariant = (form: number, branching: number, arch: boolean) => form + CANOPY_FORMS * (branching % CANOPY_BRANCHINGS) + (arch ? 0 : CANOPY_FORMS * CANOPY_BRANCHINGS);
 /** How far below a canopy's middle its leaves end, in radii. */
 export const canopyBottom = (variant: number) => { const c = CANOPIES[variant % CANOPIES.length]; return c.cy + c.ry * c.under; };
 
@@ -129,17 +138,25 @@ export const canopyBottom = (variant: number) => { const c = CANOPIES[variant % 
  */
 function canopyLayers(variant: number, t: CrownTones, outline: number): Layer[] {
   const form = variant % CANOPIES.length, C = CANOPIES[form], seed = { x: variant * 5.3 + 1.1, y: variant * 2.9 + 0.4 };
+  const arch = variant < CANOPY_FORMS * CANOPY_BRANCHINGS && !('cone' in C) && form !== CANOPY.cypress;
   const ph = [rand(seed, 1), rand(seed, 2), rand(seed, 3)].map((v) => v * Math.PI * 2);
   // the edge broken: a few big bays and lobes, and leafy notches between
   const reach = (a: number) => 1 + 0.1 * Math.sin(3 * a + ph[0]) + 0.06 * Math.sin(5 * a + ph[1]) + 0.05 * Math.sin(11 * a + ph[2]);
   // the underside opens in an arch round the trunk, where the fork and the lower limbs show (not in a cypress)
   const bottom = canopyBottom(variant), fx = (rand(seed, 12) - 0.5) * 0.16;
-  const aw = 0.62 * C.rx, ah = form === 4 ? 0 : 0.58 * (bottom - C.cy);
+  const aw = 0.62 * C.rx, ah = arch ? 0.58 * (bottom - C.cy) : 0;
   // (the leaves at its rim, up to 0.07 across, kept out of it by that much)
   const underArch = (x: number, y: number) => ah > 0 && y + 0.06 > bottom - ah * Math.max(0, 1 - Math.abs(x - fx) / aw) ** 0.6;
   const inside = (x: number, y: number, shrink = 1) => {
     if (underArch(x, y)) return false;
     if (C.masses) return C.masses.some(([mx, my, mr]) => Math.hypot(x - mx, y - my) <= mr * shrink * reach(Math.atan2(y - my, x - mx)));
+    if ('cone' in C) {
+      // the cone: as wide at each height as its foot narrowed towards its tip, its sides tiered
+      const top = C.cy - C.ry, foot = C.cy + C.ry, f = (y - top) / (foot - top);
+      if (f < 0 || f > 1) return false;
+      const half = C.rx * (0.12 + 0.88 * f ** 0.9) * (1 + 0.1 * Math.sin(f * 22 + ph[0])) * shrink;
+      return Math.abs(x) <= half && (shrink === 1 || f > 0.06 && f < 0.97);
+    }
     const u = x / C.rx, v0 = (y - C.cy) / C.ry, v = v0 > 0 ? v0 / C.under : v0;
     return Math.hypot(u, v) <= shrink * reach(Math.atan2(v, u));
   };
@@ -155,9 +172,10 @@ function canopyLayers(variant: number, t: CrownTones, outline: number): Layer[] 
   }
   // the wood: the trunk up to the fork in the arch, limbs up and out into the crown, a twig or two off each
   const top = C.masses ? -0.85 : C.cy - C.ry;
-  const fork = form === 4 ? bottom - 0.12 : bottom - ah * 0.18;
+  const single = form === CANOPY.cypress || 'cone' in C;
+  const fork = single ? bottom - 0.12 : bottom - ah * 0.18;
   const wood: [number, number, number, number, number][] = [[0, bottom + 0.05, 0, fork, 0.075]];
-  const limbs = form === 4 ? 1 : 3 + Math.floor(rand(seed, 11) * 2);
+  const limbs = single ? 1 : 3 + Math.floor(rand(seed, 11) * 2);
   // the fork leans a little, and each tree of a form parts its limbs its own way
   wood[0][2] = fx;
   for (let j = 0; j < limbs; j++) {
