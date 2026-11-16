@@ -332,6 +332,9 @@ for path in sorted(glob.glob(f'{OUT}/future-scene-{ONLY_SCENE if ONLY_SCENE is n
             # of sun on each cell, not its minutes added up over the day
             lit = sunlit_matrix(pts, o, sun)
             minutes = continuous_minutes(lit, STEP)
+            # a cell with some sun but no qualifying run of it is not without sun: the ADG's 15 % counts apartments
+            # that get none at all between 9 and 3, at any instant
+            minutes = np.where((minutes <= 0) & np.asarray(lit).any(axis=1), 1.0, minutes)
             per, lit_by_panel = [], {}
             at = 0
             for g, p, k_part in tagged:

@@ -1,0 +1,622 @@
+{
+ "neighbourSetback": "adg",
+ "streetSetback": 3,
+ "_": "The future-context scenarios for 70-76 Riley Street: scripts/future_context.ts draws them over the capacity study's data. Properties are named by the start of their address as the NSW property register writes it. A building's `toCentre` keeps it so many metres from the middle of a named road (a straight line halfway between the lots either side); `site.tower.toCentre` holds our own tower the same way. A building's `storeys` may be \"parity\": it rises until its parcel reaches our density (our building's FSR as the scenario draws it, or `site.fsr` where the file states one), a single tower made shallower from its back to land on it. A building is a footprint type (single: single loaded, 12 m deep; d18: double loaded, 18 m, 8 units a floor; d22: double loaded, up to 22 m, 10 units a floor, east and west facing; block: the whole parcel, apartments on every face that is not a party wall; consent: as approved; podium: the street wall over the whole parcel), its storeys, and the line its long axis follows: `along` a street (`side` north, south, east or west picks the frontage where the street wraps the parcel) or the party wall of a `neighbour`, `setback` metres off that line, `depth` metres deep from it (the type's depth unless smaller), `sides` off each end, `length` at most (45 m whatever is asked), kept `from` a named street's end with `endSetback` off it, or `centre`. `footprint: lot` fills the parcel. Every neighbour's building stands on a podium over its whole lot (the street wall), the slab or tower from `base` up. `neighbourSetback: adg` keeps every slab or tower above its podium half the ADG separation off each neighbouring lot (12 m at nine storeys and over, 9 at five to eight, 6 below); a building's own `boundary` sets other metres. `streetSetback: 3` keeps every slab or tower above its podium at least that far off each street and lane, as our tower keeps 3 m off Riley Street and Crown Lane; a building's own `streetBoundary` sets other metres. Prose may use {A.area}, {A.plate}, {A.fsr}, {A.parity}, {A.gap} and {units}. `site.tower` draws our own scheme as a podium and a tower inset from the lot by the setbacks named per street or neighbour; `site.tower.habitable` says which of its faces carry habitable rooms or balconies. A scenario's own `retained` list overrides the study's. A scenario's own `site.tower` moves our tower for that sheet. This file is the three scenarios of every neighbour at our density: `deck: two-sheet` prints two sheets a scenario, its geometry and its view from the sun, and nothing else. A `plate` is a tower with no unit depth asked of it: the lot less its setbacks (`boundary` off its neighbouring lots, `streetBoundary` off its streets, `streets` naming a street's own figure, `toCentre` a road's middle); `maxStoreys` holds a tower at \"parity\" to a height, and the table then says what density that reaches.",
+ "site": {
+  "storeys": 14,
+  "units": 110,
+  "fsr": 7.5,
+  "_fsr": "Calculated off the plans of 10 November, gross floor area as the LEP counts it (inside the external walls; lifts, stairs, plant and balconies out). The tower, levels 3 to 13: the enclosed outline 41.6 × 20.5 m less its two slots and two corner cut-outs is 793 m², less lifts, stairs and risers (30 m²) and the external walls' thickness (42 m²), about 720 m² a floor, 7,930 m² over 11 floors. Levels 1 and 2: enclosed 47.5 × 20.5 m less the slots is 932 m², less core and walls about 860 m² a floor, 1,720 m². The ground floor is taken at 60 % of the lot, 840 m², its plan not seen. 10,490 m² over the 1,396 m² site is 7.5:1. The plans' own GFA schedule should replace it.",
+  "gfaM2": null,
+  "label": "our site, SSD proposal",
+  "tower": {
+   "_": "The SSDA plans as marked up on 10 November 2026 (Fuse Architects, 2613; sheets 105 and 108): the ground floor over the lot; levels 1 and 2 held 3 m off Crown Lane (6 m from its middle), 11 apartments a floor; the tower one footprint from level 3 to the top, 6 m off Crown Lane (9 m from its middle), 3 m off Riley Street, Stanley Lane and 66-68 Riley Street, with a slot cut into each long face where the corridor ends, 8 apartments a floor. `podium` counts the storeys under the tower, the ground floor with them; `podiumSetbacks` holds the podium's upper levels off a street; `steps`, where a tower has them, push it further back from a storey up (storeys counted from the ground floor as 1); `levelZero` names the levels as the plans do, GF then L1. `units` lays the apartments out face by face, east and west from the north end and south from the east end, each as [name, width in metres, corner flag where it also has windows or a balcony on that end wall]; a null name is a stretch without an apartment, and with a third figure a slot that many metres deep cut into the tower there.",
+   "podium": 3,
+   "homesFrom": 2,
+   "levelZero": true,
+   "podiumSetbacks": {
+    "CROWN LANE": 3
+   },
+   "setbacks": {
+    "RILEY STREET": 3,
+    "STANLEY LANE": 3,
+    "CROWN LANE": 6,
+    "66-68 RILEY STREET": 3
+   },
+   "units": {
+    "tower": {
+     "east": [
+      [
+       "E1 3B",
+       15.1,
+       "N"
+      ],
+      [
+       null,
+       3.25,
+       6.4
+      ],
+      [
+       "E2 2B",
+       12.6
+      ],
+      [
+       "E3 2B",
+       10.6,
+       "S"
+      ]
+     ],
+     "west": [
+      [
+       "W1 3B",
+       7.9,
+       "N"
+      ],
+      [
+       "W2 1B",
+       7.2
+      ],
+      [
+       null,
+       2.4,
+       8.9
+      ],
+      [
+       "W3 1B",
+       9.05
+      ],
+      [
+       "W4 1B",
+       7.1
+      ],
+      [
+       "W5 2B",
+       7.9,
+       "S"
+      ]
+     ]
+    },
+    "podium": {
+     "east": [
+      [
+       "E1 2B",
+       9.0
+      ],
+      [
+       "E2 2B",
+       9.15
+      ],
+      [
+       null,
+       3.2
+      ],
+      [
+       "E3 2B",
+       12.6
+      ],
+      [
+       "E4 2B",
+       13.6,
+       "S"
+      ]
+     ],
+     "west": [
+      [
+       "W1 2B",
+       10.85
+      ],
+      [
+       "W2 1B",
+       7.2
+      ],
+      [
+       null,
+       2.4
+      ],
+      [
+       "W3 1B",
+       9.05
+      ],
+      [
+       "W4 1B",
+       7.1
+      ],
+      [
+       "W5 S",
+       4.9
+      ],
+      [
+       "W6 1B",
+       6.0,
+       "S"
+      ]
+     ],
+     "south": [
+      [
+       null,
+       7.6
+      ],
+      [
+       "S1 S",
+       5.2
+      ],
+      [
+       null,
+       13.7
+      ]
+     ]
+    }
+   },
+   "habitable": [
+    "CROWN LANE",
+    "66-68 RILEY STREET",
+    "RILEY STREET",
+    "STANLEY LANE"
+   ]
+  }
+ },
+ "blocks": [
+  [
+   "54-56 RILEY STREET",
+   "1 CROWN LANE",
+   "58 RILEY STREET",
+   "60 RILEY STREET",
+   "62-64 RILEY STREET",
+   "66-68 RILEY STREET",
+   "70-76 RILEY STREET"
+  ],
+  [
+   "89 CROWN STREET",
+   "4 CROWN LANE",
+   "93 CROWN STREET",
+   "95 CROWN STREET",
+   "97 CROWN STREET",
+   "10 CROWN LANE",
+   "99 CROWN STREET",
+   "105 CROWN STREET",
+   "107-113 CROWN STREET",
+   "115-119 CROWN STREET",
+   "121-129 CROWN STREET"
+  ]
+ ],
+ "retained": [
+  {
+   "address": "66-68 RILEY STREET",
+   "why": "21 apartments, strata of 2011"
+  },
+  {
+   "address": "107-113 CROWN STREET",
+   "why": "new building"
+  },
+  {
+   "address": "115-119 CROWN STREET",
+   "why": "new building"
+  },
+  {
+   "address": "121-129 CROWN STREET",
+   "why": "new building"
+  }
+ ],
+ "consentStoreys": {
+  "93 CROWN STREET": 4,
+  "95 CROWN STREET": 4
+ },
+ "deck": "two-sheet",
+ "scenarios": [
+  {
+   "title": "Neighbours at our FSR, any height, our sun kept",
+   "horizon": "Same FSR as ours. Towers as tall as that needs, each placed where it leaves our apartments their two hours of sun.",
+   "lead": "Every site round us develops to our density, {site.fsr}:1, each tower over a three-storey podium on its whole lot, 12 m from the middle of Riley Street and 9 m from the middle of Crown Lane. The towers stand where the sun study finds they cost our apartments nothing: north of us a slender tower in the far corner of its lot, on Crown Street and across Riley Street the slabs on the far street of each lot.",
+   "notes": [
+    "54-68 Riley St with 1 Crown Lane: {A.area} m², {A.plate}, {A.storeys} storeys at {A.fsr}; {A.sep} m from our tower.",
+    "Crown St north: {B.area} m², {B.plate}, {B.storeys} storeys.",
+    "107-129 Crown St: {D.area} m², {D.plate}, {D.storeys} storeys; {D.sep} m from our tower.",
+    "91-107 Riley St, across Riley Street: {E.area} m², {E.plate}, {E.storeys} storeys; {E.sep} m from our tower."
+   ],
+   "retained": [],
+   "parcels": [
+    {
+     "key": "A",
+     "name": "54-68 Riley St + 1 Crown Lane",
+     "addresses": [
+      "54-56 RILEY STREET",
+      "1 CROWN LANE",
+      "58 RILEY STREET",
+      "60 RILEY STREET",
+      "62-64 RILEY STREET",
+      "66-68 RILEY STREET"
+     ],
+     "buildings": [
+      {
+       "type": "podium",
+       "storeys": 3,
+       "footprint": "lot"
+      },
+      {
+       "type": "d18",
+       "storeys": "parity",
+       "base": 3,
+       "along": "CROWN LANE",
+       "setback": 0,
+       "depth": 16,
+       "sides": 0,
+       "length": 26,
+       "from": "YURONG LANE",
+       "toCentre": {
+        "CROWN LANE": 9
+       },
+       "boundary": 9
+      }
+     ]
+    },
+    {
+     "key": "B",
+     "name": "Crown St north, 89-105 + 4 and 10 Crown Lane",
+     "addresses": [
+      "89 CROWN STREET",
+      "4 CROWN LANE",
+      "93 CROWN STREET",
+      "95 CROWN STREET",
+      "97 CROWN STREET",
+      "10 CROWN LANE",
+      "99 CROWN STREET",
+      "105 CROWN STREET"
+     ],
+     "buildings": [
+      {
+       "type": "podium",
+       "storeys": 3,
+       "footprint": "lot"
+      },
+      {
+       "type": "d22",
+       "storeys": "parity",
+       "base": 3,
+       "along": "CROWN STREET",
+       "setback": 3,
+       "sides": 0,
+       "length": 30,
+       "from": "YURONG LANE",
+       "toCentre": {
+        "CROWN LANE": 9
+       },
+       "boundary": 6
+      }
+     ]
+    },
+    {
+     "key": "D",
+     "name": "107-129 Crown St",
+     "addresses": [
+      "107-113 CROWN STREET",
+      "115-119 CROWN STREET",
+      "121-129 CROWN STREET"
+     ],
+     "buildings": [
+      {
+       "type": "podium",
+       "storeys": 3,
+       "footprint": "lot"
+      },
+      {
+       "type": "d18",
+       "storeys": "parity",
+       "base": 3,
+       "along": "CROWN STREET",
+       "setback": 3,
+       "sides": 0,
+       "length": 38,
+       "from": "STANLEY LANE",
+       "toCentre": {
+        "CROWN LANE": 9
+       },
+       "boundary": 6
+      }
+     ]
+    },
+    {
+     "key": "E",
+     "name": "91-107 Riley St, across Riley Street",
+     "addresses": [
+      "91-93 RILEY STREET",
+      "95-97 RILEY STREET",
+      "99-107 RILEY STREET"
+     ],
+     "buildings": [
+      {
+       "type": "podium",
+       "storeys": 3,
+       "footprint": "lot"
+      },
+      {
+       "type": "d22",
+       "storeys": "parity",
+       "base": 3,
+       "along": "STREAM STREET",
+       "setback": 3,
+       "sides": 0,
+       "length": 34,
+       "from": "STANLEY LANE",
+       "toCentre": {
+        "RILEY STREET": 12
+       },
+       "boundary": 3
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Neighbours at our FSR, as low as slabs allow",
+   "horizon": "Same FSR as ours. Each tower a 22 m slab as long as its lot allows, so it stands as low as that density lets it.",
+   "lead": "Every site round us develops to our density, {site.fsr}:1 as calculated off the plans of 10 November, the block across Riley Street with them: the blocks north of us in full, 66-68 Riley St with them, the Crown Street site south of the lane lot, and 91-107 Riley St opposite; 109 Riley St, the former hotel on the Stanley Lane corner, is a heritage item (I436, Sydney LEP 2012) and stays, as every hatched lot does. To stand as low as that density lets it, each tower is a 22 m slab as long as its lot allows over a three-storey podium: 12 m from Riley Street's middle and 9 m from Crown Lane's, its end walls blank and 6 m off its neighbouring lots (the northern tower's 9 m off ours, so 12 m parts the two blank ends; the tower across Riley Street's 3 m off its neighbours, as ours stands off our northern boundary). Our own tower is one footprint from level 3 to the top: 9 m from the lane's middle, 3 m off Riley Street, Stanley Lane and our northern boundary.",
+   "notes": [
+    "Our building as the plans of 10 November have it: the ground floor over the lot, levels 1 and 2 held 3 m off Crown Lane with 11 apartments a floor, and the tower from level 3 to the top on one footprint, {site.plate}, {site.east} m off the lane, 3 m off Riley Street, Stanley Lane and the northern boundary, 8 apartments a floor.",
+    "54-68 Riley St with 1 Crown Lane: {A.area} m², {A.plate}, {A.storeys} storeys at {A.fsr}; its blank south end {A.sep} m from our tower's blank north end.",
+    "Crown St north, 89 to 105 Crown St with 4 and 10 Crown Lane: {B.area} m², {B.plate}, {B.storeys} storeys.",
+    "107-129 Crown St: {D.area} m², {D.plate} over a podium 9 m from the lane's middle, {D.storeys} storeys; {D.sep} m from our tower.",
+    "91-107 Riley St, across Riley Street: {E.area} m², {E.plate} over a podium, {E.storeys} storeys; {E.sep} m from our tower, half each side of the road's middle. 109 Riley St south of it is heritage item I436, the former hotel 'Watters Gallery', and stays.",
+    "77 Riley St, 109 to 113 Riley St and the Yurong Street lots behind stand as they are."
+   ],
+   "retained": [],
+   "parcels": [
+    {
+     "key": "A",
+     "name": "54-68 Riley St + 1 Crown Lane",
+     "addresses": [
+      "54-56 RILEY STREET",
+      "1 CROWN LANE",
+      "58 RILEY STREET",
+      "60 RILEY STREET",
+      "62-64 RILEY STREET",
+      "66-68 RILEY STREET"
+     ],
+     "buildings": [
+      {
+       "type": "podium",
+       "storeys": 3,
+       "footprint": "lot"
+      },
+      {
+       "type": "d22",
+       "storeys": "parity",
+       "base": 3,
+       "along": "RILEY STREET",
+       "setback": 3,
+       "sides": 0,
+       "length": 45,
+       "from": "YURONG LANE",
+       "endSetback": 3,
+       "toCentre": {
+        "CROWN LANE": 9
+       },
+       "boundary": 9
+      }
+     ]
+    },
+    {
+     "key": "B",
+     "name": "Crown St north, 89-105 + 4 and 10 Crown Lane",
+     "addresses": [
+      "89 CROWN STREET",
+      "4 CROWN LANE",
+      "93 CROWN STREET",
+      "95 CROWN STREET",
+      "97 CROWN STREET",
+      "10 CROWN LANE",
+      "99 CROWN STREET",
+      "105 CROWN STREET"
+     ],
+     "buildings": [
+      {
+       "type": "podium",
+       "storeys": 3,
+       "footprint": "lot"
+      },
+      {
+       "type": "d22",
+       "storeys": "parity",
+       "base": 3,
+       "along": "CROWN STREET",
+       "setback": 3,
+       "sides": 0,
+       "length": 45,
+       "from": "YURONG LANE",
+       "endSetback": 3,
+       "toCentre": {
+        "CROWN LANE": 9
+       },
+       "boundary": 6
+      }
+     ]
+    },
+    {
+     "key": "D",
+     "name": "107-129 Crown St",
+     "addresses": [
+      "107-113 CROWN STREET",
+      "115-119 CROWN STREET",
+      "121-129 CROWN STREET"
+     ],
+     "buildings": [
+      {
+       "type": "podium",
+       "storeys": 3,
+       "footprint": "lot"
+      },
+      {
+       "type": "d22",
+       "storeys": "parity",
+       "base": 3,
+       "along": "CROWN LANE",
+       "setback": 0,
+       "sides": 0,
+       "length": 45,
+       "from": "centre",
+       "toCentre": {
+        "CROWN LANE": 9
+       },
+       "boundary": 6
+      }
+     ]
+    },
+    {
+     "key": "E",
+     "name": "91-107 Riley St, across Riley Street",
+     "addresses": [
+      "91-93 RILEY STREET",
+      "95-97 RILEY STREET",
+      "99-107 RILEY STREET"
+     ],
+     "buildings": [
+      {
+       "type": "podium",
+       "storeys": 3,
+       "footprint": "lot"
+      },
+      {
+       "type": "d22",
+       "storeys": "parity",
+       "base": 3,
+       "along": "RILEY STREET",
+       "setback": 0,
+       "sides": 0,
+       "length": 45,
+       "from": "centre",
+       "toCentre": {
+        "RILEY STREET": 12
+       },
+       "boundary": 3
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Neighbours at our FSR, no taller than us, deep floors",
+   "horizon": "Similar FSR. No unit depth asked of the neighbours: each floor as large as its setbacks leave, no taller than our 14 storeys.",
+   "lead": "Every site round us develops towards our density, {site.fsr}:1, no taller than our own 14 storeys. No unit depth is asked of the neighbours, so each tower's floor is its lot less its setbacks, 12 m from the middle of Riley Street and 9 m from the middle of Crown Lane, 3 m off its other streets and off its neighbouring lots as before; where that floor carries more than our density at 14 storeys the tower is lower, where less the table says what it reaches.",
+   "notes": [
+    "54-68 Riley St with 1 Crown Lane: {A.area} m², {A.plate}, {A.storeys} storeys at {A.fsr}; {A.sep} m from our tower.",
+    "Crown St north: {B.area} m², {B.plate}, {B.storeys} storeys at {B.fsr}.",
+    "107-129 Crown St: {D.area} m², {D.plate}, {D.storeys} storeys at {D.fsr}; {D.sep} m from our tower.",
+    "91-107 Riley St, across Riley Street: {E.area} m², {E.plate}, {E.storeys} storeys at {E.fsr}; {E.sep} m from our tower."
+   ],
+   "retained": [],
+   "parcels": [
+    {
+     "key": "A",
+     "name": "54-68 Riley St + 1 Crown Lane",
+     "addresses": [
+      "54-56 RILEY STREET",
+      "1 CROWN LANE",
+      "58 RILEY STREET",
+      "60 RILEY STREET",
+      "62-64 RILEY STREET",
+      "66-68 RILEY STREET"
+     ],
+     "buildings": [
+      {
+       "type": "podium",
+       "storeys": 3,
+       "footprint": "lot"
+      },
+      {
+       "type": "plate",
+       "storeys": "parity",
+       "maxStoreys": 14,
+       "base": 3,
+       "toCentre": {
+        "CROWN LANE": 9
+       },
+       "boundary": 9
+      }
+     ]
+    },
+    {
+     "key": "B",
+     "name": "Crown St north, 89-105 + 4 and 10 Crown Lane",
+     "addresses": [
+      "89 CROWN STREET",
+      "4 CROWN LANE",
+      "93 CROWN STREET",
+      "95 CROWN STREET",
+      "97 CROWN STREET",
+      "10 CROWN LANE",
+      "99 CROWN STREET",
+      "105 CROWN STREET"
+     ],
+     "buildings": [
+      {
+       "type": "podium",
+       "storeys": 3,
+       "footprint": "lot"
+      },
+      {
+       "type": "plate",
+       "storeys": "parity",
+       "maxStoreys": 14,
+       "base": 3,
+       "toCentre": {
+        "CROWN LANE": 9
+       },
+       "boundary": 6
+      }
+     ]
+    },
+    {
+     "key": "D",
+     "name": "107-129 Crown St",
+     "addresses": [
+      "107-113 CROWN STREET",
+      "115-119 CROWN STREET",
+      "121-129 CROWN STREET"
+     ],
+     "buildings": [
+      {
+       "type": "podium",
+       "storeys": 3,
+       "footprint": "lot"
+      },
+      {
+       "type": "plate",
+       "storeys": "parity",
+       "maxStoreys": 14,
+       "base": 3,
+       "toCentre": {
+        "CROWN LANE": 9
+       },
+       "boundary": 6
+      }
+     ]
+    },
+    {
+     "key": "E",
+     "name": "91-107 Riley St, across Riley Street",
+     "addresses": [
+      "91-93 RILEY STREET",
+      "95-97 RILEY STREET",
+      "99-107 RILEY STREET"
+     ],
+     "buildings": [
+      {
+       "type": "podium",
+       "storeys": 3,
+       "footprint": "lot"
+      },
+      {
+       "type": "plate",
+       "storeys": "parity",
+       "maxStoreys": 14,
+       "base": 3,
+       "toCentre": {
+        "RILEY STREET": 12
+       },
+       "boundary": 3
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

@@ -1951,8 +1951,8 @@ of them with their mid-winter sun, the separations and setbacks drawn and
 coloured on the plan, with a line on whether the site's massing lets the
 neighbours develop; the site's FSR is written on its lot)
 followed by a sheet for each scenario in the same form
-(`future-option-<n>.png`: the plan large, the table, the massing, the
-apartments of ours without their sun and the neighbours our tower shades);
+(`future-option-<n>.png`: the plan large, the table and the massing, no
+running text);
 `future-detail.pdf`, the sheets in full (`future-<n>.png`: the plan at 1:500
 on the aerial, the massing, the yield, the assumptions); and, where the
 scenarios file lays the site's apartments out, `future-sun.pdf`, the sun's
@@ -2022,7 +2022,25 @@ develops with both halves kept. The blocks north of the site stand as they
 are on those sheets. The paired amalgamations of the northern blocks
 (north pairs, corners, middle, north and south, and three more ways of the
 last) are a second file, `…future-pairs.json`, drawn with the same
-command. Each separation is drawn on the plan as a
+command. A third file, `…future-density.json`, is every neighbour at the
+site's density three ways, the site and its building the same in each:
+towers as tall as that density needs, each placed where the sun study
+finds it leaves the site's apartments their two hours (a slender tower in
+the far corner of the lot to the north, slabs on the far street of the
+others); 22 m slabs as long as each lot allows, so as low as the density
+lets them; and no taller than the site's own 14 storeys with no unit
+depth asked, each floor its lot less its setbacks. That file sets
+`"deck": "two-sheet"`: each scenario prints as two sheets, its geometry
+(`future-option-<n>.png`) and its view from the sun (`future-sun-<n>.png`:
+the sun's-eye view at each whole hour from 9 to 3, large, beside the share
+of the site's apartments with their two hours), bound in that order into
+`future.pdf`, and nothing else is printed. A building of type `plate` is a
+tower with no unit depth asked of it, the lot less its setbacks
+(`boundary` off its neighbouring lots, `streetBoundary` off its streets,
+`streets` naming a street's own figure, `toCentre` a road's middle), and
+`maxStoreys` holds a tower at `"parity"` to a height, the table then
+saying what density that reaches; a plate with more floor than the density
+needs is drawn in from every side alike. Each separation is drawn on the plan as a
 dimension line between the two buildings' nearest points, green where it is
 clear, amber where it holds only with one face blank, red where it is short
 even of that. Every new building is also read against its own lot: half the
@@ -2059,7 +2077,8 @@ Riley Street's was for 109 Riley Street, item I436.
 The option sheets' plans dimension architecturally (a thin line, oblique
 ticks, the figure along the line), write each building's FSR inside it,
 and draw a typical floor in every tower: ours as the plans divide it
-into apartments, a neighbour's as the 8 m bays the sun study reads.
+into apartments, a neighbour's as the 8 m bays the sun study reads, a
+deep plate's as a square grid of apartments round a core.
 `neighbourSetback: adg` in the scenarios file fits every slab or tower above
 its podium that far off its neighbouring lots where the lot is wide enough,
 and builds it to the boundary as a blank party wall where it is not; a

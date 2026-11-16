@@ -11,6 +11,7 @@
 //   npm run future -- out/capacity/riley --scenarios examples/capacity_study/70-76-riley-street-darlinghurst.future.json
 //   npm run future -- out/capacity/riley --scenarios … --redraw      (draw again from what was fetched)
 //   npm run future -- out/capacity/riley --scenarios … --redraw --only last   (one scenario's sheets alone: its number, or `last`)
+//   a scenarios file with `"deck": "two-sheet"` prints two sheets a scenario, its geometry and its view from the sun, and binds those
 //   npm run future -- out/capacity/riley --scenarios … --redraw --heritage    (read the LEP's heritage items over an earlier fetch)
 //   npm run future -- out/capacity/riley --scenarios … --redraw --sun-context   (read the 300 m the sun reaches)
 //
@@ -221,7 +222,24 @@ if (loriini && !args.includes('--no-sun')) {
     await draw();
   } catch (e: any) { log(`  WARN the sun study did not run: ${e?.message ?? e}`); }
 } else log('  no Loriini beside this repository (LORIINI unset): the sheets carry no sun study');
-const { width, height, pages, summary, options, sun: sunPages = 0, only: onlyPage = null, sunPages: sunList = [] } = JSON.parse(await readFile(join(out, 'future-page.json'), 'utf8')) as { width: number; height: number; pages: number; summary?: boolean | number; options?: boolean; sun?: number; only?: number | null; sunPages?: number[] };
+const { width, height, pages, summary, options, sun: sunPages = 0, only: onlyPage = null, sunPages: sunList = [], deck = null } = JSON.parse(await readFile(join(out, 'future-page.json'), 'utf8')) as { width: number; height: number; pages: number; summary?: boolean | number; options?: boolean; sun?: number; only?: number | null; sunPages?: number[]; deck?: string | null };
+if (deck === 'two-sheet') {
+  // `"deck": "two-sheet"` in the scenarios file: each scenario is two sheets, its geometry and its view from the sun,
+  // bound in that order into future.pdf, and nothing else is printed; with --only, that scenario's pair alone
+  const which = onlyPage != null ? [onlyPage] : Array.from({ length: pages }, (_, i) => i + 1);
+  const names = which.flatMap((i) => [`future-option-${i}`, ...(sunList.includes(i) ? [`future-sun-${i}`] : [])]);
+  const doc = await PDFDocument.create();
+  for (const name of names) {
+    await printPage(join(out, `${name}.html`), { width, height }, { png: join(out, `${name}.png`), pdf: join(out, `${name}.pdf`) });
+    const one = await PDFDocument.load(await readFile(join(out, `${name}.pdf`)));
+    for (const p of await doc.copyPages(one, one.getPageIndices())) doc.addPage(p);
+    log(`  printed ${name}`);
+  }
+  const bound = join(out, onlyPage != null ? `future-scenario-${onlyPage}.pdf` : 'future.pdf');
+  await writeFile(bound, await doc.save());
+  console.log([...names.map((n) => join(out, `${n}.png`)), bound].join('\n'));
+  process.exit(0);
+}
 if (onlyPage != null) {
   // one scenario alone: its option sheet, its full sheet and its sun proof, each printed to its own PNG and PDF; the
   // bound PDFs of the whole deck are left as they were

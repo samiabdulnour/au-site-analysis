@@ -136,8 +136,8 @@ def H_of(n):
 # ---- footprints -------------------------------------------------------------------------------------------------
 MAX_LEN = 45
 DEPTH = dict(single=12, d18=18, d22=22)
-TYPE = dict(single='Single loaded, 12 m', d18='Double loaded, 18 m', d22='Double loaded, 22 m', block='Full-lot block', consent='As approved', podium='Podium')
-C = dict(single='#9c7273', d18='#e3d6cb', d22='#a995ad', block='#8fa3b5', podium='#cdc6c0', retained='#8d8d8d', low='#dedede', consent='#b7c3a2', site='#f3d9d9')
+TYPE = dict(single='Single loaded, 12 m', d18='Double loaded, 18 m', d22='Double loaded, 22 m', block='Full-lot block', plate='Deep plate', consent='As approved', podium='Podium')
+C = dict(single='#9c7273', d18='#e3d6cb', d22='#a995ad', block='#8fa3b5', plate='#9fb3a6', podium='#cdc6c0', retained='#8d8d8d', low='#dedede', consent='#b7c3a2', site='#f3d9d9')
 
 
 def unit(v):
@@ -226,11 +226,25 @@ def fit(parcel, spec):
         # a block over the lot takes the lot's outline with the points along its straight sides dropped, so each of
         # its walls is one wall to the sun study and not the run of the old titles' ends
         return (parcel.simplify(0.3, preserve_topology=True) if spec['type'] == 'block' else parcel), dict(plate=None, gap=None)
+    keep = spec.get('boundary') or 0                                  # metres off every neighbouring lot's boundary
+    street = spec.get('streetBoundary') or 0                          # and off every street and lane, above the podium
+    if spec['type'] == 'plate':
+        # a deep plate: the lot less its setbacks (off its neighbouring lots, its streets, `streets` naming a street's
+        # own figure, and `toCentre` a road's middle), whatever depth that leaves: no unit depth is asked of it
+        runs = boundary_runs(parcel)
+        own = {norm_road(k_): v for k_, v in (spec.get('streets') or {}).items()}
+        centre = {norm_road(k_): v for k_, v in (spec.get('toCentre') or {}).items()}
+        cut = [r['line'].buffer(keep, cap_style=3, join_style=2) for r in runs if r['kind'] == 'lot' and keep]
+        cut += [r['line'].buffer(own.get(norm_road(r['name']), street), cap_style=3, join_style=2) for r in runs if r['kind'] == 'street' and own.get(norm_road(r['name']), street)]
+        cut += [ax.buffer(v, cap_style=2) for k_, v in centre.items() for ax in road_axes().get(k_, []) if ax.distance(parcel) < 40]
+        fp = largest(parcel.difference(unary_union(cut)).buffer(-0.5, join_style=2).buffer(0.5, join_style=2)) if cut else parcel
+        if fp.is_empty or fp.area < 20:
+            sys.exit(f'the plate does not fit the parcel {keep:g} m off its neighbouring lots and {street:g} m off its streets')
+        fp = fp.simplify(0.3, preserve_topology=True)
+        return fp, dict(plate=plate_of(fp), gap=None)
     u, n, o = reference(parcel, spec)
     depth = min(spec.get('depth') or DEPTH[spec['type']], DEPTH.get(spec['type'], 99))
     setback = spec.get('setback', 0)
-    keep = spec.get('boundary') or 0                                  # metres off every neighbouring lot's boundary
-    street = spec.get('streetBoundary') or 0                          # and off every street and lane, above the podium
     if keep and 'neighbour' in spec:
         setback = max(setback, keep)
     if street and 'along' in spec:
@@ -394,6 +408,18 @@ def trim_to(poly, want):
         m = (lo + hi) / 2
         lo, hi = (lo, m) if largest(poly.intersection(band(p, u, L / 2 - m, L / 2 + m))).area > want else (m, hi)
     return largest(poly.intersection(band(p, u, L / 2 - hi, L / 2 + hi)))
+
+
+def trim_in(poly, want):
+    """A plate drawn in from every side alike to the area asked: every setback it keeps grows by the same measure."""
+    if poly.area <= want:
+        return poly
+    lo, hi = 0.0, 30.0
+    for _ in range(30):
+        m = (lo + hi) / 2
+        g = poly.buffer(-m, join_style=2)
+        lo, hi = (m, hi) if (not g.is_empty and largest(g).area > want) else (lo, m)
+    return largest(poly.buffer(-hi, join_style=2)) if not poly.buffer(-hi, join_style=2).is_empty else poly
 
 
 def trim_depth(poly, want, parcel, spec):
@@ -650,7 +676,7 @@ def site_tier_lines(k):
 
 def bays_scheme(poly, typ, k):
     """A neighbour's typical floor, schematically, as the sun study reads it: 8 m bays along its long axis, either
-    side of a corridor where the plan is double-loaded."""
+    side of a corridor where the plan is double-loaded; a deep plate's as a square grid of apartments round a core."""
     cs = list(poly.minimum_rotated_rectangle.exterior.coords)[:4]
     e01, e12 = math.dist(cs[0], cs[1]), math.dist(cs[1], cs[2])
     a0, a1, b0, b1 = (cs[0], cs[1], cs[3], cs[2]) if e01 >= e12 else (cs[1], cs[2], cs[0], cs[3])
@@ -661,6 +687,23 @@ def bays_scheme(poly, typ, k):
         m0, m1 = lerp(a0, b0, 0.5), lerp(a1, b1, 0.5)
         segs.append((m0, m1))                                         # the corridor, wall to wall
     o = []
+    if typ == 'plate':
+        # a deep plate's floor, square to its longest side: strips along it about 8 m deep, the outer ones the
+        # apartments and what lies between them the core, and a party wall across every 10 m or so; where a side is
+        # cut at an angle the grid stays square and is clipped to it
+        ring = list(poly.exterior.coords)
+        p0, p1 = max(zip(ring[:-1], ring[1:]), key=lambda e: math.dist(*e))
+        L_ = math.dist(p0, p1)
+        ux, uy = (p1[0] - p0[0]) / L_, (p1[1] - p0[1]) / L_
+        along = [(x - p0[0]) * ux + (y - p0[1]) * uy for x, y in ring]
+        across = [-(x - p0[0]) * uy + (y - p0[1]) * ux for x, y in ring]
+        s0, s1, d0, d1 = min(along), max(along), min(across), max(across)
+        at = lambda sv, dv: (p0[0] + ux * sv - uy * dv, p0[1] + uy * sv + ux * dv)
+        long_way = (s1 - s0) >= (d1 - d0)                             # the strips run along the plate's longer dimension
+        ns = max(1, round((s1 - s0) / (10 if long_way else 8)))
+        nd = max(1, round((d1 - d0) / (8 if long_way else 10)))
+        segs = [(at(s0 + (s1 - s0) * i / ns, d0), at(s0 + (s1 - s0) * i / ns, d1)) for i in range(1, ns)]
+        segs += [(at(s0, d0 + (d1 - d0) * j / nd), at(s1, d0 + (d1 - d0) * j / nd)) for j in range(1, nd)]
     inner = poly.buffer(-0.05)
     for p, q in segs:
         g = LineString([p, q]).intersection(inner)
@@ -760,9 +803,12 @@ def resolve(scn):
             plate = sum(r['poly'].area for r in dense)
             for r in dense:
                 r['n'] = r['base'] + max(1, math.ceil((want_gba - fixed) / plate))
+                if r['spec'].get('maxStoreys'):                       # no taller than this, whatever density that leaves
+                    r['n'] = min(r['n'], r['spec']['maxStoreys'])
             if len(dense) == 1 and dense[0]['spec'].get('footprint') != 'lot':
                 r = dense[0]
-                r['poly'] = trim_depth(r['poly'], (want_gba - fixed) / (r['n'] - r['base']), parcel, r['spec'])
+                want_plate = (want_gba - fixed) / (r['n'] - r['base'])
+                r['poly'] = trim_in(r['poly'], want_plate) if r['typ'] == 'plate' else trim_depth(r['poly'], want_plate, parcel, r['spec'])
                 r['plate'] = plate_of(r['poly'])
         gba = sum(r['poly'].area * (r['n'] - r['base']) for r in rows)
         gfa = EFFICIENCY * gba
@@ -1563,7 +1609,7 @@ def axo(scn, parcels, blds, existing, RET):
     # each street named at the point of it nearest the blocks, over everything with a halo, so the name sits beside
     # them whatever stands in the way
     centre = study.centroid
-    names = []
+    names, marks = [], []
     for name, lines in ROADS.items():
         near = min(lines, key=lambda ls: ls.distance(centre))
         if near.distance(centre) > 60:
@@ -1571,7 +1617,7 @@ def axo(scn, parcels, blds, existing, RET):
         m = near.interpolate(near.project(centre))
         u, v, _ = proj(m.x, m.y, 0)
         xs += [u - 6, u + 6]; ys.append(v + 2)
-        names.append(f'<text x="{u:.2f}" y="{v + 1:.2f}" class="ast">{H.escape(name.title())}</text>')
+        names.append((u, v + 1, name.title()))
 
     # painter's order, far to near; the parts of one building (a podium and the tower on it) go together at the
     # podium's depth, the lowest first, so a roof is never painted over the tower that stands on it
@@ -1607,7 +1653,7 @@ def axo(scn, parcels, blds, existing, RET):
             k = 0.62 if nxr < 0 else 0.8
             d = (proj(x1, y1, 0)[2] + proj(x2, y2, 0)[2]) / 2
             walls.append((d, f'<polygon points="{Pt(x1, y1, z0)} {Pt(x2, y2, z0)} {Pt(x2, y2, z1)} {Pt(x1, y1, z1)}" fill="{shade(col, k)}"{glass} stroke="{stroke}" stroke-width="{sw}" stroke-linejoin="round"/>'))
-            if b['typ'] in ('single', 'd18', 'd22', 'block', 'site'):
+            if b['typ'] in ('single', 'd18', 'd22', 'block', 'plate', 'site'):
                 for s in range(max(b.get('base', 0), 1), b['n']):
                     z = H_of(s)
                     a1, a2 = Pt(x1, y1, z).split(','), Pt(x2, y2, z).split(',')
@@ -1618,7 +1664,13 @@ def axo(scn, parcels, blds, existing, RET):
             c = p.centroid
             u, v, _ = proj(c.x, c.y, z1)
             out.append(f'<text x="{u:.2f}" y="{v + 1.6:.2f}" class="an" fill="{"#c0161c" if b["typ"] == "site" else "#111"}">{b["label"]}</text>')
-    out += names
+            marks.append((u, v + 1.6))
+    for u, v, name in names:
+        # a street's name that would lie over a building's storeys moves down clear of them
+        for mu, mv in marks:
+            if abs(u - mu) < 2.2 + 0.9 * len(name) and abs(v - mv) < 3.4:
+                v = mv + 4.4
+        out.append(f'<text x="{u:.2f}" y="{v:.2f}" class="ast">{H.escape(name)}</text>')
     x0, x1, y0, y1 = min(xs) - 4, max(xs) + 4, min(ys) - 4, max(ys) + 4
     return f'<svg class="axo" viewBox="{x0:.1f} {y0:.1f} {x1 - x0:.1f} {y1 - y0:.1f}" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">' + '\n'.join(out) + '</svg>'
 
@@ -1703,6 +1755,7 @@ LEGEND = [
     (C['d18'], '', '<b>Double loaded footprint (8 units)</b>, 18 m deep'),
     (C['d22'], '', '<b>Double loaded footprint (10 units)</b>, up to 22 m deep, units facing east and west'),
     (C['block'], '', '<b>Full-lot block</b>, the whole parcel, apartments on every face that is not a party wall'),
+    (C['plate'], '', '<b>Deep plate</b>, the lot less its setbacks, no unit depth asked of it'),
     (C['podium'], '', 'Podium / street wall, 2 to 3 storeys'),
     (C['consent'], '', 'Built under an existing consent'),
     (C['retained'], '', 'Retained unless a scenario develops it: ' + ', '.join(PROPS[pid]['base'].title().replace(' Darlinghurst', '') + f' ({why["why"]})' for pid, why in RETAINED.items())),
@@ -1924,7 +1977,7 @@ def mini_plan(parcels, blds, existing, RET, sep, k=1.0, big=False, bset=None):
     for b in blds:
         for g in polys(b['poly']):
             o.append(f'<path d="{path(g)}" fill="{C["podium"] if b["typ"] == "podium" else C[b["typ"]]}" stroke="#222" stroke-width="{0.4 * k:.2f}"/>')
-            if big and b['typ'] in ('single', 'd18', 'd22'):
+            if big and b['typ'] in ('single', 'd18', 'd22', 'plate'):
                 o += bays_scheme(g, b['typ'], k)                      # the typical floor the sun study reads, schematically
     fsr_of = {q['key']: q['fsr'] for q in parcels}
     # a label inside a building is haloed in the building's own colour, so the scheme's lines break round it
@@ -1999,15 +2052,6 @@ def mini_plan(parcels, blds, existing, RET, sep, k=1.0, big=False, bset=None):
     return ''.join(o)
 
 
-OPTION_NOTE = ("Separation per ADG 3F-1: 24 m between habitable rooms at nine storeys and over, 18 m where one face is blank, 12 m where both are, 18 and 13.5 at five to eight; each building half of that from its own side and rear boundaries (12 or 6 m at nine storeys and over), a party wall blank, and above its podium at least 3 m off each street and lane, as our tower; "
-               "read at the levels the two buildings share; the parts are our face to our boundary, the gap, their boundary to their face. Sun per ADG 4A-1 "
-               "on 21 June, 9 to 3, cast with Loriini's engine with every building on its own ground: two continuous hours as three hourly sun's-eye views in a row show them, 9, 10 and 11 or later, a run from half past not counting; "
-               "our apartments as the plans lay them out, each at its own wall and storey, a neighbour's in 8 m bays on the faces its plan gives them; 70 % with "
-               "their two hours and no more than 15 % with none is a tick, 60 % close; the single-loaded figure is what a neighbour's plan could still reach. "
-               "Storeys in grey are the 3D tiles' reading of what stands. Hatched lots are heritage items of the LEP, off the NSW planning portal's heritage map: they stay. "
-               "Predictive only, not a proposal for any neighbouring site.")
-
-
 def option_page(r):
     """One scenario on a sheet of its own in the summary's form: the plan large with the blocks round it, the
     apartments it adds, whether the neighbours can develop, and the table of separations and sun."""
@@ -2022,23 +2066,18 @@ def option_page(r):
     for name, with_, without, loss in r.get('shaded', []):
         mark, vcol = apts_verdict(dict(share=with_, dark=0))
         trs += f'<tr><td>{H.escape(name)}</td><td style="color:#888">—</td>{cell(f"{with_:.0%} {mark}" + (f" · {without:.0%} without our tower, {loss * 100:.0f} points" if without is not None else ""), vcol)}</tr>'
-    # the apartments without their two hours are named on the sun proof's sheet, not here
-    gain = f'About <b>{r["units"]} new apartments</b> on top of ours · ' if r['buildings'] else ''
     css = (f'.oh{{position:absolute;left:{mm(10)};top:{mm(9)};width:{mm(400)}}} .oh h1{{margin:0}}'
            f'.oplan{{position:absolute;left:{mm(10)};top:{mm(26)};width:{mm(234)};height:{mm(260)}}} .oplan svg{{width:100%;height:100%}}'
            f'.ocol{{position:absolute;left:{mm(252)};top:{mm(26)};width:{mm(158)};font-size:{pt(7.2)};line-height:1.4}}'
-           f'.ocol .u{{font-size:{pt(8)};margin-bottom:{mm(2)}}} .ocol .lead{{color:#444;margin:0 0 {mm(3)}}}'
+           f'.ocol .u{{font-size:{pt(8)};margin-bottom:{mm(2)}}}'
            f'.ocol table{{font-size:{pt(6.4)}}} .ocol td{{padding:{mm(.6)} {mm(.5)}}} .ocol th{{padding:{mm(.6)} {mm(.5)}}}'
-           f'.ocol .ass{{position:static;width:auto;margin-top:{mm(3)};font-size:{pt(6)};color:#555}}'
-           f'.oaxo{{width:{mm(158)};height:{mm(95)};margin-top:{mm(4)}}} .oaxo svg{{position:static;width:100%;height:100%}}')
+           f'.oaxo{{width:{mm(158)};height:{mm(165)};margin-top:{mm(6)}}} .oaxo svg{{position:static;width:100%;height:100%}}')
     head = (f'<div class="oh"><div class="kick">Future context · Scenario {r["no"]} of {LAST}</div><h1>{H.escape(r["title"])}</h1>'
             f'<div class="hor">{H.escape(r["horizon"])}</div></div>')
     warn = ''.join(f'<div class="u" style="color:#c0161c"><b>Site {H.escape(k_)} takes {H.escape(addr)}, heritage item {H.escape(item)}: it cannot be redeveloped.</b></div>' for k_, addr, item in r.get('heritage', []))
-    col = (f'<div class="ocol"><div class="u">{gain}neighbours can develop: <b style="color:{r["allow_colour"]}">{r["allow"]}</b></div>{warn}'
-           f'<p class="lead">{r["lead"]}</p>'
+    col = (f'<div class="ocol">{warn}'
            f'<table><tr><th>Building</th><th>FSR, floor space and apartments, a rough estimate</th><th>Apartments with 2 continuous hours of winter sun</th></tr>{trs}</table>'
-           f'<div class="oaxo">{r["axo"]}</div>'
-           f'<div class="ass">{OPTION_NOTE}</div></div>')
+           f'<div class="oaxo">{r["axo"]}</div></div>')
     return (f'<!doctype html><html><head><meta charset="utf-8"><title>Future context · Scenario {r["no"]}</title><style>{CSS}{css}</style></head><body>'
             f'{head}<div class="oplan">{r["big"]}</div>{col}</body></html>')
 
@@ -2046,7 +2085,7 @@ def option_page(r):
 SUN_LIT, SUN_SHADE = '#f4c242', '#a9a9a9'
 
 
-def sun_views(no, sun, hours=(9, 10, 11, 12, 13, 14, 15), reach=32):
+def sun_views(no, sun, hours=(9, 10, 11, 12, 13, 14, 15), reach=32, tall=0.6):
     """The scene seen from the sun at each hour, our apartments lit or in shadow as it sees them: an orthographic
     projection along the sun's ray, every sun-facing wall and roof drawn far to near, our units' spans on their walls
     coloured by the engine's reading at that instant."""
@@ -2152,7 +2191,7 @@ def sun_views(no, sun, hours=(9, 10, 11, 12, 13, 14, 15), reach=32):
         items.sort(key=lambda it: -it[0])                            # far first
         xs = [c[0] for c in ours] or [0]
         ys = [c[1] for c in ours] or [0]
-        x0, x1, y0, y1 = min(xs) - reach, max(xs) + reach, min(ys) - reach * 0.6, max(ys) + reach * 0.6
+        x0, x1, y0, y1 = min(xs) - reach, max(xs) + reach, min(ys) - reach * tall, max(ys) + reach * tall
         svg = [f'<svg viewBox="{x0:.1f} {-y1:.1f} {x1 - x0:.1f} {y1 - y0:.1f}" xmlns="http://www.w3.org/2000/svg"><rect x="{x0:.1f}" y="{-y1:.1f}" width="{x1 - x0:.1f}" height="{y1 - y0:.1f}" fill="#f7f6f3"/>']
         for depth, poly, fill, stroke in items:
             svg.append(f'<polygon points="{" ".join(f"{c[0]:.2f},{-c[1]:.2f}" for c in poly)}" fill="{fill}" stroke="{stroke}" stroke-width="0.25" stroke-linejoin="round"/>')
@@ -2251,6 +2290,40 @@ def sun_page(no, scn, sun, r):
             'to half past eleven does not count.</div>')
     return (f'<!doctype html><html><head><meta charset="utf-8"><title>Future context · Scenario {r["no"]} · sun</title><style>{CSS}{css}</style></head><body>'
             f'{head}<div class="views">{view_html}</div>{chart}{note}</body></html>')
+
+
+def sun_eye_page(no, scn, sun, r):
+    """A scenario's second sheet in a two-sheet deck: the scene as the sun sees it at each whole hour from
+    9 to 3, our apartments lit where it reaches their wall, and the share of them with their two hours."""
+    site_rec = (sun or {}).get('buildings', {}).get('site') or {}
+    if not site_rec.get('units'):
+        return None
+    views = sun_views(no, sun, reach=44, tall=1.05)
+    ap = site_rec['apts']['planned']
+    by = site_rec.get('apts_by') or {}
+    mark, vcol = apts_verdict(ap)
+    col = VERDICT_COLOUR.get(vcol, '#111')
+    parts = ' · '.join(f'{name} {by[g]["planned"]["share"]:.0%}' for g, name in (('tower', 'tower'), ('podium', 'podium levels')) if g in by)
+    before = site_rec.get('apts_today')
+    result = (f'<div class="sv res"><div class="big" style="color:{col}">{ap["share"]:.0%}</div>'
+              f'<div class="rl">of our apartments have two hours of sun, 9 to 3 on 21 June. The ADG asks 70 %.</div>'
+              f'<div class="rs">{parts}</div>'
+              f'<div class="rs">No sun at all: {ap["dark"]:.0%}. The ADG allows 15 %.</div>'
+              + (f'<div class="rs">Before the neighbours build: {before["planned"]["share"]:.0%}.</div>' if before else '')
+              + f'<div class="key"><span style="background:{SUN_LIT}"></span>apartment in sun at that hour<br><span style="background:{SUN_SHADE}"></span>apartment in shadow<br>'
+              f'<span style="background:#cdc6c0"></span>the neighbours as this scenario builds them</div></div>')
+    cells = ''.join(f'<div class="sv"><div class="svt">{H.escape(t)} <span>{H.escape(d)}</span></div>{svg}</div>' for t, d, svg in views) + result
+    css = (f'.sh{{position:absolute;left:{mm(10)};top:{mm(9)};width:{mm(400)}}} .sh h1{{margin:0}}'
+           f'.views{{position:absolute;left:{mm(10)};top:{mm(27)};width:{mm(400)};height:{mm(262)};display:grid;grid-template-columns:repeat(4,1fr);grid-template-rows:1fr 1fr;gap:{mm(4)} {mm(4)}}}'
+           f'.sv{{min-width:0;min-height:0;display:flex;flex-direction:column}} .sv svg{{flex:1;min-height:0;width:100%}}'
+           f'.svt{{font-size:{pt(9)};font-weight:700;margin-bottom:{mm(1)}}} .svt span{{font-weight:400;color:#666}}'
+           f'.res{{justify-content:center;padding:0 {mm(6)}}} .res .big{{font-size:{pt(64)};font-weight:800;line-height:1}}'
+           f'.res .rl{{font-size:{pt(10)};font-weight:600;margin:{mm(2)} 0 {mm(4)}}} .res .rs{{font-size:{pt(8.5)};color:#333;margin-bottom:{mm(1.2)}}}'
+           f'.res .key{{font-size:{pt(7.5)};color:#444;margin-top:{mm(6)};line-height:1.9}} .res .key span{{display:inline-block;width:{mm(4)};height:{mm(2.6)};margin-right:{mm(2)};vertical-align:middle;border:{mm(.1)} solid #777}}')
+    head = (f'<div class="sh"><div class="kick">Future context · Scenario {r["no"]} of {LAST} · the view from the sun</div><h1>{H.escape(r["title"])}</h1>'
+            f'<div class="hor">Mid-winter, 21 June, each whole hour from 9 to 3: what the sun sees is in sun, what it cannot see is in shadow.</div></div>')
+    return (f'<!doctype html><html><head><meta charset="utf-8"><title>Future context · Scenario {r["no"]} · sun</title><style>{CSS}{css}</style></head><body>'
+            f'{head}<div class="views">{cells}</div></body></html>')
 
 
 def summary_page(part, page_no, pages):
@@ -2441,8 +2514,9 @@ if '--only' in sys.argv:
 todo = [(i, scn) for i, scn in enumerate(sc['scenarios'], 1) if ONLY in (None, i)]
 for i, scn in todo:
     open(f'{OUT}/future-{i}.html', 'w').write(page(FIRST + i - 1, scn))
+TWO_SHEET = sc.get('deck') == 'two-sheet'
 chunks = []
-if ONLY is None:
+if ONLY is None and not TWO_SHEET:
     per = math.ceil(len(SUMMARY) / math.ceil(len(SUMMARY) / 8))          # at most eight scenarios a sheet, spread evenly
     chunks = [SUMMARY[i:i + per] for i in range(0, len(SUMMARY), per)]
     for i, part in enumerate(chunks, 1):
@@ -2451,12 +2525,12 @@ sun_pages = []
 for (i, _), r in zip(todo, SUMMARY):
     open(f'{OUT}/future-option-{i}.html', 'w').write(option_page(r))
     set_tower(r['scn'])
-    html = sun_page(r['no'], r['scn'], r['sun'], r)
+    html = (sun_eye_page if TWO_SHEET else sun_page)(r['no'], r['scn'], r['sun'], r)
     if html:
         open(f'{OUT}/future-sun-{i}.html', 'w').write(html)
         sun_pages.append(i)
 json.dump({'width': PAGE_W, 'height': PAGE_H, 'pages': len(sc['scenarios']), 'summary': len(chunks), 'options': True, 'sun': len(sun_pages),
-           'only': ONLY, 'onlyScene': None if ONLY is None else FIRST + ONLY - 1, 'sunPages': sun_pages}, open(f'{OUT}/future-page.json', 'w'))
+           'only': ONLY, 'onlyScene': None if ONLY is None else FIRST + ONLY - 1, 'sunPages': sun_pages, 'deck': sc.get('deck')}, open(f'{OUT}/future-page.json', 'w'))
 for i, scn in todo:
     set_tower(scn)
     parcels, blds, existing = resolve(scn)
