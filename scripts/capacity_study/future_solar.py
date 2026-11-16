@@ -156,10 +156,37 @@ def compass(normal):
 CORNER_M = 8.0              # how far along the end wall a corner apartment's windows reach
 
 
-def unit_test(pairs, units, lit_by_panel=None):
-    """The plans' own apartments on one part's walls: each unit a span of a face (east or west, from the north end)
-    at every storey, with the end wall's first CORNER_M metres where it is a corner unit; it has its two hours where
-    half the wall of its span at that storey does, on either of its walls, and is dark only where both are."""
+def unit_spans(lst, face_len):
+    """A face's apartments as spans along it: [(name or None, from, to, corner)], the widths fitted to the face as
+    it is at that tier: the first apartment (the north one, on an east or west face) takes up what a step leaves,
+    or all are scaled where it cannot. A None name is a stretch without an apartment."""
+    ws = [float(u[1]) for u in lst]
+    tot = sum(ws)
+    if tot <= 0:
+        return []
+    diff = face_len - tot
+    if abs(diff) > 0.25:
+        first = next((i for i, u in enumerate(lst) if u[0] is not None), None)
+        if first is not None and abs(diff) < 6 and ws[first] + diff >= 3.0:
+            ws[first] += diff
+        else:
+            ws = [w * face_len / tot for w in ws]
+    out, at = [], 0.0
+    for u, w in zip(lst, ws):
+        out.append((u[0], at, at + w, u[2] if len(u) > 2 else None))
+        at += w
+    return out
+
+
+SIDES = (('east', 'E'), ('west', 'W'), ('south', 'S'), ('north', 'N'))
+
+
+def unit_test(pairs, units, lit_by_panel=None, floor0=0):
+    """The plans' own apartments on one prism's walls: each unit a span of a face (east and west from the north end,
+    south and north from the east end) at every storey, with the end wall's first CORNER_M metres where it is a
+    corner unit; it has its two hours where half the wall of its span at that storey does, on either of its walls,
+    and is dark only where both are. `floor0` is the prism's first storey within its group, so a stepped tower's
+    tiers number their floors on."""
     faces = {}
     for p, mins in pairs:
         n = np.asarray(p.normal)
@@ -183,25 +210,26 @@ def unit_test(pairs, units, lit_by_panel=None):
             f['s'] = (f['xy'] - start) @ axis
             f['width'] = float(f['s'].max()) + SPACING / 2
     nf = max(1, int(round(max(f['v'].max() for fs in faces.values() for f in fs) / STOREY_M)))
+    length = {d: max(f['width'] for f in fs) for d, fs in faces.items()}
 
     def cells(d, a, b, fl, what='mins'):
         return [f[what][(f['s'] >= a) & (f['s'] < b) & ((f['v'] // STOREY_M).astype(int) == fl)] for f in faces.get(d, []) if f[what] is not None]
 
     total = ok = dark = 0
     each = []
-    for side, lst in (('east', units.get('east', [])), ('west', units.get('west', []))):
-        d = 'E' if side == 'east' else 'W'
-        at = 0.0
-        for unit in lst:
-            width, corner = float(unit[1]), (unit[2] if len(unit) > 2 else None)
-            a, b = at, at + width
-            at = b
+    for side, d in SIDES:
+        if d not in faces:
+            continue
+        for name, a, b, corner in unit_spans(units.get(side, []), length[d]):
+            if name is None:
+                continue
             for fl in range(nf):
                 main = np.concatenate(cells(d, a, b, fl) or [np.zeros(0)])
                 end = np.zeros(0)
-                if corner:
-                    ew = max((f['width'] for f in faces.get(corner, [])), default=0.0)
-                    end = np.concatenate(cells(corner, 0.0, CORNER_M, fl) if d == 'E' else cells(corner, max(0.0, ew - CORNER_M), ew, fl) or [np.zeros(0)])
+                ew = 0.0
+                if corner and corner in faces:
+                    ew = length[corner]
+                    end = np.concatenate((cells(corner, 0.0, CORNER_M, fl) if d == 'E' else cells(corner, max(0.0, ew - CORNER_M), ew, fl)) or [np.zeros(0)])
                 if main.size == 0 and end.size == 0:
                     continue
                 total += 1
@@ -214,7 +242,7 @@ def unit_test(pairs, units, lit_by_panel=None):
                     # lit at an instant where half of either of its walls is, as the test reads a corner unit: its own
                     # wall's span, and for a corner unit the end wall's first metres, each on its own
                     walls_ = [cells(d, a, b, fl, 'lit')]
-                    if corner:
+                    if corner and corner in faces:
                         walls_.append(cells(corner, 0.0, CORNER_M, fl, 'lit') if d == 'E' else cells(corner, max(0.0, ew - CORNER_M), ew, fl, 'lit'))
                     lit_at = None
                     for rows_ in walls_:
@@ -224,9 +252,20 @@ def unit_test(pairs, units, lit_by_panel=None):
                             lit_at = w_ if lit_at is None else (lit_at | w_)
                     if lit_at is not None:
                         series = ''.join('1' if x else '0' for x in lit_at)
-                each.append((str(unit[0]), fl, lit, none, series))
+                each.append((str(name), floor0 + fl, lit, none, series))
     r = dict(share=ok / total if total else 0.0, dark=dark / total if total else 0.0, bays=total)
-    return dict(double=r, single=r, planned=r, units=True, per_floor=sum(len(v) for v in units.values()), each=each)
+    return dict(double=r, single=r, planned=r, units=True, per_floor=sum(1 for v in units.values() for u in v if u[0] is not None), each=each)
+
+
+def merge_units(results):
+    """A group's apartments over its prisms: the counts added, the apartments in one list."""
+    results = [r for r in results if r]
+    if not results:
+        return None
+    n = sum(r['planned']['bays'] for r in results)
+    whole = dict(share=sum(r['planned']['share'] * r['planned']['bays'] for r in results) / n if n else 0.0,
+                 dark=sum(r['planned']['dark'] * r['planned']['bays'] for r in results) / n if n else 0.0, bays=n)
+    return dict(double=whole, single=whole, planned=whole, units=True, per_floor=results[0]['per_floor'], each=[e for r in results for e in r['each']])
 
 
 ONLY_SCENE = sys.argv[sys.argv.index('--scene') + 1] if '--scene' in sys.argv else None   # one scenario's scene alone
@@ -243,10 +282,10 @@ for path in sorted(glob.glob(f'{OUT}/future-scene-{ONLY_SCENE if ONLY_SCENE is n
         meshes[b['id']] = TriangleMesh.concatenate([m for _, m in parts])
         # the walls apartments live on, by group; a part without the field: on a podium 'tower', else 'all'
         groups = []
-        for part, m in parts:
+        for k_part, (part, m) in enumerate(parts):
             g = part.get('homes') or ('tower' if part['z0'] > 0 and any(q['z0'] == 0 for q in b['parts']) else 'all')
             if g != 'none':
-                groups.append((g, m, part.get('party', []), part.get('units')))
+                groups.append((g, m, part.get('party', []), part.get('units'), k_part, part.get('floor0', 0)))
         walls[b['id']] = groups
     kinds = {b['id']: b['kind'] for b in scene['buildings']}
     ids = list(meshes)
@@ -260,21 +299,23 @@ for path in sorted(glob.glob(f'{OUT}/future-scene-{ONLY_SCENE if ONLY_SCENE is n
     for b in scene['buildings']:
         if b['kind'] == 'context' or b['id'] not in meshes:
             continue
-        tagged = []                                                   # (group, panel), the party walls left out
+        tagged = []                                                   # (group, panel, prism), the party walls left out
         plans = {}                                                    # the plans' apartments on a group's walls, where given
+        floor0 = {}                                                   # a prism's first storey within its group
         party_m = 0.0                                                 # the longest wall left out as a party wall
-        for g, m, party, units in walls[b['id']]:
+        for g, m, party, units, k_part, f0 in walls[b['id']]:
             if units:
                 plans[g] = units
+            floor0[k_part] = f0
             for p in vertical_face_panels(m, b['id'], spacing_m=SPACING):
                 width = float(p.cell_uv[:, 0].max()) + p.spacing_m / 2
                 if not on_party(p, width, party):
-                    tagged.append((g, p))
+                    tagged.append((g, p, k_part))
                 else:
                     party_m = max(party_m, width)
         if not tagged:
             continue
-        pts = SamplePoints.concatenate([p.samples for _, p in tagged])
+        pts = SamplePoints.concatenate([p.samples for _, p, _ in tagged])
         other = 'today' if b['kind'] == 'site' else 'without_site'
         rec = dict(name=b['name'], kind=b['kind'], type=b.get('type', ''), facade_m2=pts.total_area_m2, party_m=round(party_m, 1))
         for key, o in (('with', occ['with']), (other, occ[other])):
@@ -284,21 +325,24 @@ for path in sorted(glob.glob(f'{OUT}/future-scene-{ONLY_SCENE if ONLY_SCENE is n
             minutes = continuous_minutes(lit, STEP)
             per, lit_by_panel = [], {}
             at = 0
-            for g, p in tagged:
-                per.append((g, p, minutes[at:at + len(p.samples)]))
+            for g, p, k_part in tagged:
+                per.append((g, p, minutes[at:at + len(p.samples)], k_part))
                 lit_by_panel[id(p)] = lit[at:at + len(p.samples)]
                 at += len(p.samples)
             def test(grp):
-                pairs = [(p, mins) for g, p, mins in per if g == grp]
-                return unit_test(pairs, plans[grp], lit_by_panel if key == 'with' else None) if grp in plans else apartment_test(pairs, b.get('type', ''))
-            by = {grp: test(grp) for grp in sorted({g for g, _, _ in per})}
+                if grp in plans:                                      # the plans' apartments, a prism (a tier) at a time
+                    return merge_units([unit_test([(p, mins) for g, p, mins, k_ in per if g == grp and k_ == kp], plans[grp],
+                                                  lit_by_panel if key == 'with' else None, floor0.get(kp, 0))
+                                        for kp in sorted({k_ for g, _, _, k_ in per if g == grp})])
+                return apartment_test([(p, mins) for g, p, mins, _ in per if g == grp], b.get('type', ''))
+            by = {grp: test(grp) for grp in sorted({g for g, _, _, _ in per})}
             if plans and all(g in plans for g in by):                 # the whole from the groups' own counts
                 n = sum(v['planned']['bays'] for v in by.values() if v)
                 whole_r = dict(share=sum(v['planned']['share'] * v['planned']['bays'] for v in by.values() if v) / n if n else 0.0,
                                dark=sum(v['planned']['dark'] * v['planned']['bays'] for v in by.values() if v) / n if n else 0.0, bays=n)
                 whole = dict(double=whole_r, single=whole_r, planned=whole_r, units=True)
             else:
-                whole = apartment_test([(p, mins) for g, p, mins in per], b.get('type', ''))
+                whole = apartment_test([(p, mins) for g, p, mins, _ in per], b.get('type', ''))
             if key == 'with':
                 rec['share'] = band_by_area(pts, minutes, threshold_minutes=THRESHOLD).at_or_above_threshold_share
                 rec['apts'], rec['apts_by'] = whole, by

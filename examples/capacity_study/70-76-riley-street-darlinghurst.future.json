@@ -4,60 +4,84 @@
  "_": "The future-context scenarios for 70-76 Riley Street: scripts/future_context.ts draws them over the capacity study's data. Properties are named by the start of their address as the NSW property register writes it. A building's `toCentre` keeps it so many metres from the middle of a named road (a straight line halfway between the lots either side); `site.tower.toCentre` holds our own tower the same way. A building's `storeys` may be \"parity\": it rises until its parcel reaches our density (our building's FSR as the scenario draws it, or `site.fsr` where the file states one), a single tower's length trimmed to land on it. A building is a footprint type (single: single loaded, 12 m deep; d18: double loaded, 18 m, 8 units a floor; d22: double loaded, up to 22 m, 10 units a floor, east and west facing; block: the whole parcel, apartments on every face that is not a party wall; consent: as approved; podium: the street wall over the whole parcel), its storeys, and the line its long axis follows: `along` a street (`side` north, south, east or west picks the frontage where the street wraps the parcel) or the party wall of a `neighbour`, `setback` metres off that line, `depth` metres deep from it (the type's depth unless smaller), `sides` off each end, `length` at most (45 m whatever is asked), kept `from` a named street's end with `endSetback` off it, or `centre`. `footprint: lot` fills the parcel. Every neighbour's building stands on a podium over its whole lot (the street wall), the slab or tower from `base` up. `neighbourSetback: adg` keeps every slab or tower above its podium half the ADG separation off each neighbouring lot (12 m at nine storeys and over, 9 at five to eight, 6 below); a building's own `boundary` sets other metres. `streetSetback: 3` keeps every slab or tower above its podium at least that far off each street and lane, as our tower keeps 3 m off Riley Street and Crown Lane; a building's own `streetBoundary` sets other metres. Prose may use {A.area}, {A.plate}, {A.fsr}, {A.parity}, {A.gap} and {units}. `site.tower` draws our own scheme as a podium and a tower inset from the lot by the setbacks named per street or neighbour; `site.tower.habitable` says which of its faces carry habitable rooms or balconies. A scenario's own `retained` list overrides the study's. A scenario's own `site.tower` moves our tower for that sheet.",
  "site": {
   "storeys": 14,
-  "units": 100,
+  "units": 110,
   "gfaM2": null,
   "label": "our site, SSD proposal",
   "tower": {
-   "_": "The SSDA plans (Fuse Architects, Aug 2026): a 4-storey podium over the lot, the tower 3 m off Riley Street and Crown Lane, 3.7 m off Stanley Lane and 9 m off 66-68 Riley Street; apartments from level 2 of the podium (the ground floor commercial). `units` lays them out as the plans do, face by face from the north end, each as [number, width in metres, corner flag where the unit also has windows on that end wall]: the tower (levels 05-13 plan) 7 a floor, 3 on Crown Lane and 4 on Riley Street; the podium (level 03 plan) 10 a floor, 5 and 5, its north wall a party wall.",
-   "podium": 4,
+   "_": "The SSDA plans as marked up on 10 November 2026 (Fuse Architects, 2613; sheets 105 and 108): the ground floor over the lot; levels 1 and 2 held 3 m off Crown Lane (6 m from its middle), 11 apartments a floor; the tower from level 3 up 6 m off Crown Lane (9 m from its middle), 3 m off Riley Street and Stanley Lane and 3 m off 66-68 Riley Street, stepping to 4.5 m there from level 4 and 6 m from level 8 (the 3, 4.5 and 6 m lines the plan marks, the ADG's to a blank wall), 8 apartments a floor. `podium` counts the storeys under the tower, the ground floor with them; `podiumSetbacks` holds the podium's upper levels off a street; `steps` push the tower further back from a storey up (storeys counted from the ground floor as 1); `levelZero` names the levels as the plans do, GF then L1. `units` lays the apartments out face by face, east and west from the north end and south from the east end, each as [name, width in metres, corner flag where it also has windows or a balcony on that end wall]; a null name is a stretch without an apartment (the corridor's window). Levels 3 and 4 are taken as the tower's plan, which the section drawn on sheet 105 gives the same profile.",
+   "podium": 3,
+   "homesFrom": 2,
+   "levelZero": true,
+   "podiumSetbacks": {
+    "CROWN LANE": 3
+   },
    "setbacks": {
     "RILEY STREET": 3,
-    "STANLEY LANE": 3.7,
-    "CROWN LANE": 3,
-    "66-68 RILEY STREET": 9
+    "STANLEY LANE": 3,
+    "CROWN LANE": 6,
+    "66-68 RILEY STREET": 3
    },
-   "habitable": [
-    "CROWN LANE",
-    "66-68 RILEY STREET",
-    "RILEY STREET",
-    "STANLEY LANE"
+   "steps": [
+    {
+     "from": 5,
+     "setbacks": {
+      "66-68 RILEY STREET": 4.5
+     }
+    },
+    {
+     "from": 9,
+     "setbacks": {
+      "66-68 RILEY STREET": 6
+     }
+    }
    ],
-   "homesFrom": 2,
    "units": {
     "tower": {
      "east": [
       [
-       "503",
-       13.5,
+       "E1 3B",
+       15.1,
        "N"
       ],
       [
-       "504",
-       7
+       null,
+       3.25
       ],
       [
-       "505",
-       12.5,
+       "E2 2B",
+       12.6
+      ],
+      [
+       "E3 2B",
+       10.6,
        "S"
       ]
      ],
      "west": [
       [
-       "502",
-       11.5,
+       "W1 3B",
+       7.9,
        "N"
       ],
       [
-       "501",
-       7
+       "W2 1B",
+       7.2
       ],
       [
-       "507",
-       7.5
+       null,
+       2.4
       ],
       [
-       "506",
-       7,
+       "W3 1B",
+       9.05
+      ],
+      [
+       "W4 1B",
+       7.1
+      ],
+      [
+       "W5 2B",
+       7.9,
        "S"
       ]
      ]
@@ -65,50 +89,80 @@
     "podium": {
      "east": [
       [
-       "304",
-       4.5
+       "E1 2B",
+       9.0
       ],
       [
-       "305",
-       6.5
+       "E2 2B",
+       9.15
       ],
       [
-       "306",
-       9.5
+       null,
+       3.2
       ],
       [
-       "307",
-       7
+       "E3 2B",
+       12.6
       ],
       [
-       "308",
-       9.5
+       "E4 2B",
+       13.6,
+       "S"
       ]
      ],
      "west": [
       [
-       "303",
-       10
+       "W1 2B",
+       10.85
       ],
       [
-       "302",
-       7.5
+       "W2 1B",
+       7.2
       ],
       [
-       "301",
-       7
+       null,
+       2.4
       ],
       [
-       "310",
-       10
+       "W3 1B",
+       9.05
       ],
       [
-       "309",
-       8
+       "W4 1B",
+       7.1
+      ],
+      [
+       "W5 S",
+       4.9
+      ],
+      [
+       "W6 1B",
+       6.0,
+       "S"
+      ]
+     ],
+     "south": [
+      [
+       null,
+       7.6
+      ],
+      [
+       "S1 S",
+       5.2
+      ],
+      [
+       null,
+       13.7
       ]
      ]
     }
-   }
+   },
+   "habitable": [
+    "CROWN LANE",
+    "66-68 RILEY STREET",
+    "RILEY STREET",
+    "STANLEY LANE"
+   ]
   }
  },
  "blocks": [
@@ -713,9 +767,9 @@
   {
    "title": "Everything develops at our density",
    "horizon": "Beyond the plan, what the Commission asks us to assume",
-   "lead": "Every site round us develops to our density, {site.fsr}:1 as our tower stands on this sheet, the block across Riley Street with them: the blocks north of us in full, 66-68 Riley St with them, the Crown Street site south of the lane lot, and 91-109 Riley St opposite. Each stands on a three-storey podium and rises until it reaches that density, its tower's length trimmed to land on it, the ADG's 12 m off its neighbouring lots and, measured to the middle of the road, 12 m from Riley Street's and 9 m from Crown Lane's, as ours: 24 m across the street, 18 m across the lane, where one face must be blank.",
+   "lead": "Every site round us develops to our density, {site.fsr}:1 as the plans of 10 November draw our building, the block across Riley Street with them: the blocks north of us in full, 66-68 Riley St with them, the Crown Street site south of the lane lot, and 91-109 Riley St opposite. Each stands on a three-storey podium and rises until it reaches that density, its tower's length trimmed to land on it, the ADG's 12 m off its neighbouring lots and, measured to the middle of the road, 12 m from Riley Street's and 9 m from Crown Lane's. Our own tower stands 9 m from the lane's middle from level 3 up, levels 1 and 2 at 6 m, and steps back from our northern boundary: 3 m, then 4.5 m from level 4 and 6 m from level 8 (the dashed lines).",
    "notes": [
-    "Our tower becomes {site.plate}, {site.area} m² a floor against the {site.drawn} m² drawn, {site.east} m off the lane (9 m to its middle) and {site.north} m off 66-68 Riley St.",
+    "Our building as the plans of 10 November have it: the ground floor over the lot, levels 1 and 2 held 3 m off Crown Lane with 11 apartments a floor, and the tower from level 3 up, {site.plate} at its lowest level, {site.east} m off the lane, 3 m off Riley Street and Stanley Lane, and 3, 4.5 and 6 m off the northern boundary, 8 apartments a floor.",
     "54-68 Riley St with 1 Crown Lane: {A.area} m², {A.plate}, {A.storeys} storeys at {A.fsr}; its south end {A.sep} m from our tower.",
     "Crown St north, 89 to 105 Crown St with 4 and 10 Crown Lane: {B.area} m², {B.plate}, {B.storeys} storeys.",
     "107-129 Crown St: {D.area} m², {D.plate} over a podium 9 m from the lane's middle, {D.storeys} storeys; {D.sep} m from our tower.",
@@ -723,19 +777,6 @@
     "77 Riley St, 111-113 Riley St and the Yurong Street lots behind stand as they are."
    ],
    "retained": [],
-   "site": {
-    "tower": {
-     "setbacks": {
-      "RILEY STREET": 3,
-      "STANLEY LANE": 3.7,
-      "CROWN LANE": 6,
-      "66-68 RILEY STREET": 9
-     },
-     "toCentre": {
-      "CROWN LANE": 9
-     }
-    }
-   },
    "parcels": [
     {
      "key": "A",

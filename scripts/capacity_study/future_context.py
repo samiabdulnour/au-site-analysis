@@ -331,11 +331,21 @@ def site_yield():
     """Our building as the scenario draws it: (FSR, GFA, apartments), the floor space the massing's at the study's
     efficiency, the apartments the plans' count where the tower is as drawn, scaled with the floor space where a
     scenario moves it."""
-    tall = S['storeys'] - SITE_PODIUM
-    gba = (SITE_POLY.area * SITE_PODIUM + SITE_TOWER.area * tall) if TOWER else SITE_TOWER.area * S['storeys']
-    base = (SITE_POLY.area * SITE_PODIUM + BASE_TOWER.area * tall) if TOWER else gba
-    units = SITE_UNITS if abs(gba - base) < 1 else round(SITE_UNITS * gba / base / 5) * 5
+    gba = tiers_gba(SITE_TIERS)
+    units = SITE_UNITS if abs(gba - BASE_GBA) < 1 else round(SITE_UNITS * gba / BASE_GBA / 5) * 5
     return EFFICIENCY * gba / SITE_AREA, EFFICIENCY * gba, units
+
+
+def tiers_gba(tiers):
+    return sum(t['poly'].area * (t['s1'] - t['s0'] + 1) for t in tiers)
+
+
+def lvl(storey):
+    """A storey as the plans name it: where `site.tower.levelZero` is set, the ground floor is GF and the storey
+    over it level 1."""
+    if (TOWER or {}).get('levelZero'):
+        return 'GF' if storey <= 1 else 'L' + str(storey - 1)
+    return 'L' + str(storey)
 
 
 def yield_text(fsr, gfa, units, about=True):
@@ -518,6 +528,28 @@ def arch_dim(pts, labels, col, k):
     return o
 
 
+def unit_spans(lst, face_len):
+    """A face's apartments as spans along it, as future_solar.py fits them: [(name or None, from, to, corner)], the
+    first apartment taking up what a step leaves, or all scaled where it cannot. A None name is a stretch without an
+    apartment (the corridor's window)."""
+    ws = [float(u[1]) for u in lst]
+    tot = sum(ws)
+    if tot <= 0:
+        return []
+    diff = face_len - tot
+    if abs(diff) > 0.25:
+        first = next((i for i, u in enumerate(lst) if u[0] is not None), None)
+        if first is not None and abs(diff) < 6 and ws[first] + diff >= 3.0:
+            ws[first] += diff
+        else:
+            ws = [w * face_len / tot for w in ws]
+    out, at = [], 0.0
+    for u, w in zip(lst, ws):
+        out.append((u[0], at, at + w, u[2] if len(u) > 2 else None))
+        at += w
+    return out
+
+
 def our_units_scheme(k):
     """Our tower's typical floor as the plans lay it out: the apartments along its Riley Street and Crown Lane faces,
     a corridor between them."""
@@ -544,14 +576,34 @@ def our_units_scheme(k):
     line = lambda a, b: f'<line x1="{f(a[0])}" y1="{f(-a[1])}" x2="{f(b[0])}" y2="{f(-b[1])}" stroke="#c0161c" stroke-opacity=".6" stroke-width="{0.3 * k:.2f}"/>'
     o = [line(mn, ms)]                                                # the corridor, wall to wall
     for side, fn, fs_ in (('east', en, es), ('west', wn, ws)):
-        lst = plan_.get(side, [])
-        tot = sum(float(u[1]) for u in lst) or 1.0
-        at = 0.0
-        for i, u in enumerate(lst):
-            t0, t1 = at / tot, (at + float(u[1])) / tot
-            at += float(u[1])
+        L = math.dist(fn, fs_) or 1.0
+        for i, (name, a, b, corner) in enumerate(unit_spans(plan_.get(side, []), L)):
             if i:
-                o.append(line(lerp(fn, fs_, t0), lerp(mn, ms, t0)))
+                o.append(line(lerp(fn, fs_, a / L), lerp(mn, ms, a / L)))
+            if name is None:                                          # the corridor's window: open to the face
+                c0, c1 = lerp(mn, ms, a / L), lerp(mn, ms, b / L)
+                o.append(f'<line x1="{f(c0[0])}" y1="{f(-c0[1])}" x2="{f(c1[0])}" y2="{f(-c1[1])}" stroke="#e6b0b0" stroke-width="{0.5 * k:.2f}"/>')
+    return o
+
+
+def units_note(grp):
+    """A group's apartments a floor in words: '8 a floor (3 on Crown Lane, 5 on Riley Street)'."""
+    plan_ = ((TOWER or {}).get('units') or {}).get(grp) or {}
+    names = {'east': 'Crown Lane', 'west': 'Riley Street', 'south': 'Stanley Lane', 'north': 'the north'}
+    counts = [(names.get(side, side), sum(1 for u in lst if u[0] is not None)) for side, lst in plan_.items()]
+    counts = [(n, c) for n, c in counts if c]
+    return f'{sum(c for _, c in counts)} a floor (' + ', '.join(f'{c} on {n}' for n, c in counts) + ')'
+
+
+def site_tier_lines(k):
+    """Our building's other tiers on the plan, as thin outlines: the podium's upper levels where they stand back from
+    the lot, and each step of the tower above its lowest level."""
+    o = []
+    for t in SITE_TIERS:
+        if t['homes'] == 'none' or t['poly'].equals(SITE_TOWER) or t['poly'].symmetric_difference(SITE_POLY).area < 1:
+            continue
+        dash = '' if t['homes'] == 'podium' else f' stroke-dasharray="{1.2 * k:.2f} {0.9 * k:.2f}"'
+        o.append(f'<path d="{path(t["poly"])}" fill="none" stroke="#c0161c" stroke-width="{0.3 * k:.2f}"{dash}/>')
     return o
 
 
@@ -744,13 +796,55 @@ def inset(parcel, setbacks):
     return largest(g)
 
 
-SITE_TOWER, SITE_PODIUM, TOWER_OWN = None, 0, False
+SITE_TOWER, SITE_PODIUM, TOWER_OWN, SITE_TIERS = None, 0, False, []
 BASE_TOWER = inset(SITE_POLY, TOWER['setbacks']) if TOWER else SITE_POLY.buffer(-1.0, join_style=2)
+
+
+def tiers_for(tw):
+    """Our building as the storeys that share a footprint, bottom to top: the ground floor over the lot, the podium's
+    upper levels (held off a street by `podiumSetbacks`), the tower, and the tower again from each storey a `steps`
+    entry pushes it further back; dicts of poly, s0 and s1 (storeys, the ground floor 1), homes (the group whose
+    apartments its walls carry) and floor0 (its first storey's index within that group)."""
+    N = S['storeys']
+    if not tw:
+        return [dict(poly=SITE_POLY.buffer(-1.0, join_style=2), s0=1, s1=N, homes='all', floor0=0)]
+    P, hf = tw.get('podium', 0), tw.get('homesFrom')
+    upper = inset(SITE_POLY, tw['podiumSetbacks']) if tw.get('podiumSetbacks') else SITE_POLY
+    tiers = []
+    if P and hf and 1 < hf <= P:
+        tiers += [dict(poly=SITE_POLY, s0=1, s1=hf - 1, homes='none', floor0=0), dict(poly=upper, s0=hf, s1=P, homes='podium', floor0=0)]
+    elif P and hf == 1:
+        tiers.append(dict(poly=upper, s0=1, s1=P, homes='podium', floor0=0))
+    elif P:
+        tiers.append(dict(poly=SITE_POLY, s0=1, s1=P, homes='none', floor0=0))
+    steps = [st for st in tw.get('steps', []) if P + 1 < st['from'] <= N]
+    cuts = sorted({P + 1} | {st['from'] for st in steps})
+    for i, a in enumerate(cuts):
+        sb = dict(tw['setbacks'])
+        for st in steps:
+            if st['from'] <= a:
+                for name, v in st['setbacks'].items():
+                    sb[name] = max(sb.get(name, 0), v)                # a step only ever pushes further back
+        tiers.append(dict(poly=inset(SITE_POLY, sb), s0=a, s1=cuts[i + 1] - 1 if i + 1 < len(cuts) else N, homes='tower', floor0=a - (P + 1)))
+    return tiers
+
+
+def tier_z(t):
+    """A tier's bottom and top, metres over the ground."""
+    return (H_of(t['s0'] - 1) if t['s0'] > 1 else 0.0), H_of(t['s1'])
+
+
+def ours_for(band):
+    """Our tower's footprint at the lowest storey of an ADG band, which is where it stands nearest its neighbours:
+    the tier that holds that storey."""
+    want = {'low': SITE_PODIUM + 1, 'mid': max(SITE_PODIUM + 1, 5), 'tall': max(SITE_PODIUM + 1, 9)}[band]
+    towers = [t for t in SITE_TIERS if t['homes'] in ('tower', 'all')]
+    return next((t['poly'] for t in towers if t['s0'] <= want <= t['s1']), towers[-1]['poly'] if towers else SITE_TOWER)
 
 
 def set_tower(scn=None):
     """Our tower for a scenario: the study's site.tower, with whatever the scenario's own `site.tower` replaces."""
-    global TOWER, SITE_TOWER, SITE_PODIUM, TOWER_OWN
+    global TOWER, SITE_TOWER, SITE_PODIUM, TOWER_OWN, SITE_TIERS
     base = S.get('tower') or {}
     own = ((scn or {}).get('site') or {}).get('tower') or {}
     TOWER = {**base, **own} if base or own else None
@@ -765,9 +859,11 @@ def set_tower(scn=None):
                 TOWER['setbacks'][name] = max(0.0, v - (ax.distance(r0['line'].interpolate(0.5, normalized=True)) if ax is not None else r0['half']))
     SITE_TOWER = inset(SITE_POLY, TOWER['setbacks']) if TOWER else SITE_POLY.buffer(-1.0, join_style=2)
     SITE_PODIUM = TOWER.get('podium', 0) if TOWER else 0
+    SITE_TIERS = tiers_for(TOWER)
 
 
 set_tower()
+BASE_GBA = tiers_gba(SITE_TIERS)                                      # our floor space as the study's own plans have it
 
 
 def plate_of(g):
@@ -1029,15 +1125,16 @@ def bound_dims(rows, k, big):
     return o
 
 
-def face_gap(poly, parcel):
+def face_gap(poly, parcel, mine=None):
     """The gap from our tower's nearest face to a neighbour, square to that face, where the two overlap along it: the
     total and its parts (our face to our boundary, boundary to boundary, their boundary to their face), with the
     points to draw it between. None where they do not overlap along the face, and the diagonal between the nearest
     points is the honest measure."""
-    q1, _ = nearest_points(SITE_TOWER, poly)
-    cs = list(SITE_TOWER.exterior.coords)
+    mine = SITE_TOWER if mine is None else mine
+    q1, _ = nearest_points(mine, poly)
+    cs = list(mine.exterior.coords)
     edges = [(LineString([p, q]).distance(q1), p, q) for p, q in zip(cs[:-1], cs[1:]) if math.dist(p, q) >= 1]
-    c0, c1 = SITE_TOWER.representative_point(), poly.centroid
+    c0, c1 = mine.representative_point(), poly.centroid
 
     def looks(e):
         _, p, q = e
@@ -1052,7 +1149,7 @@ def face_gap(poly, parcel):
     _, p, q = max((e for e in edges if e[0] <= min(e_[0] for e_ in edges) + 0.05), key=looks)
     u = unit((q[0] - p[0], q[1] - p[1]))
     n = (-u[1], u[0])
-    c = SITE_TOWER.representative_point()
+    c = mine.representative_point()
     if (c.x - p[0]) * n[0] + (c.y - p[1]) * n[1] > 0:
         n = (-n[0], -n[1])                                            # outward from our face
     along = lambda v: (v[0] - p[0]) * u[0] + (v[1] - p[1]) * u[1]
@@ -1069,7 +1166,7 @@ def face_gap(poly, parcel):
     def dmax(g):
         vs = [out(v) for pp in polys(g.intersection(strip)) for v in pp.exterior.coords]
         return max(vs) if vs else None
-    d0, d1, d2, d3 = dmax(SITE_TOWER), dmax(SITE_POLY), dmin(parcel), dmin(poly)
+    d0, d1, d2, d3 = dmax(mine), dmax(SITE_POLY), dmin(parcel), dmin(poly)
     if None in (d0, d1, d2, d3):
         return None
     d2 = min(max(d2, d1), d3)                                         # their boundary lies between ours and their face
@@ -1118,17 +1215,27 @@ def separation(blds, existing, RET, parcels):
     for name, poly, n, parcel, new in cands:
         if SITE_TOWER.distance(poly) > 30:
             continue
-        geo = face_gap(poly, parcel)
-        if geo is None:
-            q1, q2 = nearest_points(SITE_TOWER, poly)
-            geo = dict(diag=(q1, q2))
-            d = SITE_TOWER.distance(poly)
-        else:
-            d = geo['total']
+        # every band the two buildings share, each from our tower as it stands at that band's levels (a stepped tower
+        # stands nearer low down, where less is asked); the row is the band that reads worst, the taller on a tie
+        bands = ('low', 'mid', 'tall')
+        worst = None
+        for band_ in bands[:bands.index(adg_band(min(n, S['storeys']))) + 1]:
+            ours = ours_for(band_)
+            geo = face_gap(poly, parcel, ours)
+            if geo is None:
+                q1, q2 = nearest_points(ours, poly)
+                geo = dict(diag=(q1, q2))
+                d = ours.distance(poly)
+            else:
+                d = geo['total']
+            hab, blank, _ = ADG[band_]
+            dd = round(d)        # the verdict on the metre the sheet prints
+            verdict = 'clear' if dd >= hab else 'one face blank' if dd >= blank else 'short of a blank face'
+            rank = ('clear', 'one face blank', 'short of a blank face').index(verdict)
+            if worst is None or rank >= worst[0]:
+                worst = (rank, d, hab, blank, verdict, geo)
+        _, d, hab, blank, verdict, geo = worst
         geo['new'] = new
-        hab, blank, _ = ADG[adg_band(min(n, S['storeys']))]
-        dd = round(d)        # the verdict on the metre the sheet prints
-        verdict = 'clear' if dd >= hab else 'one face blank' if dd >= blank else 'short of a blank face'
         rows.append((name, d, hab, blank, verdict, geo))
     return rows
 
@@ -1327,11 +1434,9 @@ def axo(scn, parcels, blds, existing, RET):
         items.append((r['poly'], 0, h, dict(typ='retained', n=n, label=f'{n}{"" if how == "mesh" else "*"}')))
     for e in existing:
         items.append((e['poly'], 0, e['h'], dict(typ='low', n=e['n'], label=None)))
-    if TOWER:
-        items.append((SITE_POLY, 0, H_of(SITE_PODIUM), dict(typ='site', n=SITE_PODIUM, base=0, label=None, grp='site')))
-        items.append((SITE_TOWER, H_of(SITE_PODIUM), H_of(S['storeys']), dict(typ='site', n=S['storeys'], base=SITE_PODIUM, label=str(S['storeys']), grp='site')))
-    else:
-        items.append((SITE_TOWER, 0, H_of(S['storeys']), dict(typ='site', n=S['storeys'], base=0, label=str(S['storeys']), grp='site')))
+    for t in SITE_TIERS:                                              # ours, tier by tier, the storeys on the top one
+        z0, z1 = tier_z(t)
+        items.append((t['poly'], z0, z1, dict(typ='site', n=t['s1'], base=t['s0'] - 1, label=str(S['storeys']) if t is SITE_TIERS[-1] else None, grp='site')))
     for b in blds:
         items.append((b['poly'], H_of(b['base']) if b['base'] else 0, H_of(b['n']), dict(typ=b['typ'], n=b['n'], base=b['base'], label=None if b['typ'] == 'podium' else str(b['n']), grp=b['key'])))
     flat = [(p, z0, z1, b) for g, z0, z1, b in items for p in polys(g)]
@@ -1477,8 +1582,8 @@ mesh_props = [r for b in BLOCKS for r in b if measured(r)]
 def flags_for():
     flags = []
     flags.append(f'<b>Our site.</b> {S["storeys"]} storeys as the author states it, not read from the model; {SITE_UNITS} apartments; its density is read off the massing as this sheet draws it, {EFFICIENCY:.0%} of the envelope, {our_fsr():.1f}:1 over {SITE_AREA:,.0f} m². The model\'s own GFA and unit count should replace them.'
-                 + (f' The tower is drawn on a {SITE_PODIUM}-storey podium, {SITE_TOWER.area:,.0f} m² a floor, its faces ' + ', '.join(f'{site_setback(n):.0f} m off {n.title()}' for n in TOWER['setbacks']) + ': ' + ('setbacks the scenario sets.' if TOWER_OWN else 'setbacks read off the model\'s plan, to be confirmed in it.') if TOWER else '')
-                 + (f' The envelope drawn holds {EFFICIENCY * (SITE_AREA * SITE_PODIUM + SITE_TOWER.area * (S["storeys"] - SITE_PODIUM)):,.0f} m² GFA at {EFFICIENCY:.0%}, about {EFFICIENCY * (SITE_AREA * SITE_PODIUM + SITE_TOWER.area * (S["storeys"] - SITE_PODIUM)) / UNIT_GFA:.0f} apartments at {UNIT_GFA} m²; the stated {SITE_UNITS} set the parity figure until the model\'s count replaces them.' if TOWER else ''))
+                 + (f' The tower is drawn on a {SITE_PODIUM}-storey podium, {SITE_TOWER.area:,.0f} m² a floor at its lowest level, its faces ' + ', '.join(f'{site_setback(n):.0f} m off {n.title()}' for n in TOWER['setbacks']) + ': ' + ('setbacks the scenario sets.' if TOWER_OWN else 'setbacks read off the model\'s plan, to be confirmed in it.') if TOWER else '')
+                 + (f' The envelope drawn holds {site_yield()[1]:,.0f} m² GFA at {EFFICIENCY:.0%}; the plans lay out {SITE_UNITS} apartments.' if TOWER else ''))
     if MESH.get('meshes'):
         flags.append(f'<b>What stands.</b> Heights read off Google\'s 3D tiles ({MESH["meshes"]} meshes at {MESH.get("errorM", 0):.0f} m, the roof\'s 80th percentile over the ground round it), {len(mesh_props)} of the {sum(len(b) for b in BLOCKS)} study properties read; storeys at {STOREY_M} m. A starred count is assumed where the tiles hold nothing.')
     else:
@@ -1526,18 +1631,14 @@ def export_scene(no, blds, existing, RET, sep, parcels=(), scn_parcels=()):
     names = {nm.split(' · ')[0]: nm for nm, *_ in sep}
     # every prism says which of its walls carry apartments: the ground floor none, a podium's from the storey the
     # scenarios file names (site.tower.homesFrom), a tower's all, a standing building's all
-    homes_from = (TOWER or {}).get('homesFrom')
     site_parts = []
-    if TOWER:
-        if homes_from and homes_from <= SITE_PODIUM:
-            site_parts += [dict(ring=ring_of(p), z0=0, z1=H_of(homes_from - 1), homes='none') for p in polys(SITE_POLY)] if homes_from > 1 else []
-            site_parts += [dict(ring=ring_of(p), z0=H_of(homes_from - 1) if homes_from > 1 else 0, z1=H_of(SITE_PODIUM), homes='podium') for p in polys(SITE_POLY)]
-        else:
-            site_parts += [dict(ring=ring_of(p), z0=0, z1=H_of(SITE_PODIUM), homes='none') for p in polys(SITE_POLY)]
-    site_parts += [dict(ring=ring_of(p), z0=H_of(SITE_PODIUM) if TOWER else 0, z1=H_of(S['storeys']), homes='tower' if TOWER else 'all') for p in polys(SITE_TOWER)]
-    for part in site_parts:                                            # the plans' apartments, where the file lays them out
-        if part['homes'] in ((TOWER or {}).get('units') or {}):
-            part['units'] = TOWER['units'][part['homes']]
+    for t in SITE_TIERS:
+        z0, z1 = tier_z(t)
+        for p in polys(t['poly']):
+            part = dict(ring=ring_of(p), z0=z0, z1=z1, homes=t['homes'], floor0=t['floor0'])
+            if t['homes'] in ((TOWER or {}).get('units') or {}):      # the plans' apartments, where the file lays them out
+                part['units'] = TOWER['units'][t['homes']]
+            site_parts.append(part)
     out = [dict(id='site', kind='site', type='d22', name='Our tower', parts=site_parts)]
     by_key = {}
     for b in blds:
@@ -1704,6 +1805,7 @@ def mini_plan(parcels, blds, existing, RET, sep, k=1.0, big=False, bset=None):
     if TOWER:
         o.append(f'<path d="{path(SITE_TOWER)}" fill="#e6b0b0" stroke="#c0161c" stroke-width="{0.5 * k:.2f}"/>')
         if big:
+            o += site_tier_lines(k)                                   # the podium's upper levels and the tower's steps
             o += our_units_scheme(k)                                  # the typical floor, as the plans lay it out
     for p in parcels:
         o.append(f'<path d="{path(p["poly"])}" fill="#fff" stroke="#111" stroke-width="{0.8 * k:.2f}"/>')
@@ -1883,15 +1985,18 @@ def sun_views(no, sun, hours=(9, 10, 11, 12, 13, 14, 15), reach=32):
                 faces.append((sum(c[2] for c in top) / len(top), top, fill, stroke))
                 items += faces
                 if b['kind'] == 'site' and part.get('units'):
-                    for side, lst in (('east', part['units'].get('east', [])), ('west', part['units'].get('west', []))):
+                    for side, want in (('east', (1, 0)), ('west', (-1, 0)), ('south', (0, -1)), ('north', (0, 1))):
+                        lst = part['units'].get(side, [])
+                        if not lst:
+                            continue
                         # the wall the units line: the longest straight run of edges facing that way, as one wall from
-                        # its north end to its south, since the cadastre cuts a lot's side into several collinear edges
-                        want = 1 if side == 'east' else -1
+                        # its north end to its south (east and west) or its east end to its west (south and north),
+                        # since the cadastre cuts a lot's side into several collinear edges
                         runs = []
                         for p, q in zip(ring, ring[1:] + ring[:1]):
                             nx, ny = q[1] - p[1], -(q[0] - p[0])
                             L = math.hypot(nx, ny)
-                            if not L or nx / L * want <= 0.7:
+                            if not L or (nx * want[0] + ny * want[1]) / L <= 0.7:
                                 continue
                             for run in runs:
                                 (fx, fy), (gx, gy) = run[0][0], run[0][1]
@@ -1907,22 +2012,20 @@ def sun_views(no, sun, hours=(9, 10, 11, 12, 13, 14, 15), reach=32):
                             continue
                         run = max(runs, key=lambda r: sum(math.hypot(q[0] - p[0], q[1] - p[1]) for p, q in r))
                         pts = [c for e in run for c in e]
-                        north, south = max(pts, key=lambda c: c[1]), min(pts, key=lambda c: c[1])
+                        k_ = 1 if want[0] else 0
+                        north, south = max(pts, key=lambda c: c[k_]), min(pts, key=lambda c: c[k_])     # the end it is measured from, and the other
                         L = math.hypot(south[0] - north[0], south[1] - north[1])
-                        nx, ny = (south[1] - north[1]) / L, -(south[0] - north[0]) / L
-                        nx, ny = (nx, ny) if nx * want > 0 else (-nx, -ny)
                         ux, uy = (south[0] - north[0]) / L, (south[1] - north[1]) / L
-                        lit_wall = nx * s[0] + ny * s[1] > 0
+                        lit_wall = want[0] * s[0] + want[1] * s[1] > 0
                         nf = max(1, int(round((z1 - z0) / 3.2)))
                         # every unit paints just in front of the wall it sits on, whatever its own storey's depth
                         wall_quad = [P(north[0], north[1], z0), P(south[0], south[1], z0), P(south[0], south[1], z1), P(north[0], north[1], z1)]
                         wall_depth = min(c[2] for c in wall_quad) - 0.05
-                        at = 0.0
-                        for unit in lst:
-                            a, bb = at, at + float(unit[1])
-                            at = bb
+                        for name, a, bb, corner in unit_spans(lst, L):
+                            if name is None:
+                                continue
                             for fl in range(nf):
-                                ser = series.get((part['homes'], str(unit[0]), fl), '')
+                                ser = series.get((part['homes'], str(name), part.get('floor0', 0) + fl), '')
                                 lit = lit_wall and idx < len(ser) and ser[idx] == '1'
                                 za, zb = z0 + fl * 3.2, z0 + (fl + 1) * 3.2
                                 c0 = (north[0] + ux * a, north[1] + uy * a)
@@ -1995,7 +2098,7 @@ def sun_chart(sun, levels):
                 segs += ''.join(f'<rect x="{((i - 0.5) / (n - 1)) * 100:.2f}%" y="0" width="{100 / (n - 1):.2f}%" height="100%" fill="{"#1f8f3a" if ser[i:i + 1] == "1" else "#999"}" fill-opacity=".35"/>' for i in range(0, n, per))
             mark = '✓' if ok else '✗'
             col = '#1f8f3a' if ok else '#c0161c'
-            rows.append(f'<div class="srow"><div class="sl">L{first + fl} · {uid} {side_of.get(uid, "")}</div><div class="sb"><svg width="100%" height="100%">{"".join(f"<line x1=\"{h / 6 * 100:.1f}%\" y1=\"0\" x2=\"{h / 6 * 100:.1f}%\" y2=\"100%\" stroke=\"#ddd\" stroke-width=\"0.6\"/>" for h in range(7))}{segs}</svg></div><div class="sm" style="color:{col}">{mark}</div></div>')
+            rows.append(f'<div class="srow"><div class="sl">{lvl(first + fl)} · {uid} · {side_of.get(uid, "")}</div><div class="sb"><svg width="100%" height="100%">{"".join(f"<line x1=\"{h / 6 * 100:.1f}%\" y1=\"0\" x2=\"{h / 6 * 100:.1f}%\" y2=\"100%\" stroke=\"#ddd\" stroke-width=\"0.6\"/>" for h in range(7))}{segs}</svg></div><div class="sm" style="color:{col}">{mark}</div></div>')
     return rows, ok_n, all_n
 
 
@@ -2004,14 +2107,12 @@ def sun_page(no, scn, sun, r):
     if not sun or not (sun['buildings'].get('site') or {}).get('units'):
         return None
     tw = TOWER or {}
-    side_of = {}
-    for grp in ('podium', 'tower'):
-        for side, lst in (tw.get('units') or {}).get(grp, {}).items():
-            for unit in lst:
-                side_of[str(unit[0])] = {'east': 'Crown Lane', 'west': 'Riley St'}.get(side, side)
-    rows, ok_n, all_n = sun_chart(sun, [('podium', tw.get('homesFrom', 1), side_of), ('tower', SITE_PODIUM + 1, side_of)])
+    names = {'east': 'Crown Lane', 'west': 'Riley St', 'south': 'Stanley Lane', 'north': 'north'}
+    sides = {grp: {str(u[0]): names.get(side, side) for side, lst in (tw.get('units') or {}).get(grp, {}).items() for u in lst if u[0] is not None} for grp in ('podium', 'tower')}
+    rows, ok_n, all_n = sun_chart(sun, [('podium', tw.get('homesFrom', 1), sides['podium']), ('tower', SITE_PODIUM + 1, sides['tower'])])
     views = sun_views(no, sun)
     half = (len(rows) + 1) // 2
+    row_h = min(3.05, 156 / max(1, half))                              # the chart's 156 mm, shared by a column's rows
     vw = 400 / max(1, len(views))
     view_html = ''.join(f'<div class="sv" style="width:{mm(vw - 2)}"><div class="svt">{H.escape(t)} <span>{H.escape(d)}</span></div>{svg}</div>' for t, d, svg in views)
     css = (f'.sh{{position:absolute;left:{mm(10)};top:{mm(9)};width:{mm(400)}}} .sh h1{{margin:0}}'
@@ -2019,15 +2120,15 @@ def sun_page(no, scn, sun, r):
            f'.sv{{flex:none;height:{mm(88)}}} .sv svg{{width:100%;height:{mm(82)}}} .svt{{font-size:{pt(7)};font-weight:700;margin-bottom:{mm(.5)}}} .svt span{{font-weight:400;color:#666}}'
            f'.chart{{position:absolute;left:{mm(10)};top:{mm(118)};width:{mm(400)};display:grid;grid-template-columns:1fr 1fr;column-gap:{mm(8)}}}'
            f'.ch{{font-size:{pt(6.6)};font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-bottom:{mm(1)}}}'
-           f'.srow{{display:flex;align-items:center;height:{mm(3.05)};font-size:{pt(5.6)};border-bottom:{mm(.1)} solid #eee}}'
-           f'.sl{{width:{mm(34)};flex:none;white-space:nowrap;overflow:hidden}} .sb{{flex:1;height:{mm(2.6)}}} .sb svg{{display:block}} .sm{{width:{mm(6)};text-align:right;font-weight:700}}'
-           f'.hours{{display:flex;justify-content:space-between;margin-left:{mm(34)};margin-right:{mm(6)};font-size:{pt(5.4)};color:#666}}'
+           f'.srow{{display:flex;align-items:center;height:{mm(row_h)};font-size:{pt(5.6 if row_h >= 2.9 else 5.0)};border-bottom:{mm(.1)} solid #eee}}'
+           f'.sl{{width:{mm(40)};flex:none;white-space:nowrap;overflow:hidden}} .sb{{flex:1;height:{mm(row_h - 0.45)}}} .sb svg{{display:block}} .sm{{width:{mm(6)};text-align:right;font-weight:700}}'
+           f'.hours{{display:flex;justify-content:space-between;margin-left:{mm(40)};margin-right:{mm(6)};font-size:{pt(5.4)};color:#666}}'
            f'.sn{{position:absolute;left:{mm(10)};bottom:{mm(7)};width:{mm(400)};font-size:{pt(6)};color:#555}}')
     hours = '<div class="hours">' + ''.join(f'<span>{h}:00</span>' for h in range(9, 16)) + '</div>'
     head = (f'<div class="sh"><div class="kick">Future context · Scenario {r["no"]} of {LAST} · the sun on our apartments</div><h1>{H.escape(r["title"])}: '
             f'{ok_n} of {all_n} apartments have their two continuous hours</h1>'
             f'<div class="hor">21 June, 9 to 3. Above, the scene as the sun sees it each hour, our apartments lit where it reaches their wall; below, each apartment’s sun against the clock, the whole hours the rule reads marked, and its two hours framed where it has them: sun at three whole hours in a row, as three hourly views show it.</div></div>')
-    chart = (f'<div class="chart"><div><div class="ch">Podium and tower, levels {tw.get("homesFrom", 1)} to {S["storeys"]}</div>{hours}{"".join(rows[:half])}</div>'
+    chart = (f'<div class="chart"><div><div class="ch">Podium and tower, {lvl(tw.get("homesFrom", 1))} to {lvl(S["storeys"])}</div>{hours}{"".join(rows[:half])}</div>'
              f'<div><div class="ch">&nbsp;</div>{hours}{"".join(rows[half:])}</div></div>')
     note = ('<div class="sn">Cast with Loriini’s engine at a metre, every building on its own ground, the scenario standing. An apartment is lit at an instant where at least half of its wall '
             'span at that storey is in sun; the corner apartments on either of their walls. The sun’s-eye view is an orthographic projection along the sun’s ray, so whatever it shows is in sun '
@@ -2126,8 +2227,8 @@ def page(no, scn):
                 plan_note = ' as the plans lay them out' if r.get('units') else ''
                 per = lambda g: f', {r["per_floor"][g]} a floor' if r.get('per_floor', {}).get(g) else ''
                 rows.append(line(f'Our building, all its apartments{plan_note}', ap, other, bold=True))
-                rows.append(line(f'   its tower, levels {SITE_PODIUM + 1} to {S["storeys"]}{per("tower")}', by['tower'], other_by.get('tower')))
-                rows.append(line(f'   its podium, levels {(TOWER or {}).get("homesFrom", 1)} to {SITE_PODIUM}{per("podium")}', by['podium'], other_by.get('podium')))
+                rows.append(line(f'   its tower, {lvl(SITE_PODIUM + 1)} to {lvl(S["storeys"])}{per("tower")}', by['tower'], other_by.get('tower')))
+                rows.append(line(f'   its podium, {lvl((TOWER or {}).get("homesFrom", 1))} to {lvl(SITE_PODIUM)}{per("podium")}', by['podium'], other_by.get('podium')))
                 failing = {}
                 for grp, first in (('podium', (TOWER or {}).get('homesFrom', 1)), ('tower', SITE_PODIUM + 1)):
                     for uid, fl, ok_, dark_, *_ in (by[grp].get('each') or []):
@@ -2135,14 +2236,14 @@ def page(no, scn):
                             failing.setdefault(first + fl, []).append(uid + ('*' if dark_ else ''))
                 sun_failing.update(failing)
                 if failing:
-                    rows.append(f'<tr><td colspan="5" style="color:#c0161c">Without their two hours: ' + ' · '.join(f'level {lv}: {", ".join(ids)}' for lv, ids in sorted(failing.items())) + ' (* no sun at all).</td></tr>')
+                    rows.append(f'<tr><td colspan="5" style="color:#c0161c">Without their two hours: ' + ' · '.join(f'{lvl(lv)}: {", ".join(ids)}' for lv, ids in sorted(failing.items())) + ' (* no sun at all).</td></tr>')
             else:
                 rows.append(line(r['name'], ap, other))
         if scn.get('sun') == 'all' and unchanged:
             rows.append(f'<tr><td colspan="5" style="color:#666">{len(unchanged)} other neighbours our tower changes by under 5 points: {H.escape(", ".join(n.split(",")[0] for n in unchanged))}.</td></tr>')
         sun_html = (f'<h2>Mid-winter sun · apartments with 2 continuous hours on 21 June</h2><table><tr><th style="width:34%">Building</th><th class="r" style="width:13%">As planned</th><th class="r" style="width:14%">Single-loaded</th>'
                     f'<th class="r" style="width:15%">Before them · without ours</th><th>Reads</th></tr>' + ''.join(rows) + '</table>')
-        flags.append(f'<b>Sun.</b> Cast over the massing with Loriini\'s engine at a metre, 21 June from 9 to 3, and read as the ADG reads it (4A-1): apartments line each building\'s walls in bays of {sun.get("bay_m", 8):g} m, one a storey, on both long faces of a double-loaded plan or the better face of a single-loaded one, a corner apartment counted once on both its walls; the two hours are continuous and read at whole hours, sun at three in a row as three hourly sun\'s-eye views show it (9, 10 and 11, or 10, 11 and 12, and so on; a run from half past does not count); a bay has them where half its wall at that storey does; 70 % of bays with two hours and no more than 15 % with none is a tick, 60 % is close. Each building is read as planned and as it would be single-loaded, with the scenario standing, and without our tower (ours: with today\'s buildings alone). A wall on a shared boundary is a party wall and holds no apartment; a neighbour\'s podium holds none. Our building is read on the SSDA plans themselves: each apartment at its own wall and storey, the corner ones on both their walls, the tower\'s 7 a floor (3 on Crown Lane, 4 on Riley Street) and the podium\'s 10 (5 and 5) from level {(TOWER or {}).get("homesFrom", "—")}, its ground floor commercial; its podium, its tower and the whole each read. The neighbours are a massing reading on an assumed plan.')
+        flags.append(f'<b>Sun.</b> Cast over the massing with Loriini\'s engine at a metre, 21 June from 9 to 3, and read as the ADG reads it (4A-1): apartments line each building\'s walls in bays of {sun.get("bay_m", 8):g} m, one a storey, on both long faces of a double-loaded plan or the better face of a single-loaded one, a corner apartment counted once on both its walls; the two hours are continuous and read at whole hours, sun at three in a row as three hourly sun\'s-eye views show it (9, 10 and 11, or 10, 11 and 12, and so on; a run from half past does not count); a bay has them where half its wall at that storey does; 70 % of bays with two hours and no more than 15 % with none is a tick, 60 % is close. Each building is read as planned and as it would be single-loaded, with the scenario standing, and without our tower (ours: with today\'s buildings alone). A wall on a shared boundary is a party wall and holds no apartment; a neighbour\'s podium holds none. Our building is read on the SSDA plans themselves: each apartment at its own wall and storey, the corner ones on both their walls, the tower\'s {units_note("tower")} and the podium\'s {units_note("podium")} from {lvl((TOWER or {}).get("homesFrom", 1))}, its ground floor commercial; its podium, its tower and the whole each read. The neighbours are a massing reading on an assumed plan.')
     faces = (f'<p style="margin-top:{mm(1.5)};color:#444">Our tower, {plate_of(SITE_TOWER)}: ' + ', '.join(f'{site_setback(n):.0f} m off {n.title()}' for n in TOWER['setbacks']) + '. The lines on the plan are its separations, the tables under the plan read them and the sun.</p>') if TOWER else ''
     newg = sum(p['gfa'] for p in parcels if not p['consent'])
     units = round(newg / UNIT_GFA / 5) * 5

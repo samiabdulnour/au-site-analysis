@@ -1984,7 +1984,18 @@ storeys at 3.2 m over a 4.5 m ground floor.
 
 The site's own scheme is drawn from `site.tower`: a podium of so many
 storeys over the lot and a tower inset from it by the setbacks named per
-street or neighbour (`"CROWN LANE": 3`), so the sheet can read the
+street or neighbour (`"CROWN LANE": 3`). The building may stand in tiers:
+`podiumSetbacks` holds the podium's levels above the ground floor off a
+street, and each entry of `steps` pushes the tower further back from a
+storey up (`{"from": 9, "setbacks": {"66-68 RILEY STREET": 6}}`, storeys
+counted from the ground floor as 1; `levelZero` names them as the plans do,
+GF then L1). Riley Street's is the plans as marked up on 10 November 2026:
+the ground floor over the lot, levels 1 and 2 held 3 m off Crown Lane, the
+tower from level 3 up 6 m off it and 3 m off the northern boundary,
+stepping to 4.5 m and 6 m. The massing, the sun study and the floor space
+read every tier; the separation is read band by band, each from the tier
+that stands at that band's levels, and the row is the band that reads
+worst. From the setbacks the sheet reads the
 separation between that tower and every building within 30 m of it, as it
 stands or as the scenario builds it, against the Apartment Design Guide
 (3F-1: 24 m between habitable rooms or balconies at levels 9 and over, 18 m
