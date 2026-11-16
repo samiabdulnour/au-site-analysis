@@ -1244,17 +1244,23 @@ full colours.
 The 3D views' trees and people follow the style (`lookOf` in
 `src/render/axonometric.ts`).
 - **Flamingo and Kingfisher** draw them as an illustrated isometric does:
-  - each crown outlined, in its shade, with the lit part over it towards the
-    light and a highlight;
-  - each tree casting a soft shadow on the ground;
-  - a few small trees narrow and upright;
-  - people with legs, clothes and a face, a little larger than life, walking
-    the footpaths (some in twos) and gathered in the parks.
-- **Flamingo's crowns** are clouds of a few lobes.
-- **Kingfisher's crowns** are drawn: a scalloped edge with the marks of the
-  leaves in it.
-- **Colour:** each style's trees are in its own green (`massingInks().tree`,
-  Flamingo's aqua mint and Kingfisher's mint), deeper or lighter tree to tree.
+  people with legs, clothes and a face, a little larger than life, walking the
+  footpaths (some in twos) and gathered in the parks.
+- **Flamingo's crowns** are clouds of a few lobes:
+  - each outlined, in its shade, with the lit part over it towards the light
+    and a highlight;
+  - each casting a soft shadow on the ground;
+  - a few small trees narrow and upright.
+- **Kingfisher** follows an illustrated masterplan:
+  - its crowns are loose canopies, flat, wider than tall, many small leaf clumps
+    with flecks of light through them and the fork of the branches under them,
+    on a thin grey trunk, without an outline or a shadow;
+  - its town is on a pale cream-sage ground, the streets a soft warm grey with
+    their kerbs a shade deeper and no white line, the lots faint and the parks a
+    pale sage (`massingInks()`).
+- **Colour:** each style's trees are in its own green (`massingInks().tree`):
+  - Flamingo's aqua mint, deeper or lighter tree to tree;
+  - Kingfisher's mint, from a deep to a pale cut, the deep ones the most.
 - **Heron, Canary and the white model** keep the plain discs and slips.
 
 A drawing holds a few thousand trees, too many to print as vectors (tens of

@@ -15,7 +15,7 @@ import { encodeRgbaPng } from '../lib/png.js';
 export const rand = (p: { x: number; y: number }, salt = 0) => { const v = Math.sin(p.x * 12.9898 + p.y * 78.233 + salt * 37.719) * 43758.5453; return v - Math.floor(v); };
 
 type Circle = { x: number; y: number; r: number };
-type Shape = { circles: Circle[] } | { oval: { x: number; y: number; rx: number; ry: number } };
+type Shape = { circles: Circle[] } | { oval: { x: number; y: number; rx: number; ry: number } } | { seg: { x0: number; y0: number; x1: number; y1: number; w: number } };
 type Layer = { shape: Shape; ink: string; grow?: number };
 
 /** A crown's lobes, radius one about its middle: a core and a ring of lobes round it, the same for the same variant. */
@@ -33,6 +33,11 @@ export function lobesOf(variant: number, n0: number, spread: number, ring: numbe
 
 /** How far a point is outside a shape (negative inside): the union's nearest edge, or an oval's, near enough to smooth by. */
 function distance(s: Shape, x: number, y: number): number {
+  if ('seg' in s) {
+    const { x0, y0, x1, y1, w } = s.seg, dx = x1 - x0, dy = y1 - y0, l2 = dx * dx + dy * dy;
+    const t = l2 ? Math.max(0, Math.min(1, ((x - x0) * dx + (y - y0) * dy) / l2)) : 0;
+    return Math.hypot(x - (x0 + t * dx), y - (y0 + t * dy)) - w / 2;
+  }
   if ('oval' in s) {
     const { x: ox, y: oy, rx, ry } = s.oval, u = (x - ox) / rx, v = (y - oy) / ry, k = Math.hypot(u, v);
     return (k - 1) * Math.min(rx, ry);
@@ -43,6 +48,7 @@ function distance(s: Shape, x: number, y: number): number {
 }
 
 function extent(s: Shape): [number, number, number, number] {
+  if ('seg' in s) { const { x0, y0, x1, y1, w } = s.seg; return [Math.min(x0, x1) - w, Math.min(y0, y1) - w, Math.max(x0, x1) + w, Math.max(y0, y1) + w]; }
   if ('oval' in s) { const { x, y, rx, ry } = s.oval; return [x - rx, y - ry, x + rx, y + ry]; }
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   for (const c of s.circles) { x0 = Math.min(x0, c.x - c.r); y0 = Math.min(y0, c.y - c.r); x1 = Math.max(x1, c.x + c.r); y1 = Math.max(y1, c.y + c.r); }
@@ -54,10 +60,10 @@ const rgbOf = (hex: string): [number, number, number] => {
   return [parseInt(v.slice(0, 2), 16), parseInt(v.slice(2, 4), 16), parseInt(v.slice(4, 6), 16)];
 };
 
-/** The tones of a crown: its outline, its shade, the lit part, the highlight. */
+/** The tones of a crown: its outline (a canopy's: its branches), its shade, the lit part, the highlight (a canopy's: the light through its leaves). */
 export interface CrownTones { edge: string; dark: string; lit: string; high: string }
 
-export type CrownKind = 'cloud' | 'drawn' | 'columnar';
+export type CrownKind = 'cloud' | 'canopy' | 'columnar';
 
 /** The layers of a crown at radius one, bottom first. `outline` is the outline's width, in radii. */
 function layersOf(kind: CrownKind, variant: number, t: CrownTones, outline: number): Layer[] {
@@ -73,15 +79,21 @@ function layersOf(kind: CrownKind, variant: number, t: CrownTones, outline: numb
       { shape: scaled(lobes, 0.8, -0.1, -0.13), ink: t.lit },
       { shape: scaled(lobes.filter((l) => l.x + l.y < 0.1), 0.46, -0.3, -0.34), ink: t.high }];
   }
-  // drawn: a scalloped edge, the lit part, three marks of the leaves (thin crescents of the outline's ink), two highlights
-  const lobes = lobesOf(variant, 10, 3, 0.7, 0.31, 0.76), all = { circles: lobes };
-  const seed = { x: variant + 0.5, y: variant * 2.3 };
-  const marks: Layer[] = [[0.24, 0.2], [-0.2, 0.34], [0.36, -0.14]].flatMap(([x, y], i) => {
-    const cx = x + (rand(seed, i) - 0.5) * 0.12, cy = y + (rand(seed, 9 + i) - 0.5) * 0.12, r = 0.12 + rand(seed, 19 + i) * 0.04;
-    return [{ shape: { circles: [{ x: cx, y: cy, r }] }, ink: t.edge }, { shape: { circles: [{ x: cx, y: cy - r * 0.3, r: r * 0.96 }] }, ink: t.lit }];
+  // a canopy: a loose spread of small leaf clumps over an oval wider than tall, smaller towards the edge, in one flat
+  // colour; the fork of its branches under it, and flecks of light through the leaves. No outline.
+  const seed = { x: variant * 5.3 + 1.1, y: variant * 2.9 + 0.4 };
+  const clumps: Circle[] = [{ x: 0, y: 0.02, r: 0.32 }, { x: -0.34, y: 0.06, r: 0.26 }, { x: 0.36, y: 0, r: 0.27 }];
+  for (let i = 0; i < 30; i++) {
+    // none so far out or so small that it floats free of the rest
+    const a = rand(seed, 100 + i) * Math.PI * 2, rr = 0.9 * Math.sqrt(rand(seed, 200 + i));
+    clumps.push({ x: Math.cos(a) * rr * 0.95, y: Math.sin(a) * rr * 0.46 - 0.04, r: 0.11 + 0.1 * rand(seed, 300 + i) });
+  }
+  const fork: Layer[] = [[0, 0.56, -0.22, 0.18], [0, 0.56, 0.2, 0.22], [0, 0.56, 0.03, 0.12]].map(([x0, y0, x1, y1]) => ({ shape: { seg: { x0, y0, x1, y1, w: 0.055 } }, ink: t.edge }));
+  const flecks: Layer[] = Array.from({ length: 6 }, (_, i) => {
+    const a = rand(seed, 400 + i) * Math.PI * 2, rr = 0.25 + 0.45 * rand(seed, 500 + i);
+    return { shape: { oval: { x: Math.cos(a) * rr * 0.7, y: Math.sin(a) * rr * 0.45 - 0.04, rx: 0.07 + 0.04 * rand(seed, 600 + i), ry: 0.035 } }, ink: t.high };
   });
-  return [{ shape: all, ink: t.edge, grow: outline }, { shape: all, ink: t.dark }, { shape: scaled(lobes, 0.86, -0.07, -0.09), ink: t.lit },
-    ...marks, { shape: { circles: [{ x: -0.34, y: -0.36, r: 0.2 }, { x: -0.12, y: -0.5, r: 0.12 }] }, ink: t.high }];
+  return [...fork, { shape: { circles: clumps }, ink: t.dark }, ...flecks];
 }
 
 /** A crown painted: its picture, and the box it covers about the crown's middle, in radii. */
@@ -98,8 +110,13 @@ export function crownPicture(kind: CrownKind, variant: number, tones: CrownTones
   const hit = cache.get(key);
   if (hit) return hit;
   const layers = layersOf(kind, variant, tones, outline);
-  // the box: the outline's, a pixel or two over
-  const [ex0, ey0, ex1, ey1] = extent(layers[0].shape), pad = (layers[0].grow ?? 0) + 2 / perUnit;
+  // the box: all the layers', a pixel or two over
+  let ex0 = Infinity, ey0 = Infinity, ex1 = -Infinity, ey1 = -Infinity;
+  for (const L of layers) {
+    const [a, b, c, d] = extent(L.shape), g = L.grow ?? 0;
+    ex0 = Math.min(ex0, a - g); ey0 = Math.min(ey0, b - g); ex1 = Math.max(ex1, c + g); ey1 = Math.max(ey1, d + g);
+  }
+  const pad = 2 / perUnit;
   const x0 = ex0 - pad, y0 = ey0 - pad, w = Math.ceil((ex1 - ex0 + 2 * pad) * perUnit), h = Math.ceil((ey1 - ey0 + 2 * pad) * perUnit);
   const unit = 1 / perUnit;
   // premultiplied, layer over layer

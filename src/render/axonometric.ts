@@ -224,12 +224,13 @@ function inRing(p: XY, rg: XY[]): boolean {
  * green with a lighter one over it, a person a slip of colour with a head. Illustrated, as an illustrator's isometric
  * draws a town: each crown outlined, in its shade with the lit part over it towards the light and a highlight, its
  * shadow on the ground; a person with legs, clothes and a face, a little larger than life; more of them walking the
- * footpaths, some in twos, and people gathered in the parks. Flamingo's crowns are clouds of a few lobes;
- * Kingfisher's are drawn, a scalloped edge with the marks of the leaves in it. Each style's trees are in its own
- * green, deeper or lighter tree to tree. A few small trees stand narrow and upright.
+ * footpaths, some in twos, and people gathered in the parks. Flamingo's crowns are clouds of a few lobes, outlined,
+ * shaded and lit, each casting its shadow, a few small trees narrow and upright; Kingfisher's are loose canopies, flat,
+ * many small leaf clumps with light through them and the fork of the branches under them, without an outline or a
+ * shadow, after an illustrated masterplan. Each style's trees are in its own green, deeper or lighter tree to tree.
  */
 interface AxoLook {
-  crown: 'disc' | 'cloud' | 'drawn';
+  crown: 'disc' | 'cloud' | 'canopy';
   people: 'slip' | 'figure';
   crowd: boolean;
   /** The trees' greens, taken tree by tree; and the few in another colour (a blossom, an autumn tree), each with its share. */
@@ -237,15 +238,18 @@ interface AxoLook {
   accents: [string, number][];
   /** Narrow upright trees among the small ones, this share of them. */
   columnar: number;
+  /** The trees cast their shadows on the ground. */
+  shadows: boolean;
 }
-const PLAIN: AxoLook = { crown: 'disc', people: 'slip', crowd: false, greens: [], accents: [], columnar: 0 };
+const PLAIN: AxoLook = { crown: 'disc', people: 'slip', crowd: false, greens: [], accents: [], columnar: 0, shadows: false };
 
 /** The look of a drawing's trees and people, by the style; plain in a white model. */
 function lookOf(M: ReturnType<typeof massingInks>, mono: boolean): AxoLook {
   const style = deckLook().id;
   if (mono) return PLAIN;
-  if (style === 'flamingo') return { crown: 'cloud', people: 'figure', crowd: true, greens: [M.tree, shade(M.tree, 0.92), shade(M.tree, 0.84)], accents: [], columnar: 0.22 };
-  if (style === 'kingfisher') return { crown: 'drawn', people: 'figure', crowd: true, greens: [M.tree, shade(M.tree, 0.92), shade(M.tree, 0.84)], accents: [], columnar: 0.15 };
+  if (style === 'flamingo') return { crown: 'cloud', people: 'figure', crowd: true, greens: [M.tree, shade(M.tree, 0.92), shade(M.tree, 0.84)], accents: [], columnar: 0.22, shadows: true };
+  // Kingfisher's canopies dark, mid and pale in its green, the dark ones the most, as the masterplan's trees
+  if (style === 'kingfisher') return { crown: 'canopy', people: 'figure', crowd: true, greens: [shade(M.tree, 0.55), shade(M.tree, 0.62), M.tree, tint(M.tree, 0.5)], accents: [], columnar: 0, shadows: false };
   return PLAIN;
 }
 
@@ -322,7 +326,7 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   }
   const cw = carriageways(scene.roads, scene.kerbs);
   if (cw.polygons.length) {
-    ground.push(`<path d="${cw.polygons.map((rings) => rings.map((rg) => poly(rg.map((p) => P(p, 0)))).join('')).join('')}" fill="${M.road}" fill-rule="evenodd" stroke="${mono ? MONO.edge : inks.kerb}" stroke-width="${mono ? 0.15 : 0.2}" stroke-linejoin="round"/>`);
+    ground.push(`<path d="${cw.polygons.map((rings) => rings.map((rg) => poly(rg.map((p) => P(p, 0)))).join('')).join('')}" fill="${M.road}" fill-rule="evenodd" stroke="${mono ? MONO.edge : M.kerb ?? inks.kerb}" stroke-width="${mono ? 0.15 : 0.2}" stroke-linejoin="round"/>`);
     ground.push(`<path d="${cw.axes.map(({ axis }) => open(axis.map((p) => P(p, 0)))).join('')}" fill="none" stroke="${M.axis}" stroke-width="0.12" stroke-dasharray="1.4,1.1" opacity="0.85"/>`);
   }
   const SITE = inks.site;
@@ -416,7 +420,7 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   const crownCentre = (tr: { p: XY; r: number }) => 2.2 + tr.r * (columnar(tr) ? 1.3 : 1);   // a trunk of about two metres, then the crown
   // the crowns' pictures, each once in the drawing's defs, placed at each tree's size (render/crowns.ts)
   const stamps = new Map<string, string>(), stampDefs: string[] = [];
-  const outlineM = look.crown === 'drawn' ? 0.16 : 0.12;
+  const outlineM = 0.12, TRUNK_GREY = '#9c9b90';
   const stampOf = (kind: CrownKind, variant: number, g: string, r: number) => {
     const size = CROWN_SIZES.find((sz) => r < sz.upTo)!;
     const key = `${kind}|${variant}|${g}|${size.r}`;
@@ -424,7 +428,11 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
     if (!sid) {
       sid = `axo-${id}-t${stamps.size}`;
       stamps.set(key, sid);
-      const tones = { dark: shade(g, kind === 'drawn' ? 0.84 : 0.8), lit: g, high: tint(g, kind === 'drawn' ? 0.55 : 0.45), edge: shade(g, kind === 'drawn' ? 0.45 : 0.52) };
+      // a canopy: one flat colour, its branches grey, the light through its leaves paler (or, in a pale one, deeper)
+      const light = parseInt(g.slice(1, 3), 16) * 0.3 + parseInt(g.slice(3, 5), 16) * 0.59 + parseInt(g.slice(5, 7), 16) * 0.11;
+      const tones = kind === 'canopy'
+        ? { dark: g, lit: g, high: light < 150 ? tint(g, 0.42) : shade(g, 0.86), edge: TRUNK_GREY }
+        : { dark: shade(g, 0.8), lit: g, high: tint(g, 0.45), edge: shade(g, 0.52) };
       const pic = crownPicture(kind, variant, tones, outlineM / size.r, size.perUnit);
       stampDefs.push(`<image id="${sid}" href="${pic.uri}" x="${pic.x.toFixed(4)}" y="${pic.y.toFixed(4)}" width="${pic.w.toFixed(4)}" height="${pic.h.toFixed(4)}" preserveAspectRatio="none"/>`);
     }
@@ -439,9 +447,10 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
           : `<circle cx="${cx.toFixed(2)}" cy="${cy.toFixed(2)}" r="${tr.r.toFixed(2)}" fill="${M.tree}"/>` +
           `<circle cx="${(cx - 0.22 * tr.r).toFixed(2)}" cy="${(cy - 0.2 * tr.r).toFixed(2)}" r="${(0.66 * tr.r).toFixed(2)}" fill="${M.treeLight}"/>`);
     }
-    const R = tr.r, tall = columnar(tr);
+    const R = tr.r, tall = columnar(tr), canopy = look.crown === 'canopy';
     const sid = stampOf(tall ? 'columnar' : look.crown as CrownKind, Math.floor(rand(tr.p, 1) * CROWN_VARIANTS), greenOf(tr.p), R);
-    return `<line x1="${bx.toFixed(2)}" y1="${by.toFixed(2)}" x2="${cx.toFixed(2)}" y2="${(cy + R * 0.5).toFixed(2)}" stroke="#7d6c5a" stroke-width="0.3" stroke-linecap="round"/>` +
+    // the trunk to the crown's underside; a canopy's thin and grey, up to the fork of its branches
+    return `<line x1="${bx.toFixed(2)}" y1="${by.toFixed(2)}" x2="${cx.toFixed(2)}" y2="${(cy + R * (canopy ? 0.56 : 0.5)).toFixed(2)}" stroke="${canopy ? TRUNK_GREY : '#7d6c5a'}" stroke-width="${canopy ? 0.22 : 0.3}" stroke-linecap="round"/>` +
       `<use href="#${sid}" transform="translate(${cx.toFixed(2)},${cy.toFixed(2)}) scale(${R.toFixed(3)})"/>`;
   };
   // Traffic (placeTraffic): each vehicle a few blocks along its length, in stacks one behind the other, each stack a
@@ -578,7 +587,7 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   }
   // Illustrated: the trees and the people cast their shadows on the ground, under all that stands, as the buildings do.
   // Painted as one picture (render/crowns.ts): as vectors, a few thousand ovals came to megabytes a drawing.
-  if (look.crown !== 'disc' && M.gloss) {
+  if (look.shadows && M.gloss) {
     const sh = { x: -light.x * 0.42, y: -light.y * 0.42 }, sinE0 = Math.sin(elev);
     const pic = shadowPicture(trees.map((tr) => {
       const zc = crownCentre(tr), [x, y] = P({ x: tr.p.x + sh.x * zc, y: tr.p.y + sh.y * zc }, 0), rr = tr.r * (columnar(tr) ? 0.7 : 0.95);
