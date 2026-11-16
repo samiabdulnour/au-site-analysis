@@ -2054,7 +2054,9 @@ throw a shadow onto the site with the sun 17° up is cast, so the towers on
 William Street shade the mid-winter morning as they do. A building 20 m or
 taller there is read in its steps, its outline traced off the tiles every
 3 m of height, so a tower on a podium, or two towers of two heights on one
-lot, casts the shadow each part does rather than one block at the tallest. The sun's-eye views
+lot, casts the shadow each part does rather than one block at the tallest. The
+plans and the massing draw such a building in its steps too, its own
+footprint on its lot rather than the lot. The sun's-eye views
 name a far building where it stands between the sun and ours.
 Where the scenarios file lays the site's apartments out as its plans do
 (`site.tower.units`, each face from the north end, each apartment its

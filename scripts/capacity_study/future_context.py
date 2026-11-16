@@ -309,6 +309,22 @@ def existing_height(r):
 BUILT = set()
 
 
+def steps_of(pid):
+    """A tall building as the tiles read it, in its steps: [(polygon, z0, z1)], the steps whose outline does not
+    change merged into one; None where it was not read in steps."""
+    t = TIERS.get(str(pid))
+    if not t:
+        return None
+    steps = []
+    for x in t:
+        g_ = poly_of(x['rings'], ll=True)
+        if steps and abs(g_.area - steps[-1][0].area) <= 0.04 * steps[-1][0].area and g_.symmetric_difference(steps[-1][0]).area <= 0.06 * g_.area:
+            steps[-1][2] = x['z1']
+        else:
+            steps.append([g_, x['z0'], x['z1']])
+    return [tuple(st) for st in steps]
+
+
 def resolve(scn):
     parcels, blds, used = [], [], set()
     for p in scn['parcels']:
@@ -611,15 +627,15 @@ def bound_dims(rows, k, big):
         if r['kind'] == 'street' and ((r['name'], r['side']) not in near or r['d'] < near[(r['name'], r['side'])]['d']):
             near[(r['name'], r['side'])] = r
     rows = [r for r in rows if r['kind'] in ('lot', 'pair')] + list(near.values())
-    fs = (5.2 if big else 4.6) * k
-    label = lambda x, y, t, col: f'<text x="{f(x)}" y="{-y + 1.6 * k:.2f}" font-size="{fs:.2f}" font-weight="700" text-anchor="middle" fill="{col}" paint-order="stroke" stroke="#fff" stroke-width="{1.5 * k:.2f}">{t}</text>'
+    fs = 5.5 * k                                                      # the size every dimension on the plan takes
+    label = lambda x, y, t, col: f'<text x="{f(x)}" y="{-y - 1.5 * k:.2f}" font-size="{fs:.2f}" font-weight="700" text-anchor="middle" fill="{col}" paint-order="stroke" stroke="#fff" stroke-width="{1.6 * k:.2f}">{t}</text>'
     for r in rows:
         if r['kind'] == 'lot' and r['d'] < 0.5:
             continue
         col = BOUND_COLOUR[r['verdict']]
         (ax, ay), (bx, by) = r['p0'], r['p1']
         dash = ' stroke-dasharray="1.2 0.8"' if r['verdict'] == 'street' else ''
-        o.append(f'<line x1="{f(ax)}" y1="{f(-ay)}" x2="{f(bx)}" y2="{f(-by)}" stroke="{col}" stroke-width="{0.9 * k:.2f}"{dash}/>')
+        o.append(f'<line x1="{f(ax)}" y1="{f(-ay)}" x2="{f(bx)}" y2="{f(-by)}" stroke="{col}" stroke-width="{1.1 * k:.2f}"{dash}/>')
         if r['kind'] == 'pair':                                       # each half to the middle of the road
             mx, my = r['mid']
             o.append(f'<circle cx="{f(mx)}" cy="{f(-my)}" r="{0.9 * k:.2f}" fill="{col}"/>')
@@ -934,9 +950,12 @@ def axo(scn, parcels, blds, existing, RET):
         g = unary_union([r['poly'] for r in b]).buffer(0.3, join_style=2)
         for p in polys(g):
             out.append(f'<polygon points="{" ".join(Pt(x, y, 0) for x, y in p.exterior.coords[:-1])}" fill="#efefef" stroke="#bdbdbd" stroke-width=".25"/>')
-    for g, n, h in context_buildings(30):                             # the blocks round the study, as they stand, in a lighter grey
-        for p in polys(g):
-            flat.append((p, 0, h, dict(typ='context', n=n, label=None)))
+    for g, n, h, pid in context_buildings(30):                        # the blocks round the study, as they stand, in a lighter grey
+        st = steps_of(pid)
+        for g_, z0, z1 in (st or [(g, 0, h)]):
+            for p in polys(g_):
+                if p.area >= 20:
+                    flat.append((p, z0, z1, dict(typ='context', n=n, label=None)))
     # each street named at the point of it nearest the blocks, over everything with a halo, so the name sits beside
     # them whatever stands in the way
     centre = study.centroid
@@ -1154,16 +1173,8 @@ def export_scene(no, blds, existing, RET, sep, parcels=(), scn_parcels=()):
             if top <= 0 or r['poly'].distance(SITE_POLY) > top / low or r['poly'].centroid.y < SITE_POLY.bounds[1] - 20:
                 continue
         g = ground_of([r])
-        if TIERS.get(pid):                                             # stepped: a tower on a podium, two towers, as they stand
-            # the steps whose outline does not change are one prism
-            steps = []
-            for t in TIERS[pid]:
-                g_ = poly_of(t['rings'], ll=True)
-                if steps and abs(g_.area - steps[-1][0].area) <= 0.04 * steps[-1][0].area and g_.symmetric_difference(steps[-1][0]).area <= 0.06 * g_.area:
-                    steps[-1][2] = t['z1']
-                else:
-                    steps.append([g_, t['z0'], t['z1']])
-            parts = [dict(ring=ring_of(p), z0=g + z0, z1=g + z1, homes='all') for g_, z0, z1 in steps for p in polys(g_) if p.area >= 20]
+        if steps_of(pid):                                              # stepped: a tower on a podium, two towers, as they stand
+            parts = [dict(ring=ring_of(p), z0=g + z0, z1=g + z1, homes='all') for g_, z0, z1 in steps_of(pid) for p in polys(g_) if p.area >= 20]
         else:
             parts = [dict(ring=ring_of(p), z0=g, z1=g + measured(r), homes='all') for p in polys(r['poly'])]
         out.append(dict(id=f'context-{pid}', kind='context', name=r['base'], parts=parts))
@@ -1209,8 +1220,7 @@ def sun_cell(r, today=False, units=None):
     ap = r['apts']
     mark, vcol = apts_verdict(ap['planned'])
     smark, _ = apts_verdict(ap['single'])
-    n = ap['planned']['bays'] if r.get('units') else units
-    text = (f'{of(ap["planned"]["share"], n)} ' if n else '') + f'({ap["planned"]["share"]:.0%}) {mark}'
+    text = f'{ap["planned"]["share"]:.0%} {mark}'                    # the share alone, as the ADG asks it
     if not r.get('units'):
         facing = f', facing {ap["single_face"]}' if ap.get('single_face') else ''
         sides = ap.get('sides', 2)
@@ -1226,7 +1236,7 @@ def sun_cell(r, today=False, units=None):
                 text += f', single-loaded{facing} {ap["single"]["share"]:.0%} ✓'
     by = r.get('apts_by') or {}
     if today and 'tower' in by and 'podium' in by:
-        text += f' · tower {of(by["tower"]["planned"]["share"], by["tower"]["planned"]["bays"])} · podium {of(by["podium"]["planned"]["share"], by["podium"]["planned"]["bays"])}'
+        text += f' · tower {by["tower"]["planned"]["share"]:.0%} · podium {by["podium"]["planned"]["share"]:.0%}'
     other = r.get('apts_today') if today else r.get('apts_without_site')
     if today and other:
         text += f' (before them {other["planned"]["share"]:.0%})'
@@ -1247,7 +1257,7 @@ MINI_PAD = 26          # metres of context round the study on the summary's plan
 def context_buildings(reach):
     """The window's other measured buildings within `reach` metres of the study: what stands round it today."""
     skip = {str(r['propid']) for b in BLOCKS for r in b} | {str(SITE['propid'])} | BUILT
-    return [(r['poly'], storeys_of(r), measured(r)) for pid, r in PROPS.items() if pid not in skip and measured(r) and r['poly'].intersects(study.buffer(reach))]
+    return [(r['poly'], storeys_of(r), measured(r), pid) for pid, r in PROPS.items() if pid not in skip and measured(r) and r['poly'].intersects(study.buffer(reach))]
 
 
 def mini_plan(parcels, blds, existing, RET, sep, k=1.0, big=False, bset=None):
@@ -1260,11 +1270,17 @@ def mini_plan(parcels, blds, existing, RET, sep, k=1.0, big=False, bset=None):
         x0, y0, x1, y1 = min(x0, bx[0] - 8), min(y0, bx[1] - 8), max(x1, bx[2] + 8), max(y1, bx[3] + 8)
     box = Polygon([(x0, y0), (x1, y0), (x1, y1), (x0, y1)])
     o = [f'<svg viewBox="{f(x0)} {f(-y1)} {f(x1 - x0)} {f(y1 - y0)}" xmlns="http://www.w3.org/2000/svg" style="overflow:hidden"><rect x="{f(x0)}" y="{f(-y1)}" width="{f(x1 - x0)}" height="{f(y1 - y0)}" fill="#f4f2ef"/>']
-    for g, n, h in context_buildings(MINI_PAD + 20):
+    for g, n, h, pid in context_buildings(MINI_PAD + 20):
         if not g.intersects(box):
             continue
         g = g.intersection(box)
-        o.append(f'<path d="{path(g)}" fill="#dcdcdc" stroke="#bbb" stroke-width="{0.3 * k:.2f}"/>')
+        st = steps_of(pid)
+        o.append(f'<path d="{path(g)}" fill="{"#ebebeb" if st else "#dcdcdc"}" stroke="#bbb" stroke-width="{0.3 * k:.2f}"/>')
+        if st:                                                        # the building as it stands on its lot
+            body = unary_union([g_ for g_, z0, z1 in st if z1 > 4.5]).intersection(box)
+            if not body.is_empty:
+                o.append(f'<path d="{path(body)}" fill="#cfcfcf" stroke="#888" stroke-width="{0.45 * k:.2f}"/>')
+                g = body
         if g.area >= 120:
             c = g.representative_point()
             o.append(f'<text x="{f(c.x)}" y="{-c.y + 1.7 * k:.2f}" font-size="{5 * k:.2f}" font-weight="600" text-anchor="middle" fill="#777">{n}</text>')
@@ -1315,7 +1331,7 @@ def mini_plan(parcels, blds, existing, RET, sep, k=1.0, big=False, bset=None):
             o.append(f'<text x="{f((ax + bx) / 2)}" y="{-(ay + by) / 2 - 1.5 * k:.2f}" font-size="{5.5 * k:.2f}" font-weight="700" text-anchor="middle" fill="{col}" paint-order="stroke" stroke="#fff" stroke-width="{1.6 * k:.2f}">{d:.0f} m</text>')
     if big and bset:
         for rows in bset.values():
-            o += bound_dims(rows, k * 1.6, True)
+            o += bound_dims(rows, k, True)
     if big:
         o += label_roads(box, k * 1.6)
         L = 20
@@ -1351,8 +1367,7 @@ def option_page(r):
     for name, with_, without, loss in r.get('shaded', []):
         mark, vcol = apts_verdict(dict(share=with_, dark=0))
         trs += f'<tr><td>{H.escape(name)}</td><td style="color:#888">—</td>{cell(f"{with_:.0%} {mark}" + (f" · {without:.0%} without our tower, {loss * 100:.0f} points" if without is not None else ""), vcol)}</tr>'
-    if r.get('failing'):
-        trs += '<tr><td colspan="3" style="color:#c0161c">Ours without their two hours: ' + ' · '.join(f'level {lv}: {", ".join(ids)}' for lv, ids in sorted(r['failing'].items())) + '</td></tr>'
+    # the apartments without their two hours are named on the sun proof's sheet, not here
     gain = f'About <b>{r["units"]} new apartments</b> on top of ours · ' if r['buildings'] else ''
     css = (f'.oh{{position:absolute;left:{mm(10)};top:{mm(9)};width:{mm(400)}}} .oh h1{{margin:0}}'
            f'.oplan{{position:absolute;left:{mm(10)};top:{mm(26)};width:{mm(234)};height:{mm(260)}}} .oplan svg{{width:100%;height:100%}}'
@@ -1365,7 +1380,7 @@ def option_page(r):
             f'<div class="hor">{H.escape(r["horizon"])}</div></div>')
     col = (f'<div class="ocol"><div class="u">{gain}neighbours can develop: <b style="color:{r["allow_colour"]}">{r["allow"]}</b></div>'
            f'<p class="lead">{r["lead"]}</p>'
-           f'<table><tr><th>Building</th><th>Separation from our tower; setbacks from its own boundaries</th><th>Apartments with 2 continuous hours of winter sun, of all its apartments</th></tr>{trs}</table>'
+           f'<table><tr><th>Building</th><th>Separation from our tower; setbacks from its own boundaries</th><th>Apartments with 2 continuous hours of winter sun</th></tr>{trs}</table>'
            f'<div class="oaxo">{r["axo"]}</div>'
            f'<div class="ass">{OPTION_NOTE}</div></div>')
     return (f'<!doctype html><html><head><meta charset="utf-8"><title>Future context · Scenario {r["no"]}</title><style>{CSS}{css}</style></head><body>'
@@ -1603,7 +1618,7 @@ def summary_page(part, page_no, pages):
         rows.append(f'''<div class="row"><div class="mini">{r['mini']}</div><div class="maxo">{r['axo']}</div><div class="info">
 <div class="t">{r['no']} · {H.escape(r['title'])}</div>
 <div class="u">{gain}neighbours can develop: <b style="color:{r['allow_colour']}">{r['allow']}</b></div>
-<table><tr><th>Building</th><th>Separation from our tower; setbacks from its own boundaries</th><th>Apartments with 2 continuous hours of winter sun, of all its apartments</th></tr>{trs}</table></div></div>''')
+<table><tr><th>Building</th><th>Separation from our tower; setbacks from its own boundaries</th><th>Apartments with 2 continuous hours of winter sun</th></tr>{trs}</table></div></div>''')
     lead = (f'<p class="lead">Each scenario: its plan with the blocks round it as they stand (storeys off the 3D tiles) and its massing, the apartments it adds, and for every new building how far it stands from our tower against the ADG\'s separation (24 m between habitable rooms at nine storeys and over, 18 m where one face is blank, 18 and 13.5 at five to eight) and from its own side and rear boundaries (half of those, 12 or 6 m at nine storeys and over, a party wall blank), and how many of its apartments (the yield\'s count at 85 m² each; ours as the plans have them) get two continuous hours of sun on 21 June, read as ADG 4A-1 reads it and as the convention counts it, sun at three whole hours in a row: apartments in 8 m bays along the walls, both long faces of a double-loaded plan or the better face of a single-loaded one, corner units taking both walls; 70 % with two hours and no more than 15 % with none is a tick, 60 % is close, and the single-loaded figure says what the plan could still reach, facing the way it names. Green holds, amber holds with a condition, red does not. Our tower as the model draws it, {H.escape(plate_of(BASE_TOWER))}, {", ".join(f"{v:g} m off {n.title()}" for n, v in (S.get("tower") or {}).get("setbacks", {}).items())}; a scenario that moves it says so.</p>'
             if page_no == 1 else f'<p class="lead">Scenarios {part[0]["no"]} to {part[-1]["no"]}, read as on the first sheet.</p>')
     return f'''<!doctype html><html><head><meta charset="utf-8"><title>Future context · summary</title><style>{CSS}
