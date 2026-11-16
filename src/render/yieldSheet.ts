@@ -750,7 +750,8 @@ function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number;
     const known = !!(e.heightM || e.storeys);
     const top = e.heightM ?? (e.storeys ? e.storeys * 3.1 : 6.2);
     const n = e.storeys ?? Math.max(1, Math.round(top / 3.1));
-    built.push({ rings: e.rings, z0: 0, z1: top, fill: Y.standing, edge: '#1c1c1c', edgeW: 0.2, dashed: !known, windows: known, storeys: Array.from({ length: n - 1 }, (_, i) => ((i + 1) * top) / n) });
+    // (Heron's line model draws a tone as a hatch, the closer the darker: what stands on the site in a close one, as the report's built form draws it)
+    built.push({ rings: e.rings, z0: 0, z1: top, fill: look.id === 'heron' ? '#b0b0b0' : Y.standing, edge: '#1c1c1c', edgeW: 0.2, dashed: !known, windows: known, storeys: Array.from({ length: n - 1 }, (_, i) => ((i + 1) * top) / n) });
   }
   const scene: AxoScene = {
     ring: s.ring, frontNormal: { x: nx, y: ny }, reach, neighbours, built,

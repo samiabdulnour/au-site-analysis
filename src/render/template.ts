@@ -180,6 +180,8 @@ const GROTESK = "'DejaVu Sans', Verdana, 'Liberation Sans', sans-serif";
 // are placed in the same warm families. Its red and its slate are the site
 // sheet's Heron's too.
 const HERON_RED = '#cf4a2e', HERON_SLATE = '#3c4c5a';
+/** The reddish brown of Heron's institutions' number discs on its context sheet. */
+const HERON_DISC = '#9c4a36';
 // Kingfisher's palette, sampled from the masterplan reference it follows
 // (each family's building colour and the pale ground it stands on, as the
 // image prints them). Every zone is a pale ground with its buildings in the
@@ -287,7 +289,7 @@ export const TEMPLATES: Template[] = [
     font: NARROW, streetFont: NARROW, textScale: 0.96,
     // Arial Narrow throughout, white on the aerial; the institutions' discs
     // a reddish brown, the parks' in the catchments' green.
-    ink: '#1c1c1c', streetInk: '#ffffff', discInk: '#9c4a36', discParkInk: '#1f7a4d', rule: '#8a8a8a',
+    ink: '#1c1c1c', streetInk: '#ffffff', discInk: HERON_DISC, discParkInk: '#1f7a4d', rule: '#8a8a8a',
     site: HERON_RED, dimension: HERON_SLATE, wind: '#6d8a99', sun: '#f0e4c0', road: '#7d7d7d', water: '#cbdae2',
     transit: NAVY, rail: '#d43d33', walk5: '#1f7a4d', walk10: '#6aaf88', busRoute: '#7a8bb0', heritage: '#94836a',
     isochrone: 'walkers', roundel: 'solid', busLine: 'dashed', railLine: 'dotted',
@@ -371,6 +373,16 @@ const byId: Record<string, Template> = Object.fromEntries([
 ]);
 
 /** Heron for its site sheet and decks: its template, every ink in black or grey but the site's, and its mono categories. */
+/**
+ * Heron's bands of sun hours, none to five and over, for the heat map of its compliance views: exactly the colours
+ * its context sheet prints, cool to warm as the lorikeet runs (blues short of two hours, a green at two, warm from
+ * three, its red for the most sun). In order: the slate of its dimensions, the grey-blue of its winds, its schools'
+ * pale slate, the green of its ten-minute walk, its retail's sand, its commercial centres' tan and the site's red.
+ */
+export const HERON_SUN: string[] = (() => {
+  const h = byId.heron, fill = (id: string) => h.categories.find((c) => c.id === id)!.fill;
+  return [h.dimension, h.wind, fill('education'), h.walk10, fill('retail'), fill('commercial'), h.site];
+})();
 export const HERON_MONO: Template = {
   ...byId.heron,
   discInk: MONO_BLACK, discParkInk: MG[9],

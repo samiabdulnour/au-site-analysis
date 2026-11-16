@@ -138,17 +138,44 @@ for (const [style, mono] of [['canary', false], ['flamingo', true]] as const) {
   // (and a lot that is no park beside the scene's park, so a garden is drawn as well as a lawn)
   const white: AxoScene = { ...scene(), neighbours: scene().neighbours.map((nb) => ({ ...nb, fill: '#ffffff' })), lots: [...scene().lots, { rings: [box(-70, 0, 30, 30)], park: false }] };
   const svg = withTemplate(templateFor('slides', 'heron'), () => drawAxonometric(white, { x: 0, y: 0, w: 400, h: 280 }, 'tr'));
-  const faces = [...svg.matchAll(/<path d="M[^"]+Z" fill="(#[0-9a-f]{6})"[^>]*stroke="(#[0-9a-f]{6})" stroke-width="0\.12"/g)];
-  check('heron line model: the neighbours white in a black outline, flat', faces.length > 0 && faces.every((m) => m[1] === '#ffffff' && m[2] === '#1a1a1a'), [...new Set(faces.map((m) => `${m[1]}/${m[2]}`))].join(' '));
+  // Its buildings' outlines are sized on paper, millimetres whatever the drawing's scale: a width in the drawing times
+  // its scale is the width on paper. The neighbours' 0.2 mm, what is built 0.3 mm in a 0.55 mm outline, its storeys 0.08.
+  const scaleOf = (s: string) => Number(/scale\(([\d.]+)\)/.exec(s)![1]);
+  const onPaper = (s: string, w: string) => Math.round(Number(w) * scaleOf(s) * 100) / 100;
+  const faces = [...svg.matchAll(/<path d="M[^"]+Z" fill="(#[0-9a-f]{6})"[^>]*stroke="(#1a1a1a)" stroke-width="([\d.]+)" stroke-linejoin="round"\/>/g)].filter((m) => onPaper(svg, m[3]) === 0.2);
+  check('heron line model: the neighbours white in a black outline, flat, 0.2 mm on paper', faces.length > 0 && faces.every((m) => m[1] === '#ffffff') && !svg.includes('@@pw'), `${faces.length} faces, ${[...new Set(faces.map((m) => m[1]))].join(' ')}`);
+  // the outline holds its width on paper when the same town is drawn in a smaller frame, where a scaled stroke thins
+  const small = withTemplate(templateFor('slides', 'heron'), () => drawAxonometric(white, { x: 0, y: 0, w: 120, h: 84 }, 'tr'));
+  const smallFaces = [...small.matchAll(/<path d="M[^"]+Z" fill="#ffffff"[^>]*stroke="#1a1a1a" stroke-width="([\d.]+)" stroke-linejoin="round"\/>/g)].filter((m) => onPaper(small, m[1]) === 0.2);
+  check('heron line model: the outlines keep their width on paper at a smaller scale', scaleOf(small) < scaleOf(svg) * 0.5 && smallFaces.length > 0, `scale ${scaleOf(small)} of ${scaleOf(svg)}, ${smallFaces.length} faces`);
   check('heron line model: the trees white canopies in their contour, each picture once', svg.includes('<image id="axo-tr-t') && !/<circle cx="[^"]+" cy="[^"]+" r="[^"]+" fill="#ffffff" stroke="#1a1a1a" stroke-width="0\.1"\/>/.test(svg));
-  check('heron line model: the built in the heaviest outline', /stroke="#000000" stroke-width="0\.42"/.test(svg));
+  const heavy = /fill="none" stroke="#000000" stroke-width="([\d.]+)" stroke-linejoin="round"\/>/.exec(svg);
+  check('heron line model: the built in the heaviest outline, 0.55 mm on paper', !!heavy && onPaper(svg, heavy[1]) === 0.55, heavy?.[1]);
   // its walls plain: a massing is a volume, not a facade design. The storeys ruled across them, and no windows on
   // them, neither the other styles' pattern of panes nor any drawn; the same building in Kingfisher has its panes.
   const windowed: AxoScene = { ...white, built: [{ ...white.built[0], windows: true, storeys: [3, 6, 9, 12] }] };
   const plain = withTemplate(templateFor('slides', 'heron'), () => drawAxonometric(windowed, { x: 0, y: 0, w: 400, h: 280 }, 'tr'));
   const panes = withTemplate(templateFor('slides', 'kingfisher'), () => drawAxonometric(windowed, { x: 0, y: 0, w: 400, h: 280 }, 'tr'));
   check('heron line model: the walls plain, the storeys ruled, no windows', !plain.includes('fill="url(#axo-win-tr)"') && !plain.includes('data-windows')
-    && (plain.match(/<line [^>]*stroke="#1a1a1a" stroke-width="0\.06"\/>/g) ?? []).length >= 8 && panes.includes('fill="url(#axo-win-tr)"'));
+    && [...plain.matchAll(/<line [^>]*stroke="#1a1a1a" stroke-width="([\d.]+)"\/>/g)].filter((m) => onPaper(plain, m[1]) === 0.08).length >= 8 && panes.includes('fill="url(#axo-win-tr)"'));
+  // No grey fills: a building given a tone (a neighbour's band of storeys, what stands on the site) is white, its
+  // walls hatched as shade, lines clipped to each wall, the closer the darker its tone and closest on the wall turned
+  // from the light; its roof white, and a white building has none.
+  const toned: AxoScene = { ...white, built: [{ ...white.built[0], fill: '#b0b0b0' }], neighbours: [{ ...white.neighbours[0], fill: '#ededed' }, { ...white.neighbours[1], fill: '#ffffff' }] };
+  const tonedSvg = withTemplate(templateFor('slides', 'heron'), () => drawAxonometric(toned, { x: 0, y: 0, w: 400, h: 280 }, 'tr'));
+  const hatches = [...tonedSvg.matchAll(/<clipPath id="(axo-fh\d+-tr)"><path d="M([^"]+)Z" clip-rule="evenodd"\/><\/clipPath><g data-face-hatch clip-path="url\(#axo-fh\d+-tr\)"><path d="([^"]+)" fill="none" stroke="#1a1a1a" stroke-width="([\d.]+)"\/>/g)]
+    .map((m) => ({ corners: m[2].split('L').length, d: m[3], w: onPaper(tonedSvg, m[4]) }));
+  // the spacing of a hatch's lines, across them: its lines run at 45°, so two neighbours' starts differ by the spacing times √2 along x
+  const gap = (d: string) => { const xs = [...d.matchAll(/M([-\d.]+),/g)].map((m) => Number(m[1])); return xs.length > 1 ? (Math.abs(xs[1] - xs[0]) / Math.SQRT2) * scaleOf(tonedSvg) : Infinity; };
+  const ofBuilt = hatches.filter((h) => h.w === 0.09), ofNeighbour = hatches.filter((h) => h.w === 0.06);
+  check('heron line model: a toned building is white, its walls hatched (a wall has four corners), its roof not; a white one has none',
+    ofBuilt.length >= 1 && ofNeighbour.length >= 1 && hatches.length === ofBuilt.length + ofNeighbour.length && hatches.every((h) => h.corners === 4) && !/fill="#(b0b0b0|ededed)"/.test(tonedSvg), `${ofBuilt.length} + ${ofNeighbour.length} of ${hatches.length}`);
+  check('heron line model: the darker the tone the closer the hatch, what is built in the firmer line',
+    Math.min(...ofBuilt.map((h) => gap(h.d))) < Math.min(...ofNeighbour.map((h) => gap(h.d))), `${ofBuilt.map((h) => gap(h.d).toFixed(2)).join(' ')} | ${ofNeighbour.map((h) => gap(h.d).toFixed(2)).join(' ')}`);
+  // as shade: no wall closer than the tone's own spacing (0.6 mm for the darkest), and none over 1.9 times it
+  check('heron line model: the hatch opens on a wall turned to the light, as shade', ofBuilt.every((h) => gap(h.d) >= 0.6 - 0.02 && gap(h.d) <= 0.6 * 1.9 + 0.02), ofBuilt.map((h) => gap(h.d).toFixed(2)).join(' '));
+  // the other styles fill their tones as before
+  check('heron line model: the hatch is Heron\'s alone', !withTemplate(templateFor('slides', 'kingfisher'), () => drawAxonometric(toned, { x: 0, y: 0, w: 400, h: 280 }, 'tr')).includes('data-face-hatch'));
   // its massing black and white, with no colour at all: the scene as its callers give it (a red site, lilac built,
   // peach neighbours, a plane over the site) comes out in greys alone, the site a black dash-dot boundary; the same
   // scene in Kingfisher keeps its colours, so the check can fail

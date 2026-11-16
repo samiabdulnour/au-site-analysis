@@ -15,7 +15,7 @@ import type { GeoJSONFeature } from '../lib/arcgis.js';
 import { tpl, withTemplate, templateFor, deckLook, tint, shadeHex, inkFor, vivid, greyOf, type DeckLook } from './template.js';
 import { INK, aerialGreenFill, veg1750Fills, VEG_CLASSES_MAX, fillShape, swatchOf, barOf, categoryFill, heatFills, paletteRamp, styleRamp, terrainRamp, stripOf, HEIGHT_BANDS, heightBandOf, massingInks, heightRamp, zHead, zBars, zFigures, zCircles, zSpans, zPairs, zLine, niceAxis, z6, zSvg, Z_W, Z_TRACK, type Fill } from './atlasKit.js';
 import { esc } from './chrome.js';
-import { drawAxonometric, shade, type AxoScene, type Prism } from './axonometric.js';
+import { drawAxonometric, shade, lineHatchPitch, type AxoScene, type Prism } from './axonometric.js';
 import type { BookletSpreads } from './booklet.js';
 import { estimateKerbs } from '../lib/kerbs.js';
 import {
@@ -2700,17 +2700,35 @@ export function formAtlas(b: SlidesBundle, planning: PlanningFacts, opts: { clea
     f.onSite.length ? `On the site today ${f.onSite.length === 1 ? 'stands a building' : `stand ${['', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'][f.onSite.length] ?? f.onSite.length} buildings`} of ${f.onSite.every((x) => !x.storeys) ? 'no recorded height' : f.onSite.map((x) => (x.storeys ? `${x.storeys} ${x.storeys === 1 ? 'storey' : 'storeys'}` : 'no recorded height')).join(' and ')}.` : 'Nothing stands on the site today.',
   ].filter(Boolean).join(' ');
   const src = (f.source === 'overture' ? `Overture Maps Foundation buildings${f.release ? ` (release ${f.release})` : ''}, footprints and heights from OpenStreetMap, Microsoft, Esri Community Maps and Google Open Buildings` : f.source === 'osm' ? 'OpenStreetMap buildings' : 'no building source') + meshCredit(f.mesh);
-  const sources = `Sources: ${src}; heights measured, or ${METRES_PER_STOREY} m a storey, else the storeys of a determined application on the lot; every building in the colour of its storeys as the height of buildings page keys them (${HEIGHT_BANDS.map((bd) => bd.label).join(' · ')}), dashed where none is recorded; what stands on the site in the site's ink; streets from NSW Spatial Services, the kerbs worked out from the cadastre; parks from the open-space zones; the trees read off NSW Imagery as crowns, their size indicative; the cars, vans, trucks, buses, cyclists and walkers there for scale, not counted${busRoutes ? ', the buses on the bus routes OpenStreetMap maps' : ''}. Drawn from the ${bearingName(camBearing)}, looking down 35°. Retrieved ${b.buildings.fetchedAt.slice(0, 10)}.`;
+  const sources = `Sources: ${src}; heights measured, or ${METRES_PER_STOREY} m a storey, else the storeys of a determined application on the lot; ${deckLook().id === 'heron' ? 'every building white in its outline, its walls hatched as shade, the closer the more its storeys' : 'every building in the colour of its storeys as the height of buildings page keys them'} (${HEIGHT_BANDS.map((bd) => bd.label).join(' · ')}), dashed where none is recorded; what stands on the site ${deckLook().id === 'heron' ? 'closely hatched in a heavy outline' : 'in the site\'s ink'}; streets from NSW Spatial Services, the kerbs worked out from the cadastre; parks from the open-space zones; the trees read off NSW Imagery as crowns, their size indicative; the cars, vans, trucks, buses, cyclists and walkers there for scale, not counted${busRoutes ? ', the buses on the bus routes OpenStreetMap maps' : ''}. Drawn from the ${bearingName(camBearing)}, looking down 35°. Retrieved ${b.buildings.fetchedAt.slice(0, 10)}.`;
   // The key, set as every page's key is (Z. 2026-11): a hairline over each row, the symbol at the left, 6 pt caps beside
   // it, two columns; on a white ground over the drawing's bottom-right corner, over the sources' second column. Each
   // symbol a little block in its storeys' colour, lit as the drawing lights its buildings; the dashed block of no
   // recorded height; the site's.
   const lineModel = deckLook().id === 'heron';
-  const block = (fill: string, edge: string, dashed = false) => {
+  let keyHatch = 0;
+  const block = (fill: string, edge: string, dashed = false, /** in the heavy outline of what is built on the site (the line model) */ heavy = false) => {
     const x = 0.9, y = 3.3;
-    // (Heron's line model: no shade on a face, as the drawing has none)
-    const lit = lineModel ? 1 : M.gloss ? 0.95 : 0.85, side = lineModel ? 1 : M.gloss ? 0.9 : 0.68, roof = lineModel ? 1 : M.gloss ? 1.3 : 1.12, dash = dashed ? ' stroke-dasharray="0.5,0.35"' : '';
+    const dash = dashed ? ' stroke-dasharray="0.5,0.35"' : '';
     const pt = (pts: number[][]) => pts.map(([px, py]) => `${(x + px).toFixed(2)},${(y + py).toFixed(2)}`).join(' ');
+    if (lineModel) {
+      // Heron's line model: the block white in its outline; a tone is the hatch the drawing gives its walls, as
+      // shade: close on the front, open on the side turned to the light, the roof white (the swatch prints 1.54
+      // times its box, so the drawing's spacing is divided by it)
+      const front = [[0, 0], [2.2, 0], [2.2, -2.2], [0, -2.2]], side = [[2.2, 0], [3.2, -0.6], [3.2, -2.8], [2.2, -2.2]], roof = [[0, -2.2], [2.2, -2.2], [3.2, -2.8], [1, -2.8]];
+      const ew = heavy ? 0.3 : 0.13;
+      const face = (pts: number[][]) => `<polygon points="${pt(pts)}" fill="#ffffff" stroke="${edge}" stroke-width="${ew}" stroke-linejoin="round"${dash}/>`;
+      const pitch = lineHatchPitch(greyOf(fill));
+      const hatchOn = (pts: number[][], mm: number) => {
+        const step = (mm / 1.54) * Math.SQRT2, cid = `bfk${keyHatch++}`, d: string[] = [];
+        const xs = pts.map((q) => x + q[0]), ys = pts.map((q) => y + q[1]), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+        for (let c = Math.ceil((x0 + y0) / step) * step; c <= x1 + y1; c += step) d.push(`M${(c - y1).toFixed(2)},${y1.toFixed(2)}L${(c - y0).toFixed(2)},${y0.toFixed(2)}`);
+        return `<clipPath id="${cid}"><polygon points="${pt(pts)}"/></clipPath><g clip-path="url(#${cid})"><path d="${d.join('')}" fill="none" stroke="#1a1a1a" stroke-width="0.05"/></g>` +
+          `<polygon points="${pt(pts)}" fill="none" stroke="${edge}" stroke-width="${ew}" stroke-linejoin="round"${dash}/>`;
+      };
+      return face(front) + face(side) + face(roof) + (pitch ? hatchOn(front, pitch) + hatchOn(side, pitch * 1.9) : '');
+    }
+    const lit = M.gloss ? 0.95 : 0.85, side = M.gloss ? 0.9 : 0.68, roof = M.gloss ? 1.3 : 1.12;
     return `<polygon points="${pt([[0, 0], [2.2, 0], [2.2, -2.2], [0, -2.2]])}" fill="${shade(fill, lit)}" stroke="${edge}" stroke-width="0.1"${dash}/>` +
       `<polygon points="${pt([[2.2, 0], [3.2, -0.6], [3.2, -2.8], [2.2, -2.2]])}" fill="${shade(fill, side)}" stroke="${edge}" stroke-width="0.1"${dash}/>` +
       `<polygon points="${pt([[0, -2.2], [2.2, -2.2], [3.2, -2.8], [1, -2.8]])}" fill="${shade(fill, roof)}" stroke="${edge}" stroke-width="0.1"${dash}/>`;
@@ -2718,8 +2736,8 @@ export function formAtlas(b: SlidesBundle, planning: PlanningFacts, opts: { clea
   const keyEntries: LegendEntry[] = [
     ...HEIGHT_BANDS.map((bd, i) => ({ swatch: block(M.bands[i], lineModel ? '#1a1a1a' : shade(M.bands[i], M.gloss ? 0.78 : 0.55)), label: i === 0 ? bd.label : i === HEIGHT_BANDS.length - 1 ? '16 storeys and more' : `${bd.label} storeys` })),
     { swatch: block(M.noHeight, lineModel ? '#1a1a1a' : shade(M.noHeight, 0.55), true), label: 'No height recorded, dashed' },
-    // (Heron's line model has no colour: what stands on the site is the grey the drawing gives it, in its heavy outline)
-    { swatch: block(lineModel ? greyOf(tint(t.site, 0.55)) : tint(t.site, 0.55), '#1c1c1c'), label: 'What stands on the site today' },
+    // (Heron's line model has no colour and no grey fill: what stands on the site is closely hatched, as the drawing hatches it)
+    { swatch: block(tint(t.site, 0.55), '#1c1c1c', false, true), label: 'What stands on the site today' },
   ];
   const figureHtml = `<div class="form3d">
   <div class="abs" style="left:0;top:0"><svg width="${SHEET_W}mm" height="${SHEET_H}mm" viewBox="0 0 ${SHEET_W} ${SHEET_H}" xmlns="http://www.w3.org/2000/svg" style="display:block" font-family="Arial, 'Liberation Sans', sans-serif">${drawAxonometric(scene, { x: 0, y: TOP, w: SHEET_W, h: SHEET_H - TOP - FOOT, clear: opts.clearFold ? { x: FOLD, margin: BOOKLET_FOLD_CLEAR } : undefined }, 'form09b')}</svg></div>
@@ -3728,10 +3746,10 @@ export function topographyAtlas(b0: SlidesBundle): Slide {
   const n = Math.min(7, bands), pick = (i: number) => bandCols[Math.round((i * (bands - 1)) / Math.max(1, n - 1))];
   const lineStrip = Array.from({ length: n }, (_, i) => `<line x1="${((i * 5) / n).toFixed(2)}" y1="1.2" x2="${(((i + 1) * 5) / n).toFixed(2)}" y2="1.2" stroke="${pick(i)}" stroke-width="0.45"/><line x1="${((i * 5) / n).toFixed(2)}" y1="2.5" x2="${(((i + 1) * 5) / n).toFixed(2)}" y2="2.5" stroke="${pick(i)}" stroke-width="0.2"/>`).join('');
   const legend: LegendEntry[] = tone ? [
-    { swatch: stripOf(bandKey), label: `The ground in bands of ${STEP} m from RL ${lo} to RL ${hi}, ${look.id === 'heron' ? 'blue on the low ground to red on the high' : 'blue on the low ground through green to red on the high'}; hillshade from the north-west` },
+    { swatch: stripOf(bandKey), label: `The ground in bands of ${STEP} m from RL ${lo} to RL ${hi}, ${look.id === 'heron' ? 'light on the low ground to dark on the high' : 'blue on the low ground through green to red on the high'}; hillshade from the north-west` },
     { swatch: `<line x1="0" y1="2.6" x2="5" y2="2.6" stroke="${CONTOUR_INK}" stroke-width="0.15"/><line x1="0" y1="1.1" x2="5" y2="1.1" stroke="${CONTOUR_INK}" stroke-width="0.4"/>`, label: `Contours every ${interval} m, every ${indexEvery} m heavier and numbered along their run` },
   ] : [
-    { swatch: lineStrip, label: `Contours every ${interval} m, coloured up the slope from RL ${lo} to RL ${hi}, blue on the low ground through green to red on the high; every ${indexEvery} m heavier and numbered along their run` },
+    { swatch: lineStrip, label: `Contours every ${interval} m, coloured up the slope from RL ${lo} to RL ${hi}, ${look.id === 'heron' ? 'light on the low ground to dark on the high' : 'blue on the low ground through green to red on the high'}; every ${indexEvery} m heavier and numbered along their run` },
     { swatch: `<rect x="0" y="0.5" width="5" height="2.6" fill="${t.water}" stroke="${WATER_INK}" stroke-width="0.25"/>`, label: 'Water, named where the map holds the name' },
     { swatch: `<path d="M1.3,0.4L2.7,3H-0.1Z" fill="#000000"/><path d="M3.9,3.2L5.3,0.6H2.5Z" fill="#ffffff" stroke="#000000" stroke-width="0.25"/>`, label: 'The high and the low point of the page, RL in m AHD' },
     { swatch: `<path d="M0,1.8H5" stroke="#000000" stroke-width="0.25" stroke-dasharray="2.4 0.8 0.4 0.8"/>`, label: 'Section lines: A–A′ down the fall, B–B′ across it' },

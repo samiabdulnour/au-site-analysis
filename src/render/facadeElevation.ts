@@ -13,7 +13,7 @@
 // and its warm colours, where ADG 4A-1's hours begin (sunBands).
 
 import { esc } from './chrome.js';
-import { deckLook, luminance } from './template.js';
+import { deckLook, luminance, HERON_SUN } from './template.js';
 import type { FacadeFace } from '../lib/solarAccess.js';
 import type { XY } from '../lib/yield.js';
 
@@ -35,10 +35,11 @@ export interface SunBand { upTo: number; fill: string; ink: string; label: strin
 export const LORIKEET = ['#141B70', '#3440BC', '#8590EE', '#4F9A1E', '#FFE04A', '#FFA01E', '#FF5A3D'];
 const SUN_STYLE: Record<string, string[]> = {
   flamingo: ['#18256E', '#3554C0', '#8DA2F0', '#12946A', '#FFE55A', '#FFA126', '#FF5A3D'],
-  // Heron in black and white and one colour: short of three hours in greys, darkest for none; from three hours its
-  // accent, lightest at three to the full colour at five and over; each band apart from the next (RGB distance > 40).
-  // They colour the walls of its compliance views, the one kind of 3D view of Heron's that keeps its colour.
-  heron: ['#3a3a3a', '#646464', '#8f8f8f', '#bcbcbc', '#ebc4ba', '#d68a7a', '#c0533f'],
+  // Heron's are exactly the colours its context sheet prints (HERON_SUN, render/template.ts), cool to warm as the
+  // lorikeet runs: slates short of two hours, its walks' green at two, sand and tan from three, the site's red for
+  // the most sun; each band apart from the next (RGB distance > 40). They colour the walls of its compliance views,
+  // the one kind of 3D view of Heron's that keeps its colour.
+  heron: HERON_SUN,
   kingfisher: ['#15306E', '#2F62C4', '#86A6EA', '#2E8F6A', '#FFE466', '#FFA23A', '#FF5A3D'],
   canary: ['#0F2A9C', '#2B5FE0', '#7FA8FF', '#2FA300', '#FFE51A', '#FFA200', '#FF5A3D'],
 };
