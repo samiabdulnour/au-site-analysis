@@ -5,10 +5,12 @@
  "site": {
   "storeys": 14,
   "units": 110,
+  "fsr": 7.5,
+  "_fsr": "Calculated off the plans of 10 November, gross floor area as the LEP counts it (inside the external walls; lifts, stairs, plant and balconies out). The tower, levels 3 to 13: the enclosed outline 41.6 × 20.5 m less its two slots and two corner cut-outs is 793 m², less lifts, stairs and risers (30 m²) and the external walls' thickness (42 m²), about 720 m² a floor, 7,930 m² over 11 floors. Levels 1 and 2: enclosed 47.5 × 20.5 m less the slots is 932 m², less core and walls about 860 m² a floor, 1,720 m². The ground floor is taken at 60 % of the lot, 840 m², its plan not seen. 10,490 m² over the 1,396 m² site is 7.5:1. The plans' own GFA schedule should replace it.",
   "gfaM2": null,
   "label": "our site, SSD proposal",
   "tower": {
-   "_": "The SSDA plans as marked up on 10 November 2026 (Fuse Architects, 2613; sheets 105 and 108): the ground floor over the lot; levels 1 and 2 held 3 m off Crown Lane (6 m from its middle), 11 apartments a floor; the tower from level 3 up 6 m off Crown Lane (9 m from its middle), 3 m off Riley Street and Stanley Lane and 3 m off 66-68 Riley Street, stepping to 4.5 m there from level 4 and 6 m from level 8 (the 3, 4.5 and 6 m lines the plan marks, the ADG's to a blank wall), 8 apartments a floor. `podium` counts the storeys under the tower, the ground floor with them; `podiumSetbacks` holds the podium's upper levels off a street; `steps` push the tower further back from a storey up (storeys counted from the ground floor as 1); `levelZero` names the levels as the plans do, GF then L1. `units` lays the apartments out face by face, east and west from the north end and south from the east end, each as [name, width in metres, corner flag where it also has windows or a balcony on that end wall]; a null name is a stretch without an apartment (the corridor's window). Levels 3 and 4 are taken as the tower's plan, which the section drawn on sheet 105 gives the same profile.",
+   "_": "The SSDA plans as marked up on 10 November 2026 (Fuse Architects, 2613; sheets 105 and 108): the ground floor over the lot; levels 1 and 2 held 3 m off Crown Lane (6 m from its middle), 11 apartments a floor; the tower one footprint from level 3 to the top, 6 m off Crown Lane (9 m from its middle), 3 m off Riley Street, Stanley Lane and 66-68 Riley Street, with a slot cut into each long face where the corridor ends, 8 apartments a floor. `podium` counts the storeys under the tower, the ground floor with them; `podiumSetbacks` holds the podium's upper levels off a street; `steps`, where a tower has them, push it further back from a storey up (storeys counted from the ground floor as 1); `levelZero` names the levels as the plans do, GF then L1. `units` lays the apartments out face by face, east and west from the north end and south from the east end, each as [name, width in metres, corner flag where it also has windows or a balcony on that end wall]; a null name is a stretch without an apartment, and with a third figure a slot that many metres deep cut into the tower there.",
    "podium": 3,
    "homesFrom": 2,
    "levelZero": true,
@@ -21,20 +23,6 @@
     "CROWN LANE": 6,
     "66-68 RILEY STREET": 3
    },
-   "steps": [
-    {
-     "from": 5,
-     "setbacks": {
-      "66-68 RILEY STREET": 4.5
-     }
-    },
-    {
-     "from": 9,
-     "setbacks": {
-      "66-68 RILEY STREET": 6
-     }
-    }
-   ],
    "units": {
     "tower": {
      "east": [
@@ -45,7 +33,8 @@
       ],
       [
        null,
-       3.25
+       3.25,
+       6.4
       ],
       [
        "E2 2B",
@@ -69,7 +58,8 @@
       ],
       [
        null,
-       2.4
+       2.4,
+       8.9
       ],
       [
        "W3 1B",
@@ -767,14 +757,14 @@
   {
    "title": "Everything develops at our density",
    "horizon": "Beyond the plan, what the Commission asks us to assume",
-   "lead": "Every site round us develops to our density, {site.fsr}:1 as the plans of 10 November draw our building, the block across Riley Street with them: the blocks north of us in full, 66-68 Riley St with them, the Crown Street site south of the lane lot, and 91-109 Riley St opposite. Each stands on a three-storey podium and rises until it reaches that density, its tower's length trimmed to land on it, the ADG's 12 m off its neighbouring lots and, measured to the middle of the road, 12 m from Riley Street's and 9 m from Crown Lane's. Our own tower stands 9 m from the lane's middle from level 3 up, levels 1 and 2 at 6 m, and steps back from our northern boundary: 3 m, then 4.5 m from level 4 and 6 m from level 8 (the dashed lines).",
+   "lead": "Every site round us develops to our density, {site.fsr}:1 as the plans of 10 November draw our building, the block across Riley Street with them: the blocks north of us in full, 66-68 Riley St with them, the Crown Street site south of the lane lot, and 91-107 Riley St opposite; 109 Riley St, the former hotel on the Stanley Lane corner, is a heritage item (I436, Sydney LEP 2012) and stays, as every hatched lot does. Each stands on a three-storey podium and rises until it reaches that density, its tower's length trimmed to land on it, the ADG's 12 m off its neighbouring lots and, measured to the middle of the road, 12 m from Riley Street's and 9 m from Crown Lane's. Our own tower is one footprint from level 3 to the top: 9 m from the lane's middle, 3 m off Riley Street, Stanley Lane and our northern boundary; levels 1 and 2 stand 6 m from the lane's middle.",
    "notes": [
-    "Our building as the plans of 10 November have it: the ground floor over the lot, levels 1 and 2 held 3 m off Crown Lane with 11 apartments a floor, and the tower from level 3 up, {site.plate} at its lowest level, {site.east} m off the lane, 3 m off Riley Street and Stanley Lane, and 3, 4.5 and 6 m off the northern boundary, 8 apartments a floor.",
+    "Our building as the plans of 10 November have it: the ground floor over the lot, levels 1 and 2 held 3 m off Crown Lane with 11 apartments a floor, and the tower from level 3 to the top on one footprint, {site.plate}, {site.east} m off the lane, 3 m off Riley Street, Stanley Lane and the northern boundary, 8 apartments a floor.",
     "54-68 Riley St with 1 Crown Lane: {A.area} m², {A.plate}, {A.storeys} storeys at {A.fsr}; its south end {A.sep} m from our tower.",
     "Crown St north, 89 to 105 Crown St with 4 and 10 Crown Lane: {B.area} m², {B.plate}, {B.storeys} storeys.",
     "107-129 Crown St: {D.area} m², {D.plate} over a podium 9 m from the lane's middle, {D.storeys} storeys; {D.sep} m from our tower.",
-    "91-109 Riley St, across Riley Street: {E.area} m², {E.plate} over a podium, 3 m off Riley Street, {E.storeys} storeys; {E.sep} m from our tower, half each side of the road's middle.",
-    "77 Riley St, 111-113 Riley St and the Yurong Street lots behind stand as they are."
+    "91-107 Riley St, across Riley Street: {E.area} m², {E.plate} over a podium, {E.storeys} storeys; {E.sep} m from our tower, half each side of the road's middle. 109 Riley St south of it is heritage item I436, the former hotel 'Watters Gallery', and stays.",
+    "77 Riley St, 109 to 113 Riley St and the Yurong Street lots behind stand as they are."
    ],
    "retained": [],
    "parcels": [
@@ -877,12 +867,11 @@
     },
     {
      "key": "E",
-     "name": "91-109 Riley St, across Riley Street",
+     "name": "91-107 Riley St, across Riley Street",
      "addresses": [
       "91-93 RILEY STREET",
       "95-97 RILEY STREET",
-      "99-107 RILEY STREET",
-      "109 RILEY STREET"
+      "99-107 RILEY STREET"
      ],
      "buildings": [
       {

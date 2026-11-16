@@ -11,6 +11,7 @@
 //   npm run future -- out/capacity/riley --scenarios examples/capacity_study/70-76-riley-street-darlinghurst.future.json
 //   npm run future -- out/capacity/riley --scenarios … --redraw      (draw again from what was fetched)
 //   npm run future -- out/capacity/riley --scenarios … --redraw --only last   (one scenario's sheets alone: its number, or `last`)
+//   npm run future -- out/capacity/riley --scenarios … --redraw --heritage    (read the LEP's heritage items over an earlier fetch)
 //   npm run future -- out/capacity/riley --scenarios … --redraw --sun-context   (read the 300 m the sun reaches)
 //
 // Over the context plan's reading (analysis.json: every property's polygon,
@@ -32,7 +33,7 @@ import { promisify } from 'node:util';
 import { PDFDocument } from 'pdf-lib';
 import { fetchAerial } from '../src/fetch/imagery.js';
 import { fetchBuildings } from '../src/fetch/buildings.js';
-import { fetchFloorSpaceRatio, fetchHeightOfBuilding } from '../src/fetch/nsw.js';
+import { fetchFloorSpaceRatio, fetchHeightOfBuilding, fetchHeritage } from '../src/fetch/nsw.js';
 import { meshSurfaceOver } from '../src/fetch/meshHeights.js';
 import { cellsIn, footprintHeight, simplifyRing, toLonLat, toXY, traceOutlines, type XY } from '../src/lib/meshHeights.js';
 import { mercatorToLonLat, type Extent } from '../src/lib/geo.js';
@@ -63,6 +64,29 @@ const TIER_M = 3;
 
 if (!redraw) await fetchStudy();
 if (!redraw || args.includes('--sun-context')) await fetchSunContext();
+if (!redraw || args.includes('--sun-context') || args.includes('--heritage')) await fetchHeritageItems();
+
+/** The heritage items of the LEP round the site, off the planning portal's heritage map: each with its number, name
+ *  and significance and its mapped outline, so a sheet shows what cannot be redeveloped and a scenario that builds on
+ *  one is caught. `--heritage` reads them over an earlier fetch. */
+async function fetchHeritageItems(): Promise<void> {
+  const a = JSON.parse(await readFile(join(out, 'analysis.json'), 'utf8'));
+  const f = JSON.parse(await readFile(join(out, 'future.json'), 'utf8'));
+  const k: number = a.k;
+  const site: any = Object.values(a.props).find((p: any) => p.isSite);
+  const [cx, cy] = site.centroid;
+  const win: Extent = { xmin: cx - SUN_REACH_M * k, xmax: cx + SUN_REACH_M * k, ymin: cy - SUN_REACH_M * k, ymax: cy + SUN_REACH_M * k };
+  try {
+    const fc: any = await fetchHeritage(win);
+    const ringsOf = (g: any): number[][][] => (!g ? [] : g.type === 'Polygon' ? g.coordinates : g.type === 'MultiPolygon' ? g.coordinates.flat() : []);
+    f.heritage = (fc.features ?? []).filter((h: any) => String(h.properties?.LAY_CLASS ?? '').startsWith('Item'))
+      .map((h: any) => ({ id: h.properties?.H_ID ?? null, name: h.properties?.H_NAME ?? null, significance: h.properties?.SIG ?? null, rings: ringsOf(h.geometry) }))
+      .filter((h: any) => h.rings.length);
+    f.heritageFetchedAt = new Date().toISOString();
+    await writeFile(join(out, 'future.json'), JSON.stringify(f));
+    log(`  heritage: ${f.heritage.length} items of the LEP within ${SUN_REACH_M} m`);
+  } catch (e: any) { log(`  WARN the heritage items: ${e?.message ?? e}`); }
+}
 
 
 async function fetchSunContext(): Promise<void> {

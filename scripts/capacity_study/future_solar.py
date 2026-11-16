@@ -195,7 +195,16 @@ def unit_test(pairs, units, lit_by_panel=None, floor0=0):
             continue
         u, v = p.cell_uv[:, 0], p.cell_uv[:, 1]
         xy = np.asarray(p.origin)[:2] + np.outer(u, np.asarray(p.axis_u)[:2])
-        faces.setdefault(d, []).append(dict(xy=xy, v=v, mins=mins, lit=lit_by_panel.get(id(p)) if lit_by_panel else None))
+        faces.setdefault(d, []).append(dict(xy=xy, v=v, mins=mins, lit=lit_by_panel.get(id(p)) if lit_by_panel else None,
+                                            n=n[:2], long=float(u.max())))
+    # a side's apartments look out of its outer wall: a wall set back inside a slot the plan cuts (the corridor's end,
+    # open to the air) faces the same way and carries none. Outer is measured square to the side's longest stretch,
+    # since a lot's side is several cadastral edges that do not face quite the same way
+    for d, fs in list(faces.items()):
+        ref = max(fs, key=lambda f: f['long'])['n']
+        for f in fs:
+            f['out'] = float(f['xy'].mean(axis=0) @ ref)
+        faces[d] = [f for f in fs if f['out'] >= max(g['out'] for g in fs) - 1.5]
     if not faces:
         return None
     # the coordinate along each side of the building, from its north end (east and west) or its east end (north and

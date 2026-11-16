@@ -1990,9 +1990,13 @@ street, and each entry of `steps` pushes the tower further back from a
 storey up (`{"from": 9, "setbacks": {"66-68 RILEY STREET": 6}}`, storeys
 counted from the ground floor as 1; `levelZero` names them as the plans do,
 GF then L1). Riley Street's is the plans as marked up on 10 November 2026:
-the ground floor over the lot, levels 1 and 2 held 3 m off Crown Lane, the
-tower from level 3 up 6 m off it and 3 m off the northern boundary,
-stepping to 4.5 m and 6 m. The massing, the sun study and the floor space
+the ground floor over the lot, levels 1 and 2 held 3 m off Crown Lane, and
+the tower one footprint from level 3 to the top, 6 m off the lane and 3 m
+off the northern boundary, a slot cut into each long face where the
+corridor ends (`[null, width, depth]` among a face's apartments). `site.fsr`
+states the site's density where it is calculated off the plans (7.5:1, the
+sum set out beside it in the file) rather than taken as 75 % of the
+envelope; the neighbours' parity reads it. The massing, the sun study and the floor space
 read every tier; the separation is read band by band, each from the tier
 that stands at that band's levels, and the row is the band that reads
 worst. From the setbacks the sheet reads the
@@ -2041,6 +2045,11 @@ it, or `site.fsr` where the file states one), the podium's floor space
 counted and a single tower's length trimmed about its middle so the floor
 space lands on that density. Riley Street's last scenario sets every site
 round the site, the block across Riley Street with them, at our density.
+The LEP's heritage items come off the planning portal's heritage map with
+their numbers (`--heritage` reads them over an earlier fetch): the option
+sheets hatch them, name the ones beside a site, and a scenario that puts a
+development site on one is warned on its sheet and on the console, as
+Riley Street's was for 109 Riley Street, item I436.
 The option sheets' plans dimension architecturally (a thin line, oblique
 ticks, the figure along the line), write each building's FSR inside it,
 and draw a typical floor in every tower: ours as the plans divide it

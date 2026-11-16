@@ -5,10 +5,12 @@
  "site": {
   "storeys": 14,
   "units": 110,
+  "fsr": 7.5,
+  "_fsr": "Calculated off the plans of 10 November, gross floor area as the LEP counts it (inside the external walls; lifts, stairs, plant and balconies out). The tower, levels 3 to 13: the enclosed outline 41.6 × 20.5 m less its two slots and two corner cut-outs is 793 m², less lifts, stairs and risers (30 m²) and the external walls' thickness (42 m²), about 720 m² a floor, 7,930 m² over 11 floors. Levels 1 and 2: enclosed 47.5 × 20.5 m less the slots is 932 m², less core and walls about 860 m² a floor, 1,720 m². The ground floor is taken at 60 % of the lot, 840 m², its plan not seen. 10,490 m² over the 1,396 m² site is 7.5:1. The plans' own GFA schedule should replace it.",
   "gfaM2": null,
   "label": "our site, SSD proposal",
   "tower": {
-   "_": "The SSDA plans as marked up on 10 November 2026 (Fuse Architects, 2613; sheets 105 and 108): the ground floor over the lot; levels 1 and 2 held 3 m off Crown Lane (6 m from its middle), 11 apartments a floor; the tower from level 3 up 6 m off Crown Lane (9 m from its middle), 3 m off Riley Street and Stanley Lane and 3 m off 66-68 Riley Street, stepping to 4.5 m there from level 4 and 6 m from level 8 (the 3, 4.5 and 6 m lines the plan marks, the ADG's to a blank wall), 8 apartments a floor. `podium` counts the storeys under the tower, the ground floor with them; `podiumSetbacks` holds the podium's upper levels off a street; `steps` push the tower further back from a storey up (storeys counted from the ground floor as 1); `levelZero` names the levels as the plans do, GF then L1. `units` lays the apartments out face by face, east and west from the north end and south from the east end, each as [name, width in metres, corner flag where it also has windows or a balcony on that end wall]; a null name is a stretch without an apartment (the corridor's window). Levels 3 and 4 are taken as the tower's plan, which the section drawn on sheet 105 gives the same profile.",
+   "_": "The SSDA plans as marked up on 10 November 2026 (Fuse Architects, 2613; sheets 105 and 108): the ground floor over the lot; levels 1 and 2 held 3 m off Crown Lane (6 m from its middle), 11 apartments a floor; the tower one footprint from level 3 to the top, 6 m off Crown Lane (9 m from its middle), 3 m off Riley Street, Stanley Lane and 66-68 Riley Street, with a slot cut into each long face where the corridor ends, 8 apartments a floor. `podium` counts the storeys under the tower, the ground floor with them; `podiumSetbacks` holds the podium's upper levels off a street; `steps`, where a tower has them, push it further back from a storey up (storeys counted from the ground floor as 1); `levelZero` names the levels as the plans do, GF then L1. `units` lays the apartments out face by face, east and west from the north end and south from the east end, each as [name, width in metres, corner flag where it also has windows or a balcony on that end wall]; a null name is a stretch without an apartment, and with a third figure a slot that many metres deep cut into the tower there.",
    "podium": 3,
    "homesFrom": 2,
    "levelZero": true,
@@ -21,20 +23,6 @@
     "CROWN LANE": 6,
     "66-68 RILEY STREET": 3
    },
-   "steps": [
-    {
-     "from": 5,
-     "setbacks": {
-      "66-68 RILEY STREET": 4.5
-     }
-    },
-    {
-     "from": 9,
-     "setbacks": {
-      "66-68 RILEY STREET": 6
-     }
-    }
-   ],
    "units": {
     "tower": {
      "east": [
@@ -45,7 +33,8 @@
       ],
       [
        null,
-       3.25
+       3.25,
+       6.4
       ],
       [
        "E2 2B",
@@ -69,7 +58,8 @@
       ],
       [
        null,
-       2.4
+       2.4,
+       8.9
       ],
       [
        "W3 1B",

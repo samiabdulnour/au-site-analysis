@@ -325,6 +325,30 @@ def existing_height(r):
 
 
 BUILT = set()
+HERITAGE = None
+HERITAGE_HITS = {}                                                  # scenario title -> [(parcel key, address, item)]
+
+
+def heritage_items():
+    """The LEP's heritage items round the site: [(polygon, number, name)], off the planning portal's heritage map as
+    the runner fetched it (future.json), else as the capacity study kept it (analysis.json, names alone)."""
+    global HERITAGE
+    if HERITAGE is None:
+        HERITAGE = []
+        for h, ll in [(h, True) for h in fu.get('heritage') or []] or [(h, False) for h in a.get('heritageItems') or []]:
+            try:
+                g = poly_of(h['rings'], ll=ll).buffer(0)
+            except Exception:
+                continue
+            if not g.is_empty:
+                HERITAGE.append((g, h.get('id'), h.get('name')))
+    return HERITAGE
+
+
+def heritage_on(poly):
+    """The heritage items a lot stands on: those whose mapped outline covers a third of it or more."""
+    return [(hid, name) for g, hid, name in heritage_items() if g.intersection(poly).area >= 0.34 * poly.area]
+
 
 
 def site_yield():
@@ -333,6 +357,9 @@ def site_yield():
     scenario moves it."""
     gba = tiers_gba(SITE_TIERS)
     units = SITE_UNITS if abs(gba - BASE_GBA) < 1 else round(SITE_UNITS * gba / BASE_GBA / 5) * 5
+    if S.get('fsr'):                                                  # our density as the file states it, calculated off the plans
+        fsr = S['fsr'] * gba / BASE_GBA                               # and scaled where a scenario moves our tower
+        return fsr, fsr * SITE_AREA, units
     return EFFICIENCY * gba / SITE_AREA, EFFICIENCY * gba, units
 
 
@@ -371,7 +398,7 @@ def trim_to(poly, want):
 
 def our_fsr():
     """Our density: the file's `site.fsr` where it states one, else off our massing as the scenario draws it."""
-    return S.get('fsr') or (site_yield()[0] if TOWER else SITE_GFA / SITE_AREA)
+    return site_yield()[0] if TOWER else (S.get('fsr') or SITE_GFA / SITE_AREA)
 
 
 AXES = None
@@ -552,37 +579,27 @@ def unit_spans(lst, face_len):
 
 def our_units_scheme(k):
     """Our tower's typical floor as the plans lay it out: the apartments along its Riley Street and Crown Lane faces,
-    a corridor between them."""
+    a corridor between them; the lines kept within the tower as its slots leave it."""
     plan_ = ((TOWER or {}).get('units') or {}).get('tower')
-    if not plan_:
+    east, west = (face_run(SITE_BOX, 'east'), face_run(SITE_BOX, 'west')) if plan_ and SITE_BOX is not None else (None, None)
+    if not east or not west:
         return []
-    cs = list(SITE_TOWER.exterior.coords)[:-1]
-    if not SITE_TOWER.exterior.is_ccw:
-        cs = cs[::-1]
-    faces = {}
-    for p, q in zip(cs, cs[1:] + cs[:1]):
-        L = math.dist(p, q)
-        if L < 1:
-            continue
-        nx = (q[1] - p[1]) / L
-        side = 'east' if nx > 0.7 else 'west' if nx < -0.7 else None
-        if side and (side not in faces or L > faces[side][0]):
-            faces[side] = (L,) + ((p, q) if p[1] > q[1] else (q, p))
-    if len(faces) < 2:
-        return []
-    (_, en, es), (_, wn, ws) = faces['east'], faces['west']
+    (en, es), (wn, ws) = east, west
     mn, ms = ((en[0] + wn[0]) / 2, (en[1] + wn[1]) / 2), ((es[0] + ws[0]) / 2, (es[1] + ws[1]) / 2)
     lerp = lambda a, b, t: (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t)
-    line = lambda a, b: f'<line x1="{f(a[0])}" y1="{f(-a[1])}" x2="{f(b[0])}" y2="{f(-b[1])}" stroke="#c0161c" stroke-opacity=".6" stroke-width="{0.3 * k:.2f}"/>'
-    o = [line(mn, ms)]                                                # the corridor, wall to wall
+    inner = SITE_TOWER.buffer(-0.05)
+
+    def line(a, b):
+        g = LineString([a, b]).intersection(inner)
+        return [f'<line x1="{f(x.coords[0][0])}" y1="{f(-x.coords[0][1])}" x2="{f(x.coords[-1][0])}" y2="{f(-x.coords[-1][1])}" stroke="#c0161c" stroke-opacity=".6" stroke-width="{0.3 * k:.2f}"/>'
+                for x in (g.geoms if hasattr(g, 'geoms') else [g]) if x.geom_type == 'LineString' and x.length > 0.4]
+
+    o = line(mn, ms)                                                  # the corridor, wall to wall
     for side, fn, fs_ in (('east', en, es), ('west', wn, ws)):
         L = math.dist(fn, fs_) or 1.0
         for i, (name, a, b, corner) in enumerate(unit_spans(plan_.get(side, []), L)):
             if i:
-                o.append(line(lerp(fn, fs_, a / L), lerp(mn, ms, a / L)))
-            if name is None:                                          # the corridor's window: open to the face
-                c0, c1 = lerp(mn, ms, a / L), lerp(mn, ms, b / L)
-                o.append(f'<line x1="{f(c0[0])}" y1="{f(-c0[1])}" x2="{f(c1[0])}" y2="{f(-c1[1])}" stroke="#e6b0b0" stroke-width="{0.5 * k:.2f}"/>')
+                o += line(lerp(fn, fs_, a / L), lerp(mn, ms, a / L))
     return o
 
 
@@ -685,6 +702,11 @@ def resolve(scn):
         parcel = parcel_of(p['addresses'])
         for x in p['addresses']:
             used.add(str(prop(x)['propid']))
+            for hid, hname in heritage_on(prop(x)['poly']):           # a heritage item cannot be redeveloped: say so, loudly
+                hit = (p['key'], short(prop(x)['base']), f'{hid or "item"}, {hname}' if hname else str(hid))
+                if hit not in HERITAGE_HITS.setdefault(scn['title'], []):
+                    HERITAGE_HITS[scn['title']].append(hit)
+                    print(f'WARN {scn["title"]}: site {p["key"]} takes {hit[1]}, heritage item {hit[2]}', file=sys.stderr)
         area = parcel.area
         rows = []
         for b in p['buildings']:
@@ -796,8 +818,48 @@ def inset(parcel, setbacks):
     return largest(g)
 
 
-SITE_TOWER, SITE_PODIUM, TOWER_OWN, SITE_TIERS = None, 0, False, []
+SITE_TOWER, SITE_BOX, SITE_PODIUM, TOWER_OWN, SITE_TIERS = None, None, 0, False, []
 BASE_TOWER = inset(SITE_POLY, TOWER['setbacks']) if TOWER else SITE_POLY.buffer(-1.0, join_style=2)
+
+
+def face_run(poly, side):
+    """A footprint's face on one side as (start, end): its longest edge facing that way, from its north end (east and
+    west) or its east end (south and north)."""
+    want = {'east': (1, 0), 'west': (-1, 0), 'south': (0, -1), 'north': (0, 1)}[side]
+    cs = list(poly.exterior.coords)
+    if not poly.exterior.is_ccw:
+        cs = cs[::-1]
+    best = None
+    for p, q in zip(cs[:-1], cs[1:]):
+        L = math.dist(p, q)
+        if L >= 1 and ((q[1] - p[1]) * want[0] - (q[0] - p[0]) * want[1]) / L > 0.7 and (best is None or L > best[0]):
+            best = (L, p, q)
+    if not best:
+        return None
+    k = 1 if want[0] else 0
+    return (best[1], best[2]) if best[1][k] > best[2][k] else (best[2], best[1])
+
+
+def cut_slots(poly, plan_):
+    """A footprint with the slots its plan leaves open: a stretch of a face without an apartment that names a depth
+    (`[null, width, depth]`, the corridor's end open to the air) is cut that deep into the building."""
+    out = poly
+    for side, lst in (plan_ or {}).items():
+        run = face_run(poly, side) if side in ('east', 'west', 'south', 'north') else None
+        if not run:
+            continue
+        (sx, sy), (ex, ey) = run
+        L = math.dist(run[0], run[1])
+        ux, uy = (ex - sx) / L, (ey - sy) / L
+        nx, ny = -uy, ux
+        c = poly.representative_point()
+        if (c.x - sx) * nx + (c.y - sy) * ny < 0:
+            nx, ny = -nx, -ny                                         # inward
+        for name, a, b, depth in unit_spans(lst, L):
+            if name is None and isinstance(depth, (int, float)) and depth > 0:
+                at = lambda t, d: (sx + ux * t + nx * d, sy + uy * t + ny * d)
+                out = out.difference(Polygon([at(a, -0.5), at(b, -0.5), at(b, depth), at(a, depth)]))
+    return largest(out)
 
 
 def tiers_for(tw):
@@ -825,7 +887,8 @@ def tiers_for(tw):
             if st['from'] <= a:
                 for name, v in st['setbacks'].items():
                     sb[name] = max(sb.get(name, 0), v)                # a step only ever pushes further back
-        tiers.append(dict(poly=inset(SITE_POLY, sb), s0=a, s1=cuts[i + 1] - 1 if i + 1 < len(cuts) else N, homes='tower', floor0=a - (P + 1)))
+        tiers.append(dict(poly=cut_slots(inset(SITE_POLY, sb), (tw.get('units') or {}).get('tower')), s0=a, s1=cuts[i + 1] - 1 if i + 1 < len(cuts) else N,
+                          homes='tower', floor0=a - (P + 1)))
     return tiers
 
 
@@ -844,7 +907,7 @@ def ours_for(band):
 
 def set_tower(scn=None):
     """Our tower for a scenario: the study's site.tower, with whatever the scenario's own `site.tower` replaces."""
-    global TOWER, SITE_TOWER, SITE_PODIUM, TOWER_OWN, SITE_TIERS
+    global TOWER, SITE_TOWER, SITE_BOX, SITE_PODIUM, TOWER_OWN, SITE_TIERS
     base = S.get('tower') or {}
     own = ((scn or {}).get('site') or {}).get('tower') or {}
     TOWER = {**base, **own} if base or own else None
@@ -860,6 +923,10 @@ def set_tower(scn=None):
     SITE_TOWER = inset(SITE_POLY, TOWER['setbacks']) if TOWER else SITE_POLY.buffer(-1.0, join_style=2)
     SITE_PODIUM = TOWER.get('podium', 0) if TOWER else 0
     SITE_TIERS = tiers_for(TOWER)
+    SITE_BOX = SITE_TOWER                                             # the tower's outline before its slots are cut: what its apartments are laid along
+    towers = [t for t in SITE_TIERS if t['homes'] == 'tower']
+    if towers:
+        SITE_TOWER = towers[0]['poly']                                # the tower as it stands at its lowest level, slots and all
 
 
 set_tower()
@@ -1581,7 +1648,7 @@ mesh_props = [r for b in BLOCKS for r in b if measured(r)]
 
 def flags_for():
     flags = []
-    flags.append(f'<b>Our site.</b> {S["storeys"]} storeys as the author states it, not read from the model; {SITE_UNITS} apartments; its density is read off the massing as this sheet draws it, {EFFICIENCY:.0%} of the envelope, {our_fsr():.1f}:1 over {SITE_AREA:,.0f} m². The model\'s own GFA and unit count should replace them.'
+    flags.append(f'<b>Our site.</b> {S["storeys"]} storeys as the author states it, not read from the model; {SITE_UNITS} apartments; its density is ' + (f'the file\'s, calculated off the plans, {our_fsr():.1f}:1' if S.get('fsr') else f'read off the massing as this sheet draws it, {EFFICIENCY:.0%} of the envelope, {our_fsr():.1f}:1') + f' over {SITE_AREA:,.0f} m². The model\'s own GFA schedule should replace it.'
                  + (f' The tower is drawn on a {SITE_PODIUM}-storey podium, {SITE_TOWER.area:,.0f} m² a floor at its lowest level, its faces ' + ', '.join(f'{site_setback(n):.0f} m off {n.title()}' for n in TOWER['setbacks']) + ': ' + ('setbacks the scenario sets.' if TOWER_OWN else 'setbacks read off the model\'s plan, to be confirmed in it.') if TOWER else '')
                  + (f' The envelope drawn holds {site_yield()[1]:,.0f} m² GFA at {EFFICIENCY:.0%}; the plans lay out {SITE_UNITS} apartments.' if TOWER else ''))
     if MESH.get('meshes'):
@@ -1801,6 +1868,17 @@ def mini_plan(parcels, blds, existing, RET, sep, k=1.0, big=False, bset=None):
         if g.area >= 100:
             c = g.representative_point()
             o.append(f'<text x="{f(c.x)}" y="{-c.y + 1.7 * k:.2f}" font-size="{5 * k:.2f}" font-weight="600" text-anchor="middle" fill="{ink}">{n}</text>')
+    if big:                                                           # the LEP's heritage items: hatched, they stay
+        o.append('<defs><pattern id="hh" patternUnits="userSpaceOnUse" width="2" height="2" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="2" stroke="#9a5b1e" stroke-width="0.32"/></pattern></defs>')
+        dev = unary_union([q['poly'] for q in parcels] + [SITE_POLY])
+        for g, hid, hname in heritage_items():
+            if not g.intersects(box):
+                continue
+            g = g.intersection(box)
+            o.append(f'<path d="{path(g)}" fill="url(#hh)" stroke="#9a5b1e" stroke-width="{0.5 * k:.2f}"/>')
+            if g.distance(dev) < 14 and g.area >= 80:                 # named where it stands beside a site
+                c = g.representative_point()
+                o.append(f'<text x="{f(c.x)}" y="{-c.y - 2.2 * k:.2f}" font-size="{3.0 * k:.2f}" font-weight="700" text-anchor="middle" fill="#7a4310" paint-order="stroke" stroke="#f4f2ef" stroke-width="{1.2 * k:.2f}">heritage{" " + H.escape(str(hid)) if hid else ""}</text>')
     o.append(f'<path d="{path(SITE_POLY)}" fill="{C["site"]}" stroke="#e11b22" stroke-width="{1.2 * k:.2f}"/>')
     if TOWER:
         o.append(f'<path d="{path(SITE_TOWER)}" fill="#e6b0b0" stroke="#c0161c" stroke-width="{0.5 * k:.2f}"/>')
@@ -1892,7 +1970,8 @@ OPTION_NOTE = ("Separation per ADG 3F-1: 24 m between habitable rooms at nine st
                "on 21 June, 9 to 3, cast with Loriini's engine with every building on its own ground: two continuous hours as three hourly sun's-eye views in a row show them, 9, 10 and 11 or later, a run from half past not counting; "
                "our apartments as the plans lay them out, each at its own wall and storey, a neighbour's in 8 m bays on the faces its plan gives them; 70 % with "
                "their two hours and no more than 15 % with none is a tick, 60 % close; the single-loaded figure is what a neighbour's plan could still reach. "
-               "Storeys in grey are the 3D tiles' reading of what stands. Predictive only, not a proposal for any neighbouring site.")
+               "Storeys in grey are the 3D tiles' reading of what stands. Hatched lots are heritage items of the LEP, off the NSW planning portal's heritage map: they stay. "
+               "Predictive only, not a proposal for any neighbouring site.")
 
 
 def option_page(r):
@@ -1920,7 +1999,8 @@ def option_page(r):
            f'.oaxo{{width:{mm(158)};height:{mm(95)};margin-top:{mm(4)}}} .oaxo svg{{position:static;width:100%;height:100%}}')
     head = (f'<div class="oh"><div class="kick">Future context · Scenario {r["no"]} of {LAST}</div><h1>{H.escape(r["title"])}</h1>'
             f'<div class="hor">{H.escape(r["horizon"])}</div></div>')
-    col = (f'<div class="ocol"><div class="u">{gain}neighbours can develop: <b style="color:{r["allow_colour"]}">{r["allow"]}</b></div>'
+    warn = ''.join(f'<div class="u" style="color:#c0161c"><b>Site {H.escape(k_)} takes {H.escape(addr)}, heritage item {H.escape(item)}: it cannot be redeveloped.</b></div>' for k_, addr, item in r.get('heritage', []))
+    col = (f'<div class="ocol"><div class="u">{gain}neighbours can develop: <b style="color:{r["allow_colour"]}">{r["allow"]}</b></div>{warn}'
            f'<p class="lead">{r["lead"]}</p>'
            f'<table><tr><th>Building</th><th>FSR, floor space and apartments, a rough estimate</th><th>Apartments with 2 continuous hours of winter sun</th></tr>{trs}</table>'
            f'<div class="oaxo">{r["axo"]}</div>'
@@ -2283,7 +2363,7 @@ def page(no, scn):
             a_, gap_, c_ = g['parts']
             b['parts'] = '+'.join(f'{x:.0f}' for x in ((a_, gap_, c_) if gap_ >= 0.3 else (a_, c_)))
     oy = site_yield()
-    SUMMARY.append(dict(ours_yield=yield_text(oy[0], oy[1], oy[2], about=oy[2] != SITE_UNITS), no=no, title=scn['title'], horizon=scn.get('horizon', ''), lead=fill_in(scn['lead'], parcels, units), units=units, buildings=buildings, ours=ours,
+    SUMMARY.append(dict(heritage=HERITAGE_HITS.get(scn['title'], []), ours_yield=yield_text(oy[0], oy[1], oy[2], about=oy[2] != SITE_UNITS), no=no, title=scn['title'], horizon=scn.get('horizon', ''), lead=fill_in(scn['lead'], parcels, units), units=units, buildings=buildings, ours=ours,
                         allow=allow, allow_colour=list(VERDICT_COLOUR.values())[worst], failing=sun_failing, shaded=sun_shaded,
                         mini=mini_plan(parcels, blds, existing, RET, sep), big=mini_plan(parcels, blds, existing, RET, sep, k=0.45, big=True, bset=bset),
                         axo=axo(scn, parcels, blds, existing, RET), sun=sun, scn=scn))

@@ -143,7 +143,7 @@ export const fetchFloorSpaceRatio = (extent: Extent) =>
   queryByExtent(`${EPI}/1`, extent, 'FSR');
 
 export const fetchHeritage = (extent: Extent) =>
-  queryByExtent(`${EPI}/0`, extent, 'LAY_CLASS,H_NAME,SIG');
+  queryByExtent(`${EPI}/0`, extent, 'LAY_CLASS,H_ID,H_NAME,SIG');
 
 /**
  * The planning controls that apply AT the site, for the development summary
