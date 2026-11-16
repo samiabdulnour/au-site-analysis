@@ -1121,7 +1121,11 @@ grotesk and its peach street names. The site is in a red terracotta
 sheet keeps), chosen to sit with the palette's peach and coral: its dash-dot
 boundary, its corners and levels, the lot in a pale tint of it (`siteTint`)
 and what stands on the lot in the terracotta itself (`siteFigure`), where it
-was a quiet grey. Flamingo's site sheet keeps its coral site; its building on
+was a quiet grey. How that building is drawn is the look's `siteFigureStyle`:
+filled with the buildings' fine white edge (the default), filled inside a
+thick white contour, white and hatched inside the white contour (the hatch's
+line and spacing are `siteFigureHatch`), or white, plain or hatched, inside a
+thick contour of the terracotta. Flamingo's site sheet keeps its coral site; its building on
 the lot takes the coral as its outline and hatch. The climate is drawn in
 the office's marks for this palette (`src/render/climateSymbols.ts`, taken
 as drawn from its symbol sheet): each solstice's sun path a nearly solid
@@ -1368,8 +1372,11 @@ palette.
   - every building is a white volume in a black outline, with no shade on
     its faces;
   - what is built on the site carries the heaviest outline, its storeys
-    ruled and its windows dotted; a shop's or an office's floors are a light
-    grey;
+    ruled across its walls and nothing else on them: a massing is a volume,
+    not a facade design, so the other styles' pattern of window panes is
+    left off (`LINE_WINDOWS`, which can also draw frames, ribbons or a
+    curtain wall's uprights on the wall as it stands); a shop's or an
+    office's floors are a light grey;
   - the trees are white canopies in their contour with their limbs drawn
     fine, the people and the traffic white in outline;
   - each ground surface has a hatch of its own (`groundHatch`), sized on
@@ -1590,8 +1597,13 @@ site may take, so a site with more paths has more pages:
    most the controls allow it); the sun on each facade and the roof, by the
    way each looks, its area, its average hours and the share with the hours
    asked, today and built out; each building near and its separation, today
-   and built out; and, on the first sheet, the criteria as the sheet reads
-   them. On the right the massing twice, side by side and close on the
+   and built out. On the first sheet each criterion says in full what it
+   asks, in a line of small print under its own row (the ADG clause and its
+   wording, how the yield's most is worked out, what "built out" means).
+   That wording was a table of its own under the others ("Assessment
+   criteria"), 77 mm of it where 24 mm were free, and it ran into the
+   page's key; under the rows it adds about 20 mm and the tables stay clear
+   of the key. On the right the massing twice, side by side and close on the
    building, from the street corner and from the opposite one, so every face
    is seen, the town round it a white model (neighbours, futures, trees,
    traffic and ground in white and greys) so only the scheme's colours read:

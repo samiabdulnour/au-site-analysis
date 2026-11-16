@@ -455,6 +455,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
   const buildingDs: string[] = [];
   if ((look.buildings === 'colour' || whiteBuildings) && sb.buildings?.buildings.length) {
     const byInk = new Map<string, string[]>();
+    const siteFigureDs: string[] = [];
     for (const b of sb.buildings.buildings) {
       const [x, y] = proj(b.centroid[0], b.centroid[1]);
       if (!(x > -40 && x < MAP_W + 40 && y > -40 && y < MAP_H + 40)) continue;
@@ -464,6 +465,8 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
       // what stands on the site in the site's own colour, saturated (it was a quiet grey): the lot's building reads
       // as the site's, clear of the pale tint the lot lies in; a white building takes it as its outline and hatch
       const ink = onSite ? (whiteBuildings ? look.site : look.siteFigure ?? tint(look.site, 0.75)) : (cat && catById()[cat]?.figure) || (whiteBuildings ? tpl().road : '#d9d9d6');
+      // what stands on the site drawn its own way (a thick contour, white or hatched inside): kept apart, drawn last
+      if (onSite && !whiteBuildings && look.siteFigureStyle && look.siteFigureStyle !== 'fill') { siteFigureDs.push(pathFromRings(b.rings, proj)); continue; }
       (byInk.get(ink) ?? byInk.set(ink, []).get(ink)!).push(`<path d="${pathFromRings(b.rings, proj)}"/>`);
     }
     [...byInk].forEach(([ink, ds], i) => {
@@ -474,6 +477,24 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
         ? `${hatch}<g fill="${hatch ? `url(#bldHatch${i})` : '#ffffff'}" fill-opacity="${hatch ? 1 : 0.92}" fill-rule="evenodd" stroke="${ink}" stroke-width="${look.buildingEdge}" stroke-linejoin="round">${ds.join('')}</g>`
         : `<g fill="${ink}" fill-rule="evenodd" stroke="#ffffff" stroke-width="${look.buildingEdge}" stroke-linejoin="round">${ds.join('')}</g>`);
     });
+    if (siteFigureDs.length) {
+      // white inside a thick contour of the site's figure colour; hatched in it where the look asks, the lines
+      // falling to the right, clipped to the building (lines, not a pattern fill, which prints as a picture)
+      // (each building its own path: the sources can give one building twice, and two rings alike cancel in one path)
+      const ink = look.siteFigure ?? look.site;
+      const each = (attrs: string) => siteFigureDs.map((d) => `<path d="${d}" ${attrs}/>`).join('');
+      buildingDs.push(...siteFigureDs.map((x) => `<path d="${x}"/>`));
+      let hatch = '';
+      if (look.siteFigureStyle === 'hatch' || look.siteFigureStyle === 'hatchContour') {
+        const { line: lw, step } = look.siteFigureHatch ?? { line: 0.5, step: 2.2 }, lines: string[] = [];
+        for (let o = -MAP_H; o <= MAP_W; o += step) lines.push(`M${o.toFixed(1)},0L${(o + MAP_H).toFixed(1)},${MAP_H}`);
+        hatch = `<clipPath id="siteFigureClip">${each('clip-rule="evenodd"')}</clipPath><g clip-path="url(#siteFigureClip)"><path d="${lines.join('')}" fill="none" stroke="${ink}" stroke-width="${lw}"/></g>`;
+      }
+      layers.push(look.siteFigureStyle === 'fillContour' || look.siteFigureStyle === 'hatchContour'
+        // filled (or white and hatched), inside a thick white contour: the contours drawn first, so two buildings that touch read as one
+        ? `<g data-site-figure="${look.siteFigureStyle}">${each(`fill="none" stroke="#ffffff" stroke-width="3.6" stroke-linejoin="round"`)}${look.siteFigureStyle === 'fillContour' ? each(`fill="${ink}" fill-rule="evenodd"`) : each('fill="#ffffff" fill-rule="evenodd"') + hatch}</g>`
+        : `<g data-site-figure="${look.siteFigureStyle}">${each('fill="#ffffff" fill-rule="evenodd"')}${hatch}${each(`fill="none" stroke="${ink}" stroke-width="1.8" stroke-linejoin="round"`)}</g>`);
+    }
   }
 
   // ---- heritage: the LEP's items and conservation areas, hatched -------------

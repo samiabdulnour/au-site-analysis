@@ -442,6 +442,14 @@ export interface SiteLook {
   site: string;
   /** What stands on the site, where the buildings are filled: a saturated cut of the site's pen where unset. */
   siteFigure?: string;
+  /**
+   * How what stands on the site is drawn, where the buildings are filled: filled in `siteFigure` with the buildings'
+   * fine white edge (unset); filled in it inside a thick white contour; white, hatched in it, inside a thick white
+   * contour; white inside a thick contour of it; or white, hatched in it, inside the thick contour of it.
+   */
+  siteFigureStyle?: 'fill' | 'fillContour' | 'hatchContour' | 'outline' | 'hatch';
+  /** The hatch where what stands on the site is hatched: its line and the spacing of its lines, mm (0.5 at 2.2 where unset); heavy and wide, the white and the colour read as a few bold stripes. */
+  siteFigureHatch?: { line: number; step: number };
   /** The lot's own tint on paper: its fill and strength. The template's site category where unset. */
   siteTint?: { fill: string; opacity: number };
   /** The boundary's dash. */

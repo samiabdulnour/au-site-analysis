@@ -142,6 +142,13 @@ for (const [style, mono] of [['canary', false], ['flamingo', true]] as const) {
   check('heron line model: the neighbours white in a black outline, flat', faces.length > 0 && faces.every((m) => m[1] === '#ffffff' && m[2] === '#1a1a1a'), [...new Set(faces.map((m) => `${m[1]}/${m[2]}`))].join(' '));
   check('heron line model: the trees white canopies in their contour, each picture once', svg.includes('<image id="axo-tr-t') && !/<circle cx="[^"]+" cy="[^"]+" r="[^"]+" fill="#ffffff" stroke="#1a1a1a" stroke-width="0\.1"\/>/.test(svg));
   check('heron line model: the built in the heaviest outline', /stroke="#000000" stroke-width="0\.42"/.test(svg));
+  // its walls plain: a massing is a volume, not a facade design. The storeys ruled across them, and no windows on
+  // them, neither the other styles' pattern of panes nor any drawn; the same building in Kingfisher has its panes.
+  const windowed: AxoScene = { ...white, built: [{ ...white.built[0], windows: true, storeys: [3, 6, 9, 12] }] };
+  const plain = withTemplate(templateFor('slides', 'heron'), () => drawAxonometric(windowed, { x: 0, y: 0, w: 400, h: 280 }, 'tr'));
+  const panes = withTemplate(templateFor('slides', 'kingfisher'), () => drawAxonometric(windowed, { x: 0, y: 0, w: 400, h: 280 }, 'tr'));
+  check('heron line model: the walls plain, the storeys ruled, no windows', !plain.includes('fill="url(#axo-win-tr)"') && !plain.includes('data-windows')
+    && (plain.match(/<line [^>]*stroke="#1a1a1a" stroke-width="0\.06"\/>/g) ?? []).length >= 8 && panes.includes('fill="url(#axo-win-tr)"'));
   // each ground surface its own hatch: a park's lawn, a lot's garden, the carriageway, and the shade under the trees;
   // drawn as lines and dots clipped to the surface, never as a pattern fill, which prints as a picture
   const hatch = (n: string) => (svg.match(new RegExp(`<clipPath id="axo-${n}-tr">[\\s\\S]*?<g data-ground="${n}" clip-path="url\\(#axo-${n}-tr\\)"><path d="([^"]*)"[^>]*stroke="(#[0-9a-f]{6})"`)) ?? []);

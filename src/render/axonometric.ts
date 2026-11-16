@@ -274,6 +274,12 @@ function lookOf(M: ReturnType<typeof massingInks>, mono: boolean): AxoLook {
  * print size). Sized on paper (millimetres) whatever the drawing's scale: `k` is its millimetres to the unit, `f`
  * the frame in the drawing's own units.
  */
+/**
+ * How a line model draws its windows: not at all (a massing is a volume, not a facade design: the storeys' lines say
+ * how tall it is); or each a frame, bay by bay; a ribbon along each storey; or fine uprights between the bays, a
+ * curtain wall's grid with the storeys' lines.
+ */
+const LINE_WINDOWS: 'none' | 'frames' | 'ribbon' | 'mullions' = 'none';
 const GROUND_HATCH = {
   lawn: { pitch: 0.62, w: 0.07, ink: '#8a8a8a' },
   yard: { pitch: 2.0, w: 0.16, ink: '#7d7d7d' },
@@ -401,6 +407,29 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
     ground.push(`<g opacity="${mono ? 0.07 : 0.1}" fill="${mono ? '#2b2b2b' : INK.blue.deep}"><path d="${pieces.join('')}" fill-rule="nonzero"/></g>`);
   }
 
+  // A line model's windows, drawn on the wall as it stands: bay by bay along it, storey by storey up it, each skewed
+  // as the wall is. (The other styles lay a pattern of small panes flat over the face, square to the page.)
+  const lineWindows = (f: { p: XY; q: XY }, pr: Prism): string => {
+    const L = Math.hypot(f.q.x - f.p.x, f.q.y - f.p.y);
+    if (L < 3) return '';
+    const rise = pr.z1 - pr.z0, ruled = (pr.storeys ?? []).filter((z) => z > pr.z0 + 0.5 && z < pr.z1 - 0.5).sort((a, b) => a - b);
+    // the floors: the storeys ruled on the wall, or 3.1 m each where none is
+    const count = Math.max(1, Math.round(rise / 3.1));
+    const floors = ruled.length ? ruled : Array.from({ length: count - 1 }, (_, i) => pr.z0 + ((i + 1) * rise) / count);
+    const levels = [pr.z0, ...floors, pr.z1];
+    const at = (t: number): XY => ({ x: f.p.x + (f.q.x - f.p.x) * t, y: f.p.y + (f.q.y - f.p.y) * t });
+    const bays = Math.max(1, Math.round(L / 3.6)), d: string[] = [];
+    for (let k = 0; k + 1 < levels.length; k++) {
+      const za = levels[k], h = levels[k + 1] - za;
+      if (h < 2) continue;
+      const sill = za + h * 0.3, head = za + h * 0.8;
+      if (LINE_WINDOWS === 'ribbon') { const a = at(0.7 / L), b = at(1 - 0.7 / L); d.push(poly([P(a, sill), P(b, sill), P(b, head), P(a, head)])); }
+      else if (LINE_WINDOWS === 'frames') for (let i = 0; i < bays; i++) { const a = at((i + 0.27) / bays), b = at((i + 0.73) / bays); d.push(poly([P(a, sill), P(b, sill), P(b, head), P(a, head)])); }
+    }
+    // mullions: a fine upright between the bays, the storeys' lines across them a curtain wall's grid
+    if (LINE_WINDOWS === 'mullions') for (let i = 1; i < bays; i++) d.push(open([P(at(i / bays), pr.z0), P(at(i / bays), pr.z1)]));
+    return d.length ? `<path data-windows="${LINE_WINDOWS}" d="${d.join('')}" fill="${LINE_WINDOWS === 'mullions' ? 'none' : '#ffffff'}" stroke="${LINE.edge}" stroke-width="0.05" stroke-linejoin="round"/>` : '';
+  };
   const prismSvg = (pr: Prism) => {
     const out: string[] = [];
     const dash = pr.dashed ? ` stroke-dasharray="${pr.dash ?? '0.8,0.6'}"` : '';
@@ -419,7 +448,9 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
         const lit = line ? 1 : (M.gloss ? 0.9 : 0.72) + (M.gloss ? 0.1 : 0.28) * Math.max(0, f.m.x * light.x + f.m.y * light.y);
         const face = poly([P(f.p, pr.z0), P(f.q, pr.z0), P(f.q, pr.z1), P(f.p, pr.z1)]);
         out.push(`<path d="${face}" fill="${shade(pr.fill, lit)}"${alpha} stroke="${pr.edge}" stroke-width="${pr.edgeW}" stroke-linejoin="round"${dash}/>`);
-        if (pr.windows) out.push(`<path d="${face}" fill="url(#axo-win-${id})"/>`);
+        const celled = (pr.cells ?? []).some((c) => c.ring === ri && c.edge === f.i);
+        // (a line model: its windows drawn on the wall; none over a wall coloured by its hours of sun, which is a grid already)
+        if (pr.windows) out.push(line ? (celled ? '' : lineWindows(f, pr)) : `<path d="${face}" fill="url(#axo-win-${id})"/>`);
         // the panels on this face, lit as it is, each outlined and windowed
         for (const c of pr.cells ?? []) {
           if (c.ring !== ri || c.edge !== f.i) continue;
@@ -427,7 +458,7 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
           const a = at(Math.max(0, c.t0)), b = at(Math.min(1, c.t1));
           const cell = poly([P(a, c.z0), P(b, c.z0), P(b, c.z1), P(a, c.z1)]);
           out.push(`<path d="${cell}" fill="${c.flat ? c.fill : shade(c.fill, lit)}" stroke="${c.flat ? '#ffffff' : shade(c.fill, 0.55)}" stroke-width="0.07" stroke-linejoin="round"/>`);
-          if (pr.windows) out.push(`<path d="${cell}" fill="url(#axo-win-${id})"/>`);
+          if (pr.windows && !line) out.push(`<path d="${cell}" fill="url(#axo-win-${id})"/>`);
         }
         for (const zz of pr.storeys ?? []) {
           const [x1, y1] = P(f.p, zz), [x2, y2] = P(f.q, zz);
