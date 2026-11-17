@@ -38,7 +38,7 @@ export interface Prism {
   dashed?: boolean;
   dash?: string;
   opacity?: number;
-  /** A building whose walls are marked: a coloured model hatches the wall turned from the light (WALL_HATCH); a line model draws what LINE_WINDOWS says. */
+  /** A building whose walls may be marked: Canary hatches the wall turned from the light (WALL_HATCH), a line model draws what LINE_WINDOWS says, Flamingo and Kingfisher leave them plain. */
   windows?: boolean;
   /**
    * Panels laid on the faces (an apartment's stretch of facade on a storey, coloured by its sun): each on the edge
@@ -302,14 +302,15 @@ export function lineHatchPitch(fill: string): number | null {
  */
 const LINE_WINDOWS: 'none' | 'frames' | 'ribbon' | 'mullions' = 'none';
 /**
- * How a coloured model (Flamingo, Kingfisher, Canary) marks its buildings' walls: a wall turned from the light is
+ * How Canary, whose faces carry the shade in full colour, marks its buildings' walls: a wall turned from the light is
  * hatched as shade, lines at 45° in a darker cut of the wall's own colour (`ink` of it), `w` mm wide on paper and
  * `pitch` mm apart on a wall turned full from the light, opening by `open` of that as the wall turns toward it; a
- * wall turned to the light (past `turned` of full) is left plain. It was a pattern of small dark squares laid flat
- * over every wall: windows square to the page, on walls that are not.
+ * wall turned to the light (past `turned` of full) is left plain. Flamingo and Kingfisher, light and glossy with
+ * their shadows on the ground, leave every wall plain. (All three laid a pattern of small dark squares flat over
+ * every wall: windows square to the page, on walls that are not.)
  */
 const WALL_HATCH = { pitch: 0.9, open: 0.7, w: 0.14, ink: 0.5, turned: 0.25 };
-/** The spacing of a coloured model's hatch on a wall whose normal is `turn` toward the light (-1 full from it, 1 full to it); null for a wall left plain. */
+/** The spacing of Canary's hatch on a wall whose normal is `turn` toward the light (-1 full from it, 1 full to it); null for a wall left plain. */
 export const wallHatchPitch = (turn: number): number | null => (turn < WALL_HATCH.turned ? WALL_HATCH.pitch * (1 + WALL_HATCH.open * ((turn + 1) / (1 + WALL_HATCH.turned))) : null);
 const GROUND_HATCH = {
   lawn: { pitch: 0.62, w: 0.07, ink: '#8a8a8a' },
@@ -451,7 +452,7 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   }
 
   // A line model's windows, drawn on the wall as it stands: bay by bay along it, storey by storey up it, each skewed
-  // as the wall is. (The other styles hatch the wall turned from the light instead: WALL_HATCH.)
+  // as the wall is. (Canary hatches the wall turned from the light instead, WALL_HATCH; Flamingo and Kingfisher leave it plain.)
   const lineWindows = (f: { p: XY; q: XY }, pr: Prism): string => {
     const L = Math.hypot(f.q.x - f.p.x, f.q.y - f.p.y);
     if (L < 3) return '';
@@ -506,8 +507,9 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
         const celled = (pr.cells ?? []).some((c) => c.ring === ri && c.edge === f.i);
         // (a line model: its windows drawn on the wall; none over a wall coloured by its hours of sun, which is a grid already)
         if (pr.windows && line) out.push(celled ? '' : lineWindows(f, pr));
-        // (a coloured model: the wall turned from the light hatched as shade; none over a wall coloured by its hours of sun)
-        else if (pr.windows && !celled) {
+        // (Canary: the wall turned from the light hatched as shade, none over a wall coloured by its hours of sun;
+        // the glossy models, Flamingo and Kingfisher: no hatch at all)
+        else if (pr.windows && !celled && !M.gloss) {
           const pitch = wallHatchPitch(f.m.x * light.x + f.m.y * light.y);
           if (pitch) out.push(hatchFace(facePts, face, { pitch, w: WALL_HATCH.w, ink: shade(pr.fill, WALL_HATCH.ink) }));
         }
@@ -995,7 +997,7 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
       .replace(HOLE.road, groundHatch('road', roadD, 'evenodd', f, k, id));
     partsSvg = partsSvg.replace(HOLE.shade, groundHatch('shade', ovals, 'nonzero', f, k, id));
   }
-  // The walls' hatches (a line model's toned prisms, a coloured model's walls): lines rising to the right at 45°, on
+  // The walls' hatches (a line model's toned prisms, Canary's shaded walls): lines rising to the right at 45°, on
   // one grid across the drawing so neighbouring faces' lines meet, each face's over its own box alone and clipped to
   // it; none for a face outside the frame. Lines, not a pattern fill, which the print would rasterise.
   partsSvg = partsSvg.replace(/<!--axo:fh(\d+)-->/g, (_, n: string) => {

@@ -157,25 +157,32 @@ for (const [style, mono] of [['canary', false], ['flamingo', true]] as const) {
   const plain = withTemplate(templateFor('slides', 'heron'), () => drawAxonometric(windowed, { x: 0, y: 0, w: 400, h: 280 }, 'tr'));
   check('heron line model: the walls plain, the storeys ruled, no windows', !plain.includes('<pattern') && !plain.includes('data-windows')
     && [...plain.matchAll(/<line [^>]*stroke="#1a1a1a" stroke-width="([\d.]+)"\/>/g)].filter((m) => onPaper(plain, m[1]) === 0.08).length >= 8);
-  // The coloured models mark the same building's walls with a hatch, not the pattern of small squares they had: lines
-  // at 45° clipped to a wall turned from the light, in a darker cut of the wall's own colour, 0.14 mm wide on paper,
-  // 0.9 mm apart on a wall turned full from the light and opening as it turns toward it; a wall turned to the light
-  // plain; and no pattern fill, which the print would rasterise.
+  // Canary marks the same building's walls with a hatch, not the pattern of small squares it had: lines at 45°
+  // clipped to a wall turned from the light, in a darker cut of the wall's own colour, 0.14 mm wide on paper, 0.9 mm
+  // apart on a wall turned full from the light and opening as it turns toward it; a wall turned to the light plain.
+  // Flamingo and Kingfisher have no hatch on any wall. And no style a pattern fill, which the print would rasterise.
   check('wall hatch: closest full from the light, opening toward it, none on a lit wall', wallHatchPitch(-1) === 0.9 && wallHatchPitch(-0.5)! > 0.9 && wallHatchPitch(0.2)! > wallHatchPitch(-0.5)! && wallHatchPitch(0.2)! < 1.6 && wallHatchPitch(0.25) === null && wallHatchPitch(1) === null);
-  for (const style of ['flamingo', 'kingfisher', 'canary']) {
+  {
     const col = (frontNormal: { x: number; y: number }): AxoScene => ({ ...scene(), frontNormal, built: [{ ...scene().built[0], fill: '#c04a3a', windows: true, storeys: [3, 6, 9, 12] }] });
     const hatchesOf = (out: string) => [...out.matchAll(/<clipPath id="axo-fh\d+-tr"><path d="M([^"]+)Z" clip-rule="evenodd"\/><\/clipPath><g data-face-hatch clip-path="url\(#axo-fh\d+-tr\)"><path d="([^"]+)" fill="none" stroke="(#[0-9a-f]{6})" stroke-width="([\d.]+)"\/>/g)]
       .map((m) => { const xs = [...m[2].matchAll(/M([-\d.]+),/g)].map((x) => Number(x[1])); return { corners: m[1].split('L').length, ink: m[3], w: onPaper(out, m[4]), gap: xs.length > 1 ? (Math.abs(xs[1] - xs[0]) / Math.SQRT2) * scaleOf(out) : Infinity }; });
+    const drawn = (style: string, frontNormal: { x: number; y: number }) => withTemplate(templateFor('slides', style), () => drawAxonometric(col(frontNormal), { x: 0, y: 0, w: 400, h: 280 }, 'tr'));
     // seen from the street to its south, both the walls it shows are turned from the light (which comes from the north-west)
-    const south = withTemplate(templateFor('slides', style), () => drawAxonometric(col({ x: 0, y: -1 }), { x: 0, y: 0, w: 400, h: 280 }, 'tr'));
+    const south = drawn('canary', { x: 0, y: -1 });
     const hs = hatchesOf(south), mine = hs.filter((h) => h.ink === '#60251d');     // the built's: half of #c04a3a
-    check(`${style}: the walls hatched, not patterned with squares`, !south.includes('<pattern') && !south.includes('axo-win') && hs.length >= 1 && hs.every((h) => h.corners === 4), `${hs.length} hatches`);
-    check(`${style}: the hatch a darker cut of the wall's own colour, 0.14 mm wide, never black`, mine.length === 2 && mine.every((h) => h.w === 0.14) && hs.every((h) => h.ink !== '#1a1a1a'), JSON.stringify(mine));
+    check('canary: the walls hatched, not patterned with squares', !south.includes('<pattern') && !south.includes('axo-win') && hs.length >= 1 && hs.every((h) => h.corners === 4), `${hs.length} hatches`);
+    check('canary: the hatch a darker cut of the wall\'s own colour, 0.14 mm wide, never black', mine.length === 2 && mine.every((h) => h.w === 0.14) && hs.every((h) => h.ink !== '#1a1a1a'), JSON.stringify(mine));
     const gaps = mine.map((h) => h.gap).sort((a, b) => a - b);
-    check(`${style}: the wall turned further from the light the closer hatched`, gaps.length === 2 && gaps[0] >= 0.9 - 0.02 && gaps[1] > gaps[0] + 0.05 && gaps[1] < 1.6, gaps.map((g) => g.toFixed(2)).join(' '));
+    check('canary: the wall turned further from the light the closer hatched', gaps.length === 2 && gaps[0] >= 0.9 - 0.02 && gaps[1] > gaps[0] + 0.05 && gaps[1] < 1.6, gaps.map((g) => g.toFixed(2)).join(' '));
     // seen from the north, the wall it faces is lit: left plain
-    const north = withTemplate(templateFor('slides', style), () => drawAxonometric(col({ x: 0, y: 1 }), { x: 0, y: 0, w: 400, h: 280 }, 'tr'));
-    check(`${style}: a wall turned to the light is plain`, hatchesOf(north).filter((h) => h.ink === '#60251d').length < 2, String(hatchesOf(north).filter((h) => h.ink === '#60251d').length));
+    const lit = hatchesOf(drawn('canary', { x: 0, y: 1 })).filter((h) => h.ink === '#60251d').length;
+    check('canary: a wall turned to the light is plain', lit < 2, String(lit));
+    for (const style of ['flamingo', 'kingfisher']) {
+      const out = drawn(style, { x: 0, y: -1 });
+      check(`${style}: no hatch on any wall, and no pattern of squares`, !out.includes('data-face-hatch') && !out.includes('<pattern') && !out.includes('axo-win'));
+      // its storeys still ruled across the walls
+      check(`${style}: the storeys still ruled across the walls`, (out.match(/<line /g) ?? []).length >= 8);
+    }
   }
   // No grey fills: a building given a tone (a neighbour's band of storeys, what stands on the site) is white, its
   // walls hatched as shade, lines clipped to each wall, the closer the darker its tone and closest on the wall turned
@@ -193,9 +200,9 @@ for (const [style, mono] of [['canary', false], ['flamingo', true]] as const) {
     Math.min(...ofBuilt.map((h) => gap(h.d))) < Math.min(...ofNeighbour.map((h) => gap(h.d))), `${ofBuilt.map((h) => gap(h.d).toFixed(2)).join(' ')} | ${ofNeighbour.map((h) => gap(h.d).toFixed(2)).join(' ')}`);
   // as shade: no wall closer than the tone's own spacing (0.6 mm for the darkest), and none over 1.9 times it
   check('heron line model: the hatch opens on a wall turned to the light, as shade', ofBuilt.every((h) => gap(h.d) >= 0.6 - 0.02 && gap(h.d) <= 0.6 * 1.9 + 0.02), ofBuilt.map((h) => gap(h.d).toFixed(2)).join(' '));
-  // the other styles fill their tones as before, and their own hatch is in the wall's colour, never this black
-  const tonedKf = withTemplate(templateFor('slides', 'kingfisher'), () => drawAxonometric(toned, { x: 0, y: 0, w: 400, h: 280 }, 'tr'));
-  check('heron line model: the black hatch on white walls is Heron\'s alone', !/data-face-hatch[^>]*><path d="[^"]+" fill="none" stroke="#1a1a1a"/.test(tonedKf) && !/fill="#ffffff" stroke="#1a1a1a"/.test(tonedKf));
+  // the other styles fill their tones as before: Kingfisher has no hatch at all, and Canary's is in the wall's colour, never this black
+  const tonedIn = (style: string) => withTemplate(templateFor('slides', style), () => drawAxonometric(toned, { x: 0, y: 0, w: 400, h: 280 }, 'tr'));
+  check('heron line model: the black hatch on white walls is Heron\'s alone', !tonedIn('kingfisher').includes('data-face-hatch') && !/data-face-hatch[^>]*><path d="[^"]+" fill="none" stroke="#1a1a1a"/.test(tonedIn('canary')));
   // its massing black and white, with no colour at all: the scene as its callers give it (a red site, lilac built,
   // peach neighbours, a plane over the site) comes out in greys alone, the site a black dash-dot boundary; the same
   // scene in Kingfisher keeps its colours, so the check can fail
