@@ -637,9 +637,14 @@ function tierBadge(x: number, y: number, n: number, r = 2): string {
 /** Each use's colour in the massing and the plan: the style's own tints for the residential, retail and commercial land (the deck's three where a style lacks one). */
 const USE_FILL: Record<Use, string> = { residential: '#f0c9a6', retail: '#e69ea1', commercial: '#a9cfe9' };
 const USE_CATEGORY: Record<Use, string> = { residential: 'r4', retail: 'retail', commercial: 'commercial' };
+/** The zone whose ePlanning colour a use takes where the style keeps those colours (Canary). */
+const USE_ZONE: Record<Use, string> = { residential: 'R4', retail: 'E1', commercial: 'E2' };
 function useFill(u: Use): string {
   // Heron's line model: the homes white, the shops and the offices a light grey, the outline telling the rest
   if (deckLook().id === 'heron') return { residential: '#ffffff', retail: '#e4e4e4', commercial: '#d2d2d2' }[u];
+  // Canary, the zones in their ePlanning colours: the scheme in its use's zone colour at the strength the neighbours
+  // take theirs (zoneInk), so the site stands among them as saturated as they are, told by its outline and storeys
+  if (deckLook().zones === 'lep') return vivid(zoneFill(USE_ZONE[u]), 0.45, 0.5);
   const c = deckLook().categories.find((x) => x.id === USE_CATEGORY[u]);
   return c ? tint(c.fill, Math.min(1, c.opacity + 0.35)) : USE_FILL[u];
 }
@@ -651,7 +656,8 @@ function useFill(u: Use): string {
 function yieldInks() {
   const B = INK.blue, O = INK.orange;
   // Heron's line model: what stands on the site a light grey in its heavy outline
-  const standing = deckLook().id === 'heron' ? '#ececec' : tint(O.deep, 0.42);
+  // (Canary, whose neighbours are at full strength: what stands on the site at full strength too, its yellow, not a tint)
+  const standing = deckLook().id === 'heron' ? '#ececec' : deckLook().zones === 'lep' ? O.solid : tint(O.deep, 0.42);
   return { context: tint(B.solid, 0.5), contextEdge: inkFor(B.solid, 0.42), future: B.light, futureEdge: B.line, standing, envelope: inkFor(B.deep, 0.25), kerb: inkFor(B.solid, 0.4) };
 }
 /** The site's pen: the style's accent. */

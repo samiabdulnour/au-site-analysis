@@ -279,7 +279,8 @@ jobs:
 
       # The 3D views' trees and people in each deck style: Flamingo's cloud crowns and Kingfisher's drawn ones, each
       # painted once as a picture and placed at every tree, with their shadows; people with legs, and a crowd in the
-      # parks; Heron, Canary and the white model plain.
+      # parks; Heron, Canary and the white model plain. And the walls: the coloured models' hatched as shade in the
+      # wall's own colour, closest on the wall turned from the light, no pattern of squares.
       - name: the trees and the people in each style
         run: npx tsx test/trees.mts
 

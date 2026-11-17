@@ -1265,10 +1265,27 @@ The storeys' ramp runs across the palette in every style, Heron's included
 the massing and the built form page light and glossy
 (`massingInks().gloss` and `.pastel`): pastel cuts of the same colours on a
 near-white ground, the faces lit bright and barely shaded, the roofs
-lighter, the edges and the window dots softer, and each building casting a
+lighter, the edges softer, and each building casting a
 soft blue shadow on the ground instead, its footprint swept away from the
 light by its height; Heron and Canary shade the faces themselves, in the
 full colours.
+
+The coloured models (Flamingo, Kingfisher, Canary) mark a building's walls
+with a hatch (`WALL_HATCH` in `src/render/axonometric.ts`): a wall turned from
+the light is hatched as shade, lines at 45° in a darker cut of the wall's own
+colour, 0.14 mm wide and 0.9 mm apart on a wall turned full from the light,
+opening as the wall turns toward it; a wall turned to the light is left plain,
+as is one coloured by its hours of sun. It was a pattern of small dark squares
+laid flat over every wall. The lines are drawn and clipped to each wall, not a
+pattern fill, which the print would rasterise.
+
+In Canary, whose neighbours stand in their zones' ePlanning colours at full
+strength, the site is as saturated as they are: the yield's scheme takes its
+use's zone colour (homes R4's, shops E1's, offices E2's) as strong as a
+neighbour in that zone, what stands on the site Canary's yellow at full strength,
+and the report's built form the site's red; the black outline and the storeys
+ruled across the walls tell the site from the town. The other styles keep
+their own tints for the site.
 
 The 3D views' trees and people follow the style (`lookOf` in
 `src/render/axonometric.ts`).
@@ -1399,9 +1416,9 @@ palette.
     for what is built on the site; the roof stays white;
   - what is built on the site carries the heaviest outline, its storeys
     ruled across its walls and nothing else on them: a massing is a volume,
-    not a facade design, so the other styles' pattern of window panes is
-    left off (`LINE_WINDOWS`, which can also draw frames, ribbons or a
-    curtain wall's uprights on the wall as it stands);
+    not a facade design, so no windows are drawn (`LINE_WINDOWS`, which can
+    also draw frames, ribbons or a curtain wall's uprights on the wall as it
+    stands);
   - the trees are white canopies in their contour with their limbs drawn
     fine, the people and the traffic white in outline;
   - each ground surface has a hatch of its own (`groundHatch`), sized on
@@ -1714,7 +1731,7 @@ after the poster maps of a city (`src/render/axonometric.ts`, the drawing
 the site report's built form page shares): every neighbour in its
 zone's colour, bold, as the plan beneath tints its lot (the ePlanning colour
 where the style keeps it, the category's elsewhere), so the plan and the
-massing agree, with a grid of windows over its faces, on a cream ground of
+massing agree, its walls turned from the light hatched as shade, on a cream ground of
 the activity family — paper in every style. The key names every zone on
 the plan, code and name (`R1 General Residential`, `MU1 Mixed Use`), each
 with its colour: the lot's tint and, on the spreads that draw the

@@ -2663,9 +2663,12 @@ export function formAtlas(b: SlidesBundle, planning: PlanningFacts, opts: { clea
     heightM: bd.estimatedHeightM,
     fill: bd.estimatedHeightM ? M.bands[heightBandOf(bd.estimatedHeightM)] : M.noHeight,
   }));
+  // what stands on the site: the site's colour, a tint of it among the pastel towns, at full strength in Canary, whose
+  // neighbours are at theirs
+  const SITE_FILL = deckLook().id === 'canary' ? vivid(t.site, 0.6, 0.5) : tint(t.site, 0.55);
   const built: Prism[] = drawn.filter((bd) => onSite(bd.centroid[0], bd.centroid[1])).map((bd) => {
     const h = bd.estimatedHeightM, top = h ?? 6.2, n = bd.floors ?? Math.max(1, Math.round(top / METRES_PER_STOREY));
-    return { rings: [local(bd.rings[0] ?? [])], z0: 0, z1: top, fill: tint(t.site, 0.55), edge: '#1c1c1c', edgeW: 0.2, dashed: !h, windows: !!h, storeys: Array.from({ length: n - 1 }, (_, i) => ((i + 1) * top) / n) };
+    return { rings: [local(bd.rings[0] ?? [])], z0: 0, z1: top, fill: SITE_FILL, edge: '#1c1c1c', edgeW: 0.2, dashed: !h, windows: !!h, storeys: Array.from({ length: n - 1 }, (_, i) => ((i + 1) * top) / n) };
   });
   // The lots round about, the parks among them green; the kerbs worked out from the cadastre as the site sheet does.
   const parkRings = greenFacts(b).openSpace.spaces.filter((sp) => sp.park).flatMap((sp) => sp.rings);
@@ -2738,7 +2741,7 @@ export function formAtlas(b: SlidesBundle, planning: PlanningFacts, opts: { clea
     ...HEIGHT_BANDS.map((bd, i) => ({ swatch: block(M.bands[i], lineModel ? '#1a1a1a' : shade(M.bands[i], M.gloss ? 0.78 : 0.55)), label: i === 0 ? bd.label : i === HEIGHT_BANDS.length - 1 ? '16 storeys and more' : `${bd.label} storeys` })),
     { swatch: block(M.noHeight, lineModel ? '#1a1a1a' : shade(M.noHeight, 0.55), true), label: 'No height recorded, dashed' },
     // (Heron's line model has no colour and no grey fill: what stands on the site is closely hatched, as the drawing hatches it)
-    { swatch: block(tint(t.site, 0.55), '#1c1c1c', false, true), label: 'What stands on the site today' },
+    { swatch: block(SITE_FILL, '#1c1c1c', false, true), label: 'What stands on the site today' },
   ];
   const figureHtml = `<div class="form3d">
   <div class="abs" style="left:0;top:0"><svg width="${SHEET_W}mm" height="${SHEET_H}mm" viewBox="0 0 ${SHEET_W} ${SHEET_H}" xmlns="http://www.w3.org/2000/svg" style="display:block" font-family="Arial, 'Liberation Sans', sans-serif">${drawAxonometric(scene, { x: 0, y: TOP, w: SHEET_W, h: SHEET_H - TOP - FOOT, clear: opts.clearFold ? { x: FOLD, margin: BOOKLET_FOLD_CLEAR } : undefined }, 'form09b')}</svg></div>
