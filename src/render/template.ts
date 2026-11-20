@@ -123,6 +123,13 @@ export interface Template {
 
   /** Land-use fills for the context sheet legend. */
   categories: Category[];
+
+  /**
+   * Black and white, with no colour at all (Heron's site report, HERON_PLAIN): the site is a heavy dash-dot black
+   * line with nothing filled inside it, every figure, word and mark that took the site's colour is black, the hatches
+   * are outlined, the cadastre and the blocks are drawn firmly enough to read without a tint, and the trees are hatched.
+   */
+  plain?: boolean;
 }
 
 // Flamingo's land-use palette for the context sheet legend. Four hues, each a
@@ -392,6 +399,19 @@ export const HERON_MONO: Template = {
   // the decks on white paper, in lines and hatches, not in tones over the photograph
   ground: 'paper', footprints: 'white', lots: 'faint', streetInk: '#3c3c3c',
 };
+/**
+ * Heron for its site report, as Z. marked it up (2026-11): black and white alone. "Do not use different colours for
+ * Heron; just make the site a thick line and the trees black with a hatch." So the one colour goes: the site's pen is
+ * black (render/minimap.ts siteMark draws it as a heavy dash-dot line, white under it so it reads over a photograph or
+ * a hatch, and fills nothing), the site's own category is white, and the accent's family is black on greys. The yield
+ * and the A1 site sheet keep HERON_MONO and its one colour.
+ */
+const HERON_PLAIN_CATEGORIES: Category[] = HERON_MONO_CATEGORIES.map((c) => (c.id === 'site' ? { ...c, fill: '#ffffff', opacity: 1 } : c));
+export const HERON_INK_PLAIN: Record<InkFamilyName, InkFamily> = {
+  ...HERON_INK,
+  red: { solid: MG[7], mid: MG[4], light: MG[2], line: MONO_BLACK, deep: MONO_BLACK, text: MONO_BLACK },
+};
+export const HERON_PLAIN: Template = { ...HERON_MONO, plain: true, site: MONO_BLACK, categories: HERON_PLAIN_CATEGORIES };
 export const DEFAULT_TEMPLATE = 'flamingo';
 
 /** The registered id an id or alias names, or the default for anything unknown. */
@@ -831,9 +851,11 @@ const familiesByTemplate = new Map<string, Record<InkFamilyName, InkFamily>>();
  */
 export function deckFamilies(): Record<InkFamilyName, InkFamily> {
   const t = tpl();
-  const hit = familiesByTemplate.get(t.id);
+  // (keyed by the palette, not the name alone: Heron's report is black and white, its yield keeps its one colour)
+  const key = t.plain ? `${t.id}:plain` : t.id;
+  const hit = familiesByTemplate.get(key);
   if (hit) return hit;
-  if (t.id === 'heron') { familiesByTemplate.set(t.id, HERON_INK); return HERON_INK; }
+  if (t.id === 'heron') { const fam = t.plain ? HERON_INK_PLAIN : HERON_INK; familiesByTemplate.set(key, fam); return fam; }
   if (t.id === 'canary') { familiesByTemplate.set(t.id, CANARY_INK); return CANARY_INK; }
   const look = deckLook();
   const cat = (id: string) => t.categories.find((c) => c.id === id);
@@ -856,12 +878,12 @@ export function deckLook(): DeckLook {
   // Flamingo's coral is a map tint, too light for a line of bold type; the others hold.
   // The narrative's ink is the site's own, deepened where it is too light for bold type on white: the style's red on
   // every page; Heron's its one colour.
-  const accent = t.id === 'kingfisher' ? F2.salmonDeep : mono ? HERON_ACCENT : inkFor(t.site, 0.3);
-  const family: InkFamily = mono ? HERON_INK.red : { solid: accent, mid: tint(accent, 0.45), light: tint(accent, 0.18), line: accent, deep: shadeHex(accent, 0.78), text: accent };
+  const accent = t.id === 'kingfisher' ? F2.salmonDeep : t.plain ? MONO_BLACK : mono ? HERON_ACCENT : inkFor(t.site, 0.3);
+  const family: InkFamily = t.plain ? HERON_INK_PLAIN.red : mono ? HERON_INK.red : { solid: accent, mid: tint(accent, 0.45), light: tint(accent, 0.18), line: accent, deep: shadeHex(accent, 0.78), text: accent };
   const aerial = t.ground === 'aerial';
   return {
     id: t.id, accent, family,
-    zones: t.zoning === 'lep' ? 'lep' : 'categories', categories: mono ? HERON_MONO_CATEGORIES : t.categories,
+    zones: t.zoning === 'lep' ? 'lep' : 'categories', categories: t.plain ? HERON_PLAIN_CATEGORIES : mono ? HERON_MONO_CATEGORIES : t.categories,
     ground: aerial ? 'aerial' : 'paper', veil: t.veil ?? 0.36, tintScale: aerial ? (t.tintScale ?? 0.55) : 1,
     buildings: t.footprints === 'colour' ? 'colour' : t.footprints === 'white' ? 'white' : 'grey',
     lots: t.lots === 'white' ? 'white' : 'faint',
@@ -885,7 +907,8 @@ export function themeFor(sheet: SheetKind, id: string | undefined): string {
  */
 export function templateFor(sheet: SheetKind, theme: string | undefined): string | Template {
   const id = sheet === 'context' ? resolveTemplateId(theme) : sheet === 'site' ? siteTheme(theme).base : sheet === 'yield' || sheet === 'slides' ? deckThemeId(theme) : DEFAULT_TEMPLATE;
-  return sheet !== 'context' && id === 'heron' ? HERON_MONO : id;
+  // (Heron's site report is black and white alone; its yield and its site sheet keep the one colour)
+  return sheet === 'slides' && id === 'heron' ? HERON_PLAIN : sheet !== 'context' && id === 'heron' ? HERON_MONO : id;
 }
 
 export function isTemplateId(id: string): boolean {

@@ -163,7 +163,7 @@ async function writeAnalysis(dir: string, say: (m: string) => void): Promise<voi
   const props: Record<string, any> = {};
   for (const q of result.properties) {
     props[String(q.propid)] = {
-      propid: q.propid, base: q.base, geom: q.ringsM, centroid: [q.centroidM.x, q.centroidM.y], areaM2: q.areaM2, kind: q.kind, strata: q.strata, units: q.units,
+      propid: q.propid, base: q.base, geom: q.ringsM, centroid: [q.centroidM.x, q.centroidM.y], areaM2: q.areaM2, widthM: q.widthM, small: q.small, kind: q.kind, strata: q.strata, units: q.units, flats: q.flats,
       strataPlans: q.strataPlans, heritageItem: q.heritageItem ?? null, inHCA: q.inHca ?? null, developed: q.developed, active: q.active.map((d) => ({ da: d.da, status: d.status, type: d.type, levels: d.levels, dwellings: d.dwellings })),
       liveDa: q.liveDa.map((d) => ({ pan: d.pan, status: d.status })), override: q.override ?? null, isSite: q.isSite, mark: q.mark === 'cross' ? 'x' : 'tick', note: q.note,
       lots: q.lots, ...(q.isSite ? { neighbours: result.neighbours } : {}),
@@ -172,7 +172,7 @@ async function writeAnalysis(dir: string, say: (m: string) => void): Promise<voi
   const roads = (bundle.roadNames?.features ?? []).map((f: any) => ({ name: f.properties?.roadnamelabel, paths: (f.geometry?.type === 'MultiLineString' ? f.geometry.coordinates : f.geometry ? [f.geometry.coordinates] : []).map((path: number[][]) => path.map(([lon, lat]) => { const m = lonLatToMercator({ lon, lat }); return [m.x, m.y]; })) }));
   const analysis = {
     k: bundle.k, extent: bundle.extent, centre: bundle.centre, aerial: bundle.aerial, imagery: bundle.imagery, controls: bundle.controls, meta: bundle.meta, fetchedAt: bundle.fetchedAt,
-    strataMax: result.options.strataMax, recentYears: result.options.recentYears, since: result.since, smallScheme: result.options.smallScheme, smallSite: result.options.smallSite,
+    strataMax: result.options.strataMax, recentYears: result.options.recentYears, since: result.since, smallScheme: result.options.smallScheme, smallSite: result.options.smallSite, narrowSite: result.options.narrowSite,
     props, lots: result.lots.map((l) => ({ id: l.id, plan: l.plan, rings: toM(l.rings), areaM2: l.areaM2, registered: l.registered, propid: l.propid })),
     heritageItems: (bundle.heritage?.features ?? []).filter((f: any) => String(f.properties?.LAY_CLASS ?? '').startsWith('Item')).map((f: any) => ({ name: f.properties?.H_NAME, rings: toM(ringsOf(f.geometry)) })),
     parks: parks.map((l: any) => ({ name: l.name, rings: toM(l.rings) })),

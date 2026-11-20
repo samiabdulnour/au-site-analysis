@@ -145,9 +145,11 @@ filled sand, a heritage building in a terracotta hatch, a mature development
 patched grey with dots — a tick on the parcels with development potential and
 a cross on those with low potential, the site in red. Read from the
 cadastre's property register (one row per address: a strata scheme where a
-strata plan sits under the title, where the register files its addresses as
-under one, or where three or more unit addresses share it; the unit
-addresses are its lot count), the lots' record dates (the plan's
+strata plan sits under the title, or where the register files its addresses as
+under one; three or more unit addresses on a title whose lots are all on a
+deposited plan are flats in one ownership, a single title; the unit
+addresses are a scheme's lot count; the site is every property its lots make
+up, each address of an amalgamation), the lots' record dates (the plan's
 registration date for every plan after the digital cadastre was built in
 September 1993, so a strata plan dates the building it followed), the LEP
 heritage layer, State land and the council's parks and facilities, the
@@ -155,8 +157,8 @@ council's development register where it publishes one (the City of Sydney's,
 which reaches back to 2021) and the Portal's live applications. Low
 potential: strata ownership, a heritage item, public land, a mature
 development (significantly developed in the past twenty years, or with a
-current approval or construction) or a site under 250 m², with little
-ability to develop above its current status. Every threshold is in
+current approval or construction) or a small site, under 250 m² or narrower
+than 9 m, with little ability to develop above its current status. Every threshold is in
 `lib/capacity.ts`. The left page counts the parcels, states the rules and
 bars the parcels with potential by area. *Manual:* a building put up on a
 single title before 2021 has no open-data date, and the Online DA API

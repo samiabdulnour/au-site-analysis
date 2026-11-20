@@ -123,5 +123,50 @@ check('the window counts nine parcels, two with potential', counts.properties ==
 // G's new building was strata-subdivided in 2024, so two schemes: A and G
 check('four of them mature, two strata, one heritage, one public, two overridden, one small', counts.mature === 4 && counts.strata === 2 && counts.heritage === 1 && counts.publicLand === 1 && counts.overridden === 2 && counts.small === 1, JSON.stringify(counts));
 
+// ---- a site of several addresses, flats in one ownership, and a lot too narrow (Z.'s markup of 86, 88-90, 94
+// Maroubra Road, 2026-11): the site is every property its lots make, not the one under its point; four unit
+// addresses on a deposited plan are flats, not a strata scheme; a 6 m lot of 280 m² is as small as one under 250 m².
+{
+  const P1 = rect(0, 0, 14, 40), P2 = rect(14, 0, 16, 40), P3 = rect(30, 0, 15, 20);   // the site: 86, 88-90 and 94
+  const N1 = rect(-12, 0, 12, 40);            // a single title, 12 m wide, west of the site
+  const N2 = rect(45, 0, 6.2, 45);            // 279 m², 6.2 m wide: one half of a semi-detached pair
+  const N3 = rect(60, 0, 20, 30);             // three unit addresses, no lot under it in the cadastre's answer: still read as strata
+  const N4 = rect(90, 0, 20, 30);             // three unit addresses under a strata plan
+  const props = fc([
+    row(11, '86 MAROUBRA ROAD MAROUBRA', P1), row(12, '88-90 MAROUBRA ROAD MAROUBRA', P2),
+    row(13, '94 MAROUBRA ROAD MAROUBRA', P3), ...[1, 2, 3, 4].map((n) => row(13, `${n}/94 MAROUBRA ROAD MAROUBRA`, P3, { valnetpropertytype: 2 })),
+    row(14, '84 MAROUBRA ROAD MAROUBRA', N1), row(15, '96A MAROUBRA ROAD MAROUBRA', N2),
+    row(16, '98 MAROUBRA ROAD MAROUBRA', N3), ...[1, 2, 3].map((n) => row(16, `${n}/98 MAROUBRA ROAD MAROUBRA`, N3)),
+    row(17, '100 MAROUBRA ROAD MAROUBRA', N4), ...[1, 2, 3].map((n) => row(17, `${n}/100 MAROUBRA ROAD MAROUBRA`, N4)),
+  ]);
+  const lotsFc = fc([lot('1//DP965310', P1, '1993-09-07'), lot('10//DP1118472', P2, '2007-10-02'), lot('1//DP306910', P3, '1993-09-07'), lot('1//DP100', N1, '1993-09-07'), lot('2//DP100', N2, '1993-09-07'), lot('//SP5000', N4, '1993-09-07')]);
+  const at = (() => { const [lon, lat] = ll(22, 20); return lonLatToMercator({ lon, lat }); })();   // the geocoded point: in 88-90
+  const args = { centre: at, properties: props, lots: lotsFc, heritage: fc([]), publicLand: [], facilities: [], register: [], applications: [], options: { thisYear: 2026 } };
+  const alone = classifyCapacity(args);
+  check('without its lots, the site is the property under its point alone', alone.siteParts.length === 1 && alone.site?.base.startsWith('88-90') === true, alone.siteParts.map((q) => q.base).join(' | '));
+  check('and its own other addresses come out as its neighbours', alone.neighbours.some((n) => n.base.startsWith('86 ')) && alone.neighbours.some((n) => n.base.startsWith('94 ')));
+  const whole = classifyCapacity({ ...args, siteRings: [P1[0], P2[0], P3[0]] });
+  const part = (base: string) => whole.properties.find((q) => q.base.startsWith(base))!;
+  check('with its lots, the site is all three properties', whole.siteParts.length === 3 && ['86 ', '88-90', '94 '].every((a) => whole.siteParts.some((q) => q.base.startsWith(a))), whole.siteParts.map((q) => q.base).join(' | '));
+  check('the site is still named by the property under its point', whole.site?.base.startsWith('88-90') === true, whole.site?.base);
+  check('none of the site carries a mark of its own, or a patch', whole.siteParts.every((q) => q.isSite && q.mark === 'tick' && !q.mature && q.note === undefined));
+  check('none of the site is its own neighbour; the titles beside it are', !whole.neighbours.some((n) => /^(86|88-90|94) /.test(n.base)) && whole.neighbours.some((n) => n.base.startsWith('84 ')) && whole.neighbours.some((n) => n.base.startsWith('96A')), whole.neighbours.map((n) => n.base).join(' | '));
+  check('a neighbour\'s shared boundary is counted against every part of the site', Math.abs((whole.neighbours.find((n) => n.base.startsWith('84 '))?.sharedM ?? 0) - 40) < 0.5 && Math.abs((whole.neighbours.find((n) => n.base.startsWith('96A'))?.sharedM ?? 0) - 20) < 0.5, JSON.stringify(whole.neighbours.map((n) => [n.base, n.sharedM])));
+  check('inWindow leaves every part of the site out of the count', inWindow(whole, { xmin: ORIGIN.x - 50 * K, xmax: ORIGIN.x + 200 * K, ymin: ORIGIN.y - 20 * K, ymax: ORIGIN.y + 100 * K }).every((q) => !q.isSite));
+  const p94 = part('94 ');
+  check('four unit addresses on a deposited plan are flats in one ownership, not a strata scheme', !p94.strata && p94.flats === 4 && p94.strataPlans.length === 0, `${p94.strata} ${p94.flats}`);
+  const n3 = part('98 '), n4 = part('100 ');
+  check('three unit addresses with no lot read under them are still taken as a scheme', n3.strata && n3.flats === 0 && n3.mark === 'cross', `${n3.strata} ${n3.flats} ${n3.mark}`);
+  check('three unit addresses under a strata plan are a scheme', n4.strata && n4.strataPlans.length === 1 && n4.mark === 'cross');
+  const n2 = part('96A'), n1 = part('84 ');
+  check('a lot 6.2 m wide is measured so', Math.abs(n2.widthM - 6.2) < 0.15 && Math.abs(n1.widthM - 12) < 0.15, `${n2.widthM} ${n1.widthM}`);
+  check('279 m² at 6.2 m wide is too small to develop on its own: crossed, not mature', n2.areaM2 >= 250 && n2.small && n2.mark === 'cross' && !n2.mature && n2.kind === 'single', `${n2.areaM2} ${n2.small} ${n2.mark}`);
+  check('a 12 m lot of 480 m² keeps its tick', !n1.small && n1.mark === 'tick', `${n1.small} ${n1.mark}`);
+  const cs = capacityCounts(inWindow(whole, { xmin: ORIGIN.x - 50 * K, xmax: ORIGIN.x + 200 * K, ymin: ORIGIN.y - 20 * K, ymax: ORIGIN.y + 100 * K }), whole.options);
+  check('the narrow lot is counted among the small, for its width', cs.small === 1 && cs.narrow === 1 && cs.strata === 2, JSON.stringify(cs));
+  const wide = classifyCapacity({ ...args, siteRings: [P1[0], P2[0], P3[0]], options: { thisYear: 2026, narrowSite: 0 } });
+  check('with the width test left out (the yield joins narrow lots itself), the narrow lot keeps its tick', wide.properties.find((q) => q.base.startsWith('96A'))!.mark === 'tick');
+}
+
 if (failures.length) { console.error(`capacity: ${failures.length} failure(s)\n  ${failures.join('\n  ')}`); process.exit(1); }
 console.log(`capacity: ${result.properties.length} parcels read, ${counts.potential} with potential; all checks pass`);
