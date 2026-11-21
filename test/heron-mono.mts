@@ -20,6 +20,7 @@ import {
   withTemplate, templateFor, deckLook, deckFamilies, siteTheme, tpl, TEMPLATES, HERON_ACCENT, HERON_SUN, HERON_MONO, HERON_PLAIN, type Category,
 } from '../src/render/template.js';
 import { siteMark, siteSwatch, siteOutlineRings, type BaseData } from '../src/render/minimap.js';
+import { deckCss } from '../src/render/slides.js';
 
 /** A site of one small lot, for the mark: a few metres square in the test's own projection. */
 const SITE_BASE = { siteLots: { type: 'FeatureCollection', features: [{ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [[[0, 0], [0.01, 0], [0.01, 0.01], [0, 0.01], [0, 0]]] } }] } } as unknown as BaseData;
@@ -92,6 +93,12 @@ check('the site report draws on the plain template, black and white alone', temp
   check('in the colour styles too, at plan scale, the outline is one', (colour.match(/ d="([^"]+)"/)?.[1].match(/M/g) ?? []).length === 1, colour.slice(0, 200));
   const apart = siteOutlineRings({ type: 'FeatureCollection', features: [lotAt(0, 0.01, 0.02), lotAt(0.02, 0.01, 0.02)] } as never);
   check('two lots a lane apart keep an outline each', apart.length === 2);
+  // what is drawn has no colour, but a photograph keeps its own (Z. 2026-11: "photos can have colours"): the report
+  // does not ask for its pictures in grey, where the yield, in black, white and one colour, still does
+  const asksGrey = (sheet: 'slides' | 'yield') => /--photos:\s*grey/.test(withTemplate(templateFor(sheet, 'heron'), () => deckCss()));
+  check('the site report keeps its photographs\' colours', !asksGrey('slides'));
+  check('the yield still prints its photographs in grey', asksGrey('yield'));
+  check('the colour styles never asked for grey', !/--photos:\s*grey/.test(withTemplate(templateFor('slides', 'canary'), () => deckCss())));
   const sw = withTemplate(templateFor('slides', 'heron'), () => siteSwatch());
   check('the key\'s site is the same line, not a filled square', /fill="none"/.test(sw) && /stroke-dasharray/.test(sw));
 }

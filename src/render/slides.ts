@@ -8978,7 +8978,7 @@ export function deckCss(): string {
   .slide.atlas .mapnote { width: 64.13mm; box-sizing: border-box; background: #ffffff; padding: 2.4mm 2.4mm 2mm; }
   .slide.atlas .mapnote .h { font-size: 10pt; line-height: 1.15; padding-bottom: 2.1mm; border-bottom: 0.18mm solid #878787; }
   .slide.atlas .mapnote .t { font-size: 6pt; line-height: 2.55mm; letter-spacing: 0.09em; text-transform: uppercase; padding-top: 1.2mm; hyphens: auto; }
-${deckLook().id === 'heron' ? `  /* Heron is black, white and its one colour: every photograph (the aerials, the street, the places) printed in grey (render/pdf.ts) */
+${deckLook().id === 'heron' && !tpl().plain ? `  /* Heron is black, white and its one colour: every photograph (the aerials, the street, the places) printed in grey (render/pdf.ts) */
   :root { --photos: grey; }
 ` : ''}`;
 }

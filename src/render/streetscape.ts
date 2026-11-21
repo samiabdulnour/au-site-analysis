@@ -591,7 +591,7 @@ export function streetscapeSlide(b: StreetscapeBundle, opts: Omit<StreetscapeOpt
   const t = tpl();
   // the deck's page: every building whole, the tallest included, at whatever scale that needs
   const { lead, sources, subtitle, body } = streetscapeParts(b, { whole: true, ...opts });
-  // (Heron prints its photographs in grey, but the street's own in their colours: Z. 2026-11, "use colourful images")
+  // (the street's photographs in their colours whatever the style prints its others in: Z. 2026-11, "use colourful images")
   const figureHtml = `<div class="scape" data-photos="colour">
   <div class="abs lead" style="left:${SLIDE_W - MARGIN - 150}mm;top:17.5mm;width:150mm">${esc(lead)}</div>
 ${body}

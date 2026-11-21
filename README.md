@@ -1274,10 +1274,15 @@ A1 site sheet keep `HERON_MONO` and its one colour. What follows from it:
   black circle, hatched.
 - *The capacity study's tick and cross are black*, and a single title's
   outline a firm dark grey.
-- *The streetscape keeps its photographs' colours* (the wrapper says
-  `data-photos="colour"`, which `greyPhotos` in `src/render/pdf.ts` leaves
-  alone; the aerials and the places stay grey), and its ground is a heavy
-  line with no dark band under the street.
+- *The photographs keep their colours* ("photos can have colours"): what is
+  drawn has no colour, but the aerials, the street and the places print as
+  they were taken. The report no longer asks for its pictures in grey
+  (`--photos: grey` in `deckCss()`, which `greyPhotos` in
+  `src/render/pdf.ts` acts on, is now the yield's alone), and the site's
+  line, black with white under it, reads on a colour photograph as it did
+  on a grey one. The streetscape's ground is a heavy line with no dark band
+  under the street; its wrapper says `data-photos="colour"`, so its faces
+  stay in colour in any deck that prints its other pictures grey.
 
 The yield and the site report take the four styles of the two maps, under
 the same names, and read each style's palette from its context template

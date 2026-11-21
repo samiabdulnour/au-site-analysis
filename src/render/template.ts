@@ -128,6 +128,8 @@ export interface Template {
    * Black and white, with no colour at all (Heron's site report, HERON_PLAIN): the site is a heavy dash-dot black
    * line with nothing filled inside it, every figure, word and mark that took the site's colour is black, the hatches
    * are outlined, the cadastre and the blocks are drawn firmly enough to read without a tint, and the trees are hatched.
+   * What is drawn has no colour; a photograph keeps its own (the aerials, the street, the places: Z. 2026-11,
+   * "photos can have colours").
    */
   plain?: boolean;
 }
