@@ -294,7 +294,15 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
     const r2: YieldBundle = { ...bundle, controls: { ...bundle.controls, zoneCode: 'R2', maxHeightM: 9.5, fsr: 0.5 }, existing: [], lmrCentre: { name: 'Maroubra Junction town centre', distanceM: 20 } };
     const sr = yieldStudy(r2);
     check('LMR: R2 by a town centre is read: a flat building to 9.5 m and 0.8:1', sr.lmr?.permits === 'residentialFlatBuilding' && sr.lmr.hobM === 9.5 && sr.lmr.fsr === 0.8 && sr.lmr.band === 'inner' && sr.lmr.lifts === true, JSON.stringify(sr.lmr));
-    check('LMR: the zone alone gives no scheme; the policy gives one on the whole site', sr.base.archetype === 'none' && !!sr.lmrY && sr.lmrY.archetype === 'residential' && sr.lmrY.storeys >= 2 && sr.lmrY.gfa > 0 && sr.lmrY.gfa <= 0.8 * (r2.siteAreaSqm ?? 0) + 1, JSON.stringify(sr.lmrY && { storeys: sr.lmrY.storeys, gfa: sr.lmrY.gfa }));
+    check('LMR: the zone alone gives no scheme; the policy gives one on the whole site', sr.base.archetype === 'none' && !!sr.lmrY && sr.lmrY.archetype === 'residential' && sr.lmrY.gfa > 0 && sr.lmrY.gfa <= 0.8 * (r2.siteAreaSqm ?? 0) + 1, JSON.stringify(sr.lmrY && { storeys: sr.lmrY.storeys, gfa: sr.lmrY.gfa }));
+    // Z. 2026-11, on the two-storey ring the envelope drew round the whole site: "the volume is obviously filled and
+    // should be higher". The scheme takes the whole of its 9.5 m, three storeys, and is laid out in compact buildings.
+    check('LMR: three storeys under the 9.5 m, to the height and not over it', sr.lmrY?.storeys === 3 && Math.abs((sr.lmrY?.heightM ?? 0) - 9.5) < 1e-6, `${sr.lmrY?.storeys} storeys, ${sr.lmrY?.heightM} m`);
+    check('LMR: laid out in the office\'s feasible footprints, not left as the envelope', !!sr.lmrLayout && sr.lmrLayout.buildings.length >= 1 && sr.lmrLayout.buildings.every((bd) => bd.storeys === 3 && bd.depthM <= 22 && bd.lengthM <= 45), JSON.stringify(sr.lmrLayout?.buildings.map((bd) => [bd.type, bd.lengthM, bd.depthM, bd.storeys])));
+    const ring2 = computeYield({ ring: sr.ring, fronts: sr.fronts, siteAreaSqm: r2.siteAreaSqm ?? 0, zone: 'R2', hobM: 9.5, fsr: 0.8, archetype: 'residential' });
+    const coverOf = (y: { tiers: { from: number; plateSqm: number }[] }) => y.tiers.filter((t) => t.from === 1).reduce((t, x) => t + x.plateSqm, 0);
+    check('LMR: the envelope alone was two storeys over more of the site', ring2.storeys === 2 && coverOf(sr.lmrY!) < coverOf(ring2), `${ring2.storeys} storeys; ${Math.round(coverOf(sr.lmrY!))} m² on the ground against ${Math.round(coverOf(ring2))}`);
+    check('LMR: yield_assumptions.json\'s own roof allowance stands', yieldStudy({ ...r2, assumptions: { roofAllowance: 1.5 } }).lmrY?.storeys !== 3);
     check('LMR: it is a path, after the controls', scenarioRows(r2, sr).map((r) => r.id).join(',') === 'withinControls,lowMidRise', scenarioRows(r2, sr).map((r) => r.id).join(','));
     const far = yieldStudy({ ...r2, lmrCentre: { name: 'Maroubra Junction town centre', distanceM: 950 } });
     check('LMR: beyond 800 m it does not apply', far.lmr === undefined && far.lmrY === undefined);

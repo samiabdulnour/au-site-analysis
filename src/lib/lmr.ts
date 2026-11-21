@@ -29,6 +29,15 @@
 export const LMR_REACH_M = 800, LMR_INNER_M = 400;
 /** The SEPP's standards for a residential flat building in R1 or R2 in a low and mid-rise housing area. */
 export const LMR_LOW_RISE = { heightM: 9.5, fsr: 0.8, minLotSqm: 500, minLotWidthM: 12, parkingPerDwelling: 0.5 };
+/**
+ * What a low-rise building's roof takes of its height, metres: a flat roof's build-up, with no plant or lift overrun
+ * over it. Three floors of 3.1 m then stand 9.5 m, the whole of the 9.5 m the policy gives, where the study's usual
+ * 1.5 m for roof and plant (a taller building's) left room for two and spread the floor area across the site as a
+ * two-storey ring round a slot of a courtyard (Z. 2026-11: "the volume is obviously filled and should be higher").
+ * The SEPP sets a height, not a storey count; councils read the 9.5 m as two to three storeys, and a DCP's wall
+ * height may hold a design to two: the page says it is the study's assumption.
+ */
+export const LMR_ROOF_M = 0.2;
 
 export interface LmrReading {
   /** The town centre the site is near, as the sheets write it, and how far its mapped edge is in a straight line (0 inside it). */
