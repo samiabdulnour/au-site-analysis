@@ -1656,10 +1656,9 @@ yield for 86, 88-90, 94 Maroubra Road, 2026-11):
   compliance was one sheet, all of them after the last path: two massings
   105 mm wide over a plan 147 mm high. Each option is now three pages
   running: its spread, the massing alone over the whole right page; its
-  **shadow** and separation, the plan the whole page (1:1 000 at Maroubra
-  where it was 1:1 500); its **solar access**, the two sun-coloured
-  massings one over the other, the width of the page each (`deckOrder()`,
-  `complianceSheets()`, `schemeFigures(…, planNext)` in
+  **shadow** and separation, the plan the whole page; its **solar
+  access**, the two sun-coloured massings one over the other, the width of
+  the page each (`deckOrder()`, `complianceSheets()`, `schemeFigures()` in
   `src/render/yieldSheet.ts`). The overview's page column follows. Two
   things the larger plan showed are put right with it: a frontage's street
   name, written where its road could not carry it, stood 8 to 14 m off the
@@ -1670,6 +1669,21 @@ yield for 86, 88-90, 94 Maroubra Road, 2026-11):
   runs straight under it. And the overview's lot line, which ran into the
   controls beside it with three lots written out, gives several as
   lot/plan (`3 lots: 1/DP965310, 10/DP1118472, 1/DP36591`, `lotsShort()`).
+- *"The shadow should be the same scale as plans. Can you merge shadow and
+  plans, so the shadow looks more like plan? Also keep the rule with full
+  isometry everywhere. If there is nothing interesting for compliance,
+  don't show the shadow or plan at all."* The shadow page's drawing was the
+  report's sun page (every building white on grey, every building's
+  shadow, 1:1 000) beside plans at 1:750 in the zones' colours. It is now
+  the path's plan itself, at the overview's scale and in its look, with
+  the scheme's shadow, the land it shades and its separations drawn on it:
+  the one plan a path has. The neighbours' own shadows are no longer drawn
+  (over the zones' tints neither could be read); they are still counted,
+  and what the scheme adds to them is hatched. Every path's spread is the
+  isometric alone, whether or not a plan follows, so the paths with
+  nothing to test (at Maroubra: rebuilt to what stands, and within the
+  controls, where R2 takes no scheme) are one page each, with no plan and
+  no shadow page.
 
 `--type yield` draws PLANNING YIELD: what the controls let the site hold, as a
 feasibility study first states it, laid out as the site report is — A3
@@ -1692,7 +1706,7 @@ site may take, so a site with more paths has more pages:
    — its storeys, height, footprint and indicative gross building area (each
    footprint by its storeys), the ratio that makes on the site against the
    LEP's, and the same bars. The right page draws it at its recorded height
-   among the neighbours, over its plan. Where the sources have the footprint
+   among the neighbours, the whole page. Where the sources have the footprint
    but no height, the height is read from Google's 3D meshes and the storeys
    are that height at 3.1 m each, or at the study's 3.8 m office floor where
    the source calls the building an office, a shop or another workplace
@@ -1789,19 +1803,22 @@ site may take, so a site with more paths has more pages:
      many lie in its reach, how many it shades, the most it adds and when,
      and the lots it takes below the hours a DCP commonly asks of half their
      open ground); each building near and its separation, today and built
-     out. On the right, the whole page, the plan as the report's sun page
-     draws it, in Arial: no zone tints, every building white with its
-     storeys (grey where no height is recorded and two are assumed), the
-     future footprints dashed with theirs, and every neighbour's shadow, in
-     grey, each hour from 9 am to 3 pm laid one translucent layer over the
-     last, and the envelope's own over them in the site's accent, at 9 am,
-     noon and 3 pm outlined; hatched, the ground only the envelope shades at
-     one hour or more, where no building standing shades it that hour
+     out. On the right, the whole page, the option's plan, drawn as the
+     deck's plans are and at the overview's scale (`PLAN_ROOM`): each lot
+     tinted by its zone and numbered, with its zone and height of building,
+     the buildings in their zones' colours, the kerbs, the future footprints
+     dashed, each tier of the scheme in its use's colour with its envelope
+     dashed and its number as in the schedule (what stands, as its own
+     spread draws it). Over it the scheme's own shadow, in a shadow's grey,
+     each hour from 9 am to 3 pm laid one translucent layer over the last
+     and at 9 am, noon and 3 pm outlined; hatched, the ground only it shades
+     at one hour or more, where no building standing shades it that hour
      (`addedGround()` in `src/lib/solarAccess.ts`: what it would
-     overshadow); the land it shades outlined and each separation drawn as
-     a dimension (green clear, amber where it holds only habitable to
+     overshadow; the neighbours' shadows are counted for it and not drawn);
+     the land it shades outlined in dots and each separation drawn as a
+     dimension (green clear, amber where it holds only habitable to
      non-habitable, red short), its distance written along its line and
-     just off it, read from the sheet's foot or its right.
+     just off it, haloed, read from the sheet's foot or its right.
    - **Solar access** (`…_solar_access`), the page after that. On the left
      solar access (4A-1 with the hours, again built out, and 4A-2 with
      none) and yield (its floor area against the most the controls allow
@@ -1818,13 +1835,14 @@ site may take, so a site with more paths has more pages:
      leave open) in its band of hours, blues under two, the lorikeet's
      green, yellow, orange and red from two.
 
-   An option with these pages draws its massing alone on its own spread,
-   the whole right page and framed closer (14 m of town round the site,
-   where a massing over a plan takes 40 m): its plan is the shadow's, the
-   page after. A path with nothing to test (what stands with no outline, the
-   path that rebuilds it, an office scheme) keeps its massing over its plan.
-   It was one sheet an option, every option's after the last path, the two
-   massings side by side over the plan: see Z.'s notes below.
+   Every path's own spread draws its massing alone, the whole right page
+   and framed close (14 m of town round the site): its plan is the shadow's,
+   the page after. A path with nothing to test (what stands with no
+   outline, the path that rebuilds it, an office scheme, a zone no scheme is
+   studied for) has that one spread and no plan or shadow page at all. It
+   was one sheet an option, every option's after the last path, the two
+   massings side by side over a plan of its own, and each path's spread its
+   massing over a second plan: see Z.'s notes below.
 10. **Controls and assumptions** — the assumptions the study rests on (floor
    to floor, efficiencies, the mix, the plates, the parking rates, the nearest
    station) on the left; on the right, the full table the office's
