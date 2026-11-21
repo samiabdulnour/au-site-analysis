@@ -41,6 +41,10 @@ export interface Building {
   name?: string;
   kind?: string;
   centroid: [number, number];
+  /** What Google's 3D meshes read on a footprint whose height is the source's own, where they read one and it stands (lib/meshHeights.ts): the source's height has been checked against it. */
+  meshM?: number;
+  /** A source's height the deck did not take (lib/heightCheck.ts): what it said, whether it was a height or a storey count, and why it was set aside. */
+  doubted?: { heightM: number; from: 'measured' | 'floors' | 'mesh'; why: string };
 }
 
 export interface BuildingsData {
@@ -50,7 +54,7 @@ export interface BuildingsData {
   fetchedAt: string;
   note?: string;
   /** What Google's 3D meshes added (lib/meshHeights.ts), where they were read: the heights and footprints taken from them, the meshes read and their error, and the providers they credit. */
-  mesh?: { heights: number; footprints: number; meshes: number; errorM: number; credits: string[] };
+  mesh?: { heights: number; footprints: number; meshes: number; errorM: number; credits: string[]; /** The sources' own heights the meshes were read against, and those of them the meshes contradicted and replaced. */ checked?: number; corrected?: number };
 }
 
 const run = (cmd: string, args: string[], timeoutMs: number): Promise<{ stdout: string; code: number | null }> =>

@@ -9,7 +9,7 @@
 // blurrily in the printed PDF.
 
 import { esc } from './chrome.js';
-import { tint, mix, shadeHex, inkFor, vivid, deckFamilies, deckLook, HERON_ACCENT, type Category, type InkFamily, type InkFamilyName } from './template.js';
+import { tint, mix, shadeHex, inkFor, vivid, deckFamilies, deckLook, tpl, HERON_ACCENT, type Category, type InkFamily, type InkFamilyName } from './template.js';
 import { rampColours } from './terrainMap.js';
 
 export type Family = InkFamilyName;
@@ -387,7 +387,8 @@ export function veg1750Fills(classes: { pct: string }[], technique = deckLook().
     const n = c.pct.toLowerCase();
     const hue = hues[i % hues.length];
     // Heron on paper: no colour to tell the communities by, so each a pattern of its own in one dark ink, on the bare paper
-    if (deckLook().id === 'heron' && technique !== 'tone') return { ...MONO_VEG[i % MONO_VEG.length], ink: '#2b2b2b' };
+    // (each outlined, so where two patterns meet there is a line between them: Z. 2026-11, "the hatches are not readable, put there outline")
+    if (deckLook().id === 'heron' && technique !== 'tone') return { ...MONO_VEG[i % MONO_VEG.length], ink: '#2b2b2b', outline: '#1a1a1a', outlineW: 0.3 };
     if (technique === 'tone') return { bg: tint(hue, openness(n)), opacity: 0.85 };
     // on paper, dots in the community's colour, the denser the closer its canopy: rainforest tightest, forest, woodland, the rest open
     const dots = /rainforest/.test(n) ? { step: 0.55, w: 0.3 } : /forest/.test(n) ? { step: 0.7, w: 0.3 } : /woodland|grassy|open|grassland/.test(n) ? { step: 0.95, w: 0.28 } : { step: 1.25, w: 0.26 };
@@ -407,18 +408,20 @@ export function paletteRamp(): string[] {
 }
 
 /**
- * The ground's ramp, low to high, after the old survey sheets: sand on the flats, pink then salmon up the slopes,
- * violet and the deep blue on the heights — the style's own families at each step, so Heron's is terracotta and
- * indigo and Canary's is sharper. Tinted for a wash over the hillshade, darkened for contours on paper.
+ * The ground's ramp, low to high: the hypsometric tints a topographic map prints its relief in, green on the low
+ * ground through a pale yellow and sand to a terracotta brown on the heights. The same in every colour style, since
+ * a reader knows it from every atlas, and the site's own colour stands clear of all of it. (It was drawn from each
+ * style's families, sand through pinks to violet and blue: on Canary a page of pinks under a red site, which Z.
+ * asked to be done otherwise, 2026-11.) Tinted for a wash over the hillshade, darkened for contours on paper.
+ * Heron's stays in greys.
  */
+export const HYPSOMETRIC = ['#7fb685', '#bcd78f', '#f1e59a', '#ecc47c', '#d59a5f', '#a9683f'];
 export function terrainRamp(): string[] {
   if (deckLook().id === 'heron') return ['#f2f2f2', '#dcdcdc', '#c2c2c2', '#a0a0a0', '#787878'];
-  const B = INK.blue, O = INK.orange, R = INK.red;
-  const sat = (hex: string) => { const n = parseInt(hex.slice(1), 16), c = [(n >> 16) & 255, (n >> 8) & 255, n & 255]; const mx = Math.max(...c); return mx ? (mx - Math.min(...c)) / mx : 0; };
-  const sand = [O.solid, O.line, O.deep].sort((a, b) => sat(b) - sat(a))[0];
-  const red = vivid(R.solid, 0.55, 0.5);
-  return [tint(vivid(sand, 0.6, 0.62), 0.3), tint(red, 0.5), red, vivid(mix(red, B.solid, 0.55), 0.45, 0.42), vivid(B.deep, 0.5, 0.3)];
+  return HYPSOMETRIC;
 }
+/** What the key says of the ramp, low to high. */
+export const terrainRampWords = () => (deckLook().id === 'heron' ? 'light on the low ground to dark on the high' : 'green on the low ground through yellow to brown on the high');
 
 /** The height bands, keyed on the height of buildings page and coloured up the style's ramp; the massing takes the same bands. */
 export const HEIGHT_BANDS: { label: string; maxM: number; fill: string }[] = [
@@ -473,7 +476,8 @@ export function heightRamp(): string[] {
 
 /** The ramp ordered data runs up in this style: Heron's from a pale grey up to its one colour; the others across the palette. */
 export function styleRamp(): string[] {
-  return deckLook().id === 'heron' ? ['#e6e6e6', '#b9b2b0', HERON_ACCENT] : paletteRamp();
+  // (Heron's report, black and white alone: up to black)
+  return deckLook().id === 'heron' ? (tpl().plain ? ['#cfcfcf', '#8a8a8a', '#1a1a1a'] : ['#e6e6e6', '#b9b2b0', HERON_ACCENT]) : paletteRamp();
 }
 
 

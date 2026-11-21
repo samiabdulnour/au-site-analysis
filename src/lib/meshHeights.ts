@@ -22,6 +22,7 @@
 
 import { pointInRing } from '../fetch/planning.js';
 import { ringCentroid } from './geo.js';
+import { grosslyApart } from './heightCheck.js';
 import type { Building, BuildingsData } from '../fetch/buildings.js';
 
 export type XY = [number, number];
@@ -262,20 +263,29 @@ export function gapFootprints(f: HeightField, lotRings: XY[][], occupied?: Uint8
 /**
  * The buildings with what the meshes add: a height on every footprint that had none (or only a determined
  * application's storeys, which is a consent, not a measure), and a footprint on every built lot the sources
- * left empty. The source's measured heights and storey counts stand. `gapLots` are the lots with no footprint
- * (lib/gapLots.ts), in lon/lat like the footprints. Pure: the field is read, nothing is fetched.
+ * left empty. The source's measured heights and storey counts stand where the meshes bear them out, and are
+ * read against the meshes too: one grossly apart from the surface over its own footprint (lib/heightCheck.ts: a
+ * house whose street number was typed into its height) gives way to the meshes' reading, and carries what it said
+ * (`doubted`); the others carry the meshes' reading beside their own (`meshM`). `gapLots` are the lots with no
+ * footprint (lib/gapLots.ts), in lon/lat like the footprints. Pure: the field is read, nothing is fetched.
  */
 export function withMeshHeights(data: BuildingsData, field: HeightField, frame: LocalFrame, gapLots: number[][][][], meta: { meshes: number; errorM: number; credits: string[] }): BuildingsData {
   const xy = (rings: number[][][]): XY[][] => rings.map((r) => r.map(([lon, lat]) => toXY(frame, lon, lat)));
   const footprints = data.buildings.map((b) => xy(b.rings));
   const occupied = occupancy(field, footprints);
-  let heights = 0;
+  let heights = 0, checked = 0, corrected = 0;
   const buildings = data.buildings.map((b, i): Building => {
-    if (b.heightFrom === 'measured' || b.heightFrom === 'floors') return b;
     const h = footprintHeight(field, footprints[i], occupied);
     if (!h) return b;
-    heights++;
     const heightM = Math.round(h.heightM * 10) / 10;
+    if (b.heightFrom === 'measured' || b.heightFrom === 'floors') {
+      if (!b.estimatedHeightM) return b;
+      checked++;
+      if (!grosslyApart(b.estimatedHeightM, heightM)) return { ...b, meshM: heightM };
+      corrected++;
+      return { ...b, heightM, floors: undefined, estimatedHeightM: heightM, heightFrom: 'mesh', da: undefined, doubted: { heightM: b.estimatedHeightM, from: b.heightFrom, why: `the 3D meshes read ${heightM} m on its footprint` } };
+    }
+    heights++;
     return { ...b, heightM, floors: undefined, estimatedHeightM: heightM, heightFrom: 'mesh', da: undefined };
   });
   const traced: Building[] = [];
@@ -286,8 +296,8 @@ export function withMeshHeights(data: BuildingsData, field: HeightField, frame: 
       traced.push({ id: `mesh/${k}/${traced.length}`, source: 'mesh', rings, heightM, estimatedHeightM: heightM, heightFrom: 'mesh', centroid: ringCentroid(rings[0]) });
     }
   });
-  if (!heights && !traced.length) return data;
-  const mesh = { heights, footprints: traced.length, ...meta };
-  const note = [data.note, `${heights} heights and ${traced.length} footprints from Google's 3D meshes`].filter(Boolean).join('; ');
+  if (!heights && !traced.length && !checked) return data;
+  const mesh = { heights, footprints: traced.length, ...meta, checked, corrected };
+  const note = [data.note, `${heights} heights and ${traced.length} footprints from Google's 3D meshes`, corrected ? `${corrected} of the sources' own heights contradicted by the meshes and replaced` : ''].filter(Boolean).join('; ');
   return { ...data, buildings: [...buildings, ...traced], note, mesh };
 }

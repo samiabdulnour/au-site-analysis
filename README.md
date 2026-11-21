@@ -1239,6 +1239,51 @@ the sheet (`themeFor()`). The CLI takes `--site-theme`.
 
 ### The decks' styles
 
+**Heron's site report is black and white alone** (Z.'s markup of the Heron
+deck for 86, 88-90, 94 Maroubra Road, 2026-11: "do not use different
+colours for Heron; just make the site a thick line and the trees black with
+a hatch"). It draws on its own template, `HERON_PLAIN`
+(`templateFor('slides', 'heron')`, `plain: true`), where the yield and the
+A1 site sheet keep `HERON_MONO` and its one colour. What follows from it:
+
+- *No red anywhere*: the site's pen, the narrative, the accent's ink family
+  (the bars of a chart, a constraint's number, a heritage outline) and the
+  walking bands' ramp are black on greys; the site's own land-use category
+  is white. `test/heron-mono.mts` holds every ink of the report to a grey.
+- *The site is a heavy line*: `siteMark` (`src/render/minimap.ts`) draws it
+  as a 0.9 mm dash-dot black line with white under it, so it stands clear of
+  a photograph, a hatch or a tone alike, and fills nothing inside it. It is
+  one outline round the whole site: an amalgamation's lots are joined
+  (`siteOutlineRings`, their corners rounded to a centimetre so two that
+  meet do meet, a gap between them no boundary) and the lines between them
+  are left to the cadastre, where each lot was outlined and the site read
+  as three. Every style's site outline, the black edge over a red map and
+  the site on the ground of the built form page take the same joined ring; the
+  keys show the same line in a box (`siteSwatch`), and the site plan and the
+  condition page take the same boundary. The region's ring and Country's
+  dot are black.
+- *The hatches end on a line*: the streets' casing is a firm dark grey and
+  heavier (`greyBase`, `overLayers`), so every block has a contour and a
+  zone's hatch stops at it; the cadastre is a grey firm enough to read with
+  no tint under it; Country's plant communities are each outlined along
+  their own edge (`paintMasks` paints a fill's outline along its mask's
+  edge), so two patterns that meet have a line between them.
+- *The trees are hatched*: on the built form page each crown is ruled in
+  black inside its black contour (`crownPicture`'s `hatch`), so the trees
+  stand apart from the white buildings; on the green page each tree is a
+  black circle, hatched.
+- *The capacity study's tick and cross are black*, and a single title's
+  outline a firm dark grey.
+- *The photographs keep their colours* ("photos can have colours"): what is
+  drawn has no colour, but the aerials, the street and the places print as
+  they were taken. The report no longer asks for its pictures in grey
+  (`--photos: grey` in `deckCss()`, which `greyPhotos` in
+  `src/render/pdf.ts` acts on, is now the yield's alone), and the site's
+  line, black with white under it, reads on a colour photograph as it did
+  on a grey one. The streetscape's ground is a heavy line with no dark band
+  under the street; its wrapper says `data-photos="colour"`, so its faces
+  stay in colour in any deck that prints its other pictures grey.
+
 The yield and the site report take the four styles of the two maps, under
 the same names, and read each style's palette from its context template
 (`deckLook()` and `deckFamilies()` in `src/render/template.ts`). The site
@@ -2216,6 +2261,43 @@ scheme, a heritage item, a mature development or a site under 250 m² stands
 as it is; its last spread says how many were held, and `PLANNING_YIELD.json`
 lists each neighbour's reading.
 
+### Corrections from the Maroubra markup (2026-11)
+
+Z.'s marked-up Canary deck for 86, 88-90, 94 Maroubra Road, page by page:
+
+- *Topography*: the ground's ramp is the hypsometric tints of a topographic
+  map, green on the low ground through a pale yellow and sand to a
+  terracotta brown on the heights (`HYPSOMETRIC`, `terrainRamp()` in
+  `src/render/atlasKit.ts`), the same in every colour style; it was drawn
+  from each style's families, which on Canary was a page of pinks under a
+  red site. Heron's stays in greys.
+- *Capacity and opportunity*: the site is all its properties, flats on a
+  deposited plan are a single title, and a lot narrower than 9 m is a small
+  site (*The capacity and opportunity site study*, below).
+- *Height of buildings*: every height is read a second time (*A second look
+  at the heights*).
+- *Built form*: the drawing fills its frame to the border, 600 m of the
+  town across the spread with the site at its middle and the town running
+  out past every edge (`AxoScene.frameM`, `frameReachM()` in
+  `src/render/axonometric.ts`), where fitting everything within 300 m drew a
+  round town in the middle of the sheet with the frame's corners empty. Only
+  what can show in the frame is drawn, so the page is no heavier; the lead
+  still counts the buildings within 300 m.
+- *Movement*: the lines of walking time lie over the streets, not under
+  them (a white street broke each line at every crossing), and the key of
+  places is drawn last, so a car park's mark or a stop in its corner lies
+  under its white ground.
+- *Grid, sun and views*: the streets lie under the shadows, which fall
+  across a street as they do across a yard.
+- *Environmental constraints*: a page with nothing mapped says so in a
+  panel of its own under the map's name (`mapNote`: a head over a hairline
+  and a line of the key's small caps, on the key's white ground), where it
+  was one line of small type across the middle of the map, over the site.
+- *Opportunities and constraints*: the streets lie over the parks' ground
+  and under everything the page hatches or rules (the shadows, the sight
+  lines, the walking reach), and a sight line's ground is a veil, not a
+  white fill, so the blocks it crosses show through it.
+
 ### The cover and the booklet
 
 Both decks open on a cover, page 1 of the deck, so the spreads after it are
@@ -2367,11 +2449,20 @@ What the sheet reads, all open data (`scripts/capacity_study.ts` fetches,
 `src/lib/capacity.ts` classifies, as it does for the deck's spread 08b, `render.py` draws):
 
 - *Ownership* from the NSW cadastre and its property register: a property is
-  a strata scheme where a strata plan sits under it, where the register files
-  its addresses as under a strata plan (schemes on stratum lots), or where
-  three or more unit addresses share the title; the unit addresses registered
-  against the scheme are its lot count. Everything else on a deposited plan is
-  single ownership. Council land is the council's parks and facilities layers
+  a strata scheme where a strata plan sits under it, or where the register files
+  its addresses as under a strata plan (schemes on stratum lots); the unit
+  addresses registered against the scheme are its lot count. Three or more
+  unit addresses on a title say so only where the cadastre gave no lot under
+  it to read the plan from: where its lots are known and all on a deposited
+  plan, the units are flats or shops in one ownership, which is one owner to
+  deal with and a single title (94 Maroubra Road, four flats on Lot 1
+  DP 306910, was drawn as a strata scheme of four until this was read).
+  Everything else on a deposited plan is single ownership. The site is every
+  property its lots make up, not only the one under its geocoded point: an
+  amalgamation of several addresses is several rows of the register, and each
+  of them is the site, none of them its own neighbour (86, 88-90 and 94
+  Maroubra Road were drawn as the middle address alone, with a cross on 94
+  and "the site adjoins 86 Maroubra Road"). Council land is the council's parks and facilities layers
   (the City of Sydney publishes them), State land the ePlanning State
   government land layer. None of this is a title search, and the sheet says so.
 - *Heritage items* from the LEP heritage layer.
@@ -2398,7 +2489,11 @@ What the sheet reads, all open data (`scripts/capacity_study.ts` fetches,
   approval, construction or live application for a new building; a cross (low
   development potential) on every mature development, on strata ownership
   (the lot count printed under it on a scheme of more than 30 lots), on a
-  heritage item, on public land and on a small site under 250 m², which has
+  heritage item, on public land and on a small site, under 250 m² or
+  narrower than 9 m (a terrace's lot or one half of a semi-detached pair,
+  277 m² at 6.1 m wide along Maroubra Road: the width is the lesser side of
+  the title's least bounding rectangle, and 9 m parts those from a detached
+  house's lot at 10 m and over), which has
   little ability to develop above its current status; a tick (development
   potential) on every other property. Lane stubs and slivers under 40 m² carry no mark.
 
@@ -2656,6 +2751,45 @@ pitched roof's 80th percentile against storeys × 3.1), 78 % within a
 storey. `GOOGLE_MAPS_API_KEY=header` says a proxy in front of the process
 adds the key to the tile requests as `X-Goog-Api-Key`, and none goes in the
 query.
+
+### A second look at the heights
+
+A source's height was taken as it stood, and one wrong tag drew a tower. At
+Maroubra a mapper typed a house's street number into its height
+(OpenStreetMap way 1436151685, 62 Boyce Road, `height=62`, which Overture
+carried), and the house stood 62 m, twenty storeys: the tallest building on
+the height of buildings page, in the massing, the shadows and the
+narrative. Every height is now read twice (`src/lib/heightCheck.ts`, pure
+arithmetic, `test/height-check.mts`):
+
+- *Against the meshes*, where they are read: the surface gives every
+  footprint a height of its own, the sources' included, and a source's
+  height grossly apart from it (by more than 8 m and more than six tenths of
+  the greater) gives way to the meshes' reading. Over the Maroubra page 199
+  of the sources' heights were checked and 14 replaced: the house, 62 m to
+  5.6 m, and thirteen blocks the sources had at one or two storeys that
+  stand seven to ten (Pacific Square at 6 m, read 33.5 m). The 185 the
+  meshes bore out agree to a median 1.8 m (a pitched roof over storeys ×
+  3.1), and keep their source's height with the meshes' beside it.
+- *Against the footprint and the plan*, where no mesh spoke: a height over
+  25 m that is more than five times its footprint's lesser side and more
+  than three times the height limit mapped over it (eight times the lesser
+  side where no limit is mapped) is set aside, and the building is drawn as
+  one with no recorded height. 62 m on 10 × 17 m under a 9.5 m limit fails;
+  a slab, or a pencil tower under a limit that allows it, stands.
+- *The meshes' own readings*, which take a tree for a roof where its picture
+  is not green: a height the meshes read over 12 m, more than one and a half
+  times the lesser side, and under no limit (a park) or more than 1.4 times
+  it, is a tree or a mast. A source's footprint keeps its place with no
+  height; one traced from the meshes alone is not drawn (a 21 m "building"
+  of 78 m² in Nagle Park).
+
+What was set aside stays on the building (`doubted`: what it said, from
+where, and why), the log names each one so the tag can be mended upstream,
+the height and built form pages' sources say how many heights were checked
+and how many were not taken, and `overall.json` lists them
+(`builtForm.doubted`). `npx tsx scripts/patch_bundle.ts out/<slug> mesh`
+applies it to a kept bundle; `… heights` applies the footprint test alone.
 
 ## How it works
 
