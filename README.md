@@ -1310,10 +1310,29 @@ The storeys' ramp runs across the palette in every style, Heron's included
 the massing and the built form page light and glossy
 (`massingInks().gloss` and `.pastel`): pastel cuts of the same colours on a
 near-white ground, the faces lit bright and barely shaded, the roofs
-lighter, the edges and the window dots softer, and each building casting a
+lighter, the edges softer, and each building casting a
 soft blue shadow on the ground instead, its footprint swept away from the
 light by its height; Heron and Canary shade the faces themselves, in the
 full colours.
+
+Canary marks a building's walls with a hatch (`WALL_HATCH` in
+`src/render/axonometric.ts`): a wall turned from the light is hatched as shade,
+lines at 45° in a darker cut of the wall's own colour, 0.14 mm wide and 0.9 mm
+apart on a wall turned full from the light, opening as the wall turns toward
+it; a wall turned to the light is left plain, as is one coloured by its hours
+of sun. The lines are drawn and clipped to each wall, not a pattern fill, which
+the print would rasterise. Flamingo and Kingfisher, light and glossy with their
+shadows on the ground, leave every wall plain: no hatch at all, the storeys
+ruled across what is built on the site. (All three laid a pattern of small dark
+squares flat over every wall.)
+
+In Canary, whose neighbours stand in their zones' ePlanning colours at full
+strength, the site is as saturated as they are and a colour none of them takes:
+the yield's scheme is Canary's yellow (its shops' and offices' floors E1's and
+E2's colours at the same strength), what stands on the site today the deeper of
+its yellows, and the report's built form draws the site's building in the
+site's red at full strength. The other styles keep their own tints for the
+site.
 
 The 3D views' trees and people follow the style (`lookOf` in
 `src/render/axonometric.ts`).
@@ -1444,9 +1463,9 @@ palette.
     for what is built on the site; the roof stays white;
   - what is built on the site carries the heaviest outline, its storeys
     ruled across its walls and nothing else on them: a massing is a volume,
-    not a facade design, so the other styles' pattern of window panes is
-    left off (`LINE_WINDOWS`, which can also draw frames, ribbons or a
-    curtain wall's uprights on the wall as it stands);
+    not a facade design, so no windows are drawn (`LINE_WINDOWS`, which can
+    also draw frames, ribbons or a curtain wall's uprights on the wall as it
+    stands);
   - the trees are white canopies in their contour with their limbs drawn
     fine, the people and the traffic white in outline;
   - each ground surface has a hatch of its own (`groundHatch`), sized on
@@ -1759,7 +1778,7 @@ after the poster maps of a city (`src/render/axonometric.ts`, the drawing
 the site report's built form page shares): every neighbour in its
 zone's colour, bold, as the plan beneath tints its lot (the ePlanning colour
 where the style keeps it, the category's elsewhere), so the plan and the
-massing agree, with a grid of windows over its faces, on a cream ground of
+massing agree (in Canary its walls turned from the light hatched as shade), on a cream ground of
 the activity family — paper in every style. The key names every zone on
 the plan, code and name (`R1 General Residential`, `MU1 Mixed Use`), each
 with its colour: the lot's tint and, on the spreads that draw the
@@ -2319,24 +2338,29 @@ numbered from 2. There are two covers, for the two ways a deck is read
   front, under the name and the site, and the back carries the deck's name and
   the site alone. Every back closes on the small print in two columns.
 
-The picture is the place's canopy (`src/lib/coverPicture.ts`): the green of the
-aerial (trees, gardens and lawns, the same reading the report's green page and
-the yield's crowns come from) cut into cells some 1.6 m across and drawn at
-1:2000, 0.8 mm a cell, the site in the middle, in a blue-grey on a pale sage.
-It is the grain of the place, not a map of it: no site mark, no streets. The
-cells are traced into one vector outline, so nothing in it is a raster for a
-viewer to smooth, and Heron, black and white and its one colour, inks it in the
-two colours' greys.
-- The report cuts the cells from its `vegetation_mask.png` each time it is
-  drawn (`prepareRasters`); the yield's pipeline cuts them from the reading it
-  takes for the crowns and keeps them in the bundle (`cover`).
-- A deck with no reading of the aerial draws the trees it does hold as their
-  crowns in the same cells; with no trees either, the picture is its ground.
-- A reading that stops short of the picture at 1:2000 is drawn closer in; one
-  read coarsely (a very wide site) is never drawn finer than it was read.
+The picture is the place's trees as a speckle (`src/lib/coverPicture.ts`):
+every tree the deck holds is a fleck of its own, the site in the middle, drawn
+at 1:2000 in cells of half a millimetre, in a blue-grey on a pale sage.
+- A small tree is a dot of the heart of its crown (0.6 of its width); a tree
+  6 m across or more is the lit side of its crown, a crescent open away from
+  the light (the north-west). So trees side by side stay apart and the ground
+  between them stays open, where the canopy drawn whole ran into patches.
+- The trees are the crowns the decks already read off the aerial's green
+  (`src/lib/crowns.ts`: the yield's `trees`, the report's `green.crowns`), with
+  the trees a council or OpenStreetMap records among them. A street's trees
+  fall in a line, a garden's in a cluster, a reserve's in a field of crescents.
+- It is the grain of the place, not a map of it: no site mark, no streets.
+- The cells are traced into one vector outline, so nothing in it is a raster
+  for a viewer to smooth, and Heron, black and white and its one colour, inks
+  it in the two colours' greys.
+- Trees that stop short of the picture at 1:2000 are drawn closer in, as far
+  as 1:1200. A report that holds the aerial's green but no crowns has them
+  read off that green when it is drawn (`prepareRasters`); a deck with no trees
+  at all has the picture's ground alone.
 
-`npx tsx test/covers.mts` checks the cells, the outline (its area the cells'
-own, holes and corners included) and which style's cover carries what.
+`npx tsx test/covers.mts` checks the speckle (the dot, the crescent, trees side
+by side left apart), the outline (its area the cells' own, holes and corners
+included) and which style's cover carries what.
 
 Each deck is also imposed as a booklet (`src/render/booklet.ts`), kept beside
 its PDF as `PLANNING_YIELD.booklet.pdf` or `OVERALL_ANALYSIS.booklet.pdf`. Each

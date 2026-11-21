@@ -277,16 +277,17 @@ jobs:
       - name: the booklet folds in order
         run: npx tsx test/booklet.mts
 
-      # The decks' covers: the place's canopy cut into the picture's cells and traced into one outline (its area the
-      # cells' own, holes and corners included); the slides' cover with the picture in every style, the booklet's cut
-      # in two down the fold, the picture on its front for Flamingo and Kingfisher and the contents there for Heron
-      # and Canary.
+      # The decks' covers: the place's trees as the picture's speckle (a small tree a dot, a wide one the lit side of
+      # its crown, trees side by side left apart) traced into one outline (its area the cells' own, holes and corners
+      # included); the slides' cover with the picture in every style, the booklet's cut in two down the fold, the
+      # picture on its front for Flamingo and Kingfisher and the contents there for Heron and Canary.
       - name: the covers and their picture
         run: npx tsx test/covers.mts
 
       # The 3D views' trees and people in each deck style: Flamingo's cloud crowns and Kingfisher's drawn ones, each
       # painted once as a picture and placed at every tree, with their shadows; people with legs, and a crowd in the
-      # parks; Heron, Canary and the white model plain.
+      # parks; Heron, Canary and the white model plain. And the walls: Canary's hatched as shade in the wall's own
+      # colour, closest on the wall turned from the light; Flamingo's and Kingfisher's plain; no pattern of squares.
       - name: the trees and the people in each style
         run: npx tsx test/trees.mts
 

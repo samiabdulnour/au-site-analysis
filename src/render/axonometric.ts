@@ -38,7 +38,7 @@ export interface Prism {
   dashed?: boolean;
   dash?: string;
   opacity?: number;
-  /** A grid of windows over the faces, as the poster maps draw a city. */
+  /** A building whose walls may be marked: Canary hatches the wall turned from the light (WALL_HATCH), a line model draws what LINE_WINDOWS says, Flamingo and Kingfisher leave them plain. */
   windows?: boolean;
   /**
    * Panels laid on the faces (an apartment's stretch of facade on a storey, coloured by its sun): each on the edge
@@ -308,6 +308,17 @@ export function lineHatchPitch(fill: string): number | null {
  * curtain wall's grid with the storeys' lines.
  */
 const LINE_WINDOWS: 'none' | 'frames' | 'ribbon' | 'mullions' = 'none';
+/**
+ * How Canary, whose faces carry the shade in full colour, marks its buildings' walls: a wall turned from the light is
+ * hatched as shade, lines at 45° in a darker cut of the wall's own colour (`ink` of it), `w` mm wide on paper and
+ * `pitch` mm apart on a wall turned full from the light, opening by `open` of that as the wall turns toward it; a
+ * wall turned to the light (past `turned` of full) is left plain. Flamingo and Kingfisher, light and glossy with
+ * their shadows on the ground, leave every wall plain. (All three laid a pattern of small dark squares flat over
+ * every wall: windows square to the page, on walls that are not.)
+ */
+const WALL_HATCH = { pitch: 0.9, open: 0.7, w: 0.14, ink: 0.5, turned: 0.25 };
+/** The spacing of Canary's hatch on a wall whose normal is `turn` toward the light (-1 full from it, 1 full to it); null for a wall left plain. */
+export const wallHatchPitch = (turn: number): number | null => (turn < WALL_HATCH.turned ? WALL_HATCH.pitch * (1 + WALL_HATCH.open * ((turn + 1) / (1 + WALL_HATCH.turned))) : null);
 const GROUND_HATCH = {
   lawn: { pitch: 0.62, w: 0.07, ink: '#8a8a8a' },
   yard: { pitch: 2.0, w: 0.16, ink: '#7d7d7d' },
@@ -497,7 +508,7 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   }
 
   // A line model's windows, drawn on the wall as it stands: bay by bay along it, storey by storey up it, each skewed
-  // as the wall is. (The other styles lay a pattern of small panes flat over the face, square to the page.)
+  // as the wall is. (Canary hatches the wall turned from the light instead, WALL_HATCH; Flamingo and Kingfisher leave it plain.)
   const lineWindows = (f: { p: XY; q: XY }, pr: Prism): string => {
     const L = Math.hypot(f.q.x - f.p.x, f.q.y - f.p.y);
     if (L < 3) return '';
@@ -524,9 +535,9 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   // closest on the wall turned from the light, opening to nearly twice the spacing on one turned full to it; its roof
   // stays white. What is built on the site in a firmer line. The hatches are drawn once the drawing's scale is known,
   // each clipped to its face.
-  const faceHatches: { d: string; pts: [number, number][]; pitch: number; w: number }[] = [];
+  const faceHatches: { d: string; pts: [number, number][]; pitch: number; w: number; ink?: string }[] = [];
   const hatchOf = (pr: Prism) => { const pitch = plain && pr.opacity == null ? lineHatchPitch(pr.fill) : null; return pitch ? { pitch, w: built.includes(pr) ? 0.09 : 0.06 } : null; };
-  const hatchFace = (pts: [number, number][], d: string, h: { pitch: number; w: number }) => { faceHatches.push({ d, pts, ...h }); return `<!--axo:fh${faceHatches.length - 1}-->`; };
+  const hatchFace = (pts: [number, number][], d: string, h: { pitch: number; w: number; ink?: string }) => { faceHatches.push({ d, pts, ...h }); return `<!--axo:fh${faceHatches.length - 1}-->`; };
   const prismSvg = (pr: Prism) => {
     const out: string[] = [];
     const dash = pr.dashed ? ` stroke-dasharray="${pr.dash ?? '0.8,0.6'}"` : '';
@@ -551,15 +562,20 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
         if (hatch) out.push(hatchFace(facePts, face, { pitch: hatch.pitch * (1 + 0.9 * Math.max(0, f.m.x * light.x + f.m.y * light.y)), w: hatch.w }));
         const celled = (pr.cells ?? []).some((c) => c.ring === ri && c.edge === f.i);
         // (a line model: its windows drawn on the wall; none over a wall coloured by its hours of sun, which is a grid already)
-        if (pr.windows) out.push(line ? (celled ? '' : lineWindows(f, pr)) : `<path d="${face}" fill="url(#axo-win-${id})"/>`);
-        // the panels on this face, lit as it is, each outlined and windowed
+        if (pr.windows && line) out.push(celled ? '' : lineWindows(f, pr));
+        // (Canary: the wall turned from the light hatched as shade, none over a wall coloured by its hours of sun;
+        // the glossy models, Flamingo and Kingfisher: no hatch at all)
+        else if (pr.windows && !celled && !M.gloss) {
+          const pitch = wallHatchPitch(f.m.x * light.x + f.m.y * light.y);
+          if (pitch) out.push(hatchFace(facePts, face, { pitch, w: WALL_HATCH.w, ink: shade(pr.fill, WALL_HATCH.ink) }));
+        }
+        // the panels on this face, lit as it is, each outlined
         for (const c of pr.cells ?? []) {
           if (c.ring !== ri || c.edge !== f.i) continue;
           const at = (t: number): XY => ({ x: f.p.x + (f.q.x - f.p.x) * t, y: f.p.y + (f.q.y - f.p.y) * t });
           const a = at(Math.max(0, c.t0)), b = at(Math.min(1, c.t1));
           const cell = poly([P(a, c.z0), P(b, c.z0), P(b, c.z1), P(a, c.z1)]);
           out.push(`<path d="${cell}" fill="${c.flat ? c.fill : shade(c.fill, lit)}" stroke="${c.flat ? '#ffffff' : shade(c.fill, 0.55)}" stroke-width="0.07" stroke-linejoin="round"/>`);
-          if (pr.windows && !line) out.push(`<path d="${cell}" fill="url(#axo-win-${id})"/>`);
         }
         for (const zz of pr.storeys ?? []) {
           const [x1, y1] = P(f.p, zz), [x2, y2] = P(f.q, zz);
@@ -1022,28 +1038,29 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   // A line model's ground hatches, now that the scale and the frame are known: over the frame alone, each clipped to
   // its surface; the trees' shade to the ovals that reach into the frame.
   let groundSvg = ground.join(''), partsSvg = parts.join('');
+  const f: Frame = { x0: (box.x - tx) / k, y0: (box.y - ty) / k, x1: (box.x + box.w - tx) / k, y1: (box.y + box.h - ty) / k };
   if (line) {
-    const f: Frame = { x0: (box.x - tx) / k, y0: (box.y - ty) / k, x1: (box.x + box.w - tx) / k, y1: (box.y + box.h - ty) / k };
     const roadD = cw.polygons.map((rings) => rings.map((rg) => poly(rg.map((p) => P(p, 0)))).join('')).join('');
     const ovals = shadeOvals.filter((o) => o.x + o.rx >= f.x0 && o.x - o.rx <= f.x1 && o.y + o.ry >= f.y0 && o.y - o.ry <= f.y1)
       .map((o) => `M${(o.x - o.rx).toFixed(2)},${o.y.toFixed(2)}a${o.rx.toFixed(2)},${o.ry.toFixed(2)} 0 1,0 ${(2 * o.rx).toFixed(2)},0a${o.rx.toFixed(2)},${o.ry.toFixed(2)} 0 1,0 ${(-2 * o.rx).toFixed(2)},0Z`).join('');
     groundSvg = groundSvg.replace(HOLE.lots, groundHatch('lawn', lawnD.join(''), 'evenodd', f, k, id) + groundHatch('yard', yardD.join(''), 'nonzero', f, k, id))
       .replace(HOLE.road, groundHatch('road', roadD, 'evenodd', f, k, id));
     partsSvg = partsSvg.replace(HOLE.shade, groundHatch('shade', ovals, 'nonzero', f, k, id));
-    // the toned prisms' hatches: lines rising to the right at 45°, on one grid across the drawing so neighbouring
-    // faces' lines meet, each face's over its own box alone and clipped to it; none for a face outside the frame
-    partsSvg = partsSvg.replace(/<!--axo:fh(\d+)-->/g, (_, n: string) => {
-      const j = faceHatches[Number(n)];
-      const xs = j.pts.map((q) => q[0]), ys = j.pts.map((q) => q[1]);
-      const x0 = Math.max(f.x0, Math.min(...xs)), x1 = Math.min(f.x1, Math.max(...xs)), y0 = Math.max(f.y0, Math.min(...ys)), y1 = Math.min(f.y1, Math.max(...ys));
-      if (!(x1 > x0 && y1 > y0)) return '';
-      const step = (j.pitch / k) * Math.SQRT2, d: string[] = [];
-      for (let c = Math.ceil((x0 + y0) / step) * step; c <= x1 + y1; c += step) d.push(`M${(c - y1).toFixed(2)},${y1.toFixed(2)}L${(c - y0).toFixed(2)},${y0.toFixed(2)}`);
-      return d.length ? `<clipPath id="axo-fh${n}-${id}"><path d="${j.d}" clip-rule="evenodd"/></clipPath><g data-face-hatch clip-path="url(#axo-fh${n}-${id})"><path d="${d.join('')}" fill="none" stroke="${LINE.edge}" stroke-width="${(j.w / k).toFixed(4)}"/></g>` : '';
-    });
   }
+  // The walls' hatches (a line model's toned prisms, Canary's shaded walls): lines rising to the right at 45°, on
+  // one grid across the drawing so neighbouring faces' lines meet, each face's over its own box alone and clipped to
+  // it; none for a face outside the frame. Lines, not a pattern fill, which the print would rasterise.
+  partsSvg = partsSvg.replace(/<!--axo:fh(\d+)-->/g, (_, n: string) => {
+    const j = faceHatches[Number(n)];
+    const xs = j.pts.map((q) => q[0]), ys = j.pts.map((q) => q[1]);
+    const x0 = Math.max(f.x0, Math.min(...xs)), x1 = Math.min(f.x1, Math.max(...xs)), y0 = Math.max(f.y0, Math.min(...ys)), y1 = Math.min(f.y1, Math.max(...ys));
+    if (!(x1 > x0 && y1 > y0)) return '';
+    const step = (j.pitch / k) * Math.SQRT2, d: string[] = [];
+    for (let c = Math.ceil((x0 + y0) / step) * step; c <= x1 + y1; c += step) d.push(`M${(c - y1).toFixed(2)},${y1.toFixed(2)}L${(c - y0).toFixed(2)},${y0.toFixed(2)}`);
+    return d.length ? `<clipPath id="axo-fh${n}-${id}"><path d="${j.d}" clip-rule="evenodd"/></clipPath><g data-face-hatch clip-path="url(#axo-fh${n}-${id})"><path d="${d.join('')}" fill="none" stroke="${j.ink ?? LINE.edge}" stroke-width="${(j.w / k).toFixed(4)}"/></g>` : '';
+  });
   // The strokes scale with the scene, but for a line model's buildings, whose widths are set on paper (LINE_MM).
-  const drawn = `<defs>${stampDefs.join('')}${[...peopleDefs.values()].join('')}${[...riderDefs.values()].join('')}<clipPath id="axo-${id}"><rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}"/></clipPath><pattern id="axo-win-${id}" patternUnits="userSpaceOnUse" width="2.6" height="3.1"><rect x="0.75" y="0.8" width="1.1" height="1.5" fill="#000000" fill-opacity="${M.gloss ? 0.09 : 0.17}"/></pattern></defs>
+  const drawn = `<defs>${stampDefs.join('')}${[...peopleDefs.values()].join('')}${[...riderDefs.values()].join('')}<clipPath id="axo-${id}"><rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}"/></clipPath></defs>
     <g clip-path="url(#axo-${id})"><g transform="translate(${tx.toFixed(2)},${ty.toFixed(2)}) scale(${k.toFixed(4)})">
     <g style="vector-effect:non-scaling-stroke">${groundSvg}${partsSvg}${over.join('')}</g></g></g>${notes.join('')}`;
   return line ? resolvePaper(drawn, k) : drawn;

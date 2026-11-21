@@ -82,12 +82,15 @@ export async function prepareRasters(sb: any, dataDir: string, bleedScale: numbe
   if (vm) {
     const r = await paintMasks(dataDir, [{ mask: vm.file, fill: aerialGreenFill() }], mmAcross(vm.extent, bleedScale) / vm.pxWidth, 'vegetation_paint.png').catch(() => null);
     vm.paint = r?.file;
-    // the same green in the cover's cells (lib/coverPicture.ts): the cover's picture
-    const mask = await readFile(join(dataDir, vm.file)).then((buf) => decodePng(new Uint8Array(buf))).catch(() => null);
-    if (mask) {
-      const green = new Uint8Array(mask.width * mask.height);
-      for (let i = 0; i < green.length; i++) green[i] = mask.data[i * 4] >= 128 ? 1 : 0;
-      sb.cover = coverCells({ width: mask.width, height: mask.height, mPerPx: (vm.extent.xmax - vm.extent.xmin) / k / mask.width, green });
+    // The cover's picture is the deck's trees (lib/coverPicture.ts). A deck that holds this reading but no crowns
+    // has them read off it here.
+    if (!sb.green?.crowns?.length) {
+      const mask = await readFile(join(dataDir, vm.file)).then((buf) => decodePng(new Uint8Array(buf))).catch(() => null);
+      if (mask) {
+        const green = new Uint8Array(mask.width * mask.height);
+        for (let i = 0; i < green.length; i++) green[i] = mask.data[i * 4] >= 128 ? 1 : 0;
+        sb.cover = coverCells({ width: mask.width, height: mask.height, mPerPx: (vm.extent.xmax - vm.extent.xmin) / k / mask.width, green });
+      }
     }
   }
   const veg = sb.country?.vegetation;
