@@ -39,7 +39,7 @@ import turfUnion from '@turf/union';
 import { featureCollection, polygon } from '@turf/helpers';
 import { lonLatToMercator, mercatorScaleFactor, mercatorToLonLat, type Extent } from '../lib/geo.js';
 import {
-  computeYield, computeRetained, edgeKinds, ringArea, withFour, existingSummary, storeyLevels, PARKING_RATES, DEFAULT_ASSUMPTIONS, UNIT_KINDS, ADG_MINIMUM,
+  computeYield, computeRetained, edgeKinds, ringArea, withFour, existingSummary, standingStoreys, storeyLevels, PARKING_RATES, DEFAULT_ASSUMPTIONS, UNIT_KINDS, ADG_MINIMUM,
   type XY, type YieldAssumptions, type YieldResult, type Use, type Tier, type UnitKind, type FutureControls, type ExistingBuilding,
 } from '../lib/yield.js';
 import { shadowHull } from '../lib/shadows.js';
@@ -48,6 +48,7 @@ import { separations, type SeparationRow, type SeparationReading } from '../lib/
 import { futureContext, FOOTPRINTS, type FutureBuilding, type FutureLot } from '../lib/futureContext.js';
 import { reshapeToComply, type Reshaped } from '../lib/reshape.js';
 import { readTod, todSentence, TOD_SEPP, type TodReading } from '../lib/tod.js';
+import { readLmr, lmrApplies, lmrSentence, LMR_LOW_RISE, type LmrReading } from '../lib/lmr.js';
 import { bandOf, compass, sunBands } from './facadeElevation.js';
 
 export interface YieldBundle extends SummaryData {
@@ -64,6 +65,8 @@ export interface YieldBundle extends SummaryData {
   /** The CBD of The Sydney Plan the site stands in (within 1.5 km of its point). */
   cbd?: { name: string; distanceM: number };
   policyAtSite: { kind: PolicyKind; name: string }[];
+  /** The nearest town centre of the Housing SEPP's low and mid-rise housing map within its 800 m reach, and the straight line to its edge (0 inside it). A bundle from before it has none. */
+  lmrCentre?: { name: string; distanceM: number };
   roads: TopoRoad[];
   /** The lots around, with what the plan writes on them. A bundle from before them has `lots` instead. */
   parcels?: Parcel[];
@@ -129,6 +132,8 @@ export interface YieldStudy {
   max?: YieldResult;
   /** What stands, rebuilt on its footprints to its height, where that holds more than the controls give. */
   retained?: YieldResult;
+  /** What stands on the site as a massing of its own (its footprints at their storeys), whether or not it is a path: the compliance of the current structures is read on it. */
+  standing?: YieldResult;
   /**
    * The envelope reshaped to comply (lib/reshape.ts): the office's feasible footprints within the controls and the
    * ADG's separations, the most floor area whose apartments meet ADG 4A-1 and 4A-2, or the nearest it comes.
@@ -141,6 +146,13 @@ export interface YieldStudy {
    */
   tod?: TodReading;
   todY?: YieldResult;
+  /**
+   * The Housing SEPP's low and mid-rise housing controls at the site (lib/lmr.ts), and the scheme they allow: in a
+   * low density zone near a town centre, a low-rise residential flat building across the whole site, every lot of an
+   * amalgamation as one, where the zone's own table takes no apartment building and the study drew none.
+   */
+  lmr?: LmrReading;
+  lmrY?: YieldResult;
   ring: XY[];
   fronts: boolean[];
   toLocal: (lon: number, lat: number) => XY;
@@ -231,10 +243,19 @@ export function yieldStudy(b: YieldBundle): YieldStudy {
   const frontageLengths = [...byName].map(([name, lengthM]) => ({ name, lengthM })).sort((p, q) => q.lengthM - p.lengthM);
   const future = futureOf(b, toLocal, ring, base.assumptions.residentialEfficiency);
   // What stands, kept or rebuilt to its own envelope: a path only where it holds more than the controls give.
-  const standing = (b.existing ?? []).map((e) => ({
-    rings: (e.rings ?? []).map((rg) => rg.map(([lon, lat]) => toLocal(lon, lat))).filter((rg) => rg.length >= 3),
-    heightM: e.heightM ?? (e.storeys ? e.storeys * base.assumptions.residentialF2F : 0),
-  })).filter((e) => e.rings.length && e.heightM > 0);
+  // Every building that stands, at the storeys the summary of what stands reads it at (standingStoreys; one storey
+  // where nothing is recorded for it and a height is for another, as the summary counts it): the path rebuilds
+  // what stands, the whole of it. It built less: a building with no height was left out and a roof was taken off
+  // each height before its storeys were counted.
+  const f2f = base.assumptions.residentialF2F;
+  const anyKnown = (b.existing ?? []).some((e) => standingStoreys(e, f2f) !== undefined);
+  const standing = !anyKnown ? [] : (b.existing ?? []).map((e) => {
+    const storeys = standingStoreys(e, f2f) ?? 1;
+    return {
+      rings: (e.rings ?? []).map((rg) => rg.map(([lon, lat]) => toLocal(lon, lat))).filter((rg) => rg.length >= 3),
+      heightM: e.heightM && e.heightM > 0 ? e.heightM : storeys * f2f, storeys,
+    };
+  }).filter((e) => e.rings.length);
   const kept = standing.length ? computeRetained({ ring, fronts, siteAreaSqm: area, zone: c.zoneCode, assumptions, standing }) : undefined;
   const retained = kept && kept.gfa > base.gfa + 1 ? kept : undefined;
   const reshaped = noScheme || base.archetype !== 'residential' ? undefined : reshapeOf(b, toLocal, { ring, fronts, siteAreaSqm: area, zone: c.zoneCode, hobM: hob?.metres, fsr: c.fsr, assumptions });
@@ -243,7 +264,13 @@ export function yieldStudy(b: YieldBundle): YieldStudy {
   const todY = tod?.regime === 'sepp' && tod.permits && tod.lifts && tod.wideEnough !== false && !(hob?.rl && hob.metres === undefined)
     ? computeYield({ ring, fronts, siteAreaSqm: area, zone: c.zoneCode, hobM: tod.hobM, fsr: tod.fsr, assumptions, archetype: tod.permits === 'shopTopHousing' ? 'mixed' : 'residential' })
     : undefined;
-  return { base, bonus, max, retained, reshaped, tod, todY: todY && todY.storeys > 0 ? todY : undefined, ring, fronts, toLocal, hob, parkingSet, frontageLengths, future, noScheme };
+  // the low and mid-rise housing controls, and the scheme they allow on the whole site where they give one the LEP does not
+  const lmr = readLmr({ centre: b.lmrCentre, zone: c.zoneCode, lepHobM: hob?.metres, lepFsr: c.fsr, lotSqm: area || undefined, lotWidthM: frontageLengths[0]?.lengthM });
+  const lmrRaw = lmrApplies(lmr) && !todY
+    ? computeYield({ ring, fronts, siteAreaSqm: area, zone: c.zoneCode, hobM: lmr.hobM, fsr: lmr.fsr, assumptions, archetype: 'residential' })
+    : undefined;
+  const lmrY = lmrRaw && lmrRaw.storeys > 0 ? lmrRaw : undefined;
+  return { base, bonus, max, retained, standing: kept && kept.storeys > 0 ? kept : undefined, reshaped, lmr, lmrY, tod, todY: todY && todY.storeys > 0 ? todY : undefined, ring, fronts, toLocal, hob, parkingSet, frontageLengths, future, noScheme };
 }
 
 /** Where the site is: the middle of its outline, longitude and latitude. */
@@ -342,7 +369,7 @@ export interface PathSun {
 
 /** The study's result behind a path, where the path has a scheme. */
 const pathResult = (s: YieldStudy, id: Scenario['id']): YieldResult | undefined =>
-  id === 'withinControls' ? (s.noScheme ? undefined : s.base) : id === 'reshaped' ? s.reshaped?.y : id === 'tod' ? s.todY : id === 'affordableBonus' ? s.bonus : id === 'envelopeToHeight' ? s.max : id === 'rebuiltAsStands' ? s.retained : undefined;
+  id === 'standsToday' ? s.standing : id === 'withinControls' ? (s.noScheme ? undefined : s.base) : id === 'reshaped' ? s.reshaped?.y : id === 'tod' ? s.todY : id === 'lowMidRise' ? s.lmrY : id === 'affordableBonus' ? s.bonus : id === 'envelopeToHeight' ? s.max : id === 'rebuiltAsStands' ? s.retained : undefined;
 
 const SUN_DONE = new WeakMap<YieldBundle, Map<Scenario['id'], PathSun | null>>();
 /** A metre and a storey's floor, for the nominal two storeys the massing draws a neighbour of no recorded height at. */
@@ -1297,7 +1324,7 @@ export function tierSpot(env: XY[][], above: XY[][], placed: XY[], fit: number, 
 
 /** One path the site may take, for the SCENARIOS table, the CSV and the JSON: display figures, not geometry. */
 export interface Scenario {
-  id: 'standsToday' | 'rebuiltAsStands' | 'withinControls' | 'reshaped' | 'tod' | 'affordableBonus' | 'envelopeToHeight';
+  id: 'standsToday' | 'rebuiltAsStands' | 'withinControls' | 'reshaped' | 'tod' | 'lowMidRise' | 'affordableBonus' | 'envelopeToHeight';
   label: string;
   note: string;
   storeys?: string;
@@ -1332,8 +1359,8 @@ export function scenarioRows(b: YieldBundle, s: YieldStudy = yieldStudy(b)): Sce
     note: `${ex.count === 1 ? 'the building that stands' : `the ${ex.count} buildings that stand`}, from the ${standingFromMeshes(b).traced ? 'footprint traced from Google\'s 3D meshes' : 'recorded footprint'}${ex.known ? (standingFromMeshes(b).height ? ' and the height read from the meshes' : ' and height') : ' alone: no height is recorded'}; not a survey`,
     storeys: ex.storeys ? `~${ex.storeys}` : undefined,
     heightM: ex.heightM ? Math.round(ex.heightM * 10) / 10 : undefined,
-    gfa: ex.gbaSqm ? `≈ ${sqm(ex.gbaSqm)} GBA` : undefined,
-    fsr: ex.gbaSqm && A ? `≈ ${(ex.gbaSqm / A).toFixed(1)}:1` : undefined,
+    gfa: ((fl) => (fl ? `≈ ${sqm(fl.sqm)}${fl.gba ? ' GBA' : ''}` : undefined))(standsFloor(s, ex)),
+    fsr: ((fl) => (fl && A ? `≈ ${(fl.sqm / A).toFixed(fl.gba ? 1 : 2)}:1` : undefined))(standsFloor(s, ex)),
   });
   // a path that holds no floor area has no figures to give: no "0 storeys", no "0 sqm"
   const fill = (y: YieldResult) => (y.gfa > 0 ? {
@@ -1368,6 +1395,15 @@ export function scenarioRows(b: YieldBundle, s: YieldStudy = yieldStudy(b)): Sce
         ? `the office's feasible footprints within the LEP's height and FSR and the ADG's separations: ${r.layout}, the most floor area whose apartments meet ADG 4A (${pc} with ${h} h, ${none} none)`
         : `the nearest the office's feasible footprints come to ADG 4A within the LEP's height and FSR: ${r.layout} (${pc} with ${h} h, ${none} none)`,
       ...fill(r.y), ok: r.complies,
+    });
+  }
+  // The Housing SEPP's low and mid-rise housing controls, where they give the whole site a scheme the LEP does not.
+  if (s.lmrY && s.lmr) {
+    const l = s.lmr;
+    out.push({
+      id: 'lowMidRise', label: 'LOW AND MID-RISE HOUSING',
+      note: `the Housing SEPP's low and mid-rise housing controls ${l.distanceM <= 0 ? `in the ${l.name}` : `${fmt(l.distanceM)} m from the ${l.name}`}: a residential flat building to ${fmt(l.hobM ?? 0, 1)} m and ${fmt(l.fsr ?? 0, 2)}:1 across the whole site, on a lot of at least ${LMR_LOW_RISE.minLotSqm} m² and ${LMR_LOW_RISE.minLotWidthM} m wide`,
+      ...fill(s.lmrY), ok: true,
     });
   }
   // The Housing SEPP's TOD controls, where they lift the LEP's on a lot wide enough.
@@ -1420,12 +1456,23 @@ const m2 = (t: string) => t.replace(/ sqm\b/g, ' m²');
 const ratio = (gfa: number, A: number) => (A && gfa ? `${(gfa / A).toFixed(2)}:1` : '—');
 /** A ratio of an estimate, to one place. */
 const about = (gba: number, A: number) => (A && gba ? `≈ ${(gba / A).toFixed(1)}:1` : '—');
+/**
+ * What stands today's floor area on the paths' own measure: the gross floor area of its massing (its footprints at
+ * their storeys, by the study's efficiency), where the bundle has its outlines; else its gross building area alone,
+ * which is more than its floor area and is said to be. The paths' figures are gross floor area and the LEP's ratio
+ * is on it, so a gross building area beside them made what stands look larger than the same bulk rebuilt, and over
+ * a ratio it is under (1,743 m² "≈ 0.6:1" against 0.50:1, where its floor area is about 1,261 m², 0.41:1).
+ */
+/** How many lots the site is: one, or each lot of an amalgamation, as its description lists them. */
+const lotCount = (b: YieldBundle) => (b.lotDescription ?? '').split(';').filter((x) => x.trim()).length;
+const standsFloor = (s: YieldStudy, ex: { gbaSqm?: number } | undefined): { sqm: number; gba: boolean } | undefined =>
+  (s.standing?.gfa ? { sqm: s.standing.gfa, gba: false } : ex?.gbaSqm ? { sqm: ex.gbaSqm, gba: true } : undefined);
 const storeyWord = (n: number) => `${n} ${n === 1 ? 'storey' : 'storeys'}`;
 const ARCH_SHORT: Record<YieldResult['archetype'], string> = {
   residential: 'Residential flat building', mixed: 'Shop-top housing', commercial: 'Commercial building', none: 'None studied for the zone',
 };
 const SCENARIO_TITLE: Record<Scenario['id'], string> = {
-  standsToday: 'Stands today', rebuiltAsStands: 'Rebuilt to what stands', withinControls: 'Within the controls', reshaped: 'Reshaped to comply', tod: 'TOD controls', affordableBonus: 'Affordable housing bonus', envelopeToHeight: 'Envelope to the height',
+  standsToday: 'Stands today', rebuiltAsStands: 'Rebuilt to what stands', withinControls: 'Within the controls', reshaped: 'Reshaped to comply', tod: 'TOD controls', lowMidRise: 'Low and mid-rise housing', affordableBonus: 'Affordable housing bonus', envelopeToHeight: 'Envelope to the height',
 };
 
 /** The ✓, the ✗ or the dash of a compliance cell. */
@@ -1504,6 +1551,7 @@ function barFills(): Record<Scenario['id'], Fill> {
     withinControls: { bg: F.mid },
     reshaped: { bg: '#ffffff', kind: 'hatch', ink: F.deep, step: 0.7, w: 0.14, outline: F.line, outlineW: 0.12 },
     tod: { bg: F.solid },
+    lowMidRise: { bg: F.solid },
     affordableBonus: { bg: '#ffffff', kind: 'dots', ink: F.deep, step: 0.8, w: 0.12, outline: F.line, outlineW: 0.12 },
     envelopeToHeight: { bg: '#ffffff', kind: 'hlines', ink: F.line, step: 0.55, w: 0.16, outline: F.line, outlineW: 0.12 },
   };
@@ -1518,13 +1566,14 @@ const PATH_BASIS: Record<Scenario['id'], string> = {
   withinControls: 'This path keeps to the LEP\'s height of building and floor space ratio.',
   reshaped: 'This path keeps to the LEP\'s height of building and floor space ratio and the ADG\'s separations, in the office\'s feasible footprints: single-loaded 12 m deep, its gallery on the face with least sun; double-loaded 18 m along an east–west axis, its apartments running through to the north; double-loaded 22 m along a north–south axis, facing east and west; each 15 to 45 m long, a double-loaded one at least as long as it is deep, the taller to the south. Of the layouts read, it is the one with the most floor area whose apartments meet ADG 4A-1 and 4A-2.',
   tod: 'This path takes the Housing SEPP\'s transport oriented development controls (chapter 5, part 2): residential flat buildings in the residential and local centre zones to 22 m and 2.5:1, shop-top housing in the local centre and commercial zones to 24 m and 2.5:1, on a lot at least 21 m wide, the LEP\'s standard standing where it is more generous; 2% of the floor area is affordable housing in perpetuity, managed by a community housing provider, where the scheme is 2,000 m² or more.',
+  lowMidRise: 'This path takes the Housing SEPP\'s low and mid-rise housing controls (chapter 6): in a low density zone within 800 m of a nominated town centre, a residential flat building to 9.5 m and 0.8:1 on a lot of at least 500 m² and 12 m wide, the LEP\'s standard standing where it is more generous, drawn across the whole site, every lot of an amalgamation as one. The 800 m is a walking distance, read here as the straight line to the centre\'s mapped edge, and the land the policy leaves out is not checked: the site\'s eligibility is to confirm with a planner.',
   affordableBonus: 'This path takes the Housing SEPP\'s in-fill affordable housing bonus (chapter 2, part 2, division 1); the site\'s eligibility is to confirm.',
   envelopeToHeight: 'This path sets the floor space ratio aside: it needs a clause 4.6 variation or a planning proposal.',
 };
 
 /** The paths, each with the study's result behind it (none for what stands). */
 function pathsOf(b: YieldBundle, s: YieldStudy): Path[] {
-  const of: Record<Scenario['id'], YieldResult | undefined> = { standsToday: undefined, rebuiltAsStands: s.retained, withinControls: s.base, reshaped: s.reshaped?.y, tod: s.todY, affordableBonus: s.bonus, envelopeToHeight: s.max };
+  const of: Record<Scenario['id'], YieldResult | undefined> = { standsToday: undefined, rebuiltAsStands: s.retained, withinControls: s.base, reshaped: s.reshaped?.y, tod: s.todY, lowMidRise: s.lmrY, affordableBonus: s.bonus, envelopeToHeight: s.max };
   return scenarioRows(b, s).map((sc) => ({ sc, y: sc.id === 'withinControls' && s.noScheme ? undefined : of[sc.id] }));
 }
 
@@ -1630,14 +1679,16 @@ function pathBars(b: YieldBundle, s: YieldStudy, paths: Path[]): string[] {
   const A = b.siteAreaSqm ?? 0, c = b.controls;
   const BAR_FILL = barFills(), R = inks().F;
   const ex = existingSummary(b.existing ?? []);
-  const gfaRows = paths.map((p) => ({ id: p.sc.id, v: p.y ? p.y.gfa : p.sc.id === 'standsToday' ? ex?.gbaSqm ?? 0 : 0, approx: !p.y })).filter((r) => r.v > 0)
-    .map((r) => ({ name: SCENARIO_TITLE[r.id], value: r.v, label: `${r.approx ? '≈ ' : ''}${fmt(Math.round(r.v))} m²${r.approx ? ' GBA' : ''}`, fill: BAR_FILL[r.id] }));
+  // (what stands on the paths' own measure, its floor area, where its massing is known: standsFloor)
+  const fl = standsFloor(s, ex);
+  const gfaRows = paths.map((p) => ({ id: p.sc.id, v: p.y ? p.y.gfa : p.sc.id === 'standsToday' ? fl?.sqm ?? 0 : 0, approx: !p.y })).filter((r) => r.v > 0)
+    .map((r) => ({ name: SCENARIO_TITLE[r.id], value: r.v, label: `${r.approx ? '≈ ' : ''}${fmt(Math.round(r.v))} m²${r.approx && fl?.gba ? ' GBA' : ''}`, fill: BAR_FILL[r.id] }));
   const hRows = paths.map((p) => ({ id: p.sc.id, v: p.y ? p.y.heightM : p.sc.id === 'standsToday' ? ex?.heightM ?? 0 : 0 })).filter((r) => r.v > 0)
     .map((r) => ({ name: SCENARIO_TITLE[r.id], value: r.v, label: m1(Math.round(r.v * 10) / 10), fill: BAR_FILL[r.id] }));
   const out: string[] = [];
   const ref = c.fsr && A ? { value: c.fsr * A, label: `FSR ${c.fsr.toFixed(2)}:1`, ink: R.deep } : undefined;
   if (gfaRows.length) { const ax = niceAxis(Math.max(...gfaRows.map((r) => r.value), ref?.value ?? 0)); out.push(zBlock('Floor area · m²', zBars(gfaRows, ax.max, ax.step, { ref }))); }
-  const hRef = s.hob?.metres ? { value: s.hob.metres, label: `HOB ${m1(Math.round(s.hob.metres))}`, ink: R.deep } : undefined;
+  const hRef = s.hob?.metres ? { value: s.hob.metres, label: `HOB ${m1(Math.round(s.hob.metres * 10) / 10)}`, ink: R.deep } : undefined;
   if (hRows.length) { const ax = niceAxis(Math.max(...hRows.map((r) => r.value), hRef?.value ?? 0)); out.push(zBlock('Height · m', zBars(hRows, ax.max, ax.step, { ref: hRef }))); }
   return out;
 }
@@ -1661,7 +1712,7 @@ function overviewSlide(b: YieldBundle, s: YieldStudy, paths: Path[]): Slide {
     paths.map((p) => ({
       cls: p.sc.id === 'withinControls' && p.y ? 'hi' : undefined,
       cells: [esc(SCENARIO_TITLE[p.sc.id]), esc(p.sc.storeys ?? '—'), p.sc.heightM ? esc(m1(p.sc.heightM)) : '—',
-        esc(p.y?.gfa ? fmt(Math.round(p.y.gfa)) : p.sc.id === 'standsToday' && ex?.gbaSqm ? `≈ ${fmt(Math.round(ex.gbaSqm))}` : '—'), esc(p.sc.fsr ?? '—'), esc(p.sc.units ?? '—'), esc(p.sc.parking ?? '—'), okMark(p.sc.ok),
+        esc(p.y?.gfa ? fmt(Math.round(p.y.gfa)) : p.sc.id === 'standsToday' && standsFloor(s, ex) ? `≈ ${fmt(Math.round(standsFloor(s, ex)!.sqm))}` : '—'), esc(p.sc.fsr ?? '—'), esc(p.sc.units ?? '—'), esc(p.sc.parking ?? '—'), okMark(p.sc.ok),
         pageOf(paths, p) ? String(pageOf(paths, p)).padStart(2, '0') : '—'],
     })));
   const blocks = [zBlock('The site', figs, 'The controls'), zBlock('The paths', table), ...pathBars(b, s, paths)];
@@ -1676,8 +1727,10 @@ function overviewSlide(b: YieldBundle, s: YieldStudy, paths: Path[]): Slide {
     y.archetype === 'none'
       ? `${c.zoneCode ?? 'The zone'} takes no residential flat building, shop-top housing or office building: the floor space ratio gives ${A && c.fsr ? area(c.fsr * A) : 'the floor area'} alone.`
       : `Within the controls the site holds ${y.archetype === 'mixed' ? 'shop-top housing' : y.archetype === 'commercial' ? 'a commercial building' : 'a residential flat building'} of ${storeyWord(y.storeys)}: ${area(y.gfa)} of floor area${y.units.total ? `, ${fmt(y.units.total)} apartments` : ''}${y.parking.total ? ` and ${fmt(y.parking.total)} parking spaces` : ''}.`,
-    exceeds && s.retained ? `What stands today, about ${ex!.storeys ?? '?'} storeys and ${about(ex!.gbaSqm!, A)}, is over the controls, and need not come down to them: kept, or rebuilt to its own envelope under a clause 4.6 variation, it holds about ${area(s.retained.gfa)}${s.retained.units.total ? ` and ${fmt(s.retained.units.total)} apartments` : ''}.`
-      : exceeds ? `What stands today, about ${ex!.storeys ?? '?'} storeys and ${about(ex!.gbaSqm!, A)}, exceeds every path: redevelopment within the controls would cut the floor area.`
+    // the scheme across the whole site that the low and mid-rise housing controls give, where the LEP's zone takes none
+    s.lmrY && s.lmr ? `Under the Housing SEPP's low and mid-rise housing controls, ${s.lmr.distanceM <= 0 ? `in the ${s.lmr.name}` : `${fmt(s.lmr.distanceM)} m from the ${s.lmr.name}`}, the whole site${lotCount(b) > 1 ? `, its ${lotCount(b)} lots as one,` : ''} holds a residential flat building of ${storeyWord(s.lmrY.storeys)}: ${area(s.lmrY.gfa)} of floor area${s.lmrY.units.total ? `, ${fmt(s.lmrY.units.total)} apartments` : ''}${s.lmrY.parking.total ? ` and ${fmt(s.lmrY.parking.total)} parking spaces` : ''}.` : '',
+    exceeds && s.retained ? `What stands today, about ${ex!.storeys ?? '?'} storeys and ${about(standsFloor(s, ex)!.sqm, A)}, is over the controls, and need not come down to them: kept, or rebuilt to its own envelope under a clause 4.6 variation, it holds about ${area(s.retained.gfa)}${s.retained.units.total ? ` and ${fmt(s.retained.units.total)} apartments` : ''}.`
+      : exceeds ? `What stands today, about ${ex!.storeys ?? '?'} storeys and ${about(standsFloor(s, ex)!.sqm, A)}, exceeds every path: redevelopment within the controls would cut the floor area.`
       : ex?.gbaSqm && y.gfa ? `What stands today holds about ${area(ex.gbaSqm)}${y.gfa > ex.gbaSqm ? `: redevelopment within the controls adds about ${area(y.gfa - ex.gbaSqm)}` : ''}.` : '',
     s.reshaped && paths.some((p) => p.sc.id === 'reshaped') ? (s.reshaped.complies
       ? `Reshaped into the office's feasible footprints so that its apartments get their sun, it holds ${area(s.reshaped.y.gfa)}${s.reshaped.y.units.total ? ` and ${fmt(s.reshaped.y.units.total)} apartments` : ''}.`
@@ -1717,6 +1770,15 @@ function schemeSlide(b: YieldBundle, s: YieldStudy, p: Path, n: number, last: nu
     if (A) ctl.push({ cells: ['Gross floor area', esc(area(ratioCap * A)), esc(y.gfa ? area(y.gfa) : '—'), okMark(y.gfa ? y.gfa <= ratioCap * A + 1 : null)] });
     if (todPath.lotWidthM !== undefined) ctl.push({ cells: ['Lot width (TOD)', esc(`${TOD_SEPP.minLotWidthM} m`), esc(`${fmt(todPath.lotWidthM, 1)} m`), okMark(todPath.wideEnough ?? null)] });
     ctl.push({ cells: ['Affordable housing (TOD)', esc('2% of GFA from 2,000 m²'), esc(y.gfa >= TOD_SEPP.affordableFromSqm ? `${area(y.gfa * TOD_SEPP.affordableShare)}, in perpetuity` : 'not asked under 2,000 m²'), okMark(true)] });
+  } else if (id === 'lowMidRise' && s.lmr) {
+    // the low and mid-rise housing standards, or the LEP's where more generous, and the lot they ask for
+    const l = s.lmr, lim = l.hobM ?? 0, ratioCap = l.fsr ?? 0;
+    ctl.push({ cells: ['Height of building', esc(`${m1(lim)} (LMR${s.hob?.metres && s.hob.metres >= lim - 1e-6 ? ', the LEP\'s' : ''})`), esc(y.heightM ? `${m1(Math.round(y.heightM * 10) / 10)}, ${storeyWord(y.storeys)}` : '—'), okMark(y.heightM ? y.heightM <= lim + 1e-6 : null)] });
+    ctl.push({ cells: ['Floor space ratio', esc(`${ratioCap.toFixed(2)}:1 (LMR)`), esc(ratio(y.gfa, A)), okMark(y.gfa ? y.gfa <= ratioCap * A + 1 : null)] });
+    if (A) ctl.push({ cells: ['Gross floor area', esc(area(ratioCap * A)), esc(y.gfa ? area(y.gfa) : '—'), okMark(y.gfa ? y.gfa <= ratioCap * A + 1 : null)] });
+    if (A) ctl.push({ cells: ['Lot size (LMR)', esc(area(LMR_LOW_RISE.minLotSqm)), esc(`${area(A)}, the whole site`), okMark(l.bigEnough ?? null)] });
+    if (l.lotWidthM !== undefined) ctl.push({ cells: ['Lot width (LMR)', esc(`${LMR_LOW_RISE.minLotWidthM} m`), esc(`${fmt(l.lotWidthM, 1)} m`), okMark(l.wideEnough ?? null)] });
+    ctl.push({ cells: ['Town centre (LMR)', esc('within 800 m walking'), esc(l.distanceM <= 0 ? `in the ${l.name}` : `${fmt(l.distanceM)} m, straight line`), okMark(null)] });
   } else {
   if (s.hob) {
     const limitM = s.hob.metres ? s.hob.metres * k : undefined;
@@ -1772,6 +1834,9 @@ function schemeSlide(b: YieldBundle, s: YieldStudy, p: Path, n: number, last: nu
     : id === 'affordableBonus'
       ? brief([`With ${pct}% more height and floor space ratio for 15% affordable housing, held for 15 years, the Housing SEPP's in-fill bonus gives ${what}.`,
         `That is ${area(y.gfa - s.base.gfa)}${y.units.total > s.base.units.total ? ` and ${fmt(y.units.total - s.base.units.total)} apartments` : ''} more than within the controls, about ${fmt(Math.round(y.units.total * 0.15))} of them affordable. Eligibility to confirm.`])
+      : id === 'lowMidRise' && s.lmr
+        ? brief([`Under the Housing SEPP's low and mid-rise housing controls, ${s.lmr.distanceM <= 0 ? `in the ${s.lmr.name}` : `${fmt(s.lmr.distanceM)} m from the ${s.lmr.name}`}, the whole site${lotCount(b) > 1 ? `, its ${lotCount(b)} lots as one,` : ''} holds a residential flat building of ${what}.`,
+          `${s.base.gfa > 0 ? `That is ${area(y.gfa - s.base.gfa)} more than the LEP's controls give` : `${c.zoneCode ?? 'The zone'} takes no apartment building under the LEP alone`}${s.standing?.gfa ? `; what stands holds about ${area(s.standing.gfa)}` : ''}. The policy's 800 m is a walking distance and its excluded land is not checked: eligibility to confirm.`])
       : id === 'tod' && s.tod
         ? brief([`Under the Housing SEPP's transport oriented development controls in the ${s.tod.name} TOD area, the site holds ${what}.`,
           `That is ${area(y.gfa - s.base.gfa)}${y.units.total > s.base.units.total ? ` and ${fmt(y.units.total - s.base.units.total)} apartments` : ''} more than the LEP's controls give${y.gfa >= TOD_SEPP.affordableFromSqm ? `, ${area(y.gfa * TOD_SEPP.affordableShare)} of it affordable housing in perpetuity` : ''}.`])
@@ -1797,8 +1862,16 @@ const separationMark = (r: SeparationReading) => (r.status === 'clear' ? true : 
 /** The worse of a neighbour's two readings, today's and built out. */
 const worseReading = (r: SeparationRow): SeparationReading => (r.future && r.future.distanceM - r.future.band.between < r.today.distanceM - r.today.band.between ? r.future : r.today);
 /** The paths the compliance sheet tests: those the study drew that hold apartments, each with its sun, shadow and separations. */
-const testedPaths = (b: YieldBundle, s: YieldStudy, paths: Path[]) =>
-  paths.filter((p) => p.y && pathSun(b, s, p.sc.id)?.apartments?.total).map((p) => ({ p, ps: pathSun(b, s, p.sc.id)! }));
+// (What stands today is tested first and always, where anything stands with a height: the current structures'
+// compliance before any designed massing's (Z. 2026-11). The path that rebuilds what stands is the same massing, so
+// it has no sheet of its own beside it.)
+const testedPaths = (b: YieldBundle, s: YieldStudy, paths: Path[]) => {
+  const standsTested = !!pathSun(b, s, 'standsToday')?.apartments?.total;
+  return paths
+    .map((p): Path => (p.sc.id === 'standsToday' ? { ...p, y: s.standing } : p))
+    .filter((p) => !(standsTested && p.sc.id === 'rebuiltAsStands'))
+    .filter((p) => p.y && pathSun(b, s, p.sc.id)?.apartments?.total).map((p) => ({ p, ps: pathSun(b, s, p.sc.id)! }));
+};
 /** A path's added shadow in a few words: "4 lots, 1 heritage item", or "none". */
 function shadowShort(ps: PathSun): string {
   const sh = ps.shadow!;
@@ -1820,7 +1893,7 @@ const labelAt = (left: number, top: number, inset: number, parts: string[]) =>
 
 /** A compliance sheet's title: the option's name, short enough to stand on one line with the word. */
 const COMPLIANCE_TITLE: Record<Scenario['id'], string> = {
-  standsToday: '', rebuiltAsStands: 'Rebuilt as it stands: compliance', withinControls: 'Within the controls: compliance', reshaped: 'Reshaped to comply: compliance', tod: 'TOD controls: compliance',
+  standsToday: 'Stands today: compliance', rebuiltAsStands: 'Rebuilt as it stands: compliance', withinControls: 'Within the controls: compliance', reshaped: 'Reshaped to comply: compliance', tod: 'TOD controls: compliance', lowMidRise: 'Low and mid-rise housing: compliance',
   affordableBonus: 'Affordable bonus: compliance', envelopeToHeight: 'Envelope to the height: compliance',
 };
 
@@ -1869,7 +1942,7 @@ function complianceSheet(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: Pa
   const meets = (k: number) => k >= 0.7 * ap.total - 1e-9, fewNone = (k: number) => k <= 0.15 * ap.total + 1e-9;
   const count = (k: number) => `${pctOf(k, ap.total)} (${k} of ${ap.total})`;
   const c = b.controls, A = b.siteAreaSqm ?? 0, bonusK = 1 + (ps.y.assumptions.affordableBonus ?? 0.3);
-  const most = id === 'tod' && s.tod?.fsr && A ? s.tod.fsr * A : c.fsr && A ? c.fsr * A * (id === 'affordableBonus' ? bonusK : 1) : undefined;
+  const most = id === 'lowMidRise' && s.lmr?.fsr && A ? s.lmr.fsr * A : id === 'tod' && s.tod?.fsr && A ? s.tod.fsr * A : c.fsr && A ? c.fsr * A * (id === 'affordableBonus' ? bonusK : 1) : undefined;
 
   // against the criteria, in the order the assessment sets them out
   const sepToday = separationShort(ps), sepLater = ps.separationBuiltOut.length ? ((k) => (k ? `${k} short built out` : 'clear built out'))(ps.separationBuiltOut.filter((r) => r.today.status === 'short').length) : '';
@@ -1993,25 +2066,31 @@ function standingSlide(b: YieldBundle, s: YieldStudy, paths: Path[], n: number):
   const A = b.siteAreaSqm ?? 0, c = b.controls;
   const ex = existingSummary(b.existing ?? [])!;
   const standing = standingOf(b, s);
+  const floor = standsFloor(s, ex);
   const figs = zFigures([
     ['buildings on the site', fmt(ex.count)],
     ['storeys · height', ex.storeys ? `~${ex.storeys}${ex.heightM ? ` · ${m1(Math.round(ex.heightM * 10) / 10)}` : ''}` : 'not recorded'],
     ['footprint', area(ex.footprintSqm)],
   ], [
     ['gross building area', ex.gbaSqm ? `≈ ${area(ex.gbaSqm)}` : 'not known without a height'],
-    ['on the site', ex.gbaSqm && A ? about(ex.gbaSqm, A) : '—'],
+    floor && !floor.gba ? ['floor area · on the site', `≈ ${area(floor.sqm)}${A ? ` · ≈ ${ratio(floor.sqm, A)}` : ''}`] : ['on the site', ex.gbaSqm && A ? about(ex.gbaSqm, A) : '—'],
     ['the LEP permits', c.fsr ? `${c.fsr.toFixed(2)}:1${A ? ` · ${area(c.fsr * A)}` : ''}` : 'no FSR mapped'],
   ], 9.6);
   const blocks = [zBlock('What stands', figs), ...pathBars(b, s, paths)];
   const fromMeshes = standingFromMeshes(b);
   const figures = schemeFigures(b, s, { standing }, 'standing', standing.length ? `at its ${fromMeshes.height ? 'height read from the 3D meshes' : 'recorded height'}, among the neighbours` : 'no outline of what stands in this bundle', 'What stands');
-  const best = Math.max(...paths.filter((p) => p.y && p.sc.id !== 'rebuiltAsStands').map((p) => p.y!.gba), 0);
+  const others = paths.filter((p) => p.y && p.sc.id !== 'rebuiltAsStands');
+  const best = Math.max(...others.map((p) => p.y!.gba), 0);
+  // the path that holds the most, to set what stands against: by name, and never "0 m²" where the LEP's own gives none
+  const top = [...others].sort((p, q) => q.y!.gfa - p.y!.gfa)[0];
   const narrative = brief([
-    `${ex.count === 1 ? 'A building' : `${COUNT_WORD[ex.count] ?? ex.count} buildings`} of ${ex.storeys ? `about ${ex.storeys} storeys` : 'unrecorded height'} ${ex.count === 1 ? 'stands' : 'stand'} on the site today, ${area(ex.footprintSqm)} on the ground${ex.gbaSqm ? ` and about ${area(ex.gbaSqm)} of floor${A ? `, ${about(ex.gbaSqm, A)}` : ''}` : ''}${c.fsr ? ` against the LEP's ${c.fsr.toFixed(2)}:1` : ''}.`,
+    `${ex.count === 1 ? 'A building' : `${COUNT_WORD[ex.count] ?? ex.count} buildings`} of ${ex.storeys ? `about ${ex.storeys} storeys` : 'unrecorded height'} ${ex.count === 1 ? 'stands' : 'stand'} on the site today, ${area(ex.footprintSqm)} on the ground${ex.gbaSqm ? (floor && !floor.gba
+      ? ` and about ${area(ex.gbaSqm)} of gross building area: about ${area(floor.sqm)} of floor area${A ? `, ≈ ${ratio(floor.sqm, A)}` : ''}`
+      : ` and about ${area(ex.gbaSqm)} of floor${A ? `, ${about(ex.gbaSqm, A)}` : ''}`) : ''}${c.fsr ? ` against the LEP's ${c.fsr.toFixed(2)}:1` : ''}.`,
     s.noScheme ? `The controls give no scheme to set it against${s.noScheme === 'noHeight' ? ': the LEP maps no envelope here' : ''}.`
     : ex.gbaSqm && ex.gbaSqm > best
       ? `It is over today's controls: they have tightened since it was built, and redevelopment within them would cut the floor area.${s.retained ? ' The bulk need not be given up: kept, or rebuilt to its own envelope, it is the next spread\'s path.' : ' Its value is in what stands.'}`
-      : ex.gbaSqm ? `Redevelopment within the controls would hold ${area(s.base.gfa)}, ${(s.base.gfa / ex.gbaSqm).toFixed(1)} times what stands.` : '',
+      : top?.y?.gfa && floor ? `${SCENARIO_TITLE[top.sc.id]} would hold ${area(top.y.gfa)}, ${(top.y.gfa / floor.sqm).toFixed(1)} times what stands${floor.gba ? ' (its gross building area)' : ''}.` : '',
   ]);
   return { id: `${String(n).padStart(2, '0')}_stands_today`, title: 'Stands today', subtitle: subtitleOf(b, s), textHtml: '', figureHtml: zFlow(blocks) + figures.html, full: true,
     narrative, accent: inks().accent, legend: schemeLegend(b, s, undefined, standing.length > 0, figures.kerbs),
@@ -2178,7 +2257,7 @@ export function yieldJson(b: YieldBundle): string {
     transportOrientedDevelopment: s.tod && { ...s.tod, alternative: s.tod.alternative && { ...s.tod.alternative, lga: undefined }, sentence: todSentence(s.tod), scheme: strip(s.todY) },
     scenarios: scenarioRows(b, s),
     // each path's sun: its apartments' hours, one by one, and the shadow it adds, hour by hour (no outlines)
-    sun: { rule: sunRule(b), paths: Object.fromEntries((['rebuiltAsStands', 'withinControls', 'reshaped', 'tod', 'affordableBonus', 'envelopeToHeight'] as Scenario['id'][]).flatMap((id) => {
+    sun: { rule: sunRule(b), paths: Object.fromEntries((['standsToday', 'rebuiltAsStands', 'withinControls', 'reshaped', 'tod', 'lowMidRise', 'affordableBonus', 'envelopeToHeight'] as Scenario['id'][]).flatMap((id) => {
       const p = pathSun(b, s, id);
       return p ? [[id, {
         apartments: p.apartments && { total: p.apartments.total, meeting: p.apartments.meeting, none: p.apartments.none, future: p.apartments.future, hours: p.apartments.units.map((u) => ({ storey: u.storey, hours: u.hours, hoursFuture: u.hoursFuture })) },

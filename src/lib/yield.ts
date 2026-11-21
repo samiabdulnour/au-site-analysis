@@ -201,11 +201,24 @@ export function storeyHeightFor(kind: string | undefined, a: Pick<YieldAssumptio
  * `storeyM` is that floor when every such building is housing. None of it
  * is a survey.
  */
+/**
+ * The storeys a standing building is read at: its source's count, or its height divided by its kind's floor
+ * (storeyHeightFor), rounded, at least one; undefined where neither is recorded. One reading, for the summary of
+ * what stands and for the path that rebuilds it: they were read apart (the summary rounding a height, the path
+ * taking a roof off it and rounding down, and leaving out a building with no height), so four buildings of
+ * 1,743 m² were "rebuilt to what stands" as three of 707 m².
+ */
+export function standingStoreys(b: Pick<ExistingBuilding, 'storeys' | 'heightM' | 'kind'>, storeyM = 3.1): number | undefined {
+  if (b.storeys) return b.storeys;
+  const floor = b.kind ? storeyHeightFor(b.kind) : storeyM;
+  return b.heightM && b.heightM > 0 ? Math.max(1, Math.round(b.heightM / floor)) : undefined;
+}
+
 export function existingSummary(list: ExistingBuilding[], storeyM = 3.1):
   { count: number; footprintSqm: number; storeys?: number; heightM?: number; gbaSqm?: number; known: boolean; storeyM: number } | undefined {
   if (!list.length) return undefined;
   const floorOf = (b: ExistingBuilding) => (b.kind ? storeyHeightFor(b.kind) : storeyM);
-  const storeys = list.map((b) => b.storeys ?? (b.heightM && b.heightM > 0 ? Math.max(1, Math.round(b.heightM / floorOf(b))) : undefined));
+  const storeys = list.map((b) => standingStoreys(b, storeyM));
   const known = storeys.some((v) => v !== undefined);
   const heights = list.map((b) => b.heightM ?? (b.storeys ? b.storeys * storeyM : 0));
   const divided = list.filter((b) => !b.storeys && b.heightM && b.heightM > 0);
@@ -491,8 +504,8 @@ export function withFour<T extends { three: number; four: number }>(merged: T, g
   return { ...merged, four: given?.four ?? given?.three ?? merged.four };
 }
 
-/** A building that stands on the site: its footprint (local metres) and its height. */
-export interface Standing { rings: XY[][]; heightM: number }
+/** A building that stands on the site: its footprint (local metres), its height, and the storeys it is read at (standingStoreys) where the caller has them. */
+export interface Standing { rings: XY[][]; heightM: number; storeys?: number }
 
 /**
  * What stands, rebuilt on its own footprints to its own height: the floor
@@ -512,7 +525,9 @@ export function computeRetained(input: YieldInput & { standing: Standing[] }): Y
   const tiers: Tier[] = [];
   let tallest = 0;
   for (const st of input.standing) {
-    const n = storeysUnder(st.heightM, ground, typical, a.roofAllowance);
+    // the storeys what stands is read at, where given: the same count the summary of what stands takes, so the
+    // path holds what stands and no less; the study's floors under its height where it is not
+    const n = st.storeys ?? storeysUnder(st.heightM, ground, typical, a.roofAllowance);
     const plateSqm = st.rings.reduce((t, rg, i) => t + (i ? -1 : 1) * ringArea(rg), 0);
     if (!n || plateSqm < 1) continue;
     tallest = Math.max(tallest, n);
