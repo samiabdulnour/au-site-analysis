@@ -20,7 +20,7 @@ import { featureCollection, polygon } from '@turf/helpers';
 import type { XY } from '../lib/geo.js';
 import { alongLine, carriageways, type Carriageway, type RoadLine } from '../lib/carriageway.js';
 import { INK, massingInks } from './atlasKit.js';
-import { tint, vivid, deckLook, greyOf } from './template.js';
+import { tint, vivid, deckLook, greyOf, tpl } from './template.js';
 import { esc } from './chrome.js';
 import { crownPicture, shadowPicture, rand, canopyBottom, canopyVariant, CANOPY, CANOPY_BRANCHINGS, CONTOUR, type CrownKind } from './crowns.js';
 import { personPicture, riderPicture, PEOPLE_VARIANTS, RIDER_VARIANTS } from './people.js';
@@ -84,6 +84,13 @@ export interface AxoScene {
   silhouette?: boolean;
   /** Set, the frame is fitted to the site and this many metres of town round it, and the town drawn to `reach` runs out past the frame's every edge; unset, everything within reach is fitted in. */
   focusM?: number;
+  /**
+   * Set, the frame is this many metres of ground across its width, the site at its middle, and the town runs out
+   * past its every edge: the drawing fills its box to the border, where fitting everything within `reach` leaves a
+   * round town in a square frame with empty corners. Only what can show in the frame is drawn; `reach` must take in
+   * the frame's corners (frameReachM).
+   */
+  frameM?: number;
   /** Keep the trees that stand on the site (what stands today); a scheme clears them. */
   treesOnSite?: boolean;
   /** The bus routes, local metres, where the caller has them: the buses keep to them. Unset, a bus runs on the collector streets and above; empty, there is none. */
@@ -155,7 +162,7 @@ const corners = (v: Vehicle, inset = 0): XY[] => {
  * frame shows a bit of each; a bus keeps to the bus routes where they are given. A vehicle that would stand over a
  * kerb, a building or another vehicle gives way to the next smaller that fits, a car at the least, or to nothing.
  */
-export function placeTraffic(cw: Carriageway, opts: { reach: number; footprints: XY[][]; busRoutes?: XY[][] }): Vehicle[] {
+export function placeTraffic(cw: Carriageway, opts: { reach: number; footprints: XY[][]; busRoutes?: XY[][]; /** Where a vehicle may stand at all (a frame the drawing is cut to); anywhere within reach where unset. */ within?: (p: XY) => boolean }): Vehicle[] {
   const { reach, footprints, busRoutes } = opts;
   // each ring with its bounds, so a point far off is let go before the ring is walked
   const boxed = (rg: XY[]) => ({ rg, x0: Math.min(...rg.map((p) => p.x)), x1: Math.max(...rg.map((p) => p.x)), y0: Math.min(...rg.map((p) => p.y)), y1: Math.max(...rg.map((p) => p.y)) });
@@ -197,7 +204,7 @@ export function placeTraffic(cw: Carriageway, opts: { reach: number; footprints:
   const fits = (v: Vehicle) => outline(v).every((p) => Math.hypot(p.x, p.y) <= reach && onRoad(p) && !buildings.some((b) => within(p, b)))
     && !placed.some((o) => vehiclesClash(v, o, 0.4));
   for (const s of slots) {
-    if (Math.hypot(s.c.x, s.c.y) > reach) continue;
+    if (Math.hypot(s.c.x, s.c.y) > reach || (opts.within && !opts.within(s.c))) continue;
     const routed = busRoutes ? onRoute(s.c, s.u) : s.hierarchy <= 5;
     // a local street a bus route runs down takes a collector's mix
     const cls: keyof typeof MIX = s.hierarchy <= 3 ? 'arterial' : s.hierarchy === 4 ? 'subArterial' : s.hierarchy === 5 || (busRoutes && routed) ? 'collector' : 'local';
@@ -352,6 +359,19 @@ const CROWN_SIZES = [{ upTo: 2.2, r: 1.6, perUnit: 64 }, { upTo: 3.6, r: 2.8, pe
  */
 export type AxoBox = { x: number; y: number; w: number; h: number; clear?: { x: number; margin: number } };
 
+/** The camera: turned this far off the normal it stands along, looking down at this angle. */
+const TURN_DEG = 40, ELEV_DEG = 35;
+
+/**
+ * How far from the site a drawing that fills its box must be given the town (AxoScene.frameM): to the frame's far
+ * corners on the ground, and past them by what a tall building standing just outside the near edge still shows of
+ * itself, and by the slide a booklet's fold may ask for.
+ */
+export function frameReachM(frameM: number, box: { w: number; h: number }, siteRadiusM = 0): number {
+  const depth = (frameM * box.h) / box.w / Math.sin((ELEV_DEG * Math.PI) / 180);
+  return Math.hypot(frameM / 2, depth / 2) + siteRadiusM + 90;
+}
+
 export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): string {
   // Heron draws a line model, every drawing of it; a white model (the compliance views) is one in greys
   const line = deckLook().id === 'heron';
@@ -367,17 +387,50 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   const bw = (c: string) => (plain ? greyOf(c) : c);
   const inks = plain ? { site: LINE.edge, future: bw(scene.inks.future), futureEdge: bw(scene.inks.futureEdge), envelope: bw(scene.inks.envelope), kerb: bw(scene.inks.kerb) } : scene.inks;
   const look = lookOf(M, mono);
-  const turn = (40 * Math.PI) / 180;
+  const turn = (TURN_DEG * Math.PI) / 180;
   const nx = scene.frontNormal.x, ny = scene.frontNormal.y;
   const cam = { x: nx * Math.cos(turn) - ny * Math.sin(turn), y: nx * Math.sin(turn) + ny * Math.cos(turn) };
   const d = { x: -cam.x, y: -cam.y };                 // the view direction, horizontal
   const r = { x: d.y, y: -d.x };                       // the screen's right
-  const elev = (35 * Math.PI) / 180, sinE = Math.sin(elev), cosE = Math.cos(elev);
+  const elev = (ELEV_DEG * Math.PI) / 180, sinE = Math.sin(elev), cosE = Math.cos(elev);
   const P = (p: XY, z: number): [number, number] => [p.x * r.x + p.y * r.y, -((p.x * d.x + p.y * d.y) * sinE + z * cosE)];
   const depth = (p: XY) => p.x * d.x + p.y * d.y;
 
+  // A drawing that fills its box (frameM): its scale is the frame's own, the site at the frame's middle (what
+  // stands on it taken in), so the fit is known before anything is drawn and what cannot show in the frame is left
+  // out, where the town within reach is three times what the frame holds.
+  const slideClear = (k: number, tx: number): number => {
+    if (!box.clear || !ring.length) return tx;
+    // the site across the page: a point's place across it does not hang on its height, so its outline on the ground is its reach
+    const sx = ring.map((p) => P(p, 0)[0] * k + tx);
+    const lo = Math.min(...sx), hi = Math.max(...sx), { x: fold, margin } = box.clear;
+    if (hi > fold - margin && lo < fold + margin) {
+      const right = fold + margin - lo, left = hi - (fold - margin);
+      return tx + (right <= left ? right : -left);
+    }
+    return tx;
+  };
+  let framed: { k: number; tx: number; ty: number } | null = null;
+  if (scene.frameM && scene.frameM > 0 && ring.length) {
+    const k = box.w / scene.frameM;
+    const siteTop = Math.max(0, ...scene.built.map((pr) => pr.z1));
+    const q = ring.flatMap((p) => [P(p, 0), P(p, siteTop)]);
+    const qx = q.map((v) => v[0]), qy = q.map((v) => v[1]);
+    const tx = slideClear(k, box.x + box.w / 2 - ((Math.min(...qx) + Math.max(...qx)) / 2) * k);
+    framed = { k, tx, ty: box.y + box.h / 2 - ((Math.min(...qy) + Math.max(...qy)) / 2) * k };
+  }
+  /** Whether something standing at `p`, `top` metres tall and `pad` metres about, can show in a filled frame; always, where the frame is fitted to the town. */
+  const inFrame = (p: XY, top = 0, pad = 0): boolean => {
+    if (!framed) return true;
+    const [x, y] = P(p, 0), m = pad * framed.k;
+    const X = x * framed.k + framed.tx, Y0 = y * framed.k + framed.ty, Y1 = Y0 - top * cosE * framed.k;
+    return X >= box.x - m && X <= box.x + box.w + m && Y0 >= box.y - m && Y1 <= box.y + box.h + m;
+  };
+  const spanOf = (rg: XY[], cen: XY) => rg.reduce((m, p) => Math.max(m, Math.hypot(p.x - cen.x, p.y - cen.y)), 0);
+
   // What is drawn: the neighbours within reach, each with its future over it, and the built on the site.
   const prisms: { key: number; group: Prism[] }[] = [];
+  const shown: AxoNeighbour[] = [];
   for (const nb of scene.neighbours) {
     const rings = nb.rings.filter((rg) => rg.length >= 3);
     if (!rings.length) continue;
@@ -385,6 +438,8 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
     if (Math.hypot(cen.x, cen.y) > reach) continue;
     const known = nb.heightM != null && nb.heightM > 0;
     const z1 = known ? nb.heightM! : 6.2;
+    if (!inFrame(cen, Math.max(z1, nb.future ?? 0), spanOf(rings[0], cen) + 2)) continue;
+    shown.push(nb);
     const group: Prism[] = [mono ? { rings, z0: 0, z1, fill: line && !scene.mono ? bw(nb.fill) : '#ffffff', edge: G.edge, edgeW: 0.12, ...(line ? { edgeMm: LINE_MM.neighbour } : {}), dashed: !known }
       : { rings, z0: 0, z1, fill: nb.fill, edge: shade(nb.fill, M.gloss ? 0.78 : 0.55), edgeW: 0.12, dashed: !known, windows: known }];
     if (nb.future && nb.future > z1) group.push({ rings, z0: z1, z1: nb.future, fill: inks.future, edge: inks.futureEdge, edgeW: 0.12, ...(line ? { edgeMm: LINE_MM.future } : {}), dashed: true, dash: FUTURE_DASH, opacity: FUTURE_OPACITY });
@@ -418,6 +473,7 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   const lawnD: string[] = [], yardD: string[] = [];
   for (const lot of scene.lots) for (const pts of lot.rings) {
     if (pts.length < 3 || pts.some((p) => Math.hypot(p.x, p.y) > reach + 20)) continue;
+    if (framed) { const cen = pts.reduce((t, p) => ({ x: t.x + p.x / pts.length, y: t.y + p.y / pts.length }), { x: 0, y: 0 }); if (!inFrame(cen, 0, spanOf(pts, cen) + 1)) continue; }
     const dLot = poly(pts.map((p) => P(p, 0)));
     if (line) (lot.park ? lawnD : yardD).push(dLot);
     ground.push(`<path d="${dLot}" fill="${lot.park && !line ? M.park : 'none'}" stroke="${M.lot}" stroke-width="0.12"/>`);
@@ -554,7 +610,8 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   };
   // The trees: each a crown on a trunk, which the projection draws as a circle, a sphere's outline; none where a
   // footprint stands, and none on the site unless the caller keeps them.
-  const footprints: XY[][] = [...scene.neighbours.flatMap((nb) => nb.rings), ...built.flatMap((pr) => pr.rings)];
+  // (in a filled frame, the footprints that show in it: nothing else is drawn for one to stand on)
+  const footprints: XY[][] = [...(framed ? shown : scene.neighbours).flatMap((nb) => nb.rings), ...built.flatMap((pr) => pr.rings)];
   // A crown read off the aerial over a street stands at the kerb, not in the traffic: one whose middle falls on a
   // carriageway is moved out past the nearer kerb onto the verge, and left out where there is no room there.
   const onRoad = (p: XY) => cw.polygons.some((rings) => rings.reduce((k, rg) => k + (inRing(p, rg) ? 1 : 0), 0) % 2 === 1);
@@ -572,7 +629,7 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
     return onRoad(q) ? undefined : q;
   };
   const trees = scene.trees.flatMap((tr) => { const p = offRoad(tr.p); return p ? [{ ...tr, p }] : []; })
-    .filter((tr) => Math.hypot(tr.p.x, tr.p.y) <= reach + 10 && !footprints.some((rg) => inRing(tr.p, rg)) && (scene.treesOnSite || !inRing(tr.p, ring)));
+    .filter((tr) => Math.hypot(tr.p.x, tr.p.y) <= reach + 10 && inFrame(tr.p, 4 + 3 * tr.r, tr.r + 2) && !footprints.some((rg) => inRing(tr.p, rg)) && (scene.treesOnSite || !inRing(tr.p, ring)));
   // Illustrated, each tree takes its green by its place, and a few small ones stand narrow and upright. Its crown is
   // one of a few stamps, each shape in each green drawn once at a radius of one and placed at the tree's size.
   const greenOf = (p: XY) => {
@@ -618,7 +675,8 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
       stamps.set(key, sid);
       // a canopy: its leaves a light cut of its green, its wood the style's terracotta, the town's contour round it; a
       // cloud: its shade, the lit part, the highlight, its outline
-      const tones = line ? { dark: '#ffffff', lit: '#ffffff', high: LINE.edge, edge: LINE.edge, wood: 0.45 } : kind === 'canopy'
+      // (black and white alone: each crown hatched in black inside its black contour, so the trees stand apart from the white buildings)
+      const tones = line ? { dark: '#ffffff', lit: '#ffffff', high: LINE.edge, edge: LINE.edge, wood: 0.45, ...(tpl().plain ? { hatch: { ink: LINE.edge, pitch: 0.3, width: 0.045 } } : {}) } : kind === 'canopy'
         ? { dark: tint(g, 0.85), lit: g, high: CONTOUR, edge: WOOD }
         : { dark: shade(g, 0.8), lit: g, high: tint(g, 0.45), edge: shade(g, 0.52) };
       // a canopy's contour the town's one, as thin as the people's and the vehicles'
@@ -765,7 +823,7 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
     return `<g data-vehicle="${v.kind}">${[...solids].sort((p, q) => mid(q) * along - mid(p) * along).map((so) => solidSvg(v, so)).join('')}</g>`;
   };
   // the colours go round in the order the vehicles were placed, nearest the site first
-  const traffic = placeTraffic(cw, { reach, footprints, busRoutes: scene.busRoutes }).map((v) => {
+  const traffic = placeTraffic(cw, { reach, footprints, busRoutes: scene.busRoutes, within: framed ? (p) => inFrame(p, 4.5, 9) : undefined }).map((v) => {
     const stacks = stacksOf(v.kind);
     return { ...v, stacks, solids: kfCars ? solidsOf(v.kind, stacks[stacks.length - 1][0].fill) : undefined };
   });
@@ -780,7 +838,7 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   const SPOKE = mono ? G.edge : '#3a3a3a';
   const figures: { key: number; svg: () => string }[] = [];
   let pi = 0;
-  const free = (c: XY) => Math.hypot(c.x, c.y) <= reach && !footprints.some((rg) => inRing(c, rg)) && !inRing(c, ring) && !traffic.some((v) => underVehicle(c, v, 0.6));
+  const free = (c: XY) => Math.hypot(c.x, c.y) <= reach && inFrame(c, 2.2, 1.5) && !footprints.some((rg) => inRing(c, rg)) && !inRing(c, ring) && !traffic.some((v) => underVehicle(c, v, 0.6));
   // a body: a slip of the figure's colour, 0.5 m wide across the view, from z0 up to z1, and its head over it
   const body = (c: XY, z0: number, z1: number, fill: string) => {
     if (look.people === 'figure') return person(c, z0, fill, z0 > 0 ? undefined : { x: 0, y: 0 });
@@ -968,18 +1026,10 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   }
   const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
   const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
-  const k = Math.min(box.w / (x1 - x0 || 1), box.h / (y1 - y0 || 1));
-  let tx = box.x + (box.w - (x1 - x0) * k) / 2 - x0 * k;
-  const ty = box.y + (box.h - (y1 - y0) * k) / 2 - y0 * k;
-  if (box.clear && ring.length) {
-    // the site across the page: a point's place across it does not hang on its height, so its outline on the ground is its reach
-    const sx = ring.map((p) => P(p, 0)[0] * k + tx);
-    const lo = Math.min(...sx), hi = Math.max(...sx), { x: fold, margin } = box.clear;
-    if (hi > fold - margin && lo < fold + margin) {
-      const right = fold + margin - lo, left = hi - (fold - margin);
-      tx += right <= left ? right : -left;
-    }
-  }
+  // (a filled frame's fit was settled before anything was drawn)
+  const k = framed ? framed.k : Math.min(box.w / (x1 - x0 || 1), box.h / (y1 - y0 || 1));
+  const tx = framed ? framed.tx : slideClear(k, box.x + (box.w - (x1 - x0) * k) / 2 - x0 * k);
+  const ty = framed ? framed.ty : box.y + (box.h - (y1 - y0) * k) / 2 - y0 * k;
   const note = (line: number, ink: string, text: string) =>
     `<text x="${(box.x + box.w / 2).toFixed(1)}" y="${(box.y + 4 + line * 4).toFixed(1)}" text-anchor="middle" font-size="2.8" fill="${ink}" stroke="#ffffff" stroke-width="1.4" paint-order="stroke">${esc(text)}</text>`;
   const notes: string[] = [];

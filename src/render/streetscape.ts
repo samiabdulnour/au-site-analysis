@@ -177,9 +177,10 @@ function faceSvg(b: StreetscapeBundle, face: Face, L: Layout, i: number, overlay
   const ground = groundLine.map((g) => `${f2(X(g.s))},${f2(Y(g.z))}`).join(' ');
   if (elev && ground) {
     const xs = groundLine.map((g) => X(g.s));
-    svg.push(`<polygon points="${ground} ${f2(xs[xs.length - 1])},${f2(band.top + band.h)} ${f2(xs[0])},${f2(band.top + band.h)}" fill="${GROUND_FILL}"/>`);
+    // (black and white alone: no dark band under the street, the ground a heavy line: Z. 2026-11)
+    if (!t.plain) svg.push(`<polygon points="${ground} ${f2(xs[xs.length - 1])},${f2(band.top + band.h)} ${f2(xs[0])},${f2(band.top + band.h)}" fill="${GROUND_FILL}"/>`);
   }
-  if (ground) svg.push(`<polyline points="${ground}" fill="none" stroke="${t.ink}" stroke-width="0.3" stroke-linejoin="round"/>`);
+  if (ground) svg.push(`<polyline points="${ground}" fill="none" stroke="${t.ink}" stroke-width="${t.plain ? 0.9 : 0.3}" stroke-linejoin="round"/>`);
   const her = b.heritage?.faces.find((h) => h.side === face.side);
   // the buildings' lines over the meshes, cut at the band's top where a tower runs past it, as the meshes are
   if (overlay && elev?.roofs?.length) {
@@ -590,7 +591,8 @@ export function streetscapeSlide(b: StreetscapeBundle, opts: Omit<StreetscapeOpt
   const t = tpl();
   // the deck's page: every building whole, the tallest included, at whatever scale that needs
   const { lead, sources, subtitle, body } = streetscapeParts(b, { whole: true, ...opts });
-  const figureHtml = `<div class="scape">
+  // (the street's photographs in their colours whatever the style prints its others in: Z. 2026-11, "use colourful images")
+  const figureHtml = `<div class="scape" data-photos="colour">
   <div class="abs lead" style="left:${SLIDE_W - MARGIN - 150}mm;top:17.5mm;width:150mm">${esc(lead)}</div>
 ${body}
   ${spreadFoot(sources)}

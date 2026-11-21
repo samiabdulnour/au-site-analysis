@@ -9,6 +9,8 @@ import type { TopoRoad, RailLines, NamedPoint } from '../fetch/nswTopo.js';
 import { geomRings } from '../fetch/planning.js';
 import { tpl } from './template.js';
 import { esc } from './chrome.js';
+import turfUnion from '@turf/union';
+import { featureCollection, polygon } from '@turf/helpers';
 
 export type Pt = [number, number];
 export type Proj = (lon: number, lat: number) => Pt;
@@ -104,8 +106,11 @@ export function baseLayers(b: BaseData, proj: Proj, p: Panel, opts: { lots?: boo
   const parts: string[] = [];
   parts.push(`<rect x="0" y="0" width="${p.wMm}" height="${p.hMm}" fill="${t.paper ?? '#ffffff'}"/>`);
   if (b.water.features.length) parts.push(`<path d="${fcPath(b.water, proj)}" fill="${t.water}" fill-rule="evenodd"/>`);
+  // (black and white alone: the cadastre in a grey firm enough to read with no tint under it)
   if (opts.lots !== false && b.lots.features.length)
-    parts.push(`<path d="${fcPath(b.lots, proj)}" fill="none" stroke="#b9ae99" stroke-width="0.08" opacity="0.6"/>`);
+    parts.push(t.plain
+      ? `<path d="${fcPath(b.lots, proj)}" fill="none" stroke="#7a7a7a" stroke-width="0.1"/>`
+      : `<path d="${fcPath(b.lots, proj)}" fill="none" stroke="#b9ae99" stroke-width="0.08" opacity="0.6"/>`);
   return parts.join('\n');
 }
 
@@ -130,8 +135,10 @@ export function overLayers(b: BaseData, proj: Proj, p: Panel, site: SiteLayer = 
     (byWidth.get(w) ?? byWidth.set(w, []).get(w)!).push(ringsPath([r.coords], proj, false));
   }
   // Casing then fill, so junctions read as one network rather than a pile of ends.
+  // (black and white alone: the casing heavier, so every block has a contour and a hatch ends on a line)
+  const casing = t.plain ? 0.4 : 0.22;
   for (const [w, ds] of [...byWidth.entries()].sort((a, b2) => b2[0] - a[0]))
-    parts.push(`<path d="${ds.join('')}" fill="none" stroke="${t.road}" stroke-width="${(w + 0.22).toFixed(2)}" stroke-linecap="round" stroke-linejoin="round"/>`);
+    parts.push(`<path d="${ds.join('')}" fill="none" stroke="${t.road}" stroke-width="${(w + casing).toFixed(2)}" stroke-linecap="round" stroke-linejoin="round"/>`);
   for (const [w, ds] of [...byWidth.entries()].sort((a, b2) => b2[0] - a[0]))
     parts.push(`<path d="${ds.join('')}" fill="none" stroke="#ffffff" stroke-width="${w.toFixed(2)}" stroke-linecap="round" stroke-linejoin="round"/>`);
   if (b.rail.train.length) parts.push(railSymbol(b.rail.train.map((l) => ringsPath([l], proj, false)).join(''), t.rail));
@@ -150,6 +157,16 @@ export function overLayers(b: BaseData, proj: Proj, p: Panel, site: SiteLayer = 
   return parts.join('\n');
 }
 
+/** The site's line where a drawing is black and white alone: its width on paper, mm, and its dash and dot. */
+export const SITE_LINE_MM = 0.9, SITE_LINE_DASH = '2.6 0.9 0.6 0.9';
+/** The site's swatch in a key's 5 × 3.6 box: a square in the site's colour, or (black and white alone) a box in the site's heavy dash-dot line. */
+export const siteSwatch = (): string => {
+  const t = tpl();
+  return t.plain
+    ? `<path d="M0.8,0.6H4.2V3H0.8Z" fill="none" stroke="${t.site}" stroke-width="0.5" stroke-dasharray="1.3 0.45 0.3 0.45" stroke-linejoin="round"/>`
+    : `<path d="M1.2,0.6H3.8V3H1.2Z" fill="${t.site}"/>`;
+};
+
 /** How much of the site mark a map wants in one pass: all of it, the wash to go under its own marks, or the outline and label to go over them. */
 export type SiteLayer = 'wash' | 'outline' | 'both' | 'none';
 
@@ -162,17 +179,56 @@ export function siteLabelPoint(b: BaseData, proj: Proj): { cx: number; cy: numbe
   return best.area >= 0 ? { cx: best.cx, cy: best.cy - 2.6 } : null;
 }
 
+const outlines = new WeakMap<GeoJSONFC, number[][][]>();
+/**
+ * The site's boundary as one outline: its lots joined, the lines between them gone. An amalgamation of several
+ * addresses is several lots, and its boundary is the one round all of them (Z. 2026-11: "there should be one thick
+ * outline around the whole amalgamated site", where each lot was outlined and the site read as three). The lots'
+ * corners are rounded to a centimetre first, so two that meet do meet; a gap inside the site (a sliver between two
+ * lots) is not an outline. Lots that do not touch (a lane between them) keep an outline each. Lon/lat rings.
+ */
+export function siteOutlineRings(siteLots: GeoJSONFC): number[][][] {
+  const hit = outlines.get(siteLots);
+  if (hit) return hit;
+  const snap = (v: number) => Math.round(v * 1e7) / 1e7;
+  const lots = siteLots.features.flatMap((f) => (!f.geometry ? [] : f.geometry.type === 'Polygon' ? [f.geometry.coordinates] : f.geometry.type === 'MultiPolygon' ? f.geometry.coordinates : []) as number[][][][])
+    .map((rings) => rings.map((r) => { const q = r.map(([lon, lat]) => [snap(lon), snap(lat)]); const a = q[0], z = q[q.length - 1]; if (a && (a[0] !== z[0] || a[1] !== z[1])) q.push([a[0], a[1]]); return q; }).filter((r) => r.length >= 4))
+    .filter((rings) => rings.length);
+  let rings: number[][][] = lots.map((l) => l[0]);
+  if (lots.length > 1) {
+    try {
+      const g = (turfUnion(featureCollection(lots.map((l) => polygon([l[0]])))) as { geometry?: { type: string; coordinates: unknown } } | null)?.geometry;
+      const polys = g?.type === 'Polygon' ? [g.coordinates as number[][][]] : g?.type === 'MultiPolygon' ? (g.coordinates as number[][][][]) : [];
+      // the outer ring of each piece: a hole is a gap between the lots, not a boundary of the site
+      if (polys.length) rings = polys.map((p) => p[0]);
+    } catch { /* the lots as they are */ }
+  }
+  outlines.set(siteLots, rings);
+  return rings;
+}
+
 /** The site: a solid accent, no word — the red is the site throughout the book. */
 export function siteMark(b: BaseData, proj: Proj, layer: SiteLayer = 'both'): string {
   if (!b.siteLots.features.length || layer === 'none') return '';
   const t = tpl();
   const d = fcPath(b.siteLots, proj);
+  // the outline is one, round the whole site, however many lots it is
+  const dOut = ringsPath(siteOutlineRings(b.siteLots), proj);
   const parts: string[] = [];
   // Solid where the site is a mark; at plan scales, where it is a shape with things inside, a wash and an outline.
   const areaMm2 = b.siteLots.features.reduce((a, f) => a + geomRings(f.geometry).reduce((x, r) => x + ringStats(r, proj).area, 0), 0);
   const solid = areaMm2 < 150;
+  // Black and white alone (Heron's report): the site is a heavy dash-dot line and nothing is filled inside it, so
+  // what the map shows of it (its lots, its buildings, a hatch over it) still reads; white under the line, so it
+  // stands clear of a photograph, a hatch or a tone alike.
+  if (t.plain) {
+    if (layer === 'wash') return '';
+    const w = SITE_LINE_MM;
+    return `<path d="${dOut}" fill="none" stroke="#ffffff" stroke-width="${(w + 0.8).toFixed(2)}" stroke-linejoin="round"/>` +
+      `<path data-site-line d="${dOut}" fill="none" stroke="${t.site}" stroke-width="${w}" stroke-linejoin="round" stroke-dasharray="${SITE_LINE_DASH}"/>`;
+  }
   if (layer !== 'outline') parts.push(`<path d="${d}" fill="${t.site}" fill-opacity="${solid ? 0.9 : 0.16}" stroke="none"/>`);
-  if (layer !== 'wash') parts.push(solid ? `<path d="${d}" fill="${t.site}" stroke="${t.site}" stroke-width="0.4"/>` : `<path d="${d}" fill="none" stroke="${t.site}" stroke-width="0.6"/>`);
+  if (layer !== 'wash') parts.push(solid ? `<path d="${d}" fill="${t.site}" stroke="${t.site}" stroke-width="0.4"/>` : `<path d="${dOut}" fill="none" stroke="${t.site}" stroke-width="0.6" stroke-linejoin="round"/>`);
   return parts.join('\n');
 }
 

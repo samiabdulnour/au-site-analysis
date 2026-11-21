@@ -55,6 +55,20 @@ export async function paintMasks(dataDir: string, layers: { mask: string; fill: 
         px[k] = c[0]; px[k + 1] = c[1]; px[k + 2] = c[2]; px[k + 3] = c === ink ? 255 : alpha;
       }
     }
+    // the fill's outline, where it has one: along the mask's own edge, half its width inside it, so two patterns
+    // that meet have a line between them (a pattern alone does not say where it ends)
+    if (fill.outline) {
+      const oc = rgb(fill.outline), half = Math.max(1, Math.round(((fill.outlineW ?? 0.25) / mm) / 2));
+      const on = (x: number, y: number) => x >= 0 && y >= 0 && x < W && y < H && m.data[(Math.floor(y / UP) * m.width + Math.floor(x / UP)) * 4] >= 128;
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        if (!on(x, y)) continue;
+        // on the edge where a neighbour `half` away, any of the four ways, is outside the mask (the picture's own edge is no edge)
+        const edge = (x - half >= 0 && !on(x - half, y)) || (x + half < W && !on(x + half, y)) || (y - half >= 0 && !on(x, y - half)) || (y + half < H && !on(x, y + half));
+        if (!edge) continue;
+        const k = (y * W + x) * 4;
+        px[k] = oc[0]; px[k + 1] = oc[1]; px[k + 2] = oc[2]; px[k + 3] = 255;
+      }
+    }
   }
   await writeFile(join(dataDir, out), encodeRgbaPng(W, H, px));
   return { file: out, width: W, height: H };

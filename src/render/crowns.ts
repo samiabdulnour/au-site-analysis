@@ -81,7 +81,11 @@ const rgbOf = (hex: string): [number, number, number] => {
 
 /** The tones of a crown: its outline (a canopy's: its branches), its shade, the lit part, the highlight (a canopy's: the light through its leaves). */
 /** A crown's tones; `wood`, where set, is how heavy a canopy's trunk and limbs are drawn against their usual width (a line drawing's are fine). */
-export interface CrownTones { edge: string; dark: string; lit: string; high: string; wood?: number }
+export interface CrownTones {
+  edge: string; dark: string; lit: string; high: string; wood?: number;
+  /** A hatch ruled over the whole crown, falling to the right: its ink, the spacing of its lines and their width, in radii. A black and white drawing's trees, told from its white buildings by it. */
+  hatch?: { ink: string; pitch: number; width: number };
+}
 
 export type CrownKind = 'cloud' | 'canopy' | 'columnar';
 
@@ -240,16 +244,16 @@ const cache = new Map<string, CrownPicture>();
  * radius. The same arguments give the same picture, painted once.
  */
 export function crownPicture(kind: CrownKind, variant: number, tones: CrownTones, outline: number, perUnit: number): CrownPicture {
-  const key = `${kind}|${variant}|${tones.edge}|${tones.dark}|${tones.lit}|${tones.high}|${tones.wood ?? 1}|${outline.toFixed(4)}|${perUnit}`;
+  const key = `${kind}|${variant}|${tones.edge}|${tones.dark}|${tones.lit}|${tones.high}|${tones.wood ?? 1}|${tones.hatch ? `${tones.hatch.ink}/${tones.hatch.pitch}/${tones.hatch.width}` : ''}|${outline.toFixed(4)}|${perUnit}`;
   const hit = cache.get(key);
   if (hit) return hit;
-  const pic = paintLayers(layersOf(kind, variant, tones, outline), perUnit);
+  const pic = paintLayers(layersOf(kind, variant, tones, outline), perUnit, tones.hatch);
   cache.set(key, pic);
   return pic;
 }
 
 /** Layers painted bottom first, `perUnit` pixels to the unit: the picture, and the box it covers in units. */
-export function paintLayers(layers: Layer[], perUnit: number): CrownPicture {
+export function paintLayers(layers: Layer[], perUnit: number, hatch?: { ink: string; pitch: number; width: number }): CrownPicture {
   // the box: all the layers', a pixel or two over
   let ex0 = Infinity, ey0 = Infinity, ex1 = -Infinity, ey1 = -Infinity;
   for (const L of layers) {
@@ -286,6 +290,21 @@ export function paintLayers(layers: Layer[], perUnit: number): CrownPicture {
       const o = i * 4, k = 1 - a;
       if (L.erase) { acc[o] *= k; acc[o + 1] *= k; acc[o + 2] *= k; acc[o + 3] *= k; continue; }
       acc[o] = r * a + acc[o] * k; acc[o + 1] = g * a + acc[o + 1] * k; acc[o + 2] = b * a + acc[o + 2] * k; acc[o + 3] = a + acc[o + 3] * k;
+    }
+  }
+  // a hatch over all that was painted: lines falling to the right, each softened at its edges, where the picture holds
+  if (hatch) {
+    const [hr, hg, hb] = rgbOf(hatch.ink), pitch = hatch.pitch * perUnit * Math.SQRT2, half = Math.max(0.5, (hatch.width * perUnit * Math.SQRT2) / 2);
+    for (let py = 0; py < h; py++) for (let px = 0; px < w; px++) {
+      const o = (py * w + px) * 4, a0 = acc[o + 3];
+      if (a0 <= 0.05) continue;
+      // the distance to the nearest line of the family x − y = n · pitch, across the lines
+      const t = ((px - py) % pitch + pitch) % pitch, dist = Math.min(t, pitch - t) / Math.SQRT2;
+      const c = Math.min(1, Math.max(0, half / Math.SQRT2 + 0.5 - dist));
+      if (c <= 0) continue;
+      // laid atop what is there, within its own cover: the picture's edge stays its edge
+      const a = c * a0, k = 1 - c;
+      acc[o] = hr * a + acc[o] * k; acc[o + 1] = hg * a + acc[o + 1] * k; acc[o + 2] = hb * a + acc[o + 2] * k;
     }
   }
   const rgba = new Uint8Array(w * h * 4);

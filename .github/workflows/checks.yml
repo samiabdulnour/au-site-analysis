@@ -240,6 +240,13 @@ jobs:
       - name: the capacity study reads the lots right
         run: npx tsx test/capacity.mts
 
+      # A second look at the heights the sources give (src/lib/heightCheck.ts), on grids and footprints drawn
+      # for it: a house whose street number was typed into its height gives way to what the 3D meshes read on
+      # its footprint, or with no meshes to its own footprint and the height limit over it; a tree the meshes
+      # took for a roof is not a building; what is believable stands. CI fetches nothing.
+      - name: a height is read twice before it is drawn
+        run: npx tsx test/height-check.mts
+
       # The yield study's neighbours against the capacity study, on a made-up
       # site: a neighbour rises to its controls only where the study reads
       # development potential; a strata scheme or a mature development stands

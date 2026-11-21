@@ -41,6 +41,7 @@ import { fetchDemGrid, demAt, type DemGrid } from './fetch/terrain.js';
 import { fetchBuildings, withDaStoreys, METRES_PER_STOREY, type BuildingsData } from './fetch/buildings.js';
 import { meshSurfaceOver } from './fetch/meshHeights.js';
 import { withMeshHeights } from './lib/meshHeights.js';
+import { checkHeights, doubtedHeights } from './lib/heightCheck.js';
 import { lotsWithoutFootprint } from './lib/gapLots.js';
 import { fetchStreetscapeHeritage, type StreetscapeHeritage } from './fetch/streetscapeHeritage.js';
 import { fetchFootways, type FootwaysData } from './fetch/footways.js';
@@ -621,9 +622,12 @@ export async function runYieldPipeline(
   const capacityData = await soft(fetchCapacityData(extentPanel(around(MASSING_M)), controls.lgaName, log), null, 'capacity study layers');
   const capacityOverrides = await readFile(join(opts.outDir, 'capacity_overrides.json'), 'utf8').then((t) => JSON.parse(t) as CapacityOverrides).catch(() => ({} as CapacityOverrides));
   const capacity = capacityData ? classifyCapacity({
-    centre: geo.center, properties: capacityData.properties, lots: capacityData.lots, heritage,
+    centre: geo.center, siteRings: siteLots.features.flatMap((f) => geomRingsOf(f.geometry)), properties: capacityData.properties, lots: capacityData.lots, heritage,
     publicLand: [...capacityData.stateLand, ...capacityData.councilLand], facilities: capacityData.facilities, register: capacityData.register, applications: [],
     overrides: capacityOverrides,
+    // the massing joins lots too narrow to build on alone, up to three (lib/futureContext.ts): the study's own
+    // narrow-lot test would hold each of them before they could be joined
+    options: { narrowSite: 0 },
   }) : null;
 
   // Each boundary edge: the named street running along it, if one does (its
@@ -692,6 +696,7 @@ export async function runYieldPipeline(
       }
     }
   }
+  footprints = heightsChecked(footprints, hob, log);
   // Even-odd over every ring, so a point in a polygon's hole is outside it.
   const at = (fc: GeoJSONFC, lon: number, lat: number) =>
     fc.features.find((f) => ringsOf(f.geometry).filter((rg) => pointInRingLL(lon, lat, rg)).length % 2 === 1)?.properties;
@@ -1004,6 +1009,22 @@ function fitSitePanel(siteLots: GeoJSONFC, wMm: number, hMm: number): Panel {
 }
 const geomRingsOf = (g: any): number[][][] => (!g ? [] : g.type === 'Polygon' ? g.coordinates : g.type === 'MultiPolygon' ? g.coordinates.flat() : []);
 
+/**
+ * The buildings after a second look at their sources' own heights (lib/heightCheck.ts): the meshes have already
+ * replaced the ones they contradict, and a height its own footprint and the height limit mapped over it contradict
+ * is set aside here. The log says which, so a wrong tag upstream can be found and mended there.
+ */
+export function heightsChecked(data: BuildingsData, hob: GeoJSONFC, log: (m: string) => void): BuildingsData {
+  // the limits in metres above ground (a limit given as a level, RL, is no height to weigh a building against)
+  const limits = hob.features.filter((f) => Number(f.properties.MAX_B_H) > 0 && !/RL/i.test(String(f.properties.UNITS ?? '')))
+    .map((f) => ({ m: Number(f.properties.MAX_B_H), rings: geomRingsOf(f.geometry) }));
+  const inRings = (lon: number, lat: number, rings: number[][][]) => rings.filter((rg) => pointInRingLL(lon, lat, rg)).length % 2 === 1;
+  const checked = checkHeights(data, { limitAt: (lon, lat) => limits.find((l) => inRings(lon, lat, l.rings))?.m });
+  const set = doubtedHeights(checked);
+  if (set.length) log(`  heights: ${set.length} of the sources' own height${set.length === 1 ? '' : 's'} not taken: ${set.slice(0, 4).map((d) => `${d.id} said ${Math.round(d.heightM)} m (${d.why})`).join('; ')}${set.length > 4 ? '…' : ''}`);
+  return checked;
+}
+
 /** The local environmental plans in the window, most common first: the zoning layer's plan names, then the property report's. */
 function principalLeps(zoning: GeoJSONFC, property: PropertyReport | null): string[] {
   const counts = new Map<string, number>();
@@ -1183,6 +1204,7 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
       }
     }
   }
+  footprints = heightsChecked(footprints, hob, log);
   // the site's street end to end, where Street View is keyed
   if (gkey) {
     const st = addressStreet(geo.matchedAddresses[0] ?? address, roads, mercatorToLonLat(geo.center));

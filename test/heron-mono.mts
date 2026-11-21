@@ -17,8 +17,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { deflateSync, crc32 } from 'node:zlib';
 import {
-  withTemplate, templateFor, deckLook, deckFamilies, siteTheme, tpl, TEMPLATES, HERON_ACCENT, HERON_SUN, HERON_MONO, type Category,
+  withTemplate, templateFor, deckLook, deckFamilies, siteTheme, tpl, TEMPLATES, HERON_ACCENT, HERON_SUN, HERON_MONO, HERON_PLAIN, type Category,
 } from '../src/render/template.js';
+import { siteMark, siteSwatch, siteOutlineRings, type BaseData } from '../src/render/minimap.js';
+import { deckCss } from '../src/render/slides.js';
+
+/** A site of one small lot, for the mark: a few metres square in the test's own projection. */
+const SITE_BASE = { siteLots: { type: 'FeatureCollection', features: [{ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [[[0, 0], [0.01, 0], [0.01, 0.01], [0, 0.01], [0, 0]]] } }] } } as unknown as BaseData;
 import { paletteRamp, terrainRamp, styleRamp, heightRamp, heatFills, massingInks, categoryFill, veg1750Fills } from '../src/render/atlasKit.js';
 import { textureSvg } from '../src/render/sheet.js';
 import { sunBands } from '../src/render/facadeElevation.js';
@@ -57,7 +62,46 @@ const deckInks = () => ({
 });
 
 console.log('Heron mono');
-check('the decks and the site sheet draw on the mono template', templateFor('slides', 'heron') === HERON_MONO && templateFor('yield', 'heron') === HERON_MONO && templateFor('site', 'heron') === HERON_MONO);
+check('the yield and the site sheet draw on the mono template', templateFor('yield', 'heron') === HERON_MONO && templateFor('site', 'heron') === HERON_MONO);
+// The site report is black and white alone (Z. 2026-11: "do not use different colours for Heron; just make the site a
+// thick line and the trees black with a hatch"): its own template, no accent in any ink, the site a heavy dash-dot line.
+check('the site report draws on the plain template, black and white alone', templateFor('slides', 'heron') === HERON_PLAIN && HERON_PLAIN.plain === true && HERON_PLAIN.id === 'heron');
+{
+  const grey = (h: string) => new Set(rgb(h)).size === 1;
+  const inks = withTemplate(templateFor('slides', 'heron'), () => ({ site: tpl().site, accent: deckLook().accent, families: Object.values(deckFamilies()).flatMap((f) => Object.values(f)), categories: deckLook().categories.map((c) => c.fill), walk: styleRamp() }));
+  const all = [inks.site, inks.accent, ...inks.families, ...inks.categories, ...inks.walk];
+  check('the site report: no ink has a colour, the accent\'s family and the site\'s category included', all.every(grey), all.filter((c) => !grey(c)).join(' '));
+  check('the site report: the site\'s pen and the narrative are black', inks.site === '#1a1a1a' && inks.accent === '#1a1a1a', `${inks.site} ${inks.accent}`);
+  const mark = withTemplate(templateFor('slides', 'heron'), () => siteMark(SITE_BASE, (lon, lat) => [lon * 1000, lat * 1000] as [number, number], 'both'));
+  check('the site report: the site is a heavy dash-dot line, white under it, nothing filled', /data-site-line[^>]*fill="none"[^>]*stroke="#1a1a1a"[^>]*stroke-width="0\.9"[^>]*stroke-dasharray=/.test(mark) && !/fill="#1a1a1a"/.test(mark) && mark.indexOf('stroke="#ffffff"') < mark.indexOf('data-site-line') && mark.indexOf('stroke="#ffffff"') >= 0, mark.slice(0, 300));
+  check('the site report: the wash under a map\'s own marks is nothing', withTemplate(templateFor('slides', 'heron'), () => siteMark(SITE_BASE, (lon, lat) => [lon * 1000, lat * 1000] as [number, number], 'wash')) === '');
+  const yieldMark = withTemplate(templateFor('yield', 'heron'), () => siteMark(SITE_BASE, (lon, lat) => [lon * 1000, lat * 1000] as [number, number], 'both'));
+  check('the yield keeps the site in its one colour', yieldMark.includes(HERON_ACCENT) && !yieldMark.includes('data-site-line'));
+  // an amalgamated site: three lots side by side, the third half as deep, are one outline of eight corners, with
+  // no line between them (Z. 2026-11: "there should be one thick outline around the whole amalgamated site")
+  const lotAt = (x: number, w: number, h: number) => ({ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [[[x, 0], [x + w, 0], [x + w, h], [x, h], [x, 0]]] } });
+  const THREE = { siteLots: { type: 'FeatureCollection', features: [lotAt(0, 0.01, 0.02), lotAt(0.01, 0.01, 0.02), lotAt(0.02, 0.01, 0.01)] } } as unknown as BaseData;
+  const joined = siteOutlineRings(THREE.siteLots);
+  check('three adjoining lots are one outline', joined.length === 1 && joined[0].length >= 7 && joined[0].length <= 10, `${joined.length} rings of ${joined.map((r) => r.length).join(', ')} points`);
+  const xs = joined[0].map((q) => q[0]), ys = joined[0].map((q) => q[1]);
+  check('round the whole of it', Math.abs(Math.min(...xs)) < 1e-9 && Math.abs(Math.max(...xs) - 0.03) < 1e-9 && Math.abs(Math.max(...ys) - 0.02) < 1e-9);
+  const lineOf = (m: string) => m.match(/data-site-line d="([^"]+)"/)?.[1] ?? '';
+  const threeMark = withTemplate(templateFor('slides', 'heron'), () => siteMark(THREE, (lon, lat) => [lon * 1000, lat * 1000] as [number, number], 'both'));
+  check('the site\'s heavy line is drawn once round the three lots, not round each', (lineOf(threeMark).match(/M/g) ?? []).length === 1, lineOf(threeMark));
+  check('no stroke of it runs between two lots', !/M10\.00,0\.00L10\.00,20\.00|L10\.00,20\.00L10\.00,0\.00/.test(lineOf(threeMark)) && !lineOf(threeMark).includes('M10.00'), lineOf(threeMark));
+  const colour = withTemplate(templateFor('slides', 'canary'), () => siteMark({ siteLots: { type: 'FeatureCollection', features: [lotAt(0, 0.1, 0.2), lotAt(0.1, 0.1, 0.2), lotAt(0.2, 0.1, 0.1)] } } as unknown as BaseData, (lon, lat) => [lon * 1000, lat * 1000] as [number, number], 'outline'));
+  check('in the colour styles too, at plan scale, the outline is one', (colour.match(/ d="([^"]+)"/)?.[1].match(/M/g) ?? []).length === 1, colour.slice(0, 200));
+  const apart = siteOutlineRings({ type: 'FeatureCollection', features: [lotAt(0, 0.01, 0.02), lotAt(0.02, 0.01, 0.02)] } as never);
+  check('two lots a lane apart keep an outline each', apart.length === 2);
+  // what is drawn has no colour, but a photograph keeps its own (Z. 2026-11: "photos can have colours"): the report
+  // does not ask for its pictures in grey, where the yield, in black, white and one colour, still does
+  const asksGrey = (sheet: 'slides' | 'yield') => /--photos:\s*grey/.test(withTemplate(templateFor(sheet, 'heron'), () => deckCss()));
+  check('the site report keeps its photographs\' colours', !asksGrey('slides'));
+  check('the yield still prints its photographs in grey', asksGrey('yield'));
+  check('the colour styles never asked for grey', !/--photos:\s*grey/.test(withTemplate(templateFor('slides', 'canary'), () => deckCss())));
+  const sw = withTemplate(templateFor('slides', 'heron'), () => siteSwatch());
+  check('the key\'s site is the same line, not a filled square', /fill="none"/.test(sw) && /stroke-dasharray/.test(sw));
+}
 check('the context sheet keeps the Heron template', templateFor('context', 'heron') === 'heron');
 
 for (const sheet of ['slides', 'yield'] as const) {
@@ -86,7 +130,7 @@ const look = siteTheme('heron').look;
 const badSite = strays(look);
 check('site sheet: every ink a grey or the accent', badSite.length === 0, badSite.join(' '));
 check('site sheet: the site, its dimensions and its fall words in the accent', look.site === HERON_ACCENT && look.dimensionInk === HERON_ACCENT && look.fallInk === HERON_ACCENT);
-check('the narrative in the accent', withTemplate(templateFor('slides', 'heron'), () => deckLook().accent) === HERON_ACCENT);
+check('the yield\'s narrative in the accent', withTemplate(templateFor('yield', 'heron'), () => deckLook().accent) === HERON_ACCENT);
 // Black lines, hatches not shades, on white paper: the decks in the line technique, the site sheet's linework black.
 const dl = withTemplate(templateFor('slides', 'heron'), () => deckLook());
 check('the decks on paper, in lines and hatches', dl.ground === 'paper' && dl.technique === 'line');

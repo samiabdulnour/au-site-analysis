@@ -21,10 +21,16 @@ export interface CapacityOptions {
   smallScheme: number;
   /** A title under this many square metres has little ability to develop above its current status. */
   smallSite: number;
+  /**
+   * A title narrower than this many metres has as little: a terrace's lot, or one half of a semi-detached pair, which
+   * clears the area test (277 m² at 6.1 m wide along Maroubra Road) and still cannot take more than it holds on its
+   * own. Nine metres parts those (6 to 8 m) from a detached house's lot (10 m and over). 0 leaves the test out.
+   */
+  narrowSite: number;
   /** The year the study is made, for the window. */
   thisYear: number;
 }
-export const CAPACITY_DEFAULTS: CapacityOptions = { strataMax: 30, recentYears: 20, smallScheme: 5, smallSite: 250, thisYear: new Date().getFullYear() };
+export const CAPACITY_DEFAULTS: CapacityOptions = { strataMax: 30, recentYears: 20, smallScheme: 5, smallSite: 250, narrowSite: 9, thisYear: new Date().getFullYear() };
 
 /** What the author knows that the data does not, keyed by the start of the address as the register writes it. */
 export type CapacityOverride = { symbol?: 'mature' | 'none' | 'potential'; note?: string };
@@ -46,6 +52,12 @@ export interface FacilityPoint { name: string; lon: number; lat: number }
 export interface CapacityInputs {
   /** The site's point, Web Mercator. */
   centre: XY;
+  /**
+   * The site's lots, lon/lat rings, where the site is more than the property under its point: an amalgamation of
+   * several addresses is several properties in the register, and every one of them is the site. Without them the
+   * property under the point alone is.
+   */
+  siteRings?: number[][][];
   /** The cadastre's property register (layer 12): one row per address, with propid, address, valnetpropertytype, valnetlotcount. */
   properties: GeoJSONFC;
   /** The cadastre's lots (layer 8) with lotidstring, planlabel, classsubtype and createdate. */
@@ -76,10 +88,16 @@ export interface CapacityProperty {
   centroidM: XY;
   centroid: { lon: number; lat: number };
   areaM2: number;
+  /** The title's width: the lesser side of its least bounding rectangle, metres. */
+  widthM: number;
+  /** Too small to develop on its own: under the area, or narrower than the width, the study asks. */
+  small: boolean;
   kind: CapacityKind;
   strata: boolean;
   /** Unit addresses in the register (the register's lot count where a strata plan is recorded, if larger). */
   units: number;
+  /** Unit addresses on a title that is no strata scheme: flats or shops in one ownership, on a deposited plan. */
+  flats: number;
   strataPlans: string[];
   strataRegistered?: string;
   heritageItem?: string;
@@ -105,9 +123,12 @@ export interface CapacityResult {
   since: number;
   properties: CapacityProperty[];
   lots: CapacityLot[];
+  /** The site: the property under its point, or the largest of its properties where the point falls in none. */
   site: CapacityProperty | null;
+  /** Every property of the site: one, or one to each address of an amalgamation. */
+  siteParts: CapacityProperty[];
   /** The titles that share a boundary with the site, longest first. */
-  neighbours: { base: string; sharedM: number; kind: CapacityKind; strata: boolean; units: number; heritageItem?: string }[];
+  neighbours: { base: string; sharedM: number; kind: CapacityKind; strata: boolean; units: number; /** Unit addresses on a title that is no strata scheme. */ flats: number; heritageItem?: string }[];
   /** The register's second record of one parcel, left out. */
   duplicates: number;
 }
@@ -140,6 +161,20 @@ export function ringCentre(ring: number[][]): XY {
   return { x: x0 + cx / (6 * a), y: y0 + cy / (6 * a) };
 }
 const outer = (rings: number[][][]) => rings.reduce((best, r) => (Math.abs(ringArea(r)) > Math.abs(ringArea(best)) ? r : best), rings[0]);
+/** The lesser side of a ring's least bounding rectangle, in the ring's own units: a lot's width, whichever way it lies. */
+export function ringWidth(ring: number[][]): number {
+  let best = Infinity, width = 0;
+  for (let i = 0; i < ring.length; i++) {
+    const a = ring[i], b = ring[(i + 1) % ring.length], l = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (l < 1e-6) continue;
+    const ux = (b[0] - a[0]) / l, uy = (b[1] - a[1]) / l;
+    let u0 = Infinity, u1 = -Infinity, v0 = Infinity, v1 = -Infinity;
+    for (const [x, y] of ring) { const u = x * ux + y * uy, v = -x * uy + y * ux; u0 = Math.min(u0, u); u1 = Math.max(u1, u); v0 = Math.min(v0, v); v1 = Math.max(v1, v); }
+    const w = u1 - u0, h = v1 - v0;
+    if (w * h < best) { best = w * h; width = Math.min(w, h); }
+  }
+  return width;
+}
 function pip(p: XY, ring: number[][]): boolean {
   let inside = false;
   for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
@@ -160,13 +195,20 @@ const distPtSeg = (p: number[], a: number[], b: number[]) => {
   const t = L === 0 ? 0 : Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / L));
   return Math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy));
 };
-/** Metres of r1's boundary that lie along r2's (mercator metres, divided by k for the ground). */
+/**
+ * Metres of boundary two parcels share (mercator metres, divided by k for the ground): the edges of either that lie
+ * along the other's, whichever of the two has the edges that end where the shared stretch does (a long lot beside a
+ * short one shares the short one's edge, which the long one's single edge runs past).
+ */
 function sharedBoundary(r1: number[][][], r2: number[][][], tol = 0.3): number {
+  const along = (a: number[][], b: number[][]) => {
+    const near = (p: number[]) => { for (let i = 0; i < b.length; i++) if (distPtSeg(p, b[i], b[(i + 1) % b.length]) < tol) return true; return false; };
+    let L = 0;
+    for (let i = 0; i < a.length; i++) { const p = a[i], q = a[(i + 1) % a.length]; if (near(p) && near(q)) L += Math.hypot(p[0] - q[0], p[1] - q[1]); }
+    return L;
+  };
   const a = outer(r1), b = outer(r2);
-  const near = (p: number[]) => { for (let i = 0; i < b.length; i++) if (distPtSeg(p, b[i], b[(i + 1) % b.length]) < tol) return true; return false; };
-  let L = 0;
-  for (let i = 0; i < a.length; i++) { const p = a[i], q = a[(i + 1) % a.length]; if (near(p) && near(q)) L += Math.hypot(p[0] - q[0], p[1] - q[1]); }
-  return L;
+  return Math.max(along(a, b), along(b, a));
 }
 
 const isoDay = (v: unknown): string | undefined => { const n = Number(v); return Number.isFinite(n) && n > 0 ? new Date(n).toISOString().slice(0, 10) : undefined; };
@@ -222,6 +264,8 @@ export function classifyCapacity(input: CapacityInputs): CapacityResult {
   // ---- the lots, each linked to the property that holds its centroid
   const lots: CapacityLot[] = [];
   const spUnder = new Map<number, string[]>(), spRegistered = new Map<number, string>();
+  /** The properties the cadastre holds a lot under: where it does and none is a strata plan, the title is on a deposited plan. */
+  const lotted = new Set<number>();
   const props: { row: Row; centroidM: XY }[] = [...rows.values()].filter((r) => r.rings.length).map((row) => ({ row, centroidM: ringCentre(outer(row.ringsM)) }));
   for (const f of input.lots.features) {
     const rings = ringsOf(f.geometry);
@@ -234,6 +278,7 @@ export function classifyCapacity(input: CapacityInputs): CapacityResult {
     const holder = props.find((q) => inRingsM(c, q.row.ringsM));
     const lot: CapacityLot = { id: String(p.lotidstring ?? ''), plan: p.planlabel ? String(p.planlabel) : undefined, rings, areaM2: Math.round(Math.abs(ringArea(outer(rm))) / (k * k)), registered, propid: holder?.row.propid };
     lots.push(lot);
+    if (holder) lotted.add(holder.row.propid);
     if (holder && lot.plan?.startsWith('SP')) {
       (spUnder.get(holder.row.propid) ?? spUnder.set(holder.row.propid, []).get(holder.row.propid)!).push(lot.id);
       if (registered && registered > (spRegistered.get(holder.row.propid) ?? '')) spRegistered.set(holder.row.propid, registered);
@@ -244,6 +289,9 @@ export function classifyCapacity(input: CapacityInputs): CapacityResult {
   const items = input.heritage.features.filter((f) => String(f.properties.LAY_CLASS ?? '').startsWith('Item')).map((f) => ({ name: String(f.properties.H_NAME ?? 'Heritage item'), ringsM: toM(ringsOf(f.geometry)) })).filter((h) => h.ringsM.length);
   const hcas = input.heritage.features.filter((f) => String(f.properties.LAY_CLASS ?? '').startsWith('Conservation')).map((f) => ({ name: String(f.properties.H_NAME ?? ''), ringsM: toM(ringsOf(f.geometry)) })).filter((h) => h.ringsM.length);
   const publicM = input.publicLand.map((l) => ({ ...l, ringsM: toM(l.rings) })).filter((l) => l.ringsM.length);
+  // the site's lots: a property is the site's where its middle stands in one of them, or one's middle stands in it
+  const siteLotsM = toM(input.siteRings ?? []).filter((r) => r.length >= 3).map((r) => ({ ring: r, centre: ringCentre(r) }));
+  const ofSite = (centroidM: XY, ringsM: number[][][]) => inRingsM(input.centre, ringsM) || siteLotsM.some((l) => pip(centroidM, l.ring) || inRingsM(l.centre, ringsM));
   const facilityM = input.facilities.map((f) => { const m = lonLatToMercator({ lon: f.lon, lat: f.lat }); return { ...f, m }; });
   const register = input.register.map((d) => ({ d, ringsM: toM(d.rings) })).filter((d) => d.ringsM.length);
   const liveDas = input.applications.filter((r) => r.lon !== undefined && r.lat !== undefined && liveNewBuild(r)).map((r) => ({ r, m: lonLatToMercator({ lon: r.lon!, lat: r.lat! }) }));
@@ -258,10 +306,14 @@ export function classifyCapacity(input: CapacityInputs): CapacityResult {
     const addresses = [...row.addresses].sort((a, b) => Number(a.includes('/')) - Number(b.includes('/')) || a.localeCompare(b));
     const base = addresses.find((a) => !a.includes('/')) ?? addresses[0] ?? '';
     const strataPlans = spUnder.get(row.propid) ?? [];
-    // strata where the cadastre holds a strata plan under the property, where the register files its addresses as
-    // under a strata plan (schemes on stratum lots), or where three or more unit addresses share the title
-    const strata = strataPlans.length > 0 || row.valtype.has(4) || row.units.size >= 3;
+    // Strata where the cadastre holds a strata plan under the property, or where the register files its addresses as
+    // under a strata plan (schemes on stratum lots). Three or more unit addresses on the title say so only where the
+    // cadastre gave no lot under it to read the plan from: where its lots are known and all on a deposited plan, the
+    // units are flats or shops in one ownership (94 Maroubra Road, four flats on Lot 1 DP 306910, was drawn as a
+    // strata scheme of four), which is one owner to deal with and no scheme to wind up.
+    const strata = strataPlans.length > 0 || row.valtype.has(4) || (row.units.size >= 3 && !lotted.has(row.propid));
     const units = strataPlans.length ? Math.max(row.units.size, row.lotcount) : row.units.size;
+    const flats = strata ? 0 : row.units.size;
     const heritageItem = items.find((h) => inRingsM(centroidM, h.ringsM))?.name;
     const inHca = hcas.find((h) => inRingsM(centroidM, h.ringsM))?.name;
     const publicHit = publicM.find((l) => inRingsM(centroidM, l.ringsM)) ?? (facilityM.some((f) => inRingsM(f.m, row.ringsM)) ? { kind: 'council' as const } : undefined);
@@ -274,12 +326,14 @@ export function classifyCapacity(input: CapacityInputs): CapacityResult {
     if (strataRegistered && yearOf(strataRegistered) >= since && units >= options.smallScheme) developedList.push({ year: yearOf(strataRegistered), how: 'strata', detail: `strata scheme of ${units} lots registered ${yearOf(strataRegistered)}` });
     const developed = developedList.length ? developedList.reduce((a, b) => (b.year > a.year ? b : a)) : null;
     const override = Object.entries(overrides).find(([key]) => base.toUpperCase().startsWith(key))?.[1];
-    const isSite = inRingsM(input.centre, row.ringsM);
+    const isSite = ofSite(centroidM, row.ringsM);
     const kind: CapacityKind = isSite ? 'site' : publicHit ? publicHit.kind : active.length || liveDa.length ? 'developing' : strata ? 'strata' : 'single';
     const o = override?.symbol;
     const mature = o === 'mature' ? true : o === 'potential' || o === 'none' ? false : kind === 'developing' || developed !== null;
     const areaM2 = Math.round(row.areaMm / (k * k));
-    const cross = o === 'none' || o === 'mature' || mature || kind === 'council' || kind === 'state' || !!heritageItem || strata || areaM2 < options.smallSite;
+    const widthM = Math.round((ringWidth(outer(row.ringsM)) / k) * 10) / 10;
+    const small = areaM2 < options.smallSite || (options.narrowSite > 0 && widthM < options.narrowSite);
+    const cross = o === 'none' || o === 'mature' || mature || kind === 'council' || kind === 'state' || !!heritageItem || strata || small;
     const mark: CapacityMark = o === 'potential' ? 'tick' : cross ? 'cross' : 'tick';
     let note: string | undefined;
     if (mature) note = developed ? `${developed.how} ${developed.year}` : kind === 'developing' ? 'approved' : undefined;
@@ -287,18 +341,20 @@ export function classifyCapacity(input: CapacityInputs): CapacityResult {
     if (override?.note) note = String(override.note);
     const c = mercatorToLonLat(centroidM);
     out.push({
-      propid: row.propid, base, rings: row.rings, ringsM: row.ringsM, centroidM, centroid: c, areaM2, kind, strata, units, strataPlans, strataRegistered,
+      propid: row.propid, base, rings: row.rings, ringsM: row.ringsM, centroidM, centroid: c, areaM2, widthM, small, kind, strata, units, flats, strataPlans, strataRegistered,
       heritageItem, inHca, developed, active, liveDa, override, isSite, mature: isSite ? false : mature, mark: isSite ? 'tick' : mark, note: isSite ? undefined : note,
       lots: lots.filter((l) => l.propid === row.propid).map((l) => l.id),
     });
   }
-  const site = out.find((p) => p.isSite) ?? null;
-  const neighbours = site
-    ? out.filter((p) => p !== site && Math.hypot(p.centroidM.x - site.centroidM.x, p.centroidM.y - site.centroidM.y) / k < 120)
-      .map((p) => ({ base: p.base, sharedM: Math.round((sharedBoundary(p.ringsM, site.ringsM) / k) * 10) / 10, kind: p.kind, strata: p.strata, units: p.units, heritageItem: p.heritageItem }))
+  const siteParts = out.filter((p) => p.isSite);
+  const site = siteParts.find((p) => inRingsM(input.centre, p.ringsM)) ?? [...siteParts].sort((a, b) => b.areaM2 - a.areaM2)[0] ?? null;
+  // a neighbour shares a boundary with any of the site's properties, and none of the site's own is its neighbour
+  const neighbours = siteParts.length
+    ? out.filter((p) => !p.isSite && siteParts.some((sp) => Math.hypot(p.centroidM.x - sp.centroidM.x, p.centroidM.y - sp.centroidM.y) / k < 120))
+      .map((p) => ({ base: p.base, sharedM: Math.round((siteParts.reduce((a, sp) => a + sharedBoundary(p.ringsM, sp.ringsM), 0) / k) * 10) / 10, kind: p.kind, strata: p.strata, units: p.units, flats: p.flats, heritageItem: p.heritageItem }))
       .filter((n) => n.sharedM >= 3).sort((a, b) => b.sharedM - a.sharedM)
     : [];
-  return { options, since, properties: out, lots, site, neighbours, duplicates };
+  return { options, since, properties: out, lots, site, siteParts, neighbours, duplicates };
 }
 
 /** The properties whose centroid lies in the window, the site apart. */
@@ -306,7 +362,7 @@ export function inWindow(result: CapacityResult, extent: Extent): CapacityProper
   return result.properties.filter((p) => !p.isSite && p.centroidM.x >= extent.xmin && p.centroidM.x <= extent.xmax && p.centroidM.y >= extent.ymin && p.centroidM.y <= extent.ymax);
 }
 
-export interface CapacityCounts { properties: number; potential: number; low: number; mature: number; strata: number; heritage: number; publicLand: number; overridden: number; small: number }
+export interface CapacityCounts { properties: number; potential: number; low: number; mature: number; strata: number; heritage: number; publicLand: number; overridden: number; /** Crossed for their size alone: under the area or narrower than the width. */ small: number; /** Of those, the ones that clear the area and are crossed for their width. */ narrow: number }
 export function capacityCounts(visible: CapacityProperty[], options: CapacityOptions): CapacityCounts {
   return {
     properties: visible.length,
@@ -317,7 +373,8 @@ export function capacityCounts(visible: CapacityProperty[], options: CapacityOpt
     heritage: visible.filter((p) => p.heritageItem).length,
     publicLand: visible.filter((p) => p.kind === 'council' || p.kind === 'state').length,
     overridden: visible.filter((p) => p.override).length,
-    small: visible.filter((p) => !p.strata && !p.heritageItem && !p.mature && !p.override && p.kind === 'single' && p.areaM2 < options.smallSite).length,
+    small: visible.filter((p) => !p.strata && !p.heritageItem && !p.mature && !p.override && p.kind === 'single' && p.small).length,
+    narrow: visible.filter((p) => !p.strata && !p.heritageItem && !p.mature && !p.override && p.kind === 'single' && p.small && p.areaM2 >= options.smallSite).length,
   };
 }
 
@@ -339,5 +396,6 @@ export function lowReason(p: CapacityProperty, options: CapacityOptions): string
   if (p.heritageItem) return `heritage item (${p.heritageItem})`;
   if (p.strata) return `strata scheme of ${p.units} lot${p.units === 1 ? '' : 's'}`;
   if (p.areaM2 < options.smallSite) return `a site of ${p.areaM2} m², under ${options.smallSite} m²`;
+  if (options.narrowSite > 0 && p.widthM < options.narrowSite) return `a site ${p.widthM} m wide, under ${options.narrowSite} m`;
   return 'low potential';
 }

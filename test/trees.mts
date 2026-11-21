@@ -12,7 +12,7 @@
  */
 
 import { crownPicture } from '../src/render/crowns.js';
-import { drawAxonometric, wallHatchPitch, type AxoScene } from '../src/render/axonometric.js';
+import { drawAxonometric, wallHatchPitch, frameReachM, type AxoScene } from '../src/render/axonometric.js';
 import { withTemplate, templateFor } from '../src/render/template.js';
 import { massingInks } from '../src/render/atlasKit.js';
 import { decodePng } from '../src/lib/png.js';
@@ -232,6 +232,66 @@ for (const [style, mono] of [['canary', false], ['flamingo', true]] as const) {
     && /^M[-\d.]+,[-\d.]+H/.test(hs[2][1]) && /^M[-\d.]+,[-\d.]+h0/.test(hs[1][1]), hs.map((m) => m[1]?.slice(0, 40)).join(' | '));
   check('heron line model: no pattern fill on the ground', !/fill="url\(#axo-(lawn|yard|road|shade)-/.test(svg));
   check('heron line model: the hatches Heron\'s alone', !draw('kingfisher').svg.includes('data-ground') && !draw('canary').svg.includes('data-ground'));
+}
+
+// ---- a drawing that fills its frame (Z.'s markup of the built form page, 2026-11: "the image should be bigger and
+// cropped by the border, not like this"): the town runs to every edge of the box, where fitting all within reach
+// drew a round town in the middle of the sheet with the frame's corners empty.
+{
+  const FRAME = 600, BOX = { x: 0, y: 30, w: 420, h: 251 };
+  const reach = frameReachM(FRAME, BOX, 25);
+  // a grid of houses 30 m apart to well past the reach, each its own colour so it can be found again
+  const houses: { rings: XY[][]; heightM: number; fill: string; at: XY }[] = [];
+  for (let gx = -30; gx <= 30; gx++) for (let gy = -30; gy <= 30; gy++) {
+    if (Math.abs(gx) < 2 && Math.abs(gy) < 2) continue;
+    const fill = `#${(0x400000 + (gx + 30) * 256 * 3 + (gy + 30) * 3).toString(16)}`;
+    houses.push({ rings: [box(gx * 30 - 6, gy * 30 - 6, 12, 12)], heightM: 6, fill, at: { x: gx * 30, y: gy * 30 } });
+  }
+  const town = (frameM?: number): AxoScene => ({
+    ring: box(-15, -20, 30, 40), frontNormal: { x: 0, y: -1 }, reach: frameM ? reach : 300,
+    built: [{ rings: [box(-12, -17, 24, 34)], z0: 0, z1: 9, fill: '#d8d0f0', edge: '#1c1c1c', edgeW: 0.2 }],
+    neighbours: houses.map(({ rings, heightM, fill }) => ({ rings, heightM, fill })), roads: [], kerbs: [], lots: [], trees: [],
+    inks: { site: '#d43d33', future: '#ffffff', futureEdge: '#888888', envelope: '#333333', kerb: '#99aaaa' }, frameM,
+  });
+  const draw = (frameM?: number) => withTemplate(templateFor('slides', 'canary'), () => drawAxonometric(town(frameM), BOX, 'fr'));
+  const fitted = draw(), filled = draw(FRAME);
+  // each building drawn ends on its roof, the one path of it with a fill rule; where each lands on the page is read
+  // back through the drawing's own transform
+  const read = (svg: string) => {
+    const [, tx, ty, k] = svg.match(/translate\(([-\d.]+),([-\d.]+)\) scale\(([\d.]+)\)/)!.map(Number);
+    const roofs = [...svg.matchAll(/<path d="M([-\d.]+),([-\d.]+)L[^"]*Z" fill="#[0-9a-f]{6}" fill-rule="evenodd"/g)].map((m) => [Number(m[1]) * k + tx, Number(m[2]) * k + ty]);
+    const cells = new Set<string>();
+    for (const [X, Y] of roofs) if (X >= BOX.x && X <= BOX.x + BOX.w && Y >= BOX.y && Y <= BOX.y + BOX.h) cells.add(`${Math.min(11, Math.floor(((X - BOX.x) / BOX.w) * 12))},${Math.min(7, Math.floor(((Y - BOX.y) / BOX.h) * 8))}`);
+    return { tx, ty, k, roofs: roofs.length, cells };
+  };
+  const pf = read(filled), pt = read(fitted);
+  const CORNERS = ['0,0', '11,0', '0,7', '11,7'];
+  check('filled, the frame is 600 m of ground across the box', Math.abs(pf.k - BOX.w / FRAME) < 1e-3, String(pf.k));
+  check('fitted, the town within 300 m is all that is drawn', pt.roofs > 250 && pt.roofs < 330, String(pt.roofs));
+  check('fitted, the corners of the frame were empty (the page as it was)', CORNERS.every((c) => !pt.cells.has(c)), [...pt.cells].filter((c) => CORNERS.includes(c)).join(' '));
+  check('filled, every part of the frame holds buildings, its four corners too', pf.cells.size === 96, `${pf.cells.size} of 96 cells; corners missing: ${CORNERS.filter((c) => !pf.cells.has(c)).join(' ')}`);
+  check('filled, more of the town is drawn than the 300 m held', pf.roofs > pt.roofs * 1.15, `${pf.roofs} against ${pt.roofs}`);
+  const within = houses.filter((h) => Math.hypot(h.at.x, h.at.y) <= reach).length;
+  check('filled, what cannot show in the frame is left out: far fewer than all within reach', pf.roofs < within * 0.8, `${pf.roofs} of ${within}`);
+  check('the reach asked for takes in the frame\'s corners', reach > Math.hypot(FRAME / 2, (FRAME * BOX.h) / BOX.w / Math.sin((35 * Math.PI) / 180) / 2));
+  // a booklet's fold: the filled drawing slides so the site is clear of it, and still fills the frame
+  const cleared = withTemplate(templateFor('slides', 'canary'), () => drawAxonometric(town(FRAME), { ...BOX, clear: { x: 210, margin: 22 } }, 'fr'));
+  const pc = read(cleared);
+  check('filled and cleared of the fold, the drawing has slid sideways at the same scale', Math.abs(pc.k - pf.k) < 1e-6 && Math.abs(pc.tx - pf.tx) > 15, `${pc.tx} against ${pf.tx}`);
+}
+
+// ---- black and white alone (Heron's site report): the trees hatched in black inside their contour
+{
+  const tones = { dark: '#ffffff', lit: '#ffffff', high: '#1a1a1a', edge: '#1a1a1a', wood: 0.45 };
+  const plain = crownPicture('canopy', 0, tones, 0.05, 104), hatched = crownPicture('canopy', 0, { ...tones, hatch: { ink: '#1a1a1a', pitch: 0.3, width: 0.045 } }, 0.05, 104);
+  const dark = (uri: string) => { const png = decodePng(new Uint8Array(Buffer.from(uri.split(',')[1], 'base64')))!; let ink = 0, solid = 0; for (let i = 0; i < png.data.length; i += 4) { if (png.data[i + 3] > 200) { solid++; if (png.data[i] < 90) ink++; } } return { ink, solid, w: png.width, h: png.height }; };
+  const a = dark(plain.uri), b = dark(hatched.uri);
+  check('a hatched crown is the same picture with more black in it', a.w === b.w && a.h === b.h && Math.abs(a.solid - b.solid) < a.solid * 0.02 && b.ink > a.ink * 1.5, `${a.ink}/${a.solid} against ${b.ink}/${b.solid}`);
+  check('the hatch is lines, not a fill: most of the crown stays white', b.ink < b.solid * 0.5, `${b.ink} of ${b.solid}`);
+  const report = withTemplate(templateFor('slides', 'heron'), () => drawAxonometric(scene(), { x: 0, y: 0, w: 400, h: 280 }, 'tr'));
+  const yieldDeck = withTemplate(templateFor('yield', 'heron'), () => drawAxonometric(scene(), { x: 0, y: 0, w: 400, h: 280 }, 'tr'));
+  const stamp = (svg: string) => svg.match(/<image id="axo-tr-t0" href="([^"]+)"/)?.[1] ?? '';
+  check('Heron\'s report draws its trees hatched; its yield, as before, white', dark(stamp(report)).ink > dark(stamp(yieldDeck)).ink * 1.5, `${dark(stamp(report)).ink} against ${dark(stamp(yieldDeck)).ink}`);
 }
 
 if (failures.length) {

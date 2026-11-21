@@ -85,9 +85,10 @@ async function open(page: Page, htmlPath: string): Promise<void> {
 async function greyPhotos(page: Page, htmlPath: string): Promise<void> {
   const want = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--photos').trim() === 'grey');
   if (!want) return;
+  // (a part of the page that keeps its photographs' colours says so, `data-photos="colour"`: the streetscape's faces)
   const refs: string[] = await page.evaluate(() => [...new Set([
-    ...[...document.querySelectorAll('img')].map((el) => el.getAttribute('src')),
-    ...[...document.querySelectorAll('image')].map((el) => el.getAttribute('href')),
+    ...[...document.querySelectorAll('img')].filter((el) => !el.closest('[data-photos="colour"]')).map((el) => el.getAttribute('src')),
+    ...[...document.querySelectorAll('image')].filter((el) => !el.closest('[data-photos="colour"]')).map((el) => el.getAttribute('href')),
   ].filter((r): r is string => !!r && r.startsWith('data/')))]);
   const dir = dirname(htmlPath);
   for (const ref of refs) {
@@ -109,8 +110,8 @@ async function greyPhotos(page: Page, htmlPath: string): Promise<void> {
       const probe = new Image();
       probe.src = url;
       await probe.decode();
-      for (const el of document.querySelectorAll('img')) if (el.getAttribute('src') === ref) el.setAttribute('src', url);
-      for (const el of document.querySelectorAll('image')) if (el.getAttribute('href') === ref) el.setAttribute('href', url);
+      for (const el of document.querySelectorAll('img')) if (el.getAttribute('src') === ref && !el.closest('[data-photos="colour"]')) el.setAttribute('src', url);
+      for (const el of document.querySelectorAll('image')) if (el.getAttribute('href') === ref && !el.closest('[data-photos="colour"]')) el.setAttribute('href', url);
     }, { ref, b64: bytes.toString('base64'), png });
   }
   await page.evaluate(() => Promise.all([...document.images].map((im) => im.decode().catch(() => undefined))));
