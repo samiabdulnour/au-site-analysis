@@ -1672,18 +1672,28 @@ yield for 86, 88-90, 94 Maroubra Road, 2026-11):
 - *"The shadow should be the same scale as plans. Can you merge shadow and
   plans, so the shadow looks more like plan? Also keep the rule with full
   isometry everywhere. If there is nothing interesting for compliance,
-  don't show the shadow or plan at all."* The shadow page's drawing was the
-  report's sun page (every building white on grey, every building's
-  shadow, 1:1 000) beside plans at 1:750 in the zones' colours. It is now
-  the path's plan itself, at the overview's scale and in its look, with
-  the scheme's shadow, the land it shades and its separations drawn on it:
-  the one plan a path has. The neighbours' own shadows are no longer drawn
-  (over the zones' tints neither could be read); they are still counted,
-  and what the scheme adds to them is hatched. Every path's spread is the
-  isometric alone, whether or not a plan follows, so the paths with
-  nothing to test (at Maroubra: rebuilt to what stands, and within the
-  controls, where R2 takes no scheme) are one page each, with no plan and
-  no shadow page.
+  don't show the shadow or plan at all."* … *"The previous shadow was
+  better. Just update the scale and colours; otherwise keep the shadows
+  with the same information as before."* The shadow page's drawing was the
+  report's sun page (every building white on grey, 1:1 000) beside plans
+  at 1:750 in the zones' colours. It keeps everything it showed (every
+  neighbour's shadow hour by hour, the envelope's own over them, what it
+  adds hatched, every building's storeys, the future footprints, the
+  separations) and is now drawn at the overview's scale and in the plans'
+  colours: the lots tinted by their zones, the buildings in their zones'
+  colours, the scheme in its use's (`tinted` on `planView()`). A version
+  in between drew the shadow on the path's numbered plan and left the
+  neighbours' shadows out; that reading is gone. Every path's spread is
+  the isometric alone, and a path's only plan is its shadow page, so the
+  paths with nothing to test have no plan and no shadow page.
+- *"If there is nothing, don't print it."* "Within the controls" had a
+  spread of its own even in a zone the study draws no building type for:
+  every figure a dash, over the height plane alone. A path that builds
+  nothing now has no spread (`drawnPath()`); it keeps its row in the
+  overview's table, with no page, and the overview says why. At Maroubra
+  the deck runs from what stands and its rebuilding straight to the low
+  and mid-rise scheme; a site with no path at all is its overview and its
+  controls.
 
 `--type yield` draws PLANNING YIELD: what the controls let the site hold, as a
 feasibility study first states it, laid out as the site report is — A3
@@ -1733,7 +1743,9 @@ site may take, so a site with more paths has more pages:
    the schedule of tiers — storeys, use, setbacks, plate and floor area, each
    tier's number in the ring the plan draws it in — and the apartments, a row
    for each kind in the mix with its share, ADG 4D-1's least area for it, its
-   own area, how many there are and the area they take.
+   own area, how many there are and the area they take. Not drawn where
+   the zone takes no building type the study draws (a low density zone):
+   there is nothing to show, and the overview says so.
 5. **Reshaped to comply** — the envelope within the controls laid out again
    in the office's feasible footprints so that it meets the ADG's sun
    (`src/lib/reshape.ts`, tested in `test/reshape.mts`):
@@ -1803,20 +1815,19 @@ site may take, so a site with more paths has more pages:
      many lie in its reach, how many it shades, the most it adds and when,
      and the lots it takes below the hours a DCP commonly asks of half their
      open ground); each building near and its separation, today and built
-     out. On the right, the whole page, the option's plan, drawn as the
-     deck's plans are and at the overview's scale (`PLAN_ROOM`): each lot
-     tinted by its zone and numbered, with its zone and height of building,
-     the buildings in their zones' colours, the kerbs, the future footprints
-     dashed, each tier of the scheme in its use's colour with its envelope
-     dashed and its number as in the schedule (what stands, as its own
-     spread draws it). Over it the scheme's own shadow, in a shadow's grey,
-     each hour from 9 am to 3 pm laid one translucent layer over the last
-     and at 9 am, noon and 3 pm outlined; hatched, the ground only it shades
-     at one hour or more, where no building standing shades it that hour
+     out. On the right, the whole page, the plan as the report's sun page
+     draws it, in Arial, at the overview's scale (`PLAN_ROOM`) and in the
+     plans' colours: each lot tinted by its zone, every building in its
+     zone's colour with its storeys (grey where no height is recorded and
+     two are assumed), the scheme in its use's colour, the future
+     footprints dashed with theirs, and every neighbour's shadow, in grey,
+     each hour from 9 am to 3 pm laid one translucent layer over the last,
+     and the envelope's own over them in the site's accent, at 9 am, noon
+     and 3 pm outlined; hatched, the ground only the envelope shades at one
+     hour or more, where no building standing shades it that hour
      (`addedGround()` in `src/lib/solarAccess.ts`: what it would
-     overshadow; the neighbours' shadows are counted for it and not drawn);
-     the land it shades outlined in dots and each separation drawn as a
-     dimension (green clear, amber where it holds only habitable to
+     overshadow); the land it shades outlined and each separation drawn as
+     a dimension (green clear, amber where it holds only habitable to
      non-habitable, red short), its distance written along its line and
      just off it, haloed, read from the sheet's foot or its right.
    - **Solar access** (`…_solar_access`), the page after that. On the left

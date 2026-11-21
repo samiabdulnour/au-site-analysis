@@ -848,9 +848,7 @@ const blankDash = () => (deckLook().id === 'heron' ? ' stroke-dasharray="1.1 0.7
 /** The neighbours' shadows' ink: a neutral grey, so only the envelope's own shadow, in the site's accent, carries a colour. */
 const shadowInk = () => '#3a3c41';
 /** Each hour's shadow at this opacity, the hours laid over each other, as the report lays them; n hours deep, the tint this. */
-const HOUR_ALPHA = 0.16, stackedAlpha = (n: number, a = HOUR_ALPHA) => 1 - (1 - a) ** n;
-/** And on a path's own plan, lighter: the lots' tints, their numbers and the street names are read through it. */
-const PLAN_HOUR_ALPHA = 0.11;
+const HOUR_ALPHA = 0.16, stackedAlpha = (n: number) => 1 - (1 - HOUR_ALPHA) ** n;
 /** The envelope's own shadow, in the site's accent so what it adds reads apart from the neighbours' grey. */
 const ourShadowInk = () => siteInk();
 /** A white halo under words written over a tinted plan (a dimension, a shadow's hour). */
@@ -864,8 +862,8 @@ const LINE_BUILDING = 'fill="#ffffff" stroke="#111111" stroke-width="0.45" strok
 /** A park on Heron's line plans: a light hatch, as a site plan marks its green. */
 const LINE_PARK: Fill = { bg: '#ffffff', kind: 'hatch', ink: '#b4b4b4', step: 0.7, w: 0.08 };
 /** A storey count on a plan: 6 pt Arial, black, as the report's sun page sets them. */
-const storeyText = (x: number, y: number, text: string, fill = '#000000') =>
-  `<text x="${x.toFixed(2)}" y="${(y + 0.75).toFixed(2)}" text-anchor="middle" font-size="2.117" letter-spacing="0.19" fill="${fill}">${esc(text)}</text>`;
+const storeyText = (x: number, y: number, text: string, fill = '#000000', halo = false) =>
+  `<text x="${x.toFixed(2)}" y="${(y + 0.75).toFixed(2)}" text-anchor="middle" font-size="2.117" letter-spacing="0.19" fill="${fill}"${halo ? HALO : ''}>${esc(text)}</text>`;
 
 /** A plan drawn: its SVG, the round scale it took, the kerbs it drew, and the zones its frame shows a lot of (codes, upper case). */
 interface PlanResult { svg: string; scale: number; kerbs: KerbLine[]; zones: string[] }
@@ -889,8 +887,12 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
     /** A small plan's: no numbers on the neighbours' lots and no tier badges, the shadows and the separations to read. */
     plain?: boolean;
     /** The compliance plan, drawn as the report's sun page: no zone tints, every building white with its storeys, the shadows over the ground in Arial. */
-    study?: boolean } = {}): PlanResult {
+    study?: boolean;
+    /** That plan in the plans' colours: each lot tinted by its zone, the buildings in their zones' colours, the scheme in its use's; what it shows unchanged. */
+    tinted?: boolean } = {}): PlanResult {
   const room = opts.room ?? 1.35, inset = opts.inset ?? 0;
+  // the report's sun page as it is: white buildings on white ground, grey lines
+  const greyPlan = !!opts.study && !opts.tinted;
   const y = scheme.y;
   const xs = s.ring.map((p) => p.x), ys = s.ring.map((p) => p.y);
   const w = Math.max(...xs) - Math.min(...xs), h = Math.max(...ys) - Math.min(...ys);
@@ -938,7 +940,7 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
   // Each lot in its zone's tint, as the style's context sheet tints the
   // land, the lots alone so the streets stay white; the site is left to its
   // own marks.
-  if (!opts.study) {
+  if (!greyPlan) {
     const byKey = new Map<string, { fill: Fill; ds: string[] }>();
     for (const pc of parcels) {
       if (pc.site) continue;
@@ -953,13 +955,13 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
     const bb = { x0: box.x, y0: box.y, x1: box.x + box.w, y1: box.y + box.h };
     for (const { fill, ds } of byKey.values()) out.push(fillShape(ds.join(''), bb, fill));
   }
-  const lotLine = opts.study ? 'stroke="#b4b4b4" stroke-width="0.12"' : photo || look.lots === 'white' ? 'stroke="#ffffff" stroke-width="0.3"' : `stroke="${t.road}" stroke-width="0.15" opacity="0.6"`;
+  const lotLine = greyPlan ? 'stroke="#b4b4b4" stroke-width="0.12"' : photo || look.lots === 'white' ? 'stroke="#ffffff" stroke-width="0.3"' : `stroke="${t.road}" stroke-width="0.15" opacity="0.6"`;
   out.push(`<path d="${parcels.flatMap((pc) => pc.local.map(path)).join('')}" fill="none" ${lotLine}/>`);
   let kerbs = b.kerbs;
   if (!kerbs) {
     try { kerbs = estimateKerbs(parcels.flatMap((pc) => pc.rings), b.roads, [], []); } catch { kerbs = []; }
   }
-  if (kerbs.length) out.push(`<path d="${kerbs.map((kl) => line(local(kl.coords))).join('')}" fill="none" stroke="${opts.study || linePlan ? '#8c8c8c' : Y.kerb}" stroke-width="${opts.study || linePlan ? 0.22 : 0.3}" stroke-linecap="round" stroke-linejoin="round"/>`);
+  if (kerbs.length) out.push(`<path d="${kerbs.map((kl) => line(local(kl.coords))).join('')}" fill="none" stroke="${greyPlan || linePlan ? '#8c8c8c' : Y.kerb}" stroke-width="${greyPlan || linePlan ? 0.22 : 0.3}" stroke-linecap="round" stroke-linejoin="round"/>`);
   const blds = b.context.map((cb) => local(cb.rings[0] ?? [])).filter((rg) => rg.length >= 3);
   // A line plan's trees: each a circle at its crown's size with its centre marked, under the buildings; none on the
   // site where a scheme clears it, none over the photograph (which shows them)
@@ -977,13 +979,10 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
   const marks = opts.marks;
   // The shadows, under the buildings: each hour one translucent layer over the last, a group's opacity so two
   // buildings' shadows in one hour do not stack; where the hours pile up the ground darkens.
-  // On the study's plain plan the neighbours' in grey, then the envelope's own over them in the site's accent: what it
-  // adds reads apart. On a path's own plan (its lots tinted by their zones, its buildings in their colours) the
-  // envelope's alone, in a shadow's grey: the accent is lost on a tinted lot, and every neighbour's shadow over the
-  // zones' tints leaves neither to be read. The neighbours' are still counted: what the envelope adds is hatched.
-  const shade = opts.study ? ourShadowInk() : shadowInk(), hourAlpha = opts.study ? HOUR_ALPHA : PLAN_HOUR_ALPHA;
-  if (opts.study) for (const hr of marks?.hours ?? []) if (hr.hulls.length) out.push(`<g opacity="${HOUR_ALPHA}"><path d="${hr.hulls.map(path).join('')}" fill="${shadowInk()}" fill-rule="nonzero"/></g>`);
-  for (const hr of marks?.hours ?? []) if (hr.scheme.length) out.push(`<g opacity="${hourAlpha}"><path d="${hr.scheme.map(path).join('')}" fill="${shade}" fill-rule="evenodd"/></g>`);
+  // The neighbours' in grey, then the envelope's own over them in the site's accent: what it adds reads apart.
+  const shade = ourShadowInk();
+  for (const hr of marks?.hours ?? []) if (hr.hulls.length) out.push(`<g opacity="${HOUR_ALPHA}"><path d="${hr.hulls.map(path).join('')}" fill="${shadowInk()}" fill-rule="nonzero"/></g>`);
+  for (const hr of marks?.hours ?? []) if (hr.scheme.length) out.push(`<g opacity="${HOUR_ALPHA}"><path d="${hr.scheme.map(path).join('')}" fill="${shade}" fill-rule="evenodd"/></g>`);
   // where only the envelope shades the ground, at one hour or more: what it would overshadow, hatched
   if (marks?.added?.length) out.push(`<g data-added="1">${fillShape(marks.added.map(path).join(''), { x0: box.x, y0: box.y, x1: box.x + box.w, y1: box.y + box.h }, ADDED_HATCH(shade))}</g>`);
   // The buildings as the style draws them: white in a hairline of their
@@ -992,7 +991,7 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
   // aerial style has no photograph.
   // the land the scheme adds shadow to, under the buildings that stand on it
   for (const rings of marks?.shaded ?? []) out.push(`<path d="${rings.map(path).join('')}" fill="${shade}" fill-opacity="0.07" fill-rule="evenodd" stroke="${shade}" stroke-width="0.45" stroke-dasharray="0.6,0.6"/>`);
-  if (opts.study && blds.length) out.push(`<path d="${blds.map(path).join('')}" ${linePlan ? LINE_BUILDING : PLAN_BUILDING}/>`);
+  if (greyPlan && blds.length) out.push(`<path d="${blds.map(path).join('')}" ${linePlan ? LINE_BUILDING : PLAN_BUILDING}/>`);
   else if (linePlan && !photo) { if (blds.length) out.push(`<path d="${blds.map(path).join('')}" ${LINE_BUILDING}/>`); }
   else for (const rg of blds) {
     const zone = parcels.find((pc) => !pc.site && within(centre(rg), pc.local))?.zone;
@@ -1018,13 +1017,15 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
   for (const t of tiers) {
     const built = t.from <= y!.storeys;
     if (!t.plate.length) continue;
-    out.push(opts.study ? (built ? `<path d="${t.plate.map(path).join('')}" fill="#ffffff" fill-rule="evenodd" stroke="#1c1c1c" stroke-width="0.3" stroke-linejoin="round"/>` : '')
+    // (what stands is drawn above, in its own fill: its tiers are there for their storeys alone)
+    if (!greyPlan && scheme.standing?.length) continue;
+    out.push(greyPlan ? (built ? `<path d="${t.plate.map(path).join('')}" fill="#ffffff" fill-rule="evenodd" stroke="#1c1c1c" stroke-width="0.3" stroke-linejoin="round"/>` : '')
       // (a line plan: what is built the heaviest outline on the sheet)
       : linePlan ? (built ? `<path d="${t.plate.map(path).join('')}" fill="${useFill(t.use)}" fill-rule="evenodd" stroke="#000000" stroke-width="0.6" stroke-linejoin="round"/>` : '')
         // (over its own shadow, which takes in its footprint, a built plate stands on paper first: its colour its own)
         : `${marks && built ? `<path d="${t.plate.map(path).join('')}" fill="#ffffff" fill-rule="evenodd" stroke="none"/>` : ''}<path d="${t.plate.map(path).join('')}" fill="${useFill(t.use)}" fill-opacity="${built ? 0.55 : 0.18}" fill-rule="evenodd" stroke="none"/>`);
   }
-  y?.tiers.forEach((t, i) => { for (const rg of t.envelope) out.push(`<path d="${path(rg)}" fill="none" stroke="${Y.envelope}" stroke-width="0.3" stroke-dasharray="${['2,1', '1.2,1.2', '3,1,0.8,1', '0.6,0.9'][i % 4]}"/>`); });
+  if (greyPlan || !scheme.standing?.length) y?.tiers.forEach((t, i) => { for (const rg of t.envelope) out.push(`<path d="${path(rg)}" fill="none" stroke="${Y.envelope}" stroke-width="0.3" stroke-dasharray="${['2,1', '1.2,1.2', '3,1,0.8,1', '0.6,0.9'][i % 4]}"/>`); });
   out.push(`<path d="${path(s.ring)}" fill="none" stroke="${siteInk()}" stroke-width="0.6" stroke-dasharray="3,1.2"/>`);
 
   // The scale bar and the north point, first: what is written later keeps off them. A plan as wide as the right page
@@ -1086,7 +1087,7 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
       const corners = [[-w / 2, base - CAP - 0.3], [w / 2, base - CAP - 0.3], [w / 2, base + 0.3], [-w / 2, base + 0.3]].map(([dx, dy]) => [mx + dx * cs - dy * sn, my + dx * sn + dy * cs]);
       const bx: Box = [Math.min(...corners.map((c) => c[0])), Math.min(...corners.map((c) => c[1])), Math.max(...corners.map((c) => c[0])), Math.max(...corners.map((c) => c[1]))];
       if (!clear(bx)) continue;
-      out.push(`<text transform="translate(${mx.toFixed(2)},${my.toFixed(2)}) rotate(${ang.toFixed(1)})" y="${base.toFixed(2)}" text-anchor="middle" font-size="2.5" font-weight="700" fill="${dm.ink}"${opts.study ? '' : HALO} data-dim="1">${esc(dm.label)}</text>`);
+      out.push(`<text transform="translate(${mx.toFixed(2)},${my.toFixed(2)}) rotate(${ang.toFixed(1)})" y="${base.toFixed(2)}" text-anchor="middle" font-size="2.5" font-weight="700" fill="${dm.ink}"${greyPlan ? '' : HALO} data-dim="1">${esc(dm.label)}</text>`);
       taken.push(bx);
       break;
     }
@@ -1100,7 +1101,7 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
       lx = Math.max(box.x + 8 + inset, Math.min(box.x + box.w - 8 - inset, lx)); ly = Math.max(box.y + 12 + inset, Math.min(box.y + box.h - 8 - inset, ly));
       const bx: Box = [lx - 6, ly - 2.4, lx + 6, ly + 1];
       if (!clear(bx)) continue;
-      out.push(`<text x="${lx.toFixed(2)}" y="${ly.toFixed(2)}" text-anchor="middle" font-size="2.6" font-weight="700" fill="${inkFor(shade, 0.08)}"${opts.study ? '' : HALO}>${esc(sh.label.toUpperCase())}</text>`);
+      out.push(`<text x="${lx.toFixed(2)}" y="${ly.toFixed(2)}" text-anchor="middle" font-size="2.6" font-weight="700" fill="${inkFor(shade, 0.08)}"${greyPlan ? '' : HALO}>${esc(sh.label.toUpperCase())}</text>`);
       taken.push(bx);
       break;
     }
@@ -1113,7 +1114,7 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
       const [px, py] = at(p), w = text.length * 1.4 + 1;
       const bx: Box = [px - w / 2, py - 1.3, px + w / 2, py + 1.3];
       if (!clear(bx)) return false;
-      out.push(storeyText(px, py, text, fill));
+      out.push(storeyText(px, py, text, fill, !greyPlan));
       taken.push(bx);
       return true;
     };
@@ -1629,8 +1630,13 @@ function pathsOf(b: YieldBundle, s: YieldStudy): Path[] {
   return scenarioRows(b, s).map((sc) => ({ sc, y: sc.id === 'withinControls' && s.noScheme ? undefined : of[sc.id] }));
 }
 
-/** Whether a path has a spread of its own: what stands, and every path the study drew. */
-const drawnPath = (p: Path) => p.sc.id === 'standsToday' || !!p.y;
+/**
+ * Whether a path has a spread of its own: what stands, and every path the study drew a building on. A path that
+ * builds nothing has none (Z. 2026-11, on the spread of "within the controls" in a zone no building type is studied
+ * for, every figure a dash over the height plane alone: "if there is nothing, don't print it"). It keeps its row in
+ * the overview's table, with no page, and the overview says why.
+ */
+const drawnPath = (p: Path) => p.sc.id === 'standsToday' || (!!p.y && p.y.storeys > 0);
 /**
  * The deck's pages in their order: the overview; each path's spread and, straight after it, the two pages it is
  * tested on where it holds apartments to test; the controls and assumptions, the last. Each drawn path with its
@@ -1669,7 +1675,7 @@ function sunNote(b: YieldBundle, s: YieldStudy): string {
 }
 /** How the shadow was read, for the sources line of an option's shadow page. */
 function shadowNote(b: YieldBundle): string {
-  return `The shadow is the scheme's own at mid winter (21 June), on the hour from 9 am to 3 pm AEST, the ground flat. Hatched, the ground in sun today that it puts in shade: the neighbours' shadows are counted for it, each building at its recorded height, two storeys where none is recorded, no trees, and are not drawn${b.heritageItems ? '' : '; heritage items not measured (this bundle has no outlines of them)'}.`;
+  return `Shadows at mid winter (21 June), on the hour from 9 am to 3 pm AEST: every building's at its recorded height, two storeys where none is recorded, the ground flat, no trees. The shadow the scheme adds is the ground in sun today that it puts in shade${b.heritageItems ? '' : '; heritage items not measured (this bundle has no outlines of them)'}.`;
 }
 
 /** Whether what stands on the site has its height from the 3D meshes, and whether its footprint was traced from them. */
@@ -2122,21 +2128,21 @@ function complianceSheets(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: P
     + axo(true, AXO_H, `${fid}-b`) + labelAt(PAGE_X, AXO_H, IN, ['From the opposite corner'])
     + `<div class="abs" style="left:${PAGE_X}mm;top:${AXO_H - 0.4}mm;width:${PAGE_W}mm;height:0.8mm;background:#ffffff"></div>`;
 
-  // Shadow and separation: the path's plan, the whole page, as the paths' plans were drawn and at the overview's scale
-  // (Z. 2026-11: "the shadow should be the same scale as plans; can you merge shadow and plans, so the shadow looks
-  // more like plan?"). The lots tinted by their zones and numbered, the buildings in their colours, the scheme's
-  // tiers and their envelopes; and over it the scheme's own shadow, each hour from 9 to 3 swept exactly, the ground
-  // only it shades hatched, and each separation a dimension. The neighbours' shadows (each at the height the sun
-  // study gives it, two storeys where none is recorded) are counted for the hatch and not drawn. (It was the report's
-  // sun page: every building white on grey, every building's shadow, at 1:1 000 where the plans were 1:750.)
-  const name = (scale: number) => ['Plan', `1:${fmt(scale).replace(',', ' ')}`, 'its shadow each hour, 9 am to 3 pm, and its separations'];
+  // Shadow and separation: the plan, the whole page. Every building's shadow, each hour from 9 to 3: the neighbours
+  // as the report draws theirs, at the heights the sun study gives them (two storeys where none is recorded), the
+  // envelope's swept exactly; every building with its storeys. At the overview's scale and in the plans' colours
+  // (Z. 2026-11: "the shadow should be the same scale as plans"; then, on a version that drew the shadow on the
+  // path's numbered plan and left the neighbours' shadows out: "the previous shadow was better: just update the
+  // scale and colours, keep the shadows with the same information"). It was the report's sun page, white on grey,
+  // at 1:1 000 where the plans are 1:750.
+  const name = (scale: number) => ['Shadow and separation', `1:${fmt(scale).replace(',', ' ')}`, 'shadows each hour, 9 am to 3 pm'];
   const massBlocks = schemeBlocks(ps.y);
   const casters = b.context.map((cb) => ({ ring: (cb.rings[0] ?? []).map(([x, yy]) => s.toLocal(x, yy)), h: cb.known && cb.heightM > 0 ? cb.heightM : UNKNOWN_HEIGHT_M })).filter((c) => c.ring.length >= 3);
   const hourSuns = winterSun(lat, lon, [9, 10, 11, 12, 13, 14, 15].map((hr) => hr * 60));
   const hourly = hourSuns.map((sun) => ({ hulls: casters.map((c) => shadowHull(c.ring, c.h, sun.altitudeDeg, sun.azimuthDeg, 1)).filter((hl): hl is XY[] => !!hl), scheme: groundShadow(massBlocks, sun) }));
-  // (what stands is drawn as its own page draws it, not as a scheme: no tiers to number, no envelope)
+  // (what stands in the fill its own spread gives it; its tiers are passed for their storeys)
   const standing = id === 'standsToday' ? standingOf(b, s) : [];
-  const plan = planView(b, s, { x: 0, y: 0, w: PAGE_W, h: PAGE_H }, standing.length ? { standing } : { y: ps.y }, fid, { room: PLAN_ROOM, inset: 6, keepOut: [labelBox(name(5000))],
+  const plan = planView(b, s, { x: 0, y: 0, w: PAGE_W, h: PAGE_H }, { y: ps.y, ...(standing.length ? { standing } : {}) }, fid, { room: PLAN_ROOM, inset: 6, keepOut: [labelBox(name(5000))], plain: true, study: true, tinted: true,
     marks: {
       hours: hourly,
       added: addedGround(hourly.map((hr) => hr.scheme), hourly.map((hr) => hr.hulls), [s.ring]),
@@ -2157,21 +2163,23 @@ function complianceSheets(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: P
     { swatch: `<path d="M0.4,0.7H2.3V3H0.4Z" fill="#ffffff" stroke="#8f8f8f" stroke-width="0.2"/><path d="M2.7,0.7H4.6V3H2.7Z" fill="#ffffff" stroke="#8f8f8f" stroke-width="0.2" stroke-dasharray="0.5,0.3"/>`,
       label: s.future.buildings.length ? 'Neighbours in white at their heights; dashed, their future on feasible footprints to their LEP height and FSR' : 'Neighbours in white at their heights' },
   ];
-  // the plan's own key (the site, what is built, each tier's envelope, the zones its frame shows), then the shadow's and the separations'
-  const look = deckLook(), grey = shadowInk();
+  // the shadow's key as it was, and the plans' colours named: what is built, the buildings in their zones'
+  const look = deckLook(), lineLook = look.id === 'heron';
+  const zoneInks = [...new Set(b.context.map((cb) => zoneInk(cb.controls?.zone, look)).filter((c): c is string => !!c))].slice(0, 5);
+  const hourSwatch = (ink: string) => Array.from({ length: hourSuns.length }, (_, i) => `<rect x="${((i * 5) / hourSuns.length).toFixed(2)}" y="0.3" width="${(5 / hourSuns.length).toFixed(2)}" height="3" fill="${ink}" fill-opacity="${stackedAlpha(i + 1).toFixed(2)}"/>`).join('') + `<rect x="0" y="0.3" width="5" height="3" fill="none" stroke="#6f6f6f" stroke-width="0.1"/>`;
   const shadowLegend: LegendEntry[] = [
     { swatch: KEY.site, label: 'The site' },
     ...(standing.length ? [{ swatch: KEY.standing, label: 'What stands on the site' }]
-      : [...(['residential', 'retail', 'commercial'] as Use[]).filter((u) => ps.y.tiers.some((t) => t.use === u)).map((u) => ({ swatch: KEY.use(u), label: `Indicative massing, ${USE_WORD[u]}` })),
-        { swatch: KEY.envelope, label: 'Envelope of each tier, numbered as in the schedule' }]),
-    { swatch: Array.from({ length: hourSuns.length }, (_, i) => `<rect x="${((i * 5) / hourSuns.length).toFixed(2)}" y="0.3" width="${(5 / hourSuns.length).toFixed(2)}" height="3" fill="${grey}" fill-opacity="${stackedAlpha(i + 1, PLAN_HOUR_ALPHA).toFixed(2)}"/>`).join('') + `<rect x="0" y="0.3" width="5" height="3" fill="none" stroke="#6f6f6f" stroke-width="0.1"/>` + fillShape('M2.6,0.3H5V3.3H2.6Z', { x0: 2.6, y0: 0.3, x1: 5, y1: 3.3 }, ADDED_HATCH(grey), 1.6),
-      label: `${standing.length ? 'Its' : 'The envelope\'s'} shadow on 21 June, each hour 9 am – 3 pm laid over the last, at 9 am, 12 pm and 3 pm outlined; hatched where only it shades the ground: what it ${standing.length ? 'overshadows' : 'would overshadow'}` },
-    { swatch: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="${grey}" fill-opacity="0.1" stroke="${grey}" stroke-width="0.3" stroke-dasharray="0.5,0.4"/>`, label: 'Land it adds shadow to: a residential lot, heritage item or park' },
+      : (['residential', 'retail', 'commercial'] as Use[]).filter((u) => ps.y.tiers.some((t) => t.use === u)).map((u) => ({ swatch: KEY.use(u), label: `Indicative massing, ${USE_WORD[u]}` }))),
+    { swatch: hourSwatch(shadowInk()), label: 'Neighbours\' shadows on 21 June, each hour 9 am – 3 pm laid over the last: the deeper, the longer in shadow' },
+    { swatch: hourSwatch(ourShadowInk()) + fillShape('M2.6,0.3H5V3.3H2.6Z', { x0: 2.6, y0: 0.3, x1: 5, y1: 3.3 }, ADDED_HATCH(), 1.6),
+      label: `${standing.length ? 'Its' : 'The envelope\'s'} shadow, the same hours over theirs, at 9 am, 12 pm and 3 pm outlined; hatched where only it shades the ground: what it ${standing.length ? 'overshadows' : 'would overshadow'}` },
+    { swatch: lineLook || !zoneInks.length ? `<rect x="0.4" y="0.6" width="4.2" height="2.4" fill="#ffffff" stroke="#6f6f6f" stroke-width="0.2"/>` : KEY.zones(zoneInks),
+      label: `Buildings in plan${lineLook ? '' : ', each in its zone\'s colour'}; numbers are storeys, grey where no height is recorded and two are assumed` },
+    ...(lineLook ? [] : zoneEntries(b, look, true, plan.zones)),
+    ...(s.future.buildings.length ? [{ swatch: `<path d="M0.6,0.7H4.4V3H0.6Z" fill="none" stroke="#8f8f8f" stroke-width="0.2" stroke-dasharray="0.5,0.3"/>`, label: 'Dashed: a neighbour\'s future, a feasible footprint to its LEP height and FSR' }] : []),
+    { swatch: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="${siteInk()}" fill-opacity="0.1" stroke="${siteInk()}" stroke-width="0.3" stroke-dasharray="0.5,0.4"/>`, label: 'Land it adds shadow to: a residential lot, heritage item or park' },
     { swatch: sepSwatch, label: 'Separation: clear; holds if one face is blank; short' },
-    { swatch: KEY.lot, label: look.id === 'heron' ? 'Lot boundaries, NSW cadastre, each lot\'s zone and height written on it; the buildings on them' : 'Lot boundaries, NSW cadastre, each lot tinted by its zone; the buildings on them' },
-    ...(look.id === 'heron' ? [] : zoneEntries(b, look, true, plan.zones)),
-    ...(s.future.buildings.length ? [{ swatch: KEY.future, label: 'Dashed: a neighbour\'s future, a feasible footprint to its LEP height and FSR' }] : []),
-    ...(plan.kerbs.length ? [{ swatch: KEY.kerb, label: 'Kerb line, indicative' }] : []),
   ];
 
   // what each says
@@ -2284,8 +2292,8 @@ function controlsSlide(b: YieldBundle, s: YieldStudy, n: number): Slide {
   const right = `<div class="abs" data-fit style="left:${RX}mm;top:${RTOP}mm;width:${RW}mm;height:${RFOOT - RTOP}mm;overflow:hidden"><div class="ytw"><table class="yt yc"><colgroup><col style="width:42mm"><col><col><col style="width:5mm"></colgroup><tbody>${table.join('')}</tbody></table></div></div>`;
   return { id: `${String(n).padStart(2, '0')}_controls_and_assumptions`, title: 'Controls and assumptions', subtitle: subtitleOf(b, s), textHtml: '',
     figureHtml: zFlow([zBlock('The assumptions', zTable(rows))]) + right, full: true, accent: inks().accent,
-    narrative: s.noScheme
-      ? 'Every figure rests on these assumptions. Each can be changed in yield_assumptions.json beside the output, and the study drawn again. The table sets out the controls at the site; with no scheme drawn, none is set against them.'
+    narrative: s.noScheme || s.base.archetype === 'none'
+      ? 'Every figure rests on these assumptions. Each can be changed in yield_assumptions.json beside the output, and the study drawn again. The table sets out the controls at the site; with no scheme drawn within them, none is set against them.'
       : 'Every figure rests on these assumptions. Each can be changed in yield_assumptions.json beside the output, and the study drawn again. The table sets the scheme within the controls against each control.',
     sources: `Controls from the NSW ePlanning layers at the site; the Apartment Design Guide; the Housing SEPP 2021. ${NOT_A_DESIGN.replace(/^A feasibility study, not a design: [^;]+; /, '')}` };
 }
