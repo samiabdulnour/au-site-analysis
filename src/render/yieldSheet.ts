@@ -48,7 +48,7 @@ import { separations, type SeparationRow, type SeparationReading } from '../lib/
 import { futureContext, FOOTPRINTS, type FutureBuilding, type FutureLot } from '../lib/futureContext.js';
 import { reshapeToComply, type Reshaped } from '../lib/reshape.js';
 import { readTod, todSentence, TOD_SEPP, type TodReading } from '../lib/tod.js';
-import { readLmr, lmrApplies, lmrSentence, LMR_LOW_RISE, type LmrReading } from '../lib/lmr.js';
+import { readLmr, lmrApplies, lmrSentence, LMR_LOW_RISE, LMR_ROOF_M, type LmrReading } from '../lib/lmr.js';
 import { bandOf, compass, sunBands } from './facadeElevation.js';
 
 export interface YieldBundle extends SummaryData {
@@ -153,6 +153,8 @@ export interface YieldStudy {
    */
   lmr?: LmrReading;
   lmrY?: YieldResult;
+  /** The low and mid-rise scheme's layout, where it is laid out in the office's feasible footprints (lib/reshape.ts) and not left as the envelope. */
+  lmrLayout?: Reshaped;
   ring: XY[];
   fronts: boolean[];
   toLocal: (lon: number, lat: number) => XY;
@@ -266,11 +268,21 @@ export function yieldStudy(b: YieldBundle): YieldStudy {
     : undefined;
   // the low and mid-rise housing controls, and the scheme they allow on the whole site where they give one the LEP does not
   const lmr = readLmr({ centre: b.lmrCentre, zone: c.zoneCode, lepHobM: hob?.metres, lepFsr: c.fsr, lotSqm: area || undefined, lotWidthM: frontageLengths[0]?.lengthM });
-  const lmrRaw = lmrApplies(lmr) && !todY
-    ? computeYield({ ring, fronts, siteAreaSqm: area, zone: c.zoneCode, hobM: lmr.hobM, fsr: lmr.fsr, assumptions, archetype: 'residential' })
-    : undefined;
-  const lmrY = lmrRaw && lmrRaw.storeys > 0 ? lmrRaw : undefined;
-  return { base, bonus, max, retained, standing: kept && kept.storeys > 0 ? kept : undefined, reshaped, lmr, lmrY, tod, todY: todY && todY.storeys > 0 ? todY : undefined, ring, fronts, toLocal, hob, parkingSet, frontageLengths, future, noScheme };
+  // A low-rise building uses the whole of its height: three floors under the 9.5 m, a flat roof and no plant over
+  // it (LMR_ROOF_M, unless yield_assumptions.json sets the roof). And it is designed, not left as the envelope: the
+  // floor area the ratio allows laid out in the office's feasible footprints, compact buildings the ADG's
+  // separations apart whose apartments get their sun (lib/reshape.ts). The envelope filled to its setbacks was a
+  // ring round the whole site, two storeys round a slot of a courtyard, which no one would build.
+  let lmrY: YieldResult | undefined, lmrLayout: Reshaped | undefined;
+  if (lmrApplies(lmr) && !todY) {
+    const lowRise = { ...assumptions, roofAllowance: b.assumptions?.roofAllowance ?? LMR_ROOF_M };
+    const input = { ring, fronts, siteAreaSqm: area, zone: c.zoneCode, hobM: lmr.hobM, fsr: lmr.fsr, assumptions: lowRise, archetype: 'residential' as const };
+    lmrLayout = reshapeOf(b, toLocal, input, 'lowMidRise');
+    if (lmrLayout && !(lmrLayout.y.storeys > 0)) lmrLayout = undefined;
+    const envelope = lmrLayout ? undefined : computeYield(input);
+    lmrY = lmrLayout?.y ?? (envelope && envelope.storeys > 0 ? envelope : undefined);
+  }
+  return { base, bonus, max, retained, standing: kept && kept.storeys > 0 ? kept : undefined, reshaped, lmr, lmrY, lmrLayout, tod, todY: todY && todY.storeys > 0 ? todY : undefined, ring, fronts, toLocal, hob, parkingSet, frontageLengths, future, noScheme };
 }
 
 /** Where the site is: the middle of its outline, longitude and latitude. */
@@ -285,13 +297,15 @@ function contextBlocks(b: YieldBundle, toLocal: (lon: number, lat: number) => XY
     .filter((bl) => bl.rings[0].length >= 3);
 }
 
-const RESHAPE_DONE = new WeakMap<YieldBundle, Reshaped | null>();
+const RESHAPE_DONE = new WeakMap<YieldBundle, Map<string, Reshaped | null>>();
 /** The envelope reshaped to comply, worked out once a bundle: it reads the sun of many layouts. */
-function reshapeOf(b: YieldBundle, toLocal: (lon: number, lat: number) => XY, input: { ring: XY[]; fronts: boolean[]; siteAreaSqm: number; zone?: string; hobM?: number; fsr?: number; assumptions: Partial<YieldAssumptions> }): Reshaped | undefined {
-  if (RESHAPE_DONE.has(b)) return RESHAPE_DONE.get(b) ?? undefined;
+function reshapeOf(b: YieldBundle, toLocal: (lon: number, lat: number) => XY, input: { ring: XY[]; fronts: boolean[]; siteAreaSqm: number; zone?: string; hobM?: number; fsr?: number; assumptions: Partial<YieldAssumptions>; archetype?: 'residential' },
+  /** Which controls the search is for: the LEP's, or a policy's of its own (each searched once a bundle). */ key = 'lep'): Reshaped | undefined {
+  const done = RESHAPE_DONE.get(b) ?? RESHAPE_DONE.set(b, new Map()).get(b)!;
+  if (done.has(key)) return done.get(key) ?? undefined;
   const rule = sunRule(b);
   const out = reshapeToComply({ ...input, ...siteLonLat(b), context: contextBlocks(b, toLocal), hoursRequired: rule.hours, continuous: rule.continuous });
-  RESHAPE_DONE.set(b, out ?? null);
+  done.set(key, out ?? null);
   return out;
 }
 
@@ -1402,8 +1416,8 @@ export function scenarioRows(b: YieldBundle, s: YieldStudy = yieldStudy(b)): Sce
     const l = s.lmr;
     out.push({
       id: 'lowMidRise', label: 'LOW AND MID-RISE HOUSING',
-      note: `the Housing SEPP's low and mid-rise housing controls ${l.distanceM <= 0 ? `in the ${l.name}` : `${fmt(l.distanceM)} m from the ${l.name}`}: a residential flat building to ${fmt(l.hobM ?? 0, 1)} m and ${fmt(l.fsr ?? 0, 2)}:1 across the whole site, on a lot of at least ${LMR_LOW_RISE.minLotSqm} m² and ${LMR_LOW_RISE.minLotWidthM} m wide`,
-      ...fill(s.lmrY), ok: true,
+      note: `the Housing SEPP's low and mid-rise housing controls ${l.distanceM <= 0 ? `in the ${l.name}` : `${fmt(l.distanceM)} m from the ${l.name}`}: a residential flat building to ${fmt(l.hobM ?? 0, 1)} m and ${fmt(l.fsr ?? 0, 2)}:1 across the whole site, on a lot of at least ${LMR_LOW_RISE.minLotSqm} m² and ${LMR_LOW_RISE.minLotWidthM} m wide${s.lmrLayout ? `: ${s.lmrLayout.layout}` : ''}`,
+      ...fill(s.lmrY), ok: s.lmrLayout ? s.lmrLayout.complies : true,
     });
   }
   // The Housing SEPP's TOD controls, where they lift the LEP's on a lot wide enough.
@@ -1566,7 +1580,7 @@ const PATH_BASIS: Record<Scenario['id'], string> = {
   withinControls: 'This path keeps to the LEP\'s height of building and floor space ratio.',
   reshaped: 'This path keeps to the LEP\'s height of building and floor space ratio and the ADG\'s separations, in the office\'s feasible footprints: single-loaded 12 m deep, its gallery on the face with least sun; double-loaded 18 m along an east–west axis, its apartments running through to the north; double-loaded 22 m along a north–south axis, facing east and west; each 15 to 45 m long, a double-loaded one at least as long as it is deep, the taller to the south. Of the layouts read, it is the one with the most floor area whose apartments meet ADG 4A-1 and 4A-2.',
   tod: 'This path takes the Housing SEPP\'s transport oriented development controls (chapter 5, part 2): residential flat buildings in the residential and local centre zones to 22 m and 2.5:1, shop-top housing in the local centre and commercial zones to 24 m and 2.5:1, on a lot at least 21 m wide, the LEP\'s standard standing where it is more generous; 2% of the floor area is affordable housing in perpetuity, managed by a community housing provider, where the scheme is 2,000 m² or more.',
-  lowMidRise: 'This path takes the Housing SEPP\'s low and mid-rise housing controls (chapter 6): in a low density zone within 800 m of a nominated town centre, a residential flat building to 9.5 m and 0.8:1 on a lot of at least 500 m² and 12 m wide, the LEP\'s standard standing where it is more generous, drawn across the whole site, every lot of an amalgamation as one. The 800 m is a walking distance, read here as the straight line to the centre\'s mapped edge, and the land the policy leaves out is not checked: the site\'s eligibility is to confirm with a planner.',
+  lowMidRise: 'This path takes the Housing SEPP\'s low and mid-rise housing controls (chapter 6): in a low density zone within 800 m of a nominated town centre, a residential flat building to 9.5 m and 0.8:1 on a lot of at least 500 m² and 12 m wide, the LEP\'s standard standing where it is more generous, drawn across the whole site, every lot of an amalgamation as one, in the office\'s feasible footprints the ADG\'s separations apart. It is drawn to the whole of its height: three storeys of 3.1 m under the 9.5 m, a flat roof with no plant or lift overrun over it; the policy sets a height, not a storey count, and a DCP\'s wall height may hold a design to two. The 800 m is a walking distance, read here as the straight line to the centre\'s mapped edge, and the land the policy leaves out is not checked: the site\'s eligibility is to confirm with a planner.',
   affordableBonus: 'This path takes the Housing SEPP\'s in-fill affordable housing bonus (chapter 2, part 2, division 1); the site\'s eligibility is to confirm.',
   envelopeToHeight: 'This path sets the floor space ratio aside: it needs a clause 4.6 variation or a planning proposal.',
 };
@@ -1771,13 +1785,12 @@ function schemeSlide(b: YieldBundle, s: YieldStudy, p: Path, n: number, last: nu
     if (todPath.lotWidthM !== undefined) ctl.push({ cells: ['Lot width (TOD)', esc(`${TOD_SEPP.minLotWidthM} m`), esc(`${fmt(todPath.lotWidthM, 1)} m`), okMark(todPath.wideEnough ?? null)] });
     ctl.push({ cells: ['Affordable housing (TOD)', esc('2% of GFA from 2,000 m²'), esc(y.gfa >= TOD_SEPP.affordableFromSqm ? `${area(y.gfa * TOD_SEPP.affordableShare)}, in perpetuity` : 'not asked under 2,000 m²'), okMark(true)] });
   } else if (id === 'lowMidRise' && s.lmr) {
-    // the low and mid-rise housing standards, or the LEP's where more generous, and the lot they ask for
+    // the low and mid-rise housing standards, or the LEP's where more generous, and the lot they ask for: four rows
+    // (the ratio with its floor area, the lot's size with its width), so the page's tables stay clear of its key
     const l = s.lmr, lim = l.hobM ?? 0, ratioCap = l.fsr ?? 0;
     ctl.push({ cells: ['Height of building', esc(`${m1(lim)} (LMR${s.hob?.metres && s.hob.metres >= lim - 1e-6 ? ', the LEP\'s' : ''})`), esc(y.heightM ? `${m1(Math.round(y.heightM * 10) / 10)}, ${storeyWord(y.storeys)}` : '—'), okMark(y.heightM ? y.heightM <= lim + 1e-6 : null)] });
-    ctl.push({ cells: ['Floor space ratio', esc(`${ratioCap.toFixed(2)}:1 (LMR)`), esc(ratio(y.gfa, A)), okMark(y.gfa ? y.gfa <= ratioCap * A + 1 : null)] });
-    if (A) ctl.push({ cells: ['Gross floor area', esc(area(ratioCap * A)), esc(y.gfa ? area(y.gfa) : '—'), okMark(y.gfa ? y.gfa <= ratioCap * A + 1 : null)] });
-    if (A) ctl.push({ cells: ['Lot size (LMR)', esc(area(LMR_LOW_RISE.minLotSqm)), esc(`${area(A)}, the whole site`), okMark(l.bigEnough ?? null)] });
-    if (l.lotWidthM !== undefined) ctl.push({ cells: ['Lot width (LMR)', esc(`${LMR_LOW_RISE.minLotWidthM} m`), esc(`${fmt(l.lotWidthM, 1)} m`), okMark(l.wideEnough ?? null)] });
+    ctl.push({ cells: ['Floor space ratio', esc(`${ratioCap.toFixed(2)}:1 (LMR)${A ? ` · ${area(ratioCap * A)}` : ''}`), esc(`${ratio(y.gfa, A)}${y.gfa ? ` · ${area(y.gfa)}` : ''}`), okMark(y.gfa ? y.gfa <= ratioCap * A + 1 : null)] });
+    if (A) ctl.push({ cells: ['Lot (LMR)', esc(`${area(LMR_LOW_RISE.minLotSqm)}, ${LMR_LOW_RISE.minLotWidthM} m wide`), esc(`${area(A)}${l.lotWidthM !== undefined ? `, ${fmt(l.lotWidthM, 1)} m wide` : ''}`), okMark(l.bigEnough === undefined ? null : l.bigEnough && l.wideEnough !== false)] });
     ctl.push({ cells: ['Town centre (LMR)', esc('within 800 m walking'), esc(l.distanceM <= 0 ? `in the ${l.name}` : `${fmt(l.distanceM)} m, straight line`), okMark(null)] });
   } else {
   if (s.hob) {
@@ -1789,12 +1802,14 @@ function schemeSlide(b: YieldBundle, s: YieldStudy, p: Path, n: number, last: nu
   if (c.fsr) ctl.push({ cells: ['Floor space ratio', esc(`${c.fsr.toFixed(2)}:1${k > 1 ? ` + ${pct}%` : ''}`), esc(ratio(y.gfa, A)), okMark(y.gfa ? y.gfa <= c.fsr * k * A + 1 : null)] });
   if (c.fsr && A) ctl.push({ cells: ['Gross floor area', esc(area(c.fsr * k * A)), esc(y.gfa ? area(y.gfa) : '—'), okMark(y.gfa ? y.gfa <= c.fsr * k * A + 1 : null)] });
   }
-  if (c.minLotSizeSqm) ctl.push({ cells: ['Minimum lot size', esc(area(c.minLotSizeSqm)), esc(A ? area(A) : '—'), okMark(A ? A >= c.minLotSizeSqm : null)] });
+  // (the low and mid-rise path's lot is in its own row above: the LEP's minimum is a subdivision's)
+  if (c.minLotSizeSqm && id !== 'lowMidRise') ctl.push({ cells: ['Minimum lot size', esc(area(c.minLotSizeSqm)), esc(A ? area(A) : '—'), okMark(A ? A >= c.minLotSizeSqm : null)] });
   if (apartments) {
-    const deepest = id === 'reshaped' && s.reshaped ? Math.max(...s.reshaped.buildings.map((bd) => bd.depthM)) : 0;
+    const laid = id === 'reshaped' ? s.reshaped : id === 'lowMidRise' ? s.lmrLayout : undefined;
+    const deepest = laid ? Math.max(...laid.buildings.map((bd) => bd.depthM)) : 0;
     ctl.push(id === 'rebuiltAsStands'
       ? { cells: ['ADG 2E building depth', '12–18 m', 'as it stands: to test', okMark(null)] }
-      : id === 'reshaped'
+      : laid
         ? { cells: ['ADG 2E building depth', '12–18 m', esc(deepest > 18 ? `${fmt(deepest)} m, apartments facing east and west` : `${fmt(deepest)} m`), okMark(deepest > 18 ? null : true)] }
       : { cells: ['ADG 2E building depth', '12–18 m', esc(y.tiers.some((t) => t.held === 'depth') ? `plates held to ${m1(a.maxDepth)}` : 'within the depth'), okMark(true)] });
     const ds = y.adg.deepSoil;
@@ -1810,7 +1825,7 @@ function schemeSlide(b: YieldBundle, s: YieldStudy, p: Path, n: number, last: nu
     const st = t.from === t.to ? `${t.from}` : `${t.from}–${t.to}`;
     const held = t.held === 'tower' ? ', tower plate' : t.held === 'depth' ? `, ${m1(a.maxDepth)} deep` : '';
     // a reshaped scheme's building is named by its plan: "single-loaded, 12 m"
-    const use = id === 'reshaped' && t.name.includes(' · ') ? t.name.split(' · ')[1] : USE_WORD[t.use] + held;
+    const use = (id === 'reshaped' || id === 'lowMidRise') && t.name.includes(' · ') ? t.name.split(' · ')[1] : USE_WORD[t.use] + held;
     return { cls: built ? undefined : 'dim', cells: [tierKey(i + 1), esc(built && built < t.to - t.from + 1 ? `${st} (${built} built)` : st), esc(use),
       esc(t.existing ? 'as it stands' : `${set(t.front)} / ${set(t.side)} / ${set(t.rear)} m`), esc(area(t.plateSqm)), esc(built ? area(gfaOf(i)) : 'not built')] };
   });
@@ -1835,8 +1850,12 @@ function schemeSlide(b: YieldBundle, s: YieldStudy, p: Path, n: number, last: nu
       ? brief([`With ${pct}% more height and floor space ratio for 15% affordable housing, held for 15 years, the Housing SEPP's in-fill bonus gives ${what}.`,
         `That is ${area(y.gfa - s.base.gfa)}${y.units.total > s.base.units.total ? ` and ${fmt(y.units.total - s.base.units.total)} apartments` : ''} more than within the controls, about ${fmt(Math.round(y.units.total * 0.15))} of them affordable. Eligibility to confirm.`])
       : id === 'lowMidRise' && s.lmr
-        ? brief([`Under the Housing SEPP's low and mid-rise housing controls, ${s.lmr.distanceM <= 0 ? `in the ${s.lmr.name}` : `${fmt(s.lmr.distanceM)} m from the ${s.lmr.name}`}, the whole site${lotCount(b) > 1 ? `, its ${lotCount(b)} lots as one,` : ''} holds a residential flat building of ${what}.`,
-          `${s.base.gfa > 0 ? `That is ${area(y.gfa - s.base.gfa)} more than the LEP's controls give` : `${c.zoneCode ?? 'The zone'} takes no apartment building under the LEP alone`}${s.standing?.gfa ? `; what stands holds about ${area(s.standing.gfa)}` : ''}. The policy's 800 m is a walking distance and its excluded land is not checked: eligibility to confirm.`])
+        ? brief([`Under the Housing SEPP's low and mid-rise housing controls, ${s.lmr.distanceM <= 0 ? `in the ${s.lmr.name}` : `${fmt(s.lmr.distanceM)} m from the ${s.lmr.name}`}, the whole site${lotCount(b) > 1 ? `, its ${lotCount(b)} lots as one,` : ''} holds ${s.lmrLayout ? `${s.lmrLayout.layout}: ` : 'a residential flat building of '}${what}.`,
+          s.lmrLayout ? (s.lmrLayout.complies
+            ? `${pctOf(s.lmrLayout.sun.meeting, s.lmrLayout.sun.total)} of the apartments get ${sunRule(b).hours} hours of sun at mid winter and ${pctOf(s.lmrLayout.sun.none, s.lmrLayout.sun.total)} none, meeting ADG 4A.`
+            : `No layout of the office's footprints meets ADG 4A here: this one comes nearest, ${pctOf(s.lmrLayout.sun.meeting, s.lmrLayout.sun.total)} of its apartments with ${sunRule(b).hours} hours.`) : '',
+          s.lmr.fsr && A && y.gfa < s.lmr.fsr * A * 0.95 ? `That is ${pctOf(y.gfa, s.lmr.fsr * A)} of the ${area(s.lmr.fsr * A)} the ${s.lmr.fsr.toFixed(2)}:1 allows: the setbacks and the ADG's separations hold the rest on this site.` : '',
+          `${s.standing?.gfa ? `What stands holds about ${area(s.standing.gfa)}. ` : ''}Eligibility to confirm.`], 680)
       : id === 'tod' && s.tod
         ? brief([`Under the Housing SEPP's transport oriented development controls in the ${s.tod.name} TOD area, the site holds ${what}.`,
           `That is ${area(y.gfa - s.base.gfa)}${y.units.total > s.base.units.total ? ` and ${fmt(y.units.total - s.base.units.total)} apartments` : ''} more than the LEP's controls give${y.gfa >= TOD_SEPP.affordableFromSqm ? `, ${area(y.gfa * TOD_SEPP.affordableShare)} of it affordable housing in perpetuity` : ''}.`])
@@ -2252,6 +2271,7 @@ export function yieldJson(b: YieldBundle): string {
     parkingRates: s.parkingSet, standsToday: existingSummary(b.existing ?? []) && { ...existingSummary(b.existing ?? []), ...standingFromMeshes(b).height ? { heightFrom: 'Google Photorealistic 3D Tiles' } : {} },
     zones: b.zones, heightsFromMeshes: b.mesh,
     study: strip(s.base), affordableHousingBonus: strip(s.bonus), envelopeToHeight: strip(s.max), rebuiltAsStands: strip(s.retained),
+    lowMidRiseHousing: s.lmrY && { ...strip(s.lmrY), reading: s.lmr, ...(s.lmrLayout ? { complies: s.lmrLayout.complies, layout: s.lmrLayout.layout, layoutsRead: s.lmrLayout.tried, layoutsFound: s.lmrLayout.candidates, buildings: s.lmrLayout.buildings.map(({ ring: _r, ...bd }) => bd) } : {}) },
     reshapedToComply: s.reshaped && { ...strip(s.reshaped.y), complies: s.reshaped.complies, layout: s.reshaped.layout, layoutsRead: s.reshaped.tried, layoutsFound: s.reshaped.candidates,
       buildings: s.reshaped.buildings.map(({ ring: _r, ...bd }) => bd) },
     transportOrientedDevelopment: s.tod && { ...s.tod, alternative: s.tod.alternative && { ...s.tod.alternative, lga: undefined }, sentence: todSentence(s.tod), scheme: strip(s.todY) },

@@ -1624,6 +1624,25 @@ yield for 86, 88-90, 94 Maroubra Road, 2026-11):
   some councils' excluded land) is not checked: the page says both, and
   that eligibility is to confirm with a planner. The mid-rise standards of
   R3 and R4 are not read; those zones keep the LEP's own paths.
+- *"The volume is obviously filled and should be higher."* The low-rise
+  scheme was first drawn as the envelope: the floor area filled to the
+  setbacks, two storeys in a ring round the whole site with a slot of a
+  courtyard in it, because the study keeps 1.5 m of every height for roof
+  and plant and two floors were all that left under 9.5 m. It is now
+  designed. It takes the whole of its height (`LMR_ROOF_M`, 0.2 m: three
+  floors of 3.1 m and a flat roof with no plant or lift overrun over it,
+  9.5 m; the policy sets a height and not a storey count, councils read
+  it as two to three storeys, and `yield_assumptions.json`'s own
+  `roofAllowance` stands where set), and it is laid out as the "reshaped to
+  comply" path is, in the office's feasible footprints the ADG's separations
+  apart, the most floor area whose apartments get their sun
+  (`reshapeOf(…, 'lowMidRise')`, `lmrLayout`). At Maroubra: three
+  single-loaded 12 m buildings of three storeys, 1,644 m² (0.54:1), 19
+  apartments, all with two hours of mid-winter sun, where the ring was two
+  storeys over twice the ground. The page says what share of the 0.8:1 that
+  is, and that the three storeys are the study's assumption which a DCP's
+  wall height may hold to two. 9.5 m is the policy's limit in R1 and R2:
+  more height is a rezoning's, not this path's.
 
 `--type yield` draws PLANNING YIELD: what the controls let the site hold, as a
 feasibility study first states it, laid out as the site report is — A3
