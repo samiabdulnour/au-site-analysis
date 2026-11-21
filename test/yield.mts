@@ -254,9 +254,56 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
   const st = yieldStudy(tall);
   const tallIds = scenarioRows(tall, st).map((r) => r.id).join(',');
   check('rebuilt: a building over the controls keeps its bulk as a path', tallIds === 'standsToday,rebuiltAsStands,withinControls,reshaped,affordableBonus,envelopeToHeight', tallIds);
-  check('rebuilt: its storeys under its own height, more floor area than the controls give, no ratio over it',
-    !!st.retained && st.retained.storeys === 11 && st.retained.gfa > st.base.gfa * 2 && st.retained.tiers.every((t) => t.existing), JSON.stringify(st.retained && { storeys: st.retained.storeys, gfa: st.retained.gfa, base: st.base.gfa }));
+  // (the storeys what stands is read at, 37.2 m at 3.1 m a storey: the same twelve the summary of what stands counts,
+  // where the path took a roof off the height first and built eleven, less than stands)
+  check('rebuilt: the storeys what stands is read at, more floor area than the controls give, no ratio over it',
+    !!st.retained && st.retained.storeys === 12 && st.retained.storeys === existingSummary(tall.existing!)!.storeys && st.retained.gfa > st.base.gfa * 2 && st.retained.tiers.every((t) => t.existing), JSON.stringify(st.retained && { storeys: st.retained.storeys, gfa: st.retained.gfa, base: st.base.gfa }));
   check('rebuilt: it waits on a variation, not marked compliant', scenarioRows(tall, st)[1].ok === null);
+  // Rebuilt to what stands holds what stands, the whole of it (Z. 2026-11, on 86, 88-90, 94 Maroubra Road: "it builds
+  // a smaller thing than it is"): every building, the one with no recorded height too, each at the storeys the
+  // summary of what stands reads it at, so the path's gross building area is the summary's.
+  {
+    const sq = (x: number, y: number, w: number, h: number) => { const mE = 111320 * Math.cos((-33.9 * Math.PI) / 180), mN = 110574; const X = (v: number) => 151.20005 + v / mE, Y = (v: number) => -33.89995 + v / mN; return [[X(x), Y(y)], [X(x + w), Y(y)], [X(x + w), Y(y + h)], [X(x), Y(y + h)], [X(x), Y(y)]]; };
+    const four: YieldBundle = { ...bundle, controls: { ...bundle.controls, zoneCode: 'R2', maxHeightM: 9.5, fsr: 0.5 }, existing: [
+      { footprintSqm: 175, heightM: 7.7, rings: [sq(0, 0, 12.5, 14)] }, { footprintSqm: 185, heightM: 10.4, rings: [sq(14, 0, 12.5, 14.8)] },
+      { footprintSqm: 216, heightM: 10.4, rings: [sq(0, 16, 13.5, 16)] }, { footprintSqm: 190, rings: [sq(15, 17, 12.5, 15.2)] },
+    ] };
+    const sf = yieldStudy(four), ex = existingSummary(four.existing!)!;
+    check('what stands: four buildings, the tallest three storeys', ex.count === 4 && ex.storeys === 3 && Math.abs(ex.gbaSqm! - (175 * 2 + 185 * 3 + 216 * 3 + 190)) < 1, JSON.stringify(ex));
+    check('rebuilt: every building that stands is rebuilt, the one of no recorded height too', sf.standing?.tiers.length === 4, String(sf.standing?.tiers.length));
+    check('rebuilt: at the storeys what stands is read at', sf.standing?.storeys === 3 && sf.standing.tiers.map((t) => t.to).sort().join(',') === '1,2,3,3', JSON.stringify(sf.standing?.tiers.map((t) => t.to)));
+    check('rebuilt: its gross building area is what stands, not less', !!sf.standing && Math.abs(sf.standing.gba - ex.gbaSqm!) < ex.gbaSqm! * 0.02, `${sf.standing?.gba} against ${ex.gbaSqm}`);
+    check('rebuilt: over the controls, it is a path', sf.retained === sf.standing && scenarioRows(four, sf).some((r) => r.id === 'rebuiltAsStands'));
+    // the compliance of what stands comes first, and the path that rebuilds it (the same massing) has no second sheet
+    const deck = renderYieldDeck(four, { jobNo: '', client: '', status: '', sheetNo: '', revision: '', checked: '', drawn: '', date: '', preliminary: false });
+    const ids = deck.slides.map((sl) => sl.id);
+    const comp = ids.filter((i) => i.endsWith('_compliance'));
+    check('compliance: the current structures\' sheet is there, first', comp.length >= 1 && /stands_today_compliance$/.test(comp[0]), comp.join(' '));
+    check('compliance: no second sheet for the path that rebuilds the same massing', !comp.some((i) => /rebuilt_as_stands/.test(i)), comp.join(' '));
+    check('compliance: it follows the paths\' own pages', ids.indexOf(comp[0]) > ids.findIndex((i) => /rebuilt|stands/.test(i)), ids.join(' '));
+    // a building under the controls is no path, but its compliance is still shown, before the designed massings'
+    const lowB: YieldBundle = { ...bundle, existing: [{ footprintSqm: 1060, heightM: 6.2, rings: [inner] }] };
+    const lowS = yieldStudy(lowB), lowDeck = renderYieldDeck(lowB, { jobNo: '', client: '', status: '', sheetNo: '', revision: '', checked: '', drawn: '', date: '', preliminary: false });
+    const lowComp = lowDeck.slides.map((sl) => sl.id).filter((i) => i.endsWith('_compliance'));
+    check('compliance: what stands under the controls is no path, yet its compliance is shown', lowS.retained === undefined && !!lowS.standing && /stands_today_compliance$/.test(lowComp[0] ?? ''), lowComp.join(' '));
+    check('compliance: then the designed massings\'', lowComp.length >= 2 && lowComp.slice(1).every((i) => !/stands_today/.test(i)), lowComp.join(' '));
+  }
+
+  // The low and mid-rise housing controls: in a low density zone near a town centre, one scheme across the whole site.
+  {
+    const r2: YieldBundle = { ...bundle, controls: { ...bundle.controls, zoneCode: 'R2', maxHeightM: 9.5, fsr: 0.5 }, existing: [], lmrCentre: { name: 'Maroubra Junction town centre', distanceM: 20 } };
+    const sr = yieldStudy(r2);
+    check('LMR: R2 by a town centre is read: a flat building to 9.5 m and 0.8:1', sr.lmr?.permits === 'residentialFlatBuilding' && sr.lmr.hobM === 9.5 && sr.lmr.fsr === 0.8 && sr.lmr.band === 'inner' && sr.lmr.lifts === true, JSON.stringify(sr.lmr));
+    check('LMR: the zone alone gives no scheme; the policy gives one on the whole site', sr.base.archetype === 'none' && !!sr.lmrY && sr.lmrY.archetype === 'residential' && sr.lmrY.storeys >= 2 && sr.lmrY.gfa > 0 && sr.lmrY.gfa <= 0.8 * (r2.siteAreaSqm ?? 0) + 1, JSON.stringify(sr.lmrY && { storeys: sr.lmrY.storeys, gfa: sr.lmrY.gfa }));
+    check('LMR: it is a path, after the controls', scenarioRows(r2, sr).map((r) => r.id).join(',') === 'withinControls,lowMidRise', scenarioRows(r2, sr).map((r) => r.id).join(','));
+    const far = yieldStudy({ ...r2, lmrCentre: { name: 'Maroubra Junction town centre', distanceM: 950 } });
+    check('LMR: beyond 800 m it does not apply', far.lmr === undefined && far.lmrY === undefined);
+    check('LMR: with no town centre read, nothing changes', yieldStudy({ ...r2, lmrCentre: undefined }).lmrY === undefined);
+    const r4 = yieldStudy({ ...bundle, lmrCentre: { name: 'X town centre', distanceM: 20 } });
+    check('LMR: a zone that takes apartments already keeps its own paths', r4.lmr === undefined && r4.lmrY === undefined);
+    const small = yieldStudy({ ...r2, siteAreaSqm: 420 });
+    check('LMR: a lot under 500 m² is told so and gets no scheme', small.lmr?.bigEnough === false && small.lmrY === undefined);
+  }
   const low: YieldBundle = { ...bundle, existing: [{ footprintSqm: 1060, heightM: 6.2, rings: [inner] }] };
   check('rebuilt: a building under the controls is no path of its own', yieldStudy(low).retained === undefined);
 

@@ -1580,6 +1580,51 @@ way from the site, metres), `--job 2539`, `--client "Name"`,
 
 ### The planning yield
 
+**What stands, its compliance, and an amalgamated site** (Z.'s notes on the
+yield for 86, 88-90, 94 Maroubra Road, 2026-11):
+
+- *"It builds a smaller thing than it is."* The path that rebuilds what
+  stands now holds what stands, the whole of it. The summary of what stands
+  and the path were read apart: the summary rounded a height into storeys
+  and counted every building; the path took a roof allowance off each height
+  first, rounded down, and left out a building with no recorded height. So
+  four buildings of about 1,743 m² were "rebuilt to what stands" as three of
+  707 m². Both now take one reading (`standingStoreys()` in
+  `src/lib/yield.ts`): every building, at the same storeys, so the path's
+  gross building area is the summary's. And what stands is stated on the
+  paths' own measure (`standsFloor()` in `src/render/yieldSheet.ts`): the
+  paths' figures are gross floor area and the LEP's ratio is on it, but what
+  stands was given as gross building area, so the same bulk read as
+  1,743 m² standing and 1,261 m² rebuilt, and as "≈ 0.6:1" against a 0.50:1
+  it is under. The table, the bars and the page now give what stands'
+  floor area (≈ 1,261 m², ≈ 0.41:1) with its gross building area beside it;
+  a bundle with no outlines of what stands keeps the gross building area,
+  labelled as that. The height chart's limit reads 9.5 m, not "10 m".
+- *"Always show compliance for current structures on site, after for the
+  designed massings."* What stands today has a compliance sheet of its own,
+  always and first (`Stands today: compliance`: its sun, the shadow it
+  casts, its separations), whether or not rebuilding it is a path; the
+  designed massings' sheets follow. The path that rebuilds what stands is
+  the same massing, so it has no second sheet.
+- *"For multiple sites analysed you need to amalgamate the site."* The lots
+  of several addresses were already joined into one boundary and one area,
+  but in a low density zone the study designed nothing on it (the LEP's
+  land use table takes no apartment building there), so the only massing
+  drawn was each lot's own house, rebuilt. The study now reads the Housing
+  SEPP's **low and mid-rise housing** controls (chapter 6, `src/lib/lmr.ts`):
+  within 800 m of a nominated town centre they permit, in R1 and R2, a
+  residential flat building to 9.5 m and 0.8:1 on a lot of at least 500 m²
+  and 12 m wide, and the study draws that scheme across the whole site,
+  every lot of the amalgamation as one (`Low and mid-rise housing`, a path
+  with its own page, controls rows and compliance sheet). The town centre
+  is the nearest of the Housing SEPP's town-centres map, read to 800 m
+  round the site; the distance is the straight line from the site's
+  boundary to the centre's mapped edge, where the SEPP's is a walking
+  distance, and the land the policy leaves out (constraints, heritage,
+  some councils' excluded land) is not checked: the page says both, and
+  that eligibility is to confirm with a planner. The mid-rise standards of
+  R3 and R4 are not read; those zones keep the LEP's own paths.
+
 `--type yield` draws PLANNING YIELD: what the controls let the site hold, as a
 feasibility study first states it, laid out as the site report is — A3
 landscape spreads, the left page for what is said (the figures, the tables and
