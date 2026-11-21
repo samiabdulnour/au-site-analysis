@@ -12,7 +12,7 @@ import type { SlidesBundle } from '../pipeline.js';
 import { mergeRuns, straightEnough, arcTable, sliceAt, shortStreetName, dashedPath, type SheetMeta, type Pt } from './sheet.js';
 import type { TopoRoad } from '../fetch/nswTopo.js';
 import type { GeoJSONFeature } from '../lib/arcgis.js';
-import { tpl, withTemplate, templateFor, deckLook, tint, shadeHex, inkFor, vivid, greyOf, type DeckLook } from './template.js';
+import { tpl, withTemplate, templateFor, deckLook, heronContextLook, tint, shadeHex, inkFor, vivid, greyOf, type DeckLook } from './template.js';
 import { INK, aerialGreenFill, veg1750Fills, VEG_CLASSES_MAX, fillShape, swatchOf, barOf, categoryFill, heatFills, paletteRamp, styleRamp, terrainRamp, terrainRampWords, stripOf, HEIGHT_BANDS, heightBandOf, massingInks, heightRamp, zHead, zBars, zFigures, zCircles, zSpans, zPairs, zLine, niceAxis, z6, zSvg, Z_W, Z_TRACK, type Fill } from './atlasKit.js';
 import { esc } from './chrome.js';
 import { drawAxonometric, frameReachM, shade, lineHatchPitch, type AxoScene, type Prism } from './axonometric.js';
@@ -1674,7 +1674,9 @@ export function planningAtlas(b0: SlidesBundle): Slide {
   const p = b0.bleedPanel;
   const b: SlidesBundle = { ...b0, panel: p, daPanel: p };
   const t = tpl();
-  const look = deckLook();
+  // Heron's report maps its zones as its context analysis does, in that sheet's tints over the grey photograph: its
+  // black hatches over the cadastre's lines did not read apart (template.ts heronContextLook)
+  const look = t.plain ? heronContextLook(deckLook()) : deckLook();
   const F = look.family;
   const accent = look.accent;
   const f = planningFacts(b);
@@ -1721,9 +1723,11 @@ export function planningAtlas(b0: SlidesBundle): Slide {
   const fb = furnitureBox(p, 'left');
   spacer.block((fb.x0 + fb.x1) / 2, (fb.y0 + fb.y1) / 2, fb.x1 - fb.x0 + 2, fb.y1 - fb.y0 + 2);
   const labels: string[] = [];
-  const word = onAerial ? a6 : m6;
+  // (Heron's report: the zone codes and the street names in black, the names on the streets' white strips, where
+  // white words on a pale tint and on a white street did not read)
+  const word = onAerial && !t.plain ? a6 : m6;
   for (const c of cands.sort((x, y) => y.area - x.area)) if (spacer.take(c.cx, c.cy, c.text.length * 1.6 + 1, 2.8)) labels.push(word(c.cx, c.cy, c.text, 'middle'));
-  labels.push(streetNameLayer(b.base.roads, proj, p, spacer, 'plan03', onAerial ? look.streetInkAerial : look.streetInk, 2.0, onAerial ? '#1c1c1c' : '#ffffff'));
+  labels.push(streetNameLayer(b.base.roads, proj, p, spacer, 'plan03', onAerial && !t.plain ? look.streetInkAerial : look.streetInk, 2.0, onAerial && !t.plain ? '#1c1c1c' : '#ffffff'));
   parts.push(...labels, siteMark(b.base, proj, 'both'), siteEdge(b, proj), panelFurniture(p, 'left'));
   const mapSvg = bleedSvg('plan03', p, parts.join('\n'));
 
