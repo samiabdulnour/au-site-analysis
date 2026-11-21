@@ -32,8 +32,10 @@ export const LMR_LOW_RISE = { heightM: 9.5, fsr: 0.8, minLotSqm: 500, minLotWidt
 /**
  * What a low-rise building's roof takes of its height, metres: a flat roof's build-up, with no plant or lift overrun
  * over it. Three floors of 3.1 m then stand 9.5 m, the whole of the 9.5 m the policy gives, where the study's usual
- * 1.5 m for roof and plant (a taller building's) left room for two and spread the floor area across the site as a
- * two-storey ring round a slot of a courtyard (Z. 2026-11: "the volume is obviously filled and should be higher").
+ * 1.5 m for roof and plant (a taller building's) left room for two, drawn as a two-storey ring round a slot of a
+ * courtyard (Z. 2026-11: "the volume is obviously filled and should be higher"; "it should be unified one full
+ * volume"; "like this without the hole in the middle"). The scheme is drawn as its envelope, one solid volume
+ * (lib/yield.ts `envelope`).
  * The SEPP sets a height, not a storey count; councils read the 9.5 m as two to three storeys, and a DCP's wall
  * height may hold a design to two: the page says it is the study's assumption.
  */

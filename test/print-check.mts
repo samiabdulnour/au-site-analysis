@@ -304,14 +304,16 @@ check('a page read before it finished loading fails, whatever its PDF holds',
       await page.goto(pathToFileURL(htmlPath).href, { waitUntil: 'load' });
       const overruns = await fitSlides(page);
       const columns = await page.evaluate(COLUMNS) as Column[];
-      const sheets = columns.filter((c) => /_compliance$/.test(c.id)), lastPage = columns[columns.length - 1];
+      // an option's two compliance pages: its shadow and separation (the fuller: the separations today and built out), its solar access
+      const shadows = columns.filter((c) => /_shadow_and_separation$/.test(c.id)), solars = columns.filter((c) => /_solar_access$/.test(c.id));
+      const sheets = [...shadows, ...solars], lastPage = columns[columns.length - 1];
       if (theme === DECK_THEMES[0]) {
-        check('the yield deck has its compliance sheets, each with three tables, the separations today and built out',
-          sheets.length >= 3 && sheets.every((c) => c.blocks === 3 && c.rows >= 14) && /_controls_and_assumptions$/.test(lastPage.id),
+        check('the yield deck has its compliance pages, two an option, each with three tables, the separations today and built out',
+          shadows.length >= 3 && solars.length === shadows.length && sheets.every((c) => c.blocks === 3) && shadows.every((c) => c.rows >= 14) && /_controls_and_assumptions$/.test(lastPage.id),
           sheets.map((c) => `${c.id}: ${c.blocks} blocks, ${c.rows} rows`).join('; '));
-        check('the first sheet writes out what each criterion asks, under its row', sheets[0].notes >= 5 && sheets.slice(1).every((c) => c.notes === 0), sheets.map((c) => c.notes).join(', '));
+        check('the first option\'s pages write out what each criterion asks, under its row', shadows[0].notes >= 2 && solars[0].notes >= 3 && [...shadows.slice(1), ...solars.slice(1)].every((c) => c.notes === 0), sheets.map((c) => c.notes).join(', '));
       }
-      check(`${theme}: every compliance sheet's text column ends above its key`, sheets.length >= 3 && sheets.every((c) => c.end !== null && c.key !== null && c.end <= c.key - 1.5), said(sheets));
+      check(`${theme}: every compliance page's text column ends above its key`, sheets.length >= 6 && sheets.every((c) => c.end !== null && c.key !== null && c.end <= c.key - 1.5), said(sheets));
       check(`${theme}: every other spread's does too`, columns.filter((c) => c.key !== null && c.end !== null && c.rows > 0).every((c) => c.end! <= c.key! - 1.5), said(columns.filter((c) => c.key !== null && c.end !== null && c.rows > 0)));
       check(`${theme}: the fitting leaves no column on its key`, overruns.length === 0, JSON.stringify(overruns));
       await page.close();
@@ -321,7 +323,7 @@ check('a page read before it finished loading fails, whatever its PDF holds',
     // sheet's last table set four times more.
     const htmlPath = join(dir, `yield-${DECK_THEMES[0]}.html`);
     const OVERFILL = `(() => {
-      const first = [...document.querySelectorAll('section.slide.atlas')].find((sl) => sl.id.endsWith('_compliance'));
+      const first = [...document.querySelectorAll('section.slide.atlas')].find((sl) => sl.id.endsWith('_shadow_and_separation'));
       const flow = first.querySelector('.zflow'), last = flow.lastElementChild;
       for (let i = 0; i < 4; i++) flow.appendChild(last.cloneNode(true));
       return first.id;

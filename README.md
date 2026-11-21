@@ -1601,8 +1601,9 @@ yield for 86, 88-90, 94 Maroubra Road, 2026-11):
   a bundle with no outlines of what stands keeps the gross building area,
   labelled as that. The height chart's limit reads 9.5 m, not "10 m".
 - *"Always show compliance for current structures on site, after for the
-  designed massings."* What stands today has a compliance sheet of its own,
-  always and first (`Stands today: compliance`: its sun, the shadow it
+  designed massings."* What stands today has compliance pages of its own,
+  always and first (`Stands today: shadow` and `Stands today: solar
+  access`, straight after its spread: its sun, the shadow it
   casts, its separations), whether or not rebuilding it is a path; the
   designed massings' sheets follow. The path that rebuilds what stands is
   the same massing, so it has no second sheet.
@@ -1616,7 +1617,7 @@ yield for 86, 88-90, 94 Maroubra Road, 2026-11):
   residential flat building to 9.5 m and 0.8:1 on a lot of at least 500 m²
   and 12 m wide, and the study draws that scheme across the whole site,
   every lot of the amalgamation as one (`Low and mid-rise housing`, a path
-  with its own page, controls rows and compliance sheet). The town centre
+  with its own page, controls rows and compliance pages). The town centre
   is the nearest of the Housing SEPP's town-centres map, read to 800 m
   round the site; the distance is the straight line from the site's
   boundary to the centre's mapped edge, where the SEPP's is a walking
@@ -1624,25 +1625,51 @@ yield for 86, 88-90, 94 Maroubra Road, 2026-11):
   some councils' excluded land) is not checked: the page says both, and
   that eligibility is to confirm with a planner. The mid-rise standards of
   R3 and R4 are not read; those zones keep the LEP's own paths.
-- *"The volume is obviously filled and should be higher."* The low-rise
-  scheme was first drawn as the envelope: the floor area filled to the
-  setbacks, two storeys in a ring round the whole site with a slot of a
+- *"The volume is obviously filled and should be higher."* … *"It should
+  be unified, one full volume."* … *"Like this without the hole in the
+  middle."* The low-rise scheme was first drawn as the study's usual
+  building: two storeys in a ring round the whole site with a slot of a
   courtyard in it, because the study keeps 1.5 m of every height for roof
-  and plant and two floors were all that left under 9.5 m. It is now
-  designed. It takes the whole of its height (`LMR_ROOF_M`, 0.2 m: three
+  and plant (two floors were all that left under 9.5 m) and holds an
+  apartment building to 18 m of depth. It is now the envelope itself, **one
+  solid volume** (`envelope: true` on `computeYield()`): the whole of the
+  land inside the setbacks, nothing held out of it for a courtyard or a
+  tower's plate, to the whole of its height (`LMR_ROOF_M`, 0.2 m: three
   floors of 3.1 m and a flat roof with no plant or lift overrun over it,
-  9.5 m; the policy sets a height and not a storey count, councils read
-  it as two to three storeys, and `yield_assumptions.json`'s own
-  `roofAllowance` stands where set), and it is laid out as the "reshaped to
-  comply" path is, in the office's feasible footprints the ADG's separations
-  apart, the most floor area whose apartments get their sun
-  (`reshapeOf(…, 'lowMidRise')`, `lmrLayout`). At Maroubra: three
-  single-loaded 12 m buildings of three storeys, 1,644 m² (0.54:1), 19
-  apartments, all with two hours of mid-winter sun, where the ring was two
-  storeys over twice the ground. The page says what share of the 0.8:1 that
-  is, and that the three storeys are the study's assumption which a DCP's
-  wall height may hold to two. 9.5 m is the policy's limit in R1 and R2:
-  more height is a rezoning's, not this path's.
+  9.5 m; the policy sets a height and not a storey count, councils read it
+  as two to three storeys, and `yield_assumptions.json`'s own
+  `roofAllowance` stands where set). An envelope holds more than its
+  building, so its floor area is the ratio's and not the volume's: the
+  0.8:1 is spread over every storey, each the same share of its plate, and
+  the page says what share of the envelope that is, and that the plan
+  inside it (its depth, its courts, its apartments' sun) is the design's to
+  resolve. At Maroubra: an L of three storeys to 9.5 m, 2,457 m² (0.80:1,
+  67% of the 3,671 m² the envelope would hold), 28 apartments and 36
+  parking spaces. 9.5 m is the policy's limit in R1 and R2: more height is
+  a rezoning's, not this path's. (Between the two it was drawn as three
+  separate buildings on the office's feasible footprints; that reading is
+  gone.)
+- *"Can we place the compliance sheet right after the scenario page?"* …
+  *"Split solar and shadow with setbacks to two different pages."* …
+  *"Make the isometry here for the full half page and remove the plan: the
+  plan is visible in shadow. Shadow will be page two."* Every option's
+  compliance was one sheet, all of them after the last path: two massings
+  105 mm wide over a plan 147 mm high. Each option is now three pages
+  running: its spread, the massing alone over the whole right page; its
+  **shadow** and separation, the plan the whole page (1:1 000 at Maroubra
+  where it was 1:1 500); its **solar access**, the two sun-coloured
+  massings one over the other, the width of the page each (`deckOrder()`,
+  `complianceSheets()`, `schemeFigures(…, planNext)` in
+  `src/render/yieldSheet.ts`). The overview's page column follows. Two
+  things the larger plan showed are put right with it: a frontage's street
+  name, written where its road could not carry it, stood 8 to 14 m off the
+  site's edge at the middle of it whatever was there (Glanfield Street, a
+  lane, was written across the houses beyond it and through a storey
+  number) and now stands 4.5 mm of sheet off the edge, along it to where
+  nothing is written; a name along a road is written only where the road
+  runs straight under it. And the overview's lot line, which ran into the
+  controls beside it with three lots written out, gives several as
+  lot/plan (`3 lots: 1/DP965310, 10/DP1118472, 1/DP36591`, `lotsShort()`).
 
 `--type yield` draws PLANNING YIELD: what the controls let the site hold, as a
 feasibility study first states it, laid out as the site report is — A3
@@ -1715,7 +1742,7 @@ site may take, so a site with more paths has more pages:
      quarter hours). The first that meets 4A-1 and 4A-2 is the scheme; where
      none does, the nearest, and it says so.
    - **Its pages:** its own spread (the schedule names each building's plan)
-     and its own compliance sheet; the floor area it gives up against the
+     and its own compliance pages; the floor area it gives up against the
      envelope is the floor area the sun costs.
 6. **TOD controls** — where the site is in a TOD area of the Housing SEPP
    (chapter 5, part 2, `src/lib/tod.ts`, tested in `test/tod.mts`):
@@ -1726,7 +1753,7 @@ site may take, so a site with more paths has more pages:
    - **What it asks:** a lot at least 21 m wide at the street, and 2% of the
      floor area as affordable housing in perpetuity where the scheme is
      2,000 m² or more.
-   - **Its pages:** its own spread and compliance sheet, drawn only where it
+   - **Its pages:** its own spread and compliance pages, drawn only where it
      lifts the LEP's height or ratio on a lot wide enough.
    - **Where a council's alternative replaced it:** Ku-ring-gai's for
      Gordon, Killara, Lindfield and Roseville, in its LEP from
@@ -1750,39 +1777,54 @@ site may take, so a site with more paths has more pages:
    the FSR set aside, the case a clause 4.6 variation or a planning proposal
    has to carry, marked non-compliant; drawn only where the FSR stops the
    scheme below the height.
-9. **Compliance**, a sheet for each option that holds apartments, after the
-   yield's own spreads: does its envelope comply? On the left the
-   assessment criteria in their order, a mark each: overshadow impact
-   (3B-2), solar access (4A-1 with the hours, again built out, and 4A-2 with
-   none), building separation (3F-1) and yield (its floor area against the
-   most the controls allow it); the sun on each facade and the roof, by the
-   way each looks, its area, its average hours and the share with the hours
-   asked, today and built out; each building near and its separation, today
-   and built out. On the first sheet each criterion says in full what it
-   asks, in a line of small print under its own row (the ADG clause and its
-   wording, how the yield's most is worked out, what "built out" means).
-   That wording was a table of its own under the others ("Assessment
-   criteria"), 77 mm of it where 24 mm were free, and it ran into the
-   page's key; under the rows it adds about 20 mm and the tables stay clear
-   of the key. On the right the massing twice, side by side and close on the
-   building, from the street corner and from the opposite one, so every face
-   is seen, the town round it a white model (neighbours, futures, trees,
-   traffic and ground in white and greys) so only the scheme's colours read:
-   each facade cell (a storey high, about 3 m wide) and each roof
-   cell (about 3 m square, on what the tiers above leave open) in its band of
-   hours, blues under two, the lorikeet's green, yellow, orange and red from two; under
-   them the plan as the report's sun page draws it, in Arial: no zone tints,
-   every building white with its storeys (grey where no height is recorded and
-   two are assumed), the future footprints dashed with theirs, and every
-   neighbour's shadow, in grey, each hour from 9 am to 3 pm laid one translucent layer
-   over the last, and the envelope's own over them in the site's accent, at
-   9 am, noon and 3 pm outlined; hatched, the ground only the envelope shades
-   at one hour or more, where no building standing shades it that hour
-   (`addedGround()` in `src/lib/solarAccess.ts`: what it would overshadow);
-   the land it shades outlined and each separation drawn as a dimension (green clear,
-   amber where it holds only habitable to non-habitable, red short), its
-   distance written along its line and just off it, read from the sheet's
-   foot or its right.
+9. **Compliance**, two pages for each option that holds apartments, straight
+   after that option's own spread: does its envelope comply? What each
+   criterion asks is written in full, in a line of small print under its
+   own row, on the first option's pages (the ADG clause and its wording, how
+   the yield's most is worked out, what "built out" means).
+   - **Shadow** (`…_shadow_and_separation`), the page after the option's
+     spread, and its plan. On the left overshadow impact (3B-2) and building
+     separation (3F-1), a mark each; the shadow it adds, by the land it
+     falls on (residential lots, heritage items, parks and reserves: how
+     many lie in its reach, how many it shades, the most it adds and when,
+     and the lots it takes below the hours a DCP commonly asks of half their
+     open ground); each building near and its separation, today and built
+     out. On the right, the whole page, the plan as the report's sun page
+     draws it, in Arial: no zone tints, every building white with its
+     storeys (grey where no height is recorded and two are assumed), the
+     future footprints dashed with theirs, and every neighbour's shadow, in
+     grey, each hour from 9 am to 3 pm laid one translucent layer over the
+     last, and the envelope's own over them in the site's accent, at 9 am,
+     noon and 3 pm outlined; hatched, the ground only the envelope shades at
+     one hour or more, where no building standing shades it that hour
+     (`addedGround()` in `src/lib/solarAccess.ts`: what it would
+     overshadow); the land it shades outlined and each separation drawn as
+     a dimension (green clear, amber where it holds only habitable to
+     non-habitable, red short), its distance written along its line and
+     just off it, read from the sheet's foot or its right.
+   - **Solar access** (`…_solar_access`), the page after that. On the left
+     solar access (4A-1 with the hours, again built out, and 4A-2 with
+     none) and yield (its floor area against the most the controls allow
+     it); the sun on each facade and the roof, by the way each looks, its
+     area, its average hours and the share with the hours asked, today and
+     built out; and the apartments storey by storey, how many have the
+     hours and how many no sun (in bands of storeys over eight). On the
+     right the massing twice, the width of the page each and close on the
+     building, from the street corner over the same from the opposite one,
+     so every face is seen, the town round it a white model (neighbours,
+     futures, trees, traffic and ground in white and greys) so only the
+     scheme's colours read: each facade cell (a storey high, about 3 m
+     wide) and each roof cell (about 3 m square, on what the tiers above
+     leave open) in its band of hours, blues under two, the lorikeet's
+     green, yellow, orange and red from two.
+
+   An option with these pages draws its massing alone on its own spread,
+   the whole right page and framed closer (14 m of town round the site,
+   where a massing over a plan takes 40 m): its plan is the shadow's, the
+   page after. A path with nothing to test (what stands with no outline, the
+   path that rebuilds it, an office scheme) keeps its massing over its plan.
+   It was one sheet an option, every option's after the last path, the two
+   massings side by side over the plan: see Z.'s notes below.
 10. **Controls and assumptions** — the assumptions the study rests on (floor
    to floor, efficiencies, the mix, the plates, the parking rates, the nearest
    station) on the left; on the right, the full table the office's
@@ -1825,7 +1867,7 @@ where the joined lots use the land better, the lots nearest the site first.
 A lot still too small, or one the capacity study holds (a strata scheme, a
 heritage item, a mature or a small site), stands as it is. The neighbours on
 a lot that redevelops stand today and give way to it built out: the
-compliance sheet tests the sun and the separations against both. A height
+compliance pages test the sun and the separations against both. A height
 mapped as an RL is not read for a lot (its ground is not known), and the
 bundle carries each lot's zone, height and ratio (a bundle from before the
 lots' ratios reads a building's on the lot). The proposal's
@@ -1963,7 +2005,7 @@ local metres:
   with the neighbours built to their futures, where any rises. The hours are
   counted in all, as the ADG's criteria read; `"sun": { "continuous": true }`
   counts the longest unbroken run instead, for a council that reads them so,
-  and the pages say which. The compliance spread's massing colours each
+  and the pages say which. The solar access page's massing colours each
   apartment's facade yellow where it has the hours.
 - **Sun on each facade and roof.** `facadeSun()` in `src/lib/solarAccess.ts`
   gives every face of a scheme its hours, storey by storey in cells about

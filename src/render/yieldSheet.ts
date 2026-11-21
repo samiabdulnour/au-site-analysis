@@ -43,7 +43,7 @@ import {
   type XY, type YieldAssumptions, type YieldResult, type Use, type Tier, type UnitKind, type FutureControls, type ExistingBuilding,
 } from '../lib/yield.js';
 import { shadowHull } from '../lib/shadows.js';
-import { addedGround, apartmentSun, addedShadow, adgSunHours, schemeBlocks, groundShadow, facadeSun, roofSun, winterSun, SHADE_KINDS, type ApartmentSun, type AddedShadow, type Block, type FacadeFace, type RoofCell, type ShadeKind, type ShadeTarget } from '../lib/solarAccess.js';
+import { addedGround, apartmentSun, addedShadow, adgSunHours, meetsSun, schemeBlocks, groundShadow, facadeSun, roofSun, winterSun, SHADE_KINDS, type ApartmentSun, type AddedShadow, type Block, type FacadeFace, type RoofCell, type ShadeKind, type ShadeTarget } from '../lib/solarAccess.js';
 import { separations, type SeparationRow, type SeparationReading } from '../lib/separation.js';
 import { futureContext, FOOTPRINTS, type FutureBuilding, type FutureLot } from '../lib/futureContext.js';
 import { reshapeToComply, type Reshaped } from '../lib/reshape.js';
@@ -153,8 +153,6 @@ export interface YieldStudy {
    */
   lmr?: LmrReading;
   lmrY?: YieldResult;
-  /** The low and mid-rise scheme's layout, where it is laid out in the office's feasible footprints (lib/reshape.ts) and not left as the envelope. */
-  lmrLayout?: Reshaped;
   ring: XY[];
   fronts: boolean[];
   toLocal: (lon: number, lat: number) => XY;
@@ -269,20 +267,17 @@ export function yieldStudy(b: YieldBundle): YieldStudy {
   // the low and mid-rise housing controls, and the scheme they allow on the whole site where they give one the LEP does not
   const lmr = readLmr({ centre: b.lmrCentre, zone: c.zoneCode, lepHobM: hob?.metres, lepFsr: c.fsr, lotSqm: area || undefined, lotWidthM: frontageLengths[0]?.lengthM });
   // A low-rise building uses the whole of its height: three floors under the 9.5 m, a flat roof and no plant over
-  // it (LMR_ROOF_M, unless yield_assumptions.json sets the roof). And it is designed, not left as the envelope: the
-  // floor area the ratio allows laid out in the office's feasible footprints, compact buildings the ADG's
-  // separations apart whose apartments get their sun (lib/reshape.ts). The envelope filled to its setbacks was a
-  // ring round the whole site, two storeys round a slot of a courtyard, which no one would build.
-  let lmrY: YieldResult | undefined, lmrLayout: Reshaped | undefined;
+  // it (LMR_ROOF_M, unless yield_assumptions.json sets the roof). And it is drawn as its envelope, one solid volume:
+  // the whole of the land inside the setbacks to that height, the ratio's floor area spread through it. It was a
+  // ring of two storeys round a slot of a courtyard, then three separate buildings; Z. asked for neither: "it
+  // should be unified one full volume", "like this without the hole in the middle" (2026-11).
+  let lmrY: YieldResult | undefined;
   if (lmrApplies(lmr) && !todY) {
     const lowRise = { ...assumptions, roofAllowance: b.assumptions?.roofAllowance ?? LMR_ROOF_M };
-    const input = { ring, fronts, siteAreaSqm: area, zone: c.zoneCode, hobM: lmr.hobM, fsr: lmr.fsr, assumptions: lowRise, archetype: 'residential' as const };
-    lmrLayout = reshapeOf(b, toLocal, input, 'lowMidRise');
-    if (lmrLayout && !(lmrLayout.y.storeys > 0)) lmrLayout = undefined;
-    const envelope = lmrLayout ? undefined : computeYield(input);
-    lmrY = lmrLayout?.y ?? (envelope && envelope.storeys > 0 ? envelope : undefined);
+    const volume = computeYield({ ring, fronts, siteAreaSqm: area, zone: c.zoneCode, hobM: lmr.hobM, fsr: lmr.fsr, assumptions: lowRise, archetype: 'residential', envelope: true });
+    lmrY = volume.storeys > 0 ? volume : undefined;
   }
-  return { base, bonus, max, retained, standing: kept && kept.storeys > 0 ? kept : undefined, reshaped, lmr, lmrY, lmrLayout, tod, todY: todY && todY.storeys > 0 ? todY : undefined, ring, fronts, toLocal, hob, parkingSet, frontageLengths, future, noScheme };
+  return { base, bonus, max, retained, standing: kept && kept.storeys > 0 ? kept : undefined, reshaped, lmr, lmrY, tod, todY: todY && todY.storeys > 0 ? todY : undefined, ring, fronts, toLocal, hob, parkingSet, frontageLengths, future, noScheme };
 }
 
 /** Where the site is: the middle of its outline, longitude and latitude. */
@@ -297,15 +292,13 @@ function contextBlocks(b: YieldBundle, toLocal: (lon: number, lat: number) => XY
     .filter((bl) => bl.rings[0].length >= 3);
 }
 
-const RESHAPE_DONE = new WeakMap<YieldBundle, Map<string, Reshaped | null>>();
+const RESHAPE_DONE = new WeakMap<YieldBundle, Reshaped | null>();
 /** The envelope reshaped to comply, worked out once a bundle: it reads the sun of many layouts. */
-function reshapeOf(b: YieldBundle, toLocal: (lon: number, lat: number) => XY, input: { ring: XY[]; fronts: boolean[]; siteAreaSqm: number; zone?: string; hobM?: number; fsr?: number; assumptions: Partial<YieldAssumptions>; archetype?: 'residential' },
-  /** Which controls the search is for: the LEP's, or a policy's of its own (each searched once a bundle). */ key = 'lep'): Reshaped | undefined {
-  const done = RESHAPE_DONE.get(b) ?? RESHAPE_DONE.set(b, new Map()).get(b)!;
-  if (done.has(key)) return done.get(key) ?? undefined;
+function reshapeOf(b: YieldBundle, toLocal: (lon: number, lat: number) => XY, input: { ring: XY[]; fronts: boolean[]; siteAreaSqm: number; zone?: string; hobM?: number; fsr?: number; assumptions: Partial<YieldAssumptions> }): Reshaped | undefined {
+  if (RESHAPE_DONE.has(b)) return RESHAPE_DONE.get(b) ?? undefined;
   const rule = sunRule(b);
   const out = reshapeToComply({ ...input, ...siteLonLat(b), context: contextBlocks(b, toLocal), hoursRequired: rule.hours, continuous: rule.continuous });
-  done.set(key, out ?? null);
+  RESHAPE_DONE.set(b, out ?? null);
   return out;
 }
 
@@ -750,6 +743,8 @@ const storeyZ = storeyLevels;
  */
 /** How much town round the site the massing's frame is fitted to, in metres beyond the site's bounds; the town runs on past the frame. */
 const FOCUS_M = 40;
+/** And where the massing has the whole page to itself (its plan on the page after): closer, the massing the larger for it. */
+const FOCUS_FULL_M = 14;
 function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w: number; h: number }, scheme: Scheme, id: string): string {
   const y = scheme.y;
   const Y = yieldInks();
@@ -1161,12 +1156,18 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
       return [r.pts[i - 1][0] + (r.pts[i][0] - r.pts[i - 1][0]) * t, r.pts[i - 1][1] + (r.pts[i][1] - r.pts[i - 1][1]) * t];
     };
     const half = Math.min(total / 2, textLen / 2 + 6);
-    for (const k of [0, 1, -1, 2, -2, 3, -3]) {
+    for (const k of [0, 1, -1, 2, -2, 3, -3, 4, -4, 5, -5]) {
       const c = total / 2 + k * 12;
       if (c - half < 0 || c + half > total) continue;
       let p0 = along(c - half), p1 = along(c + half);
       if (p0[0] > p1[0]) [p0, p1] = [p1, p0];
-      if (Math.hypot(p1[0] - p0[0], p1[1] - p0[1]) < textLen) continue;
+      const chord = Math.hypot(p1[0] - p0[0], p1[1] - p0[1]);
+      if (chord < textLen) continue;
+      // The road must run along the chord its name is written on: where it bends between the two ends the chord
+      // cuts the corner, and the name lies over the lots (Glanfield Street at Maroubra, written across a house).
+      const off = (q: [number, number]) => Math.abs((p1[0] - p0[0]) * (q[1] - p0[1]) - (p1[1] - p0[1]) * (q[0] - p0[0])) / (chord || 1);
+      const run = [0.25, 0.5, 0.75].map((f) => along(c - half + 2 * half * f)).concat(r.pts.filter((_, i) => cum[i] > c - half && cum[i] < c + half));
+      if (run.some((q) => off(q) > Math.max(1, 3 * mm))) continue;
       const mx = (p0[0] + p1[0]) / 2, my = (p0[1] + p1[1]) / 2, ang = Math.atan2(p1[1] - p0[1], p1[0] - p0[0]);
       const W = Math.abs(textLen * Math.cos(ang)) + Math.abs(FS * Math.sin(ang)), H = Math.abs(textLen * Math.sin(ang)) + Math.abs(FS * Math.cos(ang));
       const bx2: Box = [mx - W * 0.4, my - H * 0.4, mx + W * 0.4, my + H * 0.4];
@@ -1188,13 +1189,24 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
     if (!name || named.has(name) || done.has(name)) return;
     done.add(name);
     const q = s.ring[(i + 1) % s.ring.length];
-    const mid = { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 }, l = Math.hypot(q.x - p.x, q.y - p.y) || 1;
+    const l = Math.hypot(q.x - p.x, q.y - p.y) || 1;
     const n = sa > 0 ? { x: (q.y - p.y) / l, y: -(q.x - p.x) / l } : { x: -(q.y - p.y) / l, y: (q.x - p.x) / l };
-    const off = 6 * (scale / 500) + 2;
-    const [lx, ly] = at({ x: mid.x + n.x * off, y: mid.y + n.y * off });
     let ang = (-Math.atan2(q.y - p.y, q.x - p.x) * 180) / Math.PI;
     if (ang > 90) ang -= 180;
     if (ang < -90) ang += 180;
+    // In the street: a few millimetres of sheet off the edge whatever the scale, along it to where nothing is
+    // written. (It stood 8 m off at 1:500 and 14 m at 1:1 000, at the middle of the edge whatever was there: across
+    // a lane and over the houses the other side, through a storey number. Glanfield Street, Maroubra.)
+    const tl = shortStreetName(name).length * (FS * 0.62 + 0.5) + 2, rad = (ang * Math.PI) / 180;
+    const bw = Math.abs(tl * Math.cos(rad)) + Math.abs(FS * Math.sin(rad)), bh = Math.abs(tl * Math.sin(rad)) + Math.abs(FS * Math.cos(rad));
+    const spot = (f: number, offMm: number): { xy: [number, number]; bx: Box } => {
+      const xy = at({ x: p.x + (q.x - p.x) * f + (n.x * offMm) / mm, y: p.y + (q.y - p.y) * f + (n.y * offMm) / mm });
+      return { xy, bx: [xy[0] - bw * 0.4, xy[1] - bh * 0.4, xy[0] + bw * 0.4, xy[1] + bh * 0.4] };
+    };
+    const tries = [4.5, 6.5].flatMap((offMm) => [0.5, 0.35, 0.65, 0.2, 0.8].map((f) => spot(f, offMm)));
+    const set = tries.find((t) => clear(t.bx)) ?? spot(0.5, 4.5);
+    taken.push(set.bx);
+    const [lx, ly] = set.xy;
     out.push(`<text transform="translate(${lx.toFixed(2)},${ly.toFixed(2)}) rotate(${ang.toFixed(1)})" y="1" text-anchor="middle" font-size="${FS}" font-weight="700" letter-spacing="0.5" fill="${look.streetInk}">${esc(shortStreetName(name).toUpperCase())}</text>`);
   });
 
@@ -1416,8 +1428,8 @@ export function scenarioRows(b: YieldBundle, s: YieldStudy = yieldStudy(b)): Sce
     const l = s.lmr;
     out.push({
       id: 'lowMidRise', label: 'LOW AND MID-RISE HOUSING',
-      note: `the Housing SEPP's low and mid-rise housing controls ${l.distanceM <= 0 ? `in the ${l.name}` : `${fmt(l.distanceM)} m from the ${l.name}`}: a residential flat building to ${fmt(l.hobM ?? 0, 1)} m and ${fmt(l.fsr ?? 0, 2)}:1 across the whole site, on a lot of at least ${LMR_LOW_RISE.minLotSqm} m² and ${LMR_LOW_RISE.minLotWidthM} m wide${s.lmrLayout ? `: ${s.lmrLayout.layout}` : ''}`,
-      ...fill(s.lmrY), ok: s.lmrLayout ? s.lmrLayout.complies : true,
+      note: `the Housing SEPP's low and mid-rise housing controls ${l.distanceM <= 0 ? `in the ${l.name}` : `${fmt(l.distanceM)} m from the ${l.name}`}: a residential flat building to ${fmt(l.hobM ?? 0, 1)} m and ${fmt(l.fsr ?? 0, 2)}:1 across the whole site, on a lot of at least ${LMR_LOW_RISE.minLotSqm} m² and ${LMR_LOW_RISE.minLotWidthM} m wide, drawn as one volume to its setbacks and its height`,
+      ...fill(s.lmrY), ok: true,
     });
   }
   // The Housing SEPP's TOD controls, where they lift the LEP's on a lot wide enough.
@@ -1479,6 +1491,25 @@ const about = (gba: number, A: number) => (A && gba ? `≈ ${(gba / A).toFixed(1
  */
 /** How many lots the site is: one, or each lot of an amalgamation, as its description lists them. */
 const lotCount = (b: YieldBundle) => (b.lotDescription ?? '').split(';').filter((x) => x.trim()).length;
+/**
+ * The site's lots for the overview's figure, short enough for its column: one lot as the cadastre writes it; several
+ * as lot/plan, counted, and past the column's width the rest by their number ("3 lots: 1/DP965310, 10/DP1118472,
+ * 1/DP36591"). (Three lots written out in full ran into the controls beside them.)
+ */
+export function lotsShort(description: string | undefined, max = 46): string {
+  const lots = (description ?? '').split(';').map((x) => x.trim()).filter((x) => x && x !== '—');
+  if (!lots.length) return '—';
+  if (lots.length === 1 && lots[0].length <= max) return lots[0];
+  const short = lots.map((l) => { const m = /^lot\s+(\S+)\s*[-–]?\s*([A-Za-z]+)\s*(\d+)$/i.exec(l); return m ? `${m[1]}/${m[2].toUpperCase()}${m[3]}` : l; });
+  const head = lots.length > 1 ? `${lots.length} lots: ` : '';
+  let said = '';
+  for (let i = 0; i < short.length; i++) {
+    const next = said ? `${said}, ${short[i]}` : short[i], rest = short.length - i - 1;
+    if (said && (head + next + (rest ? ` + ${rest} more` : '')).length > max) return `${head}${said} + ${short.length - i} more`;
+    said = next;
+  }
+  return head + said;
+}
 const standsFloor = (s: YieldStudy, ex: { gbaSqm?: number } | undefined): { sqm: number; gba: boolean } | undefined =>
   (s.standing?.gfa ? { sqm: s.standing.gfa, gba: false } : ex?.gbaSqm ? { sqm: ex.gbaSqm, gba: true } : undefined);
 const storeyWord = (n: number) => `${n} ${n === 1 ? 'storey' : 'storeys'}`;
@@ -1580,7 +1611,7 @@ const PATH_BASIS: Record<Scenario['id'], string> = {
   withinControls: 'This path keeps to the LEP\'s height of building and floor space ratio.',
   reshaped: 'This path keeps to the LEP\'s height of building and floor space ratio and the ADG\'s separations, in the office\'s feasible footprints: single-loaded 12 m deep, its gallery on the face with least sun; double-loaded 18 m along an east–west axis, its apartments running through to the north; double-loaded 22 m along a north–south axis, facing east and west; each 15 to 45 m long, a double-loaded one at least as long as it is deep, the taller to the south. Of the layouts read, it is the one with the most floor area whose apartments meet ADG 4A-1 and 4A-2.',
   tod: 'This path takes the Housing SEPP\'s transport oriented development controls (chapter 5, part 2): residential flat buildings in the residential and local centre zones to 22 m and 2.5:1, shop-top housing in the local centre and commercial zones to 24 m and 2.5:1, on a lot at least 21 m wide, the LEP\'s standard standing where it is more generous; 2% of the floor area is affordable housing in perpetuity, managed by a community housing provider, where the scheme is 2,000 m² or more.',
-  lowMidRise: 'This path takes the Housing SEPP\'s low and mid-rise housing controls (chapter 6): in a low density zone within 800 m of a nominated town centre, a residential flat building to 9.5 m and 0.8:1 on a lot of at least 500 m² and 12 m wide, the LEP\'s standard standing where it is more generous, drawn across the whole site, every lot of an amalgamation as one, in the office\'s feasible footprints the ADG\'s separations apart. It is drawn to the whole of its height: three storeys of 3.1 m under the 9.5 m, a flat roof with no plant or lift overrun over it; the policy sets a height, not a storey count, and a DCP\'s wall height may hold a design to two. The 800 m is a walking distance, read here as the straight line to the centre\'s mapped edge, and the land the policy leaves out is not checked: the site\'s eligibility is to confirm with a planner.',
+  lowMidRise: 'This path takes the Housing SEPP\'s low and mid-rise housing controls (chapter 6): in a low density zone within 800 m of a nominated town centre, a residential flat building to 9.5 m and 0.8:1 on a lot of at least 500 m² and 12 m wide, the LEP\'s standard standing where it is more generous, drawn across the whole site, every lot of an amalgamation as one. It is drawn as its envelope, one volume: the land inside the setbacks (6 m from the street, the ADG\'s half separation from the other boundaries) to the whole of the height, three storeys of 3.1 m under the 9.5 m with a flat roof and no plant or lift overrun over it. The policy sets a height, not a storey count, and a DCP\'s wall height may hold a design to two. The floor area is the ratio\'s, less than the envelope holds, as an envelope leaves room for a building\'s courts and articulation; the plan inside it, its depth and its apartments\' sun are the design\'s to resolve. The 800 m is a walking distance, read here as the straight line to the centre\'s mapped edge, and the land the policy leaves out is not checked: the site\'s eligibility is to confirm with a planner.',
   affordableBonus: 'This path takes the Housing SEPP\'s in-fill affordable housing bonus (chapter 2, part 2, division 1); the site\'s eligibility is to confirm.',
   envelopeToHeight: 'This path sets the floor space ratio aside: it needs a clause 4.6 variation or a planning proposal.',
 };
@@ -1593,8 +1624,23 @@ function pathsOf(b: YieldBundle, s: YieldStudy): Path[] {
 
 /** Whether a path has a spread of its own: what stands, and every path the study drew. */
 const drawnPath = (p: Path) => p.sc.id === 'standsToday' || !!p.y;
+/**
+ * The deck's pages in their order: the overview; each path's spread and, straight after it, the two pages it is
+ * tested on where it holds apartments to test; the controls and assumptions, the last. Each drawn path with its
+ * page and its test.
+ */
+function deckOrder(b: YieldBundle, s: YieldStudy, paths: Path[]): { paths: { p: Path; page: number; test?: { p: Path; ps: PathSun } }[]; last: number } {
+  const tested = testedPaths(b, s, paths);
+  let page = 1;
+  const out = paths.filter(drawnPath).map((p) => {
+    const test = tested.find((t) => t.p.sc.id === p.sc.id), at = ++page;
+    if (test) page += 2;   // its shadow and separation, then its solar access
+    return { p, page: at, ...(test ? { test } : {}) };
+  });
+  return { paths: out, last: page + 1 };
+}
 /** The page a path's spread takes (the overview is page 1), or none where it has no spread. */
-const pageOf = (paths: Path[], p: Path) => (drawnPath(p) ? paths.filter(drawnPath).indexOf(p) + 2 : 0);
+const pageOf = (b: YieldBundle, s: YieldStudy, paths: Path[], p: Path) => deckOrder(b, s, paths).paths.find((x) => x.p === p)?.page ?? 0;
 
 /** What stands, in the study's metres. */
 const standingOf = (b: YieldBundle, s: YieldStudy) => (b.existing ?? []).filter((e) => e.rings?.length)
@@ -1612,7 +1658,11 @@ const NOT_A_DESIGN = 'A feasibility study, not a design: the envelope follows th
 
 /** How the sun was read, for a path's sources line. */
 function sunNote(b: YieldBundle, s: YieldStudy): string {
-  return `Sun at mid winter (21 June, 9 am – 3 pm AEST, by the quarter hour): each storey's facade shared among its apartments in equal lengths, an apartment counting the time a metre of its facade has sun 1 m above its floor, ${sunRule(b).continuous ? 'in one unbroken run' : 'whether or not the hours run together'}; the neighbours at their recorded heights${s.future.buildings.length ? ', and for the built-out figures the future context in their place' : ''}, the ground flat, no trees. The shadow is the ground in sun today that the scheme puts in shade${b.heritageItems ? '' : '; heritage items not measured (this bundle has no outlines of them)'}.`;
+  return `Sun at mid winter (21 June, 9 am – 3 pm AEST, by the quarter hour): each storey's facade shared among its apartments in equal lengths, an apartment counting the time a metre of its facade has sun 1 m above its floor, ${sunRule(b).continuous ? 'in one unbroken run' : 'whether or not the hours run together'}; the neighbours at their recorded heights${s.future.buildings.length ? ', and for the built-out figures the future context in their place' : ''}, the ground flat, no trees.`;
+}
+/** How the shadow was read, for the sources line of an option's shadow page. */
+function shadowNote(b: YieldBundle): string {
+  return `Shadows at mid winter (21 June), on the hour from 9 am to 3 pm AEST: every building's at its recorded height, two storeys where none is recorded, the ground flat, no trees. The shadow the scheme adds is the ground in sun today that it puts in shade${b.heritageItems ? '' : '; heritage items not measured (this bundle has no outlines of them)'}.`;
 }
 
 /** Whether what stands on the site has its height from the 3D meshes, and whether its footprint was traced from them. */
@@ -1675,8 +1725,15 @@ function schemeLegend(b: YieldBundle, s: YieldStudy, y: YieldResult | undefined,
   return out;
 }
 
-/** The two drawings of a path's right page: its massing over its plan. */
-function schemeFigures(b: YieldBundle, s: YieldStudy, scheme: Scheme, id: string, massingNote: string, massingTitle = 'Indicative massing'): { html: string; kerbs: boolean } {
+/**
+ * The drawings of a path's right page: its massing over its plan; or, where the path's plan is on the page after it
+ * (`planNext`: the plan of its shadow and separation), the massing alone, the whole page (Z. 2026-11: "make the
+ * isometry here for the full half page and remove the plan: the plan is visible in shadow, shadow will be page two").
+ */
+function schemeFigures(b: YieldBundle, s: YieldStudy, scheme: Scheme, id: string, massingNote: string, massingTitle = 'Indicative massing', planNext = false): { html: string; kerbs: boolean } {
+  // (framed closer than over a plan, FOCUS_FULL_M of town round the site: a page as high again shows no more of a
+  // frame its width governs, so at FOCUS_M the massing stood no larger on twice the paper)
+  if (planNext) return { html: bleedFigure(0, PAGE_H, axonometric(b, s, { x: 2, y: LABEL_IN + 9, w: PAGE_W - 4, h: PAGE_H - LABEL_IN - 11 }, { ...scheme, focusM: scheme.focusM ?? FOCUS_FULL_M }, id)) + mapLabel(0, [massingTitle, massingNote]), kerbs: false };
   // The massing over the top half, its neighbours out to the page's edges; the plan under it, to the edges and the foot.
   const AXO_H = 150, PLAN_TOP = AXO_H, PLAN_H = PAGE_H - PLAN_TOP;
   const planName = (scale: number) => ['Plan', `1:${fmt(scale).replace(',', ' ')}`, scheme.y?.tiers.length ? 'tiers numbered as in the schedule' : ''];
@@ -1714,7 +1771,7 @@ function overviewSlide(b: YieldBundle, s: YieldStudy, paths: Path[]): Slide {
   const front = s.frontageLengths[0];
   const figs = zFigures([
     ['site area, cadastre', A ? area(A) : '—'],
-    ['lot', b.lotDescription || '—'],
+    ['lot', lotsShort(b.lotDescription)],
     ['frontage', front ? `${shortStreetName(front.name)} ${fmt(front.lengthM, 1)} m${s.frontageLengths.length > 1 ? ` + ${s.frontageLengths.length - 1} more` : ''}` : 'none found'],
   ], [
     ['zone', [c.zoneCode, c.zonePurpose].filter(Boolean).join(' ') || 'not mapped'],
@@ -1727,7 +1784,7 @@ function overviewSlide(b: YieldBundle, s: YieldStudy, paths: Path[]): Slide {
       cls: p.sc.id === 'withinControls' && p.y ? 'hi' : undefined,
       cells: [esc(SCENARIO_TITLE[p.sc.id]), esc(p.sc.storeys ?? '—'), p.sc.heightM ? esc(m1(p.sc.heightM)) : '—',
         esc(p.y?.gfa ? fmt(Math.round(p.y.gfa)) : p.sc.id === 'standsToday' && standsFloor(s, ex) ? `≈ ${fmt(Math.round(standsFloor(s, ex)!.sqm))}` : '—'), esc(p.sc.fsr ?? '—'), esc(p.sc.units ?? '—'), esc(p.sc.parking ?? '—'), okMark(p.sc.ok),
-        pageOf(paths, p) ? String(pageOf(paths, p)).padStart(2, '0') : '—'],
+        pageOf(b, s, paths, p) ? String(pageOf(b, s, paths, p)).padStart(2, '0') : '—'],
     })));
   const blocks = [zBlock('The site', figs, 'The controls'), zBlock('The paths', table), ...pathBars(b, s, paths)];
   const name = (scale: number) => ['The site and its neighbours', `1:${fmt(scale).replace(',', ' ')}`, 'their numbers, zones and heights'];
@@ -1758,7 +1815,7 @@ function overviewSlide(b: YieldBundle, s: YieldStudy, paths: Path[]): Slide {
 }
 
 /** A path's spread: its figures, its controls, its schedule and its mix; its massing over its plan. */
-function schemeSlide(b: YieldBundle, s: YieldStudy, p: Path, n: number, last: number): Slide {
+function schemeSlide(b: YieldBundle, s: YieldStudy, p: Path, n: number, last: number, planOn?: number): Slide {
   const y = p.y!, a = y.assumptions, c = b.controls, A = b.siteAreaSqm ?? 0;
   const id = p.sc.id;
   const apartments = y.units.total > 0;
@@ -1805,10 +1862,12 @@ function schemeSlide(b: YieldBundle, s: YieldStudy, p: Path, n: number, last: nu
   // (the low and mid-rise path's lot is in its own row above: the LEP's minimum is a subdivision's)
   if (c.minLotSizeSqm && id !== 'lowMidRise') ctl.push({ cells: ['Minimum lot size', esc(area(c.minLotSizeSqm)), esc(A ? area(A) : '—'), okMark(A ? A >= c.minLotSizeSqm : null)] });
   if (apartments) {
-    const laid = id === 'reshaped' ? s.reshaped : id === 'lowMidRise' ? s.lmrLayout : undefined;
+    const laid = id === 'reshaped' ? s.reshaped : undefined;
     const deepest = laid ? Math.max(...laid.buildings.map((bd) => bd.depthM)) : 0;
     ctl.push(id === 'rebuiltAsStands'
       ? { cells: ['ADG 2E building depth', '12–18 m', 'as it stands: to test', okMark(null)] }
+      : id === 'lowMidRise'
+        ? { cells: ['ADG 2E building depth', '12–18 m', 'one envelope: the plan in it to design', okMark(null)] }
       : laid
         ? { cells: ['ADG 2E building depth', '12–18 m', esc(deepest > 18 ? `${fmt(deepest)} m, apartments facing east and west` : `${fmt(deepest)} m`), okMark(deepest > 18 ? null : true)] }
       : { cells: ['ADG 2E building depth', '12–18 m', esc(y.tiers.some((t) => t.held === 'depth') ? `plates held to ${m1(a.maxDepth)}` : 'within the depth'), okMark(true)] });
@@ -1825,7 +1884,7 @@ function schemeSlide(b: YieldBundle, s: YieldStudy, p: Path, n: number, last: nu
     const st = t.from === t.to ? `${t.from}` : `${t.from}–${t.to}`;
     const held = t.held === 'tower' ? ', tower plate' : t.held === 'depth' ? `, ${m1(a.maxDepth)} deep` : '';
     // a reshaped scheme's building is named by its plan: "single-loaded, 12 m"
-    const use = (id === 'reshaped' || id === 'lowMidRise') && t.name.includes(' · ') ? t.name.split(' · ')[1] : USE_WORD[t.use] + held;
+    const use = id === 'reshaped' && t.name.includes(' · ') ? t.name.split(' · ')[1] : USE_WORD[t.use] + held;
     return { cls: built ? undefined : 'dim', cells: [tierKey(i + 1), esc(built && built < t.to - t.from + 1 ? `${st} (${built} built)` : st), esc(use),
       esc(t.existing ? 'as it stands' : `${set(t.front)} / ${set(t.side)} / ${set(t.rear)} m`), esc(area(t.plateSqm)), esc(built ? area(gfaOf(i)) : 'not built')] };
   });
@@ -1841,7 +1900,7 @@ function schemeSlide(b: YieldBundle, s: YieldStudy, p: Path, n: number, last: nu
     mixRows.push({ cls: 'tot', cells: ['Total', '', '', esc(`avg ${fmt(y.averageUnitSqm, 1)} m²`), esc(fmt(y.units.total)), esc(area(kinds.reduce((t, kd) => t + y.units[kd] * a.sizes[kd], 0)))] });
     blocks.push(zBlock('Apartments', ytable([{ head: 'Unit', w: '24mm' }, { head: 'Share', r: true, w: '16mm' }, { head: 'ADG 4D min.', r: true, w: '28mm' }, { head: 'Area each', r: true, w: '24mm' }, { head: 'Units', r: true, w: '14mm' }, { head: 'Area', r: true }], mixRows, true)));
   }
-  const figures = schemeFigures(b, s, { y }, id, y.storeys ? `${storeyWord(y.storeys)} · ${area(y.gfa)} GFA${y.units.total ? ` · ${fmt(y.units.total)} units` : ''}` : 'the height plane over the site');
+  const figures = schemeFigures(b, s, { y }, id, y.storeys ? `${storeyWord(y.storeys)} · ${area(y.gfa)} GFA${y.units.total ? ` · ${fmt(y.units.total)} units` : ''}` : 'the height plane over the site', undefined, !!planOn);
   const governs = y.governs === 'fsr' ? `The floor space ratio governs: the height would allow ${y.storeysByHeight} storeys.` : y.governs === 'envelope' ? 'The setbacks and the height govern: the floor space ratio is not reached.' : 'No floor space ratio is mapped: the height governs.';
   const what = `${storeyWord(y.storeys)}, ${m1(Math.round(y.heightM * 10) / 10)} to the roof: ${area(y.gfa)} of floor area (${ratio(y.gfa, A)})${y.units.total ? `, ${fmt(y.units.total)} apartments` : ''}${y.parking.total ? ` and ${fmt(y.parking.total)} parking spaces` : ''}`;
   const narrative = id === 'withinControls'
@@ -1850,11 +1909,8 @@ function schemeSlide(b: YieldBundle, s: YieldStudy, p: Path, n: number, last: nu
       ? brief([`With ${pct}% more height and floor space ratio for 15% affordable housing, held for 15 years, the Housing SEPP's in-fill bonus gives ${what}.`,
         `That is ${area(y.gfa - s.base.gfa)}${y.units.total > s.base.units.total ? ` and ${fmt(y.units.total - s.base.units.total)} apartments` : ''} more than within the controls, about ${fmt(Math.round(y.units.total * 0.15))} of them affordable. Eligibility to confirm.`])
       : id === 'lowMidRise' && s.lmr
-        ? brief([`Under the Housing SEPP's low and mid-rise housing controls, ${s.lmr.distanceM <= 0 ? `in the ${s.lmr.name}` : `${fmt(s.lmr.distanceM)} m from the ${s.lmr.name}`}, the whole site${lotCount(b) > 1 ? `, its ${lotCount(b)} lots as one,` : ''} holds ${s.lmrLayout ? `${s.lmrLayout.layout}: ` : 'a residential flat building of '}${what}.`,
-          s.lmrLayout ? (s.lmrLayout.complies
-            ? `${pctOf(s.lmrLayout.sun.meeting, s.lmrLayout.sun.total)} of the apartments get ${sunRule(b).hours} hours of sun at mid winter and ${pctOf(s.lmrLayout.sun.none, s.lmrLayout.sun.total)} none, meeting ADG 4A.`
-            : `No layout of the office's footprints meets ADG 4A here: this one comes nearest, ${pctOf(s.lmrLayout.sun.meeting, s.lmrLayout.sun.total)} of its apartments with ${sunRule(b).hours} hours.`) : '',
-          s.lmr.fsr && A && y.gfa < s.lmr.fsr * A * 0.95 ? `That is ${pctOf(y.gfa, s.lmr.fsr * A)} of the ${area(s.lmr.fsr * A)} the ${s.lmr.fsr.toFixed(2)}:1 allows: the setbacks and the ADG's separations hold the rest on this site.` : '',
+        ? brief([`Under the Housing SEPP's low and mid-rise housing controls, ${s.lmr.distanceM <= 0 ? `in the ${s.lmr.name}` : `${fmt(s.lmr.distanceM)} m from the ${s.lmr.name}`}, the whole site${lotCount(b) > 1 ? `, its ${lotCount(b)} lots as one,` : ''} holds one volume to its setbacks and its height: ${what}.`,
+          y.governs === 'fsr' ? `The floor space ratio governs: the envelope would hold ${area(y.gfaCapacity)}, and the ${(s.lmr.fsr ?? 0).toFixed(2)}:1 allows ${pctOf(y.gfa, y.gfaCapacity)} of it.` : 'The envelope governs: the floor space ratio is not reached.',
           `${s.standing?.gfa ? `What stands holds about ${area(s.standing.gfa)}. ` : ''}Eligibility to confirm.`], 680)
       : id === 'tod' && s.tod
         ? brief([`Under the Housing SEPP's transport oriented development controls in the ${s.tod.name} TOD area, the site holds ${what}.`,
@@ -1871,7 +1927,7 @@ function schemeSlide(b: YieldBundle, s: YieldStudy, p: Path, n: number, last: nu
         c.fsr ? `That is ${area(y.gfa - s.base.gfa)} over the LEP's ${c.fsr.toFixed(2)}:1: the case a clause 4.6 variation or a planning proposal has to carry.` : '']);
   return { id: `${String(n).padStart(2, '0')}_${id.replace(/[A-Z]/g, (ch) => `_${ch.toLowerCase()}`)}`, title: SCENARIO_TITLE[id], subtitle: subtitleOf(b, s), textHtml: '',
     figureHtml: zFlow(blocks) + figures.html, full: true, narrative, accent: id === 'envelopeToHeight' ? inks().F.deep : inks().accent,
-    legend: schemeLegend(b, s, y, false, figures.kerbs), sources: `${NOT_A_DESIGN} ${PATH_BASIS[id]}${s.tod?.regime === 'alternative' && (id === 'withinControls' || id === 'reshaped') ? ` The LEP's height and floor space ratio here are ${s.tod.alternative!.council}'s alternative TOD controls${s.tod.alternative!.from ? `, in force from ${s.tod.alternative!.from}` : ''}.` : ''} Every assumption is on page ${String(last).padStart(2, '0')}.${meshNote(b)}${treesNote(b)}` };
+    legend: schemeLegend(b, s, y, false, figures.kerbs), sources: `${NOT_A_DESIGN} ${PATH_BASIS[id]}${s.tod?.regime === 'alternative' && (id === 'withinControls' || id === 'reshaped') ? ` The LEP's height and floor space ratio here are ${s.tod.alternative!.council}'s alternative TOD controls${s.tod.alternative!.from ? `, in force from ${s.tod.alternative!.from}` : ''}.` : ''}${planOn ? ` Its plan is on page ${String(planOn).padStart(2, '0')}, with its shadow and its separations.` : ''} Every assumption is on page ${String(last).padStart(2, '0')}.${meshNote(b)}${treesNote(b)}` };
 }
 
 /** The neighbours' future, as the keys name it. */
@@ -1910,11 +1966,15 @@ const figureAt = (left: number, top: number, w: number, h: number, inner: string
 const labelAt = (left: number, top: number, inset: number, parts: string[]) =>
   `<div class="abs maplabel" style="left:${left + inset}mm;top:${top + inset}mm">${esc(parts.filter(Boolean).join(' · '))}</div>`;
 
-/** A compliance sheet's title: the option's name, short enough to stand on one line with the word. */
-const COMPLIANCE_TITLE: Record<Scenario['id'], string> = {
-  standsToday: 'Stands today: compliance', rebuiltAsStands: 'Rebuilt as it stands: compliance', withinControls: 'Within the controls: compliance', reshaped: 'Reshaped to comply: compliance', tod: 'TOD controls: compliance', lowMidRise: 'Low and mid-rise housing: compliance',
-  affordableBonus: 'Affordable bonus: compliance', envelopeToHeight: 'Envelope to the height: compliance',
+/** An option's name on its two test pages, short enough to stand on one line with the page's own. */
+const TEST_NAME: Record<Scenario['id'], string> = {
+  standsToday: 'Stands today', rebuiltAsStands: 'Rebuilt as it stands', withinControls: 'Within the controls', reshaped: 'Reshaped to comply', tod: 'TOD controls', lowMidRise: 'Low and mid-rise',
+  affordableBonus: 'Affordable bonus', envelopeToHeight: 'Envelope to the height',
 };
+/** The two pages an option is tested on: what each is called after the option's name, and how its id ends. */
+const TEST_PAGE = { solar: { title: 'solar access', id: 'solar_access' }, shadow: { title: 'shadow', id: 'shadow_and_separation' } } as const;
+/** Whether a page is one of an option's test pages, by its id. */
+export const isTestPage = (id: string, kind?: keyof typeof TEST_PAGE): boolean => (kind ? [kind] : (['solar', 'shadow'] as const)).some((k) => id.endsWith(`_${TEST_PAGE[k].id}`));
 
 /** The faces of an option grouped by the way they look (the outside's and a courtyard's apart): their area, and their hours, averaged by area, today and built out. */
 function facadeRows(ps: PathSun, hours: number): { courtyard: boolean; dir: string; bearing: number; areaSqm: number; average: number; share: number; averageFuture?: number; shareFuture?: number }[] {
@@ -1948,14 +2008,22 @@ function facadeRows(ps: PathSun, hours: number): { courtyard: boolean; dir: stri
 }
 
 /**
- * An option's compliance sheet: its envelope against the assessment criteria, kept off the yield's own pages, one
- * sheet an option. On the left the criteria with a mark each (overshadow impact, solar access, building separation,
- * yield); the sun on each facade, by the way it looks; each building near and its separation, today and built out;
- * and, on the first sheet, how each criterion is read. On the right the massing from the street corner and from the
- * opposite one, so every face is seen, each cell of its facades coloured by its hours of sun; and the plan of its
- * shadow at 9 am, noon and 3 pm, the land it shades and each separation drawn as a dimension.
+ * An option's compliance, on the two pages straight after its own spread (Z. 2026-11: "place the compliance sheet
+ * right after the scenario page", "split solar and shadow with setbacks to two different pages". It was one sheet an
+ * option, every option's after the last path: the two massings 105 mm wide each over a plan 147 mm high.)
+ *
+ *  - Shadow and separation, the first of the two ("shadow will be page two"): overshadowing (3B-2) and building
+ *    separation (3F-1) with a mark each; the shadow it adds, by the land it falls on; each building near and its
+ *    separation, today and built out. On the right, the whole page, the option's plan: its shadow at 9 am, noon and
+ *    3 pm, the land it shades and each separation a dimension. (The option's own spread, the page before, draws its
+ *    massing alone for it: schemeFigures.)
+ *  - Solar access: ADG 4A's criteria with a mark each, and the yield; the sun on each facade, by the way it looks;
+ *    the apartments storey by storey. On the right the massing from the street corner and, under it, from the
+ *    opposite one, so every face is seen, each cell of its facades coloured by its hours of sun.
+ *
+ * On the first option tested each criterion says in full what it asks.
  */
-function complianceSheet(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: PathSun }, n: number, last: number, first: boolean): Slide {
+function complianceSheets(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: PathSun }, n: number, last: number, first: boolean): [shadow: Slide, solar: Slide] {
   const { p, ps } = entry, id = p.sc.id, ap = ps.apartments!, sh = ps.shadow!, f = ap.future;
   const rule = sunRule(b), h = rule.hours, unbroken = rule.continuous ? ' unbroken' : '';
   const meets = (k: number) => k >= 0.7 * ap.total - 1e-9, fewNone = (k: number) => k <= 0.15 * ap.total + 1e-9;
@@ -1975,21 +2043,23 @@ function complianceSheet(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: Pa
         : tod.regime === 'deferred' ? `in the ${tod.name} TOD area, its controls deferred` : `in the ${tod.name} accelerated precinct, by its own maps`;
   const asks = (text: string) => (first ? text : undefined);
   const builtOut = asks('Built out: the neighbours as feasible footprints on their lots, to their LEP height and FSR');
-  const tests: TRow[] = [
-    { cells: ['Overshadow impact', 'minimised at mid winter (3B-2)', esc(shadowShort(ps) === 'none' ? 'adds none' : `shades ${shadowShort(ps)}${sh.homes.fallBelow ? `; ${sh.homes.fallBelow} below ${sh.homes.hoursRequired} h` : ''}`), okMark(shadowOk(ps))],
-      note: asks('ADG 3B-2: overshadowing of reserves, heritage items and homes minimised at mid winter; a shadow added takes the dash') },
+  const solarTests: TRow[] = [
     { cells: [`Solar access, ${h} h`, esc(`70% of apartments${unbroken ? ', unbroken' : ''} (4A-1)`), esc(count(ap.meeting)), okMark(meets(ap.meeting))],
       note: asks(`ADG 4A-1: ${h} hours of direct sun${unbroken}, 9 am – 3 pm at mid winter, ${rule.where}`) },
     ...(f ? [{ cells: ['…neighbours built out', '70%', esc(count(f.meeting)), okMark(meets(f.meeting))], note: builtOut }] : []),
     { cells: ['Solar access, none', 'at most 15% (4A-2)', esc(count(ap.none)), okMark(fewNone(ap.none))],
       note: asks('ADG 4A-2: apartments with no direct sun, 9 am – 3 pm at mid winter') },
     ...(f && f.none !== ap.none ? [{ cells: ['…neighbours built out', 'at most 15%', esc(count(f.none)), okMark(fewNone(f.none))] }] : []),
-    { cells: ['Building separation', '12 / 18 / 24 m by storeys (3F-1)', esc([sepToday === 'none near' ? 'none near today' : `${sepToday} today`, sepLater].filter(Boolean).join('; ')), okMark(separationOk(ps))],
-      note: asks('ADG 3F-1: habitable to habitable 12, 18, 24 m; to non-habitable 9, 13.5, 18 m (1–4, 5–8, 9+ storeys)') },
     { cells: ['Yield', esc(most ? `${area(most)} most allowed` : 'no FSR mapped'), esc(`${area(ps.y.gfa)}${most ? ` · ${Math.round((100 * ps.y.gfa) / most)}%` : ''}`), okMark(most ? p.sc.ok : null)],
       note: asks(`The most floor area allowed: the LEP's floor space ratio by the site area${todNote ? `; ${todNote}` : ''}`) },
   ];
-  const testTable = ytable([{ head: 'Criterion', w: '38mm' }, { head: 'Asked', w: '48mm' }, { head: 'This option' }, { head: '', w: '5mm' }], tests, true);
+  const shadowTests: TRow[] = [
+    { cells: ['Overshadow impact', 'minimised at mid winter (3B-2)', esc(shadowShort(ps) === 'none' ? 'adds none' : `shades ${shadowShort(ps)}${sh.homes.fallBelow ? `; ${sh.homes.fallBelow} below ${sh.homes.hoursRequired} h` : ''}`), okMark(shadowOk(ps))],
+      note: asks('ADG 3B-2: overshadowing of reserves, heritage items and homes minimised at mid winter; a shadow added takes the dash') },
+    { cells: ['Building separation', '12 / 18 / 24 m by storeys (3F-1)', esc([sepToday === 'none near' ? 'none near today' : `${sepToday} today`, sepLater].filter(Boolean).join('; ')), okMark(separationOk(ps))],
+      note: asks(`ADG 3F-1: habitable to habitable 12, 18, 24 m; to non-habitable 9, 13.5, 18 m (1–4, 5–8, 9+ storeys)${s.future.buildings.length ? '. Built out: the neighbours as feasible footprints on their lots, to their LEP height and FSR' : ''}`) },
+  ];
+  const criteria = [{ head: 'Criterion', w: '38mm' }, { head: 'Asked', w: '48mm' }, { head: 'This option' }, { head: '', w: '5mm' }];
 
   // the sun on each facade, by the way it looks
   const fr = facadeRows(ps, h), anyFuture = fr.some((r) => r.averageFuture !== undefined && Math.abs(r.averageFuture - r.average) > 0.05);
@@ -1997,31 +2067,65 @@ function complianceSheet(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: Pa
     fr.map((r) => ({ cells: [esc(r.courtyard ? 'courtyard, all walls' : r.dir === 'roof' ? 'roof, all tiers' : r.dir), esc(area(r.areaSqm)), esc(`${r.average.toFixed(1)} h`), esc(`${Math.round(r.share * 100)}%`),
       ...(anyFuture ? [esc(r.averageFuture !== undefined ? `${r.averageFuture.toFixed(1)} h · ${Math.round((r.shareFuture ?? 0) * 100)}%` : '—')] : [])] })), true);
 
+  // the apartments storey by storey, in bands of storeys where there are more than eight of them
+  const topStorey = ap.units.reduce((m, u) => Math.max(m, u.storey), 0), bandOfStoreys = Math.max(1, Math.ceil(topStorey / 8));
+  const laterDiffers = !!f && (f.meeting !== ap.meeting || f.none !== ap.none);
+  const storeyRows: TRow[] = [];
+  for (let from = 1; from <= topStorey; from += bandOfStoreys) {
+    const to = Math.min(topStorey, from + bandOfStoreys - 1), us = ap.units.filter((u) => u.storey >= from && u.storey <= to);
+    if (!us.length) continue;
+    const ok = us.filter((u) => meetsSun(u, h, rule.continuous)).length, none = us.filter((u) => u.hours === 0).length;
+    storeyRows.push({ cells: [esc(from === to ? String(from) : `${from}–${to}`), esc(fmt(us.length)), esc(`${fmt(ok)} · ${pctOf(ok, us.length)}`), esc(`${fmt(none)} · ${pctOf(none, us.length)}`),
+      ...(laterDiffers ? [esc(`${fmt(us.filter((u) => meetsSun(u, h, rule.continuous, true)).length)}`)] : [])] });
+  }
+  const storeyTable = ytable([{ head: bandOfStoreys > 1 ? 'Storeys' : 'Storey', w: '30mm' }, { head: 'Apartments', r: true }, { head: `${h} h or more`, r: true }, { head: 'No sun', r: true }, ...(laterDiffers ? [{ head: `${h} h built out`, r: true }] : [])], storeyRows, true);
+
+  // the shadow it adds, by the land it falls on
+  const LAND: Record<ShadeKind, string> = { home: 'residential lots', heritage: 'heritage items', park: 'parks and reserves' };
+  const noneOr = (k: number) => (k ? fmt(k) : 'none');
+  const shadeRows: TRow[] = [
+    ...(['home', 'heritage', 'park'] as ShadeKind[]).map((k): TRow => ({ cells: ps.measured[k]
+      ? [esc(LAND[k]), esc(fmt(sh.reached[k])), esc(noneOr(sh.shaded[k])), esc(shadeWords(ps, k))]
+      : [esc(LAND[k]), '—', '—', 'not measured'] })),
+    ...(sh.shaded.home ? [
+      { cells: [esc(`…taken below ${sh.homes.hoursRequired} h of sun`), '', esc(noneOr(sh.homes.fallBelow)), ''], note: asks(`A residential lot is held to half its open ground in sun for ${sh.homes.hoursRequired} hours, 9 am – 3 pm at mid winter, as a DCP commonly asks`) },
+      { cells: ['…below it today, cut further', '', esc(noneOr(sh.homes.cutFurther)), ''] },
+    ] : []),
+  ];
+  const shadeTable = ytable([{ head: 'Land', w: '50mm' }, { head: 'In reach', r: true, w: '18mm' }, { head: 'Shaded', r: true, w: '18mm' }, { head: 'Most added, and when', r: true }], shadeRows, true);
+
   // each building near: today, then the future context's
   const sepRow = (r: SeparationRow & { name: string }, storeys: string): TRow => { const w = worseReading(r); return { cells: [esc(r.name), esc(storeys), esc(`${fmt(w.distanceM, 1)} / ${fmt(w.band.between)} m`), okMark(separationMark(w))] }; };
   const sepRows: TRow[] = [
-    ...ps.separation.slice(0, 5).map((r) => { const nb = b.context[r.index]; return sepRow(r, nb.known && nb.heightM > 0 ? `${Math.max(1, Math.round(nb.heightM / 3.1))} today` : '2, unrecorded'); }),
-    ...ps.separationBuiltOut.slice(0, 5).map((r) => sepRow(r, `${s.future.buildings[r.index].storeys}, built out`)),
+    ...ps.separation.slice(0, 8).map((r) => { const nb = b.context[r.index]; return sepRow(r, nb.known && nb.heightM > 0 ? `${Math.max(1, Math.round(nb.heightM / 3.1))} today` : '2, unrecorded'); }),
+    ...ps.separationBuiltOut.slice(0, 6).map((r) => sepRow(r, `${s.future.buildings[r.index].storeys}, built out`)),
   ];
   const sepTable = sepRows.length
     ? ytable([{ head: 'Building', w: '62mm' }, { head: 'Storeys', w: '24mm' }, { head: 'Apart / asked', r: true }, { head: '', w: '5mm' }], sepRows, true)
     : `<div class="ynote">No building the sources record stands within 24 m of it${s.future.buildings.length ? ', nor would the future context' : ''}, across a street aside.</div>`;
 
-  const blocks = [zBlock('Against the criteria', testTable), zBlock('Sun on each facade and the roof', faceTable), zBlock('Building separation', sepTable)];
+  const solarBlocks = [zBlock('Against the criteria', ytable(criteria, solarTests, true)), zBlock('Sun on each facade and the roof', faceTable), ...(storeyRows.length ? [zBlock('Apartments, storey by storey', storeyTable)] : [])];
+  const shadowBlocks = [zBlock('Against the criteria', ytable(criteria, shadowTests, true)), zBlock('The shadow it adds', shadeTable), zBlock('Building separation', sepTable)];
 
-  // the drawings: the massing from the street corner, from the opposite corner, and the plan of shadow and separation
+  // the drawings. Solar access: the massing from the street corner over the same from the opposite corner, each the
+  // width of the page and framed close on the building (a few metres of town round it)
   const pts = b.siteRing.slice(0, -1);
   const lat = pts.reduce((t, q) => t + q[1], 0) / pts.length, lon = pts.reduce((t, q) => t + q[0], 0) / pts.length;
-  // the two massings side by side over the plan, each framed close on the building (a few metres of town round it)
-  const AXO_H = 150, PLAN_H = PAGE_H - AXO_H, W = PAGE_W / 2, IN = 6, fid = `${id}-c`;
-  const name = (scale: number) => ['Shadow and separation', `1:${fmt(scale).replace(',', ' ')}`, 'shadows each hour, 9 am to 3 pm'];
-  // every building's shadow, each hour from 9 to 3: the neighbours as the report draws theirs, at the heights the sun study gives them
-  // (two storeys where none is recorded), the envelope's swept exactly
+  const AXO_H = PAGE_H / 2, IN = 6, fid = `${id}-c`;
+  const axo = (behind: boolean, top: number, id2: string) => figureAt(PAGE_X, top, PAGE_W, AXO_H, axonometric(b, s, { x: 2, y: IN + 9, w: PAGE_W - 4, h: AXO_H - IN - 11 }, { y: ps.y, facades: ps.facades, roofs: ps.roofs, behind, focusM: 6, mono: true }, id2));
+  const solarFigures = axo(false, 0, `${fid}-f`) + labelAt(PAGE_X, 0, IN, ['From the street corner'])
+    + axo(true, AXO_H, `${fid}-b`) + labelAt(PAGE_X, AXO_H, IN, ['From the opposite corner'])
+    + `<div class="abs" style="left:${PAGE_X}mm;top:${AXO_H - 0.4}mm;width:${PAGE_W}mm;height:0.8mm;background:#ffffff"></div>`;
+
+  // Shadow and separation: the plan, the whole page. Every building's shadow, each hour from 9 to 3: the neighbours
+  // as the report draws theirs, at the heights the sun study gives them (two storeys where none is recorded), the
+  // envelope's swept exactly
+  const name = (scale: number) => ['Plan', `1:${fmt(scale).replace(',', ' ')}`, 'shadow each hour 9 am to 3 pm, and separation'];
   const massBlocks = schemeBlocks(ps.y);
   const casters = b.context.map((cb) => ({ ring: (cb.rings[0] ?? []).map(([x, yy]) => s.toLocal(x, yy)), h: cb.known && cb.heightM > 0 ? cb.heightM : UNKNOWN_HEIGHT_M })).filter((c) => c.ring.length >= 3);
   const hourSuns = winterSun(lat, lon, [9, 10, 11, 12, 13, 14, 15].map((hr) => hr * 60));
   const hourly = hourSuns.map((sun) => ({ hulls: casters.map((c) => shadowHull(c.ring, c.h, sun.altitudeDeg, sun.azimuthDeg, 1)).filter((hl): hl is XY[] => !!hl), scheme: groundShadow(massBlocks, sun) }));
-  const plan = planView(b, s, { x: 0, y: 0, w: PAGE_W, h: PLAN_H }, { y: ps.y }, fid, { room: 2.6, inset: 6, keepOut: [labelBox(name(5000)).map((v) => v - (LABEL_IN - IN)) as [number, number, number, number]], plain: true, study: true,
+  const plan = planView(b, s, { x: 0, y: 0, w: PAGE_W, h: PAGE_H }, { y: ps.y }, fid, { room: 2.6, inset: 6, keepOut: [labelBox(name(5000)).map((v) => v - (LABEL_IN - IN)) as [number, number, number, number]], plain: true, study: true,
     marks: {
       hours: hourly,
       added: addedGround(hourly.map((hr) => hr.scheme), hourly.map((hr) => hr.hulls), [s.ring]),
@@ -2029,50 +2133,58 @@ function complianceSheet(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: Pa
       shaded: sh.shadedTargets.map((i) => ps.targets[i].rings),
       dims: [...ps.separation, ...ps.separationBuiltOut].map((r) => { const w = worseReading(r); return { a: w.a, b: w.b, label: `${fmt(w.distanceM, 1)} m`, ink: statusInks()[w.status], dash: w.status === 'blank' ? blankDash() : '' }; }),
     } });
-  const axo = (behind: boolean, left: number, id2: string) => figureAt(left, 0, W, AXO_H, axonometric(b, s, { x: 2, y: IN + 9, w: W - 4, h: AXO_H - IN - 11 }, { y: ps.y, facades: ps.facades, roofs: ps.roofs, behind, focusM: 6, mono: true }, id2));
-  const figures = axo(false, PAGE_X, `${fid}-f`) + labelAt(PAGE_X, 0, IN, ['From the street corner'])
-    + axo(true, PAGE_X + W, `${fid}-b`) + labelAt(PAGE_X + W, 0, IN, ['From the opposite corner'])
-    + figureAt(PAGE_X, AXO_H, PAGE_W, PLAN_H, plan.svg) + labelAt(PAGE_X, AXO_H, IN, name(plan.scale))
-    + `<div class="abs" style="left:${PAGE_X + W - 0.4}mm;top:0;width:0.8mm;height:${AXO_H}mm;background:#ffffff"></div><div class="abs" style="left:${PAGE_X}mm;top:${AXO_H - 0.4}mm;width:${PAGE_W}mm;height:0.8mm;background:#ffffff"></div>`;
+  const shadowFigures = figureAt(PAGE_X, 0, PAGE_W, PAGE_H, plan.svg) + labelAt(PAGE_X, 0, IN, name(plan.scale));
 
-  // the key
+  // the keys
   const KEY = keySwatches();
   const SEP = statusInks();
   const sepSwatch = `<path d="M0.4,0.9H4.6" stroke="${SEP.clear}" stroke-width="0.35"/><path d="M0.4,1.8H4.6" stroke="${SEP.blank}" stroke-width="0.35"${blankDash()}/><path d="M0.4,2.7H4.6" stroke="${SEP.short}" stroke-width="0.35"/>`;
-  const legend: LegendEntry[] = [
+  const solarLegend: LegendEntry[] = [
     { swatch: KEY.site, label: 'The site' },
     { swatch: KEY.zones(sunBands().map((x) => x.fill)), label: `Facades and roofs, hours of sun 9 am – 3 pm on 21 June: none, under 1, 1–2, 2–3, 3–4, 4–5, 5 and over` },
     { swatch: KEY.use('residential'), label: 'Indicative massing: blank walls' },
     { swatch: `<path d="M0.4,0.7H2.3V3H0.4Z" fill="#ffffff" stroke="#8f8f8f" stroke-width="0.2"/><path d="M2.7,0.7H4.6V3H2.7Z" fill="#ffffff" stroke="#8f8f8f" stroke-width="0.2" stroke-dasharray="0.5,0.3"/>`,
       label: s.future.buildings.length ? 'Neighbours in white at their heights; dashed, their future on feasible footprints to their LEP height and FSR' : 'Neighbours in white at their heights' },
+  ];
+  const shadowLegend: LegendEntry[] = [
+    { swatch: KEY.site, label: 'The site' },
     { swatch: Array.from({ length: hourSuns.length }, (_, i) => `<rect x="${((i * 5) / hourSuns.length).toFixed(2)}" y="0.3" width="${(5 / hourSuns.length).toFixed(2)}" height="3" fill="${shadowInk()}" fill-opacity="${stackedAlpha(i + 1).toFixed(2)}"/>`).join('') + `<rect x="0" y="0.3" width="5" height="3" fill="none" stroke="#6f6f6f" stroke-width="0.1"/>`,
       label: 'Neighbours\' shadows on 21 June, each hour 9 am – 3 pm laid over the last: the deeper, the longer in shadow' },
     { swatch: Array.from({ length: hourSuns.length }, (_, i) => `<rect x="${((i * 5) / hourSuns.length).toFixed(2)}" y="0.3" width="${(5 / hourSuns.length).toFixed(2)}" height="3" fill="${ourShadowInk()}" fill-opacity="${stackedAlpha(i + 1).toFixed(2)}"/>`).join('') + `<rect x="0" y="0.3" width="5" height="3" fill="none" stroke="#6f6f6f" stroke-width="0.1"/>` + fillShape('M2.6,0.3H5V3.3H2.6Z', { x0: 2.6, y0: 0.3, x1: 5, y1: 3.3 }, ADDED_HATCH(), 1.6),
       label: 'The envelope\'s shadow, the same hours over theirs, at 9 am, 12 pm and 3 pm outlined; hatched where only it shades the ground: what it would overshadow' },
     { swatch: `<rect x="0.4" y="0.6" width="4.2" height="2.4" fill="#ffffff" stroke="#6f6f6f" stroke-width="0.2"/>`, label: 'Buildings in plan; numbers are storeys, grey where no height is recorded and two are assumed' },
+    ...(s.future.buildings.length ? [{ swatch: `<path d="M0.6,0.7H4.4V3H0.6Z" fill="none" stroke="#8f8f8f" stroke-width="0.2" stroke-dasharray="0.5,0.3"/>`, label: 'Dashed: a neighbour\'s future, a feasible footprint to its LEP height and FSR' }] : []),
     { swatch: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="${siteInk()}" fill-opacity="0.1" stroke="${siteInk()}" stroke-width="0.3" stroke-dasharray="0.5,0.4"/>`, label: 'Land it adds shadow to: a residential lot, heritage item or park' },
     { swatch: sepSwatch, label: 'Separation: clear; holds if one face is blank; short' },
   ];
 
-  // what it says
+  // what each says
   const out = fr.filter((r) => !r.courtyard && r.dir !== 'roof'), roofRow = fr.find((r) => r.dir === 'roof');
   const good = out.filter((r) => r.average >= h - 1e-9).map((r) => r.dir), poor = out.filter((r) => r.average < 1).map((r) => r.dir);
   const list = (xs: string[]) => (xs.length > 1 ? `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}` : xs[0]);
   const sepShortN = ps.separation.filter((r) => worseReading(r).status === 'short').length;
-  const narrative = brief([
+  const solarSays = brief([
     `${pctOf(ap.meeting, ap.total)} of its ${fmt(ap.total)} apartments get ${h} hours of sun${unbroken} at mid winter${meets(ap.meeting) ? ', meeting the ADG\'s 70%' : ', short of the ADG\'s 70%'}, and ${pctOf(ap.none, ap.total)} get none${fewNone(ap.none) ? '' : ', over the 15% it allows'}.`,
     good.length || poor.length ? `${good.length ? `Its ${list(good)} ${good.length === 1 ? 'face has' : 'faces have'} ${h} hours or more on average` : ''}${good.length && poor.length ? '; ' : ''}${poor.length ? `${good.length ? 'its' : 'Its'} ${list(poor)} under one` : ''}.` : '',
     roofRow ? `Its roof has ${roofRow.average.toFixed(1)} hours on average, ${Math.round(roofRow.share * 100)}% of it ${h} hours or more.` : '',
     f && f.meeting !== ap.meeting ? `Once the neighbours build out, ${pctOf(f.meeting, ap.total)} have the hours.` : '',
-    sepShortN ? `${sepShortN} of the buildings near it ${sepShortN === 1 ? 'stands' : 'stand'} closer than the ADG's separation: the envelope keeps its half to each boundary, so the shortfall is the neighbours' nearness to theirs.` : '',
-    ps.separationBuiltOut.length ? (ps.separationBuiltOut.some((r) => r.today.status !== 'clear') ? 'Built out, a neighbour\'s footprint would stand closer than the separation.' : 'Built out, the neighbours\' footprints keep the separation from it: they can still develop.') : '',
-    shadowShort(ps) !== 'none' ? `It adds shadow to ${shadowShort(ps)}.` : 'It adds no shadow to the parks, heritage items or homes round about.',
   ], 560);
-  return {
-    id: `${String(n).padStart(2, '0')}_${id.replace(/[A-Z]/g, (ch) => `_${ch.toLowerCase()}`)}_compliance`, title: COMPLIANCE_TITLE[id], subtitle: subtitleOf(b, s), textHtml: '',
-    figureHtml: zFlow(blocks) + figures, full: true, narrative, accent: inks().accent, legend,
-    sources: `${sunNote(b, s)} ${SEPARATION_NOTE} Indicative, for a solar access study and the design to confirm. Every assumption is on page ${String(last).padStart(2, '0')}.${meshNote(b)}`,
-  };
+  const shadowSays = brief([
+    shadowShort(ps) !== 'none' ? `It adds shadow to ${shadowShort(ps)}.` : 'It adds no shadow to the parks, heritage items or homes round about.',
+    sh.shaded.home ? (sh.homes.fallBelow ? `${sh.homes.fallBelow} of the lots ${sh.homes.fallBelow === 1 ? 'is' : 'are'} taken below ${sh.homes.hoursRequired} hours of sun on half ${sh.homes.fallBelow === 1 ? 'its' : 'their'} open ground.` : `No lot is taken below ${sh.homes.hoursRequired} hours of sun on half its open ground.`) : '',
+    sepShortN ? `${sepShortN} of the buildings near it ${sepShortN === 1 ? 'stands' : 'stand'} closer than the ADG's separation: the envelope keeps its half to each boundary, so the shortfall is the neighbours' nearness to theirs.` : ps.separation.length ? 'Every building near it stands clear of the ADG\'s separation, or holds it with a blank face.' : '',
+    ps.separationBuiltOut.length ? (ps.separationBuiltOut.some((r) => r.today.status !== 'clear') ? 'Built out, a neighbour\'s footprint would stand closer than the separation.' : 'Built out, the neighbours\' footprints keep the separation from it: they can still develop.') : '',
+  ], 560);
+  const slug = id.replace(/[A-Z]/g, (ch) => `_${ch.toLowerCase()}`), page = (k: number) => String(k).padStart(2, '0');
+  const closing = `Every assumption is on page ${page(last)}.${meshNote(b)}`;
+  return [
+    { id: `${page(n)}_${slug}_${TEST_PAGE.shadow.id}`, title: `${TEST_NAME[id]}: ${TEST_PAGE.shadow.title}`, subtitle: subtitleOf(b, s), textHtml: '',
+      figureHtml: zFlow(shadowBlocks) + shadowFigures, full: true, narrative: shadowSays, accent: inks().accent, legend: shadowLegend,
+      sources: `${shadowNote(b)} ${SEPARATION_NOTE} Indicative, for the design to confirm. Its apartments' sun is on page ${page(n + 1)}. ${closing}` },
+    { id: `${page(n + 1)}_${slug}_${TEST_PAGE.solar.id}`, title: `${TEST_NAME[id]}: ${TEST_PAGE.solar.title}`, subtitle: subtitleOf(b, s), textHtml: '',
+      figureHtml: zFlow(solarBlocks) + solarFigures, full: true, narrative: solarSays, accent: inks().accent, legend: solarLegend,
+      sources: `${sunNote(b, s)} Indicative, for a solar access study and the design to confirm. Its plan, its shadow and its separations are on page ${page(n)}. ${closing}` },
+  ];
 }
 
 /** How the separations were read, for a compliance spread's sources line. */
@@ -2081,7 +2193,7 @@ const SEPARATION_NOTE = 'Separation is the least distance in plan from each buil
 const COUNT_WORD = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
 
 /** What stands today: the building or buildings on the site, set against the paths. */
-function standingSlide(b: YieldBundle, s: YieldStudy, paths: Path[], n: number): Slide {
+function standingSlide(b: YieldBundle, s: YieldStudy, paths: Path[], n: number, planOn?: number): Slide {
   const A = b.siteAreaSqm ?? 0, c = b.controls;
   const ex = existingSummary(b.existing ?? [])!;
   const standing = standingOf(b, s);
@@ -2097,7 +2209,7 @@ function standingSlide(b: YieldBundle, s: YieldStudy, paths: Path[], n: number):
   ], 9.6);
   const blocks = [zBlock('What stands', figs), ...pathBars(b, s, paths)];
   const fromMeshes = standingFromMeshes(b);
-  const figures = schemeFigures(b, s, { standing }, 'standing', standing.length ? `at its ${fromMeshes.height ? 'height read from the 3D meshes' : 'recorded height'}, among the neighbours` : 'no outline of what stands in this bundle', 'What stands');
+  const figures = schemeFigures(b, s, { standing }, 'standing', standing.length ? `at its ${fromMeshes.height ? 'height read from the 3D meshes' : 'recorded height'}, among the neighbours` : 'no outline of what stands in this bundle', 'What stands', !!planOn);
   const others = paths.filter((p) => p.y && p.sc.id !== 'rebuiltAsStands');
   const best = Math.max(...others.map((p) => p.y!.gba), 0);
   // the path that holds the most, to set what stands against: by name, and never "0 m²" where the LEP's own gives none
@@ -2115,7 +2227,7 @@ function standingSlide(b: YieldBundle, s: YieldStudy, paths: Path[], n: number):
     narrative, accent: inks().accent, legend: schemeLegend(b, s, undefined, standing.length > 0, figures.kerbs),
     sources: `What stands is read from ${fromMeshes.traced
       ? `Google's Photorealistic 3D Tiles (${meshCredits(b)}), its footprint traced and its height read from the meshes where the footprint sources (${footprintSources(b)}) had no building on the lot`
-      : `the recorded footprint${ex.count === 1 ? '' : 's'} (${footprintSources(b)})${fromMeshes.height ? ` and, the sources having no height, its height from Google's Photorealistic 3D Tiles (${meshCredits(b)})` : ' and heights'}`}, its floor area each footprint by its storeys${fromMeshes.height && !(b.existing ?? []).some((e) => e.storeys) ? `, the height at ${m1(ex.storeyM)} a storey${(b.existing ?? []).some((e) => e.kind) ? ` (the source calls it ${(b.existing ?? []).map((e) => e.kind).filter(Boolean).join(', ')})` : ', an apartment\'s, the source not saying what it is'}` : ''}: indicative, not a survey.${b.mesh?.heights ? ` The neighbours' heights the sources lacked are from the same meshes.` : ''}` };
+      : `the recorded footprint${ex.count === 1 ? '' : 's'} (${footprintSources(b)})${fromMeshes.height ? ` and, the sources having no height, its height from Google's Photorealistic 3D Tiles (${meshCredits(b)})` : ' and heights'}`}, its floor area each footprint by its storeys${fromMeshes.height && !(b.existing ?? []).some((e) => e.storeys) ? `, the height at ${m1(ex.storeyM)} a storey${(b.existing ?? []).some((e) => e.kind) ? ` (the source calls it ${(b.existing ?? []).map((e) => e.kind).filter(Boolean).join(', ')})` : ', an apartment\'s, the source not saying what it is'}` : ''}: indicative, not a survey.${b.mesh?.heights ? ` The neighbours' heights the sources lacked are from the same meshes.` : ''}${planOn ? ` Its plan is on page ${String(planOn).padStart(2, '0')}, with its shadow and its separations.` : ''}` };
 }
 
 /** The last spread: the assumptions on the left, the controls table in full on the right. */
@@ -2171,12 +2283,15 @@ function drawYieldDeck(b: YieldBundle, _meta: SheetMeta): DeckHtml {
   const s = yieldStudy(b);
   const paths = pathsOf(b, s);
   const slides: Slide[] = [overviewSlide(b, s, paths)];
-  const drawn = paths.filter(drawnPath);
-  // each path's spread; then a compliance sheet for each option that holds apartments to test; the controls and assumptions last
-  const tested = testedPaths(b, s, paths);
-  const last = drawn.length + 2 + tested.length;
-  drawn.forEach((p) => slides.push(p.y ? schemeSlide(b, s, p, slides.length + 1, last) : standingSlide(b, s, paths, slides.length + 1)));
-  tested.forEach((t, i) => slides.push(complianceSheet(b, s, t, slides.length + 1, last, i === 0)));
+  // each path's spread, and straight after it the two pages it is tested on (its shadow and separation, which is
+  // its plan, then its solar access) where it holds apartments to test; the controls and assumptions last
+  const order = deckOrder(b, s, paths);
+  let first = true;
+  for (const { p, page, test } of order.paths) {
+    const planOn = test ? page + 1 : undefined;
+    slides.push(p.y ? schemeSlide(b, s, p, slides.length + 1, order.last, planOn) : standingSlide(b, s, paths, slides.length + 1, planOn));
+    if (test) { slides.push(...complianceSheets(b, s, test, slides.length + 1, order.last, first)); first = false; }
+  }
   slides.push(controlsSlide(b, s, slides.length + 1));
   const cover = yieldCover(b, slides);
   const shell = (title: string, body: string) => `<!DOCTYPE html>
@@ -2271,7 +2386,7 @@ export function yieldJson(b: YieldBundle): string {
     parkingRates: s.parkingSet, standsToday: existingSummary(b.existing ?? []) && { ...existingSummary(b.existing ?? []), ...standingFromMeshes(b).height ? { heightFrom: 'Google Photorealistic 3D Tiles' } : {} },
     zones: b.zones, heightsFromMeshes: b.mesh,
     study: strip(s.base), affordableHousingBonus: strip(s.bonus), envelopeToHeight: strip(s.max), rebuiltAsStands: strip(s.retained),
-    lowMidRiseHousing: s.lmrY && { ...strip(s.lmrY), reading: s.lmr, ...(s.lmrLayout ? { complies: s.lmrLayout.complies, layout: s.lmrLayout.layout, layoutsRead: s.lmrLayout.tried, layoutsFound: s.lmrLayout.candidates, buildings: s.lmrLayout.buildings.map(({ ring: _r, ...bd }) => bd) } : {}) },
+    lowMidRiseHousing: s.lmrY && { ...strip(s.lmrY), reading: s.lmr, massing: 'the envelope, one volume' },
     reshapedToComply: s.reshaped && { ...strip(s.reshaped.y), complies: s.reshaped.complies, layout: s.reshaped.layout, layoutsRead: s.reshaped.tried, layoutsFound: s.reshaped.candidates,
       buildings: s.reshaped.buildings.map(({ ring: _r, ...bd }) => bd) },
     transportOrientedDevelopment: s.tod && { ...s.tod, alternative: s.tod.alternative && { ...s.tod.alternative, lga: undefined }, sentence: todSentence(s.tod), scheme: strip(s.todY) },

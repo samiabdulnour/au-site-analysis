@@ -61,7 +61,7 @@ const within = deck.slides.find((sl) => sl.id.endsWith('_within_controls'))!;
 check('the key names the footprint futures', (within.legend ?? []).some((e) => /a feasible footprint on each lot/.test(e.label)));
 const assumptions = deck.slides.find((sl) => sl.id.endsWith('_controls_and_assumptions'))!;
 check('the assumptions say how the futures are made, and count them', /largest feasible footprint/.test(assumptions.figureHtml) && /1 held as the capacity study reads them/.test(assumptions.figureHtml));
-check('the compliance sheet tests the separations built out', /built out/.test(deck.slides.find((sl) => sl.id.endsWith('_compliance'))?.figureHtml ?? ''));
+check('the shadow and separation page tests the separations built out', /built out/.test(deck.slides.find((sl) => sl.id.endsWith('_shadow_and_separation'))?.figureHtml ?? ''));
 
 // Without the capacity study nothing is held
 const free = yieldStudy({ ...bundle, capacity: undefined, context: bundle.context.map(({ capacity: _c, ...c }) => c) } as unknown as YieldBundle);
