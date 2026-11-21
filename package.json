@@ -8,7 +8,8 @@
     "serve": "tsx src/server.ts",
     "samples": "tsx src/samples.ts",
     "capacity": "tsx scripts/capacity_study.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "future": "tsx scripts/future_context.ts"
   },
   "dependencies": {
     "@turf/helpers": "^7.4.0",

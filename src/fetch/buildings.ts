@@ -12,7 +12,7 @@
 import { execFile } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { overpassQuery } from '../lib/http.js';
+import { overpassQuery, retryFetch } from '../lib/http.js';
 import { cachedJson, DAY_MS } from '../lib/cache.js';
 import { extentToLonLatBbox, lonLatToMercator, mercatorScaleFactor, ringCentroid, type Extent } from '../lib/geo.js';
 import { pointInRing } from './planning.js';
@@ -109,12 +109,50 @@ const num = (v: unknown): number | undefined => {
   return Number.isFinite(n) && n > 0 ? n : undefined;
 };
 
+/** A window's side, in metres, past which OpenStreetMap's own API is not asked: its map call is the editors', for a neighbourhood and not a district. */
+const OSM_API_MAX_M = 1500;
+
+/**
+ * OpenStreetMap's own API, for when no Overpass mirror answers (they refuse
+ * some cloud ranges outright, every mirror at once): every element in the
+ * box, its buildings shaped as Overpass's `out geom` gives them. Asked only
+ * for a window a kilometre or so across, once, and cached with the rest.
+ */
+async function osmApiBuildings(bb: { south: number; west: number; north: number; east: number }): Promise<any[]> {
+  const res = await retryFetch(`https://api.openstreetmap.org/api/0.6/map.json?bbox=${bb.west},${bb.south},${bb.east},${bb.north}`, {}, { attempts: 2, timeoutMs: 90_000, label: 'OSM API' });
+  if (!res.ok) throw new Error(`the OpenStreetMap API answered ${res.status}`);
+  const data = await res.json() as { elements?: any[] };
+  const nodes = new Map<number, { lon: number; lat: number }>();
+  const ways = new Map<number, any>();
+  for (const el of data.elements ?? []) {
+    if (el.type === 'node') nodes.set(el.id, { lon: el.lon, lat: el.lat });
+    else if (el.type === 'way') ways.set(el.id, el);
+  }
+  const geometry = (way: any) => (way?.nodes ?? []).map((id: number) => nodes.get(id)).filter(Boolean);
+  const out: any[] = [];
+  for (const el of data.elements ?? []) {
+    if (el.type === 'way' && el.tags?.building) out.push({ ...el, geometry: geometry(el) });
+    else if (el.type === 'relation' && el.tags?.building && el.tags?.type === 'multipolygon') {
+      out.push({ ...el, members: (el.members ?? []).map((m: any) => (m.type === 'way' ? { ...m, geometry: geometry(ways.get(m.ref)) } : m)) });
+    }
+  }
+  return out;
+}
+
 async function fromOsm(extent: Extent, log: (m: string) => void): Promise<BuildingsData> {
   const bb = extentToLonLatBbox(extent);
   const box = `${bb.south},${bb.west},${bb.north},${bb.east}`;
-  const data = await overpassQuery(`[out:json][timeout:90];(way["building"](${box});relation["building"]["type"="multipolygon"](${box}););out geom;`, { log });
+  let elements: any[];
+  try {
+    elements = (await overpassQuery(`[out:json][timeout:90];(way["building"](${box});relation["building"]["type"="multipolygon"](${box}););out geom;`, { log })).elements ?? [];
+  } catch (e: any) {
+    const sideM = Math.max(extent.xmax - extent.xmin, extent.ymax - extent.ymin) / mercatorScaleFactor((bb.south + bb.north) / 2);
+    if (sideM > OSM_API_MAX_M) throw e;
+    log(`  buildings: no Overpass mirror answered; asking OpenStreetMap's own API for the window`);
+    elements = await osmApiBuildings(bb);
+  }
   const buildings: Building[] = [];
-  for (const el of data.elements ?? []) {
+  for (const el of elements) {
     const tags = el.tags ?? {};
     const heightM = num(tags.height) ?? (num(tags['building:height']));
     const floors = num(tags['building:levels']);
