@@ -896,6 +896,23 @@ export function deckLook(): DeckLook {
   };
 }
 
+/**
+ * The zones as Heron's context analysis maps them, for the one page of its black and white report that is a zoning
+ * map (Z. 2026-11: "the hatches there are quite confusing. Use the same mapping method, colours and style, which you
+ * use in context analysis for Heron"). Eleven hatches in one black ink, each a zone, over a cadastre of fine lines,
+ * did not read: the lots' lines and the hatches' ran into one another. So that page takes the context sheet's own
+ * method: its land-use tints (the residential zones in warm pinks deepening with density, the centres in tans, open
+ * space in green) at its opacities, over the photograph in grey under its veil, the cadastre in white, the names in
+ * white, its heritage ink. Everything else of the look (the black accent, the site's heavy line) stays the report's.
+ */
+export function heronContextLook(base: DeckLook): DeckLook {
+  const h = byId.heron;
+  return {
+    ...base, zones: 'categories', categories: h.categories, ground: 'aerial', veil: h.veil ?? 0.36, tintScale: h.tintScale ?? 0.55,
+    lots: 'white', streetInkAerial: h.streetInk, heritage: h.heritage, heritageArea: h.heritage, technique: 'tone',
+  };
+}
+
 export type SheetKind = 'context' | 'site' | 'summary' | 'yield' | 'slides';
 
 /** The theme a sheet of this kind is drawn in: a template for the context sheet, a site theme for the site sheet, a deck style for the yield and the site report, none ('') for the summary. */

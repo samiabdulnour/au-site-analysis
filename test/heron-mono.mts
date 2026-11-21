@@ -17,7 +17,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { deflateSync, crc32 } from 'node:zlib';
 import {
-  withTemplate, templateFor, deckLook, deckFamilies, siteTheme, tpl, TEMPLATES, HERON_ACCENT, HERON_SUN, HERON_MONO, HERON_PLAIN, type Category,
+  withTemplate, templateFor, deckLook, deckFamilies, heronContextLook, siteTheme, tpl, TEMPLATES, HERON_ACCENT, HERON_SUN, HERON_MONO, HERON_PLAIN, type Category,
 } from '../src/render/template.js';
 import { siteMark, siteSwatch, siteOutlineRings, type BaseData } from '../src/render/minimap.js';
 import { deckCss } from '../src/render/slides.js';
@@ -99,6 +99,19 @@ check('the site report draws on the plain template, black and white alone', temp
   check('the site report keeps its photographs\' colours', !asksGrey('slides'));
   check('the yield still prints its photographs in grey', asksGrey('yield'));
   check('the colour styles never asked for grey', !/--photos:\s*grey/.test(withTemplate(templateFor('slides', 'canary'), () => deckCss())));
+  // the one zoning map of the report is mapped as Heron's context analysis maps its land use (Z. 2026-11: "the hatches
+  // there are quite confusing; use the same mapping method, colours and style, which you use in context analysis for
+  // Heron"): that sheet's categories and tints, over the photograph in grey under its veil, the cadastre white
+  {
+    const ctx = TEMPLATES.find((x) => x.id === 'heron')!;
+    const zl = withTemplate(templateFor('slides', 'heron'), () => heronContextLook(deckLook()));
+    check('the report\'s zoning look is the context sheet\'s: its categories, on its aerial under its veil', zl.categories === ctx.categories && zl.ground === 'aerial' && zl.veil === ctx.veil && zl.lots === 'white' && zl.technique === 'tone');
+    check('and nothing else of the report\'s look: the accent black, the style Heron', zl.accent === '#1a1a1a' && zl.id === 'heron');
+    const r2 = withTemplate(templateFor('slides', 'heron'), () => categoryFill(zl.categories.find((c) => c.id === 'r2')!, zl.ground, zl.tintScale));
+    const ctxR2 = ctx.categories.find((c) => c.id === 'r2')!;
+    check('a zone is its context colour at its context strength, no hatch', r2.bg === ctxR2.fill && r2.kind === undefined && Math.abs((r2.opacity ?? 1) - ctxR2.opacity * (ctx.tintScale ?? 0.55)) < 1e-9, JSON.stringify(r2));
+    check('the report\'s own categories stay black and white for every other page', withTemplate(templateFor('slides', 'heron'), () => deckLook().categories.every((c) => new Set(rgb(c.fill)).size === 1)));
+  }
   const sw = withTemplate(templateFor('slides', 'heron'), () => siteSwatch());
   check('the key\'s site is the same line, not a filled square', /fill="none"/.test(sw) && /stroke-dasharray/.test(sw));
 }

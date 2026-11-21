@@ -1262,6 +1262,19 @@ A1 site sheet keep `HERON_MONO` and its one colour. What follows from it:
   keys show the same line in a box (`siteSwatch`), and the site plan and the
   condition page take the same boundary. The region's ring and Country's
   dot are black.
+- *The zoning map is the context analysis's*: the planning overview, the one
+  page that is a zoning map, takes the mapping method of Heron's context
+  sheet ("the hatches there are quite confusing; use the same mapping
+  method, colours and style, which you use in context analysis for Heron"):
+  that sheet's land-use tints at its opacities (the residential zones in
+  warm pinks deepening with density, the centres in tans, open space in
+  green) over the photograph in grey under its veil, the cadastre in white,
+  its heritage ink (`heronContextLook()` in `src/render/template.ts`). Eleven
+  hatches in one black ink over the cadastre's fine lines did not read
+  apart. The zones' bars and the key take the same tints; the zone codes and
+  the street names are black, the names on the streets' white strips; the
+  site stays the heavy black line. Every other page keeps the report's own
+  black and white categories.
 - *The hatches end on a line*: the streets' casing is a firm dark grey and
   heavier (`greyBase`, `overLayers`), so every block has a contour and a
   zone's hatch stops at it; the cadastre is a grey firm enough to read with
