@@ -1374,7 +1374,9 @@ The 3D views' trees and people follow the style (`lookOf` in
       about half the people, a top now and then, the book or the bag in a hand.
     - Clothes: a loose top with rounded shoulders and full sleeves gathered at
       the wrist; wide trousers flaring to a curved hem, slim ones, a skirt or
-      shorts over slender legs; flat shoes.
+      shorts over slender legs; flat shoes. Each sleeve is joined to the body
+      at the shoulder (`sleeve`): no line crosses it, the body's outline runs
+      into the sleeve's, and the arm parts from the body at the armpit.
     - Poses: standing with the arms folded, a hand on a hip, both, in the
       pockets, waving, or at the sides; walking with the arms swinging, a book
       held up, or a bag on its strap.
@@ -1392,7 +1394,10 @@ The 3D views' trees and people follow the style (`lookOf` in
     near-black line, the windows and the wheels in outline, a pale orange patch
     on the road under each.
   - **Town:** a yellowish cream ground, as the references' paper, the streets
-    a shade lighter (`massingInks()`).
+    a shade lighter (`massingInks()`). The line down the middle of each street
+    is short dashes drawn in outline and laid on the road (`ROAD_DASH`: 1.7 m
+    long, 0.42 m wide, one every 4.2 m), where the other styles rule a dashed
+    line.
 - **People, Kingfisher:** flat figures after an illustrator's isometric people
   (`src/render/people.ts`):
   - bright tops, trousers or a dress, a face and its hair (short, long or in

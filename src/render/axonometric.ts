@@ -280,6 +280,8 @@ const FLAT_LINE: LineFigure = { fill: '#fcf9ee', line: '#23262c', ground: '#f9df
  * 2, there are fewer of them to suit: a third as many on the footpaths, a quarter as many groups in the parks.
  */
 export const LINE_FIGURE_SIZE = 1;
+/** The dashes down the middle of Flamingo's streets, metres: each drawn in outline, as the references' are. */
+const ROAD_DASH = { len: 1.7, w: 0.42, pitch: 4.2 };
 /** The line round a line figure's parts, metres in the scene whatever size the figure is drawn: a little finer than the vehicles'. */
 const LINE_FIGURE_PEN = 0.04;
 const PLAIN: AxoLook = { crown: 'disc', people: 'slip', crowd: false, greens: [], accents: [], columnar: 0, shadows: false };
@@ -506,7 +508,16 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   if (cw.polygons.length) {
     ground.push(`<path d="${cw.polygons.map((rings) => rings.map((rg) => poly(rg.map((p) => P(p, 0)))).join('')).join('')}" fill="${M.road}" fill-rule="evenodd" stroke="${mono ? G.kerb : M.kerb ?? inks.kerb}" stroke-width="${mono ? 0.15 : 0.2}" stroke-linejoin="round"/>`);
     if (line) ground.push(HOLE.road);
-    ground.push(`<path d="${cw.axes.map(({ axis }) => open(axis.map((p) => P(p, 0)))).join('')}" fill="none" stroke="${M.axis}" stroke-width="0.12" stroke-dasharray="1.4,1.1" opacity="0.85"/>`);
+    // (Flamingo's flat town: the line down each street as short dashes drawn in outline, laid on the road: each a
+    // slip ROAD_DASH.len m long and .w m wide in the streets' cream with the figures' line round it, one every .pitch m)
+    if (!mono && look.line) {
+      const d: string[] = [];
+      for (const { axis } of cw.axes) for (const { p, t } of alongLine(axis, ROAD_DASH.pitch, ROAD_DASH.pitch / 2)) {
+        const a = { x: t.x * ROAD_DASH.len / 2, y: t.y * ROAD_DASH.len / 2 }, b = { x: -t.y * ROAD_DASH.w / 2, y: t.x * ROAD_DASH.w / 2 };
+        d.push(poly([P({ x: p.x - a.x - b.x, y: p.y - a.y - b.y }, 0), P({ x: p.x + a.x - b.x, y: p.y + a.y - b.y }, 0), P({ x: p.x + a.x + b.x, y: p.y + a.y + b.y }, 0), P({ x: p.x - a.x + b.x, y: p.y - a.y + b.y }, 0)]));
+      }
+      ground.push(`<path data-road-dashes d="${d.join('')}" fill="${look.line.fill}" stroke="${look.line.line}" stroke-width="0.05" stroke-linejoin="round"/>`);
+    } else ground.push(`<path d="${cw.axes.map(({ axis }) => open(axis.map((p) => P(p, 0)))).join('')}" fill="none" stroke="${M.axis}" stroke-width="0.12" stroke-dasharray="1.4,1.1" opacity="0.85"/>`);
   }
   const SITE = inks.site;
   // (a line model's massing: the site a black dash-dot boundary on the ground, with no tint)

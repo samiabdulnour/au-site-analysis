@@ -122,6 +122,7 @@ for (const style of ['flamingo', 'kingfisher']) {
     check(`${style}: each crown's picture once, fewer than the trees`, pictures.length >= 2 && pictures.length < placed.length && new Set(pictures).size === pictures.length, `${pictures.length} pictures`);
   }
   check(`${style}: no plain discs left`, !svg.includes(`fill="${M.treeLight}"`));
+  if (style === 'kingfisher') check('kingfisher: its streets\' centre line a ruled dashed line', svg.includes('stroke-dasharray="1.4,1.1"') && !svg.includes('data-road-dashes'));
   if (style === 'kingfisher') check('kingfisher: the masterplan\'s ground and lilac-grey streets', svg.includes('fill="#f1f2e8"') && svg.includes('fill="#d9d7dc"') && svg.includes('stroke="#c4c1c6"'));
   // Kingfisher's vehicles have bodies and wheels (a wheel and its hub to each); Flamingo's are the same drawn vehicles
   // in line alone: every part white in the one dark line, the wheels in outline, a pale patch on the road under each
@@ -133,6 +134,11 @@ for (const style of ['flamingo', 'kingfisher']) {
     check('flamingo: its vehicles in line alone, the cream of its streets in one dark line', vehicles > 0 && wheels === 0 && [...fills].every((f) => ['#fcf9ee', '#f9dfae', 'none'].includes(f)) && strokes.size === 1 && strokes.has('#23262c'), `${vehicles} vehicles; fills ${[...fills].join(' ')}; strokes ${[...strokes].join(' ')}`);
     // the bars under its trees on the paper and the buildings' shadows in the same pale orange; none of the soft blue shadow
     check('flamingo: flat shadows, the pale orange of the bars', /<g data-cast-shadows opacity="0\.7" fill="#f9dfae">/.test(svg) && /<rect data-tree-bar [^>]*fill="#f9dfae"\/>/.test(svg));
+    // the line down each street: short dashes drawn in outline and laid on the road (four corners each), in the streets'
+    // cream with the figures' line, where the other styles rule a dashed line
+    const dashes = /<path data-road-dashes d="([^"]+)" fill="#fcf9ee" stroke="#23262c" stroke-width="0\.05" stroke-linejoin="round"\/>/.exec(svg);
+    const slips = dashes ? dashes[1].split('Z').filter(Boolean) : [];
+    check('flamingo: the streets\' centre line as outlined dashes laid on the road', slips.length >= 20 && slips.every((d) => d.split('L').length === 4) && !svg.includes('stroke-dasharray="1.4,1.1"'), `${slips.length} dashes`);
     check('flamingo: a cream ground, its streets a shade lighter', svg.includes('fill="#f9f5e4"') && svg.includes('fill="#fcf9ee"') && M.ground === '#f9f5e4' && M.road === '#fcf9ee');
     check('flamingo: a pale patch on the road under each vehicle', (svg.match(/data-vehicle-patch/g) ?? []).length === vehicles);
   } else check(`${style}: vehicles on wheels, two or more each`, vehicles > 0 && wheels >= 2 * vehicles, `${vehicles} vehicles, ${wheels} wheels`);
@@ -161,6 +167,10 @@ for (const style of ['flamingo', 'kingfisher']) {
     const ACCENTS = ['#f6c544', '#ea8a3c', '#b3cdea', '#4a9d9c'];
     check('flamingo: its people in the streets\' cream and one dark line, some clothes in a few flat colours', [...inks].every((c) => ['#fcf9ee', '#23262c', '#f9dfae', 'none', ...ACCENTS].includes(c)) && ACCENTS.filter((c) => inks.has(c)).length >= 2 && inks.has('#fcf9ee'), [...inks].join(' '));
     const sizes = new Set([...svg.matchAll(/<use href="#axo-tr-[pr]\d+" transform="translate\([^)]+\) scale\((-?[\d.]+),([\d.]+)\)"/g)].map((m) => `${Math.abs(Number(m[1]))},${m[2]}`));
+    // a sleeve is joined to the body at the shoulder: filled without a line of its own, the line round it an open one
+    // (from the shoulder's top down the outside, round the cuff, up the inside to the armpit), so none crosses the shoulder
+    const joinedSleeves = figs.filter((m) => m[2] === 'person').every((m) => /<path d="M[^"]+Z" fill="#[0-9a-f]{6}"\/><path d="M[^"Z]+" fill="none" stroke="#23262c"/.test(m[3]));
+    check('flamingo: its people\'s sleeves joined to the body at the shoulder', joinedSleeves);
     check('flamingo: its people at the town\'s own scale', sizes.size === 1 && sizes.has(`${LINE_FIGURE_SIZE},${LINE_FIGURE_SIZE}`) && LINE_FIGURE_SIZE === 1, [...sizes].join(' '));
     // at that scale the line round each part is 0.04 m in the scene, so a figure a millimetre tall on paper still reads
     const pens = new Set(figs.flatMap((m) => [...m[3].matchAll(/stroke-width="([\d.]+)"/g)].map((x) => Number(x[1]))));

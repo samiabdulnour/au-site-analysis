@@ -128,18 +128,27 @@ const LINE_M = 0.02;
 type Pt = [number, number];
 const n = (v: number) => (Math.round(v * 1000) / 1000).toString();
 const straight = (p: Pt[]) => `${p.map(([x, y], k) => `${k ? 'L' : 'M'}${n(x)},${n(y)}`).join('')}Z`;
-/** A smooth closed curve through the points (Catmull-Rom, as cubic Béziers). */
-function smooth(p: Pt[]): string {
+/** A smooth closed curve through the points (Catmull-Rom), as its cubic Béziers in turn: `segs[k]` runs from point k to point k + 1. */
+type Seg = { a: Pt; c1: Pt; c2: Pt; b: Pt };
+function curve(p: Pt[]): Seg[] {
   const m = p.length, at = (k: number) => p[((k % m) + m) % m];
-  let d = `M${n(p[0][0])},${n(p[0][1])}`;
-  for (let k = 0; k < m; k++) {
+  return p.map((_, k) => {
     const a = at(k - 1), b = at(k), c = at(k + 1), e = at(k + 2);
-    d += `C${n(b[0] + (c[0] - a[0]) / 6)},${n(b[1] + (c[1] - a[1]) / 6)} ${n(c[0] - (e[0] - b[0]) / 6)},${n(c[1] - (e[1] - b[1]) / 6)} ${n(c[0])},${n(c[1])}`;
-  }
-  return `${d}Z`;
+    return { a: b, c1: [b[0] + (c[0] - a[0]) / 6, b[1] + (c[1] - a[1]) / 6], c2: [c[0] - (e[0] - b[0]) / 6, c[1] - (e[1] - b[1]) / 6], b: c };
+  });
 }
-/** A limb's outline: through the points, as wide at each as `w` says, its ends rounded; a smooth closed curve. */
-function limb(p: Pt[], w: number[]): string {
+/** `count` of the curve's Béziers from the `from`th, round the curve: all of them, closed, unless told. */
+function trace(segs: Seg[], from = 0, count = segs.length, close = true): string {
+  let d = `M${n(segs[from % segs.length].a[0])},${n(segs[from % segs.length].a[1])}`;
+  for (let k = 0; k < count; k++) { const g = segs[(from + k) % segs.length]; d += `C${n(g.c1[0])},${n(g.c1[1])} ${n(g.c2[0])},${n(g.c2[1])} ${n(g.b[0])},${n(g.b[1])}`; }
+  return close ? `${d}Z` : d;
+}
+const smooth = (p: Pt[]): string => trace(curve(p));
+/**
+ * A limb's outline as its points in turn: through the limb's points, as wide at each as `w` says, down one side,
+ * round its end, up the other, over its start.
+ */
+function limbPoints(p: Pt[], w: number[]): Pt[] {
   const unit = (a: Pt, b: Pt): Pt => { const dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy) || 1; return [dx / l, dy / l]; };
   const L: Pt[] = [], R: Pt[] = [], last = p.length - 1;
   p.forEach((q, k) => {
@@ -148,7 +157,22 @@ function limb(p: Pt[], w: number[]): string {
     R.push([q[0] + t[1] * w[k] / 2, q[1] - t[0] * w[k] / 2]);
   });
   const t0 = unit(p[0], p[1]), t1 = unit(p[last - 1], p[last]);
-  return smooth([...L, [p[last][0] + t1[0] * w[last] * 0.5, p[last][1] + t1[1] * w[last] * 0.5], ...R.reverse(), [p[0][0] - t0[0] * w[0] * 0.5, p[0][1] - t0[1] * w[0] * 0.5]]);
+  return [...L, [p[last][0] + t1[0] * w[last] * 0.5, p[last][1] + t1[1] * w[last] * 0.5], ...R.reverse(), [p[0][0] - t0[0] * w[0] * 0.5, p[0][1] - t0[1] * w[0] * 0.5]];
+}
+/** A limb's outline, its ends rounded: a smooth closed curve. */
+const limb = (p: Pt[], w: number[]): string => smooth(limbPoints(p, w));
+/**
+ * A sleeve joined to the body at the shoulder, so the two read as one garment: its whole shape to fill, and the line
+ * to draw round it, which runs from the top of the shoulder down the outside of the arm, round the cuff and back up
+ * the inside as far as the armpit (the limb's second point), and stops there. No line crosses the shoulder: the
+ * body's own outline runs into the sleeve's. `body` is a point in the middle of the body, to tell the inside by.
+ */
+function sleeve(p: Pt[], w: number[], body: Pt): { fill: string; line: string } {
+  const o = limbPoints(p, w), segs = curve(o), m = segs.length, far = (q: Pt) => Math.hypot(q[0] - body[0], q[1] - body[1]);
+  // the outline goes down the limb's left, round its end, up its right and over its start: whichever of the two
+  // sides starts nearer the body is the inside, and its first stretch and the stretch over the start are left out
+  const leftInside = far(o[0]) < far(o[2 * p.length - 1]);
+  return { fill: trace(segs), line: trace(segs, leftInside ? 1 : m - 1, m - 2, false) };
 }
 
 const WALK_ARMS = ['swing', 'book', 'swing', 'bag', 'swing'] as const, STAND_ARMS = ['folded', 'hip', 'wave', 'down', 'hips', 'pockets'] as const;
@@ -173,11 +197,18 @@ function linePerson(i: number, f: LineFigure, t = LINE_M): string {
   const lean = walking ? 0.03 : 0, hx = lean * 1.7 + 0.01, hy = -1.705;
   const S = (side: number): Pt => [side * 0.158 + lean, -1.505];
   // an arm in its sleeve: full toward the wrist and gathered there, the hand beyond the cuff
+  // (its sleeve joined to the body at the shoulder: no line across it, the arm parting from the body at the armpit)
+  const joined = (pts: Pt[], w: number[]) => {
+    const sl = sleeve(pts, w, [lean, -1.33]);
+    out.push(`<path d="${sl.fill}" fill="${upper}"/>`);
+    pen(sl.line);
+  };
+  const pit = (sh: Pt, elbow: Pt): Pt => [sh[0] + (elbow[0] - sh[0]) * 0.34, sh[1] + (elbow[1] - sh[1]) * 0.34];
   const arm = (side: number, elbow: Pt, wrist: Pt, hands = true) => {
     const sh = S(side), fore: Pt = [elbow[0] + (wrist[0] - elbow[0]) * 0.72, elbow[1] + (wrist[1] - elbow[1]) * 0.72];
     const dx = wrist[0] - elbow[0], dy = wrist[1] - elbow[1], l = Math.hypot(dx, dy) || 1;
     if (hands) oval(wrist[0] + (dx / l) * 0.05, wrist[1] + (dy / l) * 0.05, 0.026, 0.036, f.fill, (Math.atan2(dy, dx) * 180) / Math.PI - 90);
-    shape(limb([sh, elbow, fore, wrist], [0.09, 0.106, 0.12, 0.046]), upper);
+    joined([sh, pit(sh, elbow), elbow, fore, wrist], [0.09, 0.096, 0.106, 0.12, 0.046]);
   };
   // the feet: where each leg ends; the hips they hang from, at a high waist
   const feet: Pt[] = walking ? [[-0.25, -0.1], [0.29, -0.045]] : [[-0.105, -0.045], [0.105, -0.045]];
@@ -230,8 +261,8 @@ function linePerson(i: number, f: LineFigure, t = LINE_M): string {
   } else if (arms === 'folded') {
     // the arms folded: each forearm across the chest, a hand showing at the other elbow
     oval(0.13, -1.27, 0.026, 0.036, f.fill, 70);
-    shape(limb([S(1), [0.21, -1.26], [-0.08, -1.2]], [0.088, 0.1, 0.07]), upper);
-    shape(limb([S(-1), [-0.21, -1.25], [0.08, -1.265]], [0.088, 0.1, 0.07]), upper);
+    joined([S(1), pit(S(1), [0.21, -1.26]), [0.21, -1.26], [-0.08, -1.2]], [0.09, 0.096, 0.1, 0.07]);
+    joined([S(-1), pit(S(-1), [-0.21, -1.25]), [-0.21, -1.25], [0.08, -1.265]], [0.09, 0.096, 0.1, 0.07]);
   } else if (arms === 'hip') { arm(-1, [-0.2, -1.28], [-0.205, -1.05]); arm(1, [0.34, -1.26], [0.17, -1.07]); }
   else if (arms === 'hips') { arm(-1, [-0.34, -1.26], [-0.17, -1.07]); arm(1, [0.34, -1.26], [0.17, -1.07]); }
   else if (arms === 'pockets') { arm(-1, [-0.24, -1.26], [-0.15, -1.03], false); arm(1, [0.24, -1.26], [0.15, -1.03], false); }
@@ -275,7 +306,9 @@ function lineRider(i: number, f: LineFigure, t = LINE_M): string {
   const foot: Pt = up ? [0.09, -0.33] : [0.0, -0.2];
   shape(limb([hip, [0.18, -0.63], foot], [0.115, 0.095, 0.07]));
   shape(`M${n(foot[0] - 0.05)},${n(foot[1] - 0.02)}L${n(foot[0] + 0.14)},${n(foot[1] + 0.0)}L${n(foot[0] + 0.14)},${n(foot[1] + 0.05)}L${n(foot[0] - 0.05)},${n(foot[1] + 0.05)}Z`);
-  shape(limb([[shoulder[0], shoulder[1] + 0.03], [0.31, -1.17], grip], [0.078, 0.066, 0.054]));
+  // the arm, its sleeve joined to the body at the shoulder
+  const sh: Pt = [shoulder[0], shoulder[1] + 0.03], sl = sleeve([sh, [sh[0] + 0.05, sh[1] + 0.09], [0.31, -1.17], grip], [0.082, 0.08, 0.066, 0.054], [0.02, -1.2]);
+  out.push(`<path d="${sl.fill}" fill="${f.fill}"/><path d="${sl.line}" fill="none" stroke="${f.line}" stroke-width="${t}" stroke-linecap="round" stroke-linejoin="round"/>`);
   out.push(`<ellipse cx="${n(grip[0])}" cy="${n(grip[1])}" rx="0.034" ry="0.036" fill="${f.fill}" stroke="${f.line}" stroke-width="${t}"/>`);
   // the neck, the head, a helmet
   shape(straight([[0.2, -1.47], [0.26, -1.49], [0.29, -1.58], [0.22, -1.58]]));
