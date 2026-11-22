@@ -2,9 +2,14 @@
  *
  * A crown painted: solid in the middle, clear at its corners, a cloud's edge darker than its fill, a canopy a plain
  * mass with the town's contour round it and its wood showing under it and no form squat, the same picture for the same
- * arguments, a pixel more or less to the radius as asked. Flamingo draws cloud crowns casting shadows and Kingfisher canopies without, on its
+ * arguments, a pixel more or less to the radius as asked. Kingfisher draws canopies without shadows on its
  * masterplan's ground and lilac-grey streets, each in its own green, each picture once in the drawing however many
- * trees take it; the painted people, each picture once, and more of them than the plain look, a crowd in the park;
+ * trees take it; the painted people, each picture once, and more of them than the plain look, a crowd in the park.
+ * Flamingo draws an illustrator's flat town on a cream ground: flat trees in vector (a few plain shapes in its teals,
+ * each once in the defs, a trunk's line and a bar on the ground to each, no picture and no shadow), its people and its
+ * traffic in line, the cream of its streets with one dark line and a pale orange bar under them; the people in vector
+ * at the town's own scale, their hair dark and some of their clothes in a few flat colours; a few trees left in paper;
+ * flat shadows.
  * Canary and a white model keep the plain discs and slips; Heron draws a line model, white in black outline.
  * Nothing here asks a network.
  *
@@ -12,7 +17,7 @@
  */
 
 import { crownPicture } from '../src/render/crowns.js';
-import { drawAxonometric, frameReachM, type AxoScene } from '../src/render/axonometric.js';
+import { drawAxonometric, wallHatchPitch, frameReachM, LINE_FIGURE_SIZE, type AxoScene } from '../src/render/axonometric.js';
 import { withTemplate, templateFor } from '../src/render/template.js';
 import { massingInks } from '../src/render/atlasKit.js';
 import { decodePng } from '../src/lib/png.js';
@@ -90,17 +95,53 @@ const scene = (mono = false): AxoScene => ({
 const people = (svg: string) => (svg.match(/<use href="#axo-tr-[pr]\d+"/g) ?? []).length;
 const draw = (style: string, mono = false) => withTemplate(templateFor('slides', style), () => ({ svg: drawAxonometric(scene(mono), { x: 0, y: 0, w: 400, h: 280 }, 'tr'), M: massingInks() }));
 
+/** The opaque pixels of each picture a pattern finds in a drawing: for reading what a painted figure is inked in. */
+const picturesOf = (svg: string, re: RegExp) => [...svg.matchAll(re)].map((m) => decodePng(Buffer.from(m[1], 'base64'))!);
 for (const style of ['flamingo', 'kingfisher']) {
   const { svg, M } = draw(style);
+  const flat = style === 'flamingo';
   const pictures = svg.match(/<image id="axo-tr-t\d+" href="data:image\/png/g) ?? [];
   const placed = svg.match(/<use href="#axo-tr-t\d+"/g) ?? [];
-  check(`${style}: every tree a placed crown`, placed.length === 40, String(placed.length));
-  check(`${style}: each crown's picture once, fewer than the trees`, pictures.length >= 2 && pictures.length < placed.length && new Set(pictures).size === pictures.length, `${pictures.length} pictures`);
+  if (flat) {
+    // Flamingo's trees: flat shapes in vector, each form in each teal once in the defs and placed at every tree
+    // (a few are left in paper: the streets' cream with the figures' line round the crown, so `data-paper`)
+    const all = [...svg.matchAll(/<g id="(axo-tr-f\d+)" data-flat-crown="(\w+)"( data-paper)?>(?:<path d="[^"]+" fill="none" stroke="#[0-9a-f]{6}" stroke-width="[\d.]+" stroke-linejoin="round"\/>)?<path d="[^"]+" fill="(#[0-9a-f]{6})"\/>/g)];
+    const stamps = all.filter((m) => !m[3]).map((m) => [m[0], m[1], m[2], m[4]]), papers = all.filter((m) => m[3]);
+    check('flamingo: a tree left in paper is the streets\' cream in the figures\' line', papers.every((m) => m[4] === '#fcf9ee' && m[0].includes('stroke="#23262c"')) && papers.length <= all.length / 2, `${papers.length} of ${all.length}`);
+    const used = svg.match(/<use href="#axo-tr-f\d+"/g) ?? [];
+    check('flamingo: every tree a placed flat crown', used.length === 40 && placed.length === 0 && pictures.length === 0, `${used.length} flat, ${placed.length} painted`);
+    check('flamingo: each form once in the defs, fewer than the trees', stamps.length >= 4 && all.length < used.length && new Set(all.map((m) => m[1])).size === all.length, `${all.length} stamps`);
+    check('flamingo: several forms among them', new Set(stamps.map((m) => m[2])).size >= 4, [...new Set(stamps.map((m) => m[2]))].join(' '));
+    check('flamingo: in its teals, flat: no outline round a crown', stamps.every((m) => ['#167d7f', '#0b5f66', '#5fa59a'].includes(m[3])) && !/data-flat-crown="\w+"><path d="[^"]+" fill="#[0-9a-f]{6}" stroke=/.test(svg), [...new Set(stamps.map((m) => m[3]))].join(' '));
+    // a bar on the ground at each tree's foot and a trunk's line up into its crown; a bush sits on the ground with neither
+    const bars = (svg.match(/<rect data-tree-bar /g) ?? []).length, bushes = (svg.match(/data-flat-crown="bush"/g) ?? []).length;
+    const trunks = (svg.match(/<\/?rect data-tree-bar [^>]*\/><line /g) ?? []).length;
+    check('flamingo: a bar at each tree\'s foot and its trunk\'s line', bars === trunks && bars >= 40 - 12 && bars <= 40 && (bushes > 0 || bars === 40), `${bars} bars, ${trunks} trunks`);
+  } else {
+    check(`${style}: every tree a placed crown`, placed.length === 40, String(placed.length));
+    check(`${style}: each crown's picture once, fewer than the trees`, pictures.length >= 2 && pictures.length < placed.length && new Set(pictures).size === pictures.length, `${pictures.length} pictures`);
+  }
   check(`${style}: no plain discs left`, !svg.includes(`fill="${M.treeLight}"`));
+  if (style === 'kingfisher') check('kingfisher: its streets\' centre line a ruled dashed line', svg.includes('stroke-dasharray="1.4,1.1"') && !svg.includes('data-road-dashes'));
   if (style === 'kingfisher') check('kingfisher: the masterplan\'s ground and lilac-grey streets', svg.includes('fill="#f1f2e8"') && svg.includes('fill="#d9d7dc"') && svg.includes('stroke="#c4c1c6"'));
-  // Kingfisher's vehicles have bodies and wheels (a wheel and its hub to each); Flamingo's are its blocks
+  // Kingfisher's vehicles have bodies and wheels (a wheel and its hub to each); Flamingo's are the same drawn vehicles
+  // in line alone: every part white in the one dark line, the wheels in outline, a pale patch on the road under each
   const vehicles = (svg.match(/data-vehicle="/g) ?? []).length, wheels = (svg.match(/fill="#363940"/g) ?? []).length;
-  check(`${style}: ${style === 'kingfisher' ? 'vehicles on wheels, two or more each' : 'its block vehicles, no wheels'}`, vehicles > 0 && (style === 'kingfisher' ? wheels >= 2 * vehicles : wheels === 0), `${vehicles} vehicles, ${wheels} wheels`);
+  if (flat) {
+    const parts = [...svg.matchAll(/<g data-vehicle="\w+">(.*?)<\/g>/g)].map((m) => m[1]);
+    const fills = new Set(parts.flatMap((p2) => [...p2.matchAll(/fill="(#[0-9a-f]{6}|none)"/g)].map((m) => m[1])));
+    const strokes = new Set(parts.flatMap((p2) => [...p2.matchAll(/stroke="(#[0-9a-f]{6})"/g)].map((m) => m[1])));
+    check('flamingo: its vehicles in line alone, the cream of its streets in one dark line', vehicles > 0 && wheels === 0 && [...fills].every((f) => ['#fcf9ee', '#f9dfae', 'none'].includes(f)) && strokes.size === 1 && strokes.has('#23262c'), `${vehicles} vehicles; fills ${[...fills].join(' ')}; strokes ${[...strokes].join(' ')}`);
+    // the bars under its trees on the paper and the buildings' shadows in the same pale orange; none of the soft blue shadow
+    check('flamingo: flat shadows, the pale orange of the bars', /<g data-cast-shadows opacity="0\.7" fill="#f9dfae">/.test(svg) && /<rect data-tree-bar [^>]*fill="#f9dfae"\/>/.test(svg));
+    // the line down each street: short dashes drawn in outline and laid on the road (four corners each), in the streets'
+    // cream with the figures' line, where the other styles rule a dashed line
+    const dashes = /<path data-road-dashes d="([^"]+)" fill="#fcf9ee" stroke="#23262c" stroke-width="0\.05" stroke-linejoin="round"\/>/.exec(svg);
+    const slips = dashes ? dashes[1].split('Z').filter(Boolean) : [];
+    check('flamingo: the streets\' centre line as outlined dashes laid on the road', slips.length >= 20 && slips.every((d) => d.split('L').length === 4) && !svg.includes('stroke-dasharray="1.4,1.1"'), `${slips.length} dashes`);
+    check('flamingo: a cream ground, its streets a shade lighter', svg.includes('fill="#f9f5e4"') && svg.includes('fill="#fcf9ee"') && M.ground === '#f9f5e4' && M.road === '#fcf9ee');
+    check('flamingo: a pale patch on the road under each vehicle', (svg.match(/data-vehicle-patch/g) ?? []).length === vehicles);
+  } else check(`${style}: vehicles on wheels, two or more each`, vehicles > 0 && wheels >= 2 * vehicles, `${vehicles} vehicles, ${wheels} wheels`);
   // every crown in the style's own green: its commonest solid colour of the hue of massingInks().tree
   // (Kingfisher's soft yellow-green, for about one tree in five, as well)
   const wants = [hue(rgbOf(M.tree)), ...(style === 'kingfisher' ? [hue(rgbOf('#bccd84'))] : [])], off: string[] = [];
@@ -112,19 +153,53 @@ for (const style of ['flamingo', 'kingfisher']) {
   }
   check(`${style}: every crown in the style's own green (${M.tree}${style === 'kingfisher' ? ', or its yellow-green' : ''})`, off.length === 0, off.slice(0, 3).join(' '));
   const shadows = (svg.match(/<image data-shadows href="data:image\/png/g) ?? []).length;
-  check(`${style}: ${style === 'flamingo' ? 'the trees\' shadows on the ground, one picture' : 'no shadows under the canopies'}`, shadows === (style === 'flamingo' ? 1 : 0), String(shadows));
+  check(`${style}: no shadows under the ${flat ? 'flat trees' : 'canopies'}`, shadows === 0, String(shadows));
   const riders = (svg.match(/<use href="#axo-tr-r\d+"/g) ?? []).length;
-  check(`${style}: the cyclists painted as the people are, on their bicycles`, riders > 0 && !svg.includes('stroke-width="0.21" stroke-linecap="round"'), `${riders} riders`);
-  const faces = svg.match(/<image id="axo-tr-p\d+" href="data:image\/png/g) ?? [];
-  check(`${style}: the painted people, each picture once`, people(svg) >= 20 && faces.length >= 3 && new Set(faces).size === faces.length, `${people(svg)} people, ${faces.length} pictures`);
+  check(`${style}: the cyclists drawn as the people are, on their bicycles`, riders > 0 && !svg.includes('stroke-width="0.21" stroke-linecap="round"'), `${riders} riders`);
+  if (flat) {
+    // Flamingo's people in line alone and in vector: each figure once in the defs, in the cream of its streets with the
+    // one dark line and a pale patch under it, no colour and no picture; placed well over life size (1.7 times)
+    const figs = [...svg.matchAll(/<g id="(axo-tr-[pr]\d+)" data-line-figure="(person|rider)">(.*?)<\/g>/g)];
+    const inks = new Set(figs.flatMap((m) => [...m[3].matchAll(/(?:fill|stroke)="(#[0-9a-f]{6}|none)"/g)].map((x) => x[1])));
+    check('flamingo: its people in line alone, each figure once, in vector', people(svg) >= 20 && figs.filter((m) => m[2] === 'person').length >= 3 && figs.some((m) => m[2] === 'rider') && new Set(figs.map((m) => m[1])).size === figs.length && !/<image id="axo-tr-[pr]\d+"/.test(svg), `${people(svg)} people, ${figs.length} figures`);
+    // in line: the streets' cream, the dark line (and the hair, filled with it), the pale bar; and the few flat colours
+    // some of the clothes take, more than one of them among the people drawn
+    const ACCENTS = ['#f6c544', '#ea8a3c', '#b3cdea', '#4a9d9c'];
+    check('flamingo: its people in the streets\' cream and one dark line, some clothes in a few flat colours', [...inks].every((c) => ['#fcf9ee', '#23262c', '#f9dfae', 'none', ...ACCENTS].includes(c)) && ACCENTS.filter((c) => inks.has(c)).length >= 2 && inks.has('#fcf9ee'), [...inks].join(' '));
+    const sizes = new Set([...svg.matchAll(/<use href="#axo-tr-[pr]\d+" transform="translate\([^)]+\) scale\((-?[\d.]+),([\d.]+)\)"/g)].map((m) => `${Math.abs(Number(m[1]))},${m[2]}`));
+    // a sleeve is joined to the body at the shoulder: filled without a line of its own, the line round it an open one
+    // (from the shoulder's top down the outside, round the cuff, up the inside to the armpit), so none crosses the shoulder
+    const joinedSleeves = figs.filter((m) => m[2] === 'person').every((m) => /<path d="M[^"]+Z" fill="#[0-9a-f]{6}"\/><path d="M[^"Z]+" fill="none" stroke="#23262c"/.test(m[3]));
+    check('flamingo: its people\'s sleeves joined to the body at the shoulder', joinedSleeves);
+    check('flamingo: its people at the town\'s own scale', sizes.size === 1 && sizes.has(`${LINE_FIGURE_SIZE},${LINE_FIGURE_SIZE}`) && LINE_FIGURE_SIZE === 1, [...sizes].join(' '));
+    // at that scale the line round each part is 0.04 m in the scene, so a figure a millimetre tall on paper still reads
+    const pens = new Set(figs.flatMap((m) => [...m[3].matchAll(/stroke-width="([\d.]+)"/g)].map((x) => Number(x[1]))));
+    check('flamingo: the figures\' line 0.04 m, the spokes finer', pens.has(0.04) && [...pens].every((w) => w <= 0.05), [...pens].join(' '));
+  } else {
+    const faces = svg.match(/<image id="axo-tr-p\d+" href="data:image\/png/g) ?? [];
+    check(`${style}: the painted people, each picture once`, people(svg) >= 20 && faces.length >= 3 && new Set(faces).size === faces.length, `${people(svg)} people, ${faces.length} pictures`);
+    // they keep their bright clothes: a good share of each picture is in colour
+    const figures = picturesOf(svg, /<image id="axo-tr-[pr]\d+" href="data:image\/png;base64,([^"]+)"/g);
+    let vivid = 0, opaque = 0;
+    for (const png of figures) for (let i = 0; i < png.width * png.height; i++) {
+      if (png.data[i * 4 + 3] !== 255) continue;
+      const c = [png.data[i * 4], png.data[i * 4 + 1], png.data[i * 4 + 2]];
+      opaque++;
+      if (Math.max(...c) - Math.min(...c) > 60) vivid++;
+    }
+    check(`${style}: its people in their colours`, vivid > opaque * 0.1, `${vivid} coloured of ${opaque} pixels`);
+  }
   // (a picture's base64 can spell NaN, so the pictures are left out of the search)
   const drawn = svg.replace(/data:image\/png;base64,[^"]+/g, '');
   check(`${style}: no NaN`, !drawn.includes('NaN'), drawn.slice(Math.max(0, drawn.indexOf('NaN') - 200), drawn.indexOf('NaN') + 50));
 }
 // more people than the plain look's footpaths hold: some walking in twos, and groups in the park
 {
-  const crowd = people(draw('flamingo').svg), plain = (draw('heron').svg.match(/r="0.3" fill=/g) ?? []).length;
-  check('flamingo: a crowd, more people than the plain look draws', crowd > plain * 1.5, `${crowd} vs ${plain}`);
+  const crowd = people(draw('kingfisher').svg), plain = (draw('heron').svg.match(/r="0.3" fill=/g) ?? []).length;
+  check('kingfisher: a crowd, more people than the plain look draws', crowd > plain * 1.5, `${crowd} vs ${plain}`);
+  // Flamingo's people are at the town's scale too, and as many
+  const fl = people(draw('flamingo').svg);
+  check('flamingo: a crowd as Kingfisher\'s, at the town\'s scale', fl > plain * 1.5 && Math.abs(fl - crowd) <= crowd * 0.25, `${fl} vs ${crowd}`);
 }
 for (const [style, mono] of [['canary', false], ['flamingo', true]] as const) {
   const { svg } = draw(style, mono);
@@ -152,12 +227,38 @@ for (const [style, mono] of [['canary', false], ['flamingo', true]] as const) {
   const heavy = /fill="none" stroke="#000000" stroke-width="([\d.]+)" stroke-linejoin="round"\/>/.exec(svg);
   check('heron line model: the built in the heaviest outline, 0.55 mm on paper', !!heavy && onPaper(svg, heavy[1]) === 0.55, heavy?.[1]);
   // its walls plain: a massing is a volume, not a facade design. The storeys ruled across them, and no windows on
-  // them, neither the other styles' pattern of panes nor any drawn; the same building in Kingfisher has its panes.
+  // them: none drawn, and no pattern of panes.
   const windowed: AxoScene = { ...white, built: [{ ...white.built[0], windows: true, storeys: [3, 6, 9, 12] }] };
   const plain = withTemplate(templateFor('slides', 'heron'), () => drawAxonometric(windowed, { x: 0, y: 0, w: 400, h: 280 }, 'tr'));
-  const panes = withTemplate(templateFor('slides', 'kingfisher'), () => drawAxonometric(windowed, { x: 0, y: 0, w: 400, h: 280 }, 'tr'));
-  check('heron line model: the walls plain, the storeys ruled, no windows', !plain.includes('fill="url(#axo-win-tr)"') && !plain.includes('data-windows')
-    && [...plain.matchAll(/<line [^>]*stroke="#1a1a1a" stroke-width="([\d.]+)"\/>/g)].filter((m) => onPaper(plain, m[1]) === 0.08).length >= 8 && panes.includes('fill="url(#axo-win-tr)"'));
+  check('heron line model: the walls plain, the storeys ruled, no windows', !plain.includes('<pattern') && !plain.includes('data-windows')
+    && [...plain.matchAll(/<line [^>]*stroke="#1a1a1a" stroke-width="([\d.]+)"\/>/g)].filter((m) => onPaper(plain, m[1]) === 0.08).length >= 8);
+  // Canary marks the same building's walls with a hatch, not the pattern of small squares it had: lines at 45°
+  // clipped to a wall turned from the light, in a darker cut of the wall's own colour, 0.14 mm wide on paper, 0.9 mm
+  // apart on a wall turned full from the light and opening as it turns toward it; a wall turned to the light plain.
+  // Flamingo and Kingfisher have no hatch on any wall. And no style a pattern fill, which the print would rasterise.
+  check('wall hatch: closest full from the light, opening toward it, none on a lit wall', wallHatchPitch(-1) === 0.9 && wallHatchPitch(-0.5)! > 0.9 && wallHatchPitch(0.2)! > wallHatchPitch(-0.5)! && wallHatchPitch(0.2)! < 1.6 && wallHatchPitch(0.25) === null && wallHatchPitch(1) === null);
+  {
+    const col = (frontNormal: { x: number; y: number }): AxoScene => ({ ...scene(), frontNormal, built: [{ ...scene().built[0], fill: '#c04a3a', windows: true, storeys: [3, 6, 9, 12] }] });
+    const hatchesOf = (out: string) => [...out.matchAll(/<clipPath id="axo-fh\d+-tr"><path d="M([^"]+)Z" clip-rule="evenodd"\/><\/clipPath><g data-face-hatch clip-path="url\(#axo-fh\d+-tr\)"><path d="([^"]+)" fill="none" stroke="(#[0-9a-f]{6})" stroke-width="([\d.]+)"\/>/g)]
+      .map((m) => { const xs = [...m[2].matchAll(/M([-\d.]+),/g)].map((x) => Number(x[1])); return { corners: m[1].split('L').length, ink: m[3], w: onPaper(out, m[4]), gap: xs.length > 1 ? (Math.abs(xs[1] - xs[0]) / Math.SQRT2) * scaleOf(out) : Infinity }; });
+    const drawn = (style: string, frontNormal: { x: number; y: number }) => withTemplate(templateFor('slides', style), () => drawAxonometric(col(frontNormal), { x: 0, y: 0, w: 400, h: 280 }, 'tr'));
+    // seen from the street to its south, both the walls it shows are turned from the light (which comes from the north-west)
+    const south = drawn('canary', { x: 0, y: -1 });
+    const hs = hatchesOf(south), mine = hs.filter((h) => h.ink === '#60251d');     // the built's: half of #c04a3a
+    check('canary: the walls hatched, not patterned with squares', !south.includes('<pattern') && !south.includes('axo-win') && hs.length >= 1 && hs.every((h) => h.corners === 4), `${hs.length} hatches`);
+    check('canary: the hatch a darker cut of the wall\'s own colour, 0.14 mm wide, never black', mine.length === 2 && mine.every((h) => h.w === 0.14) && hs.every((h) => h.ink !== '#1a1a1a'), JSON.stringify(mine));
+    const gaps = mine.map((h) => h.gap).sort((a, b) => a - b);
+    check('canary: the wall turned further from the light the closer hatched', gaps.length === 2 && gaps[0] >= 0.9 - 0.02 && gaps[1] > gaps[0] + 0.05 && gaps[1] < 1.6, gaps.map((g) => g.toFixed(2)).join(' '));
+    // seen from the north, the wall it faces is lit: left plain
+    const lit = hatchesOf(drawn('canary', { x: 0, y: 1 })).filter((h) => h.ink === '#60251d').length;
+    check('canary: a wall turned to the light is plain', lit < 2, String(lit));
+    for (const style of ['flamingo', 'kingfisher']) {
+      const out = drawn(style, { x: 0, y: -1 });
+      check(`${style}: no hatch on any wall, and no pattern of squares`, !out.includes('data-face-hatch') && !out.includes('<pattern') && !out.includes('axo-win'));
+      // its storeys still ruled across the walls
+      check(`${style}: the storeys still ruled across the walls`, (out.match(/<line /g) ?? []).length >= 8);
+    }
+  }
   // No grey fills: a building given a tone (a neighbour's band of storeys, what stands on the site) is white, its
   // walls hatched as shade, lines clipped to each wall, the closer the darker its tone and closest on the wall turned
   // from the light; its roof white, and a white building has none.
@@ -174,8 +275,9 @@ for (const [style, mono] of [['canary', false], ['flamingo', true]] as const) {
     Math.min(...ofBuilt.map((h) => gap(h.d))) < Math.min(...ofNeighbour.map((h) => gap(h.d))), `${ofBuilt.map((h) => gap(h.d).toFixed(2)).join(' ')} | ${ofNeighbour.map((h) => gap(h.d).toFixed(2)).join(' ')}`);
   // as shade: no wall closer than the tone's own spacing (0.6 mm for the darkest), and none over 1.9 times it
   check('heron line model: the hatch opens on a wall turned to the light, as shade', ofBuilt.every((h) => gap(h.d) >= 0.6 - 0.02 && gap(h.d) <= 0.6 * 1.9 + 0.02), ofBuilt.map((h) => gap(h.d).toFixed(2)).join(' '));
-  // the other styles fill their tones as before
-  check('heron line model: the hatch is Heron\'s alone', !withTemplate(templateFor('slides', 'kingfisher'), () => drawAxonometric(toned, { x: 0, y: 0, w: 400, h: 280 }, 'tr')).includes('data-face-hatch'));
+  // the other styles fill their tones as before: Kingfisher has no hatch at all, and Canary's is in the wall's colour, never this black
+  const tonedIn = (style: string) => withTemplate(templateFor('slides', style), () => drawAxonometric(toned, { x: 0, y: 0, w: 400, h: 280 }, 'tr'));
+  check('heron line model: the black hatch on white walls is Heron\'s alone', !tonedIn('kingfisher').includes('data-face-hatch') && !/data-face-hatch[^>]*><path d="[^"]+" fill="none" stroke="#1a1a1a"/.test(tonedIn('canary')));
   // its massing black and white, with no colour at all: the scene as its callers give it (a red site, lilac built,
   // peach neighbours, a plane over the site) comes out in greys alone, the site a black dash-dot boundary; the same
   // scene in Kingfisher keeps its colours, so the check can fail

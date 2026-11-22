@@ -444,7 +444,7 @@ export function massingInks() {
   // the edges soft, and each building casting a soft shadow on the ground instead; and light with it, pastel cuts
   // of the same colours on a near-white ground. Else (Heron, Canary) the faces carry the shade, the colours full.
   const id = deckLook().id;
-  const gloss = id === 'kingfisher' || id === 'flamingo', pastel = gloss, kf = id === 'kingfisher';
+  const gloss = id === 'kingfisher' || id === 'flamingo', pastel = gloss, kf = id === 'kingfisher', fl = id === 'flamingo';
   const green = pastel ? tint(vivid(G.solid, 0.5, 0.5), 0.7) : vivid(G.solid, 0.5, 0.45);
   // Heron's line model: the low buildings white, a light tone only as they rise, so the drawing stays a line drawing
   const heron = id === 'heron';
@@ -454,10 +454,12 @@ export function massingInks() {
     // Kingfisher's town after an illustrated masterplan: the ground a warm near-white, as its pavements, the streets a
     // cool pale lilac grey with their kerbs a shade deeper and the line down them barely there, the lots faint, the
     // parks a pale sage
-    ground: kf ? '#f1f2e8' : tint(O.solid, pastel ? 0.04 : 0.1),
+    // Flamingo's after an illustrator's isometric town (Z. 2026-11): the ground a yellowish cream, as its paper, the
+    // streets a shade lighter
+    ground: kf ? '#f1f2e8' : fl ? '#f9f5e4' : tint(O.solid, pastel ? 0.04 : 0.1),
     lot: kf ? '#dcddd0' : tint(inkFor(O.deep, 0.4), pastel ? 0.3 : 0.45),
     park: kf ? '#d9e3cb' : tint(green, pastel ? 0.45 : 0.4),
-    road: kf ? '#d9d7dc' : '#ffffff',
+    road: kf ? '#d9d7dc' : fl ? '#fcf9ee' : '#ffffff',
     axis: kf ? '#e6e4e8' : tint(B.solid, pastel ? 0.4 : 0.55),
     tree: green, treeLight: tint(green, 0.6), trunk: inkFor(G.deep, pastel ? 0.3 : 0.12),
     /** The streets' kerbs, where the style sets them; else the caller's. */

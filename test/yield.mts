@@ -11,7 +11,8 @@
 
 import { computeYield, storeysUnder, archetypeFor, edgeKinds, ringArea, futureHeight, withFour, existingSummary, DEFAULT_ASSUMPTIONS, PARKING_RATES, UNIT_KINDS, ADG_MINIMUM, type XY } from '../src/lib/yield.js';
 import { sunBands, bandOf } from '../src/render/facadeElevation.js';
-import { withTemplate, deckFamilies } from '../src/render/template.js';
+import { withTemplate, deckFamilies, vivid } from '../src/render/template.js';
+import { zoneFill } from '../src/render/lepPalette.js';
 import { tierSpot, frontageMiddle, yieldStudy, scenarioRows, yieldRows, noSchemeSentence, renderYieldDeck, yieldCsv, yieldJson, isTestPage, lotsShort, type YieldBundle, type Parcel } from '../src/render/yieldSheet.js';
 
 const failures: string[] = [];
@@ -465,8 +466,22 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
     const hp = heronDeck.slides.find((sl) => sl.id === '04_within_controls_shadow_and_separation')!.figureHtml + heronDeck.slides.find((sl) => sl.id === '03_within_controls')!.figureHtml;
     check('heron: the plan a line plan, its buildings white in a heavy black outline, what is built in the heaviest', /fill="#ffffff" stroke="#111111" stroke-width="0\.45"/.test(hp) && /stroke="#000000" stroke-width="0\.6"/.test(hp), hp.slice(hp.indexOf('#111111') - 80, hp.indexOf('#111111') + 60));
     check('heron: the massing a line model, the built in the heaviest outline, the gardens stippled in line', /fill="none" stroke="#000000" stroke-width="[\d.]+" stroke-linejoin="round"\/>/.test(hp) && !hp.includes('@@pw') && /data-ground="yard"/.test(hp) && !/fill="url\(#axo-(lawn|yard|road|shade)-/.test(hp));
-    const kp = renderYieldDeck(treed, meta, { theme: 'kingfisher' }).slides.find((sl) => sl.id === '04_within_controls_shadow_and_separation')!.figureHtml;
+    const kDeck = renderYieldDeck(treed, meta, { theme: 'kingfisher' });
+    const kp = kDeck.slides.find((sl) => sl.id === '04_within_controls_shadow_and_separation')!.figureHtml;
     check('heron: the line plan is Heron\'s alone', !/stroke="#111111" stroke-width="0\.45"/.test(kp) && !/stroke="#000000" stroke-width="0\.6"/.test(kp));
+    // Canary keeps the zones' ePlanning colours at full strength: its scheme is as saturated as they are, and a
+    // colour no neighbour takes, Canary's yellow, not a zone's (an R4 scheme in R4's red would be lost among its R4
+    // neighbours); Kingfisher's scheme keeps its own tint.
+    // (a path's plan is its shadow's page: the scheme's plate is read there, its walls on its own spread)
+    const cDeck = renderYieldDeck(treed, meta, { theme: 'canary' });
+    const cp = cDeck.slides.find((sl) => sl.id === '04_within_controls_shadow_and_separation')!.figureHtml;
+    const plate = (html: string) => /fill="(#[0-9a-f]{6})" fill-opacity="0\.55" fill-rule="evenodd" stroke="none"/.exec(html)?.[1];
+    const yellow = withTemplate('canary', () => deckFamilies().orange.solid), r4 = vivid(zoneFill('R4'), 0.45, 0.5);
+    const sat = (h: string) => { const c = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255), mx = Math.max(...c), mn = Math.min(...c), l = (mx + mn) / 2; return mx === mn ? 0 : (mx - mn) / (1 - Math.abs(2 * l - 1)); };
+    check('canary: the scheme in Canary\'s yellow, not its zone\'s red', plate(cp) === yellow && plate(cp) !== r4 && plate(kp) !== yellow && !!plate(kp), `${plate(cp)} for ${yellow}; kingfisher ${plate(kp)}`);
+    check('canary: the scheme as saturated as its neighbours', sat(plate(cp)!) >= sat(r4) - 0.01, `${sat(plate(cp)!).toFixed(2)} against ${sat(r4).toFixed(2)}`);
+    const walls = [heronDeck, kDeck, cDeck].map((d) => d.slides.find((sl) => sl.id === '03_within_controls')!.figureHtml);
+    check('no style patterns its walls with squares', ![hp, kp, cp, ...walls].some((h) => h.includes('axo-win') || /<pattern id="axo-/.test(h)));
   }
   const r3f = yieldRows(close).find((r) => r.label === '3F. VISUAL PRIVACY');
   const closePlan = deck(close).slides.find((sl) => isTestPage(sl.id, 'shadow'))!.figureHtml, closeSolar = deck(close).slides.find((sl) => isTestPage(sl.id, 'solar'))!.figureHtml;
