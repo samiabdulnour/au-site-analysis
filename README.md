@@ -159,7 +159,10 @@ one by hand. Started on another branch, it commits them to that branch. A
 run in which any data source failed (any `WARN` line in its log) commits
 nothing and lists the failures in its summary, since its pictures would be
 missing that source's layer; `allow_warnings` overrides that when the gap is
-known. It only ever runs when started by hand, so like `checks` it never
+known. A refused run is not wasted: the answers Overpass gave it are kept for
+the next run on the same branch (the pipelines' own thirty-day cache,
+`out/.cache/osm`, carried between runs), so when the mirrors have a bad
+minute half way through, the run after asks them only for what failed. It only ever runs when started by hand, so like `checks` it never
 spends the public services' capacity on its own. The TfNSW, Google Maps and
 Mapillary keys are read from repository secrets of the same names when they
 are set.
