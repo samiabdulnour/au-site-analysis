@@ -42,6 +42,8 @@ import { fetchBuildings, withDaStoreys, METRES_PER_STOREY, type BuildingsData } 
 import { meshSurfaceOver } from './fetch/meshHeights.js';
 import { withMeshHeights } from './lib/meshHeights.js';
 import { checkHeights, doubtedHeights } from './lib/heightCheck.js';
+import { LMR_REACH_M } from './lib/lmr.js';
+import { ringsGap } from './lib/rings.js';
 import { lotsWithoutFootprint } from './lib/gapLots.js';
 import { fetchStreetscapeHeritage, type StreetscapeHeritage } from './fetch/streetscapeHeritage.js';
 import { fetchFootways, type FootwaysData } from './fetch/footways.js';
@@ -599,7 +601,8 @@ export async function runYieldPipeline(
     soft(fetchAllLots(around(MASSING_M)), emptyFc, 'lots'),
     soft(fetchContours(around(MASSING_M), log), { lines: [], intervalM: 2, source: 'NSW Spatial Services' } as ContourSet, 'contours'),
     soft(fetchTrainStations(around(1200)), [], 'stations'),
-    soft(fetchPolicyAreas(around(5), log), [], 'housing policy maps'),
+    // (read to the low and mid-rise housing policy's reach, so the nearest town centre is known and how far it is)
+    soft(fetchPolicyAreas(around(LMR_REACH_M), log), [], 'housing policy maps'),
     soft(fetchBuildings(around(MASSING_M), log), noBuildings, 'buildings'),
     soft(fetchZoning(around(MASSING_M)), emptyFc, 'zoning'),
     soft(fetchHeightOfBuilding(around(MASSING_M)), emptyFc, 'height of building'),
@@ -664,6 +667,21 @@ export async function runYieldPipeline(
   const nearest = stations.map((s) => ({ name: s.name, distanceM: Math.round(metres(s.lon, s.lat)) })).sort((p, q) => p.distanceM - q.distanceM)[0];
   const cbd = CENTRES.filter((c) => c.kind === 'cbd').map((c) => ({ name: c.name, kind: c.kind, distanceM: Math.round(metres(c.lon, c.lat)) })).sort((p, q) => p.distanceM - q.distanceM)[0];
   const policyAtSite = policy.filter((pa) => isRealPolicyArea(pa.name) && pa.rings.some((r) => pointInRingLL(centreLL.lon, centreLL.lat, r))).map((pa) => ({ kind: pa.kind, name: pa.name }));
+  // The nearest town centre of the Housing SEPP's low and mid-rise housing map and the straight line from the site's
+  // boundary to its edge, metres (0 inside it): lib/lmr.ts reads the policy's controls off it.
+  const lmrCentre = (() => {
+    const mE = 111_320 * Math.cos((centreLL.lat * Math.PI) / 180), mN = 110_574;
+    const metres = (rg: number[][]) => rg.map(([lon, lat]) => [(lon - centreLL.lon) * mE, (lat - centreLL.lat) * mN]);
+    const site = siteLots.features.flatMap((f) => geomRingsOf(f.geometry)).map(metres);
+    let best: { name: string; distanceM: number } | undefined;
+    for (const pa of policy) {
+      if (pa.kind !== 'townCentre' || !isRealPolicyArea(pa.name)) continue;
+      const inside = pa.rings.some((r) => pointInRingLL(centreLL.lon, centreLL.lat, r));
+      const d = inside ? 0 : ringsGap(site, pa.rings.map(metres))?.d ?? Infinity;
+      if (d <= LMR_REACH_M && (!best || d < best.distanceM)) best = { name: pa.name, distanceM: Math.round(d) };
+    }
+    return best;
+  })();
 
   // The neighbours' footprints with what is known of their height; one with
   // none stands in at a nominal two storeys, drawn as such. Each also carries
@@ -801,6 +819,7 @@ export async function runYieldPipeline(
     station: nearest,
     cbd: cbd && cbd.distanceM <= 1500 ? cbd : undefined,
     policyAtSite,
+    lmrCentre,
     roads: roads.filter((r) => r.coords.some(([lon, lat]) => near(lon, lat))),
     parcels,
     kerbs,
