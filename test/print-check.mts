@@ -304,12 +304,14 @@ check('a page read before it finished loading fails, whatever its PDF holds',
       await page.goto(pathToFileURL(htmlPath).href, { waitUntil: 'load' });
       const overruns = await fitSlides(page);
       const columns = await page.evaluate(COLUMNS) as Column[];
-      // an option's two compliance pages: its shadow and separation (the fuller: the separations today and built out), its solar access
+      // an option's two compliance pages: its shadow and separation, its solar access
       const shadows = columns.filter((c) => /_shadow_and_separation$/.test(c.id)), solars = columns.filter((c) => /_solar_access$/.test(c.id));
       const sheets = [...shadows, ...solars], lastPage = columns[columns.length - 1];
       if (theme === DECK_THEMES[0]) {
-        check('the yield deck has its compliance pages, two an option, each with three tables, the separations today and built out',
-          shadows.length >= 3 && solars.length === shadows.length && sheets.every((c) => c.blocks === 3) && shadows.every((c) => c.rows >= 14) && /_controls_and_assumptions$/.test(lastPage.id),
+        // (the separations are on the shadow page's drawing, each a dimension, not a table beside it: its column holds
+        // the criteria and the shadow it adds; the solar access page's, the criteria, the facades and the storeys)
+        check('the yield deck has its compliance pages, two an option: the shadow\'s with two tables, the solar access\'s with three',
+          shadows.length >= 3 && solars.length === shadows.length && shadows.every((c) => c.blocks === 2 && c.rows >= 5) && solars.every((c) => c.blocks === 3 && c.rows >= 10) && /_controls_and_assumptions$/.test(lastPage.id),
           sheets.map((c) => `${c.id}: ${c.blocks} blocks, ${c.rows} rows`).join('; '));
         check('the first option\'s pages write out what each criterion asks, under its row', shadows[0].notes >= 2 && solars[0].notes >= 3 && [...shadows.slice(1), ...solars.slice(1)].every((c) => c.notes === 0), sheets.map((c) => c.notes).join(', '));
       }

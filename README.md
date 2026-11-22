@@ -1787,6 +1787,14 @@ yield for 86, 88-90, 94 Maroubra Road, 2026-11):
   has its compliance pages after it: the rebuilt path, which had none
   because its massing is what stands, and a scheme with no apartments,
   which has its shadow page alone with the yield's criterion on it.
+- *"The building separation needs to be visible in the drawing. Don't
+  put it into text. The shadow of our design should have a different
+  colour than the others."* The separations had gone into a table beside
+  the plan when the chosen shadow style left the dimension lines off.
+  Each is on the plan again, a dimension from the scheme to the building
+  near it with what is asked of it (`5.9 / 12 m`), heavier and larger than
+  before, and the table is gone. And the scheme's own shadow is the
+  style's accent over the neighbours' grey, where the two were one grey.
 - *"If there is nothing, don't print it."* "Within the controls" had a
   spread of its own even in a zone the study draws no building type for:
   every figure a dash, over the height plane alone. A path that builds
@@ -1916,27 +1924,28 @@ site may take, so a site with more paths has more pages:
    the yield's most is worked out, what "built out" means).
    - **Shadow** (`…_shadow_and_separation`), the page after the option's
      spread, and its plan. On the left overshadow impact (3B-2) and building
-     separation (3F-1), a mark each; the shadow it adds, by the land it
+     separation (3F-1), a mark each, and the shadow it adds, by the land it
      falls on (residential lots, heritage items, parks and reserves: how
      many lie in its reach, how many it shades, the most it adds and when,
      and the lots it takes below the hours a DCP commonly asks of half their
-     open ground); each building near and its separation, today and built
-     out. On the right, the whole page, the option's plan at the overview's
-     scale (`PLAN_ROOM`), its neighbours in black and white: the lots
-     untinted, every building white in a black line with its street number
-     and no zone on it (the zones are the overview's), the kerbs, the
-     future footprints dashed, each tier of the scheme in its use's colour
-     with its envelope dashed and its number as in the schedule (what
-     stands, as its own spread draws it). Under the buildings, every
-     building's shadow each hour from 9 am to 3 pm, one soft grey layer
-     over the last, so the ground darkens with the hours it is in shade;
-     the envelope's own at 9 am, noon and 3 pm outlined and named. What the
-     envelope adds, the lots it shades and each separation are in the
-     tables beside it. `YIELD_SHADOW_LOOK` (JSON, read when the page is
+     open ground). On the right, the whole page, the option's plan at the
+     overview's scale (`PLAN_ROOM`), its neighbours in black and white: the
+     lots untinted, every building white in a black line with its street
+     number and no zone on it (the zones are the overview's), the kerbs,
+     the future footprints dashed, each tier of the scheme in its use's
+     colour with its envelope dashed and its number as in the schedule
+     (what stands, as its own spread draws it). Under the buildings, the
+     neighbours' shadows each hour from 9 am to 3 pm, one soft grey layer
+     over the last, so the ground darkens with the hours it is in shade,
+     and the scheme's own over them in a colour of its own, the style's
+     accent, at 9 am, noon and 3 pm outlined and named. Each separation is
+     a dimension on the plan, from the scheme to the building near it, with
+     what is asked of it written along it (`5.9 / 12 m`: green clear, amber
+     where it holds only habitable to non-habitable, red short); there is
+     no table of them. `YIELD_SHADOW_LOOK` (JSON, read when the page is
      drawn) overrides any part of that look, for further iterations: which
      hours, whose shadows, the hatch on what the envelope adds
-     (`addedGround()`), the separations as dimensions, the neighbours black
-     or grey.
+     (`addedGround()`), the dimensions, the neighbours black or grey.
    - **Solar access** (`…_solar_access`), the page after that. On the left
      solar access (4A-1 with the hours, again built out, and 4A-2 with
      none) and yield (its floor area against the most the controls allow

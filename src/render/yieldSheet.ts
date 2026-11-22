@@ -867,6 +867,8 @@ const shadowInk = () => '#3a3c41';
 const HOUR_ALPHA = 0.16, stackedAlpha = (n: number) => 1 - (1 - HOUR_ALPHA) ** n;
 /** On a path's plan each hour is lighter, and darkens what is under it: seven of them still leave the lot lines and the numbers to read. */
 const PLAN_HOUR_ALPHA = 0.1;
+/** The scheme's own shadow on it, in the accent: each hour a little stronger than a neighbour's grey, so its colour holds where it falls on theirs. */
+const OWN_HOUR_ALPHA = 0.14;
 /** The envelope's own shadow, in the site's accent so what it adds reads apart from the neighbours' grey. */
 const ourShadowInk = () => siteInk();
 /** A white halo under words written over a tinted plan (a dimension, a shadow's hour). */
@@ -1121,11 +1123,13 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
     const [x1, y1] = at(dm.a), [x2, y2] = at(dm.b);
     const len = Math.hypot(x2 - x1, y2 - y1) || 1, ux = (x2 - x1) / len, uy = (y2 - y1) / len;
     const tick = (x: number, yy: number) => `M${(x - uy * 1.1).toFixed(2)},${(yy + ux * 1.1).toFixed(2)}L${(x + uy * 1.1).toFixed(2)},${(yy - ux * 1.1).toFixed(2)}`;
-    out.push(`<path d="M${x1.toFixed(2)},${y1.toFixed(2)}L${x2.toFixed(2)},${y2.toFixed(2)}" fill="none" stroke="${dm.ink}" stroke-width="0.35"${dm.dash ?? ''}/><path d="${tick(x1, y1)}${tick(x2, y2)}" fill="none" stroke="${dm.ink}" stroke-width="0.35"/>`);
+    // (heavier and larger on a path's plan, where the separations are read off the drawing alone)
+    const dw = greyPlan ? 0.35 : 0.5, dfs = greyPlan ? 2.5 : 2.8;
+    out.push(`<path d="M${x1.toFixed(2)},${y1.toFixed(2)}L${x2.toFixed(2)},${y2.toFixed(2)}" fill="none" stroke="${dm.ink}" stroke-width="${dw}"${dm.dash ?? ''}/><path d="${tick(x1, y1)}${tick(x2, y2)}" fill="none" stroke="${dm.ink}" stroke-width="${dw}"/>`);
     // the distance as a dimension is written: turned to its line and standing just off it, not across it, read from the
     // sheet's foot or from its right (over a line that runs across, left of one that runs up). At the line's middle, or
     // slid along it, then on its other side, then past its ends, until clear of what is written; nowhere clear, the line alone
-    const w = dm.label.length * 1.45 + 1.6, CAP = 1.8;
+    const w = dm.label.length * 0.58 * dfs + 1.6, CAP = 0.72 * dfs;
     // (a line within half a degree of upright reads up whichever way it leans, so the rounding of its ends does not turn it over)
     let ang = (Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI;
     if (ang > 89.5) ang -= 180;
@@ -1142,7 +1146,7 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
       const corners = [[-w / 2, base - CAP - 0.3], [w / 2, base - CAP - 0.3], [w / 2, base + 0.3], [-w / 2, base + 0.3]].map(([dx, dy]) => [mx + dx * cs - dy * sn, my + dx * sn + dy * cs]);
       const bx: Box = [Math.min(...corners.map((c) => c[0])), Math.min(...corners.map((c) => c[1])), Math.max(...corners.map((c) => c[0])), Math.max(...corners.map((c) => c[1]))];
       if (!clear(bx)) continue;
-      out.push(`<text transform="translate(${mx.toFixed(2)},${my.toFixed(2)}) rotate(${ang.toFixed(1)})" y="${base.toFixed(2)}" text-anchor="middle" font-size="2.5" font-weight="700" fill="${dm.ink}"${greyPlan ? '' : HALO} data-dim="1">${esc(dm.label)}</text>`);
+      out.push(`<text transform="translate(${mx.toFixed(2)},${my.toFixed(2)}) rotate(${ang.toFixed(1)})" y="${base.toFixed(2)}" text-anchor="middle" font-size="${dfs}" font-weight="700" fill="${dm.ink}"${greyPlan ? '' : HALO} data-dim="1">${esc(dm.label)}</text>`);
       taken.push(bx);
       break;
     }
@@ -1287,16 +1291,23 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
     // The label's box, its corners and the middles of its sides, all inside the outline.
     const fits = (p: XY, rs: XY[][]) => [[-1, -1], [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0]].every(([u, v]) => within({ x: p.x + u * hw, y: p.y + v * hh }, rs));
     const inLot = blds.filter((rg) => within(centre(rg), pc.local)).map((rg) => inFrame(rg)).filter((rg) => rg.length >= 3).sort((p, q) => ringArea(q) - ringArea(p));
-    let spot: XY | undefined, onBuilding = false;
+    // In its building where it fits, at its middle or a little along or up or down it; else on its lot. The first of them
+    // clear of what is already written (a separation's dimension beside the building took the one spot tried, and
+    // the lot lost its number: No. 46 at Maroubra).
+    const tries: { p: XY; onBuilding: boolean }[] = [];
     for (const rg of inLot) {
       const p = tierSpot([rg], [], [], hh, 0);
-      if (p && fits(p, [rg])) { spot = p; onBuilding = true; break; }
+      if (!p) continue;
+      for (const [dx, dy] of [[0, 0], [0.7 * hw, 0], [-0.7 * hw, 0], [1.3 * hw, 0], [-1.3 * hw, 0], [0, 2.2 * hh], [0, -2.2 * hh]]) { const q = { x: p.x + dx, y: p.y + dy }; if (fits(q, [rg])) tries.push({ p: q, onBuilding: true }); }
     }
-    spot ??= tierSpot(pc.shown, [], [], hh, 0);
-    if (!spot) continue;
-    const [px, py] = at(spot);
-    const bx2: Box = [px - wMm / 2, py - hMm / 2, px + wMm / 2, py + hMm / 2];
-    if (!clear(bx2)) continue;
+    const onLot = tierSpot(pc.shown, [], [], hh, 0);
+    if (onLot) tries.push({ p: onLot, onBuilding: false });
+    const boxAt = (q: XY): Box => { const [qx, qy] = at(q); return [qx - wMm / 2, qy - hMm / 2, qx + wMm / 2, qy + hMm / 2]; };
+    // (clear of what is written by its whole box, the margin round its words included; failing that, by its words alone)
+    const tight = (bx: Box): Box => [bx[0] + 1.1, bx[1] + 0.3, bx[2] - 1.1, bx[3] - 0.3];
+    const set = tries.find((t) => clear(boxAt(t.p))) ?? tries.find((t) => clear(tight(boxAt(t.p))));
+    if (!set) continue;
+    const onBuilding = set.onBuilding, [px, py] = at(set.p), bx2 = boxAt(set.p);
     taken.push(bx2);
     const y0 = py - ((lines.length - 1) * LH) / 2 + F1 * 0.36;
     lines.forEach((t, i) => out.push(`<text x="${px.toFixed(2)}" y="${(y0 + i * LH).toFixed(2)}" text-anchor="middle" font-size="${i ? F2 : F1}" font-weight="${i ? 400 : 700}" fill="${opts.bw === 'black' && onBuilding ? '#ffffff' : '#111111'}"${zoneAreas ? HALO : ''}>${esc(t)}</text>`));
@@ -2201,18 +2212,10 @@ function complianceSheets(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: P
   ];
   const shadeTable = ytable([{ head: 'Land', w: '50mm' }, { head: 'In reach', r: true, w: '18mm' }, { head: 'Shaded', r: true, w: '18mm' }, { head: 'Most added, and when', r: true }], shadeRows, true);
 
-  // each building near: today, then the future context's
-  const sepRow = (r: SeparationRow & { name: string }, storeys: string): TRow => { const w = worseReading(r); return { cells: [esc(r.name), esc(storeys), esc(`${fmt(w.distanceM, 1)} / ${fmt(w.band.between)} m`), okMark(separationMark(w))] }; };
-  const sepRows: TRow[] = [
-    ...ps.separation.slice(0, 8).map((r) => { const nb = b.context[r.index]; return sepRow(r, nb.known && nb.heightM > 0 ? `${Math.max(1, Math.round(nb.heightM / 3.1))} today` : '2, unrecorded'); }),
-    ...ps.separationBuiltOut.slice(0, 6).map((r) => sepRow(r, `${s.future.buildings[r.index].storeys}, built out`)),
-  ];
-  const sepTable = sepRows.length
-    ? ytable([{ head: 'Building', w: '62mm' }, { head: 'Storeys', w: '24mm' }, { head: 'Apart / asked', r: true }, { head: '', w: '5mm' }], sepRows, true)
-    : `<div class="ynote">No building the sources record stands within 24 m of it${s.future.buildings.length ? ', nor would the future context' : ''}, across a street aside.</div>`;
-
   const solarBlocks = [zBlock('Against the criteria', ytable(criteria, solarTests, true)), zBlock('Sun on each facade and the roof', faceTable), ...(storeyRows.length ? [zBlock('Apartments, storey by storey', storeyTable)] : [])];
-  const shadowBlocks = [zBlock('Against the criteria', ytable(criteria, shadowTests, true)), zBlock('The shadow it adds', shadeTable), zBlock('Building separation', sepTable)];
+  // (each building's separation is on the drawing, a dimension with what is asked of it, and not in a table here:
+  // Z. 2026-11, "the building separation needs to be visible in the drawing, don't put it into text")
+  const shadowBlocks = [zBlock('Against the criteria', ytable(criteria, shadowTests, true)), zBlock('The shadow it adds', shadeTable)];
 
   // the drawings. Solar access: the massing from the street corner over the same from the opposite corner, each the
   // width of the page and framed close on the building (a few metres of town round it)
@@ -2227,7 +2230,9 @@ function complianceSheets(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: P
   // Shadow and separation: the path's plan, the whole page, at the overview's scale, with every building's shadow
   // each hour from 9 to 3 (the neighbours at the heights the sun study gives them, two storeys where none is
   // recorded; the envelope's swept exactly) laid one soft layer over the last, and the envelope's own at 9 am, noon
-  // and 3 pm outlined. The neighbours in black and white, white buildings in a black line with their street numbers
+  // and 3 pm outlined; the envelope's in the accent, the neighbours' in grey ("the shadow of our design should have
+  // a different colour than the others"), and each separation a dimension with what is asked of it ("the building
+  // separation needs to be visible in the drawing, don't put it into text"). The neighbours in black and white, white buildings in a black line with their street numbers
   // and no zone on them: the zones are the overview's. Chosen from a board of iterations (Z. 2026-11: "the shadow
   // should be the same scale as plans"; "can it be the plan like it was before, just with shadows"; "is it possible
   // to make the surrounding buildings black white, without zone? zones are only visible on the 2nd page"; "white
@@ -2239,8 +2244,8 @@ function complianceSheets(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: P
     label?: string; hours: 'hourly' | 'three' | 'noon'; neighbours: boolean; ownShadow: boolean; hatch: boolean; outlines: boolean; dims: boolean; shaded: boolean;
     own: string; oAlpha: number; nInk: string; nAlpha: number; multiply: boolean; bw?: 'white' | 'black' | 'grey';
   }
-  const LOOK: ShadowLook = { hours: 'hourly', neighbours: true, ownShadow: true, hatch: false, outlines: true, dims: false, shaded: false,
-    own: shadowInk(), oAlpha: PLAN_HOUR_ALPHA, nInk: shadowInk(), nAlpha: PLAN_HOUR_ALPHA, multiply: true, bw: 'white',
+  const LOOK: ShadowLook = { hours: 'hourly', neighbours: true, ownShadow: true, hatch: false, outlines: true, dims: true, shaded: false,
+    own: siteInk(), oAlpha: OWN_HOUR_ALPHA, nInk: shadowInk(), nAlpha: PLAN_HOUR_ALPHA, multiply: true, bw: 'white',
     ...(process.env.YIELD_SHADOW_LOOK ? JSON.parse(process.env.YIELD_SHADOW_LOOK) as Partial<ShadowLook> : {}) };
   const name = (scale: number) => ['Plan', `1:${fmt(scale).replace(',', ' ')}`, LOOK.label ?? 'shadows each hour, 9 am to 3 pm'];
   const massBlocks = schemeBlocks(ps.y);
@@ -2256,7 +2261,8 @@ function complianceSheets(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: P
       added: LOOK.hatch ? addedGround(hourly.map((hr) => hr.scheme), hourly.map((hr) => hr.hulls), [s.ring]) : [],
       shadows: LOOK.outlines ? hourSuns.filter((sun) => [9 * 60, 12 * 60, 15 * 60].includes(sun.clockMin)).map((sun) => ({ rings: groundShadow(massBlocks, sun), label: clock(sun.clockMin) })).filter((x) => x.rings.length) : [],
       shaded: LOOK.shaded ? sh.shadedTargets.map((i) => ps.targets[i].rings) : [],
-      dims: LOOK.dims ? [...ps.separation, ...ps.separationBuiltOut].map((r) => { const w = worseReading(r); return { a: w.a, b: w.b, label: `${fmt(w.distanceM, 1)} m`, ink: statusInks()[w.status], dash: w.status === 'blank' ? blankDash() : '' }; }) : [],
+      // (each separation with what is asked of it, "5.9 / 12 m": the drawing says both, where a table beside it did)
+      dims: LOOK.dims ? [...ps.separation, ...ps.separationBuiltOut].map((r) => { const w = worseReading(r); return { a: w.a, b: w.b, label: `${fmt(w.distanceM, 1)} / ${fmt(w.band.between)} m`, ink: statusInks()[w.status], dash: w.status === 'blank' ? blankDash() : '' }; }) : [],
       look: LOOK,
     } });
   const shadowFigures = bleedFigure(0, PAGE_H, plan.svg) + mapLabel(0, name(plan.scale));
@@ -2277,19 +2283,19 @@ function complianceSheets(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: P
   const layers = pickHours(hourly).length;
   const hourSwatch = (ink: string, alpha: number) => Array.from({ length: layers }, (_, i) => `<rect x="${((i * 5) / layers).toFixed(2)}" y="0.3" width="${(5 / layers).toFixed(2)}" height="3" fill="${ink}" fill-opacity="${(1 - (1 - alpha) ** (i + 1)).toFixed(2)}"/>`).join('') + `<rect x="0" y="0.3" width="5" height="3" fill="none" stroke="#6f6f6f" stroke-width="0.1"/>`;
   const whenWords = LOOK.hours === 'hourly' ? 'each hour 9 am – 3 pm laid over the last: the deeper, the longer in shadow' : LOOK.hours === 'three' ? 'at 9 am, 12 pm and 3 pm, laid over each other' : 'at 12 pm';
-  const its = standing.length ? 'Its' : 'The envelope\'s';
+  const its = standing.length ? 'Its' : 'The envelope\'s', sameInk = LOOK.own.toLowerCase() === LOOK.nInk.toLowerCase();
   const bwSwatch = LOOK.bw === 'black' ? `<rect x="0.4" y="0.6" width="4.2" height="2.4" fill="#2a2c30"/>` : LOOK.bw === 'grey' ? `<rect x="0.4" y="0.6" width="4.2" height="2.4" fill="#d3d5d8"/>` : `<rect x="0.4" y="0.6" width="4.2" height="2.4" fill="#ffffff" stroke="#1c1c1c" stroke-width="0.3"/>`;
   const shadowLegend: LegendEntry[] = [
     { swatch: KEY.site, label: 'The site' },
     ...(standing.length ? [{ swatch: KEY.standing, label: 'What stands on the site' }]
       : [...(['residential', 'retail', 'commercial'] as Use[]).filter((u) => ps.y.tiers.some((t) => t.use === u)).map((u) => ({ swatch: KEY.use(u), label: `Indicative massing, ${USE_WORD[u]}` })),
         { swatch: KEY.envelope, label: 'Envelope of each tier, numbered as in the schedule' }]),
-    ...(LOOK.neighbours ? [{ swatch: hourSwatch(LOOK.nInk, LOOK.nAlpha), label: `${LOOK.ownShadow ? 'Every building\'s shadow' : 'The neighbours\' shadows'} on 21 June, ${whenWords}` }] : []),
-    ...(!LOOK.neighbours && LOOK.ownShadow ? [{ swatch: hourSwatch(LOOK.own, LOOK.oAlpha), label: `${its} shadow on 21 June, ${whenWords}` }] : []),
-    ...(LOOK.outlines ? [{ swatch: `<path d="M0.4,0.6H4.6V3H0.4Z" fill="none" stroke="${LOOK.own}" stroke-width="0.25" stroke-dasharray="0.7,0.45"/>`, label: `${its} shadow at 9 am, 12 pm and 3 pm, outlined` }] : []),
+    ...(LOOK.neighbours ? [{ swatch: hourSwatch(LOOK.nInk, LOOK.nAlpha), label: `${LOOK.ownShadow && sameInk ? 'Every building\'s shadow' : 'The neighbours\' shadows'} on 21 June, ${whenWords}` }] : []),
+    ...(LOOK.ownShadow && !(LOOK.neighbours && sameInk) ? [{ swatch: hourSwatch(LOOK.own, LOOK.oAlpha), label: LOOK.neighbours ? `${its} own shadow, the same hours, in its own colour${LOOK.outlines ? '; at 9 am, 12 pm and 3 pm outlined' : ''}` : `${its} shadow on 21 June, ${whenWords}` }] : []),
+    ...(LOOK.outlines && !(LOOK.ownShadow && LOOK.neighbours && !sameInk) ? [{ swatch: `<path d="M0.4,0.6H4.6V3H0.4Z" fill="none" stroke="${LOOK.own}" stroke-width="0.25" stroke-dasharray="0.7,0.45"/>`, label: `${its} shadow at 9 am, 12 pm and 3 pm, outlined` }] : []),
     ...(LOOK.hatch ? [{ swatch: fillShape('M0.4,0.3H4.6V3.3H0.4Z', { x0: 0.4, y0: 0.3, x1: 4.6, y1: 3.3 }, ADDED_HATCH(LOOK.own), 1.6), label: `Hatched: the ground only ${standing.length ? 'it' : 'the envelope'} shades, what it ${standing.length ? 'overshadows' : 'would overshadow'}` }] : []),
     ...(LOOK.shaded ? [{ swatch: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="${LOOK.own}" fill-opacity="0.1" stroke="${LOOK.own}" stroke-width="0.3" stroke-dasharray="0.5,0.4"/>`, label: 'Land it adds shadow to: a residential lot, heritage item or park' }] : []),
-    ...(LOOK.dims ? [{ swatch: sepSwatch, label: 'Separation: clear; holds if one face is blank; short' }] : []),
+    ...(LOOK.dims ? [{ swatch: sepSwatch, label: 'Building separation, apart / asked (ADG 3F-1): clear; holds if one face is blank; short' }] : []),
     { swatch: lineLook ? `<rect x="0.4" y="0.6" width="4.2" height="2.4" fill="#ffffff" stroke="#111111" stroke-width="0.45"/>` : bwSwatch, label: 'Buildings round about, each lot with its street number; lot boundaries, NSW cadastre' },
     ...(s.future.buildings.length ? [{ swatch: KEY.future, label: 'Dashed: a neighbour\'s future, a feasible footprint to its LEP height and FSR' }] : []),
     ...(plan.kerbs.length ? [{ swatch: LOOK.bw || lineLook ? `<path d="M0.4,1.8H4.6" fill="none" stroke="#8c8c8c" stroke-width="0.25"/>` : KEY.kerb, label: 'Kerb line, indicative' }] : []),
