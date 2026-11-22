@@ -7,7 +7,8 @@
  *   npx tsx test/geocode.mts
  */
 
-import { geocode, streetAddressOf } from '../src/fetch/geocode.js';
+import { rmSync } from 'node:fs';
+import { geocode, geocodeKept, streetAddressOf } from '../src/fetch/geocode.js';
 import { retryFetch } from '../src/lib/http.js';
 import { mercatorToLonLat } from '../src/lib/geo.js';
 
@@ -148,6 +149,29 @@ try {
   const partial = await geocode(`91-107 Riley Street, Darlinghurst NSW`, (m) => lines.push(m));
   check('what was found is kept', sorted(partial.matchedAddresses) === `91-93 ${RILEY}`, sorted(partial.matchedAddresses));
   check('what was not answered is a WARN', lines.some((l) => /WARN .*did not answer for no\. 95/.test(l)), lines.join(' | '));
+
+  // geocodeKept: an address the register placed is read from disk the next time, in a folder of this test's own.
+  const FOLDER = `geocode-test-${process.pid}`;
+  try {
+    // an answer given only in part is not kept (the wrapped register above still answers "91-" alone)
+    const part = await geocodeKept(`91-107 Riley Street, Darlinghurst NSW`, () => {}, FOLDER);
+    register({ down: true });
+    const again = await geocodeKept(`91-107 Riley Street, Darlinghurst NSW`, () => {}, FOLDER).then(() => 'answered', () => 'asked again');
+    check('an answer the register gave only in part is not kept: the next job asks again', sorted(part.matchedAddresses) === `91-93 ${RILEY}` && again === 'asked again', again);
+
+    register({});
+    const first = await geocodeKept(`94 Riley Street, Darlinghurst NSW`, () => {}, FOLDER);
+    check('a whole answer comes from the register the first time', sorted(first.matchedAddresses) === `94 ${RILEY}` && asked.exact > 0, `${sorted(first.matchedAddresses)} ${asked.exact}`);
+    register({ down: true });
+    const said: string[] = [];
+    const second = await geocodeKept(`  94 riley street,  Darlinghurst NSW `, (m) => said.push(m), FOLDER).catch((e: Error) => e);
+    check('the same address, however it is spaced or cased, is read from disk while the register is down', !(second instanceof Error) && sorted(second.matchedAddresses) === `94 ${RILEY}` && second.center.x === first.center.x && second.points.length === first.points.length, second instanceof Error ? second.message : sorted(second.matchedAddresses));
+    check('and the log says it was placed earlier, with no WARN', said.length === 1 && /as the address register placed it earlier/.test(said[0]) && !/WARN/.test(said[0]), said.join(' | '));
+    const other = await geocodeKept(`109 Riley Street, Darlinghurst NSW`, () => {}, FOLDER).then(() => 'answered', (e: Error) => e.message);
+    check('another address is still asked for, and fails while the register is down', /did not answer in time/.test(other), other);
+  } finally {
+    rmSync(new URL(`../out/.cache/${FOLDER}`, import.meta.url), { recursive: true, force: true });
+  }
 
   // retryFetch names the service and the wait when it gives up on a timeout.
   globalThis.fetch = (async () => { throw timeout(); }) as typeof fetch;

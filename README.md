@@ -163,8 +163,9 @@ known. A refused run is not wasted: the answers Overpass gave it are kept for
 the next run on the same branch (the pipelines' own thirty-day cache,
 `out/.cache/osm`, carried between runs), so when the mirrors have a bad
 minute half way through, the run after asks them only for what failed. A
-drawing whose pipeline fails outright (the NSW address register not answering
-in time, say) is tried once more after two minutes before the run gives up. It only ever runs when started by hand, so like `checks` it never
+drawing whose pipeline fails outright is tried once more after two minutes
+before the run gives up, and the addresses the NSW register has placed are
+carried between runs the same way as Overpass's answers. It only ever runs when started by hand, so like `checks` it never
 spends the public services' capacity on its own. The TfNSW, Google Maps and
 Mapillary keys are read from repository secrets of the same names when they
 are set.
@@ -3019,6 +3020,19 @@ download whole and asks for it again when it is cut, three times unless told
 otherwise; a refusal by status is still the caller's to judge. The elevation
 model is read through it. `test/download.mts` holds it against a stand-in
 server.
+
+### An address is placed once
+
+A job looks its address up in the NSW address register once for every sheet it
+draws, and the register, which answers most lookups in a second, some hours
+answers none in ninety: a deck was lost on an address the same run had placed
+twenty minutes before. `geocodeKept` (`src/fetch/geocode.ts`) keeps what the
+register answered on disk for a week (`out/.cache/geocode`) and reads it back
+for the same address, however it is spaced or cased. An answer the register
+gave only in part (it warned of a number it did not answer for) is not kept,
+so a lot is never left missing from a site for a week. Every pipeline looks
+its address up through it; `test/geocode.mts` holds it against a stand-in
+register that goes down between the first lookup and the second.
 
 ### Several addresses as one site
 
