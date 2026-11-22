@@ -265,6 +265,16 @@ jobs:
       - name: a long map query is posted, not refused
         run: npx tsx test/arcgis-query.mts
 
+      # A download is read whole, and again when the connection is cut while
+      # the body is still arriving (fetchBytes, src/lib/http.ts): retryFetch
+      # waits only for a server to start answering, so a transfer dropped
+      # part-way ("terminated") cost a deck its elevation model and with it
+      # the topography page. Against a stand-in server: a cut transfer is read
+      # again, three cuts give up by name, a refusal is not tried again, and
+      # the elevation model goes through it. No network.
+      - name: a download cut part-way is read again
+        run: npx tsx test/download.mts
+
       # A second look at the heights the sources give (src/lib/heightCheck.ts), on grids and footprints drawn
       # for it: a house whose street number was typed into its height gives way to what the 3D meshes read on
       # its footprint, or with no meshes to its own footprint and the height limit over it; a tree the meshes

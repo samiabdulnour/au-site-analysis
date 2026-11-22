@@ -3003,6 +3003,18 @@ their zone's colour only. Posted, 300 points are answered. A multipoint answer
 cut at the layer's limit is now asked for again from where it stopped, as a
 window's is. `test/arcgis-query.mts` holds both against a stand-in layer.
 
+### A download cut part-way
+
+`retryFetch` tries a request again until the server starts to answer. A
+transfer that then stops part-way fails later, in the read, where nothing
+tried again: the deck's elevation model is one image of some megabytes, and a
+connection dropped while it arrived ("elevation model failed: terminated")
+cost the deck its topography page. `fetchBytes` (`src/lib/http.ts`) reads a
+download whole and asks for it again when it is cut, three times unless told
+otherwise; a refusal by status is still the caller's to judge. The elevation
+model is read through it. `test/download.mts` holds it against a stand-in
+server.
+
 ### Several addresses as one site
 
 An amalgamation is typed as one address with its numbers as a range or a

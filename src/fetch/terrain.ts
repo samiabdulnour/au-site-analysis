@@ -4,7 +4,7 @@
 // same service takes twenty seconds a thousand points — and the grid then
 // gives the hillshade, the sections, the site's levels and its fall.
 
-import { retryFetch } from '../lib/http.js';
+import { fetchBytes } from '../lib/http.js';
 import { mercatorScaleFactor, mercatorToLonLat, type Extent } from '../lib/geo.js';
 
 const DEM = 'https://maps.six.nsw.gov.au/arcgis/rest/services/public/NSW_5M_Elevation/ImageServer';
@@ -77,9 +77,8 @@ export async function fetchDemGrid(extent: Extent, cellGroundM = 2.5): Promise<D
     bbox: `${extent.xmin},${extent.ymin},${extent.xmax},${extent.ymax}`, bboxSR: '3857', imageSR: '3857', size: `${cols},${rows}`,
     format: 'tiff', pixelType: 'F32', interpolation: 'RSP_BilinearInterpolation', f: 'image',
   });
-  const res = await retryFetch(url, {}, { attempts: 3, timeoutMs: 90_000, label: 'elevation model' });
-  if (!res.ok) throw new Error(`elevation model HTTP ${res.status}`);
-  const tiff = parseFloatTiff(new Uint8Array(await res.arrayBuffer()));
+  // one image of some megabytes: read whole, and again if the connection is cut part-way
+  const tiff = parseFloatTiff(await fetchBytes(url, { attempts: 3, timeoutMs: 90_000, label: 'elevation model' }));
   if (!tiff) return null;
   const values = new Array<number>(tiff.data.length);
   let min = Infinity, max = -Infinity, valid = 0;
