@@ -2989,6 +2989,20 @@ address
   → print to PDF (headless Chromium)
 ```
 
+### Long questions to a map layer
+
+A layer is asked in the request's address when the question is short and in
+its body when it is long (`src/lib/arcgis.ts`, over 1,800 characters). The NSW
+spatial portal's web server answers 404 to a query string over 2,048
+characters and 414 to one over about 9,000. A context sheet asks the property
+layer for the grounds of every school, hospital and civic building in its
+window as one multipoint, and 80 of them are 4,000 characters: on a wide sheet
+in a busy centre the question never reached the layer, the sheet warned
+"institution properties failed … HTTP 404", and those grounds were drawn in
+their zone's colour only. Posted, 300 points are answered. A multipoint answer
+cut at the layer's limit is now asked for again from where it stopped, as a
+window's is. `test/arcgis-query.mts` holds both against a stand-in layer.
+
 ### Several addresses as one site
 
 An amalgamation is typed as one address with its numbers as a range or a

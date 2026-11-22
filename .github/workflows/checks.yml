@@ -253,6 +253,18 @@ jobs:
       - name: State government land reads from the shipped index
         run: npx tsx test/state-land.mts
 
+      # A map layer is asked in the request's address when the query is short
+      # and in its body when it is long (src/lib/arcgis.ts): the NSW spatial
+      # portal answers 404 to a query string over 2,048 characters, so the
+      # multipoint of a wide context sheet's institutions never reached the
+      # property layer and their grounds went undrawn. Against a stand-in
+      # layer: five points go in the address, a hundred and twenty are posted
+      # with the same query, ninety institutions' properties are one post, and
+      # an answer cut at the layer's limit is asked for again from where it
+      # stopped. No network.
+      - name: a long map query is posted, not refused
+        run: npx tsx test/arcgis-query.mts
+
       # A second look at the heights the sources give (src/lib/heightCheck.ts), on grids and footprints drawn
       # for it: a house whose street number was typed into its height gives way to what the 3D meshes read on
       # its footprint, or with no meshes to its own footprint and the height limit over it; a tree the meshes
