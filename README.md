@@ -1758,6 +1758,20 @@ yield for 86, 88-90, 94 Maroubra Road, 2026-11):
   colourful shadows are not ideal".) Every path's spread is the isometric
   alone, and a path's only plan is its shadow page, so the paths with
   nothing to test have no plan and no shadow page.
+- *"These two are not matching by style or colour. Let's keep the aerial
+  map there, but simplify the zoning. For the isometry in the yield
+  probably don't show the zoning in 3D, just white neighbour buildings."*
+  The overview's plan tinted every lot by its zone over the photograph and
+  wrote the zone and height on each, and the page after it drew the town
+  in the zones' reds and blues. Now the photograph is the first page: a
+  zone is an area inside one line of its colour, its code and height of
+  building written once on it, and each lot keeps its street number alone
+  (`YIELD_OVERVIEW_ZONES` draws the alternatives: a light tint in the
+  line, the tint alone, or each lot tinted as before; Heron keeps its
+  hatches). And every massing of the deck is a white model, a path's own
+  spread as the solar access views already were: the neighbours white at
+  their heights, the scheme and what stands the only colours. The zones
+  are the overview's alone.
 - *"If there is nothing, don't print it."* "Within the controls" had a
   spread of its own even in a zone the study draws no building type for:
   every figure a dash, over the height plane alone. A path that builds
@@ -1782,13 +1796,15 @@ site may take, so a site with more paths has more pages:
    each one's storeys, height, floor area, FSR, units, parking, compliance and
    the page it is drawn on, and the floor area and height of each as bars
    against the FSR's floor area and the height of building. The right page is
-   the site among its neighbours in plan, each numbered neighbour's street
-   number, zone and height written in its building.
+   the site among its neighbours in plan over the aerial photograph: each
+   zone an area in one line of its colour with its code and height of
+   building written once, each numbered neighbour's street number on its
+   lot. It is the one page that shows the zones.
 2. **Stands today**, where the building sources record a building on the site
    — its storeys, height, footprint and indicative gross building area (each
    footprint by its storeys), the ratio that makes on the site against the
    LEP's, and the same bars. The right page draws it at its recorded height
-   among the neighbours, the whole page. Where the sources have the footprint
+   among the neighbours, a white model, the whole page. Where the sources have the footprint
    but no height, the height is read from Google's 3D meshes and the storeys
    are that height at 3.1 m each, or at the study's 3.8 m office floor where
    the source calls the building an office, a shop or another workplace

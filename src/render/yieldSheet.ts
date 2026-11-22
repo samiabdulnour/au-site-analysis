@@ -869,6 +869,8 @@ const ADDED_HATCH = (ink = ourShadowInk()): Fill => ({ kind: 'hatch', ink: inkFo
 const PLAN_BUILDING = 'fill="#ffffff" stroke="#6f6f6f" stroke-width="0.18" stroke-linejoin="round"';
 /** A building on Heron's line plans: white in a heavy black outline, the figure of a figure-ground plan. */
 const LINE_BUILDING = 'fill="#ffffff" stroke="#111111" stroke-width="0.45" stroke-linejoin="round"';
+/** A zone's area over the first page's photograph: how strong its tint, and how wide the line round it, millimetres. */
+const ZONE_AREA_TINT = 0.16, ZONE_AREA_LINE = 0.7;
 /** The neighbours in black and white on a path's plan: white in a black line, solid black, or a quiet grey. */
 const BW_BUILDING = {
   white: 'fill="#ffffff" stroke="#1c1c1c" stroke-width="0.3" stroke-linejoin="round"',
@@ -958,7 +960,30 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
   // Each lot in its zone's tint, as the style's context sheet tints the
   // land, the lots alone so the streets stay white; the site is left to its
   // own marks.
-  if (!greyPlan && !opts.bw) {
+  // Over the first page's photograph the zones are areas, not lots: each zone's lots inside one line of its colour,
+  // so the photograph stays the page (Z. 2026-11, on every lot tinted and written with its zone over the aerial:
+  // "let's keep the aerial map there, but simplify the zoning"). YIELD_OVERVIEW_ZONES draws the alternatives: a light
+  // tint in the line ('both'), the tint alone ('tint'), or each lot tinted as before ('lots'). Heron keeps its hatches.
+  const zoneMode: 'lots' | 'outline' | 'tint' | 'both' = photo && look.id !== 'heron' ? ((process.env.YIELD_OVERVIEW_ZONES as 'lots' | 'outline' | 'tint' | 'both' | undefined) ?? 'outline') : 'lots';
+  const zoneAreas = zoneMode !== 'lots';
+  if (zoneAreas) {
+    const byZone = new Map<string, { ink: string; ds: string[] }>();
+    for (const pc of parcels) {
+      const ink = pc.site || !pc.zone ? null : zoneInk(pc.zone, look);
+      if (!ink) continue;
+      const key = pc.zone!.trim().toUpperCase();
+      (byZone.get(key) ?? byZone.set(key, { ink, ds: [] }).get(key)!).ds.push(...pc.local.map(path));
+    }
+    const frame = `x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}"`;
+    let k = 0;
+    for (const { ink, ds } of byZone.values()) {
+      const d = ds.join('');
+      if (zoneMode !== 'outline') out.push(`<path data-zone-area="1" d="${d}" fill="${ink}" fill-opacity="${ZONE_AREA_TINT}"/>`);
+      // the line outside the area's edge alone: every lot's outline drawn, and all of it that falls on a lot of the zone masked out
+      if (zoneMode !== 'tint') out.push(`<defs><mask id="plan-zone-${id}-${k}" maskUnits="userSpaceOnUse" ${frame}><rect ${frame} fill="#ffffff"/><path d="${d}" fill="#000000"/></mask></defs><path data-zone-edge="1" d="${d}" fill="none" stroke="${ink}" stroke-width="${2 * ZONE_AREA_LINE}" stroke-linejoin="round" mask="url(#plan-zone-${id}-${k++})"/>`);
+    }
+  }
+  if (!greyPlan && !opts.bw && !zoneAreas) {
     const byKey = new Map<string, { fill: Fill; ds: string[] }>();
     for (const pc of parcels) {
       if (pc.site) continue;
@@ -973,7 +998,7 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
     const bb = { x0: box.x, y0: box.y, x1: box.x + box.w, y1: box.y + box.h };
     for (const { fill, ds } of byKey.values()) out.push(fillShape(ds.join(''), bb, fill));
   }
-  const lotLine = greyPlan || opts.bw ? 'stroke="#b4b4b4" stroke-width="0.12"' : photo || look.lots === 'white' ? 'stroke="#ffffff" stroke-width="0.3"' : `stroke="${t.road}" stroke-width="0.15" opacity="0.6"`;
+  const lotLine = greyPlan || opts.bw ? 'stroke="#b4b4b4" stroke-width="0.12"' : zoneAreas ? 'stroke="#ffffff" stroke-width="0.18" opacity="0.75"' : photo || look.lots === 'white' ? 'stroke="#ffffff" stroke-width="0.3"' : `stroke="${t.road}" stroke-width="0.15" opacity="0.6"`;
   out.push(`<path d="${parcels.flatMap((pc) => pc.local.map(path)).join('')}" fill="none" ${lotLine}/>`);
   let kerbs = b.kerbs;
   if (!kerbs) {
@@ -1247,7 +1272,7 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
     .map((pc) => ({ pc, d: Math.min(...(pc.local[0] ?? []).map((p) => Math.min(...s.ring.map((q) => Math.hypot(p.x - q.x, p.y - q.y))))) }))
     .sort((p, q) => p.d - q.d);
   for (const { pc } of labelled) {
-    const lines = [`NO. ${numberLine(pc.numbers!)}`, opts.bw ? '' : [pc.zone, pc.hob ? hobLine(pc.hob) : ''].filter(Boolean).join(' · ')].filter(Boolean);
+    const lines = [`NO. ${numberLine(pc.numbers!)}`, opts.bw || zoneAreas ? '' : [pc.zone, pc.hob ? hobLine(pc.hob) : ''].filter(Boolean).join(' · ')].filter(Boolean);
     const wMm = Math.max(lines[0].length * F1 * 0.66, (lines[1]?.length ?? 0) * F2 * 0.6) + 2.4, hMm = lines.length * LH + 0.8;
     const hw = wMm / 2 / mm, hh = hMm / 2 / mm;
     // The label's box, its corners and the middles of its sides, all inside the outline.
@@ -1265,7 +1290,36 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
     if (!clear(bx2)) continue;
     taken.push(bx2);
     const y0 = py - ((lines.length - 1) * LH) / 2 + F1 * 0.36;
-    lines.forEach((t, i) => out.push(`<text x="${px.toFixed(2)}" y="${(y0 + i * LH).toFixed(2)}" text-anchor="middle" font-size="${i ? F2 : F1}" font-weight="${i ? 400 : 700}" fill="${opts.bw === 'black' && onBuilding ? '#ffffff' : '#111111'}">${esc(t)}</text>`));
+    lines.forEach((t, i) => out.push(`<text x="${px.toFixed(2)}" y="${(y0 + i * LH).toFixed(2)}" text-anchor="middle" font-size="${i ? F2 : F1}" font-weight="${i ? 400 : 700}" fill="${opts.bw === 'black' && onBuilding ? '#ffffff' : '#111111'}"${zoneAreas ? HALO : ''}>${esc(t)}</text>`));
+  }
+  // Where the zones are areas: each area's zone and height of building once, on the lot nearest its middle, under or
+  // over that lot's own number where there is room, else on the next lot out. An area is the lots of one zone and
+  // height that touch (a street parts two).
+  if (zoneAreas && !opts.plain) {
+    const lots = parcels.filter((pc) => !pc.site && pc.zone && pc.shown.length);
+    const said = (pc: (typeof lots)[number]) => [pc.zone, pc.hob ? hobLine(pc.hob) : ''].filter(Boolean).join(' · ');
+    const touch = (p: XY[][], q: XY[][]) => p.some((rp) => rp.some((u) => q.some((rq) => rq.some((v) => Math.hypot(u.x - v.x, u.y - v.y) < 1))));
+    const of = lots.map((_, i) => i);
+    const root = (i: number): number => (of[i] === i ? i : (of[i] = root(of[i])));
+    for (let i = 0; i < lots.length; i++) for (let j = i + 1; j < lots.length; j++) if (root(i) !== root(j) && said(lots[i]) === said(lots[j]) && touch(lots[i].local, lots[j].local)) of[root(i)] = root(j);
+    const areas = new Map<number, typeof lots>();
+    lots.forEach((pc, i) => { const r = root(i); (areas.get(r) ?? areas.set(r, []).get(r)!).push(pc); });
+    const FZ = 3;
+    for (const members of [...areas.values()].sort((p, q) => q.length - p.length)) {
+      const text = said(members[0]), wMm = text.length * FZ * 0.66 + 2.4, hMm = FZ + 1.4;
+      const mids = members.map((pc) => centre(pc.shown[0])), mid = centre(mids);
+      const order = members.map((pc, i) => ({ pc, d: Math.hypot(mids[i].x - mid.x, mids[i].y - mid.y) })).sort((p, q) => p.d - q.d);
+      place: for (const { pc } of order.slice(0, 10)) {
+        const [px, y0] = at(tierSpot(pc.shown, [], [], hMm / 2 / mm, 0) ?? centre(pc.shown[0]));
+        for (const dy of [4.4, -4.4, 8.8, -8.8, 0]) {
+          const py = y0 + dy, bx: Box = [px - wMm / 2, py - hMm / 2, px + wMm / 2, py + hMm / 2];
+          if (!clear(bx)) continue;
+          taken.push(bx);
+          out.push(`<text data-zone-label="1" x="${px.toFixed(2)}" y="${(py + FZ * 0.36).toFixed(2)}" text-anchor="middle" font-size="${FZ}" font-weight="700" letter-spacing="0.25" fill="#111111"${HALO}>${esc(text)}</text>`);
+          break place;
+        }
+      }
+    }
   }
 
   return {
@@ -1721,7 +1775,7 @@ const footprintSources = (b: YieldBundle) => (b.buildingsSource === 'overture' ?
  * frame shows (the first page's plan at 1:500 holds two of the window's five); without it, the whole window's,
  * which the massing draws to its frame's every edge.
  */
-function zoneEntries(b: YieldBundle, look: DeckLook, massing: boolean, shown?: string[]): LegendEntry[] {
+function zoneEntries(b: YieldBundle, look: DeckLook, massing: boolean, shown?: string[], areas = false): LegendEntry[] {
   const count = new Map<string, number>();
   const tally = (zone?: string) => { if (zone) { const c = zone.trim().toUpperCase(); if (!shown || shown.includes(c)) count.set(c, (count.get(c) ?? 0) + 1); } };
   for (const pc of parcelsOf(b)) tally(pc.zone);
@@ -1730,6 +1784,9 @@ function zoneEntries(b: YieldBundle, look: DeckLook, massing: boolean, shown?: s
   const box = 'M0.4,0.5H4.6V3.1H0.4Z', bb = { x0: 0, y0: 0, x1: 5, y1: 3.6 };
   return [...count.entries()].sort((p, q) => q[1] - p[1]).slice(0, 6).map(([code]) => code).sort((p, q) => zoneOrder(p) - zoneOrder(q))
     .flatMap((code) => {
+      // (a zone's area over the first page's photograph: a line of its colour round it)
+      const edge = areas ? zoneInk(code, look) : null;
+      if (edge) return [{ swatch: `<path d="${box}" fill="none" stroke="${edge}" stroke-width="0.45"/>`, label: names.get(code) ? `${code} ${names.get(code)}` : code }];
       const lf = lotFill(code, look), ink = massing ? zoneInk(code, look) : null;
       if (!lf && !ink) return [];
       const swatch = (lf ? fillShape(box, bb, lf.fill) : '') + (ink ? `<path d="M1.6,1.1H3.4V2.5H1.6Z" fill="${ink}"/>` : '') +
@@ -1750,15 +1807,12 @@ function schemeLegend(b: YieldBundle, s: YieldStudy, y: YieldResult | undefined,
   for (const u of ['residential', 'retail', 'commercial'] as Use[]) if (y?.tiers.some((t) => t.use === u)) out.push({ swatch: KEY.use(u), label: `Indicative massing, ${USE_WORD[u]}` });
   if (y?.tiers.length) out.push({ swatch: KEY.envelope, label: 'Envelope of each tier' });
   if (s.hob?.metres) out.push({ swatch: KEY.plane, label: 'The LEP\'s height of building plane' });
-  const look = deckLook();
-  const zoneInks = [...new Set(b.context.map((cb) => zoneInk(cb.controls?.zone, look)).filter((c): c is string => !!c))].slice(0, 5);
-  // Heron's line drawings: the neighbours white in their outline, no zone colours to key (each lot's zone is written on the plan)
-  const lineModel = look.id === 'heron';
-  out.push({ swatch: KEY.zones(zoneInks.length ? zoneInks : [massingInks().noHeight]), label: `Neighbours at their heights (${footprintSources(b)}${b.mesh?.heights ? ', the 3D meshes where neither has one' : ''}), ${lineModel ? 'white in outline' : 'each in its zone\'s colour'}; dashed: not recorded` });
-  if (!lineModel) out.push(...zoneEntries(b, look, true));
-  if (s.future.buildings.length) out.push({ swatch: KEY.future, label: `${FUT_LABEL}${b.capacity ? ', where the capacity study finds development potential' : ''}` });
+  // the town a white model: the neighbours white at their heights, no zone's colour to key
+  out.push({ swatch: `<path d="M0.4,0.7H2.3V3H0.4Z" fill="#ffffff" stroke="#8f8f8f" stroke-width="0.2"/><path d="M2.7,0.7H4.6V3H2.7Z" fill="#ffffff" stroke="#8f8f8f" stroke-width="0.2" stroke-dasharray="0.5,0.3"/>`,
+    label: `Neighbours in white at their heights (${footprintSources(b)}${b.mesh?.heights ? ', the 3D meshes where neither has one' : ''}); dashed: not recorded` });
+  if (s.future.buildings.length) out.push({ swatch: `<path d="M0.6,0.7H4.4V3H0.6Z" fill="#ffffff" fill-opacity="0.5" stroke="#8f8f8f" stroke-width="0.2" stroke-dasharray="0.5,0.3"/>`, label: `${FUT_LABEL}${b.capacity ? ', where the capacity study finds development potential' : ''}` });
   if (kerbs) out.push({ swatch: KEY.kerb, label: 'Kerb line, indicative' });
-  if (b.trees?.length) out.push({ swatch: KEY.tree, label: b.trees.some((t) => t.source !== 'aerial') ? 'Trees: crowns read off the aerial, recorded where OpenStreetMap or the council has them' : 'Trees, crowns read off the aerial' });
+  if (b.trees?.length) out.push({ swatch: `<circle cx="2.5" cy="1.8" r="1.3" fill="#ffffff" stroke="#8f8f8f" stroke-width="0.2"/>`, label: b.trees.some((t) => t.source !== 'aerial') ? 'Trees: crowns read off the aerial, recorded where OpenStreetMap or the council has them' : 'Trees, crowns read off the aerial' });
   return out;
 }
 
@@ -1768,10 +1822,14 @@ function schemeLegend(b: YieldBundle, s: YieldStudy, y: YieldResult | undefined,
  * half page and remove the plan: the plan is visible in shadow"; then "keep the rule with full isometry everywhere;
  * if there is nothing interesting for compliance, don't show the shadow or plan at all". A path's plan is the page
  * after it, with its shadow (complianceSheets), where it holds apartments to test; a path with none has no plan.
+ * The town is a white model, as the solar access views draw it: no zone's colour in 3D, the scheme and what stands
+ * the only colours (Z. 2026-11, on the overview's grey aerial beside a massing in the zones' reds and blues: "these
+ * two are not matching by style or colour … for the isometry probably don't show the zoning in 3D, just white
+ * neighbour buildings"). The zones are the overview's.
  */
 function schemeFigures(b: YieldBundle, s: YieldStudy, scheme: Scheme, id: string, massingNote: string, massingTitle = 'Indicative massing'): { html: string; kerbs: boolean } {
   return {
-    html: bleedFigure(0, PAGE_H, axonometric(b, s, { x: 2, y: LABEL_IN + 9, w: PAGE_W - 4, h: PAGE_H - LABEL_IN - 11 }, { ...scheme, focusM: scheme.focusM ?? FOCUS_FULL_M, ...(process.env.YIELD_ISO_MONO ? { mono: true } : {}) }, id)) + mapLabel(0, [massingTitle, massingNote]),
+    html: bleedFigure(0, PAGE_H, axonometric(b, s, { x: 2, y: LABEL_IN + 9, w: PAGE_W - 4, h: PAGE_H - LABEL_IN - 11 }, { ...scheme, focusM: scheme.focusM ?? FOCUS_FULL_M, mono: true }, id)) + mapLabel(0, [massingTitle, massingNote]),
     // (the massing draws the bundle's kerb lines; it works none out)
     kerbs: (b.kerbs ?? []).length > 0,
   };
@@ -1823,7 +1881,9 @@ function overviewSlide(b: YieldBundle, s: YieldStudy, paths: Path[]): Slide {
   const plan = planView(b, s, { x: 0, y: 0, w: PAGE_W, h: PAGE_H }, {}, 'site', { room: PLAN_ROOM, inset: 6, keepOut: [labelBox(name(5000))], aerial: true });
   const right = bleedFigure(0, PAGE_H, plan.svg) + mapLabel(0, name(plan.scale));
   const KEY = keySwatches();
-  const legend: LegendEntry[] = [{ swatch: KEY.site, label: 'The site' }, { swatch: KEY.neighbours, label: 'Buildings round about' }, { swatch: KEY.lot, label: 'Lot boundaries, NSW cadastre, each lot tinted by its zone' }, ...zoneEntries(b, deckLook(), false, plan.zones)];
+  const areasLook = deckLook().id !== 'heron';
+  const legend: LegendEntry[] = [{ swatch: KEY.site, label: 'The site' }, { swatch: KEY.neighbours, label: 'Buildings round about' },
+    { swatch: KEY.lot, label: areasLook ? 'Lot boundaries, NSW cadastre, each with its street number' : 'Lot boundaries, NSW cadastre, each lot tinted by its zone' }, ...zoneEntries(b, deckLook(), false, plan.zones, areasLook)];
   if (plan.kerbs.length) legend.push({ swatch: KEY.kerb, label: 'Kerb line, indicative' });
   const exceeds = ex?.gbaSqm && ex.gbaSqm > Math.max(...paths.filter((p) => p.y && p.sc.id !== 'rebuiltAsStands').map((p) => p.y!.gba), 0);
   const narrative = s.noScheme ? brief([noSchemeSentence(b, s), ex?.gbaSqm ? `What stands today holds about ${area(ex.gbaSqm)}.` : ''], 560) : brief([

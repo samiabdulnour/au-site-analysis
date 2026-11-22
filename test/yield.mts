@@ -352,6 +352,31 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
     '15_controls_and_assumptions'].join(','), pages);
   check('overview: several lots in one line of the figure, as lot/plan, the rest counted', lotsShort('Lot 1 - DP 965310') === 'Lot 1 - DP 965310' && lotsShort('Lot 1 - DP 965310; Lot 10 - DP 1118472; Lot 1 - DP 36591') === '3 lots: 1/DP965310, 10/DP1118472, 1/DP36591'
     && /^5 lots: .* \+ 3 more$/.test(lotsShort('Lot 1 - DP 965310; Lot 10 - DP 1118472; Lot 1 - DP 36591; Lot 4 - DP 12345; Lot 5 - DP 12345')) && lotsShort(undefined) === '—');
+  // Z. 2026-11, on the first page's aerial with every lot tinted and written with its zone, beside a massing in the
+  // zones' colours: "these two are not matching by style or colour. Let's keep the aerial map there, but simplify the
+  // zoning." Over the photograph a zone is an area in one line of its colour, named once; a lot has its number alone.
+  {
+    const dLon = 1 / (111320 * Math.cos((33.9 * Math.PI) / 180)), dLat = 1 / 110574;
+    const lot = (x: number, y: number, w: number, h: number) => { const x0 = 151.20043 + x * dLon, y0 = -33.9 + y * dLat; return [[x0, y0], [x0 + w * dLon, y0], [x0 + w * dLon, y0 + h * dLat], [x0, y0 + h * dLat], [x0, y0]]; };
+    const merc = (lon: number, lat: number) => ({ x: (lon * 20037508.34) / 180, y: (Math.log(Math.tan(((90 + lat) * Math.PI) / 360)) / (Math.PI / 180)) * (20037508.34 / 180) });
+    const sw = merc(151.199, -33.901), ne = merc(151.202, -33.898);
+    const pictured = { ...bundle,
+      parcels: [{ rings: [lot(2, 0, 15, 40)], numbers: ['2'], zone: 'R4', hob: { value: 18.6, units: 'm' } }, { rings: [lot(17, 0, 15, 40)], numbers: ['4'], zone: 'R4', hob: { value: 18.6, units: 'm' } },
+        { rings: [lot(2, 60, 30, 30)], numbers: ['9'], zone: 'R2', hob: { value: 9.5, units: 'm' } }],
+      aerial: { tiles: [{ file: 'aerial-0.jpg', left: 0, top: 0, width: 1, height: 1 }], pxWidth: 100, pxHeight: 100, extent: { xmin: sw.x, ymin: sw.y, xmax: ne.x, ymax: ne.y } } } as unknown as YieldBundle;
+    const first = (bd: YieldBundle, theme?: string) => renderYieldDeck(bd, meta, theme ? { theme } : {}).slides[0];
+    const ov = first(pictured), n = (re: RegExp) => (ov.figureHtml.match(re) ?? []).length;
+    check('overview: the photograph kept, each zone an area in one line of its colour, no lot tinted', /<image href="data\/aerial-0\.jpg"/.test(ov.figureHtml) && n(/data-zone-edge="1"/g) === 2 && n(/data-zone-area="1"/g) === 0,
+      `${n(/data-zone-edge="1"/g)} edges, ${n(/data-zone-area="1"/g)} tints`);
+    check('overview: a zone and its height written once an area, not on every lot; each lot its number alone', n(/data-zone-label="1"/g) === 2 && n(/R4 · HOB = 18\.6m/g) === 1 && n(/>NO\. 2</g) === 1 && n(/>NO\. 4</g) === 1,
+      `${n(/data-zone-label="1"/g)} labels, ${n(/R4 · HOB = 18\.6m/g)} of R4`);
+    check('overview: the key names the zones by their lines, the lots by their numbers', (ov.legend ?? []).some((e) => /each with its street number/.test(e.label)) && !(ov.legend ?? []).some((e) => /tinted by its zone/.test(e.label)));
+    process.env.YIELD_OVERVIEW_ZONES = 'lots';
+    const old = first(pictured).figureHtml;
+    delete process.env.YIELD_OVERVIEW_ZONES;
+    check('overview: each lot tinted and written with its zone is still to be had', !/data-zone-edge/.test(old) && (old.match(/R4 · HOB = 18\.6m/g) ?? []).length === 2);
+    check('overview: Heron keeps its hatches over the photograph', !/data-zone-edge/.test(first(pictured, 'heron').figureHtml));
+  }
   check('deck: every page an A3 atlas spread', (all.html.match(/<section class="slide atlas"/g) ?? []).length === 15);
   // Several drawings in one document: an id used twice would clip one with another's frame.
   const used = [...all.html.matchAll(/\bid="([^"]+)"/g)].map((m) => m[1]);
@@ -497,7 +522,12 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
   const fullPlan = withLook({ hatch: true, dims: true, shaded: true }, () => shadowOf(close).figureHtml);
   check('shadow, asked for: hatched where only the envelope shades the ground', /<g data-added="1">.*?<clipPath/.test(fullPlan));
   check('shadow, asked for: a separation\'s distance, haloed', /paint-order="stroke" data-dim="1">8\.0 m</.test(fullPlan), fullPlan.match(/<text[^>]*data-dim="1">[^<]*</)?.[0]);
-  check('compliance: the massings a white model, the neighbours white', /fill="#ffffff" fill-rule="evenodd" stroke="#8f8f8f" stroke-width="0\.12"/.test(closeSolar) && !/fill="#ffffff" fill-rule="evenodd" stroke="#8f8f8f"/.test(deck(close).slides.find((sl) => /^0[23]_/.test(sl.id))!.figureHtml));
+  // every massing of the deck a white model, a path's own spread too: no zone's colour in 3D (Z. 2026-11: "for the
+  // isometry probably don't show the zoning in 3D, just white neighbour buildings")
+  check('the massings a white model, the neighbours white, on the solar access page and on the path\'s own spread', /fill="#ffffff" fill-rule="evenodd" stroke="#8f8f8f" stroke-width="0\.12"/.test(closeSolar)
+    && /fill="#ffffff" fill-rule="evenodd" stroke="#8f8f8f" stroke-width="0\.12"/.test(deck(close).slides.find((sl) => sl.id === '03_within_controls')!.figureHtml)
+    && !(deck(close).slides.find((sl) => sl.id === '03_within_controls')!.legend ?? []).some((e) => /zone/i.test(e.label))
+    && (deck(close).slides.find((sl) => sl.id === '03_within_controls')!.legend ?? []).some((e) => /Neighbours in white at their heights/.test(e.label)));
   check('separation: a building nearer than the separation is short, and the table says so', !!r3f && r3f.ok === false && /1 building within 24 m: 1 short/.test(r3f.proposed?.join(' ') ?? ''), JSON.stringify(r3f));
   const closeComp = deck(close).slides.find((sl) => sl.id === '04_within_controls_shadow_and_separation')!;
   check('separation: the compliance sheet lists it, its distance against the 12 m asked', /building to the east<\/td>/.test(closeComp.figureHtml) && /8\.0 \/ 12\sm/.test(closeComp.figureHtml), closeComp.figureHtml.match(/<td>building to the east<\/td>.*?<\/tr>/)?.[0]);
