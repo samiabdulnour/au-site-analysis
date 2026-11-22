@@ -284,9 +284,10 @@ jobs:
       - name: the covers and their picture
         run: npx tsx test/covers.mts
 
-      # The 3D views' trees and people in each deck style: Flamingo's cloud crowns and Kingfisher's drawn ones, each
-      # painted once as a picture and placed at every tree, with their shadows; people with legs, and a crowd in the
-      # parks; Heron, Canary and the white model plain. And the walls: Canary's hatched as shade in the wall's own
+      # The 3D views' trees and people in each deck style: Kingfisher's drawn canopies and its painted people, each
+      # picture once and placed at every tree; Flamingo's flat town on a cream ground, its trees flat shapes in vector
+      # and its people and traffic in line alone, the people over life size; a crowd in the parks; Heron, Canary and
+      # the white model plain. And the walls: Canary's hatched as shade in the wall's own
       # colour, closest on the wall turned from the light; Flamingo's and Kingfisher's plain; no pattern of squares.
       - name: the trees and the people in each style
         run: npx tsx test/trees.mts

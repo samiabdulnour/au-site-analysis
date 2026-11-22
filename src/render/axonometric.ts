@@ -22,8 +22,8 @@ import { alongLine, carriageways, type Carriageway, type RoadLine } from '../lib
 import { INK, massingInks } from './atlasKit.js';
 import { tint, vivid, deckLook, greyOf, tpl } from './template.js';
 import { esc } from './chrome.js';
-import { crownPicture, shadowPicture, rand, canopyBottom, canopyVariant, CANOPY, CANOPY_BRANCHINGS, CONTOUR, type CrownKind } from './crowns.js';
-import { personPicture, riderPicture, PEOPLE_VARIANTS, RIDER_VARIANTS } from './people.js';
+import { crownPicture, shadowPicture, rand, canopyBottom, canopyVariant, flatCrownSvg, flatBottom, CANOPY, CANOPY_BRANCHINGS, CONTOUR, type CrownKind, type FlatForm } from './crowns.js';
+import { personPicture, riderPicture, linePersonSvg, lineRiderSvg, PEOPLE_VARIANTS, RIDER_VARIANTS, type LineFigure } from './people.js';
 
 export interface Prism {
   rings: XY[][];
@@ -242,13 +242,18 @@ function inRing(p: XY, rg: XY[]): boolean {
  * green with a lighter one over it, a person a slip of colour with a head. Illustrated, as an illustrator's isometric
  * draws a town: each crown outlined, in its shade with the lit part over it towards the light and a highlight, its
  * shadow on the ground; a person with legs, clothes and a face, a little larger than life; more of them walking the
- * footpaths, some in twos, and people gathered in the parks. Flamingo's crowns are clouds of a few lobes, outlined,
- * shaded and lit, each casting its shadow, a few small trees narrow and upright; Kingfisher's are loose canopies, flat,
- * many small leaf clumps with light through them and the fork of the branches under them, without an outline or a
- * shadow, after an illustrated masterplan. Each style's trees are in its own green, deeper or lighter tree to tree.
+ * footpaths, some in twos, and people gathered in the parks. Flamingo's trees are the flat ones of an illustrator's
+ * isometric town (Z. 2026-11, after her reference): a few plain shapes in two deep teals, no outline, shading or
+ * shadow, each on a thin trunk whose line runs up into it, a short bar on the ground at its foot; its people and its
+ * traffic in line alone, cream with one thin dark line round each part and a pale warm patch under them, the people
+ * in vector and well over life size, on a cream ground. Kingfisher's
+ * are loose canopies, flat, many small leaf clumps with light through them and the fork of the branches under them,
+ * without an outline or a shadow, after an illustrated masterplan. Each style's trees are in its own green, deeper or
+ * lighter tree to tree. (`cloud`, a crown of a few lobes outlined, shaded and lit and casting its shadow, was
+ * Flamingo's and is kept for a style that asks for it.)
  */
 interface AxoLook {
-  crown: 'disc' | 'cloud' | 'canopy';
+  crown: 'disc' | 'cloud' | 'canopy' | 'flat';
   people: 'slip' | 'figure';
   crowd: boolean;
   /** The trees' greens, taken tree by tree; and the few in another colour (a blossom, an autumn tree), each with its share. */
@@ -258,7 +263,15 @@ interface AxoLook {
   columnar: number;
   /** The trees cast their shadows on the ground. */
   shadows: boolean;
+  /** The people and the traffic in line alone (render/people.ts, LineFigure): cream, one thin line, a pale patch under them. */
+  line?: LineFigure;
 }
+/** Flamingo's flat trees: its two teals, tree by tree, and the lighter one its ruled shields take; the lines in each a deeper cut of it. */
+const FLAT_TEAL = { crown: '#167d7f', deep: '#0b5f66', light: '#5fa59a' };
+/** Flamingo's line figures: the cream of its streets (atlasKit, massingInks), a dark slate line, a pale warm patch on the ground. */
+const FLAT_LINE: LineFigure = { fill: '#fcf9ee', line: '#3a4552', ground: '#f3e2b8' };
+/** How large Flamingo's people in line are drawn, times life: off the town's scale, as the reference's are (a person some two thirds of a car's length tall). */
+export const LINE_FIGURE_SIZE = 1.7;
 const PLAIN: AxoLook = { crown: 'disc', people: 'slip', crowd: false, greens: [], accents: [], columnar: 0, shadows: false };
 
 /** The look of a drawing's trees and people, by the style; plain in a white model. */
@@ -267,7 +280,7 @@ function lookOf(M: ReturnType<typeof massingInks>, mono: boolean): AxoLook {
   // Heron's line model: each tree a canopy in white, its contour and its limbs black; the people plain, in outline
   if (style === 'heron') return { crown: 'canopy', people: 'slip', crowd: false, greens: ['#ffffff'], accents: [], columnar: 0.12, shadows: false };
   if (mono) return PLAIN;
-  if (style === 'flamingo') return { crown: 'cloud', people: 'figure', crowd: true, greens: [M.tree, shade(M.tree, 0.92), shade(M.tree, 0.84)], accents: [], columnar: 0.22, shadows: true };
+  if (style === 'flamingo') return { crown: 'flat', people: 'figure', crowd: true, greens: [FLAT_TEAL.crown, FLAT_TEAL.crown, FLAT_TEAL.deep], accents: [], columnar: 0.22, shadows: false, line: FLAT_LINE };
   // Kingfisher's canopies in two close cuts of its green and, for about one in five, a soft yellow-green
   if (style === 'kingfisher') return { crown: 'canopy', people: 'figure', crowd: true, greens: [M.tree, M.tree, shade(M.tree, 0.9), shade(M.tree, 0.9), '#bccd84'], accents: [], columnar: 0.1, shadows: false };
   return PLAIN;
@@ -685,7 +698,40 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
     }
     return sid;
   };
+  // A flat tree's form, by its place: a narrow upright one a cypress or a conifer; a few of the smallest a low bush;
+  // the rest mostly three-lobed and round crowns, with a hexagon, a bell, a conifer and a ruled shield among them.
+  const flatFormOf = (tr: { p: XY; r: number }): FlatForm => {
+    if (columnar(tr)) return rand(tr.p, 61) < 0.5 ? 'cypress' : 'cone';
+    if (tr.r < 1.7 && rand(tr.p, 63) < 0.22) return 'bush';
+    const u = rand(tr.p, 1);
+    return u < 0.4 ? 'trefoil' : u < 0.62 ? 'round' : u < 0.72 ? 'hex' : u < 0.82 ? 'bell' : u < 0.9 ? 'cone' : 'shield';
+  };
+  // each form in each teal once in the drawing's defs, at a radius of one, placed at each tree's size; one for each of
+  // the crowns' sizes, so the lines in a wide crown are no heavier than those in a small one (some 0.09 m)
+  const flatStamp = (form: FlatForm, tone: string, r: number) => {
+    const size = CROWN_SIZES.find((sz) => r < sz.upTo)!;
+    const key = `flat|${form}|${tone}|${size.r}`;
+    let sid = stamps.get(key);
+    if (!sid) {
+      sid = `axo-${id}-f${stamps.size}`;
+      stamps.set(key, sid);
+      stampDefs.push(flatCrownSvg(sid, form, tone, shade(tone, 0.72), 0.09 / size.r));
+    }
+    return sid;
+  };
+  const flatTreeSvg = (tr: { p: XY; r: number }) => {
+    const form = flatFormOf(tr), tone = form === 'shield' ? FLAT_TEAL.light : greenOf(tr.p);
+    const [bx, by] = P(tr.p, 0), R = form === 'bush' ? Math.max(1.1, tr.r) : tr.r, sid = flatStamp(form, tone, R);
+    // the bar on the ground at its foot, a thin cut of its own teal
+    const half = Math.max(0.55, R * 0.6);
+    const bar = `<rect data-tree-bar x="${(bx - half).toFixed(2)}" y="${(by - 0.09).toFixed(2)}" width="${(2 * half).toFixed(2)}" height="0.18" rx="0.09" fill="${tone}" fill-opacity="0.3"/>`;
+    if (form === 'bush') return `<use href="#${sid}" transform="translate(${bx.toFixed(2)},${(by - flatBottom(form) * R).toFixed(2)}) scale(${R.toFixed(3)})"/>`;
+    const [cx, cy] = P(tr.p, crownCentre(tr));
+    return bar + `<line x1="${bx.toFixed(2)}" y1="${by.toFixed(2)}" x2="${cx.toFixed(2)}" y2="${(cy + (flatBottom(form) - 0.04) * R).toFixed(2)}" stroke="${shade(tone, 0.72)}" stroke-width="0.12" stroke-linecap="round"/>` +
+      `<use href="#${sid}" transform="translate(${cx.toFixed(2)},${cy.toFixed(2)}) scale(${R.toFixed(3)})"/>`;
+  };
   const treeSvg = (tr: { p: XY; r: number }) => {
+    if (look.crown === 'flat') return flatTreeSvg(tr);
     const zc = crownCentre(tr);
     const [cx, cy] = P(tr.p, zc), [bx, by] = P(tr.p, 0);
     if (look.crown === 'disc') {
@@ -726,13 +772,17 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   // Kingfisher's traffic as an illustrator's isometric vehicles: whites, greys, a yellow and an orange, the glass dark,
   // the town's one thin contour round each
   const kfCars = !mono && deckLook().id === 'kingfisher';
+  // Flamingo's traffic in line alone, as its people are: the same drawn vehicles, every part in the paper's cream with
+  // the one thin line round it, the windows and the wheels in outline, a pale warm patch on the road under each
+  const LF = mono ? undefined : look.line;
+  const drawnCars = kfCars || !!LF;
   // in Kingfisher's own colours: mostly warm whites and light greys, its terracotta, mint, pale blue, a cut of its deep
   // blue and its deep terracotta among them; the glass a dark slate of its blue; edged with the town's one contour
-  const CAR_INKS = mono ? ['#ffffff'] : deckLook().id === 'heron' ? ['#f2f2f2', '#bdbdbd', '#8c8c8c', '#e2e2e2', '#5e5e5e'] : kfCars
+  const CAR_INKS = mono ? ['#ffffff'] : LF ? [LF.fill] : deckLook().id === 'heron' ? ['#f2f2f2', '#bdbdbd', '#8c8c8c', '#e2e2e2', '#5e5e5e'] : kfCars
     ? ['#f5f3ef', INK.red.solid, '#d9d6d1', INK.green.solid, '#f5f3ef', INK.blue.solid, tint(INK.blue.deep, 0.25), '#d9d6d1', INK.red.deep]
     : [vivid(INK.red.solid, 0.55, 0.45), vivid(INK.blue.solid, 0.5, 0.42), vivid(INK.orange.solid, 0.7, 0.5), '#f4f4f0'];
-  const WHITE = mono ? '#ffffff' : kfCars ? '#f5f3ef' : '#f4f4f0', GLASS = mono ? G.glass : kfCars ? shade(INK.blue.deep, 0.62) : tint(INK.blue.solid, 0.78);
-  const PALE = mono ? '#ffffff' : kfCars ? '#ece9e3' : '#e6e5df', CHASSIS = mono ? G.chassis : kfCars ? '#6e7380' : '#4a4a4a';
+  const WHITE = mono ? '#ffffff' : LF ? LF.fill : kfCars ? '#f5f3ef' : '#f4f4f0', GLASS = mono ? G.glass : LF ? LF.fill : kfCars ? shade(INK.blue.deep, 0.62) : tint(INK.blue.solid, 0.78);
+  const PALE = mono ? '#ffffff' : LF ? LF.fill : kfCars ? '#ece9e3' : '#e6e5df', CHASSIS = mono ? G.chassis : LF ? LF.fill : kfCars ? '#6e7380' : '#4a4a4a';
   const VAN_INKS = [WHITE, WHITE, CAR_INKS[2 % CAR_INKS.length], WHITE, CAR_INKS[1 % CAR_INKS.length]];
   type Block = { s0: number; s1: number; hw: number; z0: number; z1: number; fill: string };
   const block = (s0: number, s1: number, hw: number, z0: number, z1: number, fill: string): Block => ({ s0, s1, hw, z0, z1, fill });
@@ -786,7 +836,9 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   const solidSvg = (v: Vehicle, so: Solid): string => {
     const pt = (sx: number, side: number, z: number) => P({ x: v.c.x + v.u.x * sx + v.n.x * side, y: v.c.y + v.u.y * sx + v.n.y * side }, z);
     const along = v.u.x * d.x + v.u.y * d.y;
-    const edge = CONTOUR, out: string[] = [];
+    const edge = LF ? LF.line : CONTOUR, pen = LF ? 0.07 : 0.05, out: string[] = [];
+    // (in line alone: no shade on a face, the cream as it is)
+    const tone = (fill: string, lit: number) => (LF ? fill : shade(fill, lit));
     const lightOf = (hx: number, hy: number, nz: number) => 0.9 + 0.1 * Math.max(0, hx * light.x + hy * light.y) + 0.22 * Math.max(0, nz);
     // the faces across the width, one to each edge of the profile that faces the camera, far first
     const faces: { key: number; svg: string }[] = [];
@@ -794,38 +846,41 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
       const [s1, z1] = so.prof[(i + 1) % so.prof.length], ds = s1 - s0, dz = z1 - z0, l = Math.hypot(ds, dz) || 1;
       const ns = dz / l, nz = -ds / l;   // outward, the profile counter-clockwise
       if (ns * along * viewAlong - nz * viewDown >= 0) return;
-      const fill = so.glass?.includes(i) ? GLASS : shade(so.fill, lightOf(v.u.x * ns, v.u.y * ns, nz));
+      const fill = so.glass?.includes(i) ? GLASS : tone(so.fill, lightOf(v.u.x * ns, v.u.y * ns, nz));
       const quad = poly([pt(s0, so.hw, z0), pt(s1, so.hw, z1), pt(s1, -so.hw, z1), pt(s0, -so.hw, z0)]);
-      faces.push({ key: ((s0 + s1) / 2) * along - ((z0 + z1) / 2) * 0.001, svg: `<path d="${quad}" fill="${fill}" stroke="${edge}" stroke-width="0.05" stroke-linejoin="round"/>` });
+      faces.push({ key: ((s0 + s1) / 2) * along - ((z0 + z1) / 2) * 0.001, svg: `<path d="${quad}" fill="${fill}" stroke="${edge}" stroke-width="${pen}" stroke-linejoin="round"/>` });
     });
     faces.sort((a, b) => b.key - a.key);
     out.push(...faces.map((f) => f.svg));
     // the side turned to the camera, its windows, its wheels
     const side = v.n.x * d.x + v.n.y * d.y < 0 ? so.hw : -so.hw, sn = Math.sign(side);
-    out.push(`<path d="${poly(so.prof.map(([sx, z]) => pt(sx, side, z)))}" fill="${shade(so.fill, lightOf(v.n.x * sn, v.n.y * sn, 0))}" stroke="${edge}" stroke-width="0.05" stroke-linejoin="round"/>`);
-    for (const w of so.windows ?? []) out.push(`<path d="${poly(w.map(([sx, z]) => pt(sx, side * 1.002, z)))}" fill="${GLASS}"/>`);
+    out.push(`<path d="${poly(so.prof.map(([sx, z]) => pt(sx, side, z)))}" fill="${tone(so.fill, lightOf(v.n.x * sn, v.n.y * sn, 0))}" stroke="${edge}" stroke-width="${pen}" stroke-linejoin="round"/>`);
+    for (const w of so.windows ?? []) out.push(`<path d="${poly(w.map(([sx, z]) => pt(sx, side * 1.002, z)))}" fill="${GLASS}"${LF ? ` stroke="${edge}" stroke-width="0.05" stroke-linejoin="round"` : ''}/>`);
     if (so.panes && so.windows?.length) {
       const [[a0], , [a1]] = so.windows[0], zs = so.windows[0].map(([, z]) => z), zlo = Math.min(...zs), zhi = Math.max(...zs);
       for (let sx = Math.min(a0, a1) + so.panes; sx < Math.max(a0, a1) - 0.3; sx += so.panes) {
         const [x1, y1] = pt(sx, side * 1.003, zlo), [x2, y2] = pt(sx, side * 1.003, zhi);
-        out.push(`<line x1="${x1.toFixed(2)}" y1="${y1.toFixed(2)}" x2="${x2.toFixed(2)}" y2="${y2.toFixed(2)}" stroke="${so.fill}" stroke-width="0.12"/>`);
+        out.push(`<line x1="${x1.toFixed(2)}" y1="${y1.toFixed(2)}" x2="${x2.toFixed(2)}" y2="${y2.toFixed(2)}" stroke="${LF ? edge : so.fill}" stroke-width="${LF ? 0.05 : 0.12}"/>`);
       }
     }
     for (const w of so.wheels ?? []) {
       const ring = (r: number) => Array.from({ length: 14 }, (_, k) => { const a = (k / 14) * Math.PI * 2; return pt(w.s + Math.cos(a) * r, side * 1.01, w.r + Math.sin(a) * r); });
-      out.push(`<path d="${poly(ring(w.r))}" fill="#363940"/><path d="${poly(ring(w.r * 0.42))}" fill="#b7b9be"/>`);
+      out.push(LF ? `<path d="${poly(ring(w.r))}" fill="${LF.fill}" stroke="${edge}" stroke-width="0.06"/><path d="${poly(ring(w.r * 0.4))}" fill="none" stroke="${edge}" stroke-width="0.04"/>`
+        : `<path d="${poly(ring(w.r))}" fill="#363940"/><path d="${poly(ring(w.r * 0.42))}" fill="#b7b9be"/>`);
     }
     return out.join('');
   };
   const vehicleSolidsSvg = (v: Vehicle, solids: Solid[]): string => {
     const along = v.u.x * d.x + v.u.y * d.y;
     const mid = (so: Solid) => so.prof.reduce((t, [sx]) => t + sx, 0) / so.prof.length;
-    return `<g data-vehicle="${v.kind}">${[...solids].sort((p, q) => mid(q) * along - mid(p) * along).map((so) => solidSvg(v, so)).join('')}</g>`;
+    // (in line alone: a pale warm patch on the road under it, its footprint a step from the light)
+    const patch = LF?.ground ? `<path data-vehicle-patch d="${poly(corners({ ...v, c: { x: v.c.x - light.x * 0.45, y: v.c.y - light.y * 0.45 } }).map((q) => P(q, 0)))}" fill="${LF.ground}"/>` : '';
+    return `<g data-vehicle="${v.kind}">${patch}${[...solids].sort((p, q) => mid(q) * along - mid(p) * along).map((so) => solidSvg(v, so)).join('')}</g>`;
   };
   // the colours go round in the order the vehicles were placed, nearest the site first
   const traffic = placeTraffic(cw, { reach, footprints, busRoutes: scene.busRoutes, within: framed ? (p) => inFrame(p, 4.5, 9) : undefined }).map((v) => {
     const stacks = stacksOf(v.kind);
-    return { ...v, stacks, solids: kfCars ? solidsOf(v.kind, stacks[stacks.length - 1][0].fill) : undefined };
+    return { ...v, stacks, solids: drawnCars ? solidsOf(v.kind, stacks[stacks.length - 1][0].fill) : undefined };
   });
   // People on the footpaths and bicycles at the kerb: a walker every so often along each street's footpath, a body
   // standing on the ground with a head over it; a rider every so often down the kerb side of the lane, two wheels
@@ -853,15 +908,22 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   // Illustrated, a person on their feet is one of the painted people (render/people.ts), each once in the drawing's
   // defs, facing the way they walk (or either way, standing), a little larger than life; on a bicycle, drawn here.
   const peopleDefs = new Map<number, string>();
+  // How large the people are drawn: a little over life, so they read at the scale of a town; in line alone well over
+  // it (LINE_FIGURE_SIZE), off the town's scale as an illustrator's isometric draws its people
+  const FIGURE_SIZE = look.line ? LINE_FIGURE_SIZE : 1.1;
   const WALKERS = Array.from({ length: PEOPLE_VARIANTS }, (_, i) => i).filter((i) => i % 3 !== 0);
   const personPic = (c: XY, stride?: XY) => {
     const k = stride && (stride.x || stride.y) ? WALKERS[Math.floor(rand(c, 21) * WALKERS.length)] : Math.floor(rand(c, 21) * PEOPLE_VARIANTS);
     if (!peopleDefs.has(k)) {
-      const pic = personPicture(k);
-      peopleDefs.set(k, `<image id="axo-${id}-p${k}" href="${pic.uri}" x="${pic.x.toFixed(3)}" y="${pic.y.toFixed(3)}" width="${pic.w.toFixed(3)}" height="${pic.h.toFixed(3)}" preserveAspectRatio="none"/>`);
+      // (in line alone: the figure in vector, crisp at the size it is drawn)
+      if (look.line) peopleDefs.set(k, linePersonSvg(`axo-${id}-p${k}`, k, look.line));
+      else {
+        const pic = personPicture(k);
+        peopleDefs.set(k, `<image id="axo-${id}-p${k}" href="${pic.uri}" x="${pic.x.toFixed(3)}" y="${pic.y.toFixed(3)}" width="${pic.w.toFixed(3)}" height="${pic.h.toFixed(3)}" preserveAspectRatio="none"/>`);
+      }
     }
     const facing = stride && (stride.x || stride.y) ? Math.sign(stride.x * r.x + stride.y * r.y) || 1 : rand(c, 23) < 0.5 ? 1 : -1;
-    const [x, y] = P(c, 0), size = 1.1;
+    const [x, y] = P(c, 0), size = FIGURE_SIZE;
     return `<use href="#axo-${id}-p${k}" transform="translate(${x.toFixed(2)},${y.toFixed(2)}) scale(${(facing * size).toFixed(2)},${size})"/>`;
   };
   const person = (c: XY, z0: number, shirt: string, stride?: XY) => {
@@ -885,10 +947,13 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   const riderPic = (c: XY, u: XY) => {
     const k = Math.floor(rand(c, 25) * RIDER_VARIANTS);
     if (!riderDefs.has(k)) {
-      const pic = riderPicture(k);
-      riderDefs.set(k, `<image id="axo-${id}-r${k}" href="${pic.uri}" x="${pic.x.toFixed(3)}" y="${pic.y.toFixed(3)}" width="${pic.w.toFixed(3)}" height="${pic.h.toFixed(3)}" preserveAspectRatio="none"/>`);
+      if (look.line) riderDefs.set(k, lineRiderSvg(`axo-${id}-r${k}`, k, look.line));
+      else {
+        const pic = riderPicture(k);
+        riderDefs.set(k, `<image id="axo-${id}-r${k}" href="${pic.uri}" x="${pic.x.toFixed(3)}" y="${pic.y.toFixed(3)}" width="${pic.w.toFixed(3)}" height="${pic.h.toFixed(3)}" preserveAspectRatio="none"/>`);
+      }
     }
-    const facing = Math.sign(u.x * r.x + u.y * r.y) || 1, [x, y] = P(c, 0), size = 1.1;
+    const facing = Math.sign(u.x * r.x + u.y * r.y) || 1, [x, y] = P(c, 0), size = FIGURE_SIZE;
     return `<use href="#axo-${id}-r${k}" transform="translate(${x.toFixed(2)},${y.toFixed(2)}) scale(${(facing * size).toFixed(2)},${size})"/>`;
   };
   const bikeSvg = (c: XY, u: XY, fill: string) => {

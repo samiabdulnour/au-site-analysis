@@ -1349,18 +1349,38 @@ site.
 
 The 3D views' trees and people follow the style (`lookOf` in
 `src/render/axonometric.ts`).
-- **People, Flamingo and Kingfisher:** flat figures after an illustrator's isometric people
+- **Flamingo** follows an illustrator's flat isometric town (Z.'s reference of
+  2026-11): flat shapes in a few colours on a cream ground, everything that
+  moves in line alone.
+  - **Trees:** flat shapes in vector, no outline, shading or shadow
+    (`flatCrownSvg` in `src/render/crowns.ts`): a three-lobed crown, a round
+    one, a six-sided one, a bell, a conifer's triangle, a cypress's pointed
+    oval, a shield ruled down its length and, for a few of the smallest, a low
+    bush. Each stands on a thin trunk whose line runs up into the crown with a
+    branch or two off it, a short bar on the ground at its foot.
+  - **Colour:** two deep teals tree by tree, the shields a lighter one
+    (`FLAT_TEAL`); the lines in a crown are a deeper cut of its own teal.
+  - **People:** in line alone and in vector (`linePersonSvg` in
+    `src/render/people.ts`): slim, upright figures in the cream of the streets
+    with one thin dark line round each part, a shirt over trousers or a skirt,
+    walking, standing, waving, hands on hips, some with a bag; hair in outline
+    or filled dark. A pale warm patch lies on the ground under each. They are
+    drawn 1.7 times life size (`LINE_FIGURE_SIZE`), off the town's scale on
+    purpose, as the reference draws its own.
+  - **Cyclists** likewise (`lineRiderSvg`): thin spoked wheels and frame in
+    the pen alone, the rider leaning to the bars, a helmet.
+  - **Traffic:** Kingfisher's drawn vehicles (below) in line alone: every part
+    in the streets' cream with the one dark line, the windows and the wheels
+    in outline, a pale warm patch on the road under each.
+  - **Town:** a yellowish cream ground, as the reference's paper, the streets
+    a shade lighter (`massingInks()`).
+- **People, Kingfisher:** flat figures after an illustrator's isometric people
   (`src/render/people.ts`):
   - bright tops, trousers or a dress, a face and its hair (short, long or in
     a bun), arms that swing and legs apart when they walk, now and then a bag;
   - a little larger than life;
   - walking the footpaths (some in twos), facing the way they walk, and
     gathered in the parks.
-- **Flamingo's crowns** are clouds of a few lobes:
-  - each outlined, in its shade, with the lit part over it towards the light
-    and a highlight;
-  - each casting a soft shadow on the ground;
-  - a few small trees narrow and upright.
 - **Kingfisher** follows an illustrated masterplan and its elevation trees,
   with one thin contour of dark slate (`CONTOUR`) round every tree, person,
   cyclist and vehicle, so they read as one drawing:
@@ -1396,28 +1416,33 @@ The 3D views' trees and people follow the style (`lookOf` in
     Each has dark glass and wheels with their hubs on the side turned to the
     camera. The colours are Kingfisher's: mostly warm whites and light greys,
     its terracotta, mint, pale and deep blue among them.
-- **Cyclists**, in both styles, are painted as the people are: a figure on a
+- **Cyclists**, in Kingfisher, are painted as its people are: a figure on a
   bicycle, facing the way they ride.
 - **Trees off the road:** in every style, a crown read off the aerial over a
   street is moved out past the nearer kerb onto the verge, or left out where
   there is no room there.
-- **Colour:** each style's trees are in its own green (`massingInks().tree`):
-  - Flamingo's aqua mint, deeper or lighter tree to tree;
-  - Kingfisher's mint, in two close cuts, and a soft yellow-green for about one
-    tree in five.
+- **Colour:** each style's trees are in its own green:
+  - Flamingo's two deep teals, and a lighter one for its shields;
+  - Kingfisher's mint (`massingInks().tree`), in two close cuts, and a soft
+    yellow-green for about one tree in five.
 - **Canary and the white model** keep the plain discs and slips.
 - **Heron** draws a line model (see Heron mono): its trees are the canopies'
   pictures in white, their contour and limbs black.
 
-A drawing holds a few thousand trees, too many to print as vectors (tens of
-megabytes a drawing), so each crown is painted once as a small picture
-(`src/render/crowns.ts`) and placed at every tree that takes it:
-- a shape (Flamingo's four, Kingfisher's five forms by three branchings), in
-  its green, at one of three sizes, its outline as wide in the scene as the
-  others';
-- the people likewise, thirty of them, each placed facing either way;
+A drawing holds a few thousand trees. Kingfisher's leafy canopies are too much
+to print as vectors tree by tree (tens of megabytes a drawing), so each crown
+is painted once as a small picture (`src/render/crowns.ts`) and placed at every
+tree that takes it:
+- a shape (Kingfisher's five forms by three branchings), in its green, at one
+  of three sizes, its outline as wide in the scene as the others';
+- its people likewise, thirty of them, each placed facing either way;
 - the PDF keeps each picture once, so the illustrated pages print no larger
   than the plain ones did.
+
+Flamingo's flat trees and line figures are a few plain paths each, so they
+stay in vector: each form (in each teal, at each of the three sizes) and each
+figure is drawn once in the drawing's defs and placed with a `<use>`. The
+report's built form, some five thousand trees, prints at about 2.4 MB.
 
 `npx tsx test/trees.mts` checks the pictures and each style's look.
 
