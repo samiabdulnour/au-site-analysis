@@ -162,7 +162,9 @@ missing that source's layer; `allow_warnings` overrides that when the gap is
 known. A refused run is not wasted: the answers Overpass gave it are kept for
 the next run on the same branch (the pipelines' own thirty-day cache,
 `out/.cache/osm`, carried between runs), so when the mirrors have a bad
-minute half way through, the run after asks them only for what failed. It only ever runs when started by hand, so like `checks` it never
+minute half way through, the run after asks them only for what failed. A
+drawing whose pipeline fails outright (the NSW address register not answering
+in time, say) is tried once more after two minutes before the run gives up. It only ever runs when started by hand, so like `checks` it never
 spends the public services' capacity on its own. The TfNSW, Google Maps and
 Mapillary keys are read from repository secrets of the same names when they
 are set.

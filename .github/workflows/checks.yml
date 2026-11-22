@@ -275,6 +275,13 @@ jobs:
       - name: a download cut part-way is read again
         run: npx tsx test/download.mts
 
+      # The samples run gives each drawing's pipeline a second try after a
+      # pause (src/lib/onceMore.ts), so one public service's bad minute does
+      # not cost a run of twenty drawings: a task that works runs once, one
+      # that fails runs again and says why, one that fails twice fails.
+      - name: a failed drawing is tried once more
+        run: npx tsx test/once-more.mts
+
       # A second look at the heights the sources give (src/lib/heightCheck.ts), on grids and footprints drawn
       # for it: a house whose street number was typed into its height gives way to what the 3D meshes read on
       # its footprint, or with no meshes to its own footprint and the height limit over it; a tree the meshes
