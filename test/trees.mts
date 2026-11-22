@@ -7,8 +7,8 @@
  * trees take it; the painted people, each picture once, and more of them than the plain look, a crowd in the park.
  * Flamingo draws an illustrator's flat town on a cream ground: flat trees in vector (a few plain shapes in its teals,
  * each once in the defs, a trunk's line and a bar on the ground to each, no picture and no shadow), its people and its
- * traffic in line alone, the cream of its streets with one dark line and a pale patch under them, no colour on either,
- * the people in vector and well over life size.
+ * traffic in line alone, the cream of its streets with one dark line and a pale orange bar under them, no colour on
+ * either, the people in vector, several times life size and fewer for it; a few trees left in paper; flat shadows.
  * Canary and a white model keep the plain discs and slips; Heron draws a line model, white in black outline.
  * Nothing here asks a network.
  *
@@ -103,10 +103,13 @@ for (const style of ['flamingo', 'kingfisher']) {
   const placed = svg.match(/<use href="#axo-tr-t\d+"/g) ?? [];
   if (flat) {
     // Flamingo's trees: flat shapes in vector, each form in each teal once in the defs and placed at every tree
-    const stamps = [...svg.matchAll(/<g id="(axo-tr-f\d+)" data-flat-crown="(\w+)"><path d="[^"]+" fill="(#[0-9a-f]{6})"\/>/g)];
+    // (a few are left in paper: the streets' cream with the figures' line round the crown, so `data-paper`)
+    const all = [...svg.matchAll(/<g id="(axo-tr-f\d+)" data-flat-crown="(\w+)"( data-paper)?>(?:<path d="[^"]+" fill="none" stroke="#[0-9a-f]{6}" stroke-width="[\d.]+" stroke-linejoin="round"\/>)?<path d="[^"]+" fill="(#[0-9a-f]{6})"\/>/g)];
+    const stamps = all.filter((m) => !m[3]).map((m) => [m[0], m[1], m[2], m[4]]), papers = all.filter((m) => m[3]);
+    check('flamingo: a tree left in paper is the streets\' cream in the figures\' line', papers.every((m) => m[4] === '#fcf9ee' && m[0].includes('stroke="#23262c"')) && papers.length <= all.length / 2, `${papers.length} of ${all.length}`);
     const used = svg.match(/<use href="#axo-tr-f\d+"/g) ?? [];
     check('flamingo: every tree a placed flat crown', used.length === 40 && placed.length === 0 && pictures.length === 0, `${used.length} flat, ${placed.length} painted`);
-    check('flamingo: each form once in the defs, fewer than the trees', stamps.length >= 4 && stamps.length < used.length && new Set(stamps.map((m) => m[1])).size === stamps.length, `${stamps.length} stamps`);
+    check('flamingo: each form once in the defs, fewer than the trees', stamps.length >= 4 && all.length < used.length && new Set(all.map((m) => m[1])).size === all.length, `${all.length} stamps`);
     check('flamingo: several forms among them', new Set(stamps.map((m) => m[2])).size >= 4, [...new Set(stamps.map((m) => m[2]))].join(' '));
     check('flamingo: in its teals, flat: no outline round a crown', stamps.every((m) => ['#167d7f', '#0b5f66', '#5fa59a'].includes(m[3])) && !/data-flat-crown="\w+"><path d="[^"]+" fill="#[0-9a-f]{6}" stroke=/.test(svg), [...new Set(stamps.map((m) => m[3]))].join(' '));
     // a bar on the ground at each tree's foot and a trunk's line up into its crown; a bush sits on the ground with neither
@@ -126,7 +129,9 @@ for (const style of ['flamingo', 'kingfisher']) {
     const parts = [...svg.matchAll(/<g data-vehicle="\w+">(.*?)<\/g>/g)].map((m) => m[1]);
     const fills = new Set(parts.flatMap((p2) => [...p2.matchAll(/fill="(#[0-9a-f]{6}|none)"/g)].map((m) => m[1])));
     const strokes = new Set(parts.flatMap((p2) => [...p2.matchAll(/stroke="(#[0-9a-f]{6})"/g)].map((m) => m[1])));
-    check('flamingo: its vehicles in line alone, the cream of its streets in one dark line', vehicles > 0 && wheels === 0 && [...fills].every((f) => ['#fcf9ee', '#f3e2b8', 'none'].includes(f)) && strokes.size === 1 && strokes.has('#3a4552'), `${vehicles} vehicles; fills ${[...fills].join(' ')}; strokes ${[...strokes].join(' ')}`);
+    check('flamingo: its vehicles in line alone, the cream of its streets in one dark line', vehicles > 0 && wheels === 0 && [...fills].every((f) => ['#fcf9ee', '#f9dfae', 'none'].includes(f)) && strokes.size === 1 && strokes.has('#23262c'), `${vehicles} vehicles; fills ${[...fills].join(' ')}; strokes ${[...strokes].join(' ')}`);
+    // the bars under its trees on the paper and the buildings' shadows in the same pale orange; none of the soft blue shadow
+    check('flamingo: flat shadows, the pale orange of the bars', /<g data-cast-shadows opacity="0\.7" fill="#f9dfae">/.test(svg) && /<rect data-tree-bar [^>]*fill="#f9dfae"\/>/.test(svg));
     check('flamingo: a cream ground, its streets a shade lighter', svg.includes('fill="#f9f5e4"') && svg.includes('fill="#fcf9ee"') && M.ground === '#f9f5e4' && M.road === '#fcf9ee');
     check('flamingo: a pale patch on the road under each vehicle', (svg.match(/data-vehicle-patch/g) ?? []).length === vehicles);
   } else check(`${style}: vehicles on wheels, two or more each`, vehicles > 0 && wheels >= 2 * vehicles, `${vehicles} vehicles, ${wheels} wheels`);
@@ -149,10 +154,10 @@ for (const style of ['flamingo', 'kingfisher']) {
     // one dark line and a pale patch under it, no colour and no picture; placed well over life size (1.7 times)
     const figs = [...svg.matchAll(/<g id="(axo-tr-[pr]\d+)" data-line-figure="(person|rider)">(.*?)<\/g>/g)];
     const inks = new Set(figs.flatMap((m) => [...m[3].matchAll(/(?:fill|stroke)="(#[0-9a-f]{6}|none)"/g)].map((x) => x[1])));
-    check('flamingo: its people in line alone, each figure once, in vector', people(svg) >= 20 && figs.filter((m) => m[2] === 'person').length >= 3 && figs.some((m) => m[2] === 'rider') && new Set(figs.map((m) => m[1])).size === figs.length && !/<image id="axo-tr-[pr]\d+"/.test(svg), `${people(svg)} people, ${figs.length} figures`);
-    check('flamingo: no colour on them: the streets\' cream, the dark line, the pale patch', [...inks].every((c) => ['#fcf9ee', '#3a4552', '#f3e2b8', 'none'].includes(c)), [...inks].join(' '));
+    check('flamingo: its people in line alone, each figure once, in vector', people(svg) >= 8 && figs.filter((m) => m[2] === 'person').length >= 3 && figs.some((m) => m[2] === 'rider') && new Set(figs.map((m) => m[1])).size === figs.length && !/<image id="axo-tr-[pr]\d+"/.test(svg), `${people(svg)} people, ${figs.length} figures`);
+    check('flamingo: no colour on them: the streets\' cream, the dark line, the pale bar', [...inks].every((c) => ['#fcf9ee', '#23262c', '#f9dfae', 'none'].includes(c)), [...inks].join(' '));
     const sizes = new Set([...svg.matchAll(/<use href="#axo-tr-[pr]\d+" transform="translate\([^)]+\) scale\((-?[\d.]+),([\d.]+)\)"/g)].map((m) => `${Math.abs(Number(m[1]))},${m[2]}`));
-    check('flamingo: its people well over life size', sizes.size === 1 && sizes.has(`${LINE_FIGURE_SIZE},${LINE_FIGURE_SIZE}`) && LINE_FIGURE_SIZE >= 1.5, [...sizes].join(' '));
+    check('flamingo: its people several times life size', sizes.size === 1 && sizes.has(`${LINE_FIGURE_SIZE},${LINE_FIGURE_SIZE}`) && LINE_FIGURE_SIZE >= 2.5, [...sizes].join(' '));
   } else {
     const faces = svg.match(/<image id="axo-tr-p\d+" href="data:image\/png/g) ?? [];
     check(`${style}: the painted people, each picture once`, people(svg) >= 20 && faces.length >= 3 && new Set(faces).size === faces.length, `${people(svg)} people, ${faces.length} pictures`);
@@ -173,8 +178,11 @@ for (const style of ['flamingo', 'kingfisher']) {
 }
 // more people than the plain look's footpaths hold: some walking in twos, and groups in the park
 {
-  const crowd = people(draw('flamingo').svg), plain = (draw('heron').svg.match(/r="0.3" fill=/g) ?? []).length;
-  check('flamingo: a crowd, more people than the plain look draws', crowd > plain * 1.5, `${crowd} vs ${plain}`);
+  const crowd = people(draw('kingfisher').svg), plain = (draw('heron').svg.match(/r="0.3" fill=/g) ?? []).length;
+  check('kingfisher: a crowd, more people than the plain look draws', crowd > plain * 1.5, `${crowd} vs ${plain}`);
+  // Flamingo's people are several times life size, so there are fewer of them than Kingfisher's crowd
+  const few = people(draw('flamingo').svg);
+  check('flamingo: fewer people than a crowd, each drawn large', few >= 8 && few < crowd * 0.6, `${few} vs ${crowd}`);
 }
 for (const [style, mono] of [['canary', false], ['flamingo', true]] as const) {
   const { svg } = draw(style, mono);

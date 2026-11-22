@@ -111,107 +111,168 @@ export function riderPicture(i: number, perUnit = 140): CrownPicture {
 // ---- people in line alone, in vector ----
 
 /**
- * A figure in line alone, as an illustrator's isometric town draws its people (Flamingo's, after Z.'s reference of
- * 2026-11): no colours, every part in the paper's own colour (`fill`) with one thin line (`line`) round it, so an arm
- * reads against the body it crosses; under the feet a pale warm patch on the ground (`ground`). Drawn in vector, so
- * the line is crisp at any size: these people are drawn well over life size, as the reference draws its own.
+ * A figure in line alone, as an illustrator's isometric town draws its people (Flamingo's, after Z.'s references of
+ * 2026-11): no colours, every part in the paper's own colour (`fill`) with one thin dark line (`line`) round it, so
+ * an arm reads against the body it crosses; under the feet a pale warm bar on the ground (`ground`). Tall and
+ * slender, the head small, the legs long: wide trousers falling to a straight hem, slim ones, a skirt or shorts;
+ * standing with the arms folded, a hand on a hip, both, waving, or at the sides; walking with the arms swinging, a
+ * book held up, or a bag on its strap; the hair short, in a bun, a tail, long, a quiff or under a hat, in outline or
+ * filled dark. Drawn in vector, so the line is crisp at any size: these people are drawn several times life size,
+ * off the town's scale, as the references draw their own.
  */
 export interface LineFigure { fill: string; line: string; ground?: string }
 
 /** The line round each part, metres at life size. */
-const LINE_M = 0.03;
-/** A part of a line figure: a limb (a tube with round ends, through its points), a round or oval part, a flat one, or a line of the pen alone. */
-type Part =
-  | { tube: [number, number][]; w: number }
-  | { dot: [number, number]; r: number; dark?: boolean }
-  | { oval: [number, number, number, number]; dark?: boolean }
-  | { poly: [number, number][]; dark?: boolean }
-  | { pen: [number, number][]; w?: number }
-  | { ring: [number, number]; r: number };
+const LINE_M = 0.02;
+type Pt = [number, number];
 const n = (v: number) => (Math.round(v * 1000) / 1000).toString();
-const pts = (p: [number, number][]) => p.map(([x, y], k) => `${k ? 'L' : 'M'}${n(x)},${n(y)}`).join('');
-/** The parts as markup, in turn, each with its line round it. */
-function partsSvg(parts: Part[], f: LineFigure): string {
-  const t = LINE_M;
-  return parts.map((p) => {
-    if ('tube' in p) return `<path d="${pts(p.tube)}" fill="none" stroke="${f.line}" stroke-width="${n(p.w + 2 * t)}" stroke-linecap="round" stroke-linejoin="round"/><path d="${pts(p.tube)}" fill="none" stroke="${f.fill}" stroke-width="${n(p.w)}" stroke-linecap="round" stroke-linejoin="round"/>`;
-    if ('dot' in p) return `<circle cx="${n(p.dot[0])}" cy="${n(p.dot[1])}" r="${n(p.r + t / 2)}" fill="${p.dark ? f.line : f.fill}" stroke="${f.line}" stroke-width="${n(t)}"/>`;
-    if ('oval' in p) return `<ellipse cx="${n(p.oval[0])}" cy="${n(p.oval[1])}" rx="${n(p.oval[2] + t / 2)}" ry="${n(p.oval[3] + t / 2)}" fill="${p.dark ? f.line : f.fill}" stroke="${f.line}" stroke-width="${n(t)}"/>`;
-    if ('poly' in p) return `<path d="${pts(p.poly)}Z" fill="${p.dark ? f.line : f.fill}" stroke="${f.line}" stroke-width="${n(t)}" stroke-linejoin="round"/>`;
-    if ('ring' in p) return `<circle cx="${n(p.ring[0])}" cy="${n(p.ring[1])}" r="${n(p.r)}" fill="none" stroke="${f.line}" stroke-width="${n(t)}"/>`;
-    return `<path d="${pts(p.pen)}" fill="none" stroke="${f.line}" stroke-width="${n(p.w ?? t)}" stroke-linecap="round" stroke-linejoin="round"/>`;
-  }).join('');
+const straight = (p: Pt[]) => `${p.map(([x, y], k) => `${k ? 'L' : 'M'}${n(x)},${n(y)}`).join('')}Z`;
+/** A smooth closed curve through the points (Catmull-Rom, as cubic Béziers). */
+function smooth(p: Pt[]): string {
+  const m = p.length, at = (k: number) => p[((k % m) + m) % m];
+  let d = `M${n(p[0][0])},${n(p[0][1])}`;
+  for (let k = 0; k < m; k++) {
+    const a = at(k - 1), b = at(k), c = at(k + 1), e = at(k + 2);
+    d += `C${n(b[0] + (c[0] - a[0]) / 6)},${n(b[1] + (c[1] - a[1]) / 6)} ${n(c[0] - (e[0] - b[0]) / 6)},${n(c[1] - (e[1] - b[1]) / 6)} ${n(c[0])},${n(c[1])}`;
+  }
+  return `${d}Z`;
 }
+/** A limb's outline: through the points, as wide at each as `w` says, its ends rounded; a smooth closed curve. */
+function limb(p: Pt[], w: number[]): string {
+  const unit = (a: Pt, b: Pt): Pt => { const dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy) || 1; return [dx / l, dy / l]; };
+  const L: Pt[] = [], R: Pt[] = [], last = p.length - 1;
+  p.forEach((q, k) => {
+    const t = unit(p[Math.max(0, k - 1)], p[Math.min(last, k + 1)]);
+    L.push([q[0] - t[1] * w[k] / 2, q[1] + t[0] * w[k] / 2]);
+    R.push([q[0] + t[1] * w[k] / 2, q[1] - t[0] * w[k] / 2]);
+  });
+  const t0 = unit(p[0], p[1]), t1 = unit(p[last - 1], p[last]);
+  return smooth([...L, [p[last][0] + t1[0] * w[last] * 0.5, p[last][1] + t1[1] * w[last] * 0.5], ...R.reverse(), [p[0][0] - t0[0] * w[0] * 0.5, p[0][1] - t0[1] * w[0] * 0.5]]);
+}
+
+const WALK_ARMS = ['swing', 'bag', 'swing', 'book', 'swing'] as const, STAND_ARMS = ['folded', 'hip', 'wave', 'down', 'hips', 'pockets'] as const;
+const BOTTOMS = ['wide', 'slim', 'skirt', 'wide', 'shorts'] as const, HAIRS = ['short', 'bun', 'tail', 'long', 'quiff', 'hat'] as const;
 
 /**
- * Person `i` in line, metres, standing on the origin and facing right (y down): slim and upright, a shirt over
- * trousers or a skirt, the arms at the sides, swinging in a walk, one raised in a wave, on the hips, or carrying a
- * bag; the hair a cap in outline or filled dark, or long down the back. The same number is the same person; every
- * third stands, the rest walk (as the painted people do).
+ * Person `i` in line, metres, standing on the origin and facing right (y down). The same number is the same person;
+ * every third stands, the rest walk (as the painted people do).
  */
-function linePerson(i: number): Part[] {
-  const walking = i % 3 !== 0, skirt = i % 4 === 2, dark = i % 3 === 1, long = i % 5 === 3, bag = i % 4 === 1;
-  const pose = walking ? 'walk' : (['stand', 'wave', 'hips', 'stand'] as const)[Math.floor(i / 3) % 4];
-  const hip = -0.92, sh = -1.42;
-  const feet: [number, number][] = walking ? [[-0.17, -0.04], [0.19, -0.04]] : [[-0.075, -0.04], [0.075, -0.04]];
-  const out: Part[] = [];
-  const arm = (side: number, elbow: [number, number], hand: [number, number]) => { out.push({ tube: [[side * 0.165, sh + 0.04], elbow, hand], w: 0.066 }, { dot: hand, r: 0.036 }); };
-  // the arm behind
-  if (pose === 'walk') arm(1, [0.2, -1.2], [0.27, -1.0]);
-  else if (pose === 'hips') arm(1, [0.31, -1.16], [0.15, -0.98]);
-  else if (pose === 'wave') arm(1, [0.3, -1.5], [0.38, -1.8]);
-  else arm(1, [0.2, -1.17], [0.2, -0.93]);
-  // long hair down the back, behind the body
-  if (long) out.push({ tube: [[-0.07, -1.64], [-0.1, -1.38]], w: 0.1 });
-  // the legs, in trousers or bare under a skirt, and the shoes
-  feet.forEach(([fx, fy], k) => {
-    const hx = k ? 0.065 : -0.065, knee: [number, number] = walking ? [(hx + fx) / 2 + (k ? 0.03 : 0.02), (hip + fy) / 2] : [hx, (hip + fy) / 2];
-    out.push({ tube: [[hx, hip], knee, [fx, fy]], w: skirt ? 0.07 : 0.105 }, { oval: [fx + 0.045, fy + 0.015, 0.075, 0.032] });
-  });
-  // the body: a shirt tapering to the waist; a skirt flaring from it to the knee
-  if (skirt) out.push({ poly: [[-0.125, -1.0], [0.125, -1.0], [0.2, -0.52], [-0.2, -0.52]] });
-  out.push({ poly: [[-0.175, sh], [0.175, sh], [0.19, -1.3], [0.135, skirt ? -0.98 : hip + 0.04], [-0.135, skirt ? -0.98 : hip + 0.04], [-0.19, -1.3]] });
-  // a bag on its strap across the body
-  if (bag) out.push({ pen: [[0.15, sh + 0.02], [-0.17, -0.98]] }, { poly: [[-0.27, -1.0], [-0.1, -1.0], [-0.09, -0.83], [-0.28, -0.83]] });
-  // the arm in front
-  if (pose === 'walk') arm(-1, [-0.2, -1.2], [-0.25, -0.98]);
-  else if (pose === 'hips') arm(-1, [-0.31, -1.16], [-0.15, -0.98]);
-  else arm(-1, [-0.2, -1.17], [-0.2, -0.93]);
+function linePerson(i: number, f: LineFigure): string {
+  const walking = i % 3 !== 0, k = Math.floor(i / 3);
+  const arms = walking ? WALK_ARMS[(i + k) % WALK_ARMS.length] : STAND_ARMS[k % STAND_ARMS.length];
+  const bottom = BOTTOMS[(i * 3 + 1) % BOTTOMS.length], hair = HAIRS[(i * 5 + 2) % HAIRS.length], dark = i % 2 === 1;
+  const t = LINE_M, out: string[] = [];
+  const shape = (d: string, fill = f.fill) => { out.push(`<path d="${d}" fill="${fill}" stroke="${f.line}" stroke-width="${t}" stroke-linejoin="round"/>`); };
+  const pen = (d: string) => { out.push(`<path d="${d}" fill="none" stroke="${f.line}" stroke-width="${t}" stroke-linecap="round" stroke-linejoin="round"/>`); };
+  // a walker leans a little into the walk
+  const lean = walking ? 0.025 : 0, hx = lean * 1.6, hy = -1.69, r = 0.08;
+  const S = (side: number): Pt => [side * 0.165 + lean, -1.5];
+  const hand = (q: Pt) => out.push(`<ellipse cx="${n(q[0])}" cy="${n(q[1])}" rx="0.034" ry="0.036" fill="${f.fill}" stroke="${f.line}" stroke-width="${t}"/>`);
+  const arm = (side: number, elbow: Pt, wrist: Pt, hands = true) => { shape(limb([S(side), elbow, wrist], [0.078, 0.066, 0.054])); if (hands) hand(wrist); };
+  // the feet: where each leg ends, and the shoe pointing the way they face
+  const feet: Pt[] = walking ? [[-0.25, -0.1], [0.29, -0.05]] : [[-0.1, -0.05], [0.1, -0.05]];
+  const hips: Pt[] = walking ? [[-0.035 + lean, -1.0], [0.045 + lean, -1.0]] : [[-0.072, -1.0], [0.072, -1.0]];
+  const shoe = ([fx, fy]: Pt) => shape(`M${n(fx - 0.05)},${n(fy - 0.01)}L${n(fx + 0.05)},${n(fy - 0.01)}C${n(fx + 0.1)},${n(fy + 0.01)} ${n(fx + 0.17)},${n(fy + 0.03)} ${n(fx + 0.18)},${n(fy + 0.055)}L${n(fx - 0.055)},${n(fy + 0.055)}Z`);
+  // a trouser leg: straight-sided from the hip to its hem, `top` and `hem` its half widths
+  const leg = (hip: Pt, foot: Pt, top: number, hem: number, to = 1) => {
+    const e: Pt = [hip[0] + (foot[0] - hip[0]) * to, hip[1] + (foot[1] - hip[1]) * to];
+    const dx = e[0] - hip[0], dy = e[1] - hip[1], l = Math.hypot(dx, dy) || 1, nx = -dy / l, ny = dx / l;
+    shape(straight([[hip[0] + nx * top, hip[1] + ny * top], [hip[0] - nx * top, hip[1] - ny * top], [e[0] - nx * hem, e[1] - ny * hem], [e[0] + nx * hem, e[1] + ny * hem]]));
+    return e;
+  };
+  // the bar on the ground under the feet
+  if (f.ground) out.push(`<rect x="${n(feet[0][0] - 0.2)}" y="-0.04" width="${n(feet[1][0] - feet[0][0] + 0.58)}" height="0.13" rx="0.065" fill="${f.ground}"/>`);
+  // the arm behind the body
+  if (arms === 'swing' || arms === 'bag') arm(-1, [-0.235 + lean, -1.27], [-0.31, -1.07]);
+  else if (arms === 'book') arm(-1, [-0.225 + lean, -1.27], [-0.25, -1.04]);
+  else if (arms === 'wave') arm(1, [0.3, -1.62], [0.37, -1.88]);
+  // long hair, behind the head and the shoulders
+  if (hair === 'long') shape(`M${n(hx - r * 1.12)},${n(hy - r * 0.2)}C${n(hx - r * 1.35)},${n(hy - r * 1.6)} ${n(hx + r * 1.35)},${n(hy - r * 1.6)} ${n(hx + r * 1.12)},${n(hy - r * 0.2)}L${n(hx + r * 1.3)},${n(hy + r * 1.9)}Q${n(hx)},${n(hy + r * 2.3)} ${n(hx - r * 1.3)},${n(hy + r * 1.9)}Z`, dark ? f.line : f.fill);
+  // the legs, the far one first: in trousers, wide or slim; bare under a skirt or shorts; and the shoes
+  const order = walking ? [0, 1] : [0, 1];
+  for (const j of order) {
+    if (bottom === 'wide') leg(hips[j], feet[j], 0.082, 0.118);
+    else if (bottom === 'slim') leg(hips[j], feet[j], 0.078, 0.05);
+    else {
+      // a bare leg from under the skirt or the shorts
+      const knee: Pt = [(hips[j][0] + feet[j][0]) / 2 + (walking ? 0.02 : 0), (hips[j][1] + feet[j][1]) / 2];
+      shape(limb([[hips[j][0], hips[j][1] + 0.2], knee, [feet[j][0], feet[j][1] + 0.02]], [0.085, 0.07, 0.052]));
+      if (bottom === 'shorts') leg(hips[j], feet[j], 0.082, 0.1, 0.4);
+    }
+    shoe(feet[j]);
+  }
+  // a skirt, flaring from the waist to the knee, its hem a curve
+  if (bottom === 'skirt') { const sw = walking ? 0.27 : 0.22; shape(`M${n(-0.13 + lean)},-1.02L${n(0.13 + lean)},-1.02L${n(sw + lean)},-0.52Q${n(lean)},-0.47 ${n(-sw + lean)},-0.52Z`); }
+  // the body: rounded shoulders, tapering to a straight hem at the waist
+  const tx = (x: number) => n(x + lean);
+  shape(`M${tx(-0.132)},-0.985L${tx(0.132)},-0.985C${tx(0.132)},-1.2 ${tx(0.2)},-1.37 ${tx(0.188)},-1.46C${tx(0.18)},-1.535 ${tx(0.12)},-1.56 ${tx(0.05)},-1.565L${tx(-0.05)},-1.565C${tx(-0.12)},-1.56 ${tx(-0.18)},-1.535 ${tx(-0.188)},-1.46C${tx(-0.2)},-1.37 ${tx(-0.132)},-1.2 ${tx(-0.132)},-0.985Z`);
+  if (i % 4 === 0) pen(`M${tx(-0.045)},-1.563L${tx(0)},-1.49L${tx(0.045)},-1.563`);                    // a collar
+  if (bottom !== 'skirt' && i % 2 === 0) pen(`M${tx(-0.13)},-1.045L${tx(0.13)},-1.045`);                // a belt
+  // the arms in front of the body
+  if (arms === 'swing') arm(1, [0.245 + lean, -1.27], [0.34, -1.09]);
+  else if (arms === 'bag') {
+    pen(`M${tx(0.15)},-1.54L${tx(-0.19)},-1.02`);
+    shape(straight([[-0.3 + lean, -1.03], [-0.1 + lean, -1.03], [-0.085 + lean, -0.84], [-0.315 + lean, -0.84]]));
+    arm(1, [0.245 + lean, -1.27], [0.34, -1.09]);
+  } else if (arms === 'book') {
+    arm(1, [0.21 + lean, -1.25], [0.37, -1.32]);
+    shape(straight([[0.36, -1.44], [0.5, -1.41], [0.48, -1.27], [0.34, -1.3]]));
+    pen('M0.43,-1.425L0.41,-1.285');
+  } else if (arms === 'folded') {
+    // the arms folded: each forearm across the chest, the hand tucked at the other elbow
+    shape(limb([S(1), [0.215, -1.25], [-0.07, -1.2]], [0.078, 0.068, 0.056]));
+    shape(limb([S(-1), [-0.215, -1.24], [0.08, -1.265]], [0.078, 0.068, 0.056]));
+    hand([0.11, -1.27]);
+  } else if (arms === 'hip') { arm(-1, [-0.205, -1.27], [-0.21, -1.03]); arm(1, [0.35, -1.25], [0.16, -1.04]); }
+  else if (arms === 'hips') { arm(-1, [-0.35, -1.25], [-0.16, -1.04]); arm(1, [0.35, -1.25], [0.16, -1.04]); }
+  else if (arms === 'pockets') { arm(-1, [-0.25, -1.24], [-0.15, -1.0], false); arm(1, [0.25, -1.24], [0.15, -1.0], false); }
+  else if (arms === 'wave') arm(-1, [-0.205, -1.27], [-0.21, -1.03]);
+  else { arm(-1, [-0.205, -1.27], [-0.21, -1.03]); arm(1, [0.205, -1.27], [0.21, -1.03]); }
   // the neck, the head, the hair
-  out.push({ tube: [[0, sh - 0.01], [0, -1.52]], w: 0.07 }, { dot: [0, -1.635], r: 0.108 });
-  out.push({ poly: [[-0.118, -1.63], [-0.112, -1.71], [-0.05, -1.765], [0.04, -1.765], [0.1, -1.72], [0.112, -1.66], [0.04, -1.69], [-0.05, -1.685]], dark });
-  if (long) out.push({ tube: [[-0.105, -1.66], [-0.11, -1.5]], w: 0.045 });
-  return out;
+  shape(straight([[hx - 0.034, -1.555], [hx + 0.034, -1.555], [hx + 0.032, hy + r * 0.8], [hx - 0.032, hy + r * 0.8]]));
+  out.push(`<ellipse cx="${n(hx)}" cy="${n(hy)}" rx="${n(r * 0.94)}" ry="${n(r)}" fill="${f.fill}" stroke="${f.line}" stroke-width="${t}"/>`);
+  const ink = dark ? f.line : f.fill;
+  // a cap of hair over the head, lower at the back, its front swept up for a quiff
+  const q = hair === 'quiff' ? 1 : 0;
+  shape(`M${n(hx - r * 1.02)},${n(hy + r * 0.1)}C${n(hx - r * 1.25)},${n(hy - r * 1.3)} ${n(hx + r * (0.9 + 0.5 * q))},${n(hy - r * (1.45 + 0.35 * q))} ${n(hx + r * 1.0)},${n(hy - r * 0.25)}C${n(hx + r * 0.5)},${n(hy - r * 0.75)} ${n(hx - r * 0.3)},${n(hy - r * 0.75)} ${n(hx - r * 0.75)},${n(hy - r * 0.2)}Z`, ink);
+  if (hair === 'bun') out.push(`<circle cx="${n(hx - r * 0.5)}" cy="${n(hy - r * 1.38)}" r="${n(r * 0.42)}" fill="${ink}" stroke="${f.line}" stroke-width="${t}"/>`);
+  if (hair === 'tail') shape(limb([[hx - r * 0.95, hy - r * 0.5], [hx - r * 1.8, hy - r * 0.2], [hx - r * 2.1, hy + r * 0.9]], [r * 0.5, r * 0.55, r * 0.2]), ink);
+  if (hair === 'hat') { shape(`M${n(hx - r * 1.0)},${n(hy - r * 0.42)}C${n(hx - r * 0.95)},${n(hy - r * 1.6)} ${n(hx + r * 0.95)},${n(hy - r * 1.6)} ${n(hx + r * 1.0)},${n(hy - r * 0.42)}Z`); pen(`M${n(hx - r * 1.7)},${n(hy - r * 0.42)}L${n(hx + r * 1.9)},${n(hy - r * 0.42)}`); }
+  return out.join('');
 }
 
-/** Person `i` on a bicycle in line, riding right: thin wheels and frame in the pen alone, the rider leaning to the bars, a helmet. */
-function lineRider(i: number): Part[] {
-  const R = 0.34, rear: [number, number] = [-0.52, -R], front: [number, number] = [0.52, -R], bb: [number, number] = [0, -0.3], seat: [number, number] = [-0.13, -0.86], head: [number, number] = [0.42, -0.84];
-  const hip: [number, number] = [-0.1, -0.94], shoulder: [number, number] = [0.15, -1.42], hand: [number, number] = [0.37, -0.97];
-  const up = i % 2 === 0;
-  const spokes = (c: [number, number]): Part[] => [0, 1, 2, 3].map((k) => { const a = (k * Math.PI) / 4 + (i % 3) * 0.3; return { pen: [[c[0] - Math.cos(a) * R, c[1] - Math.sin(a) * R], [c[0] + Math.cos(a) * R, c[1] + Math.sin(a) * R]] as [number, number][], w: 0.012 }; });
-  return [
-    ...spokes(rear), ...spokes(front), { ring: rear, r: R }, { ring: front, r: R },
-    // the far leg, down to its pedal
-    { tube: [hip, [0.1, -0.66], up ? [-0.06, -0.24] : [0.02, -0.4]], w: 0.1 },
-    // the frame, the fork, the bars and the saddle
-    { pen: [rear, bb, seat, rear], w: 0.035 }, { pen: [bb, head, front], w: 0.035 }, { pen: [[seat[0] + 0.02, seat[1] + 0.04], head], w: 0.035 },
-    { pen: [head, [0.37, -0.98], [0.44, -1.0]], w: 0.035 }, { pen: [[seat[0] - 0.08, seat[1] - 0.02], [seat[0] + 0.07, seat[1] - 0.02]], w: 0.05 },
-    // the body leaning to the bars, the near leg and its shoe, the arm
-    { poly: [[hip[0] - 0.13, hip[1] + 0.03], [hip[0] + 0.1, hip[1] + 0.1], [shoulder[0] + 0.14, shoulder[1] + 0.05], [shoulder[0] - 0.06, shoulder[1] - 0.09]] },
-    { tube: [hip, [0.17, -0.62], up ? [0.09, -0.32] : [0.0, -0.2]], w: 0.105 }, { oval: up ? [0.13, -0.29, 0.075, 0.032] : [0.04, -0.17, 0.075, 0.032] },
-    { tube: [[shoulder[0], shoulder[1] + 0.03], [0.3, -1.16], hand], w: 0.066 }, { dot: hand, r: 0.036 },
-    // the neck, the head, a helmet
-    { tube: [[0.2, -1.47], [0.23, -1.56]], w: 0.07 }, { dot: [0.26, -1.66], r: 0.108 },
-    { poly: [[0.14, -1.67], [0.16, -1.76], [0.24, -1.8], [0.34, -1.78], [0.385, -1.7], [0.3, -1.715], [0.2, -1.7]], dark: i % 3 === 0 },
-  ];
+/** Person `i` on a bicycle in line, riding right: thin spoked wheels and frame in the pen alone, the rider leaning to the bars, a helmet. */
+function lineRider(i: number, f: LineFigure): string {
+  const t = LINE_M, out: string[] = [];
+  const shape = (d: string, fill = f.fill) => { out.push(`<path d="${d}" fill="${fill}" stroke="${f.line}" stroke-width="${t}" stroke-linejoin="round"/>`); };
+  const pen = (p: Pt[], w = t) => { out.push(`<path d="${p.map(([x, y], k) => `${k ? 'L' : 'M'}${n(x)},${n(y)}`).join('')}" fill="none" stroke="${f.line}" stroke-width="${n(w)}" stroke-linecap="round" stroke-linejoin="round"/>`); };
+  const R = 0.34, rear: Pt = [-0.52, -R], front: Pt = [0.52, -R], bb: Pt = [0, -0.3], seat: Pt = [-0.13, -0.86], head: Pt = [0.42, -0.84];
+  const hip: Pt = [-0.1, -0.95], shoulder: Pt = [0.17, -1.43], grip: Pt = [0.38, -0.98], up = i % 2 === 0;
+  if (f.ground) out.push(`<rect x="-0.98" y="-0.04" width="1.96" height="0.13" rx="0.065" fill="${f.ground}"/>`);
+  for (const c of [rear, front]) {
+    for (let k = 0; k < 4; k++) { const a = (k * Math.PI) / 4 + (i % 3) * 0.3; pen([[c[0] - Math.cos(a) * R, c[1] - Math.sin(a) * R], [c[0] + Math.cos(a) * R, c[1] + Math.sin(a) * R]], 0.008); }
+    out.push(`<circle cx="${n(c[0])}" cy="${n(c[1])}" r="${R}" fill="none" stroke="${f.line}" stroke-width="${t}"/>`);
+  }
+  // the far leg, down to its pedal
+  shape(limb([hip, [0.1, -0.66], up ? [-0.06, -0.26] : [0.02, -0.42]], [0.11, 0.09, 0.07]));
+  // the frame, the fork, the bars and the saddle
+  pen([rear, bb, seat, rear], 0.03); pen([bb, head, front], 0.03); pen([[seat[0] + 0.02, seat[1] + 0.04], head], 0.03);
+  pen([head, [0.38, -0.99], [0.45, -1.01]], 0.03); pen([[seat[0] - 0.08, seat[1] - 0.02], [seat[0] + 0.07, seat[1] - 0.02]], 0.045);
+  // the body leaning to the bars, the near leg and its shoe, the arm
+  shape(smooth([[hip[0] - 0.1, hip[1] + 0.03], [hip[0] + 0.09, hip[1] + 0.09], [shoulder[0] + 0.09, shoulder[1] + 0.09], [shoulder[0] + 0.04, shoulder[1] - 0.08], [shoulder[0] - 0.09, shoulder[1] - 0.04], [hip[0] - 0.12, hip[1] - 0.2]]));
+  const foot: Pt = up ? [0.09, -0.33] : [0.0, -0.2];
+  shape(limb([hip, [0.18, -0.63], foot], [0.115, 0.095, 0.07]));
+  shape(`M${n(foot[0] - 0.05)},${n(foot[1] - 0.02)}L${n(foot[0] + 0.14)},${n(foot[1] + 0.0)}L${n(foot[0] + 0.14)},${n(foot[1] + 0.05)}L${n(foot[0] - 0.05)},${n(foot[1] + 0.05)}Z`);
+  shape(limb([[shoulder[0], shoulder[1] + 0.03], [0.31, -1.17], grip], [0.078, 0.066, 0.054]));
+  out.push(`<ellipse cx="${n(grip[0])}" cy="${n(grip[1])}" rx="0.034" ry="0.036" fill="${f.fill}" stroke="${f.line}" stroke-width="${t}"/>`);
+  // the neck, the head, a helmet
+  shape(straight([[0.2, -1.47], [0.26, -1.49], [0.29, -1.58], [0.22, -1.58]]));
+  out.push(`<ellipse cx="0.275" cy="-1.665" rx="0.075" ry="0.08" fill="${f.fill}" stroke="${f.line}" stroke-width="${t}"/>`);
+  shape('M0.175,-1.67C0.17,-1.8 0.38,-1.82 0.385,-1.69C0.32,-1.72 0.24,-1.72 0.175,-1.67Z', i % 3 === 0 ? f.line : f.fill);
+  return out.join('');
 }
-
-/** A line figure's markup for a drawing's defs, placed with a `<use>`: the patch on the ground, then the parts. */
-const figureSvg = (id: string, kind: string, parts: Part[], f: LineFigure, patch: [number, number]) =>
-  `<g id="${id}" data-line-figure="${kind}">${f.ground ? `<ellipse cx="0" cy="-0.02" rx="${patch[0]}" ry="${patch[1]}" fill="${f.ground}"/>` : ''}${partsSvg(parts, f)}</g>`;
 
 /** Person `i` in line alone, in vector: markup for a drawing's defs under `id`, standing on the origin, facing right, metres. */
-export const linePersonSvg = (id: string, i: number, f: LineFigure): string => figureSvg(id, 'person', linePerson(i % PEOPLE_VARIANTS), f, [0.38, 0.11]);
+export const linePersonSvg = (id: string, i: number, f: LineFigure): string => `<g id="${id}" data-line-figure="person">${linePerson(i % PEOPLE_VARIANTS, f)}</g>`;
 /** Person `i` on a bicycle in line alone, in vector, riding right: its origin the point under the bicycle's middle. */
-export const lineRiderSvg = (id: string, i: number, f: LineFigure): string => figureSvg(id, 'rider', lineRider(i % RIDER_VARIANTS), f, [0.98, 0.14]);
+export const lineRiderSvg = (id: string, i: number, f: LineFigure): string => `<g id="${id}" data-line-figure="rider">${lineRider(i % RIDER_VARIANTS, f)}</g>`;

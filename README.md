@@ -1358,21 +1358,35 @@ The 3D views' trees and people follow the style (`lookOf` in
     oval, a shield ruled down its length and, for a few of the smallest, a low
     bush. Each stands on a thin trunk whose line runs up into the crown with a
     branch or two off it, a short bar on the ground at its foot.
-  - **Colour:** two deep teals tree by tree, the shields a lighter one
-    (`FLAT_TEAL`); the lines in a crown are a deeper cut of its own teal.
+  - **Colour:** two deep teals tree by tree, a lighter one for the shields and
+    half the cypresses and bushes (`FLAT_TEAL`); the lines in a crown are a
+    deeper cut of its own teal. About one tree in fourteen is left in paper:
+    the streets' cream with the figures' line round its crown.
+  - **Bars and shadows:** the bar at a tree's foot is pale orange on the paper
+    and a thin cut of the tree's teal on a park's green. The buildings' cast
+    shadows are flat, in the same pale orange.
   - **People:** in line alone and in vector (`linePersonSvg` in
-    `src/render/people.ts`): slim, upright figures in the cream of the streets
-    with one thin dark line round each part, a shirt over trousers or a skirt,
-    walking, standing, waving, hands on hips, some with a bag; hair in outline
-    or filled dark. A pale warm patch lies on the ground under each. They are
-    drawn 1.7 times life size (`LINE_FIGURE_SIZE`), off the town's scale on
-    purpose, as the reference draws its own.
+    `src/render/people.ts`), after the references' figures: tall and slender,
+    the head small and the legs long, every part in the cream of the streets
+    with one thin near-black line round it.
+    - Clothes: wide trousers falling to a straight hem, slim ones, a skirt or
+      shorts; now and then a collar or a belt.
+    - Poses: standing with the arms folded, a hand on a hip, both, in the
+      pockets, waving, or at the sides; walking with the arms swinging, a book
+      held up, or a bag on its strap.
+    - Hair: short, in a bun, a tail, long, a quiff, or under a hat; in outline
+      or filled dark.
+    - A pale orange bar lies on the ground under the feet.
+  - **Size:** the people are drawn three times life size (`LINE_FIGURE_SIZE`),
+    off the town's scale on purpose, as the references draw their own, so
+    each reads as a drawn figure. There are fewer of them to suit: a third as
+    many on the footpaths, a quarter as many groups in the parks.
   - **Cyclists** likewise (`lineRiderSvg`): thin spoked wheels and frame in
     the pen alone, the rider leaning to the bars, a helmet.
   - **Traffic:** Kingfisher's drawn vehicles (below) in line alone: every part
-    in the streets' cream with the one dark line, the windows and the wheels
-    in outline, a pale warm patch on the road under each.
-  - **Town:** a yellowish cream ground, as the reference's paper, the streets
+    in the streets' cream with the one near-black line, the windows and the
+    wheels in outline, a pale orange patch on the road under each.
+  - **Town:** a yellowish cream ground, as the references' paper, the streets
     a shade lighter (`massingInks()`).
 - **People, Kingfisher:** flat figures after an illustrator's isometric people
   (`src/render/people.ts`):

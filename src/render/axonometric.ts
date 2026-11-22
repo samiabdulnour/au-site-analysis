@@ -268,10 +268,14 @@ interface AxoLook {
 }
 /** Flamingo's flat trees: its two teals, tree by tree, and the lighter one its ruled shields take; the lines in each a deeper cut of it. */
 const FLAT_TEAL = { crown: '#167d7f', deep: '#0b5f66', light: '#5fa59a' };
-/** Flamingo's line figures: the cream of its streets (atlasKit, massingInks), a dark slate line, a pale warm patch on the ground. */
-const FLAT_LINE: LineFigure = { fill: '#fcf9ee', line: '#3a4552', ground: '#f3e2b8' };
-/** How large Flamingo's people in line are drawn, times life: off the town's scale, as the reference's are (a person some two thirds of a car's length tall). */
-export const LINE_FIGURE_SIZE = 1.7;
+/** Flamingo's line figures: the cream of its streets (atlasKit, massingInks), a near-black line, a pale orange bar or patch on the ground. */
+const FLAT_LINE: LineFigure = { fill: '#fcf9ee', line: '#23262c', ground: '#f9dfae' };
+/**
+ * How large Flamingo's people in line are drawn, times life: off the town's scale on purpose, as the references' are
+ * (a person taller than a car is long), so each reads as a drawn figure at the scale of a town. Fewer of them, to
+ * suit: a third as many on the footpaths, a quarter as many groups in the parks.
+ */
+export const LINE_FIGURE_SIZE = 3;
 const PLAIN: AxoLook = { crown: 'disc', people: 'slip', crowd: false, greens: [], accents: [], columnar: 0, shadows: false };
 
 /** The look of a drawing's trees and people, by the style; plain in a white model. */
@@ -517,7 +521,9 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
         rg.forEach((p, i) => { const q = rg[(i + 1) % rg.length]; pieces.push(poly([P(p, 0), P(q, 0), P(off(q), 0), P(off(p), 0)])); });
       }
     }
-    ground.push(`<g opacity="${mono ? 0.07 : 0.1}" fill="${mono ? '#2b2b2b' : INK.blue.deep}"><path d="${pieces.join('')}" fill-rule="nonzero"/></g>`);
+    // (Flamingo's flat town: the shadows flat too, the pale orange of the bars under its people and its trees)
+    ground.push(!mono && look.line?.ground ? `<g data-cast-shadows opacity="0.7" fill="${look.line.ground}"><path d="${pieces.join('')}" fill-rule="nonzero"/></g>`
+      : `<g opacity="${mono ? 0.07 : 0.1}" fill="${mono ? '#2b2b2b' : INK.blue.deep}"><path d="${pieces.join('')}" fill-rule="nonzero"/></g>`);
   }
 
   // A line model's windows, drawn on the wall as it stands: bay by bay along it, storey by storey up it, each skewed
@@ -708,26 +714,31 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   };
   // each form in each teal once in the drawing's defs, at a radius of one, placed at each tree's size; one for each of
   // the crowns' sizes, so the lines in a wide crown are no heavier than those in a small one (some 0.09 m)
-  const flatStamp = (form: FlatForm, tone: string, r: number) => {
+  // (a paper tree: in the ground's cream with the figures' line round it, as the references leave a few of theirs)
+  const flatStamp = (form: FlatForm, tone: string, r: number, paper = false) => {
     const size = CROWN_SIZES.find((sz) => r < sz.upTo)!;
-    const key = `flat|${form}|${tone}|${size.r}`;
+    const key = `flat|${form}|${paper ? 'paper' : tone}|${size.r}`;
     let sid = stamps.get(key);
     if (!sid) {
       sid = `axo-${id}-f${stamps.size}`;
       stamps.set(key, sid);
-      stampDefs.push(flatCrownSvg(sid, form, tone, shade(tone, 0.72), 0.09 / size.r));
+      stampDefs.push(paper ? flatCrownSvg(sid, form, FLAT_LINE.fill, FLAT_LINE.line, 0.06 / size.r, FLAT_LINE.line) : flatCrownSvg(sid, form, tone, shade(tone, 0.72), 0.09 / size.r));
     }
     return sid;
   };
+  const parkRings = scene.lots.filter((lot) => lot.park).flatMap((lot) => lot.rings);
   const flatTreeSvg = (tr: { p: XY; r: number }) => {
-    const form = flatFormOf(tr), tone = form === 'shield' ? FLAT_TEAL.light : greenOf(tr.p);
-    const [bx, by] = P(tr.p, 0), R = form === 'bush' ? Math.max(1.1, tr.r) : tr.r, sid = flatStamp(form, tone, R);
-    // the bar on the ground at its foot, a thin cut of its own teal
-    const half = Math.max(0.55, R * 0.6);
-    const bar = `<rect data-tree-bar x="${(bx - half).toFixed(2)}" y="${(by - 0.09).toFixed(2)}" width="${(2 * half).toFixed(2)}" height="0.18" rx="0.09" fill="${tone}" fill-opacity="0.3"/>`;
+    const form = flatFormOf(tr);
+    // the shields, and half the cypresses and the bushes, in the lighter teal; about one tree in fourteen left in paper
+    const paper = form !== 'bush' && form !== 'shield' && rand(tr.p, 67) < 0.07;
+    const tone = form === 'shield' || ((form === 'cypress' || form === 'bush') && rand(tr.p, 69) < 0.5) ? FLAT_TEAL.light : greenOf(tr.p);
+    const [bx, by] = P(tr.p, 0), R = form === 'bush' ? Math.max(1.1, tr.r) : tr.r, sid = flatStamp(form, tone, R, paper);
+    // the bar on the ground at its foot: the figures' pale orange on the paper, a thin cut of the tree's teal on a park's green
+    const half = Math.max(0.6, R * 0.62), onGrass = parkRings.some((rg) => inRing(tr.p, rg));
+    const bar = `<rect data-tree-bar x="${(bx - half).toFixed(2)}" y="${(by - 0.14).toFixed(2)}" width="${(2 * half).toFixed(2)}" height="0.28" rx="0.14" ${onGrass ? `fill="${tone}" fill-opacity="0.3"` : `fill="${FLAT_LINE.ground}"`}/>`;
     if (form === 'bush') return `<use href="#${sid}" transform="translate(${bx.toFixed(2)},${(by - flatBottom(form) * R).toFixed(2)}) scale(${R.toFixed(3)})"/>`;
     const [cx, cy] = P(tr.p, crownCentre(tr));
-    return bar + `<line x1="${bx.toFixed(2)}" y1="${by.toFixed(2)}" x2="${cx.toFixed(2)}" y2="${(cy + (flatBottom(form) - 0.04) * R).toFixed(2)}" stroke="${shade(tone, 0.72)}" stroke-width="0.12" stroke-linecap="round"/>` +
+    return bar + `<line x1="${bx.toFixed(2)}" y1="${by.toFixed(2)}" x2="${cx.toFixed(2)}" y2="${(cy + (flatBottom(form) - 0.04) * R).toFixed(2)}" stroke="${paper ? FLAT_LINE.line : shade(tone, 0.72)}" stroke-width="${paper ? 0.07 : 0.12}" stroke-linecap="round"/>` +
       `<use href="#${sid}" transform="translate(${cx.toFixed(2)},${cy.toFixed(2)}) scale(${R.toFixed(3)})"/>`;
   };
   const treeSvg = (tr: { p: XY; r: number }) => {
@@ -966,7 +977,7 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
     if (road.hierarchy >= 7) continue;
     for (const side of [1, -1]) {
       const path = (side > 0 ? left : right) + 1.6;   // the footpath, past the kerb
-      for (const { p, t } of alongLine(axis, (9 + road.hierarchy * 2) * (look.crowd ? 0.6 : 1), 4 + (pi % 5) * 2.3)) {
+      for (const { p, t } of alongLine(axis, (9 + road.hierarchy * 2) * (look.line ? 1.9 : look.crowd ? 0.6 : 1), 4 + (pi % 5) * 2.3)) {
         const n = { x: -t.y * side, y: t.x * side };
         const c = { x: p.x + n.x * path, y: p.y + n.y * path };
         if (!free(c)) continue;
@@ -975,14 +986,14 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
         figures.push({ key: depth(c), svg: () => (look.people === 'figure' ? person(c, 0, fill, stride) : body(c, 0, 1.45, fill)) });
         // illustrated with a crowd: now and then a second walking beside
         if (look.crowd && rand(c, 13) < 0.35) {
-          const c2 = { x: c.x + n.x * 0.7, y: c.y + n.y * 0.7 };
+          const beside = look.line ? 1.7 : 0.7, c2 = { x: c.x + n.x * beside + (look.line ? t.x * 1.2 : 0), y: c.y + n.y * beside + (look.line ? t.y * 1.2 : 0) };
           if (free(c2)) { const f2 = FIGURE_INKS[pi++ % FIGURE_INKS.length]; figures.push({ key: depth(c2), svg: () => person(c2, 0, f2, stride) }); }
         }
       }
     }
     if (road.hierarchy <= 2) continue;   // no bicycle on a highway
     for (const dir of [1, -1]) {
-      for (const { p, t } of alongLine(axis, 30 + road.hierarchy * 4, dir > 0 ? 11 + (pi % 3) * 7 : 25 + (pi % 4) * 5)) {
+      for (const { p, t } of alongLine(axis, (30 + road.hierarchy * 4) * (look.line ? 2 : 1), dir > 0 ? 11 + (pi % 3) * 7 : 25 + (pi % 4) * 5)) {
         const n = { x: -t.y * dir, y: t.x * dir };   // the left of the direction of travel: the kerb side
         const kerb = dir > 0 ? left : right;
         const c = { x: p.x + n.x * (kerb - 1.1), y: p.y + n.y * (kerb - 1.1) };
@@ -1001,14 +1012,14 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
       let area = 0;
       for (let i = 0; i < rg.length; i++) { const u = rg[i], v = rg[(i + 1) % rg.length]; area += u.x * v.y - v.x * u.y; }
       const xs = rg.map((p) => p.x), ys = rg.map((p) => p.y), x0 = Math.min(...xs), y0 = Math.min(...ys), w = Math.max(...xs) - x0, h = Math.max(...ys) - y0;
-      const groups = Math.min(40, Math.round(Math.abs(area) / 2 / 300));
+      const groups = Math.min(40, Math.round(Math.abs(area) / 2 / (look.line ? 1200 : 300)));
       for (let g = 0, tries = 0; g < groups && tries < groups * 6; tries++) {
         const c = { x: x0 + rand({ x: x0, y: y0 }, 100 + tries) * w, y: y0 + rand({ x: y0, y: x0 }, 300 + tries) * h };
         if (!inRing(c, rg) || !free(c)) continue;
         g++;
         const many = 1 + Math.floor(rand(c, 4) * 3), a = rand(c, 8) * Math.PI * 2;
         for (let m = 0; m < many; m++) {
-          const q = { x: c.x + Math.cos(a + m * 2.1) * 0.6 * m, y: c.y + Math.sin(a + m * 2.1) * 0.6 * m };
+          const apart = look.line ? 1.9 : 0.6, q = { x: c.x + Math.cos(a + m * 2.1) * apart * m, y: c.y + Math.sin(a + m * 2.1) * apart * m };
           if (!free(q)) continue;
           const fill = FIGURE_INKS[pi++ % FIGURE_INKS.length];
           const walking = rand(q, 15) < 0.4, stride = walking ? { x: Math.cos(a) * 0.2, y: Math.sin(a) * 0.2 } : undefined;

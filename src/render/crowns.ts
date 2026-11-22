@@ -378,8 +378,10 @@ export const flatBottom = (form: FlatForm): number => FLAT[form].bottom;
  * A flat crown at a radius of one, in `fill`, the lines in it in `line` and `width` of the radius wide: markup for a
  * drawing's defs, placed with a `<use>` at each tree's size.
  */
-export function flatCrownSvg(id: string, form: FlatForm, fill: string, line: string, width = 0.05): string {
+export function flatCrownSvg(id: string, form: FlatForm, fill: string, line: string, width = 0.05, /** a line round the crown, for a tree left in paper */ edge?: string): string {
   const f = FLAT[form];
-  return `<g id="${id}" data-flat-crown="${form}"><path d="${f.d}" fill="${fill}"/>${f.lines ? `<path d="${f.lines}" fill="none" stroke="${line}" stroke-width="${width.toFixed(4)}" stroke-linecap="round"/>` : ''}</g>`;
+  // (the edge is drawn round every part and the fill laid over it, so only the line round the whole crown is left)
+  const rim = edge ? `<path d="${f.d}" fill="none" stroke="${edge}" stroke-width="${(2 * width).toFixed(4)}" stroke-linejoin="round"/>` : '';
+  return `<g id="${id}" data-flat-crown="${form}"${edge ? ' data-paper' : ''}>${rim}<path d="${f.d}" fill="${fill}"/>${f.lines ? `<path d="${f.lines}" fill="none" stroke="${line}" stroke-width="${width.toFixed(4)}" stroke-linecap="round"/>` : ''}</g>`;
 }
 
