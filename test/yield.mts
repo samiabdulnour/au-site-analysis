@@ -280,7 +280,9 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
     const ids = deck.slides.map((sl) => sl.id);
     const comp = ids.filter((i) => isTestPage(i));
     check('compliance: the current structures\' pages are there, first', comp.length >= 2 && /stands_today_shadow_and_separation$/.test(comp[0]) && /stands_today_solar_access$/.test(comp[1]), comp.join(' '));
-    check('compliance: no second pair for the path that rebuilds the same massing', !comp.some((i) => /rebuilt_as_stands/.test(i)), comp.join(' '));
+    // Z. 2026-11: "do the compliance sheets for every scenario produced", "even for this" (the path that rebuilds what stands)
+    const rebuiltAt = ids.findIndex((i) => /_rebuilt_as_stands$/.test(i));
+    check('compliance: every scenario with a spread has its pages, the path that rebuilds what stands too', rebuiltAt > 0 && /_rebuilt_as_stands_shadow_and_separation$/.test(ids[rebuiltAt + 1] ?? '') && /_rebuilt_as_stands_solar_access$/.test(ids[rebuiltAt + 2] ?? ''), ids.join(' '));
     // Z. 2026-11: "place the compliance sheet right after the scenario page"; "shadow will be page two"
     const at = ids.findIndex((i) => /_stands_today$/.test(i));
     check('compliance: straight after the page of what it tests, the shadow and its plan second, the sun third', at > 0 && ids[at + 1] === comp[0] && ids[at + 2] === comp[1], ids.join(' '));
@@ -437,6 +439,13 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
     && all.slides.filter((sl) => hasPlan(sl.figureHtml)).map((sl) => sl.id).join(',') === ['01_planning_yield', '04_within_controls', '07_reshaped', '10_affordable_bonus', '13_envelope_to_height'].map((x, i) => (i ? `${x}_shadow_and_separation` : x)).join(','),
     all.slides.filter((sl) => hasPlan(sl.figureHtml)).map((sl) => sl.id).join(','));
   check('the pages point to each other', /Its apartments' sun is on page 05/.test(shade.sources ?? '') && /Its plan, its shadow and its separations are on page 04/.test(solar.sources ?? '') && /Every assumption is on page 15/.test(shade.sources ?? ''));
+  {
+    // an office scheme: no apartment's sun to test, but its shadow and its separations are; the yield's criterion goes with them
+    const officeDeck = deck({ ...bundle, controls: { ...bundle.controls, zoneCode: 'E2' } }), oIds = officeDeck.slides.map((sl) => sl.id);
+    const oShade = officeDeck.slides.find((sl) => /_within_controls_shadow_and_separation$/.test(sl.id));
+    check('compliance: a scheme with no apartments has its shadow page alone, the yield\'s criterion on it', !!oShade && !oIds.some((i) => /_within_controls_solar_access$/.test(i))
+      && oShade.figureHtml.includes('<td>Yield</td>') && !/Its apartments' sun is on page/.test(oShade.sources ?? '') && oIds.indexOf(oShade.id) === oIds.findIndex((i) => /_within_controls$/.test(i)) + 1, oIds.join(','));
+  }
   check('compliance: the plan draws the shadow at 9, 12 and 3', /9 AM/.test(shade.figureHtml) && /12 PM/.test(shade.figureHtml) && /3 PM/.test(shade.figureHtml), (shade.figureHtml.match(/\d+ [AP]M/g) ?? []).join(','));
   // Z. 2026-11: "the shadow should be the same scale as plans"; then, on a version that drew the shadow on the path's
   // numbered plan and left the neighbours' shadows out: "the previous shadow was better: just update the scale and
@@ -469,7 +478,16 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
   check('shadow: every building\'s shadow, an hour a soft layer that darkens what is under it, 9 to 3', (planSvg.match(/<g opacity="0\.1" style="mix-blend-mode:multiply">/g) ?? []).length === 7, String((planSvg.match(/<g opacity="0\.1"/g) ?? []).length));
   check('shadow: the envelope\'s own at 9 am, 12 pm and 3 pm outlined, in a shadow\'s grey', (planSvg.match(/fill="none" stroke="#3a3c41" stroke-width="0\.25" stroke-dasharray="1\.2,0\.8"/g) ?? []).length === 3, String((planSvg.match(/stroke-dasharray="1\.2,0\.8"/g) ?? []).length));
   check('shadow: no hatch, no dimension on it by default: the table beside it says what it adds and how far it stands', !/data-added/.test(planSvg) && !/data-dim/.test(planSvg));
-  check('shadow: the built plate on paper over its shadow, in its own colour', /<path d="[^"]+" fill="#ffffff" fill-rule="evenodd" stroke="none"\/><path d="[^"]+" fill="[^"]+" fill-opacity="0\.55"/.test(planSvg));
+  // Z. 2026-11: "the yellows should be the same everywhere". The plan's plate is solid, in the colour its massing's roof
+  // and its key have (it stood at 55%, paler on the plan than on the isometric beside it).
+  const plateFill = /<path data-plate="1" d="[^"]+" fill="(#[0-9a-fA-F]{6})" fill-rule="evenodd" stroke="none"\/>/.exec(planSvg)?.[1];
+  check('shadow: the built plate solid, in the colour of its massing and its key', !!plateFill && !/data-plate="1"[^>]*fill-opacity/.test(planSvg)
+    && page('03_within_controls').figureHtml.includes(`fill="${plateFill}"`) && (shade.legend ?? []).some((e) => e.swatch.includes(`fill="${plateFill}"`)), String(plateFill));
+  // Z. 2026-11: "our site, very thick black". One solid black line, on the plan and on the ground of every massing.
+  check('the site a very thick black line on the plan and on the massing\'s ground, no dashes, no accent', /<path data-site="1" d="[^"]+" fill="none" stroke="#000000" stroke-width="1\.4" stroke-linejoin="round"\/>/.test(planSvg)
+    && /<path data-site d="[^"]+" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"\/>/.test(page('03_within_controls').figureHtml)
+    && /<path data-site d="[^"]+" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"\/>/.test(solar.figureHtml)
+    && (shade.legend ?? []).some((e) => e.label === 'The site' && /stroke="#000000" stroke-width="0\.7"/.test(e.swatch)));
   check('shadow: the key names every building\'s shadow hour by hour, the envelope\'s three outlined, and the neighbours by their street numbers', (shade.legend ?? []).some((e) => /Every building's shadow on 21 June, each hour 9 am – 3 pm laid over the last/.test(e.label))
     && (shade.legend ?? []).some((e) => /shadow at 9 am, 12 pm and 3 pm, outlined/.test(e.label)) && (shade.legend ?? []).some((e) => /each lot with its street number/.test(e.label)) && !(shade.legend ?? []).some((e) => /Separation:|zone/.test(e.label)));
   check('compliance: a lone option gets its two pages', deck(sliver).slides.some((sl) => sl.id === '03_within_controls_shadow_and_separation') && deck(sliver).slides.some((sl) => sl.id === '04_within_controls_solar_access'), deck(sliver).slides.map((sl) => sl.id).join(','));
@@ -502,7 +520,7 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
     // (a path's plan is its shadow's page: the scheme's plate is read there, its walls on its own spread)
     const cDeck = renderYieldDeck(treed, meta, { theme: 'canary' });
     const cp = cDeck.slides.find((sl) => sl.id === '04_within_controls_shadow_and_separation')!.figureHtml;
-    const plate = (html: string) => /fill="(#[0-9a-f]{6})" fill-opacity="0\.55" fill-rule="evenodd" stroke="none"/.exec(html)?.[1];
+    const plate = (html: string) => /<path data-plate="1" d="[^"]+" fill="(#[0-9a-f]{6})" fill-rule="evenodd" stroke="none"/.exec(html)?.[1];
     const yellow = withTemplate('canary', () => deckFamilies().orange.solid), r4 = vivid(zoneFill('R4'), 0.45, 0.5);
     const sat = (h: string) => { const c = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255), mx = Math.max(...c), mn = Math.min(...c), l = (mx + mn) / 2; return mx === mn ? 0 : (mx - mn) / (1 - Math.abs(2 * l - 1)); };
     check('canary: the scheme in Canary\'s yellow, not its zone\'s red', plate(cp) === yellow && plate(cp) !== r4 && plate(kp) !== yellow && !!plate(kp), `${plate(cp)} for ${yellow}; kingfisher ${plate(kp)}`);

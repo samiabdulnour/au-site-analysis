@@ -1772,6 +1772,21 @@ yield for 86, 88-90, 94 Maroubra Road, 2026-11):
   spread as the solar access views already were: the neighbours white at
   their heights, the scheme and what stands the only colours. The zones
   are the overview's alone.
+- *"Our site, very thick black. The yellows should be the same
+  everywhere."* The site's boundary is one solid black line on every
+  drawing of the deck, 1.4 mm on a plan and 1 mm on the ground of a
+  massing (`SITE_LINE`; over the first page's photograph it stands on a
+  white casing). It was the accent's, fine and dashed, with a tint of it
+  on the ground. And the scheme is one yellow wherever it is drawn: the
+  plan's plate is solid (it stood at 55%, paler than the isometric beside
+  it), the massing's roof is the colour itself and not lit (`roofFill`),
+  the height plane over it has no tint to shift it, and what stands on the
+  site takes the same yellow (Canary gave it the deeper of its two).
+- *"Do the compliance sheets for every scenario produced … even for
+  this"* (the path that rebuilds what stands). Every path with a spread
+  has its compliance pages after it: the rebuilt path, which had none
+  because its massing is what stands, and a scheme with no apartments,
+  which has its shadow page alone with the yield's criterion on it.
 - *"If there is nothing, don't print it."* "Within the controls" had a
   spread of its own even in a zone the study draws no building type for:
   every figure a dash, over the height plane alone. A path that builds
@@ -1891,8 +1906,11 @@ site may take, so a site with more paths has more pages:
    the FSR set aside, the case a clause 4.6 variation or a planning proposal
    has to carry, marked non-compliant; drawn only where the FSR stops the
    scheme below the height.
-9. **Compliance**, two pages for each option that holds apartments, straight
-   after that option's own spread: does its envelope comply? What each
+9. **Compliance**, for every option with a spread, straight after that
+   spread: does its envelope comply? Two pages where the option holds
+   apartments, the shadow's alone where it holds none (an office scheme,
+   with the yield's criterion on it). The path that rebuilds what stands
+   has its pages too, though its massing is what stands. What each
    criterion asks is written in full, in a line of small print under its
    own row, on the first option's pages (the ADG clause and its wording, how
    the yield's most is worked out, what "built out" means).
@@ -1937,9 +1955,8 @@ site may take, so a site with more paths has more pages:
 
    Every path's own spread draws its massing alone, the whole right page
    and framed close (14 m of town round the site): its plan is the shadow's,
-   the page after. A path with nothing to test (what stands with no
-   outline, the path that rebuilds it, an office scheme, a zone no scheme is
-   studied for) has that one spread and no plan or shadow page at all. It
+   the page after. A path with no massing to test (what stands with no
+   outline) has that one spread and no plan or shadow page. It
    was one sheet an option, every option's after the last path, the two
    massings side by side over a plan of its own, and each path's spread its
    massing over a second plan: see Z.'s notes below.

@@ -46,6 +46,8 @@ export interface Prism {
    * face, so a nearer face hides them as it hides the face.
    */
   cells?: { ring: number; edge: number; t0: number; t1: number; z0: number; z1: number; fill: string; /** In its own colour, unlit, so it reads against a key. */ flat?: boolean }[];
+  /** Its roof in this colour as it is given, not lit: the one colour a plan beside the massing and their key draw it in. */
+  roofFill?: string;
   /** Pieces laid on its roof (a roof's cells, coloured by their sun), drawn in their own colours over its top. */
   roof?: { pts: XY[]; fill: string }[];
 }
@@ -79,7 +81,9 @@ export interface AxoScene {
   /** The height plane over the site, and what to say when it runs above the frame. */
   hob?: { metres: number; note: string };
   envelopes?: { rings: XY[][]; z: number }[];
-  inks: { site: string; future: string; futureEdge: string; envelope: string; kerb: string };
+  inks: { site: string; future: string; futureEdge: string; envelope: string; kerb: string;
+    /** The site's boundary on the ground as one solid line of this ink and width (millimetres), in place of the style's own mark and tint. */
+    siteLine?: { ink: string; w: number } };
   /** The built's outline over everything, so a future in front of it does not lose it. */
   silhouette?: boolean;
   /** Set, the frame is fitted to the site and this many metres of town round it, and the town drawn to `reach` runs out past the frame's every edge; unset, everything within reach is fitted in. */
@@ -521,7 +525,9 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   }
   const SITE = inks.site;
   // (a line model's massing: the site a black dash-dot boundary on the ground, with no tint)
-  ground.push(plain
+  ground.push(inks.siteLine
+    ? `<path data-site d="${poly(ring.map((p) => P(p, 0)))}" fill="none" stroke="${inks.siteLine.ink}" stroke-width="${inks.siteLine.w}" stroke-linejoin="round"/>`
+    : plain
     ? `<path data-site d="${poly(ring.map((p) => P(p, 0)))}" fill="none" stroke="${SITE}" stroke-width="0.4" stroke-dasharray="3,1,0.6,1"/>`
     : `<path d="${poly(ring.map((p) => P(p, 0)))}" fill="${SITE}" fill-opacity="0.08" stroke="${SITE}" stroke-width="0.35"/>`);
   // Glossy (Kingfisher, Flamingo): each building casts a soft shadow on the ground, away from the light, as far as its height is tall by
@@ -620,7 +626,7 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
       }
     });
     const roofD = pr.rings.map((rg) => poly(rg.map((p) => P(p, pr.z1)))).join('');
-    out.push(`<path d="${roofD}" fill="${line ? flat : shade(pr.fill, M.gloss ? 1.3 : 1.12)}"${alpha} fill-rule="evenodd" stroke="${pr.edge}" stroke-width="${ew}" stroke-linejoin="round"${dash}/>`);
+    out.push(`<path d="${roofD}" fill="${line ? flat : pr.roofFill ?? shade(pr.fill, M.gloss ? 1.3 : 1.12)}"${alpha} fill-rule="evenodd" stroke="${pr.edge}" stroke-width="${ew}" stroke-linejoin="round"${dash}/>`);
     for (const c of pr.roof ?? []) out.push(`<path d="${poly(c.pts.map((p) => P(p, pr.z1)))}" fill="${c.fill}" stroke="#ffffff" stroke-width="0.07" stroke-linejoin="round"/>`);
     return out.join('');
   };
@@ -1083,7 +1089,8 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   if (scene.hob?.metres) {
     const hz = scene.hob.metres;
     // (a line model's massing: the plane a fine black dashed outline, nothing in it)
-    over.push(`<path d="${poly(ring.map((p) => P(p, hz)))}" fill="${plain ? 'none' : SITE}" fill-opacity="0.05" stroke="${SITE}" stroke-width="${plain ? 0.22 : 0.3}" stroke-dasharray="2.4,1.2"/>`);
+    // (no tint in it either where the site is one solid line: a wash of the accent over the roofs under it changes their colour)
+    over.push(`<path d="${poly(ring.map((p) => P(p, hz)))}" fill="${plain || inks.siteLine ? 'none' : SITE}" fill-opacity="0.05" stroke="${SITE}" stroke-width="${plain ? 0.22 : 0.3}" stroke-dasharray="2.4,1.2"/>`);
     for (const p of ring) { const [x1, y1] = P(p, 0), [x2, y2] = P(p, hz); over.push(`<line x1="${x1.toFixed(2)}" y1="${y1.toFixed(2)}" x2="${x2.toFixed(2)}" y2="${y2.toFixed(2)}" stroke="${SITE}" stroke-width="0.12" stroke-dasharray="1,1"/>`); }
   }
 

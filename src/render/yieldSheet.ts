@@ -691,13 +691,20 @@ function useFill(u: Use): string {
 function yieldInks() {
   const B = INK.blue, O = INK.orange;
   // Heron's line model: what stands on the site a light grey in its heavy outline
-  // (Canary, whose neighbours are at full strength: what stands on the site at full strength too, the deeper of its
-  // yellows, so it is told from a scheme drawn beside it in the bright one)
-  const standing = deckLook().id === 'heron' ? '#ececec' : deckLook().zones === 'lep' ? O.line : tint(O.deep, 0.42);
+  // (Canary: what stands on the site in the scheme's own yellow, the one yellow of the deck. It was the deeper of
+  // Canary's two, to tell it from a scheme drawn beside it; no drawing of the deck draws the two together, and the
+  // two yellows read as a mismatch from page to page. Z. 2026-11: "the yellows should be the same everywhere")
+  const standing = deckLook().id === 'heron' ? '#ececec' : deckLook().zones === 'lep' ? O.solid : tint(O.deep, 0.42);
   return { context: tint(B.solid, 0.5), contextEdge: inkFor(B.solid, 0.42), future: B.light, futureEdge: B.line, standing, envelope: inkFor(B.deep, 0.25), kerb: inkFor(B.solid, 0.4) };
 }
-/** The site's pen: the style's accent. */
+/** The accent's pen: the height plane over the site, the hatch of a study plan. (The site's own boundary is SITE_LINE.) */
 const siteInk = () => deckLook().accent;
+/**
+ * The site's boundary on every drawing of the deck: one very thick black line, on a plan and on the ground of a
+ * massing, millimetres (Z. 2026-11: "our site, very thick black"). It was the accent's, dashed and fine, with a tint
+ * of it on the ground. Over the first page's photograph it stands on a white casing, to read on the dark of a roof.
+ */
+const SITE_LINE = { ink: '#000000', plan: 1.4, massing: 1.0, casing: 0.5 };
 /** A neighbour's colour in the massing: its zone's, bold, as the plan tints its lot — the ePlanning colour where the style keeps it, the category's elsewhere. */
 function zoneInk(zone: string | undefined, look: DeckLook): string | null {
   // Heron's line model: every neighbour a white volume
@@ -788,7 +795,8 @@ function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number;
       return f.cells.map((c) => ({ ring: f.ring, edge: f.edge, t0: same ? c.t0 : 1 - c.t1, t1: same ? c.t1 : 1 - c.t0, z0: z.bottom(c.storey), z1: z.top(c.storey), fill: bandOf(c.hours).fill, flat: true }));
     });
     const roof = (scheme.roofs ?? []).filter((r) => r.tier === ti).map((r) => ({ pts: r.pts, fill: bandOf(r.hours).fill }));
-    built.push({ rings: t.plate, z0: z.bottom(t.from), z1: z.top(top), fill: useFill(t.use), edge: '#1c1c1c', edgeW: 0.2, windows: true, storeys: Array.from({ length: top - t.from }, (_, i) => z.top(t.from + i)), ...(cells.length ? { cells } : {}), ...(roof.length ? { roof } : {}) });
+    // (its roof in the colour itself, as its plan and the keys draw it: lit, it was a paler yellow than theirs)
+    built.push({ rings: t.plate, z0: z.bottom(t.from), z1: z.top(top), fill: useFill(t.use), roofFill: useFill(t.use), edge: '#1c1c1c', edgeW: 0.2, windows: true, storeys: Array.from({ length: top - t.from }, (_, i) => z.top(t.from + i)), ...(cells.length ? { cells } : {}), ...(roof.length ? { roof } : {}) });
   });
   // What stands, at its recorded height, its storeys ruled; one with none recorded at a nominal two, dashed.
   for (const e of scheme.standing ?? []) {
@@ -796,7 +804,7 @@ function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number;
     const top = e.heightM ?? (e.storeys ? e.storeys * 3.1 : 6.2);
     const n = e.storeys ?? Math.max(1, Math.round(top / 3.1));
     // (Heron's line model draws a tone as a hatch, the closer the darker: what stands on the site in a close one, as the report's built form draws it)
-    built.push({ rings: e.rings, z0: 0, z1: top, fill: look.id === 'heron' ? '#b0b0b0' : Y.standing, edge: '#1c1c1c', edgeW: 0.2, dashed: !known, windows: known, storeys: Array.from({ length: n - 1 }, (_, i) => ((i + 1) * top) / n) });
+    built.push({ rings: e.rings, z0: 0, z1: top, fill: look.id === 'heron' ? '#b0b0b0' : Y.standing, ...(look.id === 'heron' ? {} : { roofFill: Y.standing }), edge: '#1c1c1c', edgeW: 0.2, dashed: !known, windows: known, storeys: Array.from({ length: n - 1 }, (_, i) => ((i + 1) * top) / n) });
   }
   const scene: AxoScene = {
     ring: s.ring, frontNormal: { x: nx, y: ny }, reach, neighbours, built,
@@ -806,7 +814,7 @@ function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number;
     trees: (b.trees ?? []).map((tr) => ({ p: s.toLocal(tr.lon, tr.lat), r: Math.max(1.2, Math.min(8, tr.canopyM / 2)) })),
     hob: s.hob?.metres ? { metres: s.hob.metres, note: `HEIGHT OF BUILDING PLANE ${s.hob.rl ? `RL ${fmt(s.hob.value, 1)}, ` : ''}${fmt(Math.round(s.hob.metres))}m ABOVE THE GROUND, ABOVE THE FRAME` } : undefined,
     envelopes: y && z ? y.tiers.map((t) => ({ rings: t.envelope, z: z.top(t.to) })) : [],
-    inks: { site: siteInk(), future: scheme.mono ? '#ffffff' : Y.future, futureEdge: scheme.mono ? '#8f8f8f' : Y.futureEdge, envelope: Y.envelope, kerb: Y.kerb },
+    inks: { site: siteInk(), future: scheme.mono ? '#ffffff' : Y.future, futureEdge: scheme.mono ? '#8f8f8f' : Y.futureEdge, envelope: Y.envelope, kerb: Y.kerb, siteLine: { ink: SITE_LINE.ink, w: SITE_LINE.massing } },
     mono: scheme.mono,
     futures: s.future.buildings.map((fb) => ({ rings: [fb.ring], heightM: fb.heightM })),
     silhouette: s.future.buildings.length > 0,
@@ -1068,11 +1076,12 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
     out.push(greyPlan ? (built ? `<path d="${t.plate.map(path).join('')}" fill="#ffffff" fill-rule="evenodd" stroke="#1c1c1c" stroke-width="0.3" stroke-linejoin="round"/>` : '')
       // (a line plan: what is built the heaviest outline on the sheet)
       : linePlan ? (built ? `<path d="${t.plate.map(path).join('')}" fill="${useFill(t.use)}" fill-rule="evenodd" stroke="#000000" stroke-width="0.6" stroke-linejoin="round"/>` : '')
-        // (over its own shadow, which takes in its footprint, a built plate stands on paper first: its colour its own)
-        : `${marks && built ? `<path d="${t.plate.map(path).join('')}" fill="#ffffff" fill-rule="evenodd" stroke="none"/>` : ''}<path d="${t.plate.map(path).join('')}" fill="${useFill(t.use)}" fill-opacity="${built ? 0.55 : 0.18}" fill-rule="evenodd" stroke="none"/>`);
+        // (a built plate solid, in the colour its massing's roof and its key have: it stood at 55%, a paler yellow on the
+        // plan than on the isometric beside it. Z. 2026-11: "the yellows should be the same everywhere")
+        : `<path${built ? ' data-plate="1"' : ''} d="${t.plate.map(path).join('')}" fill="${useFill(t.use)}"${built ? '' : ' fill-opacity="0.18"'} fill-rule="evenodd" stroke="none"/>`);
   }
   if (greyPlan || !scheme.standing?.length) y?.tiers.forEach((t, i) => { for (const rg of t.envelope) out.push(`<path d="${path(rg)}" fill="none" stroke="${Y.envelope}" stroke-width="0.3" stroke-dasharray="${['2,1', '1.2,1.2', '3,1,0.8,1', '0.6,0.9'][i % 4]}"/>`); });
-  out.push(`<path d="${path(s.ring)}" fill="none" stroke="${siteInk()}" stroke-width="0.6" stroke-dasharray="3,1.2"/>`);
+  out.push(`${photo ? `<path d="${path(s.ring)}" fill="none" stroke="#ffffff" stroke-width="${SITE_LINE.plan + 2 * SITE_LINE.casing}" stroke-linejoin="round"/>` : ''}<path data-site="1" d="${path(s.ring)}" fill="none" stroke="${SITE_LINE.ink}" stroke-width="${SITE_LINE.plan}" stroke-linejoin="round"/>`);
 
   // The scale bar and the north point, first: what is written later keeps off them. A plan as wide as the right page
   // takes the report's, where every map of the decks has it: under the drawing's name, on the page's last line, white.
@@ -1656,7 +1665,7 @@ function keySwatches() {
     : look.buildings === 'white' ? `fill="#ffffff" stroke="${t.road}" stroke-width="0.3"` : `fill="#c2c2bc" stroke="#ffffff" stroke-width="0.3"`;
   const lot = look.lots === 'white' ? `fill="#eeeeea" stroke="#ffffff" stroke-width="0.3"` : `stroke="${t.road}" stroke-width="0.15" opacity="0.6"`;
   return {
-    site: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="${site}" fill-opacity="0.08" stroke="${site}" stroke-width="0.3" stroke-dasharray="1,0.4"/>`,
+    site: `<path d="M0.7,0.8H4.3V2.8H0.7Z" fill="none" stroke="${SITE_LINE.ink}" stroke-width="0.7" stroke-linejoin="round"/>`,
     use: (u: Use) => `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="${useFill(u)}" stroke="#3a3a3a" stroke-width="0.15"/>`,
     standing: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="${Y.standing}" stroke="#3a3a3a" stroke-width="0.15"/>`,
     envelope: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="none" stroke="${Y.envelope}" stroke-width="0.25" stroke-dasharray="0.8,0.5"/>`,
@@ -1722,7 +1731,7 @@ function deckOrder(b: YieldBundle, s: YieldStudy, paths: Path[]): { paths: { p: 
   let page = 1;
   const out = paths.filter(drawnPath).map((p) => {
     const test = tested.find((t) => t.p.sc.id === p.sc.id), at = ++page;
-    if (test) page += 2;   // its shadow and separation, then its solar access
+    if (test) page += hasHomes(test.ps) ? 2 : 1;   // its shadow and separation, then its solar access where it holds apartments
     return { p, page: at, ...(test ? { test } : {}) };
   });
   return { paths: out, last: page + 1 };
@@ -1821,7 +1830,7 @@ function schemeLegend(b: YieldBundle, s: YieldStudy, y: YieldResult | undefined,
  * site). It stood over the path's plan, in the page's upper half. Z. 2026-11: "make the isometry here for the full
  * half page and remove the plan: the plan is visible in shadow"; then "keep the rule with full isometry everywhere;
  * if there is nothing interesting for compliance, don't show the shadow or plan at all". A path's plan is the page
- * after it, with its shadow (complianceSheets), where it holds apartments to test; a path with none has no plan.
+ * after it, with its shadow (complianceSheets), for every path with a massing to test.
  * The town is a white model, as the solar access views draw it: no zone's colour in 3D, the scheme and what stands
  * the only colours (Z. 2026-11, on the overview's grey aerial beside a massing in the zones' reds and blues: "these
  * two are not matching by style or colour … for the isometry probably don't show the zoning in 3D, just white
@@ -2028,17 +2037,19 @@ const FUT_LABEL = 'Neighbours\' future: a feasible footprint on each lot (or lot
 const separationMark = (r: SeparationReading) => (r.status === 'clear' ? true : r.status === 'blank' ? null : false);
 /** The worse of a neighbour's two readings, today's and built out. */
 const worseReading = (r: SeparationRow): SeparationReading => (r.future && r.future.distanceM - r.future.band.between < r.today.distanceM - r.today.band.between ? r.future : r.today);
-/** The paths the compliance sheet tests: those the study drew that hold apartments, each with its sun, shadow and separations. */
-// (What stands today is tested first and always, where anything stands with a height: the current structures'
-// compliance before any designed massing's (Z. 2026-11). The path that rebuilds what stands is the same massing, so
-// it has no sheet of its own beside it.)
-const testedPaths = (b: YieldBundle, s: YieldStudy, paths: Path[]) => {
-  const standsTested = !!pathSun(b, s, 'standsToday')?.apartments?.total;
-  return paths
-    .map((p): Path => (p.sc.id === 'standsToday' ? { ...p, y: s.standing } : p))
-    .filter((p) => !(standsTested && p.sc.id === 'rebuiltAsStands'))
-    .filter((p) => p.y && pathSun(b, s, p.sc.id)?.apartments?.total).map((p) => ({ p, ps: pathSun(b, s, p.sc.id)! }));
-};
+/**
+ * The paths the compliance pages test: every path the study drew a massing for, each with its sun, shadow and
+ * separations. What stands today is tested first and always, where anything stands with a height (Z. 2026-11: the
+ * current structures' compliance before any designed massing's). Every scenario with a spread has its pages, the
+ * path that rebuilds what stands too, though its massing is what stands (Z. 2026-11: "do the compliance sheets for
+ * every scenario produced … even for this"), and a scheme with no apartments, whose shadow and separations are
+ * tested though no apartment's sun is.
+ */
+const testedPaths = (b: YieldBundle, s: YieldStudy, paths: Path[]) => paths
+  .map((p): Path => (p.sc.id === 'standsToday' ? { ...p, y: s.standing } : p))
+  .filter((p) => p.y && p.y.storeys > 0 && pathSun(b, s, p.sc.id)?.shadow).map((p) => ({ p, ps: pathSun(b, s, p.sc.id)! }));
+/** Whether a tested path holds apartments: its solar access has a page of its own, after its shadow's. */
+const hasHomes = (ps: PathSun) => (ps.apartments?.total ?? 0) > 0;
 /** A path's added shadow in a few words: "4 lots, 1 heritage item", or "none". */
 function shadowShort(ps: PathSun): string {
   const sh = ps.shadow!;
@@ -2115,8 +2126,10 @@ function facadeRows(ps: PathSun, hours: number): { courtyard: boolean; dir: stri
  *
  * On the first option tested each criterion says in full what it asks.
  */
-function complianceSheets(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: PathSun }, n: number, last: number, first: boolean): [shadow: Slide, solar: Slide] {
-  const { p, ps } = entry, id = p.sc.id, ap = ps.apartments!, sh = ps.shadow!, f = ap.future;
+function complianceSheets(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: PathSun }, n: number, last: number, first: boolean): Slide[] {
+  // (a scheme with no apartments has its shadow page alone, the yield's criterion on it: `homes` says which)
+  const { p, ps } = entry, id = p.sc.id, homes = hasHomes(ps), sh = ps.shadow!;
+  const ap: ApartmentSun = ps.apartments ?? { hoursRequired: sunRule(b).hours, continuous: false, units: [], total: 0, meeting: 0, none: 0 }, f = ap.future;
   const rule = sunRule(b), h = rule.hours, unbroken = rule.continuous ? ' unbroken' : '';
   const meets = (k: number) => k >= 0.7 * ap.total - 1e-9, fewNone = (k: number) => k <= 0.15 * ap.total + 1e-9;
   const count = (k: number) => `${pctOf(k, ap.total)} (${k} of ${ap.total})`;
@@ -2135,6 +2148,8 @@ function complianceSheets(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: P
         : tod.regime === 'deferred' ? `in the ${tod.name} TOD area, its controls deferred` : `in the ${tod.name} accelerated precinct, by its own maps`;
   const asks = (text: string) => (first ? text : undefined);
   const builtOut = asks('Built out: the neighbours as feasible footprints on their lots, to their LEP height and FSR');
+  const yieldTest: TRow = { cells: ['Yield', esc(most ? `${area(most)} most allowed` : 'no FSR mapped'), esc(`${area(ps.y.gfa)}${most ? ` · ${Math.round((100 * ps.y.gfa) / most)}%` : ''}`), okMark(most ? p.sc.ok : null)],
+    note: asks(`The most floor area allowed: the LEP's floor space ratio by the site area${todNote ? `; ${todNote}` : ''}`) };
   const solarTests: TRow[] = [
     { cells: [`Solar access, ${h} h`, esc(`70% of apartments${unbroken ? ', unbroken' : ''} (4A-1)`), esc(count(ap.meeting)), okMark(meets(ap.meeting))],
       note: asks(`ADG 4A-1: ${h} hours of direct sun${unbroken}, 9 am – 3 pm at mid winter, ${rule.where}`) },
@@ -2142,14 +2157,14 @@ function complianceSheets(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: P
     { cells: ['Solar access, none', 'at most 15% (4A-2)', esc(count(ap.none)), okMark(fewNone(ap.none))],
       note: asks('ADG 4A-2: apartments with no direct sun, 9 am – 3 pm at mid winter') },
     ...(f && f.none !== ap.none ? [{ cells: ['…neighbours built out', 'at most 15%', esc(count(f.none)), okMark(fewNone(f.none))] }] : []),
-    { cells: ['Yield', esc(most ? `${area(most)} most allowed` : 'no FSR mapped'), esc(`${area(ps.y.gfa)}${most ? ` · ${Math.round((100 * ps.y.gfa) / most)}%` : ''}`), okMark(most ? p.sc.ok : null)],
-      note: asks(`The most floor area allowed: the LEP's floor space ratio by the site area${todNote ? `; ${todNote}` : ''}`) },
+    yieldTest,
   ];
   const shadowTests: TRow[] = [
     { cells: ['Overshadow impact', 'minimised at mid winter (3B-2)', esc(shadowShort(ps) === 'none' ? 'adds none' : `shades ${shadowShort(ps)}${sh.homes.fallBelow ? `; ${sh.homes.fallBelow} below ${sh.homes.hoursRequired} h` : ''}`), okMark(shadowOk(ps))],
       note: asks('ADG 3B-2: overshadowing of reserves, heritage items and homes minimised at mid winter; a shadow added takes the dash') },
     { cells: ['Building separation', '12 / 18 / 24 m by storeys (3F-1)', esc([sepToday === 'none near' ? 'none near today' : `${sepToday} today`, sepLater].filter(Boolean).join('; ')), okMark(separationOk(ps))],
       note: asks(`ADG 3F-1: habitable to habitable 12, 18, 24 m; to non-habitable 9, 13.5, 18 m (1–4, 5–8, 9+ storeys)${s.future.buildings.length ? '. Built out: the neighbours as feasible footprints on their lots, to their LEP height and FSR' : ''}`) },
+    ...(homes ? [] : [yieldTest]),
   ];
   const criteria = [{ head: 'Criterion', w: '38mm' }, { head: 'Asked', w: '48mm' }, { head: 'This option' }, { head: '', w: '5mm' }];
 
@@ -2205,7 +2220,7 @@ function complianceSheets(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: P
   const lat = pts.reduce((t, q) => t + q[1], 0) / pts.length, lon = pts.reduce((t, q) => t + q[0], 0) / pts.length;
   const AXO_H = PAGE_H / 2, IN = 6, fid = `${id}-c`;
   const axo = (behind: boolean, top: number, id2: string) => figureAt(PAGE_X, top, PAGE_W, AXO_H, axonometric(b, s, { x: 2, y: IN + 9, w: PAGE_W - 4, h: AXO_H - IN - 11 }, { y: ps.y, facades: ps.facades, roofs: ps.roofs, behind, focusM: 6, mono: true }, id2));
-  const solarFigures = axo(false, 0, `${fid}-f`) + labelAt(PAGE_X, 0, IN, ['From the street corner'])
+  const solarFigures = !homes ? '' : axo(false, 0, `${fid}-f`) + labelAt(PAGE_X, 0, IN, ['From the street corner'])
     + axo(true, AXO_H, `${fid}-b`) + labelAt(PAGE_X, AXO_H, IN, ['From the opposite corner'])
     + `<div class="abs" style="left:${PAGE_X}mm;top:${AXO_H - 0.4}mm;width:${PAGE_W}mm;height:0.8mm;background:#ffffff"></div>`;
 
@@ -2302,10 +2317,10 @@ function complianceSheets(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: P
   return [
     { id: `${page(n)}_${slug}_${TEST_PAGE.shadow.id}`, title: `${TEST_NAME[id]}: ${TEST_PAGE.shadow.title}`, subtitle: subtitleOf(b, s), textHtml: '',
       figureHtml: zFlow(shadowBlocks) + shadowFigures, full: true, narrative: shadowSays, accent: inks().accent, legend: shadowLegend,
-      sources: `${shadowNote(b)} ${SEPARATION_NOTE} Indicative, for the design to confirm. Its apartments' sun is on page ${page(n + 1)}. ${closing}` },
-    { id: `${page(n + 1)}_${slug}_${TEST_PAGE.solar.id}`, title: `${TEST_NAME[id]}: ${TEST_PAGE.solar.title}`, subtitle: subtitleOf(b, s), textHtml: '',
+      sources: `${shadowNote(b)} ${SEPARATION_NOTE} Indicative, for the design to confirm.${homes ? ` Its apartments' sun is on page ${page(n + 1)}.` : ''} ${closing}` },
+    ...(homes ? [{ id: `${page(n + 1)}_${slug}_${TEST_PAGE.solar.id}`, title: `${TEST_NAME[id]}: ${TEST_PAGE.solar.title}`, subtitle: subtitleOf(b, s), textHtml: '',
       figureHtml: zFlow(solarBlocks) + solarFigures, full: true, narrative: solarSays, accent: inks().accent, legend: solarLegend,
-      sources: `${sunNote(b, s)} Indicative, for a solar access study and the design to confirm. Its plan, its shadow and its separations are on page ${page(n)}. ${closing}` },
+      sources: `${sunNote(b, s)} Indicative, for a solar access study and the design to confirm. Its plan, its shadow and its separations are on page ${page(n)}. ${closing}` }] : []),
   ];
 }
 
