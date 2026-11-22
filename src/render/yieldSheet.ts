@@ -2071,7 +2071,7 @@ const labelAt = (left: number, top: number, inset: number, parts: string[]) =>
 
 /** An option's name on its two test pages, short enough to stand on one line with the page's own. */
 const TEST_NAME: Record<Scenario['id'], string> = {
-  standsToday: 'Stands today', rebuiltAsStands: 'Rebuilt as it stands', withinControls: 'Within the controls', reshaped: 'Reshaped to comply', tod: 'TOD controls', lowMidRise: 'Low and mid-rise',
+  standsToday: 'Stands today', rebuiltAsStands: 'Rebuilt to what stands', withinControls: 'Within the controls', reshaped: 'Reshaped to comply', tod: 'TOD controls', lowMidRise: 'Low and mid-rise',
   affordableBonus: 'Affordable bonus', envelopeToHeight: 'Envelope to the height',
 };
 /** The two pages an option is tested on: what each is called after the option's name, and how its id ends. */
