@@ -1445,6 +1445,12 @@ The 3D views' trees and people follow the style (`lookOf` in
 - **Trees off the road:** in every style, a crown read off the aerial over a
   street is moved out past the nearer kerb onto the verge, or left out where
   there is no room there.
+- **People off the road:** in every style, a walker is put 1.6 m past the kerb
+  as it is drawn (stepping out from the street's axis to where the drawn
+  carriageway ends), and left out where that lands on another street's
+  carriageway. A street drawn as two lines side by side, or a carriageway
+  worked out wider than its class's, used to leave walkers standing in a lane.
+  A cyclist rides 1.1 m in from that same kerb.
 - **Colour:** each style's trees are in its own green:
   - Flamingo's two deep teals, and a lighter one for its shields;
   - Kingfisher's mint (`massingInks().tree`), in two close cuts, and a soft

@@ -193,6 +193,29 @@ for (const style of ['flamingo', 'kingfisher']) {
   const drawn = svg.replace(/data:image\/png;base64,[^"]+/g, '');
   check(`${style}: no NaN`, !drawn.includes('NaN'), drawn.slice(Math.max(0, drawn.indexOf('NaN') - 200), drawn.indexOf('NaN') + 50));
 }
+// No one on foot stands on a carriageway. A street drawn as two lines side by side (each way its own, 6 m apart) is
+// one wide surface: a walker put 1.6 m past the kerb her own line's class gives would stand on the other line's
+// lane. Each is put past the kerb as it is drawn, so every person's feet (where their picture is placed) are off the
+// surface the drawing fills as road.
+{
+  const two: AxoScene = { ...scene(), roads: [scene().roads[0], { coords: [{ x: -120, y: -24 }, { x: 120, y: -24 }], hierarchy: 4, name: 'A STREET' }] };
+  for (const style of ['flamingo', 'kingfisher']) {
+    const { out, road } = withTemplate(templateFor('slides', style), () => ({ out: drawAxonometric(two, { x: 0, y: 0, w: 400, h: 280 }, 'tr'), road: massingInks().road }));
+    const surface = new RegExp(`<path d="([^"]+)" fill="${road}" fill-rule="evenodd"`).exec(out);
+    const rings = (surface?.[1] ?? '').split('Z').filter(Boolean).map((part) => part.replace(/^M/, '').split('L').map((q) => q.split(',').map(Number)));
+    const inside = (x: number, y: number) => rings.reduce((k, rg) => {
+      let c = false;
+      for (let i = 0, j = rg.length - 1; i < rg.length; j = i++) if ((rg[i][1] > y) !== (rg[j][1] > y) && x < ((rg[j][0] - rg[i][0]) * (y - rg[i][1])) / (rg[j][1] - rg[i][1]) + rg[i][0]) c = !c;
+      return k + (c ? 1 : 0);
+    }, 0) % 2 === 1;
+    const feet = [...out.matchAll(/<use href="#axo-tr-p\d+" transform="translate\(([-\d.]+),([-\d.]+)\)/g)].map((m) => [Number(m[1]), Number(m[2])]);
+    const onIt = feet.filter(([x, y]) => inside(x, y)).length;
+    check(`${style}: no one on foot stands on a carriageway`, rings.length >= 1 && feet.length >= 10 && onIt === 0, `${onIt} of ${feet.length} on the road, ${rings.length} rings`);
+    // the cyclists do ride on it
+    const riding = [...out.matchAll(/<use href="#axo-tr-r\d+" transform="translate\(([-\d.]+),([-\d.]+)\)/g)].map((m) => [Number(m[1]), Number(m[2])]);
+    check(`${style}: the cyclists ride on it`, riding.length >= 1 && riding.every(([x, y]) => inside(x, y)), `${riding.filter(([x, y]) => inside(x, y)).length} of ${riding.length}`);
+  }
+}
 // more people than the plain look's footpaths hold: some walking in twos, and groups in the park
 {
   const crowd = people(draw('kingfisher').svg), plain = (draw('heron').svg.match(/r="0.3" fill=/g) ?? []).length;
