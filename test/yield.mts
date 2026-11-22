@@ -491,16 +491,11 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
     && /<g opacity="0\.1" style="mix-blend-mode:multiply"><path d="[^"]+" fill="#3a3c41" fill-rule="nonzero"\/>/.test(closePlan));
   check('shadow: the envelope\'s shadow with every other building\'s, in the same grey', /<g opacity="0\.1" style="mix-blend-mode:multiply"><path d="[^"]+" fill="#3a3c41" fill-rule="evenodd"\/>/.test(closePlan));
   // The plan's other marks are still to be had (YIELD_SHADOW_LOOK overrides the look, for iterations): the hatch on
-  // what the envelope adds, the dimensions, the ground in the solar access diagram's bands.
+  // what the envelope adds and the dimensions.
   const withLook = <T,>(look: object, f: () => T): T => { process.env.YIELD_SHADOW_LOOK = JSON.stringify(look); try { return f(); } finally { delete process.env.YIELD_SHADOW_LOOK; } };
   const shadowOf = (bd: YieldBundle) => deck(bd).slides.find((sl) => isTestPage(sl.id, 'shadow'))!;
   const fullPlan = withLook({ hatch: true, dims: true, shaded: true }, () => shadowOf(close).figureHtml);
   check('shadow, asked for: hatched where only the envelope shades the ground', /<g data-added="1">.*?<clipPath/.test(fullPlan));
-  const bandPlan = withLook({ colour: 'all' }, () => shadowOf(close));
-  const bandFills = [...bandPlan.figureHtml.matchAll(/<path data-band="1" d="[^"]+" fill="(#[0-9a-fA-F]{6})"/g)].map((x) => x[1].toLowerCase());
-  check('shadow, asked for: the ground in the solar access diagram\'s bands, by the hours of sun it keeps', bandFills.length >= 5 && new Set(bandFills).size === bandFills.length
-    && bandFills.every((c) => sunBands().some((x) => x.fill.toLowerCase() === c)) && bandFills[bandFills.length - 1] === sunBands()[Math.max(0, sunBands().length - bandFills.length)].fill.toLowerCase()
-    && !/mix-blend-mode:multiply"><path d="[^"]+" fill="#3a3c41"/.test(bandPlan.figureHtml) && (bandPlan.legend ?? []).some((e) => /by the hours of sun it keeps/.test(e.label)), bandFills.join(' '));
   check('shadow, asked for: a separation\'s distance, haloed', /paint-order="stroke" data-dim="1">8\.0 m</.test(fullPlan), fullPlan.match(/<text[^>]*data-dim="1">[^<]*</)?.[0]);
   check('compliance: the massings a white model, the neighbours white', /fill="#ffffff" fill-rule="evenodd" stroke="#8f8f8f" stroke-width="0\.12"/.test(closeSolar) && !/fill="#ffffff" fill-rule="evenodd" stroke="#8f8f8f"/.test(deck(close).slides.find((sl) => /^0[23]_/.test(sl.id))!.figureHtml));
   check('separation: a building nearer than the separation is short, and the table says so', !!r3f && r3f.ok === false && /1 building within 24 m: 1 short/.test(r3f.proposed?.join(' ') ?? ''), JSON.stringify(r3f));

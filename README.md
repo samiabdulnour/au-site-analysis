@@ -1753,7 +1753,9 @@ yield for 86, 88-90, 94 Maroubra Road, 2026-11):
   chosen: the path's plan at the overview's scale, the neighbours white in
   a black line with their street numbers and no zone on them, and every
   building's shadow hour by hour in soft grey layers, the envelope's own
-  at 9 am, noon and 3 pm outlined. Every path's spread is the isometric
+  at 9 am, noon and 3 pm outlined. (The ground coloured by its hours of
+  sun, in the solar access diagram's bands, was tried after that: "no,
+  colourful shadows are not ideal".) Every path's spread is the isometric
   alone, and a path's only plan is its shadow page, so the paths with
   nothing to test have no plan and no shadow page.
 - *"If there is nothing, don't print it."* "Within the controls" had a
@@ -1900,9 +1902,7 @@ site may take, so a site with more paths has more pages:
      drawn) overrides any part of that look, for further iterations: which
      hours, whose shadows, the hatch on what the envelope adds
      (`addedGround()`), the separations as dimensions, the neighbours black
-     or grey, and the ground coloured by the hours of sun it keeps in the
-     solar access diagram's bands (`shadeLevels()` in
-     `src/lib/solarAccess.ts`).
+     or grey.
    - **Solar access** (`…_solar_access`), the page after that. On the left
      solar access (4A-1 with the hours, again built out, and 4A-2 with
      none) and yield (its floor area against the most the controls allow
