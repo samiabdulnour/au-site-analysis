@@ -240,6 +240,19 @@ jobs:
       - name: the capacity study reads the lots right
         run: npx tsx test/capacity.mts
 
+      # State government land is the NSW Government Property Index as last
+      # published, 12 October 2022, read from a file that ships with the app
+      # (src/lib/stateLand.ts): its map service was withdrawn in November 2026
+      # and nothing replaced it. Made-up lots are packed and read back through
+      # windows (inside a lot, across a grid cell's edge, in a hole, deep in a
+      # district-sized lot), then the shipped file is read: its date and its
+      # counts, a hospital, Parliament House and a Crown park where they
+      # should be, nothing on two private sites, the lots the map layer itself
+      # answered two windows with, and every lot of the State once. CI asks
+      # no network.
+      - name: State government land reads from the shipped index
+        run: npx tsx test/state-land.mts
+
       # A second look at the heights the sources give (src/lib/heightCheck.ts), on grids and footprints drawn
       # for it: a house whose street number was typed into its height gives way to what the 3D meshes read on
       # its footprint, or with no meshes to its own footprint and the height limit over it; a tree the meshes

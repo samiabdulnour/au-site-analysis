@@ -39,6 +39,7 @@ import { fetchSiteControls, fetchSiteLots } from '../src/fetch/nsw.js';
 import { apiCouncilName, clipToExtent, fetchCouncilApplications, PORTAL_MANDATED } from '../src/fetch/da.js';
 import { printPage } from '../src/render/pdf.js';
 import { classifyCapacity, registerRecords, inWindow, capacityCounts, type CapacityOverrides } from '../src/lib/capacity.js';
+import { stateLandFeatures } from '../src/lib/stateLand.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PORTAL = 'https://portal.spatial.nsw.gov.au/server/rest/services';
@@ -93,7 +94,7 @@ const [siteLots, lots, props, roadNames, heritage, stateLand, crownLand, parks, 
   soft('property register', queryByExtent(`${CADASTRE}/12`, extent, 'propid,address,housenumber,propertytype,valnetpropertytype,valnetpropertystatus,valnetlotcount,dissolveparcelcount,superlot'), empty),
   soft('road names', queryByExtent(`${CADASTRE}/1`, extent, 'roadnamelabel'), empty),
   soft('heritage', queryByExtent(`${EPI}/0`, extent, 'LAY_CLASS,H_NAME,SIG,EPI_NAME'), empty),
-  soft('State government land', queryByExtent(`${M3}/Planning_Portal_GPI/MapServer/302`, extent, 'LOTREF,SOURCE,PLANLABEL'), empty),
+  soft('State government land', (async () => stateLandFeatures(extent))(), empty),
   soft('Crown land', queryByExtent(`${M3}/Planning_Portal_Crown_Land/MapServer/258`, extent, 'Area_H,DISPOSALSTATUS'), empty),
   soft('council parks', queryByExtent(`${COS}/Parks/FeatureServer/0`, extent, 'Name,Type'), empty),
   soft('council facilities', queryByExtent(`${COS}/CouncilFacilities/FeatureServer/0`, extent, 'Name,Address,Suburb'), empty),

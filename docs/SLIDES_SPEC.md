@@ -295,7 +295,7 @@ Application). New, all verified with a point or envelope query:
 | `ePlanning/Planning_Portal_Tree_Canopy` | 1 canopy 2022, 0 canopy 2019 | `identify` gives canopy %; `export…&layers=show:1&transparent=true` gives the raster as PNG |
 | `ePlanning/Planning_Portal_Public_Spaces` | 252 Green Grid existing green assets (name, class, District/Regional significance), 260 open space, 262 public facilities | |
 | `ePlanning/Planning_Portal_Contributions` | 148/416/180 Housing and Productivity Contribution zones, 218 SIC, 219 contribution plans | |
-| `ePlanning/Planning_Portal_GPI` | 302 State government land parcels (lot refs, area) | |
+| NSW Government Property Index, as last published (12 October 2022) | State government land parcels (lot refs), from `assets/state-land/` through `src/lib/stateLand.ts` | the map service, `ePlanning/Planning_Portal_GPI` 302, was withdrawn in November 2026 |
 | `ePlanning/Planning_Portal_Crown_Land` | 258 Crown land, 312 reserves, 313 leases, 314 licences | |
 | `ePlanning/Planning_Portal_Subsidence_Advisory` | 248 mine subsidence district | |
 | `ePlanning/Planning_Proposal_Public`, `Planning_Proposal_Deferred` | planning proposals on exhibition, by LEP map type | none near the sample site at the time |
@@ -803,7 +803,8 @@ layer 9) carries geometry and width but no purpose, and is empty around most
 urban lots; the neighbours' numbers are the geocoded addressing points.
 The block panel at 1:4000 draws the single-property sales of the last two
 years within 300 m sized by price (strata hollow), the State government
-land parcels (`Planning_Portal_GPI` 302), Crown land (258) and Crown
+land parcels (the Government Property Index as last published, 12 October
+2022, shipped with the app), Crown land (258) and Crown
 reserves (312), and a 300 m ring. The land value and the sales are the
 Valuer General's, already fetched for slide 16.
 
