@@ -399,8 +399,8 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
   check('solar access: the massing from the street corner over the same from the opposite one, the page theirs, no plan on it', ['From the street corner', 'From the opposite corner'].every((t) => solar.figureHtml.includes(t)) && !hasPlan(solar.figureHtml)
     && (solar.figureHtml.match(/stroke="#ffffff" stroke-width="0\.07"/g) ?? []).length > 50 && (solar.legend ?? []).some((e) => /Facades and roofs, hours of sun/.test(e.label))
     && !(solar.legend ?? []).some((e) => /laid over the last|Separation:/.test(e.label)));
-  check('shadow: the plan the whole page, no massing on it, its key the shadows\' and the separations\'', hasPlan(shade.figureHtml) && !/From the street corner/.test(shade.figureHtml) && /height="297mm"/.test(shade.figureHtml)
-    && (shade.legend ?? []).some((e) => /Separation:/.test(e.label)) && !(shade.legend ?? []).some((e) => /Facades and roofs/.test(e.label)));
+  check('shadow: the plan the whole page, no massing on it, its key the shadows\'', hasPlan(shade.figureHtml) && !/From the street corner/.test(shade.figureHtml) && /height="297mm"/.test(shade.figureHtml)
+    && (shade.legend ?? []).some((e) => /shadow on 21 June, each hour/.test(e.label)) && !(shade.legend ?? []).some((e) => /Facades and roofs/.test(e.label)));
   check('shadow: the land its shadow falls on, counted', /The shadow it adds/.test(shade.figureHtml) && ['residential lots', 'heritage items', 'parks and reserves'].every((t) => shade.figureHtml.includes(`<td>${t}</td>`)));
   // Z. 2026-11: "make the isometry here for the full half page and remove the plan: the plan is visible in shadow";
   // "keep the rule with full isometry everywhere; if there is nothing interesting for compliance, don't show the
@@ -419,7 +419,8 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
   // in the plans' colours.
   const scaleOf = (html: string) => (html.match(/class="abs maplabel[^"]*"[^>]*>[^<]*?1:([\d ]+)/) ?? html.match(/1:([\d ]+) ·/) ?? [])[1];
   check('shadow: its plan at the overview\'s scale', !!scaleOf(shade.figureHtml) && scaleOf(shade.figureHtml) === scaleOf(page('01_planning_yield').figureHtml), `${scaleOf(shade.figureHtml)} against ${scaleOf(page('01_planning_yield').figureHtml)}`);
-  check('shadow: the plan is plain: no lot numbers, no tier badges', !/>NO\. /.test(shade.figureHtml) && !/class="ytier"/.test(shade.figureHtml) && !/<circle cx="[\d.]+" cy="[\d.]+" r="2\.2" fill="#ffffff"/.test(shade.figureHtml));
+  check('shadow: the path\'s plan, each tier badged as in the schedule; no zone written on it', /<circle cx="[\d.]+" cy="[\d.]+" r="2\.2" fill="#ffffff"/.test(shade.figureHtml)
+    && !/HOB =/.test(shade.figureHtml) && (shade.legend ?? []).some((e) => /Envelope of each tier, numbered as in the schedule/.test(e.label)));
   // the bands of sun hours in each style's own palette: six, blue short of two hours and warm from two, the neighbours apart
   const rgb = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
   const sunOf = (st: string) => withTemplate(st, () => ({ bands: sunBands(), f: deckFamilies(), none: bandOf(0).fill, four: bandOf(4.5).fill, top: bandOf(5.5).fill }));
@@ -440,11 +441,12 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
   // the plan as the report's sun page draws it: every hour 9 to 3 a translucent layer, the buildings with their storeys,
   // set in Arial; in the plans' colours, the scheme's plate on paper over its own shadow in its use's colour
   const planSvg = shade.figureHtml.slice(shade.figureHtml.indexOf('<clipPath id="plan-within'));
-  check('shadow: every building\'s shadow, an hour a layer, 9 to 3', (planSvg.match(/<g opacity="0\.16">/g) ?? []).length === 7, String((planSvg.match(/<g opacity="0\.16">/g) ?? []).length));
-  check('shadow: the plan in Arial', /font-family="Arial/.test(planSvg));
-  check('shadow: the scheme\'s tiers with their storeys in plan', /font-size="2\.117" letter-spacing="0\.19" fill="#1c1c1c"[^>]*>\d+<\/text>/.test(planSvg));
+  check('shadow: every building\'s shadow, an hour a soft layer that darkens what is under it, 9 to 3', (planSvg.match(/<g opacity="0\.1" style="mix-blend-mode:multiply">/g) ?? []).length === 7, String((planSvg.match(/<g opacity="0\.1"/g) ?? []).length));
+  check('shadow: the envelope\'s own at 9 am, 12 pm and 3 pm outlined, in a shadow\'s grey', (planSvg.match(/fill="none" stroke="#3a3c41" stroke-width="0\.25" stroke-dasharray="1\.2,0\.8"/g) ?? []).length === 3, String((planSvg.match(/stroke-dasharray="1\.2,0\.8"/g) ?? []).length));
+  check('shadow: no hatch, no dimension on it by default: the table beside it says what it adds and how far it stands', !/data-added/.test(planSvg) && !/data-dim/.test(planSvg));
   check('shadow: the built plate on paper over its shadow, in its own colour', /<path d="[^"]+" fill="#ffffff" fill-rule="evenodd" stroke="none"\/><path d="[^"]+" fill="[^"]+" fill-opacity="0\.55"/.test(planSvg));
-  check('shadow: the key shows the hours\' tint stacking and the buildings\' storeys', (shade.legend ?? []).some((e) => /Neighbours' shadows on 21 June, each hour 9 am – 3 pm laid over the last/.test(e.label)) && (shade.legend ?? []).some((e) => /numbers are storeys/.test(e.label)));
+  check('shadow: the key names every building\'s shadow hour by hour, the envelope\'s three outlined, and the neighbours by their street numbers', (shade.legend ?? []).some((e) => /Every building's shadow on 21 June, each hour 9 am – 3 pm laid over the last/.test(e.label))
+    && (shade.legend ?? []).some((e) => /shadow at 9 am, 12 pm and 3 pm, outlined/.test(e.label)) && (shade.legend ?? []).some((e) => /each lot with its street number/.test(e.label)) && !(shade.legend ?? []).some((e) => /Separation:|zone/.test(e.label)));
   check('compliance: a lone option gets its two pages', deck(sliver).slides.some((sl) => sl.id === '03_within_controls_shadow_and_separation') && deck(sliver).slides.some((sl) => sl.id === '04_within_controls_solar_access'), deck(sliver).slides.map((sl) => sl.id).join(','));
   check('sun: what stands is given no sun', scenarioRows(bundle, s)[0].sun === undefined);
   const orange: YieldBundle = { ...bundle, controls: { ...bundle.controls, lgaName: 'ORANGE' } };
@@ -485,12 +487,21 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
   }
   const r3f = yieldRows(close).find((r) => r.label === '3F. VISUAL PRIVACY');
   const closePlan = deck(close).slides.find((sl) => isTestPage(sl.id, 'shadow'))!.figureHtml, closeSolar = deck(close).slides.find((sl) => isTestPage(sl.id, 'solar'))!.figureHtml;
-  check('shadow: a neighbour as the plans draw it (not the sun page\'s white in a grey hairline), with its storeys and its shadow', /<path d="[^"]+" fill="[^"]+" stroke="[^"]+" stroke-width="0\.3" stroke-linejoin="round"\/>/.test(closePlan)
-    && !/fill="#ffffff" stroke="#6f6f6f" stroke-width="0\.18"/.test(closePlan)
-    && /font-size="2\.117" letter-spacing="0\.19" fill="#000000"[^>]*>2<\/text>/.test(closePlan) && /<g opacity="0\.16"><path d="[^"]+" fill="[^"]+" fill-rule="nonzero"\/>/.test(closePlan));
-  check('shadow: the envelope\'s shadow in the site\'s accent, hatched where only it shades the ground', /<g data-added="1">.*?<clipPath/.test(closePlan)
-    && (closePlan.match(/<g opacity="0\.16"><path d="[^"]+" fill="([^"]+)" fill-rule="evenodd"\/>/) ?? [])[1] !== (closePlan.match(/<g opacity="0\.16"><path d="[^"]+" fill="([^"]+)" fill-rule="nonzero"\/>/) ?? [])[1]);
-  check('shadow: a separation\'s distance haloed over the tinted plan', /paint-order="stroke" data-dim="1">8\.0 m</.test(closePlan), closePlan.match(/<text[^>]*data-dim="1">[^<]*</)?.[0]);
+  check('shadow: a neighbour white in a black line, no zone\'s colour on it, with its shadow', /fill="#ffffff" stroke="#1c1c1c" stroke-width="0\.3" stroke-linejoin="round"\/>/.test(closePlan)
+    && /<g opacity="0\.1" style="mix-blend-mode:multiply"><path d="[^"]+" fill="#3a3c41" fill-rule="nonzero"\/>/.test(closePlan));
+  check('shadow: the envelope\'s shadow with every other building\'s, in the same grey', /<g opacity="0\.1" style="mix-blend-mode:multiply"><path d="[^"]+" fill="#3a3c41" fill-rule="evenodd"\/>/.test(closePlan));
+  // The plan's other marks are still to be had (YIELD_SHADOW_LOOK overrides the look, for iterations): the hatch on
+  // what the envelope adds, the dimensions, the ground in the solar access diagram's bands.
+  const withLook = <T,>(look: object, f: () => T): T => { process.env.YIELD_SHADOW_LOOK = JSON.stringify(look); try { return f(); } finally { delete process.env.YIELD_SHADOW_LOOK; } };
+  const shadowOf = (bd: YieldBundle) => deck(bd).slides.find((sl) => isTestPage(sl.id, 'shadow'))!;
+  const fullPlan = withLook({ hatch: true, dims: true, shaded: true }, () => shadowOf(close).figureHtml);
+  check('shadow, asked for: hatched where only the envelope shades the ground', /<g data-added="1">.*?<clipPath/.test(fullPlan));
+  const bandPlan = withLook({ colour: 'all' }, () => shadowOf(close));
+  const bandFills = [...bandPlan.figureHtml.matchAll(/<path data-band="1" d="[^"]+" fill="(#[0-9a-fA-F]{6})"/g)].map((x) => x[1].toLowerCase());
+  check('shadow, asked for: the ground in the solar access diagram\'s bands, by the hours of sun it keeps', bandFills.length >= 5 && new Set(bandFills).size === bandFills.length
+    && bandFills.every((c) => sunBands().some((x) => x.fill.toLowerCase() === c)) && bandFills[bandFills.length - 1] === sunBands()[Math.max(0, sunBands().length - bandFills.length)].fill.toLowerCase()
+    && !/mix-blend-mode:multiply"><path d="[^"]+" fill="#3a3c41"/.test(bandPlan.figureHtml) && (bandPlan.legend ?? []).some((e) => /by the hours of sun it keeps/.test(e.label)), bandFills.join(' '));
+  check('shadow, asked for: a separation\'s distance, haloed', /paint-order="stroke" data-dim="1">8\.0 m</.test(fullPlan), fullPlan.match(/<text[^>]*data-dim="1">[^<]*</)?.[0]);
   check('compliance: the massings a white model, the neighbours white', /fill="#ffffff" fill-rule="evenodd" stroke="#8f8f8f" stroke-width="0\.12"/.test(closeSolar) && !/fill="#ffffff" fill-rule="evenodd" stroke="#8f8f8f"/.test(deck(close).slides.find((sl) => /^0[23]_/.test(sl.id))!.figureHtml));
   check('separation: a building nearer than the separation is short, and the table says so', !!r3f && r3f.ok === false && /1 building within 24 m: 1 short/.test(r3f.proposed?.join(' ') ?? ''), JSON.stringify(r3f));
   const closeComp = deck(close).slides.find((sl) => sl.id === '04_within_controls_shadow_and_separation')!;
@@ -501,10 +512,10 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
   const mN = 1 / 110574;
   const north = [[151.2001, -33.89955 + 2 * mN], [151.2003, -33.89955 + 2 * mN], [151.2003, -33.89955 + 12 * mN], [151.2001, -33.89955 + 12 * mN], [151.2001, -33.89955 + 2 * mN]];
   const dimsOf = (html: string) => [...html.matchAll(/<text transform="translate\([^)]+\) rotate\((-?[\d.]+)\)" y="(-?[\d.]+)"[^>]*data-dim="1">([^<]+)<\/text>/g)].map((d) => ({ turn: Number(d[1]), y: Number(d[2]), label: d[3] }));
-  const dims = dimsOf(deck({ ...bundle, context: [{ rings: [east], heightM: 6.2, known: true }, { rings: [north], heightM: 6.2, known: true }] }).slides.find((sl) => sl.id === '04_within_controls_shadow_and_separation')!.figureHtml);
+  const dims = dimsOf(withLook({ dims: true }, () => shadowOf({ ...bundle, context: [{ rings: [east], heightM: 6.2, known: true }, { rings: [north], heightM: 6.2, known: true }] }).figureHtml));
   check('separation: each distance is written along its dimension line and off it, a line up the sheet read from the right', dims.length === 2 && dims.every((d) => d.y < 0)
     && dims.find((d) => d.label === '8.0 m')?.turn === 0 && dims.find((d) => d.label !== '8.0 m')?.turn === -90, JSON.stringify(dims));
-  check('separation: no distance is left written across its line', (closeComp.figureHtml.match(/data-dim="1"/g) ?? []).length === 1 && dimsOf(closeComp.figureHtml).length === 1);
+  check('separation: no distance is left written across its line', (fullPlan.match(/data-dim="1"/g) ?? []).length === 1 && dimsOf(fullPlan).length === 1);
   const told: YieldBundle = { ...bundle, assumptions: { sun: { hours: 3 } } };
   check('sun: yield_assumptions.json sets the hours', /receive 3 hours direct/.test(JSON.stringify(yieldRows(told))) && /from yield_assumptions\.json/.test(JSON.stringify(yieldRows(told))));
   // a residential lot just south of the site takes its shadow; the parks take none; heritage items, with no outlines, are not measured

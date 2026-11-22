@@ -698,6 +698,45 @@ export function groundShadow(blocks: Block[], s: Sun): XY[][] {
 }
 
 /**
+ * The ground by how long it is in shadow. Given each hour's shadows (`solid`: plain outlines, one a building, joined;
+ * `evenOdd`: one shape as rings with its holes, as groundShadow gives a scheme's), the region in shadow at k of the
+ * hours or more, for k = 1 … the number of hours: level k's rings, even-odd. `frame` cuts every hour to a rectangle
+ * first (the drawing's: a town's shadows run far past it). A plan colours the ground by the levels, as a solar
+ * access diagram colours a facade by its hours.
+ */
+export function shadeLevels(hours: { solid: XY[][]; evenOdd: XY[][] }[], frame?: { x0: number; y0: number; x1: number; y1: number }): XY[][][] {
+  type Geom = any;
+  const close = (rg: XY[]) => [...rg.map((p) => [p.x, p.y]), [rg[0].x, rg[0].y]];
+  const region = (rings: XY[][]): Geom | null => rings.filter((rg) => rg.length >= 3)
+    .reduce<Geom | null>((acc, rg) => (acc ? polyclip.xor(acc, [close(rg)] as Geom) : [[close(rg)]]), null);
+  const box: Geom | null = frame ? [[[[frame.x0, frame.y0], [frame.x1, frame.y0], [frame.x1, frame.y1], [frame.x0, frame.y1], [frame.x0, frame.y0]]]] : null;
+  const inFrame = (rg: XY[]) => !frame || rg.some((p) => p.x >= frame.x0 && p.x <= frame.x1 && p.y >= frame.y0 && p.y <= frame.y1)
+    || (Math.min(...rg.map((p) => p.x)) <= frame.x1 && Math.max(...rg.map((p) => p.x)) >= frame.x0 && Math.min(...rg.map((p) => p.y)) <= frame.y1 && Math.max(...rg.map((p) => p.y)) >= frame.y0);
+  const levels: (Geom | null)[] = [];
+  for (const h of hours) {
+    let shade: Geom | null = null;
+    const solids = h.solid.filter((rg) => rg.length >= 3 && inFrame(rg)).map((rg) => [close(rg)]);
+    try { if (solids.length) shade = polyclip.union(solids[0] as Geom, ...(solids.slice(1) as Geom[])); } catch { shade = null; }
+    let own: Geom | null = null;
+    try { own = region(h.evenOdd); } catch { own = null; }
+    try { shade = shade && own ? polyclip.union(shade, own) : shade ?? own; } catch { /* the neighbours' alone */ }
+    if (shade && box) { try { shade = polyclip.intersection(shade, box); } catch { /* uncut */ } }
+    if (!shade?.length) continue;
+    // an hour deeper wherever this hour's shadow falls on ground already in shadow (from the deepest level down, so
+    // each level still holds the hours before this one when it is read)
+    for (let k = levels.length - 1; k >= 0; k--) {
+      if (!levels[k]) continue;
+      let both: Geom;
+      try { both = polyclip.intersection(levels[k], shade); } catch { continue; }
+      if (!both?.length) continue;
+      try { levels[k + 1] = levels[k + 1] ? polyclip.union(levels[k + 1], both) : both; } catch { /* the level as it was */ }
+    }
+    try { levels[0] = levels[0] ? polyclip.union(levels[0], shade) : shade; } catch { /* the level as it was */ }
+  }
+  return Array.from({ length: levels.length }, (_, k) => (levels[k] ? (levels[k] as number[][][][]).flatMap((poly) => poly.map((rg) => rg.slice(0, -1).map(([x, y]) => ({ x, y })))) : []));
+}
+
+/**
  * The ground only one set of buildings shades: at each hour its shadow (rings, even-odd, as groundShadow gives
  * them) less every other building's shadow that hour (their hulls), the hours joined, less `exclude` (the site
  * itself). What a scheme's own shadow adds, where nothing standing already shades the ground; rings, even-odd.
