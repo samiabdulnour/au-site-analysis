@@ -842,6 +842,8 @@ interface PlanMarks {
   added?: XY[][];
   shaded?: XY[][][];
   dims?: { a: XY; b: XY; label: string; ink: string; /** a dash attribute for the line, where the status is told by it */ dash?: string }[];
+  /** EXPERIMENT (shadow-plan iterations): how the shadows are drawn. */
+  look?: { own?: string; oAlpha?: number; nInk?: string; nAlpha?: number; multiply?: boolean };
 }
 /**
  * A separation's ink, and a compliance mark's: clear, holding only with a blank face, short. Green, amber and red;
@@ -986,9 +988,11 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
   // The shadows, under the buildings: each hour one translucent layer over the last, a group's opacity so two
   // buildings' shadows in one hour do not stack; where the hours pile up the ground darkens.
   // The neighbours' in grey, then the envelope's own over them in the site's accent: what it adds reads apart.
-  const shade = ourShadowInk();
-  for (const hr of marks?.hours ?? []) if (hr.hulls.length) out.push(`<g opacity="${HOUR_ALPHA}"><path d="${hr.hulls.map(path).join('')}" fill="${shadowInk()}" fill-rule="nonzero"/></g>`);
-  for (const hr of marks?.hours ?? []) if (hr.scheme.length) out.push(`<g opacity="${HOUR_ALPHA}"><path d="${hr.scheme.map(path).join('')}" fill="${shade}" fill-rule="evenodd"/></g>`);
+  const LK = marks?.look;
+  const shade = LK?.own ?? ourShadowInk();
+  const blend = LK?.multiply ? ' style="mix-blend-mode:multiply"' : '';
+  for (const hr of marks?.hours ?? []) if (hr.hulls.length) out.push(`<g opacity="${LK?.nAlpha ?? HOUR_ALPHA}"${blend}><path d="${hr.hulls.map(path).join('')}" fill="${LK?.nInk ?? shadowInk()}" fill-rule="nonzero"/></g>`);
+  for (const hr of marks?.hours ?? []) if (hr.scheme.length) out.push(`<g opacity="${LK?.oAlpha ?? HOUR_ALPHA}"${blend}><path d="${hr.scheme.map(path).join('')}" fill="${shade}" fill-rule="evenodd"/></g>`);
   // where only the envelope shades the ground, at one hour or more: what it would overshadow, hatched
   if (marks?.added?.length) out.push(`<g data-added="1">${fillShape(marks.added.map(path).join(''), { x0: box.x, y0: box.y, x1: box.x + box.w, y1: box.y + box.h }, ADDED_HATCH(shade))}</g>`);
   // The buildings as the style draws them: white in a hairline of their
@@ -2141,21 +2145,31 @@ function complianceSheets(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: P
   // path's numbered plan and left the neighbours' shadows out: "the previous shadow was better: just update the
   // scale and colours, keep the shadows with the same information"). It was the report's sun page, white on grey,
   // at 1:1 000 where the plans are 1:750.
-  const name = (scale: number) => ['Shadow and separation', `1:${fmt(scale).replace(',', ' ')}`, 'shadows each hour, 9 am to 3 pm'];
+  const lookLabel = process.env.YIELD_SHADOW_LOOK ? (JSON.parse(process.env.YIELD_SHADOW_LOOK) as { label?: string }).label : undefined;
+  const name = (scale: number) => (lookLabel ? ['Plan', `1:${fmt(scale).replace(',', ' ')}`, lookLabel] : ['Shadow and separation', `1:${fmt(scale).replace(',', ' ')}`, 'shadows each hour, 9 am to 3 pm']);
   const massBlocks = schemeBlocks(ps.y);
   const casters = b.context.map((cb) => ({ ring: (cb.rings[0] ?? []).map(([x, yy]) => s.toLocal(x, yy)), h: cb.known && cb.heightM > 0 ? cb.heightM : UNKNOWN_HEIGHT_M })).filter((c) => c.ring.length >= 3);
   const hourSuns = winterSun(lat, lon, [9, 10, 11, 12, 13, 14, 15].map((hr) => hr * 60));
   const hourly = hourSuns.map((sun) => ({ hulls: casters.map((c) => shadowHull(c.ring, c.h, sun.altitudeDeg, sun.azimuthDeg, 1)).filter((hl): hl is XY[] => !!hl), scheme: groundShadow(massBlocks, sun) }));
   // (what stands in the fill its own spread gives it; its tiers are passed for their storeys)
   const standing = id === 'standsToday' ? standingOf(b, s) : [];
-  const plan = planView(b, s, { x: 0, y: 0, w: PAGE_W, h: PAGE_H }, { y: ps.y, ...(standing.length ? { standing } : {}) }, fid, { room: PLAN_ROOM, inset: 6, keepOut: [labelBox(name(5000))], plain: true, study: true, tinted: true,
-    marks: {
-      hours: hourly,
-      added: addedGround(hourly.map((hr) => hr.scheme), hourly.map((hr) => hr.hulls), [s.ring]),
-      shadows: hourSuns.filter((sun) => [9 * 60, 12 * 60, 15 * 60].includes(sun.clockMin)).map((sun) => ({ rings: groundShadow(massBlocks, sun), label: clock(sun.clockMin) })).filter((x) => x.rings.length),
-      shaded: sh.shadedTargets.map((i) => ps.targets[i].rings),
-      dims: [...ps.separation, ...ps.separationBuiltOut].map((r) => { const w = worseReading(r); return { a: w.a, b: w.b, label: `${fmt(w.distanceM, 1)} m`, ink: statusInks()[w.status], dash: w.status === 'blank' ? blankDash() : '' }; }),
-    } });
+  // EXPERIMENT (shadow-plan iterations, YIELD_SHADOW_LOOK): the path's plan as it was, with shadows drawn one way or another
+  const LOOK = process.env.YIELD_SHADOW_LOOK ? JSON.parse(process.env.YIELD_SHADOW_LOOK) as { hours?: 'hourly' | 'three' | 'noon'; neighbours?: boolean; ownShadow?: boolean; hatch?: boolean; outlines?: boolean; dims?: boolean; shaded?: boolean; own?: string; oAlpha?: number; nInk?: string; nAlpha?: number; multiply?: boolean } : undefined;
+  const allMarks = {
+    hours: hourly,
+    added: addedGround(hourly.map((hr) => hr.scheme), hourly.map((hr) => hr.hulls), [s.ring]),
+    shadows: hourSuns.filter((sun) => [9 * 60, 12 * 60, 15 * 60].includes(sun.clockMin)).map((sun) => ({ rings: groundShadow(massBlocks, sun), label: clock(sun.clockMin) })).filter((x) => x.rings.length),
+    shaded: sh.shadedTargets.map((i) => ps.targets[i].rings),
+    dims: [...ps.separation, ...ps.separationBuiltOut].map((r) => { const w = worseReading(r); return { a: w.a, b: w.b, label: `${fmt(w.distanceM, 1)} m`, ink: statusInks()[w.status], dash: w.status === 'blank' ? blankDash() : '' }; }),
+  };
+  const pickHours = (hs: typeof hourly) => (LOOK?.hours === 'three' ? hs.filter((_, i) => i % 3 === 0) : LOOK?.hours === 'noon' ? [hs[3]] : hs);
+  const plan = LOOK
+    ? planView(b, s, { x: 0, y: 0, w: PAGE_W, h: PAGE_H }, standing.length ? { standing } : { y: ps.y }, fid, { room: PLAN_ROOM, inset: 6, keepOut: [labelBox(name(5000))],
+      marks: {
+        hours: pickHours(hourly).map((hr) => ({ hulls: LOOK.neighbours === false ? [] : hr.hulls, scheme: LOOK.ownShadow === false ? [] : hr.scheme })),
+        added: LOOK.hatch ? allMarks.added : [], shadows: LOOK.outlines ? allMarks.shadows : [], shaded: LOOK.shaded ? allMarks.shaded : [], dims: LOOK.dims ? allMarks.dims : [], look: LOOK,
+      } })
+    : planView(b, s, { x: 0, y: 0, w: PAGE_W, h: PAGE_H }, { y: ps.y, ...(standing.length ? { standing } : {}) }, fid, { room: PLAN_ROOM, inset: 6, keepOut: [labelBox(name(5000))], plain: true, study: true, tinted: true, marks: allMarks });
   const shadowFigures = bleedFigure(0, PAGE_H, plan.svg) + mapLabel(0, name(plan.scale));
 
   // the keys
