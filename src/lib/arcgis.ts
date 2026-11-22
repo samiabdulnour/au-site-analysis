@@ -19,9 +19,22 @@ export interface GeoJSONFC { type: 'FeatureCollection'; features: GeoJSONFeature
  */
 export interface QueryOpts { timeoutMs?: number; attempts?: number; signal?: AbortSignal }
 
+/**
+ * A query longer than this goes in the request's body, not its address. The
+ * NSW spatial portal's web server answers 404 to a query string over 2,048
+ * characters and 414 to one over about 9,000, and a multipoint of 80
+ * institutions is 4,000: a wide context sheet lost its schools' and hospitals'
+ * grounds to "HTTP 404" each time. ArcGIS takes the same query as a form post.
+ */
+export const LONG_QUERY = 1800;
+
 async function getJson(url: string, params: Record<string, string>, q: QueryOpts = {}): Promise<any> {
   const qs = new URLSearchParams(params).toString();
-  const res = await retryFetch(`${url}?${qs}`, q.signal ? { signal: q.signal } : {}, {
+  const posted = qs.length > LONG_QUERY;
+  const res = await retryFetch(posted ? url : `${url}?${qs}`, {
+    ...(posted ? { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: qs } : {}),
+    ...(q.signal ? { signal: q.signal } : {}),
+  }, {
     attempts: q.attempts ?? 5, timeoutMs: q.timeoutMs ?? 60_000, label: url,
   });
   if (!res.ok) throw new Error(`${url} -> HTTP ${res.status}`);
@@ -103,16 +116,26 @@ export async function queryByGeometry(
   geometryType: string,
   outFields = '*',
 ): Promise<GeoJSONFC> {
-  const data = await getJson(`${layerUrl}/query`, {
-    ...BASE_PARAMS,
-    where: '1=1',
-    geometry: JSON.stringify(geometry),
-    geometryType,
-    inSR: '4326',
-    spatialRel: 'esriSpatialRelIntersects',
-    outFields,
-  });
-  return esriToGeoJson(data);
+  const features: GeoJSONFeature[] = [];
+  for (let offset = 0; ;) {
+    const data = await getJson(`${layerUrl}/query`, {
+      ...BASE_PARAMS,
+      where: '1=1',
+      geometry: JSON.stringify(geometry),
+      geometryType,
+      inSR: '4326',
+      spatialRel: 'esriSpatialRelIntersects',
+      outFields,
+      ...(offset ? { resultOffset: String(offset) } : {}),
+    });
+    const fc = esriToGeoJson(data);
+    features.push(...fc.features);
+    // a page cut at the layer's limit: ask for the rest, as queryByExtent does
+    if (!data.exceededTransferLimit || !fc.features.length) break;
+    offset += fc.features.length;
+    if (offset > 20_000) break; // safety valve
+  }
+  return { type: 'FeatureCollection', features };
 }
 
 /** How many features of a layer match a where clause, without fetching them. */

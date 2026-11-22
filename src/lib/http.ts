@@ -105,6 +105,28 @@ export async function retryFetch(
 }
 
 /**
+ * A download read whole, tried again when the connection is cut while the
+ * body is still arriving. retryFetch tries again until a server starts to
+ * answer; a transfer that stops part-way ("terminated") fails after that, in
+ * the caller's read, where nothing tried again: a deck lost its elevation
+ * model, and with it the topography page, to one dropped connection. A status
+ * that is not a success is the caller's to judge, so it is thrown at once
+ * with the label, not tried again here (retryFetch has already waited out the
+ * passing ones).
+ */
+export async function fetchBytes(url: string, opts: RetryOpts & { /** How many times the whole download is tried: three unless said. */ reads?: number } = {}): Promise<Uint8Array> {
+  const reads = Math.max(1, opts.reads ?? 3);
+  let lastErr: unknown;
+  for (let i = 0; i < reads; i++) {
+    if (i) { opts.onRetry?.(i, String(lastErr ?? 'retry')); await new Promise((r) => setTimeout(r, Math.min((opts.baseDelayMs ?? 1500) * 2 ** (i - 1), 15_000))); }
+    const res = await retryFetch(url, {}, opts);
+    if (!res.ok) throw new Error(`${opts.label ?? new URL(url).host} HTTP ${res.status}`);
+    try { return new Uint8Array(await res.arrayBuffer()); } catch (e) { lastErr = e; }
+  }
+  throw new Error(`${opts.label ?? new URL(url).host} was cut off while downloading (${reads} tries): ${(lastErr as any)?.message ?? lastErr}`, { cause: lastErr });
+}
+
+/**
  * The response, with `release` called once its body has been read to the end,
  * failed, or been cancelled. A caller that looks at the status and never reads
  * the body would hold the slot for ever, so it also goes back after the

@@ -159,7 +159,12 @@ one by hand. Started on another branch, it commits them to that branch. A
 run in which any data source failed (any `WARN` line in its log) commits
 nothing and lists the failures in its summary, since its pictures would be
 missing that source's layer; `allow_warnings` overrides that when the gap is
-known. It only ever runs when started by hand, so like `checks` it never
+known. A refused run is not wasted: the answers Overpass gave it are kept for
+the next run on the same branch (the pipelines' own thirty-day cache,
+`out/.cache/osm`, carried between runs), so when the mirrors have a bad
+minute half way through, the run after asks them only for what failed. A
+drawing whose pipeline fails outright (the NSW address register not answering
+in time, say) is tried once more after two minutes before the run gives up. It only ever runs when started by hand, so like `checks` it never
 spends the public services' capacity on its own. The TfNSW, Google Maps and
 Mapillary keys are read from repository secrets of the same names when they
 are set.
@@ -1445,6 +1450,12 @@ The 3D views' trees and people follow the style (`lookOf` in
 - **Trees off the road:** in every style, a crown read off the aerial over a
   street is moved out past the nearer kerb onto the verge, or left out where
   there is no room there.
+- **People off the road:** in every style, a walker is put 1.6 m past the kerb
+  as it is drawn (stepping out from the street's axis to where the drawn
+  carriageway ends), and left out where that lands on another street's
+  carriageway. A street drawn as two lines side by side, or a carriageway
+  worked out wider than its class's, used to leave walkers standing in a lane.
+  A cyclist rides 1.1 m in from that same kerb.
 - **Colour:** each style's trees are in its own green:
   - Flamingo's two deep teals, and a lighter one for its shields;
   - Kingfisher's mint (`massingInks().tree`), in two close cuts, and a soft
@@ -2594,8 +2605,10 @@ What the sheet reads, all open data (`scripts/capacity_study.ts` fetches,
   of them is the site, none of them its own neighbour (86, 88-90 and 94
   Maroubra Road were drawn as the middle address alone, with a cross on 94
   and "the site adjoins 86 Maroubra Road"). Council land is the council's parks and facilities layers
-  (the City of Sydney publishes them), State land the ePlanning State
-  government land layer. None of this is a title search, and the sheet says so.
+  (the City of Sydney publishes them), State land the NSW Government
+  Property Index as last published, 12 October 2022, which ships with the app
+  (see *State government land* below). None of this is a title search, and
+  the sheet says so.
 - *Heritage items* from the LEP heritage layer.
 - *Development* from the council's development monitoring register where it
   publishes one (City of Sydney: applications lodged, approved, under
@@ -2627,6 +2640,47 @@ What the sheet reads, all open data (`scripts/capacity_study.ts` fetches,
   house's lot at 10 m and over), which has
   little ability to develop above its current status; a tick (development
   potential) on every other property. Lane stubs and slivers under 40 m² carry no mark.
+
+### State government land
+
+The site sheet's block panel hatches the State government's parcels and counts
+them, and the capacity study crosses them as land that is not for sale. Both
+read the **NSW Government Property Index**: 131,231 lots, 43,718 from the
+Government Property Register (schools, hospitals, rail, housing, the agencies'
+own land) and 87,513 that lie on Crown land.
+
+The Department published the index once, as it stood on 12 October 2022, and
+served it from the Planning Portal's map server (`ePlanning/Planning_Portal_GPI`,
+layer 302). That service was withdrawn in November 2026 and nothing replaced
+it. No NSW agency serves who owns a lot: the cadastre's authority code is the
+same on a hospital as on a house, the Government Property Register on SIX Maps
+is closed, and the land tenure layer is a picture, not parcels. The index's
+open-data record still lists the 2022 release as current, so the app reads that
+release from a file it ships with, `assets/state-land/nsw-government-property-index-2022-10-12.pack`
+(16 MB), and nothing outside can take it away again.
+
+- `src/lib/stateLand.ts` reads it: a window's lots come from the few grid
+  cells the window touches, in a few hundredths of a second, with the lot
+  reference and where the index had the lot from, as the layer answered.
+- `scripts/pack_state_land.ts` wrote it. The Department's own download of the
+  release sits behind the Planning Portal's browser check, so the file was
+  packed from the same release as it was loaded to ArcGIS Online on
+  23 October 2022 (same name, same fields, same count), and checked against
+  the cadastre first: of 80 lots drawn at random, 72 are today's lots to the
+  metre and 8 have been re-surveyed or re-subdivided since. To pack it from
+  the Department's file instead, download it by hand, convert it to GeoJSON
+  and pass it with `--from`.
+- The sheets say the date wherever they cite the layer: "State government
+  land from the NSW Government Property Index as last published
+  (12 October 2022)". Land bought or sold by the State since then is not in
+  it, as it was not in the map service. Crown land and Crown reserves are
+  still read live from the Planning Portal's Crown land layers.
+- One lot of the release is left out: a sliver under 0.1 m wide.
+
+`test/state-land.mts` packs made-up lots and reads them back (a small lot, one
+across a cell's edge, one the size of a district), then reads the shipped file:
+its date and counts, a hospital, Parliament House and a Crown park where they
+should be, nothing on two private sites, and every lot of the State once.
 
 ### The streetscape
 
@@ -2939,6 +2993,32 @@ address
   → compose A1 sheet (SVG/HTML in the active graphic template)
   → print to PDF (headless Chromium)
 ```
+
+### Long questions to a map layer
+
+A layer is asked in the request's address when the question is short and in
+its body when it is long (`src/lib/arcgis.ts`, over 1,800 characters). The NSW
+spatial portal's web server answers 404 to a query string over 2,048
+characters and 414 to one over about 9,000. A context sheet asks the property
+layer for the grounds of every school, hospital and civic building in its
+window as one multipoint, and 80 of them are 4,000 characters: on a wide sheet
+in a busy centre the question never reached the layer, the sheet warned
+"institution properties failed … HTTP 404", and those grounds were drawn in
+their zone's colour only. Posted, 300 points are answered. A multipoint answer
+cut at the layer's limit is now asked for again from where it stopped, as a
+window's is. `test/arcgis-query.mts` holds both against a stand-in layer.
+
+### A download cut part-way
+
+`retryFetch` tries a request again until the server starts to answer. A
+transfer that then stops part-way fails later, in the read, where nothing
+tried again: the deck's elevation model is one image of some megabytes, and a
+connection dropped while it arrived ("elevation model failed: terminated")
+cost the deck its topography page. `fetchBytes` (`src/lib/http.ts`) reads a
+download whole and asks for it again when it is cut, three times unless told
+otherwise; a refusal by status is still the caller's to judge. The elevation
+model is read through it. `test/download.mts` holds it against a stand-in
+server.
 
 ### Several addresses as one site
 

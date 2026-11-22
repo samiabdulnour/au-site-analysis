@@ -66,6 +66,18 @@ jobs:
             catch (e) { console.log('::error::' + e.message); process.exitCode = 1; }
           })()"
 
+      # The answers Overpass gave earlier runs on this branch. The pipelines keep
+      # each answer on disk for thirty days and ask again only for what they do
+      # not hold (src/lib/http.ts), so a run refused because the mirrors had a
+      # bad minute half way through does not have to win every question again:
+      # the next run asks Overpass only for what failed.
+      - name: bring back earlier Overpass answers
+        uses: actions/cache/restore@v4
+        with:
+          path: out/.cache/osm
+          key: overpass-${{ github.run_id }}
+          restore-keys: overpass-
+
       # The inputs reach the script as arguments, never pasted into it. The keys
       # are optional: a secret that is not set arrives empty and is ignored.
       # All of web is mounted, not only its samples: redrawing the card also
@@ -89,6 +101,15 @@ jobs:
             site-analyst \
             sh -c 'pip3 install --break-system-packages --root-user-action=ignore --no-cache-dir --quiet pymupdf pillow && exec npx tsx src/samples.ts "$@"' \
             samples "$ADDRESS" "${only[@]}" 2>&1 | tee samples.log
+
+      # Kept whether or not the pictures are: a refused run's answers are what
+      # the next run starts from.
+      - name: keep this run's Overpass answers
+        if: ${{ always() && hashFiles('out/.cache/osm/**') != '' }}
+        uses: actions/cache/save@v4
+        with:
+          path: out/.cache/osm
+          key: overpass-${{ github.run_id }}
 
       # The pipelines' own warnings are a WARN word of their own ("  WARN
       # street furniture (OSM) failed: …"); a tool's WARNING is not one.

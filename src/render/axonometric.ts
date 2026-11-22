@@ -990,21 +990,31 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
     const [ax, ay] = hub(-0.55), [bx, by] = hub(0.55);
     return `<circle cx="${ax.toFixed(2)}" cy="${ay.toFixed(2)}" r="0.34" fill="none" stroke="${SPOKE}" stroke-width="0.12"/><circle cx="${bx.toFixed(2)}" cy="${by.toFixed(2)}" r="0.34" fill="none" stroke="${SPOKE}" stroke-width="0.12"/><line x1="${ax.toFixed(2)}" y1="${ay.toFixed(2)}" x2="${bx.toFixed(2)}" y2="${by.toFixed(2)}" stroke="${SPOKE}" stroke-width="0.12"/>${body(c, 0.8, 1.75, fill)}`;
   };
+  // How far the kerb is from a street's axis at `p`, out along `n`: where the carriageway as drawn ends (stepping out
+  // from the axis, as far as 20 m), or the half width its class gives it where the axis is not on a drawn carriageway.
+  const kerbAt = (p: XY, n: XY, nominal: number): number => {
+    if (!onRoad(p)) return nominal;
+    for (let dd = 0.4; dd <= 20; dd += 0.4) if (!onRoad({ x: p.x + n.x * dd, y: p.y + n.y * dd })) return dd - 0.2;
+    return nominal;
+  };
   for (const { axis, left, right, road } of cw.axes) {
     if (road.hierarchy >= 7) continue;
     for (const side of [1, -1]) {
-      const path = (side > 0 ? left : right) + 1.6;   // the footpath, past the kerb
+      const nominal = side > 0 ? left : right;   // the carriageway's half width on this side, as the street's class has it
       for (const { p, t } of alongLine(axis, (9 + road.hierarchy * 2) * (sparse ? 1.9 : look.crowd ? 0.6 : 1), 4 + (pi % 5) * 2.3)) {
         const n = { x: -t.y * side, y: t.x * side };
-        const c = { x: p.x + n.x * path, y: p.y + n.y * path };
-        if (!free(c)) continue;
+        // the footpath, 1.6 m past the kerb as it is drawn here (a carriageway worked out from the lots can be wider
+        // than its class's, and a walker placed by the class's width stood on the road); none where that lands on
+        // another street's carriageway
+        const c = { x: p.x + n.x * (kerbAt(p, n, nominal) + 1.6), y: p.y + n.y * (kerbAt(p, n, nominal) + 1.6) };
+        if (onRoad(c) || !free(c)) continue;
         const fill = FIGURE_INKS[pi++ % FIGURE_INKS.length];
         const way = rand(c, 9) < 0.5 ? 1 : -1, stride = { x: t.x * 0.2 * way, y: t.y * 0.2 * way };
         figures.push({ key: depth(c), svg: () => (look.people === 'figure' ? person(c, 0, fill, stride) : body(c, 0, 1.45, fill)) });
         // illustrated with a crowd: now and then a second walking beside
         if (look.crowd && rand(c, 13) < 0.35) {
           const beside = sparse ? 1.7 : 0.7, c2 = { x: c.x + n.x * beside + (sparse ? t.x * 1.2 : 0), y: c.y + n.y * beside + (sparse ? t.y * 1.2 : 0) };
-          if (free(c2)) { const f2 = FIGURE_INKS[pi++ % FIGURE_INKS.length]; figures.push({ key: depth(c2), svg: () => person(c2, 0, f2, stride) }); }
+          if (!onRoad(c2) && free(c2)) { const f2 = FIGURE_INKS[pi++ % FIGURE_INKS.length]; figures.push({ key: depth(c2), svg: () => person(c2, 0, f2, stride) }); }
         }
       }
     }
@@ -1012,7 +1022,8 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
     for (const dir of [1, -1]) {
       for (const { p, t } of alongLine(axis, (30 + road.hierarchy * 4) * (sparse ? 2 : 1), dir > 0 ? 11 + (pi % 3) * 7 : 25 + (pi % 4) * 5)) {
         const n = { x: -t.y * dir, y: t.x * dir };   // the left of the direction of travel: the kerb side
-        const kerb = dir > 0 ? left : right;
+        // a rider keeps to the kerb side of the lane: 1.1 m in from the kerb as it is drawn here
+        const kerb = kerbAt(p, n, dir > 0 ? left : right);
         const c = { x: p.x + n.x * (kerb - 1.1), y: p.y + n.y * (kerb - 1.1) };
         if (!free(c)) continue;
         const u = { x: t.x * dir, y: t.y * dir };
@@ -1037,7 +1048,7 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
         const many = 1 + Math.floor(rand(c, 4) * 3), a = rand(c, 8) * Math.PI * 2;
         for (let m = 0; m < many; m++) {
           const apart = sparse ? 1.9 : 0.6, q = { x: c.x + Math.cos(a + m * 2.1) * apart * m, y: c.y + Math.sin(a + m * 2.1) * apart * m };
-          if (!free(q)) continue;
+          if (onRoad(q) || !free(q)) continue;
           const fill = FIGURE_INKS[pi++ % FIGURE_INKS.length];
           const walking = rand(q, 15) < 0.4, stride = walking ? { x: Math.cos(a) * 0.2, y: Math.sin(a) * 0.2 } : undefined;
           figures.push({ key: depth(q), svg: () => person(q, 0, fill, stride) });
