@@ -1349,9 +1349,9 @@ site.
 
 The 3D views' trees and people follow the style (`lookOf` in
 `src/render/axonometric.ts`).
-- **Flamingo** follows an illustrator's flat isometric town (Z.'s reference of
+- **Flamingo** follows an illustrator's flat isometric town (Z.'s references of
   2026-11): flat shapes in a few colours on a cream ground, everything that
-  moves in line alone.
+  moves drawn in line.
   - **Trees:** flat shapes in vector, no outline, shading or shadow
     (`flatCrownSvg` in `src/render/crowns.ts`): a three-lobed crown, a round
     one, a six-sided one, a bell, a conifer's triangle, a cypress's pointed
@@ -1365,27 +1365,32 @@ The 3D views' trees and people follow the style (`lookOf` in
   - **Bars and shadows:** the bar at a tree's foot is pale orange on the paper
     and a thin cut of the tree's teal on a park's green. The buildings' cast
     shadows are flat, in the same pale orange.
-  - **People:** in line alone and in vector (`linePersonSvg` in
-    `src/render/people.ts`), after the references' figures: tall and slender,
-    the head small and the legs long, every part in the cream of the streets
-    with one thin near-black line round it.
-    - Clothes: wide trousers falling to a straight hem, slim ones, a skirt or
-      shorts; now and then a collar or a belt.
+  - **People:** in line and in vector (`linePersonSvg` in
+    `src/render/people.ts`), after Z.'s sheet of the people: soft, loose
+    figures with one thin near-black line round every part and no face.
+    - Colour: each part is the cream of the streets, but for the hair, which
+      is dark, and some of the clothes, which take one of four flat colours (a
+      yellow, an orange, a pale blue, a teal): the trousers, skirt or shorts of
+      about half the people, a top now and then, the book or the bag in a hand.
+    - Clothes: a loose top with rounded shoulders and full sleeves gathered at
+      the wrist; wide trousers flaring to a curved hem, slim ones, a skirt or
+      shorts over slender legs; flat shoes.
     - Poses: standing with the arms folded, a hand on a hip, both, in the
       pockets, waving, or at the sides; walking with the arms swinging, a book
       held up, or a bag on its strap.
-    - Hair: short, in a bun, a tail, long, a quiff, or under a hat; in outline
-      or filled dark.
+    - Hair: short, in a bun, a tail, long and loose, or under a brimmed hat.
     - A pale orange bar lies on the ground under the feet.
-  - **Size:** the people are drawn three times life size (`LINE_FIGURE_SIZE`),
-    off the town's scale on purpose, as the references draw their own, so
-    each reads as a drawn figure. There are fewer of them to suit: a third as
-    many on the footpaths, a quarter as many groups in the parks.
+  - **Size:** the people are at the town's own scale (`LINE_FIGURE_SIZE`, 1),
+    and as many as Kingfisher draws. The line round each part is 0.04 m in the
+    scene, so a figure a millimetre tall on paper still reads. (They were tried
+    at three times life, as the references draw theirs; set the constant over
+    2 and there are fewer of them to suit.)
   - **Cyclists** likewise (`lineRiderSvg`): thin spoked wheels and frame in
     the pen alone, the rider leaning to the bars, a helmet.
-  - **Traffic:** Kingfisher's drawn vehicles (below) in line alone: every part
-    in the streets' cream with the one near-black line, the windows and the
-    wheels in outline, a pale orange patch on the road under each.
+  - **Traffic:** Kingfisher's drawn vehicles (below) in line alone, without
+    the people's colours: every part in the streets' cream with the one
+    near-black line, the windows and the wheels in outline, a pale orange patch
+    on the road under each.
   - **Town:** a yellowish cream ground, as the references' paper, the streets
     a shade lighter (`massingInks()`).
 - **People, Kingfisher:** flat figures after an illustrator's isometric people

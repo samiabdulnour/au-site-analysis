@@ -7,8 +7,9 @@
  * trees take it; the painted people, each picture once, and more of them than the plain look, a crowd in the park.
  * Flamingo draws an illustrator's flat town on a cream ground: flat trees in vector (a few plain shapes in its teals,
  * each once in the defs, a trunk's line and a bar on the ground to each, no picture and no shadow), its people and its
- * traffic in line alone, the cream of its streets with one dark line and a pale orange bar under them, no colour on
- * either, the people in vector, several times life size and fewer for it; a few trees left in paper; flat shadows.
+ * traffic in line, the cream of its streets with one dark line and a pale orange bar under them; the people in vector
+ * at the town's own scale, their hair dark and some of their clothes in a few flat colours; a few trees left in paper;
+ * flat shadows.
  * Canary and a white model keep the plain discs and slips; Heron draws a line model, white in black outline.
  * Nothing here asks a network.
  *
@@ -154,10 +155,16 @@ for (const style of ['flamingo', 'kingfisher']) {
     // one dark line and a pale patch under it, no colour and no picture; placed well over life size (1.7 times)
     const figs = [...svg.matchAll(/<g id="(axo-tr-[pr]\d+)" data-line-figure="(person|rider)">(.*?)<\/g>/g)];
     const inks = new Set(figs.flatMap((m) => [...m[3].matchAll(/(?:fill|stroke)="(#[0-9a-f]{6}|none)"/g)].map((x) => x[1])));
-    check('flamingo: its people in line alone, each figure once, in vector', people(svg) >= 8 && figs.filter((m) => m[2] === 'person').length >= 3 && figs.some((m) => m[2] === 'rider') && new Set(figs.map((m) => m[1])).size === figs.length && !/<image id="axo-tr-[pr]\d+"/.test(svg), `${people(svg)} people, ${figs.length} figures`);
-    check('flamingo: no colour on them: the streets\' cream, the dark line, the pale bar', [...inks].every((c) => ['#fcf9ee', '#23262c', '#f9dfae', 'none'].includes(c)), [...inks].join(' '));
+    check('flamingo: its people in line alone, each figure once, in vector', people(svg) >= 20 && figs.filter((m) => m[2] === 'person').length >= 3 && figs.some((m) => m[2] === 'rider') && new Set(figs.map((m) => m[1])).size === figs.length && !/<image id="axo-tr-[pr]\d+"/.test(svg), `${people(svg)} people, ${figs.length} figures`);
+    // in line: the streets' cream, the dark line (and the hair, filled with it), the pale bar; and the few flat colours
+    // some of the clothes take, more than one of them among the people drawn
+    const ACCENTS = ['#f6c544', '#ea8a3c', '#b3cdea', '#4a9d9c'];
+    check('flamingo: its people in the streets\' cream and one dark line, some clothes in a few flat colours', [...inks].every((c) => ['#fcf9ee', '#23262c', '#f9dfae', 'none', ...ACCENTS].includes(c)) && ACCENTS.filter((c) => inks.has(c)).length >= 2 && inks.has('#fcf9ee'), [...inks].join(' '));
     const sizes = new Set([...svg.matchAll(/<use href="#axo-tr-[pr]\d+" transform="translate\([^)]+\) scale\((-?[\d.]+),([\d.]+)\)"/g)].map((m) => `${Math.abs(Number(m[1]))},${m[2]}`));
-    check('flamingo: its people several times life size', sizes.size === 1 && sizes.has(`${LINE_FIGURE_SIZE},${LINE_FIGURE_SIZE}`) && LINE_FIGURE_SIZE >= 2.5, [...sizes].join(' '));
+    check('flamingo: its people at the town\'s own scale', sizes.size === 1 && sizes.has(`${LINE_FIGURE_SIZE},${LINE_FIGURE_SIZE}`) && LINE_FIGURE_SIZE === 1, [...sizes].join(' '));
+    // at that scale the line round each part is 0.04 m in the scene, so a figure a millimetre tall on paper still reads
+    const pens = new Set(figs.flatMap((m) => [...m[3].matchAll(/stroke-width="([\d.]+)"/g)].map((x) => Number(x[1]))));
+    check('flamingo: the figures\' line 0.04 m, the spokes finer', pens.has(0.04) && [...pens].every((w) => w <= 0.05), [...pens].join(' '));
   } else {
     const faces = svg.match(/<image id="axo-tr-p\d+" href="data:image\/png/g) ?? [];
     check(`${style}: the painted people, each picture once`, people(svg) >= 20 && faces.length >= 3 && new Set(faces).size === faces.length, `${people(svg)} people, ${faces.length} pictures`);
@@ -180,9 +187,9 @@ for (const style of ['flamingo', 'kingfisher']) {
 {
   const crowd = people(draw('kingfisher').svg), plain = (draw('heron').svg.match(/r="0.3" fill=/g) ?? []).length;
   check('kingfisher: a crowd, more people than the plain look draws', crowd > plain * 1.5, `${crowd} vs ${plain}`);
-  // Flamingo's people are several times life size, so there are fewer of them than Kingfisher's crowd
-  const few = people(draw('flamingo').svg);
-  check('flamingo: fewer people than a crowd, each drawn large', few >= 8 && few < crowd * 0.6, `${few} vs ${crowd}`);
+  // Flamingo's people are at the town's scale too, and as many
+  const fl = people(draw('flamingo').svg);
+  check('flamingo: a crowd as Kingfisher\'s, at the town\'s scale', fl > plain * 1.5 && Math.abs(fl - crowd) <= crowd * 0.25, `${fl} vs ${crowd}`);
 }
 for (const [style, mono] of [['canary', false], ['flamingo', true]] as const) {
   const { svg } = draw(style, mono);

@@ -245,8 +245,8 @@ function inRing(p: XY, rg: XY[]): boolean {
  * footpaths, some in twos, and people gathered in the parks. Flamingo's trees are the flat ones of an illustrator's
  * isometric town (Z. 2026-11, after her reference): a few plain shapes in two deep teals, no outline, shading or
  * shadow, each on a thin trunk whose line runs up into it, a short bar on the ground at its foot; its people and its
- * traffic in line alone, cream with one thin dark line round each part and a pale warm patch under them, the people
- * in vector and well over life size, on a cream ground. Kingfisher's
+ * traffic in line alone, cream with one thin dark line round each part and a pale warm bar under them, the people
+ * in vector at the town's own scale, on a cream ground. Kingfisher's
  * are loose canopies, flat, many small leaf clumps with light through them and the fork of the branches under them,
  * without an outline or a shadow, after an illustrated masterplan. Each style's trees are in its own green, deeper or
  * lighter tree to tree. (`cloud`, a crown of a few lobes outlined, shaded and lit and casting its shadow, was
@@ -268,14 +268,20 @@ interface AxoLook {
 }
 /** Flamingo's flat trees: its two teals, tree by tree, and the lighter one its ruled shields take; the lines in each a deeper cut of it. */
 const FLAT_TEAL = { crown: '#167d7f', deep: '#0b5f66', light: '#5fa59a' };
-/** Flamingo's line figures: the cream of its streets (atlasKit, massingInks), a near-black line, a pale orange bar or patch on the ground. */
-const FLAT_LINE: LineFigure = { fill: '#fcf9ee', line: '#23262c', ground: '#f9dfae' };
 /**
- * How large Flamingo's people in line are drawn, times life: off the town's scale on purpose, as the references' are
- * (a person taller than a car is long), so each reads as a drawn figure at the scale of a town. Fewer of them, to
- * suit: a third as many on the footpaths, a quarter as many groups in the parks.
+ * Flamingo's line figures: the cream of its streets (atlasKit, massingInks), a near-black line, a pale orange bar or
+ * patch on the ground; and the few flat colours some of its people's clothes take (a yellow, an orange, a pale blue, a
+ * teal, as Z.'s sheet of the people has them). Its vehicles stay in the cream alone.
  */
-export const LINE_FIGURE_SIZE = 3;
+const FLAT_LINE: LineFigure = { fill: '#fcf9ee', line: '#23262c', ground: '#f9dfae', accents: ['#f6c544', '#ea8a3c', '#b3cdea', '#4a9d9c'] };
+/**
+ * How large Flamingo's people in line are drawn, times life: at the town's own scale (Z. 2026-11; they were tried at
+ * three times life, as the references draw theirs, and read as giants beside a massing that is to scale). Set over
+ * 2, there are fewer of them to suit: a third as many on the footpaths, a quarter as many groups in the parks.
+ */
+export const LINE_FIGURE_SIZE = 1;
+/** The line round a line figure's parts, metres in the scene whatever size the figure is drawn: a little finer than the vehicles'. */
+const LINE_FIGURE_PEN = 0.04;
 const PLAIN: AxoLook = { crown: 'disc', people: 'slip', crowd: false, greens: [], accents: [], columnar: 0, shadows: false };
 
 /** The look of a drawing's trees and people, by the style; plain in a white model. */
@@ -919,15 +925,15 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   // Illustrated, a person on their feet is one of the painted people (render/people.ts), each once in the drawing's
   // defs, facing the way they walk (or either way, standing), a little larger than life; on a bicycle, drawn here.
   const peopleDefs = new Map<number, string>();
-  // How large the people are drawn: a little over life, so they read at the scale of a town; in line alone well over
-  // it (LINE_FIGURE_SIZE), off the town's scale as an illustrator's isometric draws its people
-  const FIGURE_SIZE = look.line ? LINE_FIGURE_SIZE : 1.1;
+  // How large the people are drawn: the painted ones a little over life, so they read at the scale of a town; those
+  // in line alone at LINE_FIGURE_SIZE. `sparse`: figures drawn well over life, so fewer of them and further apart.
+  const FIGURE_SIZE = look.line ? LINE_FIGURE_SIZE : 1.1, sparse = !!look.line && LINE_FIGURE_SIZE >= 2;
   const WALKERS = Array.from({ length: PEOPLE_VARIANTS }, (_, i) => i).filter((i) => i % 3 !== 0);
   const personPic = (c: XY, stride?: XY) => {
     const k = stride && (stride.x || stride.y) ? WALKERS[Math.floor(rand(c, 21) * WALKERS.length)] : Math.floor(rand(c, 21) * PEOPLE_VARIANTS);
     if (!peopleDefs.has(k)) {
       // (in line alone: the figure in vector, crisp at the size it is drawn)
-      if (look.line) peopleDefs.set(k, linePersonSvg(`axo-${id}-p${k}`, k, look.line));
+      if (look.line) peopleDefs.set(k, linePersonSvg(`axo-${id}-p${k}`, k, look.line, LINE_FIGURE_PEN / FIGURE_SIZE));
       else {
         const pic = personPicture(k);
         peopleDefs.set(k, `<image id="axo-${id}-p${k}" href="${pic.uri}" x="${pic.x.toFixed(3)}" y="${pic.y.toFixed(3)}" width="${pic.w.toFixed(3)}" height="${pic.h.toFixed(3)}" preserveAspectRatio="none"/>`);
@@ -958,7 +964,7 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   const riderPic = (c: XY, u: XY) => {
     const k = Math.floor(rand(c, 25) * RIDER_VARIANTS);
     if (!riderDefs.has(k)) {
-      if (look.line) riderDefs.set(k, lineRiderSvg(`axo-${id}-r${k}`, k, look.line));
+      if (look.line) riderDefs.set(k, lineRiderSvg(`axo-${id}-r${k}`, k, look.line, LINE_FIGURE_PEN / FIGURE_SIZE));
       else {
         const pic = riderPicture(k);
         riderDefs.set(k, `<image id="axo-${id}-r${k}" href="${pic.uri}" x="${pic.x.toFixed(3)}" y="${pic.y.toFixed(3)}" width="${pic.w.toFixed(3)}" height="${pic.h.toFixed(3)}" preserveAspectRatio="none"/>`);
@@ -977,7 +983,7 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
     if (road.hierarchy >= 7) continue;
     for (const side of [1, -1]) {
       const path = (side > 0 ? left : right) + 1.6;   // the footpath, past the kerb
-      for (const { p, t } of alongLine(axis, (9 + road.hierarchy * 2) * (look.line ? 1.9 : look.crowd ? 0.6 : 1), 4 + (pi % 5) * 2.3)) {
+      for (const { p, t } of alongLine(axis, (9 + road.hierarchy * 2) * (sparse ? 1.9 : look.crowd ? 0.6 : 1), 4 + (pi % 5) * 2.3)) {
         const n = { x: -t.y * side, y: t.x * side };
         const c = { x: p.x + n.x * path, y: p.y + n.y * path };
         if (!free(c)) continue;
@@ -986,14 +992,14 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
         figures.push({ key: depth(c), svg: () => (look.people === 'figure' ? person(c, 0, fill, stride) : body(c, 0, 1.45, fill)) });
         // illustrated with a crowd: now and then a second walking beside
         if (look.crowd && rand(c, 13) < 0.35) {
-          const beside = look.line ? 1.7 : 0.7, c2 = { x: c.x + n.x * beside + (look.line ? t.x * 1.2 : 0), y: c.y + n.y * beside + (look.line ? t.y * 1.2 : 0) };
+          const beside = sparse ? 1.7 : 0.7, c2 = { x: c.x + n.x * beside + (sparse ? t.x * 1.2 : 0), y: c.y + n.y * beside + (sparse ? t.y * 1.2 : 0) };
           if (free(c2)) { const f2 = FIGURE_INKS[pi++ % FIGURE_INKS.length]; figures.push({ key: depth(c2), svg: () => person(c2, 0, f2, stride) }); }
         }
       }
     }
     if (road.hierarchy <= 2) continue;   // no bicycle on a highway
     for (const dir of [1, -1]) {
-      for (const { p, t } of alongLine(axis, (30 + road.hierarchy * 4) * (look.line ? 2 : 1), dir > 0 ? 11 + (pi % 3) * 7 : 25 + (pi % 4) * 5)) {
+      for (const { p, t } of alongLine(axis, (30 + road.hierarchy * 4) * (sparse ? 2 : 1), dir > 0 ? 11 + (pi % 3) * 7 : 25 + (pi % 4) * 5)) {
         const n = { x: -t.y * dir, y: t.x * dir };   // the left of the direction of travel: the kerb side
         const kerb = dir > 0 ? left : right;
         const c = { x: p.x + n.x * (kerb - 1.1), y: p.y + n.y * (kerb - 1.1) };
@@ -1012,14 +1018,14 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
       let area = 0;
       for (let i = 0; i < rg.length; i++) { const u = rg[i], v = rg[(i + 1) % rg.length]; area += u.x * v.y - v.x * u.y; }
       const xs = rg.map((p) => p.x), ys = rg.map((p) => p.y), x0 = Math.min(...xs), y0 = Math.min(...ys), w = Math.max(...xs) - x0, h = Math.max(...ys) - y0;
-      const groups = Math.min(40, Math.round(Math.abs(area) / 2 / (look.line ? 1200 : 300)));
+      const groups = Math.min(40, Math.round(Math.abs(area) / 2 / (sparse ? 1200 : 300)));
       for (let g = 0, tries = 0; g < groups && tries < groups * 6; tries++) {
         const c = { x: x0 + rand({ x: x0, y: y0 }, 100 + tries) * w, y: y0 + rand({ x: y0, y: x0 }, 300 + tries) * h };
         if (!inRing(c, rg) || !free(c)) continue;
         g++;
         const many = 1 + Math.floor(rand(c, 4) * 3), a = rand(c, 8) * Math.PI * 2;
         for (let m = 0; m < many; m++) {
-          const apart = look.line ? 1.9 : 0.6, q = { x: c.x + Math.cos(a + m * 2.1) * apart * m, y: c.y + Math.sin(a + m * 2.1) * apart * m };
+          const apart = sparse ? 1.9 : 0.6, q = { x: c.x + Math.cos(a + m * 2.1) * apart * m, y: c.y + Math.sin(a + m * 2.1) * apart * m };
           if (!free(q)) continue;
           const fill = FIGURE_INKS[pi++ % FIGURE_INKS.length];
           const walking = rand(q, 15) < 0.4, stride = walking ? { x: Math.cos(a) * 0.2, y: Math.sin(a) * 0.2 } : undefined;

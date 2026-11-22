@@ -111,18 +111,19 @@ export function riderPicture(i: number, perUnit = 140): CrownPicture {
 // ---- people in line alone, in vector ----
 
 /**
- * A figure in line alone, as an illustrator's isometric town draws its people (Flamingo's, after Z.'s references of
- * 2026-11): no colours, every part in the paper's own colour (`fill`) with one thin dark line (`line`) round it, so
- * an arm reads against the body it crosses; under the feet a pale warm bar on the ground (`ground`). Tall and
- * slender, the head small, the legs long: wide trousers falling to a straight hem, slim ones, a skirt or shorts;
- * standing with the arms folded, a hand on a hip, both, waving, or at the sides; walking with the arms swinging, a
- * book held up, or a bag on its strap; the hair short, in a bun, a tail, long, a quiff or under a hat, in outline or
- * filled dark. Drawn in vector, so the line is crisp at any size: these people are drawn several times life size,
- * off the town's scale, as the references draw their own.
+ * A figure in line, as an illustrator draws the people of a flat town (Flamingo's, after Z.'s sheet of 2026-11): one
+ * thin dark line (`line`) round every part, each in the paper's own colour (`fill`) but for the hair, which is dark,
+ * and for some of the clothes, which take one of a few flat colours (`accents`: a pair of trousers, a skirt or shorts
+ * for about half the people, a top for a few, the book in a hand); no face. Under the feet a pale warm bar on the
+ * ground (`ground`). Soft and loose: a blouse with rounded shoulders and full sleeves gathered at the wrist, wide
+ * trousers flaring to a curved hem, slim ones, a skirt or shorts over slender legs, flat shoes; standing with the
+ * arms folded, a hand on a hip, both, in the pockets, waving, or at the sides; walking with the arms swinging, a
+ * book held up, or a bag on its strap; the hair short, in a bun, a tail, long and loose, or under a brimmed hat.
+ * Drawn in vector, so the line is crisp at any size.
  */
-export interface LineFigure { fill: string; line: string; ground?: string }
+export interface LineFigure { fill: string; line: string; ground?: string; accents?: string[] }
 
-/** The line round each part, metres at life size. */
+/** The line round each part, metres at life size, where a drawing does not set its own (a figure drawn large takes a finer one). */
 const LINE_M = 0.02;
 type Pt = [number, number];
 const n = (v: number) => (Math.round(v * 1000) / 1000).toString();
@@ -150,100 +151,111 @@ function limb(p: Pt[], w: number[]): string {
   return smooth([...L, [p[last][0] + t1[0] * w[last] * 0.5, p[last][1] + t1[1] * w[last] * 0.5], ...R.reverse(), [p[0][0] - t0[0] * w[0] * 0.5, p[0][1] - t0[1] * w[0] * 0.5]]);
 }
 
-const WALK_ARMS = ['swing', 'bag', 'swing', 'book', 'swing'] as const, STAND_ARMS = ['folded', 'hip', 'wave', 'down', 'hips', 'pockets'] as const;
-const BOTTOMS = ['wide', 'slim', 'skirt', 'wide', 'shorts'] as const, HAIRS = ['short', 'bun', 'tail', 'long', 'quiff', 'hat'] as const;
+const WALK_ARMS = ['swing', 'book', 'swing', 'bag', 'swing'] as const, STAND_ARMS = ['folded', 'hip', 'wave', 'down', 'hips', 'pockets'] as const;
+const BOTTOMS = ['wide', 'shorts', 'skirt', 'wide', 'slim'] as const, HAIRS = ['tail', 'bun', 'short', 'hat', 'long', 'short'] as const;
 
 /**
  * Person `i` in line, metres, standing on the origin and facing right (y down). The same number is the same person;
  * every third stands, the rest walk (as the painted people do).
  */
-function linePerson(i: number, f: LineFigure): string {
+function linePerson(i: number, f: LineFigure, t = LINE_M): string {
   const walking = i % 3 !== 0, k = Math.floor(i / 3);
   const arms = walking ? WALK_ARMS[(i + k) % WALK_ARMS.length] : STAND_ARMS[k % STAND_ARMS.length];
-  const bottom = BOTTOMS[(i * 3 + 1) % BOTTOMS.length], hair = HAIRS[(i * 5 + 2) % HAIRS.length], dark = i % 2 === 1;
-  const t = LINE_M, out: string[] = [];
+  const bottom = BOTTOMS[(i * 3 + 1) % BOTTOMS.length], hair = HAIRS[(i * 5 + 2) % HAIRS.length];
+  // the colours: about half the trousers, skirts and shorts, a top now and then, whatever is held in a hand
+  const pal = f.accents?.length ? f.accents : [f.fill];
+  const lower = i % 2 === 0 ? pal[(i >> 1) % pal.length] : f.fill, upper = i % 7 === 4 ? pal[(i + 1) % pal.length] : f.fill, held = pal[(i * 3 + 1) % pal.length];
+  const out: string[] = [];
   const shape = (d: string, fill = f.fill) => { out.push(`<path d="${d}" fill="${fill}" stroke="${f.line}" stroke-width="${t}" stroke-linejoin="round"/>`); };
   const pen = (d: string) => { out.push(`<path d="${d}" fill="none" stroke="${f.line}" stroke-width="${t}" stroke-linecap="round" stroke-linejoin="round"/>`); };
+  const oval = (x: number, y: number, rx: number, ry: number, fill = f.fill, turn = 0) => { out.push(`<ellipse cx="${n(x)}" cy="${n(y)}" rx="${n(rx)}" ry="${n(ry)}" fill="${fill}" stroke="${f.line}" stroke-width="${t}"${turn ? ` transform="rotate(${turn} ${n(x)} ${n(y)})"` : ''}/>`); };
   // a walker leans a little into the walk
-  const lean = walking ? 0.025 : 0, hx = lean * 1.6, hy = -1.69, r = 0.08;
-  const S = (side: number): Pt => [side * 0.165 + lean, -1.5];
-  const hand = (q: Pt) => out.push(`<ellipse cx="${n(q[0])}" cy="${n(q[1])}" rx="0.034" ry="0.036" fill="${f.fill}" stroke="${f.line}" stroke-width="${t}"/>`);
-  const arm = (side: number, elbow: Pt, wrist: Pt, hands = true) => { shape(limb([S(side), elbow, wrist], [0.078, 0.066, 0.054])); if (hands) hand(wrist); };
-  // the feet: where each leg ends, and the shoe pointing the way they face
-  const feet: Pt[] = walking ? [[-0.25, -0.1], [0.29, -0.05]] : [[-0.1, -0.05], [0.1, -0.05]];
-  const hips: Pt[] = walking ? [[-0.035 + lean, -1.0], [0.045 + lean, -1.0]] : [[-0.072, -1.0], [0.072, -1.0]];
-  const shoe = ([fx, fy]: Pt) => shape(`M${n(fx - 0.05)},${n(fy - 0.01)}L${n(fx + 0.05)},${n(fy - 0.01)}C${n(fx + 0.1)},${n(fy + 0.01)} ${n(fx + 0.17)},${n(fy + 0.03)} ${n(fx + 0.18)},${n(fy + 0.055)}L${n(fx - 0.055)},${n(fy + 0.055)}Z`);
-  // a trouser leg: straight-sided from the hip to its hem, `top` and `hem` its half widths
-  const leg = (hip: Pt, foot: Pt, top: number, hem: number, to = 1) => {
+  const lean = walking ? 0.03 : 0, hx = lean * 1.7 + 0.01, hy = -1.705;
+  const S = (side: number): Pt => [side * 0.158 + lean, -1.505];
+  // an arm in its sleeve: full toward the wrist and gathered there, the hand beyond the cuff
+  const arm = (side: number, elbow: Pt, wrist: Pt, hands = true) => {
+    const sh = S(side), fore: Pt = [elbow[0] + (wrist[0] - elbow[0]) * 0.72, elbow[1] + (wrist[1] - elbow[1]) * 0.72];
+    const dx = wrist[0] - elbow[0], dy = wrist[1] - elbow[1], l = Math.hypot(dx, dy) || 1;
+    if (hands) oval(wrist[0] + (dx / l) * 0.05, wrist[1] + (dy / l) * 0.05, 0.026, 0.036, f.fill, (Math.atan2(dy, dx) * 180) / Math.PI - 90);
+    shape(limb([sh, elbow, fore, wrist], [0.09, 0.106, 0.12, 0.046]), upper);
+  };
+  // the feet: where each leg ends; the hips they hang from, at a high waist
+  const feet: Pt[] = walking ? [[-0.25, -0.1], [0.29, -0.045]] : [[-0.105, -0.045], [0.105, -0.045]];
+  const hips: Pt[] = walking ? [[-0.045 + lean, -1.08], [0.05 + lean, -1.08]] : [[-0.064, -1.08], [0.064, -1.08]];
+  // a flat shoe, its toe the way they face
+  const shoe = ([fx, fy]: Pt, lifted = false) => shape(`M${n(fx - 0.05)},${n(fy + 0.005)}C${n(fx - 0.06)},${n(fy + 0.05)} ${n(fx - 0.02)},${n(fy + 0.06)} ${n(fx + 0.04)},${n(fy + 0.06)}C${n(fx + 0.11)},${n(fy + 0.06)} ${n(fx + 0.15)},${n(fy + 0.05)} ${n(fx + 0.15)},${n(fy + (lifted ? 0.03 : 0.04))}C${n(fx + 0.12)},${n(fy + 0.02)} ${n(fx + 0.07)},${n(fy + 0.005)} ${n(fx + 0.045)},${n(fy - 0.01)}Z`);
+  // a trouser leg: narrow at the waist, holding its line and then flaring to a hem that curves; `top` and `hem` its half widths
+  const leg = (hip: Pt, foot: Pt, top: number, hem: number, to = 1, fill = lower) => {
     const e: Pt = [hip[0] + (foot[0] - hip[0]) * to, hip[1] + (foot[1] - hip[1]) * to];
-    const dx = e[0] - hip[0], dy = e[1] - hip[1], l = Math.hypot(dx, dy) || 1, nx = -dy / l, ny = dx / l;
-    shape(straight([[hip[0] + nx * top, hip[1] + ny * top], [hip[0] - nx * top, hip[1] - ny * top], [e[0] - nx * hem, e[1] - ny * hem], [e[0] + nx * hem, e[1] + ny * hem]]));
-    return e;
+    const dx = e[0] - hip[0], dy = e[1] - hip[1], l = Math.hypot(dx, dy) || 1, ux = dx / l, uy = dy / l, nx = -uy, ny = ux;
+    const at = (along: number, across: number): Pt => [hip[0] + ux * along * l + nx * across, hip[1] + uy * along * l + ny * across];
+    const A = at(0, top), B = at(0, -top), C = at(1, -hem), D = at(1, hem), mid = (top + hem) / 2;
+    const q = (c: Pt, e2: Pt) => `Q${n(c[0])},${n(c[1])} ${n(e2[0])},${n(e2[1])}`;
+    shape(`M${n(A[0])},${n(A[1])}L${n(B[0])},${n(B[1])}${q(at(0.55, -(top + (mid - top) * 0.25)), C)}${q(at(1.03, 0), D)}${q(at(0.55, top + (mid - top) * 0.25), A)}Z`, fill);
   };
   // the bar on the ground under the feet
-  if (f.ground) out.push(`<rect x="${n(feet[0][0] - 0.2)}" y="-0.04" width="${n(feet[1][0] - feet[0][0] + 0.58)}" height="0.13" rx="0.065" fill="${f.ground}"/>`);
+  if (f.ground) out.push(`<rect x="${n(feet[0][0] - 0.16)}" y="-0.03" width="${n(feet[1][0] - feet[0][0] + 0.5)}" height="0.11" rx="0.055" fill="${f.ground}"/>`);
+  // long hair, loose down the back, behind everything
+  if (hair === 'long') shape(limb([[hx - 0.02, hy - 0.08], [hx - 0.085, hy + 0.03], [hx - 0.12, hy + 0.17], [hx - 0.2, hy + 0.3]], [0.11, 0.135, 0.14, 0.05]), f.line);
   // the arm behind the body
-  if (arms === 'swing' || arms === 'bag') arm(-1, [-0.235 + lean, -1.27], [-0.31, -1.07]);
-  else if (arms === 'book') arm(-1, [-0.225 + lean, -1.27], [-0.25, -1.04]);
-  else if (arms === 'wave') arm(1, [0.3, -1.62], [0.37, -1.88]);
-  // long hair, behind the head and the shoulders
-  if (hair === 'long') shape(`M${n(hx - r * 1.12)},${n(hy - r * 0.2)}C${n(hx - r * 1.35)},${n(hy - r * 1.6)} ${n(hx + r * 1.35)},${n(hy - r * 1.6)} ${n(hx + r * 1.12)},${n(hy - r * 0.2)}L${n(hx + r * 1.3)},${n(hy + r * 1.9)}Q${n(hx)},${n(hy + r * 2.3)} ${n(hx - r * 1.3)},${n(hy + r * 1.9)}Z`, dark ? f.line : f.fill);
-  // the legs, the far one first: in trousers, wide or slim; bare under a skirt or shorts; and the shoes
-  const order = walking ? [0, 1] : [0, 1];
-  for (const j of order) {
-    if (bottom === 'wide') leg(hips[j], feet[j], 0.082, 0.118);
-    else if (bottom === 'slim') leg(hips[j], feet[j], 0.078, 0.05);
+  if (arms === 'swing' || arms === 'bag') arm(-1, [-0.225 + lean, -1.28], [-0.3, -1.08]);
+  else if (arms === 'book') arm(-1, [-0.215 + lean, -1.28], [-0.24, -1.05]);
+  else if (arms === 'wave') arm(1, [0.3, -1.63], [0.36, -1.9]);
+  // the legs, the far one first: in trousers, wide or slim; bare and slender under a skirt or shorts; and the shoes
+  for (const j of [0, 1]) {
+    if (bottom === 'wide') leg(hips[j], [feet[j][0], feet[j][1] + 0.03], 0.068, 0.128);
+    else if (bottom === 'slim') leg(hips[j], [feet[j][0], feet[j][1] + 0.02], 0.07, 0.058);
     else {
-      // a bare leg from under the skirt or the shorts
-      const knee: Pt = [(hips[j][0] + feet[j][0]) / 2 + (walking ? 0.02 : 0), (hips[j][1] + feet[j][1]) / 2];
-      shape(limb([[hips[j][0], hips[j][1] + 0.2], knee, [feet[j][0], feet[j][1] + 0.02]], [0.085, 0.07, 0.052]));
-      if (bottom === 'shorts') leg(hips[j], feet[j], 0.082, 0.1, 0.4);
+      const knee: Pt = [(hips[j][0] + feet[j][0]) / 2 + (walking ? 0.02 : 0), (hips[j][1] + feet[j][1]) / 2 + 0.04];
+      shape(limb([[hips[j][0] + (feet[j][0] - hips[j][0]) * 0.25, hips[j][1] + 0.28], knee, [feet[j][0], feet[j][1] + 0.01]], [0.09, 0.066, 0.04]));
     }
-    shoe(feet[j]);
+    shoe(feet[j], walking && j === 0);
   }
-  // a skirt, flaring from the waist to the knee, its hem a curve
-  if (bottom === 'skirt') { const sw = walking ? 0.27 : 0.22; shape(`M${n(-0.13 + lean)},-1.02L${n(0.13 + lean)},-1.02L${n(sw + lean)},-0.52Q${n(lean)},-0.47 ${n(-sw + lean)},-0.52Z`); }
-  // the body: rounded shoulders, tapering to a straight hem at the waist
-  const tx = (x: number) => n(x + lean);
-  shape(`M${tx(-0.132)},-0.985L${tx(0.132)},-0.985C${tx(0.132)},-1.2 ${tx(0.2)},-1.37 ${tx(0.188)},-1.46C${tx(0.18)},-1.535 ${tx(0.12)},-1.56 ${tx(0.05)},-1.565L${tx(-0.05)},-1.565C${tx(-0.12)},-1.56 ${tx(-0.18)},-1.535 ${tx(-0.188)},-1.46C${tx(-0.2)},-1.37 ${tx(-0.132)},-1.2 ${tx(-0.132)},-0.985Z`);
-  if (i % 4 === 0) pen(`M${tx(-0.045)},-1.563L${tx(0)},-1.49L${tx(0.045)},-1.563`);                    // a collar
-  if (bottom !== 'skirt' && i % 2 === 0) pen(`M${tx(-0.13)},-1.045L${tx(0.13)},-1.045`);                // a belt
+  if (bottom === 'shorts') for (const j of [0, 1]) leg(hips[j], feet[j], 0.07, 0.112, 0.4);
+  // a skirt, flaring from the waist to below the knee, its hem a curve
+  if (bottom === 'skirt') { const sw = walking ? 0.27 : 0.21; shape(`M${n(-0.125 + lean)},-1.08L${n(0.125 + lean)},-1.08Q${n(0.17 + lean)},-0.8 ${n(sw + lean)},-0.5Q${n(lean)},-0.42 ${n(-sw + lean)},-0.5Q${n(-0.17 + lean)},-0.8 ${n(-0.125 + lean)},-1.08Z`, lower); }
+  // the body: a loose top, its shoulders rounded, bloused over the waist
+  const T = (x: number, y: number): Pt => [x + lean, y];
+  shape(smooth([T(-0.05, -1.572), T(0.05, -1.572), T(0.135, -1.545), T(0.178, -1.48), T(0.168, -1.3), T(0.15, -1.14), T(0.152, -1.045), T(0, -1.025), T(-0.152, -1.045), T(-0.15, -1.14), T(-0.168, -1.3), T(-0.178, -1.48), T(-0.135, -1.545)]), upper);
+  if (i % 5 === 0) pen(`M${n(-0.045 + lean)},-1.57L${n(lean)},-1.49L${n(0.045 + lean)},-1.57`);            // a collar
   // the arms in front of the body
-  if (arms === 'swing') arm(1, [0.245 + lean, -1.27], [0.34, -1.09]);
+  if (arms === 'swing') arm(1, [0.235 + lean, -1.28], [0.33, -1.1]);
   else if (arms === 'bag') {
-    pen(`M${tx(0.15)},-1.54L${tx(-0.19)},-1.02`);
-    shape(straight([[-0.3 + lean, -1.03], [-0.1 + lean, -1.03], [-0.085 + lean, -0.84], [-0.315 + lean, -0.84]]));
-    arm(1, [0.245 + lean, -1.27], [0.34, -1.09]);
+    pen(`M${n(0.14 + lean)},-1.54L${n(-0.18 + lean)},-1.05`);
+    out.push(`<rect x="${n(-0.3 + lean)}" y="-1.05" width="0.2" height="0.19" rx="0.04" fill="${held}" stroke="${f.line}" stroke-width="${t}"/>`);
+    arm(1, [0.235 + lean, -1.28], [0.33, -1.1]);
   } else if (arms === 'book') {
-    arm(1, [0.21 + lean, -1.25], [0.37, -1.32]);
-    shape(straight([[0.36, -1.44], [0.5, -1.41], [0.48, -1.27], [0.34, -1.3]]));
-    pen('M0.43,-1.425L0.41,-1.285');
+    out.push(`<rect x="0.36" y="-1.47" width="0.115" height="0.17" rx="0.018" fill="${held}" stroke="${f.line}" stroke-width="${t}" transform="rotate(12 0.42 -1.385)"/>`);
+    arm(1, [0.2 + lean, -1.26], [0.34, -1.31]);
   } else if (arms === 'folded') {
-    // the arms folded: each forearm across the chest, the hand tucked at the other elbow
-    shape(limb([S(1), [0.215, -1.25], [-0.07, -1.2]], [0.078, 0.068, 0.056]));
-    shape(limb([S(-1), [-0.215, -1.24], [0.08, -1.265]], [0.078, 0.068, 0.056]));
-    hand([0.11, -1.27]);
-  } else if (arms === 'hip') { arm(-1, [-0.205, -1.27], [-0.21, -1.03]); arm(1, [0.35, -1.25], [0.16, -1.04]); }
-  else if (arms === 'hips') { arm(-1, [-0.35, -1.25], [-0.16, -1.04]); arm(1, [0.35, -1.25], [0.16, -1.04]); }
-  else if (arms === 'pockets') { arm(-1, [-0.25, -1.24], [-0.15, -1.0], false); arm(1, [0.25, -1.24], [0.15, -1.0], false); }
-  else if (arms === 'wave') arm(-1, [-0.205, -1.27], [-0.21, -1.03]);
-  else { arm(-1, [-0.205, -1.27], [-0.21, -1.03]); arm(1, [0.205, -1.27], [0.21, -1.03]); }
-  // the neck, the head, the hair
-  shape(straight([[hx - 0.034, -1.555], [hx + 0.034, -1.555], [hx + 0.032, hy + r * 0.8], [hx - 0.032, hy + r * 0.8]]));
-  out.push(`<ellipse cx="${n(hx)}" cy="${n(hy)}" rx="${n(r * 0.94)}" ry="${n(r)}" fill="${f.fill}" stroke="${f.line}" stroke-width="${t}"/>`);
-  const ink = dark ? f.line : f.fill;
-  // a cap of hair over the head, lower at the back, its front swept up for a quiff
-  const q = hair === 'quiff' ? 1 : 0;
-  shape(`M${n(hx - r * 1.02)},${n(hy + r * 0.1)}C${n(hx - r * 1.25)},${n(hy - r * 1.3)} ${n(hx + r * (0.9 + 0.5 * q))},${n(hy - r * (1.45 + 0.35 * q))} ${n(hx + r * 1.0)},${n(hy - r * 0.25)}C${n(hx + r * 0.5)},${n(hy - r * 0.75)} ${n(hx - r * 0.3)},${n(hy - r * 0.75)} ${n(hx - r * 0.75)},${n(hy - r * 0.2)}Z`, ink);
-  if (hair === 'bun') out.push(`<circle cx="${n(hx - r * 0.5)}" cy="${n(hy - r * 1.38)}" r="${n(r * 0.42)}" fill="${ink}" stroke="${f.line}" stroke-width="${t}"/>`);
-  if (hair === 'tail') shape(limb([[hx - r * 0.95, hy - r * 0.5], [hx - r * 1.8, hy - r * 0.2], [hx - r * 2.1, hy + r * 0.9]], [r * 0.5, r * 0.55, r * 0.2]), ink);
-  if (hair === 'hat') { shape(`M${n(hx - r * 1.0)},${n(hy - r * 0.42)}C${n(hx - r * 0.95)},${n(hy - r * 1.6)} ${n(hx + r * 0.95)},${n(hy - r * 1.6)} ${n(hx + r * 1.0)},${n(hy - r * 0.42)}Z`); pen(`M${n(hx - r * 1.7)},${n(hy - r * 0.42)}L${n(hx + r * 1.9)},${n(hy - r * 0.42)}`); }
+    // the arms folded: each forearm across the chest, a hand showing at the other elbow
+    oval(0.13, -1.27, 0.026, 0.036, f.fill, 70);
+    shape(limb([S(1), [0.21, -1.26], [-0.08, -1.2]], [0.088, 0.1, 0.07]), upper);
+    shape(limb([S(-1), [-0.21, -1.25], [0.08, -1.265]], [0.088, 0.1, 0.07]), upper);
+  } else if (arms === 'hip') { arm(-1, [-0.2, -1.28], [-0.205, -1.05]); arm(1, [0.34, -1.26], [0.17, -1.07]); }
+  else if (arms === 'hips') { arm(-1, [-0.34, -1.26], [-0.17, -1.07]); arm(1, [0.34, -1.26], [0.17, -1.07]); }
+  else if (arms === 'pockets') { arm(-1, [-0.24, -1.26], [-0.15, -1.03], false); arm(1, [0.24, -1.26], [0.15, -1.03], false); }
+  else if (arms === 'wave') arm(-1, [-0.2, -1.28], [-0.205, -1.05]);
+  else { arm(-1, [-0.2, -1.28], [-0.205, -1.05]); arm(1, [0.2, -1.28], [0.205, -1.05]); }
+  // the neck and the head, without a face
+  shape(straight([[hx - 0.03, -1.565], [hx + 0.024, -1.565], [hx + 0.03, hy + 0.06], [hx - 0.024, hy + 0.06]]));
+  oval(hx, hy, 0.066, 0.082, f.fill, 6);
+  // the hair, dark: a cap over the crown and the back of the head; a bun, a tail curling off it; or a brimmed hat instead
+  const cap = `M${n(hx - 0.072)},${n(hy + 0.035)}C${n(hx - 0.11)},${n(hy - 0.075)} ${n(hx - 0.03)},${n(hy - 0.125)} ${n(hx + 0.058)},${n(hy - 0.07)}C${n(hx + 0.025)},${n(hy - 0.055)} ${n(hx - 0.02)},${n(hy - 0.04)} ${n(hx - 0.035)},${n(hy + 0.005)}C${n(hx - 0.045)},${n(hy + 0.02)} ${n(hx - 0.06)},${n(hy + 0.03)} ${n(hx - 0.072)},${n(hy + 0.035)}Z`;
+  if (hair === 'hat') {
+    shape(`M${n(hx - 0.07)},${n(hy - 0.055)}C${n(hx - 0.075)},${n(hy - 0.15)} ${n(hx + 0.075)},${n(hy - 0.15)} ${n(hx + 0.07)},${n(hy - 0.055)}Z`);
+    oval(hx, hy - 0.052, 0.135, 0.026);
+  } else {
+    if (hair === 'tail') shape(limb([[hx - 0.055, hy - 0.045], [hx - 0.135, hy - 0.03], [hx - 0.19, hy + 0.06], [hx - 0.215, hy + 0.2]], [0.04, 0.062, 0.05, 0.01]), f.line);
+    if (hair === 'bun') oval(hx - 0.05, hy - 0.115, 0.04, 0.04, f.line);
+    shape(cap, f.line);
+  }
   return out.join('');
 }
 
 /** Person `i` on a bicycle in line, riding right: thin spoked wheels and frame in the pen alone, the rider leaning to the bars, a helmet. */
-function lineRider(i: number, f: LineFigure): string {
-  const t = LINE_M, out: string[] = [];
+function lineRider(i: number, f: LineFigure, t = LINE_M): string {
+  const out: string[] = [];
   const shape = (d: string, fill = f.fill) => { out.push(`<path d="${d}" fill="${fill}" stroke="${f.line}" stroke-width="${t}" stroke-linejoin="round"/>`); };
   const pen = (p: Pt[], w = t) => { out.push(`<path d="${p.map(([x, y], k) => `${k ? 'L' : 'M'}${n(x)},${n(y)}`).join('')}" fill="none" stroke="${f.line}" stroke-width="${n(w)}" stroke-linecap="round" stroke-linejoin="round"/>`); };
   const R = 0.34, rear: Pt = [-0.52, -R], front: Pt = [0.52, -R], bb: Pt = [0, -0.3], seat: Pt = [-0.13, -0.86], head: Pt = [0.42, -0.84];
@@ -272,7 +284,10 @@ function lineRider(i: number, f: LineFigure): string {
   return out.join('');
 }
 
-/** Person `i` in line alone, in vector: markup for a drawing's defs under `id`, standing on the origin, facing right, metres. */
-export const linePersonSvg = (id: string, i: number, f: LineFigure): string => `<g id="${id}" data-line-figure="person">${linePerson(i % PEOPLE_VARIANTS, f)}</g>`;
+/**
+ * Person `i` in line alone, in vector: markup for a drawing's defs under `id`, standing on the origin, facing right,
+ * metres; `line` the width of the line round each part, metres at life size.
+ */
+export const linePersonSvg = (id: string, i: number, f: LineFigure, line?: number): string => `<g id="${id}" data-line-figure="person">${linePerson(i % PEOPLE_VARIANTS, f, line)}</g>`;
 /** Person `i` on a bicycle in line alone, in vector, riding right: its origin the point under the bicycle's middle. */
-export const lineRiderSvg = (id: string, i: number, f: LineFigure): string => `<g id="${id}" data-line-figure="rider">${lineRider(i % RIDER_VARIANTS, f)}</g>`;
+export const lineRiderSvg = (id: string, i: number, f: LineFigure, line?: number): string => `<g id="${id}" data-line-figure="rider">${lineRider(i % RIDER_VARIANTS, f, line)}</g>`;
