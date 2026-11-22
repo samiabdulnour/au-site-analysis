@@ -6,7 +6,7 @@ import { geocode, siteAddressOf, type GeocodeResult } from './fetch/geocode.js';
 import { fetchSiteLots, fetchRailCorridors, fetchZoning, fetchHeightOfBuilding, fetchFloorSpaceRatio, fetchHeritage, fetchSiteControls } from './fetch/nsw.js';
 import { fetchRoads, fetchRailLines, fetchTrainStations, fetchParkPoints, fetchComplexPoints, fetchNamedAreas, fetchAllLots, fetchPropertiesAt, fetchProperties, type TopoRoad, type NamedPoint, type RailLines, type NamedArea } from './fetch/nswTopo.js';
 import { fetchAerial, fetchVegetationMask, fetchVegetationPixels, type AerialResult, type VegetationPixels } from './fetch/imagery.js';
-import { coverCells, type CoverCells } from './lib/coverPicture.js';
+import type { CoverCells } from './lib/coverPicture.js';
 import { treesFromAerial } from './lib/crowns.js';
 import { addressStreet, fetchStreetSeries } from './fetch/streetView.js';
 import { planStreetscape, planPoint, faceSkyline, fetchStreetscapeFrames, FRAME_PX, type StreetscapePlan, type ScapeFrame, type Face } from './fetch/streetscape.js';
@@ -831,8 +831,6 @@ export async function runYieldPipeline(
     zones,
     trees,
     aerial: aerial ? { ...aerial, extent: aerialExtent } : null,
-    // the cover's picture: the same reading of the aerial's green the crowns come from, in the cover's cells
-    cover: vegetation ? coverCells(vegetation) : undefined,
     assumptions,
     ...(capacity ? { capacity: { since: capacity.since, smallSite: capacity.options.smallSite, strataMax: capacity.options.strataMax, overridden: Object.keys(capacityOverrides).length, registerSource: capacityData?.registerSource } } : {}),
   };
@@ -968,7 +966,7 @@ export interface SlidesBundle {
   movement: MovementData;
   /** Tree canopy by mesh block over the wide strip; open space, Green Grid assets, facilities, NPWS estate and street trees over the tall panel. */
   green: GreenData;
-  /** The place's canopy in the cover's cells (lib/coverPicture.ts), read from the aerial's green when the deck is drawn (render/paintMasks.ts). */
+  /** The cover's speckle for a deck with no crowns (lib/coverPicture.ts): the crowns read off the aerial's green when the deck is drawn (render/paintMasks.ts). */
   cover?: CoverCells;
   /** Hazard, protection, coastal and corridor layers over the planning panel, with the plan-wide coverage check, and the soil landscape at the site. */
   constraints: ConstraintsData;

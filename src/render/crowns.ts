@@ -350,3 +350,38 @@ export function shadowPicture(ovals: { x: number; y: number; rx: number; ry: num
   }
   return { uri: pngDataUri(encodeRgbaPng(w, h, rgba)), x: x0, y: y0, w: w * unit, h: h * unit };
 }
+
+// ---- flat crowns, in vector ----
+
+/**
+ * The flat trees of an illustrator's isometric town (Flamingo's): a few plain shapes in one flat colour, no outline
+ * and no shading, the trunk's line running up into each with a branch or two off it. A three-lobed crown, a round
+ * one, a six-sided one, a bell (a small head on wide shoulders), a conifer's triangle, a cypress's pointed oval, a
+ * shield ruled down its length, and a low bush with no trunk.
+ */
+export type FlatForm = 'trefoil' | 'round' | 'hex' | 'bell' | 'cone' | 'cypress' | 'shield' | 'bush';
+const ring = (x: number, y: number, r: number) => `M${(x - r).toFixed(3)},${y}a${r},${r} 0 1,0 ${(2 * r).toFixed(3)},0a${r},${r} 0 1,0 ${(-2 * r).toFixed(3)},0Z`;
+/** Each form at a radius of one about its crown's middle (y down): its outline, where it ends below the middle, and the lines drawn in it. */
+const FLAT: Record<FlatForm, { d: string; bottom: number; lines: string }> = {
+  trefoil: { d: ring(0, -0.36, 0.62) + ring(-0.43, 0.2, 0.58) + ring(0.43, 0.2, 0.58), bottom: 0.76, lines: 'M0,0.76V-0.3M0,0.3L-0.3,-0.02M0,0.08L0.27,-0.2' },
+  round: { d: ring(0, 0, 0.92), bottom: 0.92, lines: 'M0,0.92V-0.36M0,0.34L-0.3,0.02M0,0.1L0.28,-0.2M0,-0.1L-0.2,-0.32' },
+  hex: { d: 'M-1,0L-0.5,-0.866H0.5L1,0L0.5,0.866H-0.5Z', bottom: 0.866, lines: 'M0,0.866V-0.42M0,0.3L-0.32,-0.04M0,0.02L0.3,-0.3' },
+  bell: { d: 'M-0.74,0.74V0.3C-0.74,-0.28 -0.4,-0.42 -0.38,-0.8C-0.36,-1.22 0.36,-1.22 0.38,-0.8C0.4,-0.42 0.74,-0.28 0.74,0.3V0.74Z', bottom: 0.74, lines: 'M0,0.74V-0.6M0,0.22L-0.28,-0.06M0,-0.04L0.24,-0.3' },
+  cone: { d: 'M0,-1.5L0.74,0.78H-0.74Z', bottom: 0.78, lines: 'M0,0.78V-0.9' },
+  cypress: { d: 'M0,-1.55C0.56,-0.9 0.62,0.2 0.42,0.72Q0,0.94 -0.42,0.72C-0.62,0.2 -0.56,-0.9 0,-1.55Z', bottom: 0.84, lines: 'M0,0.84V-0.95' },
+  shield: { d: 'M-0.7,-0.78H0.7V0.1C0.7,0.6 0.3,0.86 0,0.96C-0.3,0.86 -0.7,0.6 -0.7,0.1Z', bottom: 0.96, lines: 'M0,0.96V-0.78M-0.35,0.62V-0.78M0.35,0.62V-0.78' },
+  bush: { d: 'M-0.95,0.3A0.42,0.42 0 0 1 -0.38,-0.02A0.52,0.52 0 0 1 0.38,-0.02A0.42,0.42 0 0 1 0.95,0.3Z', bottom: 0.3, lines: '' },
+};
+/** Where a flat crown ends below its middle, in radii: where its trunk comes out. */
+export const flatBottom = (form: FlatForm): number => FLAT[form].bottom;
+/**
+ * A flat crown at a radius of one, in `fill`, the lines in it in `line` and `width` of the radius wide: markup for a
+ * drawing's defs, placed with a `<use>` at each tree's size.
+ */
+export function flatCrownSvg(id: string, form: FlatForm, fill: string, line: string, width = 0.05, /** a line round the crown, for a tree left in paper */ edge?: string): string {
+  const f = FLAT[form];
+  // (the edge is drawn round every part and the fill laid over it, so only the line round the whole crown is left)
+  const rim = edge ? `<path d="${f.d}" fill="none" stroke="${edge}" stroke-width="${(2 * width).toFixed(4)}" stroke-linejoin="round"/>` : '';
+  return `<g id="${id}" data-flat-crown="${form}"${edge ? ' data-paper' : ''}>${rim}<path d="${f.d}" fill="${fill}"/>${f.lines ? `<path d="${f.lines}" fill="none" stroke="${line}" stroke-width="${width.toFixed(4)}" stroke-linecap="round"/>` : ''}</g>`;
+}
+

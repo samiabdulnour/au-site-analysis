@@ -29,7 +29,7 @@ import { panelFurniture, furnitureBox, type LegendEntry } from './minimap.js';
 import { estimateKerbs, type KerbLine } from '../lib/kerbs.js';
 import type { RoadLine } from '../lib/carriageway.js';
 import type { YieldTree } from '../lib/crowns.js';
-import { coverCellsFromTrees, type CoverCells } from '../lib/coverPicture.js';
+import { coverCellsFromTrees } from '../lib/coverPicture.js';
 import type { SummaryData } from './summarySheet.js';
 import type { TopoRoad } from '../fetch/nswTopo.js';
 import type { AerialResult } from '../fetch/imagery.js';
@@ -95,8 +95,6 @@ export interface YieldBundle extends SummaryData {
   aerial?: AerialResult | null;
   /** The trees round about, for the massing: crowns read off the aerial's green (lib/crowns.ts), and the trees a council or OpenStreetMap records. A bundle from before them has none. */
   trees?: YieldTree[];
-  /** The place's canopy in the cover's cells (lib/coverPicture.ts), from the same reading of the aerial's green as the crowns. A bundle from before it has none: its cover draws the trees. */
-  cover?: CoverCells;
   /** What stands on the site today: each building whose centroid is inside the boundary. A bundle from before them has none. */
   existing?: ExistingBuilding[];
   /** The LEP's heritage items round about (not its conservation areas), for the shadow the scheme adds: their outlines (lon/lat) and names. A bundle from before them has none, and the shadow on them is not measured. */
@@ -666,9 +664,15 @@ function tierBadge(x: number, y: number, n: number, r = 2): string {
 /** Each use's colour in the massing and the plan: the style's own tints for the residential, retail and commercial land (the deck's three where a style lacks one). */
 const USE_FILL: Record<Use, string> = { residential: '#f0c9a6', retail: '#e69ea1', commercial: '#a9cfe9' };
 const USE_CATEGORY: Record<Use, string> = { residential: 'r4', retail: 'retail', commercial: 'commercial' };
+/** The zone whose ePlanning colour a shop's or an office's floors take where the style keeps those colours (Canary). */
+const USE_ZONE: Record<'retail' | 'commercial', string> = { retail: 'E1', commercial: 'E2' };
 function useFill(u: Use): string {
   // Heron's line model: the homes white, the shops and the offices a light grey, the outline telling the rest
   if (deckLook().id === 'heron') return { residential: '#ffffff', retail: '#e4e4e4', commercial: '#d2d2d2' }[u];
+  // Canary, whose neighbours stand in their zones' ePlanning colours at full strength: the scheme as saturated as
+  // they are and a colour none of them takes, Canary's yellow (a zone's red would lose it among its own neighbours);
+  // its shops' and offices' floors in their zones' colours at the same strength
+  if (deckLook().zones === 'lep') return u === 'residential' ? INK.orange.solid : vivid(zoneFill(USE_ZONE[u]), 0.45, 0.5);
   const c = deckLook().categories.find((x) => x.id === USE_CATEGORY[u]);
   return c ? tint(c.fill, Math.min(1, c.opacity + 0.35)) : USE_FILL[u];
 }
@@ -680,7 +684,9 @@ function useFill(u: Use): string {
 function yieldInks() {
   const B = INK.blue, O = INK.orange;
   // Heron's line model: what stands on the site a light grey in its heavy outline
-  const standing = deckLook().id === 'heron' ? '#ececec' : tint(O.deep, 0.42);
+  // (Canary, whose neighbours are at full strength: what stands on the site at full strength too, the deeper of its
+  // yellows, so it is told from a scheme drawn beside it in the bright one)
+  const standing = deckLook().id === 'heron' ? '#ececec' : deckLook().zones === 'lep' ? O.line : tint(O.deep, 0.42);
   return { context: tint(B.solid, 0.5), contextEdge: inkFor(B.solid, 0.42), future: B.light, futureEdge: B.line, standing, envelope: inkFor(B.deep, 0.25), kerb: inkFor(B.solid, 0.4) };
 }
 /** The site's pen: the style's accent. */
@@ -2170,7 +2176,7 @@ ${deckCss()}${YIELD_CSS}</style></head>
   return { html, slides, booklet: { html: shell('PLANNING YIELD BOOKLET SPREADS', bookletCover(cover)), spreads: [0] } };
 }
 
-/** The yield's cover: its name, the site with its lot and zone, the place's canopy, the contents and the small print. */
+/** The yield's cover: its name, the site with its lot and zone, the place's trees as the picture, the contents and the small print. */
 function yieldCover(b: YieldBundle, slides: Slide[]): Cover {
   const A = b.siteAreaSqm ?? 0, c = b.controls;
   const ring = b.siteRing, centre = { lon: ring.reduce((t, p) => t + p[0], 0) / Math.max(1, ring.length), lat: ring.reduce((t, p) => t + p[1], 0) / Math.max(1, ring.length) };
@@ -2184,7 +2190,7 @@ function yieldCover(b: YieldBundle, slides: Slide[]): Cover {
     contents: slides.map((sl, i) => ({ n: String(i + 1).padStart(2, '0'), title: sl.title })),
     note: NOT_A_DESIGN,
     credit: coverCredit(b.generatedAt),
-    picture: b.cover ?? coverCellsFromTrees(b.trees ?? [], centre),
+    picture: coverCellsFromTrees(b.trees ?? [], centre),
   };
 }
 

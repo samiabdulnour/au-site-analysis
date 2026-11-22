@@ -1323,25 +1323,88 @@ The storeys' ramp runs across the palette in every style, Heron's included
 the massing and the built form page light and glossy
 (`massingInks().gloss` and `.pastel`): pastel cuts of the same colours on a
 near-white ground, the faces lit bright and barely shaded, the roofs
-lighter, the edges and the window dots softer, and each building casting a
+lighter, the edges softer, and each building casting a
 soft blue shadow on the ground instead, its footprint swept away from the
 light by its height; Heron and Canary shade the faces themselves, in the
 full colours.
 
+Canary marks a building's walls with a hatch (`WALL_HATCH` in
+`src/render/axonometric.ts`): a wall turned from the light is hatched as shade,
+lines at 45° in a darker cut of the wall's own colour, 0.14 mm wide and 0.9 mm
+apart on a wall turned full from the light, opening as the wall turns toward
+it; a wall turned to the light is left plain, as is one coloured by its hours
+of sun. The lines are drawn and clipped to each wall, not a pattern fill, which
+the print would rasterise. Flamingo and Kingfisher, light and glossy with their
+shadows on the ground, leave every wall plain: no hatch at all, the storeys
+ruled across what is built on the site. (All three laid a pattern of small dark
+squares flat over every wall.)
+
+In Canary, whose neighbours stand in their zones' ePlanning colours at full
+strength, the site is as saturated as they are and a colour none of them takes:
+the yield's scheme is Canary's yellow (its shops' and offices' floors E1's and
+E2's colours at the same strength), what stands on the site today the deeper of
+its yellows, and the report's built form draws the site's building in the
+site's red at full strength. The other styles keep their own tints for the
+site.
+
 The 3D views' trees and people follow the style (`lookOf` in
 `src/render/axonometric.ts`).
-- **People, Flamingo and Kingfisher:** flat figures after an illustrator's isometric people
+- **Flamingo** follows an illustrator's flat isometric town (Z.'s references of
+  2026-11): flat shapes in a few colours on a cream ground, everything that
+  moves drawn in line.
+  - **Trees:** flat shapes in vector, no outline, shading or shadow
+    (`flatCrownSvg` in `src/render/crowns.ts`): a three-lobed crown, a round
+    one, a six-sided one, a bell, a conifer's triangle, a cypress's pointed
+    oval, a shield ruled down its length and, for a few of the smallest, a low
+    bush. Each stands on a thin trunk whose line runs up into the crown with a
+    branch or two off it, a short bar on the ground at its foot.
+  - **Colour:** two deep teals tree by tree, a lighter one for the shields and
+    half the cypresses and bushes (`FLAT_TEAL`); the lines in a crown are a
+    deeper cut of its own teal. About one tree in fourteen is left in paper:
+    the streets' cream with the figures' line round its crown.
+  - **Bars and shadows:** the bar at a tree's foot is pale orange on the paper
+    and a thin cut of the tree's teal on a park's green. The buildings' cast
+    shadows are flat, in the same pale orange.
+  - **People:** in line and in vector (`linePersonSvg` in
+    `src/render/people.ts`), after Z.'s sheet of the people: soft, loose
+    figures with one thin near-black line round every part and no face.
+    - Colour: each part is the cream of the streets, but for the hair, which
+      is dark, and some of the clothes, which take one of four flat colours (a
+      yellow, an orange, a pale blue, a teal): the trousers, skirt or shorts of
+      about half the people, a top now and then, the book or the bag in a hand.
+    - Clothes: a loose top with rounded shoulders and full sleeves gathered at
+      the wrist; wide trousers flaring to a curved hem, slim ones, a skirt or
+      shorts over slender legs; flat shoes. Each sleeve is joined to the body
+      at the shoulder (`sleeve`): no line crosses it, the body's outline runs
+      into the sleeve's, and the arm parts from the body at the armpit.
+    - Poses: standing with the arms folded, a hand on a hip, both, in the
+      pockets, waving, or at the sides; walking with the arms swinging, a book
+      held up, or a bag on its strap.
+    - Hair: short, in a bun, a tail, long and loose, or under a brimmed hat.
+    - A pale orange bar lies on the ground under the feet.
+  - **Size:** the people are at the town's own scale (`LINE_FIGURE_SIZE`, 1),
+    and as many as Kingfisher draws. The line round each part is 0.04 m in the
+    scene, so a figure a millimetre tall on paper still reads. (They were tried
+    at three times life, as the references draw theirs; set the constant over
+    2 and there are fewer of them to suit.)
+  - **Cyclists** likewise (`lineRiderSvg`): thin spoked wheels and frame in
+    the pen alone, the rider leaning to the bars, a helmet.
+  - **Traffic:** Kingfisher's drawn vehicles (below) in line alone, without
+    the people's colours: every part in the streets' cream with the one
+    near-black line, the windows and the wheels in outline, a pale orange patch
+    on the road under each.
+  - **Town:** a yellowish cream ground, as the references' paper, the streets
+    a shade lighter (`massingInks()`). The line down the middle of each street
+    is short dashes drawn in outline and laid on the road (`ROAD_DASH`: 1.7 m
+    long, 0.42 m wide, one every 4.2 m), where the other styles rule a dashed
+    line.
+- **People, Kingfisher:** flat figures after an illustrator's isometric people
   (`src/render/people.ts`):
   - bright tops, trousers or a dress, a face and its hair (short, long or in
     a bun), arms that swing and legs apart when they walk, now and then a bag;
   - a little larger than life;
   - walking the footpaths (some in twos), facing the way they walk, and
     gathered in the parks.
-- **Flamingo's crowns** are clouds of a few lobes:
-  - each outlined, in its shade, with the lit part over it towards the light
-    and a highlight;
-  - each casting a soft shadow on the ground;
-  - a few small trees narrow and upright.
 - **Kingfisher** follows an illustrated masterplan and its elevation trees,
   with one thin contour of dark slate (`CONTOUR`) round every tree, person,
   cyclist and vehicle, so they read as one drawing:
@@ -1377,28 +1440,33 @@ The 3D views' trees and people follow the style (`lookOf` in
     Each has dark glass and wheels with their hubs on the side turned to the
     camera. The colours are Kingfisher's: mostly warm whites and light greys,
     its terracotta, mint, pale and deep blue among them.
-- **Cyclists**, in both styles, are painted as the people are: a figure on a
+- **Cyclists**, in Kingfisher, are painted as its people are: a figure on a
   bicycle, facing the way they ride.
 - **Trees off the road:** in every style, a crown read off the aerial over a
   street is moved out past the nearer kerb onto the verge, or left out where
   there is no room there.
-- **Colour:** each style's trees are in its own green (`massingInks().tree`):
-  - Flamingo's aqua mint, deeper or lighter tree to tree;
-  - Kingfisher's mint, in two close cuts, and a soft yellow-green for about one
-    tree in five.
+- **Colour:** each style's trees are in its own green:
+  - Flamingo's two deep teals, and a lighter one for its shields;
+  - Kingfisher's mint (`massingInks().tree`), in two close cuts, and a soft
+    yellow-green for about one tree in five.
 - **Canary and the white model** keep the plain discs and slips.
 - **Heron** draws a line model (see Heron mono): its trees are the canopies'
   pictures in white, their contour and limbs black.
 
-A drawing holds a few thousand trees, too many to print as vectors (tens of
-megabytes a drawing), so each crown is painted once as a small picture
-(`src/render/crowns.ts`) and placed at every tree that takes it:
-- a shape (Flamingo's four, Kingfisher's five forms by three branchings), in
-  its green, at one of three sizes, its outline as wide in the scene as the
-  others';
-- the people likewise, thirty of them, each placed facing either way;
+A drawing holds a few thousand trees. Kingfisher's leafy canopies are too much
+to print as vectors tree by tree (tens of megabytes a drawing), so each crown
+is painted once as a small picture (`src/render/crowns.ts`) and placed at every
+tree that takes it:
+- a shape (Kingfisher's five forms by three branchings), in its green, at one
+  of three sizes, its outline as wide in the scene as the others';
+- its people likewise, thirty of them, each placed facing either way;
 - the PDF keeps each picture once, so the illustrated pages print no larger
   than the plain ones did.
+
+Flamingo's flat trees and line figures are a few plain paths each, so they
+stay in vector: each form (in each teal, at each of the three sizes) and each
+figure is drawn once in the drawing's defs and placed with a `<use>`. The
+report's built form, some five thousand trees, prints at about 2.4 MB.
 
 `npx tsx test/trees.mts` checks the pictures and each style's look.
 
@@ -1457,9 +1525,9 @@ palette.
     for what is built on the site; the roof stays white;
   - what is built on the site carries the heaviest outline, its storeys
     ruled across its walls and nothing else on them: a massing is a volume,
-    not a facade design, so the other styles' pattern of window panes is
-    left off (`LINE_WINDOWS`, which can also draw frames, ribbons or a
-    curtain wall's uprights on the wall as it stands);
+    not a facade design, so no windows are drawn (`LINE_WINDOWS`, which can
+    also draw frames, ribbons or a curtain wall's uprights on the wall as it
+    stands);
   - the trees are white canopies in their contour with their limbs drawn
     fine, the people and the traffic white in outline;
   - each ground surface has a hatch of its own (`groundHatch`), sized on
@@ -1817,7 +1885,7 @@ after the poster maps of a city (`src/render/axonometric.ts`, the drawing
 the site report's built form page shares): every neighbour in its
 zone's colour, bold, as the plan beneath tints its lot (the ePlanning colour
 where the style keeps it, the category's elsewhere), so the plan and the
-massing agree, with a grid of windows over its faces, on a cream ground of
+massing agree (in Canary its walls turned from the light hatched as shade), on a cream ground of
 the activity family — paper in every style. The key names every zone on
 the plan, code and name (`R1 General Residential`, `MU1 Mixed Use`), each
 with its colour: the lot's tint and, on the spreads that draw the
@@ -2377,24 +2445,29 @@ numbered from 2. There are two covers, for the two ways a deck is read
   front, under the name and the site, and the back carries the deck's name and
   the site alone. Every back closes on the small print in two columns.
 
-The picture is the place's canopy (`src/lib/coverPicture.ts`): the green of the
-aerial (trees, gardens and lawns, the same reading the report's green page and
-the yield's crowns come from) cut into cells some 1.6 m across and drawn at
-1:2000, 0.8 mm a cell, the site in the middle, in a blue-grey on a pale sage.
-It is the grain of the place, not a map of it: no site mark, no streets. The
-cells are traced into one vector outline, so nothing in it is a raster for a
-viewer to smooth, and Heron, black and white and its one colour, inks it in the
-two colours' greys.
-- The report cuts the cells from its `vegetation_mask.png` each time it is
-  drawn (`prepareRasters`); the yield's pipeline cuts them from the reading it
-  takes for the crowns and keeps them in the bundle (`cover`).
-- A deck with no reading of the aerial draws the trees it does hold as their
-  crowns in the same cells; with no trees either, the picture is its ground.
-- A reading that stops short of the picture at 1:2000 is drawn closer in; one
-  read coarsely (a very wide site) is never drawn finer than it was read.
+The picture is the place's trees as a speckle (`src/lib/coverPicture.ts`):
+every tree the deck holds is a fleck of its own, the site in the middle, drawn
+at 1:2000 in cells of half a millimetre, in a blue-grey on a pale sage.
+- A small tree is a dot of the heart of its crown (0.6 of its width); a tree
+  6 m across or more is the lit side of its crown, a crescent open away from
+  the light (the north-west). So trees side by side stay apart and the ground
+  between them stays open, where the canopy drawn whole ran into patches.
+- The trees are the crowns the decks already read off the aerial's green
+  (`src/lib/crowns.ts`: the yield's `trees`, the report's `green.crowns`), with
+  the trees a council or OpenStreetMap records among them. A street's trees
+  fall in a line, a garden's in a cluster, a reserve's in a field of crescents.
+- It is the grain of the place, not a map of it: no site mark, no streets.
+- The cells are traced into one vector outline, so nothing in it is a raster
+  for a viewer to smooth, and Heron, black and white and its one colour, inks
+  it in the two colours' greys.
+- Trees that stop short of the picture at 1:2000 are drawn closer in, as far
+  as 1:1200. A report that holds the aerial's green but no crowns has them
+  read off that green when it is drawn (`prepareRasters`); a deck with no trees
+  at all has the picture's ground alone.
 
-`npx tsx test/covers.mts` checks the cells, the outline (its area the cells'
-own, holes and corners included) and which style's cover carries what.
+`npx tsx test/covers.mts` checks the speckle (the dot, the crescent, trees side
+by side left apart), the outline (its area the cells' own, holes and corners
+included) and which style's cover carries what.
 
 Each deck is also imposed as a booklet (`src/render/booklet.ts`), kept beside
 its PDF as `PLANNING_YIELD.booklet.pdf` or `OVERALL_ANALYSIS.booklet.pdf`. Each
