@@ -3034,6 +3034,18 @@ so a lot is never left missing from a site for a week. Every pipeline looks
 its address up through it; `test/geocode.mts` holds it against a stand-in
 register that goes down between the first lookup and the second.
 
+### A site aerial the imagery refuses small
+
+The deck's site page draws the site panel on the aerial, at 1:200 for a
+shop-sized lot: a window some 40 m across. In a country town the NSW imagery
+service refuses a window that small however coarse the picture asked for
+(120-122 Summer Street, Orange: never at 1:200 to 1:400, always at 1:500), and
+the page was drawn on blank paper with "The aerial imagery did not answer for
+this window". `siteAerial` (`src/fetch/site.ts`) asks for the panel's window
+first and, refused, for one 1.5, 2.5 and then 4 times as wide about the same
+centre, and places the picture so the panel shows its middle; the page clips
+the rest. `test/site-aerial.mts` holds it against a stand-in imagery service.
+
 ### Several addresses as one site
 
 An amalgamation is typed as one address with its numbers as a range or a

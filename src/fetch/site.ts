@@ -5,7 +5,7 @@
 // buildings and the levels come from what the other slides already fetch.
 
 import { queryByExtent, queryByPoint, queryWhere, type GeoJSONFC } from '../lib/arcgis.js';
-import { lonLatToMercator, type LonLat } from '../lib/geo.js';
+import { lonLatToMercator, type Extent, type LonLat } from '../lib/geo.js';
 import { fetchAerial, type AerialResult } from './imagery.js';
 import { fetchNeighbourAddresses, type NeighbourAddress } from './siteData.js';
 import { geomRings } from './planning.js';
@@ -92,11 +92,38 @@ async function fetchPublicLand(panel: Panel, log: (m: string) => void): Promise<
   return out;
 }
 
+/** How many times as wide a window is asked for when the imagery answers none as small as the site panel's. */
+export const SITE_AERIAL_WIDER = [1.5, 2.5, 4];
+
+/**
+ * The site panel's aerial. Where the imagery answers no window that small, a
+ * wider one about the same centre is fetched and placed so that the panel
+ * shows its middle: its tiles' fractions run past 0 and 1, and the page clips
+ * them to the panel. In a country town the imagery service refuses a small
+ * window however coarse the picture asked for (120-122 Summer Street, Orange:
+ * never at 1:200 to 1:400, some 40 to 80 m across, always at 1:500), and the
+ * deck's site page for a shop-sized lot there was drawn on blank paper.
+ */
+export async function siteAerial(extent: Extent, dataDir: string, log: (m: string) => void = () => {}, fetch: typeof fetchAerial = fetchAerial): Promise<AerialResult> {
+  let first: unknown;
+  try { return await fetch(extent, 2400, dataDir, 'site_aerial'); } catch (e) { first = e; }
+  const cx = (extent.xmin + extent.xmax) / 2, cy = (extent.ymin + extent.ymax) / 2;
+  const hw = (extent.xmax - extent.xmin) / 2, hh = (extent.ymax - extent.ymin) / 2;
+  for (const k of SITE_AERIAL_WIDER) {
+    try {
+      const wide = await fetch({ xmin: cx - hw * k, ymin: cy - hh * k, xmax: cx + hw * k, ymax: cy + hh * k }, 2400, dataDir, 'site_aerial');
+      log(`  site aerial: the imagery answers no window this small here; one ${k} times as wide is shown at its middle`);
+      return { ...wide, extent, tiles: wide.tiles.map((t) => ({ ...t, left: (t.left - 0.5) * k + 0.5, top: (t.top - 0.5) * k + 0.5, width: t.width * k, height: t.height * k })) };
+    } catch { /* wider still */ }
+  }
+  throw first;
+}
+
 /** The site's own data: the aerial and its date, the lots, the easements, the neighbours, the public land around. */
 export async function fetchSiteData(sitePanel: Panel, blockPanel: Panel, siteLots: GeoJSONFC, centre: LonLat, dataDir: string, log: (m: string) => void = () => {}): Promise<SiteData> {
   const soft = <T,>(p: Promise<T>, fallback: T, name: string): Promise<T> => p.catch((e) => { log(`  WARN ${name} failed: ${e?.message ?? e}`); return fallback; });
   const [aerial, imagery, lots, easements, neighbours, publicLand] = await Promise.all([
-    soft(fetchAerial(panelExtent(sitePanel), 2400, dataDir, 'site_aerial'), null, 'site aerial'),
+    soft(siteAerial(panelExtent(sitePanel), dataDir, log), null, 'site aerial'),
     soft(fetchImageryDate(centre), null, 'imagery date'),
     soft(fetchLotDetails(siteLots), [], 'lot details'),
     soft(fetchEasements(sitePanel), [], 'easements'),
