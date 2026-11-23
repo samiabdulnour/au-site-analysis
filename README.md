@@ -1795,6 +1795,31 @@ yield for 86, 88-90, 94 Maroubra Road, 2026-11):
   near it with what is asked of it (`5.9 / 12 m`), heavier and larger than
   before, and the table is gone. And the scheme's own shadow is the
   style's accent over the neighbours' grey, where the two were one grey.
+- *"Don't do white outlines on texts. Not sure with the red shadow or
+  yellow. There is some issue with layers on the solar analysis."* …
+  *"Try different colours for shadows in plan, context shadow and your
+  shadows."* … *"The yellow there is too warm, choose a different yellow
+  from the Canary palette."*
+  - No word on a plan has a white outline round it: a dimension, a
+    shadow's hour, a lot's number and a zone's name are written in their
+    ink alone.
+  - The scheme's shadow on the plan is the style's blue over the
+    neighbours' grey (`ownShadowOnPlan()`), chosen from a board of eight
+    pairs: on the accent's red the separations' red figures were lost.
+    `YIELD_SHADOW_LOOK` draws any other pair (`nInk`, `nAlpha`, `own`,
+    `oAlpha`).
+  - Canary's scheme and what stands are the lemon of its zoning palette
+    (`CANARY_SCHEME_YELLOW`, the ePlanning yellow) where they were the
+    golden yellow of its ink family; `YIELD_SCHEME_FILL` draws another.
+  - The layers of a massing (`src/render/axonometric.ts`): what is built
+    on the site was one item at the site's middle, its buildings in the
+    order they were given, and the firmer outline a scene asks round it
+    was drawn over the whole drawing at the end. Each building is now
+    sorted among the neighbours on its own (the prisms that stand on one
+    another together), and its outline is drawn with it, so a building in
+    front covers it. At Maroubra the outline of a wall hidden behind No.
+    84's roof stood on that roof: a white box on the scheme that was not
+    there.
 - *"If there is nothing, don't print it."* "Within the controls" had a
   spread of its own even in a zone the study draws no building type for:
   every figure a dash, over the height plane alone. A path that builds
@@ -1938,7 +1963,7 @@ site may take, so a site with more paths has more pages:
      neighbours' shadows each hour from 9 am to 3 pm, one soft grey layer
      over the last, so the ground darkens with the hours it is in shade,
      and the scheme's own over them in a colour of its own, the style's
-     accent, at 9 am, noon and 3 pm outlined and named. Each separation is
+     blue (Heron: its accent), at 9 am, noon and 3 pm outlined and named. Each separation is
      a dimension on the plan, from the scheme to the building near it, with
      what is asked of it written along it (`5.9 / 12 m`: green clear, amber
      where it holds only habitable to non-habitable, red short); there is

@@ -84,7 +84,7 @@ export interface AxoScene {
   inks: { site: string; future: string; futureEdge: string; envelope: string; kerb: string;
     /** The site's boundary on the ground as one solid line of this ink and width (millimetres), in place of the style's own mark and tint. */
     siteLine?: { ink: string; w: number } };
-  /** The built's outline over everything, so a future in front of it does not lose it. */
+  /** A firmer outline round each building that is built, drawn with it: a translucent future in front of it does not lose it, a building in front of it covers it. */
   silhouette?: boolean;
   /** Set, the frame is fitted to the site and this many metres of town round it, and the town drawn to `reach` runs out past the frame's every edge; unset, everything within reach is fitted in. */
   focusM?: number;
@@ -458,7 +458,7 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   const spanOf = (rg: XY[], cen: XY) => rg.reduce((m, p) => Math.max(m, Math.hypot(p.x - cen.x, p.y - cen.y)), 0);
 
   // What is drawn: the neighbours within reach, each with its future over it, and the built on the site.
-  const prisms: { key: number; group: Prism[] }[] = [];
+  const prisms: { key: number; group: Prism[]; built?: boolean }[] = [];
   const shown: AxoNeighbour[] = [];
   for (const nb of scene.neighbours) {
     const rings = nb.rings.filter((rg) => rg.length >= 3);
@@ -484,7 +484,22 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   const built: Prism[] = (plain
     ? scene.built.map((pr) => ({ ...pr, fill: bw(pr.fill), edge: bw(pr.edge), ...(pr.cells ? { cells: pr.cells.map((c) => ({ ...c, fill: bw(c.fill) })) } : {}), ...(pr.roof ? { roof: pr.roof.map((c) => ({ ...c, fill: bw(c.fill) })) } : {}) }))
     : scene.built).map((pr) => (line ? { ...pr, edgeMm: LINE_MM.built } : pr));
-  prisms.push({ key: 0, group: built });
+  // What is built, a building at a time, each in its own place among the neighbours: the prisms that stand on one
+  // another (their footprints overlap: a tower on its podium) are one building, drawn together bottom first, at the
+  // depth of its own middle. (They were one item at the site's middle, in the order they were given. On a wide site a
+  // neighbour beside one of them, nearer than the site's middle and farther than the building, was drawn over that
+  // building's wall, and the buildings were not sorted among themselves: Maroubra's four, in its solar access view.)
+  const touches = (a: Prism, b: Prism) => a.rings.some((ra) => b.rings.some((rb) => ra.some((p) => inRing(p, rb)) || rb.some((p) => inRing(p, ra))));
+  const part = built.map((_, i) => i);
+  const rootOf = (i: number): number => (part[i] === i ? i : (part[i] = rootOf(part[i])));
+  for (let i = 0; i < built.length; i++) for (let j = i + 1; j < built.length; j++) if (rootOf(i) !== rootOf(j) && touches(built[i], built[j])) part[rootOf(j)] = rootOf(i);
+  const buildings = new Map<number, Prism[]>();
+  built.forEach((pr, i) => { const r = rootOf(i); (buildings.get(r) ?? buildings.set(r, []).get(r)!).push(pr); });
+  for (const group of buildings.values()) {
+    const pts = group.flatMap((pr) => pr.rings.flat());
+    const cen = pts.reduce((t, p) => ({ x: t.x + p.x / pts.length, y: t.y + p.y / pts.length }), { x: 0, y: 0 });
+    prisms.push({ key: depth(cen), group, built: true });
+  }
   prisms.sort((p, q) => q.key - p.key);
 
   // Light from the north-west and above: a face is lit by how squarely it turns to it.
@@ -1075,13 +1090,16 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   // Everything that stands, farthest first: the neighbours and the built, the trees, the traffic and the people among them.
   const standing: { key: number; svg: () => string }[] = [
     // (a line model: what is built on the site in a heavier outline, drawn with it so what stands in front still covers it)
-    ...prisms.map(({ key, group }) => ({ key, svg: () => group.map(prismSvg).join('') + (line && group === built && !scene.silhouette ? silhouette(built) : '') })),
+    // (… and the firmer outline a scene asks round what is built, `silhouette`, so it reads through the neighbours'
+    // translucent futures: drawn with its building too, not over the whole drawing at the end. Over everything, the
+    // outline of a wall hidden behind a neighbour's roof stood on that roof, a white box of the scheme's that is not
+    // there: the west building at Maroubra, 1.1 m from No. 84, in its solar access view.)
+    ...prisms.map(({ key, group, built: ours }) => ({ key, svg: () => group.map(prismSvg).join('') + ((line || scene.silhouette) && ours ? silhouette(group) : '') })),
     ...trees.map((tr) => ({ key: depth(tr.p), svg: () => treeSvg(tr) })),
     ...traffic.map((v) => ({ key: depth(v.c), svg: () => (v.solids ? vehicleSolidsSvg(v, v.solids) : vehicleSvg(v, v.stacks)) })),
     ...figures,
   ].sort((a, b2) => b2.key - a.key);
   for (const item of standing) parts.push(item.svg());
-  if (scene.silhouette) parts.push(silhouette(built));
 
   // The envelopes, dashed at their tops; the height plane over the site.
   const over: string[] = [];

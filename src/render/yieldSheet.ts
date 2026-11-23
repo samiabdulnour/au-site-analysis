@@ -673,13 +673,21 @@ const USE_FILL: Record<Use, string> = { residential: '#f0c9a6', retail: '#e69ea1
 const USE_CATEGORY: Record<Use, string> = { residential: 'r4', retail: 'retail', commercial: 'commercial' };
 /** The zone whose ePlanning colour a shop's or an office's floors take where the style keeps those colours (Canary). */
 const USE_ZONE: Record<'retail' | 'commercial', string> = { retail: 'E1', commercial: 'E2' };
+/**
+ * Canary's yellow for what is built on the site, a scheme's homes and what stands: the lemon of its zoning palette
+ * (the ePlanning yellow, SP2's), not the golden yellow of its ink family. Z. 2026-11, on the golden one (#ffd400)
+ * over the white model: "the yellow there is too warm, choose a different yellow from the Canary palette".
+ * YIELD_SCHEME_FILL draws another, to compare.
+ */
+const CANARY_SCHEME_YELLOW = zoneFill('SP2');
+const canaryYellow = () => process.env.YIELD_SCHEME_FILL || CANARY_SCHEME_YELLOW;
 function useFill(u: Use): string {
   // Heron's line model: the homes white, the shops and the offices a light grey, the outline telling the rest
   if (deckLook().id === 'heron') return { residential: '#ffffff', retail: '#e4e4e4', commercial: '#d2d2d2' }[u];
   // Canary, whose neighbours stand in their zones' ePlanning colours at full strength: the scheme as saturated as
   // they are and a colour none of them takes, Canary's yellow (a zone's red would lose it among its own neighbours);
   // its shops' and offices' floors in their zones' colours at the same strength
-  if (deckLook().zones === 'lep') return u === 'residential' ? INK.orange.solid : vivid(zoneFill(USE_ZONE[u]), 0.45, 0.5);
+  if (deckLook().zones === 'lep') return u === 'residential' ? canaryYellow() : vivid(zoneFill(USE_ZONE[u]), 0.45, 0.5);
   const c = deckLook().categories.find((x) => x.id === USE_CATEGORY[u]);
   return c ? tint(c.fill, Math.min(1, c.opacity + 0.35)) : USE_FILL[u];
 }
@@ -694,7 +702,7 @@ function yieldInks() {
   // (Canary: what stands on the site in the scheme's own yellow, the one yellow of the deck. It was the deeper of
   // Canary's two, to tell it from a scheme drawn beside it; no drawing of the deck draws the two together, and the
   // two yellows read as a mismatch from page to page. Z. 2026-11: "the yellows should be the same everywhere")
-  const standing = deckLook().id === 'heron' ? '#ececec' : deckLook().zones === 'lep' ? O.solid : tint(O.deep, 0.42);
+  const standing = deckLook().id === 'heron' ? '#ececec' : deckLook().zones === 'lep' ? canaryYellow() : tint(O.deep, 0.42);
   return { context: tint(B.solid, 0.5), contextEdge: inkFor(B.solid, 0.42), future: B.light, futureEdge: B.line, standing, envelope: inkFor(B.deep, 0.25), kerb: inkFor(B.solid, 0.4) };
 }
 /** The accent's pen: the height plane over the site, the hatch of a study plan. (The site's own boundary is SITE_LINE.) */
@@ -867,12 +875,20 @@ const shadowInk = () => '#3a3c41';
 const HOUR_ALPHA = 0.16, stackedAlpha = (n: number) => 1 - (1 - HOUR_ALPHA) ** n;
 /** On a path's plan each hour is lighter, and darkens what is under it: seven of them still leave the lot lines and the numbers to read. */
 const PLAN_HOUR_ALPHA = 0.1;
-/** The scheme's own shadow on it, in the accent: each hour a little stronger than a neighbour's grey, so its colour holds where it falls on theirs. */
-const OWN_HOUR_ALPHA = 0.14;
+/** The scheme's own shadow on it, in a colour of its own: each hour a little stronger than a neighbour's grey, so its colour holds where it falls on theirs. */
+const OWN_HOUR_ALPHA = 0.15;
+/**
+ * The scheme's own shadow on a path's plan: the style's blue, over the neighbours' grey. Chosen from a board of
+ * pairs (Z. 2026-11: "the shadow of our design should have a different colour than the others"; then, on it in the
+ * accent's red, "not sure with the red shadow", "try different colours for shadows in plan, context shadow and your
+ * shadows"): a blue stands apart from the grey and from the separations' red and green written over it, which the
+ * red did not. Heron, black and white and one colour, keeps its accent.
+ */
+const ownShadowOnPlan = () => (deckLook().id === 'heron' ? siteInk() : INK.blue.deep);
 /** The envelope's own shadow, in the site's accent so what it adds reads apart from the neighbours' grey. */
 const ourShadowInk = () => siteInk();
-/** A white halo under words written over a tinted plan (a dimension, a shadow's hour). */
-const HALO = ' stroke="#ffffff" stroke-width="0.7" stroke-linejoin="round" paint-order="stroke"';
+// (No word on a plan has a white outline round it: Z. 2026-11, "don't do white outlines on texts". A dimension, a
+// shadow's hour, a lot's number and a zone's name are written in their ink alone.)
 /** The ground only the envelope shades: a hatch in its shadow's ink, outlined. */
 const ADDED_HATCH = (ink = ourShadowInk()): Fill => ({ kind: 'hatch', ink: inkFor(ink, 0.22), step: 0.62, w: 0.13, outline: inkFor(ink, 0.22), outlineW: 0.18 });
 /** The buildings in plan as the report draws them: white, a grey hairline. */
@@ -890,8 +906,8 @@ const BW_BUILDING = {
 /** A park on Heron's line plans: a light hatch, as a site plan marks its green. */
 const LINE_PARK: Fill = { bg: '#ffffff', kind: 'hatch', ink: '#b4b4b4', step: 0.7, w: 0.08 };
 /** A storey count on a plan: 6 pt Arial, black, as the report's sun page sets them. */
-const storeyText = (x: number, y: number, text: string, fill = '#000000', halo = false) =>
-  `<text x="${x.toFixed(2)}" y="${(y + 0.75).toFixed(2)}" text-anchor="middle" font-size="2.117" letter-spacing="0.19" fill="${fill}"${halo ? HALO : ''}>${esc(text)}</text>`;
+const storeyText = (x: number, y: number, text: string, fill = '#000000') =>
+  `<text x="${x.toFixed(2)}" y="${(y + 0.75).toFixed(2)}" text-anchor="middle" font-size="2.117" letter-spacing="0.19" fill="${fill}">${esc(text)}</text>`;
 
 /** A plan drawn: its SVG, the round scale it took, the kerbs it drew, and the zones its frame shows a lot of (codes, upper case). */
 interface PlanResult { svg: string; scale: number; kerbs: KerbLine[]; zones: string[] }
@@ -1146,7 +1162,7 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
       const corners = [[-w / 2, base - CAP - 0.3], [w / 2, base - CAP - 0.3], [w / 2, base + 0.3], [-w / 2, base + 0.3]].map(([dx, dy]) => [mx + dx * cs - dy * sn, my + dx * sn + dy * cs]);
       const bx: Box = [Math.min(...corners.map((c) => c[0])), Math.min(...corners.map((c) => c[1])), Math.max(...corners.map((c) => c[0])), Math.max(...corners.map((c) => c[1]))];
       if (!clear(bx)) continue;
-      out.push(`<text transform="translate(${mx.toFixed(2)},${my.toFixed(2)}) rotate(${ang.toFixed(1)})" y="${base.toFixed(2)}" text-anchor="middle" font-size="${dfs}" font-weight="700" fill="${dm.ink}"${greyPlan ? '' : HALO} data-dim="1">${esc(dm.label)}</text>`);
+      out.push(`<text transform="translate(${mx.toFixed(2)},${my.toFixed(2)}) rotate(${ang.toFixed(1)})" y="${base.toFixed(2)}" text-anchor="middle" font-size="${dfs}" font-weight="700" fill="${dm.ink}" data-dim="1">${esc(dm.label)}</text>`);
       taken.push(bx);
       break;
     }
@@ -1160,7 +1176,7 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
       lx = Math.max(box.x + 8 + inset, Math.min(box.x + box.w - 8 - inset, lx)); ly = Math.max(box.y + 12 + inset, Math.min(box.y + box.h - 8 - inset, ly));
       const bx: Box = [lx - 6, ly - 2.4, lx + 6, ly + 1];
       if (!clear(bx)) continue;
-      out.push(`<text x="${lx.toFixed(2)}" y="${ly.toFixed(2)}" text-anchor="middle" font-size="2.6" font-weight="700" fill="${inkFor(shade, 0.08)}"${greyPlan ? '' : HALO}>${esc(sh.label.toUpperCase())}</text>`);
+      out.push(`<text x="${lx.toFixed(2)}" y="${ly.toFixed(2)}" text-anchor="middle" font-size="2.6" font-weight="700" fill="${inkFor(shade, 0.08)}">${esc(sh.label.toUpperCase())}</text>`);
       taken.push(bx);
       break;
     }
@@ -1173,7 +1189,7 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
       const [px, py] = at(p), w = text.length * 1.4 + 1;
       const bx: Box = [px - w / 2, py - 1.3, px + w / 2, py + 1.3];
       if (!clear(bx)) return false;
-      out.push(storeyText(px, py, text, fill, !greyPlan));
+      out.push(storeyText(px, py, text, fill));
       taken.push(bx);
       return true;
     };
@@ -1310,7 +1326,7 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
     const onBuilding = set.onBuilding, [px, py] = at(set.p), bx2 = boxAt(set.p);
     taken.push(bx2);
     const y0 = py - ((lines.length - 1) * LH) / 2 + F1 * 0.36;
-    lines.forEach((t, i) => out.push(`<text x="${px.toFixed(2)}" y="${(y0 + i * LH).toFixed(2)}" text-anchor="middle" font-size="${i ? F2 : F1}" font-weight="${i ? 400 : 700}" fill="${opts.bw === 'black' && onBuilding ? '#ffffff' : '#111111'}"${zoneAreas ? HALO : ''}>${esc(t)}</text>`));
+    lines.forEach((t, i) => out.push(`<text x="${px.toFixed(2)}" y="${(y0 + i * LH).toFixed(2)}" text-anchor="middle" font-size="${i ? F2 : F1}" font-weight="${i ? 400 : 700}" fill="${opts.bw === 'black' && onBuilding ? '#ffffff' : '#111111'}">${esc(t)}</text>`));
   }
   // Where the zones are areas: each area's zone and height of building once, on the lot nearest its middle, under or
   // over that lot's own number where there is room, else on the next lot out. An area is the lots of one zone and
@@ -1335,7 +1351,7 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
           const py = y0 + dy, bx: Box = [px - wMm / 2, py - hMm / 2, px + wMm / 2, py + hMm / 2];
           if (!clear(bx)) continue;
           taken.push(bx);
-          out.push(`<text data-zone-label="1" x="${px.toFixed(2)}" y="${(py + FZ * 0.36).toFixed(2)}" text-anchor="middle" font-size="${FZ}" font-weight="700" letter-spacing="0.25" fill="#111111"${HALO}>${esc(text)}</text>`);
+          out.push(`<text data-zone-label="1" x="${px.toFixed(2)}" y="${(py + FZ * 0.36).toFixed(2)}" text-anchor="middle" font-size="${FZ}" font-weight="700" letter-spacing="0.25" fill="#111111">${esc(text)}</text>`);
           break place;
         }
       }
@@ -2230,7 +2246,7 @@ function complianceSheets(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: P
   // Shadow and separation: the path's plan, the whole page, at the overview's scale, with every building's shadow
   // each hour from 9 to 3 (the neighbours at the heights the sun study gives them, two storeys where none is
   // recorded; the envelope's swept exactly) laid one soft layer over the last, and the envelope's own at 9 am, noon
-  // and 3 pm outlined; the envelope's in the accent, the neighbours' in grey ("the shadow of our design should have
+  // and 3 pm outlined; the envelope's in the style's blue, the neighbours' in grey ("the shadow of our design should have
   // a different colour than the others"), and each separation a dimension with what is asked of it ("the building
   // separation needs to be visible in the drawing, don't put it into text"). The neighbours in black and white, white buildings in a black line with their street numbers
   // and no zone on them: the zones are the overview's. Chosen from a board of iterations (Z. 2026-11: "the shadow
@@ -2245,7 +2261,7 @@ function complianceSheets(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: P
     own: string; oAlpha: number; nInk: string; nAlpha: number; multiply: boolean; bw?: 'white' | 'black' | 'grey';
   }
   const LOOK: ShadowLook = { hours: 'hourly', neighbours: true, ownShadow: true, hatch: false, outlines: true, dims: true, shaded: false,
-    own: siteInk(), oAlpha: OWN_HOUR_ALPHA, nInk: shadowInk(), nAlpha: PLAN_HOUR_ALPHA, multiply: true, bw: 'white',
+    own: ownShadowOnPlan(), oAlpha: OWN_HOUR_ALPHA, nInk: shadowInk(), nAlpha: PLAN_HOUR_ALPHA, multiply: true, bw: 'white',
     ...(process.env.YIELD_SHADOW_LOOK ? JSON.parse(process.env.YIELD_SHADOW_LOOK) as Partial<ShadowLook> : {}) };
   const name = (scale: number) => ['Plan', `1:${fmt(scale).replace(',', ' ')}`, LOOK.label ?? 'shadows each hour, 9 am to 3 pm'];
   const massBlocks = schemeBlocks(ps.y);

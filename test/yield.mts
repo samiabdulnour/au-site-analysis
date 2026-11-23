@@ -477,11 +477,14 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
   const planSvg = shade.figureHtml.slice(shade.figureHtml.indexOf('<clipPath id="plan-within'));
   // Z. 2026-11: "the shadow of our design should have a different colour than the others". The envelope's in the
   // style's accent, the neighbours' in grey; each an hour a soft layer that darkens what is under it.
-  const accentInk = (planSvg.match(/<g opacity="0\.14" style="mix-blend-mode:multiply"><path d="[^"]+" fill="(#[0-9a-fA-F]{6})" fill-rule="evenodd"\/>/) ?? [])[1];
-  check('shadow: the envelope\'s own shadow an hour a layer, 9 to 3, in a colour of its own and not the neighbours\' grey', (planSvg.match(/<g opacity="0\.14" style="mix-blend-mode:multiply">/g) ?? []).length === 7 && !!accentInk && accentInk.toLowerCase() !== '#3a3c41',
-    `${(planSvg.match(/<g opacity="0\.14"/g) ?? []).length} layers in ${accentInk}`);
+  const accentInk = (planSvg.match(/<g opacity="0\.15" style="mix-blend-mode:multiply"><path d="[^"]+" fill="(#[0-9a-fA-F]{6})" fill-rule="evenodd"\/>/) ?? [])[1];
+  check('shadow: the envelope\'s own shadow an hour a layer, 9 to 3, in a colour of its own and not the neighbours\' grey', (planSvg.match(/<g opacity="0\.15" style="mix-blend-mode:multiply">/g) ?? []).length === 7 && !!accentInk && accentInk.toLowerCase() !== '#3a3c41',
+    `${(planSvg.match(/<g opacity="0\.15"/g) ?? []).length} layers in ${accentInk}`);
   check('shadow: the envelope\'s own at 9 am, 12 pm and 3 pm outlined, in its colour', (planSvg.match(new RegExp(`fill="none" stroke="${accentInk}" stroke-width="0\\.25" stroke-dasharray="1\\.2,0\\.8"`, 'g')) ?? []).length === 3, String((planSvg.match(/stroke-dasharray="1\.2,0\.8"/g) ?? []).length));
   check('shadow: no hatch on it by default', !/data-added/.test(planSvg));
+  // Z. 2026-11: "don't do white outlines on texts". No word of a plan has a halo.
+  const overviewPlan = page('01_planning_yield').figureHtml.slice(page('01_planning_yield').figureHtml.indexOf('<clipPath id="plan-'));
+  check('no word on a plan has a white outline round it', !/paint-order="stroke"/.test(planSvg) && !/paint-order="stroke"/.test(overviewPlan));
   // Z. 2026-11: "the yellows should be the same everywhere". The plan's plate is solid, in the colour its massing's roof
   // and its key have (it stood at 55%, paler on the plan than on the isometric beside it).
   const plateFill = /<path data-plate="1" d="[^"]+" fill="(#[0-9a-fA-F]{6})" fill-rule="evenodd" stroke="none"\/>/.exec(planSvg)?.[1];
@@ -527,9 +530,10 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
     const cDeck = renderYieldDeck(treed, meta, { theme: 'canary' });
     const cp = cDeck.slides.find((sl) => sl.id === '04_within_controls_shadow_and_separation')!.figureHtml;
     const plate = (html: string) => /<path data-plate="1" d="[^"]+" fill="(#[0-9a-f]{6})" fill-rule="evenodd" stroke="none"/.exec(html)?.[1];
-    const yellow = withTemplate('canary', () => deckFamilies().orange.solid), r4 = vivid(zoneFill('R4'), 0.45, 0.5);
+    // (Z. 2026-11, on the golden yellow of Canary's ink family: "too warm, choose a different yellow from the Canary palette": its zoning palette's lemon)
+    const yellow = zoneFill('SP2'), golden = withTemplate('canary', () => deckFamilies().orange.solid), r4 = vivid(zoneFill('R4'), 0.45, 0.5);
     const sat = (h: string) => { const c = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255), mx = Math.max(...c), mn = Math.min(...c), l = (mx + mn) / 2; return mx === mn ? 0 : (mx - mn) / (1 - Math.abs(2 * l - 1)); };
-    check('canary: the scheme in Canary\'s yellow, not its zone\'s red', plate(cp) === yellow && plate(cp) !== r4 && plate(kp) !== yellow && !!plate(kp), `${plate(cp)} for ${yellow}; kingfisher ${plate(kp)}`);
+    check('canary: the scheme in Canary\'s lemon yellow, not its golden one and not its zone\'s red', plate(cp) === yellow && plate(cp) !== golden && plate(cp) !== r4 && plate(kp) !== yellow && !!plate(kp), `${plate(cp)} for ${yellow}; kingfisher ${plate(kp)}`);
     check('canary: the scheme as saturated as its neighbours', sat(plate(cp)!) >= sat(r4) - 0.01, `${sat(plate(cp)!).toFixed(2)} against ${sat(r4).toFixed(2)}`);
     const walls = [heronDeck, kDeck, cDeck].map((d) => d.slides.find((sl) => sl.id === '03_within_controls')!.figureHtml);
     check('no style patterns its walls with squares', ![hp, kp, cp, ...walls].some((h) => h.includes('axo-win') || /<pattern id="axo-/.test(h)));
@@ -538,11 +542,11 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
   const closePlan = deck(close).slides.find((sl) => isTestPage(sl.id, 'shadow'))!.figureHtml, closeSolar = deck(close).slides.find((sl) => isTestPage(sl.id, 'solar'))!.figureHtml;
   check('shadow: a neighbour white in a black line, no zone\'s colour on it, with its shadow', /fill="#ffffff" stroke="#1c1c1c" stroke-width="0\.3" stroke-linejoin="round"\/>/.test(closePlan)
     && /<g opacity="0\.1" style="mix-blend-mode:multiply"><path d="[^"]+" fill="#3a3c41" fill-rule="nonzero"\/>/.test(closePlan));
-  check('shadow: the envelope\'s shadow over the neighbours\', in its own colour', new RegExp(`<g opacity="0\\.14" style="mix-blend-mode:multiply"><path d="[^"]+" fill="${accentInk}" fill-rule="evenodd"/>`).test(closePlan)
+  check('shadow: the envelope\'s shadow over the neighbours\', in its own colour', new RegExp(`<g opacity="0\\.15" style="mix-blend-mode:multiply"><path d="[^"]+" fill="${accentInk}" fill-rule="evenodd"/>`).test(closePlan)
     && closePlan.indexOf('fill-rule="nonzero"') < closePlan.indexOf(`fill="${accentInk}" fill-rule="evenodd"`));
   // Z. 2026-11: "the building separation needs to be visible in the drawing, don't put it into text". Each separation a
   // dimension on the plan with what is asked of it; no table of them in the text column.
-  check('separation: on the drawing, a dimension with what is asked of it, haloed; no table of it in the text', /paint-order="stroke" data-dim="1">8\.0 \/ 12 m</.test(closePlan)
+  check('separation: on the drawing, a dimension with what is asked of it; no table of it in the text', / data-dim="1">8\.0 \/ 12 m</.test(closePlan)
     && !/<td>building to the east<\/td>/.test(closePlan) && !/>Building separation<\/div>|<h\d[^>]*>Building separation</.test(closePlan.slice(0, closePlan.indexOf('<svg'))) && /<td>Building separation<\/td>/.test(closePlan),
     closePlan.match(/<text[^>]*data-dim="1">[^<]*</)?.[0]);
   // The plan's other marks are still to be had (YIELD_SHADOW_LOOK overrides the look, for iterations): the hatch on
