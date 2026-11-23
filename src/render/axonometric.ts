@@ -58,6 +58,8 @@ export interface AxoNeighbour {
   /** Recorded height; none draws a nominal two storeys, dashed. */
   heightM?: number;
   fill: string;
+  /** Its outline's ink in a white model (`scene.mono`): its zone's colour on a white building, where the model's grey is not wanted. */
+  edge?: string;
   /** What it may rise to, drawn as a glass over it. */
   future?: number;
 }
@@ -317,6 +319,8 @@ function lookOf(M: ReturnType<typeof massingInks>, mono: boolean): AxoLook {
  * scale with the drawing, so a town drawn small has hairlines): the neighbours', the futures' glass, what is built on
  * the site and the heavy outline round it, the storeys ruled on its walls.
  */
+/** A white model's neighbour outlined in its zone's colour: the line's width, drawing units. */
+const ZONE_EDGE_W = 0.22;
 const LINE_MM = { neighbour: 0.2, future: 0.16, built: 0.3, silhouette: 0.55, storey: 0.08 };
 /** A width on paper, written into the drawing before its scale is known and resolved once it is (`resolvePaper`). */
 const PW = (mm: number) => `@@pw${mm}@@`;
@@ -469,7 +473,9 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
     const z1 = known ? nb.heightM! : 6.2;
     if (!inFrame(cen, Math.max(z1, nb.future ?? 0), spanOf(rings[0], cen) + 2)) continue;
     shown.push(nb);
-    const group: Prism[] = [mono ? { rings, z0: 0, z1, fill: line && !scene.mono ? bw(nb.fill) : '#ffffff', edge: G.edge, edgeW: 0.12, ...(line ? { edgeMm: LINE_MM.neighbour } : {}), dashed: !known }
+    // (a white model's neighbour in its own outline where one is given: a zone's colour, on white walls and grey shade)
+    const own = !line && scene.mono && nb.edge ? nb.edge : null;
+    const group: Prism[] = [mono ? { rings, z0: 0, z1, fill: line && !scene.mono ? bw(nb.fill) : '#ffffff', edge: own ?? G.edge, edgeW: own ? ZONE_EDGE_W : 0.12, ...(line ? { edgeMm: LINE_MM.neighbour } : {}), dashed: !known }
       : { rings, z0: 0, z1, fill: nb.fill, edge: shade(nb.fill, M.gloss ? 0.78 : 0.55), edgeW: 0.12, dashed: !known, windows: known }];
     if (nb.future && nb.future > z1) group.push({ rings, z0: z1, z1: nb.future, fill: inks.future, edge: inks.futureEdge, edgeW: 0.12, ...(line ? { edgeMm: LINE_MM.future } : {}), dashed: true, dash: FUTURE_DASH, opacity: FUTURE_OPACITY });
     prisms.push({ key: depth(cen), group });

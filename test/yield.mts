@@ -542,6 +542,27 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
   const closePlan = deck(close).slides.find((sl) => isTestPage(sl.id, 'shadow'))!.figureHtml, closeSolar = deck(close).slides.find((sl) => isTestPage(sl.id, 'solar'))!.figureHtml;
   check('shadow: a neighbour white in a black line, no zone\'s colour on it, with its shadow', /fill="#ffffff" stroke="#1c1c1c" stroke-width="0\.3" stroke-linejoin="round"\/>/.test(closePlan)
     && /<g opacity="0\.1" style="mix-blend-mode:multiply"><path d="[^"]+" fill="#3a3c41" fill-rule="nonzero"\/>/.test(closePlan));
+  // Z. 2026-11, after the neighbours went black and white: "use colours for zoning for plan and isometry, but only on
+  // outlines; don't make very colourful fills or shades". A neighbour is white in a line of its zone's colour, on the
+  // plan and in the white model, the zones keyed by their lines; Heron, black and white and one colour, has none.
+  {
+    const lotOf = (x0: number, x1: number) => [[151.20043 + x0 * m, -33.9], [151.20043 + x1 * m, -33.9], [151.20043 + x1 * m, -33.89955], [151.20043 + x0 * m, -33.89955], [151.20043 + x0 * m, -33.9]];
+    const zoned = { ...bundle, context: [{ rings: [east], heightM: 6.2, known: true, controls: { zone: 'R4' } }], parcels: [{ rings: [lotOf(1, 30)], numbers: ['2'], zone: 'R4' }] } as unknown as YieldBundle;
+    const zd = deck(zoned), zPlan = zd.slides.find((sl) => isTestPage(sl.id, 'shadow'))!, zIso = zd.slides.find((sl) => sl.id === '03_within_controls')!, zSolar = zd.slides.find((sl) => isTestPage(sl.id, 'solar'))!;
+    const line = /<path data-zone-line="1" d="[^"]+" fill="#ffffff" stroke="(#[0-9a-f]{6})" stroke-width="0\.4" stroke-linejoin="round"\/>/.exec(zPlan.figureHtml)?.[1];
+    check('zones: on the plan a neighbour white, in a line of its zone\'s colour', !!line && line !== '#1c1c1c' && line !== '#ffffff' && !/fill="#ffffff" stroke="#1c1c1c" stroke-width="0\.3"/.test(zPlan.figureHtml), String(line));
+    check('zones: in the white model the same line round the same neighbour, its walls white and grey', [zIso, zSolar].every((sl) => new RegExp(`fill="#[0-9a-f]{6}" stroke="${line}" stroke-width="0\\.22"`).test(sl.figureHtml))
+      && !new RegExp(`fill="${line}"`).test(zIso.figureHtml), String(line));
+    check('zones: keyed by their lines on each of the three pages', [zPlan, zIso, zSolar].every((sl) => (sl.legend ?? []).some((e) => /^R4\b/.test(e.label) && e.swatch.includes(`stroke="${line}"`) && /fill="none"/.test(e.swatch))
+      && (sl.legend ?? []).some((e) => /outlined in its zone's colour/.test(e.label))));
+    check('zones: no fill of a zone\'s colour anywhere on the plan', !/data-zone-area/.test(zPlan.figureHtml));
+    process.env.YIELD_ZONE_EDGES = '0';
+    const plain = deck(zoned).slides.find((sl) => isTestPage(sl.id, 'shadow'))!;
+    delete process.env.YIELD_ZONE_EDGES;
+    check('zones: the plain outlines are still to be had', !/data-zone-line/.test(plain.figureHtml) && /fill="#ffffff" stroke="#1c1c1c" stroke-width="0\.3"/.test(plain.figureHtml) && !(plain.legend ?? []).some((e) => /zone/.test(e.label)));
+    const hz = renderYieldDeck(zoned, meta, { theme: 'heron' }).slides.find((sl) => isTestPage(sl.id, 'shadow'))!;
+    check('zones: Heron has no zone\'s line', !/data-zone-line/.test(hz.figureHtml) && !(hz.legend ?? []).some((e) => /zone's colour/.test(e.label)));
+  }
   check('shadow: the envelope\'s shadow over the neighbours\', in its own colour', new RegExp(`<g opacity="0\\.15" style="mix-blend-mode:multiply"><path d="[^"]+" fill="${accentInk}" fill-rule="evenodd"/>`).test(closePlan)
     && closePlan.indexOf('fill-rule="nonzero"') < closePlan.indexOf(`fill="${accentInk}" fill-rule="evenodd"`));
   // Z. 2026-11: "the building separation needs to be visible in the drawing, don't put it into text". Each separation a

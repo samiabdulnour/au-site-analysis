@@ -1820,6 +1820,16 @@ yield for 86, 88-90, 94 Maroubra Road, 2026-11):
     front covers it. At Maroubra the outline of a wall hidden behind No.
     84's roof stood on that roof: a white box on the scheme that was not
     there.
+- *"One more try. Use colours for zoning for plan and isometry, but only
+  on outlines. Don't make very colourful fills or shades."* The neighbours
+  had gone black and white, the zones on the overview alone. They are
+  white still, their walls in the model's greys, and each is outlined in
+  its zone's colour, on a path's plan and in every massing (`zoneLine()`:
+  in Canary the zone's mapped ePlanning colour a step darker, so R2's pink
+  and R3's salmon stay two lines; the massing's bold cut made them one
+  red, lost against the separations' red figures). The keys name the
+  zones by their lines. Heron has none. `YIELD_ZONE_EDGES=0` draws the
+  plain outlines, `YIELD_ZONE_LINE=vivid` the bold colours.
 - *"If there is nothing, don't print it."* "Within the controls" had a
   spread of its own even in a zone the study draws no building type for:
   every figure a dash, over the height plane alone. A path that builds
@@ -1955,8 +1965,9 @@ site may take, so a site with more paths has more pages:
      and the lots it takes below the hours a DCP commonly asks of half their
      open ground). On the right, the whole page, the option's plan at the
      overview's scale (`PLAN_ROOM`), its neighbours in black and white: the
-     lots untinted, every building white in a black line with its street
-     number and no zone on it (the zones are the overview's), the kerbs,
+     lots untinted, every building white in a line of its zone's colour
+     (black where its lot has none; no zone's fill anywhere), with its
+     street number, the kerbs,
      the future footprints dashed, each tier of the scheme in its use's
      colour with its envelope dashed and its number as in the schedule
      (what stands, as its own spread draws it). Under the buildings, the

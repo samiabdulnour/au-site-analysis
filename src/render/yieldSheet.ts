@@ -733,6 +733,30 @@ const treesNote = (b: YieldBundle) => (b.trees?.length
 /** The photograph under the plan and the massing: where the style draws on the aerial and the deck read one over this site. */
 const photoOf = (b: YieldBundle): (AerialResult & { extent: Extent }) | null =>
   b.aerial?.tiles.length && b.aerial.extent ? (b.aerial as AerialResult & { extent: Extent }) : null;
+/**
+ * A zone's colour as a line: its bold colour, darkened where it is too light to carry a line on white (a yellow, a
+ * pale green). The zones are shown by outlines alone, on white buildings: Z. 2026-11, after the neighbours went
+ * black and white, "use colours for zoning for plan and isometry, but only on outlines; don't make very colourful
+ * fills or shades". Heron, black and white and one colour, has none. YIELD_ZONE_EDGES=0 draws the plain outlines.
+ */
+function zoneLine(zone: string | undefined, look: DeckLook): string | null {
+  if (look.id === 'heron' || !zone) return null;
+  // Where the style keeps the ePlanning colours (Canary): the zone's mapped colour, a step darker, so it carries a
+  // line on white. The massing's bold cut of it (zoneInk) brings R2's pink and R3's salmon to one red, which as
+  // a fill passed and as a line is the same line; and a town outlined in that red is lost against the separations'
+  // red figures and the height plane's red dashes. YIELD_ZONE_LINE=vivid draws the bold cut, to compare.
+  if (look.zones === 'lep' && process.env.YIELD_ZONE_LINE !== 'vivid') {
+    // (its hue kept and its saturation, a little darker than it is mapped, so a lighter zone stays the lighter line)
+    const f = zoneFill(zone), n = parseInt(f.slice(1), 16), ch = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => v / 255);
+    const light = (Math.max(...ch) + Math.min(...ch)) / 2;
+    return inkFor(vivid(f, 0.6, Math.max(0.3, light - 0.09)), 0.55);
+  }
+  const c = zoneInk(zone, look);
+  return c ? inkFor(c, 0.5) : null;
+}
+const zoneEdgesOn = () => process.env.YIELD_ZONE_EDGES !== '0' && deckLook().id !== 'heron';
+/** A neighbour's outline in its zone's colour on a path's plan: its width, millimetres. */
+const ZONE_EDGE_PLAN = 0.4;
 /** The lot in a zone, as the style's context sheet tints the land: its category's fill and texture, or its ePlanning colour. */
 function lotFill(zone: string | undefined, look: DeckLook): { key: string; fill: Fill } | null {
   if (!zone) return null;
@@ -790,6 +814,8 @@ function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number;
     rings: [local(cb.rings[0] ?? [])].filter((rg) => rg.length >= 3),
     heightM: cb.known ? cb.heightM : undefined,
     fill: zoneInk(cb.controls?.zone, look) ?? M.noHeight,
+    // (the white model's neighbours: each outlined in its zone's colour)
+    ...(scheme.mono && zoneEdgesOn() ? { edge: zoneLine(cb.controls?.zone, look) ?? undefined } : {}),
   }));
   const z = y ? storeyZ(y) : undefined;
   const built: Prism[] = [];
@@ -995,7 +1021,7 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
   if (zoneAreas) {
     const byZone = new Map<string, { ink: string; ds: string[] }>();
     for (const pc of parcels) {
-      const ink = pc.site || !pc.zone ? null : zoneInk(pc.zone, look);
+      const ink = pc.site || !pc.zone ? null : zoneLine(pc.zone, look);
       if (!ink) continue;
       const key = pc.zone!.trim().toUpperCase();
       (byZone.get(key) ?? byZone.set(key, { ink, ds: [] }).get(key)!).ds.push(...pc.local.map(path));
@@ -1064,6 +1090,15 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
   for (const rings of marks?.shaded ?? []) out.push(`<path d="${rings.map(path).join('')}" fill="${shade}" fill-opacity="0.07" fill-rule="evenodd" stroke="${shade}" stroke-width="0.45" stroke-dasharray="0.6,0.6"/>`);
   if (greyPlan && blds.length) out.push(`<path d="${blds.map(path).join('')}" ${linePlan ? LINE_BUILDING : PLAN_BUILDING}/>`);
   else if (linePlan && !photo) { if (blds.length) out.push(`<path d="${blds.map(path).join('')}" ${LINE_BUILDING}/>`); }
+  else if (opts.bw === 'white' && zoneEdgesOn() && blds.length) {
+    // white, each in a line of its zone's colour (its lot's zone); black where its lot has none
+    const byInk = new Map<string, string[]>();
+    for (const rg of blds) {
+      const ink = zoneLine(parcels.find((pc) => !pc.site && within(centre(rg), pc.local))?.zone, look) ?? '';
+      (byInk.get(ink) ?? byInk.set(ink, []).get(ink)!).push(path(rg));
+    }
+    for (const [ink, ds] of byInk) out.push(ink ? `<path data-zone-line="1" d="${ds.join('')}" fill="#ffffff" stroke="${ink}" stroke-width="${ZONE_EDGE_PLAN}" stroke-linejoin="round"/>` : `<path d="${ds.join('')}" ${BW_BUILDING.white}/>`);
+  }
   else if (opts.bw && blds.length) out.push(`<path d="${blds.map(path).join('')}" ${BW_BUILDING[opts.bw]}/>`);
   else for (const rg of blds) {
     const zone = parcels.find((pc) => !pc.site && within(centre(rg), pc.local))?.zone;
@@ -1821,7 +1856,7 @@ function zoneEntries(b: YieldBundle, look: DeckLook, massing: boolean, shown?: s
   return [...count.entries()].sort((p, q) => q[1] - p[1]).slice(0, 6).map(([code]) => code).sort((p, q) => zoneOrder(p) - zoneOrder(q))
     .flatMap((code) => {
       // (a zone's area over the first page's photograph: a line of its colour round it)
-      const edge = areas ? zoneInk(code, look) : null;
+      const edge = areas ? zoneLine(code, look) : null;
       if (edge) return [{ swatch: `<path d="${box}" fill="none" stroke="${edge}" stroke-width="0.45"/>`, label: names.get(code) ? `${code} ${names.get(code)}` : code }];
       const lf = lotFill(code, look), ink = massing ? zoneInk(code, look) : null;
       if (!lf && !ink) return [];
@@ -1843,9 +1878,11 @@ function schemeLegend(b: YieldBundle, s: YieldStudy, y: YieldResult | undefined,
   for (const u of ['residential', 'retail', 'commercial'] as Use[]) if (y?.tiers.some((t) => t.use === u)) out.push({ swatch: KEY.use(u), label: `Indicative massing, ${USE_WORD[u]}` });
   if (y?.tiers.length) out.push({ swatch: KEY.envelope, label: 'Envelope of each tier' });
   if (s.hob?.metres) out.push({ swatch: KEY.plane, label: 'The LEP\'s height of building plane' });
-  // the town a white model: the neighbours white at their heights, no zone's colour to key
+  // the town a white model: the neighbours white at their heights, each in a line of its zone's colour, the zones keyed by their lines
+  const zoned = zoneEdgesOn() ? zoneEntries(b, deckLook(), true, undefined, true) : [];
   out.push({ swatch: `<path d="M0.4,0.7H2.3V3H0.4Z" fill="#ffffff" stroke="#8f8f8f" stroke-width="0.2"/><path d="M2.7,0.7H4.6V3H2.7Z" fill="#ffffff" stroke="#8f8f8f" stroke-width="0.2" stroke-dasharray="0.5,0.3"/>`,
-    label: `Neighbours in white at their heights (${footprintSources(b)}${b.mesh?.heights ? ', the 3D meshes where neither has one' : ''}); dashed: not recorded` });
+    label: `Neighbours in white at their heights (${footprintSources(b)}${b.mesh?.heights ? ', the 3D meshes where neither has one' : ''})${zoned.length ? ', each outlined in its zone\'s colour' : ''}; dashed: not recorded` });
+  out.push(...zoned);
   if (s.future.buildings.length) out.push({ swatch: `<path d="M0.6,0.7H4.4V3H0.6Z" fill="#ffffff" fill-opacity="0.5" stroke="#8f8f8f" stroke-width="0.2" stroke-dasharray="0.5,0.3"/>`, label: `${FUT_LABEL}${b.capacity ? ', where the capacity study finds development potential' : ''}` });
   if (kerbs) out.push({ swatch: KEY.kerb, label: 'Kerb line, indicative' });
   if (b.trees?.length) out.push({ swatch: `<circle cx="2.5" cy="1.8" r="1.3" fill="#ffffff" stroke="#8f8f8f" stroke-width="0.2"/>`, label: b.trees.some((t) => t.source !== 'aerial') ? 'Trees: crowns read off the aerial, recorded where OpenStreetMap or the council has them' : 'Trees, crowns read off the aerial' });
@@ -2287,12 +2324,14 @@ function complianceSheets(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: P
   const KEY = keySwatches();
   const SEP = statusInks();
   const sepSwatch = `<path d="M0.4,0.9H4.6" stroke="${SEP.clear}" stroke-width="0.35"/><path d="M0.4,1.8H4.6" stroke="${SEP.blank}" stroke-width="0.35"${blankDash()}/><path d="M0.4,2.7H4.6" stroke="${SEP.short}" stroke-width="0.35"/>`;
+  const solarZones = zoneEdgesOn() ? zoneEntries(b, deckLook(), true, undefined, true) : [];
   const solarLegend: LegendEntry[] = [
     { swatch: KEY.site, label: 'The site' },
     { swatch: KEY.zones(sunBands().map((x) => x.fill)), label: `Facades and roofs, hours of sun 9 am – 3 pm on 21 June: none, under 1, 1–2, 2–3, 3–4, 4–5, 5 and over` },
     { swatch: KEY.use('residential'), label: 'Indicative massing: blank walls' },
     { swatch: `<path d="M0.4,0.7H2.3V3H0.4Z" fill="#ffffff" stroke="#8f8f8f" stroke-width="0.2"/><path d="M2.7,0.7H4.6V3H2.7Z" fill="#ffffff" stroke="#8f8f8f" stroke-width="0.2" stroke-dasharray="0.5,0.3"/>`,
-      label: s.future.buildings.length ? 'Neighbours in white at their heights; dashed, their future on feasible footprints to their LEP height and FSR' : 'Neighbours in white at their heights' },
+      label: `Neighbours in white at their heights${solarZones.length ? ', each outlined in its zone\'s colour' : ''}${s.future.buildings.length ? '; dashed, their future on feasible footprints to their LEP height and FSR' : ''}` },
+    ...solarZones,
   ];
   // the plan's key (the site, what is built, each tier's envelope), then the shadows as they are drawn, then the neighbours
   const lineLook = deckLook().id === 'heron';
@@ -2301,6 +2340,7 @@ function complianceSheets(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: P
   const whenWords = LOOK.hours === 'hourly' ? 'each hour 9 am – 3 pm laid over the last: the deeper, the longer in shadow' : LOOK.hours === 'three' ? 'at 9 am, 12 pm and 3 pm, laid over each other' : 'at 12 pm';
   const its = standing.length ? 'Its' : 'The envelope\'s', sameInk = LOOK.own.toLowerCase() === LOOK.nInk.toLowerCase();
   const bwSwatch = LOOK.bw === 'black' ? `<rect x="0.4" y="0.6" width="4.2" height="2.4" fill="#2a2c30"/>` : LOOK.bw === 'grey' ? `<rect x="0.4" y="0.6" width="4.2" height="2.4" fill="#d3d5d8"/>` : `<rect x="0.4" y="0.6" width="4.2" height="2.4" fill="#ffffff" stroke="#1c1c1c" stroke-width="0.3"/>`;
+  const planZones = LOOK.bw === 'white' && zoneEdgesOn() ? zoneEntries(b, deckLook(), false, plan.zones, true) : [];
   const shadowLegend: LegendEntry[] = [
     { swatch: KEY.site, label: 'The site' },
     ...(standing.length ? [{ swatch: KEY.standing, label: 'What stands on the site' }]
@@ -2312,7 +2352,8 @@ function complianceSheets(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: P
     ...(LOOK.hatch ? [{ swatch: fillShape('M0.4,0.3H4.6V3.3H0.4Z', { x0: 0.4, y0: 0.3, x1: 4.6, y1: 3.3 }, ADDED_HATCH(LOOK.own), 1.6), label: `Hatched: the ground only ${standing.length ? 'it' : 'the envelope'} shades, what it ${standing.length ? 'overshadows' : 'would overshadow'}` }] : []),
     ...(LOOK.shaded ? [{ swatch: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="${LOOK.own}" fill-opacity="0.1" stroke="${LOOK.own}" stroke-width="0.3" stroke-dasharray="0.5,0.4"/>`, label: 'Land it adds shadow to: a residential lot, heritage item or park' }] : []),
     ...(LOOK.dims ? [{ swatch: sepSwatch, label: 'Building separation, apart / asked (ADG 3F-1): clear; holds if one face is blank; short' }] : []),
-    { swatch: lineLook ? `<rect x="0.4" y="0.6" width="4.2" height="2.4" fill="#ffffff" stroke="#111111" stroke-width="0.45"/>` : bwSwatch, label: 'Buildings round about, each lot with its street number; lot boundaries, NSW cadastre' },
+    { swatch: lineLook ? `<rect x="0.4" y="0.6" width="4.2" height="2.4" fill="#ffffff" stroke="#111111" stroke-width="0.45"/>` : bwSwatch, label: `Buildings round about${planZones.length ? ', each outlined in its zone\'s colour' : ''}, each lot with its street number; lot boundaries, NSW cadastre` },
+    ...planZones,
     ...(s.future.buildings.length ? [{ swatch: KEY.future, label: 'Dashed: a neighbour\'s future, a feasible footprint to its LEP height and FSR' }] : []),
     ...(plan.kerbs.length ? [{ swatch: LOOK.bw || lineLook ? `<path d="M0.4,1.8H4.6" fill="none" stroke="#8c8c8c" stroke-width="0.25"/>` : KEY.kerb, label: 'Kerb line, indicative' }] : []),
   ];
