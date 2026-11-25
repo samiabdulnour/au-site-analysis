@@ -437,6 +437,45 @@ def yield_text(fsr, gfa, units, about=True):
     return f'FSR {fsr:.1f}:1 · GFA {round(gfa, -1):,.0f} m² · {"about " if about else ""}{units} apartments'
 
 
+# Our scheme without plans (no `site.tower.units`): nothing is said of its apartments, whose layout is not known; its
+# sun is the share of its facade with two hours or more, as future_facade_sun.py reads it cell by cell
+NO_PLANS = not ((S.get('tower') or {}).get('units'))
+
+
+def facade_figures(no):
+    """Our facade's sun in a scene, off future-facade-<no>.json: the share of the walls that can hold a window with two
+    hours or more and with none, with the scenario standing and today; None where it was not read."""
+    path_ = f'{OUT}/future-facade-{no}.json'
+    if not os.path.exists(path_):
+        return None
+    fac = json.load(open(path_))
+    out_ = {}
+    for key in ('with', 'today'):
+        area = two = none = 0.0
+        for f_ in fac['faces']:
+            if f_['blank']:
+                continue
+            w_ = f_['length'] / max(1, round(f_['length'] / fac.get('cell_m', 3.0)))
+            for c in f_['cells']:
+                if key not in c:
+                    continue
+                a_ = w_ * (H_of(c['storey']) - storey_bottom(c['storey']))
+                area += a_
+                two += a_ * (c[key] >= 2 - 1e-9)
+                none += a_ * (c[key] <= 1e-9)
+        out_[key] = dict(two=two / area, none=none / area) if area else None
+    return out_
+
+
+def facade_sun_text(no):
+    """Our building's line of sun on a plan sheet, where it has no plans: the share of its facade with two hours."""
+    ff = facade_figures(no)
+    if not ff or not ff.get('with'):
+        return None
+    today_ = ff.get('today')
+    return (f'{ff["with"]["two"]:.0%} of our facade has 2 h or more' + (f' (today {today_["two"]:.0%})' if today_ else ''), '')
+
+
 def trim_to(poly, want):
     """A footprint shortened about its middle, along its long axis, to the area asked: neither end moves towards
     anything, so no setback or separation is lost to it."""
@@ -2267,7 +2306,10 @@ def option_page(r):
         rows = [(H.escape(b['name']), b.get('yld', ''), b['sun'] if b['sun'] else ('—', '')) for b in r['buildings']]
         if r['ours']:
             rows.append(('Our building', r.get('ours_yield', ''), r['ours']))
-        table = ('<div class="obc">Floor space and apartments are a rough estimate. Sun: apartments with 2 continuous hours of winter sun.</div>'
+        note_ = ('Floor space, and the neighbours\' apartments, a rough estimate. Sun: the neighbours\' apartments with 2 continuous hours of winter sun; '
+                 'ours, the share of our facade with 2 hours or more, as the facade sheet reads it (our layout is not known yet).') if NO_PLANS else \
+            'Floor space and apartments are a rough estimate. Sun: apartments with 2 continuous hours of winter sun.'
+        table = (f'<div class="obc">{note_}</div>'
                  + ''.join(f'<div class="ob"><div class="obn">{n_}</div><div class="oby">{y_}</div><div class="obs" style="color:{VERDICT_COLOUR.get(sc_, "#111")}">Sun: {st_}</div></div>' for n_, y_, (st_, sc_) in rows))
     else:
         table = f'<table><tr><th>Building</th><th>FSR, floor space and apartments, a rough estimate</th><th>Apartments with 2 continuous hours of winter sun</th></tr>{trs}</table>'
@@ -2531,15 +2573,25 @@ def sun_eye_page(no, scn, sun, r):
     else:
         before = (site_rec.get('apts_today') or {}).get('planned') and site_rec['apts_today']
         before = before['planned'] if before else None
-    whose = 'our apartments, read in 8 m bays along the walls (the scheme has no plans yet),' if bays else 'our apartments'
-    unit_word = 'facade' if bays else 'apartment'
-    result = (f'<div class="sv res"><div class="big" style="color:{col}">{ap["share"]:.0%}</div>'
-              f'<div class="rl">of {whose} have two hours of sun, 9 to 3 on 21 June. The ADG asks 70 %.</div>'
-              f'<div class="rs">{parts}</div>'
-              f'<div class="rs">No sun at all: {ap["dark"]:.0%}. The ADG allows 15 %.</div>'
-              + (f'<div class="rs">Before the neighbours build: {(before.get("planned") or before)["share"]:.0%}.</div>' if before else '')
-              + f'<div class="key"><span style="background:{SUN_LIT}"></span>{unit_word} in sun at that hour<br><span style="background:{SUN_SHADE}"></span>{unit_word} in shadow<br>'
-              f'<span style="background:#cdc6c0"></span>the neighbours as this scenario builds them</div></div>')
+    if bays:
+        # no plans: nothing said of apartments, only of the facade the sun reaches, as the facade sheet reads it
+        ff = facade_figures(no) or {}
+        w_, t_ = ff.get('with') or dict(two=0.0, none=0.0), ff.get('today')
+        result = (f'<div class="sv res"><div class="big" style="color:#111">{w_["two"]:.0%}</div>'
+                  f'<div class="rl">of our facade has two hours of sun or more, 9 to 3 on 21 June.</div>'
+                  + (f'<div class="rs">Today, with the buildings as they stand: {t_["two"]:.0%}.</div>' if t_ else '')
+                  + f'<div class="rs">No sun at all on {w_["none"]:.0%} of it.</div>'
+                  f'<div class="rs">Read cell by cell, as the facade sheet reads it: the walls that can hold a window, the party wall left out.</div>'
+                  f'<div class="key"><span style="background:{SUN_LIT}"></span>facade in sun at that hour<br><span style="background:{SUN_SHADE}"></span>facade in shadow<br>'
+                  f'<span style="background:#cdc6c0"></span>the neighbours as this scenario builds them</div></div>')
+    else:
+        result = (f'<div class="sv res"><div class="big" style="color:{col}">{ap["share"]:.0%}</div>'
+                  f'<div class="rl">of our apartments have two hours of sun, 9 to 3 on 21 June. The ADG asks 70 %.</div>'
+                  f'<div class="rs">{parts}</div>'
+                  f'<div class="rs">No sun at all: {ap["dark"]:.0%}. The ADG allows 15 %.</div>'
+                  + (f'<div class="rs">Before the neighbours build: {(before.get("planned") or before)["share"]:.0%}.</div>' if before else '')
+                  + f'<div class="key"><span style="background:{SUN_LIT}"></span>apartment in sun at that hour<br><span style="background:{SUN_SHADE}"></span>apartment in shadow<br>'
+                  f'<span style="background:#cdc6c0"></span>the neighbours as this scenario builds them</div></div>')
     cells = ''.join(f'<div class="sv"><div class="svt">{H.escape(t)} <span>{H.escape(d)}</span></div>{svg}</div>' for t, d, svg in views) + result
     css = (f'.sh{{position:absolute;left:{mm(10)};top:{mm(9)};width:{mm(400)}}} .sh h1{{margin:0}}'
            f'.views{{position:absolute;left:{mm(10)};top:{mm(27)};width:{mm(400)};height:{mm(262)};display:grid;grid-template-columns:repeat(4,1fr);grid-template-rows:1fr 1fr;gap:{mm(4)} {mm(4)}}}'
@@ -2705,9 +2757,11 @@ def page(no, scn):
             a_, gap_, c_ = g['parts']
             b['parts'] = '+'.join(f'{x:.0f}' for x in ((a_, gap_, c_) if gap_ >= 0.3 else (a_, c_)))
     oy = site_yield()
+    if NO_PLANS:
+        ours = facade_sun_text(no) or ours
     win = scaled_window()
     k_plan = 0.45 * OPTION_SCALE / 755                              # the text and lines as large on paper as they were
-    SUMMARY.append(dict(plan_mm=((win[2] - win[0]) * 1000 / OPTION_SCALE, (win[3] - win[1]) * 1000 / OPTION_SCALE), heritage=HERITAGE_HITS.get(scn['title'], []), ours_yield=yield_text(oy[0], oy[1], oy[2], about=oy[2] != SITE_UNITS), no=no, title=scn['title'], horizon=scn.get('horizon', ''), lead=fill_in(scn['lead'], parcels, units), units=units, buildings=buildings, ours=ours,
+    SUMMARY.append(dict(plan_mm=((win[2] - win[0]) * 1000 / OPTION_SCALE, (win[3] - win[1]) * 1000 / OPTION_SCALE), heritage=HERITAGE_HITS.get(scn['title'], []), ours_yield=(f'FSR {oy[0]:.1f}:1 · GFA {round(oy[1], -1):,.0f} m²' if NO_PLANS else yield_text(oy[0], oy[1], oy[2], about=oy[2] != SITE_UNITS)), no=no, title=scn['title'], horizon=scn.get('horizon', ''), lead=fill_in(scn['lead'], parcels, units), units=units, buildings=buildings, ours=ours,
                         allow=allow, allow_colour=['#1f8f3a', '#c77d00', '#c0161c'][worst], failing=sun_failing, shaded=sun_shaded,
                         mini=mini_plan(parcels, blds, existing, RET, sep), big=mini_plan(parcels, blds, existing, RET, sep, k=k_plan, big=True, bset=bset, window=win),
                         axo=axo(scn, parcels, blds, existing, RET), sun=sun, scn=scn))
