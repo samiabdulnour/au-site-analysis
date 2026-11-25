@@ -11,7 +11,7 @@ by its footprint type, its storeys and the line its long axis follows; the footp
 real parcel. Needs shapely and Pillow (pip3 install shapely pillow). Writes future-<n>.html, future_base.jpg and
 future-page.json beside analysis.json; scripts/future_context.ts prints them.
 """
-import html as H, json, math, re, sys
+import html as H, json, math, os, re, sys
 import numpy as np
 from PIL import Image, ImageEnhance
 from shapely.geometry import LineString, MultiPolygon, Point, Polygon
@@ -131,6 +131,11 @@ EFFICIENCY = 0.75
 
 def H_of(n):
     return 4.5 + 3.2 * (n - 1)
+
+
+def storey_bottom(n):
+    """The level a storey stands on, metres over the ground; the ground floor's is the ground."""
+    return 0.0 if n <= 1 else H_of(n - 1)
 
 
 # ---- footprints -------------------------------------------------------------------------------------------------
@@ -2280,6 +2285,8 @@ def sun_views(no, sun, hours=(9, 10, 11, 12, 13, 14, 15), reach=32, tall=0.6):
     coloured by the engine's reading at that instant."""
     scene = json.load(open(f'{OUT}/future-scene-{no}.json'))
     site_rec = sun['buildings'].get('site') or {}
+    fac_path = f'{OUT}/future-facade-{no}.json'
+    fac = json.load(open(fac_path)) if not site_rec.get('units') and os.path.exists(fac_path) else None
     series = {}
     for grp, res in (site_rec.get('apts_by') or {}).items():
         for uid, fl, ok, dark, ser in (res.get('each') or []):
@@ -2377,6 +2384,25 @@ def sun_views(no, sun, hours=(9, 10, 11, 12, 13, 14, 15), reach=32, tall=0.6):
                                     items.append((wall_depth, quad, SUN_LIT if lit else SUN_SHADE, '#7a6a2a' if lit else '#777'))
                                 if b['kind'] == 'site':
                                     ours += quad
+        # no plans: our facades as the yield study cuts them (future_facade_sun.py), each cell lit where the engine
+        # finds the sun on it at this hour, on the walls the sun faces
+        if fac:
+            for f_ in fac['faces']:
+                if f_['blank']:
+                    continue
+                (ax_, ay_), (bx_, by_), (nx_, ny_) = f_['a'], f_['b'], f_['normal']
+                if nx_ * s[0] + ny_ * s[1] <= 0:
+                    continue
+                zl, zh = min(storey_bottom(c['storey']) for c in f_['cells']), max(H_of(c['storey']) for c in f_['cells'])
+                wall_depth = min(c[2] for c in (P(ax_, ay_, zl), P(bx_, by_, zl), P(bx_, by_, zh), P(ax_, ay_, zh))) - 0.05
+                for c in f_['cells']:
+                    za, zb = storey_bottom(c['storey']), H_of(c['storey'])
+                    p0 = (ax_ + (bx_ - ax_) * c['t0'], ay_ + (by_ - ay_) * c['t0'])
+                    p1 = (ax_ + (bx_ - ax_) * c['t1'], ay_ + (by_ - ay_) * c['t1'])
+                    quad = [P(p0[0], p0[1], za), P(p1[0], p1[1], za), P(p1[0], p1[1], zb), P(p0[0], p0[1], zb)]
+                    lit = c.get('hourly', '')[hour - 9:hour - 8] == '1'
+                    items.append((wall_depth, quad, SUN_LIT if lit else SUN_SHADE, '#7a6a2a' if lit else '#777'))
+                    ours += quad
         items.sort(key=lambda it: -it[0])                            # far first
         xs = [c[0] for c in ours] or [0]
         ys = [c[1] for c in ours] or [0]
@@ -2485,7 +2511,9 @@ def sun_eye_page(no, scn, sun, r):
     """A scenario's second sheet in a two-sheet deck: the scene as the sun sees it at each whole hour from
     9 to 3, our apartments lit where it reaches their wall, and the share of them with their two hours."""
     site_rec = (sun or {}).get('buildings', {}).get('site') or {}
-    if not site_rec.get('units'):
+    # without the plans' apartments, our facades as the yield study cuts them, where they were read
+    bays = not site_rec.get('units')
+    if bays and not (site_rec and os.path.exists(f'{OUT}/future-facade-{no}.json')):
         return None
     views = sun_views(no, sun, reach=44, tall=1.05)
     ap = site_rec['apts']['planned']
@@ -2493,13 +2521,24 @@ def sun_eye_page(no, scn, sun, r):
     mark, vcol = apts_verdict(ap)
     col = VERDICT_COLOUR.get(vcol, '#111')
     parts = ' · '.join(f'{name} {by[g]["planned"]["share"]:.0%}' for g, name in (('tower', 'tower'), ('podium', 'podium levels')) if g in by)
-    before = site_rec.get('apts_today')
+    # before the neighbours build: the file's scenario that rebuilds nothing, where it has one (a scenario's own
+    # reading without its new buildings leaves out the buildings they replace); none on that scenario's own sheet
+    today_row = next((x for x in SUMMARY if not x['scn'].get('parcels')), None)
+    if today_row is r:
+        before = None
+    elif today_row and ((today_row.get('sun') or {}).get('buildings', {}).get('site') or {}).get('apts'):
+        before = today_row['sun']['buildings']['site']['apts']
+    else:
+        before = (site_rec.get('apts_today') or {}).get('planned') and site_rec['apts_today']
+        before = before['planned'] if before else None
+    whose = 'our apartments, read in 8 m bays along the walls (the scheme has no plans yet),' if bays else 'our apartments'
+    unit_word = 'facade' if bays else 'apartment'
     result = (f'<div class="sv res"><div class="big" style="color:{col}">{ap["share"]:.0%}</div>'
-              f'<div class="rl">of our apartments have two hours of sun, 9 to 3 on 21 June. The ADG asks 70 %.</div>'
+              f'<div class="rl">of {whose} have two hours of sun, 9 to 3 on 21 June. The ADG asks 70 %.</div>'
               f'<div class="rs">{parts}</div>'
               f'<div class="rs">No sun at all: {ap["dark"]:.0%}. The ADG allows 15 %.</div>'
-              + (f'<div class="rs">Before the neighbours build: {before["planned"]["share"]:.0%}.</div>' if before else '')
-              + f'<div class="key"><span style="background:{SUN_LIT}"></span>apartment in sun at that hour<br><span style="background:{SUN_SHADE}"></span>apartment in shadow<br>'
+              + (f'<div class="rs">Before the neighbours build: {(before.get("planned") or before)["share"]:.0%}.</div>' if before else '')
+              + f'<div class="key"><span style="background:{SUN_LIT}"></span>{unit_word} in sun at that hour<br><span style="background:{SUN_SHADE}"></span>{unit_word} in shadow<br>'
               f'<span style="background:#cdc6c0"></span>the neighbours as this scenario builds them</div></div>')
     cells = ''.join(f'<div class="sv"><div class="svt">{H.escape(t)} <span>{H.escape(d)}</span></div>{svg}</div>' for t, d, svg in views) + result
     css = (f'.sh{{position:absolute;left:{mm(10)};top:{mm(9)};width:{mm(400)}}} .sh h1{{margin:0}}'

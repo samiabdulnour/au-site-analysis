@@ -162,6 +162,46 @@ def sun_vectors(scene):
     return [vec for vec in np.asarray(v) if vec[2] > math.sin(math.radians(0.5))]
 
 
+def whole_hour_suns(scene):
+    """The sun at each whole hour from 9 to 3, as the view from the sun is drawn; None where it is not up."""
+    tz = ZoneInfo(scene['timezone'])
+    times = [dt.datetime(scene['year'], 6, 21, h, 0, tzinfo=tz) for h in range(9, 16)]
+    v = np.asarray(solar_position(times, scene['lat'], scene['lon']).unit_vectors_enu())
+    return [vec if vec[2] > math.sin(math.radians(0.5)) else None for vec in v]
+
+
+def read_hourly(faces, occ, suns, key):
+    """Each cell in sun or not at each whole hour, '1' or '0' an hour from 9, under `key`."""
+    for f in faces:
+        for c in f['cells']:
+            c[key] = ['0'] * len(suns)
+    origins, dirs, idx = [], [], []
+    for fi, f in enumerate(faces):
+        if f['blank']:
+            continue
+        (ax, ay), (bx, by), (nx, ny) = f['a'], f['b'], f['normal']
+        for ci, c in enumerate(f['cells']):
+            t = (c['t0'] + c['t1']) / 2
+            p = (ax + (bx - ax) * t + nx * OFF_M, ay + (by - ay) * t + ny * OFF_M, storey_bottom(c['storey']) + SILL_M)
+            for hi, s in enumerate(suns):
+                if s is None:
+                    continue
+                hl = math.hypot(s[0], s[1]) or 1.0
+                if (s[0] / hl) * nx + (s[1] / hl) * ny <= FACING:
+                    continue
+                origins.append(p)
+                dirs.append(s)
+                idx.append((fi, ci, hi))
+    if origins:
+        hit = occ.any_hit(np.asarray(origins), np.asarray(dirs))
+        for (fi, ci, hi), h in zip(idx, hit):
+            if not h:
+                faces[fi]['cells'][ci][key][hi] = '1'
+    for f in faces:
+        for c in f['cells']:
+            c[key] = ''.join(c[key])
+
+
 def read_hours(faces, occ, suns, key):
     """Each cell's quarter hours in sun with this occluder, as hours, under `key`."""
     origins, dirs, idx = [], [], []
@@ -495,7 +535,9 @@ for no, scene in scenes.items():
         continue
     faces = our_faces(site)
     suns = sun_vectors(scene)
-    read_hours(faces, meshes_of(scene), suns, 'with')
+    occ_with = meshes_of(scene)
+    read_hours(faces, occ_with, suns, 'with')
+    read_hourly(faces, occ_with, whole_hour_suns(scene), 'hourly')            # for the view from the sun
     has_today = no != today_no
     today_from = 'scene' if today_occ is not None else 'missing'
     if has_today:
