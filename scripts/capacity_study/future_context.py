@@ -2333,8 +2333,9 @@ def option_page(r):
            f'.ob{{border-bottom:{mm(.15)} solid #ccc;padding:{mm(1.3)} 0;font-size:{pt(6.8)};line-height:1.35}} .ob:first-of-type{{border-top:{mm(.3)} solid #111}}'
            f'.obn{{font-weight:700}} .oby{{color:#333}} .obs{{font-weight:600}} .obc{{font-size:{pt(6)};color:#666;margin-bottom:{mm(1.5)}}}'
            f'.oaxo{{width:{mm(cw)};height:{mm(cw * ah / aw)};margin-top:{mm(6)}}} .oaxo svg{{position:static;display:block;width:100%;height:100%}}')
-    head = (f'<div class="oh"><div class="kick">Future context · Scenario {r["no"]} of {LAST} · plan at 1:{OPTION_SCALE} on A3</div><h1>{H.escape(r["title"])}</h1>'
-            f'<div class="hor">{H.escape(r["horizon"])}</div></div>')
+    # the scenario's number is the sheet's heading; its name and what it builds run under it
+    head = (f'<div class="oh"><div class="kick">Future context · plan at 1:{OPTION_SCALE} on A3</div><h1>Scenario {r["no"]} of {LAST}</h1>'
+            f'<div class="hor"><b style="color:#111">{H.escape(r["title"])}.</b> {H.escape(r["horizon"])}</div></div>')
     warn = ''.join(f'<div class="u" style="color:#c0161c"><b>Site {H.escape(k_)} takes {H.escape(addr)}, heritage item {H.escape(item)}: it cannot be redeveloped.</b></div>' for k_, addr, item in r.get('heritage', []))
     if narrow:
         # beside a wide plan the table is a block a building: its name, its floor space, its sun
@@ -2636,8 +2637,8 @@ def sun_eye_page(no, scn, sun, r):
            f'.res{{justify-content:center;padding:0 {mm(6)}}} .res .big{{font-size:{pt(64)};font-weight:800;line-height:1}}'
            f'.res .rl{{font-size:{pt(10)};font-weight:600;margin:{mm(2)} 0 {mm(4)}}} .res .rs{{font-size:{pt(8.5)};color:#333;margin-bottom:{mm(1.2)}}}'
            f'.res .key{{font-size:{pt(7.5)};color:#444;margin-top:{mm(6)};line-height:1.9}} .res .key span{{display:inline-block;width:{mm(4)};height:{mm(2.6)};margin-right:{mm(2)};vertical-align:middle;border:{mm(.1)} solid #777}}')
-    head = (f'<div class="sh"><div class="kick">Future context · Scenario {r["no"]} of {LAST} · the view from the sun</div><h1>{H.escape(r["title"])}</h1>'
-            f'<div class="hor">Mid-winter, 21 June, each whole hour from 9 to 3: what the sun sees is in sun, what it cannot see is in shadow.</div></div>')
+    head = (f'<div class="sh"><div class="kick">Future context · the view from the sun</div><h1>Scenario {r["no"]} of {LAST}</h1>'
+            f'<div class="hor"><b style="color:#111">{H.escape(r["title"])}.</b> Mid-winter, 21 June, each whole hour from 9 to 3: what the sun sees is in sun, what it cannot see is in shadow.</div></div>')
     return (f'<!doctype html><html><head><meta charset="utf-8"><title>Future context · Scenario {r["no"]} · sun</title><style>{CSS}{css}</style></head><body>'
             f'{head}<div class="views">{cells}</div></body></html>')
 

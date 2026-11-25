@@ -510,8 +510,8 @@ table{{border-collapse:collapse;width:100%;font-size:{6.2 * PT:.1f}px;font-varia
 th{{text-align:left;font-weight:600;border-bottom:{0.3 * MM:.1f}px solid #111;padding:{0.8 * MM:.1f}px {0.5 * MM:.1f}px;vertical-align:bottom}}
 td{{border-bottom:{0.15 * MM:.1f}px solid #ccc;padding:{0.7 * MM:.1f}px {0.5 * MM:.1f}px}} td.r,th.r{{text-align:right}}
 .ass{{font-size:{5.9 * PT:.1f}px;line-height:1.4;color:#444;margin-top:{3 * MM:.0f}px}} .ass p{{margin:0 0 {1.2 * MM:.0f}px}}'''
-    head = (f'<div class="hd"><div class="kick">Future context · Scenario {n} of {last} · sun on our facades, 21 June</div>'
-            f'<h1>{H.escape(title)}</h1><div class="hor">{H.escape(horizon)}</div></div>')
+    head = (f'<div class="hd"><div class="kick">Future context · sun on our facades, 21 June</div>'
+            f'<h1>Scenario {n} of {last}</h1><div class="hor"><b style="color:#111">{H.escape(title)}.</b> {H.escape(horizon)}</div></div>')
     ass = ('<div class="ass"><p><b>How it is read.</b> As the yield study reads a scheme\'s facades: each face of our building cut into cells about '
            f'{CELL_M:g} m wide and a storey high, each read at its middle {SILL_M:g} m over its floor, at the middle of every quarter hour from 9 am to 3 pm '
            'on 21 June (AEST); a quarter hour in sun is 0.25 h, the hours counted whether or not they run together, and the colours are the yield study\'s '
