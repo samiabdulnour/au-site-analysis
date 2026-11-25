@@ -474,7 +474,7 @@ def facade_sun_text(no):
     if not ff or not ff.get('with'):
         return None
     today_ = ff.get('today')
-    return (f'{ff["with"]["two"]:.0%} of our facade has 2 h or more' + (f' (today {today_["two"]:.0%})' if today_ else ''), '')
+    return (f'{ff["with"]["two"]:.0%} of our facade has 2 h or more' + (f' (baseline {today_["two"]:.0%})' if today_ else ''), '')
 
 
 def trim_to(poly, want):
@@ -2594,9 +2594,10 @@ def sun_eye_page(no, scn, sun, r):
         # no plans: nothing said of apartments, only of the facade the sun reaches, as the facade sheet reads it
         ff = facade_figures(no) or {}
         w_, t_ = ff.get('with') or dict(two=0.0, none=0.0), ff.get('today')
+        base_no = f', scenario {today_row["no"]}' if today_row else ''
         result = (f'<div class="sv res"><div class="big" style="color:#111">{w_["two"]:.0%}</div>'
                   f'<div class="rl">of our facade has two hours of sun or more, 9 to 3 on 21 June.</div>'
-                  + (f'<div class="rs">Today, with the buildings as they stand: {t_["two"]:.0%}.</div>' if t_ else '')
+                  + (f'<div class="rs">The baseline{base_no}: {t_["two"]:.0%}.</div>' if t_ else '')
                   + f'<div class="rs">No sun at all on {w_["none"]:.0%} of it.</div>'
                   f'<div class="rs">Read cell by cell, as the facade sheet reads it: the walls that can hold a window, the party wall left out.</div>'
                   f'<div class="key"><span style="background:{SUN_LIT}"></span>facade in sun at that hour<br><span style="background:{SUN_SHADE}"></span>facade in shadow<br>'

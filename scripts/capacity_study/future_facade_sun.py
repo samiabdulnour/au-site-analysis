@@ -471,16 +471,16 @@ def sheet(n, last, title, horizon, faces, has_today, today_from, total):
         tdy = r_today.get(d) if r_today else None
         tcells = (f'<td class="r">{tdy["hours"] / tdy["area"]:.1f} h</td><td class="r">{pct(tdy["two"] / tdy["area"])}</td>' if tdy and tdy['area'] else '<td></td><td></td>') if has_today else ''
         trs += f'<tr><td>{COMPASS_WORD[d]}{(" · " + H.escape(st)) if st else ""}</td><td class="r">{w["area"]:.0f} m²</td>{tcells}<td class="r"><b>{w["hours"] / w["area"]:.1f} h</b></td><td class="r"><b>{pct(w["two"] / w["area"])}</b></td></tr>'
-    th = ('<th class="r">today, mean</th><th class="r">today, 2 h+</th>' if has_today else '') + ('<th class="r">with it, mean</th><th class="r">with it, 2 h+</th>' if has_today else '<th class="r">mean</th><th class="r">2 h+</th>')
+    th = ('<th class="r">baseline, mean</th><th class="r">baseline, 2 h+</th>' if has_today else '') + ('<th class="r">with it, mean</th><th class="r">with it, 2 h+</th>' if has_today else '<th class="r">mean</th><th class="r">2 h+</th>')
     table = f'<table><tr><th>Our faces, the way they look</th><th class="r">facade</th>{th}</tr>{trs}</table>'
     if has_today:
-        strips = (elevation_svg(faces, 'today', 196, 'Unfolded · today', total) + f'<div class="sl">{bar(t_today)}<div>{line(t_today)}.</div></div>'
+        strips = (elevation_svg(faces, 'today', 196, f'Unfolded · the baseline, scenario {today_no}', total) + f'<div class="sl">{bar(t_today)}<div>{line(t_today)}.</div></div>'
                   + elevation_svg(faces, 'with', 196, 'Unfolded · with the scenario', total) + f'<div class="sl">{bar(t_with)}<div>{line(t_with)}.</div></div>')
         lead = (f'With the scenario standing, {pct(t_with["two"] / t_with["area"])} of our facade has two hours of sun or more on 21 June, '
-                f'against {pct(t_today["two"] / t_today["area"])} with today\'s buildings; on average {t_with["hours"] / t_with["area"]:.1f} h against {t_today["hours"] / t_today["area"]:.1f} h.')
+                f'against {pct(t_today["two"] / t_today["area"])} in the baseline, scenario {today_no}; on average {t_with["hours"] / t_with["area"]:.1f} h against {t_today["hours"] / t_today["area"]:.1f} h.')
     else:
-        strips = elevation_svg(faces, 'with', 196, 'Unfolded · as it stands today', total) + f'<div class="sl">{bar(t_with)}<div>{line(t_with)}.</div></div>'
-        lead = f'With today\'s buildings round us, {pct(t_with["two"] / t_with["area"])} of our facade has two hours of sun or more on 21 June; on average {t_with["hours"] / t_with["area"]:.1f} h.'
+        strips = elevation_svg(faces, 'with', 196, 'Unfolded · the baseline', total) + f'<div class="sl">{bar(t_with)}<div>{line(t_with)}.</div></div>'
+        lead = f'In the baseline, {pct(t_with["two"] / t_with["area"])} of our facade has two hours of sun or more on 21 June; on average {t_with["hours"] / t_with["area"]:.1f} h.'
     today_note = '' if today_from != 'missing' else '<p><b>Today here is the scenario with its new buildings taken out: the buildings they replace are missing from it, so today is read with more sun than it has.</b></p>'
     css = f'''@page{{size:{PAGE_W}px {PAGE_H}px;margin:0}} *{{box-sizing:border-box}} html,body{{margin:0;background:#fff}}
 body{{width:{PAGE_W}px;height:{PAGE_H}px;font-family:Inter,Helvetica,Arial,sans-serif;color:#111;position:relative;overflow:hidden;-webkit-print-color-adjust:exact;print-color-adjust:exact}}

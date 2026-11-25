@@ -30,7 +30,7 @@
   "95 CROWN STREET": 4
  },
  "deck": "two-sheet",
- "_": "The sketch of 25 November 2026 over the 70-76 Riley Street study: each neighbour's tower on the outline drawn, at the storeys written in its middle and the setbacks written on its sides (where a side has no figure, as drawn, measured off the sketch at 1:1 against our lot); no podiums are drawn, so each tower stands on a three-storey podium over its whole lot. See the density file for the keys. Steps 1 to 4, marked up on 25 November, read the sketch down a step at a time: the William Street towers taken away (a scenario's `removed`, by address, takes a building out of the plan, the massing and the sun study) and 67-89 Riley St at 14 storeys; Crown St north a 7-storey podium; 54-64 Riley St one too; every block at 7 storeys, a four-storey podium and three storeys 3 m off the long streets.",
+ "_": "The sketch of 25 November 2026 over the 70-76 Riley Street study: each neighbour's tower on the outline drawn, at the storeys written in its middle and the setbacks written on its sides (where a side has no figure, as drawn, measured off the sketch at 1:1 against our lot); no podiums are drawn, so each tower stands on a three-storey podium over its whole lot. See the density file for the keys. Every scenario takes away 88-108 and 72-80 William St (a scenario's `removed`, by address, takes a building out of the plan, the massing and the sun study). Steps 1 to 4, marked up on 25 November, read the sketch down a step at a time: 67-89 Riley St at 14 storeys; Crown St north a 7-storey podium; 54-64 Riley St one too; every block at 7 storeys, a four-storey podium and three storeys 3 m off the long streets.",
  "site": {
   "storeys": 14,
   "units": null,
@@ -67,10 +67,11 @@
  ],
  "scenarios": [
   {
-   "title": "As it stands today, our building as sketched",
-   "horizon": "Every neighbour as it stands today; our building as the sketch of 25 November has it. The baseline the two scenarios are read against.",
-   "lead": "Nothing round us is rebuilt: 67-89 Riley St stands as the 1960s block of 112 apartments it is, and every other neighbour as it does today, its height off Google's 3D tiles. Our building as sketched: a three-storey podium (a taller ground floor and two residential levels) and a tower to 14 storeys, 6 m off our northern boundary, 3 m off Riley Street and Crown Lane, 5 m off Stanley Lane.",
+   "title": "Today without the William Street towers, our building as sketched",
+   "horizon": "Every neighbour as it stands today, with 88-108 and 72-80 William St taken away; our building as the sketch of 25 November has it. The baseline the scenarios are read against.",
+   "lead": "Nothing round us is rebuilt, and the towers at 88-108 William St (about 100 m) and 72-80 William St (about 69 m), north-east of us, are taken away: 67-89 Riley St stands as the 1960s block of 112 apartments it is, and every other neighbour as it does today, its height off Google's 3D tiles. Our building as sketched: a three-storey podium (a taller ground floor and two residential levels) and a tower to 14 storeys, 6 m off our northern boundary, 3 m off Riley Street and Crown Lane, 5 m off Stanley Lane.",
    "notes": [
+    "88-108 William St (about 100 m) and 72-80 William St (about 69 m) are taken away, in every scenario.",
     "Every neighbour stands as it is."
    ],
    "retained": [
@@ -83,13 +84,18 @@
      "why": "stays, as sketched"
     }
    ],
-   "parcels": []
+   "parcels": [],
+   "removed": [
+    "88-108 WILLIAM STREET",
+    "72-80 WILLIAM STREET"
+   ]
   },
   {
    "title": "67-89 Riley St at 18 storeys, everything else as it stands",
-   "horizon": "The HDA proposal across Riley Street at 18 storeys as sketched; every other neighbour as it stands. Our building as the sketch of 25 November has it.",
+   "horizon": "The HDA proposal across Riley Street at 18 storeys as sketched; every other neighbour as it stands. Our building as the sketch of 25 November has it; 88-108 and 72-80 William St taken away.",
    "lead": "67-89 Riley St, the 1960s block of 112 apartments across Riley Street to our north-west, rebuilt as the HDA's SSD proposal: a three-storey podium over the lot and a tower to 18 storeys on the sketch of 25 November, {R.plate}, 3 m off Riley Street and Yurong Lane, 6 m off 91-93 Riley St, about 16 m deep from Riley Street. Every other neighbour stands as it does today. Our building as sketched: a three-storey podium and a tower to 14 storeys, 6 m off our northern boundary and 3 m off Riley Street and Crown Lane.",
    "notes": [
+    "88-108 William St (about 100 m) and 72-80 William St (about 69 m) are taken away, in every scenario.",
     "67-89 Riley St (77 Riley St): {R.area} m², {R.plate}, {R.storeys} storeys at {R.fsr}; {R.sep} m from our tower.",
     "The HDA records 62 m; 18 storeys here is 58.9 m (4.5 m ground floor, 3.2 m above).",
     "Every other neighbour stands as it is."
@@ -133,13 +139,18 @@
       }
      ]
     }
+   ],
+   "removed": [
+    "88-108 WILLIAM STREET",
+    "72-80 WILLIAM STREET"
    ]
   },
   {
    "title": "The sketch of 25 November: 18 and 14 storeys round us",
-   "horizon": "Every tower as sketched: 18 storeys at 67-89 Riley St, north of us and on Crown St north; 14 across Riley Street and on Crown St south; 107-113 Crown St and 66-68 Riley St as they stand.",
+   "horizon": "Every tower as sketched: 18 storeys at 67-89 Riley St, north of us and on Crown St north; 14 across Riley Street and on Crown St south; 107-113 Crown St and 66-68 Riley St as they stand; 88-108 and 72-80 William St taken away.",
    "lead": "The towers of the sketch of 25 November, each over a three-storey podium on its whole lot, the tower on its own outline with the setbacks written on it: 67-89 Riley St, 18 storeys, 3 m off Riley Street and Yurong Lane, 6 m off its southern neighbour; 54-64 Riley St with 1 Crown Lane, 18 storeys, 3 m off Yurong Lane, Riley Street and Crown Lane and built to the boundary of 66-68 Riley St, 12 m from ours; Crown St north, 18 storeys, 3 m off Yurong Lane, 6 m off Crown Lane and off 107-113 Crown St; 115-129 Crown St, 14 storeys, 6 m off Crown Lane and off 107-113 Crown St; 91-107 Riley St, 14 storeys, 3 m off Riley Street and 109 Riley St, 6 m off 67-89. 107-113 Crown St, 66-68 Riley St and the heritage item at 109 Riley St stand as they are. Our building: a three-storey podium and a tower to 14 storeys, 6 m off our northern boundary, 3 m off Riley Street and Crown Lane.",
    "notes": [
+    "88-108 William St (about 100 m) and 72-80 William St (about 69 m) are taken away, in every scenario.",
     "67-89 Riley St: {R.area} m², {R.plate}, {R.storeys} storeys at {R.fsr}; {R.sep} m from our tower.",
     "54-64 Riley St + 1 Crown Lane: {A.area} m², {A.plate}, {A.storeys} storeys at {A.fsr}; {A.sep} m from our tower.",
     "Crown St north: {B.area} m², {B.plate}, {B.storeys} storeys at {B.fsr}.",
@@ -317,14 +328,18 @@
       }
      ]
     }
+   ],
+   "removed": [
+    "88-108 WILLIAM STREET",
+    "72-80 WILLIAM STREET"
    ]
   },
   {
-   "title": "Step 1: the William Street towers gone, 67-89 Riley St at 14 storeys",
-   "horizon": "The sketch of 25 November with 88-108 and 72-80 William St taken away, and 67-89 Riley St at 14 storeys where the sketch has 18.",
-   "lead": "As the sketch of 25 November, with two changes: the towers at 88-108 William St (about 100 m) and 72-80 William St (about 69 m), north-east of us, are taken away, and 67-89 Riley St stands at 14 storeys, not 18, on the same outline. 54-64 Riley St and Crown St north stay at 18 storeys, 91-107 Riley St and 115-129 Crown St at 14, every tower over a three-storey podium. Our building as sketched: a three-storey podium and a tower to 14 storeys.",
+   "title": "Step 1: 67-89 Riley St at 14 storeys",
+   "horizon": "The sketch of 25 November with 67-89 Riley St at 14 storeys where the sketch has 18; 88-108 and 72-80 William St taken away, as in every scenario.",
+   "lead": "As the sketch of 25 November, with 67-89 Riley St at 14 storeys, not 18, on the same outline; the towers at 88-108 and 72-80 William St are taken away, as in every scenario. 54-64 Riley St and Crown St north stay at 18 storeys, 91-107 Riley St and 115-129 Crown St at 14, every tower over a three-storey podium. Our building as sketched: a three-storey podium and a tower to 14 storeys.",
    "notes": [
-    "88-108 William St (about 100 m) and 72-80 William St (about 69 m) are taken away.",
+    "88-108 William St (about 100 m) and 72-80 William St (about 69 m) are taken away, in every scenario.",
     "67-89 Riley St: {R.area} m², {R.plate}, {R.storeys} storeys at {R.fsr}; {R.sep} m from our tower.",
     "54-64 Riley St + 1 Crown Lane: {A.area} m², {A.plate}, {A.storeys} storeys at {A.fsr}; {A.sep} m from our tower.",
     "Crown St north: {B.area} m², {B.plate}, {B.storeys} storeys at {B.fsr}.",
@@ -511,9 +526,9 @@
   {
    "title": "Step 2: Crown St north a 7-storey podium",
    "horizon": "As step 1, with Crown St north built as a podium of 7 storeys over its lot and no tower.",
-   "lead": "As step 1, the William Street towers taken away and 67-89 Riley St at 14 storeys, with Crown St north (89-105 Crown St with 4 and 10 Crown Lane) built as a podium of 7 storeys over its whole lot, no tower on it. 54-64 Riley St stays at 18 storeys, 91-107 Riley St and 115-129 Crown St at 14.",
+   "lead": "As step 1, 67-89 Riley St at 14 storeys, with Crown St north (89-105 Crown St with 4 and 10 Crown Lane) built as a podium of 7 storeys over its whole lot, no tower on it. 54-64 Riley St stays at 18 storeys, 91-107 Riley St and 115-129 Crown St at 14.",
    "notes": [
-    "88-108 William St (about 100 m) and 72-80 William St (about 69 m) are taken away.",
+    "88-108 William St (about 100 m) and 72-80 William St (about 69 m) are taken away, in every scenario.",
     "Crown St north: {B.area} m², 7 storeys over the lot, {B.fsr}.",
     "67-89 Riley St: {R.area} m², {R.plate}, {R.storeys} storeys at {R.fsr}; {R.sep} m from our tower.",
     "54-64 Riley St + 1 Crown Lane: {A.area} m², {A.plate}, {A.storeys} storeys at {A.fsr}; {A.sep} m from our tower.",
@@ -685,9 +700,9 @@
   {
    "title": "Step 3: 54-64 Riley St a 7-storey podium too",
    "horizon": "As step 2, with 54-64 Riley St also built as a podium of 7 storeys over its lot and no tower.",
-   "lead": "As step 2, with 54-64 Riley St and 1 Crown Lane, north of us, built as a podium of 7 storeys over its whole lot too, no tower on it: Crown St north and 54-64 Riley St both 7 storeys, 67-89 Riley St at 14, 91-107 Riley St and 115-129 Crown St at 14, the William Street towers taken away.",
+   "lead": "As step 2, with 54-64 Riley St and 1 Crown Lane, north of us, built as a podium of 7 storeys over its whole lot too, no tower on it: Crown St north and 54-64 Riley St both 7 storeys, 67-89 Riley St at 14, 91-107 Riley St and 115-129 Crown St at 14.",
    "notes": [
-    "88-108 William St (about 100 m) and 72-80 William St (about 69 m) are taken away.",
+    "88-108 William St (about 100 m) and 72-80 William St (about 69 m) are taken away, in every scenario.",
     "54-64 Riley St + 1 Crown Lane: {A.area} m², 7 storeys over the lot, {A.fsr}.",
     "Crown St north: {B.area} m², 7 storeys over the lot, {B.fsr}.",
     "67-89 Riley St: {R.area} m², {R.plate}, {R.storeys} storeys at {R.fsr}; {R.sep} m from our tower.",
@@ -844,9 +859,9 @@
   {
    "title": "Step 4: every block at 7 storeys, 23.4 m",
    "horizon": "The three blocks round us each built to 7 storeys, the 23.4 m height of building: a four-storey podium over the lot and three storeys above it 3 m off the long streets.",
-   "lead": "Every block round us is built to 7 storeys, the 23.4 m height of building: across Riley Street, 67-107 Riley St as one site; north of us, 54-68 Riley St with 1 Crown Lane, 66-68 Riley St with them; across Crown Lane, the whole Crown Street block, 89 to 129 Crown St with 4 and 10 Crown Lane. Each is a four-storey podium over its lot and three storeys above it, held 3 m off its two long street frontages. The William Street towers are taken away; 109 Riley St, the former hotel, is a heritage item (I436) and stays. Our building as sketched: a three-storey podium and a tower to 14 storeys.",
+   "lead": "Every block round us is built to 7 storeys, the 23.4 m height of building: across Riley Street, 67-107 Riley St as one site; north of us, 54-68 Riley St with 1 Crown Lane, 66-68 Riley St with them; across Crown Lane, the whole Crown Street block, 89 to 129 Crown St with 4 and 10 Crown Lane. Each is a four-storey podium over its lot and three storeys above it, held 3 m off its two long street frontages. The William Street towers are taken away, as in every scenario; 109 Riley St, the former hotel, is a heritage item (I436) and stays. Our building as sketched: a three-storey podium and a tower to 14 storeys.",
    "notes": [
-    "88-108 William St (about 100 m) and 72-80 William St (about 69 m) are taken away.",
+    "88-108 William St (about 100 m) and 72-80 William St (about 69 m) are taken away, in every scenario.",
     "67-107 Riley St: {W.area} m², {W.storeys} storeys at {W.fsr}; {W.sep} m from our tower.",
     "54-68 Riley St + 1 Crown Lane: {N.area} m², {N.storeys} storeys at {N.fsr}; {N.sep} m from our tower.",
     "89-129 Crown St: {C.area} m², {C.storeys} storeys at {C.fsr}; {C.sep} m from our tower.",
