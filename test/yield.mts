@@ -502,7 +502,7 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
   check('shadow: the key names the neighbours\' shadows hour by hour, the envelope\'s own in its colour with its three outlined, the separations, and the neighbours by their street numbers',
     (shade.legend ?? []).some((e) => /The neighbours' shadows on 21 June, each hour 9 am – 3 pm laid over the last/.test(e.label) && e.swatch.includes('#3a3c41'))
     && (shade.legend ?? []).some((e) => /own shadow, the same hours, in its own colour; at 9 am, 12 pm and 3 pm outlined/.test(e.label) && e.swatch.includes(String(accentInk)))
-    && (shade.legend ?? []).some((e) => /Building separation, apart \/ asked/.test(e.label)) && (shade.legend ?? []).some((e) => /each lot with its street number/.test(e.label)) && !(shade.legend ?? []).some((e) => /zone/.test(e.label)));
+    && (shade.legend ?? []).some((e) => /Building separation: the distance over its line, what is asked/.test(e.label)) && (shade.legend ?? []).some((e) => /each lot with its street number/.test(e.label)) && !(shade.legend ?? []).some((e) => /zone/.test(e.label)));
   check('compliance: a lone option gets its two pages', deck(sliver).slides.some((sl) => sl.id === '03_within_controls_shadow_and_separation') && deck(sliver).slides.some((sl) => sl.id === '04_within_controls_solar_access'), deck(sliver).slides.map((sl) => sl.id).join(','));
   check('sun: what stands is given no sun', scenarioRows(bundle, s)[0].sun === undefined);
   const orange: YieldBundle = { ...bundle, controls: { ...bundle.controls, lgaName: 'ORANGE' } };
@@ -611,8 +611,8 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
       check('iso shade: the grey is still to be had', fills(greyed).every((f) => hue(f) <= 4));
     }
     // Z. 2026-11: "make the dims there black". The separations on the plan in black, dashed where only a blank face holds.
-    check('canary shadow: the separations black, their distance with what is asked', / fill="#000000" data-dim="1">8\.0 \/ 12 m</.test(cShade.figureHtml)
-      && (cShade.legend ?? []).some((e) => /Building separation, apart \/ asked/.test(e.label) && !/#2f8f55|#c8372d|#c98a12/.test(e.swatch)));
+    check('canary shadow: the separations black, their distance with what is asked', / fill="#000000" data-dim="1">8\.0 m</.test(cShade.figureHtml) && / data-dim-asked="1">min 12 m</.test(cShade.figureHtml)
+      && (cShade.legend ?? []).some((e) => /Building separation: the distance over its line, what is asked/.test(e.label) && !/#2f8f55|#c8372d|#c98a12/.test(e.swatch)));
     // Z. 2026-11: "try colourful shadow with neighbour buildings too". Asked for, the neighbours' shadows are contours
     // of their own (Canary's blues) under the envelope's, or every building's together as one set of contours.
     const gBlue = withLook({ ground: 'contours', gRamp: 'blue' }, () => renderYieldDeck(close, meta, { theme: 'canary' }).slides.find((sl) => isTestPage(sl.id, 'shadow'))!);
@@ -628,7 +628,7 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
     && closePlan.indexOf('fill-rule="nonzero"') < closePlan.indexOf(`fill="${accentInk}" fill-rule="evenodd"`));
   // Z. 2026-11: "the building separation needs to be visible in the drawing, don't put it into text". Each separation a
   // dimension on the plan with what is asked of it; no table of them in the text column.
-  check('separation: on the drawing, a dimension with what is asked of it; no table of it in the text', / data-dim="1">8\.0 \/ 12 m</.test(closePlan)
+  check('separation: on the drawing, a dimension with what is asked of it; no table of it in the text', / data-dim="1">8\.0 m</.test(closePlan) && / data-dim-asked="1">min 12 m</.test(closePlan)
     && !/<td>building to the east<\/td>/.test(closePlan) && !/>Building separation<\/div>|<h\d[^>]*>Building separation</.test(closePlan.slice(0, closePlan.indexOf('<svg'))) && /<td>Building separation<\/td>/.test(closePlan),
     closePlan.match(/<text[^>]*data-dim="1">[^<]*</)?.[0]);
   // The plan's other marks are still to be had (YIELD_SHADOW_LOOK overrides the look, for iterations): the hatch on
@@ -654,7 +654,17 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
   const dimsOf = (html: string) => [...html.matchAll(/<text transform="translate\([^)]+\) rotate\((-?[\d.]+)\)" y="(-?[\d.]+)"[^>]*data-dim="1">([^<]+)<\/text>/g)].map((d) => ({ turn: Number(d[1]), y: Number(d[2]), label: d[3] }));
   const dims = dimsOf(withLook({ dims: true }, () => shadowOf({ ...bundle, context: [{ rings: [east], heightM: 6.2, known: true }, { rings: [north], heightM: 6.2, known: true }] }).figureHtml));
   check('separation: each distance is written along its dimension line and off it, a line up the sheet read from the right', dims.length === 2 && dims.every((d) => d.y < 0)
-    && dims.find((d) => d.label === '8.0 / 12 m')?.turn === 0 && dims.find((d) => d.label !== '8.0 / 12 m')?.turn === -90, JSON.stringify(dims));
+    && dims.find((d) => d.label === '8.0 m')?.turn === 0 && dims.find((d) => d.label !== '8.0 m')?.turn === -90, JSON.stringify(dims));
+  // Z. 2026-11: "dims are not very beautiful, change that". As an architect dimensions a plan: a fine line run past its
+  // ends, oblique ticks, the distance in plain figures over it and what is asked small and grey under it.
+  check('separation: a fine dimension line with oblique ticks, the distance plain over it, what is asked under it', /<path data-dim-line="1" d="[^"]+" fill="none" stroke="#000000" stroke-width="0\.16"/.test(fullPlan)
+    && /stroke-width="0\.32" stroke-linecap="round"/.test(fullPlan) && !/font-weight="700"[^>]*data-dim="1"/.test(fullPlan)
+    && /<text transform="[^"]+" y="(\d[\d.]*)"[^>]*fill="#6a6a6a" data-dim-asked="1">min 12 m</.test(fullPlan));
+  // a building beyond the one next door, on the same line and far enough: left off, so two lines do not run over each other
+  const beyond = east.map(([x, y]) => [x + 13 * m, y]);
+  const behind = withLook({ dims: true }, () => shadowOf({ ...bundle, context: [{ rings: [east], heightM: 6.2, known: true }, { rings: [beyond], heightM: 6.2, known: true }] }).figureHtml);
+  check('separation: one that runs on through a nearer building, and holds, is left off the drawing', (behind.match(/data-dim-line="1"/g) ?? []).length === 1 && /data-dim="1">8\.0 m</.test(behind),
+    JSON.stringify(dimsOf(behind)));
   check('separation: no distance is left written across its line', (fullPlan.match(/data-dim="1"/g) ?? []).length === 1 && dimsOf(fullPlan).length === 1);
   const told: YieldBundle = { ...bundle, assumptions: { sun: { hours: 3 } } };
   check('sun: yield_assumptions.json sets the hours', /receive 3 hours direct/.test(JSON.stringify(yieldRows(told))) && /from yield_assumptions\.json/.test(JSON.stringify(yieldRows(told))));

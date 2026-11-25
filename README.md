@@ -1889,6 +1889,14 @@ yield for 86, 88-90, 94 Maroubra Road, 2026-11):
   the morning side and the C zones' oranges C4, C3, C2, C1 on the
   afternoon side (`CANARY_SHADOW_RAMPS`), the hours named in Canary's text
   inks. The sweeps run through swatches too (`CANARY_SWEEPS`).
+- *"Dims are not very beautiful, change that."* They were a heavy line
+  with square ticks and the whole `13.1 / 12 m` in bold, across whatever
+  it met, the site's thick line among it. Now drawn as an architect
+  dimensions a plan: a fine line run past its ends, oblique ticks, the
+  distance over it in plain figures and `min 12 m` small and grey under
+  it, the words where they cross the least and kept off the site's line.
+  A separation running on through a nearer, dimensioned building is left
+  off where it holds (a house next door and the one beyond it).
 - *"If there is nothing, don't print it."* "Within the controls" had a
   spread of its own even in a zone the study draws no building type for:
   every figure a dash, over the height plane alone. A path that builds
@@ -2034,10 +2042,17 @@ site may take, so a site with more paths has more pages:
      over the last, so the ground darkens with the hours it is in shade,
      and the scheme's own over them in a colour of its own, the style's
      blue (Heron: its accent), at 9 am, noon and 3 pm outlined and named. Each separation is
-     a dimension on the plan, from the scheme to the building near it, with
-     what is asked of it written along it (`5.9 / 12 m`: green clear, amber
-     where it holds only habitable to non-habitable, red short); there is
-     no table of them. `YIELD_SHADOW_LOOK` (JSON, read when the page is
+     a dimension on the plan, from the scheme to the building near it, drawn
+     as an architect dimensions a plan: a fine black line run a little past
+     its ends, oblique ticks, the distance in plain figures over it (`5.9 m`)
+     and what is asked small and grey under it (`min 12 m`); dashed where it
+     holds only with one face blank. The words go where they cross the least:
+     the site's thick line (with a margin), the scheme's and the standing
+     buildings' outlines, the other dimensions, then the neighbours'
+     outlines; the middle first, past an end (its line run on under them)
+     when the middle is taken. A separation that runs on through a nearer
+     building, itself dimensioned, is left off where it holds. There is no
+     table of them. `YIELD_SHADOW_LOOK` (JSON, read when the page is
      drawn) overrides any part of that look, for further iterations: which
      hours, whose shadows, the hatch on what the envelope adds
      (`addedGround()`), the dimensions, the neighbours black or grey.

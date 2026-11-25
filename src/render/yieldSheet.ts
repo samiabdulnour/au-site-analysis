@@ -907,7 +907,7 @@ interface PlanMarks {
   /** The ground only the scheme shades, at one hour or more: hatched over its shadow. */
   added?: XY[][];
   shaded?: XY[][][];
-  dims?: { a: XY; b: XY; label: string; ink: string; /** a dash attribute for the line, where the status is told by it */ dash?: string }[];
+  dims?: { a: XY; b: XY; label: string; /** what is asked of it, written small under the line: "min 12 m" */ asked?: string; ink: string; /** a dash attribute for the line, where the status is told by it */ dash?: string; /** it holds (not short): it may be left off where a nearer building on its line is dimensioned */ holds?: boolean }[];
   /** How the shadows are drawn: the envelope's ink and each layer's strength, the neighbours', and whether the layers darken what is under them. */
   look?: { own?: string; oAlpha?: number; nInk?: string; nAlpha?: number; multiply?: boolean };
 }
@@ -946,10 +946,12 @@ const CANARY_SWEEPS = {
   'yellow-red': ['#ffd400', '#f7c568', '#f0ae3c', '#e69900', '#ff776e', '#ff483b', '#c8231a'],
 };
 /**
- * The separations on a path's plan: black, the distance and what is asked written along each (Z. 2026-11: "make the
+ * The separations on a path's plan: black, the distance over each line and what is asked under it (Z. 2026-11: "make the
  * dims there black"). They were green, amber and red by their status, which the criteria table beside the plan marks.
  */
 const DIM_INK = '#000000';
+/** What is asked of a separation, written small under its line: a grey, so the distance reads first. */
+const DIM_ASKED_INK = '#6a6a6a';
 /** A contour band of the envelope's shadow: nearly opaque, the lot lines faint through it. */
 const BAND_OPACITY = 0.88;
 /** The scheme's own shadow on it, in a colour of its own: each hour a little stronger than a neighbour's grey, so its colour holds where it falls on theirs. */
@@ -1240,40 +1242,91 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
     taken.push([px - R - 0.4, py - R - 0.4, px + R + 0.4, py + R + 0.4]);
   });
 
-  // The separations: a dimension line from the scheme to each building near it, in its status's ink, the distance along it;
-  // and each shadow's hour at its far end.
-  for (const dm of marks?.dims ?? []) {
+  // The separations, as an architect dimensions a plan (Z. 2026-11: "dims are not very beautiful, change that"): a fine
+  // line run a little past its ends, a short oblique tick at each end, the distance over the line in plain figures and
+  // what is asked of it small under it, both turned to the line and read from the sheet's foot or its right. The words
+  // go where they cross nothing drawn heavily (the site's line, another dimension, the scheme's outline) and nothing
+  // written: at the line's middle, or slid along it, or past its ends. (It was a heavy line with square ticks and the
+  // whole "13.1 / 12 m" in bold, across whatever it met: the site's line through the figures.)
+  const SITE_MARGIN = 0.9;
+  const DIM = { line: 0.16, tick: 0.32, tickHalf: 0.75, overrun: 0.9, fs: 2.25, fsAsked: 1.75, gap: 0.55 };
+    const heavy: [[number, number], [number, number]][] = [];
+  const ringSegs = (rg: XY[]) => rg.map((p, i) => [at(p), at(rg[(i + 1) % rg.length])] as [[number, number], [number, number]]);
+  const siteSegs = ringSegs(s.ring);
+  for (const t of y?.tiers ?? []) for (const rg of t.plate) heavy.push(...ringSegs(rg));
+  for (const st of scheme.standing ?? []) for (const rg of st.rings) heavy.push(...ringSegs(rg));
+  // (the neighbours' outlines are lighter, but words across them read less well: they count, for less)
+  const light = (marks?.dims ?? []).length ? blds.flatMap(ringSegs) : [];
+  const cross = (p: number[], q: number[], r: number[], t: number[]) => {
+    const d = (a: number[], b2: number[], c: number[]) => (b2[0] - a[0]) * (c[1] - a[1]) - (b2[1] - a[1]) * (c[0] - a[0]);
+    return d(p, q, r) * d(p, q, t) < 0 && d(r, t, p) * d(r, t, q) < 0;
+  };
+  const inside = (pt: number[], quad: number[][]) => quad.every((c, i) => { const n = quad[(i + 1) % 4]; return (n[0] - c[0]) * (pt[1] - c[1]) - (n[1] - c[1]) * (pt[0] - c[0]) >= 0; })
+    || quad.every((c, i) => { const n = quad[(i + 1) % 4]; return (n[0] - c[0]) * (pt[1] - c[1]) - (n[1] - c[1]) * (pt[0] - c[0]) <= 0; });
+  const hitCount = (quad: number[][], segs: [[number, number], [number, number]][]) => segs.filter(([p, q]) => inside(p, quad) || inside(q, quad) || quad.some((c, i) => cross(c, quad[(i + 1) % 4], p, q))).length;
+  const dimAll = (marks?.dims ?? []).map((dm) => {
     const [x1, y1] = at(dm.a), [x2, y2] = at(dm.b);
-    const len = Math.hypot(x2 - x1, y2 - y1) || 1, ux = (x2 - x1) / len, uy = (y2 - y1) / len;
-    const tick = (x: number, yy: number) => `M${(x - uy * 1.1).toFixed(2)},${(yy + ux * 1.1).toFixed(2)}L${(x + uy * 1.1).toFixed(2)},${(yy - ux * 1.1).toFixed(2)}`;
-    // (heavier and larger on a path's plan, where the separations are read off the drawing alone)
-    const dw = greyPlan ? 0.35 : 0.5, dfs = greyPlan ? 2.5 : 2.8;
-    out.push(`<path d="M${x1.toFixed(2)},${y1.toFixed(2)}L${x2.toFixed(2)},${y2.toFixed(2)}" fill="none" stroke="${dm.ink}" stroke-width="${dw}"${dm.dash ?? ''}/><path d="${tick(x1, y1)}${tick(x2, y2)}" fill="none" stroke="${dm.ink}" stroke-width="${dw}"/>`);
-    // the distance as a dimension is written: turned to its line and standing just off it, not across it, read from the
-    // sheet's foot or from its right (over a line that runs across, left of one that runs up). At the line's middle, or
-    // slid along it, then on its other side, then past its ends, until clear of what is written; nowhere clear, the line alone
-    const w = dm.label.length * 0.58 * dfs + 1.6, CAP = 0.72 * dfs;
+    const len = Math.hypot(x2 - x1, y2 - y1) || 1;
+    return { dm, x1, y1, x2, y2, len, ux: (x2 - x1) / len, uy: (y2 - y1) / len };
+  });
+  // a separation that runs on through a nearer building, itself dimensioned, is left off where it holds: the nearer one
+  // is the one that tells, and two lines over each other read as neither (a house next door and the one beyond it)
+  const offLine = (p: number[], g: (typeof dimAll)[number]) => {
+    const t = (p[0] - g.x1) * g.ux + (p[1] - g.y1) * g.uy;
+    return t > 0 && t < g.len && Math.abs((p[0] - g.x1) * g.uy - (p[1] - g.y1) * g.ux) < 1.2;
+  };
+  const dimGeo = dimAll.filter((g) => !(g.dm.holds && dimAll.some((o) => o !== g && o.len < g.len && offLine([o.x2, o.y2], g))));
+  // the lines first, run past their ends, the ticks oblique at 45 degrees to them; the words after, over every line
+  for (const { dm, x1, y1, x2, y2, ux, uy } of dimGeo) {
+    const ox = ux * DIM.overrun, oy = uy * DIM.overrun, tx = ((ux - uy) / Math.SQRT2) * DIM.tickHalf, ty = ((ux + uy) / Math.SQRT2) * DIM.tickHalf;
+    const tick = (x: number, yy: number) => `M${(x - tx).toFixed(2)},${(yy - ty).toFixed(2)}L${(x + tx).toFixed(2)},${(yy + ty).toFixed(2)}`;
+    out.push(`<path data-dim-line="1" d="M${(x1 - ox).toFixed(2)},${(y1 - oy).toFixed(2)}L${(x2 + ox).toFixed(2)},${(y2 + oy).toFixed(2)}" fill="none" stroke="${dm.ink}" stroke-width="${DIM.line}"${dm.dash ?? ''}/><path d="${tick(x1, y1)}${tick(x2, y2)}" fill="none" stroke="${dm.ink}" stroke-width="${DIM.tick}" stroke-linecap="round"/>`);
+  }
+  // the words, the shortest dimension's first (it has the least room): at the spot that crosses the fewest heavy lines
+  // and other dimensions, the middle first; a distance too long for its line goes past an end, its line run on under it
+  [...dimGeo.keys()].sort((i, j) => dimGeo[i].len - dimGeo[j].len).forEach((di) => {
+    const { dm, x1, y1, x2, y2, len, ux, uy } = dimGeo[di];
     // (a line within half a degree of upright reads up whichever way it leans, so the rounding of its ends does not turn it over)
     let ang = (Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI;
     if (ang > 89.5) ang -= 180;
     if (ang <= -90.5) ang += 180;
     const cs = Math.cos((ang * Math.PI) / 180), sn = Math.sin((ang * Math.PI) / 180);
-    // off the line by a hair; by the ticks' reach where the line is shorter than its words, which then pass over them
-    const off = len < w ? 1.5 : 0.7;
-    const along = [0.5, 0.7, 0.3, 0.85, 0.15], past = [1.15, -0.15];
-    const tries = [...along.map((t) => [t, 1]), ...along.map((t) => [t, -1]), ...past.map((t) => [t, 1]), ...past.map((t) => [t, -1])];
-    for (const [t, side] of tries) {
-      const mx = x1 + (x2 - x1) * t, my = y1 + (y2 - y1) * t;
-      // the words' baseline in their own frame, over the line (side 1) or under it; and their box, turned with them
-      const base = side > 0 ? -off : off + CAP;
-      const corners = [[-w / 2, base - CAP - 0.3], [w / 2, base - CAP - 0.3], [w / 2, base + 0.3], [-w / 2, base + 0.3]].map(([dx, dy]) => [mx + dx * cs - dy * sn, my + dx * sn + dy * cs]);
-      const bx: Box = [Math.min(...corners.map((c) => c[0])), Math.min(...corners.map((c) => c[1])), Math.max(...corners.map((c) => c[0])), Math.max(...corners.map((c) => c[1]))];
-      if (!clear(bx)) continue;
-      out.push(`<text transform="translate(${mx.toFixed(2)},${my.toFixed(2)}) rotate(${ang.toFixed(1)})" y="${base.toFixed(2)}" text-anchor="middle" font-size="${dfs}" font-weight="700" fill="${dm.ink}" data-dim="1">${esc(dm.label)}</text>`);
-      taken.push(bx);
-      break;
+    const w1 = dm.label.length * 0.56 * DIM.fs + 0.8, w2 = (dm.asked?.length ?? 0) * 0.56 * DIM.fsAsked + 0.8, cap1 = 0.72 * DIM.fs, cap2 = 0.72 * DIM.fsAsked;
+    const wMax = Math.max(w1, w2);
+    // the distance's box over the line, what is asked's under it, in the words' own frame, turned and set at a point
+    const quad = (mx: number, my: number, w: number, top: number, bottom: number) => [[-w / 2, top], [w / 2, top], [w / 2, bottom], [-w / 2, bottom]].map(([dx, dy]) => [mx + dx * cs - dy * sn, my + dx * sn + dy * cs]);
+    const boxOf = (q: number[][]): Box => [Math.min(...q.map((c) => c[0])), Math.min(...q.map((c) => c[1])), Math.max(...q.map((c) => c[0])), Math.max(...q.map((c) => c[1]))];
+    const otherDims = dimGeo.filter((_, j) => j !== di).map((o) => [[o.x1, o.y1], [o.x2, o.y2]] as [[number, number], [number, number]]);
+    const past = DIM.overrun + wMax / 2 + 0.5;
+    const along = [0.5, 0.38, 0.62, 0.27, 0.73, 0.16, 0.84].map((t) => len * t).concat([len + past, -past, len + past + 2.5, -past - 2.5]);
+    let best: { s: number; mx: number; my: number; b1: Box; b2: Box | null; score: number } | null = null;
+    along.forEach((sAt, k) => {
+      const mx = x1 + ux * sAt, my = y1 + uy * sAt;
+      const q1 = quad(mx, my, w1, -DIM.gap - cap1 - 0.2, -DIM.gap + 0.2), q2 = dm.asked ? quad(mx, my, w2, DIM.gap - 0.2, DIM.gap + cap2 + 0.2) : null;
+      const b1 = boxOf(q1), b2 = q2 ? boxOf(q2) : null;
+      if (!clear(b1) || (b2 && !clear(b2))) return;
+      // (the site's line is thick: the words keep a margin from it, not only off it; and a building's outline that runs
+      // close along under them, where the line comes off its corner, counts as crossing them)
+      const m1 = quad(mx, my, w1 + 2 * SITE_MARGIN, -DIM.gap - cap1 - 0.2 - SITE_MARGIN, -DIM.gap + 0.2), m2 = dm.asked ? quad(mx, my, w2 + 2 * SITE_MARGIN, DIM.gap - 0.2, DIM.gap + cap2 + 0.2 + SITE_MARGIN) : null;
+      const h1 = quad(mx, my, w1 + 0.8, -DIM.gap - cap1 - 0.6, -0.1), h2 = dm.asked ? quad(mx, my, w2 + 0.8, 0.1, DIM.gap + cap2 + 0.6) : null;
+      // (a word squeezed between ticks closer than it is wide reads as crossing them: it counts against the spot)
+      const squeezed = sAt > 0 && sAt < len && len < wMax + 0.6 ? 1 : 0;
+      const score = 12 * (hitCount(m1, siteSegs) + (m2 ? hitCount(m2, siteSegs) : 0)) + 10 * (hitCount(h1, heavy) + (h2 ? hitCount(h2, heavy) : 0)) + 6 * (hitCount(q1, otherDims) + (q2 ? hitCount(q2, otherDims) : 0)) + 3 * (hitCount(q1, light) + (q2 ? hitCount(q2, light) : 0)) + 8 * squeezed + k * 0.1 + (sAt < 0 || sAt > len ? 4 : 0);
+      if (!best || score < best.score) best = { s: sAt, mx, my, b1, b2, score };
+    });
+    if (!best) return;
+    const { s: sAt, mx, my, b1, b2 } = best as { s: number; mx: number; my: number; b1: Box; b2: Box | null };
+    // past an end, the line runs on under the words, as far as they go
+    if (sAt < 0 || sAt > len) {
+      const from = sAt < 0 ? -DIM.overrun : len + DIM.overrun, to = sAt < 0 ? sAt - wMax / 2 : sAt + wMax / 2;
+      out.push(`<path d="M${(x1 + ux * from).toFixed(2)},${(y1 + uy * from).toFixed(2)}L${(x1 + ux * to).toFixed(2)},${(y1 + uy * to).toFixed(2)}" fill="none" stroke="${dm.ink}" stroke-width="${DIM.line}"/>`);
     }
-  }
+    const rot = `transform="translate(${mx.toFixed(2)},${my.toFixed(2)}) rotate(${ang.toFixed(1)})"`;
+    out.push(`<text ${rot} y="${(-DIM.gap).toFixed(2)}" text-anchor="middle" font-size="${DIM.fs}" letter-spacing="0.08" fill="${dm.ink}" data-dim="1">${esc(dm.label)}</text>`);
+    if (dm.asked) out.push(`<text ${rot} y="${(DIM.gap + cap2).toFixed(2)}" text-anchor="middle" font-size="${DIM.fsAsked}" letter-spacing="0.06" fill="${DIM_ASKED_INK}" data-dim-asked="1">${esc(dm.asked)}</text>`);
+    taken.push(b1);
+    if (b2) taken.push(b2);
+  });
   for (const sh of marks?.shadows ?? []) {
     // the far end of the shadow from the site, pulled in to the frame
     const far = sh.rings.flat().reduce((m, q) => (Math.hypot(q.x - cx, q.y - cy) > Math.hypot(m.x - cx, m.y - cy) ? q : m), { x: cx, y: cy });
@@ -2435,8 +2488,8 @@ function complianceSheets(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: P
       added: LOOK.hatch ? addedGround(hourly.map((hr) => hr.scheme), hourly.map((hr) => hr.hulls), [s.ring]) : [],
       shadows: LOOK.outlines ? named.filter((x) => x.rings.length) : [],
       shaded: LOOK.shaded ? sh.shadedTargets.map((i) => ps.targets[i].rings) : [],
-      // (each separation with what is asked of it, "5.9 / 12 m": the drawing says both, where a table beside it did)
-      dims: LOOK.dims ? [...ps.separation, ...ps.separationBuiltOut].map((r) => { const w = worseReading(r); return { a: w.a, b: w.b, label: `${fmt(w.distanceM, 1)} / ${fmt(w.band.between)} m`, ink: DIM_INK, dash: w.status === 'blank' ? ' stroke-dasharray="1.1 0.7"' : '' }; }) : [],
+      // (each separation with what is asked of it, "5.9 m" over its line and "min 12 m" under it: the drawing says both, where a table beside it did)
+      dims: LOOK.dims ? [...ps.separation, ...ps.separationBuiltOut].map((r) => { const w = worseReading(r); return { a: w.a, b: w.b, label: `${fmt(w.distanceM, 1)} m`, asked: `min ${fmt(w.band.between)} m`, ink: DIM_INK, dash: w.status === 'blank' ? ' stroke-dasharray="1.1 0.7"' : '', holds: w.status !== 'short' }; }) : [],
       look: LOOK,
     } });
   const shadowFigures = bleedFigure(0, PAGE_H, plan.svg) + mapLabel(0, name(plan.scale));
@@ -2482,8 +2535,8 @@ function complianceSheets(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: P
     ...(LOOK.outlines && ownStyle === 'layers' && !(LOOK.ownShadow && LOOK.neighbours && !sameInk) ? [{ swatch: `<path d="M0.4,0.6H4.6V3H0.4Z" fill="none" stroke="${LOOK.own}" stroke-width="0.25" stroke-dasharray="0.7,0.45"/>`, label: `${its} shadow at 9 am, 12 pm and 3 pm, outlined` }] : []),
     ...(LOOK.hatch ? [{ swatch: fillShape('M0.4,0.3H4.6V3.3H0.4Z', { x0: 0.4, y0: 0.3, x1: 4.6, y1: 3.3 }, ADDED_HATCH(LOOK.own), 1.6), label: `Hatched: the ground only ${standing.length ? 'it' : 'the envelope'} shades, what it ${standing.length ? 'overshadows' : 'would overshadow'}` }] : []),
     ...(LOOK.shaded ? [{ swatch: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="${LOOK.own}" fill-opacity="0.1" stroke="${LOOK.own}" stroke-width="0.3" stroke-dasharray="0.5,0.4"/>`, label: 'Land it adds shadow to: a residential lot, heritage item or park' }] : []),
-    ...(LOOK.dims ? [{ swatch: `<path d="M0.4,1.2H4.6" stroke="${DIM_INK}" stroke-width="0.35"/><path d="M0.4,2.4H4.6" stroke="${DIM_INK}" stroke-width="0.35" stroke-dasharray="1.1 0.7"/>`,
-      label: 'Building separation, apart / asked (ADG 3F-1); dashed where it holds only with one face blank; each marked in the table beside it' }] : []),
+    ...(LOOK.dims ? [{ swatch: `<path d="M0.2,1.2H4.8" stroke="${DIM_INK}" stroke-width="0.16"/><path d="M0.6,1.75L1.4,0.65M3.6,1.75L4.4,0.65" stroke="${DIM_INK}" stroke-width="0.3" stroke-linecap="round"/><path d="M0.2,2.8H4.8" stroke="${DIM_INK}" stroke-width="0.16" stroke-dasharray="1.1 0.7"/>`,
+      label: 'Building separation: the distance over its line, what is asked (ADG 3F-1) under it; dashed where it holds only with one face blank' }] : []),
     { swatch: lineLook ? `<rect x="0.4" y="0.6" width="4.2" height="2.4" fill="#ffffff" stroke="#111111" stroke-width="0.45"/>` : bwSwatch, label: `Buildings round about${planZones.length ? ', each outlined in its zone\'s colour' : ''}, each lot with its street number; lot boundaries, NSW cadastre` },
     ...planZones,
     ...(s.future.buildings.length ? [{ swatch: KEY.future, label: 'Dashed: a neighbour\'s future, a feasible footprint to its LEP height and FSR' }] : []),
