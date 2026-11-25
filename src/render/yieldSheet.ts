@@ -829,8 +829,10 @@ function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number;
       const p = t.plate[f.ring][f.edge], same = Math.hypot(f.a.x - p.x, f.a.y - p.y) < 1e-6;
       return f.cells.map((c) => ({ ring: f.ring, edge: f.edge, t0: same ? c.t0 : 1 - c.t1, t1: same ? c.t1 : 1 - c.t0, z0: z.bottom(c.storey), z1: z.top(c.storey), fill: bandOf(c.hours).fill, flat: true }));
     });
-    // (its roof in the colour itself, as its plan and the keys draw it: lit, it was a paler yellow than theirs)
-    built.push({ rings: t.plate, z0: z.bottom(t.from), z1: z.top(top), fill: useFill(t.use), roofFill: useFill(t.use), edge: '#1c1c1c', edgeW: 0.2, windows: true, storeys: Array.from({ length: top - t.from }, (_, i) => z.top(t.from + i)), ...(cells.length ? { cells } : {}) });
+    // (its roof in the colour itself, as its plan and the keys draw it: lit, it was a paler yellow than theirs; white
+    // where its facades are coloured by their sun, the roof not being counted: Z. 2026-11, "make the roof white")
+    const roofFill = cells.length ? '#ffffff' : useFill(t.use);
+    built.push({ rings: t.plate, z0: z.bottom(t.from), z1: z.top(top), fill: useFill(t.use), roofFill, edge: '#1c1c1c', edgeW: 0.2, windows: true, storeys: Array.from({ length: top - t.from }, (_, i) => z.top(t.from + i)), ...(cells.length ? { cells } : {}) });
   });
   // What stands, at its recorded height, its storeys ruled; one with none recorded at a nominal two, dashed.
   for (const e of scheme.standing ?? []) {
@@ -2318,8 +2320,9 @@ function complianceSheets(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: P
   const solarZones = zoneEdgesOn() ? zoneEntries(b, deckLook(), true, undefined, true) : [];
   const solarLegend: LegendEntry[] = [
     { swatch: KEY.site, label: 'The site' },
-    { swatch: KEY.zones(sunBands().map((x) => x.fill)), label: `Facades, hours of sun 9 am – 3 pm on 21 June: none, under 1, 1–2, 2–3, 3–4, 4–5, 5 and over; the roofs not counted` },
-    { swatch: KEY.use('residential'), label: 'Indicative massing: its roofs and blank walls' },
+    { swatch: KEY.zones(sunBands().map((x) => x.fill)), label: `Facades, hours of sun 9 am – 3 pm on 21 June: none, under 1, 1–2, 2–3, 3–4, 4–5, 5 and over` },
+    { swatch: KEY.use('residential'), label: 'Indicative massing: blank walls' },
+    { swatch: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="#ffffff" stroke="#3a3a3a" stroke-width="0.15"/>`, label: 'Its roofs, white: not counted' },
     { swatch: `<path d="M0.4,0.7H2.3V3H0.4Z" fill="#ffffff" stroke="#8f8f8f" stroke-width="0.2"/><path d="M2.7,0.7H4.6V3H2.7Z" fill="#ffffff" stroke="#8f8f8f" stroke-width="0.2" stroke-dasharray="0.5,0.3"/>`,
       label: `Neighbours in white at their heights${solarZones.length ? ', each outlined in its zone\'s colour' : ''}${s.future.buildings.length ? '; dashed, their future on feasible footprints to their LEP height and FSR' : ''}` },
     ...solarZones,

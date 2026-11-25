@@ -1995,10 +1995,10 @@ site may take, so a site with more paths has more pages:
      futures, trees, traffic and ground in white and greys) so only the
      scheme's colours read: each facade cell (a storey high, about 3 m
      wide) in its band of hours, blues under two, the lorikeet's green,
-     yellow, orange and red from two. The roofs are not counted and not
-     coloured: they stand in the scheme's own colour (an apartment's sun is
-     on its facade; Z. 2026-11, "the roof shouldn't be counted, coloured
-     like that: we care only for facades").
+     yellow, orange and red from two. The roofs are not counted and are
+     drawn white (an apartment's sun is on its facade; Z. 2026-11, "the
+     roof shouldn't be counted, coloured like that: we care only for
+     facades", then "make the roof white").
 
    Every path's own spread draws its massing alone, the whole right page
    and framed close (14 m of town round the site): its plan is the shadow's,

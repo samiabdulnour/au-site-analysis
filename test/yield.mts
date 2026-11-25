@@ -419,6 +419,9 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
   check('compliance: yield within the controls is 100% and ticked; filled to the height, over and crossed', /<td>Yield<\/td>(?:.(?!<\/tr>))*100%(?:.(?!<\/tr>))*M0\.6,2\.1/.test(solar.figureHtml)
     && /<td>Yield<\/td>(?:.(?!<\/tr>))*1\d\d%(?:.(?!<\/tr>))*M1,0\.6/.test(page('14_envelope_to_height_solar_access').figureHtml));
   // Z. 2026-11: "the roof shouldn't be counted, coloured like that: we care only for facades, not the roof"
+  // Z. 2026-11: "make the roof white". The solar access views' roofs white; the scheme's own spread keeps its yellow roof.
+  check('solar access: the roofs white, the scheme\'s spread keeps its colour', /<path d="[^"]+" fill="#ffffff" fill-rule="evenodd" stroke="#1c1c1c"/.test(solar.figureHtml)
+    && !/<path d="[^"]+" fill="#ffffff" fill-rule="evenodd" stroke="#1c1c1c"/.test(page('03_within_controls').figureHtml));
   check('compliance: the sun on each facade, by the way it looks; no roof in it', />Sun on each facade</.test(solar.figureHtml) && !/the roof/.test(solar.figureHtml.slice(0, solar.figureHtml.indexOf('<svg')))
     && !/<td>roof, all tiers<\/td>/.test(solar.figureHtml) && /<td>N<\/td>/.test(solar.figureHtml) && !/Its roof has/.test(solar.narrative ?? ''));
   check('solar access: the apartments storey by storey, their number the option\'s', /Apartments, storey by storey/.test(solar.figureHtml) && !/Apartments, storey by storey/.test(shade.figureHtml));
@@ -426,7 +429,7 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
   // cells, white-edged), and no plan: the plan is the shadow's, the page before.
   const hasPlan = (html: string) => html.includes('<clipPath id="plan-');
   check('solar access: the massing from the street corner over the same from the opposite one, the page theirs, no plan on it', ['From the street corner', 'From the opposite corner'].every((t) => solar.figureHtml.includes(t)) && !hasPlan(solar.figureHtml)
-    && (solar.figureHtml.match(/stroke="#ffffff" stroke-width="0\.07"/g) ?? []).length > 50 && (solar.legend ?? []).some((e) => /^Facades, hours of sun .*the roofs not counted/.test(e.label))
+    && (solar.figureHtml.match(/stroke="#ffffff" stroke-width="0\.07"/g) ?? []).length > 50 && (solar.legend ?? []).some((e) => /^Facades, hours of sun/.test(e.label)) && (solar.legend ?? []).some((e) => /roofs, white: not counted/.test(e.label))
     && !(solar.legend ?? []).some((e) => /laid over the last|Separation:/.test(e.label)));
   check('shadow: the plan the whole page, no massing on it, its key the shadows\'', hasPlan(shade.figureHtml) && !/From the street corner/.test(shade.figureHtml) && /height="297mm"/.test(shade.figureHtml)
     && (shade.legend ?? []).some((e) => /shadows on 21 June, each hour/.test(e.label)) && !(shade.legend ?? []).some((e) => /Facades, hours of sun/.test(e.label)));
