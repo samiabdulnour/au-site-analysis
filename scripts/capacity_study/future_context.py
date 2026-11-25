@@ -383,6 +383,7 @@ def existing_height(r):
 
 
 BUILT = set()
+REMOVED = set()                                                     # the buildings a scenario takes away (`removed`)
 HERITAGE = None
 HERITAGE_HITS = {}                                                  # scenario title -> [(parcel key, address, item)]
 
@@ -999,11 +1000,14 @@ def resolve(scn):
                             gfa=gfa, fsr=gfa / area, parity=parity, plate=main['plate'], gap=main['gap'], consent=main['typ'] == 'consent', main_poly=main['poly'],
                             hob=control(HOB, parcel, 'MAX_B_H'), lep_fsr=control(FSR, parcel, 'FSR'), titles=len(p['addresses'])))
         blds += rows
-    global BUILT
+    global BUILT, REMOVED
     BUILT = used                                                      # the lots this scenario builds on: not context
+    # the buildings the scenario takes away, by address (`removed`): neither standing nor context, so the plan, the
+    # massing and the sun study read the land as cleared
+    REMOVED = {str(prop(a_)['propid']) for a_ in scn.get('removed', [])}
     existing = []
     for r in OTHERS:
-        if str(r['propid']) in used or str(r['propid']) in retained_for(scn):
+        if str(r['propid']) in used or str(r['propid']) in REMOVED or str(r['propid']) in retained_for(scn):
             continue
         h, n, how = existing_height(r)
         existing.append(dict(poly=r['poly'], h=h, n=n, how=how, base_addr=r['base']))
@@ -1995,7 +1999,7 @@ def export_scene(no, blds, existing, RET, sep, parcels=(), scn_parcels=()):
     in_blocks = {str(r['propid']) for b in BLOCKS for r in b}
     low = math.tan(math.radians(17))                                  # the mid-winter sun at nine, with a margin
     for pid, r in PROPS.items():
-        if r.get('isSite') or pid in in_blocks or pid in BUILT or not measured(r):
+        if r.get('isSite') or pid in in_blocks or pid in BUILT or pid in REMOVED or not measured(r):
             continue
         # the study window's buildings, and beyond it every one tall enough to reach the site with its shadow on
         # the mid-winter morning or afternoon (the tiles read what stands up to 300 m off, north, east and west)
@@ -2087,7 +2091,7 @@ MINI_PAD = 26          # metres of context round the study on the summary's plan
 
 def context_buildings(reach):
     """The window's other measured buildings within `reach` metres of the study: what stands round it today."""
-    skip = {str(r['propid']) for b in BLOCKS for r in b} | {str(SITE['propid'])} | BUILT
+    skip = {str(r['propid']) for b in BLOCKS for r in b} | {str(SITE['propid'])} | BUILT | REMOVED
     return [(r['poly'], storeys_of(r), measured(r), pid) for pid, r in PROPS.items() if pid not in skip and measured(r) and r['poly'].intersects(study.buffer(reach))]
 
 
