@@ -2383,7 +2383,11 @@ def sun_views(no, sun, hours=(9, 10, 11, 12, 13, 14, 15), reach=32, tall=0.6):
         items = []
         ours = []
         far = []                                                       # (name, height, projected points) of the context
+        site_b = None
         for b in scene['buildings']:
+            if fac and b['kind'] == 'site':                            # ours is drawn below, as one group, tier by tier
+                site_b = b
+                continue
             fill = fills.get(b['kind'], '#e7e7e7')
             if b['kind'] == 'context':
                 ring0 = b['parts'][0]['ring']
@@ -2460,34 +2464,47 @@ def sun_views(no, sun, hours=(9, 10, 11, 12, 13, 14, 15), reach=32, tall=0.6):
                                 if b['kind'] == 'site':
                                     ours += quad
         # no plans: our facades as the yield study cuts them (future_facade_sun.py), each cell lit where the engine
-        # finds the sun on it at this hour, on the walls the sun faces
-        if fac:
-            for f_ in fac['faces']:
-                (ax_, ay_), (bx_, by_), (nx_, ny_) = f_['a'], f_['b'], f_['normal']
-                zl_, zh_ = min(storey_bottom(c['storey']) for c in f_['cells']), max(H_of(c['storey']) for c in f_['cells'])
-                ours += [P(ax_, ay_, zl_), P(bx_, by_, zl_), P(bx_, by_, zh_), P(ax_, ay_, zh_)]   # the view framed on the whole building
-                # only the faces the headline counts are drawn in cells; the others stay plain, as the figure leaves them out
-                if f_['blank'] or f_.get('compass') not in HEADLINE_SIDES:
-                    continue
-                if nx_ * s[0] + ny_ * s[1] <= 0:
-                    continue
-                zl, zh = min(storey_bottom(c['storey']) for c in f_['cells']), max(H_of(c['storey']) for c in f_['cells'])
-                wall_depth = min(c[2] for c in (P(ax_, ay_, zl), P(bx_, by_, zl), P(bx_, by_, zh), P(ax_, ay_, zh))) - 0.05
-                for c in f_['cells']:
-                    za, zb = storey_bottom(c['storey']), H_of(c['storey'])
-                    p0 = (ax_ + (bx_ - ax_) * c['t0'], ay_ + (by_ - ay_) * c['t0'])
-                    p1 = (ax_ + (bx_ - ax_) * c['t1'], ay_ + (by_ - ay_) * c['t1'])
-                    quad = [P(p0[0], p0[1], za), P(p1[0], p1[1], za), P(p1[0], p1[1], zb), P(p0[0], p0[1], zb)]
-                    lit = c.get('hourly', '')[hour - 9:hour - 8] == '1'
-                    items.append((wall_depth, quad, SUN_LIT if lit else SUN_SHADE, '#7a6a2a' if lit else '#777'))
-                    ours += quad
+        # finds the sun on it at this hour, on the walls the sun faces. Ours is one group in the painter's order, drawn
+        # tier by tier from the ground, each tier's walls, the cells on them, then its roof: a tier above may cover one
+        # below and never the other way, which ordering the cells by depth alone got wrong at the podium's far end
+        if fac and site_b is not None:
+            group = []
+            for k_part, part in enumerate(sorted(site_b['parts'], key=lambda q: q['z0'])):
+                ring, z0, z1 = part['ring'], part['z0'], part['z1']
+                for p, q in zip(ring, ring[1:] + ring[:1]):
+                    nx, ny = q[1] - p[1], -(q[0] - p[0])
+                    L = math.hypot(nx, ny)
+                    if L < 1e-6 or (nx * s[0] + ny * s[1]) / L <= 0:
+                        continue
+                    group.append(([P(p[0], p[1], z0), P(q[0], q[1], z0), P(q[0], q[1], z1), P(p[0], p[1], z1)], fills['site'], '#c0161c'))
+                for f_ in fac['faces']:
+                    if f_.get('part') != k_part:
+                        continue
+                    (ax_, ay_), (bx_, by_), (nx_, ny_) = f_['a'], f_['b'], f_['normal']
+                    zl_, zh_ = min(storey_bottom(c['storey']) for c in f_['cells']), max(H_of(c['storey']) for c in f_['cells'])
+                    ours += [P(ax_, ay_, zl_), P(bx_, by_, zl_), P(bx_, by_, zh_), P(ax_, ay_, zh_)]   # the view framed on the whole building
+                    # only the faces the headline counts are drawn in cells; the others stay plain, as the figure leaves them out
+                    if f_['blank'] or f_.get('compass') not in HEADLINE_SIDES or nx_ * s[0] + ny_ * s[1] <= 0:
+                        continue
+                    for c in f_['cells']:
+                        za, zb = storey_bottom(c['storey']), H_of(c['storey'])
+                        p0 = (ax_ + (bx_ - ax_) * c['t0'], ay_ + (by_ - ay_) * c['t0'])
+                        p1 = (ax_ + (bx_ - ax_) * c['t1'], ay_ + (by_ - ay_) * c['t1'])
+                        quad = [P(p0[0], p0[1], za), P(p1[0], p1[1], za), P(p1[0], p1[1], zb), P(p0[0], p0[1], zb)]
+                        lit = c.get('hourly', '')[hour - 9:hour - 8] == '1'
+                        group.append((quad, SUN_LIT if lit else SUN_SHADE, '#7a6a2a' if lit else '#777'))
+                group.append(([P(x, y, z1) for x, y in ring], fills['site'], '#c0161c'))
+            pts_ = [c for poly_, _, _ in group for c in poly_]
+            if pts_:
+                items.append((sum(c[2] for c in pts_) / len(pts_), None, group, None))
         items.sort(key=lambda it: -it[0])                            # far first
         xs = [c[0] for c in ours] or [0]
         ys = [c[1] for c in ours] or [0]
         x0, x1, y0, y1 = min(xs) - reach, max(xs) + reach, min(ys) - reach * tall, max(ys) + reach * tall
         svg = [f'<svg viewBox="{x0:.1f} {-y1:.1f} {x1 - x0:.1f} {y1 - y0:.1f}" xmlns="http://www.w3.org/2000/svg"><rect x="{x0:.1f}" y="{-y1:.1f}" width="{x1 - x0:.1f}" height="{y1 - y0:.1f}" fill="#f7f6f3"/>']
         for depth, poly, fill, stroke in items:
-            svg.append(f'<polygon points="{" ".join(f"{c[0]:.2f},{-c[1]:.2f}" for c in poly)}" fill="{fill}" stroke="{stroke}" stroke-width="0.25" stroke-linejoin="round"/>')
+            for poly_, fill_, stroke_ in (fill if poly is None else [(poly, fill, stroke)]):     # a group: ours, in its own order
+                svg.append(f'<polygon points="{" ".join(f"{c[0]:.2f},{-c[1]:.2f}" for c in poly_)}" fill="{fill_}" stroke="{stroke_}" stroke-width="0.25" stroke-linejoin="round"/>')
         # a building far off that stands between the sun and ours is named where it covers us
         ox0, ox1, oy0, oy1 = min(xs), max(xs), min(ys), max(ys)
         for name, height, pts in far:
