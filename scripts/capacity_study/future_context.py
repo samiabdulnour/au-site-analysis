@@ -249,7 +249,9 @@ def fit(parcel, spec):
         lot_keep = lambda r: next((v for g_, v in lots_own if g_.distance(r['line']) < 1), keep)
         cut = [r['line'].buffer(lot_keep(r), cap_style=3, join_style=2) for r in runs if r['kind'] == 'lot' and lot_keep(r)]
         for r in runs:
-            v = figure(spec.get('streets'), r['name'], r['line'], street) if r['kind'] == 'street' else 0
+            # a scrap of frontage at a corner, under 2 m, is not a street the plate stands off: its square-ended
+            # setback would only bite a notch out of the plate's corner
+            v = figure(spec.get('streets'), r['name'], r['line'], street) if r['kind'] == 'street' and r['line'].length >= 2 else 0
             if v:
                 cut.append(r['line'].buffer(v, cap_style=3, join_style=2))
         for name_, lines in road_axes().items():
@@ -2161,7 +2163,8 @@ def mini_plan(parcels, blds, existing, RET, sep, k=1.0, big=False, bset=None, wi
             g_ = mid_line.intersection(box)
             for part in (g_.geoms if hasattr(g_, 'geoms') else [g_]):
                 if part.geom_type == 'LineString' and part.length > 2:
-                    o.append(f'<path d="M' + ' L'.join(f'{f(x_)} {f(-y_)}' for x_, y_ in part.coords) + f'" fill="none" stroke="#e11b22" stroke-width="{0.35 * k:.2f}"/>')
+                    # dashed black, so a road's middle is never read as a lot's red boundary
+                    o.append(f'<path d="M' + ' L'.join(f'{f(x_)} {f(-y_)}' for x_, y_ in part.coords) + f'" fill="none" stroke="#1a1a1a" stroke-width="{0.35 * k:.2f}" stroke-dasharray="{2.4 * k:.2f} {1.4 * k:.2f}"/>')
     for nm, d, hab, blank, v, geo in sep:
         if d < 0.5 or (v == 'clear' and d > 24 and not geo['new']):
             continue
