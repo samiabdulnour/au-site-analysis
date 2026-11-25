@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import { decodePng, encodeRgbaPng } from '../lib/png.js';
 import { aerialGreenFill, veg1750Fills, VEG_CLASSES_MAX, PATTERN_SCALE, PATTERN_WEIGHT, type Fill } from './atlasKit.js';
 import { mercatorScaleFactor, mercatorToLonLat } from '../lib/geo.js';
+import { coverCells } from '../lib/coverPicture.js';
 
 const UP = 3;
 const rgb = (h: string) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
@@ -25,6 +26,7 @@ function onStroke(f: Fill, x: number, y: number): boolean {
     return Math.hypot(x - cx, y - cy) < w;
   }
   if (f.kind === 'waves') { const amp = step / 3, yy = y - amp * Math.sin((x / (2 * step)) * 2 * Math.PI); return Math.abs(m(yy) - step / 2) < w / 2; }
+  if (f.kind === 'rise') return Math.abs(m(x + y) - step / 2) < w / 2;
   if (f.kind === 'hatch' || f.kind === 'cross') return Math.abs(m(x - y) - step / 2) < w / 2 || (f.kind === 'cross' && Math.abs(m(x + y) - step / 2) < w / 2);
   return false;
 }
@@ -53,6 +55,20 @@ export async function paintMasks(dataDir: string, layers: { mask: string; fill: 
         px[k] = c[0]; px[k + 1] = c[1]; px[k + 2] = c[2]; px[k + 3] = c === ink ? 255 : alpha;
       }
     }
+    // the fill's outline, where it has one: along the mask's own edge, half its width inside it, so two patterns
+    // that meet have a line between them (a pattern alone does not say where it ends)
+    if (fill.outline) {
+      const oc = rgb(fill.outline), half = Math.max(1, Math.round(((fill.outlineW ?? 0.25) / mm) / 2));
+      const on = (x: number, y: number) => x >= 0 && y >= 0 && x < W && y < H && m.data[(Math.floor(y / UP) * m.width + Math.floor(x / UP)) * 4] >= 128;
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        if (!on(x, y)) continue;
+        // on the edge where a neighbour `half` away, any of the four ways, is outside the mask (the picture's own edge is no edge)
+        const edge = (x - half >= 0 && !on(x - half, y)) || (x + half < W && !on(x + half, y)) || (y - half >= 0 && !on(x, y - half)) || (y + half < H && !on(x, y + half));
+        if (!edge) continue;
+        const k = (y * W + x) * 4;
+        px[k] = oc[0]; px[k + 1] = oc[1]; px[k + 2] = oc[2]; px[k + 3] = 255;
+      }
+    }
   }
   await writeFile(join(dataDir, out), encodeRgbaPng(W, H, px));
   return { file: out, width: W, height: H };
@@ -66,6 +82,16 @@ export async function prepareRasters(sb: any, dataDir: string, bleedScale: numbe
   if (vm) {
     const r = await paintMasks(dataDir, [{ mask: vm.file, fill: aerialGreenFill() }], mmAcross(vm.extent, bleedScale) / vm.pxWidth, 'vegetation_paint.png').catch(() => null);
     vm.paint = r?.file;
+    // The cover's picture is the deck's trees (lib/coverPicture.ts). A deck that holds this reading but no crowns
+    // has them read off it here.
+    if (!sb.green?.crowns?.length) {
+      const mask = await readFile(join(dataDir, vm.file)).then((buf) => decodePng(new Uint8Array(buf))).catch(() => null);
+      if (mask) {
+        const green = new Uint8Array(mask.width * mask.height);
+        for (let i = 0; i < green.length; i++) green[i] = mask.data[i * 4] >= 128 ? 1 : 0;
+        sb.cover = coverCells({ width: mask.width, height: mask.height, mPerPx: (vm.extent.xmax - vm.extent.xmin) / k / mask.width, green });
+      }
+    }
   }
   const veg = sb.country?.vegetation;
   if (veg?.image) {

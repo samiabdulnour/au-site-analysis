@@ -18,7 +18,7 @@
 <meta property="og:title" content="Site Analyst">
 <meta property="og:description" content="Generate NSW development-application site analysis drawings from a street address, using government open data. A1 PDF and CAD, in minutes.">
 <meta property="og:url" content="%ORIGIN%/">
-<meta property="og:image" content="%ORIGIN%/samples/og.jpg?v=44202bc9">
+<meta property="og:image" content="%ORIGIN%/samples/og.jpg?v=7ced133e">
 <meta property="og:image:type" content="image/jpeg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
@@ -26,7 +26,7 @@
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Site Analyst">
 <meta name="twitter:description" content="Generate NSW development-application site analysis drawings from a street address, using government open data. A1 PDF and CAD, in minutes.">
-<meta name="twitter:image" content="%ORIGIN%/samples/og.jpg?v=44202bc9">
+<meta name="twitter:image" content="%ORIGIN%/samples/og.jpg?v=7ced133e">
 <meta name="twitter:image:alt" content="A context analysis sheet: the site among the zones, with the streets named, the walking catchment and the places around it.">
 <link rel="stylesheet" href="/style.css">
 </head>
@@ -154,6 +154,10 @@
             <span class="cells" id="northOpts"></span></div>
           <div class="row" id="styleRow"><span class="rowhead">STYLE</span>
             <span class="cells" id="styleOpts"></span></div>
+          <!-- How a deck is printed: its A3 spreads, or a booklet to fold. Only
+               the download changes, so picking it keeps a finished drawing. -->
+          <div class="row" id="printRow"><span class="rowhead">PRINT</span>
+            <span class="cells" id="printOpts"></span></div>
         </div>
         <!-- The foot of the column, its bottom rule on the drawing frame's. -->
         <div class="toolfoot">

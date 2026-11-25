@@ -10,12 +10,12 @@ import { fetchAerial, type AerialResult } from './imagery.js';
 import { fetchNeighbourAddresses, type NeighbourAddress } from './siteData.js';
 import { geomRings } from './planning.js';
 import { panelExtent, type Panel } from '../render/minimap.js';
+import { stateLandFeatures } from '../lib/stateLand.js';
 
 const PORTAL = 'https://portal.spatial.nsw.gov.au/server/rest/services';
 const CADASTRE = `${PORTAL}/NSW_Land_Parcel_Property_Theme/FeatureServer`;
 const IMAGERY_DATES = 'https://maps.six.nsw.gov.au/arcgis/rest/services/public/NSW_Imagery_Dates/MapServer/0';
 const M3 = 'https://mapprod3.environment.nsw.gov.au/arcgis/rest/services/ePlanning';
-const STATE_LAND = `${M3}/Planning_Portal_GPI/MapServer/302`;
 const CROWN_LAND = `${M3}/Planning_Portal_Crown_Land/MapServer/258`;
 const CROWN_RESERVES = `${M3}/Planning_Portal_Crown_Land/MapServer/312`;
 
@@ -79,7 +79,8 @@ async function fetchPublicLand(panel: Panel, log: (m: string) => void): Promise<
   const soft = <T,>(p: Promise<T>, fallback: T, name: string): Promise<T> => p.catch((e) => { log(`  WARN ${name} failed: ${e?.message ?? e}`); return fallback; });
   const empty: GeoJSONFC = { type: 'FeatureCollection', features: [] };
   const [state, crown, reserves] = await Promise.all([
-    soft(queryByExtent(STATE_LAND, extent, 'LOTREF,SOURCE,PLANLABEL'), empty, 'State government land'),
+    // the Government Property Index as last published, from the file that ships with the app: its map service is withdrawn
+    soft((async () => stateLandFeatures(extent))(), empty, 'State government land'),
     soft(queryByExtent(CROWN_LAND, extent, 'Area_H,DISPOSALSTATUS'), empty, 'Crown land'),
     soft(queryByExtent(CROWN_RESERVES, extent, 'reserve_name,purpose,reserve_type,reserve_no'), empty, 'Crown reserves'),
   ]);

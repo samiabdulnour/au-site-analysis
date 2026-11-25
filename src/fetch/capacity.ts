@@ -2,7 +2,8 @@
 // the cadastre's property register (one row per address, whose unit
 // addresses size each strata scheme), the lots with the date their plan was
 // recorded (the plan's registration date for anything after the digital
-// cadastre was built in September 1993), State government land, and, where
+// cadastre was built in September 1993), State government land (the
+// Government Property Index as last published, which ships with the app), and, where
 // a council publishes one as open data, its development register and its
 // parks and facilities. The City of Sydney does; the hook is per LGA.
 
@@ -10,9 +11,9 @@ import { queryByExtent, type GeoJSONFC } from '../lib/arcgis.js';
 import { mercatorScaleFactor, mercatorToLonLat, type Extent } from '../lib/geo.js';
 import { panelExtent, type Panel } from '../render/minimap.js';
 import { registerRecords, type FacilityPoint, type PublicLand, type RegisterRecord } from '../lib/capacity.js';
+import { stateLandFeatures } from '../lib/stateLand.js';
 
 const CADASTRE = 'https://portal.spatial.nsw.gov.au/server/rest/services/NSW_Land_Parcel_Property_Theme/FeatureServer';
-const STATE_LAND = 'https://mapprod3.environment.nsw.gov.au/arcgis/rest/services/ePlanning/Planning_Portal_GPI/MapServer/302';
 
 /** A council's open data: its development register, its parks and its facilities, as ArcGIS layers. */
 interface CouncilLayers { name: string; register: string; registerFields: string; parks?: string; facilities?: string }
@@ -52,7 +53,7 @@ export async function fetchCapacityData(panel: Panel, lgaName: string | undefine
   const [properties, lots, state, register, parks, facilities] = await Promise.all([
     soft(queryByExtent(`${CADASTRE}/12`, extent, 'propid,address,valnetpropertytype,valnetlotcount'), empty, 'property register'),
     soft(queryByExtent(`${CADASTRE}/8`, extent, 'lotidstring,planlabel,classsubtype,createdate'), empty, 'lots with their plan dates'),
-    soft(queryByExtent(STATE_LAND, extent, 'LOTREF'), empty, 'State government land'),
+    soft((async () => stateLandFeatures(extent))(), empty, 'State government land'),
     council ? soft(queryByExtent(council.register, extent, council.registerFields), empty, council.name) : Promise.resolve(empty),
     council?.parks ? soft(queryByExtent(council.parks, extent, 'Name'), empty, 'council parks') : Promise.resolve(empty),
     council?.facilities ? soft(queryByExtent(council.facilities, extent, 'Name'), empty, 'council facilities') : Promise.resolve(empty),

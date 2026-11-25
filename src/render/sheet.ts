@@ -273,11 +273,13 @@ function rowSpans(rings: Pt[][], yy: number, r: number): [number, number][] {
  * `box` is the area the texture must cover (the map, or a legend swatch).
  */
 export function textureSvg(clipId: string, clipPathD: string, kind: Texture, color: string,
-                           box: { x: number; y: number; w: number; h: number }, opacity = 0.8): string {
+                           box: { x: number; y: number; w: number; h: number }, opacity = 0.8,
+                           /** A spacing and a lean of the pattern's own (a category's `hatch`): the usual ones where unset. */
+                           opts: { step?: number; dir?: 'fall' | 'rise' | 'flat' | 'up' } = {}): string {
   const { x, y, w, h } = box;
   let lines = '';
   if (kind === 'dots') {
-    const step = 1.7, gap = 1.7, period = 0.01 + gap;
+    const step = opts.step ?? 1.7, gap = step, period = 0.01 + gap;
     // a dot's round cap reaches 0.3 from its centre, in every direction
     const r = 0.35;
     const rings = absolutePathRings(clipPathD);
@@ -302,10 +304,16 @@ export function textureSvg(clipId: string, clipPathD: string, kind: Texture, col
   // The hatch falls to the right, the opposite way to the heritage hatch
   // drawn elsewhere, so a heritage item inside a commercial centre still
   // shows as two textures crossing rather than one thicker one.
-  const step = kind === 'cross' ? 2.0 : 1.6;
-  for (let o = x - h; o <= x + w; o += step)
-    lines += `<line x1="${o.toFixed(1)}" y1="${y.toFixed(1)}" x2="${(o + h).toFixed(1)}" y2="${(y + h).toFixed(1)}"/>`;
-  if (kind === 'cross')
+  const step = opts.step ?? (kind === 'cross' ? 2.0 : 1.6);
+  const dir = kind === 'cross' ? 'fall' : opts.dir ?? 'fall';
+  if (dir === 'flat')
+    for (let o = y + step / 2; o <= y + h; o += step) lines += `<line x1="${x.toFixed(1)}" y1="${o.toFixed(2)}" x2="${(x + w).toFixed(1)}" y2="${o.toFixed(2)}"/>`;
+  else if (dir === 'up')
+    for (let o = x + step / 2; o <= x + w; o += step) lines += `<line x1="${o.toFixed(2)}" y1="${y.toFixed(1)}" x2="${o.toFixed(2)}" y2="${(y + h).toFixed(1)}"/>`;
+  if (dir === 'fall')
+    for (let o = x - h; o <= x + w; o += step)
+      lines += `<line x1="${o.toFixed(1)}" y1="${y.toFixed(1)}" x2="${(o + h).toFixed(1)}" y2="${(y + h).toFixed(1)}"/>`;
+  if (kind === 'cross' || dir === 'rise')
     for (let o = x - h; o <= x + w; o += step)
       lines += `<line x1="${o.toFixed(1)}" y1="${(y + h).toFixed(1)}" x2="${(o + h).toFixed(1)}" y2="${y.toFixed(1)}"/>`;
   return `<clipPath id="${clipId}"><path d="${clipPathD}" clip-rule="evenodd"/></clipPath>
@@ -848,7 +856,21 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
   {
     usedCats.add('site');
     const d = bundle.siteLots.features.map((f) => pathFromRings(geomRings(f.geometry), proj)).join('');
-    layers.push(`<path d="${d}" fill="${tpl().site}" fill-opacity="0.55" stroke="${tpl().site}" stroke-width="1.4" stroke-dasharray="3.2,1.6"/>`);
+    // A template can mark the site its own way (Kingfisher, as its site sheet does): the lot in a pale tint of the
+    // mark's colour, on white so the zone under it does not muddy it, inside a white contour that lifts it off the
+    // tints round it, its boundary a dash-dot line of the colour; and what stands on the lot in the full colour, in a
+    // white edge. Else the site's colour at 0.55 in its dashed line.
+    const mark = tpl().siteMark;
+    if (mark) {
+      const siteRings = bundle.siteLots.features.flatMap((f) => geomRings(f.geometry));
+      const onSite = (lon: number, lat: number) => siteRings.reduce((k, r) => k + (pointInRing(lon, lat, r) ? 1 : 0), 0) % 2 === 1;
+      // (each building its own path: the sources can give one twice, and two rings alike cancel in one path)
+      const figures = bundle.buildings.buildings.filter((b) => onSite(b.centroid[0], b.centroid[1])).map((b) => pathFromRings(b.rings, proj));
+      layers.push(`<g data-site-mark="1"><path d="${d}" fill="#ffffff" stroke="#ffffff" stroke-width="${(2 * mark.contour).toFixed(2)}" stroke-linejoin="round"/>` +
+        `<path d="${d}" fill="${mark.ink}" fill-opacity="${mark.opacity}" stroke="${mark.ink}" stroke-width="0.9" stroke-dasharray="3.2,1.2,0.8,1.2" stroke-linejoin="round"/>` +
+        figures.map((p) => `<path d="${p}" fill="none" stroke="#ffffff" stroke-width="1.2" stroke-linejoin="round"/>`).join('') +
+        figures.map((p) => `<path data-site-figure="1" d="${p}" fill="${mark.ink}" fill-rule="evenodd"/>`).join('') + '</g>');
+    } else layers.push(`<path d="${d}" fill="${tpl().site}" fill-opacity="0.55" stroke="${tpl().site}" stroke-width="1.4" stroke-dasharray="3.2,1.6"/>`);
   }
 
   // ---- transport symbols: one roundel style for all modes -----------------
@@ -1381,7 +1403,12 @@ export function renderSheet(bundle: Bundle, meta: SheetMeta): string {
     if (c.id === 'railway') continue; // on the map, not in the legend
     const hob = hobByCat[c.id];
     if (c.id === 'site') {
-      legendRow(`<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="${tpl().site}" fill-opacity="0.55" stroke="${tpl().site}" stroke-width="0.9" stroke-dasharray="2.2,1.1"/>`, ['SITE']);
+      const mark = tpl().siteMark;
+      legendRow(mark
+        // the lot's tint in its dash-dot line, and a building on it in the full colour, as the map marks them
+        ? `<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="${mark.ink}" fill-opacity="${mark.opacity}" stroke="${mark.ink}" stroke-width="0.6" stroke-dasharray="2.2,0.9,0.6,0.9"/>` +
+          `<rect x="${SWATCH_X + SWATCH_W / 2 - 4}" y="1.5" width="8" height="3.5" fill="${mark.ink}" stroke="#ffffff" stroke-width="0.5"/>`
+        : `<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="${tpl().site}" fill-opacity="0.55" stroke="${tpl().site}" stroke-width="0.9" stroke-dasharray="2.2,1.1"/>`, ['SITE']);
       for (const z of lepLegend)
         legendRow(`<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="${zoneFill(z.code)}" stroke="#999" stroke-width="0.2"/>`, wrapLabel(z.label, 26));
     } else if (c.id === 'heritage') {

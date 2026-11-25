@@ -39,6 +39,7 @@ import { fetchSiteControls, fetchSiteLots } from '../src/fetch/nsw.js';
 import { apiCouncilName, clipToExtent, fetchCouncilApplications, PORTAL_MANDATED } from '../src/fetch/da.js';
 import { printPage } from '../src/render/pdf.js';
 import { classifyCapacity, registerRecords, inWindow, capacityCounts, type CapacityOverrides } from '../src/lib/capacity.js';
+import { stateLandFeatures } from '../src/lib/stateLand.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PORTAL = 'https://portal.spatial.nsw.gov.au/server/rest/services';
@@ -93,7 +94,7 @@ const [siteLots, lots, props, roadNames, heritage, stateLand, crownLand, parks, 
   soft('property register', queryByExtent(`${CADASTRE}/12`, extent, 'propid,address,housenumber,propertytype,valnetpropertytype,valnetpropertystatus,valnetlotcount,dissolveparcelcount,superlot'), empty),
   soft('road names', queryByExtent(`${CADASTRE}/1`, extent, 'roadnamelabel'), empty),
   soft('heritage', queryByExtent(`${EPI}/0`, extent, 'LAY_CLASS,H_NAME,SIG,EPI_NAME'), empty),
-  soft('State government land', queryByExtent(`${M3}/Planning_Portal_GPI/MapServer/302`, extent, 'LOTREF,SOURCE,PLANLABEL'), empty),
+  soft('State government land', (async () => stateLandFeatures(extent))(), empty),
   soft('Crown land', queryByExtent(`${M3}/Planning_Portal_Crown_Land/MapServer/258`, extent, 'Area_H,DISPOSALSTATUS'), empty),
   soft('council parks', queryByExtent(`${COS}/Parks/FeatureServer/0`, extent, 'Name,Type'), empty),
   soft('council facilities', queryByExtent(`${COS}/CouncilFacilities/FeatureServer/0`, extent, 'Name,Address,Suburb'), empty),
@@ -163,7 +164,7 @@ async function writeAnalysis(dir: string, say: (m: string) => void): Promise<voi
   const props: Record<string, any> = {};
   for (const q of result.properties) {
     props[String(q.propid)] = {
-      propid: q.propid, base: q.base, geom: q.ringsM, centroid: [q.centroidM.x, q.centroidM.y], areaM2: q.areaM2, kind: q.kind, strata: q.strata, units: q.units,
+      propid: q.propid, base: q.base, geom: q.ringsM, centroid: [q.centroidM.x, q.centroidM.y], areaM2: q.areaM2, widthM: q.widthM, small: q.small, kind: q.kind, strata: q.strata, units: q.units, flats: q.flats,
       strataPlans: q.strataPlans, heritageItem: q.heritageItem ?? null, inHCA: q.inHca ?? null, developed: q.developed, active: q.active.map((d) => ({ da: d.da, status: d.status, type: d.type, levels: d.levels, dwellings: d.dwellings })),
       liveDa: q.liveDa.map((d) => ({ pan: d.pan, status: d.status })), override: q.override ?? null, isSite: q.isSite, mark: q.mark === 'cross' ? 'x' : 'tick', note: q.note,
       lots: q.lots, ...(q.isSite ? { neighbours: result.neighbours } : {}),
@@ -172,7 +173,7 @@ async function writeAnalysis(dir: string, say: (m: string) => void): Promise<voi
   const roads = (bundle.roadNames?.features ?? []).map((f: any) => ({ name: f.properties?.roadnamelabel, paths: (f.geometry?.type === 'MultiLineString' ? f.geometry.coordinates : f.geometry ? [f.geometry.coordinates] : []).map((path: number[][]) => path.map(([lon, lat]) => { const m = lonLatToMercator({ lon, lat }); return [m.x, m.y]; })) }));
   const analysis = {
     k: bundle.k, extent: bundle.extent, centre: bundle.centre, aerial: bundle.aerial, imagery: bundle.imagery, controls: bundle.controls, meta: bundle.meta, fetchedAt: bundle.fetchedAt,
-    strataMax: result.options.strataMax, recentYears: result.options.recentYears, since: result.since, smallScheme: result.options.smallScheme, smallSite: result.options.smallSite,
+    strataMax: result.options.strataMax, recentYears: result.options.recentYears, since: result.since, smallScheme: result.options.smallScheme, smallSite: result.options.smallSite, narrowSite: result.options.narrowSite,
     props, lots: result.lots.map((l) => ({ id: l.id, plan: l.plan, rings: toM(l.rings), areaM2: l.areaM2, registered: l.registered, propid: l.propid })),
     heritageItems: (bundle.heritage?.features ?? []).filter((f: any) => String(f.properties?.LAY_CLASS ?? '').startsWith('Item')).map((f: any) => ({ name: f.properties?.H_NAME, rings: toM(ringsOf(f.geometry)) })),
     parks: parks.map((l: any) => ({ name: l.name, rings: toM(l.rings) })),

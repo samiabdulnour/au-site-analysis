@@ -159,7 +159,12 @@ one by hand. Started on another branch, it commits them to that branch. A
 run in which any data source failed (any `WARN` line in its log) commits
 nothing and lists the failures in its summary, since its pictures would be
 missing that source's layer; `allow_warnings` overrides that when the gap is
-known. It only ever runs when started by hand, so like `checks` it never
+known. A refused run is not wasted: the answers Overpass gave it are kept for
+the next run on the same branch (the pipelines' own thirty-day cache,
+`out/.cache/osm`, carried between runs), so when the mirrors have a bad
+minute half way through, the run after asks them only for what failed. A
+drawing whose pipeline fails outright (the NSW address register not answering
+in time, say) is tried once more after two minutes before the run gives up. It only ever runs when started by hand, so like `checks` it never
 spends the public services' capacity on its own. The TfNSW, Google Maps and
 Mapillary keys are read from repository secrets of the same names when they
 are set.
@@ -777,11 +782,11 @@ Every word on the map is one size, which a theme can scale as a whole
 outside the site edge, aimed along the bearing, with what it found — the
 distance and "TERRAIN CLEAR" — written under it, along its line, in the site
 pen's lettering. The site itself — boundary, corners,
-dimensions and levels — is in Heron's red, and the sun, winds and views are drawn
+dimensions and levels — is in Heron's one colour, and the sun, winds and views are drawn
 in grey, so the site reads first and the analysis quietly round it.
 
 The sun, the winds and the noise are drawn in one hand, in open white-filled
-marks (in Heron the sun and the winds in grey, the noise in blue): a sun drawn as an open jagged crown
+marks (in Heron the sun, the winds and the noise in grey): a sun drawn as an open jagged crown
 of twelve teeth round a plain circle, four of them short, broad flames — at the summer and winter sunrise and sunset, on a solid
 summer arc and a dashed winter arc, each arc marked with a dot and the time at
 every solar hour; the prevailing winds as three widening arrows blowing in
@@ -1002,9 +1007,14 @@ take the warm colours — yellow ground with orange buildings for R2, pink for
 R3, cyan for R4, peach for mixed use — and green is kept for green space alone,
 open space the deep mint with black dots. The local and commercial centres and
 retail are the blue family, told apart by texture, the institutions lavender,
-industry grey on stone; water the bright cyan, the site and heritage in magenta
-and purple, the railway orange. The legend swatch shows a few buildings on
-their ground. The colours are exactly those the reference prints. Streets, numbered
+industry grey on stone; water the bright cyan, heritage purple, the railway
+orange. The site is a red terracotta (`#c8553a`), drawn as its site sheet
+draws it (`siteMark` on the template, 2026-11): the lot in a pale tint of the
+red, on white so the zone under it does not muddy it, inside a dash-dot line
+of the red and a white contour that lifts it off the tints round it; what
+stands on the lot in the full red, in a white edge. It was the reference's
+pale salmon at 0.55 in a dashed line, which the decks keep as `site`. The legend swatch shows a few buildings on
+their ground. The other colours are exactly those the reference prints. Streets, numbered
 places and the dotted lines are Flamingo's, but the street names and the institutions' number discs
 are the reference's peach, the parks' discs a light leaf green, and the lots
 and every building are drawn in a heavy white line. The lots lie under the
@@ -1072,26 +1082,39 @@ veil and the aerial's tone, the site's pen and dash, how the zones, heritage,
 neighbours, streets, suns, winds, noise, views and kerbside parking are drawn,
 and in which inks. There are four, on the aerial or on paper:
 
-**Heron** (`heron`, the default) — the aerial with the zones hatched, in the
-Heron template's colours. The aerial goes grey outside the site (`aerial: 'grey'`, by the
-same saturation blend as the context sheet), so the lot alone keeps its
-colour; the zones are hatched and tinted in Heron's palette (tan centres and
-mixed use, peach residential, mint open space, slate institutions; the tint
-at 0.55, multiplied into the grey photograph, since Heron's tints are too pale
-to read as a hatch alone), the site, its levels and its boundary dimensions
-are in Heron's red, and the fall arrow in its slate; the FALL and AREA are
-written in the red too, plain on the photograph like the levels, with no box
-and no white edge (`fallWords: 'plain'`). Every word on the map is set a fifth
-larger than the other site themes' (`textScale: 1.2`). The
-neighbours' numbers and storeys and the street names are white over a fine
-white outline of each building, noise in blue, and the climate is drawn
-quietly as before: the sun, its path, its hours and words, the telescopes and
-the winds in one grey, the contours in a lighter grey. The sun is an open
-crown of twelve uneven teeth round a plain circle, the four on the diagonals
-drawn out as short, broad flames. It draws on Heron. It was called Dove (on
+**Heron** (`heron`, the default) — a conventional black-and-white drawing
+over the aerial, with one colour (2026-11; the yield and the site report go
+the same way, see Heron mono below):
+- **The photograph** is grey all over, the lot's own too (`aerial: 'mono'`,
+  by the same saturation blend as the context sheet), and a white veil
+  (`veil: 0.74`) lifts everything round the lot, so black lines read on it.
+- **The lines are black**, not white: the cadastre, the outline of each
+  numbered building, the street names, the neighbours' numbers and storeys,
+  the fall arrow, the sun and its path, the winds, the telescopes and the
+  noise (`lotInk`, `outlineInk`, `streetInk`, …). The contours are dotted, in
+  a mid grey (`contourDots`), as a site plan draws them.
+- **The zones are hatches, not shades** (`zoneTint: 0`, `hatchInk`): every
+  zone in the same black, told apart by its pattern alone. The pattern is
+  the category's `hatch` in Heron's mono categories:
+  - residential in lines falling to the right, tighter as the density rises
+    (R2 wide, R3, R4 tight);
+  - the centres cross-hatched, the commercial tighter than the local;
+  - mixed use in upright lines;
+  - industry and infrastructure in lines rising to the right, the industry
+    tighter;
+  - open space dotted, water in flat lines.
+- **The one colour** is the brick red `#c0533f` (`HERON_ACCENT`): the site's
+  dash-dot boundary, its levels, its boundary dimensions and the FALL and AREA
+  words, which sit plain on the photograph (`fallWords: 'plain'`).
+- Every word on the map is set a fifth larger than the other site themes'
+  (`textScale: 1.2`). The sun is an open crown of twelve uneven teeth round a
+  plain circle, the four on the diagonals drawn out as short, broad flames;
+  the winter path is dashed, the summer path solid.
+
+It draws on Heron's mono template (`HERON_MONO`). It was called Dove (on
 Flamingo's palette, with the site in a deeper red) and before that Cardinal
-(with the sun in mustard and the winds and views in red); a request that still
-names `dove` or `cardinal` is drawn in Heron.
+(with the sun in mustard and the winds and views in red); a request that
+still names `dove` or `cardinal` is drawn in Heron.
 
 In every style, the services' words (11 kV, Ø 375, DS 1616 · 969 kVA spare) are
 plain Arial with no white halo. Where no open tree data reaches the site (no
@@ -1102,8 +1125,19 @@ instead of leaving the trees out without a word.
 zones as Kingfisher's pale grounds with their textures, laid on the lots only
 so the roads stay white (water is drawn whole), every building in its zone
 family's strong colour with a white edge and its number in white (a quiet grey
-on the site and where no zone is mapped), the white cadastre, Kingfisher's
-grotesk, its peach street names and its magenta site. The climate is drawn in
+where no zone is mapped), the white cadastre, Kingfisher's
+grotesk and its peach street names. The site is in a red terracotta
+(`#c8553a`, 2026-11; it was the palette's magenta), the same as on the
+context sheet, chosen to sit with the palette's peach and coral: its dash-dot
+boundary, its corners and levels, the lot in a pale tint of it (`siteTint`)
+and what stands on the lot in the terracotta itself (`siteFigure`), where it
+was a quiet grey. How that building is drawn is the look's `siteFigureStyle`.
+Kingfisher's is `fillContour`: filled in the terracotta inside a thick white
+contour, which lifts it off the lot's tint. The others are the buildings' fine
+white edge (unset), white and hatched inside the white contour (the hatch's
+line and spacing are `siteFigureHatch`), or white, plain or hatched, inside a
+thick contour of the terracotta. Flamingo's site sheet keeps its coral site; its building on
+the lot takes the coral as its outline and hatch. The climate is drawn in
 the office's marks for this palette (`src/render/climateSymbols.ts`, taken
 as drawn from its symbol sheet): each solstice's sun path a nearly solid
 crescent in warm yellow, deepest at noon and running from amber at its points
@@ -1210,6 +1244,64 @@ the sheet (`themeFor()`). The CLI takes `--site-theme`.
 
 ### The decks' styles
 
+**Heron's site report is black and white alone** (Z.'s markup of the Heron
+deck for 86, 88-90, 94 Maroubra Road, 2026-11: "do not use different
+colours for Heron; just make the site a thick line and the trees black with
+a hatch"). It draws on its own template, `HERON_PLAIN`
+(`templateFor('slides', 'heron')`, `plain: true`), where the yield and the
+A1 site sheet keep `HERON_MONO` and its one colour. What follows from it:
+
+- *No red anywhere*: the site's pen, the narrative, the accent's ink family
+  (the bars of a chart, a constraint's number, a heritage outline) and the
+  walking bands' ramp are black on greys; the site's own land-use category
+  is white. `test/heron-mono.mts` holds every ink of the report to a grey.
+- *The site is a heavy line*: `siteMark` (`src/render/minimap.ts`) draws it
+  as a 0.9 mm dash-dot black line with white under it, so it stands clear of
+  a photograph, a hatch or a tone alike, and fills nothing inside it. It is
+  one outline round the whole site: an amalgamation's lots are joined
+  (`siteOutlineRings`, their corners rounded to a centimetre so two that
+  meet do meet, a gap between them no boundary) and the lines between them
+  are left to the cadastre, where each lot was outlined and the site read
+  as three. Every style's site outline, the black edge over a red map and
+  the site on the ground of the built form page take the same joined ring; the
+  keys show the same line in a box (`siteSwatch`), and the site plan and the
+  condition page take the same boundary. The region's ring and Country's
+  dot are black.
+- *The zoning map is the context analysis's*: the planning overview, the one
+  page that is a zoning map, takes the mapping method of Heron's context
+  sheet ("the hatches there are quite confusing; use the same mapping
+  method, colours and style, which you use in context analysis for Heron"):
+  that sheet's land-use tints at its opacities (the residential zones in
+  warm pinks deepening with density, the centres in tans, open space in
+  green) over the photograph in grey under its veil, the cadastre in white,
+  its heritage ink (`heronContextLook()` in `src/render/template.ts`). Eleven
+  hatches in one black ink over the cadastre's fine lines did not read
+  apart. The zones' bars and the key take the same tints; the zone codes and
+  the street names are black, the names on the streets' white strips; the
+  site stays the heavy black line. Every other page keeps the report's own
+  black and white categories.
+- *The hatches end on a line*: the streets' casing is a firm dark grey and
+  heavier (`greyBase`, `overLayers`), so every block has a contour and a
+  zone's hatch stops at it; the cadastre is a grey firm enough to read with
+  no tint under it; Country's plant communities are each outlined along
+  their own edge (`paintMasks` paints a fill's outline along its mask's
+  edge), so two patterns that meet have a line between them.
+- *The trees are hatched*: on the built form page each crown is ruled in
+  black inside its black contour (`crownPicture`'s `hatch`), so the trees
+  stand apart from the white buildings; on the green page each tree is a
+  black circle, hatched.
+- *The capacity study's tick and cross are black*, and a single title's
+  outline a firm dark grey.
+- *The photographs keep their colours* ("photos can have colours"): what is
+  drawn has no colour, but the aerials, the street and the places print as
+  they were taken. The report no longer asks for its pictures in grey
+  (`--photos: grey` in `deckCss()`, which `greyPhotos` in
+  `src/render/pdf.ts` acts on, is now the yield's alone), and the site's
+  line, black with white under it, reads on a colour photograph as it did
+  on a grey one. The streetscape's ground is a heavy line with no dark band
+  under the street; its wrapper says `data-photos="colour"`, so its faces
+  stay in colour in any deck that prints its other pictures grey.
+
 The yield and the site report take the four styles of the two maps, under
 the same names, and read each style's palette from its context template
 (`deckLook()` and `deckFamilies()` in `src/render/template.ts`). The site
@@ -1236,22 +1328,281 @@ The storeys' ramp runs across the palette in every style, Heron's included
 the massing and the built form page light and glossy
 (`massingInks().gloss` and `.pastel`): pastel cuts of the same colours on a
 near-white ground, the faces lit bright and barely shaded, the roofs
-lighter, the edges and the window dots softer, and each building casting a
+lighter, the edges softer, and each building casting a
 soft blue shadow on the ground instead, its footprint swept away from the
 light by its height; Heron and Canary shade the faces themselves, in the
-full colours. Heron keeps
-the office's own swatch sheet for its decks, the five families the decks
-were drawn in before the styles, with the land-use categories laid out in
-those families (`KIT_INK`, `KIT_CATEGORIES`): the office's sheet in the
-office's palette. Canary has a punchy sheet of its own (`CANARY_INK`): its
-red, its yellow, its lime and its lilac-blue, so the two aerial styles
-differ in their colours, not only in the site's ink. How a style renders the
-data differs as its ground does (`technique` on the deck look): Flamingo
+full colours.
+
+Canary marks a building's walls with a hatch (`WALL_HATCH` in
+`src/render/axonometric.ts`): a wall turned from the light is hatched as shade,
+lines at 45° in a darker cut of the wall's own colour, 0.14 mm wide and 0.9 mm
+apart on a wall turned full from the light, opening as the wall turns toward
+it; a wall turned to the light is left plain, as is one coloured by its hours
+of sun. The lines are drawn and clipped to each wall, not a pattern fill, which
+the print would rasterise. Flamingo and Kingfisher, light and glossy with their
+shadows on the ground, leave every wall plain: no hatch at all, the storeys
+ruled across what is built on the site. (All three laid a pattern of small dark
+squares flat over every wall.)
+
+In Canary, whose neighbours stand in their zones' ePlanning colours at full
+strength, the site is as saturated as they are and a colour none of them takes:
+the yield's scheme is Canary's yellow (its shops' and offices' floors E1's and
+E2's colours at the same strength), what stands on the site today the deeper of
+its yellows, and the report's built form draws the site's building in the
+site's red at full strength. The other styles keep their own tints for the
+site.
+
+The 3D views' trees and people follow the style (`lookOf` in
+`src/render/axonometric.ts`).
+- **Flamingo** follows an illustrator's flat isometric town (Z.'s references of
+  2026-11): flat shapes in a few colours on a cream ground, everything that
+  moves drawn in line.
+  - **Trees:** flat shapes in vector, no outline, shading or shadow
+    (`flatCrownSvg` in `src/render/crowns.ts`): a three-lobed crown, a round
+    one, a six-sided one, a bell, a conifer's triangle, a cypress's pointed
+    oval, a shield ruled down its length and, for a few of the smallest, a low
+    bush. Each stands on a thin trunk whose line runs up into the crown with a
+    branch or two off it, a short bar on the ground at its foot.
+  - **Colour:** two deep teals tree by tree, a lighter one for the shields and
+    half the cypresses and bushes (`FLAT_TEAL`); the lines in a crown are a
+    deeper cut of its own teal. About one tree in fourteen is left in paper:
+    the streets' cream with the figures' line round its crown.
+  - **Bars and shadows:** the bar at a tree's foot is pale orange on the paper
+    and a thin cut of the tree's teal on a park's green. The buildings' cast
+    shadows are flat, in the same pale orange.
+  - **People:** in line and in vector (`linePersonSvg` in
+    `src/render/people.ts`), after Z.'s sheet of the people: soft, loose
+    figures with one thin near-black line round every part and no face.
+    - Colour: each part is the cream of the streets, but for the hair, which
+      is dark, and some of the clothes, which take one of four flat colours (a
+      yellow, an orange, a pale blue, a teal): the trousers, skirt or shorts of
+      about half the people, a top now and then, the book or the bag in a hand.
+    - Clothes: a loose top with rounded shoulders and full sleeves gathered at
+      the wrist; wide trousers flaring to a curved hem, slim ones, a skirt or
+      shorts over slender legs; flat shoes. Each sleeve is joined to the body
+      at the shoulder (`sleeve`): no line crosses it, the body's outline runs
+      into the sleeve's, and the arm parts from the body at the armpit.
+    - Poses: standing with the arms folded, a hand on a hip, both, in the
+      pockets, waving, or at the sides; walking with the arms swinging, a book
+      held up, or a bag on its strap.
+    - Hair: short, in a bun, a tail, long and loose, or under a brimmed hat.
+    - A pale orange bar lies on the ground under the feet.
+  - **Size:** the people are at the town's own scale (`LINE_FIGURE_SIZE`, 1),
+    and as many as Kingfisher draws. The line round each part is 0.04 m in the
+    scene, so a figure a millimetre tall on paper still reads. (They were tried
+    at three times life, as the references draw theirs; set the constant over
+    2 and there are fewer of them to suit.)
+  - **Cyclists** likewise (`lineRiderSvg`): thin spoked wheels and frame in
+    the pen alone, the rider leaning to the bars, a helmet.
+  - **Traffic:** Kingfisher's drawn vehicles (below) in line alone, without
+    the people's colours: every part in the streets' cream with the one
+    near-black line, the windows and the wheels in outline, a pale orange patch
+    on the road under each.
+  - **Town:** a yellowish cream ground, as the references' paper, the streets
+    a shade lighter (`massingInks()`). The line down the middle of each street
+    is short dashes drawn in outline and laid on the road (`ROAD_DASH`: 1.7 m
+    long, 0.42 m wide, one every 4.2 m), where the other styles rule a dashed
+    line.
+- **People, Kingfisher:** flat figures after an illustrator's isometric people
+  (`src/render/people.ts`):
+  - bright tops, trousers or a dress, a face and its hair (short, long or in
+    a bun), arms that swing and legs apart when they walk, now and then a bag;
+  - a little larger than life;
+  - walking the footpaths (some in twos), facing the way they walk, and
+    gathered in the parks.
+- **Kingfisher** follows an illustrated masterplan and its elevation trees,
+  with one thin contour of dark slate (`CONTOUR`) round every tree, person,
+  cyclist and vehicle, so they read as one drawing:
+  - **Crowns:** a plain mass of leaves in the tree's green with a broken, leafy
+    edge and a few small gaps through it at random (one to four, outlined as
+    the crown is). The wood, in a terracotta cut of Kingfisher's red, is
+    hidden by the leaves as a tree's is: it shows in the trunk, in an arch the
+    crown's underside opens round it (where the trunk forks and the lower limbs
+    climb into the leaves), and through a gap where a limb passes behind it.
+  - **Forms:** round, upright, a fuller oval, three-massed, a cypress for a
+    tenth of the small trees and a conifer, a cone broad at its foot, for about
+    one tree in eight. None is squat, and each broadleaf form has three ways of
+    branching. There is no shadow.
+  - **Habit:** each tree stands its own way:
+    - half on a single trunk forking in the arch under the crown;
+    - some on a trunk forking low into two;
+    - some on two or three stems from the ground;
+    - a conifer or a cypress on a short trunk.
+
+    Its bare trunk is from a little to well over its crown's radius, so the
+    crowns sit low or high, and each crown is a little taller or broader.
+  - **Town:** a warm near-white ground, as its pavements; the streets a cool
+    pale lilac grey with their kerbs a shade deeper and the line down them
+    barely there; the lots faint and the parks a pale sage (`massingInks()`).
+  - **Traffic:** each vehicle a body drawn from its side profile and carried
+    across its width:
+    - a car's bonnet, raked windscreen, roof and rear window;
+    - a van's short nose;
+    - a truck's cab on its chassis with its box;
+    - an articulated truck's long-nosed prime mover and trailer;
+    - a bus's band of glass in panes.
+
+    Each has dark glass and wheels with their hubs on the side turned to the
+    camera. The colours are Kingfisher's: mostly warm whites and light greys,
+    its terracotta, mint, pale and deep blue among them.
+- **Cyclists**, in Kingfisher, are painted as its people are: a figure on a
+  bicycle, facing the way they ride.
+- **Trees off the road:** in every style, a crown read off the aerial over a
+  street is moved out past the nearer kerb onto the verge, or left out where
+  there is no room there.
+- **People off the road:** in every style, a walker is put 1.6 m past the kerb
+  as it is drawn (stepping out from the street's axis to where the drawn
+  carriageway ends), and left out where that lands on another street's
+  carriageway. A street drawn as two lines side by side, or a carriageway
+  worked out wider than its class's, used to leave walkers standing in a lane.
+  A cyclist rides 1.1 m in from that same kerb.
+- **Colour:** each style's trees are in its own green:
+  - Flamingo's two deep teals, and a lighter one for its shields;
+  - Kingfisher's mint (`massingInks().tree`), in two close cuts, and a soft
+    yellow-green for about one tree in five.
+- **Canary and the white model** keep the plain discs and slips.
+- **Heron** draws a line model (see Heron mono): its trees are the canopies'
+  pictures in white, their contour and limbs black.
+
+A drawing holds a few thousand trees. Kingfisher's leafy canopies are too much
+to print as vectors tree by tree (tens of megabytes a drawing), so each crown
+is painted once as a small picture (`src/render/crowns.ts`) and placed at every
+tree that takes it:
+- a shape (Kingfisher's five forms by three branchings), in its green, at one
+  of three sizes, its outline as wide in the scene as the others';
+- its people likewise, thirty of them, each placed facing either way;
+- the PDF keeps each picture once, so the illustrated pages print no larger
+  than the plain ones did.
+
+Flamingo's flat trees and line figures are a few plain paths each, so they
+stay in vector: each form (in each teal, at each of the three sizes) and each
+figure is drawn once in the drawing's defs and placed with a `<use>`. The
+report's built form, some five thousand trees, prints at about 2.4 MB.
+
+`npx tsx test/trees.mts` checks the pictures and each style's look.
+
+**Heron mono.** Heron's yield and site report are a conventional
+black-and-white drawing set with one colour (2026-11), as its site sheet is:
+black lines, hatches in place of shades, dashed and dotted lines where a map
+needs them to be read, nothing saturated. Its context sheet keeps the office
+palette.
+- **Template.** `templateFor` gives the decks and the site sheet Heron's mono
+  template (`HERON_MONO`, `src/render/template.ts`) and the context sheet
+  Heron's own. The mono template sets the decks on white paper, so they draw
+  in the line technique (hatches, lines and patches), as Flamingo and
+  Kingfisher do, not in tones over the photograph.
+- **Inks.** The lines, the hatches and the words are black (`HERON_INK`: the
+  families' `line`, `deep` and `text`); a light grey is kept for a ground
+  where a figure needs one. The accent, Heron's brick red `#c0533f`
+  (`HERON_ACCENT`), is for the site, the narrative and what constrains.
+- **Zones.** A zone is its category's hatch in black on white
+  (`categoryFill`), the same patterns as the site sheet's at the deck's
+  scale. Over the photograph of the yield's first plan the paper under the
+  hatch is a veil, so the roofs still show.
+- **Lines told apart by their dash.**
+  - The region map's railways are the classic railway: black with white
+    sleeper dashes, so they read apart from the motorways' solid black.
+  - A separation that holds only with a blank face is dashed black; one that
+    holds is solid black, one that falls short is in the accent.
+  - The rings, the council boundaries, the walks and the conservation areas
+    keep their dashes and dots.
+- **Patterns for what was colour.** The Country page's pre-1750 plant
+  communities are each a pattern of their own (dots, hatches either way,
+  upright and flat lines, cross-hatch, waves) on the bare paper, the
+  hillshade under them.
+- **3D views: a line model**, after an architect's axonometric
+  (`src/render/axonometric.ts`, `LINE`):
+  - the massing views (the yield's and the report's built form)
+    are black and white, with no colour at all, the accent included:
+    whatever ink or fill they are given goes to the grey of its own
+    lightness (`greyOf`), the site is a black dash-dot boundary on the
+    ground with no tint, and the height plane over it a fine black dashed
+    outline;
+  - the compliance views keep their colour: the walls and roofs in their
+    bands of sun hours, the site in the accent;
+  - every building is a white volume in a black outline, with no shade on
+    its faces;
+  - the buildings' outlines are sized on paper, millimetres whatever the
+    drawing's scale (`LINE_MM`): a neighbour's 0.2 mm, what is built 0.3 mm
+    inside a 0.55 mm outline, a storey's line 0.08 mm. The other styles'
+    strokes scale with the drawing, so a town drawn small, as on the built
+    form page, had hairlines;
+  - there are no grey fills in the massing views: a building given a tone
+    (a neighbour's band of storeys, what stands on the site, a shop's
+    floors) is white, its walls hatched so the tone reads as shade: the
+    closer the darker the tone (`lineHatchPitch`: 1.7 mm for the palest
+    down to 0.6 mm), closest on the wall turned from the light and opening
+    to nearly twice the spacing on one turned full to it, in a firmer line
+    for what is built on the site; the roof stays white;
+  - what is built on the site carries the heaviest outline, its storeys
+    ruled across its walls and nothing else on them: a massing is a volume,
+    not a facade design, so no windows are drawn (`LINE_WINDOWS`, which can
+    also draw frames, ribbons or a curtain wall's uprights on the wall as it
+    stands);
+  - the trees are white canopies in their contour with their limbs drawn
+    fine, the people and the traffic white in outline;
+  - each ground surface has a hatch of its own (`groundHatch`), sized on
+    paper whatever the drawing's scale: a park's lawn closely hatched, rising
+    to the right; a lot's garden lightly stippled; the carriageway finely
+    ruled across; the footpaths and verges white;
+  - under each tree a closer hatch laid the other way, its shadow on
+    whatever surface it falls; the buildings cast none;
+  - the hatches are lines and dots clipped to each surface, over the frame
+    alone, not SVG pattern fills: in print Chromium turns a pattern fill into
+    a picture of the shape it fills, and the yield went from 27 to 63 MB with
+    them; as lines it is 30;
+  - the lots and kerbs are fine grey lines;
+  - on the report's built form page the low buildings are plain white and
+    the taller ones' walls hatched, closer band by band, so the storeys
+    still read; its key draws each band as a small block with the same
+    hatch on its walls.
+- **Plans: line plans**, after an architect's site plan:
+  - a building is white in a heavy black outline (`LINE_BUILDING` on the
+    yield's plans; `grain()` on the report's maps, finer at their scale);
+  - what is built on the site has the heaviest outline on the sheet;
+  - on the yield's path plans a tree is a circle at its crown's size with its
+    centre marked, the kerbs and lot lines are fine and grey, and only the
+    parks are hatched, lightly; each lot's zone is written on it, and the
+    first page's plan keeps its zone hatches over the photograph.
+- **Sun hours: the context sheet's colours.** The heat map of sun hours on
+  the compliance views (walls, roofs and the key) is the one place the decks
+  take colour beside the accent. Its seven bands are `HERON_SUN`: exactly
+  the colours Heron's context sheet prints, cool to warm as the other
+  styles' bands run:
+  - none: the slate of its dimensions (`#3c4c5a`);
+  - under 1 h: the grey-blue of its winds (`#6d8a99`);
+  - 1–2 h: its schools' pale slate (`#b8d1d7`);
+  - 2–3 h: the green of its ten-minute walk (`#6aaf88`);
+  - 3–4 h: its retail's sand (`#ecd4ac`);
+  - 4–5 h: its commercial centres' tan (`#daa66f`);
+  - 5 h and over: the site's red (`#cf4a2e`).
+- **Ramps and marks.** The storeys of the height of buildings page and the
+  landform's contours run in greys, black and white like the rest; the ramp
+  ordered lines run up (the walks' bands) goes from grey to the accent; the
+  cars of the 3D views are white; the compliance ticks are black and the
+  crosses in the accent.
+- **Photographs print in grey**: the aerials, Street View and the places'
+  pictures. The page asks for it (`--photos: grey` on its root), and the print
+  (`src/render/pdf.ts`) makes each picture grey in the page, as a JPEG, before
+  it prints. A CSS filter would grey them on the screen, but in print Chromium
+  rasterises the page round a filtered picture, uncompressed: the report went
+  from 49 to 121 MB. As done, it stays at about 50.
+- **Test.** `npx tsx test/heron-mono.mts` checks that:
+  - every ink the decks and the site sheet take in Heron is a grey or the
+    accent, and Kingfisher's are not, so the check can fail;
+  - the decks are on paper in the line technique, and the site sheet's
+    linework is black with no shade under its hatches;
+  - each zone category and each plant community has a pattern of its own;
+  - a page asking for grey prints its pictures grey and as themselves.
+
+Canary has a punchy sheet of its own (`CANARY_INK`): its red, its yellow, its
+lime and its lilac-blue. How a style renders the data differs as its ground does (`technique` on the deck look): Flamingo
 and Kingfisher work in hatches, lines and patches on paper (the landform as
 contours alone, coloured up the ramp by height, the pre-1750 communities
 dotted, the development lots hatched; the storeys are tones up the ramp in
-every style, a hatch reading badly at a footprint's size),
-Heron and Canary in tones over the photograph (the landform in a heat
+every style, a hatch reading badly at a footprint's size), and so does
+Heron since it went black and white (Heron mono, above);
+Canary works in tones over the photograph (the landform in a heat
 ramp, the storeys and the communities flat). The charts are flat tones in
 every style: a bar, a span of a time line, a wedge of a wind rose is its ink
 at an opacity, never a pattern (`chartFill` in `src/render/atlasKit.ts`
@@ -1266,15 +1617,15 @@ style's own sheets are set in: the style is in the colour, not the face. The win
 transit family's blue, deepened, which differs by style. The marks of the development page carry
 pictograms, a tick, an hourglass, the scales' beam, a cross, and a star for
 a State significant application, so a status reads without the key. The
-ground follows the style too, paper for Flamingo and Kingfisher and the
-greyed aerial under the style's veil for Heron and Canary (the planning page has
+ground follows the style too, paper for Flamingo, Kingfisher and Heron and the
+greyed aerial under the style's veil for Canary (the planning page has
 the Character page's photograph; the yield reads one over the site's
 surroundings, lays it under its plan and skews it into the axonometric's
 ground plane, whose projection is affine, so the plan's picture goes in as
 one matrix). The buildings on a plan follow it as well: white in a hairline
-of their zone family's ink (Flamingo), filled in the family's colour with a
-white edge (Kingfisher), a white line round the photograph's roofs (Heron
-and Canary), or a quiet grey where an older yield bundle has no
+of their zone family's ink (Flamingo; Heron's in black), filled in the family's colour with a
+white edge (Kingfisher), a white line round the photograph's roofs
+(Canary), or a quiet grey where an older yield bundle has no
 photograph. The page's type stays the report's Arial in every
 style; the style is in the colour, not the face.
 
@@ -1307,6 +1658,51 @@ way from the site, metres), `--job 2539`, `--client "Name"`,
 `--status "DEVELOPMENT APPLICATION"`, `--sheet "DA 003"`.
 
 ### The planning yield
+
+**What stands, its compliance, and an amalgamated site** (Z.'s notes on the
+yield for 86, 88-90, 94 Maroubra Road, 2026-11):
+
+- *"It builds a smaller thing than it is."* The path that rebuilds what
+  stands now holds what stands, the whole of it. The summary of what stands
+  and the path were read apart: the summary rounded a height into storeys
+  and counted every building; the path took a roof allowance off each height
+  first, rounded down, and left out a building with no recorded height. So
+  four buildings of about 1,743 m² were "rebuilt to what stands" as three of
+  707 m². Both now take one reading (`standingStoreys()` in
+  `src/lib/yield.ts`): every building, at the same storeys, so the path's
+  gross building area is the summary's. And what stands is stated on the
+  paths' own measure (`standsFloor()` in `src/render/yieldSheet.ts`): the
+  paths' figures are gross floor area and the LEP's ratio is on it, but what
+  stands was given as gross building area, so the same bulk read as
+  1,743 m² standing and 1,261 m² rebuilt, and as "≈ 0.6:1" against a 0.50:1
+  it is under. The table, the bars and the page now give what stands'
+  floor area (≈ 1,261 m², ≈ 0.41:1) with its gross building area beside it;
+  a bundle with no outlines of what stands keeps the gross building area,
+  labelled as that. The height chart's limit reads 9.5 m, not "10 m".
+- *"Always show compliance for current structures on site, after for the
+  designed massings."* What stands today has a compliance sheet of its own,
+  always and first (`Stands today: compliance`: its sun, the shadow it
+  casts, its separations), whether or not rebuilding it is a path; the
+  designed massings' sheets follow. The path that rebuilds what stands is
+  the same massing, so it has no second sheet.
+- *"For multiple sites analysed you need to amalgamate the site."* The lots
+  of several addresses were already joined into one boundary and one area,
+  but in a low density zone the study designed nothing on it (the LEP's
+  land use table takes no apartment building there), so the only massing
+  drawn was each lot's own house, rebuilt. The study now reads the Housing
+  SEPP's **low and mid-rise housing** controls (chapter 6, `src/lib/lmr.ts`):
+  within 800 m of a nominated town centre they permit, in R1 and R2, a
+  residential flat building to 9.5 m and 0.8:1 on a lot of at least 500 m²
+  and 12 m wide, and the study draws that scheme across the whole site,
+  every lot of the amalgamation as one (`Low and mid-rise housing`, a path
+  with its own page, controls rows and compliance sheet). The town centre
+  is the nearest of the Housing SEPP's town-centres map, read to 800 m
+  round the site; the distance is the straight line from the site's
+  boundary to the centre's mapped edge, where the SEPP's is a walking
+  distance, and the land the policy leaves out (constraints, heritage,
+  some councils' excluded land) is not checked: the page says both, and
+  that eligibility is to confirm with a planner. The mid-rise standards of
+  R3 and R4 are not read; those zones keep the LEP's own paths.
 
 `--type yield` draws PLANNING YIELD: what the controls let the site hold, as a
 feasibility study first states it, laid out as the site report is — A3
@@ -1357,18 +1753,110 @@ site may take, so a site with more paths has more pages:
    tier's number in the ring the plan draws it in — and the apartments, a row
    for each kind in the mix with its share, ADG 4D-1's least area for it, its
    own area, how many there are and the area they take.
-5. **Affordable housing bonus** — the same for the Housing SEPP's in-fill
+5. **Reshaped to comply** — the envelope within the controls laid out again
+   in the office's feasible footprints so that it meets the ADG's sun
+   (`src/lib/reshape.ts`, tested in `test/reshape.mts`):
+   - **The footprints:** single-loaded 12 m deep, its gallery on the face
+     with least sun; double-loaded 18 m along an east–west axis, its
+     apartments running through to the north; double-loaded 22 m along a
+     north–south axis, facing east and west; each 15 to 45 m long, a
+     double-loaded one at least as long as it is deep.
+   - **Where they stand:** in rows within the setbacks (6 m from the street,
+     the ADG's half separation from the side and rear boundaries for their
+     storeys), the rows and the buildings in a row the ADG's full separation
+     apart (12, 18 or 24 m). The rows run along the main frontage, across
+     it, or true east–west or north–south.
+   - **How high:** to the height of building and held to the floor space
+     ratio. All the buildings take one height, or the northern row is a
+     storey or two lower, or the rows step down to the north, since a
+     building shades the one south of it.
+   - **Which layout:** they are read from the most floor area down, each
+     one's apartments for their sun (every half hour, then confirmed at the
+     quarter hours). The first that meets 4A-1 and 4A-2 is the scheme; where
+     none does, the nearest, and it says so.
+   - **Its pages:** its own spread (the schedule names each building's plan)
+     and its own compliance sheet; the floor area it gives up against the
+     envelope is the floor area the sun costs.
+6. **TOD controls** — where the site is in a TOD area of the Housing SEPP
+   (chapter 5, part 2, `src/lib/tod.ts`, tested in `test/tod.mts`):
+   - **What it allows:** residential flat buildings in the residential and
+     local centre zones to 22 m and 2.5:1, shop-top housing in the local
+     centre and commercial zones to 24 m and 2.5:1, each the LEP's where
+     more generous.
+   - **What it asks:** a lot at least 21 m wide at the street, and 2% of the
+     floor area as affordable housing in perpetuity where the scheme is
+     2,000 m² or more.
+   - **Its pages:** its own spread and compliance sheet, drawn only where it
+     lifts the LEP's height or ratio on a lot wide enough.
+   - **Where a council's alternative replaced it:** Ku-ring-gai's for
+     Gordon, Killara, Lindfield and Roseville, in its LEP from
+     14 November 2025 (State Environmental Planning Policy Amendment
+     (Ku-ring-gai Station Precincts) 2025), within about 800 m of the
+     stations; and Belmore, Canterbury, Croydon (in part), Lakemba, North
+     Wollongong, Punchbowl, St Marys Metro, Wiley Park and Cockle Creek.
+     The LEP's maps already carry the alternative's heights and ratios, so
+     there is no extra path.
+   - **What the sheets say there:** the controls table, the compliance
+     criteria and the spreads' sources name the alternative and the date it
+     began. They also say what its maps set that the study does not read
+     (affordable housing up to 10% on key sites and 2% across parts of the
+     precincts, key sites, active frontages, the low- and mid-rise
+     exclusion), and the savings for applications lodged by 13 June 2025.
+   - **Deferred and accelerated precincts** are named in the controls table.
+7. **Affordable housing bonus** — the same for the Housing SEPP's in-fill
    bonus, 30% more height and FSR for 15% affordable housing, eligibility to
    confirm; drawn only where it gains floor area or apartments.
-6. **Envelope to the height** — the setbacks filled to the height plane with
+8. **Envelope to the height** — the setbacks filled to the height plane with
    the FSR set aside, the case a clause 4.6 variation or a planning proposal
    has to carry, marked non-compliant; drawn only where the FSR stops the
    scheme below the height.
-7. **Controls and assumptions** — the assumptions the study rests on (floor
+9. **Compliance**, a sheet for each option that holds apartments, after the
+   yield's own spreads: does its envelope comply? On the left the
+   assessment criteria in their order, a mark each: overshadow impact
+   (3B-2), solar access (4A-1 with the hours, again built out, and 4A-2 with
+   none), building separation (3F-1) and yield (its floor area against the
+   most the controls allow it); the sun on each facade and the roof, by the
+   way each looks, its area, its average hours and the share with the hours
+   asked, today and built out; each building near and its separation, today
+   and built out. On the first sheet each criterion says in full what it
+   asks, in a line of small print under its own row (the ADG clause and its
+   wording, how the yield's most is worked out, what "built out" means).
+   That wording was a table of its own under the others ("Assessment
+   criteria"), 77 mm of it where 24 mm were free, and it ran into the
+   page's key; under the rows it adds about 20 mm and the tables stay clear
+   of the key. On the right the massing twice, side by side and close on the
+   building, from the street corner and from the opposite one, so every face
+   is seen, the town round it a white model (neighbours, futures, trees,
+   traffic and ground in white and greys) so only the scheme's colours read:
+   each facade cell (a storey high, about 3 m wide) and each roof
+   cell (about 3 m square, on what the tiers above leave open) in its band of
+   hours, blues under two, the lorikeet's green, yellow, orange and red from two; under
+   them the plan as the report's sun page draws it, in Arial: no zone tints,
+   every building white with its storeys (grey where no height is recorded and
+   two are assumed), the future footprints dashed with theirs, and every
+   neighbour's shadow, in grey, each hour from 9 am to 3 pm laid one translucent layer
+   over the last, and the envelope's own over them in the site's accent, at
+   9 am, noon and 3 pm outlined; hatched, the ground only the envelope shades
+   at one hour or more, where no building standing shades it that hour
+   (`addedGround()` in `src/lib/solarAccess.ts`: what it would overshadow);
+   the land it shades outlined and each separation drawn as a dimension (green clear,
+   amber where it holds only habitable to non-habitable, red short), its
+   distance written along its line and just off it, read from the sheet's
+   foot or its right.
+10. **Controls and assumptions** — the assumptions the study rests on (floor
    to floor, efficiencies, the mix, the plates, the parking rates, the nearest
    station) on the left; on the right, the full table the office's
    development summary (DA 002) keeps — CONTROLS, PROPOSED and COMPLIANCE for
    the LEP, the parking, the Apartment Design Guide and the Housing SEPP.
+
+A page's text column has to end above its key, and the printer measures it
+once the page is laid out (`fitSlides()` in `src/render/pdf.ts`): a yield
+spread's tables close up, to four fifths of their size at most, where they
+would reach the key, and a column that still stands on it is named in the
+log (`WARN page …: its text column runs … mm into its key`) rather than
+printed through the key without a word. `npx tsx test/print-check.mts` lays
+a made-up deck out in each style, checks that every column ends above its
+key, and that a column with more in it than its page holds is caught.
 
 Each drawn path's right page is its indicative massing as an axonometric,
 seen from the main street's corner, among the neighbours at their recorded
@@ -1376,19 +1864,31 @@ heights (Overture, its gaps filled from OpenStreetMap, and where neither
 records a height Google's 3D meshes over the massing's window, read as the
 site report reads them — see *Heights from the meshes*; dashed where none
 of them has one), with each tier's envelope
-dashed and the LEP's height of building plane over the site. Over each neighbour,
-in pale dashed glass, its future: its own footprint raised to the whole 3.1 m
-storeys its LEP height of building holds, where its zone permits flats (R1,
-R3, R4, MU1, E1, E2, B1–B4), never lowered — the way sun-study's future
-context reads it — and no higher than its floor space ratio allows: the land
-it stands on by the ratio (its lot, shared between the buildings on it by
-footprint, and never less than its own footprint), spread over its footprint
-at the study's efficiency, offices in a commercial zone and apartments
-elsewhere (`futureHeight()` in `src/lib/yield.ts`). So where the height is an
-airspace RL, as in Parramatta's CBD, the ratio sets the neighbours' futures
-as it sets the proposal. The bundle carries each neighbour's zone, height,
-ratio and land, and the future is worked out when the deck is drawn, so an
-efficiency changed in `yield_assumptions.json` carries to it. The proposal's
+dashed and the LEP's height of building plane over the site. Round it, in pale dashed glass,
+the future context (`src/lib/futureContext.ts`, tested in
+`test/future-context.mts` and `test/yield-futures.mts`): what the neighbours may
+build, as the office's building envelope assumptions have it. On each lot
+within 120 m that may redevelop (zoned for flats, R1, R3, R4, MU1, E1, E2,
+B1–B4, with a height of building of three storeys or more, and not held by the
+capacity study), the largest feasible footprint its envelope holds: 22 m deep
+where its long faces look east and west (ten apartments a floor), 18 m
+double-loaded along an east–west axis (eight), 12 m single-loaded either way,
+at most 45 m long and at least 15 m; the envelope the lot set back 6 m from a
+street and, from its other boundaries, by the ADG's half separation for the
+storeys it rises to (6, 9 and 12 m), the footprint along the street, nearest
+it. It rises to the lot's height of building at 3.1 m a storey, and where the
+floor space ratio would stop it short, the footprint shortens so the floor
+area the ratio gives still reaches the height. A lot too narrow for any
+footprint alone, or held below its height by the setbacks, is joined with the
+next lot along in the same zone, as owners amalgamate, up to three lots, kept
+where the joined lots use the land better, the lots nearest the site first.
+A lot still too small, or one the capacity study holds (a strata scheme, a
+heritage item, a mature or a small site), stands as it is. The neighbours on
+a lot that redevelops stand today and give way to it built out: the
+compliance sheet tests the sun and the separations against both. A height
+mapped as an RL is not read for a lot (its ground is not known), and the
+bundle carries each lot's zone, height and ratio (a bundle from before the
+lots' ratios reads a building's on the lot). The proposal's
 outline is drawn over everything, so a future neighbour in front of it does
 not hide it, and a future far above what stands runs out of the frame, as the
 height plane does, the frame saying how high it goes. The massing is drawn
@@ -1396,7 +1896,7 @@ after the poster maps of a city (`src/render/axonometric.ts`, the drawing
 the site report's built form page shares): every neighbour in its
 zone's colour, bold, as the plan beneath tints its lot (the ePlanning colour
 where the style keeps it, the category's elsewhere), so the plan and the
-massing agree, with a grid of windows over its faces, on a cream ground of
+massing agree (in Canary its walls turned from the light hatched as shade), on a cream ground of
 the activity family — paper in every style. The key names every zone on
 the plan, code and name (`R1 General Residential`, `MU1 Mixed Use`), each
 with its colour: the lot's tint and, on the spreads that draw the
@@ -1503,8 +2003,66 @@ local metres:
   need at 30 m² each over 90% of the site.
 - **The ADG checks.** Communal open space (25%), deep soil (7%, with its
   minimum dimension by site area, against the ground the ground floor leaves),
-  the separations, apartment sizes against 4D-1's minima; solar access and
-  cross-ventilation are marked for the design to test.
+  the separations, apartment sizes against 4D-1's minima; cross-ventilation is
+  marked for the design to test. Solar access and overshadowing are tested on
+  the massing, as the next two points say.
+- **Sun to the apartments (ADG 4A-1, 4A-2).** `src/lib/solarAccess.ts`, tested
+  in `test/solar-access.mts`, gives each drawn path's apartments their hours
+  of sun on 21 June between 9 am and 3 pm AEST, by the quarter hour. The study
+  knows how many apartments each storey holds, not where, so each storey's
+  facade is shared among them in equal lengths: the plate's outline, a
+  courtyard's too, less any wall built to a side or rear boundary, where no
+  window can go. An apartment has the sun when at least a metre of its
+  facade, a metre above its floor, does (the ADG's 1 m² on the living room's
+  glass, the living room taken to be on its sunniest face). The line to the
+  sun is tested against the neighbours at their recorded heights (a nominal
+  two storeys where none is recorded) and the scheme's own tiers. The share
+  with the hours asked (two in the Greater Sydney Region's councils and in
+  Newcastle and Wollongong, three elsewhere, `adgSunHours()`) is set against
+  4A-1's 70%, and the share with none against 4A-2's 15%. Both are given again
+  with the neighbours built to their futures, where any rises. The hours are
+  counted in all, as the ADG's criteria read; `"sun": { "continuous": true }`
+  counts the longest unbroken run instead, for a council that reads them so,
+  and the pages say which. The compliance spread's massing colours each
+  apartment's facade yellow where it has the hours.
+- **Sun on each facade and roof.** `facadeSun()` in `src/lib/solarAccess.ts`
+  gives every face of a scheme its hours, storey by storey in cells about
+  3 m wide, read 1 m above each floor, and `roofSun()` every roof, the plate
+  each tier's roof is less the tiers above it, in cells about 3 m square
+  (clipped by `polyclip-ts`), both today and built out; the compliance
+  sheets colour the massing's cells by their band of hours
+  (`sunBands()` in `src/render/facadeElevation.ts`: seven bands, loriini's,
+  none, under 1, 1–2, 2–3, 3–4, 4–5 and 5 hours and over, after the rainbow
+  lorikeet: three blues short of two hours, a green where a face just makes
+  them, then yellow, orange and #FF5A3D for the most sun; each style takes
+  its own blues and greens). The same module can unfold the faces into
+  strips (`unfoldedFacades`), which no sheet prints yet.
+- **The shadow it adds (ADG 3B-2).** The ground the scheme puts in shadow at
+  each hour from 9 am to 3 pm that is in sun today (the neighbours and what
+  stands on the site casting theirs), sampled every 1.5 m over the open
+  ground of the parks (RE1, C1), the LEP's heritage items and the residential
+  lots (R1–R5) it can reach; the ground under a roof is left out. The table
+  gives each kind's most and its hour, and the residential lots it shades,
+  with those it takes below a common DCP test (half the lot's open ground in
+  sun for the same hours), which pass it today. The ADG asks overshadowing
+  minimised, a judgement, so a path that adds shadow takes the dash, and one
+  that adds none the tick. The bundle carries the heritage items' outlines
+  (`heritageItems`); one from before them says the items were not measured.
+  The ground is flat and the trees cast no shadow: the figures are a test of
+  the massing, for a solar access study to confirm.
+- **Separation (ADG 3F-1).** `src/lib/separation.ts`, tested in
+  `test/separation.mts`: the least distance in plan from each built tier to
+  each building within 24 m, in the band of storeys the two share, against
+  the separation the ADG asks between buildings: 12 m between habitable
+  rooms up to four storeys, 18 m from five to eight, 24 m from nine, and 9,
+  13.5 and 18 m where one face is blank. Which faces have windows is the
+  design's, so a distance between the two figures holds only if one is
+  blank. A neighbour's storeys are its height at 3.1 m (two where none is
+  recorded), today and as its controls let it rise; a building across a
+  street is left to the street and the DCP, and a tier built to its side
+  boundaries (a podium, the shops) has blank walls there and is not
+  measured. The envelope already keeps half of each separation to every
+  boundary, so a shortfall is a neighbour's nearness to its own.
 - **The Housing SEPP.** The in-fill affordable housing bonus — up to 30% more
   FSR and height for 15% affordable housing — as a second run of the study,
   and a note where the site is in a TOD area, whose controls may apply instead.
@@ -1516,13 +2074,21 @@ from `yield_assumptions.json` in the address's output folder (the CLI's
 ```json
 { "mix": { "studio": 0.05, "one": 0.25, "two": 0.55, "three": 0.15, "four": 0 },
   "sizes": { "two": 85 }, "podiumStoreys": 3, "towerPlateMax": 850,
-  "parking": { "one": 0.5, "two": 1, "three": 1.5, "visitor": 0.2, "basis": "the council's DCP" } }
+  "parking": { "one": 0.5, "two": 1, "three": 1.5, "visitor": 0.2, "basis": "the council's DCP" },
+  "sun": { "hours": 3, "neighbourHours": 3, "continuous": true } }
 ```
 
+(`sun.hours` sets the hours of mid-winter sun the apartments are held to in
+place of ADG 4A-1's for the council, `sun.neighbourHours` those the
+neighbours' open ground is (unset, the first), and `sun.continuous` asks
+them unbroken.)
+
 The deck prints the ones a run used. It is a feasibility figure, not a design:
-DCP setbacks, street wall heights, solar access and overshadowing are the
-design's to test, and mapped controls are not a planning certificate. Outputs:
-`PLANNING_YIELD.pdf`, a PNG a spread in `yield/`, `.csv`, `.json`, and
+DCP setbacks and street wall heights are the design's to test, the sun and
+shadow figures are indicative, and mapped controls are not a planning
+certificate. Outputs:
+`PLANNING_YIELD.pdf` and `PLANNING_YIELD.booklet.pdf` (see *The cover and the booklet*), a PNG a spread in
+`yield/`, `.csv`, `.json`, and
 `data/yield.json` (the bundle, which redraws with no refetch). A bundle from
 before the future heights, the lots' zones and numbers and the kerbs still
 draws: without the future neighbours and the plan's labels, its kerbs worked
@@ -1815,8 +2381,8 @@ it was retrieved or when its cache was filled, and the attribution and
 licence; with the layers' own dates, what is computed rather than sourced,
 what remains to be obtained outside the open data, and the run's warnings.
 Each slide carries the sentences that follow from the data and a marked
-placeholder for the author's narrative. Outputs: `OVERALL_ANALYSIS.pdf`, `slides/<id>.png` per slide and
-`overall.json` with everything the deck says.
+placeholder for the author's narrative. Outputs: `OVERALL_ANALYSIS.pdf` (and its booklet, see *The cover and
+the booklet* below), `slides/<id>.png` per slide and `overall.json` with everything the deck says.
 
 Where a council publishes its own DCP mapping as open data — the City of
 Sydney does — the deck reads it too, for the sites in that LGA: building
@@ -1831,6 +2397,132 @@ raised only where the study finds development potential, and a strata
 scheme, a heritage item, a mature development or a site under 250 m² stands
 as it is; its last spread says how many were held, and `PLANNING_YIELD.json`
 lists each neighbour's reading.
+
+### Corrections from the Maroubra markup (2026-11)
+
+Z.'s marked-up Canary deck for 86, 88-90, 94 Maroubra Road, page by page:
+
+- *Topography*: the ground's ramp is the hypsometric tints of a topographic
+  map, green on the low ground through a pale yellow and sand to a
+  terracotta brown on the heights (`HYPSOMETRIC`, `terrainRamp()` in
+  `src/render/atlasKit.ts`), the same in every colour style; it was drawn
+  from each style's families, which on Canary was a page of pinks under a
+  red site. Heron's stays in greys.
+- *Capacity and opportunity*: the site is all its properties, flats on a
+  deposited plan are a single title, and a lot narrower than 9 m is a small
+  site (*The capacity and opportunity site study*, below).
+- *Height of buildings*: every height is read a second time (*A second look
+  at the heights*).
+- *Built form*: the drawing fills its frame to the border, 600 m of the
+  town across the spread with the site at its middle and the town running
+  out past every edge (`AxoScene.frameM`, `frameReachM()` in
+  `src/render/axonometric.ts`), where fitting everything within 300 m drew a
+  round town in the middle of the sheet with the frame's corners empty. Only
+  what can show in the frame is drawn, so the page is no heavier; the lead
+  still counts the buildings within 300 m.
+- *Movement*: the lines of walking time lie over the streets, not under
+  them (a white street broke each line at every crossing), and the key of
+  places is drawn last, so a car park's mark or a stop in its corner lies
+  under its white ground.
+- *Grid, sun and views*: the streets lie under the shadows, which fall
+  across a street as they do across a yard.
+- *Environmental constraints*: a page with nothing mapped says so in a
+  panel of its own under the map's name (`mapNote`: a head over a hairline
+  and a line of the key's small caps, on the key's white ground), where it
+  was one line of small type across the middle of the map, over the site.
+- *Opportunities and constraints*: the streets lie over the parks' ground
+  and under everything the page hatches or rules (the shadows, the sight
+  lines, the walking reach), and a sight line's ground is a veil, not a
+  white fill, so the blocks it crosses show through it.
+
+### The cover and the booklet
+
+Both decks open on a cover, page 1 of the deck, so the spreads after it are
+numbered from 2. There are two covers, for the two ways a deck is read
+(`src/render/slides.ts`, after Z.'s layouts of 2026-11):
+
+- **The slides' cover** (`coverPage`) is one composition across the A3 spread,
+  in every style: the SITE ANALYST mark over a rule, the deck's name in two
+  lines of 27 mm capitals (SITE / REPORT, PLANNING / YIELD), a rule, the site's
+  street and suburb with its lot, area and zone beside it, then the picture
+  (303 by 182 mm) with the contents down its right, a number and a title a
+  spread. The small print (what the deck is and is not, who made it and on
+  which day) sits top right.
+- **The booklet's cover** (`bookletCover`) is the spread cut in two down the
+  fold, its right half the front and its left the back. Flamingo and Kingfisher
+  have the picture on the front, under the mark, the name and the site, to the
+  page's edges; their back carries the deck's name, the site and the contents.
+  Heron and Canary have no picture (`coverHasPicture`): the contents are on the
+  front, under the name and the site, and the back carries the deck's name and
+  the site alone. Every back closes on the small print in two columns.
+
+The picture is the place's trees as a speckle (`src/lib/coverPicture.ts`):
+every tree the deck holds is a fleck of its own, the site in the middle, drawn
+at 1:2000 in cells of half a millimetre, in a blue-grey on a pale sage.
+- A small tree is a dot of the heart of its crown (0.6 of its width); a tree
+  6 m across or more is the lit side of its crown, a crescent open away from
+  the light (the north-west). So trees side by side stay apart and the ground
+  between them stays open, where the canopy drawn whole ran into patches.
+- The trees are the crowns the decks already read off the aerial's green
+  (`src/lib/crowns.ts`: the yield's `trees`, the report's `green.crowns`), with
+  the trees a council or OpenStreetMap records among them. A street's trees
+  fall in a line, a garden's in a cluster, a reserve's in a field of crescents.
+- It is the grain of the place, not a map of it: no site mark, no streets.
+- The cells are traced into one vector outline, so nothing in it is a raster
+  for a viewer to smooth, and Heron, black and white and its one colour, inks
+  it in the two colours' greys.
+- Trees that stop short of the picture at 1:2000 are drawn closer in, as far
+  as 1:1200. A report that holds the aerial's green but no crowns has them
+  read off that green when it is drawn (`prepareRasters`); a deck with no trees
+  at all has the picture's ground alone.
+
+`npx tsx test/covers.mts` checks the speckle (the dot, the crescent, trees side
+by side left apart), the outline (its area the cells' own, holes and corners
+included) and which style's cover carries what.
+
+Each deck is also imposed as a booklet (`src/render/booklet.ts`), kept beside
+its PDF as `PLANNING_YIELD.booklet.pdf` or `OVERALL_ANALYSIS.booklet.pdf`. Each
+A3 landscape side holds two A4 pages, and the sides come in saddle-stitch
+order. Printed double-sided on A3, flipped on the short edge, the sheets
+stacked as they come out, folded down the middle and stapled twice on the fold,
+they make an A4 portrait booklet:
+- The cover's right half is the front and its left half the back.
+- Each spread keeps its two halves face to face, as drawn.
+- Blank pages go in before the back where the pages fall short of a four.
+
+A thin grey dashed line down the middle of every side marks the fold. Printed
+on A4 instead, the same file folds to an A5 booklet.
+
+A spread drawn across both pages with the site in the middle would put the site
+in the fold, under the staples. The booklet prints its own version of such a
+spread, in which the drawing slides sideways within its frame until the site's
+outline is 22 mm clear of the fold (the shorter way, to the right where the two
+are even); the heading, lead, key and sources stay where they are. In the report
+that is *Built form* (09b), the city drawn round the site. The booklet's cover
+is printed the same way, in place of the slides' cover:
+- `renderSlides` and `renderYieldDeck` return these spreads as `booklet`: their
+  HTML, and the deck page each stands in for (0 the cover).
+- `printBooklet` (`src/render/pdf.ts`) prints them beside the deck as
+  `OVERALL_ANALYSIS.booklet-spreads.pdf` or `PLANNING_YIELD.booklet-spreads.pdf`
+  (with its HTML and PNGs), then imposes the booklet with them in place.
+- The deck's own page is left out of the booklet altogether.
+
+The A3 slides keep the drawing as it was. A deck imposed on demand by the
+server (one drawn before this) has none of these spreads: its booklet folds the
+deck's own first page round it. Each half is the spread's
+own page, drawn once into the booklet and shown through a window, so the
+booklet is hardly larger than the deck. The CLI and `scripts/recompose.ts`
+impose it after the deck; `npx tsx test/booklet.mts` checks the order and reads
+an imposed deck back as printed.
+
+On the page, PRINT under STYLE (for REPORT and YIELD) picks which of the two the
+PDF link downloads: SLIDES, the A3 spreads with their cover, or BOOKLET. It is
+not part of what is drawn, so switching it keeps a finished drawing and only
+moves its link (`/api/jobs/<id>/pdf?download&print=booklet`, saved as
+`…_BOOKLET.pdf`). A deck drawn before booklets existed is imposed on its first
+such download and kept beside it; the deck's PNGs show whether it has a cover,
+and without one its first spread still opens on pages 2 and 3. A free account's
+booklet is stamped with the watermark like its slides.
 
 ### The decks' type and alignment
 
@@ -1899,13 +2591,24 @@ What the sheet reads, all open data (`scripts/capacity_study.ts` fetches,
 `src/lib/capacity.ts` classifies, as it does for the deck's spread 08b, `render.py` draws):
 
 - *Ownership* from the NSW cadastre and its property register: a property is
-  a strata scheme where a strata plan sits under it, where the register files
-  its addresses as under a strata plan (schemes on stratum lots), or where
-  three or more unit addresses share the title; the unit addresses registered
-  against the scheme are its lot count. Everything else on a deposited plan is
-  single ownership. Council land is the council's parks and facilities layers
-  (the City of Sydney publishes them), State land the ePlanning State
-  government land layer. None of this is a title search, and the sheet says so.
+  a strata scheme where a strata plan sits under it, or where the register files
+  its addresses as under a strata plan (schemes on stratum lots); the unit
+  addresses registered against the scheme are its lot count. Three or more
+  unit addresses on a title say so only where the cadastre gave no lot under
+  it to read the plan from: where its lots are known and all on a deposited
+  plan, the units are flats or shops in one ownership, which is one owner to
+  deal with and a single title (94 Maroubra Road, four flats on Lot 1
+  DP 306910, was drawn as a strata scheme of four until this was read).
+  Everything else on a deposited plan is single ownership. The site is every
+  property its lots make up, not only the one under its geocoded point: an
+  amalgamation of several addresses is several rows of the register, and each
+  of them is the site, none of them its own neighbour (86, 88-90 and 94
+  Maroubra Road were drawn as the middle address alone, with a cross on 94
+  and "the site adjoins 86 Maroubra Road"). Council land is the council's parks and facilities layers
+  (the City of Sydney publishes them), State land the NSW Government
+  Property Index as last published, 12 October 2022, which ships with the app
+  (see *State government land* below). None of this is a title search, and
+  the sheet says so.
 - *Heritage items* from the LEP heritage layer.
 - *Development* from the council's development monitoring register where it
   publishes one (City of Sydney: applications lodged, approved, under
@@ -1930,7 +2633,11 @@ What the sheet reads, all open data (`scripts/capacity_study.ts` fetches,
   approval, construction or live application for a new building; a cross (low
   development potential) on every mature development, on strata ownership
   (the lot count printed under it on a scheme of more than 30 lots), on a
-  heritage item, on public land and on a small site under 250 m², which has
+  heritage item, on public land and on a small site, under 250 m² or
+  narrower than 9 m (a terrace's lot or one half of a semi-detached pair,
+  277 m² at 6.1 m wide along Maroubra Road: the width is the lesser side of
+  the title's least bounding rectangle, and 9 m parts those from a detached
+  house's lot at 10 m and over), which has
   little ability to develop above its current status; a tick (development
   potential) on every other property. Lane stubs and slivers under 40 m² carry no mark.
 
@@ -2182,6 +2889,65 @@ is retained or left standing is drawn at its measured storeys and starred
 only where the tiles hold nothing. What stays assumed is said on the sheet:
 the site's own storeys, units and GFA as the author states them, and the
 storeys of a consent the council's register has no record of.
+
+**The sun on the site's facades.** Where Loriini is beside the repository,
+`scripts/capacity_study/future_facade_sun.py` reads the site's facades as the
+yield study does (`src/lib/solarAccess.ts` facadeSun): each face cut into cells
+about 3 m wide and a storey high, each read at its middle 1 m over its floor at
+the 24 quarter hours from 9 to 3 on 21 June, coloured in the yield study's
+seven bands (`future-facade-<n>.png`: the massing from the street corner and
+the opposite one, a building in front drawn as glass, the faces unfolded,
+today over the scenario, and the hours by the way each face looks). Today is
+the scenarios file's scenario that rebuilds nothing (`"parcels": []`): a
+scenario's scene leaves out the buildings it replaces. Each cell is also read
+at the whole hours, so the view from the sun can be drawn where the scheme has
+no plans. Without `site.tower.units` the sheets say nothing of the site's
+apartments, whose layout is not known: the view from the sun and the plan
+sheet's row give the share of its facade with two hours or more instead.
+`--no-facade` leaves it out. `examples/capacity_study/70-76-riley-street-darlinghurst.future-sketch.json`
+is the sketch of 25 November 2026 read this way, with 67-89 Riley Street (the
+HDA's SSD proposal) on its own and with the rest of the sketch.
+
+### State government land
+
+The site sheet's block panel hatches the State government's parcels and counts
+them, and the capacity study crosses them as land that is not for sale. Both
+read the **NSW Government Property Index**: 131,231 lots, 43,718 from the
+Government Property Register (schools, hospitals, rail, housing, the agencies'
+own land) and 87,513 that lie on Crown land.
+
+The Department published the index once, as it stood on 12 October 2022, and
+served it from the Planning Portal's map server (`ePlanning/Planning_Portal_GPI`,
+layer 302). That service was withdrawn in November 2026 and nothing replaced
+it. No NSW agency serves who owns a lot: the cadastre's authority code is the
+same on a hospital as on a house, the Government Property Register on SIX Maps
+is closed, and the land tenure layer is a picture, not parcels. The index's
+open-data record still lists the 2022 release as current, so the app reads that
+release from a file it ships with, `assets/state-land/nsw-government-property-index-2022-10-12.pack`
+(16 MB), and nothing outside can take it away again.
+
+- `src/lib/stateLand.ts` reads it: a window's lots come from the few grid
+  cells the window touches, in a few hundredths of a second, with the lot
+  reference and where the index had the lot from, as the layer answered.
+- `scripts/pack_state_land.ts` wrote it. The Department's own download of the
+  release sits behind the Planning Portal's browser check, so the file was
+  packed from the same release as it was loaded to ArcGIS Online on
+  23 October 2022 (same name, same fields, same count), and checked against
+  the cadastre first: of 80 lots drawn at random, 72 are today's lots to the
+  metre and 8 have been re-surveyed or re-subdivided since. To pack it from
+  the Department's file instead, download it by hand, convert it to GeoJSON
+  and pass it with `--from`.
+- The sheets say the date wherever they cite the layer: "State government
+  land from the NSW Government Property Index as last published
+  (12 October 2022)". Land bought or sold by the State since then is not in
+  it, as it was not in the map service. Crown land and Crown reserves are
+  still read live from the Planning Portal's Crown land layers.
+- One lot of the release is left out: a sliver under 0.1 m wide.
+
+`test/state-land.mts` packs made-up lots and reads them back (a small lot, one
+across a cell's edge, one the size of a district), then reads the shipped file:
+its date and counts, a hospital, Parliament House and a Crown park where they
+should be, nothing on two private sites, and every lot of the State once.
 
 ### The streetscape
 
@@ -2438,6 +3204,45 @@ storey. `GOOGLE_MAPS_API_KEY=header` says a proxy in front of the process
 adds the key to the tile requests as `X-Goog-Api-Key`, and none goes in the
 query.
 
+### A second look at the heights
+
+A source's height was taken as it stood, and one wrong tag drew a tower. At
+Maroubra a mapper typed a house's street number into its height
+(OpenStreetMap way 1436151685, 62 Boyce Road, `height=62`, which Overture
+carried), and the house stood 62 m, twenty storeys: the tallest building on
+the height of buildings page, in the massing, the shadows and the
+narrative. Every height is now read twice (`src/lib/heightCheck.ts`, pure
+arithmetic, `test/height-check.mts`):
+
+- *Against the meshes*, where they are read: the surface gives every
+  footprint a height of its own, the sources' included, and a source's
+  height grossly apart from it (by more than 8 m and more than six tenths of
+  the greater) gives way to the meshes' reading. Over the Maroubra page 199
+  of the sources' heights were checked and 14 replaced: the house, 62 m to
+  5.6 m, and thirteen blocks the sources had at one or two storeys that
+  stand seven to ten (Pacific Square at 6 m, read 33.5 m). The 185 the
+  meshes bore out agree to a median 1.8 m (a pitched roof over storeys ×
+  3.1), and keep their source's height with the meshes' beside it.
+- *Against the footprint and the plan*, where no mesh spoke: a height over
+  25 m that is more than five times its footprint's lesser side and more
+  than three times the height limit mapped over it (eight times the lesser
+  side where no limit is mapped) is set aside, and the building is drawn as
+  one with no recorded height. 62 m on 10 × 17 m under a 9.5 m limit fails;
+  a slab, or a pencil tower under a limit that allows it, stands.
+- *The meshes' own readings*, which take a tree for a roof where its picture
+  is not green: a height the meshes read over 12 m, more than one and a half
+  times the lesser side, and under no limit (a park) or more than 1.4 times
+  it, is a tree or a mast. A source's footprint keeps its place with no
+  height; one traced from the meshes alone is not drawn (a 21 m "building"
+  of 78 m² in Nagle Park).
+
+What was set aside stays on the building (`doubted`: what it said, from
+where, and why), the log names each one so the tag can be mended upstream,
+the height and built form pages' sources say how many heights were checked
+and how many were not taken, and `overall.json` lists them
+(`builtForm.doubted`). `npx tsx scripts/patch_bundle.ts out/<slug> mesh`
+applies it to a kept bundle; `… heights` applies the footprint test alone.
+
 ## How it works
 
 ```
@@ -2455,6 +3260,32 @@ address
   → compose A1 sheet (SVG/HTML in the active graphic template)
   → print to PDF (headless Chromium)
 ```
+
+### Long questions to a map layer
+
+A layer is asked in the request's address when the question is short and in
+its body when it is long (`src/lib/arcgis.ts`, over 1,800 characters). The NSW
+spatial portal's web server answers 404 to a query string over 2,048
+characters and 414 to one over about 9,000. A context sheet asks the property
+layer for the grounds of every school, hospital and civic building in its
+window as one multipoint, and 80 of them are 4,000 characters: on a wide sheet
+in a busy centre the question never reached the layer, the sheet warned
+"institution properties failed … HTTP 404", and those grounds were drawn in
+their zone's colour only. Posted, 300 points are answered. A multipoint answer
+cut at the layer's limit is now asked for again from where it stopped, as a
+window's is. `test/arcgis-query.mts` holds both against a stand-in layer.
+
+### A download cut part-way
+
+`retryFetch` tries a request again until the server starts to answer. A
+transfer that then stops part-way fails later, in the read, where nothing
+tried again: the deck's elevation model is one image of some megabytes, and a
+connection dropped while it arrived ("elevation model failed: terminated")
+cost the deck its topography page. `fetchBytes` (`src/lib/http.ts`) reads a
+download whole and asks for it again when it is cut, three times unless told
+otherwise; a refusal by status is still the caller's to judge. The elevation
+model is read through it. `test/download.mts` holds it against a stand-in
+server.
 
 ### Several addresses as one site
 

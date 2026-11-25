@@ -3,11 +3,13 @@
 import { chromium, type Browser, type Page } from 'playwright-core';
 import { existsSync, mkdirSync } from 'node:fs';
 import { globSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { SHEET_W, SHEET_H } from './sheet.js';
 import { acquire } from '../lib/slots.js';
 import { EXPECTATION, checkPrint, printWhole, type PrintExpectation } from './printCheck.js';
+import { imposeBooklet, bookletPathOf, bookletSpreadsPathOf, type BookletSpreads } from './booklet.js';
+import { writeFile, readFile } from 'node:fs/promises';
 
 function findChromium(): string | undefined {
   if (process.env.CHROMIUM_PATH && existsSync(process.env.CHROMIUM_PATH)) return process.env.CHROMIUM_PATH;
@@ -69,6 +71,51 @@ async function open(page: Page, htmlPath: string): Promise<void> {
   await page.goto(pathToFileURL(htmlPath).href, { waitUntil: 'load', timeout: 120_000 });
   await page.waitForLoadState('networkidle', { timeout: 120_000 });
   await page.evaluate(() => (document as any).fonts?.ready.then(() => true));
+  await greyPhotos(page, htmlPath);
+}
+
+/**
+ * A drawing that asks for its photographs in grey (Heron, black and white and one colour: `--photos: grey` on its
+ * root) has each one made grey in the page before it prints: the aerials, the street, the places, every picture it
+ * takes from beside it (`data/…`). Each is read here, its pixels made grey in a canvas and put back as a JPEG (a PNG
+ * where it may be transparent), so the PDF keeps a compressed photograph. A CSS filter on the pictures would do it
+ * on the screen, but in print Chromium rasterises the page round a filtered picture, uncompressed: the report went
+ * from 49 to 121 MB.
+ */
+async function greyPhotos(page: Page, htmlPath: string): Promise<void> {
+  const want = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--photos').trim() === 'grey');
+  if (!want) return;
+  // (a part of the page that keeps its photographs' colours says so, `data-photos="colour"`: the streetscape's faces)
+  const refs: string[] = await page.evaluate(() => [...new Set([
+    ...[...document.querySelectorAll('img')].filter((el) => !el.closest('[data-photos="colour"]')).map((el) => el.getAttribute('src')),
+    ...[...document.querySelectorAll('image')].filter((el) => !el.closest('[data-photos="colour"]')).map((el) => el.getAttribute('href')),
+  ].filter((r): r is string => !!r && r.startsWith('data/')))]);
+  const dir = dirname(htmlPath);
+  for (const ref of refs) {
+    let bytes: Buffer;
+    try { bytes = await readFile(join(dir, decodeURI(ref))); } catch { continue; }
+    const png = /\.png$/i.test(ref);
+    await page.evaluate(async ({ ref, b64, png }) => {
+      const raw = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+      const bmp = await createImageBitmap(new Blob([raw], { type: png ? 'image/png' : 'image/jpeg' }));
+      const cv = document.createElement('canvas');
+      cv.width = bmp.width; cv.height = bmp.height;
+      const cx = cv.getContext('2d')!;
+      cx.drawImage(bmp, 0, 0);
+      const img = cx.getImageData(0, 0, cv.width, cv.height), d = img.data;
+      for (let i = 0; i < d.length; i += 4) d[i] = d[i + 1] = d[i + 2] = Math.round(0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]);
+      cx.putImageData(img, 0, 0);
+      const url = png ? cv.toDataURL('image/png') : cv.toDataURL('image/jpeg', 0.9);
+      // decoded before it goes in, so the print does not catch a picture still loading
+      const probe = new Image();
+      probe.src = url;
+      await probe.decode();
+      for (const el of document.querySelectorAll('img')) if (el.getAttribute('src') === ref && !el.closest('[data-photos="colour"]')) el.setAttribute('src', url);
+      for (const el of document.querySelectorAll('image')) if (el.getAttribute('href') === ref && !el.closest('[data-photos="colour"]')) el.setAttribute('href', url);
+    }, { ref, b64: bytes.toString('base64'), png });
+  }
+  await page.evaluate(() => Promise.all([...document.images].map((im) => im.decode().catch(() => undefined))));
+  await page.evaluate(() => new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(() => ok(true)))));
 }
 
 /**
@@ -181,7 +228,8 @@ export async function htmlToJpeg(
  *
  * A text column whose paragraphs would run into its fine print steps its
  * type down too, to seven eighths of its size: the fine print stays where
- * it is and whole.
+ * it is and whole. So do the planning yield's tables where they would run
+ * into the page's key, to four fifths of theirs.
  */
 const FIT_BOXES = `(() => {
   for (const box of document.querySelectorAll('[data-fit]')) {
@@ -208,6 +256,19 @@ const FIT_BOXES = `(() => {
     const top = last ? last.getBoundingClientRect().bottom : box.getBoundingClientRect().top;
     note.textContent = (note.dataset.text || '{n} more').replace('{n}', String(left));
     note.style.top = (top - note.offsetParent.getBoundingClientRect().top + 2).toFixed(1) + 'px';
+  }
+  // a yield spread whose tables run into its key (three tiers, a long key, the sun's rows) closes them up a little,
+  // to four fifths of their size, keeping 1.5 mm clear of the key
+  for (const flow of document.querySelectorAll('.zflow')) {
+    const key = flow.closest('.slide') && flow.closest('.slide').querySelector('.zleg');
+    const tables = Array.from(flow.querySelectorAll('table.yt'));
+    if (!key || !tables.length) continue;
+    const over = () => flow.getBoundingClientRect().bottom > key.getBoundingClientRect().top - 5.7;
+    const base = tables.map((t) => parseFloat(getComputedStyle(t).fontSize));
+    for (let k = 1; over() && k > 0.81; ) {
+      k -= 0.025;
+      tables.forEach((t, i) => { t.style.fontSize = (base[i] * k).toFixed(3) + 'px'; });
+    }
   }
   // a slide's text column whose paragraphs run into its fine print (a long list of views, a busy council) closes up a little
   for (const col of document.querySelectorAll('.text')) {
@@ -311,6 +372,42 @@ const SETTLE_BASE = `(() => {
 })()`;
 
 /**
+ * Run in the page once it is fitted and settled: the yield's spreads whose text column still stands on its key, each
+ * by its page's id and the millimetres its last block runs past the key's top. The tables close up by a fifth and no
+ * more (FIT_BOXES), so a column that needs more than that has more in it than its page holds, and its rows print
+ * through the key's (2–4 Culworth Avenue, Killara: a table of the criteria under a compliance sheet's three others).
+ * Nothing here moves anything: the print says so, and the page's composition is what has to change.
+ */
+const FLOW_OVERRUNS = `(() => {
+  const PX_PER_MM = 96 / 25.4;
+  const out = [];
+  for (const flow of document.querySelectorAll('.zflow')) {
+    const slide = flow.closest('.slide');
+    const key = slide && slide.querySelector('.zleg');
+    const last = flow.lastElementChild;
+    if (!key || !last || !flow.querySelector('table.yt')) continue;
+    const by = (last.getBoundingClientRect().bottom - key.getBoundingClientRect().top) / PX_PER_MM;
+    if (by > 0.05) out.push({ id: slide.id, byMm: Math.round(by * 10) / 10 });
+  }
+  return out;
+})()`;
+
+/** A text column that stands on its page's key after the fitting: the page's id, and by how many millimetres. */
+export interface FlowOverrun { id: string; byMm: number }
+
+/**
+ * A deck's pages fitted in the browser, as they are before they print: the boxes fitted, the split columns split,
+ * the last lines settled, in that order. Returns the text columns that still stand on their keys (FLOW_OVERRUNS),
+ * none on a deck composed within its pages.
+ */
+export async function fitSlides(page: Page): Promise<FlowOverrun[]> {
+  await page.evaluate(FIT_BOXES);
+  await page.evaluate(SPLIT_COLUMNS);
+  await page.evaluate(SETTLE_BASE);
+  return await page.evaluate(FLOW_OVERRUNS) as FlowOverrun[];
+}
+
+/**
  * A deck: every `.slide` section becomes one page of the PDF, and — in the
  * same browser session — one PNG, named after the section's id, for the
  * office's InDesign or PowerPoint. Returns the PNG paths written.
@@ -329,7 +426,7 @@ export async function printSlides(
 ): Promise<string[]> {
   let pngs: string[] = [];
   await printWhole(pdfPath, async () => {
-    const once = await printSlidesOnce(htmlPath, pdfPath, pngDir, size, previewPath);
+    const once = await printSlidesOnce(htmlPath, pdfPath, pngDir, size, previewPath, log);
     pngs = once.pngs;
     return once.missing;
   }, log);
@@ -343,15 +440,15 @@ async function printSlidesOnce(
   pngDir: string,
   size: { widthMm: number; heightMm: number },
   previewPath?: string,
+  log: (m: string) => void = console.warn,
 ): Promise<{ pngs: string[]; missing: string[] }> {
   const browser = await launch();
   const pngs: string[] = [];
   try {
     const page = await browser.newPage({ deviceScaleFactor: 2 });
     await open(page, htmlPath);
-    await page.evaluate(FIT_BOXES);
-    await page.evaluate(SPLIT_COLUMNS);
-    await page.evaluate(SETTLE_BASE);
+    // a column the fitting could not keep off its key still prints, and is said: its rows are under the key's
+    for (const o of await fitSlides(page)) log(`WARN page ${o.id}: its text column runs ${o.byMm} mm into its key`);
     // After the boxes are fitted and the lines settled: a row they hid is not expected.
     const expected: PrintExpectation = await page.evaluate(`${EXPECTATION}(${(size.heightMm / 25.4) * 96}, Infinity)`);
     await page.pdf({
@@ -389,4 +486,27 @@ async function printSlidesOnce(
     await browser.close();
   }
   return { pngs, missing: [] };
+}
+
+/**
+ * A deck's booklet (src/render/booklet.ts) beside its PDF. The spreads it prints otherwise (the report's built form,
+ * its site moved off the fold) are printed first, beside the deck as `.booklet-spreads` with their HTML and PNGs;
+ * then the deck is imposed with them in their places. Returns the booklet's path.
+ */
+export async function printBooklet(
+  deckPdf: string,
+  spreads: BookletSpreads | undefined,
+  size: { widthMm: number; heightMm: number },
+  log: (m: string) => void = console.warn,
+): Promise<string> {
+  const dest = bookletPathOf(deckPdf);
+  let alt: { path: string; pages: number[] } | undefined;
+  if (spreads?.spreads.length) {
+    const path = bookletSpreadsPathOf(deckPdf), stem = path.replace(/\.pdf$/i, '');
+    await writeFile(`${stem}.html`, spreads.html);
+    await printSlides(`${stem}.html`, path, stem, size, undefined, log);
+    alt = { path, pages: spreads.spreads };
+  }
+  await imposeBooklet(deckPdf, dest, { spreads: alt });
+  return dest;
 }

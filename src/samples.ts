@@ -36,6 +36,7 @@ if (existsSync('.env')) {
     if (m && !process.env[m[1]]) process.env[m[1]] = m[2].trim();
   }
 }
+import { onceMore } from './lib/onceMore.js';
 import { runPipeline, runSitePipeline, runSummaryPipeline, runYieldPipeline, runSlidesPipeline, BLEED_SCALE, COUNTRY_SCALE } from './pipeline.js';
 import { renderSheet, MAP_W, MAP_H, type SheetMeta } from './render/sheet.js';
 import { renderSiteSheet } from './render/siteSheet.js';
@@ -61,6 +62,13 @@ const only = (() => { const i = process.argv.indexOf('--only'); return i > -1 ? 
 const want = (sheet: string) => !only || only === sheet;
 const samples = join('web', 'samples');
 const log = (m: string) => console.log(m);
+
+/**
+ * A drawing's pipeline, tried once more after two minutes when it fails outright (lib/onceMore.ts). What Overpass
+ * answered the first time is on disk by then, so the second try asks it for little.
+ */
+const patiently = <T,>(what: string, run: () => Promise<T>): Promise<T> =>
+  onceMore(run, { onFail: (why) => log(`  ${what} failed (${why}); trying it once more in two minutes`) });
 
 /**
  * The link-preview card, web/og-card.html, as og.jpg. The pages name it with
@@ -199,12 +207,12 @@ if (only === 'hero') {
     const outDir = join(root, `${slugOf(f.address)}-${f.sheet}-${f.scale}-${f.rotate}`);
     log(`hero-${f.n}: ${f.sheet} ${f.scale ? `1:${f.scale}` : 'auto'}, ${f.rotate}, ${f.style} — ${f.address}`);
     if (f.sheet === 'context') {
-      const bundle = await runPipeline(f.address, { scale: f.scale, mapWidthMm: MAP_W, mapHeightMm: MAP_H, outDir, rotate: f.rotate, log });
+      const bundle = await patiently('the context sheet', () => runPipeline(f.address, { scale: f.scale, mapWidthMm: MAP_W, mapHeightMm: MAP_H, outDir, rotate: f.rotate, log }));
       const html = join(outDir, `sheet-${f.style}.html`), pdf = join(outDir, `CONTEXT_ANALYSIS-${f.style}.pdf`);
       await withTemplate(f.style, async () => { await writeFile(html, renderSheet(bundle, meta)); await htmlToPdf(html, pdf); });
       rasterise(pdf, heroOut(f.n));
     } else {
-      const bundle = await runSitePipeline(f.address, { mapWidthMm: MAP_W, mapHeightMm: MAP_H, outDir, scale: f.scale || undefined, rotate: f.rotate, log });
+      const bundle = await patiently('the site sheet', () => runSitePipeline(f.address, { mapWidthMm: MAP_W, mapHeightMm: MAP_H, outDir, scale: f.scale || undefined, rotate: f.rotate, log }));
       const html = join(outDir, `site_sheet-${f.style}.html`), pdf = join(outDir, `SITE_ANALYSIS-${f.style}.pdf`);
       await writeFile(html, renderSiteSheet(bundle, meta, f.style));
       await htmlToPdf(html, pdf);
@@ -216,7 +224,7 @@ if (only === 'hero') {
   for (const [addr, ff] of byAddress(frames.filter((f): f is HeroFrame & { sheet: 'yield' } => f.sheet === 'yield'))) {
     const outDir = join(root, `${slugOf(addr)}-yield`);
     log(`hero-${ff.map((f) => f.n).join(',')}: yield — ${addr}`);
-    const bundle = await runYieldPipeline(addr, { outDir, log });
+    const bundle = await patiently('the yield', () => runYieldPipeline(addr, { outDir, log }));
     for (const f of ff) {
       const html = join(outDir, `yield_deck_${f.style}.html`);
       await writeFile(html, renderYieldDeck(bundle, meta, { theme: f.style }).html);
@@ -228,7 +236,7 @@ if (only === 'hero') {
   for (const [addr, ff] of byAddress(frames.filter((f): f is HeroFrame & { sheet: 'slides' } => f.sheet === 'slides'))) {
     const outDir = join(root, `${slugOf(addr)}-slides`);
     log(`hero-${ff.map((f) => f.n).join(',')}: site report — ${addr}`);
-    const bundle = await runSlidesPipeline(addr, { outDir, panelWmm: PANEL_W, panelHmm: PANEL_H, daPanelHmm: DA_PANEL_H, log });
+    const bundle = await patiently('the deck', () => runSlidesPipeline(addr, { outDir, panelWmm: PANEL_W, panelHmm: PANEL_H, daPanelHmm: DA_PANEL_H, log }));
     await prepareRasters(bundle, join(outDir, 'data'), BLEED_SCALE, COUNTRY_SCALE);
     const html = join(outDir, 'slides.html');
     await writeFile(html, renderSlides(bundle, meta).html);
@@ -256,7 +264,7 @@ if (want('context')) {
     for (const scale of CONTEXT_SCALES) {
       const outDir = join(root, `context-${scale}-${rotate}`);
       log(`context 1:${scale}, ${rotate}`);
-      const bundle = await runPipeline(address, { scale, mapWidthMm: MAP_W, mapHeightMm: MAP_H, outDir, rotate, log });
+      const bundle = await patiently('the context sheet', () => runPipeline(address, { scale, mapWidthMm: MAP_W, mapHeightMm: MAP_H, outDir, rotate, log }));
       await eachTemplate(`context-${scale}-${rotate}`, async (t) => {
         const html = join(outDir, `sheet-${t}.html`);
         const pdf = join(outDir, `CONTEXT_ANALYSIS-${t}.pdf`);
@@ -275,9 +283,9 @@ if (want('site')) {
     for (const scale of SITE_SCALES) {
       const outDir = join(root, `site-${scale}-${rotate}`);
       log(`site ${scale ? `1:${scale}` : 'auto'}, ${rotate}`);
-      const bundle = await runSitePipeline(address, {
+      const bundle = await patiently('the site sheet', () => runSitePipeline(address, {
         mapWidthMm: MAP_W, mapHeightMm: MAP_H, outDir, scale: scale || undefined, rotate, log,
-      });
+      }));
       // The site sheet has its own themes, not the context templates.
       for (const t of SITE_THEMES) {
         const html = join(outDir, `site_sheet-${t.id}.html`);
@@ -293,7 +301,7 @@ if (want('site')) {
 if (want('yield')) {
   const outDir = join(root, 'yield');
   log('yield');
-  const bundle = await runYieldPipeline(address, { outDir, log });
+  const bundle = await patiently('the yield', () => runYieldPipeline(address, { outDir, log }));
   // Pages in each of the four styles, as the frame turns through them in the style picked: result-yield-1-<style>.jpg,
   // -2-<style>…, drawn from the one bundle, and the old numbers past the new last page taken away.
   for (const theme of DECK_STYLES) {
@@ -310,7 +318,7 @@ if (want('yield')) {
 if (want('summary')) {
   const outDir = join(root, 'summary');
   log('summary');
-  const bundle = await runSummaryPipeline(address, { outDir, log });
+  const bundle = await patiently('the summary', () => runSummaryPipeline(address, { outDir, log }));
   // The summary has no themes: one picture.
   {
     const html = join(outDir, 'summary_sheet.html');
@@ -324,9 +332,9 @@ if (want('summary')) {
 if (want('slides')) {
   const outDir = join(root, 'slides');
   log('slides');
-  const bundle = await runSlidesPipeline(address, {
+  const bundle = await patiently('the deck', () => runSlidesPipeline(address, {
     outDir, panelWmm: PANEL_W, panelHmm: PANEL_H, daPanelHmm: DA_PANEL_H, log,
-  });
+  }));
   // The site report's pages, in the default style: every one in order, numbered
   // from 1, and the old numbers past the new last page taken away, since the
   // frame turns through them until one is missing.

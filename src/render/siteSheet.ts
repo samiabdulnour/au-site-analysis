@@ -13,7 +13,7 @@ import { zoneFill, zoneOrder } from './lepPalette.js';
 import { METRES_PER_STOREY } from '../fetch/buildings.js';
 import { siteAddressOf } from '../fetch/geocode.js';
 import { sheetHtml, esc, T, SWATCH_X, SWATCH_W, LABEL_X, MAP_W, MAP_H } from './chrome.js';
-import { tpl, withTemplate, siteTheme, PARK_GREEN, PARK_GREEN_INK, type SiteLook } from './template.js';
+import { tpl, withTemplate, templateFor, siteTheme, tint, PARK_GREEN, PARK_GREEN_INK, type SiteLook, type Category, type Texture } from './template.js';
 import { SUN, WIND, VIEW, RAY_SUN, ARROW, EYE } from './climateSymbols.js';
 import { estimateKerbs, type KerbLine } from '../lib/kerbs.js';
 import { exitPoint } from '../fetch/views.js';
@@ -312,7 +312,7 @@ function heightLine(v: number, units: unknown): string {
 /** The site analysis sheet, in one of its own themes (Heron unless another is named); it never takes the context sheet's templates. */
 export function renderSiteSheet(sb: SiteBundle, meta: SheetMeta, theme?: string): string {
   const t = siteTheme(theme);
-  return withTemplate(t.base, () => drawSiteSheet(sb, meta, t.look));
+  return withTemplate(templateFor('site', t.id), () => drawSiteSheet(sb, meta, t.look));
 }
 
 /** The white buildings' fine hatch: a pattern of diagonal lines in the given ink, 1.4 mm apart. */
@@ -354,12 +354,13 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
       .map((t) => `<image href="data/${t.file}" x="${(ox + t.left * extW).toFixed(2)}" y="${(oy + t.top * extH).toFixed(2)}"
           width="${(t.width * extW).toFixed(2)}" height="${(t.height * extH).toFixed(2)}" preserveAspectRatio="none"/>`)
       .join('\n');
-    // A theme with a grey aerial (Heron, Canary) takes the photograph to grey
+    // A theme with a grey aerial (Canary) takes the photograph to grey
     // outside the site, by the context sheet's saturation blend rather than a
-    // filter (see sheet.ts), so the zones' colours are the only colour round the lot.
+    // filter (see sheet.ts), so the zones' colours are the only colour round the lot;
+    // Heron, black and white and one colour, takes the site's own to grey as well.
     const photo = `<g transform="rotate(${view.rotationDeg.toFixed(2)}, ${MAP_W / 2}, ${MAP_H / 2})">${tiles}</g>`;
-    layers.push(look.aerial === 'grey'
-      ? `<g style="isolation:isolate">${photo}<path fill-rule="evenodd" fill="#808080" style="mix-blend-mode:saturation" d="${outsideSite}"/></g>`
+    layers.push(look.aerial !== 'colour'
+      ? `<g style="isolation:isolate">${photo}<path fill-rule="evenodd" fill="#808080" style="mix-blend-mode:saturation" d="${look.aerial === 'mono' ? `M0 0H${MAP_W}V${MAP_H}H0Z` : outsideSite}"/></g>`
       : photo);
   }
   // (3) White overlay everywhere EXCEPT the site: the analysed lot stays at
@@ -377,7 +378,13 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
   // them, each zone code filled in its NSW ePlanning colour. Never over the site.
   const usedZoneCats = new Set<string>();
   const zoneInk = (c: { fill: string; stroke?: string; figure?: string; textureColor?: string }) =>
-    c.figure ?? c.stroke ?? c.fill;
+    look.hatchInk ?? c.figure ?? c.stroke ?? c.fill;
+  // A zone's hatch: the category's texture in its family's ink at its strength; or, where the look draws every zone
+  // in one ink (Heron: black), the category's own pattern, which alone tells it apart.
+  const zoneHatch = (c: Category): { kind: Texture; opacity: number; opts: { step?: number; dir?: 'fall' | 'rise' | 'flat' | 'up' } } =>
+    look.hatchInk && c.hatch
+      ? { kind: c.hatch.kind, opacity: 0.85, opts: c.hatch }
+      : { kind: c.texture === 'dots' || c.texture === 'cross' ? c.texture : 'lines', opacity: Math.min(1, 0.65 + c.opacity * 0.5), opts: {} };
   const lepZones = new Map<string, { name: string; paths: string[] }>();
   {
     const byCat = new Map<string, string[]>();
@@ -406,10 +413,9 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
         if (c.texture) (cat === 'water' ? freeParts : parts).push(textureSvg(`stx${tex++}`, paths.join(''), c.texture, c.textureColor ?? c.stroke ?? c.fill, mapBox));
         continue;
       }
-      const ink = zoneInk(c);
-      const kind = c.texture === 'dots' || c.texture === 'cross' ? c.texture : 'lines';
+      const ink = zoneInk(c), ht = zoneHatch(c);
       tints.push(`<g fill="${c.fill}">${paths.map((d) => `<path d="${d}"/>`).join('')}</g>`);
-      parts.push(textureSvg(`stx${tex++}`, paths.join(''), kind, ink, mapBox, Math.min(1, 0.65 + c.opacity * 0.5)));
+      parts.push(textureSvg(`stx${tex++}`, paths.join(''), ht.kind, ink, mapBox, ht.opacity, ht.opts));
       parts.push(`<g fill="none" stroke="${ink}" stroke-width="0.6">${paths.map((d) => `<path d="${d}"/>`).join('')}</g>`);
     }
     for (const f of look.zones === 'lep' ? sb.zoning.features : []) {
@@ -432,15 +438,16 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
     if (look.zoneTint && tints.length)
       layers.push(`<g clip-path="url(#notSite)" fill-rule="evenodd" opacity="${look.zoneTint}" style="mix-blend-mode:multiply">${tints.join('')}</g>`);
     layers.push(`<g clip-path="url(#notSite)">${freeParts.join('')}${zoned}</g>`);
-    // On paper the site takes the template's site tint, as on the context sheet.
-    const siteCat = catById().site;
+    // On paper the site takes the look's own tint (Kingfisher's terracotta), or the template's site tint, as on the context sheet.
+    const siteCat = look.siteTint ?? catById().site;
     if (look.ground === 'paper' && siteCat) layers.push(`<path d="${siteHole}" fill="${siteCat.fill}" opacity="${siteCat.opacity}"/>`);
   }
 
   // ---- buildings, filled: on paper the grain is the buildings themselves ------
   // Each building in the strong colour of the zone family it stands on (the
-  // context template's figure), a quiet grey where no zone is mapped and on
-  // the site itself, with a white edge, as the context sheet draws them. Or
+  // context template's figure), a quiet grey where no zone is mapped, with a
+  // white edge, as the context sheet draws them; what stands on the site in
+  // the site's own colour, saturated. Or
   // white, edged in that family's ink, as the context Flamingo draws them,
   // and where the look asks, finely hatched in that ink so they read apart
   // from the white roads.
@@ -448,12 +455,18 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
   const buildingDs: string[] = [];
   if ((look.buildings === 'colour' || whiteBuildings) && sb.buildings?.buildings.length) {
     const byInk = new Map<string, string[]>();
+    const siteFigureDs: string[] = [];
     for (const b of sb.buildings.buildings) {
       const [x, y] = proj(b.centroid[0], b.centroid[1]);
       if (!(x > -40 && x < MAP_W + 40 && y > -40 && y < MAP_H + 40)) continue;
-      const z = pointInRing(b.centroid[0], b.centroid[1], sb.siteRing) ? null : featureAt(sb.zoning.features, b.centroid[0], b.centroid[1]);
+      const onSite = pointInRing(b.centroid[0], b.centroid[1], sb.siteRing);
+      const z = onSite ? null : featureAt(sb.zoning.features, b.centroid[0], b.centroid[1]);
       const cat = z ? zoneToCategory(z.SYM_CODE) : null;
-      const ink = (cat && catById()[cat]?.figure) || (whiteBuildings ? tpl().road : '#d9d9d6');
+      // what stands on the site in the site's own colour, saturated (it was a quiet grey): the lot's building reads
+      // as the site's, clear of the pale tint the lot lies in; a white building takes it as its outline and hatch
+      const ink = onSite ? (whiteBuildings ? look.site : look.siteFigure ?? tint(look.site, 0.75)) : (cat && catById()[cat]?.figure) || (whiteBuildings ? tpl().road : '#d9d9d6');
+      // what stands on the site drawn its own way (a thick contour, white or hatched inside): kept apart, drawn last
+      if (onSite && !whiteBuildings && look.siteFigureStyle && look.siteFigureStyle !== 'fill') { siteFigureDs.push(pathFromRings(b.rings, proj)); continue; }
       (byInk.get(ink) ?? byInk.set(ink, []).get(ink)!).push(`<path d="${pathFromRings(b.rings, proj)}"/>`);
     }
     [...byInk].forEach(([ink, ds], i) => {
@@ -464,6 +477,24 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
         ? `${hatch}<g fill="${hatch ? `url(#bldHatch${i})` : '#ffffff'}" fill-opacity="${hatch ? 1 : 0.92}" fill-rule="evenodd" stroke="${ink}" stroke-width="${look.buildingEdge}" stroke-linejoin="round">${ds.join('')}</g>`
         : `<g fill="${ink}" fill-rule="evenodd" stroke="#ffffff" stroke-width="${look.buildingEdge}" stroke-linejoin="round">${ds.join('')}</g>`);
     });
+    if (siteFigureDs.length) {
+      // white inside a thick contour of the site's figure colour; hatched in it where the look asks, the lines
+      // falling to the right, clipped to the building (lines, not a pattern fill, which prints as a picture)
+      // (each building its own path: the sources can give one building twice, and two rings alike cancel in one path)
+      const ink = look.siteFigure ?? look.site;
+      const each = (attrs: string) => siteFigureDs.map((d) => `<path d="${d}" ${attrs}/>`).join('');
+      buildingDs.push(...siteFigureDs.map((x) => `<path d="${x}"/>`));
+      let hatch = '';
+      if (look.siteFigureStyle === 'hatch' || look.siteFigureStyle === 'hatchContour') {
+        const { line: lw, step } = look.siteFigureHatch ?? { line: 0.5, step: 2.2 }, lines: string[] = [];
+        for (let o = -MAP_H; o <= MAP_W; o += step) lines.push(`M${o.toFixed(1)},0L${(o + MAP_H).toFixed(1)},${MAP_H}`);
+        hatch = `<clipPath id="siteFigureClip">${each('clip-rule="evenodd"')}</clipPath><g clip-path="url(#siteFigureClip)"><path d="${lines.join('')}" fill="none" stroke="${ink}" stroke-width="${lw}"/></g>`;
+      }
+      layers.push(look.siteFigureStyle === 'fillContour' || look.siteFigureStyle === 'hatchContour'
+        // filled (or white and hatched), inside a thick white contour: the contours drawn first, so two buildings that touch read as one
+        ? `<g data-site-figure="${look.siteFigureStyle}">${each(`fill="none" stroke="#ffffff" stroke-width="3.6" stroke-linejoin="round"`)}${look.siteFigureStyle === 'fillContour' ? each(`fill="${ink}" fill-rule="evenodd"`) : each('fill="#ffffff" fill-rule="evenodd"') + hatch}</g>`
+        : `<g data-site-figure="${look.siteFigureStyle}">${each('fill="#ffffff" fill-rule="evenodd"')}${hatch}${each(`fill="none" stroke="${ink}" stroke-width="1.8" stroke-linejoin="round"`)}</g>`);
+    }
   }
 
   // ---- heritage: the LEP's items and conservation areas, hatched -------------
@@ -706,7 +737,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
         `<rect x="-50" y="-50" width="${MAP_W + 100}" height="${MAP_H + 100}" fill="#ffffff"/>` +
         `<g fill="#000000" fill-opacity="${1 - under}" fill-rule="evenodd">${buildingDs.join('')}</g></mask>`
       : '';
-    layers.push(`${mask}<path d="${d}" fill="none" stroke="${look.contourInk}" stroke-width="0.6" opacity="0.9"${mask ? ' mask="url(#contourMask)"' : ''}/>`);
+    layers.push(`${mask}<path d="${d}" fill="none" stroke="${look.contourInk}" stroke-width="${look.contourDots ? 0.7 : 0.6}" opacity="0.9"${look.contourDots ? ' stroke-dasharray="0.1,2.2" stroke-linecap="round"' : ''}${mask ? ' mask="url(#contourMask)"' : ''}/>`);
     const tagged: Pt[] = [];
     for (const c of sb.contours) {
       const pts = c.coords.map(([lon, lat2]) => proj(lon, lat2)).filter(inMapWide);
@@ -1217,7 +1248,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
     }
     // A white building already carries its family's hairline; a white outline would rub it out.
     if (!whiteBuildings)
-      layers.push(`<g fill="none" stroke="#ffffff" stroke-width="${look.buildingEdge}" stroke-opacity="0.95" stroke-linejoin="round">${outlines.join('')}</g>`);
+      layers.push(`<g fill="none" stroke="${look.outlineInk ?? '#ffffff'}" stroke-width="${look.buildingEdge}" stroke-opacity="0.95" stroke-linejoin="round">${outlines.join('')}</g>`);
     layers.push(texts.join(''));
   }
 
@@ -1695,7 +1726,7 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
   }
   row(`<text x="${SWATCH_X}" y="5.4" font-size="3.2" font-weight="700" fill="${look.dimensionInk}">SB 30.48</text>`, 'BOUNDARY DIMENSION (m)');
   row(`<text x="${SWATCH_X}" y="5.4" font-size="3.2" font-weight="700" fill="${SITE_RED}">RL 24.5</text>`, 'SURFACE LEVEL (AHD)');
-  if (look.contours && sb.contours.length) row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${look.contourInk}" stroke-width="0.6"/><text x="${SWATCH_X + 1}" y="2.2" font-size="2.2" font-weight="700" fill="${look.contourInk}">RL 20</text>`, `CONTOURS AT ${sb.contourIntervalM ?? 2} m AHD`, sb.contourSource);
+  if (look.contours && sb.contours.length) row(`<line x1="${SWATCH_X}" y1="3.2" x2="${SWATCH_X + SWATCH_W}" y2="3.2" stroke="${look.contourInk}" stroke-width="${look.contourDots ? 0.7 : 0.6}"${look.contourDots ? ' stroke-dasharray="0.1,2.2" stroke-linecap="round"' : ''}/><text x="${SWATCH_X + 1}" y="2.2" font-size="2.2" font-weight="700" fill="${look.contourInk}">RL 20</text>`, `CONTOURS AT ${sb.contourIntervalM ?? 2} m AHD`, sb.contourSource);
   if (look.neighbours === 'black') {
     row(`<g><text x="${mid}" y="2.6" text-anchor="middle" font-size="2.1" font-weight="700" fill="#111">NO. 26 · 3 STOREYS</text><text x="${mid}" y="5.2" text-anchor="middle" font-size="2.1" fill="${look.neighbourHeightInk}">HOB = 18m</text></g>`,
       'NEIGHBOUR IDENTIFICATION',
@@ -1723,10 +1754,9 @@ function drawSiteSheet(sb: SiteBundle, meta: SheetMeta, look: SiteLook): string 
         row(ground + texture + figures, c.label);
         continue;
       }
-      const ink = zoneInk(c);
-      const kind = c.texture === 'dots' || c.texture === 'cross' ? c.texture : 'lines';
+      const ink = zoneInk(c), ht = zoneHatch(c);
       row((look.zoneTint ? `<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="${c.fill}" opacity="${look.zoneTint}"/>` : '') +
-        textureSvg(`sltx${stex++}`, swD, kind, ink, { x: SWATCH_X, y: 0, w: SWATCH_W, h: 6.5 }, Math.min(1, 0.65 + c.opacity * 0.5)) +
+        textureSvg(`sltx${stex++}`, swD, ht.kind, ink, { x: SWATCH_X, y: 0, w: SWATCH_W, h: 6.5 }, ht.opacity, ht.opts) +
         `<rect x="${SWATCH_X}" y="0" width="${SWATCH_W}" height="6.5" fill="none" stroke="${ink}" stroke-width="0.4"/>`, c.label);
     }
   }

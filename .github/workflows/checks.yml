@@ -240,12 +240,108 @@ jobs:
       - name: the capacity study reads the lots right
         run: npx tsx test/capacity.mts
 
+      # State government land is the NSW Government Property Index as last
+      # published, 12 October 2022, read from a file that ships with the app
+      # (src/lib/stateLand.ts): its map service was withdrawn in November 2026
+      # and nothing replaced it. Made-up lots are packed and read back through
+      # windows (inside a lot, across a grid cell's edge, in a hole, deep in a
+      # district-sized lot), then the shipped file is read: its date and its
+      # counts, a hospital, Parliament House and a Crown park where they
+      # should be, nothing on two private sites, the lots the map layer itself
+      # answered two windows with, and every lot of the State once. CI asks
+      # no network.
+      - name: State government land reads from the shipped index
+        run: npx tsx test/state-land.mts
+
+      # A map layer is asked in the request's address when the query is short
+      # and in its body when it is long (src/lib/arcgis.ts): the NSW spatial
+      # portal answers 404 to a query string over 2,048 characters, so the
+      # multipoint of a wide context sheet's institutions never reached the
+      # property layer and their grounds went undrawn. Against a stand-in
+      # layer: five points go in the address, a hundred and twenty are posted
+      # with the same query, ninety institutions' properties are one post, and
+      # an answer cut at the layer's limit is asked for again from where it
+      # stopped. No network.
+      - name: a long map query is posted, not refused
+        run: npx tsx test/arcgis-query.mts
+
+      # A download is read whole, and again when the connection is cut while
+      # the body is still arriving (fetchBytes, src/lib/http.ts): retryFetch
+      # waits only for a server to start answering, so a transfer dropped
+      # part-way ("terminated") cost a deck its elevation model and with it
+      # the topography page. Against a stand-in server: a cut transfer is read
+      # again, three cuts give up by name, a refusal is not tried again, and
+      # the elevation model goes through it. No network.
+      - name: a download cut part-way is read again
+        run: npx tsx test/download.mts
+
+      # The samples run gives each drawing's pipeline a second try after a
+      # pause (src/lib/onceMore.ts), so one public service's bad minute does
+      # not cost a run of twenty drawings: a task that works runs once, one
+      # that fails runs again and says why, one that fails twice fails.
+      - name: a failed drawing is tried once more
+        run: npx tsx test/once-more.mts
+
+      # A second look at the heights the sources give (src/lib/heightCheck.ts), on grids and footprints drawn
+      # for it: a house whose street number was typed into its height gives way to what the 3D meshes read on
+      # its footprint, or with no meshes to its own footprint and the height limit over it; a tree the meshes
+      # took for a roof is not a building; what is believable stands. CI fetches nothing.
+      - name: a height is read twice before it is drawn
+        run: npx tsx test/height-check.mts
+
       # The yield study's neighbours against the capacity study, on a made-up
       # site: a neighbour rises to its controls only where the study reads
       # development potential; a strata scheme or a mature development stands
       # as it is and is counted as held. Nothing is fetched.
       - name: the yield raises a neighbour only where it may develop
         run: npx tsx test/yield-futures.mts
+
+      # The compliance sheets' sun, shadow and separation, on made-up blocks:
+      # sun positions and rays, each apartment's hours, the shadow a scheme
+      # adds, each facade's and roof's hours, and the ADG's separations.
+      - name: the sun, the shadow and the separations read true
+        run: |
+          npx tsx test/solar-access.mts
+          npx tsx test/separation.mts
+
+      # The neighbours' future on feasible footprints, the envelope reshaped
+      # into them to meet the ADG's sun, and the station-precinct controls
+      # (the Housing SEPP's TOD, and the councils' alternatives): made-up lots.
+      - name: the footprints, the compliant scheme and the TOD controls
+        run: |
+          npx tsx test/future-context.mts
+          npx tsx test/reshape.mts
+          npx tsx test/tod.mts
+
+      # The decks folded as a booklet: the pages in saddle-stitch order, each
+      # sheet's two sides, and a made-up deck imposed and read back as printed
+      # (by poppler's pdftoppm where the runner has it).
+      - name: the booklet folds in order
+        run: npx tsx test/booklet.mts
+
+      # The decks' covers: the place's trees as the picture's speckle (a small tree a dot, a wide one the lit side of
+      # its crown, trees side by side left apart) traced into one outline (its area the cells' own, holes and corners
+      # included); the slides' cover with the picture in every style, the booklet's cut in two down the fold, the
+      # picture on its front for Flamingo and Kingfisher and the contents there for Heron and Canary.
+      - name: the covers and their picture
+        run: npx tsx test/covers.mts
+
+      # The 3D views' trees and people in each deck style: Kingfisher's drawn canopies and its painted people, each
+      # picture once and placed at every tree; Flamingo's flat town on a cream ground, its trees flat shapes in vector
+      # and its people and traffic in line alone, the people over life size; a crowd in the parks; Heron, Canary and
+      # the white model plain. And the walls: Canary's hatched as shade in the wall's own
+      # colour, closest on the wall turned from the light; Flamingo's and Kingfisher's plain; no pattern of squares.
+      - name: the trees and the people in each style
+        run: npx tsx test/trees.mts
+
+      # Heron's site sheet, yield and report in black lines, hatches and one colour: every ink a grey or the accent (and
+      # Kingfisher's not, so the check can fail), and a page asking for its photographs in grey printing them grey,
+      # each as itself rather than rasterised with its page, in the runner's own Chrome. Nothing is fetched.
+      - name: Heron is black, white and one colour
+        run: npx tsx test/heron-mono.mts
+        env:
+          CHROMIUM_PATH: /usr/bin/google-chrome
+          CHROMIUM_NO_SANDBOX: '1'
 
       # Slide 15's heritage layers on made-up features: outlines clipped to the
       # strip, a permit over the lot told from one that grazes its kerb, AHIP

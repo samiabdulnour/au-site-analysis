@@ -1,5 +1,5 @@
 // Re-read parts of a kept bundle after a fetch changed (a development aid, as recompose.ts).
-//   npx tsx scripts/patch_bundle.ts out/<slug> [country] [character] [trees] [vegetation] [photos] [placesv] [series] [mesh]
+//   npx tsx scripts/patch_bundle.ts out/<slug> [country] [character] [trees] [vegetation] [photos] [placesv] [series] [mesh] [heights]
 import { readFile, writeFile } from 'node:fs/promises';
 import { deserialize, serialize } from 'node:v8';
 import { join } from 'node:path';
@@ -13,7 +13,7 @@ import { geomRings } from '../src/fetch/planning.js';
 import { mergeTrees } from '../src/fetch/trees.js';
 import { panelExtent } from '../src/render/minimap.js';
 import { mercatorScaleFactor, mercatorToLonLat } from '../src/lib/geo.js';
-import { BLEED_SCALE, COUNTRY_SCALE } from '../src/pipeline.js';
+import { BLEED_SCALE, COUNTRY_SCALE, heightsChecked } from '../src/pipeline.js';
 import { meshSurfaceOver } from '../src/fetch/meshHeights.js';
 import { withMeshHeights } from '../src/lib/meshHeights.js';
 import { lotsWithoutFootprint } from '../src/lib/gapLots.js';
@@ -76,17 +76,25 @@ if (what.has('mesh')) {
   if (!key) throw new Error('GOOGLE_MAPS_API_KEY is not set');
   const d = panelExtent(sb.daPanel), b = panelExtent(sb.bleedPanel);
   const pageExtent = { xmin: Math.min(d.xmin, b.xmin), ymin: Math.min(d.ymin, b.ymin), xmax: Math.max(d.xmax, b.xmax), ymax: Math.max(d.ymax, b.ymax) };
-  const read = { ...sb.buildings, mesh: undefined, buildings: (sb.buildings.buildings as Building[]).filter((x) => x.source !== 'mesh').map((x) => (
-    x.heightFrom === 'mesh' || x.heightFrom === 'da'
-      ? { ...x, heightM: undefined, estimatedHeightM: x.floors ? x.floors * 3.1 : undefined, heightFrom: x.floors ? 'floors' as const : 'none' as const, da: undefined }
-      : x)) };
+  // (a source's height an earlier reading set aside is put back first, as the source gave it, so it is checked afresh)
+  const read = { ...sb.buildings, mesh: undefined, buildings: (sb.buildings.buildings as Building[]).filter((x) => x.source !== 'mesh').map((x): Building => (
+    x.doubted && x.doubted.from !== 'mesh'
+      ? { ...x, heightM: x.doubted.from === 'measured' ? x.doubted.heightM : undefined, floors: x.doubted.from === 'floors' ? Math.round(x.doubted.heightM / 3.1) : undefined, estimatedHeightM: x.doubted.heightM, heightFrom: x.doubted.from as 'measured' | 'floors', da: undefined, doubted: undefined, meshM: undefined }
+      : x.heightFrom === 'mesh' || x.heightFrom === 'da'
+        ? { ...x, heightM: undefined, estimatedHeightM: x.floors ? x.floors * 3.1 : undefined, heightFrom: x.floors ? 'floors' as const : 'none' as const, da: undefined }
+        : { ...x, meshM: undefined, doubted: undefined })) };
   const t0 = Date.now();
   const surface = await meshSurfaceOver(key, pageExtent, log);
   if (!surface) throw new Error('the tiles hold no meshes over the page');
   const gaps = lotsWithoutFootprint(read.buildings, sb.base.lots, sb.zoning, sb.base.siteLots, pageExtent);
   const withMesh = withMeshHeights(read, surface.field, surface.frame, gaps.gaps, { meshes: surface.meshes, errorM: surface.errorM, credits: surface.credits });
-  sb.buildings = withDaStoreys(withMesh, sb.base.lots, sb.applications);
+  sb.buildings = withDaStoreys(heightsChecked(withMesh, sb.hob, log), sb.base.lots, sb.applications);
+  console.log(`mesh: ${withMesh.mesh?.checked ?? 0} of the sources' own heights checked against the meshes, ${withMesh.mesh?.corrected ?? 0} replaced`);
   console.log(`mesh: ${withMesh.mesh?.heights ?? 0} heights read from ${surface.meshes} meshes at ${surface.errorM} m, ${withMesh.mesh?.footprints ?? 0} footprints traced on ${gaps.count} lots the sources left empty, in ${Math.round((Date.now() - t0) / 1000)} s`);
+}
+if (what.has('heights')) {
+  // the second look at the sources' own heights alone (lib/heightCheck.ts), with no mesh read: by footprint and height limit
+  sb.buildings = heightsChecked(sb.buildings, sb.hob, log);
 }
 await writeFile(join(outDir, 'slides.bundle'), serialize(kept));
 console.log('bundle patched:', [...what].join(', '));

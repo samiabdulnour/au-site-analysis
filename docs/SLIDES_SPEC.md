@@ -145,9 +145,11 @@ filled sand, a heritage building in a terracotta hatch, a mature development
 patched grey with dots — a tick on the parcels with development potential and
 a cross on those with low potential, the site in red. Read from the
 cadastre's property register (one row per address: a strata scheme where a
-strata plan sits under the title, where the register files its addresses as
-under one, or where three or more unit addresses share it; the unit
-addresses are its lot count), the lots' record dates (the plan's
+strata plan sits under the title, or where the register files its addresses as
+under one; three or more unit addresses on a title whose lots are all on a
+deposited plan are flats in one ownership, a single title; the unit
+addresses are a scheme's lot count; the site is every property its lots make
+up, each address of an amalgamation), the lots' record dates (the plan's
 registration date for every plan after the digital cadastre was built in
 September 1993, so a strata plan dates the building it followed), the LEP
 heritage layer, State land and the council's parks and facilities, the
@@ -155,8 +157,8 @@ council's development register where it publishes one (the City of Sydney's,
 which reaches back to 2021) and the Portal's live applications. Low
 potential: strata ownership, a heritage item, public land, a mature
 development (significantly developed in the past twenty years, or with a
-current approval or construction) or a site under 250 m², with little
-ability to develop above its current status. Every threshold is in
+current approval or construction) or a small site, under 250 m² or narrower
+than 9 m, with little ability to develop above its current status. Every threshold is in
 `lib/capacity.ts`. The left page counts the parcels, states the rules and
 bars the parcels with potential by area. *Manual:* a building put up on a
 single title before 2021 has no open-data date, and the Online DA API
@@ -293,7 +295,7 @@ Application). New, all verified with a point or envelope query:
 | `ePlanning/Planning_Portal_Tree_Canopy` | 1 canopy 2022, 0 canopy 2019 | `identify` gives canopy %; `export…&layers=show:1&transparent=true` gives the raster as PNG |
 | `ePlanning/Planning_Portal_Public_Spaces` | 252 Green Grid existing green assets (name, class, District/Regional significance), 260 open space, 262 public facilities | |
 | `ePlanning/Planning_Portal_Contributions` | 148/416/180 Housing and Productivity Contribution zones, 218 SIC, 219 contribution plans | |
-| `ePlanning/Planning_Portal_GPI` | 302 State government land parcels (lot refs, area) | |
+| NSW Government Property Index, as last published (12 October 2022) | State government land parcels (lot refs), from `assets/state-land/` through `src/lib/stateLand.ts` | the map service, `ePlanning/Planning_Portal_GPI` 302, was withdrawn in November 2026 |
 | `ePlanning/Planning_Portal_Crown_Land` | 258 Crown land, 312 reserves, 313 leases, 314 licences | |
 | `ePlanning/Planning_Portal_Subsidence_Advisory` | 248 mine subsidence district | |
 | `ePlanning/Planning_Proposal_Public`, `Planning_Proposal_Deferred` | planning proposals on exhibition, by LEP map type | none near the sample site at the time |
@@ -801,7 +803,8 @@ layer 9) carries geometry and width but no purpose, and is empty around most
 urban lots; the neighbours' numbers are the geocoded addressing points.
 The block panel at 1:4000 draws the single-property sales of the last two
 years within 300 m sized by price (strata hollow), the State government
-land parcels (`Planning_Portal_GPI` 302), Crown land (258) and Crown
+land parcels (the Government Property Index as last published, 12 October
+2022, shipped with the app), Crown land (258) and Crown
 reserves (312), and a 300 m ring. The land value and the sales are the
 Valuer General's, already fetched for slide 16.
 
