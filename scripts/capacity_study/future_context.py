@@ -827,10 +827,23 @@ def bays_scheme(poly, typ, k, dirs=None):
             outline = poly.exterior
             n_ = max(4, round(outline.length / 9.5))
             o.append(f'<path d="{path(core)}" fill="none" stroke="#333" stroke-opacity=".45" stroke-width="{0.3 * k:.2f}"/>')
+            band_ = poly.difference(core)
             for i in range(n_):
-                a = outline.interpolate((i + 0.5) * outline.length / n_)
-                b = core.exterior.interpolate(core.exterior.project(a))
-                o.append(f'<line x1="{f(a.x)}" y1="{f(-a.y)}" x2="{f(b.x)}" y2="{f(-b.y)}" stroke="#333" stroke-opacity=".45" stroke-width="{0.3 * k:.2f}"/>')
+                # each party wall square to the outline where it leaves it, as far as the core: walls drawn to the
+                # core's nearest point fan out where a narrow plate's core is short
+                s_ = (i + 0.5) * outline.length / n_
+                a = outline.interpolate(s_)
+                t0, t1 = outline.interpolate(max(0.0, s_ - 0.6)), outline.interpolate(min(outline.length, s_ + 0.6))
+                tl = math.hypot(t1.x - t0.x, t1.y - t0.y) or 1.0
+                nx_, ny_ = -(t1.y - t0.y) / tl, (t1.x - t0.x) / tl
+                if not poly.contains(Point(a.x + nx_ * 0.3, a.y + ny_ * 0.3)):
+                    nx_, ny_ = -nx_, -ny_
+                ray = LineString([(a.x - nx_ * 0.05, a.y - ny_ * 0.05), (a.x + nx_ * (deep + 6), a.y + ny_ * (deep + 6))]).intersection(band_)
+                seg = min((g_ for g_ in getattr(ray, 'geoms', [ray]) if g_.geom_type == 'LineString' and not g_.is_empty), key=lambda g_: g_.distance(a), default=None)
+                if seg is None or seg.length < 1.0:
+                    continue
+                (x0_, y0_), (x1_, y1_) = seg.coords[0], seg.coords[-1]
+                o.append(f'<line x1="{f(x0_)}" y1="{f(-y0_)}" x2="{f(x1_)}" y2="{f(-y1_)}" stroke="#333" stroke-opacity=".45" stroke-width="{0.3 * k:.2f}"/>')
             return o
         along = [(x - p0[0]) * ux + (y - p0[1]) * uy for x, y in ring]
         across = [-(x - p0[0]) * uy + (y - p0[1]) * ux for x, y in ring]
