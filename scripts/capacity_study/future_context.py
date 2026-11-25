@@ -621,6 +621,34 @@ def axis_near(name, g):
     return min(lines, key=lambda l: l.distance(g))
 
 
+# every figure and name on a sheet's plan is set at this one size (times the plan's `k`): the dimensions, the storeys,
+# the FSRs, the key letters, the streets, the heritage items, the scale and north
+PLAN_FS = 4.6
+
+
+def hatch_path(g, spacing, angle=45.0):
+    """A hatch as real lines clipped to the outline, in one path's data: a <pattern> fill is printed by Chromium as a
+    tiled bitmap, these stay vector in the PDF."""
+    if g.is_empty:
+        return ''
+    a = math.radians(angle)
+    ux, uy, nx, ny = math.cos(a), math.sin(a), -math.sin(a), math.cos(a)
+    c = g.centroid
+    x0, y0, x1, y1 = g.bounds
+    R = math.hypot(x1 - x0, y1 - y0) / 2 + spacing
+    d = []
+    t = -R
+    while t <= R:
+        px, py = c.x + nx * t, c.y + ny * t
+        cut = LineString([(px - ux * R, py - uy * R), (px + ux * R, py + uy * R)]).intersection(g)
+        for seg in (cut.geoms if hasattr(cut, 'geoms') else [cut]):
+            if seg.geom_type == 'LineString' and seg.length > 0.05:
+                (ax_, ay_), (bx_, by_) = seg.coords[0], seg.coords[-1]
+                d.append(f'M{f(ax_)} {f(-ay_)} L{f(bx_)} {f(-by_)}')
+        t += spacing
+    return ' '.join(d)
+
+
 def arch_dim(pts, labels, col, k):
     """An architectural dimension through the points: a thin line, an oblique tick at each point, each span's figure
     above the line and along it, no halo."""
@@ -629,7 +657,7 @@ def arch_dim(pts, labels, col, k):
     if L < 0.2:
         return []
     ux, uy = (x1 - x0) / L, (y1 - y0) / L
-    ext, t, fs = 1.3 * k, 1.5 * k, 4.6 * k
+    ext, t, fs = 1.3 * k, 1.5 * k, PLAN_FS * k
     ang = -math.degrees(math.atan2(uy, ux))                           # the line's angle on the page, where y runs down
     ang = ang - 180 if ang > 90 else ang + 180 if ang <= -90 else ang
     a = math.radians(ang)
@@ -1528,7 +1556,7 @@ LOTS = [poly_of(l['rings']) for l in a['lots'] if l['rings']]
 LOTS = [l for l in LOTS if not l.is_empty and l.intersects(WINDOW)]
 
 
-def label_roads(window=None, k=1.0, beside=False):
+def label_roads(window=None, k=1.0, beside=False, fs=None):
     """Each street named along its longest run inside the window, the text `k` times the plan's size."""
     window = WINDOW if window is None else window
     out = []
@@ -1543,7 +1571,7 @@ def label_roads(window=None, k=1.0, beside=False):
         ang = -math.degrees(math.atan2(q.y - m.y, q.x - m.x))
         ang = ang - 180 if ang > 90 else ang + 180 if ang < -90 else ang
         lane = 'LANE' in name
-        out.append(f'<text transform="translate({f(m.x)},{f(-m.y)}) rotate({f(ang)})" class="st" font-size="{(1.4 if lane else 1.9) * k}" dy="{(-1.1 if beside else 0.6) * k}">{H.escape(name.title())}</text>')
+        out.append(f'<text transform="translate({f(m.x)},{f(-m.y)}) rotate({f(ang)})" class="st" font-size="{fs if fs else (1.4 if lane else 1.9) * k}" dy="{(-1.1 if beside else 0.6) * k}">{H.escape(name.title())}</text>')
     return out
 
 
@@ -2088,7 +2116,7 @@ def mini_plan(parcels, blds, existing, RET, sep, k=1.0, big=False, bset=None, wi
                 g = body
         if g.area >= 120:
             c = g.representative_point()
-            o.append(f'<text x="{f(c.x)}" y="{-c.y + 1.7 * k:.2f}" font-size="{5 * k:.2f}" font-weight="600" text-anchor="middle" fill="#777">{n}</text>')
+            o.append(f'<text x="{f(c.x)}" y="{-c.y + 1.6 * k:.2f}" font-size="{PLAN_FS * k:.2f}" font-weight="600" text-anchor="middle" fill="#777">{n}</text>')
     for b in BLOCKS:
         for r in b:
             o.append(f'<path d="{path(r["poly"])}" fill="#fff" stroke="#ccc" stroke-width="{0.3 * k:.2f}"/>')
@@ -2098,18 +2126,18 @@ def mini_plan(parcels, blds, existing, RET, sep, k=1.0, big=False, bset=None, wi
     for g, n, fill, ink in standing:                               # what stands today, by its storeys
         if g.area >= 100:
             c = g.representative_point()
-            o.append(f'<text x="{f(c.x)}" y="{-c.y + 1.7 * k:.2f}" font-size="{5 * k:.2f}" font-weight="600" text-anchor="middle" fill="{ink}">{n}</text>')
+            o.append(f'<text x="{f(c.x)}" y="{-c.y + 1.6 * k:.2f}" font-size="{PLAN_FS * k:.2f}" font-weight="600" text-anchor="middle" fill="{ink}">{n}</text>')
     if big:                                                           # the LEP's heritage items: hatched, they stay
-        o.append('<defs><pattern id="hh" patternUnits="userSpaceOnUse" width="2" height="2" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="2" stroke="#9a5b1e" stroke-width="0.32"/></pattern></defs>')
         dev = unary_union([q['poly'] for q in parcels] + [SITE_POLY])
         for g, hid, hname in heritage_items():
             if not g.intersects(box):
                 continue
             g = g.intersection(box)
-            o.append(f'<path d="{path(g)}" fill="url(#hh)" stroke="#9a5b1e" stroke-width="{0.5 * k:.2f}"/>')
+            o.append(f'<path d="{hatch_path(g, 2.0)}" fill="none" stroke="#9a5b1e" stroke-width="0.2"/>')
+            o.append(f'<path d="{path(g)}" fill="none" stroke="#9a5b1e" stroke-width="{0.5 * k:.2f}"/>')
             if g.distance(dev) < 14 and g.area >= 80:                 # named where it stands beside a site
                 c = g.representative_point()
-                o.append(f'<text x="{f(c.x)}" y="{-c.y - 2.2 * k:.2f}" font-size="{3.0 * k:.2f}" font-weight="700" text-anchor="middle" fill="#7a4310" paint-order="stroke" stroke="#f4f2ef" stroke-width="{1.2 * k:.2f}">heritage{" " + H.escape(str(hid)) if hid else ""}</text>')
+                o.append(f'<text x="{f(c.x)}" y="{-c.y - 2.2 * k:.2f}" font-size="{PLAN_FS * k:.2f}" font-weight="700" text-anchor="middle" fill="#7a4310" paint-order="stroke" stroke="#f4f2ef" stroke-width="{1.2 * k:.2f}">heritage{" " + H.escape(str(hid)) if hid else ""}</text>')
     o.append(f'<path d="{path(SITE_POLY)}" fill="{C["site"]}" stroke="#e11b22" stroke-width="{1.2 * k:.2f}"/>')
     if TOWER:
         o.append(f'<path d="{path(SITE_TOWER)}" fill="#e6b0b0" stroke="#c0161c" stroke-width="{0.5 * k:.2f}"/>')
@@ -2129,19 +2157,19 @@ def mini_plan(parcels, blds, existing, RET, sep, k=1.0, big=False, bset=None, wi
     for b in blds:
         if b['typ'] != 'podium':
             c = b['poly'].representative_point()
-            o.append(f'<text x="{f(c.x)}" y="{-c.y + 2.2 * k:.2f}" font-size="{6.5 * k:.2f}" font-weight="700" text-anchor="middle" fill="#111" {halo(C[b["typ"]])}>{b["n"]}</text>')
+            o.append(f'<text x="{f(c.x)}" y="{-c.y + 1.6 * k:.2f}" font-size="{PLAN_FS * k:.2f}" font-weight="700" text-anchor="middle" fill="#111" {halo(C[b["typ"]])}>{b["n"]}</text>')
             if big and b.get('plate'):
-                o.append(f'<text x="{f(c.x)}" y="{-c.y + 5 * k:.2f}" font-size="{2.6 * k:.2f}" font-weight="500" text-anchor="middle" fill="#111" {halo(C[b["typ"]])}>{b["plate"]}</text>')
+                o.append(f'<text x="{f(c.x)}" y="{-c.y + 6.8 * k:.2f}" font-size="{PLAN_FS * k:.2f}" font-weight="500" text-anchor="middle" fill="#111" {halo(C[b["typ"]])}>{b["plate"]}</text>')
             if big and b['key'] in fsr_of and b['typ'] != 'consent':
-                o.append(f'<text x="{f(c.x)}" y="{-c.y + 11.5 * k:.2f}" font-size="{5.5 * k:.2f}" font-weight="700" text-anchor="middle" fill="#111" {halo(C[b["typ"]])}>FSR {fsr_of[b["key"]]:.1f}:1</text>')
+                o.append(f'<text x="{f(c.x)}" y="{-c.y + 12.0 * k:.2f}" font-size="{PLAN_FS * k:.2f}" font-weight="700" text-anchor="middle" fill="#111" {halo(C[b["typ"]])}>FSR {fsr_of[b["key"]]:.1f}:1</text>')
     for p in parcels:                                                 # the key letter at the parcel's corner, as the sheet has it
         x, y = max(p['poly'].exterior.coords, key=lambda q: q[0] + q[1])
-        o.append(f'<circle cx="{f(x)}" cy="{f(-y)}" r="{3.6 * k:.2f}" fill="#111"/><text x="{f(x)}" y="{-y + 1.7 * k:.2f}" font-size="{5 * k:.2f}" font-weight="700" text-anchor="middle" fill="#fff">{p["key"]}</text>')
+        o.append(f'<circle cx="{f(x)}" cy="{f(-y)}" r="{3.6 * k:.2f}" fill="#111"/><text x="{f(x)}" y="{-y + 1.6 * k:.2f}" font-size="{PLAN_FS * k:.2f}" font-weight="700" text-anchor="middle" fill="#fff">{p["key"]}</text>')
     c = SITE_TOWER.centroid
-    o.append(f'<text x="{f(c.x)}" y="{-c.y + 2.2 * k:.2f}" font-size="{6.5 * k:.2f}" font-weight="700" text-anchor="middle" fill="#c0161c" {halo("#e6b0b0")}>{S["storeys"]}</text>')
+    o.append(f'<text x="{f(c.x)}" y="{-c.y + 1.6 * k:.2f}" font-size="{PLAN_FS * k:.2f}" font-weight="700" text-anchor="middle" fill="#c0161c" {halo("#e6b0b0")}>{S["storeys"]}</text>')
     if big:
         # our site's name on the podium north of the tower, where there is room, so the tower keeps its unit scheme clear
-        lab_at, fsr_dy = (c.x, c.y - 5 * k + 0.9 * k), 11.5
+        lab_at, fsr_dy = (c.x, c.y - 5.9 * k), 12.0
         cs_ = list(SITE_TOWER.exterior.coords)
         top = max(zip(cs_[:-1], cs_[1:]), key=lambda e: e[0][1] + e[1][1])
         w_, e_ = sorted(top, key=lambda q_: q_[0])                    # a quarter along from its west end, clear of the dimensions
@@ -2151,10 +2179,10 @@ def mini_plan(parcels, blds, existing, RET, sep, k=1.0, big=False, bset=None, wi
         hit = LineString([(mx_ + dx_ * 0.2, my_ + dy_ * 0.2), (mx_ + dx_ * 40, my_ + dy_ * 40)]).intersection(SITE_POLY.exterior)
         if TOWER and not hit.is_empty and Point(mx_, my_).distance(hit) >= 5:
             g_ = Point(mx_, my_).distance(hit) / 2
-            lab_at, fsr_dy = (mx_ + dx_ * g_, my_ + dy_ * g_), 8.5
+            lab_at, fsr_dy = (mx_ + dx_ * g_, my_ + dy_ * g_), 6.8
         on_podium = fsr_dy < 10                                       # there, the short name, so it clears the dimension beside it
-        o.append(f'<text x="{f(lab_at[0])}" y="{-lab_at[1] + 0.9 * k:.2f}" font-size="{2.6 * k:.2f}" font-weight="500" text-anchor="middle" fill="#c0161c">{H.escape(S.get("label", "our site").split(",")[0] if on_podium else S.get("label", "our site"))}</text>')
-        o.append(f'<text x="{f(c.x)}" y="{-c.y + fsr_dy * k:.2f}" font-size="{5.5 * k:.2f}" font-weight="700" text-anchor="middle" fill="#c0161c" {halo("#e6b0b0")}>FSR {site_yield()[0]:.1f}:1</text>')
+        o.append(f'<text x="{f(lab_at[0])}" y="{-lab_at[1] + 0.9 * k:.2f}" font-size="{PLAN_FS * k:.2f}" font-weight="500" text-anchor="middle" fill="#c0161c">{H.escape(S.get("label", "our site").split(",")[0] if on_podium else S.get("label", "our site"))}</text>')
+        o.append(f'<text x="{f(c.x)}" y="{-c.y + fsr_dy * k:.2f}" font-size="{PLAN_FS * k:.2f}" font-weight="700" text-anchor="middle" fill="#c0161c" {halo("#e6b0b0")}>FSR {site_yield()[0]:.1f}:1</text>')
         fronts = {norm_road(r_['name']) for q in parcels for r_ in boundary_runs(q['poly']) if r_['kind'] == 'street'}
         fronts |= {norm_road(n_) for n_ in (TOWER or {}).get('setbacks', {}) if norm_road(n_) in ROADS}
         for name_, mid_line in ((nm_, l_) for nm_, ls_ in road_axes().items() for l_ in ls_):   # each road's middle, straight through its junctions
@@ -2179,21 +2207,21 @@ def mini_plan(parcels, blds, existing, RET, sep, k=1.0, big=False, bset=None, wi
             continue
         o.append(f'<line x1="{f(ax)}" y1="{f(-ay)}" x2="{f(bx)}" y2="{f(-by)}" stroke="{col}" stroke-width="{1.1 * k:.2f}"/>')
         if geo['new']:
-            o.append(f'<text x="{f((ax + bx) / 2)}" y="{-(ay + by) / 2 - 1.5 * k:.2f}" font-size="{5.5 * k:.2f}" font-weight="700" text-anchor="middle" fill="{col}" paint-order="stroke" stroke="#fff" stroke-width="{1.6 * k:.2f}">{d:.0f} m</text>')
+            o.append(f'<text x="{f((ax + bx) / 2)}" y="{-(ay + by) / 2 - 1.5 * k:.2f}" font-size="{PLAN_FS * k:.2f}" font-weight="700" text-anchor="middle" fill="{col}" paint-order="stroke" stroke="#fff" stroke-width="{1.6 * k:.2f}">{d:.0f} m</text>')
     if big and bset:
         for rows in bset.values():
             o += bound_dims(rows, k, True)
     if big and TOWER:
         o += own_dims(sep, k)
     if big:
-        o += label_roads(box, k * 1.6, beside=True)
+        o += label_roads(box, k * 1.6, beside=True, fs=PLAN_FS * k)
         L = 20
         bx0, by0 = x0 + 4, y0 + 5
         note = f'20 m · 1:{OPTION_SCALE} at A3' if window else '20 m'
-        o.append(f'<g transform="translate({f(bx0)} {f(-by0)})"><rect x="{-1.5 * k:.2f}" y="{-3 * k:.2f}" width="{L + (2 + 1.55 * len(note)) * k:.2f}" height="{5.5 * k:.2f}" fill="#fff" fill-opacity=".85"/>'
+        o.append(f'<g transform="translate({f(bx0)} {f(-by0)})"><rect x="{-1.5 * k:.2f}" y="{-4.2 * k:.2f}" width="{L + (2 + 0.6 * PLAN_FS * len(note)) * k:.2f}" height="{7.4 * k:.2f}" fill="#fff" fill-opacity=".85"/>'
                  f'<line x1="0" y1="0" x2="{L}" y2="0" stroke="#111" stroke-width="{0.5 * k:.2f}"/><line x1="0" y1="{-1 * k:.2f}" x2="0" y2="{1 * k:.2f}" stroke="#111" stroke-width="{0.4 * k:.2f}"/>'
-                 f'<line x1="{L}" y1="{-1 * k:.2f}" x2="{L}" y2="{1 * k:.2f}" stroke="#111" stroke-width="{0.4 * k:.2f}"/><text x="{L + 2 * k:.2f}" y="{0.9 * k:.2f}" font-size="{2.6 * k:.2f}" font-weight="600" fill="#111">{note}</text></g>')
-        o.append(f'<g transform="translate({f(x1 - 7)} {f(-(y0 + 8))})"><circle r="{4 * k:.2f}" fill="#fff" fill-opacity=".9" stroke="#111" stroke-width="{0.4 * k:.2f}"/><path d="M0 {-2.8 * k:.2f} L{1 * k:.2f} {1.5 * k:.2f} L0 {0.7 * k:.2f} L{-1 * k:.2f} {1.5 * k:.2f} Z" fill="#111"/><text y="{-5 * k:.2f}" font-size="{2.6 * k:.2f}" font-weight="600" text-anchor="middle" fill="#111">N</text></g>')
+                 f'<line x1="{L}" y1="{-1 * k:.2f}" x2="{L}" y2="{1 * k:.2f}" stroke="#111" stroke-width="{0.4 * k:.2f}"/><text x="{L + 2 * k:.2f}" y="{1.6 * k:.2f}" font-size="{PLAN_FS * k:.2f}" font-weight="600" fill="#111">{note}</text></g>')
+        o.append(f'<g transform="translate({f(x1 - 7)} {f(-(y0 + 8))})"><circle r="{4 * k:.2f}" fill="#fff" fill-opacity=".9" stroke="#111" stroke-width="{0.4 * k:.2f}"/><path d="M0 {-2.8 * k:.2f} L{1 * k:.2f} {1.5 * k:.2f} L0 {0.7 * k:.2f} L{-1 * k:.2f} {1.5 * k:.2f} Z" fill="#111"/><text y="{-5.2 * k:.2f}" font-size="{PLAN_FS * k:.2f}" font-weight="600" text-anchor="middle" fill="#111">N</text></g>')
     o.append('</svg>')
     return ''.join(o)
 

@@ -33,7 +33,7 @@
  "_": "The sketch of 25 November 2026 over the 70-76 Riley Street study: each neighbour's tower on the outline drawn, at the storeys written in its middle and the setbacks written on its sides (where a side has no figure, as drawn, measured off the sketch at 1:1 against our lot); no podiums are drawn, so each tower stands on a three-storey podium over its whole lot. See the density file for the keys.",
  "site": {
   "storeys": 12,
-  "units": 110,
+  "units": 105,
   "label": "our site, sketch of 25 Nov",
   "tower": {
    "_": "The sketch of 25 November 2026: a three-storey podium over the lot (a taller ground floor and two residential levels) and the tower to 12 storeys, 6 m off our northern boundary (66-68 Riley St), 3 m off Riley Street and Crown Lane, 5 m off Stanley Lane as drawn. No apartment layout is given for this footprint, so its apartments are read in 8 m bays along its walls.",
@@ -53,7 +53,7 @@
     "STANLEY LANE"
    ]
   },
-  "_units": "About 110: the 9,320 m² GFA the sketch's massing gives, at 85 m² an apartment, as the neighbours' yields are counted."
+  "_units": "About 105: the 8,920 m² GFA the sketch's massing gives (a three-storey podium and the tower to 12), at 85 m² an apartment, as the neighbours' yields are counted."
  },
  "retained": [
   {
