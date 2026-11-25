@@ -589,6 +589,19 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
     check('canary shadow, asked for: a sweep, each hour its own colour, outlined and named', (swept.figureHtml.match(/<g data-sweep="1"/g) ?? []).length === 7 && /data-sweep[\s\S]*>10 AM</.test(swept.figureHtml)
       && (swept.legend ?? []).some((e) => /each in its own colour \(pink at 9 am to lilac at 3 pm\)/.test(e.label)));
     check('the other styles keep the hours laid over each other', !/data-band=/.test(closePlan));
+    // Z. 2026-11: "make the dims there black". The separations on the plan in black, dashed where only a blank face holds.
+    check('canary shadow: the separations black, their distance with what is asked', / fill="#000000" data-dim="1">8\.0 \/ 12 m</.test(cShade.figureHtml)
+      && (cShade.legend ?? []).some((e) => /Building separation, apart \/ asked/.test(e.label) && !/#2f8f55|#c8372d|#c98a12/.test(e.swatch)));
+    // Z. 2026-11: "try colourful shadow with neighbour buildings too". Asked for, the neighbours' shadows are contours
+    // of their own (Canary's blues) under the envelope's, or every building's together as one set of contours.
+    const gBlue = withLook({ ground: 'contours', gRamp: 'blue' }, () => renderYieldDeck(close, meta, { theme: 'canary' }).slides.find((sl) => isTestPage(sl.id, 'shadow'))!);
+    check('canary shadow, asked for: the neighbours\' shadows as contours of their own, under the envelope\'s', /data-ground-band="1"/.test(gBlue.figureHtml) && /data-band="1"/.test(gBlue.figureHtml)
+      && gBlue.figureHtml.indexOf('data-ground-band') < gBlue.figureHtml.indexOf('data-band=') && !/fill-rule="nonzero"/.test(gBlue.figureHtml)
+      && (gBlue.legend ?? []).some((e) => /The neighbours' shadows on 21 June, 9 am – 3 pm, in bands/.test(e.label)));
+    const gAll = withLook({ ground: 'all' }, () => renderYieldDeck(close, meta, { theme: 'canary' }).slides.find((sl) => isTestPage(sl.id, 'shadow'))!);
+    check('canary shadow, asked for: every building\'s shadow as one set of contours, the envelope\'s reach outlined', /data-ground-band="1"/.test(gAll.figureHtml) && !/data-band="1"/.test(gAll.figureHtml)
+      && /stroke-dasharray="1\.2,0\.8"/.test(gAll.figureHtml) && (gAll.legend ?? []).some((e) => /Every building's shadow on 21 June, 9 am – 3 pm, in bands/.test(e.label)));
+    check('canary shadow: by default the neighbours\' shadows stay grey, hour by hour', !/data-ground-band/.test(cShade.figureHtml) && /fill-rule="nonzero"/.test(cShade.figureHtml));
   }
   check('shadow: the envelope\'s shadow over the neighbours\', in its own colour', new RegExp(`<g opacity="0\\.15" style="mix-blend-mode:multiply"><path d="[^"]+" fill="${accentInk}" fill-rule="evenodd"/>`).test(closePlan)
     && closePlan.indexOf('fill-rule="nonzero"') < closePlan.indexOf(`fill="${accentInk}" fill-rule="evenodd"`));

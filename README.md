@@ -1858,6 +1858,15 @@ yield for 86, 88-90, 94 Maroubra Road, 2026-11):
   facades' sun on the solar access page. Outlines keep theirs: the zones,
   the separations, the height plane. `YIELD_SCHEME_FILL` draws the homes
   in a colour again, to compare.
+- *"Try colourful shadow with neighbour buildings too."* … *"Make the
+  dims there black."* `YIELD_SHADOW_LOOK` can draw the neighbours'
+  shadows as contours too: of their own under the envelope's (`"ground":
+  "contours"`, in Canary's blues, `"gRamp": "blue"`, or a soft pink to
+  peach, `"soft"`), or every building's together as one set of contours in
+  the envelope's pink to orange, its own reach outlined (`"ground":
+  "all"`). By default they stay grey, hour by hour: the colour is the
+  envelope's. The separations on the plan are black (`DIM_INK`), dashed
+  where only a blank face holds; the criteria table marks each.
 - *"If there is nothing, don't print it."* "Within the controls" had a
   spread of its own even in a zone the study draws no building type for:
   every figure a dash, over the height plane alone. A path that builds
