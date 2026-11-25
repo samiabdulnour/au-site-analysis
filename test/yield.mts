@@ -555,9 +555,9 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
     const lotOf = (x0: number, x1: number) => [[151.20043 + x0 * m, -33.9], [151.20043 + x1 * m, -33.9], [151.20043 + x1 * m, -33.89955], [151.20043 + x0 * m, -33.89955], [151.20043 + x0 * m, -33.9]];
     const zoned = { ...bundle, context: [{ rings: [east], heightM: 6.2, known: true, controls: { zone: 'R4' } }], parcels: [{ rings: [lotOf(1, 30)], numbers: ['2'], zone: 'R4' }] } as unknown as YieldBundle;
     const zd = deck(zoned), zPlan = zd.slides.find((sl) => isTestPage(sl.id, 'shadow'))!, zIso = zd.slides.find((sl) => sl.id === '03_within_controls')!, zSolar = zd.slides.find((sl) => isTestPage(sl.id, 'solar'))!;
-    const line = /<path data-zone-line="1" d="[^"]+" fill="#ffffff" stroke="(#[0-9a-f]{6})" stroke-width="0\.4" stroke-linejoin="round"\/>/.exec(zPlan.figureHtml)?.[1];
+    const line = /<path data-zone-line="1" d="[^"]+" fill="#ffffff" stroke="(#[0-9a-f]{6})" stroke-width="0\.5" stroke-linejoin="round"\/>/.exec(zPlan.figureHtml)?.[1];
     check('zones: on the plan a neighbour white, in a line of its zone\'s colour', !!line && line !== '#1c1c1c' && line !== '#ffffff' && !/fill="#ffffff" stroke="#1c1c1c" stroke-width="0\.3"/.test(zPlan.figureHtml), String(line));
-    check('zones: in the white model the same line round the same neighbour, its walls white and grey', [zIso, zSolar].every((sl) => new RegExp(`fill="#[0-9a-f]{6}" stroke="${line}" stroke-width="0\\.22"`).test(sl.figureHtml))
+    check('zones: in the white model the same line round the same neighbour, its walls white and grey', [zIso, zSolar].every((sl) => new RegExp(`fill="#[0-9a-f]{6}" stroke="${line}" stroke-width="0\\.3"`).test(sl.figureHtml))
       && !new RegExp(`fill="${line}"`).test(zIso.figureHtml), String(line));
     check('zones: keyed by their lines on each of the three pages', [zPlan, zIso, zSolar].every((sl) => (sl.legend ?? []).some((e) => /^R4\b/.test(e.label) && e.swatch.includes(`stroke="${line}"`) && /fill="none"/.test(e.swatch))
       && (sl.legend ?? []).some((e) => /outlined in its zone's colour/.test(e.label))));
@@ -579,16 +579,20 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
     const bandIds = [...cShade.figureHtml.matchAll(/<path data-band="(\d)" d="[^"]+" fill="url\(#plan-band-[^"]+\)" fill-rule="evenodd"/g)].map((x) => Number(x[1]));
     const grads = [...cShade.figureHtml.matchAll(/<linearGradient id="plan-band-[^"]+" gradientUnits="userSpaceOnUse"[^>]*><stop offset="0" stop-color="(#[0-9a-f]{6})"\/><stop offset="1" stop-color="(#[0-9a-f]{6})"\/><\/linearGradient>/g)].map((x) => [x[1], x[2]]);
     const lum = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)).reduce((t, v) => t + v, 0);
-    check('canary shadow: the envelope\'s shadow in contour bands, one a level, palest out to deepest in', bandIds.length >= 5 && bandIds.every((k, i) => k === i + 1) && grads.length === bandIds.length
+    check('canary shadow: the envelope\'s shadow in four contour bands, palest out to deepest in', bandIds.length === 4 && bandIds.every((k, i) => k === i + 1) && grads.length === bandIds.length
       && grads.every(([from, to], i) => i === 0 || (lum(from) < lum(grads[i - 1][0]) && lum(to) < lum(grads[i - 1][1]))), JSON.stringify({ bandIds, grads }));
     check('canary shadow: each band pink on the morning side, orange on the afternoon side', grads.every(([from, to]) => parseInt(from.slice(5, 7), 16) >= parseInt(to.slice(5, 7), 16) - 4 && parseInt(to.slice(3, 5), 16) >= parseInt(from.slice(3, 5), 16)), JSON.stringify(grads));
     check('canary shadow: not laid in layers of one ink, and its hours named and not outlined', !/<g opacity="0\.15" style="mix-blend-mode:multiply"><path d="[^"]+" fill="[^"]+" fill-rule="evenodd"\/>/.test(cShade.figureHtml)
       && !/stroke-dasharray="1\.2,0\.8"/.test(cShade.figureHtml) && /font-weight="700" fill="#[0-9a-f]{6}">9 AM</.test(cShade.figureHtml));
-    check('canary shadow: the key names the bands', (cShade.legend ?? []).some((e) => /in bands: the ground in it one hour \(palest\) to all seven \(deepest\); pink on the morning side, orange on the afternoon side/.test(e.label)));
+    check('canary shadow: the key names the bands', (cShade.legend ?? []).some((e) => /in bands: the ground in it one or two hours \(palest\) to all seven \(deepest\); pink on the morning side, orange on the afternoon side/.test(e.label)));
     const swept = withLook({ ownStyle: 'sweep' }, () => renderYieldDeck(close, meta, { theme: 'canary' }).slides.find((sl) => isTestPage(sl.id, 'shadow'))!);
     check('canary shadow, asked for: a sweep, each hour its own colour, outlined and named', (swept.figureHtml.match(/<g data-sweep="1"/g) ?? []).length === 7 && /data-sweep[\s\S]*>10 AM</.test(swept.figureHtml)
       && (swept.legend ?? []).some((e) => /each in its own colour \(pink at 9 am to lilac at 3 pm\)/.test(e.label)));
     check('the other styles keep the hours laid over each other', !/data-band=/.test(closePlan));
+    // Z. 2026-11: "swap for Canary". The contours' colours exact swatches of Canary's palette: the pinks of its
+    // residential zones and the oranges of its C zones.
+    const palette = new Set(['R1', 'R2', 'R3', 'R4', 'R5', 'C1', 'C2', 'C3', 'C4', 'E2', 'E3'].map((z) => zoneFill(z).toLowerCase()));
+    check('canary shadow: each band\'s colours a swatch of the palette', grads.flat().every((c) => palette.has(c.toLowerCase())), grads.flat().join(' '));
     // Z. 2026-11, on the massing's grey walls: "try to make a colourful volume shadow here, don't use grey". On a path's
     // own spread each neighbour's walls are shaded toward its zone's colour, what is built toward Canary's light blue;
     // the solar access views keep theirs neutral, their colour the facades' sun.
@@ -596,7 +600,7 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
       const zoned2 = { ...close, context: [{ rings: [east], heightM: 6.2, known: true, controls: { zone: 'R2' } }] } as unknown as YieldBundle;
       const cz = renderYieldDeck(zoned2, meta, { theme: 'canary' });
       const spread = cz.slides.find((sl) => sl.id === '03_within_controls')!.figureHtml, sol = cz.slides.find((sl) => isTestPage(sl.id, 'solar'))!.figureHtml;
-      const fills = (h: string) => [...h.matchAll(/<path d="[^"]+" fill="(#[0-9a-f]{6})" stroke="#[0-9a-f]{6}" stroke-width="0\.22"/g)].map((x) => x[1]);
+      const fills = (h: string) => [...h.matchAll(/<path d="[^"]+" fill="(#[0-9a-f]{6})" stroke="#[0-9a-f]{6}" stroke-width="0\.3"/g)].map((x) => x[1]);
       const hue = (h: string) => { const [r, g, b] = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)); return r - Math.min(g, b); };
       check('iso shade: a neighbour\'s walls shaded toward its zone\'s colour, not grey', fills(spread).some((f) => hue(f) > 20), fills(spread).join(' '));
       check('iso shade: what is built shaded toward a light blue', /fill="#[0-9a-f]{6}" stroke="#000000" stroke-width="0\.3"/.test(spread) && [...spread.matchAll(/<path d="[^"]+" fill="(#[0-9a-f]{6})" stroke="#000000" stroke-width="0\.3"/g)].some((x) => { const [r, , b] = [1, 3, 5].map((i) => parseInt(x[1].slice(i, i + 2), 16)); return b - r > 15; }));

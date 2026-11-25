@@ -17,7 +17,7 @@
 // beside the output.
 
 import { esc } from './chrome.js';
-import { tpl, withTemplate, templateFor, deckLook, tint, inkFor, vivid, mix, type DeckLook } from './template.js';
+import { tpl, withTemplate, templateFor, deckLook, tint, inkFor, vivid, mix, CANARY_INK, type DeckLook } from './template.js';
 import { shortStreetName, type SheetMeta } from './sheet.js';
 import { atlasPage, coverPage, bookletCover, coverSite, coverCredit, type Cover, type DeckHtml, deckCss, zFlow, zBlock, zTable, brief, MAP_FONT, type Slide, type DeckRenderOptions } from './slides.js';
 import { drawAxonometric, shade, type AxoScene, type Prism } from './axonometric.js';
@@ -736,16 +736,12 @@ const photoOf = (b: YieldBundle): (AerialResult & { extent: Extent }) | null =>
  */
 function zoneLine(zone: string | undefined, look: DeckLook): string | null {
   if (look.id === 'heron' || !zone) return null;
-  // Where the style keeps the ePlanning colours (Canary): the zone's mapped colour, a step darker, so it carries a
-  // line on white. The massing's bold cut of it (zoneInk) brings R2's pink and R3's salmon to one red, which as
+  // Where the style keeps the ePlanning colours (Canary): the zone's mapped colour itself, a swatch of its palette.
+  // The massing's bold cut of it (zoneInk) brings R2's pink and R3's salmon to one red, which as
   // a fill passed and as a line is the same line; and a town outlined in that red is lost against the separations'
   // red figures and the height plane's red dashes. YIELD_ZONE_LINE=vivid draws the bold cut, to compare.
-  if (look.zones === 'lep' && process.env.YIELD_ZONE_LINE !== 'vivid') {
-    // (its hue kept and its saturation, a little darker than it is mapped, so a lighter zone stays the lighter line)
-    const f = zoneFill(zone), n = parseInt(f.slice(1), 16), ch = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => v / 255);
-    const light = (Math.max(...ch) + Math.min(...ch)) / 2;
-    return inkFor(vivid(f, 0.6, Math.max(0.3, light - 0.09)), 0.55);
-  }
+  // (exactly as mapped: Z. 2026-11, "swap for Canary"; it was a step darker, to carry a line on white)
+  if (look.zones === 'lep' && process.env.YIELD_ZONE_LINE !== 'vivid') return zoneFill(zone);
   const c = zoneInk(zone, look);
   return c ? inkFor(c, 0.5) : null;
 }
@@ -764,12 +760,14 @@ function isoShadeOf(zone: string | undefined, look: DeckLook, built = false): st
   if (mode === 'blue') return ISO_SHADE.blue;
   if (mode === 'warm') return ISO_SHADE.warm;
   if (built) return ISO_SHADE.blue;
+  // (the zone's own colour, as its outline is: a swatch of the palette where the style keeps the ePlanning colours)
   const line = zoneLine(zone, look);
-  return line ? mix(line, '#ffffff', 0.45) : ISO_SHADE.blue;
+  return line ? (look.zones === 'lep' ? line : mix(line, '#ffffff', 0.45)) : ISO_SHADE.blue;
 }
-const ISO_SHADE = { blue: '#b4c6e7', warm: '#ffc6c3' };
+/** The massing's shades, Canary swatches: its mid blue (E2's), and R5's pale pink. */
+const ISO_SHADE = { blue: '#b4c6e7', warm: '#ffd9d9' };
 /** A neighbour's outline in its zone's colour on a path's plan: its width, millimetres. */
-const ZONE_EDGE_PLAN = 0.4;
+const ZONE_EDGE_PLAN = 0.5;
 /** The lot in a zone, as the style's context sheet tints the land: its category's fill and texture, or its ePlanning colour. */
 function lotFill(zone: string | undefined, look: DeckLook): { key: string; fill: Fill } | null {
   if (!zone) return null;
@@ -928,16 +926,24 @@ const HOUR_ALPHA = 0.16, stackedAlpha = (n: number) => 1 - (1 - HOUR_ALPHA) ** n
 /** On a path's plan each hour is lighter, and darkens what is under it: seven of them still leave the lot lines and the numbers to read. */
 const PLAN_HOUR_ALPHA = 0.1;
 /**
- * Canary's ramps for the envelope's shadow as contours, from its zoning palette: one hour in shadow (palest) to all
- * seven (deepest). Pink, the residential zones' (R5, R2, R3, R4); orange, the C zones' run to R4's red; warm, its
- * yellows to that red.
+ * Canary's colours for the shadows as contours, exact swatches of its palette, palest to deepest: four bands, the
+ * ground in shadow one or two hours, three or four, five or six, all seven (CONTOUR_HOURS). Pink, the residential
+ * zones' (R5, R2, R3, R4); orange, the C zones' (C4, C3, C2, C1); warm, its yellows to R4's red; blue, its blues (the
+ * neighbours' shadows, where they are contours of their own). Z. 2026-11: "swap for Canary" (they were steps between
+ * its colours, seven a ramp).
  */
 const CANARY_SHADOW_RAMPS = {
-  pink: ['#fff0ef', '#ffdedd', '#ffc6c3', '#ffa6a3', '#ff8a83', '#ff6a60', '#ff483b'],
-  orange: ['#fff5e3', '#ffe8bf', '#ffda96', '#f7c568', '#f0ae3c', '#f28a2a', '#f2601e'],
-  warm: ['#fff6bf', '#ffe98a', '#ffd400', '#f7c568', '#f0ae3c', '#f2741f', '#ff483b'],
-  /** The neighbours' shadows, where they are contours of their own: the E zones' blues, light to the lilac-blue. */
-  blue: ['#f1f5fc', '#e3ebf8', '#cbd8ef', '#b4c6e7', '#99b2e0', '#7f9fd9', '#5f7fcc'],
+  pink: ['#ffd9d9', '#ffa6a3', '#ff776e', '#ff483b'],
+  orange: ['#ffda96', '#f7c568', '#f0ae3c', '#e69900'],
+  warm: ['#fff6bf', '#ffe766', '#f0ae3c', '#ff483b'],
+  blue: ['#e3ebf8', '#b4c6e7', '#8ea9db', '#7f9fd9'],
+};
+/** The hours in shadow each contour band starts at: one or two, three or four, five or six, all seven. */
+const CONTOUR_HOURS = [1, 3, 5, 7];
+/** A sweep's colour each hour, 9 am to 3 pm, exact swatches: pink to lilac (R3, R2, R1, IN1, IN3, E4, E5), or yellow to red. */
+const CANARY_SWEEPS = {
+  'pink-lilac': ['#ff776e', '#ffa6a3', '#ffcfff', '#deb8f5', '#c595e8', '#9999ff', '#9966ff'],
+  'yellow-red': ['#ffd400', '#f7c568', '#f0ae3c', '#e69900', '#ff776e', '#ff483b', '#c8231a'],
 };
 /**
  * The separations on a path's plan: black, the distance and what is asked written along each (Z. 2026-11: "make the
@@ -2373,10 +2379,10 @@ function complianceSheets(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: P
     ownStyle?: 'layers' | 'contours' | 'sweep'; ramp?: 'pink-orange' | 'warm' | 'pink-lilac' | 'yellow-red';
     /**
      * The neighbours' shadows: hour by hour in grey (`layers`); as contours of their own under the envelope's
-     * (`contours`, in `gRamp`: Canary's `blue`s, or a `soft` pink to peach); or every building's together as one set
+     * (`contours`, in `gRamp`: Canary's `blue`s); or every building's together as one set
      * of contours in the envelope's ramp, the envelope's own reach outlined (`all`).
      */
-    ground?: 'layers' | 'contours' | 'all'; gRamp?: 'blue' | 'soft';
+    ground?: 'layers' | 'contours' | 'all'; gRamp?: 'blue';
   }
   // Canary: the envelope's shadow as contours, pink to orange across the day, after a contour map of exposure (Z.
   // 2026-11, with a contour plot in reds, oranges and pinks and a shadow-range diagram: "can you try to make the shadow
@@ -2384,7 +2390,7 @@ function complianceSheets(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: P
   const canaryShadow = deckLook().zones === 'lep' && deckLook().id !== 'heron';
   const LOOK: ShadowLook = { hours: 'hourly', neighbours: true, ownShadow: true, hatch: false, outlines: true, dims: true, shaded: false,
     own: ownShadowOnPlan(), oAlpha: OWN_HOUR_ALPHA, nInk: shadowInk(), nAlpha: PLAN_HOUR_ALPHA, multiply: true, bw: 'white',
-    ...(canaryShadow ? { ownStyle: 'contours', ramp: 'pink-orange', own: CANARY_SHADOW_RAMPS.pink[5] } as Partial<ShadowLook> : {}),
+    ...(canaryShadow ? { ownStyle: 'contours', ramp: 'pink-orange', own: CANARY_SHADOW_RAMPS.pink[3] } as Partial<ShadowLook> : {}),
     ...(process.env.YIELD_SHADOW_LOOK ? JSON.parse(process.env.YIELD_SHADOW_LOOK) as Partial<ShadowLook> : {}) };
   const name = (scale: number) => ['Plan', `1:${fmt(scale).replace(',', ' ')}`, LOOK.label ?? 'shadows each hour, 9 am to 3 pm'];
   const massBlocks = schemeBlocks(ps.y);
@@ -2404,26 +2410,23 @@ function complianceSheets(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: P
   // the neighbours' shadows as contours: their own, or every building's together
   const groundLevels = groundStyle === 'layers' ? [] : shadeLevels(hourly.map((hr) => ({ solid: hr.hulls, evenOdd: groundStyle === 'all' ? hr.scheme : [] })), frame);
   const morning = centroidOf(hourly[0].scheme), afternoon = centroidOf(hourly[hourly.length - 1].scheme);
-  const bandOf = (k: number) => {
-    const i = Math.min(6, Math.round((k * 6) / Math.max(1, (groundStyle === 'all' ? 7 : levels.length) - 1)));
-    if (LOOK.ramp === 'warm') return { fill: R.warm[i], edge: inkFor(R.warm[i], 0.5) };
-    return { fill: { a: morning, b: afternoon, from: R.pink[i], to: R.orange[i] }, edge: inkFor(mix(R.pink[i], R.orange[i], 0.5), 0.5) };
+  // (a band from each of CONTOUR_HOURS the levels reach to the next: four bands of two hours, the last all seven)
+  const stepped = (lv: XY[][][]) => { const at = CONTOUR_HOURS.filter((hr) => hr <= lv.length); return at.map((hr, j) => ({ rings: lv[hr - 1], inner: at[j + 1] ? lv[at[j + 1] - 1] : [], j })); };
+  const bandOf = (j: number) => {
+    if (LOOK.ramp === 'warm') return { fill: R.warm[j], edge: R.warm[Math.min(3, j + 1)] };
+    return { fill: { a: morning, b: afternoon, from: R.pink[j], to: R.orange[j] }, edge: R.pink[Math.min(3, j + 1)] };
   };
-  const bands = levels.map((rings, k) => ({ rings, inner: levels[k + 1] ?? [], ...bandOf(k) }));
-  const groundTone = (k: number) => {
-    const i = Math.min(6, Math.round((k * 6) / Math.max(1, groundLevels.length - 1)));
-    if (groundStyle === 'all') { const b2 = bandOf(k); return b2.fill; }
-    return LOOK.gRamp === 'soft' ? mix(mix(R.pink[i], R.orange[i], 0.5), '#ffffff', 0.35) : R.blue[i];
-  };
-  const groundBands = groundLevels.map((rings, k) => ({ rings, inner: groundLevels[k + 1] ?? [], fill: groundTone(k) }));
-  const sweepInk = (i: number) => (LOOK.ramp === 'yellow-red' ? mix('#ffd400', '#ff483b', i / 6) : mix('#ff776e', '#9966ff', i / 6));
+  const bands = stepped(levels).map(({ rings, inner, j }) => ({ rings, inner, ...bandOf(j) }));
+  const groundTone = (j: number) => (groundStyle === 'all' ? bandOf(j).fill : R.blue[j]);
+  const groundBands = stepped(groundLevels).map(({ rings, inner, j }) => ({ rings, inner, fill: groundTone(j) }));
+  const sweepInk = (i: number) => CANARY_SWEEPS[LOOK.ramp === 'yellow-red' ? 'yellow-red' : 'pink-lilac'][i];
   const sweep = ownStyle === 'sweep' ? hourly.map((hr, i) => ({ rings: hr.scheme, fill: sweepInk(i), edge: inkFor(sweepInk(i), 0.5), label: clock(hourSuns[i].clockMin), alpha: 0.2 })) : [];
   // the hours named at the far end of the envelope's shadow: outlined at 9, 12 and 3 where it is laid in layers; named
   // alone over contours, at those three, in the colour of their side; every hour over a sweep, in its own colour
   const named = ownStyle === 'sweep' ? sweep.map((sw) => ({ rings: sw.rings, label: sw.label, ink: sw.edge, outline: false }))
     : hourSuns.map((sun, i) => ({ sun, i })).filter(({ sun }) => [9 * 60, 12 * 60, 15 * 60].includes(sun.clockMin)).map(({ sun, i }) => ({
       rings: groundShadow(massBlocks, sun), label: clock(sun.clockMin),
-      ...(ownStyle === 'contours' ? { outline: groundStyle === 'all', ink: LOOK.ramp === 'warm' ? R.warm[6] : mix(R.pink[6], R.orange[6], i / 6) } : {}),
+      ...(ownStyle === 'contours' ? { outline: groundStyle === 'all', ink: i < 3 || LOOK.ramp === 'warm' ? CANARY_INK.red.text : i > 3 ? CANARY_INK.orange.text : CANARY_INK.red.deep } : {}),
     }));
   const plan = planView(b, s, { x: 0, y: 0, w: PAGE_W, h: PAGE_H }, standing.length ? { standing } : { y: ps.y }, fid, { room: PLAN_ROOM, inset: 6, keepOut: [labelBox(name(5000))], bw: LOOK.bw,
     marks: {
@@ -2456,6 +2459,9 @@ function complianceSheets(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: P
   const hourSwatch = (ink: string, alpha: number) => Array.from({ length: layers }, (_, i) => `<rect x="${((i * 5) / layers).toFixed(2)}" y="0.3" width="${(5 / layers).toFixed(2)}" height="3" fill="${ink}" fill-opacity="${(1 - (1 - alpha) ** (i + 1)).toFixed(2)}"/>`).join('') + `<rect x="0" y="0.3" width="5" height="3" fill="none" stroke="#6f6f6f" stroke-width="0.1"/>`;
   const whenWords = LOOK.hours === 'hourly' ? 'each hour 9 am – 3 pm laid over the last: the deeper, the longer in shadow' : LOOK.hours === 'three' ? 'at 9 am, 12 pm and 3 pm, laid over each other' : 'at 12 pm';
   const its = standing.length ? 'Its' : 'The envelope\'s', sameInk = LOOK.own.toLowerCase() === LOOK.nInk.toLowerCase();
+  // a key's swatch of the bands: their colours in a row, or the pinks over the oranges
+  const stripes = (cs: string[]) => cs.map((c, i) => `<rect x="${((i * 5) / cs.length).toFixed(2)}" y="0.3" width="${(5 / cs.length + 0.02).toFixed(2)}" height="3" fill="${c}"/>`).join('');
+  const pinkOverOrange = R.pink.map((c, i) => `<rect x="${((i * 5) / 4).toFixed(2)}" y="0.3" width="${(5 / 4 + 0.02).toFixed(2)}" height="1.5" fill="${c}"/><rect x="${((i * 5) / 4).toFixed(2)}" y="1.8" width="${(5 / 4 + 0.02).toFixed(2)}" height="1.5" fill="${R.orange[i]}"/>`).join('');
   const bwSwatch = LOOK.bw === 'black' ? `<rect x="0.4" y="0.6" width="4.2" height="2.4" fill="#2a2c30"/>` : LOOK.bw === 'grey' ? `<rect x="0.4" y="0.6" width="4.2" height="2.4" fill="#d3d5d8"/>` : `<rect x="0.4" y="0.6" width="4.2" height="2.4" fill="#ffffff" stroke="#1c1c1c" stroke-width="0.3"/>`;
   const planZones = LOOK.bw === 'white' && zoneEdgesOn() ? zoneEntries(b, deckLook(), false, plan.zones, true) : [];
   const shadowLegend: LegendEntry[] = [
@@ -2464,12 +2470,12 @@ function complianceSheets(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: P
       : [...(['residential', 'retail', 'commercial'] as Use[]).filter((u) => ps.y.tiers.some((t) => t.use === u)).map((u) => ({ swatch: KEY.use(u), label: `Indicative massing, ${USE_WORD[u]}` })),
         { swatch: KEY.envelope, label: 'Envelope of each tier, numbered as in the schedule' }]),
     ...(LOOK.neighbours && groundStyle === 'layers' ? [{ swatch: hourSwatch(LOOK.nInk, LOOK.nAlpha), label: `${LOOK.ownShadow && sameInk && ownStyle === 'layers' ? 'Every building\'s shadow' : 'The neighbours\' shadows'} on 21 June, ${whenWords}` }] : []),
-    ...(groundStyle !== 'layers' ? [{ swatch: Array.from({ length: 7 }, (_, i) => `<rect x="${((i * 5) / 7).toFixed(2)}" y="0.3" width="${(5 / 7 + 0.02).toFixed(2)}" height="3" fill="${groundStyle === 'all' ? mix(R.pink[i], R.orange[i], 0.5) : groundTone((i * Math.max(1, groundLevels.length - 1)) / 6)}"/>`).join(''),
+    ...(groundStyle !== 'layers' ? [{ swatch: groundStyle === 'all' ? pinkOverOrange : stripes(R.blue),
       label: groundStyle === 'all'
-        ? `Every building's shadow on 21 June, 9 am – 3 pm, in bands: the ground in shadow one hour (palest) to all seven (deepest); pink on the morning side, orange on the afternoon side. ${its} own at 9 am, 12 pm and 3 pm outlined`
-        : `The neighbours' shadows on 21 June, 9 am – 3 pm, in bands: the ground in their shadow one hour (palest) to all seven (deepest)` }] : []),
-    ...(ownStyle === 'contours' && groundStyle !== 'all' ? [{ swatch: Array.from({ length: 7 }, (_, i) => `<rect x="${((i * 5) / 7).toFixed(2)}" y="0.3" width="${(5 / 7 + 0.02).toFixed(2)}" height="3" fill="${LOOK.ramp === 'warm' ? R.warm[i] : mix(R.pink[i], R.orange[i], 0.5)}"/>`).join(''),
-      label: `${its} shadow on 21 June, 9 am – 3 pm, in bands: the ground in it one hour (palest) to all seven (deepest)${LOOK.ramp === 'warm' ? '' : '; pink on the morning side, orange on the afternoon side'}${LOOK.outlines ? '; 9 am, 12 pm and 3 pm named at its far end' : ''}` }] : []),
+        ? `Every building's shadow on 21 June, 9 am – 3 pm, in bands: the ground in shadow one or two hours (palest) to all seven (deepest); pink on the morning side, orange on the afternoon side. ${its} own at 9 am, 12 pm and 3 pm outlined`
+        : `The neighbours' shadows on 21 June, 9 am – 3 pm, in bands: the ground in their shadow one or two hours (palest) to all seven (deepest)` }] : []),
+    ...(ownStyle === 'contours' && groundStyle !== 'all' ? [{ swatch: LOOK.ramp === 'warm' ? stripes(R.warm) : pinkOverOrange,
+      label: `${its} shadow on 21 June, 9 am – 3 pm, in bands: the ground in it one or two hours (palest) to all seven (deepest)${LOOK.ramp === 'warm' ? '' : '; pink on the morning side, orange on the afternoon side'}${LOOK.outlines ? '; 9 am, 12 pm and 3 pm named at its far end' : ''}` }] : []),
     ...(ownStyle === 'sweep' ? [{ swatch: Array.from({ length: 7 }, (_, i) => `<rect x="${((i * 5) / 7).toFixed(2)}" y="0.3" width="${(5 / 7 + 0.02).toFixed(2)}" height="3" fill="${sweepInk(i)}"/>`).join(''),
       label: `${its} shadow each hour on 21 June, 9 am to 3 pm, each in its own colour (${LOOK.ramp === 'yellow-red' ? 'yellow at 9 am to red at 3 pm' : 'pink at 9 am to lilac at 3 pm'}), outlined and named; deeper where the hours overlap` }] : []),
     ...(ownStyle === 'layers' && LOOK.ownShadow && !(LOOK.neighbours && sameInk) ? [{ swatch: hourSwatch(LOOK.own, LOOK.oAlpha), label: LOOK.neighbours ? `${its} own shadow, the same hours, in its own colour${LOOK.outlines ? '; at 9 am, 12 pm and 3 pm outlined' : ''}` : `${its} shadow on 21 June, ${whenWords}` }] : []),

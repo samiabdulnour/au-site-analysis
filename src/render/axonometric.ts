@@ -329,7 +329,7 @@ function lookOf(M: ReturnType<typeof massingInks>, mono: boolean): AxoLook {
 /** The firmer outline round what is built (`scene.silhouette`), drawing units: black, so a white scheme stands out among white neighbours. */
 const SILHOUETTE_W = 0.5;
 /** A white model's neighbour outlined in its zone's colour: the line's width, drawing units. */
-const ZONE_EDGE_W = 0.22;
+const ZONE_EDGE_W = 0.3;
 const LINE_MM = { neighbour: 0.2, future: 0.16, built: 0.3, silhouette: 0.55, storey: 0.08 };
 /** A width on paper, written into the drawing before its scale is known and resolved once it is (`resolvePaper`). */
 const PW = (mm: number) => `@@pw${mm}@@`;

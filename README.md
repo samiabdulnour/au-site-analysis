@@ -1861,8 +1861,8 @@ yield for 86, 88-90, 94 Maroubra Road, 2026-11):
 - *"Try colourful shadow with neighbour buildings too."* … *"Make the
   dims there black."* `YIELD_SHADOW_LOOK` can draw the neighbours'
   shadows as contours too: of their own under the envelope's (`"ground":
-  "contours"`, in Canary's blues, `"gRamp": "blue"`, or a soft pink to
-  peach, `"soft"`), or every building's together as one set of contours in
+  "contours"`, in Canary's blues, `"gRamp": "blue"`), or every building's
+  together as one set of contours in
   the envelope's pink to orange, its own reach outlined (`"ground":
   "all"`). By default they stay grey, hour by hour: the colour is the
   envelope's. The separations on the plan are black (`DIM_INK`), dashed
@@ -1877,6 +1877,18 @@ yield for 86, 88-90, 94 Maroubra Road, 2026-11):
   their colour is the facades' sun. `YIELD_ISO_SHADE` draws the others:
   `blue` (every wall the light blue), `warm` (the shadow plan's peach),
   `grey` (as it was).
+- *"Is this in the Canary palette?"* … *"Swap for Canary, please."* The
+  colours were steps between Canary's: zone outlines a shade darker than
+  the mapped colour, walls a shade lighter, seven contour bands with five
+  in between. They are now exact swatches: a neighbour's outline and its
+  shaded walls its zone's mapped ePlanning colour (R2 `#ffa6a3`, R3
+  `#ff776e`, E2 `#b4c6e7`; the lines a little wider to carry the lighter
+  ones), what is built shaded in Canary's mid blue (`#b4c6e7`), and the
+  contours four bands of two hours (`CONTOUR_HOURS`: one or two, three or
+  four, five or six, all seven), the residential pinks R5, R2, R3, R4 on
+  the morning side and the C zones' oranges C4, C3, C2, C1 on the
+  afternoon side (`CANARY_SHADOW_RAMPS`), the hours named in Canary's text
+  inks. The sweeps run through swatches too (`CANARY_SWEEPS`).
 - *"If there is nothing, don't print it."* "Within the controls" had a
   spread of its own even in a zone the study draws no building type for:
   every figure a dash, over the height plane alone. A path that builds
