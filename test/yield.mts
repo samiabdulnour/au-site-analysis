@@ -568,6 +568,27 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
     const hz = renderYieldDeck(zoned, meta, { theme: 'heron' }).slides.find((sl) => isTestPage(sl.id, 'shadow'))!;
     check('zones: Heron has no zone\'s line', !/data-zone-line/.test(hz.figureHtml) && !(hz.legend ?? []).some((e) => /zone's colour/.test(e.label)));
   }
+  const withLook = <T,>(look: object, f: () => T): T => { process.env.YIELD_SHADOW_LOOK = JSON.stringify(look); try { return f(); } finally { delete process.env.YIELD_SHADOW_LOOK; } };
+  // Z. 2026-11, with a contour plot in reds, oranges and pinks and a shadow-range diagram: "can you try to make the
+  // shadow on the shadow plan look like this in Canary style?" In Canary the envelope's shadow is contours: each band
+  // the ground in it so many of the seven hours, a gradient across it from pink (the morning side) to orange (the
+  // afternoon side), palest at one hour, deepest at seven; the hours named at its far end and not outlined.
+  {
+    const cShade = renderYieldDeck(close, meta, { theme: 'canary' }).slides.find((sl) => isTestPage(sl.id, 'shadow'))!;
+    const bandIds = [...cShade.figureHtml.matchAll(/<path data-band="(\d)" d="[^"]+" fill="url\(#plan-band-[^"]+\)" fill-rule="evenodd"/g)].map((x) => Number(x[1]));
+    const grads = [...cShade.figureHtml.matchAll(/<linearGradient id="plan-band-[^"]+" gradientUnits="userSpaceOnUse"[^>]*><stop offset="0" stop-color="(#[0-9a-f]{6})"\/><stop offset="1" stop-color="(#[0-9a-f]{6})"\/><\/linearGradient>/g)].map((x) => [x[1], x[2]]);
+    const lum = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)).reduce((t, v) => t + v, 0);
+    check('canary shadow: the envelope\'s shadow in contour bands, one a level, palest out to deepest in', bandIds.length >= 5 && bandIds.every((k, i) => k === i + 1) && grads.length === bandIds.length
+      && grads.every(([from, to], i) => i === 0 || (lum(from) < lum(grads[i - 1][0]) && lum(to) < lum(grads[i - 1][1]))), JSON.stringify({ bandIds, grads }));
+    check('canary shadow: each band pink on the morning side, orange on the afternoon side', grads.every(([from, to]) => parseInt(from.slice(5, 7), 16) >= parseInt(to.slice(5, 7), 16) - 4 && parseInt(to.slice(3, 5), 16) >= parseInt(from.slice(3, 5), 16)), JSON.stringify(grads));
+    check('canary shadow: not laid in layers of one ink, and its hours named and not outlined', !/<g opacity="0\.15" style="mix-blend-mode:multiply"><path d="[^"]+" fill="[^"]+" fill-rule="evenodd"\/>/.test(cShade.figureHtml)
+      && !/stroke-dasharray="1\.2,0\.8"/.test(cShade.figureHtml) && /font-weight="700" fill="#[0-9a-f]{6}">9 AM</.test(cShade.figureHtml));
+    check('canary shadow: the key names the bands', (cShade.legend ?? []).some((e) => /in bands: the ground in it one hour \(palest\) to all seven \(deepest\); pink on the morning side, orange on the afternoon side/.test(e.label)));
+    const swept = withLook({ ownStyle: 'sweep' }, () => renderYieldDeck(close, meta, { theme: 'canary' }).slides.find((sl) => isTestPage(sl.id, 'shadow'))!);
+    check('canary shadow, asked for: a sweep, each hour its own colour, outlined and named', (swept.figureHtml.match(/<g data-sweep="1"/g) ?? []).length === 7 && /data-sweep[\s\S]*>10 AM</.test(swept.figureHtml)
+      && (swept.legend ?? []).some((e) => /each in its own colour \(pink at 9 am to lilac at 3 pm\)/.test(e.label)));
+    check('the other styles keep the hours laid over each other', !/data-band=/.test(closePlan));
+  }
   check('shadow: the envelope\'s shadow over the neighbours\', in its own colour', new RegExp(`<g opacity="0\\.15" style="mix-blend-mode:multiply"><path d="[^"]+" fill="${accentInk}" fill-rule="evenodd"/>`).test(closePlan)
     && closePlan.indexOf('fill-rule="nonzero"') < closePlan.indexOf(`fill="${accentInk}" fill-rule="evenodd"`));
   // Z. 2026-11: "the building separation needs to be visible in the drawing, don't put it into text". Each separation a
@@ -577,7 +598,6 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
     closePlan.match(/<text[^>]*data-dim="1">[^<]*</)?.[0]);
   // The plan's other marks are still to be had (YIELD_SHADOW_LOOK overrides the look, for iterations): the hatch on
   // what the envelope adds and the dimensions.
-  const withLook = <T,>(look: object, f: () => T): T => { process.env.YIELD_SHADOW_LOOK = JSON.stringify(look); try { return f(); } finally { delete process.env.YIELD_SHADOW_LOOK; } };
   const shadowOf = (bd: YieldBundle) => deck(bd).slides.find((sl) => isTestPage(sl.id, 'shadow'))!;
   const fullPlan = withLook({ hatch: true, dims: true, shaded: true }, () => shadowOf(close).figureHtml);
   check('shadow, asked for: hatched where only the envelope shades the ground', /<g data-added="1">.*?<clipPath/.test(fullPlan));

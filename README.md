@@ -1830,6 +1830,20 @@ yield for 86, 88-90, 94 Maroubra Road, 2026-11):
   red, lost against the separations' red figures). The keys name the
   zones by their lines. Heron has none. `YIELD_ZONE_EDGES=0` draws the
   plain outlines, `YIELD_ZONE_LINE=vivid` the bold colours.
+- *"Can you try to make the shadow on the shadow plan look like this in
+  Canary style?"* (a contour plot in reds, oranges and pinks, and a
+  shadow-range diagram with each hour's shadow in its own colour). In
+  Canary the envelope's own shadow is now contours (`shadeLevels()` in
+  `src/lib/solarAccess.ts`): seven bands, the ground in its shadow one hour
+  (palest) to all seven (deepest), each a gradient across the day from the
+  residential zones' pinks on the morning side to the C zones' oranges on
+  the afternoon side (`CANARY_SHADOW_RAMPS`), 9 am, 12 pm and 3 pm named at
+  its far end. The neighbours' shadows stay grey, hour by hour; the other
+  styles keep the envelope's hours laid over each other in their blue.
+  `YIELD_SHADOW_LOOK` draws the alternatives: `"ramp": "warm"` (cream to
+  red, which runs into the scheme's yellow), and `"ownStyle": "sweep"`,
+  each hour's shadow in its own colour, outlined and named (`"ramp":
+  "pink-lilac"` or `"yellow-red"`).
 - *"If there is nothing, don't print it."* "Within the controls" had a
   spread of its own even in a zone the study draws no building type for:
   every figure a dash, over the height plane alone. A path that builds
