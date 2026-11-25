@@ -222,6 +222,17 @@ if (loriini && !args.includes('--no-sun')) {
     await draw();
   } catch (e: any) { log(`  WARN the sun study did not run: ${e?.message ?? e}`); }
 } else log('  no Loriini beside this repository (LORIINI unset): the sheets carry no sun study');
+// the sun on our facades, cell by cell, as the yield study reads and colours it: a sheet a scenario, today against the
+// scenario (today the scenario that rebuilds nothing, where the file has one); `--no-facade` leaves it out
+const facades = new Set<number>();
+if (loriini && !args.includes('--no-facade')) {
+  try {
+    const scene = only ? (JSON.parse(await readFile(join(out, 'future-page.json'), 'utf8')) as { onlyScene?: number | null }).onlyScene : null;
+    const { stdout } = await run(python, ['-I', join(HERE, 'capacity_study', 'future_facade_sun.py'), out, '--scenarios', resolve(scenarios!), ...(scene != null ? ['--scene', String(scene)] : [])], { env: { ...process.env, LORIINI: loriini }, maxBuffer: 64 * 1024 * 1024 });
+    log(`  future_facade_sun.py: ${stdout.trim()}`);
+    for (const m of stdout.matchAll(/future-facade-(\d+):/g)) facades.add(Number(m[1]));
+  } catch (e: any) { log(`  WARN the facades' sun was not read: ${e?.message ?? e}`); }
+}
 const { width, height, pages, summary, options, sun: sunPages = 0, only: onlyPage = null, sunPages: sunList = [], deck = null } = JSON.parse(await readFile(join(out, 'future-page.json'), 'utf8')) as { width: number; height: number; pages: number; summary?: boolean | number; options?: boolean; sun?: number; only?: number | null; sunPages?: number[]; deck?: string | null };
 // The sheets are A3. Chromium writes each PDF at the page's pixel size taken as 96 to the inch, three times too
 // large, so each is set to 420 mm wide here: a plan drawn at a scale then measures true in any viewer, on a print at
@@ -238,9 +249,10 @@ const sheet = async (name: string) => {
 };
 if (deck === 'two-sheet') {
   // `"deck": "two-sheet"` in the scenarios file: each scenario is two sheets, its geometry and its view from the sun,
-  // bound in that order into future.pdf, and nothing else is printed; with --only, that scenario's pair alone
+  // bound in that order into future.pdf, and nothing else is printed; with --only, that scenario's pair alone. The
+  // sun on our facades follows each scenario's sheets where it was read
   const which = onlyPage != null ? [onlyPage] : Array.from({ length: pages }, (_, i) => i + 1);
-  const names = which.flatMap((i) => [`future-option-${i}`, ...(sunList.includes(i) ? [`future-sun-${i}`] : [])]);
+  const names = which.flatMap((i) => [`future-option-${i}`, ...(sunList.includes(i) ? [`future-sun-${i}`] : []), ...(facades.has(i) ? [`future-facade-${i}`] : [])]);
   const doc = await PDFDocument.create();
   for (const name of names) {
     await sheet(name);

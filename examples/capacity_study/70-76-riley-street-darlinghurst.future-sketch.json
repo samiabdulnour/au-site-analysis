@@ -67,6 +67,25 @@
  ],
  "scenarios": [
   {
+   "title": "As it stands today, our building as sketched",
+   "horizon": "Every neighbour as it stands today; our building as the sketch of 25 November has it. The baseline the two scenarios are read against.",
+   "lead": "Nothing round us is rebuilt: 67-89 Riley St stands as the 1960s block of 112 apartments it is, and every other neighbour as it does today, its height off Google's 3D tiles. Our building as sketched: a three-storey podium (a taller ground floor and two residential levels) and a tower to 12 storeys, 6 m off our northern boundary, 3 m off Riley Street and Crown Lane, 5 m off Stanley Lane.",
+   "notes": [
+    "Every neighbour stands as it is."
+   ],
+   "retained": [
+    {
+     "address": "66-68 RILEY STREET",
+     "why": "21 apartments, strata of 2011"
+    },
+    {
+     "address": "107-113 CROWN STREET",
+     "why": "stays, as sketched"
+    }
+   ],
+   "parcels": []
+  },
+  {
    "title": "67-89 Riley St at 18 storeys, everything else as it stands",
    "horizon": "The HDA proposal across Riley Street at 18 storeys as sketched; every other neighbour as it stands. Our building as the sketch of 25 November has it.",
    "lead": "67-89 Riley St, the 1960s block of 112 apartments across Riley Street to our north-west, rebuilt as the HDA's SSD proposal: a three-storey podium over the lot and a tower to 18 storeys on the sketch of 25 November, {R.plate}, 3 m off Riley Street and Yurong Lane, 6 m off 91-93 Riley St, about 16 m deep from Riley Street. Every other neighbour stands as it does today. Our building as sketched: a three-storey podium and a tower to 12 storeys, 6 m off our northern boundary and 3 m off Riley Street and Crown Lane.",
