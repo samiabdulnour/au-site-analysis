@@ -2466,9 +2466,12 @@ def sun_views(no, sun, hours=(9, 10, 11, 12, 13, 14, 15), reach=32, tall=0.6):
         # finds the sun on it at this hour, on the walls the sun faces
         if fac:
             for f_ in fac['faces']:
-                if f_['blank']:
-                    continue
                 (ax_, ay_), (bx_, by_), (nx_, ny_) = f_['a'], f_['b'], f_['normal']
+                zl_, zh_ = min(storey_bottom(c['storey']) for c in f_['cells']), max(H_of(c['storey']) for c in f_['cells'])
+                ours += [P(ax_, ay_, zl_), P(bx_, by_, zl_), P(bx_, by_, zh_), P(ax_, ay_, zh_)]   # the view framed on the whole building
+                # only the faces the headline counts are drawn in cells; the others stay plain, as the figure leaves them out
+                if f_['blank'] or f_.get('compass') not in HEADLINE_SIDES:
+                    continue
                 if nx_ * s[0] + ny_ * s[1] <= 0:
                     continue
                 zl, zh = min(storey_bottom(c['storey']) for c in f_['cells']), max(H_of(c['storey']) for c in f_['cells'])
