@@ -443,9 +443,16 @@ def yield_text(fsr, gfa, units, about=True):
 NO_PLANS = not ((S.get('tower') or {}).get('units'))
 
 
-def facade_figures(no):
+# the faces our headline sun counts, as marked up on 25 November: the west face on Riley Street and the east on Crown
+# Lane, where the apartments will look (the north face is close to the boundary, the south gets no winter sun)
+HEADLINE_SIDES = ('W', 'E')
+SIDES_WORD = 'west and east facades'
+
+
+def facade_figures(no, sides=None):
     """Our facade's sun in a scene, off future-facade-<no>.json: the share of the walls that can hold a window with two
-    hours or more and with none, with the scenario standing and today; None where it was not read."""
+    hours or more and with none, with the scenario standing and today; only the faces looking `sides` (compass
+    points) where named; None where it was not read."""
     path_ = f'{OUT}/future-facade-{no}.json'
     if not os.path.exists(path_):
         return None
@@ -454,7 +461,7 @@ def facade_figures(no):
     for key in ('with', 'today'):
         area = two = none = 0.0
         for f_ in fac['faces']:
-            if f_['blank']:
+            if f_['blank'] or (sides and f_.get('compass') not in sides):
                 continue
             w_ = f_['length'] / max(1, round(f_['length'] / fac.get('cell_m', 3.0)))
             for c in f_['cells']:
@@ -470,11 +477,11 @@ def facade_figures(no):
 
 def facade_sun_text(no):
     """Our building's line of sun on a plan sheet, where it has no plans: the share of its facade with two hours."""
-    ff = facade_figures(no)
+    ff = facade_figures(no, HEADLINE_SIDES)
     if not ff or not ff.get('with'):
         return None
     today_ = ff.get('today')
-    return (f'{ff["with"]["two"]:.0%} of our facade has 2 h or more' + (f' (baseline {today_["two"]:.0%})' if today_ else ''), '')
+    return (f'{ff["with"]["two"]:.0%} of our {SIDES_WORD} have 2 h or more' + (f' (baseline {today_["two"]:.0%})' if today_ else ''), '')
 
 
 def trim_to(poly, want):
@@ -694,9 +701,14 @@ def hatch_path(g, spacing, angle=45.0):
     return ' '.join(d)
 
 
+# every dimension on a plan is drawn in black, whatever its verdict: the tables say which separations hold
+DIM_COLOUR = '#111111'
+
+
 def arch_dim(pts, labels, col, k):
     """An architectural dimension through the points: a thin line, an oblique tick at each point, each span's figure
-    above the line and along it, no halo."""
+    above the line and along it, no halo; in DIM_COLOUR whatever `col` asks."""
+    col = DIM_COLOUR
     (x0, y0), (x1, y1) = pts[0], pts[-1]
     L = math.hypot(x1 - x0, y1 - y0)
     if L < 0.2:
@@ -1169,9 +1181,14 @@ def ours_for(band):
     return next((t['poly'] for t in towers if t['s0'] <= want <= t['s1']), towers[-1]['poly'] if towers else SITE_TOWER)
 
 
+BASE_STOREYS = S['storeys']                                         # our storeys as the study states them
+
+
 def set_tower(scn=None):
     """Our tower for a scenario: the study's site.tower, with whatever the scenario's own `site.tower` replaces."""
     global TOWER, SITE_TOWER, SITE_BOX, SITE_PODIUM, TOWER_OWN, SITE_TIERS
+    # a scenario's own `site.storeys` builds our building to another height for that sheet
+    S['storeys'] = ((scn or {}).get('site') or {}).get('storeys') or BASE_STOREYS
     base = S.get('tower') or {}
     own = ((scn or {}).get('site') or {}).get('tower') or {}
     TOWER = {**base, **own} if base or own else None
@@ -1701,6 +1718,7 @@ def plan(scn, parcels, blds, existing, RET, sep, bset=None):
     # the separation from our tower to each neighbour: a dimension line between their nearest points, in the
     # verdict's colour
     def dim(x0, y0, x1, y1, col, label, sub=None, ticks=()):
+        col = DIM_COLOUR                                              # every dimension black
         L = math.hypot(x1 - x0, y1 - y0)
         ux, uy = (x1 - x0) / L, (y1 - y0) / L
         nx, ny = -uy, ux
@@ -2220,7 +2238,7 @@ def mini_plan(parcels, blds, existing, RET, sep, k=1.0, big=False, bset=None, wi
             c = b['poly'].representative_point()
             o.append(f'<text x="{f(c.x)}" y="{-c.y + 1.6 * k:.2f}" font-size="{PLAN_FS * k:.2f}" font-weight="700" text-anchor="middle" fill="#111" {halo(C[b["typ"]])}>{b["n"]}</text>')
             if big and b.get('plate'):
-                o.append(f'<text x="{f(c.x)}" y="{-c.y + 6.8 * k:.2f}" font-size="{PLAN_FS * k:.2f}" font-weight="500" text-anchor="middle" fill="#111" {halo(C[b["typ"]])}>{b["plate"]}</text>')
+                o.append(f'<text x="{f(c.x)}" y="{-c.y + 6.8 * k:.2f}" font-size="{PLAN_FS * k:.2f}" font-weight="600" text-anchor="middle" fill="#111" {halo(C[b["typ"]])}>{b["plate"]}</text>')
             if big and b['key'] in fsr_of and b['typ'] != 'consent':
                 o.append(f'<text x="{f(c.x)}" y="{-c.y + 12.0 * k:.2f}" font-size="{PLAN_FS * k:.2f}" font-weight="700" text-anchor="middle" fill="#111" {halo(C[b["typ"]])}>FSR {fsr_of[b["key"]]:.1f}:1</text>')
     for p in parcels:                                                 # the key letter at the parcel's corner, as the sheet has it
@@ -2242,7 +2260,7 @@ def mini_plan(parcels, blds, existing, RET, sep, k=1.0, big=False, bset=None, wi
             g_ = Point(mx_, my_).distance(hit) / 2
             lab_at, fsr_dy = (mx_ + dx_ * g_, my_ + dy_ * g_), 6.8
         on_podium = fsr_dy < 10                                       # there, the short name, so it clears the dimension beside it
-        o.append(f'<text x="{f(lab_at[0])}" y="{-lab_at[1] + 0.9 * k:.2f}" font-size="{PLAN_FS * k:.2f}" font-weight="500" text-anchor="middle" fill="#c0161c">{H.escape(S.get("label", "our site").split(",")[0] if on_podium else S.get("label", "our site"))}</text>')
+        o.append(f'<text x="{f(lab_at[0])}" y="{-lab_at[1] + 0.9 * k:.2f}" font-size="{PLAN_FS * k:.2f}" font-weight="600" text-anchor="middle" fill="#c0161c">{H.escape(S.get("label", "our site").split(",")[0] if on_podium else S.get("label", "our site"))}</text>')
         o.append(f'<text x="{f(c.x)}" y="{-c.y + fsr_dy * k:.2f}" font-size="{PLAN_FS * k:.2f}" font-weight="700" text-anchor="middle" fill="#c0161c" {halo("#e6b0b0")}>FSR {site_yield()[0]:.1f}:1</text>')
         fronts = {norm_road(r_['name']) for q in parcels for r_ in boundary_runs(q['poly']) if r_['kind'] == 'street'}
         fronts |= {norm_road(n_) for n_ in (TOWER or {}).get('setbacks', {}) if norm_road(n_) in ROADS}
@@ -2324,7 +2342,7 @@ def option_page(r):
         if r['ours']:
             rows.append(('Our building', r.get('ours_yield', ''), r['ours']))
         note_ = ('Floor space, and the neighbours\' apartments, a rough estimate. Sun: the neighbours\' apartments with 2 continuous hours of winter sun; '
-                 'ours, the share of our facade with 2 hours or more, as the facade sheet reads it (our layout is not known yet).') if NO_PLANS else \
+                 'ours, the share of our west and east facades with 2 hours or more, as the facade sheet reads them (our layout is not known yet).') if NO_PLANS else \
             'Floor space and apartments are a rough estimate. Sun: apartments with 2 continuous hours of winter sun.'
         table = (f'<div class="obc">{note_}</div>'
                  + ''.join(f'<div class="ob"><div class="obn">{n_}</div><div class="oby">{y_}</div><div class="obs" style="color:{VERDICT_COLOUR.get(sc_, "#111")}">Sun: {st_}</div></div>' for n_, y_, (st_, sc_) in rows))
@@ -2592,14 +2610,14 @@ def sun_eye_page(no, scn, sun, r):
         before = before['planned'] if before else None
     if bays:
         # no plans: nothing said of apartments, only of the facade the sun reaches, as the facade sheet reads it
-        ff = facade_figures(no) or {}
+        ff = facade_figures(no, HEADLINE_SIDES) or {}
         w_, t_ = ff.get('with') or dict(two=0.0, none=0.0), ff.get('today')
         base_no = f', scenario {today_row["no"]}' if today_row else ''
         result = (f'<div class="sv res"><div class="big" style="color:#111">{w_["two"]:.0%}</div>'
-                  f'<div class="rl">of our facade has two hours of sun or more, 9 to 3 on 21 June.</div>'
+                  f'<div class="rl">of our {SIDES_WORD} have two hours of sun or more, 9 to 3 on 21 June.</div>'
                   + (f'<div class="rs">The baseline{base_no}: {t_["two"]:.0%}.</div>' if t_ else '')
-                  + f'<div class="rs">No sun at all on {w_["none"]:.0%} of it.</div>'
-                  f'<div class="rs">Read cell by cell, as the facade sheet reads it: the walls that can hold a window, the party wall left out.</div>'
+                  + f'<div class="rs">No sun at all on {w_["none"]:.0%} of them.</div>'
+                  f'<div class="rs">Read cell by cell, as the facade sheet reads it: the west face on Riley Street and the east on Crown Lane alone, the north and south faces not counted.</div>'
                   f'<div class="key"><span style="background:{SUN_LIT}"></span>facade in sun at that hour<br><span style="background:{SUN_SHADE}"></span>facade in shadow<br>'
                   f'<span style="background:#cdc6c0"></span>the neighbours as this scenario builds them</div></div>')
     else:

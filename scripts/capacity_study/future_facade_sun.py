@@ -143,9 +143,9 @@ def our_faces(site):
     return faces
 
 
-def meshes_of(scene, keep=lambda b: True):
+def meshes_of(scene, keep=lambda b: True, extra=()):
     ms = []
-    for b in scene['buildings']:
+    for b in list(scene['buildings']) + list(extra):
         if not keep(b):
             continue
         for part in b['parts']:
@@ -481,6 +481,13 @@ def sheet(n, last, title, horizon, faces, has_today, today_from, total):
     else:
         strips = elevation_svg(faces, 'with', 196, 'Unfolded · the baseline', total) + f'<div class="sl">{bar(t_with)}<div>{line(t_with)}.</div></div>'
         lead = f'In the baseline, {pct(t_with["two"] / t_with["area"])} of our facade has two hours of sun or more on 21 June; on average {t_with["hours"] / t_with["area"]:.1f} h.'
+    # the headline the other sheets give: the west and east faces alone
+    def we(rows):
+        a_ = sum(rows[d]['area'] for d in ('W', 'E') if d in rows)
+        return (sum(rows[d]['two'] for d in ('W', 'E') if d in rows) / a_) if a_ else None
+    we_with, we_today = we(r_with), (we(r_today) if r_today else None)
+    if we_with is not None:
+        lead += f' Its west and east faces alone: {pct(we_with)} with two hours or more' + (f', against {pct(we_today)} in the baseline.' if we_today is not None else '.')
     today_note = '' if today_from != 'missing' else '<p><b>Today here is the scenario with its new buildings taken out: the buildings they replace are missing from it, so today is read with more sun than it has.</b></p>'
     css = f'''@page{{size:{PAGE_W}px {PAGE_H}px;margin:0}} *{{box-sizing:border-box}} html,body{{margin:0;background:#fff}}
 body{{width:{PAGE_W}px;height:{PAGE_H}px;font-family:Inter,Helvetica,Arial,sans-serif;color:#111;position:relative;overflow:hidden;-webkit-print-color-adjust:exact;print-color-adjust:exact}}
@@ -526,7 +533,7 @@ if scen_file and os.path.exists(scen_file):
     for i, s in enumerate(json.load(open(scen_file))['scenarios'], 1):
         meta[i] = (s['title'], s.get('horizon', ''))
 written = []
-today_occ = meshes_of(scenes[today_no]) if today_no is not None else None
+today_scene = scenes[today_no] if today_no is not None else None
 for no, scene in scenes.items():
     if ONLY is not None and str(no) != str(ONLY):
         continue
@@ -539,9 +546,13 @@ for no, scene in scenes.items():
     read_hours(faces, occ_with, suns, 'with')
     read_hourly(faces, occ_with, whole_hour_suns(scene), 'hourly')            # for the view from the sun
     has_today = no != today_no
-    today_from = 'scene' if today_occ is not None else 'missing'
+    today_from = 'scene' if today_scene is not None else 'missing'
     if has_today:
-        read_hours(faces, today_occ if today_occ is not None else meshes_of(scene, lambda b: b['kind'] != 'new'), suns, 'today')
+        # the baseline's buildings round us with our building as this scenario draws it: a scenario may build ours to
+        # another height, and the baseline's own would stand in its place
+        occ_today = (meshes_of(today_scene, lambda b: b['kind'] != 'site', extra=[site]) if today_scene is not None
+                     else meshes_of(scene, lambda b: b['kind'] != 'new'))
+        read_hours(faces, occ_today, suns, 'today')
     total = unfold(faces)
     title, horizon = meta.get(no, (f'Scenario {no}', ''))
     json.dump(dict(scene=no, today_scene=today_no, cell_m=CELL_M, sill_m=SILL_M, bands=dict(colours=LORIKEET, labels=LABELS),

@@ -858,14 +858,15 @@
   },
   {
    "title": "Step 4: every block at 7 storeys, 23.4 m",
-   "horizon": "The three blocks round us each built to 7 storeys, the 23.4 m height of building: a four-storey podium over the lot and three storeys above it 3 m off the long streets.",
-   "lead": "Every block round us is built to 7 storeys, the 23.4 m height of building: across Riley Street, 67-107 Riley St as one site; north of us, 54-68 Riley St with 1 Crown Lane, 66-68 Riley St with them; across Crown Lane, the whole Crown Street block, 89 to 129 Crown St with 4 and 10 Crown Lane. Each is a four-storey podium over its lot and three storeys above it, held 3 m off its two long street frontages. The William Street towers are taken away, as in every scenario; 109 Riley St, the former hotel, is a heritage item (I436) and stays. Our building as sketched: a three-storey podium and a tower to 14 storeys.",
+   "horizon": "The three blocks round us and ours each built to 7 storeys, the 23.4 m height of building: a four-storey podium over the lot and three storeys above it, set back.",
+   "lead": "Every block round us is built to 7 storeys, the 23.4 m height of building: across Riley Street, 67-107 Riley St as one site; north of us, 54-68 Riley St with 1 Crown Lane, 66-68 Riley St with them; across Crown Lane, the whole Crown Street block, 89 to 129 Crown St with 4 and 10 Crown Lane. Each is a four-storey podium over its lot and three storeys above it, held 3 m off its two long street frontages. The William Street towers are taken away, as in every scenario; 109 Riley St, the former hotel, is a heritage item (I436) and stays. Ours is built the same way: a four-storey podium over our lot and three storeys above it, 6 m off our northern boundary and 3 m off Riley Street, Crown Lane and Stanley Lane, 7 storeys in all.",
    "notes": [
     "88-108 William St (about 100 m) and 72-80 William St (about 69 m) are taken away, in every scenario.",
     "67-107 Riley St: {W.area} m², {W.storeys} storeys at {W.fsr}; {W.sep} m from our tower.",
     "54-68 Riley St + 1 Crown Lane: {N.area} m², {N.storeys} storeys at {N.fsr}; {N.sep} m from our tower.",
     "89-129 Crown St: {C.area} m², {C.storeys} storeys at {C.fsr}; {C.sep} m from our tower.",
-    "The model's storeys are 4.5 m on the ground floor and 3.2 m above, so 7 storeys stand 23.7 m, 0.3 m over the 23.4 m height of building."
+    "The model's storeys are 4.5 m on the ground floor and 3.2 m above, so 7 storeys stand 23.7 m, 0.3 m over the 23.4 m height of building.",
+    "Our building: a four-storey podium and three storeys above it, 7 storeys; the tower 6 m off our northern boundary, 3 m off Riley Street, Crown Lane and Stanley Lane."
    ],
    "removed": [
     "88-108 WILLIAM STREET",
@@ -966,7 +967,19 @@
       }
      ]
     }
-   ]
+   ],
+   "site": {
+    "storeys": 7,
+    "tower": {
+     "podium": 4,
+     "setbacks": {
+      "RILEY STREET": 3,
+      "CROWN LANE": 3,
+      "STANLEY LANE": 3,
+      "66-68 RILEY STREET": 6
+     }
+    }
+   }
   }
  ]
 }
