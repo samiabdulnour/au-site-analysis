@@ -1867,6 +1867,16 @@ yield for 86, 88-90, 94 Maroubra Road, 2026-11):
   "all"`). By default they stay grey, hour by hour: the colour is the
   envelope's. The separations on the plan are black (`DIM_INK`), dashed
   where only a blank face holds; the criteria table marks each.
+- *"Try to make a colourful volume shadow here, don't use grey."* On a
+  path's own spread the white model's walls are shaded toward a colour,
+  not toward black (`shadeInk` on a prism in `src/render/axonometric.ts`):
+  a wall full to the light stays white, one turned from it takes the ink,
+  its hatch and storey lines a deeper cut of it. Each neighbour's ink is
+  its zone's colour lightened, what is built Canary's light blue
+  (`isoShadeOf()`). The solar access views keep the neighbours neutral:
+  their colour is the facades' sun. `YIELD_ISO_SHADE` draws the others:
+  `blue` (every wall the light blue), `warm` (the shadow plan's peach),
+  `grey` (as it was).
 - *"If there is nothing, don't print it."* "Within the controls" had a
   spread of its own even in a zone the study draws no building type for:
   every figure a dash, over the height plane alone. A path that builds

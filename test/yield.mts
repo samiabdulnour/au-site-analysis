@@ -589,6 +589,23 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
     check('canary shadow, asked for: a sweep, each hour its own colour, outlined and named', (swept.figureHtml.match(/<g data-sweep="1"/g) ?? []).length === 7 && /data-sweep[\s\S]*>10 AM</.test(swept.figureHtml)
       && (swept.legend ?? []).some((e) => /each in its own colour \(pink at 9 am to lilac at 3 pm\)/.test(e.label)));
     check('the other styles keep the hours laid over each other', !/data-band=/.test(closePlan));
+    // Z. 2026-11, on the massing's grey walls: "try to make a colourful volume shadow here, don't use grey". On a path's
+    // own spread each neighbour's walls are shaded toward its zone's colour, what is built toward Canary's light blue;
+    // the solar access views keep theirs neutral, their colour the facades' sun.
+    {
+      const zoned2 = { ...close, context: [{ rings: [east], heightM: 6.2, known: true, controls: { zone: 'R2' } }] } as unknown as YieldBundle;
+      const cz = renderYieldDeck(zoned2, meta, { theme: 'canary' });
+      const spread = cz.slides.find((sl) => sl.id === '03_within_controls')!.figureHtml, sol = cz.slides.find((sl) => isTestPage(sl.id, 'solar'))!.figureHtml;
+      const fills = (h: string) => [...h.matchAll(/<path d="[^"]+" fill="(#[0-9a-f]{6})" stroke="#[0-9a-f]{6}" stroke-width="0\.22"/g)].map((x) => x[1]);
+      const hue = (h: string) => { const [r, g, b] = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)); return r - Math.min(g, b); };
+      check('iso shade: a neighbour\'s walls shaded toward its zone\'s colour, not grey', fills(spread).some((f) => hue(f) > 20), fills(spread).join(' '));
+      check('iso shade: what is built shaded toward a light blue', /fill="#[0-9a-f]{6}" stroke="#000000" stroke-width="0\.3"/.test(spread) && [...spread.matchAll(/<path d="[^"]+" fill="(#[0-9a-f]{6})" stroke="#000000" stroke-width="0\.3"/g)].some((x) => { const [r, , b] = [1, 3, 5].map((i) => parseInt(x[1].slice(i, i + 2), 16)); return b - r > 15; }));
+      check('iso shade: the solar access views keep the neighbours neutral', fills(sol).every((f) => hue(f) <= 4), fills(sol).join(' '));
+      process.env.YIELD_ISO_SHADE = 'grey';
+      const greyed = renderYieldDeck(zoned2, meta, { theme: 'canary' }).slides.find((sl) => sl.id === '03_within_controls')!.figureHtml;
+      delete process.env.YIELD_ISO_SHADE;
+      check('iso shade: the grey is still to be had', fills(greyed).every((f) => hue(f) <= 4));
+    }
     // Z. 2026-11: "make the dims there black". The separations on the plan in black, dashed where only a blank face holds.
     check('canary shadow: the separations black, their distance with what is asked', / fill="#000000" data-dim="1">8\.0 \/ 12 m</.test(cShade.figureHtml)
       && (cShade.legend ?? []).some((e) => /Building separation, apart \/ asked/.test(e.label) && !/#2f8f55|#c8372d|#c98a12/.test(e.swatch)));

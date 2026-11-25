@@ -20,7 +20,7 @@ import { featureCollection, polygon } from '@turf/helpers';
 import type { XY } from '../lib/geo.js';
 import { alongLine, carriageways, type Carriageway, type RoadLine } from '../lib/carriageway.js';
 import { INK, massingInks } from './atlasKit.js';
-import { tint, vivid, deckLook, greyOf, tpl } from './template.js';
+import { tint, vivid, deckLook, greyOf, tpl, mix, inkFor } from './template.js';
 import { esc } from './chrome.js';
 import { crownPicture, shadowPicture, rand, canopyBottom, canopyVariant, flatCrownSvg, flatBottom, CANOPY, CANOPY_BRANCHINGS, CONTOUR, type CrownKind, type FlatForm } from './crowns.js';
 import { personPicture, riderPicture, linePersonSvg, lineRiderSvg, PEOPLE_VARIANTS, RIDER_VARIANTS, type LineFigure } from './people.js';
@@ -48,6 +48,11 @@ export interface Prism {
   cells?: { ring: number; edge: number; t0: number; t1: number; z0: number; z1: number; fill: string; /** In its own colour, unlit, so it reads against a key. */ flat?: boolean }[];
   /** Its roof in this colour as it is given, not lit: the one colour a plan beside the massing and their key draw it in. */
   roofFill?: string;
+  /**
+   * Its walls shaded toward this colour, not toward black: a wall full to the light keeps its fill, one turned from
+   * it takes this ink, its hatch and its storey lines a deeper cut of it. A white model's shade in a colour, not grey.
+   */
+  shadeInk?: string;
   /** Pieces laid on its roof (a roof's cells, coloured by their sun), drawn in their own colours over its top. */
   roof?: { pts: XY[]; fill: string }[];
 }
@@ -60,6 +65,8 @@ export interface AxoNeighbour {
   fill: string;
   /** Its outline's ink in a white model (`scene.mono`): its zone's colour on a white building, where the model's grey is not wanted. */
   edge?: string;
+  /** Its walls' shade in a white model (Prism.shadeInk): a colour where the model's grey is not wanted. */
+  shade?: string;
   /** What it may rise to, drawn as a glass over it. */
   future?: number;
 }
@@ -477,7 +484,7 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
     shown.push(nb);
     // (a white model's neighbour in its own outline where one is given: a zone's colour, on white walls and grey shade)
     const own = !line && scene.mono && nb.edge ? nb.edge : null;
-    const group: Prism[] = [mono ? { rings, z0: 0, z1, fill: line && !scene.mono ? bw(nb.fill) : '#ffffff', edge: own ?? G.edge, edgeW: own ? ZONE_EDGE_W : 0.12, ...(line ? { edgeMm: LINE_MM.neighbour } : {}), dashed: !known }
+    const group: Prism[] = [mono ? { rings, z0: 0, z1, fill: line && !scene.mono ? bw(nb.fill) : '#ffffff', edge: own ?? G.edge, edgeW: own ? ZONE_EDGE_W : 0.12, ...(line ? { edgeMm: LINE_MM.neighbour } : {}), ...(!line && scene.mono && nb.shade ? { shadeInk: nb.shade } : {}), dashed: !known }
       : { rings, z0: 0, z1, fill: nb.fill, edge: shade(nb.fill, M.gloss ? 0.78 : 0.55), edgeW: 0.12, dashed: !known, windows: known }];
     if (nb.future && nb.future > z1) group.push({ rings, z0: z1, z1: nb.future, fill: inks.future, edge: inks.futureEdge, edgeW: 0.12, ...(line ? { edgeMm: LINE_MM.future } : {}), dashed: true, dash: FUTURE_DASH, opacity: FUTURE_OPACITY });
     prisms.push({ key: depth(cen), group });
@@ -623,7 +630,10 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
         const lit = line ? 1 : (M.gloss ? 0.9 : 0.72) + (M.gloss ? 0.1 : 0.28) * Math.max(0, f.m.x * light.x + f.m.y * light.y);
         const facePts = [P(f.p, pr.z0), P(f.q, pr.z0), P(f.q, pr.z1), P(f.p, pr.z1)];
         const face = poly(facePts);
-        out.push(`<path d="${face}" fill="${hatch ? flat : shade(pr.fill, lit)}"${alpha} stroke="${pr.edge}" stroke-width="${ew}" stroke-linejoin="round"${dash}/>`);
+        // (toward the prism's shade ink where it has one: from its fill, full to the light, to the ink, turned from it)
+        const minLit = M.gloss ? 0.9 : 0.72, dark = Math.min(1, Math.max(0, (1 - lit) / (1 - minLit)));
+        const faceFill = hatch ? flat : pr.shadeInk ? mix(pr.fill, pr.shadeInk, dark) : shade(pr.fill, lit);
+        out.push(`<path d="${face}" fill="${faceFill}"${alpha} stroke="${pr.edge}" stroke-width="${ew}" stroke-linejoin="round"${dash}/>`);
         if (hatch) out.push(hatchFace(facePts, face, { pitch: hatch.pitch * (1 + 0.9 * Math.max(0, f.m.x * light.x + f.m.y * light.y)), w: hatch.w }));
         const celled = (pr.cells ?? []).some((c) => c.ring === ri && c.edge === f.i);
         // (a line model: its windows drawn on the wall; none over a wall coloured by its hours of sun, which is a grid already)
@@ -632,7 +642,7 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
         // the glossy models, Flamingo and Kingfisher: no hatch at all)
         else if (pr.windows && !celled && !M.gloss) {
           const pitch = wallHatchPitch(f.m.x * light.x + f.m.y * light.y);
-          if (pitch) out.push(hatchFace(facePts, face, { pitch, w: WALL_HATCH.w, ink: shade(pr.fill, WALL_HATCH.ink) }));
+          if (pitch) out.push(hatchFace(facePts, face, { pitch, w: WALL_HATCH.w, ink: pr.shadeInk ? inkFor(pr.shadeInk, 0.35) : shade(pr.fill, WALL_HATCH.ink) }));
         }
         // the panels on this face, lit as it is, each outlined
         for (const c of pr.cells ?? []) {
@@ -644,7 +654,7 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
         }
         for (const zz of pr.storeys ?? []) {
           const [x1, y1] = P(f.p, zz), [x2, y2] = P(f.q, zz);
-          out.push(`<line x1="${x1.toFixed(2)}" y1="${y1.toFixed(2)}" x2="${x2.toFixed(2)}" y2="${y2.toFixed(2)}" stroke="${line ? LINE.edge : shade(pr.fill, 0.62)}" stroke-width="${line ? PW(LINE_MM.storey) : 0.08}"/>`);
+          out.push(`<line x1="${x1.toFixed(2)}" y1="${y1.toFixed(2)}" x2="${x2.toFixed(2)}" y2="${y2.toFixed(2)}" stroke="${line ? LINE.edge : pr.shadeInk ? inkFor(pr.shadeInk, 0.45) : shade(pr.fill, 0.62)}" stroke-width="${line ? PW(LINE_MM.storey) : 0.08}"/>`);
         }
       }
     });

@@ -750,6 +750,24 @@ function zoneLine(zone: string | undefined, look: DeckLook): string | null {
   return c ? inkFor(c, 0.5) : null;
 }
 const zoneEdgesOn = () => process.env.YIELD_ZONE_EDGES !== '0' && deckLook().id !== 'heron';
+/**
+ * The white model's shade in a colour, not grey (Z. 2026-11, on the massing's grey walls: "try to make a colourful
+ * volume shadow here, don't use grey"): the ink a wall turned from the light takes. `zone`: each neighbour its zone's
+ * colour, lightened, what is built Canary's light blue; `blue`: every wall Canary's light blue; `warm`: the shadow
+ * plan's peach; `grey`: as it was. YIELD_ISO_SHADE picks; Heron has its line model.
+ */
+type IsoShade = 'grey' | 'zone' | 'blue' | 'warm';
+const isoShadeMode = (): IsoShade => (process.env.YIELD_ISO_SHADE as IsoShade | undefined) ?? 'zone';
+function isoShadeOf(zone: string | undefined, look: DeckLook, built = false): string | null {
+  const mode = isoShadeMode();
+  if (look.id === 'heron' || mode === 'grey') return null;
+  if (mode === 'blue') return ISO_SHADE.blue;
+  if (mode === 'warm') return ISO_SHADE.warm;
+  if (built) return ISO_SHADE.blue;
+  const line = zoneLine(zone, look);
+  return line ? mix(line, '#ffffff', 0.45) : ISO_SHADE.blue;
+}
+const ISO_SHADE = { blue: '#b4c6e7', warm: '#ffc6c3' };
 /** A neighbour's outline in its zone's colour on a path's plan: its width, millimetres. */
 const ZONE_EDGE_PLAN = 0.4;
 /** The lot in a zone, as the style's context sheet tints the land: its category's fill and texture, or its ePlanning colour. */
@@ -809,8 +827,10 @@ function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number;
     rings: [local(cb.rings[0] ?? [])].filter((rg) => rg.length >= 3),
     heightM: cb.known ? cb.heightM : undefined,
     fill: zoneInk(cb.controls?.zone, look) ?? M.noHeight,
-    // (the white model's neighbours: each outlined in its zone's colour)
+    // (the white model's neighbours: each outlined in its zone's colour, its walls shaded in a colour)
     ...(scheme.mono && zoneEdgesOn() ? { edge: zoneLine(cb.controls?.zone, look) ?? undefined } : {}),
+    // (not on the solar access views: their colour is the facades' sun)
+    ...(scheme.mono && !scheme.facades && isoShadeOf(cb.controls?.zone, look) ? { shade: isoShadeOf(cb.controls?.zone, look)! } : {}),
   }));
   const z = y ? storeyZ(y) : undefined;
   const built: Prism[] = [];
@@ -826,7 +846,7 @@ function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number;
     // (its roof in the colour itself, as its plan and the keys draw it: lit, it was a paler yellow than theirs; white
     // where its facades are coloured by their sun, the roof not being counted: Z. 2026-11, "make the roof white")
     const roofFill = cells.length ? '#ffffff' : useFill(t.use);
-    built.push({ rings: t.plate, z0: z.bottom(t.from), z1: z.top(top), fill: useFill(t.use), roofFill, edge: BUILT_LINE.ink, edgeW: BUILT_LINE.massing, windows: true, storeys: Array.from({ length: top - t.from }, (_, i) => z.top(t.from + i)), ...(cells.length ? { cells } : {}) });
+    built.push({ rings: t.plate, z0: z.bottom(t.from), z1: z.top(top), fill: useFill(t.use), roofFill, edge: BUILT_LINE.ink, edgeW: BUILT_LINE.massing, ...(!scheme.facades && isoShadeOf(undefined, look, true) ? { shadeInk: isoShadeOf(undefined, look, true)! } : {}), windows: true, storeys: Array.from({ length: top - t.from }, (_, i) => z.top(t.from + i)), ...(cells.length ? { cells } : {}) });
   });
   // What stands, at its recorded height, its storeys ruled; one with none recorded at a nominal two, dashed.
   for (const e of scheme.standing ?? []) {
@@ -834,7 +854,7 @@ function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number;
     const top = e.heightM ?? (e.storeys ? e.storeys * 3.1 : 6.2);
     const n = e.storeys ?? Math.max(1, Math.round(top / 3.1));
     // (Heron's line model draws a tone as a hatch, the closer the darker: what stands on the site in a close one, as the report's built form draws it)
-    built.push({ rings: e.rings, z0: 0, z1: top, fill: look.id === 'heron' ? '#b0b0b0' : Y.standing, ...(look.id === 'heron' ? {} : { roofFill: Y.standing }), edge: BUILT_LINE.ink, edgeW: BUILT_LINE.massing, dashed: !known, windows: known, storeys: Array.from({ length: n - 1 }, (_, i) => ((i + 1) * top) / n) });
+    built.push({ rings: e.rings, z0: 0, z1: top, fill: look.id === 'heron' ? '#b0b0b0' : Y.standing, ...(look.id === 'heron' ? {} : { roofFill: Y.standing }), ...(!scheme.facades && isoShadeOf(undefined, look, true) ? { shadeInk: isoShadeOf(undefined, look, true)! } : {}), edge: BUILT_LINE.ink, edgeW: BUILT_LINE.massing, dashed: !known, windows: known, storeys: Array.from({ length: n - 1 }, (_, i) => ((i + 1) * top) / n) });
   }
   const scene: AxoScene = {
     ring: s.ring, frontNormal: { x: nx, y: ny }, reach, neighbours, built,
