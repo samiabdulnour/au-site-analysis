@@ -38,7 +38,9 @@ OUT = sys.argv[1]
 ONLY = sys.argv[sys.argv.index('--scene') + 1] if '--scene' in sys.argv else None
 
 CELL_M, SILL_M, OFF_M = 3.0, 1.0, 0.05                    # as facadeSun has them
-FACING = math.sin(math.radians(5))
+# a face has the sun where the sun stands at least this many degrees off the wall's plane: 5, as the yield study reads
+# it; FACADE_MIN_ANGLE sets a stricter reading, so grazing sun is not counted
+FACING = math.sin(math.radians(float(os.environ.get('FACADE_MIN_ANGLE', '5'))))
 PARTY_M = 0.6
 QUARTERS = [9 * 60 + 7.5 + 15 * i for i in range(24)]     # the middles of the quarter hours, civil minutes
 LORIKEET = ['#141B70', '#3440BC', '#8590EE', '#4F9A1E', '#FFE04A', '#FFA01E', '#FF5A3D']
