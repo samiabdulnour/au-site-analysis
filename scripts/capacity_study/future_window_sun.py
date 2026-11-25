@@ -105,6 +105,37 @@ clock = lambda m: f'{int(m // 60)}:{int(m % 60):02d}'
 short = lambda nm: nm.replace(' DARLINGHURST', '').replace(' WOOLLOOMOOLOO', '') if not nm.isupper() else nm.replace(' DARLINGHURST', '').replace(' WOOLLOOMOOLOO', '').title()
 
 
+MINUTES = list(range(9 * 60, 15 * 60 + 1))
+_SUNS = None
+
+
+def by_the_minute(storey):
+    """The window's sun minute by minute from 9 to 3: its runs in sun at BASE_ANGLE and at ANGLE off the wall, and
+    the minutes of each, so a threshold is read where the sun comes and goes, not at the quarter hours."""
+    global _SUNS
+    if _SUNS is None:
+        ts = [dt.datetime(scene['year'], 6, 21, tzinfo=tz) + dt.timedelta(minutes=m) for m in MINUTES]
+        _SUNS = np.asarray(solar_position(ts, scene['lat'], scene['lon']).unit_vectors_enu())
+    S = _SUNS
+    p = np.array([[mx + nx * OFF, my + ny * OFF, bottom(storey) + SILL]])
+    offs = [math.degrees(math.asin(max(-1.0, min(1.0, (v[0] * nx + v[1] * ny) / (math.hypot(v[0], v[1]) or 1.0))))) for v in S]
+    hit = occ_all.any_hit(np.repeat(p, len(S), 0), S)
+    out = {}
+    for a in (BASE_ANGLE, ANGLE):
+        lit = [v[2] > 0 and o > a and not h for v, o, h in zip(S, offs, hit)]
+        runs, start = [], None
+        for m, f in zip(MINUTES, lit):
+            if f and start is None:
+                start = m
+            if not f and start is not None:
+                runs.append((start, m))
+                start = None
+        if start is not None:
+            runs.append((start, MINUTES[-1]))
+        out[a] = (runs, sum(b - a_ for a_, b in runs))
+    return out
+
+
 def hours(storey):
     rs = [reading(m, storey) for m in QUARTERS]
     at5 = sum(0.25 for r in rs if r[2] in ('lit', 'graze'))
@@ -218,10 +249,12 @@ table = ''
 for st in STOREYS:
     at5, atA, rs = hours(st)
     rows += f'<div class="row"><div class="rl">{level(st).capitalize()}</div>' + ''.join(sun_view(m, st) for m in VIEWS) + '</div>'
-    lit_q = [clock(m - 7.5) for m, r in zip(QUARTERS, rs) if r[2] in ('lit', 'graze')]
-    span = f'{lit_q[0]} to {clock(int(lit_q[-1].split(":")[0]) * 60 + int(lit_q[-1].split(":")[1]) + 15)}' if lit_q else 'none'
-    table += (f'<tr><td>{level(st).capitalize()}</td><td>{span}</td><td class="r"><b>{at5:.2f} h</b> {"✓" if at5 >= 2 else "✗"}</td>'
-              f'<td class="r"><b>{atA:.2f} h</b> {"✓" if atA >= 2 else "✗"}</td></tr>')
+    mm = by_the_minute(st)
+    fmt = lambda runs: ', '.join(f'{clock(a)} to {clock(b)}' for a, b in runs) or 'none'
+    dur = lambda n: f'{n // 60} h {n % 60:02d} min'
+    (r5, n5), (rA, nA) = mm[BASE_ANGLE], mm[ANGLE]
+    table += (f'<tr><td>{level(st).capitalize()}</td><td>{fmt(r5)}</td><td class="r"><b>{dur(n5)}</b> {"✓" if n5 >= 120 else "✗"}</td>'
+              f'<td>{fmt(rA)}</td><td class="r"><b>{dur(nA)}</b> {"✓" if nA >= 120 else "✗"}</td><td class="r" style="color:#666">{at5:.2f} h</td></tr>')
 plan = plan_svg(STOREYS[0])
 css = f'''@page{{size:{PAGE_W}px {PAGE_H}px;margin:0}} *{{box-sizing:border-box}} html,body{{margin:0;background:#fff}}
 body{{width:{PAGE_W}px;height:{PAGE_H}px;font-family:Inter,Helvetica,Arial,sans-serif;color:#111;position:relative;overflow:hidden;-webkit-print-color-adjust:exact;print-color-adjust:exact}}
@@ -247,17 +280,23 @@ head = (f'<div class="hd"><div class="kick">Future context · the window\'s two 
         f'<div class="hor"><b style="color:#111">{H.escape(title)}.</b> One window on our {SIDE_WORD[SIDE]} wall{(" on " + H.escape(street)) if street else ""}, the middle of its longest wall, '
         f'seen from the sun every half hour: what the sun sees is in sun. At a graze the window shrinks to a sliver as the sun sees it.</div></div>')
 at5_0, atA_0, _ = hours(STOREYS[0])
-lead = (f'The facade sheets count a window\'s sun once the sun stands {BASE_ANGLE:g}° off its wall, as the yield study does. '
-        f'Our {SIDE_WORD[SIDE]} wall faces {(math.degrees(math.atan2(nx, ny)) + 360) % 360:.0f}°, so the mid-winter sun only comes round to it at midday, along the wall at first, and only stands '
-        f'well off it in the afternoon, when the block across the street is in the way of the lower floors. Read at {ANGLE:g}° the grazing midday sun drops out.')
+_m0 = by_the_minute(STOREYS[0])
+(_r5, _n5), (_rA, _nA) = _m0[BASE_ANGLE], _m0[ANGLE]
+_span = lambda runs: ', '.join(f'{clock(a)} to {clock(b)}' for a, b in runs) or 'never'
+lead = (f'Our {SIDE_WORD[SIDE]} wall faces {(math.degrees(math.atan2(nx, ny)) + 360) % 360:.0f}°, so the mid-winter sun only comes round to it at midday, along the wall at first, '
+        f'and stands well off it only in the afternoon, when the block across the street is in the way of the lower floors. '
+        f'Timed to the minute, the {level(STOREYS[0])} window is in sun from {_span(_r5)}, {_n5 // 60} h {_n5 % 60:02d} min{", short of two hours" if _n5 < 120 else ""}; '
+        f'the facade sheets, reading the sun every quarter hour, give it {hours(STOREYS[0])[0]:.2f} h. '
+        f'Counting only sun more than {ANGLE:g}° off the wall, it has {_n5 and _nA // 60} h {_nA % 60:02d} min.')
 key = (f'<div class="key"><span><i style="background:{LIT}"></i>in sun, over {ANGLE:g}° off the wall</span><span><i style="background:{GRAZE}"></i>in sun at a graze, {BASE_ANGLE:g}° to {ANGLE:g}°</span>'
        f'<span><i style="background:{BLOCK}"></i>cut off by a building</span><span><i style="background:{GRAZE};opacity:.25"></i>within {ANGLE:g}° of the wall</span></div>')
 body = (f'{head}<div class="rows">{rows}</div>'
         f'<div class="plan"><div class="cap">In plan, the {level(STOREYS[0])}: a ray toward the sun every quarter hour</div>{plan}</div>'
         f'<div class="rt"><p class="lead">{H.escape(lead)}</p>'
-        f'<table><tr><th>The window</th><th>In sun, 21 June</th><th class="r">Read at {BASE_ANGLE:g}°, as the sheets</th><th class="r">Read at {ANGLE:g}°</th></tr>{table}</table>'
+        f'<table><tr><th>The window</th><th>In sun, over {BASE_ANGLE:g}° off the wall</th><th class="r">by the minute</th><th>Over {ANGLE:g}° off the wall</th><th class="r">by the minute</th><th class="r">the sheets, every quarter hour</th></tr>{table}</table>'
         f'{key}<p style="color:#555;margin-top:{3 * MM:.0f}px">The window is a cell of the facade sheet, {CELL:.1f} m wide and a storey high, read at its middle a metre over its floor, '
-        f'every quarter hour from 9 to 3 (AEST); the hours are added whether or not they run together. Angles are in plan, off the wall\'s face. Indicative: a test of the massing.</p></div>')
+        f'by the minute from 9 to 3 (AEST). The facade sheets read it every quarter hour, as the yield study does, each reading standing for 15 minutes: '
+        f'where the sun comes or goes inside a quarter, that rounds, and a window just short of two hours can read as two. Angles are in plan, off the wall\'s face. Indicative: a test of the massing.</p></div>')
 html = f'<!doctype html><html><head><meta charset="utf-8"><style>{css}</style></head><body>{body}</body></html>'
 open(os.path.join(OUT, f'future-window-{NO}.html'), 'w').write(html)
-print(f'future-window-{NO}: ' + '; '.join(f'{level(st)} {hours(st)[0]:.2f} h at {BASE_ANGLE:g}°, {hours(st)[1]:.2f} h at {ANGLE:g}°' for st in STOREYS))
+print(f'future-window-{NO}: ' + '; '.join(f'{level(st)} {by_the_minute(st)[BASE_ANGLE][1]} min at {BASE_ANGLE:g}°, {by_the_minute(st)[ANGLE][1]} min at {ANGLE:g}° (quarter hours {hours(st)[0]:.2f} h)' for st in STOREYS))
