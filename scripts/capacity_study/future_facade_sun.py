@@ -42,7 +42,12 @@ CELL_M, SILL_M, OFF_M = 3.0, 1.0, 0.05                    # as facadeSun has the
 # it; FACADE_MIN_ANGLE sets a stricter reading, so grazing sun is not counted
 FACING = math.sin(math.radians(float(os.environ.get('FACADE_MIN_ANGLE', '5'))))
 PARTY_M = 0.6
-QUARTERS = [9 * 60 + 7.5 + 15 * i for i in range(24)]     # the middles of the quarter hours, civil minutes
+# the instants read: the middles of the quarter hours from 9 to 3, as the yield study reads them, each standing for its
+# 15 minutes; FACADE_STEP_MIN reads them finer (1: every minute), so a sun that comes or goes inside a quarter is timed
+STEP_MIN = float(os.environ.get('FACADE_STEP_MIN', '15'))
+QUARTERS = [9 * 60 + STEP_MIN / 2 + STEP_MIN * i for i in range(int(round(360 / STEP_MIN)))]
+STEP_H = STEP_MIN / 60
+STEP_WORD = 'quarter hour' if STEP_MIN == 15 else 'minute' if STEP_MIN == 1 else f'{STEP_MIN:g} minutes'
 LORIKEET = ['#141B70', '#3440BC', '#8590EE', '#4F9A1E', '#FFE04A', '#FFA01E', '#FF5A3D']
 LABELS = ['none', 'under 1 h', '1–2 h', '2–3 h', '3–4 h', '4–5 h', '5 h and over']
 UP_TO = [0, 1, 2, 3, 4, 5, math.inf]
@@ -227,7 +232,7 @@ def read_hours(faces, occ, suns, key):
         hit = occ.any_hit(np.asarray(origins), np.asarray(dirs))
         for (fi, ci), h in zip(idx, hit):
             if not h:
-                faces[fi]['cells'][ci][key] += 0.25
+                faces[fi]['cells'][ci][key] += STEP_H
 
 
 # ---- the facades unfolded -------------------------------------------------------------------------------------------
@@ -515,8 +520,8 @@ td{{border-bottom:{0.15 * MM:.1f}px solid #ccc;padding:{0.7 * MM:.1f}px {0.5 * M
     head = (f'<div class="hd"><div class="kick">Future context · sun on our facades, 21 June</div>'
             f'<h1>Scenario {n} of {last}</h1><div class="hor"><b style="color:#111">{H.escape(title)}.</b> {H.escape(horizon)}</div></div>')
     ass = ('<div class="ass"><p><b>How it is read.</b> As the yield study reads a scheme\'s facades: each face of our building cut into cells about '
-           f'{CELL_M:g} m wide and a storey high, each read at its middle {SILL_M:g} m over its floor, at the middle of every quarter hour from 9 am to 3 pm '
-           'on 21 June (AEST); a quarter hour in sun is 0.25 h, the hours counted whether or not they run together, and the colours are the yield study\'s '
+           f'{CELL_M:g} m wide and a storey high, each read at its middle {SILL_M:g} m over its floor, at the middle of every {STEP_WORD} from 9 am to 3 pm '
+           f'on 21 June (AEST){" (the yield study reads it every quarter hour; timed to the minute here)" if STEP_MIN < 15 else ""}; the hours are counted whether or not they run together, and the colours are the yield study\'s '
            'seven bands. A face turned from the sun is in its own shade; a wall on our boundary with 66-68 Riley St is a party wall and holds no window. '
            'The massing is the scenario\'s; the buildings round it as they stand, their heights off Google\'s 3D tiles; a building in front of ours is drawn '
            'as glass so our faces read through it. Storeys at 4.5 m on the ground floor and 3.2 m above. Indicative: a test of the massing, not a solar '
@@ -557,7 +562,7 @@ for no, scene in scenes.items():
         read_hours(faces, occ_today, suns, 'today')
     total = unfold(faces)
     title, horizon = meta.get(no, (f'Scenario {no}', ''))
-    json.dump(dict(scene=no, today_scene=today_no, cell_m=CELL_M, sill_m=SILL_M, bands=dict(colours=LORIKEET, labels=LABELS),
+    json.dump(dict(scene=no, today_scene=today_no, cell_m=CELL_M, sill_m=SILL_M, step_min=STEP_MIN, bands=dict(colours=LORIKEET, labels=LABELS),
                    faces=faces), open(os.path.join(OUT, f'future-facade-{no}.json'), 'w'))
     open(os.path.join(OUT, f'future-facade-{no}.html'), 'w').write(sheet(no, len(scenes), title, horizon, faces, has_today, today_from, total))
     t_w, _ = stats(faces, 'with')

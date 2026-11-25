@@ -2631,11 +2631,13 @@ def sun_eye_page(no, scn, sun, r):
         ff = facade_figures(no, HEADLINE_SIDES) or {}
         w_, t_ = ff.get('with') or dict(two=0.0, none=0.0), ff.get('today')
         base_no = f', scenario {today_row["no"]}' if today_row else ''
+        fac_ = json.load(open(f'{OUT}/future-facade-{no}.json'))
+        step_note = '; timed to the minute' if fac_.get('step_min', 15) <= 1 else (f'; read every {fac_.get("step_min", 15):g} minutes' if fac_.get('step_min', 15) != 15 else '; read every quarter hour')
         result = (f'<div class="sv res"><div class="big" style="color:#111">{w_["two"]:.0%}</div>'
                   f'<div class="rl">of our {SIDES_WORD} have two hours of sun or more, 9 to 3 on 21 June.</div>'
                   + (f'<div class="rs">The baseline{base_no}: {t_["two"]:.0%}.</div>' if t_ else '')
                   + f'<div class="rs">No sun at all on {w_["none"]:.0%} of them.</div>'
-                  f'<div class="rs">Read cell by cell, as the facade sheet reads it: the west face on Riley Street and the east on Crown Lane alone, the north and south faces not counted.</div>'
+                  f'<div class="rs">Read cell by cell, as the facade sheet reads it: the west face on Riley Street and the east on Crown Lane alone, the north and south faces not counted{step_note}.</div>'
                   f'<div class="key"><span style="background:{SUN_LIT}"></span>facade in sun at that hour<br><span style="background:{SUN_SHADE}"></span>facade in shadow<br>'
                   f'<span style="background:#cdc6c0"></span>the neighbours as this scenario builds them</div></div>')
     else:
