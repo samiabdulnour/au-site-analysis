@@ -1844,6 +1844,20 @@ yield for 86, 88-90, 94 Maroubra Road, 2026-11):
   red, which runs into the scheme's yellow), and `"ownStyle": "sweep"`,
   each hour's shadow in its own colour, outlined and named (`"ramp":
   "pink-lilac"` or `"yellow-red"`).
+- *"Don't do yellow buildings anywhere."* … *"Colour should have only
+  what we really care about in a drawing; the rest can be black and white
+  in the yield, or have colourful outlines, but not fills."* What is built
+  on the site, a scheme and what stands, is white in a black line in every
+  style and on every drawing (`BUILT_FILL`, `BUILT_LINE`): the homes white,
+  shops and offices a light and a mid grey; it was Canary's yellow,
+  Flamingo's salmon, Kingfisher's pale blue. In a massing it has a heavy
+  black outline (`silhouette`, always on in the yield), so it stands out
+  in the white town. The tiers' envelopes and badges are grey, and no key
+  fills a swatch with a colour. What keeps a coloured fill is what the
+  drawing is about: the scheme's shadow on the shadow page and the
+  facades' sun on the solar access page. Outlines keep theirs: the zones,
+  the separations, the height plane. `YIELD_SCHEME_FILL` draws the homes
+  in a colour again, to compare.
 - *"If there is nothing, don't print it."* "Within the controls" had a
   spread of its own even in a zone the study draws no building type for:
   every figure a dash, over the height plane alone. A path that builds

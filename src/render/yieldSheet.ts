@@ -675,23 +675,19 @@ const USE_CATEGORY: Record<Use, string> = { residential: 'r4', retail: 'retail',
 /** The zone whose ePlanning colour a shop's or an office's floors take where the style keeps those colours (Canary). */
 const USE_ZONE: Record<'retail' | 'commercial', string> = { retail: 'E1', commercial: 'E2' };
 /**
- * Canary's yellow for what is built on the site, a scheme's homes and what stands: the lemon of its zoning palette
- * (the ePlanning yellow, SP2's), not the golden yellow of its ink family. Z. 2026-11, on the golden one (#ffd400)
- * over the white model: "the yellow there is too warm, choose a different yellow from the Canary palette".
- * YIELD_SCHEME_FILL draws another, to compare.
+ * What is built on the site, in every style: the homes white, the shops and the offices a light and a mid grey, in a
+ * black line (Z. 2026-11: "don't do yellow buildings anywhere"; "colour should have only what we really care about in
+ * a drawing, the rest can be black and white in the yield … or have colourful outlines, but not fills"). It was each
+ * style's colour: Canary's yellow, Flamingo's salmon, Kingfisher's pale blue. YIELD_SCHEME_FILL draws the homes in
+ * another colour, to compare.
  */
-const CANARY_SCHEME_YELLOW = zoneFill('SP2');
-const canaryYellow = () => process.env.YIELD_SCHEME_FILL || CANARY_SCHEME_YELLOW;
 function useFill(u: Use): string {
-  // Heron's line model: the homes white, the shops and the offices a light grey, the outline telling the rest
-  if (deckLook().id === 'heron') return { residential: '#ffffff', retail: '#e4e4e4', commercial: '#d2d2d2' }[u];
-  // Canary, whose neighbours stand in their zones' ePlanning colours at full strength: the scheme as saturated as
-  // they are and a colour none of them takes, Canary's yellow (a zone's red would lose it among its own neighbours);
-  // its shops' and offices' floors in their zones' colours at the same strength
-  if (deckLook().zones === 'lep') return u === 'residential' ? canaryYellow() : vivid(zoneFill(USE_ZONE[u]), 0.45, 0.5);
-  const c = deckLook().categories.find((x) => x.id === USE_CATEGORY[u]);
-  return c ? tint(c.fill, Math.min(1, c.opacity + 0.35)) : USE_FILL[u];
+  if (u === 'residential' && process.env.YIELD_SCHEME_FILL) return process.env.YIELD_SCHEME_FILL;
+  return BUILT_FILL[u];
 }
+const BUILT_FILL: Record<Use, string> = { residential: '#ffffff', retail: '#e4e4e4', commercial: '#d2d2d2' };
+/** What is built on the site drawn in its line: on a plan, in a massing (drawing units), and in a key. */
+const BUILT_LINE = { ink: '#000000', plan: 0.5, massing: 0.3, key: 0.35 };
 /**
  * The yield's quieter inks, from the palette rather than greys: the neighbours in the transit family's tint, their
  * futures a lighter glass of it, what stands on the site in the activity family's, the envelopes and kerbs in the
@@ -700,11 +696,9 @@ function useFill(u: Use): string {
 function yieldInks() {
   const B = INK.blue, O = INK.orange;
   // Heron's line model: what stands on the site a light grey in its heavy outline
-  // (Canary: what stands on the site in the scheme's own yellow, the one yellow of the deck. It was the deeper of
-  // Canary's two, to tell it from a scheme drawn beside it; no drawing of the deck draws the two together, and the
-  // two yellows read as a mismatch from page to page. Z. 2026-11: "the yellows should be the same everywhere")
-  const standing = deckLook().id === 'heron' ? '#ececec' : deckLook().zones === 'lep' ? canaryYellow() : tint(O.deep, 0.42);
-  return { context: tint(B.solid, 0.5), contextEdge: inkFor(B.solid, 0.42), future: B.light, futureEdge: B.line, standing, envelope: inkFor(B.deep, 0.25), kerb: inkFor(B.solid, 0.4) };
+  // (what stands on the site as what is built is: white in its black line; Heron, a light grey in its heavy outline)
+  const standing = deckLook().id === 'heron' ? '#ececec' : BUILT_FILL.residential;
+  return { context: tint(B.solid, 0.5), contextEdge: inkFor(B.solid, 0.42), future: B.light, futureEdge: B.line, standing, envelope: ENVELOPE, kerb: inkFor(B.solid, 0.4) };
 }
 /** The accent's pen: the height plane over the site, the hatch of a study plan. (The site's own boundary is SITE_LINE.) */
 const siteInk = () => deckLook().accent;
@@ -768,7 +762,7 @@ function lotFill(zone: string | undefined, look: DeckLook): { key: string; fill:
 /** A neighbour's future, over what stands: a pale glass, dashed, light enough to see the proposal through. */
 const FUTURE_OPACITY = 0.18, FUTURE_DASH = '1.4,0.8';
 /** The tier badges' ink in the deck's tables, set once for the sheet's CSS. */
-const ENVELOPE = '#5b6670';
+const ENVELOPE = '#6a6a6a';
 /** What stands on the site today, where a scenario keeps it. */
 
 /**
@@ -832,7 +826,7 @@ function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number;
     // (its roof in the colour itself, as its plan and the keys draw it: lit, it was a paler yellow than theirs; white
     // where its facades are coloured by their sun, the roof not being counted: Z. 2026-11, "make the roof white")
     const roofFill = cells.length ? '#ffffff' : useFill(t.use);
-    built.push({ rings: t.plate, z0: z.bottom(t.from), z1: z.top(top), fill: useFill(t.use), roofFill, edge: '#1c1c1c', edgeW: 0.2, windows: true, storeys: Array.from({ length: top - t.from }, (_, i) => z.top(t.from + i)), ...(cells.length ? { cells } : {}) });
+    built.push({ rings: t.plate, z0: z.bottom(t.from), z1: z.top(top), fill: useFill(t.use), roofFill, edge: BUILT_LINE.ink, edgeW: BUILT_LINE.massing, windows: true, storeys: Array.from({ length: top - t.from }, (_, i) => z.top(t.from + i)), ...(cells.length ? { cells } : {}) });
   });
   // What stands, at its recorded height, its storeys ruled; one with none recorded at a nominal two, dashed.
   for (const e of scheme.standing ?? []) {
@@ -840,7 +834,7 @@ function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number;
     const top = e.heightM ?? (e.storeys ? e.storeys * 3.1 : 6.2);
     const n = e.storeys ?? Math.max(1, Math.round(top / 3.1));
     // (Heron's line model draws a tone as a hatch, the closer the darker: what stands on the site in a close one, as the report's built form draws it)
-    built.push({ rings: e.rings, z0: 0, z1: top, fill: look.id === 'heron' ? '#b0b0b0' : Y.standing, ...(look.id === 'heron' ? {} : { roofFill: Y.standing }), edge: '#1c1c1c', edgeW: 0.2, dashed: !known, windows: known, storeys: Array.from({ length: n - 1 }, (_, i) => ((i + 1) * top) / n) });
+    built.push({ rings: e.rings, z0: 0, z1: top, fill: look.id === 'heron' ? '#b0b0b0' : Y.standing, ...(look.id === 'heron' ? {} : { roofFill: Y.standing }), edge: BUILT_LINE.ink, edgeW: BUILT_LINE.massing, dashed: !known, windows: known, storeys: Array.from({ length: n - 1 }, (_, i) => ((i + 1) * top) / n) });
   }
   const scene: AxoScene = {
     ring: s.ring, frontNormal: { x: nx, y: ny }, reach, neighbours, built,
@@ -853,7 +847,8 @@ function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number;
     inks: { site: siteInk(), future: scheme.mono ? '#ffffff' : Y.future, futureEdge: scheme.mono ? '#8f8f8f' : Y.futureEdge, envelope: Y.envelope, kerb: Y.kerb, siteLine: { ink: SITE_LINE.ink, w: SITE_LINE.massing } },
     mono: scheme.mono,
     futures: s.future.buildings.map((fb) => ({ rings: [fb.ring], heightM: fb.heightM })),
-    silhouette: s.future.buildings.length > 0,
+    // (always: white in a white town, what is built is told by its heavy black outline)
+    silhouette: true,
     treesOnSite: !scheme.y,
     focusM: scheme.focusM ?? FOCUS_M,
   };
@@ -1171,7 +1166,7 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
       : linePlan ? (built ? `<path d="${t.plate.map(path).join('')}" fill="${useFill(t.use)}" fill-rule="evenodd" stroke="#000000" stroke-width="0.6" stroke-linejoin="round"/>` : '')
         // (a built plate solid, in the colour its massing's roof and its key have: it stood at 55%, a paler yellow on the
         // plan than on the isometric beside it. Z. 2026-11: "the yellows should be the same everywhere")
-        : `<path${built ? ' data-plate="1"' : ''} d="${t.plate.map(path).join('')}" fill="${useFill(t.use)}"${built ? '' : ' fill-opacity="0.18"'} fill-rule="evenodd" stroke="none"/>`);
+        : `<path${built ? ' data-plate="1"' : ''} d="${t.plate.map(path).join('')}" fill="${useFill(t.use)}"${built ? '' : ' fill-opacity="0.18"'} fill-rule="evenodd" stroke="${built ? BUILT_LINE.ink : 'none'}" stroke-width="${BUILT_LINE.plan}" stroke-linejoin="round"/>`);
   }
   if (greyPlan || !scheme.standing?.length) y?.tiers.forEach((t, i) => { for (const rg of t.envelope) out.push(`<path d="${path(rg)}" fill="none" stroke="${Y.envelope}" stroke-width="0.3" stroke-dasharray="${['2,1', '1.2,1.2', '3,1,0.8,1', '0.6,0.9'][i % 4]}"/>`); });
   out.push(`${photo ? `<path d="${path(s.ring)}" fill="none" stroke="#ffffff" stroke-width="${SITE_LINE.plan + 2 * SITE_LINE.casing}" stroke-linejoin="round"/>` : ''}<path data-site="1" d="${path(s.ring)}" fill="none" stroke="${SITE_LINE.ink}" stroke-width="${SITE_LINE.plan}" stroke-linejoin="round"/>`);
@@ -1768,12 +1763,12 @@ function keySwatches() {
   const lot = look.lots === 'white' ? `fill="#eeeeea" stroke="#ffffff" stroke-width="0.3"` : `stroke="${t.road}" stroke-width="0.15" opacity="0.6"`;
   return {
     site: `<path d="M0.7,0.8H4.3V2.8H0.7Z" fill="none" stroke="${SITE_LINE.ink}" stroke-width="0.7" stroke-linejoin="round"/>`,
-    use: (u: Use) => `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="${useFill(u)}" stroke="#3a3a3a" stroke-width="0.15"/>`,
-    standing: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="${Y.standing}" stroke="#3a3a3a" stroke-width="0.15"/>`,
+    use: (u: Use) => `<path d="M0.6,0.7H4.4V2.9H0.6Z" fill="${useFill(u)}" stroke="${BUILT_LINE.ink}" stroke-width="${BUILT_LINE.key}"/>`,
+    standing: `<path d="M0.6,0.7H4.4V2.9H0.6Z" fill="${Y.standing}" stroke="${BUILT_LINE.ink}" stroke-width="${BUILT_LINE.key}"/>`,
     envelope: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="none" stroke="${Y.envelope}" stroke-width="0.25" stroke-dasharray="0.8,0.5"/>`,
-    plane: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="${site}" fill-opacity="0.05" stroke="${site}" stroke-width="0.25" stroke-dasharray="1.2,0.6"/>`,
+    plane: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="none" stroke="${site}" stroke-width="0.25" stroke-dasharray="1.2,0.6"/>`,
     neighbours: `<path d="M0.4,0.5H4.6V3.1H0.4Z" ${neighbours}/>`,
-    future: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="${Y.future}" fill-opacity="0.6" stroke="${Y.futureEdge}" stroke-width="0.2" stroke-dasharray="0.7,0.4"/>`,
+    future: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="#ffffff" stroke="${Y.futureEdge}" stroke-width="0.2" stroke-dasharray="0.7,0.4"/>`,
     kerb: `<line x1="0.3" y1="1.8" x2="4.7" y2="1.8" stroke="${Y.kerb}" stroke-width="0.3"/>`,
     tree: `<circle cx="2.5" cy="1.8" r="1.3" fill="${treeInks().fill}" stroke="${treeInks().edge}" stroke-width="0.2"/>`,
     zones: (cols: string[]) => cols.map((c, i, all) => { const w = 5 / all.length; return `<rect x="${(i * w).toFixed(2)}" y="0.3" width="${(w + 0.02).toFixed(2)}" height="3" fill="${c}"/>`; }).join(''),
@@ -1995,7 +1990,9 @@ function overviewSlide(b: YieldBundle, s: YieldStudy, paths: Path[]): Slide {
   const right = bleedFigure(0, PAGE_H, plan.svg) + mapLabel(0, name(plan.scale));
   const KEY = keySwatches();
   const areasLook = deckLook().id !== 'heron';
-  const legend: LegendEntry[] = [{ swatch: KEY.site, label: 'The site' }, { swatch: KEY.neighbours, label: 'Buildings round about' },
+  // (the buildings as the photograph shows them, each in a white line: no fill of a colour in the key either)
+  const onPhoto = !!photoOf(b) && deckLook().id !== 'heron';
+  const legend: LegendEntry[] = [{ swatch: KEY.site, label: 'The site' }, { swatch: onPhoto ? `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="#9a9a9a" stroke="#ffffff" stroke-width="0.35"/>` : KEY.neighbours, label: 'Buildings round about' },
     { swatch: KEY.lot, label: areasLook ? 'Lot boundaries, NSW cadastre, each with its street number' : 'Lot boundaries, NSW cadastre, each lot tinted by its zone' }, ...zoneEntries(b, deckLook(), false, plan.zones, areasLook)];
   if (plan.kerbs.length) legend.push({ swatch: KEY.kerb, label: 'Kerb line, indicative' });
   const exceeds = ex?.gbaSqm && ex.gbaSqm > Math.max(...paths.filter((p) => p.y && p.sc.id !== 'rebuiltAsStands').map((p) => p.y!.gba), 0);

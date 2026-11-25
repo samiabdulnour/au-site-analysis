@@ -319,6 +319,8 @@ function lookOf(M: ReturnType<typeof massingInks>, mono: boolean): AxoLook {
  * scale with the drawing, so a town drawn small has hairlines): the neighbours', the futures' glass, what is built on
  * the site and the heavy outline round it, the storeys ruled on its walls.
  */
+/** The firmer outline round what is built (`scene.silhouette`), drawing units: black, so a white scheme stands out among white neighbours. */
+const SILHOUETTE_W = 0.5;
 /** A white model's neighbour outlined in its zone's colour: the line's width, drawing units. */
 const ZONE_EDGE_W = 0.22;
 const LINE_MM = { neighbour: 0.2, future: 0.16, built: 0.3, silhouette: 0.55, storey: 0.08 };
@@ -668,7 +670,7 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
       const joined = turfUnion(featureCollection(faces.map((f) => polygon(f)))) as any;
       const g = joined?.geometry;
       const rings: number[][][] = g?.type === 'Polygon' ? g.coordinates : g?.type === 'MultiPolygon' ? g.coordinates.flat() : [];
-      return `<path d="${rings.map((rg) => poly(rg.slice(0, -1) as [number, number][])).join('')}" fill="none" stroke="${line ? '#000000' : '#2e2e2e'}" stroke-width="${line ? PW(LINE_MM.silhouette) : 0.24}" stroke-linejoin="round"/>`;
+      return `<path d="${rings.map((rg) => poly(rg.slice(0, -1) as [number, number][])).join('')}" fill="none" stroke="${line ? '#000000' : '#000000'}" stroke-width="${line ? PW(LINE_MM.silhouette) : SILHOUETTE_W}" stroke-linejoin="round"/>`;
     } catch { return ''; }
   };
   // The trees: each a crown on a trunk, which the projection draws as a circle, a sphere's outline; none where a
