@@ -605,6 +605,26 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
       check('iso shade: a neighbour\'s walls shaded toward its zone\'s colour, not grey', fills(spread).some((f) => hue(f) > 20), fills(spread).join(' '));
       check('iso shade: what is built shaded toward a light blue', /fill="#[0-9a-f]{6}" stroke="#000000" stroke-width="0\.3"/.test(spread) && [...spread.matchAll(/<path d="[^"]+" fill="(#[0-9a-f]{6})" stroke="#000000" stroke-width="0\.3"/g)].some((x) => { const [r, , b] = [1, 3, 5].map((i) => parseInt(x[1].slice(i, i + 2), 16)); return b - r > 15; }));
       check('iso shade: the solar access views keep the neighbours neutral', fills(sol).every((f) => hue(f) <= 4), fills(sol).join(' '));
+      // Z. 2026-11: "this colouring, this shading style would be better for Kingfisher; Canary has different colours …
+      // more colour, like this" (its solar view). Kingfisher takes the mapped colours as they are, a soft R2 pink, its
+      // built walls a light blue; Canary the same hues at the saturation of its sun colours, its built walls sky blue.
+      const kz = renderYieldDeck(zoned2, meta, { theme: 'kingfisher' });
+      const lot2 = [[151.20043 + m, -33.9], [151.20043 + 30 * m, -33.9], [151.20043 + 30 * m, -33.89955], [151.20043 + m, -33.89955], [151.20043 + m, -33.9]];
+      const lotted = { ...zoned2, parcels: [{ rings: [lot2], numbers: ['2'], zone: 'R2' }] } as unknown as YieldBundle;
+      const planOf = (theme: string) => renderYieldDeck(lotted, meta, { theme }).slides.find((sl) => isTestPage(sl.id, 'shadow'))!.figureHtml;
+      const kSpread = kz.slides.find((sl) => sl.id === '03_within_controls')!.figureHtml;
+      const builtInks = (h: string) => [...h.matchAll(/<path d="[^"]+" fill="(#[0-9a-f]{6})" stroke="#000000" stroke-width="0\.3"/g)].map((x) => x[1]);
+      check('zone tone: Kingfisher, a neighbour outlined and shaded in its zone\'s mapped colour', /stroke="#ffa6a3" stroke-width="0\.3"/.test(kSpread) && fills(kSpread).includes('#ffa6a3'), fills(kSpread).join(' '));
+      check('zone tone: Kingfisher\'s plan in the same line', /data-zone-line="1" d="[^"]+" fill="#ffffff" stroke="#ffa6a3"/.test(planOf('kingfisher')));
+      check('zone tone: Canary, the same zone more vivid, on the walls and the lines, plan and massing', /stroke="#ff6d68" stroke-width="0\.3"/.test(spread) && fills(spread).includes('#ff6d68') && !fills(spread).includes('#ffa6a3')
+        && /data-zone-line="1" d="[^"]+" fill="#ffffff" stroke="#ff6d68"/.test(planOf('canary')), fills(spread).join(' '));
+      check('zone tone: Canary\'s built walls shaded sky blue, Kingfisher\'s light blue', builtInks(spread).includes('#7fa8ff') && builtInks(kSpread).includes('#b4c6e7'), `${builtInks(spread).join(' ')} | ${builtInks(kSpread).join(' ')}`);
+      process.env.YIELD_CANARY_ZONES = 'pastel';
+      const cPastel = renderYieldDeck(zoned2, meta, { theme: 'canary' }).slides.find((sl) => sl.id === '03_within_controls')!.figureHtml;
+      process.env.YIELD_CANARY_ZONES = 'grey';
+      const cGrey = renderYieldDeck(zoned2, meta, { theme: 'canary' }).slides.find((sl) => sl.id === '03_within_controls')!.figureHtml;
+      delete process.env.YIELD_CANARY_ZONES;
+      check('zone tone: Canary\'s mapped colours and its grey walls still to be had', fills(cPastel).includes('#ffa6a3') && /stroke="#ffa6a3" stroke-width="0\.3"/.test(cGrey) && fills(cGrey).every((f) => hue(f) <= 4), `${fills(cPastel).join(' ')} | ${fills(cGrey).join(' ')}`);
       process.env.YIELD_ISO_SHADE = 'grey';
       const greyed = renderYieldDeck(zoned2, meta, { theme: 'canary' }).slides.find((sl) => sl.id === '03_within_controls')!.figureHtml;
       delete process.env.YIELD_ISO_SHADE;

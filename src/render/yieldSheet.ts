@@ -734,14 +734,46 @@ const photoOf = (b: YieldBundle): (AerialResult & { extent: Extent }) | null =>
  * black and white, "use colours for zoning for plan and isometry, but only on outlines; don't make very colourful
  * fills or shades". Heron, black and white and one colour, has none. YIELD_ZONE_EDGES=0 draws the plain outlines.
  */
+/**
+ * How a style colours its zones' lines and the massing's walls (Z. 2026-11, on Canary's isometric in the mapped pinks
+ * and blue: "this colouring, this shading style would be better for Kingfisher; Canary has different colours … more
+ * colour, like this", with Canary's solar view, its walls in the sun's greens, lemons, oranges and blues):
+ * - `pastel` (Kingfisher): the zone's ePlanning colour as mapped, a soft pink, salmon or blue, the line and the walls
+ *   turned from the light; what is built a light blue.
+ * - `vivid` (Canary): the same hue at the saturation of Canary's sun colours, lighter zones lighter still, so R2 and
+ *   R3 stay two lines; what is built Canary's sky blue.
+ * - `grey`: the zone's colour as mapped on the lines, the walls grey (Canary as it was, YIELD_CANARY_ZONES=grey).
+ */
+type ZoneTone = 'pastel' | 'vivid' | 'grey';
+function zoneTone(look: DeckLook): ZoneTone | null {
+  if (look.id === 'kingfisher') return 'pastel';
+  if (look.zones === 'lep') { const t = process.env.YIELD_CANARY_ZONES as ZoneTone | undefined; return t === 'pastel' || t === 'grey' ? t : 'vivid'; }
+  return null;
+}
+/** A zone's mapped colour at the saturation of Canary's sun colours: its hue kept, saturated, its lightness down a step in proportion (R2's pink stays lighter than R3's salmon). */
+function vividZone(hex: string): string {
+  const n = parseInt(hex.slice(1), 16);
+  const r = ((n >> 16) & 255) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2, d = max - min;
+  let h = 0;
+  if (d > 1e-6) h = (max === r ? ((g - b) / d + (g < b ? 6 : 0)) : max === g ? (b - r) / d + 2 : (r - g) / d + 4) / 6;
+  const L = l * VIVID_ZONE.light, S = d > 1e-6 ? Math.max(VIVID_ZONE.sat, d / (1 - Math.abs(2 * l - 1))) : 0;
+  const q = L < 0.5 ? L * (1 + S) : L + S - L * S, p2 = 2 * L - q;
+  const ch = (t: number) => { t = (t + 1) % 1; const v = t < 1 / 6 ? p2 + (q - p2) * 6 * t : t < 1 / 2 ? q : t < 2 / 3 ? p2 + (q - p2) * (2 / 3 - t) * 6 : p2; return Math.round(v * 255).toString(16).padStart(2, '0'); };
+  return `#${ch(h + 1 / 3)}${ch(h)}${ch(h - 1 / 3)}`;
+}
+const VIVID_ZONE = { sat: 0.9, light: 0.86 };
 function zoneLine(zone: string | undefined, look: DeckLook): string | null {
   if (look.id === 'heron' || !zone) return null;
+  const tone = zoneTone(look);
+  if (tone === 'vivid' && process.env.YIELD_ZONE_LINE !== 'vivid') return vividZone(zoneFill(zone));
+  if (tone === 'pastel' && process.env.YIELD_ZONE_LINE !== 'vivid') return zoneFill(zone);
   // Where the style keeps the ePlanning colours (Canary): the zone's mapped colour itself, a swatch of its palette.
   // The massing's bold cut of it (zoneInk) brings R2's pink and R3's salmon to one red, which as
   // a fill passed and as a line is the same line; and a town outlined in that red is lost against the separations'
   // red figures and the height plane's red dashes. YIELD_ZONE_LINE=vivid draws the bold cut, to compare.
   // (exactly as mapped: Z. 2026-11, "swap for Canary"; it was a step darker, to carry a line on white)
-  if (look.zones === 'lep' && process.env.YIELD_ZONE_LINE !== 'vivid') return zoneFill(zone);
+  if (tone === 'grey' && process.env.YIELD_ZONE_LINE !== 'vivid') return zoneFill(zone);
   const c = zoneInk(zone, look);
   return c ? inkFor(c, 0.5) : null;
 }
@@ -755,17 +787,17 @@ const zoneEdgesOn = () => process.env.YIELD_ZONE_EDGES !== '0' && deckLook().id 
 type IsoShade = 'grey' | 'zone' | 'blue' | 'warm';
 const isoShadeMode = (): IsoShade => (process.env.YIELD_ISO_SHADE as IsoShade | undefined) ?? 'zone';
 function isoShadeOf(zone: string | undefined, look: DeckLook, built = false): string | null {
-  const mode = isoShadeMode();
-  if (look.id === 'heron' || mode === 'grey') return null;
+  const mode = isoShadeMode(), tone = zoneTone(look);
+  if (look.id === 'heron' || mode === 'grey' || tone === 'grey') return null;
   if (mode === 'blue') return ISO_SHADE.blue;
   if (mode === 'warm') return ISO_SHADE.warm;
-  if (built) return ISO_SHADE.blue;
-  // (the zone's own colour, as its outline is: a swatch of the palette where the style keeps the ePlanning colours)
+  if (built) return tone === 'vivid' ? ISO_SHADE.sky : ISO_SHADE.blue;
+  // (the zone's own colour, as its outline is: the mapped colour, or its vivid cut, where the style keeps them)
   const line = zoneLine(zone, look);
-  return line ? (look.zones === 'lep' ? line : mix(line, '#ffffff', 0.45)) : ISO_SHADE.blue;
+  return line ? (tone ? line : mix(line, '#ffffff', 0.45)) : ISO_SHADE.blue;
 }
-/** The massing's shades, Canary swatches: its mid blue (E2's), and R5's pale pink. */
-const ISO_SHADE = { blue: '#b4c6e7', warm: '#ffd9d9' };
+/** The massing's shades: the mapped mid blue (E2's), R5's pale pink, and Canary's sky blue (its sun's 1–2 h). */
+const ISO_SHADE = { blue: '#b4c6e7', warm: '#ffd9d9', sky: '#7fa8ff' };
 /** A neighbour's outline in its zone's colour on a path's plan: its width, millimetres. */
 const ZONE_EDGE_PLAN = 0.5;
 /** The lot in a zone, as the style's context sheet tints the land: its category's fill and texture, or its ePlanning colour. */

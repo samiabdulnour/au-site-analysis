@@ -1889,6 +1889,18 @@ yield for 86, 88-90, 94 Maroubra Road, 2026-11):
   the morning side and the C zones' oranges C4, C3, C2, C1 on the
   afternoon side (`CANARY_SHADOW_RAMPS`), the hours named in Canary's text
   inks. The sweeps run through swatches too (`CANARY_SWEEPS`).
+- *"This colouring, this shading style would be better for Kingfisher;
+  Canary has different colours … more colour, like this"* (with Canary's
+  solar view). Each style now has its own zone tone (`zoneTone()`):
+  Kingfisher takes the mapped ePlanning colours as they are, the soft
+  look the Canary isometric had (R2 `#ffa6a3`, E2 `#b4c6e7`), on its zone
+  lines, plans and walls, its built walls the light blue; its own olive
+  and magenta lines are gone. Canary takes the same hues at the
+  saturation of its sun colours (`vividZone()`: R2 `#ff6d68`, R3
+  `#ff473b`, E2 `#6a9cf7`; lighter zones stay lighter), on every line of
+  the deck and the massing's walls, its built walls its sky blue
+  (`#7fa8ff`). `YIELD_CANARY_ZONES=pastel` draws Canary as it was a round
+  ago, `grey` with grey walls.
 - *"Dims are not very beautiful, change that."* They were a heavy line
   with square ticks and the whole `13.1 / 12 m` in bold, across whatever
   it met, the site's thick line among it. Now drawn as an architect
