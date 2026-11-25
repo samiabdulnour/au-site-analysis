@@ -1346,7 +1346,8 @@ def boundary_setbacks(parcels, blds):
                     v = 'party wall'
                 else:
                     v = 'clear' if d >= hab - 0.05 else 'one face blank' if d >= blank - 0.05 else 'short of a blank face'
-                row = dict(kind=run['kind'], name=run['name'], side=side, d=d, hab=hab, blank=blank, up=up, verdict=v, p0=(q1.x, q1.y), p1=(q2.x, q2.y), key=b['key'])
+                row = dict(kind=run['kind'], name=run['name'], side=side, d=d, hab=hab, blank=blank, up=up, verdict=v, p0=(q1.x, q1.y), p1=(q2.x, q2.y), key=b['key'],
+                           e0=(q1.x, q1.y), e1=(q2.x, q2.y))                # the tower to its lot's edge, the podium's face
                 if run['kind'] == 'street':                            # to the middle of the road: half its width past the boundary
                     ax = axis_near(run['name'], run['line'])
                     if ax is not None and ax.distance(run['line']) < 30:
@@ -1425,8 +1426,8 @@ def bounds_text(rows):
 
 
 def own_dims(sep, k):
-    """Our own tower's setbacks, where no separation across a road already gives them: to each neighbouring lot's
-    boundary, and to the middle of each street it fronts; facts of the plans, drawn in grey."""
+    """Our own tower's setbacks from its podium's edge, the lot's boundary, on every side: to each neighbouring lot's
+    boundary and to each street's; facts of the plans."""
     done = set()                                                      # the roads a separation already splits at their middle
     for nm, d, hab, blank, v, geo in sep:
         if geo.get('centre') and d >= 0.5:
@@ -1436,7 +1437,7 @@ def own_dims(sep, k):
     edges = [(p, q) for p, q in zip(cs[:-1], cs[1:]) if math.dist(p, q) >= 1]
     o = []
     for run in boundary_runs(SITE_POLY):
-        if run['line'].length < 6 or (run['kind'] == 'street' and norm_road(run['name']) in done):
+        if run['line'].length < 6:
             continue
         (x0, y0), (x1, y1) = run['line'].coords[0], run['line'].coords[-1]
         L = math.hypot(x1 - x0, y1 - y0) or 1.0
@@ -1450,14 +1451,9 @@ def own_dims(sep, k):
             continue
         p, q = min(facing, key=lambda e: run['line'].distance(Point((e[0][0] + e[1][0]) / 2, (e[0][1] + e[1][1]) / 2)))
         w, e_ = sorted((p, q), key=lambda c: (c[0], -c[1]))
-        t = 0.72 if run['kind'] == 'lot' else 0.5                    # beside the separation's own dimension, not on it
+        t = 0.72 if run['kind'] == 'lot' else 0.28                   # beside the separation's own dimension, not on it
         a = (w[0] + (e_[0] - w[0]) * t, w[1] + (e_[1] - w[1]) * t)
-        to = run['line']
-        if run['kind'] == 'street':
-            ax = axis_near(run['name'], run['line'])
-            if ax is None:
-                continue
-            to = ax
+        to = run['line']                                              # the podium's edge, the lot's boundary
         b = to.interpolate(to.project(Point(a)))
         d = math.dist(a, (b.x, b.y))
         if d >= 0.5:
@@ -1466,8 +1462,8 @@ def own_dims(sep, k):
 
 
 def bound_dims(rows, k, big):
-    """The dimensions for the option sheets' plans, architectural: every lot boundary's setback, each street's to the
-    middle of the road, and two new buildings across a road, half by half."""
+    """The dimensions for the option sheets' plans, architectural: the tower's setback from its podium's edge (its lot's
+    boundary) on every side, lot and street alike, and two new buildings across a road, half by half."""
     o = []
     near = {}
     for r in rows:
@@ -1478,7 +1474,8 @@ def bound_dims(rows, k, big):
         if r['kind'] == 'pair':
             o += arch_dim([r['p0'], r['mid'], r['p1']], [f'{r["a"]:.0f} m', f'{r["b"]:.0f} m'], col, k)
         elif r['kind'] == 'street':
-            o += arch_dim([r['p0'], r['p1']], [f'{r.get("dc", r["d"]):.0f} m'], col, k)
+            if r['d'] >= 0.5:                                         # the tower to the podium's street face
+                o += arch_dim([r['e0'], r['e1']], [f'{r["d"]:.0f} m'], col, k)
         elif r['d'] >= 0.5:
             o += arch_dim([r['p0'], r['p1']], [f'{r["d"]:.0f} m'], col, k)
     return o

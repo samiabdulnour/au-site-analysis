@@ -36,14 +36,14 @@
   "units": null,
   "label": "our site, sketch of 25 Nov",
   "tower": {
-   "_": "The sketch of 25 November 2026: a three-storey podium over the lot (a taller ground floor and two residential levels) and the tower to 14 storeys, 6 m off our northern boundary (66-68 Riley St), 3 m off Riley Street and Crown Lane, 5 m off Stanley Lane as drawn. No apartment layout is given for this footprint, so its apartments are read in 8 m bays along its walls.",
+   "_": "The sketch of 25 November 2026: a three-storey podium over the lot (a taller ground floor and two residential levels) and the tower to 14 storeys, 6 m off our northern boundary (66-68 Riley St), 3 m off Riley Street and Crown Lane, 3 m off Stanley Lane. No apartment layout is given for this footprint, so its apartments are read in 8 m bays along its walls.",
    "podium": 3,
    "homesFrom": 2,
    "levelZero": true,
    "setbacks": {
     "RILEY STREET": 3,
     "CROWN LANE": 3,
-    "STANLEY LANE": 5,
+    "STANLEY LANE": 3,
     "66-68 RILEY STREET": 6
    },
    "habitable": [
@@ -69,7 +69,7 @@
   {
    "title": "Today without the William Street towers, our building as sketched",
    "horizon": "Every neighbour as it stands today, with 88-108 and 72-80 William St taken away; our building as the sketch of 25 November has it. The baseline the scenarios are read against.",
-   "lead": "Nothing round us is rebuilt, and the towers at 88-108 William St (about 100 m) and 72-80 William St (about 69 m), north-east of us, are taken away: 67-89 Riley St stands as the 1960s block of 112 apartments it is, and every other neighbour as it does today, its height off Google's 3D tiles. Our building as sketched: a three-storey podium (a taller ground floor and two residential levels) and a tower to 14 storeys, 6 m off our northern boundary, 3 m off Riley Street and Crown Lane, 5 m off Stanley Lane.",
+   "lead": "Nothing round us is rebuilt, and the towers at 88-108 William St (about 100 m) and 72-80 William St (about 69 m), north-east of us, are taken away: 67-89 Riley St stands as the 1960s block of 112 apartments it is, and every other neighbour as it does today, its height off Google's 3D tiles. Our building as sketched: a three-storey podium (a taller ground floor and two residential levels) and a tower to 14 storeys, 6 m off our northern boundary, 3 m off Riley Street and Crown Lane, 3 m off Stanley Lane.",
    "notes": [
     "88-108 William St (about 100 m) and 72-80 William St (about 69 m) are taken away, in every scenario.",
     "Every neighbour stands as it is."
