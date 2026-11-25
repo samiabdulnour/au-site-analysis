@@ -43,7 +43,7 @@ import {
   type XY, type YieldAssumptions, type YieldResult, type Use, type Tier, type UnitKind, type FutureControls, type ExistingBuilding,
 } from '../lib/yield.js';
 import { shadowHull } from '../lib/shadows.js';
-import { addedGround, apartmentSun, addedShadow, adgSunHours, meetsSun, schemeBlocks, groundShadow, facadeSun, roofSun, winterSun, SHADE_KINDS, type ApartmentSun, type AddedShadow, type Block, type FacadeFace, type RoofCell, type ShadeKind, type ShadeTarget } from '../lib/solarAccess.js';
+import { addedGround, apartmentSun, addedShadow, adgSunHours, meetsSun, schemeBlocks, groundShadow, facadeSun, winterSun, SHADE_KINDS, type ApartmentSun, type AddedShadow, type Block, type FacadeFace, type ShadeKind, type ShadeTarget } from '../lib/solarAccess.js';
 import { separations, type SeparationRow, type SeparationReading } from '../lib/separation.js';
 import { futureContext, FOOTPRINTS, type FutureBuilding, type FutureLot } from '../lib/futureContext.js';
 import { reshapeToComply, type Reshaped } from '../lib/reshape.js';
@@ -367,9 +367,11 @@ export interface PathSun {
   separation: (SeparationRow & { name: string })[];
   /** And each building of the future context near it: can the neighbours still develop beside it? */
   separationBuiltOut: (SeparationRow & { name: string })[];
-  /** Each face's hours of sun, cell by cell, and each roof's (lib/solarAccess.ts facadeSun, roofSun). */
+  /**
+   * Each face's hours of sun, cell by cell (lib/solarAccess.ts facadeSun). The roofs are not read: an apartment's sun
+   * is on its facade (Z. 2026-11: "the roof shouldn't be counted, coloured like that: we care only for facades").
+   */
   facades: FacadeFace[];
-  roofs: RoofCell[];
 }
 
 /** The study's result behind a path, where the path has a scheme. */
@@ -443,10 +445,9 @@ export function pathSun(b: YieldBundle, s: YieldStudy, id: Scenario['id']): Path
   const separation = separations(tiers, near, s.ring, s.fronts).map((r) => ({ ...r, name: near[r.index].name }));
   // the sun on each face, cell by cell, today and built out
   const facades = facadeSun(y, { context, future: s.future.buildings.length ? future : undefined, lat, lon, boundary: s.ring, blank: edgeKinds(s.ring, s.fronts).map((k) => k !== 'front') });
-  const roofs = roofSun(y, { context, future: s.future.buildings.length ? future : undefined, lat, lon });
   const builtOut = separations(tiers, s.future.buildings.map((fb) => ({ rings: [fb.ring], storeys: fb.storeys })), s.ring, s.fronts)
     .map((r) => ({ ...r, name: `${s.future.buildings[r.index].name} · ${FOOTPRINTS[s.future.buildings[r.index].type].label}, ${s.future.buildings[r.index].storeys} st` }));
-  const out: PathSun = { y, apartments, shadow, measured: { park: zoned, home: zoned, heritage: b.heritageItems !== undefined }, targets, separation, separationBuiltOut: builtOut, facades, roofs };
+  const out: PathSun = { y, apartments, shadow, measured: { park: zoned, home: zoned, heritage: b.heritageItems !== undefined }, targets, separation, separationBuiltOut: builtOut, facades };
   done.set(id, out);
   return out;
 }
@@ -775,7 +776,7 @@ const ENVELOPE = '#5b6670';
  * read), or what stands there today, or neither (the site alone); `behind` turns the camera to the opposite corner,
  * so a compliance sheet's second view shows the faces the first hides.
  */
-interface Scheme { y?: YieldResult; facades?: FacadeFace[]; roofs?: RoofCell[]; behind?: boolean; /** The town in white, so the scheme's colours read alone (the compliance sheets). */ mono?: boolean; /** How much town round the site the frame takes in, metres (FOCUS_M where unset). */ focusM?: number; standing?: { rings: XY[][]; heightM?: number; storeys?: number }[] }
+interface Scheme { y?: YieldResult; facades?: FacadeFace[]; behind?: boolean; /** The town in white, so the scheme's colours read alone (the compliance sheets). */ mono?: boolean; /** How much town round the site the frame takes in, metres (FOCUS_M where unset). */ focusM?: number; standing?: { rings: XY[][]; heightM?: number; storeys?: number }[] }
 
 
 /** The storey heights the study builds to: the bottom and the top of storey s. */
@@ -828,9 +829,8 @@ function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number;
       const p = t.plate[f.ring][f.edge], same = Math.hypot(f.a.x - p.x, f.a.y - p.y) < 1e-6;
       return f.cells.map((c) => ({ ring: f.ring, edge: f.edge, t0: same ? c.t0 : 1 - c.t1, t1: same ? c.t1 : 1 - c.t0, z0: z.bottom(c.storey), z1: z.top(c.storey), fill: bandOf(c.hours).fill, flat: true }));
     });
-    const roof = (scheme.roofs ?? []).filter((r) => r.tier === ti).map((r) => ({ pts: r.pts, fill: bandOf(r.hours).fill }));
     // (its roof in the colour itself, as its plan and the keys draw it: lit, it was a paler yellow than theirs)
-    built.push({ rings: t.plate, z0: z.bottom(t.from), z1: z.top(top), fill: useFill(t.use), roofFill: useFill(t.use), edge: '#1c1c1c', edgeW: 0.2, windows: true, storeys: Array.from({ length: top - t.from }, (_, i) => z.top(t.from + i)), ...(cells.length ? { cells } : {}), ...(roof.length ? { roof } : {}) });
+    built.push({ rings: t.plate, z0: z.bottom(t.from), z1: z.top(top), fill: useFill(t.use), roofFill: useFill(t.use), edge: '#1c1c1c', edgeW: 0.2, windows: true, storeys: Array.from({ length: top - t.from }, (_, i) => z.top(t.from + i)), ...(cells.length ? { cells } : {}) });
   });
   // What stands, at its recorded height, its storeys ruled; one with none recorded at a nominal two, dashed.
   for (const e of scheme.standing ?? []) {
@@ -2158,18 +2158,9 @@ function facadeRows(ps: PathSun, hours: number): { courtyard: boolean; dir: stri
       if (c.hoursFuture !== undefined) { g.future = true; g.hf += area * c.hoursFuture; if (c.hoursFuture >= hours - 1e-9) g.okf += area; }
     }
   }
-  // the roofs, together
-  if (ps.roofs.length) {
-    const g = { courtyard: false, dir: 'roof', bearing: 999, a: 0, h: 0, ok: 0, hf: 0, okf: 0, future: false };
-    for (const r of ps.roofs) {
-      g.a += r.areaSqm; g.h += r.areaSqm * r.hours; if (r.hours >= hours - 1e-9) g.ok += r.areaSqm;
-      if (r.hoursFuture !== undefined) { g.future = true; g.hf += r.areaSqm * r.hoursFuture; if (r.hoursFuture >= hours - 1e-9) g.okf += r.areaSqm; }
-    }
-    groups.set('roof', g);
-  }
   // the outside's faces of a twentieth of the whole or more: a corner's sliver says nothing a face does not
-  const total = [...groups.values()].filter((g) => g.dir !== 'roof').reduce((t, g) => t + g.a, 0);
-  return [...groups.values()].filter((g) => g.a > 0 && (g.courtyard || g.dir === 'roof' || g.a >= 0.05 * total))
+  const total = [...groups.values()].reduce((t, g) => t + g.a, 0);
+  return [...groups.values()].filter((g) => g.a > 0 && (g.courtyard || g.a >= 0.05 * total))
     .sort((p, q) => Number(p.courtyard) - Number(q.courtyard) || p.bearing - q.bearing)
     .map((g) => ({ courtyard: g.courtyard, dir: g.dir, bearing: g.bearing, areaSqm: g.a, average: g.h / g.a, share: g.ok / g.a, ...(g.future ? { averageFuture: g.hf / g.a, shareFuture: g.okf / g.a } : {}) }));
 }
@@ -2235,7 +2226,7 @@ function complianceSheets(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: P
   // the sun on each facade, by the way it looks
   const fr = facadeRows(ps, h), anyFuture = fr.some((r) => r.averageFuture !== undefined && Math.abs(r.averageFuture - r.average) > 0.05);
   const faceTable = ytable([{ head: 'Facing', w: '30mm' }, { head: 'Area', r: true }, { head: 'Average', r: true }, { head: `${h} h or more`, r: true }, ...(anyFuture ? [{ head: 'Built out', r: true }] : [])],
-    fr.map((r) => ({ cells: [esc(r.courtyard ? 'courtyard, all walls' : r.dir === 'roof' ? 'roof, all tiers' : r.dir), esc(area(r.areaSqm)), esc(`${r.average.toFixed(1)} h`), esc(`${Math.round(r.share * 100)}%`),
+    fr.map((r) => ({ cells: [esc(r.courtyard ? 'courtyard, all walls' : r.dir), esc(area(r.areaSqm)), esc(`${r.average.toFixed(1)} h`), esc(`${Math.round(r.share * 100)}%`),
       ...(anyFuture ? [esc(r.averageFuture !== undefined ? `${r.averageFuture.toFixed(1)} h · ${Math.round((r.shareFuture ?? 0) * 100)}%` : '—')] : [])] })), true);
 
   // the apartments storey by storey, in bands of storeys where there are more than eight of them
@@ -2265,7 +2256,7 @@ function complianceSheets(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: P
   ];
   const shadeTable = ytable([{ head: 'Land', w: '50mm' }, { head: 'In reach', r: true, w: '18mm' }, { head: 'Shaded', r: true, w: '18mm' }, { head: 'Most added, and when', r: true }], shadeRows, true);
 
-  const solarBlocks = [zBlock('Against the criteria', ytable(criteria, solarTests, true)), zBlock('Sun on each facade and the roof', faceTable), ...(storeyRows.length ? [zBlock('Apartments, storey by storey', storeyTable)] : [])];
+  const solarBlocks = [zBlock('Against the criteria', ytable(criteria, solarTests, true)), zBlock('Sun on each facade', faceTable), ...(storeyRows.length ? [zBlock('Apartments, storey by storey', storeyTable)] : [])];
   // (each building's separation is on the drawing, a dimension with what is asked of it, and not in a table here:
   // Z. 2026-11, "the building separation needs to be visible in the drawing, don't put it into text")
   const shadowBlocks = [zBlock('Against the criteria', ytable(criteria, shadowTests, true)), zBlock('The shadow it adds', shadeTable)];
@@ -2275,7 +2266,7 @@ function complianceSheets(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: P
   const pts = b.siteRing.slice(0, -1);
   const lat = pts.reduce((t, q) => t + q[1], 0) / pts.length, lon = pts.reduce((t, q) => t + q[0], 0) / pts.length;
   const AXO_H = PAGE_H / 2, IN = 6, fid = `${id}-c`;
-  const axo = (behind: boolean, top: number, id2: string) => figureAt(PAGE_X, top, PAGE_W, AXO_H, axonometric(b, s, { x: 2, y: IN + 9, w: PAGE_W - 4, h: AXO_H - IN - 11 }, { y: ps.y, facades: ps.facades, roofs: ps.roofs, behind, focusM: 6, mono: true }, id2));
+  const axo = (behind: boolean, top: number, id2: string) => figureAt(PAGE_X, top, PAGE_W, AXO_H, axonometric(b, s, { x: 2, y: IN + 9, w: PAGE_W - 4, h: AXO_H - IN - 11 }, { y: ps.y, facades: ps.facades, behind, focusM: 6, mono: true }, id2));
   const solarFigures = !homes ? '' : axo(false, 0, `${fid}-f`) + labelAt(PAGE_X, 0, IN, ['From the street corner'])
     + axo(true, AXO_H, `${fid}-b`) + labelAt(PAGE_X, AXO_H, IN, ['From the opposite corner'])
     + `<div class="abs" style="left:${PAGE_X}mm;top:${AXO_H - 0.4}mm;width:${PAGE_W}mm;height:0.8mm;background:#ffffff"></div>`;
@@ -2327,8 +2318,8 @@ function complianceSheets(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: P
   const solarZones = zoneEdgesOn() ? zoneEntries(b, deckLook(), true, undefined, true) : [];
   const solarLegend: LegendEntry[] = [
     { swatch: KEY.site, label: 'The site' },
-    { swatch: KEY.zones(sunBands().map((x) => x.fill)), label: `Facades and roofs, hours of sun 9 am – 3 pm on 21 June: none, under 1, 1–2, 2–3, 3–4, 4–5, 5 and over` },
-    { swatch: KEY.use('residential'), label: 'Indicative massing: blank walls' },
+    { swatch: KEY.zones(sunBands().map((x) => x.fill)), label: `Facades, hours of sun 9 am – 3 pm on 21 June: none, under 1, 1–2, 2–3, 3–4, 4–5, 5 and over; the roofs not counted` },
+    { swatch: KEY.use('residential'), label: 'Indicative massing: its roofs and blank walls' },
     { swatch: `<path d="M0.4,0.7H2.3V3H0.4Z" fill="#ffffff" stroke="#8f8f8f" stroke-width="0.2"/><path d="M2.7,0.7H4.6V3H2.7Z" fill="#ffffff" stroke="#8f8f8f" stroke-width="0.2" stroke-dasharray="0.5,0.3"/>`,
       label: `Neighbours in white at their heights${solarZones.length ? ', each outlined in its zone\'s colour' : ''}${s.future.buildings.length ? '; dashed, their future on feasible footprints to their LEP height and FSR' : ''}` },
     ...solarZones,
@@ -2359,14 +2350,13 @@ function complianceSheets(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: P
   ];
 
   // what each says
-  const out = fr.filter((r) => !r.courtyard && r.dir !== 'roof'), roofRow = fr.find((r) => r.dir === 'roof');
+  const out = fr.filter((r) => !r.courtyard);
   const good = out.filter((r) => r.average >= h - 1e-9).map((r) => r.dir), poor = out.filter((r) => r.average < 1).map((r) => r.dir);
   const list = (xs: string[]) => (xs.length > 1 ? `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}` : xs[0]);
   const sepShortN = ps.separation.filter((r) => worseReading(r).status === 'short').length;
   const solarSays = brief([
     `${pctOf(ap.meeting, ap.total)} of its ${fmt(ap.total)} apartments get ${h} hours of sun${unbroken} at mid winter${meets(ap.meeting) ? ', meeting the ADG\'s 70%' : ', short of the ADG\'s 70%'}, and ${pctOf(ap.none, ap.total)} get none${fewNone(ap.none) ? '' : ', over the 15% it allows'}.`,
     good.length || poor.length ? `${good.length ? `Its ${list(good)} ${good.length === 1 ? 'face has' : 'faces have'} ${h} hours or more on average` : ''}${good.length && poor.length ? '; ' : ''}${poor.length ? `${good.length ? 'its' : 'Its'} ${list(poor)} under one` : ''}.` : '',
-    roofRow ? `Its roof has ${roofRow.average.toFixed(1)} hours on average, ${Math.round(roofRow.share * 100)}% of it ${h} hours or more.` : '',
     f && f.meeting !== ap.meeting ? `Once the neighbours build out, ${pctOf(f.meeting, ap.total)} have the hours.` : '',
   ], 560);
   const shadowSays = brief([

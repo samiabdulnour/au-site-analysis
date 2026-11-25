@@ -1985,7 +1985,7 @@ site may take, so a site with more paths has more pages:
    - **Solar access** (`…_solar_access`), the page after that. On the left
      solar access (4A-1 with the hours, again built out, and 4A-2 with
      none) and yield (its floor area against the most the controls allow
-     it); the sun on each facade and the roof, by the way each looks, its
+     it); the sun on each facade, by the way each looks, its
      area, its average hours and the share with the hours asked, today and
      built out; and the apartments storey by storey, how many have the
      hours and how many no sun (in bands of storeys over eight). On the
@@ -1994,9 +1994,11 @@ site may take, so a site with more paths has more pages:
      so every face is seen, the town round it a white model (neighbours,
      futures, trees, traffic and ground in white and greys) so only the
      scheme's colours read: each facade cell (a storey high, about 3 m
-     wide) and each roof cell (about 3 m square, on what the tiers above
-     leave open) in its band of hours, blues under two, the lorikeet's
-     green, yellow, orange and red from two.
+     wide) in its band of hours, blues under two, the lorikeet's green,
+     yellow, orange and red from two. The roofs are not counted and not
+     coloured: they stand in the scheme's own colour (an apartment's sun is
+     on its facade; Z. 2026-11, "the roof shouldn't be counted, coloured
+     like that: we care only for facades").
 
    Every path's own spread draws its massing alone, the whole right page
    and framed close (14 m of town round the site): its plan is the shadow's,
@@ -2189,10 +2191,11 @@ local metres:
   apartment's facade yellow where it has the hours.
 - **Sun on each facade and roof.** `facadeSun()` in `src/lib/solarAccess.ts`
   gives every face of a scheme its hours, storey by storey in cells about
-  3 m wide, read 1 m above each floor, and `roofSun()` every roof, the plate
-  each tier's roof is less the tiers above it, in cells about 3 m square
-  (clipped by `polyclip-ts`), both today and built out; the compliance
-  sheets colour the massing's cells by their band of hours
+  3 m wide, read 1 m above each floor, both today and built out (and
+  `roofSun()` every roof, the plate each tier's roof is less the tiers above
+  it, in cells about 3 m square, clipped by `polyclip-ts`: the yield no
+  longer reads it); the compliance sheets colour the massing's facade cells
+  by their band of hours
   (`sunBands()` in `src/render/facadeElevation.ts`: seven bands, loriini's,
   none, under 1, 1–2, 2–3, 3–4, 4–5 and 5 hours and over, after the rainbow
   lorikeet: three blues short of two hours, a green where a face just makes
