@@ -14,6 +14,7 @@
 //   a scenarios file with `"deck": "two-sheet"` prints two sheets a scenario, its geometry and its view from the sun, and binds those
 //   npm run future -- out/capacity/riley --scenarios … --redraw --heritage    (read the LEP's heritage items over an earlier fetch)
 //   npm run future -- out/capacity/riley --scenarios … --redraw --sun-context   (read the 300 m the sun reaches)
+//   npm run future -- out/capacity/riley --scenarios … --redraw --sun-context --context-south 200   (and 200 m south, for the drawings)
 //
 // Over the context plan's reading (analysis.json: every property's polygon,
 // the lots, the roads) it fetches, once, what the sheets need beyond it: the
@@ -58,6 +59,9 @@ const MARGIN_M = 40;
 /** How far round the site the sun study reads what stands: a tower this far off can still shade the site on the
  *  mid-winter morning, when the sun is 19° up; north, east and west of it, and a little south. */
 const SUN_REACH_M = 300;
+/** How far south of the site it reads: a building south of the site shades nothing of it at mid-winter, so 80 m does
+ *  for the sun; `--context-south 200` reads further, for the drawings' context round the buildings south of us. */
+const SOUTH_M = Math.max(80, Number(flag('--context-south') ?? 80));
 
 /** A building this tall is read in its steps: a tower on a podium, two towers of two heights on one lot. */
 const TIERS_FROM_M = 20;
@@ -99,8 +103,8 @@ async function fetchSunContext(): Promise<void> {
   const props = Object.values(a.props) as { propid: number; geom: number[][][]; centroid: [number, number]; isSite?: boolean }[];
   const site = props.find((p) => p.isSite)!;
   const [cx, cy] = site.centroid;
-  const win: Extent = { xmin: cx - SUN_REACH_M * k, xmax: cx + SUN_REACH_M * k, ymin: cy - 80 * k, ymax: cy + SUN_REACH_M * k };
-  log(`the sun's reach: ${2 * SUN_REACH_M} × ${SUN_REACH_M + 80} m round the site, what stands there off the 3D tiles`);
+  const win: Extent = { xmin: cx - SUN_REACH_M * k, xmax: cx + SUN_REACH_M * k, ymin: cy - SOUTH_M * k, ymax: cy + SUN_REACH_M * k };
+  log(`the sun's reach: ${2 * SUN_REACH_M} × ${SUN_REACH_M + SOUTH_M} m round the site, what stands there off the 3D tiles`);
   let surface: Awaited<ReturnType<typeof meshSurfaceOver>> | null = null;
   try { surface = await meshSurfaceOver(key, win, log); } catch (e: any) { log(`  WARN the sun's reach: ${e?.message ?? e}`); return; }
   const rings = (geom: number[][][]): XY[][] => geom.map((r) => r.map(([x, y]) => { const ll = mercatorToLonLat({ x, y }); return toXY(surface!.frame, ll.lon, ll.lat); }));

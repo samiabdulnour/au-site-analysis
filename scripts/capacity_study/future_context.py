@@ -1987,6 +1987,9 @@ def ground_of(props):
     return (sum(gs) / len(gs) - g0) if gs and g0 is not None else 0.0
 
 
+CONTEXT_M = 200          # how far round the site the scene keeps what stands, whether or not it can shade us
+
+
 def export_scene(no, blds, existing, RET, sep, parcels=(), scn_parcels=()):
     """Every building of the scenario as prisms, metres east and north of the site, for future_solar.py: ours,
     the scenario's (one per parcel key), what stands, and the window's other measured buildings as context, each on
@@ -2029,9 +2032,11 @@ def export_scene(no, blds, existing, RET, sep, parcels=(), scn_parcels=()):
     for pid, r in PROPS.items():
         if r.get('isSite') or pid in in_blocks or pid in BUILT or pid in REMOVED or not measured(r):
             continue
-        # the study window's buildings, and beyond it every one tall enough to reach the site with its shadow on
-        # the mid-winter morning or afternoon (the tiles read what stands up to 300 m off, north, east and west)
-        if not r['poly'].intersects(WINDOW.buffer(10)):
+        # the study window's buildings, every one within CONTEXT_M of the site (what the views round it draw, and
+        # what may shade a neighbour though not us), and beyond that every one tall enough to reach the site with
+        # its shadow on the mid-winter morning or afternoon (the tiles read what stands up to 300 m off, north, east
+        # and west)
+        if not r['poly'].intersects(WINDOW.buffer(10)) and r['poly'].distance(SITE_POLY) > CONTEXT_M:
             top = ground_of([r]) + measured(r)
             if top <= 0 or r['poly'].distance(SITE_POLY) > top / low or r['poly'].centroid.y < SITE_POLY.bounds[1] - 20:
                 continue
@@ -2352,9 +2357,10 @@ def option_page(r):
 
 
 SUN_LIT, SUN_SHADE = '#f4c242', '#a9a9a9'
+SUN_PANEL = 97 / 124            # a view of the sun's-eye sheet, four across and two down: its width to its height
 
 
-def sun_views(no, sun, hours=(9, 10, 11, 12, 13, 14, 15), reach=32, tall=0.6):
+def sun_views(no, sun, hours=(9, 10, 11, 12, 13, 14, 15), reach=32, tall=0.6, aspect=None):
     """The scene seen from the sun at each hour, our apartments lit or in shadow as it sees them: an orthographic
     projection along the sun's ray, every sun-facing wall and roof drawn far to near, our units' spans on their walls
     coloured by the engine's reading at that instant."""
@@ -2501,9 +2507,20 @@ def sun_views(no, sun, hours=(9, 10, 11, 12, 13, 14, 15), reach=32, tall=0.6):
         xs = [c[0] for c in ours] or [0]
         ys = [c[1] for c in ours] or [0]
         x0, x1, y0, y1 = min(xs) - reach, max(xs) + reach, min(ys) - reach * tall, max(ys) + reach * tall
-        svg = [f'<svg viewBox="{x0:.1f} {-y1:.1f} {x1 - x0:.1f} {y1 - y0:.1f}" xmlns="http://www.w3.org/2000/svg"><rect x="{x0:.1f}" y="{-y1:.1f}" width="{x1 - x0:.1f}" height="{y1 - y0:.1f}" fill="#f7f6f3"/>']
+        if aspect:                                                     # the panel's proportions, about ours, so the view fills it
+            w_, h_ = x1 - x0, y1 - y0
+            if w_ / h_ < aspect:
+                x0, x1 = (x0 + x1) / 2 - h_ * aspect / 2, (x0 + x1) / 2 + h_ * aspect / 2
+            else:
+                y0, y1 = (y0 + y1) / 2 - w_ / aspect / 2, (y0 + y1) / 2 + w_ / aspect / 2
+        clip = f'sv{no}-{hour}'                                         # what reaches past the view is cut at its edge
+        svg = [f'<svg viewBox="{x0:.1f} {-y1:.1f} {x1 - x0:.1f} {y1 - y0:.1f}" xmlns="http://www.w3.org/2000/svg"{" preserveAspectRatio=\"xMidYMid slice\"" if aspect else ""}>'
+               f'<clipPath id="{clip}"><rect x="{x0:.1f}" y="{-y1:.1f}" width="{x1 - x0:.1f}" height="{y1 - y0:.1f}"/></clipPath>'
+               f'<rect x="{x0:.1f}" y="{-y1:.1f}" width="{x1 - x0:.1f}" height="{y1 - y0:.1f}" fill="#f7f6f3"/><g clip-path="url(#{clip})">']
         for depth, poly, fill, stroke in items:
             for poly_, fill_, stroke_ in (fill if poly is None else [(poly, fill, stroke)]):     # a group: ours, in its own order
+                if max(c[0] for c in poly_) < x0 or min(c[0] for c in poly_) > x1 or max(c[1] for c in poly_) < y0 or min(c[1] for c in poly_) > y1:
+                    continue                                            # wholly outside the view
                 svg.append(f'<polygon points="{" ".join(f"{c[0]:.2f},{-c[1]:.2f}" for c in poly_)}" fill="{fill_}" stroke="{stroke_}" stroke-width="0.25" stroke-linejoin="round"/>')
         # a building far off that stands between the sun and ours is named where it covers us
         ox0, ox1, oy0, oy1 = min(xs), max(xs), min(ys), max(ys)
@@ -2520,7 +2537,7 @@ def sun_views(no, sun, hours=(9, 10, 11, 12, 13, 14, 15), reach=32, tall=0.6):
             ly = max(y0 + 6, min(y1 - 4, (max(oy0, by0) + min(oy1, by1)) / 2))
             label = H.escape(f'{short(name)}, {height:.0f} m')
             svg.append(f'<text x="{lx:.1f}" y="{-ly:.1f}" font-size="3.4" font-weight="700" text-anchor="middle" fill="#c0161c" paint-order="stroke" stroke="#fff" stroke-width="1.1">{label}</text>')
-        svg.append('</svg>')
+        svg.append('</g></svg>')
         alt = math.degrees(math.asin(s[2]))
         az = (math.degrees(math.atan2(s[0], s[1])) + 360) % 360
         views.append((f'{hour}:00', f'sun at {az:.0f}°, {alt:.0f}° up', ''.join(svg)))
@@ -2610,7 +2627,7 @@ def sun_eye_page(no, scn, sun, r):
     bays = not site_rec.get('units')
     if bays and not (site_rec and os.path.exists(f'{OUT}/future-facade-{no}.json')):
         return None
-    views = sun_views(no, sun, reach=44, tall=1.05)
+    views = sun_views(no, sun, reach=62, tall=1.05, aspect=SUN_PANEL)
     ap = site_rec['apts']['planned']
     by = site_rec.get('apts_by') or {}
     mark, vcol = apts_verdict(ap)

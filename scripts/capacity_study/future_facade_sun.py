@@ -336,11 +336,15 @@ def elevation_svg(faces, key, width_mm, title, total):
 
 
 # ---- the massing, from the street corner and the opposite one ---------------------------------------------------------
-def axo_svg(scene, faces, key, view, phi_deg=34.0, reach=58.0, subject='site', centre=(0.0, 0.0)):
+AXO_ASPECT = 196 / 118          # a massing view's panel on the sheets, width to height
+
+
+def axo_svg(scene, faces, key, view, phi_deg=34.0, reach=160.0, subject='site', centre=(0.0, 0.0), frame=52.0):
     """The scenario's massing round a building (ours by default; `subject` names another by its id, `centre` the point
     the view is gathered round) from `view` (a unit vector in plan toward the viewer), its faces cell by cell in their
-    bands, every other building plain, ours pink: far to near, a building's parts lowest first; one standing in front
-    of it drawn as glass, so its faces are read through it."""
+    bands, every other building within `reach` plain, ours pink: far to near, a building's parts lowest first; one
+    standing in front of it drawn as glass, so its faces are read through it. The view is cut to the building and
+    `frame` metres round it, at the panel's proportions, the blocks round it running to the edges."""
     vx, vy = view
     dx, dy = -vx, -vy                                          # the way the viewer looks
     rx, ry = dy, -dx                                           # the viewer's right
@@ -436,8 +440,27 @@ def axo_svg(scene, faces, key, view, phi_deg=34.0, reach=58.0, subject='site', c
                 o.append(f'<polygon points="{rp}" fill="{shade(base_col, 1.04)}" stroke="#8a8a8a" stroke-width=".1"/>')
         if is_site:
             seen_site = True
-    x0, x1, y0, y1 = min(xs) - 3, max(xs) + 3, min(ys) - 3, max(ys) + 3
-    return f'<svg viewBox="{x0:.1f} {y0:.1f} {x1 - x0:.1f} {y1 - y0:.1f}" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet" style="width:100%;height:100%">' + ''.join(o) + '</svg>'
+    if site_poly is not None and frame:
+        bx0, by0, bx1, by1 = site_poly.bounds
+        x0, x1, y0, y1 = bx0 - frame, bx1 + frame, by0 - frame * 0.5, by1 + frame * 0.5
+        w_, h_ = x1 - x0, y1 - y0
+        if w_ / h_ < AXO_ASPECT:                               # to the panel's proportions, about the building
+            x0, x1 = (x0 + x1) / 2 - h_ * AXO_ASPECT / 2, (x0 + x1) / 2 + h_ * AXO_ASPECT / 2
+        else:
+            y0, y1 = (y0 + y1) / 2 - w_ / AXO_ASPECT / 2, (y0 + y1) / 2 + w_ / AXO_ASPECT / 2
+        o = [g for g in o if in_view(g, x0, x1, y0, y1)]
+    else:
+        x0, x1, y0, y1 = min(xs) - 3, max(xs) + 3, min(ys) - 3, max(ys) + 3
+    return f'<svg viewBox="{x0:.1f} {y0:.1f} {x1 - x0:.1f} {y1 - y0:.1f}" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid slice" style="width:100%;height:100%;overflow:hidden">' + ''.join(o) + '</svg>'
+
+
+def in_view(poly_svg, x0, x1, y0, y1):
+    """Whether a drawn polygon's points reach into the view at all, so what lies wholly outside it is left out."""
+    m = re.search(r'points="([^"]*)"', poly_svg)
+    if not m:
+        return True
+    pts = [tuple(map(float, q.split(','))) for q in m.group(1).split()]
+    return not (max(u for u, _ in pts) < x0 or min(u for u, _ in pts) > x1 or max(v for _, v in pts) < y0 or min(v for _, v in pts) > y1)
 
 
 def shade(hex_, k):

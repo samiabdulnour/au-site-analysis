@@ -49,6 +49,7 @@ SIDES = ('N', 'E', 'S', 'W')
 SIDE_WORD = dict(N='north', E='east', S='south', W='west')
 FILLS = {'site': '#f3d9d9', 'new': '#cdc6c0', 'standing': '#dadada', 'context': '#e7e7e7'}   # as the deck's view from the sun
 SUN_LIT, SUN_SHADE = '#f4c242', '#a9a9a9'
+PANEL = 97 / 124                # a view of the sun's-eye sheet, four across and two down: its width to its height
 
 
 def read_both(faces):
@@ -126,7 +127,7 @@ def label_of(b):
     return 'ours' if b['kind'] == 'site' else b['id'].split('-', 1)[1] if b['kind'] == 'new' else None
 
 
-def sun_eye_svg(subject, faces, hour, s, reach=44.0, tall=1.05):
+def sun_eye_svg(subject, faces, hour, s, reach=62.0, tall=1.05):
     """The scene as the sun sees it at `hour`, framed on the building `subject`: an orthographic projection along the
     sun's ray, every wall facing the sun and every roof drawn far to near, so whatever shows is in sun and whatever is
     hidden is in shadow. The building read is one group, tier by tier from its foot (each tier's walls, the cells on
@@ -193,9 +194,19 @@ def sun_eye_svg(subject, faces, hour, s, reach=44.0, tall=1.05):
     items.sort(key=lambda it: -it[0])                            # far first
     xs, ys = [c[0] for c in frame], [c[1] for c in frame]
     x0, x1, y0, y1 = min(xs) - reach, max(xs) + reach, min(ys) - reach * tall, max(ys) + reach * tall
-    svg = [f'<svg viewBox="{x0:.1f} {-y1:.1f} {x1 - x0:.1f} {y1 - y0:.1f}" xmlns="http://www.w3.org/2000/svg"><rect x="{x0:.1f}" y="{-y1:.1f}" width="{x1 - x0:.1f}" height="{y1 - y0:.1f}" fill="#f7f6f3"/>']
+    w_, h_ = x1 - x0, y1 - y0                                    # to the panel's proportions, so the view fills it
+    if w_ / h_ < PANEL:
+        x0, x1 = (x0 + x1) / 2 - h_ * PANEL / 2, (x0 + x1) / 2 + h_ * PANEL / 2
+    else:
+        y0, y1 = (y0 + y1) / 2 - w_ / PANEL / 2, (y0 + y1) / 2 + w_ / PANEL / 2
+    clip = f'sv{subject}-{hour}'                                 # what reaches past the view is cut at its edge
+    svg = [f'<svg viewBox="{x0:.1f} {-y1:.1f} {x1 - x0:.1f} {y1 - y0:.1f}" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid slice">'
+           f'<clipPath id="{clip}"><rect x="{x0:.1f}" y="{-y1:.1f}" width="{x1 - x0:.1f}" height="{y1 - y0:.1f}"/></clipPath>'
+           f'<rect x="{x0:.1f}" y="{-y1:.1f}" width="{x1 - x0:.1f}" height="{y1 - y0:.1f}" fill="#f7f6f3"/><g clip-path="url(#{clip})">']
     for depth, poly, fill, stroke, sw in items:
         for poly_, fill_, stroke_, sw_ in (fill if poly is None else [(poly, fill, stroke, sw)]):
+            if max(c[0] for c in poly_) < x0 or min(c[0] for c in poly_) > x1 or max(c[1] for c in poly_) < y0 or min(c[1] for c in poly_) > y1:
+                continue                                        # wholly outside the view
             svg.append(f'<polygon points="{" ".join(f"{c[0]:.2f},{-c[1]:.2f}" for c in poly_)}" fill="{fill_}" stroke="{stroke_}" stroke-width="{sw_}" stroke-linejoin="round"/>')
     # each new building and ours named on its roof, where the frame holds it, the one read in the middle of the frame
     sub_top = max(sub_b['parts'], key=lambda q: q['z1'])
@@ -205,7 +216,7 @@ def sun_eye_svg(subject, faces, hour, s, reach=44.0, tall=1.05):
         if x0 + 4 < lx < x1 - 4 and y0 + 4 < ly < y1 - 4:
             svg.append(f'<text x="{lx:.1f}" y="{-ly:.1f}" font-size="3.4" font-weight="700" text-anchor="middle" dominant-baseline="middle" '
                        f'fill="{"#c0161c" if text == "ours" else "#111"}" paint-order="stroke" stroke="#fff" stroke-width="1.1">{H.escape(text)}</text>')
-    svg.append('</svg>')
+    svg.append('</g></svg>')
     return ''.join(svg)
 
 
@@ -270,7 +281,7 @@ def building_sheet(b, faces, total):
     ring = min(b['parts'], key=lambda q: q['z0'])['ring']
     cx, cy = sum(x for x, _ in ring) / len(ring), sum(y for _, y in ring) / len(ring)
     views = [((-0.7071, -0.7071), 'From the south-west'), ((0.7071, 0.7071), 'From the north-east')]
-    axos = ''.join(f'<div class="ax"><div class="cap">{cap}</div><div class="axb">{ff.axo_svg(scene, faces, "with", v, subject=b["id"], centre=(cx, cy), reach=52)}</div></div>' for v, cap in views)
+    axos = ''.join(f'<div class="ax"><div class="cap">{cap}</div><div class="axb">{ff.axo_svg(scene, faces, "with", v, subject=b["id"], centre=(cx, cy))}</div></div>' for v, cap in views)
     a5, aS = figures(faces, 'with'), figures(faces, 'strict')
     storeys = max(c['storey'] for f in faces for c in f['cells'])
     t5, _ = ff.stats(faces, 'with')
