@@ -11,13 +11,15 @@ from 9 to 3, framed on it, its facade lit where the sun reaches it; and a first 
         --scenarios <file> [--angle 0]
 
 Writes future-neighbours-<n>.json and .csv, future-neighbours-<n>.html (the comparison), future-neighbour-<n>-<key>.html
-(a sheet a building) and future-neighbour-<n>-<key>-sun.html (its view from the sun at each whole hour) beside the scene, and prints the HTML files in order; scripts/print_sheets.ts prints and binds them.
+(a sheet a building), future-neighbour-<n>-<key>-sun.html (its view from the sun at each whole hour) and
+future-neighbour-<n>-<key>-one.html (the two on one sheet) beside the scene, and prints the HTML files in order, the one-sheets unless --pair; scripts/print_sheets.ts prints and binds them.
 """
 import csv
 import html as H
 import json
 import math
 import os
+import re
 import sys
 
 import numpy as np
@@ -146,7 +148,7 @@ def label_of(b):
     return 'ours' if b['kind'] == 'site' else b['id'].split('-', 1)[1] if b['kind'] == 'new' else None
 
 
-def sun_eye_svg(subject, faces, hour, s, reach=62.0, tall=1.05):
+def sun_eye_svg(subject, faces, hour, s, reach=62.0, tall=1.05, panel=None):
     """The scene as the sun sees it at `hour`, framed on the building `subject`: an orthographic projection along the
     sun's ray, every wall facing the sun and every roof drawn far to near, so whatever shows is in sun and whatever is
     hidden is in shadow. The building read is one group, tier by tier from its foot (each tier's walls, the cells on
@@ -214,10 +216,11 @@ def sun_eye_svg(subject, faces, hour, s, reach=62.0, tall=1.05):
     xs, ys = [c[0] for c in frame], [c[1] for c in frame]
     x0, x1, y0, y1 = min(xs) - reach, max(xs) + reach, min(ys) - reach * tall, max(ys) + reach * tall
     w_, h_ = x1 - x0, y1 - y0                                    # to the panel's proportions, so the view fills it
-    if w_ / h_ < PANEL:
-        x0, x1 = (x0 + x1) / 2 - h_ * PANEL / 2, (x0 + x1) / 2 + h_ * PANEL / 2
+    k_ = panel or PANEL
+    if w_ / h_ < k_:
+        x0, x1 = (x0 + x1) / 2 - h_ * k_ / 2, (x0 + x1) / 2 + h_ * k_ / 2
     else:
-        y0, y1 = (y0 + y1) / 2 - w_ / PANEL / 2, (y0 + y1) / 2 + w_ / PANEL / 2
+        y0, y1 = (y0 + y1) / 2 - w_ / k_ / 2, (y0 + y1) / 2 + w_ / k_ / 2
     clip = f'sv{subject}-{hour}'                                 # what reaches past the view is cut at its edge
     svg = [f'<svg viewBox="{x0:.1f} {-y1:.1f} {x1 - x0:.1f} {y1 - y0:.1f}" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid slice">'
            f'<clipPath id="{clip}"><rect x="{x0:.1f}" y="{-y1:.1f}" width="{x1 - x0:.1f}" height="{y1 - y0:.1f}"/></clipPath>'
@@ -231,10 +234,11 @@ def sun_eye_svg(subject, faces, hour, s, reach=62.0, tall=1.05):
     sub_top = max(sub_b['parts'], key=lambda q: q['z1'])
     r_ = sub_top['ring']
     labels.append((label_of(sub_b), P(sum(x for x, _ in r_) / len(r_), sum(y for _, y in r_) / len(r_), sub_top['z1'])))
+    fs = max(4.0, (x1 - x0) / 22)                                # the letters sized to the view, to be read at a glance
     for text, (lx, ly, _) in labels:
-        if x0 + 4 < lx < x1 - 4 and y0 + 4 < ly < y1 - 4:
-            svg.append(f'<text x="{lx:.1f}" y="{-ly:.1f}" font-size="3.4" font-weight="700" text-anchor="middle" dominant-baseline="middle" '
-                       f'fill="{"#c0161c" if text == "ours" else "#111"}" paint-order="stroke" stroke="#fff" stroke-width="1.1">{H.escape(text)}</text>')
+        if x0 + fs < lx < x1 - fs and y0 + fs < ly < y1 - fs:
+            svg.append(f'<text x="{lx:.1f}" y="{-ly:.1f}" font-size="{fs:.1f}" font-weight="800" text-anchor="middle" dominant-baseline="middle" '
+                       f'fill="{"#c0161c" if text == "ours" else "#111"}" paint-order="stroke" stroke="#fff" stroke-width="{fs * 0.3:.2f}">{H.escape(text)}</text>')
     svg.append('</g></svg>')
     return ''.join(svg)
 
@@ -256,16 +260,28 @@ def hourly_share(faces):
     return out
 
 
-def sun_eye_sheet(b, faces, name, a5, aS):
-    """A building's view from the sun: the scene as the sun sees it at each whole hour from 9 to 3, framed on it, its
-    facade lit where the sun reaches it, and its figures."""
+def eye_views(b, faces, panel=None):
+    """The building's views from the sun at each whole hour from 9 to 3, each in its panel with its title."""
     views = ''
     for hour, s in zip(range(9, 16), WHOLE):
         if s is None:
             continue
         alt = math.degrees(math.asin(s[2]))
         az = (math.degrees(math.atan2(s[0], s[1])) + 360) % 360
-        views += f'<div class="sv"><div class="svt">{hour}:00 <span>sun at {az:.0f}°, {alt:.0f}° up</span></div>{sun_eye_svg(b["id"], faces, hour, s)}</div>'
+        views += f'<div class="sv"><div class="svt">{hour}:00 <span>sun at {az:.0f}°, {alt:.0f}° up</span></div>{sun_eye_svg(b["id"], faces, hour, s, panel=panel)}</div>'
+    return views
+
+
+SUN_KEY = (f'<span style="background:{SUN_LIT}"></span>its facade in sun at that hour<br><span style="background:{SUN_SHADE}"></span>its facade in shadow<br>'
+           f'<span style="background:{FILLS["new"]};border-color:#111"></span>its party walls, not read<br>'
+           f'<span style="background:{FILLS["new"]}"></span>the other new buildings, named on their roofs<br>'
+           f'<span style="background:{FILLS["site"]};border-color:#c0161c"></span>our building')
+
+
+def sun_eye_sheet(b, faces, name, a5, aS):
+    """A building's view from the sun: the scene as the sun sees it at each whole hour from 9 to 3, framed on it, its
+    facade lit where the sun reaches it, and its figures."""
+    views = eye_views(b, faces)
     shares = hourly_share(faces)
     hrs = ''.join(f'<tr><td>{h}:00</td><td class="r">{v * 100:.0f}%</td></tr>' for h, v in zip(range(9, 16), shares))
     result = (f'<div class="sv res"><div class="rbig">{pct(a5["two"])}</div>'
@@ -334,8 +350,51 @@ def building_sheet(b, faces, total):
             + f'<table><tr><th>Its faces, the way they look</th><th class="r">facade</th><th class="r">mean</th><th class="r">2 h or more</th><th class="r">none</th>{ALT_TH("2 h+, " + ALT_COL)}</tr>{trs}'
             + f'<tr><th colspan="{6 if HAS_ALT else 5}" style="padding-top:{3 * MM:.0f}px">Its podium and its tower</th></tr>{tiers}</table>'
             + f'<div class="ass">{H.escape(HOW)}</div></div>')
+    # the same on one sheet with its views from the sun: the figures, the massing and the facade unfolded on the left,
+    # the seven hours on the right, three by three, their hourly shares and key in the last two places
+    elev = ff.elevation_svg(faces, 'with', 196, 'Unfolded · podium and tower', total)
+    vb = [float(x) for x in re.search(r'viewBox="([^"]+)"', elev).group(1).split()]
+    elev_mm = 196 * vb[3] / vb[2]
+    n_rows = trs.count('<tr>') + tiers.count('<tr>')
+    # what the left half holds besides the massing: the figure and lead, the key, the strip, its bar and the tables
+    axo_mm = max(70.0, min(150.0, 262 - (17 + 8 + 5 + elev_mm + 5 + 10 + 4.3 * n_rows + 10)))
+    one_axos = ''.join(f'<div class="oax"><div class="cap">{cap}</div><div class="oaxb">{ff.axo_svg(scene, faces, "with", v, subject=b["id"], centre=(cx, cy), aspect=96 / (axo_mm - 5), labels=True)}</div></div>' for v, cap in views)
+    hrs = ''.join(f'<tr><td>{h}:00</td><td class="r">{v * 100:.0f}%</td></tr>' for h, v in zip(range(9, 16), hourly_share(faces)))
+    one = (f'<div class="hd"><div class="kick">Future context · scenario {NO} of {LAST} · sun on the new buildings round us, 21 June</div>'
+           f'<h1 class="who"><span class="badge">{H.escape(key)}</span>{H.escape(name)}</h1>'
+           f'<div class="hor"><b style="color:#111">Scenario {NO}: {H.escape(title)}.</b> {storeys} storeys, {form}. All its walls, podium and tower, cell by cell; and the scene as the sun sees it, each whole hour from 9 to 3.</div></div>'
+           + f'<div class="L"><div class="top"><div class="big">{pct(a5["two"])}</div><p class="lead">{H.escape(lead)}</p></div>'
+           + f'<div class="oaxs" style="height:{axo_mm * MM:.0f}px">{one_axos}</div>'
+           + f'<div class="key">{band_key()}<span class="kb"><i style="background:{ff.BLANK}"></i>party wall, no window</span></div>'
+           + elev + f'<div class="sl">{bar}</div>'
+           + f'<table><tr><th>Its faces, the way they look</th><th class="r">facade</th><th class="r">mean</th><th class="r">2 h or more</th><th class="r">none</th>{ALT_TH("2 h+, " + ALT_COL)}</tr>{trs}'
+           + f'<tr><th colspan="{6 if HAS_ALT else 5}" style="padding-top:{2 * MM:.0f}px">Its podium and its tower</th></tr>{tiers}</table></div>'
+           + f'<div class="R">{eye_views(b, faces, panel=ONE_PANEL)}'
+           + f'<div class="sv res2"><div class="ch">The view from the sun</div><table class="rt2"><tr><th>At</th><th class="r">facade in sun</th></tr>{hrs}</table>'
+           + '<div class="rs">The views are the whole hours; the figures add the sun between them.</div></div>'
+           + f'<div class="sv res2"><div class="rkey">{SUN_KEY}</div><div class="ass">{H.escape(HOW)}</div></div></div>')
     return dict(key=key, name=name, storeys=storeys, all=a5, strict=aS, apts=apts, sides={s: figures(faces, 'with', {s}) for s in SIDES}, podium=pod5, tower=tow5,
-                html=f'<!doctype html><html><head><meta charset="utf-8"><style>{css()}</style></head><body>{body}</body></html>')
+                html=f'<!doctype html><html><head><meta charset="utf-8"><style>{css()}</style></head><body>{body}</body></html>',
+                one=f'<!doctype html><html><head><meta charset="utf-8"><style>{css()}{eye_css()}{one_css()}</style></head><body>{one}</body></html>')
+
+
+ONE_AXO = 96 / 82               # a massing view on the one-sheet, two across the left half
+ONE_PANEL = 63 / 80             # a view from the sun on the one-sheet, three by three on the right half
+
+
+def one_css():
+    """The one-sheet's own layout over the facade sheet's and the view-from-the-sun sheet's."""
+    return (f'h1.who{{font-size:{22 * PT:.1f}px;display:flex;align-items:center;gap:{3 * MM:.0f}px;margin:{1.2 * MM:.0f}px 0 {1 * MM:.0f}px}}'
+            f'.badge{{display:inline-flex;align-items:center;justify-content:center;flex:none;width:{11 * MM:.0f}px;height:{11 * MM:.0f}px;border-radius:50%;background:#111;color:#fff;font-size:{17 * PT:.1f}px;font-weight:800}}'
+            f'.L{{position:absolute;left:{10 * MM:.0f}px;top:{30 * MM:.0f}px;width:{196 * MM:.0f}px;height:{259 * MM:.0f}px;font-size:{6.8 * PT:.1f}px;line-height:1.35}}'
+            f'.top{{display:flex;gap:{4 * MM:.0f}px;align-items:center;margin:0 0 {2 * MM:.0f}px}} .top .big{{font-size:{34 * PT:.1f}px;margin:0;flex:none}} .top .lead{{font-size:{7.4 * PT:.1f}px;margin:0}}'
+            f'.oaxs{{display:flex;gap:{4 * MM:.0f}px;height:{86 * MM:.0f}px;margin:0 0 {3 * MM:.0f}px}} .oax{{flex:1;display:flex;flex-direction:column;min-width:0}} .oaxb{{flex:1;min-height:0}}'
+            f'.L .key{{margin:0 0 {2 * MM:.0f}px}} .L .sl{{margin:0 0 {2 * MM:.0f}px}} .L table{{font-size:{6.4 * PT:.1f}px}} .L td,.L th{{padding:{.6 * MM:.1f}px {.5 * MM:.1f}px}}'
+            f'.R{{position:absolute;left:{214 * MM:.0f}px;top:{30 * MM:.0f}px;width:{196 * MM:.0f}px;height:{259 * MM:.0f}px;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);gap:{3 * MM:.0f}px}}'
+            f'.R .svt{{font-size:{7 * PT:.1f}px;margin-bottom:{.6 * MM:.1f}px}}'
+            f'.res2{{justify-content:flex-start;padding:{1 * MM:.0f}px {2 * MM:.0f}px 0}} .res2 .ch{{font-size:{6.6 * PT:.1f}px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-bottom:{1.5 * MM:.0f}px}}'
+            f'.res2 .rt2{{width:100%;margin-top:0;font-size:{6.8 * PT:.1f}px}} .res2 .rs{{font-size:{6.4 * PT:.1f}px;margin-top:{2 * MM:.0f}px}}'
+            f'.res2 .rkey{{margin-top:0;font-size:{6.6 * PT:.1f}px;line-height:1.8}} .res2 .ass{{font-size:{5.2 * PT:.1f}px;line-height:1.4;margin-top:{2 * MM:.0f}px}}')
 
 
 rows, files = [], []
@@ -352,7 +411,9 @@ for b in scene['buildings']:
     open(path, 'w').write(r['html'])
     eye = os.path.join(OUT, f'future-neighbour-{NO}-{r["key"]}-sun.html')
     open(eye, 'w').write(sun_eye_sheet(b, faces, r['name'], r['all'], r['strict']))
-    files += [path, eye]
+    one = os.path.join(OUT, f'future-neighbour-{NO}-{r["key"]}-one.html')
+    open(one, 'w').write(r['one'])
+    files += [path, eye] if '--pair' in args else [one]
     rows.append(r)
 
 # ours, read the same way, for the comparison: every wall that can hold a window, podium and ground floor with it
@@ -380,7 +441,7 @@ summary = (head('sun on every new building, 21 June', 'Every new building round 
 spath = os.path.join(OUT, f'future-neighbours-{NO}.html')
 open(spath, 'w').write(f'<!doctype html><html><head><meta charset="utf-8"><style>{css()}</style></head><body>{summary}</body></html>')
 
-json.dump(dict(scene=NO, step_min=ff.STEP_MIN, angle=MAIN, strict=STRICT if HAS_ALT else None, rows=[{k: v for k, v in r.items() if k != 'html'} for r in [ours_row] + rows]),
+json.dump(dict(scene=NO, step_min=ff.STEP_MIN, angle=MAIN, strict=STRICT if HAS_ALT else None, rows=[{k: v for k, v in r.items() if k not in ('html', 'one')} for r in [ours_row] + rows]),
           open(os.path.join(OUT, f'future-neighbours-{NO}.json'), 'w'), indent=1, default=float)
 with open(os.path.join(OUT, f'future-neighbours-{NO}.csv'), 'w', newline='') as fh:
     w = csv.writer(fh)

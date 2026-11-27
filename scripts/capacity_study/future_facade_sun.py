@@ -357,7 +357,7 @@ def elevation_svg(faces, key, width_mm, title, total):
 AXO_ASPECT = 196 / 118          # a massing view's panel on the sheets, width to height
 
 
-def axo_svg(scene, faces, key, view, phi_deg=34.0, reach=160.0, subject='site', centre=(0.0, 0.0), frame=52.0):
+def axo_svg(scene, faces, key, view, phi_deg=34.0, reach=160.0, subject='site', centre=(0.0, 0.0), frame=52.0, aspect=None, labels=False):
     """The scenario's massing round a building (ours by default; `subject` names another by its id, `centre` the point
     the view is gathered round) from `view` (a unit vector in plan toward the viewer), its faces cell by cell in their
     bands, every other building within `reach` plain, ours pink: far to near, a building's parts lowest first; one
@@ -462,13 +462,26 @@ def axo_svg(scene, faces, key, view, phi_deg=34.0, reach=160.0, subject='site', 
         bx0, by0, bx1, by1 = site_poly.bounds
         x0, x1, y0, y1 = bx0 - frame, bx1 + frame, by0 - frame * 0.5, by1 + frame * 0.5
         w_, h_ = x1 - x0, y1 - y0
-        if w_ / h_ < AXO_ASPECT:                               # to the panel's proportions, about the building
-            x0, x1 = (x0 + x1) / 2 - h_ * AXO_ASPECT / 2, (x0 + x1) / 2 + h_ * AXO_ASPECT / 2
+        k_ = aspect or AXO_ASPECT                              # to the panel's proportions, about the building
+        if w_ / h_ < k_:
+            x0, x1 = (x0 + x1) / 2 - h_ * k_ / 2, (x0 + x1) / 2 + h_ * k_ / 2
         else:
-            y0, y1 = (y0 + y1) / 2 - w_ / AXO_ASPECT / 2, (y0 + y1) / 2 + w_ / AXO_ASPECT / 2
+            y0, y1 = (y0 + y1) / 2 - w_ / k_ / 2, (y0 + y1) / 2 + w_ / k_ / 2
         o = [g for g in o if in_view(g, x0, x1, y0, y1)]
     else:
         x0, x1, y0, y1 = min(xs) - 3, max(xs) + 3, min(ys) - 3, max(ys) + 3
+    if labels:                                                 # each new building's letter on its roof, and ours
+        fs = max(4.0, (x1 - x0) / 30)
+        for d_, b, parts in items:
+            word = 'ours' if b['kind'] == 'site' else b['id'].split('-', 1)[1] if b['kind'] == 'new' else None
+            if not word:
+                continue
+            top = max(parts, key=lambda q: q['z1'])
+            c = Polygon(top['ring']).centroid
+            u, v = P(c.x, c.y, top['z1'])
+            if x0 + fs < u < x1 - fs and y0 + fs < v < y1 - fs:
+                o.append(f'<text x="{u:.1f}" y="{v:.1f}" font-size="{fs:.1f}" font-weight="800" text-anchor="middle" dominant-baseline="middle" '
+                         f'fill="{"#c0161c" if word == "ours" else "#111"}" paint-order="stroke" stroke="#fff" stroke-width="{fs * 0.3:.2f}">{H.escape(word)}</text>')
     return f'<svg viewBox="{x0:.1f} {y0:.1f} {x1 - x0:.1f} {y1 - y0:.1f}" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid slice" style="width:100%;height:100%;overflow:hidden">' + ''.join(o) + '</svg>'
 
 
@@ -514,6 +527,11 @@ def pct(x):
     return f'{x * 100:.0f}%'
 
 
+def base_word():
+    """The baseline as the sheets name it: a scenario of the file, or today where it is a scene of its own."""
+    return f'scenario {today_no}' if today_no in meta else 'today'
+
+
 def sheet(n, last, title, horizon, faces, has_today, today_from, total):
     keys = ['with', 'today'] if has_today else ['with']
     t_with, r_with = stats(faces, 'with')
@@ -523,7 +541,7 @@ def sheet(n, last, title, horizon, faces, has_today, today_from, total):
     views = [((-0.7071, -0.7071), 'From the corner of Riley Street and Stanley Lane, south-west'),
              ((0.7071, 0.7071), 'From the opposite corner, north-east')]
     scene = json.load(open(os.path.join(OUT, f'future-scene-{n}.json')))
-    axos = ''.join(f'<div class="ax"><div class="cap">{H.escape(cap)}</div><div class="axb">{axo_svg(scene, faces, "with", v)}</div></div>' for v, cap in views)
+    axos = ''.join(f'<div class="ax"><div class="cap">{H.escape(cap)}</div><div class="axb">{axo_svg(scene, faces, "with", v, labels=True)}</div></div>' for v, cap in views)
     key = ''.join(f'<span class="kb"><i style="background:{c}"></i>{H.escape(l)}</span>' for c, l in zip(LORIKEET, LABELS)) + f'<span class="kb"><i style="background:{BLANK}"></i>party wall, no window</span>'
     bar = lambda t: '<div class="bar">' + ''.join(f'<i style="background:{LORIKEET[i]};width:{t["bands"][i] / t["area"] * 100:.2f}%"></i>' for i in range(7) if t['area'] and t['bands'][i] > 0) + '</div>'
     line = lambda t: f'{pct(t["two"] / t["area"])} of the facade has two hours or more; on average {t["hours"] / t["area"]:.1f} h'
@@ -547,10 +565,10 @@ def sheet(n, last, title, horizon, faces, has_today, today_from, total):
           + (f'<th class="r">with it, mean</th><th class="r">with it, 2 h+</th>{alt_th("with it, ")}' if has_today else f'<th class="r">mean</th><th class="r">2 h+</th>{alt_th("")}'))
     table = f'<table><tr><th>Our faces, the way they look</th><th class="r">facade</th>{th}</tr>{trs}</table>'
     if has_today:
-        strips = (elevation_svg(faces, 'today', 196, f'Unfolded · the baseline, scenario {today_no}', total) + f'<div class="sl">{bar(t_today)}<div>{line(t_today)}.</div></div>'
+        strips = (elevation_svg(faces, 'today', 196, f'Unfolded · the baseline, {base_word()}', total) + f'<div class="sl">{bar(t_today)}<div>{line(t_today)}.</div></div>'
                   + elevation_svg(faces, 'with', 196, 'Unfolded · with the scenario', total) + f'<div class="sl">{bar(t_with)}<div>{line(t_with)}.</div></div>')
         lead = (f'With the scenario standing, {pct(t_with["two"] / t_with["area"])} of our facade has two hours of sun or more on 21 June, '
-                f'against {pct(t_today["two"] / t_today["area"])} in the baseline, scenario {today_no}; on average {t_with["hours"] / t_with["area"]:.1f} h against {t_today["hours"] / t_today["area"]:.1f} h.')
+                f'against {pct(t_today["two"] / t_today["area"])} in the baseline, {base_word()}; on average {t_with["hours"] / t_with["area"]:.1f} h against {t_today["hours"] / t_today["area"]:.1f} h.')
     else:
         strips = elevation_svg(faces, 'with', 196, 'Unfolded · the baseline', total) + f'<div class="sl">{bar(t_with)}<div>{line(t_with)}.</div></div>'
         lead = f'In the baseline, {pct(t_with["two"] / t_with["area"])} of our facade has two hours of sun or more on 21 June; on average {t_with["hours"] / t_with["area"]:.1f} h.'
