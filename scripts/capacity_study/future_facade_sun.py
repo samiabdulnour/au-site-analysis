@@ -642,7 +642,7 @@ if __name__ == '__main__':                                     # run as a script
         title, horizon = meta.get(no, (f'Scenario {no}', ''))
         json.dump(dict(scene=no, today_scene=today_no, cell_m=CELL_M, sill_m=SILL_M, step_min=STEP_MIN, min_angle=MIN_ANGLE, alt_angle=ALT_ANGLE if HAS_ALT else None, bands=dict(colours=LORIKEET, labels=LABELS),
                        faces=faces), open(os.path.join(OUT, f'future-facade-{no}.json'), 'w'))
-        open(os.path.join(OUT, f'future-facade-{no}.html'), 'w').write(sheet(no, len(scenes), title, horizon, faces, has_today, today_from, total))
+        open(os.path.join(OUT, f'future-facade-{no}.html'), 'w').write(sheet(no, len(meta) or len(scenes), title, horizon, faces, has_today, today_from, total))
         t_w, _ = stats(faces, 'with')
         t_wa, _ = stats(faces, 'with_alt') if HAS_ALT else (None, None)
         msg = (f'future-facade-{no}: {pct(t_w["two"] / t_w["area"])} of our facade with 2 h+ at {MIN_ANGLE:g}°' + (f' ({pct(t_wa["two"] / t_wa["area"])} {ALT_COL})' if HAS_ALT else '')

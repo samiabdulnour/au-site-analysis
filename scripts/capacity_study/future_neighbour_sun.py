@@ -74,9 +74,13 @@ def read_both(faces):
         ff.FACING = keep
 
 
+NUM = {1: 'one', 2: 'two', 3: 'three', 4: 'four', 5: 'five', 6: 'six'}
+
+
 def tier_of(f):
-    """A face's tier: the tower, or the podium under it (the ground floor with it)."""
-    return 'tower' if f.get('homes') == 'tower' else 'podium'
+    """A face's tier: the podium (the ground floor with it), or what stands over it, the tower; a building with no
+    podium is all tower."""
+    return 'podium' if f.get('homes') in ('none', 'podium') else 'tower'
 
 
 def figures(faces, key, sides=None, tier=None):
@@ -315,12 +319,15 @@ def building_sheet(b, faces, total):
             + (f'{ALT_SAY}, {pct(aS["two"])}.' if HAS_ALT else '')
             + (f' The plan sheet\'s apartment reading of its tower, on an assumed plan, gives {pct(apts["share"])}.' if apts else ''))
     pod5, tow5, podS, towS = figures(faces, 'with', tier='podium'), figures(faces, 'with', tier='tower'), figures(faces, 'strict', tier='podium'), figures(faces, 'strict', tier='tower')
-    p_lo, p_hi = min(c['storey'] for f in faces if tier_of(f) == 'podium' for c in f['cells']), max(c['storey'] for f in faces if tier_of(f) == 'podium' for c in f['cells'])
-    t_lo = min(c['storey'] for f in faces if tier_of(f) == 'tower' for c in f['cells'])
-    tiers = (f'<tr><td>podium, {ff.level_name(p_lo)} to {ff.level_name(p_hi)}</td><td class="r">{pod5["area"]:.0f} m²</td><td class="r">{pod5["mean"]:.1f} h</td><td class="r"><b>{pct(pod5["two"])}</b></td><td class="r">{pct(pod5["none"])}</td>{ALT_TD(pct(podS["two"]))}</tr>'
-             f'<tr><td>tower, {ff.level_name(t_lo)} to {ff.level_name(storeys)}</td><td class="r">{tow5["area"]:.0f} m²</td><td class="r">{tow5["mean"]:.1f} h</td><td class="r"><b>{pct(tow5["two"])}</b></td><td class="r">{pct(tow5["none"])}</td>{ALT_TD(pct(towS["two"]))}</tr>')
-    lead += f' Its podium, {ff.level_name(p_lo)} to {ff.level_name(p_hi)}: {pct(pod5["two"])}; its tower: {pct(tow5["two"])}.'
-    body = (head(f'sun on {name}, 21 June', f'{name}: {storeys} storeys, its tower over a three-storey podium. All its walls, podium and tower, cell by cell.')
+    span = lambda tier: [c['storey'] for f in faces if tier_of(f) == tier for c in f['cells']]
+    row = lambda label, f5, fS, sts: (f'<tr><td>{label}, {ff.level_name(min(sts))} to {ff.level_name(max(sts))}</td><td class="r">{f5["area"]:.0f} m²</td><td class="r">{f5["mean"]:.1f} h</td>'
+                                      f'<td class="r"><b>{pct(f5["two"])}</b></td><td class="r">{pct(f5["none"])}</td>{ALT_TD(pct(fS["two"]))}</tr>') if sts else ''
+    pod_st, tow_st = span('podium'), span('tower')
+    tiers = row('podium', pod5, podS, pod_st) + row('tower' if pod_st else 'the whole building', tow5, towS, tow_st)
+    if pod_st:
+        lead += f' Its podium, {ff.level_name(min(pod_st))} to {ff.level_name(max(pod_st))}: {pct(pod5["two"])}; its tower: {pct(tow5["two"])}.'
+    form = (f'its tower over a {NUM.get(max(pod_st), max(pod_st))}-storey podium' if pod_st else 'one block from the ground, no podium')
+    body = (head(f'sun on {name}, 21 June', f'{name}: {storeys} storeys, {form}. All its walls, podium and tower, cell by cell.')
             + f'<div class="axs">{axos}</div><div class="rt"><div class="big">{pct(a5["two"])}</div><p class="lead">{H.escape(lead)}</p>'
             + f'<div class="key">{band_key()}<span class="kb"><i style="background:{ff.BLANK}"></i>party wall, no window</span></div>'
             + ff.elevation_svg(faces, 'with', 196, 'Unfolded · podium and tower', total) + f'<div class="sl">{bar}</div>'
@@ -366,7 +373,7 @@ summary = (head('sun on every new building, 21 June', 'Every new building round 
            + f'<div class="wide"><table><tr><th>Building</th><th class="r">storeys</th><th class="r">facade</th><th class="r">2 h or more</th><th class="r">none</th>'
            + f'<th class="r">mean</th><th class="r">podium, 2 h+</th><th class="r">tower, 2 h+</th>{ALT_TH("2 h+, " + ALT_COL)}' + ''.join(f'<th class="r">{SIDE_WORD[s]}, 2 h+</th>' for s in SIDES)
            + f'<th class="r">apartments, plan sheet</th></tr>{table}</table>'
-           + f'<div class="ass" style="margin-top:{6 * MM:.0f}px;font-size:{7 * PT:.1f}px">{H.escape(HOW)} Every building, ours with them, is read on every wall that can hold a window, its podium and ground floor with them; the podium columns are its lower three storeys, ground floor to L2. '
+           + f'<div class="ass" style="margin-top:{6 * MM:.0f}px;font-size:{7 * PT:.1f}px">{H.escape(HOW)} Every building, ours with them, is read on every wall that can hold a window, its podium and ground floor with them; the podium columns are the storeys under each tower, ground floor up; a building with no podium has none. '
            + 'The plan sheet\'s apartment column reads each neighbour on an assumed plan (bays along its long walls, corner apartments on both their walls) at the whole hours, '
            + 'as three hourly views of the sun show it; it is not a facade figure.</div>'
            + '<div style="margin-top:8mm">' + '</div></div>')
