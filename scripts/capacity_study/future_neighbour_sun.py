@@ -121,7 +121,7 @@ def head(kicker, sub):
 HOW = (f'Read as our facades are read, and as the yield study reads a scheme\'s: each wall, podium and tower, cut into cells about {ff.CELL_M:g} m wide and a storey '
        f'high, each read at its middle {ff.SILL_M:g} m over its floor, every {STEP_WORD} from 9 am to 3 pm on 21 June (AEST); a cell has the sun where the sun stands '
        f'more than 5° off its wall and nothing stands between, the hours added whether or not they run together. The podium '
-       f'is read with the tower, its ground floor with it, as ours is; a wall on a party edge holds no window. Facing east on this grid, a wall can have the sun from 9:00 to about 10:57 at most, under two hours. Indicative: a test of the massing.')
+       f'is read with the tower, its ground floor with it, as ours is; a wall on a party edge holds no window. Facing east on this grid, a wall can have the sun from 9:00 to 10:59 at most, 1 h 59 min, before the sun comes within 5° of it (it is behind the wall from 11:19). Indicative: a test of the massing.')
 
 
 def band_key():
