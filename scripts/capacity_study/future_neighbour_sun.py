@@ -32,7 +32,13 @@ OUT = args[0]
 NO = int(flag('--scene', '9'))
 # the second reading beside the 5 degrees: 0 unless --angle sets another, the sun counted right up to the wall's plane
 STRICT = float(flag('--angle', '0'))
+MAIN = ff.MIN_ANGLE                                               # the first reading's angle: FACADE_MIN_ANGLE, 5 unless set
+HAS_ALT = STRICT != MAIN
+MAIN_SAY = ('wherever the sun is on its side of the wall, counted until it is parallel to it (0°)' if MAIN == 0
+            else f'where the sun stands more than {MAIN:g}° off its wall')
 ALT_COL = 'at 0°' if STRICT == 0 else f'over {STRICT:g}°'
+ALT_TD = lambda x: f'<td class="r">{x}</td>' if HAS_ALT else ''
+ALT_TH = lambda x: f'<th class="r">{x}</th>' if HAS_ALT else ''
 ALT_SAY = 'Counting the sun until it is parallel to the wall (0°)' if STRICT == 0 else f'Counting only sun more than {STRICT:g}° off the wall'
 MM, PT = ff.MM, ff.PT
 
@@ -56,7 +62,7 @@ PANEL = 97 / 124                # a view of the sun's-eye sheet, four across and
 
 
 def read_both(faces):
-    """Each cell's hours at 5 degrees off its wall ('with') and at the second angle, --angle ('strict'), and whether it is in sun
+    """Each cell's hours at FACADE_MIN_ANGLE (5 degrees unless set) off its wall ('with') and at the second angle, --angle ('strict'), and whether it is in sun
     at each whole hour ('hourly'), as the view from the sun shows it."""
     ff.read_hourly(faces, occ, WHOLE, 'hourly')
     ff.read_hours(faces, occ, suns, 'with')
@@ -122,9 +128,10 @@ def head(kicker, sub):
 
 
 HOW = (f'Read as our facades are read, and as the yield study reads a scheme\'s: each wall, podium and tower, cut into cells about {ff.CELL_M:g} m wide and a storey '
-       f'high, each read at its middle {ff.SILL_M:g} m over its floor, every {STEP_WORD} from 9 am to 3 pm on 21 June (AEST); a cell has the sun where the sun stands '
-       f'more than 5° off its wall and nothing stands between, the hours added whether or not they run together. The podium '
-       f'is read with the tower, its ground floor with it, as ours is; a wall on a party edge holds no window. Facing east on this grid, a wall can have the sun from 9:00 to 10:59 at most, 1 h 59 min, before the sun comes within 5° of it (it is behind the wall from 11:19). Indicative: a test of the massing.')
+       f'high, each read at its middle {ff.SILL_M:g} m over its floor, every {STEP_WORD} from 9 am to 3 pm on 21 June (AEST); a cell has the sun {MAIN_SAY} '
+       f'and nothing stands between, the hours added whether or not they run together. The podium '
+       f'is read with the tower, its ground floor with it, as ours is; a wall on a party edge holds no window. ' + (f'Facing east on this grid, a wall can have the sun from 9:00 to 10:59 at most, 1 h 59 min, before the sun comes within 5° of it (it is behind the wall from 11:19). ' if MAIN == 5 else
+       'Facing east on this grid, a wall can have the sun from 9:00 until the sun comes round behind it at 11:19, 2 h 19 min at most. ' if MAIN == 0 else '') + 'Indicative: a test of the massing.')
 
 
 def band_key():
@@ -260,8 +267,9 @@ def sun_eye_sheet(b, faces, name, a5, aS):
     result = (f'<div class="sv res"><div class="rbig">{pct(a5["two"])}</div>'
               f'<div class="rl">of its facade has two hours of sun or more, 9 to 3 on 21 June.</div>'
               f'<div class="rs">No sun at all on {pct(a5["none"])} of it; on average {a5["mean"]:.1f} h.</div>'
-              f'<div class="rs">{ALT_SAY}: {pct(aS["two"])}.</div>'
-              f'<div class="rs">Read cell by cell, as its facade sheet reads it, every face, podium and tower, but its party walls, timed to the {STEP_WORD}. '
+              + (f'<div class="rs">{ALT_SAY}: {pct(aS["two"])}.</div>' if HAS_ALT else '')
+              + f''
+              f'<div class="rs">Read cell by cell, as its facade sheet reads it, every face, podium and tower, but its party walls, timed to the {STEP_WORD}{", at 0°: the sun counted until it is parallel to the wall" if MAIN == 0 else ""}. '
               f'The views are the whole hours; the figures add the sun between them.</div>'
               f'<table class="rt2"><tr><th>At</th><th class="r">facade in sun</th></tr>{hrs}</table>'
               f'<div class="rkey"><span style="background:{SUN_LIT}"></span>its facade in sun at that hour<br><span style="background:{SUN_SHADE}"></span>its facade in shadow<br>'
@@ -301,23 +309,23 @@ def building_sheet(b, faces, total):
             continue
         streets = sorted({f['street'] for f in faces if f['compass'] == side and f['street'] and not f['blank']})
         trs += (f'<tr><td>{SIDE_WORD[side]}{(" · " + H.escape(", ".join(streets))) if streets else ""}</td><td class="r">{f5["area"]:.0f} m²</td>'
-                f'<td class="r">{f5["mean"]:.1f} h</td><td class="r"><b>{pct(f5["two"])}</b></td><td class="r">{pct(f5["none"])}</td><td class="r">{pct(fS["two"])}</td></tr>')
+                f'<td class="r">{f5["mean"]:.1f} h</td><td class="r"><b>{pct(f5["two"])}</b></td><td class="r">{pct(f5["none"])}</td>{ALT_TD(pct(fS["two"]))}</tr>')
     apts = ((solar['buildings'].get(b['id']) or {}).get('apts') or {}).get('planned')
     lead = (f'{pct(a5["two"])} of its facade has two hours of sun or more on 21 June, {pct(a5["none"])} none; on average {a5["mean"]:.1f} h. '
-            f'{ALT_SAY}, {pct(aS["two"])}.'
+            + (f'{ALT_SAY}, {pct(aS["two"])}.' if HAS_ALT else '')
             + (f' The plan sheet\'s apartment reading of its tower, on an assumed plan, gives {pct(apts["share"])}.' if apts else ''))
     pod5, tow5, podS, towS = figures(faces, 'with', tier='podium'), figures(faces, 'with', tier='tower'), figures(faces, 'strict', tier='podium'), figures(faces, 'strict', tier='tower')
     p_lo, p_hi = min(c['storey'] for f in faces if tier_of(f) == 'podium' for c in f['cells']), max(c['storey'] for f in faces if tier_of(f) == 'podium' for c in f['cells'])
     t_lo = min(c['storey'] for f in faces if tier_of(f) == 'tower' for c in f['cells'])
-    tiers = (f'<tr><td>podium, {ff.level_name(p_lo)} to {ff.level_name(p_hi)}</td><td class="r">{pod5["area"]:.0f} m²</td><td class="r">{pod5["mean"]:.1f} h</td><td class="r"><b>{pct(pod5["two"])}</b></td><td class="r">{pct(pod5["none"])}</td><td class="r">{pct(podS["two"])}</td></tr>'
-             f'<tr><td>tower, {ff.level_name(t_lo)} to {ff.level_name(storeys)}</td><td class="r">{tow5["area"]:.0f} m²</td><td class="r">{tow5["mean"]:.1f} h</td><td class="r"><b>{pct(tow5["two"])}</b></td><td class="r">{pct(tow5["none"])}</td><td class="r">{pct(towS["two"])}</td></tr>')
+    tiers = (f'<tr><td>podium, {ff.level_name(p_lo)} to {ff.level_name(p_hi)}</td><td class="r">{pod5["area"]:.0f} m²</td><td class="r">{pod5["mean"]:.1f} h</td><td class="r"><b>{pct(pod5["two"])}</b></td><td class="r">{pct(pod5["none"])}</td>{ALT_TD(pct(podS["two"]))}</tr>'
+             f'<tr><td>tower, {ff.level_name(t_lo)} to {ff.level_name(storeys)}</td><td class="r">{tow5["area"]:.0f} m²</td><td class="r">{tow5["mean"]:.1f} h</td><td class="r"><b>{pct(tow5["two"])}</b></td><td class="r">{pct(tow5["none"])}</td>{ALT_TD(pct(towS["two"]))}</tr>')
     lead += f' Its podium, {ff.level_name(p_lo)} to {ff.level_name(p_hi)}: {pct(pod5["two"])}; its tower: {pct(tow5["two"])}.'
     body = (head(f'sun on {name}, 21 June', f'{name}: {storeys} storeys, its tower over a three-storey podium. All its walls, podium and tower, cell by cell.')
             + f'<div class="axs">{axos}</div><div class="rt"><div class="big">{pct(a5["two"])}</div><p class="lead">{H.escape(lead)}</p>'
             + f'<div class="key">{band_key()}<span class="kb"><i style="background:{ff.BLANK}"></i>party wall, no window</span></div>'
             + ff.elevation_svg(faces, 'with', 196, 'Unfolded · podium and tower', total) + f'<div class="sl">{bar}</div>'
-            + f'<table><tr><th>Its faces, the way they look</th><th class="r">facade</th><th class="r">mean</th><th class="r">2 h or more</th><th class="r">none</th><th class="r">2 h+, {ALT_COL}</th></tr>{trs}'
-            + f'<tr><th colspan="6" style="padding-top:{3 * MM:.0f}px">Its podium and its tower</th></tr>{tiers}</table>'
+            + f'<table><tr><th>Its faces, the way they look</th><th class="r">facade</th><th class="r">mean</th><th class="r">2 h or more</th><th class="r">none</th>{ALT_TH("2 h+, " + ALT_COL)}</tr>{trs}'
+            + f'<tr><th colspan="{6 if HAS_ALT else 5}" style="padding-top:{3 * MM:.0f}px">Its podium and its tower</th></tr>{tiers}</table>'
             + f'<div class="ass">{H.escape(HOW)}</div></div>')
     return dict(key=key, name=name, storeys=storeys, all=a5, strict=aS, apts=apts, sides={s: figures(faces, 'with', {s}) for s in SIDES}, podium=pod5, tower=tow5,
                 html=f'<!doctype html><html><head><meta charset="utf-8"><style>{css()}</style></head><body>{body}</body></html>')
@@ -353,10 +361,10 @@ for r in [ours_row] + rows:
     table += (f'<tr><td><b>{H.escape(r["name"])}</b></td><td class="r">{r["storeys"]}</td><td class="r">{r["all"]["area"]:.0f} m²</td>'
               f'<td class="r"><b>{pct(r["all"]["two"])}</b></td><td class="r">{pct(r["all"]["none"])}</td><td class="r">{r["all"]["mean"]:.1f} h</td>'
               f'<td class="r">{pct(r["podium"]["two"])}</td><td class="r">{pct(r["tower"]["two"])}</td>'
-              f'<td class="r">{pct(r["strict"]["two"])}</td>{sides}<td class="r">{pct(r["apts"]["share"]) if r["apts"] else "—"}</td></tr>')
+              f'{ALT_TD(pct(r["strict"]["two"]))}{sides}<td class="r">{pct(r["apts"]["share"]) if r["apts"] else "—"}</td></tr>')
 summary = (head('sun on every new building, 21 June', 'Every new building round us, and ours, read the same way: the share of its facade with two hours of sun or more.')
            + f'<div class="wide"><table><tr><th>Building</th><th class="r">storeys</th><th class="r">facade</th><th class="r">2 h or more</th><th class="r">none</th>'
-           + f'<th class="r">mean</th><th class="r">podium, 2 h+</th><th class="r">tower, 2 h+</th><th class="r">2 h+, {ALT_COL}</th>' + ''.join(f'<th class="r">{SIDE_WORD[s]}, 2 h+</th>' for s in SIDES)
+           + f'<th class="r">mean</th><th class="r">podium, 2 h+</th><th class="r">tower, 2 h+</th>{ALT_TH("2 h+, " + ALT_COL)}' + ''.join(f'<th class="r">{SIDE_WORD[s]}, 2 h+</th>' for s in SIDES)
            + f'<th class="r">apartments, plan sheet</th></tr>{table}</table>'
            + f'<div class="ass" style="margin-top:{6 * MM:.0f}px;font-size:{7 * PT:.1f}px">{H.escape(HOW)} Every building, ours with them, is read on every wall that can hold a window, its podium and ground floor with them; the podium columns are its lower three storeys, ground floor to L2. '
            + 'The plan sheet\'s apartment column reads each neighbour on an assumed plan (bays along its long walls, corner apartments on both their walls) at the whole hours, '
@@ -365,13 +373,13 @@ summary = (head('sun on every new building, 21 June', 'Every new building round 
 spath = os.path.join(OUT, f'future-neighbours-{NO}.html')
 open(spath, 'w').write(f'<!doctype html><html><head><meta charset="utf-8"><style>{css()}</style></head><body>{summary}</body></html>')
 
-json.dump(dict(scene=NO, step_min=ff.STEP_MIN, strict=STRICT, rows=[{k: v for k, v in r.items() if k != 'html'} for r in [ours_row] + rows]),
+json.dump(dict(scene=NO, step_min=ff.STEP_MIN, angle=MAIN, strict=STRICT if HAS_ALT else None, rows=[{k: v for k, v in r.items() if k != 'html'} for r in [ours_row] + rows]),
           open(os.path.join(OUT, f'future-neighbours-{NO}.json'), 'w'), indent=1, default=float)
 with open(os.path.join(OUT, f'future-neighbours-{NO}.csv'), 'w', newline='') as fh:
     w = csv.writer(fh)
-    w.writerow(['building', 'storeys', 'facade m2', '2h+ (5deg)', 'none', 'mean h', 'podium 2h+', 'tower 2h+', f'2h+ ({STRICT:g}deg)'] + [f'{SIDE_WORD[s]} 2h+' for s in SIDES] + [f'{SIDE_WORD[s]} mean h' for s in SIDES] + ['apartments, plan sheet'])
+    w.writerow(['building', 'storeys', 'facade m2', f'2h+ ({MAIN:g}deg)', 'none', 'mean h', 'podium 2h+', 'tower 2h+'] + ([f'2h+ ({STRICT:g}deg)'] if HAS_ALT else []) + [f'{SIDE_WORD[s]} 2h+' for s in SIDES] + [f'{SIDE_WORD[s]} mean h' for s in SIDES] + ['apartments, plan sheet'])
     for r in [ours_row] + rows:
-        w.writerow([r['name'], r['storeys'], round(r['all']['area']), pct(r['all']['two']), pct(r['all']['none']), f"{r['all']['mean']:.1f}", pct(r['podium']['two']), pct(r['tower']['two']), pct(r['strict']['two'])]
+        w.writerow([r['name'], r['storeys'], round(r['all']['area']), pct(r['all']['two']), pct(r['all']['none']), f"{r['all']['mean']:.1f}", pct(r['podium']['two']), pct(r['tower']['two'])] + ([pct(r['strict']['two'])] if HAS_ALT else [])
                    + [pct(r['sides'][s]['two']) for s in SIDES] + [f"{r['sides'][s]['mean']:.1f}" if r['sides'][s]['mean'] is not None else '' for s in SIDES]
                    + [pct(r['apts']['share']) if r['apts'] else ''])
 print('\n'.join([spath] + files))

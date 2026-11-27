@@ -473,6 +473,7 @@ def facade_figures(no, sides=None):
                 none += a_ * (c[key] <= 1e-9)
         out_[key] = dict(two=two / area, none=none / area) if area else None
     out_['alt_angle'] = fac.get('alt_angle')
+    out_['min_angle'] = fac.get('min_angle', 5)
     return out_
 
 
@@ -2658,7 +2659,8 @@ def sun_eye_page(no, scn, sun, r):
         w_, t_ = ff.get('with') or dict(two=0.0, none=0.0), ff.get('today')
         base_no = f', scenario {today_row["no"]}' if today_row else ''
         fac_ = json.load(open(f'{OUT}/future-facade-{no}.json'))
-        step_note = '; timed to the minute' if fac_.get('step_min', 15) <= 1 else (f'; read every {fac_.get("step_min", 15):g} minutes' if fac_.get('step_min', 15) != 15 else '; read every quarter hour')
+        step_note = ('' if fac_.get('min_angle', 5) == 5 else f'; at {fac_.get("min_angle"):g}°, the sun counted until it is parallel to the wall' if fac_.get('min_angle') == 0
+                     else f'; at {fac_.get("min_angle"):g}° off the wall') + ('; timed to the minute' if fac_.get('step_min', 15) <= 1 else (f'; read every {fac_.get("step_min", 15):g} minutes' if fac_.get('step_min', 15) != 15 else '; read every quarter hour'))
         result = (f'<div class="sv res"><div class="big" style="color:#111">{w_["two"]:.0%}</div>'
                   f'<div class="rl">of our {SIDES_WORD} have two hours of sun or more, 9 to 3 on 21 June.</div>'
                   + (f'<div class="rs">The baseline{base_no}: {t_["two"]:.0%}.</div>' if t_ else '')
