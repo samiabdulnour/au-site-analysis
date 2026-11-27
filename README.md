@@ -1901,6 +1901,36 @@ yield for 86, 88-90, 94 Maroubra Road, 2026-11):
   the deck and the massing's walls, its built walls its sky blue
   (`#7fa8ff`). `YIELD_CANARY_ZONES=pastel` draws Canary as it was a round
   ago, `grey` with grey walls.
+- *"For shadow of neighbour show only 9, 12 and 15 hours."* The shadow
+  plan draws the neighbours' and the scheme's shadows at 9 am, 12 pm and
+  3 pm alone, as a shadow diagram is lodged, each layer a firmer tone
+  (`THREE_HOUR_ALPHA`); the tables still count every hour.
+  `YIELD_SHADOW_LOOK='{"hours":"hourly"}'` draws the seven again.
+- *"The colours for Canary are still off. Please use the same colours you
+  use for the isometry in the report."* Canary's town takes the colours
+  of the report's built form page (`zoneTone()` `bands`): each neighbour
+  in the colour of its storeys (blue one or two, green three or four,
+  yellow five to eight, red above: `massingInks().bands`), on its outline
+  and its shaded walls, on the plans too, and the keys name the storeys;
+  what is built is shaded in the site's colour, as that page draws what
+  stands on the site. Its zones keep their mapped ePlanning colours where
+  they are drawn as areas, on the first page. The scheme's three shadows
+  are each in a colour of their own, that page's yellow to its red
+  (yellow 9 am, orange 12 pm, red 3 pm), outlined and named; the contours
+  in the ePlanning pinks are still to be had (`"ownStyle": "contours",
+  "ramp": "pink-orange", "hours": "hourly"`). `YIELD_CANARY_ZONES=vivid`,
+  `pastel` or `grey` draw the earlier looks.
+- *"The Kingfisher isometry has different trees and people normally."* A
+  path's own spread keeps the style's trees, people and traffic
+  (`entourage: 'style'` on a white model in `src/render/axonometric.ts`):
+  Kingfisher's canopies on their stems, its figures and its drawn cars;
+  Canary's green crowns and its traffic in colour. The ground, the
+  streets and the buildings stay the white model's, and the solar access
+  views and the views from the sun stay white throughout.
+  `YIELD_ISO_ENTOURAGE=white` draws the white trees again.
+- *"Please add sun eye views"*, with a sheet of one: *"it should respect
+  the style, but the layout could be pretty much like this."* A page
+  after each option's solar access: see "From the sun" above.
 - *"Dims are not very beautiful, change that."* They were a heavy line
   with square ticks and the whole `13.1 / 12 m` in bold, across whatever
   it met, the site's thick line among it. Now drawn as an architect
@@ -2085,6 +2115,20 @@ site may take, so a site with more paths has more pages:
      drawn white (an apartment's sun is on its facade; Z. 2026-11, "the
      roof shouldn't be counted, coloured like that: we care only for
      facades", then "make the roof white").
+   - **From the sun** (`…_views_from_the_sun`), the page after that, where
+     the option holds apartments. On the right seven views along the sun's
+     rays, on the hour from 9 am to 3 pm on 21 June, two across and four
+     down at one scale (`cameraFitScale()`), each named with its hour and
+     where the sun stands (`9 AM · SUN AT 43°, 19° UP`): what a view shows
+     of the facade is in sun at that hour, a cell in the style's sun
+     yellow, and a cell a neighbour or the building itself shades is grey.
+     The town is a bare white model: no trees, no traffic, no future, as
+     the count has none. The eighth cell is the share of the facade, by
+     area, that has the hours asked. On the left the facade in sun hour by
+     hour (`facadeSunAt()` in `src/lib/solarAccess.ts`: each cell read as
+     `facadeSun()` reads it, at each whole hour) and the sun on each
+     facade. The renderer takes a `camera` (a bearing and a height over
+     the horizon) and a `bare` scene for them.
 
    Every path's own spread draws its massing alone, the whole right page
    and framed close (14 m of town round the site): its plan is the shadow's,
