@@ -383,6 +383,7 @@ def existing_height(r):
 
 
 BUILT = set()
+REMOVED = set()                                                     # the buildings a scenario takes away (`removed`)
 HERITAGE = None
 HERITAGE_HITS = {}                                                  # scenario title -> [(parcel key, address, item)]
 
@@ -442,18 +443,25 @@ def yield_text(fsr, gfa, units, about=True):
 NO_PLANS = not ((S.get('tower') or {}).get('units'))
 
 
-def facade_figures(no):
+# the faces our headline sun counts, as marked up on 25 November: the west face on Riley Street and the east on Crown
+# Lane, where the apartments will look (the north face is close to the boundary, the south gets no winter sun)
+HEADLINE_SIDES = ('W', 'E')
+SIDES_WORD = 'west and east facades'
+
+
+def facade_figures(no, sides=None):
     """Our facade's sun in a scene, off future-facade-<no>.json: the share of the walls that can hold a window with two
-    hours or more and with none, with the scenario standing and today; None where it was not read."""
+    hours or more and with none, with the scenario standing and today; only the faces looking `sides` (compass
+    points) where named; None where it was not read."""
     path_ = f'{OUT}/future-facade-{no}.json'
     if not os.path.exists(path_):
         return None
     fac = json.load(open(path_))
     out_ = {}
-    for key in ('with', 'today'):
+    for key in ('with', 'today', 'with_alt', 'today_alt'):
         area = two = none = 0.0
         for f_ in fac['faces']:
-            if f_['blank']:
+            if f_['blank'] or (sides and f_.get('compass') not in sides):
                 continue
             w_ = f_['length'] / max(1, round(f_['length'] / fac.get('cell_m', 3.0)))
             for c in f_['cells']:
@@ -464,16 +472,26 @@ def facade_figures(no):
                 two += a_ * (c[key] >= 2 - 1e-9)
                 none += a_ * (c[key] <= 1e-9)
         out_[key] = dict(two=two / area, none=none / area) if area else None
+    out_['alt_angle'] = fac.get('alt_angle')
+    out_['min_angle'] = fac.get('min_angle', 5)
     return out_
+
+
+def alt_words(ff_):
+    """How the facade's second reading is named: at 0°, the sun counted until it is parallel to the wall."""
+    a = ff_.get('alt_angle')
+    return ('at 0°', 'Counting the sun until it is parallel to the wall (0°)') if a == 0 else (f'over {a:g}°', f'Counting only sun more than {a:g}° off the wall')
 
 
 def facade_sun_text(no):
     """Our building's line of sun on a plan sheet, where it has no plans: the share of its facade with two hours."""
-    ff = facade_figures(no)
+    ff = facade_figures(no, HEADLINE_SIDES)
     if not ff or not ff.get('with'):
         return None
     today_ = ff.get('today')
-    return (f'{ff["with"]["two"]:.0%} of our facade has 2 h or more' + (f' (today {today_["two"]:.0%})' if today_ else ''), '')
+    alt_ = ff.get('with_alt')
+    return (f'{ff["with"]["two"]:.0%} of our {SIDES_WORD} have 2 h or more' + (f' (baseline {today_["two"]:.0%})' if today_ else '')
+            + (f'; {alt_["two"]:.0%} {alt_words(ff)[0]}' + (f' (baseline {ff["today_alt"]["two"]:.0%})' if ff.get('today_alt') else '') if alt_ else ''), '')
 
 
 def trim_to(poly, want):
@@ -693,9 +711,14 @@ def hatch_path(g, spacing, angle=45.0):
     return ' '.join(d)
 
 
+# every dimension on a plan is drawn in black, whatever its verdict: the tables say which separations hold
+DIM_COLOUR = '#111111'
+
+
 def arch_dim(pts, labels, col, k):
     """An architectural dimension through the points: a thin line, an oblique tick at each point, each span's figure
-    above the line and along it, no halo."""
+    above the line and along it, no halo; in DIM_COLOUR whatever `col` asks."""
+    col = DIM_COLOUR
     (x0, y0), (x1, y1) = pts[0], pts[-1]
     L = math.hypot(x1 - x0, y1 - y0)
     if L < 0.2:
@@ -826,10 +849,23 @@ def bays_scheme(poly, typ, k, dirs=None):
             outline = poly.exterior
             n_ = max(4, round(outline.length / 9.5))
             o.append(f'<path d="{path(core)}" fill="none" stroke="#333" stroke-opacity=".45" stroke-width="{0.3 * k:.2f}"/>')
+            band_ = poly.difference(core)
             for i in range(n_):
-                a = outline.interpolate((i + 0.5) * outline.length / n_)
-                b = core.exterior.interpolate(core.exterior.project(a))
-                o.append(f'<line x1="{f(a.x)}" y1="{f(-a.y)}" x2="{f(b.x)}" y2="{f(-b.y)}" stroke="#333" stroke-opacity=".45" stroke-width="{0.3 * k:.2f}"/>')
+                # each party wall square to the outline where it leaves it, as far as the core: walls drawn to the
+                # core's nearest point fan out where a narrow plate's core is short
+                s_ = (i + 0.5) * outline.length / n_
+                a = outline.interpolate(s_)
+                t0, t1 = outline.interpolate(max(0.0, s_ - 0.6)), outline.interpolate(min(outline.length, s_ + 0.6))
+                tl = math.hypot(t1.x - t0.x, t1.y - t0.y) or 1.0
+                nx_, ny_ = -(t1.y - t0.y) / tl, (t1.x - t0.x) / tl
+                if not poly.contains(Point(a.x + nx_ * 0.3, a.y + ny_ * 0.3)):
+                    nx_, ny_ = -nx_, -ny_
+                ray = LineString([(a.x - nx_ * 0.05, a.y - ny_ * 0.05), (a.x + nx_ * (deep + 6), a.y + ny_ * (deep + 6))]).intersection(band_)
+                seg = min((g_ for g_ in getattr(ray, 'geoms', [ray]) if g_.geom_type == 'LineString' and not g_.is_empty), key=lambda g_: g_.distance(a), default=None)
+                if seg is None or seg.length < 1.0:
+                    continue
+                (x0_, y0_), (x1_, y1_) = seg.coords[0], seg.coords[-1]
+                o.append(f'<line x1="{f(x0_)}" y1="{f(-y0_)}" x2="{f(x1_)}" y2="{f(-y1_)}" stroke="#333" stroke-opacity=".45" stroke-width="{0.3 * k:.2f}"/>')
             return o
         along = [(x - p0[0]) * ux + (y - p0[1]) * uy for x, y in ring]
         across = [-(x - p0[0]) * uy + (y - p0[1]) * ux for x, y in ring]
@@ -999,11 +1035,14 @@ def resolve(scn):
                             gfa=gfa, fsr=gfa / area, parity=parity, plate=main['plate'], gap=main['gap'], consent=main['typ'] == 'consent', main_poly=main['poly'],
                             hob=control(HOB, parcel, 'MAX_B_H'), lep_fsr=control(FSR, parcel, 'FSR'), titles=len(p['addresses'])))
         blds += rows
-    global BUILT
+    global BUILT, REMOVED
     BUILT = used                                                      # the lots this scenario builds on: not context
+    # the buildings the scenario takes away, by address (`removed`): neither standing nor context, so the plan, the
+    # massing and the sun study read the land as cleared
+    REMOVED = {str(prop(a_)['propid']) for a_ in scn.get('removed', [])}
     existing = []
     for r in OTHERS:
-        if str(r['propid']) in used or str(r['propid']) in retained_for(scn):
+        if str(r['propid']) in used or str(r['propid']) in REMOVED or str(r['propid']) in retained_for(scn):
             continue
         h, n, how = existing_height(r)
         existing.append(dict(poly=r['poly'], h=h, n=n, how=how, base_addr=r['base']))
@@ -1152,9 +1191,14 @@ def ours_for(band):
     return next((t['poly'] for t in towers if t['s0'] <= want <= t['s1']), towers[-1]['poly'] if towers else SITE_TOWER)
 
 
+BASE_STOREYS = S['storeys']                                         # our storeys as the study states them
+
+
 def set_tower(scn=None):
     """Our tower for a scenario: the study's site.tower, with whatever the scenario's own `site.tower` replaces."""
     global TOWER, SITE_TOWER, SITE_BOX, SITE_PODIUM, TOWER_OWN, SITE_TIERS
+    # a scenario's own `site.storeys` builds our building to another height for that sheet
+    S['storeys'] = ((scn or {}).get('site') or {}).get('storeys') or BASE_STOREYS
     base = S.get('tower') or {}
     own = ((scn or {}).get('site') or {}).get('tower') or {}
     TOWER = {**base, **own} if base or own else None
@@ -1312,7 +1356,8 @@ def boundary_setbacks(parcels, blds):
                     v = 'party wall'
                 else:
                     v = 'clear' if d >= hab - 0.05 else 'one face blank' if d >= blank - 0.05 else 'short of a blank face'
-                row = dict(kind=run['kind'], name=run['name'], side=side, d=d, hab=hab, blank=blank, up=up, verdict=v, p0=(q1.x, q1.y), p1=(q2.x, q2.y), key=b['key'])
+                row = dict(kind=run['kind'], name=run['name'], side=side, d=d, hab=hab, blank=blank, up=up, verdict=v, p0=(q1.x, q1.y), p1=(q2.x, q2.y), key=b['key'],
+                           e0=(q1.x, q1.y), e1=(q2.x, q2.y))                # the tower to its lot's edge, the podium's face
                 if run['kind'] == 'street':                            # to the middle of the road: half its width past the boundary
                     ax = axis_near(run['name'], run['line'])
                     if ax is not None and ax.distance(run['line']) < 30:
@@ -1391,8 +1436,8 @@ def bounds_text(rows):
 
 
 def own_dims(sep, k):
-    """Our own tower's setbacks, where no separation across a road already gives them: to each neighbouring lot's
-    boundary, and to the middle of each street it fronts; facts of the plans, drawn in grey."""
+    """Our own tower's setbacks from its podium's edge, the lot's boundary, on every side: to each neighbouring lot's
+    boundary and to each street's; facts of the plans."""
     done = set()                                                      # the roads a separation already splits at their middle
     for nm, d, hab, blank, v, geo in sep:
         if geo.get('centre') and d >= 0.5:
@@ -1402,7 +1447,7 @@ def own_dims(sep, k):
     edges = [(p, q) for p, q in zip(cs[:-1], cs[1:]) if math.dist(p, q) >= 1]
     o = []
     for run in boundary_runs(SITE_POLY):
-        if run['line'].length < 6 or (run['kind'] == 'street' and norm_road(run['name']) in done):
+        if run['line'].length < 6:
             continue
         (x0, y0), (x1, y1) = run['line'].coords[0], run['line'].coords[-1]
         L = math.hypot(x1 - x0, y1 - y0) or 1.0
@@ -1416,14 +1461,9 @@ def own_dims(sep, k):
             continue
         p, q = min(facing, key=lambda e: run['line'].distance(Point((e[0][0] + e[1][0]) / 2, (e[0][1] + e[1][1]) / 2)))
         w, e_ = sorted((p, q), key=lambda c: (c[0], -c[1]))
-        t = 0.72 if run['kind'] == 'lot' else 0.5                    # beside the separation's own dimension, not on it
+        t = 0.72 if run['kind'] == 'lot' else 0.28                   # beside the separation's own dimension, not on it
         a = (w[0] + (e_[0] - w[0]) * t, w[1] + (e_[1] - w[1]) * t)
-        to = run['line']
-        if run['kind'] == 'street':
-            ax = axis_near(run['name'], run['line'])
-            if ax is None:
-                continue
-            to = ax
+        to = run['line']                                              # the podium's edge, the lot's boundary
         b = to.interpolate(to.project(Point(a)))
         d = math.dist(a, (b.x, b.y))
         if d >= 0.5:
@@ -1432,8 +1472,8 @@ def own_dims(sep, k):
 
 
 def bound_dims(rows, k, big):
-    """The dimensions for the option sheets' plans, architectural: every lot boundary's setback, each street's to the
-    middle of the road, and two new buildings across a road, half by half."""
+    """The dimensions for the option sheets' plans, architectural: the tower's setback from its podium's edge (its lot's
+    boundary) on every side, lot and street alike, and two new buildings across a road, half by half."""
     o = []
     near = {}
     for r in rows:
@@ -1444,7 +1484,8 @@ def bound_dims(rows, k, big):
         if r['kind'] == 'pair':
             o += arch_dim([r['p0'], r['mid'], r['p1']], [f'{r["a"]:.0f} m', f'{r["b"]:.0f} m'], col, k)
         elif r['kind'] == 'street':
-            o += arch_dim([r['p0'], r['p1']], [f'{r.get("dc", r["d"]):.0f} m'], col, k)
+            if r['d'] >= 0.5:                                         # the tower to the podium's street face
+                o += arch_dim([r['e0'], r['e1']], [f'{r["d"]:.0f} m'], col, k)
         elif r['d'] >= 0.5:
             o += arch_dim([r['p0'], r['p1']], [f'{r["d"]:.0f} m'], col, k)
     return o
@@ -1684,6 +1725,7 @@ def plan(scn, parcels, blds, existing, RET, sep, bset=None):
     # the separation from our tower to each neighbour: a dimension line between their nearest points, in the
     # verdict's colour
     def dim(x0, y0, x1, y1, col, label, sub=None, ticks=()):
+        col = DIM_COLOUR                                              # every dimension black
         L = math.hypot(x1 - x0, y1 - y0)
         ux, uy = (x1 - x0) / L, (y1 - y0) / L
         nx, ny = -uy, ux
@@ -1955,6 +1997,9 @@ def ground_of(props):
     return (sum(gs) / len(gs) - g0) if gs and g0 is not None else 0.0
 
 
+CONTEXT_M = 200          # how far round the site the scene keeps what stands, whether or not it can shade us
+
+
 def export_scene(no, blds, existing, RET, sep, parcels=(), scn_parcels=()):
     """Every building of the scenario as prisms, metres east and north of the site, for future_solar.py: ours,
     the scenario's (one per parcel key), what stands, and the window's other measured buildings as context, each on
@@ -1995,11 +2040,13 @@ def export_scene(no, blds, existing, RET, sep, parcels=(), scn_parcels=()):
     in_blocks = {str(r['propid']) for b in BLOCKS for r in b}
     low = math.tan(math.radians(17))                                  # the mid-winter sun at nine, with a margin
     for pid, r in PROPS.items():
-        if r.get('isSite') or pid in in_blocks or pid in BUILT or not measured(r):
+        if r.get('isSite') or pid in in_blocks or pid in BUILT or pid in REMOVED or not measured(r):
             continue
-        # the study window's buildings, and beyond it every one tall enough to reach the site with its shadow on
-        # the mid-winter morning or afternoon (the tiles read what stands up to 300 m off, north, east and west)
-        if not r['poly'].intersects(WINDOW.buffer(10)):
+        # the study window's buildings, every one within CONTEXT_M of the site (what the views round it draw, and
+        # what may shade a neighbour though not us), and beyond that every one tall enough to reach the site with
+        # its shadow on the mid-winter morning or afternoon (the tiles read what stands up to 300 m off, north, east
+        # and west)
+        if not r['poly'].intersects(WINDOW.buffer(10)) and r['poly'].distance(SITE_POLY) > CONTEXT_M:
             top = ground_of([r]) + measured(r)
             if top <= 0 or r['poly'].distance(SITE_POLY) > top / low or r['poly'].centroid.y < SITE_POLY.bounds[1] - 20:
                 continue
@@ -2087,7 +2134,7 @@ MINI_PAD = 26          # metres of context round the study on the summary's plan
 
 def context_buildings(reach):
     """The window's other measured buildings within `reach` metres of the study: what stands round it today."""
-    skip = {str(r['propid']) for b in BLOCKS for r in b} | {str(SITE['propid'])} | BUILT
+    skip = {str(r['propid']) for b in BLOCKS for r in b} | {str(SITE['propid'])} | BUILT | REMOVED
     return [(r['poly'], storeys_of(r), measured(r), pid) for pid, r in PROPS.items() if pid not in skip and measured(r) and r['poly'].intersects(study.buffer(reach))]
 
 
@@ -2203,7 +2250,7 @@ def mini_plan(parcels, blds, existing, RET, sep, k=1.0, big=False, bset=None, wi
             c = b['poly'].representative_point()
             o.append(f'<text x="{f(c.x)}" y="{-c.y + 1.6 * k:.2f}" font-size="{PLAN_FS * k:.2f}" font-weight="700" text-anchor="middle" fill="#111" {halo(C[b["typ"]])}>{b["n"]}</text>')
             if big and b.get('plate'):
-                o.append(f'<text x="{f(c.x)}" y="{-c.y + 6.8 * k:.2f}" font-size="{PLAN_FS * k:.2f}" font-weight="500" text-anchor="middle" fill="#111" {halo(C[b["typ"]])}>{b["plate"]}</text>')
+                o.append(f'<text x="{f(c.x)}" y="{-c.y + 6.8 * k:.2f}" font-size="{PLAN_FS * k:.2f}" font-weight="600" text-anchor="middle" fill="#111" {halo(C[b["typ"]])}>{b["plate"]}</text>')
             if big and b['key'] in fsr_of and b['typ'] != 'consent':
                 o.append(f'<text x="{f(c.x)}" y="{-c.y + 12.0 * k:.2f}" font-size="{PLAN_FS * k:.2f}" font-weight="700" text-anchor="middle" fill="#111" {halo(C[b["typ"]])}>FSR {fsr_of[b["key"]]:.1f}:1</text>')
     for p in parcels:                                                 # the key letter at the parcel's corner, as the sheet has it
@@ -2225,7 +2272,7 @@ def mini_plan(parcels, blds, existing, RET, sep, k=1.0, big=False, bset=None, wi
             g_ = Point(mx_, my_).distance(hit) / 2
             lab_at, fsr_dy = (mx_ + dx_ * g_, my_ + dy_ * g_), 6.8
         on_podium = fsr_dy < 10                                       # there, the short name, so it clears the dimension beside it
-        o.append(f'<text x="{f(lab_at[0])}" y="{-lab_at[1] + 0.9 * k:.2f}" font-size="{PLAN_FS * k:.2f}" font-weight="500" text-anchor="middle" fill="#c0161c">{H.escape(S.get("label", "our site").split(",")[0] if on_podium else S.get("label", "our site"))}</text>')
+        o.append(f'<text x="{f(lab_at[0])}" y="{-lab_at[1] + 0.9 * k:.2f}" font-size="{PLAN_FS * k:.2f}" font-weight="600" text-anchor="middle" fill="#c0161c">{H.escape(S.get("label", "our site").split(",")[0] if on_podium else S.get("label", "our site"))}</text>')
         o.append(f'<text x="{f(c.x)}" y="{-c.y + fsr_dy * k:.2f}" font-size="{PLAN_FS * k:.2f}" font-weight="700" text-anchor="middle" fill="#c0161c" {halo("#e6b0b0")}>FSR {site_yield()[0]:.1f}:1</text>')
         fronts = {norm_road(r_['name']) for q in parcels for r_ in boundary_runs(q['poly']) if r_['kind'] == 'street'}
         fronts |= {norm_road(n_) for n_ in (TOWER or {}).get('setbacks', {}) if norm_road(n_) in ROADS}
@@ -2298,8 +2345,9 @@ def option_page(r):
            f'.ob{{border-bottom:{mm(.15)} solid #ccc;padding:{mm(1.3)} 0;font-size:{pt(6.8)};line-height:1.35}} .ob:first-of-type{{border-top:{mm(.3)} solid #111}}'
            f'.obn{{font-weight:700}} .oby{{color:#333}} .obs{{font-weight:600}} .obc{{font-size:{pt(6)};color:#666;margin-bottom:{mm(1.5)}}}'
            f'.oaxo{{width:{mm(cw)};height:{mm(cw * ah / aw)};margin-top:{mm(6)}}} .oaxo svg{{position:static;display:block;width:100%;height:100%}}')
-    head = (f'<div class="oh"><div class="kick">Future context · Scenario {r["no"]} of {LAST} · plan at 1:{OPTION_SCALE} on A3</div><h1>{H.escape(r["title"])}</h1>'
-            f'<div class="hor">{H.escape(r["horizon"])}</div></div>')
+    # the scenario's number is the sheet's heading; its name and what it builds run under it
+    head = (f'<div class="oh"><div class="kick">Future context · plan at 1:{OPTION_SCALE} on A3</div><h1>Scenario {r["no"]} of {LAST}</h1>'
+            f'<div class="hor"><b style="color:#111">{H.escape(r["title"])}.</b> {H.escape(r["horizon"])}</div></div>')
     warn = ''.join(f'<div class="u" style="color:#c0161c"><b>Site {H.escape(k_)} takes {H.escape(addr)}, heritage item {H.escape(item)}: it cannot be redeveloped.</b></div>' for k_, addr, item in r.get('heritage', []))
     if narrow:
         # beside a wide plan the table is a block a building: its name, its floor space, its sun
@@ -2307,7 +2355,7 @@ def option_page(r):
         if r['ours']:
             rows.append(('Our building', r.get('ours_yield', ''), r['ours']))
         note_ = ('Floor space, and the neighbours\' apartments, a rough estimate. Sun: the neighbours\' apartments with 2 continuous hours of winter sun; '
-                 'ours, the share of our facade with 2 hours or more, as the facade sheet reads it (our layout is not known yet).') if NO_PLANS else \
+                 'ours, the share of our west and east facades with 2 hours or more, as the facade sheet reads them (our layout is not known yet).') if NO_PLANS else \
             'Floor space and apartments are a rough estimate. Sun: apartments with 2 continuous hours of winter sun.'
         table = (f'<div class="obc">{note_}</div>'
                  + ''.join(f'<div class="ob"><div class="obn">{n_}</div><div class="oby">{y_}</div><div class="obs" style="color:{VERDICT_COLOUR.get(sc_, "#111")}">Sun: {st_}</div></div>' for n_, y_, (st_, sc_) in rows))
@@ -2319,9 +2367,10 @@ def option_page(r):
 
 
 SUN_LIT, SUN_SHADE = '#f4c242', '#a9a9a9'
+SUN_PANEL = 97 / 124            # a view of the sun's-eye sheet, four across and two down: its width to its height
 
 
-def sun_views(no, sun, hours=(9, 10, 11, 12, 13, 14, 15), reach=32, tall=0.6):
+def sun_views(no, sun, hours=(9, 10, 11, 12, 13, 14, 15), reach=32, tall=0.6, aspect=None):
     """The scene seen from the sun at each hour, our apartments lit or in shadow as it sees them: an orthographic
     projection along the sun's ray, every sun-facing wall and roof drawn far to near, our units' spans on their walls
     coloured by the engine's reading at that instant."""
@@ -2350,7 +2399,11 @@ def sun_views(no, sun, hours=(9, 10, 11, 12, 13, 14, 15), reach=32, tall=0.6):
         items = []
         ours = []
         far = []                                                       # (name, height, projected points) of the context
+        site_b = None
         for b in scene['buildings']:
+            if fac and b['kind'] == 'site':                            # ours is drawn below, as one group, tier by tier
+                site_b = b
+                continue
             fill = fills.get(b['kind'], '#e7e7e7')
             if b['kind'] == 'context':
                 ring0 = b['parts'][0]['ring']
@@ -2427,31 +2480,58 @@ def sun_views(no, sun, hours=(9, 10, 11, 12, 13, 14, 15), reach=32, tall=0.6):
                                 if b['kind'] == 'site':
                                     ours += quad
         # no plans: our facades as the yield study cuts them (future_facade_sun.py), each cell lit where the engine
-        # finds the sun on it at this hour, on the walls the sun faces
-        if fac:
-            for f_ in fac['faces']:
-                if f_['blank']:
-                    continue
-                (ax_, ay_), (bx_, by_), (nx_, ny_) = f_['a'], f_['b'], f_['normal']
-                if nx_ * s[0] + ny_ * s[1] <= 0:
-                    continue
-                zl, zh = min(storey_bottom(c['storey']) for c in f_['cells']), max(H_of(c['storey']) for c in f_['cells'])
-                wall_depth = min(c[2] for c in (P(ax_, ay_, zl), P(bx_, by_, zl), P(bx_, by_, zh), P(ax_, ay_, zh))) - 0.05
-                for c in f_['cells']:
-                    za, zb = storey_bottom(c['storey']), H_of(c['storey'])
-                    p0 = (ax_ + (bx_ - ax_) * c['t0'], ay_ + (by_ - ay_) * c['t0'])
-                    p1 = (ax_ + (bx_ - ax_) * c['t1'], ay_ + (by_ - ay_) * c['t1'])
-                    quad = [P(p0[0], p0[1], za), P(p1[0], p1[1], za), P(p1[0], p1[1], zb), P(p0[0], p0[1], zb)]
-                    lit = c.get('hourly', '')[hour - 9:hour - 8] == '1'
-                    items.append((wall_depth, quad, SUN_LIT if lit else SUN_SHADE, '#7a6a2a' if lit else '#777'))
-                    ours += quad
+        # finds the sun on it at this hour, on the walls the sun faces. Ours is one group in the painter's order, drawn
+        # tier by tier from the ground, each tier's walls, the cells on them, then its roof: a tier above may cover one
+        # below and never the other way, which ordering the cells by depth alone got wrong at the podium's far end
+        if fac and site_b is not None:
+            group = []
+            for k_part, part in enumerate(sorted(site_b['parts'], key=lambda q: q['z0'])):
+                ring, z0, z1 = part['ring'], part['z0'], part['z1']
+                for p, q in zip(ring, ring[1:] + ring[:1]):
+                    nx, ny = q[1] - p[1], -(q[0] - p[0])
+                    L = math.hypot(nx, ny)
+                    if L < 1e-6 or (nx * s[0] + ny * s[1]) / L <= 0:
+                        continue
+                    group.append(([P(p[0], p[1], z0), P(q[0], q[1], z0), P(q[0], q[1], z1), P(p[0], p[1], z1)], fills['site'], '#c0161c'))
+                for f_ in fac['faces']:
+                    if f_.get('part') != k_part:
+                        continue
+                    (ax_, ay_), (bx_, by_), (nx_, ny_) = f_['a'], f_['b'], f_['normal']
+                    zl_, zh_ = min(storey_bottom(c['storey']) for c in f_['cells']), max(H_of(c['storey']) for c in f_['cells'])
+                    ours += [P(ax_, ay_, zl_), P(bx_, by_, zl_), P(bx_, by_, zh_), P(ax_, ay_, zh_)]   # the view framed on the whole building
+                    # only the faces the headline counts are drawn in cells; the others stay plain, as the figure leaves them out
+                    if f_['blank'] or f_.get('compass') not in HEADLINE_SIDES or nx_ * s[0] + ny_ * s[1] <= 0:
+                        continue
+                    for c in f_['cells']:
+                        za, zb = storey_bottom(c['storey']), H_of(c['storey'])
+                        p0 = (ax_ + (bx_ - ax_) * c['t0'], ay_ + (by_ - ay_) * c['t0'])
+                        p1 = (ax_ + (bx_ - ax_) * c['t1'], ay_ + (by_ - ay_) * c['t1'])
+                        quad = [P(p0[0], p0[1], za), P(p1[0], p1[1], za), P(p1[0], p1[1], zb), P(p0[0], p0[1], zb)]
+                        lit = c.get('hourly', '')[hour - 9:hour - 8] == '1'
+                        group.append((quad, SUN_LIT if lit else SUN_SHADE, '#7a6a2a' if lit else '#777'))
+                group.append(([P(x, y, z1) for x, y in ring], fills['site'], '#c0161c'))
+            pts_ = [c for poly_, _, _ in group for c in poly_]
+            if pts_:
+                items.append((sum(c[2] for c in pts_) / len(pts_), None, group, None))
         items.sort(key=lambda it: -it[0])                            # far first
         xs = [c[0] for c in ours] or [0]
         ys = [c[1] for c in ours] or [0]
         x0, x1, y0, y1 = min(xs) - reach, max(xs) + reach, min(ys) - reach * tall, max(ys) + reach * tall
-        svg = [f'<svg viewBox="{x0:.1f} {-y1:.1f} {x1 - x0:.1f} {y1 - y0:.1f}" xmlns="http://www.w3.org/2000/svg"><rect x="{x0:.1f}" y="{-y1:.1f}" width="{x1 - x0:.1f}" height="{y1 - y0:.1f}" fill="#f7f6f3"/>']
+        if aspect:                                                     # the panel's proportions, about ours, so the view fills it
+            w_, h_ = x1 - x0, y1 - y0
+            if w_ / h_ < aspect:
+                x0, x1 = (x0 + x1) / 2 - h_ * aspect / 2, (x0 + x1) / 2 + h_ * aspect / 2
+            else:
+                y0, y1 = (y0 + y1) / 2 - w_ / aspect / 2, (y0 + y1) / 2 + w_ / aspect / 2
+        clip = f'sv{no}-{hour}'                                         # what reaches past the view is cut at its edge
+        svg = [f'<svg viewBox="{x0:.1f} {-y1:.1f} {x1 - x0:.1f} {y1 - y0:.1f}" xmlns="http://www.w3.org/2000/svg"{" preserveAspectRatio=\"xMidYMid slice\"" if aspect else ""}>'
+               f'<clipPath id="{clip}"><rect x="{x0:.1f}" y="{-y1:.1f}" width="{x1 - x0:.1f}" height="{y1 - y0:.1f}"/></clipPath>'
+               f'<rect x="{x0:.1f}" y="{-y1:.1f}" width="{x1 - x0:.1f}" height="{y1 - y0:.1f}" fill="#f7f6f3"/><g clip-path="url(#{clip})">']
         for depth, poly, fill, stroke in items:
-            svg.append(f'<polygon points="{" ".join(f"{c[0]:.2f},{-c[1]:.2f}" for c in poly)}" fill="{fill}" stroke="{stroke}" stroke-width="0.25" stroke-linejoin="round"/>')
+            for poly_, fill_, stroke_ in (fill if poly is None else [(poly, fill, stroke)]):     # a group: ours, in its own order
+                if max(c[0] for c in poly_) < x0 or min(c[0] for c in poly_) > x1 or max(c[1] for c in poly_) < y0 or min(c[1] for c in poly_) > y1:
+                    continue                                            # wholly outside the view
+                svg.append(f'<polygon points="{" ".join(f"{c[0]:.2f},{-c[1]:.2f}" for c in poly_)}" fill="{fill_}" stroke="{stroke_}" stroke-width="0.25" stroke-linejoin="round"/>')
         # a building far off that stands between the sun and ours is named where it covers us
         ox0, ox1, oy0, oy1 = min(xs), max(xs), min(ys), max(ys)
         for name, height, pts in far:
@@ -2467,7 +2547,7 @@ def sun_views(no, sun, hours=(9, 10, 11, 12, 13, 14, 15), reach=32, tall=0.6):
             ly = max(y0 + 6, min(y1 - 4, (max(oy0, by0) + min(oy1, by1)) / 2))
             label = H.escape(f'{short(name)}, {height:.0f} m')
             svg.append(f'<text x="{lx:.1f}" y="{-ly:.1f}" font-size="3.4" font-weight="700" text-anchor="middle" fill="#c0161c" paint-order="stroke" stroke="#fff" stroke-width="1.1">{label}</text>')
-        svg.append('</svg>')
+        svg.append('</g></svg>')
         alt = math.degrees(math.asin(s[2]))
         az = (math.degrees(math.atan2(s[0], s[1])) + 360) % 360
         views.append((f'{hour}:00', f'sun at {az:.0f}°, {alt:.0f}° up', ''.join(svg)))
@@ -2557,7 +2637,7 @@ def sun_eye_page(no, scn, sun, r):
     bays = not site_rec.get('units')
     if bays and not (site_rec and os.path.exists(f'{OUT}/future-facade-{no}.json')):
         return None
-    views = sun_views(no, sun, reach=44, tall=1.05)
+    views = sun_views(no, sun, reach=62, tall=1.05, aspect=SUN_PANEL)
     ap = site_rec['apts']['planned']
     by = site_rec.get('apts_by') or {}
     mark, vcol = apts_verdict(ap)
@@ -2575,13 +2655,18 @@ def sun_eye_page(no, scn, sun, r):
         before = before['planned'] if before else None
     if bays:
         # no plans: nothing said of apartments, only of the facade the sun reaches, as the facade sheet reads it
-        ff = facade_figures(no) or {}
+        ff = facade_figures(no, HEADLINE_SIDES) or {}
         w_, t_ = ff.get('with') or dict(two=0.0, none=0.0), ff.get('today')
+        base_no = f', scenario {today_row["no"]}' if today_row else ''
+        fac_ = json.load(open(f'{OUT}/future-facade-{no}.json'))
+        step_note = ('' if fac_.get('min_angle', 5) == 5 else f'; at {fac_.get("min_angle"):g}°, the sun counted until it is parallel to the wall' if fac_.get('min_angle') == 0
+                     else f'; at {fac_.get("min_angle"):g}° off the wall') + ('; timed to the minute' if fac_.get('step_min', 15) <= 1 else (f'; read every {fac_.get("step_min", 15):g} minutes' if fac_.get('step_min', 15) != 15 else '; read every quarter hour'))
         result = (f'<div class="sv res"><div class="big" style="color:#111">{w_["two"]:.0%}</div>'
-                  f'<div class="rl">of our facade has two hours of sun or more, 9 to 3 on 21 June.</div>'
-                  + (f'<div class="rs">Today, with the buildings as they stand: {t_["two"]:.0%}.</div>' if t_ else '')
-                  + f'<div class="rs">No sun at all on {w_["none"]:.0%} of it.</div>'
-                  f'<div class="rs">Read cell by cell, as the facade sheet reads it: the walls that can hold a window, the party wall left out.</div>'
+                  f'<div class="rl">of our {SIDES_WORD} have two hours of sun or more, 9 to 3 on 21 June.</div>'
+                  + (f'<div class="rs">The baseline{base_no}: {t_["two"]:.0%}.</div>' if t_ else '')
+                  + f'<div class="rs">No sun at all on {w_["none"]:.0%} of them.</div>'
+                  + (f'<div class="rs">{alt_words(ff)[1]}: {ff["with_alt"]["two"]:.0%}' + (f', against {ff["today_alt"]["two"]:.0%} in the baseline' if ff.get('today_alt') else '') + '.</div>' if ff.get('with_alt') else '')
+                  + f'<div class="rs">Read cell by cell, as the facade sheet reads it: the west face on Riley Street and the east on Crown Lane alone, the north and south faces not counted{step_note}.</div>'
                   f'<div class="key"><span style="background:{SUN_LIT}"></span>facade in sun at that hour<br><span style="background:{SUN_SHADE}"></span>facade in shadow<br>'
                   f'<span style="background:#cdc6c0"></span>the neighbours as this scenario builds them</div></div>')
     else:
@@ -2600,8 +2685,8 @@ def sun_eye_page(no, scn, sun, r):
            f'.res{{justify-content:center;padding:0 {mm(6)}}} .res .big{{font-size:{pt(64)};font-weight:800;line-height:1}}'
            f'.res .rl{{font-size:{pt(10)};font-weight:600;margin:{mm(2)} 0 {mm(4)}}} .res .rs{{font-size:{pt(8.5)};color:#333;margin-bottom:{mm(1.2)}}}'
            f'.res .key{{font-size:{pt(7.5)};color:#444;margin-top:{mm(6)};line-height:1.9}} .res .key span{{display:inline-block;width:{mm(4)};height:{mm(2.6)};margin-right:{mm(2)};vertical-align:middle;border:{mm(.1)} solid #777}}')
-    head = (f'<div class="sh"><div class="kick">Future context · Scenario {r["no"]} of {LAST} · the view from the sun</div><h1>{H.escape(r["title"])}</h1>'
-            f'<div class="hor">Mid-winter, 21 June, each whole hour from 9 to 3: what the sun sees is in sun, what it cannot see is in shadow.</div></div>')
+    head = (f'<div class="sh"><div class="kick">Future context · the view from the sun</div><h1>Scenario {r["no"]} of {LAST}</h1>'
+            f'<div class="hor"><b style="color:#111">{H.escape(r["title"])}.</b> Mid-winter, 21 June, each whole hour from 9 to 3: what the sun sees is in sun, what it cannot see is in shadow.</div></div>')
     return (f'<!doctype html><html><head><meta charset="utf-8"><title>Future context · Scenario {r["no"]} · sun</title><style>{CSS}{css}</style></head><body>'
             f'{head}<div class="views">{cells}</div></body></html>')
 
