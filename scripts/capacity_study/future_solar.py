@@ -26,6 +26,13 @@ sys.path.insert(0, os.path.join(os.environ.get('LORIINI') or os.path.join(os.pat
 import numpy as np  # noqa: E402
 from sun_study.core.analysis import band_by_area, cumulative_minutes, instant_weights, longest_continuous_minutes, sunlit_matrix  # noqa: E402
 from sun_study.core.facade import vertical_face_panels  # noqa: E402
+
+# a wall in sun from FACADE_MIN_ANGLE degrees off it, in plan, 5 unless set, as the facade sheets read it; Loriini takes
+# the angle from its D199 on, and an older Loriini reads the sign alone, as 0 does
+_ANGLE = float(os.environ.get('FACADE_MIN_ANGLE', '5'))
+ANGLE = {'min_sun_angle_deg': _ANGLE} if 'min_sun_angle_deg' in __import__('inspect').signature(sunlit_matrix).parameters else {}
+if not ANGLE and _ANGLE:
+    print(f'future_solar.py: this Loriini takes no angle off a wall; the apartments are read at 0, not {_ANGLE:g}', file=sys.stderr)
 from sun_study.core.geometry import TriangleMesh, prism  # noqa: E402
 from sun_study.core.occlusion import Occluder  # noqa: E402
 from sun_study.core.sampling import SamplePoints  # noqa: E402
@@ -330,7 +337,7 @@ for path in sorted(glob.glob(f'{OUT}/future-scene-{ONLY_SCENE if ONLY_SCENE is n
         for key, o in (('with', occ['with']), (other, occ[other])):
             # the ADG's two hours are continuous, as three hourly sun's-eye views show them: the longest unbroken run
             # of sun on each cell, not its minutes added up over the day
-            lit = sunlit_matrix(pts, o, sun)
+            lit = sunlit_matrix(pts, o, sun, **ANGLE)
             minutes = continuous_minutes(lit, STEP)
             # a cell with some sun but no qualifying run of it is not without sun: the ADG's 15 % counts apartments
             # that get none at all between 9 and 3, at any instant
