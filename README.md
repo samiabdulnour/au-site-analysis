@@ -1911,7 +1911,7 @@ yield for 86, 88-90, 94 Maroubra Road, 2026-11):
   of the report's built form page (`zoneTone()` `bands`): each neighbour
   in the colour of its storeys (blue one or two, green three or four,
   yellow five to eight, red above: `massingInks().bands`), on its outline
-  and its shaded walls, on the plans too, and the keys name the storeys;
+  and its shaded walls in the isometric, whose key names the storeys;
   what is built is shaded in the site's colour, as that page draws what
   stands on the site. Its zones keep their mapped ePlanning colours where
   they are drawn as areas, on the first page. The scheme's three shadows
@@ -1920,6 +1920,13 @@ yield for 86, 88-90, 94 Maroubra Road, 2026-11):
   in the ePlanning pinks are still to be had (`"ownStyle": "contours",
   "ramp": "pink-orange", "hours": "hourly"`). `YIELD_CANARY_ZONES=vivid`,
   `pastel` or `grey` draw the earlier looks.
+- *"Keep the outlines of building black there"* (Canary's shadow plan),
+  then *"also please make the other building and their shadow blue, as an
+  option to check."* Canary's plan draws every neighbour white in a black
+  line again: the storeys' colours are its isometric's alone, and the
+  plan's key no longer names them. `YIELD_SHADOW_LOOK='{"town":"blue"}'`
+  draws the option: the other buildings' outlines and their shadows in
+  the report's blue (`nLine`, `nInk`), the scheme's shadows as they are.
 - *"The Kingfisher isometry has different trees and people normally."* A
   path's own spread keeps the style's trees, people and traffic
   (`entourage: 'style'` on a white model in `src/render/axonometric.ts`):

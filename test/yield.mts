@@ -671,12 +671,16 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
       // house its blue, on its outline and its shaded walls, on the plan too; the zones are no longer on them.
       const blue = (h: string) => { const [r, g, bb] = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)); return bb - Math.max(r, g) > 40; };
       const nbLines = [...spread.matchAll(/stroke="(#[0-9a-f]{6})" stroke-width="0\.3"/g)].map((x) => x[1]).filter((c) => c !== '#000000');
-      const planLine = /data-zone-line="1" d="[^"]+" fill="#ffffff" stroke="(#[0-9a-f]{6})"/.exec(planOf('canary'))?.[1] ?? '';
-      check('zone tone: Canary, a neighbour in the colour of its storeys (the report\'s blue for two), outline and walls, plan and massing', nbLines.some(blue) && fills(spread).some(blue) && blue(planLine)
-        && !fills(spread).includes('#ffa6a3') && !fills(spread).includes('#ff6d68'), `${nbLines.join(' ')} | ${planLine}`);
+      check('zone tone: Canary, a neighbour in the colour of its storeys (the report\'s blue for two), outline and walls, in its massing', nbLines.some(blue) && fills(spread).some(blue)
+        && !fills(spread).includes('#ffa6a3') && !fills(spread).includes('#ff6d68'), nbLines.join(' '));
+      // Z. 2026-11, on Canary's shadow plan: "keep the outlines of building black there". Its plan's buildings white in
+      // a black line, no storeys' colour on them and none in its key.
+      const cPlanPage = renderYieldDeck(lotted, meta, { theme: 'canary' }).slides.find((sl) => isTestPage(sl.id, 'shadow'))!;
+      check('zone tone: Canary\'s plan keeps every building\'s outline black, nothing of the storeys in its key', !/data-zone-line/.test(cPlanPage.figureHtml) && /fill="#ffffff" stroke="#1c1c1c" stroke-width="0\.3" stroke-linejoin="round"\/>/.test(cPlanPage.figureHtml)
+        && !(cPlanPage.legend ?? []).some((e) => /storeys$|colour of its storeys|zone's colour/.test(e.label)) && (cPlanPage.legend ?? []).some((e) => /^Buildings round about, each lot with its street number/.test(e.label)));
       const cLegend = cz.slides.find((sl) => sl.id === '03_within_controls')!.legend ?? [];
       check('zone tone: Canary keys the storeys, not the zones, on its massing and its plan', cLegend.some((e) => /^1–2 storeys$/.test(e.label)) && cLegend.some((e) => /each outlined in the colour of its storeys/.test(e.label)) && !cLegend.some((e) => /^R2\b/.test(e.label))
-        && (renderYieldDeck(lotted, meta, { theme: 'canary' }).slides.find((sl) => isTestPage(sl.id, 'shadow'))!.legend ?? []).some((e) => /^1–2 storeys$/.test(e.label)), cLegend.map((e) => e.label).join(' | '));
+, cLegend.map((e) => e.label).join(' | '));
       check('zone tone: Kingfisher\'s built walls shaded light blue', builtInks(kSpread).includes('#b4c6e7'), builtInks(kSpread).join(' '));
       process.env.YIELD_CANARY_ZONES = 'vivid';
       const cVivid = renderYieldDeck(zoned2, meta, { theme: 'canary' }).slides.find((sl) => sl.id === '03_within_controls')!.figureHtml;
@@ -720,6 +724,14 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
   const shadowOf = (bd: YieldBundle) => deck(bd).slides.find((sl) => isTestPage(sl.id, 'shadow'))!;
   const fullPlan = withLook({ hatch: true, dims: true, shaded: true }, () => shadowOf(close).figureHtml);
   check('shadow, asked for: hatched where only the envelope shades the ground', /<g data-added="1">.*?<clipPath/.test(fullPlan));
+  // Z. 2026-11: "also please make the other building and their shadow blue, as an option to check"
+  {
+    const blueTown = withLook({ town: 'blue' }, () => renderYieldDeck(close, meta, { theme: 'canary' }).slides.find((sl) => isTestPage(sl.id, 'shadow'))!);
+    const line = /<path data-town-line="1" d="[^"]+" fill="#ffffff" stroke="(#[0-9a-f]{6})"/.exec(blueTown.figureHtml)?.[1] ?? '';
+    const [r, g, bl] = [1, 3, 5].map((i) => parseInt(line.slice(i, i + 2) || '0', 16));
+    check('shadow, asked for: the other buildings and their shadows in blue', bl - Math.max(r, g) > 40 && new RegExp(`<g opacity="0\\.2" style="mix-blend-mode:multiply"><path d="[^"]+" fill="${line}" fill-rule="nonzero"/>`).test(blueTown.figureHtml)
+      && !/fill="#3a3c41" fill-rule="nonzero"/.test(blueTown.figureHtml) && (blueTown.legend ?? []).some((e) => /^Buildings round about/.test(e.label) && e.swatch.includes(`stroke="${line}"`)), line);
+  }
   check('shadow, asked for: the dimensions can be left off', !/data-dim/.test(withLook({ dims: false }, () => shadowOf(close).figureHtml)));
   // every massing of the deck a white model, a path's own spread too: no zone's colour in 3D (Z. 2026-11: "for the
   // isometry probably don't show the zoning in 3D, just white neighbour buildings")
