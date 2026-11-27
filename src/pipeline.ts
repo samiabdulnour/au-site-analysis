@@ -2,7 +2,7 @@
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { geocode, siteAddressOf, type GeocodeResult } from './fetch/geocode.js';
+import { geocodeKept, siteAddressOf, type GeocodeResult } from './fetch/geocode.js';
 import { fetchSiteLots, fetchRailCorridors, fetchZoning, fetchHeightOfBuilding, fetchFloorSpaceRatio, fetchHeritage, fetchSiteControls } from './fetch/nsw.js';
 import { fetchRoads, fetchRailLines, fetchTrainStations, fetchParkPoints, fetchComplexPoints, fetchNamedAreas, fetchAllLots, fetchPropertiesAt, fetchProperties, type TopoRoad, type NamedPoint, type RailLines, type NamedArea } from './fetch/nswTopo.js';
 import { fetchAerial, fetchVegetationMask, fetchVegetationPixels, type AerialResult, type VegetationPixels } from './fetch/imagery.js';
@@ -148,7 +148,7 @@ export async function runPipeline(address: string, opts: PipelineOpts): Promise<
   await mkdir(dataDir, { recursive: true });
 
   log(`geocoding "${address}"…`);
-  const geo = await geocode(address, log);
+  const geo = await geocodeKept(address, log);
   log(`  matched: ${geo.matchedAddresses.join('; ')}`);
 
   // Site lots come first: the rotation option needs the boundary geometry.
@@ -345,7 +345,7 @@ export async function runSitePipeline(address: string, opts: SitePipelineOpts): 
   await mkdir(dataDir, { recursive: true });
 
   log(`geocoding "${address}"…`);
-  const geo = await geocode(address, log);
+  const geo = await geocodeKept(address, log);
   log(`  matched: ${geo.matchedAddresses.join('; ')}`);
   const siteLots = await fetchSiteLots(geo.points);
   if (!siteLots.features.length) throw new Error('No cadastral lots found for the site.');
@@ -524,7 +524,7 @@ export async function runSummaryPipeline(
   await mkdir(join(opts.outDir, 'data'), { recursive: true });
 
   log(`geocoding "${address}"…`);
-  const geo = await geocode(address, log);
+  const geo = await geocodeKept(address, log);
   log(`  matched: ${geo.matchedAddresses.join('; ')}`);
 
   const siteLots = await fetchSiteLots(geo.points);
@@ -567,7 +567,7 @@ export async function runYieldPipeline(
   await mkdir(dataDir, { recursive: true });
 
   log(`geocoding "${address}"…`);
-  const geo = await geocode(address, log);
+  const geo = await geocodeKept(address, log);
   log(`  matched: ${geo.matchedAddresses.join('; ')}`);
   const siteLots = await fetchSiteLots(geo.points);
   if (!siteLots.features.length) throw new Error('No cadastral lots found for the site.');
@@ -1059,7 +1059,7 @@ export async function runSlidesPipeline(address: string, opts: SlidesPipelineOpt
   await mkdir(dataDir, { recursive: true });
 
   log(`geocoding "${address}"…`);
-  const geo = await geocode(address, log);
+  const geo = await geocodeKept(address, log);
   log(`  matched: ${geo.matchedAddresses.join('; ')}`);
   const siteLots = await fetchSiteLots(geo.points);
   if (!siteLots.features.length) throw new Error('No cadastral lots found for the site.');
@@ -1338,7 +1338,7 @@ export async function runStreetscapePipeline(address: string, opts: { outDir: st
   if (opts.site) ({ geo, siteLots } = opts.site);
   else {
     log(`geocoding "${address}"…`);
-    geo = await geocode(address, log);
+    geo = await geocodeKept(address, log);
     log(`  matched: ${geo.matchedAddresses.join('; ')}`);
     siteLots = await fetchSiteLots(geo.points);
     if (!siteLots.features.length) throw new Error('No cadastral lots found for the site.');

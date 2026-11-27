@@ -78,6 +78,16 @@ jobs:
           key: overpass-${{ github.run_id }}
           restore-keys: overpass-
 
+      # The same for the addresses the NSW register has placed (kept a week,
+      # src/fetch/geocode.ts): the register some hours answers nothing in
+      # ninety seconds, and a run asks it for the same few addresses.
+      - name: bring back the addresses already placed
+        uses: actions/cache/restore@v4
+        with:
+          path: out/.cache/geocode
+          key: addresses-${{ github.run_id }}
+          restore-keys: addresses-
+
       # The inputs reach the script as arguments, never pasted into it. The keys
       # are optional: a secret that is not set arrives empty and is ignored.
       # All of web is mounted, not only its samples: redrawing the card also
@@ -110,6 +120,13 @@ jobs:
         with:
           path: out/.cache/osm
           key: overpass-${{ github.run_id }}
+
+      - name: keep the addresses this run placed
+        if: ${{ always() && hashFiles('out/.cache/geocode/**') != '' }}
+        uses: actions/cache/save@v4
+        with:
+          path: out/.cache/geocode
+          key: addresses-${{ github.run_id }}
 
       # The pipelines' own warnings are a WARN word of their own ("  WARN
       # street furniture (OSM) failed: …"); a tool's WARNING is not one.

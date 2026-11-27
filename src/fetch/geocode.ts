@@ -9,6 +9,8 @@
 import { queryByExtent, queryWhere, type GeoJSONFC, type QueryOpts } from '../lib/arcgis.js';
 import { lonLatToMercator, mercatorScaleFactor, type Extent, type XY } from '../lib/geo.js';
 import { retryFetch } from '../lib/http.js';
+import { DAY_MS, readCached, writeCached } from '../lib/cache.js';
+import { createHash } from 'node:crypto';
 
 const ADDRESS_POINT =
   'https://portal.spatial.nsw.gov.au/server/rest/services/NSW_Geocoded_Addressing_Theme/FeatureServer/1';
@@ -529,4 +531,34 @@ export async function suggestAddresses(q: string, limit = 8): Promise<string[]> 
   return [...out.keys()]
     .sort((a, b) => score(a) - score(b) || a.length - b.length || a.localeCompare(b))
     .slice(0, limit);
+}
+
+/** How long an address the register has placed is kept before it is asked about again. */
+export const ADDRESS_KEPT_MS = 7 * DAY_MS;
+
+/**
+ * `geocode`, with what the register answered kept on disk for a week
+ * (out/.cache/geocode). One job asks for the same address once for every sheet
+ * it draws, and a samples run for one address a dozen times; the register,
+ * which answers most lookups in a second, some hours answers none in ninety,
+ * and then a deck was lost on an address the same run had placed twenty
+ * minutes before. An address that was placed is not asked about again until
+ * the week is out; one that was not is asked about every time.
+ */
+export async function geocodeKept(input: string, log: (m: string) => void = () => {}, folder = 'geocode'): Promise<GeocodeResult> {
+  const typed = input.trim().replace(/\s+/g, ' ').toUpperCase();
+  const key = `${typed.slice(0, 60)}-${createHash('sha1').update(typed).digest('hex').slice(0, 12)}.json`;
+  const kept = readCached(folder, key, ADDRESS_KEPT_MS);
+  if (kept !== null) {
+    try {
+      const was = JSON.parse(kept) as GeocodeResult;
+      if (was.points?.length && was.center) { log(`geocoding "${input}": as the address register placed it earlier`); return was; }
+    } catch { /* asked afresh below */ }
+  }
+  // An answer the register gave only in part (it warned of a number it did not answer for) is not kept:
+  // the next job must ask again, or a lot would stay missing from the site for a week.
+  let whole = true;
+  const found = await geocode(input, (m) => { if (/(^|\s)WARN\s/.test(m)) whole = false; log(m); });
+  if (whole && found.points.length) writeCached(folder, key, JSON.stringify(found));
+  return found;
 }
