@@ -458,7 +458,7 @@ def facade_figures(no, sides=None):
         return None
     fac = json.load(open(path_))
     out_ = {}
-    for key in ('with', 'today'):
+    for key in ('with', 'today', 'with_alt', 'today_alt'):
         area = two = none = 0.0
         for f_ in fac['faces']:
             if f_['blank'] or (sides and f_.get('compass') not in sides):
@@ -472,7 +472,14 @@ def facade_figures(no, sides=None):
                 two += a_ * (c[key] >= 2 - 1e-9)
                 none += a_ * (c[key] <= 1e-9)
         out_[key] = dict(two=two / area, none=none / area) if area else None
+    out_['alt_angle'] = fac.get('alt_angle')
     return out_
+
+
+def alt_words(ff_):
+    """How the facade's second reading is named: at 0°, the sun counted until it is parallel to the wall."""
+    a = ff_.get('alt_angle')
+    return ('at 0°', 'Counting the sun until it is parallel to the wall (0°)') if a == 0 else (f'over {a:g}°', f'Counting only sun more than {a:g}° off the wall')
 
 
 def facade_sun_text(no):
@@ -481,7 +488,9 @@ def facade_sun_text(no):
     if not ff or not ff.get('with'):
         return None
     today_ = ff.get('today')
-    return (f'{ff["with"]["two"]:.0%} of our {SIDES_WORD} have 2 h or more' + (f' (baseline {today_["two"]:.0%})' if today_ else ''), '')
+    alt_ = ff.get('with_alt')
+    return (f'{ff["with"]["two"]:.0%} of our {SIDES_WORD} have 2 h or more' + (f' (baseline {today_["two"]:.0%})' if today_ else '')
+            + (f'; {alt_["two"]:.0%} {alt_words(ff)[0]}' + (f' (baseline {ff["today_alt"]["two"]:.0%})' if ff.get('today_alt') else '') if alt_ else ''), '')
 
 
 def trim_to(poly, want):
@@ -2654,7 +2663,8 @@ def sun_eye_page(no, scn, sun, r):
                   f'<div class="rl">of our {SIDES_WORD} have two hours of sun or more, 9 to 3 on 21 June.</div>'
                   + (f'<div class="rs">The baseline{base_no}: {t_["two"]:.0%}.</div>' if t_ else '')
                   + f'<div class="rs">No sun at all on {w_["none"]:.0%} of them.</div>'
-                  f'<div class="rs">Read cell by cell, as the facade sheet reads it: the west face on Riley Street and the east on Crown Lane alone, the north and south faces not counted{step_note}.</div>'
+                  + (f'<div class="rs">{alt_words(ff)[1]}: {ff["with_alt"]["two"]:.0%}' + (f', against {ff["today_alt"]["two"]:.0%} in the baseline' if ff.get('today_alt') else '') + '.</div>' if ff.get('with_alt') else '')
+                  + f'<div class="rs">Read cell by cell, as the facade sheet reads it: the west face on Riley Street and the east on Crown Lane alone, the north and south faces not counted{step_note}.</div>'
                   f'<div class="key"><span style="background:{SUN_LIT}"></span>facade in sun at that hour<br><span style="background:{SUN_SHADE}"></span>facade in shadow<br>'
                   f'<span style="background:#cdc6c0"></span>the neighbours as this scenario builds them</div></div>')
     else:

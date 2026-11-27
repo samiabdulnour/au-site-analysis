@@ -41,6 +41,19 @@ CELL_M, SILL_M, OFF_M = 3.0, 1.0, 0.05                    # as facadeSun has the
 # a face has the sun where the sun stands at least this many degrees off the wall's plane: 5, as the yield study reads
 # it; FACADE_MIN_ANGLE sets a stricter reading, so grazing sun is not counted
 FACING = math.sin(math.radians(float(os.environ.get('FACADE_MIN_ANGLE', '5'))))
+# and a second reading beside it at FACADE_ALT_ANGLE, 0 unless set: the sun counted right up to the wall's plane
+ALT_ANGLE = float(os.environ.get('FACADE_ALT_ANGLE', '0'))
+ALT_COL = 'at 0°' if ALT_ANGLE == 0 else f'over {ALT_ANGLE:g}°'
+
+
+def read_hours_at(faces, occ, suns, key, angle):
+    """read_hours with the sun counted from `angle` degrees off the wall."""
+    global FACING
+    keep, FACING = FACING, math.sin(math.radians(angle))
+    try:
+        read_hours(faces, occ, suns, key)
+    finally:
+        FACING = keep
 PARTY_M = 0.6
 # the instants read: the middles of the quarter hours from 9 to 3, as the yield study reads them, each standing for its
 # 15 minutes; FACADE_STEP_MIN reads them finer (1: every minute), so a sun that comes or goes inside a quarter is timed
@@ -500,6 +513,8 @@ def sheet(n, last, title, horizon, faces, has_today, today_from, total):
     keys = ['with', 'today'] if has_today else ['with']
     t_with, r_with = stats(faces, 'with')
     t_today, r_today = stats(faces, 'today') if has_today else (None, None)
+    t_with_a, r_with_a = stats(faces, 'with_alt')
+    t_today_a, r_today_a = stats(faces, 'today_alt') if has_today else (None, None)
     views = [((-0.7071, -0.7071), 'From the corner of Riley Street and Stanley Lane, south-west'),
              ((0.7071, 0.7071), 'From the opposite corner, north-east')]
     scene = json.load(open(os.path.join(OUT, f'future-scene-{n}.json')))
@@ -515,9 +530,14 @@ def sheet(n, last, title, horizon, faces, has_today, today_from, total):
         w = r_with[d]
         st = ', '.join(sorted(w['street']))
         tdy = r_today.get(d) if r_today else None
-        tcells = (f'<td class="r">{tdy["hours"] / tdy["area"]:.1f} h</td><td class="r">{pct(tdy["two"] / tdy["area"])}</td>' if tdy and tdy['area'] else '<td></td><td></td>') if has_today else ''
-        trs += f'<tr><td>{COMPASS_WORD[d]}{(" · " + H.escape(st)) if st else ""}</td><td class="r">{w["area"]:.0f} m²</td>{tcells}<td class="r"><b>{w["hours"] / w["area"]:.1f} h</b></td><td class="r"><b>{pct(w["two"] / w["area"])}</b></td></tr>'
-    th = ('<th class="r">baseline, mean</th><th class="r">baseline, 2 h+</th>' if has_today else '') + ('<th class="r">with it, mean</th><th class="r">with it, 2 h+</th>' if has_today else '<th class="r">mean</th><th class="r">2 h+</th>')
+        tdy_a = r_today_a.get(d) if r_today_a else None
+        w_a = r_with_a.get(d)
+        tcells = (f'<td class="r">{tdy["hours"] / tdy["area"]:.1f} h</td><td class="r">{pct(tdy["two"] / tdy["area"])}</td><td class="r">{pct(tdy_a["two"] / tdy_a["area"]) if tdy_a and tdy_a["area"] else ""}</td>'
+                  if tdy and tdy['area'] else '<td></td><td></td><td></td>') if has_today else ''
+        trs += (f'<tr><td>{COMPASS_WORD[d]}{(" · " + H.escape(st)) if st else ""}</td><td class="r">{w["area"]:.0f} m²</td>{tcells}<td class="r"><b>{w["hours"] / w["area"]:.1f} h</b></td>'
+                f'<td class="r"><b>{pct(w["two"] / w["area"])}</b></td><td class="r">{pct(w_a["two"] / w_a["area"]) if w_a and w_a["area"] else ""}</td></tr>')
+    th = ((f'<th class="r">baseline, mean</th><th class="r">baseline, 2 h+</th><th class="r">baseline, 2 h+ {ALT_COL}</th>' if has_today else '')
+          + (f'<th class="r">with it, mean</th><th class="r">with it, 2 h+</th><th class="r">with it, 2 h+ {ALT_COL}</th>' if has_today else f'<th class="r">mean</th><th class="r">2 h+</th><th class="r">2 h+ {ALT_COL}</th>'))
     table = f'<table><tr><th>Our faces, the way they look</th><th class="r">facade</th>{th}</tr>{trs}</table>'
     if has_today:
         strips = (elevation_svg(faces, 'today', 196, f'Unfolded · the baseline, scenario {today_no}', total) + f'<div class="sl">{bar(t_today)}<div>{line(t_today)}.</div></div>'
@@ -534,6 +554,10 @@ def sheet(n, last, title, horizon, faces, has_today, today_from, total):
     we_with, we_today = we(r_with), (we(r_today) if r_today else None)
     if we_with is not None:
         lead += f' Its west and east faces alone: {pct(we_with)} with two hours or more' + (f', against {pct(we_today)} in the baseline.' if we_today is not None else '.')
+    # the second reading: the sun counted right up to the wall's plane (or from FACADE_ALT_ANGLE)
+    alt_say = 'Counting the sun until it is parallel to the wall (0°)' if ALT_ANGLE == 0 else f'Counting only sun more than {ALT_ANGLE:g}° off the wall'
+    lead += (f' {alt_say}: {pct(t_with_a["two"] / t_with_a["area"])} of the facade' + (f' against {pct(t_today_a["two"] / t_today_a["area"])}' if has_today else '')
+             + f'; west and east alone {pct(we(r_with_a))}' + (f' against {pct(we(r_today_a))}' if has_today else '') + '.')
     today_note = '' if today_from != 'missing' else '<p><b>Today here is the scenario with its new buildings taken out: the buildings they replace are missing from it, so today is read with more sun than it has.</b></p>'
     css = f'''@page{{size:{PAGE_W}px {PAGE_H}px;margin:0}} *{{box-sizing:border-box}} html,body{{margin:0;background:#fff}}
 body{{width:{PAGE_W}px;height:{PAGE_H}px;font-family:Inter,Helvetica,Arial,sans-serif;color:#111;position:relative;overflow:hidden;-webkit-print-color-adjust:exact;print-color-adjust:exact}}
@@ -591,6 +615,7 @@ if __name__ == '__main__':                                     # run as a script
         suns = sun_vectors(scene)
         occ_with = meshes_of(scene)
         read_hours(faces, occ_with, suns, 'with')
+        read_hours_at(faces, occ_with, suns, 'with_alt', ALT_ANGLE)                # the second reading, 0° unless set
         read_hourly(faces, occ_with, whole_hour_suns(scene), 'hourly')            # for the view from the sun
         has_today = no != today_no
         today_from = 'scene' if today_scene is not None else 'missing'
@@ -600,13 +625,15 @@ if __name__ == '__main__':                                     # run as a script
             occ_today = (meshes_of(today_scene, lambda b: b['kind'] != 'site', extra=[site]) if today_scene is not None
                          else meshes_of(scene, lambda b: b['kind'] != 'new'))
             read_hours(faces, occ_today, suns, 'today')
+            read_hours_at(faces, occ_today, suns, 'today_alt', ALT_ANGLE)
         total = unfold(faces)
         title, horizon = meta.get(no, (f'Scenario {no}', ''))
-        json.dump(dict(scene=no, today_scene=today_no, cell_m=CELL_M, sill_m=SILL_M, step_min=STEP_MIN, bands=dict(colours=LORIKEET, labels=LABELS),
+        json.dump(dict(scene=no, today_scene=today_no, cell_m=CELL_M, sill_m=SILL_M, step_min=STEP_MIN, alt_angle=ALT_ANGLE, bands=dict(colours=LORIKEET, labels=LABELS),
                        faces=faces), open(os.path.join(OUT, f'future-facade-{no}.json'), 'w'))
         open(os.path.join(OUT, f'future-facade-{no}.html'), 'w').write(sheet(no, len(scenes), title, horizon, faces, has_today, today_from, total))
         t_w, _ = stats(faces, 'with')
-        msg = f'future-facade-{no}: {pct(t_w["two"] / t_w["area"])} of our facade with 2 h+, mean {t_w["hours"] / t_w["area"]:.1f} h'
+        t_wa, _ = stats(faces, 'with_alt')
+        msg = f'future-facade-{no}: {pct(t_w["two"] / t_w["area"])} of our facade with 2 h+ ({pct(t_wa["two"] / t_wa["area"])} {ALT_COL}), mean {t_w["hours"] / t_w["area"]:.1f} h'
         if has_today:
             t_t, _ = stats(faces, 'today')
             msg += f' (today {pct(t_t["two"] / t_t["area"])}, {t_t["hours"] / t_t["area"]:.1f} h)'
