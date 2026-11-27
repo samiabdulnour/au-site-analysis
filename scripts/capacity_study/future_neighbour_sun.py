@@ -4,13 +4,14 @@ its floor, every FACADE_STEP_MIN minutes from 9 to 3 on 21 June (1 here unless s
 sun where the sun stands more than 5 degrees off its wall and nothing stands between; a podium is read as holding no
 homes, as the sheets read it, and a wall on a party edge holds no window. For each building a sheet: its massing from
 the south-west and the north-east, its faces cell by cell in the yield study's bands, its faces unfolded, and its
-figures, at 5 degrees and at the stricter --angle; and a first sheet comparing them with ours.
+figures, at 5 degrees and at the stricter --angle; a second sheet, the scene as the sun sees it at each whole hour
+from 9 to 3, framed on it, its facade lit where the sun reaches it; and a first sheet comparing them with ours.
 
     LORIINI=/path/to/loriini python3 -I scripts/capacity_study/future_neighbour_sun.py out/capacity/<slug> --scene 9 \
         --scenarios <file> [--angle 15]
 
-Writes future-neighbours-<n>.json and .csv, future-neighbours-<n>.html (the comparison) and future-neighbour-<n>-<key>.html
-(a sheet a building) beside the scene, and prints the HTML files in order; scripts/print_sheets.ts prints and binds them.
+Writes future-neighbours-<n>.json and .csv, future-neighbours-<n>.html (the comparison), future-neighbour-<n>-<key>.html
+(a sheet a building) and future-neighbour-<n>-<key>-sun.html (its view from the sun at each whole hour) beside the scene, and prints the HTML files in order; scripts/print_sheets.ts prints and binds them.
 """
 import csv
 import html as H
@@ -18,6 +19,8 @@ import json
 import math
 import os
 import sys
+
+import numpy as np
 
 os.environ.setdefault('FACADE_STEP_MIN', '1')
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -40,13 +43,18 @@ solar = json.load(open(os.path.join(OUT, f'future-solar-{NO}.json'))) if os.path
 
 occ = ff.meshes_of(scene)
 suns = ff.sun_vectors(scene)
+WHOLE = ff.whole_hour_suns(scene)                                  # the sun at 9, 10 … 3, as the view from the sun is drawn
 STEP_WORD = ff.STEP_WORD
 SIDES = ('N', 'E', 'S', 'W')
 SIDE_WORD = dict(N='north', E='east', S='south', W='west')
+FILLS = {'site': '#f3d9d9', 'new': '#cdc6c0', 'standing': '#dadada', 'context': '#e7e7e7'}   # as the deck's view from the sun
+SUN_LIT, SUN_SHADE = '#f4c242', '#a9a9a9'
 
 
 def read_both(faces):
-    """Each cell's hours at 5 degrees off its wall ('with') and at the stricter angle ('strict')."""
+    """Each cell's hours at 5 degrees off its wall ('with') and at the stricter angle ('strict'), and whether it is in sun
+    at each whole hour ('hourly'), as the view from the sun shows it."""
+    ff.read_hourly(faces, occ, WHOLE, 'hourly')
     ff.read_hours(faces, occ, suns, 'with')
     keep = ff.FACING
     ff.FACING = math.sin(math.radians(STRICT))
@@ -114,6 +122,148 @@ def band_key():
     return ''.join(f'<span class="kb"><i style="background:{c}"></i>{H.escape(l)}</span>' for c, l in zip(ff.LORIKEET, ff.LABELS))
 
 
+def label_of(b):
+    return 'ours' if b['kind'] == 'site' else b['id'].split('-', 1)[1] if b['kind'] == 'new' else None
+
+
+def sun_eye_svg(subject, faces, hour, s, reach=44.0, tall=1.05):
+    """The scene as the sun sees it at `hour`, framed on the building `subject`: an orthographic projection along the
+    sun's ray, every wall facing the sun and every roof drawn far to near, so whatever shows is in sun and whatever is
+    hidden is in shadow. The building read is one group, tier by tier from its foot (each tier's walls, the cells on
+    them lit or shaded as the engine finds them at that hour, then its roof); ours pink, outlined red."""
+    hi = hour - 9
+    s = np.asarray(s, dtype=float)
+    fwd = -s
+    right = np.cross(fwd, np.array([0.0, 0.0, 1.0]))
+    right /= np.linalg.norm(right)
+    up = np.cross(right, fwd)
+    P = lambda x, y, z: (float(np.dot((x, y, z), right)), float(np.dot((x, y, z), up)), float(np.dot((x, y, z), fwd)))
+    faces_toward = lambda nx, ny: nx * s[0] + ny * s[1] > 0
+    items, labels, frame = [], [], []
+    sub_b = None
+    for b in scene['buildings']:
+        if b['id'] == subject:
+            sub_b = b
+            continue
+        fill = FILLS.get(b['kind'], FILLS['context'])
+        stroke, sw = ('#c0161c', 0.3) if b['kind'] == 'site' else ('#8a8a8a', 0.2)
+        for part in b['parts']:
+            ring, z0, z1 = part['ring'], part['z0'], part['z1']
+            if len(ring) < 3 or z1 <= z0:
+                continue
+            for p, q in zip(ring, ring[1:] + ring[:1]):
+                nx, ny = q[1] - p[1], -(q[0] - p[0])
+                if math.hypot(nx, ny) < 1e-6 or not faces_toward(nx, ny):
+                    continue                                    # a wall the sun does not reach is not in its view
+                quad = [P(p[0], p[1], z0), P(q[0], q[1], z0), P(q[0], q[1], z1), P(p[0], p[1], z1)]
+                items.append((sum(c[2] for c in quad) / 4, quad, fill, stroke, sw))
+            top = [P(x, y, z1) for x, y in ring]
+            items.append((sum(c[2] for c in top) / len(top), top, fill, stroke, sw))
+        if label_of(b):
+            top_part = max(b['parts'], key=lambda q: q['z1'])
+            r_ = top_part['ring']
+            labels.append((label_of(b), P(sum(x for x, _ in r_) / len(r_), sum(y for _, y in r_) / len(r_), top_part['z1'])))
+    group = []
+    by_part = {}
+    for f in faces:
+        by_part.setdefault(f['part'], []).append(f)
+    for k_part, part in enumerate(sorted(sub_b['parts'], key=lambda q: q['z0'])):
+        ring, z0, z1 = part['ring'], part['z0'], part['z1']
+        frame += [P(x, y, z) for x, y in ring for z in (z0, z1)]
+        for p, q in zip(ring, ring[1:] + ring[:1]):
+            nx, ny = q[1] - p[1], -(q[0] - p[0])
+            if math.hypot(nx, ny) < 1e-6 or not faces_toward(nx, ny):
+                continue
+            group.append(([P(p[0], p[1], z0), P(q[0], q[1], z0), P(q[0], q[1], z1), P(p[0], p[1], z1)], FILLS['new'], '#111', 0.3))
+        for f in by_part.get(k_part, []):
+            (ax, ay), (bx, by), (nx, ny) = f['a'], f['b'], f['normal']
+            if f['blank'] or not faces_toward(nx, ny):
+                continue                                        # a party wall holds no window; it stays plain
+            g0 = f.get('ground', 0.0)
+            for c in f['cells']:
+                za, zb = g0 + ff.storey_bottom(c['storey']), g0 + ff.H_of(c['storey'])
+                p0 = (ax + (bx - ax) * c['t0'], ay + (by - ay) * c['t0'])
+                p1 = (ax + (bx - ax) * c['t1'], ay + (by - ay) * c['t1'])
+                lit = c.get('hourly', '')[hi:hi + 1] == '1'
+                group.append(([P(p0[0], p0[1], za), P(p1[0], p1[1], za), P(p1[0], p1[1], zb), P(p0[0], p0[1], zb)],
+                              SUN_LIT if lit else SUN_SHADE, '#7a6a2a' if lit else '#777', 0.25))
+        group.append(([P(x, y, z1) for x, y in ring], FILLS['new'], '#111', 0.3))
+    pts_ = [c for poly_, *_ in group for c in poly_]
+    items.append((sum(c[2] for c in pts_) / len(pts_), None, group, None, None))
+    items.sort(key=lambda it: -it[0])                            # far first
+    xs, ys = [c[0] for c in frame], [c[1] for c in frame]
+    x0, x1, y0, y1 = min(xs) - reach, max(xs) + reach, min(ys) - reach * tall, max(ys) + reach * tall
+    svg = [f'<svg viewBox="{x0:.1f} {-y1:.1f} {x1 - x0:.1f} {y1 - y0:.1f}" xmlns="http://www.w3.org/2000/svg"><rect x="{x0:.1f}" y="{-y1:.1f}" width="{x1 - x0:.1f}" height="{y1 - y0:.1f}" fill="#f7f6f3"/>']
+    for depth, poly, fill, stroke, sw in items:
+        for poly_, fill_, stroke_, sw_ in (fill if poly is None else [(poly, fill, stroke, sw)]):
+            svg.append(f'<polygon points="{" ".join(f"{c[0]:.2f},{-c[1]:.2f}" for c in poly_)}" fill="{fill_}" stroke="{stroke_}" stroke-width="{sw_}" stroke-linejoin="round"/>')
+    # each new building and ours named on its roof, where the frame holds it, the one read in the middle of the frame
+    sub_top = max(sub_b['parts'], key=lambda q: q['z1'])
+    r_ = sub_top['ring']
+    labels.append((label_of(sub_b), P(sum(x for x, _ in r_) / len(r_), sum(y for _, y in r_) / len(r_), sub_top['z1'])))
+    for text, (lx, ly, _) in labels:
+        if x0 + 4 < lx < x1 - 4 and y0 + 4 < ly < y1 - 4:
+            svg.append(f'<text x="{lx:.1f}" y="{-ly:.1f}" font-size="3.4" font-weight="700" text-anchor="middle" dominant-baseline="middle" '
+                       f'fill="{"#c0161c" if text == "ours" else "#111"}" paint-order="stroke" stroke="#fff" stroke-width="1.1">{H.escape(text)}</text>')
+    svg.append('</svg>')
+    return ''.join(svg)
+
+
+def hourly_share(faces):
+    """The share of a building's facade (its party walls aside) in sun at each whole hour, by area."""
+    out = []
+    for hi in range(len(WHOLE)):
+        a = lit = 0.0
+        for f in faces:
+            if f['blank']:
+                continue
+            w = f['length'] / max(1, round(f['length'] / ff.CELL_M))
+            for c in f['cells']:
+                ar = w * (ff.H_of(c['storey']) - ff.storey_bottom(c['storey']))
+                a += ar
+                lit += ar * (c.get('hourly', '')[hi:hi + 1] == '1')
+        out.append(lit / a if a else 0.0)
+    return out
+
+
+def sun_eye_sheet(b, faces, name, a5, aS):
+    """A building's view from the sun: the scene as the sun sees it at each whole hour from 9 to 3, framed on it, its
+    facade lit where the sun reaches it, and its figures."""
+    views = ''
+    for hour, s in zip(range(9, 16), WHOLE):
+        if s is None:
+            continue
+        alt = math.degrees(math.asin(s[2]))
+        az = (math.degrees(math.atan2(s[0], s[1])) + 360) % 360
+        views += f'<div class="sv"><div class="svt">{hour}:00 <span>sun at {az:.0f}°, {alt:.0f}° up</span></div>{sun_eye_svg(b["id"], faces, hour, s)}</div>'
+    shares = hourly_share(faces)
+    hrs = ''.join(f'<tr><td>{h}:00</td><td class="r">{v * 100:.0f}%</td></tr>' for h, v in zip(range(9, 16), shares))
+    result = (f'<div class="sv res"><div class="rbig">{pct(a5["two"])}</div>'
+              f'<div class="rl">of its facade has two hours of sun or more, 9 to 3 on 21 June.</div>'
+              f'<div class="rs">No sun at all on {pct(a5["none"])} of it; on average {a5["mean"]:.1f} h.</div>'
+              f'<div class="rs">Counting only sun more than {STRICT:g}° off the wall: {pct(aS["two"])}.</div>'
+              f'<div class="rs">Read cell by cell, as its facade sheet reads it, every face but its party walls and its podium, timed to the {STEP_WORD}. '
+              f'The views are the whole hours; the figures add the sun between them.</div>'
+              f'<table class="rt2"><tr><th>At</th><th class="r">facade in sun</th></tr>{hrs}</table>'
+              f'<div class="rkey"><span style="background:{SUN_LIT}"></span>its facade in sun at that hour<br><span style="background:{SUN_SHADE}"></span>its facade in shadow<br>'
+              f'<span style="background:{FILLS["new"]};border-color:#111"></span>its podium and party walls, not read<br>'
+              f'<span style="background:{FILLS["new"]}"></span>the other new buildings, named on their roofs<br>'
+              f'<span style="background:{FILLS["site"]};border-color:#c0161c"></span>our building</div></div>')
+    body = (head(f'the view from the sun on {name}', f'{name}: mid-winter, 21 June, each whole hour from 9 to 3. What the sun sees is in sun, what it cannot see is in shadow.')
+            + f'<div class="views">{views}{result}</div>')
+    return f'<!doctype html><html><head><meta charset="utf-8"><style>{css()}{eye_css()}</style></head><body>{body}</body></html>'
+
+
+def eye_css():
+    return (f'.views{{position:absolute;left:{10 * MM:.0f}px;top:{27 * MM:.0f}px;width:{400 * MM:.0f}px;height:{262 * MM:.0f}px;display:grid;grid-template-columns:repeat(4,1fr);grid-template-rows:1fr 1fr;gap:{4 * MM:.0f}px {4 * MM:.0f}px}}'
+            f'.sv{{min-width:0;min-height:0;display:flex;flex-direction:column}} .sv svg{{flex:1;min-height:0;width:100%}}'
+            f'.svt{{font-size:{9 * PT:.1f}px;font-weight:700;margin-bottom:{1 * MM:.0f}px}} .svt span{{font-weight:400;color:#666}}'
+            f'.res{{justify-content:center;padding:0 {6 * MM:.0f}px}} .rbig{{font-size:{64 * PT:.1f}px;font-weight:800;line-height:1}}'
+            f'.rl{{font-size:{10 * PT:.1f}px;font-weight:600;margin:{2 * MM:.0f}px 0 {4 * MM:.0f}px}} .rs{{font-size:{8.5 * PT:.1f}px;color:#333;margin-bottom:{1.2 * MM:.0f}px}}'
+            f'.rt2{{width:60%;margin-top:{3 * MM:.0f}px;font-size:{7.5 * PT:.1f}px}}'
+            f'.rkey{{font-size:{7.5 * PT:.1f}px;color:#444;margin-top:{4 * MM:.0f}px;line-height:1.9}} .rkey span{{display:inline-block;width:{4 * MM:.0f}px;height:{2.6 * MM:.0f}px;margin-right:{2 * MM:.0f}px;vertical-align:middle;border:{.25 * MM:.1f}px solid #777}}')
+
+
 def building_sheet(b, faces, total):
     key = b['id'].split('-', 1)[1]
     name = pnames.get(key, b['name'])
@@ -159,7 +309,9 @@ for b in scene['buildings']:
     r = building_sheet(b, faces, total)
     path = os.path.join(OUT, f'future-neighbour-{NO}-{r["key"]}.html')
     open(path, 'w').write(r['html'])
-    files.append(path)
+    eye = os.path.join(OUT, f'future-neighbour-{NO}-{r["key"]}-sun.html')
+    open(eye, 'w').write(sun_eye_sheet(b, faces, r['name'], r['all'], r['strict']))
+    files += [path, eye]
     rows.append(r)
 
 # ours, read the same way, for the comparison: every wall that can hold a window, podium and ground floor with it
