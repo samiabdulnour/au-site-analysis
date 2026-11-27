@@ -124,14 +124,19 @@ def street_of(mx, my, nx, ny):
 
 
 # ---- our faces and their cells -------------------------------------------------------------------------------------
-def our_faces(site):
-    """Each tier's faces of our building: the edges of its outline, outward, with their cells; a face on a party edge
-    blank. Lowest tier first."""
+def faces_of(bld, residential=False):
+    """Each tier's faces of a building: the edges of its outline, outward, with their cells; a face on a party edge
+    blank; lowest tier first, each part numbered as it stands in that order. Storeys are counted from the building's
+    own ground, its lowest part's foot (`ground` on each face). With `residential`, a part holding no homes (a
+    neighbour's podium) is left out."""
     faces = []
-    for k_part, part in enumerate(sorted(site['parts'], key=lambda q: q['z0'])):
+    ground = min(q['z0'] for q in bld['parts'])
+    for k_part, part in enumerate(sorted(bld['parts'], key=lambda q: q['z0'])):
+        if residential and part.get('homes') == 'none':
+            continue
         ring = orient(Polygon(part['ring']), sign=1.0).exterior.coords[:-1]       # anticlockwise
         party = part.get('party', [])
-        sts = storeys_in(part['z0'], part['z1'])
+        sts = storeys_in(part['z0'] - ground, part['z1'] - ground)
         if not sts:
             continue
         n = len(ring)
@@ -144,10 +149,15 @@ def our_faces(site):
             blank = any(seg_dist(a, e[:2], e[2:]) < PARTY_M and seg_dist(b, e[:2], e[2:]) < PARTY_M for e in party)
             k = max(1, round(L / CELL_M))
             cells = [dict(storey=s, t0=j / k, t1=(j + 1) / k) for s in sts for j in range(k)]
-            faces.append(dict(part=k_part, homes=part.get('homes'), edge=i, a=list(a), b=list(b), normal=[nx, ny], length=L, blank=blank,
+            faces.append(dict(part=k_part, homes=part.get('homes'), edge=i, a=list(a), b=list(b), normal=[nx, ny], length=L, blank=blank, ground=ground,
                               compass=compass(nx, ny), street=street_of((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, nx, ny),
                               storeys=sts, cells=cells))
     return faces
+
+
+def our_faces(site):
+    """Our building's faces, every tier, from our ground."""
+    return faces_of(site)
 
 
 def meshes_of(scene, keep=lambda b: True, extra=()):
@@ -189,7 +199,7 @@ def read_hourly(faces, occ, suns, key):
         (ax, ay), (bx, by), (nx, ny) = f['a'], f['b'], f['normal']
         for ci, c in enumerate(f['cells']):
             t = (c['t0'] + c['t1']) / 2
-            p = (ax + (bx - ax) * t + nx * OFF_M, ay + (by - ay) * t + ny * OFF_M, storey_bottom(c['storey']) + SILL_M)
+            p = (ax + (bx - ax) * t + nx * OFF_M, ay + (by - ay) * t + ny * OFF_M, f.get('ground', 0.0) + storey_bottom(c['storey']) + SILL_M)
             for hi, s in enumerate(suns):
                 if s is None:
                     continue
@@ -220,7 +230,7 @@ def read_hours(faces, occ, suns, key):
         (ax, ay), (bx, by), (nx, ny) = f['a'], f['b'], f['normal']
         for ci, c in enumerate(f['cells']):
             t = (c['t0'] + c['t1']) / 2
-            p = (ax + (bx - ax) * t + nx * OFF_M, ay + (by - ay) * t + ny * OFF_M, storey_bottom(c['storey']) + SILL_M)
+            p = (ax + (bx - ax) * t + nx * OFF_M, ay + (by - ay) * t + ny * OFF_M, f.get('ground', 0.0) + storey_bottom(c['storey']) + SILL_M)
             for s in suns:
                 hl = math.hypot(s[0], s[1]) or 1.0
                 if (s[0] / hl) * nx + (s[1] / hl) * ny <= FACING:
@@ -326,10 +336,11 @@ def elevation_svg(faces, key, width_mm, title, total):
 
 
 # ---- the massing, from the street corner and the opposite one ---------------------------------------------------------
-def axo_svg(scene, faces, key, view, phi_deg=34.0, reach=58.0):
-    """The scenario's massing round us from `view` (a unit vector in plan toward the viewer), our faces cell by cell in
-    their bands, every other building plain: far to near, a building's parts lowest first; one standing in front of us
-    drawn as glass, so our faces are read through it."""
+def axo_svg(scene, faces, key, view, phi_deg=34.0, reach=58.0, subject='site', centre=(0.0, 0.0)):
+    """The scenario's massing round a building (ours by default; `subject` names another by its id, `centre` the point
+    the view is gathered round) from `view` (a unit vector in plan toward the viewer), its faces cell by cell in their
+    bands, every other building plain, ours pink: far to near, a building's parts lowest first; one standing in front
+    of it drawn as glass, so its faces are read through it."""
     vx, vy = view
     dx, dy = -vx, -vy                                          # the way the viewer looks
     rx, ry = dy, -dx                                           # the viewer's right
@@ -342,7 +353,7 @@ def axo_svg(scene, faces, key, view, phi_deg=34.0, reach=58.0):
     items = []
     for b in scene['buildings']:
         parts = [q for q in b['parts'] if len(q['ring']) >= 3 and q['z1'] > q['z0']]
-        parts = [q for q in parts if Polygon(q['ring']).distance(Point(0, 0)) < reach]
+        parts = [q for q in parts if Polygon(q['ring']).distance(Point(*centre)) < reach]
         if not parts:
             continue
         g = min(parts, key=lambda q: q['z0'])
@@ -351,7 +362,7 @@ def axo_svg(scene, faces, key, view, phi_deg=34.0, reach=58.0):
     items.sort(key=lambda t: -t[0])
     site_poly = None
     for d_, b, parts in items:
-        if b['kind'] == 'site':
+        if b['id'] == subject:
             pts = [P(x, y, z) for q in parts for x, y in q['ring'] for z in (q['z0'], q['z1'])]
             site_poly = Polygon(pts).convex_hull
     o, xs, ys = [], [], []
@@ -361,7 +372,8 @@ def axo_svg(scene, faces, key, view, phi_deg=34.0, reach=58.0):
         by_part.setdefault(f['part'], []).append(f)
     for d_, b, parts in items:
         kind = b['kind']
-        is_site = kind == 'site'
+        is_site = b['id'] == subject                           # the building read, its faces in cells
+        ink = '#c0161c' if kind == 'site' else '#111'          # ours outlined red, another subject black
         glass = False
         if not is_site and seen_site and site_poly is not None:
             hull = Polygon([P(x, y, z) for q in parts for x, y in q['ring'] for z in (q['z0'], q['z1'])]).convex_hull
@@ -389,31 +401,35 @@ def axo_svg(scene, faces, key, view, phi_deg=34.0, reach=58.0):
                 xs += [p[0] for p in quad]
                 ys += [p[1] for p in quad]
                 pts = ' '.join(f'{u:.2f},{v:.2f}' for u, v in quad)
-                if is_site:
-                    face = next((f for f in by_part.get(k_part, []) if f['edge'] == i), None)
-                    if face is None or face['blank']:
+                face = next((f for f in by_part.get(k_part, []) if f['edge'] == i), None) if is_site else None
+                if is_site and face is not None:
+                    if face['blank']:
                         o.append(f'<polygon points="{pts}" fill="{BLANK}" stroke="#888" stroke-width=".1"/>')
                     else:
+                        g0 = face.get('ground', 0.0)
                         for c in face['cells']:
-                            z0, z1 = storey_bottom(c['storey']), H_of(c['storey'])
+                            z0, z1 = g0 + storey_bottom(c['storey']), g0 + H_of(c['storey'])
                             pa = (a[0] + (bb[0] - a[0]) * c['t0'], a[1] + (bb[1] - a[1]) * c['t0'])
                             pb = (a[0] + (bb[0] - a[0]) * c['t1'], a[1] + (bb[1] - a[1]) * c['t1'])
                             cq = [P(pa[0], pa[1], z0), P(pb[0], pb[1], z0), P(pb[0], pb[1], z1), P(pa[0], pa[1], z1)]
                             o.append(f'<polygon points="{" ".join(f"{u:.2f},{v:.2f}" for u, v in cq)}" fill="{LORIKEET[band(c[key])]}" stroke="#fff" stroke-width=".07" stroke-linejoin="round"/>')
-                        o.append(f'<polygon points="{pts}" fill="none" stroke="#c0161c" stroke-width=".22"/>')
+                        o.append(f'<polygon points="{pts}" fill="none" stroke="{ink}" stroke-width=".22"/>')
                 else:
                     lit = 0.8 + 0.2 * max(0.0, nx * light[0] + ny * light[1])
                     col = shade(base_col, lit)
+                    edge_ = '#c0161c' if kind == 'site' else ink if is_site else '#8a8a8a'
                     if glass:
                         o.append(f'<polygon points="{pts}" fill="{col}" fill-opacity=".14" stroke="#666" stroke-width=".12"/>')
                     else:
-                        o.append(f'<polygon points="{pts}" fill="{col}" stroke="#8a8a8a" stroke-width=".1"/>')
+                        o.append(f'<polygon points="{pts}" fill="{col}" stroke="{edge_}" stroke-width="{".22" if kind == "site" or is_site else ".1"}"/>')
             roof = [P(x, y, q['z1']) for x, y in ring]
             xs += [p[0] for p in roof]
             ys += [p[1] for p in roof]
             rp = ' '.join(f'{u:.2f},{v:.2f}' for u, v in roof)
-            if is_site:
-                o.append(f'<polygon points="{rp}" fill="{C["site"]}" stroke="#c0161c" stroke-width=".22"/>')
+            if glass:                                          # in front of the building read: glass, roof and all
+                o.append(f'<polygon points="{rp}" fill="{base_col}" fill-opacity=".14" stroke="#666" stroke-width=".12"/>')
+            elif is_site or kind == 'site':
+                o.append(f'<polygon points="{rp}" fill="{C["site"] if kind == "site" else shade(base_col, 1.04)}" stroke="{"#c0161c" if kind == "site" else ink}" stroke-width=".22"/>')
             elif glass:
                 o.append(f'<polygon points="{rp}" fill="{base_col}" fill-opacity=".14" stroke="#666" stroke-width=".12"/>')
             else:
@@ -531,44 +547,45 @@ td{{border-bottom:{0.15 * MM:.1f}px solid #ccc;padding:{0.7 * MM:.1f}px {0.5 * M
 
 
 # ---- each scene ---------------------------------------------------------------------------------------------------
-paths = sorted(glob.glob(os.path.join(OUT, 'future-scene-*.json')), key=lambda p: int(re.findall(r'(\d+)\.json$', p)[0]))
-scenes = {int(re.findall(r'(\d+)\.json$', p)[0]): json.load(open(p)) for p in paths}
-today_no = next((k for k, s in scenes.items() if not any(b['kind'] == 'new' for b in s['buildings'])), None)
-scen_file = sys.argv[sys.argv.index('--scenarios') + 1] if '--scenarios' in sys.argv else None
-meta = {}
-if scen_file and os.path.exists(scen_file):
-    for i, s in enumerate(json.load(open(scen_file))['scenarios'], 1):
-        meta[i] = (s['title'], s.get('horizon', ''))
-written = []
-today_scene = scenes[today_no] if today_no is not None else None
-for no, scene in scenes.items():
-    if ONLY is not None and str(no) != str(ONLY):
-        continue
-    site = next((b for b in scene['buildings'] if b['kind'] == 'site'), None)
-    if not site:
-        continue
-    faces = our_faces(site)
-    suns = sun_vectors(scene)
-    occ_with = meshes_of(scene)
-    read_hours(faces, occ_with, suns, 'with')
-    read_hourly(faces, occ_with, whole_hour_suns(scene), 'hourly')            # for the view from the sun
-    has_today = no != today_no
-    today_from = 'scene' if today_scene is not None else 'missing'
-    if has_today:
-        # the baseline's buildings round us with our building as this scenario draws it: a scenario may build ours to
-        # another height, and the baseline's own would stand in its place
-        occ_today = (meshes_of(today_scene, lambda b: b['kind'] != 'site', extra=[site]) if today_scene is not None
-                     else meshes_of(scene, lambda b: b['kind'] != 'new'))
-        read_hours(faces, occ_today, suns, 'today')
-    total = unfold(faces)
-    title, horizon = meta.get(no, (f'Scenario {no}', ''))
-    json.dump(dict(scene=no, today_scene=today_no, cell_m=CELL_M, sill_m=SILL_M, step_min=STEP_MIN, bands=dict(colours=LORIKEET, labels=LABELS),
-                   faces=faces), open(os.path.join(OUT, f'future-facade-{no}.json'), 'w'))
-    open(os.path.join(OUT, f'future-facade-{no}.html'), 'w').write(sheet(no, len(scenes), title, horizon, faces, has_today, today_from, total))
-    t_w, _ = stats(faces, 'with')
-    msg = f'future-facade-{no}: {pct(t_w["two"] / t_w["area"])} of our facade with 2 h+, mean {t_w["hours"] / t_w["area"]:.1f} h'
-    if has_today:
-        t_t, _ = stats(faces, 'today')
-        msg += f' (today {pct(t_t["two"] / t_t["area"])}, {t_t["hours"] / t_t["area"]:.1f} h)'
-    written.append(msg)
-print('; '.join(written))
+if __name__ == '__main__':                                     # run as a script; imported, it only lends its functions
+    paths = sorted(glob.glob(os.path.join(OUT, 'future-scene-*.json')), key=lambda p: int(re.findall(r'(\d+)\.json$', p)[0]))
+    scenes = {int(re.findall(r'(\d+)\.json$', p)[0]): json.load(open(p)) for p in paths}
+    today_no = next((k for k, s in scenes.items() if not any(b['kind'] == 'new' for b in s['buildings'])), None)
+    scen_file = sys.argv[sys.argv.index('--scenarios') + 1] if '--scenarios' in sys.argv else None
+    meta = {}
+    if scen_file and os.path.exists(scen_file):
+        for i, s in enumerate(json.load(open(scen_file))['scenarios'], 1):
+            meta[i] = (s['title'], s.get('horizon', ''))
+    written = []
+    today_scene = scenes[today_no] if today_no is not None else None
+    for no, scene in scenes.items():
+        if ONLY is not None and str(no) != str(ONLY):
+            continue
+        site = next((b for b in scene['buildings'] if b['kind'] == 'site'), None)
+        if not site:
+            continue
+        faces = our_faces(site)
+        suns = sun_vectors(scene)
+        occ_with = meshes_of(scene)
+        read_hours(faces, occ_with, suns, 'with')
+        read_hourly(faces, occ_with, whole_hour_suns(scene), 'hourly')            # for the view from the sun
+        has_today = no != today_no
+        today_from = 'scene' if today_scene is not None else 'missing'
+        if has_today:
+            # the baseline's buildings round us with our building as this scenario draws it: a scenario may build ours to
+            # another height, and the baseline's own would stand in its place
+            occ_today = (meshes_of(today_scene, lambda b: b['kind'] != 'site', extra=[site]) if today_scene is not None
+                         else meshes_of(scene, lambda b: b['kind'] != 'new'))
+            read_hours(faces, occ_today, suns, 'today')
+        total = unfold(faces)
+        title, horizon = meta.get(no, (f'Scenario {no}', ''))
+        json.dump(dict(scene=no, today_scene=today_no, cell_m=CELL_M, sill_m=SILL_M, step_min=STEP_MIN, bands=dict(colours=LORIKEET, labels=LABELS),
+                       faces=faces), open(os.path.join(OUT, f'future-facade-{no}.json'), 'w'))
+        open(os.path.join(OUT, f'future-facade-{no}.html'), 'w').write(sheet(no, len(scenes), title, horizon, faces, has_today, today_from, total))
+        t_w, _ = stats(faces, 'with')
+        msg = f'future-facade-{no}: {pct(t_w["two"] / t_w["area"])} of our facade with 2 h+, mean {t_w["hours"] / t_w["area"]:.1f} h'
+        if has_today:
+            t_t, _ = stats(faces, 'today')
+            msg += f' (today {pct(t_t["two"] / t_t["area"])}, {t_t["hours"] / t_t["area"]:.1f} h)'
+        written.append(msg)
+    print('; '.join(written))
