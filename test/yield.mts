@@ -431,7 +431,7 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
     && (solar.figureHtml.match(/stroke="#ffffff" stroke-width="0\.07"/g) ?? []).length > 50 && (solar.legend ?? []).some((e) => /^Facades, hours of sun/.test(e.label)) && (solar.legend ?? []).some((e) => /roofs, white: not counted/.test(e.label))
     && !(solar.legend ?? []).some((e) => /laid over the last|Separation:/.test(e.label)));
   check('shadow: the plan the whole page, no massing on it, its key the shadows\'', hasPlan(shade.figureHtml) && !/From the street corner/.test(shade.figureHtml) && /height="297mm"/.test(shade.figureHtml)
-    && (shade.legend ?? []).some((e) => /shadows on 21 June, each hour/.test(e.label)) && !(shade.legend ?? []).some((e) => /Facades, hours of sun/.test(e.label)));
+    && (shade.legend ?? []).some((e) => /shadows on 21 June, at 9 am, 12 pm and 3 pm/.test(e.label)) && !(shade.legend ?? []).some((e) => /Facades, hours of sun/.test(e.label)));
   check('shadow: the land its shadow falls on, counted', /The shadow it adds/.test(shade.figureHtml) && ['residential lots', 'heritage items', 'parks and reserves'].every((t) => shade.figureHtml.includes(`<td>${t}</td>`)));
   // Z. 2026-11: "make the isometry here for the full half page and remove the plan: the plan is visible in shadow";
   // "keep the rule with full isometry everywhere; if there is nothing interesting for compliance, don't show the
@@ -481,9 +481,17 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
   const planSvg = shade.figureHtml.slice(shade.figureHtml.indexOf('<clipPath id="plan-within'));
   // Z. 2026-11: "the shadow of our design should have a different colour than the others". The envelope's in the
   // style's accent, the neighbours' in grey; each an hour a soft layer that darkens what is under it.
-  const accentInk = (planSvg.match(/<g opacity="0\.15" style="mix-blend-mode:multiply"><path d="[^"]+" fill="(#[0-9a-fA-F]{6})" fill-rule="evenodd"\/>/) ?? [])[1];
-  check('shadow: the envelope\'s own shadow an hour a layer, 9 to 3, in a colour of its own and not the neighbours\' grey', (planSvg.match(/<g opacity="0\.15" style="mix-blend-mode:multiply">/g) ?? []).length === 7 && !!accentInk && accentInk.toLowerCase() !== '#3a3c41',
-    `${(planSvg.match(/<g opacity="0\.15"/g) ?? []).length} layers in ${accentInk}`);
+  // Z. 2026-11: "for shadow of neighbour show only 9, 12 and 15 hours". Three layers of each, at 9 am, 12 pm and 3 pm.
+  const accentInk = (planSvg.match(/<g opacity="0\.26" style="mix-blend-mode:multiply"><path d="[^"]+" fill="(#[0-9a-fA-F]{6})" fill-rule="evenodd"\/>/) ?? [])[1];
+  check('shadow: the envelope\'s own shadow at 9 am, 12 pm and 3 pm, a layer each, in a colour of its own and not the neighbours\' grey', (planSvg.match(/<g opacity="0\.26" style="mix-blend-mode:multiply">/g) ?? []).length === 3 && !!accentInk && accentInk.toLowerCase() !== '#3a3c41',
+    `${(planSvg.match(/<g opacity="0\.26"/g) ?? []).length} layers in ${accentInk}`);
+  check('shadow: the plan says its hours', /Shadows at 9 am, 12 pm and 3 pm/i.test(shade.figureHtml));
+  {
+    process.env.YIELD_SHADOW_LOOK = JSON.stringify({ hours: 'hourly' });
+    const hourlyPlan = deck(bundle).slides.find((sl) => isTestPage(sl.id, 'shadow'))!.figureHtml;
+    delete process.env.YIELD_SHADOW_LOOK;
+    check('shadow, asked for: each hour from 9 to 3 is still to be had', (hourlyPlan.match(/<g opacity="0\.15" style="mix-blend-mode:multiply">/g) ?? []).length === 7 && /Shadows each hour, 9 am to 3 pm/i.test(hourlyPlan));
+  }
   check('shadow: the envelope\'s own at 9 am, 12 pm and 3 pm outlined, in its colour', (planSvg.match(new RegExp(`fill="none" stroke="${accentInk}" stroke-width="0\\.25" stroke-dasharray="1\\.2,0\\.8"`, 'g')) ?? []).length === 3, String((planSvg.match(/stroke-dasharray="1\.2,0\.8"/g) ?? []).length));
   check('shadow: no hatch on it by default', !/data-added/.test(planSvg));
   // Z. 2026-11: "don't do white outlines on texts". No word of a plan has a halo.
@@ -500,7 +508,7 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
     && /<path data-site d="[^"]+" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"\/>/.test(solar.figureHtml)
     && (shade.legend ?? []).some((e) => e.label === 'The site' && /stroke="#000000" stroke-width="0\.7"/.test(e.swatch)));
   check('shadow: the key names the neighbours\' shadows hour by hour, the envelope\'s own in its colour with its three outlined, the separations, and the neighbours by their street numbers',
-    (shade.legend ?? []).some((e) => /The neighbours' shadows on 21 June, each hour 9 am – 3 pm laid over the last/.test(e.label) && e.swatch.includes('#3a3c41'))
+    (shade.legend ?? []).some((e) => /The neighbours' shadows on 21 June, at 9 am, 12 pm and 3 pm, laid over each other/.test(e.label) && e.swatch.includes('#3a3c41'))
     && (shade.legend ?? []).some((e) => /own shadow, the same hours, in its own colour; at 9 am, 12 pm and 3 pm outlined/.test(e.label) && e.swatch.includes(String(accentInk)))
     && (shade.legend ?? []).some((e) => /Building separation: the distance over its line, what is asked/.test(e.label)) && (shade.legend ?? []).some((e) => /each lot with its street number/.test(e.label)) && !(shade.legend ?? []).some((e) => /zone/.test(e.label)));
   check('compliance: a lone option gets its two pages', deck(sliver).slides.some((sl) => sl.id === '03_within_controls_shadow_and_separation') && deck(sliver).slides.some((sl) => sl.id === '04_within_controls_solar_access'), deck(sliver).slides.map((sl) => sl.id).join(','));
@@ -523,6 +531,21 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
     const heronDeck = renderYieldDeck(treed, meta, { theme: 'heron' });
     const hp = heronDeck.slides.find((sl) => sl.id === '04_within_controls_shadow_and_separation')!.figureHtml + heronDeck.slides.find((sl) => sl.id === '03_within_controls')!.figureHtml;
     check('heron: the plan a line plan, its buildings white in a heavy black outline, what is built in the heaviest', /fill="#ffffff" stroke="#111111" stroke-width="0\.45"/.test(hp) && /stroke="#000000" stroke-width="0\.6"/.test(hp), hp.slice(hp.indexOf('#111111') - 80, hp.indexOf('#111111') + 60));
+    // Z. 2026-11: "the Kingfisher isometry has different trees and people normally". A path's own spread keeps the
+    // style's trees (Kingfisher's canopies, stamped; Canary's green crowns), where the white model drew every tree a
+    // white disc in a grey line; the solar access views stay white, their colour the facades' sun.
+    {
+      const whiteDisc = /<circle cx="[-\d.]+" cy="[-\d.]+" r="[\d.]+" fill="#ffffff" stroke="#8f8f8f" stroke-width="0\.1"\/>/;
+      const kT = renderYieldDeck(treed, meta, { theme: 'kingfisher' }), cT = renderYieldDeck(treed, meta, { theme: 'canary' });
+      const kIso = kT.slides.find((sl) => sl.id === '03_within_controls')!.figureHtml, cIso = cT.slides.find((sl) => sl.id === '03_within_controls')!.figureHtml;
+      check('entourage: Kingfisher\'s spread draws its own canopies, not white discs', !whiteDisc.test(kIso) && /<use href="#axo-[^"]+" transform="translate\(/.test(kIso));
+      check('entourage: Canary\'s spread draws its green crowns', !whiteDisc.test(cIso) && /<circle cx="[-\d.]+" cy="[-\d.]+" r="[\d.]+" fill="#[0-9a-f]{6}"\/>/.test(cIso));
+      check('entourage: the solar access views stay a white model', whiteDisc.test(kT.slides.find((sl) => isTestPage(sl.id, 'solar'))!.figureHtml));
+      process.env.YIELD_ISO_ENTOURAGE = 'white';
+      const kWhite = renderYieldDeck(treed, meta, { theme: 'kingfisher' }).slides.find((sl) => sl.id === '03_within_controls')!.figureHtml;
+      delete process.env.YIELD_ISO_ENTOURAGE;
+      check('entourage: the white trees are still to be had', whiteDisc.test(kWhite));
+    }
     check('heron: the massing a line model, the built in the heaviest outline, the gardens stippled in line', /fill="none" stroke="#000000" stroke-width="[\d.]+" stroke-linejoin="round"\/>/.test(hp) && !hp.includes('@@pw') && /data-ground="yard"/.test(hp) && !/fill="url\(#axo-(lawn|yard|road|shade)-/.test(hp));
     const kDeck = renderYieldDeck(treed, meta, { theme: 'kingfisher' });
     const kp = kDeck.slides.find((sl) => sl.id === '04_within_controls_shadow_and_separation')!.figureHtml;
@@ -547,7 +570,7 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
   const r3f = yieldRows(close).find((r) => r.label === '3F. VISUAL PRIVACY');
   const closePlan = deck(close).slides.find((sl) => isTestPage(sl.id, 'shadow'))!.figureHtml, closeSolar = deck(close).slides.find((sl) => isTestPage(sl.id, 'solar'))!.figureHtml;
   check('shadow: a neighbour white in a black line, no zone\'s colour on it, with its shadow', /fill="#ffffff" stroke="#1c1c1c" stroke-width="0\.3" stroke-linejoin="round"\/>/.test(closePlan)
-    && /<g opacity="0\.1" style="mix-blend-mode:multiply"><path d="[^"]+" fill="#3a3c41" fill-rule="nonzero"\/>/.test(closePlan));
+    && (closePlan.match(/<g opacity="0\.17" style="mix-blend-mode:multiply"><path d="[^"]+" fill="#3a3c41" fill-rule="nonzero"\/>/g) ?? []).length === 3, String((closePlan.match(/fill="#3a3c41" fill-rule="nonzero"/g) ?? []).length));
   // Z. 2026-11, after the neighbours went black and white: "use colours for zoning for plan and isometry, but only on
   // outlines; don't make very colourful fills or shades". A neighbour is white in a line of its zone's colour, on the
   // plan and in the white model, the zones keyed by their lines; Heron, black and white and one colour, has none.
@@ -575,7 +598,17 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
   // the ground in it so many of the seven hours, a gradient across it from pink (the morning side) to orange (the
   // afternoon side), palest at one hour, deepest at seven; the hours named at its far end and not outlined.
   {
-    const cShade = renderYieldDeck(close, meta, { theme: 'canary' }).slides.find((sl) => isTestPage(sl.id, 'shadow'))!;
+    // Z. 2026-11: "the colours for Canary are still off, please use the same colours you use for the isometry in the
+    // report", and the shadows at 9, 12 and 15 alone. Canary's default is now the three hours, each in a colour of
+    // its own, the report's yellow to its red, outlined and named; the contours are still to be had, asked for.
+    const cNow = renderYieldDeck(close, meta, { theme: 'canary' }).slides.find((sl) => isTestPage(sl.id, 'shadow'))!;
+    const sweepFills = [...cNow.figureHtml.matchAll(/<g data-sweep="1" opacity="0\.42" style="mix-blend-mode:multiply"><path d="[^"]+" fill="(#[0-9a-f]{6})"/g)].map((x) => x[1]);
+    const rgb = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+    check('canary shadow: the envelope\'s shadow at 9 am, 12 pm and 3 pm, yellow to red, outlined and named', sweepFills.length === 3 && rgb(sweepFills[0])[1] > rgb(sweepFills[1])[1] && rgb(sweepFills[1])[1] > rgb(sweepFills[2])[1]
+      && sweepFills.every((f) => rgb(f)[0] > 200 && rgb(f)[2] < 90) && ['9 AM', '12 PM', '3 PM'].every((w) => cNow.figureHtml.includes(`>${w}<`)) && !/>10 AM</.test(cNow.figureHtml) && !/data-band=/.test(cNow.figureHtml)
+      && (cNow.legend ?? []).some((e) => /shadow at 9 am, 12 pm and 3 pm on 21 June, each in its own colour \(yellow at 9 am, orange at 12 pm, red at 3 pm\)/.test(e.label)), sweepFills.join(' '));
+    const CONTOURS = { ownStyle: 'contours', ramp: 'pink-orange', hours: 'hourly' };
+    const cShade = withLook(CONTOURS, () => renderYieldDeck(close, meta, { theme: 'canary' }).slides.find((sl) => isTestPage(sl.id, 'shadow'))!);
     const bandIds = [...cShade.figureHtml.matchAll(/<path data-band="(\d)" d="[^"]+" fill="url\(#plan-band-[^"]+\)" fill-rule="evenodd"/g)].map((x) => Number(x[1]));
     const grads = [...cShade.figureHtml.matchAll(/<linearGradient id="plan-band-[^"]+" gradientUnits="userSpaceOnUse"[^>]*><stop offset="0" stop-color="(#[0-9a-f]{6})"\/><stop offset="1" stop-color="(#[0-9a-f]{6})"\/><\/linearGradient>/g)].map((x) => [x[1], x[2]]);
     const lum = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)).reduce((t, v) => t + v, 0);
@@ -585,7 +618,7 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
     check('canary shadow: not laid in layers of one ink, and its hours named and not outlined', !/<g opacity="0\.15" style="mix-blend-mode:multiply"><path d="[^"]+" fill="[^"]+" fill-rule="evenodd"\/>/.test(cShade.figureHtml)
       && !/stroke-dasharray="1\.2,0\.8"/.test(cShade.figureHtml) && /font-weight="700" fill="#[0-9a-f]{6}">9 AM</.test(cShade.figureHtml));
     check('canary shadow: the key names the bands', (cShade.legend ?? []).some((e) => /in bands: the ground in it one or two hours \(palest\) to all seven \(deepest\); pink on the morning side, orange on the afternoon side/.test(e.label)));
-    const swept = withLook({ ownStyle: 'sweep' }, () => renderYieldDeck(close, meta, { theme: 'canary' }).slides.find((sl) => isTestPage(sl.id, 'shadow'))!);
+    const swept = withLook({ ownStyle: 'sweep', ramp: 'pink-lilac', hours: 'hourly' }, () => renderYieldDeck(close, meta, { theme: 'canary' }).slides.find((sl) => isTestPage(sl.id, 'shadow'))!);
     check('canary shadow, asked for: a sweep, each hour its own colour, outlined and named', (swept.figureHtml.match(/<g data-sweep="1"/g) ?? []).length === 7 && /data-sweep[\s\S]*>10 AM</.test(swept.figureHtml)
       && (swept.legend ?? []).some((e) => /each in its own colour \(pink at 9 am to lilac at 3 pm\)/.test(e.label)));
     check('the other styles keep the hours laid over each other', !/data-band=/.test(closePlan));
@@ -603,7 +636,7 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
       const fills = (h: string) => [...h.matchAll(/<path d="[^"]+" fill="(#[0-9a-f]{6})" stroke="#[0-9a-f]{6}" stroke-width="0\.3"/g)].map((x) => x[1]);
       const hue = (h: string) => { const [r, g, b] = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)); return r - Math.min(g, b); };
       check('iso shade: a neighbour\'s walls shaded toward its zone\'s colour, not grey', fills(spread).some((f) => hue(f) > 20), fills(spread).join(' '));
-      check('iso shade: what is built shaded toward a light blue', /fill="#[0-9a-f]{6}" stroke="#000000" stroke-width="0\.3"/.test(spread) && [...spread.matchAll(/<path d="[^"]+" fill="(#[0-9a-f]{6})" stroke="#000000" stroke-width="0\.3"/g)].some((x) => { const [r, , b] = [1, 3, 5].map((i) => parseInt(x[1].slice(i, i + 2), 16)); return b - r > 15; }));
+      check('iso shade: Canary, what is built shaded toward the site\'s colour, as the report\'s isometric draws what stands on the site', [...spread.matchAll(/<path d="[^"]+" fill="(#[0-9a-f]{6})" stroke="#000000" stroke-width="0\.3"/g)].some((x) => { const [r, g, bb] = [1, 3, 5].map((i) => parseInt(x[1].slice(i, i + 2), 16)); return r - Math.max(g, bb) > 60; }));
       check('iso shade: the solar access views keep the neighbours neutral', fills(sol).every((f) => hue(f) <= 4), fills(sol).join(' '));
       // Z. 2026-11: "this colouring, this shading style would be better for Kingfisher; Canary has different colours …
       // more colour, like this" (its solar view). Kingfisher takes the mapped colours as they are, a soft R2 pink, its
@@ -616,9 +649,23 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
       const builtInks = (h: string) => [...h.matchAll(/<path d="[^"]+" fill="(#[0-9a-f]{6})" stroke="#000000" stroke-width="0\.3"/g)].map((x) => x[1]);
       check('zone tone: Kingfisher, a neighbour outlined and shaded in its zone\'s mapped colour', /stroke="#ffa6a3" stroke-width="0\.3"/.test(kSpread) && fills(kSpread).includes('#ffa6a3'), fills(kSpread).join(' '));
       check('zone tone: Kingfisher\'s plan in the same line', /data-zone-line="1" d="[^"]+" fill="#ffffff" stroke="#ffa6a3"/.test(planOf('kingfisher')));
-      check('zone tone: Canary, the same zone more vivid, on the walls and the lines, plan and massing', /stroke="#ff6d68" stroke-width="0\.3"/.test(spread) && fills(spread).includes('#ff6d68') && !fills(spread).includes('#ffa6a3')
-        && /data-zone-line="1" d="[^"]+" fill="#ffffff" stroke="#ff6d68"/.test(planOf('canary')), fills(spread).join(' '));
-      check('zone tone: Canary\'s built walls shaded sky blue, Kingfisher\'s light blue', builtInks(spread).includes('#7fa8ff') && builtInks(kSpread).includes('#b4c6e7'), `${builtInks(spread).join(' ')} | ${builtInks(kSpread).join(' ')}`);
+      // Z. 2026-11: "the colours for Canary are still off, please use the same colours you use for the isometry in the
+      // report". Canary's neighbours take the colour of their storeys, as the report's built form page: a two-storey
+      // house its blue, on its outline and its shaded walls, on the plan too; the zones are no longer on them.
+      const blue = (h: string) => { const [r, g, bb] = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)); return bb - Math.max(r, g) > 40; };
+      const nbLines = [...spread.matchAll(/stroke="(#[0-9a-f]{6})" stroke-width="0\.3"/g)].map((x) => x[1]).filter((c) => c !== '#000000');
+      const planLine = /data-zone-line="1" d="[^"]+" fill="#ffffff" stroke="(#[0-9a-f]{6})"/.exec(planOf('canary'))?.[1] ?? '';
+      check('zone tone: Canary, a neighbour in the colour of its storeys (the report\'s blue for two), outline and walls, plan and massing', nbLines.some(blue) && fills(spread).some(blue) && blue(planLine)
+        && !fills(spread).includes('#ffa6a3') && !fills(spread).includes('#ff6d68'), `${nbLines.join(' ')} | ${planLine}`);
+      const cLegend = cz.slides.find((sl) => sl.id === '03_within_controls')!.legend ?? [];
+      check('zone tone: Canary keys the storeys, not the zones, on its massing and its plan', cLegend.some((e) => /^1–2 storeys$/.test(e.label)) && cLegend.some((e) => /each outlined in the colour of its storeys/.test(e.label)) && !cLegend.some((e) => /^R2\b/.test(e.label))
+        && (renderYieldDeck(lotted, meta, { theme: 'canary' }).slides.find((sl) => isTestPage(sl.id, 'shadow'))!.legend ?? []).some((e) => /^1–2 storeys$/.test(e.label)), cLegend.map((e) => e.label).join(' | '));
+      check('zone tone: Kingfisher\'s built walls shaded light blue', builtInks(kSpread).includes('#b4c6e7'), builtInks(kSpread).join(' '));
+      process.env.YIELD_CANARY_ZONES = 'vivid';
+      const cVivid = renderYieldDeck(zoned2, meta, { theme: 'canary' }).slides.find((sl) => sl.id === '03_within_controls')!.figureHtml;
+      check('zone tone: Canary\'s vivid zones still to be had, its built walls sky blue', /stroke="#ff6d68" stroke-width="0\.3"/.test(cVivid) && fills(cVivid).includes('#ff6d68') && builtInks(cVivid).includes('#7fa8ff'), fills(cVivid).join(' '));
+      // the trees, the people and the traffic of a path's spread as the style draws them (Z. 2026-11: "the Kingfisher
+      // isometry has different trees and people normally"); the solar access views stay a white model
       process.env.YIELD_CANARY_ZONES = 'pastel';
       const cPastel = renderYieldDeck(zoned2, meta, { theme: 'canary' }).slides.find((sl) => sl.id === '03_within_controls')!.figureHtml;
       process.env.YIELD_CANARY_ZONES = 'grey';
@@ -635,16 +682,16 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
       && (cShade.legend ?? []).some((e) => /Building separation: the distance over its line, what is asked/.test(e.label) && !/#2f8f55|#c8372d|#c98a12/.test(e.swatch)));
     // Z. 2026-11: "try colourful shadow with neighbour buildings too". Asked for, the neighbours' shadows are contours
     // of their own (Canary's blues) under the envelope's, or every building's together as one set of contours.
-    const gBlue = withLook({ ground: 'contours', gRamp: 'blue' }, () => renderYieldDeck(close, meta, { theme: 'canary' }).slides.find((sl) => isTestPage(sl.id, 'shadow'))!);
+    const gBlue = withLook({ ...CONTOURS, ground: 'contours', gRamp: 'blue' }, () => renderYieldDeck(close, meta, { theme: 'canary' }).slides.find((sl) => isTestPage(sl.id, 'shadow'))!);
     check('canary shadow, asked for: the neighbours\' shadows as contours of their own, under the envelope\'s', /data-ground-band="1"/.test(gBlue.figureHtml) && /data-band="1"/.test(gBlue.figureHtml)
       && gBlue.figureHtml.indexOf('data-ground-band') < gBlue.figureHtml.indexOf('data-band=') && !/fill-rule="nonzero"/.test(gBlue.figureHtml)
       && (gBlue.legend ?? []).some((e) => /The neighbours' shadows on 21 June, 9 am – 3 pm, in bands/.test(e.label)));
-    const gAll = withLook({ ground: 'all' }, () => renderYieldDeck(close, meta, { theme: 'canary' }).slides.find((sl) => isTestPage(sl.id, 'shadow'))!);
+    const gAll = withLook({ ...CONTOURS, ground: 'all' }, () => renderYieldDeck(close, meta, { theme: 'canary' }).slides.find((sl) => isTestPage(sl.id, 'shadow'))!);
     check('canary shadow, asked for: every building\'s shadow as one set of contours, the envelope\'s reach outlined', /data-ground-band="1"/.test(gAll.figureHtml) && !/data-band="1"/.test(gAll.figureHtml)
       && /stroke-dasharray="1\.2,0\.8"/.test(gAll.figureHtml) && (gAll.legend ?? []).some((e) => /Every building's shadow on 21 June, 9 am – 3 pm, in bands/.test(e.label)));
     check('canary shadow: by default the neighbours\' shadows stay grey, hour by hour', !/data-ground-band/.test(cShade.figureHtml) && /fill-rule="nonzero"/.test(cShade.figureHtml));
   }
-  check('shadow: the envelope\'s shadow over the neighbours\', in its own colour', new RegExp(`<g opacity="0\\.15" style="mix-blend-mode:multiply"><path d="[^"]+" fill="${accentInk}" fill-rule="evenodd"/>`).test(closePlan)
+  check('shadow: the envelope\'s shadow over the neighbours\', in its own colour', new RegExp(`<g opacity="0\\.26" style="mix-blend-mode:multiply"><path d="[^"]+" fill="${accentInk}" fill-rule="evenodd"/>`).test(closePlan)
     && closePlan.indexOf('fill-rule="nonzero"') < closePlan.indexOf(`fill="${accentInk}" fill-rule="evenodd"`));
   // Z. 2026-11: "the building separation needs to be visible in the drawing, don't put it into text". Each separation a
   // dimension on the plan with what is asked of it; no table of them in the text column.

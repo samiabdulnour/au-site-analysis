@@ -111,6 +111,13 @@ export interface AxoScene {
   /** A white model: the town round the site (the ground, the lots, the streets, the neighbours, the trees, the traffic,
    * the people) in white and greys, so the colours on what is built read alone. The built keeps its own fills. */
   mono?: boolean;
+  /**
+   * In a white model, the trees, the people and the traffic as the style draws them in its own isometric (the report's
+   * built form): Kingfisher's canopies on their terracotta stems, its figures and its drawn cars; Canary's green
+   * crowns and its traffic in colour. The ground, the streets and the neighbours stay the white model's. (Z. 2026-11:
+   * "the Kingfisher isometry has different trees and people normally".) Heron's line model keeps its own.
+   */
+  entourage?: 'style';
 }
 
 /** The white model's greys: its edges, its ground lines, its kerbs, its people. */
@@ -419,7 +426,9 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   const line = deckLook().id === 'heron';
   const mono = !!scene.mono || line;
   const G = line ? LINE : MONO;
-  const M = mono ? { ...massingInks(), ground: '#ffffff', lot: G.line, park: '#ffffff', road: '#ffffff', axis: G.line, tree: '#ffffff', treeLight: '#ffffff', trunk: G.edge } : massingInks();
+  // (the trees, the people and the traffic in the white model's greys too, unless the scene keeps the style's own)
+  const monoEnt = mono && !(scene.entourage === 'style' && !line);
+  const M = mono ? { ...massingInks(), ground: '#ffffff', lot: G.line, park: '#ffffff', road: '#ffffff', axis: G.line, ...(monoEnt ? { tree: '#ffffff', treeLight: '#ffffff', trunk: G.edge } : {}) } : massingInks();
   const { ring, reach } = scene;
   // A line model's massing (the yield's massing views, the report's built form) is black and white, with no colour
   // at all: every ink and every fill it is given goes to the grey of its own lightness (a neighbour's tone, what
@@ -428,7 +437,7 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   const plain = line && !scene.mono;
   const bw = (c: string) => (plain ? greyOf(c) : c);
   const inks = plain ? { site: LINE.edge, future: bw(scene.inks.future), futureEdge: bw(scene.inks.futureEdge), envelope: bw(scene.inks.envelope), kerb: bw(scene.inks.kerb) } : scene.inks;
-  const look = lookOf(M, mono);
+  const look = lookOf(M, monoEnt);
   const turn = (TURN_DEG * Math.PI) / 180;
   const nx = scene.frontNormal.x, ny = scene.frontNormal.y;
   const cam = { x: nx * Math.cos(turn) - ny * Math.sin(turn), y: nx * Math.sin(turn) + ny * Math.cos(turn) };
@@ -803,7 +812,7 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
     const [cx, cy] = P(tr.p, zc), [bx, by] = P(tr.p, 0);
     if (look.crown === 'disc') {
       return `<line x1="${bx.toFixed(2)}" y1="${by.toFixed(2)}" x2="${cx.toFixed(2)}" y2="${cy.toFixed(2)}" stroke="${M.trunk}" stroke-width="0.25"/>` +
-        (mono ? `<circle cx="${cx.toFixed(2)}" cy="${cy.toFixed(2)}" r="${tr.r.toFixed(2)}" fill="#ffffff" stroke="${G.edge}" stroke-width="0.1"/>`
+        (monoEnt ? `<circle cx="${cx.toFixed(2)}" cy="${cy.toFixed(2)}" r="${tr.r.toFixed(2)}" fill="#ffffff" stroke="${G.edge}" stroke-width="0.1"/>`
           : `<circle cx="${cx.toFixed(2)}" cy="${cy.toFixed(2)}" r="${tr.r.toFixed(2)}" fill="${M.tree}"/>` +
           `<circle cx="${(cx - 0.22 * tr.r).toFixed(2)}" cy="${(cy - 0.2 * tr.r).toFixed(2)}" r="${(0.66 * tr.r).toFixed(2)}" fill="${M.treeLight}"/>`);
     }
@@ -838,18 +847,18 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   // white roof.
   // Kingfisher's traffic as an illustrator's isometric vehicles: whites, greys, a yellow and an orange, the glass dark,
   // the town's one thin contour round each
-  const kfCars = !mono && deckLook().id === 'kingfisher';
+  const kfCars = !monoEnt && deckLook().id === 'kingfisher';
   // Flamingo's traffic in line alone, as its people are: the same drawn vehicles, every part in the paper's cream with
   // the one thin line round it, the windows and the wheels in outline, a pale warm patch on the road under each
-  const LF = mono ? undefined : look.line;
+  const LF = monoEnt ? undefined : look.line;
   const drawnCars = kfCars || !!LF;
   // in Kingfisher's own colours: mostly warm whites and light greys, its terracotta, mint, pale blue, a cut of its deep
   // blue and its deep terracotta among them; the glass a dark slate of its blue; edged with the town's one contour
-  const CAR_INKS = mono ? ['#ffffff'] : LF ? [LF.fill] : deckLook().id === 'heron' ? ['#f2f2f2', '#bdbdbd', '#8c8c8c', '#e2e2e2', '#5e5e5e'] : kfCars
+  const CAR_INKS = monoEnt ? ['#ffffff'] : LF ? [LF.fill] : deckLook().id === 'heron' ? ['#f2f2f2', '#bdbdbd', '#8c8c8c', '#e2e2e2', '#5e5e5e'] : kfCars
     ? ['#f5f3ef', INK.red.solid, '#d9d6d1', INK.green.solid, '#f5f3ef', INK.blue.solid, tint(INK.blue.deep, 0.25), '#d9d6d1', INK.red.deep]
     : [vivid(INK.red.solid, 0.55, 0.45), vivid(INK.blue.solid, 0.5, 0.42), vivid(INK.orange.solid, 0.7, 0.5), '#f4f4f0'];
-  const WHITE = mono ? '#ffffff' : LF ? LF.fill : kfCars ? '#f5f3ef' : '#f4f4f0', GLASS = mono ? G.glass : LF ? LF.fill : kfCars ? shade(INK.blue.deep, 0.62) : tint(INK.blue.solid, 0.78);
-  const PALE = mono ? '#ffffff' : LF ? LF.fill : kfCars ? '#ece9e3' : '#e6e5df', CHASSIS = mono ? G.chassis : LF ? LF.fill : kfCars ? '#6e7380' : '#4a4a4a';
+  const WHITE = monoEnt ? '#ffffff' : LF ? LF.fill : kfCars ? '#f5f3ef' : '#f4f4f0', GLASS = monoEnt ? G.glass : LF ? LF.fill : kfCars ? shade(INK.blue.deep, 0.62) : tint(INK.blue.solid, 0.78);
+  const PALE = monoEnt ? '#ffffff' : LF ? LF.fill : kfCars ? '#ece9e3' : '#e6e5df', CHASSIS = monoEnt ? G.chassis : LF ? LF.fill : kfCars ? '#6e7380' : '#4a4a4a';
   const VAN_INKS = [WHITE, WHITE, CAR_INKS[2 % CAR_INKS.length], WHITE, CAR_INKS[1 % CAR_INKS.length]];
   type Block = { s0: number; s1: number; hw: number; z0: number; z1: number; fill: string };
   const block = (s0: number, s1: number, hw: number, z0: number, z1: number, fill: string): Block => ({ s0, s1, hw, z0, z1, fill });
@@ -871,7 +880,7 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   };
   const vehicleSvg = (v: Vehicle, stacks: Block[][]): string => {
     const along = v.u.x * d.x + v.u.y * d.y;   // how much farther each metre forward stands
-    const at = (b: Block): Prism => ({ rings: [corners({ ...v, c: { x: v.c.x + v.u.x * (b.s0 + b.s1) / 2, y: v.c.y + v.u.y * (b.s0 + b.s1) / 2 }, half: (b.s1 - b.s0) / 2, hw: b.hw })], z0: b.z0, z1: b.z1, fill: b.fill, edge: mono ? G.edge : kfCars ? shade(b.fill, 0.74) : '#3a3a3a', edgeW: line ? 0.07 : kfCars ? 0.05 : 0.1 });
+    const at = (b: Block): Prism => ({ rings: [corners({ ...v, c: { x: v.c.x + v.u.x * (b.s0 + b.s1) / 2, y: v.c.y + v.u.y * (b.s0 + b.s1) / 2 }, half: (b.s1 - b.s0) / 2, hw: b.hw })], z0: b.z0, z1: b.z1, fill: b.fill, edge: monoEnt ? G.edge : kfCars ? shade(b.fill, 0.74) : '#3a3a3a', edgeW: line ? 0.07 : kfCars ? 0.05 : 0.1 });
     const order = [...stacks].sort((p, q) => (q[0].s0 + q[0].s1) * along - (p[0].s0 + p[0].s1) * along);
     return `<g data-vehicle="${v.kind}">${order.map((st) => st.map((b) => prismSvg(at(b))).join('')).join('')}</g>`;
   };
@@ -953,11 +962,11 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   // standing on the ground with a head over it; a rider every so often down the kerb side of the lane, two wheels
   // and a frame with the body over them; in the traffic's colours and a dark grey in turn. None down a lane, no
   // bicycle on a highway, none where a building or a vehicle stands, and none on the site.
-  const FIGURE_INKS = mono ? [G.figure] : look.people === 'figure'
+  const FIGURE_INKS = monoEnt ? [G.figure] : look.people === 'figure'
     ? ['#ffffff', '#2e2e33', CAR_INKS[0], CAR_INKS[1], '#e9c24b', tint(INK.red.solid, 0.45), '#ffffff', CAR_INKS[2]]
     : [...CAR_INKS.slice(0, 3), '#3a3a3a'];
   const SKIN = ['#f0c8a4', '#d69c74', '#a46c4a', '#6a4430'], LEGS = ['#2f3542', '#4b5d7e', '#3b3b3b', '#bfae92'];
-  const SPOKE = mono ? G.edge : '#3a3a3a';
+  const SPOKE = monoEnt ? G.edge : '#3a3a3a';
   const figures: { key: number; svg: () => string }[] = [];
   let pi = 0;
   const free = (c: XY) => Math.hypot(c.x, c.y) <= reach && inFrame(c, 2.2, 1.5) && !footprints.some((rg) => inRing(c, rg)) && !inRing(c, ring) && !traffic.some((v) => underVehicle(c, v, 0.6));

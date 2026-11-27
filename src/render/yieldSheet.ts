@@ -21,7 +21,7 @@ import { tpl, withTemplate, templateFor, deckLook, tint, inkFor, vivid, mix, CAN
 import { shortStreetName, type SheetMeta } from './sheet.js';
 import { atlasPage, coverPage, bookletCover, coverSite, coverCredit, type Cover, type DeckHtml, deckCss, zFlow, zBlock, zTable, brief, MAP_FONT, type Slide, type DeckRenderOptions } from './slides.js';
 import { drawAxonometric, shade, type AxoScene, type Prism } from './axonometric.js';
-import { INK, zFigures, zBars, niceAxis, fillShape, categoryFill, massingInks, type Fill } from './atlasKit.js';
+import { INK, zFigures, zBars, niceAxis, fillShape, categoryFill, massingInks, heightBandOf, HEIGHT_BANDS, paletteRamp, type Fill } from './atlasKit.js';
 import { zoneToCategory } from './model.js';
 import { zoneFill, zoneOrder } from './lepPalette.js';
 import { LEP_OPACITY } from './sheet.js';
@@ -740,16 +740,37 @@ const photoOf = (b: YieldBundle): (AerialResult & { extent: Extent }) | null =>
  * colour, like this", with Canary's solar view, its walls in the sun's greens, lemons, oranges and blues):
  * - `pastel` (Kingfisher): the zone's ePlanning colour as mapped, a soft pink, salmon or blue, the line and the walls
  *   turned from the light; what is built a light blue.
- * - `vivid` (Canary): the same hue at the saturation of Canary's sun colours, lighter zones lighter still, so R2 and
- *   R3 stay two lines; what is built Canary's sky blue.
- * - `grey`: the zone's colour as mapped on the lines, the walls grey (Canary as it was, YIELD_CANARY_ZONES=grey).
+ * - `bands` (Canary): the colours of the report's isometric (its built form page): each neighbour in the colour of
+ *   its storeys, blue for one or two, green for three or four, yellow, red (massingInks().bands), on its outline and
+ *   its shaded walls, on the plans too; what is built shaded in the site's colour, as that page draws what stands on
+ *   the site. Its zones keep their mapped ePlanning colours where they are drawn as areas (the first page).
+ *   (Z. 2026-11: "the colours for Canary are still off, please use the same colours you use for the isometry in the
+ *   report".)
+ * - `vivid` (YIELD_CANARY_ZONES=vivid): the zone's hue at the saturation of Canary's sun colours, what is built sky blue.
+ * - `grey`: the zone's colour as mapped on the lines, the walls grey (YIELD_CANARY_ZONES=grey).
  */
-type ZoneTone = 'pastel' | 'vivid' | 'grey';
+type ZoneTone = 'pastel' | 'vivid' | 'grey' | 'bands';
 function zoneTone(look: DeckLook): ZoneTone | null {
   if (look.id === 'kingfisher') return 'pastel';
-  if (look.zones === 'lep') { const t = process.env.YIELD_CANARY_ZONES as ZoneTone | undefined; return t === 'pastel' || t === 'grey' ? t : 'vivid'; }
+  if (look.zones === 'lep') { const t = process.env.YIELD_CANARY_ZONES as ZoneTone | undefined; return t === 'pastel' || t === 'grey' || t === 'vivid' ? t : 'bands'; }
   return null;
 }
+/** A colour as a line on white: itself, a step deeper where it is too light to carry one (the report's yellow). */
+const lineOf = (c: string) => inkFor(c, 0.62);
+/** The colour of a building's storeys in the report's isometric (massingInks().bands); null where no height is recorded. */
+function bandInk(cb: { heightM?: number; known?: boolean } | undefined): string | null {
+  return cb && cb.known && cb.heightM && cb.heightM > 0 ? massingInks().bands[heightBandOf(cb.heightM)] : null;
+}
+/**
+ * A neighbour in a white model and on a plan: the line round it and the ink its walls are shaded toward. Its zone's
+ * colour, or (Canary) the colour of its storeys as the report's isometric draws it.
+ */
+function neighbourTone(cb: { heightM?: number; known?: boolean; controls?: { zone?: string } } | undefined, zone: string | undefined, look: DeckLook): { line: string | null; shade: string | null } {
+  if (zoneTone(look) === 'bands') { const c = bandInk(cb); return { line: c ? lineOf(c) : null, shade: isoShadeMode() === 'grey' ? null : c }; }
+  return { line: zoneLine(zone, look), shade: isoShadeOf(zone, look) };
+}
+/** The site's colour as the report's isometric draws what stands on it: at full strength in Canary. */
+const siteShade = () => vivid(tpl().site, 0.6, 0.5);
 /** A zone's mapped colour at the saturation of Canary's sun colours: its hue kept, saturated, its lightness down a step in proportion (R2's pink stays lighter than R3's salmon). */
 function vividZone(hex: string): string {
   const n = parseInt(hex.slice(1), 16);
@@ -767,7 +788,7 @@ function zoneLine(zone: string | undefined, look: DeckLook): string | null {
   if (look.id === 'heron' || !zone) return null;
   const tone = zoneTone(look);
   if (tone === 'vivid' && process.env.YIELD_ZONE_LINE !== 'vivid') return vividZone(zoneFill(zone));
-  if (tone === 'pastel' && process.env.YIELD_ZONE_LINE !== 'vivid') return zoneFill(zone);
+  if ((tone === 'pastel' || tone === 'bands') && process.env.YIELD_ZONE_LINE !== 'vivid') return zoneFill(zone);
   // Where the style keeps the ePlanning colours (Canary): the zone's mapped colour itself, a swatch of its palette.
   // The massing's bold cut of it (zoneInk) brings R2's pink and R3's salmon to one red, which as
   // a fill passed and as a line is the same line; and a town outlined in that red is lost against the separations'
@@ -791,7 +812,7 @@ function isoShadeOf(zone: string | undefined, look: DeckLook, built = false): st
   if (look.id === 'heron' || mode === 'grey' || tone === 'grey') return null;
   if (mode === 'blue') return ISO_SHADE.blue;
   if (mode === 'warm') return ISO_SHADE.warm;
-  if (built) return tone === 'vivid' ? ISO_SHADE.sky : ISO_SHADE.blue;
+  if (built) return tone === 'bands' ? siteShade() : tone === 'vivid' ? ISO_SHADE.sky : ISO_SHADE.blue;
   // (the zone's own colour, as its outline is: the mapped colour, or its vivid cut, where the style keeps them)
   const line = zoneLine(zone, look);
   return line ? (tone ? line : mix(line, '#ffffff', 0.45)) : ISO_SHADE.blue;
@@ -853,15 +874,18 @@ function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number;
   // town round it, and what is drawn runs out to its every edge (the pipeline reads the town this far).
   const reach = Math.max(...s.ring.map((p) => Math.hypot(p.x, p.y))) + 230;
   const local = (rg: number[][]) => rg.map(([lon, lat]) => s.toLocal(lon, lat));
-  const neighbours = b.context.map((cb, i) => ({
-    rings: [local(cb.rings[0] ?? [])].filter((rg) => rg.length >= 3),
-    heightM: cb.known ? cb.heightM : undefined,
-    fill: zoneInk(cb.controls?.zone, look) ?? M.noHeight,
-    // (the white model's neighbours: each outlined in its zone's colour, its walls shaded in a colour)
-    ...(scheme.mono && zoneEdgesOn() ? { edge: zoneLine(cb.controls?.zone, look) ?? undefined } : {}),
-    // (not on the solar access views: their colour is the facades' sun)
-    ...(scheme.mono && !scheme.facades && isoShadeOf(cb.controls?.zone, look) ? { shade: isoShadeOf(cb.controls?.zone, look)! } : {}),
-  }));
+  const neighbours = b.context.map((cb, i) => {
+    const nt = neighbourTone(cb, cb.controls?.zone, look);
+    return {
+      rings: [local(cb.rings[0] ?? [])].filter((rg) => rg.length >= 3),
+      heightM: cb.known ? cb.heightM : undefined,
+      fill: zoneInk(cb.controls?.zone, look) ?? M.noHeight,
+      // (the white model's neighbours: each outlined in its zone's colour, or its storeys', its walls shaded in it)
+      ...(scheme.mono && zoneEdgesOn() && nt.line ? { edge: nt.line } : {}),
+      // (not on the solar access views: their colour is the facades' sun)
+      ...(scheme.mono && !scheme.facades && nt.shade ? { shade: nt.shade } : {}),
+    };
+  });
   const z = y ? storeyZ(y) : undefined;
   const built: Prism[] = [];
   if (y && z) y.tiers.forEach((t, ti) => {
@@ -896,6 +920,8 @@ function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number;
     envelopes: y && z ? y.tiers.map((t) => ({ rings: t.envelope, z: z.top(t.to) })) : [],
     inks: { site: siteInk(), future: scheme.mono ? '#ffffff' : Y.future, futureEdge: scheme.mono ? '#8f8f8f' : Y.futureEdge, envelope: Y.envelope, kerb: Y.kerb, siteLine: { ink: SITE_LINE.ink, w: SITE_LINE.massing } },
     mono: scheme.mono,
+    // (a path's own spread keeps the style's trees, people and traffic; the solar access views stay white, their colour the facades' sun)
+    ...(scheme.mono && !scheme.facades && process.env.YIELD_ISO_ENTOURAGE !== 'white' ? { entourage: 'style' as const } : {}),
     futures: s.future.buildings.map((fb) => ({ rings: [fb.ring], heightM: fb.heightM })),
     // (always: white in a white town, what is built is told by its heavy black outline)
     silhouette: true,
@@ -988,6 +1014,8 @@ const DIM_ASKED_INK = '#6a6a6a';
 const BAND_OPACITY = 0.88;
 /** The scheme's own shadow on it, in a colour of its own: each hour a little stronger than a neighbour's grey, so its colour holds where it falls on theirs. */
 const OWN_HOUR_ALPHA = 0.15;
+/** The same where three hours alone are drawn (9 am, 12 pm, 3 pm): each layer a firmer tone, so three read as seven did. */
+const THREE_HOUR_ALPHA = { neighbours: 0.17, own: 0.26 };
 /**
  * The scheme's own shadow on a path's plan: the style's blue, over the neighbours' grey. Chosen from a board of
  * pairs (Z. 2026-11: "the shadow of our design should have a different colour than the others"; then, on it in the
@@ -1142,7 +1170,8 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
     try { kerbs = estimateKerbs(parcels.flatMap((pc) => pc.rings), b.roads, [], []); } catch { kerbs = []; }
   }
   if (kerbs.length) out.push(`<path d="${kerbs.map((kl) => line(local(kl.coords))).join('')}" fill="none" stroke="${greyPlan || linePlan || opts.bw ? '#8c8c8c' : Y.kerb}" stroke-width="${greyPlan || linePlan || opts.bw ? 0.22 : 0.3}" stroke-linecap="round" stroke-linejoin="round"/>`);
-  const blds = b.context.map((cb) => local(cb.rings[0] ?? [])).filter((rg) => rg.length >= 3);
+  const bldsOf = b.context.map((cb) => ({ cb, rg: local(cb.rings[0] ?? []) })).filter((x) => x.rg.length >= 3);
+  const blds = bldsOf.map((x) => x.rg);
   // A line plan's trees: each a circle at its crown's size with its centre marked, under the buildings; none on the
   // site where a scheme clears it, none over the photograph (which shows them)
   if (linePlan && !photo && !opts.study && b.trees?.length) {
@@ -1197,10 +1226,10 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
   if (greyPlan && blds.length) out.push(`<path d="${blds.map(path).join('')}" ${linePlan ? LINE_BUILDING : PLAN_BUILDING}/>`);
   else if (linePlan && !photo) { if (blds.length) out.push(`<path d="${blds.map(path).join('')}" ${LINE_BUILDING}/>`); }
   else if (opts.bw === 'white' && zoneEdgesOn() && blds.length) {
-    // white, each in a line of its zone's colour (its lot's zone); black where its lot has none
+    // white, each in a line of its zone's colour (its lot's zone), or of its storeys' (Canary); black where it has none
     const byInk = new Map<string, string[]>();
-    for (const rg of blds) {
-      const ink = zoneLine(parcels.find((pc) => !pc.site && within(centre(rg), pc.local))?.zone, look) ?? '';
+    for (const { cb, rg } of bldsOf) {
+      const ink = neighbourTone(cb, parcels.find((pc) => !pc.site && within(centre(rg), pc.local))?.zone, look).line ?? '';
       (byInk.get(ink) ?? byInk.set(ink, []).get(ink)!).push(path(rg));
     }
     for (const [ink, ds] of byInk) out.push(ink ? `<path data-zone-line="1" d="${ds.join('')}" fill="#ffffff" stroke="${ink}" stroke-width="${ZONE_EDGE_PLAN}" stroke-linejoin="round"/>` : `<path d="${ds.join('')}" ${BW_BUILDING.white}/>`);
@@ -2024,6 +2053,22 @@ function zoneEntries(b: YieldBundle, look: DeckLook, massing: boolean, shown?: s
     });
 }
 
+/**
+ * The key to the neighbours' lines on a plan or in a white model: the zones, each by its line; or (Canary) the storeys'
+ * bands the town holds, each by its colour as the report's built form page keys them.
+ */
+function townEntries(b: YieldBundle, look: DeckLook, massing: boolean, shown?: string[]): { entries: LegendEntry[]; words: string } {
+  if (!zoneEdgesOn()) return { entries: [], words: '' };
+  if (zoneTone(look) !== 'bands') { const entries = zoneEntries(b, look, massing, shown, true); return { entries, words: entries.length ? ', each outlined in its zone\'s colour' : '' }; }
+  const has = new Set(b.context.filter((cb) => cb.known && cb.heightM > 0).map((cb) => heightBandOf(cb.heightM)));
+  const M = massingInks();
+  const entries = HEIGHT_BANDS.flatMap((bd, i) => (has.has(i) ? [{
+    swatch: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="#ffffff" stroke="${lineOf(M.bands[i])}" stroke-width="0.45"/>${massing ? `<path d="M2.6,0.75H4.35V2.85H2.6Z" fill="${M.bands[i]}"/>` : ''}`,
+    label: /storeys/.test(bd.label) ? bd.label : `${bd.label} storeys`,
+  }] : []));
+  return { entries, words: entries.length ? ', each outlined in the colour of its storeys, as the report\'s built form page' : '' };
+}
+
 /** How much round the site a whole page's plan takes in, as a multiple of the site's extent: the overview's and each path's (its shadow's), so the deck's plans are one scale. */
 const PLAN_ROOM = 2.4;
 
@@ -2045,9 +2090,9 @@ function schemeLegend(b: YieldBundle, s: YieldStudy, y: YieldResult | undefined,
   if (y?.tiers.length) out.push({ swatch: KEY.envelope, label: 'Envelope of each tier' });
   if (s.hob?.metres) out.push({ swatch: KEY.plane, label: 'The LEP\'s height of building plane' });
   // the town a white model: the neighbours white at their heights, each in a line of its zone's colour, the zones keyed by their lines
-  const zoned = zoneEdgesOn() ? zoneEntries(b, deckLook(), true, undefined, true) : [];
+  const town = townEntries(b, deckLook(), true), zoned = town.entries;
   out.push({ swatch: `<path d="M0.4,0.7H2.3V3H0.4Z" fill="#ffffff" stroke="#8f8f8f" stroke-width="0.2"/><path d="M2.7,0.7H4.6V3H2.7Z" fill="#ffffff" stroke="#8f8f8f" stroke-width="0.2" stroke-dasharray="0.5,0.3"/>`,
-    label: `Neighbours in white at their heights (${footprintSources(b)}${b.mesh?.heights ? ', the 3D meshes where neither has one' : ''})${zoned.length ? ', each outlined in its zone\'s colour' : ''}; dashed: not recorded` });
+    label: `Neighbours in white at their heights (${footprintSources(b)}${b.mesh?.heights ? ', the 3D meshes where neither has one' : ''})${town.words}; dashed: not recorded` });
   out.push(...zoned);
   if (s.future.buildings.length) out.push({ swatch: `<path d="M0.6,0.7H4.4V3H0.6Z" fill="#ffffff" fill-opacity="0.5" stroke="#8f8f8f" stroke-width="0.2" stroke-dasharray="0.5,0.3"/>`, label: `${FUT_LABEL}${b.capacity ? ', where the capacity study finds development potential' : ''}` });
   if (kerbs) out.push({ swatch: KEY.kerb, label: 'Kerb line, indicative' });
@@ -2461,7 +2506,7 @@ function complianceSheets(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: P
      * `ramp` the colours: contours `pink-orange` (pink on the morning side, orange on the afternoon side, a gradient
      * across each band) or `warm` (cream to red); a sweep `pink-lilac` or `yellow-red`, 9 am to 3 pm.
      */
-    ownStyle?: 'layers' | 'contours' | 'sweep'; ramp?: 'pink-orange' | 'warm' | 'pink-lilac' | 'yellow-red';
+    ownStyle?: 'layers' | 'contours' | 'sweep'; ramp?: 'pink-orange' | 'warm' | 'pink-lilac' | 'yellow-red' | 'report';
     /**
      * The neighbours' shadows: hour by hour in grey (`layers`); as contours of their own under the envelope's
      * (`contours`, in `gRamp`: Canary's `blue`s); or every building's together as one set
@@ -2469,15 +2514,20 @@ function complianceSheets(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: P
      */
     ground?: 'layers' | 'contours' | 'all'; gRamp?: 'blue';
   }
-  // Canary: the envelope's shadow as contours, pink to orange across the day, after a contour map of exposure (Z.
-  // 2026-11, with a contour plot in reds, oranges and pinks and a shadow-range diagram: "can you try to make the shadow
-  // on the shadow plan look like this in Canary style?"). The other styles keep the hours laid over each other.
+  // The shadows at 9 am, 12 pm and 3 pm alone, the neighbours' and the scheme's, as a shadow diagram is lodged (Z.
+  // 2026-11: "for shadow of neighbour show only 9, 12 and 15 hours"; they were each hour from 9 to 3, seven layers).
+  // Canary: the scheme's three shadows each in a colour of its own, the yellow, orange and red of the report's
+  // isometric, outlined and named ("the colours for Canary are still off, please use the same colours you use for the
+  // isometry in the report"; they were contours in the ePlanning pinks and oranges, still to be had: `"ownStyle":
+  // "contours", "ramp": "pink-orange", "hours": "hourly"`). The other styles lay theirs over each other in one ink.
   const canaryShadow = deckLook().zones === 'lep' && deckLook().id !== 'heron';
-  const LOOK: ShadowLook = { hours: 'hourly', neighbours: true, ownShadow: true, hatch: false, outlines: true, dims: true, shaded: false,
-    own: ownShadowOnPlan(), oAlpha: OWN_HOUR_ALPHA, nInk: shadowInk(), nAlpha: PLAN_HOUR_ALPHA, multiply: true, bw: 'white',
-    ...(canaryShadow ? { ownStyle: 'contours', ramp: 'pink-orange', own: CANARY_SHADOW_RAMPS.pink[3] } as Partial<ShadowLook> : {}),
-    ...(process.env.YIELD_SHADOW_LOOK ? JSON.parse(process.env.YIELD_SHADOW_LOOK) as Partial<ShadowLook> : {}) };
-  const name = (scale: number) => ['Plan', `1:${fmt(scale).replace(',', ' ')}`, LOOK.label ?? 'shadows each hour, 9 am to 3 pm'];
+  const asked = process.env.YIELD_SHADOW_LOOK ? JSON.parse(process.env.YIELD_SHADOW_LOOK) as Partial<ShadowLook> : {};
+  const three = (asked.hours ?? 'three') === 'three';
+  const LOOK: ShadowLook = { hours: 'three', neighbours: true, ownShadow: true, hatch: false, outlines: true, dims: true, shaded: false,
+    own: ownShadowOnPlan(), oAlpha: three ? THREE_HOUR_ALPHA.own : OWN_HOUR_ALPHA, nInk: shadowInk(), nAlpha: three ? THREE_HOUR_ALPHA.neighbours : PLAN_HOUR_ALPHA, multiply: true, bw: 'white',
+    ...(canaryShadow ? { ownStyle: 'sweep', ramp: 'report', own: paletteRamp()[3] } as Partial<ShadowLook> : {}),
+    ...asked };
+  const name = (scale: number) => ['Plan', `1:${fmt(scale).replace(',', ' ')}`, LOOK.label ?? (LOOK.hours === 'hourly' ? 'shadows each hour, 9 am to 3 pm' : LOOK.hours === 'three' ? 'shadows at 9 am, 12 pm and 3 pm' : 'shadows at 12 pm')];
   const massBlocks = schemeBlocks(ps.y);
   const casters = b.context.map((cb) => ({ ring: (cb.rings[0] ?? []).map(([x, yy]) => s.toLocal(x, yy)), h: cb.known && cb.heightM > 0 ? cb.heightM : UNKNOWN_HEIGHT_M })).filter((c) => c.ring.length >= 3);
   const hourSuns = winterSun(lat, lon, [9, 10, 11, 12, 13, 14, 15].map((hr) => hr * 60));
@@ -2504,8 +2554,11 @@ function complianceSheets(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: P
   const bands = stepped(levels).map(({ rings, inner, j }) => ({ rings, inner, ...bandOf(j) }));
   const groundTone = (j: number) => (groundStyle === 'all' ? bandOf(j).fill : R.blue[j]);
   const groundBands = stepped(groundLevels).map(({ rings, inner, j }) => ({ rings, inner, fill: groundTone(j) }));
-  const sweepInk = (i: number) => CANARY_SWEEPS[LOOK.ramp === 'yellow-red' ? 'yellow-red' : 'pink-lilac'][i];
-  const sweep = ownStyle === 'sweep' ? hourly.map((hr, i) => ({ rings: hr.scheme, fill: sweepInk(i), edge: inkFor(sweepInk(i), 0.5), label: clock(hourSuns[i].clockMin), alpha: 0.2 })) : [];
+  // (a sweep's colours: the report's isometric's yellow to its red across the day, or a ramp of swatches by the hour)
+  const reportRamp = LOOK.ramp === 'report' || !LOOK.ramp || !(LOOK.ramp in CANARY_SWEEPS);
+  const sweepInk = (i: number) => (reportRamp ? mix(paletteRamp()[2], paletteRamp()[3], i / 6) : CANARY_SWEEPS[LOOK.ramp === 'yellow-red' ? 'yellow-red' : 'pink-lilac'][i]);
+  const sweepHours = hourly.map((hr, i) => ({ hr, i })).filter(({ i }) => (LOOK.hours === 'three' ? i % 3 === 0 : LOOK.hours === 'noon' ? i === 3 : true));
+  const sweep = ownStyle === 'sweep' ? sweepHours.map(({ hr, i }) => ({ rings: hr.scheme, fill: sweepInk(i), edge: inkFor(sweepInk(i), 0.42), label: clock(hourSuns[i].clockMin), alpha: sweepHours.length <= 3 ? 0.42 : 0.2 })) : [];
   // the hours named at the far end of the envelope's shadow: outlined at 9, 12 and 3 where it is laid in layers; named
   // alone over contours, at those three, in the colour of their side; every hour over a sweep, in its own colour
   const named = ownStyle === 'sweep' ? sweep.map((sw) => ({ rings: sw.rings, label: sw.label, ink: sw.edge, outline: false }))
@@ -2528,27 +2581,27 @@ function complianceSheets(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: P
 
   // the keys
   const KEY = keySwatches();
-  const solarZones = zoneEdgesOn() ? zoneEntries(b, deckLook(), true, undefined, true) : [];
+  const solarTown = townEntries(b, deckLook(), false), solarZones = solarTown.entries;
   const solarLegend: LegendEntry[] = [
     { swatch: KEY.site, label: 'The site' },
     { swatch: KEY.zones(sunBands().map((x) => x.fill)), label: `Facades, hours of sun 9 am – 3 pm on 21 June: none, under 1, 1–2, 2–3, 3–4, 4–5, 5 and over` },
     { swatch: KEY.use('residential'), label: 'Indicative massing: blank walls' },
     { swatch: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="#ffffff" stroke="#3a3a3a" stroke-width="0.15"/>`, label: 'Its roofs, white: not counted' },
     { swatch: `<path d="M0.4,0.7H2.3V3H0.4Z" fill="#ffffff" stroke="#8f8f8f" stroke-width="0.2"/><path d="M2.7,0.7H4.6V3H2.7Z" fill="#ffffff" stroke="#8f8f8f" stroke-width="0.2" stroke-dasharray="0.5,0.3"/>`,
-      label: `Neighbours in white at their heights${solarZones.length ? ', each outlined in its zone\'s colour' : ''}${s.future.buildings.length ? '; dashed, their future on feasible footprints to their LEP height and FSR' : ''}` },
+      label: `Neighbours in white at their heights${solarTown.words}${s.future.buildings.length ? '; dashed, their future on feasible footprints to their LEP height and FSR' : ''}` },
     ...solarZones,
   ];
   // the plan's key (the site, what is built, each tier's envelope), then the shadows as they are drawn, then the neighbours
   const lineLook = deckLook().id === 'heron';
   const layers = pickHours(hourly).length;
   const hourSwatch = (ink: string, alpha: number) => Array.from({ length: layers }, (_, i) => `<rect x="${((i * 5) / layers).toFixed(2)}" y="0.3" width="${(5 / layers).toFixed(2)}" height="3" fill="${ink}" fill-opacity="${(1 - (1 - alpha) ** (i + 1)).toFixed(2)}"/>`).join('') + `<rect x="0" y="0.3" width="5" height="3" fill="none" stroke="#6f6f6f" stroke-width="0.1"/>`;
-  const whenWords = LOOK.hours === 'hourly' ? 'each hour 9 am – 3 pm laid over the last: the deeper, the longer in shadow' : LOOK.hours === 'three' ? 'at 9 am, 12 pm and 3 pm, laid over each other' : 'at 12 pm';
+  const whenWords = LOOK.hours === 'hourly' ? 'each hour 9 am – 3 pm laid over the last: the deeper, the longer in shadow' : LOOK.hours === 'three' ? 'at 9 am, 12 pm and 3 pm, laid over each other: the deeper, the more of them in shadow' : 'at 12 pm';
   const its = standing.length ? 'Its' : 'The envelope\'s', sameInk = LOOK.own.toLowerCase() === LOOK.nInk.toLowerCase();
   // a key's swatch of the bands: their colours in a row, or the pinks over the oranges
   const stripes = (cs: string[]) => cs.map((c, i) => `<rect x="${((i * 5) / cs.length).toFixed(2)}" y="0.3" width="${(5 / cs.length + 0.02).toFixed(2)}" height="3" fill="${c}"/>`).join('');
   const pinkOverOrange = R.pink.map((c, i) => `<rect x="${((i * 5) / 4).toFixed(2)}" y="0.3" width="${(5 / 4 + 0.02).toFixed(2)}" height="1.5" fill="${c}"/><rect x="${((i * 5) / 4).toFixed(2)}" y="1.8" width="${(5 / 4 + 0.02).toFixed(2)}" height="1.5" fill="${R.orange[i]}"/>`).join('');
   const bwSwatch = LOOK.bw === 'black' ? `<rect x="0.4" y="0.6" width="4.2" height="2.4" fill="#2a2c30"/>` : LOOK.bw === 'grey' ? `<rect x="0.4" y="0.6" width="4.2" height="2.4" fill="#d3d5d8"/>` : `<rect x="0.4" y="0.6" width="4.2" height="2.4" fill="#ffffff" stroke="#1c1c1c" stroke-width="0.3"/>`;
-  const planZones = LOOK.bw === 'white' && zoneEdgesOn() ? zoneEntries(b, deckLook(), false, plan.zones, true) : [];
+  const planTown = LOOK.bw === 'white' ? townEntries(b, deckLook(), false, plan.zones) : { entries: [], words: '' }, planZones = planTown.entries;
   const shadowLegend: LegendEntry[] = [
     { swatch: KEY.site, label: 'The site' },
     ...(standing.length ? [{ swatch: KEY.standing, label: 'What stands on the site' }]
@@ -2561,15 +2614,15 @@ function complianceSheets(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: P
         : `The neighbours' shadows on 21 June, 9 am – 3 pm, in bands: the ground in their shadow one or two hours (palest) to all seven (deepest)` }] : []),
     ...(ownStyle === 'contours' && groundStyle !== 'all' ? [{ swatch: LOOK.ramp === 'warm' ? stripes(R.warm) : pinkOverOrange,
       label: `${its} shadow on 21 June, 9 am – 3 pm, in bands: the ground in it one or two hours (palest) to all seven (deepest)${LOOK.ramp === 'warm' ? '' : '; pink on the morning side, orange on the afternoon side'}${LOOK.outlines ? '; 9 am, 12 pm and 3 pm named at its far end' : ''}` }] : []),
-    ...(ownStyle === 'sweep' ? [{ swatch: Array.from({ length: 7 }, (_, i) => `<rect x="${((i * 5) / 7).toFixed(2)}" y="0.3" width="${(5 / 7 + 0.02).toFixed(2)}" height="3" fill="${sweepInk(i)}"/>`).join(''),
-      label: `${its} shadow each hour on 21 June, 9 am to 3 pm, each in its own colour (${LOOK.ramp === 'yellow-red' ? 'yellow at 9 am to red at 3 pm' : 'pink at 9 am to lilac at 3 pm'}), outlined and named; deeper where the hours overlap` }] : []),
+    ...(ownStyle === 'sweep' ? [{ swatch: sweep.map((sw, i) => `<rect x="${((i * 5) / sweep.length).toFixed(2)}" y="0.3" width="${(5 / sweep.length + 0.02).toFixed(2)}" height="3" fill="${sw.fill}"/>`).join(''),
+      label: `${its} shadow ${LOOK.hours === 'three' ? 'at 9 am, 12 pm and 3 pm on 21 June' : 'each hour on 21 June, 9 am to 3 pm'}, each in its own colour (${reportRamp ? (LOOK.hours === 'three' ? 'yellow at 9 am, orange at 12 pm, red at 3 pm' : 'yellow at 9 am to red at 3 pm') : LOOK.ramp === 'yellow-red' ? 'yellow at 9 am to red at 3 pm' : 'pink at 9 am to lilac at 3 pm'}), outlined and named; deeper where they overlap` }] : []),
     ...(ownStyle === 'layers' && LOOK.ownShadow && !(LOOK.neighbours && sameInk) ? [{ swatch: hourSwatch(LOOK.own, LOOK.oAlpha), label: LOOK.neighbours ? `${its} own shadow, the same hours, in its own colour${LOOK.outlines ? '; at 9 am, 12 pm and 3 pm outlined' : ''}` : `${its} shadow on 21 June, ${whenWords}` }] : []),
     ...(LOOK.outlines && ownStyle === 'layers' && !(LOOK.ownShadow && LOOK.neighbours && !sameInk) ? [{ swatch: `<path d="M0.4,0.6H4.6V3H0.4Z" fill="none" stroke="${LOOK.own}" stroke-width="0.25" stroke-dasharray="0.7,0.45"/>`, label: `${its} shadow at 9 am, 12 pm and 3 pm, outlined` }] : []),
     ...(LOOK.hatch ? [{ swatch: fillShape('M0.4,0.3H4.6V3.3H0.4Z', { x0: 0.4, y0: 0.3, x1: 4.6, y1: 3.3 }, ADDED_HATCH(LOOK.own), 1.6), label: `Hatched: the ground only ${standing.length ? 'it' : 'the envelope'} shades, what it ${standing.length ? 'overshadows' : 'would overshadow'}` }] : []),
     ...(LOOK.shaded ? [{ swatch: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="${LOOK.own}" fill-opacity="0.1" stroke="${LOOK.own}" stroke-width="0.3" stroke-dasharray="0.5,0.4"/>`, label: 'Land it adds shadow to: a residential lot, heritage item or park' }] : []),
     ...(LOOK.dims ? [{ swatch: `<path d="M0.2,1.2H4.8" stroke="${DIM_INK}" stroke-width="0.16"/><path d="M0.6,1.75L1.4,0.65M3.6,1.75L4.4,0.65" stroke="${DIM_INK}" stroke-width="0.3" stroke-linecap="round"/><path d="M0.2,2.8H4.8" stroke="${DIM_INK}" stroke-width="0.16" stroke-dasharray="1.1 0.7"/>`,
       label: 'Building separation: the distance over its line, what is asked (ADG 3F-1) under it; dashed where it holds only with one face blank' }] : []),
-    { swatch: lineLook ? `<rect x="0.4" y="0.6" width="4.2" height="2.4" fill="#ffffff" stroke="#111111" stroke-width="0.45"/>` : bwSwatch, label: `Buildings round about${planZones.length ? ', each outlined in its zone\'s colour' : ''}, each lot with its street number; lot boundaries, NSW cadastre` },
+    { swatch: lineLook ? `<rect x="0.4" y="0.6" width="4.2" height="2.4" fill="#ffffff" stroke="#111111" stroke-width="0.45"/>` : bwSwatch, label: `Buildings round about${planTown.words}, each lot with its street number; lot boundaries, NSW cadastre` },
     ...planZones,
     ...(s.future.buildings.length ? [{ swatch: KEY.future, label: 'Dashed: a neighbour\'s future, a feasible footprint to its LEP height and FSR' }] : []),
     ...(plan.kerbs.length ? [{ swatch: LOOK.bw || lineLook ? `<path d="M0.4,1.8H4.6" fill="none" stroke="#8c8c8c" stroke-width="0.25"/>` : KEY.kerb, label: 'Kerb line, indicative' }] : []),
